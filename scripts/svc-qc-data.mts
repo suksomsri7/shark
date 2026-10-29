@@ -152,7 +152,8 @@ export const SQC_USERS: SqcUser[] = [
   user("ek", "ช่างเอก", "STAFF", [SQC_UNITS.barber.id], ["booking.appointment.setStatus"]),
   user("cashier", "แคชเชียร์ (SVC QC)", "STAFF", [SQC_UNITS.barber.id, SQC_UNITS.massage.id], ["pos.sale.create"]),
   // SVC D.6 ▸ fai + dorm.view (ผังหอมีด่านสิทธิ์) · meter = dorm.meter.read อย่างเดียว ("คนจดมิเตอร์เห็นแค่หน้าจด") ◂
-  user("fai", "พี่ฝ้าย (ผู้ดูแลหอ)", "STAFF", [SQC_UNITS.dorm.id], ["hotel.room.setStatus", "dorm.view"]),
+  // SVC D.13 ▸ fai = ผู้ดูแลหอตามภาพ 17 (สัญญา · ยืนยันสลิป ⇒ เห็นเงินบนผัง) · ไม่ให้ dorm.bill.run (ภาพ d.7 ของ fai = ไม่มีฟอร์มใส่บิล) ◂
+  user("fai", "พี่ฝ้าย (ผู้ดูแลหอ)", "STAFF", [SQC_UNITS.dorm.id], ["hotel.room.setStatus", "dorm.view", "dorm.lease.manage", "dorm.slip.review"]),
   user("meter", "คนจดมิเตอร์ (SVC QC)", "STAFF", [SQC_UNITS.dorm.id], ["dorm.meter.read"]),
   user("accountant", "ฝ่ายบัญชี (SVC QC)", "STAFF", ALL4, ["account.report.view"]),
   user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn"]),
@@ -336,3 +337,79 @@ export const SQC = {
   pending: SQC_PENDING,
   visual: SQC_VISUAL,
 } as const;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC D.13 ▸ บล็อกของใบ D.13 เท่านั้น (ผังห้องหอ + KPI หอ 01 · ตั้งนโยบาย/สิทธิ์ หอ 17) — เลนอื่นห้ามแก้ในบล็อกนี้ / เพิ่มของตัวเองเป็นบล็อกแยก
+//   ใบสั่ง ledger/svc-briefs/svc-brief-d.13.md · ข้อสอบ scripts/qc-svc-d.13.mts
+// ═════════════════════════════════════════════════════════════════════════════
+/** ภาพ หอ 01 + หอ 17 — ก่อนถ่ายรัน: roomboard-scene → lease-scene → dorm-home-scene (D.13) · ถ่ายทั้ง --user owner และ --user fai */
+SQC_VISUAL_SPECS["d.13"] = [
+  { name: "dorm-home", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm` },
+  { name: "dorm-settings-policies", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/settings` },
+];
+
+/** README หอ "3 พ.ย." — ยอดบิลรอบ พ.ย. ต่อห้อง (สตางค์) · 31 ห้องที่มีผู้เช่า · Σ = 17,412,640 (฿174,126.40) */
+const D13_NOV_BILLS: Record<string, number> = {
+  // ห้องใหญ่ (จ่ายแล้ว)
+  "101": 612000, "112": 605440, "201": 618320, "212": 609760, "301": 615200, "312": 607040,
+  // มาตรฐาน จ่ายแล้ว 18 (204 ณัฐชา ฿5,486.00)
+  "102": 541200, "103": 536480, "105": 539840, "107": 544320, "109": 533760, "110": 538400, "111": 542080,
+  "202": 537600, "203": 540960, "204": 548600, "205": 535520, "208": 543200, "209": 539280,
+  "303": 536000, "304": 541760, "306": 538880, "307": 540320, "308": 545320,
+  // สลิปรอตรวจ 3 (= ฿17,785.36)
+  "104": 538240, "206": 556232, "309": 684064,
+  // ยังไม่จ่าย 4 (= ฿22,428.24)
+  "106": 548624, "211": 562400, "305": 541600, "310": 590200,
+};
+/**
+ * ฉากผังห้องหอ + KPI (ใบ D.13 · README หอ "3 พ.ย.") — ค่าล้วน
+ *   ข้อสอบ D.13 สร้างฉากนี้แบบวันที่ตายตัว (readme.*) บนร้านชั่วคราว · สคริปต์ฉาก scripts/svc-qc-dorm-home-scene.mts (builder) สร้างบนร้าน svcqc
+ *   แบบสัมพัทธ์วันนี้ (ใบสั่ง D.13 §9) ต่อจาก roomboard-scene + lease-scene · แถวที่ฉากเขียนติด createdById/enteredBy = mark
+ */
+export const SQC_DORM_HOME_SCENE = {
+  mark: "SvcQcScene",
+  readme: { date: "2026-11-03", period: "2026-11", prevPeriod: "2026-10", sentAt: "2026-10-26", dueDate: "2026-11-05", prevDueDate: "2026-10-05" },
+  bills: D13_NOV_BILLS,
+  slipPending: ["104", "206", "309"],
+  unpaid: ["106", "211", "305", "310"],
+  /** ค้าง ต.ค. (ยังไม่จ่าย · ครบกำหนด 5 ต.ค.) = ฿10,200.40 */
+  prevUnpaid: { "106": 521400, "305": 498640 } as Record<string, number>,
+  repairsOpen: [
+    { room: "302", category: "AIRCON", text: "แอร์รั่ว (ช่างนัด 4 พ.ย.)" },
+    { room: "204", category: "PLUMBING", text: "ก๊อกน้ำหยด" },
+  ],
+  /** ประวัติสำหรับฉากวันที่ตายตัวเท่านั้น (ข้อสอบ) — ห้องว่างตั้งแต่ (วันจบ occupancy แบบไม่รวมวันจบ) */
+  vacantSince: { "108": "2026-09-30", "210": "2026-10-22", "311": "2026-10-31" } as Record<string, string>,
+  /** สัญญาหมดภายใน 30 วัน (DormLease.endDate) */
+  expiring: { "103": "2026-11-20", "209": "2026-11-25", "310": "2026-12-02" } as Record<string, string>,
+  /** 207: ผู้เช่าเดิมออก 31 ต.ค. (occupancy จบ 1 พ.ย. ไม่รวม) · ผู้เช่าใหม่เบญจา DRAFT เข้า 15 พ.ย. */
+  moveIn: { room: "207", start: "2026-11-15", oldOccEnd: "2026-11-01", tenant: "เบญจา คำแก้ว" },
+  /** 302 ปิดซ่อม (BLOCK) */
+  repairBlock: { room: "302", start: "2026-11-01", end: "2026-11-05" },
+  expect: {
+    total: 36, floors: 3, occupied: 31, occupiedPct: 86, prevMonthCount: 32, prevMonthPct: 89, vacant: 3, booked: 1, repair: 1,
+    longestVacant: { roomNumber: "108", days: 34 },
+    billCount: 31, paid: 24, slipPending: 3, unpaid: 4,
+    totalSatang: 17412640, collectedSatang: 13391280, outstandingSatang: 4021360,
+    overdueSatang: 1020040, overdueRooms: ["106", "305"], overdueMaxDaysLate: 29,
+  },
+} as const;
+
+/** ฉากหอ 17 (ค่าของหอตัวอย่างในภาพ) — 4 ค่าที่ต่างจากแม่แบบ APARTMENT ⇒ "ปรับจากแม่แบบ 4 ข้อ" */
+export const SQC_DORM_POLICY_SCENE = {
+  template: "APARTMENT",
+  unitDiffs: [
+    { key: "rooms.billing.issueDay", value: 26 },
+    { key: "rooms.lateFee.graceDays", value: 0 },
+    {
+      key: "rooms.services.catalog",
+      value: [
+        { code: "COMMON_NET", labelTh: "ส่วนกลาง + อินเทอร์เน็ต", amountSatang: 30000, required: true, taxKind: "VAT7" },
+        { code: "PARKING", labelTh: "ที่จอดรถยนต์", amountSatang: 50000, required: false, taxKind: "VAT7" },
+        { code: "CLEANING", labelTh: "ทำความสะอาดห้อง", amountSatang: 20000, required: false, taxKind: "VAT7" },
+      ],
+    },
+    { key: "rooms.services.extraOccupantFee", value: 30000 },
+  ],
+} as const;
+// ◂ SVC D.13
