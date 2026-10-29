@@ -151,8 +151,9 @@ export const SQC_USERS: SqcUser[] = [
   user("manager", "ผู้จัดการร้าน (SVC QC)", "MANAGER", [SQC_UNITS.barber.id, SQC_UNITS.massage.id]),
   user("ek", "ช่างเอก", "STAFF", [SQC_UNITS.barber.id], ["booking.appointment.setStatus"]),
   user("cashier", "แคชเชียร์ (SVC QC)", "STAFF", [SQC_UNITS.barber.id, SQC_UNITS.massage.id], ["pos.sale.create"]),
-  user("fai", "พี่ฝ้าย (ผู้ดูแลหอ)", "STAFF", [SQC_UNITS.dorm.id], ["hotel.room.setStatus"]),
-  user("meter", "คนจดมิเตอร์ (SVC QC)", "STAFF", [SQC_UNITS.dorm.id]),
+  // SVC D.6 ▸ fai + dorm.view (ผังหอมีด่านสิทธิ์) · meter = dorm.meter.read อย่างเดียว ("คนจดมิเตอร์เห็นแค่หน้าจด") ◂
+  user("fai", "พี่ฝ้าย (ผู้ดูแลหอ)", "STAFF", [SQC_UNITS.dorm.id], ["hotel.room.setStatus", "dorm.view"]),
+  user("meter", "คนจดมิเตอร์ (SVC QC)", "STAFF", [SQC_UNITS.dorm.id], ["dorm.meter.read"]),
   user("accountant", "ฝ่ายบัญชี (SVC QC)", "STAFF", ALL4, ["account.report.view"]),
   user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn"]),
 ];
@@ -240,6 +241,11 @@ export const SQC_VISUAL_SPECS: Record<string, { name: string; path: string }[]> 
   "r0.9": [{ name: "dorm-floorplan", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm` }],
   // D.5 ผู้เช่าและสัญญา (ภาพ หอ 02 · แผงห้อง 204) — ก่อนถ่ายรัน scripts/svc-qc-roomboard-scene.mts แล้ว scripts/svc-qc-lease-scene.mts
   "d.5": [{ name: "dorm-tenants", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/tenants?room=204` }],
+  // D.6 จดมิเตอร์มือถือ (ภาพ หอ 03) — ก่อนถ่ายรัน scripts/svc-qc-roomboard-scene.mts แล้ว scripts/svc-qc-meter-scene.mts · ถ่ายทั้ง --user owner และ --user meter
+  "d.6": [
+    { name: "dorm-meter-walk", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/meter` },
+    { name: "dorm-meter-flags", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/meter?view=flags` },
+  ],
 };
 
 /**

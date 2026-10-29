@@ -253,6 +253,9 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //   payload { unitId, roomId, from, to } (from/to = "YYYY-MM-DD" · to ไม่รวม) — ไม่มีชื่อ/เบอร์/ref ของสัญญาหรือการจอง (X8)
   //   🔴 consumer อยู่ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น) ◂
   { value: "rooms.occupancy.changed", label: "เมื่อการใช้ห้องเปลี่ยน (จอง/ปล่อย/ย้ายห้อง/ปรับช่วงวัน)" },
+  // SVC D.6 ▸ หอพัก — เลขมิเตอร์ผิดปกติ (สูง/ต่ำกว่าปกติ · เลขถอยหลัง · ห้องว่างใช้น้ำไฟ) · ตัวยิง `dorm/meter.ts` ใน tx เดียวกับแถวเลข
+  //   payload { unitId, meterId, roomId, readingId, periodKey, flag } — ไม่มีชื่อ/เบอร์/ค่าเงิน (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.meter.flagged", label: "เมื่อเลขมิเตอร์หอผิดปกติ (สูง/ต่ำกว่าปกติ · เลขถอยหลัง · ห้องว่างใช้น้ำไฟ)" },
   // CRM C3.2 ▸ โควตาถึงเกณฑ์ (80 % / 100 %) — ตัวยิง = `crm/quotas.ts#checkReached` (หลัง tx ของการรับเงิน COUNTED / การเข้า WON commit)
   //   key `crm.quota.reached#<systemId>:<ownerType>:<ownerId>:<periodKey>#<threshold>` (R-C.8 · ครั้งเดียวต่อเจ้าของ+งวด+เกณฑ์ ตลอดไป ·
   //   INSERT … ON CONFLICT DO NOTHING) · payload { quotaId, ownerType, ownerId, periodKey, threshold, pct } = id ล้วน (X8)

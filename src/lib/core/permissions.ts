@@ -255,6 +255,15 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     },
   },
   {
+    module: "dorm",
+    label: "หอพัก",
+    group: "booking",
+    actions: {
+      "dorm.view": "ดูผังห้องและข้อมูลหอ", // SVC D.6 (คีย์หออื่นใน CC §8 = D.13)
+      "dorm.meter.read": "จดเลขมิเตอร์", // SVC D.6
+    },
+  },
+  {
     module: "queue",
     label: "คิว",
     group: "booking",
