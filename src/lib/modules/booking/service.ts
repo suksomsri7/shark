@@ -8,6 +8,7 @@ import * as pos from "@/lib/modules/pos/service";
 import * as hr from "@/lib/modules/hr/service";
 import { staffWindows as hrStaffWindows } from "@/lib/modules/hr"; // SVC B.1 ▸ BQ-1 กะรายวัน (facade) ◂
 import { resolveSettingsMany } from "@/lib/core/settings"; // SVC B.1 ▸ ค่าตั้งต่อช่าง (CC §1.4) ◂
+import { getDef, resolveSettings, snapshotPolicy, SNAPSHOT_KEYS } from "@/lib/core/settings"; // SVC B.3 ▸ กติกาจอง + snapshot (CC §1.4 §1.6) ◂
 import * as inv from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
@@ -15,6 +16,8 @@ import { emitOutbox } from "@/lib/core/outbox";
 /** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อกเมื่อนำบริการเข้าคลัง */
 export type BookingCtx = { tenantId: string; unitId: string; actorUserId?: string };
 import {
+  BKK_OFFSET_MIN,
+  computeDepositSatang, // SVC B.3
   computeStaffSlots,
   localToUtc,
   minutesToHHMM,
@@ -881,6 +884,28 @@ export async function appointmentsHitByLeave(
   return out;
 }
 
+// SVC B.3 ▸ G5: ปลุกนัดกลับ — ช่วง [startAt, endAt) ของนัดนี้ซ้อนกับนัดอื่นของช่างเดียวกันที่ยังถือช่องไหม (กติกาซ้อนแบบ createAppointment) ◂
+const REVIVE_CLASH_REASON = "ช่วงเวลานี้มีนัดอื่นของช่างคนนี้แล้ว — นำนัดกลับมาไม่ได้ กรุณาจองเวลาใหม่";
+async function reviveClash(
+  client: Pick<Prisma.TransactionClient, "appointment">,
+  tenantId: string,
+  appointmentId: string,
+  a: { staffId: string; startAt: Date; endAt: Date },
+): Promise<boolean> {
+  const hit = await client.appointment.findFirst({
+    where: {
+      tenantId,
+      staffId: a.staffId,
+      id: { not: appointmentId },
+      status: { notIn: ["CANCELLED", "NO_SHOW"] },
+      startAt: { lt: a.endAt },
+      endAt: { gt: a.startAt },
+    },
+    select: { id: true },
+  });
+  return !!hit;
+}
+
 export async function setAppointmentStatus(
   tenantId: string,
   unitId: string,
@@ -895,13 +920,45 @@ export async function setAppointmentStatus(
   //    ขอบเขตร้าน/สาขายังถูกบังคับเหมือน tenantDb (ยัด tenantId/unitId ลง where ของ update ตรง ๆ)
   // POS P5.1 ▸ RC F4 (CD-P51-O10): ออกจาก NO_SHOW (→ สถานะอื่นใด) ⇒ บิลริบที่ยัง PAID + ไม่มีการคืน ถูก void ก่อน (ทาง voidSale เดิม · มัดจำกลับ OPEN ทันที) ·
   //   void ไม่ได้ = ไม่เปลี่ยนสถานะ + เหตุผลที่ระบุเลขบิลริบ (ไม่ออกจาก NO_SHOW เงียบ ๆ โดยบิลยังอยู่) ◂
-  const before = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId }, select: { status: true, depositSaleId: true } });
+  const before = await prisma.appointment.findFirst({
+    where: { id: appointmentId, tenantId, unitId },
+    select: { status: true, depositSaleId: true, staffId: true, startAt: true, endAt: true },
+  });
+  // SVC B.3 ▸ G5: ปลุกนัดที่ไม่ถือช่อง (CANCELLED/NO_SHOW) กลับเป็นสถานะที่ถือช่อง = วางนัดลงช่างใหม่ ⇒ ต้องกันซ้อนแบบเดียวกับการจอง
+  //   ตรวจล่วงหน้าแบบไม่ล็อก (ก่อนคืนบิลริบ — ไม่คืนบิลแล้วค่อยมาปฏิเสธ) · ผลจริงตัดสินใต้ล็อกแถวช่างใน tx ด้านล่าง · ทางเปลี่ยนสถานะอื่นพฤติกรรมเดิม ◂
+  const reviving =
+    !!before && (before.status === "CANCELLED" || before.status === "NO_SHOW") && status !== "CANCELLED" && status !== "NO_SHOW";
+  if (reviving && (await reviveClash(prisma, tenantId, appointmentId, before!))) {
+    return { ok: false as const, reason: REVIVE_CLASH_REASON };
+  }
   if (before?.status === "NO_SHOW" && status !== "NO_SHOW" && before.depositSaleId) {
     const u = await (await import("@/lib/modules/pos/deposit")).moduleUnforfeitDeposit({ tenantId, unitId, receiptSaleId: before.depositSaleId, actorUserId: opts?.actorUserId || "module:booking" });
     if (u.ok === false) return { ok: false as const, reason: u.message, unforfeit: true };
   }
+  // SVC B.3 ▸ G7: ทุกทางเปลี่ยนสถานะ = compare-and-set จากสถานะที่อ่าน (`before.status`) — แพ้ (เช่น ร้านกดยืนยัน PENDING ขณะ minute-job ปล่อยช่องเป็น CANCELLED)
+  //   ⇒ ok:false ไม่เขียนทับ · ไม่ยิง event · ไม่ริบมัดจำ (ริบทำหลัง commit เฉพาะเมื่อชนะ) ·
+  //   คืนบิลริบ (ออกจาก NO_SHOW) เกิดก่อน tx: ถ้าแพ้ CAS ผู้ชนะต้องเป็นทางที่พาออกจาก NO_SHOW เช่นกัน (NO_SHOW→NO_SHOW ไม่แพ้ CAS) ⇒ บิลที่คืนสอดคล้องกับสถานะจริง ◂
+  const LOST_RACE_REASON = "สถานะนัดเพิ่งถูกเปลี่ยนโดยรายการอื่น กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง";
+  if (!before) return { ok: false as const, reason: "ไม่พบนัด" };
+  let reviveFail = null as string | null; // ตั้งใน callback ของ tx (กัน TS ตีบชนิดเป็น null)
   await prisma.$transaction(async (tx) => {
-    const appt = await tx.appointment.update({ where: { id: appointmentId, tenantId, unitId }, data: { status } });
+    if (reviving) {
+      // SVC B.3 ▸ G5: ล็อกเดียวกับการจอง (BookingStaff FOR UPDATE) → ตรวจซ้อนกับนัดที่ถือช่อง (ยกเว้นตัวเอง) → CAS + ล้าง cancelReason ◂
+      await tx.$queryRaw`SELECT id FROM "BookingStaff" WHERE id = ${before.staffId} FOR UPDATE`;
+      if (await reviveClash(tx, tenantId, appointmentId, before)) {
+        reviveFail = REVIVE_CLASH_REASON;
+        return;
+      }
+    }
+    const cas = await tx.appointment.updateMany({
+      where: { id: appointmentId, tenantId, unitId, status: before.status },
+      data: reviving ? { status, cancelReason: null } : { status },
+    });
+    if (cas.count === 0) {
+      reviveFail = LOST_RACE_REASON;
+      return;
+    }
+    const appt = await tx.appointment.findFirstOrThrow({ where: { id: appointmentId, tenantId, unitId } });
     // M2.3 (§9.2) — "มาแล้ว" คือเหตุการณ์ที่โมดูลอื่นรออยู่: สแตมป์ชนิด "จองที่มาจริง" · ขอรีวิว (M3.4) · journey
     // 🔴 event ใหม่ต้องมีครบ 3 ทะเบียน (consumer + AUTOMATION_EVENTS + WEBHOOK_EVENTS) ไม่งั้นคิวตันเงียบ ๆ
     // 🔴 idempotencyKey ผูกกับตัวนัด ⇒ กด "มาแล้ว" ซ้ำ/สลับสถานะไปกลับ ไม่ยิงซ้ำ (ตราไม่เบิ้ล)
@@ -938,6 +995,7 @@ export async function setAppointmentStatus(
       });
     }
   });
+  if (reviveFail) return { ok: false as const, reason: reviveFail };
   // POS P5.1 ▸ MA12 (R1 F3 · CD-P51-O8a · ค่าปริยายระหว่าง W39 ยังเปิด): ไม่มาตามนัด = ริบมัดจำที่ยัง OPEN อัตโนมัติ หลัง commit สถานะ ·
   //   CANCELLED ไม่ริบ (O8b — มัดจำ OPEN ให้คนตัดสินที่หน้าบิล) · ล้ม = มัดจำยัง OPEN (log · ริบ/คืนที่หน้าบิลได้) · กดซ้ำ = คีย์เดิม ไม่มีบิลที่สอง ◂
   if (status === "NO_SHOW") {
@@ -1004,6 +1062,7 @@ export async function setServiceDeposit(
 //   idempotent: createSale ผูก key `booking-deposit-<appointmentId>` (ยิงซ้ำ = บิลเดิม ไม่เบิ้ล)
 //               + claim อะตอมมิก depositPaidAt (race 2 คนกดพร้อมกัน → บันทึกเดียว)
 //   ไม่ผูก POS → บันทึก depositPaidAt เฉย ๆ (standalone · saleId=null)
+const DEPOSIT_NOT_OPEN_REASON = "นัดนี้ถูกยกเลิกหรือปล่อยช่องแล้ว รับมัดจำไม่ได้ — กรุณาจองนัดใหม่ก่อนรับเงิน";
 export async function recordDeposit(
   ctx: BookingCtx,
   appointmentId: string,
@@ -1019,6 +1078,10 @@ export async function recordDeposit(
   // จ่ายแล้วกดซ้ำ = no-op (idempotent) — ไม่เปิดบิลใหม่
   if (appt.depositPaidAt) {
     return { ok: true, noop: true, saleId: appt.depositSaleId ?? undefined };
+  }
+  // SVC B.3 ▸ G4: รับมัดจำได้เฉพาะนัดที่ยังถือช่อง (PENDING/CONFIRMED) — นัดยกเลิก/ปล่อยเพราะไม่จ่ายมัดจำ/ไม่มา/เสร็จ ⇒ ปฏิเสธก่อนเปิดบิล POS ◂
+  if (appt.status !== "PENDING" && appt.status !== "CONFIRMED") {
+    return { ok: false, reason: DEPOSIT_NOT_OPEN_REASON };
   }
 
   const amount = appt.depositSatang;
@@ -1050,14 +1113,29 @@ export async function recordDeposit(
   }
 
   // claim อะตอมมิก: ปั๊ม depositPaidAt เฉพาะแถวที่ยังไม่จ่าย (กัน 2 request แข่งกัน)
+  //   SVC B.3 ▸ G4: + สถานะยังถือช่อง (PENDING/CONFIRMED) ในเงื่อนไข UPDATE เดียวกัน ⇒ แข่งกับ expireDepositHolds (UPDATE … depositPaidAt IS NULL)
+  //   ได้ผลเดียว: claim ก่อน ⇒ ปล่อยไม่ได้ · ปล่อยก่อน ⇒ claim 0 แถว ⇒ คืนเงินบิลที่เพิ่งเปิด แล้วปฏิเสธ ◂
   const claim = await db.appointment.updateMany({
-    where: { id: appointmentId, depositPaidAt: null },
+    where: { id: appointmentId, depositPaidAt: null, status: { in: ["PENDING", "CONFIRMED"] } },
     data: { depositPaidAt: new Date(), depositSaleId: saleId },
   });
   if (claim.count === 0) {
-    // แพ้แข่ง (อีก request บันทึกไปแล้ว) — บิลเดียวกัน (idempotent) ไม่เบิ้ล
     const cur = await db.appointment.findFirst({ where: { id: appointmentId } });
-    return { ok: true, noop: true, saleId: cur?.depositSaleId ?? undefined };
+    if (cur?.depositPaidAt) {
+      // แพ้แข่ง (อีก request บันทึกไปแล้ว) — บิลเดียวกัน (idempotent) ไม่เบิ้ล
+      return { ok: true, noop: true, saleId: cur.depositSaleId ?? undefined };
+    }
+    // SVC B.3 ▸ G4: นัดถูกยกเลิก/ปล่อยระหว่างเปิดบิล ⇒ คืนเงินใบรับที่เพิ่งเปิด (คีย์ผูกใบรับ · ลองซ้ำ = ใบคืนเดิม) แล้วปฏิเสธ ◂
+    if (saleId) {
+      const r = await (await import("@/lib/modules/pos/deposit")).moduleRefundDeposit({ tenantId: ctx.tenantId, unitId: ctx.unitId, receiptSaleId: saleId, reason: "นัดถูกยกเลิกระหว่างรับมัดจำ", actorId: "module:booking" });
+      if (r.ok === false) return { ok: false, reason: `${DEPOSIT_NOT_OPEN_REASON} — คืนเงินใบรับอัตโนมัติไม่สำเร็จ กรุณาคืนที่หน้าบิล (${r.message})` };
+      if (r.legacy) {
+        // มัดจำแบบเดิม (ไม่มี PosDeposit) = void บิลทางเดิมแบบ refundDeposit
+        const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId: ctx.tenantId } });
+        if (sale && sale.status === "PAID") await pos.voidSale(ctx.tenantId, ctx.unitId, saleId);
+      }
+    }
+    return { ok: false, reason: DEPOSIT_NOT_OPEN_REASON };
   }
   return { ok: true, saleId: saleId ?? undefined };
 }
@@ -1247,3 +1325,597 @@ export async function appointmentsByParty(
     }));
 }
 // ◂ CRM C2.4
+
+// ═════════ SVC B.3 ▸ หาเวลาว่าง v2 + จองแบบมีกติกา (ใบสั่ง svc-brief-b.3 §3.2–§3.3) ═════════
+// ทางใหม่ของ "ลูกค้าจองเอง" (ONLINE/LINE = SELF) + "ร้านจองให้" (STAFF/PHONE) · getAvailableSlots/createAppointment รุ่นแรกไม่แตะ (§6 ข้อ 2)
+// กติกาออนไลน์ (horizon · lead · กริด · หน้าต่าง · % ออนไลน์ · งานสูงสุด/วัน · พักขั้นต่ำ · เพดานต่อเบอร์ · ใครก็ได้ · bookable ·
+//   ร้านยืนยันก่อน · ถือช่องมัดจำ) ใช้กับ SELF เท่านั้น · ร้านจองให้ = รุ่นแรก (ห้ามซ้อน · ลา · ทำบริการได้ · ไม่ใช่อดีต)
+// 🔴 กันจองซ้อนบังคับที่ฐาน (ข้ามโพรเซส): ใน $transaction เดียว ล็อกตามลำดับคงที่
+//      ① เบอร์ (pg_advisory_xact_lock · เฉพาะ SELF ที่มีเพดานต่อเบอร์) → ② แถว "BookingStaff" FOR UPDATE ทีละคนตามลำดับ sortOrder → createdAt → id
+//    ล็อก ② = ล็อกเดียวกับ createAppointment รุ่นแรก ⇒ สองทางผสมกันก็ไม่ซ้อน · ตัวนับทุกตัว (ซ้อน · % ออนไลน์ · งานสูงสุด · เบอร์) ตรวจใหม่ใต้ล็อก
+//    ไม่มี NOWAIT — คำขอที่ชนกันเข้าแถวรอ (BOOK_TX ให้เวลาพอ 10 คำขอพร้อมกัน) แล้วได้คำตอบจริง (เต็ม/สำเร็จ) ไม่ throw
+// 🔴 เวลาไทยผ่าน localToUtc · วันนี้(ไทย) = Date.now() + 7 ชม. (ไม่ใช้นาฬิกาท้องถิ่นของเครื่อง)
+
+export type BookingChannel = "ONLINE" | "LINE" | "STAFF" | "PHONE";
+export type BookInput = {
+  serviceId: string;
+  staffId: string | null;
+  dateStr: string;
+  startMin: number;
+  channel: BookingChannel;
+  customerName: string;
+  customerPhone: string;
+  note?: string;
+  idempotencyKey?: string;
+};
+export type BookFailCode =
+  | "FULL" | "PAST" | "LEAD_TIME" | "BEYOND_HORIZON" | "OFF_GRID" | "OUTSIDE_HOURS" | "PHONE_LIMIT"
+  | "NOT_QUALIFIED" | "ON_LEAVE" | "NOT_FOUND" | "ANY_DISABLED" | "BAD_INPUT"
+  | "RELEASED"; // G3: ส่งซ้ำด้วย key เดิมแต่นัดถูกยกเลิก/ปล่อยแล้ว
+export type BookResult =
+  | { ok: true; id: string; staffId: string; status: "PENDING" | "CONFIRMED"; holdUntil: Date | null }
+  | { ok: false; code: BookFailCode; reason: string };
+
+const B3_CHANNELS: readonly BookingChannel[] = ["ONLINE", "LINE", "STAFF", "PHONE"];
+const isSelfChannel = (c: BookingChannel): boolean => c === "ONLINE" || c === "LINE";
+const B3_MIN_MS = 60_000;
+const B3_DAY_MS = 24 * 60 * B3_MIN_MS;
+/** ข้อความเดียวของ "เต็ม" ทุกกรณี (ชน · % ออนไลน์ · งานสูงสุด · ช่าง 0%) — ไม่บอกว่ากันไว้ให้ walk-in (§4.3) */
+const FULL_REASON = "ช่วงเวลานี้เต็มแล้ว กรุณาเลือกเวลาอื่น";
+const B3_UNIT_KEYS = [
+  "booking.booking.horizonDays",
+  "booking.booking.minLeadMin",
+  "booking.booking.slotStepMin",
+  "booking.booking.anyStaffOption",
+  "booking.booking.maxOpenPerPhone",
+];
+/**
+ * ธุรกรรมจอง: maxWait = รอ connection จาก pool · timeout = ทั้งธุรกรรม "รวมเวลารอล็อก" —
+ * คำขอที่ 10 ของช่างเดียวกันรออีก 9 ธุรกรรมจบก่อน (ใครก็ได้: คำขอหลังถือช่างก่อนหน้าระหว่างลองคนถัดไป) ⇒ เผื่อกว้าง
+ */
+const BOOK_TX = { maxWait: 20_000, timeout: 30_000 } as const; // G2: ≤ 20s / ≤ 30s (ไม่มี connection ที่สองใต้ล็อกแล้ว ⇒ คิว 20 ทางจบในไม่กี่วินาที)
+
+type UnitRules = { horizonDays: number; minLeadMin: number; stepMin: number; anyStaff: boolean; maxOpenPerPhone: number | null };
+
+/** ค่าตั้งระดับสาขา(+บริการ) — อ่านผ่าน resolver ทุกคำขอ (ไม่แคช) · ค่าหาย ⇒ ค่ารุ่นแรก */
+async function unitRulesOf(ctx: { tenantId: string; unitId: string }, serviceId: string): Promise<UnitRules> {
+  const r = await resolveSettings({ tenantId: ctx.tenantId }, B3_UNIT_KEYS, { unitId: ctx.unitId, serviceId });
+  const num = (k: string, d: number): number => {
+    const v = r[k]?.value;
+    return typeof v === "number" && Number.isFinite(v) ? v : d;
+  };
+  const step = num("booking.booking.slotStepMin", 15);
+  const cap = r["booking.booking.maxOpenPerPhone"]?.value;
+  return {
+    horizonDays: num("booking.booking.horizonDays", 14),
+    minLeadMin: num("booking.booking.minLeadMin", 0),
+    stepMin: step > 0 ? Math.floor(step) : 15,
+    anyStaff: r["booking.booking.anyStaffOption"]?.value !== false,
+    maxOpenPerPhone: typeof cap === "number" && Number.isFinite(cap) ? cap : null,
+  };
+}
+
+/** "YYYY-MM-DD" ของวันไทย ณ epoch ms */
+function bkkDateStrAt(ms: number): string {
+  return new Date(ms + BKK_OFFSET_MIN * B3_MIN_MS).toISOString().slice(0, 10);
+}
+function addDaysToDateStr(ds: string, n: number): string {
+  const [y, m, d] = ds.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/** ผู้ให้บริการที่ "ทำบริการนี้ได้" ในวันนั้น (เรียง sortOrder → createdAt → id ตาม staffDayProfiles) */
+type B3Cand = {
+  staffId: string;
+  name: string;
+  onLeave: boolean;
+  windows: MinWindow[];
+  durationMin: number;
+  priceSatang: number;
+  minBreakMin: number;
+  onlineSharePct: number;
+  maxJobsPerDay: number | null;
+};
+function candOf(p: StaffDayProfile, service: { id: string; durationMin: number; priceSatang: number }): B3Cand | null {
+  const terms = staffServiceTerms(p.services, service);
+  if (!terms) return null;
+  return {
+    staffId: p.staffId,
+    name: p.name,
+    onLeave: p.onLeave,
+    windows: p.windows,
+    durationMin: terms.durationMin,
+    priceSatang: terms.priceSatang,
+    minBreakMin: p.minBreakMin,
+    onlineSharePct: p.onlineSharePct,
+    maxJobsPerDay: p.maxJobsPerDay,
+  };
+}
+
+/** นัดที่ "ถือช่อง" (ทุกสถานะยกเว้น CANCELLED/NO_SHOW) ของช่าง รอบวันนั้น ±1 วัน (+ bufferMin ของบริการของนัดนั้น) */
+type BusyRow = { staffId: string; startAt: Date; endAt: Date; channel: string | null; source: string; bufferMin: number };
+async function busyRowsOf(
+  client: Pick<Prisma.TransactionClient, "$queryRaw">,
+  tenantId: string,
+  staffIds: string[],
+  dateStr: string,
+): Promise<BusyRow[]> {
+  if (!staffIds.length) return [];
+  const lo = new Date(localToUtc(dateStr, 0).getTime() - B3_DAY_MS);
+  const hi = new Date(localToUtc(dateStr, 24 * 60).getTime() + B3_DAY_MS);
+  return client.$queryRaw<BusyRow[]>`
+    SELECT a."staffId", a."startAt", a."endAt", a."channel", a."source", COALESCE(s."bufferMin", 0)::int AS "bufferMin"
+    FROM "Appointment" a
+    LEFT JOIN "BookingService" s ON s."id" = a."serviceId"
+    WHERE a."tenantId" = ${tenantId}
+      AND a."staffId" = ANY(${staffIds}::text[])
+      AND a."status" NOT IN ('CANCELLED', 'NO_SHOW')
+      AND a."startAt" < ${hi} AND a."endAt" > ${lo}`;
+}
+
+/** แถวนี้มาจากลูกค้าจองเองไหม (แถวรุ่นแรก channel=null นับเมื่อ source='ONLINE' · §6 ข้อ 3) */
+const isSelfRow = (r: { channel: string | null; source: string }): boolean =>
+  r.channel === "ONLINE" || r.channel === "LINE" || (r.channel === null && r.source === "ONLINE");
+
+type DayLoad = { selfMin: number; jobs: number };
+/** ตัวนับของวันไทยนั้น (นัดที่เริ่มในวัน): นาทีของนัด SELF (endAt−startAt รวม buffer · §6 ข้อ 4) · จำนวนงานทุกช่องทาง */
+function dayLoadOf(rows: readonly BusyRow[], staffId: string, dateStr: string): DayLoad {
+  const d0 = localToUtc(dateStr, 0).getTime();
+  const d1 = localToUtc(dateStr, 24 * 60).getTime();
+  let selfMin = 0;
+  let jobs = 0;
+  for (const r of rows) {
+    if (r.staffId !== staffId) continue;
+    const s = r.startAt.getTime();
+    if (s < d0 || s >= d1) continue;
+    jobs++;
+    if (isSelfRow(r)) selfMin += (r.endAt.getTime() - s) / B3_MIN_MS;
+  }
+  return { selfMin, jobs };
+}
+
+/** SELF: % ออนไลน์ + งานสูงสุด/วัน ของช่าง (block = dur + buf ของงานใหม่) */
+function selfQuotaOk(c: B3Cand, load: DayLoad, blockMin: number): boolean {
+  if (!(c.onlineSharePct > 0)) return false; // 0% ⇒ ไม่โผล่/เต็มเสมอ
+  if (c.maxJobsPerDay !== null && load.jobs >= c.maxJobsPerDay) return false;
+  const workMin = c.windows.reduce((s, w) => s + (w.endMin - w.startMin), 0);
+  const cap = Math.floor((c.onlineSharePct * workMin) / 100);
+  return load.selfMin + blockMin <= cap;
+}
+
+/**
+ * ช่อง t ว่างไหมเมื่อเทียบนัดที่ถือช่อง ·
+ * STAFF/PHONE = ไม่ซ้อนช่วง [t, t+dur+buf) กับ [start, end) (รุ่นแรก) ·
+ * SELF = พักขั้นต่ำแบบค่ามาก (B.2 §7 ข้อ 4): t+dur+max(buf,m) ≤ x.start หรือ t ≥ x.end − x.buf + max(x.buf, m)
+ */
+function slotClear(
+  dateStr: string,
+  t: number,
+  c: B3Cand,
+  bufMin: number,
+  rows: readonly BusyRow[],
+  self: boolean,
+): boolean {
+  const s = localToUtc(dateStr, t).getTime();
+  const m = self ? Math.max(0, c.minBreakMin) : 0;
+  for (const x of rows) {
+    if (x.staffId !== c.staffId) continue;
+    const xs = x.startAt.getTime();
+    const xe = x.endAt.getTime();
+    if (!self) {
+      if (s < xe && s + (c.durationMin + bufMin) * B3_MIN_MS > xs) return false;
+      continue;
+    }
+    const before = s + (c.durationMin + Math.max(bufMin, m)) * B3_MIN_MS <= xs;
+    const after = s >= xe - x.bufferMin * B3_MIN_MS + Math.max(x.bufferMin, m) * B3_MIN_MS;
+    if (!before && !after) return false;
+  }
+  return true;
+}
+
+/** ช่วง [t, t+dur] อยู่ในหน้าต่างใดหน้าต่างหนึ่ง (buffer เลยปิดได้ = รุ่นแรก) */
+const inWindows = (ws: readonly MinWindow[], t: number, dur: number): boolean =>
+  ws.some((w) => t >= w.startMin && t + dur <= w.endMin);
+
+/** เวลาเริ่มขั้นต่ำ (epoch ms · รวม) ตามช่องทาง: STAFF/PHONE > now · SELF ≥ now + lead และ > now */
+const earliestOk = (startMs: number, nowMs: number, self: boolean, leadMin: number): boolean =>
+  startMs > nowMs && (!self || startMs >= nowMs + leadMin * B3_MIN_MS);
+
+/** ช่องเวลาตามกติกา (ใบสั่ง §3.2 "ช่องเวลา") · SlotOption เรียง startMin ไม่ซ้ำ · ใครก็ได้ = ช่างแรกตามลำดับที่ว่าง */
+export async function findSlots(
+  ctx: BookingCtx,
+  q: { serviceId: string; staffId: string | null; dateStr: string; channel: BookingChannel },
+): Promise<SlotOption[]> {
+  const { tenantId, unitId } = ctx;
+  if (!q || !B3_CHANNELS.includes(q.channel) || typeof q.dateStr !== "string" || !isRealDateStr(q.dateStr)) return [];
+  if (typeof q.serviceId !== "string" || (q.staffId !== null && typeof q.staffId !== "string")) return [];
+  const self = isSelfChannel(q.channel);
+  const db = tenantDb({ tenantId, unitId });
+  const service = await db.bookingService.findFirst({ where: { id: q.serviceId, active: true } });
+  if (!service || (self && !service.bookable)) return [];
+  const rules = await unitRulesOf(ctx, service.id);
+  if (self && q.staffId === null && !rules.anyStaff) return [];
+  const nowMs = Date.now();
+  if (self && q.dateStr > addDaysToDateStr(bkkDateStrAt(nowMs), rules.horizonDays - 1)) return [];
+
+  const profiles = await staffDayProfiles({ tenantId, unitId }, q.dateStr, q.staffId ? { staffIds: [q.staffId] } : undefined);
+  const cands = profiles.flatMap((p) => {
+    if (p.windows.length === 0) return [];
+    const c = candOf(p, service);
+    return c ? [c] : [];
+  });
+  if (cands.length === 0) return [];
+  const rows = await busyRowsOf(prisma, tenantId, cands.map((c) => c.staffId), q.dateStr);
+
+  const step = rules.stepMin;
+  const byTime = new Map<number, string>();
+  for (const c of cands) {
+    if (self && !selfQuotaOk(c, dayLoadOf(rows, c.staffId, q.dateStr), c.durationMin + service.bufferMin)) continue;
+    for (const w of c.windows) {
+      for (let t = Math.ceil(w.startMin / step) * step; t + c.durationMin <= w.endMin; t += step) {
+        if (byTime.has(t)) continue;
+        if (!earliestOk(localToUtc(q.dateStr, t).getTime(), nowMs, self, rules.minLeadMin)) continue;
+        if (!slotClear(q.dateStr, t, c, service.bufferMin, rows, self)) continue;
+        byTime.set(t, c.staffId);
+      }
+    }
+  }
+  return [...byTime.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([startMin, sid]) => ({ startMin, hhmm: minutesToHHMM(startMin), staffId: sid }));
+}
+
+type PolicySnap = { values?: Record<string, unknown> } & Record<string, unknown>;
+const snapVal = (snap: unknown, key: string): unknown =>
+  snap && typeof snap === "object" ? (snap as PolicySnap).values?.[key] : undefined;
+
+/** ถือช่องมัดจำ (§3.2 ข้อ 9): SELF · method ≠ NONE · มัดจำ > 0 · payWithinMin เป็นตัวเลข ⇒ นาทีที่ต้องจ่าย · อื่น ⇒ null */
+function holdMinutesOf(channel: string | null, depositSatang: number, snap: unknown): number | null {
+  if (channel !== "ONLINE" && channel !== "LINE") return null;
+  const method = snapVal(snap, "booking.deposit.method");
+  const within = snapVal(snap, "booking.deposit.payWithinMin");
+  if (typeof method !== "string" || method === "NONE") return null;
+  if (!(depositSatang > 0)) return null;
+  return typeof within === "number" && Number.isFinite(within) ? within : null;
+}
+
+type ApptLite = {
+  id: string;
+  unitId: string;
+  staffId: string;
+  serviceId: string;
+  startAt: Date;
+  customerPhone: string;
+  assignMode: string;
+  status: AppointmentStatus;
+  channel: string | null;
+  depositSatang: number;
+  depositPaidAt: Date | null;
+  createdAt: Date;
+  policySnapshot: unknown;
+};
+const APPT_LITE = {
+  id: true, unitId: true, staffId: true, serviceId: true, startAt: true, customerPhone: true, assignMode: true,
+  status: true, channel: true, depositSatang: true, depositPaidAt: true, createdAt: true, policySnapshot: true,
+} as const;
+
+/**
+ * G6 ▸ คีย์เบอร์ของระบบจอง (เพดานต่อเบอร์ + ล็อกเบอร์) — ไม่ใช้ normalizePartyPhone ตรง ๆ เพราะตัวนั้นให้ `0066 81…` ⇒ `81…` (ไม่มี 0)
+ *   ตัวเลขล้วน → ตัดรหัสประเทศ `0066` หรือ `66` (ครั้งเดียว) → ไม่ขึ้นต้น 0 ⇒ เติม 0 · ว่าง ⇒ "" · ต้องเท่ากับ SQL ใน openCountForPhone ทุกกรณี
+ *   (+66 81…, 66 81…, 0066 81…, 0066 081…, 66-0-81… ⇒ 081…) · ผลเหลือ "" หรือ "0" ⇒ ผู้เรียกตอบ BAD_INPUT
+ */
+export function bookingPhoneKey(phone: string | null | undefined): string {
+  let d = (phone ?? "").replace(/[^0-9]/g, "");
+  if (d.startsWith("0066")) d = d.slice(4);
+  else if (d.startsWith("66")) d = d.slice(2);
+  if (!d) return "";
+  return d.startsWith("0") ? d : `0${d}`;
+}
+
+const PHONE_LIMIT_REASON = "เบอร์นี้มีนัดที่ยังไม่ถึงเวลาครบจำนวนที่ร้านรับต่อเบอร์แล้ว";
+const RELEASED_REASON = "การจองนี้ถูกยกเลิกแล้ว (เช่น ไม่ได้ชำระมัดจำในเวลา) กรุณาเลือกเวลาแล้วจองใหม่";
+const BAD_INPUT_REASON = "ข้อมูลการจองไม่ครบหรือไม่ถูกต้อง กรุณาลองใหม่";
+
+/**
+ * ผลของ key ที่เคยสร้างนัดแล้ว (G1 G3 · ใช้ทั้งทางก่อน tx · ใต้ล็อก key · ทาง P2002)
+ *   สาขาอื่น ⇒ BAD_INPUT (ไม่คืน id ข้ามสาขา) · ข้อมูลจองต่าง (บริการ/ช่างหรือใครก็ได้/วันเวลา/เบอร์) ⇒ BAD_INPUT ·
+ *   แถวไม่ถือช่องแล้ว (CANCELLED/NO_SHOW — รวมปล่อยเพราะมัดจำ) ⇒ RELEASED · อื่น ⇒ ok แถวเดิม
+ */
+function replayOf(r: ApptLite, want: { unitId: string; serviceId: string; staffId: string | null; startAtMs: number | null; phoneKey: string }): BookResult {
+  const same =
+    r.unitId === want.unitId &&
+    r.serviceId === want.serviceId &&
+    (want.staffId === null ? r.assignMode === "ANY" : r.assignMode !== "ANY" && r.staffId === want.staffId) &&
+    want.startAtMs !== null && r.startAt.getTime() === want.startAtMs &&
+    bookingPhoneKey(r.customerPhone) === want.phoneKey;
+  if (!same) return { ok: false, code: "BAD_INPUT", reason: BAD_INPUT_REASON };
+  if (r.status === "CANCELLED" || r.status === "NO_SHOW") return { ok: false, code: "RELEASED", reason: RELEASED_REASON };
+  const hold = holdMinutesOf(r.channel, r.depositSatang, r.policySnapshot);
+  const holding = hold !== null && r.status === "PENDING" && r.depositPaidAt === null;
+  return {
+    ok: true,
+    id: r.id,
+    staffId: r.staffId,
+    status: r.status === "PENDING" ? "PENDING" : "CONFIRMED",
+    holdUntil: holding ? new Date(r.createdAt.getTime() + hold * B3_MIN_MS) : null,
+  };
+}
+
+/** นัดค้างของเบอร์ในสาขา (PENDING/CONFIRMED · ยังไม่ถึงเวลา · ทุกช่องทาง) — เทียบด้วย bookingPhoneKey ฉบับ SQL (G6) */
+async function openCountForPhone(tx: Pick<Prisma.TransactionClient, "$queryRaw">, tenantId: string, unitId: string, key: string, now: Date): Promise<number> {
+  const [r] = await tx.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS n
+    FROM "Appointment" a
+    CROSS JOIN LATERAL (SELECT regexp_replace(COALESCE(a."customerPhone", ''), '[^0-9]', '', 'g') AS d1) p1
+    CROSS JOIN LATERAL (SELECT CASE WHEN p1.d1 LIKE '0066%' THEN substr(p1.d1, 5)
+                                    WHEN p1.d1 LIKE '66%' THEN substr(p1.d1, 3)
+                                    ELSE p1.d1 END AS d2) p2
+    WHERE a."tenantId" = ${tenantId} AND a."unitId" = ${unitId}
+      AND a."status" IN ('PENDING', 'CONFIRMED') AND a."startAt" > ${now}
+      AND (CASE WHEN p2.d2 = '' THEN '' WHEN p2.d2 LIKE '0%' THEN p2.d2 ELSE '0' || p2.d2 END) = ${key}`;
+  return r?.n ?? 0;
+}
+
+const isP2002 = (e: unknown): boolean => (e as { code?: string } | null)?.code === "P2002";
+
+/**
+ * G2 ▸ หา/สร้างลูกค้าสมาชิก (+ Party ภายใน member) **นอกธุรกรรมจอง** — ธุรกรรมที่ถือล็อกช่างห้ามขอ connection ที่สอง ·
+ *   ชน unique(memberSystemId, phone) จากคำขอพร้อมกัน ⇒ อ่านแถวผู้ชนะ (findOrCreate รอบสองเจอแถวแล้ว) · ล้มซ้ำ ⇒ throw ตามจริง
+ */
+async function memberCustomerIdFor(i: { tenantId: string; memberSystemId: string; phone: string; name: string; self: boolean }): Promise<string> {
+  const input = { tenantId: i.tenantId, memberSystemId: i.memberSystemId, phone: i.phone, name: i.name, source: i.self ? ("SELF" as const) : ("STAFF" as const) };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return (await member.findOrCreate(input)).id;
+    } catch (e) {
+      if (!isP2002(e) || attempt >= 2) throw e;
+    }
+  }
+}
+
+/** จองตามกติกา (ใบสั่ง §3.2 bookAppointment) — ตรวจตามลำดับ คืนรหัสแรกที่ล้ม · ไม่ throw ในทางปกติ (รวมยิงพร้อมกัน) */
+export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<BookResult> {
+  const fail = (code: BookFailCode, reason: string): BookResult => ({ ok: false, code, reason });
+  const BAD = BAD_INPUT_REASON;
+  const { tenantId, unitId } = ctx;
+  if (!i || typeof i !== "object" || !B3_CHANNELS.includes(i.channel)) return fail("BAD_INPUT", BAD);
+  if (typeof i.serviceId !== "string" || (i.staffId !== null && typeof i.staffId !== "string")) return fail("BAD_INPUT", BAD);
+  const self = isSelfChannel(i.channel);
+  const db = tenantDb({ tenantId, unitId });
+  const idem = typeof i.idempotencyKey === "string" ? i.idempotencyKey.trim() || null : null;
+  const name = typeof i.customerName === "string" ? i.customerName.trim() : "";
+  const phone = typeof i.customerPhone === "string" ? i.customerPhone.trim() : "";
+  const phoneKey = bookingPhoneKey(phone);
+  const dateOk = typeof i.dateStr === "string" && isRealDateStr(i.dateStr) && Number.isInteger(i.startMin) && i.startMin >= 0 && i.startMin < 24 * 60;
+  const want = { unitId, serviceId: i.serviceId, staffId: i.staffId, startAtMs: dateOk ? localToUtc(i.dateStr, i.startMin).getTime() : null, phoneKey };
+
+  // ⑥ idempotency (ลำดับ): key เคยสร้างนัดแล้ว ⇒ replayOf (ไม่ติดเพดานใด)
+  if (idem) {
+    const prior = await prisma.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: APPT_LITE });
+    if (prior) return replayOf(prior, want);
+  }
+
+  // ① บริการ/ช่าง/ใครก็ได้/รูปข้อมูล
+  const service = await db.bookingService.findFirst({ where: { id: i.serviceId, active: true } });
+  if (!service || (self && !service.bookable)) return fail("NOT_FOUND", "ไม่พบบริการที่เลือก");
+  if (i.staffId !== null) {
+    const st = await db.bookingStaff.findFirst({ where: { id: i.staffId, active: true }, select: { id: true } });
+    if (!st) return fail("NOT_FOUND", "ไม่พบช่างที่เลือก");
+  }
+  const rules = await unitRulesOf(ctx, service.id);
+  if (i.staffId === null && self && !rules.anyStaff) return fail("ANY_DISABLED", "ร้านนี้ให้เลือกช่างก่อนจอง");
+  if (!dateOk || !name || phoneKey === "" || phoneKey === "0") return fail("BAD_INPUT", BAD);
+  const { dateStr, startMin } = i;
+
+  // ② ช่างระบุตัว: ลา / ทำบริการไม่ได้
+  const profiles = await staffDayProfiles({ tenantId, unitId }, dateStr, i.staffId ? { staffIds: [i.staffId] } : undefined);
+  let cands: B3Cand[];
+  if (i.staffId !== null) {
+    const p = profiles[0];
+    if (!p) return fail("NOT_FOUND", "ไม่พบช่างที่เลือก");
+    if (p.onLeave) return fail("ON_LEAVE", `${p.name} ลาในวันที่เลือก`);
+    const c = candOf(p, service);
+    if (!c) return fail("NOT_QUALIFIED", `${p.name} ไม่ได้ให้บริการ "${service.name}"`);
+    cands = [c];
+  } else {
+    cands = profiles.flatMap((p) => {
+      const c = p.onLeave ? null : candOf(p, service);
+      if (!c || !inWindows(c.windows, startMin, c.durationMin)) return [];
+      if (self && !(c.onlineSharePct > 0)) return []; // 0% = ค่าตั้ง (ไม่ใช่ตัวนับ) ⇒ ไม่ต้องล็อกช่างที่ไม่มีสิทธิ์อยู่แล้ว
+      return [c];
+    });
+  }
+
+  // ③ เวลา
+  const startAt = localToUtc(dateStr, startMin);
+  const nowMs = Date.now();
+  if (startAt.getTime() <= nowMs) return fail("PAST", "เวลาที่เลือกผ่านไปแล้ว");
+  if (self) {
+    if (dateStr > addDaysToDateStr(bkkDateStrAt(nowMs), rules.horizonDays - 1)) {
+      return fail("BEYOND_HORIZON", `เปิดให้จองล่วงหน้าได้ไม่เกิน ${rules.horizonDays} วัน`);
+    }
+    if (startAt.getTime() < nowMs + rules.minLeadMin * B3_MIN_MS) {
+      return fail("LEAD_TIME", `ต้องจองล่วงหน้าอย่างน้อย ${rules.minLeadMin} นาที`);
+    }
+    if (startMin % rules.stepMin !== 0) return fail("OFF_GRID", `เวลาเริ่มต้องเป็นช่วงทุก ${rules.stepMin} นาที`);
+    if (i.staffId !== null && !inWindows(cands[0].windows, startMin, cands[0].durationMin)) {
+      return fail("OUTSIDE_HOURS", `${cands[0].name} ไม่ได้ทำงานในช่วงเวลาที่เลือก`);
+    }
+  }
+  if (cands.length === 0) return fail("FULL", FULL_REASON); // ใครก็ได้: ไม่มีใครทำงาน/ทำได้ช่วงนี้
+
+  // ก่อนธุรกรรม (G2 — ธุรกรรมที่ถือล็อกห้ามขอ connection ที่สอง): snapshot ค่าตั้ง · ระบบสมาชิก · ลูกค้าสมาชิก
+  //   snapshot ต่อช่าง: คีย์ของ "appointment" ที่มีชั้น STAFF ⇒ ทำแยกต่อคน · ไม่มี ⇒ ค่าเหมือนกันทุกคน ทำครั้งเดียว
+  const perStaff = (SNAPSHOT_KEYS.appointment ?? []).some((k) => {
+    const def = getDef(k) as { chain?: readonly string[] } | undefined;
+    return !!def?.chain?.includes("STAFF");
+  });
+  const snaps = new Map<string, Awaited<ReturnType<typeof snapshotPolicy>>>();
+  if (perStaff) {
+    const all = await Promise.all(cands.map((c) => snapshotPolicy({ tenantId }, "appointment", { unitId, staffId: c.staffId, serviceId: service.id })));
+    cands.forEach((c, k) => snaps.set(c.staffId, all[k]));
+  } else {
+    const one = await snapshotPolicy({ tenantId }, "appointment", { unitId, staffId: cands[0].staffId, serviceId: service.id });
+    for (const c of cands) snaps.set(c.staffId, one);
+  }
+  const capPhone = self && rules.maxOpenPerPhone !== null;
+
+  // ตรวจล่วงหน้าแบบไม่ล็อก (ลดลูกค้าสมาชิกที่สร้างแล้วจองไม่ได้ — ผลจริงตัดสินใต้ล็อกด้านล่างเสมอ) · ลำดับรหัสเดิม: เบอร์ ④ ก่อน เต็ม ⑤
+  {
+    const replayIfAny = async (): Promise<BookResult | null> => {
+      if (!idem) return null;
+      const prior = await prisma.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: APPT_LITE });
+      return prior ? replayOf(prior, want) : null;
+    };
+    if (capPhone && (await openCountForPhone(prisma, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+      return (await replayIfAny()) ?? fail("PHONE_LIMIT", PHONE_LIMIT_REASON);
+    }
+    const rows = await busyRowsOf(prisma, tenantId, cands.map((c) => c.staffId), dateStr);
+    const anyFree = cands.some(
+      (c) =>
+        (!self || selfQuotaOk(c, dayLoadOf(rows, c.staffId, dateStr), c.durationMin + service.bufferMin)) &&
+        slotClear(dateStr, startMin, c, service.bufferMin, rows, self),
+    );
+    if (!anyFree) return (await replayIfAny()) ?? fail("FULL", FULL_REASON);
+  }
+  const memberSystemId = await systemForUnit(tenantId, unitId, "MEMBER");
+  const customerId = memberSystemId ? await memberCustomerIdFor({ tenantId, memberSystemId, phone, name, self }) : null;
+
+  type TxOut = { kind: "row"; row: ApptLite } | { kind: "replay"; res: BookResult } | { kind: "fail"; code: BookFailCode; reason: string };
+  try {
+    const out = await prisma.$transaction(async (tx): Promise<TxOut> => {
+      // ล็อก ⓪ key (G1 · ก่อนทุกล็อก) ⇒ คำขอ key เดียวกันเข้าแถวกันจริงทุกสาขา/ทุกช่องทาง แล้วผู้แพ้เห็นแถวผู้ชนะ
+      if (idem) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:idem:${tenantId}:${idem}`}, 0))`;
+        const dup = await tx.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: APPT_LITE });
+        if (dup) return { kind: "replay", res: replayOf(dup, want) };
+      }
+      // ล็อก ① เบอร์ (ก่อนช่างเสมอ — ลำดับคงที่ key → เบอร์ → ช่าง กัน deadlock)
+      if (capPhone) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:phone:${tenantId}:${unitId}:${phoneKey}`}, 0))`;
+        // ④ เพดานนัดค้างต่อเบอร์ (SELF เท่านั้น · นับทุกช่องทาง) — ใต้ล็อกเบอร์
+        if ((await openCountForPhone(tx, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+          return { kind: "fail", code: "PHONE_LIMIT", reason: PHONE_LIMIT_REASON };
+        }
+      }
+      // ⑤ ล็อก ② ช่างทีละคนตามลำดับ แล้วตรวจชน/% ออนไลน์/งานสูงสุด ใต้ล็อก — คนแรกที่ผ่าน = ได้
+      let chosen: B3Cand | null = null;
+      for (const c of cands) {
+        await tx.$queryRaw`SELECT id FROM "BookingStaff" WHERE id = ${c.staffId} FOR UPDATE`;
+        const rows = await busyRowsOf(tx, tenantId, [c.staffId], dateStr);
+        if (self && !selfQuotaOk(c, dayLoadOf(rows, c.staffId, dateStr), c.durationMin + service.bufferMin)) continue;
+        if (!slotClear(dateStr, startMin, c, service.bufferMin, rows, self)) continue;
+        chosen = c;
+        break;
+      }
+      if (!chosen) return { kind: "fail", code: "FULL", reason: FULL_REASON };
+
+      const snap = snaps.get(chosen.staffId)!;
+      const depositSatang = computeDepositSatang(snapVal(snap, "booking.deposit.amount") ?? null, {
+        priceSatang: chosen.priceSatang,
+        durationMin: chosen.durationMin,
+        serviceDepositSatang: service.depositSatang,
+      });
+      const holding = self && holdMinutesOf(i.channel, depositSatang, snap) !== null;
+      const status: AppointmentStatus = !self
+        ? "CONFIRMED"
+        : snapVal(snap, "booking.booking.requireConfirm") === true || holding
+          ? "PENDING"
+          : "CONFIRMED";
+
+      const created = await tx.appointment.create({
+        data: {
+          tenantId,
+          unitId,
+          customerId,
+          staffId: chosen.staffId,
+          serviceId: service.id,
+          startAt,
+          endAt: localToUtc(dateStr, startMin + chosen.durationMin + service.bufferMin),
+          status,
+          customerName: name,
+          customerPhone: phone,
+          note: typeof i.note === "string" ? i.note : undefined,
+          source: self ? "ONLINE" : "STAFF",
+          priceSatang: chosen.priceSatang,
+          depositSatang,
+          idempotencyKey: idem,
+          kind: "BOOKED",
+          assignMode: i.staffId === null ? "ANY" : "SPECIFIC",
+          channel: i.channel,
+          policySnapshot: snap as unknown as Prisma.InputJsonValue,
+        },
+        select: APPT_LITE,
+      });
+      if (customerId) {
+        await member.logActivity(
+          {
+            tenantId,
+            customerId,
+            unitId,
+            module: "booking",
+            type: "APPOINTMENT_BOOKED",
+            refType: "Appointment",
+            refId: created.id,
+            summary: `จองนัด ${service.name} · ${dateStr} ${minutesToHHMM(startMin)}`,
+          },
+          tx,
+        );
+      }
+      return { kind: "row", row: created };
+    }, BOOK_TX);
+    if (out.kind === "fail") return fail(out.code, out.reason);
+    if (out.kind === "replay") return out.res;
+    await linkPartyAfterCommit(tenantId, out.row.id, name, phone); // CRM v2 C1.1 (C11) — หลัง commit เท่านั้น
+    return replayOf(out.row, want);
+  } catch (e) {
+    // ชน unique(tenantId, idempotencyKey) — ไม่ควรเกิดเมื่อมีล็อก key แต่กันไว้ ⇒ ผลเดียวกับ replay (ตรวจสาขา/ข้อมูล/สถานะ)
+    if (idem && isP2002(e)) {
+      const dup = await prisma.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: APPT_LITE });
+      if (dup) return replayOf(dup, want);
+    }
+    throw e;
+  }
+}
+
+// ── ปล่อยช่องที่ไม่จ่ายมัดจำ (minute-job · ข้ามร้าน · §3.3) ──
+const HOLD_EXPIRE_BATCH = 50;
+const HOLD_EXPIRE_MAX_BATCHES = 40;
+const HOLD_EXPIRE_TX = { maxWait: 5_000, timeout: 10_000 } as const;
+
+/**
+ * นัด PENDING · ยังไม่จ่าย · มัดจำ > 0 · ช่อง ONLINE/LINE · snapshot method ≠ NONE · snapshot payWithinMin เป็นตัวเลข ·
+ * createdAt + payWithinMin ≤ now ⇒ CANCELLED + cancelReason DEPOSIT_TIMEOUT (ค่าจาก snapshot ชนะค่าตั้งปัจจุบัน · CC §1.6)
+ * X5: FOR UPDATE SKIP LOCKED เป็นก้อน + เงื่อนไขสถานะ/ยังไม่จ่ายซ้ำใน UPDATE ⇒ เรียกซ้อนกัน แต่ละแถวถูกปล่อยครั้งเดียว · คืนจำนวนที่ปล่อยจริง
+ * ไม่ยิง event (booking.cancelled = B.7) · หนี้ดัชนี partial (createdAt) WHERE PENDING AND depositPaidAt IS NULL = migration ถัดไป (§6 ข้อ 1)
+ */
+export async function expireDepositHolds(now: Date): Promise<{ expired: number }> {
+  const at = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date(Date.now());
+  let expired = 0;
+  for (let b = 0; b < HOLD_EXPIRE_MAX_BATCHES; b++) {
+    const n = await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ id: string }[]>`
+        UPDATE "Appointment" a
+        SET "status" = 'CANCELLED', "cancelReason" = 'DEPOSIT_TIMEOUT', "updatedAt" = now()
+        WHERE a."id" IN (
+          SELECT x."id" FROM "Appointment" x
+          WHERE x."status" = 'PENDING' AND x."depositPaidAt" IS NULL AND x."depositSatang" > 0
+            AND x."channel" IN ('ONLINE', 'LINE')
+            AND (x."policySnapshot" -> 'values' ->> 'booking.deposit.method') <> 'NONE'
+            AND jsonb_typeof(x."policySnapshot" -> 'values' -> 'booking.deposit.payWithinMin') = 'number'
+            AND x."createdAt" + (CASE WHEN jsonb_typeof(x."policySnapshot" -> 'values' -> 'booking.deposit.payWithinMin') = 'number'
+                                      THEN (x."policySnapshot" -> 'values' ->> 'booking.deposit.payWithinMin')::numeric END
+                                 * interval '1 minute') <= ${at}
+          ORDER BY x."createdAt" ASC
+          LIMIT ${HOLD_EXPIRE_BATCH}
+          FOR UPDATE SKIP LOCKED
+        ) AND a."status" = 'PENDING' AND a."depositPaidAt" IS NULL
+        RETURNING a."id"`;
+      return rows.length;
+    }, HOLD_EXPIRE_TX);
+    expired += n;
+    if (n < HOLD_EXPIRE_BATCH) break;
+  }
+  return { expired };
+}
+// ◂ SVC B.3

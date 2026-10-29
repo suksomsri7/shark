@@ -508,6 +508,15 @@ registerMinuteJob({
   run: async (now) => (await import("@/lib/modules/rooms")).expireHolds(now),
 });
 // ◂ SVC R0.8
+// SVC B.3 ▸ ระบบจอง: ปล่อยช่องที่ลูกค้าจองเองแล้วไม่จ่ายมัดจำในเวลา (ทุกนาที · ข้ามร้าน · ใบสั่ง svc-brief-b.3 §3.3) — โหลดตอนรันเท่านั้น ·
+//   idempotent: UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED ⇒ route + crontab ยิงซ้อนกัน แต่ละแถวปล่อยครั้งเดียว (X5)
+registerMinuteJob({
+  name: "booking.depositHolds.expire",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/booking/service")).expireDepositHolds(now),
+});
+// ◂ SVC B.3
 
 function errorText(e: unknown): string {
   let s: string;
