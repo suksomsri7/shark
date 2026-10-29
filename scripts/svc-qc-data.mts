@@ -239,6 +239,8 @@ export const SQC_VISUAL_SPECS: Record<string, { name: string; path: string }[]> 
   ],
   // R0.9 ผังห้องร่วม (ภาพ หอ 01 ส่วนผัง · KPI ตรวจใน D.13) — ก่อนถ่ายรัน scripts/svc-qc-roomboard-scene.mts (ฉาก SQC_DORM_BOARD_SCENE)
   "r0.9": [{ name: "dorm-floorplan", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm` }],
+  // D.5 ผู้เช่าและสัญญา (ภาพ หอ 02 · แผงห้อง 204) — ก่อนถ่ายรัน scripts/svc-qc-roomboard-scene.mts แล้ว scripts/svc-qc-lease-scene.mts
+  "d.5": [{ name: "dorm-tenants", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/tenants?room=204` }],
   // D.6 จดมิเตอร์มือถือ (ภาพ หอ 03) — ก่อนถ่ายรัน scripts/svc-qc-roomboard-scene.mts แล้ว scripts/svc-qc-meter-scene.mts · ถ่ายทั้ง --user owner และ --user meter
   "d.6": [
     { name: "dorm-meter-walk", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/meter` },

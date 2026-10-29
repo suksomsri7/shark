@@ -289,6 +289,10 @@ const ALLOWED_EDGES = new Set([
   // SVC D.6: มิเตอร์หอ — ห้องว่างผ่าน facade `@/lib/modules/rooms` (occupancyRange/listBuildings) + การ์ดบอร์ดงานผ่านประตูเดียว `kanban/links.createCardFromExternal`
   "dorm→rooms",
   "dorm→kanban",
+  // SVC D.5: ผู้เช่า/สัญญา — ผู้เช่า = Party ผ่าน facade `@/lib/modules/party` (findOrCreate · resolveCanonical) ·
+  //   ข้ามคำเตือนกฎหมายในสัญญาผ่าน facade `@/lib/modules/approval` (resolvePolicy · submitForApproval · requestStatuses) — ทิศทางเดียว
+  "dorm→party",
+  "dorm→approval",
   // chokepoint (2.4 ฝั่งเอกสาร): CRM ออกใบเสนอราคาผ่าน account facade (WO-0010)
   "crm→account",
   // marketing อ่าน segment ลูกค้าจาก member (WO-0013)

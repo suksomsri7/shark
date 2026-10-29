@@ -618,6 +618,13 @@ const SNAPSHOTS: Record<string, readonly string[]> = {
     "rooms.deposit.returnDays",
     "rooms.tax.withholdingCorporateBp",
     "rooms.locale.docLanguage",
+    // SVC D.5 ▸ แม่แบบ/ข้อเพิ่มที่ใช้ render สัญญา · รูปห้องวันเข้าขั้นต่ำ (moveIn อ่านจาก snapshot) · เงินจองหักเข้าอะไร ◂
+    "rooms.lease.contractTemplate",
+    "rooms.lease.extraClauses",
+    "rooms.lease.moveInPhotosMin",
+    "rooms.lease.reservationAppliesTo",
+    // SVC D.5 (ชุดแก้ K7) ▸ วิธีลงชื่อที่ล็อกในสัญญา (signLease ไม่ส่ง method = ค่านี้ของ snapshot) ◂
+    "rooms.lease.signMethod",
   ],
   /** บิลรายเดือน (D.8) — วิธีคิดน้ำไฟ + ภาษี ณ ตอนออก */
   bill: [

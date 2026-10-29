@@ -45,3 +45,22 @@ export type {
 } from "./utility";
 export { setDormLegalMode, dormLawModel } from "./law";
 export type { DormLawModel, DormLawBill } from "./law";
+
+// ── SVC D.5 ▸ ผู้เช่า · สัญญา · เงินประกัน — ชื่อตามสัญญา ledger/svc-briefs/svc-brief-d.5.md §3 §5 (บล็อกนี้ของใบ D.5 เท่านั้น) ──
+export {
+  createLease,
+  findTenantCandidates,
+  receiveBookingFee,
+  moveIn,
+  signLease,
+  addLeaseFiles,
+  leaseFileLinks,
+  getLease,
+  listLeases,
+  leaseContract,
+  cancelLease,
+  updateLeaseOccupants,
+} from "./lease";
+export type { LeaseCtx, LeaseDetail, LeaseRow, LeaseTab, LeaseList } from "./lease";
+export { leaseAccess } from "./lease-access";
+// ◂ SVC D.5

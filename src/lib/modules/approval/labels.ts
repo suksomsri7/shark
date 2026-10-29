@@ -26,6 +26,8 @@ export const ENTITY_TYPES = [
   { value: "POS_DISCOUNT_OVER", label: "ส่วนลดเกินสิทธิ์ (POS)" },
   // SVC R0.3 ▸ ข้ามคำเตือนกฎหมายในค่าตั้ง (โหมด WARN) — ผลอยู่ที่ approval-effects.ts (core/settings) ◂
   { value: "settings.legal_override", label: "ข้ามคำเตือนกฎหมายในค่าตั้ง" },
+  // SVC D.5 ▸ ข้ามคำเตือนกฎหมาย (ประกัน + ล่วงหน้า) ในสัญญาเช่าหอ — ไม่มีผลใน approval-effects (สัญญาอ่านสถานะคำขอสดตอนลงชื่อ/เข้าอยู่) ◂
+  { value: "dorm.lease.legal_override", label: "ข้ามคำเตือนกฎหมายในสัญญาเช่า" },
 ] as const;
 
 export const APPROVER_ROLES = [

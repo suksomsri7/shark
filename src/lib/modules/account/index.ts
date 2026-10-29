@@ -2044,3 +2044,86 @@ export async function reverseSecurityDepositSettlement(input: {
   }
 }
 // ◂ SVC D.2
+
+// ═══════════════════════════════════════════════════════════════
+// SVC D.5 ▸ ใบรับเงินประกันของสัญญา (อ่านอย่างเดียว · additive · ใบสั่ง svc-brief-d.5 §3.9)
+//   JV รับประกัน (refType DormSecurityDeposit · refId <unitId>:<leaseId> · คีย์ JV `…#RECEIVE:<คีย์>`) ที่ยังมีผล
+//   (POSTED · ไม่ใช่ตัวกลับรายการ) · **ทุกสมุดของร้าน** (แบบเดียวกับยอดถือ F4) · เรียงเวลา · ข้ามหน่วย/ข้ามร้าน = []
+//   ยอด = Σ เครดิตของ JV (JV รับ = Dr เงิน / Cr ประกัน ยอดเดียว) · tenantDb ต่อเล่ม (AccountJournalEntry = sys scope · ไม่แตะ prisma ดิบ · ไม่มี raw SQL)
+// ═══════════════════════════════════════════════════════════════
+import { bkkYmd as d5BkkYmd } from "@/lib/core/quiet-hours";
+
+export async function securityDepositReceipts(input: { tenantId: string; unitId: string; leaseId: string }): Promise<
+  { entryId: string; entryNo: string; amountSatang: number; date: string; kind: "RECEIVE" }[]
+> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !nonEmpty(input?.leaseId)) return [];
+  const { tenantId, unitId, leaseId } = input;
+  const refId = `${unitId}:${leaseId}`;
+  const recvPrefix = `DormSecurityDeposit#${refId}#RECEIVE:`;
+  const books = await crmTenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "ACCOUNT" }, select: { id: true }, orderBy: { createdAt: "asc" } });
+  const rows: { entryId: string; entryNo: string; amountSatang: number; at: Date; createdAt: Date }[] = [];
+  for (const b of books) {
+    const es = await crmTenantDb({ tenantId, systemId: b.id }).accountJournalEntry.findMany({
+      where: { tenantId, systemId: b.id, refType: "DormSecurityDeposit", refId, status: "POSTED", reversalOfId: null },
+      select: { id: true, docNo: true, date: true, createdAt: true, idempotencyKey: true, lines: { select: { credit: true } } },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+    // ชนิดรายการดูจากคีย์ JV ตรงตัว (รับ = `#RECEIVE:` · ปิด = `#SETTLE:` ไม่ใช่ใบรับ) — กรองในโค้ด (ไม่ส่งคำค้นแบบ prefix ลงฐาน)
+    for (const e of es.filter((x) => (x.idempotencyKey ?? "").startsWith(recvPrefix))) rows.push({ entryId: e.id, entryNo: e.docNo, amountSatang: e.lines.reduce((s, l) => s + l.credit, 0), at: e.date, createdAt: e.createdAt });
+  }
+  rows.sort((a, b) => a.at.getTime() - b.at.getTime() || a.createdAt.getTime() - b.createdAt.getTime() || (a.entryId < b.entryId ? -1 : 1));
+  return rows.map((r) => ({ entryId: r.entryId, entryNo: r.entryNo, amountSatang: r.amountSatang, date: d5BkkYmd(r.at), kind: "RECEIVE" as const }));
+}
+
+// ── SVC D.5 (ชุดแก้ K1) ▸ รุ่นในธุรกรรมของผู้เรียก — โมดูลหอในโพรเซสเท่านั้น (ไม่เปิดทาง REST) ──
+//   runDormMoneyTx = เปิดธุรกรรมเงินหอ (connection เดียว · maxWait 20 วิ · timeout 30 วิ) · ใน fn ใช้ tx เดียวทั้งของผู้เรียกและของบัญชี
+//   ลำดับล็อก: ผู้เรียกจับล็อกของตัวเอง (advisory ต่อสัญญา) ก่อน → postSecurityDepositInTx จับแถว Tenant → ลิงก์หน่วย → คีย์ → JV
+//   ok:false ⇒ ผู้เรียกต้อง rollback ทั้ง tx (ไม่มีอะไรถูกเขียนก่อนปฏิเสธเชิงตรรกะ) · NEEDS_CONTACT ⇒ เรียก prepareSecurityDepositContact นอก tx แล้วลองใหม่
+import {
+  dormMoneyTx,
+  dormEnsureTenantContact,
+  dormPostSecurityDepositInTx,
+  dormSecurityDepositHeldInTx,
+} from "./service";
+
+export async function runDormMoneyTx<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return dormMoneyTx(fn);
+}
+
+export async function prepareSecurityDepositContact(input: { tenantId: string; unitId: string; partyId: string }): Promise<{ ok: true } | DormFail> {
+  try {
+    if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId)) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+    if (!nonEmpty(input.partyId)) return dormFail("INVALID_INPUT", "ต้องระบุผู้เช่าของสัญญา (partyId) — เงินประกันต้องผูกกับผู้เช่า");
+    const r = await dormEnsureTenantContact(input.tenantId, input.unitId, input.partyId.trim());
+    return r.ok ? { ok: true } : r;
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "เตรียมผู้ติดต่อของผู้เช่าไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+export async function postSecurityDepositInTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string; unitId: string; leaseId: string; amountSatang: number; idempotencyKey: string;
+    paidAt?: Date; channel?: DormChannel; financeAccountId?: string | null; partyId?: string | null; note?: string | null; createdById?: string | null;
+  },
+): Promise<{ ok: true; duplicate: boolean; entryId: string; entryNo: string; heldSatang: number } | DormFail> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId)) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+  if (!dormAmountOk(input.amountSatang)) return dormFail("INVALID_AMOUNT", "ยอดเงินประกันต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0");
+  if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการรับเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+  if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+  if (!nonEmpty(input.partyId)) return dormFail("INVALID_INPUT", "ต้องระบุผู้เช่าของสัญญา (partyId) — เงินประกันต้องผูกกับผู้เช่า");
+  const mp = dormMoneyProblem(input);
+  if (mp) return dormFail("INVALID_INPUT", mp);
+  return dormPostSecurityDepositInTx(tx, {
+    tenantId: input.tenantId, unitId: input.unitId, leaseId: input.leaseId, amountSatang: input.amountSatang, key: input.idempotencyKey.trim(),
+    paidAt: input.paidAt ?? new Date(), channel: input.channel ?? "TRANSFER", financeAccountId: input.financeAccountId ?? null,
+    partyId: input.partyId.trim(), note: input.note ?? null,
+  });
+}
+
+export async function securityDepositHeldInTx(tx: Prisma.TransactionClient, input: { tenantId: string; unitId: string; leaseId: string }): Promise<number> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !nonEmpty(input?.leaseId)) return 0;
+  return dormSecurityDepositHeldInTx(tx, input.tenantId, input.unitId, input.leaseId);
+}
+// ◂ SVC D.5
