@@ -40,7 +40,7 @@ const F = {
   settingsSvc: "src/lib/core/settings/service.ts",
   queue: "src/lib/modules/queue/service.ts",
   queueActions: "src/lib/modules/queue/actions.ts",
-  actPub: "src/lib/actions/booking-public.ts",
+  actPub: "src/app/(store)/bq/actions.ts", // ORACLE-EDIT (ผู้คุม 29 ต.ค.): action สาธารณะ (token ไม่ใช่ล็อกอิน) อยู่ใต้ app/(store) ตามแบบ q/ · r/[token]/ · f/[token]/ (fitness F6 สแกน src/lib/actions)
   actDev: "src/lib/actions/booking-devices.ts",
   pageTv: "src/app/(store)/bq/tv/[token]/page.tsx",
   pageKiosk: "src/app/(store)/bq/kiosk/[token]/page.tsx",
@@ -1275,13 +1275,20 @@ const NEW_FILES = [F.pub, F.dev, F.actPub, F.actDev, F.pageTv, F.pageKiosk, F.pa
   const headHas = (() => { try { git(["cat-file", "-e", `HEAD:${F.pub}`]); return true; } catch { return false; } })();
   if (ch.length === 0 && headHas) skip("S-1", "แตะเฉพาะไฟล์ของใบ", "B.6 merge แล้ว — ข้อนี้ตรวจเฉพาะตอนรับใบ");
   else await st("S-1", "แตะเฉพาะไฟล์ของใบ (§1 · ไฟล์ย่อยใต้ src/components/booking/public/ ได้) · ไฟล์ใหม่ครบ (public-line · devices · actions 2 · หน้า 4 · คอมโพเนนต์ 4)", () => {
-    const outside = ch.filter((f) => !OWN.has(f) && !f.startsWith("src/components/booking/public/"));
+    // ORACLE-EDIT (ผู้คุม 29 ต.ค. · fix K4): queue-line.ts แตะได้เพื่อเพิ่ม opt deviceId ของ createWalkIn (walkInPickStaff ชั้น DEVICE)
+    const outside = ch.filter((f) => !OWN.has(f) && !f.startsWith("src/components/booking/public/") && f !== "src/lib/modules/booking/queue-line.ts");
     ok(outside.length === 0, `ไฟล์นอกใบ: ${outside.slice(0, 6).join(", ")}`);
     const miss = NEW_FILES.filter((f) => !existsSync(join(ROOT, f)));
     ok(miss.length === 0, `ยังไม่มี: ${miss.join(", ")}`);
   });
 }
-await st("S-2", "ไม่มี migration/แก้ schema · ไม่แตะตัววางคิว/queue-line/today-line/line-ops/permissions/settings-model/3 ทะเบียน event", () => { eq(dirty(["prisma", ...FROZEN]), [], "ไฟล์"); });
+// ORACLE-EDIT (ผู้คุม 29 ต.ค. · fix K4): queue-line.ts แตะได้เฉพาะเพิ่ม opt deviceId — ตรวจว่าไม่มีบรรทัดถูกลบนอกจาก signature/การอ่าน walkInPickStaff
+await st("S-2", "ไม่มี migration/แก้ schema · ไม่แตะตัววางคิว/today-line/line-ops/permissions/settings-model/3 ทะเบียน event · queue-line.ts เพิ่ม opt deviceId เท่านั้น", () => {
+  eq(dirty(["prisma", ...FROZEN.filter((f) => f !== "src/lib/modules/booking/queue-line.ts")]), [], "ไฟล์");
+  const d = spawnSync("git", ["diff", "-U0", "HEAD", "--", "src/lib/modules/booking/queue-line.ts"], { cwd: ROOT, encoding: "utf8" }).stdout ?? "";
+  const del = d.split("\n").filter((l) => /^-(?!-)/.test(l) && l.slice(1).trim() !== "");
+  ok(del.length <= 4 && del.every((l) => /createWalkIn|walkInPickStaff|now|opts?\b|\{/.test(l)), `queue-line.ts ลบ ${del.length} บรรทัด: ${del.slice(0, 2).join(" | ").slice(0, 160)}`);
+});
 await st("S-3", `action สาธารณะ «${F.actPub}»: "use server" · export async function เท่านั้น · ≥ 4 ตัว (kioskCheckIn · kioskWalkIn · deferTicket · cancelTicket) · ไม่มี requireUnit/session · ทุกตัวเรียก facade ของ public-line · อ่าน at เฉพาะใต้ SVC_QC_CLOCK`, () => {
   const s = src(F.actPub);
   ok(!!s, `ยังไม่มี ${F.actPub}`);

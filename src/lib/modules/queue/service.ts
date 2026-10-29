@@ -573,6 +573,8 @@ export async function listWaiting(ctx: Ctx) {
 export async function getTicketStatus(unitId: string, publicToken: string) {
   const ticket = await prisma.queueTicket.findUnique({ where: { publicToken } });
   if (!ticket || ticket.unitId !== unitId) return null;
+  // SVC B.6 ▸ บัตรของโหมดแถวเดียว (refType APPOINTMENT) เปิดผ่าน /bq/t/<token HMAC> เท่านั้น — publicToken เดิม (cuid) ใช้ไม่ได้ ◂
+  if (ticket.refType === "APPOINTMENT") return null;
 
   let position = 0;
   let estimateMin: number | null = null;
@@ -608,6 +610,12 @@ export async function getTicketStatus(unitId: string, publicToken: string) {
 export async function getDisplaySnapshot(unitId: string, displayToken: string) {
   const display = await prisma.queueDisplay.findUnique({ where: { displayToken } });
   if (!display || display.unitId !== unitId || display.revokedAt) return null;
+  // SVC B.6 ▸ แถวที่มี settings.kind = จอ/ตู้ของหน่วยแถวเดียว (เก็บ hash ใน displayToken) — ไม่ใช่จอคิวเดิม ⇒ เปิดทางนี้ไม่ได้ ◂
+  const b6 = display.settings && typeof display.settings === "object" && !Array.isArray(display.settings) ? (display.settings as { kind?: unknown }).kind : undefined;
+  if (b6 !== undefined) return null;
+  // SVC B.6 ▸ (มติผู้คุม K6) จอคิวเดิมเปิดได้เฉพาะหน่วย QUEUE — แถวเก่าที่ค้างในหน่วย BOOKING (ไม่มี kind · ถอนจาก UI ไม่ได้) ⇒ null ◂
+  const b6Unit = await prisma.businessUnit.findFirst({ where: { id: display.unitId, tenantId: display.tenantId }, select: { type: true } });
+  if (b6Unit?.type !== "QUEUE") return null;
   const ctx = { tenantId: display.tenantId, unitId: display.unitId };
   const businessDate = businessDateOf();
 
