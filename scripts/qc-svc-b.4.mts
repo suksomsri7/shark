@@ -18,6 +18,7 @@
 //
 // เวลา: ทุกฉากใช้วันอนาคตคงที่ (วันไทย +5…+41) + `now` ฉีดเข้า (ไม่เปราะตามเวลาที่รัน — บทเรียน B-4 ของ B.3)
 // ร้านทดสอบ slug `qc-svc-b4-*` · ลบใน finally (+ กวาดค้างตอนเริ่ม) · tick/housekeeping ส่ง tenantIds เสมอ (ห้ามแตะ seed)
+// ORACLE-EDIT 29 ต.ค. (builder · ผู้คุมอนุมัติ): W-2 เรียกที่ 10:00 (เดิม 10:01 · planDay ดึง walk-in ที่ยังไม่เริ่มมาที่ now) · Q-2b เรียก expireSkipped ก่อน resetDaily (resetDaily เดิมยกเลิก SKIPPED ด้วย)
 // รัน: bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-b.4.mts [--no-regression]
 //      (ห้าม timeout ครอบ · `--no-regression` = ข้าม G เป็น SKIP ซึ่งไม่นับผ่าน · iso.sh ทิ้ง env จึงใช้อาร์กิวเมนต์)
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
@@ -686,7 +687,7 @@ try {
     needFx();
     ok(!!state.W1s, "ไม่มีผล W-1");
     PII_PHONES.push("0845556666");
-    const r = okWI(await LN.walkIn()(cL, { serviceId: ids.LS60, staffId: state.W1s, channel: "STAFF", customerName: "คุณวอล์ค อินทร์", customerPhone: "0845556666" }, { now: nW(601) }), "walk-in ระบุช่าง");
+    const r = okWI(await LN.walkIn()(cL, { serviceId: ids.LS60, staffId: state.W1s, channel: "STAFF", customerName: "คุณวอล์ค อินทร์", customerPhone: "0845556666" }, { now: nW(600) }), "walk-in ระบุช่าง"); // ORACLE-EDIT 29 ต.ค.: now 10:00 (เดิม 10:01 — planDay ดึง walk-in ที่ยังไม่เริ่มมาที่ now ⇒ W2 ได้ 11:01)
     eq([r.staffId, r.ticketNumber], [state.W1s, "A002"], "ผล");
     eq(tms(r.plannedStartAt), bkkMs(D.W, 660), "plannedStartAt");
     state.W2 = r.appointmentId;
@@ -997,8 +998,9 @@ try {
     need();
     const [t4, t5] = [await issueQ(), await issueQ()];
     await q(`UPDATE "QueueTicket" SET status = 'SKIPPED', "skippedAt" = now() - interval '10 minutes' WHERE id = $1`, [t5]);
-    await QU().resetDaily(cQ, new Date(Date.now() + 86_400_000));
+    // ORACLE-EDIT 29 ต.ค.: expireSkipped ก่อน resetDaily — resetDaily เดิมยกเลิก SKIPPED ของวันอื่นด้วย (Q-2a) ⇒ ลำดับเดิมทำให้ t5 ถูก CANCELLED ก่อนได้ NO_SHOW
     await QU().expireSkipped(cQ, new Date(Date.now() + 2 * 3_600_000));
+    await QU().resetDaily(cQ, new Date(Date.now() + 86_400_000));
     eq([await tkStatus(t4), await tkStatus(t5)], ["CANCELLED", "NO_SHOW"], "สถานะ");
   });
   await st("Q-3", "runQueueHousekeeping(พรุ่งนี้): tenantIds=[ร้าน B] ⇒ บัตรร้าน A ไม่ถูกแตะ · [ร้าน A] ⇒ บัตรหน่วย QUEUE CANCELLED แต่บัตร P/A ของจองคิว (refType APPOINTMENT · วันอื่น) ไม่ถูกแตะ", async () => {
