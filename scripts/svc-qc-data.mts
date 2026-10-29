@@ -244,6 +244,9 @@ export const SQC_VISUAL_SPECS: Record<string, { name: string; path: string }[]> 
     { name: "dorm-meter-walk", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/meter` },
     { name: "dorm-meter-flags", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/meter?view=flags` },
   ],
+  // D.7 ค่าน้ำไฟ · กฎหมาย · VAT (ภาพ หอ 10) — ก่อนถ่ายรัน scripts/svc-qc-utility-scene.mts (บิล กฟภ. ฿19,824.00 ÷ 4,200 · น้ำ ฿3,840.00 ÷ 240)
+  //   ถ่ายทั้ง --user owner (แก้โหมดได้ · มีฟอร์มใส่บิล) และ --user fai (โหมดล็อก "แก้ได้เฉพาะเจ้าของกิจการ" · ไม่มีฟอร์มใส่บิล)
+  "d.7": [{ name: "dorm-settings-law", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/settings/utility` }],
 };
 
 /**
