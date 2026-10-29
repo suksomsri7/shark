@@ -1741,11 +1741,21 @@ const isP2002 = (e: unknown): boolean => (e as { code?: string } | null)?.code =
  * G2 ▸ หา/สร้างลูกค้าสมาชิก (+ Party ภายใน member) **นอกธุรกรรมจอง** — ธุรกรรมที่ถือล็อกช่างห้ามขอ connection ที่สอง ·
  *   ชน unique(memberSystemId, phone) จากคำขอพร้อมกัน ⇒ อ่านแถวผู้ชนะ (findOrCreate รอบสองเจอแถวแล้ว) · ล้มซ้ำ ⇒ throw ตามจริง
  */
-async function memberCustomerIdFor(i: { tenantId: string; memberSystemId: string; phone: string; name: string; self: boolean }): Promise<string> {
+async function memberCustomerIdFor(i: { tenantId: string; memberSystemId: string; phone: string; name: string; self: boolean; walkIn?: boolean }): Promise<string> {
   const input = { tenantId: i.tenantId, memberSystemId: i.memberSystemId, phone: i.phone, name: i.name, source: i.self ? ("SELF" as const) : ("STAFF" as const) };
   for (let attempt = 0; ; attempt++) {
     try {
-      return (await member.findOrCreate(input)).id;
+      const startedAt = new Date(Date.now() - 5_000);
+      const c = await member.findOrCreate(input);
+      // SVC B.11 ▸ ลูกค้าที่ทางจองเพิ่งสร้าง (source ยังว่าง) ติดแหล่ง BOOKING / WALK_IN — งานลบข้อมูลส่วนตัวแยกแถวค้างจากแข่งจองได้ (หนี้ B.3 · มติผู้คุม 29 ต.ค.)
+      //   เฉพาะแถวที่ source ยังว่างและสร้างในคำขอนี้ · ไม่แก้สมาชิกเดิม ◂
+      if (c.source === null && c.createdAt >= startedAt) {
+        await prisma.customer.updateMany({
+          where: { id: c.id, tenantId: i.tenantId, source: null },
+          data: i.walkIn ? { source: "WALK_IN" } : { source: "BOOKING" },
+        });
+      }
+      return c.id;
     } catch (e) {
       if (!isP2002(e) || attempt >= 2) throw e;
     }

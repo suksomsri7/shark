@@ -114,6 +114,7 @@ export function defineSettings(domain: string, defs: readonly SettingDef[], opts
     if (typeof d.group !== "string" || !d.group) problems.push(`${key}: ไม่มี group`);
     if (typeof d.editPermission !== "string" || !d.editPermission.includes(".")) problems.push(`${key}: editPermission ไม่ถูกต้อง`);
     if (!nonEmpty(d.labelTh)) problems.push(`${key}: labelTh ว่าง`);
+    if (d.percentScale !== undefined && (d.type !== "percent" || (d.percentScale !== 100 && d.percentScale !== 10000))) problems.push(`${key}: percentScale ตั้งได้เฉพาะ type percent และค่า 100 หรือ 10000 (ได้ ${String(d.percentScale)})`);
     const cp = chainProblem(d.chain);
     if (cp) problems.push(`${key}: ${cp}`);
     const defaults = (d.defaults ?? {}) as Record<string, unknown>;

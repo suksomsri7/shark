@@ -144,11 +144,18 @@ await t("F-4", "actions.ts: \"use server\" · requireTenant · refresh() จา�
   ok(bad.length === 0, `รับค่าสิทธิ์จาก client: ${bad.join(",")}`);
   ok(!/export\s+(const|let|type|interface|class)\b/.test(s), "export ที่ไม่ใช่ async function");
 });
-await t("F-5", "หน้าห่อจองคิว: requireUnit · BOOKING · loadSettingsForm · notFound · ส่ง saveSettingsAction/resetSettingAction · แท็บ \"ตั้งค่า\" ใน layout", () => {
+await t("F-5", "หน้าห่อจองคิว: requireUnit · BOOKING · loadSettingsForm (หรือตัวห่อ B.11 loadBookingSettingsPage) · notFound · actions save/reset · แท็บ \"ตั้งค่า\" ใน layout", () => {
   const s = stripComments(read(FILES.bookingPage));
   ok(s, "ไม่มีไฟล์");
-  for (const w of ["requireUnit", "loadSettingsForm", "notFound", "saveSettingsAction", "resetSettingAction", "SettingsForm", "\"BOOKING\""]) ok(s.includes(w), `ไม่มี ${w}`);
-  ok(/["']payments["']/.test(s) && /["']messaging["']/.test(s), "domains ต้องมี payments + messaging");
+  // ORACLE-EDIT 29 ต.ค. (B.11): หน้า 08 ใช้ตัวห่อ loadBookingSettingsPage (เรียก loadSettingsForm ข้างใน settings-model.ts) + คอมโพเนนต์ BookingPolicySettings — ยอมรับทั้งสองรูป (แบบเดียวกับ ORACLE-EDIT B.0 หมวด P)
+  const model = stripComments(read("src/lib/modules/booking/settings-model.ts"));
+  const b11 = /loadBookingSettingsPage/.test(s) && /loadSettingsForm/.test(model) && /["']payments["']/.test(model) && /["']messaging["']/.test(model);
+  if (b11) {
+    for (const w of ["requireUnit", "notFound", "saveSettingsAction", "resetSettingAction", "\"BOOKING\""]) ok(s.includes(w), `ไม่มี ${w}`);
+  } else {
+    for (const w of ["requireUnit", "loadSettingsForm", "notFound", "saveSettingsAction", "resetSettingAction", "SettingsForm", "\"BOOKING\""]) ok(s.includes(w), `ไม่มี ${w}`);
+    ok(/["']payments["']/.test(s) && /["']messaging["']/.test(s), "domains ต้องมี payments + messaging");
+  }
   ok(!/searchParams[\s\S]{0,80}(role|unitAccess|tenantId)/.test(s), "อ่านสิทธิ์จาก searchParams");
   const lay = stripComments(read(FILES.bookingLayout));
   ok(/\/settings[`"']/.test(lay) && lay.includes("ตั้งค่า"), "layout ไม่มีแท็บ ตั้งค่า → /settings");

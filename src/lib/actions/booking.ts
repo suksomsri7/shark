@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
-import { assertCan } from "@/lib/core/rbac";
+import { assertBookingActionAllowed } from "@/lib/modules/booking/access"; // SVC B.11 ▸ ด่านสิทธิ์ต่อ action ◂
 import { tenantDb } from "@/lib/core/db";
 import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
@@ -16,16 +16,15 @@ import { logOps } from "@/lib/core/ops"; // POS P5.1 ▸ RC F5 (CD-P51-O10) ◂
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
-// ตรวจสิทธิ์ระดับหน่วย (OWNER/MANAGER ผ่าน · STAFF ตาม permission)
-function assertBookingCan(auth: UnitAuth, unitId: string, action: string) {
-  assertCan(
-    {
-      role: auth.active.role,
-      unitAccess: auth.active.unitAccess as string[],
-      permissions: auth.active.permissions as Record<string, unknown>,
-    },
-    { module: "booking", action, unitId },
-  );
+// ตรวจสิทธิ์ระดับหน่วยต่อ action (SVC B.11 §7.2 · OWNER/MANAGER ผ่าน · STAFF ถือคีย์ใดคีย์หนึ่งของ action นี้)
+// เรียกก่อนอ่าน/เขียนฐานทุกครั้ง · ไม่ผ่าน ⇒ throw ForbiddenError (ด่านเดียวกับ access.ts)
+function assertBookingAction(auth: UnitAuth, unitId: string, action: string, input?: { status?: unknown }) {
+  const m = {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+  assertBookingActionAllowed(m, unitId, action, input);
 }
 
 // 🔴 13 ส.ค. 2026 (เจ้าของสั่งข้อ 15): สร้าง/แก้/ลบบริการ ทำที่ระบบสินค้า/บริการ "ที่เดียว"
@@ -39,7 +38,7 @@ const depositSchema = z.object({
 
 export async function setServiceDepositAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.service.setDeposit");
+  assertBookingAction(auth, unit.id, "setServiceDepositAction");
   const p = depositSchema.safeParse({
     id: formData.get("id"),
     depositBaht: formData.get("depositBaht"),
@@ -52,7 +51,7 @@ export async function setServiceDepositAction(unitSlug: string, formData: FormDa
 
 export async function recordDepositAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.deposit.record");
+  assertBookingAction(auth, unit.id, "recordDepositAction");
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
@@ -62,7 +61,7 @@ export async function recordDepositAction(unitSlug: string, formData: FormData) 
 
 export async function refundDepositAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.deposit.refund");
+  assertBookingAction(auth, unit.id, "refundDepositAction");
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
@@ -72,7 +71,7 @@ export async function refundDepositAction(unitSlug: string, formData: FormData) 
 
 export async function addStaffAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.staff.create");
+  assertBookingAction(auth, unit.id, "addStaffAction");
   const name = String(formData.get("name") ?? "").trim();
   const employeeId = String(formData.get("employeeId") ?? "").trim() || undefined;
   // ต้องมีอย่างใดอย่างหนึ่ง: เลือกจาก HR หรือพิมพ์ชื่อเอง
@@ -89,7 +88,7 @@ function hhmmToMin(v: string): number | null {
 
 export async function setBookingHoursAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.hours.set");
+  assertBookingAction(auth, unit.id, "setBookingHoursAction");
   const rows = Array.from({ length: 7 }, (_, weekday) => {
     const closed = formData.get(`closed-${weekday}`) != null;
     const openMin = hhmmToMin(String(formData.get(`open-${weekday}`) ?? "")) ?? 600;
@@ -102,7 +101,7 @@ export async function setBookingHoursAction(unitSlug: string, formData: FormData
 
 export async function removeStaffAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.staff.delete");
+  assertBookingAction(auth, unit.id, "removeStaffAction");
   const id = String(formData.get("id") ?? "");
   const db = tenantDb({ tenantId: auth.active.tenantId, unitId: unit.id });
   await db.bookingStaff.update({ where: { id }, data: { active: false } });
@@ -111,9 +110,9 @@ export async function removeStaffAction(unitSlug: string, formData: FormData) {
 
 export async function setStatusAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.appointment.setStatus");
-  const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
+  assertBookingAction(auth, unit.id, "setStatusAction", { status }); // SVC B.11 ▸ คีย์ตามสถานะปลายทาง (§7.2) ◂
+  const id = String(formData.get("id") ?? "");
   // SVC B.0 ▸ รับเฉพาะ 6 สถานะเดิม — QUEUED/IN_SERVICE/LATE ตั้งได้ทางเครื่องสถานะ B.4 เท่านั้น ◂
   const parsed = z.enum(["PENDING", "CONFIRMED", "ARRIVED", "DONE", "NO_SHOW", "CANCELLED"]).safeParse(status);
   if (!parsed.success) return;
@@ -178,7 +177,7 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
 
 export async function addClosureAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.hours.set");
+  assertBookingAction(auth, unit.id, "addClosureAction");
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   const date = String(formData.get("date") ?? "").trim();
   const mode = String(formData.get("mode") ?? "closed");
@@ -201,7 +200,7 @@ export async function addClosureAction(unitSlug: string, formData: FormData) {
 
 export async function removeClosureAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.hours.set");
+  assertBookingAction(auth, unit.id, "removeClosureAction");
   await booking.removeClosure({ tenantId: auth.active.tenantId, unitId: unit.id }, String(formData.get("id") ?? ""));
   revalidatePath(`/app/u/${unitSlug}/booking/hours`);
 }
@@ -210,7 +209,7 @@ export async function removeClosureAction(unitSlug: string, formData: FormData) 
 // ── บริการ: ติ๊กเปิดรับจองจากแคตตาล็อกกลาง + ย้ายบริการเก่าเข้าแคตตาล็อก (ข้อ 12-15) ──
 export async function setServiceOfferedAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.service.update");
+  assertBookingAction(auth, unit.id, "setServiceOfferedAction");
   const itemId = String(formData.get("itemId") ?? "");
   const offered = String(formData.get("offered") ?? "") === "1";
   if (!itemId) return;
@@ -220,7 +219,7 @@ export async function setServiceOfferedAction(unitSlug: string, formData: FormDa
 
 export async function importServicesToCatalogAction(unitSlug: string) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.service.create");
+  assertBookingAction(auth, unit.id, "importServicesToCatalogAction");
   try {
     await booking.importServicesToCatalog({ tenantId: auth.active.tenantId, unitId: unit.id, actorUserId: auth.user.id });
   } catch (e) {
@@ -234,7 +233,7 @@ export async function importServicesToCatalogAction(unitSlug: string) {
 // ติ๊ก "รับคิวที่สาขานี้" ให้พนักงาน HR คนหนึ่ง (มติเจ้าของ 13 ส.ค.: เพิ่ม/ลบคนทำที่ HR ที่เดียว)
 export async function setStaffReceivingAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.staff.create");
+  assertBookingAction(auth, unit.id, "setStaffReceivingAction");
   const employeeId = String(formData.get("employeeId") ?? "");
   const receiving = String(formData.get("receiving") ?? "") === "1";
   if (!employeeId) return;
@@ -244,7 +243,7 @@ export async function setStaffReceivingAction(unitSlug: string, formData: FormDa
 
 export async function linkStaffToHrAction(unitSlug: string) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.staff.create");
+  assertBookingAction(auth, unit.id, "linkStaffToHrAction");
   await booking.linkStaffToHr({ tenantId: auth.active.tenantId, unitId: unit.id });
   revalidatePath(`/app/u/${unitSlug}/booking/staff`);
 }
