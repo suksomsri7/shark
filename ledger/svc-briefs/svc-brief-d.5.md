@@ -1,7 +1,7 @@
 # ใบสั่ง D.5 — ผู้เช่า · สัญญา · เงินประกัน · ตรวจ **เข้ม** (กฎหมาย สคบ. · เงิน · ข้อมูลข้ามร้าน)
 
 > แหล่งความจริง: `ledger/SVC-MASTER-PLAN.md` แถว D.5 · `ledger/DESIGN-DORM-HOTEL.md` §3 (ประกัน+ล่วงหน้า ≤ 3 เดือน/≤ 1 ปี) · A2 · ภาคผนวก ก หอ #6 #40–52 · ภาพ `ledger/design-dorm/02-tenants.png` (+ README "ห้อง 204 ณัฐชา" · "อาคาร 36 ห้อง ณ 3 พ.ย." · ประกันถือ ฿296,400) · CC §5.3 (`claimRoom`) §6.2 §7 (`dorm.lease.signed`) §8 (`dorm.lease.manage`) + ภาคต่อ 28 ต.ค. (override กฎหมายต้องมีขั้น OWNER) · ใบสั่ง D.1 (ตัวตรวจกฎหมาย · `SNAPSHOT_KEYS.lease`) · ใบสั่ง D.2 §3.4 + §3.6 F1–F9 (`postSecurityDeposit` บังคับ `partyId` · คีย์กันซ้ำระดับร้าน) · หนี้ `/root/svc-runs/fix/d2.md` (เรียกเงินหอทีละรายการ ห้าม `Promise.all`) · `ledger/wo-notes/svc-r0.8-carry.md` (D.5: สัญญาไม่มีวันจบ · ค่าที่ล็อกอ่านจาก snapshot · สคริปต์ล้างลบแถวหอก่อน `hotelRoom`)
-> ข้อสอบ (ห้ามแก้): «scripts/qc-svc-d.5.mts» (97 ข้อ · ก่อนงาน: เขียว 8 = PC-1…PC-7 + Z-1 — **ต้องคงเขียว**) — รับใบ = **ผ่านทุกข้อ** · SKIP ที่ยอมได้ระหว่างทำ = V-1 (ไม่มี QC_BASE) · Q-* (ร้าน svcqc ยังไม่ seed) · G-* เมื่อต่อท้าย `--no-regression` (iso.sh ทิ้ง env) — ผู้คุมรันครบก่อนรับ
+> ข้อสอบ (ห้ามแก้): «scripts/qc-svc-d.5.mts» (110 ข้อ หลัง ORACLE-EDIT 29 ต.ค. §3.10 · positive control PC-1…PC-8 + Z-1 — **ต้องคงเขียว**) — รับใบ = **ผ่านทุกข้อ** · SKIP ที่ยอมได้ระหว่างทำ = V-1 (ไม่มี QC_BASE) · Q-* (ร้าน svcqc ยังไม่ seed) · G-* เมื่อต่อท้าย `--no-regression` (iso.sh ทิ้ง env) — ผู้คุมรันครบก่อนรับ
 > รัน: `bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-d.5.mts [--no-regression]` (ห้ามครอบ timeout · ห้าม kill กลางคัน — ล้างข้อมูลอยู่ใน finally · ข้อพร้อมกันยิงจาก **4 โพรเซสแยก × 3 คำขอ** ผ่าน `--child`)
 > builder: **ห้าม build/next · ห้าม commit/push · ห้าม `pnpm install` · ห้าม migration/แตะ `prisma/schema`** · ทำในเลน l2 · temp ขึ้นต้น `svc-d5-` · รายงานต่อข้อ (id → ผล)
 > คอลัมน์ที่ใช้มีครบใน D.0 แล้ว (`DormLease.*` ทุกคอลัมน์ · `DormMeterReading.kind MOVE_IN` + `leaseId`) — **ขาดอะไร = หยุดถามผู้คุม ห้ามเพิ่มคอลัมน์** · รูปทรง JSON ที่ใบนี้เคาะ §2.4
@@ -168,6 +168,25 @@ securityDepositReceipts(input: { tenantId: string; unitId: string; leaseId: stri
 ```
 - JV รับประกันของสัญญา (refType `DormSecurityDeposit` · refId ของ D.2) ที่ยังไม่ถูกกลับรายการ · ทุกสมุดของร้าน · เรียงเวลา · ข้ามหน่วย/ร้าน = `[]`
 
+### 3.10 ORACLE-EDIT 29 ต.ค. (review · `/root/svc-runs/fix/d5.md` K1–K7) — ทับ §2–§3.9 เมื่อขัดกัน
+- **K1 เงินกับสถานะ commit พร้อมกัน (tx เดียว · connection เดียว)** — ผู้คุมอนุญาตแตะ account facade (additive): รุ่นรับ tx ของผู้เรียก เช่น `postSecurityDepositInTx(tx, input)` · `securityDepositHeldInTx(tx, input)` (ชื่อเทียบเท่าได้ · export จาก `account/index.ts` ใช้ในโพรเซสเท่านั้น ไม่เปิด REST) — รุ่น tx ทำวินัย D.2 ครบใน tx ที่ส่งมา (ล็อกแถว Tenant → ลิงก์หน่วย → ตรวจคีย์ → ลงเงิน) · ฟังก์ชันเดิมของ D.2 พฤติกรรมเดิมทุกไบต์ (G-1 `qc-svc-d.2` 78/78)
+  - `moveIn` / `receiveBookingFee` / `cancelLease`: tx เดียว ลำดับล็อก **advisory ต่อสัญญา → (รุ่น tx บัญชี) แถว Tenant → … → อัปเดตสัญญา** · ห้ามทางใดล็อกแถว Tenant ก่อนแล้วขอ advisory ของสัญญา · **ห้ามใช้ connection ที่สองระหว่างถือล็อก/tx** (บทเรียน B.3 · ไม่เรียก facade ที่เปิด tx เองข้างใน tx) · tx `maxWait ≤ 20s` `timeout ≤ 30s`
+  - §3.4 ข้อ 3–4 เดิม ("เงินก่อน แล้ว tx สถานะ") **ยกเลิก** — เงิน (คีย์ `:booking` `:deposit` ยอดคงที่เดิม) + `ACTIVE` + `depositDocumentId` + MOVE_IN อยู่ใน tx เดียวกัน · cancel กับเงินแข่งกันใต้ advisory เดียวกัน ⇒ ไม่มีเงินบนสัญญา CANCELLED และไม่มีเงินประกัน (เกินเงินจอง) บนสัญญา DRAFT
+  - ผลที่ต้องได้: 30 ทางในโพรเซสเดียว (เกิน pool 10) ไม่มี `UNAVAILABLE`/P2028/throw — M-10 M-11 M-12 (+ รุ่นข้ามโพรเซส)
+- **K6** โค้ด `RETRY_SAFE` (reason "รับเงินแล้ว กดอีกครั้งเพื่อทำต่อ") ใช้เมื่อยังมีทางที่เงินลงแต่สถานะไม่ขยับ — หลัง K1 ไม่ควรเกิด (ข้อสอบนับเป็นแดงใน M-10…M-12) · ห้ามเหตุผล "ยังไม่มีอะไรเปลี่ยน" เมื่อเงินลงแล้ว · หนี้: ย้ายลิงก์สมุดหลังรับเงินจอง ⇒ `moveIn` คืน **`BOOK_CHANGED`** เหตุผลชัด (ไม่ใช่ `IDEMPOTENCY_CONFLICT`)
+- **K2 คำต้องห้ามตรวจบนข้อความที่ render แล้ว**: render สัญญา (ชื่อหอ/หน่วย/ผู้ให้เช่า/ข้อเพิ่ม = ค่าจริง · `{tenantName}` แทนด้วยคำกลางก่อนตรวจ กันจับผิดคน — C-9) แล้ว `findForbiddenTerms` ทั้งก้อน ⇒ เจอ ⇒ `LEGAL_BLOCK` (`legal.code` `TEMPLATE_NO_THREAT` หรือ `CONTRACT_FORBIDDEN_TERM`) **ทุกโหมด · ack ไม่ช่วย** · ตัวแปรในแม่แบบที่ไม่อยู่ใน `templateVars` ⇒ **`INVALID_TEMPLATE`** (ไม่แทนค่าว่าง) · ตรวจซ้ำที่ `createLease` · `signLease` · `leaseContract` (หน้าพิมพ์) — snapshot ที่มีคำต้องห้าม (ข้อมูลเก่า/ถูกแก้) ⇒ `leaseContract` คืน `{ok:false, code:"LEGAL_BLOCK"}` ไม่ส่งข้อความ · `signLease` ปฏิเสธ — C-7 C-8
+- **K3 จับคู่ผู้เช่า** (ทับ §2.5) — ชื่อ "ตรง" = เท่ากันหลังตัดช่องว่างหัวท้ายและยุบช่องว่างซ้อน:
+  1. เลขบัตรตรง Party (ไม่ถูกรวม) + ชื่อตรง ⇒ ใช้ Party นั้น
+  2. เลขบัตรไม่ตรงใคร + เบอร์ตรง Party ที่ **ยังไม่มีเลขบัตร** + ชื่อตรง ⇒ ใช้ Party นั้น **และเติมเลขบัตร** (P-8)
+  3. เบอร์ตรง Party ที่มี **เลขบัตรอื่น** ⇒ สร้าง Party ใหม่ + บันทึกคู่อาจซ้ำ `PartyMergeCandidate` (ผ่าน facade party `recordMergeCandidatePair`) (P-8)
+  4. ชื่อไม่ตรง (ทางเบอร์หรือทางเลขบัตร) ⇒ **`TENANT_MATCH_CONFIRM`** `{ ok:false, code, reason, candidates: { partyId, name, phoneMasked, matchedBy }[] }` (ไม่มีเบอร์เต็ม/เลขบัตร · ไม่มีแถวใดเกิด) — ผู้เรียกส่งใหม่พร้อม `tenant.confirmPartyId` (ต้องเป็นหนึ่งใน candidates ⇒ ใช้ Party นั้น) หรือ `tenant.createNewParty: true` (สร้างใหม่ด้วยชื่อที่กรอก) · ห้ามทิ้งชื่อที่กรอกเงียบ ๆ (P-9)
+  - อินพุตผู้เช่าใหม่: `tenant: { name; phone?; idCardNo?; email?; confirmPartyId?: string | null; createNewParty?: boolean }` · ทั้งหมดใต้ advisory lock ต่อ (ร้าน, เลขบัตร/เบอร์) เดิม
+- **K4** หน้า new: ค้นเลขบัตร/เบอร์ด้วย server action (POST) ที่เรียก `findTenantCandidates` · ไม่มีฟอร์ม GET ที่ส่งเลขบัตร/เบอร์ · ไม่อ่านจาก `searchParams` · ไม่เติมกลับ `defaultValue` จาก query · ไม่ลง log — U-5
+- **K5** อัปไฟล์ (ลายเซ็น/รูป/เอกสาร) ก่อนเปิด tx · ใน tx เขียนแค่แถว FileAsset/สัญญาผ่าน tx เดียวกัน · แพ้แข่ง ⇒ ลบไฟล์ที่อัป (best-effort)
+- **K7** `findTenantCandidates` ต้อง `dorm.lease.manage` (ไม่มี ⇒ `[]` — P-10) · **`rooms.lease.signMethod` เข้า `SNAPSHOT_KEYS.lease` (คีย์ที่ 5 · additive)** และ `signLease` ใช้ค่าจาก snapshot (L-14) · HEIC/HEIF ตรวจ brand ไบต์ 8–11 ∈ {heic, heix, hevc, heim, heis, mif1, msf1} ไม่ใช่แค่ `ftyp` (F-10) · id ข้อเพิ่มเทียบข้อบังคับแบบไม่สนตัวพิมพ์/ช่องว่าง
+- ข้อสอบเดิมที่แก้ (ORACLE-EDIT): P-3 ส่งชื่อเดียวกัน (ช่องว่างต่าง) แทนชื่อสะกดต่าง (K3) · `newPhone` ไม่วนซ้ำทุก 100 เบอร์ · S-13 นับ 5 คีย์
+- หนี้เพิ่ม (ไม่บล็อก): `BOOK_CHANGED` · คืน/ย้ายเงินจอง → D.12 · อัปไฟล์ทีละไฟล์ฝั่ง client (bodySizeLimit · base64) → D.14 · N+1 ยอดถือในหน้าผู้เช่า → D.13 · สัญญา WARN ที่หน่วยเปลี่ยนเป็น STRICT ภายหลัง = snapshot ชนะ (คำถาม J3) · ตัวตรวจค่าตั้งแม่แบบของ D.1 ตรวจข้อความดิบ (ช่องโหว่ `ตัด{x}ไฟ` ฝั่งค่าตั้ง) → ใบแก้ D.1
+
 ## 4. ไม่มีงานตามเวลา (X5 ไม่เกี่ยว) · ไม่มี endpoint สาธารณะ (X7 ไม่เกี่ยว)
 
 ## 5. สิทธิ์
@@ -198,7 +217,7 @@ leaseAccess(m: MembershipCtx | null, unitId: string) → { view: boolean; manage
 - idempotent (`SCENE_SUMMARY {"created":n,"updated":n,"removed":n}` · รันซ้ำ = 0/0/0) · `--clear` ลบเฉพาะแถวฉาก: DormLease (`createdById SvcQcScene`) · Party/FileAsset ของฉาก · JV ประกันของฉาก (event คีย์ `svcqc-scene:` — สคริปต์ QC ลบตรงได้ เพราะ `reverseJournalEntry` ปฏิเสธ JV หอตาม F7) · ไม่แตะห้อง/occupancy ของฉากผัง/ข้อมูลอื่น
 
 ## 9. ข้อสอบ (กลุ่ม) — «scripts/qc-svc-d.5.mts»
-S โครงสร้าง 15 · PC positive control 7 (รวมตัวยิง 4 โพรเซส) · L กฎหมายประกัน+ล่วงหน้า 13 · C สัญญา/ข้อบังคับ 6 · N snapshot 4 · R ห้อง/occupancy 7 · P ผู้เช่า=Party 7 · M เงินประกัน 9 · F ไฟล์/ลงชื่อ/event 9 · A สิทธิ์ 3 · X ข้ามร้าน 4 · U จอ 4 · Q ฉาก 3 · V ภาพ 1 · G regression 4 · Z ล้าง 1 = **97 ข้อ**
+S โครงสร้าง 15 · PC positive control 8 (ตัวยิง 4 โพรเซส · 30 ทางในโพรเซสเดียว) · L กฎหมายประกัน+ล่วงหน้า 14 · C สัญญา/ข้อบังคับ 9 · N snapshot 4 · R ห้อง/occupancy 7 · P ผู้เช่า=Party 10 · M เงินประกัน 12 · F ไฟล์/ลงชื่อ/event 10 · A สิทธิ์ 3 · X ข้ามร้าน 4 · U จอ 5 · Q ฉาก 3 · V ภาพ 1 · G regression 4 · Z ล้าง 1 = **110 ข้อ** (ORACLE-EDIT 29 ต.ค. เพิ่ม 13: PC-8 L-14 C-7 C-8 C-9 P-8 P-9 P-10 M-10 M-11 M-12 F-10 U-5)
 - ข้อมูลทดสอบใต้ร้านชั่วคราว slug `qc-svc-d5-*` (หน่วย DS STRICT · DW WARN · DO นอกขอบเขต+เหตุผล · DQ นอกขอบเขตไม่มีเหตุผล · DN ไม่ผูกบัญชี · HA โรงแรม · ร้าน B) · ผู้ใช้ชั่วคราว `svc-d5-*@shark.local` (OWNER · MANAGER · STAFF lease/view/meter/หน่วยอื่น) · ค่าตั้งเขียนตรงลง `SettingValue` (จำลองค่าที่หลุดตัวตรวจ) · ลำดับข้อในไฟล์ต่อกัน · ฟังก์ชันใน facade ขาด = FAIL
 - พร้อมกัน: ยิงจาก 4 โพรเซสลูก (`--child`) × 3 คำขอ ⇒ 12 ทาง (X3) — ห้ามแก้ให้ผ่านด้วย "ลองใหม่จนสำเร็จ" ที่ซ่อนผลซ้ำ
 

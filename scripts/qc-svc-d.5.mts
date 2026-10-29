@@ -12,6 +12,7 @@
 //   M  เงินประกัน: เงินจองหักเข้าประกัน · postSecurityDeposit ยอดรวม = ประกันพอดี · ซ้ำ/พร้อมกัน/สลับกัน = ครั้งเดียว · ไม่ผูกบัญชี = ไม่เปลี่ยนอะไร · ผูกผู้เช่า (F3)
 //   F  ไฟล์ส่วนตัว + ลิงก์หมดอายุ (X10) · รูปวันเข้า ≥ N · ลงชื่อครั้งเดียว · event dorm.lease.signed · มิเตอร์วันเข้า
 //   A  สิทธิ์ (leaseAccess · Membership สด) · X ข้ามร้าน/ข้ามหน่วย · U จอ หอ 02 (renderToStaticMarkup) · Q ฉาก svcqc · V ภาพ · G regression · Z ล้างครบ
+//   // ORACLE-EDIT 29 ต.ค. (review) (/root/svc-runs/fix/d5.md K1–K7): PC-8 · L-14 · C-7 C-8 C-9 · P-8 P-9 P-10 · M-10 M-11 M-12 (≥ 20–30 คำขอใน **โพรเซสเดียว** เกิน pool 10 + รุ่นข้ามโพรเซส) · F-10 · U-5
 //
 // ข้อมูลทดสอบใต้ร้านชั่วคราว slug `qc-svc-d5-*` + ผู้ใช้ `svc-d5-*@shark.local` · ลบใน finally ทุกตารางที่มี tenantId (วนจน FK ไม่ค้าง)
 // ข้อพร้อมกัน (R-4 P-5 M-4 M-7 F-8) ยิงจาก 4 โพรเซสลูกของไฟล์นี้เอง (`--child`) × 3 คำขอ = 12 ทาง (การเชื่อมต่อฐานแยกกันจริง)
@@ -276,7 +277,7 @@ const thaiId = (first12: string) => {
 };
 const RUNNUM = 100000 + Math.floor(Math.random() * 800000);
 let seq = 0;
-const newPhone = () => `08${String(RUNNUM * 100 + (++seq % 100)).padStart(8, "0").slice(-8)}`;
+const newPhone = () => `08${String((RUNNUM % 1000) * 100000 + ++seq).padStart(8, "0").slice(-8)}`; // ORACLE-EDIT 29 ต.ค. (review): เดิมวนซ้ำทุก 100 เบอร์ ⇒ ชนเบอร์คนอื่น (K3 จะถามยืนยัน)
 const newIdCard = () => thaiId(`1${String(RUNNUM).padStart(6, "0")}${String(++seq).padStart(5, "0")}`.slice(0, 12));
 
 const tenantIds: string[] = [];
@@ -404,7 +405,7 @@ try {
   }
   {
     const m = stripComments(read(F.lease));
-    const need: [string, RegExp][] = [["claimRoom", /claimRoom\s*\(/], ["releaseOccupancy", /releaseOccupancy\s*\(/], ["postSecurityDeposit", /postSecurityDeposit\s*\(/], ["evaluateLegal", /evaluateLegal\s*\(/],
+    const need: [string, RegExp][] = [["claimRoom", /claimRoom\s*\(/], ["releaseOccupancy", /releaseOccupancy\s*\(/], ["postSecurityDeposit(InTx)", /postSecurityDeposit(InTx)?\s*\(/] /* ORACLE-EDIT 29 ต.ค. (review) K1: รุ่นรับ tx */, ["evaluateLegal", /evaluateLegal\s*\(/],
       ["MANDATORY_CLAUSES", /MANDATORY_CLAUSES/], ["snapshotPolicy", /snapshotPolicy\s*\(/], ["findOrCreate", /findOrCreate\s*\(/], ["uploadFile private", /visibility\s*:\s*["']private["']/],
       ["privateFileUrl", /privateFileUrl\s*\(/], ["emitOutbox", /emitOutbox\s*\(/], ["submitForApproval", /submitForApproval\s*\(/], ["advisory lock", /pg_advisory_xact_lock/]];
     const miss = need.filter(([, re]) => !re.test(m)).map(([n]) => n);
@@ -412,9 +413,9 @@ try {
   }
   {
     const S = SET?.SNAPSHOT_KEYS?.lease ?? [];
-    const want = ["rooms.lease.contractTemplate", "rooms.lease.extraClauses", "rooms.lease.moveInPhotosMin", "rooms.lease.reservationAppliesTo", "rooms.legal.mode", "rooms.rent.monthly", "rooms.lateFee.amount", "rooms.billing.dueDay", "rooms.deposit.months", "rooms.lease.advanceMonths", "rooms.services.catalog"];
+    const want = ["rooms.lease.contractTemplate", "rooms.lease.extraClauses", "rooms.lease.moveInPhotosMin", "rooms.lease.reservationAppliesTo", "rooms.lease.signMethod", "rooms.legal.mode", "rooms.rent.monthly", "rooms.lateFee.amount", "rooms.billing.dueDay", "rooms.deposit.months", "rooms.lease.advanceMonths", "rooms.services.catalog"];
     const miss = want.filter((k) => !S.includes(k));
-    chk("S-13", "SNAPSHOT_KEYS.lease มี 4 คีย์ใหม่ของใบ (แม่แบบ · ข้อเพิ่ม · รูปวันเข้า · เงินจองหักเข้า) + คีย์เดิมของ D.1 ไม่หาย", !miss.length, `ขาด ${miss.join(", ")}`, "MAJOR");
+    chk("S-13", "SNAPSHOT_KEYS.lease มี 5 คีย์ใหม่ของใบ (แม่แบบ · ข้อเพิ่ม · รูปวันเข้า · เงินจองหักเข้า · วิธีลงชื่อ — ORACLE-EDIT 29 ต.ค. K7) + คีย์เดิมของ D.1 ไม่หาย", !miss.length, `ขาด ${miss.join(", ")}`, "MAJOR");
   }
   chk("S-14", "account facade export securityDepositReceipts (additive อ่านอย่างเดียว · §3.9)", typeof ACC?.securityDepositReceipts === "function", `typeof=${typeof ACC?.securityDepositReceipts}`, "MAJOR");
   {
@@ -433,6 +434,9 @@ try {
   const U: Record<string, string> = {};
   for (const k of ["DS", "DW", "DO", "DQ", "DC", "DX", "DFS", "DFW", "DFO", "DT", "DN", "DS2", "DU"]) U[k] = await mkUnit(A, "DORM", k.toLowerCase());
   U.HA = await mkUnit(A, "HOTEL", "ha");
+  // ORACLE-EDIT 29 ต.ค. (review): หน่วยเพิ่ม — DM เงินพร้อมกัน · DTS/DTW/DTO แม่แบบคั่นตัวแปร · DUN ชื่อหอมีคำต้องห้าม · DUV ตัวแปรไม่รู้จัก · DLT แม่แบบมีคำต้องห้ามตรง ๆ · DSM วิธีลงชื่อ
+  for (const k of ["DM", "DTS", "DTW", "DTO", "DUV", "DLT", "DSM"]) U[k] = await mkUnit(A, "DORM", k.toLowerCase());
+  U.DUN = (await prisma.businessUnit.create({ data: { tenantId: A, type: "DORM", name: "หอพักล็อกห้องได้ D5", slug: `d5dun-${stamp}` } })).id as string;
   U.DB = await mkUnit(B, "DORM", "db");
   const mkType = async (tenantId: string, unitId: string, name: string, monthly: number | null, rentMode = "MONTHLY") =>
     (await prisma.hotelRoomType.create({ data: { tenantId, unitId, name, capacity: 2, baseRateSatang: 0, depositSatang: 0, rentMode, monthlyRateSatang: monthly } })).id as string;
@@ -456,6 +460,8 @@ try {
   RM["DS-ooo"] = await mkRoom(A, U.DS, RT.DS, "S94", { hkStatus: "OUT_OF_ORDER" });
   for (const k of ["DW", "DO", "DQ", "DC", "DX", "DFS", "DFW", "DFO", "DT", "DN", "DS2", "HA"]) for (let i = 1; i <= 8; i++) RM[`${k}-${i}`] = await mkRoom(A, U[k], RT[k], `${k}${i}`);
   for (const n of ["201", "202", "203", "204", "205", "206"]) RM[`DU-${n}`] = await mkRoom(A, U.DU, RT.DU, n);
+  for (let i = 1; i <= 60; i++) RM[`DM-${i}`] = await mkRoom(A, U.DM, RT.DM, `M${String(i).padStart(2, "0")}`); // ORACLE-EDIT 29 ต.ค. (review)
+  for (const k of ["DTS", "DTW", "DTO", "DUV", "DLT", "DSM", "DUN"]) for (let i = 1; i <= 3; i++) RM[`${k}-${i}`] = await mkRoom(A, U[k], RT[k], `${k}${i}`);
   for (let i = 1; i <= 3; i++) RM[`DB-${i}`] = await mkRoom(B, U.DB, RT.DB, `B${i}`);
 
   // ── ค่าตั้ง (เขียนตรง — จำลองค่าที่ตั้งไว้แล้ว/ค่าที่หลุดตัวตรวจ) ──
@@ -477,6 +483,14 @@ try {
   const EXTRA_THREAT = [{ id: "late", textTh: "หากค้างชำระเกิน 7 วัน ผู้ให้เช่าจะตัดน้ำตัดไฟห้องพักทันที" }];
   for (const k of ["DFS", "DFW", "DFO"]) await setU(A, "UNIT", U[k], "rooms.lease.extraClauses", EXTRA_THREAT);
 
+  // ORACLE-EDIT 29 ต.ค. (review): แม่แบบคั่นตัวแปร (ช่องโหว่ BLOCKER-2) · ตัวแปรไม่รู้จัก · คำต้องห้ามตรง ๆ
+  const TPL_SPLIT = { th: "ค้างชำระเกิน 7 วัน ผู้ให้เช่าจะตัด{extraClauses}ไฟ และล็อก{extraClauses}ห้อง\n{mandatoryClauses}" };
+  for (const k of ["DTS", "DTW", "DTO"]) await setU(A, "UNIT", U[k], "rooms.lease.contractTemplate", TPL_SPLIT);
+  await setU(A, "UNIT", U.DTW, "rooms.legal.mode", "WARN");
+  await setU(A, "UNIT", U.DTO, "rooms.legal.mode", "OUT_OF_SCOPE");
+  await setU(A, "UNIT", U.DTO, "rooms.legal.outOfScopeReason", REASON_OOS);
+  await setU(A, "UNIT", U.DUV, "rooms.lease.contractTemplate", { th: "สัญญาเช่าห้อง {roomNo} ผู้เช่า {tenantName} {x}\n{mandatoryClauses}" });
+  await setU(A, "UNIT", U.DLT, "rooms.lease.contractTemplate", { th: "หากค้างชำระ ผู้ให้เช่าจะตัดไฟห้องพัก\n{mandatoryClauses}" });
   // ── สมุดบัญชี (ไม่จด VAT) + ลิงก์ BUSINESS — DN ไม่ผูก ──
   const mkBook = async (tenantId: string, name: string) => {
     const s = await SYS.createSystem(tenantId, "ACCOUNT", name);
@@ -486,7 +500,7 @@ try {
   };
   const BOOK_A = await mkBook(A, `บัญชีหอ D5 A ${stamp}`);
   const BOOK_B = await mkBook(B, `บัญชีหอ D5 B ${stamp}`);
-  for (const k of ["DS", "DW", "DO", "DQ", "DC", "DX", "DFS", "DFW", "DFO", "DT", "DS2", "DU"]) await prisma.accountSystemLink.create({ data: { tenantId: A, systemId: BOOK_A, linkedKind: "BUSINESS", linkedId: U[k], enabled: true } });
+  for (const k of ["DS", "DW", "DO", "DQ", "DC", "DX", "DFS", "DFW", "DFO", "DT", "DS2", "DU", "DM", "DTS", "DTW", "DTO", "DUV", "DLT", "DSM", "DUN"]) await prisma.accountSystemLink.create({ data: { tenantId: A, systemId: BOOK_A, linkedKind: "BUSINESS", linkedId: U[k], enabled: true } });
   await prisma.accountSystemLink.create({ data: { tenantId: B, systemId: BOOK_B, linkedKind: "BUSINESS", linkedId: U.DB, enabled: true } });
 
   // ── ผู้ใช้ (Membership จริง — facade อ่านสด) ──
@@ -526,6 +540,30 @@ try {
     if (!s?.ok) return { ok: false, code: `sign:${codeOf(s)}` };
     return moveIn(ctx, unitId, leaseId);
   };
+  // ORACLE-EDIT 29 ต.ค. (review): ยิงพร้อมกันในโพรเซสเดียว (เกิน pool 10 — ที่โพรเซสละ 3 มองไม่เห็น) · เตรียมสัญญาที่ลงชื่อแล้วเป็นชุด
+  const inProc = async (calls: (() => Promise<any>)[]) => {
+    const t0 = Date.now();
+    const rs = await Promise.all(calls.map(async (c) => { try { return await c(); } catch (e) { return { threw: errMsg(e) }; } }));
+    return { rs, ms: Date.now() - t0 };
+  };
+  const BAD_CODES = new Set(["UNAVAILABLE", "RETRY_SAFE"]);
+  const badOf = (rs: any[]) => rs.filter((r) => r?.threw || r?.childFail || (r?.ok === false && BAD_CODES.has(String(r?.code))) || /P2028|P2024|timed out|Unable to start a transaction/i.test(J(r)));
+  const tally = (rs: any[]) => { const m: Record<string, number> = {}; for (const r of rs) { const k = codeOf(r); m[k] = (m[k] ?? 0) + 1; } return J(m); };
+  const prepSigned = async (rooms: string[], o: Record<string, unknown> = {}) => {
+    const ids: string[] = [];
+    for (let i = 0; i < rooms.length; i += 4) {
+      const part = await Promise.all(rooms.slice(i, i + 4).map(async (rk) => {
+        const r = await mkLease(cO, U.DM, RM[rk], { depositSatang: 900000, bookingFeeSatang: 300000, ...o });
+        if (!r?.leaseId) return `ERR:${codeOf(r)}`;
+        const a = await addFiles(cO, U.DM, r.leaseId, "ROOM_PHOTO", photos(6));
+        const sg = await sign(cO, U.DM, r.leaseId);
+        return a?.ok && sg?.ok ? (r.leaseId as string) : `ERR:${codeOf(a)}/${codeOf(sg)}`;
+      }));
+      ids.push(...part);
+    }
+    return ids;
+  };
+  const DMR = (from: number, n: number) => Array.from({ length: n }, (_, i) => `DM-${from + i}`);
   const rowCounts = async (tenantId: string) => ({
     lease: await prisma.dormLease.count({ where: { tenantId } }),
     occ: await prisma.roomOccupancy.count({ where: { tenantId } }),
@@ -617,6 +655,15 @@ try {
       const okN = rs.filter((r) => r?.ok === true).length, taken = rs.filter((r) => r?.ok === false && r?.code === "ROOM_TAKEN").length;
       chk("PC-7", name, rs.length === 12 && okN === 1 && taken === 11, `ok=${okN} taken=${taken} อื่น=${J(rs.filter((r) => r?.ok !== true && r?.code !== "ROOM_TAKEN")).slice(0, 240)}`, "CRITICAL");
     } catch (e) { fail("PC-7", name, `throw: ${errMsg(e)}`, "CRITICAL"); }
+  })();
+  // ORACLE-EDIT 29 ต.ค. (review): positive control ของการยิง 30 ทางในโพรเซสเดียว — tx ที่ใช้ connection เดียวต่อคำขอไม่ล้ม (ข้อ M-10/M-11/M-12 ทำได้จริง)
+  await (async () => {
+    const name = "ยิง 30 ทางในโพรเซสเดียว (เกิน pool 10): claimRoom ใน $transaction ห้องเดียวกัน ⇒ ok 1 · ROOM_TAKEN 29 · ไม่มี P2028/timeout (วินัย 1 connection ต่อ tx ทำได้จริง)";
+    try {
+      const { rs, ms } = await inProc(Array.from({ length: 30 }, (_, i) => () => prisma.$transaction((tx: any) => ROOMS.claimRoom(tx, { tenantId: A, unitId: U.DS2, roomId: RM["DS2-7"], start: "2031-05-01", end: "2032-05-01", kind: "LEASE", refType: "QcD5Pc8", refId: `pc8-${i}-${stamp}` }))));
+      const okN = rs.filter((r) => r?.ok === true).length, taken = rs.filter((r) => r?.ok === false && r?.code === "ROOM_TAKEN").length;
+      chk("PC-8", name, okN === 1 && taken === 29 && !badOf(rs).length, `ok=${okN} taken=${taken} ${tally(rs)} ${ms}ms`, "CRITICAL");
+    } catch (e) { fail("PC-8", name, `throw: ${errMsg(e)}`, "CRITICAL"); }
   })();
 
   // ═══════════════ L. ตัวกั้นประกัน + ล่วงหน้า ตามโหมดกฎหมาย ═══════════════
@@ -711,6 +758,19 @@ try {
     return [a?.ok === true && a?.legal?.level === "OK" && failOk(b, "LEGAL_BLOCK") && legalCodeOf(b) === "OUT_OF_SCOPE_REASON_REQUIRED", `oos=${codeOf(a)}/${a?.legal?.level} ไม่มีเหตุผล=${codeOf(b)}/${legalCodeOf(b)}`];
   });
 
+  // ORACLE-EDIT 29 ต.ค. (review) K7: วิธีลงชื่ออยู่ใน snapshot
+  await T("L-14", "rooms.lease.signMethod อยู่ใน policySnapshot (ON_SCREEN) · แก้หน่วยเป็น PAPER หลังทำสัญญา ⇒ สัญญาเดิมลงชื่อด้วย PDF ไม่ได้ (INVALID_FILE · ยังเป็น ON_SCREEN) · สัญญาใหม่ลงชื่อด้วย PDF ได้", ["createLease", "getLease", "signLease"], async () => {
+    const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a]);
+    const r1 = await mkLease(cO, U.DSM, RM["DSM-1"]);
+    const g1 = r1?.leaseId ? await getL(cO, U.DSM, r1.leaseId) : null;
+    await setU(A, "UNIT", U.DSM, "rooms.lease.signMethod", "PAPER");
+    const s1 = r1?.leaseId ? await sign(cO, U.DSM, r1.leaseId, { file: { data: PDF, contentType: "application/pdf" } }) : null;
+    const r2 = await mkLease(cO, U.DSM, RM["DSM-2"]);
+    const s2 = r2?.leaseId ? await sign(cO, U.DSM, r2.leaseId, { file: { data: PDF, contentType: "application/pdf" } }) : null;
+    const ok = g1?.policySnapshot?.values?.["rooms.lease.signMethod"] === "ON_SCREEN" && failOk(s1, "INVALID_FILE") && r2?.ok === true && s2?.ok === true;
+    return [ok, `snap=${J(g1?.policySnapshot?.values?.["rooms.lease.signMethod"])} เดิม+PDF=${codeOf(s1)} ใหม่+PDF=${codeOf(s2)}`];
+  }, "MAJOR");
+
   // ═══════════════ C. สัญญา · ข้อบังคับ ═══════════════
   console.log("\n── C สัญญา · ข้อบังคับตามประกาศ ──");
   const norm = (s: string) => (LEGAL?.normalizeLegalText ? LEGAL.normalizeLegalText(s) : s.replace(/\s+/g, " ").trim());
@@ -756,6 +816,23 @@ try {
     await setU(A, "UNIT", U.DC, "rooms.lease.extraClauses", [{ id: "quiet", textTh: "งดใช้เสียงดังหลังเวลา 22.00 น." }]);
     const c2 = leaseDC ? await fn("leaseContract")!(cO, { unitId: U.DC, leaseId: leaseDC }) : null;
     return [!!contractDC?.ok && J(c2) === J(contractDC), `ก่อน=${J(contractDC).length} หลัง=${J(c2).length} เท่ากัน=${J(c2) === J(contractDC)}`];
+  });
+
+  // ORACLE-EDIT 29 ต.ค. (review) K2: ตัวแปรไม่รู้จัก · ชื่อผู้เช่าไม่ทำให้ผิด (C-7 อยู่ท้ายไฟล์ — กวาดทุกสัญญาที่สร้าง)
+  await T("C-8", "แม่แบบมีตัวแปรไม่รู้จัก {x} ⇒ INVALID_TEMPLATE (ไม่แทนค่าว่าง) · ไม่มีแถว", ["createLease"], async () => {
+    const c0 = await rowCounts(A);
+    const r = await mkLease(cO, U.DUV, RM["DUV-1"]);
+    const c1 = await rowCounts(A);
+    return [failOk(r, "INVALID_TEMPLATE") && J(c0) === J(c1), `${codeOf(r)} แถว ${J(c0)} → ${J(c1)}`];
+  });
+  let leaseC9 = "";
+  await T("C-9", "(positive control) ชื่อผู้เช่ามีคำคล้ายคำต้องห้าม (\"สมชาย ตัดไฟ\") ⇒ ทำสัญญาได้ + ชื่ออยู่ในสัญญา (แทนชื่อด้วยคำกลางก่อนตรวจ) · แม่แบบมีคำ \"ตัดไฟ\" ตรง ๆ ⇒ LEGAL_BLOCK", ["createLease", "leaseContract"], async () => {
+    const nm = `สมชาย ตัดไฟ ${stamp}`;
+    const r = await mkLease(cO, U.DS, RM["DS-8"], { startDate: "2036-05-01", tenant: T_(nm) });
+    leaseC9 = r?.leaseId ?? "";
+    const c = leaseC9 ? await fn("leaseContract")!(cO, { unitId: U.DS, leaseId: leaseC9 }) : null;
+    const lit = await mkLease(cO, U.DLT, RM["DLT-1"]);
+    return [r?.ok === true && c?.ok === true && String(c?.textTh ?? "").includes(nm) && failOk(lit, "LEGAL_BLOCK"), `ชื่อ=${codeOf(r)}/${codeOf(c)} มีชื่อ=${String(c?.textTh ?? "").includes(nm)} แม่แบบตัดไฟ=${codeOf(lit)}/${legalCodeOf(lit)}`];
   });
 
   // ═══════════════ N. snapshot ═══════════════
@@ -894,8 +971,8 @@ try {
       && Array.isArray(x) && x.length === 0;
     return [ok, `a=${J(a).slice(0, 160)} b=${J(b).slice(0, 120)} ร้านB=${J(x)}`];
   });
-  await T("P-3", "ทำสัญญาอีกห้องด้วยเบอร์เดิม (ชื่อสะกดต่าง) ⇒ ใช้ Party เดิม (partyCreated false)", ["createLease"], async () => {
-    const r = await mkLease(cO, U.DS, RM["DS-17"], { tenant: { name: `นิภา  วงศ์ใหญ่`, phone: PH1 } });
+  await T("P-3", "ทำสัญญาอีกห้องด้วยเบอร์เดิม (ชื่อเดียวกัน ช่องว่างต่าง) ⇒ ใช้ Party เดิม (partyCreated false)", ["createLease"], async () => {
+    const r = await mkLease(cO, U.DS, RM["DS-17"], { tenant: { name: `  นิภา  วงศ์ใหญ่ ${stamp}`, phone: PH1 } } /* ORACLE-EDIT 29 ต.ค. (review) K3: ชื่อเดียวกันหลังตัดช่องว่าง — ชื่อต่างจริงต้องถามยืนยัน (P-9) */);
     return [r?.ok === true && r?.partyId === partyP1 && r?.partyCreated === false, J(r)];
   });
   await T("P-4", "เลขบัตรเลขตรวจผิด ⇒ INVALID_ID_CARD · ไม่มีทั้งเบอร์และเลขบัตร ⇒ INVALID_INPUT · ไม่มีแถว", ["createLease"], async () => {
@@ -933,6 +1010,45 @@ try {
       && failOk(many, "INVALID_INPUT") && u?.ok === true && g2?.occupants?.length === 0 && g2?.vehicles?.[0]?.kind === "CAR";
     return [ok, `${codeOf(r)} occ=${J(g?.occupants)} veh=${J(g?.vehicles)} 11คน=${codeOf(many)} update=${codeOf(u)} หลัง=${J(g2?.vehicles)}`];
   });
+
+  // ORACLE-EDIT 29 ต.ค. (review) K3 K7: จับคู่ผู้เช่า
+  await T("P-8", "เบอร์เดิม (Party ยังไม่มีเลขบัตร · ชื่อตรง) + เลขบัตรใหม่ ⇒ ใช้ Party เดิม + เติมเลขบัตร (ไม่เกิด Party ซ้ำ) · เบอร์ตรง Party ที่มีเลขบัตรอื่น ⇒ Party ใหม่ + บันทึกคู่อาจซ้ำ (PartyMergeCandidate)", ["createLease"], async () => {
+    const ph = newPhone(), id = newIdCard(), nm = `ปิยะ เติมบัตร ${stamp}`;
+    const old = (await prisma.party.create({ data: { tenantId: A, name: nm, phone: ph, phoneNorm: ph } })).id;
+    const a = await mkLease(cO, U.DS, RM["DS-9"], { startDate: "2036-05-01", tenant: { name: nm, phone: ph, idCardNo: id } });
+    const pOld = await prisma.party.findUnique({ where: { id: old } });
+    const nPh = await prisma.party.count({ where: { tenantId: A, phoneNorm: ph } });
+    const ph2 = newPhone(), idOther = newIdCard(), idNew = newIdCard(), nm2 = `วิชัย บัตรอื่น ${stamp}`;
+    const other = (await prisma.party.create({ data: { tenantId: A, name: nm2, phone: ph2, phoneNorm: ph2, taxId: idOther } })).id;
+    const b = await mkLease(cO, U.DS, RM["DS-10"], { startDate: "2036-05-01", tenant: { name: nm2, phone: ph2, idCardNo: idNew } });
+    const mc = b?.partyId ? await prisma.partyMergeCandidate.count({ where: { tenantId: A, OR: [{ partyAId: other, partyBId: b.partyId }, { partyAId: b.partyId, partyBId: other }] } }) : 0;
+    const ok = a?.ok === true && a?.partyId === old && a?.partyCreated === false && pOld?.taxId === id && nPh === 1
+      && b?.ok === true && b?.partyCreated === true && b?.partyId !== other && mc === 1;
+    return [ok, `เติมบัตร=${codeOf(a)} same=${a?.partyId === old} created=${a?.partyCreated} tax=${pOld?.taxId === id} nPh=${nPh} · บัตรอื่น=${codeOf(b)} new=${b?.partyCreated} merge=${mc}`];
+  });
+  await T("P-9", "ชื่อไม่ตรง (ทางเบอร์ · ทางเลขบัตร) ⇒ TENANT_MATCH_CONFIRM + candidates (ไม่มีเบอร์เต็ม/เลขบัตร) ไม่มีแถว · ส่ง confirmPartyId ⇒ ใช้ Party นั้น · createNewParty ⇒ Party ใหม่ · ไม่ทิ้งชื่อที่กรอกเงียบ ๆ", ["createLease"], async () => {
+    const ph = newPhone(), id = newIdCard();
+    const px = (await prisma.party.create({ data: { tenantId: A, name: `เจ้าของเบอร์ ${stamp}`, phone: ph, phoneNorm: ph } })).id;
+    const py = (await prisma.party.create({ data: { tenantId: A, name: `เจ้าของบัตร ${stamp}`, taxId: id } })).id;
+    const c0 = await rowCounts(A);
+    const a = await mkLease(cO, U.DS, RM["DS-11"], { startDate: "2036-05-01", tenant: { name: `คนอื่นใช้เบอร์ ${stamp}`, phone: ph } });
+    const b = await mkLease(cO, U.DS, RM["DS-11"], { startDate: "2036-05-01", tenant: { name: `คนอื่นใช้บัตร ${stamp}`, idCardNo: id, phone: null } });
+    const c1 = await rowCounts(A);
+    const candOk = (r: any, pid: string) => Array.isArray(r?.candidates) && r.candidates.some((c: any) => c.partyId === pid) && !J(r).includes(ph) && !J(r).includes(ph.slice(1)) && !J(r).includes(id);
+    const cf = await mkLease(cO, U.DS, RM["DS-11"], { startDate: "2036-05-01", tenant: { name: `คนอื่นใช้เบอร์ ${stamp}`, phone: ph, confirmPartyId: px } });
+    const nw = await mkLease(cO, U.DS, RM["DS-12"], { startDate: "2036-05-01", tenant: { name: `คนอื่นใช้บัตร ${stamp}`, idCardNo: newIdCard(), phone: ph, createNewParty: true } });
+    const nwP = nw?.partyId ? await prisma.party.findUnique({ where: { id: nw.partyId } }) : null;
+    const ok = failOk(a, "TENANT_MATCH_CONFIRM") && candOk(a, px) && failOk(b, "TENANT_MATCH_CONFIRM") && candOk(b, py) && J(c0) === J(c1)
+      && cf?.ok === true && cf?.partyId === px && nw?.ok === true && nw?.partyCreated === true && nw?.partyId !== px && nwP?.name === `คนอื่นใช้บัตร ${stamp}`;
+    return [ok, `เบอร์=${codeOf(a)}/${candOk(a, px)} บัตร=${codeOf(b)}/${candOk(b, py)} แถว=${J(c0) === J(c1)} ยืนยัน=${codeOf(cf)}/${cf?.partyId === px} ใหม่=${codeOf(nw)}/${nw?.partyCreated}/${nwP?.name}`];
+  });
+  await T("P-10", "findTenantCandidates ต้อง dorm.lease.manage: STAFF dorm.view ⇒ ว่าง/NOT_FOUND (ไม่มีชื่อผู้เช่าหลุด) · STAFF dorm.lease.manage ⇒ เจอ (positive)", ["findTenantCandidates"], async () => {
+    const f = fn("findTenantCandidates")!;
+    const v = await f(cx(STV), { unitId: U.DS, phone: PH1 });
+    const m = await f(cx(STL), { unitId: U.DS, phone: PH1 });
+    const vOk = (Array.isArray(v) && v.length === 0) || failOk(v, "NOT_FOUND");
+    return [vOk && Array.isArray(m) && m.some((c: any) => c.partyId === partyP1), `view=${J(v).slice(0, 120)} manage=${Array.isArray(m) ? m.length : codeOf(m)}`];
+  }, "MAJOR");
 
   // ═══════════════ M. เงินประกัน ═══════════════
   console.log("\n── M เงินจอง · เงินประกัน (postSecurityDeposit) ──");
@@ -1031,6 +1147,53 @@ try {
     return [other?.ok === true && own?.ok === true && s1?.ok === false && s1?.code === "NOT_FOUND" && s2?.ok === true && s2?.appliedSatang === 30000, `คนอื่น=${codeOf(s1)} ตัวเอง=${codeOf(s2)} applied=${s2?.appliedSatang}`];
   });
 
+  // ORACLE-EDIT 29 ต.ค. (review) K1 K6: เงินกับสถานะสัญญา commit พร้อมกัน — ยิงเกิน pool ในโพรเซสเดียว (BLOCKER-1) + รุ่นข้ามโพรเซส
+  const leaseInv = async (L: string) => {
+    const row = await prisma.dormLease.findUnique({ where: { id: L } });
+    const h = await ACC.securityDepositHeld({ tenantId: A, unitId: U.DM, leaseId: L });
+    const jv = (await depJVs(A, U.DM, L)).length;
+    return { status: row?.status as string, held: h as number, jv };
+  };
+  await T("M-10", "moveIn สัญญาเดียว 30 ทางในโพรเซสเดียว (+ รุ่น 3 โพรเซส × 10) ⇒ ไม่มี throw/UNAVAILABLE/RETRY_SAFE/P2028 · ทุกตัว ok · ทำจริง ≤ 1 · ACTIVE · ยอดถือ = ประกัน 900000 · JV 2 · จบใน 40 วิ", ["createLease", "moveIn"], async () => {
+    const [L1, L2] = await prepSigned(DMR(1, 2));
+    if (!L1 || L1.startsWith("ERR")) return [false, `เตรียมไม่ได้ ${L1}`];
+    const { rs, ms } = await inProc(Array.from({ length: 30 }, () => () => moveIn(cO, U.DM, L1)));
+    const i1 = await leaseInv(L1);
+    const xs = L2 && !L2.startsWith("ERR") ? await fanout("moveIn", cO, Array.from({ length: 30 }, () => ({ unitId: U.DM, leaseId: L2, channel: "TRANSFER", paidAt: new Date().toISOString() })), { procs: 3 }) : [{ childFail: `เตรียม L2 ไม่ได้ ${L2}` }];
+    const i2 = L2 && !L2.startsWith("ERR") ? await leaseInv(L2) : null;
+    const good = (r: any[], inv: any) => !badOf(r).length && r.every((x) => x?.ok === true) && r.filter((x) => x?.duplicate === false).length <= 1 && inv?.status === "ACTIVE" && inv?.held === 900000 && inv?.jv === 2;
+    return [good(rs, i1) && ms < 40_000 && good(xs, i2), `ในโพรเซส ${tally(rs)} ${ms}ms ${J(i1)} · ข้ามโพรเซส ${tally(xs)} ${J(i2)}`];
+  });
+  await T("M-11", "moveIn 20 สัญญาต่างกันพร้อมกันในโพรเซสเดียว (+ อีก 20 สัญญาจาก 2 โพรเซส × 10) ⇒ ทุกสัญญา ACTIVE · ยอดถือ 900000 · JV 2 · ไม่มีสัญญา DRAFT ที่มีเงินประกันเกินเงินจอง · ไม่มี UNAVAILABLE", ["createLease", "moveIn"], async () => {
+    const Ls = await prepSigned(DMR(3, 20));
+    const Lx = await prepSigned(DMR(23, 20));
+    const errs = [...Ls, ...Lx].filter((x) => x.startsWith("ERR"));
+    if (errs.length) return [false, `เตรียมไม่ได้ ${errs.slice(0, 3).join(",")}`];
+    const { rs, ms } = await inProc(Ls.map((L) => () => moveIn(cO, U.DM, L)));
+    const xs = await fanout("moveIn", cO, Lx.map((L) => ({ unitId: U.DM, leaseId: L, channel: "TRANSFER", paidAt: new Date().toISOString() })), { procs: 2 });
+    const invs = [];
+    for (const L of [...Ls, ...Lx]) invs.push(await leaseInv(L));
+    const wrong = invs.filter((i) => !(i.status === "ACTIVE" && i.held === 900000 && i.jv === 2));
+    const draftMoney = invs.filter((i) => i.status === "DRAFT" && i.held > 300000).length;
+    return [!badOf(rs).length && !badOf(xs).length && rs.every((x) => x?.ok === true) && xs.every((x) => x?.ok === true) && !wrong.length && !draftMoney,
+      `ในโพรเซส ${tally(rs)} ${ms}ms · ข้ามโพรเซส ${tally(xs)} · ผิด ${wrong.length} ${J(wrong.slice(0, 3))} · DRAFT มีเงิน ${draftMoney}`];
+  });
+  await T("M-12", "cancelLease ∥ receiveBookingFee ∥ moveIn บน 10 สัญญาพร้อมกัน (30 คำขอในโพรเซสเดียว) ⇒ ไม่มี UNAVAILABLE/throw · CANCELLED ⇒ ยอดถือ 0 ไม่มี JV · DRAFT ⇒ ยอดถือ 0 หรือเท่าเงินจอง · ACTIVE ⇒ 900000", ["createLease", "cancelLease", "receiveBookingFee", "moveIn"], async () => {
+    const Ls = await prepSigned(DMR(43, 10));
+    if (Ls.some((x) => x.startsWith("ERR"))) return [false, `เตรียมไม่ได้ ${Ls.find((x) => x.startsWith("ERR"))}`];
+    const calls: (() => Promise<any>)[] = [];
+    for (const L of Ls) {
+      calls.push(() => fn("cancelLease")!(cO, { unitId: U.DM, leaseId: L, reason: "ผู้เช่าเปลี่ยนใจกะทันหัน" }));
+      calls.push(() => fn("receiveBookingFee")!(cO, { unitId: U.DM, leaseId: L, channel: "CASH" }));
+      calls.push(() => moveIn(cO, U.DM, L));
+    }
+    const { rs, ms } = await inProc(calls);
+    const invs = [];
+    for (const L of Ls) invs.push({ L, ...(await leaseInv(L)) });
+    const wrong = invs.filter((i) => !((i.status === "CANCELLED" && i.held === 0 && i.jv === 0) || (i.status === "DRAFT" && (i.held === 0 || i.held === 300000)) || (i.status === "ACTIVE" && i.held === 900000)));
+    return [!badOf(rs).length && !wrong.length, `${tally(rs)} ${ms}ms · สถานะ ${J(invs.map((i) => `${i.status}/${i.held}/${i.jv}`))}`];
+  });
+
   // ═══════════════ F. ไฟล์ · ลงชื่อ · event · มิเตอร์วันเข้า ═══════════════
   console.log("\n── F ไฟล์ส่วนตัว · ลงชื่อ · dorm.lease.signed ──");
   let leaseF = "";
@@ -1127,6 +1290,19 @@ try {
     return [ok, `ห้องอื่น=${codeOf(x)} jv=${jv0} moveIn=${codeOf(m)} ซ้ำ=${codeOf(m2)} rows=${J(rows.map((r: any) => ({ k: r.kind, v: r.value, p: r.periodKey })))}`];
   });
 
+  // ORACLE-EDIT 29 ต.ค. (review) K7: HEIC ตรวจ brand
+  await T("F-10", "ไฟล์ MP4 (ftyp mp42) ประกาศเป็น image/heic ⇒ INVALID_FILE ไม่มี FileAsset · HEIC จริง (brand heic) ⇒ ok (positive)", ["createLease", "addLeaseFiles"], async () => {
+    const ab = (t: string) => [...t].map((c) => c.charCodeAt(0));
+    const MP4 = new Uint8Array([0, 0, 0, 0x18, ...ab("ftypmp42"), 0, 0, 0, 0, ...ab("mp42isom")]);
+    const HEIC = new Uint8Array([0, 0, 0, 0x18, ...ab("ftypheic"), 0, 0, 0, 0, ...ab("mif1heic")]);
+    const r = await mkLease(cO, U.DS, RM["DS-7"], { startDate: "2036-05-01" });
+    const f0 = await prisma.fileAsset.count({ where: { tenantId: A } });
+    const bad = r?.leaseId ? await addFiles(cO, U.DS, r.leaseId, "ROOM_PHOTO", [{ data: MP4, contentType: "image/heic" }]) : null;
+    const f1 = await prisma.fileAsset.count({ where: { tenantId: A } });
+    const good = r?.leaseId ? await addFiles(cO, U.DS, r.leaseId, "ROOM_PHOTO", [{ data: HEIC, contentType: "image/heic" }]) : null;
+    return [failOk(bad, "INVALID_FILE") && f0 === f1 && good?.ok === true, `mp4=${codeOf(bad)} assets ${f0}→${f1} heic=${codeOf(good)}`];
+  }, "MAJOR");
+
   // ═══════════════ A. สิทธิ์ ═══════════════
   console.log("\n── A สิทธิ์ (leaseAccess · Membership สด) ──");
   await T("A-1", "leaseAccess: OWNER ทั้งคู่ · STAFF dorm.lease.manage ⇒ ทั้งคู่ · STAFF dorm.view ⇒ view เท่านั้น · คนจดมิเตอร์ ⇒ ไม่มี · STAFF หน่วยอื่น ⇒ ไม่มี · null ⇒ ไม่มี", ["leaseAccess"], async () => {
@@ -1198,6 +1374,45 @@ try {
     const g = await getL(cx(STO2), U.DS, leaseM1);
     const bOwn = await mkLease(cB, U.DB, RM["DB-1"], { tenant: T_("ผู้เช่าร้าน B") });
     return [failOk(a, "NOT_FOUND") && g === null && bOwn?.ok === true, `${codeOf(a)} get=${J(g)} B=${codeOf(bOwn)}`];
+  });
+
+  // ═══════════════ ORACLE-EDIT 29 ต.ค. (review) K2: C-7 ข้อความสัญญาที่ render แล้วต้องไม่มีคำต้องห้าม (วางท้าย — กวาดทุกสัญญาที่ข้อสอบสร้าง) ═══════════════
+  await T("C-7", "แม่แบบคั่นตัวแปร \"ตัด{extraClauses}ไฟ / ล็อก{extraClauses}ห้อง\" ⇒ LEGAL_BLOCK ทุกโหมด (STRICT · WARN+เจ้าของ ack · OUT_OF_SCOPE) ไม่มีแถว · ชื่อหอ \"หอพักล็อกห้องได้\" ⇒ LEGAL_BLOCK · ทุกสัญญาที่สร้างสำเร็จ: leaseContract ไม่มีคำต้องห้าม (แทนชื่อผู้เช่าก่อนตรวจ) · snapshot ที่ถูกแก้ให้มีคำต้องห้าม ⇒ leaseContract/signLease ไม่ปล่อยข้อความออก", ["createLease", "leaseContract", "signLease"], async () => {
+    const okBlock = (r: any) => failOk(r, "LEGAL_BLOCK") && ["TEMPLATE_NO_THREAT", "CONTRACT_FORBIDDEN_TERM"].includes(String(legalCodeOf(r)));
+    const c0 = await rowCounts(A);
+    const ts = await mkLease(cO, U.DTS, RM["DTS-1"]);
+    const tw = await mkLease(cO, U.DTW, RM["DTW-1"], { legalAck: ACK });
+    const to = await mkLease(cO, U.DTO, RM["DTO-1"]);
+    const un = await mkLease(cO, U.DUN, RM["DUN-1"]);
+    const c1 = await rowCounts(A);
+    const bad: string[] = [];
+    if (![ts, tw, to, un].every(okBlock)) bad.push(`แม่แบบ ${[ts, tw, to, un].map((r) => `${codeOf(r)}/${legalCodeOf(r)}`).join(",")}`);
+    if (J(c0) !== J(c1)) bad.push(`แถว ${J(c0)} → ${J(c1)}`);
+    const findF = LEGAL.findForbiddenTerms as (t: string) => string[];
+    const live = await prisma.dormLease.findMany({ where: { tenantId: A, status: { in: ["DRAFT", "ACTIVE", "NOTICE"] } }, select: { id: true, unitId: true, partyId: true } });
+    let scanned = 0;
+    for (const l of live) {
+      const c = await fn("leaseContract")!(cO, { unitId: l.unitId, leaseId: l.id });
+      if (c?.ok !== true) { bad.push(`leaseContract ${codeOf(c)}`); continue; }
+      const p = await prisma.party.findUnique({ where: { id: l.partyId }, select: { name: true } });
+      const text = String(c.textTh ?? "").split(String(p?.name ?? "\u0000")).join("ผู้เช่า");
+      const hit = findF(text);
+      if (hit.length) bad.push(`สัญญามีคำต้องห้าม ${hit.join(",")}`);
+      scanned++;
+    }
+    const tamper = leaseC1 ? await prisma.dormLease.findUnique({ where: { id: leaseC1 } }) : null;
+    let leak = "ไม่มีสัญญา C-1";
+    if (tamper?.policySnapshot) {
+      const snap = JSON.parse(JSON.stringify(tamper.policySnapshot));
+      snap.contract = { ...(snap.contract ?? {}), textTh: `${snap.contract?.textTh ?? ""}\nหากค้างชำระ ผู้ให้เช่าจะตัดไฟและล็อกห้องทันที` };
+      await prisma.dormLease.update({ where: { id: leaseC1 }, data: { policySnapshot: snap } });
+      const lc = await fn("leaseContract")!(cO, { unitId: U.DS, leaseId: leaseC1 });
+      const sg = await sign(cO, U.DS, leaseC1);
+      const row = await prisma.dormLease.findUnique({ where: { id: leaseC1 } });
+      leak = lc?.ok === false && !findF(J(lc)).length && sg?.ok === false && !row?.signedAt ? "" : `แก้ snapshot: leaseContract=${codeOf(lc)} sign=${codeOf(sg)} signed=${!!row?.signedAt}`;
+    }
+    if (leak) bad.push(leak);
+    return [!bad.length && scanned >= 30, `${bad.slice(0, 5).join(" · ")} · กวาด ${scanned} สัญญา`];
   });
 
   // ═══════════════ U. จอ หอ 02 ═══════════════
@@ -1284,6 +1499,18 @@ try {
     const legal = LEGAL_BAD.exec(textOf(all));
     return [!leaks.length && !legal && hs.length === 5, `รั่ว=${leaks.length} คำต้องห้าม=${legal?.[0] ?? "—"}`];
   }, "CRITICAL", true);
+
+  // ORACLE-EDIT 29 ต.ค. (review) K4: เลขบัตร/เบอร์ห้ามอยู่ใน URL
+  {
+    const n = stripComments(read("src/app/app/u/[unitSlug]/dorm/tenants/new/page.tsx"));
+    const a = stripComments(read("src/app/app/u/[unitSlug]/dorm/tenants/actions.ts"));
+    const getForms = [...n.matchAll(/<form\b[^>]*method\s*=\s*["'{]\s*["']?get["'][\s\S]*?<\/form>/gi)].map((m) => m[0]);
+    const piiInGet = getForms.filter((f) => /name\s*=\s*["'](findId|findPhone|idCardNo|idCard|phone|tel)["']/i.test(f)).length;
+    const spRead = /(searchParams|\bsp)\s*(\??\.)\s*(findId|findPhone|idCardNo|idCard|phone)\b|\[\s*["'](findId|findPhone|idCardNo|phone)["']\s*\]/.test(n);
+    const action = /export\s+async\s+function\s+\w+[\s\S]{0,1500}?findTenantCandidates\s*\(/.test(a);
+    chk("U-5", "หน้า new: ไม่มีฟอร์ม GET ที่ส่งเลขบัตร/เบอร์ · ไม่อ่าน findId/เบอร์จาก searchParams · ค้นผู้เช่าผ่าน server action (POST) ที่เรียก findTenantCandidates (PDPA · ไม่ลง URL/log)",
+      !!n && !piiInGet && !spRead && action, n ? `GET+PII=${piiInGet} searchParams=${spRead} action=${action}` : "ยังไม่มีไฟล์", "MAJOR");
+  }
 
   // ═══════════════ Q. ฉาก svcqc ═══════════════
   console.log("\n── Q ฉากผู้เช่า (svcqc · บ้านสวนอพาร์ตเมนต์) ──");
