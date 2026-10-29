@@ -547,3 +547,20 @@ export async function updateContactInfo(
 
   return { ok: true, partyId: id, changed, mergeCandidateIds };
 }
+
+// ─────────────────────── SVC D.5 ▸ เติมเลขบัตรให้บุคคลที่ยังไม่มี (สัญญาเช่าหอ · ใบแก้ K3) ───────────────────────
+/**
+ * เติม `taxId` (เลขบัตรประชาชน 13 หลัก) ให้ Party ชนิดบุคคลที่ **ยังไม่มีเลข** เท่านั้น — มีอยู่แล้ว/ถูกรวมไปแล้ว/ไม่ใช่ของร้าน ⇒ ไม่แตะ (false)
+ * เลขไปชน Party รายอื่นของร้าน ⇒ บันทึกคู่ "อาจเป็นรายเดียวกัน" (TAX_ID) ไม่ล้มคำสั่ง · ใช้ client (tx) ของผู้เรียก · ไม่ log ข้อมูล (X8)
+ */
+export async function attachPersonTaxId(tenantId: string, partyId: string, taxId: string, client?: Prisma.TransactionClient): Promise<boolean> {
+  const id = normalizePartyTaxId(taxId);
+  if (!tenantId || !partyId || id.length !== 13) return false;
+  const db = dbFor(tenantId, client);
+  const r = await db.party.updateMany({ where: { tenantId, id: partyId, kind: "PERSON", taxId: null, mergedIntoId: null }, data: { taxId: id, branchCode: "00000" } });
+  if (r.count !== 1) return false;
+  const other = await db.party.findFirst({ where: { tenantId, taxId: id, id: { not: partyId }, mergedIntoId: null }, select: { id: true } });
+  if (other) await recordMergeCandidatePair(tenantId, other.id, partyId, "TAX_ID", client);
+  return true;
+}
+// ◂ SVC D.5

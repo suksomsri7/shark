@@ -8075,3 +8075,92 @@ export async function dormReverseSettlement(input: {
   }
 }
 // ◂ SVC D.2
+
+// ═══════════════════ SVC D.5 ▸ เงินประกันในธุรกรรมของผู้เรียก (เพิ่มล้วน · ฟังก์ชัน D.2 เดิมไม่เปลี่ยน) ═══════════════════
+// ผู้เรียก = account/index.ts (postSecurityDepositInTx · securityDepositHeldInTx · runDormMoneyTx) ← โมดูลหอ (dorm/lease.ts) ในโพรเซสเท่านั้น
+// 🔴 ทุกคำสั่งผ่าน `tx` ของผู้เรียก — ไม่เปิด connection ที่สอง (บทเรียน B.3 / HF-INV-1: ถือ tx แล้วรอ connection ที่สอง = pool อดตาย)
+// 🔴 วินัย D.2 ครบใน tx เดียว: ① row lock แถว Tenant → ② หาลิงก์สมุดของหน่วย (≠ 1 ⇒ ปฏิเสธ) + row lock แถวลิงก์ → ③ ตรวจคีย์กันซ้ำระดับร้าน → ④ ลง JV
+// 🔴 ลำดับล็อกทั้งระบบ: ผู้เรียกที่ใช้ล็อกของตัวเอง (หอ: advisory ต่อสัญญา) ต้องจับล็อกนั้น "ก่อน" ① เสมอ — ห้ามขอล็อกอื่นหลังถือแถว Tenant
+// 🔴 ปฏิเสธเชิงตรรกะ = คืน DormReject (ก่อนเขียนใด ๆ) · ผู้เรียกต้อง rollback ทั้ง tx เมื่อได้ ok:false · error ของฐาน = โยนให้ tx ของผู้เรียกล้มทั้งก้อน
+// 🔴 ไม่มี raw SQL ใหม่ · ผู้ติดต่อฝั่งบัญชีของผู้เช่าต้องมีอยู่ก่อน (ไม่มี ⇒ NEEDS_CONTACT · ผู้เรียกเรียก dormEnsureTenantContact นอก tx แล้วลองใหม่)
+
+/** เปิดธุรกรรมเงินของหอ (connection เดียว · maxWait 20 วิ · timeout 30 วิ) — ผู้เรียกทำงานของตัวเอง + รุ่น InTx ใน fn */
+export async function dormMoneyTx<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return prisma.$transaction(fn, { maxWait: 20_000, timeout: 30_000 });
+}
+
+/** ผู้ติดต่อฝั่งบัญชีของผู้เช่าในสมุดที่ผูกหน่วย (นอกธุรกรรม · ตัวเดียวกับที่ dormPostSecurityDeposit ใช้) — สมุดไม่ผูก/กำกวม ⇒ DormReject */
+export async function dormEnsureTenantContact(tenantId: string, unitId: string, partyId: string): Promise<{ ok: true; contactId: string } | DormReject> {
+  const ids = await findAccountLinksFor(tenantId, "BUSINESS", unitId);
+  if (ids.length !== 1) return dormReject(ids.length === 0 ? "NOT_LINKED" : "AMBIGUOUS_LINK", DORM_NOT_LINKED_MSG);
+  const contactId = await dormTenantContact(tenantId, ids[0], partyId);
+  if (!contactId) return dormReject("INVALID_INPUT", "ไม่พบผู้เช่ารายนี้ในร้าน — เลือกผู้เช่าของสัญญาใหม่");
+  return { ok: true, contactId };
+}
+
+export async function dormPostSecurityDepositInTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string; unitId: string; leaseId: string; amountSatang: number; key: string;
+    paidAt: Date; channel: DormMoneyChannel; financeAccountId: string | null; partyId: string; note: string | null;
+  },
+): Promise<DormDepositResult | DormReject> {
+  const { tenantId, unitId, leaseId, key } = input;
+  try {
+    // ① แถว Tenant
+    const t = await tx.tenant.updateMany({ where: { id: tenantId }, data: { updatedAt: new Date() } });
+    if (t.count !== 1) return dormReject("NOT_LINKED", DORM_NOT_LINKED_MSG);
+    // ② สมุดของหน่วย (อ่านใต้ล็อกร้าน) + แถวลิงก์
+    const links = await tx.accountSystemLink.findMany({
+      where: { tenantId, linkedKind: "BUSINESS", linkedId: unitId, archivedAt: null, enabled: true },
+      select: { systemId: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const books = [...new Set(links.map((l) => l.systemId))];
+    if (books.length === 0) return dormReject("NOT_LINKED", DORM_NOT_LINKED_MSG);
+    if (books.length > 1)
+      return dormReject("AMBIGUOUS_LINK", `หอนี้ผูกสมุดบัญชีไว้ ${books.length} เล่มพร้อมกัน — ระบบไม่เดาว่าจะลงเล่มไหน ให้ตัดการเชื่อมเล่มที่ไม่ใช้ก่อน`);
+    const systemId = books[0];
+    const ctx = { tenantId, systemId };
+    const r = await tx.accountSystemLink.updateMany({
+      where: { tenantId, systemId, linkedKind: "BUSINESS", linkedId: unitId, archivedAt: null, enabled: true },
+      data: { enabled: true },
+    });
+    if (r.count !== 1) return dormReject("NOT_LINKED", DORM_NOT_LINKED_MSG);
+    if (input.financeAccountId && !(await tx.accountFinance.findFirst({ where: { id: input.financeAccountId, tenantId, systemId }, select: { id: true } })))
+      return dormReject("INVALID_INPUT", DORM_FINANCE_BAD);
+    // ผู้ติดต่อของผู้เช่า (F3) — อ่านผ่าน tx เท่านั้น
+    const canonical = await party.resolveCanonical(tenantId, input.partyId, tx);
+    const [brief] = await party.listBriefsByIds(tenantId, [canonical], tx);
+    if (!brief) return dormReject("INVALID_INPUT", "ไม่พบผู้เช่ารายนี้ในร้าน — เลือกผู้เช่าของสัญญาใหม่");
+    const contact = await findContactOfParty(tx, ctx, brief.id);
+    if (!contact) return dormReject("NEEDS_CONTACT", "ยังไม่มีผู้ติดต่อฝั่งบัญชีของผู้เช่ารายนี้ — ระบบจะสร้างแล้วลองใหม่");
+    // ③ คีย์กันซ้ำระดับร้าน (ตรรกะเดียวกับ dormPostSecurityDeposit)
+    const use = await dormKeyUse(tx, tenantId, key);
+    if (use.pay || use.excess || use.settle) return dormReject("IDEMPOTENCY_CONFLICT", DORM_KEY_OTHER_KIND);
+    if (use.receive) {
+      if (use.receive.systemId !== systemId || use.receive.refId !== dormLeaseRef(unitId, leaseId) || use.receive.amount !== input.amountSatang)
+        return dormReject("IDEMPOTENCY_CONFLICT", "คีย์กันซ้ำนี้รับเงินประกันไปแล้วด้วยยอดหรือสัญญาอื่น — ไม่บันทึกซ้ำ");
+      return { ok: true as const, duplicate: true, entryId: use.receive.id, entryNo: use.receive.docNo, heldSatang: await heldInBook(tx, tenantId, systemId, unitId, leaseId) };
+    }
+    // ④ JV
+    await ensureAccounting(ctx, tx);
+    const e = await postDormDepositReceive(ctx, {
+      unitId, leaseId, key, date: input.paidAt, amountSatang: input.amountSatang, channel: input.channel,
+      financeAccountId: input.financeAccountId, contactId: contact.id, memo: input.note,
+    }, tx);
+    return { ok: true as const, duplicate: false, entryId: e.entryId, entryNo: e.entryNo, heldSatang: await heldInBook(tx, tenantId, systemId, unitId, leaseId) };
+  } catch (e) {
+    // ปฏิเสธเชิงบัญชีที่ gl โยน (เช่น ACCOUNT_SETUP) ⇒ DormReject (ผู้เรียก rollback) · error ของฐาน ⇒ โยนต่อ
+    if (e instanceof DormTxReject || e instanceof DormGlReject) return dormReject(e.code, e.message);
+    throw e;
+  }
+}
+
+/** ยอดถือของสัญญา (ทุกสมุดของร้าน) อ่านผ่าน tx ของผู้เรียก */
+export async function dormSecurityDepositHeldInTx(tx: Prisma.TransactionClient, tenantId: string, unitId: string, leaseId: string): Promise<number> {
+  let total = 0;
+  for (const b of (await dormDepositHeldByBook(tx, tenantId, unitId, leaseId)).values()) total += b.total;
+  return total;
+}
+// ◂ SVC D.5

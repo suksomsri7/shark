@@ -261,6 +261,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     actions: {
       "dorm.view": "ดูผังห้องและข้อมูลหอ", // SVC D.6 (คีย์หออื่นใน CC §8 = D.13)
       "dorm.meter.read": "จดเลขมิเตอร์", // SVC D.6
+      "dorm.lease.manage": "จัดการผู้เช่าและสัญญา", // SVC D.5
     },
   },
   {

@@ -290,3 +290,6 @@ export async function countPartyHolders(
   return counts.reduce((a, b) => a + b, 0);
 }
 // ◂ CRM C3.9
+
+// SVC D.5 ▸ เติมเลขบัตรให้บุคคลที่ยังไม่มีเลข (สัญญาเช่าหอ: ผู้เช่าเดิมที่ลงทะเบียนด้วยเบอร์ มาทำสัญญาพร้อมบัตร) · ใช้ tx ของผู้เรียก ◂
+export { attachPersonTaxId } from "./service";

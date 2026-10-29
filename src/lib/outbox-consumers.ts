@@ -1209,6 +1209,9 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   payload { unitId, meterId, roomId (null = มิเตอร์หลัก), readingId, periodKey, flag } id ล้วน (X8) · งานหลัก = no-op
   //   (การพักบิล/การ์ดบอร์ดงานทำใน service แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
   "dorm.meter.flagged": withAutomation(async () => {}),
+  // SVC D.5 ▸ ลงชื่อสัญญาเช่าหอแล้ว — ยิงจาก `dorm/lease.ts#signLease` ใน tx เดียวกับ signedAt · payload ตรง 3 คีย์ { unitId, leaseId, roomId }
+  //   (ไม่มีชื่อ/เบอร์/เงิน · X8) · งานหลัก = no-op · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation · renewed/ended = D.12 ◂
+  "dorm.lease.signed": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่
