@@ -12,6 +12,7 @@ import { getDef, resolveSettings, snapshotPolicy, SNAPSHOT_KEYS } from "@/lib/co
 import * as inv from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
+import * as queue from "@/lib/modules/queue/service"; // SVC B.4 ▸ บัตรเดินตามงาน (เส้น booking→queue · ทิศเดียว) ◂
 
 /** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อกเมื่อนำบริการเข้าคลัง */
 export type BookingCtx = { tenantId: string; unitId: string; actorUserId?: string };
@@ -169,7 +170,7 @@ const STAFF_SETTING_KEYS = [
 const HOURS_SOURCES: readonly HoursSource[] = ["HR_SHIFT", "STAFF_WEEKLY", "UNIT_HOURS"];
 
 /** "YYYY-MM-DD" ที่เป็นวันจริง (2031-02-30 / abc ⇒ false) — คิดด้วย UTC ล้วน ไม่ขึ้นกับ TZ เครื่อง */
-function isRealDateStr(ds: string): boolean {
+export function isRealDateStr(ds: string): boolean {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ds);
   if (!m) return false;
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
@@ -922,8 +923,15 @@ export async function setAppointmentStatus(
   //   void ไม่ได้ = ไม่เปลี่ยนสถานะ + เหตุผลที่ระบุเลขบิลริบ (ไม่ออกจาก NO_SHOW เงียบ ๆ โดยบิลยังอยู่) ◂
   const before = await prisma.appointment.findFirst({
     where: { id: appointmentId, tenantId, unitId },
-    select: { status: true, depositSaleId: true, staffId: true, startAt: true, endAt: true },
+    select: { status: true, depositSaleId: true, staffId: true, startAt: true, endAt: true, queueTicketId: true, policySnapshot: true },
   });
+  // SVC B.4 ▸ J4: หน่วยแถวเดียว · ร้านถอย NO_SHOW/LATE กลับเป็นสถานะที่รอลูกค้า ⇒ จด `policySnapshot.job.manualHold = true` ใน CAS เดียวกัน
+  //   ⇒ tick ไม่ตั้ง LATE/NO_SHOW ซ้ำ (และไม่ริบมัดจำซ้ำ) · เช็กอินไม่ติด TOO_LATE · ร้านเดิมไม่ถูกแตะ (เขียนเฉพาะหน่วยแถวเดียว) ◂
+  const manualHoldSnap =
+    !!before && (before.status === "NO_SHOW" || before.status === "LATE") && (status === "PENDING" || status === "CONFIRMED" || status === "ARRIVED")
+    && !!(await (await import("./planner-run")).lineSettingsOf(tenantId, unitId))
+      ? withManualHold(before.policySnapshot)
+      : null;
   // SVC B.3 ▸ G5: ปลุกนัดที่ไม่ถือช่อง (CANCELLED/NO_SHOW) กลับเป็นสถานะที่ถือช่อง = วางนัดลงช่างใหม่ ⇒ ต้องกันซ้อนแบบเดียวกับการจอง
   //   ตรวจล่วงหน้าแบบไม่ล็อก (ก่อนคืนบิลริบ — ไม่คืนบิลแล้วค่อยมาปฏิเสธ) · ผลจริงตัดสินใต้ล็อกแถวช่างใน tx ด้านล่าง · ทางเปลี่ยนสถานะอื่นพฤติกรรมเดิม ◂
   const reviving =
@@ -952,7 +960,10 @@ export async function setAppointmentStatus(
     }
     const cas = await tx.appointment.updateMany({
       where: { id: appointmentId, tenantId, unitId, status: before.status },
-      data: reviving ? { status, cancelReason: null } : { status },
+      data: {
+        ...(reviving ? { status, cancelReason: null } : { status }),
+        ...(manualHoldSnap ? { policySnapshot: manualHoldSnap } : {}),
+      },
     });
     if (cas.count === 0) {
       reviveFail = LOST_RACE_REASON;
@@ -980,22 +991,21 @@ export async function setAppointmentStatus(
     // M3.3 (§7.1) — "ไม่มาตามนัด" = ทริกเกอร์ของ journey "จองแล้วไม่มา" (ชวนนัดใหม่) · ครบ 3 ทะเบียนแล้ว
     // 🔴 idempotencyKey ผูกกับตัวนัดเหมือน booking.completed ⇒ กดสลับสถานะไปกลับไม่ยิงซ้ำ (voucher ไม่เบิ้ล)
     if (status === "NO_SHOW") {
-      await emitOutbox(tx, {
-        tenantId,
-        unitId,
-        type: "booking.no_show",
-        idempotencyKey: `booking.no_show#${appointmentId}`,
-        payload: {
-          appointmentId,
-          tenantId,
-          unitId,
-          customerId: appt.customerId,
-          serviceId: appt.serviceId,
-        },
+      await emitNoShowTx(tx, { tenantId, unitId, appointmentId, customerId: appt.customerId, serviceId: appt.serviceId });
+    }
+    // SVC B.4 ▸ บัตรเดินตามงาน (ใบสั่ง §3.1 §3.4): งานที่มีบัตรคิว ⇒ บัตรเปลี่ยนใน tx เดียวกับ CAS ของงาน ·
+    //   CANCELLED → CANCELLED(STAFF) · NO_SHOW → NO_SHOW · DONE → DONE (ไม่ยิง queue.served) · สถานะอื่น = บัตรคงเดิม ·
+    //   บัตรไม่อยู่ในสถานะที่ย้ายได้ (จบ/ยกเลิกแล้ว) = ไม่ทำอะไร (งานยังเปลี่ยนตามที่สั่ง) ◂
+    const move = status === "CANCELLED" ? "CANCELLED" : status === "NO_SHOW" ? "NO_SHOW" : status === "DONE" ? "DONE" : null;
+    if (move && appt.queueTicketId) {
+      await queue.moveTicketTx(tx, { tenantId, unitId }, appt.queueTicketId, move, {
+        now: new Date(), actorType: "STAFF", actorId: opts?.actorUserId ?? null, cancelReason: "STAFF",
       });
     }
   });
   if (reviveFail) return { ok: false as const, reason: reviveFail };
+  // SVC B.4 ▸ หน่วยแถวเดียว ⇒ วางคิวใหม่หลัง commit (runPlanner ตรวจโหมดเอง · ร้านเดิม = ran:false ไม่เขียน) · ล้ม = log ไม่ทำให้การเปลี่ยนสถานะล้ม ◂
+  await replanAfterCommit(tenantId, unitId);
   // POS P5.1 ▸ MA12 (R1 F3 · CD-P51-O8a · ค่าปริยายระหว่าง W39 ยังเปิด): ไม่มาตามนัด = ริบมัดจำที่ยัง OPEN อัตโนมัติ หลัง commit สถานะ ·
   //   CANCELLED ไม่ริบ (O8b — มัดจำ OPEN ให้คนตัดสินที่หน้าบิล) · ล้ม = มัดจำยัง OPEN (log · ริบ/คืนที่หน้าบิลได้) · กดซ้ำ = คีย์เดิม ไม่มีบิลที่สอง ◂
   if (status === "NO_SHOW") {
@@ -1037,6 +1047,57 @@ async function forfeitNoShowDeposit(tenantId: string, unitId: string, appointmen
     return { forfeited: false, reason: "ริบมัดจำไม่สำเร็จ — ริบหรือคืนมัดจำที่หน้าบิล" };
   }
 }
+
+// ═════════ SVC B.4 ▸ ทางร่วมของ "ไม่มาตามนัด" + วางคิวหลัง commit (ใบสั่ง svc-brief-b.4 §3.3 §3.4) ═════════
+/** event `booking.no_show` — คีย์/payload เดียวกันทุกทาง (setAppointmentStatus · runLineTick) · ต้องเรียกใน tx เดียวกับ CAS ของสถานะ */
+export async function emitNoShowTx(
+  tx: Prisma.TransactionClient,
+  a: { tenantId: string; unitId: string; appointmentId: string; customerId: string | null; serviceId: string },
+): Promise<void> {
+  await emitOutbox(tx, {
+    tenantId: a.tenantId,
+    unitId: a.unitId,
+    type: "booking.no_show",
+    idempotencyKey: `booking.no_show#${a.appointmentId}`,
+    payload: {
+      appointmentId: a.appointmentId,
+      tenantId: a.tenantId,
+      unitId: a.unitId,
+      customerId: a.customerId,
+      serviceId: a.serviceId,
+    },
+  });
+}
+
+/** J4: policySnapshot + job.manualHold (additive · คีย์อื่นคงเดิม) */
+function withManualHold(snap: unknown): Prisma.InputJsonValue {
+  const base = snap && typeof snap === "object" && !Array.isArray(snap) ? (snap as Record<string, unknown>) : {};
+  const job = base.job && typeof base.job === "object" && !Array.isArray(base.job) ? (base.job as Record<string, unknown>) : {};
+  return { ...base, job: { ...job, manualHold: true } } as unknown as Prisma.InputJsonValue;
+}
+
+/**
+ * หลัง commit ของ NO_SHOW (ทาง tick): ริบมัดจำแบบเดียวกับ setAppointmentStatus — ไม่ throw ·
+ * J4: idempotent ต่อนัด — นัดนี้เคยมีบิลริบของโมดูลจองแล้ว (สถานะใดก็ตาม · รวมที่ถูก void ตอนร้านถอยกลับ) ⇒ ไม่ริบซ้ำ
+ */
+export async function forfeitAfterNoShow(tenantId: string, unitId: string, appointmentId: string): Promise<{ forfeited: boolean; reason?: string }> {
+  const prior = await prisma.posSale.findFirst({
+    where: { tenantId, sourceModule: "BOOKING", sourceId: appointmentId, idempotencyKey: { startsWith: "dep-forfeit:" } },
+    select: { id: true },
+  });
+  if (prior) return { forfeited: false };
+  return forfeitNoShowDeposit(tenantId, unitId, appointmentId);
+}
+
+/** วางคิวใหม่ของหน่วยหลัง commit (โหลดตอนใช้ กันวงโหลด service ↔ planner-run) · ล้ม = log เท่านั้น */
+export async function replanAfterCommit(tenantId: string, unitId: string, now?: Date): Promise<void> {
+  try {
+    await (await import("./planner-run")).runPlanner({ tenantId, unitId }, { now: now ?? new Date() });
+  } catch (e) {
+    console.error(`[booking] วางคิวใหม่ไม่สำเร็จ unit=${unitId}`, e instanceof Error ? e.message : e);
+  }
+}
+// ◂ SVC B.4
 
 // ── มัดจำ (WO Wave3-A: กัน no-show) ─────────────────────────────
 // ตั้งมัดจำต่อบริการ (บาท→สตางค์เก็บที่ action) · 0 = ไม่ต้องมัดจำ
@@ -1250,7 +1311,7 @@ export async function removeClosure(ctx: BookingCtx, id: string): Promise<void> 
 // 🔴 กุญแจต้องเชื่อถือได้: เบอร์ normalize ≥ 9 หลัก — ไม่งั้นไม่ผูก (party.findOrCreate สร้างใหม่ทุกครั้งเมื่อเบอร์ < 8 หลัก ⇒ Party ขยะ)
 // 🔴 ไม่มีวัน throw เข้าหาผู้เรียก · ล้ม = ปล่อย partyId ว่างให้ backfill party-links เก็บตก
 // AUDIT-CLASS X8: log แค่ชื่อตาราง + tenant ไม่มีเบอร์/อีเมล/ชื่อ
-async function linkPartyAfterCommit(tenantId: string, id: string, name: string | null | undefined, phone: string | null | undefined): Promise<void> {
+export async function linkPartyAfterCommit(tenantId: string, id: string, name: string | null | undefined, phone: string | null | undefined): Promise<void> {
   try {
     const phoneOk = normalizePartyPhone(phone).length >= 9;
     if (!phoneOk) return;
@@ -1432,7 +1493,8 @@ function candOf(p: StaffDayProfile, service: { id: string; durationMin: number; 
   };
 }
 
-/** นัดที่ "ถือช่อง" (ทุกสถานะยกเว้น CANCELLED/NO_SHOW) ของช่าง รอบวันนั้น ±1 วัน (+ bufferMin ของบริการของนัดนั้น) */
+/** นัดที่ "ถือช่อง" (ทุกสถานะยกเว้น CANCELLED/NO_SHOW) ของช่าง รอบวันนั้น ±1 วัน (+ bufferMin ของนัดนั้น)
+ *  SVC B.4 ▸ หนี้ B.3: buffer = `policySnapshot.job.bufferMin` (จดตอนจอง) ก่อน · แถวเก่าไม่มี = buffer ปัจจุบันของบริการ ◂ */
 type BusyRow = { staffId: string; startAt: Date; endAt: Date; channel: string | null; source: string; bufferMin: number };
 async function busyRowsOf(
   client: Pick<Prisma.TransactionClient, "$queryRaw">,
@@ -1443,14 +1505,31 @@ async function busyRowsOf(
   if (!staffIds.length) return [];
   const lo = new Date(localToUtc(dateStr, 0).getTime() - B3_DAY_MS);
   const hi = new Date(localToUtc(dateStr, 24 * 60).getTime() + B3_DAY_MS);
+  // SVC B.4 ▸ J5: งานที่มาแล้ว/กำลังทำ (ARRIVED · IN_SERVICE) ถือช่องจริงถึง max(endAt, ตอนนี้, เวลาตามแผน + ความยาว, เริ่มจริง + ความยาว) —
+  //   มาสายแล้วเข้าแถวแบบ walk-in / งานเลยเวลา ⇒ จองทับไม่ได้ · สถานะอื่น endAt เดิมทุกไบต์ ◂
+  const nowAt = new Date(Date.now());
   return client.$queryRaw<BusyRow[]>`
-    SELECT a."staffId", a."startAt", a."endAt", a."channel", a."source", COALESCE(s."bufferMin", 0)::int AS "bufferMin"
-    FROM "Appointment" a
-    LEFT JOIN "BookingService" s ON s."id" = a."serviceId"
-    WHERE a."tenantId" = ${tenantId}
-      AND a."staffId" = ANY(${staffIds}::text[])
-      AND a."status" NOT IN ('CANCELLED', 'NO_SHOW')
-      AND a."startAt" < ${hi} AND a."endAt" > ${lo}`;
+    SELECT b."staffId", b."startAt", b."endAt", b."channel", b."source", b."bufferMin" FROM (
+      SELECT a."staffId", a."startAt",
+        CASE WHEN a."status" IN ('ARRIVED', 'IN_SERVICE')
+             THEN GREATEST(a."endAt", ${nowAt}::timestamp,
+                           COALESCE(a."plannedStartAt", a."startAt") + (a."endAt" - a."startAt"),
+                           COALESCE(a."startedAt", a."startAt") + (a."endAt" - a."startAt"))
+             ELSE a."endAt" END AS "endAt",
+        a."channel", a."source",
+        COALESCE(CASE WHEN jsonb_typeof(a."policySnapshot" -> 'job' -> 'bufferMin') = 'number'
+                      THEN round((a."policySnapshot" -> 'job' ->> 'bufferMin')::numeric)::int END,
+                 s."bufferMin", 0)::int AS "bufferMin"
+      FROM "Appointment" a
+      LEFT JOIN "BookingService" s ON s."id" = a."serviceId"
+      WHERE a."tenantId" = ${tenantId}
+        AND a."staffId" = ANY(${staffIds}::text[])
+        AND a."status" NOT IN ('CANCELLED', 'NO_SHOW')
+        AND a."startAt" < ${hi}
+        -- N2: ขอบล่างเดิมของ B.3 กลับมา (ผลเท่าเดิม: สถานะอื่น endAt จริง = endAt · ARRIVED/IN_SERVICE ปลายอาจเลย endAt จึงผ่านเสมอแล้วกรองชั้นนอก)
+        AND (a."endAt" > ${lo} OR a."status" IN ('ARRIVED', 'IN_SERVICE'))
+    ) b
+    WHERE b."endAt" > ${lo}`;
 }
 
 /** แถวนี้มาจากลูกค้าจองเองไหม (แถวรุ่นแรก channel=null นับเมื่อ source='ONLINE' · §6 ข้อ 3) */
@@ -1843,7 +1922,8 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
           kind: "BOOKED",
           assignMode: i.staffId === null ? "ANY" : "SPECIFIC",
           channel: i.channel,
-          policySnapshot: snap as unknown as Prisma.InputJsonValue,
+          // SVC B.4 ▸ หนี้ B.3: นาทีเฉพาะคน + buffer ของบริการ ณ ตอนจอง (คีย์ระดับบนข้าง values · CC §1.6 additive) ◂
+          policySnapshot: { ...snap, job: { durationMin: chosen.durationMin, bufferMin: service.bufferMin } } as unknown as Prisma.InputJsonValue,
         },
         select: APPT_LITE,
       });

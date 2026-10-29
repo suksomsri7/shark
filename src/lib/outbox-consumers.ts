@@ -1205,6 +1205,19 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   payload { unitId, roomId, from, to } (id + วันที่ล้วน) · งานหลัก = no-op (ปิด event เป็น DONE — ไม่มี consumer = คิวตัน) ·
   //   หอ H.10 จะต่อของแถมภายหลัง · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
   "rooms.occupancy.changed": withAutomation(async () => {}),
+  // SVC B.4 ▸ จองคิวโหมดแถวเดียว (CC §7) — ยิงจาก `booking/queue-line.ts` + `booking/planner-run.ts` ใน tx เดียวกับ CAS ของงาน ·
+  //   payload id ล้วน (X8) · งานหลัก = no-op (สถานะ/บัตรเขียนครบใน tx ของ service แล้ว) — บรรทัดเหล่านี้ปิด event เป็น DONE
+  //   (ไม่มี consumer = คิวตัน) + ทริกเกอร์กฎอัตโนมัติ/เว็บฮุค · B.9 ต่อแจ้งเตือนลูกค้าภายหลัง
+  //   🔴 บัตรแถวเดียว **ไม่ยิง** `queue.served` (booking.completed ทำหน้าที่ VISIT ของ CRM แล้ว — ไม่ลงซ้ำ) ◂
+  "booking.created": withAutomation(async () => {}),
+  "booking.rescheduled": withAutomation(async () => {}),
+  "booking.cancelled": withAutomation(async () => {}),
+  "booking.checked_in": withAutomation(async () => {}),
+  "booking.late": withAutomation(async () => {}),
+  "booking.started": withAutomation(async () => {}),
+  "queue.ticket.called": withAutomation(async () => {}),
+  "queue.ticket.done": withAutomation(async () => {}),
+  // ◂ SVC B.4
   // SVC D.6 ▸ เลขมิเตอร์หอผิดปกติ (HIGH/LOW/BACKWARDS/VACANT_USAGE) — ยิงจาก `dorm/meter.ts` ใน tx เดียวกับแถวเลข ·
   //   payload { unitId, meterId, roomId (null = มิเตอร์หลัก), readingId, periodKey, flag } id ล้วน (X8) · งานหลัก = no-op
   //   (การพักบิล/การ์ดบอร์ดงานทำใน service แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂

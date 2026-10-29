@@ -517,6 +517,25 @@ registerMinuteJob({
   run: async (now) => (await import("@/lib/modules/booking/service")).expireDepositHolds(now),
 });
 // ◂ SVC B.3
+// SVC B.4 ▸ จองคิวโหมดแถวเดียว: สาย → ไม่มา → สิ้นวันของ walk-in → วางคิวใหม่ (ทุกนาที · ข้ามร้าน · ใบสั่ง svc-brief-b.4 §3.3 §3.6) —
+//   โหลดตอนรันเท่านั้น · idempotent: UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED + event ใน tx เดียวกับแถว ⇒ route + crontab ยิงซ้อน
+//   แต่ละนัดเปลี่ยนครั้งเดียว event ครั้งเดียว (X5) · เฉพาะหน่วย BOOKING ที่ booking.queue.singleLine = true (ร้านเดิมไม่ถูกแตะ)
+registerMinuteJob({
+  name: "booking.line.tick",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/booking/planner-run")).runLineTick(now),
+});
+// ◂ SVC B.4
+// SVC B.4 ▸ บัตรคิว: สิ้นวัน (resetDaily) + ข้ามเกินเวลา → ไม่มา (expireSkipped) ทุกหน่วยที่มีบัตรค้าง · ข้ามบัตรของจองคิว (refType APPOINTMENT) ·
+//   ทุก 5 นาที · ข้ามร้าน · updateMany มีเงื่อนไขสถานะ ⇒ ยิงซ้อนกันได้
+registerMinuteJob({
+  name: "queue.housekeeping",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/queue/service")).runQueueHousekeeping(now),
+});
+// ◂ SVC B.4
 
 // SVC R0.9 ▸ แกนห้อง: ปล่อย occupancy ของการจองโรงแรมที่ไม่ใช่ BOOKED/CHECKED_IN แล้ว (เช็คเอาท์/ยกเลิก/คืนเงิน แต่ปล่อยห้องล้ม)
 //   ทุก 5 นาที · ข้ามร้าน · lazy import facade แบบ rooms.expireHolds · idempotent (SKIP LOCKED + active ใน UPDATE)

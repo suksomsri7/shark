@@ -231,7 +231,7 @@ console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet
 // SVC R0.8 rooms/occupancy.ts (46 → 47): `expireHolds` ไล่ hold หมดเวลา "ข้ามร้าน" จาก minute-job ก่อนรู้ tenant (เหมือน inventory sweep ·
 //   UPDATE มีเงื่อนไข active + FOR UPDATE SKIP LOCKED) + `withRoomTx` เปิดธุรกรรมให้ rooms/service.ts — ไฟล์เดียวของโมดูล rooms ที่ import prisma ดิบ
 //   (service.ts/index.ts ใช้ tenantDb) · ทุกคำสั่งเขียนอื่นผูก tenantId+unitId ตรง (X1 · oracle qc-svc-r0.8 C-8/C-9/R-2/R-9)
-const BASELINE = { f5RawPrisma: 47 }; // 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+const BASELINE = { f5RawPrisma: 49 }; // SVC B.4: queue-line.ts + planner-run.ts need FOR UPDATE SKIP LOCKED / advisory locks / cross-tenant tick (47→49) · 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
@@ -460,6 +460,9 @@ const ALLOWED_EDGES = new Set([
   //   🔴 ทิศเดียวและ **อ่านอย่างเดียว**: facade ทั้งสามใบไม่มีคำสั่งเขียนเลย (ข้อสอบ C2.4-S4.3 เทียบแถวก่อน/หลัง) ·
   //      CRM โหลดแบบ lazy import ตอนใช้ (booking/service → pos → account → … → crm facade = วงโหลดถ้า import หัวไฟล์)
   "crm→booking",
+  // SVC B.4 ▸ booking→queue : บัตร P/A ของโหมดแถวเดียวออก/เดินตามงานใน tx เดียวกับสถานะนัด (`queue/service.issueTicketTx` · `moveTicketTx` ·
+  //   `ensureSystemQueueType`) · ทิศเดียว — queue ไม่ import booking (ข้อสอบ qc-svc-b.4 ST-6) ◂
+  "booking→queue",
   "crm→clinic",
   "crm→school",
   // ◂ CRM C2.4
