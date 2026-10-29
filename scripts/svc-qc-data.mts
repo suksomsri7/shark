@@ -602,3 +602,63 @@ export function sqcTicketToken(secret: string, t: { tenantId: string; unitId: st
     },
   ];
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC B.7 ▸ บล็อกของใบ B.7 เท่านั้น (จองออนไลน์ 3 ขั้น ภาพ จอง 03 + ลิงก์จัดการนัด) — ต่อท้ายโดยผู้เขียนข้อสอบ · เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-b.7.md · ข้อสอบ scripts/qc-svc-b.7.mts · ฉาก scripts/svc-qc-online-scene.mts (builder)
+//   ใช้ createHmac ที่ import ไว้แล้วในบล็อก B.6 (ESM ยก import ขึ้นก่อน — ห้าม import ซ้ำชื่อเดิม)
+// ═════════════════════════════════════════════════════════════════════════════
+/** วันฉาก B.7 = วันฉาก B.5 + 14 (เสาร์ · คนละวันกับฉาก B.5 (+0) และ B.6 (+7) บนหน่วย barber · ภายใน horizon 30 วันของ BARBER) · pure */
+export function sqcOnlineSceneDay(todayYmd: string): string {
+  const [y, m, d] = sqcLineSceneDate(todayYmd).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 14)).toISOString().slice(0, 10);
+}
+export const SQC_ONLINE_SCENE_DAY = sqcOnlineSceneDay(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10));
+/**
+ * ฉากภาพ 03 (คุณแพรว จองดัดผม ช่างนุ่น 15:30 · เปิดจาก LINE ร้าน): นัดช่างนุ่นวันฉาก (ช่อง STAFF) ⇒ ขั้น 2 มีเวลาขีดฆ่า และ 15:30 ว่าง
+ *   ดัดผม 120 นาที ฿1,500 · มัดจำแม่แบบ BARBER 20% ของงาน ≥ 90 นาที = ฿300 · จ่ายที่ร้าน ฿1,200 · จะเสร็จราว 17:30
+ *   Party ตายตัว (ตัวตนจากลิงก์เซ็น booking.identity) · เบอร์ลงท้าย 4417 ตามภาพ
+ */
+export const SQC_ONLINE_SCENE = {
+  idemPrefix: "svcqc-online-",
+  party: { id: "svcqc-party-praew", name: "คุณแพรว", phone: "0812344417" },
+  pick: { serviceName: "ดัดผม", sku: "SVCQC-BB-06", staffId: "svcqc-staff-barber-nun", time: "15:30" },
+  /** นัดของช่างนุ่นในวันฉาก (bookAppointment ช่อง STAFF · ไม่กินโควตาออนไลน์) */
+  bookings: [
+    { key: "N1", sku: "SVCQC-BB-06", start: "10:00", name: "ลูกค้าฉาก 1", phone: "0899700001" },
+    { key: "N2", sku: "SVCQC-BB-01", start: "12:00", name: "ลูกค้าฉาก 2", phone: "0899700002" },
+    { key: "N3", sku: "SVCQC-BB-06", start: "13:15", name: "ลูกค้าฉาก 3", phone: "0899700003" },
+  ],
+  expect: { priceSatang: 150000, depositSatang: 30000, payAtShopSatang: 120000, end: "17:30", phoneMasked: "•••-•••-4417" },
+} as const;
+
+/** ลิงก์ตัวตนจาก LINE (ใบสั่ง B.7 §3.3 = signLink purpose "booking.identity" subject partyId) — สูตรเดียวกับ src/lib/core/signed-link.ts · pure */
+export function sqcIdentityToken(secret: string, t: { tenantId: string; partyId: string; nowMs: number; ttlMin: number; nonce?: string }): string {
+  const e = Math.floor(t.nowMs / 1000) + t.ttlMin * 60;
+  const n = t.nonce ?? Buffer.from(`svcqc-b7-${t.partyId}`.slice(0, 16).padEnd(16, "x"), "utf8").toString("base64url");
+  const p = Buffer.from(JSON.stringify({ v: 1, t: t.tenantId, u: "booking.identity", s: t.partyId, e, n }), "utf8").toString("base64url");
+  return `${p}.${createHmac("sha256", `signed-link:v1:${secret}`).update(p).digest("base64url")}`;
+}
+/** token ลิงก์จัดการนัด (ใบสั่ง B.7 §3.1) = base64url(HMAC-SHA256("booking-manage:v1:" + secret, appointmentId)) · pure */
+export function sqcManageToken(secret: string, appointmentId: string): string {
+  return createHmac("sha256", `booking-manage:v1:${secret}`).update(appointmentId).digest("base64url");
+}
+
+// B.7 จองออนไลน์ 3 ขั้น (ภาพ จอง 03 ก ข ค · มือถือ 390) — หน้าร้านสาธารณะ (ไม่ต้องล็อกอิน) · ก่อนถ่าย: reseed → scripts/svc-qc-online-scene.mts
+//   path ทุกตัวคิดตอนอ่าน (getter): ลิงก์ตัวตนเซ็นด้วย SESSION_SECRET ใน env ที่ visual-svc โหลดแล้ว (อายุ 120 นาที) · svc = ชื่อบริการ (id บน svcqc ไม่คงที่ · ใบสั่ง §3.2)
+//   ⚠️ วันฉากคิดจาก "วันนี้ไทย" ตอนโหลดไฟล์ ⇒ รันฉากแล้วถ่ายภาพในวันเดียวกัน
+{
+  const base = `/s/${SQC_TENANT.slug}/${SQC_UNITS.barber.slug}`;
+  const who = (): string => {
+    const secret = process.env.SESSION_SECRET ?? "";
+    if (secret.length < 32) return "no-session-secret";
+    return sqcIdentityToken(secret, { tenantId: SQC_TENANT.id, partyId: SQC_ONLINE_SCENE.party.id, nowMs: Date.now(), ttlMin: 120 });
+  };
+  const sel = `svc=${encodeURIComponent(SQC_ONLINE_SCENE.pick.serviceName)}&staff=${SQC_ONLINE_SCENE.pick.staffId}&date=${SQC_ONLINE_SCENE_DAY}`;
+  SQC_VISUAL_SPECS["b.7"] = [
+    { name: "online-step1", get path(): string { return `${base}?who=${encodeURIComponent(who())}`; } },
+    { name: "online-step2", get path(): string { return `${base}?${sel}&who=${encodeURIComponent(who())}`; } },
+    { name: "online-step3", get path(): string { return `${base}?${sel}&time=${SQC_ONLINE_SCENE.pick.time}&who=${encodeURIComponent(who())}`; } },
+  ];
+}
+// ◂ SVC B.7
