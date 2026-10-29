@@ -18,6 +18,7 @@
 //
 // เวลา: ทุกฉากใช้วันอนาคตคงที่ (วันไทย +5…+41) + `now` ฉีดเข้า (ไม่เปราะตามเวลาที่รัน — บทเรียน B-4 ของ B.3)
 // ร้านทดสอบ slug `qc-svc-b4-*` · ลบใน finally (+ กวาดค้างตอนเริ่ม) · tick/housekeeping ส่ง tenantIds เสมอ (ห้ามแตะ seed)
+// ORACLE-EDIT 29 ต.ค. (review): +X-6 X-7 W-7 W-8 L-13 L-14 TZ-3 TZ-4 Q-5 K-6 · รหัส BUSY/CLASH · policySnapshot.job.manualHold/.priority — /root/svc-runs/fix/b4.md J1–J6
 // ORACLE-EDIT 29 ต.ค. (builder · ผู้คุมอนุมัติ): W-2 เรียกที่ 10:00 (เดิม 10:01 · planDay ดึง walk-in ที่ยังไม่เริ่มมาที่ now) · Q-2b เรียก expireSkipped ก่อน resetDaily (resetDaily เดิมยกเลิก SKIPPED ด้วย)
 // รัน: bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-b.4.mts [--no-regression]
 //      (ห้าม timeout ครอบ · `--no-regression` = ข้าม G เป็น SKIP ซึ่งไม่นับผ่าน · iso.sh ทิ้ง env จึงใช้อาร์กิวเมนต์)
@@ -55,17 +56,20 @@ if (process.env.CI) { console.error(`🔴 ${LABEL}: ห้าม export CI (with
 type Ctx = { tenantId: string; unitId: string; actorUserId?: string };
 type CheckInBy = { appointmentId: string } | { token: string } | { phone: string };
 type CheckInVia = "QR" | "LINE" | "PHONE" | "STAFF";
-type CheckInFail = "NOT_FOUND" | "NOT_TODAY" | "TOO_LATE" | "NOT_CONFIRMED" | "BAD_STATE" | "AMBIGUOUS" | "NOT_SINGLE_LINE" | "BAD_INPUT";
+type CheckInFail = "NOT_FOUND" | "NOT_TODAY" | "TOO_LATE" | "NOT_CONFIRMED" | "BAD_STATE" | "AMBIGUOUS" | "NOT_SINGLE_LINE" | "BAD_INPUT"
+  | "BUSY"; // ORACLE-EDIT 29 ต.ค. (review) J1
 type CheckInResult =
   | { ok: true; appointmentId: string; ticketId: string; ticketNumber: string; already: boolean; asWalkIn: boolean }
   | { ok: false; code: CheckInFail; reason: string; candidates?: { appointmentId: string; startAt: Date; staffId: string }[] };
 type WalkInChannel = "KIOSK" | "STAFF" | "REMOTE";
 type WalkInInput = { serviceId: string; staffId: string | null; channel: WalkInChannel; customerName?: string; customerPhone?: string; priority?: boolean };
-type WalkInFail = "NOT_FOUND" | "NOT_SINGLE_LINE" | "WALKIN_DISABLED" | "WALKIN_CLOSED" | "BAD_INPUT";
+type WalkInFail = "NOT_FOUND" | "NOT_SINGLE_LINE" | "WALKIN_DISABLED" | "WALKIN_CLOSED" | "BAD_INPUT"
+  | "BUSY"; // ORACLE-EDIT 29 ต.ค. (review) J1
 type WalkInResult =
   | { ok: true; appointmentId: string; ticketId: string; ticketNumber: string; staffId: string | null; plannedStartAt: Date | null; waitMin: number | null }
   | { ok: false; code: WalkInFail; reason: string };
-type JobFail = "NOT_FOUND" | "BAD_STATE" | "LOST_RACE";
+type JobFail = "NOT_FOUND" | "BAD_STATE" | "LOST_RACE"
+  | "BUSY" | "CLASH"; // ORACLE-EDIT 29 ต.ค. (review) J1 J3
 type JobResult = { ok: true } | { ok: false; code: JobFail; reason: string };
 type RescheduleFail = JobFail | "FULL" | "PAST" | "BAD_INPUT" | "ON_LEAVE" | "NOT_QUALIFIED";
 type RescheduleResult = { ok: true } | { ok: false; code: RescheduleFail; reason: string };
@@ -105,6 +109,7 @@ type BookingApi = {
   findSlots: (ctx: Ctx, q: { serviceId: string; staffId: string | null; dateStr: string; channel: BookingChannel }) => Promise<Slot[]>;
   createAppointment: (i: CreateInput) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
   setAppointmentStatus: (tenantId: string, unitId: string, id: string, status: "PENDING" | "CONFIRMED" | "ARRIVED" | "DONE" | "NO_SHOW" | "CANCELLED") => Promise<{ ok: boolean; reason?: string }>;
+  recordDeposit: (ctx: Ctx, appointmentId: string) => Promise<{ ok: boolean; reason?: string; saleId?: string }>; // ORACLE-EDIT 29 ต.ค. (review)
 };
 type PlanSettings = {
   queueOrder: "SINGLE_LINE" | "APPOINTMENT_FIRST"; backfill: boolean; safetyBeforeBookingMin: number; graceMin: number; noShowAfterMin: number;
@@ -194,8 +199,9 @@ type CallSpec =
   | { fn: "book"; ctx: Ctx; input: BookInput }
   | { fn: "checkIn"; ctx: Ctx; by: CheckInBy; via: CheckInVia; now: string }
   | { fn: "walkIn"; ctx: Ctx; input: WalkInInput; now: string }
-  | { fn: "tick"; now: string; tenantIds: string[] };
-type CallOut = { fn: CallSpec["fn"]; ok: boolean; code: string | null; id: string | null; ticketId: string | null; ticketNumber: string | null; staffId: string | null; already: boolean | null; late: number | null; noShow: number | null; threw: string | null };
+  | { fn: "tick"; now: string; tenantIds: string[] }
+  | { fn: "planLoop"; ctx: Ctx; now: string; times: number }; // ORACLE-EDIT 29 ต.ค. (review) X-6
+type CallOut = { fn: CallSpec["fn"]; ok: boolean; code: string | null; id: string | null; ticketId: string | null; ticketNumber: string | null; staffId: string | null; already: boolean | null; late: number | null; noShow: number | null; threw: string | null; deadlock?: boolean };
 type ChildSpec = { run: string; idx: number; scenarios: { key: string; calls: CallSpec[] }[] };
 type Scenario = { key: string; perChild: CallSpec[][] };
 const goFile = (run: string, key: string) => `/tmp/svc-b4-go-${run}-${key}`;
@@ -220,10 +226,15 @@ async function runCall(c: CallSpec): Promise<CallOut> {
       const r = await LN.walkIn()(c.ctx, c.input, { now: new Date(c.now) });
       return r.ok ? { ...o, ok: true, id: r.appointmentId, ticketId: r.ticketId, ticketNumber: r.ticketNumber, staffId: r.staffId } : { ...o, code: r.code };
     }
+    if (c.fn === "planLoop") { // ORACLE-EDIT 29 ต.ค. (review) X-6: runPlanner วนซ้ำ (ด้านตัววางคิวของวงรอ)
+      for (let k = 0; k < c.times; k++) await RN.plan()(c.ctx, { now: new Date(c.now) });
+      return { ...o, ok: true };
+    }
     const r = await RN.tick()(new Date(c.now), { tenantIds: c.tenantIds });
     return { ...o, ok: true, late: r.late, noShow: r.noShow };
   } catch (e) {
-    return { ...o, threw: errMsg(e).slice(0, 160) };
+    const m = errMsg(e);
+    return { ...o, threw: m.slice(0, 160), deadlock: /40P01|deadlock/i.test(m) };
   }
 }
 if (process.env.QC_B4_CHILD) {
@@ -309,6 +320,8 @@ const dd = (k: number) => addDays(TODAY, 5 + k);
 const D = {
   K: dd(0), K2: dd(1), W: dd(2), J: dd(3), Dd: dd(4), X0: dd(5), X1: dd(6), X2: dd(7), X5: dd(8), TZ: dd(9),
   L1: dd(10), Snap: dd(13), Hold: dd(16), Leg: dd(19), Null: dd(22), Eod: dd(25), Eod2: dd(26), X3: dd(29), X4: dd(30), B: dd(36),
+  // ORACLE-EDIT 29 ต.ค. (review)
+  K6: dd(37), X7: dd(37), W7: dd(38), W8: dd(38), Q5: dd(38), TZ3a: dd(39), TZ3b: dd(40), TZ4a: dd(41), TZ4b: dd(42), L13: dd(50), L14: dd(53),
 };
 const T = (k: string) => `svcb4_${k}_${RUN}`;
 const ids = {
@@ -326,7 +339,15 @@ const ids = {
   uT1: T("uT1"), uT2: T("uT2"), uT3: T("uT3"), uX4: T("uX4"), TK1: T("TK1"), TK2: T("TK2"), TK3: T("TK3"), X4S: T("X4S"),
   // tB
   uB: T("uB"), b1: T("b1"), B60: T("B60"),
+  // ORACLE-EDIT 29 ต.ค. (review)
+  tX6: T("tX6"), uX6: T("uX6"), X6S: T("X6S"),
+  uX7: T("uX7"), x7a: T("x7a"), x7b: T("x7b"), X730: T("X730"),
+  uW7: T("uW7"), w7: T("w7"), W7S: T("W7S"), uW8: T("uW8"), w8: T("w8"), W8S: T("W8S"),
+  uQ5: T("uQ5"), q5: T("q5"), Q5S: T("Q5S"),
+  uTZ3: T("uTZ3"), z3: T("z3"), Z3S: T("Z3S"), uTZ3b: T("uTZ3b"), z3b: T("z3b"), Z3bS: T("Z3bS"), uTZ4: T("uTZ4"), z4: T("z4"), Z4S: T("Z4S"),
+  uL13: T("uL13"), n13: T("n13"), N13S: T("N13S"), uL14: T("uL14"), m14: T("m14"), M14S: T("M14S"),
 };
+const X6STAFF = Array.from({ length: 8 }, (_, i) => T(`x6s${i + 1}`)); // ORACLE-EDIT 29 ต.ค. (review)
 const RACE = Array.from({ length: 5 }, (_, i) => T(`r${i + 1}`));
 const TICKSTAFF = [1, 2, 3].map((r) => Array.from({ length: 6 }, (_, i) => T(`t${r}s${i + 1}`)));
 const X4STAFF = Array.from({ length: 5 }, (_, i) => T(`x4s${i + 1}`));
@@ -346,7 +367,18 @@ const cX4: Ctx = { tenantId: ids.tT4, unitId: ids.uX4 };
 const cB: Ctx = { tenantId: ids.tB, unitId: ids.uB };
 const TK_SVC = [ids.TK1, ids.TK2, ids.TK3];
 const OWNER: Actor = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: ids.owner };
-const ALL_TENANTS = [ids.tA, ids.tL, ids.tT1, ids.tT2, ids.tT3, ids.tT4, ids.tB];
+const ALL_TENANTS = [ids.tA, ids.tL, ids.tT1, ids.tT2, ids.tT3, ids.tT4, ids.tB, ids.tX6];
+// ORACLE-EDIT 29 ต.ค. (review)
+const cX6: Ctx = { tenantId: ids.tX6, unitId: ids.uX6 };
+const cX7: Ctx = { tenantId: ids.tA, unitId: ids.uX7 };
+const cW7: Ctx = { tenantId: ids.tA, unitId: ids.uW7 };
+const cW8: Ctx = { tenantId: ids.tA, unitId: ids.uW8 };
+const cQ5: Ctx = { tenantId: ids.tA, unitId: ids.uQ5 };
+const cTZ3: Ctx = { tenantId: ids.tA, unitId: ids.uTZ3 };
+const cTZ3b: Ctx = { tenantId: ids.tA, unitId: ids.uTZ3b };
+const cTZ4: Ctx = { tenantId: ids.tA, unitId: ids.uTZ4 };
+const cL13: Ctx = { tenantId: ids.tL, unitId: ids.uL13 };
+const cL14: Ctx = { tenantId: ids.tL, unitId: ids.uL14 };
 let phoneN = 0;
 const newPhone = () => `08${String(40_000_000 + ++phoneN).slice(-8)}`;
 const CUST = "ลูกค้า QC B4";
@@ -366,7 +398,7 @@ type ApRow = {
   id: string; status: string; kind: string; assignMode: string; channel: string | null; source: string; staffId: string; startAt: Date; endAt: Date;
   checkedInAt: Date | null; startedAt: Date | null; doneAt: Date | null; lateAt: Date | null; plannedStartAt: Date | null; plannedStaffId: string | null;
   queueTicketId: string | null; cancelReason: string | null; customerPhone: string; rescheduleCount: number; updatedAt: Date;
-  policySnapshot: { values?: Record<string, unknown>; job?: { durationMin?: number; bufferMin?: number } } | null;
+  policySnapshot: { values?: Record<string, unknown>; job?: { durationMin?: number; bufferMin?: number; manualHold?: boolean; priority?: boolean } } | null;
 };
 const apRow = async (id: string): Promise<ApRow> => {
   const [r] = await q<ApRow>(`SELECT id, status::text AS status, kind, "assignMode", channel, source, "staffId", "startAt", "endAt", "checkedInAt", "startedAt", "doneAt", "lateAt",
@@ -405,6 +437,17 @@ const failCode = (r: { ok: boolean; code?: string; reason?: string }, code: stri
   return r.reason as string;
 };
 const tick = (ds: string, min: number, tenants: string[]) => RN.tick()(at(ds, min), { tenantIds: tenants });
+// ORACLE-EDIT 29 ต.ค. (review): แถวถือช่อง (ไม่ใช่ CANCELLED/NO_SHOW/DONE) ของช่างที่ช่วงซ้อนกันในฐาน · ช่วงเวลาใดก็ได้ (ข้ามเที่ยงคืน)
+const overlapIn = async (staffId: string, fromMs: number, toMs: number): Promise<string[]> => {
+  const rows = await q<{ id: string; s: Date; e: Date }>(`SELECT id, "startAt" AS s, "endAt" AS e FROM "Appointment" WHERE "staffId" = $1 AND "startAt" < $3 AND "endAt" > $2 AND status NOT IN ('CANCELLED','NO_SHOW','DONE') ORDER BY "startAt", id`, [staffId, new Date(fromMs), new Date(toMs)]);
+  const bad: string[] = [];
+  for (let i = 0; i < rows.length; i++) for (let j = i + 1; j < rows.length; j++) if (rows[j].s.getTime() < rows[i].e.getTime() && rows[i].s.getTime() < rows[j].e.getTime()) bad.push(`${hhmm(((rows[i].s.getTime() / 60_000 + 420) % 1440 + 1440) % 1440)}×${hhmm(((rows[j].s.getTime() / 60_000 + 420) % 1440 + 1440) % 1440)}`);
+  return bad;
+};
+const bookFull = async (ctx: Ctx, serviceId: string, staffId: string, ds: string, min: number) => {
+  const r = await BK().bookAppointment(ctx, bk({ serviceId, staffId, dateStr: ds, startMin: min, channel: "STAFF" }));
+  return r.ok ? "OK" : r.code;
+};
 
 const goFiles: string[] = [];
 let setupOk = false;
@@ -422,7 +465,7 @@ try {
   // ── สร้างข้อมูล ──
   try {
     tenantIds.push(...ALL_TENANTS);
-    for (const [id, n] of [[ids.tA, "a"], [ids.tL, "l"], [ids.tT1, "t1"], [ids.tT2, "t2"], [ids.tT3, "t3"], [ids.tT4, "t4"], [ids.tB, "b"]] as const) {
+    for (const [id, n] of [[ids.tA, "a"], [ids.tL, "l"], [ids.tT1, "t1"], [ids.tT2, "t2"], [ids.tT3, "t3"], [ids.tT4, "t4"], [ids.tB, "b"], [ids.tX6, "x6"]] as const) {
       SLUGS[id] = `${SLUG}${n}-${RUN}`;
       await insertRow("Tenant", { id, name: `QC B4 ร้าน ${n}`, slug: SLUGS[id], updatedAt: new Date() });
     }
@@ -430,11 +473,15 @@ try {
       [ids.uL, ids.tA, "BOOKING", "line"], [ids.uRace, ids.tA, "BOOKING", "race"], [ids.uLegA, ids.tA, "BOOKING", "lega"], [ids.uD, ids.tA, "BOOKING", "debt"], [ids.uQ, ids.tA, "QUEUE", "q"],
       [ids.uL1, ids.tL, "BOOKING", "l1"], [ids.uSnap, ids.tL, "BOOKING", "snap"], [ids.uHold, ids.tL, "BOOKING", "hold"], [ids.uLeg, ids.tL, "BOOKING", "leg"], [ids.uEod, ids.tL, "BOOKING", "eod"],
       [ids.uT1, ids.tT1, "BOOKING", "t1"], [ids.uT2, ids.tT2, "BOOKING", "t2"], [ids.uT3, ids.tT3, "BOOKING", "t3"], [ids.uX4, ids.tT4, "BOOKING", "x4"], [ids.uB, ids.tB, "BOOKING", "b"],
+      // ORACLE-EDIT 29 ต.ค. (review)
+      [ids.uX6, ids.tX6, "BOOKING", "x6"], [ids.uX7, ids.tA, "BOOKING", "x7"], [ids.uW7, ids.tA, "BOOKING", "w7"], [ids.uW8, ids.tA, "BOOKING", "w8"], [ids.uQ5, ids.tA, "BOOKING", "q5"],
+      [ids.uTZ3, ids.tA, "BOOKING", "tz3"], [ids.uTZ3b, ids.tA, "BOOKING", "tz3b"], [ids.uTZ4, ids.tA, "BOOKING", "tz4"], [ids.uL13, ids.tL, "BOOKING", "l13"], [ids.uL14, ids.tL, "BOOKING", "l14"],
     ];
+    const H24 = new Set([ids.uTZ3, ids.uTZ3b, ids.uTZ4]); // ORACLE-EDIT 29 ต.ค. (review) TZ-3/TZ-4: เปิด 00:00–24:00
     for (const [id, t, type, n] of units) {
       SLUGS[id] = `b4-${n}-${RUN}`;
       await insertRow("BusinessUnit", { id, tenantId: t, type, name: `สาขา ${n}`, slug: SLUGS[id], updatedAt: new Date() });
-      if (type === "BOOKING") for (let w = 0; w < 7; w++) await insertRow("BookingHours", { id: rid("bh"), tenantId: t, unitId: id, weekday: w, openMin: 600, closeMin: 1200, closed: false, updatedAt: new Date() });
+      if (type === "BOOKING") for (let w = 0; w < 7; w++) await insertRow("BookingHours", { id: rid("bh"), tenantId: t, unitId: id, weekday: w, openMin: H24.has(id) ? 0 : 600, closeMin: H24.has(id) ? 1440 : 1200, closed: false, updatedAt: new Date() });
     }
     const svc = async (id: string, t: string, u: string, name: string, durationMin: number, bufferMin: number) =>
       insertRow("BookingService", { id, tenantId: t, unitId: u, name, durationMin, priceSatang: 30000, bufferMin, depositSatang: 0, bookable: true, sortOrder: 0, updatedAt: new Date() });
@@ -455,6 +502,10 @@ try {
     await svc(ids.TK3, ids.tT3, ids.uT3, "ตัดผม t3", 60, 0);
     await svc(ids.X4S, ids.tT4, ids.uX4, "ตัดผม x4", 60, 0);
     await svc(ids.B60, ids.tB, ids.uB, "ตัดผม B", 60, 0);
+    // ORACLE-EDIT 29 ต.ค. (review)
+    for (const [id, t, u, d] of [[ids.X6S, ids.tX6, ids.uX6, 60], [ids.X730, ids.tA, ids.uX7, 30], [ids.W7S, ids.tA, ids.uW7, 60], [ids.W8S, ids.tA, ids.uW8, 60], [ids.Q5S, ids.tA, ids.uQ5, 60],
+      [ids.Z3S, ids.tA, ids.uTZ3, 60], [ids.Z3bS, ids.tA, ids.uTZ3b, 60], [ids.Z4S, ids.tA, ids.uTZ4, 60], [ids.N13S, ids.tL, ids.uL13, 60], [ids.M14S, ids.tL, ids.uL14, 60]] as const) await svc(id, t, u, `บริการ ${u.slice(6, 12)}`, d, 0);
+    await q(`UPDATE "BookingService" SET "depositSatang" = 5000 WHERE id = $1`, [ids.N13S]);
     let ord = 0;
     const staff = async (id: string, t: string, u: string, name: string, sortOrder: number) =>
       insertRow("BookingStaff", { id, tenantId: t, unitId: u, name, sortOrder, createdAt: new Date(Date.now() - 600_000 + ++ord * 1000), updatedAt: new Date() });
@@ -471,6 +522,11 @@ try {
     for (const [r, list] of TICKSTAFF.entries()) for (const [i, id] of list.entries()) await staff(id, cT[r].tenantId, cT[r].unitId, `ช่างทิก ${r + 1}.${i + 1}`, i + 1);
     for (const [i, id] of X4STAFF.entries()) await staff(id, ids.tT4, ids.uX4, `ช่าง x4 ${i + 1}`, i + 1);
     await staff(ids.b1, ids.tB, ids.uB, "ช่างร้าน B", 1);
+    // ORACLE-EDIT 29 ต.ค. (review)
+    for (const [i, id] of X6STAFF.entries()) await staff(id, ids.tX6, ids.uX6, `ช่าง x6 ${i + 1}`, i + 1);
+    await staff(ids.x7a, ids.tA, ids.uX7, "ช่าง x7 ศูนย์", 1);
+    await staff(ids.x7b, ids.tA, ids.uX7, "ช่าง x7 หนึ่ง", 2);
+    for (const [id, t, u] of [[ids.w7, ids.tA, ids.uW7], [ids.w8, ids.tA, ids.uW8], [ids.q5, ids.tA, ids.uQ5], [ids.z3, ids.tA, ids.uTZ3], [ids.z3b, ids.tA, ids.uTZ3b], [ids.z4, ids.tA, ids.uTZ4], [ids.n13, ids.tL, ids.uL13], [ids.m14, ids.tL, ids.uL14]] as const) await staff(id, t, u, `ช่าง ${u.slice(6, 12)}`, 1);
     // หน่วย QUEUE เดิม (ร้าน A)
     await insertRow("QueueType", { id: ids.qType, tenantId: ids.tA, unitId: ids.uQ, code: "GEN", name: "ทั่วไป", prefix: "Q", updatedAt: new Date() });
     await insertRow("QueueCounter", { id: ids.qCounter, tenantId: ids.tA, unitId: ids.uQ, code: "1", name: "ช่อง 1", status: "OPEN", updatedAt: new Date() });
@@ -486,8 +542,10 @@ try {
   const BARBER_UNITS: [string, string][] = [
     [ids.tA, ids.uL], [ids.tA, ids.uRace], [ids.tA, ids.uD], [ids.tL, ids.uL1], [ids.tL, ids.uSnap], [ids.tL, ids.uHold], [ids.tL, ids.uEod],
     [ids.tT1, ids.uT1], [ids.tT2, ids.uT2], [ids.tT3, ids.uT3], [ids.tT4, ids.uX4], [ids.tB, ids.uB],
+    // ORACLE-EDIT 29 ต.ค. (review)
+    [ids.tX6, ids.uX6], [ids.tA, ids.uX7], [ids.tA, ids.uW7], [ids.tA, ids.uW8], [ids.tA, ids.uQ5], [ids.tA, ids.uTZ3], [ids.tA, ids.uTZ3b], [ids.tA, ids.uTZ4], [ids.tL, ids.uL13], [ids.tL, ids.uL14],
   ];
-  await st("T-0", "applyTemplate BARBER (12 สาขา · แถวเดียว/ผ่อนผัน 10/ไม่มา 30/ปล่อยช่อง) + ทับ: พักขั้นต่ำช่างดี 10 · LSNW ไม่รับ walk-in · uHold หลังผ่อนผัน = รอต่อ · uLegA/uLeg ไม่เลือกแม่แบบ (ร้านเดิม)", async () => {
+  await st("T-0", "applyTemplate BARBER (22 สาขา · แถวเดียว/ผ่อนผัน 10/ไม่มา 30/ปล่อยช่อง) + ทับ: พักขั้นต่ำช่างดี 10 · LSNW ไม่รับ walk-in · uHold หลังผ่อนผัน = รอต่อ · uLegA/uLeg ไม่เลือกแม่แบบ (ร้านเดิม)", async () => {
     need();
     for (const [t, u] of BARBER_UNITS) {
       const a = await SETTINGS().applyTemplate(OWNER, { tenantId: t }, { unitId: u, domain: "booking", templateKey: "BARBER", overwrite: "RESET_ALL" });
@@ -501,6 +559,27 @@ try {
     tplOk = true;
   });
   const needTpl = () => { need(); ok(tplOk, "ตั้งแม่แบบ/ค่าตั้งไม่สำเร็จ (T-0)"); };
+  // ORACLE-EDIT 29 ต.ค. (review)
+  let t1Ok = false;
+  await st("T-1", "ค่าตั้ง/ข้อมูลเพิ่ม (review): uW8 กลุ่มได้คิวก่อน + ตัวอักษรบัตร B · uL13 มัดจำรายบริการ + ผูกระบบ POS/บัญชี (ทางริบมัดจำจริง)", async () => {
+    needTpl();
+    await setS(ids.tA, [
+      { key: "booking.queue.prefixes", scope: "UNIT", scopeId: ids.uW8, value: { walkIn: "A", appointment: "P", priority: "B" } },
+      { key: "booking.queue.priorityGroups", scope: "UNIT", scopeId: ids.uW8, value: ["ELDERLY"] },
+    ]);
+    await setS(ids.tL, [{ key: "booking.deposit.amount", scope: "UNIT", scopeId: ids.uL13, value: { mode: "PER_SERVICE" } }]);
+    const sys = (await import("@/lib/modules/system/service")) as unknown as { createSystem: (t: string, type: string, name: string) => Promise<{ id: string }>; linkUnit: (t: string, s: string, u: string) => Promise<unknown> };
+    const acc = (await import("@/lib/modules/account/service")) as unknown as { saveSettings: (t: string, s: string, v: unknown) => Promise<unknown> };
+    const gl = (await import("@/lib/modules/account/gl")) as unknown as { ensureAccounting: (i: { tenantId: string; systemId: string }) => Promise<unknown> };
+    const posSys = await sys.createSystem(ids.tL, "POS", "ขาย QC B4");
+    await sys.linkUnit(ids.tL, posSys.id, ids.uL13);
+    const accSys = await sys.createSystem(ids.tL, "ACCOUNT", "บัญชี QC B4");
+    await acc.saveSettings(ids.tL, accSys.id, { orgName: "QC B4 จำกัด", taxId: "0105561177639", vatRegistered: true });
+    await gl.ensureAccounting({ tenantId: ids.tL, systemId: accSys.id });
+    await insertRow("AccountSystemLink", { id: rid("asl"), tenantId: ids.tL, systemId: accSys.id, linkedKind: "POS", linkedId: posSys.id });
+    t1Ok = true;
+  }, "MAJOR");
+  const needT1 = () => { needTpl(); ok(t1Ok, "ค่าตั้ง/ข้อมูลเพิ่มไม่สำเร็จ (T-1)"); };
 
   await st("F-0", "นัดตั้งต้นทุกฉาก (bookAppointment ช่อง STAFF ของ B.3 ⇒ CONFIRMED + snapshot) + แถวดิบ PENDING/CANCELLED/LATE/ไม่มี snapshot", async () => {
     needTpl();
@@ -664,6 +743,23 @@ try {
     for (const id of [fx.KB, fx.KRace]) { eq((await apRow(id)).status, "CONFIRMED", `แถว ${id}`); eq((await ticketsOf(id)).length, 0, `บัตร ${id}`); }
   });
 
+  // ORACLE-EDIT 29 ต.ค. (review) J6
+  await st("K-6", "นัด ARRIVED จากจอเดิม (setAppointmentStatus · ไม่มีบัตร) ⇒ checkIn ออกบัตรให้ ok already:true · queueTicketId ตั้ง · บัตร P WAITING 1 ใบ · callJob ได้", async () => {
+    needFx();
+    const id = await bookStaff(cL, ids.LS60, ids.a1, D.K6, 600);
+    const s0 = await BK().setAppointmentStatus(ids.tA, ids.uL, id, "ARRIVED");
+    ok(s0.ok, `ARRIVED จากจอเดิม ${fmt(s0)}`);
+    eq((await apRow(id)).queueTicketId, null, "ตัวควบคุม: ARRIVED จากจอเดิมยังไม่มีบัตร");
+    const r = okCI(await LN.checkIn()(cL, { appointmentId: id }, { via: "STAFF", now: at(D.K6, 595) }), "เช็กอิน");
+    eq(r.already, true, "already");
+    const a = await apRow(id);
+    eq([a.status, a.queueTicketId], ["ARRIVED", r.ticketId], "แถว");
+    const t = await tkRow(r.ticketId);
+    eq([t.status, t.refId, t.code], ["WAITING", id, "APPOINTMENT"], "บัตร");
+    eq((await ticketsOf(id)).length, 1, "บัตรของนัด");
+    okJob(await LN.call()(cL, id, { now: at(D.K6, 600) }), "เรียก");
+  }, "MAJOR");
+
   // ═══════════════ W walk-in ═══════════════
   console.log("\n── W: walk-in + บัตร A (ใบสั่ง §3.2) ──");
   const nW = (min: number) => at(D.W, min);
@@ -733,6 +829,38 @@ try {
     needFx();
     const r = okWI(await LN.walkIn()(cL, { serviceId: ids.LS60, staffId: null, channel: "KIOSK" }, { now: at(D.K2, 540) }), "วันอื่น");
     eq(r.ticketNumber, "A001", "เลข");
+  }, "MAJOR");
+
+  // ORACLE-EDIT 29 ต.ค. (review) J3
+  await st("W-7", "startJob walk-in ก่อนเวลาแล้วจะชนนัดถัดไป (นัด 10:00 · walk-in วาง 11:00 · กดเริ่ม 09:58) ⇒ CLASH ไม่เขียนอะไร (แถว/บัตรเดิม · ไม่ซ้อน) · ตัวควบคุม: เริ่ม 11:00 ⇒ ok ไม่ซ้อน", async () => {
+    needFx();
+    await bookStaff(cW7, ids.W7S, ids.w7, D.W7, 600);
+    const w = okWI(await LN.walkIn()(cW7, { serviceId: ids.W7S, staffId: null, channel: "KIOSK" }, { now: at(D.W7, 590) }), "walk-in");
+    const before = await apRow(w.appointmentId);
+    ok((tms(before.startAt) ?? 0) >= bkkMs(D.W7, 660), `ตัวควบคุม: walk-in ต้องวางหลังนัด (${before.startAt?.toISOString()})`);
+    failCode(await LN.start()(cW7, w.appointmentId, { now: at(D.W7, 598) }), "CLASH", "เริ่มก่อนเวลา");
+    const a = await apRow(w.appointmentId);
+    eq([a.status, tms(a.startAt), tms(a.endAt), a.startedAt], ["QUEUED", tms(before.startAt), tms(before.endAt), null], "แถวไม่เปลี่ยน");
+    eq((await tkRow(w.ticketId)).status, "WAITING", "บัตร");
+    eq(await overlapIn(ids.w7, bkkMs(D.W7, 0), bkkMs(D.W7, 1440)), [], "ซ้อน");
+    okJob(await LN.start()(cW7, w.appointmentId, { now: at(D.W7, 660) }), "เริ่ม 11:00");
+    eq(await overlapIn(ids.w7, bkkMs(D.W7, 0), bkkMs(D.W7, 1440)), [], "ซ้อนหลังเริ่ม");
+  });
+  // ORACLE-EDIT 29 ต.ค. (review) J6
+  await st("W-8", "สิทธิ์คิวก่อน: N1 เริ่มแล้ว · N2 (ปกติ 10:01) ได้ 11:00 · P (priority 10:02) แซง ⇒ P 11:00 · N2 12:00 · หลัง runPlanner(10:05) ยังเหมือนเดิม · policySnapshot.job.priority = true", async () => {
+    needT1();
+    const n1 = okWI(await LN.walkIn()(cW8, { serviceId: ids.W8S, staffId: null, channel: "STAFF" }, { now: at(D.W8, 600) }), "N1");
+    okJob(await LN.start()(cW8, n1.appointmentId, { now: at(D.W8, 600) }), "เริ่ม N1");
+    const n2 = okWI(await LN.walkIn()(cW8, { serviceId: ids.W8S, staffId: null, channel: "STAFF" }, { now: at(D.W8, 601) }), "N2");
+    eq(tms(n2.plannedStartAt), bkkMs(D.W8, 660), "ตัวควบคุม: N2 ก่อนมี P");
+    const p = okWI(await LN.walkIn()(cW8, { serviceId: ids.W8S, staffId: null, channel: "STAFF", priority: true }, { now: at(D.W8, 602) }), "P");
+    eq(tms(p.plannedStartAt), bkkMs(D.W8, 660), "quote P");
+    await RN.plan()(cW8, { now: at(D.W8, 605) });
+    const ap = await apRow(p.appointmentId);
+    const an = await apRow(n2.appointmentId);
+    eq(ap.policySnapshot?.job?.priority, true, "policySnapshot.job.priority");
+    eqAt(ap.plannedStartAt, D.W8, 660, "P หลัง replan");
+    eqAt(an.plannedStartAt, D.W8, 720, "N2 หลัง replan");
   }, "MAJOR");
 
   // ═══════════════ J งาน ═══════════════
@@ -960,6 +1088,53 @@ try {
     eq((await apRow(fx.AP3)).status, "PENDING", "AP3");
   }, "MAJOR");
 
+  // ORACLE-EDIT 29 ต.ค. (review) J4
+  await st("L-13", "ร้านถอยคำตัดสินของ tick (manualHold): NO_SHOW (ริบมัดจำ 1 บิล PAID) → ร้านตั้ง CONFIRMED (บิลริบ VOID) ⇒ policySnapshot.job.manualHold · tick 10:31/10:45 ⇒ ยัง CONFIRMED · บิลริบรวม 1 ใบ ไม่มี PAID · booking.no_show 1 · เช็กอิน 10:50 ⇒ ok (ไม่ TOO_LATE) · LATE → CONFIRMED ⇒ tick ไม่ตั้ง LATE ซ้ำ", async () => {
+    needT1();
+    const id = await bookStaff(cL13, ids.N13S, ids.n13, D.L13, 600);
+    const rd = await BK().recordDeposit(cL13, id);
+    ok(rd.ok, `ตัวควบคุม: รับมัดจำ ${fmt(rd)}`);
+    const bills = async () => q<{ status: string }>(`SELECT status::text AS status FROM "PosSale" WHERE "tenantId" = $1 AND "sourceModule" = 'BOOKING' AND "sourceId" = $2`, [ids.tL, id]);
+    await tick(D.L13, 630, [ids.tL]);
+    eq((await apRow(id)).status, "NO_SHOW", "ตัวควบคุม: tick 10:30");
+    eq((await bills()).filter((b) => b.status === "PAID").length, 1, "ตัวควบคุม: ริบมัดจำครั้งแรก (บิลริบ PAID)");
+    const rv = await BK().setAppointmentStatus(ids.tL, ids.uL13, id, "CONFIRMED");
+    ok(rv.ok, `ร้านถอย NO_SHOW ${fmt(rv)}`);
+    eq((await apRow(id)).policySnapshot?.job?.manualHold, true, "manualHold");
+    await tick(D.L13, 631, [ids.tL]);
+    await tick(D.L13, 645, [ids.tL]);
+    eq((await apRow(id)).status, "CONFIRMED", "หลัง tick 2 รอบ");
+    const b = await bills();
+    eq([b.length, b.filter((x) => x.status === "PAID").length], [1, 0], "บิลริบ (รวม · PAID)");
+    eq(await obCount("booking.no_show", id), 1, "event");
+    const c = okCI(await LN.checkIn()(cL13, { appointmentId: id }, { via: "STAFF", now: at(D.L13, 650) }), "เช็กอินหลังถอย");
+    eq(c.already, false, "already");
+    const id2 = await bookStaff(cL13, ids.N13S, ids.n13, D.L13, 780);
+    await tick(D.L13, 790, [ids.tL]);
+    eq((await apRow(id2)).status, "LATE", "ตัวควบคุม: LATE");
+    const rv2 = await BK().setAppointmentStatus(ids.tL, ids.uL13, id2, "CONFIRMED");
+    ok(rv2.ok, `ร้านถอย LATE ${fmt(rv2)}`);
+    await tick(D.L13, 792, [ids.tL]);
+    eq((await apRow(id2)).status, "CONFIRMED", "LATE ไม่ถูกตั้งซ้ำ");
+  });
+  // ORACLE-EDIT 29 ต.ค. (review) J5
+  await st("L-14", "ช่องที่ถือจริงของงานที่แผนย้ายเวลา: นัด 10:00 สาย (LATE) · walk-in เข้าช่อง 10:12 แล้วเริ่ม · ลูกค้านัดมา 10:20 ⇒ แผน 11:12 ⇒ จอง STAFF 11:15 ⇒ FULL · walk-in เสร็จ 11:25 · เริ่มนัด 11:30 ⇒ จอง 12:15 ⇒ FULL · ตัวควบคุม: จอง 12:30 ⇒ ok", async () => {
+    needFx();
+    const id = await bookStaff(cL14, ids.M14S, ids.m14, D.L14, 600);
+    await tick(D.L14, 610, [ids.tL]);
+    eq((await apRow(id)).status, "LATE", "ตัวควบคุม: LATE");
+    const w = okWI(await LN.walkIn()(cL14, { serviceId: ids.M14S, staffId: null, channel: "KIOSK" }, { now: at(D.L14, 612) }), "walk-in");
+    okJob(await LN.start()(cL14, w.appointmentId, { now: at(D.L14, 612) }), "เริ่ม walk-in");
+    const c = okCI(await LN.checkIn()(cL14, { appointmentId: id }, { via: "STAFF", now: at(D.L14, 620) }), "เช็กอินสาย");
+    eq(c.asWalkIn, true, "asWalkIn");
+    eqAt((await apRow(id)).plannedStartAt, D.L14, 672, "ตัวควบคุม: แผน 11:12");
+    eq(await bookFull(cL14, ids.M14S, ids.m14, D.L14, 675), "FULL", "จองทับช่วงที่แผนให้ลูกค้ามาสาย (11:15)");
+    okJob(await LN.complete()(cL14, w.appointmentId, { now: at(D.L14, 685) }), "walk-in เสร็จ");
+    okJob(await LN.start()(cL14, id, { now: at(D.L14, 690) }), "เริ่มนัด 11:30");
+    eq(await bookFull(cL14, ids.M14S, ids.m14, D.L14, 735), "FULL", "จองทับงานที่เริ่มสาย (12:15)");
+    eq(await bookFull(cL14, ids.M14S, ids.m14, D.L14, 750), "OK", "ตัวควบคุม: 12:30 ว่าง");
+  });
+
   // ═══════════════ D หนี้ B.3 ═══════════════
   console.log("\n── D: buffer ของนัดเดิมจาก snapshot (หนี้ B.3 → ใบสั่ง §3.4) ──");
   await st("D-1", "นัด 10:00 (30 + buffer 15 · ช่างพัก 10) ⇒ ONLINE เห็น 10:45 (ตัวควบคุม) · แก้ buffer บริการเป็น 0 ⇒ ยังเห็น 10:45 (ใช้ buffer ตอนจองจาก snapshot · ค่าปัจจุบันจะดัน 10:55)", async () => {
@@ -1035,6 +1210,26 @@ try {
     const [{ ahead }] = await q<{ ahead: number }>(`SELECT count(*)::int AS ahead FROM "QueueTicket" x, "QueueTicket" me WHERE me.id = $1 AND x."unitId" = me."unitId" AND x."businessDate" = me."businessDate" AND x.status = 'WAITING'
       AND (x.priority > me.priority OR (x.priority = me.priority AND x."createdAt" < me."createdAt"))`, [state.q3]);
     eq(r?.estimateMin, Math.ceil(((ahead + 1) / 1) * 10), "estimateMin");
+  }, "MAJOR");
+
+  // ORACLE-EDIT 29 ต.ค. (review) J6
+  await st("Q-5", "สร้าง/ใช้ประเภทบัตรระบบไม่ได้ (prefix A ชนประเภทเดิม · ประเภท APPOINTMENT ถูกซ่อน) ⇒ createWalkIn / checkIn คืน ok:false + เหตุผลไทย (ไม่ throw) · ไม่มีแถว/บัตรเกิด · นัดยัง CONFIRMED", async () => {
+    needFx();
+    await insertRow("QueueType", { id: rid("qt"), tenantId: ids.tA, unitId: ids.uQ5, code: "GEN", name: "ทั่วไปเดิม", prefix: "A", updatedAt: new Date() });
+    await insertRow("QueueType", { id: rid("qt"), tenantId: ids.tA, unitId: ids.uQ5, code: "APPOINTMENT", name: "นัด (ซ่อน)", prefix: "P", isSystem: true, status: "HIDDEN", updatedAt: new Date() });
+    const id = await bookStaff(cQ5, ids.Q5S, ids.q5, D.Q5, 600);
+    const cnt = async () => (await q<{ n: number }>(`SELECT (SELECT count(*) FROM "Appointment" WHERE "unitId" = $1)::int + (SELECT count(*) FROM "QueueTicket" WHERE "unitId" = $1)::int AS n`, [ids.uQ5]))[0].n;
+    const before = await cnt();
+    const walk = LN.walkIn();
+    const ci0 = LN.checkIn();
+    let w: WalkInResult;
+    try { w = await walk(cQ5, { serviceId: ids.Q5S, staffId: null, channel: "KIOSK" }, { now: at(D.Q5, 630) }); } catch (e) { throw new AssertFail(`createWalkIn throw: ${errMsg(e)}`); }
+    ok(!w.ok && typeof w.reason === "string" && w.reason.length > 0, `createWalkIn ${fmt(w)}`);
+    let c: CheckInResult;
+    try { c = await ci0(cQ5, { appointmentId: id }, { via: "STAFF", now: at(D.Q5, 595) }); } catch (e) { throw new AssertFail(`checkIn throw: ${errMsg(e)}`); }
+    ok(!c.ok && typeof c.reason === "string" && c.reason.length > 0, `checkIn ${fmt(c)}`);
+    eq(Number(await cnt()), Number(before), "แถว+บัตร");
+    eq((await apRow(id)).status, "CONFIRMED", "นัด");
   }, "MAJOR");
 
   // ═══════════════ X ยิงพร้อมกันข้ามโพรเซส ═══════════════
@@ -1146,6 +1341,119 @@ try {
     }
   });
 
+  // ORACLE-EDIT 29 ต.ค. (review) J2
+  await st("X-7", "นัด 'ใครก็ได้' ที่ตัววางคิวย้ายช่าง (BOOKED_MOVED_STAFF · ยืนยันด้วย planDay จริง) ⇒ ฐานไม่มีแถวถือช่องซ้อน · staffId ในฐาน = ช่างในแผน · จอง STAFF ช่างที่แผนกันไว้ 14:00 ⇒ FULL", async () => {
+    needFx();
+    const planDay = plannerLoad.mod?.planDay;
+    ok(typeof planDay === "function", `โหลด planner ไม่ได้ ${plannerLoad.err}`);
+    const DS = "2031-03-04";
+    const settings: PlanSettings = { queueOrder: "SINGLE_LINE", backfill: true, safetyBeforeBookingMin: 5, graceMin: 10, noShowAfterMin: 30, lateAction: "RELEASE", priorityEnabled: false, walkInMaxWaitMin: 120, overrunExtendMin: 5, minBreakMin: 0, maxJobsPerDay: null };
+    const win = [{ startAt: bkkMs(DS, 600), endAt: bkkMs(DS, 1200) }];
+    const job = (o: Partial<PlanJob> & { id: string }): PlanJob => ({ label: o.id, kind: "BOOKED", status: "CONFIRMED", serviceId: "S", assignMode: "SPECIFIC", staffId: null, startAt: null, issuedAt: bkkMs(DS, 0), checkedInAt: null, startedAt: null, priority: false, ...o });
+    const pj = planDay!({ now: bkkMs(DS, 835), settings, staff: [{ id: "s0", name: "s0", sortOrder: 1, windows: win, services: null }, { id: "s1", name: "s1", sortOrder: 2, windows: win, services: null }],
+      services: [{ id: "S", name: "S", durationMin: 30, bufferAfterMin: 0 }],
+      jobs: [job({ id: "a0", status: "IN_SERVICE", staffId: "s0", startAt: bkkMs(DS, 780), checkedInAt: bkkMs(DS, 775), startedAt: bkkMs(DS, 820) }),
+        job({ id: "a1", status: "IN_SERVICE", staffId: "s1", startAt: bkkMs(DS, 810), checkedInAt: bkkMs(DS, 805), startedAt: bkkMs(DS, 810) }),
+        job({ id: "b", assignMode: "ANY", staffId: "s0", startAt: bkkMs(DS, 840) }),
+        job({ id: "w", kind: "WALKIN", status: "QUEUED", assignMode: "ANY", issuedAt: bkkMs(DS, 830), checkedInAt: bkkMs(DS, 830) })] }).jobs;
+    const pb = pj.find((j) => j.jobId === "b")!;
+    eq([pb.staffId, pb.reason], ["s1", "BOOKED_MOVED_STAFF"], "ตัวควบคุม planDay: นัดใครก็ได้ถูกย้ายช่าง");
+    const B = await BK().bookAppointment(cX7, bk({ serviceId: ids.X730, staffId: null, dateStr: D.X7, startMin: 840, channel: "STAFF" }));
+    ok(B.ok && B.staffId === ids.x7a, `ตัวควบคุม: นัดใครก็ได้ 14:00 ต้องลงช่างแรก ${fmt(B)}`);
+    const bId = B.ok ? B.id : "";
+    const a0 = await bookStaff(cX7, ids.X730, ids.x7a, D.X7, 780);
+    const a1 = await bookStaff(cX7, ids.X730, ids.x7b, D.X7, 810);
+    okCI(await LN.checkIn()(cX7, { appointmentId: a0 }, { via: "STAFF", now: at(D.X7, 775) }), "เช็กอิน a0");
+    okCI(await LN.checkIn()(cX7, { appointmentId: a1 }, { via: "STAFF", now: at(D.X7, 805) }), "เช็กอิน a1");
+    okJob(await LN.start()(cX7, a1, { now: at(D.X7, 810) }), "เริ่ม a1 13:30");
+    okJob(await LN.start()(cX7, a0, { now: at(D.X7, 820) }), "เริ่ม a0 13:40");
+    okWI(await LN.walkIn()(cX7, { serviceId: ids.X730, staffId: null, channel: "KIOSK" }, { now: at(D.X7, 830) }), "walk-in 13:50");
+    await RN.plan()(cX7, { now: at(D.X7, 835) });
+    for (const sid of [ids.x7a, ids.x7b]) eq(await overlapIn(sid, bkkMs(D.X7, 0), bkkMs(D.X7, 1440)), [], `ซ้อนในฐาน ${sid === ids.x7a ? "ช่างศูนย์" : "ช่างหนึ่ง"}`);
+    const b = await apRow(bId);
+    eq(b.staffId, b.plannedStaffId, "staffId ในฐาน = ช่างในแผน");
+    eq(await bookFull(cX7, ids.X730, ids.x7b, D.X7, 840), "FULL", "จอง STAFF ช่างที่แผนกันไว้ 14:00");
+  });
+
+  // ORACLE-EDIT 29 ต.ค. (review) J1 — วงรอ checkIn ∥ runPlanner (ผู้ตรวจ B probe2–6: 40P01 ≈13% · 9/9 รอบ)
+  const readDeadlocks = async () => Number((await q<{ n: string }>(`SELECT deadlocks::text AS n FROM pg_stat_database WHERE datname = current_database()`))[0]?.n ?? NaN);
+  let dlBase = NaN;
+  await st("X-6c", "ตัวควบคุม: ตัวนับ deadlock ของฐาน (pg_stat_database.deadlocks) เห็นวงรอที่จงใจสร้าง 1 ครั้ง (2 session ล็อกไขว้ BookingStaff) — ไม่งั้น X-6b ว่างเปล่า", async () => {
+    need();
+    const c0 = await readDeadlocks();
+    const A = await pool.connect();
+    const B2 = await pool.connect();
+    let codes: string[] = [];
+    try {
+      await A.query("BEGIN"); await B2.query("BEGIN");
+      await A.query(`SELECT id FROM "BookingStaff" WHERE id = $1 FOR UPDATE`, [X6STAFF[0]]);
+      await B2.query(`SELECT id FROM "BookingStaff" WHERE id = $1 FOR UPDATE`, [X6STAFF[1]]);
+      const pa = A.query(`SELECT id FROM "BookingStaff" WHERE id = $1 FOR UPDATE`, [X6STAFF[1]]).then(() => "ok", (e: { code?: string }) => String(e.code));
+      await sleep(300);
+      const pb = B2.query(`SELECT id FROM "BookingStaff" WHERE id = $1 FOR UPDATE`, [X6STAFF[0]]).then(() => "ok", (e: { code?: string }) => String(e.code));
+      codes = await Promise.all([pa, pb]);
+    } finally {
+      await A.query("ROLLBACK").catch(() => undefined); await B2.query("ROLLBACK").catch(() => undefined);
+      A.release(); B2.release();
+    }
+    ok(codes.includes("40P01"), `ไม่เกิด deadlock ที่จงใจสร้าง ${fmt(codes)}`);
+    await sleep(12_000);
+    const c1 = await readDeadlocks();
+    ok(Number.isFinite(c0) && c1 > c0, `ตัวนับไม่ขยับ ${c0} → ${c1}`);
+    dlBase = c1;
+  }, "MAJOR");
+  const X6R = 9;
+  let x6Done = false;
+  await st("X-6", `เช็กอินหลายทาง (token/เบอร์/id · 16 คำขอ/รอบ บน 3 โพรเซส) ∥ runPlanner วน 10 ครั้ง × 2 โพรเซส · ${X6R} รอบ ⇒ ไม่มี throw · ไม่มี 40P01 · ไม่มี BUSY · เช็กอินสำเร็จทุกคำขอ · ทุกนัด ARRIVED บัตร 1 · event 1`, async () => {
+    needFx();
+    LN.checkIn(); LN.token(); RN.plan();
+    const appts: string[][] = [];
+    const scs: Scenario[] = [];
+    for (let r = 0; r < X6R; r++) {
+      const ds = dd(55 + r);
+      const ids8: string[] = [];
+      const calls: CallSpec[] = [];
+      for (let i = 0; i < 8; i++) {
+        const phone = `09${String(70_000_000 + r * 100 + i).slice(-8)}`;
+        const id = await bookStaff(cX6, ids.X6S, X6STAFF[i], ds, 600, phone);
+        ids8.push(id);
+        const tok = (await LN.token()(cX6, id)) ?? "missing";
+        const byOf = (m: number): CheckInBy => (m === 0 ? { token: tok } : m === 1 ? { phone } : { appointmentId: id });
+        for (const m of [i % 3, (i + 1) % 3]) calls.push(ci(cX6, byOf(m), ds, 595, m === 0 ? "QR" : m === 1 ? "PHONE" : "LINE"));
+      }
+      appts.push(ids8);
+      const plan: CallSpec = { fn: "planLoop", ctx: cX6, now: nowIso(ds, 595), times: 10 };
+      scs.push({ key: `x6r${r}`, perChild: [[plan], [plan], calls.filter((_, k) => k % 3 === 0), calls.filter((_, k) => k % 3 === 1), calls.filter((_, k) => k % 3 === 2)] });
+    }
+    const res = await runHarness(scs, NCHILD);
+    x6Done = true;
+    const bad: string[] = [];
+    let dl = 0;
+    let throws = 0;
+    for (let r = 0; r < X6R; r++) {
+      const out = res.get(`x6r${r}`) ?? [];
+      if (out.length !== 18) bad.push(`r${r} ได้ผล ${out.length}/18`);
+      for (const x of out) {
+        if (x.threw) { throws++; if (x.deadlock) dl++; }
+        else if (x.fn === "checkIn" && !x.ok) bad.push(`r${r} checkIn ${x.code}`);
+      }
+      for (const id of appts[r]) {
+        const a = await apRow(id);
+        const tks = await ticketsOf(id);
+        if (a.status !== "ARRIVED" || tks.length !== 1 || a.queueTicketId !== tks[0]?.id) bad.push(`r${r} ${a.status} บัตร ${tks.length}`);
+        if ((await obCount("booking.checked_in", id)) !== 1) bad.push(`r${r} event ≠ 1`);
+      }
+    }
+    ok(throws === 0, `throw ${throws} ครั้ง (40P01 ${dl})`);
+    ok(bad.length === 0, [...new Set(bad)].slice(0, 6).join(" · "));
+  });
+  await st("X-6b", "หลัง X-6: ตัวนับ deadlock ของฐานไม่เพิ่ม (40P01 = 0 รวมที่ถูกลองใหม่ภายใน)", async () => {
+    ok(Number.isFinite(dlBase), "ตัวควบคุม X-6c ล้ม — วัดไม่ได้");
+    ok(x6Done, "X-6 ไม่ได้รันสายยิงพร้อมกัน");
+    await sleep(12_000);
+    eq((await readDeadlocks()) - dlBase, 0, "deadlock ที่เกิดระหว่าง X-6");
+  });
+
   // ═══════════════ TZ ═══════════════
   console.log("\n── TZ: เช็กอินในโพรเซส TZ −11 / +14 ──");
   for (const [id, tz, appt, min] of [["TZ-1", "Pacific/Pago_Pago", "Z1", 360], ["TZ-2", "Pacific/Kiritimati", "Z2", 1370]] as const) {
@@ -1161,6 +1469,30 @@ try {
       eq((await apRow(fx[appt])).status, "ARRIVED", "สถานะ");
     }, "MAJOR");
   }
+
+  // ORACLE-EDIT 29 ต.ค. (review) J5 J6
+  await st("TZ-3", "ข้ามเที่ยงคืน (สาขาเปิด 24 ชม.): งานเมื่อวาน 23:30 กำลังทำ (ถึง 00:30) ⇒ walk-in 00:05 วาง ≥ 00:30 ไม่ซ้อน · นัดเมื่อวาน 23:58 (ยังในผ่อนผันตอน 00:03) ⇒ walk-in 00:03 วาง ≥ 00:58 ไม่ซ้อน", async () => {
+    needFx();
+    const y = await bookStaff(cTZ3, ids.Z3S, ids.z3, D.TZ3a, 1410);
+    okCI(await LN.checkIn()(cTZ3, { appointmentId: y }, { via: "STAFF", now: at(D.TZ3a, 1405) }), "เช็กอิน 23:25");
+    okJob(await LN.start()(cTZ3, y, { now: at(D.TZ3a, 1410) }), "เริ่ม 23:30");
+    const w = okWI(await LN.walkIn()(cTZ3, { serviceId: ids.Z3S, staffId: null, channel: "KIOSK" }, { now: at(D.TZ3b, 5) }), "walk-in 00:05");
+    ok((tms(w.plannedStartAt) ?? 0) >= bkkMs(D.TZ3b, 30), `plannedStartAt ${w.plannedStartAt instanceof Date ? w.plannedStartAt.toISOString() : w.plannedStartAt} ต้อง ≥ 00:30`);
+    ok((tms((await apRow(w.appointmentId)).startAt) ?? 0) >= bkkMs(D.TZ3b, 30), "แถว walk-in startAt ต้อง ≥ 00:30");
+    eq(await overlapIn(ids.z3, bkkMs(D.TZ3a, 0), bkkMs(D.TZ3b, 1440)), [], "ซ้อน (งานเมื่อวาน)");
+    await bookStaff(cTZ3b, ids.Z3bS, ids.z3b, D.TZ3a, 1438);
+    const w2 = okWI(await LN.walkIn()(cTZ3b, { serviceId: ids.Z3bS, staffId: null, channel: "KIOSK" }, { now: at(D.TZ3b, 3) }), "walk-in 00:03");
+    ok((tms(w2.plannedStartAt) ?? 0) >= bkkMs(D.TZ3b, 58), "walk-in ต้องวางหลังนัด 23:58–00:58");
+    eq(await overlapIn(ids.z3b, bkkMs(D.TZ3a, 0), bkkMs(D.TZ3b, 1440)), [], "ซ้อน (นัดเมื่อวาน)");
+  });
+  await st("TZ-4", "นัด 23:45 มาถึง 00:10 วันถัดไป (ยังไม่ครบเวลาไม่มา 30) ⇒ เช็กอินได้ asWalkIn (ไม่ใช่ NOT_TODAY) · ARRIVED · บัตร businessDate = วันไทยของ now", async () => {
+    needFx();
+    const y = await bookStaff(cTZ4, ids.Z4S, ids.z4, D.TZ4a, 1425);
+    const r = okCI(await LN.checkIn()(cTZ4, { appointmentId: y }, { via: "STAFF", now: at(D.TZ4b, 10) }), "เช็กอิน 00:10");
+    eq(r.asWalkIn, true, "asWalkIn");
+    eq((await apRow(y)).status, "ARRIVED", "สถานะ");
+    eq((await tkRow(r.ticketId)).businessDate, D.TZ4b, "businessDate");
+  }, "MAJOR");
 
   // ═══════════════ EV · MJ ═══════════════
   console.log("\n── EV: event 8 ตัว · 3 ทะเบียน · payload (ใบสั่ง §3.7) ──");

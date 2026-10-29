@@ -47,7 +47,8 @@
 export type LineCtx = { tenantId: string; unitId: string; actorUserId?: string };
 export type CheckInBy = { appointmentId: string } | { token: string } | { phone: string };
 export type CheckInVia = "QR" | "LINE" | "PHONE" | "STAFF";
-export type CheckInFail = "NOT_FOUND" | "NOT_TODAY" | "TOO_LATE" | "NOT_CONFIRMED" | "BAD_STATE" | "AMBIGUOUS" | "NOT_SINGLE_LINE" | "BAD_INPUT";
+export type CheckInFail = "NOT_FOUND" | "NOT_TODAY" | "TOO_LATE" | "NOT_CONFIRMED" | "BAD_STATE" | "AMBIGUOUS" | "NOT_SINGLE_LINE" | "BAD_INPUT"
+  | "BUSY";  // ORACLE-EDIT 29 ต.ค. (review) J1: 40P01/P2028 ลองใหม่ 1 ครั้งแล้วยังล้ม
 export type CheckInResult =
   | { ok: true; appointmentId: string; ticketId: string; ticketNumber: string; already: boolean; asWalkIn: boolean }
   | { ok: false; code: CheckInFail; reason: string; candidates?: { appointmentId: string; startAt: Date; staffId: string }[] };
@@ -56,13 +57,15 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
 
 export type WalkInChannel = "KIOSK" | "STAFF" | "REMOTE";
 export type WalkInInput = { serviceId: string; staffId: string | null; channel: WalkInChannel; customerName?: string; customerPhone?: string; priority?: boolean };
-export type WalkInFail = "NOT_FOUND" | "NOT_SINGLE_LINE" | "WALKIN_DISABLED" | "WALKIN_CLOSED" | "BAD_INPUT";
+export type WalkInFail = "NOT_FOUND" | "NOT_SINGLE_LINE" | "WALKIN_DISABLED" | "WALKIN_CLOSED" | "BAD_INPUT"
+  | "BUSY";  // ORACLE-EDIT 29 ต.ค. (review) J1
 export type WalkInResult =
   | { ok: true; appointmentId: string; ticketId: string; ticketNumber: string; staffId: string | null; plannedStartAt: Date | null; waitMin: number | null }
   | { ok: false; code: WalkInFail; reason: string };
 export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: Date }): Promise<WalkInResult>;
 
-export type JobFail = "NOT_FOUND" | "BAD_STATE" | "LOST_RACE";
+export type JobFail = "NOT_FOUND" | "BAD_STATE" | "LOST_RACE"
+  | "BUSY" | "CLASH";  // ORACLE-EDIT 29 ต.ค. (review) J1 · J3 (startJob walk-in ที่ย้ายมาเริ่มตอนนี้แล้วชนแถวถือช่องอื่น)
 export type JobResult = { ok: true } | { ok: false; code: JobFail; reason: string };
 export async function callJob(ctx: LineCtx, appointmentId: string, opts?: { now?: Date }): Promise<JobResult>;
 export async function startJob(ctx: LineCtx, appointmentId: string, opts?: { now?: Date }): Promise<JobResult>;
@@ -131,6 +134,16 @@ export async function runLineTick(now: Date, opts?: { tenantIds?: string[] }): P
 ### 3.7 Event 8 ตัว (CC §7 · 3 ทะเบียนในใบนี้ · consumer = `withAutomation(async () => {})` เว้นแต่มีเหตุ)
 `booking.created` · `booking.rescheduled` · `booking.cancelled` · `booking.checked_in` · `booking.late` · `booking.started` · `queue.ticket.called` · `queue.ticket.done` — ป้ายไทยใน `AUTOMATION_EVENTS` ครั้งเดียว · `WEBHOOK_EVENTS` ได้ผ่าน spread (ห้ามประกาศซ้ำ) · payload ⊇ `{ appointmentId, unitId, staffId, kind, channel }` (+ `ticketId` ของ queue.*) · **ห้ามมีชื่อ/เบอร์/อีเมล** · ใบนี้ยิง: created (walk-in) · rescheduled/cancelled (ฝั่งร้าน) · checked_in · late · started · queue.* — created/cancelled ของทางออนไลน์ = B.7
 
+## 3.8 ORACLE-EDIT 29 ต.ค. (review · /root/svc-runs/fix/b4.md J1–J6 · ผู้คุมเคาะ)
+- **J1 ไม่มีวงรอ checkIn ∥ runPlanner**: ห้าม UPDATE แถวนัดเดียวกันสองครั้งใน tx เดียว (UPDATE ครั้งที่สองของแถวที่ tx เพิ่งเขียนยิงตรวจ FK `BookingStaff … FOR KEY SHARE` ⇒ กลับลำดับล็อกกับตัววางคิว · ผู้ตรวจ B probe6) — ออกบัตรก่อนแล้ว CAS เดียว `{status ARRIVED, checkedInAt, queueTicketId}` · ถ้าต้องล็อกช่าง ให้ advisory หน่วย → ช่าง ก่อนแถวนัด · ทุกฟังก์ชัน facade ไม่ throw: 40P01/P2028 ⇒ ลองใหม่ 1 ครั้ง ⇒ `{ ok:false, code:"BUSY", reason ไทย "ระบบกำลังยุ่ง กรุณาลองใหม่" }` — ข้อสอบ X-6 นับ **deadlock ของฐานต้องเป็น 0** (`pg_stat_database.deadlocks` ไม่ขยับ · รวมที่ลองใหม่ภายใน) ⇒ การลองใหม่เป็นแค่ตาข่าย ไม่ใช่ทางแก้
+- **J2 แผนกับฐานต้องตรงกัน**: ตัววางคิวย้ายนัด ANY ที่ยังไม่เช็กอินไปช่างอื่น (`BOOKED_MOVED_STAFF`) ⇒ `runPlanner` เขียน `staffId` จริงของนัดนั้น (CAS status + staffId เดิม · `startAt/endAt` คงเดิม) ใต้ล็อกช่างที่ถืออยู่ ใน tx เดียวกับการเขียน walk-in · ห้ามมีสภาพที่ฐานมีแถวถือช่องซ้อน · นัด SPECIFIC ห้ามถูกย้าย
+- **J3 `startJob` walk-in**: ล็อก advisory หน่วย → ช่าง · ช่วงใหม่ `[now, now+dur+buf)` ชนแถวถือช่องอื่นของช่างนั้น ⇒ `{ ok:false, code:"CLASH", reason "เริ่มตอนนี้จะชนนัดถัดไป — ย้ายช่างหรือเลื่อนนัดก่อน" }` ไม่เขียนอะไร
+- **J4 ร้านถอยคำตัดสินของ tick**: `setAppointmentStatus` ออกจาก NO_SHOW/LATE กลับเป็น CONFIRMED (หน่วยแถวเดียว) ⇒ ตั้ง `policySnapshot.job.manualHold = true` (additive) · tick ข้ามแถว manualHold ทั้งสาย/ไม่มา · เช็กอินแถว manualHold ไม่ติด `TOO_LATE` · ริบมัดจำ idempotent ต่อนัด (บิลริบรวม 1 ใบ)
+- **J5 ช่องที่ถือจริงของงานที่ตัววางคิวย้ายเวลา**: งาน ARRIVED (รวมสายแล้วเข้าแถวแบบ walk-in) ถือ `[startAt, max(endAt, plannedStartAt + (endAt−startAt))]` · IN_SERVICE ถือ `[startAt, max(endAt, startedAt + (endAt−startAt))]` (และไม่สั้นกว่า now ในมุมตัววางคิว) — ในมุม busy ของ **ทุกเส้นทาง** (`busyRowsOf`/`findSlots`/`bookAppointment`/walk-in/ตัววางคิว) · อ่านงานที่ "ซ้อนช่วง" ของวัน (รวมงานเมื่อวานที่ลากข้ามเที่ยงคืน) ไม่ใช่แค่ที่เริ่มวันนี้
+- **J6**: ประเภทบัตรระบบสร้าง/ใช้ไม่ได้ (prefix ชน · ถูกซ่อน) ⇒ `{ok:false}` เหตุผลไทย ไม่ throw ไม่เขียนแถว · `priority` ของ walk-in เก็บที่ `policySnapshot.job.priority` (additive) และ replan ใช้ค่านี้ · สิ้นวันยกเลิก walk-in QUEUED ของทุกวันก่อนหน้า (ไม่จำกัด 1 วัน · ทีละชุด 50) · นัดเมื่อวานที่ยังไม่เลยเวลาไม่มา ⇒ เช็กอินได้ (บัตร businessDate = วันไทยของ now) · ARRIVED จากจอเดิมที่ไม่มีบัตร ⇒ `checkIn` ออกบัตรให้ (`already:true`)
+- `policySnapshot.job` = `{ durationMin, bufferMin, manualHold?, priority? }` — คีย์เพิ่มได้อย่างเดียว
+- ข้อสอบเพิ่ม: **X-6** (+X-6c ตัวควบคุมตัวนับ deadlock · X-6b) · **X-7** · **W-7** · **W-8** · **L-13** · **L-14** · **TZ-3** · **TZ-4** · **Q-5** · **K-6** · **T-1** (ตั้งค่า/ผูก POS ของ L-13 W-8)
+
 ## 4. ไม่ใช่เรื่องของใบนี้
 - จอ/ปุ่ม/ข้าม (#43 `skipAfterMin`)/ย้ายช่าง = **B.5** (ใช้ตัวช่วยบัตร §3.5 + CAS แบบใบนี้) · หน้า `src/app/app/u/[unitSlug]/queue/page.tsx` ยอม BOOKING = B.5 · ตู้/ทีวี/หน้าบัตร = **B.6** · ปุ่ม LINE/postback/แจ้งเตือน = **B.9** · บิลพัก POS แทน DONE ตรง = **B.10** · created/cancelled ออนไลน์ + ลูกค้าเลื่อนเอง = **B.7** · ไม่มาซ้ำ (#32) = B.7/B.8
 
@@ -144,7 +157,7 @@ export async function runLineTick(now: Date, opts?: { tenantIds?: string[] }): P
 1. **ไม่ต้องมีคอลัมน์ใหม่**: บัตร↔งานใช้ `refType/refId` + `Appointment.queueTicketId` · เวลารับ walk-in = `checkedInAt` · ETA = `QueueTicket.etaAt` · แคชแผน = `plannedStaffId/plannedStartAt` (B.0) · ไม่มี unique (refType, refId) ⇒ กันบัตรซ้ำด้วยล็อกแถวนัด (หนี้ดัชนี: partial unique `QueueTicket(refId) WHERE refType='APPOINTMENT' AND status IN active` ให้ migration ถัดไป)
 2. LATE = **เลยผ่อนผัน** (แบบ §4.1) — คอมเมนต์ใน schema "อยู่ในช่วงผ่อนผัน" ไม่ตรงแบบ (แก้คอมเมนต์ในใบ migration ถัดไป) · HOLD (`WAIT_NOTIFY_COUNTER`) ก็ขึ้น LATE แต่ตัววางคิวถือช่องไว้
 3. มาสายแต่ภายในเวลาไม่มา ⇒ ยังเป็นบัตร **P** (อ้างนัด) แต่ลำดับ/เวลาเริ่มเป็นแบบ walk-in (`asWalkIn:true`) · เลยเวลาไม่มา ⇒ `TOO_LATE` (ร้านออกบัตร A ให้แทนได้)
-4. เช็กอินได้เฉพาะ **วันไทยเดียวกับนัด** (มาก่อนเวลาได้) · PENDING เช็กอินไม่ได้ (ร้านยืนยันก่อน) · tick ไม่แตะ PENDING
+4. เช็กอินได้เฉพาะ **วันไทยเดียวกับนัด** (มาก่อนเวลาได้) — **ORACLE-EDIT 29 ต.ค. (review):** + นัดเมื่อวานที่ `now < startAt + noShowAfterMin` (J6) · PENDING เช็กอินไม่ได้ (ร้านยืนยันก่อน) · tick ไม่แตะ PENDING
 5. tick ทำเฉพาะหน่วยแถวเดียว — ร้านเดิมไม่มี LATE/NO_SHOW อัตโนมัติ (จอเดิมรู้จัก 6 สถานะ)
 6. CONFIRMED ที่เลยเวลาไม่มาในรอบเดียว ⇒ NO_SHOW ตรง (ไม่ยิง `booking.late`)
 7. บัตรของแถวเดียวไม่เก็บชื่อ/เบอร์ (ข้อมูลอยู่ที่นัด · PDPA) · ประเภทบัตร P/A priority เท่ากัน (ลำดับมาจากตัววางคิว ไม่ใช่ priority ของบัตร)
@@ -152,7 +165,9 @@ export async function runLineTick(now: Date, opts?: { tenantIds?: string[] }): P
 9. ยกเลิกฝั่งร้าน `cancelReason "SHOP"` · เลื่อนฝั่งร้านไม่นับ `rescheduleCount` · snapshot ไม่เปลี่ยนเมื่อเลื่อน
 10. housekeeping ของคิวข้ามบัตรของจองคิว (ไม่งั้น `resetDaily` ยกเลิกบัตร P/A ของวันอื่น) — สิ้นวันของ walk-in ทำใน `runLineTick` (ARRIVED ค้างข้ามวัน = ร้านปิดเองบนจอ B.5)
 11. หนี้ bufferMin: เก็บใน `policySnapshot.job` (คีย์ใหม่ระดับบน ข้าง `values`) แทนคอลัมน์ — `planDay` ยังใช้ buffer ปัจจุบันของบริการ (PlanService ไม่มี buffer รายงาน — ส่งต่อ B.13 ถ้าต้อง)
-12. `runLineTick` รับ `tenantIds` (ข้อสอบจำกัดขอบเขตกันแตะ seed ของฐาน QC) · ย้อนไม่เกิน 1 วันไทย
+12. `runLineTick` รับ `tenantIds` (ข้อสอบจำกัดขอบเขตกันแตะ seed ของฐาน QC) · ย้อนไม่เกิน 1 วันไทย (สาย/ไม่มา) · สิ้นวันของ walk-in ไม่มีขอบล่าง (J6)
+13. **ORACLE-EDIT 29 ต.ค. (review)** BUSY = ตาข่าย (ลองใหม่ 1 ครั้ง) — เกณฑ์รับคือไม่มี deadlock เลย · CLASH ใช้กับ startJob ของ walk-in เท่านั้น (นัดที่เริ่มสายไม่ย้าย startAt แต่ถือช่องตาม J5) · manualHold เก็บใน snapshot (ไม่มีคอลัมน์) · ถอย ARRIVED แล้ว checkedInAt/บัตรค้าง = B.5
+14. **หนี้หลังผู้ตรวจ (ไม่บล็อก)**: ตัววางคิวใช้ buffer ปัจจุบัน (planDay ไม่มี buffer รายงาน → ใบแก้ B.2) · `etaAt` เขียนไม่มีเงื่อนไขสถานะ · tick สแกนหน่วยทั้งตาราง (perf → B.12) · snapshot JSON null/ไม่ใช่ตัวเลข SQL vs JS ไม่ตรง · `checkInToken`/`getTicketStatus` ใช้นาฬิกาจริง · **deploy note**: `queue.housekeeping` รอบแรกบน prod ยกเลิกบัตรเก่าทุกร้าน QUEUE (ไม่เคยถูกเรียก) โดยไม่มี event → svc-deploy-checklist · ริบมัดจำครั้งแรกในข้อสอบ L-13 พึ่งการผูก POS/บัญชีของ T-1 (ถ้า T-1 แดงเพราะสภาพฐาน ⇒ L-13 แดงด้วยเหตุตั้งต้น)
 
 ## 7. ส่งต่อใบหลัง
 - **B.5**: ข้าม/เรียกคืน (#43) · ย้ายช่าง (ANY ที่ยังไม่เช็กอิน) · หน้า queue ยอม BOOKING · ARRIVED ค้างข้ามวัน · แจ้ง "ต้องจัดการ" จาก LATE/HOLD · `src/lib/actions/booking.ts` เรียก `cancelByShop`/`rescheduleByShop`
