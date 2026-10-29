@@ -2,12 +2,17 @@ import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { loadSettingsForm } from "@/lib/core/settings";
 import { resetSettingAction, saveSettingsAction } from "@/lib/core/settings/actions";
-import SettingsForm from "@/components/settings/SettingsForm";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { loadDormPolicySettings } from "@/lib/modules/dorm";
+import type { SettingsFormModel } from "@/components/settings/settings-shared";
+import DormPolicySettings from "@/components/dorm/DormPolicySettings";
+import { DORM_POLICY_GROUPS } from "@/components/dorm/dorm-policy-shared";
+import { applyDormRolePresetAction } from "./actions";
+import { setDormBuildingAssignmentAction } from "./scope-actions";
 
-// ตั้งค่าหอ (SVC R0.4) — หน้าห่อ + SettingsForm (กติกาเหล็ก #16)
-// กลุ่มค่าตั้งเรียงตามทะเบียน rooms → payments → messaging · D.7/D.13 จัดกลุ่มตามภาพ 10/17
-// ผู้กระทำ/ร้านมาจาก session เท่านั้น (auth.active) — ด่านสิทธิ์จริงอยู่ใน service
+// หอ 17 "นโยบาย · ข้อความ · สิทธิ์" (SVC D.13 · แทนฟอร์มยาว R0.4) — ภาพ ledger/design-dorm/17-settings-policies.png
+//   ฟอร์มค่าตั้งโหลดจากเครื่องยนต์ (loadSettingsForm ชั้น UNIT · domains rooms/payments/messaging · groups ของการ์ด) แล้วส่งเข้า loadDormPolicySettings
+//   บันทึก/คืนค่า = action กลางของเครื่องยนต์ (ด่านสิทธิ์ + writeVia อยู่ฝั่งเซิร์ฟเวอร์) · ชุดสิทธิ์ตามบทบาท = applyDormRolePresetAction
+//   ผู้กระทำ/ร้านมาจาก session เท่านั้น (auth.active) — ไม่อ่านสิทธิ์จาก URL
 export default async function DormSettingsPage({ params }: { params: Promise<{ unitSlug: string }> }) {
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
@@ -19,13 +24,17 @@ export default async function DormSettingsPage({ params }: { params: Promise<{ u
     permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
     userId: auth.active.userId,
   };
-  const model = await loadSettingsForm(actor, { tenantId: auth.active.tenantId }, { domains: ["rooms", "payments", "messaging"], unitId: unit.id });
+  const ctx = { tenantId: auth.active.tenantId };
+  const form: SettingsFormModel | null = await loadSettingsForm(actor, ctx, { domains: ["rooms", "payments", "messaging"], groups: DORM_POLICY_GROUPS, unitId: unit.id });
+  if (!form) notFound();
+  const model = await loadDormPolicySettings(actor, ctx, { unitId: unit.id, form });
   if (!model) notFound();
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
-      <PageHeader title={`ตั้งค่าหอ · ${unit.name}`} desc="กติกาค่าเช่า ค่าน้ำไฟ เงินประกัน ค่าปรับ และข้อความหาผู้เช่า — ค่าที่ไม่ได้ตั้งเองจะใช้ตามแม่แบบของหอ" />
-      <SettingsForm model={model} actions={{ save: saveSettingsAction, reset: resetSettingAction }} />
-    </div>
+    <DormPolicySettings
+      model={model}
+      unitSlug={unitSlug}
+      actions={{ save: saveSettingsAction, reset: resetSettingAction, applyRolePreset: applyDormRolePresetAction.bind(null, unitSlug), setBuildingAssignment: setDormBuildingAssignmentAction.bind(null, unitSlug) }}
+    />
   );
 }

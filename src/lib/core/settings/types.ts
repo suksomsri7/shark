@@ -82,6 +82,8 @@ export type SettingDef = {
   enumLabelsTh?: Record<string, string>;
   /** B.11 ▸ type=percent: หน่วยที่เก็บ — 100 = % เต็ม (0–100) · 10000 หรือไม่ตั้ง = basis point (พฤติกรรมเดิม) · ตั้งได้เฉพาะ percent ◂ */
   percentScale?: 100 | 10000;
+  /** D.13 ▸ writeVia = ป้ายไทยของหน้าเฉพาะที่ต้องไปเปลี่ยนค่านี้ — action ทั่วไป (saveSettingsAction/resetSettingAction) ปฏิเสธคีย์ที่มี writeVia ◂ */
+  writeVia?: string;
 };
 
 export type TemplateDef = {

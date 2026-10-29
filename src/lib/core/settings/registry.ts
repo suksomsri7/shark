@@ -115,6 +115,7 @@ export function defineSettings(domain: string, defs: readonly SettingDef[], opts
     if (typeof d.editPermission !== "string" || !d.editPermission.includes(".")) problems.push(`${key}: editPermission ไม่ถูกต้อง`);
     if (!nonEmpty(d.labelTh)) problems.push(`${key}: labelTh ว่าง`);
     if (d.percentScale !== undefined && (d.type !== "percent" || (d.percentScale !== 100 && d.percentScale !== 10000))) problems.push(`${key}: percentScale ตั้งได้เฉพาะ type percent และค่า 100 หรือ 10000 (ได้ ${String(d.percentScale)})`);
+    if (d.writeVia !== undefined && !(typeof d.writeVia === "string" && /[\u0E00-\u0E7F]/.test(d.writeVia) && d.writeVia.trim().length > 0)) problems.push(`${key}: writeVia ต้องเป็นข้อความไทย (ได้ ${String(d.writeVia)})`);
     const cp = chainProblem(d.chain);
     if (cp) problems.push(`${key}: ${cp}`);
     const defaults = (d.defaults ?? {}) as Record<string, unknown>;
@@ -252,3 +253,7 @@ export function defaultFor(def: SettingDef, templateKey: string | null): unknown
 
 /** เจ้าของเท่านั้น: ownerOnly หรือ sensitivity LEGAL */
 export const isOwnerOnly = (def: SettingDef): boolean => def.ownerOnly === true || def.sensitivity === "LEGAL";
+
+/** D.13 ▸ writeViaIssues: คีย์ที่ต้องเปลี่ยนผ่านหน้าเฉพาะ (def.writeVia) — action ทั่วไปเรียกก่อนเขียน · คีย์ไม่รู้จัก/ไม่มี writeVia ⇒ ไม่มีปัญหา ◂ */
+export const writeViaIssues = (keys: readonly string[]): { key: string; code: "WRITE_VIA"; messageTh: string }[] =>
+  [...new Set(keys)].flatMap((key) => { const writeVia = DEFS.get(key)?.writeVia; return writeVia ? [{ key, code: "WRITE_VIA" as const, messageTh: `ค่านี้เปลี่ยนได้ที่${writeVia}เท่านั้น (writeVia)` }] : []; });

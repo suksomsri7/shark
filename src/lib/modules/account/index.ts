@@ -2150,3 +2150,16 @@ export async function cancelOtherPendingPaymentRequests(
   return n;
 }
 // ◂ SVC D.8
+// ── SVC D.13 ▸ ยอดเงินประกันถือหลายสัญญา (อ่านอย่างเดียว · คำสั่งเดียว · หนี้ N+1 ของ D.5) — svc-brief-d.13 §7 ──
+import { dormDepositHeldMany as d13DepositHeldMany } from "./gl";
+/** = securityDepositHeld ต่อสัญญาทุกตัว (ทุกสมุดของร้าน) · ต่างหน่วย/ไม่รู้จัก ⇒ 0 · ≤ 2,000 สัญญาต่อครั้ง (เกิน ⇒ โยน) · ฐานล้ม = โยน (F8) */
+export async function securityDepositHeldMany(input: { tenantId: string; unitId: string; leaseIds: string[] }): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  const ids = Array.isArray(input?.leaseIds) ? [...new Set(input.leaseIds.filter((x): x is string => nonEmpty(x)))] : [];
+  if (ids.length > 2000) throw new Error("securityDepositHeldMany: เกิน 2,000 สัญญาต่อครั้ง");
+  for (const id of ids) out[id] = 0;
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !ids.length) return out;
+  for (const [id, v] of await d13DepositHeldMany(input.tenantId, input.unitId, ids)) out[id] = v;
+  return out;
+}
+// ◂ SVC D.13

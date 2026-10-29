@@ -18,8 +18,8 @@ import { isValidOutOfScopeReason, TH_RENTAL_2568_PARAMS, type LeaseKind } from "
 import { defineSettings } from "../registry";
 import type { GroupRule, LegalInputFn, LegalRuleId, ScopeKind, SettingDef, TemplateDef } from "../types";
 
-/** ⚠️ คีย์สิทธิ์นี้ยังไม่อยู่ใน core/permissions.ts — ใบ D.13 (หน้าตั้งนโยบาย/สิทธิ์) ต้องลงทะเบียน · ระหว่างนี้แก้ได้เฉพาะเจ้าของ */
-const EDIT = "settings.rooms.edit";
+/** SVC D.13 ▸ คีย์แก้ค่าตั้งหอ (CC §8 · ลงทะเบียนใน core/permissions.ts แล้ว) ◂ */
+const EDIT = "dorm.settings.edit";
 
 // ─────────────────── ชนิดค่าที่ใช้ซ้ำ ───────────────────
 const MONEY = z.number().int().min(0).max(1_000_000_000); // ≤ ฿10,000,000
@@ -115,21 +115,21 @@ const DEFS: SettingDef[] = [
     helpTh: "เข้มงวด = บล็อก · เตือน = ต้องยืนยัน+เหตุผล (เก็บประวัติ) · นอกขอบเขต = ต้องมีเหตุผลและหลักฐาน — เปลี่ยนได้เฉพาะเจ้าของกิจการ", // #2
     schema: z.enum(["STRICT", "WARN", "OUT_OF_SCOPE"]),
     defaults: { _fallback: "STRICT" },
-    chain: U, ownerOnly: true, sensitivity: "LEGAL",
+    chain: U, ownerOnly: true, sensitivity: "LEGAL", writeVia: "หน้า ค่าน้ำไฟ · กฎหมาย · VAT (เปลี่ยนโหมดตามกฎหมาย)",
   }),
   def({
     key: "rooms.legal.outOfScopeReason", type: "text", labelTh: "เหตุผลที่อยู่นอกขอบเขตประกาศ", // #3
     helpTh: "บังคับเมื่อเลือกโหมดนอกขอบเขต (อย่างน้อย 10 ตัวอักษร)",
     schema: z.string().max(2000).nullable(),
     defaults: { _fallback: null },
-    chain: U, ownerOnly: true, sensitivity: "LEGAL",
+    chain: U, ownerOnly: true, sensitivity: "LEGAL", writeVia: "หน้า ค่าน้ำไฟ · กฎหมาย · VAT (เปลี่ยนโหมดตามกฎหมาย)",
   }),
   def({
     key: "rooms.legal.outOfScopeEvidence", type: "table", labelTh: "หลักฐานประกอบ (ไฟล์) กรณีนอกขอบเขต", // #3
     helpTh: "รหัสไฟล์ส่วนตัวที่แนบ — D.7 บังคับเมื่อ legalScope บอกว่าอยู่ในขอบเขตแต่เลือกนอกขอบเขต",
     schema: z.array(z.string().min(1).max(64)).max(20),
     defaults: { _fallback: [] },
-    chain: U, ownerOnly: true, sensitivity: "LEGAL",
+    chain: U, ownerOnly: true, sensitivity: "LEGAL", writeVia: "หน้า ค่าน้ำไฟ · กฎหมาย · VAT (เปลี่ยนโหมดตามกฎหมาย)",
   }),
   def({
     key: "rooms.money.rounding", type: "enum", labelTh: "การปัดเศษเงิน", // #4
@@ -516,6 +516,12 @@ const DEFS: SettingDef[] = [
   def({
     key: "rooms.access.managerScope", type: "enum", labelTh: "ผู้ดูแลเห็นข้อมูล", // #64
     schema: z.enum(["UNIT", "BUILDING"]), defaults: { _fallback: "UNIT" }, chain: U_B, ownerOnly: true,
+  }),
+  def({
+    key: "rooms.access.buildingAssignments", type: "table", labelTh: "อาคารที่ผู้ดูแลแต่ละคนเห็น", // #64 · SVC D.13
+    helpTh: "ใช้เมื่อ \"ผู้ดูแลเห็นข้อมูล\" = เฉพาะอาคารที่ดูแล · ไม่มีรายชื่อ = ไม่เห็นห้องใด (เจ้าของเห็นทั้งหอเสมอ)",
+    schema: z.record(z.string().min(1).max(64), z.array(z.string().min(1).max(64)).max(50)).refine((v) => Object.keys(v).length <= 500),
+    defaults: { _fallback: {} }, chain: U, ownerOnly: true,
   }),
 
   // ══ โรงแรม (#65–78) — ซ่อนจนเฟส H ══

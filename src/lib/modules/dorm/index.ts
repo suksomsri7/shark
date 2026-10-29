@@ -93,3 +93,13 @@ export type {
   SendBillRunResult,
 } from "./billing";
 // ◂ SVC D.8
+// ── SVC D.13 ▸ หน้าแรกหอ · ตั้งนโยบาย/สิทธิ์ · ขอบเขตอาคาร — สัญญา ledger/svc-briefs/svc-brief-d.13.md §3–§6 (บล็อกนี้ของใบ D.13 เท่านั้น) ──
+export { dormHomeModel } from "./home";
+export type { DormHomeModel, DormHomeFinance, DormHomeTodoKind } from "./home";
+export { dormBuildingScope, dormVisibleRoomsFor } from "./scope";
+export type { DormBuildingScope } from "./scope";
+export { loadDormPolicySettings, applyDormRolePreset, setDormBuildingAssignment } from "./policy";
+export type { DormPolicyModel } from "./policy";
+export { DORM_ROLE_ROWS, DORM_ROLE_COLUMNS, dormPresetPermissions } from "./access";
+export type { DormPresetRole, DormRoleColumn, DormRoleCell, DormRoleRow } from "./access";
+// ◂ SVC D.13

@@ -1072,10 +1072,14 @@ export async function applyTemplate(actor: SettingsActor, ctx: SettingsCtx, i: A
     if (i.overwrite === "RESET_ALL") {
       const ents = await entitiesOfUnit(tx, tenantId, unit.id);
       const pairs = [{ scope: "UNIT", scopeId: unit.id }, ...ents];
-      const rows = await tx.settingValue.findMany({
-        where: { tenantId, key: { startsWith: `${domain}.` }, OR: pairs },
-        select: { id: true, key: true, scope: true, scopeId: true, value: true, effectiveFrom: true },
-      });
+      // D.13 P3 ▸ RESET_ALL ไม่ล้างคีย์ที่ต้องเปลี่ยนผ่านหน้าเฉพาะ (def.writeVia เช่นโหมดกฎหมาย) และสิทธิ์ดูข้อมูล rooms.access.*
+      //   (ล้างแล้วขอบเขตผู้ดูแลกว้างขึ้นเงียบ ๆ) — คงแถวเดิมไว้ ◂
+      const rows = (
+        await tx.settingValue.findMany({
+          where: { tenantId, key: { startsWith: `${domain}.` }, OR: pairs },
+          select: { id: true, key: true, scope: true, scopeId: true, value: true, effectiveFrom: true },
+        })
+      ).filter((r) => !getDef(r.key)?.writeVia && !r.key.startsWith("rooms.access."));
       if (rows.length) {
         await lockAll(tx, rows.map((r) => ({ key: keyLock(tenantId, r.key, r.scope, r.scopeId) })));
         await tx.settingValue.deleteMany({ where: { tenantId, id: { in: rows.map((r) => r.id) } } });

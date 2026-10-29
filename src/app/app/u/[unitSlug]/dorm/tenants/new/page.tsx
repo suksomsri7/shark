@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { bkkYmd } from "@/lib/core/quiet-hours";
-import { getLease, leaseAccess } from "@/lib/modules/dorm";
+import { dormVisibleRoomsFor, getLease, leaseAccess } from "@/lib/modules/dorm";
 import { roomBoard } from "@/lib/modules/rooms";
 import TenantSearch from "@/components/dorm/TenantSearch";
 import {
@@ -55,7 +55,11 @@ export default async function DormNewLeasePage({
   const done = one(sp.done);
   const err = one(sp.err);
   const msg = one(sp.msg);
-  const rooms = lease ? [] : (await roomBoard({ tenantId: auth.active.tenantId }, { unitId: unit.id, date: bkkYmd(new Date()) })).filter((c) => c.rentMode !== "NIGHTLY");
+  // D.13 P4 ▸ ตัวเลือกห้องเฉพาะห้องในขอบเขตอาคารของผู้ใช้ (#64) ◂
+  const visible = lease ? null : await dormVisibleRoomsFor({ tenantId: auth.active.tenantId }, { unitId: unit.id, userId: auth.active.userId });
+  const rooms = lease
+    ? []
+    : (await roomBoard({ tenantId: auth.active.tenantId }, { unitId: unit.id, date: bkkYmd(new Date()) })).filter((c) => c.rentMode !== "NIGHTLY" && (visible === null || visible.has(c.roomId)));
   const base = `/app/u/${unitSlug}/dorm/tenants`;
 
   return (
