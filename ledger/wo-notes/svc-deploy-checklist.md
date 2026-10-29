@@ -7,3 +7,6 @@
 - env ใหม่: INTEGRATIONS_CREDENTIALS_KEY (≥32 ตัว · ไม่มีกุญแจสำรอง) · ห้ามตั้ง INTEGRATIONS_FAKE / LINE_API_BASE บน prod
 - ใบหลังที่ใส่ CHECK บนตารางใหญ่: ใช้ NOT VALID แล้ว VALIDATE CONSTRAINT แยกคำสั่ง
 - (D.0) `migrate diff --from-config-datasource` จะเสนอ `DROP INDEX "DormUtilityRate_unitId_buildingId_kind_periodKey_key"` (NULLS NOT DISTINCT ที่ Prisma ไม่รู้จัก) — **ห้ามรับบรรทัดนี้** ในใบ migration ถัดไป · ก่อนสร้าง unique STAY/idempotencyKey บน prod รัน SQL ตรวจซ้ำในคอมเมนต์ของ migration svc_d ก่อน
+
+## B.4 queue.housekeeping (29 ต.ค.)
+- งานรายนาที `queue.housekeeping` เรียก resetDaily/expireSkipped ซึ่งบน prod ไม่เคยถูกเรียก ⇒ รอบแรกหลัง deploy จะยกเลิก/ปิดบัตรคิวเก่าค้างของทุกร้านแบบไม่มี event · ก่อนเปิด: นับบัตรค้างต่อร้าน (dry-run) แจ้งเจ้าของ · deploy ช่วงเงียบ
