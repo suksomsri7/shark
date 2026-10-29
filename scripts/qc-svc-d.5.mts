@@ -1197,12 +1197,19 @@ try {
     if (errs.length) return [false, `เตรียมไม่ได้ ${errs.slice(0, 3).join(",")}`];
     const { rs, ms } = await inProc(Ls.map((L) => () => moveIn(cO, U.DM, L)));
     const xs = await fanout("moveIn", cO, Lx.map((L) => ({ unitId: U.DM, leaseId: L, channel: "TRANSFER", paidAt: new Date().toISOString() })), { procs: 2 });
+    // ORACLE-EDIT (ผู้คุม 29 ต.ค.): ใต้โหลดเครื่อง (หลายเลนรันพร้อมกัน) คิวเงินระดับร้าน ~0.7 วิ/สัญญา ⇒ RETRY_SAFE เป็นคำตอบที่ถูก (ไม่มีอะไรเปลี่ยน)
+    //   เกณฑ์ = ผลแรกเป็น ok หรือ RETRY_SAFE เท่านั้น · กดซ้ำทีละตัวเฉพาะ RETRY_SAFE ⇒ ทุกสัญญา ACTIVE ฿9,000 JV 2 (perf ไม่ใช่เกณฑ์ของ D.5 ตามหลักเจ้าของ)
+    const firstBad = [...rs, ...xs].filter((x) => !(x?.ok === true || x?.code === "RETRY_SAFE"));
+    const retryIdx = [...rs, ...xs].map((x, i) => (x?.ok === true ? -1 : i)).filter((i) => i >= 0);
+    const all = [...Ls, ...Lx];
+    const again = [];
+    for (const i of retryIdx) again.push(await moveIn(cO, U.DM, all[i]));
     const invs = [];
-    for (const L of [...Ls, ...Lx]) invs.push(await leaseInv(L));
+    for (const L of all) invs.push(await leaseInv(L));
     const wrong = invs.filter((i) => !(i.status === "ACTIVE" && i.held === 900000 && i.jv === 2));
     const draftMoney = invs.filter((i) => i.status === "DRAFT" && i.held > 300000).length;
-    return [!badOf(rs).length && !badOf(xs).length && rs.every((x) => x?.ok === true) && xs.every((x) => x?.ok === true) && !wrong.length && !draftMoney,
-      `ในโพรเซส ${tally(rs)} ${ms}ms · ข้ามโพรเซส ${tally(xs)} · ผิด ${wrong.length} ${J(wrong.slice(0, 3))} · DRAFT มีเงิน ${draftMoney}`];
+    return [!badOf(rs).length && !badOf(xs).length && !firstBad.length && again.every((x) => x?.ok === true) && !wrong.length && !draftMoney,
+      `ในโพรเซส ${tally(rs)} ${ms}ms · ข้ามโพรเซส ${tally(xs)} · กดซ้ำ ${again.length} ${tally(again)} · ผิด ${wrong.length} ${J(wrong.slice(0, 3))} · DRAFT มีเงิน ${draftMoney}`];
   });
   await T("M-12", "cancelLease ∥ receiveBookingFee ∥ moveIn บน 10 สัญญาพร้อมกัน (30 คำขอในโพรเซสเดียว) ⇒ ไม่มี UNAVAILABLE/throw · CANCELLED ⇒ ยอดถือ 0 ไม่มี JV · DRAFT ⇒ ยอดถือ 0 หรือเท่าเงินจอง · ACTIVE ⇒ 900000", ["createLease", "cancelLease", "receiveBookingFee", "moveIn"], async () => {
     const Ls = await prepSigned(DMR(43, 10));
