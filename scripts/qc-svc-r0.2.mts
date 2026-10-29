@@ -424,7 +424,9 @@ try {
       `B205=${b205?.rentMode ?? "ไม่มีห้อง"} · ห้องอื่น null ครบ=${othersNull}`);
     const tx = await q<{ n: number }>(
       `SELECT ((SELECT count(*) FROM "RoomOccupancy" WHERE "tenantId" = ANY($1::text[]) AND "refType" <> 'SvcQcScene') + (SELECT count(*) FROM "HotelReservation" WHERE "tenantId" = ANY($1::text[]))
-             + (SELECT count(*) FROM "Appointment" WHERE "tenantId" = ANY($1::text[]) AND COALESCE("idempotencyKey", '') NOT LIKE 'svcqc-line-%'))::int AS n`, [SVC_TENANTS]);
+             + (SELECT count(*) FROM "Appointment" WHERE "tenantId" = ANY($1::text[]) AND COALESCE("idempotencyKey", '') NOT LIKE 'svcqc-line-%'
+                AND NOT ("unitId" = $2 AND to_char(("startAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')::date, 'YYYY-MM-DD') IN (SELECT substr("idempotencyKey", 12, 10) FROM "Appointment" WHERE "idempotencyKey" LIKE 'svcqc-line-%'))))::int AS n`, [SVC_TENANTS, U.barber]);
+    //   + walk-in ของฉาก B.5 (ไม่มีคีย์ · หน่วย barber · วันฉากเดียวกับคีย์ svcqc-line-YYYY-MM-DD)
     // ORACLE-EDIT 29 ต.ค. (ผู้คุม): ฉากจอคิวของ B.5 (scripts/svc-qc-today-line-scene.mts · idempotencyKey ขึ้นต้น svcqc-line-) ไม่ใช่ธุรกรรมของ seed — ไม่นับ
     // ORACLE-EDIT 28 ต.ค. (ผู้คุม): ฉากถ่ายภาพของใบหลัง (R0.9 scripts/svc-qc-roomboard-scene.mts · refType SvcQcScene) ไม่ใช่ธุรกรรมของ seed — ไม่นับ
     chk("D-14", "ใบนี้ไม่มีธุรกรรม (RoomOccupancy/HotelReservation/Appointment = 0 · ใบหลังเติม)", tx[0].n === 0, `มี ${tx[0].n} แถว`, "MINOR");
