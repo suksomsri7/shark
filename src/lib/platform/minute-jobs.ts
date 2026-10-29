@@ -518,6 +518,16 @@ registerMinuteJob({
 });
 // ◂ SVC B.3
 
+// SVC B.11 ▸ ระบบจอง: ลบข้อมูลส่วนตัวลูกค้า walk-in ตามอายุที่ร้านตั้ง (booking.privacy.walkInRetentionDays · ชั่วโมงละครั้ง · ข้ามร้าน) —
+//   โหลดตอนรันเท่านั้น (facade) · idempotent + ล็อก advisory ต่อร้าน ⇒ ยิงซ้อนกันได้ผลรวมเท่ารอบเดียว (X5)
+registerMinuteJob({
+  name: "booking.privacy.purge",
+  everyMinutes: 60,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/booking")).purgeBookingPersonalData(now),
+});
+// ◂ SVC B.11
+
 // SVC R0.9 ▸ แกนห้อง: ปล่อย occupancy ของการจองโรงแรมที่ไม่ใช่ BOOKED/CHECKED_IN แล้ว (เช็คเอาท์/ยกเลิก/คืนเงิน แต่ปล่อยห้องล้ม)
 //   ทุก 5 นาที · ข้ามร้าน · lazy import facade แบบ rooms.expireHolds · idempotent (SKIP LOCKED + active ใน UPDATE)
 registerMinuteJob({

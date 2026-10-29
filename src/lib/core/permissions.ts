@@ -235,7 +235,29 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "booking.hours.set": "ตั้งเวลาทำการและวันหยุด",
       "booking.settings.edit": "แก้ค่าตั้งจองคิว", // SVC B.0 (คีย์อื่นใน CC §8 = B.11)
       "booking.settings.money": "แก้ค่าตั้งจองคิวเรื่องเงิน (มัดจำ · ค่าคอมฯ)", // SVC B.0
+      // SVC B.11 ▸ คีย์ CC §8 + แถวของตารางสิทธิ์จอง 14 (BOOKING_ROLE_ROWS ท้ายไฟล์) ◂
+      "booking.queue.operate": "จัดคิวหน้าร้าน (เรียก/ย้ายคิวของทุกคน)",
+      "booking.checkin": "เช็กอินลูกค้าที่มาถึง",
+      "booking.walkin.create": "ออกบัตรคิว walk-in ให้ลูกค้า",
+      "booking.job.run": "เรียก · เริ่ม · เสร็จ งานของตัวเอง",
+      "booking.job.runAny": "เรียก/ย้าย/จบงานของผู้ให้บริการคนอื่น",
+      "booking.deposit.confirm": "ยืนยันสลิปมัดจำ",
+      "booking.devices.manage": "ตั้งค่าจอทีวี · ตู้รับบัตร · เครื่องพิมพ์บัตร",
+      "booking.appointment.reschedule": "ยกเลิก/เลื่อนนัดแทนลูกค้า",
+      "booking.deposit.waive": "ยกเว้นมัดจำ",
+      "booking.deposit.forfeit": "ยึดมัดจำเมื่อลูกค้าไม่มา",
+      "booking.customer.phoneFull": "เห็นเบอร์โทรลูกค้าเต็ม (ไม่ซ่อนเลขกลาง)",
+      "booking.report.view": "ดูรายงานและยอดเงินของระบบจอง",
     },
+    // SVC B.11 ▸ คีย์ที่ยังไม่มีโค้ดเรียก assertCan/evaluate/canBookingAction (ใช้ผ่านตารางสิทธิ์ · ใบหลังเปิดใช้จริง) ◂
+    planned: [
+      "booking.queue.operate",
+      "booking.walkin.create",
+      "booking.devices.manage",
+      "booking.deposit.waive",
+      "booking.deposit.forfeit",
+      "booking.report.view",
+    ],
   },
   {
     module: "hotel",
@@ -936,3 +958,60 @@ export function permissionModulesByGroup(): {
     modules: PERMISSION_MODULES.filter((m) => m.group === g.key),
   })).filter((g) => g.modules.length > 0);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SVC B.11 ▸ ตารางสิทธิ์ต่อบทบาทของระบบจอง (ภาพ จอง 14 · ภาคผนวก ก #65 "ค่าเริ่มตามแม่แบบ")
+//   แถว = ป้ายที่เจ้าของเห็น + คีย์จริงในทะเบียนข้างบน · ชุด = แถวที่ติ๊กต่อบทบาท (ระบบมี OWNER/MANAGER/STAFF —
+//   LEAD/PROVIDER/CASHIER/ASSISTANT คือ "ชุดสิทธิ์" ของบทบาท STAFF ที่ใช้ผ่าน updateStaffAccess เดิม)
+//   🔴 PROVIDER/CASHIER ไม่มีคีย์เงิน (settings.money · service.setDeposit · deposit.refund|waive|forfeit) · ช่างไม่ได้รับ/ยืนยันมัดจำโดยปริยาย
+// ─────────────────────────────────────────────────────────────────────────────
+export const BOOKING_ROLE_ROWS: readonly { id: string; labelTh: string; keys: readonly string[] }[] = [
+  { id: "job.own", labelTh: "เรียก · เริ่ม · เสร็จ งานของตัวเอง", keys: ["booking.job.run"] },
+  { id: "job.any", labelTh: "เรียก/ย้ายงานของช่างคนอื่น", keys: ["booking.job.runAny", "booking.queue.operate"] },
+  { id: "counter", labelTh: "จองให้ลูกค้า · เช็กอิน · ออกบัตร", keys: ["booking.appointment.create", "booking.checkin", "booking.walkin.create"] },
+  { id: "deposit.take", labelTh: "รับมัดจำ · ยืนยันสลิปมัดจำ", keys: ["booking.deposit.record", "booking.deposit.confirm"] },
+  { id: "reschedule", labelTh: "ยกเลิกนัด · เลื่อนนัดแทนลูกค้า", keys: ["booking.appointment.reschedule"] },
+  { id: "deposit.waive", labelTh: "ยกเว้นมัดจำ / คืนมัดจำ", keys: ["booking.deposit.waive", "booking.deposit.refund"] },
+  { id: "deposit.forfeit", labelTh: "ยึดมัดจำเมื่อไม่มา (ระบบทำอัตโนมัติ)", keys: ["booking.deposit.forfeit"] },
+  { id: "phone", labelTh: "เห็นเบอร์โทรลูกค้าเต็ม", keys: ["booking.customer.phoneFull"] },
+  {
+    id: "settings",
+    labelTh: "แก้ตั้งค่า · บริการ · ช่าง",
+    keys: [
+      "booking.settings.edit",
+      "booking.settings.money",
+      "booking.service.create",
+      "booking.service.update",
+      "booking.service.setDeposit",
+      "booking.staff.create",
+      "booking.staff.delete",
+      "booking.hours.set",
+      "booking.devices.manage",
+    ],
+  },
+  { id: "report", labelTh: "ดูรายงาน · ยอดเงิน", keys: ["booking.report.view"] },
+];
+
+export type BookingRolePreset = "LEAD" | "PROVIDER" | "CASHIER" | "ASSISTANT";
+
+const SHOP_PRESET: Partial<Record<BookingRolePreset, readonly string[]>> = {
+  LEAD: ["job.own", "job.any", "counter", "deposit.take", "reschedule", "deposit.waive", "deposit.forfeit", "phone", "report"],
+  PROVIDER: ["job.own", "counter"],
+  CASHIER: ["counter", "deposit.take", "reschedule", "phone"],
+};
+
+/** ชุดสิทธิ์ (id แถว) ต่อแม่แบบ — ตัดผม = นวด (#65 "เหมือนกัน") · คลินิกเพิ่มผู้ช่วย (ซ่อนจนเฟสคลินิก) */
+export const BOOKING_ROLE_PRESETS: Record<"BARBER" | "SPA" | "CLINIC", Partial<Record<BookingRolePreset, readonly string[]>>> = {
+  BARBER: SHOP_PRESET,
+  SPA: SHOP_PRESET,
+  CLINIC: { ...SHOP_PRESET, ASSISTANT: ["counter", "reschedule", "phone"] },
+};
+
+/** สิทธิ์ของชุด (ทุกคีย์ใน BOOKING_ROLE_ROWS: true/false) · แม่แบบไม่รู้จัก = BARBER · บทบาทที่แม่แบบไม่มี = false ทุกคีย์ */
+export function bookingPresetPermissions(templateKey: string, role: BookingRolePreset): Record<string, boolean> {
+  const tpl = templateKey === "SPA" || templateKey === "CLINIC" ? templateKey : "BARBER";
+  const rows = new Set(BOOKING_ROLE_PRESETS[tpl][role] ?? []);
+  const on = new Set(BOOKING_ROLE_ROWS.filter((r) => rows.has(r.id)).flatMap((r) => r.keys));
+  return Object.fromEntries(BOOKING_ROLE_ROWS.flatMap((r) => r.keys).map((k) => [k, on.has(k)]));
+}
+// ◂ SVC B.11

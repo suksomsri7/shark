@@ -44,6 +44,8 @@ export type SettingsField = {
   effectiveDated: boolean;
   sensitivity: "MONEY" | "LEGAL" | "PRIVACY" | null;
   ownerOnly: boolean;
+  /** B.11 ▸ type=percent: 100 = เก็บเป็น % เต็ม (0–100) · ไม่มี/10000 = basis point (คัดลอกจาก def — ห้ามเดาจาก max) ◂ */
+  percentScale?: 100 | 10000;
 };
 
 export type SettingsHistoryRow = {
@@ -91,6 +93,9 @@ export const SCOPE_LABEL_TH: Record<string, string> = {
 };
 
 // ───────────────────────── ตัวช่วย ─────────────────────────
+
+/** B.11 ▸ หน่วยเก็บของ percent (มีฟิลด์ percentScale = 100 ⇒ % เต็ม · อื่น = bp) — อ่านจากฟิลด์เท่านั้น ◂ */
+const percentScaleOf = (f: object): number => ("percentScale" in f && f.percentScale === 100 ? 100 : 10000);
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -154,6 +159,7 @@ export function valueToInputText(field: Pick<SettingsField, "type">, value: unkn
   if (value === null || value === undefined) return "";
   if (typeof value === "number") {
     if (field.type === "money") return (Math.round(value) / 100).toFixed(2).replace(/\.00$/, "");
+    if (field.type === "percent" && percentScaleOf(field) === 100) return String(value); // B.11 percentScale
     if (field.type === "percent") return percentText(value);
     return String(value);
   }
@@ -216,6 +222,15 @@ function scaled100(text: string): { ok: true; n: number } | { ok: false; reason:
   return { ok: true, n: Number(m[1] || "0") * 100 + Number(frac.padEnd(2, "0") || "0") };
 }
 
+/** B.11 ▸ percentScale 100: กรอก % เต็มเป็นจำนวนเต็ม (เช่น "70" ⇒ 70) ◂ */
+function parseWholePercent(field: Pick<SettingsField, "labelTh" | "min" | "max">, t: string): ParseResult {
+  const c = t.replace(/[,\s%]/g, "");
+  if (/^-/.test(c)) return bad(`«${field.labelTh}» กรอกเปอร์เซ็นต์ ห้ามติดลบ`);
+  if (!/^\d+$/.test(c)) return bad(`«${field.labelTh}» กรอกเปอร์เซ็นต์เป็นจำนวนเต็ม เช่น 60`);
+  const n = Number(c);
+  return rangeCheck(field, n, (x) => String(x), "%") ?? { ok: true, value: n };
+}
+
 export function parseFieldInput(
   field: Pick<SettingsField, "type" | "labelTh" | "nullable" | "min" | "max" | "options">,
   raw: string | boolean,
@@ -258,6 +273,7 @@ export function parseFieldInput(
       return rangeCheck(field, r.n, bahtText, " บาท") ?? { ok: true, value: r.n };
     }
     case "percent": {
+      if (percentScaleOf(field) === 100) return parseWholePercent(field, t); // B.11 percentScale
       const r = scaled100(t);
       if (!r.ok) {
         if (r.reason === "NEG") return bad(`${label} กรอกเปอร์เซ็นต์ ห้ามติดลบ`);
@@ -360,6 +376,7 @@ function templatePreview(v: unknown): string {
 export function formatFieldValue(field: FieldFormatSpec, value: unknown): string {
   if (field.masked) return "ซ่อนไว้";
   if (value === null || value === undefined) return "—";
+  if (field.type === "percent" && percentScaleOf(field) === 100) return typeof value === "number" ? `${value}%` : String(value); // B.11 percentScale
   switch (field.type) {
     case "money":
       return typeof value === "number" ? `฿${bahtText(value)}` : String(value);

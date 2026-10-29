@@ -220,6 +220,7 @@ export async function loadSettingsForm(actor: SettingsActor, ctx: SettingsCtx, q
       effectiveDated: def.effectiveDated === true,
       sensitivity: def.sensitivity ?? null,
       ownerOnly: isOwnerOnly(def),
+      ...(def.percentScale !== undefined ? { percentScale: def.percentScale } : {}),
     };
     const gk = `${def.domain}|${def.group}`;
     let gi = groupAt.get(gk);
@@ -241,6 +242,7 @@ export async function loadSettingsForm(actor: SettingsActor, ctx: SettingsCtx, q
     const def = getDef(h.key);
     const masked = h.masked === true;
     const spec = def ? specOf(def, masked) : null;
+    if (spec && def?.percentScale !== undefined) Object.assign(spec, { percentScale: def.percentScale });
     const show = (v: unknown): string => (!spec ? "—" : formatFieldValue(spec, v));
     return {
       id: h.id,
@@ -309,6 +311,7 @@ export async function legalOverrideSummaries(ctx: SettingsCtx, requestIds: strin
       if (!def) continue;
       const hide = def.sensitivity === "PRIVACY" && !isOwner;
       const spec = specOf(def, hide);
+      if (def.percentScale !== undefined) Object.assign(spec, { percentScale: def.percentScale });
       const base = isRec(raw.base) ? raw.base : null;
       lines.push({
         key: def.key,

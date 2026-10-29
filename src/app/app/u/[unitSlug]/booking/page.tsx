@@ -9,6 +9,7 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { BOOKING_STATUS_LABEL } from "@/lib/ui/status-labels";
 import { formatBaht } from "@/lib/ui/money";
+import { phoneForViewer } from "@/lib/modules/booking/privacy-shared"; // SVC B.11 ▸ เบอร์เต็มเฉพาะผู้มี booking.customer.phoneFull ◂
 
 const apptTone = (v: string) =>
   v === "CANCELLED" || v === "NO_SHOW" ? "danger" : v === "PENDING" ? "muted" : "strong";
@@ -44,6 +45,11 @@ export default async function BookingPage({
   const sp = searchParams ? await searchParams : undefined;
   const err = typeof sp?.err === "string" ? sp.err.slice(0, 300) : "";
   const { auth, unit } = await requireUnit(unitSlug);
+  const viewer = {
+    role: auth.active.role,
+    unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [],
+    permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
+  };
   const [appts, revenue] = await Promise.all([
     listAppointments(auth.active.tenantId, unit.id, todayBkk()),
     daySummary(auth.active.tenantId, unit.id),
@@ -91,7 +97,7 @@ export default async function BookingPage({
                       {time} · {a.service.name}
                     </div>
                     <div className="text-xs text-[color:var(--color-muted)]">
-                      {day} · โดย {a.staff.name} · {a.customerName} {a.customerPhone}
+                      {day} · โดย {a.staff.name} · {a.customerName} {phoneForViewer(viewer, unit.id, a.customerPhone)}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">

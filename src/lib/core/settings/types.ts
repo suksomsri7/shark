@@ -80,6 +80,8 @@ export type SettingDef = {
   helpTh?: string;
   /** type=enum: ป้ายไทยของทุกตัวเลือก (หน้าตั้งค่าไม่แสดงค่าดิบ) — R0.4 */
   enumLabelsTh?: Record<string, string>;
+  /** B.11 ▸ type=percent: หน่วยที่เก็บ — 100 = % เต็ม (0–100) · 10000 หรือไม่ตั้ง = basis point (พฤติกรรมเดิม) · ตั้งได้เฉพาะ percent ◂ */
+  percentScale?: 100 | 10000;
 };
 
 export type TemplateDef = {
