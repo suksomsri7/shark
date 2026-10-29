@@ -354,6 +354,9 @@ export const SQC_VISUAL_SPECS: Record<string, { name: string; path: string }[]> 
     { name: "booking-mine", path: `/app/u/${SQC_UNITS.barber.slug}/booking/mine?at=${encodeURIComponent(sqcLineSceneAt(SQC_LINE_SCENE_DAY, "14:20"))}` },
     { name: "booking-day", path: `/app/u/${SQC_UNITS.barber.slug}/booking/day?date=${SQC_LINE_SCENE_DAY}&at=${encodeURIComponent(sqcLineSceneAt(SQC_LINE_SCENE_DAY, "14:20"))}` },
   ],
+  // D.8 ออกบิลรอบเดือน (ภาพ หอ 04 · ขั้นตรวจบิล · ตัวอย่างบิล 204) — ก่อนถ่ายรันฉาก roomboard → lease → meter → utility → scripts/svc-qc-billing-scene.mts
+  //   ถ่ายทั้ง --user owner (มีปุ่มส่ง/ตั้งเวลา) และ --user fai (dorm.view อย่างเดียว · ไม่มีปุ่มส่ง) · ผู้คุมเทียบ PARITY กับ ledger/design-dorm/04-billing-run.png
+  "d.8": [{ name: "dorm-billing-run", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/billing?room=204` }],
   // B.11 จอตั้งค่าจองคิว (ภาพ จอง 08 · 11 · 12 ส่วนคน · 14) — ก่อนถ่ายรัน scripts/svc-qc-booking-settings-scene.mts (ฉาก SQC_BOOKING_SETTINGS_SCENE)
   //   08/14 = บาร์เบอร์ (แม่แบบ BARBER · ปรับ 6 ข้อ) · 11/12 = ร้านนวด (SPA · ใครทำได้ 5/6 ของน้ำมันอโรมา · พี่นก) · ผู้คุมเทียบ PARITY กับ ledger/design-booking/*.png
   "b.11": [

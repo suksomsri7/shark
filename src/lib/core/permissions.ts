@@ -284,6 +284,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "dorm.meter.read": "จดเลขมิเตอร์", // SVC D.6
       "dorm.bill.run": "เตรียมรอบบิล · ใส่บิลค่าน้ำไฟจากการไฟฟ้า/ประปา", // SVC D.7
       "dorm.lease.manage": "จัดการผู้เช่าและสัญญา", // SVC D.5
+      "dorm.bill.send": "ส่งบิลให้ผู้เช่า · แก้บิลหลังส่ง (ใบลดหนี้/เพิ่มหนี้)", // SVC D.8
     },
   },
   {

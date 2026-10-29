@@ -1225,6 +1225,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // SVC D.5 ▸ ลงชื่อสัญญาเช่าหอแล้ว — ยิงจาก `dorm/lease.ts#signLease` ใน tx เดียวกับ signedAt · payload ตรง 3 คีย์ { unitId, leaseId, roomId }
   //   (ไม่มีชื่อ/เบอร์/เงิน · X8) · งานหลัก = no-op · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation · renewed/ended = D.12 ◂
   "dorm.lease.signed": withAutomation(async () => {}),
+  // SVC D.8 ▸ ส่งบิลหอแล้ว (ต่อบิล) — ยิงจาก `dorm/billing.ts#sendBillRun` ใน tx เดียวกับการตั้ง SENT · key `dorm.billrun.sent:<billId>` ·
+  //   payload ตรง 6 คีย์ { unitId, runId, billId, leaseId, periodKey, amountSatang } (ไม่มีชื่อ/เบอร์ · X8) · งานหลัก = hook ว่าง
+  //   ให้ D.9 ใส่ notifyCustomer (ผ่าน outbox concurrency — ห้าม loop ส่งใน request) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.billrun.sent": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

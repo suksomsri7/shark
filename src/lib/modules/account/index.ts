@@ -5,7 +5,7 @@
 // 🔴 ห้าม import raw prisma ที่นี่ (F5 baseline freeze) — query ผ่าน service.ts / gl.ts เท่านั้น
 
 import type { AccountDocType, Prisma } from "@prisma/client";
-import { handleBeamPaid, handleBeamFailed } from "./payment-request";
+import { handleBeamPaid, handleBeamFailed, cancelPaymentRequest } from "./payment-request";
 import {
   convertDocument,
   createDocument,
@@ -2127,3 +2127,26 @@ export async function securityDepositHeldInTx(tx: Prisma.TransactionClient, inpu
   return dormSecurityDepositHeldInTx(tx, input.tenantId, input.unitId, input.leaseId);
 }
 // ◂ SVC D.5
+
+// SVC D.8 ▸ (ชุดแก้ F13) ลิงก์จ่ายของใบแจ้งหนี้หอ: ยกเลิกคำขอที่ยังรอชำระของเอกสารนี้ "ยกเว้นใบที่ระบุ" — กันผู้เช่าเห็นลิงก์ยอดเก่า
+//   (หลังใบลดหนี้/เพิ่มหนี้ ยอดคงค้างเปลี่ยน ⇒ createPaymentRequestForDoc ออกใบยอดใหม่ ⇒ ใบยอดเก่าต้องหมดผล) · ใช้ของเดิม (list + cancel) ล้วน ◂
+export async function cancelOtherPendingPaymentRequests(
+  ctx: AccountCtx,
+  documentId: string,
+  keepRequestId: string | null,
+  userId?: string | null,
+): Promise<number> {
+  if (!ctx?.tenantId || !ctx?.systemId || !documentId) return 0;
+  // อ่านครบทุกใบที่ยังรอชำระ (ไม่จำกัด 20 ใบล่าสุดแบบ listPaymentRequests) · ผูก tenantId + systemId ⇒ ร้าน/สมุดอื่น = 0
+  const rows = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountPaymentRequest.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, documentId, status: "PENDING", ...(keepRequestId ? { NOT: { id: keepRequestId } } : {}) },
+    select: { id: true },
+  });
+  let n = 0;
+  for (const r of rows) {
+    const c = await cancelPaymentRequest(ctx, r.id, userId ?? null);
+    if (c.ok) n++;
+  }
+  return n;
+}
+// ◂ SVC D.8

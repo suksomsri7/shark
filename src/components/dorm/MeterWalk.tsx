@@ -5,7 +5,7 @@
 //   • ไม่มีเงิน/คำนวณยอด (กล่องประมาณเงินเป็นของ D.7) · ไม่มีชื่อผู้เช่า (D.5/D.13 เติม) · ห้องผิดปกติ = "พักบิลรอตรวจ" เท่านั้น
 //   • 390px ไม่ล้นแนวนอน · ปุ่ม/ช่องกรอกสูง ≥ 44px · สถานะสื่อด้วยข้อความ ไม่พึ่งสีอย่างเดียว
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MeterFlagRow, MeterWalk as MeterWalkData } from "@/lib/modules/dorm";
+import type { MeterEstimate, MeterFlagRow, MeterWalk as MeterWalkData } from "@/lib/modules/dorm";
 import { enqueueReading, nextBatch, settleBatch, type QueuedReading } from "@/lib/modules/dorm/meter-queue";
 
 type SubmitInput = {
@@ -26,6 +26,8 @@ export type MeterWalkProps = {
   initialFloor?: string;
   initialRoomId?: string;
   initialView?: "walk" | "flags";
+  /** SVC D.8 ▸ กล่อง "ประมาณค่าน้ำไฟเดือนนี้" ต่อห้อง (meterEstimates · เฉพาะผู้มีสิทธิ์ดูเงิน) — ไม่ส่ง = ไม่มีกล่อง ◂ */
+  estimates?: Record<string, MeterEstimate> | null;
 };
 
 type Room = MeterWalkData["floors"][number]["rooms"][number];
@@ -236,6 +238,22 @@ function FlagCard(props: {
         </p>
       ) : null}
     </article>
+  );
+}
+
+// SVC D.8 ▸ กล่องประมาณค่าน้ำไฟของห้อง (ยอดจาก D.7 ผ่าน meterEstimates — จอไม่คำนวณเงินเอง) ◂
+const estMoney = (satang: number): string => `${Math.trunc(satang / 100).toLocaleString("en-US")}.${String(Math.abs(satang % 100)).padStart(2, "0")}`;
+function EstimateBox({ roomId, e }: { roomId: string; e: MeterEstimate }) {
+  const part = (label: string, x: MeterEstimate["elec"]) =>
+    x ? `${label} ${fmt(x.units)}${x.rateSatangPerUnit !== null ? ` × ฿${estMoney(x.rateSatangPerUnit)}` : " หน่วย"}` : null;
+  const parts = [part("ไฟ", e.elec), part("น้ำ", e.water)].filter((x): x is string => !!x);
+  return (
+    <div data-meter-estimate={roomId} className="flex flex-col gap-0.5 rounded-2xl bg-[color:var(--color-surface-2)] p-3.5 text-[13px]">
+      <p>
+        ประมาณค่าน้ำไฟเดือนนี้ <b className="tabular-nums">{`฿${estMoney(e.totalSatang)}`}</b>
+      </p>
+      {parts.length ? <p className="text-[color:var(--color-muted)]">{parts.join(" · ")}</p> : null}
+    </div>
   );
 }
 
@@ -484,6 +502,7 @@ export default function MeterWalk(props: MeterWalkProps) {
             </div>
           );
         })}
+        {props.estimates && props.estimates[room.roomId] ? <EstimateBox roomId={room.roomId} e={props.estimates[room.roomId]} /> : null}
         {note ? (
           <p role="status" className="text-[13px] text-[color:var(--color-danger)]">
             {note}

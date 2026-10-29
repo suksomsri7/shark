@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { bkkYmd } from "@/lib/core/quiet-hours";
-import { dormAccess, meterFlags, meterWalk } from "@/lib/modules/dorm";
+import { dormAccess, meterEstimates, meterFlags, meterWalk } from "@/lib/modules/dorm";
 import MeterWalk from "@/components/dorm/MeterWalk";
 import { confirmMeterReadingAction, replaceMeterAction, submitMeterReadingsAction } from "./actions";
 
@@ -27,12 +27,15 @@ export default async function DormMeterPage({
     unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [],
     permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
   };
-  if (!dormAccess(membership, unit.id).meter) notFound();
+  const access = dormAccess(membership, unit.id);
+  if (!access.meter) notFound();
 
   const asked = one(sp.period);
   const periodKey = asked && PERIOD_RE.test(asked) ? asked : bkkYmd(new Date()).slice(0, 7);
   const ctx = { tenantId: auth.active.tenantId };
   const [walk, flags] = await Promise.all([meterWalk(ctx, { unitId: unit.id, periodKey }), meterFlags(ctx, { unitId: unit.id, periodKey })]);
+  // SVC D.8 ▸ กล่องประมาณค่าน้ำไฟ — เฉพาะผู้ดูข้อมูลหอได้ (access.board) · คนจดมิเตอร์ไม่เห็นเงิน (ส่ง null) ◂
+  const estimates = access.board ? await meterEstimates({ tenantId: auth.active.tenantId, actorUserId: auth.active.userId }, { unitId: unit.id, periodKey }) : null;
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
@@ -51,6 +54,7 @@ export default async function DormMeterPage({
         initialView={one(sp.view) === "flags" ? "flags" : "walk"}
         initialFloor={one(sp.floor)}
         initialRoomId={one(sp.room)}
+        estimates={estimates}
       />
     </div>
   );

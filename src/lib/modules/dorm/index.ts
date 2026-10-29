@@ -64,3 +64,32 @@ export {
 export type { LeaseCtx, LeaseDetail, LeaseRow, LeaseTab, LeaseList } from "./lease";
 export { leaseAccess } from "./lease-access";
 // ◂ SVC D.5
+
+// ── SVC D.8 ▸ รอบบิลรายเดือน (ภาพ หอ 04) — ชื่อตามสัญญา ledger/svc-briefs/svc-brief-d.8.md §3 (บล็อกนี้ของใบ D.8 เท่านั้น) ──
+export {
+  prepareBillRun,
+  setBillExtraLines,
+  releaseHeldBill,
+  scheduleBillRun,
+  sendBillRun,
+  adjustSentBill,
+  billRunModel,
+  getBill,
+  billRunCsv,
+  meterEstimates,
+  runDormBillingJobs,
+} from "./billing";
+export type {
+  BillingCtx,
+  BillRunStatus,
+  BillGateItem,
+  BillRunGate,
+  BillRunModel,
+  BillRunRow,
+  BillPreview,
+  MeterEstimate,
+  ExtraLineInput,
+  PrepareBillRunResult,
+  SendBillRunResult,
+} from "./billing";
+// ◂ SVC D.8
