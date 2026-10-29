@@ -281,6 +281,13 @@ const newPhone = () => `08${String((RUNNUM % 1000) * 100000 + ++seq).padStart(8,
 const newIdCard = () => thaiId(`1${String(RUNNUM).padStart(6, "0")}${String(++seq).padStart(5, "0")}`.slice(0, 12));
 
 const tenantIds: string[] = [];
+// ORACLE-EDIT 29 ต.ค. (G order): นับ outbox ที่ค้าง (PENDING) — ทั้งฐาน / เฉพาะร้านทดสอบ
+let pendingAtOldG: { all: number; mine: number } | null = null;
+async function pendingOutbox(tids: string[]): Promise<{ all: number; mine: number }> {
+  const all = await prisma.outboxEvent.count({ where: { status: "PENDING" } });
+  const mine = tids.length ? await prisma.outboxEvent.count({ where: { status: "PENDING", tenantId: { in: tids } } }) : 0;
+  return { all, mine };
+}
 try {
   const stale = await prisma.tenant.findMany({ where: { slug: { startsWith: "qc-svc-d5-" } }, select: { id: true } });
   if (stale.length) { console.log(`  (กวาด tenant ค้างจากรอบก่อน ${stale.length})`); await cleanup(stale.map((t: { id: string }) => t.id)); }
@@ -1569,19 +1576,10 @@ try {
     }
   }
 
-  // ═══════════════ G. regression ═══════════════
-  console.log("\n── G regression (ลูกโพรเซส · env เดียวกัน · ผ่าน = JSON_SUMMARY ไม่มี failed / exit 0) ──");
-  for (const [id, f] of [["G-1", "qc-svc-d.2"], ["G-2", "qc-svc-r0.8"], ["G-3", "qc-svc-d.1"], ["G-4", "qc-svc-r0.3"]] as const) {
-    if (NO_REG) { skip(id, `regression ${f}`, "--no-regression / SVC_D5_NO_REGRESSION=1", "CRITICAL"); continue; }
-    const r = spawnSync("pnpm", ["exec", "tsx", `scripts/${f}.mts`], { cwd: ROOT, env: process.env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
-    const js = [...out.matchAll(/JSON_SUMMARY (\{.*\})/g)].map((m) => m[1]).pop();
-    let sum: any = null;
-    try { sum = js ? JSON.parse(js) : null; } catch { /* อ่านไม่ได้ */ }
-    const ok = r.status === 0 && (!js || (!!sum && Array.isArray(sum.failed) && sum.failed.length === 0));
-    if (ok) pass(id, `regression ${f} ไม่มีข้อแดง (${sum ? `${sum.passed}/${sum.total}` : "exit 0"})`);
-    else fail(id, `regression ${f} ไม่มีข้อแดง`, `exit=${r.status} failed=${J(sum?.failed)} · ${out.split("\n").filter((l) => l.includes("❌")).slice(0, 3).join(" | ").slice(0, 300)}`, "CRITICAL");
-  }
+  // ORACLE-EDIT 29 ต.ค. (G order): หมวด G ย้ายไปรันหลังล้างข้อมูล (finally) — ก่อนหน้านี้ G รันขณะ outbox ของร้านทดสอบ (~100 สัญญา) ยังค้าง
+  //   ⇒ drainAll ของ qc-hotel-money (ลูกของ qc-svc-r0.8) ไล่ของเก่าก่อน ไม่ถึง event เช็กเอาต์ของตัวเอง (HT-2.x แดงเฉพาะตอนรันซ้อน)
+  pendingAtOldG = await pendingOutbox(tenantIds);
+  console.log(`\n  (G order) outbox PENDING ณ จุดที่ G เคยรัน (ก่อนล้าง): ทั้งฐาน ${pendingAtOldG.all} · ของร้านทดสอบนี้ ${pendingAtOldG.mine}`);
 } catch (e) {
   fail("CRASH", "จบกลางทาง", errMsg(e), "CRITICAL");
 } finally {
@@ -1592,6 +1590,23 @@ try {
     if (!left.length) pass("Z-1", `ล้างครบ: ทุกตารางที่มี tenantId ของร้านทดสอบ ${tenantIds.length} ร้าน + ผู้ใช้ svc-d5-* = 0 แถว (ฉาก svcqc คงไว้ให้ถ่ายภาพ — ล้างด้วย scripts/svc-qc-lease-scene.mts --clear)`);
     else fail("Z-1", "ล้างครบ", J(left), "MAJOR");
   } catch (e) { fail("Z-1", "ล้างครบ", `ตรวจไม่ได้: ${errMsg(e)}`, "MAJOR"); }
+  // ═══════════════ G. regression — ORACLE-EDIT 29 ต.ค. (G order): รันหลังล้างร้านทดสอบ (outbox ของรอบนี้ถูกลบแล้ว) ═══════════════
+  try {
+    const pend = await pendingOutbox(tenantIds);
+    console.log(`\n── G regression (ลูกโพรเซส · env เดียวกัน · หลังล้างข้อมูล · ผ่าน = JSON_SUMMARY ไม่มี failed / exit 0) ──`);
+    console.log(`  (G order) outbox PENDING ตอนเริ่ม G: ทั้งฐาน ${pend.all} · ของร้านทดสอบนี้ ${pend.mine} (ก่อนย้าย: ${pendingAtOldG ? `${pendingAtOldG.all}/${pendingAtOldG.mine}` : "ไม่ได้วัด — จบกลางทาง"})`);
+    for (const [id, f] of [["G-1", "qc-svc-d.2"], ["G-2", "qc-svc-r0.8"], ["G-3", "qc-svc-d.1"], ["G-4", "qc-svc-r0.3"]] as const) {
+      if (NO_REG) { skip(id, `regression ${f}`, "--no-regression / SVC_D5_NO_REGRESSION=1", "CRITICAL"); continue; }
+      const r = spawnSync("pnpm", ["exec", "tsx", `scripts/${f}.mts`], { cwd: ROOT, env: process.env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+      const js = [...out.matchAll(/JSON_SUMMARY (\{.*\})/g)].map((m) => m[1]).pop();
+      let sum: any = null;
+      try { sum = js ? JSON.parse(js) : null; } catch { /* อ่านไม่ได้ */ }
+      const ok = r.status === 0 && (!js || (!!sum && Array.isArray(sum.failed) && sum.failed.length === 0));
+      if (ok) pass(id, `regression ${f} ไม่มีข้อแดง (${sum ? `${sum.passed}/${sum.total}` : "exit 0"})`);
+      else fail(id, `regression ${f} ไม่มีข้อแดง`, `exit=${r.status} failed=${J(sum?.failed)} · ${out.split("\n").filter((l) => l.includes("❌")).slice(0, 3).join(" | ").slice(0, 300)}`, "CRITICAL");
+    }
+  } catch (e) { fail("G-CRASH", "หมวด G จบกลางทาง", errMsg(e), "CRITICAL"); }
   await prisma.$disconnect();
 }
 
