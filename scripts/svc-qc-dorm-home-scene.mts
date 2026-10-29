@@ -6,11 +6,15 @@
 //   ⚠️ DormBill.leaseId เป็น FK Restrict ⇒ ล้างฉากต้องเรียง "D.13 --clear ก่อน" แล้วค่อย svc-qc-lease-scene.mts --clear
 //
 // ฉาก (ค่าจาก SQC_DORM_HOME_SCENE + SQC_DORM_POLICY_SCENE เท่านั้น · วันที่สัมพัทธ์วันนี้ไทย — ใบสั่ง D.13 §9):
-//   • งวดปัจจุบัน P = (วันที่ไทยวันนี้ ≤ 5 ? เดือนนี้ : เดือนหน้า) · ครบกำหนด P-05 · งวดก่อน P−1 (ครบกำหนด (P−1)-05) · ส่ง = min((P−1)-26, วันนี้)
-//   • DormBillRun P (SENT · 31 บิลตาม bills) และ P−1 (SENT · 2 บิลค้าง prevUnpaid) — createdById = mark · บิลจ่ายแล้ว PAID (paid = total) / อื่น SENT
+//   • เดือนนี้ไทย M สงวนให้ฉาก D.8 (svc-qc-billing-scene.mts: รอบ M ขั้นตรวจบิล DRAFT · ผู้สร้าง = เจ้าของ svcqc) — ลำดับถ่ายภาพจริง
+//     roomboard → lease → meter → utility → billing (D.8) → dorm-home (D.13) ⇒ ฉากนี้ไม่ใช้งวด M เลย (ไม่ขึ้นกับลำดับรัน · ไม่ทับ/ไม่ลบรอบ D.8)
+//     (แก้ 29 ต.ค. ตามผู้คุม: เดิม P−1 = M ชนรอบ D.8 ⇒ exit 3)
+//   • งวดปัจจุบัน P = M+1 · ครบกำหนด P-05 · งวดค้าง PP = M−1 (งวดล่าสุดก่อน P ที่ไม่ใช่ M · ครบกำหนด PP-05) · ส่ง = min(M-26, วันนี้)
+//   • DormBillRun P (SENT · 31 บิลตาม bills) และ PP (SENT · 2 บิลค้าง prevUnpaid) — createdById = mark · บิลจ่ายแล้ว PAID (paid = total) / อื่น SENT
+//   • รอบของฉากนี้ (mark) ที่งวดอื่นนอก P/PP (ค้างจากวันก่อน/โค้ดเดิม) ⇒ ลบ (กันบิลค้างเก่าปน KPI · กันชนงวด M ของ D.8)
 //   • PaymentSlip NEEDS_REVIEW ของ slipPending (fileId = FileAsset private ของฉาก · คีย์ checks.idempotencyKey `svcqc-d13:<ห้อง>:<งวด>`)
 //   • DormRepair OPEN ตาม repairsOpen · ค่าตั้งหอ: แม่แบบ + 4 ค่า ผ่านเครื่องยนต์ในนามเจ้าของ svcqc
-// มีรอบของคนอื่น (createdById ≠ mark) ที่ P หรือ P−1 ⇒ exit 3 (เลน D.8 ใช้ร่วม) · สัญญาฉาก D.5 < 31 ⇒ exit 3
+// มีรอบของคนอื่น (createdById ≠ mark) ที่ P หรือ PP ⇒ exit 3 (ไม่เขียนทับ · รอบ D.8 อยู่งวด M จึงไม่ชน) · สัญญาฉาก D.5 < 31 ⇒ exit 3
 // idempotent: อ่านเทียบก่อน ต่างเท่านั้นถึงเขียน · รันซ้ำ = SCENE_SUMMARY 0/0/0
 // 🔴 รันผ่าน scripts/qc-svc.sh เท่านั้น (ด่าน host qc-svc ใน loadSvcQcEnv)
 // บรรทัดท้าย: SCENE_SUMMARY {"created":n,"updated":n,"removed":n}
@@ -53,11 +57,12 @@ const shift = (period: string, n: number) => {
   const y = Number(period.slice(0, 4)) + Math.floor(m / 12);
   return `${y}-${String((((m % 12) + 12) % 12) + 1).padStart(2, "0")}`;
 };
-const P = Number(today.slice(8, 10)) <= 5 ? today.slice(0, 7) : shift(today.slice(0, 7), 1);
-const PP = shift(P, -1);
+const M = today.slice(0, 7); // งวดของฉาก D.8 (svc-qc-billing-scene PERIOD = เดือนนี้ไทย) — ฉากนี้ไม่แตะ
+const P = shift(M, 1);
+const PP = shift(M, -1);
 const dueP = `${P}-05`;
 const duePP = `${PP}-05`;
-const sentYmd = `${PP}-26` < today ? `${PP}-26` : today;
+const sentYmd = `${M}-26` < today ? `${M}-26` : today;
 const sentAt = new Date(`${sentYmd}T10:00:00+07:00`);
 
 const sum = { created: 0, updated: 0, removed: 0 };
@@ -184,9 +189,20 @@ try {
     }
     const foreign = await prisma.dormBillRun.findMany({ where: { tenantId, unitId, periodKey: { in: [P, PP] }, NOT: { createdById: MARK } }, select: { periodKey: true, createdById: true } });
     if (foreign.length) {
-      console.error(`🔴 ${LABEL}: มีรอบบิลของคนอื่นที่งวด ${foreign.map((f) => f.periodKey).join(", ")} (createdById ${foreign.map((f) => f.createdById ?? "null").join(", ")}) — เลน D.8 ใช้หน่วยนี้อยู่ ไม่เขียนทับ\n${ORDER_WARN}`);
+      console.error(`🔴 ${LABEL}: มีรอบบิลของคนอื่นที่งวด ${foreign.map((f) => f.periodKey).join(", ")} (createdById ${foreign.map((f) => f.createdById ?? "null").join(", ")}) — ไม่เขียนทับ (รอบฉาก D.8 อยู่งวด ${M} ไม่ชน)\n${ORDER_WARN}`);
       await prisma.$disconnect();
       process.exit(3);
+    }
+    // รอบของฉากนี้ที่งวดอื่น (วันก่อน/โค้ดเดิมที่ใช้งวด M) ⇒ ลบ (เฉพาะ mark · สลิปฉากของบิลนั้นด้วย)
+    const stale = await prisma.dormBillRun.findMany({ where: { tenantId, unitId, createdById: MARK, periodKey: { notIn: [P, PP] } }, select: { id: true } });
+    if (stale.length) {
+      const sb = await prisma.dormBill.findMany({ where: { tenantId, unitId, runId: { in: stale.map((r) => r.id) } }, select: { id: true } });
+      const sbIds = sb.map((b) => b.id);
+      if (sbIds.length) {
+        sum.removed += (await prisma.paymentSlip.deleteMany({ where: { tenantId, unitId, refType: "DORM_BILL", refId: { in: sbIds } } })).count;
+        sum.removed += (await prisma.dormBill.deleteMany({ where: { tenantId, id: { in: sbIds } } })).count;
+      }
+      sum.removed += (await prisma.dormBillRun.deleteMany({ where: { tenantId, id: { in: stale.map((r) => r.id) } } })).count;
     }
     const rooms = await prisma.hotelRoom.findMany({ where: { tenantId, unitId }, select: { id: true, number: true } });
     const numberOf = new Map(rooms.map((r) => [r.id, r.number]));
@@ -194,7 +210,7 @@ try {
     const leaseOf = new Map<string, { id: string; roomId: string; partyId: string }>();
     for (const l of leases) if (l.status === "ACTIVE") leaseOf.set(numberOf.get(l.roomId) ?? "", { id: l.id, roomId: l.roomId, partyId: l.partyId });
 
-    // ── รอบบิล P + P−1 ──
+    // ── รอบบิล P + PP ──
     const slipPending = SCN.slipPending as readonly string[];
     const unpaid = SCN.unpaid as readonly string[];
     const cur = Object.entries(SCN.bills).map(([room, total]) => ({ room, total, status: (slipPending.includes(room) || unpaid.includes(room) ? "SENT" : "PAID") as "PAID" | "SENT" }));
@@ -261,7 +277,7 @@ try {
       if (!r.ok) throw new Error(`ค่าตั้ง 17: ${r.issues.map((i) => i.messageTh).join(" · ")}`);
       sum.updated += changes.length;
     }
-    console.log(`${LABEL}: วันนี้ ${today} · งวด ${P} (ครบ ${dueP}) · งวดก่อน ${PP} · ส่ง ${sentYmd}`);
+    console.log(`${LABEL}: วันนี้ ${today} · งวด ${P} (ครบ ${dueP}) · งวดค้าง ${PP} · ข้ามงวด ${M} (ฉาก D.8) · ส่ง ${sentYmd}`);
   }
 } catch (e) {
   exitCode = 1;

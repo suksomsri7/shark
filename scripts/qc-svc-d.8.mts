@@ -376,7 +376,9 @@ try {
         if (typeof l !== "string" || l === k || !THAI.test(l)) why += `${k} ไม่มีป้ายไทย · `;
       }
       const early = ["dorm.slip.review", "dorm.payment.manual", "dorm.latefee.waive"].filter((k) => pm.isPermissionKey?.(k));
-      if (early.length) why += `เพิ่มคีย์ล่วงหน้า ${early.join(",")}`;
+      // ORACLE-EDIT (ผู้คุม 29 ต.ค.): หลัง merge D.13 คีย์หอที่เหลือตาม CC §8 ลงทะเบียนโดย D.13 (dorm/access.ts DORM_ROLE_ROWS) — ไม่ใช่ D.8 เพิ่มล่วงหน้า
+      const d13 = existsSync(join(ROOT, "src/lib/modules/dorm/policy.ts"));
+      if (early.length && !d13) why += `เพิ่มคีย์ล่วงหน้า ${early.join(",")}`;
     } catch (e) { why = `import permissions ล้ม: ${errMsg(e)}`; }
     chk("S-6", "permissions.ts: dorm.bill.send (ใหม่) + dorm.bill.run ป้ายไทย · ไม่เพิ่มคีย์หอของใบอื่นล่วงหน้า", !why, why, "MAJOR");
   }
