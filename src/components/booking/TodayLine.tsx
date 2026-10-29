@@ -40,9 +40,9 @@ export default function TodayLine({ view, unitSlug, actions, at, bookingHref }: 
               {view.openMin === null ? "วันนี้ร้านปิด" : `เปิด ${minLabel(view.openMin)}–${minLabel(view.closeMin)}`} · ช่าง {view.staff.length} คนตามกะวันนี้ · เก้าอี้ {view.staff.length} ตัว
             </p>
           </div>
-          <button type="button" disabled title="จอทีวีเปิดใช้ในขั้นถัดไป" className="btn btn-ghost min-h-[44px] cursor-not-allowed opacity-60">
+          <Link href={`/app/u/${unitSlug}/booking/devices`} className="btn btn-ghost min-h-[44px]">
             จอทีวี
-          </button>
+          </Link>
           {bookingHref ? (
             <Link href={bookingHref} target="_blank" className="btn btn-ghost min-h-[44px]">
               จองให้ลูกค้า

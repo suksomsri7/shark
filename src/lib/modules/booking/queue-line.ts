@@ -327,7 +327,7 @@ const WALKIN_CHANNEL_TO_TICKET = { KIOSK: "KIOSK", STAFF: "STAFF", REMOTE: "ONLI
  * walk-in (ใบสั่ง §3.2): ใต้ล็อก (advisory สาขา → ช่างทั้งหมด) สร้าง PlanInput จากฐาน → quoteWalkIn → แถว WALKIN/QUEUED ถือช่องตามที่ quote
  * + บัตร A + booking.created ใน tx เดียว → หลัง commit ผูก Party + runPlanner · คืนแผนหลัง runPlanner
  */
-export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: Date }): Promise<WalkInResult> {
+export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: Date; deviceId?: string }): Promise<WalkInResult> {
   const fail = (code: WalkInFail, reason: string): WalkInResult => ({ ok: false, code, reason });
   if (!okCtx(ctx) || !i || typeof i !== "object" || typeof i.serviceId !== "string" || !i.serviceId) return fail("BAD_INPUT", R.BAD_INPUT);
   if (i.staffId !== null && i.staffId !== undefined && typeof i.staffId !== "string") return fail("BAD_INPUT", R.BAD_INPUT);
@@ -353,7 +353,9 @@ export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: 
     const st = await prisma.bookingStaff.findFirst({ where: { id: staffId, tenantId, unitId, active: true }, select: { id: true } });
     if (!st) return fail("NOT_FOUND", R.STAFF_NOT_FOUND);
   }
-  const wr = await resolveSettings({ tenantId }, ["booking.service.walkIn", "booking.queue.walkInPickStaff"], { unitId, serviceId: service.id });
+  // SVC B.6 ▸ ตู้ส่ง deviceId ⇒ walkInPickStaff อ่านชั้น DEVICE (#44 UNIT→DEVICE) ตรงกับที่จอตู้แสดง ◂
+  const deviceId = typeof opts?.deviceId === "string" && opts.deviceId ? opts.deviceId : undefined;
+  const wr = await resolveSettings({ tenantId }, ["booking.service.walkIn", "booking.queue.walkInPickStaff"], { unitId, serviceId: service.id, ...(deviceId ? { deviceId } : {}) });
   const wi = wr["booking.service.walkIn"]?.value as { enabled?: unknown; closeAtOrAboveMin?: unknown } | null | undefined;
   if (wi && typeof wi === "object") {
     if (wi.enabled === false) return fail("WALKIN_DISABLED", R.WALKIN_DISABLED);

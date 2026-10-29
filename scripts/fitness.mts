@@ -231,7 +231,7 @@ console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet
 // SVC R0.8 rooms/occupancy.ts (46 → 47): `expireHolds` ไล่ hold หมดเวลา "ข้ามร้าน" จาก minute-job ก่อนรู้ tenant (เหมือน inventory sweep ·
 //   UPDATE มีเงื่อนไข active + FOR UPDATE SKIP LOCKED) + `withRoomTx` เปิดธุรกรรมให้ rooms/service.ts — ไฟล์เดียวของโมดูล rooms ที่ import prisma ดิบ
 //   (service.ts/index.ts ใช้ tenantDb) · ทุกคำสั่งเขียนอื่นผูก tenantId+unitId ตรง (X1 · oracle qc-svc-r0.8 C-8/C-9/R-2/R-9)
-const BASELINE = { f5RawPrisma: 49 }; // SVC B.4: queue-line.ts + planner-run.ts need FOR UPDATE SKIP LOCKED / advisory locks / cross-tenant tick (47→49) · 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+const BASELINE = { f5RawPrisma: 50 }; // SVC B.6: booking/devices.ts deviceByToken (resolve token ก่อนรู้ tenant · แบบ forms/getPublicForm) (49→50) · SVC B.4: queue-line.ts + planner-run.ts need FOR UPDATE SKIP LOCKED / advisory locks / cross-tenant tick (47→49) · 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
@@ -449,6 +449,7 @@ const ALLOWED_EDGES = new Set([
   // CRM C1.1 ▸ partyId ทุกระบบ (C11 · พิมพ์เขียว 20-crm-v2 §4.1): จุดสร้างแถวธุรกรรม 9 จุดเรียก `party.safeFindOrCreate`
   //   ด้วยชื่อ/เบอร์/อีเมลที่แถวมีอยู่แล้ว (นอก transaction ธุรกิจ · ไม่มีวัน throw) — ทิศเดียว <โมดูล>→party
   "booking→party", // Appointment (ชื่อ+เบอร์ลูกค้า)
+  "booking→chat", // SVC B.6 ▸ public-line เรียก chat.issueLinkCode (QUEUE_TICKET deepLink ตู้/หน้าบัตร) ผ่าน facade · lazy import
   "shop→party", // ShopOrder (ชื่อ+เบอร์ผู้สั่ง)
   "rental→party", // RentalBooking (ชื่อ+เบอร์ผู้เช่า)
   "queue→party", // QueueTicket (ชื่อ/เบอร์/อีเมลที่กรอก — ไม่กรอกเบอร์ = ไม่ผูก)

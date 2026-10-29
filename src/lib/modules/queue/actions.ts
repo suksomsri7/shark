@@ -159,7 +159,7 @@ export async function closeCounterAction(unitSlug: string, formData: FormData) {
 
 // จอ TV
 export async function createDisplayAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug, "queue.display.create");
+  const { ctx, base } = await ticketCtxOf(unitSlug, "queue.display.create"); // SVC B.6 ▸ หน่วย QUEUE เท่านั้น (อุปกรณ์หน่วย BOOKING = /booking/devices) ◂
   const name = String(formData.get("name") ?? "").trim();
   if (name.length < 1) return;
   const dup = await prisma.queueDisplay.findFirst({ where: { ...ctx, name, revokedAt: null } });
@@ -169,7 +169,7 @@ export async function createDisplayAction(unitSlug: string, formData: FormData) 
 }
 
 export async function revokeDisplayAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug, "queue.display.revoke");
+  const { ctx, base } = await ticketCtxOf(unitSlug, "queue.display.revoke"); // SVC B.6 ▸ หน่วย QUEUE เท่านั้น (อุปกรณ์หน่วย BOOKING = /booking/devices) ◂
   const id = String(formData.get("id") ?? "");
   await prisma.queueDisplay.updateMany({ where: { ...ctx, id }, data: { revokedAt: new Date() } });
   revalidatePath(`${base}/setup`);

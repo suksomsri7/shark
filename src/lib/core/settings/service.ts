@@ -81,7 +81,7 @@ const CONSUMED_ACTION = "settings.legal_override.consumed";
 const PROPOSAL_TARGET = "SettingProposal";
 
 /** ชั้นที่มีตารางให้ตรวจความเป็นเจ้าของ — ชั้นอื่น (LEASE RATE_PLAN RESOURCE DEVICE COURSE) ปฏิเสธจนกว่าใบที่สร้างตารางยื่นขอเพิ่ม */
-const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE"]);
+const SUPPORTED_SCOPES: ReadonlySet<ScopeKind> = new Set<ScopeKind>(["TENANT", "UNIT", "BUILDING", "ROOM_TYPE", "ROOM", "STAFF", "SERVICE", "DEVICE"]); // SVC B.6 ▸ DEVICE = QueueDisplay ◂
 const REF_FIELD: Record<ScopeKind, keyof ScopeRefs | null> = {
   TENANT: null,
   UNIT: "unitId",
@@ -252,6 +252,13 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
         for (const r of rs) out.set(`SERVICE|${r.id}`, { unitId: r.unitId, known: { TENANT: T, UNIT: r.unitId, SERVICE: r.id } });
       }),
     );
+  // SVC B.6 ▸ ชั้น DEVICE = แถว QueueDisplay ของร้าน (ไม่สน settings.kind/revokedAt — ค่าตั้งของเครื่องที่ถอนแล้วคงไว้) ◂
+  if (by.has("DEVICE"))
+    jobs.push(
+      db.queueDisplay.findMany({ where: { tenantId: T, id: { in: ids("DEVICE") } }, select: { id: true, unitId: true } }).then((rs) => {
+        for (const r of rs) out.set(`DEVICE|${r.id}`, { unitId: r.unitId, known: { TENANT: T, UNIT: r.unitId, DEVICE: r.id } });
+      }),
+    );
   await Promise.all(jobs); // ชั้นที่ยังไม่มีตาราง — คง null (fail closed)
   return out;
 }
@@ -260,12 +267,13 @@ async function locateMany(db: Tx, tenantId: string, pairs: readonly { scope: str
 export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): Promise<{ scope: ScopeKind; scopeId: string }[]> {
   const w = { tenantId, unitId };
   const sel = { id: true } as const;
-  const [b, rt, rm, st, sv] = await Promise.all([
+  const [b, rt, rm, st, sv, dv] = await Promise.all([
     db.roomBuilding.findMany({ where: w, select: sel }),
     db.hotelRoomType.findMany({ where: w, select: sel }),
     db.hotelRoom.findMany({ where: w, select: sel }),
     db.bookingStaff.findMany({ where: w, select: sel }),
     db.bookingService.findMany({ where: w, select: sel }),
+    db.queueDisplay.findMany({ where: { ...w, revokedAt: null }, select: sel }), // SVC B.6 ▸ อุปกรณ์ที่ใช้อยู่ของสาขา (ชั้น DEVICE) ◂
   ]);
   return [
     ...b.map((r) => ({ scope: "BUILDING" as const, scopeId: r.id })),
@@ -273,6 +281,7 @@ export async function entitiesOfUnit(db: Tx, tenantId: string, unitId: string): 
     ...rm.map((r) => ({ scope: "ROOM" as const, scopeId: r.id })),
     ...st.map((r) => ({ scope: "STAFF" as const, scopeId: r.id })),
     ...sv.map((r) => ({ scope: "SERVICE" as const, scopeId: r.id })),
+    ...dv.map((r) => ({ scope: "DEVICE" as const, scopeId: r.id })),
   ];
 }
 
@@ -1071,6 +1080,7 @@ export async function applyTemplate(actor: SettingsActor, ctx: SettingsCtx, i: A
     let removed = 0;
     if (i.overwrite === "RESET_ALL") {
       const ents = await entitiesOfUnit(tx, tenantId, unit.id);
+      for (let k = ents.length - 1; k >= 0; k--) if (ents[k].scope === "DEVICE") ents.splice(k, 1); // SVC B.6 ▸ RESET_ALL ไม่ล้างค่ารายเครื่อง (DEVICE) ◂
       const pairs = [{ scope: "UNIT", scopeId: unit.id }, ...ents];
       // D.13 P3 ▸ RESET_ALL ไม่ล้างคีย์ที่ต้องเปลี่ยนผ่านหน้าเฉพาะ (def.writeVia เช่นโหมดกฎหมาย) และสิทธิ์ดูข้อมูล rooms.access.*
       //   (ล้างแล้วขอบเขตผู้ดูแลกว้างขึ้นเงียบ ๆ) — คงแถวเดิมไว้ ◂
