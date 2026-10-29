@@ -44,6 +44,8 @@ import {
 } from "./calc";
 import { heldRooms, meterWalk, periodUsage, type PeriodUsageRow } from "./meter";
 import { utilityBillingGate, utilityCharges, type UtilityChargeRow, type UtilityGate, type UtilityGroup } from "./utility";
+// SVC D.3 ▸ ใบกำกับภาษีเต็มรูปต่อบิล (ส่วน VAT) · ด่านผู้ขาย/ผู้ซื้อ ◂
+import { badBuyerTaxIds, issueTaxForBill, liveTaxInvoicesFor, sellerTaxProblem, taxBuyerOf } from "./tax-invoice";
 
 // ───────────────────────── ชนิด (สัญญา §3) ─────────────────────────
 export type BillingCtx = { tenantId: string; actorUserId: string };
@@ -81,6 +83,8 @@ export type SendBillRunResult =
       remaining: number;
       failed: { billId: string; code: string; reason: string; docId?: string }[];
       payLinkPending: number;
+      /** SVC D.3 ▸ บิลส่งแล้วของรอบที่มี VAT แต่ยังไม่มีใบกำกับที่ยังมีผล (ปกติ 0 · การเรียกซ้ำพยายามออกให้ก่อนนับ) ◂ */
+      taxInvoicePending: number;
     }
   | Fail;
 export type BillPreview = {
@@ -97,6 +101,9 @@ export type BillPreview = {
   vatSatang: Money;
   vatRegistered: boolean;
   lateFeeRule: string | null;
+  /** SVC D.3 ▸ ใบกำกับภาษีที่ยังมีผลของบิล (null = ไม่มี) · หัก ณ ที่จ่ายผู้เช่านิติบุคคล (แสดงอย่างเดียว · null = ไม่หัก) ◂ */
+  taxInvoice: { docId: string; docNo: string | null; status: string } | null;
+  withholding: { rateBp: number; baseSatang: Money; amountSatang: Money } | null;
 };
 export type BillRunRow = {
   billId: string | null;
@@ -117,6 +124,8 @@ export type BillRunRow = {
   meterFlag: { flag: string; confirmed: boolean } | null;
   docNo: string | null;
   adjustments: { kind: "CREDIT" | "DEBIT"; docNo: string | null; totalSatang: Money }[];
+  /** SVC D.3 ▸ เลขใบกำกับภาษีที่ยังมีผล ◂ */
+  taxInvoiceNo: string | null;
 };
 export type BillRunModel = {
   unitId: string;
@@ -473,11 +482,15 @@ const HOLD_TH: Record<string, string> = {
   NO_READING: "ยังไม่ได้จดมิเตอร์ของห้องนี้ — จดแล้วกดปล่อยบิล",
   BOOKING_FEE_FIRST_RENT: "บิลแรกของสัญญาที่เงินจองหักเข้าค่าห้อง — ระบบยังหักให้อัตโนมัติไม่ได้ ตรวจยอดก่อนปล่อย",
   CALC_ERROR: "คำนวณบิลห้องนี้ไม่ได้ — ตรวจค่าตั้งน้ำไฟและสัญญา",
+  // SVC D.3 ▸ (T1) ข้อมูลผู้ซื้อสำหรับใบกำกับภาษีไม่ผ่าน — บอกว่าต้องแก้อะไร ◂
+  BUYER_TAX_ID_INVALID: "เลขประจำตัวผู้เสียภาษีของผู้เช่าไม่ถูกต้อง (13 หลัก) — แก้ข้อมูลผู้เช่าแล้วกดปล่อยบิล",
+  "BUYER_TAX_ID_INVALID:BRANCH": "รหัสสาขาของผู้เช่าไม่ถูกต้อง (ตัวเลข 5 หลัก · สำนักงานใหญ่ = 00000) — แก้ข้อมูลผู้เช่าแล้วกดปล่อยบิล",
+  "BUYER_TAX_ID_INVALID:OTHER": "ข้อมูลผู้เช่าสำหรับใบกำกับภาษีไม่ครบ/ไม่ถูกต้อง — แก้ข้อมูลผู้เช่าแล้วกดปล่อยบิล",
 };
 export function holdReasonTh(code: string | null): string {
   if (!code) return "";
   const k = code.split(":")[0];
-  return HOLD_TH[k] ?? "พักบิลรอตรวจ";
+  return HOLD_TH[code] ?? HOLD_TH[k] ?? "พักบิลรอตรวจ"; // SVC D.3 ▸ รหัสเต็มก่อน (BUYER_TAX_ID_INVALID:BRANCH) ◂
 }
 
 function flagOfRoom(usage: PeriodUsageRow[], roomId: string, heldOnly: boolean): { flag: string; held: boolean } | null {
@@ -530,6 +543,7 @@ async function computeRun(tenantId: string, unitId: string, P: string, issueYmd:
       ])
     : [[], [], []];
   const moveOutOf = new Map(moveOuts.map((m) => [m.leaseId, ymdOf(m.moveOutDate) ?? ""]));
+  const badBuyers = await badBuyerTaxIds(tenantId, leases.map((l) => l.partyId)); // SVC D.3
   const hasOther = new Set(others.map((o) => o.leaseId));
   const reads: ReadRec[] = moveIns.length
     ? await db.dormMeterReading.findMany({
@@ -700,6 +714,8 @@ async function computeRun(tenantId: string, unitId: string, P: string, issueYmd:
       bill = { lines: [], subtotalSatang: 0, vatSatang: 0, totalSatang: 0 };
       hold = hold ?? "CALC_ERROR";
     }
+    // SVC D.3 ▸ บิลที่ต้องมีใบกำกับภาษี (จด VAT · มียอด VAT) แต่เลขผู้เสียภาษีของผู้เช่าไม่ผ่าน checksum ⇒ พักไว้ (แก้ Party แล้วปล่อย) ◂
+    if (!hold && vat.registered && bill.vatSatang > 0 && badBuyers.has(l.partyId)) hold = badBuyers.get(l.partyId) ?? "BUYER_TAX_ID_INVALID";
 
     // วันครบกำหนด = <เดือนรอบ>-<dueDay ของสัญญา> (ตัดสิ้นเดือน) · ก่อนวันออก ⇒ วันออก
     const dd = lv("rooms.billing.dueDay");
@@ -931,6 +947,9 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date): Promise<Pre
   const live = await db.dormBill.findMany({ where: { runId: res.runId, status: { notIn: ["HELD", "VOID"] } }, select: { roomId: true, lines: true } });
   const base = calc.gate ?? { ok: false, blocks: [], needsAcceptance: [], groups: [] };
   const extra = sumCheck(base.groups, calc.rooms, live, calc.unitVals["rooms.legal.outOfScopeReason"]);
+  // SVC D.3 ▸ ผู้ขายไม่มีเลขผู้เสียภาษี (หอจด VAT + สมุดจด VAT) ⇒ บล็อกการส่ง ◂
+  const seller = await sellerTaxProblem(tenantId, unitId);
+  if (seller) extra.push({ kind: null, buildingId: null, code: seller.code, messageTh: seller.messageTh });
   const gate: BillRunGate = { ok: base.ok && extra.length === 0, blocks: [...base.blocks, ...extra], needsAcceptance: base.needsAcceptance };
   return {
     ok: true,
@@ -1240,9 +1259,14 @@ function previewOf(
   issueYmd: string,
   leaseSnap: Vals | null,
   docNo: string | null,
+  d3: { taxInvoice: BillPreview["taxInvoice"]; partyKind: string | null } = { taxInvoice: null, partyKind: null },
 ): BillPreview {
   const ls = linesOf(b.lines);
   const vals = snapValuesOf(b.policySnapshot);
+  // SVC D.3 ▸ หัก ณ ที่จ่าย (แสดงอย่างเดียว): ผู้เช่านิติบุคคล + อัตราใน snapshot สัญญา > 0 · ฐาน = Σ gross ค่าห้อง ◂
+  const whtBp = leaseSnap ? leaseSnap["rooms.tax.withholdingCorporateBp"] : null;
+  const whtBase = grossOf(ls, (c) => c === "RENT");
+  const withholding = d3.partyKind === "COMPANY" && isNat(whtBp) && whtBp > 0 ? { rateBp: whtBp, baseSatang: whtBase, amountSatang: Math.round((whtBase * whtBp) / 10000) } : null;
   return {
     billId: b.id,
     roomNumber,
@@ -1257,6 +1281,8 @@ function previewOf(
     vatSatang: b.vatSatang,
     vatRegistered: vals ? vals["rooms.vat.registered"] === true : b.vatSatang > 0,
     lateFeeRule: lateFeeRuleOf(leaseSnap),
+    taxInvoice: d3.taxInvoice,
+    withholding,
   };
 }
 
@@ -1370,6 +1396,7 @@ export async function billRunModel(ctx: BillingCtx, input: { unitId: string; per
     const planned = await channelsOf(g, unsent.map((b) => ({ leaseId: b.leaseId, partyId: b.partyId })), parties);
     const docIds = bills.map((b) => b.accountDocumentId).filter((x): x is string => !!x);
     const docs = await docsOf(tenantId, docIds);
+    const tis = await liveTaxInvoicesFor(tenantId, docIds); // SVC D.3
 
     // KPI = ของบิลจริงในฐาน (ไม่คำนวณใหม่)
     const kpi = emptyKpi();
@@ -1438,6 +1465,7 @@ export async function billRunModel(ctx: BillingCtx, input: { unitId: string; per
         meterFlag: mf ? { flag: mf.flag, confirmed: !mf.held } : null,
         docNo: b.accountDocumentId ? (docs.docNo.get(b.accountDocumentId) ?? null) : null,
         adjustments: b.accountDocumentId ? (docs.adj.get(b.accountDocumentId) ?? []) : [],
+        taxInvoiceNo: b.accountDocumentId ? (tis.get(b.accountDocumentId)?.docNo ?? null) : null,
       });
     }
     for (const s of skipRows) {
@@ -1460,6 +1488,7 @@ export async function billRunModel(ctx: BillingCtx, input: { unitId: string; per
         meterFlag: null,
         docNo: null,
         adjustments: [],
+        taxInvoiceNo: null,
       });
     }
     rows.sort((a, b) => numCmp(a.roomNumber, b.roomNumber));
@@ -1472,7 +1501,9 @@ export async function billRunModel(ctx: BillingCtx, input: { unitId: string; per
       const b = bills.find((x) => x.id === pick.billId);
       if (b) {
         const lease = await db.dormLease.findFirst({ where: { id: b.leaseId }, select: { policySnapshot: true } });
-        preview = previewOf(b, pick.roomNumber, g.unitName, pick.tenantName, issueYmd, snapValuesOf(lease?.policySnapshot ?? null), pick.docNo);
+        const pk = await tenantDb({ tenantId }).party.findFirst({ where: { id: b.partyId }, select: { kind: true } });
+        const ti = b.accountDocumentId ? (tis.get(b.accountDocumentId) ?? null) : null;
+        preview = previewOf(b, pick.roomNumber, g.unitName, pick.tenantName, issueYmd, snapValuesOf(lease?.policySnapshot ?? null), pick.docNo, { taxInvoice: ti, partyKind: pk?.kind ?? null });
       }
     }
     const live2 = bills.filter((b) => b.status !== "VOID");
@@ -1518,6 +1549,9 @@ export async function getBill(ctx: BillingCtx, input: { unitId: string; billId: 
       await partiesOf(g.tenantId, [b.partyId]),
     ];
     const docs = b.accountDocumentId ? await docsOf(g.tenantId, [b.accountDocumentId]) : null;
+    // SVC D.3 ▸ ใบกำกับที่ยังมีผล + ชนิดผู้เช่า (หัก ณ ที่จ่าย) ◂
+    const ti = b.accountDocumentId ? ((await liveTaxInvoicesFor(g.tenantId, [b.accountDocumentId])).get(b.accountDocumentId) ?? null) : null;
+    const pk = await tenantDb({ tenantId: g.tenantId }).party.findFirst({ where: { id: b.partyId }, select: { kind: true } });
     return previewOf(
       b,
       room?.number ?? "",
@@ -1526,6 +1560,7 @@ export async function getBill(ctx: BillingCtx, input: { unitId: string; billId: 
       ymdOf(run?.issueDate ?? null) ?? ymdOf(b.dueDate) ?? "",
       snapValuesOf(lease?.policySnapshot ?? null),
       b.accountDocumentId ? (docs?.docNo.get(b.accountDocumentId) ?? null) : null,
+      { taxInvoice: ti, partyKind: pk?.kind ?? null },
     );
   } catch (e) {
     await logFail("getBill", isRec(ctx) ? ctx.tenantId : null, e);
@@ -1533,6 +1568,12 @@ export async function getBill(ctx: BillingCtx, input: { unitId: string; billId: 
   }
 }
 
+const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+/** SVC D.3 ▸ "2026-10-26" ⇒ "26 ต.ค. 2569" (จากข้อความ ไม่ผ่าน Date) ◂ */
+const thaiDateOf = (ymd: string): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  return m ? `${Number(m[3])} ${TH_MONTHS[Number(m[2]) - 1]} ${Number(m[1]) + 543}` : ymd;
+};
 const STATUS_TH: Record<string, string> = { DRAFT: "รอส่ง", HELD: "พักไว้", SENT: "ส่งแล้ว", PARTIALLY_PAID: "จ่ายบางส่วน", PAID: "จ่ายครบ", VOID: "ยกเลิก" };
 /** บาทเป็นตัวเลข (สองตำแหน่ง) — จากสตางค์จำนวนเต็ม */
 const bahtNum = (satang: number): number => Number(`${satang < 0 ? "-" : ""}${Math.trunc(Math.abs(satang) / 100)}.${pad2(Math.abs(satang) % 100)}`);
@@ -1639,7 +1680,8 @@ async function noteJob(g: G, runId: string, now: Date, err: { code: string; reas
 }
 /** ผลการส่งจากงาน ⇒ จดข้อผิดพลาด/ล้าง (ต่อบิลล้มทั้งหมด = ข้อผิดพลาดของรอบ) */
 /** ถอยเวลาเฉพาะข้อผิดพลาดที่ต้องให้คนแก้ (ด่าน/สมุด/VAT/ใบชน/ข้อมูลเปลี่ยน) — ชั่วคราว (ชนกัน/ฐานช้า) ลองรอบถัดไปทันที */
-const PERSISTENT = new Set(["UTILITY_GATE_BLOCKED", "UTIL_TOTAL_EXCEEDS_BILL", "NOT_LINKED", "AMBIGUOUS_LINK", "VAT_SETTING_MISMATCH", "INVOICE_CONFLICT", "INVOICE_MISMATCH", "RUN_STALE", "INVALID_LINE", "INVALID_INPUT"]);
+const PERSISTENT = new Set(["UTILITY_GATE_BLOCKED", "UTIL_TOTAL_EXCEEDS_BILL", "NOT_LINKED", "AMBIGUOUS_LINK", "VAT_SETTING_MISMATCH", "INVOICE_CONFLICT", "INVOICE_MISMATCH", "RUN_STALE", "INVALID_LINE", "INVALID_INPUT",
+  "SELLER_TAX_ID_MISSING", "BUYER_TAX_ID_INVALID"]); // SVC D.3 ▸ ด่านผู้ขาย/ผู้ซื้อ = ต้องแก้ข้อมูลก่อน ⇒ จด lastError + backoff ◂
 async function noteSend(g: G, runId: string, now: Date, s: SendBillRunResult): Promise<void> {
   if (!s.ok) {
     if (PERSISTENT.has(s.code)) await noteJob(g, runId, now, { code: s.code, reason: s.reason });
@@ -1869,7 +1911,8 @@ async function sendInternal(g: G, runId: unknown, deps: SendDeps): Promise<SendB
   if (!got) {
     const c = await runCounts(g, runId);
     const st = await db.dormBillRun.findFirst({ where: { id: runId }, select: { status: true } });
-    return { ok: true, done: c.drafts === 0, status: (st?.status ?? run0.status) as BillRunStatus, sent: 0, alreadySent: c.sentish, held: c.held, remaining: c.drafts, failed: [], payLinkPending: c.pending };
+    const tp = await taxPending(g, runId, null); // SVC D.3 (นับอย่างเดียว — ผู้ส่งอีกคนถือรอบอยู่)
+    return { ok: true, done: c.drafts === 0, status: (st?.status ?? run0.status) as BillRunStatus, sent: 0, alreadySent: c.sentish, held: c.held, remaining: c.drafts, failed: [], payLinkPending: c.pending, taxInvoicePending: tp };
   }
   let sentNow = 0;
   try {
@@ -1925,6 +1968,9 @@ async function sendLocked(g: G, runId: string, o: LoopOpts, onSent: (n: number) 
     const sentRows = await db.dormBill.findMany({ where: { runId, status: { in: SENTISH } }, select: { roomId: true, lines: true } });
     const over = sumCheck(gate.groups, calc.rooms, [...sentRows, ...toSend.map((b) => ({ roomId: b.roomId, lines: b.lines }))], uv["rooms.legal.outOfScopeReason"]);
     if (over.length) return fail("UTIL_TOTAL_EXCEEDS_BILL", "ค่าน้ำไฟรวมที่จะเรียกเก็บเกินบิลการไฟฟ้า/ประปาของงวด — ตรวจอัตรา/เลขมิเตอร์ก่อนส่ง", over);
+    // SVC D.3 ▸ ผู้ขายไม่ครบ (หอจด VAT + สมุดจด VAT + ไม่มีเลขผู้เสียภาษี 13 หลัก) ⇒ ไม่มีใบใดเกิด · รอบคงเดิม ◂
+    const seller = await sellerTaxProblem(tenantId, unitId);
+    if (seller) return fail(seller.code, seller.messageTh);
 
     // 3. DRAFT ⇒ REVIEW (ใน tx ที่ถือล็อกของรอบ — เตรียม/แก้บิลรอคิวเดียวกัน) แล้วออกทีละใบ
     const wasDraft = status === "DRAFT";
@@ -1972,13 +2018,45 @@ async function sendLocked(g: G, runId: string, o: LoopOpts, onSent: (n: number) 
     await payLinker(g).retryPending(runId, o);
   }
 
+  // SVC D.3 ▸ บิลส่งแล้วที่มี VAT แต่ยังไม่มีใบกำกับ (ล้มกลางทาง/ก่อน D.3) — ลองออกให้เมื่อเหลืองบ แล้วนับ ◂
+  const taxInvoicePending = await taxPending(g, runId, o);
+
   // 4. ไม่มี DRAFT เหลือ (และมีบิลส่งแล้ว) ⇒ รอบ SENT
   const c = await runCounts(g, runId);
   if (c.drafts === 0 && c.sentish > 0 && status !== "SENT") {
     await db.dormBillRun.updateMany({ where: { id: runId, status: { in: ["DRAFT", "REVIEW"] } }, data: { status: "SENT", sentAt: o.now, scheduledSendAt: null } });
     status = "SENT";
   }
-  return { ok: true, done: c.drafts === 0, status, sent, alreadySent: Math.max(0, c.sentish - sent), held: c.held, remaining: c.drafts, failed, payLinkPending: c.pending };
+  return { ok: true, done: c.drafts === 0, status, sent, alreadySent: Math.max(0, c.sentish - sent), held: c.held, remaining: c.drafts, failed, payLinkPending: c.pending, taxInvoicePending };
+}
+
+/**
+ * SVC D.3 ▸ บิลส่งแล้วของรอบที่ต้องมีใบกำกับ (snapshot จด VAT · VAT > 0) แต่ยังไม่มีใบที่ยังมีผล
+ *   o ≠ null (ถือสัญญาเช่าผู้ส่ง) ⇒ ลองออกทีละใบ (ทางเดียวกับการส่ง · ล้ม = นับค้าง ไม่ throw) ตามงบ · o = null ⇒ นับอย่างเดียว
+ */
+async function taxPending(g: G, runId: string, o: LoopOpts | null): Promise<number> {
+  const db = tenantDb({ tenantId: g.tenantId, unitId: g.unitId });
+  const rows = await db.dormBill.findMany({
+    where: { runId, status: { in: SENTISH }, vatSatang: { gt: 0 }, accountDocumentId: { not: null } },
+    select: { id: true, partyId: true, roomId: true, accountDocumentId: true, policySnapshot: true },
+  });
+  const need = rows.filter((b) => snapValuesOf(b.policySnapshot)?.["rooms.vat.registered"] === true);
+  if (!need.length) return 0;
+  const live = await liveTaxInvoicesFor(g.tenantId, need.map((b) => b.accountDocumentId ?? ""));
+  let missing = need.filter((b) => b.accountDocumentId && !live.has(b.accountDocumentId));
+  if (o && missing.length) {
+    const left: typeof missing = [];
+    for (const b of missing) {
+      if (Date.now() - o.t0 + 1_500 >= o.budget || !b.accountDocumentId) {
+        left.push(b);
+        continue;
+      }
+      const r = await issueTaxForBill(g, { invoiceId: b.accountDocumentId, partyId: b.partyId, roomId: b.roomId });
+      if (!r.ok) left.push(b);
+    }
+    missing = left;
+  }
+  return missing.length;
 }
 
 type SendStep =
@@ -2055,13 +2133,20 @@ async function sendOne(g: G, runId: string, P: string, issueYmd: string, billId:
   const vals = snapValuesOf(b.policySnapshot) ?? {};
   const vat: DormVat = vatOf(vals);
   const bill: DormBillResult = { lines: linesOf(b.lines), subtotalSatang: b.subtotalSatang, vatSatang: b.vatSatang, totalSatang: b.totalSatang };
+  // SVC D.3 ▸ บิลที่ต้องมีใบกำกับ: ตรวจผู้ซื้อ "ก่อน" ออกใบใด ๆ (เลขผิด ⇒ ไม่มีใบ · ไม่กินเลข) · ใบแจ้งหนี้ใช้ผู้ซื้อชุดเดียวกัน ◂
+  const needTax = vat.registered && b.vatSatang > 0;
+  const tb = await taxBuyerOf(tenantId, unitId, g.unitName, { partyId: b.partyId, roomId: b.roomId });
+  if (needTax && tb.bad) {
+    if (!fam.live) await release();
+    return { kind: "FAIL", code: "BUYER_TAX_ID_INVALID", reason: `${tb.problem?.reason ?? "ข้อมูลผู้ซื้อไม่ถูกต้อง"} — แก้ข้อมูลผู้เช่าแล้วกดเตรียมรอบ/ส่งอีกครั้ง (ยังไม่มีเอกสารใดถูกออก)` };
+  }
   const inv = await createExternalInvoice({
     tenantId,
     sourceKind: "DORM",
     unitId,
     refType: BILL_REF,
     refId,
-    customer: { name: party?.name || "ผู้เช่า" },
+    customer: { name: tb.buyer.name || party?.name || "ผู้เช่า", taxId: tb.buyer.taxId ?? null, branchCode: tb.buyer.branchCode ?? null },
     partyId: b.partyId,
     lines: dormBillInvoiceLines(bill),
     vat,
@@ -2090,6 +2175,11 @@ async function sendOne(g: G, runId: string, P: string, issueYmd: string, billId:
       reason: `ใบแจ้งหนี้${inv.docNo ? ` ${inv.docNo}` : ""} (ยอด ${inv.totalSatang}) ไม่ตรงบิล (ยอด ${b.totalSatang}) — ไม่ได้ตั้งเป็นส่งแล้ว ยกเลิกใบนั้นในระบบบัญชีแล้วกดส่งอีกครั้ง (ระบบออกใบใหม่ให้ตามบิล) และตรวจค่าตั้งภาษีของหอ`,
       docId: inv.docId,
     };
+  }
+  // SVC D.3 ▸ ใบกำกับภาษีเต็มรูปของส่วน VAT (วันที่ = วันที่ใบแจ้งหนี้) — สำเร็จจึงตั้ง SENT · ล้ม ⇒ failed (คงการจอง: ส่งซ้ำ = ใบแจ้งหนี้เดิม + ออกใบกำกับต่อ) ◂
+  if (needTax) {
+    const ti = await issueTaxForBill(g, { invoiceId: inv.docId, partyId: b.partyId, roomId: b.roomId, buyer: tb.buyer });
+    if (!ti.ok) return { kind: "FAIL", code: ti.code, reason: ti.reason, docId: inv.docId };
   }
   const r = await retryOnce(() =>
     db.$transaction(async (txRaw) => {
@@ -2262,6 +2352,10 @@ export async function adjustSentBill(
         if (bad) return bad;
       }
     }
+    // SVC D.3 ▸ (§2.5 ม.86/9 · 86/10) บิลมีใบกำกับที่ยังมีผล ⇒ ใบลด/เพิ่มหนี้อ้างเลขที่ + วันที่ใบกำกับ ◂
+    const tiRef = (await liveTaxInvoicesFor(g.tenantId, [bill.accountDocumentId])).get(bill.accountDocumentId);
+    const tiRow = tiRef ? await adjDb.accountDocument.findFirst({ where: { id: tiRef.docId }, select: { docNo: true, issueDate: true } }) : null;
+    const tiNote = tiRow ? `อ้างอิงใบกำกับภาษีเลขที่ ${tiRow.docNo ?? "-"} ลงวันที่ ${thaiDateOf(bkkYmd(tiRow.issueDate))}` : null;
     const note = {
       tenantId: g.tenantId,
       unitId: g.unitId,
@@ -2273,6 +2367,7 @@ export async function adjustSentBill(
       vat,
       issueDate: bkkYmd(new Date()),
       createdById: g.actorUserId,
+      ...(tiNote ? { note: tiNote } : {}),
     };
     const r = kind === "CREDIT" ? await createExternalCreditNote(note) : await createExternalDebitNote(note);
     if (!r.ok) return fail(r.code, r.reason);

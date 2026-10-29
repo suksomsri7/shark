@@ -285,7 +285,14 @@ const DEFS: SettingDef[] = [
   def({
     key: "rooms.tax.withholdingCorporateBp", type: "percent", labelTh: "หัก ณ ที่จ่าย ผู้เช่านิติบุคคล (bp)", // #22
     helpTh: `${PENDING}ยังไม่ได้ตรวจแหล่ง · 500 = 5% ของค่าเช่า`,
-    schema: z.number().int().min(0).max(10_000), defaults: { _fallback: 500 }, chain: U_L, sensitivity: "MONEY",
+    // SVC D.3 ▸ แถวแผน "แหล่งยังไม่ยืนยัน = ปิดค่าเริ่ม" — ค่าเริ่ม 0 (เดิม 500) · สัญญาเก่าที่ snapshot 500 ไว้ = ตามสัญญา ◂
+    schema: z.number().int().min(0).max(10_000), defaults: { _fallback: 0 }, chain: U_L, sensitivity: "MONEY",
+  }),
+  // SVC D.3 ▸ วันที่ใบกำกับภาษีฉบับใหม่เมื่อออกแทนฉบับเดิม (คำสั่ง ป.86/2542) ◂
+  def({
+    key: "rooms.vat.reissueDate", type: "enum", labelTh: "วันที่ใบกำกับภาษีฉบับใหม่ (เมื่อออกแทนฉบับเดิม)",
+    helpTh: `${PENDING}ORIGINAL = ลงวันที่เดียวกับฉบับเดิม · REISSUE_DAY = ลงวันที่ออกฉบับใหม่`,
+    schema: z.enum(["ORIGINAL", "REISSUE_DAY"]), defaults: { _fallback: "ORIGINAL" }, chain: U, sensitivity: "MONEY",
   }),
 
   // ── รอบบิล (#23–29) ──
@@ -680,6 +687,7 @@ export const PENDING_LEGAL_REVIEW_KEYS: readonly string[] = [
   "rooms.utility.elec.method",
   "rooms.utility.water.method",
   "rooms.tax.withholdingCorporateBp",
+  "rooms.vat.reissueDate", // SVC D.3
   "rooms.lateFee.kind",
   "rooms.lateFee.amount",
   "rooms.lateFee.capPerBill",

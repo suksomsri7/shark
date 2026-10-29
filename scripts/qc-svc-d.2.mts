@@ -1175,8 +1175,34 @@ try {
     const m = net(await sinceMany(snap));
     if (nz(m, "2210") !== 0 || nz(m, "2200") !== -7_000) p.push(`GL ${js([...m])}`);
   });
+  // ORACLE-EDIT (ผู้คุม 29 ต.ค. · D.3) — มติ D.3 §2.4: ใบแจ้งหนี้หอ = ON_ISSUE เสมอ (ใบกำกับออกตอนส่งบิล ไม่ใช่ตอนรับเงิน · d.3 B-3 ตรวจ)
+  //   ⇒ เมื่อมีไฟล์ D.3 S-18/S-19 ตรวจความหมายใหม่: ปิดประกันไม่ออกใบกำกับใบที่สองต่อการรับเงิน · ไม่มีไฟล์ D.3 = ทางเดิม
+  const D3_TI = has("src/lib/modules/dorm/tax-invoice.ts");
+  const D3_BUYER = { name: `ผู้เช่า ${PFX} ใบกำกับ`, address: "99 ถนนพระราม 9 แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพฯ 10310" };
+  if (D3_TI) await step("S-18", "(D.3 · ON_ISSUE) สมุด VAT จุดภาษี ON_PAYMENT: ใบแจ้งหนี้หอ (VAT 70.00) ออกใบกำกับตอนออกบิล (createExternalTaxInvoice) → ปิดประกันหักใบ ⇒ ไม่เกิดใบกำกับใบที่สองต่อการรับเงิน (ใบกำกับที่ยังมีผล = ใบเดิม 1 ใบ · ไม่มีใบผูกงวดหักประกัน) · ภาษีขายรับรู้ครบ Cr 2200 = 7,000 · 2210/2205 สุทธิ 0 · JV ปิดยังเป็นใบเดียว", async (p) => {
+    const lease = newLease("s18");
+    const dq = await deposit(T.A, U.Q, lease, 600_000, newKey("s18d"));
+    if (!dq?.ok) { p.push(`รับประกัน ${codeOf(dq)}`); return; }
+    const snap = await snapMany([SYSID.Q]);
+    const inv = await mk([[400_000, "EXEMPT"], [107_000, "VAT7"]], U.Q);
+    if (inv.vatTiming !== "ON_ISSUE") p.push(`ใบแจ้งหนี้หอ vatTiming ${inv.vatTiming} (ต้อง ON_ISSUE)`);
+    const t0 = await call(ACC, "createExternalTaxInvoice", { tenantId: T.A, unitId: U.Q, sourceDocId: inv.id, buyer: D3_BUYER });
+    if (!t0?.ok || t0.created !== true || t0.vatSatang !== 7_000) { p.push(`ออกใบกำกับตอนออกบิล ${codeOf(t0)} ${js(t0).slice(0, 120)}`); return; }
+    const s = await settle(T.A, U.Q, lease, [inv.id], newKey("s18"));
+    if (!s?.ok || s.appliedSatang !== 507_000 || s.refundSatang !== 93_000) { p.push(`ปิด ${codeOf(s)} ${js(s).slice(0, 120)}`); return; }
+    const payRow = (await prisma.accountDocumentPayment.findFirst({ where: { documentId: inv.id, voidedAt: null } })) as Any;
+    if (!payRow) p.push("ไม่มีงวดหักประกัน");
+    const ti = (await prisma.accountDocument.findMany({ where: { systemId: SYSID.Q, docType: "TAX_INVOICE", sourceDocId: inv.id, status: { notIn: ["VOIDED", "CANCELLED"] } } })) as Any[];
+    if (ti.length !== 1 || ti[0].id !== t0.docId || ti[0].vatAmount !== 7_000) p.push(`ใบกำกับที่ยังมีผล ${ti.length} ใบ (ต้อง 1 = ใบตอนออกบิล) vat ${ti[0]?.vatAmount}`);
+    if (payRow && (await prisma.accountDocument.count({ where: { systemId: SYSID.Q, docType: "TAX_INVOICE", sourcePaymentId: payRow.id } })) !== 0) p.push("เกิดใบกำกับผูกงวดหักประกัน (ใบที่สองต่อการรับเงิน)");
+    const es = await sinceMany(snap); const m = net(es);
+    if (nz(m, "2210") !== 0 || nz(m, "2200") !== -7_000 || nz(m, "2205") !== 0) p.push(`VAT ${js([...m])}`);
+    const depCodeQ = (await depLedger(SYSID.Q))?.account?.code;
+    if (es.filter((e) => e.lines.some((l) => l.code === depCodeQ && l.debit > 0)).length !== 1) p.push("JV ที่ Dr บัญชีประกันไม่ใช่ 1 ใบ");
+    if (es.some((e) => dr(e) !== cr(e))) p.push("JV ไม่สมดุล");
+  });
   // ORACLE-EDIT 28 ต.ค. (review) — B จุดบอดข้อ 4
-  await step("S-18", "สมุด VAT จุดภาษี ON_PAYMENT: ปิดประกันหักใบ (VAT 70.00) ⇒ ใบกำกับภาษีอัตโนมัติของงวดหักประกัน VAT 7,000 · 2210 สุทธิ 0 · Cr 2200 = 7,000 · JV ปิดยังเป็นใบเดียว", async (p) => {
+  if (!D3_TI) await step("S-18", "สมุด VAT จุดภาษี ON_PAYMENT: ปิดประกันหักใบ (VAT 70.00) ⇒ ใบกำกับภาษีอัตโนมัติของงวดหักประกัน VAT 7,000 · 2210 สุทธิ 0 · Cr 2200 = 7,000 · JV ปิดยังเป็นใบเดียว", async (p) => {
     const lease = newLease("s18");
     const dq = await deposit(T.A, U.Q, lease, 600_000, newKey("s18d"));
     if (!dq?.ok) { p.push(`รับประกัน ${codeOf(dq)}`); return; }
@@ -1195,7 +1221,10 @@ try {
     if (es.some((e) => dr(e) !== cr(e))) p.push("JV ไม่สมดุล");
   });
   // ORACLE-EDIT 28 ต.ค. (review รอบ 2) F9 — B-N1: ถอยการปิดประกันต้องเคารพล็อกข้อมูลก่อนวันที่ (วันที่ JV ปิด + paidAt ทุกงวดหักประกัน)
-  await step("S-19", "F9: สมุด ON_PAYMENT ปิดประกัน (ใบกำกับอัตโนมัติ) → ตั้ง lockBeforeDate หลังวันปิด ⇒ (positive: voidPayment งวดปกติถูกปฏิเสธ) · reverseSecurityDepositSettlement ⇒ PERIOD_LOCKED · ไม่มีอะไรเปลี่ยน (held · สถานะ/paidTotal ใบ · ใบกำกับ · งวด · JV)", async (p) => {
+  // ORACLE-EDIT (ผู้คุม 29 ต.ค. · D.3) — มี D.3: ตัดเฉพาะเงื่อนไข "ใบกำกับอัตโนมัติต่อการรับเงิน" (ใบแจ้งหนี้หอ ON_ISSUE ไม่มีแล้ว) · ด่าน PERIOD_LOCKED + positive control + ไม่มีอะไรเปลี่ยน คงครบ
+  await step("S-19", D3_TI
+    ? "F9 (D.3 · ON_ISSUE): สมุด ON_PAYMENT ปิดประกัน → ตั้ง lockBeforeDate หลังวันปิด ⇒ (positive: voidPayment งวดปกติถูกปฏิเสธ) · reverseSecurityDepositSettlement ⇒ PERIOD_LOCKED · ไม่มีอะไรเปลี่ยน (held · สถานะ/paidTotal ใบ · ใบกำกับ · งวด · JV)"
+    : "F9: สมุด ON_PAYMENT ปิดประกัน (ใบกำกับอัตโนมัติ) → ตั้ง lockBeforeDate หลังวันปิด ⇒ (positive: voidPayment งวดปกติถูกปฏิเสธ) · reverseSecurityDepositSettlement ⇒ PERIOD_LOCKED · ไม่มีอะไรเปลี่ยน (held · สถานะ/paidTotal ใบ · ใบกำกับ · งวด · JV)", async (p) => {
     const lease = newLease("s19");
     const dq = await deposit(T.A, U.Q, lease, 600_000, newKey("s19d"));
     if (!dq?.ok) { p.push(`เตรียม: รับประกัน ${codeOf(dq)}`); return; }
@@ -1214,7 +1243,8 @@ try {
       if (vp?.ok !== false || !/ล็อก/.test(String(vp?.reason ?? ""))) p.push(`positive: voidPayment ในช่วงล็อก ${js(vp).slice(0, 100)}`);
       const payRow = (await prisma.accountDocumentPayment.findFirst({ where: { documentId: inv.id } })) as Any;
       const tiBefore = (await prisma.accountDocument.findMany({ where: { systemId: SYSID.Q, docType: "TAX_INVOICE", sourceDocId: inv.id }, select: { id: true, status: true }, orderBy: { id: "asc" } })) as Any[];
-      if (!tiBefore.some((t) => t.status !== "VOIDED" && t.status !== "CANCELLED")) p.push("เตรียม: ไม่มีใบกำกับอัตโนมัติของงวดหักประกัน");
+      // ORACLE-EDIT (ผู้คุม 29 ต.ค. · D.3) — มี D.3 ไม่อ้างใบกำกับอัตโนมัติต่อการรับเงิน (ใบกำกับก่อน/หลังยังต้องเท่ากันด้านล่าง)
+      if (!D3_TI && !tiBefore.some((t) => t.status !== "VOIDED" && t.status !== "CANCELLED")) p.push("เตรียม: ไม่มีใบกำกับอัตโนมัติของงวดหักประกัน");
       const snapDoc = js(await docOf(inv.id));
       const h0 = await held(T.A, U.Q, lease);
       const c0 = await counts(T.A);

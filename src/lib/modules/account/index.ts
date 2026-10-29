@@ -1772,6 +1772,8 @@ export type DormExternalInvoiceResult = { ok: true; docId: string; created: bool
 export type DormExternalNoteInput = {
   tenantId: string; unitId: string; sourceDocId: string; refType: string; refId: string; reason: string;
   lines: ExternalDocLine[]; vat: DormVat; issueDate?: string; createdById?: string | null;
+  /** SVC D.3 ▸ หมายเหตุบนเอกสาร (เช่น อ้างอิงใบกำกับภาษีเลขที่ … ลงวันที่ …) — ไม่ส่ง = ไม่มีหมายเหตุ (เดิม) ◂ */
+  note?: string | null;
 };
 export type DormExternalNoteResult = { ok: true; docId: string; created: boolean; docNo: string | null; subTotalSatang: number; vatSatang: number; totalSatang: number };
 
@@ -1898,7 +1900,8 @@ async function createDormNote(docType: "CREDIT_NOTE" | "DEBIT_NOTE", input: Dorm
     const r = await dormUpsertDocument({
       tenantId: input.tenantId, systemId, unitId: input.unitId, docType, refType: input.refType, refId: input.refId,
       lines: dormDocLines(input.lines), vatMode: dormVatMode(input.vat), issueDate, dueDate: null, draft: false,
-      note: null, adjustReason: input.reason.trim(), sourceDocId: src.id, createdById: input.createdById ?? null,
+      note: typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 500) : null, // SVC D.3 ▸ ◂
+      adjustReason: input.reason.trim(), sourceDocId: src.id, createdById: input.createdById ?? null,
       resolveContactId: async () => src.contactId,
     });
     if (!r.ok) return r;
@@ -2163,3 +2166,175 @@ export async function securityDepositHeldMany(input: { tenantId: string; unitId:
   return out;
 }
 // ◂ SVC D.13
+
+// ═══════════════════════════════════════════════════════════════
+// SVC D.3 ▸ ใบกำกับภาษีเต็มรูปของหอ (ใบสั่ง svc-brief-d.3 §3.1 · ชื่อ/ชนิดผูกกับข้อสอบ qc-svc-d.3)
+//   · ใบกำกับเฉพาะบรรทัด VAT ของใบแจ้งหนี้หอ · ผู้ซื้อ freeze ใน contactSnapshot (จาก Party ที่หอส่งมา — ไม่ใช่ AccountContact)
+//   · ปฏิเสธ = { ok:false, code, reason ไทย } เสมอ (ไม่ throw) · ตรรกะ/ล็อก/เลขที่อยู่ service.ts บล็อก "SVC D.3"
+// ═══════════════════════════════════════════════════════════════
+import {
+  dormIssueTaxInvoice,
+  dormReplaceTaxInvoice,
+  dormTaxInvoicesOf,
+  dormTaxSeller,
+  dormBranchLabel,
+  isValidThaiTaxId as d3IsValidThaiTaxId,
+  type DormTaxBuyerRow,
+} from "./service";
+import { bkkYmd as d3BkkYmd } from "@/lib/core/quiet-hours";
+
+export type DormTaxBuyer = { name: string; address: string; taxId?: string | null; branchCode?: string | null; kind?: "PERSON" | "COMPANY" };
+export type DormTaxInvoiceResult = {
+  ok: true; docId: string; docNo: string | null; created: boolean; issueDate: string;
+  subTotalSatang: number; vatSatang: number; totalSatang: number;
+};
+export type DormTaxInvoiceRow = {
+  docId: string; docNo: string | null; status: string; issueDate: string; subTotalSatang: number; vatSatang: number; totalSatang: number;
+  buyer: { name: string; taxId: string | null; branchCode: string | null; address: string | null; legalType: string | null };
+  /** (T3) ผู้ขายที่ตรึงไว้ตอนออก — null = ใบก่อนตรึง (ผู้เรียกใช้ตั้งค่าปัจจุบันแทน) */
+  seller: { name: string; taxId: string | null; branchCode: string; address: string | null } | null;
+  replacedById: string | null; note: string | null; voidReason: string | null;
+  lines: { description: string; amountSatang: number; vatRateBp: number }[];
+};
+export type DormTaxSeller = { ok: true; vatRegistered: boolean; taxIdValid: boolean; name: string; taxId: string | null; branchCode: string; branchLabel: string; address: string | null };
+
+/** checksum เลขประจำตัวผู้เสียภาษี 13 หลัก (ตัวเดียวกับบัญชี) — หอใช้ตรวจผู้ซื้อก่อนพักบิล/ออกใบ */
+export function isValidThaiTaxId(taxId: string | null | undefined): boolean {
+  return d3IsValidThaiTaxId(taxId);
+}
+
+const D3_KEY_MAX = 100;
+const d3Digits = (v: unknown): string => (typeof v === "string" ? v.replace(/\D/g, "") : "");
+const d3RealLen = (v: string): number => [...v.replace(/\s+/g, "")].length;
+
+/** ตรวจ/จัดรูปผู้ซื้อ (ม.86/4(3)) — เลขผิด checksum ⇒ BUYER_TAX_ID_INVALID · มีเลข ⇒ สาขา 5 หลัก (ว่าง = 00000) · ไม่มีเลข ⇒ สาขา null */
+function d3Buyer(b: unknown): DormTaxBuyerRow | DormFail {
+  if (!b || typeof b !== "object") return dormFail("INVALID_INPUT", "ต้องระบุผู้ซื้อ (ชื่อ · ที่อยู่) สำหรับใบกำกับภาษี");
+  const x = b as Partial<DormTaxBuyer>;
+  const name = typeof x.name === "string" ? x.name.trim() : "";
+  const address = typeof x.address === "string" ? x.address.trim() : "";
+  if (!name || name.length > 300) return dormFail("INVALID_INPUT", "ต้องมีชื่อผู้ซื้อบนใบกำกับภาษี (ไม่เกิน 300 ตัวอักษร)");
+  if (!address || address.length > 500) return dormFail("INVALID_INPUT", "ต้องมีที่อยู่ผู้ซื้อบนใบกำกับภาษี (ไม่เกิน 500 ตัวอักษร)");
+  const rawTax = typeof x.taxId === "string" ? x.taxId.trim() : "";
+  const taxId = d3Digits(rawTax);
+  if (rawTax && !d3IsValidThaiTaxId(taxId))
+    return dormFail("BUYER_TAX_ID_INVALID", "เลขประจำตัวผู้เสียภาษีของผู้ซื้อไม่ถูกต้อง (ต้องเป็นเลข 13 หลักที่ผ่านการตรวจ) — แก้ข้อมูลผู้เช่าก่อน");
+  let branchCode: string | null = null;
+  if (taxId) {
+    const br = typeof x.branchCode === "string" ? x.branchCode.trim() : "";
+    if (br && !/^\d{5}$/.test(br)) return dormFail("INVALID_INPUT", "รหัสสาขาของผู้ซื้อต้องเป็นตัวเลข 5 หลัก (สำนักงานใหญ่ = 00000)");
+    branchCode = br || "00000";
+  }
+  return { name, address, taxId: taxId || null, branchCode, legalType: x.kind === "COMPANY" ? "COMPANY" : "PERSON" };
+}
+
+/**
+ * (T1) ตัวตรวจผู้ซื้อชุดเดียวกับ facade (ล้วน · ไม่แตะฐาน) — หอใช้ตรวจก่อนออกใบใด ๆ / ก่อนพักบิล
+ *   ok ⇒ ผู้ซื้อที่จัดรูปแล้ว (เลขล้วน · สาขา 5 หลัก) · ไม่ผ่าน ⇒ รหัสเดียวกับที่ createExternalTaxInvoice จะตอบ
+ */
+export function checkDormTaxBuyer(b: DormTaxBuyer): { ok: true; buyer: DormTaxBuyer } | DormFail {
+  const r = d3Buyer(b);
+  if ("ok" in r) return r;
+  return { ok: true, buyer: { name: r.name, address: r.address, taxId: r.taxId, branchCode: r.branchCode, kind: r.legalType } };
+}
+export const DORM_TAX_BUYER_NAME_MAX = 300;
+export const DORM_TAX_BUYER_ADDRESS_MAX = 500;
+
+/** ออกใบกำกับภาษีเต็มรูปของใบแจ้งหนี้หอ (เฉพาะส่วน VAT · วันที่ = วันที่ใบแจ้งหนี้) — มีใบที่ยังมีผลแล้ว ⇒ ใบเดิม created:false */
+export async function createExternalTaxInvoice(input: {
+  tenantId: string; unitId: string; sourceDocId: string; buyer: DormTaxBuyer; createdById?: string | null;
+}): Promise<DormTaxInvoiceResult | DormFail> {
+  try {
+    if (!nonEmpty(input?.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.sourceDocId))
+      return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงไม่ครบ (ร้าน · หอ · ใบแจ้งหนี้ต้นทาง)");
+    const buyer = d3Buyer(input.buyer);
+    if ("ok" in buyer) return buyer;
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const r = await dormIssueTaxInvoice({
+      tenantId: input.tenantId, systemId: book.systemId, unitId: input.unitId, sourceDocId: input.sourceDocId, buyer, createdById: input.createdById ?? null,
+    });
+    if (!r.ok) return r;
+    return { ok: true, docId: r.docId, docNo: r.docNo, created: r.created, issueDate: d3BkkYmd(r.issueDate), subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกใบกำกับภาษีของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** ยกเลิกใบกำกับหอแล้วออกฉบับใหม่แทน (ยอดเท่าเดิม · ธุรกรรมเดียว) — idempotent ต่อ idempotencyKey · issueDate ไม่ส่ง = วันที่ฉบับเดิม */
+export async function replaceExternalTaxInvoice(input: {
+  tenantId: string; unitId: string; taxInvoiceDocId: string; reason: string; idempotencyKey: string;
+  buyer?: DormTaxBuyer | null; issueDate?: string; createdById?: string | null;
+}): Promise<(DormTaxInvoiceResult & { replacedDocId: string; replacedDocNo: string | null }) | DormFail> {
+  try {
+    if (!nonEmpty(input?.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.taxInvoiceDocId))
+      return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงไม่ครบ (ร้าน · หอ · ใบกำกับภาษีที่จะออกแทน)");
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (d3RealLen(reason) < 10) return dormFail("REASON_REQUIRED", "กรุณาระบุเหตุผลการยกเลิกและออกใบกำกับภาษีฉบับใหม่อย่างน้อย 10 ตัวอักษร (เก็บเป็นหลักฐาน)");
+    if (reason.length > 500) return dormFail("INVALID_INPUT", "เหตุผลยาวเกินไป (ไม่เกิน 500 ตัวอักษร)");
+    const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
+    if (!key || key.length > D3_KEY_MAX) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการออกใบแทน (1–100 ตัวอักษร)");
+    let buyer: DormTaxBuyerRow | null = null;
+    if (input.buyer !== undefined && input.buyer !== null) {
+      const b = d3Buyer(input.buyer);
+      if ("ok" in b) return b;
+      buyer = b;
+    }
+    let issueDate: Date | null = null;
+    if (input.issueDate !== undefined) {
+      issueDate = typeof input.issueDate === "string" ? dormYmd(input.issueDate) : null;
+      if (!issueDate) return dormFail("INVALID_INPUT", "วันที่ใบกำกับภาษีฉบับใหม่ต้องเป็นรูปแบบ ปปปป-ดด-วว");
+    }
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const r = await dormReplaceTaxInvoice({
+      tenantId: input.tenantId, systemId: book.systemId, unitId: input.unitId, taxInvoiceDocId: input.taxInvoiceDocId, reason, key,
+      buyer, issueDate, createdById: input.createdById ?? null,
+    });
+    if (!r.ok) return r;
+    return {
+      ok: true, docId: r.docId, docNo: r.docNo, created: r.created, issueDate: d3BkkYmd(r.issueDate), subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal,
+      replacedDocId: r.replacedDocId ?? input.taxInvoiceDocId, replacedDocNo: r.replacedDocNo ?? null,
+    };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกใบกำกับภาษีฉบับใหม่แทนไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** ใบกำกับทุกใบของใบแจ้งหนี้หอ (เก่า→ใหม่) — ข้ามหน่วย/ข้ามร้าน/ไม่ผูกสมุด = [] */
+export async function externalTaxInvoicesOf(input: { tenantId: string; unitId: string; sourceDocId: string }): Promise<DormTaxInvoiceRow[]> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.sourceDocId)) return [];
+  const book = await dormBook(input.tenantId, input.unitId);
+  if ("ok" in book) return [];
+  const rows = await dormTaxInvoicesOf(input.tenantId, book.systemId, input.unitId, input.sourceDocId);
+  const str = (o: unknown, k: string): string | null => {
+    if (!o || typeof o !== "object") return null;
+    const v = (o as Record<string, unknown>)[k];
+    return typeof v === "string" && v.trim() ? v : null;
+  };
+  return rows.map((r) => ({
+    docId: r.id, docNo: r.docNo, status: String(r.status), issueDate: d3BkkYmd(r.issueDate),
+    subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal,
+    buyer: { name: str(r.contactSnapshot, "name") ?? "", taxId: str(r.contactSnapshot, "taxId"), branchCode: str(r.contactSnapshot, "branchCode"), address: str(r.contactSnapshot, "address"), legalType: str(r.contactSnapshot, "legalType") },
+    seller: (() => {
+      const sv = r.contactSnapshot && typeof r.contactSnapshot === "object" && !Array.isArray(r.contactSnapshot) ? (r.contactSnapshot as Record<string, unknown>).seller : null;
+      if (!sv || typeof sv !== "object") return null;
+      return { name: str(sv, "name") ?? "", taxId: str(sv, "taxId"), branchCode: str(sv, "branchCode") ?? "00000", address: str(sv, "address") };
+    })(),
+    replacedById: r.replacedById, note: r.note, voidReason: r.voidReason,
+    lines: r.lines.map((l) => ({ description: l.description, amountSatang: l.amount, vatRateBp: l.vatRateBp })),
+  }));
+}
+
+/** ผู้ขายของใบกำกับ (สมุดที่ผูกหอ) — ใช้ตั้งด่านก่อนส่งบิล + หัวใบพิมพ์ */
+export async function externalTaxSeller(input: { tenantId: string; unitId: string }): Promise<DormTaxSeller | DormFail> {
+  try {
+    const book = await dormBook(input?.tenantId, input?.unitId);
+    if ("ok" in book) return book;
+    const s = await dormTaxSeller(input.tenantId, book.systemId);
+    return { ok: true, ...s, branchLabel: dormBranchLabel(s.branchCode) };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "อ่านข้อมูลผู้ขายไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+// ◂ SVC D.3

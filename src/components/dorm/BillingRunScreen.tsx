@@ -17,6 +17,10 @@ export type BillingRunActions = {
   send: ActionFn;
   adjust: ActionFn;
   exportCsv: ActionFn;
+  /** SVC D.3 ▸ ยกเลิกใบกำกับภาษีแล้วออกฉบับใหม่แทน (ไม่ส่ง = ไม่แสดงปุ่ม) ◂ */
+  reissueTaxInvoice?: ActionFn;
+  /** SVC D.3 ▸ ออกใบกำกับภาษีของบิลที่ส่งแล้วแต่ยังไม่มี (ทางกู้) ◂ */
+  issueTaxInvoice?: ActionFn;
 };
 export type BillingRunScreenProps = { model: BillRunModel; unitSlug: string; actions: BillingRunActions };
 
@@ -31,6 +35,9 @@ const HOLD_TH: Record<string, string> = {
   NO_READING: "ยังไม่ได้จดมิเตอร์ — จดแล้วกดปล่อยบิล",
   BOOKING_FEE_FIRST_RENT: "บิลแรกที่เงินจองหักเข้าค่าห้อง — ตรวจยอดก่อนปล่อย",
   CALC_ERROR: "คำนวณบิลไม่ได้ — ตรวจค่าตั้งน้ำไฟและสัญญา",
+  BUYER_TAX_ID_INVALID: "เลขผู้เสียภาษีของผู้เช่าไม่ถูกต้อง — แก้ข้อมูลผู้เช่าแล้วปล่อยบิล", // SVC D.3
+  "BUYER_TAX_ID_INVALID:BRANCH": "รหัสสาขาของผู้เช่าไม่ถูกต้อง (5 หลัก) — แก้ข้อมูลผู้เช่าแล้วปล่อยบิล", // SVC D.3
+  "BUYER_TAX_ID_INVALID:OTHER": "ข้อมูลผู้เช่าสำหรับใบกำกับภาษีไม่ถูกต้อง — แก้แล้วปล่อยบิล", // SVC D.3
 };
 const CHANNEL_TH: Record<string, string> = { LINE: "LINE", SMS: "ลิงก์ SMS", PRINT: "พิมพ์" };
 const STATUS_TH: Record<string, string> = { DRAFT: "รอส่ง", HELD: "พักไว้", SENT: "ส่งแล้ว", PARTIALLY_PAID: "จ่ายบางส่วน", PAID: "จ่ายครบ", VOID: "ยกเลิก", SKIPPED: "ไม่ออกบิล" };
@@ -57,7 +64,7 @@ function thDate(ymd: string | null): string {
   const m = ymd ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd) : null;
   return m ? `${Number(m[3])} ${MONTHS_SHORT[Number(m[2]) - 1] ?? ""} ${Number(m[1]) + 543}` : "—";
 }
-const holdTh = (code: string | null) => (code ? (HOLD_TH[code.split(":")[0]] ?? "พักบิลรอตรวจ") : "");
+const holdTh = (code: string | null) => (code ? (HOLD_TH[code] ?? HOLD_TH[code.split(":")[0]] ?? "พักบิลรอตรวจ") : "");
 const isRec = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const outcome = (r: unknown): { ok: boolean; reason: string } =>
   isRec(r) && r.ok === true ? { ok: true, reason: "" } : { ok: false, reason: isRec(r) && typeof r.reason === "string" && r.reason ? r.reason : "ทำรายการไม่สำเร็จ ลองอีกครั้ง" };
@@ -250,6 +257,10 @@ function Preview({ p, model, unitSlug, actions, onDone }: { p: BillPreview; mode
   const [adjAmount, setAdjAmount] = useState("");
   const [adjReason, setAdjReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tiReason, setTiReason] = useState("");
+  const newKey = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  // (T5) คีย์กันซ้ำของฟอร์มออกใบแทน = 1 ต่อการเปิดฟอร์ม (กดซ้ำ/เน็ตหลุดแล้วกดใหม่ = ใบเดียว) · สำเร็จแล้วจึงได้คีย์ใหม่
+  const [tiKey, setTiKey] = useState(newKey);
   const existing = p.lines.filter((l) => l.code === "LATE_FEE" || l.code.startsWith("SERVICE:MANUAL_"));
   async function addLine() {
     setBusy(true);
@@ -275,6 +286,28 @@ function Preview({ p, model, unitSlug, actions, onDone }: { p: BillPreview; mode
     );
     setBusy(false);
     onDone(o.ok ? (adjKind === "CREDIT" ? "ออกใบลดหนี้แล้ว" : "ออกใบเพิ่มหนี้แล้ว") : o.reason);
+  }
+  // SVC D.3 ▸ ออกใบกำกับภาษีฉบับใหม่แทน (ยอดเท่าเดิม · คีย์กันซ้ำต่อการกด) ◂
+  async function reissue() {
+    if (!actions.reissueTaxInvoice) return;
+    setBusy(true);
+    const r = await actions.reissueTaxInvoice({ billId: p.billId, reason: tiReason, idempotencyKey: tiKey });
+    const o = outcome(r);
+    setBusy(false);
+    if (o.ok) {
+      setTiKey(newKey());
+      setTiReason("");
+    }
+    // (T8) ใบเป้าหมายถูกแทนไปแล้ว (อีกเครื่อง/อีกแท็บ) ⇒ บอกให้โหลดใหม่ก่อน
+    const replaced = isRec(r) && r.code === "ALREADY_REPLACED";
+    onDone(o.ok ? "ออกใบกำกับภาษีฉบับใหม่แทนแล้ว" : replaced ? "ใบกำกับภาษีนี้ถูกออกฉบับใหม่แทนไปแล้ว — โหลดหน้านี้ใหม่แล้วลองอีกครั้ง" : o.reason);
+  }
+  async function issueTi() {
+    if (!actions.issueTaxInvoice) return;
+    setBusy(true);
+    const o = outcome(await actions.issueTaxInvoice({ billId: p.billId }));
+    setBusy(false);
+    onDone(o.ok ? "ออกใบกำกับภาษีแล้ว" : o.reason);
   }
   return (
     <div className="flex flex-col gap-3">
@@ -309,10 +342,44 @@ function Preview({ p, model, unitSlug, actions, onDone }: { p: BillPreview; mode
         <p className="text-xs text-[color:var(--color-muted)]">
           {p.vatRegistered ? `รวมภาษีมูลค่าเพิ่ม ฿${money(p.vatSatang)} (ค่าเช่าที่อยู่อาศัยได้รับยกเว้น)` : "ไม่มี VAT (หอไม่ได้จด VAT · ค่าเช่าที่อยู่อาศัยได้รับยกเว้น)"}
         </p>
+        {p.vatRegistered && p.vatSatang > 0 ? (
+          <p data-preview-vat className="text-xs">{`VAT 7% ฿${money(p.vatSatang)} (เฉพาะรายการที่มี VAT · ค่าห้องยกเว้น)`}</p>
+        ) : null}
+        {p.taxInvoice ? (
+          <p data-preview-tax-invoice={p.taxInvoice.docNo ?? ""} className="text-xs">
+            {`ใบกำกับภาษี ${p.taxInvoice.docNo ?? "(รอเลข)"} `}
+            <a href={`/app/u/${unitSlug}/dorm/billing/${p.billId}/tax-invoice`} className="font-semibold underline">
+              ดู/พิมพ์ต้นฉบับ
+            </a>
+            {" · "}
+            <a href={`/app/u/${unitSlug}/dorm/billing/${p.billId}/tax-invoice?copy=1`} className="underline">
+              สำเนา
+            </a>
+          </p>
+        ) : null}
+        {p.withholding ? (
+          <p data-preview-wht className="text-xs">
+            {`หัก ณ ที่จ่าย ${p.withholding.rateBp % 100 === 0 ? String(p.withholding.rateBp / 100) : (p.withholding.rateBp / 100).toFixed(2)}% ฿${money(p.withholding.amountSatang)} (ผู้เช่านิติบุคคล · จากค่าห้อง ฿${money(p.withholding.baseSatang)})`}
+          </p>
+        ) : null}
         <a href={`/app/u/${unitSlug}/dorm/billing/${p.billId}/print`} className="mt-1 self-start text-xs font-semibold underline">
           พิมพ์ใบแจ้งหนี้ (A5)
         </a>
       </div>
+      {sent && p.vatRegistered && p.vatSatang > 0 && !p.taxInvoice && actions.issueTaxInvoice ? (
+        <button type="button" disabled={busy} onClick={() => void issueTi()} className={`${btnGhost} self-start`}>
+          ออกใบกำกับภาษี (ยังไม่มีใบของบิลนี้)
+        </button>
+      ) : null}
+      {p.taxInvoice && actions.reissueTaxInvoice ? (
+        <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-[color:var(--color-line)] p-3 text-sm">
+          <b>ออกใบกำกับภาษีฉบับใหม่แทน (ยอดเท่าเดิม — แก้ยอดใช้ใบลด/เพิ่มหนี้)</b>
+          <input aria-label="เหตุผลการออกใบแทน" placeholder="เหตุผล เช่น แก้ชื่อผู้ซื้อตามคำขอ (อย่างน้อย 10 ตัวอักษร)" value={tiReason} onChange={(e) => setTiReason(e.target.value)} className={inputCls} />
+          <button type="button" disabled={busy} onClick={() => void reissue()} className={`${btnGhost} self-start`}>
+            ออกใบใหม่แทน
+          </button>
+        </div>
+      ) : null}
       {editable && model.canPrepare ? (
         <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-[color:var(--color-line)] p-3 text-sm">
           <b>เพิ่มค่าปรับ/รายการอื่นในบิลนี้</b>

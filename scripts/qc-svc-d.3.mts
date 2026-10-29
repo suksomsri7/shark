@@ -1095,13 +1095,19 @@ try {
     const root = box1(h, "data-tax-invoice"), sel = box1(h, "data-ti-seller"), buy = box1(h, "data-ti-buyer");
     const lines = boxes(h, "data-ti-line").map((x) => x.attrs["data-ti-line"]);
     const t = textOf(h);
-    const ok = !!v && root?.attrs["data-tax-invoice"] === v.docNo && root?.attrs["data-ti-status"] === "ISSUED" && /ใบกำกับภาษี/.test(t) && !/อย่างย่อ/.test(t)
+    // ORACLE-EDIT (ผู้คุม 29 ต.ค. · D.3) — R-8 รันก่อนและออกใบแทนของ V2 แบบ REISSUE_DAY ลง 2026-11-20 แล้ว ⇒ วันที่คาดอ่านจาก issueDate
+    // ของใบกำกับที่ยังมีผลในฐาน (ไม่ใช่ค่าที่วิวคืน) แปลงเป็นวันที่ไทย พ.ศ. ด้วยตัวแปลงของออราเคิลเอง · ยังตรวจรูปแบบ "วัน เดือนย่อ พ.ศ." จริง
+    const TH_MON = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+    const liveTi: any = (await tisOf((await invOfBill(DV, "V2") as any)?.id))[0];
+    const ymd = bkkYmd(liveTi?.issueDate);
+    const expDate = /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? `${Number(ymd.slice(8, 10))} ${TH_MON[Number(ymd.slice(5, 7)) - 1]} ${Number(ymd.slice(0, 4)) + 543}` : "@@ไม่มีใบกำกับที่ยังมีผล";
+    const ok = !!v && !!liveTi && v.docId === liveTi.id && root?.attrs["data-tax-invoice"] === v.docNo && root?.attrs["data-ti-status"] === "ISSUED" && /ใบกำกับภาษี/.test(t) && !/อย่างย่อ/.test(t)
       && !!sel && digitsOf(textOf(sel.html)).includes(SELLER_V) && /สำนักงานใหญ่/.test(textOf(sel.html)) && /หอวีไอพี/.test(textOf(sel.html)) && /สุขุมวิท/.test(textOf(sel.html))
       && !!buy && /บริษัท ผู้เช่าดี จำกัด/.test(textOf(buy.html)) && digitsOf(textOf(buy.html)).includes(BUYER_CO) && /สาขาที่\s*00001/.test(textOf(buy.html)) && /พระราม 9/.test(textOf(buy.html))
-      && textOf(box1(h, "data-ti-no")?.html ?? "").includes(v.docNo ?? "@@") && /26 ต\.ค\. 2569/.test(textOf(box1(h, "data-ti-date")?.html ?? ""))
+      && textOf(box1(h, "data-ti-no")?.html ?? "").includes(v.docNo ?? "@@") && textOf(box1(h, "data-ti-date")?.html ?? "").includes(expDate) /* ORACLE-EDIT (ผู้คุม 29 ต.ค. · D.3) แทน /26 ต.ค. 2569/ */
       && J(lines) === J((v.lines ?? []).map((l: any) => l.code)) && !lines.includes("RENT") && !lines.includes("LATE_FEE")
       && textOf(box1(h, "data-ti-subtotal")?.html ?? "").includes(baht(v.subTotalSatang)) && textOf(box1(h, "data-ti-vat")?.html ?? "").includes(baht(v.vatSatang)) && textOf(box1(h, "data-ti-total")?.html ?? "").includes(baht(v.totalSatang));
-    return [ok, J({ root: root?.attrs, sel: sel && textOf(sel.html), buy: buy && textOf(buy.html), lines, date: textOf(box1(h, "data-ti-date")?.html ?? "") })];
+    return [ok, J({ root: root?.attrs, sel: sel && textOf(sel.html), buy: buy && textOf(buy.html), lines, date: textOf(box1(h, "data-ti-date")?.html ?? ""), expDate, live: liveTi?.docNo })];
   }, "CRITICAL");
   await T("U-4", "ใบกำกับฉบับใหม่ V1 พิมพ์: data-ti-replaces มี \"ยกเลิกและออกใบกำกับภาษีฉบับใหม่แทนฉบับเดิม\" + เลขฉบับก่อน + เหตุผล · ฉบับเดิม (docId) สถานะ VOIDED มีคำ \"ยกเลิก\"", ["billTaxInvoice"], async () => {
     if (!PrintC) return [false, printWhy];

@@ -10,6 +10,8 @@ import {
   scheduleBillRunAction,
   sendBillRunAction,
   setBillExtraLinesAction,
+  issueTaxInvoiceAction,
+  reissueTaxInvoiceAction,
 } from "./actions";
 
 // SVC D.8 ▸ หอ 04 "ออกบิลรอบเดือน — ตรวจก่อนส่ง" — ภาพ ledger/design-dorm/04-billing-run.png · ข้อมูลผ่าน facade `@/lib/modules/dorm` เท่านั้น (ไม่แตะ prisma)
@@ -58,6 +60,8 @@ export default async function DormBillingPage({
         send: sendBillRunAction.bind(null, unitSlug),
         adjust: adjustSentBillAction.bind(null, unitSlug),
         exportCsv: exportBillRunCsvAction.bind(null, unitSlug),
+        issueTaxInvoice: issueTaxInvoiceAction.bind(null, unitSlug), // SVC D.3
+        reissueTaxInvoice: reissueTaxInvoiceAction.bind(null, unitSlug), // SVC D.3
       }}
     />
   );

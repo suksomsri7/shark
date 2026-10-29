@@ -7,7 +7,9 @@ import { requireUnit } from "@/lib/core/context";
 import {
   adjustSentBill,
   billRunCsv,
+  issueBillTaxInvoice,
   parseBahtToSatang,
+  reissueBillTaxInvoice,
   prepareBillRun,
   releaseHeldBill,
   scheduleBillRun,
@@ -124,4 +126,38 @@ export async function exportBillRunCsvAction(unitSlug: string, input: unknown) {
   if (csv === null) return NO_ACCESS;
   const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(str(input.periodKey)) ? str(input.periodKey) : "run";
   return { ok: true as const, csv, filename: `bills-${period}.csv` };
+}
+
+// SVC D.3 ▸ ใบกำกับภาษีเต็มรูป: ออก (ทางกู้ — ปกติออกพร้อมการส่งบิล) · ยกเลิกแล้วออกฉบับใหม่แทน (ยอดเท่าเดิม · ต้องมีเหตุผล) ◂
+export async function issueTaxInvoiceAction(unitSlug: string, input: unknown) {
+  const g = await gate(unitSlug);
+  if (!g) return NO_ACCESS;
+  if (!isRec(input)) return BAD_INPUT;
+  const r = await issueBillTaxInvoice(g.ctx, { unitId: g.unitId, billId: str(input.billId) });
+  refresh(unitSlug);
+  return r;
+}
+
+export async function reissueTaxInvoiceAction(unitSlug: string, input: unknown) {
+  const g = await gate(unitSlug);
+  if (!g) return NO_ACCESS;
+  if (!isRec(input)) return BAD_INPUT;
+  const b = isRec(input.buyer) ? input.buyer : null;
+  const buyer = b
+    ? {
+        ...(str(b.name) ? { name: str(b.name) } : {}),
+        ...(str(b.address) ? { address: str(b.address) } : {}),
+        ...(typeof b.taxId === "string" ? { taxId: str(b.taxId) || null } : {}),
+        ...(typeof b.branchCode === "string" ? { branchCode: str(b.branchCode) || null } : {}),
+      }
+    : null;
+  const r = await reissueBillTaxInvoice(g.ctx, {
+    unitId: g.unitId,
+    billId: str(input.billId),
+    reason: str(input.reason),
+    idempotencyKey: str(input.idempotencyKey),
+    buyer,
+  });
+  refresh(unitSlug);
+  return r;
 }
