@@ -556,6 +556,15 @@ registerMinuteJob({
   run: async (now) => (await import("@/lib/modules/rooms")).sweepStaleOccupancy(now),
 });
 // ◂ SVC R0.9
+// SVC D.8 ▸ หอพัก: รอบบิลรายเดือน — (ก) ส่งรอบที่ตั้งเวลาไว้ถึงเวลา (ข) เตรียมรอบเดือนถัดไปเมื่อถึงวันออกบิล/จดมิเตอร์ครบ (+ ส่งต่อเมื่อเปิดส่งอัตโนมัติ)
+//   ทุก 5 นาที · ข้ามร้าน · โหลด facade หอตอนรันเท่านั้น · ซ้อนกันได้ (เตรียมใต้ล็อกหน่วย×งวด · ส่งมีผู้ส่งทีละคน + CAS ต่อบิล ⇒ ใบ 1 ต่อสัญญา×งวด · X5)
+registerMinuteJob({
+  name: "dorm.billing",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/dorm")).runDormBillingJobs(now, { budgetMs: Math.max(5_000, budgetMs - 5_000) }),
+});
+// ◂ SVC D.8
 
 function errorText(e: unknown): string {
   let s: string;

@@ -285,7 +285,7 @@ const ALLOWED_EDGES = new Set([
   "hotel→rooms",
   // SVC D.2 (ใบ svc-brief-d.2 §1): หอพักออกใบแจ้งหนี้/รับชำระ/เงินประกันผ่าน facade `@/lib/modules/account` เท่านั้น (dorm/account-bridge.ts = import type ·
   //   ผู้เรียกจริงในใบหน้าจอหอภายหลัง) · ทิศทางเดียว (account ไม่ import dorm — ข้อสอบ qc-svc-d.2 F-5)
-  "dorm→account",
+  "dorm→account", // SVC D.8: รอบบิลออกใบแจ้งหนี้/ใบลด-เพิ่มหนี้/ลิงก์จ่ายผ่าน facade นี้ (billing.ts)
   // SVC D.6: มิเตอร์หอ — ห้องว่างผ่าน facade `@/lib/modules/rooms` (occupancyRange/listBuildings) + การ์ดบอร์ดงานผ่านประตูเดียว `kanban/links.createCardFromExternal`
   "dorm→rooms",
   "dorm→kanban",
