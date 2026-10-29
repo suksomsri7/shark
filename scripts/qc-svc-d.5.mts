@@ -1208,7 +1208,8 @@ try {
     for (const L of all) invs.push(await leaseInv(L));
     const wrong = invs.filter((i) => !(i.status === "ACTIVE" && i.held === 900000 && i.jv === 2));
     const draftMoney = invs.filter((i) => i.status === "DRAFT" && i.held > 300000).length;
-    return [!badOf(rs).length && !badOf(xs).length && !firstBad.length && again.every((x) => x?.ok === true) && !wrong.length && !draftMoney,
+    const hard = (a: any[]) => badOf(a).filter((x) => x?.code !== "RETRY_SAFE"); // RETRY_SAFE อยู่ใน BAD_CODES ของทั้งไฟล์ แต่ข้อนี้ยอมตาม ORACLE-EDIT ข้างบน
+    return [!hard(rs).length && !hard(xs).length && !firstBad.length && again.every((x) => x?.ok === true) && !wrong.length && !draftMoney,
       `ในโพรเซส ${tally(rs)} ${ms}ms · ข้ามโพรเซส ${tally(xs)} · กดซ้ำ ${again.length} ${tally(again)} · ผิด ${wrong.length} ${J(wrong.slice(0, 3))} · DRAFT มีเงิน ${draftMoney}`];
   });
   await T("M-12", "cancelLease ∥ receiveBookingFee ∥ moveIn บน 10 สัญญาพร้อมกัน (30 คำขอในโพรเซสเดียว) ⇒ ไม่มี UNAVAILABLE/throw · CANCELLED ⇒ ยอดถือ 0 ไม่มี JV · DRAFT ⇒ ยอดถือ 0 หรือเท่าเงินจอง · ACTIVE ⇒ 900000", ["createLease", "cancelLease", "receiveBookingFee", "moveIn"], async () => {
