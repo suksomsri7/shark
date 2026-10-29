@@ -243,9 +243,12 @@ export async function ensureSystemQueueType(ctx: Ctx, code: "APPOINTMENT" | "WAL
   return find();
 }
 
-export type TicketMove = "CALLED" | "SERVING" | "DONE" | "NO_SHOW" | "CANCELLED";
+// SVC B.5 ▸ ข้าม (#43): CALLED → SKIPPED (skippedAt) · เรียกคืน: SKIPPED → CALLED เฉพาะเมื่อผู้เรียกขอ (`recallSkipped: true` · action RECALLED)
+//   — ทางเดิม (callJob ของ B.4) ไม่ส่งธง ⇒ บัตร SKIPPED ยังเป็น BAD_STATE เหมือนเดิม · หน่วย QUEUE/issueTicket ไม่เปลี่ยน ◂
+export type TicketMove = "CALLED" | "SERVING" | "DONE" | "NO_SHOW" | "CANCELLED" | "SKIPPED";
 const MOVE_FROM: Record<TicketMove, QueueTicketStatus[]> = {
   CALLED: ["WAITING", "CALLED"],
+  SKIPPED: ["CALLED"],
   SERVING: ["WAITING", "CALLED", "SKIPPED"],
   DONE: ["WAITING", "CALLED", "SERVING", "SKIPPED"],
   NO_SHOW: ["WAITING", "CALLED", "SERVING", "SKIPPED"],
@@ -261,13 +264,15 @@ export async function moveTicketTx(
   ctx: Ctx,
   ticketId: string,
   to: TicketMove,
-  o: { now: Date; actorType: "STAFF" | "SYSTEM" | "CUSTOMER"; actorId?: string | null; cancelReason?: "CUSTOMER" | "STAFF" | "END_OF_DAY" },
+  o: { now: Date; actorType: "STAFF" | "SYSTEM" | "CUSTOMER"; actorId?: string | null; cancelReason?: "CUSTOMER" | "STAFF" | "END_OF_DAY"; recallSkipped?: boolean },
 ): Promise<{ ok: true; ticket: QueueTicket; from: QueueTicketStatus } | { ok: false; code: "NOT_FOUND" | "BAD_STATE" | "LOST_RACE" }> {
   const cur = await tx.queueTicket.findFirst({ where: { ...ctx, id: ticketId } });
   if (!cur) return { ok: false, code: "NOT_FOUND" };
-  if (!MOVE_FROM[to].includes(cur.status)) return { ok: false, code: "BAD_STATE" };
+  const recall = to === "CALLED" && o.recallSkipped === true;
+  if (recall ? cur.status !== "SKIPPED" : !MOVE_FROM[to].includes(cur.status)) return { ok: false, code: "BAD_STATE" };
   const data: Prisma.QueueTicketUncheckedUpdateManyInput =
     to === "CALLED" ? { status: "CALLED", calledAt: o.now, callCount: { increment: 1 } }
+    : to === "SKIPPED" ? { status: "SKIPPED", skippedAt: o.now }
     : to === "SERVING" ? { status: "SERVING", servedAt: o.now }
     : to === "DONE" ? { status: "DONE", doneAt: o.now }
     : to === "NO_SHOW" ? { status: "NO_SHOW" }
@@ -277,7 +282,7 @@ export async function moveTicketTx(
     data,
   });
   if (upd.count === 0) return { ok: false, code: "LOST_RACE" };
-  const action = to === "CALLED" ? (cur.status === "CALLED" ? "RECALLED" : "CALLED") : to;
+  const action = to === "CALLED" ? (cur.status === "CALLED" || cur.status === "SKIPPED" ? "RECALLED" : "CALLED") : to;
   await tx.queueTicketEvent.create({
     data: {
       tenantId: ctx.tenantId,

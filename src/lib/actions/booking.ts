@@ -124,7 +124,7 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
   const st = await booking.setAppointmentStatus(ctx.tenantId, ctx.unitId, id, parsed.data, { actorUserId: auth.user.id }); // POS P5.1 ▸ RC F10a ◂
   // POS P5.1 ▸ RC F4 F5 (CD-P51-O10): ไม่ได้เปลี่ยนสถานะ (void บิลริบไม่ได้) / ริบมัดจำไม่สำเร็จ ⇒ จอจองแสดงเหตุผล (?err=) · ริบล้ม = logOps WARN ◂
   if (st.ok === false) {
-    if (!("unforfeit" in st)) await logOps("WARN", "pos.deposit.forfeit_failed", `ริบมัดจำนัด ${id} ไม่สำเร็จ`, { tenantId: ctx.tenantId, detail: st.reason });
+    if ("forfeit" in st) await logOps("WARN", "pos.deposit.forfeit_failed", `ริบมัดจำนัด ${id} ไม่สำเร็จ`, { tenantId: ctx.tenantId, detail: st.reason });
     scheduleDrain();
     revalidatePath(`/app/u/${unitSlug}/booking`);
     redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(st.reason.slice(0, 300))}`);

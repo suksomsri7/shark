@@ -949,6 +949,10 @@ export async function setAppointmentStatus(
   const LOST_RACE_REASON = "สถานะนัดเพิ่งถูกเปลี่ยนโดยรายการอื่น กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง";
   if (!before) return { ok: false as const, reason: "ไม่พบนัด" };
   let reviveFail = null as string | null; // ตั้งใน callback ของ tx (กัน TS ตีบชนิดเป็น null)
+  // SVC B.5 ▸ (ก) หนี้ B.4: ถอย ARRIVED → CONFIRMED/PENDING (ลูกค้ายังไม่มาจริง/กดผิด) ⇒ ใน CAS เดียวกัน ล้าง checkedInAt + queueTicketId
+  //   และบัตรเดิม (ถ้ายัง active) → CANCELLED (STAFF) ใน tx เดียว ⇒ เช็กอินใหม่ได้บัตรใหม่ · บัตร active ต่อนัด = 1 ·
+  //   CAS ผูก queueTicketId ที่อ่านด้วย (เช็กอินจอเดิมที่ออกบัตรให้ระหว่างนั้น = แพ้ ⇒ LOST_RACE) · ร้านเดิม (ไม่มีบัตร) ผลเดิม + ล้าง checkedInAt ◂
+  const undoArrive = before.status === "ARRIVED" && (status === "CONFIRMED" || status === "PENDING");
   await prisma.$transaction(async (tx) => {
     if (reviving) {
       // SVC B.3 ▸ G5: ล็อกเดียวกับการจอง (BookingStaff FOR UPDATE) → ตรวจซ้อนกับนัดที่ถือช่อง (ยกเว้นตัวเอง) → CAS + ล้าง cancelReason ◂
@@ -959,10 +963,11 @@ export async function setAppointmentStatus(
       }
     }
     const cas = await tx.appointment.updateMany({
-      where: { id: appointmentId, tenantId, unitId, status: before.status },
+      where: { id: appointmentId, tenantId, unitId, status: before.status, ...(undoArrive ? { queueTicketId: before.queueTicketId } : {}) },
       data: {
         ...(reviving ? { status, cancelReason: null } : { status }),
         ...(manualHoldSnap ? { policySnapshot: manualHoldSnap } : {}),
+        ...(undoArrive ? { checkedInAt: null, queueTicketId: null } : {}),
       },
     });
     if (cas.count === 0) {
@@ -996,6 +1001,12 @@ export async function setAppointmentStatus(
     // SVC B.4 ▸ บัตรเดินตามงาน (ใบสั่ง §3.1 §3.4): งานที่มีบัตรคิว ⇒ บัตรเปลี่ยนใน tx เดียวกับ CAS ของงาน ·
     //   CANCELLED → CANCELLED(STAFF) · NO_SHOW → NO_SHOW · DONE → DONE (ไม่ยิง queue.served) · สถานะอื่น = บัตรคงเดิม ·
     //   บัตรไม่อยู่ในสถานะที่ย้ายได้ (จบ/ยกเลิกแล้ว) = ไม่ทำอะไร (งานยังเปลี่ยนตามที่สั่ง) ◂
+    if (undoArrive && before.queueTicketId) {
+      // บัตรที่ยัง active (WAITING/CALLED/SERVING/SKIPPED) ⇒ CANCELLED · จบแล้ว = moveTicketTx คืน BAD_STATE ไม่ทำอะไร
+      await queue.moveTicketTx(tx, { tenantId, unitId }, before.queueTicketId, "CANCELLED", {
+        now: new Date(), actorType: "STAFF", actorId: opts?.actorUserId ?? null, cancelReason: "STAFF",
+      });
+    }
     const move = status === "CANCELLED" ? "CANCELLED" : status === "NO_SHOW" ? "NO_SHOW" : status === "DONE" ? "DONE" : null;
     if (move && appt.queueTicketId) {
       await queue.moveTicketTx(tx, { tenantId, unitId }, appt.queueTicketId, move, {
