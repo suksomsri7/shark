@@ -13,3 +13,9 @@
 
 - 🔴 (D.3 · 29 ต.ค.) unique index `AccountDocument_taxinvoice_source_uniq` (systemId, sourceDocId · TAX_INVOICE ที่มีผล ไม่มี sourcePaymentId) มีในฐาน QC แต่ไม่พบใน prisma/migrations ⇒ ตรวจ prod ก่อน deploy · ถ้าไม่มี ต้องสร้าง (โค้ดออกใบแทนพึ่ง index นี้)
 - 🔴 (B.7 · 29 ต.ค.) จองออนไลน์ (B.7) เปิดให้ลูกค้าจริงพร้อม B.8 มัดจำเท่านั้น — นัดที่ถือช่องมัดจำหมดเวลาใน 15 นาทีถ้ายังไม่มีทางจ่าย
+
+## D.4 นำเข้า Excel (30 ต.ค. · RULING-1 ทาง ก)
+- migration `20261224000000_svc_d4` (additive · ตารางใหม่ `DormImportBatch` 1 ตาราง + ดัชนี + CHECK 3 ตัว + partial unique `DormImportBatch_unit_active_key`) — ไม่แตะตารางเดิม · ลงก่อน next build ตามลำดับเดิม
+- scope.ts ลงทะเบียน `DormImportBatch: unit` แล้ว — client ร่วม (ทรีหลัก) ต้อง generate หลัง merge ใบนี้เท่านั้น (ก่อน merge = assertRegistryComplete ล้มในทรีที่ไม่มีบรรทัดนี้)
+- คอลัมน์ `parsed` เก็บหัว/แถวจากไฟล์ (มีชื่อ/เบอร์ผู้เช่า) — PII ในฐาน · DTO ปิดเบอร์/เลขบัตรเสมอ · หนี้: นโยบายลบ parsed ของชุดเก่า (เช่น หลัง CREATED 90 วัน)
+- J4: เงินประกันยกมาลง Dr เงินสด/ธนาคาร (ทางเดียวกับ D.5) — ร้านที่ตั้งยอดยกมาธนาคารเองจะนับซ้ำ · จอมีคำเตือน · ให้ผู้ทำบัญชีตรวจก่อนเปิดลูกค้าจริง (D.15)

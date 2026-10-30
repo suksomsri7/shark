@@ -511,6 +511,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   DormParcel: unit,
   DormAuthorityTariff: g("ตารางอัตราการไฟฟ้า/ประปาของรัฐ ใช้ร่วมทุกร้าน — เขียนเฉพาะ backoffice/สคริปต์แพลตฟอร์ม"),
   // ◂ SVC D.0
+  // SVC D.4 ▸ ชุดนำเข้า Excel/CSV ของหอ (migration svc_d4) — tenantId + unitId บังคับ ◂
+  DormImportBatch: unit,
   // Ticket
   TicketEvent: unit,
   TicketType: unit,

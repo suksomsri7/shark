@@ -48,10 +48,9 @@ export type { DormLawModel, DormLawBill } from "./law";
 
 // ── SVC D.5 ▸ ผู้เช่า · สัญญา · เงินประกัน — ชื่อตามสัญญา ledger/svc-briefs/svc-brief-d.5.md §3 §5 (บล็อกนี้ของใบ D.5 เท่านั้น) ──
 export {
-  createLease,
+  // createLease · moveIn ⇒ รุ่น 2 อาร์กิวเมนต์ในบล็อก SVC D.4 ข้างล่าง (X17: อาร์กิวเมนต์นำเข้าไม่ออกนอกโมดูล)
   findTenantCandidates,
   receiveBookingFee,
-  moveIn,
   signLease,
   addLeaseFiles,
   leaseFileLinks,
@@ -113,3 +112,32 @@ export type { LateFeeCtx, LateFeeLedger, LateFeeLedgerItem, WaiverStatus, WaiveR
 export { runDormDunningJobs, sendDunningNow, setPaymentPromise, overdueModel, terminationNotice } from "./dunning";
 export type { OverdueModel, OverdueRow, SendDunningResult, TerminationNotice, DunningJobResult } from "./dunning";
 // ◂ SVC D.11
+// ── SVC D.4 ▸ นำเข้า Excel/CSV (ภาพ หอ 12) — สัญญา ledger/svc-briefs/svc-brief-d.4.md §3 §4 (บล็อกนี้ของใบ D.4 เท่านั้น) ──
+export { uploadImport, guessColumns, previewImport, createImport, undoImport, getImport, listImports, importIssuesCsv } from "./import";
+export type {
+  ImportCtx,
+  ImportOptions,
+  ImportDecision,
+  ImportIssue,
+  ImportPlan,
+  ImportSummary,
+  ImportStatus,
+  ImportView,
+  ImportPreviewResult,
+  ImportPreviewRow,
+  ImportRowAction,
+  ImportUndone,
+} from "./import";
+export { parseImportFile, neutralizeCell, parseThaiDate, parseMoneySatang, headerGuess, importTemplateCsv, IMPORT_FIELDS } from "./import-parse";
+export type { ImportFieldKey, ImportMapping, ParsedImportFile } from "./import-parse";
+export { defaultColumnGuesser } from "./import-ai";
+export type { ImportColumnGuesser } from "./import-ai";
+// X17 ▸ facade ส่งต่อ createLease/moveIn แบบ 2 อาร์กิวเมนต์เท่านั้น — อาร์กิวเมนต์ภายในของงานนำเข้า (ข้ามด่านลงชื่อ/รูป) ใช้ได้เฉพาะ import.ts ในโมดูล
+import { createLease as leaseCreate, moveIn as leaseMoveIn } from "./lease";
+export function createLease(ctx: Parameters<typeof leaseCreate>[0], input: Parameters<typeof leaseCreate>[1]): ReturnType<typeof leaseCreate> {
+  return leaseCreate(ctx, input);
+}
+export function moveIn(ctx: Parameters<typeof leaseMoveIn>[0], input: Parameters<typeof leaseMoveIn>[1]): ReturnType<typeof leaseMoveIn> {
+  return leaseMoveIn(ctx, input);
+}
+// ◂ SVC D.4

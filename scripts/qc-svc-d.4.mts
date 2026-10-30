@@ -734,6 +734,45 @@ try {
     const g = fn("headerGuess")!(t.headers);
     return [s.startsWith("﻿") && t.headers.length >= 11 && Object.values(g ?? {}).includes("room") && !bad.length, `h=${t.headers.length} สูตร=${J(bad)}`];
   }, "MAJOR");
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · X2) ▸ ตัวอ่าน XLSX เชิงเส้น: แท็กไม่ปิด · คอลัมน์ไกล · ขยายผ่าน sharedStrings — ไม่ค้าง/ไม่บวมหน่วยความจำ
+  await T("F-11", "XLSX อันตรายแต่ไฟล์เล็ก: <row> ไม่ปิด ≥ 2 MB ⇒ UNSAFE_FILE < 1 วิ · ค่าในคอลัมน์ที่ 242 ⇒ TOO_MANY_COLUMNS · sharedStrings ขยาย (1000×60×999 ตัวอักษร) ⇒ UNSAFE_FILE < 5 วิ", ["parseImportFile"], async () => {
+    const shell = (sheetXml: string, sst?: string) => zipBytes([
+      { name: "xl/workbook.xml", data: enc(`<workbook xmlns:r="r"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>`) },
+      { name: "xl/_rels/workbook.xml.rels", data: enc(`<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>`) },
+      { name: "xl/worksheets/sheet1.xml", data: enc(sheetXml), deflate: true },
+      ...(sst ? [{ name: "xl/sharedStrings.xml", data: enc(sst), deflate: true }] : []),
+    ]);
+    const head = `<row r="1"><c r="A1" t="inlineStr"><is><t>ห้อง</t></is></c></row>`;
+    const t0 = Date.now();
+    const a = fn("parseImportFile")!(shell(`<worksheet><sheetData>${head}${"<row>".repeat(450_000)}</sheetData></worksheet>`));
+    const msA = Date.now() - t0;
+    const b = fn("parseImportFile")!(shell(`<worksheet><sheetData>${head}<row r="2"><c r="A2" t="inlineStr"><is><t>101</t></is></c><c r="IH2" t="inlineStr"><is><t>x</t></is></c></row></sheetData></worksheet>`));
+    const hdr = Array.from({ length: 60 }, (_, i) => `<c r="${colRef(i)}1" t="inlineStr"><is><t>h${i}</t></is></c>`).join("");
+    const rowX = (n: number) => `<row r="${n}">${Array.from({ length: 60 }, (_, i) => `<c r="${colRef(i)}${n}" t="s"><v>0</v></c>`).join("")}</row>`;
+    const t1 = Date.now();
+    const c = fn("parseImportFile")!(shell(`<worksheet><sheetData><row r="1">${hdr}</row>${Array.from({ length: 1000 }, (_, i) => rowX(i + 2)).join("")}</sheetData></worksheet>`, `<sst><si><t>${"ข".repeat(999)}</t></si></sst>`));
+    const msC = Date.now() - t1;
+    return [codeOf(a) === "UNSAFE_FILE" && msA < 1000 && codeOf(b) === "TOO_MANY_COLUMNS" && codeOf(c) === "UNSAFE_FILE" && msC < 5000, `row=${codeOf(a)}:${msA}ms far=${codeOf(b)} sst=${codeOf(c)}:${msC}ms`];
+  }, "MAJOR");
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · Y1) ▸ แท็กเปิดยาวไม่มี '=' (attrsOf ย้อนรอยกำลังสอง) · Relationship ไม่ปิด — ต้อง UNSAFE_FILE < 1 วิ ต่อไฟล์
+  await T("F-11b", "XLSX แท็กเปิดยาวผิดปกติ: แท็กเซลล์ยาว 200k ไม่มี '=' ⇒ UNSAFE_FILE < 1 วิ · <Relationship ไม่ปิด 80k ⇒ UNSAFE_FILE < 1 วิ", ["parseImportFile"], async () => {
+    const wbX = `<workbook xmlns:r="r"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+    const relsOk = `<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>`;
+    const head = `<row r="1"><c r="A1" t="inlineStr"><is><t>ห้อง</t></is></c></row>`;
+    const shellY = (sheetXml: string, rels: string) => zipBytes([
+      { name: "xl/workbook.xml", data: enc(wbX) },
+      { name: "xl/_rels/workbook.xml.rels", data: enc(rels), deflate: true },
+      { name: "xl/worksheets/sheet1.xml", data: enc(sheetXml), deflate: true },
+    ]);
+    const okSheet = `<worksheet><sheetData>${head}<row r="2"><c r="A2" t="inlineStr"><is><t>101</t></is></c></row></sheetData></worksheet>`;
+    const t0 = Date.now();
+    const a = fn("parseImportFile")!(shellY(`<worksheet><sheetData>${head}<row r="2"><c ${"x".repeat(200_000)}><v>1</v></c></row></sheetData></worksheet>`, relsOk));
+    const msA = Date.now() - t0;
+    const t1 = Date.now();
+    const b = fn("parseImportFile")!(shellY(okSheet, `<Relationships><Relationship ${"a".repeat(80_000)}`));
+    const msB = Date.now() - t1;
+    return [codeOf(a) === "UNSAFE_FILE" && msA < 1000 && codeOf(b) === "UNSAFE_FILE" && msB < 1000, `cell200k=${codeOf(a)}:${msA}ms rel80k=${codeOf(b)}:${msB}ms`];
+  }, "MAJOR");
 
   // ═══════════════ C6. เพดาน X6 ═══════════════
   console.log("\n── C6 เพดาน X6 (ค่าตั้ง) ──");
@@ -805,6 +844,14 @@ try {
     const bad = cells.filter((c: string) => FORMULA_START.test(String(c)));
     const fullPhone = /0818014410|081-801-4410|0818024410/.test(J(r));
     return [r?.ok === true && cells.length > 11 && !bad.length && !fullPhone, `${codeOf(r)} สูตร=${J(bad).slice(0, 200)} เบอร์เต็ม=${fullPhone}`];
+  }, "CRITICAL");
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · X9) ▸ ตัวเลข 8–12 หลักทุกรูป (เบอร์ไม่มี 0 นำหน้า · +66) และ 13 หลัก ⇒ ปิดใน samples
+  await T("N-2b", "samples ปิดเลขส่วนตัวทุกรูป: เบอร์ไม่มี 0 นำหน้า (818034410) · 66818044410 · (081) 805 4410 · เลขบัตร 13 หลักมีขีด ⇒ ไม่มีเลขเต็มหลุด", ["uploadImport"], async () => {
+    const rows = [["9201", "ทดสอบ หนึ่ง", "818034410", "1/5/69", "4500", "9000", "1", "1", "", "", ""], ["9202", "ทดสอบ สอง", "66818044410", "1/5/69", "4500", "9000", "1", "1", "", "", ""], ["9203", "ทดสอบ สาม", "(081) 805 4410", "1/5/69", "4500", "9000", "1", "1", "", "", "1-1037-02071-81-1"]];
+    const r = await up(cO, U.DT, csvBytes(CLEAN.headers, rows), "mask.csv");
+    const s = J(r?.samples ?? []);
+    const leak = /818034410|66818044410|0818054410|805 4410|1103702071811|1-1037-02071-81-1/.exec(s);
+    return [r?.ok === true && !leak, `${codeOf(r)} leak=${leak?.[0] ?? "—"} samples=${s.slice(0, 200)}`];
   }, "CRITICAL");
   let dangerPv: any = null;
   await T("N-3", "พรีวิว: TEXT_NEUTRALIZED (WARN) ที่ 101–104 · ค่าเช่า '=4500*2' ⇒ MONEY_INVALID (MUST_FIX · ไม่ประเมินสูตร) · ทุก issue.value ไม่ขึ้นต้นด้วยสูตร · เบอร์ '+66 81 802 4410' ไม่ถือเป็นสูตร", ["previewImport"], async () => {
@@ -1431,6 +1478,17 @@ try {
     const legal = LEGAL_BAD.exec(t);
     const f = textNodes(wHtml).filter((x) => /^[=+@＝＋＠]/.test(x.trim()));
     return [!!wHtml && !phone && !legal && !f.length, `เบอร์=${phone?.[0] ?? "—"} คำต้องห้าม=${legal?.[0] ?? "—"} สูตร=${J(f).slice(0, 120)}`];
+  }, "CRITICAL", true);
+
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · X3) ▸ หน้าจริง render จาก getImport อย่างเดียว (preview null) หลังยืนยันแมป ⇒ ปุ่มนำเข้ากดได้
+  await T("W-6", "หน้าจริง (view จาก getImport · preview null) หลังยืนยันแมปและไม่มีต้องแก้ ⇒ ปุ่ม data-import-create ไม่ disabled · view.previewHash = hash ของพรีวิวที่ยืนยัน", ["uploadImport", "previewImport", "getImport"], async () => {
+    const small = withPrefix("089");
+    const u = await up(cO, U.DE, csvBytes(small.headers, subset(small, ["101", "102"])), "w6.csv");
+    const p = u?.ok ? await pvMap(cO, U.DE, u.batchId) : u;
+    const view = u?.ok ? await fn("getImport")!(cO, { unitId: U.DE, batchId: u.batchId }) : null;
+    const html = view ? render({ unitSlug: "dorm-d4", view, preview: null }) : "";
+    const btn = boxes(html, "data-import-create")[0];
+    return [p?.ok === true && p.summary?.mustFix === 0 && view?.previewHash === p.previewHash && !!btn && !("disabled" in btn.attrs), `${codeOf(p)} mustFix=${p?.summary?.mustFix} hash=${view?.previewHash === p?.previewHash} btn=${btn ? J(btn.attrs) : "—"}`];
   }, "CRITICAL", true);
 
   // ═══════════════ Q. ฉาก svcqc (ร้าน B) ═══════════════
