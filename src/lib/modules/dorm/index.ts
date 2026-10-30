@@ -107,3 +107,9 @@ export type { DormPresetRole, DormRoleColumn, DormRoleCell, DormRoleRow } from "
 export { billTaxInvoice, issueBillTaxInvoice, reissueBillTaxInvoice } from "./tax-invoice";
 export type { TaxInvoiceView } from "./tax-invoice";
 // ◂ SVC D.3
+// ── SVC D.11 ▸ เตือน · ทวง · ค่าปรับ — สัญญา ledger/svc-briefs/svc-brief-d.11.md §3–§9 (บล็อกนี้ของใบ D.11 เท่านั้น) ──
+export { lateFeeLedger, waiveLateFee, applyLateFeeWaiverApproval } from "./latefee";
+export type { LateFeeCtx, LateFeeLedger, LateFeeLedgerItem, WaiverStatus, WaiveResult, ApplyWaiverResult, AutoLateFeeEntry } from "./latefee";
+export { runDormDunningJobs, sendDunningNow, setPaymentPromise, overdueModel, terminationNotice } from "./dunning";
+export type { OverdueModel, OverdueRow, SendDunningResult, TerminationNotice, DunningJobResult } from "./dunning";
+// ◂ SVC D.11

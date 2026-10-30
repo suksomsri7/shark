@@ -1229,6 +1229,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   payload ตรง 6 คีย์ { unitId, runId, billId, leaseId, periodKey, amountSatang } (ไม่มีชื่อ/เบอร์ · X8) · งานหลัก = hook ว่าง
   //   ให้ D.9 ใส่ notifyCustomer (ผ่าน outbox concurrency — ห้าม loop ส่งใน request) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
   "dorm.billrun.sent": withAutomation(async () => {}),
+  // SVC D.11 ▸ บิลหอเลยกำหนดและยังค้าง (ครั้งเดียวต่อบิล) — ยิงจาก `dorm/dunning.ts#runDormDunningJobs` · key `dorm.bill.overdue:<billId>` ·
+  //   payload ตรง 7 คีย์ { unitId, billId, leaseId, periodKey, dueDate, outstandingSatang, daysLate } (ไม่มีชื่อ/เบอร์ · X8) · งานหลัก = no-op
+  //   (ข้อความทวงส่งใน dunning ผ่าน notifyCustomer แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.bill.overdue": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

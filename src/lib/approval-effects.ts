@@ -171,6 +171,17 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
   }
   // ◂ SVC R0.3
 
+  // SVC D.11 ▸ `dorm.latefee.waive` — ยกเว้นค่าปรับจ่ายช้า (หอ) ที่ผู้ไม่ใช่เจ้าของยื่น · entityId = บิลต้นทาง
+  //   อนุมัติ = ยกเว้นในนามผู้ตัดสินขั้นสุดท้าย (ต้องเป็นเจ้าของสด · ตรวจใน dorm) · ปฏิเสธ = ไม่ทำอะไร · idempotent ใต้ล็อกสัญญา (ซ้ำ = ALREADY)
+  //   dynamic import facade หอ (เลี่ยงวงโหลดไฟล์ · แบบกิ่งค่าตั้ง) · งานตามเวลา dorm.dunning กวาดคำขอที่อนุมัติแล้วแต่ยังไม่ยกเว้นเป็นทางสำรอง ◂
+  if (entityType === "dorm.latefee.waive") {
+    if (!approved || !requestId) return;
+    const r = await (await import("@/lib/modules/dorm")).applyLateFeeWaiverApproval({ tenantId: evt.tenantId, requestId, sourceBillId: entityId });
+    if (r.status === "INVALID") await logOps("WARN", "dorm", `ใช้ผลอนุมัติยกเว้นค่าปรับไม่ได้ (${r.reason ?? "คำขอใช้ไม่ได้"}) — คำขอ ${requestId}`, { tenantId: evt.tenantId });
+    return;
+  }
+  // ◂ SVC D.11
+
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

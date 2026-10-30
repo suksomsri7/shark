@@ -380,6 +380,31 @@ const DEFS: SettingDef[] = [
   tpl("rooms.msg.repairDone", "ข้อความแจ้งซ่อมเสร็จ", ["tenantName", "roomNo", "unitName", "ticketNo"],
     "งานซ่อมเลขที่ {ticketNo} ห้อง {roomNo} เสร็จแล้ว หากยังมีปัญหาแจ้งกลับได้เลย — {unitName}",
     "Repair {ticketNo} for room {roomNo} is complete. Let us know if anything is still wrong — {unitName}"),
+  // SVC D.11 ▸ ค่าปรับอัตโนมัติ · เพดานกันพิมพ์ผิด · นัดจ่าย · หนังสือบอกเลิกสัญญา (ใบสั่ง ledger/svc-briefs/svc-brief-d.11.md §2.2) ◂
+  def({
+    key: "rooms.lateFee.autoCharge", type: "bool", labelTh: "คิดค่าปรับจ่ายช้าลงบิลถัดไปอัตโนมัติ",
+    helpTh: "ปิด = ไม่มีค่าปรับอัตโนมัติ (ยังใส่ค่าปรับเองในบิลได้) · คิดตามข้อตกลงค่าปรับในสัญญาแต่ละฉบับ",
+    schema: z.boolean(), defaults: { _fallback: true }, chain: U, sensitivity: "MONEY",
+  }),
+  def({
+    key: "rooms.lateFee.guardRentBp", type: "percent", labelTh: "เพดานกันพิมพ์ผิดของค่าปรับ (% ของค่าเช่า · bp)",
+    helpTh: `${PENDING}ใช้เมื่อสัญญาไม่มีเพดานต่อบิลและยังไม่มีเพดานตามกฎหมาย · 10,000 = ค่าเช่า 1 เดือน · ว่าง = ไม่จำกัด`,
+    schema: z.number().int().min(0).max(100_000).nullable(), defaults: { _fallback: 10_000 }, chain: U, ownerOnly: true, sensitivity: "MONEY",
+  }),
+  def({
+    key: "rooms.notify.promiseMaxDays", type: "days", labelTh: "นัดจ่ายได้ไกลสุด (วันจากวันนี้)",
+    schema: z.number().int().min(1).max(90), defaults: { _fallback: 30 }, chain: U,
+  }),
+  def({
+    key: "rooms.lease.terminationNoticeDays", type: "days", labelTh: "หนังสือบอกเลิกสัญญามีผลหลังวันออก (วัน)",
+    helpTh: `${PENDING}ป.พ.พ. ม.560 บอกกล่าวล่วงหน้าไม่น้อยกว่า 15 วัน`,
+    schema: z.number().int().min(15).max(180), defaults: { _fallback: 30 }, chain: U,
+  }),
+  tpl("rooms.msg.terminationNotice", "หนังสือบอกเลิกสัญญาเช่า (พิมพ์)",
+    ["tenantName", "roomNo", "unitName", "landlordName", "overdueAmount", "overduePeriods", "noticeDate", "effectiveDate"],
+    "หนังสือบอกเลิกสัญญาเช่า\n\nวันที่ {noticeDate}\n\nเรียน คุณ{tenantName} ผู้เช่าห้อง {roomNo} {unitName}\n\nตามที่ท่านมีค่าเช่าและค่าใช้จ่ายค้างชำระงวด {overduePeriods} รวมเป็นเงิน {overdueAmount} ซึ่งเลยกำหนดชำระแล้ว และผู้ให้เช่าได้แจ้งติดตามแล้ว ผู้ให้เช่าขอแจ้งบอกเลิกสัญญาเช่าห้อง {roomNo} โดยให้มีผลในวันที่ {effectiveDate}\n\nหากท่านชำระยอดค้างครบถ้วนก่อนวันดังกล่าว หรือประสงค์ตกลงแนวทางชำระ โปรดติดต่อผู้ให้เช่าที่สำนักงานหอพัก\n\nขอแสดงความนับถือ\n{landlordName}",
+    "Notice of lease termination\n\nDate: {noticeDate}\n\nDear {tenantName}, tenant of room {roomNo}, {unitName}\n\nRent and charges for {overduePeriods} totalling {overdueAmount} remain unpaid after the due date despite our follow-up. The landlord hereby gives notice that the lease of room {roomNo} will end on {effectiveDate}.\n\nIf the balance is paid in full before that date, or you wish to agree a payment plan, please contact the dormitory office.\n\nSincerely,\n{landlordName}"),
+  // ◂ SVC D.11
 
   // ── ค่าบริการอื่น (#40–41) ──
   def({
@@ -692,6 +717,8 @@ export const PENDING_LEGAL_REVIEW_KEYS: readonly string[] = [
   "rooms.lateFee.amount",
   "rooms.lateFee.capPerBill",
   "rooms.deposit.returnDays",
+  "rooms.lateFee.guardRentBp", // SVC D.11
+  "rooms.lease.terminationNoticeDays", // SVC D.11
 ];
 
 /** แถวภาคผนวก ก ที่ไม่นิยามใน rooms (เจ้าของคือชิ้นอื่น) */

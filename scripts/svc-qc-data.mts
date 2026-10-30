@@ -669,3 +669,15 @@ export function sqcManageToken(secret: string, appointmentId: string): string {
   ];
 }
 // ◂ SVC B.7
+
+// ── SVC D.11 ▸ เตือน · ทวง · ค่าปรับ — จอ "ค้างชำระ" (อ้างอิงภาพ หอ 06 การ์ด "ค้างจาก ต.ค. ฿10,200.40 · 106 · 305 · ส่งเตือนแล้ว 3 ครั้ง") ──
+//   ผู้เขียนข้อสอบ D.11 ตั้ง · builder ห้ามแตะ · ฉาก scripts/svc-qc-overdue-scene.mts ต่อจากฉาก D.13 (บิลค้างงวด PP ของ SQC_DORM_HOME_SCENE.prevUnpaid)
+//   ใส่ ServiceMessageLog SENT ของขั้นทวง steps ให้ทุกห้องใน rooms (dedupeKey rooms:dunning:<billId>:<ขั้น>) ⇒ delivered = 3 · ถ่าย --user owner
+export const SQC_DORM_OVERDUE_SCENE = {
+  mark: "SvcQcScene",
+  rooms: ["106", "305"],
+  steps: [3, 7, 14],
+  delivered: 3,
+} as const;
+SQC_VISUAL_SPECS["d.11"] = [{ name: "dorm-overdue", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/overdue` }];
+// ◂ SVC D.11

@@ -59,6 +59,12 @@ export const DORM_MSG_VAR_LABEL_TH: Record<string, string> = {
   body: "เนื้อหา",
   linkCode: "รหัสผูกห้อง",
   ticketNo: "เลขงานซ่อม",
+  // SVC D.11 ▸ ตัวแปรหนังสือบอกเลิกสัญญา (rooms.msg.terminationNotice) ◂
+  landlordName: "ชื่อผู้ให้เช่า",
+  overdueAmount: "ยอดค้างรวม",
+  overduePeriods: "งวดที่ค้าง",
+  noticeDate: "วันออกหนังสือ",
+  effectiveDate: "วันมีผล",
 };
 
 /** ข้อความแม่แบบ → ส่วนข้อความ/ตัวแปร (ตัวแปรที่ไม่รู้จักคงเป็นข้อความเดิมโดยไม่มีวงเล็บ) */
