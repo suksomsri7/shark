@@ -160,10 +160,10 @@ const MSG_DEF: Record<MsgKind, { labelTh: string; vars: readonly string[]; barbe
     labelTh: "ข้อความเมื่อเช็กอินแล้ว",
     vars: ["ชื่อ", "ร้าน", "เลขคิว", "ลิงก์บัตร"],
     barber: {
-      th: "คุณ{ชื่อ} เช็กอินที่ {ร้าน} แล้ว · ดูคิวสด: {ลิงก์บัตร}",
-      en: "{ชื่อ}, you're checked in at {ร้าน}. Live queue: {ลิงก์บัตร}",
+      th: "คุณ{ชื่อ} เช็กอินที่ {ร้าน} แล้ว · บัตรคิว {เลขคิว} · ดูคิวสด: {ลิงก์บัตร}",
+      en: "{ชื่อ}, you're checked in at {ร้าน} (ticket {เลขคิว}). Live queue: {ลิงก์บัตร}",
     },
-    clinic: { th: "คุณ{ชื่อ} ลงทะเบียนที่ {ร้าน} แล้ว · ดูคิวสด: {ลิงก์บัตร}" },
+    clinic: { th: "คุณ{ชื่อ} ลงทะเบียนที่ {ร้าน} แล้ว · บัตรคิว {เลขคิว} · ดูคิวสด: {ลิงก์บัตร}" },
   },
   ticketIssued: {
     labelTh: "ข้อความเมื่อรับบัตรคิว",
@@ -336,7 +336,8 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.queue.walkInCloseWaitMin", type: "minutes", labelTh: "ปิดรับ walk-in เมื่อรอเกิน (นาที)", schema: MIN, chain: U, v: [120, 90, 180] }), // #41
   row({
     key: "booking.queue.remoteTicket", type: "table", labelTh: "รับบัตรคิวทางมือถือ", // #42
-    schema: z.object({ enabled: z.boolean(), maxWaitMin: POS_MIN.nullable() }).strict(),
+    // SVC B.9 ▸ maxPerHour (ไม่ใส่/null = ไม่จำกัด): เพดานบัตรทางมือถือต่อสาขาต่อ 60 นาที — กันสลับ IP รับบัตรไม่จำกัด (N6/N9) ◂
+    schema: z.object({ enabled: z.boolean(), maxWaitMin: POS_MIN.nullable(), maxPerHour: z.number().int().min(1).max(1000).nullable().optional() }).strict(),
     chain: U, v: [{ enabled: true, maxWaitMin: 90 }, { enabled: true, maxWaitMin: 60 }, { enabled: true, maxWaitMin: null }],
   }),
   row({ key: "booking.queue.skipAfterMin", type: "minutes", labelTh: "ข้ามคิวเมื่อเรียกแล้วไม่มา (นาที · ว่าง = ไม่ข้ามเอง)", schema: POS_MIN.nullable(), chain: U, v: [10, 10, 15] }), // #43
@@ -357,6 +358,8 @@ const DEFS: SettingDef[] = [
   }),
   row({ key: "booking.notify.nearTurnAhead", type: "int", labelTh: "แจ้งใกล้ถึงคิวเมื่อเหลือ (คิว)", schema: z.number().int().min(1).max(50), chain: U, v: [2, 2, 3] }), // #49
   row({ key: "booking.notify.delayAlertMin", type: "minutes", labelTh: "แจ้งคิวล่าช้าเมื่อช้าเกิน (นาที · ว่าง = ไม่แจ้ง)", schema: POS_MIN.nullable(), chain: U, v: [15, 15, 30] }), // #50
+  // SVC B.9 ▸ มติผู้คุม Q2: ซ่อนชื่อบริการในข้อความถึงลูกค้า (คลินิก = ไม่เปิดเผยการรักษา · #51) — true ⇒ ตัวแปร {บริการ} ว่างเสมอ แม้ร้านแก้ถ้อยคำใส่ {บริการ} ◂
+  row({ key: "booking.notify.hideServiceName", type: "bool", labelTh: "ไม่ใส่ชื่อบริการในข้อความถึงลูกค้า", helpTh: "เปิดไว้ ⇒ ตัวแปร {บริการ} ในข้อความแจ้งเตือนเป็นค่าว่างเสมอ (เช่น คลินิกที่ไม่เปิดเผยการรักษา)", schema: z.boolean(), chain: U, v: [false, false, true] }),
 
   // ── ข้อความ (#51) ──
   row({ key: "booking.msg.enabled", type: "table", labelTh: "เปิด/ปิดข้อความแต่ละชนิด", schema: MSG_ENABLED, chain: U, v: [msgOn(["courseExpiry"]), msgOn([]), msgOn(["rebookInvite", "courseExpiry"])] }),

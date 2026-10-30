@@ -68,6 +68,7 @@ const R = {
   STAFF_NOT_FOUND: "ไม่พบผู้ให้บริการที่เลือก",
   WALKIN_DISABLED: "บริการนี้ไม่รับลูกค้า walk-in กรุณาจองเวลาล่วงหน้า",
   WALKIN_CLOSED: "ขณะนี้คิว walk-in เต็มแล้ว กรุณาจองเวลาล่วงหน้า",
+  ALREADY_TODAY: "เบอร์นี้มีบัตรคิววันนี้ที่ยังรออยู่แล้ว", // SVC B.9 (rejectSamePhoneToday)
   JOB_NOT_FOUND: "ไม่พบงานนี้",
   JOB_BAD_STATE: "งานนี้ทำรายการนี้ไม่ได้ในสถานะปัจจุบัน",
   LOST_RACE: "สถานะงานเพิ่งถูกเปลี่ยนโดยรายการอื่น กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
@@ -327,7 +328,15 @@ const WALKIN_CHANNEL_TO_TICKET = { KIOSK: "KIOSK", STAFF: "STAFF", REMOTE: "ONLI
  * walk-in (ใบสั่ง §3.2): ใต้ล็อก (advisory สาขา → ช่างทั้งหมด) สร้าง PlanInput จากฐาน → quoteWalkIn → แถว WALKIN/QUEUED ถือช่องตามที่ quote
  * + บัตร A + booking.created ใน tx เดียว → หลัง commit ผูก Party + runPlanner · คืนแผนหลัง runPlanner
  */
-export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: Date; deviceId?: string }): Promise<WalkInResult> {
+/**
+ * SVC B.9 ▸ opt เพิ่ม (พฤติกรรมเดิมคงเดิมเมื่อไม่ส่ง):
+ *   skipPartyLink — ช่องทางที่ไม่ยืนยันเบอร์ (รับบัตรมือถือ) ไม่ผูก Party จากเบอร์ (กันสวมเบอร์แล้วยึด LINE ของลูกค้าคนอื่น · N1)
+ *   rejectSamePhoneToday — ตรวจ "เบอร์นี้มี walk-in ที่ยังรอของวันนี้" ใต้ล็อกสาขาใน tx เดียวกับการสร้าง (เบอร์เดียวยิงพร้อมกันได้ใบเดียว · N7) ◂
+ */
+export type WalkInAlready = { ok: false; code: "ALREADY"; reason: string };
+export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts: { now?: Date; deviceId?: string; skipPartyLink?: boolean; rejectSamePhoneToday: true }): Promise<WalkInResult | WalkInAlready>;
+export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: Date; deviceId?: string; skipPartyLink?: boolean; rejectSamePhoneToday?: false }): Promise<WalkInResult>;
+export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: Date; deviceId?: string; skipPartyLink?: boolean; rejectSamePhoneToday?: boolean }): Promise<WalkInResult | WalkInAlready> {
   const fail = (code: WalkInFail, reason: string): WalkInResult => ({ ok: false, code, reason });
   if (!okCtx(ctx) || !i || typeof i !== "object" || typeof i.serviceId !== "string" || !i.serviceId) return fail("BAD_INPUT", R.BAD_INPUT);
   if (i.staffId !== null && i.staffId !== undefined && typeof i.staffId !== "string") return fail("BAD_INPUT", R.BAD_INPUT);
@@ -380,9 +389,17 @@ export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: 
   // m-5 (ผู้คุมเคาะ): สิทธิ์คิวก่อนรับเฉพาะช่องทาง STAFF (พนักงานยืนยันกลุ่มได้คิวก่อน) · KIOSK/REMOTE ส่งมา ⇒ ละไว้ ออกเป็นคิวปกติ ไม่ error
   const priority = i.priority === true && i.channel === "STAFF";
 
-  type TxOut = { kind: "closed" } | { kind: "ok"; id: string; ticketId: string; ticketNumber: string; staffId: string; startAt: Date };
+  type TxOut = { kind: "closed" } | { kind: "already" } | { kind: "ok"; id: string; ticketId: string; ticketNumber: string; staffId: string; startAt: Date };
   const attempt = () => prisma.$transaction(async (tx): Promise<TxOut> => {
     await lockUnitTx(tx, ctx);
+    if (opts?.rejectSamePhoneToday && phone) {
+      const key = bookingPhoneKey(phone);
+      const mine = await tx.appointment.findMany({
+        where: { tenantId, unitId, kind: "WALKIN", status: { in: ["QUEUED", "ARRIVED", "IN_SERVICE"] }, startAt: { gte: localToUtc(dayStr, 0), lt: localToUtc(dayStr, 24 * 60) } },
+        select: { customerPhone: true },
+      });
+      if (mine.some((m) => bookingPhoneKey(m.customerPhone) === key)) return { kind: "already" };
+    }
     const rows = await jobRowsOf(tx, ctx, dayStr);
     // SVC B.5 ▸ งานที่บัตร SKIPPED วางท้ายแถวแบบเดียวกับ runPlanner (ราคาเวลารอ = ช่องจริงในฐาน) ◂
     const q = quoteWalkIn(planInputOf(pre, rows, now.getTime(), await skippedOf(tx, ctx, rows)), { serviceId: service.id, staffId, priority });
@@ -442,9 +459,10 @@ export async function createWalkIn(ctx: LineCtx, i: WalkInInput, opts?: { now?: 
   }
   if (!out) return fail("BUSY", R.BUSY);
   if (out.kind === "closed") return fail("WALKIN_CLOSED", R.WALKIN_CLOSED);
+  if (out.kind === "already") return { ok: false, code: "ALREADY", reason: R.ALREADY_TODAY };
 
   // ── หลัง commit: ผูก Party (เบอร์ ≥ 9 หลัก) → บัตรได้ partyId เดียวกัน · วางคิวใหม่ ──
-  if (phone) {
+  if (phone && !opts?.skipPartyLink) {
     await linkPartyAfterCommit(tenantId, out.id, name || null, phone);
     const p = await prisma.appointment.findFirst({ where: { id: out.id, tenantId, unitId }, select: { partyId: true } });
     if (p?.partyId) await prisma.queueTicket.updateMany({ where: { id: out.ticketId, tenantId, unitId, partyId: null }, data: { partyId: p.partyId } });
@@ -663,4 +681,28 @@ export async function rescheduleByShop(
   if (!res) return fail("BUSY", R.BUSY);
   if (res.ok) await replan(ctx, now);
   return res.ok ? { ok: true } : res;
+}
+
+// SVC B.9 ▸ ราคาเวลารอ walk-in แบบอ่านอย่างเดียว (รับบัตรคิวจากมือถือ #42 · ตรวจ maxWaitMin ก่อนสร้างแถว) —
+//   ไม่ล็อก ไม่เขียน · ชุดเดียวกับ createWalkIn (planPreOf → jobRowsOf → skippedOf → planInputOf → quoteWalkIn) ·
+//   หน่วยไม่ใช่แถวเดียว / ctx ผิดรูป ⇒ null · walkInPickStaff = false ⇒ คิดแบบ "ใครก็ได้" (ตรงกับ createWalkIn) ◂
+export async function quoteWalkInWait(
+  ctx: LineCtx,
+  i: { serviceId: string; staffId: string | null },
+  opts?: { now?: Date },
+): Promise<{ closed: boolean; waitMin: number | null } | null> {
+  if (!okCtx(ctx) || !i || typeof i.serviceId !== "string" || !i.serviceId) return null;
+  const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
+  const values = await lineSettingsOf(ctx.tenantId, ctx.unitId);
+  if (!values) return null;
+  let staffId = typeof i.staffId === "string" && i.staffId ? i.staffId : null;
+  if (staffId) {
+    const pick = await resolveSettings({ tenantId: ctx.tenantId }, ["booking.queue.walkInPickStaff"], { unitId: ctx.unitId });
+    if (pick["booking.queue.walkInPickStaff"]?.value === false) staffId = null;
+  }
+  const dayStr = bkkDayOf(now.getTime());
+  const reader = prisma as unknown as Prisma.TransactionClient;
+  const [pre, rows] = await Promise.all([planPreOf(ctx, dayStr, values), jobRowsOf(reader, ctx, dayStr)]);
+  const q = quoteWalkIn(planInputOf(pre, rows, now.getTime(), await skippedOf(reader, ctx, rows)), { serviceId: i.serviceId, staffId });
+  return { closed: q.closed, waitMin: q.closed ? null : q.waitMin };
 }

@@ -602,3 +602,10 @@ export function sqcTicketToken(secret: string, t: { tenantId: string; unitId: st
     },
   ];
 }
+
+// SVC B.9 ▸ หน้ารับบัตรคิวจากมือถือ (#42 · สาธารณะ · ไม่มีภาพแบบ ⇒ ตรวจ HTTP + ไม่ล้น 1440/390 เท่านั้น) —
+//   ต้องให้หน่วยบาร์เบอร์ของ svcqc ใช้แม่แบบ BARBER (แถวเดียว + remoteTicket เปิด) ก่อนถ่าย (ฉาก B.5 ทำให้แล้ว) ◂
+SQC_VISUAL_SPECS["b.9"] = [
+  { name: "booking-remote-ticket", path: `/s/${SQC_TENANT.slug}/${SQC_UNITS.barber.slug}/remote` },
+];
+// ◂ SVC B.9

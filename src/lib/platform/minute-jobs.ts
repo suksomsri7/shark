@@ -527,6 +527,14 @@ registerMinuteJob({
   run: async (now) => (await import("@/lib/modules/booking/planner-run")).runLineTick(now),
 });
 // ◂ SVC B.4
+// SVC B.9 ▸ แจ้งเตือนลูกค้าตามเวลา (เตือนก่อนนัด · ใกล้ถึงคิว · คิวล่าช้า · ชวนกลับ) — ข้ามร้าน · ทุก 1 นาที ·
+//   idempotent ด้วย dedupeKey ของ notifyCustomer (ยิงซ้อน/หลายโพรเซส = ข้อความเดียว) · โหลดตอนรัน ◂
+registerMinuteJob({
+  name: "booking.notify.tick",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/platform/booking-notify")).runBookingNotifyTick(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
 // SVC B.4 ▸ บัตรคิว: สิ้นวัน (resetDaily) + ข้ามเกินเวลา → ไม่มา (expireSkipped) ทุกหน่วยที่มีบัตรค้าง · ข้ามบัตรของจองคิว (refType APPOINTMENT) ·
 //   ทุก 5 นาที · ข้ามร้าน · updateMany มีเงื่อนไขสถานะ ⇒ ยิงซ้อนกันได้
 registerMinuteJob({

@@ -249,6 +249,8 @@ let SV_SAVED: Any[] = [];
 const TEST_ROUTE_CALLS: { kind: string; ctx: Any; arg: Any }[] = [];
 const RESOLVE: Record<string, string> = {};
 let testRoute: Any = null;
+// ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.9): สำเนาทะเบียน route จริงก่อนข้อสอบแตะ — ถอด route จริงที่ prefix ชนออกชั่วคราว แล้วคืนสภาพเดิมทุกตัว (ลำดับเดิม) ใน finally
+let ORIG_ROUTES: Any[] | null = null;
 let K_LINE_BLOCKED = -1;
 
 async function svSet(key: string, unitId: string, value: unknown): Promise<void> {
@@ -406,12 +408,22 @@ try {
     for (const n of ["pushFlexToParty", "replyFlex", "syncRichMenu", "issueLinkCode", "consumeLinkCode", "pushToContact", "sendLineToParty", "linkChatContactParty", "notifyCustomer"]) if (typeof CHAT[n] !== "function") p.push(`ไม่มี ${n}`);
     if (CHAT.LINK_CODE_ALPHABET !== ALPHA) p.push(`LINK_CODE_ALPHABET = ${js(CHAT.LINK_CODE_ALPHABET)}`);
   });
-  await step("F-3", "platform/core ส่งออกครบ · POSTBACK_ROUTES เป็นอาร์เรย์ว่าง · LINK_PURPOSE_PREFIX · SIGNED_LINK_MAX_MIN = 129600", async (p) => {
+  await step("F-3", "platform/core ส่งออกครบ · POSTBACK_ROUTES เป็นอาร์เรย์ (route ในทะเบียนโดเมน ไม่ซ้ำ prefix) · LINK_PURPOSE_PREFIX · SIGNED_LINK_MAX_MIN = 129600", async (p) => {
     if (!PB) p.push("โหลด postback-routes ไม่ได้");
     else {
       for (const n of ["parsePostbackData", "dispatchPostback", "handleLinkCodeText"]) if (typeof PB[n] !== "function") p.push(`postback-routes ไม่มี ${n}`);
       if (!Array.isArray(PB.POSTBACK_ROUTES)) p.push("POSTBACK_ROUTES ไม่ใช่อาร์เรย์");
-      else if (PB.POSTBACK_ROUTES.length !== 0) p.push(`POSTBACK_ROUTES มี ${PB.POSTBACK_ROUTES.length} รายการ (ใบนี้ต้องว่าง)`);
+      // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.9): B.9 ลงทะเบียน route จริง `booking.` แล้ว ⇒ ไม่บังคับว่าง · ยังตรวจ: prefix อยู่ในทะเบียนโดเมนเท่านั้น · ไม่ซ้ำ prefix · handler เป็นฟังก์ชัน
+      else {
+        const REG = new Set(["booking.", "dorm.", "hotel."]); const seen = new Set<string>();
+        for (const r of PB.POSTBACK_ROUTES as Any[]) {
+          if (!REG.has(r?.prefix)) p.push(`route นอกทะเบียน prefix=${js(r?.prefix)}`);
+          else if (seen.has(r.prefix)) p.push(`route prefix ซ้ำ ${r.prefix}`);
+          seen.add(r?.prefix);
+          for (const k of ["resolveParty", "onPostback", "onLinked"]) if (r?.[k] !== undefined && typeof r[k] !== "function") p.push(`${r?.prefix} ${k} ไม่ใช่ฟังก์ชัน`);
+          if (typeof r?.onPostback !== "function" && typeof r?.onLinked !== "function") p.push(`${r?.prefix} ไม่มี handler`);
+        }
+      }
       const lp = PB.LINK_PURPOSE_PREFIX;
       if (lp?.DORM_LEASE !== "dorm." || lp?.QUEUE_TICKET !== "booking." || lp?.APPOINTMENT !== "booking.") p.push(`LINK_PURPOSE_PREFIX = ${js(lp)}`);
     }
@@ -773,6 +785,9 @@ try {
       onPostback: async (ctx: Any, evt: Any) => { TEST_ROUTE_CALLS.push({ kind: "postback", ctx, arg: evt }); if (evt?.action === "boom") throw new Error(`boom ${PHONE}`); return { text: `ok-postback-${RAND}` }; },
       onLinked: async (ctx: Any, a: Any) => { TEST_ROUTE_CALLS.push({ kind: "linked", ctx, arg: a }); return { text: `linked-ok-${RAND}` }; },
     };
+    // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.9): routeFor เลือกตัวแรกที่ตรง ⇒ ถอด route จริงที่ prefix ชน (booking. ของ B.9) ออกชั่วคราว ให้ route ทดสอบเป็นตัวเดียวของ prefix — ความเข้มเท่าเดิม · คืนใน finally
+    ORIG_ROUTES = [...PB.POSTBACK_ROUTES];
+    for (let i = PB.POSTBACK_ROUTES.length - 1; i >= 0; i--) if (PB.POSTBACK_ROUTES[i]?.prefix === testRoute.prefix) PB.POSTBACK_ROUTES.splice(i, 1);
     PB.POSTBACK_ROUTES.push(testRoute);
   }
   const PCTX = { tenantId: TA, connectionId: ID.c1, chatContactId: ID.k_a1, partyId: ID.pa1, replyToken: "rt-direct" };
@@ -1347,6 +1362,8 @@ try {
   // ═══════════════ Z สแกนรั่ว · ทำความสะอาด ═══════════════
   out("\n— Z สแกนรั่ว · ทำความสะอาด —");
   if (testRoute && Array.isArray(PB?.POSTBACK_ROUTES)) { const i = PB.POSTBACK_ROUTES.indexOf(testRoute); if (i >= 0) PB.POSTBACK_ROUTES.splice(i, 1); }
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.9): คืนทะเบียนเดิมทั้งก้อน (route จริงกลับครบ ลำดับเดิม ไม่มี route ทดสอบค้าง)
+  if (ORIG_ROUTES && Array.isArray(PB?.POSTBACK_ROUTES)) PB.POSTBACK_ROUTES.splice(0, PB.POSTBACK_ROUTES.length, ...ORIG_ROUTES);
   try {
     await step("Z-1", "ไม่มีคำขอถึง *.line.me นอกจากข้อ K (ตัวจำลองรับทุกคำขอ · ไม่ยิง LINE จริง)", async (p) => {
       const lb = lineBlocked();

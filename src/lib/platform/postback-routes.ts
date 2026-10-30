@@ -32,6 +32,13 @@ export type PostbackRoute = {
 
 /** ทะเบียน (แก้ได้ · ตัวแจกอ่านตอนเรียก) — ใบนี้ว่าง · B.9/D.9 เพิ่มบรรทัด */
 export const POSTBACK_ROUTES: PostbackRoute[] = [];
+// SVC B.9 ▸ จองคิว: ปุ่มในข้อความแจ้งเตือน (เช็กอิน · ไปไม่ทัน · เลื่อนคิว · เลื่อนนัด) + ผูกรหัส APPOINTMENT/QUEUE_TICKET — โหลดตอนเรียก ◂
+POSTBACK_ROUTES.push({
+  prefix: "booking.",
+  resolveParty: async (ctx, a) => (await import("@/lib/platform/booking-line-link")).resolveBookingParty(ctx, a),
+  onPostback: async (ctx, evt) => (await import("@/lib/platform/booking-line-link")).onBookingPostback(ctx, evt),
+  onLinked: async (ctx, a) => (await import("@/lib/platform/booking-line-link")).onBookingLinked(ctx, a),
+});
 
 /** ชนิดรหัสผูก → route ที่รู้ว่า ref เป็นของใคร */
 export const LINK_PURPOSE_PREFIX: Record<"DORM_LEASE" | "QUEUE_TICKET" | "APPOINTMENT", PostbackRoute["prefix"]> = {
