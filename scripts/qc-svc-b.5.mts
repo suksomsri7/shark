@@ -1274,6 +1274,8 @@ await st("S-3", `action «${F.actions}»: "use server" · export async function 
     amendServiceBillAction: { op: "amend", facade: /\bamendServiceBill\s*\(/ },
     cancelServiceBillAction: { op: "cancel", facade: /\bcancelServiceBill\s*\(/ },
     markPaidAction: { op: "markPaid", facade: /\bmarkPaidWithoutPos\s*\(/ },
+    // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10 fix Q11): ยกเลิกบิลที่รับเงินแล้ว ใช้ด่านบิลเดียวกัน op "void"
+    voidPaidServiceBillAction: { op: "void", facade: /\bvoidPaidServiceBill\s*\(/ },
   };
   const billGateBody = (() => {
     const i = code.search(/async\s+function\s+billGate\s*\(/);
