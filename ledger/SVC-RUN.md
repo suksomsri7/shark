@@ -81,7 +81,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | B.3 | หาเวลาว่าง v2 | เข้ม | | ✅ | e74813d0 | 75/75 · 2 ผู้ตรวจ + ยืนยันซ้ำ 2 รอบ (BLOCKER 2 + MAJOR 6 ปิด) |
 | B.4 | เช็กอิน · walk-in · บัตร P/A · สาย/ไม่มา | เข้ม | | ✅ | f62daaf8 | 86/87 · 2 ผู้ตรวจ + ยืนยันซ้ำ (BLOCKER 2 + MAJOR 5 ปิด) |
 | B.5 | จอคิววันนี้แถวเดียว | เบา | | ✅ | af645cb7 | 51/71 · H/E/V รอ QC server SVC_QC_CLOCK=1 · Q-2 ฉากล้าง minBreakMin (ทาง ค) |
-| B.6 | ตู้/ทีวี/หน้าบัตร | เบา | | ⬜ | | |
+| B.6 | ตู้/ทีวี/หน้าบัตร | เข้ม | | ✅ | 490c4437 | 62/72 · 2 ผู้ตรวจ + ยืนยันซ้ำ (MAJOR 1 + MINOR 7 ปิด · probe hold 21 breach 0) · H/V รอ QC server/build รวม |
 | B.7 | จองออนไลน์ + ลิงก์จัดการนัด | เข้ม | | ⬜ | | |
 | B.8 | มัดจำรุ่นแรก | เข้ม | | ⬜ | | |
 | B.9 | แจ้งเตือน + ผูก LINE | เบา | | ⬜ | | |
@@ -190,4 +190,5 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - D.13 2c7ef43d บน l3 (ข้อสอบ 98 · รีวิว: MAJOR 3 ปิด · probe BREACH 0 · ORACLE-EDIT RT-1/S-8 · /root/svc-runs/fix/d13.md) · ค้าง Q-1..3 (รอบบิล D.8 งวด 2026-10 ค้างบน svcqc)
 - 29 ต.ค. ~19:2xZ · ✅ **D.8 + D.13** (24/53) · merge 1dc227b0 (D.8) + 39d926de (D.13 · แก้ชน permissions/account/dorm index เก็บทั้งสองฝั่ง) · ด่านรวม D: probe-d8-b 25/25 · probe-d8-b2 22/22 · probe-d13-b ผ่าน · d.5 110/115 · d.7 · b.11 · smoke 6/6 · tsc 0 · d.8 97/109 · d.13 88/98 · ORACLE-EDIT: d.8 S-6 (คีย์หอที่เหลือเป็นของ D.13) · d.8 mkBook(vat) ใส่ taxId (จาก D.3 · อยู่บน l2) · ฉาก D.13 แยกงวด (เดือนนี้สงวนให้ฉาก D.8 · D.13 ใช้เดือนหน้า/เดือนก่อน) ⇒ ภาพหอ 01 ป้าย "ค้าง ก.ย." แทน "ค้าง ต.ค." ตอนเทียบ PARITY
 - เลน: l1 B.6 builder เสร็จ (62/72) รอ reviewer B · l2 D.3 builder · l3 B.9 ข้อสอบ a2d850b2 รอ B.6 merge
+- 30 ต.ค. ~02Z · ✅ **B.6** (25/53 · ยกเป็นเข้ม ตามมติ Q5) · merge 490c4437 · ด่านรวม: b.6 · probe-b6-b breach 0 · d.13 · smoke · tsc 0 · regression ที่แดงหลัง merge แก้แล้ว: ฉาก B.6 tick กวาด walk-in ของวันฉาก B.5 (sweepEndOfDay ทุกวันก่อนหน้า) ⇒ ฉากทั้งสองกัน tick ข้ามวัน + ซ่อมตัวเองเมื่อรันซ้ำ (b.5/b.6/b.4 ผ่านทั้งสองลำดับ) · ORACLE-EDIT: b.4 Q-4 (บัตรนัดปิดทางเดิม · ETA ผ่าน loadTicketView) · b.6 S-9 ข้ามหลัง merge · b.6 S-1/S-2 queue-line opt deviceId · permissions เอา booking.devices.manage ออกจาก planned (b.11 K-2) · fitness F5.1 baseline 49→50 (deviceByToken) · action สาธารณะอยู่ใต้ app/(store)/bq
 

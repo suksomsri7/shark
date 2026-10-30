@@ -1197,6 +1197,31 @@ try {
     const t = await tkRow(state.K1t);
     ok(t.etaAt !== null, "บัตร P ไม่มี etaAt");
     const r = await QU().getTicketStatus(ids.uL, t.publicToken);
+    // ORACLE-EDIT (ผู้คุม 30 ต.ค.): B.6 §3.7 ปิดทางสาธารณะเดิม (getTicketStatus) ของหน่วย BOOKING แถวเดียวโดยตั้งใจ — หน้าบัตรใหม่ = /bq/t (public-line)
+    //   ⇒ เมื่อมี public-line.ts: getTicketStatus ต้องคืน null (ปิดจริง) และ ETA ต้องมาจากตัววางคิวผ่านโมเดลหน้าบัตรของ B.6
+    //   (ticketTokenFor → loadTicketView เหมือนข้อสอบ b.6 หมวด C) ณ เวลาออกบัตร (checkedInAt ของนัด = ตอนตัววางคิวเขียน etaAt ของบัตรนี้ · K-1 09:50):
+    //   บัตรตรง P · plannedStartMs ≈ etaAt (±1 นาที) · returnBy = plannedStart − 5 · ไม่มีไฟล์ B.6 ⇒ ตรวจแบบเดิม (ความเข้มเท่าเดิม: ETA ยังต้องเป็นของตัววางคิว)
+    const PUBLIC_LINE_REL = "src/lib/modules/booking/public-line.ts";
+    if (existsSync(join(ROOT, PUBLIC_LINE_REL))) {
+      eq(r, null, "getTicketStatus บัตรนัด (B.6 §3.7 ต้องปิด)");
+      type PubLine = {
+        ticketTokenFor: (ctx: { tenantId: string; unitId: string }, ticketId: string) => Promise<string | null>;
+        loadTicketView: (token: unknown, opts?: { now?: Date }) => Promise<{ ticketNumber: string; status: string; kind: string; plannedStartMs: number | null; returnByMs: number | null } | null>;
+      };
+      const pl = await tryImport<PubLine>("@/lib/modules/booking/public-line");
+      ok(!!pl.mod && typeof pl.mod.ticketTokenFor === "function" && typeof pl.mod.loadTicketView === "function", `โหลด public-line ไม่ได้: ${pl.err}`);
+      const tok = await pl.mod!.ticketTokenFor({ tenantId: ids.tA, unitId: ids.uL }, state.K1t);
+      ok(!!tok, "ticketTokenFor คืน null (SESSION_SECRET ≥ 32 ใน env QC?)");
+      const [{ last }] = await q<{ last: Date | null }>(`SELECT "checkedInAt" AS last FROM "Appointment" WHERE "tenantId" = $1 AND id = $2`, [ids.tA, t.refId]);
+      ok(!!last, "นัดของบัตรไม่มี checkedInAt");
+      const v = await pl.mod!.loadTicketView(tok, { now: new Date(last!) });
+      ok(!!v, "loadTicketView คืน null");
+      eq([v!.ticketNumber, v!.kind], [t.number, "BOOKED"], "บัตร");
+      const eta = new Date(t.etaAt!).getTime();
+      ok(v!.plannedStartMs !== null && Math.abs(v!.plannedStartMs - eta) <= 60_000, `plannedStartMs ${v!.plannedStartMs === null ? null : new Date(v!.plannedStartMs).toISOString()} ต้อง ≈ etaAt ${new Date(eta).toISOString()}`);
+      eq(v!.returnByMs, v!.plannedStartMs! - 5 * 60_000, "returnBy");
+      return;
+    }
     ok(!!r, "getTicketStatus คืน null");
     const want = Math.max(0, Math.ceil((new Date(t.etaAt!).getTime() - Date.now()) / 60_000));
     ok(r!.estimateMin !== null && Math.abs(r!.estimateMin - want) <= 1, `estimateMin ${r!.estimateMin} ต้อง ≈ ${want}`);

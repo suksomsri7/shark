@@ -60,6 +60,39 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 const sum = { created: 0, updated: 0, removed: 0 };
 
+/**
+ * ผู้คุม 30 ต.ค. — tick เฉพาะวันฉาก: runLineTick กวาด "สิ้นวัน" ยกเลิก walk-in QUEUED ของทุกวันก่อนหน้า (sweepEndOfDay ไม่จำกัดวัน) ⇒ ฉากอีกวันบนหน่วยเดียวกัน
+ *   (ฉาก B.5 = วันฉาก · ฉาก B.6 = วันฉาก + 7) ถูกยกเลิกทิ้ง (A009–A011 ของฉาก B.5 กลายเป็น CANCELLED END_OF_DAY ⇒ ข้อสอบ b.5 Q-2 แดง)
+ *   ⇒ ระหว่าง tick ซ่อน walk-in QUEUED ของวันอื่น (startAt < วันฉาก) ด้วยการสลับ kind เป็น BOOKED ชั่วคราว (นอกช่วงย้อนหลังของ tick ⇒ ไม่ถูกแตะ) แล้วคืน kind ใน finally
+ *   — ไม่แตะ src · ผลต่อวันฉากเองเหมือนเดิมทุกอย่าง
+ */
+async function tickSceneDay(now: Date, ds: string): Promise<void> {
+  const hidden = (await prisma.appointment.findMany({
+    where: { tenantId, unitId, kind: "WALKIN", status: "QUEUED", startAt: { lt: at(ds, "00:00") } },
+    select: { id: true },
+  })).map((a) => a.id);
+  if (hidden.length) await prisma.$executeRaw`UPDATE "Appointment" SET "kind" = 'BOOKED' WHERE "tenantId" = ${tenantId} AND "unitId" = ${unitId} AND "id" = ANY(${hidden}::text[]) AND "kind" = 'WALKIN'`;
+  try {
+    await runLineTick(now, { tenantIds: [tenantId] });
+  } finally {
+    if (hidden.length) await prisma.$executeRaw`UPDATE "Appointment" SET "kind" = 'WALKIN' WHERE "tenantId" = ${tenantId} AND "unitId" = ${unitId} AND "id" = ANY(${hidden}::text[]) AND "kind" = 'BOOKED'`;
+  }
+}
+
+/**
+ * ผู้คุม 30 ต.ค. — ฉากวันนั้นถูกงานวันอื่นทำเสีย? (tick ของวันหลังที่ไม่ได้กันไว้ เช่น cron จริง/ฉากรุ่นเก่า): walk-in ถูกยกเลิก END_OF_DAY ·
+ *   บัตรถูกข้ามโดยระบบ (SKIPPED · SYSTEM) · จำนวน walk-in ไม่ครบ ⇒ ไม่นับว่าครบ ⇒ ลบแล้วสร้างใหม่ (เหตุการณ์ของฉากเองไม่เกิดสองอย่างแรก)
+ */
+async function sceneIntact(ds: string, walkIns: number): Promise<boolean> {
+  const range = dayRange(ds);
+  const [eod, wi, skipped] = await Promise.all([
+    prisma.appointment.count({ where: { tenantId, unitId, startAt: range, cancelReason: "END_OF_DAY" } }),
+    prisma.appointment.count({ where: { tenantId, unitId, startAt: range, kind: "WALKIN" } }),
+    prisma.queueTicketEvent.count({ where: { tenantId, unitId, action: "SKIPPED", actorType: "SYSTEM", ticket: { businessDate: ds, refType: "APPOINTMENT" } } }),
+  ]);
+  return eod === 0 && wi === walkIns && skipped === 0;
+}
+
 async function clearUnitOverrides(): Promise<void> {
   sum.removed += (await prisma.settingValue.deleteMany({ where: { tenantId, key: "booking.staff.minBreakMin", scope: "UNIT", scopeId: unitId } })).count;
 }
@@ -118,7 +151,7 @@ async function buildDay(): Promise<void> {
     const now = at(D, ev.at);
     const where = `${ev.at} ${ev.op}${"key" in ev ? ` ${ev.key}` : ""}`;
     if (ev.op === "tick") {
-      await runLineTick(now, { tenantIds: [tenantId] });
+      await tickSceneDay(now, D); // ผู้คุม 30 ต.ค.: tick ไม่กวาดฉากวันอื่น
       continue;
     }
     if (ev.op === "walkIn") {
@@ -185,7 +218,9 @@ try {
     await clearUnitOverrides();
     const have = await prisma.appointment.count({ where: { tenantId, unitId, idempotencyKey: { in: SCENE.bookings.map((b) => keyOf(D, b.key)) } } });
     const days = await sceneDays();
-    const complete = have === SCENE.bookings.length && days.length === 1 && days[0] === D;
+    // ผู้คุม 30 ต.ค.: + sceneIntact (เหมือนฉาก B.5)
+    const complete = have === SCENE.bookings.length && days.length === 1 && days[0] === D
+      && (await sceneIntact(D, [...SCENE.events, ...DSC.extraEvents].filter((e) => e.op === "walkIn").length));
     if (complete) {
       console.log(`${LABEL}: งานฉากวัน ${D} ครบแล้ว (นัด ${have}) — ไม่สร้างใหม่`);
     } else {

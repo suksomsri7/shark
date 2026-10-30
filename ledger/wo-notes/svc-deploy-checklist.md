@@ -10,3 +10,5 @@
 
 ## B.4 queue.housekeeping (29 ต.ค.)
 - งานรายนาที `queue.housekeeping` เรียก resetDaily/expireSkipped ซึ่งบน prod ไม่เคยถูกเรียก ⇒ รอบแรกหลัง deploy จะยกเลิก/ปิดบัตรคิวเก่าค้างของทุกร้านแบบไม่มี event · ก่อนเปิด: นับบัตรค้างต่อร้าน (dry-run) แจ้งเจ้าของ · deploy ช่วงเงียบ
+
+- 🔴 (D.3 · 29 ต.ค.) unique index `AccountDocument_taxinvoice_source_uniq` (systemId, sourceDocId · TAX_INVOICE ที่มีผล ไม่มี sourcePaymentId) มีในฐาน QC แต่ไม่พบใน prisma/migrations ⇒ ตรวจ prod ก่อน deploy · ถ้าไม่มี ต้องสร้าง (โค้ดออกใบแทนพึ่ง index นี้)

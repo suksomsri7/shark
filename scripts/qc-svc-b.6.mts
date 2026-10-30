@@ -1375,7 +1375,8 @@ await st("S-9", "core-fix settings/service.ts: เพิ่มบรรทัด
   eq(dirty(["src/lib/core/settings/actions.ts", "src/lib/core/settings/template.ts", "src/lib/core/settings/form.ts", "src/lib/core/settings/types.ts", "src/lib/core/settings/registry.ts", "src/lib/core/settings/defs"]), [], "ไฟล์เครื่องยนต์อื่น");
   const d = spawnSync("git", ["diff", "-U0", "HEAD", "--", F.settingsSvc], { cwd: ROOT, encoding: "utf8" }).stdout ?? "";
   const lines = d.split("\n").filter((l) => /^[+-](?![+-])/.test(l));
-  ok(lines.length > 0, "ยังไม่มี core-fix (service.ts ไม่ถูกแก้)");
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค.): หลัง merge diff ว่าง ⇒ ยืนยันจากไฟล์ว่ามี DEVICE ใน SUPPORTED_SCOPES แทน (แบบ S-1 ข้ามหลัง merge)
+  if (lines.length === 0) { ok(/SUPPORTED_SCOPES[^\n]*DEVICE|"DEVICE"/.test(readFileSync(join(ROOT, F.settingsSvc), "utf8")), "ยังไม่มี core-fix (service.ts ไม่มี DEVICE)"); return; }
   const removed = lines.filter((l) => l.startsWith("-") && l.slice(1).trim() !== "");
   const badRemoved = removed.filter((l) => !/SUPPORTED_SCOPES|Promise\.all|const \[/.test(l));
   ok(removed.length <= 3 && badRemoved.length === 0, `ลบ/แก้ ${removed.length} บรรทัด: ${(badRemoved[0] ?? removed[0])?.slice(0, 80)}`);
