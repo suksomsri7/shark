@@ -367,7 +367,7 @@ const setS = async (changes: { key: string; scope: string; scopeId: string; valu
 };
 const fs = (ctx: BookingCtx, serviceId: string, staffId: string | null, dateStr: string, channel: BookingChannel) => FIND()(ctx, { serviceId, staffId, dateStr, channel });
 const mins = (s: Slot[]) => s.map((x) => x.startMin);
-const SNAP_KEYS = ["booking.deposit.method", "booking.deposit.amount", "booking.deposit.payWithinMin", "booking.deposit.forfeitPct", "booking.late.graceMin", "booking.late.afterGrace", "booking.late.noShowAfterMin", "booking.late.freeChangeBeforeMin", "booking.late.selfRescheduleMax", "booking.booking.requireConfirm"];
+const SNAP_KEYS = ["booking.deposit.method", "booking.deposit.amount", "booking.deposit.payWithinMin", "booking.deposit.forfeitPct", "booking.late.graceMin", "booking.late.afterGrace", "booking.late.noShowAfterMin", "booking.late.freeChangeBeforeMin", "booking.late.selfRescheduleMax", "booking.booking.requireConfirm", "booking.late.lateCancelMode"]; // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.8 §2/K-2 snapshot lateCancelMode)
 
 const goFiles: string[] = [];
 const hold: { main: { id: string; createdAt: number } | null } = { main: null };

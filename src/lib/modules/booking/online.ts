@@ -22,6 +22,11 @@ import { casAppt, lockAppt, replan, runLineTx } from "./queue-line";
 import {
   appointmentByManageHash,
   bookAppointment,
+  depositFactsOf,
+  depositForfeitPctOf,
+  forfeitAfterLateCancel,
+  withDepositSnap,
+  memberExemptTierForIdentity,
   currentSelfPolicy,
   findSlots,
   getUnitHours,
@@ -63,6 +68,8 @@ export type OnlineBookingView = {
   extraField: { key: "MASSAGE_NOTE" | "SYMPTOM_OPTIONAL"; label: string } | null;
   /** เพิ่มจากสัญญา (U1 · ภาพ 03ก บรรทัดเวลาเปิดร้านใต้ชื่อ): เวลาทำการรายสัปดาห์ของสาขา (weekday 0 = อาทิตย์) */
   unitHours: { weekday: number; openMin: number; closeMin: number; closed: boolean }[];
+  /** SVC B.8 ▸ V9: โหมดยกเลิกหลังเวลาฟรีของสาขา (ค่าตั้งปัจจุบัน = ค่าที่นัดจะจด) · ขั้น 1 = null ◂ */
+  lateCancelMode?: "BLOCK" | "FORFEIT" | null;
 };
 export type OnlineBookInput = { serviceId: string; staffId: string | null; dateStr: string; startMin: number; name?: string; phone?: string; note?: string; idempotencyKey?: string; who?: string };
 export type ManageStatus = "PENDING" | "CONFIRMED" | "LATE" | "ARRIVED" | "QUEUED" | "IN_SERVICE" | "DONE" | "CANCELLED" | "NO_SHOW";
@@ -79,7 +86,8 @@ export type ManageView = {
   reschedule: { staff: OnlineStaff[]; staffSel: string | null; days: OnlineDay[]; dateSel: string | null; times: OnlineTime[]; anyStaff: boolean } | null;
 };
 export type ManageFail = "NOT_FOUND" | "RATE_LIMITED" | "LATE_CHANGE" | "MAX_RESCHEDULE" | "BAD_STATE" | "LOST_RACE" | "BUSY"
-  | "FULL" | "PAST" | "LEAD_TIME" | "BEYOND_HORIZON" | "OFF_GRID" | "OUTSIDE_HOURS" | "NOT_QUALIFIED" | "ON_LEAVE" | "BAD_INPUT";
+  | "FULL" | "PAST" | "LEAD_TIME" | "BEYOND_HORIZON" | "OFF_GRID" | "OUTSIDE_HOURS" | "NOT_QUALIFIED" | "ON_LEAVE" | "BAD_INPUT"
+  | "FORFEIT_CONFIRM_REQUIRED"; // SVC B.8 ▸ ยกเลิกช้าต้องกดยอมรับยอดที่ร้านเก็บ ◂
 
 /** ค่าคงที่ความปลอดภัย (ไม่ใช่นโยบายร้าน · ใบสั่ง §3.6) */
 export const ONLINE_RATE = {
@@ -299,6 +307,9 @@ export async function loadOnlineBooking(
 
   const [locales, svcs, ident, hours] = await Promise.all([localesOf(ctx), servicesOf(ctx), identityOf(ctx.tenantId, qq.who), getUnitHours(ctx.tenantId, ctx.unitId)]);
   const locale = pickLocale(locales, qq.lang);
+  // SVC B.8 ▸ #37 ตัวตน LINE ที่ผูกสมาชิกระดับยกเว้น ⇒ มัดจำ 0 ทั้งการ์ดบริการและสรุป (ตัวตัดสินจริง = bookAppointment) ◂
+  const exempt = ident ? await memberExemptTierForIdentity(ctx, { partyId: ident.partyId }) : null;
+  if (exempt) svcs.list = svcs.list.map((x) => ({ ...x, depositSatang: 0 }));
   const svcArg = str(qq.svc);
   // svc = id บริการของหน่วยนี้ หรือชื่อบริการตรงตัว (ทางของฉากภาพ) · ไม่พบ/ไม่เปิดจอง/ของหน่วยอื่น ⇒ ขั้น 1
   let at = svcArg === undefined ? -1 : svcs.raw.findIndex((s) => s.id === svcArg);
@@ -317,10 +328,15 @@ export async function loadOnlineBooking(
 
   const two = await stepTwoOf(ctx, raw, { staff: str(qq.staff), date: str(qq.date, 10) }, now);
   const specific = two.staffSel && two.staffSel !== "any" ? two.staffSel : null;
-  const [policy, extraField] = await Promise.all([currentSelfPolicy(ctx, { serviceId: raw.id, staffId: specific }), extraFieldOf(ctx, raw.id, locale)]);
+  const [policy, extraField, lcm] = await Promise.all([
+    currentSelfPolicy(ctx, { serviceId: raw.id, staffId: specific }),
+    extraFieldOf(ctx, raw.id, locale),
+    resolveSettings({ tenantId: ctx.tenantId }, ["booking.late.lateCancelMode"], { unitId: ctx.unitId }),
+  ]);
   const view: OnlineBookingView = {
     ...base, step: 2, service, anyStaff: two.anyStaff, staff: two.staff, staffSel: two.staffSel,
     days: two.days, dateSel: two.dateSel, times: two.times, policy, extraField,
+    lateCancelMode: lcm["booking.late.lateCancelMode"]?.value === "FORFEIT" ? "FORFEIT" : "BLOCK",
   };
 
   // ขั้น 3: เวลาเป็นช่อง free ของวันที่เลือก
@@ -332,7 +348,7 @@ export async function loadOnlineBooking(
   const terms = p ? staffServiceTerms(p.services, raw) : null;
   if (!p || !terms) return { ok: true, view };
   const dep = await resolveSettings({ tenantId: ctx.tenantId }, ["booking.deposit.method", "booking.deposit.amount"], { unitId: ctx.unitId, serviceId: raw.id, staffId: sid });
-  const depositSatang = depositOf(dep["booking.deposit.method"]?.value, dep["booking.deposit.amount"]?.value, { priceSatang: terms.priceSatang, durationMin: terms.durationMin, serviceDepositSatang: raw.depositSatang });
+  const depositSatang = exempt ? 0 : depositOf(dep["booking.deposit.method"]?.value, dep["booking.deposit.amount"]?.value, { priceSatang: terms.priceSatang, durationMin: terms.durationMin, serviceDepositSatang: raw.depositSatang });
   const startMs = localToUtc(two.dateSel, tMin).getTime();
   return {
     ok: true,
@@ -544,7 +560,7 @@ export async function rescheduleOnline(
   return { ok: true, startMs: r.startAt.getTime() };
 }
 
-export async function cancelOnline(token: unknown, opts?: { now?: Date; ip?: string }): Promise<{ ok: true } | { ok: false; code: ManageFail; reason: string }> {
+export async function cancelOnline(token: unknown, opts?: { now?: Date; ip?: string; acceptForfeit?: boolean; acceptForfeitSatang?: number }): Promise<{ ok: true } | { ok: false; code: ManageFail; reason: string }> {
   const now = nowOf(opts);
   if (!(await ipGate(opts?.ip, now)).ok) return fail("RATE_LIMITED", R.RATE);
   const m = await resolveManage(token, now);
@@ -553,30 +569,65 @@ export async function cancelOnline(token: unknown, opts?: { now?: Date; ip?: str
   const { row, ctx } = m;
   const policy = await snapshotSelfPolicy(ctx, row);
   const pre = selfChangeState(row, policy, now);
-  if (pre.cancelBlock) return fail(pre.cancelBlock, R[pre.cancelBlock as "BAD_STATE" | "LATE_CHANGE"]);
+  // SVC B.8 ▸ §3.5 ยกเลิกช้า: เลยเวลาฟรี + snapshot lateCancelMode FORFEIT (ไม่มีคีย์ = BLOCK) ⇒ ต้องกดยอมรับยอดที่ร้านเก็บ (acceptForfeit) ·
+  //   ยอมรับ ⇒ CANCELLED CUSTOMER_LATE + ริบหลัง commit · อื่นทั้งหมด = พฤติกรรม B.7 ◂
+  const lateOk = pre.cancelBlock === "LATE_CHANGE" && lateCancelModeOf(row.policySnapshot) === "FORFEIT";
+  if (pre.cancelBlock && !lateOk) return fail(pre.cancelBlock, R[pre.cancelBlock as "BAD_STATE" | "LATE_CHANGE"]);
+  // V3 (สคบ.): ยอดที่ลูกค้ากดยอมรับผูกกับยอดริบ — ยอดตอนนี้สูงกว่าที่ยอมรับ ⇒ ถามใหม่พร้อมยอดใหม่ · ไม่ส่งยอด (API) = ยอมรับยอดตอนนี้
+  const fcr = (keep: number) => fail("FORFEIT_CONFIRM_REQUIRED" as const, `ยกเลิกหลังเวลาฟรี ร้านจะเก็บมัดจำ ฿${(keep / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })} — กดยืนยันอีกครั้งเพื่อยกเลิกนัด`);
+  const accRaw = opts?.acceptForfeitSatang;
+  const acc = typeof accRaw === "number" && Number.isFinite(accRaw) && accRaw >= 0 ? Math.floor(accRaw) : null;
+  const quote = lateOk ? await lateForfeitSatangOf(ctx, row.id) : 0;
+  if (lateOk && (opts?.acceptForfeit !== true || (acc !== null && quote > acc))) return fcr(quote);
+  const acceptSatang = acc ?? quote;
+  const paidBefore = row.depositPaidAt !== null;
 
-  type Out = { ok: true } | { ok: false; code: ManageFail; reason: string };
+  type Out = { ok: true; paid?: boolean } | { ok: false; code: ManageFail; reason: string; requote?: true };
   const res = await runLineTx(async (tx): Promise<Out> => {
     const a = await lockAppt(tx, ctx, row.id); // ปล่อยช่องอย่างเดียว ⇒ ไม่ต้องล็อกช่าง
     if (!a || a.kind !== "BOOKED") return nfOp();
     const cur = await tx.appointment.findFirst({ where: { id: a.id, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { rescheduleCount: true, depositSatang: true, depositPaidAt: true } });
     if (!cur) return nfOp();
     const st = selfChangeState({ status: a.status, startAt: a.startAt, rescheduleCount: cur.rescheduleCount }, policy, now);
-    if (st.cancelBlock) return fail(st.cancelBlock, R[st.cancelBlock as "BAD_STATE" | "LATE_CHANGE"]);
-    if (!(await casAppt(tx, ctx, a, { status: "CANCELLED", cancelReason: "CUSTOMER", plannedStartAt: null, plannedStaffId: null }))) return fail("LOST_RACE", R.LOST_RACE);
+    if (st.cancelBlock && !(lateOk && st.cancelBlock === "LATE_CHANGE")) return fail(st.cancelBlock, R[st.cancelBlock as "BAD_STATE" | "LATE_CHANGE"]);
+    const why = st.cancelBlock ? "CUSTOMER_LATE" : "CUSTOMER"; // SVC B.8
+    // V2: ริบได้เฉพาะมัดจำที่จ่ายแล้ว ณ ตอน CAS ยกเลิก (อ่านใต้ล็อก) · เงินเข้าระหว่างถามยอด ⇒ ถามใหม่
+    const paidNow = cur.depositPaidAt !== null;
+    if (why === "CUSTOMER_LATE" && paidNow !== paidBefore) return { ok: false, code: "FORFEIT_CONFIRM_REQUIRED", reason: "", requote: true };
+    const lateSnap = why === "CUSTOMER_LATE" ? { policySnapshot: withDepositSnap(a.policySnapshot, { late: { paid: paidNow, acceptSatang: paidNow ? acceptSatang : 0 } }) } : {};
+    if (!(await casAppt(tx, ctx, a, { status: "CANCELLED", cancelReason: why, plannedStartAt: null, plannedStaffId: null, ...lateSnap }))) return fail("LOST_RACE", R.LOST_RACE);
     await emitOutbox(tx, {
       tenantId: ctx.tenantId, unitId: ctx.unitId, type: "booking.cancelled", idempotencyKey: `booking.cancelled#${a.id}`,
       payload: {
         appointmentId: a.id, unitId: a.unitId, staffId: a.staffId, kind: a.kind, channel: a.channel, serviceId: a.serviceId,
-        reason: "CUSTOMER", from: a.status, depositSatang: cur.depositSatang, depositPaid: cur.depositPaidAt !== null,
+        reason: why, from: a.status, depositSatang: cur.depositSatang, depositPaid: paidNow,
+        ...(why === "CUSTOMER_LATE" ? { acceptedForfeitSatang: paidNow ? acceptSatang : 0 } : {}),
       },
     });
-    return { ok: true };
+    return { ok: true, paid: paidNow };
   });
   if (!res) return fail("BUSY", R.BUSY);
-  if (res.ok) await replan(ctx, now);
-  return res;
+  if (!res.ok) return "requote" in res && res.requote ? fcr(await lateForfeitSatangOf(ctx, row.id)) : fail(res.code, res.reason);
+  await replan(ctx, now);
+  if (lateOk && res.paid && acceptSatang > 0) await forfeitAfterLateCancel(ctx.tenantId, ctx.unitId, row.id); // SVC B.8 ▸ หลัง commit (consumer booking.cancelled ทำซ้ำได้) ◂
+  return { ok: true };
 }
+
+// ═════════ SVC B.8 ▸ ยกเลิกช้า + ทางเข้าลิงก์จัดการนัดของหน้าจ่ายมัดจำ (deposit.ts) — เพิ่มเท่านั้น ═════════
+/** โหมดยกเลิกช้าของนัด = snapshot `booking.late.lateCancelMode` เท่านั้น (ไม่มีคีย์ = BLOCK · ไม่อ่านค่าตั้งปัจจุบัน) */
+export function lateCancelModeOf(snap: unknown): "BLOCK" | "FORFEIT" {
+  const v = snap && typeof snap === "object" ? (snap as { values?: Record<string, unknown> }).values?.["booking.late.lateCancelMode"] : undefined;
+  return v === "FORFEIT" ? "FORFEIT" : "BLOCK";
+}
+/** ยอดที่ร้านจะเก็บถ้ายกเลิกช้าตอนนี้ = floor(คงเหลือใบรับ × forfeitPct / 100) · ยังไม่จ่าย/ไม่มีใบรับ POS/ไม่ริบ ⇒ 0 (นิยามเดียวของหน้าจ่ายและ cancelOnline · V14) */
+export async function lateForfeitSatangOf(ctx: Ctx, appointmentId: string): Promise<number> {
+  const f = await depositFactsOf(ctx, appointmentId);
+  if (!f || !f.appt.depositPaidAt) return 0;
+  const left = f.dep ? Math.max(0, f.dep.amountSatang - f.dep.usedSatang - f.dep.refundedSatang) : 0;
+  const pct = left > 0 ? await depositForfeitPctOf(ctx.tenantId, ctx.unitId, appointmentId) : null;
+  return pct === null ? 0 : Math.floor((left * pct) / 100);
+}
+export { resolveManage as resolveManageToken, ipGate as manageIpGate, tokenGate as manageTokenGate };
 
 // .ics (RFC 5545): CRLF · พับบรรทัด 75 ไบต์ · escape \ ; , ขึ้นบรรทัดใหม่
 const icsEsc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");

@@ -1716,7 +1716,7 @@ await st("S-5", `action สาธารณะ «${F.actManage}»: "use server" �
   const fns = [...code.matchAll(/export\s+async\s+function\s+(\w+)\s*\(/g)].map((m) => ({ name: m[1], at: m.index ?? 0 }));
   ok(fns.length >= 2, `action ${fns.length} ตัว`);
   const bad: string[] = [];
-  fns.forEach((f, i) => { const body = code.slice(f.at, fns[i + 1]?.at ?? code.length); if (!/\b(cancelOnline|rescheduleOnline)\s*\(/.test(body)) bad.push(`${f.name}: ไม่เรียก facade`); });
+  fns.forEach((f, i) => { const body = code.slice(f.at, fns[i + 1]?.at ?? code.length); if (!/\b(cancelOnline|rescheduleOnline|submitDepositSlip)\s*\(/.test(body)) /* ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.8 §4 submitDepositSlipAction) */ bad.push(`${f.name}: ไม่เรียก facade`); });
   ok(bad.length === 0, bad.join(" · "));
   ok(!/requireUnit|requireAuth|getSession/.test(code), "action สาธารณะใช้ session");
   if (/["']at["']/.test(code)) ok(/SVC_QC_CLOCK/.test(code), "อ่าน at โดยไม่มีด่าน SVC_QC_CLOCK");

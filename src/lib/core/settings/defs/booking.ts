@@ -306,6 +306,8 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.late.noShowAfterMin", type: "minutes", labelTh: "ถือว่าไม่มาหลัง (นาที · ว่าง = ไม่ตั้งอัตโนมัติ)", schema: LATE_MIN.nullable(), chain: U, v: [30, 30, 60] }), // #29
   row({ key: "booking.late.freeChangeBeforeMin", type: "minutes", labelTh: "เลื่อน/ยกเลิกฟรีก่อนนัด (นาที)", schema: LATE_MIN, chain: U_SV, v: [180, 720, 120] }), // #30
   row({ key: "booking.late.selfRescheduleMax", type: "int", labelTh: "ลูกค้าเลื่อนเองได้สูงสุด (ครั้ง)", schema: z.number().int().min(0).max(20), chain: U, v: [2, 2, 1] }), // #31
+  // SVC B.8 ▸ ยกเลิกเองหลังเวลาฟรี (มติผู้คุม Q1: ค่าเริ่ม BLOCK ทุกแม่แบบ · ร้านเปิด FORFEIT เองได้) ◂
+  row({ key: "booking.late.lateCancelMode", type: "enum", labelTh: "เมื่อลูกค้ายกเลิกหลังเวลาฟรี", schema: z.enum(["BLOCK", "FORFEIT"]), chain: U, v: x3("BLOCK") }), // #32b
   row({
     key: "booking.late.repeatNoShow", type: "table", labelTh: "ไม่มาซ้ำ", // #32
     schema: z.object({ count: z.number().int().min(1).max(50), windowDays: DAYS, action: z.enum(["REQUIRE_DEPOSIT", "PHONE_ONLY"]) }).strict().nullable(), // null = ปิด
@@ -432,6 +434,7 @@ const SNAPSHOTS: Record<string, readonly string[]> = {
     "booking.late.freeChangeBeforeMin",
     "booking.late.selfRescheduleMax",
     "booking.booking.requireConfirm",
+    "booking.late.lateCancelMode", // SVC B.8
   ],
 };
 
@@ -532,6 +535,7 @@ const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
   "booking.booking.extraFields": { MASSAGE_NOTE: "จุดที่ปวด/แรงนวด", SYMPTOM_OPTIONAL: "อาการเบื้องต้น (ไม่บังคับ)" },
   "booking.late.afterGrace": { RELEASE_REQUEUE: "ปล่อยช่อง + ต่อคิวท้าย", WAIT_NOTIFY_COUNTER: "รอไว้ · แจ้งเคาน์เตอร์" },
   "booking.deposit.method": { NONE: "ไม่เก็บมัดจำ", PROMPTPAY_SLIP: "QR พร้อมเพย์ + ตรวจสลิป" },
+  "booking.late.lateCancelMode": { BLOCK: "ห้ามยกเลิกเอง (ติดต่อร้าน)", FORFEIT: "ยกเลิกได้ · ร้านเก็บมัดจำตามที่ตั้ง" }, // SVC B.8
   "booking.queue.order": { SINGLE_LINE_BY_TIME: "แถวเดียว ตามเวลาที่จะได้ทำ", APPOINTMENT_FIRST: "นัดก่อน walk-in เสมอ" },
   "booking.kiosk.services": { WALKIN_ENABLED: "เฉพาะบริการที่รับ walk-in", ALL: "ทุกบริการ" },
   "booking.kiosk.phone": { OPTIONAL: "ไม่บังคับ", REQUIRED: "บังคับกรอก" },

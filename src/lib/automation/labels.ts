@@ -306,6 +306,12 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "queue.ticket.called", label: "เมื่อเรียกบัตรคิวของงานจองคิว" },
   { value: "queue.ticket.done", label: "เมื่อบัตรคิวของงานจองคิวเสร็จแล้ว" },
   // ◂ SVC B.4
+  // SVC B.8 ▸ มัดจำจองคิว — ตัวยิง `booking/service.ts` (ผูกใบรับ · ริบ) + `booking/deposit.ts` (คืน) · payload id + ยอดล้วน (X8) ·
+  //   consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "booking.deposit_paid", label: "เมื่อรับมัดจำนัดจองคิว (สลิปอนุมัติหรือร้านยืนยัน)" },
+  { value: "booking.deposit_forfeited", label: "เมื่อร้านเก็บมัดจำนัดจองคิว (ไม่มาหรือยกเลิกช้า)" },
+  { value: "booking.deposit_refunded", label: "เมื่อคืนมัดจำนัดจองคิว" },
+  // ◂ SVC B.8
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

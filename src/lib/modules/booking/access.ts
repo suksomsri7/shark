@@ -11,6 +11,9 @@ export const BOOKING_ACTIONS: Record<string, readonly string[]> = {
   setServiceDepositAction: ["booking.service.setDeposit"],
   recordDepositAction: ["booking.deposit.record", "booking.deposit.confirm"],
   refundDepositAction: ["booking.deposit.refund"],
+  confirmDepositAction: ["booking.deposit.confirm", "booking.deposit.record"], // SVC B.8 ▸ ร้านยืนยันรับมัดจำ (คิวมัดจำ) ◂
+  refundDueDepositAction: ["booking.deposit.refund"], // SVC B.8 ▸ คืนมัดจำที่ค้างคืน ◂
+  forfeitDueDepositAction: ["booking.deposit.forfeit"], // SVC B.8 ▸ V5 ร้านตัดสินริบมัดจำที่รอ (FORFEIT_PENDING) ◂
   addStaffAction: ["booking.staff.create"],
   setStaffReceivingAction: ["booking.staff.create"],
   linkStaffToHrAction: ["booking.staff.create"],

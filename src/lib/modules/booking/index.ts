@@ -25,3 +25,7 @@ export { bookingPhoneKey } from "./service";
 
 // SVC B.7 ▸ ลิงก์จัดการนัด + ลิงก์ตัวตนจาก LINE (B.9 ส่งใบนัด/ตอบเมนู OA ผ่าน facade) ◂
 export { manageLinkFor, bookingIdentityToken } from "./online";
+
+// SVC B.8 ▸ มัดจำรุ่นแรก (สถานะ · หน้าจ่าย · consumer สลิปอนุมัติ · จอร้าน · ใช้มัดจำในบิลของ B.10) — ด่านสิทธิ์/token อยู่ในฟังก์ชัน ◂
+export { depositInfo, loadDepositPay, submitDepositSlip, onDepositSlipApproved, depositQueue, confirmDepositByShop, refundDepositByShop, forfeitDepositByShop, depositForBill } from "./deposit";
+export type { DepositState, DepositInfo, DepositPay, SlipSubmitFail, ShopCtx, DepositQueueItem } from "./deposit";
