@@ -189,7 +189,8 @@ async function notifyOnce(
   at: Date,
 ): Promise<{ status: string; channel: string; duplicate: boolean; error: boolean }> {
   const { notifyCustomer } = await import("@/lib/platform/notify-customer");
-  const r = await notifyCustomer({ tenantId }, { unitId, domain: "rooms", messageKey, partyId: b.partyId, vars, dedupeKey, at });
+  const { portalUrl } = await import("@/lib/platform/dorm-portal"); // SVC D.9 ▸ payLink = ลิงก์พอร์ทัลของสัญญา (หน้าจ่าย QR) ◂
+  const r = await notifyCustomer({ tenantId }, { unitId, domain: "rooms", messageKey, partyId: b.partyId, vars: { ...vars, payLink: await portalUrl({ tenantId }, { leaseId: b.leaseId, billId: b.id }, { now: at }) }, dedupeKey, at });
   return { status: r.status, channel: r.channel, duplicate: r.duplicate === true, error: r.error !== undefined };
 }
 

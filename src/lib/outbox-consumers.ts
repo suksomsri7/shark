@@ -1228,7 +1228,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // SVC D.8 ▸ ส่งบิลหอแล้ว (ต่อบิล) — ยิงจาก `dorm/billing.ts#sendBillRun` ใน tx เดียวกับการตั้ง SENT · key `dorm.billrun.sent:<billId>` ·
   //   payload ตรง 6 คีย์ { unitId, runId, billId, leaseId, periodKey, amountSatang } (ไม่มีชื่อ/เบอร์ · X8) · งานหลัก = hook ว่าง
   //   ให้ D.9 ใส่ notifyCustomer (ผ่าน outbox concurrency — ห้าม loop ส่งใน request) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
-  "dorm.billrun.sent": withAutomation(async () => {}),
+  "dorm.billrun.sent": withAutomation(async (evt) => (await import("@/lib/platform/dorm-line")).onDormBillSent(evt)), // SVC D.9 ▸ ส่งบิลถึงผู้เช่า (อ่านสด · notifyCustomer · ไม่ throw) ◂
   // SVC D.11 ▸ บิลหอเลยกำหนดและยังค้าง (ครั้งเดียวต่อบิล) — ยิงจาก `dorm/dunning.ts#runDormDunningJobs` · key `dorm.bill.overdue:<billId>` ·
   //   payload ตรง 7 คีย์ { unitId, billId, leaseId, periodKey, dueDate, outstandingSatang, daysLate } (ไม่มีชื่อ/เบอร์ · X8) · งานหลัก = no-op
   //   (ข้อความทวงส่งใน dunning ผ่าน notifyCustomer แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂

@@ -67,6 +67,10 @@ const F = {
 } as const;
 
 loadSvcQcEnv(LABEL); // ด่านฐาน: ไม่ใช่ qc-svc ⇒ exit 4 ก่อนแตะฐาน
+// ORACLE-EDIT (ผู้คุม 30 ต.ค. · W2/W3) — ตัวตรวจสลิป FAKE แบบเดียวกับ qc-svc-r0.6 (INTEGRATIONS_FAKE=1 · กุญแจลับของรอบเมื่อยังไม่มี) · คืนค่าเดิมก่อนหมวด G
+const INT_ENV_SAVED = { fake: process.env.INTEGRATIONS_FAKE, key: process.env.INTEGRATIONS_CREDENTIALS_KEY };
+process.env.INTEGRATIONS_FAKE = "1";
+if ((process.env.INTEGRATIONS_CREDENTIALS_KEY ?? "").length < 32) process.env.INTEGRATIONS_CREDENTIALS_KEY = randomBytes(32).toString("hex");
 if (process.env.CI) { console.error(`🔴 ${LABEL}: ห้าม export CI (with-gate-lock ข้าม flock)`); process.exit(4); }
 if (process.env.APP_ENV === "production") { console.error(`🔴 ${LABEL}: APP_ENV=production`); process.exit(4); }
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").slice(0, 300);
@@ -224,6 +228,7 @@ const ASV = (await tryImport("@/lib/modules/account/service")).mod as Any;
 const GL = (await tryImport("@/lib/modules/account/gl")).mod as Any;
 const DORM = (await tryImport("@/lib/modules/dorm")).mod as Any;
 const OC = (await tryImport("@/lib/outbox-consumers")).mod as Any;
+const INT = (await tryImport("@/lib/core/integrations")).mod as Any; // ORACLE-EDIT (ผู้คุม 30 ต.ค. · W2/W3)
 const PRISMA_NS = ((await tryImport("@prisma/client")).mod as Any)?.Prisma;
 const LN = {
   issue: () => fnOf(lineL, "issueDormLinkCode", F.line),
@@ -568,7 +573,8 @@ try {
     for (const [k, n] of [["P1", "สมชาย ดีเก้าหนึ่ง"], ["P2", "สมหญิง ดีเก้าสอง"], ["P3", "ธนพล ผู้เช่าเก่า"], ["P5", "วิภา สองห้อง"], ["P6", "หมดสัญญา แล้ว"], ["P7", "เบญจา ผู้เช่าใหม่"], ["P8", "ยกเลิก สัญญา"], ["PX", "คนนอก ไม่เช่า"], ["PN", "หอไม่มี โอเอ"]] as const) ids[k] = await mkParty(A, n);
     ids.PB = await mkParty(B, "ร้านบี ผู้เช่า");
     ids.f1 = await mkFile(A); ids.f2 = await mkFile(A); ids.f3 = await mkFile(A, "application/pdf"); ids.f4 = await mkFile(A); ids.f5 = await mkFile(A);
-    const CONTRACT = { textTh: `สัญญาเช่าห้องพักทดสอบ D9 ${STAMP}`, clauses: [{ id: "c1", titleTh: "ข้อ 1 ค่าเช่า", textTh: "ผู้เช่าชำระค่าเช่าทุกเดือนภายในวันที่ 5", mandatory: true }] };
+    // ORACLE-EDIT (ผู้คุม 30 ต.ค. · W1): ข้อความสัญญามีชื่อเต็มของ Party (P1) ทั้งใน textTh และ clause + tenantName — พอร์ทัลต้องไม่ส่งชื่อออก
+    const CONTRACT = { tenantName: "สมชาย ดีเก้าหนึ่ง", textTh: `สัญญาเช่าห้องพักทดสอบ D9 ${STAMP} ระหว่างผู้ให้เช่า กับ สมชาย ดีเก้าหนึ่ง`, clauses: [{ id: "c1", titleTh: "ข้อ 1 ค่าเช่า", textTh: "สมชาย ดีเก้าหนึ่ง ผู้เช่าชำระค่าเช่าทุกเดือนภายในวันที่ 5", mandatory: true }] };
     ids.L1 = await mkLease({ tenantId: A, unitId: DA, roomId: RA.R["101"], roomTypeId: RA.ty, partyId: ids.P1, snapExtra: { contract: CONTRACT },
       photos: [{ fileId: ids.f1, kind: "ROOM_PHOTO", at: "2026-01-01" }, { fileId: ids.f2, kind: "ID_CARD", at: "2026-01-01" }, { fileId: ids.f3, kind: "DOCUMENT", at: "2026-01-01" }], sig: ids.f4 });
     ids.L2 = await mkLease({ tenantId: A, unitId: DA, roomId: RA.R["102"], roomTypeId: RA.ty, partyId: ids.P2, photos: [{ fileId: ids.f5, kind: "DOCUMENT", at: "2026-01-01" }] });
@@ -1080,6 +1086,7 @@ try {
     needReady();
     const v = keep(await PT.lease()(tok(ids.L1), { clientKey: ck() }));
     ok(v && v.roomNumber === "101" && String(v.contract?.textTh ?? "").includes(`ทดสอบ D9 ${STAMP}`) && v.contract.clauses?.length === 1, J(v).slice(0, 200));
+    ok(!NAMES.some((n) => J(v).includes(n)), "ผลของ loadPortalLease มีชื่อผู้เช่า"); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · W1) — หน้า lease render จากผลนี้ตรงตัว (ไม่มีแหล่งข้อความอื่น)
     eq((v.files as Any[]).map((f) => [f.fileId, f.kind]).sort(), [[ids.f1, "ROOM_PHOTO"], [ids.f3, "DOCUMENT"]].sort(), "ไฟล์");
     ok((v.files as Any[]).every((f) => String(f.path).includes(`/f/${f.fileId}`)), "path ไฟล์");
     const ref = await PT.file()(tok(ids.L1), ids.f1, { clientKey: ck() });
@@ -1110,26 +1117,52 @@ try {
   const slipsOn = (billIds: string[]) => prisma.paymentSlip.count({ where: { tenantId: { in: [A, B] }, refType: "DORM_BILL", refId: { in: billIds } } });
   const img = async (k: string, mid: string, over: Record<string, unknown> = {}) => { const r = keep(await LN.image()({ ...pctx(k), ...over }, { messageId: mid }, { deps: noopDeps })); REPLIES.push(r); return r; };
   const MID = (n: string) => `9${Date.now() % 1_000_000_000}${n}`;
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · W2/W3) — W3: แนบอัตโนมัติเฉพาะเมื่อมีตัวตรวจสลิป ⇒ A-1/A-6 แยก (ก) ไม่มีตัวตรวจ = control ลบ (ข) ตัวตรวจ FAKE (VALID + transRef)
+  //   A-1 ย้ายไปบิล L3b พ.ย. (ผู้เช่าใหม่ P7 ห้อง 103 · ผู้ติดต่อที่ผูกรหัสชนะใน L-3) — บิล L2 พ.ย. มีสลิปพอร์ทัลจาก P-10 รอตรวจอยู่ (W7 ห้ามใบที่สอง)
+  const mkFakeVerifier = async (tenantId: string, ownerId: string, unitId: string, tag: string): Promise<string> => {
+    const actor = { userId: ownerId, role: "OWNER", unitAccess: ["*"], permissions: {} };
+    const sv = await INT?.saveIntegration?.({ tenantId }, actor, { create: true, kind: "SLIP_VERIFY", provider: "FAKE", label: `qc-d9-${STAMP}-${tag}`, unitIds: [unitId], onFailure: "MANUAL", fields: { apiKey: `qcd9${randomBytes(14).toString("hex")}`, mode: "OK" } });
+    const id = sv?.integration?.id ?? "";
+    if (id) await INT.testIntegration({ tenantId }, actor, { id });
+    const row = id ? await prisma.tenantIntegration.findUnique({ where: { id } }) : null;
+    ok(row?.status === "CONNECTED", `ตั้งตัวตรวจ FAKE ไม่ได้: ${J(sv).slice(0, 160)} · status ${row?.status}`);
+    return id;
+  };
+  const ctxP7 = () => ({ tenantId: A, connectionId: ids.OA1, chatContactId: linkWinner, partyId: ids.P7, replyToken: null });
   const midA1 = MID("1");
-  await st("A-1", "ผู้เช่า P2 (บิลเปิด 1 ใบ: L2 พ.ย.) ส่งรูป ⇒ ดึงเนื้อรูปจาก OA1 (Bearer OA1) · สลิปแนบ L2 พ.ย. · ยอดคาดหวัง = ค้างสด 380,000 · Party P2 · ตอบ \"102\"", async () => {
+  await st("A-1a", "ไม่มีตัวตรวจสลิป (control ลบ · W3): ผู้เช่า P7 (บิลเปิด 1 ใบ L3b พ.ย.) ส่งรูป ⇒ handled false · ไม่ดึงรูป · ไม่มีสลิป · ไม่ตอบ", async () => {
     needReady();
-    const m = mark(), n0 = await slipsOn([bl(`L2:${P2}`).id]);
-    const r = await img("C2", midA1);
-    ok(r?.handled === true && r?.attached?.billId === bl(`L2:${P2}`).id, J(r).slice(0, 200));
+    ok(linkWinner, "ไม่มีผู้ติดต่อ P7 จาก L-3");
+    const m = mark(), n0 = await slipsOn([bl(`L3b:${P2}`).id]);
+    const r = keep(await LN.image()(ctxP7(), { messageId: MID("1a") }, { deps: noopDeps }));
+    REPLIES.push(r);
+    ok(r?.handled === false && r?.attached === null && !r?.reply, J(r).slice(0, 160));
+    eq(contentGets(m).length, 0, "ดึงรูป");
+    eq((await slipsOn([bl(`L3b:${P2}`).id])) - n0, 0, "สลิป");
+  });
+  await st("A-1", "ตัวตรวจ FAKE (VALID + transRef) บนหน่วย DA: ผู้เช่า P7 (บิลเปิด 1 ใบ: L3b พ.ย.) ส่งรูป ⇒ ดึงเนื้อรูปจาก OA1 (Bearer OA1) · สลิปแนบ L3b พ.ย. 1 ใบพอดี · ยอดคาดหวัง = ค้างสด 480,000 · Party P7 · ตอบ \"103\"", async () => {
+    needReady();
+    ok(linkWinner, "ไม่มีผู้ติดต่อ P7 จาก L-3");
+    await mkFakeVerifier(A, ids.OWN, DA, "a");
+    const m = mark(), n0 = await slipsOn([bl(`L3b:${P2}`).id]), nAll = await slipsOn(ALL_BILL_IDS());
+    const r = await LN.image()(ctxP7(), { messageId: midA1 }, { deps: noopDeps });
+    keep(r); REPLIES.push(r);
+    ok(r?.handled === true && r?.attached?.billId === bl(`L3b:${P2}`).id, J(r).slice(0, 200));
     const g = contentGets(m);
     ok(g.length === 1 && g[0].auth === ids.TOK1 && g[0].path.includes(midA1), `ดึงรูป ${g.map((x) => x.path).join(",")}`);
     const row = await prisma.paymentSlip.findFirst({ where: { id: r.attached.slipId } });
-    eq([row?.refId, row?.expectedSatang, row?.partyId, row?.domain, (await slipsOn([bl(`L2:${P2}`).id])) - n0], [bl(`L2:${P2}`).id, 380_000, ids.P2, "DORM", 1], "แถว");
-    ok(J(r.reply).includes("102"), "คำตอบ");
+    eq([row?.refId, row?.expectedSatang, row?.partyId, row?.domain, (await slipsOn([bl(`L3b:${P2}`).id])) - n0, (await slipsOn(ALL_BILL_IDS())) - nAll], [bl(`L3b:${P2}`).id, BASE, ids.P7, "DORM", 1, 1], "แถว");
+    ok(typeof row?.transRef === "string" && row.transRef.length > 0, "สลิปไม่มีเลขอ้างอิงจากตัวตรวจ");
+    ok(J(r.reply).includes("103"), "คำตอบ");
   });
   await st("A-2", "X3/X4 LINE ส่ง event รูปเดิมซ้ำ 2 ทาง + 2 โพรเซส ⇒ ไม่มีสลิปใหม่ (คีย์ messageId) · ไม่มี throw", async () => {
     needReady();
-    const n0 = await slipsOn([bl(`L2:${P2}`).id]);
+    const n0 = await slipsOn([bl(`L3b:${P2}`).id]); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · W2/W3) — รูปของ A-1 (P7 · L3b)
     const at = atIn();
-    const ctx = pctx("C2");
+    const ctx = ctxP7();
     const [ch, inp] = await Promise.all([fanout("image", [[{ ctx, messageId: midA1 }], [{ ctx, messageId: midA1 }]], at), inProcAt(at, [0, 1].map(() => () => LN.image()(ctx, { messageId: midA1 }, { deps: noopDeps })))]);
     ok(!badOf([...ch, ...inp]).length, J(badOf([...ch, ...inp])));
-    eq((await slipsOn([bl(`L2:${P2}`).id])) - n0, 0, "สลิปใหม่");
+    eq((await slipsOn([bl(`L3b:${P2}`).id])) - n0, 0, "สลิปใหม่");
   });
   await st("A-3", "กำกวม (สัญญาเดียวค้าง 2 งวด: P1 L1 ต.ค.+พ.ย.) ⇒ ไม่แนบ · handled true · ตอบลิงก์พอร์ทัลของ L1", async () => {
     needReady();
@@ -1158,12 +1191,24 @@ try {
     eq(contentGets(m).length, 0, "ดึงรูป");
     eq((await slipsOn(ALL_BILL_IDS())) - n0, 0, "สลิป");
   });
-  await st("A-6", "ร้าน B (ผู้เช่าร้าน B บน OA ร้าน B · บิลเปิด 1 ใบ) ⇒ แนบบิลร้าน B · สลิป tenantId B (ไม่ปนร้าน A)", async () => {
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · W2/W3) — A-6 แยก (ก) ร้าน B ไม่มีตัวตรวจ = control ลบ (ข) ตัวตรวจ FAKE ของร้าน B
+  const ctxB = () => ({ tenantId: B, connectionId: ids.OAB, chatContactId: C.CB.id, partyId: ids.PB, replyToken: null });
+  await st("A-6a", "ร้าน B ไม่มีตัวตรวจสลิป (control ลบ · W3) ⇒ handled false · ไม่ดึงรูป · ไม่มีสลิปบิลร้าน B", async () => {
     needReady();
-    const r = keep(await LN.image()({ tenantId: B, connectionId: ids.OAB, chatContactId: C.CB.id, partyId: ids.PB, replyToken: null }, { messageId: MID("6") }, { deps: noopDeps }));
+    const m = mark(), n0 = await slipsOn([bl(`LB1:${P1}`).id]);
+    const r = keep(await LN.image()(ctxB(), { messageId: MID("6a") }, { deps: noopDeps }));
+    ok(r?.handled === false && r?.attached === null && !r?.reply, J(r).slice(0, 160));
+    eq(contentGets(m).length, 0, "ดึงรูป");
+    eq((await slipsOn([bl(`LB1:${P1}`).id])) - n0, 0, "สลิป");
+  }, "MAJOR");
+  await st("A-6", "ร้าน B + ตัวตรวจ FAKE ของร้าน B (ผู้เช่าร้าน B บน OA ร้าน B · บิลเปิด 1 ใบ) ⇒ แนบบิลร้าน B 1 ใบพอดี · สลิป tenantId B (ไม่ปนร้าน A)", async () => {
+    needReady();
+    await mkFakeVerifier(B, ids.OWNB, ids.DB, "b");
+    const n0 = await slipsOn([bl(`LB1:${P1}`).id]), nA = await prisma.paymentSlip.count({ where: { tenantId: A } });
+    const r = keep(await LN.image()(ctxB(), { messageId: MID("6") }, { deps: noopDeps }));
     ok(r?.attached?.billId === bl(`LB1:${P1}`).id, J(r).slice(0, 160));
     const row = await prisma.paymentSlip.findFirst({ where: { id: r.attached.slipId } });
-    eq([row?.tenantId, row?.unitId], [B, ids.DB], "แถว");
+    eq([row?.tenantId, row?.unitId, (await slipsOn([bl(`LB1:${P1}`).id])) - n0, (await prisma.paymentSlip.count({ where: { tenantId: A } })) - nA], [B, ids.DB, 1, 0], "แถว");
   }, "MAJOR");
   await st("A-7", "§8.1 ข้อ 3 แข่ง: รูปใหม่ 1 ใบ (2 โพรเซส + ในโพรเซส) พร้อมพนักงานรับเงินครบ 380,000 ⇒ สลิปของรูปนี้ ≤ 1 · ถ้ามีต้องอยู่บิล L2 พ.ย. ยอดคาดหวัง 380,000 · ไม่มีสลิปบิลอื่น · ไม่มี throw · หลังจากนั้นบิลปิด ⇒ รูปถัดไปไม่แนบ", async () => {
     needReady();
@@ -1280,7 +1325,8 @@ console.log("\n── S: ไฟล์ที่แตะ (git) ──");
 const git = (args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const dirty = (paths: string[]) => git(["status", "--porcelain", "--untracked-files=all", "--", ...paths]).split("\n").filter(Boolean).map((l) => l.slice(3).trim().replace(/^"|"$/g, ""));
 const diffLines = (f: string) => git(["diff", "-U0", "HEAD", "--", f]).split("\n").filter((l) => /^[+-](?![+-])/.test(l));
-const OWN_FIXED = new Set<string>([F.line, F.portal, F.image, F.dormPortal, F.dormIndex, F.content, F.chatIndex, F.webhook, F.staffPage, F.staffActions, F.staffCard, F.postback, F.consumers, F.minute, F.dunning, F.defs]);
+const F_NOTIFY = "src/lib/platform/notify-customer.ts"; // ORACLE-EDIT (ผู้คุม 30 ต.ค. · W2/W3) — มติ W2: precheck แบบเพิ่มอย่างเดียว
+const OWN_FIXED = new Set<string>([F.line, F.portal, F.image, F.dormPortal, F.dormIndex, F.content, F.chatIndex, F.webhook, F.staffPage, F.staffActions, F.staffCard, F.postback, F.consumers, F.minute, F.dunning, F.defs, F_NOTIFY]);
 const ownPath = (f: string) => OWN_FIXED.has(f) || f.startsWith("src/app/(store)/d/[token]/") || f.startsWith("src/components/dorm/portal/");
 {
   const ch = dirty(["src", "prisma", "public"]);
@@ -1295,8 +1341,12 @@ const ownPath = (f: string) => OWN_FIXED.has(f) || f.startsWith("src/app/(store)
 }
 await st("S-2", "ไม่แตะชิ้นต้องห้าม: prisma · core (นอก defs/rooms.ts) · notify-customer · payment · แชท (นอก line-content + index) · โมดูลหอเดิม (นอก portal.ts/index.ts/dunning.ts) · บัญชี · ทะเบียนป้าย event · จอลูกค้า POS /d", () => {
   const banned = dirty(["prisma", "src/lib/core", "src/lib/platform/notify-customer.ts", "src/lib/payment", "src/lib/modules/chat", "src/lib/modules/dorm", "src/lib/modules/account", "src/lib/automation/labels.ts", "src/lib/webhooks/labels.ts", F.posD, F.posDActions, "src/components/dorm/dorm-policy-shared.ts"])
-    .filter((f) => ![F.defs, F.content, F.chatIndex, F.dormPortal, F.dormIndex, F.dunning].includes(f as never));
+    .filter((f) => ![F.defs, F.content, F.chatIndex, F.dormPortal, F.dormIndex, F.dunning, F_NOTIFY].includes(f as never)); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · W2/W3)
   eq(banned, [], "ไฟล์");
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · W2/W3) — notify-customer.ts เทียบ c791bf51: เพิ่มอย่างเดียว (ไม่มีบรรทัดที่ลบ) · ไม่มีคอมมิตฐานในทรี = ตรวจกับ HEAD
+  const base = (() => { try { git(["cat-file", "-e", "c791bf51^{commit}"]); return "c791bf51"; } catch { return "HEAD"; } })();
+  const rmNotify = git(["diff", "-U0", base, "--", F_NOTIFY]).split("\n").filter((l) => /^-(?!-)/.test(l) && l.slice(1).trim());
+  eq(rmNotify, [], "notify-customer.ts บรรทัดที่ลบ");
 });
 await st("S-8", "postback-routes.ts: เพิ่มบรรทัดเท่านั้น · route dorm. lazy import dorm-line (resolveDormParty · onDormPostback · onDormLinked)", () => {
   eq(diffLines(F.postback).filter((l) => l.startsWith("-") && l.slice(1).trim()), [], "บรรทัดที่ลบ");
@@ -1389,6 +1439,9 @@ console.log("\n── V ภาพ / HTTP ──");
 
 // ═══════════════ G regression (หลังล้างข้อมูล) ═══════════════
 console.log("\n── G: regression ──");
+// ORACLE-EDIT (ผู้คุม 30 ต.ค. · W2/W3) — คืน env ของตัวตรวจ FAKE ก่อนชุด regression (ลูกโพรเซสได้ env เดิม)
+if (INT_ENV_SAVED.fake === undefined) delete process.env.INTEGRATIONS_FAKE; else process.env.INTEGRATIONS_FAKE = INT_ENV_SAVED.fake;
+if (INT_ENV_SAVED.key === undefined) delete process.env.INTEGRATIONS_CREDENTIALS_KEY; else process.env.INTEGRATIONS_CREDENTIALS_KEY = INT_ENV_SAVED.key;
 const summaryOf = (out: string): { failed: string[] } | null => {
   const line = out.split("\n").reverse().find((l) => l.startsWith("JSON_SUMMARY "));
   if (!line) return null;

@@ -1351,7 +1351,9 @@ try {
         eq([m?.kpi?.rooms?.total, m?.kpi?.occupied?.count, m?.kpi?.vacant, m?.kpi?.booked, m?.kpi?.repair], [36, 31, 3, 1, 1], "ห้อง");
         eq([m?.billing?.paid, m?.billing?.slipPending, m?.billing?.unpaid, m?.billing?.totalSatang], [24, 3, 4, EXP.totalSatang], "รอบบิล");
         eq([m?.kpi?.overdue?.rooms, m?.kpi?.overdue?.satang], [EXP.overdueRooms, EXP.overdueSatang], "ค้าง");
-        eq((await POLM(own, { unitId: SQC.units.dorm.id }, c))?.diffCount, 4, "diffCount");
+        // ORACLE-EDIT (ผู้คุม 30 ต.ค. · D.9): ฉากพอร์ทัล D.9 ตั้ง payments.receiver (UNIT หอ · setById "SvcQcScene:d9") อยู่ร่วมบน svcqc ⇒ ยอม +1
+        const d9Recv = await db.settingValue.count({ where: { tenantId: SQC.tenant.id, key: "payments.receiver", scope: "UNIT", scopeId: SQC.units.dorm.id, setById: "SvcQcScene:d9" } });
+        eq((await POLM(own, { unitId: SQC.units.dorm.id }, c))?.diffCount, 4 + (d9Recv > 0 ? 1 : 0), "diffCount");
       }, "MAJOR");
       await t("Q-3", "รันฉากซ้ำ ⇒ SCENE_SUMMARY 0/0/0", () => {
         const r = runTsx();

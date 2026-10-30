@@ -48,6 +48,12 @@ export type NotifyCustomerInput = {
   /** ข้อความที่ลูกค้ารอทันที (ถึงคิว/ใบเสร็จ) — ผู้เรียกประกาศ */
   bypassQuiet?: boolean;
   link?: { purpose: string; subjectId: string; path: string; expMin: number };
+  /**
+   * SVC D.9 ▸ (มติผู้คุม W2 · เพิ่มอย่างเดียว) ตรวจสถานะสดของผู้เรียก **หลังอ้างสิทธิ์ dedupeKey · ก่อนส่ง**
+   *   (ไม่อยู่ใน tx · ไม่เปิด connection ซ้อน) — `{ ok:false, reason }` ⇒ ไม่ส่ง · แถว log = `SKIPPED_<reason>` (สถานะจบ)
+   *   reason = ตัวพิมพ์ใหญ่/ตัวเลข/ขีดล่าง ≤ 40 · throw ⇒ FAILED (ลองซ้ำได้) · ผู้เรียกเดิมที่ไม่ส่ง = พฤติกรรมเดิมทุกไบต์
+   */
+  precheck?: () => Promise<{ ok: true } | { ok: false; reason: string }>;
 };
 export type NotifyCustomerResult = {
   channel: NotifyChannel;
@@ -63,10 +69,16 @@ export type NotifyCustomerResult = {
   code?: "QUOTA";
   /** ตัวแปรที่แม่แบบใช้แต่ไม่มีค่า (ข้อความออกไปเป็นช่องว่าง) — ผู้เรียกควรแก้ */
   missingVars?: string[];
+  /** SVC D.9 ▸ precheck ของผู้เรียกไม่ผ่าน (ไม่ได้ส่ง · แถว log = SKIPPED_<reason>) — status คืนเป็น FAILED เพื่อคงชนิดเดิม ◂ */
+  precheckFailed?: string;
 };
 
 const FINAL_NO_RETRY = new Set(["SENT", "SKIPPED_CONSENT", "NO_CHANNEL", "QUOTA"]);
 const RETRYABLE = ["SKIPPED_QUIET", "FAILED"];
+/** SVC D.9 ▸ แถวที่ precheck ของผู้เรียกปัดตก (`SKIPPED_<reason>`) = สถานะจบ ◂ */
+const PRECHECK_PREFIX = "SKIPPED_PRECHECK_";
+const PRECHECK_REASON_RE = /^[A-Z0-9_]{1,40}$/;
+const isFinalRow = (status: string) => FINAL_NO_RETRY.has(status) || status.startsWith(PRECHECK_PREFIX);
 /** สถานะชั่วคราวระหว่างส่ง (ผู้อ้างสิทธิ์ถือไว้) — จบแล้วต้องเป็นสถานะจบเสมอ */
 const CLAIMED = "SENDING";
 /** ผู้อ้างสิทธิ์ที่ค้างนานเกินนี้ (โพรเซสตายกลางทาง) ⇒ ให้คนถัดไปอ้างสิทธิ์ต่อได้ — ยาวกว่า LINE timeout (10 วิ) ชัดเจน */
@@ -148,6 +160,7 @@ async function claim(base: { tenantId: string; unitId: string; domain: string; m
   const where = { tenantId_dedupeKey: { tenantId: base.tenantId, dedupeKey: base.dedupeKey } };
   const row = (await prisma.serviceMessageLog.findUnique({ where, select: { id: true, channel: true, status: true, at: true } })) as Row | null;
   if (!row) return { dup: { id: "", channel: "NONE", status: CLAIMED, at: new Date() }, pending: true }; // ถูกลบระหว่างทาง — ถือว่ากำลังมีคนส่ง
+  if (isFinalRow(row.status)) return { dup: row, pending: false }; // SVC D.9 ▸ รวมแถว SKIPPED_PRECHECK_* (สถานะจบ) ◂
   if (FINAL_NO_RETRY.has(row.status)) return { dup: row, pending: false };
   const now = new Date();
   const retry = RETRYABLE.includes(row.status) || (row.status === CLAIMED && row.at.getTime() < now.getTime() - STALE_CLAIM_MS);
@@ -178,6 +191,7 @@ export async function notifyCustomer(ctx: { tenantId: string }, input: NotifyCus
   if (input.vars !== undefined && !isRec(input.vars)) return failed("VALIDATION");
   if (input.chatContactId !== undefined && typeof input.chatContactId !== "string") return failed("VALIDATION");
   if (input.partyId !== undefined && typeof input.partyId !== "string") return failed("VALIDATION");
+  if (input.precheck !== undefined && typeof input.precheck !== "function") return failed("VALIDATION");
   const vars: Record<string, string> = {};
   for (const [k, v] of Object.entries(input.vars ?? {})) if (typeof v === "string") vars[k] = v;
   const at = input.at instanceof Date && !Number.isNaN(input.at.getTime()) ? input.at : new Date();
@@ -221,6 +235,9 @@ export async function notifyCustomer(ctx: { tenantId: string }, input: NotifyCus
     if ("dup" in c) {
       const ch = (["LINE", "SMS"].includes(c.dup.channel) ? c.dup.channel : "NONE") as NotifyChannel;
       const quota = c.dup.status === "QUOTA";
+      if (c.dup.status.startsWith(PRECHECK_PREFIX)) {
+        return withLink({ duplicate: true, channel: "NONE", status: "FAILED", precheckFailed: c.dup.status.slice(PRECHECK_PREFIX.length) });
+      }
       return withLink({
         duplicate: true,
         ...(c.pending ? { pending: true } : {}),
@@ -232,6 +249,7 @@ export async function notifyCustomer(ctx: { tenantId: string }, input: NotifyCus
 
     let final: Delivered = { channel: "NONE", status: "FAILED", partyId: null };
     let retryAt: Date | undefined;
+    let precheckFailed: string | undefined;
     try {
       // ── 3. เวลาเงียบ ──
       const q = isRec(S["messaging.quietHours"]?.value) ? (S["messaging.quietHours"].value as Record<string, unknown>) : null;
@@ -240,6 +258,10 @@ export async function notifyCustomer(ctx: { tenantId: string }, input: NotifyCus
       if (!input.bypassQuiet && qs && qe && inQuietWindow(at, qs, qe)) {
         retryAt = nextQuietEnd(at, qe);
         final = { channel: "NONE", status: "SKIPPED_QUIET", partyId: null };
+      } else if (input.precheck && (precheckFailed = await runPrecheck(input.precheck)) !== undefined) {
+        // SVC D.9 ▸ สถานะสดของผู้เรียกเปลี่ยนหลังอ้างสิทธิ์ (VOID · ปิดสัญญา · ปิดช่องทาง · จ่ายครบ) ⇒ ไม่ส่ง ◂
+        //   แถวเขียน FAILED ก่อน (คำสั่งเดิมใน finally) แล้วปิดเป็น SKIPPED_PRECHECK_<reason> ต่อทันที (precheck throw ⇒ คง FAILED ลองซ้ำได้)
+        final = { channel: "NONE", status: "FAILED", partyId: null };
       } else {
         // ตัวแปรลิงก์: ผู้เรียกไม่ส่ง ⇒ เติม URL เต็มของ webLink
         if (webLink) {
@@ -280,13 +302,32 @@ export async function notifyCustomer(ctx: { tenantId: string }, input: NotifyCus
         SET "channel" = ${final.channel}, "status" = ${final.status}, "partyId" = ${final.partyId}, "at" = ${new Date()}
         WHERE "id" = ${c.id} AND "tenantId" = ${tenantId}`;
     }
+    if (precheckFailed) {
+      // SVC D.9 ▸ precheck ไม่ผ่าน ⇒ แถวเป็นสถานะจบ SKIPPED_PRECHECK_<reason> (เฉพาะแถวที่เรายังถือ · FAILED จากคำสั่งก่อนหน้า) ◂
+      await prisma.$executeRaw`
+        UPDATE "ServiceMessageLog" SET "status" = ${`${PRECHECK_PREFIX}${precheckFailed}`}, "at" = ${new Date()}
+        WHERE "id" = ${c.id} AND "tenantId" = ${tenantId} AND "status" = 'FAILED'`;
+    }
     const out: NotifyCustomerResult =
       final.status === "QUOTA" ? { channel: final.channel, status: "FAILED", code: "QUOTA" } : { channel: final.channel, status: final.status };
     if (retryAt) out.retryAt = retryAt;
+    if (precheckFailed) out.precheckFailed = precheckFailed;
     if (final.missingVars?.length) out.missingVars = final.missingVars;
     return withLink(out);
   } catch {
     return { channel: "NONE", status: "FAILED" };
+  }
+}
+
+/** SVC D.9 ▸ precheck: ผ่าน ⇒ undefined · ไม่ผ่าน ⇒ reason · throw/ผิดรูป ⇒ "" (= FAILED ลองซ้ำได้) ◂ */
+async function runPrecheck(fn: NonNullable<NotifyCustomerInput["precheck"]>): Promise<string | undefined> {
+  try {
+    const r = await fn();
+    if (r && r.ok === true) return undefined;
+    const reason = r && r.ok === false && typeof r.reason === "string" ? r.reason : "";
+    return PRECHECK_REASON_RE.test(reason) ? reason : "";
+  } catch {
+    return "";
   }
 }
 
