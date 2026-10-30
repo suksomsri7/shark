@@ -800,3 +800,90 @@ export function sqcPortalSceneRead(root: string = process.cwd()): SqcPortalScene
 import { readFileSync as d9ReadFileSync } from "node:fs";
 import { join as d9Join } from "node:path";
 // ◂ SVC D.9
+// SVC D.4 ▸ บล็อกของใบ D.4 เท่านั้น (นำเข้า Excel · ภาพ หอ 12) — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-d.4.md §8 · ข้อสอบ scripts/qc-svc-d.4.mts (ใช้ sqcImportSample ตัวเดียวกัน) · ฉาก scripts/svc-qc-import-scene.mts (builder)
+//   ⚠️ ฉากอยู่ "ร้าน B" (SQC_OTHER) หน่วยหอใหม่ของฉาก — ร้าน A ต้องมี 4 หน่วยพอดี (smoke SM-UNITS) · slug ไม่ซ้ำหน่วยใดของร้าน A (ข้อสอบข้ามร้านเดิมไม่เปลี่ยนผล)
+// ═════════════════════════════════════════════════════════════════════════════
+const D4_TH_MON = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+/** ชื่อตามภาพ 02 (ห้อง 201–211) · 105 = คนเดียวกับ 211 (เบอร์ซ้ำ · ภาพ 12 "คนเดียวเช่า 2 ห้อง?") · ห้องอื่นชื่อสมมติตายตัว */
+const D4_NAMES: Record<string, string> = {
+  "201": "อรอุมา แสงทอง", "202": "จักรพันธ์ ทองดี", "203": "นิภา วงศ์ใหญ่", "204": "ณัฐชา ใจดี", "205": "ภานุ ศรีวงศ์",
+  "206": "รัตนา บุญมา", "207": "เบญจา คำแก้ว", "208": "สมศักดิ์ พรหมมา", "209": "ธิดารัตน์ มูลสาร", "211": "วรพล สายสุข", "105": "วรพล สายสุข",
+};
+const D4_FIRST = ["กมล", "ชนิดา", "ธีรพงษ์", "ปิยะพร", "วิชัย", "สุนิสา", "อนุชา", "พิมพ์ใจ", "ศักดิ์ชัย", "มาลี", "ประเสริฐ", "จิราพร"];
+const D4_LAST = ["สุขใจ", "ศรีสวัสดิ์", "แก้วมณี", "บุญเรือง", "ทองคำ", "พรหมมินทร์", "ใจงาม", "สายบุญ"];
+export type SqcImportSample = {
+  headers: string[];
+  rows: string[][];
+  /** วันจดมิเตอร์ล่าสุดในไฟล์ (วันที่ 25 ของเดือนก่อน) — ตัวเลือก meterReadDate ของ previewImport */
+  readDate: string;
+  expect: {
+    rows: number; ready: number; warn: number; mustFix: number;
+    buildings: number; floors: number; rooms: number; roomTypes: number; leases: number; parties: number; meters: number; readings: number;
+    depositSatang: number; arrears: { count: number; satang: number };
+    warnRooms: Record<string, string>; mustFixRooms: Record<string, string>; vacantRooms: string[];
+  };
+};
+/**
+ * ไฟล์ตัวอย่าง 36 ห้อง (บ้านสวนอพาร์ตเมนต์ 101–112 · 201–212 · 301–312 · x01/x12 = ห้องใหญ่ ฿5,200 · ที่เหลือ ฿4,500 · ประกัน 2 เดือน) — pure · ค่าล้วน
+ *   11 คอลัมน์ตามภาพ 12: ห้อง · ชื่อผู้เช่า · โทร · เข้าอยู่ (พ.ศ. ว/ด/ปป) · ค่าเช่า · ประกัน · ไฟ <เดือน> · น้ำ <เดือน> · ค้าง · LINE · หมายเหตุ
+ *   variant "scene" = ตรงภาพ 12 (310 ประกัน ฿15,000 = 3.3 เดือน ⇒ ต้องแก้ในโหมดเข้มงวด) · "clean" = 310 ประกัน ฿9,000 (ไฟล์ที่ "สร้างครบ")
+ *   ทั้งสองแบบ: 108 มีค่าเช่าไม่มีชื่อ (เตือน → ห้องว่าง) · 210/311 ว่างทั้งแถว (ห้องว่างเงียบ) · 211 เบอร์+ชื่อซ้ำ 105 (เตือน → รวมเป็นผู้เช่าคนเดียว)
+ *   · 112 ไฟ 8,904 (เตือน ผิดปกติ) · ค้าง 106 ฿5,214.00 + 305 ฿4,986.40 = ฿10,200.40 · เบอร์ = <phonePrefix 3 หลัก><เลขห้อง><4410>
+ *   เข้าอยู่ = วันที่ 1 ของเดือน (วันนี้ − k) k = 1 + (ลำดับ mod 10) ⇒ สัญญา 12 เดือนยังไม่ครบทุกแถว
+ */
+export function sqcImportSample(todayYmd: string, opts: { variant: "scene" | "clean"; phonePrefix?: string }): SqcImportSample {
+  const [ty, tm] = todayYmd.split("-").map(Number);
+  const monthBack = (k: number) => { const t = ty * 12 + (tm - 1) - k; return { y: Math.floor(t / 12), m: (t % 12) + 1 }; };
+  const rd = monthBack(1);
+  const readDate = `${rd.y}-${String(rd.m).padStart(2, "0")}-25`;
+  const mon = D4_TH_MON[rd.m - 1];
+  const headers = ["ห้อง", "ชื่อผู้เช่า", "โทร", "เข้าอยู่", "ค่าเช่า", "ประกัน", `ไฟ ${mon}`, `น้ำ ${mon}`, "ค้าง", "LINE", "หมายเหตุ"];
+  const pre = opts.phonePrefix ?? "081";
+  const rooms = [1, 2, 3].flatMap((f) => Array.from({ length: 12 }, (_, i) => `${f}${String(i + 1).padStart(2, "0")}`));
+  const rows = rooms.map((no, idx) => {
+    const n = Number(no.slice(1));
+    const large = n === 1 || n === 12;
+    const rent = large ? 5200 : 4500;
+    const st = monthBack(1 + (idx % 10));
+    const start = `1/${st.m}/${String((st.y + 543) % 100).padStart(2, "0")}`;
+    const phoneOf = (r: string) => `${pre}-${r}-4410`;
+    const elec = no === "112" ? "8904" : String(1100 + ((idx * 137) % 900));
+    const water = String(250 + ((idx * 7) % 90));
+    if (no === "210" || no === "311") return [no, "", "", "", "", "", elec, water, "", "", ""];
+    if (no === "108") return [no, "", "", "", String(rent), "", elec, water, "", "", ""];
+    const name = D4_NAMES[no] ?? `${D4_FIRST[idx % D4_FIRST.length]} ${D4_LAST[idx % D4_LAST.length]}`;
+    const deposit = no === "310" && opts.variant === "scene" ? "15000" : String(rent * 2);
+    const arrears = no === "106" ? "5214" : no === "305" ? "4986.40" : "";
+    const line = no === "204" ? "nat_cha" : idx % 3 === 0 ? `line${no}` : "";
+    const note = no === "204" ? "มีแมว 1 ตัว" : "";
+    return [no, name, phoneOf(no === "211" ? "105" : no), start, String(rent), deposit, elec, water, arrears, line, note];
+  });
+  const clean = opts.variant === "clean";
+  return {
+    headers,
+    rows,
+    readDate,
+    expect: {
+      rows: 36, ready: clean ? 33 : 32, warn: 3, mustFix: clean ? 0 : 1,
+      buildings: 1, floors: 3, rooms: 36, roomTypes: 2, leases: clean ? 33 : 32, parties: clean ? 32 : 31, meters: 72, readings: 72,
+      depositSatang: clean ? 30_540_000 : 29_640_000, arrears: { count: 2, satang: 1_020_040 },
+      warnRooms: { "108": "VACANT_WITH_RENT", "211": "PHONE_DUP_IN_FILE", "112": "METER_OUTLIER" },
+      mustFixRooms: clean ? {} : { "310": "DEPOSIT_LEGAL" },
+      vacantRooms: ["108", "210", "311"],
+    },
+  };
+}
+/** ฉากภาพ หอ 12 — ร้าน B · หน่วยหอของฉาก · ไฟล์ xlsx 2 ชีต ("ผู้เช่า" 36×11 = sqcImportSample scene · "มิเตอร์" 36 แถว) · ค้างที่ขั้น "จับคู่คอลัมน์" (ยังไม่สร้าง) */
+export const SQC_IMPORT_SCENE = {
+  mark: "SvcQcScene",
+  tenantId: SQC_OTHER.tenant.id,
+  unit: { id: "svcqc-other-unit-dorm-import", type: "DORM", slug: "bansuan-import", name: "บ้านสวนอพาร์ตเมนต์" },
+  fileName: "ทะเบียนหอ ต.ค.69.xlsx",
+  sheets: ["ผู้เช่า", "มิเตอร์"],
+  user: "other-owner",
+  /** ภาพ 12: พร้อม 32 · เตือน 3 · ต้องแก้ 1 · อาคาร·ชั้น·ห้อง 1·3·36 · ผู้เช่า+สัญญา 32 · มิเตอร์ 72 · ค้างยกมา 2 ใบ ฿10,200.40 (ไม่ออกใบ — มติ D.4) · ประกันเปิดยอด ฿296,400 */
+  expect: { ready: 32, warn: 3, mustFix: 1, guessed: 10, columns: 11 },
+} as const;
+SQC_VISUAL_SPECS["d.4"] = [{ name: "dorm-import", path: `/app/u/${SQC_IMPORT_SCENE.unit.slug}/dorm/tenants/import` }];
+// ◂ SVC D.4

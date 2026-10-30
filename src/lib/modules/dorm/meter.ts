@@ -26,7 +26,7 @@ type Fail = { ok: false; code: string; reason: string };
 
 export type SubmitItemResult = {
   meterId: string;
-  status: "CREATED" | "UPDATED" | "UNCHANGED" | "LOCKED" | "REJECTED";
+  status: "CREATED" | "UPDATED" | "UNCHANGED" | "LOCKED" | "REJECTED" | "CONFLICT"; // SVC D.4 ▸ CONFLICT = ifAbsent พบแถวค่าอื่น ◂
   readingId: string | null;
   flag: MeterFlag | null;
   held: boolean;
@@ -42,7 +42,27 @@ export type SubmitItem = {
   clientKey?: string;
   photo?: { data: Uint8Array; contentType: string } | null;
 };
-export type SubmitDeps = { put?: (path: string, data: Uint8Array, contentType: string) => Promise<void>; now?: Date };
+export type SubmitDeps = {
+  put?: (path: string, data: Uint8Array, contentType: string) => Promise<void>;
+  now?: Date;
+  /** SVC D.4 ▸ ที่มาของแถวที่สร้างใหม่ (ไม่ส่ง = MANUAL เดิม) — นำเข้าจากไฟล์ = IMPORT ◂ */
+  source?: "MANUAL" | "IMPORT";
+  /** SVC D.4 (X10) ▸ เขียนเฉพาะเมื่อยังไม่มีแถวงวดนี้ (มีแล้ว ⇒ CONFLICT ไม่ UPDATE · ตัดสินใต้ล็อกเดียวกัน) ◂ */
+  ifAbsent?: boolean;
+  /** SVC D.4 (X5) ▸ งานนำเข้าต้องถือ claim ของชุดอยู่จริง (ตรวจใต้ล็อก dorm.import:<unitId> ใน tx เดียวกัน) ◂ */
+  importGuard?: ImportGuard;
+};
+/** SVC D.4 (X5) ▸ เครื่องหมายงานนำเข้า (ชุด + claimToken) ◂ */
+export type ImportGuard = { batchId: string; claimToken: string };
+/** SVC D.4 (X5) ▸ คำสั่งแรกของ tx: ล็อกหน่วยนำเข้า + ตรวจ claim (ไม่ใช่ CREATING / token ไม่ตรง ⇒ false) · ผ่าน ⇒ ต่ออายุ claimUntil ◂ */
+async function importClaimOk(tx: Tx, tenantId: string, unitId: string, guard: ImportGuard): Promise<boolean> {
+  await advisoryLock(tx, `dorm.import:${unitId}`);
+  const r = await tx.dormImportBatch.updateMany({
+    where: { id: guard.batchId, tenantId, unitId, status: "CREATING", claimToken: guard.claimToken },
+    data: { claimUntil: new Date(Date.now() + 120_000) },
+  });
+  return r.count === 1;
+}
 
 export type MeterWalkMeter = {
   meterId: string;
@@ -317,6 +337,7 @@ async function evaluateValue(tenantId: string, unitId: string, cfg: Cfg, L: Ledg
 export async function createMeter(
   ctx: MeterCtx,
   input: { unitId: string; kind: "ELEC" | "WATER"; role?: "ROOM" | "MAIN"; roomId?: string | null; buildingId?: string | null; serial?: string | null; digits?: number | null; startReading?: number; note?: string | null },
+  guard?: ImportGuard, // SVC D.4 (X5) ▸ ไม่ส่ง = พฤติกรรมเดิม ◂
 ): Promise<{ ok: true; meterId: string } | Fail> {
   const tenantId = ctx?.tenantId;
   const unitId = input?.unitId;
@@ -350,8 +371,7 @@ export async function createMeter(
     if (dup) return dupMsg;
   }
   try {
-    const row = await db.dormMeter.create({
-      data: {
+    const data = {
         tenantId,
         unitId,
         roomId,
@@ -362,9 +382,20 @@ export async function createMeter(
         digits,
         startReading: start,
         note: typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 500) : null,
-      },
-      select: { id: true },
-    });
+      };
+    if (guard) {
+      // SVC D.4 (X5) ▸ ทางนำเข้า: สร้างใต้ล็อก + claim ใน tx เดียว ◂
+      const out = await runTx(tenantId, unitId, async (tx) => {
+        if (!(await importClaimOk(tx, tenantId, unitId, guard))) return null;
+        const dup = await tx.dormMeter.findFirst({ where: { tenantId, unitId, roomId, kind: input.kind, removedAt: null }, select: { id: true } });
+        if (dup) return "DUP" as const;
+        return (await tx.dormMeter.create({ data, select: { id: true } })).id;
+      });
+      if (out === null) return fail("BUSY", "งานนำเข้านี้ไม่ได้ถือสิทธิ์ทำต่อแล้ว — ไม่มีอะไรเปลี่ยน");
+      if (out === "DUP") return dupMsg;
+      return { ok: true, meterId: out };
+    }
+    const row = await db.dormMeter.create({ data, select: { id: true } });
     return { ok: true, meterId: row.id };
   } catch (e) {
     if (isUniqueViolation(e)) return dupMsg;
@@ -519,11 +550,13 @@ async function submitOne(c: OneCtx, it: SubmitItem, getRooms: () => Promise<Room
   const ev = await evaluateValue(tenantId, unitId, c.cfg, L, m, P, it.value, readAt);
   const value = it.value;
 
-  type TxOut = { status: "CREATED" | "UPDATED" | "UNCHANGED" | "LOCKED" | "METER_REMOVED"; id: string | null; flag: MeterFlag | null; confirmed: boolean; existingValue: number | null };
+  type TxOut = { status: "CREATED" | "UPDATED" | "UNCHANGED" | "LOCKED" | "METER_REMOVED" | "CONFLICT" | "BUSY"; id: string | null; flag: MeterFlag | null; confirmed: boolean; existingValue: number | null };
   let out: TxOut | null = null;
   for (let attempt = 0; attempt < 2 && !out; attempt++) {
     try {
       out = await runTx(tenantId, unitId, async (tx): Promise<TxOut> => {
+        // SVC D.4 (X5) ▸ ทางนำเข้า: ล็อกหน่วยนำเข้า + claim ก่อนล็อกมิเตอร์ (ลำดับ import → meter) ◂
+        if (c.deps?.importGuard && !(await importClaimOk(tx, tenantId, unitId, c.deps.importGuard))) return { status: "BUSY", id: null, flag: null, confirmed: false, existingValue: null };
         await advisoryLock(tx, meterLockKey(m.id, P));
         // ถอดมิเตอร์ระหว่างรอคิว (replaceMeter) ⇒ ปฏิเสธ
         const live = await tx.dormMeter.findFirst({ where: { id: m.id, tenantId, unitId, removedAt: null }, select: { id: true } });
@@ -531,13 +564,14 @@ async function submitOne(c: OneCtx, it: SubmitItem, getRooms: () => Promise<Room
         const cur = await tx.dormMeterReading.findFirst({ where: { tenantId, unitId, meterId: m.id, periodKey: P, kind: "PERIOD" }, select: { id: true, value: true, flag: true, confirmedAt: true } });
         if (!cur) {
           const row = await tx.dormMeterReading.create({
-            data: { tenantId, unitId, meterId: m.id, periodKey: P, kind: "PERIOD", value, readAt, readById: c.actor, source: "MANUAL", flag: ev.flag },
+            data: { tenantId, unitId, meterId: m.id, periodKey: P, kind: "PERIOD", value, readAt, readById: c.actor, source: c.deps?.source === "IMPORT" ? "IMPORT" : "MANUAL", flag: ev.flag },
             select: { id: true },
           });
           if (ev.flag) await emitFlagged(tx, tenantId, unitId, m, P, row.id, ev.flag);
           return { status: "CREATED", id: row.id, flag: ev.flag, confirmed: false, existingValue: null };
         }
         const curFlag = isFlag(cur.flag) ? cur.flag : null;
+        if (c.deps?.ifAbsent) return { status: cur.value === value ? "UNCHANGED" : "CONFLICT", id: cur.id, flag: curFlag, confirmed: !!cur.confirmedAt, existingValue: cur.value }; // SVC D.4 (X10) ◂
         if (cur.value === value) return { status: "UNCHANGED", id: cur.id, flag: curFlag, confirmed: !!cur.confirmedAt, existingValue: cur.value };
         if (cur.confirmedAt) return { status: "LOCKED", id: cur.id, flag: curFlag, confirmed: true, existingValue: cur.value };
         await tx.dormMeterReading.update({ where: { id: cur.id, tenantId, unitId }, data: { value, readAt, readById: c.actor, flag: ev.flag, flagNote: null } });
@@ -552,6 +586,8 @@ async function submitOne(c: OneCtx, it: SubmitItem, getRooms: () => Promise<Room
   }
   if (!out) return rej("ERROR");
   if (out.status === "METER_REMOVED") return rej("METER_REMOVED");
+  if (out.status === "BUSY") return rej("BUSY"); // SVC D.4 (X5) ◂
+  if (out.status === "CONFLICT") return { meterId: m.id, status: "CONFLICT", readingId: out.id, flag: out.flag, held: false, units: null, code: "METER_CONFLICT" }; // SVC D.4 (X10) ◂
 
   // หน่วยที่คืน = ของค่าที่อยู่ในฐานจริงหลังรอบนี้
   const shownValue = out.status === "CREATED" || out.status === "UPDATED" ? value : (out.existingValue ?? value);

@@ -335,3 +335,46 @@ model DormParcel {
   @@index([roomId])
 }
 // ◂ SVC D.0
+
+// SVC D.4 ▸ ชุดนำเข้า Excel/CSV ของหอ (RULING-1 ทาง ก · migration svc_d4 · เพิ่มอย่างเดียว) — ledger/svc-briefs/svc-brief-d.4.md §2.1
+// ไฟล์เดิม (ไบต์เดียวกัน) บนหน่วยเดิม = ชุดเดิมเสมอ (@@unique unitId+fileHash) · ทุกการเปลี่ยนสถานะ = CAS (status+version) + claimToken/claimUntil
+// parsed = หัว/แถวที่อ่านจากไฟล์ (ข้อมูลส่วนตัว — ห้ามออกทาง DTO · DTO ปิดเบอร์/เลขบัตรเสมอ)
+// SQL มือ: DormImportBatch_status_check IN ('DRAFT','CREATING','CREATED','UNDOING','UNDONE') · DormImportBatch_format_check IN ('CSV','XLSX')
+//          DormImportBatch_rowCount_check >= 0 · UNIQUE "DormImportBatch_unit_active_key" ON ("unitId") WHERE "status" IN ('CREATING','UNDOING')
+model DormImportBatch {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  unitId               String
+  fileHash             String // sha256 hex ของไบต์ไฟล์
+  fileName             String
+  format               String // CSV | XLSX
+  sheet                String?
+  fileId               String? // FileAsset private ของไฟล์ต้นทาง (หลวม)
+  rowCount             Int
+  columnCount          Int
+  parsed               Json? // { encoding, sheets, headers, rows } ของชีตที่เลือก
+  status               String    @default("DRAFT") // DRAFT | CREATING | CREATED | UNDOING | UNDONE
+  version              Int       @default(0)
+  proposal             Json?
+  mapping              Json?
+  mappingConfirmedById String?
+  options              Json?
+  decisions            Json?
+  previewHash          String?
+  summary              Json?
+  manifest             Json?
+  lastError            Json?
+  claimToken           String?
+  claimUntil           DateTime?
+  createdById          String?
+  committedAt          DateTime?
+  undoneAt             DateTime?
+  undoneById           String?
+  undoReason           String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([unitId, fileHash])
+  @@index([tenantId, unitId, status])
+}
+// ◂ SVC D.4
