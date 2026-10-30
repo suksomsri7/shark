@@ -394,7 +394,9 @@ try {
       const c = Array.isArray(wl.WEBHOOK_EVENTS) && wl.WEBHOOK_EVENTS.some((e: { value: string }) => e.value === EV);
       // ORACLE-EDIT (ผู้คุม 30 ต.ค. · D.11): dorm.bill.overdue เป็นของ D.11 (latefee.ts/dunning.ts) — มีไฟล์ D.11 แล้วไม่นับเป็น "ลงล่วงหน้า"
       const d11 = existsSync(join(ROOT, "src/lib/modules/dorm/dunning.ts"));
-      const early = ["dorm.bill.paid", "dorm.bill.partially_paid", ...(d11 ? [] : ["dorm.bill.overdue"])].filter((x) => typeof oc.consumers?.[x] === "function");
+      // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-2): dorm.bill.paid/partially_paid เป็นของ D.10 — มี platform/dorm-pay.ts แล้วไม่นับเป็น "ลงล่วงหน้า"
+      const d10 = existsSync(join(ROOT, "src/lib/platform/dorm-pay.ts"));
+      const early = [...(d10 ? [] : ["dorm.bill.paid", "dorm.bill.partially_paid"]), ...(d11 ? [] : ["dorm.bill.overdue"])].filter((x) => typeof oc.consumers?.[x] === "function");
       if (!(a && lab && THAI.test(lab.label ?? "") && c) || early.length) why = `consumers=${a} automation=${!!lab} ป้ายไทย=${THAI.test(lab?.label ?? "")} webhooks=${c} ลงล่วงหน้า=${early.join(",") || "—"}`;
     } catch (e) { why = `import ทะเบียนล้ม: ${errMsg(e)}`; }
     chk("S-7", `event ${EV} ลง 3 ทะเบียน (ป้ายไทย) · ไม่ลง dorm.bill.paid/partially_paid/overdue ล่วงหน้า (D.10/D.11)`, !why, why, "MAJOR");

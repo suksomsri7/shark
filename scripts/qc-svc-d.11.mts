@@ -367,7 +367,8 @@ try {
       const a = typeof oc.consumers?.[EV] === "function";
       const lab = Array.isArray(al.AUTOMATION_EVENTS) ? al.AUTOMATION_EVENTS.find((e: { value: string }) => e.value === EV) : null;
       const c = Array.isArray(wl.WEBHOOK_EVENTS) && wl.WEBHOOK_EVENTS.some((e: { value: string }) => e.value === EV);
-      const early = ["dorm.bill.paid", "dorm.bill.partially_paid"].filter((x) => typeof oc.consumers?.[x] === "function");
+      // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-3): dorm.bill.paid/partially_paid เป็นของ D.10 — มี platform/dorm-pay.ts แล้วไม่นับเป็น "ลงล่วงหน้า"
+      const early = (existsSync(join(ROOT, "src/lib/platform/dorm-pay.ts")) ? [] : ["dorm.bill.paid", "dorm.bill.partially_paid"]).filter((x) => typeof oc.consumers?.[x] === "function");
       if (!(a && lab && THAI.test(lab.label ?? "") && c) || early.length) why = `consumers=${a} automation=${!!lab} ป้ายไทย=${THAI.test(lab?.label ?? "")} webhooks=${c} ลงล่วงหน้า=${early.join(",") || "—"}`;
     } catch (e) { why = `import ทะเบียนล้ม: ${errMsg(e)}`; }
     chk("S-7", `event ${EV} ลง 3 ทะเบียน (ป้ายไทย) · ไม่ลง dorm.bill.paid/partially_paid ล่วงหน้า (D.10)`, !why, why, "MAJOR");

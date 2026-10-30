@@ -770,12 +770,22 @@ try {
   const pendDormId: string = pendDorm?.slipId ?? "";
   const pendBarberId: string = pendBarber?.slipId ?? "";
   const reason = "ตรวจยอดกับบัญชีธนาคารแล้ว";
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-4): D.10 R1 ⇒ dorm.slip.review ตัดสินสลิปหอได้ · fai ของ svcqc (D.13) ถือคีย์นี้
+  //   "fai ไม่มีคีย์" = ไม่มีทั้ง payments.slip.review และ dorm.slip.review ⇒ ถอด dorm.slip.review ชั่วคราว (เก็บค่าเดิมใน faiPerm · คืนใน finally ทุกครั้ง)
+  const withoutFaiDormKey = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    const mb = (await prisma.membership.findUnique({ where: { id: MB_FAI } })) as Any;
+    if (!mb) return fn();
+    if (!created.faiTouched) { created.faiPerm = mb.permissions; created.faiTouched = true; }
+    const { ["dorm.slip.review"]: _drop, ...rest } = (mb.permissions ?? {}) as Record<string, unknown>;
+    await prisma.membership.update({ where: { id: MB_FAI }, data: { permissions: rest as Any } });
+    try { return await fn(); } finally { await prisma.membership.update({ where: { id: MB_FAI }, data: { permissions: mb.permissions as Any } }); }
+  };
   await step("P-1", "fai (STAFF หอ ไม่มีคีย์) ⇒ PERMISSION_DENIED · อ้างตัวเป็น OWNER ใน actor ก็ไม่ได้ (อ่าน Membership สด)", async (p) => {
     p.push(...NEED());
     if (!pendDormId) { p.push("สร้างสลิปรอตรวจไม่ได้"); return; }
-    const r1 = await decide(ACT.fai, CTX_A, pendDormId, { decision: "APPROVE", reason });
+    const r1 = await withoutFaiDormKey(() => decide(ACT.fai, CTX_A, pendDormId, { decision: "APPROVE", reason })); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-4)
     if (!refused(r1, "PERMISSION_DENIED")) p.push(`fai → ${codeOf(r1)}`);
-    const r2 = await decide(ACT.faiLies, CTX_A, pendDormId, { decision: "APPROVE", reason });
+    const r2 = await withoutFaiDormKey(() => decide(ACT.faiLies, CTX_A, pendDormId, { decision: "APPROVE", reason })); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-4)
     if (!refused(r2, "PERMISSION_DENIED")) p.push(`fai อ้าง OWNER → ${codeOf(r2)}`);
     const r3 = await decide(ACT.nobody, CTX_A, pendDormId, { decision: "APPROVE", reason });
     if (!refused(r3, "PERMISSION_DENIED", "NOT_FOUND")) p.push(`ผู้ใช้ไม่มีสมาชิกภาพ → ${codeOf(r3)}`);
@@ -947,7 +957,7 @@ try {
   });
   await step("U-2", "slipFileUrl: fai ไม่มีคีย์ (สลิปหอ) ⇒ PERMISSION_DENIED · manager (สลิป hotel) ⇒ PERMISSION_DENIED", async (p) => {
     p.push(...NEED());
-    const f = await fileUrl(ACT.fai, CTX_A, pendDormId);
+    const f = await withoutFaiDormKey(() => fileUrl(ACT.fai, CTX_A, pendDormId)); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-4)
     if (!refused(f, "PERMISSION_DENIED")) p.push(`fai → ${codeOf(f)}`);
     const m = M1?.ok ? await fileUrl(ACT.manager, CTX_A, M1.slipId) : null;
     if (!refused(m, "PERMISSION_DENIED", "NOT_FOUND")) p.push(`manager → ${codeOf(m)}`);
