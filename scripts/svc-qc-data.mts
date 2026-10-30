@@ -602,3 +602,48 @@ export function sqcTicketToken(secret: string, t: { tenantId: string; unitId: st
     },
   ];
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC B.10 ▸ บล็อกของใบ B.10 เท่านั้น (จบงาน → บิลจากคิว POS · ภาพ จอง 07) — ต่อท้ายโดยผู้เขียนข้อสอบ · เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-b.10.md §4 §6 · ข้อสอบ scripts/qc-svc-b.10.mts (V-1) · ฉาก scripts/svc-qc-done-pos-scene.mts (builder)
+// ═════════════════════════════════════════════════════════════════════════════
+/** วัน X ของฉาก B.10 = วันฉาก B.6 + 7 (P004 ส่งเคาน์เตอร์แล้ว 15:01 · ภาพ ข) · วัน Y = X + 7 (P004 ยังกำลังทำ 15:01 · ภาพ ก) · pure */
+export function sqcDonePosSceneDays(todayYmd: string): { x: string; y: string } {
+  const [y, m, d] = sqcDeviceSceneDay(todayYmd).split("-").map(Number);
+  const plus = (n: number) => new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+  return { x: plus(7), y: plus(14) };
+}
+export const SQC_DONE_POS_SCENE_DAYS = sqcDonePosSceneDays(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10));
+/**
+ * ฉากภาพ 07 (README จองคิว · "P004 คุณธนา ทำสี ฿900 + ทรีตเมนต์ ฿300 + แว็กซ์ ฿290 − มัดจำ ฿200 = ฿1,290 · ค่าคอมฯ ช่างเอก ฿134.50")
+ *   ต่อจากฉาก SQC_TODAY_LINE_SCENE ทั้งวัน · P004 รับมัดจำ PROMPTPAY ก่อนเช็กอิน · ของที่ทำเพิ่ม = บริการ "ทรีตเมนต์บำรุงสี" (BookingService ใหม่ของฉาก) + สินค้า "แว็กซ์จัดแต่งทรง" (PosProduct ของ svcqc-sys-pos)
+ *   ค่าคอมฯ ร้าน = SQC_BOOKING_SETTINGS_SCENE.barber (บริการ 10% · สินค้า 5%) · ช่างเอกผูก HR ตาม SQC_TODAY_LINE_SCENE.hrLink
+ */
+export const SQC_DONE_POS_SCENE = {
+  at: "15:01",
+  registerAt: "15:02",
+  extras: {
+    treatment: { id: "svcqc-svc-barber-treatment", name: "ทรีตเมนต์บำรุงสี", durationMin: 30, priceSatang: 30000 },
+    wax: { id: "svcqc-pos-product-wax", name: "แว็กซ์จัดแต่งทรง", priceSatang: 29000 },
+  },
+  extraEvents: [
+    { at: "14:41", op: "done", key: "A008" },
+    { at: "15:01", op: "done", key: "P004" },
+  ] as SqcLineEvent[],
+  expect: {
+    p004: { subtotalSatang: 149000, depositSatang: 20000, dueSatang: 129000, commissionSatang: 13450, lines: [90000, 30000, 29000] },
+    queue: [["P004", 129000], ["A008", 18000]] as [string, number][],
+  },
+} as const;
+{
+  const atX = encodeURIComponent(sqcLineSceneAt(SQC_DONE_POS_SCENE_DAYS.x, SQC_DONE_POS_SCENE.registerAt));
+  const atY = encodeURIComponent(sqcLineSceneAt(SQC_DONE_POS_SCENE_DAYS.y, SQC_DONE_POS_SCENE.at));
+  const add = [SQC_DONE_POS_SCENE.extras.treatment.id, SQC_DONE_POS_SCENE.extras.wax.id].join(",");
+  // B.10 จบงาน → บิลจากคิว (ภาพ จอง 07) — ก่อนถ่าย: reseed → scripts/svc-qc-done-pos-scene.mts · QC server เปิดด้วย SVC_QC_CLOCK=1
+  //   ก = มือถือ 390 · --user ek (วัน Y · P004 กำลังทำ) · ข = เดสก์ท็อป · --user cashier (วัน X · P004 + A008 รอที่เคาน์เตอร์)
+  SQC_VISUAL_SPECS["b.10"] = [
+    { name: "booking-finish-sheet", path: `/app/u/${SQC_UNITS.barber.slug}/booking/mine?finish=P004&add=${encodeURIComponent(add)}&at=${atY}` },
+    { name: "pos-service-bills", path: `/app/sys/${SQC_SYSTEMS.POS.id}/pos/register?serviceBill=P004&at=${atX}` },
+  ];
+}
+// ◂ SVC B.10
