@@ -371,7 +371,9 @@ try {
       const a = typeof oc.consumers?.[EV] === "function";
       const lab = Array.isArray(al.AUTOMATION_EVENTS) ? al.AUTOMATION_EVENTS.find((e: { value: string }) => e.value === EV) : null;
       const c = Array.isArray(wl.WEBHOOK_EVENTS) && wl.WEBHOOK_EVENTS.some((e: { value: string }) => e.value === EV);
-      const early = ["dorm.lease.renewed", "dorm.lease.ended"].filter((x) => typeof oc.consumers?.[x] === "function");
+      // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d5-S8/D.12) renewed/ended เป็นของ D.12 แล้ว — ตรวจ "ล่วงหน้า" เฉพาะเมื่อยังไม่มีไฟล์ moveout/lease-change ของ D.12
+      const d12 = existsSync(join(ROOT, "src/lib/modules/dorm/lease-change.ts"));
+      const early = d12 ? [] : ["dorm.lease.renewed", "dorm.lease.ended"].filter((x) => typeof oc.consumers?.[x] === "function");
       if (!(a && lab && THAI.test(lab.label ?? "") && c) || early.length) why = `consumers=${a} automation=${!!lab} ป้ายไทย=${THAI.test(lab?.label ?? "")} webhooks=${c} ลงล่วงหน้า=${early.join(",") || "—"}`;
     } catch (e) { why = `import ทะเบียนล้ม: ${errMsg(e)}`; }
     chk("S-8", `event ${EV} ลง 3 ทะเบียน (ป้ายไทย) · ไม่ลง renewed/ended ล่วงหน้า (D.12)`, !why, why, "MAJOR");

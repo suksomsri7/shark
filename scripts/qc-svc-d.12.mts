@@ -22,6 +22,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
+import { randomBytes as d12RandomBytes } from "node:crypto";
 
 const SELF = fileURLToPath(import.meta.url);
 const ROOT = join(dirname(SELF), "..");
@@ -44,6 +45,8 @@ const RUN_CMD = "bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-ga
   if (process.env.APP_ENV === "production") { console.error(`🔴 ${LABEL}: APP_ENV=production`); process.exit(4); }
   if (process.env.CI) { console.error(`🔴 ${LABEL}: ห้าม export CI (with-gate-lock ข้าม flock)`); process.exit(4); }
 }
+// ORACLE-EDIT (ผู้คุม 30 ต.ค. · d12-M8) ลิงก์ไฟล์ส่วนตัวเซ็นด้วย SESSION_SECRET — qc-svc.sh ไม่ส่งค่านี้ ⇒ ตั้งค่าสุ่มเหมือน qc-svc-d.5.mts
+if ((process.env.SESSION_SECRET ?? "").length < 32) process.env.SESSION_SECRET = d12RandomBytes(32).toString("hex");
 
 const DORM_IDX = "src/lib/modules/dorm/index.ts";
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").slice(0, 260);
@@ -1625,7 +1628,7 @@ try {
     //   d.13 Q-2 diffCount 5≠4 บนฉาก svcqc (ORACLE-EDIT d.13 Q-2 ค้างของผู้คุม — /root/svc-runs/fix/d9.md)
     const REG: [string, string, string[], string[]][] = [
       ["G-1", "qc-svc-d.2", [], []], ["G-2", "qc-svc-d.5", [], []], ["G-3", "qc-svc-d.6", [], ["S-5", "G-2"]], ["G-4", "qc-svc-d.8", ["--no-regression"], []],
-      ["G-5", "qc-svc-d.11", ["--no-regression"], []], ["G-6", "qc-svc-d.13", ["--no-regression"], ["Q-2"]], ["G-7", "qc-svc-d.9", ["--no-regression"], []], ["G-8", "qc-svc-smoke", [], []],
+      ["G-5", "qc-svc-d.11", ["--no-regression"], []], ["G-6", "qc-svc-d.13", ["--no-regression"], ["Q-2"]], ["G-7", "qc-svc-d.9", ["--no-regression"], ["S-1"]] /* ORACLE-EDIT (ผู้คุม 30 ต.ค. · d12-G7) d.9 S-1 = ตรวจตอนรับใบ D.9 เท่านั้น */, ["G-8", "qc-svc-smoke", [], []],
     ];
     for (const [id, f, args, allow] of REG) {
       if (NO_REG) { skip(id, `regression ${f}`, "--no-regression / SVC_D12_NO_REGRESSION=1", "CRITICAL"); continue; }
