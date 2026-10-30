@@ -1640,7 +1640,9 @@ try {
       try { sum = js ? JSON.parse(js) : null; } catch { /* อ่านไม่ได้ */ }
       const failedIds: string[] = Array.isArray(sum?.failed) ? sum.failed : [];
       const real = failedIds.filter((x) => !allow.includes(x));
-      const ok = !!sum && real.length === 0 && (r.status === 0 || failedIds.length > 0);
+      // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d12-G7b) ชุดที่ exit 1 เพราะมีแต่ SKIP/findings (failed ว่าง · เช่น d.9 S-1 ตรวจตอนรับใบ) = ผ่าน
+      const onlySkips = failedIds.length === 0 && Array.isArray(sum?.findings) && sum.findings.every((x: string) => (sum.skipped ?? []).includes(x));
+      const ok = !!sum && real.length === 0 && (r.status === 0 || failedIds.length > 0 || onlySkips);
       if (ok) pass(id, `regression ${f} ไม่มีข้อแดง (${sum.passed}/${sum.total}${sum.skipped?.length ? ` · SKIP ${sum.skipped.length}` : ""}${failedIds.length ? ` · ยอมตามใบสั่ง: ${failedIds.join(",")}` : ""})`);
       else fail(id, `regression ${f} ไม่มีข้อแดง`, `exit=${r.status} failed=${J(failedIds)} · ${out.split("\n").filter((l) => l.includes("❌")).slice(0, 3).join(" | ").slice(0, 300)}`, "CRITICAL");
     }
