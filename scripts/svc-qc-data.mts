@@ -669,3 +669,23 @@ export function sqcManageToken(secret: string, appointmentId: string): string {
   ];
 }
 // ◂ SVC B.7
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC B.8 ▸ บล็อกของใบ B.8 เท่านั้น (มัดจำรุ่นแรก · ภาพ จอง 03 ค) — ต่อท้ายโดยผู้เขียนข้อสอบ · เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-b.8.md · ข้อสอบ scripts/qc-svc-b.8.mts · ฉาก = ฉาก B.7 (scripts/svc-qc-online-scene.mts · ไม่มีฉากใหม่)
+//   ขั้น 3 ดัดผม ช่างนุ่น 15:30 (มัดจำ ฿300) ⇒ กล่อง "PromptPay ฿300 · สแกนจ่ายภายใน N นาที" + ปุ่ม "จ่ายมัดจำ ฿300 · ยืนยันนัด" (PARITY ↔ 03ค)
+//   หน้าจัดการนัด (QR จริง/แนบสลิป) ไม่มีภาพแบบ ⇒ ตรวจด้วย U/H · ภาพจริงให้เจ้าของดูตอน B.12 (มติ Q3 ของ B.7)
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const base = `/s/${SQC_TENANT.slug}/${SQC_UNITS.barber.slug}`;
+  const who = (): string => {
+    const secret = process.env.SESSION_SECRET ?? "";
+    if (secret.length < 32) return "no-session-secret";
+    return sqcIdentityToken(secret, { tenantId: SQC_TENANT.id, partyId: SQC_ONLINE_SCENE.party.id, nowMs: Date.now(), ttlMin: 120 });
+  };
+  const sel = `svc=${encodeURIComponent(SQC_ONLINE_SCENE.pick.serviceName)}&staff=${SQC_ONLINE_SCENE.pick.staffId}&date=${SQC_ONLINE_SCENE_DAY}&time=${SQC_ONLINE_SCENE.pick.time}`;
+  SQC_VISUAL_SPECS["b.8"] = [
+    { name: "online-step3-deposit", get path(): string { return `${base}?${sel}&who=${encodeURIComponent(who())}`; } },
+  ];
+}
+// ◂ SVC B.8
