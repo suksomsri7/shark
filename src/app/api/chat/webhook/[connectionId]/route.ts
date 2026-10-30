@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server"; // SVC D.9 ▸ W6: งานรูปทำหลังตอบ 200 ◂
 import { prisma } from "@/lib/core/db";
 import { Prisma, type ChatChannelConnection, type ChatChannelType } from "@prisma/client";
 import { getAdapter, isSupported } from "@/lib/modules/chat/adapter";
@@ -57,6 +58,8 @@ export async function POST(
         connection.type === "LINE" && inbound.type === "TEXT" && inbound.body && normalizeLinkCode(inbound.body) ? inbound.body : null;
       await receiveInbound({ connection, inbound: linkText ? { ...inbound, body: LINK_CODE_MASK } : inbound });
       if (linkText) await handleLineLinkCode(connection, inbound.externalUserId, linkText, inbound.replyToken ?? null);
+      // SVC D.9 ▸ รูปจากผู้เช่าหอ ⇒ แนบสลิปเข้าบิลค้างเดียวอัตโนมัติ (ไม่ใช่ผู้เช่า/กำกวม = รูปแชทธรรมดา) ◂
+      if (connection.type === "LINE" && inbound.type === "IMAGE") await deferLineImage(connection, inbound.externalUserId, inbound.externalMessageId, inbound.replyToken ?? null);
     }
   } catch (e) {
     await logWebhook(
@@ -201,5 +204,33 @@ async function handleLineLinkCode(connection: ChatChannelConnection, externalUse
     if (res.matched) await answer(connection, contact.id, replyToken, res.reply);
   } catch {
     // ผูกรหัสพังไม่กระทบการรับข้อความ — ไม่ log ข้อความลูกค้า
+  }
+}
+
+// SVC D.9 ▸ W6: รูปทำหลังตอบ 200 (after) — ไม่หน่วงคำตอบ LINE/postback ใน payload เดียวกัน · นอกขอบเขตคำขอ (สคริปต์/ข้อสอบ) ⇒ ทำทันที ◂
+async function deferLineImage(connection: ChatChannelConnection, externalUserId: string, messageId: string, replyToken: string | null) {
+  const run = () => handleLineImage(connection, externalUserId, messageId, replyToken);
+  try {
+    after(run);
+  } catch {
+    await run();
+  }
+}
+
+// SVC D.9 ▸ รูปในแชท LINE → dorm-line.onLineImage (ctx จากแถว connection + ผู้ติดต่อเสมอ) · พังไม่ทำให้ webhook ตอบ non-200 · log ไม่มีเนื้อ ◂
+async function handleLineImage(connection: ChatChannelConnection, externalUserId: string, messageId: string, replyToken: string | null) {
+  try {
+    const contact = await prisma.chatContact.findFirst({
+      where: { tenantId: connection.tenantId, channel: "LINE", channelConnectionId: connection.id, externalUserId, blockedAt: null },
+      select: { id: true, partyId: true },
+    });
+    if (!contact) return;
+    const res = await (await import("@/lib/platform/dorm-line")).onLineImage(
+      { tenantId: connection.tenantId, connectionId: connection.id, chatContactId: contact.id, partyId: contact.partyId, replyToken },
+      { messageId },
+    );
+    if (res.reply) await answer(connection, contact.id, replyToken, res.reply);
+  } catch {
+    await logWebhook(connection.id, connection.type, "image", "FAILED", "image handler error");
   }
 }

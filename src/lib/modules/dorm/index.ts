@@ -113,3 +113,24 @@ export type { LateFeeCtx, LateFeeLedger, LateFeeLedgerItem, WaiverStatus, WaiveR
 export { runDormDunningJobs, sendDunningNow, setPaymentPromise, overdueModel, terminationNotice } from "./dunning";
 export type { OverdueModel, OverdueRow, SendDunningResult, TerminationNotice, DunningJobResult } from "./dunning";
 // ◂ SVC D.11
+// ── SVC D.9 ▸ ตัวอ่านฝั่งผู้เช่า (พอร์ทัลลิงก์เซ็น · LINE) — สัญญา ledger/svc-briefs/svc-brief-d.9.md §1 §3.0 (บล็อกนี้ของใบ D.9 เท่านั้น) ──
+export {
+  portalLiveLease,
+  portalLiveLeasesOfParty,
+  portalCanonicalParty,
+  portalLeaseOfUnit,
+  portalBillVisible,
+  portalLeaseBills,
+  portalBillForSend,
+  portalBillLiveState,
+  portalSlipKeyExists,
+  portalPartyName,
+  portalFileAssets,
+  portalActiveUnitIds,
+  dormStaffGate,
+  portalPeriodLabel,
+  portalDateLabel,
+  portalBaht,
+} from "./portal";
+export type { PortalLeaseRow, PortalBillRow, PortalSlipStatus } from "./portal";
+// ◂ SVC D.9

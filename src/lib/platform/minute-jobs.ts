@@ -582,6 +582,14 @@ registerMinuteJob({
   run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormDunningJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
 });
 // ◂ SVC D.11
+// SVC D.9 ▸ หอพัก: ส่งข้อความบิลซ้ำ (เวลาเงียบ/ล้ม ใน 3 วัน · อ่านสดอีกรอบ · ซ้อนกันได้ = ข้อความ 1 ต่อบิล ผ่าน dedupe ของ notifyCustomer · X5)
+registerMinuteJob({
+  name: "dorm.line",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-line")).runDormLineJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.9
 
 function errorText(e: unknown): string {
   let s: string;

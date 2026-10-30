@@ -1141,7 +1141,10 @@ const OWN = new Set<string>([...NEW_FILES, F.postback, F.minute, F.consumers, F.
     ok(miss.length === 0, `ยังไม่มี: ${miss.join(", ")}`);
   });
 }
-await st("S-2", "ไม่มี migration/แก้ schema · ไม่มี event ใหม่ (ทะเบียนป้าย automation/webhooks ไม่ถูกแตะ) · ไม่แตะ core / notify-customer / โมดูลแชท / defs", () => {
+// ORACLE-EDIT (ผู้คุม 30 ต.ค. · D.9): หลัง B.9 merge แล้ว S-2 ตรวจ dirty ทั้ง core/chat จะแดงทุกครั้งที่เลนอื่นทำงาน ⇒ ข้ามแบบเดียวกับ S-1
+const headHasB9 = (() => { try { git(["cat-file", "-e", `HEAD:${F.notify}`]); return true; } catch { return false; } })();
+if (headHasB9) skip("S-2", "ไม่มี migration/แก้ schema · ไม่แตะ core/แชท", "B.9 merge แล้ว — ข้อนี้ตรวจเฉพาะตอนรับใบ");
+else await st("S-2", "ไม่มี migration/แก้ schema · ไม่มี event ใหม่ (ทะเบียนป้าย automation/webhooks ไม่ถูกแตะ) · ไม่แตะ core / notify-customer / โมดูลแชท / defs", () => {
   eq(dirty(["prisma", "src/lib/automation/labels.ts", "src/lib/webhooks/labels.ts", "src/lib/core", F.notifyCustomer, "src/lib/modules/chat"]).filter((f) => f !== "src/lib/core/settings/defs/booking.ts"), [], "ไฟล์"); // ORACLE-EDIT (ผู้คุม 30 ต.ค.) มติ Q2
 });
 await st("S-3", "ตัวเชื่อมสลับได้: ไฟล์ของใบไม่เรียกตัวส่ง LINE ตรง (push*/sendLineToParty/replyFlex/api.line.me) · booking-notify.ts ส่งผ่าน notifyCustomer", () => {
@@ -1225,5 +1228,5 @@ const passed = cks.length - failed.length - skipped.length;
 console.log(`\n===== QC SVC B.9 · แจ้งเตือน + ผูก LINE + postback + รับบัตรมือถือ =====\nผ่าน ${passed}/${cks.length}${skipped.length ? ` (SKIP ${skipped.length})` : ""}`);
 console.log(`FINDINGS: CRITICAL ${failed.filter((c) => c.sev === "CRITICAL").length} · MAJOR ${failed.filter((c) => c.sev === "MAJOR").length} · MINOR ${failed.filter((c) => c.sev === "MINOR").length}`);
 console.log(`JSON_SUMMARY ${JSON.stringify({ total: cks.length, passed, failed: failed.map((c) => c.id), skipped: skipped.map((c) => c.id), findings: [...failed, ...skipped].map((c) => c.id) })}`);
-// รับใบ = ผ่านทุกข้อ (SKIP ที่ยอมได้ระหว่างทำ: G-* เมื่อ --no-regression · V-1 ไม่มี QC_BASE · S-1 หลัง merge — ผู้คุมรันซ้ำครบก่อนรับ)
+// รับใบ = ผ่านทุกข้อ (SKIP ที่ยอมได้ระหว่างทำ: G-* เมื่อ --no-regression · V-1 ไม่มี QC_BASE · S-1/S-2 หลัง merge — ผู้คุมรันซ้ำครบก่อนรับ)
 process.exit(failed.length + skipped.length > 0 ? 1 : 0);
