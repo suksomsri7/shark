@@ -30,3 +30,7 @@ export {
   previewServiceBill, finishJob, ensureServiceBill, amendServiceBill, cancelServiceBill, markPaidWithoutPos, authorizeServiceBillOp, onPosSalePaid, voidPaidServiceBill, isLegacyBookingUnit,
 } from "./finish";
 export type { ExtraLine, BillLine, ServiceBillPreview, FinishFail, FinishResult, ServiceBillOp } from "./finish";
+
+// SVC B.8 ▸ มัดจำรุ่นแรก (สถานะ · หน้าจ่าย · consumer สลิปอนุมัติ · จอร้าน · ใช้มัดจำในบิลของ B.10) — ด่านสิทธิ์/token อยู่ในฟังก์ชัน ◂
+export { depositInfo, loadDepositPay, submitDepositSlip, onDepositSlipApproved, depositQueue, confirmDepositByShop, refundDepositByShop, forfeitDepositByShop, depositForBill } from "./deposit";
+export type { DepositState, DepositInfo, DepositPay, SlipSubmitFail, ShopCtx, DepositQueueItem } from "./deposit";

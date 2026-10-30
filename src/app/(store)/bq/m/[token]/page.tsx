@@ -1,13 +1,15 @@
 // SVC B.7 — หน้าจัดการนัดของลูกค้า · /bq/m/<token HMAC ของนัด> — ไม่ต้องล็อกอิน (token = สิทธิ์) · อายุถึงเวลานัด + 7 วัน
 // token ใช้ไม่ได้ทุกกรณี ⇒ notFound (404 เดียวกัน) · ?r=1 = โหมดเลื่อน (&date= &staff=) · ?err= = รหัสจากปุ่มที่ล้ม (รูป ^[A-Z_]{1,40}$ · หน้าแปลเอง)
 // ?at= = นาฬิกา QC เฉพาะ SVC_QC_CLOCK=1 · ?lang= = ภาษา (ในชุดที่ร้านเปิด) · ไม่มีชื่อ/เบอร์ลูกค้าบนหน้า (X8)
+import { randomUUID } from "node:crypto";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import ManageCard from "@/components/booking/online/ManageCard";
 import { loadManageView } from "@/lib/modules/booking/online";
+import { loadDepositPay } from "@/lib/modules/booking/deposit"; // SVC B.8
 import { makeT } from "@/lib/i18n";
-import { cancelBookingAction, rescheduleBookingAction } from "../actions";
+import { cancelBookingAction, lateCancelBookingAction, rescheduleBookingAction, submitDepositSlipAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "นัดของคุณ", robots: { index: false, follow: false }, referrer: "no-referrer" };
@@ -34,6 +36,10 @@ export default async function BqManagePage({ params, searchParams }: { params: P
     );
   }
   if (!r.ok) notFound();
+  // SVC B.8 ▸ กล่องมัดจำ (QR · นับถอยหลัง · แนบสลิป · ยกเลิกช้า) — เฉพาะนัดที่มีมัดจำ · โหลดไม่ได้ = หน้าตาเดิม B.7 ◂
+  const pr = r.view.depositSatang > 0 ? await loadDepositPay(token, { now: qc ?? new Date(), ip, ipCounted: true }) : null; // V17: ถัง IP นับแล้วใน loadManageView
+  const pay = pr && pr.ok ? pr.pay : null;
+  const payError = !!pr && !pr.ok;
   const errRaw = one(sp?.err);
   const err = errRaw && /^[A-Z_]{1,40}$/.test(errRaw) ? errRaw : null;
   return (
@@ -41,7 +47,15 @@ export default async function BqManagePage({ params, searchParams }: { params: P
       <ManageCard
         view={r.view}
         token={token}
-        actions={{ cancel: cancelBookingAction.bind(null, token), reschedule: rescheduleBookingAction.bind(null, token) }}
+        actions={{
+          cancel: cancelBookingAction.bind(null, token),
+          reschedule: rescheduleBookingAction.bind(null, token),
+          slip: submitDepositSlipAction.bind(null, token),
+          lateCancel: lateCancelBookingAction.bind(null, token),
+        }}
+        pay={pay}
+        payError={payError}
+        slipKey={`bq${randomUUID().replace(/-/g, "")}`}
         at={qc ? qc.toISOString() : undefined}
         err={err}
       />

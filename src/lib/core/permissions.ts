@@ -253,7 +253,6 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     // SVC B.5 ▸ booking.queue.operate · booking.walkin.create ใช้จริงแล้ว (booking/line-access.ts · จอคิววันนี้) ⇒ ออกจาก planned ◂
     planned: [
       "booking.deposit.waive",
-      "booking.deposit.forfeit",
       "booking.report.view",
     ],
   },

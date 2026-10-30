@@ -70,6 +70,50 @@ export async function refundDepositAction(unitSlug: string, formData: FormData) 
   revalidatePath(`/app/u/${unitSlug}/booking`);
 }
 
+// SVC B.8 ▸ คิวมัดจำ (จอร้าน): ร้านยืนยันรับมัดจำ (= ยืนยันนัด) · คืนมัดจำที่ค้างคืน (หลังโอนคืนจริง) — ด่านสิทธิ์ก่อนอ่าน/เขียน + สิทธิ์สดใน deposit.ts ·
+//   ล้ม ⇒ ?err= (แบบ setStatusAction) ◂
+export async function confirmDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "confirmDepositAction");
+  const id = String(formData.get("id") ?? "").slice(0, 200);
+  const pt = String(formData.get("payType") ?? "");
+  if (!id) return;
+  const { confirmDepositByShop } = await import("@/lib/modules/booking/deposit");
+  const r = await confirmDepositByShop(
+    { tenantId: auth.active.tenantId, actorUserId: auth.user.id },
+    { unitId: unit.id, appointmentId: id, ...(pt === "TRANSFER" || pt === "CASH" || pt === "PROMPTPAY" ? { payType: pt } : {}) },
+  );
+  scheduleDrain();
+  revalidatePath(`/app/u/${unitSlug}/booking`);
+  if (r.ok === false) redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(r.reason.slice(0, 300))}`);
+}
+
+export async function refundDueDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "refundDueDepositAction");
+  const id = String(formData.get("id") ?? "").slice(0, 200);
+  const reason = String(formData.get("reason") ?? "").slice(0, 400);
+  if (!id) return;
+  const { refundDepositByShop } = await import("@/lib/modules/booking/deposit");
+  const r = await refundDepositByShop({ tenantId: auth.active.tenantId, actorUserId: auth.user.id }, { unitId: unit.id, appointmentId: id, reason });
+  scheduleDrain();
+  revalidatePath(`/app/u/${unitSlug}/booking`);
+  if (r.ok === false) redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(r.reason.slice(0, 300))}`);
+}
+
+// SVC B.8 ▸ V5: ร้านตัดสินริบมัดจำที่รอ (ไม่มา/ยกเลิกช้าที่ริบอัตโนมัติไม่สำเร็จ) ◂
+export async function forfeitDueDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "forfeitDueDepositAction");
+  const id = String(formData.get("id") ?? "").slice(0, 200);
+  if (!id) return;
+  const { forfeitDepositByShop } = await import("@/lib/modules/booking/deposit");
+  const r = await forfeitDepositByShop({ tenantId: auth.active.tenantId, actorUserId: auth.user.id }, { unitId: unit.id, appointmentId: id });
+  scheduleDrain();
+  revalidatePath(`/app/u/${unitSlug}/booking`);
+  if (r.ok === false) redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(r.reason.slice(0, 300))}`);
+}
+
 export async function addStaffAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
   assertBookingAction(auth, unit.id, "addStaffAction");

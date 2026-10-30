@@ -5,18 +5,37 @@
 // 🔴 ไม่มีชื่อ/เบอร์/note ลูกค้า (ลิงก์อาจถูกส่งต่อ · §6 ข้อ 6) · err = รหัส → ข้อความ dict (ไม่แสดงข้อความอิสระจาก URL — บทเรียน K2)
 // 🔴 at (นาฬิกา QC) ⇒ hidden ทุกฟอร์ม + คงในลิงก์ · ไม่ import ค่าจาก lib/modules (type เท่านั้น)
 import type { ManageView } from "@/lib/modules/booking/online";
+import type { DepositPay } from "@/lib/modules/booking/deposit";
+import { useState, type ReactNode } from "react";
 import { makeT } from "@/lib/i18n";
 import { dateLong, dayChip, dayLabel, hhmm, money } from "./fmt";
 
 type Props = {
   view: ManageView;
   token: string;
-  actions: { cancel: (fd: FormData) => Promise<void>; reschedule: (fd: FormData) => Promise<void> };
+  actions: {
+    cancel: (fd: FormData) => Promise<void>;
+    reschedule: (fd: FormData) => Promise<void>;
+    /** SVC B.8 ▸ แนบสลิปมัดจำ · ยกเลิกช้า (ยอมให้ร้านเก็บมัดจำ) ◂ */
+    slip?: (fd: FormData) => Promise<void>;
+    lateCancel?: (fd: FormData) => Promise<void>;
+  };
   at?: string;
   err?: string | null;
+  /** SVC B.8 ▸ กล่องมัดจำ (ไม่ส่ง ⇒ หน้าตาเดิม B.7) · slipKey = คีย์กันส่งซ้ำของฟอร์มแนบสลิป (หน้า server สุ่มให้ · ไม่ส่ง ⇒ สุ่มในคอมโพเนนต์) ◂ */
+  pay?: DepositPay | null;
+  slipKey?: string;
+  /** V17: โหลดกล่องมัดจำไม่ได้ (เช่น ทำรายการถี่) ⇒ แสดงข้อความแทนการหายเงียบ */
+  payError?: boolean;
 };
 
-export default function ManageCard({ view, token, actions, at, err }: Props) {
+function randomKey(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return `bq${(c?.randomUUID ? c.randomUUID() : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).replace(/-/g, "")}`.slice(0, 64);
+}
+
+export default function ManageCard({ view, token, actions, at, err, pay, slipKey, payError }: Props) {
+  const [slipKeyNow] = useState(() => (slipKey && /^[A-Za-z0-9_-]{8,100}$/.test(slipKey) ? slipKey : randomKey()));
   const l = view.locale;
   const t = makeT(l);
   const base = `/bq/m/${encodeURIComponent(token)}`;
@@ -82,7 +101,14 @@ export default function ManageCard({ view, token, actions, at, err }: Props) {
         ) : null}
       </div>
 
-      {view.holdUntilMs !== null ? (
+      {payError && !pay ? (
+        <p data-bk-pay-error="" role="status" className="rounded-2xl border border-[#e5e5e5] px-4 py-3 text-[13px] text-[#525252]">
+          {t("bk8.payError")}
+        </p>
+      ) : null}
+      {pay ? (
+        <PayBox pay={pay} view={view} t={t} actions={actions} AtField={AtField} slipKey={slipKeyNow} />
+      ) : view.holdUntilMs !== null ? (
         <div data-bk-deposit-slot="" className="flex items-center gap-3.5 rounded-2xl border border-[#e5e5e5] p-3">
           <span className="grid h-[72px] w-[72px] flex-none place-items-center rounded-xl border border-dashed border-[#d4d4d4] text-[22px] text-[#a3a3a3]" aria-hidden>
             ▦
@@ -113,6 +139,26 @@ export default function ManageCard({ view, token, actions, at, err }: Props) {
           <p className="font-bold">{t(`bk7.m.late.${view.cancelBlock ?? view.rescheduleBlock ?? "BAD_STATE"}`)}</p>
           {view.depositSatang > 0 && pol.forfeitPct !== null && !cancelled ? <p className="mt-1 text-[#737373]">{t("bk7.m.lateDeposit", { pct: pol.forfeitPct })}</p> : null}
         </div>
+      ) : null}
+      {pay?.lateCancel?.allowed && actions.lateCancel ? (
+        <form
+          action={actions.lateCancel}
+          data-bk-late-cancel=""
+          className="flex flex-col gap-2 rounded-2xl border border-[#fecaca] bg-[#fef2f2] px-4 py-3"
+          onSubmit={(e) => {
+            if (!window.confirm(t("bk8.late.ask", { amt: money(pay.lateCancel!.forfeitSatang, l) }))) e.preventDefault();
+          }}
+        >
+          <AtField />
+          <input type="hidden" name="acceptForfeit" value="1" />
+          <input type="hidden" name="acceptForfeitSatang" value={String(pay.lateCancel.forfeitSatang)} />
+          <p data-bk-forfeit="" data-satang={String(pay.lateCancel.forfeitSatang)} className="text-[13.5px] text-[#991b1b]">
+            {pay.lateCancel.forfeitSatang > 0 ? t("bk8.late.keep", { amt: money(pay.lateCancel.forfeitSatang, l) }) : t("bk8.late.free")}
+          </p>
+          <button type="submit" data-bk-late-cancel-btn="" className="flex min-h-[48px] items-center justify-center rounded-2xl border border-[#dc2626] bg-white text-[15px] font-bold text-[#dc2626]">
+            {t("bk8.late.btn")}
+          </button>
+        </form>
       ) : null}
       {!blocked && !view.canReschedule && view.rescheduleBlock === "MAX_RESCHEDULE" && pol.selfRescheduleMax > 0 ? (
         <p className="text-[13px] text-[#737373]">{t("bk7.m.maxNote")}</p>
@@ -239,4 +285,66 @@ function durText(min: number, l: "th" | "en"): string {
   const m = min % 60;
   if (l === "en") return h === 0 ? `${m} min` : m === 0 ? `${h} hr` : `${h} hr ${m} min`;
   return h === 0 ? `${m} นาที` : m === 0 ? `${h} ชม.` : `${h} ชม. ${m} นาที`;
+}
+
+// ═════════ SVC B.8 ▸ กล่องมัดจำของหน้าจัดการนัด (QR พร้อมเพย์ยอดล็อก · นับถอยหลัง · แนบสลิป · สถานะ) ═════════
+type T = ReturnType<typeof makeT>;
+function PayBox({ pay, view, t, actions, AtField, slipKey }: { pay: DepositPay; view: ManageView; t: T; actions: Props["actions"]; AtField: () => ReactNode; slipKey: string }) {
+  const l = view.locale;
+  const amt = money(pay.amountSatang, l);
+  const note = (key: string, vars?: Record<string, string | number>) => <p className="text-[13px] text-[#525252]">{t(key, vars)}</p>;
+  return (
+    <div data-bk-deposit-state={pay.state} className="flex flex-col gap-3 rounded-2xl border border-[#e5e5e5] p-3">
+      {pay.state === "AWAITING" ? (
+        <div data-bk-deposit-slot="" className="flex items-center gap-3.5">
+          {pay.qr ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img data-bk-qr="" src={pay.qr.svgDataUrl} alt={t("bk8.qr.alt")} width={132} height={132} className="h-[132px] w-[132px] flex-none rounded-xl border border-[#e5e5e5] bg-white" />
+          ) : null}
+          <div className="flex flex-col gap-1">
+            <b className="block text-[15px]">{t("bk8.pay.promptpay", { amt })}</b>
+            {pay.qr ? <small className="block text-[12.5px] text-[#737373]">{t("bk8.qr.to", { name: pay.qr.displayName })}</small> : null}
+            {pay.holdUntilMs !== null ? (
+              <small data-bk-pay-until="" data-ms={String(pay.holdUntilMs)} className="block text-[12.5px] font-semibold text-[#b45309]">
+                {t("bk8.pay.until", { time: hhmm(pay.holdUntilMs), date: dateLong(pay.holdUntilMs, l) })}
+              </small>
+            ) : null}
+            {pay.noReceiver ? (
+              <p data-bk-no-receiver="" className="text-[12.5px] text-[#dc2626]">
+                {t("bk8.noReceiver")}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {pay.canSubmitSlip && actions.slip ? (
+        <form action={actions.slip} data-bk-slip-form="" className="flex flex-col gap-2">
+          <AtField />
+          <input type="hidden" name="idempotencyKey" value={slipKey} />
+          <label className="flex flex-col gap-1 text-[13px] font-semibold">
+            {t("bk8.slip.label")}
+            <input type="file" name="slip" required accept="image/jpeg,image/png,image/webp" className="text-[14px] font-normal" />
+          </label>
+          <button type="submit" className="flex min-h-[48px] items-center justify-center rounded-2xl bg-[#0a0a0a] text-[15px] font-bold text-white">
+            {t("bk8.slip.send")}
+          </button>
+        </form>
+      ) : null}
+      {pay.state === "IN_REVIEW" ? note("bk8.state.IN_REVIEW") : null}
+      {pay.state === "RECORDING" ? note("bk8.state.RECORDING") : null}
+      {pay.state === "FORFEIT_PENDING" ? note("bk8.state.FORFEIT_PENDING") : null}
+      {pay.state === "PAID" ? note("bk8.state.PAID", { amt }) : null}
+      {pay.state === "UNDERPAID" ? note("bk8.state.UNDERPAID") : null}
+      {pay.state === "USED" ? note("bk8.state.USED") : null}
+      {pay.state === "EXPIRED" ? note("bk8.state.EXPIRED") : null}
+      {pay.state === "FORFEITED" ? note("bk8.state.FORFEITED", { amt: money(pay.forfeitedSatang, l) }) : null}
+      {pay.state === "REFUNDED" ? note("bk8.state.REFUNDED") : null}
+      {pay.state === "REFUND_DUE" ? (
+        <p data-bk-refund-due="" data-satang={String(pay.refundDueSatang)} className="text-[13px] text-[#525252]">
+          {t("bk8.state.REFUND_DUE", { amt: money(pay.refundDueSatang, l) })}
+        </p>
+      ) : null}
+      {pay.slip?.status === "REJECTED" && pay.state === "AWAITING" ? note("bk8.slip.rejected") : null}
+    </div>
+  );
 }

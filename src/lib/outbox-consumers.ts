@@ -976,7 +976,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // SVC R0.6 ▸ ตรวจสลิปกลาง — สถานะเปลี่ยนไปแล้วใน tx ของ payment/slip-verify.ts · consumer no-op (ปิด DONE + กฎอัตโนมัติ/เว็บฮุค) ·
   //   🔴 ผลเงิน (มัดจำจองคิว/บิลหอ) ไม่อยู่ที่นี่ — consumer ของโดเมน B.8 / D.10 ต่อท้าย compose ภายหลัง (idempotent ต่อ slipId) ◂
   "payment.slip.submitted": withAutomation(async () => {}),
-  "payment.slip.approved": withAutomation(async () => {}),
+  // SVC B.8 ▸ + เงินเข้ามัดจำจองคิว (domain BOOKING · อ่านสลิปจากฐานใหม่ · idempotent ต่อสลิป/นัด) เป็นงานหลักคู่ (ล้ม = event retry · โดเมนอื่น = ไม่ทำอะไร) ◂
+  "payment.slip.approved": withAutomation(bothMain(async () => {}, async (evt) => (await import("@/lib/modules/booking/deposit")).onDepositSlipApproved(evt))),
   "payment.slip.rejected": withAutomation(async () => {}),
   // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
   //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts
@@ -1211,7 +1212,18 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   🔴 บัตรแถวเดียว **ไม่ยิง** `queue.served` (booking.completed ทำหน้าที่ VISIT ของ CRM แล้ว — ไม่ลงซ้ำ) ◂
   "booking.created": withAutomation(async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), // SVC B.9 ▸ แจ้งเตือนลูกค้า (ของแถม · ไม่ throw) ◂
   "booking.rescheduled": withAutomation(async () => {}),
-  "booking.cancelled": withAutomation(async () => {}),
+  // SVC B.8 ▸ + ยกเลิกช้า (reason CUSTOMER_LATE) ⇒ ริบมัดจำตาม % ของ snapshot ไม่เกินยอดที่ลูกค้ายอมรับ (กู้กรณีโพรเซสตายก่อนริบ · มีบิลริบแล้ว = ไม่ทำซ้ำ) ◂
+  "booking.cancelled": withAutomation(bothMain(async () => {}, async (evt) => {
+    const p = (evt.payload ?? {}) as { appointmentId?: unknown; unitId?: unknown; reason?: unknown; depositPaid?: unknown };
+    // V2: ริบเฉพาะมัดจำที่จ่ายแล้ว ณ ตอนยกเลิก (payload ที่ยิงใน tx เดียวกับ CAS) · ริบล้ม ⇒ WARN + ค้าง FORFEIT_PENDING ให้ร้านตัดสิน (V5 · ไม่กู้อัตโนมัติ)
+    if (p.reason !== "CUSTOMER_LATE" || p.depositPaid !== true || typeof p.appointmentId !== "string" || typeof p.unitId !== "string") return;
+    const r = await (await import("@/lib/modules/booking/service")).forfeitAfterLateCancel(evt.tenantId, p.unitId, p.appointmentId);
+    if (r.reason) await logOps("WARN", "booking.deposit", `ริบมัดจำ (ยกเลิกช้า) นัด ${p.appointmentId} ไม่สำเร็จ`, { tenantId: evt.tenantId, detail: r.reason });
+  })),
+  // SVC B.8 ▸ event มัดจำ (ยิงจาก booking/service.ts · booking/deposit.ts · payload id+ยอดล้วน) — no-op ปิด DONE + กฎอัตโนมัติ/เว็บฮุค ◂
+  "booking.deposit_paid": withAutomation(async () => {}),
+  "booking.deposit_forfeited": withAutomation(async () => {}),
+  "booking.deposit_refunded": withAutomation(async () => {}),
   "booking.checked_in": withAutomation(async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), // SVC B.9 ▸ แจ้งเตือนลูกค้า (ของแถม · ไม่ throw) ◂
   "booking.late": withAutomation(async () => {}),
   "booking.started": withAutomation(async () => {}),

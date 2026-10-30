@@ -404,18 +404,29 @@ function StepThree({ view, t, basePath, query, idempotencyKey, staffName }: { vi
           </p>
           {pol.selfRescheduleMax > 0 ? <p>{t("bk7.policy.resched", { n: pol.selfRescheduleMax })}</p> : null}
           {pol.requireConfirm ? <p>{t("bk7.policy.confirm")}</p> : null}
+          {dep ? (
+            // SVC B.8 ▸ V9 (สคบ.): กติกามัดจำตามค่าตั้งจริง — ไม่มา (forfeitPct · ว่าง = ไม่ริบ) · ยกเลิกหลังเวลาฟรี (BLOCK/FORFEIT) ◂
+            <p data-bk-deposit-rules="" data-forfeit-pct={pol.forfeitPct === null ? "" : String(pol.forfeitPct)} data-late-mode={view.lateCancelMode ?? "BLOCK"}>
+              <b className="text-[#0a0a0a]">{t("bk8.rules.title")}</b>{" "}
+              {pol.forfeitPct === null ? t("bk8.rules.noShowNone") : t("bk8.rules.noShow", { pct: pol.forfeitPct })} ·{" "}
+              {view.lateCancelMode === "FORFEIT"
+                ? pol.forfeitPct === null ? t("bk8.rules.lateFree") : t("bk8.rules.lateForfeit", { pct: pol.forfeitPct })
+                : t("bk8.rules.lateBlock")}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
       {dep ? (
+        // SVC B.8 ▸ ภาพ 03ค: วิธีจ่ายมัดจำ PromptPay (ยอดล็อก) + เวลาที่ต้องจ่าย · QR จริงอยู่ที่หน้าจัดการนัดหลังจอง (ยังไม่มีนัด = ยังไม่สร้าง QR) ◂
         <div data-bk-deposit-slot="" className="flex items-center gap-3.5 rounded-2xl border border-[#e5e5e5] p-3">
           <span className="grid h-[72px] w-[72px] flex-none place-items-center rounded-xl border border-dashed border-[#d4d4d4] text-[22px] text-[#a3a3a3]" aria-hidden>
             ▦
           </span>
-          <div>
-            <b className="block text-[15px]">{t("bk7.dep.title", { amt: money(s.depositSatang, l) })}</b>
+          <div data-bk-pay-method="PROMPTPAY">
+            <b className="block text-[15px]">{t("bk8.pay.promptpay", { amt: money(s.depositSatang, l) })}</b>
             <small className="block text-[12.5px] leading-snug text-[#737373]">
-              {pol?.payWithinMin ? t("bk7.dep.within", { min: pol.payWithinMin }) : t("bk7.dep.later")}
+              {pol?.payWithinMin ? t("bk8.pay.within", { min: pol.payWithinMin }) : t("bk7.dep.later")}
             </small>
           </div>
         </div>
@@ -450,7 +461,7 @@ function StepThree({ view, t, basePath, query, idempotencyKey, staffName }: { vi
         ) : null}
         <div className="sticky bottom-0 -mx-5 mt-2 border-t border-[#f0f0f0] bg-white px-5 py-4">
           <button type="submit" data-bk-submit="" disabled={busy} className="flex min-h-[56px] w-full items-center justify-center rounded-2xl px-4 text-[16px] font-bold text-white disabled:opacity-60" style={{ background: INK }}>
-            {busy ? t("bk7.submitting") : t("bk7.confirm")}
+            {busy ? t("bk7.submitting") : dep ? t("bk8.payConfirm", { amt: money(s.depositSatang, l) }) : t("bk7.confirm")}
           </button>
         </div>
       </form>

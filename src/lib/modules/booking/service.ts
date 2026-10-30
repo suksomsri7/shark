@@ -924,7 +924,7 @@ export async function setAppointmentStatus(
   //   void ไม่ได้ = ไม่เปลี่ยนสถานะ + เหตุผลที่ระบุเลขบิลริบ (ไม่ออกจาก NO_SHOW เงียบ ๆ โดยบิลยังอยู่) ◂
   const before = await prisma.appointment.findFirst({
     where: { id: appointmentId, tenantId, unitId },
-    select: { status: true, depositSaleId: true, staffId: true, startAt: true, endAt: true, queueTicketId: true, policySnapshot: true },
+    select: { status: true, depositSaleId: true, staffId: true, startAt: true, endAt: true, queueTicketId: true, policySnapshot: true, cancelReason: true },
   });
   // SVC B.10 ▸ ออกจาก DONE ขณะงานมีบิลจากคิวที่ยังมีผล (HELD = รอรับเงิน · จ่ายแล้วและยังไม่ถูกยกเลิก) ⇒ ok:false ไม่เปลี่ยนสถานะ (ไม่ทิ้งเงินเงียบ) ·
   //   fix Q4: ตัดสินใต้ล็อก (แถวนัด FOR UPDATE → advisory bq-bill ของ POS) ในธุรกรรมเดียวกับ CAS ด้านล่าง — ลำดับล็อกเดียวกับ finish/ensure ◂
@@ -944,7 +944,9 @@ export async function setAppointmentStatus(
   if (reviving && (await reviveClash(prisma, tenantId, appointmentId, before!))) {
     return { ok: false as const, reason: REVIVE_CLASH_REASON };
   }
-  if (before?.status === "NO_SHOW" && status !== "NO_SHOW" && before.depositSaleId) {
+  // SVC B.8 ▸ V1: ปลุกนัดที่ยกเลิกช้า (CANCELLED/CUSTOMER_LATE) = คืนบิลริบแบบเดียวกับออกจาก NO_SHOW ◂
+  const lateUndo = before?.status === "CANCELLED" && before.cancelReason === "CUSTOMER_LATE" && status !== "CANCELLED" && status !== "NO_SHOW";
+  if (((before?.status === "NO_SHOW" && status !== "NO_SHOW") || lateUndo) && before?.depositSaleId) {
     const u = await (await import("@/lib/modules/pos/deposit")).moduleUnforfeitDeposit({ tenantId, unitId, receiptSaleId: before.depositSaleId, actorUserId: opts?.actorUserId || "module:booking" });
     if (u.ok === false) return { ok: false as const, reason: u.message, unforfeit: true };
   }
@@ -1055,6 +1057,10 @@ function bookingTxSale(tx: Prisma.TransactionClient, input: Parameters<typeof po
 async function forfeitNoShowDeposit(tenantId: string, unitId: string, appointmentId: string): Promise<{ forfeited: boolean; saleId?: string; reason?: string }> {
   const appt = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId }, select: { status: true, depositPaidAt: true, depositSaleId: true } });
   if (!appt || appt.status !== "NO_SHOW" || !appt.depositPaidAt || !appt.depositSaleId) return { forfeited: false };
+  // SVC B.8 ▸ % ที่ริบจาก snapshot (แถวเก่าไม่มีคีย์ ⇒ ค่าตั้งปัจจุบัน) · null/0 ⇒ ไม่ริบ (มัดจำค้างคืน) · 0<pct<100 ⇒ บิลริบบางส่วน · 100 ⇒ ทางเดิมด้านล่าง ◂
+  const pct = await depositForfeitPctOf(tenantId, unitId, appointmentId);
+  if (pct === null) return { forfeited: false };
+  if (pct < 100) return forfeitDepositPartial(tenantId, unitId, appointmentId, pct, "NO_SHOW");
   const posSystemId = await systemForUnit(tenantId, unitId, "POS");
   if (!posSystemId) return { forfeited: false };
   try {
@@ -1067,7 +1073,9 @@ async function forfeitNoShowDeposit(tenantId: string, unitId: string, appointmen
       console.error(`[booking] ริบมัดจำนัด ${appointmentId} ไม่สำเร็จ: ${r.code}`);
       return { forfeited: false, reason: `ริบมัดจำไม่สำเร็จ: ${r.message} — ริบหรือคืนมัดจำที่หน้าบิล` };
     }
-    return "legacy" in r ? { forfeited: false } : { forfeited: true, saleId: r.saleId };
+    if ("legacy" in r) return { forfeited: false };
+    await afterDepositForfeit({ tenantId, unitId, appointmentId, saleId: r.saleId, satang: r.satang, pct: 100, reason: "NO_SHOW", fresh: !r.duplicated }); // SVC B.8
+    return { forfeited: true, saleId: r.saleId };
   } catch (e) {
     console.error(`[booking] ริบมัดจำนัด ${appointmentId} ล้ม`, e);
     return { forfeited: false, reason: "ริบมัดจำไม่สำเร็จ — ริบหรือคืนมัดจำที่หน้าบิล" };
@@ -1905,6 +1913,11 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
   const memberSystemId = await systemForUnit(tenantId, unitId, "MEMBER");
   // SVC B.7 ▸ เบอร์ที่ลูกค้ากรอกเองบนหน้าจอง (ONLINE) ไม่ผ่าน OTP ⇒ ไม่ผูกสมาชิก/Party จากเบอร์อย่างเดียว (มติ B.9 reviewer A) ◂
   const customerId = memberSystemId && !phoneUnverified ? await memberCustomerIdFor({ tenantId, memberSystemId, phone, name, self }) : null;
+  // SVC B.8 ▸ #37 ยกเว้นมัดจำสมาชิกระดับ — เฉพาะตัวตนที่ยืนยันแล้ว (ได้ customerId · ช่อง ONLINE ไม่มี) · อ่านก่อนธุรกรรม (G2) ◂
+  //   V6: ช่อง LINE = สมาชิกที่ผูก Party ของลิงก์ตัวตนเท่านั้น (ไม่หาจากเบอร์) · STAFF/PHONE = ลูกค้าที่พนักงานจอง · ONLINE = ไม่ยกเว้น
+  const exemptTier = i.channel === "LINE"
+    ? (linePartyId ? await memberExemptTierForIdentity({ tenantId, unitId }, { partyId: linePartyId }) : null)
+    : !self && customerId ? await memberExemptTierOf({ tenantId, unitId }, customerId) : null;
 
   type TxOut = { kind: "row"; row: ApptLite } | { kind: "replay"; res: BookResult } | { kind: "fail"; code: BookFailCode; reason: string };
   try {
@@ -1936,11 +1949,12 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
       if (!chosen) return { kind: "fail", code: "FULL", reason: FULL_REASON };
 
       const snap = snaps.get(chosen.staffId)!;
-      const depositSatang = computeDepositSatang(snapVal(snap, "booking.deposit.amount") ?? null, {
+      const depositBase = computeDepositSatang(snapVal(snap, "booking.deposit.amount") ?? null, {
         priceSatang: chosen.priceSatang,
         durationMin: chosen.durationMin,
         serviceDepositSatang: service.depositSatang,
       });
+      const depositSatang = exemptTier && depositBase > 0 ? 0 : depositBase; // SVC B.8 ▸ #37 ◂
       const holding = self && holdMinutesOf(i.channel, depositSatang, snap) !== null;
       const status: AppointmentStatus = !self
         ? "CONFIRMED"
@@ -1969,7 +1983,11 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
           assignMode: i.staffId === null ? "ANY" : "SPECIFIC",
           channel: i.channel,
           // SVC B.4 ▸ หนี้ B.3: นาทีเฉพาะคน + buffer ของบริการ ณ ตอนจอง (คีย์ระดับบนข้าง values · CC §1.6 additive) ◂
-          policySnapshot: { ...snap, job: { durationMin: chosen.durationMin, bufferMin: service.bufferMin } } as unknown as Prisma.InputJsonValue,
+          policySnapshot: {
+            ...snap,
+            job: { durationMin: chosen.durationMin, bufferMin: service.bufferMin },
+            ...(exemptTier && depositBase > 0 ? { deposit: { exempt: "MEMBER_TIER", tier: exemptTier } } : {}), // SVC B.8 ▸ additive ◂
+          } as unknown as Prisma.InputJsonValue,
           ...(linePartyId ? { partyId: linePartyId } : {}), // SVC B.7
         },
         select: APPT_LITE,
@@ -2031,7 +2049,9 @@ export async function expireDepositHolds(now: Date): Promise<{ expired: number }
   let expired = 0;
   for (let b = 0; b < HOLD_EXPIRE_MAX_BATCHES; b++) {
     const n = await prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<{ id: string }[]>`
+      // SVC B.8 ▸ §3.7: สลิปค้างตรวจ (PENDING/NEEDS_REVIEW) = หยุดนับจนถึงเวลาเริ่มนัด (มติ Q3) · สลิปอนุมัติแล้ว (รอ consumer ลงเงิน) = ไม่ปล่อย ·
+      //   สลิปถูกปฏิเสธ = นับต่อ · ปล่อยจริง ⇒ booking.cancelled (DEPOSIT_TIMEOUT) ใน tx เดียวกับ UPDATE (ซ้อนกันหลายโพรเซส = ปล่อยครั้งเดียว event เดียว) ◂
+      const rows = await tx.$queryRaw<HoldReleased[]>`
         UPDATE "Appointment" a
         SET "status" = 'CANCELLED', "cancelReason" = 'DEPOSIT_TIMEOUT', "updatedAt" = now()
         WHERE a."id" IN (
@@ -2043,11 +2063,17 @@ export async function expireDepositHolds(now: Date): Promise<{ expired: number }
             AND x."createdAt" + (CASE WHEN jsonb_typeof(x."policySnapshot" -> 'values' -> 'booking.deposit.payWithinMin') = 'number'
                                       THEN (x."policySnapshot" -> 'values' ->> 'booking.deposit.payWithinMin')::numeric END
                                  * interval '1 minute') <= ${at}
+            AND NOT EXISTS (
+              SELECT 1 FROM "PaymentSlip" s
+              WHERE s."tenantId" = x."tenantId" AND s."domain" = 'BOOKING' AND s."refType" = 'APPT_DEPOSIT' AND s."refId" = x."id"
+                AND (s."status" IN ('AUTO_APPROVED', 'APPROVED') OR (s."status" IN ('PENDING', 'NEEDS_REVIEW') AND x."startAt" > ${at})))
+            AND COALESCE((x."policySnapshot" -> 'deposit' -> 'slipClaim' ->> 'until')::bigint, 0) <= (extract(epoch from now()) * 1000)::bigint
           ORDER BY x."createdAt" ASC
           LIMIT ${HOLD_EXPIRE_BATCH}
           FOR UPDATE SKIP LOCKED
         ) AND a."status" = 'PENDING' AND a."depositPaidAt" IS NULL
-        RETURNING a."id"`;
+        RETURNING a."id", a."tenantId", a."unitId", a."staffId", a."kind"::text AS "kind", a."channel"::text AS "channel", a."serviceId", a."depositSatang"`;
+      for (const r of rows) await emitHoldReleasedTx(tx, r); // SVC B.8
       return rows.length;
     }, HOLD_EXPIRE_TX);
     expired += n;
@@ -2364,3 +2390,539 @@ export async function rescheduleBySelf(
   return res;
 }
 // ◂ SVC B.7
+
+// ═════════ SVC B.8 ▸ มัดจำรุ่นแรก — ตัวช่วยฐานข้อมูลของ booking/deposit.ts (ใบสั่ง svc-brief-b.8 §3.7 · เพิ่มเท่านั้น) ═════════
+// 🔴 เงินผ่านฟังก์ชันโมดูลของ POS เท่านั้น (moduleTakeDeposit · moduleForfeitDeposit) + createSale จุดเดียวของไฟล์ (bookingTxSale)
+// 🔴 แถวนัด = ตัวตัดสินเดียว: ผูกใบรับใต้ FOR UPDATE ของแถว (CAS depositPaidAt IS NULL) + event/audit ใน tx เดียวกัน
+// 🔴 ไม่มี connection ที่สองใต้ tx · event นอก tx (บิลริบ) กันชน unique ด้วยการกลืน P2002 (คีย์เดียวกัน = event เดียว)
+
+type HoldReleased = { id: string; tenantId: string; unitId: string; staffId: string; kind: string; channel: string | null; serviceId: string; depositSatang: number };
+/** booking.cancelled ของนัดที่ปล่อยช่องเพราะไม่จ่ายมัดจำ (คีย์เดียวกับทางยกเลิกอื่น) — เรียกใน tx ของ UPDATE */
+async function emitHoldReleasedTx(tx: Prisma.TransactionClient, r: HoldReleased): Promise<void> {
+  await emitOutbox(tx, {
+    tenantId: r.tenantId, unitId: r.unitId, type: "booking.cancelled", idempotencyKey: `booking.cancelled#${r.id}`,
+    payload: {
+      appointmentId: r.id, unitId: r.unitId, staffId: r.staffId, kind: r.kind, channel: r.channel, serviceId: r.serviceId,
+      reason: "DEPOSIT_TIMEOUT", from: "PENDING", depositSatang: Number(r.depositSatang), depositPaid: false,
+    },
+  });
+}
+
+/** emit นอก tx — คำขอพร้อมกันชน unique ของคีย์ = มีแถวแล้ว (เงียบ) */
+async function emitOutsideTxOnce(input: Parameters<typeof emitOutbox>[1]): Promise<void> {
+  try {
+    await emitOutbox(prisma, input);
+  } catch (e) {
+    if (!isP2002(e)) throw e;
+  }
+}
+
+/** ระดับสมาชิกเรียงต่ำ → สูง (Customer.tier) · ค่าตั้งที่ไม่ใช่ 4 ตัวนี้ = ไม่ยกเว้นใคร */
+const MEMBER_TIER_RANK: Readonly<Record<string, number>> = { MEMBER: 1, SILVER: 2, GOLD: 3, PLATINUM: 4 };
+
+/** #37: ลูกค้าสมาชิก (ยืนยันตัวตนแล้ว) ได้ยกเว้นมัดจำไหม — คืนระดับของลูกค้าเมื่อ ≥ booking.deposit.memberExemptTier (ค่าตั้งปัจจุบัน) · อื่น null */
+export async function memberExemptTierOf(ctx: { tenantId: string; unitId: string }, customerId: string): Promise<string | null> {
+  const r = await resolveSettings({ tenantId: ctx.tenantId }, ["booking.deposit.memberExemptTier"], { unitId: ctx.unitId });
+  const want = r["booking.deposit.memberExemptTier"]?.value;
+  const need = typeof want === "string" ? MEMBER_TIER_RANK[want.trim().toUpperCase()] : undefined;
+  if (!need) return null;
+  const c = await prisma.customer.findFirst({ where: { id: customerId, tenantId: ctx.tenantId }, select: { tier: true } });
+  const have = c ? MEMBER_TIER_RANK[String(c.tier)] : undefined;
+  return have && have >= need ? String(c!.tier) : null;
+}
+
+/** หน้าจอง (อ่านอย่างเดียว): ตัวตน LINE ที่ยืนยันแล้ว ⇒ ระดับที่ยกเว้นมัดจำ หรือ null (สมาชิกของระบบสมาชิกที่ผูกสาขา · ผูก Party หรือเบอร์เดียวกับ Party) */
+export async function memberExemptTierForIdentity(ctx: { tenantId: string; unitId: string }, ident: { partyId: string }): Promise<string | null> {
+  // V6 (มติผู้คุม · บทเรียน B.9): Customer.partyId === Party ของลิงก์ตัวตนเท่านั้น — ไม่หาจากเบอร์ (เบอร์ใน Party ไม่ผ่าน OTP)
+  const memberSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "MEMBER");
+  if (!memberSystemId || typeof ident?.partyId !== "string" || !ident.partyId) return null;
+  const c = await prisma.customer.findFirst({
+    where: { tenantId: ctx.tenantId, memberSystemId, partyId: ident.partyId },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return c ? memberExemptTierOf(ctx, c.id) : null;
+}
+
+// ── ข้อมูลมัดจำของนัด (สถานะคิดจากข้อมูล §3.1) ──
+export type DepositFacts = {
+  appt: {
+    id: string; tenantId: string; unitId: string; status: string; channel: string | null; depositSatang: number; depositPaidAt: Date | null; depositSaleId: string | null;
+    cancelReason: string | null; createdAt: Date; startAt: Date; policySnapshot: unknown; customerId: string | null; customerName: string; customerPhone: string;
+    serviceName: string; staffName: string | null;
+  };
+  dep: { id: string; amountSatang: number; usedSatang: number; refundedSatang: number; status: string; receiptNo: string | null } | null;
+  receiptNo: string | null;
+  /** Σ บิลริบ PAID ของมัดจำ (ทางจองคิว + ทางหน้าขาย · V18) */
+  forfeitedSatang: number;
+  /** มีบิลริบของมัดจำ/นัด สถานะใดก็ได้ (รวม VOIDED) */
+  forfeitBillEver: boolean;
+  slip: { id: string; status: string } | null;
+};
+
+/** ค่ามัดจำเพิ่มเติมใน policySnapshot.deposit (additive · ไม่มี migration) */
+export type DepositSnap = {
+  exempt?: string; tier?: string;
+  /** V21: ร้านยอมรับยอดที่ได้ (UNDERPAID) */
+  accepted?: boolean;
+  /** V2/V3: ยกเลิกช้า — จ่ายแล้ว ณ ตอน CAS ยกเลิก · ยอดที่ลูกค้ายอมให้เก็บ */
+  late?: { paid: boolean; acceptSatang: number };
+  /** เงินเข้าหลังนัดจบ/ปล่อยช่อง (late_money) — ค้างคืนเต็ม ไม่เข้ารอริบ */
+  lateMoney?: boolean;
+  /** V4: ด่านแนบสลิปต่อนัด */
+  slipClaim?: { key: string; until: number };
+};
+export function depositSnapOf(snap: unknown): DepositSnap {
+  const d = snap && typeof snap === "object" && !Array.isArray(snap) ? (snap as Record<string, unknown>).deposit : undefined;
+  return d && typeof d === "object" && !Array.isArray(d) ? (d as DepositSnap) : {};
+}
+
+const FACT_APPT = {
+  id: true, tenantId: true, unitId: true, status: true, channel: true, depositSatang: true, depositPaidAt: true, depositSaleId: true, cancelReason: true,
+  createdAt: true, startAt: true, policySnapshot: true, customerId: true, customerName: true, customerPhone: true,
+  service: { select: { name: true } }, staff: { select: { name: true } },
+} as const;
+
+async function factsFor(tenantId: string, rows: Prisma.AppointmentGetPayload<{ select: typeof FACT_APPT }>[]): Promise<DepositFacts[]> {
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r.id);
+  const saleIds = rows.map((r) => r.depositSaleId).filter((x): x is string => !!x);
+  const [deps, sales, slips] = await Promise.all([
+    saleIds.length ? prisma.posDeposit.findMany({ where: { tenantId, receiptSaleId: { in: saleIds } }, select: { id: true, receiptSaleId: true, amountSatang: true, usedSatang: true, refundedSatang: true, status: true, receiptNo: true } }) : [],
+    saleIds.length ? prisma.posSale.findMany({ where: { tenantId, id: { in: saleIds } }, select: { id: true, receiptNo: true } }) : [],
+    prisma.paymentSlip.findMany({ where: { tenantId, domain: "BOOKING", refType: "APPT_DEPOSIT", refId: { in: ids } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, refId: true, status: true } }),
+  ]);
+  const depIds = deps.map((d) => d.id);
+  // V18: บิลริบของมัดจำ ไม่ว่าออกทางจองคิว (BOOKING) หรือหน้าขาย (POS) — คีย์ dep-forfeit:<PosDeposit.id>
+  const forfeits = await prisma.posSale.findMany({
+    where: {
+      tenantId, docType: "SALE", idempotencyKey: { startsWith: "dep-forfeit:" },
+      OR: [{ sourceModule: "BOOKING", sourceId: { in: ids } }, ...depIds.map((d) => ({ idempotencyKey: { startsWith: `dep-forfeit:${d}` } }))],
+    },
+    select: { idempotencyKey: true, sourceModule: true, sourceId: true, status: true, grandTotalSatang: true },
+  });
+  const depOf = new Map(deps.map((d) => [d.receiptSaleId, d]));
+  const saleOf = new Map(sales.map((s) => [s.id, s]));
+  const slipOf = new Map<string, { id: string; status: string }>();
+  for (const s of slips) if (!slipOf.has(s.refId)) slipOf.set(s.refId, { id: s.id, status: s.status });
+  return rows.map((r) => {
+    const d = r.depositSaleId ? depOf.get(r.depositSaleId) : undefined;
+    const mine = forfeits.filter((f) => (d && (f.idempotencyKey ?? "").startsWith(`dep-forfeit:${d.id}`)) || (f.sourceModule === "BOOKING" && f.sourceId === r.id));
+    return {
+      appt: {
+        id: r.id, tenantId: r.tenantId, unitId: r.unitId, status: String(r.status), channel: r.channel, depositSatang: r.depositSatang, depositPaidAt: r.depositPaidAt,
+        depositSaleId: r.depositSaleId, cancelReason: r.cancelReason, createdAt: r.createdAt, startAt: r.startAt, policySnapshot: r.policySnapshot,
+        customerId: r.customerId, customerName: r.customerName, customerPhone: r.customerPhone, serviceName: r.service?.name ?? "", staffName: r.staff?.name ?? null,
+      },
+      dep: d ? { id: d.id, amountSatang: d.amountSatang, usedSatang: d.usedSatang, refundedSatang: d.refundedSatang, status: String(d.status), receiptNo: d.receiptNo } : null,
+      receiptNo: d?.receiptNo ?? (r.depositSaleId ? (saleOf.get(r.depositSaleId)?.receiptNo ?? null) : null),
+      forfeitedSatang: mine.filter((f) => f.status === "PAID").reduce((t, f) => t + f.grandTotalSatang, 0),
+      forfeitBillEver: mine.length > 0,
+      slip: slipOf.get(r.id) ?? null,
+    };
+  });
+}
+
+/** ข้อมูลมัดจำของนัดในหน่วยนี้ (นัด BOOKED ของ ctx เท่านั้น · หน่วยอื่น/ร้านอื่น ⇒ null) */
+export async function depositFactsOf(ctx: { tenantId: string; unitId: string }, appointmentId: string): Promise<DepositFacts | null> {
+  if (typeof appointmentId !== "string" || !appointmentId || appointmentId.length > 200) return null;
+  const row = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId: ctx.tenantId, unitId: ctx.unitId, kind: "BOOKED" }, select: FACT_APPT });
+  return row ? ((await factsFor(ctx.tenantId, [row]))[0] ?? null) : null;
+}
+
+/**
+ * V7 คิวมัดจำ: SQL กรองเฉพาะแถวที่ยังค้าง — ยังถือช่องและยังไม่จ่าย · จ่ายแล้วแต่ยอดไม่ตรง (ขาด/เกิน) ที่ร้านยังไม่ยอมรับ ·
+ * จบแบบไม่ใช้บริการ (ยกเลิก/ไม่มา) ที่มัดจำยังมีคงเหลือ · เรียงเวลานัด · แบ่งหน้า (offset/limit · คืน hasMore — ไม่ตัดทิ้งเงียบ) · กรองช่วงวันได้
+ */
+export async function depositFactsForQueue(
+  ctx: { tenantId: string; unitId: string },
+  page: { offset?: number; limit?: number; fromMs?: number | null; toMs?: number | null } = {},
+): Promise<{ facts: DepositFacts[]; hasMore: boolean }> {
+  const limit = Math.min(200, Math.max(1, Math.floor(page.limit ?? 200)));
+  const offset = Math.max(0, Math.floor(page.offset ?? 0));
+  const from = typeof page.fromMs === "number" && Number.isFinite(page.fromMs) ? new Date(page.fromMs) : null;
+  const to = typeof page.toMs === "number" && Number.isFinite(page.toMs) ? new Date(page.toMs) : null;
+  const idRows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT a."id" FROM "Appointment" a
+    LEFT JOIN "PosDeposit" d ON d."receiptSaleId" = a."depositSaleId" AND d."tenantId" = a."tenantId"
+    WHERE a."tenantId" = ${ctx.tenantId} AND a."unitId" = ${ctx.unitId} AND a."kind" = 'BOOKED'
+      AND (${from}::timestamptz IS NULL OR a."startAt" >= ${from}::timestamptz)
+      AND (${to}::timestamptz IS NULL OR a."startAt" < ${to}::timestamptz)
+      AND (
+        (a."status" IN ('PENDING', 'CONFIRMED') AND a."depositSatang" > 0 AND a."depositPaidAt" IS NULL)
+        OR (a."status" IN ('PENDING', 'CONFIRMED') AND a."depositPaidAt" IS NOT NULL AND d."id" IS NOT NULL AND d."amountSatang" <> a."depositSatang"
+            AND COALESCE(a."policySnapshot" -> 'deposit' ->> 'accepted', '') <> 'true')
+        OR (a."status" IN ('CANCELLED', 'NO_SHOW') AND a."depositPaidAt" IS NOT NULL
+            AND (d."id" IS NULL OR (d."status" = 'OPEN' AND d."amountSatang" - d."usedSatang" - d."refundedSatang" > 0)))
+      )
+    ORDER BY a."startAt" ASC, a."id" ASC
+    OFFSET ${offset} LIMIT ${limit + 1}`;
+  const hasMore = idRows.length > limit;
+  const ids = idRows.slice(0, limit).map((r) => r.id);
+  if (!ids.length) return { facts: [], hasMore };
+  const rows = await prisma.appointment.findMany({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, id: { in: ids } }, select: FACT_APPT });
+  const order = new Map(ids.map((id, i) => [id, i]));
+  rows.sort((x, y) => (order.get(x.id) ?? 0) - (order.get(y.id) ?? 0));
+  return { facts: await factsFor(ctx.tenantId, rows), hasMore };
+}
+
+/** สลิปของร้าน (อ่านจากฐานใหม่เสมอ · consumer ไม่เชื่อ payload) */
+export async function depositSlipOf(tenantId: string, slipId: string) {
+  if (typeof slipId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(slipId)) return null;
+  return prisma.paymentSlip.findFirst({
+    where: { id: slipId, tenantId },
+    select: { id: true, unitId: true, domain: true, refType: true, refId: true, status: true, amountSatang: true, expectedSatang: true, checks: true },
+  });
+}
+
+/** audit ของนัด (กันเขียนซ้ำ/ตรวจว่าสลิปนี้ลงเงินแล้ว) */
+export async function depositAuditExists(tenantId: string, appointmentId: string, action: string, slipId?: string): Promise<boolean> {
+  const hit = await prisma.auditLog.findFirst({
+    where: { tenantId, action, targetType: "Appointment", targetId: appointmentId, ...(slipId ? { after: { path: ["slipId"], equals: slipId } } : {}) },
+    select: { id: true },
+  });
+  return !!hit;
+}
+export async function writeDepositAudit(a: { tenantId: string; unitId: string; appointmentId: string; action: string; actorType: "USER" | "SYSTEM"; actorId: string; after: Record<string, unknown> }): Promise<void> {
+  await prisma.auditLog.create({
+    data: { tenantId: a.tenantId, unitId: a.unitId, actorType: a.actorType, actorId: a.actorId, action: a.action, targetType: "Appointment", targetId: a.appointmentId, after: a.after as Prisma.InputJsonValue },
+  });
+}
+
+/** ใบรับมัดจำของนัดที่ยัง PAID (คีย์ฐาน booking-deposit-<id> หรือ -r<n>) — ใช้เมื่อสองทางรับเงินชนคีย์เดียวกันด้วย payload ต่างกัน */
+export async function liveDepositReceiptOf(tenantId: string, appointmentId: string): Promise<string | null> {
+  const s = await prisma.posSale.findFirst({
+    where: { tenantId, sourceModule: "POS_DEPOSIT", status: "PAID", docType: "SALE", idempotencyKey: { startsWith: `booking-deposit-${appointmentId}` } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  return s?.id ?? null;
+}
+
+export type TakeDepositResult = { ok: true; saleId: string | null; duplicated: boolean } | { ok: false; code: "SHIFT_REQUIRED" | "CONFLICT" | "BUSY"; reason: string };
+/**
+ * ใบรับมัดจำของนัด (ทุกทางรับเงิน: สลิปอนุมัติ · ร้านกดยืนยัน) — moduleTakeDeposit คีย์ฐานเดียวกับ recordDeposit (`booking-deposit-<id>`) ⇒
+ * ยิงซ้ำ/พร้อมกัน/สองทาง = ใบรับเดียว · ไม่ผูก POS ⇒ saleId null (บันทึก depositPaidAt เฉย ๆ แบบ recordDeposit) · ไม่แตะแถวนัด
+ */
+export async function takeAppointmentDeposit(i: {
+  tenantId: string; unitId: string; appointmentId: string; amountSatang: number; payType: PosPayType; customerId: string | null; customerName: string | null; serviceName: string;
+}): Promise<TakeDepositResult> {
+  const posSystemId = await systemForUnit(i.tenantId, i.unitId, "POS");
+  if (!posSystemId) return { ok: true, saleId: null, duplicated: false };
+  try {
+    const posDeposit = await import("@/lib/modules/pos/deposit");
+    const sale = await posDeposit.moduleTakeDeposit(
+      { tenantId: i.tenantId, unitId: i.unitId, systemId: posSystemId, keyBase: `booking-deposit-${i.appointmentId}`, amountSatang: i.amountSatang, payType: i.payType, customerId: i.customerId, customerName: i.customerName, note: `มัดจำ ${i.serviceName}`, createdBy: "module:booking" },
+      (tx, k) =>
+        bookingTxSale(tx, {
+          tenantId: i.tenantId,
+          unitId: i.unitId,
+          systemId: posSystemId,
+          sourceModule: k.sourceModule,
+          sourceId: k.sourceId,
+          idempotencyKey: k.idempotencyKey,
+          lines: [{ name: `มัดจำ ${i.serviceName}`, qty: 1, unitPriceSatang: i.amountSatang }],
+          payMethods: [{ type: k.payType, amountSatang: i.amountSatang }],
+        }),
+    );
+    return { ok: true, saleId: sale.saleId, duplicated: sale.duplicated };
+  } catch (e) {
+    if (e instanceof pos.PosSaleError) {
+      if (e.code === "IDEMPOTENCY_CONFLICT") return { ok: false, code: "CONFLICT", reason: e.message };
+      if (e.code === "SHIFT_REQUIRED" || e.code === "SHIFT_CLOSED") return { ok: false, code: "SHIFT_REQUIRED", reason: e.message };
+    }
+    const code = (e as { code?: unknown } | null)?.code;
+    if (code === "P2002" || code === "P2034" || code === "P2028" || (e instanceof Error && e.message.startsWith("ระบบไม่ว่าง"))) return { ok: false, code: "BUSY", reason: "ระบบไม่ว่าง — ลองอีกครั้ง" };
+    throw e;
+  }
+}
+
+const isRetryableTx = (e: unknown): boolean => {
+  const c = (e as { code?: unknown; meta?: { code?: unknown } } | null);
+  return c?.code === "P2034" || c?.code === "40P01" || c?.meta?.code === "40P01" || (e instanceof Error && /deadlock detected|40P01/.test(e.message));
+};
+/** tx สั้นของแถวนัด: deadlock/serialization ⇒ ลองใหม่ 1 ครั้ง แล้ว BUSY (null) */
+async function apptTx<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await prisma.$transaction(fn, { maxWait: 15_000, timeout: 20_000 });
+    } catch (e) {
+      if (!isRetryableTx(e)) throw e;
+    }
+  }
+  return null;
+}
+
+type LockedAppt = { id: string; status: string; cancelReason: string | null; depositSatang: number; depositPaidAt: Date | null; depositSaleId: string | null; policySnapshot: unknown };
+async function lockApptRow(tx: Prisma.TransactionClient, tenantId: string, unitId: string, id: string): Promise<LockedAppt | null> {
+  const [r] = await tx.$queryRaw<LockedAppt[]>`
+    SELECT "id", "status"::text AS "status", "cancelReason", "depositSatang", "depositPaidAt", "depositSaleId", "policySnapshot"
+    FROM "Appointment" WHERE "id" = ${id} AND "tenantId" = ${tenantId} AND "unitId" = ${unitId} AND "kind" = 'BOOKED' FOR UPDATE`;
+  return r ?? null;
+}
+/** policySnapshot + deposit.<patch> (additive · คีย์อื่นคงเดิม) */
+export function withDepositSnap(snap: unknown, patch: Partial<DepositSnap> & Record<string, unknown>): Prisma.InputJsonValue {
+  const base = snap && typeof snap === "object" && !Array.isArray(snap) ? (snap as Record<string, unknown>) : {};
+  const next: Record<string, unknown> = { ...depositSnapOf(snap) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) delete next[k];
+    else next[k] = v;
+  }
+  return { ...base, deposit: next } as unknown as Prisma.InputJsonValue;
+}
+
+export type DepositBind =
+  | { kind: "BOUND"; status: string; partial: boolean; late: boolean; amountSatang: number }
+  | { kind: "ALREADY"; saleId: string | null }
+  | { kind: "GONE" }
+  | { kind: "BUSY" };
+/**
+ * ผูกใบรับกับแถวนัด (ตัดสินใต้ล็อกแถว · CAS depositPaidAt IS NULL) — §3.3 ตารางกรณี:
+ *   PENDING/CONFIRMED ครบยอด ⇒ CONFIRMED (SLIP: เว้นแต่ snapshot requireConfirm = true) · ขาดยอด ⇒ สถานะคงเดิม · สถานะอื่น ⇒ ไม่ปลุกนัด (late = ค้างคืน) ·
+ *   SHOP (ร้านกดยืนยัน) ⇒ CONFIRMED เมื่อยังถือช่อง · จ่ายแล้ว ⇒ ALREADY (ไม่แตะ) · event booking.deposit_paid + audit ใน tx เดียว ·
+ *   V8: ยอด = ยอดจริงของใบรับ (PosDeposit) ไม่ใช่ยอดที่ผู้เรียกส่งมา
+ */
+export async function bindDepositReceipt(i: {
+  tenantId: string; unitId: string; appointmentId: string; saleId: string | null; amountSatang: number; via: "SLIP" | "SHOP";
+  slipId?: string | null; actorUserId?: string | null; payType?: string | null;
+}): Promise<DepositBind> {
+  const out = await apptTx(async (tx): Promise<DepositBind> => {
+    const row = await lockApptRow(tx, i.tenantId, i.unitId, i.appointmentId);
+    if (!row) return { kind: "GONE" };
+    if (row.depositPaidAt) return { kind: "ALREADY", saleId: row.depositSaleId };
+    const d = i.saleId ? await tx.posDeposit.findUnique({ where: { receiptSaleId: i.saleId }, select: { amountSatang: true, tenantId: true } }) : null;
+    const amount = d && d.tenantId === i.tenantId ? d.amountSatang : i.amountSatang;
+    const open = row.status === "PENDING" || row.status === "CONFIRMED";
+    const required = Number(row.depositSatang);
+    const partial = amount < required;
+    let status = row.status;
+    if (open && (i.via === "SHOP" || (!partial && snapVal(row.policySnapshot, "booking.booking.requireConfirm") !== true))) status = "CONFIRMED";
+    const w = await tx.appointment.updateMany({
+      where: { id: row.id, tenantId: i.tenantId, unitId: i.unitId, depositPaidAt: null },
+      data: {
+        depositPaidAt: new Date(), depositSaleId: i.saleId,
+        ...(status !== row.status ? { status: status as AppointmentStatus } : {}),
+        ...(i.via === "SHOP" && open ? { policySnapshot: withDepositSnap(row.policySnapshot, { accepted: true }) } : {}),
+        ...(!open ? { policySnapshot: withDepositSnap(row.policySnapshot, { lateMoney: true }) } : {}),
+      },
+    });
+    if (w.count !== 1) return { kind: "ALREADY", saleId: null };
+    await emitOutbox(tx, {
+      tenantId: i.tenantId, unitId: i.unitId, type: "booking.deposit_paid", idempotencyKey: `booking.deposit_paid#${row.id}#${i.saleId ?? "none"}`,
+      payload: { appointmentId: row.id, unitId: i.unitId, amountSatang: amount, requiredSatang: required, via: i.via, partial, late: !open, status },
+    });
+    const base = { tenantId: i.tenantId, unitId: i.unitId, targetType: "Appointment", targetId: row.id };
+    if (i.via === "SLIP") {
+      await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.receive", after: { slipId: i.slipId ?? null, receiptSaleId: i.saleId, amountSatang: amount, partial, late: !open } } });
+    } else {
+      await tx.auditLog.create({ data: { ...base, actorType: "USER", actorId: i.actorUserId ?? "unknown", action: "booking.deposit.confirm", after: { receiptSaleId: i.saleId, amountSatang: amount, payType: i.payType ?? null, partial, late: !open } } });
+    }
+    if (!open) {
+      await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.late_money", after: { appointmentId: row.id, receiptSaleId: i.saleId, amountSatang: amount, status: row.status, via: i.via } } });
+    }
+    return { kind: "BOUND", status, partial, late: !open, amountSatang: amount };
+  });
+  return out ?? { kind: "BUSY" };
+}
+
+/** V21: ร้านยอมรับยอดที่ได้ (UNDERPAID) ⇒ CONFIRMED (PENDING เท่านั้นที่เปลี่ยน) + snapshot deposit.accepted + audit booking.deposit.confirm · ไม่ออกใบรับเพิ่ม */
+export async function acceptPaidDeposit(i: { tenantId: string; unitId: string; appointmentId: string; actorUserId: string; amountSatang: number }): Promise<"OK" | "GONE" | "BUSY"> {
+  const out = await apptTx(async (tx): Promise<"OK" | "GONE"> => {
+    const row = await lockApptRow(tx, i.tenantId, i.unitId, i.appointmentId);
+    if (!row || !row.depositPaidAt || (row.status !== "PENDING" && row.status !== "CONFIRMED")) return "GONE";
+    await tx.appointment.updateMany({
+      where: { id: row.id, tenantId: i.tenantId, unitId: i.unitId, status: row.status as AppointmentStatus },
+      data: { status: "CONFIRMED", policySnapshot: withDepositSnap(row.policySnapshot, { accepted: true }) },
+    });
+    await tx.auditLog.create({
+      data: { tenantId: i.tenantId, unitId: i.unitId, actorType: "USER", actorId: i.actorUserId, action: "booking.deposit.confirm", targetType: "Appointment", targetId: row.id, after: { receiptSaleId: row.depositSaleId, amountSatang: i.amountSatang, accepted: true } },
+    });
+    return "OK";
+  });
+  return out ?? "BUSY";
+}
+
+// ── V4 ด่านแนบสลิปต่อนัด (CAS บน policySnapshot.deposit.slipClaim · ไม่ถือ tx ข้ามการเรียกตัวตรวจสลิป) ──
+const SLIP_CLAIM_TTL_MS = 60_000;
+export type SlipClaim = { ok: true; row: { status: string; cancelReason: string | null; depositPaidAt: Date | null; depositSatang: number } } | { ok: false; code: "HELD" | "GONE" | "BUSY" };
+/** จองสิทธิ์แนบสลิปของนัด: ว่าง/หมดอายุ/key เดียวกัน ⇒ ได้ · ถืออยู่โดย key อื่น ⇒ HELD · หมดอายุตามนาฬิกาจริง (กันค้างเมื่อโพรเซสตาย) */
+export async function claimSlipSubmit(ctx: { tenantId: string; unitId: string }, appointmentId: string, key: string): Promise<SlipClaim> {
+  const out = await apptTx(async (tx): Promise<SlipClaim> => {
+    const row = await lockApptRow(tx, ctx.tenantId, ctx.unitId, appointmentId);
+    if (!row) return { ok: false, code: "GONE" };
+    const c = depositSnapOf(row.policySnapshot).slipClaim;
+    const nowMs = Date.now();
+    if (c && typeof c.until === "number" && c.until > nowMs && c.key !== key) return { ok: false, code: "HELD" };
+    await tx.appointment.updateMany({ where: { id: row.id, tenantId: ctx.tenantId, unitId: ctx.unitId }, data: { policySnapshot: withDepositSnap(row.policySnapshot, { slipClaim: { key, until: nowMs + SLIP_CLAIM_TTL_MS } }) } });
+    return { ok: true, row: { status: row.status, cancelReason: row.cancelReason, depositPaidAt: row.depositPaidAt, depositSatang: Number(row.depositSatang) } };
+  });
+  return out ?? { ok: false, code: "BUSY" };
+}
+/** ปล่อยสิทธิ์แนบสลิป (เฉพาะ key ของตัวเอง) — ไม่ throw */
+export async function releaseSlipSubmit(ctx: { tenantId: string; unitId: string }, appointmentId: string, key: string): Promise<void> {
+  try {
+    await apptTx(async (tx) => {
+      const row = await lockApptRow(tx, ctx.tenantId, ctx.unitId, appointmentId);
+      if (!row || depositSnapOf(row.policySnapshot).slipClaim?.key !== key) return;
+      await tx.appointment.updateMany({ where: { id: row.id, tenantId: ctx.tenantId, unitId: ctx.unitId }, data: { policySnapshot: withDepositSnap(row.policySnapshot, { slipClaim: undefined }) } });
+    });
+  } catch (e) {
+    console.error(`[booking] ปล่อยสิทธิ์แนบสลิปนัด ${appointmentId} ไม่สำเร็จ`, e instanceof Error ? e.message : e);
+  }
+}
+
+/** V11: ก่อนคืนมัดจำ — ตรวจใต้ล็อกแถวว่านัดจบแบบไม่ใช้บริการ (CANCELLED/NO_SHOW) และยังอ้างใบรับเดิม */
+export async function lockForRefund(ctx: { tenantId: string; unitId: string }, appointmentId: string, receiptSaleId: string): Promise<"OK" | "BAD_STATE" | "BUSY"> {
+  const out = await apptTx(async (tx): Promise<"OK" | "BAD_STATE"> => {
+    const row = await lockApptRow(tx, ctx.tenantId, ctx.unitId, appointmentId);
+    if (!row || (row.status !== "CANCELLED" && row.status !== "NO_SHOW") || row.depositSaleId !== receiptSaleId) return "BAD_STATE";
+    return "OK";
+  });
+  return out ?? "BUSY";
+}
+
+/** ยอดของใบคืนเงิน (CN) ของร้าน — ใช้เป็นยอดใน audit/event คืนมัดจำ (V11) */
+export async function refundSaleTotalOf(tenantId: string, saleId: string): Promise<number | null> {
+  const s = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { grandTotalSatang: true } });
+  return s ? s.grandTotalSatang : null;
+}
+
+// ── ริบ (ไม่มา · ยกเลิกช้า) — §3.5 ──
+/** % ที่ร้านเก็บของนัด: snapshot ชนะ · แถวเก่าไม่มีคีย์ ⇒ ค่าตั้งปัจจุบัน · null/≤0/ไม่ใช่ตัวเลข ⇒ null (ไม่ริบ) · เพดาน 100 */
+export async function depositForfeitPctOf(tenantId: string, unitId: string, appointmentId: string): Promise<number | null> {
+  const a = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId }, select: { policySnapshot: true } });
+  if (!a) return null;
+  const key = "booking.deposit.forfeitPct";
+  const vals = a.policySnapshot && typeof a.policySnapshot === "object" ? (a.policySnapshot as PolicySnap).values : undefined;
+  const v = vals && typeof vals === "object" && Object.prototype.hasOwnProperty.call(vals, key)
+    ? vals[key]
+    : (await resolveSettings({ tenantId }, [key], { unitId }))[key]?.value;
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.min(100, v) : null;
+}
+
+const FORFEIT_LATE_LINE = "มัดจำริบ — ยกเลิกช้า";
+class ForfeitAgain extends Error {}
+
+/** หลังได้บิลริบทาง POS (100% ไม่มา): event booking.deposit_forfeited (ครั้งเดียวต่อบิลริบ) + audit booking.deposit.forfeit (บิลใหม่) — ไม่ throw · หนี้ V16: ทางนี้ยังนอก tx ของบิล */
+async function afterDepositForfeit(a: { tenantId: string; unitId: string; appointmentId: string; saleId: string; satang: number; pct: number; reason: "NO_SHOW" | "CUSTOMER_LATE"; fresh: boolean }): Promise<void> {
+  try {
+    await emitOutsideTxOnce({
+      tenantId: a.tenantId, unitId: a.unitId, type: "booking.deposit_forfeited", idempotencyKey: `booking.deposit_forfeited#${a.saleId}`,
+      payload: { appointmentId: a.appointmentId, unitId: a.unitId, forfeitSatang: a.satang, pct: a.pct, reason: a.reason },
+    });
+    if (a.fresh) {
+      await writeDepositAudit({ tenantId: a.tenantId, unitId: a.unitId, appointmentId: a.appointmentId, action: "booking.deposit.forfeit", actorType: "SYSTEM", actorId: "module:booking", after: { saleId: a.saleId, forfeitSatang: a.satang, pct: a.pct, reason: a.reason } });
+    }
+  } catch (e) {
+    console.error(`[booking] event/audit ริบมัดจำนัด ${a.appointmentId} ไม่สำเร็จ`, e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * บิลริบ min(floor(คงเหลือ × pct / 100), capSatang) ผ่าน bookingTxSale (แถว DEPOSIT อ้างใบรับ · คีย์ dep-forfeit:<PosDeposit.id> แบบ POS ⇒ moduleUnforfeitDeposit ใช้ได้) ·
+ * ล็อกคีย์ (advisory เดียวกับ createSale) ⇒ ยิงซ้ำ/พร้อมกัน = บิลเดียว · event + audit ใน tx ของบิล (V16) · ส่วนที่เหลือคงอยู่ในมัดจำ (ค้างคืน) · ไม่ throw
+ */
+async function forfeitDepositPartial(
+  tenantId: string, unitId: string, appointmentId: string, pct: number, reason: "NO_SHOW" | "CUSTOMER_LATE", capSatang: number | null = null, actorId = "module:booking",
+): Promise<{ forfeited: boolean; saleId?: string; reason?: string }> {
+  try {
+    const appt = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId }, select: { depositPaidAt: true, depositSaleId: true } });
+    if (!appt?.depositPaidAt || !appt.depositSaleId) return { forfeited: false };
+    const posSystemId = await systemForUnit(tenantId, unitId, "POS");
+    if (!posSystemId) return { forfeited: false };
+    const d0 = await prisma.posDeposit.findUnique({ where: { receiptSaleId: appt.depositSaleId }, select: { id: true, tenantId: true, unitId: true, receiptSaleId: true, customerId: true, receiptNo: true } });
+    if (!d0 || d0.tenantId !== tenantId || d0.unitId !== unitId) return { forfeited: false }; // มัดจำแบบเดิม/ไม่ใช่ของหน่วยนี้ = ไม่แตะ
+    const lineName = reason === "CUSTOMER_LATE" ? FORFEIT_LATE_LINE : (await import("@/lib/modules/pos/deposit")).FORFEIT_LINE_NAME;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let key: string | null = null;
+      for (let round = 0; round <= 20 && key === null; round++) {
+        const k = round === 0 ? `dep-forfeit:${d0.id}` : `dep-forfeit:${d0.id}-r${round}`;
+        const s = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: k } }, select: { id: true, status: true } });
+        if (!s) key = k;
+        else if (s.status !== "VOIDED") return { forfeited: true, saleId: s.id };
+      }
+      if (key === null) return { forfeited: false, reason: "ริบมัดจำไม่สำเร็จ — บิลริบถูกยกเลิกหลายครั้งเกินไป" };
+      const lockKey = key;
+      try {
+        const out = await prisma.$transaction(
+          async (tx) => {
+            await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${tenantId}::text || ':' || ${lockKey}::text))) l`;
+            const again = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: lockKey } }, select: { id: true, grandTotalSatang: true, status: true } });
+            if (again && again.status === "VOIDED") throw new ForfeitAgain();
+            if (again) return { kind: "dup" as const, saleId: again.id };
+            const d = await tx.posDeposit.findUnique({ where: { id: d0.id }, select: { amountSatang: true, usedSatang: true, refundedSatang: true, status: true } });
+            const remaining = d ? d.amountSatang - d.usedSatang - d.refundedSatang : 0;
+            if (!d || String(d.status) !== "OPEN" || remaining <= 0) return { kind: "none" as const };
+            const formula = Math.floor((remaining * pct) / 100);
+            const amount = capSatang === null ? formula : Math.min(formula, Math.max(0, Math.floor(capSatang)));
+            if (amount <= 0) return { kind: "none" as const };
+            const lines = [{ name: lineName, qty: 1, unitPriceSatang: amount }];
+            const r = await bookingTxSale(tx, {
+              tenantId, unitId, systemId: posSystemId, sourceModule: "BOOKING", sourceId: appointmentId, idempotencyKey: lockKey, lines,
+              payMethods: [{ type: "DEPOSIT", amountSatang: amount, refSaleId: d0.receiptSaleId }],
+              ...(d0.customerId ? { memberId: d0.customerId, memberAttachOnly: true } : {}),
+            });
+            if (r.status !== undefined && r.status !== "PAID") throw new Error("บิลริบมัดจำไม่สำเร็จ");
+            await tx.auditLog.create({
+              data: {
+                tenantId, unitId, actorType: "SYSTEM", actorId: "module:booking", action: "pos.deposit.forfeit", targetType: "PosDeposit", targetId: d0.id,
+                after: { saleId: r.saleId, receiptSaleId: d0.receiptSaleId, depositReceiptNo: d0.receiptNo, satang: amount, pct, reason, source: "module:booking" } as Prisma.InputJsonValue,
+              },
+            });
+            // V16: event + audit ของการริบใน tx เดียวกับบิล
+            await emitOutbox(tx, {
+              tenantId, unitId, type: "booking.deposit_forfeited", idempotencyKey: `booking.deposit_forfeited#${r.saleId}`,
+              payload: { appointmentId, unitId, forfeitSatang: amount, pct, reason },
+            });
+            await tx.auditLog.create({
+              data: { tenantId, unitId, actorType: actorId === "module:booking" ? "SYSTEM" : "USER", actorId, action: "booking.deposit.forfeit", targetType: "Appointment", targetId: appointmentId, after: { saleId: r.saleId, forfeitSatang: amount, pct, reason, capSatang } as Prisma.InputJsonValue },
+            });
+            return { kind: "new" as const, saleId: r.saleId, lines };
+          },
+          { timeout: 20_000, maxWait: 15_000 },
+        );
+        if (out.kind === "none") return { forfeited: false };
+        if (out.kind === "new") await pos.afterSaleCommitted({ tenantId, unitId, lines: out.lines }, out.saleId);
+        return { forfeited: true, saleId: out.saleId };
+      } catch (e) {
+        if (e instanceof ForfeitAgain) continue;
+        if (e instanceof pos.PosSaleError && e.code === "DEPOSIT_EXCEEDS") continue;
+        if (e instanceof pos.PosSaleError) return { forfeited: false, reason: `ริบมัดจำไม่สำเร็จ: ${e.message} — ร้านตัดสินริบหรือคืนที่คิวมัดจำ` };
+        const code = (e as { code?: unknown } | null)?.code;
+        if (code === "P2002" || code === "P2034" || code === "P2028" || isRetryableTx(e)) continue;
+        throw e;
+      }
+    }
+    return { forfeited: false, reason: "ริบมัดจำไม่สำเร็จ (ระบบไม่ว่าง) — ร้านตัดสินริบหรือคืนที่คิวมัดจำ" };
+  } catch (e) {
+    console.error(`[booking] ริบมัดจำนัด ${appointmentId} ล้ม`, e instanceof Error ? e.message : e);
+    return { forfeited: false, reason: "ริบมัดจำไม่สำเร็จ — ร้านตัดสินริบหรือคืนที่คิวมัดจำ" };
+  }
+}
+
+/**
+ * ยกเลิกช้า (CANCELLED CUSTOMER_LATE): ริบตาม % ของ snapshot แต่ไม่เกินยอดที่ลูกค้ายอมรับ (V3) · เฉพาะมัดจำที่จ่ายแล้ว ณ ตอนยกเลิก (V2 ·
+ * snapshot deposit.late.paid) · V10: มีบิลริบของนัดแล้ว (สถานะใดก็ได้) ⇒ ไม่ริบซ้ำ (เว้นร้านสั่งเองจากคิว · manual) · ไม่ throw
+ */
+export async function forfeitAfterLateCancel(tenantId: string, unitId: string, appointmentId: string, opts?: { manual?: { actorUserId: string } }): Promise<{ forfeited: boolean; saleId?: string; reason?: string }> {
+  const a = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId }, select: { status: true, cancelReason: true, depositPaidAt: true, depositSaleId: true, policySnapshot: true } });
+  if (!a || a.status !== "CANCELLED" || a.cancelReason !== "CUSTOMER_LATE" || !a.depositPaidAt || !a.depositSaleId) return { forfeited: false };
+  const late = depositSnapOf(a.policySnapshot).late;
+  if (!late || late.paid !== true || !(late.acceptSatang > 0)) return { forfeited: false };
+  if (!opts?.manual) {
+    const prior = await prisma.posSale.findFirst({ where: { tenantId, sourceModule: "BOOKING", sourceId: appointmentId, idempotencyKey: { startsWith: "dep-forfeit:" } }, select: { id: true } });
+    if (prior) return { forfeited: false };
+  }
+  const pct = await depositForfeitPctOf(tenantId, unitId, appointmentId);
+  if (pct === null) return { forfeited: false };
+  return forfeitDepositPartial(tenantId, unitId, appointmentId, pct, "CUSTOMER_LATE", late.acceptSatang, opts?.manual?.actorUserId ?? "module:booking");
+}
+
+/** V5: ร้านสั่งริบจากคิวมัดจำ (FORFEIT_PENDING) — ไม่มา ⇒ ทางเดียวกับ setAppointmentStatus · ยกเลิกช้า ⇒ ตามยอดที่ลูกค้ายอมรับ */
+export async function forfeitPendingDeposit(ctx: { tenantId: string; unitId: string }, appointmentId: string, actorUserId: string): Promise<{ forfeited: boolean; saleId?: string; reason?: string }> {
+  const a = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { status: true, cancelReason: true } });
+  if (a?.status === "NO_SHOW") return forfeitNoShowDeposit(ctx.tenantId, ctx.unitId, appointmentId);
+  if (a?.status === "CANCELLED" && a.cancelReason === "CUSTOMER_LATE") return forfeitAfterLateCancel(ctx.tenantId, ctx.unitId, appointmentId, { manual: { actorUserId } });
+  return { forfeited: false, reason: "นัดนี้ไม่อยู่ในสถานะที่ริบมัดจำได้" };
+}
+// ◂ SVC B.8

@@ -120,6 +120,8 @@ const CAT: Row[] = [
   { n: "30", key: "booking.late.freeChangeBeforeMin", type: "minutes", chain: ["UNIT", "SERVICE"], v: [180, 720, 120] },
   { n: "31", key: "booking.late.selfRescheduleMax", type: "int", chain: ["UNIT"], v: [2, 2, 1] },
   { n: "32", key: "booking.late.repeatNoShow", type: "table", chain: ["UNIT"], v: [{ count: 2, windowDays: 90, action: "REQUIRE_DEPOSIT" }, { count: 2, windowDays: 90, action: "REQUIRE_DEPOSIT" }, { count: 3, windowDays: 180, action: "PHONE_ONLY" }] },
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.8 · ย้ายจาก B.7 Q1): ยกเลิกเลยเวลาฟรี = BLOCK (ค่าเริ่มทุกแม่แบบ · คุ้มครองผู้บริโภค) / FORFEIT (ยอมเสียมัดจำตาม % ไม่มา)
+  { n: "32b", key: "booking.late.lateCancelMode", type: "enum", chain: ["UNIT"], v: ["BLOCK", "BLOCK", "BLOCK"] },
   { n: "33", key: "booking.deposit.method", type: "enum", chain: ["UNIT"], v: ["PROMPTPAY_SLIP", "PROMPTPAY_SLIP", "NONE"] },
   { n: "34", key: "booking.deposit.amount", type: "table", chain: ["UNIT", "SERVICE"], v: [{ mode: "PERCENT", bp: 2000, minDurationMin: 90 }, { mode: "PER_SERVICE" }, null] },
   { n: "35", key: "booking.deposit.payWithinMin", type: "minutes", chain: ["UNIT"], v: [15, 30, null] },
