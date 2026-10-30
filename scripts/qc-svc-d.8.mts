@@ -466,7 +466,8 @@ try {
   const mkUnit = async (tenantId: string, type: string, tag: string, name?: string) => (await prisma.businessUnit.create({ data: { tenantId, type, name: name ?? `หอ D8 ${tag}`, slug: `d8${tag}-${stamp}` } })).id as string;
   const mkBook = async (tenantId: string, name: string, vat = false) => {
     const s = await SYS.createSystem(tenantId, "ACCOUNT", name);
-    await ASV.saveSettings(tenantId, s.id, { orgName: name, vatRegistered: vat });
+    // ORACLE-EDIT (ผู้คุม 29 ต.ค. · D.3): สมุดที่จด VAT ต้องมีเลขผู้ขาย (ม.86/4(2)) — D.3 พักบิลของสมุด VAT ที่ไม่มีเลข
+    await ASV.saveSettings(tenantId, s.id, { orgName: name, vatRegistered: vat, ...(vat ? { taxId: "0105561000003" } : {}) });
     await GL.ensureAccounting({ tenantId, systemId: s.id });
     await prisma.accountFinance.create({ data: { tenantId, systemId: s.id, type: "BANK", name: "บัญชีรับเงินหอ", promptpayId: "0812345678", useForReceive: true } });
     return s.id as string;

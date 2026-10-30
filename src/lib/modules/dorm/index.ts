@@ -103,3 +103,7 @@ export type { DormPolicyModel } from "./policy";
 export { DORM_ROLE_ROWS, DORM_ROLE_COLUMNS, dormPresetPermissions } from "./access";
 export type { DormPresetRole, DormRoleColumn, DormRoleCell, DormRoleRow } from "./access";
 // ◂ SVC D.13
+// ── SVC D.3 ▸ ใบกำกับภาษีเต็มรูปของหอ (ม.86/4) — สัญญา ledger/svc-briefs/svc-brief-d.3.md §3.2–§3.4 (บล็อกนี้ของใบ D.3 เท่านั้น) ──
+export { billTaxInvoice, issueBillTaxInvoice, reissueBillTaxInvoice } from "./tax-invoice";
+export type { TaxInvoiceView } from "./tax-invoice";
+// ◂ SVC D.3
