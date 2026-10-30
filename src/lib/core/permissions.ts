@@ -299,8 +299,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     // SVC D.13 ▸ คีย์ที่ยังไม่มีหน้า/โค้ดเรียก (ใบหลังเปิดใช้จริง) ◂
     planned: [
       "dorm.import",
-      "dorm.moveout.manage",
-      "dorm.deposit.deduct.approve",
+      // SVC D.12 ▸ dorm.moveout.manage · dorm.deposit.deduct.approve ใช้จริงแล้ว (ย้ายออก/คืนประกัน) ◂
       "dorm.repair.manage",
       "dorm.announce",
       "dorm.parcel.manage",

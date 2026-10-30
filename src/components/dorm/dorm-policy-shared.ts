@@ -65,6 +65,14 @@ export const DORM_MSG_VAR_LABEL_TH: Record<string, string> = {
   overduePeriods: "งวดที่ค้าง",
   noticeDate: "วันออกหนังสือ",
   effectiveDate: "วันมีผล",
+  // SVC D.12 ▸ ตัวแปรใบสรุปเงินประกันวันย้ายออก (rooms.msg.moveOutSummary) ◂
+  moveOutDate: "วันย้ายออก",
+  depositAmount: "เงินประกัน",
+  deductAmount: "ค่าเสียหายที่หัก",
+  refundAmount: "ยอดคืน",
+  owesAmount: "ยอดที่ต้องชำระเพิ่ม",
+  refundDueDate: "วันครบกำหนดคืน",
+  lines: "รายการหัก",
 };
 
 /** ข้อความแม่แบบ → ส่วนข้อความ/ตัวแปร (ตัวแปรที่ไม่รู้จักคงเป็นข้อความเดิมโดยไม่มีวงเล็บ) */

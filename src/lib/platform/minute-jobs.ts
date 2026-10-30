@@ -590,6 +590,15 @@ registerMinuteJob({
   run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-line")).runDormLineJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
 });
 // ◂ SVC D.9
+// SVC D.12 ▸ หอพัก: สัญญาจบเมื่อวันย้ายออกผ่าน · เตือนคืนประกันวันละครั้ง (เที่ยงคืนไทย) · เลยกำหนด audit ครั้งเดียว · เติมห้องทำความสะอาด
+//   ทุก 15 นาที · ข้ามร้าน · โหลด facade หอตอนรันเท่านั้น · ซ้อนกันได้ (event 1 ต่อใบต่อวัน · CAS · X5) · เคารพงบ/สัญญาณยกเลิก
+registerMinuteJob({
+  name: "dorm.moveout",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormMoveOutJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.12
 
 function errorText(e: unknown): string {
   let s: string;

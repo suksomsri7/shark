@@ -660,6 +660,15 @@ export async function lateFeeLedger(
 }
 
 // ───────────────────────── 4. ยกเว้นค่าปรับ ─────────────────────────
+// SVC D.12 ▸ (มติ R6) สัญญาที่ใบย้ายออกตรึงใบสรุปแล้ว (deductions.frozen) หรือปิดประกันแล้ว ⇒ ยกเว้นค่าปรับไม่ได้ (ใบสรุปเก็บค่าปรับนั้นไปแล้ว)
+//   อ่านผ่าน db/tx ของผู้เรียก — ตัวตัดสินจริงอยู่ใต้ล็อก dorm.latefee:<leaseId> (ล็อกเดียวกับที่การตรึงใบย้ายออกถือ) ◂
+const MOVEOUT_FROZEN = (): Fail => fail("MOVEOUT_FROZEN", "สัญญานี้ส่งใบสรุปย้ายออก/ปิดเงินประกันแล้ว (คิดค่าปรับนี้ในใบสรุปแล้ว) — ยกเว้นค่าปรับไม่ได้ ให้เปิดใบสรุปใหม่ที่หน้าย้ายออกก่อน");
+async function moveOutFrozen(db: Pick<Tx, "dormMoveOut">, tenantId: string, unitId: string, leaseId: string): Promise<boolean> {
+  const mo = await db.dormMoveOut.findFirst({ where: { tenantId, unitId, leaseId }, select: { status: true, deductions: true } });
+  if (!mo) return false;
+  if (mo.status === "SETTLED" || mo.status === "REFUNDED") return true;
+  return mo.status !== "CANCELLED" && isRec(mo.deductions) && isRec(mo.deductions.frozen);
+}
 type WaiveSrc = { id: string; leaseId: string; periodKey: string };
 /**
  * ยกเว้นจริง (มติ 8 · L1): ใบลดหนี้ต่อบิลปลายทางที่ส่งแล้ว (ตรวจคงค้างทุกใบก่อน · ออกทีละใบ · ref idempotent) →
@@ -680,6 +689,7 @@ async function applyWaiver(p: {
   const bm = await import("./billing");
   const BUSY = fail("RUN_BUSY", "บิลที่ลงค่าปรับนี้กำลังถูกส่งอยู่ — รอส่งเสร็จแล้วกดยกเว้นอีกครั้ง (ระบบจะออกใบลดหนี้ให้)");
   let creditNotes: WaivedInfo["creditNotes"] = [];
+  if (await moveOutFrozen(db as unknown as Tx, p.tenantId, p.unitId, p.src.leaseId)) return MOVEOUT_FROZEN(); // SVC D.12 ▸ ก่อนออกใบลดหนี้ใด ๆ ◂
   for (let attempt = 0; attempt < 3; attempt++) {
     const bills: LfBill[] = await db.dormBill.findMany({ where: { leaseId: p.src.leaseId, status: { not: "VOID" } }, select: LF_BILL_SELECT, orderBy: [{ periodKey: "asc" }] });
     const sentTargets = chargesOf(bills, p.src.id, null).filter((c) => SENTISH.includes(c.status));
@@ -703,6 +713,7 @@ async function applyWaiver(p: {
         await advisoryLock(tx, lateFeeLockKey(p.src.leaseId));
         const has = await tx.auditLog.findFirst({ where: { tenantId: p.tenantId, action: A_WAIVED, targetType: "DormBill", targetId: p.src.id }, select: { after: true } });
         if (has) return { kind: "DONE" as const, created: false, info: waivedInfoOf(has.after) };
+        if (await moveOutFrozen(tx, p.tenantId, p.unitId, p.src.leaseId)) return { kind: "FROZEN" as const }; // SVC D.12 ▸ ใต้ล็อกเดียวกับการตรึง ◂
         const live = await tx.dormBill.findMany({
           where: { tenantId: p.tenantId, unitId: p.unitId, leaseId: p.src.leaseId, status: { not: "VOID" } },
           select: { id: true, status: true, sentVia: true, lines: true },
@@ -737,6 +748,7 @@ async function applyWaiver(p: {
       }, TX_OPTS),
     );
     if (res === "BUSY") return BUSY;
+    if (res.kind === "FROZEN") return MOVEOUT_FROZEN(); // SVC D.12 ◂
     if (res.kind === "NEW_SENT") continue; // บิลปลายทางเพิ่งส่ง ⇒ ออกใบลดหนี้ก่อนแล้วตรวจใหม่
     if (res.kind === "CLAIMED") {
       await new Promise((r) => setTimeout(r, 1_500));
@@ -870,6 +882,7 @@ export async function waiveLateFee(
     if (!src) return NOT_FOUND();
     const done = (await waivedOf(a.tenantId, [src.id])).get(src.id);
     if (done) return { ok: true, status: "WAIVED", created: false, requestId: done.approvalId, creditNotes: done.creditNotes };
+    if (await moveOutFrozen(db as unknown as Tx, a.tenantId, a.unitId, src.leaseId)) return MOVEOUT_FROZEN(); // SVC D.12 ▸ ไม่ยื่นคำขอ/ไม่บันทึกอะไร ◂
     const lease = await db.dormLease.findFirst({ where: { id: src.leaseId }, select: { id: true, rentSatang: true, policySnapshot: true } });
     if (!lease) return NOT_FOUND();
     const asOf = bkkYmd(deps?.now instanceof Date ? deps.now : new Date());

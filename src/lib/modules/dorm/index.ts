@@ -134,3 +134,21 @@ export {
 } from "./portal";
 export type { PortalLeaseRow, PortalBillRow, PortalSlipStatus } from "./portal";
 // ◂ SVC D.9
+// ── SVC D.12 ▸ ย้ายออก · ย้ายห้อง · ต่อสัญญา + คืนเงินประกัน — สัญญา ledger/svc-briefs/svc-brief-d.12.md §3–§5 (บล็อกนี้ของใบ D.12 เท่านั้น) ──
+export {
+  giveMoveOutNotice,
+  cancelMoveOut,
+  addMoveOutFiles,
+  recordMoveOutInspection,
+  moveOutSummary,
+  moveOutModel,
+  sendMoveOutSummary,
+  reopenMoveOutSummary,
+  settleMoveOut,
+  runDormMoveOutJobs,
+} from "./moveout";
+export type { MoveOutCtx, SummaryLine, MoveOutSummary, MoveOutModel, MoveOutStatus } from "./moveout";
+export { transferRoom, renewLease, depositLeaseIdOf } from "./lease-change";
+export type { LeaseChangeCtx } from "./lease-change";
+export { moveOutAccess } from "./moveout-access";
+// ◂ SVC D.12

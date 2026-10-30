@@ -13,7 +13,7 @@ import { dormAccess } from "./access";
 import { dormLiveMember, dormScopeFor, dormUnitOf } from "./scope";
 
 export type DormHomeFinance = { tone: "overdue" | "pending" | "unpaid" | "paid"; text: string };
-export type DormHomeTodoKind = "overdue" | "slips" | "repairs" | "moveIns" | "expiring";
+export type DormHomeTodoKind = "overdue" | "slips" | "repairs" | "moveIns" | "expiring" | "expired" | "refundDue"; // SVC D.12 ▸ expired · refundDue ◂
 export type DormHomeModel = {
   unitId: string;
   unitName: string;
@@ -323,6 +323,39 @@ export async function dormHomeModel(
     .filter((l) => (l.status === "ACTIVE" || l.status === "NOTICE") && !!ymdOf(l.endDate) && ymdOf(l.endDate)! >= date && ymdOf(l.endDate)! <= soon)
     .sort((a, b) => byNumber(numberOf(a.roomId), numberOf(b.roomId)));
   push("expiring", expiring.length, `สัญญาหมดภายใน ${SOON_DAYS} วัน — ${expiring.map((l) => numberOf(l.roomId)).join(" · ")}`, `${basePath}/tenants?tab=EXPIRING`);
+  // SVC D.12 ▸ (หนี้ D.9 Q4) สัญญาเลยวันจบแต่ยังไม่ปิด (ไม่มีสัญญาต่อ · ไม่มีใบย้ายออก) · ใบย้ายออกที่ถึงวันออกแล้วแต่ยังไม่คืนเงินประกัน ◂
+  const endedRaw = await db.dormLease.findMany({
+    where: { status: "ACTIVE", endDate: { lt: d }, ...roomWhere },
+    orderBy: [{ endDate: "asc" }, { id: "asc" }],
+    select: { id: true, roomId: true },
+    take: 200,
+  });
+  const endedIds = endedRaw.map((l) => l.id);
+  const [renewedRows, moRows] = endedIds.length
+    ? await Promise.all([
+        db.dormLease.findMany({ where: { previousLeaseId: { in: endedIds } }, select: { previousLeaseId: true } }),
+        db.dormMoveOut.findMany({ where: { leaseId: { in: endedIds }, status: { not: "CANCELLED" } }, select: { leaseId: true } }),
+      ])
+    : [[], []];
+  const skipEnded = new Set([...renewedRows.map((r) => r.previousLeaseId ?? ""), ...moRows.map((r) => r.leaseId)]);
+  const expired = endedRaw.filter((l) => !skipEnded.has(l.id) && roomById.has(l.roomId)).sort((a, b) => byNumber(numberOf(a.roomId), numberOf(b.roomId)));
+  push("expired", expired.length, `สัญญาเลยวันจบแล้วยังไม่ต่อ/ไม่แจ้งย้ายออก — ห้อง ${expired.map((l) => numberOf(l.roomId)).join(" · ")}`, `${basePath}/tenants?tab=CURRENT`);
+  const dueMo = (
+    await db.dormMoveOut.findMany({
+      where: { status: { in: ["NOTICE", "INSPECTED"] }, moveOutDate: { lte: d } },
+      orderBy: [{ moveOutDate: "asc" }, { id: "asc" }],
+      select: { leaseId: true, moveOutDate: true, refundDueAt: true, lease: { select: { roomId: true } } },
+      take: 200,
+    })
+  ).filter((m) => roomById.has(m.lease.roomId));
+  const dueRooms = [...dueMo].sort((a, b) => byNumber(numberOf(a.lease.roomId), numberOf(b.lease.roomId)));
+  push(
+    "refundDue",
+    dueRooms.length,
+    `ต้องคืนเงินประกันผู้เช่าที่ย้ายออก — ${dueRooms.map((m) => `ห้อง ${numberOf(m.lease.roomId)}${m.refundDueAt ? ` (ครบ ${thaiShortDate(addDays(bkkYmd(m.refundDueAt), -1))})` : ""}`).join(" · ")}`,
+    dueRooms.length ? `${basePath}/moveout?room=${encodeURIComponent(numberOf(dueRooms[0].lease.roomId))}` : `${basePath}/tenants?tab=ENDED`,
+  );
+  // ◂ SVC D.12
 
   const occupied = countOf("occupied");
   return {

@@ -33,6 +33,7 @@ const ENTITY_TYPES = new Set([
   "settings.legal_override", // SVC R0.3 ▸ ผลอยู่ที่ approval-effects.ts (core/settings) ◂
   "dorm.lease.legal_override", // SVC D.5 ▸ ไม่มีผล — สัญญาเช่าอ่านสถานะคำขอสดเอง ◂
   "dorm.latefee.waive", // SVC D.11 ▸ ยกเว้นค่าปรับจ่ายช้า — ผลอยู่ที่ approval-effects.ts ◂
+  "dorm.moveout.deduction", // SVC D.12 ▸ ไม่มีผล — ปิดประกันอ่านสถานะคำขอสดเอง ◂
 ]);
 const ROLES = new Set(["MANAGER", "OWNER"]);
 

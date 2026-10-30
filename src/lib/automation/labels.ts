@@ -265,6 +265,11 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // SVC D.11 ▸ หอพัก — บิลเลยกำหนดชำระและยังค้าง (ครั้งเดียวต่อบิล) · ตัวยิง `dorm/dunning.ts#runDormDunningJobs`
   //   payload { unitId, billId, leaseId, periodKey, dueDate, outstandingSatang, daysLate } — ไม่มีชื่อ/เบอร์ (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
   { value: "dorm.bill.overdue", label: "เมื่อบิลหอพักเลยกำหนดชำระและยังค้างอยู่" },
+  // SVC D.12 ▸ หอพัก — ย้ายออก/คืนประกัน/ต่อสัญญา · ตัวยิง `dorm/moveout.ts` · `dorm/lease-change.ts` · payload id/ยอด ล้วน (X8) · เว็บฮุคได้จาก spread ◂
+  { value: "dorm.moveout.settled", label: "เมื่อปิดเงินประกันผู้เช่าที่ย้ายออกแล้ว (หอพัก)" },
+  { value: "dorm.deposit.refund_due", label: "เมื่อถึงกำหนดต้องคืนเงินประกันผู้เช่าที่ย้ายออก (เตือนวันละครั้ง)" },
+  { value: "dorm.lease.renewed", label: "เมื่อต่อสัญญาเช่าหอพัก" },
+  { value: "dorm.lease.ended", label: "เมื่อสัญญาเช่าหอพักสิ้นสุด (ย้ายออก · ย้ายห้อง · ต่อสัญญา)" },
   // CRM C3.2 ▸ โควตาถึงเกณฑ์ (80 % / 100 %) — ตัวยิง = `crm/quotas.ts#checkReached` (หลัง tx ของการรับเงิน COUNTED / การเข้า WON commit)
   //   key `crm.quota.reached#<systemId>:<ownerType>:<ownerId>:<periodKey>#<threshold>` (R-C.8 · ครั้งเดียวต่อเจ้าของ+งวด+เกณฑ์ ตลอดไป ·
   //   INSERT … ON CONFLICT DO NOTHING) · payload { quotaId, ownerType, ownerId, periodKey, threshold, pct } = id ล้วน (X8)

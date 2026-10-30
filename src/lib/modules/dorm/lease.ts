@@ -39,6 +39,7 @@ import { attachPersonTaxId, findOrCreate, normalizePartyPhone, normalizePartyTax
 import { claimRoom, exclusiveEnd, releaseOccupancy } from "@/lib/modules/rooms";
 import { leaseAccess } from "./lease-access";
 import { dormScopeFor, dormVisibleRoomIds } from "./scope"; // SVC D.13 ▸ ขอบเขตอาคาร (#64) ◂
+import { depositLeaseIdOf, depositRootsOf } from "./lease-change"; // SVC D.12 ▸ ยอดถือ/ใบรับประกันอ่านตามต้นสาย (มติ R2) ◂
 
 // ───────────────────────── ชนิด (สัญญา §3) ─────────────────────────
 export type LeaseCtx = { tenantId: string; actorUserId: string };
@@ -1372,8 +1373,10 @@ export async function getLease(ctx: LeaseCtx, input: { unitId: string; leaseId: 
   const co = coTenantsOf(lease.coTenants);
   const sl = snapLegal(snap);
   const blocked = contractThreat(snap) !== null;
-  const heldSatang = await securityDepositHeld({ tenantId: g.tenantId, unitId: g.unitId, leaseId: lease.id });
-  const receipts = (await securityDepositReceipts({ tenantId: g.tenantId, unitId: g.unitId, leaseId: lease.id })).map((r) => ({ entryId: r.entryId, entryNo: r.entryNo, amountSatang: r.amountSatang, date: r.date }));
+  // SVC D.12 ▸ ยอดถือ/ใบรับประกัน อ่านตามต้นสายประกัน (ย้ายห้อง/ต่อสัญญาไม่ย้ายเงิน — มติ R2) ◂
+  const depositLeaseId = await depositLeaseIdOf(null, { tenantId: g.tenantId, unitId: g.unitId, leaseId: lease.id });
+  const heldSatang = await securityDepositHeld({ tenantId: g.tenantId, unitId: g.unitId, leaseId: depositLeaseId });
+  const receipts = (await securityDepositReceipts({ tenantId: g.tenantId, unitId: g.unitId, leaseId: depositLeaseId })).map((r) => ({ entryId: r.entryId, entryNo: r.entryNo, amountSatang: r.amountSatang, date: r.date }));
   const start = ymdOfDb(lease.startDate);
   const end = ymdOfDb(lease.endDate);
   return {
@@ -1440,7 +1443,10 @@ export async function listLeases(ctx: LeaseCtx, input: { unitId: string; tab?: L
   const leases = (await leasesAll).filter((l) => roomVisible(g, l.roomId));
   const today = bkkYmd(new Date());
   const shownOf = (l: (typeof leases)[number]) => inTab(tab, l.status, ymdOfDb(l.endDate) ? daysBetween(today, ymdOfDb(l.endDate)) : 0);
-  const heldOf = await securityDepositHeldMany({ tenantId: g.tenantId, unitId: g.unitId, leaseIds: leases.filter((l) => l.status !== "ENDED" || shownOf(l)).map((l) => l.id) });
+  // SVC D.12 ▸ ยอดถืออ่านที่ต้นสายประกัน (มติ R2) · สัญญาที่สายเดียวกันนับยอดรวมครั้งเดียว ◂
+  const rootOf = await depositRootsOf(g.tenantId, g.unitId, leases.filter((l) => l.status !== "ENDED" || shownOf(l)).map((l) => l.id));
+  const heldOf = await securityDepositHeldMany({ tenantId: g.tenantId, unitId: g.unitId, leaseIds: [...new Set(rootOf.values())] });
+  const countedRoots = new Set<string>();
   const rooms = await roomsOf(g, leases.map((l) => l.roomId));
   const parties = await partiesOf(g.tenantId, leases.map((l) => l.partyId));
   const counts = emptyCounts();
@@ -1458,8 +1464,12 @@ export async function listLeases(ctx: LeaseCtx, input: { unitId: string; tab?: L
     // ยอดถือ (GL) — DRAFT/ACTIVE/NOTICE ทุกแถว (รวมทั้งตึกที่เห็น) · ENDED เฉพาะเมื่อแสดง · อ่านมาแล้วคำสั่งเดียว (heldOf)
     const live = l.status !== "ENDED";
     const shown = inTab(tab, l.status, daysToEnd);
-    const held = live || shown ? (heldOf[l.id] ?? 0) : 0;
-    if (live) heldTotalSatang += held;
+    const root = rootOf.get(l.id) ?? l.id; // SVC D.12 ◂
+    const held = live || shown ? (heldOf[root] ?? 0) : 0;
+    if (live && !countedRoots.has(root)) {
+      countedRoots.add(root);
+      heldTotalSatang += held;
+    }
     if (!shown) continue;
     const room = rooms.get(l.roomId);
     const party = parties.get(l.partyId);

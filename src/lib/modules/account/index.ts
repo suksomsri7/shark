@@ -2131,6 +2131,33 @@ export async function securityDepositHeldInTx(tx: Prisma.TransactionClient, inpu
 }
 // ◂ SVC D.5
 
+// ── SVC D.12 ▸ (มติ R1 · เพิ่มอย่างเดียว) ปิดเงินประกันในธุรกรรมของผู้เรียก — ตรรกะเดียวกับ settleSecurityDeposit ทุกบรรทัด (ตัวในร่วม service.dormSettleBodyInTx) ──
+//   ผู้เรียก = โมดูลหอ (dorm/moveout.ts) ใน runDormMoneyTx เท่านั้น · ลำดับล็อก: advisory ของหอ (สัญญาต้นสาย → ค่าปรับ) ก่อน → แถว Tenant → ลิงก์หน่วย → เอกสาร
+//   ไม่เปิด connection ที่สอง (สมุด/ตั้งค่า/เอกสารอ่านผ่าน tx) · ok:false ⇒ ผู้เรียก rollback ทั้ง tx · ฐานล้ม ⇒ โยน
+import { dormSettleSecurityDepositInTx as d12SettleInTx } from "./service";
+
+export async function settleSecurityDepositInTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string; unitId: string; leaseId: string; idempotencyKey: string; date?: Date;
+    applyToDocIds: string[]; refund?: { channel?: DormChannel; financeAccountId?: string | null }; note?: string | null; createdById?: string | null;
+  },
+): Promise<{ ok: true; duplicate: boolean; entryId: string; heldSatang: number; appliedSatang: number; refundSatang: number; tenantOwesSatang: number; applied: { docId: string; amountSatang: number }[] } | DormFail> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId)) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+  if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการปิดเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+  if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+  if (!Array.isArray(input.applyToDocIds) || input.applyToDocIds.some((id) => !nonEmpty(id)) || input.applyToDocIds.length > DORM_MAX_LINES)
+    return dormFail("INVALID_INPUT", "รายการใบแจ้งหนี้ที่จะหักไม่ถูกต้อง");
+  const mp = dormMoneyProblem({ paidAt: input.date, channel: input.refund?.channel, financeAccountId: input.refund?.financeAccountId });
+  if (mp) return dormFail("INVALID_INPUT", mp);
+  return d12SettleInTx(tx, {
+    tenantId: input.tenantId, unitId: input.unitId, leaseId: input.leaseId, key: input.idempotencyKey.trim(), date: input.date ?? new Date(),
+    docIds: [...new Set(input.applyToDocIds)], channel: input.refund?.channel ?? "TRANSFER", financeAccountId: input.refund?.financeAccountId ?? null,
+    note: input.note ?? null, createdById: input.createdById ?? null,
+  });
+}
+// ◂ SVC D.12
+
 // SVC D.8 ▸ (ชุดแก้ F13) ลิงก์จ่ายของใบแจ้งหนี้หอ: ยกเลิกคำขอที่ยังรอชำระของเอกสารนี้ "ยกเว้นใบที่ระบุ" — กันผู้เช่าเห็นลิงก์ยอดเก่า
 //   (หลังใบลดหนี้/เพิ่มหนี้ ยอดคงค้างเปลี่ยน ⇒ createPaymentRequestForDoc ออกใบยอดใหม่ ⇒ ใบยอดเก่าต้องหมดผล) · ใช้ของเดิม (list + cancel) ล้วน ◂
 export async function cancelOtherPendingPaymentRequests(
