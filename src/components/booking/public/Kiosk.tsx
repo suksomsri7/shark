@@ -136,6 +136,7 @@ function KioskScreens({ view, actions, at, initial, refresher, idleResetMs, onRe
                 รอในร้าน {view.waitingCount} คน{view.nextTicketNumber ? <> · ถัดไป <b className="text-[#0a0a0a]">{view.nextTicketNumber}</b></> : null}
               </span>
             </div>
+            {view.bookUrl ? <BookAheadQr href={view.bookUrl} /> : null}
             {!view.pinLock ? (
               <a data-kiosk-exit="" href="/app" className="self-start text-[14px] text-[#737373] underline">
                 ออกจากโหมดตู้
@@ -186,6 +187,7 @@ function KioskScreens({ view, actions, at, initial, refresher, idleResetMs, onRe
                 ),
               )}
             </div>
+            {view.bookUrl && view.services.some((x) => !x.walkIn) ? <BookAheadQr href={view.bookUrl} /> : null}
             {view.staff ? (
               <fieldset className="flex flex-col gap-2">
                 <legend className="mb-2 text-[15px] font-semibold">ช่าง</legend>
@@ -277,5 +279,22 @@ function TicketScreen({ view, t, onDone }: { view: KioskView; t: KioskTicket; on
         )}
       </div>
     </Shell>
+  );
+}
+
+/** SVC B.7 ▸ หนี้ B.6 §9: QR "จองวันอื่นล่วงหน้า" — ลูกค้าสแกนไปจองบนมือถือ (ตู้ไม่ออกจากโหมดตู้) ◂ */
+function BookAheadQr({ href }: { href: string }) {
+  const [abs, setAbs] = useState<string | null>(/^https?:\/\//.test(href) ? href : null);
+  useEffect(() => {
+    setAbs(/^https?:\/\//.test(href) ? href : `${window.location.origin}${href}`);
+  }, [href]);
+  return (
+    <div data-kiosk-book-qr="" data-href={href} className="flex items-center gap-4 rounded-2xl border border-[#e5e5e5] bg-white p-4">
+      <QrCode value={abs} size={112} />
+      <div className="flex flex-col gap-1">
+        <p className="text-[18px] font-bold">จองวันอื่นล่วงหน้า</p>
+        <p className="text-[14px] text-[#737373]">สแกนด้วยมือถือ เลือกบริการ ช่าง และเวลาได้เอง</p>
+      </div>
+    </div>
   );
 }

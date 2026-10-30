@@ -13,3 +13,6 @@ export { purgeBookingPersonalData } from "./privacy";
 export type { PurgeResult } from "./privacy";
 export { BOOKING_ACTIONS, bookingActionKeys, canBookingAction } from "./access";
 export { maskPhone, canSeeFullPhone, phoneForViewer } from "./privacy-shared";
+
+// SVC B.7 ▸ ลิงก์จัดการนัด + ลิงก์ตัวตนจาก LINE (B.9 ส่งใบนัด/ตอบเมนู OA ผ่าน facade) ◂
+export { manageLinkFor, bookingIdentityToken } from "./online";
