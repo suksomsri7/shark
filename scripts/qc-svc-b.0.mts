@@ -137,6 +137,8 @@ const CAT: Row[] = [
   { n: "48", key: "booking.notify.reminderOffsetsMin", type: "table", chain: ["UNIT"], v: [[1440, 120], [1440, 180], [1440]] },
   { n: "49", key: "booking.notify.nearTurnAhead", type: "int", chain: ["UNIT"], v: [2, 2, 3] },
   { n: "50", key: "booking.notify.delayAlertMin", type: "minutes", chain: ["UNIT"], v: [15, 15, 30] },
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.9 มติ Q2): ซ่อนชื่อบริการในข้อความแจ้งเตือน — แม่แบบ CLINIC เปิด (ทุกนโยบายร้าน = ค่าตั้ง)
+  { n: "50b", key: "booking.notify.hideServiceName", type: "bool", chain: ["UNIT"], v: [false, false, true] },
   { n: "51", key: "booking.msg.enabled", type: "table", chain: ["UNIT"], v: [msgOn(["courseExpiry"]), msgOn([]), msgOn(["rebookInvite", "courseExpiry"])] },
   { n: "52", key: "booking.display.tvShow", type: "table", chain: ["DEVICE"], v: [{ label: "PROVIDER", showCustomerName: false }, { label: "PROVIDER", showCustomerName: false }, { label: "RESOURCE", showCustomerName: false }] },
   { n: "53", key: "booking.display.voice", type: "table", chain: ["DEVICE"], v: [["th", "en"], ["th"], ["th"]] },

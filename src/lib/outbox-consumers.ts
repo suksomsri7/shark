@@ -791,7 +791,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // M3.3 (§7.1) — นัดเปลี่ยนเป็น "ไม่มาตามนัด" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   //   ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็นทริกเกอร์ของ journey "จองแล้วไม่มา" + เว็บฮุค
   // M3.7: + ไทม์ไลน์ NO_SHOW (ห่อ try/catch — พังไม่ค้างคิว)
-  "booking.no_show": withAutomation(memberApptBridge("onBookingNoShow")),
+  "booking.no_show": withAutomation(compose(memberApptBridge("onBookingNoShow"), async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt))), // SVC B.9 ▸ + ชวนจองใหม่ (noShowRebook · ของแถม) ◂
   // K3.3: + การ์ดติดตามคำขออนุมัติ (มอบหมายผู้ยื่น) — ต่อท้าย notify เดิม
   "approval.request.submitted": withAutomation(compose(approvalSubmitted, kanbanBridge("onApprovalSubmitted"))),
   // K3.3: + ความเห็น "ผลอนุมัติ: …" ที่การ์ดติดตาม + ปิดการ์ดเมื่อผ่าน (ต่อท้าย notify+effect เดิม)
@@ -1209,13 +1209,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   payload id ล้วน (X8) · งานหลัก = no-op (สถานะ/บัตรเขียนครบใน tx ของ service แล้ว) — บรรทัดเหล่านี้ปิด event เป็น DONE
   //   (ไม่มี consumer = คิวตัน) + ทริกเกอร์กฎอัตโนมัติ/เว็บฮุค · B.9 ต่อแจ้งเตือนลูกค้าภายหลัง
   //   🔴 บัตรแถวเดียว **ไม่ยิง** `queue.served` (booking.completed ทำหน้าที่ VISIT ของ CRM แล้ว — ไม่ลงซ้ำ) ◂
-  "booking.created": withAutomation(async () => {}),
+  "booking.created": withAutomation(async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), // SVC B.9 ▸ แจ้งเตือนลูกค้า (ของแถม · ไม่ throw) ◂
   "booking.rescheduled": withAutomation(async () => {}),
   "booking.cancelled": withAutomation(async () => {}),
-  "booking.checked_in": withAutomation(async () => {}),
+  "booking.checked_in": withAutomation(async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), // SVC B.9 ▸ แจ้งเตือนลูกค้า (ของแถม · ไม่ throw) ◂
   "booking.late": withAutomation(async () => {}),
   "booking.started": withAutomation(async () => {}),
-  "queue.ticket.called": withAutomation(async () => {}),
+  "queue.ticket.called": withAutomation(async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), // SVC B.9 ▸ แจ้งเตือนลูกค้า (ของแถม · ไม่ throw) ◂
   "queue.ticket.done": withAutomation(async () => {}),
   // ◂ SVC B.4
   // SVC D.6 ▸ เลขมิเตอร์หอผิดปกติ (HIGH/LOW/BACKWARDS/VACANT_USAGE) — ยิงจาก `dorm/meter.ts` ใน tx เดียวกับแถวเลข ·

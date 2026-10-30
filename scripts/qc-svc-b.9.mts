@@ -39,7 +39,7 @@ const F = {
   notify: "src/lib/platform/booking-notify.ts",
   link: "src/lib/platform/booking-line-link.ts",
   remote: "src/lib/platform/booking-remote.ts",
-  remoteAction: "src/lib/actions/booking-remote.ts",
+  remoteAction: "src/app/(store)/s/[tenantSlug]/[unitSlug]/remote/actions.ts", // ORACLE-EDIT (ผู้คุม 30 ต.ค.): action สาธารณะอยู่ใต้ app/(store) ตามแบบ B.6 (fitness F6.1)
   remotePage: "src/app/(store)/s/[tenantSlug]/[unitSlug]/remote/page.tsx",
   remoteComp: "src/components/booking/public/RemoteTicket.tsx",
   postback: "src/lib/platform/postback-routes.ts",
@@ -1128,7 +1128,8 @@ console.log("\n── S: ไฟล์ · สัญญาโค้ด ──");
 const git = (args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const dirty = (paths: string[]) => git(["status", "--porcelain", "--untracked-files=all", "--", ...paths]).split("\n").filter(Boolean).map((l) => l.slice(3).trim().replace(/^"|"$/g, ""));
 const NEW_FILES = [F.notify, F.link, F.remote, F.remoteAction, F.remotePage, F.remoteComp];
-const OWN = new Set<string>([...NEW_FILES, F.postback, F.minute, F.consumers, F.queueLine, F.index]);
+// ORACLE-EDIT (ผู้คุม 30 ต.ค.): มติ Q2 คีย์ booking.notify.hideServiceName + แม่แบบ checkedIn มี {เลขคิว} ⇒ defs/booking.ts แตะได้ (เพิ่มเท่านั้น)
+const OWN = new Set<string>([...NEW_FILES, F.postback, F.minute, F.consumers, F.queueLine, F.index, "src/lib/core/settings/defs/booking.ts"]);
 {
   const ch = dirty(["src", "prisma"]);
   const headHas = (() => { try { git(["cat-file", "-e", `HEAD:${F.notify}`]); return true; } catch { return false; } })();
@@ -1141,7 +1142,7 @@ const OWN = new Set<string>([...NEW_FILES, F.postback, F.minute, F.consumers, F.
   });
 }
 await st("S-2", "ไม่มี migration/แก้ schema · ไม่มี event ใหม่ (ทะเบียนป้าย automation/webhooks ไม่ถูกแตะ) · ไม่แตะ core / notify-customer / โมดูลแชท / defs", () => {
-  eq(dirty(["prisma", "src/lib/automation/labels.ts", "src/lib/webhooks/labels.ts", "src/lib/core", F.notifyCustomer, "src/lib/modules/chat"]), [], "ไฟล์");
+  eq(dirty(["prisma", "src/lib/automation/labels.ts", "src/lib/webhooks/labels.ts", "src/lib/core", F.notifyCustomer, "src/lib/modules/chat"]).filter((f) => f !== "src/lib/core/settings/defs/booking.ts"), [], "ไฟล์"); // ORACLE-EDIT (ผู้คุม 30 ต.ค.) มติ Q2
 });
 await st("S-3", "ตัวเชื่อมสลับได้: ไฟล์ของใบไม่เรียกตัวส่ง LINE ตรง (push*/sendLineToParty/replyFlex/api.line.me) · booking-notify.ts ส่งผ่าน notifyCustomer", () => {
   const miss = NEW_FILES.filter((f) => !existsSync(join(ROOT, f)));

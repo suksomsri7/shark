@@ -13,3 +13,12 @@ export { purgeBookingPersonalData } from "./privacy";
 export type { PurgeResult } from "./privacy";
 export { BOOKING_ACTIONS, bookingActionKeys, canBookingAction } from "./access";
 export { maskPhone, canSeeFullPhone, phoneForViewer } from "./privacy-shared";
+
+// SVC B.9 ▸ แจ้งเตือนลูกค้า + ผูก LINE + รับบัตรคิวจากมือถือ (ผู้ใช้ = `platform/booking-{notify,line-link,remote}.ts` — ชั้น platform
+//   เพราะต้องแตะทั้ง booking + chat + notifyCustomer) · re-export ล้วน · ทุกตัวผูก ctx ของร้าน/สาขาเอง ◂
+export { checkIn, createWalkIn, quoteWalkInWait } from "./queue-line";
+export type { CheckInResult, WalkInResult } from "./queue-line";
+export { loadTodayLine } from "./today-line";
+export type { TodayLineView, LineJob } from "./today-line";
+export { ticketTokenFor, deferTicket } from "./public-line";
+export { bookingPhoneKey } from "./service";
