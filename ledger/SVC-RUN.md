@@ -103,7 +103,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | D.6 | มิเตอร์ + จดมือถือ | เบา | | ✅ | d5f50b74 | 87/89 · V-1/V-2 ภาพรอ build รวม |
 | D.7 | ค่าน้ำไฟทุกโหมด + หน้ากฎหมาย/VAT | เข้ม | | ✅ | b0575e00 | 107/109 · 2 ผู้ตรวจ + ยืนยันซ้ำ (BLOCKER 2 + MAJOR 8 ปิด) · V-1/V-2 ภาพรอ build รวม |
 | D.8 | รอบบิลรายเดือน | เข้ม+perf | | ✅ | 1dc227b0 | 97/109 · 2 ผู้ตรวจ 2 รอบ (BLOCKER 5 + MAJOR 9 ปิด) · probe-d8-b 25/25 + b2 22/22 · P-2/P-3 perf ผ่านตอนเครื่องว่าง · V รอ build รวม |
-| D.9 | LINE ผู้เช่า + พอร์ทัลจ่าย | เข้ม | | ⬜ | | |
+| D.9 | LINE ผู้เช่า + พอร์ทัลจ่าย | เข้ม | | ✅ | ba53e630 | 86/89 (S-1/V-1/V-2 skip) · 2 ผู้ตรวจ (W1–W13 ปิด) · probe-d9-b 28/0 · notifyCustomer precheck |
 | D.10 | ตรวจสลิป/รับเงินหอ | เข้ม | | ⬜ | | |
 | D.11 | เตือน/ทวง/ค่าปรับ | เข้ม | | ✅ | 624cf584 | 99/100 · 2 ผู้ตรวจ (BLOCKER ยกเว้นค่าปรับแล้วยังส่งในบิล + L1–L13 ปิด · probe 33/33) · perf 100 ห้อง×12 งวด ok · หนี้ L7 เพดานเตือน hardcode |
 | D.12 | ย้ายออก/คืนประกัน | เข้ม | | ⬜ | | |
@@ -197,3 +197,4 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 30 ต.ค. ~06:0xZ · ✅ **D.11** (29/53) · merge dee57130 · ด่าน H2/H3: d.11 99/100 · probe-d11-b 33/33 · d.8 78/85 · d.3 · d.13 88/98 · smoke 6/6 · fitness 53/53 · tsc 0 (รันซ้ำหลังเครื่องรีสตาร์ต) · ORACLE-EDIT d.8 S-7
 - 30 ต.ค. ~07:3xZ · ✅ **B.10** (30/53) · merge f5cccfd9 · ด่าน I: b.10 61/64 (G-2 = b.5 S-3 → ORACLE-EDIT 05ec068f voidPaidServiceBillAction op void · b.5 รันซ้ำ 0 failed) · probe-b10-b 27/0 · p5.1 28/28 · p3.5 55/55 · p2.9b 53/53 · b.4 · b.9 · smoke · fitness 53/53 · tsc 0 · ORACLE-EDIT probe K5-a (voidPaidServiceBill)
 - 30 ต.ค. ~10:3xZ · ✅ **B.8** (31/53) · merge 788cdeb0 · ด่าน J: b.8 89/94 (G-5 r0.6 แดงเพราะฉาก D.9 ตั้ง payments.receiver UNIT หอบน svcqc — ลบแถวแล้ว รัน r0.6 ซ้ำ 77/77) · probe-b8-b 30/0 · b.10 0 failed · probe-b10-b 27/0 · p3.5 55/55 · smoke · fitness 53/53 · tsc 0 · ORACLE-EDIT b.7 S-5 · b.3 SNAP_KEYS · probe P3g/P7 (V5)
+- 30 ต.ค. ~12:0xZ · ✅ **D.9** (32/53) · merge 950565b6 · ด่าน K (ผู้คุมใหม่ บัญชี B รับผลที่รันค้างจากบัญชี A): d.9 86/89 0 failed · probe-d9-b 28/0 · r0.6 77/77 · b.8 / b.7 / d.11 --no-regression 0 failed · smoke 6/6 · fitness 53/53 · tsc 0

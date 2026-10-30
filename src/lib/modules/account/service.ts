@@ -8041,6 +8041,9 @@ export async function dormReverseSettlement(input: {
   try {
     return await prisma.$transaction(async (tx) => {
       await dormLockScope(tx, tenantId, systemId, unitId);
+      // SVC D.4 (X1) ▸ สัญญาที่ถูกยกเลิกแล้ว (เช่น ย้อนการนำเข้า) ห้ามถอยการปิดเงินประกัน — ยอดถือจะกลับมาบนสัญญาที่ไม่มีผลแล้ว ◂
+      const leaseNow = await tx.dormLease.findFirst({ where: { id: leaseId, tenantId, unitId }, select: { status: true } });
+      if (leaseNow?.status === "CANCELLED") throw new DormTxReject("LEASE_CANCELLED", "สัญญานี้ถูกยกเลิกแล้ว — ถอยการปิดเงินประกันไม่ได้");
       const settle = await tx.accountJournalEntry.findFirst({
         where: {
           tenantId, systemId, refType: DORM_DEPOSIT_REF_TYPE, refId: leaseRef, reversalOfId: null,
@@ -8176,6 +8179,80 @@ export async function dormSecurityDepositHeldInTx(tx: Prisma.TransactionClient, 
   return total;
 }
 // ◂ SVC D.5
+
+// ═══════════════════ SVC D.4 ▸ กลับรายการรับเงินประกัน (RULING-2 · เพิ่มล้วน · ฟังก์ชัน D.2/D.5 เดิมไม่เปลี่ยน) ═══════════════════
+// ผู้เรียก = account/index.ts (reverseSecurityDepositReceiptInTx · reverseSecurityDepositReceipt) ← dorm/import.ts (undoImport) ในโพรเซสเท่านั้น
+// 🔴 กลับรายการเท่านั้น — ไม่ลบแถวบัญชีใด ๆ: reverseEntry ของ gl (entry ตรงข้าม reversalOfId = JV รับ · JV รับ = REVERSED · วันที่ = วันนี้/งวดเปิดถัดไป)
+// 🔴 ทุกคำสั่งผ่าน `tx` ของผู้เรียก (ไม่เปิด connection ที่สอง) · วินัยล็อกเดียวกับ dormPostSecurityDepositInTx: ① แถว Tenant → ② แถวลิงก์หน่วย (ถ้ายังผูก) → JV
+// 🔴 หา JV รับด้วยคีย์ตรงตัว `DormSecurityDeposit#<unit>:<lease>#RECEIVE:<คีย์>` ทุกสมุดของร้าน (F4) · มี JV ปิดประกันที่ยังมีผล ⇒ DEPOSIT_SETTLED (ต้องถอยการปิดก่อน)
+// 🔴 ซ้ำ ⇒ ผลเดิม duplicate:true · ปฏิเสธเชิงตรรกะ = DormReject ก่อนเขียนใด ๆ (นอกจากล็อกแถว) · error ของฐาน = โยนให้ tx ของผู้เรียกล้มทั้งก้อน
+export type DormReverseReceiptResult = { ok: true; duplicate: boolean; receiptEntryId: string; reversalEntryId: string; heldSatang: number };
+
+export async function dormReverseDepositReceiptInTx(
+  tx: Prisma.TransactionClient,
+  input: { tenantId: string; unitId: string; leaseId: string; receiptKey: string; reason: string; createdById?: string | null },
+): Promise<DormReverseReceiptResult | DormReject> {
+  const { tenantId, unitId, leaseId } = input;
+  const leaseRef = dormLeaseRef(unitId, leaseId);
+  try {
+    // ① แถว Tenant
+    const t = await tx.tenant.updateMany({ where: { id: tenantId }, data: { updatedAt: new Date() } });
+    if (t.count !== 1) return dormReject("NOT_FOUND", "ไม่พบรายการรับเงินประกันนี้ของสัญญานี้");
+    const recv = await tx.accountJournalEntry.findFirst({
+      where: { tenantId, refType: DORM_DEPOSIT_REF_TYPE, refId: leaseRef, reversalOfId: null, idempotencyKey: depReceiveKey(unitId, leaseId, input.receiptKey) },
+      select: { id: true, systemId: true, status: true },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!recv) return dormReject("NOT_FOUND", "ไม่พบรายการรับเงินประกันนี้ของสัญญานี้");
+    const systemId = recv.systemId;
+    // ② แถวลิงก์ของหน่วยกับสมุดของ JV (ยังผูกอยู่ ⇒ จับ row lock · ย้าย/ตัดลิงก์แล้ว ⇒ กลับรายการในสมุดเดิมได้ตามหลัก F4)
+    await tx.accountSystemLink.updateMany({ where: { tenantId, systemId, linkedKind: "BUSINESS", linkedId: unitId, archivedAt: null, enabled: true }, data: { enabled: true } });
+    const heldNow = async () => {
+      let total = 0;
+      for (const b of (await dormDepositHeldByBook(tx, tenantId, unitId, leaseId)).values()) total += b.total;
+      return total;
+    };
+    if (recv.status !== "POSTED") {
+      const rev = await tx.accountJournalEntry.findFirst({ where: { tenantId, systemId, reversalOfId: recv.id }, select: { id: true } });
+      if (!rev) return dormReject("NOT_FOUND", "รายการรับเงินประกันนี้ไม่อยู่ในสถานะที่กลับรายการได้");
+      return { ok: true as const, duplicate: true, receiptEntryId: recv.id, reversalEntryId: rev.id, heldSatang: await heldNow() };
+    }
+    // ปิดประกันแล้ว (JV ปิดที่ยังมีผล) ⇒ ต้องถอยการปิดก่อน — ไม่กลับรายการรับใต้การปิด
+    const settles = await tx.accountJournalEntry.findMany({
+      where: { tenantId, refType: DORM_DEPOSIT_REF_TYPE, refId: leaseRef, status: "POSTED", reversalOfId: null },
+      select: { idempotencyKey: true },
+    });
+    if (settles.some((e) => (e.idempotencyKey ?? "").startsWith(`${DORM_DEPOSIT_REF_TYPE}#${leaseRef}#SETTLE:`)))
+      return dormReject("DEPOSIT_SETTLED", "สัญญานี้ปิดเงินประกันแล้ว — ถอยการปิดเงินประกันก่อน แล้วจึงกลับรายการรับเงินประกัน");
+    try {
+      await assertNotLockedTx(tx, systemId, new Date());
+    } catch (e) {
+      return dormReject("PERIOD_LOCKED", safeReason(e, "วันนี้อยู่ในช่วงข้อมูลที่ถูกล็อกไว้ — กลับรายการรับเงินประกันไม่ได้"));
+    }
+    const reason = input.reason.trim().slice(0, 200);
+    const by = typeof input.createdById === "string" && input.createdById ? ` (โดย ${input.createdById.slice(0, 40)})` : "";
+    const rev = await reverseEntry({ tenantId, systemId }, recv.id, `กลับรายการรับเงินประกัน: ${reason}${by}`, tx);
+    if ("skipped" in rev) return dormReject("NOT_FOUND", "รายการรับเงินประกันนี้ไม่อยู่ในสถานะที่กลับรายการได้");
+    return { ok: true as const, duplicate: false, receiptEntryId: recv.id, reversalEntryId: rev.entryId, heldSatang: await heldNow() };
+  } catch (e) {
+    if (e instanceof DormTxReject || e instanceof DormGlReject) return dormReject(e.code, e.message);
+    throw e;
+  }
+}
+
+/** รุ่นเปิด tx เอง (dormMoneyTx) — ห้ามเรียกภายใน tx อื่น · ปฏิเสธ ⇒ rollback ทั้งก้อน */
+export async function dormReverseDepositReceipt(input: { tenantId: string; unitId: string; leaseId: string; receiptKey: string; reason: string; createdById?: string | null }): Promise<DormReverseReceiptResult | DormReject> {
+  try {
+    return await dormMoneyTx(async (tx) => {
+      const r = await dormReverseDepositReceiptInTx(tx, input);
+      if (!r.ok) throw new DormTxReject(r.code, r.reason);
+      return r;
+    });
+  } catch (e) {
+    return dormFromError(e, "กลับรายการรับเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง");
+  }
+}
+// ◂ SVC D.4
 
 // ═══════════════════ SVC D.3 ▸ ใบกำกับภาษีเต็มรูปของหอ (ม.86/4 · คำสั่ง ป.86/2542) — เพิ่มล้วน · ผู้เรียก = account/index.ts เท่านั้น ═══════════════════
 // 🔴 ใบกำกับ = AccountDocument TAX_INVOICE (source DORM · refSystemId หน่วย · refType DormBillTax · sourceDocId = ใบแจ้งหนี้) — เฉพาะบรรทัด VAT ของใบแจ้งหนี้

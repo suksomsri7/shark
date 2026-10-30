@@ -626,7 +626,29 @@ function renderContract(tpl: string, clauses: Clause[], vars: Record<string, str
 }
 
 // ═════════════════════════ createLease (§3.1) ═════════════════════════
-export async function createLease(ctx: LeaseCtx, input: CreateLeaseInput): Promise<CreateLeaseResult> {
+/** SVC D.4 ▸ เครื่องหมายงานนำเข้า (อาร์กิวเมนต์ภายในโมดูล · ไม่เปิดผ่าน server action ใด) — ใบสั่ง svc-brief-d.4 §5.3 ◂ */
+export type LeaseImportMark = { importBatchId: string; rowNo: number; claimToken: string };
+const importMarkOf = (v: unknown): LeaseImportMark | null =>
+  isRec(v) && isStr(v.importBatchId) && isInt(v.rowNo) && v.rowNo > 0 && isStr(v.claimToken) ? { importBatchId: v.importBatchId, rowNo: v.rowNo, claimToken: v.claimToken } : null;
+/**
+ * SVC D.4 (X5) ▸ งานนำเข้าต้องถือ claim ของชุดอยู่จริง — คำสั่งแรกของ tx: ล็อก `dorm.import:<unitId>` (ลำดับล็อก: import → lease → Tenant)
+ *   ชุดไม่ใช่ CREATING หรือ claimToken ไม่ตรง (zombie ถูกแย่ง/ชุดถูกย้อนแล้ว) ⇒ ปฏิเสธ BUSY ไม่มีผลข้างเคียง · ผ่าน ⇒ ต่ออายุ claimUntil
+ */
+async function holdImportClaim(tx: Tx, tenantId: string, unitId: string, mark: LeaseImportMark): Promise<void> {
+  await advisoryLock(tx, `dorm.import:${unitId}`);
+  const r = await tx.dormImportBatch.updateMany({
+    where: { id: mark.importBatchId, tenantId, unitId, status: "CREATING", claimToken: mark.claimToken },
+    data: { claimUntil: new Date(Date.now() + 120_000) },
+  });
+  if (r.count !== 1) throw new Abort(fail("BUSY", "งานนำเข้านี้ไม่ได้ถือสิทธิ์ทำต่อแล้ว (มีงานอื่นรับช่วงหรือชุดถูกย้อนกลับ) — ไม่มีอะไรเปลี่ยน"));
+}
+/** สัญญานี้สร้างโดยชุดนำเข้าที่ระบุไหม (policySnapshot.import.batchId) */
+function importedBy(snap: Record<string, unknown> | null, mark: LeaseImportMark | null): boolean {
+  const im = snap && isRec(snap.import) ? snap.import : null;
+  return !!mark && !!im && im.batchId === mark.importBatchId;
+}
+
+export async function createLease(ctx: LeaseCtx, input: CreateLeaseInput, internal?: LeaseImportMark): Promise<CreateLeaseResult> {
   const tenantIdForLog = isRec(ctx) && typeof ctx.tenantId === "string" ? ctx.tenantId : "";
   try {
     if (!isRec(input)) return notFound();
@@ -780,7 +802,9 @@ export async function createLease(ctx: LeaseCtx, input: CreateLeaseInput): Promi
     if (rendered.level !== "OK") return fail("LEGAL_BLOCK", rendered.messageTh, legalInfo(rendered));
 
     // 6. tx เดียว: (สายอนุมัติ) → Party → claimRoom → คำขออนุมัติ → แถวสัญญา + snapshot → audit
+    const importMark = importMarkOf(internal); // SVC D.4 ▸ ไม่ส่ง = พฤติกรรมเดิม ◂
     const res = await runTx(tenantId, unitId, async (tx) => {
+      if (importMark) await holdImportClaim(tx, tenantId, unitId, importMark); // SVC D.4 (X5) ◂
       if (needsOwnerStep) {
         const policy = await resolvePolicy({ tenantId }, { entityType: ENTITY, unitId, systemId: null, amountSatang: null }, tx);
         const steps = policy ? await tx.approvalStep.findMany({ where: { tenantId, policyId: policy.id }, select: { approverRole: true } }) : [];
@@ -889,7 +913,8 @@ export async function createLease(ctx: LeaseCtx, input: CreateLeaseInput): Promi
           }),
         );
       const legal: SnapLegal = { mode, level: legalLevel, code: legalCode, reason: legalReason, approvalId };
-      const policySnapshot = { ...snap, contract: { textTh, clauses, tenantName: party.name }, legal };
+      const mark = importMark;
+      const policySnapshot = { ...snap, contract: { textTh, clauses, tenantName: party.name }, legal, ...(mark ? { import: { batchId: mark.importBatchId, rowNo: mark.rowNo, origin: "IMPORT" } } : {}) };
       await tx.dormLease.create({
         data: {
           id: leaseId,
@@ -1057,6 +1082,7 @@ export async function moveIn(
     financeAccountId?: string | null;
     meterReadings?: { meterId: string; value: number }[];
   },
+  internal?: LeaseImportMark,
 ): Promise<{ ok: true; duplicate: boolean; status: "ACTIVE"; heldSatang: number; receipts: Receipt[] } | Fail> {
   const tenantIdForLog = isRec(ctx) && typeof ctx.tenantId === "string" ? ctx.tenantId : "";
   try {
@@ -1080,10 +1106,13 @@ export async function moveIn(
     const snap = snapOf(lease.policySnapshot);
     const ap = await approvalGate(g.tenantId, snap);
     if (ap) return ap;
-    if (!lease.signedAt) return fail("NOT_SIGNED", "ผู้เช่ายังไม่ได้ลงชื่อสัญญา — ลงชื่อบนจอหรือแนบสัญญาที่ลงชื่อแล้วก่อน");
+    // SVC D.4 ▸ สัญญากระดาษเดิมที่นำเข้า (ชุดเดียวกับ internal) ข้ามเฉพาะด่านลงชื่อ + รูปวันเข้า (RULING-6) — อย่างอื่นเหมือนเดิม ◂
+    const moveMark = importMarkOf(internal);
+    const paperImport = importedBy(snap, moveMark);
+    if (!lease.signedAt && !paperImport) return fail("NOT_SIGNED", "ผู้เช่ายังไม่ได้ลงชื่อสัญญา — ลงชื่อบนจอหรือแนบสัญญาที่ลงชื่อแล้วก่อน");
     const need = photosMinOf(snap);
     const have = photosOf(lease.moveInPhotos).filter((p) => p.kind === "ROOM_PHOTO").length;
-    if (have < need) return fail("PHOTOS_REQUIRED", `ต้องมีรูปห้องวันเข้าอย่างน้อย ${need} รูป — ขาดอีก ${need - have} รูป`);
+    if (have < need && !paperImport) return fail("PHOTOS_REQUIRED", `ต้องมีรูปห้องวันเข้าอย่างน้อย ${need} รูป — ขาดอีก ${need - have} รูป`);
     const mo = moneyOpts(input as Record<string, unknown>);
     if (isFail(mo)) return mo;
     const readings: { meterId: string; value: number }[] = [];
@@ -1107,12 +1136,13 @@ export async function moveIn(
     //      → ③ ACTIVE + มิเตอร์วันเข้า + audit · ปฏิเสธ/ล้มข้อใด ⇒ rollback ทั้งก้อน (ไม่มีเงินบนสัญญาที่ยัง DRAFT)
     const out = await withTenantContact(g, lease.partyId, () =>
       moneyTx(async (tx) => {
+        if (moveMark) await holdImportClaim(tx, g.tenantId, g.unitId, moveMark); // SVC D.4 (X5) ◂
         await advisoryLock(tx, leaseLockKey(lease.id));
         const cur = await tx.dormLease.findFirst({ where: { id: lease.id, tenantId: g.tenantId, unitId: g.unitId }, select: { status: true, signedAt: true } });
         if (!cur) throw new Abort(notFound());
         if (cur.status === "ACTIVE") return { fresh: false, receipts: [] as Receipt[], held: await securityDepositHeldInTx(tx, { tenantId: g.tenantId, unitId: g.unitId, leaseId: lease.id }) };
         if (cur.status !== "DRAFT") throw new Abort(fail("NOT_EDITABLE", "สัญญานี้ยกเลิกหรือสิ้นสุดแล้ว — เข้าอยู่ไม่ได้"));
-        if (!cur.signedAt) throw new Abort(fail("NOT_SIGNED", "ผู้เช่ายังไม่ได้ลงชื่อสัญญา — ลงชื่อบนจอหรือแนบสัญญาที่ลงชื่อแล้วก่อน"));
+        if (!cur.signedAt && !paperImport) throw new Abort(fail("NOT_SIGNED", "ผู้เช่ายังไม่ได้ลงชื่อสัญญา — ลงชื่อบนจอหรือแนบสัญญาที่ลงชื่อแล้วก่อน"));
         const receipts: Receipt[] = [];
         const base = { tenantId: g.tenantId, unitId: g.unitId, leaseId: lease.id, partyId: lease.partyId, paidAt: mo.paidAt, channel: mo.channel, financeAccountId: mo.financeAccountId, createdById: g.actorUserId };
         if (lease.bookingFeeSatang > 0) {
@@ -1127,7 +1157,7 @@ export async function moveIn(
           receipts.push({ entryId: r.entryId, entryNo: r.entryNo, amountSatang: rest, kind: "DEPOSIT" });
         }
         const depositDocumentId = receipts.find((x) => x.kind === "DEPOSIT")?.entryId ?? receipts.find((x) => x.kind === "BOOKING")?.entryId ?? null;
-        const upd = await tx.dormLease.updateMany({ where: { id: lease.id, tenantId: g.tenantId, unitId: g.unitId, status: "DRAFT", signedAt: { not: null } }, data: { status: "ACTIVE", depositDocumentId } });
+        const upd = await tx.dormLease.updateMany({ where: { id: lease.id, tenantId: g.tenantId, unitId: g.unitId, status: "DRAFT", ...(paperImport ? {} : { signedAt: { not: null } }) }, data: { status: "ACTIVE", depositDocumentId } });
         if (upd.count !== 1) throw new Abort(fail("NOT_EDITABLE", "สัญญานี้เปลี่ยนสถานะไปแล้ว — โหลดหน้าใหม่"));
         if (readings.length) {
           const exist = new Set(
@@ -1575,4 +1605,41 @@ export async function updateLeaseOccupants(
     await logFail("occupants", tenantIdForLog, e);
     return unavailable();
   }
+}
+
+// ── SVC D.4 (X12) ▸ ตัวตรวจอ่านอย่างเดียว: ชื่อผู้เช่าที่ทำให้ข้อความสัญญา (แม่แบบ + ข้อบังคับ + ข้อเพิ่มของหน่วย) มีคำต้องห้ามคร่อมขอบชื่อ ──
+//   ตรรกะเดียวกับ createLease (renderContract + forbiddenOutsideName) · ไม่เขียนอะไร · ใช้ connection ของตัวเอง (ห้ามเรียกระหว่างถือ tx)
+//   คืนเซตชื่อที่ไม่ผ่าน · แม่แบบ/ข้อเพิ่มของหน่วยผิดเอง ⇒ ทุกชื่อไม่ผ่าน (createLease จะปฏิเสธเหมือนกัน)
+export async function leaseContractNameProblems(tenantId: string, unitId: string, names: string[]): Promise<Set<string>> {
+  const bad = new Set<string>();
+  const uniq = [...new Set(names.filter((n) => typeof n === "string" && n.trim()))];
+  if (!uniq.length) return bad;
+  const unit = await tenantDb({ tenantId }).businessUnit.findFirst({ where: { id: unitId, type: "DORM" }, select: { name: true } });
+  if (!unit) return bad;
+  const snap: PolicySnapshot = await snapshotPolicy({ tenantId }, "lease", { unitId });
+  const sv = (k: string) => (Object.prototype.hasOwnProperty.call(snap.values, k) ? snap.values[k] : undefined);
+  const extras = extraClausesOf(sv("rooms.lease.extraClauses"));
+  const tplValue = sv("rooms.lease.contractTemplate");
+  if (!extras || !templateVarsOk(tplValue)) {
+    for (const n of uniq) bad.add(n);
+    return bad;
+  }
+  const clauses: Clause[] = [...MANDATORY_CLAUSES.map((m) => ({ id: m.id, titleTh: m.titleTh, textTh: m.textTh, mandatory: true })), ...extras];
+  const tpl = templateText(tplValue);
+  const today = bkkYmd(new Date());
+  for (const name of uniq) {
+    const text = renderContract(tpl, clauses, {
+      leaseNo: "L00000000",
+      unitName: unit.name,
+      signDate: thaiDateLong(today),
+      landlordName: unit.name,
+      tenantName: name,
+      roomNo: "000",
+      startDate: thaiDateLong(today),
+      endDate: thaiDateLong(today),
+      rent: bahtText(100000),
+    });
+    if (forbiddenOutsideName(text, name)) bad.add(name);
+  }
+  return bad;
 }

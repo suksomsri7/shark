@@ -70,7 +70,8 @@ export type PrepareBillRunResult =
       added: number;
       changed: number;
       totalSatang: number;
-      skipped: { leaseId: string; roomNumber: string; reason: "MOVE_OUT" }[];
+      /** SVC D.4 (Y3) ▸ LEASE_CLOSED = สัญญาถูกปิด/ยกเลิกระหว่างเตรียมรอบ (ตัดออกตอนล็อก FOR SHARE) — ไม่ได้ออกบิล ◂ */
+      skipped: { leaseId: string; roomNumber: string; reason: "MOVE_OUT" | "LEASE_CLOSED" }[];
       gate: BillRunGate;
       /** SVC D.11 (L4) ▸ สัญญาที่ฐานค่าปรับเปลี่ยนระหว่างคำนวณ (ลองใหม่แล้ว 1 ครั้ง) — ยังไม่ถูกเขียน · กดเตรียมรอบอีกครั้ง ◂ */
       staleLeases?: number;
@@ -945,6 +946,7 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date, legalParams:
       const exOf = new Map(existing.map((b) => [b.leaseId, b]));
       let added = 0;
       let changed = 0;
+      const dropped: { leaseId: string; roomId: string }[] = []; // SVC D.4 (Y3)
       const creates: Prisma.DormBillCreateManyInput[] = [];
       for (const c of calc.bills) {
         if (lfStale.has(c.leaseId)) continue; // SVC D.11
@@ -971,6 +973,17 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date, legalParams:
           changed += del.count;
         }
       }
+      // SVC D.4 (X4) ▸ ล็อกแถวสัญญาของบิลใหม่ FOR SHARE (เรียง id) แล้วตัดสัญญาที่ไม่ใช่ ACTIVE/NOTICE ออก — ต่อคิวกับการย้อนนำเข้า (FOR UPDATE) · ไม่มีบิลบนสัญญาที่ถูกยกเลิก ◂
+      if (creates.length) {
+        const ids = [...new Set(creates.map((c) => c.leaseId))].sort();
+        const live = await tx.$queryRaw<{ id: string; status: string }[]>`SELECT "id", "status" FROM "DormLease" WHERE "tenantId" = ${tenantId} AND "unitId" = ${unitId} AND "id" = ANY(${ids}::text[]) ORDER BY "id" FOR SHARE`;
+        const ok = new Set(live.filter((l) => l.status === "ACTIVE" || l.status === "NOTICE").map((l) => l.id));
+        const kept = creates.filter((c) => ok.has(c.leaseId));
+        for (const c of creates) if (!ok.has(c.leaseId)) dropped.push({ leaseId: c.leaseId, roomId: c.roomId }); // SVC D.4 (Y3) ▸ จด skipped ◂
+        added -= creates.length - kept.length;
+        creates.length = 0;
+        creates.push(...kept);
+      }
       if (creates.length) await tx.dormBill.createMany({ data: creates, skipDuplicates: true });
       // F19: จดค่า autoSend ของหน่วย ณ ตอนเตรียมไว้ในรอบ — งานตามเวลากรองรอบที่ต้องส่งจริงได้ใน SQL (เขียนเฉพาะเมื่อเปลี่ยน)
       const auto = calc.unitVals["rooms.billing.autoSend"] === true;
@@ -982,14 +995,17 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date, legalParams:
         await tx.dormBillRun.updateMany({ where: { id: runId, tenantId, unitId }, data: { progress: prog as Prisma.InputJsonValue } });
       }
       const tot = await refreshRunTotals(tx, tenantId, unitId, runId);
-      return { runId, created, status, added, changed, stale: lfStale.size, ...tot };
+      return { runId, created, status, added, changed, stale: lfStale.size, dropped, ...tot };
     }, TX_OPTS),
   );
   if (res === "BUSY") return BUSY();
   // SVC D.11 (L4) ▸ สัญญาที่ "ค้าง" (ฐานค่าปรับเปลี่ยนระหว่างคำนวณ) ⇒ คำนวณใหม่ 1 ครั้ง · ยังค้าง ⇒ บอกในผล (ไม่หลุดเงียบ) ◂
   if (res.stale > 0 && !retried) {
     const again = await prepareInternal(g, P, now, legalParams, true);
-    return again.ok ? { ...again, created: again.created || res.created, added: again.added + res.added, changed: again.changed + res.changed } : again;
+    if (!again.ok) return again;
+    const seen = new Set(again.skipped.map((s) => s.leaseId)); // SVC D.4 (Y3) ▸ สัญญาที่ถูกตัดในรอบแรกยังอยู่ในผล ◂
+    const extraSkipped = res.dropped.filter((d) => !seen.has(d.leaseId)).map((d) => ({ leaseId: d.leaseId, roomNumber: calc.rooms.get(d.roomId)?.number ?? "", reason: "LEASE_CLOSED" as const }));
+    return { ...again, created: again.created || res.created, added: again.added + res.added, changed: again.changed + res.changed, skipped: [...again.skipped, ...extraSkipped] };
   }
 
   // ด่าน = D.7 + Σ ของบิลในรอบ (ไม่ใช่ HELD/VOID)
@@ -1011,7 +1027,11 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date, legalParams:
     added: res.added,
     changed: res.changed,
     totalSatang: res.totalSatang,
-    skipped: calc.skipped.map((s) => ({ leaseId: s.leaseId, roomNumber: s.roomNumber, reason: s.reason })),
+    skipped: [
+      ...calc.skipped.map((s) => ({ leaseId: s.leaseId, roomNumber: s.roomNumber, reason: s.reason })),
+      // SVC D.4 (Y3) ▸ สัญญาที่ถูกตัดตอนล็อก FOR SHARE (ปิด/ยกเลิกระหว่างเตรียมรอบ) ◂
+      ...res.dropped.map((d) => ({ leaseId: d.leaseId, roomNumber: calc.rooms.get(d.roomId)?.number ?? "", reason: "LEASE_CLOSED" as const })),
+    ],
     gate,
     ...(res.stale > 0 ? { staleLeases: res.stale } : {}),
   };

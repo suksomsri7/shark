@@ -832,6 +832,27 @@ const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
   "rooms.access.managerScope": { UNIT: "ทั้งหอ", BUILDING: "เฉพาะอาคารที่ดูแล" },
 };
 
+// SVC D.4 ▸ เพดานนำเข้า Excel/CSV (X6) + หน้าต่างย้อนกลับ — ledger/svc-briefs/svc-brief-d.4.md §2.3 (อ่านสดทุกคำขอ · ชั้นหน่วย)
+//   group "lease" (การ์ด 5 "เงินประกัน · สัญญา" ของหน้า 17) — ไม่เปิดกลุ่มใหม่ เพื่อให้หน้า 17 ครอบทุกช่อง UNIT ตามสัญญา D.13 (R-7)
+DEFS.push(
+  def({
+    key: "rooms.import.maxRows", group: "lease", type: "int", labelTh: "นำเข้าจากไฟล์: จำนวนแถวสูงสุดต่อไฟล์",
+    helpTh: "ไม่นับแถวหัวคอลัมน์ · เกินนี้ระบบไม่รับไฟล์ (แบ่งเป็นหลายไฟล์)",
+    schema: z.number().int().min(10).max(5000), defaults: { _fallback: 1000 }, chain: U,
+  }),
+  def({
+    key: "rooms.import.maxFileBytes", group: "lease", type: "int", labelTh: "นำเข้าจากไฟล์: ขนาดไฟล์สูงสุด (ไบต์)",
+    helpTh: "ไฟล์ใหญ่กว่านี้ระบบไม่รับ · ไฟล์ Excel ที่คลายแล้วใหญ่ผิดปกติถูกปฏิเสธด้วย",
+    schema: z.number().int().min(10_000).max(10_000_000), defaults: { _fallback: 2_000_000 }, chain: U,
+  }),
+  def({
+    key: "rooms.import.undoDays", group: "lease", type: "days", labelTh: "นำเข้าจากไฟล์: ย้อนกลับทั้งชุดได้ภายใน (วัน)",
+    helpTh: "0 = ภายในวันที่นำเข้า (ถึง 23:59 น.) · ย้อนกลับได้เฉพาะเมื่อยังไม่ออกบิลของสัญญาที่นำเข้า",
+    schema: z.number().int().min(0).max(7), defaults: { _fallback: 0 }, chain: U, ownerOnly: true, sensitivity: "MONEY",
+  }),
+);
+// ◂ SVC D.4
+
 const withLabels = (defs: SettingDef[]): SettingDef[] => defs.map((d) => (ENUM_LABELS_TH[d.key] ? { ...d, enumLabelsTh: ENUM_LABELS_TH[d.key] } : d));
 
 defineSettings("rooms", withLabels(DEFS), { templates: ROOM_TEMPLATES, snapshots: SNAPSHOTS, groupRules: GROUP_RULES, groupLabelsTh: GROUP_LABELS_TH });
