@@ -10,6 +10,7 @@ import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
 import { CatalogError } from "@/lib/modules/pos";
 import * as booking from "@/lib/modules/booking/service";
+import { ensureServiceBill, isLegacyBookingUnit } from "@/lib/modules/booking/finish"; // SVC B.10 ▸ บิลจากคิว ◂
 import { systemForUnit } from "@/lib/modules/system/service";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { logOps } from "@/lib/core/ops"; // POS P5.1 ▸ RC F5 (CD-P51-O10) ◂
@@ -145,7 +146,22 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
       // M3.7 — แถวไทม์ไลน์ VISIT ย้ายไปที่ consumer `booking.completed` (recordOnce + บริการ/ช่าง/เวลานัด)
       //   เขียนตรงที่นี่อีก = แถวซ้ำ 2 บรรทัดต่อการมา 1 ครั้ง
     }
-    if (spent > 0 && posSystemId) {
+    // SVC B.10 ▸ สาขาที่เลือกแม่แบบจองคิวแล้ว (V2) + ผูก POS ⇒ เปิด "บิลจากคิว" (บิลพัก · แคชเชียร์รับเงิน + หักมัดจำตอนจ่าย) แทนบิล CASH ·
+    //   สาขาเดิม (_fallback) = ทางบิล CASH `booking-sale-<id>` เดิมทุกไบต์ข้างล่าง · fix Q8: ตัดสินร้านเดิมจากค่าตั้งตรง (ensure ล้ม ≠ ไม่ทำทางเดิม) ·
+    //   fix Q2: ร้านเดิมที่งานมีบิลจากคิวที่ยังมีผลอยู่แล้ว (เคยเป็น V2) ⇒ ไม่ออกบิล CASH ซ้ำ ◂
+    const legacyUnit = spent > 0 && posSystemId ? await isLegacyBookingUnit(ctx) : true;
+    if (spent > 0 && posSystemId && !legacyUnit) {
+      const sb = await ensureServiceBill({ ...ctx, actorUserId: auth.user.id }, appt.id);
+      if (!sb.ok) {
+        scheduleDrain();
+        revalidatePath(`/app/u/${unitSlug}/booking`);
+        redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(sb.reason.slice(0, 300))}`);
+      }
+    }
+    const billLive = spent > 0 && posSystemId && legacyUnit
+      ? ["HELD", "PAID"].includes((await (await import("@/lib/modules/pos")).serviceBills.serviceBillStatus(ctx.tenantId, ctx.unitId, appt.id))?.status ?? "")
+      : false;
+    if (spent > 0 && posSystemId && legacyUnit && !billLive) {
       // POS P5.1 ▸ MA2 (F2): มัดจำที่รับเป็นใบรับ (POS_DEPOSIT) จ่ายเป็นแถว DEPOSIT อ้างใบรับ + ส่วนที่เหลือเงินสด ⇒ Σ รายได้ = ราคา · VAT ครั้งเดียว ·
       //   มัดจำแบบเดิม (ก่อน P5.1 · ไม่มี PosDeposit) = คิดเต็มเงินสดแบบเดิม ·
       //   กด DONE ซ้ำ: บิลของคีย์มีแล้ว = ไม่ส่งซ้ำ (มัดจำถูกใช้ไปแล้ว ⇒ payload ใหม่จะไม่ตรงบิลเดิม) — เดิม createSale คืนบิลเดิมเหมือนกัน ◂

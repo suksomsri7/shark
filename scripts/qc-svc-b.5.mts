@@ -1264,14 +1264,43 @@ await st("S-3", `action «${F.actions}»: "use server" · export async function 
   ok(!/export\s+(const|let|type|interface|default|class|function\s)/.test(code.replace(/export\s+async\s+function/g, "")), "export อื่นที่ไม่ใช่ async function");
   const fns = [...code.matchAll(/export\s+async\s+function\s+(\w+)\s*\(/g)].map((m) => ({ name: m[1], at: m.index ?? 0 }));
   ok(fns.length >= 9, `action ${fns.length} ตัว (ต้อง ≥ 9: call recall skip start done move checkin noshow walkin)`);
-  const FACADE = /\b(callJob|recallJob|skipJob|startJob|completeJob|moveJobStaff|checkIn|createWalkIn|setAppointmentStatus|cancelByShop)\s*\(/;
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): completeJobAction เรียก finishJob (B.10 มติ Q1 · ปุ่ม "เสร็จ" = finishJob ไม่มีของเพิ่ม) ⇒ เพิ่ม finishJob ในชุด facade
+  //   ของทาง authorizeLineOp · action บิลจากคิว 4 ตัว (finishJobAction amendServiceBillAction cancelServiceBillAction markPaidAction) ใช้ด่าน
+  //   authorizeServiceBillOp (มติข้อ 8 · Membership สด) ผ่าน helper billGate ⇒ ยอมทาง requireUnit → authorizeServiceBillOp → facade บิล
+  //   เฉพาะ 4 ชื่อนี้ + op ตรงชื่อ · ทุก action อื่นยังต้อง requireUnit → authorizeLineOp → facade ตามเดิม (ความเข้มเท่าเดิม)
+  const FACADE = /\b(callJob|recallJob|skipJob|startJob|completeJob|finishJob|moveJobStaff|checkIn|createWalkIn|setAppointmentStatus|cancelByShop)\s*\(/;
+  const BILL_ACTIONS: Record<string, { op: string; facade: RegExp }> = {
+    finishJobAction: { op: "finish", facade: /\bfinishJob\s*\(/ },
+    amendServiceBillAction: { op: "amend", facade: /\bamendServiceBill\s*\(/ },
+    cancelServiceBillAction: { op: "cancel", facade: /\bcancelServiceBill\s*\(/ },
+    markPaidAction: { op: "markPaid", facade: /\bmarkPaidWithoutPos\s*\(/ },
+  };
+  const billGateBody = (() => {
+    const i = code.search(/async\s+function\s+billGate\s*\(/);
+    if (i < 0) return null;
+    const j = code.slice(i + 10).search(/\n(export\s|async\s+function\s|function\s)/);
+    return code.slice(i, j < 0 ? code.length : i + 10 + j);
+  })();
+  const billGateOk = !!billGateBody && (() => {
+    const r = billGateBody.search(/requireUnit\s*\(/), a = billGateBody.search(/authorizeServiceBillOp\s*\(/), b = billGateBody.search(/if\s*\(\s*!\s*a\.ok\s*\)\s*bounce\s*\(/), ret = billGateBody.search(/\breturn\b/);
+    return r >= 0 && a > r && b > a && ret > b && /authorizeServiceBillOp\s*\([^)]*auth\.user\.id[^)]*\bop\b/.test(billGateBody);
+  })();
   const bad: string[] = [];
   fns.forEach((f, i) => {
     const body = code.slice(f.at, fns[i + 1]?.at ?? code.length);
+    const bill = BILL_ACTIONS[f.name];
+    if (bill) {
+      const iGate = body.search(new RegExp(`billGate\\s*\\(\\s*unitSlug\\s*,\\s*formData\\s*,\\s*["']${bill.op}["']\\s*\\)`)), iFac = body.search(bill.facade);
+      if (!billGateOk) bad.push(`${f.name}: billGate ไม่เรียง requireUnit → authorizeServiceBillOp(auth.user.id, op) → bounce`);
+      if (iGate < 0 || iFac < 0 || !(iGate < iFac)) bad.push(`${f.name}(billGate "${bill.op}" ${iGate} facade ${iFac})`);
+      if (FACADE.test(body.replace(bill.facade, ""))) bad.push(`${f.name}: เรียก facade ของแถวคิวผ่านด่านบิล`);
+      return;
+    }
     const iReq = body.search(/requireUnit\s*\(/), iAuth = body.search(/authorizeLineOp\s*\(/), iFac = body.search(FACADE);
     if (iReq < 0 || iAuth < 0 || iFac < 0 || !(iReq < iAuth && iAuth < iFac)) bad.push(`${f.name}(req ${iReq} auth ${iAuth} facade ${iFac})`);
     if (!/actorUserId/.test(body) && !/actorUserId/.test(code.slice(0, fns[0].at))) bad.push(`${f.name}: ไม่ส่ง actorUserId`);
   });
+  ok(Object.keys(BILL_ACTIONS).every((n) => !src(F.actions).includes(n) || fns.some((f) => f.name === n)), "action บิลจากคิวไม่ใช่ export async function");
   ok(bad.length === 0, bad.slice(0, 5).join(" · "));
   if (/["']at["']/.test(code)) ok(/SVC_QC_CLOCK/.test(code), "อ่าน at โดยไม่มีด่าน SVC_QC_CLOCK");
 }, "CRITICAL");
@@ -1328,8 +1357,33 @@ await st("S-8", "line-access.ts pure (import ได้แค่ @/lib/core/rbac 
   ok(!/\.(appointment|queueTicket)\.update\s*\(/.test(o), "line-ops มี .update( แบบไม่ CAS");
   ok(!/new\s+Mutex|async-mutex|new\s+Map<[^>]*Promise/.test(o), "ตัวกันในหน่วยความจำ");
 }, "MAJOR");
-await st("S-9", "ไม่มี event ใหม่ (ข้าม = QueueTicketEvent · เรียกคืน = queue.ticket.called เดิม · ย้ายช่าง = booking.rescheduled เดิม) ⇒ 3 ทะเบียน event ไม่ถูกแตะ", () => {
-  eq(dirty(["src/lib/outbox-consumers.ts", "src/lib/automation/labels.ts", "src/lib/webhooks/labels.ts"]), [], "ทะเบียน event");
+await st("S-9", "ไม่มี event ใหม่ยกเว้น booking.paid ของ B.10 (ข้าม = QueueTicketEvent · เรียกคืน = queue.ticket.called เดิม · ย้ายช่าง = booking.rescheduled เดิม) ⇒ 3 ทะเบียน event ไม่ถูกแตะ", () => {
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): B.10 เพิ่ม event `booking.paid` (มติ Q1) ใน 3 ทะเบียน ⇒ ยอมเฉพาะบรรทัดของ booking.paid
+  //   (+ ต่อ booking.onPosSalePaid เข้าตัวรับ pos.sale.paid แบบห่อ bothMain — แหล่งยิง booking.paid · ห้ามเปลี่ยนส่วนอื่นของบรรทัด) ·
+  //   ต้องมีป้ายไทยใน automation/labels (เว็บฮุครับจาก spread · ห้ามประกาศซ้ำ) + consumer ใน outbox · event อื่นยังห้ามแตะ
+  const REG3 = ["src/lib/outbox-consumers.ts", "src/lib/automation/labels.ts", "src/lib/webhooks/labels.ts"];
+  const ch = dirty(REG3);
+  if (ch.length === 0) return;
+  const COMMISSION = `async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSalePaid(evt)`;
+  const WIRED = `bothMain(${COMMISSION}, async (evt) => (await import("@/lib/modules/booking")).onPosSalePaid(evt))`;
+  const bad: string[] = [];
+  for (const f of REG3) {
+    const d = spawnSync("git", ["diff", "-U0", "HEAD", "--", f], { cwd: ROOT, encoding: "utf8" }).stdout ?? "";
+    const rm = d.split("\n").filter((l) => /^-(?!--)/.test(l)).map((l) => l.slice(1));
+    const add = d.split("\n").filter((l) => /^\+(?!\+\+)/.test(l)).map((l) => l.slice(1));
+    const isComment = (l: string) => { const t = l.trim(); return t === "" || /^(\/\/|\*|\/\*)/.test(t); };
+    const rmCode = rm.filter((l) => !isComment(l)), addCode = add.filter((l) => !isComment(l));
+    const wiredPairs = f === REG3[0] ? rmCode.filter((l) => /^\s*"pos\.sale\.paid":/.test(l) && addCode.includes(l.replace(COMMISSION, WIRED)) && l.includes(COMMISSION)) : [];
+    for (const l of rmCode) if (!wiredPairs.includes(l)) bad.push(`${f}: ลบ/แก้ «${l.trim().slice(0, 70)}»`);
+    const wiredAdds = wiredPairs.map((l) => l.replace(COMMISSION, WIRED));
+    for (const l of addCode) if (!wiredAdds.includes(l) && !/["']booking\.paid["']/.test(l)) bad.push(`${f}: เพิ่มนอก booking.paid «${l.trim().slice(0, 70)}»`);
+  }
+  ok(bad.length === 0, bad.slice(0, 3).join(" · "));
+  const lab = readFileSync(join(ROOT, REG3[1]), "utf8");
+  ok(/\{\s*value:\s*"booking\.paid",\s*label:\s*"[^"]*[\u0E00-\u0E7F][^"]*"\s*\}/.test(lab), "automation/labels ไม่มีป้ายไทยของ booking.paid");
+  const wh = readFileSync(join(ROOT, REG3[2]), "utf8");
+  ok(/\.\.\.AUTOMATION_EVENTS/.test(wh) && !/value:\s*"booking\.paid"/.test(wh), "webhooks/labels ต้องได้ booking.paid จาก spread (ไม่ประกาศซ้ำ)");
+  ok(/^\s*"booking\.paid":/m.test(readFileSync(join(ROOT, REG3[0]), "utf8")), "outbox ไม่มี consumer booking.paid");
 }, "MINOR");
 
 // ═══════════════ G. regression ═══════════════

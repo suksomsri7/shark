@@ -112,6 +112,9 @@ export type CreateSaleInput = {
     priceSource?: "BASE" | "BRANCH" | "CHANNEL" | "RULE" | "OPEN" | "CUSTOM" | "WEIGHED";
     priceRuleId?: string;
     listPriceSatang?: number;
+    // SVC B.10 ▸ ผู้ให้บริการของบรรทัด (HrEmployee.id · id หลวม · บิลจากคิวส่งมา) → PosSaleLine.performerEmployeeId ·
+    //   เพิ่มล้วน · ไม่ส่ง = null · ไม่อยู่ใน samePayload (ความหมายคีย์ซ้ำเดิมทุกไบต์) ◂
+    performerEmployeeId?: string;
   }[];
   billDiscountSatang?: number;
   // คูปอง (contract 2.3) — ต้องมาคู่กันเสมอ · ระบุแล้วใช้ไม่ได้ = โยน error (ห้ามขายต่อเงียบ ๆ)
@@ -1075,6 +1078,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         priceSource: l.priceSource ?? null,
         priceRuleId: l.priceRuleId ?? null,
         listPriceSatang: l.listPriceSatang ?? null,
+        ...(typeof l.performerEmployeeId === "string" && l.performerEmployeeId ? { performerEmployeeId: l.performerEmployeeId.slice(0, 200) } : {}), // SVC B.10 ▸ ผู้ให้บริการ ◂
       })),
     });
     const optionRows = lines.flatMap((l, i) =>

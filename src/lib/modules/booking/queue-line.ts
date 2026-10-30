@@ -544,24 +544,64 @@ export async function startJob(ctx: LineCtx, appointmentId: string, opts?: { now
 
 /**
  * เสร็จ: IN_SERVICE ⇒ DONE doneAt · บัตร DONE · booking.completed (คีย์เดิม · payload เดิม + id ของใบนี้) + queue.ticket.done ·
- * **ไม่ยิง queue.served** (CRM ลง VISIT จาก booking.completed แล้ว · §6 ข้อ 8) · B.10 จะสลับเป็นบิลพัก POS
+ * **ไม่ยิง queue.served** (CRM ลง VISIT จาก booking.completed แล้ว · §6 ข้อ 8) ·
+ * SVC B.10 ▸ เปิดบิลจากคิวด้วยทางเดียวกับ finishJob (ไม่มีของเพิ่ม) — คืน JobResult เดิม (นัด DONE แล้ว = BAD_STATE แบบ B.4) ◂
  */
 export async function completeJob(ctx: LineCtx, appointmentId: string, opts?: { now?: Date }): Promise<JobResult> {
-  const now = nowOf(opts);
-  return jobTx(ctx, appointmentId, now, async (tx, a) => {
-    if (a.status !== "IN_SERVICE") return jobFail("BAD_STATE", R.JOB_BAD_STATE);
-    if (!(await casAppt(tx, ctx, a, { status: "DONE", doneAt: now }))) return jobFail("LOST_RACE", R.LOST_RACE);
-    const full = await tx.appointment.findFirst({ where: { id: a.id, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { customerId: true } });
-    await emit(tx, ctx, "booking.completed", `booking.completed#${a.id}`, {
-      appointmentId: a.id, tenantId: ctx.tenantId, unitId: ctx.unitId, customerId: full?.customerId ?? null, serviceId: a.serviceId,
-      staffId: a.staffId, kind: a.kind, channel: a.channel,
-    });
-    if (a.queueTicketId) {
-      const m = await queue.moveTicketTx(tx, { tenantId: ctx.tenantId, unitId: ctx.unitId }, a.queueTicketId, "DONE", { now, actorType: "STAFF", actorId: ctx.actorUserId ?? null });
-      if (m.ok) await emit(tx, ctx, "queue.ticket.done", `queue.ticket.done#${m.ticket.id}`, evPayload(a, { ticketId: m.ticket.id }));
-    }
-    return { ok: true };
-  });
+  const { finishForComplete } = await import("./finish"); // วงโหลด finish → queue-line ⇒ โหลดตอนใช้
+  return finishForComplete(ctx, appointmentId, nowOf(opts));
+}
+
+/** SVC B.10 ▸ ผลของ hook ในธุรกรรม "เสร็จ" — ไม่ ok = ย้อนทั้งธุรกรรม (ไม่มี DONE · ไม่มี event) ◂ */
+export type DoneHookResult = { ok: true; heldCartId: string | null } | { ok: false; code: string; reason: string };
+export type DoneHook = (tx: Prisma.TransactionClient, a: LockedAppt) => Promise<DoneHookResult>;
+export type CompleteTxResult = { ok: true; heldCartId: string | null } | { ok: false; code: string; reason: string };
+class DoneAbort extends Error {
+  constructor(readonly result: { ok: false; code: string; reason: string }) {
+    super(result.code);
+  }
+}
+
+/**
+ * SVC B.10 ▸ แกนของ "เสร็จ" (ของ B.4 เดิมทุกขั้น) + hook ในธุรกรรมเดียวกัน: ล็อกแถวนัด → CAS DONE doneAt → hook(tx) (เปิดบิลจากคิว) →
+ * heldCartId บนนัด (CAS สถานะ DONE) → booking.completed + บัตร DONE + queue.ticket.done · hook ล้ม = ย้อนทั้งหมด · ชนชั่วคราว = BUSY ◂
+ */
+export async function completeJobTx(ctx: LineCtx, appointmentId: string, now: Date, hook?: DoneHook): Promise<CompleteTxResult> {
+  if (!okCtx(ctx) || typeof appointmentId !== "string" || !appointmentId) return jobFail("NOT_FOUND", R.JOB_NOT_FOUND) as CompleteTxResult;
+  let res: CompleteTxResult | null;
+  try {
+    res = await retryBusy(() => prisma.$transaction(async (tx): Promise<CompleteTxResult> => {
+      const a = await lockAppt(tx, ctx, appointmentId);
+      if (!a) return jobFail("NOT_FOUND", R.JOB_NOT_FOUND) as CompleteTxResult;
+      if (a.status !== "IN_SERVICE") return jobFail("BAD_STATE", R.JOB_BAD_STATE) as CompleteTxResult;
+      if (!(await casAppt(tx, ctx, a, { status: "DONE", doneAt: now }))) return jobFail("LOST_RACE", R.LOST_RACE) as CompleteTxResult;
+      let heldCartId: string | null = null;
+      if (hook) {
+        const h = await hook(tx, a);
+        if (!h.ok) throw new DoneAbort(h);
+        heldCartId = h.heldCartId;
+        if (heldCartId) {
+          await tx.appointment.updateMany({ where: { id: a.id, tenantId: ctx.tenantId, unitId: ctx.unitId, status: "DONE" }, data: { heldCartId } });
+        }
+      }
+      const full = await tx.appointment.findFirst({ where: { id: a.id, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { customerId: true } });
+      await emit(tx, ctx, "booking.completed", `booking.completed#${a.id}`, {
+        appointmentId: a.id, tenantId: ctx.tenantId, unitId: ctx.unitId, customerId: full?.customerId ?? null, serviceId: a.serviceId,
+        staffId: a.staffId, kind: a.kind, channel: a.channel,
+      });
+      if (a.queueTicketId) {
+        const m = await queue.moveTicketTx(tx, { tenantId: ctx.tenantId, unitId: ctx.unitId }, a.queueTicketId, "DONE", { now, actorType: "STAFF", actorId: ctx.actorUserId ?? null });
+        if (m.ok) await emit(tx, ctx, "queue.ticket.done", `queue.ticket.done#${m.ticket.id}`, evPayload(a, { ticketId: m.ticket.id }));
+      }
+      return { ok: true, heldCartId };
+    }, LINE_TX));
+  } catch (e) {
+    if (e instanceof DoneAbort) return e.result;
+    throw e;
+  }
+  if (!res) return jobFail("BUSY", R.BUSY) as CompleteTxResult;
+  if (res.ok) await replan(ctx, now);
+  return res;
 }
 
 const SHOP_CANCELLABLE = new Set<string>(["PENDING", "CONFIRMED", "LATE", "ARRIVED", "QUEUED"]);

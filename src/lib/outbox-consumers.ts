@@ -717,7 +717,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // CRM C2.7 ▸ + ทางเดินเงินของ CRM (บิลที่แคชเชียร์ผูกไว้กับดีล → paidSatang) — ต่อ **ท้ายสุด** เสมอ:
   //   บัญชี (posSalePaid) → ตรา (stampFromSale) → สมาชิก (memberSaleBridge) → CRM · ทุกตัวก่อนหน้าทำงานเหมือนเดิมทุกประการ ◂
   // POS P3.5 ▸ R8 มติ 9: + สมุดค่าคอมฯ พนักงานขาย เป็น "งานหลัก" คู่บัญชี (bothMain: วิ่งทั้งคู่ · ล้มตัวใด = event retry · idempotent ต่อ sourceKey) ◂
-  "pos.sale.paid": withAutomation(compose(compose(compose(compose(bothMain(posSalePaid, async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSalePaid(evt)), stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid")), posChat("onSalePaidChat"))), // POS P3.7 ▸ R5 ใบเสร็จอัตโนมัติ (ชั้นนอกสุด · ของแถม) ◂
+  "pos.sale.paid": withAutomation(compose(compose(compose(compose(bothMain(posSalePaid, bothMain(async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSalePaid(evt), async (evt) => (await import("@/lib/modules/booking")).onPosSalePaid(evt))), stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid")), posChat("onSalePaidChat"))), // POS P3.7 ▸ R5 ใบเสร็จอัตโนมัติ (ชั้นนอกสุด · ของแถม) ◂
   // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
   // M2.3: + ยกเลิกตราของบิลใบนั้น (voidStampsForSale)
   // M2.8: + คืนสิทธิ์ทุกชนิด + ย้อนแต้ม/ยอดสะสม/ไทม์ไลน์ของบิลที่ถูกยกเลิก
@@ -1218,6 +1218,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "queue.ticket.called": withAutomation(async () => {}),
   "queue.ticket.done": withAutomation(async () => {}),
   // ◂ SVC B.4
+  // SVC B.10 ▸ งานจองคิวรับเงินแล้ว — ยิงจาก `booking/finish.ts` (ตัวรับ pos.sale.paid ของบิลจากคิว · markPaidWithoutPos) ครั้งเดียวต่อนัด ·
+  //   งานหลัก = no-op (ปิด event เป็น DONE) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation · ตัวรับ pos.sale.paid ข้างบนต่อ `booking.onPosSalePaid`
+  //   เป็นงานหลัก (bothMain · ล้ม = event retry) ◂
+  "booking.paid": withAutomation(async () => {}),
   // SVC D.6 ▸ เลขมิเตอร์หอผิดปกติ (HIGH/LOW/BACKWARDS/VACANT_USAGE) — ยิงจาก `dorm/meter.ts` ใน tx เดียวกับแถวเลข ·
   //   payload { unitId, meterId, roomId (null = มิเตอร์หลัก), readingId, periodKey, flag } id ล้วน (X8) · งานหลัก = no-op
   //   (การพักบิล/การ์ดบอร์ดงานทำใน service แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂

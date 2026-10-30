@@ -219,3 +219,45 @@ export { POS_CHAT_DEFAULTS, POS_CHAT_STATUS_LABELS, bangkokHHmm, chatMoney, chat
 export type { PosBotIntent, PosChatLang, PosChatSettings, PosChatStatusKind, PosChatTextKey } from "./chat-link-shared";
 export type { RegisterActor, RegisterCtx } from "./register-shared";
 // ◂ POS P3.7
+
+// SVC B.10 ▸ "บิลจากคิว" — บิลพัก POS ที่ผูกงานบริการ (จุด 1 ที่เจ้าของอนุญาต · ใบสั่ง svc-brief-b.10 §3.2) · ผู้เรียกนอกโมดูล (จองคิว) ใช้ `serviceBills.<fn>` ·
+//   ฝั่งจองคิวส่งบรรทัดที่คิดราคา/ผู้ทำ/อัตราค่าคอมฯ แล้ว (POS ไม่ import booking) · ฝั่งหน้าขาย = ด่านเดียวกับหน้าขาย · ไม่ throw ◂
+import {
+  openServiceBill as sbOpenServiceBill,
+  replaceServiceBillLines as sbReplaceServiceBillLines,
+  discardServiceBill as sbDiscardServiceBill,
+  serviceBillStatus as sbServiceBillStatus,
+  serviceBillOfSale as sbServiceBillOfSale,
+  serviceBillProductPrices as sbServiceBillProductPrices,
+  serviceBillDeposit as sbServiceBillDeposit,
+  servicePosOfUnit as sbServicePosOfUnit,
+  serviceBillLiveTx as sbServiceBillLiveTx,
+  voidServiceBillSale as sbVoidServiceBillSale,
+  listServiceBills as sbListServiceBills,
+  serviceBillView as sbServiceBillView,
+  payServiceBill as sbPayServiceBill,
+} from "./service-bill";
+export const serviceBills = {
+  openServiceBill: sbOpenServiceBill,
+  replaceServiceBillLines: sbReplaceServiceBillLines,
+  discardServiceBill: sbDiscardServiceBill,
+  serviceBillStatus: sbServiceBillStatus,
+  /** บิลขายของบิลจากคิว (ตัวรับ pos.sale.paid ของจองคิว) — ไม่ใช่ = null */
+  serviceBillOfSale: sbServiceBillOfSale,
+  /** ราคา POS + ชื่อของสินค้าที่ทำเพิ่ม ณ ตอนเปิด/แก้บิล (resolvePrices ของระบบ POS ที่สาขาผูก) */
+  productPrices: sbServiceBillProductPrices,
+  /** มัดจำที่จะหักได้ ณ ตอนนี้ (moduleDepositForBill · ใบรับของร้าน/สาขาอื่น = null) — แผ่นจบงานแสดงยอด */
+  depositForBill: sbServiceBillDeposit,
+  /** fix Q5: ระบบ POS ที่ใช้งานได้ของสาขา (ผูก + active) — นิยามเดียวของ "สาขามี POS" */
+  posOfUnit: sbServicePosOfUnit,
+  /** fix Q4: ในธุรกรรมของผู้เรียก (ถือแถวนัดแล้ว) ล็อก bq-bill แล้วคืนบิลที่ยังมีผล (HELD/PAID) */
+  liveBillTx: sbServiceBillLiveTx,
+  /** fix Q11: ยกเลิกบิลจากคิวที่รับเงินแล้ว (voidSale ทางเดิม) — ด่านสิทธิ์อยู่ฝั่งจองคิว */
+  voidPaidServiceBill: sbVoidServiceBillSale,
+  listServiceBills: sbListServiceBills,
+  serviceBillView: sbServiceBillView,
+  payServiceBill: sbPayServiceBill,
+} as const;
+export type { ServiceBillLineInput, ServiceBillListItem, ServiceBillView, ServiceBillViewLine, PayServiceBillInput, PayServiceBillResult, OpenServiceBillInput } from "./service-bill";
+export { SERVICE_BILL_SALE_PREFIX } from "./service-bill";
+// ◂ SVC B.10

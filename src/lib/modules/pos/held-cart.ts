@@ -9,6 +9,7 @@
 // 🔴 เรียกคืน = UPDATE … WHERE id AND status='HELD' AND ยังไม่หมดอายุ — count===1 คือผู้ชนะคนเดียว (H2) · ที่เหลือ ALREADY_RECALLED
 // หมดอายุ (มติ 1): HELD ที่ createdAt เก่ากว่า N×24 ชม. ⇒ DISCARDED ตอน listHeldCarts (ขี้เกียจ · ไม่มี cron) · เรียกคืนบิลหมดอายุ = NOT_FOUND
 // ทิ้ง (มติ 3): สิทธิ์เดียวกับล้างบิล (pos.sale.create ที่สาขานี้) · บันทึก AuditLog ว่าใครทิ้ง (ธุรกรรมเดียวกับการเปลี่ยนสถานะ)
+// SVC B.10 ▸ แถวที่มี serviceJobId = "บิลจากคิว" (ผู้เขียน = service-bill.ts) — ลิ้นชัก/หมดอายุ/เรียกคืน/ทิ้งของไฟล์นี้ไม่แตะ (แบบเดียวกับ tableSessionId) ◂
 
 import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient } from "@prisma/client";
@@ -480,11 +481,11 @@ export async function listHeldCarts(ctx: RegisterCtx, actor: RegisterActor, clie
     const { days, cutoff } = await expireOf(db, s);
     // POS P2.4 ▸ รอบร่างของโต๊ะ (tableSessionId) ไม่อยู่ในลิ้นชัก และไม่หมดอายุแบบบิลพัก (อยู่กับโต๊ะจนส่งครัว/ปิดโต๊ะ) ◂
     await db.posHeldCart.updateMany({
-      where: { ...rowWhere(s), status: "HELD", createdAt: { lt: cutoff }, tableSessionId: null },
+      where: { ...rowWhere(s), status: "HELD", createdAt: { lt: cutoff }, tableSessionId: null, serviceJobId: null }, // SVC B.10 ▸ บิลจากคิวไม่หมดอายุ ◂
       data: { status: "DISCARDED", version: { increment: 1 } },
     });
     const rows = await db.posHeldCart.findMany({
-      where: { ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff }, tableSessionId: null },
+      where: { ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff }, tableSessionId: null, serviceJobId: null }, // SVC B.10 ▸ บิลจากคิวอยู่แผงของมันเอง ◂
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: LIST_MAX,
       select: ROW_SELECT,
@@ -512,7 +513,7 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     const id = idOf(input);
     if (!id) return refuse("NOT_FOUND");
     // POS P2.4 ▸ fix 2 F5: รอบร่างของโต๊ะเรียกคืนจากลิ้นชักไม่ได้ (NOT_FOUND · ทางของโต๊ะ = holdTableDraft/ส่งครัว) ◂
-    const row = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s), tableSessionId: null }, select: { status: true, createdAt: true, cartJson: true, approvedRequestId: true } });
+    const row = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s), tableSessionId: null, serviceJobId: null }, select: { status: true, createdAt: true, cartJson: true, approvedRequestId: true } }); // SVC B.10 ▸ บิลจากคิวเรียกคืนทางนี้ไม่ได้ (NOT_FOUND) ◂
     if (!row || row.status === "DISCARDED") return refuse("NOT_FOUND");
     if (row.status === "RECALLED") return refuse("ALREADY_RECALLED");
     const cutoff = await expireCutoff(db, s);
@@ -576,7 +577,7 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     // R2: งานอ่านอย่างเดียวทั้งหมด (quote · probe · ชื่อสินค้า) ทำก่อน — UPDATE ผู้ชนะคนเดียวเป็นคำสั่งสุดท้าย
     //     อะไรข้างบนล้ม = แถวยัง HELD (ไม่มีบิลหายแบบ RECALLED ไร้เจ้าของ)
     const won = await db.posHeldCart.updateMany({
-      where: { id, ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff }, tableSessionId: null }, // POS P2.4 ▸ fix 2 F5 ◂
+      where: { id, ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff }, tableSessionId: null, serviceJobId: null }, // POS P2.4 ▸ fix 2 F5 ◂ · SVC B.10 ◂
       data: { status: "RECALLED", recalledAt: new Date(), recalledByUserId: s.actor.userId, version: { increment: 1 } },
     });
     if (won.count !== 1) {
@@ -626,9 +627,9 @@ export async function discardHeldCart(ctx: RegisterCtx, actor: RegisterActor, in
     if (!id) return refuse("NOT_FOUND");
     const done = await db.$transaction(async (tx) => {
       // POS P2.4 ▸ fix 2 F5: ทิ้งจากลิ้นชักได้เฉพาะบิลพักปกติ (รอบร่างของโต๊ะทิ้งตอนปิดโต๊ะ) ◂
-      const before = await tx.posHeldCart.findFirst({ where: { id, ...rowWhere(s), status: "HELD", tableSessionId: null }, select: { label: true, heldByUserId: true, lineCount: true, approxTotalSatang: true } });
+      const before = await tx.posHeldCart.findFirst({ where: { id, ...rowWhere(s), status: "HELD", tableSessionId: null, serviceJobId: null }, select: { label: true, heldByUserId: true, lineCount: true, approxTotalSatang: true } }); // SVC B.10 ▸ บิลจากคิวทิ้งทางจองคิว (มีเหตุผล) ◂
       if (!before) return false;
-      const r = await tx.posHeldCart.updateMany({ where: { id, ...rowWhere(s), status: "HELD", tableSessionId: null }, data: { status: "DISCARDED", version: { increment: 1 } } });
+      const r = await tx.posHeldCart.updateMany({ where: { id, ...rowWhere(s), status: "HELD", tableSessionId: null, serviceJobId: null }, data: { status: "DISCARDED", version: { increment: 1 } } });
       if (r.count !== 1) return false;
       await tx.auditLog.create({
         data: {

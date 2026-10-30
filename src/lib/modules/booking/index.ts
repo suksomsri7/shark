@@ -13,3 +13,9 @@ export { purgeBookingPersonalData } from "./privacy";
 export type { PurgeResult } from "./privacy";
 export { BOOKING_ACTIONS, bookingActionKeys, canBookingAction } from "./access";
 export { maskPhone, canSeeFullPhone, phoneForViewer } from "./privacy-shared";
+
+// SVC B.10 ▸ จบงาน → บิลจากคิว (บิลพัก POS) + ค่าคอมฯ ตามผู้ให้บริการ — action/หน้า/ตัวรับคิว (composition root) เรียกผ่าน facade ◂
+export {
+  previewServiceBill, finishJob, ensureServiceBill, amendServiceBill, cancelServiceBill, markPaidWithoutPos, authorizeServiceBillOp, onPosSalePaid, voidPaidServiceBill, isLegacyBookingUnit,
+} from "./finish";
+export type { ExtraLine, BillLine, ServiceBillPreview, FinishFail, FinishResult, ServiceBillOp } from "./finish";

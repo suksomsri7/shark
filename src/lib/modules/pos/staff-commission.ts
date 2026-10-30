@@ -108,6 +108,8 @@ async function reconcileSale(tenantId: string, saleId: string, accrue: boolean):
 type SaleForAccrual = { id: string; tenantId: string; systemId: string; unitId: string; status: string; sourceModule: string; giftCardId: string | null; soldByUserId: string | null; serviceChargeSatang: number; grandTotalSatang: number; paidAt: Date | null; createdAt: Date; idempotencyKey?: string | null }; // POS P5.1 ▸ RC F6 ◂
 /** R7 — แถว ACCRUE ของบิล (ว่าง = บิลนี้ไม่มีสิทธิ์ได้ค่าคอมฯ) · อัตรา = ค่าตั้ง ณ ตอนลงสมุด (สำเนาลงทุกแถว) · บทบาท = membership ปัจจุบันของผู้ขาย */
 async function accrualRows(tx: Tx, sale: SaleForAccrual): Promise<RowInput[]> {
+  // SVC B.10 ▸ บิลจากคิว (BOOKING · คีย์ bq-sale-<นัด>) = ค่าคอมฯ ตามผู้ให้บริการต่อบรรทัดเท่านั้น (ไม่ลงให้ผู้กดขาย แม้เปิด pos.staffCommission) ◂
+  if (sale.sourceModule === "BOOKING" && sale.idempotencyKey?.startsWith(SERVICE_BILL_SALE_PREFIX)) return serviceBillAccrualRows(tx, sale);
   if (EXCLUDED_SOURCES.has(sale.sourceModule) || sale.giftCardId || !sale.soldByUserId) return [];
   if (sale.idempotencyKey?.startsWith("dep-forfeit:")) return []; // POS P5.1 ▸ RC F6 (CD-P51-O10): บิลริบมัดจำไม่ใช่การขายของพนักงาน ⇒ ไม่ลงค่าคอมฯ ◂
   const sys = await tx.appSystem.findFirst({ where: { id: sale.systemId, tenantId: sale.tenantId, type: "POS" }, select: { settings: true } });
@@ -153,8 +155,9 @@ async function accrualRows(tx: Tx, sale: SaleForAccrual): Promise<RowInput[]> {
   return out;
 }
 
-function reverseRow(acc: { tenantId: string; systemId: string; unitId: string; saleId: string; lineId: string; userId: string; baseSatang: number; rateBp: number; fixedSatang: number }, sourceKey: string, amountSatang: number, periodKey: string): RowInput {
+function reverseRow(acc: { tenantId: string; systemId: string; unitId: string; saleId: string; lineId: string; userId: string; baseSatang: number; rateBp: number; fixedSatang: number; employeeId?: string | null }, sourceKey: string, amountSatang: number, periodKey: string): RowInput {
   return {
+    ...(acc.employeeId ? { employeeId: acc.employeeId } : {}), // SVC B.10 ▸ กลับรายการไปที่ผู้ให้บริการเดิม (แถวที่ไม่มีผู้ให้บริการ = เดิมทุกไบต์) ◂
     tenantId: acc.tenantId,
     systemId: acc.systemId,
     unitId: acc.unitId,
@@ -171,6 +174,66 @@ function reverseRow(acc: { tenantId: string; systemId: string; unitId: string; s
     status: "OPEN",
   };
 }
+
+// ═══════════ SVC B.10 ▸ ค่าคอมฯ ตามผู้ให้บริการของบิลจากคิว (จุด 2 ที่เจ้าของอนุญาต · ใบสั่ง svc-brief-b.10 §2 ข้อ 5) ═══════════
+// อัตรา = commissionBp ต่อบรรทัดที่จองคิว snapshot ไว้ในแถวบิลพัก (cartJson.service · ตอนเปิด/แก้บิล — แก้ค่าตั้งภายหลังไม่ย้อน) · null = ไม่คิด ·
+// จับคู่บรรทัดบิล ↔ บรรทัดบิลพักด้วยตัวตนของบรรทัด (บริการ|สินค้า|ผู้ทำ|ราคา|จำนวน) ไม่พึ่งลำดับ id · ฐาน = lineNets (รวม VAT · มัดจำเป็นวิธีจ่าย ไม่ลดฐาน) ·
+// จำนวน = staffCommissionAmount(ฐาน, {bp, fixedSatang: 0}, qty) · userId = ผู้ใช้ที่ผูกกับพนักงานผู้ทำ · ผู้ทำไม่มีพนักงาน/ไม่ผูกผู้ใช้ = ไม่ลง (CC §10 ข้อ 2)
+const SERVICE_BILL_SALE_PREFIX = "bq-sale-"; // = service-bill.ts (คีย์บิลขายตายตัวของบิลจากคิว)
+type ServiceLineSnap = { serviceId: string | null; productId: string | null; performerEmployeeId: string | null; unitPriceSatang: number; qty: number; commissionBp: number | null };
+const serviceLineKey = (l: { serviceId: string | null; productId: string | null; performerEmployeeId: string | null; unitPriceSatang: number; qty: number }) =>
+  `${l.serviceId ?? ""}|${l.productId ?? ""}|${l.performerEmployeeId ?? ""}|${l.unitPriceSatang}|${l.qty}`;
+function serviceLinesOf(cartJson: unknown, saleId: string): ServiceLineSnap[] | null {
+  const svc = cartJson && typeof cartJson === "object" ? (cartJson as { service?: unknown }).service : null;
+  if (!svc || typeof svc !== "object") return null;
+  const o = svc as { saleId?: unknown; lines?: unknown };
+  if (o.saleId !== saleId || !Array.isArray(o.lines)) return null;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  return o.lines.flatMap((x): ServiceLineSnap[] => {
+    if (!x || typeof x !== "object") return [];
+    const l = x as Record<string, unknown>;
+    const bp = typeof l.commissionBp === "number" && Number.isInteger(l.commissionBp) && l.commissionBp >= 0 && l.commissionBp <= 10_000 ? l.commissionBp : null;
+    if (typeof l.unitPriceSatang !== "number" || typeof l.qty !== "number") return [];
+    return [{ serviceId: str(l.serviceId), productId: str(l.productId), performerEmployeeId: str(l.performerEmployeeId), unitPriceSatang: l.unitPriceSatang, qty: l.qty, commissionBp: bp }];
+  });
+}
+async function serviceBillAccrualRows(tx: Tx, sale: SaleForAccrual): Promise<RowInput[]> {
+  const appointmentId = sale.idempotencyKey!.slice(SERVICE_BILL_SALE_PREFIX.length);
+  if (!appointmentId) return [];
+  const carts = await tx.posHeldCart.findMany({ where: { tenantId: sale.tenantId, unitId: sale.unitId, serviceJobId: appointmentId, status: "RECALLED" }, select: { cartJson: true } });
+  const snap = carts.map((c) => serviceLinesOf(c.cartJson, sale.id)).find((x) => x !== null) ?? null;
+  if (!snap) return [];
+  const pool = new Map<string, (number | null)[]>();
+  for (const l of snap) pool.set(serviceLineKey(l), [...(pool.get(serviceLineKey(l)) ?? []), l.commissionBp]);
+  const lines = await tx.posSaleLine.findMany({
+    where: { saleId: sale.id, tenantId: sale.tenantId },
+    orderBy: { id: "asc" },
+    select: { id: true, qty: true, unitPriceSatang: true, lineTotalSatang: true, productId: true, serviceId: true, performerEmployeeId: true },
+  });
+  if (!lines.length) return [];
+  const empIds = [...new Set(lines.map((l) => l.performerEmployeeId).filter((x): x is string => !!x))];
+  const userOf = new Map(
+    empIds.length ? (await tx.hrEmployee.findMany({ where: { tenantId: sale.tenantId, id: { in: empIds } }, select: { id: true, linkedUserId: true } })).map((e) => [e.id, e.linkedUserId]) : [],
+  );
+  const bases = staffCommissionBases(lines.map((l) => l.lineTotalSatang), sale.serviceChargeSatang, sale.grandTotalSatang);
+  const periodKey = staffCommissionPeriodOf(sale.paidAt ?? sale.createdAt);
+  const out: RowInput[] = [];
+  lines.forEach((l, i) => {
+    const bucket = pool.get(serviceLineKey(l));
+    const bp = bucket && bucket.length ? bucket.shift()! : null;
+    const userId = l.performerEmployeeId ? (userOf.get(l.performerEmployeeId) ?? null) : null;
+    if (bp === null || !userId) return;
+    const base = bases[i]!;
+    const amount = staffCommissionAmount(base, { bp, fixedSatang: 0 }, l.qty);
+    if (amount <= 0) return;
+    out.push({
+      tenantId: sale.tenantId, systemId: sale.systemId, unitId: sale.unitId, saleId: sale.id, lineId: l.id, userId, employeeId: l.performerEmployeeId,
+      kind: "ACCRUE", sourceKey: `PAID:${sale.id}:${l.id}`, baseSatang: base, rateBp: bp, fixedSatang: 0, amountSatang: amount, periodKey, status: "OPEN",
+    });
+  });
+  return out;
+}
+// ◂ SVC B.10
 
 // ═══════════ R9 ส่งเข้างวดเงินเดือน (รอบรายชั่วโมง minute-jobs + ปุ่มของเจ้าของ) ═══════════
 export type StaffCommissionSyncResult = { ok: true; users: number; adjustments: number; sentRows: number; noEmployee: number; failed: number; stoppedEarly: boolean; /** POS P3.5 ▸ fix2 N1 ◂ */ rehomed: number };

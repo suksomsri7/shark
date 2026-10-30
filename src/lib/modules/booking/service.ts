@@ -925,6 +925,10 @@ export async function setAppointmentStatus(
     where: { id: appointmentId, tenantId, unitId },
     select: { status: true, depositSaleId: true, staffId: true, startAt: true, endAt: true, queueTicketId: true, policySnapshot: true },
   });
+  // SVC B.10 ▸ ออกจาก DONE ขณะงานมีบิลจากคิวที่ยังมีผล (HELD = รอรับเงิน · จ่ายแล้วและยังไม่ถูกยกเลิก) ⇒ ok:false ไม่เปลี่ยนสถานะ (ไม่ทิ้งเงินเงียบ) ·
+  //   fix Q4: ตัดสินใต้ล็อก (แถวนัด FOR UPDATE → advisory bq-bill ของ POS) ในธุรกรรมเดียวกับ CAS ด้านล่าง — ลำดับล็อกเดียวกับ finish/ensure ◂
+  const leavingDone = before?.status === "DONE" && status !== "DONE";
+  const sbFacade = leavingDone ? (await import("@/lib/modules/pos")).serviceBills : null;
   // SVC B.4 ▸ J4: หน่วยแถวเดียว · ร้านถอย NO_SHOW/LATE กลับเป็นสถานะที่รอลูกค้า ⇒ จด `policySnapshot.job.manualHold = true` ใน CAS เดียวกัน
   //   ⇒ tick ไม่ตั้ง LATE/NO_SHOW ซ้ำ (และไม่ริบมัดจำซ้ำ) · เช็กอินไม่ติด TOO_LATE · ร้านเดิมไม่ถูกแตะ (เขียนเฉพาะหน่วยแถวเดียว) ◂
   const manualHoldSnap =
@@ -954,6 +958,16 @@ export async function setAppointmentStatus(
   //   CAS ผูก queueTicketId ที่อ่านด้วย (เช็กอินจอเดิมที่ออกบัตรให้ระหว่างนั้น = แพ้ ⇒ LOST_RACE) · ร้านเดิม (ไม่มีบัตร) ผลเดิม + ล้าง checkedInAt ◂
   const undoArrive = before.status === "ARRIVED" && (status === "CONFIRMED" || status === "PENDING");
   await prisma.$transaction(async (tx) => {
+    if (leavingDone && sbFacade) {
+      await tx.$queryRaw`SELECT id FROM "Appointment" WHERE id = ${appointmentId} AND "tenantId" = ${tenantId} AND "unitId" = ${unitId} FOR UPDATE`;
+      const live = await sbFacade.liveBillTx(tx, tenantId, unitId, appointmentId);
+      if (live) {
+        reviveFail = live === "HELD"
+          ? "งานนี้มีบิลจากคิวรอรับเงินที่หน้าขาย — ยกเลิกบิลก่อน (ระบุเหตุผล) แล้วจึงเปลี่ยนสถานะนัด"
+          : "งานนี้รับเงินแล้ว — ยกเลิกบิลที่รับเงินแล้วก่อน (ปุ่ม \"ยกเลิกบิลที่รับเงินแล้ว\" ในหน้าเสร็จงาน · ต้องมีสิทธิ์ทำงานแทนทุกคน · ระบุเหตุผล) แล้วจึงเปลี่ยนสถานะนัด";
+        return;
+      }
+    }
     if (reviving) {
       // SVC B.3 ▸ G5: ล็อกเดียวกับการจอง (BookingStaff FOR UPDATE) → ตรวจซ้อนกับนัดที่ถือช่อง (ยกเว้นตัวเอง) → CAS + ล้าง cancelReason ◂
       await tx.$queryRaw`SELECT id FROM "BookingStaff" WHERE id = ${before.staffId} FOR UPDATE`;

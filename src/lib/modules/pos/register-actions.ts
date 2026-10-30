@@ -19,6 +19,7 @@ import { posMembership } from "./access";
 import { requestDevice, type DeviceNotPaired, type DeviceRevokedRefusal } from "./device-request"; // POS P5.2 ▸ CD-P52-O4 F1 ◂
 import { registerCatalog, registerScan, quoteRegisterCart, quoteRegisterCartOverride, submitRegisterSale, registerStatus, registerProductOptions } from "./register";
 import { discardHeldCart, holdRegisterCart, listHeldCarts, recallHeldCart } from "./held-cart";
+import { listServiceBills, payServiceBill, serviceBillView, type PayServiceBillInput, type PayServiceBillResult, type ServiceBillListItem, type ServiceBillView } from "./service-bill"; // SVC B.10 ◂
 import { registerFulfilReward, registerMemberBenefits, registerMemberLookup, registerQuickMember } from "./register-member"; // POS P1.12 ◂
 import { registerGiftCardLookup, registerPayTenders, type RegisterGiftCardLookupResult, type RegisterPayTendersResult } from "./tender"; // POS P2.9 ◂
 import { posDayStart, retryPendingStockCuts } from "./service"; // POS P2.3 ▸ §9 Q8 ตัดสต็อกค้าง · fix round 1 F2: ขอบเขตวันนี้ = ตัวนับ ◂
@@ -281,6 +282,56 @@ export async function discardHeldCartAction(args: Target & { id: string }): Prom
     return await discardHeldCart(s.ctx, s.actor, { id: typeof args?.id === "string" ? args.id : "" });
   } catch (e) {
     return unexpected("discardHeldCartAction", e);
+  }
+}
+
+// ═══════ SVC B.10 ▸ บิลจากคิว (บิลพักที่ผูกงานจองคิว · service-bill.ts) — ด่านเดียวกับหน้าขาย (sessionScope + registerScopeCheck ใน service-bill) ·
+//   รับเงินผูกเครื่องจากคุกกี้ (deviceScope) แบบเดียวกับการขาย ◂ ═══════
+
+/** ลิ้นชัก "บิลจากคิว" ของสาขานี้ (ทุกเครื่องของสาขาเห็นเหมือนกัน) */
+export async function listServiceBillsAction(args: Target): Promise<{ ok: true; items: ServiceBillListItem[] } | { ok: false; code: string; message: string }> {
+  const auth = await session("listServiceBillsAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await listServiceBills(s.ctx, s.actor);
+  } catch (e) {
+    return unexpected("listServiceBillsAction", e);
+  }
+}
+
+/** บิลจากคิวที่เลือก: บรรทัด + ผู้ให้บริการ + หักมัดจำ + ต้องจ่าย */
+export async function serviceBillViewAction(args: Target & { heldCartId: string }): Promise<ServiceBillView | { ok: false; code: string; message: string }> {
+  const auth = await session("serviceBillViewAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await serviceBillView(s.ctx, s.actor, { heldCartId: typeof args?.heldCartId === "string" ? args.heldCartId : "" });
+  } catch (e) {
+    return unexpected("serviceBillViewAction", e);
+  }
+}
+
+/** รับเงินบิลจากคิว (ยอดต้องจ่ายตรง · มัดจำ server เติมเอง · คีย์ client เดิม = บิลเดิม) */
+export async function payServiceBillAction(args: Target & { heldCartId: string; payMethods: PayServiceBillInput["payMethods"]; idempotencyKey: string }): Promise<PayServiceBillResult | RegisterRefusal | RegDeviceRefusal> {
+  const auth = await session("payServiceBillAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s0 = sessionScope(auth, args);
+    if ("ok" in s0) return s0;
+    const s = await deviceScope(s0);
+    if ("ok" in s) return s;
+    const r = await payServiceBill(s.ctx, s.actor, {
+      heldCartId: typeof args?.heldCartId === "string" ? args.heldCartId : "",
+      payMethods: Array.isArray(args?.payMethods) ? args.payMethods : [],
+      idempotencyKey: typeof args?.idempotencyKey === "string" ? args.idempotencyKey : "",
+    });
+    if (r.ok) revalidatePath(`/app/sys/${s.ctx.systemId}/pos/register`);
+    return r;
+  } catch (e) {
+    return unexpected("payServiceBillAction", e);
   }
 }
 

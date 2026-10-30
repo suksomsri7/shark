@@ -1146,7 +1146,15 @@ const REG: { s: string; args?: string[]; judge?: (out: string, code: number | nu
   { s: "qc-svc-b.8", args: ["--no-regression"], judge: judgeSvc((x) => /^(V|G)-/.test(x) || x === "ST-1"), note: "ถ้ามี", ifExists: true },
   { s: "qc-booking-deposit" }, { s: "qc-booking-race" },
   { s: "qc-pos-p1.5", note: "บิลพัก" }, { s: "qc-pos-p3.5", note: "ค่าคอมฯ" }, { s: "qc-pos-p5.1", note: "มัดจำโมดูล + บิล CASH ร้านเดิม" }, { s: "qc-pos-p2.9b", note: "มัดจำหน้าขาย" },
-  { s: "qc-hf-o23", note: "คีย์ booking-sale ร้านเดิม" }, { s: "fitness-pos" }, { s: "qc-svc-smoke" },
+  // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): qc-hf-o23 ผูกฐาน QC4 (ข้อมูลเลน POS) — ห้ามแตะจาก qc-svc ⇒ รัน --no-db (ข้อสถิต/pure ST* ซึ่งไล่คีย์ booking-sale ร้านเดิม)
+  //   ตัดสิน = exit 0 + JSON_SUMMARY mode "no-db" ไม่มี failed (ข้อ DB ของ hf-o23 รันบนเลน POS/QC4 ตามรอบของมันเอง)
+  { s: "qc-hf-o23", args: ["--no-db"], note: "คีย์ booking-sale ร้านเดิม · --no-db", judge: (out, code) => {
+    const line = out.split("\n").reverse().find((l) => l.startsWith("JSON_SUMMARY "));
+    if (!line || code !== 0) return false;
+    const j = JSON.parse(line.slice(13)) as { mode?: string; total?: number; failed?: string[] };
+    return j.mode === "no-db" && (j.total ?? 0) > 0 && Array.isArray(j.failed) && j.failed.length === 0;
+  } },
+  { s: "fitness-pos" }, { s: "qc-svc-smoke" },
 ];
 {
   const hasWork = typeof (finishLoad.mod as Partial<FinishApi> | null)?.finishJob === "function" && typeof posLoad.mod?.serviceBills?.payServiceBill === "function";
