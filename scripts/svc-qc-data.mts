@@ -744,3 +744,44 @@ export const SQC_DONE_POS_SCENE = {
   ];
 }
 // ◂ SVC B.8
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC D.12 ▸ บล็อกของใบ D.12 เท่านั้น (ย้ายออก · คืนเงินประกัน · ภาพ หอ 07) — ต่อท้ายโดยผู้เขียนข้อสอบ · เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-d.12.md §8 · ข้อสอบ scripts/qc-svc-d.12.mts (Q-* V-1) · ฉาก scripts/svc-qc-moveout-scene.mts (builder)
+//   README หอ: "ห้อง 207 ธนพล: ย้ายออก 31 ต.ค. · ไฟ 2,000→2,104 (25 ต.ค.)→2,126 = 126 หน่วย · น้ำ 0383→0389 = 6 หน่วย · ประกัน ฿9,000 − 594.72 − 96.00 − 350 − 200 = ฿7,759.28"
+//   วันฉากสัมพัทธ์ "วันนี้ไทย" แบบฉาก D.13 (README 3 พ.ย. = วันนี้ ⇒ วันออก = วันนี้ − 3 · แจ้ง = วันออก − 31 · ครบคืน = วันออก + 7)
+//   ภาพถ่าย ณ วันออก 11:05 (`at` · QC server เปิดด้วย SVC_QC_CLOCK=1) ⇒ "เหลือ 7 วัน" · ถ่าย --user owner · ก่อนถ่าย: reseed → roomboard → lease → dorm-home → moveout
+// ═════════════════════════════════════════════════════════════════════════════
+/** วันของฉากย้ายออก (pure) — todayYmd = วันนี้ไทย "YYYY-MM-DD" */
+export function sqcMoveOutSceneDays(todayYmd: string): { moveOutDate: string; noticeDate: string; refundDueDate: string; leaseStart: string; billPeriod: string } {
+  const [y, m, d] = todayYmd.split("-").map(Number);
+  const plus = (n: number) => new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+  const moveOutDate = plus(-3);
+  const [my, mm, md] = moveOutDate.split("-").map(Number);
+  const leaseStart = new Date(Date.UTC(my - 1, mm - 1, md + 1)).toISOString().slice(0, 10);
+  return { moveOutDate, noticeDate: plus(-34), refundDueDate: plus(4), leaseStart, billPeriod: moveOutDate.slice(0, 7) };
+}
+export const SQC_DORM_MOVEOUT_DAYS = sqcMoveOutSceneDays(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10));
+export const SQC_DORM_MOVEOUT_SCENE = {
+  mark: "SvcQcScene",
+  room: "207",
+  tenant: "ธนพล ศรีสุข",
+  rentSatang: 450000,
+  depositSatang: 900000,
+  depositKey: "svcqc-scene:moveout:207",
+  /** เลขฐาน = เลขที่ออกบิลแล้ว (meta.to ของบิลงวดก่อน) · 2,104 = เลขงวดที่ยังไม่ออกบิล (ไม่ใช่ฐาน) · MOVE_OUT = วันออก */
+  meters: { ELEC: { base: 2000, unbilled: 2104, moveOut: 2126, units: 126, rateSatang: 472, amountSatang: 59472 }, WATER: { base: 383, unbilled: 387, moveOut: 389, units: 6, rateSatang: 1600, amountSatang: 9600 } },
+  items: [
+    { key: "wall", labelTh: "ผนัง · สี", verdict: "NORMAL", amountSatang: 0, note: "รอยเทปกาวจาง ๆ" },
+    { key: "screen", labelTh: "มุ้งลวดหน้าต่าง", verdict: "DAMAGE", amountSatang: 35000, note: "ขาด 20 ซม." },
+    { key: "keys", labelTh: "กุญแจห้อง", verdict: "DAMAGE", amountSatang: 20000, note: "คืน 1 จาก 2 ดอก" },
+    { key: "appliance", labelTh: "แอร์ · ตู้เย็น · ทีวี", verdict: "NORMAL", amountSatang: 0, note: "เปิดได้ปกติ" },
+    { key: "furniture", labelTh: "เฟอร์นิเจอร์", verdict: "NORMAL", amountSatang: 0, note: "เตียง ตู้ โต๊ะ ครบ" },
+  ],
+  expect: { heldSatang: 900000, chargesSatang: 124072, deductSatang: 55000, refundSatang: 775928, tenantOwesSatang: 0, daysLeftAtShot: 7, status: "INSPECTED", leaseStatus: "ENDED" },
+  shotAt: "11:05",
+} as const;
+{
+  const at = encodeURIComponent(`${SQC_DORM_MOVEOUT_DAYS.moveOutDate}T${SQC_DORM_MOVEOUT_SCENE.shotAt}:00+07:00`);
+  SQC_VISUAL_SPECS["d.12"] = [{ name: "dorm-moveout", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/moveout?room=${SQC_DORM_MOVEOUT_SCENE.room}&at=${at}` }];
+}
+// ◂ SVC D.12
