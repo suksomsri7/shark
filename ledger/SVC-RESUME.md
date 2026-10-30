@@ -1,3 +1,19 @@
+## ▶️ รับไม้ 30 ต.ค. ~11:4xZ (บัญชี B · ผู้คุมใหม่) — **32/53** (D.9 ✅ ด่าน gate-k เขียว)
+- บัญชี A หมด weekly 11:29–11:34Z ⇒ builder D.10/D.4/D.12 ตาย · gate-k + D.4 probe/full ที่ค้างปล่อยรันจนจบ
+- เปิด builder ใหม่ "ทำต่อจากทรี": l1 D.12 (เริ่มจาก 95/121 · log /tmp/svc-d12-build-2.log) · l2 D.10 (โค้ดราวครึ่ง) · l3 D.4 รอผล /tmp/svc-d4-probe-2.log + /tmp/svc-d4-build-full2.log แล้วผู้คุมรับ/ส่งผู้ตรวจยืนยันซ้ำ
+
+## ⏸ HANDOVER 30 ต.ค. ~11:0xZ (weekly 98% · เจ้าของสั่งเตรียมย้ายบัญชี)
+**31/53 (58%)** · `session/svc` push แล้ว (tip = D.9 merge 950565b6 + ledger) · ✅ ล่าสุด: D.11 · B.10 · B.8 (รายละเอียด SVC-RUN §3/§4)
+- **ด่านค้าง:** gate-k (D.9 merged 950565b6) `/root/svc-runs/gate-k.sh` → ผล `/root/svc-runs/gate-k.txt` · ที่เห็นแล้ว: d.9 86/89 0 failed · probe-d9-b 28/0 · ถ้าค้างกลาง/ไม่มี DONE ⇒ รันใหม่ `setsid nohup bash /root/svc-runs/gate-k.sh > /root/svc-runs/gate-k.txt 2>&1 < /dev/null & disown` · เขียวทั้งหมด ⇒ mark D.9 ✅ (32/53) commit ledger + push + tg
+- **เลน (งานอยู่บนดิสก์ ยังไม่ commit · agent เก่าตายตอนย้ายบัญชี ⇒ เปิด builder ใหม่ให้ "ทำต่อจากสถานะทรี" + อ่านใบสั่ง/รายการแก้):**
+  - **l1 D.12** ย้ายออก/คืนประกัน · oracle be3f2a37 (121 ข้อ · มติ R1–R7 ท้ายใบสั่ง) · builder เริ่มแล้ว (merge 950565b6 เข้า l1 ก่อน) → ต่อ: builder → 2 ผู้ตรวจ → fix → commit → merge → gate
+  - **l2 D.10** ตรวจสลิป/รับเงินหอ · oracle 67cab545 (79 ข้อ · มติ R1–R11) · builder เริ่มแล้ว → เหมือนกัน
+  - **l3 D.4** นำเข้า Excel · builder แก้ X1–X20 ตาม `/root/svc-runs/fix/d4.md` (2 ผู้ตรวจเสร็จแล้ว · probe `scripts/probe-d4-b.mts` ต้อง 0 BREACH · log ใหม่ `/tmp/svc-d4-probe-2.log`) · l3 มี node_modules แยก `/root/projects/shark-svc-nm-l3` (มี DormImportBatch · migration svc_d4 ลง QC DB แล้ว) ⚠️ ทรีหลัก/l1 ใช้ client ของทรีหลัก — **หลัง merge D.4 ต้อง `pnpm exec prisma generate` ในทรีหลัก**
+- **ถัดไป:** B.12 ปิด B1 (ผู้คุมรันด่านเต็ม · B.5–B.11 ครบแล้ว) · D.15 ปิด D1 หลัง D.3 D.4 D.10 D.11 D.12 D.13 · B.13 หลัง B.12
+- **ค้างผู้คุม:** (1) pos.sale.paid P2002 `accountJournalEntry.create` (gl.ts) ที่ probe B.8 เห็นตอนระบายคิว — ตรวจตอน B.12 (2) d.6 S-5 (กล่องเงิน D.8 ในจอมิเตอร์) + G-2 r0.2 (ข้อมูล seed บาร์เบอร์) แดงบนฐาน — ORACLE-EDIT ตอน B.12/D.15 (3) d.13 S-8 ใช้ git status ⇒ แดงเมื่อใบหลังแตะ prisma/meter.ts ระหว่างทำ (เสนอเทียบ base commit) (4) ฉาก b.7 กับ b.10 วันเดียวกัน ⇒ ด่านต้อง `svc-qc-done-pos-scene --clear` ก่อน b.7 (5) ภาพเทียบแบบ (QC_BASE) ยังไม่ได้ถ่ายรวม (6) ส่งชุดคำถามกฎหมาย `ledger/wo-notes/svc-legal-questions.md` ให้เจ้าของ (7) ลบ Neon branch wo-svc-qc ตอนจบ RUN
+- **บทเรียนใหม่วันนี้:** ฉากบน svcqc ห้ามตั้งค่าระดับร้าน/หน่วยที่ชุดอื่นพึ่ง (D.9 ตั้ง payments.receiver ⇒ r0.6 แดง) · เลนที่แตะ schema ต้องมี node_modules แยกก่อน generate (D.4 ทำ client ร่วมพัง 5 นาที) · ORACLE-EDIT ต้องคงความเข้ม + ติดป้ายผู้คุม
+- **วิธีทำงาน/สคริปต์ด่าน:** `/root/svc-runs/gate-*.sh` (แบบ run() ลอง 4 ครั้ง) · รายการแก้ `/root/svc-runs/fix/*.md` · กติกาเดิมทั้งหมดใน SVC-RUN §1–2 · ตอบเจ้าของเป็นภาษาไทย · tg สั้น % เท่านั้น
+
 ## ⏸ CHECKPOINT 29 ต.ค. (โควตา 92% · รีเซ็ต ~45 นาที)
 - 19/53 · B.11 (64e6c184) + D.5 (b79f2ef5) merged รอ gate รวม /root/svc-runs/gate-d5.txt เขียว ⇒ mark ✅ 21/53 + push + tg
 - l1 B.5 builder (oracle 75eafc1a) กำลังรัน · l2 D.8 builder เริ่มแล้ว (oracle 6965f136 · มติ perf/paylink รอยืนยัน) · l3 D.13 oracle committing (98 ข้อ · builder เริ่มหลังรีเซ็ต · G-1 r0.9 + G-4 d.5 M-11 แดงตั้งแต่ฐาน ต้องรันเดี่ยวหลัง reseed ก่อนรับ)

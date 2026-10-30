@@ -2157,6 +2157,41 @@ export async function settleSecurityDepositInTx(
   });
 }
 // ◂ SVC D.12
+// ── SVC D.4 ▸ กลับรายการรับเงินประกันของสัญญา (RULING-2 · additive · ใบสั่ง svc-brief-d.4 §3.8) — โมดูลหอในโพรเซสเท่านั้น ──
+//   กลับรายการด้วยกลไก GL เดิม (ไม่ลบแถวใด) · JV รับ = REVERSED + JV กลับรายการ (reversalOfId) · ซ้ำ ⇒ duplicate:true ผลเดิม
+//   ทางทั่วไป (สมุดรายวัน/REST) ยังปฏิเสธ JV หอเหมือนเดิม (F7) — ทางนี้ไม่ผ่าน reverseJournalEntry
+import { dormReverseDepositReceipt, dormReverseDepositReceiptInTx } from "./service";
+
+type ReverseReceiptInput = { tenantId: string; unitId: string; leaseId: string; receiptKey: string; reason: string; createdById?: string | null };
+function reverseReceiptProblem(input: ReverseReceiptInput): DormFail | null {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !nonEmpty(input?.leaseId)) return dormFail("NOT_FOUND", "ไม่พบรายการรับเงินประกันนี้ของสัญญานี้");
+  if (!dormKeyOk(input.receiptKey)) return dormFail("INVALID_INPUT", "ต้องระบุคีย์ที่ใช้รับเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+  if (!nonEmpty(input.reason) || input.reason.trim().length < 3) return dormFail("INVALID_INPUT", "กรุณาระบุเหตุผลในการกลับรายการรับเงินประกัน");
+  return null;
+}
+
+export async function reverseSecurityDepositReceiptInTx(
+  tx: Prisma.TransactionClient,
+  input: ReverseReceiptInput,
+): Promise<{ ok: true; duplicate: boolean; receiptEntryId: string; reversalEntryId: string; heldSatang: number } | DormFail> {
+  const bad = reverseReceiptProblem(input);
+  if (bad) return bad;
+  return dormReverseDepositReceiptInTx(tx, { tenantId: input.tenantId, unitId: input.unitId, leaseId: input.leaseId, receiptKey: input.receiptKey.trim(), reason: input.reason, createdById: input.createdById ?? null });
+}
+
+/** รุ่นเปิด tx เอง (runDormMoneyTx) — ห้ามเรียกใน tx อื่น */
+export async function reverseSecurityDepositReceipt(
+  input: ReverseReceiptInput,
+): Promise<{ ok: true; duplicate: boolean; receiptEntryId: string; reversalEntryId: string; heldSatang: number } | DormFail> {
+  const bad = reverseReceiptProblem(input);
+  if (bad) return bad;
+  try {
+    return await dormReverseDepositReceipt({ tenantId: input.tenantId, unitId: input.unitId, leaseId: input.leaseId, receiptKey: input.receiptKey.trim(), reason: input.reason, createdById: input.createdById ?? null });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "กลับรายการรับเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+// ◂ SVC D.4
 
 // SVC D.8 ▸ (ชุดแก้ F13) ลิงก์จ่ายของใบแจ้งหนี้หอ: ยกเลิกคำขอที่ยังรอชำระของเอกสารนี้ "ยกเว้นใบที่ระบุ" — กันผู้เช่าเห็นลิงก์ยอดเก่า
 //   (หลังใบลดหนี้/เพิ่มหนี้ ยอดคงค้างเปลี่ยน ⇒ createPaymentRequestForDoc ออกใบยอดใหม่ ⇒ ใบยอดเก่าต้องหมดผล) · ใช้ของเดิม (list + cancel) ล้วน ◂
