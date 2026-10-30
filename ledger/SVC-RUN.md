@@ -82,9 +82,9 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | B.4 | เช็กอิน · walk-in · บัตร P/A · สาย/ไม่มา | เข้ม | | ✅ | f62daaf8 | 86/87 · 2 ผู้ตรวจ + ยืนยันซ้ำ (BLOCKER 2 + MAJOR 5 ปิด) |
 | B.5 | จอคิววันนี้แถวเดียว | เบา | | ✅ | af645cb7 | 51/71 · H/E/V รอ QC server SVC_QC_CLOCK=1 · Q-2 ฉากล้าง minBreakMin (ทาง ค) |
 | B.6 | ตู้/ทีวี/หน้าบัตร | เข้ม | | ✅ | 490c4437 | 62/72 · 2 ผู้ตรวจ + ยืนยันซ้ำ (MAJOR 1 + MINOR 7 ปิด · probe hold 21 breach 0) · H/V รอ QC server/build รวม |
-| B.7 | จองออนไลน์ + ลิงก์จัดการนัด | เข้ม | | ⬜ | | |
+| B.7 | จองออนไลน์ + ลิงก์จัดการนัด | เข้ม | | ✅ | 8ea089eb | 96/103 เต็มรวม G · 2 ผู้ตรวจ (MAJOR 2 + MINOR 8 ปิด · probe breach 0) · H/V รอ QC server · ต้องเปิดพร้อม B.8 |
 | B.8 | มัดจำรุ่นแรก | เข้ม | | ⬜ | | |
-| B.9 | แจ้งเตือน + ผูก LINE | เบา | | ⬜ | | |
+| B.9 | แจ้งเตือน + ผูก LINE | เข้ม | | ✅ | 96521c79 | 60/62 เต็มรวม G · 2 ผู้ตรวจ (BLOCKER สวมเบอร์ยึด LINE + MAJOR 1 ปิด · probe breach 0) · V-1 รอ build |
 | B.10 | จบงาน→บิลพัก POS + ค่าคอมฯ | เข้ม | | ⬜ | | POS 2 จุด |
 | B.11 | จอตั้งค่าจองคิว + สิทธิ์ | เบา | | ✅ | 64e6c184 | 84/95 · V-2 ภาพรอ build รวม |
 | B.12 | ปิด B1 (G1) ร้านตัดผม | — | ผู้คุม | ⬜ | | U1 |
@@ -193,4 +193,5 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 30 ต.ค. ~02Z · ✅ **B.6** (25/53 · ยกเป็นเข้ม ตามมติ Q5) · merge 490c4437 · ด่านรวม: b.6 · probe-b6-b breach 0 · d.13 · smoke · tsc 0 · regression ที่แดงหลัง merge แก้แล้ว: ฉาก B.6 tick กวาด walk-in ของวันฉาก B.5 (sweepEndOfDay ทุกวันก่อนหน้า) ⇒ ฉากทั้งสองกัน tick ข้ามวัน + ซ่อมตัวเองเมื่อรันซ้ำ (b.5/b.6/b.4 ผ่านทั้งสองลำดับ) · ORACLE-EDIT: b.4 Q-4 (บัตรนัดปิดทางเดิม · ETA ผ่าน loadTicketView) · b.6 S-9 ข้ามหลัง merge · b.6 S-1/S-2 queue-line opt deviceId · permissions เอา booking.devices.manage ออกจาก planned (b.11 K-2) · fitness F5.1 baseline 49→50 (deviceByToken) · action สาธารณะอยู่ใต้ app/(store)/bq
 - 30 ต.ค. ~05Z · ✅ **D.3** (26/53) · merge 8ab8795d · ด่าน F: d.3 เต็ม 85/85 · probe-d3-b · d.2 78/78 · d.13 · b.6 · b.11 · smoke · fitness 53/53 · tsc 0 · d.8 P-3 แดงเฉพาะ --perf-rooms=20 (20 ห้องส่งจบในการเรียกเดียว · 300 ห้องเต็มผ่านแล้วใน gate-d) · 🔴 deploy: unique index AccountDocument_taxinvoice_source_uniq ต้องตรวจ prod
 - merge B.9 (96521c79) + B.7 (แก้ชน svc-qc-data/booking index/ledger เก็บทั้งสองฝั่ง) → ด่าน G
+- 30 ต.ค. ~05:4xZ · ✅ **B.9 + B.7** (28/53) · ด่าน G2 บน 8ea089eb: b.9 เต็ม 60/62 · probe-b9-b breach 0 · b.7 เต็ม 96/103 · probe-b7-b breach 0 · b.0 160/166 (G-9 = qc-pos-p3.5 ST2 เห็น migration svc_r… · มีอยู่ก่อน · หนี้ POS/B.18) · r0.7 89/89 · b.11 · smoke · fitness 53/53 · tsc 0 · ORACLE-EDIT: b.9 (S-1/S-2/remoteAction) · b.0 แถว 50b hideServiceName · r0.7 F-3 + ถอด route ชั่วคราว · มติความปลอดภัย: ช่อง ONLINE/KIOSK/REMOTE ไม่ผูก Party/สมาชิกจากเบอร์ไม่ยืนยัน (ลิงก์ตัวตน LINE เท่านั้น)
 
