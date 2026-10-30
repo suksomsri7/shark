@@ -808,6 +808,7 @@ const GROUP_LABELS_TH: Record<string, string> = {
 
 /** ป้ายตัวเลือกของ def ชนิด enum ที่แสดงในหน้า (ค่าโรงแรมซ่อนอยู่ ไม่ต้องมี) */
 const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
+  "rooms.vat.reissueDate": { ORIGINAL: "ลงวันที่เดียวกับฉบับเดิม", REISSUE_DAY: "ลงวันที่ออกฉบับใหม่" }, // SVC D.3 (ปิดหนี้ r0.4 R-3)
   "rooms.general.businessType": { APARTMENT: "อพาร์ตเมนต์/หอพักทั่วไป", STUDENT_DORM: "หอพักนักศึกษา", SMALL_HOTEL: "โรงแรมขนาดเล็ก", SERVICED_APT: "เซอร์วิสอพาร์ตเมนต์" },
   "rooms.legal.mode": { STRICT: "เข้มงวด (บล็อกค่าที่ผิดกฎหมาย)", WARN: "เตือน (ยืนยันพร้อมเหตุผลแล้วบันทึกได้)", OUT_OF_SCOPE: "นอกขอบเขตประกาศ (ต้องมีเหตุผลและหลักฐาน)" },
   "rooms.money.rounding": { SATANG: "ไม่ปัด (เก็บสตางค์)", BAHT_HALF_UP: "ปัดเป็นบาท (ครึ่งขึ้น)", BAHT_DOWN: "ปัดเศษทิ้งเป็นบาท" },

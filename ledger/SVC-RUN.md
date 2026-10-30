@@ -98,7 +98,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | D.1 | กฎหมาย + สูตรเงิน (pure) | เข้ม | | ✅ | ffe9d12b | 122/122 (pure e6213cde + defs) · 2 ผู้ตรวจ |
 | D.2 | facade บัญชีหอ | เข้ม | | ✅ | bbf544fe | 78/78 · 2 ผู้ตรวจ + ยืนยันซ้ำ (BLOCKER 1 + MAJOR 8 ปิด) |
 | D.3 | VAT + ใบกำกับ | เข้ม | | ✅ | 8ab8795d | 85/85 (เต็มรวม G) · 2 ผู้ตรวจ 2 รอบ (MAJOR 4 + MINOR 8 ปิด · probe 30/30) · J4 คำถามบัญชีค้าง |
-| D.4 | นำเข้า Excel | เข้ม | | ⬜ | | |
+| D.4 | นำเข้า Excel | เข้ม | | ✅ | d26c55f9 | 117/119 ทรีรวม (G-2 = d.6 S-5 ฐาน) · 2 ผู้ตรวจ + ยืนยันซ้ำ (BLOCKER 3 รวม XLSX ค้าง Y1 ปิด) · probe-d4-b 68/0 · migration svc_d4 |
 | D.5 | ผู้เช่า/สัญญา/ประกัน | เข้ม | | ✅ | b79f2ef5 | 110/115 · 2 ผู้ตรวจ + ยืนยันซ้ำ · M-11 ORACLE-EDIT (RETRY_SAFE ใต้โหลด) |
 | D.6 | มิเตอร์ + จดมือถือ | เบา | | ✅ | d5f50b74 | 87/89 · V-1/V-2 ภาพรอ build รวม |
 | D.7 | ค่าน้ำไฟทุกโหมด + หน้ากฎหมาย/VAT | เข้ม | | ✅ | b0575e00 | 107/109 · 2 ผู้ตรวจ + ยืนยันซ้ำ (BLOCKER 2 + MAJOR 8 ปิด) · V-1/V-2 ภาพรอ build รวม |
@@ -131,7 +131,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 ### 3.2 หนี้ (ข้อที่ผ่านไม่ได้ · เหตุผล · ใบที่จะปิด)
 | ใบ | หนี้ | เหตุผล | ปิดใน |
 |---|---|---|---|
-| — | — | — | — |
+| D.3/D.13 | r0.4 H-2: rooms.access.buildingAssignments (ตาราง record ว่าง) ในหน้าตั้งค่ากลางไม่มีช่องกรอก (แก้ได้เฉพาะหน้านโยบายหอ D.13) | SettingsForm/JsonNode ไม่รองรับ record ว่าง | D.15 |
 
 ---
 
@@ -198,3 +198,5 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 30 ต.ค. ~07:3xZ · ✅ **B.10** (30/53) · merge f5cccfd9 · ด่าน I: b.10 61/64 (G-2 = b.5 S-3 → ORACLE-EDIT 05ec068f voidPaidServiceBillAction op void · b.5 รันซ้ำ 0 failed) · probe-b10-b 27/0 · p5.1 28/28 · p3.5 55/55 · p2.9b 53/53 · b.4 · b.9 · smoke · fitness 53/53 · tsc 0 · ORACLE-EDIT probe K5-a (voidPaidServiceBill)
 - 30 ต.ค. ~10:3xZ · ✅ **B.8** (31/53) · merge 788cdeb0 · ด่าน J: b.8 89/94 (G-5 r0.6 แดงเพราะฉาก D.9 ตั้ง payments.receiver UNIT หอบน svcqc — ลบแถวแล้ว รัน r0.6 ซ้ำ 77/77) · probe-b8-b 30/0 · b.10 0 failed · probe-b10-b 27/0 · p3.5 55/55 · smoke · fitness 53/53 · tsc 0 · ORACLE-EDIT b.7 S-5 · b.3 SNAP_KEYS · probe P3g/P7 (V5)
 - 30 ต.ค. ~12:0xZ · ✅ **D.9** (32/53) · merge 950565b6 · ด่าน K (ผู้คุมใหม่ บัญชี B รับผลที่รันค้างจากบัญชี A): d.9 86/89 0 failed · probe-d9-b 28/0 · r0.6 77/77 · b.8 / b.7 / d.11 --no-regression 0 failed · smoke 6/6 · fitness 53/53 · tsc 0
+- 30 ต.ค. ~22:4xZ · ✅ **D.4** (33/53) · merge 05014f81 + prisma generate ทรีหลัก · ด่าน L: d.4 117/119 · probe-d4-b 68/0 · d.9/d.8/d.5 --no-regression 0 failed · smoke 6/6 · fitness 53/53 · tsc 0 · ผู้ตรวจยืนยันตีกลับ X2 (regex attrsOf กำลังสอง · 787 B ค้าง 51 วิ) ⇒ Y1–Y3 · มติ X12 คง findForbiddenTerms · หนี้ N3/X16 ใน /root/svc-runs/fix/d4.md · 🔴 deploy: migration 20261224000000_svc_d4 · ⚠️ l1 ใช้ node_modules ทรีหลัก (ไม่ใช่ nm-l1) ⇒ merge session เข้า l1 ทุกครั้งที่ generate · ~16Z agent ตายทั้งหมด (OAuth หมดอายุ) เสีย ~6 ชม.
+- 30 ต.ค. ~23Z · ปิดหนี้ D.3: ป้ายไทย enum rooms.vat.reissueDate (r0.4 R-3/D-4/H-5 แดงบนทรีรวมตั้งแต่ D.3) ⇒ r0.4 44/46 · H-2 เหลือ = หนี้ §3.2 ปิดใน D.15
