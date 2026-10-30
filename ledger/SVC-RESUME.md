@@ -1,3 +1,7 @@
+## ▶️ รับไม้ 30 ต.ค. ~11:4xZ (บัญชี B · ผู้คุมใหม่)
+- บัญชี A หมด weekly 11:29–11:34Z ⇒ builder D.10/D.4/D.12 ตาย · gate-k + D.4 probe/full ที่ค้างปล่อยรันจนจบ
+- เปิด builder ใหม่ "ทำต่อจากทรี": l1 D.12 (เริ่มจาก 95/121 · log /tmp/svc-d12-build-2.log) · l2 D.10 (โค้ดราวครึ่ง) · l3 D.4 รอผล /tmp/svc-d4-probe-2.log + /tmp/svc-d4-build-full2.log แล้วผู้คุมรับ/ส่งผู้ตรวจยืนยันซ้ำ
+
 ## ⏸ HANDOVER 30 ต.ค. ~11:0xZ (weekly 98% · เจ้าของสั่งเตรียมย้ายบัญชี)
 **31/53 (58%)** · `session/svc` push แล้ว (tip = D.9 merge 950565b6 + ledger) · ✅ ล่าสุด: D.11 · B.10 · B.8 (รายละเอียด SVC-RUN §3/§4)
 - **ด่านค้าง:** gate-k (D.9 merged 950565b6) `/root/svc-runs/gate-k.sh` → ผล `/root/svc-runs/gate-k.txt` · ที่เห็นแล้ว: d.9 86/89 0 failed · probe-d9-b 28/0 · ถ้าค้างกลาง/ไม่มี DONE ⇒ รันใหม่ `setsid nohup bash /root/svc-runs/gate-k.sh > /root/svc-runs/gate-k.txt 2>&1 < /dev/null & disown` · เขียวทั้งหมด ⇒ mark D.9 ✅ (32/53) commit ledger + push + tg
