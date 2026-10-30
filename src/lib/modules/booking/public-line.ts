@@ -37,6 +37,8 @@ export type KioskView = {
   busyCount: number; seatCount: number; waitingCount: number; nextTicketNumber: string | null; walkInWaitMin: number | null;
   services: KioskService[]; staff: { id: string; name: string }[] | null;
   phone: "OPTIONAL" | "REQUIRED"; paperTicket: boolean; pinLock: boolean;
+  /** SVC B.7 ▸ หนี้ B.6 §9: หน้าจองล่วงหน้าของสาขา (/s/<tenantSlug>/<unitSlug>) — QR "จองวันอื่นล่วงหน้า" ◂ */
+  bookUrl: string;
 };
 export type KioskTicket = { ticketNumber: string; serviceName: string; staffName: string | null; seat: number | null; plannedStartMs: number | null; waitMin: number | null; aheadCount: number; ticketUrl: string; lineLink: string | null };
 export type KioskCheckedIn = KioskTicket & { bookedStartMs: number };
@@ -225,7 +227,14 @@ export async function loadKioskView(token: unknown, opts?: Opts): Promise<KioskV
     services: kioskServicesFor(svcs, p),
     staff: p.pickStaff ? line.staff.map((x) => ({ id: x.staffId, name: x.name })) : null,
     phone: p.phone, paperTicket: p.paperTicket, pinLock: p.pinLock,
+    bookUrl: await bookUrlOf(ctx), // SVC B.7
   };
+}
+
+/** SVC B.7 ▸ หน้าจองออนไลน์ของสาขา (slug ร้าน + slug สาขา · ไม่มี token) ◂ */
+async function bookUrlOf(ctx: Ctx): Promise<string> {
+  const u = await tenantDb(ctx).businessUnit.findFirst({ where: { id: ctx.unitId, tenantId: ctx.tenantId }, select: { slug: true, tenant: { select: { slug: true } } } });
+  return u ? `/s/${u.tenant.slug}/${u.slug}` : "";
 }
 
 /** ข้อความจากเครื่องอ่าน QR: token ตรง ๆ หรือ URL ที่มี token เป็น ?t= / ?token= หรือ path ท้ายสุด */

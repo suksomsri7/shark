@@ -97,7 +97,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | D.0 | migration svc_d | เบา | | ✅ | b113a1f4 | 107/108 + ORACLE-EDIT · ดัชนีหนี้ครบ |
 | D.1 | กฎหมาย + สูตรเงิน (pure) | เข้ม | | ✅ | ffe9d12b | 122/122 (pure e6213cde + defs) · 2 ผู้ตรวจ |
 | D.2 | facade บัญชีหอ | เข้ม | | ✅ | bbf544fe | 78/78 · 2 ผู้ตรวจ + ยืนยันซ้ำ (BLOCKER 1 + MAJOR 8 ปิด) |
-| D.3 | VAT + ใบกำกับ | เข้ม | | ⬜ | | บล็อก D.15 เฉพาะหอจด VAT |
+| D.3 | VAT + ใบกำกับ | เข้ม | | ✅ | 8ab8795d | 85/85 (เต็มรวม G) · 2 ผู้ตรวจ 2 รอบ (MAJOR 4 + MINOR 8 ปิด · probe 30/30) · J4 คำถามบัญชีค้าง |
 | D.4 | นำเข้า Excel | เข้ม | | ⬜ | | |
 | D.5 | ผู้เช่า/สัญญา/ประกัน | เข้ม | | ✅ | b79f2ef5 | 110/115 · 2 ผู้ตรวจ + ยืนยันซ้ำ · M-11 ORACLE-EDIT (RETRY_SAFE ใต้โหลด) |
 | D.6 | มิเตอร์ + จดมือถือ | เบา | | ✅ | d5f50b74 | 87/89 · V-1/V-2 ภาพรอ build รวม |
@@ -191,4 +191,6 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 29 ต.ค. ~19:2xZ · ✅ **D.8 + D.13** (24/53) · merge 1dc227b0 (D.8) + 39d926de (D.13 · แก้ชน permissions/account/dorm index เก็บทั้งสองฝั่ง) · ด่านรวม D: probe-d8-b 25/25 · probe-d8-b2 22/22 · probe-d13-b ผ่าน · d.5 110/115 · d.7 · b.11 · smoke 6/6 · tsc 0 · d.8 97/109 · d.13 88/98 · ORACLE-EDIT: d.8 S-6 (คีย์หอที่เหลือเป็นของ D.13) · d.8 mkBook(vat) ใส่ taxId (จาก D.3 · อยู่บน l2) · ฉาก D.13 แยกงวด (เดือนนี้สงวนให้ฉาก D.8 · D.13 ใช้เดือนหน้า/เดือนก่อน) ⇒ ภาพหอ 01 ป้าย "ค้าง ก.ย." แทน "ค้าง ต.ค." ตอนเทียบ PARITY
 - เลน: l1 B.6 builder เสร็จ (62/72) รอ reviewer B · l2 D.3 builder · l3 B.9 ข้อสอบ a2d850b2 รอ B.6 merge
 - 30 ต.ค. ~02Z · ✅ **B.6** (25/53 · ยกเป็นเข้ม ตามมติ Q5) · merge 490c4437 · ด่านรวม: b.6 · probe-b6-b breach 0 · d.13 · smoke · tsc 0 · regression ที่แดงหลัง merge แก้แล้ว: ฉาก B.6 tick กวาด walk-in ของวันฉาก B.5 (sweepEndOfDay ทุกวันก่อนหน้า) ⇒ ฉากทั้งสองกัน tick ข้ามวัน + ซ่อมตัวเองเมื่อรันซ้ำ (b.5/b.6/b.4 ผ่านทั้งสองลำดับ) · ORACLE-EDIT: b.4 Q-4 (บัตรนัดปิดทางเดิม · ETA ผ่าน loadTicketView) · b.6 S-9 ข้ามหลัง merge · b.6 S-1/S-2 queue-line opt deviceId · permissions เอา booking.devices.manage ออกจาก planned (b.11 K-2) · fitness F5.1 baseline 49→50 (deviceByToken) · action สาธารณะอยู่ใต้ app/(store)/bq
+- 30 ต.ค. ~05Z · ✅ **D.3** (26/53) · merge 8ab8795d · ด่าน F: d.3 เต็ม 85/85 · probe-d3-b · d.2 78/78 · d.13 · b.6 · b.11 · smoke · fitness 53/53 · tsc 0 · d.8 P-3 แดงเฉพาะ --perf-rooms=20 (20 ห้องส่งจบในการเรียกเดียว · 300 ห้องเต็มผ่านแล้วใน gate-d) · 🔴 deploy: unique index AccountDocument_taxinvoice_source_uniq ต้องตรวจ prod
+- merge B.9 (96521c79) + B.7 (แก้ชน svc-qc-data/booking index/ledger เก็บทั้งสองฝั่ง) → ด่าน G
 

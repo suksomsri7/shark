@@ -13,6 +13,7 @@ import * as inv from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
 import * as queue from "@/lib/modules/queue/service"; // SVC B.4 ▸ บัตรเดินตามงาน (เส้น booking→queue · ทิศเดียว) ◂
+import { manageToken, manageTokenHash } from "./manage-token"; // SVC B.7 ▸ ลิงก์จัดการนัด (pure) ◂
 
 /** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อกเมื่อนำบริการเข้าคลัง */
 export type BookingCtx = { tenantId: string; unitId: string; actorUserId?: string };
@@ -1419,6 +1420,8 @@ export type BookInput = {
   customerPhone: string;
   note?: string;
   idempotencyKey?: string;
+  /** SVC B.7 ▸ ช่อง LINE ที่ผู้เรียกยืนยันตัวตนแล้ว (ลิงก์เซ็น booking.identity) ⇒ ผูก Party ตรง · ข้าม linkPartyAfterCommit ◂ */
+  partyId?: string;
 };
 export type BookFailCode =
   | "FULL" | "PAST" | "LEAD_TIME" | "BEYOND_HORIZON" | "OFF_GRID" | "OUTSIDE_HOURS" | "PHONE_LIMIT"
@@ -1615,6 +1618,7 @@ const earliestOk = (startMs: number, nowMs: number, self: boolean, leadMin: numb
 export async function findSlots(
   ctx: BookingCtx,
   q: { serviceId: string; staffId: string | null; dateStr: string; channel: BookingChannel },
+  opts?: { now?: Date; excludeAppointmentId?: string }, // SVC B.7 ▸ นาฬิกาฉีด + ไม่นับแถวของนัดที่กำลังเลื่อน (ไม่ส่ง = ผลเดิม) ◂
 ): Promise<SlotOption[]> {
   const { tenantId, unitId } = ctx;
   if (!q || !B3_CHANNELS.includes(q.channel) || typeof q.dateStr !== "string" || !isRealDateStr(q.dateStr)) return [];
@@ -1625,7 +1629,7 @@ export async function findSlots(
   if (!service || (self && !service.bookable)) return [];
   const rules = await unitRulesOf(ctx, service.id);
   if (self && q.staffId === null && !rules.anyStaff) return [];
-  const nowMs = Date.now();
+  const nowMs = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now.getTime() : Date.now();
   if (self && q.dateStr > addDaysToDateStr(bkkDateStrAt(nowMs), rules.horizonDays - 1)) return [];
 
   const profiles = await staffDayProfiles({ tenantId, unitId }, q.dateStr, q.staffId ? { staffIds: [q.staffId] } : undefined);
@@ -1635,7 +1639,7 @@ export async function findSlots(
     return c ? [c] : [];
   });
   if (cands.length === 0) return [];
-  const rows = await busyRowsOf(prisma, tenantId, cands.map((c) => c.staffId), q.dateStr);
+  const rows = await busyRowsExcept(prisma, tenantId, cands.map((c) => c.staffId), q.dateStr, opts?.excludeAppointmentId);
 
   const step = rules.stepMin;
   const byTime = new Map<number, string>();
@@ -1781,6 +1785,8 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
   if (!i || typeof i !== "object" || !B3_CHANNELS.includes(i.channel)) return fail("BAD_INPUT", BAD);
   if (typeof i.serviceId !== "string" || (i.staffId !== null && typeof i.staffId !== "string")) return fail("BAD_INPUT", BAD);
   const self = isSelfChannel(i.channel);
+  const linePartyId = i.channel === "LINE" && typeof i.partyId === "string" && i.partyId ? i.partyId : null; // SVC B.7
+  const phoneUnverified = i.channel === "ONLINE"; // SVC B.7 ▸ เบอร์กรอกเองบนหน้าจอง (ไม่ผ่าน OTP · ไม่ใช่ลิงก์ตัวตน LINE) ◂
   const db = tenantDb({ tenantId, unitId });
   const idem = typeof i.idempotencyKey === "string" ? i.idempotencyKey.trim() || null : null;
   const name = typeof i.customerName === "string" ? i.customerName.trim() : "";
@@ -1805,6 +1811,10 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
   const rules = await unitRulesOf(ctx, service.id);
   if (i.staffId === null && self && !rules.anyStaff) return fail("ANY_DISABLED", "ร้านนี้ให้เลือกช่างก่อนจอง");
   if (!dateOk || !name || phoneKey === "" || phoneKey === "0") return fail("BAD_INPUT", BAD);
+  // SVC B.7 ▸ O3: Party ที่ยืนยันจากลิงก์ LINE ต้องเป็นของร้านนี้และไม่ถูกรวม (ตรวจก่อนธุรกรรม) ◂
+  if (linePartyId && !(await tenantDb({ tenantId }).party.findFirst({ where: { id: linePartyId, tenantId, mergedIntoId: null }, select: { id: true } }))) {
+    return fail("BAD_INPUT", BAD);
+  }
   const { dateStr, startMin } = i;
 
   // ② ช่างระบุตัว: ลา / ทำบริการไม่ได้
@@ -1879,7 +1889,8 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
     if (!anyFree) return (await replayIfAny()) ?? fail("FULL", FULL_REASON);
   }
   const memberSystemId = await systemForUnit(tenantId, unitId, "MEMBER");
-  const customerId = memberSystemId ? await memberCustomerIdFor({ tenantId, memberSystemId, phone, name, self }) : null;
+  // SVC B.7 ▸ เบอร์ที่ลูกค้ากรอกเองบนหน้าจอง (ONLINE) ไม่ผ่าน OTP ⇒ ไม่ผูกสมาชิก/Party จากเบอร์อย่างเดียว (มติ B.9 reviewer A) ◂
+  const customerId = memberSystemId && !phoneUnverified ? await memberCustomerIdFor({ tenantId, memberSystemId, phone, name, self }) : null;
 
   type TxOut = { kind: "row"; row: ApptLite } | { kind: "replay"; res: BookResult } | { kind: "fail"; code: BookFailCode; reason: string };
   try {
@@ -1945,9 +1956,20 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
           channel: i.channel,
           // SVC B.4 ▸ หนี้ B.3: นาทีเฉพาะคน + buffer ของบริการ ณ ตอนจอง (คีย์ระดับบนข้าง values · CC §1.6 additive) ◂
           policySnapshot: { ...snap, job: { durationMin: chosen.durationMin, bufferMin: service.bufferMin } } as unknown as Prisma.InputJsonValue,
+          ...(linePartyId ? { partyId: linePartyId } : {}), // SVC B.7
         },
         select: APPT_LITE,
       });
+      // SVC B.7 ▸ ช่องลูกค้าจองเอง (ONLINE/LINE): hash ลิงก์จัดการนัด + booking.created ใน tx เดียวกับ create
+      //   payload = id ล้วน (X8 ไม่มีชื่อ/เบอร์ · ไม่มี token/hash) · ช่อง STAFF/PHONE คงพฤติกรรม B.3 (ไม่ยิง · มติ Q2) ◂
+      if (self) {
+        const tok = manageToken(created.id);
+        if (tok) await tx.appointment.updateMany({ where: { id: created.id, tenantId, unitId }, data: { manageTokenHash: manageTokenHash(tok) } });
+        await emitOutbox(tx, {
+          tenantId, unitId, type: "booking.created", idempotencyKey: `booking.created#${created.id}`,
+          payload: { appointmentId: created.id, unitId, staffId: created.staffId, kind: "BOOKED", channel: i.channel, serviceId: service.id, assignMode: created.assignMode, status: created.status },
+        });
+      }
       if (customerId) {
         await member.logActivity(
           {
@@ -1967,7 +1989,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
     }, BOOK_TX);
     if (out.kind === "fail") return fail(out.code, out.reason);
     if (out.kind === "replay") return out.res;
-    await linkPartyAfterCommit(tenantId, out.row.id, name, phone); // CRM v2 C1.1 (C11) — หลัง commit เท่านั้น
+    if (!linePartyId && !phoneUnverified) await linkPartyAfterCommit(tenantId, out.row.id, name, phone); // CRM v2 C1.1 (C11) — หลัง commit เท่านั้น · SVC B.7: LINE ที่ยืนยันแล้วผูกตรงใน create
     return replayOf(out.row, want);
   } catch (e) {
     // ชน unique(tenantId, idempotencyKey) — ไม่ควรเกิดเมื่อมีล็อก key แต่กันไว้ ⇒ ผลเดียวกับ replay (ตรวจสาขา/ข้อมูล/สถานะ)
@@ -2020,3 +2042,311 @@ export async function expireDepositHolds(now: Date): Promise<{ expired: number }
   return { expired };
 }
 // ◂ SVC B.3
+
+// ═════════ SVC B.7 ▸ จองออนไลน์ + ลิงก์จัดการนัด (ใบสั่ง svc-brief-b.7 §3.7 · เพิ่มเท่านั้น) ═════════
+// 🔴 ตัวตรวจชน/โควตา = ของ B.3 ชุดเดียว (busyRowsOf · slotClear · selfQuotaOk · candOf) — ไม่นับแถวของนัดที่กำลังเลื่อน (busyRowsExcept)
+// 🔴 ลำดับล็อกของการเลื่อน = แบบ rescheduleByShop: advisory สาขา → ช่างทั้งสาขาตาม sortOrder (lockUnitTx) → แถวนัด (lockAppt) · CAS ทุกการเขียน
+//    ไม่มี connection ที่สองใต้ล็อก (ค่าตั้ง/โปรไฟล์/บริการ เตรียมก่อนธุรกรรม) · 40P01/P2028 ลองใหม่ 1 ครั้งแล้ว BUSY (ไม่ throw)
+// 🔴 กติกาของนัดที่จองแล้ว = policySnapshot (CC §1.6) · ค่าหายใน snapshot (แถวเก่า) ⇒ resolver ปัจจุบัน · เวลาใหม่ตรวจด้วยกติกาจองปัจจุบัน
+
+/** แถวถือช่องของช่าง (busyRowsOf ทุกไบต์) ตัดแถวของนัด excludeId ออก 1 แถว (จับด้วยช่าง + เริ่ม + จบของแถวนั้น) · ไม่ส่ง ⇒ busyRowsOf เดิม */
+async function busyRowsExcept(
+  client: Pick<Prisma.TransactionClient, "$queryRaw">,
+  tenantId: string,
+  staffIds: string[],
+  dateStr: string,
+  excludeId: string | undefined,
+): Promise<BusyRow[]> {
+  const rows = await busyRowsOf(client, tenantId, staffIds, dateStr);
+  if (typeof excludeId !== "string" || !excludeId || !rows.length) return rows;
+  const [me] = await client.$queryRaw<{ staffId: string; startAt: Date; endAt: Date }[]>`
+    SELECT "staffId", "startAt", "endAt" FROM "Appointment"
+    WHERE "id" = ${excludeId} AND "tenantId" = ${tenantId} AND "status" NOT IN ('CANCELLED', 'NO_SHOW')`;
+  if (!me) return rows;
+  const k = rows.findIndex((r) => r.staffId === me.staffId && r.startAt.getTime() === me.startAt.getTime() && r.endAt.getTime() === me.endAt.getTime());
+  return k < 0 ? rows : [...rows.slice(0, k), ...rows.slice(k + 1)];
+}
+
+/** กติกาจองระดับสาขา(+บริการ) ของ B.3 (horizon · lead · ช่อง · ใครก็ได้) — ให้หน้าจองออนไลน์ใช้ตัวเดียวกับ findSlots/bookAppointment */
+export function onlineRulesOf(ctx: { tenantId: string; unitId: string }, serviceId: string): Promise<{ horizonDays: number; minLeadMin: number; stepMin: number; anyStaff: boolean }> {
+  return unitRulesOf(ctx, serviceId);
+}
+
+/** กติกาที่ลูกค้าเห็น/ใช้กับลิงก์จัดการนัด (ใบสั่ง §3.2 OnlinePolicy) */
+export type SelfPolicy = {
+  graceMin: number | null;
+  afterGrace: "RELEASE_REQUEUE" | "WAIT_NOTIFY_COUNTER" | null;
+  freeChangeBeforeMin: number;
+  selfRescheduleMax: number;
+  requireConfirm: boolean;
+  depositMethod: string;
+  payWithinMin: number | null;
+  forfeitPct: number | null;
+};
+const SELF_POLICY_KEYS = [
+  "booking.late.graceMin",
+  "booking.late.afterGrace",
+  "booking.late.freeChangeBeforeMin",
+  "booking.late.selfRescheduleMax",
+  "booking.booking.requireConfirm",
+  "booking.deposit.method",
+  "booking.deposit.payWithinMin",
+  "booking.deposit.forfeitPct",
+] as const;
+function selfPolicyFrom(v: (k: string) => unknown): SelfPolicy {
+  const num = (x: unknown): number | null => (typeof x === "number" && Number.isFinite(x) ? x : null);
+  const ag = v("booking.late.afterGrace");
+  const method = v("booking.deposit.method");
+  return {
+    graceMin: num(v("booking.late.graceMin")),
+    afterGrace: ag === "RELEASE_REQUEUE" || ag === "WAIT_NOTIFY_COUNTER" ? ag : null,
+    freeChangeBeforeMin: Math.max(0, num(v("booking.late.freeChangeBeforeMin")) ?? 0),
+    selfRescheduleMax: Math.max(0, Math.floor(num(v("booking.late.selfRescheduleMax")) ?? 0)),
+    requireConfirm: v("booking.booking.requireConfirm") === true,
+    depositMethod: typeof method === "string" ? method : "NONE",
+    payWithinMin: num(v("booking.deposit.payWithinMin")),
+    forfeitPct: num(v("booking.deposit.forfeitPct")),
+  };
+}
+/** ค่าตั้งปัจจุบัน (หน่วย + บริการ + ช่างถ้าระบุ) — ตัวเดียวกับที่ snapshot จะจด · อ่านทุกคำขอ (ไม่แคช) */
+export async function currentSelfPolicy(ctx: { tenantId: string; unitId: string }, refs: { serviceId: string; staffId?: string | null }): Promise<SelfPolicy> {
+  const r = await resolveSettings({ tenantId: ctx.tenantId }, [...SELF_POLICY_KEYS], {
+    unitId: ctx.unitId, serviceId: refs.serviceId, ...(refs.staffId ? { staffId: refs.staffId } : {}),
+  });
+  return selfPolicyFrom((k) => r[k]?.value);
+}
+/** กติกาของนัดที่จองแล้ว: snapshot ชนะ · คีย์ที่ snapshot ไม่ได้จด (แถวเก่า) ⇒ resolver ปัจจุบัน */
+export async function snapshotSelfPolicy(
+  ctx: { tenantId: string; unitId: string },
+  row: { serviceId: string; staffId: string; policySnapshot: unknown },
+): Promise<SelfPolicy> {
+  const vals = row.policySnapshot && typeof row.policySnapshot === "object" ? (row.policySnapshot as PolicySnap).values : undefined;
+  const has = (k: string) => !!vals && typeof vals === "object" && Object.prototype.hasOwnProperty.call(vals, k);
+  if (SELF_POLICY_KEYS.every(has)) return selfPolicyFrom((k) => vals![k]);
+  const cur = await resolveSettings({ tenantId: ctx.tenantId }, [...SELF_POLICY_KEYS], { unitId: ctx.unitId, serviceId: row.serviceId, staffId: row.staffId });
+  return selfPolicyFrom((k) => (has(k) ? vals![k] : cur[k]?.value));
+}
+
+export type SelfChangeBlock = "LATE_CHANGE" | "MAX_RESCHEDULE" | "BAD_STATE" | null;
+/** ยกเลิก/เลื่อนเองได้ไหม ณ now (ใบสั่ง §3.4) — pure */
+export function selfChangeState(
+  row: { status: string; startAt: Date; rescheduleCount: number },
+  pol: SelfPolicy,
+  now: Date,
+): { freeUntilMs: number; rescheduleLeft: number; cancelBlock: SelfChangeBlock; rescheduleBlock: SelfChangeBlock } {
+  const freeUntilMs = row.startAt.getTime() - pol.freeChangeBeforeMin * B3_MIN_MS;
+  const rescheduleLeft = Math.max(0, pol.selfRescheduleMax - row.rescheduleCount);
+  const open = row.status === "PENDING" || row.status === "CONFIRMED";
+  const late = now.getTime() > freeUntilMs;
+  const cancelBlock: SelfChangeBlock = !open ? "BAD_STATE" : late ? "LATE_CHANGE" : null;
+  const rescheduleBlock: SelfChangeBlock = !open ? "BAD_STATE" : late ? "LATE_CHANGE" : rescheduleLeft <= 0 ? "MAX_RESCHEDULE" : null;
+  return { freeUntilMs, rescheduleLeft, cancelBlock, rescheduleBlock };
+}
+
+/** เวลาสิ้นสุดถือช่องมัดจำ (สูตร holdMinutesOf ของ B.3) เมื่อยังถือ (PENDING · ยังไม่จ่าย) · อื่น ⇒ null */
+export function holdUntilOf(r: { channel: string | null; depositSatang: number; policySnapshot: unknown; status: string; depositPaidAt: Date | null; createdAt: Date }): Date | null {
+  const hold = holdMinutesOf(r.channel, r.depositSatang, r.policySnapshot);
+  if (hold === null || r.status !== "PENDING" || r.depositPaidAt !== null) return null;
+  return new Date(r.createdAt.getTime() + hold * B3_MIN_MS);
+}
+
+export type ManageRow = {
+  id: string; tenantId: string; unitId: string; kind: string; status: AppointmentStatus; channel: string | null; assignMode: string;
+  staffId: string; plannedStaffId: string | null; serviceId: string; startAt: Date; endAt: Date; createdAt: Date;
+  priceSatang: number; depositSatang: number; depositPaidAt: Date | null; cancelReason: string | null; rescheduleCount: number; policySnapshot: unknown;
+};
+const MANAGE_ROW = {
+  id: true, tenantId: true, unitId: true, kind: true, status: true, channel: true, assignMode: true, staffId: true, plannedStaffId: true, serviceId: true,
+  startAt: true, endAt: true, createdAt: true, priceSatang: true, depositSatang: true, depositPaidAt: true, cancelReason: true, rescheduleCount: true, policySnapshot: true,
+} as const;
+/** นัดจาก hash ของ token ลิงก์จัดการนัด (ก่อนรู้ร้าน · เฉพาะ kind BOOKED) — ผู้เรียกต้องเทียบ token แบบ timing-safe อีกชั้น */
+export async function appointmentByManageHash(hash: string): Promise<ManageRow | null> {
+  if (typeof hash !== "string" || !/^[0-9a-f]{64}$/.test(hash)) return null;
+  return prisma.appointment.findFirst({ where: { manageTokenHash: hash, kind: "BOOKED" }, select: MANAGE_ROW });
+}
+
+export type SelfRescheduleFail =
+  | "NOT_FOUND" | "RATE_LIMITED" | "LATE_CHANGE" | "MAX_RESCHEDULE" | "BAD_STATE" | "LOST_RACE" | "BUSY"
+  | "FULL" | "PAST" | "LEAD_TIME" | "BEYOND_HORIZON" | "OFF_GRID" | "OUTSIDE_HOURS" | "NOT_QUALIFIED" | "ON_LEAVE" | "BAD_INPUT";
+export type SelfRescheduleResult = { ok: true; startAt: Date } | { ok: false; code: SelfRescheduleFail; reason: string };
+const SELF_R = {
+  NOT_FOUND: "ไม่พบนัดนี้",
+  STAFF_NOT_FOUND: "ไม่พบช่างที่เลือก",
+  SVC_NOT_FOUND: "บริการนี้ไม่เปิดให้จองออนไลน์แล้ว — กรุณาติดต่อร้าน",
+  ANY_OFF: "ร้านนี้ให้เลือกช่างก่อนจอง",
+  BAD_STATE: "นัดนี้เลื่อนหรือยกเลิกเองไม่ได้ในสถานะปัจจุบัน",
+  LATE_CHANGE: "เลยเวลาที่เลื่อน/ยกเลิกเองได้แล้ว — กรุณาติดต่อร้าน",
+  MAX_RESCHEDULE: "นัดนี้เลื่อนเองครบจำนวนครั้งที่ร้านกำหนดแล้ว — กรุณาติดต่อร้าน",
+  LOST_RACE: "นัดนี้เพิ่งถูกเปลี่ยน กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+  BUSY: "ระบบกำลังจัดคิวพร้อมกันหลายรายการ กรุณาลองใหม่อีกครั้ง",
+  RATE: "ทำรายการถี่เกินไป กรุณารอสักครู่แล้วลองใหม่",
+} as const;
+
+/** policySnapshot หลังเลื่อน: job.durationMin = นาทีของช่างใหม่ · ล้าง job.manualHold (แบบ N1 ของ B.4) · คีย์อื่นคงเดิม */
+function snapAfterSelfMove(snap: unknown, durationMin: number, bufferMin: number): Prisma.InputJsonValue {
+  const base = snap && typeof snap === "object" && !Array.isArray(snap) ? (snap as Record<string, unknown>) : {};
+  const job = base.job && typeof base.job === "object" && !Array.isArray(base.job) ? { ...(base.job as Record<string, unknown>) } : {};
+  delete job.manualHold;
+  return { ...base, job: { ...job, durationMin, bufferMin } } as unknown as Prisma.InputJsonValue;
+}
+
+/**
+ * ลูกค้าเลื่อนนัดเอง (ใบสั่ง §3.5) — แถวเดิม (id/ลิงก์/มัดจำเดิม) · rescheduleCount + 1 · requireConfirm(snapshot) ⇒ กลับ PENDING
+ * ลำดับตรวจ: นัด (NOT_FOUND) → สถานะ (BAD_STATE) → เวลาฟรี (LATE_CHANGE) → เพดานเลื่อน (MAX_RESCHEDULE) → รูปข้อมูล (BAD_INPUT) →
+ *   บริการ/ช่าง (NOT_FOUND) → ลา/ทำไม่ได้ → เวลา (PAST · BEYOND_HORIZON · LEAD_TIME · OFF_GRID · OUTSIDE_HOURS) → ว่าง/โควตา (FULL) → ล็อก + CAS
+ * `charge` (ผู้เรียกสาธารณะ: ถังต่อ token) เรียกเมื่อคำขอถูกตัดสินด้วยสถานะนัด (BAD_STATE/LATE_CHANGE/MAX_RESCHEDULE) หรือก่อนเข้าล็อกเขียน · false ⇒ RATE_LIMITED
+ */
+export async function rescheduleBySelf(
+  ctx: BookingCtx,
+  appointmentId: string,
+  to: { dateStr: string; startMin: number; staffId: string | null },
+  opts?: { now?: Date; charge?: () => Promise<boolean> },
+): Promise<SelfRescheduleResult> {
+  const fail = (code: SelfRescheduleFail, reason: string): SelfRescheduleResult => ({ ok: false, code, reason });
+  const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
+  const nowMs = now.getTime();
+  const charge = async (): Promise<boolean> => (opts?.charge ? opts.charge() : true);
+  const gate = async (code: SelfRescheduleFail, reason: string): Promise<SelfRescheduleResult> =>
+    (await charge()) ? fail(code, reason) : fail("RATE_LIMITED", SELF_R.RATE);
+  if (!ctx || typeof ctx.tenantId !== "string" || typeof ctx.unitId !== "string" || typeof appointmentId !== "string" || !appointmentId) {
+    return fail("NOT_FOUND", SELF_R.NOT_FOUND);
+  }
+  const { tenantId, unitId } = ctx;
+  const db = tenantDb({ tenantId, unitId });
+  const cur = await db.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId, kind: "BOOKED" }, select: MANAGE_ROW });
+  if (!cur) return fail("NOT_FOUND", SELF_R.NOT_FOUND);
+  const pol = await snapshotSelfPolicy(ctx, cur);
+  const st0 = selfChangeState(cur, pol, now);
+  if (st0.rescheduleBlock) return gate(st0.rescheduleBlock, SELF_R[st0.rescheduleBlock]);
+
+  // รูปข้อมูล
+  const t = to as { dateStr?: unknown; startMin?: unknown; staffId?: unknown } | null;
+  if (!t || typeof t !== "object" || typeof t.dateStr !== "string" || !isRealDateStr(t.dateStr)
+    || typeof t.startMin !== "number" || !Number.isInteger(t.startMin) || t.startMin < 0 || t.startMin >= 24 * 60
+    || (t.staffId !== null && (typeof t.staffId !== "string" || !t.staffId))) {
+    return fail("BAD_INPUT", BAD_INPUT_REASON);
+  }
+  const dateStr = t.dateStr;
+  const startMin = t.startMin;
+  const staffId = t.staffId as string | null;
+  // O6: ถังต่อ token ของผู้เรียกนับทันทีหลังด่านรูปข้อมูล (มติผู้คุม B.7) — ก่อนค้นบริการ/ช่าง/ตาราง
+  if (!(await charge())) return fail("RATE_LIMITED", SELF_R.RATE);
+  // O9: เวลา + ช่างเดิม (ระบุช่างเดิม หรือ "ใครก็ได้" กับนัดใครก็ได้) ⇒ ok ไม่นับครั้ง ไม่ยิง event
+  const sameAs = (r: { startAt: Date; staffId: string; assignMode: string }) =>
+    r.startAt.getTime() === localToUtc(dateStr, startMin).getTime() && (staffId === null ? r.assignMode === "ANY" : r.assignMode !== "ANY" && r.staffId === staffId);
+  if (sameAs(cur)) return { ok: true, startAt: cur.startAt };
+
+  // บริการ/ช่าง (ของหน่วยนี้เท่านั้น · ลูกค้าเลือกชื่อไม่ได้ = ไม่พบ)
+  const service = await db.bookingService.findFirst({ where: { id: cur.serviceId, active: true } });
+  if (!service || !service.bookable) return fail("NOT_FOUND", SELF_R.SVC_NOT_FOUND);
+  const rules = await unitRulesOf(ctx, service.id);
+  if (staffId !== null) {
+    const stf = await db.bookingStaff.findFirst({ where: { id: staffId, active: true }, select: { id: true } });
+    if (!stf) return fail("NOT_FOUND", SELF_R.STAFF_NOT_FOUND);
+    const cc = await resolveSettings({ tenantId }, ["booking.staff.customerCanChoose"], { unitId, staffId });
+    if (cc["booking.staff.customerCanChoose"]?.value === false) return fail("NOT_FOUND", SELF_R.STAFF_NOT_FOUND);
+  } else if (!rules.anyStaff) {
+    return fail("NOT_FOUND", SELF_R.ANY_OFF);
+  }
+
+  // ช่างระบุตัว: ลา / ทำบริการไม่ได้ · ใครก็ได้ = ทุกคนที่ทำได้ + อยู่ในหน้าต่าง + ออนไลน์ > 0%
+  const profiles = await staffDayProfiles({ tenantId, unitId }, dateStr, staffId ? { staffIds: [staffId] } : undefined);
+  let cands: B3Cand[];
+  if (staffId !== null) {
+    const p = profiles[0];
+    if (!p) return fail("NOT_FOUND", SELF_R.STAFF_NOT_FOUND);
+    if (p.onLeave) return fail("ON_LEAVE", `${p.name} ลาในวันที่เลือก`);
+    const c = candOf(p, service);
+    if (!c) return fail("NOT_QUALIFIED", `${p.name} ไม่ได้ให้บริการ "${service.name}"`);
+    cands = [c];
+  } else {
+    cands = profiles.flatMap((p) => {
+      const c = p.onLeave ? null : candOf(p, service);
+      if (!c || !inWindows(c.windows, startMin, c.durationMin) || !(c.onlineSharePct > 0)) return [];
+      return [c];
+    });
+  }
+
+  // เวลา (กติกาจองปัจจุบัน · ช่อง SELF · now ฉีด)
+  const startAt = localToUtc(dateStr, startMin);
+  if (startAt.getTime() <= nowMs) return fail("PAST", "เวลาที่เลือกผ่านไปแล้ว");
+  if (dateStr > addDaysToDateStr(bkkDateStrAt(nowMs), rules.horizonDays - 1)) {
+    return fail("BEYOND_HORIZON", `เปิดให้จองล่วงหน้าได้ไม่เกิน ${rules.horizonDays} วัน`);
+  }
+  if (startAt.getTime() < nowMs + rules.minLeadMin * B3_MIN_MS) return fail("LEAD_TIME", `ต้องจองล่วงหน้าอย่างน้อย ${rules.minLeadMin} นาที`);
+  if (startMin % rules.stepMin !== 0) return fail("OFF_GRID", `เวลาเริ่มต้องเป็นช่วงทุก ${rules.stepMin} นาที`);
+  if (staffId !== null && !inWindows(cands[0].windows, startMin, cands[0].durationMin)) {
+    return fail("OUTSIDE_HOURS", `${cands[0].name} ไม่ได้ทำงานในช่วงเวลาที่เลือก`);
+  }
+  if (cands.length === 0) return fail("FULL", FULL_REASON);
+
+  // ตรวจล่วงหน้าแบบไม่ล็อก (ไม่นับแถวตัวเอง) — ผลจริงตัดสินใต้ล็อก
+  const buf = (() => {
+    const j = cur.policySnapshot && typeof cur.policySnapshot === "object" ? (cur.policySnapshot as { job?: { bufferMin?: unknown } }).job : undefined;
+    return typeof j?.bufferMin === "number" && Number.isFinite(j.bufferMin) ? j.bufferMin : service.bufferMin;
+  })();
+  {
+    const rows = await busyRowsExcept(prisma, tenantId, cands.map((c) => c.staffId), dateStr, cur.id);
+    const anyFree = cands.some((c) => selfQuotaOk(c, dayLoadOf(rows, c.staffId, dateStr), c.durationMin + buf) && slotClear(dateStr, startMin, c, buf, rows, true));
+    if (!anyFree) return fail("FULL", FULL_REASON);
+  }
+
+  const { lockAppt, retryBusy } = await import("./queue-line");
+  const { lockUnitTx, LINE_TX } = await import("./planner-run");
+  type TxOut = { ok: true; startAt: Date } | { ok: false; code: SelfRescheduleFail; reason: string };
+  const res = await retryBusy(() => prisma.$transaction(async (tx): Promise<TxOut> => {
+    await lockUnitTx(tx, ctx); // advisory สาขา → ช่างทั้งสาขา (ตัวเดิม + ตัวใหม่ ตาม sortOrder)
+    const a = await lockAppt(tx, ctx, cur.id);
+    if (!a || a.kind !== "BOOKED") return fail("NOT_FOUND", SELF_R.NOT_FOUND);
+    const live = await tx.appointment.findFirst({ where: { id: a.id, tenantId, unitId }, select: { rescheduleCount: true, assignMode: true, channel: true, depositSatang: true, depositPaidAt: true } });
+    if (!live) return fail("NOT_FOUND", SELF_R.NOT_FOUND);
+    const st = selfChangeState({ status: a.status, startAt: a.startAt, rescheduleCount: live.rescheduleCount }, pol, now);
+    if (st.rescheduleBlock) return fail(st.rescheduleBlock, SELF_R[st.rescheduleBlock]);
+    // คำขอพร้อมกันอีกทางเพิ่งย้ายนัดไปเวลา/ช่างนี้แล้ว ⇒ แพ้ (ไม่นับซ้ำเป็นการเลื่อนครั้งใหม่)
+    if (sameAs({ startAt: a.startAt, staffId: a.staffId, assignMode: live.assignMode })) return fail("LOST_RACE", SELF_R.LOST_RACE);
+    let chosen: B3Cand | null = null;
+    for (const c of cands) {
+      const rows = await busyRowsExcept(tx, tenantId, [c.staffId], dateStr, a.id);
+      if (!selfQuotaOk(c, dayLoadOf(rows, c.staffId, dateStr), c.durationMin + buf)) continue;
+      if (!slotClear(dateStr, startMin, c, buf, rows, true)) continue;
+      chosen = c;
+      break;
+    }
+    if (!chosen) return fail("FULL", FULL_REASON);
+    const data: Prisma.AppointmentUncheckedUpdateManyInput = {
+      startAt,
+      endAt: localToUtc(dateStr, startMin + chosen.durationMin + buf),
+      staffId: chosen.staffId,
+      assignMode: staffId === null ? "ANY" : "SPECIFIC",
+      rescheduleCount: live.rescheduleCount + 1,
+      plannedStartAt: null,
+      plannedStaffId: null,
+      lateAt: null,
+      policySnapshot: snapAfterSelfMove(a.policySnapshot, chosen.durationMin, buf),
+      // O1: requireConfirm ⇒ ร้านยืนยันเวลาใหม่ (PENDING) — ยกเว้นนัดที่ยังค้างมัดจำตามกติกาถือช่อง (PENDING จะถูก expireDepositHolds ยกเลิกทันทีเพราะ createdAt เก่า) ⇒ คงสถานะเดิม
+      ...(pol.requireConfirm && !(holdMinutesOf(live.channel, live.depositSatang, a.policySnapshot) !== null && live.depositPaidAt === null)
+        ? { status: "PENDING" as AppointmentStatus } : {}),
+    };
+    const w = await tx.appointment.updateMany({
+      where: { id: a.id, tenantId, unitId, status: a.status, rescheduleCount: live.rescheduleCount },
+      data,
+    });
+    if (w.count !== 1) return fail("LOST_RACE", SELF_R.LOST_RACE);
+    // O7: คีย์แบบ B.4 · ถ้าคีย์นี้เคยใช้แล้ว (กลับไปเวลา/ช่างเดิม) ⇒ ต่อท้ายครั้งที่เลื่อน กัน event หาย
+    const baseKey = `booking.rescheduled#${a.id}#${startAt.toISOString()}#${chosen.staffId}`;
+    const used = await tx.outboxEvent.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: baseKey } }, select: { id: true } });
+    await emitOutbox(tx, {
+      tenantId, unitId, type: "booking.rescheduled",
+      idempotencyKey: used ? `${baseKey}#${live.rescheduleCount + 1}` : baseKey,
+      payload: {
+        appointmentId: a.id, unitId: a.unitId, staffId: chosen.staffId, kind: a.kind, channel: a.channel, serviceId: a.serviceId,
+        fromStartAt: a.startAt.toISOString(), fromStaffId: a.staffId, startAt: startAt.toISOString(), by: "CUSTOMER",
+      },
+    });
+    return { ok: true, startAt };
+  }, LINE_TX));
+  if (!res) return fail("BUSY", SELF_R.BUSY);
+  if (res.ok) await replanAfterCommit(tenantId, unitId, now);
+  return res;
+}
+// ◂ SVC B.7

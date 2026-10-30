@@ -22,3 +22,6 @@ export { loadTodayLine } from "./today-line";
 export type { TodayLineView, LineJob } from "./today-line";
 export { ticketTokenFor, deferTicket } from "./public-line";
 export { bookingPhoneKey } from "./service";
+
+// SVC B.7 ▸ ลิงก์จัดการนัด + ลิงก์ตัวตนจาก LINE (B.9 ส่งใบนัด/ตอบเมนู OA ผ่าน facade) ◂
+export { manageLinkFor, bookingIdentityToken } from "./online";
