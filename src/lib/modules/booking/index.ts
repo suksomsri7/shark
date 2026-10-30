@@ -25,3 +25,8 @@ export { bookingPhoneKey } from "./service";
 
 // SVC B.7 ▸ ลิงก์จัดการนัด + ลิงก์ตัวตนจาก LINE (B.9 ส่งใบนัด/ตอบเมนู OA ผ่าน facade) ◂
 export { manageLinkFor, bookingIdentityToken } from "./online";
+// SVC B.10 ▸ จบงาน → บิลจากคิว (บิลพัก POS) + ค่าคอมฯ ตามผู้ให้บริการ — action/หน้า/ตัวรับคิว (composition root) เรียกผ่าน facade ◂
+export {
+  previewServiceBill, finishJob, ensureServiceBill, amendServiceBill, cancelServiceBill, markPaidWithoutPos, authorizeServiceBillOp, onPosSalePaid, voidPaidServiceBill, isLegacyBookingUnit,
+} from "./finish";
+export type { ExtraLine, BillLine, ServiceBillPreview, FinishFail, FinishResult, ServiceBillOp } from "./finish";

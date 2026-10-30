@@ -309,6 +309,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "queue.ticket.called", label: "เมื่อเรียกบัตรคิวของงานจองคิว" },
   { value: "queue.ticket.done", label: "เมื่อบัตรคิวของงานจองคิวเสร็จแล้ว" },
   // ◂ SVC B.4
+  // SVC B.10 ▸ งานจองคิวรับเงินแล้ว (บิลจากคิวที่หน้าขาย หรือปุ่ม "รับเงินแล้ว" ของสาขาไม่มี POS) — ครั้งเดียวต่อนัด (คีย์ booking.paid#<นัด>) ·
+  //   ตัวยิง `booking/finish.ts` · payload { appointmentId, unitId, staffId, kind, channel, saleId, amountSatang, via } id+เงินล้วน (X8) ·
+  //   เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "booking.paid", label: "เมื่องานจองคิวรับเงินแล้ว" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

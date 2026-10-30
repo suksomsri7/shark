@@ -296,6 +296,16 @@ const LEGACY_FNS: [string, string][] = [
 // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6 · O6b): ข้อสอบมัดจำเดิมทั้ง 3 ไฟล์ย้ายไปหมุด L3_PIN (แก้ตาม MA2) · กลุ่ม "ไม่ถูกแก้เทียบ BASE_REV" ว่าง ◂
 const LEGACY_SUITES: string[] = [];
 const L3_PIN_SUITES = ["scripts/qc-booking-deposit.mts", "scripts/qc-hotel-public.mts", "scripts/qc-rental-public.mts"];
+// ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): re-pin รายข้อเป็นค่า commit ของ RUN SVC ที่ merge แล้ว (HEAD 1908de61 ของ wip/svc-l3 · ไม่ใช่งาน B.10 ที่ยังไม่ commit) —
+//   booking/service.ts#recordDeposit เปลี่ยนโดย 2a016837 (SVC B.3 deposit holds) · hotel/service.ts#checkOut + scripts/qc-hotel-public.mts เปลี่ยนโดย
+//   f4b2022c (SVC R0.8 rooms core · hotel P1 on occupancy) · ข้ออื่น (booking refundDeposit · hotel recordDeposit · rental · qc-booking-deposit · qc-rental-public) คง L3_PIN เดิม
+const L3_PIN_SVC = "1908de61";
+const L3_PIN_BY: Record<string, string> = {
+  "src/lib/modules/booking/service.ts#recordDeposit": L3_PIN_SVC,
+  "src/lib/modules/hotel/service.ts#checkOut": L3_PIN_SVC,
+  "scripts/qc-hotel-public.mts": L3_PIN_SVC,
+};
+const l3PinOf = (k: string) => (process.env.P29B_L3_PIN ? L3_PIN : (L3_PIN_BY[k] ?? L3_PIN));
 const srcOf = (f: string) => stripComments(rd(f));
 const STATIC_IDS = ["ST1", "ST2", "ST3", "ST4", "ST5", "L1", "L2", "L3"].map((x) => `P2.9b-${x}`);
 const skipReasons: string[] = [];
@@ -487,6 +497,8 @@ function runStatic(): void {
       }
     // ORACLE-EDIT ผู้คุม 15 ต.ค. (P2.13) มติ 1: POST /sales ผ่าน submitRegisterSale ⇒ pos/api/ops/sales.ts 1 → 0 (ฐานเดิมนับ 1 · ยอมเฉพาะไฟล์นี้)
     delete base["src/lib/modules/pos/api/ops/sales.ts"];
+    // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): RUN SVC B.10 มติ Q2 — บิลจากคิว (pos/service-bill.ts ไฟล์ใหม่ · จุด 1 บิลพักผูกงานบริการ) จ่ายผ่าน createSale( 1 จุด ⇒ ยอม 0→1 เฉพาะไฟล์นี้ · ไฟล์อื่นยังเทียบฐานเดิม
+    base["src/lib/modules/pos/service-bill.ts"] = 1;
     const diff = [...new Set([...Object.keys(now), ...Object.keys(base)])].filter((f) => now[f] !== base[f]).map((f) => `${f.replace("src/lib/", "")}:${base[f] ?? 0}→${now[f] ?? 0}`);
     if (diff.length) p.push(`ต่าง ${diff.join(", ")}`);
     chk("L2", p.length === 0, `= ฐาน (${sum(Object.values(base))} จุด/${Object.keys(base).length} ไฟล์)`, joinP(p, `${sum(Object.values(now))} จุด/${Object.keys(now).length} ไฟล์`));
@@ -496,10 +508,11 @@ function runStatic(): void {
     const p: string[] = [];
     const norm = (s: string) => stripComments(s).replace(/\s+/g, " ").trim();
     for (const [f, fn] of LEGACY_FNS) {
-      const b = gitBuf(["show", `${L3_PIN}:${f}`]); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6): เทียบหมุด L3_PIN (เดิม BASE_REV) ◂
+      const pin = l3PinOf(`${f}#${fn}`); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): หมุดรายข้อ (ดู L3_PIN_BY)
+      const b = gitBuf(["show", `${pin}:${f}`]); // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O6): เทียบหมุด L3_PIN (เดิม BASE_REV) ◂
       const was = b ? norm(fnBody(b.toString("utf8"), fn)) : "";
       const now = norm(fnBody(rd(f), fn));
-      if (!was) p.push(`อ่าน ${fn} ที่ ${L3_PIN} ไม่ได้`);
+      if (!was) p.push(`อ่าน ${fn} ที่ ${pin} ไม่ได้`);
       else if (was !== now) p.push(`${f.replace("src/lib/modules/", "")}#${fn} เปลี่ยน`);
     }
     for (const f of LEGACY_SUITES) {
@@ -508,9 +521,10 @@ function runStatic(): void {
       else if (b.toString("utf8") !== rd(f)) p.push(`${f} ถูกแก้`);
     }
     for (const f of L3_PIN_SUITES) {
-      const b = gitBuf(["show", `${L3_PIN}:${f}`]);
-      if (!b) p.push(`อ่าน ${f} ที่ ${L3_PIN} ไม่ได้`);
-      else if (b.toString("utf8") !== rd(f)) p.push(`${f} ต่างจากหมุด ${L3_PIN}`);
+      const pin = l3PinOf(f); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): หมุดรายข้อ (ดู L3_PIN_BY)
+      const b = gitBuf(["show", `${pin}:${f}`]);
+      if (!b) p.push(`อ่าน ${f} ที่ ${pin} ไม่ได้`);
+      else if (b.toString("utf8") !== rd(f)) p.push(`${f} ต่างจากหมุด ${pin}`);
     }
     chk("L3", p.length === 0, `มัดจำโมดูล 5 ฟังก์ชัน + 3 ข้อสอบ ตรงหมุด ${L3_PIN} (CD-P51-O6/O6b)`, joinP(p));
   }

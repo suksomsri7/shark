@@ -12,7 +12,8 @@ import { scheduleDrain } from "@/lib/outbox-consumers";
 import { assertLineAccess, canCancelStale, type LineMember } from "@/lib/modules/booking/line-access";
 import { authorizeLineOp, type LineViewer } from "@/lib/modules/booking/today-line";
 import { moveJobStaff, recallJob, skipJob } from "@/lib/modules/booking/line-ops";
-import { callJob, cancelByShop, checkIn, completeJob, createWalkIn, startJob } from "@/lib/modules/booking/queue-line";
+import { callJob, cancelByShop, checkIn, createWalkIn, startJob } from "@/lib/modules/booking/queue-line";
+import { amendServiceBill, authorizeServiceBillOp, cancelServiceBill, finishJob, markPaidWithoutPos, voidPaidServiceBill, type ExtraLine, type ServiceBillOp } from "@/lib/modules/booking/finish"; // SVC B.10 ◂
 import { setAppointmentStatus } from "@/lib/modules/booking/service";
 
 type Auth = Awaited<ReturnType<typeof requireUnit>>["auth"];
@@ -93,7 +94,53 @@ export async function completeJobAction(unitSlug: string, formData: FormData) {
   const g = gateOf(auth, unit, unitSlug, formData);
   const a = await authorizeLineOp(g.ctx, g.viewer, "done", g.id, { now: g.now });
   if (!a.ok) bounce(g, a.reason);
-  after(unitSlug, g, await completeJob(g.ctx, g.id, { now: g.now }));
+  // SVC B.10 ▸ ปุ่ม "เสร็จ" บนจอคิว = finishJob ไม่มีของเพิ่ม (เปิดบิลจากคิวในธุรกรรมเดียวกับ DONE · สาขาเดิม/ไม่มี POS = เสร็จอย่างเดียว) ◂
+  after(unitSlug, g, await finishJob(g.ctx, g.id, { now: g.now }));
+}
+
+// ───────────────── SVC B.10 ▸ แผ่นจบงาน (ภาพ 07 ก) · บิลจากคิว — ด่าน authorizeServiceBillOp (อ่าน Membership สดทุกครั้ง) ◂ ─────────────────
+/** ของที่ทำเพิ่มจากฟอร์ม (`extras` = JSON [{kind, serviceId|productId, qty, staffId}]) — ราคาไม่ถูกรับ (server คิดเอง) · ผิดรูป = null */
+function extrasOf(formData: FormData): ExtraLine[] | null {
+  const raw = String(formData.get("extras") ?? "").trim();
+  if (!raw) return [];
+  if (raw.length > 8_000) return null;
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? (v as ExtraLine[]) : null;
+  } catch {
+    return null;
+  }
+}
+async function billGate(unitSlug: string, formData: FormData, op: ServiceBillOp): Promise<Gate> {
+  const { auth, unit } = await requireUnit(unitSlug);
+  const g = gateOf(auth, unit, unitSlug, formData);
+  const a = await authorizeServiceBillOp(g.ctx, auth.user.id, op, g.id);
+  if (!a.ok) bounce(g, a.reason);
+  return g;
+}
+
+export async function finishJobAction(unitSlug: string, formData: FormData) {
+  const g = await billGate(unitSlug, formData, "finish");
+  const extras = extrasOf(formData);
+  if (!extras) bounce(g, "รายการที่ทำเพิ่มไม่ถูกต้อง");
+  after(unitSlug, g, await finishJob(g.ctx, g.id, { extras, now: g.now }));
+}
+
+export async function amendServiceBillAction(unitSlug: string, formData: FormData) {
+  const g = await billGate(unitSlug, formData, "amend");
+  const extras = extrasOf(formData);
+  if (!extras) bounce(g, "รายการที่ทำเพิ่มไม่ถูกต้อง");
+  after(unitSlug, g, await amendServiceBill(g.ctx, g.id, { extras }));
+}
+
+export async function cancelServiceBillAction(unitSlug: string, formData: FormData) {
+  const g = await billGate(unitSlug, formData, "cancel");
+  after(unitSlug, g, await cancelServiceBill(g.ctx, g.id, { reason: String(formData.get("reason") ?? "") }));
+}
+
+export async function markPaidAction(unitSlug: string, formData: FormData) {
+  const g = await billGate(unitSlug, formData, "markPaid");
+  after(unitSlug, g, await markPaidWithoutPos(g.ctx, g.id, { now: g.now }));
 }
 
 export async function moveJobStaffAction(unitSlug: string, formData: FormData) {
@@ -146,4 +193,10 @@ export async function walkInAction(unitSlug: string, formData: FormData) {
     ...(name ? { customerName: name } : {}),
     ...(phone ? { customerPhone: phone } : {}),
   }, { now: g.now }));
+}
+
+/** fix Q11: ยกเลิกบิลจากคิวที่รับเงินแล้ว (booking.job.runAny + เหตุผล · POS voidSale ทางเดิม + audit) */
+export async function voidPaidServiceBillAction(unitSlug: string, formData: FormData) {
+  const g = await billGate(unitSlug, formData, "void");
+  after(unitSlug, g, await voidPaidServiceBill(g.ctx, g.id, { reason: String(formData.get("reason") ?? "") }));
 }

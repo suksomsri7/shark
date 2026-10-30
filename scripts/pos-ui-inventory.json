@@ -33157,6 +33157,79 @@
       "wo": "P6.2",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "wo": "B.10",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "needs": "หน้าขายเดิม (settings.pos.registerV2 ไม่ใช่ true) + มีบิลจากคิวของสาขา (งานจองคิวที่กดเสร็จแล้ว · SVC) — W29 นอกขอบเขต",
+      "testid": "pos-service-bill",
+      "kind": "button",
+      "expect": {
+        "type": "ui",
+        "target": "pos-service-bills",
+        "state": "changes",
+        "note": "เลือกบิลจากคิว → แสดงบรรทัด/ผู้ให้บริการ/หักมัดจำ/ต้องจ่าย (serviceBillViewAction · อ่านอย่างเดียว)"
+      }
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "wo": "B.10",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "needs": "หน้าขายเดิม (settings.pos.registerV2 ไม่ใช่ true) + มีบิลจากคิวของสาขา (งานจองคิวที่กดเสร็จแล้ว · SVC) — W29 นอกขอบเขต",
+      "testid": "pos-service-bill-method",
+      "kind": "toggle",
+      "expect": {
+        "type": "ui",
+        "target": "pos-service-bills",
+        "state": "changes",
+        "note": "เลือกวิธีรับเงินของบิลจากคิว (เงินสด/PromptPay/โอน/บัตร)"
+      },
+      "opener": [
+        "pos-service-bill=click"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "roles": [
+        "owner",
+        "manager",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "wo": "B.10",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]",
+      "needs": "หน้าขายเดิม (settings.pos.registerV2 ไม่ใช่ true) + มีบิลจากคิวของสาขา (งานจองคิวที่กดเสร็จแล้ว · SVC) — W29 นอกขอบเขต",
+      "testid": "pos-service-bill-pay",
+      "kind": "button",
+      "safety": "money",
+      "expect": {
+        "type": "mutation",
+        "target": "payServiceBillAction",
+        "db": "PosSale PAID + PosPayment (+ DEPOSIT) · PosHeldCart RECALLED",
+        "note": "รับเงินบิลจากคิว ยอดต้องจ่ายตรง · มัดจำ server หักเอง"
+      },
+      "opener": [
+        "pos-service-bill=click"
+      ]
     }
   ]
 }

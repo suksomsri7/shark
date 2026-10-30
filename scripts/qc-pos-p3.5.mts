@@ -390,6 +390,7 @@ function runStatic(): void {
     // CONTROLLER-DECISION CD-1 (โน้ต): register-shared.ts = ชนิด/รหัส/คีย์ข้อความล้วน (R5 StaffListItem.hr? · R13 รหัส + refusalMessageKey) ⇒ แก้ได้
     //   แต่ export เดิมต้องอยู่ครบ — ไฟล์ register*.ts อื่นยังห้ามแตะ
     const SHARED_OK = "register-shared.ts";
+    const SVC_B10_OK = new Set(["held-cart.ts", "service.ts", "register-ui.tsx", "register-actions.ts"]); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): มติ Q2 · ดูกฎข้างล่าง
     for (const f of [...changed, ...untracked]) {
       const b = f.split("/").pop()!;
       if (!f.startsWith(`${POS_DIR}/`) || f.slice(POS_DIR.length + 1).includes("/") || !FORBID.test(b)) continue;
@@ -426,6 +427,21 @@ function runStatic(): void {
         if (lost.length) p.push(`register-shared.ts export หาย ${lost.slice(0, 4).join(",")}`);
         continue;
       }
+      // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): RUN SVC B.10 มติ Q2 — POS แตะได้ 2 จุด (บิลพักผูกงานบริการ · ค่าคอมฯ ตามผู้ให้บริการ) แบบเพิ่ม ⇒
+      //   held-cart.ts / service.ts / register-ui.tsx / register-actions.ts ยอม hunk ได้เมื่อ: diff มีป้าย "SVC B.10" · บรรทัดที่ถูกลบทุกบรรทัด
+      //   มีคู่ที่ต่างแค่เติม `serviceJobId: null` หลัง `tableSessionId: null` (+ คอมเมนต์ท้าย) — อื่นใดที่ลบ/แก้ = แดงเหมือนเดิม ·
+      //   register.ts / register-shared.ts / refund*.ts / ไฟล์ POS อื่นในชุดห้าม = กฎเดิมทุกข้อ (index.ts · staff-commission.ts · service-bill.ts ไม่อยู่ใน FORBID อยู่แล้ว)
+      if (changed.includes(f) && SVC_B10_OK.has(b)) {
+        const d = (git(["diff", "--no-color", "-U0", LANE_PIN, "--", f]) ?? "").split("\n");
+        const added = d.filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1));
+        const removed = d.filter((l) => l.startsWith("-") && !l.startsWith("---")).map((l) => l.slice(1)).filter((l) => l.trim() !== "");
+        const code = (l: string) => l.replace(/\s*\/\/[^"'`]*$/, "").trimEnd();
+        const addedCode = new Set(added.map(code));
+        const badRm = removed.filter((r) => !/tableSessionId: null\b/.test(r) || !addedCode.has(code(r).replace(/tableSessionId: null\b/, "tableSessionId: null, serviceJobId: null")));
+        if (!added.some((l) => l.includes("SVC B.10"))) p.push(`${b} มี hunk ไม่มีป้าย SVC B.10 (มติ Q2)`);
+        if (badRm.length) p.push(`${b} ลบ/แก้บรรทัดเดิมนอกการเติม serviceJobId: null (${badRm.length} · ${short(badRm[0]!.trim(), 60)})`);
+        continue;
+      }
       // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.5 ST2): ไบต์เท่าต้นไม้พี่น้อง (P3.4 S / HF-FU2) = ไม่ใช่ hunk ของใบนี้
       if (changed.includes(f) && SIB_REVS.some((rv) => { const at = git(["show", `${rv}:${f}`]); return at !== null && sha(at) === sha(rd(f)); })) continue;
       p.push(`${b} มี hunk/ไฟล์ใหม่ (ห้ามแตะ · มติ 11)`);
@@ -437,6 +453,9 @@ function runStatic(): void {
     const nowMigs = existsSync(join(ROOT, "prisma/migrations")) ? readdirSync(join(ROOT, "prisma/migrations")) : [];
     // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.5 ST2): migration ที่มีอยู่ในต้นไม้พี่น้อง (*_pos_p34_offline ของ P3.4 S) ไม่ใช่ "ใหม่ที่ไม่ใช่ของใบนี้"
     for (const rv of SIB_REVS) for (const x of (git(["ls-tree", "--name-only", `${rv}:prisma/migrations`]) ?? "").split("\n").filter(Boolean)) if (x !== MIG_NAME) pinMigs.add(x);
+    // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): migration ของ RUN SVC (R0.1 *_svc_r0 / *_svc_r0b · B.0 *_svc_b · D.0 *_svc_d) merge แล้ว = ไม่ใช่ของใบ POS นี้ —
+    //   ยอมเฉพาะชื่อ <14 หลัก>_svc_* ที่อยู่ใน commit HEAD แล้ว (migration ใหม่ที่ยังไม่ commit ยังแดงเหมือนเดิม)
+    for (const x of (git(["ls-tree", "--name-only", "HEAD:prisma/migrations"]) ?? "").split("\n").filter(Boolean)) if (/^\d{14}_svc_[a-z0-9_]+$/.test(x)) pinMigs.add(x);
     const extra = nowMigs.filter((d) => !pinMigs.has(d) && d !== MIG_NAME);
     if (pinMigs.size === 0) p.push("อ่านรายชื่อ migration ที่หมุดไม่ได้");
     if (extra.length) p.push(`migration ใหม่ที่ไม่ใช่ของใบนี้: ${extra.join(",")}`);
