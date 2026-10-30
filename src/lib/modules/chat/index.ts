@@ -68,3 +68,4 @@ export { syncRichMenu } from "./line-richmenu";
 export type { IssueLinkCodeInput, IssueLinkCodeResult, ConsumeLinkCodeInput, ConsumeLinkCodeResult, LinkPurpose } from "./link-code";
 export { LINK_CODE_ALPHABET, issueLinkCode, consumeLinkCode, normalizeLinkCode } from "./link-code";
 // ◂ SVC R0.7
+export { fetchLineMessageContent } from "./line-content"; // SVC D.9 ▸ รูปที่ลูกค้าส่งในแชท LINE (แนบสลิปอัตโนมัติ · มติผู้คุม Q1) ◂

@@ -83,7 +83,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | B.5 | จอคิววันนี้แถวเดียว | เบา | | ✅ | af645cb7 | 51/71 · H/E/V รอ QC server SVC_QC_CLOCK=1 · Q-2 ฉากล้าง minBreakMin (ทาง ค) |
 | B.6 | ตู้/ทีวี/หน้าบัตร | เข้ม | | ✅ | 490c4437 | 62/72 · 2 ผู้ตรวจ + ยืนยันซ้ำ (MAJOR 1 + MINOR 7 ปิด · probe hold 21 breach 0) · H/V รอ QC server/build รวม |
 | B.7 | จองออนไลน์ + ลิงก์จัดการนัด | เข้ม | | ✅ | 8ea089eb | 96/103 เต็มรวม G · 2 ผู้ตรวจ (MAJOR 2 + MINOR 8 ปิด · probe breach 0) · H/V รอ QC server · ต้องเปิดพร้อม B.8 |
-| B.8 | มัดจำรุ่นแรก | เข้ม | | ⬜ | | |
+| B.8 | มัดจำรุ่นแรก | เข้ม | | ✅ | ebe2c1fc | 89/94 + r0.6 77/77 ซ้ำ · 2 ผู้ตรวจ (BLOCKER ปลุกนัดยกเลิกช้า + V1–V22 ปิด · probe 30/0) · FORFEIT_PENDING ร้านตัดสิน · ยกเว้นสมาชิกจากตัวตนยืนยันเท่านั้น · หนี้: คืนส่วนเกิน · ไม่มี POS ⇒ audit-only (B.12) |
 | B.9 | แจ้งเตือน + ผูก LINE | เข้ม | | ✅ | 96521c79 | 60/62 เต็มรวม G · 2 ผู้ตรวจ (BLOCKER สวมเบอร์ยึด LINE + MAJOR 1 ปิด · probe breach 0) · V-1 รอ build |
 | B.10 | จบงาน→บิลพัก POS + ค่าคอมฯ | เข้ม | | ✅ | 20e5421c | 61/64 · 2 ผู้ตรวจ (Q1–Q11 ปิด · probe 27 HOLD 0 BREACH) · POS 2 จุด · void บิลจ่ายแล้วฝั่งจองคิว · หนี้: เปิดบิลใหม่หลัง void · ชุด/สูตร/ชั่ง = BAD_INPUT |
 | B.11 | จอตั้งค่าจองคิว + สิทธิ์ | เบา | | ✅ | 64e6c184 | 84/95 · V-2 ภาพรอ build รวม |
@@ -196,3 +196,4 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 30 ต.ค. ~05:4xZ · ✅ **B.9 + B.7** (28/53) · ด่าน G2 บน 8ea089eb: b.9 เต็ม 60/62 · probe-b9-b breach 0 · b.7 เต็ม 96/103 · probe-b7-b breach 0 · b.0 160/166 (G-9 = qc-pos-p3.5 ST2 เห็น migration svc_r… · มีอยู่ก่อน · หนี้ POS/B.18) · r0.7 89/89 · b.11 · smoke · fitness 53/53 · tsc 0 · ORACLE-EDIT: b.9 (S-1/S-2/remoteAction) · b.0 แถว 50b hideServiceName · r0.7 F-3 + ถอด route ชั่วคราว · มติความปลอดภัย: ช่อง ONLINE/KIOSK/REMOTE ไม่ผูก Party/สมาชิกจากเบอร์ไม่ยืนยัน (ลิงก์ตัวตน LINE เท่านั้น)
 - 30 ต.ค. ~06:0xZ · ✅ **D.11** (29/53) · merge dee57130 · ด่าน H2/H3: d.11 99/100 · probe-d11-b 33/33 · d.8 78/85 · d.3 · d.13 88/98 · smoke 6/6 · fitness 53/53 · tsc 0 (รันซ้ำหลังเครื่องรีสตาร์ต) · ORACLE-EDIT d.8 S-7
 - 30 ต.ค. ~07:3xZ · ✅ **B.10** (30/53) · merge f5cccfd9 · ด่าน I: b.10 61/64 (G-2 = b.5 S-3 → ORACLE-EDIT 05ec068f voidPaidServiceBillAction op void · b.5 รันซ้ำ 0 failed) · probe-b10-b 27/0 · p5.1 28/28 · p3.5 55/55 · p2.9b 53/53 · b.4 · b.9 · smoke · fitness 53/53 · tsc 0 · ORACLE-EDIT probe K5-a (voidPaidServiceBill)
+- 30 ต.ค. ~10:3xZ · ✅ **B.8** (31/53) · merge 788cdeb0 · ด่าน J: b.8 89/94 (G-5 r0.6 แดงเพราะฉาก D.9 ตั้ง payments.receiver UNIT หอบน svcqc — ลบแถวแล้ว รัน r0.6 ซ้ำ 77/77) · probe-b8-b 30/0 · b.10 0 failed · probe-b10-b 27/0 · p3.5 55/55 · smoke · fitness 53/53 · tsc 0 · ORACLE-EDIT b.7 S-5 · b.3 SNAP_KEYS · probe P3g/P7 (V5)

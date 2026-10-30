@@ -39,6 +39,13 @@ POSTBACK_ROUTES.push({
   onPostback: async (ctx, evt) => (await import("@/lib/platform/booking-line-link")).onBookingPostback(ctx, evt),
   onLinked: async (ctx, a) => (await import("@/lib/platform/booking-line-link")).onBookingLinked(ctx, a),
 });
+// SVC D.9 ▸ หอพัก: เมนูล่าง LINE (บิลของฉัน · แจ้งซ่อม · ประกาศ · สัญญา · พัสดุ · ติดต่อหอ) + ผูกรหัส DORM_LEASE — โหลดตอนเรียก ◂
+POSTBACK_ROUTES.push({
+  prefix: "dorm.",
+  resolveParty: async (ctx, a) => (await import("@/lib/platform/dorm-line")).resolveDormParty(ctx, a),
+  onPostback: async (ctx, evt) => (await import("@/lib/platform/dorm-line")).onDormPostback(ctx, evt),
+  onLinked: async (ctx, a) => (await import("@/lib/platform/dorm-line")).onDormLinked(ctx, a),
+});
 
 /** ชนิดรหัสผูก → route ที่รู้ว่า ref เป็นของใคร */
 export const LINK_PURPOSE_PREFIX: Record<"DORM_LEASE" | "QUEUE_TICKET" | "APPOINTMENT", PostbackRoute["prefix"]> = {

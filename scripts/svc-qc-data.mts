@@ -785,3 +785,59 @@ export const SQC_DORM_MOVEOUT_SCENE = {
   SQC_VISUAL_SPECS["d.12"] = [{ name: "dorm-moveout", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/moveout?room=${SQC_DORM_MOVEOUT_SCENE.room}&at=${at}` }];
 }
 // ◂ SVC D.12
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC D.9 ▸ บล็อกของใบ D.9 เท่านั้น (ผู้เช่าผ่าน LINE + หน้าจ่าย/พอร์ทัล ภาพ หอ 05 ข) — ต่อท้ายโดยผู้เขียนข้อสอบ · เลนอื่น/builder ห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-d.9.md §7 · ข้อสอบ scripts/qc-svc-d.9.mts · ฉาก scripts/svc-qc-portal-scene.mts (builder)
+//   ใช้ createHmac ที่ import ไว้แล้วในบล็อก B.6 · import node:fs/node:path ท้ายบล็อกนี้ (ESM ยกขึ้นก่อน · ไม่ลาก prisma/`@/…`)
+// ═════════════════════════════════════════════════════════════════════════════
+/**
+ * ฉากพอร์ทัลผู้เช่า (ต่อจากฉาก D.13 — ใช้บิลของ SQC_DORM_HOME_SCENE: 204 จ่ายแล้ว · 106 ค้าง) — ค่าล้วน
+ *   ฉากเขียน `sceneFile` (JSON: tenantId · unitId · leases{204,106} · bills{204,106} · endedLeaseId) ให้ getter ของภาพเซ็นลิงก์ตอนอ่าน
+ *   `receiver` ตั้งเป็น payments.receiver (UNIT) เฉพาะเมื่อหน่วยยังไม่มีค่า (setById = mark)
+ */
+export const SQC_DORM_PORTAL_SCENE = {
+  mark: "SvcQcScene:d9",
+  rooms: { paid: "204", open: "106" },
+  receiver: { promptpayId: "0812345678", displayName: "บ้านสวนอพาร์ตเมนต์" },
+  sceneFile: ".qc-shots/svc/d.9/scene.json",
+  ttlMin: 120,
+  expect: { paidRoomTotalSatang: 548600, openRoomTotalSatang: 548624 },
+} as const;
+export type SqcPortalSceneFile = { tenantId: string; unitId: string; leases: Record<string, string>; bills: Record<string, string>; endedLeaseId: string | null };
+
+/** ลิงก์พอร์ทัล (ใบสั่ง D.9 §3.0 = signLink purpose "dorm.portal" subject leaseId) — สูตรเดียวกับ src/lib/core/signed-link.ts · pure */
+export function sqcPortalToken(secret: string, t: { tenantId: string; leaseId: string; nowMs: number; ttlMin: number; nonce?: string }): string {
+  const e = Math.floor(t.nowMs / 1000) + t.ttlMin * 60;
+  const n = t.nonce ?? Buffer.from(`svcqc-d9-${t.leaseId}`.slice(0, 16).padEnd(16, "x"), "utf8").toString("base64url");
+  const p = Buffer.from(JSON.stringify({ v: 1, t: t.tenantId, u: "dorm.portal", s: t.leaseId, e, n }), "utf8").toString("base64url");
+  return `${p}.${createHmac("sha256", `signed-link:v1:${secret}`).update(p).digest("base64url")}`;
+}
+/** อ่านไฟล์ฉาก (ไม่มี/เสีย = null) — ไฟล์อยู่ใต้ .qc-shots (gitignore) */
+export function sqcPortalSceneRead(root: string = process.cwd()): SqcPortalSceneFile | null {
+  try {
+    const v = JSON.parse(d9ReadFileSync(d9Join(root, SQC_DORM_PORTAL_SCENE.sceneFile), "utf8")) as SqcPortalSceneFile;
+    return v && typeof v.tenantId === "string" && v.leases && typeof v.leases === "object" ? v : null;
+  } catch {
+    return null;
+  }
+}
+// ภาพ หอ 05 ข (มือถือ 390 · หน้าสาธารณะ ไม่ต้องล็อกอิน) — ก่อนถ่าย: reseed → roomboard → lease → dorm-home (D.13) → svc-qc-portal-scene (D.9)
+//   path คิดตอนอ่าน (getter): เซ็นด้วย SESSION_SECRET ใน env ที่ visual-svc โหลด · ไม่มีฉาก/กุญแจ ⇒ path ที่ 404 (ภาพแดงพร้อมเหตุผล)
+{
+  const pathOf = (room: string): string => {
+    const secret = process.env.SESSION_SECRET ?? "";
+    if (secret.length < 32) return "/d/no-session-secret";
+    const s = sqcPortalSceneRead();
+    const leaseId = s?.leases?.[room];
+    if (!s || !leaseId) return "/d/no-portal-scene";
+    return `/d/${sqcPortalToken(secret, { tenantId: s.tenantId, leaseId, nowMs: Date.now(), ttlMin: SQC_DORM_PORTAL_SCENE.ttlMin })}`;
+  };
+  SQC_VISUAL_SPECS["d.9"] = [
+    { name: "dorm-portal-open", get path(): string { return pathOf(SQC_DORM_PORTAL_SCENE.rooms.open); } },
+    { name: "dorm-portal-paid", get path(): string { return pathOf(SQC_DORM_PORTAL_SCENE.rooms.paid); } },
+  ];
+}
+import { readFileSync as d9ReadFileSync } from "node:fs";
+import { join as d9Join } from "node:path";
+// ◂ SVC D.9

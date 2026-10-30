@@ -13,3 +13,5 @@
 
 - 🔴 (D.3 · 29 ต.ค.) unique index `AccountDocument_taxinvoice_source_uniq` (systemId, sourceDocId · TAX_INVOICE ที่มีผล ไม่มี sourcePaymentId) มีในฐาน QC แต่ไม่พบใน prisma/migrations ⇒ ตรวจ prod ก่อน deploy · ถ้าไม่มี ต้องสร้าง (โค้ดออกใบแทนพึ่ง index นี้)
 - 🔴 (B.7 · 29 ต.ค.) จองออนไลน์ (B.7) เปิดให้ลูกค้าจริงพร้อม B.8 มัดจำเท่านั้น — นัดที่ถือช่องมัดจำหมดเวลาใน 15 นาทีถ้ายังไม่มีทางจ่าย
+- 🔴 (D.9 · 30 ต.ค. · W11) พอร์ทัลผู้เช่า `/d/<token>` นับ rate ต่อ IP จาก `x-real-ip` → `x-vercel-forwarded-for` → `x-forwarded-for` ตัวแรก ⇒ ต้อง deploy หลังพร็อกซีที่**เขียนทับ** `x-real-ip` เสมอ (Vercel ทำเอง · ถ้ามีพร็อกซีหน้าร้าน/self-host ต้องตั้งให้เขียนทับ ไม่ส่งต่อค่าจากผู้ใช้) — ไม่งั้นผู้ใช้ปลอม IP หนีเพดาน view 120/10 นาที · slip 10/10 นาทีได้ · คำขอที่ไม่มี IP เลยตกถัง "unknown" ร่วมกัน (หนี้ RL-1)
+- (D.9 · 30 ต.ค.) งาน `dorm.line` (ส่งข้อความบิลซ้ำ) ใช้ถังนับ `ChatRateBucket` คีย์ `dorm:line:resend:<tenant>:<bill>` นับครั้งส่งซ้ำ FAILED (≤3 ต่อบิลใน 3 วัน) — ถังเก่าหมดอายุตามหน้าต่าง

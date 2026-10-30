@@ -395,6 +395,28 @@ const DEFS: SettingDef[] = [
     key: "rooms.notify.promiseMaxDays", type: "days", labelTh: "นัดจ่ายได้ไกลสุด (วันจากวันนี้)",
     schema: z.number().int().min(1).max(90), defaults: { _fallback: 30 }, chain: U,
   }),
+  // SVC D.9 ▸ ผู้เช่าผ่าน LINE + หน้าจ่าย/พอร์ทัล (ใบสั่ง ledger/svc-briefs/svc-brief-d.9.md §2) — กลุ่มเดิม notify/payment ⇒ การ์ดหน้า 17 แสดงเอง ◂
+  def({
+    key: "rooms.notify.portalLinkDays", type: "days", labelTh: "อายุลิงก์หน้าจ่าย/พอร์ทัลผู้เช่า (วัน)",
+    helpTh: "ลิงก์ในข้อความบิล/เตือน/เมนู \"บิลของฉัน\" · สัญญาจบแล้วลิงก์ใช้ไม่ได้ทันทีไม่ว่าอายุเหลือเท่าไร",
+    schema: z.number().int().min(1).max(90), defaults: { _fallback: 35 }, chain: U,
+  }),
+  def({
+    key: "rooms.notify.linkCodeDays", type: "days", labelTh: "อายุรหัสผูกห้องกับ LINE (วัน)",
+    helpTh: "รหัส/QR ที่พนักงานออกให้ผู้เช่าพิมพ์ในแชท LINE ของหอ · ใช้ได้ครั้งเดียว",
+    schema: z.number().int().min(1).max(30), defaults: { _fallback: 30 }, chain: U,
+  }),
+  def({
+    key: "rooms.notify.richMenu", type: "bool", labelTh: "ตั้งเมนูล่าง LINE ของหอ (บิลของฉัน · แจ้งซ่อม · ประกาศ · สัญญา · พัสดุ · ติดต่อหอ)",
+    helpTh: "LINE OA ที่ใช้ร่วมกับสาขาอื่นจะไม่ถูกตั้งเมนู (กันทับเมนูของสาขาอื่น)",
+    schema: z.boolean(), defaults: { _fallback: true }, chain: U,
+  }),
+  def({
+    key: "rooms.payment.slipAutoAttach", type: "bool", labelTh: "แนบรูปสลิปที่ผู้เช่าส่งในแชทเข้าบิลค้างอัตโนมัติ",
+    helpTh: "แนบเฉพาะเมื่อผู้เช่ามีบิลค้างใบเดียว · ค้างหลายใบ/หลายห้อง = ตอบลิงก์ให้แนบในบิลที่ถูกเอง · สลิปทุกใบรอพนักงาน/ระบบตรวจ",
+    schema: z.boolean(), defaults: { _fallback: true }, chain: U, sensitivity: "MONEY",
+  }),
+  // ◂ SVC D.9
   def({
     key: "rooms.lease.terminationNoticeDays", type: "days", labelTh: "หนังสือบอกเลิกสัญญามีผลหลังวันออก (วัน)",
     helpTh: `${PENDING}ป.พ.พ. ม.560 บอกกล่าวล่วงหน้าไม่น้อยกว่า 15 วัน`,
