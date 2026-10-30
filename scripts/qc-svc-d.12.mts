@@ -1628,7 +1628,7 @@ try {
     //   d.13 Q-2 diffCount 5≠4 บนฉาก svcqc (ORACLE-EDIT d.13 Q-2 ค้างของผู้คุม — /root/svc-runs/fix/d9.md)
     const REG: [string, string, string[], string[]][] = [
       ["G-1", "qc-svc-d.2", [], []], ["G-2", "qc-svc-d.5", [], []], ["G-3", "qc-svc-d.6", [], ["S-5", "G-2"]], ["G-4", "qc-svc-d.8", ["--no-regression"], []],
-      ["G-5", "qc-svc-d.11", ["--no-regression"], []], ["G-6", "qc-svc-d.13", ["--no-regression"], ["Q-2"]], ["G-7", "qc-svc-d.9", ["--no-regression"], ["S-1"]] /* ORACLE-EDIT (ผู้คุม 30 ต.ค. · d12-G7) d.9 S-1 = ตรวจตอนรับใบ D.9 เท่านั้น */, ["G-8", "qc-svc-smoke", [], []],
+      ["G-5", "qc-svc-d.11", ["--no-regression"], []], ["G-6", "qc-svc-d.13", ["--no-regression"], ["Q-2"]], ["G-7", "qc-svc-d.9", ["--no-regression"], ["S-1", "S-2"]] /* ORACLE-EDIT (ผู้คุม 30 ต.ค. · d12-G7) d.9 S-1/S-2 = ตรวจไฟล์ตอนรับใบ D.9 เท่านั้น */, ["G-8", "qc-svc-smoke", [], []],
     ];
     for (const [id, f, args, allow] of REG) {
       if (NO_REG) { skip(id, `regression ${f}`, "--no-regression / SVC_D12_NO_REGRESSION=1", "CRITICAL"); continue; }
