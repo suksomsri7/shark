@@ -46,6 +46,8 @@ import { heldRooms, meterWalk, periodUsage, type PeriodUsageRow } from "./meter"
 import { utilityBillingGate, utilityCharges, type UtilityChargeRow, type UtilityGate, type UtilityGroup } from "./utility";
 // SVC D.3 ▸ ใบกำกับภาษีเต็มรูปต่อบิล (ส่วน VAT) · ด่านผู้ขาย/ผู้ซื้อ ◂
 import { badBuyerTaxIds, issueTaxForBill, liveTaxInvoicesFor, sellerTaxProblem, taxBuyerOf } from "./tax-invoice";
+// SVC D.11 ▸ ค่าปรับอัตโนมัติ (แผนต่อสัญญา · ตรวจฐานซ้ำใต้ล็อก · ข้อความรายละเอียด · เพดานกันพิมพ์ผิดจากค่าตั้ง) ◂
+import { autoEntriesOf, autoLateFeeDetail, autoLateFeeSigsInTx, lateFeeGuardCap, lateFeeLockKey, planAutoLateFees, trimAutoLateFees, type AutoLateFeeEntry } from "./latefee";
 
 // ───────────────────────── ชนิด (สัญญา §3) ─────────────────────────
 export type BillingCtx = { tenantId: string; actorUserId: string };
@@ -70,6 +72,8 @@ export type PrepareBillRunResult =
       totalSatang: number;
       skipped: { leaseId: string; roomNumber: string; reason: "MOVE_OUT" }[];
       gate: BillRunGate;
+      /** SVC D.11 (L4) ▸ สัญญาที่ฐานค่าปรับเปลี่ยนระหว่างคำนวณ (ลองใหม่แล้ว 1 ครั้ง) — ยังไม่ถูกเขียน · กดเตรียมรอบอีกครั้ง ◂ */
+      staleLeases?: number;
     }
   | Fail;
 export type SendBillRunResult =
@@ -330,6 +334,8 @@ const LEASE_KEYS = [
   "rooms.lease.reservationAppliesTo",
 ];
 const billKeys = (): string[] => [...(SNAPSHOT_KEYS.bill ?? [])];
+/** SVC D.11 (ค) ▸ ค่าปัจจุบันของหน่วยที่ตัวตรวจค่าปรับมือใช้ (ไม่ล็อกในสัญญา) ◂ */
+const D11_KEYS = ["rooms.lateFee.guardRentBp"];
 const valsOf = (r: Record<string, Resolved> | undefined): Vals => {
   const out: Vals = {};
   for (const [k, v] of Object.entries(r ?? {})) out[k] = v.value;
@@ -453,6 +459,8 @@ type Calc = {
   refs: ScopeRefs;
   billRes: Record<string, Resolved>;
   manual: ManualLine[];
+  /** SVC D.11 ▸ ค่าปรับอัตโนมัติ: sum0 = ยอดก่อนหักที่ว่างให้บรรทัดมือ · sig = ฐานที่ใช้คำนวณ ("" = สัญญาไม่มีบิลต้นทาง) ◂ */
+  lateAuto: { sum0: number; sig: string };
 };
 type Skipped = { leaseId: string; roomId: string; partyId: string; roomNumber: string; reason: "MOVE_OUT"; moveOutDate: string };
 type RunCalc = {
@@ -466,7 +474,7 @@ type RunCalc = {
   gate: (BillRunGate & { groups: UtilityGroup[] }) | null;
   unitVals: Vals;
 };
-type ComputeOpts = { only?: Set<string>; manual?: Map<string, ManualLine[]>; gate?: boolean; unitVals?: Vals };
+type ComputeOpts = { only?: Set<string>; manual?: Map<string, ManualLine[]>; gate?: boolean; unitVals?: Vals; legalParams?: Record<string, unknown> | null }; // SVC D.11 (ข) legalParams ◂
 
 function runGateOf(g: UtilityGate | { ok: false; code: string; reason: string }): BillRunGate & { groups: UtilityGroup[] } {
   if (!("groups" in g)) return { ok: false, blocks: [{ kind: null, buildingId: null, code: g.code, messageTh: g.reason }], needsAcceptance: [], groups: [] };
@@ -579,8 +587,17 @@ async function computeRun(tenantId: string, unitId: string, P: string, issueYmd:
     roomId: room.id,
     leaseId: l.id,
   }));
-  const keys = [...new Set([...billKeys(), ...LEASE_KEYS])];
+  const keys = [...new Set([...billKeys(), ...LEASE_KEYS, ...D11_KEYS])];
   const resolved = refsList.length ? await resolveSettingsMany({ tenantId }, keys, refsList) : [];
+  // SVC D.11 (ก) ▸ ค่าปรับอัตโนมัติของบิลต้นทางงวดก่อน (asOf = วันออกของรอบนี้) — แผนต่อสัญญา ตัดตามเพดาน 2 ชั้นแล้ว ◂
+  const lfPlan = await planAutoLateFees({
+    tenantId,
+    unitId,
+    periodKey: P,
+    asOf: issueYmd,
+    leases: eligible.map(({ l }) => ({ id: l.id, rentSatang: l.rentSatang, policySnapshot: l.policySnapshot })),
+    legalParams: opts.legalParams ?? null,
+  });
 
   const bills: Calc[] = [];
   eligible.forEach(({ l, room }, i) => {
@@ -673,6 +690,10 @@ async function computeRun(tenantId: string, unitId: string, P: string, issueYmd:
     others2.forEach((m, k) => services.push({ code: `MANUAL_${k + 1}`, labelTh: m.labelTh, amountSatang: m.amountSatang, ...(m.taxKind ? { taxKind: m.taxKind } : {}) }));
     const lates = manual.filter((m) => m.kind === "LATE_FEE");
     const lateSum = lates.reduce((s, m) => s + m.amountSatang, 0);
+    // SVC D.11 (ก) ▸ บรรทัด LATE_FEE เดียว = มือ + อัตโนมัติ · อัตโนมัติตัดให้พอดีที่ว่างของเพดานบิลนี้หลังหักบรรทัดมือ ◂
+    const lfp = lfPlan.get(l.id);
+    const autos: AutoLateFeeEntry[] = lfp ? trimAutoLateFees(lfp.entries, lfp.capSatang === null ? null : lfp.capSatang - lateSum) : [];
+    const autoSum = autos.reduce((s, a) => s + a.amountSatang, 0);
 
     if (!hold && firstBill && lv("rooms.lease.reservationAppliesTo") === "FIRST_RENT" && l.bookingFeeSatang > 0) hold = "BOOKING_FEE_FIRST_RENT";
 
@@ -683,7 +704,7 @@ async function computeRun(tenantId: string, unitId: string, P: string, issueYmd:
         commonFeeSatang: l.commonFeeSatang,
         electricity: utilIn.ELEC ? { kind: "ALLOCATED", amountSatang: utilIn.ELEC.amount } : null,
         water: utilIn.WATER ? { kind: "ALLOCATED", amountSatang: utilIn.WATER.amount } : null,
-        lateFeeSatang: lateSum,
+        lateFeeSatang: lateSum + autoSum, // SVC D.11 (ก)
         services,
         taxKinds,
         vat,
@@ -697,9 +718,10 @@ async function computeRun(tenantId: string, unitId: string, P: string, issueYmd:
           if (u.meta) next.meta = u.meta;
           return next;
         }
-        if (ln.code === "LATE_FEE" && lates.length) {
+        if (ln.code === "LATE_FEE" && (lates.length || autos.length)) {
           const notes = lates.map((m) => m.note).filter((x): x is string => !!x);
-          return { ...ln, meta: { manual: 1, ...(notes.length ? { note: notes.join(" · ") } : {}), src: JSON.stringify(lates.map((m) => ({ labelTh: m.labelTh, amountSatang: m.amountSatang, note: m.note }))) } };
+          const man = lates.length ? { manual: 1, ...(notes.length ? { note: notes.join(" · ") } : {}), src: JSON.stringify(lates.map((m) => ({ labelTh: m.labelTh, amountSatang: m.amountSatang, note: m.note }))) } : {};
+          return { ...ln, meta: { ...man, ...(autos.length ? { auto: JSON.stringify(autos) } : {}) } }; // SVC D.11 (ก) meta.auto ◂
         }
         const mm = /^SERVICE:MANUAL_(\d+)$/.exec(ln.code);
         if (mm) {
@@ -735,6 +757,7 @@ async function computeRun(tenantId: string, unitId: string, P: string, issueYmd:
       refs: refsList[i],
       billRes: res,
       manual,
+      lateAuto: { sum0: lfp ? lfp.entries.reduce((s, a) => s + a.amountSatang, 0) : 0, sig: lfp?.sig ?? "" }, // SVC D.11
     });
   });
   bills.sort((a, b) => numCmp(a.roomNumber, b.roomNumber));
@@ -813,6 +836,19 @@ const billData = (c: Calc, snap: PolicySnapshot | undefined) => ({
   ...(snap ? { policySnapshot: snap as unknown as Prisma.InputJsonValue } : {}),
 });
 
+/**
+ * SVC D.11 (ก) ▸ ค่าปรับอัตโนมัติใต้ล็อกต่อสัญญา `dorm.latefee:<leaseId>` (ชุดเดียวกับ waiveLateFee) — เรียงรหัสสัญญา (ไม่ deadlock)
+ *   แล้วอ่านฐานที่ใช้คำนวณซ้ำในธุรกรรม (บิลต้นทาง · ที่ลงบิลอื่นแล้ว · การยกเว้น) · ต่างจากตอนคำนวณ ⇒ สัญญานั้น "ค้าง" ไม่เขียน
+ *   ⇒ เตรียมรอบซ้อน/ยกเว้นพร้อมกัน ไม่ลงซ้ำ ไม่เด้งกลับ (คำสั่งทั้งหมดผ่าน tx — ไม่มี connection ที่สอง) ◂
+ */
+async function lateFeeStaleInTx(tx: Tx, tenantId: string, unitId: string, P: string, bills: Calc[]): Promise<Set<string>> {
+  const ids = [...new Set(bills.filter((c) => c.lateAuto.sig).map((c) => c.leaseId))].sort();
+  if (!ids.length) return new Set();
+  for (const id of ids) await advisoryLock(tx, lateFeeLockKey(id));
+  const fresh = await autoLateFeeSigsInTx(tx, { tenantId, unitId, periodKey: P, leaseIds: ids });
+  return new Set(bills.filter((c) => c.lateAuto.sig && fresh.get(c.leaseId) !== c.lateAuto.sig).map((c) => c.leaseId));
+}
+
 /** ยอดรอบ = Σ บิลที่ไม่ใช่ HELD/VOID — เขียนเฉพาะเมื่อต่าง */
 async function refreshRunTotals(tx: Tx, tenantId: string, unitId: string, runId: string): Promise<{ billCount: number; totalSatang: number; heldCount: number }> {
   const [agg, heldCount, run] = [
@@ -861,18 +897,23 @@ function sumCheck(groups: UtilityGroup[], rooms: Map<string, RoomInfo>, bills: {
 }
 
 // ───────────────────────── 3.1 เตรียมรอบ ─────────────────────────
-export async function prepareBillRun(ctx: BillingCtx, input: { unitId: string; periodKey: string }, deps?: { now?: Date }): Promise<PrepareBillRunResult> {
+export async function prepareBillRun(
+  ctx: BillingCtx,
+  input: { unitId: string; periodKey: string },
+  deps?: { now?: Date; legalParams?: Record<string, unknown> }, // SVC D.11 (ข) legalParams → evaluateLegal ของค่าปรับอัตโนมัติ ◂
+): Promise<PrepareBillRunResult> {
   try {
     const g = await gateOf(ctx, isRec(input) ? input.unitId : null, "dorm.bill.run");
     if (!g) return NOT_FOUND();
-    return await prepareInternal(g, isRec(input) ? input.periodKey : null, deps?.now instanceof Date ? deps.now : new Date());
+    const lp = isRec(deps?.legalParams) ? (deps?.legalParams as Record<string, unknown>) : null;
+    return await prepareInternal(g, isRec(input) ? input.periodKey : null, deps?.now instanceof Date ? deps.now : new Date(), lp);
   } catch (e) {
     await logFail("prepare", isRec(ctx) ? ctx.tenantId : null, e);
     return INTERNAL();
   }
 }
 
-async function prepareInternal(g: G, periodKey: unknown, now: Date): Promise<PrepareBillRunResult> {
+async function prepareInternal(g: G, periodKey: unknown, now: Date, legalParams: Record<string, unknown> | null = null, retried = false): Promise<PrepareBillRunResult> {
   if (typeof periodKey !== "string" || !PERIOD_RE.test(periodKey)) return fail("INVALID_INPUT", "งวดต้องเป็นรูปแบบ ปี-เดือน เช่น 2026-11");
   const P = periodKey;
   if (P < MIN_PERIOD || P > addMonths(bkkYmd(now).slice(0, 7), 2)) return fail("BAD_PERIOD", "งวดต้องอยู่ระหว่าง 2020-01 ถึงอีก 2 เดือนข้างหน้า");
@@ -880,7 +921,7 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date): Promise<Pre
   const db = tenantDb({ tenantId, unitId });
   const [run0, uv] = await Promise.all([db.dormBillRun.findFirst({ where: { periodKey: P }, select: { issueDate: true } }), unitValsOf(tenantId, unitId)]);
   const issueYmd = ymdOf(run0?.issueDate) ?? bkkYmd(now);
-  const calc = await computeRun(tenantId, unitId, P, issueYmd, { unitVals: uv });
+  const calc = await computeRun(tenantId, unitId, P, issueYmd, { unitVals: uv, legalParams }); // SVC D.11 (ข)
   const snaps = await billSnapshots(tenantId, calc.bills);
 
   const res = await retryOnce(() =>
@@ -898,12 +939,15 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date): Promise<Pre
       }
       const runId = run.id;
       const status = run.status;
+      // SVC D.11 (ก) ▸ ล็อกต่อสัญญา dorm.latefee:<leaseId> (ชุดเดียวกับการยกเว้น) แล้วตรวจฐานค่าปรับซ้ำ — เปลี่ยนระหว่างคำนวณ ⇒ ไม่เขียนบิลนั้น (รอบหน้าคำนวณใหม่) ◂
+      const lfStale = await lateFeeStaleInTx(tx, tenantId, unitId, P, calc.bills);
       const existing: BillWriteRow[] = await tx.dormBill.findMany({ where: { tenantId, unitId, periodKey: P }, select: BILL_WRITE_SELECT });
       const exOf = new Map(existing.map((b) => [b.leaseId, b]));
       let added = 0;
       let changed = 0;
       const creates: Prisma.DormBillCreateManyInput[] = [];
       for (const c of calc.bills) {
+        if (lfStale.has(c.leaseId)) continue; // SVC D.11
         const ex = exOf.get(c.leaseId);
         if (!ex) {
           creates.push({ tenantId, unitId, runId, leaseId: c.leaseId, roomId: c.roomId, partyId: c.partyId, periodKey: P, ...billData(c, snaps.get(c.leaseId)) });
@@ -938,10 +982,15 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date): Promise<Pre
         await tx.dormBillRun.updateMany({ where: { id: runId, tenantId, unitId }, data: { progress: prog as Prisma.InputJsonValue } });
       }
       const tot = await refreshRunTotals(tx, tenantId, unitId, runId);
-      return { runId, created, status, added, changed, ...tot };
+      return { runId, created, status, added, changed, stale: lfStale.size, ...tot };
     }, TX_OPTS),
   );
   if (res === "BUSY") return BUSY();
+  // SVC D.11 (L4) ▸ สัญญาที่ "ค้าง" (ฐานค่าปรับเปลี่ยนระหว่างคำนวณ) ⇒ คำนวณใหม่ 1 ครั้ง · ยังค้าง ⇒ บอกในผล (ไม่หลุดเงียบ) ◂
+  if (res.stale > 0 && !retried) {
+    const again = await prepareInternal(g, P, now, legalParams, true);
+    return again.ok ? { ...again, created: again.created || res.created, added: again.added + res.added, changed: again.changed + res.changed } : again;
+  }
 
   // ด่าน = D.7 + Σ ของบิลในรอบ (ไม่ใช่ HELD/VOID)
   const live = await db.dormBill.findMany({ where: { runId: res.runId, status: { notIn: ["HELD", "VOID"] } }, select: { roomId: true, lines: true } });
@@ -964,6 +1013,7 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date): Promise<Pre
     totalSatang: res.totalSatang,
     skipped: calc.skipped.map((s) => ({ leaseId: s.leaseId, roomNumber: s.roomNumber, reason: s.reason })),
     gate,
+    ...(res.stale > 0 ? { staleLeases: res.stale } : {}),
   };
 }
 
@@ -1016,22 +1066,29 @@ async function readBill(g: G, billId: unknown): Promise<BillRec | null> {
 
 /**
  * ค่าปรับมือ (§3.3 · F15): สัญญาไม่มีค่าปรับ (kind NONE) ⇒ ใส่ไม่ได้ · เพดานต่อบิลของ snapshot (ไม่ null) ⇒ LATE_FEE_OVER_CAP ·
- *   เพดานว่าง (ไม่จำกัดตามสัญญา) ⇒ ตัวตรวจกลาง LATE_FEE_CAP (evaluateLegal) + กันพิมพ์ผิด: ไม่เกินค่าเช่า 1 เดือนของสัญญา (เพดานจริง = D.11)
+ *   เพดานว่าง (ไม่จำกัดตามสัญญา) ⇒ ตัวตรวจกลาง LATE_FEE_CAP (evaluateLegal) + เพดานกันพิมพ์ผิดของหน่วย
+ * SVC D.11 (ค) ▸ เพดานกันพิมพ์ผิด = ค่าตั้ง rooms.lateFee.guardRentBp (% ของค่าเช่าในสัญญา · ว่าง = ไม่จำกัด · หนี้ F15/m7) ·
+ *   Σ ที่ตรวจ = บรรทัดมือ + ค่าปรับอัตโนมัติที่อยู่ในบิลเดียวกัน (autoSum · ใบเพิ่มหนี้ส่งยอดรวมในบิลมาใน lateSum แล้ว) ◂
  */
-function lateFeeCheck(snap: Vals | null, cur: Vals, rentSatang: number, lateSum: number): Fail | null {
+function lateFeeCheck(snap: Vals | null, cur: Vals, rentSatang: number, lateSum: number, autoSum = 0): Fail | null {
   if (lateSum <= 0) return null;
   if (leaseVal(snap, cur, "rooms.lateFee.kind") === "NONE") return fail("LATE_FEE_NOT_IN_LEASE", "สัญญานี้ไม่มีข้อตกลงค่าปรับชำระล่าช้า — เรียกเก็บค่าปรับไม่ได้");
+  const total = lateSum + Math.max(0, autoSum);
   const cap = leaseVal(snap, cur, "rooms.lateFee.capPerBill");
   const thb = (n: number) => `฿${(n / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
-  if (isNat(cap)) return lateSum > cap ? fail("LATE_FEE_OVER_CAP", `ค่าปรับรวมเกินเพดานต่อบิลตามสัญญา (${thb(cap)}) — ลดยอดค่าปรับลง`) : null;
-  const o = evaluateLegal("LATE_FEE_CAP", { feeSatang: lateSum }, { mode: normalizeLegalMode(cur["rooms.legal.mode"]), outOfScopeReason: null });
-  if (o.level === "BLOCK" && o.code !== "OUT_OF_SCOPE_REASON_REQUIRED") return fail("LATE_FEE_OVER_CAP", o.messageTh);
-  if (rentSatang > 0 && lateSum > rentSatang) return fail("LATE_FEE_OVER_CAP", `ค่าปรับรวม ${thb(lateSum)} เกินค่าเช่า 1 เดือน (${thb(rentSatang)}) — ตรวจยอดที่กรอก`);
+  const withAuto = autoSum > 0 ? ` (รวมค่าปรับอัตโนมัติในบิล ${thb(autoSum)})` : "";
+  if (isNat(cap) && total > cap) return fail("LATE_FEE_OVER_CAP", `ค่าปรับรวม${withAuto}เกินเพดานต่อบิลตามสัญญา (${thb(cap)}) — ลดยอดค่าปรับลง`);
+  // SVC D.11 (L5) ▸ เพดานกฎหมายทุกโหมด (E = min เพดานสัญญา, เพดานกฎหมาย) — ดูผลดิบของตัวตรวจ ไม่ใช่ผลหลังโหมด ◂
+  const o = evaluateLegal("LATE_FEE_CAP", { feeSatang: total }, { mode: normalizeLegalMode(cur["rooms.legal.mode"]), outOfScopeReason: null });
+  if (o.raw === "BLOCK") return fail("LATE_FEE_OVER_CAP", o.code === "LATE_FEE_CAP" ? o.messageTh : `ค่าปรับรวม ${thb(total)} เกินเพดานค่าปรับตามกฎหมาย — ลดยอดค่าปรับลง`);
+  if (isNat(cap)) return null;
+  const guard = lateFeeGuardCap(rentSatang, cur["rooms.lateFee.guardRentBp"]);
+  if (guard !== null && total > guard) return fail("LATE_FEE_OVER_CAP", `ค่าปรับรวม ${thb(total)}${withAuto} เกินเพดานกันพิมพ์ผิดของหอ (${thb(guard)}) — ตรวจยอดที่กรอก`);
   return null;
 }
 
 /** คำนวณบิลเดี่ยวใหม่แล้วเขียนใต้ล็อกของรอบ (บิลต้องยังเป็น DRAFT/HELD) */
-async function rewriteOne(g: G, bill: BillRec, manual: ManualLine[] | null, check: (c: Calc) => Fail | null): Promise<{ ok: true; calc: Calc } | Fail> {
+async function rewriteOne(g: G, bill: BillRec, manual: ManualLine[] | null, check: (c: Calc) => Fail | null, anyRun = false): Promise<{ ok: true; calc: Calc } | Fail> {
   const db = tenantDb({ tenantId: g.tenantId, unitId: g.unitId });
   const run = await db.dormBillRun.findFirst({ where: { id: bill.runId }, select: { issueDate: true } });
   if (!run) return NOT_FOUND();
@@ -1053,10 +1110,12 @@ async function rewriteOne(g: G, bill: BillRec, manual: ManualLine[] | null, chec
       if (!cur || (cur.status !== "DRAFT" && cur.status !== "HELD")) return "SENT" as const;
       // F1 (ข): แก้ DRAFT ได้เฉพาะรอบ DRAFT และยังไม่ถูกจองส่ง · HELD แก้ได้เสมอ (ยังไม่เคยจอง)
       if (isSendClaim(cur.sentVia)) return "LOCKED" as const;
-      if (cur.status === "DRAFT") {
+      // SVC D.11 (L1) ▸ anyRun = คำนวณใหม่หลังยกเว้นค่าปรับ: บิล DRAFT ในรอบ REVIEW ที่ยังไม่ถูกจองคำนวณได้ (มติผู้คุม F2 แบบ prepare) ◂
+      if (cur.status === "DRAFT" && !anyRun) {
         const r = await tx.dormBillRun.findFirst({ where: { id: bill.runId, tenantId: g.tenantId, unitId: g.unitId }, select: { status: true } });
         if (r?.status !== "DRAFT") return "LOCKED" as const;
       }
+      if ((await lateFeeStaleInTx(tx, g.tenantId, g.unitId, bill.periodKey, [c])).size) return "STALE" as const; // SVC D.11 (ก)
       if (canon(shapeOfRow(cur)) !== canon(shapeOfCalc(c))) {
         await tx.dormBill.updateMany({ where: { id: cur.id, tenantId: g.tenantId, unitId: g.unitId, status: cur.status, sentVia: null }, data: billData(c, snaps.get(c.leaseId)) });
         await refreshRunTotals(tx, g.tenantId, g.unitId, bill.runId);
@@ -1064,7 +1123,7 @@ async function rewriteOne(g: G, bill: BillRec, manual: ManualLine[] | null, chec
       return "OK" as const;
     }, TX_OPTS),
   );
-  if (res === "BUSY") return BUSY();
+  if (res === "BUSY" || res === "STALE") return BUSY(); // SVC D.11 STALE = ฐานค่าปรับเปลี่ยนระหว่างคำนวณ
   if (res === "SENT") return fail("BILL_SENT", "บิลนี้ส่งแล้ว — แก้หลังส่งได้ด้วยใบลดหนี้/เพิ่มหนี้เท่านั้น");
   if (res === "LOCKED") return BILL_LOCKED();
   return { ok: true, calc: c };
@@ -1094,7 +1153,7 @@ export async function setBillExtraLines(
     const lease = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).dormLease.findFirst({ where: { id: bill.leaseId }, select: { policySnapshot: true, rentSatang: true } });
     const snap = snapValuesOf(lease?.policySnapshot ?? null);
     const lateSum = lines.filter((l) => l.kind === "LATE_FEE").reduce((s, l) => s + l.amountSatang, 0);
-    const r = await rewriteOne(g, bill, lines, (c) => lateFeeCheck(snap, valsOf(c.billRes), lease?.rentSatang ?? 0, lateSum));
+    const r = await rewriteOne(g, bill, lines, (c) => lateFeeCheck(snap, valsOf(c.billRes), lease?.rentSatang ?? 0, lateSum, c.lateAuto.sum0)); // SVC D.11 (ค) + อัตโนมัติ
     if (!r.ok) return r;
     return { ok: true, totalSatang: r.calc.bill.totalSatang };
   } catch (e) {
@@ -1235,6 +1294,12 @@ function lineDetail(l: DormBillLine): string | null {
     const span = typeof m.from === "number" && typeof m.to === "number" ? `${fmtInt(m.from)}→${fmtInt(m.to)} ` : "";
     const rate = l.unitPriceSatang !== null ? `×${fmtRate(l.unitPriceSatang)}` : " หน่วย";
     return `${span}${fmtInt(m.units)}${rate}`;
+  }
+  // SVC D.11 (ง) ▸ ค่าปรับอัตโนมัติ: "<เดือนย่อ> <พ.ศ.> ช้า N วัน" ต่อบิลต้นทาง (+ หมายเหตุของบรรทัดมือ) ◂
+  if (l.code === "LATE_FEE" && typeof m.auto === "string") {
+    const auto = autoLateFeeDetail(m.auto);
+    const note = typeof m.note === "string" && m.note ? m.note : null;
+    if (auto || note) return [auto, note].filter((x): x is string => !!x).join(" · ");
   }
   if (typeof m.note === "string" && m.note) return m.note;
   return null;
@@ -2130,6 +2195,11 @@ async function sendOne(g: G, runId: string, P: string, issueYmd: string, billId:
   const release = async () => {
     await db.dormBill.updateMany({ where: { id: billId, status: "DRAFT", sentVia: marker }, data: { sentVia: null } });
   };
+  // SVC D.11 (L1/L9) ▸ หลังจองบิล: คำนวณค่าปรับอัตโนมัติสดของบิลนี้ (การยกเว้น + รับชำระที่บันทึกแล้ว) — ต่างจากบิล ⇒ ปล่อยจอง + RUN_STALE รายบิล (ยังไม่มีเอกสารใดออก) ◂
+  if (!fam.live && (await lateFeeChanged(g, b, P, issueYmd))) {
+    await release();
+    return { kind: "FAIL", code: "RUN_STALE", reason: "ค่าปรับจ่ายช้าของบิลนี้เปลี่ยน (ยกเว้นค่าปรับ/รับชำระย้อนวันที่) — กดเตรียมรอบใหม่แล้วส่งอีกครั้ง" };
+  }
   const vals = snapValuesOf(b.policySnapshot) ?? {};
   const vat: DormVat = vatOf(vals);
   const bill: DormBillResult = { lines: linesOf(b.lines), subtotalSatang: b.subtotalSatang, vatSatang: b.vatSatang, totalSatang: b.totalSatang };
@@ -2201,6 +2271,18 @@ async function sendOne(g: G, runId: string, P: string, issueYmd: string, billId:
   );
   if (r === "BUSY") return { kind: "FAIL", code: "RUN_BUSY", reason: "ฐานข้อมูลชนกันชั่วคราว — กดส่งอีกครั้ง (ใบเดิมจะถูกใช้ ไม่ออกซ้ำ)", docId: inv.docId };
   return r ? { kind: "SENT", docId: inv.docId } : { kind: "SKIP" };
+}
+
+/** SVC D.11 (L1/L9) ▸ ค่าปรับอัตโนมัติที่ควรอยู่ในบิล (คำนวณสด ณ วันออกของรอบ) ≠ ที่อยู่ในบิล ⇒ true */
+async function lateFeeChanged(g: G, b: BillRec, P: string, issueYmd: string): Promise<boolean> {
+  const lease = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).dormLease.findFirst({ where: { id: b.leaseId }, select: { id: true, rentSatang: true, policySnapshot: true } });
+  if (!lease) return false;
+  const plan = (await planAutoLateFees({ tenantId: g.tenantId, unitId: g.unitId, periodKey: P, asOf: issueYmd, leases: [lease] })).get(lease.id);
+  const manualLate = manualOf(b.lines).filter((m) => m.kind === "LATE_FEE").reduce((x, m) => x + m.amountSatang, 0);
+  const want = plan ? trimAutoLateFees(plan.entries, plan.capSatang === null ? null : plan.capSatang - manualLate) : [];
+  const have = autoEntriesOf(b.lines);
+  const key = (es: AutoLateFeeEntry[]) => JSON.stringify(es.map((e) => [e.sourceBillId, e.amountSatang]));
+  return key(want) !== key(have);
 }
 
 /** ลิงก์จ่าย best-effort · จองต่อบิลด้วย CAS (paymentRequestId = claim:<ms>) ⇒ ลิงก์ 1 ต่อบิลแม้หลายโพรเซส */
@@ -2282,124 +2364,255 @@ async function refreshPayLink(g: G, billId: string, oldPr: string, systemId: str
 export async function adjustSentBill(
   ctx: BillingCtx,
   input: { unitId: string; billId: string; kind: "CREDIT" | "DEBIT"; reason: string; idempotencyKey: string; lines: { code: string; labelTh: string; amountSatang: number }[] },
-): Promise<{ ok: true; docId: string; docNo: string | null; created: boolean; totalSatang: number } | Fail> {
+): Promise<AdjustResult | Fail> {
   try {
     const g = await gateOf(ctx, isRec(input) ? input.unitId : null, "dorm.bill.send");
     if (!g) return NOT_FOUND();
-    const kind = input.kind;
-    const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
-    const rawLines = input.lines;
-    const linesOk =
-      (kind === "CREDIT" || kind === "DEBIT") &&
-      key.length >= 1 &&
-      key.length <= 80 &&
-      Array.isArray(rawLines) &&
-      rawLines.length >= 1 &&
-      rawLines.length <= MAX_ADJUST_LINES &&
-      rawLines.every(
-        (l) =>
-          isRec(l) &&
-          isStr(l.code) &&
-          typeof l.labelTh === "string" &&
-          l.labelTh.trim().length >= 1 &&
-          [...l.labelTh.trim()].length <= 80 &&
-          typeof l.amountSatang === "number" &&
-          Number.isInteger(l.amountSatang) &&
-          l.amountSatang > 0 &&
-          l.amountSatang <= MAX_ADJUST_SATANG,
-      );
-    if (!linesOk) return fail("INVALID_INPUT", "รายการปรับยอดไม่ถูกต้อง — ต้องมีอย่างน้อย 1 รายการ ยอดเป็นจำนวนเต็มสตางค์มากกว่า 0");
-    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
-    if ([...reason.replace(/\s+/g, "")].length < 10) return fail("REASON_REQUIRED", "กรุณาระบุเหตุผลการปรับยอดอย่างน้อย 10 ตัวอักษร (เก็บเป็นหลักฐาน)");
-    const bill = await readBill(g, input.billId);
-    if (!bill) return NOT_FOUND();
-    if (!SENTISH.includes(bill.status) || !bill.accountDocumentId) return fail("NOT_SENT", "บิลนี้ยังไม่ได้ส่ง — แก้ในขั้นตรวจบิลได้เลย ไม่ต้องออกใบลด/เพิ่มหนี้");
-    const vals = snapValuesOf(bill.policySnapshot) ?? {};
-    const vat = vatOf(vals);
-    const billLines = linesOf(bill.lines);
-    const svc = taxKindsOf(vals).SERVICE ?? "VAT7";
-    const docLines: ExternalDocLine[] = rawLines.map((l) => {
-      const same = billLines.find((x) => x.code === l.code);
-      const taxKind: TaxKind = same ? same.taxKind : vat.registered ? svc : "NONE";
-      return { description: l.labelTh.trim(), qty: 1, unitPriceSatang: l.amountSatang, taxKind, meta: { code: l.code } };
-    });
-    const refId = `${bill.id}:${key}`;
-    const info = await docLinkInfo(g.tenantId, bill.accountDocumentId);
-    if (!info) return NOT_FOUND();
-    const adjDb = tenantDb({ tenantId: g.tenantId, systemId: info.systemId });
-    const amount = rawLines.reduce((sum, l) => sum + l.amountSatang, 0);
-    if (kind === "CREDIT") {
-      // F16: Σ ใบลดหนี้ (ไม่นับใบของคีย์เดียวกัน) + ใบนี้ ≤ ยอดคงค้างของใบแจ้งหนี้ — ตรวจก่อนเรียกบัญชี (บัญชีตรวจซ้ำใต้ล็อกอีกชั้น)
-      const credits = await adjDb.accountDocument.findMany({
-        where: { sourceDocId: info.docId, docType: "CREDIT_NOTE", status: { notIn: ["VOIDED", "CANCELLED", "DRAFT"] }, NOT: { refId } },
-        select: { grandTotal: true },
-      });
-      const remaining = info.grandTotal - info.paidTotal - credits.reduce((sum, d) => sum + d.grandTotal, 0);
-      if (amount > remaining) return fail("EXCEEDS_REMAINING", `ยอดลดหนี้ (฿${(amount / 100).toFixed(2)}) เกินยอดคงค้างของใบแจ้งหนี้ (฿${(Math.max(0, remaining) / 100).toFixed(2)})`);
-    } else {
-      // F14: ใบเพิ่มหนี้โค้ด LATE_FEE ต้องผ่านเพดานค่าปรับของสัญญา (ค่าปรับในบิล + ใบเพิ่มหนี้ค่าปรับเดิม + ใบนี้)
-      const lateNew = rawLines.filter((l) => l.code === "LATE_FEE").reduce((sum, l) => sum + l.amountSatang, 0);
-      if (lateNew > 0) {
-        const prior = await tenantDb({ tenantId: g.tenantId }).auditLog.findMany({ where: { action: "dorm.bill.adjusted", targetType: "DormBill", targetId: bill.id }, select: { after: true } });
-        const lateDebits = prior.reduce((sum, a) => {
-          const x = isRec(a.after) ? a.after : {};
-          return x.kind === "DEBIT" && x.key !== key && isNat(x.lateFeeSatang) ? sum + x.lateFeeSatang : sum;
-        }, 0);
-        const inBill = grossOf(billLines, (c) => c === "LATE_FEE");
-        const lease = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).dormLease.findFirst({ where: { id: bill.leaseId }, select: { policySnapshot: true, rentSatang: true } });
-        const [cur] = await resolveSettingsMany({ tenantId: g.tenantId }, LEASE_KEYS, [{ unitId: g.unitId, leaseId: bill.leaseId }]);
-        const bad = lateFeeCheck(snapValuesOf(lease?.policySnapshot ?? null), { ...valsOf(cur), ...vals }, lease?.rentSatang ?? 0, inBill + lateDebits + lateNew);
-        if (bad) return bad;
-      }
-    }
-    // SVC D.3 ▸ (§2.5 ม.86/9 · 86/10) บิลมีใบกำกับที่ยังมีผล ⇒ ใบลด/เพิ่มหนี้อ้างเลขที่ + วันที่ใบกำกับ ◂
-    const tiRef = (await liveTaxInvoicesFor(g.tenantId, [bill.accountDocumentId])).get(bill.accountDocumentId);
-    const tiRow = tiRef ? await adjDb.accountDocument.findFirst({ where: { id: tiRef.docId }, select: { docNo: true, issueDate: true } }) : null;
-    const tiNote = tiRow ? `อ้างอิงใบกำกับภาษีเลขที่ ${tiRow.docNo ?? "-"} ลงวันที่ ${thaiDateOf(bkkYmd(tiRow.issueDate))}` : null;
-    const note = {
-      tenantId: g.tenantId,
-      unitId: g.unitId,
-      sourceDocId: bill.accountDocumentId,
-      refType: ADJUST_REF,
-      refId,
-      reason,
-      lines: docLines,
-      vat,
-      issueDate: bkkYmd(new Date()),
-      createdById: g.actorUserId,
-      ...(tiNote ? { note: tiNote } : {}),
-    };
-    const r = kind === "CREDIT" ? await createExternalCreditNote(note) : await createExternalDebitNote(note);
-    if (!r.ok) return fail(r.code, r.reason);
-    // F6: audit 1 แถวต่อเอกสาร — เติมแม้คำตอบเป็น created:false (ล้มหลังออกเอกสารรอบก่อน) · ใต้ล็อกต่อเอกสาร (กดซ้ำพร้อมกันไม่ซ้ำ)
-    const lateFeeSatang = rawLines.filter((l) => l.code === "LATE_FEE").reduce((sum, l) => sum + l.amountSatang, 0);
-    await retryOnce(() =>
-      tenantDb({ tenantId: g.tenantId }).$transaction(async (txRaw) => {
-        const tx = txRaw as unknown as Tx;
-        await advisoryLock(tx, `dorm.bill.adjusted:${r.docId}`);
-        const has = await tx.auditLog.findFirst({
-          where: { tenantId: g.tenantId, action: "dorm.bill.adjusted", targetId: bill.id, after: { path: ["docId"], equals: r.docId } },
-          select: { id: true },
-        });
-        if (has) return;
-        await tx.auditLog.create({
-          data: {
-            tenantId: g.tenantId,
-            actorType: g.actorUserId ? "USER" : "SYSTEM",
-            actorId: g.actorUserId,
-            action: "dorm.bill.adjusted",
-            targetType: "DormBill",
-            targetId: bill.id,
-            after: { billId: bill.id, kind, docId: r.docId, totalSatang: r.totalSatang, reason, key, lateFeeSatang },
-          },
-        });
-      }, TX_OPTS),
-    );
-    // F13: ยอดคงค้างเปลี่ยน ⇒ ออกลิงก์จ่ายยอดใหม่ + ยกเลิกลิงก์ยอดเก่า (best-effort · บิลที่ยังไม่มีลิงก์ = รอบส่งเป็นคนออก)
-    if (r.created && bill.paymentRequestId && !bill.paymentRequestId.startsWith(CLAIM_PREFIX)) await refreshPayLink(g, bill.id, bill.paymentRequestId, info.systemId, info.docId);
-    return { ok: true, docId: r.docId, docNo: r.docNo, created: r.created, totalSatang: r.totalSatang };
+    return await adjustWith(g, input);
   } catch (e) {
     await logFail("adjust", isRec(ctx) ? ctx.tenantId : null, e);
     return INTERNAL();
   }
 }
+
+// SVC D.11 ▸ ตัวจริงของ adjustSentBill หลังผ่านด่าน (แยกออกมาให้ใบลดหนี้ของการยกเว้นค่าปรับใช้ทางเดียวกัน · พฤติกรรมเดิมทุกบรรทัด) ◂
+type AdjustResult = { ok: true; docId: string; docNo: string | null; created: boolean; totalSatang: number };
+type AdjustInput = { unitId: string; billId: string; kind: "CREDIT" | "DEBIT"; reason: string; idempotencyKey: string; lines: { code: string; labelTh: string; amountSatang: number }[] };
+const D11_RESERVE = "dorm.bill.adjust.reserve";
+async function adjustWith(g: G, input: AdjustInput): Promise<AdjustResult | Fail> {
+  let reserved = false; // SVC D.11 (L10)
+  const kind = input.kind;
+  const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
+  const rawLines = input.lines;
+  const linesOk =
+    (kind === "CREDIT" || kind === "DEBIT") &&
+    key.length >= 1 &&
+    key.length <= 80 &&
+    Array.isArray(rawLines) &&
+    rawLines.length >= 1 &&
+    rawLines.length <= MAX_ADJUST_LINES &&
+    rawLines.every(
+      (l) =>
+        isRec(l) &&
+        isStr(l.code) &&
+        typeof l.labelTh === "string" &&
+        l.labelTh.trim().length >= 1 &&
+        [...l.labelTh.trim()].length <= 80 &&
+        typeof l.amountSatang === "number" &&
+        Number.isInteger(l.amountSatang) &&
+        l.amountSatang > 0 &&
+        l.amountSatang <= MAX_ADJUST_SATANG,
+    );
+  if (!linesOk) return fail("INVALID_INPUT", "รายการปรับยอดไม่ถูกต้อง — ต้องมีอย่างน้อย 1 รายการ ยอดเป็นจำนวนเต็มสตางค์มากกว่า 0");
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if ([...reason.replace(/\s+/g, "")].length < 10) return fail("REASON_REQUIRED", "กรุณาระบุเหตุผลการปรับยอดอย่างน้อย 10 ตัวอักษร (เก็บเป็นหลักฐาน)");
+  const bill = await readBill(g, input.billId);
+  if (!bill) return NOT_FOUND();
+  if (!SENTISH.includes(bill.status) || !bill.accountDocumentId) return fail("NOT_SENT", "บิลนี้ยังไม่ได้ส่ง — แก้ในขั้นตรวจบิลได้เลย ไม่ต้องออกใบลด/เพิ่มหนี้");
+  const vals = snapValuesOf(bill.policySnapshot) ?? {};
+  const vat = vatOf(vals);
+  const billLines = linesOf(bill.lines);
+  const svc = taxKindsOf(vals).SERVICE ?? "VAT7";
+  const docLines: ExternalDocLine[] = rawLines.map((l) => {
+    const same = billLines.find((x) => x.code === l.code);
+    const taxKind: TaxKind = same ? same.taxKind : vat.registered ? svc : "NONE";
+    return { description: l.labelTh.trim(), qty: 1, unitPriceSatang: l.amountSatang, taxKind, meta: { code: l.code } };
+  });
+  const refId = `${bill.id}:${key}`;
+  const info = await docLinkInfo(g.tenantId, bill.accountDocumentId);
+  if (!info) return NOT_FOUND();
+  const adjDb = tenantDb({ tenantId: g.tenantId, systemId: info.systemId });
+  const amount = rawLines.reduce((sum, l) => sum + l.amountSatang, 0);
+  if (kind === "CREDIT") {
+    // F16: Σ ใบลดหนี้ (ไม่นับใบของคีย์เดียวกัน) + ใบนี้ ≤ ยอดคงค้างของใบแจ้งหนี้ — ตรวจก่อนเรียกบัญชี (บัญชีตรวจซ้ำใต้ล็อกอีกชั้น)
+    const credits = await adjDb.accountDocument.findMany({
+      where: { sourceDocId: info.docId, docType: "CREDIT_NOTE", status: { notIn: ["VOIDED", "CANCELLED", "DRAFT"] }, NOT: { refId } },
+      select: { grandTotal: true },
+    });
+    const remaining = info.grandTotal - info.paidTotal - credits.reduce((sum, d) => sum + d.grandTotal, 0);
+    if (amount > remaining) return fail("EXCEEDS_REMAINING", `ยอดลดหนี้ (฿${(amount / 100).toFixed(2)}) เกินยอดคงค้างของใบแจ้งหนี้ (฿${(Math.max(0, remaining) / 100).toFixed(2)})`);
+  } else {
+    // F14: ใบเพิ่มหนี้โค้ด LATE_FEE ต้องผ่านเพดานค่าปรับของสัญญา (ค่าปรับในบิล + ใบเพิ่มหนี้ค่าปรับเดิม + ใบนี้)
+    const lateNew = rawLines.filter((l) => l.code === "LATE_FEE").reduce((sum, l) => sum + l.amountSatang, 0);
+    if (lateNew > 0) {
+      const inBill = grossOf(billLines, (c) => c === "LATE_FEE");
+      const lease = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).dormLease.findFirst({ where: { id: bill.leaseId }, select: { policySnapshot: true, rentSatang: true } });
+      const [cur] = await resolveSettingsMany({ tenantId: g.tenantId }, [...LEASE_KEYS, ...D11_KEYS], [{ unitId: g.unitId, leaseId: bill.leaseId }]); // SVC D.11 (ค)
+      // SVC D.11 (L10) ▸ ตรวจเพดาน + จองยอดใต้ล็อกต่อบิล (audit dorm.bill.adjust.reserve ต่อคีย์) ⇒ หลายโพรเซสพร้อมกันไม่ทะลุเพดาน ·
+      //   Σ ใบเพิ่มหนี้ค่าปรับเดิม = ค่ามากสุดต่อคีย์ของ (จองไว้ · ออกแล้ว) ไม่นับคีย์นี้ · ออกเอกสารไม่สำเร็จ ⇒ ถอนการจอง ◂
+      const ck = await retryOnce(() =>
+        tenantDb({ tenantId: g.tenantId }).$transaction(async (txRaw) => {
+          const tx = txRaw as unknown as Tx;
+          await advisoryLock(tx, `dorm.bill.latefee.debit:${bill.id}`);
+          const prior = await tx.auditLog.findMany({
+            where: { tenantId: g.tenantId, action: { in: ["dorm.bill.adjusted", D11_RESERVE] }, targetType: "DormBill", targetId: bill.id },
+            select: { action: true, after: true },
+          });
+          const perKey = new Map<string, number>();
+          let mine = false;
+          for (const a of prior) {
+            const x = isRec(a.after) ? a.after : {};
+            if (x.kind !== "DEBIT" || typeof x.key !== "string" || !isNat(x.lateFeeSatang)) continue;
+            if (x.key === key) {
+              if (a.action === D11_RESERVE) mine = true;
+              continue;
+            }
+            perKey.set(x.key, Math.max(perKey.get(x.key) ?? 0, x.lateFeeSatang));
+          }
+          const lateDebits = [...perKey.values()].reduce((sum, v) => sum + v, 0);
+          const bad = lateFeeCheck(snapValuesOf(lease?.policySnapshot ?? null), { ...valsOf(cur), ...vals }, lease?.rentSatang ?? 0, inBill + lateDebits + lateNew);
+          if (bad) return bad;
+          if (!mine) {
+            await tx.auditLog.create({
+              data: { tenantId: g.tenantId, unitId: g.unitId, actorType: g.actorUserId ? "USER" : "SYSTEM", actorId: g.actorUserId, action: D11_RESERVE, targetType: "DormBill", targetId: bill.id, after: { billId: bill.id, kind: "DEBIT", key, lateFeeSatang: lateNew } },
+            });
+          }
+          return null;
+        }, TX_OPTS),
+      );
+      if (ck === "BUSY") return BUSY();
+      if (ck) return ck;
+      reserved = true;
+    }
+  }
+  // SVC D.3 ▸ (§2.5 ม.86/9 · 86/10) บิลมีใบกำกับที่ยังมีผล ⇒ ใบลด/เพิ่มหนี้อ้างเลขที่ + วันที่ใบกำกับ ◂
+  const tiRef = (await liveTaxInvoicesFor(g.tenantId, [bill.accountDocumentId])).get(bill.accountDocumentId);
+  const tiRow = tiRef ? await adjDb.accountDocument.findFirst({ where: { id: tiRef.docId }, select: { docNo: true, issueDate: true } }) : null;
+  const tiNote = tiRow ? `อ้างอิงใบกำกับภาษีเลขที่ ${tiRow.docNo ?? "-"} ลงวันที่ ${thaiDateOf(bkkYmd(tiRow.issueDate))}` : null;
+  const note = {
+    tenantId: g.tenantId,
+    unitId: g.unitId,
+    sourceDocId: bill.accountDocumentId,
+    refType: ADJUST_REF,
+    refId,
+    reason,
+    lines: docLines,
+    vat,
+    issueDate: bkkYmd(new Date()),
+    createdById: g.actorUserId,
+    ...(tiNote ? { note: tiNote } : {}),
+  };
+  const r = kind === "CREDIT" ? await createExternalCreditNote(note) : await createExternalDebitNote(note);
+  if (!r.ok) {
+    // SVC D.11 (L10) ▸ ไม่มีเอกสารเกิด ⇒ ถอนการจองยอดค่าปรับของคีย์นี้ ◂
+    if (reserved) {
+      await tenantDb({ tenantId: g.tenantId })
+        .auditLog.deleteMany({ where: { action: D11_RESERVE, targetType: "DormBill", targetId: bill.id, after: { path: ["key"], equals: key } } })
+        .catch(() => undefined);
+    }
+    return fail(r.code, r.reason);
+  }
+  // F6: audit 1 แถวต่อเอกสาร — เติมแม้คำตอบเป็น created:false (ล้มหลังออกเอกสารรอบก่อน) · ใต้ล็อกต่อเอกสาร (กดซ้ำพร้อมกันไม่ซ้ำ)
+  const lateFeeSatang = rawLines.filter((l) => l.code === "LATE_FEE").reduce((sum, l) => sum + l.amountSatang, 0);
+  await retryOnce(() =>
+    tenantDb({ tenantId: g.tenantId }).$transaction(async (txRaw) => {
+      const tx = txRaw as unknown as Tx;
+      await advisoryLock(tx, `dorm.bill.adjusted:${r.docId}`);
+      const has = await tx.auditLog.findFirst({
+        where: { tenantId: g.tenantId, action: "dorm.bill.adjusted", targetId: bill.id, after: { path: ["docId"], equals: r.docId } },
+        select: { id: true },
+      });
+      if (has) return;
+      await tx.auditLog.create({
+        data: {
+          tenantId: g.tenantId,
+          actorType: g.actorUserId ? "USER" : "SYSTEM",
+          actorId: g.actorUserId,
+          action: "dorm.bill.adjusted",
+          targetType: "DormBill",
+          targetId: bill.id,
+          after: { billId: bill.id, kind, docId: r.docId, totalSatang: r.totalSatang, reason, key, lateFeeSatang },
+        },
+      });
+    }, TX_OPTS),
+  );
+  // F13: ยอดคงค้างเปลี่ยน ⇒ ออกลิงก์จ่ายยอดใหม่ + ยกเลิกลิงก์ยอดเก่า (best-effort · บิลที่ยังไม่มีลิงก์ = รอบส่งเป็นคนออก)
+  if (r.created && bill.paymentRequestId && !bill.paymentRequestId.startsWith(CLAIM_PREFIX)) await refreshPayLink(g, bill.id, bill.paymentRequestId, info.systemId, info.docId);
+  return { ok: true, docId: r.docId, docNo: r.docNo, created: r.created, totalSatang: r.totalSatang };
+}
+
+// ───────────────────────── SVC D.11 ▸ ทางภายในโมดูลสำหรับ latefee.ts (ไม่ออก facade) ─────────────────────────
+/** คำนวณบิล DRAFT/HELD ใหม่หลังยกเว้นค่าปรับ (ทาง rewriteOne เดิม · ใต้ล็อกรอบ) — บิลที่ส่ง/ถูกจองแล้วข้าม · คืนจำนวนที่ผ่าน · ไม่ throw */
+export async function recomputeDormBills(tenantId: string, unitId: string, billIds: string[]): Promise<number> {
+  let n = 0;
+  try {
+    const g = await systemGate(tenantId, unitId);
+    if (!g) return 0;
+    for (const id of billIds) {
+      const bill = await readBill(g, id);
+      if (!bill || (bill.status !== "DRAFT" && bill.status !== "HELD")) continue;
+      let r = await rewriteOne(g, bill, null, () => null, true);
+      if (!r.ok && r.code === "RUN_BUSY") r = await rewriteOne(g, bill, null, () => null, true);
+      if (r.ok) n++;
+    }
+  } catch (e) {
+    await logFail("latefee.recompute", tenantId, e);
+  }
+  return n;
+}
+
+export type WaiverCreditTarget = { billId: string; amountSatang: number };
+/**
+ * ใบลดหนี้ของการยกเว้นค่าปรับ (มติ 8) — ทางเดียวกับ adjustSentBill (CREDIT · บรรทัด LATE_FEE · ref DormBillAdjust/<billId>:waive:<sourceBillId>)
+ *   ขั้น 1 ตรวจทุกบิลปลายทางก่อน (ใบของ ref นี้มีแล้ว = ข้าม) · ใบลดหนี้เกินคงค้าง ⇒ ALREADY_PAID ไม่ออกใบใดเลย
+ *   ขั้น 2 ออกทีละใบตามลำดับ (ไม่ขนาน) · idempotent ต่อ ref (เรียกซ้ำ/พร้อมกัน = ใบเดิม)
+ */
+export async function creditLateFeeWaiver(i: {
+  tenantId: string;
+  unitId: string;
+  actorUserId: string | null;
+  sourceBillId: string;
+  sourcePeriodKey: string;
+  reason: string;
+  targets: WaiverCreditTarget[];
+}): Promise<{ ok: true; notes: { billId: string; docId: string; amountSatang: number }[] } | Fail> {
+  try {
+    const base = await systemGate(i.tenantId, i.unitId);
+    if (!base) return NOT_FOUND();
+    const g: G = { ...base, actorUserId: i.actorUserId };
+    const key = `waive:${i.sourceBillId}`;
+    const plan: { bill: BillRec; amountSatang: number }[] = [];
+    for (const t of i.targets) {
+      if (!isNat(t.amountSatang) || t.amountSatang <= 0) continue;
+      const bill = await readBill(g, t.billId);
+      if (!bill || !SENTISH.includes(bill.status) || !bill.accountDocumentId) return fail("NOT_SENT", "บิลที่ลงค่าปรับไว้ยังไม่ได้ส่ง — ระบบคำนวณบิลนั้นใหม่แทนใบลดหนี้");
+      const info = await docLinkInfo(g.tenantId, bill.accountDocumentId);
+      if (!info) return NOT_FOUND();
+      const refId = `${bill.id}:${key}`;
+      const adjDb = tenantDb({ tenantId: g.tenantId, systemId: info.systemId });
+      const credits = await adjDb.accountDocument.findMany({
+        where: { sourceDocId: info.docId, docType: "CREDIT_NOTE", status: { notIn: ["VOIDED", "CANCELLED", "DRAFT"] } },
+        select: { grandTotal: true, refId: true },
+      });
+      const mine = credits.some((d) => d.refId === refId);
+      const remaining = info.grandTotal - info.paidTotal - credits.filter((d) => d.refId !== refId).reduce((sum, d) => sum + d.grandTotal, 0);
+      if (!mine && t.amountSatang > remaining) {
+        return fail("ALREADY_PAID", "บิลที่ลงค่าปรับนี้ชำระครบแล้ว — ยกเว้นด้วยใบลดหนี้ไม่ได้ (ต้องคืนเงินผ่านขั้นตอนคืนเงิน/ย้ายออก)");
+      }
+      plan.push({ bill, amountSatang: t.amountSatang });
+    }
+    const m = /^(\d{4})-(\d{2})$/.exec(i.sourcePeriodKey);
+    const label = `ยกเว้นค่าปรับชำระล่าช้า${m ? ` (${TH_MONTHS[Number(m[2]) - 1]} ${Number(m[1]) + 543})` : ""}`;
+    const notes: { billId: string; docId: string; amountSatang: number }[] = [];
+    for (const p of plan) {
+      const r = await adjustWith(g, {
+        unitId: g.unitId,
+        billId: p.bill.id,
+        kind: "CREDIT",
+        reason: `ยกเว้นค่าปรับจ่ายช้า: ${i.reason}`.slice(0, 500),
+        idempotencyKey: key,
+        lines: [{ code: "LATE_FEE", labelTh: label, amountSatang: p.amountSatang }],
+      });
+      if (!r.ok) {
+        if (r.code === "EXCEEDS_REMAINING") return fail("ALREADY_PAID", "บิลที่ลงค่าปรับนี้ชำระครบแล้ว — ยกเว้นด้วยใบลดหนี้ไม่ได้ (ต้องคืนเงินผ่านขั้นตอนคืนเงิน/ย้ายออก)");
+        return r;
+      }
+      notes.push({ billId: p.bill.id, docId: r.docId, amountSatang: p.amountSatang });
+    }
+    return { ok: true, notes };
+  } catch (e) {
+    await logFail("latefee.credit", i.tenantId, e);
+    return INTERNAL();
+  }
+}
+// ◂ SVC D.11

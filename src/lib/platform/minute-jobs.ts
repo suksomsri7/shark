@@ -565,6 +565,15 @@ registerMinuteJob({
   run: async (now, budgetMs) => (await import("@/lib/modules/dorm")).runDormBillingJobs(now, { budgetMs: Math.max(5_000, budgetMs - 5_000) }),
 });
 // ◂ SVC D.8
+// SVC D.11 ▸ หอพัก: เตือนก่อนครบ · ทวงหลังเลยกำหนด · event dorm.bill.overdue · ใช้ผลอนุมัติยกเว้นค่าปรับที่ค้าง (ทางสำรองเมื่อ outbox ล้ม)
+//   ทุก 5 นาที · ข้ามร้าน · โหลด facade หอตอนรันเท่านั้น · ซ้อนกันได้ (ข้อความ 1 แถวต่อ dedupeKey · event 1 ต่อบิล · ใบลดหนี้ 1 ต่อบิลปลายทาง · X5)
+registerMinuteJob({
+  name: "dorm.dunning",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormDunningJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.11
 
 function errorText(e: unknown): string {
   let s: string;
