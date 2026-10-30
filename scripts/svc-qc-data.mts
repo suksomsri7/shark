@@ -800,3 +800,27 @@ export function sqcPortalSceneRead(root: string = process.cwd()): SqcPortalScene
 import { readFileSync as d9ReadFileSync } from "node:fs";
 import { join as d9Join } from "node:path";
 // ◂ SVC D.9
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC D.10 ▸ บล็อกของใบ D.10 เท่านั้น (ตรวจสลิป/รับเงินหอ · ภาพ หอ 06) — ต่อท้ายโดยผู้เขียนข้อสอบ · เลนอื่น/builder ห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-d.10.md §7 · ข้อสอบ scripts/qc-svc-d.10.mts (Q-* · V-1) · ฉาก scripts/svc-qc-payments-scene.mts (builder)
+//   ฉากต่อจากฉาก D.13 (สลิปรอตรวจ 104 · 206 · 309 ของ SQC_DORM_HOME_SCENE) — ปรับเฉพาะช่องยอด/ผู้โอน/ธนาคาร/เวลา/เหตุผลของ 3 สลิปนั้น
+//   ไม่สร้างบิล/สัญญา · ไม่แตะค่าตั้งระดับร้าน (payments.receiver ฯลฯ) · ไม่ทับค่าตั้งหน่วย · ถ่าย --user owner
+// ═════════════════════════════════════════════════════════════════════════════
+/** ค่าจากภาพ 06 (README หอ บรรทัด 32): 104 ชื่อผู้โอนไม่ตรง (กสิกร 2 พ.ย. 21:14) · 206 ยอดขาด ฿62.32 (กรุงเทพ 2 พ.ย. 20:03) · 309 สลิปซ้ำ (ไทยพาณิชย์ 3 ต.ค. 18:22) — ค่าล้วน */
+export const SQC_DORM_PAY_SCENE = {
+  mark: "SvcQcScene:d10",
+  period: "2026-11",
+  slips: {
+    "104": { amountSatang: 538240, payerName: "สมพร ช***", bankCode: "004", transferredAt: "2026-11-02T14:14:00.000Z", reasons: ["PAYER_NAME_MISMATCH"] },
+    "206": { amountSatang: 550000, payerName: "รัตนา บ***", bankCode: "002", transferredAt: "2026-11-02T13:03:00.000Z", reasons: ["AMOUNT_SHORT"] },
+    "309": { amountSatang: 512000, payerName: "เมธี ส***", bankCode: "014", transferredAt: "2026-10-03T11:22:00.000Z", reasons: ["DUPLICATE_TRANSREF"] },
+  } as Record<string, { amountSatang: number; payerName: string; bankCode: string; transferredAt: string; reasons: string[] }>,
+  panelRoom: "206",
+  expect: {
+    reviewCount: 3, reviewSatang: 1778536, reviewRooms: ["104", "206", "309"], shortDiffSatang: -6232,
+    receivedSatang: 13391280, receivedBills: 24, unpaidSatang: 2242824, unpaidBills: 4, overdueSatang: 1020040, overdueRooms: ["106", "305"],
+  },
+} as const;
+SQC_VISUAL_SPECS["d.10"] = [{ name: "dorm-payments", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/payments?room=${SQC_DORM_PAY_SCENE.panelRoom}` }];
+// ◂ SVC D.10
