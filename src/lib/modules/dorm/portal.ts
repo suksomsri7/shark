@@ -8,7 +8,8 @@ import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { resolveCanonical } from "@/lib/modules/party";
-import { bahtOf, docFinMany, outstandingMany, thDateOf, thMonthOf, ymdOfDate } from "./latefee";
+import { billBalances } from "./balance"; // SVC D.10 ▸ R3 ◂
+import { bahtOf, docFinMany, thDateOf, thMonthOf, ymdOfDate } from "./latefee";
 
 const isRec = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
@@ -177,7 +178,7 @@ export async function portalLeaseBills(tenantId: string, lease: { id: string; un
   });
   if (!bills.length) return [];
   const docIds = bills.map((b) => b.accountDocumentId).filter((x): x is string => !!x);
-  const out0 = await outstandingMany(tenantId, bills);
+  const bal = await billBalances(tenantId, bills.map((b) => b.id)); // SVC D.10 ▸ R3: ยอดนิยามเดียว · outstandingSatang = dueSatang (รวมยอดยกมา) ◂
   const fin = await docFinMany(tenantId, bills.filter((b) => !!b.accountDocumentId).map((b) => ({ docId: b.accountDocumentId as string, billId: b.id })));
   const raw = tenantDb({ tenantId });
   // เลขใบแจ้งหนี้ + ใบลด/เพิ่มหนี้ที่มีผล (ทุกสมุด · คิวรีเดียว) + รับชำระของใบเพิ่มหนี้
@@ -203,8 +204,7 @@ export async function portalLeaseBills(tenantId: string, lease: { id: string; un
     const docId = b.accountDocumentId;
     const head = docId ? docs.find((d) => d.id === docId) : undefined;
     const adjDocs = docId ? docs.filter((d) => d.sourceDocId === docId && (d.docType === "CREDIT_NOTE" || d.docType === "DEBIT_NOTE") && !DEAD_DOC.includes(d.status)) : [];
-    const debitOpen = adjDocs.filter((d) => d.docType === "DEBIT_NOTE").reduce((s, d) => s + Math.max(0, Number(d.grandTotal) - (debitPaid.get(d.id) ?? 0)), 0);
-    const outstanding = Math.max(0, (out0.get(b.id) ?? 0) + debitOpen);
+    const outstanding = bal.get(b.id)?.dueSatang ?? 0;
     const f = docId ? fin.get(docId) : undefined;
     const paid = docId
       ? (f && !DEAD_DOC.includes(f.status) ? f.tieOff : 0) + adjDocs.filter((d) => d.docType === "DEBIT_NOTE").reduce((s, d) => s + (debitPaid.get(d.id) ?? 0), 0)
@@ -223,7 +223,7 @@ export async function portalLeaseBills(tenantId: string, lease: { id: string; un
       status: b.status,
       docId,
       docNo: head?.docNo ?? null,
-      lines: linesOf(b.lines),
+      lines: [...linesOf(b.lines), ...(bal.get(b.id)?.carriedIn ?? []).map((c) => ({ code: "CARRIED_IN", labelTh: "ยอดยกมา", detail: thMonthOf(c.periodKey), amountSatang: c.satang }))], // SVC D.10 ▸ อธิบายยอดที่สูงกว่าบิลงวดนี้ ◂
       adjustments: adjDocs.map((d) => ({ kind: d.docType === "CREDIT_NOTE" ? ("CREDIT" as const) : ("DEBIT" as const), docNo: d.docNo, amountSatang: Number(d.grandTotal) })),
       totalSatang: b.totalSatang,
       paidSatang: paid,
@@ -321,7 +321,8 @@ export async function portalBillLiveState(
        ), 0)) END)::int AS "outstanding"
     FROM "DormBill" b WHERE b."tenantId" = ${tenantId} AND b."id" = ${billId} LIMIT 1`;
   const r = rows[0];
-  return r ? { status: r.status, hasDoc: !!r.doc, leaseId: r.leaseId, unitId: r.unitId, leaseLive: r.live === true, outstandingSatang: Number(r.outstanding) } : null;
+  const due = r ? (await billBalances(tenantId, [billId])).get(billId)?.dueSatang : undefined; // SVC D.10 ▸ R3: นิยามเดียว (รวมยอดยกมา) ◂
+  return r ? { status: r.status, hasDoc: !!r.doc, leaseId: r.leaseId, unitId: r.unitId, leaseLive: r.live === true, outstandingSatang: due ?? Number(r.outstanding) } : null;
 }
 
 /** W7 ▸ มีสลิปที่ใช้คีย์กันส่งซ้ำนี้แล้วไหม (ส่งซ้ำของคนเดิม = ให้ submitSlip คืนผลเดิม) — รูปนิพจน์เดียวกับดัชนี unique ของ slip-verify */

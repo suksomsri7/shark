@@ -14,6 +14,7 @@ import { resolveSettingsMany } from "@/lib/core/settings";
 import { evaluateLegal, isValidOutOfScopeReason, resolveLegalParams } from "@/lib/core/settings/legal/th-rental-2568";
 import { lastDecisionOf, listPoliciesForEntities, requestStatuses, resolvePolicy, submitForApproval } from "@/lib/modules/approval";
 import { dormAccess } from "./access";
+import { billBalances } from "./balance"; // SVC D.10 ▸ R4 ◂
 import { lateFee } from "./calc";
 
 // ───────────────────────── ชนิด (สัญญา §3 §4) ─────────────────────────
@@ -363,7 +364,6 @@ function finFrom(b: LfBill, f: DocFin | undefined): Fin | null {
   const otherCredit = Math.max(0, f.credit - f.lateCredit);
   return { base: Math.max(0, f.grand - lateGrossOf(b.lines) - otherCredit), pays: f.pays };
 }
-const outstandingFrom = (f: DocFin | undefined): number => (!f || DEAD_DOC.includes(f.status) ? 0 : Math.max(0, f.grand - f.tieOff - f.credit));
 /** ยอดค้างทั้งใบ (เงินต้น + ค่าปรับ) — มีใบ = จากบัญชี · ไม่มีใบ (ยกมา) = totalSatang − paidSatang (มติ 6) */
 export async function billOutstandingSatang(tenantId: string, b: { id: string; accountDocumentId: string | null; totalSatang: number; paidSatang: number }): Promise<number> {
   return (await outstandingMany(tenantId, [b])).get(b.id) ?? 0;
@@ -371,9 +371,8 @@ export async function billOutstandingSatang(tenantId: string, b: { id: string; a
 /** ยอดค้างหลายบิลในคิวรีชุดเดียว (L2) */
 export async function outstandingMany(tenantId: string, bills: { id: string; accountDocumentId: string | null; totalSatang: number; paidSatang: number }[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  const docs = bills.filter((b) => !!b.accountDocumentId).map((b) => ({ docId: b.accountDocumentId as string, billId: b.id }));
-  const fin = await docFinMany(tenantId, docs);
-  for (const b of bills) out.set(b.id, b.accountDocumentId ? outstandingFrom(fin.get(b.accountDocumentId)) : Math.max(0, b.totalSatang - b.paidSatang));
+  const bal = await billBalances(tenantId, bills.map((b) => b.id)); // SVC D.10 ▸ R4: นิยามเดียว (รวมใบเพิ่มหนี้ · ไม่รวมยอดยกมา) ◂
+  for (const b of bills) out.set(b.id, bal.get(b.id)?.ownOutstandingSatang ?? (b.accountDocumentId ? 0 : Math.max(0, b.totalSatang - b.paidSatang)));
   return out;
 }
 

@@ -134,3 +134,6 @@ export {
 } from "./portal";
 export type { PortalLeaseRow, PortalBillRow, PortalSlipStatus } from "./portal";
 // ◂ SVC D.9
+// SVC D.10 ▸ ยอดค้างนิยามเดียว (A11) ◂
+export { billBalances, billPaidSatang } from "./balance";
+export type { DormBillBalance } from "./balance";

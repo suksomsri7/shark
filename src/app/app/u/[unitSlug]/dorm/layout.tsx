@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { dormAccess, leaseAccess } from "@/lib/modules/dorm";
 import DormTabs from "@/components/dorm/DormTabs";
-import { dormTabsFor } from "@/components/dorm/dorm-home-shared";
+import { dormTabsFor, dormTabsWithPay } from "@/components/dorm/dorm-home-shared";
+import { evaluate } from "@/lib/core/rbac";
 
 // SVC D.13 ▸ แท็บโมดูลหอ (ภาพ หอ 01/17 แถบบน) — ใบสั่ง ledger/svc-briefs/svc-brief-d.13.md §8
 //   หน่วยต้องเป็น "DORM" (อื่น ⇒ notFound) · แท็บตามสิทธิ์: ผังห้อง/ตั้งค่า ⇔ dorm.view · ผู้เช่า ⇔ ดูสัญญาได้ · จดมิเตอร์ ⇔ dorm.meter.read
@@ -18,9 +19,12 @@ export default async function DormLayout({ children, params }: { children: React
   };
   const acc = dormAccess(m, unit.id);
   const tabs = dormTabsFor({ board: acc.board, meter: acc.meter, leaseView: leaseAccess(m, unit.id).view }, `/app/u/${unitSlug}`);
+  // SVC D.10 ▸ แท็บ "บิล/รับเงิน" เฉพาะผู้มี dorm.slip.review หรือ dorm.payment.manual (หน้า /dorm/payments ตรวจสิทธิ์สดเองอีกชั้น) ◂
+  const pay = (["dorm.slip.review", "dorm.payment.manual"] as const).some((action) => evaluate(m, { module: "dorm", action, unitId: unit.id }));
+  const shown = dormTabsWithPay(tabs, pay, `/app/u/${unitSlug}`);
   return (
     <div className="flex w-full min-w-0 flex-col gap-5">
-      <DormTabs tabs={tabs} />
+      <DormTabs tabs={shown} />
       {children}
     </div>
   );

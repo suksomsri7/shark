@@ -525,6 +525,9 @@ export async function onLineImage(
     if (!open.length) return IGNORE;
     if (open.length > 1) {
       // W4: กำกวม (หลายงวด/หลายห้อง) ⇒ ไม่แนบ · ตอบเป็นกลาง + ลิงก์พอร์ทัลของทุกสัญญา live ของผู้ส่ง (บน OA นี้)
+      // SVC D.10 ▸ R8: เก็บรูปเป็นไฟล์ส่วนตัวให้พนักงานเลือกบิลเอง (เฉพาะกิ่งกำกวม · ล้ม = ตอบข้อความเดิม) ◂
+      const pic = await fetchLineMessageContent({ tenantId: ctx.tenantId }, { connectionId: ctx.connectionId, messageId });
+      if (pic.ok) await (await import("@/lib/platform/dorm-pay")).stashChatSlip({ tenantId: ctx.tenantId, connectionId: ctx.connectionId, partyId: open[0]!.lease.partyId, leaseIds: [...new Set(open.map((o) => o.lease.id))] }, { messageId, data: pic.data, contentType: pic.contentType }, { now, ...(opts?.deps?.put ? { deps: { put: opts.deps.put } } : {}) });
       const t = await leaseLinksText(ctx, leases, now, "");
       return { handled: true, attached: null, reply: { text: `กรุณาแนบสลิปในลิงก์บิลของห้อง${t ? `\n\n${t}` : ""}` } };
     }

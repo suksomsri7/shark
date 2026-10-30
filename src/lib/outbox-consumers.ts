@@ -977,7 +977,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   🔴 ผลเงิน (มัดจำจองคิว/บิลหอ) ไม่อยู่ที่นี่ — consumer ของโดเมน B.8 / D.10 ต่อท้าย compose ภายหลัง (idempotent ต่อ slipId) ◂
   "payment.slip.submitted": withAutomation(async () => {}),
   // SVC B.8 ▸ + เงินเข้ามัดจำจองคิว (domain BOOKING · อ่านสลิปจากฐานใหม่ · idempotent ต่อสลิป/นัด) เป็นงานหลักคู่ (ล้ม = event retry · โดเมนอื่น = ไม่ทำอะไร) ◂
-  "payment.slip.approved": withAutomation(bothMain(async () => {}, async (evt) => (await import("@/lib/modules/booking/deposit")).onDepositSlipApproved(evt))),
+  // SVC D.10 ▸ + เงินเข้าบิลหอ (domain DORM · ใบเสร็จ + ลงบัญชี · idempotent ต่อสลิป) เป็นงานหลักคู่ — ทั้งสองทางอ่านสลิปจากฐานใหม่ โดเมนอื่น = ไม่ทำอะไร ◂
+  "payment.slip.approved": withAutomation(bothMain(async (evt) => (await import("@/lib/modules/booking/deposit")).onDepositSlipApproved(evt), async (evt) => (await import("@/lib/platform/dorm-pay")).onDormSlipApproved(evt))),
   "payment.slip.rejected": withAutomation(async () => {}),
   // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
   //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts
@@ -1249,6 +1250,9 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   payload ตรง 7 คีย์ { unitId, billId, leaseId, periodKey, dueDate, outstandingSatang, daysLate } (ไม่มีชื่อ/เบอร์ · X8) · งานหลัก = no-op
   //   (ข้อความทวงส่งใน dunning ผ่าน notifyCustomer แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
   "dorm.bill.overdue": withAutomation(async () => {}),
+  // SVC D.10 ▸ บิลหอจ่ายครบ/จ่ายบางส่วน — ยิงจาก `platform/dorm-pay.ts` ต่อ (บิล, ใบเสร็จ) · ปิด DONE + ทริกเกอร์ automation/webhook ◂
+  "dorm.bill.paid": withAutomation(async () => {}),
+  "dorm.bill.partially_paid": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

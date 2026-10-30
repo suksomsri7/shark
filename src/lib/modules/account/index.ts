@@ -2338,3 +2338,42 @@ export async function externalTaxSeller(input: { tenantId: string; unitId: strin
   }
 }
 // ◂ SVC D.3
+
+// ── SVC D.10 ▸ facade แคบของรับเงินหอ (R2 · เพิ่มอย่างเดียว) — ใบเสร็จ RECEIPT ต่อการรับ · ยกเลิกแบบกลับรายการ · อ่านเอกสารที่จ่ายได้ของบิล · สมุดของหน่วย ──
+export { dormBillDocsMany, dormReceiptRows, DORM_RECEIPT_REF_TYPE, type DormBillDoc, type DormBillDocs, type DormReceiptRow } from "./service";
+import { dormIssueReceipt, dormVoidReceipt } from "./service";
+
+/** สมุดบัญชีที่ผูกหน่วยหอนี้ — ไม่ผูก/ผูกหลายเล่ม ⇒ null */
+export async function dormUnitBookId(tenantId: string, unitId: string): Promise<string | null> {
+  const b = await dormBook(tenantId, unitId);
+  return "ok" in b ? null : b.systemId;
+}
+
+/** ออกใบเสร็จของการรับเงิน 1 ครั้ง (GL เป็นกลาง · idempotent ต่อ refId) */
+export async function issueDormReceipt(input: {
+  tenantId: string; unitId: string; refId: string; invoiceDocId: string; amountSatang: number; paidAt: Date; channel: DormChannel; carriedSatang: number;
+  allocations: { docId: string; amountSatang: number; labelTh: string }[]; creditLabelTh: string; note?: string | null; createdById?: string | null;
+}): Promise<{ ok: true; created: boolean; docId: string; docNo: string } | DormFail> {
+  try {
+    if (!dormAmountOk(input.amountSatang)) return dormFail("INVALID_AMOUNT", "ยอดเงินต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0");
+    if (!nonEmpty(input.refId) || !nonEmpty(input.invoiceDocId)) return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงของใบเสร็จไม่ครบ");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    return await dormIssueReceipt({ ...input, systemId: book.systemId, note: input.note ?? null, createdById: input.createdById ?? null });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกใบเสร็จของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** ยกเลิกใบเสร็จ = กลับรายการรับชำระ + JV ส่วนเกิน 2110 (ไม่ลบแถวบัญชี) */
+export async function voidDormReceiptDoc(input: { tenantId: string; unitId: string; receiptId: string; paymentKeys: string[]; reason: string }): Promise<{ ok: true } | DormFail> {
+  try {
+    if (!nonEmpty(input.reason)) return dormFail("INVALID_INPUT", "ต้องระบุเหตุผลการยกเลิก");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    return await dormVoidReceipt({ ...input, systemId: book.systemId });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ยกเลิกใบเสร็จของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+// ◂ SVC D.10
