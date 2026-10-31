@@ -117,7 +117,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | D.20 | ปิดเฟส D (G3) | — | ผู้คุม | ⬜ | | U4 |
 | C.1 | ตัวต่อตรวจสลิปเจ้าแรก | เข้ม | | ⬜ | | รอชื่อเจ้า+คีย์ (J2) |
 | C.2 | LINE เครื่องจริง + คู่มือร้าน | เบา | | ⬜ | | |
-| C.3 | สุขภาพตัวต่อ | เบา | | ⬜ | | |
+| C.3 | สุขภาพตัวต่อ | เบา (ชิ้นกลางเข้ม) | | ✅ | 337abe3f | 73/74 ทรีรวม (S-1 accept-time) · ผู้ตรวจ+probe 24/27 (E-STALE MINOR หนี้ · INFO 2) · r0.5/r0.6/r0.7 เขียว · ชิ้นกลางเพิ่มอย่างเดียว |
 
 เฟสเลื่อน (ไม่นับใน %): H.0–H.10 · H2.1–H2.3 · K.1–K.2 · S.1 · P.1 · CO.1–CO.2 · RP.1–RP.2 · API.1–API.2 · KT.1 · X-POS.1 · X-MIG.1 — ⬜ ทั้งหมด (รายละเอียด MASTER-PLAN §6.1)
 
@@ -132,6 +132,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | ใบ | หนี้ | เหตุผล | ปิดใน |
 |---|---|---|---|
 | D.6 | ผู้ดูแลอาคาร 1 บันทึกมิเตอร์อาคาร 2 ผ่าน service submitReadings ได้ (ด่านขอบเขตอยู่ที่ action เท่านั้น · probe-d14-b FG-3) | ด่านขอบเขตอาคารใน service | D.15 |
+| C.3 | เตือนเกินเมื่อถอดแล้ววางคีย์ใหม่ก่อน consumer ของเหตุเก่า (E-STALE) · quota() ซ้ำเมื่องานซ้อน · isRetryable ดู cause.originalCode | MINOR/INFO | หลัง D.15 |
 | D.14 | ref USAGE ชน namespace TOPUP/GRANT · ตัวอ่าน AI ใน tx ถือ connection · AuditLog เป็นที่เก็บข้อเสนอ (index tenantId+action+targetId) | ไม่มี migration | หลัง D.15 |
 | D.3/D.13 | r0.4 H-2: rooms.access.buildingAssignments (ตาราง record ว่าง) ในหน้าตั้งค่ากลางไม่มีช่องกรอก (แก้ได้เฉพาะหน้านโยบายหอ D.13) | SettingsForm/JsonNode ไม่รองรับ record ว่าง | D.15 |
 
@@ -208,3 +209,4 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 31 ต.ค. ~05Z · ✅ **D.17** (35/53) · merge 04bbdd7b (ชน D.18 7 ไฟล์ เก็บทั้งสอง · ลบ dorm.announce + dorm.parcel.manage จาก planned · เมนู LINE มี announce+parcel) · ด่าน N: d.17 61/64 · probe-d17-b 24/24 · d.18 67/68 · probe-d18-b 25/25 · d.11/d.9/d.13 0 failed · smoke · fitness 53/53 · tsc 0 · มติ R1–R5 (นับอ่านต่อคน · บล็อก ตัดไฟ/ตัดน้ำ + J3) · หนี้: แท็บประกาศ (D.15 + ORACLE-EDIT d.13 K-6) · ประกาศหยุดกลางรอบต้องกดส่งซ้ำเอง · stamp partyId ลง ServiceMessageLog นอก notifyCustomer (ย้ายเข้าสัญญากลางภายหลัง)
 - 31 ต.ค. ~07Z · ✅ **D.10** (36/53) · merge b0f147b0 · ด่าน O (ฐานหลัก): probe-d10-b 44/0 สองรอบ · d.11/d.3/r0.5/r0.6/b.8/d.17/d.18/d.9/d.13 0 failed · smoke · fitness 53/53 · tsc 0 · ORACLE-EDIT: d.10 S-1 (+minute-jobs) · d.8/d.11 S-7 · r0.6 P-1/U-2 · probe-d9-b IA-1 (เข้ม) · b.8 EV-2 (token ≥16) · มติ: Z3 ขอบเขตอาคาร · Z7 dormFromError +1 บรรทัด · Z12 ไม่ bypassQuiet · Z14 ห้ามยกยอดเมื่อสลิป < ยอดยกมา · Z20 แผนค้างบล็อกบิล+แจ้งเจ้าของ · CLAIM_MS 260 วิ · หนี้: ป้ายปุ่ม "ลงเงินอีกครั้ง" · OUTBOX_MAX_ATTEMPTS ซ้ำสองที่ · REFUND_DUE open ไม่อยู่ใต้ claim (LOW)
 - 31 ต.ค. ~07Z · ✅ **D.16 + D.14** (38/53) · merge 769123ab + d4f737dc · ด่าน P (ฐานหลัก): d.16 83/85 0 failed · probe-d16-b 30/30 · d.14 69/72 (G-2 d.8 Q-2 ฉาก D.12 · หายเมื่อ merge D.12) · probe-d14-b 27/28 (FG-3 หนี้ D.6 ขอบเขตอาคารใน submitReadings → D.15) · kanban k3.3 14/15 (S9.2 ภาพ ฐาน) · k3.4 11/11 · d.6 S-5 ฐาน · d.10/d.17/d.18/d.9/d.13 0 failed · smoke 6/6 · fitness 53/53 · tsc 0 (ด่านหยุดก่อนครบ ⇒ ผู้คุมรัน smoke/fitness/tsc ต่อเอง) · มติ D.14 R1 credit.ts ref (บั๊กหักซ้ำของระบบเครดิตเดิม ปิด) · หนี้ D.16: เก็บค่าซ่อมในบิล · คลิป · นัดเวลา · R5 ต่างจาก D.6 pickBoard
+- 31 ต.ค. ~08Z · ✅ **C.3** (39/53) · merge bcd034cd · ด่าน Q: c.3 73/74 · probe-c3-b 24/27 (ตามผู้ตรวจ) · r0.5 68/69 · r0.6 77/77 · r0.7 89/89 · smoke · fitness 53/53 · tsc 0 · มติ K1 ชิ้นกลางเพิ่มอย่างเดียว (ลบ 1 บรรทัด/ไฟล์ใน 4 ไฟล์ ผู้ตรวจรับทุกบรรทัด) · ค่าตั้ง #83 integrations.quota.alertPercent
