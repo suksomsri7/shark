@@ -1011,3 +1011,34 @@ export function sqcMeterAiPhoto(seed: string = SQC_DORM_METER_AI_SCENE.photoSeed
 /** ภาพ หอ 03 แผง ข — ก่อนถ่ายรันฉาก roomboard → meter → meter-ai · ถ่ายด้วย --user meter (คนจดมิเตอร์) */
 SQC_VISUAL_SPECS["d.14"] = [{ name: "dorm-meter-ai", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/meter?roomNo=209` }];
 // ◂ SVC D.14
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC C.3 ▸ บล็อกของใบ C.3 เท่านั้น (สุขภาพตัวต่อ · ภาพ "จอง 10/หอ 11 สถานะ") — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-c.3.md §2 §7 · ข้อสอบ scripts/qc-svc-c.3.mts · ฉาก scripts/svc-qc-integration-health-scene.mts (builder)
+//   🔴 ข้อสอบสร้างร้านเอง (qc-svc-c3-*) — ไม่เขียนค่าตั้ง/แถวของ svcqc · ฉากอยู่ร้าน B (SQC_OTHER) ชนิด CALENDAR (ไม่มี quota() · ไม่มีใครเรียก)
+//      ⇒ ไม่กวน slip-verify (R0.6) / getIntegration ของร้าน A · ไม่เขียน SettingValue/OutboxEvent/AppNotification
+// ═════════════════════════════════════════════════════════════════════════════
+export const SQC_C3 = {
+  tenantSlugPrefix: "qc-svc-c3-",
+  emailPrefix: "svc-c3-",
+  labelPrefix: "svc-c3-",
+  quotaKey: "integrations.quota.alertPercent",
+  quotaDefaultPercent: 10,
+  recent: 20,
+  days: 14,
+  checkMinutes: 60,
+  alertSourcePrefix: "integration-alert:failed:",
+} as const;
+/** ฉากภาพแผงสุขภาพ (ร้าน B) — quota 42/500 = 8% ⇒ ต่ำกว่าเกณฑ์ค่าเริ่ม 10% · days = [วันย้อนหลังไทย (0 = วันนี้), ok, fail] รวม 40 ครั้ง */
+export const SQC_INTEGRATION_HEALTH_SCENE = {
+  tenantId: SQC_OTHER.tenant.id,
+  ownerUserId: SQC_OTHER.owner.userId,
+  label: "svcqc-c3-ปฏิทินช่าง (ฉาก)",
+  kind: "CALENDAR",
+  provider: "FAKE",
+  quota: { remaining: 42, limit: 500 },
+  days: [[0, 6, 1], [1, 5, 0], [2, 4, 2], [3, 7, 0], [5, 3, 1], [8, 6, 0], [12, 2, 3]] as [number, number, number][],
+  expect: { logs: 40, recent: 20, daysWithCalls: 7, ok: 33, fail: 7, percent: 8, low: true },
+} as const;
+SQC_VISUAL_SPECS["c.3"] = [{ name: "integrations-health", path: "/app/settings/integrations" }];
+// ◂ SVC C.3

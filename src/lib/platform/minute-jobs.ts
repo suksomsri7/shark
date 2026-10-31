@@ -498,6 +498,19 @@ registerMinuteJob({
 });
 // ◂ SVC R0.5
 
+// SVC C.3 ▸ สุขภาพตัวต่อ: อ่านโควตาแถว CONNECTED (ชนิดที่มี quota()) ทุก 60 นาที/แถว · เรียงตรวจนานสุดก่อน · ตั้ง checkedAt แม้ล้ม (กันอดอยาก) ·
+//   โควตาเหลือ ≤ ค่าตั้ง #83 ⇒ แจ้งเจ้าของครั้งเดียวต่อเหตุ (ล็อกแถว) · route + crontab ซ้อนกันได้ · โหลด facade ตอนรันเท่านั้น
+registerMinuteJob({
+  name: "integrations.health",
+  everyMinutes: 60,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => {
+    const { runIntegrationHealthJob } = await import("@/lib/core/integrations");
+    await runIntegrationHealthJob(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ SVC C.3
+
 // SVC R0.8 ▸ แกนห้อง: ปิด HOLD/CHANNEL_HOLD ที่หมดเวลา (ทุกนาที · ข้ามร้าน) — โหลด facade rooms ตอนรันเท่านั้น (แบบงาน CRM ·
 //   ไฟล์นี้ถูก import จาก route/crm-cron.mts — ห้ามลากกราฟโมดูลตอนโหลด) · idempotent: UPDATE มีเงื่อนไข active + FOR UPDATE SKIP LOCKED ⇒
 //   route + crontab ยิงซ้อนกัน แต่ละแถวปิดครั้งเดียว event ครั้งเดียว (X5) · claimRoom ปิด hold หมดเวลาที่ขวางเองอยู่แล้ว (ไม่ต้องรองานนี้)

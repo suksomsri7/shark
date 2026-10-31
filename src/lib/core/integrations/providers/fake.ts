@@ -39,6 +39,13 @@ function fakeSlipScript(qrPayload: unknown): SlipVerifyResult | null {
   return out;
 }
 
+/** SVC C.3 ▸ ข้อความตัวเลข → number (ว่าง/ไม่ใช่ตัวเลข = undefined) ◂ */
+function fakeNumber(v: string | undefined): number | undefined {
+  if (typeof v !== "string" || !v.trim()) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 /** mode SLOW รอกี่ ms ก่อนผ่าน */
 export const FAKE_SLOW_MS = 1500;
 
@@ -97,7 +104,10 @@ function makeFake<K extends StoredIntegrationKind>(kind: K, creds: ProviderCreds
       },
       quota: async (opts) => {
         await gate(opts);
-        return { remaining: 100 };
+        // SVC C.3 ▸ ข้อสอบตั้งโควตาได้ผ่านฟิลด์สาธารณะ (ไม่ตั้ง = { remaining: 100 } เท่าเดิม) ◂
+        const remaining = fakeNumber(creds.publicFields.quotaRemaining);
+        const limit = fakeNumber(creds.publicFields.quotaLimit);
+        return { remaining: remaining ?? 100, ...(limit !== undefined ? { limit } : {}) };
       },
     },
     PAYMENT_GATEWAY: {
@@ -153,6 +163,9 @@ export const FAKE_PROVIDER: ProviderDef = {
     { name: "apiKey", label: "คีย์ API", secret: true, required: true },
     { name: "accountId", label: "รหัสบัญชี", secret: false, required: false },
     { name: "mode", label: "โหมดทดสอบ (OK / FAIL / QUOTA / SLOW / HANG)", secret: false, required: false },
+    // SVC C.3 ▸ โควตาจำลองของ quota() (ไม่บังคับ) ◂
+    { name: "quotaRemaining", label: "โควตาคงเหลือ (ทดสอบ)", secret: false, required: false },
+    { name: "quotaLimit", label: "โควตาทั้งหมด (ทดสอบ)", secret: false, required: false },
   ],
   create: makeFake,
 };

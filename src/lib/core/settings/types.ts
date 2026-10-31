@@ -29,7 +29,7 @@ export const SCOPE_KINDS = [
 export type ScopeKind = (typeof SCOPE_KINDS)[number];
 
 /** "qcfx" = ฟิกซ์เจอร์ QC เท่านั้น (defs/_fixture.ts) */
-export type SettingDomain = "booking" | "rooms" | "payments" | "messaging" | "qcfx";
+export type SettingDomain = "booking" | "rooms" | "payments" | "messaging" | "integrations" | "qcfx"; // SVC C.3 ▸ + integrations ◂
 
 export type SettingValueType =
   | "int"

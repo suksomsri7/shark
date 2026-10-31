@@ -35,7 +35,7 @@ export interface SlipVerifyAdapter {
     expect: { amountSatang: number; receiver: { promptpayId?: string; bankAccount?: string } },
     opts?: CallOpts,
   ): Promise<SlipVerifyResult>;
-  quota(opts?: CallOpts): Promise<{ remaining?: number; resetsAt?: string }>;
+  quota(opts?: CallOpts): Promise<{ remaining?: number; limit?: number; resetsAt?: string }>; // C.3 ▸ + limit (เตือนเป็น %) ◂
 }
 export interface PaymentGatewayAdapter {
   test(opts?: CallOpts): Promise<void>;
@@ -164,3 +164,44 @@ export type TestIntegrationResult = { ok: true; passed: boolean; code: CallCode 
 export type ListIntegrationsResult =
   | { ok: true; keyConfigured: boolean; canManage: boolean; items: (IntegrationView | VirtualView)[]; catalog: CatalogEntry[] }
   | Refusal;
+
+// ── SVC C.3 ▸ สุขภาพตัวต่อ (ใบสั่ง §3.1) — DTO ไม่มีค่าลับ/ฟิลด์/ข้อความดิบ · ชุดคีย์ตรงตัว (ข้อสอบเทียบ) ──
+export type IntegrationHealthCall = { op: string; ok: boolean; ms: number; code: CallCode | null; at: string };
+/** day = "YYYY-MM-DD" วันไทย · avgMs = Math.round(เฉลี่ย ms ทุกครั้งของวัน) · ไม่มีการเรียก = null */
+export type IntegrationHealthDay = { day: string; ok: number; fail: number; avgMs: number | null };
+export type IntegrationQuotaView = {
+  remaining: number | null;
+  limit: number | null;
+  /** limit > 0 && remaining != null ? Math.round(remaining*100/limit) : null */
+  percent: number | null;
+  /** quotaIsLow(quota, เกณฑ์ #83 ของร้าน) */
+  low: boolean;
+  checkedAt: string | null;
+  resetsAt: string | null;
+};
+export type IntegrationHealthView = {
+  id: string;
+  kind: StoredIntegrationKind;
+  provider: string;
+  label: string;
+  status: IntegrationStatus;
+  onFailure: IntegrationOnFailure;
+  unitIds: string[];
+  /** แถวยังไม่เคยอ่านโควตา = null */
+  quota: IntegrationQuotaView | null;
+  /** ≤ 20 ครั้งล่าสุด ใหม่ → เก่า */
+  recent: IntegrationHealthCall[];
+  /** 14 วันไทยพอดี เก่า → ใหม่ (วันสุดท้าย = วันนี้) */
+  daily: IntegrationHealthDay[];
+};
+export type IntegrationHealthResult = { ok: true; thresholdPercent: number; health: IntegrationHealthView } | Refusal;
+export type IntegrationHealthListResult = { ok: true; thresholdPercent: number; items: IntegrationHealthView[] } | Refusal;
+/** รูปที่เก็บใน TenantIntegration.quota (ผู้เขียนเดียว = health.ts · ใบสั่ง §2.3) */
+export type StoredIntegrationQuota = {
+  remaining: number | null;
+  limit: number | null;
+  resetsAt: string | null;
+  checkedAt: string;
+  lowAlertedAt: string | null;
+};
+// ◂ SVC C.3
