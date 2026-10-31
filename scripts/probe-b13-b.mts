@@ -280,7 +280,9 @@ async function holdsOf(unitId: string): Promise<{ res: any[]; occ: Map<string, O
   for (const a of rows) {
     const job = a.policySnapshot?.job ?? {};
     // มติ Q16: ข้ามเฉพาะ ARRIVED ที่ตัววางคิวประเมินแล้วว่าวางไม่ได้ (job.unplacedAt) และไม่มีแผน · ARRIVED ที่ยังไม่ถูกประเมิน ถือจาก max(startAt, checkedInAt)
-    if (a.status === "ARRIVED" && !a.plannedStartAt && job.unplacedAt !== undefined && job.unplacedAt !== null) continue;
+    // มติ Q17: เครื่องหมายต้องเป็นของการเช็กอินครั้งนี้ (unplacedAt ≥ checkedInAt)
+    const unplacedMs = typeof job.unplacedAt === "string" ? Date.parse(job.unplacedAt) : Number.NaN;
+    if (a.status === "ARRIVED" && !a.plannedStartAt && a.checkedInAt && Number.isFinite(unplacedMs) && unplacedMs >= a.checkedInAt.getTime()) continue;
     const rids: string[] = Array.isArray(job.resourceIds) ? job.resourceIds : a.resourceId ? [a.resourceId] : [];
     const s = a.startAt.getTime();
     const dur = typeof job.durationMin === "number" ? job.durationMin * MIN : a.endAt.getTime() - s - (job.bufferMin ?? a.bufferMin) * MIN;
@@ -333,7 +335,7 @@ const staffOverlap = async (unitId: string): Promise<string[]> => {
   for (let i = 1; i < rows.length; i++) if (rows[i].staffId === rows[i - 1].staffId && rows[i].s.getTime() < rows[i - 1].e.getTime()) bad.push(`${rows[i].staffId.slice(-6)} ${HM(rows[i].s.getTime())}`);
   return bad;
 };
-const apRow = async (id: string) => (await q(`SELECT id, status::text AS status, "staffId", "startAt", "endAt", "resourceId", "plannedStartAt", "startedAt", "policySnapshot" FROM "Appointment" WHERE id = $1`, [id]))[0];
+const apRow = async (id: string) => (await q(`SELECT id, status::text AS status, "staffId", "startAt", "endAt", "resourceId", "plannedStartAt", "startedAt", "checkedInAt", "policySnapshot" FROM "Appointment" WHERE id = $1`, [id]))[0];
 
 const bkIn = (u: Unit, svcKey: string, staffIdx: number | null, ds: string, min: number, channel = "STAFF", extra: Record<string, unknown> = {}) =>
   ({ serviceId: u.svc[svcKey], staffId: staffIdx === null ? null : u.staff[staffIdx], dateStr: ds, startMin: min, channel, customerName: "คุณโพรบ บีสิบสาม", customerPhone: newPhone(), idempotencyKey: rid("idem"), ...extra });
@@ -395,6 +397,8 @@ try {
   await mk("P20det", { staffN: 3, res: room1, svcs: OILS });
   await mk("P21", { staffN: 3, res: room1, svcs: OILS });
   await mk("P22det", { staffN: 5, res: room1, svcs: OILS });
+  await mk("P23a", { staffN: 3, res: room1, svcs: OILS });
+  await mk("P23b", { staffN: 3, res: room1, svcs: OILS });
   for (let r = 0; r < 3; r++) await mk(`P22r${r}`, { staffN: 5, res: room1, svcs: OILS });
   await finishSetup(units);
   console.log(`(fixtures พร้อม · ${units.length} หน่วย · วัน ${DS} · now จริง ${new Date().toISOString()})`);
@@ -973,6 +977,39 @@ try {
       rec(`P22-${r}`, books === 0 && sw.contract.length === 0, "MAJOR",
         "เครื่องหมายค้าง + เช็กอินพรุ่งนี้ ∥ จองห้องเดียวกันทับช่วงนัด ⇒ จองต้องไม่ได้",
         { markerAfterResched: info.markerAfterResched, books, codes: codesOf(outs), apptA: { st: ra.status, planned: ra.plannedStartAt ? HM(ra.plannedStartAt.getTime()) : null, marker: ra.policySnapshot?.job?.unplacedAt ?? null }, sweep: sw.contract });
+    });
+  }
+
+  // ═══════════ P23 กลับเข้า ARRIVED ทางที่ไม่ใช่ checkIn (ยกเลิกโดยร้าน → ปลุก) โดยเครื่องหมายเก่า + checkedInAt เก่ายังอยู่ ═══════════
+  if (want("P23")) {
+    console.log("\n── P23: มาสายวางไม่ได้ (หมอเต็มทั้งวัน · เครื่องหมาย) → cancelByShop → ช่องหมอว่าง → ปลุกกลับ ARRIVED → จองห้องเดียวกันทับ ──");
+    for (const [k, via] of [["a", "direct"], ["b", "viaConfirmed"]] as const) await step(`P23${k}`, async () => {
+      const u = U[`P23${k}`];
+      const a = await bookOk(u, "OIL", 0, DS, 600);                                                     // s0 10:00 ห้อง
+      const plain: string[] = [];
+      for (let h = 0; h < 9; h++) plain.push(await bookOk(u, "PLAIN", 0, DS, 660 + h * 60));            // s0 เต็ม 11:00–20:00 (ไม่ใช้ห้อง)
+      const ci = await LN.checkIn(u.ctx, { appointmentId: a }, { via: "STAFF", now: at(DS, 620) });     // 10:20 สายเกินผ่อนผัน (ยังไม่ถึงไม่มา 10:30) ⇒ เข้าแถว · s0 ไม่มีช่อง ⇒ วางไม่ได้
+      await RN.runPlanner(u.ctx, { now: at(DS, 620) });
+      const r0 = await apRow(a);
+      const cx = await LN.cancelByShop(u.ctx, a, { now: at(DS, 621) });
+      const r1 = await apRow(a);
+      const fr = await BK.setAppointmentStatus(u.tenantId, u.id, plain[0], "CANCELLED");               // ลูกค้า 11:00 ยกเลิก ⇒ s0 ว่าง 10:21–12:00
+      const steps: string[] = [`freeSlot:${fr.ok}`];
+      if (via === "viaConfirmed") { const x = await BK.setAppointmentStatus(u.tenantId, u.id, a, "CONFIRMED"); steps.push(`→CONFIRMED:${x.ok ? "ok" : x.reason?.slice(0, 40)}`); }
+      const y = await BK.setAppointmentStatus(u.tenantId, u.id, a, "ARRIVED"); steps.push(`→ARRIVED:${y.ok ? "ok" : y.reason?.slice(0, 40)}`);
+      const r2 = await apRow(a);
+      const isArrived = r2.status === "ARRIVED";
+      const pure = await (async () => { const rows = await RS.walkInNowByService(u.ctx, { now: at(DS, 622) }); return rows.find((x: any) => x.serviceId === u.svc.OIL30)?.startAt ?? null; })();
+      const bk = await BK.bookAppointment(u.ctx, bkIn(u, "OIL30", 1, DS, 630));                         // 10:30 ทับลูกค้าที่อยู่หน้าร้าน (วางได้แล้ว)
+      await RN.runPlanner(u.ctx, { now: at(DS, 622) });
+      const r3 = await apRow(a);
+      const sw = await sweep(u.id);
+      rec(`P23${k}`, !isArrived || (!bk.ok && sw.contract.length === 0), "MAJOR",
+        `แถวกลับเข้า ARRIVED ด้วย setAppointmentStatus (${via}) หลังยกเลิกโดยร้าน — เครื่องหมาย+เวลาเช็กอินของรอบก่อนต้องไม่ทำให้ฐานมองไม่เห็นลูกค้าที่อยู่หน้าร้าน (ตอนนี้วางได้แล้ว) ⇒ จองห้องทับ 10:30 ต้อง FULL`,
+        { checkIn: ci.ok ? (ci.asWalkIn ? "asWalkIn" : "ok") : ci.code, markerAfterPlan: r0.policySnapshot?.job?.unplacedAt ?? null, planned0: r0.plannedStartAt ? HM(r0.plannedStartAt.getTime()) : null, cancel: cx.ok ? "ok" : cx.code,
+          afterCancel: { st: r1.status, marker: r1.policySnapshot?.job?.unplacedAt ?? null }, steps,
+          afterRevive: { st: r2.status, marker: r2.policySnapshot?.job?.unplacedAt ?? null, checkedIn: r2.checkedInAt ? HM(r2.checkedInAt.getTime()) : null, planned: r2.plannedStartAt ? HM(r2.plannedStartAt.getTime()) : null },
+          walkInNowOil30: pure ? HM(new Date(pure).getTime()) : null, book1030: bk.ok ? "OK!" : bk.code, afterReplan: { planned: r3.plannedStartAt ? HM(r3.plannedStartAt.getTime()) : null, marker: r3.policySnapshot?.job?.unplacedAt ?? null }, sweep: sw.contract, physical: sw.physical });
     });
   }
 
