@@ -280,9 +280,8 @@ async function holdsOf(unitId: string): Promise<{ res: any[]; occ: Map<string, O
   for (const a of rows) {
     const job = a.policySnapshot?.job ?? {};
     // มติ Q16: ข้ามเฉพาะ ARRIVED ที่ตัววางคิวประเมินแล้วว่าวางไม่ได้ (job.unplacedAt) และไม่มีแผน · ARRIVED ที่ยังไม่ถูกประเมิน ถือจาก max(startAt, checkedInAt)
-    // มติ Q17: เครื่องหมายต้องเป็นของการเช็กอินครั้งนี้ (unplacedAt ≥ checkedInAt)
-    const unplacedMs = typeof job.unplacedAt === "string" ? Date.parse(job.unplacedAt) : Number.NaN;
-    if (a.status === "ARRIVED" && !a.plannedStartAt && a.checkedInAt && Number.isFinite(unplacedMs) && unplacedMs >= a.checkedInAt.getTime()) continue;
+    // มติ Q18 (ยุคการมาถึง): ข้ามเฉพาะเมื่อ job.unplacedFor === checkedInAt ปัจจุบันตรงตัว
+    if (a.status === "ARRIVED" && !a.plannedStartAt && a.checkedInAt && typeof job.unplacedFor === "string" && Date.parse(job.unplacedFor) === a.checkedInAt.getTime()) continue;
     const rids: string[] = Array.isArray(job.resourceIds) ? job.resourceIds : a.resourceId ? [a.resourceId] : [];
     const s = a.startAt.getTime();
     const dur = typeof job.durationMin === "number" ? job.durationMin * MIN : a.endAt.getTime() - s - (job.bufferMin ?? a.bufferMin) * MIN;
@@ -399,6 +398,7 @@ try {
   await mk("P22det", { staffN: 5, res: room1, svcs: OILS });
   await mk("P23a", { staffN: 3, res: room1, svcs: OILS });
   await mk("P23b", { staffN: 3, res: room1, svcs: OILS });
+  await mk("P24", { staffN: 3, res: room1, svcs: OILS });
   for (let r = 0; r < 3; r++) await mk(`P22r${r}`, { staffN: 5, res: room1, svcs: OILS });
   await finishSetup(units);
   console.log(`(fixtures พร้อม · ${units.length} หน่วย · วัน ${DS} · now จริง ${new Date().toISOString()})`);
@@ -1010,6 +1010,35 @@ try {
           afterCancel: { st: r1.status, marker: r1.policySnapshot?.job?.unplacedAt ?? null }, steps,
           afterRevive: { st: r2.status, marker: r2.policySnapshot?.job?.unplacedAt ?? null, checkedIn: r2.checkedInAt ? HM(r2.checkedInAt.getTime()) : null, planned: r2.plannedStartAt ? HM(r2.plannedStartAt.getTime()) : null },
           walkInNowOil30: pure ? HM(new Date(pure).getTime()) : null, book1030: bk.ok ? "OK!" : bk.code, afterReplan: { planned: r3.plannedStartAt ? HM(r3.plannedStartAt.getTime()) : null, marker: r3.policySnapshot?.job?.unplacedAt ?? null }, sweep: sw.contract, physical: sw.physical });
+    });
+  }
+
+  // ═══════════ P24 ผลข้างเคียง Q18: ปุ่ม "มาถึง" (setAppointmentStatus → ARRIVED) ตั้ง checkedInAt = now ═══════════
+  if (want("P24")) {
+    console.log("\n── P24: ปุ่มมาถึง กดช้า 20 นาที (ลูกค้ามาตรงเวลา) / ปลุก NO_SHOW → ARRIVED · ตัววางคิวมองว่าอย่างไร ──");
+    await step("P24", async () => {
+      const u = U.P24;
+      const a = await bookOk(u, "OIL", 0, DS, 600);
+      const st = await BK.setAppointmentStatus(u.tenantId, u.id, a, "ARRIVED");   // กดจริงด้วยนาฬิกาจริง (6 วันก่อนวันนัด)
+      const r1 = await apRow(a);
+      await RN.runPlanner(u.ctx, { now: at(DS, 620) });
+      const r2 = await apRow(a);
+      const sw = await sweep(u.id);
+      rec("P24", st.ok && sw.contract.length === 0, "INFO",
+        "ปุ่มมาถึง: checkedInAt ใช้นาฬิกาจริง (ไม่รับ now ฉีด) · ถ้ากดก่อนเวลานัด ⇒ ตัววางคิวเห็นว่ามาก่อน · ถ้ากดหลังผ่อนผัน ⇒ ถูกจัดเป็นมาสายเข้าแถว (เปลี่ยนจากเดิมที่ checkedInAt ว่าง)",
+        { ok: st.ok, checkedInAt: r1.checkedInAt?.toISOString() ?? null, plannedAfter: r2.plannedStartAt ? HM(r2.plannedStartAt.getTime()) : null, sweep: sw.contract });
+    });
+    await step("P24-pure", async () => {
+      const D0 = Date.UTC(2026, 10, 6) - 7 * 3_600_000; const Tm = (h: string) => { const [x, y] = h.split(":").map(Number); return D0 + (x * 60 + y) * MIN; };
+      const S0 = { queueOrder: "SINGLE_LINE", backfill: true, safetyBeforeBookingMin: 0, graceMin: 15, noShowAfterMin: 30, lateAction: "RELEASE", priorityEnabled: false, walkInMaxWaitMin: 600, overrunExtendMin: 5, minBreakMin: 0, maxJobsPerDay: null };
+      const st = [{ id: "s0", name: "s0", sortOrder: 1, windows: [{ startAt: Tm("10:00"), endAt: Tm("20:00") }], services: null }];
+      const svc = [{ id: "OIL", name: "o", durationMin: 60, bufferAfterMin: 0, resourceKinds: ["ROOM"] }];
+      const res = [{ id: "rA", kind: "ROOM", name: "rA", sortOrder: 1, capacity: 1, cleanupMin: 15, blocks: [] }];
+      const jb = (ci: number | null) => ({ id: "A", label: "A", kind: "BOOKED", status: "ARRIVED", serviceId: "OIL", assignMode: "SPECIFIC", staffId: "s0", startAt: Tm("10:00"), issuedAt: Tm("08:00"), checkedInAt: ci, startedAt: null, priority: false, resourceIds: ["rA"] });
+      const w = { id: "W", label: "W", kind: "WALKIN", status: "QUEUED", serviceId: "OIL", assignMode: "ANY", staffId: null, startAt: null, issuedAt: Tm("10:05"), checkedInAt: Tm("10:05"), startedAt: null, priority: false };
+      const run = (ci: number | null) => { const p = PL.planDay({ now: Tm("10:20"), settings: S0, staff: st, services: svc, resources: res, jobs: [jb(ci), w] }); return p.jobs.map((j: any) => `${j.jobId}:${j.reason}@${j.startAt ? HM(j.startAt) : "-"}`); };
+      const before = run(null), after = run(Tm("10:20"));
+      rec("P24-pure", true, "INFO", "เทียบแผน: ปุ่มมาถึงแบบเดิม (checkedInAt ว่าง) vs Q18 (checkedInAt = เวลากด 10:20 · นัด 10:00)", { legacyNull: before, q18Stamp: after });
     });
   }
 
