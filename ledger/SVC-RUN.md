@@ -88,7 +88,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | B.10 | จบงาน→บิลพัก POS + ค่าคอมฯ | เข้ม | | ✅ | 20e5421c | 61/64 · 2 ผู้ตรวจ (Q1–Q11 ปิด · probe 27 HOLD 0 BREACH) · POS 2 จุด · void บิลจ่ายแล้วฝั่งจองคิว · หนี้: เปิดบิลใหม่หลัง void · ชุด/สูตร/ชั่ง = BAD_INPUT |
 | B.11 | จอตั้งค่าจองคิว + สิทธิ์ | เบา | | ✅ | 64e6c184 | 84/95 · V-2 ภาพรอ build รวม |
 | B.12 | ปิด B1 (G1) ร้านตัดผม | — | ผู้คุม | ⬜ | | U1 |
-| B.13 | ทรัพยากร | เข้ม | | ⬜ | | |
+| B.13 | ทรัพยากร | เข้ม | | ✅ | 698cd1e4 | b.13 84/87 (V-1 · SF-1 accept-time · G-2 = b.3 S-9 เที่ยงคืน → ORACLE-EDIT แล้ว 74/75) · probe-b13-b 76/76 · b.2 93/93 · b.4/b.5/b.7/b.8/b.16 0 failed · smoke/fitness/tsc ผ่าน · 7 รอบแก้ Q1–Q19 · migration svc_b13 |
 | B.14 | ปฏิทินลากย้าย | เบา | | ⬜ | | |
 | B.15 | คู่รัก/กลุ่ม | เข้ม | | ⬜ | | |
 | B.16 | ความชอบลูกค้า | เบา | | ✅ | b15182dd | b.16 45/46 (S-1 accept-time) · probe-b16-b exit 0 · b.4/b.5/b.6/b.11 0 failed · b.0 แดงเฉพาะ G-8 (pos-p2.4 L2 ทะเบียน createSale จาก B.10 → แก้ใน G1-D) · member-m1.3 ข้อตรรกะผ่าน · S3.x ภาพต้องมี QC_BASE (ENV) · smoke/fitness/tsc ผ่าน |
@@ -213,3 +213,4 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 31 ต.ค. ~15Z · ✅ **D.19** (40/53) · merge 9501cba6 · ด่าน R (ฐานหลัก หลัง G1): d.19 69/71 0 failed · probe-d19-b exit 0 · d.8/d.10/d.11/d.9/d.13 --no-regression 0 failed · smoke 6/6 · fitness 53/53 · tsc exit 0 · G1 จบ 306/478 → กำลังจำแนก (g1-classify.md)
 - 31 ต.ค. ~16Z · ✅ **D.12** (41/53) · merge 1ab720fb · ด่าน S (ฐานหลัก): d.12 126/127 · probe-d12-b · d.5 · regression 9 ใบ 0 failed ยกเว้น d.6 S-5 (หนี้ FG-3 → D.15) · smoke/fitness/tsc ผ่าน
 - 31 ต.ค. ~16Z · ✅ **B.16** (42/53) · merge b15182dd · ด่าน T (ฐานหลัก): b.16 45/46 · probe-b16-b · regression 0 failed ยกเว้น b.0 G-8 (มาจาก B.10 · อยู่ในรอบแก้ G1-D) · m1.3 S3.x = ภาพไม่มี QC_BASE · smoke/fitness/tsc ผ่าน
+- 31 ต.ค. ~17Z · ✅ **B.13** (43/53) · merge 698cd1e4 · ด่าน U (ฐานหลัก): b.13 84/87 · probe-b13-b 76/76 · b.2 93/93 · regression 0 failed · ORACLE-EDIT b3-S9-midnight (ร้าน 24 ชม. ข้ามเที่ยงคืน) · หนี้: A9 walk-in ข้ามเที่ยงคืน · ปุ่ม 'มาถึง' = ตอนกด (คำถามเจ้าของ) · rescheduleByShop/BySelf ลำดับล็อกทรัพยากร → แก้ใน B.14 · 🔴 deploy: migration 20261225000000_svc_b13
