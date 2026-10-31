@@ -569,9 +569,13 @@ async function chainSig(db: SigDb, tenantId: string, unitId: string, chain: stri
   return createHash("sha256")
     .update(
       canon({
-        bills: bills.map((b) => [b.id, b.status, b.totalSatang, b.accountDocumentId, typeof b.sentVia === "string" && b.sentVia.startsWith("sending:")]),
+        // SVC D.12 (Y27) ▸ สถานะบิลแบบชั้น (ร่าง/พัก/ยกเลิก vs ส่งแล้ว) — PAID/PARTIAL/OVERDUE ที่เปลี่ยนตามการลดหนี้/ชำระไม่อยู่ในลายนิ้วมือ (ยอดอยู่ใน docs) ◂
+        bills: bills.map((b) => [b.id, ["DRAFT", "HELD", "VOID"].includes(b.status) ? b.status : "SENT", b.totalSatang, b.accountDocumentId, typeof b.sentVia === "string" && b.sentVia.startsWith("sending:")]),
         // Y23 ▸ ใบลดหนี้ค่าห้องส่วนเกินของใบนี้ออกหลังตรึง (ยอดอยู่ในบรรทัดที่ตรึงแล้ว) ⇒ ไม่อยู่ในลายนิ้วมือ ◂
-        docs: d.heads.filter((h) => !(h.docType === "CREDIT_NOTE" && h.refType === RENT_CREDIT_REF && (h.refId ?? "").startsWith(`${moveOutId}:`))).map((h) => [h.id, h.docType, h.status, Number(h.grandTotal), d.pays.get(h.id) ?? 0]),
+        //   Y27 ▸ สถานะเอกสาร = มีผล/ไม่มีผล เท่านั้น (คิดจากยอดรวม · ยอดชำระ · ใบลด/เพิ่มหนี้อื่นที่อยู่ในรายการ) — ใบลดหนี้ค่าห้องของใบนี้ทำให้ PARTIAL→PAID ได้โดยไม่ STALE ◂
+        docs: d.heads
+          .filter((h) => !(h.docType === "CREDIT_NOTE" && h.refType === RENT_CREDIT_REF && (h.refId ?? "").startsWith(`${moveOutId}:`)))
+          .map((h) => [h.id, h.docType, LIVE_ST(h.status) ? "LIVE" : "DEAD", Number(h.grandTotal), d.pays.get(h.id) ?? 0]),
         waived: waived.map((w) => w.targetId),
         items: insp.items,
         meters: insp.meters,
@@ -1003,6 +1007,14 @@ async function cancelledCleanup(c: OrphanCtx, moveOutId: string, leaseId: string
   const row = await tenantDb({ tenantId: c.tenantId, unitId: c.unitId }).dormMoveOut.findFirst({ where: { id: moveOutId }, select: { status: true } });
   if (row?.status !== "CANCELLED") return 0;
   const uv = await unitVals(c.tenantId, c.unitId, roomId);
+  // SVC D.12 (Y28) ▸ แถว "NONE" (ลดหนี้ไม่ได้เพราะตอนนั้นยังไม่พบใบ) ⇒ หาใบของรุ่นนั้นอีกครั้ง — ผู้ส่งที่มาช้าออกใบทีหลัง ⇒ เปิดแถวให้ลดหนี้ ◂
+  {
+    const row0 = await tenantDb({ tenantId: c.tenantId, unitId: c.unitId }).dormMoveOut.findFirst({ where: { id: moveOutId }, select: { deductions: true } });
+    for (const h of dedOf(row0?.deductions).history.filter((x) => x.creditNoteDocId === "NONE" && !x.invoiceDocId)) {
+      const inv = await moveOutInvoiceOf(c.tenantId, c.unitId, moveOutId, h.rev);
+      if (inv) await orphanizeRev(c, moveOutId, leaseId, h.rev, inv.id, h.reason || "ยกเลิกการแจ้งย้ายออก", now);
+    }
+  }
   const of = await creditOrphans(c, moveOutId, leaseId, uv);
   if (of) throw new Error(`orphan credit: ${of.code}`);
   const cns = await tenantDb({ tenantId: c.tenantId }).$queryRaw<{ id: string; sourceDocId: string | null }[]>`
@@ -2045,6 +2057,8 @@ const settleResultOf = (s: Settle, duplicate: boolean): SettleOk => ({
 const HK_MAX = 5;
 /** SVC D.12 (Y26) ▸ เพดานครั้งของงานเติมใบค่าน้ำไฟย้ายห้อง */
 const TU_MAX = 5;
+/** SVC D.12 (Y28) ▸ เพดานรอบของงานเก็บกวาดใบที่ยกเลิก */
+const CLEANUP_MAX = 5;
 const TRANSFER_UTILITY_FAILED = "dorm.lease.transfer_utility_failed";
 async function markHousekeeping(tenantId: string, unitId: string, moveOutId: string, leaseId: string, roomId: string): Promise<boolean> {
   const cur = await tenantDb({ tenantId, unitId }).dormMoveOut.findFirst({ where: { id: moveOutId }, select: { inspection: true, status: true } });
@@ -2317,13 +2331,31 @@ async function jobsOfTenant(tenantId: string, at: Date, today: string, left: () 
   const cx = await raw.$queryRaw<{ id: string; unitId: string; leaseId: string; roomId: string }[]>`
     SELECT m."id", m."unitId", m."leaseId", l."roomId" FROM "DormMoveOut" m JOIN "DormLease" l ON l."id" = m."leaseId" AND l."tenantId" = m."tenantId"
     WHERE m."tenantId" = ${tenantId} AND m."status" = 'CANCELLED'
-      AND (EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(m."deductions"->'history') = 'array' THEN m."deductions"->'history' ELSE '[]'::jsonb END) h WHERE h->>'creditNoteDocId' IS NULL)
+      AND COALESCE(CASE WHEN jsonb_typeof(m."deductions"->'cleanup'->'attempts') = 'number' THEN (m."deductions"->'cleanup'->>'attempts')::int END, 0) < ${CLEANUP_MAX}
+      AND (EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(m."deductions"->'history') = 'array' THEN m."deductions"->'history' ELSE '[]'::jsonb END) h
+                   WHERE h->>'creditNoteDocId' IS NULL OR (h->>'creditNoteDocId' = 'NONE' AND h->>'invoiceDocId' IS NULL))
         OR EXISTS (SELECT 1 FROM "AccountDocument" d WHERE d."tenantId" = m."tenantId" AND d."refType" = ${RENT_CREDIT_REF} AND d."refId" LIKE m."id" || ':%' AND d."docType"::text = 'CREDIT_NOTE' AND d."status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT')
           AND NOT EXISTS (SELECT 1 FROM "AccountDocument" r WHERE r."tenantId" = d."tenantId" AND r."refType" = ${RENT_CREDIT_REVERSE} AND r."refId" = d."id" AND r."docType"::text = 'DEBIT_NOTE' AND r."status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT'))))
     ORDER BY m."id" ASC LIMIT 200`;
   for (const m of cx) {
     if (left() < 3_000) return;
-    await cancelledCleanup({ tenantId, unitId: m.unitId, actorUserId: null }, m.id, m.leaseId, m.roomId, at).catch((e) => logD12("jobs.cancelled_cleanup", tenantId, e));
+    let err: string | null = null;
+    try {
+      await cancelledCleanup({ tenantId, unitId: m.unitId, actorUserId: null }, m.id, m.leaseId, m.roomId, at);
+    } catch (e) {
+      err = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+      await logD12("jobs.cancelled_cleanup", tenantId, e);
+    }
+    // Y28 ▸ นับครั้ง (+ lastError) ทุกรอบที่หยิบแถวนี้ — ครบ CLEANUP_MAX ⇒ หยุดตรวจแถวนี้ (แถว NONE ที่ไม่มีใบจริงไม่ถูกตรวจตลอดไป) ◂
+    await d12Tx(async (tx) => {
+      const cur = await tx.dormMoveOut.findFirst({ where: { id: m.id, tenantId, unitId: m.unitId }, select: { deductions: true, status: true } });
+      if (!cur || cur.status !== "CANCELLED") return false;
+      const rawD = isRec(cur.deductions) ? cur.deductions : {};
+      const prev = isRec(rawD.cleanup) ? rawD.cleanup : {};
+      const attempts = (isInt(prev.attempts) ? prev.attempts : 0) + 1;
+      await tx.dormMoveOut.updateMany({ where: { id: m.id, tenantId, unitId: m.unitId, status: "CANCELLED" }, data: { deductions: json({ ...rawD, cleanup: { attempts, lastError: err, at: at.toISOString() } }) } });
+      return true;
+    }).catch(() => undefined);
   }
   // (4) SVC D.12 (Y13) ▸ ใบค่าน้ำไฟห้องเดิมของการย้ายห้องที่ล้มหลัง commit (ย้อนหลัง 90 วัน · ไม่มีเครื่องหมายเสร็จ) — idempotent ต่อ ref ◂
   const since = new Date(at.getTime() - 90 * 86_400_000);

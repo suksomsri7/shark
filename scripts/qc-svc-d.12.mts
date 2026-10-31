@@ -1507,6 +1507,23 @@ try {
       return [n?.ok === true && i?.ok === true && s1?.ok === true && cnBefore === 0 && cnAfterSend > 0 && r?.ok === true && c?.ok === true && row?.status === "CANCELLED" && dn === cn && net === hb.total,
         J({ n: codeOf(n), i: codeOf(i), s1: codeOf(s1), cn0: cnBefore, cn1: cnAfterSend, r: codeOf(r), c: codeOf(c), st: row?.status, cn, dn, net, total: hb.total })];
     });
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · Y27) — เพิ่มอย่างเดียว
+    await T("Y27-1", "บิลเดือนวันออกจ่ายบางส่วน (ค้าง ฿100 · ออก 15 พ.ย.) → ส่งใบสรุป (ใบลดหนี้ค่าห้องทำให้บิลจ่ายครบ) → ปิดประกันสำเร็จ (ไม่ STALE) · ยอดคืน/ค้าง = ใบสรุปที่ตรึงทุกสตางค์ · JV ปิด 1", ["sendMoveOutSummary", "settleMoveOut"], async () => {
+      const Y3 = await mkLease({ unitId: DY, roomId: await mkRoom(A, DY, DYx.ty, DYx.b, "903"), typeId: DYx.ty, name: "ผู้เช่า Y3", common: 0 });
+      await dep(Y3);
+      const hb = await histBill(Y3, "2026-11", { elec: [500, 500], water: [100, 100], paid: false, name: "ผู้เช่า Y3" });
+      await payDoc(DY, hb.docId, hb.total - 10_000, "2026-11-04");
+      const n = await notice(cO, Y3, "2026-11-15", "2026-10-10");
+      const mo = n?.moveOutId ?? "-";
+      const i = await inspect(cO, Y3, mo, NORMAL5, [], "2026-11-15");
+      const s1 = await sendSum(cO, Y3, mo, BK("2026-11-15", "11:00"));
+      const sum = await summary(cO, Y3, mo, BK("2026-11-15", "11:30"));
+      const cn = await creditedOf(hb.docId);
+      const st = await settle(cO, Y3, mo, BK("2026-11-15", "12:00"));
+      const jv = await settleJvs(DY, Y3.leaseId);
+      return [n?.ok === true && i?.ok === true && s1?.ok === true && cn > 0 && st?.ok === true && st.refundSatang === sum?.refundSatang && st.tenantOwesSatang === sum?.tenantOwesSatang && st.heldSatang === DEP && jv.length === 1,
+        J({ s1: codeOf(s1), cn, st: st && [codeOf(st), st.refundSatang, st.tenantOwesSatang], sum: sum && [sum.refundSatang, sum.tenantOwesSatang, sum.frozen ? "frozen" : "live"], jv: jv.length })];
+    });
   }
 
   // ═══════════════ W. ต่อสัญญา (DS) ═══════════════

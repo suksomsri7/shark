@@ -666,10 +666,11 @@ export type LeaseChangeModel = {
   oldMeters: { meterId: string; kind: "ELEC" | "WATER" }[];
   /** SVC D.12 (Y25) ▸ มิเตอร์ห้องของห้องปลายทางแต่ละห้อง (ช่องเลข MOVE_IN) ◂ */
   roomMeters: Record<string, { meterId: string; kind: "ELEC" | "WATER" }[]>;
+  selectedToRoomId: string | null;
   can: { notice: boolean; lease: boolean };
 };
 /** อ่านอย่างเดียว · ด่านเดียวกับฟังก์ชันเขียน (ไม่ผ่าน ⇒ null) · ไม่มีเบอร์/เลขบัตร */
-export async function leaseChangeModel(ctx: LeaseChangeCtx, input: { unitId: string; leaseId: string }, deps?: { now?: Date }): Promise<LeaseChangeModel | null> {
+export async function leaseChangeModel(ctx: LeaseChangeCtx, input: { unitId: string; leaseId: string; toRoomId?: string | null }, deps?: { now?: Date }): Promise<LeaseChangeModel | null> {
   try {
     if (!isRec(input)) return null;
     const gm = await d12Gate(ctx, input.unitId, "manage");
@@ -690,7 +691,9 @@ export async function leaseChangeModel(ctx: LeaseChangeCtx, input: { unitId: str
     const noticeDays = isInt(nd) && nd >= 0 ? nd : 30;
     const mo = await db.dormMoveOut.findFirst({ where: { leaseId: lease.id, status: { not: "CANCELLED" } }, select: { id: true } });
     const rooms = (await db.hotelRoom.findMany({ select: { id: true, number: true }, orderBy: { number: "asc" }, take: 500 })).filter((r) => r.id !== lease.roomId && roomVisible(g, r.id));
-    const allMeters = await db.dormMeter.findMany({ where: { role: "ROOM", removedAt: null }, select: { id: true, kind: true, roomId: true }, orderBy: [{ kind: "asc" }, { id: "asc" }], take: 2000 });
+    // SVC D.12 (Y29) ▸ มิเตอร์เฉพาะห้องต้นทาง + ห้องปลายทางที่เลือก (?to=) — ไม่อ่านทั้งหน่วย ◂
+    const toId = isStr(input.toRoomId) && rooms.some((r) => r.id === input.toRoomId) ? input.toRoomId : (rooms[0]?.id ?? null);
+    const allMeters = await db.dormMeter.findMany({ where: { role: "ROOM", removedAt: null, roomId: { in: toId ? [lease.roomId, toId] : [lease.roomId] } }, select: { id: true, kind: true, roomId: true }, orderBy: [{ kind: "asc" }, { id: "asc" }] });
     const meters = allMeters.filter((m) => m.roomId === lease.roomId);
     const roomMeters: LeaseChangeModel["roomMeters"] = {};
     for (const m of allMeters) if (m.roomId && m.roomId !== lease.roomId && roomVisible(g, m.roomId)) (roomMeters[m.roomId] ??= []).push({ meterId: m.id, kind: m.kind === "WATER" ? "WATER" : "ELEC" });
@@ -713,6 +716,7 @@ export async function leaseChangeModel(ctx: LeaseChangeCtx, input: { unitId: str
       rooms,
       oldMeters: meters.map((m) => ({ meterId: m.id, kind: m.kind === "WATER" ? "WATER" : "ELEC" })),
       roomMeters,
+      selectedToRoomId: toId,
       can: { notice: !!gm, lease: !!gl },
     };
   } catch (e) {

@@ -25,7 +25,7 @@ export default async function DormMoveOutPage({
   searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
-  searchParams?: Promise<{ room?: string; id?: string; lease?: string; at?: string }>;
+  searchParams?: Promise<{ room?: string; id?: string; lease?: string; to?: string; at?: string }>;
 }) {
   const { unitSlug } = await params;
   const sp = searchParams ? await searchParams : undefined;
@@ -47,7 +47,8 @@ export default async function DormMoveOutPage({
   const leaseId = typeof sp?.lease === "string" && sp.lease.trim() ? sp.lease.trim().slice(0, 64) : undefined;
   // SVC D.12 (Y2) ▸ ?lease=<id> จากหน้าสัญญา: มีใบย้ายออกแล้ว ⇒ จอ 07 · ยังไม่มี ⇒ จอเริ่ม (แจ้งย้ายออก · ต่อสัญญา · ย้ายห้อง) ◂
   if (!id && !room && leaseId) {
-    const lease = await leaseChangeModel(ctx, { unitId: unit.id, leaseId }, { now: qc.now });
+    const toRoomId = typeof sp?.to === "string" && sp.to.trim() ? sp.to.trim().slice(0, 64) : null;
+    const lease = await leaseChangeModel(ctx, { unitId: unit.id, leaseId, toRoomId }, { now: qc.now });
     if (!lease) notFound();
     if (!lease.moveOutId || !access.manage)
       return (

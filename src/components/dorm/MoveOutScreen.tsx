@@ -615,7 +615,7 @@ export function MoveOutStart({ unitSlug, lease, actions }: MoveOutStartProps) {
   const [shortReason, setShortReason] = useState("");
   const [months, setMonths] = useState("12");
   const [renewRent, setRenewRent] = useState(bahtInput(lease.rentSatang));
-  const [toRoom, setToRoom] = useState(lease.rooms[0]?.id ?? "");
+  const [toRoom, setToRoom] = useState(lease.selectedToRoomId ?? lease.rooms[0]?.id ?? "");
   const [effDate, setEffDate] = useState(lease.suggestTransferDate);
   const [transferRent, setTransferRent] = useState("");
   const [oldReads, setOldReads] = useState<Record<string, string>>({});
@@ -703,7 +703,16 @@ export function MoveOutStart({ unitSlug, lease, actions }: MoveOutStartProps) {
             {lease.rooms.length ? (
               <label className="flex flex-col gap-1 text-xs">
                 ห้องปลายทาง
-                <select value={toRoom} onChange={(e) => setToRoom(e.target.value)} className="rounded border px-2 py-1 text-sm">
+                <select
+                  value={toRoom}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setToRoom(v);
+                    // Y29 ▸ มิเตอร์ห้องปลายทางโหลดจาก server เฉพาะห้องที่เลือก ◂
+                    if (typeof window !== "undefined") window.location.href = `/app/u/${unitSlug}/dorm/moveout?lease=${encodeURIComponent(lease.leaseId)}&to=${encodeURIComponent(v)}#transfer`;
+                  }}
+                  className="rounded border px-2 py-1 text-sm"
+                >
                   {lease.rooms.map((r) => (
                     <option key={r.id} value={r.id}>{`ห้อง ${r.number}`}</option>
                   ))}
