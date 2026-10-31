@@ -21,6 +21,7 @@
 //      ต่อท้าย `--no-regression` ข้ามหมวด G (SKIP — ไม่นับผ่าน · iso.sh ทิ้ง env จึงใช้ SVC_D5_NO_REGRESSION=1 ผ่าน iso ไม่ได้)
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { existsSync, readFileSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
@@ -29,7 +30,7 @@ import { randomBytes } from "node:crypto";
 const SELF = fileURLToPath(import.meta.url);
 const ROOT = join(dirname(SELF), "..");
 const LABEL = "qc-svc-d.5";
-const SVC_HOST = "ep-mute-scene";
+const SVC_HOST = svcQcHostMark(); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) เดิม "ep-mute-scene"
 const FORBIDDEN_HOSTS = ["ep-royal-night", "ep-plain-art", "ep-cool-shadow", "ep-weathered-river", "ep-frosty-lab", "ep-fragrant-thunder"];
 const RUN_CMD = "bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-d.5.mts";
 

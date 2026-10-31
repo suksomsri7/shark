@@ -25,6 +25,7 @@
 //    bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-r0.5.mts
 // แถวของข้อสอบ: label/ID ขึ้นต้น "svc-r05-" · ลบใน finally (รวมของรอบก่อนที่ค้าง) · env ที่สลับคืนใน finally
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -37,7 +38,7 @@ type Any = any;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LABEL = "qc-svc-r0.5";
-const SVC_HOST = "ep-mute-scene";
+const SVC_HOST = svcQcHostMark(); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) เดิม "ep-mute-scene"
 const FORBIDDEN_HOSTS = ["ep-royal-night", "ep-plain-art", "ep-cool-shadow", "ep-weathered-river", "ep-frosty-lab", "ep-fragrant-thunder"];
 
 // ═══════════════ 0. ด่านฐานข้อมูล (ในตัวข้อสอบ) ═══════════════

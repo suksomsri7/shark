@@ -4,6 +4,7 @@
 // หมวดตาม ledger/svc-briefs/svc-brief-d.4.md §12 R1–R15 + ตัวตรวจเงินหลังทุกฉาก (JV สมดุล · ยอดถือ = ไฟล์ · ย้อน = กลับรายการ ไม่ลบ)
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { existsSync, writeFileSync, appendFileSync, readFileSync, unlinkSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -25,7 +26,7 @@ const imp = (rel: string): Promise<any> => import(pathToFileURL(join(ROOT, rel))
 for (const n of ["DATABASE_URL", "DIRECT_URL"] as const) {
   let hn = "";
   try { hn = new URL(process.env[n] ?? "").hostname; } catch { /* */ }
-  if (!hn.startsWith("ep-mute-scene")) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
+  if (!hn.startsWith(svcQcHostMark()) /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) */) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
 }
 if (process.env.APP_ENV === "production" || process.env.CI) { console.error("🔴 probe: env ต้องห้าม"); process.exit(4); }
 if ((process.env.SESSION_SECRET ?? "").length < 32) process.env.SESSION_SECRET = randomBytes(32).toString("hex");

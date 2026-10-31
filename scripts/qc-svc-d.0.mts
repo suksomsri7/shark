@@ -18,6 +18,7 @@
 //      (ห้าม timeout ครอบ · หมวด G เรียกชุดอื่นต่อกันหลายนาที · ตั้ง SVC_D0_NO_REGRESSION=1 = ข้าม G เป็น SKIP ซึ่งไม่นับผ่าน)
 // หมวด P / M-6 / M-7 เทียบ git กับ BASE_SHA — ความหมายคือ "ตอนรับ D.0" (M-6/M-7 SKIP เองเมื่อมี migration SVC ใบหลัง)
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync, execFileSync } from "node:child_process";
@@ -26,7 +27,7 @@ import pg from "pg";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LABEL = "qc-svc-d.0";
-const SVC_HOST = "ep-mute-scene";
+const SVC_HOST = svcQcHostMark(); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) เดิม "ep-mute-scene"
 const FORBIDDEN_HOSTS = ["ep-royal-night", "ep-plain-art", "ep-cool-shadow", "ep-weathered-river", "ep-frosty-lab", "ep-fragrant-thunder"];
 const BASE_SHA = "93a42093"; // tip ของ session/svc ก่อน D.0 (หลัง B.0)
 const SVC_B = "20261222000000_svc_b";
