@@ -31,6 +31,8 @@ export const BOOKING_SETTINGS_LAYOUT: {
   staffShopGroups: DomainGroup[];
   staffShopExtraKeys: string[];
   servicePanelExclude: string[];
+  /** SVC B.13 ▸ คีย์ "ทรัพยากรที่บริการนี้ต้องใช้" — แผงบริการวาดเป็นตัวเลือกชนิด (แถวยังมาจาก loadSettingsForm) ◂ */
+  serviceKindsKey: string;
   /** คีย์ที่หน้า 14 ใช้ทำรายการข้อความ (เปิด/ปิดรายชนิด) */
   msgEnabledKey: string;
   /** prefix ของคีย์ข้อความรายชนิด (`<prefix><kind>`) */
@@ -74,6 +76,7 @@ export const BOOKING_SETTINGS_LAYOUT: {
   staffShopGroups: [{ domain: "booking", group: "staff" }],
   staffShopExtraKeys: ["booking.booking.onlineSharePct"],
   servicePanelExclude: ["booking.service.cleanupMin", "booking.service.onlineBookable"],
+  serviceKindsKey: "booking.service.resourceKinds",
   msgEnabledKey: "booking.msg.enabled",
   msgKeyPrefix: "booking.msg.",
   deviceGroups: { tv: "display", kiosk: "kiosk" },
@@ -233,6 +236,33 @@ export type StaffModel = PageBase & {
 };
 
 export type BookingSettingsModel = PolicyModel | MessagesModel | ServicesModel | StaffModel;
+
+// ───────────────────────── SVC B.13 ▸ จอง 12 ส่วน "ห้อง · เตียง · อุปกรณ์" ─────────────────────────
+
+export type ResourceStatus = "ACTIVE" | "MAINT" | "OFF";
+export type ResourceViewRow = {
+  id: string;
+  name: string;
+  kind: string;
+  kindTh: string;
+  capacity: number;
+  cleanupMin: number;
+  sortOrder: number;
+  active: boolean;
+  /** บริการที่ประกาศชนิดนี้ (อนุมาน · §9 ข้อ 2) */
+  servicesTh: string;
+  status: ResourceStatus;
+  /** "ใช้งาน" · "ปิดซ่อมถึง 5 พ.ย." · "ปิดใช้" */
+  statusTh: string;
+  maintenance: { startAt: string; endAt: string | null; note: string | null }[];
+};
+
+export type ResourcesModel = {
+  rows: ResourceViewRow[];
+  total: number;
+  underRepair: number;
+  canEdit: boolean;
+};
 
 export const HOURS_SOURCE_TH: Record<HoursSource, string> = {
   HR_SHIFT: "กะจากระบบพนักงาน",

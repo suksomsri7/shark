@@ -10,6 +10,7 @@ import { refresh } from "next/cache";
 import { requireUnit } from "@/lib/core/context";
 import { assertBookingActionAllowed } from "@/lib/modules/booking/access";
 import { applyBookingRolePreset, applyBookingTemplate, setServiceBooking, setStaffService } from "@/lib/modules/booking/settings-model";
+import { createResource, setResourceMaintenance, updateResource, type MaintenanceWindow, type ResourceInput, type ResourcePatch } from "@/lib/modules/booking/resources"; // SVC B.13
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -89,6 +90,42 @@ export async function applyBookingRolePresetAction(unitSlug: string, input: Role
   const { actor, ctx } = actorOf(auth);
   const role = input?.role === "LEAD" || input?.role === "PROVIDER" || input?.role === "CASHIER" ? input.role : ("" as "LEAD");
   const r = await applyBookingRolePreset(actor, ctx, { unitId: unit.id, membershipId: str(input?.membershipId), role });
+  if (r.ok) refresh();
+  return r;
+}
+
+// ── SVC B.13 ▸ ทรัพยากร (จอง 12 ส่วน "ห้อง · เตียง · อุปกรณ์") — ด่าน action ก่อนอ่าน/เขียน · facade ตรวจสิทธิ์ซ้ำ + ขอบเขตร้าน/สาขาเอง ◂
+type ResourceFormInput = { kind?: unknown; name?: unknown; capacity?: unknown; cleanupMin?: unknown; sortOrder?: unknown; active?: unknown };
+const pickResource = (i: ResourceFormInput | null | undefined) => {
+  const o: Record<string, unknown> = {};
+  for (const k of ["kind", "name", "capacity", "cleanupMin", "sortOrder", "active"] as const) if (i && i[k] !== undefined) o[k] = i[k];
+  return o;
+};
+
+export async function createResourceAction(unitSlug: string, input: ResourceFormInput) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "createResourceAction");
+  const { actor } = actorOf(auth);
+  const r = await createResource(actor, { tenantId: auth.active.tenantId, unitId: unit.id, actorUserId: auth.active.userId }, pickResource(input) as ResourceInput);
+  if (r.ok) refresh();
+  return r;
+}
+
+export async function updateResourceAction(unitSlug: string, input: { id: string } & ResourceFormInput) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "updateResourceAction");
+  const { actor } = actorOf(auth);
+  const r = await updateResource(actor, { tenantId: auth.active.tenantId, unitId: unit.id, actorUserId: auth.active.userId }, str(input?.id), pickResource(input) as ResourcePatch);
+  if (r.ok) refresh();
+  return r;
+}
+
+export async function setResourceMaintenanceAction(unitSlug: string, input: { id: string; windows: MaintenanceWindow[] }) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "setResourceMaintenanceAction");
+  const { actor } = actorOf(auth);
+  const windows = Array.isArray(input?.windows) ? input.windows : ([] as MaintenanceWindow[]);
+  const r = await setResourceMaintenance(actor, { tenantId: auth.active.tenantId, unitId: unit.id, actorUserId: auth.active.userId }, str(input?.id), windows);
   if (r.ok) refresh();
   return r;
 }

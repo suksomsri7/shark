@@ -21,3 +21,10 @@
 - scope.ts ลงทะเบียน `DormImportBatch: unit` แล้ว — client ร่วม (ทรีหลัก) ต้อง generate หลัง merge ใบนี้เท่านั้น (ก่อน merge = assertRegistryComplete ล้มในทรีที่ไม่มีบรรทัดนี้)
 - คอลัมน์ `parsed` เก็บหัว/แถวจากไฟล์ (มีชื่อ/เบอร์ผู้เช่า) — PII ในฐาน · DTO ปิดเบอร์/เลขบัตรเสมอ · หนี้: นโยบายลบ parsed ของชุดเก่า (เช่น หลัง CREATED 90 วัน)
 - J4: เงินประกันยกมาลง Dr เงินสด/ธนาคาร (ทางเดียวกับ D.5) — ร้านที่ตั้งยอดยกมาธนาคารเองจะนับซ้ำ · จอมีคำเตือน · ให้ผู้ทำบัญชีตรวจก่อนเปิดลูกค้าจริง (D.15)
+
+## B.13 ทรัพยากรร้านนวด (31 ต.ค. · มติ R1 ทาง A)
+- migration `20261225000000_svc_b13` (additive · ตารางใหม่ `SvcResourceBlock` 1 ตาราง + ดัชนี `(tenantId, resourceId, startAt)` + CHECK `SvcResourceBlock_range_check` (endAt IS NULL OR endAt > startAt) ของตารางนี้) — ไม่แตะตารางเดิม · ลงก่อน next build ตามลำดับเดิม
+- สร้างจาก `prisma migrate diff --from-schema <schema f84270a3> --to-schema prisma/schema --script` (ไม่ใช้ migrate dev) · อ่านครบทุกบรรทัด: CREATE TABLE/INDEX + ADD CONSTRAINT ของตารางใหม่เท่านั้น · ไม่มี DROP/RENAME
+- ลงแล้ว: ฐานเลน l3 (ep-royal-bar) ด้วย `bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec prisma migrate deploy` · **ผู้คุมลงต่อ: ฐานหลัก (ep-mute-scene) + ฐานเลน l1/l2 ตอน merge** (เช็ก `_prisma_migrations` ก่อน)
+- core/scope.ts ลงทะเบียน `SvcResourceBlock: unit` แล้ว — client ร่วม (ทรีหลัก/l1) ต้อง `prisma generate` หลัง merge ใบนี้เท่านั้น (ก่อน merge = assertRegistryComplete ล้มในทรีที่ไม่มีบรรทัดนี้ · แบบ D.4)
+- ไม่มี backfill: นัดเดิมไม่มี resourceId ⇒ ตัววางคิวผูกให้เมื่อว่าง (§9 ข้อ 7) · ร้านต้องประกาศชนิดของบริการก่อนเปิดจอง (คู่มือ C.2)

@@ -2,14 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { resetSettingAction, saveSettingsAction } from "@/lib/core/settings/actions";
-import { loadBookingSettingsPage } from "@/lib/modules/booking";
+import { bookingResourcesModel, listResources, loadBookingSettingsPage } from "@/lib/modules/booking";
 import BookingStaffSettings from "@/components/booking/settings/BookingStaffSettings";
 import { setStaffReceivingAction, linkStaffToHrAction } from "@/lib/actions/booking";
+import { createResourceAction, setResourceMaintenanceAction, updateResourceAction } from "@/lib/actions/booking-settings";
 import { queueRoster } from "@/lib/modules/booking/service";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 
-// ฟังก์ชันย่อย "<คำเรียกผู้ให้บริการ>" ของระบบจอง = จอง 12 ส่วนคน (SVC B.11 · ภาพ ledger/design-booking/12-staff-resources.png · ทรัพยากร = B.13)
+// ฟังก์ชันย่อย "<คำเรียกผู้ให้บริการ>" ของระบบจอง = จอง 12 ส่วนคน (SVC B.11 · ภาพ ledger/design-booking/12-staff-resources.png) + ส่วนทรัพยากร (SVC B.13)
 // มติเจ้าของ 13 ส.ค. 2026: เพิ่ม/ลบพนักงานทำที่ระบบ "พนักงาน HR" ที่เดียว (เดิมกรอกคนเดิม 2 ที่)
 // ส่วนบน = ตาราง + แผงตั้งค่าการรับงาน (B.11) · ส่วนล่างคงปุ่มเดิม: ติ๊กรับคิวที่สาขานี้ · รวมช่างเข้า HR
 // ?staff= = id หรือชื่อตรงตัวในสาขา (ไม่พบ ⇒ 404) · ผู้กระทำจาก session (auth.active) เท่านั้น
@@ -39,11 +40,29 @@ export default async function BookingStaffPage({
     unitId: unit.id,
   });
   const receivingCount = rows.filter((r) => r.receiving).length;
+  // SVC B.13 ▸ ห้อง · เตียง · อุปกรณ์ (ใต้ตารางคน) — action ผูก unitSlug · ด่านสิทธิ์อยู่ใน action + facade ◂
+  const resourceRows = await listResources({ tenantId: auth.active.tenantId, unitId: unit.id });
+  const resourceModel = await bookingResourcesModel(actor, ctx, unit.id, resourceRows);
   const muted = "text-[color:var(--color-muted)]";
 
   return (
     <div className="flex flex-col gap-5">
-      <BookingStaffSettings model={model} actions={{ save: saveSettingsAction, reset: resetSettingAction }} />
+      <BookingStaffSettings
+        model={model}
+        actions={{ save: saveSettingsAction, reset: resetSettingAction }}
+        resources={
+          resourceModel
+            ? {
+                model: resourceModel,
+                actions: {
+                  create: createResourceAction.bind(null, unitSlug),
+                  update: updateResourceAction.bind(null, unitSlug),
+                  maintenance: setResourceMaintenanceAction.bind(null, unitSlug),
+                },
+              }
+            : null
+        }
+      />
       <PageHeader
         title="ใครรับคิวที่สาขานี้"
         desc="ติ๊กพนักงานที่รับนัดของสาขานี้ — ทะเบียนพนักงานอยู่ที่ระบบ “พนักงาน HR” ที่เดียว ไม่ต้องกรอกซ้ำ"

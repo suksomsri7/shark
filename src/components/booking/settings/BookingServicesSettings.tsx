@@ -4,10 +4,13 @@
 // BookingServicesSettings.tsx — จอง 11 "บริการ · วิธีจอง" · SVC B.11 §5.2
 //   ตาราง 8 คอลัมน์ · แผงขวาตั้งค่าการจองของบริการที่เลือก (คอลัมน์เดิม: เก็บห้อง/จองออนไลน์/มัดจำ + ค่าตั้งชั้นบริการ)
 //   ใครทำได้ (ราคา/เวลาเฉพาะคน) · กล่องค่าร้าน (ใช้เมื่อบริการไม่ได้ตั้งเอง)
+// SVC B.13 ▸ แถว "ทรัพยากรที่บริการนี้ต้องใช้" (จาก loadSettingsForm) วาดเป็นตัวเลือกชนิด (ไม่เกิน 3) · บันทึกผ่านร่างเดียวกับแถวอื่น ◂
 // 🔴 ราคา/เวลาต้นฉบับอยู่แคตตาล็อกสินค้า/บริการ (มติเจ้าของ 13 ส.ค.) · ไม่มีคีย์ค่าตั้งในไฟล์นี้ · ไม่มี useRouter
 // ─────────────────────────────────────────────────────────────
 import { useState } from "react";
-import { fieldsOf, type ServiceRow, type ServicesModel } from "./booking-settings-shared";
+import type { SettingsFormModel } from "@/components/settings/settings-shared";
+import { RESOURCE_KINDS, RESOURCE_KIND_LABELS_TH } from "@/lib/modules/booking/resource-kinds";
+import { BOOKING_SETTINGS_LAYOUT, fieldsOf, type ServiceRow, type ServicesModel } from "./booking-settings-shared";
 import {
   BTN,
   BTN_GHOST,
@@ -20,8 +23,65 @@ import {
   PageHead,
   SettingRows,
   Switch,
+  useDraft,
   type BookingSettingsActions,
 } from "./BookingPolicySettings";
+
+/** SVC B.13 ▸ ชนิดทรัพยากรที่บริการต้องใช้ — ปุ่มเลือกชนิด (ลำดับที่กด = ลำดับชนิด) · แก้ไม่ได้ ⇒ แสดงอย่างเดียว ◂ */
+function ResourceKindsRow({ form }: { form: SettingsFormModel }) {
+  const d = useDraft();
+  const [open, setOpen] = useState(false);
+  const f = fieldsOf(form).find((x) => x.key === BOOKING_SETTINGS_LAYOUT.serviceKindsKey);
+  if (!f) return null;
+  const raw = d ? d.valueOf(form, f) : f.value;
+  const cur = Array.isArray(raw) ? raw.filter((k): k is (typeof RESOURCE_KINDS)[number] => (RESOURCE_KINDS as readonly unknown[]).includes(k)) : [];
+  const shown = cur.length ? cur.map((k) => `${RESOURCE_KIND_LABELS_TH[k]} × 1`).join(" + ") : "ไม่ต้องใช้";
+  const toggle = (k: (typeof RESOURCE_KINDS)[number]) => {
+    const next = cur.includes(k) ? cur.filter((x) => x !== k) : cur.length >= 3 ? cur : [...cur, k];
+    d?.setValue(form, f.key, next);
+  };
+  return (
+    <div data-setting-key={f.key} {...(!f.editable ? { "data-locked": "true" } : {})} className="flex flex-col gap-2 border-b py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">ต้องใช้ทรัพยากร</div>
+          <div className={cx("text-xs", MUTED)}>{f.editable ? "เลือกห้อง/เตียงให้อัตโนมัติ" : (f.lockedReasonTh ?? "")}</div>
+        </div>
+        {f.editable ? (
+          <button type="button" data-bk-pill="" className={cx(BTN, "font-semibold")} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            {shown}
+          </button>
+        ) : (
+          <span data-bk-pill="" className="inline-flex min-h-11 items-center rounded-lg border px-3 text-sm font-semibold">{shown}</span>
+        )}
+      </div>
+      {open && f.editable && (
+        <div className="flex flex-col gap-2 rounded-xl bg-[color:var(--color-surface-2)] p-3">
+          <div className="flex flex-wrap gap-2" role="group" aria-label={f.labelTh}>
+            {RESOURCE_KINDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                data-kind={k}
+                aria-pressed={cur.includes(k)}
+                className={cx(cur.includes(k) ? BTN_PRIMARY : BTN_GHOST)}
+                onClick={() => toggle(k)}
+              >
+                {RESOURCE_KIND_LABELS_TH[k]}
+              </button>
+            ))}
+          </div>
+          <p className={cx("text-xs", MUTED)}>ต้องว่างพร้อมผู้ให้บริการ · ไม่เกิน 3 ชนิด · กด “บันทึก” ด้านบนเพื่อใช้</p>
+          <div>
+            <button type="button" className={BTN_GHOST} onClick={() => setOpen(false)}>
+              เสร็จ
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const baht = (satang: number): string => {
   const whole = Math.floor(Math.abs(satang) / 100);
@@ -271,7 +331,8 @@ function ServicePanel({ model, actions }: { model: ServicesModel; actions: Booki
         editable={model.canEditService && model.canEditMoney}
         onSave={(v) => call({ depositSatang: v as number })}
       />
-      {sf && <SettingRows form={sf} />}
+      {sf && <ResourceKindsRow form={sf} />}
+      {sf && <SettingRows form={sf} keys={fieldsOf(sf).map((f) => f.key).filter((k) => k !== BOOKING_SETTINGS_LAYOUT.serviceKindsKey)} />}
       <div className="pt-3 text-sm font-bold">ใครทำได้ (ราคา/เวลาเฉพาะคน)</div>
       <p className={cx("text-xs", MUTED)}>ตั้งราคา/เวลาเฉพาะคนแล้ว ระบบผูกบริการที่คนนั้นทำได้ให้ครบทุกบริการ (ใครทำอะไรได้ยังเหมือนเดิม)</p>
       <div data-bk-who="" className="flex flex-col gap-2 pt-1">

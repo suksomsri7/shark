@@ -34,6 +34,8 @@ const uniqArr = <T extends z.ZodType>(item: T, min = 0, max = 20) =>
 const PREFIX = z.string().regex(/^[A-Z]$/);
 const SLOT_STEPS: readonly number[] = [5, 10, 15, 20, 30, 60];
 const LABEL = z.string().trim().min(1).max(30);
+// SVC B.13 ▸ ชนิดทรัพยากร — สำเนาของ modules/booking/resource-kinds.ts RESOURCE_KINDS (core ห้าม import โมดูล · ข้อสอบ T-0 ตรวจว่าเท่ากัน) ◂
+const RESOURCE_KIND = z.enum(["CHAIR", "BED", "SOFA", "ROOM", "COUPLE_ROOM", "EQUIPMENT", "EXAM_ROOM"]);
 
 const MSG_KINDS = [
   "confirmation",
@@ -277,6 +279,18 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.service.durationSource", type: "enum", labelTh: "แหล่งระยะเวลาบริการ", schema: z.enum(["CATALOG"]), chain: SV, v: x3("CATALOG") }), // #12
   row({ key: "booking.service.cleanupMin", type: "minutes", labelTh: "เวลาเก็บ/ทำความสะอาดหลังบริการ (นาที)", helpTh: "ค่าตั้งต้นของบริการใหม่ — บริการที่มีอยู่ใช้ BookingService.bufferMin (คอลัมน์ชนะ)", schema: MIN, chain: U_SV_RS, v: [0, 10, 5] }), // #13
   row({ key: "booking.service.resourceRule", type: "enum", labelTh: "การใช้ทรัพยากรของบริการ", schema: z.enum(["STAFF_CHAIR", "PER_SERVICE", "EXAM_ROOM"]), chain: SV, v: ["STAFF_CHAIR", "PER_SERVICE", "EXAM_ROOM"] }), // #14
+  // SVC B.13 ▸ ชนิดทรัพยากรที่บริการต้องใช้ (ร้านประกาศเองรายบริการ = ภาพ 11 "ต้องใช้") · ค่าเริ่ม [] ทุกแม่แบบ = ไม่ใช้ทรัพยากร (พฤติกรรมเดิม) ◂
+  row({
+    key: "booking.service.resourceKinds", type: "table", labelTh: "ทรัพยากรที่บริการนี้ต้องใช้",
+    helpTh: "เลือกชนิดห้อง/เตียง/อุปกรณ์ที่ต้องว่างพร้อมผู้ให้บริการ (ไม่เกิน 3 ชนิด) · ว่าง = ไม่ต้องใช้ทรัพยากร",
+    schema: uniqArr(RESOURCE_KIND, 0, 3), chain: SV, v: x3([]),
+  }),
+  // SVC B.13 ▸ Q12: ตัววางคิวเลื่อนนัดเพราะห้อง/เตียงไม่ว่างได้ไม่เกินกี่นาที — เกิน/เลยเวลางานของผู้ให้บริการ ⇒ คงเวลาเดิม + แจ้งบนจอ (resourceShort) ◂
+  row({
+    key: "booking.planner.resourceShiftMaxMin", type: "minutes", labelTh: "เลื่อนนัดเพราะห้อง/เตียงไม่ว่างได้ไม่เกิน (นาที)",
+    helpTh: "เกินนี้หรือเลยเวลางานของผู้ให้บริการ ⇒ คงเวลานัดเดิมและแจ้งบนจอว่าห้อง/เตียงไม่พอ",
+    schema: z.number().int().min(0).max(600), chain: U, v: x3(60),
+  }),
   row({ key: "booking.service.staffCount", type: "int", labelTh: "จำนวนผู้ให้บริการต่องาน", schema: z.number().int().min(1).max(10), chain: SV, v: x3(1) }), // #15
   row({ key: "booking.service.onlineBookable", type: "bool", labelTh: "จองออนไลน์ได้", helpTh: "ค่าตั้งต้นของบริการใหม่ — บริการที่มีอยู่ใช้ BookingService.bookable (คอลัมน์ชนะ)", schema: z.boolean(), chain: SV, v: x3(true) }), // #16
   row({
@@ -534,6 +548,7 @@ const GROUP_LABELS_TH: Record<string, string> = {
   money: "ค่าคอมมิชชันและเงิน",
   course: "คอร์ส",
   privacy: "ความเป็นส่วนตัว",
+  planner: "ตัวจัดคิว", // SVC B.13
 };
 
 const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
@@ -542,6 +557,7 @@ const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
   "booking.staff.servicesMode": { ALL: "ทำได้ทุกบริการ", ASSIGNED: "เฉพาะบริการที่ผูกไว้" },
   "booking.service.durationSource": { CATALOG: "ตามแคตตาล็อกสินค้า/บริการ" },
   "booking.service.resourceRule": { STAFF_CHAIR: "เก้าอี้ประจำของช่าง", PER_SERVICE: "ห้อง/เตียงตามบริการ", EXAM_ROOM: "ห้องตรวจ" },
+  "booking.service.resourceKinds": { CHAIR: "เก้าอี้", BED: "เตียง", SOFA: "โซฟา", ROOM: "ห้อง", COUPLE_ROOM: "ห้องคู่", EQUIPMENT: "อุปกรณ์", EXAM_ROOM: "ห้องตรวจ" }, // SVC B.13
   "booking.booking.extraFields": { MASSAGE_NOTE: "จุดที่ปวด/แรงนวด", SYMPTOM_OPTIONAL: "อาการเบื้องต้น (ไม่บังคับ)" },
   "booking.late.afterGrace": { RELEASE_REQUEUE: "ปล่อยช่อง + ต่อคิวท้าย", WAIT_NOTIFY_COUNTER: "รอไว้ · แจ้งเคาน์เตอร์" },
   "booking.deposit.method": { NONE: "ไม่เก็บมัดจำ", PROMPTPAY_SLIP: "QR พร้อมเพย์ + ตรวจสลิป" },
