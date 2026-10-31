@@ -34,3 +34,7 @@ export type { ExtraLine, BillLine, ServiceBillPreview, FinishFail, FinishResult,
 // SVC B.8 ▸ มัดจำรุ่นแรก (สถานะ · หน้าจ่าย · consumer สลิปอนุมัติ · จอร้าน · ใช้มัดจำในบิลของ B.10) — ด่านสิทธิ์/token อยู่ในฟังก์ชัน ◂
 export { depositInfo, loadDepositPay, submitDepositSlip, onDepositSlipApproved, depositQueue, confirmDepositByShop, refundDepositByShop, forfeitDepositByShop, depositForBill } from "./deposit";
 export type { DepositState, DepositInfo, DepositPay, SlipSubmitFail, ShopCtx, DepositQueueItem } from "./deposit";
+
+// SVC B.17 ▸ ไม่มาซ้ำ (บังคับมัดจำ / ต้องโทรจอง) + ร้านยกเว้นรายนัด — re-export ล้วน ◂
+export { repeatNoShowOf, excuseNoShow, REPEAT_NO_SHOW_REASON } from "./no-show-rule";
+export type { RepeatNoShowAction, RepeatNoShowState } from "./no-show-rule";

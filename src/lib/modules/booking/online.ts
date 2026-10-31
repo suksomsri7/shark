@@ -42,6 +42,7 @@ import {
   type StaffDayProfile,
 } from "./service";
 import { computeDepositSatang, localToUtc, minutesToHHMM } from "./slots";
+import { forcedDepositSatang, repeatNoShowOf } from "./no-show-rule"; // SVC B.17 ◂
 import { staffServiceTerms, unitDayWindows } from "./staff-hours";
 
 const MIN_MS = 60_000;
@@ -308,7 +309,9 @@ export async function loadOnlineBooking(
   const [locales, svcs, ident, hours] = await Promise.all([localesOf(ctx), servicesOf(ctx), identityOf(ctx.tenantId, qq.who), getUnitHours(ctx.tenantId, ctx.unitId)]);
   const locale = pickLocale(locales, qq.lang);
   // SVC B.8 ▸ #37 ตัวตน LINE ที่ผูกสมาชิกระดับยกเว้น ⇒ มัดจำ 0 ทั้งการ์ดบริการและสรุป (ตัวตัดสินจริง = bookAppointment) ◂
-  const exempt = ident ? await memberExemptTierForIdentity(ctx, { partyId: ident.partyId }) : null;
+  // SVC B.17 ▸ ตัวตน LINE ที่ติดกติกาไม่มาซ้ำแบบบังคับมัดจำ ⇒ ยกเว้นสมาชิกไม่มีผล · ขั้น 3 แสดงยอดบังคับ (ตัวตัดสินจริง = bookAppointment) ◂
+  const rnsLine = ident ? await repeatNoShowOf(ctx, { channel: "LINE", partyId: ident.partyId }, { now }) : null;
+  const exempt = ident && rnsLine?.action !== "REQUIRE_DEPOSIT" ? await memberExemptTierForIdentity(ctx, { partyId: ident.partyId }) : null;
   if (exempt) svcs.list = svcs.list.map((x) => ({ ...x, depositSatang: 0 }));
   const svcArg = str(qq.svc);
   // svc = id บริการของหน่วยนี้ หรือชื่อบริการตรงตัว (ทางของฉากภาพ) · ไม่พบ/ไม่เปิดจอง/ของหน่วยอื่น ⇒ ขั้น 1
@@ -348,7 +351,10 @@ export async function loadOnlineBooking(
   const terms = p ? staffServiceTerms(p.services, raw) : null;
   if (!p || !terms) return { ok: true, view };
   const dep = await resolveSettings({ tenantId: ctx.tenantId }, ["booking.deposit.method", "booking.deposit.amount"], { unitId: ctx.unitId, serviceId: raw.id, staffId: sid });
-  const depositSatang = exempt ? 0 : depositOf(dep["booking.deposit.method"]?.value, dep["booking.deposit.amount"]?.value, { priceSatang: terms.priceSatang, durationMin: terms.durationMin, serviceDepositSatang: raw.depositSatang });
+  const baseDeposit = depositOf(dep["booking.deposit.method"]?.value, dep["booking.deposit.amount"]?.value, { priceSatang: terms.priceSatang, durationMin: terms.durationMin, serviceDepositSatang: raw.depositSatang });
+  const depositSatang = rnsLine?.action === "REQUIRE_DEPOSIT" // SVC B.17 ▸ ยอดบังคับ (R10) ◂
+    ? forcedDepositSatang(dep["booking.deposit.method"]?.value, dep["booking.deposit.amount"]?.value, { baseSatang: baseDeposit, priceSatang: terms.priceSatang, serviceDepositSatang: raw.depositSatang })
+    : exempt ? 0 : baseDeposit;
   const startMs = localToUtc(two.dateSel, tMin).getTime();
   return {
     ok: true,
