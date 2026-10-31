@@ -263,10 +263,14 @@ async function messagesModel(actor: SettingsActor, ctx: SettingsCtx, unit: Unit,
   const fields = fieldsOf(form);
   const byKey = new Map(fields.map((f) => [f.key, f]));
   const enabled = byKey.get(LAYOUT.msgEnabledKey)?.value;
+  // SVC B.17 ▸ R2: ชนิด waitlistOpen เป็นคีย์ไม่บังคับ — ร้านที่บันทึก msg.enabled ไว้ก่อน (ไม่มีคีย์) ⇒ แสดงตามโหมด waitlist (ตัวส่งทำแบบเดียวกัน) ◂
+  const wlMode = fieldsOf(full).find((f) => f.key === "booking.booking.waitlistMode")?.value;
+  const kindOn = (k: string): boolean =>
+    isRec(enabled) && (enabled[k] === true || (k === "waitlistOpen" && enabled[k] === undefined && (wlMode === "FIRST" || wlMode === "ALL")));
   const msgKinds = msgDefs.map((d, i) => ({
     kind: kinds[i],
     labelTh: d.labelTh,
-    enabled: isRec(enabled) && enabled[kinds[i]] === true,
+    enabled: kindOn(kinds[i]),
     key: d.key,
     hintTh: MSG_HINT_TH[kinds[i]] ?? "",
   }));

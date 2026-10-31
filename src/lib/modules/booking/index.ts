@@ -35,7 +35,16 @@ export type { ExtraLine, BillLine, ServiceBillPreview, FinishFail, FinishResult,
 export { depositInfo, loadDepositPay, submitDepositSlip, onDepositSlipApproved, depositQueue, confirmDepositByShop, refundDepositByShop, forfeitDepositByShop, depositForBill } from "./deposit";
 export type { DepositState, DepositInfo, DepositPay, SlipSubmitFail, ShopCtx, DepositQueueItem } from "./deposit";
 
+// SVC B.17 ▸ ไม่มาซ้ำ (บังคับมัดจำ / ต้องโทรจอง) + ร้านยกเว้นรายนัด — re-export ล้วน ◂
+export { repeatNoShowOf, excuseNoShow, REPEAT_NO_SHOW_REASON } from "./no-show-rule";
+export type { RepeatNoShowAction, RepeatNoShowState } from "./no-show-rule";
+
 // SVC B.13 ▸ ทรัพยากรร้านนวด (ห้อง/เตียง/อุปกรณ์ · CRUD + ปิดซ่อม) + กล่อง "รับ walk-in ตอนนี้ได้ไหม" — ด่านสิทธิ์อยู่ในฟังก์ชัน ◂
 export { listResources, createResource, updateResource, setResourceMaintenance, walkInNowByService } from "./resources";
 export { bookingResourcesModel } from "./settings-model";
 export type { ResourceCtx, ResourceActor, ResourceRow, ResourceResult, ResourceFail, ResourceInput, ResourcePatch, MaintenanceWindow, WalkInNowRow } from "./resources";
+// SVC B.17 ▸ waitlist (เข้า/ออก · กล่องหน้าจอง) + ตัวช่วยที่ platform/booking-waitlist.ts ใช้จับคู่ช่องว่าง (ตัวตัดสินเดียวกับทางจอง) — re-export ล้วน ◂
+export { joinWaitlistOnline, leaveWaitlistOnline, waitlistViewOf, WAITLIST_RATE } from "./waitlist";
+export type { WaitlistJoinFail, WaitlistMode, WaitlistView } from "./waitlist";
+export { findSlots, onlineRulesOf } from "./service";
+export { localToUtc } from "./slots";

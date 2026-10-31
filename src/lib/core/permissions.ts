@@ -252,8 +252,8 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     },
     // SVC B.11 ▸ คีย์ที่ยังไม่มีโค้ดเรียก assertCan/evaluate/canBookingAction (ใช้ผ่านตารางสิทธิ์ · ใบหลังเปิดใช้จริง) ◂
     // SVC B.5 ▸ booking.queue.operate · booking.walkin.create ใช้จริงแล้ว (booking/line-access.ts · จอคิววันนี้) ⇒ ออกจาก planned ◂
+    // SVC B.17 ▸ booking.deposit.waive ใช้จริงแล้ว (booking/no-show-rule.ts excuseNoShow · "ยกเว้นไม่มาครั้งนี้") ⇒ ออกจาก planned ◂
     planned: [
-      "booking.deposit.waive",
       "booking.report.view",
     ],
   },

@@ -11,7 +11,28 @@ import type { OnlineBookingView, OnlineQuery } from "@/lib/modules/booking/onlin
 import { makeT } from "@/lib/i18n";
 import { dateLong, dayChip, dayLabel, duration, hhmm, hoursLine, initials, money } from "./booking/online/fmt";
 
-type Props = { view: OnlineBookingView; basePath: string; query: OnlineQuery; idempotencyKey: string };
+type Props = {
+  view: OnlineBookingView; basePath: string; query: OnlineQuery; idempotencyKey: string;
+  /** SVC B.17 ▸ server action ของฟอร์ม "แจ้งฉันถ้ามีคิวว่าง" (ไม่บังคับ — ไม่ส่ง = ฟอร์มยังแสดง แต่ไม่ผูก action) ◂ */
+  waitlistJoin?: (fd: FormData) => void | Promise<void>;
+  /** SVC B.17 ▸ ผลของ action waitlist ที่ส่งกลับมาทาง URL (`wl=<รหัส>`) — แสดงเป็นข้อความใน dict เสมอ (ไม่แสดงรหัสดิบ) ◂ */
+  waitlistNotice?: string;
+};
+
+/** SVC B.17 ▸ รหัสผลของ waitlist → คีย์ dict (รหัสอื่น/ไม่รู้จัก ⇒ ข้อความกลาง) ◂ */
+const WL_NOTICE: Record<string, { key: string; ok: boolean }> = {
+  joined: { key: "bk17.r.joined", ok: true },
+  left: { key: "bk17.r.left", ok: true },
+  LIMIT: { key: "bk17.r.limit", ok: false },
+  RATE_LIMITED: { key: "bk17.r.rate", ok: false },
+  HAS_FREE: { key: "bk17.r.hasFree", ok: false },
+  DISABLED: { key: "bk17.r.disabled", ok: false },
+  IDENTITY_REQUIRED: { key: "bk17.needLine", ok: false },
+  REPEAT_NO_SHOW: { key: "bk17.r.callShop", ok: false },
+  BAD_INPUT: { key: "bk17.r.badInput", ok: false },
+  NOT_FOUND: { key: "bk17.r.badInput", ok: false },
+  BUSY: { key: "bk17.r.busy", ok: false },
+};
 
 const INK = "#0a0a0a";
 
@@ -41,7 +62,7 @@ function Label({ children }: { children: ReactNode }) {
   return <p className="text-[14px] font-bold text-[#0a0a0a]">{children}</p>;
 }
 
-export default function PublicBooking({ view, basePath, query, idempotencyKey }: Props) {
+export default function PublicBooking({ view, basePath, query, idempotencyKey, waitlistJoin, waitlistNotice }: Props) {
   const l = view.locale;
   const t = makeT(l);
   const svc = view.service;
@@ -103,10 +124,18 @@ export default function PublicBooking({ view, basePath, query, idempotencyKey }:
           </p>
         ) : null}
 
+        {waitlistNotice ? (() => {
+          const n = WL_NOTICE[waitlistNotice] ?? { key: "bk17.r.other", ok: false };
+          return (
+            <p data-bk-waitlist-notice={n.ok ? "ok" : "info"} role="status" className={`rounded-xl px-3 py-2 text-[13px] ${n.ok ? "bg-[#ecfdf3] text-[#166534]" : "bg-[#f4f5f7] text-[#404040]"}`}>
+              {t(n.key)}
+            </p>
+          );
+        })() : null}
         {view.step === 1 ? <StepOne view={view} t={t} hrefFor={(id) => hrefOf(basePath, query, { svc: id })} pick={pickSvc} onPick={setPickSvc} /> : null}
         {view.step >= 2 && svc ? (
           view.step === 2 ? (
-            <StepTwo view={view} t={t} at={at} staffName={staffName} pick={pickTime} onPick={setPickTime} />
+            <StepTwo view={view} t={t} at={at} staffName={staffName} pick={pickTime} onPick={setPickTime} who={query.who ?? ""} waitlistJoin={waitlistJoin} />
           ) : (
             <StepThree view={view} t={t} basePath={basePath} query={query} idempotencyKey={idempotencyKey} staffName={staffName} />
           )
@@ -175,7 +204,41 @@ function StepOne({ view, t, hrefFor, pick, onPick }: { view: OnlineBookingView; 
   );
 }
 
-function StepTwo({ view, t, at, staffName, pick, onPick }: { view: OnlineBookingView; t: T; at: (sel: { staff?: string | null; date?: string | null; time?: string | null }) => string; staffName: string | null; pick: number | null; onPick: (m: number) => void }) {
+/** SVC B.17 ▸ กล่อง waitlist ถัดข้อความ bk7.noTimes (§6) — ไม่มีชื่อ/เบอร์ · ข้อความจาก dict ตามภาษา ◂ */
+function WaitlistBox({ view, t, who, action }: { view: OnlineBookingView; t: T; who: string; action?: (fd: FormData) => void | Promise<void> }) {
+  const w = view.waitlist!;
+  const box = "flex flex-col gap-2 rounded-xl border border-[#e5e5e5] bg-[#f4f5f7] px-3 py-3 text-[13px] text-[#404040]";
+  if (!w.canJoin) {
+    return (
+      <div data-bk-waitlist="" className={box}>
+        <p data-bk-waitlist-need-line="">{t("bk17.needLine")}</p>
+      </div>
+    );
+  }
+  if (w.joined) {
+    return (
+      <div data-bk-waitlist="" className={box}>
+        <p data-bk-waitlist-joined="">{t("bk17.joined")}</p>
+      </div>
+    );
+  }
+  return (
+    <div data-bk-waitlist="" className={box}>
+      <p>{t(w.mode === "FIRST" ? "bk17.hintFirst" : "bk17.hintAll")}</p>
+      <form data-bk-waitlist-join="" {...(action ? { action } : {})} className="flex flex-col">
+        <input type="hidden" name="serviceId" value={view.service?.id ?? ""} />
+        <input type="hidden" name="staffId" value={view.staffSel && view.staffSel !== "any" ? view.staffSel : ""} />
+        <input type="hidden" name="dateStr" value={view.dateSel ?? ""} />
+        <input type="hidden" name="who" value={who} />
+        <button type="submit" className="min-h-[44px] rounded-xl bg-[#0a0a0a] px-4 text-[14px] font-semibold text-white">
+          {t("bk17.join")}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function StepTwo({ view, t, at, staffName, pick, onPick, who, waitlistJoin }: { view: OnlineBookingView; t: T; at: (sel: { staff?: string | null; date?: string | null; time?: string | null }) => string; staffName: string | null; pick: number | null; onPick: (m: number) => void; who: string; waitlistJoin?: (fd: FormData) => void | Promise<void> }) {
   const l = view.locale;
   const svc = view.service!;
   const chip = (on: boolean) =>
@@ -246,6 +309,7 @@ function StepTwo({ view, t, at, staffName, pick, onPick }: { view: OnlineBooking
             {staffName ? ` · ${staffName}` : ""}
           </Label>
           {view.times.length === 0 || view.times.every((x) => !x.free) ? <p className="text-[13px] text-[#737373]">{t("bk7.noTimes")}</p> : null}
+          {view.waitlist ? <WaitlistBox view={view} t={t} who={who} action={waitlistJoin} /> : null}
           <div className="grid grid-cols-4 gap-2">
             {view.times.map((x) =>
               x.free ? (

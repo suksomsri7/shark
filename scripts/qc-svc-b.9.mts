@@ -533,7 +533,8 @@ try {
     ok(!!z && typeof z.plannedStartMs === "number" && z.plannedStartMs - at(D, "11:45").getTime() >= 5 * 60_000, `แผน Z ${fmt(z && { planned: z.plannedStartMs, booked: z.bookedStartMs })}`);
     const r = await SET().resolveSettings({ tenantId: ids.tA }, ["booking.notify.reminderOffsetsMin", "booking.notify.nearTurnAhead", "booking.msg.enabled"], { unitId: ids.uA });
     eq([r["booking.notify.reminderOffsetsMin"]?.value, r["booking.notify.nearTurnAhead"]?.value], [[1440, 120], 2], "ค่าตั้งหน่วยหลัก");
-    eq(r["booking.msg.enabled"]?.value, enabledMap(["courseExpiry"]), "msg.enabled แม่แบบ BARBER");
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-R2): แม่แบบ BARBER มีคีย์ waitlistOpen: true (ชนิดที่ 11 ของ B.17 · BOOKING_MSG_KINDS คง 10)
+    eq(r["booking.msg.enabled"]?.value, { ...enabledMap(["courseExpiry"]), waitlistOpen: true }, "msg.enabled แม่แบบ BARBER");
     eq((await SET().resolveSettings({ tenantId: ids.tA }, ["booking.notify.delayAlertMin"], { unitId: ids.uD }))["booking.notify.delayAlertMin"]?.value, 5, "delayAlertMin");
     eq((await SET().resolveSettings({ tenantId: ids.tA }, ["booking.service.rebookAfterDays"], { unitId: ids.uA, serviceId: ids.svcShave }))["booking.service.rebookAfterDays"]?.value, 28, "rebookAfterDays");
   });

@@ -219,7 +219,8 @@ const MESSAGES_UNIT_KEYS = (): string[] => [
   ...unitKeysOf("messaging").filter((k) => k === "messaging.lineConnectionId" || k === "messaging.quietHours"),
   ...unitKeysOf("booking", "queue").filter((k) => k === "booking.queue.walkInPickStaff"),
 ];
-const MSG_KINDS = ["confirmation", "reminder", "checkedIn", "ticketIssued", "nearTurn", "yourTurn", "delayed", "noShowRebook", "rebookInvite", "courseExpiry"];
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-R2): N-1/N-2 = 11 ชนิด (waitlistOpen ของ B.17 ต่อท้าย · BARBER เปิด)
+const MSG_KINDS = ["confirmation", "reminder", "checkedIn", "ticketIssued", "nearTurn", "yourTurn", "delayed", "noShowRebook", "rebookInvite", "courseExpiry", "waitlistOpen"];
 const NEW_KEYS = [
   "booking.queue.operate", "booking.checkin", "booking.walkin.create", "booking.job.run", "booking.job.runAny", "booking.deposit.confirm", "booking.devices.manage",
   "booking.appointment.reschedule", "booking.deposit.waive", "booking.deposit.forfeit", "booking.customer.phoneFull", "booking.report.view",

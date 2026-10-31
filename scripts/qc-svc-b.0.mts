@@ -86,7 +86,8 @@ const deletedLines = (paths: string[]): string[] =>
 const TPLS = ["BARBER", "SPA", "CLINIC"] as const;
 type Row = { n: string; key: string; type: string; chain: string[]; v: readonly [unknown, unknown, unknown] };
 const x3 = (v: unknown) => [v, v, v] as const;
-const MSG_KINDS = ["confirmation", "reminder", "checkedIn", "ticketIssued", "nearTurn", "yourTurn", "delayed", "noShowRebook", "rebookInvite", "courseExpiry"] as const;
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-R2): ชนิดที่ 11 booking.msg.waitlistOpen (B.17) ต่อท้าย · msg.enabled รับคีย์ waitlistOpen (ค่าเริ่ม ตัดผม/สปา true · คลินิก/ร้านเดิม false)
+const MSG_KINDS = ["confirmation", "reminder", "checkedIn", "ticketIssued", "nearTurn", "yourTurn", "delayed", "noShowRebook", "rebookInvite", "courseExpiry", "waitlistOpen"] as const;
 const msgOn = (off: string[]) => Object.fromEntries(MSG_KINDS.map((k) => [k, !off.includes(k)]));
 const CAT: Row[] = [
   { n: "01", key: "booking.general.shopType", type: "enum", chain: ["UNIT"], v: ["BARBER", "SPA", "CLINIC"] },
@@ -142,7 +143,8 @@ const CAT: Row[] = [
   { n: "50", key: "booking.notify.delayAlertMin", type: "minutes", chain: ["UNIT"], v: [15, 15, 30] },
   // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.9 มติ Q2): ซ่อนชื่อบริการในข้อความแจ้งเตือน — แม่แบบ CLINIC เปิด (ทุกนโยบายร้าน = ค่าตั้ง)
   { n: "50b", key: "booking.notify.hideServiceName", type: "bool", chain: ["UNIT"], v: [false, false, true] },
-  { n: "51", key: "booking.msg.enabled", type: "table", chain: ["UNIT"], v: [msgOn(["courseExpiry"]), msgOn([]), msgOn(["rebookInvite", "courseExpiry"])] },
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-R2): คลินิกปิด waitlistOpen
+  { n: "51", key: "booking.msg.enabled", type: "table", chain: ["UNIT"], v: [msgOn(["courseExpiry"]), msgOn([]), msgOn(["rebookInvite", "courseExpiry", "waitlistOpen"])] },
   { n: "52", key: "booking.display.tvShow", type: "table", chain: ["DEVICE"], v: [{ label: "PROVIDER", showCustomerName: false }, { label: "PROVIDER", showCustomerName: false }, { label: "RESOURCE", showCustomerName: false }] },
   { n: "53", key: "booking.display.voice", type: "table", chain: ["DEVICE"], v: [["th", "en"], ["th"], ["th"]] },
   { n: "54", key: "booking.display.nextCount", type: "int", chain: ["DEVICE"], v: [3, 3, 5] },
@@ -162,6 +164,9 @@ const CAT: Row[] = [
   // นอกภาคผนวก (สัญญา): CC §6.1 โหมดแถวเดียว · มติ B.2 (overrunExtendMin)
   { n: "X1", key: "booking.queue.singleLine", type: "bool", chain: ["UNIT"], v: x3(true) },
   { n: "X2", key: "booking.queue.overrunExtendMin", type: "minutes", chain: ["UNIT"], v: x3(5) },
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-R2): B.17 waitlist (กลุ่ม booking · R4)
+  { n: "X3", key: "booking.booking.waitlistMode", type: "enum", chain: ["UNIT"], v: ["ALL", "FIRST", "OFF"] },
+  { n: "X4", key: "booking.booking.waitlistMaxActive", type: "int", chain: ["UNIT"], v: x3(3) },
 ];
 const MSG_KEYS = MSG_KINDS.map((k) => `booking.msg.${k}`);
 const ALL_KEYS = [...CAT.map((r) => r.key), ...MSG_KEYS];
@@ -191,6 +196,7 @@ const FALLBACK_OVERRIDE: Record<string, unknown> = {
   "booking.money.commissionToPayroll": false,
   "booking.privacy.walkInRetentionDays": null,
   "booking.queue.singleLine": false, // ไม่รวมคิว ⇒ queue.* อื่นไม่มีผล คงค่า BARBER
+  "booking.booking.waitlistMode": "OFF", // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-R2): ร้านเดิมไม่มี waitlist (msg.enabled.waitlistOpen = false ผ่าน MSG_KINDS)
 };
 const SNAP_REQUIRED = [
   "booking.deposit.method", "booking.deposit.amount", "booking.deposit.payWithinMin", "booking.deposit.forfeitPct",
@@ -298,7 +304,8 @@ await st("D-65", "#65 สิทธิ์ต่อบทบาท = permissions.t
   const dup = REG().listDefs("booking").filter((d) => /role|perm|access/i.test(d.key));
   ok(dup.length === 0, `def ที่ไม่ควรมี: ${dup.map((d) => d.key).join(", ")}`);
 });
-await st("D-MSG-1", "#51 ข้อความ 10 ชนิด booking.msg.<ชนิด> · type template · chain [UNIT] · {th ไม่ว่าง} ทุกแม่แบบ", () => {
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-R2): 10 ชนิดเดิม + waitlistOpen = 11
+await st("D-MSG-1", "#51 ข้อความ 11 ชนิด booking.msg.<ชนิด> · type template · chain [UNIT] · {th ไม่ว่าง} ทุกแม่แบบ", () => {
   for (const k of MSG_KEYS) {
     const d = DEF(k);
     eq(d.type, "template", `${k}.type`);

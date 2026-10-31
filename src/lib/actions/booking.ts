@@ -307,3 +307,17 @@ export async function linkStaffToHrAction(unitSlug: string) {
   await booking.linkStaffToHr({ tenantId: auth.active.tenantId, unitId: unit.id });
   revalidatePath(`/app/u/${unitSlug}/booking/staff`);
 }
+
+// SVC B.17 ▸ R11 ร้าน "ยกเว้นไม่มาครั้งนี้" (นัด NO_SHOW ไม่นับในกติกาไม่มาซ้ำ) — ด่านสิทธิ์ก่อนอ่าน/เขียน + สิทธิ์สดใน no-show-rule.ts · audit ในฟังก์ชัน ·
+//   ล้ม ⇒ ?err= (แบบ confirmDepositAction) · ปุ่มบนจอร้าน = หนี้ (B.14/B.18) ◂
+export async function excuseNoShowAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "excuseNoShowAction");
+  const id = String(formData.get("id") ?? "").slice(0, 200);
+  const reason = String(formData.get("reason") ?? "").slice(0, 400);
+  if (!id) return;
+  const { excuseNoShow } = await import("@/lib/modules/booking/no-show-rule");
+  const r = await excuseNoShow({ tenantId: auth.active.tenantId, actorUserId: auth.user.id }, { unitId: unit.id, appointmentId: id, reason });
+  revalidatePath(`/app/u/${unitSlug}/booking`);
+  if (r.ok === false) redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(r.reason.slice(0, 300))}`);
+}

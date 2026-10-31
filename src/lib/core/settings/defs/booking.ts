@@ -93,8 +93,9 @@ const FALLBACK_LEGACY: Readonly<Record<string, unknown>> = {
   "booking.notify.reminderOffsetsMin": [],
   "booking.notify.delayAlertMin": null,
   "booking.msg.enabled": Object.fromEntries(
-    ["confirmation", "reminder", "checkedIn", "ticketIssued", "nearTurn", "yourTurn", "delayed", "noShowRebook", "rebookInvite", "courseExpiry"].map((k) => [k, false]),
+    ["confirmation", "reminder", "checkedIn", "ticketIssued", "nearTurn", "yourTurn", "delayed", "noShowRebook", "rebookInvite", "courseExpiry", "waitlistOpen"].map((k) => [k, false]), // SVC B.17 ▸ +waitlistOpen ◂
   ),
+  "booking.booking.waitlistMode": "OFF", // SVC B.17 ▸ ร้านเดิมไม่มี waitlist ◂
   // เงิน — ค่าคอมฯ ตามคนขาย (POS) ไม่ใช่ผู้ให้บริการ
   "booking.money.commissionTo": "OFF",
   "booking.money.commissionToPayroll": false,
@@ -242,7 +243,19 @@ const msgDefs: SettingDef[] = MSG_KINDS.map((k) => {
 
 const msgOn = (off: readonly MsgKind[]): Record<MsgKind, boolean> =>
   Object.fromEntries(MSG_KINDS.map((k) => [k, !off.includes(k)])) as Record<MsgKind, boolean>;
-const MSG_ENABLED = z.object(Object.fromEntries(MSG_KINDS.map((k) => [k, z.boolean()])) as Record<MsgKind, z.ZodBoolean>).strict();
+// SVC B.17 ▸ ชนิดที่ 11 waitlistOpen = คีย์ไม่บังคับ (ค่าที่ร้านบันทึกไว้ 10 คีย์ยัง valid · ไม่มีคีย์ = ตาม waitlistMode · R2) ◂
+const MSG_ENABLED = z
+  .object({ ...(Object.fromEntries(MSG_KINDS.map((k) => [k, z.boolean()])) as Record<MsgKind, z.ZodBoolean>), waitlistOpen: z.boolean().optional() })
+  .strict();
+const msgOnWl = (off: readonly MsgKind[], waitlistOpen: boolean) => ({ ...msgOn(off), waitlistOpen });
+// SVC B.17 ▸ ข้อความ "มีคิวว่าง" (ข้อความบริการ · ลูกค้ากดขอเอง · ไม่มีเนื้อหาการตลาด) · คลินิกไม่มี {บริการ} (#51) ◂
+const WAITLIST_MSG: { barber: MsgText; clinic: MsgText } = {
+  barber: {
+    th: "คุณ{ชื่อ} มีคิวว่างที่ {ร้าน} เวลา {เวลา} ({บริการ} กับ{ช่าง}) · ใครจองก่อนได้ก่อน · จองเลย: {ลิงก์จอง}",
+    en: "Hi {ชื่อ}, a slot opened at {ร้าน} at {เวลา} ({บริการ} with {ช่าง}). First come, first served — book now: {ลิงก์จอง}",
+  },
+  clinic: { th: "คุณ{ชื่อ} มีคิวว่างที่ {ร้าน} เวลา {เวลา} (พบ{ช่าง}) · ใครจองก่อนได้ก่อน · นัดเลย: {ลิงก์จอง}" },
+};
 
 // ═════════════════════ นิยาม (ภาคผนวก ก) ═════════════════════
 const DEFS: SettingDef[] = [
@@ -312,6 +325,9 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.booking.anyStaffOption", type: "bool", labelTh: "มีตัวเลือก \"ใครก็ได้\"", schema: z.boolean(), chain: U, v: x3(true) }), // #23
   row({ key: "booking.booking.onlineSharePct", type: "percent", labelTh: "สัดส่วนเวลาที่เปิดจองออนไลน์ (%)", schema: PCT, chain: U_ST, v: [60, 60, 80] }), // #24
   row({ key: "booking.booking.maxOpenPerPhone", type: "int", labelTh: "นัดค้างได้สูงสุดต่อเบอร์", schema: z.number().int().min(1).max(50).nullable(), chain: U, v: [2, 2, 1] }), // #25 · null = ไม่จำกัด
+  // SVC B.17 ▸ waitlist "แจ้งฉันถ้ามีคนยกเลิก" (R3 กลุ่ม booking · R4 ค่าเริ่ม ตัดผม ALL · สปา FIRST · คลินิก OFF · ร้านเดิม OFF) ◂
+  row({ key: "booking.booking.waitlistMode", type: "enum", labelTh: "แจ้งเมื่อมีคิวว่าง (waitlist)", schema: z.enum(["OFF", "FIRST", "ALL"]), chain: U, v: ["ALL", "FIRST", "OFF"] }),
+  row({ key: "booking.booking.waitlistMaxActive", type: "int", labelTh: "รอคิวว่างได้พร้อมกันสูงสุดต่อคน", schema: z.number().int().min(1).max(10), chain: U, v: x3(3) }),
   row({ key: "booking.booking.extraFields", type: "enum", labelTh: "ช่องข้อมูลเพิ่มตอนจอง", schema: z.enum(["MASSAGE_NOTE", "SYMPTOM_OPTIONAL"]).nullable(), chain: U_SV, v: [null, "MASSAGE_NOTE", "SYMPTOM_OPTIONAL"] }), // #26
 
   // ── มาสาย/ไม่มา/เลื่อน (#27–32) ──
@@ -378,8 +394,12 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.notify.hideServiceName", type: "bool", labelTh: "ไม่ใส่ชื่อบริการในข้อความถึงลูกค้า", helpTh: "เปิดไว้ ⇒ ตัวแปร {บริการ} ในข้อความแจ้งเตือนเป็นค่าว่างเสมอ (เช่น คลินิกที่ไม่เปิดเผยการรักษา)", schema: z.boolean(), chain: U, v: [false, false, true] }),
 
   // ── ข้อความ (#51) ──
-  row({ key: "booking.msg.enabled", type: "table", labelTh: "เปิด/ปิดข้อความแต่ละชนิด", schema: MSG_ENABLED, chain: U, v: [msgOn(["courseExpiry"]), msgOn([]), msgOn(["rebookInvite", "courseExpiry"])] }),
+  row({ key: "booking.msg.enabled", type: "table", labelTh: "เปิด/ปิดข้อความแต่ละชนิด", schema: MSG_ENABLED, chain: U, v: [msgOnWl(["courseExpiry"], true), msgOnWl([], true), msgOnWl(["rebookInvite", "courseExpiry"], false)] }), // SVC B.17 ▸ +waitlistOpen ◂
   ...msgDefs,
+  { // SVC B.17 ▸ ชนิดที่ 11 (R2) ◂
+    ...row({ key: "booking.msg.waitlistOpen", type: "template", labelTh: "ข้อความแจ้งมีคิวว่าง (waitlist)", schema: MSG_TEXT, chain: U, v: [WAITLIST_MSG.barber, WAITLIST_MSG.barber, WAITLIST_MSG.clinic] }),
+    templateVars: ["ชื่อ", "ร้าน", "เวลา", "ช่าง", "บริการ", "ลิงก์จอง"],
+  },
 
   // ── จอแสดงคิว/ตู้ (#52–58) · DEVICE: B.6 ──
   row({
@@ -561,6 +581,7 @@ const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
   "booking.booking.extraFields": { MASSAGE_NOTE: "จุดที่ปวด/แรงนวด", SYMPTOM_OPTIONAL: "อาการเบื้องต้น (ไม่บังคับ)" },
   "booking.late.afterGrace": { RELEASE_REQUEUE: "ปล่อยช่อง + ต่อคิวท้าย", WAIT_NOTIFY_COUNTER: "รอไว้ · แจ้งเคาน์เตอร์" },
   "booking.deposit.method": { NONE: "ไม่เก็บมัดจำ", PROMPTPAY_SLIP: "QR พร้อมเพย์ + ตรวจสลิป" },
+  "booking.booking.waitlistMode": { OFF: "ปิด", FIRST: "แจ้งคนแรกที่รอ", ALL: "แจ้งทุกคน ใครจองก่อนได้" }, // SVC B.17
   "booking.late.lateCancelMode": { BLOCK: "ห้ามยกเลิกเอง (ติดต่อร้าน)", FORFEIT: "ยกเลิกได้ · ร้านเก็บมัดจำตามที่ตั้ง" }, // SVC B.8
   "booking.queue.order": { SINGLE_LINE_BY_TIME: "แถวเดียว ตามเวลาที่จะได้ทำ", APPOINTMENT_FIRST: "นัดก่อน walk-in เสมอ" },
   "booking.kiosk.services": { WALKIN_ENABLED: "เฉพาะบริการที่รับ walk-in", ALL: "ทุกบริการ" },

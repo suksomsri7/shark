@@ -375,6 +375,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   BookingStaffService: unit, // SVC B.0 — ช่าง × บริการ
   SvcResource: unit, // SVC B.0 — ทรัพยากร (เก้าอี้/เตียง/ห้อง)
   SvcResourceBlock: unit, // SVC B.13 — ช่วงปิดซ่อมของทรัพยากร (migration svc_b13)
+  BookingWaitlist: unit, // SVC B.17 — waitlist "แจ้งฉันถ้ามีคนยกเลิก" (migration svc_b17 · ไม่มีชื่อ/เบอร์)
   BookingHours: unit,
   BookingClosure: unit,
   Appointment: unit,

@@ -222,3 +222,27 @@ model BookingClosure {
   @@unique([unitId, date])
   @@index([tenantId, unitId])
 }
+
+// SVC B.17 ▸ waitlist "แจ้งฉันถ้ามีคนยกเลิก" (ใบสั่ง §4 · มติผู้คุม R1 ทาง ก) — ตัวตน = Party ที่ยืนยันจากลิงก์ LINE ·
+//   ไม่มีชื่อ/เบอร์ในตารางนี้ (X8 · อ่านจาก Party ตอนส่ง) · CHECK ช่วงนาที/สถานะอยู่ใน migration svc_b17 ◂
+model BookingWaitlist {
+  id        String    @id @default(cuid())
+  tenantId  String
+  unitId    String
+  partyId   String // ตัวตนที่ยืนยันแล้ว (ลิงก์ LINE) — ไม่มีชื่อ/เบอร์ในตารางนี้
+  serviceId String
+  staffId   String? // null = ใครก็ได้
+  dateStr   String // YYYY-MM-DD วันไทย
+  fromMin   Int // CHECK 0 ≤ fromMin < toMin ≤ 1440
+  toMin     Int
+  status    String    @default("ACTIVE") // ACTIVE | BOOKED | CANCELLED | EXPIRED (CHECK)
+  expiresAt DateTime
+  endedAt   DateTime?
+  endReason String? // CUSTOMER | BOOKED | EXPIRED
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId, unitId, dateStr, status, createdAt])
+  @@index([tenantId, partyId, status])
+  @@index([status, expiresAt])
+}

@@ -6,6 +6,7 @@ import { resolvePublicUnit } from "@/lib/core/storefront";
 import { loadOnlineBooking, type OnlineQuery } from "@/lib/modules/booking/online";
 import PublicBooking from "@/components/public-booking";
 import { makeT } from "@/lib/i18n";
+import { joinWaitlistAction } from "./waitlist-actions"; // SVC B.17 ◂
 
 // ประเภทกิจการที่มี storefront ของตัวเอง → landing เด้งเข้าหน้านั้น
 // (ลูกค้าซื้อตั๋ว/จองเช่า/สมัครเรียน/ขอนัด ได้เองโดยไม่ต้องล็อกอิน)
@@ -65,7 +66,14 @@ export default async function StoreBookingPage({
   const idempotencyKey = r.view.step === 3 ? randomUUID() : "";
   return (
     <main className="w-full flex-1 bg-white">
-      <PublicBooking view={r.view} basePath={`/s/${tenantSlug}/${unitSlug}`} query={query} idempotencyKey={idempotencyKey} />
+      <PublicBooking
+        view={r.view}
+        basePath={`/s/${tenantSlug}/${unitSlug}`}
+        query={query}
+        idempotencyKey={idempotencyKey}
+        {...(r.view.waitlist ? { waitlistJoin: joinWaitlistAction.bind(null, tenantSlug, unitSlug) } : {})}
+        {...(typeof one(sp?.wl) === "string" && /^[A-Za-z_]{1,40}$/.test(one(sp?.wl) as string) ? { waitlistNotice: one(sp?.wl) } : {})}
+      />
     </main>
   );
 }

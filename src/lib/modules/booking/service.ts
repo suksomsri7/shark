@@ -1534,6 +1534,7 @@ export type BookFailCode =
   | "FULL" | "PAST" | "LEAD_TIME" | "BEYOND_HORIZON" | "OFF_GRID" | "OUTSIDE_HOURS" | "PHONE_LIMIT"
   | "NOT_QUALIFIED" | "ON_LEAVE" | "NOT_FOUND" | "ANY_DISABLED" | "BAD_INPUT"
   | "RELEASED" // G3: ส่งซ้ำด้วย key เดิมแต่นัดถูกยกเลิก/ปล่อยแล้ว
+  | "REPEAT_NO_SHOW" // SVC B.17 ▸ ติดกติกาไม่มาซ้ำ (ต้องโทรจอง / บังคับมัดจำแต่ร้านไม่มีทางรับมัดจำ) ◂
   | "BUSY"; // SVC B.13 ▸ R4: ชนชั่วคราวของฐาน (40P01/40001/P2028) ลองใหม่ 1 ครั้งแล้วยังชน ◂
 export type BookResult =
   | { ok: true; id: string; staffId: string; status: "PENDING" | "CONFIRMED"; holdUntil: Date | null }
@@ -1939,6 +1940,13 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
   if (linePartyId && !(await tenantDb({ tenantId }).party.findFirst({ where: { id: linePartyId, tenantId, mergedIntoId: null }, select: { id: true } }))) {
     return fail("BAD_INPUT", BAD);
   }
+  // SVC B.17 ▸ ไม่มาซ้ำ (§3.2 ข้อ 4): ช่องลูกค้าจองเอง (ONLINE/LINE) เท่านั้น — STAFF/PHONE = ทาง "โทรจอง" ไม่บังคับ ·
+  //   อ่านกติกาก่อนธุรกรรม (G2) หลัง replay ของ idempotency · ตัวตน LINE = Party ที่ยืนยันแล้ว · ONLINE = เบอร์ (ตัดสิทธิ์ได้อย่างเดียว) ·
+  //   PHONE_ONLY ⇒ ปฏิเสธข้อความกลาง (ไม่สร้างแถว) · REQUIRE_DEPOSIT ⇒ มัดจำบังคับใน tx (ยกเว้นสมาชิกไม่มีผล) ◂
+  const nsr = self ? await import("./no-show-rule") : null;
+  const noShow = nsr ? await nsr.repeatNoShowOf(ctx, { channel: i.channel === "LINE" ? "LINE" : "ONLINE", partyId: linePartyId, phone }) : null;
+  if (nsr && noShow?.action === "PHONE_ONLY") return fail("REPEAT_NO_SHOW", nsr.REPEAT_NO_SHOW_REASON);
+  const forceDeposit = noShow?.action === "REQUIRE_DEPOSIT" ? noShow.count : null;
   const { dateStr, startMin } = i;
 
   // ② ช่างระบุตัว: ลา / ทำบริการไม่ได้
@@ -2026,7 +2034,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
   const customerId = memberSystemId && !phoneUnverified ? await memberCustomerIdFor({ tenantId, memberSystemId, phone, name, self }) : null;
   // SVC B.8 ▸ #37 ยกเว้นมัดจำสมาชิกระดับ — เฉพาะตัวตนที่ยืนยันแล้ว (ได้ customerId · ช่อง ONLINE ไม่มี) · อ่านก่อนธุรกรรม (G2) ◂
   //   V6: ช่อง LINE = สมาชิกที่ผูก Party ของลิงก์ตัวตนเท่านั้น (ไม่หาจากเบอร์) · STAFF/PHONE = ลูกค้าที่พนักงานจอง · ONLINE = ไม่ยกเว้น
-  const exemptTier = i.channel === "LINE"
+  const exemptTier = forceDeposit !== null ? null : i.channel === "LINE" // SVC B.17 ▸ ติดกติกาไม่มาซ้ำ ⇒ ยกเว้นสมาชิกไม่มีผล (N-5) ◂
     ? (linePartyId ? await memberExemptTierForIdentity({ tenantId, unitId }, { partyId: linePartyId }) : null)
     : !self && customerId ? await memberExemptTierOf({ tenantId, unitId }, customerId) : null;
 
@@ -2075,7 +2083,12 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
         durationMin: chosen.durationMin,
         serviceDepositSatang: service.depositSatang,
       });
-      const depositSatang = exemptTier && depositBase > 0 ? 0 : depositBase; // SVC B.8 ▸ #37 ◂
+      // SVC B.17 ▸ บังคับมัดจำ (R10): ยอดปกติ → % ไม่ดูเกณฑ์นาที / ยอดต่อบริการ · ยังได้ 0 หรือ snapshot ไม่มีวิธีรับมัดจำ ⇒ ต้องโทรจอง ◂
+      const forced = forceDeposit !== null && nsr
+        ? nsr.forcedDepositSatang(snapVal(snap, "booking.deposit.method"), snapVal(snap, "booking.deposit.amount"), { baseSatang: depositBase, priceSatang: chosen.priceSatang, serviceDepositSatang: service.depositSatang })
+        : null;
+      if (forced === 0 && nsr) return { kind: "fail", code: "REPEAT_NO_SHOW", reason: nsr.REPEAT_NO_SHOW_REASON };
+      const depositSatang = forced ?? (exemptTier && depositBase > 0 ? 0 : depositBase); // SVC B.8 ▸ #37 ◂
       const holding = self && holdMinutesOf(i.channel, depositSatang, snap) !== null;
       const status: AppointmentStatus = !self
         ? "CONFIRMED"
@@ -2108,6 +2121,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
             ...snap,
             job: { durationMin: chosen.durationMin, bufferMin: service.bufferMin, ...(resIds.length ? { resourceIds: resIds } : {}) }, // SVC B.13
             ...(exemptTier && depositBase > 0 ? { deposit: { exempt: "MEMBER_TIER", tier: exemptTier } } : {}), // SVC B.8 ▸ additive ◂
+            ...(forced ? { noShowRule: { action: "REQUIRE_DEPOSIT", count: forceDeposit } } : {}), // SVC B.17 ▸ additive ◂
           } as unknown as Prisma.InputJsonValue,
           ...(linePartyId ? { partyId: linePartyId } : {}), // SVC B.7
           ...(resIds.length ? { resourceId: resIds[0] } : {}), // SVC B.13 ▸ ชิ้นของชนิดแรก (ปฏิทิน/ดัชนี) ◂

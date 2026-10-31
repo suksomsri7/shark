@@ -542,6 +542,14 @@ registerMinuteJob({
 // ◂ SVC B.4
 // SVC B.9 ▸ แจ้งเตือนลูกค้าตามเวลา (เตือนก่อนนัด · ใกล้ถึงคิว · คิวล่าช้า · ชวนกลับ) — ข้ามร้าน · ทุก 1 นาที ·
 //   idempotent ด้วย dedupeKey ของ notifyCustomer (ยิงซ้อน/หลายโพรเซส = ข้อความเดียว) · โหลดตอนรัน ◂
+// SVC B.17 ▸ waitlist: หมดอายุทีละหน้า (keyset) + จับคู่ช่องว่างของทุก (หน่วย, วัน) ที่มีคนรอ (ครอบยกเลิกทางเดิมที่ไม่ยิง event · ส่งหลังเวลาเงียบ) ·
+//   ทุก 1 นาที · ข้ามร้าน · ส่งครั้งเดียวด้วย dedupeKey ของ notifyCustomer · โหลดตอนรัน ◂
+registerMinuteJob({
+  name: "booking.waitlist.tick",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/platform/booking-waitlist")).runWaitlistTick(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
 registerMinuteJob({
   name: "booking.notify.tick",
   everyMinutes: 1,
