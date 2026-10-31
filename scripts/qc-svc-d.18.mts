@@ -130,7 +130,7 @@ const read = (rel: string) => (existsSync(join(ROOT, rel)) ? readFileSync(join(R
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
 const THAI = /[฀-๿]/;
 const LEGAL_BAD = /ล็อ[กค]ห้อง|ล็อ[กค]ประตู|ตัดน้ำ|ตัดไฟ|ระงับ(การ)?(จ่าย)?(น้ำ|ไฟ)|งด(จ่าย)?(น้ำ|ไฟ)|ยึดทรัพย์|ยึดของ|ขนของออก|เข้าห้องโดยไม่/;
-const PHONE_RE = /(\+?66|0)[689]\d{8}/;
+const PHONE_RE = /(?<![0-9A-Za-z])(\+?66|0)[689]\d{8}(?![0-9A-Za-z])/; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · d18-F1) กันชนเลขสุ่มใน hex ลายเซ็น URL (~1.85%/URL) · เบอร์ที่คั่นด้วยช่องว่าง/เครื่องหมาย/อัญประกาศยังจับได้
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const tryImport = async (spec: string): Promise<{ mod: Any; err: string }> => { try { return { mod: await import(spec), err: "" }; } catch (e) { return { mod: null, err: errMsg(e) }; } };
 const loadIf = async (rel: string) => (existsSync(join(ROOT, rel)) ? tryImport(pathToFileURL(join(ROOT, rel)).href) : { mod: null, err: `ยังไม่มีไฟล์ «${rel}»` });
