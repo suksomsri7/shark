@@ -884,6 +884,23 @@ DEFS.push(
 );
 // ◂ SVC D.18
 
+// SVC D.19 ▸ เพดานรายงานหอ (ใบสั่ง ledger/svc-briefs/svc-brief-d.19.md §2.1 · มติผู้คุม R6) — ชั้น TENANT เท่านั้น (เพดานความปลอดภัยของร้าน
+//   ไม่ใช่นโยบายหน่วย ⇒ ไม่ขึ้นการ์ดหน้า 17) · อ่านต่อคำขอใน dorm/report.ts (resolveSettings · refs { unitId })
+DEFS.push(
+  def({
+    key: "rooms.report.exportMaxRows", type: "int", labelTh: "แถวสูงสุดต่อไฟล์ส่งออกรายงานหอ",
+    helpTh: "ไม่นับแถวหัวคอลัมน์ · ข้อมูลเกินนี้ระบบไม่ส่งออก (เลือกช่วงให้สั้นลง)",
+    schema: z.number().int().min(1).max(50000), defaults: { _fallback: 5000 }, chain: T,
+  }),
+  def({
+    key: "rooms.report.maxMonths", type: "int", labelTh: "ช่วงรายงานหอยาวสุด (เดือน)",
+    helpTh: "ช่วงที่ยาวกว่านี้ระบบไม่ออกรายงาน · ปุ่ม \"ปีนี้\" ตัดต้นช่วงให้พอดี",
+    schema: z.number().int().min(1).max(36), defaults: { _fallback: 24 }, chain: T,
+  }),
+);
+GROUP_LABELS_TH.report = "รายงานหอ";
+// ◂ SVC D.19
+
 const withLabels = (defs: SettingDef[]): SettingDef[] => defs.map((d) => (ENUM_LABELS_TH[d.key] ? { ...d, enumLabelsTh: ENUM_LABELS_TH[d.key] } : d));
 
 defineSettings("rooms", withLabels(DEFS), { templates: ROOM_TEMPLATES, snapshots: SNAPSHOTS, groupRules: GROUP_RULES, groupLabelsTh: GROUP_LABELS_TH });
