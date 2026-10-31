@@ -325,7 +325,10 @@ class Stuck extends Stop {
 }
 const RETRYABLE = new Set(["BUSY", "LOST"]);
 /** consumer ล้มเพราะแผนค้างครบกี่ครั้งแล้วพักสลิป (เลิก throw ให้คิววนไม่จบ) — ค่าความปลอดภัย ไม่ใช่นโยบายร้าน */
-const STUCK_MAX = 5;
+// Z25 ▸ ต้องน้อยกว่า MAX_ATTEMPTS ของ outbox (5 · core/outbox.ts) — ไม่งั้นรอบส่งสุดท้ายตายก่อนได้พัก
+const STUCK_MAX = 3;
+/** Z25 ▸ จำนวนรอบส่งสูงสุดของ outbox (ค่าเดียวกับ core/outbox.ts MAX_ATTEMPTS — ไฟล์ core ห้ามแตะ จึงคัดลอกค่า) */
+const OUTBOX_MAX_ATTEMPTS = 5;
 const stuckText = (reason: string) =>
   `รายการรับเงินของบิลนี้ลงบัญชีไปแล้วบางส่วนแต่ทำต่อไม่ได้ (${reason}) — ระบบล็อกบิลไว้กันลงเงินซ้ำ ให้เจ้าของ/ผู้ดูแลบัญชีตรวจการเชื่อมสมุดบัญชีและเอกสารของบิลนี้ แล้วกดทำรายการอีกครั้ง`;
 /** BUSY/deadlock ของบัญชี: ลองซ้ำครั้งเดียวด้วยคีย์เดิม (idempotent) แล้วค่อยยอมแพ้ */
@@ -432,6 +435,10 @@ async function planMoved(tenantId: string, plan: Plan): Promise<boolean> {
   return !!(await receiptByRef(tenantId, plan.recv));
 }
 type Settled = { unitId: string; view: DormReceiptView };
+/** Z24 ▸ แผน "ใหม่" ที่คีย์ถูกใช้ลงเงินไปแล้ว = แผนเดิมของการรับนี้จบ/ค้างอยู่แล้ว — ห้ามบันทึก (จะชน IDEMPOTENCY_CONFLICT แล้วค้างตลอดกาล) */
+async function freshPlanUsed(tenantId: string, plan: Plan): Promise<boolean> {
+  return planMoved(tenantId, plan);
+}
 /**
  * กวาดแผนค้างทุกใบของสัญญาเดียวกัน (ผู้เรียกถือ claim บิลเป้าหมายแล้ว) — ถือ claim บิลของแผนเพิ่ม (ไม่รอ · ไม่ได้ ⇒ Stop BUSY)
  *   แผนของผู้เรียก (myRecv) ที่ขยับเงินแล้ว ⇒ คืนให้ทำต่อ · แผนอื่นที่ขยับแล้ว ⇒ ทำให้จบที่นี่ (ใบเสร็จส่ง LINE หลังปล่อย claim)
@@ -477,6 +484,14 @@ async function runPlan(hold: Hold, tenantId: string, unitId: string, hostBillId:
     return rid;
   } catch (e) {
     if (!(e instanceof Stop) || e instanceof Stuck || RETRYABLE.has(e.code) || e.code === "NOT_PAYABLE" || !(await planMoved(tenantId, plan))) throw e;
+    // Z24 ▸ คีย์ชนเพราะการรับนี้จบไปแล้ว (มีใบเสร็จของ recv) ⇒ ถือว่าแผนเดิมจบแล้ว ไม่ใช่ค้าง
+    if (e.code === "IDEMPOTENCY_CONFLICT") {
+      const done = await receiptByRef(tenantId, plan.recv);
+      if (done) {
+        if (plan.slipId) await releaseStuckHold(tenantId, plan.slipId);
+        return done.id;
+      }
+    }
     const cur = planOf(await readBill(tenantId, hostBillId), plan.recv) ?? plan;
     const n = (cur.lastError?.n ?? 0) + 1;
     const lastError = { code: e.code, reason: (e.reason || e.code).slice(0, 200), at: new Date().toISOString(), n };
@@ -605,7 +620,7 @@ async function sendSlipMessage(tenantId: string, bill: BillRow, kind: "payMore" 
 
 // ═══════════════ พักสลิป (§3.4) — marker ใน checks.dormHold (CAS คำสั่งเดียว · ครั้งเดียวต่อสลิป) ═══════════════
 //   { open, reason, billId, at, rest? (Z9 ส่วนที่ยังไม่ลง) , resolution?, resolving? (Z5 CREDIT กำลังลงเงิน) }
-type HoldReason = "AFTER_PAID" | "BILL_VOID" | "NO_INVOICE" | "PLAN_STUCK";
+type HoldReason = "AFTER_PAID" | "BILL_VOID" | "NO_INVOICE" | "PLAN_STUCK" | "RETRY_EXHAUSTED";
 type HoldMark = { open: boolean; reason: string; billId: string; rest: number | null; resolution: string | null; resolving: boolean };
 const holdOf = (s: SlipRow): HoldMark | null => {
   const h = isRec(s.checks) ? s.checks.dormHold : null;
@@ -650,8 +665,9 @@ async function beginHeldCredit(tenantId: string, slipId: string, reason: string)
 /** Z20 ▸ แผนค้างทำจบได้แล้ว (เงิน + ใบเสร็จครบ) ⇒ ปิดการพัก PLAN_STUCK ของสลิปเอง (ไม่ต้องให้พนักงานเลือกเก็บเครดิต/โอนคืน) */
 async function releaseStuckHold(tenantId: string, slipId: string): Promise<void> {
   await tenantDb({ tenantId }).$executeRaw`
-    UPDATE "PaymentSlip" SET "checks" = jsonb_set(jsonb_set("checks", '{dormHold,open}', 'false'::jsonb), '{dormHold,resolution}', '"SETTLED"'::jsonb, true)
-    WHERE "tenantId" = ${tenantId} AND "id" = ${slipId} AND "checks"#>>'{dormHold,reason}' = 'PLAN_STUCK' AND "checks"#>>'{dormHold,open}' = 'true'`;
+    UPDATE "PaymentSlip" SET "checks" = jsonb_set(jsonb_set(jsonb_set("checks", '{dormHold,open}', 'false'::jsonb), '{dormHold,resolving}', 'false'::jsonb, true), '{dormHold,resolution}', '"SETTLED"'::jsonb, true)
+    WHERE "tenantId" = ${tenantId} AND "id" = ${slipId} AND "checks"#>>'{dormHold,reason}' IN ('PLAN_STUCK', 'RETRY_EXHAUSTED')
+      AND ("checks"#>>'{dormHold,open}' = 'true' OR "checks"#>>'{dormHold,resolving}' = 'true')`;
 }
 /** ยังไม่มีเงินลง ⇒ คืนสถานะพัก (ให้เลือกใหม่ได้) */
 async function abortHeldCredit(tenantId: string, slipId: string): Promise<void> {
@@ -703,6 +719,15 @@ async function sendAll(tenantId: string, done: Settled[]): Promise<void> {
 }
 
 // ═══════════════ §3.4 consumer ═══════════════
+/** Z25 ▸ รอบนี้คือรอบส่งสุดท้ายของ event (ล้มแล้ว outbox จะเลิกส่ง) */
+async function lastDelivery(tenantId: string, eventId: string): Promise<boolean> {
+  try {
+    const r = await tenantDb({ tenantId }).outboxEvent.findFirst({ where: { id: eventId, tenantId }, select: { attempts: true } });
+    return !!r && r.attempts + 1 >= OUTBOX_MAX_ATTEMPTS;
+  } catch {
+    return false;
+  }
+}
 /** Z17 ▸ แพ้ claim: รอสั้น ๆ (≤ 2 วิ) — ผู้ชนะออกใบเสร็จของสลิปนี้แล้ว/พักแล้ว ⇒ จบเงียบ */
 async function settledElsewhere(tenantId: string, slipId: string, recv: string): Promise<boolean> {
   for (let i = 0; i < 4; i++) {
@@ -779,6 +804,7 @@ export async function onDormSlipApproved(evt: { id?: string; tenantId: string; u
         if (intendsCarry(s2) && !carry) await logOps("WARN", "dorm.pay", "ยกยอดตามที่ตัดสินไว้ไม่ได้แล้ว (ยอดสลิปไม่พอยอดยกมา) — รับเงินโดยไม่ยกยอด", { tenantId, detail: `slip=${slip.id}` });
         plan = makePlan(recv, b2, amount, allocate(u.target, u.sources, amount), "PROMPTPAY", paidAtOf(s2, new Date()), slip.id, carry, null);
       }
+      if (await freshPlanUsed(tenantId, plan)) return; // Z24 ▸ การรับนี้ลงเงินไปแล้วด้วยแผนอื่น (จบ/ค้างอยู่ที่บิลอื่น) — ไม่สร้างแผนซ้อน
       if (!(await savePlan(tenantId, bill.id, hold.token, plan))) throw new Error("[dorm.pay] เสีย claim ระหว่างทาง — คิวลองใหม่");
     }
     try {
@@ -802,6 +828,12 @@ export async function onDormSlipApproved(evt: { id?: string; tenantId: string; u
     // Z20 ▸ แผนค้าง (ของสลิปนี้หรือแผนอื่นที่บล็อกบิล) ล้มติดกันครบ STUCK_MAX ⇒ พักสลิป (PLAN_STUCK) แล้วจบ — ไม่ให้คิววนไม่จบ · บิลยังถูกบล็อกจนเจ้าของจัดการ
     if (e instanceof Stuck && e.n >= STUCK_MAX) {
       await holdSlip(tenantId, slip, "PLAN_STUCK");
+      return;
+    }
+    // Z25 ▸ รอบส่งสุดท้ายของ outbox แล้วยังล้ม ⇒ พักสลิปให้พนักงานเห็น (ห้ามสลิปอนุมัติแล้วหายจากคิวเงียบ) — ยังไม่มีใบเสร็จเท่านั้น
+    if (isStr(evt.id) && (await lastDelivery(tenantId, evt.id)) && !(await receiptByRef(tenantId, recv))) {
+      await holdSlip(tenantId, slip, e instanceof Stuck ? "PLAN_STUCK" : "RETRY_EXHAUSTED");
+      await logOps("ERROR", "dorm.pay", "สลิปอนุมัติแล้วแต่ลงเงินไม่สำเร็จจนครบรอบส่ง — พักไว้ในคิวรับเงินให้พนักงานจัดการ", { tenantId, detail: `slip=${slip.id} ${errText(e)}` });
       return;
     }
     if (e instanceof Stop) throw new Error(`[dorm.pay] ลงเงินไม่สำเร็จ ${e.code} — คิวลองใหม่`);
@@ -967,20 +999,22 @@ export async function resolveHeldSlip(ctx: DormPayCtx, i: { slipId: string; acti
     const reason = validReason(i.reason);
     if (!reason) return fail("VALIDATION", `ใส่เหตุผล 1–${REASON_MAX} ตัวอักษร`);
     if (i.action === "REFUND_DUE") {
-      if (h0?.open && h0.reason === "PLAN_STUCK") {
-        const own = planOf(bill, `slip:${slip.id}`);
-        if ((own && (await planMoved(tenantId, own))) || (await receiptByRef(tenantId, `slip:${slip.id}`)))
-          return fail("VALIDATION", "เงินของสลิปนี้ลงบัญชีไปแล้วบางส่วน — ให้เจ้าของแก้สาเหตุแล้วเลือกเก็บเป็นเงินรับล่วงหน้าเพื่อทำให้จบ");
-      }
+      // Z27 ▸ กติกาเดียวกับจอ (refundAllowed): เงินของสลิปนี้ลงบัญชีไปแล้ว ⇒ ต้องทำให้จบด้วยการเก็บ ไม่ใช่โอนคืน
+      if (h0?.open && bill && !(await refundAllowed(tenantId, h0, bill.id, slip.id)))
+        return fail("VALIDATION", "เงินของสลิปนี้ลงบัญชีไปแล้วบางส่วน — ให้เจ้าของแก้สาเหตุแล้วเลือกเก็บเป็นเงินรับล่วงหน้าเพื่อทำให้จบ");
       if (h0?.open) return (await closeHold(tenantId, slip, "REFUND_DUE", ctx.actorUserId, reason)) ? { ok: true, slipId: slip.id, receipt: null } : notFound();
       return refundResolving(ctx, slip, bill, reason);
     }
     if (i.action !== "CREDIT") return fail("VALIDATION", "เลือกวิธีจัดการสลิปที่พัก");
+    const recv = `slip:${slip.id}`;
+    // Z24 ▸ การรับของสลิปนี้จบแล้ว (มีใบเสร็จ · ไม่มีแผนค้าง) ⇒ ปิดการพักแล้วจบ (ไม่ว่าพักเปิดหรือค้าง resolving) · ยกเว้นใบเสร็จบางส่วนของ Z9 (ส่วนที่เหลือต้องโอนคืน)
+    const doneEarly = !planOf(bill, recv) ? await receiptByRef(tenantId, recv) : null;
+    if (doneEarly) {
+      if (h0?.rest) return fail("VALIDATION", R.PARTIAL_RCPT);
+      return settledHold(ctx, slip, reason);
+    }
     const st = billState(bill, slip.unitId);
     if (st !== "OK" || !bill) return stateFail(st === "OK" ? "NOT_FOUND" : st);
-    const recv = `slip:${slip.id}`;
-    // Z9 ▸ สลิปที่ออกใบเสร็จบางส่วนไปแล้ว (บิลถูกยกเลิกกลางทาง) — ส่วนที่เหลือไม่ใช่เงินรับล่วงหน้าของสลิปนี้อีก (หนึ่งสลิป = ใบเสร็จเดียว)
-    if (h0?.open && (await receiptByRef(tenantId, recv)) && !planOf(bill, recv)) return fail("VALIDATION", R.PARTIAL_RCPT);
     const amount = h0?.rest ?? slipAmount(slip);
     if (amount <= 0) return fail("VALIDATION", "สลิปนี้ไม่มียอด");
     const hold = new Hold(tenantId);
@@ -1003,13 +1037,26 @@ export async function resolveHeldSlip(ctx: DormPayCtx, i: { slipId: string; acti
       }
       const rec = await reconcilePlans(hold, tenantId, b2.leaseId, bill.id, recv);
       sent.push(...rec.done);
-      plan = rec.mine ?? makePlan(recv, b2, amount, { items: [], credit: amount }, "PROMPTPAY", paidAtOf(s2, new Date()), slip.id, false, ctx.actorUserId, { heldCredit: true });
-      if (!rec.mine && !(await savePlan(tenantId, bill.id, hold.token, plan))) throw new Stop("BUSY", BUSY_REASON);
-      await runPlan(hold, tenantId, slip.unitId, bill.id, plan);
-      await finishHeldCredit(tenantId, slip.id, ctx.actorUserId);
-      await dropPlan(tenantId, bill.id, hold.token, recv);
-      keepPlan = false;
-      view = await viewOfRef(tenantId, recv);
+      // Z24(3) ▸ ใต้ claim: แผนเดิมถูกทำจบไปแล้ว (มีใบเสร็จ) ⇒ ไม่สร้างแผนใหม่ · ปิดการพัก
+      if (!rec.mine && (await receiptByRef(tenantId, recv))) {
+        keepPlan = false;
+        begun = false;
+        plan = null;
+        await releaseStuckHold(tenantId, slip.id);
+        await finishHeldCredit(tenantId, slip.id, ctx.actorUserId);
+        view = await viewOfRef(tenantId, recv);
+      } else {
+        if (!rec.mine) plan = await creditPlan(hold, tenantId, recv, b2, s2, amount, ctx.actorUserId);
+        else plan = rec.mine;
+        if (!rec.mine && (await freshPlanUsed(tenantId, plan))) throw new Stop("BUSY", BUSY_REASON); // Z24(4)
+        if (!rec.mine && !(await savePlan(tenantId, bill.id, hold.token, plan))) throw new Stop("BUSY", BUSY_REASON);
+        await runPlan(hold, tenantId, slip.unitId, bill.id, plan);
+        await releaseStuckHold(tenantId, slip.id);
+        await finishHeldCredit(tenantId, slip.id, ctx.actorUserId);
+        await dropPlan(tenantId, bill.id, hold.token, recv);
+        keepPlan = false;
+        view = await viewOfRef(tenantId, recv);
+      }
     } catch (e) {
       // ยังไม่มีเงินลง ⇒ คืนสถานะพัก (เลือกใหม่ได้) · มีเงินลงแล้ว ⇒ คงสถานะกำลังเก็บเครดิต (ลองซ้ำทำต่อจากแผนเดิม)
       if (begun || plan) {
@@ -1032,6 +1079,42 @@ export async function resolveHeldSlip(ctx: DormPayCtx, i: { slipId: string; acti
   }
 }
 
+/**
+ * แผนของ "เก็บเครดิต" — พักเพราะลงเงินไม่ได้ชั่วคราว (PLAN_STUCK · RETRY_EXHAUSTED) ⇒ ลงเงินตามปกติ (ยกมา → ใบแจ้งหนี้ → ส่วนเกิน 2110)
+ *   พักเพราะจ่ายครบ/อื่น ⇒ ทั้งก้อนเป็นเงินรับล่วงหน้า (เดิม)
+ */
+async function creditPlan(hold: Hold, tenantId: string, recv: string, b: BillRow, s: SlipRow, amount: number, actorId: string): Promise<Plan> {
+  const h = holdOf(s);
+  if (h && (h.reason === "PLAN_STUCK" || h.reason === "RETRY_EXHAUSTED")) {
+    const u = await balancesUnder(hold, tenantId, b.id);
+    if (!u) throw new Stop("BUSY", BUSY_REASON);
+    if (u.target.dueSatang > 0) {
+      const carry = intendsCarry(s) && amount >= carriedInSum(u.target);
+      return makePlan(recv, b, amount, allocate(u.target, u.sources, amount), "PROMPTPAY", paidAtOf(s, new Date()), s.id, carry, actorId, { heldCredit: true });
+    }
+  }
+  return makePlan(recv, b, amount, { items: [], credit: amount }, "PROMPTPAY", paidAtOf(s, new Date()), s.id, false, actorId, { heldCredit: true });
+}
+/** Z27 ▸ เลือกโอนคืนได้ไหม — กติกาเดียวกับ resolveHeldSlip: ไม่มีใบเสร็จของสลิป และแผนของสลิป (ถ้ามี) ยังไม่ขยับเงิน · resolving ต้องเป็นของ CREDIT */
+async function refundAllowed(tenantId: string, h: HoldMark | null, billId: string, slipId: string): Promise<boolean> {
+  if (!h || (!h.open && !(h.resolving && h.resolution === "CREDIT"))) return false;
+  const recv = `slip:${slipId}`;
+  if (await receiptByRef(tenantId, recv)) return h.open && !!h.rest; // Z9 ใบเสร็จบางส่วน ⇒ ส่วนที่เหลือโอนคืนได้
+  const plan = planOf(await readBill(tenantId, billId), recv);
+  return !plan || !(await planMoved(tenantId, plan));
+}
+/** Z24 ▸ ปิดการพักของสลิปที่การรับจบแล้ว (CAS · ครั้งเดียว · audit) แล้วคืนใบเสร็จเดิม */
+async function settledHold(ctx: DormPayCtx, slip: SlipRow, reason: string): Promise<{ ok: true; slipId: string; receipt: DormReceiptView | null } | DormPayFail> {
+  const tenantId = ctx.tenantId;
+  const n = await tenantDb({ tenantId }).$executeRaw`
+    UPDATE "PaymentSlip" SET "checks" = jsonb_set(jsonb_set(jsonb_set("checks", '{dormHold,open}', 'false'::jsonb), '{dormHold,resolving}', 'false'::jsonb, true), '{dormHold,resolution}', '"SETTLED"'::jsonb, true)
+    WHERE "tenantId" = ${tenantId} AND "id" = ${slip.id} AND ("checks"#>>'{dormHold,open}' = 'true' OR "checks"#>>'{dormHold,resolving}' = 'true')`;
+  if (n !== 1) return notFound();
+  await tenantDb({ tenantId }).auditLog.create({
+    data: { tenantId, unitId: slip.unitId, actorType: "USER", actorId: ctx.actorUserId, action: "dorm.slip.resolved", targetType: "PaymentSlip", targetId: slip.id, after: { slipId: slip.id, billId: slip.refId, resolution: "SETTLED", reason } },
+  });
+  return { ok: true, slipId: slip.id, receipt: await viewOfRef(tenantId, `slip:${slip.id}`) };
+}
 /**
  * Z23 ▸ สลิปค้างกลางทางเก็บเครดิต (resolving) แต่ยังไม่มีเงินลง (ไม่มีแผน/แผนยังไม่ขยับ · ไม่มีใบเสร็จ) ⇒ เลือกโอนคืนได้
  *   ใต้ claim บิล (กัน CREDIT ที่กำลังลงเงินอยู่) · มีเงินลงแล้ว ⇒ ต้องเก็บเครดิตต่อให้จบ
@@ -1172,7 +1255,15 @@ export async function voidDormReceipt(ctx: DormPayCtx, i: { receiptId: string; r
     if (row.status === "VOIDED") return fail("ALREADY_VOID", "ใบเสร็จนี้ถูกยกเลิกไปแล้ว");
     const hold = new Hold(tenantId);
     try {
-      if (!(await hold.take(billIds))) return fail("BUSY", BUSY_REASON);
+      // Z26 ▸ แพ้ claim (มีคนกำลังลงเงินบิลนี้) ⇒ รอสั้น ๆ ลองจองซ้ำ (≤ 3 วิ) — อีกทางยกเลิกใบนี้ไปแล้ว ⇒ ALREADY_VOID
+      let got = await hold.take(billIds);
+      for (let n = 0; !got && n < 6; n++) {
+        await hold.release(null, null);
+        await sleep(500);
+        if ((await dormReceiptRows(tenantId, { ids: [row.id] }))[0]?.status === "VOIDED") return fail("ALREADY_VOID", "ใบเสร็จนี้ถูกยกเลิกไปแล้ว");
+        got = await hold.take(billIds);
+      }
+      if (!got) return fail("BUSY", BUSY_REASON);
       const cur = (await dormReceiptRows(tenantId, { ids: [row.id] }))[0];
       if (!cur || cur.status === "VOIDED") return fail("ALREADY_VOID", "ใบเสร็จนี้ถูกยกเลิกไปแล้ว");
       // คีย์ที่รู้จากใบเสร็จ + facade กวาดทุกคีย์ "<การรับ>:*" ของใบนี้เองใต้ล็อก (Z1)
@@ -1302,12 +1393,12 @@ export async function dormPaymentsModel(ctx: DormPayCtx, i: { unitId: string; pe
     const held = holdOf(row);
     const heldOpen = holdPending(held) && APPROVED.includes(x.status);
     if (!heldOpen && !REVIEWABLE.includes(x.status)) continue;
-    const flags: DormSlipFlag[] = heldOpen && held ? [held.reason === "PLAN_STUCK" ? "OTHER" : (held.reason as DormSlipFlag)] : flagsOf(row, due);
+    const flags: DormSlipFlag[] = heldOpen && held ? [held.reason === "PLAN_STUCK" || held.reason === "RETRY_EXHAUSTED" ? "OTHER" : (held.reason as DormSlipFlag)] : flagsOf(row, due);
     const short = flags.includes("SHORT");
     // Z14 ▸ ยกยอดได้เมื่อยอดสลิปครอบยอดยกมาแล้ว (ไม่งั้นให้เลือก ขอเพิ่ม/ปฏิเสธ)
     const carryOk = (x.amountSatang ?? 0) >= carriedInSum(bal.get(b.id) ?? ({ carriedIn: [] } as unknown as DormBillBalance));
     const actions: DormReviewRow["actions"] = heldOpen
-      ? held?.open || !planOf(await readBill(tenantId, b.id), `slip:${x.id}`) ? ["CREDIT", "REFUND_DUE"] : ["CREDIT"] // Z23 ▸ resolving ไม่มีแผน ⇒ โอนคืนได้
+      ? (await refundAllowed(tenantId, held, b.id, x.id)) ? ["CREDIT", "REFUND_DUE"] : ["CREDIT"] // Z23/Z27 ▸ ตรงกับด่านของ resolveHeldSlip
       : [
           ...(due > 0 && (x.amountSatang === null || x.amountSatang >= due) ? (["APPROVE"] as const) : []),
           ...(short && s.partialAllowed ? [...(carryOk ? (["PARTIAL_CARRY"] as const) : []), "ASK_MORE" as const] : []),
