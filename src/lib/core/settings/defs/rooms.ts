@@ -511,6 +511,27 @@ const DEFS: SettingDef[] = [
     schema: z.array(z.object({ code: z.string().regex(/^[A-Z0-9_]{1,24}$/), labelTh: z.string().min(1).max(80), amountSatang: MONEY }).strict()).max(100),
     defaults: { _fallback: [] }, chain: U, sensitivity: "MONEY",
   }),
+  // SVC D.12 ▸ ย้ายออก/คืนประกัน — รายการตรวจห้องตั้งต้น + ข้อความใบสรุปถึงผู้เช่า (ใบสั่ง ledger/svc-briefs/svc-brief-d.12.md §2.2) ◂
+  def({
+    key: "rooms.moveout.checklist", type: "table", labelTh: "รายการตรวจห้องวันย้ายออก (ตั้งต้น)",
+    helpTh: "รายการที่จอตรวจห้องแสดงให้ก่อน (เพิ่มรายการเองได้ตอนตรวจ) · ค่าเสื่อมสภาพปกติหักไม่ได้ · ค่าเสียหายต้องมีรูป/ใบเสร็จ",
+    schema: z.array(z.object({ key: z.string().regex(/^[a-z0-9_]{1,24}$/), labelTh: z.string().min(1).max(60) }).strict()).max(30),
+    defaults: {
+      _fallback: [
+        { key: "wall", labelTh: "ผนัง · สี" },
+        { key: "screen", labelTh: "มุ้งลวดหน้าต่าง" },
+        { key: "keys", labelTh: "กุญแจห้อง" },
+        { key: "appliance", labelTh: "แอร์ · ตู้เย็น · ทีวี" },
+        { key: "furniture", labelTh: "เฟอร์นิเจอร์" },
+      ],
+    },
+    chain: U,
+  }),
+  tpl("rooms.msg.moveOutSummary", "ข้อความใบสรุปเงินประกันวันย้ายออก",
+    ["tenantName", "roomNo", "unitName", "moveOutDate", "depositAmount", "deductAmount", "refundAmount", "owesAmount", "refundDueDate", "lines"],
+    "เรียนคุณ{tenantName} สรุปเงินประกันห้อง {roomNo} (ย้ายออก {moveOutDate})\nเงินประกัน {depositAmount}\n{lines}\nค่าเสียหายที่หัก {deductAmount}\nยอดคืน {refundAmount} ภายใน {refundDueDate}\nยอดที่ต้องชำระเพิ่ม {owesAmount}\nหากมีข้อสงสัยติดต่อสำนักงานได้เลย ขอบคุณที่พักกับเรา — {unitName}",
+    "Dear {tenantName}, deposit summary for room {roomNo} (moved out {moveOutDate})\nDeposit {depositAmount}\n{lines}\nDamages deducted {deductAmount}\nRefund {refundAmount} by {refundDueDate}\nBalance to pay {owesAmount}\nPlease contact the office with any questions. Thank you for staying with us — {unitName}"),
+  // ◂ SVC D.12
   def({
     key: "rooms.lease.contractTemplate", group: "lease", type: "template", labelTh: "แม่แบบสัญญาเช่า", // #50
     helpTh: "ข้อบังคับตามประกาศ 2568 ระบบแทรกเองที่ {mandatoryClauses} ลบ/แก้ไม่ได้ · ข้อห้ามเพิ่มไม่ได้",

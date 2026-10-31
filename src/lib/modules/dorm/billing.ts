@@ -475,7 +475,7 @@ type RunCalc = {
   gate: (BillRunGate & { groups: UtilityGroup[] }) | null;
   unitVals: Vals;
 };
-type ComputeOpts = { only?: Set<string>; manual?: Map<string, ManualLine[]>; gate?: boolean; unitVals?: Vals; legalParams?: Record<string, unknown> | null }; // SVC D.11 (ข) legalParams ◂
+type ComputeOpts = { only?: Set<string>; manual?: Map<string, ManualLine[]>; gate?: boolean; unitVals?: Vals; legalParams?: Record<string, unknown> | null; now?: Date }; // SVC D.11 (ข) legalParams ◂ · SVC D.12 now (ด่าน D.7 นับเดือนหน้าจากเวลาของรอบ) ◂
 
 function runGateOf(g: UtilityGate | { ok: false; code: string; reason: string }): BillRunGate & { groups: UtilityGroup[] } {
   if (!("groups" in g)) return { ok: false, blocks: [{ kind: null, buildingId: null, code: g.code, messageTh: g.reason }], needsAcceptance: [], groups: [] };
@@ -535,10 +535,10 @@ async function computeRun(tenantId: string, unitId: string, P: string, issueYmd:
       select: LEASE_SELECT,
     }),
     db.hotelRoom.findMany({ select: { id: true, number: true, buildingId: true, roomTypeId: true } }),
-    utilityCharges(uctx, { unitId, periodKey: utilMonth }),
+    utilityCharges(uctx, { unitId, periodKey: utilMonth }, { now: opts.now }),
     periodUsage(uctx, { unitId, periodKey: utilMonth }),
     heldRooms(uctx, { unitId, periodKey: utilMonth }),
-    opts.gate === false ? Promise.resolve(null) : utilityBillingGate(uctx, { unitId, periodKey: utilMonth }),
+    opts.gate === false ? Promise.resolve(null) : utilityBillingGate(uctx, { unitId, periodKey: utilMonth }, { now: opts.now }),
     db.dormBill.findMany({ where: { periodKey: P }, select: { leaseId: true, lines: true } }),
   ]);
   const leases: LeaseRec[] = opts.only ? leasesAll.filter((l) => opts.only?.has(l.id)) : leasesAll;
@@ -922,7 +922,7 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date, legalParams:
   const db = tenantDb({ tenantId, unitId });
   const [run0, uv] = await Promise.all([db.dormBillRun.findFirst({ where: { periodKey: P }, select: { issueDate: true } }), unitValsOf(tenantId, unitId)]);
   const issueYmd = ymdOf(run0?.issueDate) ?? bkkYmd(now);
-  const calc = await computeRun(tenantId, unitId, P, issueYmd, { unitVals: uv, legalParams }); // SVC D.11 (ข)
+  const calc = await computeRun(tenantId, unitId, P, issueYmd, { unitVals: uv, legalParams, now }); // SVC D.11 (ข) · SVC D.12 now ◂
   const snaps = await billSnapshots(tenantId, calc.bills);
 
   const res = await retryOnce(() =>
@@ -1000,7 +1000,8 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date, legalParams:
   );
   if (res === "BUSY") return BUSY();
   // SVC D.11 (L4) ▸ สัญญาที่ "ค้าง" (ฐานค่าปรับเปลี่ยนระหว่างคำนวณ) ⇒ คำนวณใหม่ 1 ครั้ง · ยังค้าง ⇒ บอกในผล (ไม่หลุดเงียบ) ◂
-  if (res.stale > 0 && !retried) {
+  // SVC D.12 (Y17) ▸ สัญญาที่ถูกตัดตอนล็อก (ปิด/ย้ายห้อง/ยกเลิกระหว่างคำนวณ) ⇒ คำนวณใหม่ 1 ครั้งเช่นกัน — สัญญาใหม่จากการย้ายห้องที่เกิดหลังคำนวณได้บิลในรอบนี้ (ไม่หายทั้งคู่) ◂
+  if ((res.stale > 0 || res.dropped.length > 0) && !retried) {
     const again = await prepareInternal(g, P, now, legalParams, true);
     if (!again.ok) return again;
     const seen = new Set(again.skipped.map((s) => s.leaseId)); // SVC D.4 (Y3) ▸ สัญญาที่ถูกตัดในรอบแรกยังอยู่ในผล ◂
@@ -2026,7 +2027,7 @@ async function sendLocked(g: G, runId: string, o: LoopOpts, onSent: (n: number) 
   if (drafts.length) {
     // 1. ด่าน (สดทุกครั้ง · ก่อนออกใบใด ๆ)
     //    (คำนวณครั้งเดียว: ด่าน D.7 utilityBillingGate สด + บิลทั้งรอบ — ตัดสินด่านก่อนเทียบบิล)
-    const calc = await computeRun(tenantId, unitId, run.periodKey, issueYmd, { gate: true });
+    const calc = await computeRun(tenantId, unitId, run.periodKey, issueYmd, { gate: true, now: o.now }); // SVC D.12 now ◂
     const uv = calc.unitVals;
     const gate = calc.gate ?? { ok: false, blocks: [], needsAcceptance: [], groups: [] };
     if (!gate.ok) {

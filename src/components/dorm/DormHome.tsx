@@ -17,6 +17,8 @@ const TODO_ACTION: Record<DormHomeModel["todo"][number]["kind"], string> = {
   repairs: "ดูห้องปิดซ่อม",
   moveIns: "ทำสัญญา",
   expiring: "ดูสัญญา",
+  expired: "ดูสัญญา", // SVC D.12 ◂
+  refundDue: "คืนเงินประกัน", // SVC D.12 ◂
 };
 const TODO_HEAD: Record<DormHomeModel["todo"][number]["kind"], string> = {
   overdue: "ค้างจ่ายเกินกำหนด",
@@ -24,6 +26,8 @@ const TODO_HEAD: Record<DormHomeModel["todo"][number]["kind"], string> = {
   repairs: "แจ้งซ่อมใหม่",
   moveIns: "ผู้เช่าใหม่เข้า",
   expiring: "สัญญาหมดภายใน 30 วัน",
+  expired: "สัญญาเลยวันจบ", // SVC D.12 ◂
+  refundDue: "ต้องคืนเงินประกัน", // SVC D.12 ◂
 };
 
 function Kpi({ k, value, label, children }: { k: string; value: string; label: string; children: ReactNode }) {

@@ -154,7 +154,10 @@ const isNat = (v: unknown): v is number => typeof v === "number" && Number.isSaf
 const isKind = (v: unknown): v is Kind => v === "ELEC" || v === "WATER";
 const periodOk = (v: unknown): v is string => typeof v === "string" && PERIOD_RE.test(v);
 /** งวดอยู่ในช่วงที่ยอมรับ: 2020-01 .. เดือนปัจจุบันไทย + 1 */
-const periodInRange = (p: string): boolean => p >= MIN_PERIOD && p <= nextPeriod(bkkYmd(new Date()).slice(0, 7));
+// SVC D.12 ▸ (มติผู้คุม P-5) "เดือนหน้า" นับจาก now ที่ผู้เรียกส่งมา (รอบบิลใช้ deps.now) · ไม่ส่ง = นาฬิกาจริงเหมือนเดิม ◂
+const periodInRange = (p: string, now?: Date): boolean => p >= MIN_PERIOD && p <= nextPeriod(bkkYmd(now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date()).slice(0, 7));
+/** ตัวเลือกเวลาของด่าน/ค่าน้ำไฟ (SVC D.12 · เพิ่มอย่างเดียว) */
+export type UtilityClockOpts = { now?: Date };
 const sub = (k: Kind) => (k === "ELEC" ? "elec" : "water");
 const numCmp = (a: string, b: string) => a.localeCompare(b, "th", { numeric: true });
 
@@ -1132,10 +1135,10 @@ export async function recordAuthorityBill(
 }
 
 // ───────────────────────── 3.2 ค่าน้ำไฟทุกโหมด ─────────────────────────
-export async function utilityCharges(ctx: UtilityCtx, input: { unitId: string; periodKey: string }): Promise<UtilityCharges> {
+export async function utilityCharges(ctx: UtilityCtx, input: { unitId: string; periodKey: string }, opts?: UtilityClockOpts): Promise<UtilityCharges> {
   const periodKey = isRec(input) && typeof input.periodKey === "string" ? input.periodKey : "";
   const empty: UtilityCharges = { periodKey, rows: [], groups: [] };
-  if (!periodOk(periodKey) || !periodInRange(periodKey)) return empty;
+  if (!periodOk(periodKey) || !periodInRange(periodKey, opts?.now)) return empty;
   const unit = await dormUnit(ctx?.tenantId, isRec(input) ? input.unitId : null);
   if (!unit) return empty;
   const c = await compute(ctx.tenantId, unit.id, periodKey);
@@ -1170,9 +1173,9 @@ function gateOf(c: Computed): UtilityGate {
   return { ok: blocks.length === 0 && needs.length === 0, blocks, needsAcceptance: needs, groups: c.groups.map(publicGroup) };
 }
 
-export async function utilityBillingGate(ctx: UtilityCtx, input: { unitId: string; periodKey: string }): Promise<UtilityGate | Fail> {
+export async function utilityBillingGate(ctx: UtilityCtx, input: { unitId: string; periodKey: string }, opts?: UtilityClockOpts): Promise<UtilityGate | Fail> {
   if (!isRec(input) || !periodOk(input.periodKey)) return fail("INVALID_INPUT", "งวดต้องเป็นรูปแบบ ปี-เดือน เช่น 2026-10");
-  if (!periodInRange(input.periodKey)) return fail("BAD_PERIOD", "งวดต้องอยู่ระหว่าง 2020-01 ถึงเดือนหน้า");
+  if (!periodInRange(input.periodKey, opts?.now)) return fail("BAD_PERIOD", "งวดต้องอยู่ระหว่าง 2020-01 ถึงเดือนหน้า");
   const unit = await dormUnit(ctx?.tenantId, input.unitId);
   if (!unit) return NOT_FOUND();
   return gateOf(await compute(ctx.tenantId, unit.id, input.periodKey));

@@ -1453,7 +1453,10 @@ try {
       await T("Q-2", `billRunModel svcqc (เจ้าของ · ${PQ}): DRAFT · 31 บิล · ค่าห้อง 14,370,000 · ค่าปรับ 40,000 (203/211) · พัก 0`, ["billRunModel"], async () => {
         const ou = (SV.SQC_USERS ?? []).find((u: any) => u.key === "owner");
         const m = await fn("billRunModel")!({ tenantId: svcT, actorUserId: ou?.userId }, { unitId: svcDorm, periodKey: PQ });
-        return [m?.status === "DRAFT" && m?.kpi?.billCount === 31 && m?.kpi?.rentSatang === 14_370_000 && m?.kpi?.lateFeeSatang === 40_000 && m?.counts?.held === 0, J({ status: m?.status, kpi: m?.kpi, counts: m?.counts })];
+        // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d8-Q2/D.12) ฉาก D.12 (ห้อง 207 ย้ายออก · createdById SvcQcScene:d12) ต้องมีบิลงวดนี้ในรอบเดียวกัน ⇒ หักบิลของสัญญาฉาก D.12 ออก · ฐาน 31 บิล/14,370,000 คงเดิม
+        const x12 = await prisma.dormBill.findMany({ where: { tenantId: svcT, unitId: svcDorm, periodKey: PQ, status: { notIn: ["HELD", "VOID"] }, lease: { createdById: { startsWith: "SvcQcScene:d12" } } }, select: { lines: true } });
+        const x12Rent = x12.reduce((s: number, b: { lines: unknown }) => s + (Array.isArray(b.lines) ? (b.lines as any[]).filter((l) => l?.code === "RENT").reduce((t, l) => t + (Number.isInteger(l?.grossSatang) && l.grossSatang > 0 ? l.grossSatang : 0), 0) : 0), 0);
+        return [m?.status === "DRAFT" && m?.kpi?.billCount === 31 + x12.length && m?.kpi?.rentSatang === 14_370_000 + x12Rent && m?.kpi?.lateFeeSatang === 40_000 && m?.counts?.held === 0, J({ status: m?.status, kpi: m?.kpi, counts: m?.counts })];
       }, "MAJOR");
       await T("Q-3", "รันฉากซ้ำ ⇒ SCENE_SUMMARY 0/0/0", [], async () => {
         if (!existsSync(join(ROOT, F.scene))) return [false, `ยังไม่มี ${F.scene}`];

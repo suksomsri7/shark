@@ -2,7 +2,7 @@
 //   • ข้อมูลทั้งหมดมาจากผู้เรียก (listLeases · getLease ของ facade หอ) — ไฟล์นี้ import จากโมดูลได้เฉพาะ type
 //     (ไม่ลาก prisma/โมดูลฝั่ง server/actions/next navigation) ⇒ render ด้วย renderToStaticMarkup ได้ · ไม่มี hook
 //   • ไม่แสดงเบอร์เต็ม/เลขบัตร (X8) — เบอร์ที่มาจาก facade ปิดเหลือ 4 ตัวท้ายแล้ว
-//   • ไม่มีปุ่ม/ถ้อยคำบังคับผู้เช่าใด ๆ (ข้อห้ามตามประกาศ สคบ.) · ต่อสัญญา/ย้ายห้อง/แจ้งย้ายออก = ใบ D.12 (ปุ่มปิดไว้)
+//   • ไม่มีปุ่ม/ถ้อยคำบังคับผู้เช่าใด ๆ (ข้อห้ามตามประกาศ สคบ.) · ต่อสัญญา/ย้ายห้อง/แจ้งย้ายออก = ลิงก์ไปจอของใบ D.12
 //   • เดสก์ท็อป 1440 = รายการ + แผงขวา · มือถือ 390 = ซ้อนลง ไม่ล้นแนวนอน (ตารางเลื่อนในกรอบตัวเอง)
 import type { LeaseDetail, LeaseList, LeaseRow, LeaseTab } from "@/lib/modules/dorm";
 
@@ -249,16 +249,17 @@ function LeasePanel({ lease, base }: { lease: LeaseDetail; base: string }) {
       </div>
       )}
 
+      {/* SVC D.12 (Y2) ▸ ปุ่มต่อสัญญา/ย้ายห้อง/แจ้งย้ายออก ⇒ จอเริ่มของใบ D.12 (/dorm/moveout?lease=) — มีใบย้ายออกแล้วไปจอ 07 · สิทธิ์ตรวจสดที่ facade ◂ */}
       <footer className="flex flex-wrap gap-2">
-        <button type="button" disabled className="min-h-11 flex-1 rounded-xl border border-[color:var(--color-line)] px-3 text-sm" title="เร็ว ๆ นี้">
+        <a href={`${base.replace(/\/tenants$/, "")}/moveout?lease=${encodeURIComponent(lease.leaseId)}#renew`} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-[color:var(--color-line)] px-3 text-sm">
           ต่อสัญญา
-        </button>
-        <button type="button" disabled className="min-h-11 flex-1 rounded-xl border border-[color:var(--color-line)] px-3 text-sm" title="เร็ว ๆ นี้">
+        </a>
+        <a href={`${base.replace(/\/tenants$/, "")}/moveout?lease=${encodeURIComponent(lease.leaseId)}#transfer`} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-[color:var(--color-line)] px-3 text-sm">
           ย้ายห้อง
-        </button>
-        <button type="button" disabled className="min-h-11 flex-1 rounded-xl bg-[color:var(--color-ink)] px-3 text-sm font-semibold text-[color:var(--color-surface)] opacity-60" title="เร็ว ๆ นี้">
-          แจ้งย้ายออก
-        </button>
+        </a>
+        <a href={`${base.replace(/\/tenants$/, "")}/moveout?lease=${encodeURIComponent(lease.leaseId)}`} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-[color:var(--color-ink)] px-3 text-sm font-semibold text-[color:var(--color-surface)]">
+          {lease.status === "NOTICE" ? "ดูการย้ายออก" : "แจ้งย้ายออก"}
+        </a>
       </footer>
     </aside>
   );

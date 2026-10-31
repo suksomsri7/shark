@@ -29,6 +29,7 @@ export const ENTITY_TYPES = [
   // SVC D.5 ▸ ข้ามคำเตือนกฎหมาย (ประกัน + ล่วงหน้า) ในสัญญาเช่าหอ — ไม่มีผลใน approval-effects (สัญญาอ่านสถานะคำขอสดตอนลงชื่อ/เข้าอยู่) ◂
   { value: "dorm.lease.legal_override", label: "ข้ามคำเตือนกฎหมายในสัญญาเช่า" },
   { value: "dorm.latefee.waive", label: "ยกเว้นค่าปรับจ่ายช้า (หอพัก)" }, // SVC D.11 ▸ ผลอยู่ที่ approval-effects.ts → dorm.applyLateFeeWaiverApproval ◂
+  { value: "dorm.moveout.deduction", label: "หักเงินประกันเกินวงเงิน (หอพัก)" }, // SVC D.12 ▸ ไม่มีผล — ปิดประกันอ่านสถานะสด ◂
 ] as const;
 
 export const APPROVER_ROLES = [

@@ -298,8 +298,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     },
     // SVC D.13 ▸ คีย์ที่ยังไม่มีหน้า/โค้ดเรียก (ใบหลังเปิดใช้จริง) ◂
     planned: [
-      "dorm.moveout.manage",
-      "dorm.deposit.deduct.approve",
+      // SVC D.12 ▸ dorm.moveout.manage · dorm.deposit.deduct.approve ใช้จริงแล้ว ◂ (D.16/D.17/D.18 ถอดของตัวเองแล้ว)
       "dorm.settings.legal",
     ],
   },

@@ -1271,6 +1271,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "dorm.repair.created": withAutomation(kanbanBridge("onDormRepairCreated")),
   "dorm.repair.done": withAutomation(compose(async (evt) => (await import("@/lib/modules/dorm")).onRepairDone(evt), kanbanBridge("onDormRepairDone"))),
   // ◂ SVC D.16
+  // SVC D.12 ▸ ย้ายออก/คืนประกัน/ต่อสัญญา — ยิงจาก `dorm/moveout.ts` · `dorm/lease-change.ts` ใน tx เดียวกับสถานะ · payload id/ยอด ล้วน (X8) ·
+  //   งานหลัก = no-op (ข้อความถึงผู้เช่าส่งใน service ผ่าน notifyCustomer แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.moveout.settled": withAutomation(async () => {}),
+  "dorm.deposit.refund_due": withAutomation(async () => {}),
+  "dorm.lease.renewed": withAutomation(async () => {}),
+  "dorm.lease.ended": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

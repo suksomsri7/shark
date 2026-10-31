@@ -515,7 +515,11 @@ export async function getSettings(
   tenantId: string,
   systemId: string,
 ): Promise<AccountSettingsView> {
-  const s = await prisma.accountSettings.findFirst({ where: { tenantId, systemId } });
+  return settingsViewOf(await prisma.accountSettings.findFirst({ where: { tenantId, systemId } }));
+}
+
+/** SVC D.12 ▸ แถวตั้งค่า → view (ตัวเดียวกับ getSettings · แยกออกให้รุ่นในธุรกรรมอ่านผ่าน tx ของผู้เรียกได้) ◂ */
+function settingsViewOf(s: Awaited<ReturnType<typeof prisma.accountSettings.findFirst>>): AccountSettingsView {
   if (!s) return { ...SETTINGS_DEFAULT, doc: defaultDocSettings(), policy: defaultPolicy() };
   return {
     orgPrefix: readStr(s.docConfig, "orgPrefix"),
@@ -7920,106 +7924,160 @@ export async function dormSettleSecurityDeposit(input: {
   tenantId: string; systemId: string; unitId: string; leaseId: string; key: string; date: Date; docIds: string[];
   channel: DormMoneyChannel; financeAccountId: string | null; note: string | null; createdById: string | null;
 }): Promise<DormSettleResult | DormReject> {
-  const { tenantId, systemId, unitId, leaseId, key, docIds } = input;
-  const ctx = { tenantId, systemId };
-  const leaseRef = dormLeaseRef(unitId, leaseId);
+  const { tenantId, systemId, unitId, docIds } = input;
   try {
     if (!(await dormFinanceOk(tenantId, systemId, input.financeAccountId))) return dormReject("INVALID_INPUT", DORM_FINANCE_BAD);
     const pre = await dormOwnedDocs(prismaAsTx(), tenantId, systemId, unitId, docIds, DORM_PAYABLE_TYPES);
     if (pre.length !== docIds.length) return dormReject("NOT_FOUND", DORM_NOT_FOUND);
     const settings = await getSettings(tenantId, systemId);
-    const payPrefix = dormSettlePayPrefix(tenantId, key);
-    const owesOf = async (tx: Prisma.TransactionClient): Promise<number> => {
-      let owes = 0;
-      for (const d of await dormOwnedDocs(tx, tenantId, systemId, unitId, docIds, DORM_PAYABLE_TYPES)) owes += await dormOutstandingInTx(tx, systemId, d);
-      return owes;
-    };
     return await prisma.$transaction(async (tx) => {
       openDocNumbering(tx);
       await dormLockScope(tx, tenantId, systemId, unitId);
-      // ── คีย์เดิม = ผลเดิม · คีย์เดิมแต่สัญญา/รายการใบต่าง หรือถูกถอยแล้ว = ขัดกัน (F8) ──
-      const use = await dormKeyUse(tx, tenantId, key);
-      if (use.pay || use.excess || use.receive) throw new DormTxReject("IDEMPOTENCY_CONFLICT", DORM_KEY_OTHER_KIND);
-      if (use.settle) {
-        if (use.settle.systemId !== systemId || use.settle.refId !== leaseRef)
-          throw new DormTxReject("IDEMPOTENCY_CONFLICT", "คีย์กันซ้ำนี้ใช้ปิดเงินประกันของสัญญาอื่นแล้ว — ไม่บันทึกซ้ำ");
-        if (use.settle.status !== "POSTED")
-          throw new DormTxReject("IDEMPOTENCY_CONFLICT", "การปิดเงินประกันด้วยคีย์นี้ถูกถอยไปแล้ว — ปิดใหม่ด้วยคีย์ใหม่");
-        const pays = (await tx.accountDocumentPayment.findMany({ where: { tenantId, systemId, idempotencyKey: { startsWith: payPrefix } }, select: { documentId: true, amount: true, idempotencyKey: true } }))
-          .filter((p) => p.idempotencyKey === `${payPrefix}${p.documentId}`);
-        const heldAmt = use.settle.held;
-        const appliedSatang = pays.reduce((s, p) => s + p.amount, 0);
-        const refundSatang = heldAmt - appliedSatang;
-        // รายการใบต้องเป็นชุดเดิม: ใบที่ถูกหักต้องอยู่ในคำขอ · ใบในคำขอที่ไม่ถูกหักต้อง "ไม่มีอะไรให้หัก" (ชำระครบ) หรือครั้งก่อนประกันหมดแล้ว (คืน 0)
-        const recorded = new Set(pays.map((p) => p.documentId));
-        let same = [...recorded].every((id) => docIds.includes(id));
-        if (same && refundSatang > 0)
-          for (const d of await dormOwnedDocs(tx, tenantId, systemId, unitId, docIds.filter((id) => !recorded.has(id)), DORM_PAYABLE_TYPES))
-            if ((await dormOutstandingInTx(tx, systemId, d)) > 0) same = false;
-        if (!same) throw new DormTxReject("IDEMPOTENCY_CONFLICT", "คีย์กันซ้ำนี้ปิดเงินประกันไปแล้วด้วยรายการใบแจ้งหนี้ชุดอื่น — ไม่บันทึกซ้ำ");
-        const order = (id: string) => { const i = docIds.indexOf(id); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
-        const applied = pays.sort((a, b) => order(a.documentId) - order(b.documentId)).map((p) => ({ docId: p.documentId, amountSatang: p.amount }));
-        return { ok: true as const, duplicate: true, entryId: use.settle.id, heldSatang: heldAmt, appliedSatang, refundSatang, tenantOwesSatang: await owesOf(tx), applied };
-      }
-      // ── เอกสารที่จะหัก: ของหน่วยนี้ทุกใบ (ไม่งั้นไม่ลงอะไรเลย) · ล็อกเรียง id แล้วหัวกลุ่ม ──
-      for (const id of [...docIds].sort()) await lockDocumentRow(tx, tenantId, systemId, id);
-      await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, docIds);
-      const rows = await dormOwnedDocs(tx, tenantId, systemId, unitId, docIds, DORM_PAYABLE_TYPES);
-      if (rows.length !== docIds.length) throw new DormTxReject("NOT_FOUND", DORM_NOT_FOUND);
-      const byId = new Map(rows.map((r) => [r.id, r]));
-      // ── ยอดถือ (ใต้ล็อก) · ประกันอยู่สมุดอื่น ⇒ บอกตรง ๆ (F4) ──
-      const books = await dormDepositHeldByBook(tx, tenantId, unitId, leaseId);
-      const cur = books.get(systemId);
-      const elsewhere = [...books].filter(([sid, b]) => sid !== systemId && b.total !== 0);
-      if (elsewhere.length > 0) {
-        const names = (await tx.appSystem.findMany({ where: { id: { in: elsewhere.map(([sid]) => sid) }, tenantId }, select: { name: true } })).map((s) => s.name);
-        throw new DormTxReject("DEPOSIT_IN_OTHER_BOOK", `เงินประกันของสัญญานี้บันทึกอยู่ในสมุดบัญชีอื่น (${names.join(", ") || "สมุดเดิม"}) ไม่ใช่สมุดที่หอผูกอยู่ตอนนี้ — ย้ายยอดเงินประกันมาสมุดปัจจุบันก่อน แล้วค่อยปิด`);
-      }
-      const heldTotal = cur?.total ?? 0;
-      if (heldTotal <= 0) throw new DormTxReject("NO_DEPOSIT_HELD", "สัญญานี้ไม่มีเงินประกันคงเหลือให้ปิด (ยังไม่เคยรับ หรือปิดไปแล้ว)");
-      // ── F3: หักได้เฉพาะใบของผู้เช่าคนเดียวกับที่วางประกัน ──
-      for (const r of rows) if (!r.contactId || !cur?.contacts.has(r.contactId)) throw new DormTxReject("NOT_FOUND", "มีใบแจ้งหนี้ที่ไม่ใช่ของผู้เช่าสัญญานี้ — ไม่หักเงินประกันกับใบของผู้เช่าคนอื่น");
-      for (const r of rows) if (!dormLive(r)) throw new DormTxReject("NOT_PAYABLE", `เอกสาร ${r.docNo ?? "(ร่าง)"} ยังเป็นร่างหรือถูกยกเลิก — หักเงินประกันไม่ได้`);
-      // ── ไล่หักตามลำดับที่ส่งมา ──
-      let left = heldTotal;
-      let owes = 0;
-      const plan: { doc: DormDocRow; amount: number }[] = [];
-      for (const id of docIds) {
-        const d = byId.get(id);
-        if (!d) continue;
-        const out = await dormOutstandingInTx(tx, systemId, d);
-        const a = Math.min(out, left);
-        left -= a;
-        owes += out - a;
-        plan.push({ doc: d, amount: a });
-      }
-      const appliedSatang = heldTotal - left;
-      const paymentIds: string[] = [];
-      for (const p of plan) {
-        if (p.amount <= 0) continue;
-        await dormMakeDebitNotePayableInTx(tx, tenantId, systemId, p.doc);
-        const r = await recordPaymentInTx(tx, tenantId, systemId, p.doc.id, {
-          amount: p.amount, channel: "DEPOSIT_APPLY", financeAccountId: null, paidAt: input.date,
-          note: "หักจากเงินประกันผู้เช่าตอนปิดสัญญา", createdById: input.createdById, idempotencyKey: `${payPrefix}${p.doc.id}`,
-        }, settings, { glByCaller: true });
-        paymentIds.push(r.paymentId);
-      }
-      const e = await postDormDepositSettle(ctx, {
-        unitId, leaseId, key, date: input.date,
-        held: [...(cur?.byAccount ?? new Map<string, number>())].filter(([, v]) => v !== 0).map(([accountId, amountSatang]) => ({ accountId, amountSatang })),
-        applied: plan.filter((p) => p.amount > 0).map((p) => ({ docNo: p.doc.docNo, contactId: p.doc.contactId, amountSatang: p.amount })),
-        refundSatang: left, channel: input.channel, financeAccountId: input.financeAccountId, memo: input.note,
-      }, tx);
-      if (paymentIds.length > 0) await tx.accountDocumentPayment.updateMany({ where: { id: { in: paymentIds }, tenantId, systemId }, data: { entryId: e.entryId } });
-      await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, docIds);
-      await finalizeDocNos(tx); // คำสั่งสุดท้าย
-      return {
-        ok: true as const, duplicate: false, entryId: e.entryId, heldSatang: heldTotal, appliedSatang, refundSatang: left, tenantOwesSatang: owes,
-        applied: plan.filter((p) => p.amount > 0).map((p) => ({ docId: p.doc.id, amountSatang: p.amount })),
-      };
+      return await dormSettleBodyInTx(tx, input, settings);
     }, DORM_TX_OPTS);
   } catch (e) {
     return dormFromError(e, "ปิดเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง");
+  }
+}
+
+/**
+ * SVC D.12 ▸ ตัวในของการปิดเงินประกัน (หลังล็อกร้าน → หน่วยแล้ว) — ตรรกะเดิมของ dormSettleSecurityDeposit ทุกบรรทัด ย้ายมาเป็นฟังก์ชันรับ tx
+ *   ผู้เรียก: dormSettleSecurityDeposit (prisma.$transaction ของตัวเอง — พฤติกรรมเดิม) · dormSettleSecurityDepositInTx (tx ของผู้เรียก — มติ R1) ◂
+ */
+async function dormSettleBodyInTx(
+  tx: Prisma.TransactionClient,
+  input: { tenantId: string; systemId: string; unitId: string; leaseId: string; key: string; date: Date; docIds: string[]; channel: DormMoneyChannel; financeAccountId: string | null; note: string | null; createdById: string | null },
+  settings: AccountSettingsView,
+): Promise<DormSettleResult> {
+  const { tenantId, systemId, unitId, leaseId, key, docIds } = input;
+  const ctx = { tenantId, systemId };
+  const leaseRef = dormLeaseRef(unitId, leaseId);
+  const payPrefix = dormSettlePayPrefix(tenantId, key);
+  const owesOf = async (tx: Prisma.TransactionClient): Promise<number> => {
+    let owes = 0;
+    for (const d of await dormOwnedDocs(tx, tenantId, systemId, unitId, docIds, DORM_PAYABLE_TYPES)) owes += await dormOutstandingInTx(tx, systemId, d);
+    return owes;
+  };
+    // ── คีย์เดิม = ผลเดิม · คีย์เดิมแต่สัญญา/รายการใบต่าง หรือถูกถอยแล้ว = ขัดกัน (F8) ──
+    const use = await dormKeyUse(tx, tenantId, key);
+    if (use.pay || use.excess || use.receive) throw new DormTxReject("IDEMPOTENCY_CONFLICT", DORM_KEY_OTHER_KIND);
+    if (use.settle) {
+      if (use.settle.systemId !== systemId || use.settle.refId !== leaseRef)
+        throw new DormTxReject("IDEMPOTENCY_CONFLICT", "คีย์กันซ้ำนี้ใช้ปิดเงินประกันของสัญญาอื่นแล้ว — ไม่บันทึกซ้ำ");
+      if (use.settle.status !== "POSTED")
+        throw new DormTxReject("IDEMPOTENCY_CONFLICT", "การปิดเงินประกันด้วยคีย์นี้ถูกถอยไปแล้ว — ปิดใหม่ด้วยคีย์ใหม่");
+      const pays = (await tx.accountDocumentPayment.findMany({ where: { tenantId, systemId, idempotencyKey: { startsWith: payPrefix } }, select: { documentId: true, amount: true, idempotencyKey: true } }))
+        .filter((p) => p.idempotencyKey === `${payPrefix}${p.documentId}`);
+      const heldAmt = use.settle.held;
+      const appliedSatang = pays.reduce((s, p) => s + p.amount, 0);
+      const refundSatang = heldAmt - appliedSatang;
+      // รายการใบต้องเป็นชุดเดิม: ใบที่ถูกหักต้องอยู่ในคำขอ · ใบในคำขอที่ไม่ถูกหักต้อง "ไม่มีอะไรให้หัก" (ชำระครบ) หรือครั้งก่อนประกันหมดแล้ว (คืน 0)
+      const recorded = new Set(pays.map((p) => p.documentId));
+      let same = [...recorded].every((id) => docIds.includes(id));
+      if (same && refundSatang > 0)
+        for (const d of await dormOwnedDocs(tx, tenantId, systemId, unitId, docIds.filter((id) => !recorded.has(id)), DORM_PAYABLE_TYPES))
+          if ((await dormOutstandingInTx(tx, systemId, d)) > 0) same = false;
+      if (!same) throw new DormTxReject("IDEMPOTENCY_CONFLICT", "คีย์กันซ้ำนี้ปิดเงินประกันไปแล้วด้วยรายการใบแจ้งหนี้ชุดอื่น — ไม่บันทึกซ้ำ");
+      const order = (id: string) => { const i = docIds.indexOf(id); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+      const applied = pays.sort((a, b) => order(a.documentId) - order(b.documentId)).map((p) => ({ docId: p.documentId, amountSatang: p.amount }));
+      return { ok: true as const, duplicate: true, entryId: use.settle.id, heldSatang: heldAmt, appliedSatang, refundSatang, tenantOwesSatang: await owesOf(tx), applied };
+    }
+    // ── เอกสารที่จะหัก: ของหน่วยนี้ทุกใบ (ไม่งั้นไม่ลงอะไรเลย) · ล็อกเรียง id แล้วหัวกลุ่ม ──
+    for (const id of [...docIds].sort()) await lockDocumentRow(tx, tenantId, systemId, id);
+    await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, docIds);
+    const rows = await dormOwnedDocs(tx, tenantId, systemId, unitId, docIds, DORM_PAYABLE_TYPES);
+    if (rows.length !== docIds.length) throw new DormTxReject("NOT_FOUND", DORM_NOT_FOUND);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    // ── ยอดถือ (ใต้ล็อก) · ประกันอยู่สมุดอื่น ⇒ บอกตรง ๆ (F4) ──
+    const books = await dormDepositHeldByBook(tx, tenantId, unitId, leaseId);
+    const cur = books.get(systemId);
+    const elsewhere = [...books].filter(([sid, b]) => sid !== systemId && b.total !== 0);
+    if (elsewhere.length > 0) {
+      const names = (await tx.appSystem.findMany({ where: { id: { in: elsewhere.map(([sid]) => sid) }, tenantId }, select: { name: true } })).map((s) => s.name);
+      throw new DormTxReject("DEPOSIT_IN_OTHER_BOOK", `เงินประกันของสัญญานี้บันทึกอยู่ในสมุดบัญชีอื่น (${names.join(", ") || "สมุดเดิม"}) ไม่ใช่สมุดที่หอผูกอยู่ตอนนี้ — ย้ายยอดเงินประกันมาสมุดปัจจุบันก่อน แล้วค่อยปิด`);
+    }
+    const heldTotal = cur?.total ?? 0;
+    if (heldTotal <= 0) throw new DormTxReject("NO_DEPOSIT_HELD", "สัญญานี้ไม่มีเงินประกันคงเหลือให้ปิด (ยังไม่เคยรับ หรือปิดไปแล้ว)");
+    // ── F3: หักได้เฉพาะใบของผู้เช่าคนเดียวกับที่วางประกัน ──
+    for (const r of rows) if (!r.contactId || !cur?.contacts.has(r.contactId)) throw new DormTxReject("NOT_FOUND", "มีใบแจ้งหนี้ที่ไม่ใช่ของผู้เช่าสัญญานี้ — ไม่หักเงินประกันกับใบของผู้เช่าคนอื่น");
+    for (const r of rows) if (!dormLive(r)) throw new DormTxReject("NOT_PAYABLE", `เอกสาร ${r.docNo ?? "(ร่าง)"} ยังเป็นร่างหรือถูกยกเลิก — หักเงินประกันไม่ได้`);
+    // ── ไล่หักตามลำดับที่ส่งมา ──
+    let left = heldTotal;
+    let owes = 0;
+    const plan: { doc: DormDocRow; amount: number }[] = [];
+    for (const id of docIds) {
+      const d = byId.get(id);
+      if (!d) continue;
+      const out = await dormOutstandingInTx(tx, systemId, d);
+      const a = Math.min(out, left);
+      left -= a;
+      owes += out - a;
+      plan.push({ doc: d, amount: a });
+    }
+    const appliedSatang = heldTotal - left;
+    const paymentIds: string[] = [];
+    for (const p of plan) {
+      if (p.amount <= 0) continue;
+      await dormMakeDebitNotePayableInTx(tx, tenantId, systemId, p.doc);
+      const r = await recordPaymentInTx(tx, tenantId, systemId, p.doc.id, {
+        amount: p.amount, channel: "DEPOSIT_APPLY", financeAccountId: null, paidAt: input.date,
+        note: "หักจากเงินประกันผู้เช่าตอนปิดสัญญา", createdById: input.createdById, idempotencyKey: `${payPrefix}${p.doc.id}`,
+      }, settings, { glByCaller: true });
+      paymentIds.push(r.paymentId);
+    }
+    const e = await postDormDepositSettle(ctx, {
+      unitId, leaseId, key, date: input.date,
+      held: [...(cur?.byAccount ?? new Map<string, number>())].filter(([, v]) => v !== 0).map(([accountId, amountSatang]) => ({ accountId, amountSatang })),
+      applied: plan.filter((p) => p.amount > 0).map((p) => ({ docNo: p.doc.docNo, contactId: p.doc.contactId, amountSatang: p.amount })),
+      refundSatang: left, channel: input.channel, financeAccountId: input.financeAccountId, memo: input.note,
+    }, tx);
+    if (paymentIds.length > 0) await tx.accountDocumentPayment.updateMany({ where: { id: { in: paymentIds }, tenantId, systemId }, data: { entryId: e.entryId } });
+    await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, docIds);
+    await finalizeDocNos(tx); // คำสั่งสุดท้าย
+    return {
+      ok: true as const, duplicate: false, entryId: e.entryId, heldSatang: heldTotal, appliedSatang, refundSatang: left, tenantOwesSatang: owes,
+      applied: plan.filter((p) => p.amount > 0).map((p) => ({ docId: p.doc.id, amountSatang: p.amount })),
+    };
+}
+
+/**
+ * SVC D.12 ▸ (มติ R1 · เพิ่มอย่างเดียว) ปิดเงินประกันใน **ธุรกรรมของผู้เรียก** — ตรรกะเดียวกับ dormSettleSecurityDeposit (ตัวใน dormSettleBodyInTx)
+ *   ใช้ให้หอถือล็อกของตัวเองข้าม "ตรวจ → เขียน" และให้ "มี JV ⇔ สถานะใบย้ายออกปิด" (commit พร้อมกัน)
+ *   🔴 ทุกคำสั่งผ่าน `tx` (ไม่เปิด connection ที่สอง · อ่านตั้งค่าสมุดผ่าน tx) · ลำดับล็อก: (ผู้เรียก: advisory ของตัวเอง) → แถว Tenant → ลิงก์หน่วย → เอกสาร → หัวกลุ่ม
+ *   🔴 ออกเลขเอกสารท้ายตัวนี้ (finalizeDocNos) — หลังคืนผล ผู้เรียกแตะได้เฉพาะแถวของตัวเองที่ถือล็อกไว้แล้ว + outbox
+ *   ปฏิเสธเชิงตรรกะ ⇒ DormReject (ผู้เรียกต้อง rollback ทั้ง tx) · error ของฐาน ⇒ โยนให้ tx ของผู้เรียกล้มทั้งก้อน ◂
+ */
+export async function dormSettleSecurityDepositInTx(
+  tx: Prisma.TransactionClient,
+  input: { tenantId: string; unitId: string; leaseId: string; key: string; date: Date; docIds: string[]; channel: DormMoneyChannel; financeAccountId: string | null; note: string | null; createdById: string | null },
+): Promise<DormSettleResult | DormReject> {
+  const { tenantId, unitId } = input;
+  try {
+    openDocNumbering(tx);
+    // ① แถว Tenant
+    const t = await tx.tenant.updateMany({ where: { id: tenantId }, data: { updatedAt: new Date() } });
+    if (t.count !== 1) return dormReject("NOT_LINKED", DORM_NOT_LINKED_MSG);
+    // ② สมุดของหน่วย (อ่านใต้ล็อกร้าน) + แถวลิงก์
+    const links = await tx.accountSystemLink.findMany({
+      where: { tenantId, linkedKind: "BUSINESS", linkedId: unitId, archivedAt: null, enabled: true },
+      select: { systemId: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const books = [...new Set(links.map((l) => l.systemId))];
+    if (books.length === 0) return dormReject("NOT_LINKED", DORM_NOT_LINKED_MSG);
+    if (books.length > 1)
+      return dormReject("AMBIGUOUS_LINK", `หอนี้ผูกสมุดบัญชีไว้ ${books.length} เล่มพร้อมกัน — ระบบไม่เดาว่าจะลงเล่มไหน ให้ตัดการเชื่อมเล่มที่ไม่ใช้ก่อน`);
+    const systemId = books[0];
+    await dormLockScope(tx, tenantId, systemId, unitId);
+    if (input.financeAccountId && !(await tx.accountFinance.findFirst({ where: { id: input.financeAccountId, tenantId, systemId }, select: { id: true } })))
+      return dormReject("INVALID_INPUT", DORM_FINANCE_BAD);
+    const pre = await dormOwnedDocs(tx, tenantId, systemId, unitId, input.docIds, DORM_PAYABLE_TYPES);
+    if (pre.length !== input.docIds.length) return dormReject("NOT_FOUND", DORM_NOT_FOUND);
+    const settings = settingsViewOf(await tx.accountSettings.findFirst({ where: { tenantId, systemId } }));
+    return await dormSettleBodyInTx(tx, { ...input, systemId }, settings);
+  } catch (e) {
+    if (e instanceof DormTxReject || e instanceof DormGlReject) return dormReject(e.code, e.message);
+    throw e;
   }
 }
 
