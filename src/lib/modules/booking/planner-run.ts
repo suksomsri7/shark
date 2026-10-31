@@ -6,6 +6,8 @@
 //    (ลำดับเดียวกับ bookAppointment ของ B.3 ซึ่งล็อกเฉพาะช่างที่เกี่ยว ⇒ ไม่มีวงรอ)
 // 🔴 ห้ามใช้ connection ที่สองขณะถือล็อก (B.3 G2): โปรไฟล์ช่าง/บริการ/ค่าตั้ง อ่าน "ก่อน" ธุรกรรม · ใน tx อ่าน/เขียนผ่าน tx เท่านั้น
 // 🔴 เวลาไทยคิดจาก epoch + 7 ชม. (ไม่ใช้ getDay/getHours ของเครื่อง) · ทุกฟังก์ชันรับ `now` ฉีดได้และใช้นาฬิกาเดียวนั้นตลอด
+// 🔴 SVC B.13 ▸ lockUnitTx ล็อก SvcResource ทั้งสาขาต่อจากช่าง (ลำดับ §5 ของใบ B.13) · ทรัพยากร/ปิดซ่อมของแผนอ่านใน tx หลังล็อก ·
+//    ชนิดที่บริการต้องใช้ (ค่าตั้ง) อ่านใน planPreOf ก่อน tx · ร้านที่ไม่มีบริการประกาศชนิด ⇒ ไม่อ่าน/ไม่เขียนทรัพยากร (ผลเดิม) ◂
 // 🔴 tick: ทุกข้อเป็น UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED เป็นก้อน (แบบ expireDepositHolds) ⇒ รันซ้อน 2 โพรเซส
 //    แต่ละแถวเปลี่ยนครั้งเดียว · event ต่อแถว 1 (อยู่ใน tx เดียวกับ UPDATE) · คืนจำนวนที่ "ฉัน" เปลี่ยนจริง (X5)
 import { Prisma } from "@prisma/client";
@@ -13,7 +15,8 @@ import { prisma } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
 import { resolveSettings, resolveSettingsMany } from "@/lib/core/settings";
 import * as queue from "@/lib/modules/queue/service";
-import { planDay, type PlanInput, type PlanJob, type PlanService, type PlanSettings, type PlanStaff } from "./planner";
+import { planDay, type PlanInput, type PlanJob, type PlanResource, type PlanService, type PlanSettings, type PlanStaff } from "./planner";
+import { dayWindow, lockUnitResourcesTx, readUnitBlocks, readUnitResources, resourceIdsOfRow, resourceKindsOf, snapWithResources, type BlockRow, type RawReader, type ResRowLite } from "./resources";
 import { PLAN_SETTING_KEYS, planSettingsFrom } from "./plan-settings";
 import { emitNoShowTx, forfeitAfterNoShow, staffDayProfiles, type StaffDayProfile } from "./service";
 import { BKK_OFFSET_MIN, localToUtc } from "./slots";
@@ -104,6 +107,10 @@ export type PlanPre = {
   staff: PlanStaff[];
   services: PlanService[];
   svcById: Map<string, SvcRow>;
+  /** SVC B.13 ▸ มีบริการที่ประกาศชนิดไหม (ไม่มี ⇒ ไม่แตะทรัพยากรเลย) ◂ */
+  useRes: boolean;
+  /** SVC B.13 ▸ ทรัพยากร+ปิดซ่อมของวัน อ่านแบบไม่ล็อก (มุมมอง) — ทางที่เขียนอ่านซ้ำใน tx ด้วย planResourcesTx ◂ */
+  resources: PlanResource[];
 };
 
 export async function planPreOf(ctx: { tenantId: string; unitId: string }, dayStr: string, values: Record<string, unknown>): Promise<PlanPre> {
@@ -115,6 +122,10 @@ export async function planPreOf(ctx: { tenantId: string; unitId: string }, daySt
       select: { id: true, name: true, durationMin: true, bufferMin: true, priceSatang: true, active: true },
     }),
   ]);
+  // SVC B.13 ▸ ชนิดที่ต้องใช้ (ค่าตั้ง · ก่อน tx) · ไม่มีบริการไหนประกาศ ⇒ ไม่อ่านทรัพยากรเลย (_fallback) ◂
+  const kinds = await resourceKindsOf(ctx, svcs.map((s) => s.id));
+  const useRes = [...kinds.values()].some((k) => k.length > 0);
+  const resources = useRes ? planResourcesOf(await readUnitResources(prisma, ctx.tenantId, ctx.unitId), await blocksOfDay(prisma, ctx, dayStr)) : [];
   const staff: PlanStaff[] = profiles.map((p) => ({
     id: p.staffId,
     name: p.name,
@@ -130,15 +141,41 @@ export async function planPreOf(ctx: { tenantId: string; unitId: string }, daySt
     values,
     profiles,
     staff,
-    services: svcs.map((s) => ({ id: s.id, name: s.name, durationMin: s.durationMin, bufferAfterMin: s.bufferMin })),
+    services: svcs.map((s) => {
+      const k = kinds.get(s.id) ?? [];
+      return { id: s.id, name: s.name, durationMin: s.durationMin, bufferAfterMin: s.bufferMin, ...(k.length ? { resourceKinds: [...k] } : {}) };
+    }),
     svcById: new Map(svcs.map((s) => [s.id, s])),
+    useRes,
+    resources,
   };
+}
+
+// SVC B.13 ▸ ทรัพยากรของแผน (active · blocks ของวันนั้น ±1 วัน) ◂
+function blocksOfDay(client: RawReader, ctx: { tenantId: string; unitId: string }, dayStr: string): Promise<BlockRow[]> {
+  const w = dayWindow(localToUtc(dayStr, 0).getTime(), localToUtc(dayStr, 24 * 60).getTime());
+  return readUnitBlocks(client, ctx.tenantId, ctx.unitId, w.from, w.to);
+}
+export function planResourcesOf(rows: readonly ResRowLite[], blocks: readonly BlockRow[]): PlanResource[] {
+  return rows
+    .map((r, rank) => ({ r, rank }))
+    .filter((x) => x.r.active)
+    .map(({ r, rank }) => ({
+      id: r.id, kind: r.kind, name: r.name, sortOrder: r.sortOrder, capacity: r.capacity, cleanupMin: r.cleanupMin, rank,
+      blocks: blocks.filter((b) => b.resourceId === r.id).map((b) => ({ startAt: b.startAt.getTime(), endAt: b.endAt ? b.endAt.getTime() : Number.MAX_SAFE_INTEGER })),
+    }));
+}
+/** ทรัพยากรของแผนอ่านผ่าน tx (หลัง lockUnitTx ล็อกแล้ว) — ร้านไม่ใช้ทรัพยากร ⇒ [] ไม่อ่าน */
+export async function planResourcesTx(tx: Prisma.TransactionClient, ctx: { tenantId: string; unitId: string }, pre: PlanPre): Promise<PlanResource[]> {
+  if (!pre.useRes) return [];
+  const rows = await readUnitResources(tx, ctx.tenantId, ctx.unitId);
+  return planResourcesOf(rows, await blocksOfDay(tx, ctx, pre.dayStr));
 }
 
 const JOB_SELECT = {
   id: true, status: true, kind: true, assignMode: true, staffId: true, serviceId: true, startAt: true, endAt: true,
   createdAt: true, checkedInAt: true, startedAt: true, queueTicketId: true, plannedStartAt: true, plannedStaffId: true,
-  policySnapshot: true,
+  policySnapshot: true, resourceId: true, // SVC B.13
 } as const;
 export type JobRow = Prisma.AppointmentGetPayload<{ select: typeof JOB_SELECT }>;
 
@@ -187,6 +224,7 @@ function planJobOf(r: JobRow, values: Record<string, unknown>, skippedAt?: numbe
   const pol = latePolicyOf(snap, values);
   const job = jobOf(snap);
   const policyOn = hasSnap || job.manualHold;
+  const resIds = resourceIdsOfRow(r.resourceId, snap); // SVC B.13 ▸ ชิ้นที่แถวถือ (นัด = ข้อเท็จจริง) ◂
   if (skippedAt !== undefined && (r.status === "ARRIVED" || r.status === "QUEUED")) {
     const base = planJobOf(r, values);
     if (walkIn) return { ...base, issuedAt: skippedAt };
@@ -209,20 +247,26 @@ function planJobOf(r: JobRow, values: Record<string, unknown>, skippedAt?: numbe
     checkedInAt: r.checkedInAt ? r.checkedInAt.getTime() : null,
     startedAt: r.startedAt ? r.startedAt.getTime() : null,
     priority: walkIn && job.priority, // J6: priority ของ walk-in คงอยู่ทุกรอบวางคิว
+    ...(resIds.length ? { resourceIds: resIds } : {}), // SVC B.13
     ...(policyOn
       ? { policy: { graceMin: pol.graceMin, noShowAfterMin: pol.noShowAfterMin === null ? Number.POSITIVE_INFINITY : pol.noShowAfterMin, lateAction: pol.afterGrace === "RELEASE_REQUEUE" ? "RELEASE" as const : "HOLD" as const } }
       : {}),
   };
 }
 
-export function planInputOf(pre: PlanPre, rows: readonly JobRow[], nowMs: number, skipped?: SkipMap): PlanInput {
-  return { now: nowMs, settings: pre.settings, staff: pre.staff, services: pre.services, jobs: rows.map((r) => planJobOf(r, pre.values, skipped?.get(r.id))) };
+export function planInputOf(pre: PlanPre, rows: readonly JobRow[], nowMs: number, skipped?: SkipMap, resources?: PlanResource[]): PlanInput {
+  const res = resources ?? pre.resources; // SVC B.13 ▸ ทางที่เขียนส่งชุดที่อ่านใน tx (หลังล็อก) · มุมมองใช้ชุดของ pre ◂
+  return {
+    now: nowMs, settings: pre.settings, staff: pre.staff, services: pre.services, jobs: rows.map((r) => planJobOf(r, pre.values, skipped?.get(r.id))),
+    ...(pre.useRes ? { resources: res } : {}),
+  };
 }
 
 /** ล็อกของทางที่ย้ายช่อง: advisory ของสาขา → ช่างทุกคนของสาขา (ลำดับเดียวกับ B.3) */
 export async function lockUnitTx(tx: Prisma.TransactionClient, ctx: { tenantId: string; unitId: string }): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:line:${ctx.tenantId}:${ctx.unitId}`}, 0))`;
   await tx.$queryRaw`SELECT id FROM "BookingStaff" WHERE "tenantId" = ${ctx.tenantId} AND "unitId" = ${ctx.unitId} ORDER BY "sortOrder", "createdAt", id FOR UPDATE`;
+  await lockUnitResourcesTx(tx, ctx.tenantId, ctx.unitId); // SVC B.13 ▸ ทรัพยากรทั้งสาขา หลังช่าง ก่อนแถวนัด (§5) ◂
 }
 
 const FINISHED = new Set(["DONE", "NO_SHOW", "CANCELLED"]);
@@ -241,7 +285,8 @@ export async function planAndWriteTx(
   nowMs: number,
 ): Promise<number> {
   const rows = await jobRowsOf(tx, ctx, pre.dayStr);
-  const plan = planDay(planInputOf(pre, rows, nowMs, await skippedOf(tx, ctx, rows)));
+  const plan = planDay(planInputOf(pre, rows, nowMs, await skippedOf(tx, ctx, rows), await planResourcesTx(tx, ctx, pre)));
+  const kindsOf = new Map(pre.services.map((s) => [s.id, s.resourceKinds ?? []]));
   const byId = new Map(plan.jobs.map((j) => [j.jobId, j]));
   const ticketIds = rows.filter((r) => r.queueTicketId && !FINISHED.has(r.status)).map((r) => r.queueTicketId as string);
   const tickets = ticketIds.length
@@ -275,6 +320,16 @@ export async function planAndWriteTx(
       if (!sameTime(r.startAt, pStart)) data.startAt = pStart!;
       if (!sameTime(r.endAt, end)) data.endAt = end;
       if (r.staffId !== pStaff) data.staffId = pStaff!;
+      // SVC B.13 ▸ walk-in ที่ใช้ทรัพยากร: ชิ้นตามแผน + นาทีของช่างที่วาง (ฐานนับช่วงถือจาก job.durationMin) ใน CAS เดียวกัน ◂
+      if ((kindsOf.get(r.serviceId) ?? []).length) {
+        const ids = pj!.resourceIds;
+        const dur = Math.round((pj!.endAt! - pj!.startAt!) / MIN_MS);
+        const cur = resourceIdsOfRow(r.resourceId, r.policySnapshot);
+        if (ids.join("|") !== cur.join("|") || jobOf(r.policySnapshot).durationMin !== dur || (r.resourceId ?? null) !== (ids[0] ?? null)) {
+          data.resourceId = ids[0] ?? null;
+          data.policySnapshot = snapWithResources(r.policySnapshot, ids, { durationMin: dur });
+        }
+      }
     }
     if (Object.keys(data).length) {
       const w = await tx.appointment.updateMany({
@@ -282,6 +337,15 @@ export async function planAndWriteTx(
         data,
       });
       if (w.count === 0) continue; // งานเพิ่งเปลี่ยนสถานะ ⇒ ไม่แตะบัตรด้วย (m-1)
+    }
+    // SVC B.13 ▸ นัดที่ยังไม่ผูกทรัพยากรแต่แผนผูกให้ได้ (resourceShort=false) ⇒ เขียน (CAS resourceId IS NULL + สถานะ) ·
+    //   resourceShort=true ⇒ ไม่เขียน (ร้านเห็นบนจอ B.14) · ข้อเท็จจริงที่ถืออยู่ไม่ถูกแตะ ◂
+    if (placed && r.kind === "BOOKED" && r.resourceId === null && !pj!.resourceShort && pj!.resourceIds.length
+      && (kindsOf.get(r.serviceId) ?? []).length && resourceIdsOfRow(null, r.policySnapshot).length === 0) {
+      await tx.appointment.updateMany({
+        where: { id: r.id, tenantId: ctx.tenantId, unitId: ctx.unitId, status: r.status, resourceId: null },
+        data: { resourceId: pj!.resourceIds[0], policySnapshot: snapWithResources(r.policySnapshot, pj!.resourceIds) },
+      });
     }
     if (r.queueTicketId && etaOf.has(r.queueTicketId) && !sameTime(etaOf.get(r.queueTicketId) ?? null, pStart)) {
       await tx.queueTicket.updateMany({

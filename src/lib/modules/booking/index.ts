@@ -34,3 +34,8 @@ export type { ExtraLine, BillLine, ServiceBillPreview, FinishFail, FinishResult,
 // SVC B.8 ▸ มัดจำรุ่นแรก (สถานะ · หน้าจ่าย · consumer สลิปอนุมัติ · จอร้าน · ใช้มัดจำในบิลของ B.10) — ด่านสิทธิ์/token อยู่ในฟังก์ชัน ◂
 export { depositInfo, loadDepositPay, submitDepositSlip, onDepositSlipApproved, depositQueue, confirmDepositByShop, refundDepositByShop, forfeitDepositByShop, depositForBill } from "./deposit";
 export type { DepositState, DepositInfo, DepositPay, SlipSubmitFail, ShopCtx, DepositQueueItem } from "./deposit";
+
+// SVC B.13 ▸ ทรัพยากรร้านนวด (ห้อง/เตียง/อุปกรณ์ · CRUD + ปิดซ่อม) + กล่อง "รับ walk-in ตอนนี้ได้ไหม" — ด่านสิทธิ์อยู่ในฟังก์ชัน ◂
+export { listResources, createResource, updateResource, setResourceMaintenance, walkInNowByService } from "./resources";
+export { bookingResourcesModel } from "./settings-model";
+export type { ResourceCtx, ResourceActor, ResourceRow, ResourceResult, ResourceFail, ResourceInput, ResourcePatch, MaintenanceWindow, WalkInNowRow } from "./resources";

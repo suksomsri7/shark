@@ -4,10 +4,11 @@
 // BookingStaffSettings.tsx — จอง 12 ส่วน "คน" (ผู้ให้บริการ) · SVC B.11 §5.3
 //   ตาราง: เวลาทำงานมาจาก · % จองออนไลน์ · บริการที่ทำได้ · ค่าคอมฯ (+ เตือนคนที่ยังไม่ผูกทะเบียนพนักงาน)
 //   แผงขวา: แหล่งเวลา + แถบสัปดาห์ + ค่าตั้งชั้นผู้ให้บริการ · กล่องค่าร้าน
-//   (ตารางทรัพยากร = B.13)
+//   SVC B.13 ▸ ตารางทรัพยากร "ห้อง · เตียง · อุปกรณ์" ใต้ตารางคน (BookingResources) + หัวหน้า "ทรัพยากร N ชิ้น (ปิดซ่อม k)" ◂
 // 🔴 ไม่มีคีย์ค่าตั้งในไฟล์นี้ · ไม่ import ค่าจาก server · ไม่มี useRouter
 // ─────────────────────────────────────────────────────────────
-import { fieldsOf, hourText, HOURS_SOURCE_TH, WEEKDAY_TH, type StaffModel } from "./booking-settings-shared";
+import { fieldsOf, hourText, HOURS_SOURCE_TH, WEEKDAY_TH, type ResourcesModel, type StaffModel } from "./booking-settings-shared";
+import BookingResources, { type BookingResourceActions } from "./BookingResources";
 import { CARD, cx, DraftProvider, MUTED, PageHead, SettingRows, type BookingSettingsActions } from "./BookingPolicySettings";
 
 const pctBp = (bp: number): string => `${(bp / 100).toFixed(2).replace(/\.?0+$/, "")}%`;
@@ -88,15 +89,26 @@ function StaffPanel({ model }: { model: StaffModel }) {
   );
 }
 
-export default function BookingStaffSettings({ model, actions }: { model: StaffModel; actions: BookingSettingsActions }) {
+export default function BookingStaffSettings({
+  model,
+  actions,
+  resources,
+}: {
+  model: StaffModel;
+  actions: BookingSettingsActions;
+  resources?: { model: ResourcesModel; actions: BookingResourceActions } | null;
+}) {
   const shopKeys = fieldsOf(model.shopForm).map((f) => f.key);
+  const res = resources?.model;
+  const resText = res && res.total > 0 ? ` · ทรัพยากร ${res.total} ชิ้น${res.underRepair > 0 ? ` (ปิดซ่อม ${res.underRepair})` : ""}` : "";
   return (
     <DraftProvider forms={[model.shopForm, model.staffForm]} actions={actions}>
       <div data-bk-settings-page="staff" className="flex flex-col gap-5">
-        <PageHead title={model.providerLabel} desc={`${model.unitName} · ${model.rows.length} คน · ทะเบียนคนอยู่ระบบพนักงาน · ที่นี่ตั้ง “การรับงาน”`} />
+        <PageHead title={model.providerLabel} desc={`${model.unitName} · ${model.rows.length} คน${resText} · ทะเบียนคนอยู่ระบบพนักงาน · ที่นี่ตั้ง “การรับงาน”`} />
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="flex min-w-0 flex-col gap-4">
             <StaffTable model={model} />
+            {resources && <BookingResources model={resources.model} actions={resources.actions} />}
             <section data-bk-shop-defaults="" className={CARD}>
               <div className="flex flex-wrap items-baseline justify-between gap-2 pb-1">
                 <h2 className="text-base font-bold">ค่าร้าน (ใช้เมื่อ{model.providerLabel}ไม่ได้ตั้งเอง)</h2>

@@ -1,6 +1,9 @@
 // Day planner — วางคิวทั้งวันของสาขา (pure · ไม่อ่าน DB/นาฬิกา/ค่าตั้งเอง) · ใบ B.2
 // แบบ: ledger/DESIGN-BOOKING-QUEUE.md §4.2 · สัญญา+กติกา: ledger/svc-briefs/svc-brief-b.2.md §3–§4
 // เวลาทั้งหมดเป็น epoch ms · ไม่ปัดเวลา (UI ปัดเอง) · ตัวห่อที่อ่าน DB/เขียนแคช = planner-run.ts (ใบ B.4)
+// SVC B.13 ▸ ทรัพยากร (ห้อง/เตียง/อุปกรณ์) แบบ optional — ไม่ส่ง resources / บริการไม่ประกาศชนิด ⇒ ผลเดิมของ B.2 ทุกไบต์ (FZ-4)
+//   ด่าน "ว่างไหม" = planner-resources.ts (สูตรเดียวกับทางจองในฐาน) ◂
+import { factsByKind, ResBook, uniqKinds, type GateResource } from "./planner-resources";
 
 // ───────────────────────── สัญญา ─────────────────────────
 
@@ -31,7 +34,25 @@ export type PlanStaff = {
   maxJobsPerDay?: number | null;
 };
 
-export type PlanService = { id: string; name: string; durationMin: number; bufferAfterMin: number };
+export type PlanService = {
+  id: string;
+  name: string;
+  durationMin: number;
+  bufferAfterMin: number;
+  resourceKinds?: string[]; // SVC B.13 ▸ ชนิดที่ต้องใช้ (ไม่ส่ง/[] = ไม่ใช้ทรัพยากร) ◂
+};
+
+/** SVC B.13 ▸ ทรัพยากรของสาขา (active เท่านั้น · blocks = ช่วงปิดซ่อมที่ตัดเฉพาะวันนั้น) · rank = ลำดับจากฐาน (sortOrder, createdAt, id) ถ้ามี ◂ */
+export type PlanResource = {
+  id: string;
+  kind: string;
+  name: string;
+  sortOrder: number;
+  capacity: number; // ≥ 1
+  cleanupMin: number; // เก็บห้องหลังจบบริการ — กินทรัพยากร ไม่กินหมอ
+  blocks: { startAt: number; endAt: number }[];
+  rank?: number;
+};
 
 export type PlanJob = {
   id: string;
@@ -48,16 +69,18 @@ export type PlanJob = {
   startedAt: number | null;
   priority: boolean;
   policy?: { graceMin?: number; noShowAfterMin?: number; lateAction?: "RELEASE" | "HOLD" }; // snapshot ชนะ settings
+  resourceIds?: string[]; // SVC B.13 ▸ นัด = ที่ถืออยู่ในฐาน (ข้อเท็จจริง) · walk-in = ไม่ผูกมัด ◂
 };
 
-export type PlanInput = { now: number; settings: PlanSettings; staff: PlanStaff[]; services: PlanService[]; jobs: PlanJob[] };
+export type PlanInput = { now: number; settings: PlanSettings; staff: PlanStaff[]; services: PlanService[]; jobs: PlanJob[]; resources?: PlanResource[] };
 
 export type PlanState = "IN_SERVICE" | "SCHEDULED" | "RELEASED_LATE" | "NO_SHOW_DUE" | "UNPLACED";
 export type PlanReason =
   | "IN_SERVICE" | "IN_SERVICE_OVERRUN"
   | "BOOKED_ON_TIME" | "BOOKED_DELAYED" | "BOOKED_MOVED_STAFF" | "BOOKED_EARLY" | "STAFF_UNAVAILABLE"
   | "WALKIN_EARLIEST" | "WALKIN_GAP_BEFORE_BOOKING" | "WALKIN_REQUESTED_STAFF" | "LATE_ARRIVAL_AS_WALKIN"
-  | "LATE_RELEASED" | "NO_SHOW_DUE" | "NO_SLOT_TODAY" | "UNKNOWN_SERVICE";
+  | "LATE_RELEASED" | "NO_SHOW_DUE" | "NO_SLOT_TODAY" | "UNKNOWN_SERVICE"
+  | "NO_RESOURCE"; // SVC B.13 ▸ บริการต้องใช้ชนิดที่สาขาไม่มีชิ้นเลย ◂
 
 export type WhyCandidate = {
   staffId: string;
@@ -80,6 +103,8 @@ export type PlannedJob = {
   etaPlusMinusMin: number;
   why: WhyInfo | null;
   overWindow: boolean; // ไม่อยู่ในหน้าต่างทำงานทั้งช่วง (นัดถูกดันเลยปิด · งานกำลังทำที่ยืด · STAFF_UNAVAILABLE)
+  resourceIds: string[]; // SVC B.13 ▸ ชิ้นที่ถือ ตามลำดับชนิด ([] = ไม่ใช้) ◂
+  resourceShort: boolean; // SVC B.13 ▸ นัดที่ผูกทรัพยากรไม่ได้ (เวลาไม่ขยับ · ร้านเห็นบนจอ B.14) ◂
 };
 export type Plan = { now: number; jobs: PlannedJob[]; line: string[] };
 
@@ -90,6 +115,8 @@ export type WalkInQuote = {
   waitMin: number | null;
   closed: boolean;
   why: WhyInfo | null;
+  resourceIds: string[]; // SVC B.13
+  limitedBy: "NONE" | "STAFF" | "RESOURCE" | "BOTH"; // SVC B.13 ▸ §4.7 ◂
 };
 
 // ───────────────────────── ค่าคงที่ ─────────────────────────
@@ -112,7 +139,12 @@ type Ctx = {
   svcById: Map<string, PlanService>;
   timeline: Map<string, Slot[]>; // ต่อช่าง เรียง startAt เสมอ
   doneCount: Map<string, number>;
+  kindsBy: Map<string, string[]>; // SVC B.13 ▸ ชนิดที่บริการต้องใช้ ◂
+  book: ResBook | null; // SVC B.13 ▸ null = ไม่มีบริการไหนประกาศชนิด (ทาง B.2 เดิมทุกไบต์) ◂
 };
+
+/** SVC B.13 ▸ ข้อมูลประกอบ limitedBy ของงานสมมติ (quoteWalkIn) ◂ */
+type QuoteInfo = { staffNow: boolean; resNow: boolean; missingKind: boolean };
 
 type QueueItem = { job: PlanJob; lateArrival: boolean; requested: string | null; key: [number, number, number, string] };
 
@@ -236,6 +268,55 @@ function earliestFit(ctx: Ctx, staff: PlanStaff, d: number, g: number, lower: nu
   return null;
 }
 
+// ───────────────────────── SVC B.13 ▸ ทรัพยากร ─────────────────────────
+
+/** ชนิดที่งานนี้ต้องใช้ (ไม่มีสมุด = ไม่ใช้) */
+function kindsOfJob(ctx: Ctx, job: PlanJob): string[] {
+  return ctx.book ? (ctx.kindsBy.get(job.serviceId) ?? []) : [];
+}
+
+/**
+ * ช่วงที่งานที่วางแล้วถือทรัพยากร (ก่อนบวกเวลาเก็บ) — ต้องครอบช่วงที่ฐานนับ (§4.6) เสมอ:
+ * นัด = ตั้งแต่ min(เวลานัด, เริ่มตามแผน) ถึง max(ปลายตามแผน, เวลานัด + นาที) ⇒ walk-in ที่วางไม่ทับแถวนัดในฐาน
+ */
+function holdOf(ctx: Ctx, job: PlanJob, pj: PlannedJob): { s: number; e: number } | null {
+  if (pj.startAt === null || pj.endAt === null) return null;
+  let s = pj.startAt;
+  let e = pj.endAt;
+  if (job.kind === "BOOKED" && job.startAt !== null) {
+    const st = pj.staffId ? ctx.staffById.get(pj.staffId) : undefined;
+    s = Math.min(s, job.startAt);
+    e = Math.max(e, job.startAt + durMs(ctx, job, st));
+  }
+  return { s, e };
+}
+
+/**
+ * จุดลงเร็วสุด ≥ lower ที่ผ่านทั้งกติกาหมอ (fitsAt) และทรัพยากรครบชนิด (§4 ข้อ 5ค) —
+ * จุดผู้สมัคร = จุดของหมอ (lower · ต้นหน้าต่าง · จบงาน+ช่อง) ∪ จุดที่ทรัพยากรเพิ่งว่าง (resPts ≥ lower)
+ */
+function earliestFitRes(
+  ctx: Ctx, staff: PlanStaff, d: number, g: number, lower: number,
+  kinds: readonly string[], fixed: ReadonlyMap<string, string>, resPts: readonly number[],
+): { t: number; ids: string[] } | null {
+  const book = ctx.book!;
+  const slots = slotsOf(ctx, staff.id);
+  const points = [lower];
+  for (const w of staff.windows) if (w.startAt > lower) points.push(w.startAt);
+  for (const x of slots) if (x.endAt + x.gapAfter > lower) points.push(x.endAt + x.gapAfter);
+  for (const t of resPts) if (t > lower) points.push(t);
+  points.sort((a, b) => a - b);
+  let prev = Number.NaN;
+  for (const t of points) {
+    if (t === prev) continue;
+    prev = t;
+    if (!fitsAt(ctx, staff, slots, t, d, g)) continue;
+    const ids = book.pick(kinds, t, t + d, { fixed });
+    if (ids) return { t, ids };
+  }
+  return null;
+}
+
 /** ช่องแรก (≥ now · ยาว ≥ 10 นาที · ก่อนจุดลงได้) ที่ลงไม่ได้เพราะติดนัดถัดไป — ไว้อธิบายในกล่อง "ทำไม" */
 function blockedGapOf(ctx: Ctx, staff: PlanStaff, d: number, g: number, fitAt: number | null): WhyCandidate["blockedGap"] {
   const slots = slotsOf(ctx, staff.id);
@@ -264,8 +345,12 @@ function waitOf(ctx: Ctx, start: number): number {
 
 // ───────────────────────── แกนวางคิว ─────────────────────────
 
-function run(input: PlanInput, quoteJobId: string | null): Plan {
+function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo): Plan {
   const { now, settings } = input;
+  // SVC B.13 ▸ สมุดทรัพยากรเฉพาะเมื่อมีบริการประกาศชนิด (ไม่มี ⇒ ทาง B.2 เดิมทุกไบต์ · FZ-4) ◂
+  const kindsBy = new Map(input.services.map((s) => [s.id, uniqKinds(s.resourceKinds)]));
+  const useRes = [...kindsBy.values()].some((k) => k.length > 0);
+  const resIn: GateResource[] = useRes ? (input.resources ?? []).map((r) => ({ ...r, blocks: r.blocks })) : [];
   const staff = input.staff
     .map((s) => ({ ...s, windows: mergeWindows(s.windows) }))
     .sort((a, b) => a.sortOrder - b.sortOrder || cmpStr(a.id, b.id));
@@ -277,12 +362,15 @@ function run(input: PlanInput, quoteJobId: string | null): Plan {
     svcById: new Map(input.services.map((s) => [s.id, s])),
     timeline: new Map(),
     doneCount: new Map(),
+    kindsBy,
+    book: useRes ? new ResBook(resIn) : null,
   };
   const jobs = [...input.jobs].sort((a, b) => cmpStr(a.id, b.id));
   const out = new Map<string, PlannedJob>();
   const base = (job: PlanJob): PlannedJob => ({
     jobId: job.id, kind: job.kind, staffId: job.staffId, startAt: null, endAt: null,
     state: "UNPLACED", reason: "NO_SLOT_TODAY", late: false, waitMin: null, etaPlusMinusMin: 0, why: null, overWindow: false,
+    resourceIds: [], resourceShort: false,
   });
 
   // 1–3) แยกงาน: จบแล้ว · กำลังทำ · นัดล็อก · คิว walk-in
@@ -383,6 +471,63 @@ function run(input: PlanInput, quoteJobId: string | null): Plan {
   });
   placeLocked(new Set());
 
+  // SVC B.13 ▸ 3.5) ทรัพยากรของงานที่วางแล้ว (กำลังทำ + นัดล็อก) — ข้อเท็จจริงก่อน (ชิ้นที่ถืออยู่ · ล้นได้) แล้วผูกนัดที่ยังไม่มี
+  //   ตามลำดับ (เริ่ม, id) · ผูกไม่ได้ ⇒ resourceShort (เวลาไม่ขยับ) · pinned = นัดที่ถูกดึงขึ้นเร็ว (ใช้ชิ้นที่เลือกแล้ว) ◂
+  const resOf = new Map<string, string[]>();
+  const shortOf = new Set<string>();
+  const jobById = new Map(jobs.map((j) => [j.id, j]));
+  const bookFixed = (pinned: ReadonlyMap<string, string[]>) => {
+    if (!ctx.book) return;
+    ctx.book = new ResBook(resIn);
+    resOf.clear();
+    shortOf.clear();
+    const placed: { job: PlanJob; pj: PlannedJob; hold: { s: number; e: number } }[] = [];
+    for (const pj of out.values()) {
+      if (pj.state !== "SCHEDULED" && pj.state !== "IN_SERVICE") continue;
+      const job = jobById.get(pj.jobId);
+      const hold = job ? holdOf(ctx, job, pj) : null;
+      if (job && hold) placed.push({ job, pj, hold });
+    }
+    // นัดที่ตัววางคิวปล่อยช่อง (สาย/ถึงเวลาไม่มา) ยังถือชิ้นในฐานจนกว่าจะ NO_SHOW/ยกเลิก (§4.6) ⇒ walk-in ห้ามลงทับชิ้นนั้น
+    for (const pj of out.values()) {
+      if (pj.state !== "RELEASED_LATE" && pj.state !== "NO_SHOW_DUE") continue;
+      const job = jobById.get(pj.jobId);
+      if (!job || job.startAt === null || !job.resourceIds?.length) continue;
+      const st = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
+      const e = job.startAt + durMs(ctx, job, st);
+      for (const id of new Set(job.resourceIds)) if (ctx.book.get(id)) ctx.book.add(id, job.id, job.startAt, e);
+    }
+    placed.sort((a, b) => a.hold.s - b.hold.s || cmpStr(a.job.id, b.job.id));
+    const need: typeof placed = [];
+    for (const x of placed) {
+      const kinds = kindsOfJob(ctx, x.job);
+      const given = pinned.get(x.job.id) ?? x.job.resourceIds;
+      if (!kinds.length) {
+        // บริการไม่ประกาศชนิดแต่แถวยังถือชิ้นอยู่ (ประกาศทีหลัง/ถอนทีหลัง) ⇒ นับเป็นข้อเท็จจริง · ผลยังเป็น [] (§4.8)
+        for (const id of given ?? []) if (ctx.book.get(id)) ctx.book.add(id, x.job.id, x.hold.s, x.hold.e);
+        continue;
+      }
+      const facts = factsByKind(ctx.book, kinds, given);
+      for (const id of facts.values()) ctx.book.add(id, x.job.id, x.hold.s, x.hold.e);
+      resOf.set(x.job.id, kinds.flatMap((k) => (facts.has(k) ? [facts.get(k)!] : [])));
+      if (facts.size < kinds.length) need.push(x);
+    }
+    for (const x of need) {
+      const kinds = kindsOfJob(ctx, x.job);
+      const facts = factsByKind(ctx.book, kinds, pinned.get(x.job.id) ?? x.job.resourceIds);
+      const missing = kinds.filter((k) => !facts.has(k));
+      const got = ctx.book.pick(missing, x.hold.s, x.hold.e, { prefer: [] });
+      if (!got) {
+        shortOf.add(x.job.id);
+        continue;
+      }
+      missing.forEach((k, i) => facts.set(k, got[i]));
+      for (const id of got) ctx.book.add(id, x.job.id, x.hold.s, x.hold.e);
+      resOf.set(x.job.id, kinds.map((k) => facts.get(k)!));
+    }
+  };
+  bookFixed(new Map());
+
   // 3) นัดก่อนเสมอ: นัดที่มาแล้วดึงขึ้นเร็วได้บนช่างเดิม (ก่อนวาง walk-in ทุกใบ)
   if (settings.queueOrder === "APPOINTMENT_FIRST") {
     const early = new Set<string>();
@@ -394,13 +539,28 @@ function run(input: PlanInput, quoteJobId: string | null): Plan {
       if (!s) continue;
       release(ctx, s.id, job.id);
       const d = durMs(ctx, job, s), g = gapMs(ctx, job, s);
-      const t = earliestFit(ctx, s, d, g, now);
+      // SVC B.13 ▸ ดึงขึ้นเร็วได้เมื่อชิ้นที่ถือ (หรือผูกไว้) ว่างที่เวลาใหม่ด้วย · ผูกไม่ได้ (resourceShort) ⇒ ไม่ดึง ◂
+      const kinds = kindsOfJob(ctx, job);
+      let t: number | null;
+      if (kinds.length && ctx.book) {
+        if (shortOf.has(job.id)) t = null;
+        else {
+          const fixed = factsByKind(ctx.book, kinds, resOf.get(job.id));
+          ctx.book.remove(job.id);
+          const r = earliestFitRes(ctx, s, d, g, now, kinds, fixed, ctx.book.releasePoints(kinds, now));
+          t = r ? r.t : null;
+        }
+      } else t = earliestFit(ctx, s, d, g, now);
       const pulled = t !== null && t < Math.min(job.startAt!, pj.startAt);
-      const start = pulled ? t : pj.startAt;
+      const start = pulled ? t! : pj.startAt;
       occupy(ctx, s.id, { jobId: job.id, startAt: start, endAt: start + d, gapAfter: g, booking: true });
       if (pulled) {
         early.add(job.id);
         out.set(job.id, { ...pj, startAt: start, endAt: start + d, reason: "BOOKED_EARLY" });
+      }
+      if (kinds.length && ctx.book && !shortOf.has(job.id)) {
+        const hold = holdOf(ctx, job, out.get(job.id)!);
+        if (hold) for (const id of resOf.get(job.id) ?? []) ctx.book.add(id, job.id, hold.s, hold.e);
       }
     }
     // ช่องเดิมของนัดที่ถูกดึงว่างแล้ว ⇒ วางนัดที่เหลือใหม่ (นัดที่ถูกดันเพราะช่องนั้นจะได้กลับมาตรงเวลา)
@@ -412,6 +572,7 @@ function run(input: PlanInput, quoteJobId: string | null): Plan {
       }
       placeLocked(early);
     }
+    if (early.size > 0) bookFixed(new Map([...early].map((id) => [id, resOf.get(id) ?? []])));
   }
 
   // 4) walk-in ทีละใบตามลำดับ · ใบก่อนวางก่อนแล้วไม่ถูกขยับ
@@ -423,7 +584,26 @@ function run(input: PlanInput, quoteJobId: string | null): Plan {
   for (const item of queue) {
     const { job, lateArrival, requested } = item;
     const candidates: WhyCandidate[] = [];
-    let chosen: { s: PlanStaff; t: number; d: number; g: number; cand: WhyCandidate } | null = null;
+    let chosen: { s: PlanStaff; t: number; d: number; g: number; cand: WhyCandidate; ids: string[] } | null = null;
+    // SVC B.13 ▸ ต้องว่างทั้งหมอและทรัพยากร · นัดที่เข้าแถว (มาสาย) ใช้ชิ้นที่ถืออยู่ (ข้อเท็จจริง) · walk-in เลือกใหม่ได้ ◂
+    const kinds = kindsOfJob(ctx, job);
+    const book = kinds.length ? ctx.book : null;
+    const missingKind = !!book && kinds.some((k) => !book.hasKind(k));
+    const fixed = book && job.kind === "BOOKED" ? factsByKind(book, kinds, job.resourceIds) : new Map<string, string>();
+    const resPts = book && !missingKind ? book.releasePoints(kinds, now) : [];
+    if (job.id === quoteJobId && quoteInfo) {
+      quoteInfo.missingKind = missingKind;
+      const sd = (ctx.svcById.get(job.serviceId)?.durationMin ?? 0) * MIN;
+      quoteInfo.resNow = !book || (!missingKind && book.pick(kinds, now, now + sd) !== null);
+      quoteInfo.staffNow = !!book && ctx.staff.some((s) =>
+        (requested === null || s.id === requested) && canDo(s, job.serviceId) && !atMaxJobs(ctx, s)
+        && (settings.backfill ? now : Math.max(now, boundAny, boundByStaff.get(s.id) ?? -Infinity)) === now
+        && fitsAt(ctx, s, slotsOf(ctx, s.id), now, durMs(ctx, job, s), gapMs(ctx, job, s)));
+    }
+    if (missingKind) {
+      out.set(job.id, { ...base(job), staffId: requested, late: lateArrival, reason: "NO_RESOURCE" });
+      continue;
+    }
 
     for (const s of ctx.staff) {
       const cand: WhyCandidate = { staffId: s.id, verdict: "NO_FIT", earliestFitAt: null, blockedGap: null };
@@ -434,12 +614,18 @@ function run(input: PlanInput, quoteJobId: string | null): Plan {
       else {
         const d = durMs(ctx, job, s), g = gapMs(ctx, job, s);
         const lower = settings.backfill ? now : Math.max(now, boundAny, boundByStaff.get(s.id) ?? -Infinity);
-        const t = earliestFit(ctx, s, d, g, lower);
+        let t: number | null;
+        let ids: string[] = [];
+        if (book) {
+          const r = earliestFitRes(ctx, s, d, g, lower, kinds, fixed, resPts);
+          t = r ? r.t : null;
+          ids = r ? r.ids : [];
+        } else t = earliestFit(ctx, s, d, g, lower);
         cand.earliestFitAt = t;
         cand.blockedGap = blockedGapOf(ctx, s, d, g, t);
         if (t !== null) {
           cand.verdict = "LATER";
-          if (!chosen || t < chosen.t) chosen = { s, t, d, g, cand }; // เท่ากัน = คนแรกตาม sortOrder/id
+          if (!chosen || t < chosen.t) chosen = { s, t, d, g, cand, ids }; // เท่ากัน = คนแรกตาม sortOrder/id
         }
       }
     }
@@ -452,6 +638,10 @@ function run(input: PlanInput, quoteJobId: string | null): Plan {
     const { s, t, d, g } = chosen;
     const next = slotsOf(ctx, s.id).find((x) => x.startAt > t);
     occupy(ctx, s.id, { jobId: job.id, startAt: t, endAt: t + d, gapAfter: g, booking: false });
+    if (book) {
+      for (const id of chosen.ids) book.add(id, job.id, t, t + d);
+      resOf.set(job.id, chosen.ids);
+    }
     if (requested === null) boundAny = Math.max(boundAny, t);
     else boundByStaff.set(requested, Math.max(boundByStaff.get(requested) ?? -Infinity, t));
 
@@ -463,6 +653,14 @@ function run(input: PlanInput, quoteJobId: string | null): Plan {
       ...base(job), staffId: s.id, startAt: t, endAt: t + d, state: "SCHEDULED", reason, late: lateArrival,
       why: { candidates, text: whyText(ctx, candidates) },
     });
+  }
+
+  // SVC B.13 ▸ ผลทรัพยากรต่องาน ◂
+  for (const pj of out.values()) {
+    if (pj.state !== "SCHEDULED" && pj.state !== "IN_SERVICE") continue;
+    const ids = resOf.get(pj.jobId);
+    if (ids) pj.resourceIds = [...ids];
+    if (shortOf.has(pj.jobId)) pj.resourceShort = true;
   }
 
   // 6) ETA · 7) line
@@ -523,9 +721,16 @@ export function quoteWalkIn(
     assignMode: requested ? "SPECIFIC" : "ANY", staffId: requested, startAt: null, issuedAt: input.now,
     checkedInAt: null, startedAt: null, priority: req.priority ?? false,
   };
-  const pj = run({ ...input, jobs: [...input.jobs, ghost] }, QUOTE_JOB_ID).jobs.find((j) => j.jobId === QUOTE_JOB_ID);
+  const info: QuoteInfo = { staffNow: false, resNow: true, missingKind: false };
+  const pj = run({ ...input, jobs: [...input.jobs, ghost] }, QUOTE_JOB_ID, info).jobs.find((j) => j.jobId === QUOTE_JOB_ID);
   const startAt = pj?.startAt ?? null;
   const waitMin = pj?.waitMin ?? null;
+  // SVC B.13 ▸ §4.7: ได้ทันที ⇒ NONE · ชนิดไม่มีชิ้นเลย ⇒ RESOURCE · หมอว่างทันทีแต่ไม่ได้ทันที ⇒ RESOURCE · หมอไม่ว่าง ⇒ STAFF (ห้องว่าง) / BOTH ◂
+  const limitedBy: WalkInQuote["limitedBy"] =
+    startAt !== null && startAt === input.now ? "NONE"
+      : info.missingKind ? "RESOURCE"
+        : info.staffNow ? "RESOURCE"
+          : info.resNow ? "STAFF" : "BOTH";
   return {
     staffId: startAt === null ? requested : (pj?.staffId ?? null),
     startAt,
@@ -533,5 +738,7 @@ export function quoteWalkIn(
     waitMin,
     closed: startAt === null || (waitMin !== null && waitMin > input.settings.walkInMaxWaitMin),
     why: pj?.why ?? null,
+    resourceIds: startAt === null ? [] : [...(pj?.resourceIds ?? [])],
+    limitedBy,
   };
 }
