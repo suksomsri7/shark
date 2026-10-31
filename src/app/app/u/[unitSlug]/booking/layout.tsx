@@ -24,7 +24,7 @@ export default async function BookingLayout({
   } catch {
     // ค่าตั้งอ่านไม่ได้ ⇒ ใช้คำเรียกเริ่มต้น
   }
-  // SVC B.5 ▸ หน่วยแถวเดียว: คิววันนี้ (/booking) · ปฏิทินนัด (/booking/day) · ของฉัน (/booking/mine) + แท็บเดิม · ร้านเดิม = แท็บเดิมทุกตัว
+  // SVC B.5 ▸ หน่วยแถวเดียว: คิววันนี้ (/booking) · ปฏิทินนัด (/booking/calendar · B.14) · ของฉัน (/booking/mine) + แท็บเดิม · ร้านเดิม = แท็บเดิมทุกตัว
   //   ความกว้าง: จอแถวเดียว (data-booking-wide) ไม่ถูกบีบ — กรอบนี้ไม่มี max-w · หน้าย่อยอื่นคงกว้างของตัวเอง ◂
   let singleLine = false;
   try {
@@ -34,7 +34,7 @@ export default async function BookingLayout({
   }
   const lineTabs = singleLine
     ? [
-        { href: `${base}/day`, label: "ปฏิทินนัด" },
+        { href: `${base}/calendar`, label: "ปฏิทินนัด" }, // SVC B.14 ▸ ปฏิทินนัด (วัน/สัปดาห์ · คน/ห้อง · ลากย้าย) — /booking/day (B.5) คงไว้ ไม่ลิงก์จากแท็บ ◂
         { href: `${base}/mine`, label: "ของฉัน" },
       ]
     : [];

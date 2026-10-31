@@ -543,7 +543,9 @@ await t("K-5", "ช่าง/แคชเชียร์ไม่มีคีย
 const acc: Any = ACC.mod;
 await t("K-6", "BOOKING_ACTIONS = ทุก export ใน actions/booking.ts + booking-settings.ts · คีย์ตามใบสั่ง §7.2 · setStatusAction แยกตามสถานะ", () => {
   ok(acc?.BOOKING_ACTIONS, `ไม่มี BOOKING_ACTIONS (${ACC.err})`);
-  const names = sorted([...exportedFns(read(F.actions)), ...exportedFns(read(F.sactions))].map((f) => f.name));
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b11-K6-calendar) ใบหลัง (B.14) เพิ่มไฟล์ action ของจองคิวที่ลงตารางเดียวกัน — นับรวมเมื่อไฟล์มีจริง · ความเข้มเดิม (ตาราง = export จริงครบทุกตัว)
+  const extraActionFiles = ["src/lib/actions/booking-calendar.ts"].filter((f) => existsSync(join(ROOT, f)));
+  const names = sorted([...exportedFns(read(F.actions)), ...exportedFns(read(F.sactions)), ...extraActionFiles.flatMap((f) => exportedFns(read(f)))].map((f) => f.name));
   eq(sorted(Object.keys(acc.BOOKING_ACTIONS)), names, "ชื่อ action ในตาราง = export จริง");
   for (const [a, keys] of Object.entries(ACTION_KEYS)) eq(sorted([...(acc.bookingActionKeys(a) ?? [])]), sorted(keys), a);
   for (const [st, keys] of Object.entries(STATUS_KEYS)) eq(sorted([...(acc.bookingActionKeys("setStatusAction", { status: st }) ?? [])]), sorted(keys), `setStatus ${st}`);

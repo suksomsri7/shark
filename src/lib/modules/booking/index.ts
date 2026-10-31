@@ -48,3 +48,6 @@ export { joinWaitlistOnline, leaveWaitlistOnline, waitlistViewOf, WAITLIST_RATE 
 export type { WaitlistJoinFail, WaitlistMode, WaitlistView } from "./waitlist";
 export { findSlots, onlineRulesOf } from "./service";
 export { localToUtc } from "./slots";
+// SVC B.14 ▸ ปฏิทินนัด (วัน/สัปดาห์ · คน/ห้อง · ลากย้าย · จองจากปฏิทิน) ◂
+export { loadCalendar, moveAppointment, bookForCustomer } from "./calendar";
+export type { CalendarActor, CalendarView, CalColumn, CalBlock, CalMode, CalRange, CalMoveTo, CalMoveFail, CalMoveResult } from "./calendar";

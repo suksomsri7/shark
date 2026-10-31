@@ -1285,3 +1285,61 @@ SQC_VISUAL_SPECS["b.13"] = [
   { name: "booking-services-resources", path: `/app/u/${SQC_UNITS.massage.slug}/booking/services?service=${encodeURIComponent("น้ำมันอโรมา")}` },
 ];
 // ◂ SVC B.13
+// SVC B.14 ▸ บล็อกของใบ B.14 เท่านั้น (ปฏิทินนัดร้านนวด · ภาพ จอง 02) — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-b.14.md §8 · ข้อสอบ scripts/qc-svc-b.14.mts (Q · V-1) · ฉาก scripts/svc-qc-calendar-scene.mts (builder)
+//   🔴 ฉากนี้ไม่เขียนค่าตั้งชั้น TENANT/UNIT (ข้อสอบ Q-4 เทียบก่อน/หลัง) · ต้องรันหลัง seed → ฉาก B.11 → ฉาก B.13 (ทรัพยากร 12 ชิ้น)
+//   ตัวเลขตามภาพ 02 / README ("บ้านนวดใบเตย · ส. 31 ต.ค. 14:20") ปรับเข้ากับบริการของ svcqc (SQC_MASSAGE_SERVICES — ไม่มีนวดไทย 90/120 แยก ⇒ ใช้ "นวดไทย+ประคบ" 120)
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcMassageStaffKey = "daeng" | "nok" | "jan" | "fai" | "may" | "sri";
+export type SqcCalBooking = { key: string; staff: SqcMassageStaffKey; service: string; start: string; name: string; phone: string; then: "DONE" | "IN_SERVICE" | "ARRIVED" | null; arriveAt?: string; startAt?: string; doneAt?: string };
+export type SqcCalWalkIn = { key: string; staff: SqcMassageStaffKey; service: string; issueAt: string; then: "DONE" | "IN_SERVICE"; startAt: string; doneAt?: string };
+export const SQC_CALENDAR_SCENE = {
+  unit: "massage" as SqcUnitKey,
+  /** วันฉาก = เสาร์อนาคต (ชุดเดียวกับ B.5) · เวลาภาพ 14:20 */
+  day: SQC_LINE_SCENE_DAY,
+  at: "14:20",
+  idemPrefix: "svcqc-cal-",
+  staffIds: {
+    daeng: "svcqc-staff-massage-daeng", nok: "svcqc-staff-massage-nok", jan: "svcqc-staff-massage-jan",
+    fai: "svcqc-staff-massage-fai", may: "svcqc-staff-massage-may", sri: "svcqc-staff-massage-sri",
+  } as Record<SqcMassageStaffKey, string>,
+  /** พี่ศรีลาพักร้อน (ใบลาอนุมัติในระบบพนักงาน) ⇒ คอลัมน์ปิดทั้งวัน */
+  leave: { staff: "sri" as SqcMassageStaffKey, hrSystemId: "svcqc-cal-hr", employeeId: "svcqc-cal-emp-sri", type: "VACATION" as const },
+  /** นัด (ลำดับ = ลำดับจอง ⇒ ห้อง/เตียงที่ด่าน first-fit เลือก) · then = สถานะปลายทาง ณ 14:20 */
+  bookings: [
+    { key: "prae", staff: "daeng", service: "นวดไทย", start: "12:00", name: "คุณแพร", phone: "0861000001", then: "DONE", arriveAt: "11:55", startAt: "12:00", doneAt: "13:00" },
+    { key: "mod", staff: "may", service: "นวดไทย+ประคบ", start: "12:00", name: "คุณมด", phone: "0861000002", then: "DONE", arriveAt: "11:50", startAt: "12:00", doneAt: "14:00" },
+    { key: "ton", staff: "jan", service: "นวดไทย", start: "12:00", name: "คุณต้น", phone: "0861000003", then: "DONE", arriveAt: "11:58", startAt: "12:00", doneAt: "13:00" },
+    { key: "wan", staff: "nok", service: "น้ำมันอโรมา", start: "12:30", name: "คุณวรรณ", phone: "0861000004", then: "DONE", arriveAt: "12:25", startAt: "12:30", doneAt: "14:00" },
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-Q-somchai) พี่แดงไม่รับ "นวดไทย+ประคบ" ตามฉาก B.11 (NOT_QUALIFIED) ⇒ ใช้ "นวดไทย" 60 · ไม่แตะฉาก B.11 ที่รับแล้ว · PARITY: บล็อกคุณสมชายสั้นกว่าภาพ (ยอมรับ)
+    { key: "somchai", staff: "daeng", service: "นวดไทย", start: "13:30", name: "คุณสมชาย", phone: "0861000005", then: "IN_SERVICE", arriveAt: "13:25", startAt: "13:30" },
+    { key: "nid", staff: "may", service: "น้ำมันอโรมา", start: "14:30", name: "คุณนิด", phone: "0861000006", then: "ARRIVED", arriveAt: "14:16" },
+    { key: "ploy", staff: "jan", service: "คู่รัก VIP", start: "15:00", name: "คุณพลอย", phone: "0861000007", then: null },
+    { key: "james", staff: "fai", service: "คู่รัก VIP", start: "15:00", name: "คุณเจนส์", phone: "0861000008", then: null },
+    { key: "orn", staff: "daeng", service: "น้ำมันอโรมา", start: "16:00", name: "คุณอร", phone: "0861000009", then: null },
+    { key: "kob", staff: "may", service: "นวดไทย", start: "16:30", name: "คุณกบ", phone: "0861000010", then: null },
+    { key: "joy", staff: "nok", service: "น้ำมันอโรมา", start: "17:00", name: "คุณจอย", phone: "0861000011", then: null },
+  ] as SqcCalBooking[],
+  walkIns: [
+    { key: "w-fai", staff: "fai", service: "นวดเท้า", issueAt: "12:58", then: "DONE", startAt: "13:00", doneAt: "14:00" },
+    { key: "w-nok", staff: "nok", service: "นวดเท้า", issueAt: "14:18", then: "IN_SERVICE", startAt: "14:20" },
+  ] as SqcCalWalkIn[],
+  /** ข้อสอบ Q-2 เทียบ loadCalendar(วันฉาก · STAFF · owner) */
+  expect: {
+    columns: ["daeng", "nok", "jan", "fai", "may", "sri"] as SqcMassageStaffKey[],
+    closed: { sri: "LEAVE" } as Partial<Record<SqcMassageStaffKey, string>>,
+    blocks: { daeng: 3, nok: 3, jan: 2, fai: 2, may: 3, sri: 0 } as Record<SqcMassageStaffKey, number>,
+    /** ภาพ 02: คุณอร 16:00 ได้ "ห้อง B" (ห้อง A ถือคุณนิด 14:30–16:00 + เก็บ 15) · คุณจอย 17:00 ได้ "ห้อง A" */
+    resources: { orn: "svcqc-res-oil-b", joy: "svcqc-res-oil-a", nid: "svcqc-res-oil-a" } as Record<string, string>,
+    /** การ์ดที่เลือกเองเมื่อไม่ส่ง ?appt= = งาน ARRIVED ที่รอนานสุดของวันนี้ */
+    card: "nid",
+  },
+} as const;
+/** ภาพ จอง 02 — ก่อนถ่าย: seed → ฉาก B.11 → ฉาก B.13 → ฉาก B.14 · QC server SVC_QC_CLOCK=1 · ถ่าย --user owner · ผู้คุมเทียบ PARITY กับ ledger/design-booking/02-calendar-resources.png */
+SQC_VISUAL_SPECS["b.14"] = [
+  {
+    name: "booking-calendar",
+    path: `/app/u/${SQC_UNITS.massage.slug}/booking/calendar?date=${SQC_LINE_SCENE_DAY}&range=day&by=staff&at=${encodeURIComponent(sqcLineSceneAt(SQC_LINE_SCENE_DAY, "14:20"))}`,
+  },
+];
+// ◂ SVC B.14

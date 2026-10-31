@@ -32,7 +32,7 @@ import {
   skippedOf,
 } from "./planner-run";
 import { loadGate, needKinds, overrunMinOf, resourceIdsOfRow, resourceKindsOf, snapWithResources, withoutUnplaced } from "./resources"; // SVC B.13
-import { bookingPhoneKey, isRealDateStr, linkPartyAfterCommit, staffDayProfiles } from "./service";
+import { bookingPhoneKey, isRealDateStr, linkPartyAfterCommit, staffDayProfiles, staffSlotClear } from "./service"; // SVC B.14 ▸ staffSlotClear ◂
 import { localToUtc } from "./slots";
 import { staffServiceTerms } from "./staff-hours";
 
@@ -55,7 +55,7 @@ export type WalkInResult =
 
 export type JobFail = "NOT_FOUND" | "BAD_STATE" | "LOST_RACE" | "CLASH" | "BUSY";
 export type JobResult = { ok: true } | { ok: false; code: JobFail; reason: string };
-export type RescheduleFail = JobFail | "FULL" | "PAST" | "BAD_INPUT" | "ON_LEAVE" | "NOT_QUALIFIED";
+export type RescheduleFail = JobFail | "FULL" | "PAST" | "BAD_INPUT" | "ON_LEAVE" | "NOT_QUALIFIED" | "OUTSIDE_HOURS"; // SVC B.14 ▸ + OUTSIDE_HOURS (strictHours) ◂
 export type RescheduleResult = { ok: true } | { ok: false; code: RescheduleFail; reason: string };
 
 // ───────────────────────── ข้อความ ─────────────────────────
@@ -82,6 +82,9 @@ const R = {
   CLASH: "เริ่มตอนนี้จะชนนัดถัดไป — ย้ายช่างหรือเลื่อนนัดก่อน",
   CLASH_RES: "เริ่มตอนนี้ห้อง/เตียงที่บริการนี้ต้องใช้ยังไม่ว่าง — รอให้ว่างหรือย้ายนัดที่ใช้อยู่ก่อน", // SVC B.13
   FULL_RES: "ห้อง/เตียงที่บริการนี้ต้องใช้ไม่ว่างในเวลานี้ — กรุณาเลือกเวลาอื่น", // SVC B.13
+  STALE: "นัดนี้ถูกเปลี่ยนไปแล้ว (เวลา/ผู้ให้บริการไม่ตรงกับที่เห็นบนจอ) — โหลดหน้าใหม่แล้วลองอีกครั้ง", // SVC B.14
+  RES_NOT_FOUND: "ไม่พบห้อง/เตียงที่เลือก", // SVC B.14
+  RES_KIND: "ห้อง/เตียงที่เลือกไม่ใช่ชนิดที่บริการนี้ใช้", // SVC B.14
   QUEUE_SETUP: "ตั้งค่าบัตรคิวของสาขายังไม่พร้อม (ประเภทบัตรถูกปิดหรือตัวอักษรนำเลขชนประเภทอื่น) — แจ้งผู้ดูแลร้าน",
 } as const;
 
@@ -692,14 +695,20 @@ function withoutManualHold(snap: unknown): Prisma.InputJsonValue | undefined {
 }
 
 /**
- * เลื่อนฝั่งร้าน (กติการ้านจองให้ของ B.3): PENDING/CONFIRMED/LATE เท่านั้น · ใต้ล็อกสาขา → ช่าง · ห้ามซ้อน (ไม่นับตัวเอง) ·
+ * เลื่อนฝั่งร้าน (กติการ้านจองให้ของ B.3): PENDING/CONFIRMED/LATE เท่านั้น · ใต้ล็อกสาขา → ช่าง → ทรัพยากร → แถวนัด · ห้ามซ้อน (ไม่นับตัวเอง) ·
  * LATE ⇒ CONFIRMED + lateAt null · policySnapshot ไม่เปลี่ยน · rescheduleCount ไม่นับ (นับเฉพาะลูกค้าเลื่อนเอง — B.7)
+ * SVC B.14 ▸ ทางเดียวของ "ลากย้าย" บนปฏิทิน + ฟอร์มเลื่อนนัด/ย้ายหมอ·ห้อง (เพิ่มแบบ optional — เรียกแบบเดิม = ผลเดิม):
+ *   ด่านคน = J5 ของ bookAppointment ช่อง STAFF (staffSlotClear ของ service.ts · สูตรเดียว) ·
+ *   ลำดับล็อก (B.13 §5 · มติผู้คุม B14-lock): lockUnitTx → SvcResource ORDER BY id FOR UPDATE (loadGate lock:true) → lockAppt — ห้ามล็อก/อ่านทรัพยากรหลังแถวนัด ·
+ *   to.resourceId = ต้องเป็นชิ้นนั้น (pick fixed · ไม่ว่าง ⇒ FULL ห้ามสลับเงียบ) · opts.expect = เวลา/คนที่ผู้ใช้เห็น (ไม่ตรงใต้ล็อก ⇒ LOST_RACE) ·
+ *   opts.strictHours = ช่วงบริการต้องอยู่ในกรอบเวลาของคนวันนั้น (ใบสั่ง §9 ข้อ 4 ⇒ OUTSIDE_HOURS) ·
+ *   คีย์ event ซ้ำ (ย้ายไป-กลับ) ⇒ ต่อท้าย #<updatedAt ก่อนเขียน ms> ◂
  */
 export async function rescheduleByShop(
   ctx: LineCtx,
   appointmentId: string,
-  to: { dateStr: string; startMin: number; staffId?: string },
-  opts?: { now?: Date },
+  to: { dateStr: string; startMin: number; staffId?: string; resourceId?: string },
+  opts?: { now?: Date; expect?: { startAt: Date | string; staffId: string }; strictHours?: boolean },
 ): Promise<RescheduleResult> {
   const fail = (code: RescheduleFail, reason: string): RescheduleResult => ({ ok: false, code, reason });
   const now = nowOf(opts);
@@ -707,14 +716,23 @@ export async function rescheduleByShop(
   const { tenantId, unitId } = ctx;
   const cur = await prisma.appointment.findFirst({
     where: { id: appointmentId, tenantId, unitId },
-    select: { id: true, status: true, staffId: true, serviceId: true, policySnapshot: true },
+    select: { id: true, status: true, staffId: true, serviceId: true, policySnapshot: true, resourceId: true },
   });
   if (!cur) return fail("NOT_FOUND", R.JOB_NOT_FOUND);
   if (!RESCHEDULABLE.has(cur.status)) return fail("BAD_STATE", R.JOB_BAD_STATE);
   if (!to || typeof to !== "object" || typeof to.dateStr !== "string" || !isRealDateStr(to.dateStr)
     || !Number.isInteger(to.startMin) || to.startMin < 0 || to.startMin >= 24 * 60
-    || (to.staffId !== undefined && (typeof to.staffId !== "string" || !to.staffId))) {
+    || (to.staffId !== undefined && (typeof to.staffId !== "string" || !to.staffId))
+    || (to.resourceId !== undefined && (typeof to.resourceId !== "string" || !to.resourceId))) {
     return fail("BAD_INPUT", R.BAD_INPUT);
+  }
+  // SVC B.14 ▸ expect (ถ้าส่ง) ต้องครบรูป — เทียบกับแถวใต้ล็อก ◂
+  const expect = opts?.expect;
+  let expectMs: number | null = null;
+  if (expect !== undefined) {
+    const ms = expect && typeof expect === "object" ? (expect.startAt instanceof Date ? expect.startAt.getTime() : typeof expect.startAt === "string" ? Date.parse(expect.startAt) : NaN) : NaN;
+    if (!Number.isFinite(ms) || typeof expect?.staffId !== "string" || !expect.staffId) return fail("BAD_INPUT", R.BAD_INPUT);
+    expectMs = ms;
   }
   const staffId = to.staffId ?? cur.staffId;
   const service = await prisma.bookingService.findFirst({
@@ -722,6 +740,18 @@ export async function rescheduleByShop(
     select: { id: true, name: true, durationMin: true, bufferMin: true, priceSatang: true },
   });
   if (!service) return fail("NOT_FOUND", R.SVC_NOT_FOUND);
+  const kinds = (await resourceKindsOf(ctx, [service.id])).get(service.id) ?? []; // SVC B.13 ▸ ก่อน tx ◂
+  // SVC B.14 ▸ ห้อง/เตียงที่ระบุ: ของหน่วยนี้ + เปิดใช้ (ไม่งั้น NOT_FOUND) · ชนิดต้องเป็นชนิดที่งานนี้ใช้ (ประกาศ ∪ ที่ถืออยู่ · ไม่งั้น BAD_INPUT) ◂
+  const heldPre = resourceIdsOfRow(cur.resourceId, cur.policySnapshot);
+  let fixedKind: string | null = null;
+  if (to.resourceId !== undefined) {
+    const rs = await prisma.svcResource.findMany({ where: { tenantId, unitId, OR: [{ id: to.resourceId }, { id: { in: heldPre } }] }, select: { id: true, kind: true, active: true } });
+    const want = rs.find((r) => r.id === to.resourceId);
+    if (!want || !want.active) return fail("NOT_FOUND", R.RES_NOT_FOUND);
+    const usable = new Set<string>([...kinds, ...rs.filter((r) => heldPre.includes(r.id)).map((r) => r.kind)]);
+    if (!usable.has(want.kind)) return fail("BAD_INPUT", R.RES_KIND);
+    fixedKind = want.kind;
+  }
   const startAt = localToUtc(to.dateStr, to.startMin);
   if (startAt.getTime() <= now.getTime()) return fail("PAST", R.PAST);
   const [p] = await staffDayProfiles({ tenantId, unitId }, to.dateStr, { staffIds: [staffId] });
@@ -729,32 +759,46 @@ export async function rescheduleByShop(
   if (p.onLeave) return fail("ON_LEAVE", `${p.name} ลาในวันที่เลือก`);
   const terms = staffServiceTerms(p.services, service);
   if (!terms) return fail("NOT_QUALIFIED", `${p.name} ไม่ได้ให้บริการ "${service.name}"`);
+  if (opts?.strictHours === true && !p.windows.some((w) => to.startMin >= w.startMin && to.startMin + terms.durationMin <= w.endMin)) {
+    return fail("OUTSIDE_HOURS", `${p.name} ไม่ได้ทำงานในช่วงเวลาที่เลือก`); // SVC B.14 ▸ §9 ข้อ 4 ◂
+  }
   const buf = jobOf(cur.policySnapshot).bufferMin ?? service.bufferMin;
   const endAt = new Date(startAt.getTime() + (terms.durationMin + buf) * MIN_MS);
-  const kinds = (await resourceKindsOf(ctx, [service.id])).get(service.id) ?? []; // SVC B.13 ▸ ก่อน tx ◂
   const overrunMin = await overrunMinOf(ctx); // Q11
+  const usesRes = kinds.length > 0 || heldPre.length > 0 || fixedKind !== null;
+  const durMs = terms.durationMin * MIN_MS;
 
   type TxOut = RescheduleResult & { ev?: true };
   const res = await retryBusy(() => prisma.$transaction(async (tx): Promise<TxOut> => {
-    await lockUnitTx(tx, ctx); // advisory สาขา → ช่างทั้งสาขา (รวมตัวเดิม + ตัวใหม่ ตาม sortOrder)
+    await lockUnitTx(tx, ctx); // advisory สาขา → ช่างทั้งสาขา (รวมตัวเดิม + ตัวใหม่ ตาม sortOrder) → ทรัพยากรทั้งสาขา
+    // SVC B.14 ▸ ด่านทรัพยากร: ล็อก SvcResource (ORDER BY id) + อ่านปิดซ่อม/แถวที่ถือ "ก่อน" ล็อกแถวนัด (ลำดับ §5 · มติผู้คุม B14-lock) ◂
+    const book = usesRes
+      ? await loadGate(tx, tenantId, unitId, { lock: true, startMs: startAt.getTime(), endMs: startAt.getTime() + durMs, nowMs: now.getTime(), overrunMin, exclude: [appointmentId] })
+      : null;
     const a = await lockAppt(tx, ctx, appointmentId);
     if (!a) return fail("NOT_FOUND", R.JOB_NOT_FOUND);
     if (!RESCHEDULABLE.has(a.status)) return fail("BAD_STATE", R.JOB_BAD_STATE);
-    const clash = await tx.appointment.findFirst({
-      where: { tenantId, staffId, id: { not: a.id }, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { lt: endAt }, endAt: { gt: startAt } },
-      select: { id: true },
-    });
-    if (clash) return fail("FULL", R.FULL);
+    // SVC B.14 ▸ จอเก่า: เวลา/คนที่ผู้ใช้เห็นต้องตรงแถวใต้ล็อก (คน = staffId หรือคนตามแผนของตัววางคิว) ◂
+    const [meta] = await tx.$queryRaw<{ plannedStaffId: string | null; updatedAt: Date }[]>`
+      SELECT "plannedStaffId", "updatedAt" FROM "Appointment" WHERE "id" = ${a.id} AND "tenantId" = ${tenantId} AND "unitId" = ${unitId}`;
+    if (expect !== undefined && (a.startAt.getTime() !== expectMs || (expect.staffId !== a.staffId && expect.staffId !== meta?.plannedStaffId))) {
+      return fail("LOST_RACE", R.STALE);
+    }
+    // ด่านคน J5 (ไม่นับตัวเอง) — นิยามเดียวกับ bookAppointment ช่อง STAFF
+    if (!(await staffSlotClear(tx, tenantId, { staffId, dateStr: to.dateStr, startMin: to.startMin, durationMin: terms.durationMin, bufferMin: buf, excludeId: a.id }))) {
+      return fail("FULL", R.FULL);
+    }
     const data: Prisma.AppointmentUncheckedUpdateManyInput = { startAt, endAt, staffId, plannedStartAt: null, plannedStaffId: null };
+    if (to.staffId !== undefined && to.staffId !== a.staffId) data.assignMode = "SPECIFIC"; // SVC B.14 ▸ ย้ายคน = ระบุตัว ◂
     // N1: เวลานัดใหม่ ⇒ ล้าง job.manualHold (การถอยของร้านผูกกับเวลานัดเดิม) ใน CAS เดียวกัน — วันใหม่ tick ตั้งสาย/ไม่มาได้ตามปกติ
     const cleared = withoutManualHold(a.policySnapshot);
     if (cleared !== undefined) data.policySnapshot = cleared;
     // SVC B.13 ▸ ด่านทรัพยากร (ไม่นับตัวเอง): ชิ้นเดิมว่างที่เวลาใหม่ ⇒ คง · ไม่งั้นเลือกใหม่ชนิดเดียวกัน · ไม่มี ⇒ FULL ◂
     const held = resourceIdsOfRow(a.resourceId, a.policySnapshot);
-    if (kinds.length || held.length) {
-      const durMs = terms.durationMin * MIN_MS;
-      const book = await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + durMs, nowMs: now.getTime(), overrunMin, exclude: [a.id] });
-      const ids = book.pick(needKinds(kinds, held, book), startAt.getTime(), startAt.getTime() + durMs, { prefer: held }); // Q6
+    if (kinds.length || held.length || fixedKind !== null) {
+      if (!book) return fail("LOST_RACE", R.STALE); // แถวเพิ่งได้ทรัพยากรหลังอ่านก่อน tx ⇒ ให้ผู้ใช้โหลดใหม่ (ไม่อ่านทรัพยากรหลังล็อกแถวนัด)
+      const fixed = fixedKind !== null && to.resourceId !== undefined ? new Map([[fixedKind, to.resourceId]]) : undefined;
+      const ids = book.pick(needKinds(kinds, held, book), startAt.getTime(), startAt.getTime() + durMs, { prefer: held, ...(fixed ? { fixed } : {}) }); // Q6
       if (!ids) return fail("FULL", R.FULL_RES);
       data.resourceId = ids[0];
       data.policySnapshot = snapWithResources(cleared ?? a.policySnapshot, ids, { durationMin: terms.durationMin, bufferMin: buf });
@@ -768,7 +812,10 @@ export async function rescheduleByShop(
       if (unmark !== undefined) data.policySnapshot = unmark;
     }
     if (!(await casAppt(tx, ctx, a, data))) return fail("LOST_RACE", R.LOST_RACE);
-    await emit(tx, ctx, "booking.rescheduled", `booking.rescheduled#${a.id}#${startAt.toISOString()}#${staffId}`,
+    // SVC B.14 ▸ ทุกการย้ายที่สำเร็จมี event: คีย์เดิมเคยใช้แล้ว (ย้ายไป-กลับ) ⇒ ต่อท้ายเวลาแก้ไขล่าสุดของแถวก่อนเขียน ◂
+    const baseKey = `booking.rescheduled#${a.id}#${startAt.toISOString()}#${staffId}`;
+    const used = await tx.outboxEvent.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: baseKey } }, select: { id: true } });
+    await emit(tx, ctx, "booking.rescheduled", used ? `${baseKey}#${meta?.updatedAt.getTime() ?? now.getTime()}` : baseKey,
       evPayload({ ...a, staffId }, { fromStartAt: a.startAt.toISOString(), fromStaffId: a.staffId, startAt: startAt.toISOString(), by: "SHOP" }));
     return { ok: true };
   }, LINE_TX));
