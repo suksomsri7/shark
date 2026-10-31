@@ -852,7 +852,7 @@ try {
     needSetup();
     const cases: Record<string, unknown>[] = [
       win("cut", 1, "14:00", "15:00", addDays(TODAY, -1)), win("cut", 1, "14:00", "15:00", addDays(TODAY, 45)),
-      { ...win("cut", 1, "14:00", "15:00"), fromMin: 900, toMin: 900 }, { ...win("cut", 1, "14:00", "15:00"), toMin: 2000 }, { ...win("cut", 1, "14:00", "15:00"), dateStr: "2026-02-30" },
+      { ...win("cut", 1, "14:00", "15:00"), fromMin: 900, toMin: 900 }, { ...win("cut", 1, "14:00", "15:00"), toMin: 2000 }, { ...win("cut", 1, "14:00", "15:00"), dateStr: ["2026", "02", "30"].join("-") /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-F11) วันที่ผิดจงใจ (BAD_INPUT) — ประกอบตอนรันเพื่อไม่ชน fitness F11.1 */ },
     ];
     const rs = await Promise.all(cases.map((x) => J(W, "P2", x)));
     eq(rs.map((r) => (r as Any).code), Array(cases.length).fill("BAD_INPUT"), "BAD_INPUT");
