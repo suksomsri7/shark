@@ -280,6 +280,17 @@ const sameTime = (a: Date | null, b: Date | null) => (a === null ? b === null : 
  *   walk-in QUEUED ที่วางได้ ⇒ staffId/startAt/endAt ตามแผน (ถือช่องจริง · B.3 §6 ข้อ 9) · วางไม่ได้ ⇒ คงช่องเดิม
  *   เขียนเฉพาะค่าที่เปลี่ยน · ทุก UPDATE มีเงื่อนไขสถานะที่อ่าน (CAS — งานที่ถูกเปลี่ยนสถานะระหว่างนั้น = ข้าม)
  */
+/** policySnapshot.job + patch (undefined = ลบคีย์) · คีย์อื่นคงเดิม */
+function withJob(snap: unknown, patch: Record<string, unknown>): Record<string, unknown> {
+  const base = snap && typeof snap === "object" && !Array.isArray(snap) ? (snap as Record<string, unknown>) : {};
+  const job = base.job && typeof base.job === "object" && !Array.isArray(base.job) ? { ...(base.job as Record<string, unknown>) } : {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) delete job[k];
+    else job[k] = v;
+  }
+  return { ...base, job };
+}
+
 export async function planAndWriteTx(
   tx: Prisma.TransactionClient,
   ctx: { tenantId: string; unitId: string },
@@ -304,6 +315,15 @@ export async function planAndWriteTx(
     const pStaff = placed ? pj!.staffId : null;
     if (placed) planned++;
     const data: Prisma.AppointmentUncheckedUpdateManyInput = {};
+    // SVC B.13 ▸ Q16: นัดที่มาถึงแล้ว (ARRIVED) ที่ใช้ทรัพยากร — ประเมินแล้ววางไม่ได้ ⇒ เครื่องหมาย job.unplacedAt (ฐานข้ามแถวนี้) · วางได้ ⇒ ลบเครื่องหมาย ◂
+    let snapNow: unknown = r.policySnapshot;
+    if (r.kind === "BOOKED" && r.status === "ARRIVED" && ((kindsOf.get(r.serviceId) ?? []).length || resourceIdsOfRow(r.resourceId, r.policySnapshot).length)) {
+      const job0 = (r.policySnapshot && typeof r.policySnapshot === "object" && !Array.isArray(r.policySnapshot) ? (r.policySnapshot as { job?: Record<string, unknown> }).job : undefined) ?? {};
+      const marked = job0.unplacedAt !== undefined && job0.unplacedAt !== null;
+      if (!placed && !marked) snapNow = withJob(r.policySnapshot, { unplacedAt: new Date(nowMs).toISOString() });
+      else if (placed && marked) snapNow = withJob(r.policySnapshot, { unplacedAt: undefined });
+      if (snapNow !== r.policySnapshot) data.policySnapshot = snapNow as Prisma.InputJsonValue;
+    }
     if (!sameTime(r.plannedStartAt, pStart)) data.plannedStartAt = pStart;
     if (r.plannedStaffId !== pStaff) data.plannedStaffId = pStaff;
     // J2: นัด "ใครก็ได้" ที่แผนย้ายไปช่างอื่น (BOOKED_MOVED_STAFF · ยังไม่เช็กอิน) ⇒ ฐานต้องตรงกับแผน (ถือช่องที่ช่างใหม่จริง)
@@ -347,7 +367,7 @@ export async function planAndWriteTx(
       if (cur.join("|") !== pj!.resourceIds.join("|") || (r.resourceId ?? null) !== pj!.resourceIds[0]) {
         await tx.appointment.updateMany({
           where: { id: r.id, tenantId: ctx.tenantId, unitId: ctx.unitId, status: r.status, resourceId: r.resourceId },
-          data: { resourceId: pj!.resourceIds[0], policySnapshot: snapWithResources(r.policySnapshot, pj!.resourceIds) },
+          data: { resourceId: pj!.resourceIds[0], policySnapshot: snapWithResources(snapNow, pj!.resourceIds) },
         });
       }
     }

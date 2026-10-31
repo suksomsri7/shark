@@ -187,10 +187,12 @@ export async function readHolds(
     const start = r.startAt.getTime();
     const buf = numOr(job.bufferMin, numOr(r.bufferMin, 0)) ?? 0;
     const dur = numOr(job.durationMin, null) !== null ? (job.durationMin as number) * MIN_MS : Math.max(0, r.endAt.getTime() - start - buf * MIN_MS);
-    // Q14 (มติทาง 1): แถวที่เข้าแถวใหม่ (มาถึงหลังเวลานัด · มีบัตรคิวแถวเดียว) ที่ตัววางคิววางไม่ได้ (ไม่มี plannedStartAt) ⇒ ไม่นับ —
-    //   นิยามเดียวกับตัววางคิว · การเริ่มงานจริงยังผ่านด่าน startJob (Q9)
-    if (r.status === "ARRIVED" && !r.plannedStartAt && r.queueTicketId && r.checkedInAt && r.checkedInAt.getTime() > r.startAt.getTime()) continue;
-    const s = r.status === "IN_SERVICE" ? (r.startedAt ?? r.plannedStartAt ?? r.startAt).getTime() : (r.plannedStartAt ?? r.startAt).getTime();
+    // Q14 + Q16: ข้ามเฉพาะแถว ARRIVED ที่ตัววางคิว "ประเมินแล้ว" ว่าวางไม่ได้ (เครื่องหมาย job.unplacedAt ที่ planAndWriteTx เขียน · ไม่มีแผน) —
+    //   นิยามเดียวกับตัววางคิว · การเริ่มงานจริงยังผ่านด่าน startJob (Q9) ·
+    //   แถว ARRIVED ที่ยังไม่ถูกประเมิน (ช่วง checkIn commit → replan · replan ล้ม) ถือห้องจาก max(เวลานัด, เวลาเช็กอิน) ตามนิยาม Q1
+    if (r.status === "ARRIVED" && !r.plannedStartAt && job.unplacedAt !== undefined && job.unplacedAt !== null) continue;
+    const arrivedFrom = r.status === "ARRIVED" && r.checkedInAt ? Math.max(r.startAt.getTime(), r.checkedInAt.getTime()) : r.startAt.getTime();
+    const s = r.status === "IN_SERVICE" ? (r.startedAt ?? r.plannedStartAt ?? r.startAt).getTime() : (r.plannedStartAt?.getTime() ?? arrivedFrom);
     // Q11: งานกำลังทำที่เลยเวลา ⇒ ถือถึง now + overrunExtendMin (กติกาเดียวกับตัววางคิว PL-11) · ยังไม่เลย ⇒ เริ่ม + นาที
     const e = r.status === "IN_SERVICE" && s + dur <= o.nowMs ? o.nowMs + (o.overrunMin ?? 0) * MIN_MS : s + dur;
     void start;

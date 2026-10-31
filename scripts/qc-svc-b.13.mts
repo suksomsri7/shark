@@ -1096,6 +1096,24 @@ try {
     eq(await resViolations(u), [], "ฐานหลังเริ่มงาน");
     eq(await staffOverlap(u), [], "หมอ");
   });
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B13-PB-11) — ข้อเพิ่ม (เพิ่มอย่างเดียว · มติ Q16): แถว ARRIVED ที่ตัววางคิวยังไม่ได้ประเมิน
+  //   (ช่วง checkIn commit → replan · หรือ replan ล้มแล้วกลืน error) ต้องยังถือห้อง ⇒ จองห้องเดียวกันทับไม่ได้ ·
+  //   ฐานข้ามเฉพาะแถวที่มีเครื่องหมาย job.unplacedAt (ตัววางคิวเขียนเมื่อประเมินแล้วว่าวางไม่ได้) · หน่วย uX7 (ห้องเดียว) วัน dd(17) ไม่ชนฉาก X
+  await st("W-10", "Q16: เช็กอินสาย 5 นาที (ในผ่อนผัน) แล้วแผนหาย (จำลอง replan ล้ม) ⇒ จองห้องเดียวกันทับ 10:40 = FULL · runPlanner แล้วฐานไม่ล้น · ไม่มีเครื่องหมาย unplacedAt บนแถวที่วางได้", async () => {
+    needTpl();
+    const u = ids.uX7, ds = dd(17), c = cX(u);
+    const a = await bookOk(c, xSvc(u, "OIL"), xStaff(u)[0], ds, 600, "นัดห้องเดียว 10:00");
+    const ci = await LN().checkIn(c, { appointmentId: a }, { via: "STAFF", now: at(ds, 605) });
+    if (!ci.ok) throw new AssertFail(`เช็กอิน ${ci.code} ${ci.reason}`);
+    await q(`UPDATE "Appointment" SET "plannedStartAt" = NULL, "plannedStaffId" = NULL WHERE id = $1`, [a]); // แผนยังไม่ถูกเขียน/หาย
+    eq(codeOf(await book(c, xSvc(u, "OIL"), xStaff(u)[1], ds, 640)), "FULL", "จองห้องเดียวกันทับลูกค้าที่มาถึงแล้ว");
+    eq(await resViolations(u), [], "ฐานช่วงก่อนวางคิว");
+    await RN().runPlanner(c, { now: at(ds, 606) });
+    const row = await apRow(a);
+    ok(row.plannedStartAt !== null, "หลังวางคิวต้องมีแผน");
+    ok((row.policySnapshot?.job as Record<string, unknown> | undefined)?.unplacedAt === undefined, `แถวที่วางได้ยังมีเครื่องหมาย ${fmt(row.policySnapshot?.job)}`);
+    eq(await resViolations(u), [], "ฐานหลังวางคิว");
+  });
 
   // ═══════════════ E _fallback ═══════════════
   console.log("\n── E: _fallback = พฤติกรรม B1 (ไม่มีทรัพยากร/ไม่ประกาศชนิด) ──");
