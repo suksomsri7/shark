@@ -43,3 +43,8 @@ export type { RepeatNoShowAction, RepeatNoShowState } from "./no-show-rule";
 export { listResources, createResource, updateResource, setResourceMaintenance, walkInNowByService } from "./resources";
 export { bookingResourcesModel } from "./settings-model";
 export type { ResourceCtx, ResourceActor, ResourceRow, ResourceResult, ResourceFail, ResourceInput, ResourcePatch, MaintenanceWindow, WalkInNowRow } from "./resources";
+// SVC B.17 ▸ waitlist (เข้า/ออก · กล่องหน้าจอง) + ตัวช่วยที่ platform/booking-waitlist.ts ใช้จับคู่ช่องว่าง (ตัวตัดสินเดียวกับทางจอง) — re-export ล้วน ◂
+export { joinWaitlistOnline, leaveWaitlistOnline, waitlistViewOf, WAITLIST_RATE } from "./waitlist";
+export type { WaitlistJoinFail, WaitlistMode, WaitlistView } from "./waitlist";
+export { findSlots, onlineRulesOf } from "./service";
+export { localToUtc } from "./slots";

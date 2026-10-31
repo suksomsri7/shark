@@ -791,7 +791,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // M3.3 (§7.1) — นัดเปลี่ยนเป็น "ไม่มาตามนัด" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   //   ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็นทริกเกอร์ของ journey "จองแล้วไม่มา" + เว็บฮุค
   // M3.7: + ไทม์ไลน์ NO_SHOW (ห่อ try/catch — พังไม่ค้างคิว)
-  "booking.no_show": withAutomation(compose(memberApptBridge("onBookingNoShow"), async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt))), // SVC B.9 ▸ + ชวนจองใหม่ (noShowRebook · ของแถม) ◂
+  // SVC B.17 ▸ + waitlist: ช่องที่นัดไม่มาปล่อย ⇒ แจ้งคนที่รอ (ของแถมท้ายสุด · ของเดิมวิ่งก่อน) ◂
+  "booking.no_show": withAutomation(compose(compose(memberApptBridge("onBookingNoShow"), async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), async (evt) => (await import("@/lib/platform/booking-waitlist")).onWaitlistEvent(evt))), // SVC B.9 ▸ + ชวนจองใหม่ (noShowRebook · ของแถม) ◂
   // K3.3: + การ์ดติดตามคำขออนุมัติ (มอบหมายผู้ยื่น) — ต่อท้าย notify เดิม
   "approval.request.submitted": withAutomation(compose(approvalSubmitted, kanbanBridge("onApprovalSubmitted"))),
   // K3.3: + ความเห็น "ผลอนุมัติ: …" ที่การ์ดติดตาม + ปิดการ์ดเมื่อผ่าน (ต่อท้าย notify+effect เดิม)
@@ -1215,15 +1216,16 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   (ไม่มี consumer = คิวตัน) + ทริกเกอร์กฎอัตโนมัติ/เว็บฮุค · B.9 ต่อแจ้งเตือนลูกค้าภายหลัง
   //   🔴 บัตรแถวเดียว **ไม่ยิง** `queue.served` (booking.completed ทำหน้าที่ VISIT ของ CRM แล้ว — ไม่ลงซ้ำ) ◂
   "booking.created": withAutomation(async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), // SVC B.9 ▸ แจ้งเตือนลูกค้า (ของแถม · ไม่ throw) ◂
-  "booking.rescheduled": withAutomation(async () => {}),
+  "booking.rescheduled": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/booking-waitlist")).onWaitlistEvent(evt))), // SVC B.17 ▸ + waitlist: ช่องเดิมของนัดที่เลื่อน ◂
   // SVC B.8 ▸ + ยกเลิกช้า (reason CUSTOMER_LATE) ⇒ ริบมัดจำตาม % ของ snapshot ไม่เกินยอดที่ลูกค้ายอมรับ (กู้กรณีโพรเซสตายก่อนริบ · มีบิลริบแล้ว = ไม่ทำซ้ำ) ◂
-  "booking.cancelled": withAutomation(bothMain(async () => {}, async (evt) => {
+  // SVC B.17 ▸ + waitlist (ของแถมท้ายสุดผ่าน compose · ริบมัดจำเดิมวิ่งก่อน) ◂
+  "booking.cancelled": withAutomation(compose(bothMain(async () => {}, async (evt) => {
     const p = (evt.payload ?? {}) as { appointmentId?: unknown; unitId?: unknown; reason?: unknown; depositPaid?: unknown };
     // V2: ริบเฉพาะมัดจำที่จ่ายแล้ว ณ ตอนยกเลิก (payload ที่ยิงใน tx เดียวกับ CAS) · ริบล้ม ⇒ WARN + ค้าง FORFEIT_PENDING ให้ร้านตัดสิน (V5 · ไม่กู้อัตโนมัติ)
     if (p.reason !== "CUSTOMER_LATE" || p.depositPaid !== true || typeof p.appointmentId !== "string" || typeof p.unitId !== "string") return;
     const r = await (await import("@/lib/modules/booking/service")).forfeitAfterLateCancel(evt.tenantId, p.unitId, p.appointmentId);
     if (r.reason) await logOps("WARN", "booking.deposit", `ริบมัดจำ (ยกเลิกช้า) นัด ${p.appointmentId} ไม่สำเร็จ`, { tenantId: evt.tenantId, detail: r.reason });
-  })),
+  }), async (evt) => (await import("@/lib/platform/booking-waitlist")).onWaitlistEvent(evt))),
   // SVC B.8 ▸ event มัดจำ (ยิงจาก booking/service.ts · booking/deposit.ts · payload id+ยอดล้วน) — no-op ปิด DONE + กฎอัตโนมัติ/เว็บฮุค ◂
   "booking.deposit_paid": withAutomation(async () => {}),
   "booking.deposit_forfeited": withAutomation(async () => {}),

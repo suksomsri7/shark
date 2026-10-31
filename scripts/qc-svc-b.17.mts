@@ -60,7 +60,8 @@ const F = {
 } as const;
 const NEW_FILES = [F.wl, F.rule, F.plat, F.action];
 /** ไฟล์ที่ใบนี้แก้ได้ (ใบสั่ง §1) — migration ใหม่ใต้ prisma/migrations/*_svc_b17/ ได้เมื่อ R1-ก */
-const OWN = new Set<string>([...NEW_FILES, F.service, F.online, F.index, F.access, F.defs, F.perms, F.consumers, F.minute, F.comp, F.page, F.actions, F.dict, F.schema]);
+const OWN = new Set<string>([...NEW_FILES, F.service, F.online, F.index, F.access, F.defs, F.perms, F.consumers, F.minute, F.comp, F.page, F.actions, F.dict, F.schema,
+  /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-SF1) scope ลงทะเบียน model ใหม่ (F1.1 บังคับ) + settings-model แก้ deviation 3 ตามสั่ง */ "src/lib/core/scope.ts", "src/lib/modules/booking/settings-model.ts"]);
 /** ห้ามแตะ (ใบสั่ง §1 "ห้ามแตะ") — รวมไฟล์ของเลน B.13 (l3) */
 const FROZEN = [
   "src/lib/modules/booking/resources.ts", "src/lib/modules/booking/resource-kinds.ts", "src/lib/modules/booking/planner.ts", "src/lib/modules/booking/planner-run.ts",
