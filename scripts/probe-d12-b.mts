@@ -6,6 +6,7 @@
 //       RN ต่อสัญญา · NC แจ้ง∥ยกเลิก · JB งานตามเวลา · DL บังคับ 40P01 · KL SIGKILL · TK ย้ายห้องตายกลางทาง · XS ข้ามร้าน · M เงินหลังทุกฉาก
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { join, dirname } from "node:path";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import pg from "pg";
@@ -24,7 +25,7 @@ for (const n of ["DATABASE_URL", "DIRECT_URL"] as const) {
   const u = process.env[n] ?? "";
   let hn = "";
   try { hn = new URL(u).hostname; } catch { /* */ }
-  if (!hn.includes("ep-mute-scene")) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
+  if (!hn.includes(svcQcHostMark()) /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) */) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
 }
 if (process.env.APP_ENV === "production" || process.env.CI) { console.error("🔴 probe: env ต้องห้าม"); process.exit(4); }
 

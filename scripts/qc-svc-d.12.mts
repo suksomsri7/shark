@@ -19,6 +19,7 @@
 //      `--no-regression` ข้ามหมวด G (SKIP)
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
@@ -27,7 +28,7 @@ import { randomBytes as d12RandomBytes } from "node:crypto";
 const SELF = fileURLToPath(import.meta.url);
 const ROOT = join(dirname(SELF), "..");
 const LABEL = "qc-svc-d.12";
-const SVC_HOST = "ep-mute-scene";
+const SVC_HOST = svcQcHostMark(); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) เดิม "ep-mute-scene"
 const FORBIDDEN_HOSTS = ["ep-royal-night", "ep-plain-art", "ep-cool-shadow", "ep-weathered-river", "ep-frosty-lab", "ep-fragrant-thunder"];
 const RUN_CMD = "bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-d.12.mts";
 
