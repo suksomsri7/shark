@@ -1546,6 +1546,40 @@ try {
       return [n?.ok === true && i1?.ok === true && s1?.ok === true && !!cn1 && r?.ok === true && i2?.ok === true && s2?.ok === true && v?.ok === true && failOk(st, "STALE") && jv.length === 0 && heldAfter === heldBefore && heldAfter === DEP,
         J({ s1: codeOf(s1), cn1: !!cn1, r: codeOf(r), s2: codeOf(s2), v, st: codeOf(st), jv: jv.length, held: [heldBefore, heldAfter] })];
     });
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · Y33/Y34) — เพิ่มอย่างเดียว
+    const owesCase = async (no: string, name: string) => {
+      const l = await mkLease({ unitId: DY, roomId: await mkRoom(A, DY, DYx.ty, DYx.b, no), typeId: DYx.ty, name, common: 0, start: "2026-10-01" });
+      await dep(l, 100_000);
+      const n = await notice(cO, l, "2026-10-31", "2026-09-20");
+      const mo = n?.moveOutId ?? "-";
+      const i = await inspect(cO, l, mo, NORMAL5, [], "2026-10-31");
+      const s1 = await sendSum(cO, l, mo, BK("2026-10-31", "11:00"));
+      return { l, mo, ok: n?.ok === true && i?.ok === true && s1?.ok === true && !!s1?.invoiceDocId, inv: (s1?.invoiceDocId ?? "") as string, s1 };
+    };
+    await T("Y33-1", "ตรึง (ผู้เช่าต้องจ่ายเพิ่ม) → ผู้เช่าโอนจ่ายใบวันออกบางส่วน ฿1,000 → ปิดประกันสำเร็จ · ยอดค้าง = ที่ตรึง − ที่จ่าย ทุกสตางค์ · ใบวันออกค้างตรงบัญชี · JV 1", ["sendMoveOutSummary", "settleMoveOut"], async () => {
+      const c = await owesCase("905", "ผู้เช่า Y5");
+      const before = c.ok ? await summary(cO, c.l, c.mo, BK("2026-10-31", "11:05")) : null;
+      if (c.ok) await payDoc(DY, c.inv, 100_000, "2026-10-31");
+      const st = await settle(cO, c.l, c.mo, BK("2026-10-31", "12:00"));
+      const jv = await settleJvs(DY, c.l.leaseId);
+      const doc = c.inv ? await prisma.accountDocument.findFirst({ where: { id: c.inv } }) : null;
+      const paid = c.inv ? (await prisma.accountDocumentPayment.findMany({ where: { tenantId: A, documentId: c.inv, voidedAt: null } })).reduce((a: number, p: any) => a + Number(p.amount) + Number(p.whtAmountSatang ?? 0), 0) : 0;
+      const expOwes = (before?.tenantOwesSatang ?? -1) - 100_000;
+      return [c.ok && (before?.tenantOwesSatang ?? 0) > 100_000 && st?.ok === true && st.tenantOwesSatang === expOwes && st.refundSatang === 0 && jv.length === 1 && Number(doc?.grandTotal ?? 0) - paid === expOwes,
+        J({ s1: codeOf(c.s1), owes0: before?.tenantOwesSatang, st: st && [codeOf(st), st.tenantOwesSatang, st.refundSatang], exp: expOwes, docLeft: Number(doc?.grandTotal ?? 0) - paid, jv: jv.length })];
+    });
+    await T("Y34-1", "ตรึง → ผู้เช่าจ่ายใบวันออก ฿500 → เปิดใบสรุปใหม่ ⇒ ไม่ค้าง: REOPEN_BLOCKED (ใบยังตรึง · ไม่มี reopening · ไม่มีใบลดหนี้) แล้วปิดประกันต่อได้ — หรือเปิดใหม่สำเร็จจริง", ["sendMoveOutSummary", "reopenMoveOutSummary", "settleMoveOut"], async () => {
+      const c = await owesCase("906", "ผู้เช่า Y6");
+      if (c.ok) await payDoc(DY, c.inv, 50_000, "2026-10-31");
+      const r = await fn("reopenMoveOutSummary")!(cO, { unitId: DY, moveOutId: c.mo, reason: "แก้รายการ" }, { now: BK("2026-10-31", "11:30") });
+      const row = await prisma.dormMoveOut.findFirst({ where: { id: c.mo } });
+      const d: any = row?.deductions ?? {};
+      const cn = c.inv ? await creditedOf(c.inv) : -1;
+      const blockedOk = failOk(r, "REOPEN_BLOCKED") && !!d.frozen && !d.reopening && cn === 0;
+      const reopenedOk = r?.ok === true && !d.frozen && !d.reopening;
+      const st = blockedOk ? await settle(cO, c.l, c.mo, BK("2026-10-31", "12:00")) : null;
+      return [c.ok && (reopenedOk || (blockedOk && st?.ok === true)), J({ r: codeOf(r), frozen: !!d.frozen, reopening: !!d.reopening, cn, st: codeOf(st) })];
+    });
   }
 
   // ═══════════════ W. ต่อสัญญา (DS) ═══════════════

@@ -1727,6 +1727,8 @@ async function creditOrphans(g: OrphanCtx, moveOutId: string, leaseId: string, u
 }
 
 type SendOk = { ok: true; duplicate: boolean; rev: number; invoiceDocId: string | null; approvalId: string | null; channel: Channel; status: string };
+const REOPEN_BLOCKED = (paid: number) =>
+  fail("REOPEN_BLOCKED", `ผู้เช่าชำระใบสรุปวันย้ายออกฉบับนี้แล้ว ${baht(paid)} — เปิดใบสรุปใหม่ไม่ได้จนกว่าจะยกเลิกรายการรับชำระนั้นในบัญชีก่อน (ใบสรุปเดิมยังใช้ปิดเงินประกันได้ตามปกติ)`);
 const REOPENING = () => fail("REOPENING", "กำลังเปิดใบสรุปใหม่ (ออกใบลดหนี้ใบเดิม) — รอสักครู่แล้วโหลดหน้าใหม่ หรือกดเปิดใบสรุปใหม่อีกครั้งให้เสร็จ");
 async function resendFrozen(ctx: MoveOutCtx, g: D12Gate, mo: MoRow, ded: Ded, unitName: string, now: Date): Promise<SendOk> {
   const frozen = ded.frozen as Frozen;
@@ -1981,6 +1983,9 @@ export async function reopenMoveOutSummary(ctx: MoveOutCtx, input: { unitId: str
     const now = nowOf(deps?.now);
     const rev = ded.rev;
     const root = (await leaseChainOf(null, { tenantId: g.tenantId, unitId: g.unitId, leaseId: mo.leaseId })).root;
+    // SVC D.12 (Y34) ▸ ผู้เช่าจ่ายใบวันออกรุ่นนี้แล้ว ⇒ ลดหนี้เต็มใบไม่ได้ (เพดานบัญชี) และระบบหอยังไม่มีทางคืนยอดที่จ่ายเกิน ⇒ REOPEN_BLOCKED ไม่เริ่มอะไร ◂
+    const paidNow = await paidOfDoc(tenantDb({ tenantId: g.tenantId }), g.tenantId, ded.frozen.invoiceDocId);
+    if (paidNow > 0 && !ded.reopening) return REOPEN_BLOCKED(paidNow);
     // จังหวะ 1
     const p1 = await d12Tx(async (tx) => {
       await advisoryLock(tx, leaseLockKey(root));
@@ -2013,7 +2018,20 @@ export async function reopenMoveOutSummary(ctx: MoveOutCtx, input: { unitId: str
         issueDate: bkkYmd(now),
         createdById: g.actorUserId,
       });
-      if (!cn.ok) return fail(cn.code, cn.reason); // reopening ค้าง ⇒ ปิดประกันไม่ได้จนเปิดใหม่สำเร็จ
+      if (!cn.ok) {
+        // Y34 ▸ ใบลดหนี้ไม่สำเร็จ ⇒ ล้าง reopening คืนสถานะเดิม (ไม่ค้างถาวร · ปิดประกันด้วยใบเดิมได้ต่อ) ◂
+        await d12Tx(async (tx) => {
+          await advisoryLock(tx, leaseLockKey(root));
+          if (root !== mo.leaseId) await advisoryLock(tx, leaseLockKey(mo.leaseId));
+          const cur = await tx.dormMoveOut.findFirst({ where: { id: mo.id, tenantId: g.tenantId, unitId: g.unitId }, select: { deductions: true } });
+          const raw = isRec(cur?.deductions) ? cur.deductions : {};
+          const d = dedOf(raw);
+          if (d.reopening && d.reopening.rev === rev && d.rev === rev) await tx.dormMoveOut.updateMany({ where: { id: mo.id, tenantId: g.tenantId, unitId: g.unitId }, data: { deductions: json({ ...raw, reopening: null }) } });
+          return true;
+        });
+        const paid2 = await paidOfDoc(tenantDb({ tenantId: g.tenantId }), g.tenantId, frozen.invoiceDocId);
+        return paid2 > 0 || cn.code === "EXCEEDS_REMAINING" ? REOPEN_BLOCKED(paid2) : fail(cn.code, cn.reason);
+      }
       creditNoteDocId = cn.docId;
     }
     // จังหวะ 2
@@ -2090,6 +2108,17 @@ async function markHousekeeping(tenantId: string, unitId: string, moveOutId: str
   }
   const out = await write((raw) => (typeof raw.hkMarkedAt === "string" ? null : { ...raw, hkMarkedAt: new Date().toISOString(), hkLastError: null }));
   return out === true;
+}
+/** ยอดรับชำระที่มีผลของเอกสาร (เงิน + ภาษีหัก ณ ที่จ่าย · ไม่นับรายการที่ยกเลิก) — อ่านผ่าน db/tx ของผู้เรียก */
+async function paidOfDoc(db: Pick<Tx, "$queryRaw">, tenantId: string, docId: string | null): Promise<number> {
+  if (!docId) return 0;
+  const r = await db.$queryRaw<{ s: bigint | number | null }[]>`SELECT COALESCE(SUM("amount" + COALESCE("whtAmountSatang", 0)), 0) AS "s" FROM "AccountDocumentPayment" WHERE "tenantId" = ${tenantId} AND "documentId" = ${docId} AND "voidedAt" IS NULL`;
+  return Number(r[0]?.s ?? 0);
+}
+/** SVC D.12 (Y33) ▸ ยอดคืน/ค้างที่ "ควรเป็น" = ใบสรุปที่ตรึง ปรับด้วยยอดที่ผู้เช่าจ่ายใบวันออกหลังตรึง (ทางปกติของ "ต้องจ่ายเพิ่ม") */
+function expectedAfterPay(frozen: { heldSatang: number; refundSatang: number; tenantOwesSatang: number }, held: number, paid: number): { refund: number; owes: number } {
+  const total = frozen.heldSatang + frozen.tenantOwesSatang - frozen.refundSatang - paid; // ยอดที่ยังต้องหักจากประกัน
+  return { refund: Math.max(0, held - total), owes: Math.max(0, total - held) };
 }
 /** คงค้างรวมของชุดเอกสาร (อ่านผ่าน tx) — ใช้เมื่อไม่มีประกัน (ไม่มี JV) */
 async function outstandingInTx(tx: Tx, tenantId: string, docIds: string[]): Promise<number> {
@@ -2199,6 +2228,8 @@ export async function settleMoveOut(
         if (Number(rcn[0]?.n ?? 0) === 0) throw new Abort(STALE());
       }
       const held = heldNow;
+      // Y33 ▸ ยอดที่ผู้เช่าจ่ายใบวันออกเอง — อ่านก่อนปิดประกัน (ปิดประกันลงแถว DEPOSIT_APPLY บนใบเดียวกัน) ◂
+      const paidInv = await paidOfDoc(tx, g.tenantId, frozen.invoiceDocId);
       let s: Settle;
       if (held > 0) {
         const r = await settleSecurityDepositInTx(tx, {
@@ -2214,11 +2245,14 @@ export async function settleMoveOut(
         });
         if (!r.ok) throw new Abort(fail(r.code, r.reason));
         // SVC D.12 (Y30) ▸ กันชั้นสอง: ยอดคืน/ยอดค้างที่บัญชีคิดได้ต้องเท่ากับใบสรุปที่ตรึง ไม่งั้นยกเลิกทั้ง tx (ไม่มี JV) ◂
-        if (r.refundSatang !== frozen.refundSatang || r.tenantOwesSatang !== frozen.tenantOwesSatang || r.heldSatang !== frozen.heldSatang) throw new Abort(STALE());
+        //   Y33 ▸ ปรับด้วยยอดที่ผู้เช่าจ่ายใบวันออกหลังตรึง — ตรงบัญชีทุกสตางค์ ⇒ ปิดได้ · ไม่ตรง ⇒ STALE ◂
+        const exp = expectedAfterPay(frozen, held, paidInv);
+        if (r.refundSatang !== exp.refund || r.tenantOwesSatang !== exp.owes || r.heldSatang !== frozen.heldSatang) throw new Abort(STALE());
         s = { key, entryId: r.entryId, at: now.toISOString(), status: r.refundSatang > 0 ? "REFUNDED" : "SETTLED", heldSatang: r.heldSatang, appliedSatang: r.appliedSatang, refundSatang: r.refundSatang, tenantOwesSatang: r.tenantOwesSatang };
       } else {
         s = { key, entryId: null, at: now.toISOString(), status: "SETTLED", heldSatang: 0, appliedSatang: 0, refundSatang: 0, tenantOwesSatang: await outstandingInTx(tx, g.tenantId, docIds) };
-        if (frozen.refundSatang !== 0 || s.tenantOwesSatang !== frozen.tenantOwesSatang) throw new Abort(STALE()); // Y30 ◂
+        const exp0 = expectedAfterPay(frozen, 0, paidInv); // Y30/Y33 ◂
+        if (frozen.refundSatang !== 0 || s.tenantOwesSatang !== exp0.owes) throw new Abort(STALE());
       }
       const u = await tx.dormMoveOut.updateMany({
         where: { id: mo.id, tenantId: g.tenantId, unitId: g.unitId, status: { in: ["NOTICE", "INSPECTED"] } },
