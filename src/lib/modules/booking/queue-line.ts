@@ -31,7 +31,7 @@ import {
   runPlanner,
   skippedOf,
 } from "./planner-run";
-import { loadGate, needKinds, overrunMinOf, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources"; // SVC B.13
+import { loadGate, needKinds, overrunMinOf, resourceIdsOfRow, resourceKindsOf, snapWithResources, withoutUnplaced } from "./resources"; // SVC B.13
 import { bookingPhoneKey, isRealDateStr, linkPartyAfterCommit, staffDayProfiles } from "./service";
 import { localToUtc } from "./slots";
 import { staffServiceTerms } from "./staff-hours";
@@ -289,7 +289,8 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
         // J6: ARRIVED จากจอเดิม (ไม่มีบัตร) ⇒ ออกบัตรให้ · CAS เดียว · already:true (มาถึงแล้วก่อนหน้านี้)
         const ticket = await issue();
         const checkedInAt = a.checkedInAt ?? now;
-        if (!(await casAppt(tx, ctx, a, { checkedInAt, queueTicketId: ticket.id }))) throw new TxAbort();
+        const unmark = withoutUnplaced(a.policySnapshot); // SVC B.13 ▸ Q17 ◂
+        if (!(await casAppt(tx, ctx, a, { checkedInAt, queueTicketId: ticket.id, ...(unmark !== undefined ? { policySnapshot: unmark } : {}) }))) throw new TxAbort();
         await emit(tx, ctx, "booking.checked_in", `booking.checked_in#${a.id}#${ticket.id}`, evPayload(a, { ticketId: ticket.id, via, asWalkIn: false }));
         return { kind: "ok", res: { ok: true, appointmentId: a.id, ticketId: ticket.id, ticketNumber: ticket.number, already: true, asWalkIn: lateArrival(checkedInAt.getTime()) }, changed: true };
       }
@@ -308,7 +309,8 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
       await queue.moveTicketTx(tx, { tenantId: ctx.tenantId, unitId: ctx.unitId }, a.queueTicketId, "CANCELLED", { now, actorType: "SYSTEM", cancelReason: "STAFF" });
     }
     const ticket = await issue();
-    if (!(await casAppt(tx, ctx, a, { status: "ARRIVED", checkedInAt: now, queueTicketId: ticket.id }))) throw new TxAbort(); // ไม่เกิดใต้ FOR UPDATE — ถอยบัตรทิ้ง
+    const unmark = withoutUnplaced(a.policySnapshot); // SVC B.13 ▸ Q17: เช็กอินครั้งใหม่ ⇒ ล้างเครื่องหมาย "วางไม่ได้" ของครั้งก่อน ◂
+    if (!(await casAppt(tx, ctx, a, { status: "ARRIVED", checkedInAt: now, queueTicketId: ticket.id, ...(unmark !== undefined ? { policySnapshot: unmark } : {}) }))) throw new TxAbort(); // ไม่เกิดใต้ FOR UPDATE — ถอยบัตรทิ้ง
     const asWalkIn = lateArrival(now.getTime());
     await emit(tx, ctx, "booking.checked_in", `booking.checked_in#${a.id}#${ticket.id}`, evPayload(a, { ticketId: ticket.id, via, asWalkIn }));
     return { kind: "ok", res: { ok: true, appointmentId: a.id, ticketId: ticket.id, ticketNumber: ticket.number, already: false, asWalkIn }, changed: true };
@@ -580,6 +582,10 @@ export async function startJob(ctx: LineCtx, appointmentId: string, opts?: { now
         data.policySnapshot = snapWithResources(a.policySnapshot, ids);
       }
     }
+    {
+      const unmark = withoutUnplaced(data.policySnapshot ?? a.policySnapshot); // SVC B.13 ▸ Q17 (ออกจาก ARRIVED) ◂
+      if (unmark !== undefined) data.policySnapshot = unmark;
+    }
     if (!(await casAppt(tx, ctx, a, data))) return jobFail("LOST_RACE", R.LOST_RACE);
     let ticketId: string | null = null;
     if (a.queueTicketId) {
@@ -755,6 +761,10 @@ export async function rescheduleByShop(
     if (a.status === "LATE") {
       data.status = "CONFIRMED";
       data.lateAt = null;
+    }
+    {
+      const unmark = withoutUnplaced(data.policySnapshot ?? a.policySnapshot); // SVC B.13 ▸ Q17: เวลานัดใหม่ ⇒ ล้างเครื่องหมายเก่า ◂
+      if (unmark !== undefined) data.policySnapshot = unmark;
     }
     if (!(await casAppt(tx, ctx, a, data))) return fail("LOST_RACE", R.LOST_RACE);
     await emit(tx, ctx, "booking.rescheduled", `booking.rescheduled#${a.id}#${startAt.toISOString()}#${staffId}`,

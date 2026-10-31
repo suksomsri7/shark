@@ -15,7 +15,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import * as queue from "@/lib/modules/queue/service"; // SVC B.4 ▸ บัตรเดินตามงาน (เส้น booking→queue · ทิศเดียว) ◂
 import { manageToken, manageTokenHash } from "./manage-token"; // SVC B.7 ▸ ลิงก์จัดการนัด (pure) ◂
 // SVC B.13 ▸ ทรัพยากร: ด่านเดียว (planner-resources ผ่าน resources.loadGate) · ชนิดของบริการอ่านก่อน tx · บริการไม่ประกาศชนิด ⇒ ทุกไบต์เดิม ◂
-import { isBusyDbError, loadGate, needKinds, overrunMinOf, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources";
+import { isBusyDbError, loadGate, needKinds, overrunMinOf, resourceIdsOfRow, resourceKindsOf, snapWithResources, withoutUnplaced } from "./resources";
 
 /** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อกเมื่อนำบริการเข้าคลัง */
 export type BookingCtx = { tenantId: string; unitId: string; actorUserId?: string };
@@ -1015,6 +1015,8 @@ export async function setAppointmentStatus(
   //   และบัตรเดิม (ถ้ายัง active) → CANCELLED (STAFF) ใน tx เดียว ⇒ เช็กอินใหม่ได้บัตรใหม่ · บัตร active ต่อนัด = 1 ·
   //   CAS ผูก queueTicketId ที่อ่านด้วย (เช็กอินจอเดิมที่ออกบัตรให้ระหว่างนั้น = แพ้ ⇒ LOST_RACE) · ร้านเดิม (ไม่มีบัตร) ผลเดิม + ล้าง checkedInAt ◂
   const undoArrive = before.status === "ARRIVED" && (status === "CONFIRMED" || status === "PENDING");
+  // SVC B.13 ▸ Q17: ออกจาก ARRIVED ⇒ ล้างเครื่องหมาย job.unplacedAt (ไม่ชนกับ manualHoldSnap/reviveIds — ทั้งสองมาจากสถานะอื่น) ◂
+  const unmarkSnap = before.status === "ARRIVED" && status !== "ARRIVED" ? withoutUnplaced(before.policySnapshot) : undefined;
   // SVC B.13 ▸ Q5: ชนชั่วคราวลองใหม่ 1 ครั้ง ⇒ BUSY (ไม่ throw) · maxWait ≤ 20s timeout ≤ 30s ◂
   const statusTx = () => prisma.$transaction(async (tx) => {
     reviveFail = null;
@@ -1055,6 +1057,7 @@ export async function setAppointmentStatus(
         // SVC B.13 ▸ ชิ้นที่ได้ + ล้างแผนเก่า (ช่วงถือในฐานนับจาก plannedStartAt · ตัววางคิววางใหม่หลัง commit) ◂
         ...(reviveIds ? { resourceId: reviveIds[0] ?? null, policySnapshot: snapWithResources(manualHoldSnap ?? before.policySnapshot, reviveIds), plannedStartAt: null, plannedStaffId: null } : {}),
         ...(undoArrive ? { checkedInAt: null, queueTicketId: null } : {}),
+        ...(unmarkSnap !== undefined ? { policySnapshot: unmarkSnap } : {}),
       },
     });
     if (cas.count === 0) {
@@ -2508,9 +2511,8 @@ export async function rescheduleBySelf(
       plannedStartAt: null,
       plannedStaffId: null,
       lateAt: null,
-      policySnapshot: resIds
-        ? snapWithResources(snapAfterSelfMove(a.policySnapshot, chosen.durationMin, buf), resIds)
-        : snapAfterSelfMove(a.policySnapshot, chosen.durationMin, buf),
+      policySnapshot: ((s0: Prisma.InputJsonValue) => withoutUnplaced(s0) ?? s0)( // SVC B.13 ▸ Q17 ◂
+        resIds ? snapWithResources(snapAfterSelfMove(a.policySnapshot, chosen.durationMin, buf), resIds) : snapAfterSelfMove(a.policySnapshot, chosen.durationMin, buf)),
       ...(resIds ? { resourceId: resIds[0] } : {}), // SVC B.13
       // O1: requireConfirm ⇒ ร้านยืนยันเวลาใหม่ (PENDING) — ยกเว้นนัดที่ยังค้างมัดจำตามกติกาถือช่อง (PENDING จะถูก expireDepositHolds ยกเลิกทันทีเพราะ createdAt เก่า) ⇒ คงสถานะเดิม
       ...(pol.requireConfirm && !(holdMinutesOf(live.channel, live.depositSatang, a.policySnapshot) !== null && live.depositPaidAt === null)

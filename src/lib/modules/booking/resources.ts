@@ -144,6 +144,14 @@ export function resourceIdsOfRow(resourceId: string | null, snap: unknown): stri
   return resourceId ? [resourceId] : [];
 }
 
+/** Q17 ▸ policySnapshot ที่ลบ job.unplacedAt (เครื่องหมาย "ประเมินแล้ววางไม่ได้") · ไม่มีเครื่องหมาย ⇒ undefined (ไม่ต้องเขียน) */
+export function withoutUnplaced(snap: unknown): Prisma.InputJsonValue | undefined {
+  if (!isRec(snap) || !isRec(snap.job) || !Object.prototype.hasOwnProperty.call(snap.job, "unplacedAt")) return undefined;
+  const { unplacedAt: _drop, ...job } = snap.job;
+  void _drop;
+  return { ...snap, job } as unknown as Prisma.InputJsonValue;
+}
+
 /** policySnapshot + job.resourceIds (+ คีย์ job อื่นที่ส่งมา) — คีย์อื่นคงเดิม (additive แบบ B.4 J4/J6) */
 export function snapWithResources(snap: unknown, ids: readonly string[], job?: Record<string, unknown>): Prisma.InputJsonValue {
   const base = isRec(snap) ? snap : {};
@@ -190,7 +198,9 @@ export async function readHolds(
     // Q14 + Q16: ข้ามเฉพาะแถว ARRIVED ที่ตัววางคิว "ประเมินแล้ว" ว่าวางไม่ได้ (เครื่องหมาย job.unplacedAt ที่ planAndWriteTx เขียน · ไม่มีแผน) —
     //   นิยามเดียวกับตัววางคิว · การเริ่มงานจริงยังผ่านด่าน startJob (Q9) ·
     //   แถว ARRIVED ที่ยังไม่ถูกประเมิน (ช่วง checkIn commit → replan · replan ล้ม) ถือห้องจาก max(เวลานัด, เวลาเช็กอิน) ตามนิยาม Q1
-    if (r.status === "ARRIVED" && !r.plannedStartAt && job.unplacedAt !== undefined && job.unplacedAt !== null) continue;
+    //   Q17: เครื่องหมายต้องเป็นของการเช็กอินครั้งนี้ (unplacedAt ≥ checkedInAt) — เครื่องหมายเก่าที่ค้าง (ถอยสถานะ/เลื่อนนัด/replan ล้ม) ไม่มีผล
+    const unplacedMs = typeof job.unplacedAt === "string" ? Date.parse(job.unplacedAt) : Number.NaN;
+    if (r.status === "ARRIVED" && !r.plannedStartAt && r.checkedInAt && Number.isFinite(unplacedMs) && unplacedMs >= r.checkedInAt.getTime()) continue;
     const arrivedFrom = r.status === "ARRIVED" && r.checkedInAt ? Math.max(r.startAt.getTime(), r.checkedInAt.getTime()) : r.startAt.getTime();
     const s = r.status === "IN_SERVICE" ? (r.startedAt ?? r.plannedStartAt ?? r.startAt).getTime() : (r.plannedStartAt?.getTime() ?? arrivedFrom);
     // Q11: งานกำลังทำที่เลยเวลา ⇒ ถือถึง now + overrunExtendMin (กติกาเดียวกับตัววางคิว PL-11) · ยังไม่เลย ⇒ เริ่ม + นาที

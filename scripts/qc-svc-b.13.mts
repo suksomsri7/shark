@@ -1114,6 +1114,29 @@ try {
     ok((row.policySnapshot?.job as Record<string, unknown> | undefined)?.unplacedAt === undefined, `แถวที่วางได้ยังมีเครื่องหมาย ${fmt(row.policySnapshot?.job)}`);
     eq(await resViolations(u), [], "ฐานหลังวางคิว");
   });
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B13-PB-12) — ข้อเพิ่ม (เพิ่มอย่างเดียว · มติ Q17): เครื่องหมาย unplacedAt ที่ค้างจากการเช็กอินครั้งก่อน
+  //   (มาสายวางไม่ได้ → ถอยเป็น CONFIRMED → ร้านเลื่อนวัน → เช็กอินวันใหม่ ก่อน/ไม่มี replan) ต้องไม่ทำให้ฐานข้ามแถว ·
+  //   หน่วย uX6 (ห้องเดียว) วัน dd(18)/dd(19) ไม่ชนฉาก X
+  await st("W-11", "Q17: เครื่องหมายวางไม่ได้ของวันก่อนค้างบนแถว → เช็กอินวันใหม่ (แผนหาย) ⇒ จองห้องเดียวกันทับ = FULL · ทางถอยสถานะ/เลื่อนล้างเครื่องหมาย", async () => {
+    needTpl();
+    const u = ids.uX6, d1 = dd(18), d2 = dd(19), c = cX(u);
+    const a = await bookOk(c, xSvc(u, "OIL"), xStaff(u)[0], d1, 1125, "นัด 18:45");
+    const ci = await LN().checkIn(c, { appointmentId: a }, { via: "STAFF", now: at(d1, 1150) });
+    if (!ci.ok) throw new AssertFail(`เช็กอิน 1 ${ci.code} ${ci.reason}`);
+    await RN().runPlanner(c, { now: at(d1, 1150) });
+    const m1 = (await apRow(a)).policySnapshot?.job as Record<string, unknown> | undefined;
+    ok(typeof m1?.unplacedAt === "string", `ไม่มีเครื่องหมายหลังวางไม่ได้ ${fmt(m1)}`);
+    eq((await BK().setAppointmentStatus(ids.tA, u, a, "CONFIRMED")).ok, true, "ถอยเป็น CONFIRMED");
+    const m2 = (await apRow(a)).policySnapshot?.job as Record<string, unknown> | undefined;
+    ok(m2?.unplacedAt === undefined, `ถอยสถานะต้องล้างเครื่องหมาย ${fmt(m2)}`);
+    eq(codeOf(await LN().rescheduleByShop(c, a, { dateStr: d2, startMin: 600 }, { now: at(d1, 1152) })), "OK", "ร้านเลื่อนไปวันถัดไป");
+    const ci2 = await LN().checkIn(c, { appointmentId: a }, { via: "STAFF", now: at(d2, 605) });
+    if (!ci2.ok) throw new AssertFail(`เช็กอิน 2 ${ci2.code} ${ci2.reason}`);
+    // จำลองสถานะค้าง: replan หลัง commit ล้ม + เครื่องหมายเก่าของเมื่อวานยังอยู่ (เส้นที่ลืมล้าง)
+    await q(`UPDATE "Appointment" SET "plannedStartAt" = NULL, "plannedStaffId" = NULL, "policySnapshot" = jsonb_set("policySnapshot", '{job,unplacedAt}', to_jsonb($2::text)) WHERE id = $1`, [a, at(d1, 1150).toISOString()]);
+    eq(codeOf(await book(c, xSvc(u, "OIL"), xStaff(u)[1], d2, 640)), "FULL", "จองห้องเดียวกันทับลูกค้าที่มาถึงวันใหม่");
+    eq(await resViolations(u), [], "ฐาน");
+  });
 
   // ═══════════════ E _fallback ═══════════════
   console.log("\n── E: _fallback = พฤติกรรม B1 (ไม่มีทรัพยากร/ไม่ประกาศชนิด) ──");
