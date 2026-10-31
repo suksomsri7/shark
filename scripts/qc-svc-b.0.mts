@@ -157,6 +157,8 @@ const CAT: Row[] = [
   { n: "63", key: "booking.course.enabled", type: "bool", chain: ["UNIT"], v: [false, true, false] },
   { n: "64", key: "booking.course.policy", type: "table", chain: ["UNIT", "COURSE"], v: [null, { validityMonths: 6, extendMonths: 1, crossBranch: false, transferable: false, noShowDeductSessions: 1, refund: { mode: "REMAINING_PRORATA", feeBp: 1000 }, expiryWarnDays: 30 }, null] },
   { n: "66", key: "booking.privacy.walkInRetentionDays", type: "days", chain: ["TENANT"], v: [180, 180, null] },
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b16-R1/R2): B.16 ฟิลด์สมาชิกบนการ์ดงาน — ชั้น TENANT · กลุ่ม privacy (ownerOnly) · SPA = ฟิลด์เทมเพลตสมาชิก salon
+  { n: "66b", key: "booking.privacy.jobCardFields", type: "table", chain: ["TENANT"], v: [[], ["pressurePref", "chemicalAllergy"], []] },
   // นอกภาคผนวก (สัญญา): CC §6.1 โหมดแถวเดียว · มติ B.2 (overrunExtendMin)
   { n: "X1", key: "booking.queue.singleLine", type: "bool", chain: ["UNIT"], v: x3(true) },
   { n: "X2", key: "booking.queue.overrunExtendMin", type: "minutes", chain: ["UNIT"], v: x3(5) },

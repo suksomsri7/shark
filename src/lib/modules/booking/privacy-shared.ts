@@ -21,3 +21,9 @@ export function canSeeFullPhone(m: MembershipCtx | null, unitId: string): boolea
 export function phoneForViewer(m: MembershipCtx | null, unitId: string, phone: string | null | undefined): string {
   return canSeeFullPhone(m, unitId) ? String(phone ?? "") : maskPhone(phone);
 }
+
+// SVC B.16 ▸ ด่านแรกของความชอบ/ข้อห้ามบนการ์ดงาน (คีย์จองของสาขานี้) — ฟิลด์อ่อนไหวยังต้องผ่านนโยบายสมาชิก
+//   (evaluateSensitiveAccess) อีกชั้นในตัวโหลด · คีย์ booking.* ไม่ใช่ใบผ่านข้อมูลอ่อนไหว ◂
+export function canSeeCustomerNotes(m: MembershipCtx | null, unitId: string): boolean {
+  return evaluate(m, { module: "booking", action: "booking.customer.notes", unitId });
+}

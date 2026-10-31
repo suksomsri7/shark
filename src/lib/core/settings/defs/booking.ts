@@ -412,6 +412,16 @@ const DEFS: SettingDef[] = [
 
   // ── ความเป็นส่วนตัว (#66) · #65 = permissions.ts (B.11) ──
   row({ key: "booking.privacy.walkInRetentionDays", type: "days", labelTh: "เก็บข้อมูลลูกค้า walk-in (วัน · ว่าง = ตามนโยบายร้าน)", schema: DAYS.nullable(), chain: T, v: [180, 180, null] }), // #66
+  // SVC B.16 ▸ ฟิลด์สมาชิกที่โชว์บนการ์ดงาน/มือถือหมอ (ชั้นร้าน · เจ้าของเท่านั้นผ่าน row() กลุ่ม privacy) — ข้อมูลอยู่ในสมาชิก ไม่ใช่ในนัด (R7) ◂
+  row({
+    key: "booking.privacy.jobCardFields",
+    type: "table",
+    labelTh: "ข้อมูลลูกค้าที่โชว์บนการ์ดงาน (รหัสฟิลด์สมาชิก ตามลำดับ)",
+    helpTh: "ใส่รหัสฟิลด์จากตัวออกแบบฟิลด์สมาชิก เช่น pressurePref · ฟิลด์อ่อนไหวเห็นเฉพาะคนที่นโยบายสมาชิกอนุญาต · ฟิลด์ระบบ (เบอร์/อีเมล) ไม่โชว์",
+    schema: uniqArr(z.string().regex(/^[a-z][a-zA-Z0-9_]{0,63}$/), 0, 20),
+    chain: T,
+    v: [[], ["pressurePref", "chemicalAllergy"], []],
+  }),
 ];
 
 // ─────────────────── แม่แบบ 3 ประเภทร้าน ───────────────────

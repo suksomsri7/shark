@@ -2,10 +2,12 @@
 // งานตอนนี้ของฉัน (ปุ่มเสร็จ) → คิวถัดไปของฉัน (เรียก/เริ่ม/ข้าม) → แถวรวมทั้งร้าน (ปุ่มเฉพาะที่ผู้ดูทำได้) · ไม่มีเบอร์
 import type { LineJob, TodayLineView } from "@/lib/modules/booking/today-line";
 import { JobButtons, TicketTag, dayLabel, hhmm, jobSubline, type LineActions } from "./line-parts";
+import JobNotes, { type JobNotesMap } from "./JobNotes"; // SVC B.16
 
-type Props = { view: TodayLineView; unitSlug: string; actions: LineActions; at?: string };
+// SVC B.16 ▸ notes = ความชอบ/ข้อห้ามลูกค้า (loadJobCustomerNotes) · ไม่ส่ง/{} ⇒ DOM เดิมทุกไบต์ ◂
+type Props = { view: TodayLineView; unitSlug: string; actions: LineActions; at?: string; notes?: JobNotesMap };
 
-export default function MyQueue({ view, actions, at }: Props) {
+export default function MyQueue({ view, actions, at, notes }: Props) {
   const staff = view.staff.map((s) => ({ staffId: s.staffId, name: s.name }));
   const mineCur = view.inService.filter((j) => j.mine);
   const otherCur = view.inService.filter((j) => !j.mine && j.actions.length > 0);
@@ -38,6 +40,7 @@ export default function MyQueue({ view, actions, at }: Props) {
               {j.serviceName} · เริ่ม {hhmm(j.plannedStartMs)} · ถึง {hhmm(j.plannedEndMs)}
             </small>
             {j.actions.length ? <div className="flex flex-wrap gap-2 text-[color:var(--color-ink)]">{buttons(j, "done")}</div> : null}
+            <JobNotes notes={notes} appointmentId={j.appointmentId} tone="dark" />
           </div>
         ))}
       </section>
@@ -47,7 +50,7 @@ export default function MyQueue({ view, actions, at }: Props) {
         {mineNext.length === 0 ? <p className="mt-2 text-sm text-[color:var(--color-muted)]">ยังไม่มีคิวที่วางให้</p> : null}
         <div className="mt-1 flex flex-col">
           {mineNext.map((j) => (
-            <Row key={j.appointmentId} j={j}>
+            <Row key={j.appointmentId} j={j} notes={notes}>
               {j.actions.length ? buttons(j, "start") : null}
             </Row>
           ))}
@@ -87,7 +90,7 @@ export default function MyQueue({ view, actions, at }: Props) {
         {view.waiting.length === 0 ? <p className="mt-2 text-sm text-[color:var(--color-muted)]">ไม่มีคิวรอ</p> : null}
         <div className="mt-1 flex flex-col">
           {view.waiting.map((j) => (
-            <Row key={j.appointmentId} j={j} dim={!j.mine}>
+            <Row key={j.appointmentId} j={j} dim={!j.mine} notes={notes}>
               {j.actions.length ? buttons(j) : null}
             </Row>
           ))}
@@ -97,7 +100,7 @@ export default function MyQueue({ view, actions, at }: Props) {
   );
 }
 
-function Row({ j, dim, children }: { j: LineJob; dim?: boolean; children?: React.ReactNode }) {
+function Row({ j, dim, notes, children }: { j: LineJob; dim?: boolean; notes?: JobNotesMap; children?: React.ReactNode }) {
   return (
     <div data-line-wait={j.appointmentId} className={"flex items-start gap-3 border-b py-3 last:border-b-0 " + (dim ? "text-[color:var(--color-ink-soft)]" : "")}>
       <div className="w-12 flex-none">
@@ -111,6 +114,7 @@ function Row({ j, dim, children }: { j: LineJob; dim?: boolean; children?: React
         </div>
         <small className="mt-0.5 block text-xs text-[color:var(--color-muted)]">{jobSubline({ ...j, phone: null })}</small>
         {children ? <div className="mt-2 flex flex-wrap gap-1.5">{children}</div> : null}
+        <JobNotes notes={notes} appointmentId={j.appointmentId} />
       </div>
     </div>
   );

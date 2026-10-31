@@ -7,6 +7,7 @@ import MyQueue from "@/components/booking/MyQueue";
 import { lineActionsFor, qcNowOf } from "@/components/booking/line-page";
 import { lineAccess, type LineMember } from "@/lib/modules/booking/line-access";
 import { loadTodayLine } from "@/lib/modules/booking/today-line";
+import { loadJobCustomerNotes } from "@/lib/modules/booking/customer-notes"; // SVC B.16 ▸ ความชอบ/ข้อห้ามลูกค้าบนมือถือหมอ ◂
 // SVC B.10 ▸ แผ่น "เสร็จงาน" (?finish=<เลขบัตร|รหัสนัด>&add=<id,id>) — ภาพ จอง 07 ก ◂
 import FinishJobSheet from "@/components/booking/FinishJobSheet";
 import { amendServiceBillAction, cancelServiceBillAction, finishJobAction, voidPaidServiceBillAction } from "@/lib/actions/booking-line";
@@ -70,6 +71,13 @@ export default async function BookingMinePage({
       }
     }
   }
+  // SVC B.16 ▸ โน้ตลูกค้าของงานบนจอ (คีย์ booking.customer.notes + นโยบายอ่อนไหวของสมาชิก · ไม่มีสิทธิ์ = {} = จอเดิม) ◂
+  const notes = await loadJobCustomerNotes(
+    { tenantId: auth.active.tenantId, unitId: unit.id },
+    { userId: auth.user.id, member: m },
+    [...view.waiting, ...view.inService, ...view.skipped].map((j) => j.appointmentId),
+    { page: "booking.mine", now: qc.now },
+  );
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
       <AutoRefresh />
@@ -78,7 +86,7 @@ export default async function BookingMinePage({
           {err}
         </p>
       ) : null}
-      <MyQueue view={view} unitSlug={unitSlug} actions={lineActionsFor(unitSlug)} at={qc.at} />
+      <MyQueue view={view} unitSlug={unitSlug} actions={lineActionsFor(unitSlug)} at={qc.at} notes={notes} />
     </div>
   );
 }

@@ -17,6 +17,7 @@ import { AutoRefresh } from "@/components/queue-auto-refresh";
 import TodayLine from "@/components/booking/TodayLine";
 import { lineAccess, type LineMember } from "@/lib/modules/booking/line-access";
 import { loadTodayLine } from "@/lib/modules/booking/today-line";
+import { loadJobCustomerNotes } from "@/lib/modules/booking/customer-notes"; // SVC B.16 ▸ ความชอบ/ข้อห้ามลูกค้าบนการ์ดงาน ◂
 import { lineSettingsOf } from "@/lib/modules/booking/planner-run";
 import { lineActionsFor, qcNowOf } from "@/components/booking/line-page";
 
@@ -69,6 +70,13 @@ export default async function BookingPage({
   const depositCan = dq.ok ? dq.can : { confirm: false, refund: false, forfeit: false };
   const depositMore = dq.ok ? dq.hasMore : false;
   if (line) {
+    // SVC B.16 ▸ โน้ตลูกค้าของงานบนจอ (คีย์ booking.customer.notes + นโยบายอ่อนไหวของสมาชิก · ไม่มีสิทธิ์ = {} = จอเดิม) ◂
+    const notes = await loadJobCustomerNotes(
+      { tenantId: auth.active.tenantId, unitId: unit.id },
+      { userId: auth.user.id, member: viewer as LineMember },
+      [...line.waiting, ...line.inService, ...line.skipped].map((j) => j.appointmentId),
+      { page: "booking.today", now: qc.now },
+    );
     return (
       <div data-booking-line-page="" className="flex w-full min-w-0 flex-col gap-4">
         <AutoRefresh />
@@ -77,7 +85,7 @@ export default async function BookingPage({
             {err}
           </p>
         ) : null}
-        <TodayLine view={line} unitSlug={unitSlug} actions={lineActionsFor(unitSlug)} at={qc.at} bookingHref={`/s/${auth.active.tenant.slug}/${unit.slug}`} />
+        <TodayLine view={line} unitSlug={unitSlug} actions={lineActionsFor(unitSlug)} at={qc.at} bookingHref={`/s/${auth.active.tenant.slug}/${unit.slug}`} notes={notes} />
         <DepositQueueBox items={depositItems} over={depositOver} can={depositCan} more={depositMore} unitSlug={unitSlug} />
       </div>
     );
