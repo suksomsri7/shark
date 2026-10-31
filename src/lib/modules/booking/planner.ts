@@ -483,7 +483,21 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
    * (ตรวจกับงานที่วางก่อนตามลำดับเวลาเท่านั้น — นัดถัดไปของห้องจะถูกเลื่อนเมื่อถึงคิวของมัน) · เลื่อนไม่ได้ ⇒ ชิ้นเดิม + resourceShort
    * นัดที่ยังไม่ผูก ⇒ ผูกที่เวลาเดิม (ห้ามแย่งจองอ่อนของนัดอื่น) · ผูกไม่ได้ ⇒ resourceShort เวลาไม่ขยับ (§4.5ก)
    */
-  const placeRes = (job: PlanJob, s: PlanStaff | undefined, start: number, d: number): number => {
+  /** Q13: สายหมอที่มีงานถูกเลื่อนเพราะห้อง (ส่งต่อเป็นธงให้งานใช้ห้องที่ตามมา) */
+  const roomDelayedStaff = new Set<string>();
+  const roomDelayedJob = new Set<string>();
+  /** Q13: การเลื่อนงานนี้ไป t จะดันนัดถัดไปของหมอคนเดียวกัน (ที่เวลานัดเดิมจบทัน) ให้จบเลยหน้าต่างไหม */
+  const cascadePastWindow = (s: PlanStaff, later: readonly PlanJob[], t: number, d: number, g: number): boolean => {
+    let chainEnd = t + d + g;
+    for (const k of later) {
+      const dk = durMs(ctx, k, s), gk = gapMs(ctx, k, s);
+      const ks = Math.max(k.startAt!, chainEnd);
+      if (!inWindow(s, ks, ks + dk) && inWindow(s, k.startAt!, k.startAt! + dk)) return true;
+      chainEnd = ks + dk + gk;
+    }
+    return false;
+  };
+  const placeRes = (job: PlanJob, s: PlanStaff | undefined, start: number, d: number, later: readonly PlanJob[] = []): number => {
     const book = ctx.book;
     const kinds = kindsOfJob(ctx, job);
     if (!book || !kinds.length) return start;
@@ -500,7 +514,8 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
     }
     // Q12: เลื่อนได้ไม่เกินเพดาน และต้องจบในหน้าต่างงานของหมอ (ถ้าเวลาเดิมจบทัน) — ไม่งั้นคงที่เดิม + resourceShort
     const maxShift = (input.resourceShiftMaxMin ?? 60) * MIN;
-    const okWindow = (x: number) => !s || !inWindow(s, start, start + d) || inWindow(s, x, x + d);
+    const okWindow = (x: number) =>
+      !s || ((!inWindow(s, start, start + d) || inWindow(s, x, x + d)) && (x === start || !cascadePastWindow(s, later, x, d, gapMs(ctx, job, s))));
     let t = start;
     for (let iter = 0; iter < 64; iter++) {
       if (t - start > maxShift || !okWindow(t)) break;
@@ -508,6 +523,10 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
       if (ids) {
         for (const id of ids) book.add(id, job.id, t, t + d);
         resOf.set(job.id, ids);
+        if (t > start && s) {
+          roomDelayedJob.add(job.id);
+          roomDelayedStaff.add(s.id);
+        }
         return t;
       }
       if (!s) break;
@@ -528,10 +547,11 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
     const arrived = job.checkedInAt !== null || job.status === "ARRIVED";
     const placeOn = (s: PlanStaff, start: number, reason: PlanReason) => {
       const d = durMs(ctx, job, s);
-      const t = placeRes(job, s, start, d); // SVC B.13 ▸ Q10 ◂
+      const t = placeRes(job, s, start, d, pendingOn(s.id, idx + 1).map((x) => x.job)); // SVC B.13 ▸ Q10 · Q13 ◂
       const endAt = t + d;
       // Q12: งานที่ใช้ทรัพยากรถูกดันจนจบเลยเวลางานของหมอ (ทั้งที่เวลานัดเดิมจบทัน — เช่น งานก่อนหน้าถูกเลื่อนเพราะห้อง) ⇒ แจ้งบนจอ
-      if (ctx.book && t > startAt && inWindow(s, startAt, startAt + d) && !inWindow(s, t, endAt)) shortOf.add(job.id);
+      //   Q13: เฉพาะงานที่ใช้ทรัพยากร และการเลื่อนมาจากห้องจริง (ตัวเอง หรืองานก่อนหน้าในสายหมอเดียวกัน) · เลื่อนเพราะหมอล้วน ⇒ ไม่ขึ้นธง
+      if (kindsOfJob(ctx, job).length && (roomDelayedJob.has(job.id) || roomDelayedStaff.has(s.id)) && t > startAt && inWindow(s, startAt, startAt + d) && !inWindow(s, t, endAt)) shortOf.add(job.id);
       occupy(ctx, s.id, { jobId: job.id, startAt: t, endAt, gapAfter: gapMs(ctx, job, s), booking: true });
       out.set(job.id, { ...base(job), staffId: s.id, startAt: t, endAt, state: "SCHEDULED", reason: t > start ? "BOOKED_DELAYED" : reason, late });
     };

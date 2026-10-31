@@ -130,7 +130,7 @@ export async function readUnitBlocks(client: RawReader, tenantId: string, unitId
 }
 
 type RawHold = {
-  id: string; status: string; kind: string; startAt: Date; endAt: Date; plannedStartAt: Date | null; startedAt: Date | null;
+  id: string; status: string; kind: string; startAt: Date; checkedInAt: Date | null; queueTicketId: string | null; endAt: Date; plannedStartAt: Date | null; startedAt: Date | null;
   resourceId: string | null; job: unknown; bufferMin: number | null;
 };
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -167,6 +167,7 @@ export async function readHolds(
   const rid = o.resourceId ?? null;
   const rows = await client.$queryRaw<RawHold[]>`
     SELECT a."id", a."status"::text AS "status", a."kind"::text AS "kind", a."startAt", a."endAt", a."plannedStartAt", a."startedAt", a."resourceId",
+           a."checkedInAt", a."queueTicketId",
            a."policySnapshot" -> 'job' AS "job", s."bufferMin"
     FROM "Appointment" a
     LEFT JOIN "BookingService" s ON s."id" = a."serviceId"
@@ -186,6 +187,9 @@ export async function readHolds(
     const start = r.startAt.getTime();
     const buf = numOr(job.bufferMin, numOr(r.bufferMin, 0)) ?? 0;
     const dur = numOr(job.durationMin, null) !== null ? (job.durationMin as number) * MIN_MS : Math.max(0, r.endAt.getTime() - start - buf * MIN_MS);
+    // Q14 (มติทาง 1): แถวที่เข้าแถวใหม่ (มาถึงหลังเวลานัด · มีบัตรคิวแถวเดียว) ที่ตัววางคิววางไม่ได้ (ไม่มี plannedStartAt) ⇒ ไม่นับ —
+    //   นิยามเดียวกับตัววางคิว · การเริ่มงานจริงยังผ่านด่าน startJob (Q9)
+    if (r.status === "ARRIVED" && !r.plannedStartAt && r.queueTicketId && r.checkedInAt && r.checkedInAt.getTime() > r.startAt.getTime()) continue;
     const s = r.status === "IN_SERVICE" ? (r.startedAt ?? r.plannedStartAt ?? r.startAt).getTime() : (r.plannedStartAt ?? r.startAt).getTime();
     // Q11: งานกำลังทำที่เลยเวลา ⇒ ถือถึง now + overrunExtendMin (กติกาเดียวกับตัววางคิว PL-11) · ยังไม่เลย ⇒ เริ่ม + นาที
     const e = r.status === "IN_SERVICE" && s + dur <= o.nowMs ? o.nowMs + (o.overrunMin ?? 0) * MIN_MS : s + dur;
