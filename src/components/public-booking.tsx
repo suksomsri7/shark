@@ -15,6 +15,23 @@ type Props = {
   view: OnlineBookingView; basePath: string; query: OnlineQuery; idempotencyKey: string;
   /** SVC B.17 ▸ server action ของฟอร์ม "แจ้งฉันถ้ามีคิวว่าง" (ไม่บังคับ — ไม่ส่ง = ฟอร์มยังแสดง แต่ไม่ผูก action) ◂ */
   waitlistJoin?: (fd: FormData) => void | Promise<void>;
+  /** SVC B.17 ▸ ผลของ action waitlist ที่ส่งกลับมาทาง URL (`wl=<รหัส>`) — แสดงเป็นข้อความใน dict เสมอ (ไม่แสดงรหัสดิบ) ◂ */
+  waitlistNotice?: string;
+};
+
+/** SVC B.17 ▸ รหัสผลของ waitlist → คีย์ dict (รหัสอื่น/ไม่รู้จัก ⇒ ข้อความกลาง) ◂ */
+const WL_NOTICE: Record<string, { key: string; ok: boolean }> = {
+  joined: { key: "bk17.r.joined", ok: true },
+  left: { key: "bk17.r.left", ok: true },
+  LIMIT: { key: "bk17.r.limit", ok: false },
+  RATE_LIMITED: { key: "bk17.r.rate", ok: false },
+  HAS_FREE: { key: "bk17.r.hasFree", ok: false },
+  DISABLED: { key: "bk17.r.disabled", ok: false },
+  IDENTITY_REQUIRED: { key: "bk17.needLine", ok: false },
+  REPEAT_NO_SHOW: { key: "bk17.r.callShop", ok: false },
+  BAD_INPUT: { key: "bk17.r.badInput", ok: false },
+  NOT_FOUND: { key: "bk17.r.badInput", ok: false },
+  BUSY: { key: "bk17.r.busy", ok: false },
 };
 
 const INK = "#0a0a0a";
@@ -45,7 +62,7 @@ function Label({ children }: { children: ReactNode }) {
   return <p className="text-[14px] font-bold text-[#0a0a0a]">{children}</p>;
 }
 
-export default function PublicBooking({ view, basePath, query, idempotencyKey, waitlistJoin }: Props) {
+export default function PublicBooking({ view, basePath, query, idempotencyKey, waitlistJoin, waitlistNotice }: Props) {
   const l = view.locale;
   const t = makeT(l);
   const svc = view.service;
@@ -107,6 +124,14 @@ export default function PublicBooking({ view, basePath, query, idempotencyKey, w
           </p>
         ) : null}
 
+        {waitlistNotice ? (() => {
+          const n = WL_NOTICE[waitlistNotice] ?? { key: "bk17.r.other", ok: false };
+          return (
+            <p data-bk-waitlist-notice={n.ok ? "ok" : "info"} role="status" className={`rounded-xl px-3 py-2 text-[13px] ${n.ok ? "bg-[#ecfdf3] text-[#166534]" : "bg-[#f4f5f7] text-[#404040]"}`}>
+              {t(n.key)}
+            </p>
+          );
+        })() : null}
         {view.step === 1 ? <StepOne view={view} t={t} hrefFor={(id) => hrefOf(basePath, query, { svc: id })} pick={pickSvc} onPick={setPickSvc} /> : null}
         {view.step >= 2 && svc ? (
           view.step === 2 ? (

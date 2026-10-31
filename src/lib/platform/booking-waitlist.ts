@@ -24,10 +24,14 @@ const MAX_PAGES = 200;
 /** แถว log ของช่องที่ "ถือช่องนั้นอยู่" ในโหมด FIRST (ส่งแล้ว/กำลังส่ง/รอพ้นเวลาเงียบ/ลองใหม่ได้) */
 const HOLDS_SLOT = ["SENT", "SENDING", "SKIPPED_QUIET", "FAILED"];
 /** แถวสถานะจบ (ไม่ลองซ้ำ) — คีย์นี้ถือว่า "เสนอแล้ว" ต่อ entry */
+/** ผลของ notifyCustomer ที่ "จบแบบไม่ได้ส่ง" (FIRST ⇒ คนถัดไปได้ช่องนี้) */
+const isFinalNoSend = (s: string) => s === "SKIPPED_CONSENT" || s === "NO_CHANNEL" || s === "NO_PARTY" || s === "PRECHECK";
 const isFinal = (s: string) => s === "SENT" || s === "SKIPPED_CONSENT" || s === "NO_CHANNEL" || s === "QUOTA" || s.startsWith("SKIPPED_PRECHECK_");
 
 type Entry = { id: string; tenantId: string; unitId: string; partyId: string; serviceId: string; staffId: string | null; dateStr: string; fromMin: number; toMin: number; expiresAt: Date; createdAt: Date };
 type Offer = { startMin: number; staffId: string; ms: number; key: string };
+/** ช่วงว่าง 1 ช่วง = ข้อเสนอ 1 รายการ · `head` = เวลาแรก (ใช้ตอนส่งใหม่) · `slots` = ทุกเวลาในช่วง (คีย์ของข้อเสนอเดิมที่ช่วงนี้ครอบ — R5) */
+type Run = { head: Offer; slots: Offer[] };
 type Ctl = { signal?: AbortSignal; deadline?: number };
 
 const validNow = (d: unknown): Date => (d instanceof Date && !Number.isNaN(d.getTime()) ? d : new Date());
@@ -78,18 +82,18 @@ async function closeIfEnded(e: Entry, now: Date): Promise<boolean> {
 }
 
 /** ข้อเสนอของ entry: เวลาเริ่มที่ว่าง (findSlots ช่อง LINE) ใน [fromMin, toMin) แบ่งเป็นช่วงติดกันตามกริด · ช่วงละ 1 = เวลาแรก + ช่างของเวลานั้น */
-async function offersOf(e: Entry, now: Date, step: number): Promise<Offer[]> {
+async function offersOf(e: Entry, now: Date, step: number): Promise<Run[]> {
   const ctx = { tenantId: e.tenantId, unitId: e.unitId };
   const slots = (await findSlots(ctx, { serviceId: e.serviceId, staffId: e.staffId, dateStr: e.dateStr, channel: "LINE" }, { now }))
     .filter((s) => s.startMin >= e.fromMin && s.startMin < e.toMin)
     .sort((a, b) => a.startMin - b.startMin);
-  const out: Offer[] = [];
+  const out: Run[] = [];
   let prev = Number.NEGATIVE_INFINITY;
   for (const s of slots) {
-    if (s.startMin !== prev + step) {
-      const ms = localToUtc(e.dateStr, s.startMin).getTime();
-      out.push({ startMin: s.startMin, staffId: s.staffId, ms, key: `booking:waitlistOpen:${e.id}:${s.staffId}:${Math.floor(ms / MIN_MS)}` });
-    }
+    const ms = localToUtc(e.dateStr, s.startMin).getTime();
+    const o: Offer = { startMin: s.startMin, staffId: s.staffId, ms, key: `booking:waitlistOpen:${e.id}:${s.staffId}:${Math.floor(ms / MIN_MS)}` };
+    if (s.startMin !== prev + step || !out.length) out.push({ head: o, slots: [o] });
+    else out[out.length - 1].slots.push(o);
     prev = s.startMin;
   }
   return out;
@@ -122,21 +126,35 @@ async function matchUnitDay(tenantId: string, unitId: string, dateStr: string, n
     select: { id: true, tenantId: true, unitId: true, partyId: true, serviceId: true, staffId: true, dateStr: true, fromMin: true, toMin: true, expiresAt: true, createdAt: true },
   });
   const stepOf = new Map<string, number>();
+  // FIRST: ช่องที่ entry ก่อนหน้าในรอบนี้ถืออยู่/กำลังถือ ⇒ entry ถัดไปในรอบเดียวกันห้ามแซง (แม้แถวของคนก่อนจะเพิ่งจบแบบไม่ได้ส่งระหว่างรอบ —
+  //   คนถัดไปตามลำดับได้ในรอบของโพรเซสที่ถือ หรือรอบ tick ถัดไป · กันคนท้ายแถวได้ช่องก่อนคนกลางแถว)
+  const deferred = new Set<string>();
+  const suffixOf = (o: Offer) => `:${o.staffId}:${Math.floor(o.ms / MIN_MS)}`;
   for (const e of entries as Entry[]) {
     if (stop(ctl)) break;
     res.scanned++;
     if (await closeIfEnded(e, now)) continue;
     if (!msgOn) continue;
     if (!stepOf.has(e.serviceId)) stepOf.set(e.serviceId, (await onlineRulesOf({ tenantId, unitId }, e.serviceId)).stepMin);
-    const offers = await offersOf(e, now, stepOf.get(e.serviceId) as number);
-    if (!offers.length) continue;
-    const own = await prisma.serviceMessageLog.findMany({ where: { tenantId, dedupeKey: { in: offers.map((o) => o.key) } }, select: { dedupeKey: true, status: true } });
+    const runs = await offersOf(e, now, stepOf.get(e.serviceId) as number);
+    if (!runs.length) continue;
+    // R5: ช่วงว่างที่ขยาย (ไปทางหลังหรือทางเช้า) = ข้อเสนอเดิม — ดูแถว log ของ entry นี้ที่ตกในทุกเวลาของช่วง ไม่ใช่แค่เวลาแรก
+    const own = await prisma.serviceMessageLog.findMany({ where: { tenantId, dedupeKey: { in: runs.flatMap((r) => r.slots.map((o) => o.key)) } }, select: { dedupeKey: true, status: true } });
     const ownStatus = new Map(own.map((r) => [r.dedupeKey, r.status]));
-    for (const o of offers) {
-      const st = ownStatus.get(o.key);
-      if (st !== undefined && isFinal(st)) continue; // เสนอช่วงนี้ไปแล้ว (ส่งได้หรือจบแบบไม่ได้ส่ง)
-      if (mode === "FIRST" && st === undefined && (await slotHeldByOther(tenantId, unitId, o))) continue;
+    for (const run of runs) {
+      const seen = run.slots.filter((o) => ownStatus.has(o.key));
+      if (seen.some((o) => isFinal(ownStatus.get(o.key) as string))) continue; // เสนอช่วงนี้ไปแล้ว (ส่งได้หรือจบแบบไม่ได้ส่ง)
+      // ข้อเสนอเดิมที่ยังลองซ้ำได้ (เวลาเงียบ/ล้ม/กำลังส่ง) ⇒ คีย์เดิม · ไม่มี ⇒ ข้อเสนอใหม่ที่เวลาแรกของช่วง
+      const o = seen[0] ?? run.head;
+      if (mode === "FIRST" && !seen.length) {
+        if (run.slots.some((x) => deferred.has(suffixOf(x)))) continue;
+        if (await runHeldByOther(tenantId, unitId, run)) {
+          for (const x of run.slots) deferred.add(suffixOf(x));
+          continue;
+        }
+      }
       const r = await offer(e, o, info, now, hideService);
+      if (mode === "FIRST" && !isFinalNoSend(r)) for (const x of run.slots) deferred.add(suffixOf(x));
       if (r === "SENT") res.sent++;
       break; // ต่อ entry ต่อรอบ ≤ 1 ครั้ง
     }
@@ -144,15 +162,16 @@ async function matchUnitDay(tenantId: string, unitId: string, dateStr: string, n
   return res;
 }
 
-/** FIRST: ช่อง (หน่วย, ช่าง, นาที) มี entry อื่นถืออยู่แล้วหรือยัง (แถว log สถานะส่ง/กำลังส่ง/รอเวลาเงียบ/ลองใหม่) */
-async function slotHeldByOther(tenantId: string, unitId: string, o: Offer): Promise<boolean> {
-  const suffix = `:${o.staffId}:${Math.floor(o.ms / MIN_MS)}`;
+/** FIRST: ช่วงนี้ (หน่วย, ช่าง, นาทีใดในช่วง) มี entry อื่นถืออยู่แล้วหรือยัง (แถว log สถานะส่ง/กำลังส่ง/รอเวลาเงียบ/ลองใหม่) */
+async function runHeldByOther(tenantId: string, unitId: string, run: Run): Promise<boolean> {
+  const suffixes = run.slots.map((o) => `:${o.staffId}:${Math.floor(o.ms / MIN_MS)}`);
+  const mine = new Set(run.slots.map((o) => o.key));
   const rows = await prisma.serviceMessageLog.findMany({
-    where: { tenantId, unitId, domain: "booking", messageKey: "waitlistOpen", status: { in: HOLDS_SLOT }, dedupeKey: { startsWith: "booking:waitlistOpen:", endsWith: suffix } },
+    where: { tenantId, unitId, domain: "booking", messageKey: "waitlistOpen", status: { in: HOLDS_SLOT }, OR: suffixes.map((x) => ({ dedupeKey: { startsWith: "booking:waitlistOpen:", endsWith: x } })) },
     select: { dedupeKey: true },
-    take: 5,
+    take: 20,
   });
-  return rows.some((r) => r.dedupeKey !== o.key);
+  return rows.some((r) => !mine.has(r.dedupeKey));
 }
 
 /** ส่งข้อเสนอหนึ่งรายการผ่าน notifyCustomer (precheck สด · ไม่ข้ามเวลาเงียบ) */
@@ -176,7 +195,9 @@ async function offer(e: Entry, o: Offer, info: UnitInfo, now: Date, hideService:
     at: now,
     precheck: async () => precheckOf(e, o, now),
   });
-  return r.duplicate ? "DUP" : r.status;
+  if (r.precheckFailed) return "PRECHECK"; // จบแบบไม่ได้ส่ง (ทั้งรอบนี้และคนที่ชนคีย์เดียวกัน)
+  if (r.duplicate) return r.pending ? "DUP" : r.status === "SENT" ? "DUP_SENT" : r.status;
+  return r.status;
 }
 
 /** ตรวจสดก่อนส่ง (§3.3 ข้อ 5): entry ยัง ACTIVE · ไม่หมดอายุ · ยังไม่ได้จอง · ช่องนั้นยังว่างสำหรับช่างนั้น */

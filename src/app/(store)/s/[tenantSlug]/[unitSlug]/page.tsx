@@ -72,6 +72,7 @@ export default async function StoreBookingPage({
         query={query}
         idempotencyKey={idempotencyKey}
         {...(r.view.waitlist ? { waitlistJoin: joinWaitlistAction.bind(null, tenantSlug, unitSlug) } : {})}
+        {...(typeof one(sp?.wl) === "string" && /^[A-Za-z_]{1,40}$/.test(one(sp?.wl) as string) ? { waitlistNotice: one(sp?.wl) } : {})}
       />
     </main>
   );
