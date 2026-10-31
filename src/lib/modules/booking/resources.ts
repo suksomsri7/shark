@@ -5,7 +5,7 @@
 //   ตัวช่วยใน tx ให้ทางจอง/แถวเดียว/ตัววางคิวใช้ร่วม: ล็อกทรัพยากรทั้งสาขา · อ่านทรัพยากร/ปิดซ่อม/แถวที่ถือ · ประกอบด่าน (ResBook)
 //
 // 🔴 ด่าน "ว่างไหม" = planner-resources.ts สูตรเดียว (ใช้ร่วมกับตัววางคิว) — ไฟล์นี้แค่อ่านฐานแล้วป้อน
-// 🔴 ลำดับล็อกทั้งระบบ (§5): idem → เบอร์ → advisory สาขา → BookingStaff → SvcResource ทั้งสาขา (sortOrder, createdAt, id) → แถว Appointment
+// 🔴 ลำดับล็อกทั้งระบบ (§5): idem → เบอร์ → advisory สาขา → BookingStaff → SvcResource ทั้งสาขา (เรียงตาม id · มติ Q7 — คงที่แม้แก้ sortOrder) → แถว Appointment
 //    CRUD ล็อกแถวทรัพยากรแถวเดียว (ไม่ถือล็อกหมอ/ทรัพยากรอื่น) แล้วอ่านแถวนัดแบบไม่ล็อก — ทางจองถือล็อกแถวเดียวกันก่อน insert ⇒ ลำดับเข้ากันได้
 // 🔴 ไม่มี connection ที่สองใต้ล็อก: ค่าตั้ง (ชนิดของบริการ) อ่านก่อน tx · ทรัพยากร/ปิดซ่อม/แถวที่ถือ อ่านใน tx ผ่าน tx หลังล็อก
 // 🔴 ขอบเขต (X1): ทุกคิวรีผูก tenantId + unitId ของ ctx · ไม่พบ/ข้ามร้าน/ข้ามหน่วย ⇒ NOT_FOUND ข้อความเดียว · ไม่ import prisma ดิบ (F5)
@@ -73,8 +73,8 @@ const inUseReason = (n: number, what: string) => `${what}ไม่ได้ — 
 export type RawReader = Pick<Prisma.TransactionClient, "$queryRaw">;
 export type ResRowLite = { id: string; kind: string; name: string; capacity: number; cleanupMin: number; active: boolean; sortOrder: number; createdAt: Date };
 export type BlockRow = { id: string; resourceId: string; startAt: Date; endAt: Date | null; reason: string | null };
-/** แถวนัดที่ถือทรัพยากร — s..e = ช่วงบริการ (ยังไม่บวกเวลาเก็บ) ตาม §4.6 */
-export type HoldRow = { id: string; ids: string[]; s: number; e: number };
+/** แถวนัดที่ถือทรัพยากร — s..e = ช่วงบริการ (ยังไม่บวกเวลาเก็บ) ตาม §4.6 (มติ Q1/Q2) */
+export type HoldRow = { id: string; ids: string[]; s: number; e: number; status: string; kind: string };
 
 export const RESOURCE_KINDS_KEY = "booking.service.resourceKinds";
 
@@ -88,12 +88,21 @@ export async function resourceKindsOf(ctx: { tenantId: string; unitId: string },
   return out;
 }
 
-/** ล็อกทรัพยากรทุกชิ้นของสาขา (รวมที่ปิดใช้) ตามลำดับคงที่ — เรียกหลังล็อก BookingStaff เสมอ · ห้ามเรียกหลังล็อกแถวนัด (§5) */
+/**
+ * ล็อกทรัพยากรทุกชิ้นของสาขา (รวมที่ปิดใช้) ตามลำดับ id (มติ Q7: คงที่ — sortOrder แก้ได้ระหว่างมีการจอง ⇒ ลำดับกลับด้านได้) —
+ * เรียกหลังล็อก BookingStaff เสมอ · ห้ามเรียกหลังล็อกแถวนัด (§5) · คืนเรียงตามลำดับเลือกชิ้น (sortOrder, createdAt, id)
+ */
 export async function lockUnitResourcesTx(tx: RawReader, tenantId: string, unitId: string): Promise<ResRowLite[]> {
-  return tx.$queryRaw<ResRowLite[]>`
+  const rows = await tx.$queryRaw<ResRowLite[]>`
     SELECT "id", "kind", "name", "capacity", "cleanupMin", "active", "sortOrder", "createdAt"
     FROM "SvcResource" WHERE "tenantId" = ${tenantId} AND "unitId" = ${unitId}
-    ORDER BY "sortOrder", "createdAt", id FOR UPDATE`;
+    ORDER BY id FOR UPDATE`;
+  return sortForPick(rows);
+}
+
+/** ลำดับเลือกชิ้น (sortOrder, createdAt, id) — คนละเรื่องกับลำดับล็อก */
+function sortForPick(rows: readonly ResRowLite[]): ResRowLite[] {
+  return [...rows].sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /** อ่านทรัพยากรของสาขาแบบไม่ล็อก (หาเวลา/มุมมอง · ลำดับเดียวกับล็อก) */
@@ -114,7 +123,7 @@ export async function readUnitBlocks(client: RawReader, tenantId: string, unitId
 }
 
 type RawHold = {
-  id: string; status: string; startAt: Date; endAt: Date; plannedStartAt: Date | null; startedAt: Date | null;
+  id: string; status: string; kind: string; startAt: Date; endAt: Date; plannedStartAt: Date | null; startedAt: Date | null;
   resourceId: string | null; job: unknown; bufferMin: number | null;
 };
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -136,9 +145,10 @@ export function snapWithResources(snap: unknown, ids: readonly string[], job?: R
 }
 
 /**
- * แถวนัดของสาขาที่ถือทรัพยากรและซ้อน [from, to) — §4.6 (+ ครอบเพิ่มเพื่อความปลอดภัย):
+ * แถวนัดของสาขาที่ถือทรัพยากรและซ้อน [from, to) — §4.6 ตามมติ Q1/Q2 (นิยามเดียวกับตัววางคิว):
  *   สถานะถือช่อง = ไม่ใช่ CANCELLED/NO_SHOW/DONE · นาที = job.durationMin ?? endAt − startAt − (job.bufferMin ?? buffer ของบริการ)
- *   ARRIVED/IN_SERVICE: เริ่ม = min(เวลานัด, แผน, เริ่มจริง) · ปลาย = max(เวลานัด + นาที, แผน + นาที, เริ่มจริง + นาที, now)
+ *   เริ่ม = IN_SERVICE: startedAt · อื่น: plannedStartAt (แผนของตัววางคิว) ?? startAt · ปลาย = เริ่ม + นาที (ไม่ยืดถึง now · J5)
+ *   ARRIVED/IN_SERVICE ข้ามวัน: เห็นเท่าที่ jobRowsOf เห็น (เวลานัดไม่ก่อนวันก่อนหน้า)
  *   resourceId = แถวที่ถือชิ้นนี้เท่านั้น (ไม่ส่ง = ทุกชิ้น)
  */
 export async function readHolds(
@@ -149,7 +159,7 @@ export async function readHolds(
 ): Promise<HoldRow[]> {
   const rid = o.resourceId ?? null;
   const rows = await client.$queryRaw<RawHold[]>`
-    SELECT a."id", a."status"::text AS "status", a."startAt", a."endAt", a."plannedStartAt", a."startedAt", a."resourceId",
+    SELECT a."id", a."status"::text AS "status", a."kind"::text AS "kind", a."startAt", a."endAt", a."plannedStartAt", a."startedAt", a."resourceId",
            a."policySnapshot" -> 'job' AS "job", s."bufferMin"
     FROM "Appointment" a
     LEFT JOIN "BookingService" s ON s."id" = a."serviceId"
@@ -159,7 +169,7 @@ export async function readHolds(
       AND (${rid}::text IS NULL OR a."resourceId" = ${rid}
            OR (jsonb_typeof(a."policySnapshot" -> 'job' -> 'resourceIds') = 'array' AND jsonb_exists(a."policySnapshot" -> 'job' -> 'resourceIds', ${rid}::text)))
       AND LEAST(a."startAt", COALESCE(a."plannedStartAt", a."startAt"), COALESCE(a."startedAt", a."startAt")) < ${o.to}
-      AND (a."endAt" > ${o.from} OR a."status" IN ('ARRIVED', 'IN_SERVICE'))
+      AND a."startAt" >= ${new Date(o.from.getTime() - DAY_MS)}
     ORDER BY a."startAt", a."id"`;
   const out: HoldRow[] = [];
   for (const r of rows) {
@@ -169,25 +179,18 @@ export async function readHolds(
     const start = r.startAt.getTime();
     const buf = numOr(job.bufferMin, numOr(r.bufferMin, 0)) ?? 0;
     const dur = numOr(job.durationMin, null) !== null ? (job.durationMin as number) * MIN_MS : Math.max(0, r.endAt.getTime() - start - buf * MIN_MS);
-    let s = start;
-    let e = start + dur;
-    if (r.status === "ARRIVED" || r.status === "IN_SERVICE") {
-      for (const t of [r.plannedStartAt, r.startedAt]) {
-        if (!t) continue;
-        s = Math.min(s, t.getTime());
-        e = Math.max(e, t.getTime() + dur);
-      }
-      e = Math.max(e, o.nowMs);
-    }
-    if (e <= o.from.getTime() && s < o.from.getTime()) continue;
-    out.push({ id: r.id, ids, s, e });
+    const s = r.status === "IN_SERVICE" ? (r.startedAt ?? r.plannedStartAt ?? r.startAt).getTime() : (r.plannedStartAt ?? r.startAt).getTime();
+    const e = s + dur;
+    void start;
+    if (e <= o.from.getTime() || s >= o.to.getTime()) continue;
+    out.push({ id: r.id, ids, s, e, status: r.status, kind: r.kind });
   }
   return out;
 }
 
 /** ทรัพยากร (active) + ปิดซ่อม → รูปของด่าน (rank = ลำดับจากฐาน) */
 export function gateResources(rows: readonly ResRowLite[], blocks: readonly BlockRow[]): GateResource[] {
-  return rows
+  return sortForPick(rows)
     .map((r, rank) => ({ r, rank }))
     .filter((x) => x.r.active)
     .map(({ r, rank }) => ({
@@ -202,10 +205,11 @@ export function gateResources(rows: readonly ResRowLite[], blocks: readonly Bloc
 }
 
 /** ด่านพร้อมใช้: ทรัพยากร + ปิดซ่อม + แถวที่ถือ (ไม่นับ exclude = นัดที่กำลังย้าย/ปลุก/เริ่มตัวเอง) */
-export function gateBook(rows: readonly ResRowLite[], blocks: readonly BlockRow[], holds: readonly HoldRow[], exclude?: ReadonlySet<string>): ResBook {
+export function gateBook(rows: readonly ResRowLite[], blocks: readonly BlockRow[], holds: readonly HoldRow[], exclude?: ReadonlySet<string>, skipQueuedWalkIns = false): ResBook {
   const book = new ResBook(gateResources(rows, blocks));
   for (const h of holds) {
     if (exclude?.has(h.id)) continue;
+    if (skipQueuedWalkIns && h.kind === "WALKIN" && h.status === "QUEUED") continue; // Q2: walk-in ที่ยังรอ = ตัววางคิวย้ายให้ (แบบ J3)
     for (const id of h.ids) book.add(id, h.id, h.s, h.e);
   }
   return book;
@@ -224,13 +228,23 @@ export async function loadGate(
   client: RawReader,
   tenantId: string,
   unitId: string,
-  o: { lock: boolean; startMs: number; endMs: number; nowMs: number; exclude?: readonly string[] },
+  o: { lock: boolean; startMs: number; endMs: number; nowMs: number; exclude?: readonly string[]; skipQueuedWalkIns?: boolean },
 ): Promise<ResBook> {
   const rows = o.lock ? await lockUnitResourcesTx(client, tenantId, unitId) : await readUnitResources(client, tenantId, unitId);
   const w = dayWindow(o.startMs, o.endMs);
   const blocks = await readUnitBlocks(client, tenantId, unitId, w.from, w.to);
   const holds = await readHolds(client, tenantId, unitId, { from: w.from, to: w.to, nowMs: o.nowMs });
-  return gateBook(rows, blocks, holds, new Set(o.exclude ?? []));
+  return gateBook(rows, blocks, holds, new Set(o.exclude ?? []), o.skipQueuedWalkIns === true);
+}
+
+/** ชนิดที่ทางย้ายนัดต้องตรวจ (Q6) = ชนิดที่บริการประกาศ ∪ ชนิดของชิ้นที่แถวถืออยู่ (ลำดับ: ประกาศก่อน) */
+export function needKinds(kinds: readonly string[], held: readonly string[], book: ResBook): string[] {
+  const out = [...kinds];
+  for (const id of held) {
+    const k = book.get(id)?.kind;
+    if (k && !out.includes(k)) out.push(k);
+  }
+  return out;
 }
 
 /** ข้อผิดพลาดชั่วคราวของฐาน (deadlock · serialization · หมดเวลา tx) */

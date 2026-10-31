@@ -82,7 +82,8 @@ export class ResBook {
   }
 
   /** r ว่างสำหรับงาน [start, endService) (+ เวลาเก็บของ r) ไหม · ignore = jobId ที่ไม่นับ (เลื่อน/เริ่มตัวเอง) */
-  free(r: GateResource, start: number, endService: number, ignore?: string): boolean {
+  free(r: GateResource, start: number, endService: number, ignore?: string | ((jobId: string) => boolean)): boolean {
+    const skip = typeof ignore === "function" ? ignore : (j: string) => j === ignore;
     const { s, e } = this.spanOf(r, start, endService);
     for (const b of r.blocks) {
       if (b.startAt >= e) break;
@@ -92,7 +93,7 @@ export class ResBook {
     const hit: ResSpan[] = [];
     for (const u of xs) {
       if (u.s >= e) break;
-      if (u.e > s && u.jobId !== ignore) hit.push(u);
+      if (u.e > s && !skip(u.jobId)) hit.push(u);
     }
     if (hit.length < r.capacity) return true;
     if (r.capacity <= 1) return false;
@@ -111,7 +112,7 @@ export class ResBook {
    * เลือกชิ้นครบทุกชนิด (กติกา 4) สำหรับงาน [start, endService) · fixed = ชิ้นที่ต้องใช้ต่อชนิด (ข้อเท็จจริงของนัด) — ไม่ว่าง ⇒ null
    * คืน id ตามลำดับชนิด · ชนิดใดไม่มีชิ้นว่าง ⇒ null
    */
-  pick(kinds: readonly string[], start: number, endService: number, opts?: { ignore?: string; fixed?: ReadonlyMap<string, string>; prefer?: readonly string[] }): string[] | null {
+  pick(kinds: readonly string[], start: number, endService: number, opts?: { ignore?: string | ((jobId: string) => boolean); fixed?: ReadonlyMap<string, string>; prefer?: readonly string[] }): string[] | null {
     const out: string[] = [];
     for (const kind of kinds) {
       const want = opts?.fixed?.get(kind);

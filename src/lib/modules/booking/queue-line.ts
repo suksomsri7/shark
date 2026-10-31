@@ -31,7 +31,7 @@ import {
   runPlanner,
   skippedOf,
 } from "./planner-run";
-import { loadGate, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources"; // SVC B.13
+import { loadGate, needKinds, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources"; // SVC B.13
 import { bookingPhoneKey, isRealDateStr, linkPartyAfterCommit, staffDayProfiles } from "./service";
 import { localToUtc } from "./slots";
 import { staffServiceTerms } from "./staff-hours";
@@ -536,12 +536,14 @@ export async function callJob(ctx: LineCtx, appointmentId: string, opts?: { now?
 export async function startJob(ctx: LineCtx, appointmentId: string, opts?: { now?: Date }): Promise<JobResult> {
   const now = nowOf(opts);
   if (!okCtx(ctx) || typeof appointmentId !== "string" || !appointmentId) return jobFail("NOT_FOUND", R.JOB_NOT_FOUND);
-  const pre = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { kind: true, serviceId: true } });
+  const pre = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { kind: true, serviceId: true, resourceId: true, policySnapshot: true } });
   const kind = pre?.kind;
   if (!kind || !pre) return jobFail("NOT_FOUND", R.JOB_NOT_FOUND);
-  // SVC B.13 ▸ walk-in ที่ใช้ทรัพยากร: ชนิด + buffer ของบริการ อ่านก่อน tx (ห้าม connection ที่สองใต้ล็อก) ◂
-  const kinds = kind === "WALKIN" ? ((await resourceKindsOf(ctx, [pre.serviceId])).get(pre.serviceId) ?? []) : [];
-  const svcBuf = kinds.length ? ((await prisma.bookingService.findFirst({ where: { id: pre.serviceId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { bufferMin: true } }))?.bufferMin ?? 0) : 0;
+  // SVC B.13 ▸ งานที่ใช้ทรัพยากร (walk-in และนัด · Q9): ชนิด + buffer ของบริการ อ่านก่อน tx (ห้าม connection ที่สองใต้ล็อก) ·
+  //   ทางที่ย้ายช่วงถือ ⇒ ล็อกสาขา (advisory → หมอ → ทรัพยากร) ก่อนแถวนัด ◂
+  const kinds = (await resourceKindsOf(ctx, [pre.serviceId])).get(pre.serviceId) ?? [];
+  const usesRes = kinds.length > 0 || resourceIdsOfRow(pre.resourceId, pre.policySnapshot).length > 0;
+  const svcBuf = usesRes ? ((await prisma.bookingService.findFirst({ where: { id: pre.serviceId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { bufferMin: true } }))?.bufferMin ?? 0) : 0;
   return jobTx(ctx, appointmentId, now, async (tx, a) => {
     if (a.status !== "ARRIVED" && a.status !== "QUEUED") return jobFail("BAD_STATE", R.JOB_BAD_STATE);
     const data: Prisma.AppointmentUncheckedUpdateManyInput = { status: "IN_SERVICE", startedAt: now, plannedStartAt: now, plannedStaffId: a.staffId };
@@ -560,23 +562,22 @@ export async function startJob(ctx: LineCtx, appointmentId: string, opts?: { now
           )
         LIMIT 1`;
       if (clash.length) return jobFail("CLASH", R.CLASH);
-      // SVC B.13 ▸ J3 + ทรัพยากร: ช่วงใหม่ [now, now+นาที) ต้องมีชิ้นว่างครบชนิด (ไม่นับตัวเอง) — ชิ้นเดิมว่าง ⇒ คง · ไม่งั้นชิ้นอื่นชนิดเดียวกัน ·
-      //   ไม่มี ⇒ CLASH ไม่เขียนอะไร · ได้ชิ้นใหม่ ⇒ เขียนใน CAS เดียว (ทรัพยากรล็อกแล้วใน lockUnitTx) ◂
-      const held = resourceIdsOfRow(a.resourceId, a.policySnapshot);
-      if (kinds.length || held.length) {
-        const job = jobOf(a.policySnapshot);
-        const durMs = (job.durationMin ?? Math.max(0, (a.endAt.getTime() - a.startAt.getTime()) / MIN_MS - (job.bufferMin ?? svcBuf))) * MIN_MS;
-        const book = await loadGate(tx, ctx.tenantId, ctx.unitId, { lock: false, startMs: now.getTime(), endMs: now.getTime() + durMs, nowMs: now.getTime(), exclude: [a.id] });
-        const need = kinds.length ? kinds : held.map((id) => book.get(id)?.kind).filter((k): k is string => !!k);
-        const ids = book.pick(need, now.getTime(), now.getTime() + durMs, { prefer: held });
-        if (!ids) return jobFail("CLASH", R.CLASH_RES);
-        if (ids.join("|") !== held.join("|")) {
-          data.resourceId = ids[0] ?? null;
-          data.policySnapshot = snapWithResources(a.policySnapshot, ids);
-        }
-      }
       data.startAt = now;
       data.endAt = end;
+    }
+    // SVC B.13 ▸ J3 + Q9: ช่วงถือใหม่ [now, now+นาที) (walk-in และนัดที่เริ่มนอกช่วงเดิม) ต้องมีชิ้นว่างครบชนิด — ไม่นับตัวเอง ·
+    //   ไม่นับ walk-in ที่ยังรอ (Q2 · ตัววางคิวย้ายให้หลัง commit) · ชิ้นเดิมว่าง ⇒ คง · ไม่งั้นชิ้นอื่นชนิดเดียวกัน · ไม่มี ⇒ CLASH ไม่เขียนอะไร ◂
+    if (usesRes) {
+      const held = resourceIdsOfRow(a.resourceId, a.policySnapshot);
+      const job = jobOf(a.policySnapshot);
+      const durMs = (job.durationMin ?? Math.max(0, (a.endAt.getTime() - a.startAt.getTime()) / MIN_MS - (job.bufferMin ?? svcBuf))) * MIN_MS;
+      const book = await loadGate(tx, ctx.tenantId, ctx.unitId, { lock: false, startMs: now.getTime(), endMs: now.getTime() + durMs, nowMs: now.getTime(), exclude: [a.id], skipQueuedWalkIns: true });
+      const ids = book.pick(needKinds(kinds, held, book), now.getTime(), now.getTime() + durMs, { prefer: held });
+      if (!ids) return jobFail("CLASH", R.CLASH_RES);
+      if (ids.join("|") !== held.join("|")) {
+        data.resourceId = ids[0] ?? null;
+        data.policySnapshot = snapWithResources(a.policySnapshot, ids);
+      }
     }
     if (!(await casAppt(tx, ctx, a, data))) return jobFail("LOST_RACE", R.LOST_RACE);
     let ticketId: string | null = null;
@@ -586,7 +587,7 @@ export async function startJob(ctx: LineCtx, appointmentId: string, opts?: { now
     }
     await emit(tx, ctx, "booking.started", `booking.started#${a.id}`, evPayload(a, { ticketId: ticketId ?? a.queueTicketId }));
     return { ok: true };
-  }, { lockUnit: kind === "WALKIN" });
+  }, { lockUnit: kind === "WALKIN" || usesRes });
 }
 
 /**
@@ -740,10 +741,11 @@ export async function rescheduleByShop(
     const cleared = withoutManualHold(a.policySnapshot);
     if (cleared !== undefined) data.policySnapshot = cleared;
     // SVC B.13 ▸ ด่านทรัพยากร (ไม่นับตัวเอง): ชิ้นเดิมว่างที่เวลาใหม่ ⇒ คง · ไม่งั้นเลือกใหม่ชนิดเดียวกัน · ไม่มี ⇒ FULL ◂
-    if (kinds.length) {
+    const held = resourceIdsOfRow(a.resourceId, a.policySnapshot);
+    if (kinds.length || held.length) {
       const durMs = terms.durationMin * MIN_MS;
       const book = await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + durMs, nowMs: now.getTime(), exclude: [a.id] });
-      const ids = book.pick(kinds, startAt.getTime(), startAt.getTime() + durMs, { prefer: resourceIdsOfRow(a.resourceId, a.policySnapshot) });
+      const ids = book.pick(needKinds(kinds, held, book), startAt.getTime(), startAt.getTime() + durMs, { prefer: held }); // Q6
       if (!ids) return fail("FULL", R.FULL_RES);
       data.resourceId = ids[0];
       data.policySnapshot = snapWithResources(cleared ?? a.policySnapshot, ids, { durationMin: terms.durationMin, bufferMin: buf });

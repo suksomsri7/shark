@@ -338,14 +338,16 @@ export async function planAndWriteTx(
       });
       if (w.count === 0) continue; // งานเพิ่งเปลี่ยนสถานะ ⇒ ไม่แตะบัตรด้วย (m-1)
     }
-    // SVC B.13 ▸ นัดที่ยังไม่ผูกทรัพยากรแต่แผนผูกให้ได้ (resourceShort=false) ⇒ เขียน (CAS resourceId IS NULL + สถานะ) ·
-    //   resourceShort=true ⇒ ไม่เขียน (ร้านเห็นบนจอ B.14) · ข้อเท็จจริงที่ถืออยู่ไม่ถูกแตะ ◂
-    if (placed && r.kind === "BOOKED" && r.resourceId === null && !pj!.resourceShort && pj!.resourceIds.length
-      && (kindsOf.get(r.serviceId) ?? []).length && resourceIdsOfRow(null, r.policySnapshot).length === 0) {
-      await tx.appointment.updateMany({
-        where: { id: r.id, tenantId: ctx.tenantId, unitId: ctx.unitId, status: r.status, resourceId: null },
-        data: { resourceId: pj!.resourceIds[0], policySnapshot: snapWithResources(r.policySnapshot, pj!.resourceIds) },
-      });
+    // SVC B.13 ▸ นัดที่แผนผูก/ย้ายชิ้นให้ (ยังไม่ผูก · ชิ้นเดิมไม่ว่างเมื่อเวลาเลื่อน (Q10) · เข้าแถวใหม่แบบ walk-in (Q1 ข)) ⇒ เขียนชิ้นตามแผน
+    //   ใน CAS สถานะ + resourceId ที่อ่าน (ใต้ล็อกทรัพยากรของ lockUnitTx) · resourceShort=true ⇒ ไม่เขียน (จอ B.14 เห็น) ◂
+    if (placed && r.kind === "BOOKED" && !pj!.resourceShort && pj!.resourceIds.length && (kindsOf.get(r.serviceId) ?? []).length) {
+      const cur = resourceIdsOfRow(r.resourceId, r.policySnapshot);
+      if (cur.join("|") !== pj!.resourceIds.join("|") || (r.resourceId ?? null) !== pj!.resourceIds[0]) {
+        await tx.appointment.updateMany({
+          where: { id: r.id, tenantId: ctx.tenantId, unitId: ctx.unitId, status: r.status, resourceId: r.resourceId },
+          data: { resourceId: pj!.resourceIds[0], policySnapshot: snapWithResources(r.policySnapshot, pj!.resourceIds) },
+        });
+      }
     }
     if (r.queueTicketId && etaOf.has(r.queueTicketId) && !sameTime(etaOf.get(r.queueTicketId) ?? null, pStart)) {
       await tx.queueTicket.updateMany({

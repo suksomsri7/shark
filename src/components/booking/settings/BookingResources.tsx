@@ -120,13 +120,18 @@ function ResourceForm({
   );
 }
 
+type WinDraft = { key: number; from: string; until: string; note: string };
+
+/** Q8: แก้ช่วงปิดซ่อมได้หลายช่วง (ไม่เกิน 20) — บันทึกทั้งชุด · ช่วงอื่นไม่หาย · [] = ปลดทั้งหมด */
 function MaintenanceForm({ row, onSave, onCancel }: { row: ResourceViewRow; onSave: (ws: { startAt: string; endAt: string | null; note?: string }[]) => Promise<string | null>; onCancel: () => void }) {
-  const first = row.maintenance[0];
-  const [from, setFrom] = useState(toLocal(first?.startAt ?? null));
-  const [until, setUntil] = useState(toLocal(first?.endAt ?? null));
-  const [note, setNote] = useState(first?.note ?? "");
+  const [wins, setWins] = useState<WinDraft[]>(() =>
+    row.maintenance.length
+      ? row.maintenance.map((w, i) => ({ key: i, from: toLocal(w.startAt), until: toLocal(w.endAt), note: w.note ?? "" }))
+      : [{ key: 0, from: "", until: "", note: "" }],
+  );
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const patch = (key: number, p: Partial<WinDraft>) => setWins((xs) => xs.map((w) => (w.key === key ? { ...w, ...p } : w)));
   const run = async (ws: { startAt: string; endAt: string | null; note?: string }[]) => {
     setBusy(true);
     setErr(null);
@@ -135,38 +140,55 @@ function MaintenanceForm({ row, onSave, onCancel }: { row: ResourceViewRow; onSa
     if (e) setErr(e);
   };
   const save = () => {
-    const s = toIso(from);
-    const e = until.trim() ? toIso(until) : null;
-    if (!s || (until.trim() && !e)) {
-      setErr("กรอกวันเวลาเริ่ม (และวันเวลาเปิดใช้อีกครั้ง ถ้ามี) ให้ครบ");
-      return;
+    const out: { startAt: string; endAt: string | null; note?: string }[] = [];
+    for (const w of wins) {
+      if (!w.from.trim() && !w.until.trim() && !w.note.trim()) continue; // แถวว่าง = ไม่นับ
+      const s = toIso(w.from);
+      const e = w.until.trim() ? toIso(w.until) : null;
+      if (!s || (w.until.trim() && !e)) {
+        setErr("กรอกวันเวลาเริ่ม (และวันเวลาเปิดใช้อีกครั้ง ถ้ามี) ให้ครบทุกช่วง");
+        return;
+      }
+      out.push({ startAt: s, endAt: e, ...(w.note.trim() ? { note: w.note.trim() } : {}) });
     }
-    void run([{ startAt: s, endAt: e, ...(note.trim() ? { note: note.trim() } : {}) }]);
+    void run(out);
   };
   return (
     <div data-bq-maintenance-form="" className="flex flex-col gap-3 rounded-xl bg-[color:var(--color-surface-2)] p-3">
-      <div className="grid gap-2 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 text-xs">
-          <span className={MUTED}>ปิดซ่อมตั้งแต่</span>
-          <input className={INPUT} type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          <span className={MUTED}>เปิดใช้อีกครั้ง (ว่าง = จนกว่าจะปลด)</span>
-          <input className={INPUT} type="datetime-local" value={until} onChange={(e) => setUntil(e.target.value)} />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          <span className={MUTED}>หมายเหตุ</span>
-          <input className={INPUT} maxLength={100} value={note} onChange={(e) => setNote(e.target.value)} />
-        </label>
-      </div>
-      <p className={cx("text-xs", MUTED)}>ช่วงที่ทับนัดที่จองไว้แล้วจะบันทึกไม่ได้ — ย้ายนัดเหล่านั้นก่อน</p>
+      {wins.map((w, i) => (
+        <div key={w.key} data-bq-maintenance-window={String(i)} className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+          <label className="flex flex-col gap-1 text-xs">
+            <span className={MUTED}>ปิดซ่อมตั้งแต่</span>
+            <input className={INPUT} type="datetime-local" value={w.from} onChange={(e) => patch(w.key, { from: e.target.value })} />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            <span className={MUTED}>เปิดใช้อีกครั้ง (ว่าง = จนกว่าจะปลด)</span>
+            <input className={INPUT} type="datetime-local" value={w.until} onChange={(e) => patch(w.key, { until: e.target.value })} />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            <span className={MUTED}>หมายเหตุ</span>
+            <input className={INPUT} maxLength={100} value={w.note} onChange={(e) => patch(w.key, { note: e.target.value })} />
+          </label>
+          <button type="button" className={BTN_GHOST} aria-label={`ลบช่วงที่ ${i + 1}`} onClick={() => setWins((xs) => xs.filter((x) => x.key !== w.key))}>
+            ลบช่วง
+          </button>
+        </div>
+      ))}
+      {wins.length < 20 && (
+        <div>
+          <button type="button" className={BTN_GHOST} onClick={() => setWins((xs) => [...xs, { key: Math.max(-1, ...xs.map((x) => x.key)) + 1, from: "", until: "", note: "" }])}>
+            + เพิ่มช่วงปิดซ่อม
+          </button>
+        </div>
+      )}
+      <p className={cx("text-xs", MUTED)}>ช่วงที่ทับนัดที่จองไว้แล้วจะบันทึกไม่ได้ — ย้ายนัดเหล่านั้นก่อน · บันทึกแทนทั้งชุด</p>
       <div className="flex flex-wrap gap-2">
         <button type="button" className={BTN_PRIMARY} disabled={busy} onClick={save}>
-          บันทึกปิดซ่อม
+          บันทึกช่วงปิดซ่อม
         </button>
         {row.maintenance.length > 0 && (
           <button type="button" className={BTN_GHOST} disabled={busy} onClick={() => void run([])}>
-            ปลดปิดซ่อม
+            ปลดปิดซ่อมทั้งหมด
           </button>
         )}
         <button type="button" className={BTN_GHOST} onClick={onCancel}>

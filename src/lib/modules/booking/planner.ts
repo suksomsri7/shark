@@ -276,28 +276,12 @@ function kindsOfJob(ctx: Ctx, job: PlanJob): string[] {
 }
 
 /**
- * ช่วงที่งานที่วางแล้วถือทรัพยากร (ก่อนบวกเวลาเก็บ) — ต้องครอบช่วงที่ฐานนับ (§4.6) เสมอ:
- * นัด = ตั้งแต่ min(เวลานัด, เริ่มตามแผน) ถึง max(ปลายตามแผน, เวลานัด + นาที) ⇒ walk-in ที่วางไม่ทับแถวนัดในฐาน
- */
-function holdOf(ctx: Ctx, job: PlanJob, pj: PlannedJob): { s: number; e: number } | null {
-  if (pj.startAt === null || pj.endAt === null) return null;
-  let s = pj.startAt;
-  let e = pj.endAt;
-  if (job.kind === "BOOKED" && job.startAt !== null) {
-    const st = pj.staffId ? ctx.staffById.get(pj.staffId) : undefined;
-    s = Math.min(s, job.startAt);
-    e = Math.max(e, job.startAt + durMs(ctx, job, st));
-  }
-  return { s, e };
-}
-
-/**
  * จุดลงเร็วสุด ≥ lower ที่ผ่านทั้งกติกาหมอ (fitsAt) และทรัพยากรครบชนิด (§4 ข้อ 5ค) —
  * จุดผู้สมัคร = จุดของหมอ (lower · ต้นหน้าต่าง · จบงาน+ช่อง) ∪ จุดที่ทรัพยากรเพิ่งว่าง (resPts ≥ lower)
  */
 function earliestFitRes(
   ctx: Ctx, staff: PlanStaff, d: number, g: number, lower: number,
-  kinds: readonly string[], fixed: ReadonlyMap<string, string>, resPts: readonly number[],
+  kinds: readonly string[], fixed: ReadonlyMap<string, string>, resPts: readonly number[], prefer?: readonly string[],
 ): { t: number; ids: string[] } | null {
   const book = ctx.book!;
   const slots = slotsOf(ctx, staff.id);
@@ -311,7 +295,7 @@ function earliestFitRes(
     if (t === prev) continue;
     prev = t;
     if (!fitsAt(ctx, staff, slots, t, d, g)) continue;
-    const ids = book.pick(kinds, t, t + d, { fixed });
+    const ids = book.pick(kinds, t, t + d, { fixed, prefer });
     if (ids) return { t, ids };
   }
   return null;
@@ -431,15 +415,114 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
   const pendingOn = (staffId: string, from: number) =>
     locked.slice(from).filter((x) => x.job.staffId === staffId);
 
+  // SVC B.13 ▸ สมุดทรัพยากรของงานที่เวลาถูกกำหนด (Q1 · Q10 · ผู้คุม 31 ต.ค.) ◂
+  //   ช่วงถือ = ช่วงตามแผน [เริ่มตามแผน, +นาที) + เวลาเก็บ — นิยามเดียวกับฐาน (readHolds: plannedStartAt ?? startAt · IN_SERVICE = startedAt)
+  //   ฐานของสมุด: กำลังทำ (ข้อเท็จจริง) · นัดที่ตัววางคิวปล่อยช่อง (ฐานยังนับที่เวลานัด) · นัดที่ถูกดึงขึ้นเร็ว (pinned) ·
+  //   "จองอ่อน" ของนัดล็อกที่ถือชิ้นอยู่ (SOFT — กันนัดที่ยังไม่ผูกไปแย่ง แต่ไม่กันนัดที่มาก่อนตามลำดับเวลา)
+  const resOf = new Map<string, string[]>();
+  const shortOf = new Set<string>();
+  const jobById = new Map(jobs.map((j) => [j.id, j]));
+  const SOFT = "\u0001";
+  const isSoft = (id: string) => id.startsWith(SOFT);
+  type Pin = { ids: string[]; s: number; e: number };
+  const resetBook = (pinned: ReadonlyMap<string, Pin>) => {
+    if (!ctx.book) return;
+    const book = new ResBook(resIn);
+    ctx.book = book;
+    resOf.clear();
+    shortOf.clear();
+    for (const pj of out.values()) {
+      const job = jobById.get(pj.jobId);
+      if (!job) continue;
+      if (pj.state === "IN_SERVICE" && pj.startAt !== null && pj.endAt !== null) {
+        const kinds = kindsOfJob(ctx, job);
+        if (!kinds.length) {
+          for (const id of new Set(job.resourceIds ?? [])) if (book.get(id)) book.add(id, job.id, pj.startAt, pj.endAt);
+          continue;
+        }
+        const facts = factsByKind(book, kinds, job.resourceIds);
+        const missing = kinds.filter((k) => !facts.has(k));
+        const got = missing.length ? book.pick(missing, pj.startAt, pj.endAt) : [];
+        if (got) missing.forEach((k, i) => facts.set(k, got[i]));
+        for (const id of facts.values()) book.add(id, job.id, pj.startAt, pj.endAt);
+        if (got) resOf.set(job.id, kinds.map((k) => facts.get(k)!));
+        else shortOf.add(job.id);
+      } else if ((pj.state === "RELEASED_LATE" || pj.state === "NO_SHOW_DUE") && job.startAt !== null && job.resourceIds?.length) {
+        // ยังไม่มา · ตัววางคิวปล่อยช่อง แต่ฐานยังนับว่าถือ [เวลานัด, +นาที) จนกว่าจะ NO_SHOW/ยกเลิก ⇒ ห้ามวางงานอื่นทับเกินความจุ
+        const st = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
+        const e = job.startAt + durMs(ctx, job, st);
+        for (const id of new Set(job.resourceIds)) if (book.get(id)) book.add(id, job.id, job.startAt, e);
+      }
+    }
+    for (const [id, p] of pinned) {
+      for (const rid of p.ids) book.add(rid, id, p.s, p.e);
+      resOf.set(id, [...p.ids]);
+    }
+    for (const { job } of locked) {
+      if (pinned.has(job.id) || !job.resourceIds?.length) continue;
+      const st = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
+      const e = job.startAt! + durMs(ctx, job, st);
+      const kinds = kindsOfJob(ctx, job);
+      if (!kinds.length) {
+        // บริการไม่ประกาศชนิดแต่แถวยังถือชิ้น ⇒ ข้อเท็จจริงที่เวลานัด (ผลยังเป็น [] · §4.8)
+        for (const id of new Set(job.resourceIds)) if (book.get(id)) book.add(id, job.id, job.startAt!, e);
+        continue;
+      }
+      // ช่างไม่อยู่ในรายชื่อวันนี้ = เวลาคงที่ ⇒ แข็งตั้งแต่ต้น · อื่น = จองอ่อน (วางจริงตามลำดับเวลาใน placeLocked)
+      for (const id of factsByKind(book, kinds, job.resourceIds).values()) book.add(id, st ? SOFT + job.id : job.id, job.startAt!, e);
+    }
+  };
+
+  /**
+   * ทรัพยากรของนัดล็อกเมื่อวางที่ start (Q10): ชิ้นที่ถือว่าง ⇒ คง · ไม่ว่าง ⇒ ชิ้นอื่นชนิดเดียวกัน · ไม่มี ⇒ เลื่อนไปจุดที่ห้องว่าง
+   * (ตรวจกับงานที่วางก่อนตามลำดับเวลาเท่านั้น — นัดถัดไปของห้องจะถูกเลื่อนเมื่อถึงคิวของมัน) · เลื่อนไม่ได้ ⇒ ชิ้นเดิม + resourceShort
+   * นัดที่ยังไม่ผูก ⇒ ผูกที่เวลาเดิม (ห้ามแย่งจองอ่อนของนัดอื่น) · ผูกไม่ได้ ⇒ resourceShort เวลาไม่ขยับ (§4.5ก)
+   */
+  const placeRes = (job: PlanJob, s: PlanStaff | undefined, start: number, d: number): number => {
+    const book = ctx.book;
+    const kinds = kindsOfJob(ctx, job);
+    if (!book || !kinds.length) return start;
+    book.remove(SOFT + job.id);
+    book.remove(job.id);
+    const facts = factsByKind(book, kinds, job.resourceIds);
+    if (facts.size === 0) {
+      const got = book.pick(kinds, start, start + d);
+      if (got) {
+        for (const id of got) book.add(id, job.id, start, start + d);
+        resOf.set(job.id, got);
+      } else shortOf.add(job.id);
+      return start;
+    }
+    let t = start;
+    for (let iter = 0; iter < 64; iter++) {
+      const ids = book.pick(kinds, t, t + d, { fixed: facts, ignore: isSoft }) ?? book.pick(kinds, t, t + d, { ignore: isSoft, prefer: [...facts.values()] });
+      if (ids) {
+        for (const id of ids) book.add(id, job.id, t, t + d);
+        resOf.set(job.id, ids);
+        return t;
+      }
+      if (!s) break;
+      const next = book.releasePoints(kinds, t).find((x) => x > t);
+      if (next === undefined) break;
+      t = startAfterBusy(ctx, s, next, d);
+    }
+    // ข้อเท็จจริงชนะ (ชิ้นเดิม ณ เวลาเดิม) · จอ B.14 เห็น resourceShort
+    for (const id of facts.values()) book.add(id, job.id, start, start + d);
+    shortOf.add(job.id);
+    return start;
+  };
+
   const placeLocked = (fixed: Set<string>) => locked.forEach(({ job, late }, idx) => {
     if (fixed.has(job.id)) return;
     const startAt = job.startAt!;
     const s0 = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
     const arrived = job.checkedInAt !== null || job.status === "ARRIVED";
     const placeOn = (s: PlanStaff, start: number, reason: PlanReason) => {
-      const endAt = start + durMs(ctx, job, s);
-      occupy(ctx, s.id, { jobId: job.id, startAt: start, endAt, gapAfter: gapMs(ctx, job, s), booking: true });
-      out.set(job.id, { ...base(job), staffId: s.id, startAt: start, endAt, state: "SCHEDULED", reason, late });
+      const d = durMs(ctx, job, s);
+      const t = placeRes(job, s, start, d); // SVC B.13 ▸ Q10 ◂
+      const endAt = t + d;
+      occupy(ctx, s.id, { jobId: job.id, startAt: t, endAt, gapAfter: gapMs(ctx, job, s), booking: true });
+      out.set(job.id, { ...base(job), staffId: s.id, startAt: t, endAt, state: "SCHEDULED", reason: t > start ? "BOOKED_DELAYED" : reason, late });
     };
 
     // เริ่มจริงบนช่างเดิม = max(เวลานัด, now, จบงานก่อนหน้า + ช่องหลังงาน) · ช่างเดิมไม่มีหน้าต่าง/ทำไม่ได้ = คงเวลานัด
@@ -464,69 +547,14 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
 
     if (!s0) {
       // ช่างไม่อยู่ในรายชื่อวันนี้ — คงเวลานัดไว้ ไม่กินเวลาใคร
+      placeRes(job, undefined, startAt, d0);
       out.set(job.id, { ...base(job), startAt, endAt: startAt + d0, state: "SCHEDULED", reason: "STAFF_UNAVAILABLE", late });
       return;
     }
     placeOn(s0, start, !available ? "STAFF_UNAVAILABLE" : start > startAt ? "BOOKED_DELAYED" : "BOOKED_ON_TIME");
   });
+  resetBook(new Map());
   placeLocked(new Set());
-
-  // SVC B.13 ▸ 3.5) ทรัพยากรของงานที่วางแล้ว (กำลังทำ + นัดล็อก) — ข้อเท็จจริงก่อน (ชิ้นที่ถืออยู่ · ล้นได้) แล้วผูกนัดที่ยังไม่มี
-  //   ตามลำดับ (เริ่ม, id) · ผูกไม่ได้ ⇒ resourceShort (เวลาไม่ขยับ) · pinned = นัดที่ถูกดึงขึ้นเร็ว (ใช้ชิ้นที่เลือกแล้ว) ◂
-  const resOf = new Map<string, string[]>();
-  const shortOf = new Set<string>();
-  const jobById = new Map(jobs.map((j) => [j.id, j]));
-  const bookFixed = (pinned: ReadonlyMap<string, string[]>) => {
-    if (!ctx.book) return;
-    ctx.book = new ResBook(resIn);
-    resOf.clear();
-    shortOf.clear();
-    const placed: { job: PlanJob; pj: PlannedJob; hold: { s: number; e: number } }[] = [];
-    for (const pj of out.values()) {
-      if (pj.state !== "SCHEDULED" && pj.state !== "IN_SERVICE") continue;
-      const job = jobById.get(pj.jobId);
-      const hold = job ? holdOf(ctx, job, pj) : null;
-      if (job && hold) placed.push({ job, pj, hold });
-    }
-    // นัดที่ตัววางคิวปล่อยช่อง (สาย/ถึงเวลาไม่มา) ยังถือชิ้นในฐานจนกว่าจะ NO_SHOW/ยกเลิก (§4.6) ⇒ walk-in ห้ามลงทับชิ้นนั้น
-    for (const pj of out.values()) {
-      if (pj.state !== "RELEASED_LATE" && pj.state !== "NO_SHOW_DUE") continue;
-      const job = jobById.get(pj.jobId);
-      if (!job || job.startAt === null || !job.resourceIds?.length) continue;
-      const st = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
-      const e = job.startAt + durMs(ctx, job, st);
-      for (const id of new Set(job.resourceIds)) if (ctx.book.get(id)) ctx.book.add(id, job.id, job.startAt, e);
-    }
-    placed.sort((a, b) => a.hold.s - b.hold.s || cmpStr(a.job.id, b.job.id));
-    const need: typeof placed = [];
-    for (const x of placed) {
-      const kinds = kindsOfJob(ctx, x.job);
-      const given = pinned.get(x.job.id) ?? x.job.resourceIds;
-      if (!kinds.length) {
-        // บริการไม่ประกาศชนิดแต่แถวยังถือชิ้นอยู่ (ประกาศทีหลัง/ถอนทีหลัง) ⇒ นับเป็นข้อเท็จจริง · ผลยังเป็น [] (§4.8)
-        for (const id of given ?? []) if (ctx.book.get(id)) ctx.book.add(id, x.job.id, x.hold.s, x.hold.e);
-        continue;
-      }
-      const facts = factsByKind(ctx.book, kinds, given);
-      for (const id of facts.values()) ctx.book.add(id, x.job.id, x.hold.s, x.hold.e);
-      resOf.set(x.job.id, kinds.flatMap((k) => (facts.has(k) ? [facts.get(k)!] : [])));
-      if (facts.size < kinds.length) need.push(x);
-    }
-    for (const x of need) {
-      const kinds = kindsOfJob(ctx, x.job);
-      const facts = factsByKind(ctx.book, kinds, pinned.get(x.job.id) ?? x.job.resourceIds);
-      const missing = kinds.filter((k) => !facts.has(k));
-      const got = ctx.book.pick(missing, x.hold.s, x.hold.e, { prefer: [] });
-      if (!got) {
-        shortOf.add(x.job.id);
-        continue;
-      }
-      missing.forEach((k, i) => facts.set(k, got[i]));
-      for (const id of got) ctx.book.add(id, x.job.id, x.hold.s, x.hold.e);
-      resOf.set(x.job.id, kinds.map((k) => facts.get(k)!));
-    }
-  };
-  bookFixed(new Map());
 
   // 3) นัดก่อนเสมอ: นัดที่มาแล้วดึงขึ้นเร็วได้บนช่างเดิม (ก่อนวาง walk-in ทุกใบ)
   if (settings.queueOrder === "APPOINTMENT_FIRST") {
@@ -539,16 +567,17 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
       if (!s) continue;
       release(ctx, s.id, job.id);
       const d = durMs(ctx, job, s), g = gapMs(ctx, job, s);
-      // SVC B.13 ▸ ดึงขึ้นเร็วได้เมื่อชิ้นที่ถือ (หรือผูกไว้) ว่างที่เวลาใหม่ด้วย · ผูกไม่ได้ (resourceShort) ⇒ ไม่ดึง ◂
+      // SVC B.13 ▸ ดึงขึ้นเร็วได้เมื่อมีชิ้นว่างที่เวลาใหม่ด้วย (ชิ้นเดิมก่อน) · resourceShort ⇒ ไม่ดึง ◂
       const kinds = kindsOfJob(ctx, job);
       let t: number | null;
+      let pulledIds: string[] | null = null;
       if (kinds.length && ctx.book) {
         if (shortOf.has(job.id)) t = null;
         else {
-          const fixed = factsByKind(ctx.book, kinds, resOf.get(job.id));
           ctx.book.remove(job.id);
-          const r = earliestFitRes(ctx, s, d, g, now, kinds, fixed, ctx.book.releasePoints(kinds, now));
+          const r = earliestFitRes(ctx, s, d, g, now, kinds, new Map(), ctx.book.releasePoints(kinds, now), resOf.get(job.id));
           t = r ? r.t : null;
+          pulledIds = r ? r.ids : null;
         }
       } else t = earliestFit(ctx, s, d, g, now);
       const pulled = t !== null && t < Math.min(job.startAt!, pj.startAt);
@@ -557,22 +586,25 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
       if (pulled) {
         early.add(job.id);
         out.set(job.id, { ...pj, startAt: start, endAt: start + d, reason: "BOOKED_EARLY" });
+        if (pulledIds) resOf.set(job.id, pulledIds);
       }
-      if (kinds.length && ctx.book && !shortOf.has(job.id)) {
-        const hold = holdOf(ctx, job, out.get(job.id)!);
-        if (hold) for (const id of resOf.get(job.id) ?? []) ctx.book.add(id, job.id, hold.s, hold.e);
-      }
+      if (kinds.length && ctx.book && !shortOf.has(job.id)) for (const id of resOf.get(job.id) ?? []) ctx.book.add(id, job.id, start, start + d);
     }
     // ช่องเดิมของนัดที่ถูกดึงว่างแล้ว ⇒ วางนัดที่เหลือใหม่ (นัดที่ถูกดันเพราะช่องนั้นจะได้กลับมาตรงเวลา)
     if (early.size > 0) {
+      const pins = new Map<string, Pin>();
+      for (const id of early) {
+        const pj = out.get(id)!;
+        pins.set(id, { ids: resOf.get(id) ?? [], s: pj.startAt!, e: pj.endAt! });
+      }
       for (const { job } of locked) {
         if (early.has(job.id)) continue;
         const sid = out.get(job.id)?.staffId;
         if (sid) release(ctx, sid, job.id);
       }
+      resetBook(pins);
       placeLocked(early);
     }
-    if (early.size > 0) bookFixed(new Map([...early].map((id) => [id, resOf.get(id) ?? []])));
   }
 
   // 4) walk-in ทีละใบตามลำดับ · ใบก่อนวางก่อนแล้วไม่ถูกขยับ
@@ -589,7 +621,9 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
     const kinds = kindsOfJob(ctx, job);
     const book = kinds.length ? ctx.book : null;
     const missingKind = !!book && kinds.some((k) => !book.hasKind(k));
-    const fixed = book && job.kind === "BOOKED" ? factsByKind(book, kinds, job.resourceIds) : new Map<string, string>();
+    // Q1 (ข): แถวที่เข้าแถวใหม่ (มาสาย/ถูกข้าม) ไม่ผูกชิ้นเดิมตายตัว — เลือกชิ้นว่างแบบ walk-in (ชิ้นเดิมก่อนถ้าว่าง)
+    const fixed = new Map<string, string>();
+    const prefer = job.kind === "BOOKED" ? job.resourceIds : undefined;
     const resPts = book && !missingKind ? book.releasePoints(kinds, now) : [];
     if (job.id === quoteJobId && quoteInfo) {
       quoteInfo.missingKind = missingKind;
@@ -617,7 +651,7 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
         let t: number | null;
         let ids: string[] = [];
         if (book) {
-          const r = earliestFitRes(ctx, s, d, g, lower, kinds, fixed, resPts);
+          const r = earliestFitRes(ctx, s, d, g, lower, kinds, fixed, resPts, prefer);
           t = r ? r.t : null;
           ids = r ? r.ids : [];
         } else t = earliestFit(ctx, s, d, g, lower);

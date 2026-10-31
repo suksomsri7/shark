@@ -15,7 +15,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import * as queue from "@/lib/modules/queue/service"; // SVC B.4 ▸ บัตรเดินตามงาน (เส้น booking→queue · ทิศเดียว) ◂
 import { manageToken, manageTokenHash } from "./manage-token"; // SVC B.7 ▸ ลิงก์จัดการนัด (pure) ◂
 // SVC B.13 ▸ ทรัพยากร: ด่านเดียว (planner-resources ผ่าน resources.loadGate) · ชนิดของบริการอ่านก่อน tx · บริการไม่ประกาศชนิด ⇒ ทุกไบต์เดิม ◂
-import { isBusyDbError, loadGate, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources";
+import { isBusyDbError, loadGate, needKinds, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources";
 
 /** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อกเมื่อนำบริการเข้าคลัง */
 export type BookingCtx = { tenantId: string; unitId: string; actorUserId?: string };
@@ -973,22 +973,28 @@ export async function setAppointmentStatus(
   if (reviving && (await reviveClash(prisma, tenantId, appointmentId, before!))) {
     return { ok: false as const, reason: REVIVE_CLASH_REASON };
   }
-  // SVC B.13 ▸ ปลุกนัดของบริการที่ใช้ทรัพยากร: ชิ้นเดิมว่าง ⇒ คง · ไม่ว่าง ⇒ เลือกใหม่ชนิดเดียวกัน · ไม่มีเลย ⇒ ok:false แถวไม่เปลี่ยน (S-10) ·
-  //   ชนิด/buffer อ่านก่อน tx · ตรวจล่วงหน้าแบบไม่ล็อก (ก่อนคืนบิลริบ) · ผลจริงใต้ล็อก BookingStaff → SvcResource ใน tx ◂
-  const reviveKinds = reviving ? ((await resourceKindsOf({ tenantId, unitId }, [before!.serviceId])).get(before!.serviceId) ?? []) : [];
-  const reviveSpan = reviveKinds.length
+  // SVC B.13 ▸ ปลุกนัด (CANCELLED/NO_SHOW) หรือถอยจาก DONE (Q3) กลับเป็นสถานะถือช่อง ของงานที่ใช้ทรัพยากร:
+  //   ชิ้นเดิมว่าง ⇒ คง · ไม่ว่าง ⇒ เลือกใหม่ชนิดเดียวกัน · ไม่มีเลย ⇒ ok:false แถวไม่เปลี่ยน (S-10) · ชนิด = ที่ประกาศ ∪ ชนิดของชิ้นที่ถือ (Q6) ·
+  //   ชนิด/buffer อ่านก่อน tx · ตรวจล่วงหน้าแบบไม่ล็อก (ก่อนคืนบิลริบ) · ผลจริงใต้ล็อก BookingStaff → SvcResource → แถวนัด ใน tx (§5) ◂
+  const toHolding = status !== "CANCELLED" && status !== "NO_SHOW" && status !== "DONE";
+  const backFromDone = !!before && before.status === "DONE" && toHolding;
+  const gateMove = reviving || backFromDone;
+  const reviveKinds = gateMove ? ((await resourceKindsOf({ tenantId, unitId }, [before!.serviceId])).get(before!.serviceId) ?? []) : [];
+  const reviveHeld = gateMove ? resourceIdsOfRow(before!.resourceId, before!.policySnapshot) : [];
+  const reviveSpan = reviveKinds.length || reviveHeld.length
     ? await (async () => {
         const job = before!.policySnapshot && typeof before!.policySnapshot === "object" ? (before!.policySnapshot as { job?: { durationMin?: unknown; bufferMin?: unknown } }).job : undefined;
         const svcBuf = (await prisma.bookingService.findFirst({ where: { id: before!.serviceId, tenantId, unitId }, select: { bufferMin: true } }))?.bufferMin ?? 0;
         const buf = typeof job?.bufferMin === "number" ? job.bufferMin : svcBuf;
         const s0 = before!.startAt.getTime();
         const durMs = typeof job?.durationMin === "number" ? job.durationMin * 60_000 : Math.max(0, before!.endAt.getTime() - s0 - buf * 60_000);
-        return { s0, e0: s0 + durMs, prefer: resourceIdsOfRow(before!.resourceId, before!.policySnapshot) };
+        return { s0, e0: s0 + durMs, prefer: reviveHeld };
       })()
     : null;
   if (reviveSpan) {
+    if (backFromDone && (await reviveClash(prisma, tenantId, appointmentId, before!))) return { ok: false as const, reason: REVIVE_CLASH_REASON };
     const g = await loadGate(prisma, tenantId, unitId, { lock: false, startMs: reviveSpan.s0, endMs: reviveSpan.e0, nowMs: Date.now(), exclude: [appointmentId] });
-    if (!g.pick(reviveKinds, reviveSpan.s0, reviveSpan.e0, { prefer: reviveSpan.prefer })) return { ok: false as const, reason: REVIVE_RES_REASON };
+    if (!g.pick(needKinds(reviveKinds, reviveHeld, g), reviveSpan.s0, reviveSpan.e0, { prefer: reviveSpan.prefer })) return { ok: false as const, reason: REVIVE_RES_REASON };
   }
   // SVC B.8 ▸ V1: ปลุกนัดที่ยกเลิกช้า (CANCELLED/CUSTOMER_LATE) = คืนบิลริบแบบเดียวกับออกจาก NO_SHOW ◂
   const lateUndo = before?.status === "CANCELLED" && before.cancelReason === "CUSTOMER_LATE" && status !== "CANCELLED" && status !== "NO_SHOW";
@@ -1007,7 +1013,28 @@ export async function setAppointmentStatus(
   //   และบัตรเดิม (ถ้ายัง active) → CANCELLED (STAFF) ใน tx เดียว ⇒ เช็กอินใหม่ได้บัตรใหม่ · บัตร active ต่อนัด = 1 ·
   //   CAS ผูก queueTicketId ที่อ่านด้วย (เช็กอินจอเดิมที่ออกบัตรให้ระหว่างนั้น = แพ้ ⇒ LOST_RACE) · ร้านเดิม (ไม่มีบัตร) ผลเดิม + ล้าง checkedInAt ◂
   const undoArrive = before.status === "ARRIVED" && (status === "CONFIRMED" || status === "PENDING");
-  await prisma.$transaction(async (tx) => {
+  // SVC B.13 ▸ Q5: ชนชั่วคราวลองใหม่ 1 ครั้ง ⇒ BUSY (ไม่ throw) · maxWait ≤ 20s timeout ≤ 30s ◂
+  const statusTx = () => prisma.$transaction(async (tx) => {
+    reviveFail = null;
+    reviveIds = null;
+    if (reviving || (backFromDone && reviveSpan)) {
+      // SVC B.3 ▸ G5: ล็อกเดียวกับการจอง (BookingStaff FOR UPDATE) → ตรวจซ้อนกับนัดที่ถือช่อง (ยกเว้นตัวเอง) → CAS + ล้าง cancelReason ◂
+      await tx.$queryRaw`SELECT id FROM "BookingStaff" WHERE id = ${before.staffId} FOR UPDATE`;
+      if (await reviveClash(tx, tenantId, appointmentId, before)) {
+        reviveFail = REVIVE_CLASH_REASON;
+        return;
+      }
+      if (reviveSpan) {
+        // SVC B.13 ▸ ล็อกทรัพยากรทั้งสาขาหลังช่าง ก่อนแถวนัด (§5) → เลือกชิ้น (ชิ้นเดิมก่อน) · ไม่ว่าง ⇒ ไม่เปลี่ยนแถว ◂
+        const book = await loadGate(tx, tenantId, unitId, { lock: true, startMs: reviveSpan.s0, endMs: reviveSpan.e0, nowMs: Date.now(), exclude: [appointmentId] });
+        const got = book.pick(needKinds(reviveKinds, reviveHeld, book), reviveSpan.s0, reviveSpan.e0, { prefer: reviveSpan.prefer });
+        if (!got) {
+          reviveFail = REVIVE_RES_REASON;
+          return;
+        }
+        reviveIds = got;
+      }
+    }
     if (leavingDone && sbFacade) {
       await tx.$queryRaw`SELECT id FROM "Appointment" WHERE id = ${appointmentId} AND "tenantId" = ${tenantId} AND "unitId" = ${unitId} FOR UPDATE`;
       const live = await sbFacade.liveBillTx(tx, tenantId, unitId, appointmentId);
@@ -1018,30 +1045,13 @@ export async function setAppointmentStatus(
         return;
       }
     }
-    if (reviving) {
-      // SVC B.3 ▸ G5: ล็อกเดียวกับการจอง (BookingStaff FOR UPDATE) → ตรวจซ้อนกับนัดที่ถือช่อง (ยกเว้นตัวเอง) → CAS + ล้าง cancelReason ◂
-      await tx.$queryRaw`SELECT id FROM "BookingStaff" WHERE id = ${before.staffId} FOR UPDATE`;
-      if (await reviveClash(tx, tenantId, appointmentId, before)) {
-        reviveFail = REVIVE_CLASH_REASON;
-        return;
-      }
-      if (reviveSpan) {
-        // SVC B.13 ▸ ล็อกทรัพยากรทั้งสาขาหลังช่าง (§5) → เลือกชิ้น (ชิ้นเดิมก่อน) · ไม่ว่าง ⇒ ไม่เปลี่ยนแถว ◂
-        const book = await loadGate(tx, tenantId, unitId, { lock: true, startMs: reviveSpan.s0, endMs: reviveSpan.e0, nowMs: Date.now(), exclude: [appointmentId] });
-        const got = book.pick(reviveKinds, reviveSpan.s0, reviveSpan.e0, { prefer: reviveSpan.prefer });
-        if (!got) {
-          reviveFail = REVIVE_RES_REASON;
-          return;
-        }
-        reviveIds = got;
-      }
-    }
     const cas = await tx.appointment.updateMany({
       where: { id: appointmentId, tenantId, unitId, status: before.status, ...(undoArrive ? { queueTicketId: before.queueTicketId } : {}) },
       data: {
         ...(reviving ? { status, cancelReason: null } : { status }),
         ...(manualHoldSnap ? { policySnapshot: manualHoldSnap } : {}),
-        ...(reviveIds ? { resourceId: reviveIds[0] ?? null, policySnapshot: snapWithResources(manualHoldSnap ?? before.policySnapshot, reviveIds) } : {}), // SVC B.13
+        // SVC B.13 ▸ ชิ้นที่ได้ + ล้างแผนเก่า (ช่วงถือในฐานนับจาก plannedStartAt · ตัววางคิววางใหม่หลัง commit) ◂
+        ...(reviveIds ? { resourceId: reviveIds[0] ?? null, policySnapshot: snapWithResources(manualHoldSnap ?? before.policySnapshot, reviveIds), plannedStartAt: null, plannedStaffId: null } : {}),
         ...(undoArrive ? { checkedInAt: null, queueTicketId: null } : {}),
       },
     });
@@ -1088,7 +1098,16 @@ export async function setAppointmentStatus(
         now: new Date(), actorType: "STAFF", actorId: opts?.actorUserId ?? null, cancelReason: "STAFF",
       });
     }
-  });
+  }, BOOK_TX);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await statusTx();
+      break;
+    } catch (e) {
+      if (!isBusyDbError(e)) throw e;
+      if (attempt >= 1) return { ok: false as const, reason: BUSY_REASON };
+    }
+  }
   if (reviveFail) return { ok: false as const, reason: reviveFail };
   // SVC B.4 ▸ หน่วยแถวเดียว ⇒ วางคิวใหม่หลัง commit (runPlanner ตรวจโหมดเอง · ร้านเดิม = ran:false ไม่เขียน) · ล้ม = log ไม่ทำให้การเปลี่ยนสถานะล้ม ◂
   await replanAfterCommit(tenantId, unitId);
@@ -1984,12 +2003,12 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
         slotClear(dateStr, startMin, c, service.bufferMin, rows, self),
     );
     if (!anyFree) return (await replayIfAny()) ?? fail("FULL", FULL_REASON);
-    // SVC B.13 ▸ ตรวจทรัพยากรล่วงหน้าแบบไม่ล็อก (ผลจริงตัดสินใต้ล็อกด้านล่าง) ◂
+    // SVC B.13 ▸ ตรวจทรัพยากรล่วงหน้าแบบไม่ล็อก — Q4: "ใครก็ได้" คัดช่างที่ได้ห้อง (นาทีของช่างคนนั้น) ก่อนเลือก ⇒ ผลเท่า findSlots ·
+    //   ยืนยันซ้ำใต้ล็อกด้านล่าง ◂
     if (resKinds.length) {
       const g = await loadGate(prisma, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs });
-      if (!cands.some((c) => g.pick(resKinds, startAt.getTime(), startAt.getTime() + c.durationMin * B3_MIN_MS))) {
-        return (await replayIfAny()) ?? fail("FULL", self ? FULL_REASON : RES_FULL_REASON);
-      }
+      cands = cands.filter((c) => g.pick(resKinds, startAt.getTime(), startAt.getTime() + c.durationMin * B3_MIN_MS) !== null);
+      if (!cands.length) return (await replayIfAny()) ?? fail("FULL", self ? FULL_REASON : RES_FULL_REASON);
     }
   }
   const memberSystemId = await systemForUnit(tenantId, unitId, "MEMBER");
@@ -2431,13 +2450,17 @@ export async function rescheduleBySelf(
   })();
   // SVC B.13 ▸ ชนิดของบริการ (ก่อน tx) · ทรัพยากรเดิมว่างที่เวลาใหม่ ⇒ คง · ไม่งั้นเลือกใหม่ · ไม่มี ⇒ FULL (ไม่นับตัวเอง) ◂
   const resKinds = (await resourceKindsOf(ctx, [service.id])).get(service.id) ?? [];
+  const resHeld = resourceIdsOfRow(null, cur.policySnapshot);
+  const usesRes = resKinds.length > 0 || resHeld.length > 0; // Q6: ชิ้นที่ถืออยู่ก็ต้องผ่านด่าน แม้บริการไม่ประกาศชนิดแล้ว
   {
     const rows = await busyRowsExcept(prisma, tenantId, cands.map((c) => c.staffId), dateStr, cur.id);
     const anyFree = cands.some((c) => selfQuotaOk(c, dayLoadOf(rows, c.staffId, dateStr), c.durationMin + buf) && slotClear(dateStr, startMin, c, buf, rows, true));
     if (!anyFree) return fail("FULL", FULL_REASON);
-    if (resKinds.length) {
+    if (usesRes) {
       const g = await loadGate(prisma, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, exclude: [cur.id] });
-      if (!cands.some((c) => g.pick(resKinds, startAt.getTime(), startAt.getTime() + c.durationMin * B3_MIN_MS))) return fail("FULL", FULL_REASON);
+      const need = needKinds(resKinds, resHeld, g);
+      cands = cands.filter((c) => g.pick(need, startAt.getTime(), startAt.getTime() + c.durationMin * B3_MIN_MS) !== null); // Q4
+      if (!cands.length) return fail("FULL", FULL_REASON);
     }
   }
 
@@ -2465,9 +2488,10 @@ export async function rescheduleBySelf(
     if (!chosen) return fail("FULL", FULL_REASON);
     // SVC B.13 ▸ ทรัพยากร (ล็อกแล้วใน lockUnitTx) อ่านผ่าน tx · ไม่นับตัวเอง · ชิ้นเดิมก่อน ◂
     let resIds: string[] | null = null;
-    if (resKinds.length) {
+    if (usesRes) {
       const book = await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, exclude: [a.id] });
-      resIds = book.pick(resKinds, startAt.getTime(), startAt.getTime() + chosen.durationMin * B3_MIN_MS, { prefer: resourceIdsOfRow(a.resourceId, a.policySnapshot) });
+      const held = resourceIdsOfRow(a.resourceId, a.policySnapshot);
+      resIds = book.pick(needKinds(resKinds, held, book), startAt.getTime(), startAt.getTime() + chosen.durationMin * B3_MIN_MS, { prefer: held });
       if (!resIds) return fail("FULL", FULL_REASON);
     }
     const data: Prisma.AppointmentUncheckedUpdateManyInput = {

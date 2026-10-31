@@ -641,11 +641,13 @@ async function resViolations(unitId: string, opts: { maint?: Map<string, Occ[]>;
   const occ = new Map<string, Occ[]>(res.map((r) => [r.id, []]));
   const bad: string[] = [];
   for (const a of rows) {
-    const s = a.startAt.getTime();
-    const durMs = typeof a.policySnapshot?.job?.durationMin === "number" ? a.policySnapshot.job.durationMin * MIN : a.endAt.getTime() - s - (a.policySnapshot?.job?.bufferMin ?? a.bufferMin) * MIN;
-    let end = s + durMs;
-    if (a.status === "ARRIVED" && a.plannedStartAt) end = Math.max(end, a.plannedStartAt.getTime() + durMs);
-    if (a.status === "IN_SERVICE" && a.startedAt) end = Math.max(end, a.startedAt.getTime() + durMs);
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b13-Q1) — §4.6 ตามมติ Q1/Q2: ช่วงถือนับจากแผนของตัววางคิว (นิยามเดียวกันทั้งตัววางคิวและฐาน)
+    //   เริ่ม = IN_SERVICE: startedAt · อื่น: plannedStartAt ?? startAt · ปลาย = เริ่ม + นาที (ไม่ยืดถึง now) ·
+    //   แถวที่เข้าแถวใหม่ (มาสาย/ถูกข้าม) ไม่ผูกห้องเดิม — ถือชิ้นที่ตัววางคิวเขียนลงฐานตามช่วงแผน
+    const s0 = a.startAt.getTime();
+    const durMs = typeof a.policySnapshot?.job?.durationMin === "number" ? a.policySnapshot.job.durationMin * MIN : a.endAt.getTime() - s0 - (a.policySnapshot?.job?.bufferMin ?? a.bufferMin) * MIN;
+    const s = a.status === "IN_SERVICE" ? (a.startedAt ?? a.plannedStartAt ?? a.startAt).getTime() : (a.plannedStartAt ?? a.startAt).getTime();
+    const end = s + durMs;
     const rids = resIdsOf(a);
     const need = opts.needKinds?.get(a.serviceId);
     if (need && need.length && (rids.length !== need.length || rids.some((id, k) => res.find((x) => x.id === id)?.kind !== need[k]))) bad.push(`${a.id.slice(-6)} ถือ ${fmt(rids)} ไม่ตรงชนิด ${fmt(need)}`);
@@ -1071,6 +1073,29 @@ try {
     eq(await RS.now()({ tenantId: ids.tA, unitId: ids.uB }, { now: nowW }), [], "ร้าน A + หน่วยร้าน B");
     eq(codeOf(await LN().createWalkIn(cA2, { serviceId: ids.OIL, staffId: null, channel: "STAFF" }, { now: nowW })), "NOT_FOUND", "บริการหน่วยอื่น");
   }, "MAJOR");
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b13-Q1) — ข้อเพิ่ม: walk-in ออกบัตรก่อน → นัดมาสายเข้าแถวบนห้องเดียว ⇒ ฐานไม่ล้น (§4.6 ใหม่) ·
+  //   startJob ของงานที่ตัววางคิวสั่งเริ่มตอนนี้ไม่ได้ CLASH_RES (ด่านฐาน = ด่านตัววางคิว) · ใช้หน่วย uX1 (ห้องเดียว · เก็บ 15) วัน dd(16) ไม่ชนฉาก X
+  await st("W-9", "Q1: walk-in ออกบัตรก่อน (10:16) → นัดห้องเดียว 10:00 มาสายเช็กอิน 10:20 (asWalkIn) → runPlanner ⇒ ฐานไม่ล้น · งานที่แผนให้เริ่มตอนนี้ startJob ได้ (ไม่ CLASH)", async () => {
+    needTpl();
+    const u = ids.uX1, ds = dd(16), c = cX(u);
+    const late = await bookOk(c, xSvc(u, "OIL"), xStaff(u)[0], ds, 600, "นัดห้องเดียว 10:00");
+    // walk-in ขอหมอคนที่ 2 (คนละคนกับนัด) ⇒ ตัวแปรเดียวที่แข่งกันคือห้อง (ฝั่งหมอของนัดมาสาย = กติกา B.4 เดิม)
+    const w = await LN().createWalkIn(c, { serviceId: xSvc(u, "OIL"), staffId: xStaff(u)[1], channel: "STAFF" }, { now: at(ds, 616) });
+    if (!w.ok) throw new AssertFail(`walk-in ${w.code} ${w.reason}`);
+    eq(await resViolations(u), [], "ฐานหลัง walk-in");
+    const ci = await LN().checkIn(c, { appointmentId: late }, { via: "STAFF", now: at(ds, 620) });
+    if (!ci.ok) throw new AssertFail(`เช็กอิน ${ci.code} ${ci.reason}`);
+    eq(ci.asWalkIn, true, "asWalkIn");
+    await RN().runPlanner(c, { now: at(ds, 620) });
+    eq(await resViolations(u), [], "ฐานหลังวางคิว");
+    const rows = await q<{ id: string; plannedStartAt: Date | null }>(`SELECT id, "plannedStartAt" FROM "Appointment" WHERE "unitId" = $1 AND id = ANY($2::text[])`, [u, [late, w.appointmentId]]);
+    const first = rows.find((r) => r.plannedStartAt && r.plannedStartAt.getTime() === bkkMs(ds, 620));
+    ok(!!first, `ไม่มีงานที่แผนให้เริ่ม 10:20 ${fmt(rows.map((r) => [r.id.slice(-6), HM(tms(r.plannedStartAt))]))}`);
+    eq(codeOf(await LN().startJob(c, first!.id, { now: at(ds, 620) })), "OK", "startJob งานที่แผนให้เริ่มตอนนี้");
+    await RN().runPlanner(c, { now: at(ds, 620) });
+    eq(await resViolations(u), [], "ฐานหลังเริ่มงาน");
+    eq(await staffOverlap(u), [], "หมอ");
+  });
 
   // ═══════════════ E _fallback ═══════════════
   console.log("\n── E: _fallback = พฤติกรรม B1 (ไม่มีทรัพยากร/ไม่ประกาศชนิด) ──");
@@ -1379,7 +1404,7 @@ await st("SF-4", "defs/booking.ts: เพิ่มอย่างเดียว
   const removed = diffLines(F.defs).filter((l) => l.startsWith("-") && l.slice(1).trim() !== "");
   ok(removed.every((l) => /^-\s*\/\/.*(RESOURCE|ทรัพยากร|SUPPORTED_SCOPES|B\.13)/.test(l)), `ลบ/แก้: ${removed.slice(0, 2).join(" | ").slice(0, 160)}`);
 }, "MAJOR");
-await st("SF-5", "resources.ts: ไม่มีเวลาเครื่องดิบ (.getDay/.getHours/…) · ไม่มีตัวกันในหน่วยความจำ · ล็อก SvcResource เรียง \"sortOrder\", \"createdAt\", id ทุกจุด (resources/service/queue-line/planner-run) · checkIn (queue-line) ไม่ล็อก SvcResource/BookingStaff หลังแถวนัด", () => {
+await st("SF-5", "resources.ts: ไม่มีเวลาเครื่องดิบ (.getDay/.getHours/…) · ไม่มีตัวกันในหน่วยความจำ · ล็อก SvcResource เรียง id ทุกจุด (Q7) (resources/service/queue-line/planner-run) · checkIn (queue-line) ไม่ล็อก SvcResource/BookingStaff หลังแถวนัด", () => {
   const r = stripComments(src(F.res));
   ok(!!r, `ยังไม่มี ${F.res}`);
   ok(!/\.(getDay|getHours|getMinutes|getDate|getMonth|getFullYear)\s*\(\s*\)/.test(r), "เวลาเครื่องดิบ");
@@ -1390,7 +1415,8 @@ await st("SF-5", "resources.ts: ไม่มีเวลาเครื่อง
     const s = stripComments(src(f)).replace(/\s+/g, " ");
     for (const m of s.matchAll(/FROM "SvcResource"[^`]*?FOR UPDATE/g)) {
       any = true;
-      const ordered = /ORDER BY "sortOrder", "createdAt", id/.test(m[0]);
+      // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b13-Q7) — มติ Q7: ล็อก SvcResource เรียงตาม id (คงที่แม้แก้ sortOrder ระหว่างจอง · probe P7-flip)
+      const ordered = /ORDER BY id FOR UPDATE/.test(m[0]);
       const single = f === F.res && /\bid = \$\{/.test(m[0]); // CRUD ล็อกแถวเดียว (ไม่ถือล็อกช่าง/ทรัพยากรอื่น)
       if (!ordered && !single) bad.push(`${f}: ${m[0].slice(0, 90)}`);
     }
