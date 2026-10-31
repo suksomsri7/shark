@@ -16,4 +16,16 @@ export {
 } from "./service";
 export { integrationSecretKeyConfigured, INTEGRATIONS_CREDENTIALS_ENV } from "./secret-box";
 export { integrationCatalog, providerDef, providersFor, INTEGRATION_KIND_META, INTEGRATION_GROUPS } from "./registry";
+// SVC C.3 ▸ สุขภาพตัวต่อ (เตือนเจ้าของ ERROR/โควตา #83 · มุมมองเรียกล่าสุด + กราฟ 14 วัน) — ตัวช่วยภายในของ service ไม่ส่งออกจากที่นี่ ◂
+export {
+  getIntegrationHealth,
+  listIntegrationHealth,
+  runIntegrationHealthJob,
+  onIntegrationFailed,
+  quotaIsLow,
+  INTEGRATION_QUOTA_ALERT_KEY,
+  INTEGRATION_HEALTH_RECENT,
+  INTEGRATION_HEALTH_DAYS,
+  INTEGRATION_QUOTA_CHECK_MINUTES,
+} from "./health";
 export type * from "./types";

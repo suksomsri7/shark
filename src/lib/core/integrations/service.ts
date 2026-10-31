@@ -668,3 +668,26 @@ export async function purgeIntegrationCallLogs(now: Date, opts?: { signal?: Abor
   }
   return { deleted };
 }
+
+// ─────────────────── SVC C.3 ▸ ตัวช่วยภายในให้ health.ts (ไม่ส่งออกจาก facade · เพิ่มอย่างเดียว — ไม่เปลี่ยนพฤติกรรมเดิม) ───────────────────
+/** handle ของแถวที่ระบุ (buildAdapter + makeHandle) — ไม่มีกุญแจ/ผู้ให้บริการปิด/กล่องเปิดไม่ได้/ช่องไม่ครบ = null · ไม่โยน */
+export function integrationHandleForRow(row: TenantIntegration): IntegrationHandle | null {
+  try {
+    if (!integrationSecretKeyConfigured()) return null;
+    const def = providerDef(row.kind, row.provider);
+    if (!def) return null;
+    const built = buildAdapter(row, def);
+    return built.ok ? makeHandle(row, built.adapter) : null;
+  } catch (e) {
+    console.error("[integrations] handle", errName(e));
+    return null;
+  }
+}
+/** ตัวตรวจ ctx/actor/ขอบเขตหน่วยชุดเดียวกับ listIntegrations (ไม่ทำซ้ำกติกา) */
+export const integrationCtxOf = (ctx: unknown): IntegrationCtx | null => ctxOf(ctx);
+export const integrationActorOf = (actor: unknown): IntegrationActor | null => actorOf(actor);
+export const integrationUnitLimited = (a: IntegrationActor): boolean => unitLimited(a);
+export const integrationRefuse = (code: RefusalCode, message?: string): Refusal => refuse(code, message);
+export const asIntegrationStatus = (s: string): IntegrationStatus => asStatus(s);
+export const asIntegrationOnFailure = (s: string): IntegrationOnFailure => asOnFailure(s);
+// ◂ SVC C.3

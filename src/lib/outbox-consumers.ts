@@ -974,7 +974,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "account.period.closed": withAutomation(async () => {}),
   // SVC R0.5 ▸ ศูนย์เชื่อมต่อ — สถานะเปลี่ยนไปแล้วใน tx ของ service · consumer no-op เพื่อปิด event เป็น DONE + กฎอัตโนมัติ/เว็บฮุค ◂
   "integration.connected": withAutomation(async () => {}),
-  "integration.failed": withAutomation(async () => {}),
+  // SVC C.3 ▸ เตือนเจ้าของร้าน (AppNotification รายเจ้าของ · ครั้งเดียวต่อเหตุ · OpsAlertState กันซ้ำ) — ข้อมูลผิดถาวรจบเงียบ ◂
+  "integration.failed": withAutomation(async (evt) => (await import("@/lib/core/integrations")).onIntegrationFailed(evt)),
   // SVC R0.6 ▸ ตรวจสลิปกลาง — สถานะเปลี่ยนไปแล้วใน tx ของ payment/slip-verify.ts · consumer no-op (ปิด DONE + กฎอัตโนมัติ/เว็บฮุค) ·
   //   🔴 ผลเงิน (มัดจำจองคิว/บิลหอ) ไม่อยู่ที่นี่ — consumer ของโดเมน B.8 / D.10 ต่อท้าย compose ภายหลัง (idempotent ต่อ slipId) ◂
   "payment.slip.submitted": withAutomation(async () => {}),

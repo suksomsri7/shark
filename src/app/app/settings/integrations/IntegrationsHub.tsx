@@ -4,8 +4,10 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import type { CatalogEntry, FieldView, IntegrationKind, IntegrationOnFailure, IntegrationView, VirtualView } from "@/lib/core/integrations/types";
+import type { IntegrationHealthView } from "@/lib/core/integrations/types"; // SVC C.3
 import { INTEGRATION_GROUPS, INTEGRATION_KIND_META, type IntegrationGroup } from "@/lib/core/integrations/registry";
 import { disableIntegrationAction, saveIntegrationAction, testIntegrationAction } from "./actions";
+import IntegrationHealthPanel from "./IntegrationHealthPanel"; // SVC C.3
 
 type Item = IntegrationView | VirtualView;
 type Props = {
@@ -19,6 +21,9 @@ type Props = {
   posLinks: { id: string; name: string; href: string }[];
   bankLinks: { id: string; name: string; href: string }[];
   testTimes: Record<string, string>;
+  /** SVC C.3 ▸ สุขภาพของแถวเก็บ (ไม่มีค่าลับ) + เกณฑ์เตือนโควตา #83 ของร้าน ◂ */
+  health?: IntegrationHealthView[];
+  thresholdPercent?: number;
 };
 const KEY_MISSING_TEXT = "ยังไม่ตั้งกุญแจ — ระบบยังไม่พร้อมเก็บคีย์ ติดต่อทีม SHARK";
 /** ชื่อเริ่มต้นที่ไม่ซ้ำของชนิดนี้ (โหมดเพิ่มอีกชุด) */
@@ -115,7 +120,8 @@ function Card({
   );
 }
 
-export function IntegrationsHub({ items, catalog, keyConfigured, canManage, units, defaultUnitIds, posLinks, bankLinks, testTimes }: Props) {
+export function IntegrationsHub({ items, catalog, keyConfigured, canManage, units, defaultUnitIds, posLinks, bankLinks, testTimes, health = [], thresholdPercent = 10 }: Props) {
+  const healthById = useMemo(() => new Map(health.map((h) => [h.id, h])), [health]); // SVC C.3
   const [tab, setTab] = useState<Tab>("ALL");
   const [sel, setSel] = useState<Selection>(null);
   const stored = items.filter((i): i is IntegrationView => !i.virtual);
@@ -178,6 +184,13 @@ export function IntegrationsHub({ items, catalog, keyConfigured, canManage, unit
         footer={
           <>
             <StatusDot status={r.status} />
+            {/* SVC C.3 ▸ โควตาต่ำกว่าเกณฑ์ #83 ⇒ "เหลือ N%" บนการ์ด ◂ */}
+            {healthById.get(r.id)?.quota?.low && (
+              <span className="font-medium text-amber-700" data-testid="integration-card-quota-low">
+                เหลือ {healthById.get(r.id)?.quota?.percent ?? healthById.get(r.id)?.quota?.remaining ?? 0}
+                {healthById.get(r.id)?.quota?.percent !== null ? "%" : ""}
+              </span>
+            )}
             <span>ตั้งค่า ›</span>
           </>
         }
@@ -269,7 +282,7 @@ export function IntegrationsHub({ items, catalog, keyConfigured, canManage, unit
           </section>
         ))}
       </div>
-      <aside className="lg:sticky lg:top-4 lg:self-start">
+      <aside className="flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
         {selected ? (
           <Panel
             key={selected.id}
@@ -301,6 +314,8 @@ export function IntegrationsHub({ items, catalog, keyConfigured, canManage, unit
             เลือกการ์ดเพื่อดูรายละเอียด · ใส่คีย์ · ทดสอบ · เลือกสาขาที่ใช้ · และเลือกว่าจะทำอย่างไรเมื่อผู้ให้บริการไม่ตอบ
           </div>
         )}
+        {/* SVC C.3 ▸ สุขภาพของแถวที่เลือก (สถานะ · โควตา · กราฟ 14 วัน · ผลเรียกล่าสุด) ◂ */}
+        {selected && healthById.get(selected.id) && <IntegrationHealthPanel health={healthById.get(selected.id)!} thresholdPercent={thresholdPercent} />}
       </aside>
     </div>
   );
