@@ -1337,7 +1337,8 @@ const git = (args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { enc
 const dirty = (paths: string[]) => git(["status", "--porcelain", "--untracked-files=all", "--", ...paths]).split("\n").filter(Boolean).map((l) => l.slice(3).trim().replace(/^"|"$/g, ""));
 const diffLines = (rel: string) => (spawnSync("git", ["diff", "-U0", "HEAD", "--", rel], { cwd: ROOT, encoding: "utf8" }).stdout ?? "").split("\n").filter((l) => /^[+-](?![+-])/.test(l));
 const OWN = new Set<string>([F.res, F.kinds, F.planner, F.service, F.line, F.run, F.index, F.model, F.access, F.settingsSvc, F.defs, F.actions, F.pageStaff, F.shared, F.comp, F.compServices, F.scene,
-  "src/components/booking/settings/BookingStaffSettings.tsx", "src/app/app/u/[unitSlug]/booking/services/page.tsx"]);
+  "src/components/booking/settings/BookingStaffSettings.tsx", "src/app/app/u/[unitSlug]/booking/services/page.tsx",
+  /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · b13-SF1) มติ R1 migration + scope ลงทะเบียน model ใหม่ */ "prisma/schema/booking.prisma", "prisma/migrations/20261225000000_svc_b13/migration.sql", "src/lib/core/scope.ts"]);
 {
   const ch = dirty(["src", "prisma", "scripts"]).filter((f) => !f.startsWith("scripts/") || f === F.scene);
   const headHas = (() => { try { git(["cat-file", "-e", `HEAD:${F.res}`]); return true; } catch { return false; } })();
@@ -1349,7 +1350,22 @@ const OWN = new Set<string>([F.res, F.kinds, F.planner, F.service, F.line, F.run
     ok(miss.length === 0, `ยังไม่มี: ${miss.join(", ")}`);
   });
 }
-await st("SF-2", "ไม่มี migration/แก้ schema (prisma/ สะอาด) — คำขอคอลัมน์ = ruling ใน wo-notes", () => { eq(dirty(["prisma"]), [], "prisma/"); });
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · b13-R1) — มติ R1 ทาง A: migration เพิ่มอย่างเดียว svc_b13 (ตาราง SvcResourceBlock) + schema booking.prisma เท่านั้น ·
+//   prisma/ แตะได้เฉพาะ 2 ไฟล์นี้ · migration ต้องไม่มี DROP/RENAME/ALTER ตารางเดิม · สร้างตาราง SvcResourceBlock · schema แก้แบบเพิ่มบรรทัดเท่านั้น
+const B13_MIG = "prisma/migrations/20261225000000_svc_b13/migration.sql";
+await st("SF-2", "prisma/ แตะเฉพาะ migration svc_b13 (เพิ่มอย่างเดียว · SvcResourceBlock) + booking.prisma (เพิ่มบรรทัดเท่านั้น) — มติ R1 ทาง A", () => {
+  const touched = dirty(["prisma"]);
+  const outside = touched.filter((f) => f !== B13_MIG && f !== "prisma/schema/booking.prisma" && f !== "prisma/migrations/20261225000000_svc_b13/");
+  eq(outside, [], "prisma/ นอกมติ R1");
+  const headHas = (() => { try { git(["cat-file", "-e", `HEAD:${B13_MIG}`]); return true; } catch { return false; } })();
+  const sql = stripComments(src(B13_MIG)).replace(/--.*$/gm, "");
+  ok(headHas || /CREATE TABLE "SvcResourceBlock"/.test(sql), `ไม่มี migration svc_b13 (${B13_MIG})`);
+  ok(!/\bDROP\b|\bRENAME\b|\bTRUNCATE\b|\bDELETE\s+FROM\b|\bUPDATE\s+"/i.test(sql), "migration มีคำสั่งทำลาย/แก้ข้อมูล");
+  const alters = [...sql.matchAll(/ALTER\s+TABLE\s+"([^"]+)"/gi)].map((m) => m[1]);
+  ok(alters.every((t) => t === "SvcResourceBlock"), `ALTER ตารางเดิม ${fmt(alters)}`);
+  const removed = diffLines("prisma/schema/booking.prisma").filter((l) => l.startsWith("-") && l.slice(1).trim() !== "");
+  eq(removed, [], "booking.prisma ลบ/แก้บรรทัดเดิม");
+});
 await st("SF-3", "core-fix settings/service.ts: เพิ่มบรรทัดเท่านั้น (≤ 3 บรรทัดแก้ เช่น SUPPORTED_SCOPES) · บรรทัดเพิ่มเกี่ยว RESOURCE/svcResource/resourceId · ไม่แตะ actions/template/form/types/registry", () => {
   eq(dirty(["src/lib/core/settings/actions.ts", "src/lib/core/settings/template.ts", "src/lib/core/settings/form.ts", "src/lib/core/settings/types.ts", "src/lib/core/settings/registry.ts"]), [], "ไฟล์เครื่องยนต์อื่น");
   const lines = diffLines(F.settingsSvc);
@@ -1410,8 +1426,8 @@ const judgeSvc = (allowSkip: (id: string) => boolean, allowFail: (id: string) =>
 // ข้อ "ไฟล์ของใบ/ไฟล์ที่ห้ามแตะ" ของชุดเก่า = accept-time ของใบนั้น — แดงได้ระหว่างไฟล์ B.13 ยังไม่ commit (ใบสั่ง §7)
 const REG: { s: string; args?: string[]; env?: Record<string, string>; judge?: (out: string, code: number | null) => boolean; note?: string }[] = [
   { s: "qc-svc-b.2", judge: (out) => { const l = out.split("\n").reverse().find((x) => x.startsWith("JSON_SUMMARY ")); return !!l && (JSON.parse(l.slice(13)) as { findings: string[] }).findings.length === 0; }, note: "93/93 รวม PERF p95 < 50 ms" },
-  { s: "qc-svc-b.3", env: { SVC_B3_NO_REGRESSION: "1" }, judge: judgeSvc((x) => x.startsWith("G-") || x === "ST-1", (x) => x === "ST-1"), note: "ไม่มี FAIL ยกเว้น ST-1 · SKIP เฉพาะ G-*/ST-1" },
-  { s: "qc-svc-b.4", args: ["--no-regression"], judge: judgeSvc((x) => x.startsWith("G-") || x === "ST-1", (x) => x === "ST-1" || x === "ST-4"), note: "ไม่มี FAIL ยกเว้น ST-1/ST-4 (planner.ts ถูกแตะโดยใบนี้) · SKIP เฉพาะ G-*/ST-1" },
+  { s: "qc-svc-b.3", env: { SVC_B3_NO_REGRESSION: "1" }, judge: judgeSvc((x) => x.startsWith("G-") || x === "ST-1", (x) => x === "ST-1" || x === "ST-4" /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · b13-G2) ST-4 prisma/ สะอาด = accept-time ขัดมติ R1 */), note: "ไม่มี FAIL ยกเว้น ST-1/ST-4 · SKIP เฉพาะ G-*/ST-1" },
+  { s: "qc-svc-b.4", args: ["--no-regression"], judge: judgeSvc((x) => x.startsWith("G-") || x === "ST-1", (x) => x === "ST-1" || x === "ST-4" || x === "ST-3" /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · b13-G3) ST-3 prisma/ = accept-time ขัดมติ R1 */), note: "ไม่มี FAIL ยกเว้น ST-1/ST-3/ST-4 (planner.ts ถูกแตะโดยใบนี้) · SKIP เฉพาะ G-*/ST-1" },
   { s: "qc-svc-b.5", args: ["--no-regression"], judge: judgeSvc((x) => /^(H|E|V|Q|G)-/.test(x) || x === "S-1", (x) => x === "S-1" || x === "S-2"), note: "ไม่มี FAIL ยกเว้น S-1/S-2 · SKIP เฉพาะ H/E/V/Q/G/S-1" },
   { s: "qc-svc-b.7", args: ["--no-regression"], judge: judgeSvc((x) => /^(H|V|Q|G)-/.test(x) || x === "S-1", (x) => ["S-1", "S-2", "S-3"].includes(x)), note: "ไม่มี FAIL ยกเว้น S-1/S-2/S-3 · SKIP เฉพาะ H/V/Q/G/S-1" },
   { s: "qc-svc-b.8", args: ["--no-regression"], judge: judgeSvc((x) => /^(H|V|Q|G)-/.test(x) || x === "S-1", (x) => ["S-1", "S-2", "S-4"].includes(x)), note: "ไม่มี FAIL ยกเว้น S-1/S-2/S-4 · SKIP เฉพาะ H/V/Q/G/S-1" },
