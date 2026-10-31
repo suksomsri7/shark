@@ -201,7 +201,8 @@ export async function onDormPostback(ctx: PostbackCtx, evt: PostbackEvent, opts?
       return { text: `ติดต่อ ${names} ได้ทางแชทนี้เลย พิมพ์เรื่องที่ต้องการ พนักงานของหอจะเห็นข้อความในแชทนี้` };
     }
     case "repair": // W3: บอกให้พิมพ์ "แจ้งซ่อม" ก่อน (ไม่ชวนส่งรูปลอย ๆ มาในแชทที่แนบสลิปอัตโนมัติ) — จนถึง D.16
-      return { text: T.REPAIR };
+      // SVC D.16 ▸ ลิงก์หน้าแจ้งซ่อม /d/<token>/repair ของทุกสัญญา live ของผู้กด (≤ 5 · ลิงก์เซ็นเดียวกับพอร์ทัล) — อ่านล้วน ไม่เขียน log/audit ◂
+      return dormRepairMenuReply(ctx, leases, now, (await import("@/lib/modules/dorm")).repairPortalUrl);
     // SVC D.18 ▸ พัสดุที่รอรับของผู้กด (สัญญา live ของผู้กดเท่านั้น · ≤ 5 รายการ · ลิงก์ QR รับพัสดุ) — อ่านล้วน ไม่เขียน log/audit ·
     //   ไม่มีชื่อ/เบอร์ · หน่วยของผู้กดปิดระบบพัสดุทั้งหมด ⇒ ข้อความคงที่เดิม ◂
     case "parcel": {
@@ -591,3 +592,19 @@ export async function onLineImage(
     return IGNORE;
   }
 }
+
+// SVC D.16 ▸ คำตอบเมนู "แจ้งซ่อม" — ลิงก์หน้าแจ้งซ่อมของสัญญาผู้กด (ผู้เรียกตรวจแล้วว่าเป็นสัญญา live ของผู้กด) · ไม่มีลิงก์ ⇒ ข้อความกลาง
+async function dormRepairMenuReply(
+  ctx: PostbackCtx,
+  leases: PortalLeaseRow[],
+  now: Date,
+  urlOf: (c: { tenantId: string }, i: { leaseId: string }, o: { now: Date }) => Promise<string>,
+): Promise<PostbackReply> {
+  const rows: string[] = [];
+  for (const l of leases.slice(0, MAX_LEASE_LINKS)) {
+    const url = await urlOf({ tenantId: ctx.tenantId }, { leaseId: l.id }, { now });
+    if (url) rows.push(`ห้อง ${l.roomNumber} · ${l.unitName}\n${url}`);
+  }
+  return rows.length ? { text: `แจ้งซ่อม — เปิดลิงก์ เลือกหมวด เล่าอาการ แนบรูปได้ แล้วติดตามสถานะงานซ่อมในหน้าเดียวกัน\n\n${rows.join("\n\n")}` } : NF();
+}
+// ◂ SVC D.16

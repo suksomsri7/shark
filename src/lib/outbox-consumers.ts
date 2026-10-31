@@ -479,7 +479,7 @@ const compose =
  *    วิธีเดียวกับที่ `kanban.inbox.requested` ใช้กับ `kanban/inbox` อยู่แล้ว
  */
 const kanbanBridge =
-  (name: "onFormSubmission" | "onApprovalSubmitted" | "onApprovalDecided" | "onAccountDocSettled" | "onLeaveSubmitted" | "onVoidedSale"): OutboxHandler =>
+  (name: "onFormSubmission" | "onApprovalSubmitted" | "onApprovalDecided" | "onAccountDocSettled" | "onLeaveSubmitted" | "onVoidedSale" | "onDormRepairCreated" | "onDormRepairDone" | "onDormRepairCardMoved" | "onDormRepairCardCompleted"): OutboxHandler => // SVC D.16 ▸ + สะพานแจ้งซ่อมหอ 4 ตัว ◂
   async (evt) => {
     const bridges = await import("@/lib/platform/kanban-bridges");
     await bridges[name](evt);
@@ -890,7 +890,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //      **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาลแล้วคิวทั้งระบบตันตามไปด้วย
   //      — บทเรียน 30 ส.ค. 2026) + เป็นจุดให้ Automation rules (§7.3) และ `withWebhooks` ยิงต่อ
   //      ตัวปิดงานที่ผูกไว้ (ขาออก K3.4) เสียบอยู่ที่ `kanban.card.completed` ด้านล่างแล้ว
-  "kanban.card.moved": withAutomation(async () => {}),
+  // SVC D.16 ▸ + การ์ดแจ้งซ่อมหอย้ายเข้าคอลัมน์ที่ไม่ใช่คอลัมน์เสร็จ ⇒ คำแจ้ง "กำลังซ่อม" (ของแถมใต้ compose · ครั้งเดียว · CAS) ◂
+  "kanban.card.moved": withAutomation(compose(async () => {}, kanbanBridge("onDormRepairCardMoved"))),
   // K1.15 — การ์ดใบใหม่ / การ์ดถูกเก็บเข้าคลัง (ยิงจาก `kanban/service.ts#createCard` และ
   // `kanban/cards.ts#archiveCard` ใน tx เดียวกับการเขียนแถว) · ยังไม่มีผลข้างเคียงภายใน
   // (ฮุคขาออก + กฎอัตโนมัติของร้านเป็นผู้บริโภคจริง) — แต่ต้องลงทะเบียนไว้ ไม่งั้นคิวตันเงียบ ๆ
@@ -908,7 +909,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // CRM C1.6 ▸ + ปิดกิจกรรม CRM ที่ผูกการ์ดนี้ (`crm.activities.onKanbanCardCompleted` · ของแถมใต้ compose — ล้ม = WARN ไม่พางานหลักล้ม ·
   //   ปิดครั้งเดียวด้วย conditional update ใน tx เดียวกับ `crm.activity.completed` ⇒ ส่งซ้ำ/พร้อมกันกี่รอบก็ผลเดียว — AUDIT-CLASS X4) ◂
   "kanban.card.completed": withAutomation(
-    compose(compose(compose(async () => {}, kanbanOutbound("cardCompleted")), memberBridge("onKanbanCardCompleted")), crmKanbanCardCompleted),
+    // SVC D.16 ▸ + การ์ดแจ้งซ่อมหอเสร็จ ⇒ คำแจ้ง DONE + event dorm.repair.done (CAS ครั้งเดียว · DONE เป็นสถานะจบ) — ต่อท้ายสุด ขาออกเดิมคงครบ ◂
+    compose(compose(compose(compose(async () => {}, kanbanOutbound("cardCompleted")), memberBridge("onKanbanCardCompleted")), crmKanbanCardCompleted), kanbanBridge("onDormRepairCardCompleted")),
   ),
   // K1.7 — เช็คลิสต์ครบทุกข้อ (ยิงจาก `kanban/checklists.ts#toggleItem` ใน tx เดียวกับการติ๊ก)
   //   🔴 ผลข้างเคียง (done/doneAt/doneById) เกิดในโมดูลไปแล้ว — consumer เป็น no-op เพื่อ
@@ -1258,6 +1260,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   payload ตรง 3 คีย์ { unitId, announcementId, audience (kind) } (ไม่มีหัวเรื่อง/เนื้อหา/ชื่อ/เบอร์ · X8) · งานหลัก = ส่ง LINE ผ่าน notifyCustomer
   //   (อ่านสด · ผู้รับคิด ณ ตอนส่ง · dedupe ต่อคน · ไม่ throw) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
   "dorm.announcement.published": withAutomation(async (evt) => (await import("@/lib/platform/dorm-announce")).onDormAnnouncementPublished(evt)),
+  // SVC D.16 ▸ แจ้งซ่อมหอ — ยิงจาก `dorm/repair.ts` ใน tx เดียวกับแถว (created · key `dorm.repair.created:<repairId>`) / CAS → DONE
+  //   (done · key `dorm.repair.done:<repairId>`) · payload ตรง 4 คีย์ { unitId, repairId, roomId, category } (ไม่มีชื่อ/เบอร์/ข้อความผู้เช่า · X8)
+  //   created ⇒ การ์ดบอร์ดงาน (สะพาน · ไม่มีบอร์ดตามหมวด = รอตัวกวาด) · done ⇒ LINE ซ่อมเสร็จครั้งเดียว (dedupe) + ย้ายการ์ดเข้าคอลัมน์เสร็จ
+  "dorm.repair.created": withAutomation(kanbanBridge("onDormRepairCreated")),
+  "dorm.repair.done": withAutomation(compose(async (evt) => (await import("@/lib/modules/dorm")).onRepairDone(evt), kanbanBridge("onDormRepairDone"))),
+  // ◂ SVC D.16
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

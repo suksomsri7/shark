@@ -607,6 +607,23 @@ registerMinuteJob({
   run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-announce")).runDormAnnounceJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
 });
 // ◂ SVC D.17
+// SVC D.16 ▸ หอพัก: แจ้งซ่อม — ส่ง LINE "ซ่อมเสร็จ" ซ้ำ (เวลาเงียบ/ล้ม ใน 3 วัน · keyset · ปิดแถวที่ส่งไม่ได้แล้ว) ·
+//   ซ้อนกันได้ = ข้อความ 1 ต่อคำแจ้ง (dedupe ของ notifyCustomer · X5) · โหลด facade หอตอนรันเท่านั้น
+registerMinuteJob({
+  name: "dorm.repair",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormRepairJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// SVC D.16 ▸ หอพัก: การ์ดบอร์ดงานของคำแจ้งซ่อม — เปิดการ์ดที่ยังไม่มี (มีบอร์ดตามหมวดแล้ว) + ตามการ์ดที่เสร็จเงียบ ⇒ DONE ·
+//   keyset วนจนหมดงบ · ซ้อนกันได้ (unique sourceKey + CAS) · โหลดสะพานตอนรันเท่านั้น
+registerMinuteJob({
+  name: "dorm.repair.cards",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/kanban-bridges")).sweepDormRepairCards(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.16
 
 function errorText(e: unknown): string {
   let s: string;
