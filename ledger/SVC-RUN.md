@@ -111,7 +111,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | D.14 | AI อ่านมิเตอร์ | เบา | | ⬜ | | |
 | D.15 | ปิด D1 (G2) หอขึ้นใช้ | — | ผู้คุม | ⬜ | | ต้องผ่าน J3 · U2 |
 | D.16 | แจ้งซ่อม→บอร์ดงาน | เบา | | ⬜ | | |
-| D.17 | ประกาศ | เบา | | ⬜ | | |
+| D.17 | ประกาศ | เบา | | ✅ | b8c1ceb6 | 61/64 ทรีรวม (S-1/S-2 accept-time · V-1) · ผู้ตรวจ+probe 24/24 (MAJOR งานส่งซ้ำอดอยาก ปิด) · ไม่มี migration · ปุ่มประกาศบนหน้าแรกหอ |
 | D.18 | พัสดุ | เบา | | ✅ | f58fdc6e | 67/68 (S-1 accept-time) · ผู้ตรวจ+probe 25/25 (MAJOR งานเตือนอดอยาก ปิด) · ไม่มี migration · signLink ใช้ครั้งเดียว |
 | D.19 | รายงานหลักหอ | เบา | | ⬜ | | |
 | D.20 | ปิดเฟส D (G3) | — | ผู้คุม | ⬜ | | U4 |
@@ -203,3 +203,4 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 31 ต.ค. ~01Z · 🔧 **ฐาน QC ต่อเลน** (เจ้าของสั่ง "เร่งเต็มที่ · คุณภาพเท่าเดิม" · ไม่มี limit 5 ชม.แล้ว) · Neon branch ลูกของ wo-svc-qc: l1 `wo-svc-qc-l1` br-icy-sound-aocow3uu (ep-royal-lake-aonedfp0) · l2 `wo-svc-qc-l2` br-noisy-grass-ao2kair1 (ep-weathered-mode-ao3zx4hs) · l3 `wo-svc-qc-l3` br-wild-cherry-aou4w4zp (ep-royal-bar-aoyw8uh0) · l4 + ด่านรวม/ด่านเต็ม = ฐานหลัก ep-mute-scene · commit 300aa9f3: allowlist ตรงตัว `scripts/svc-qc-hosts.mts` · qc-svc.sh ล็อกต่อฐาน `/tmp/shark-gate-svc-<host>.lock` (หลักคงเดิม) · ORACLE-EDIT infra 25 ไฟล์ (SVC_HOST/ด่าน probe ⇒ svcQcHostMark) + d.2/r0.6 ยอมล็อกต่อฐาน · ทดสอบ: r0.1 70/71 (M-4 accept-time) · smoke ฐานหลัก+ฐาน l1 · ฝั่งลบ prod/QC อื่น/สะกดผิด/URL ผสม ⇒ exit 4 · 🔴 **กติกา: ใบรับได้ต่อเมื่อผู้คุมรันซ้ำบนฐานหลักหลัง merge เท่านั้น** (ฐานเลน = ทำงาน/รีวิว) · migration ใหม่ต้องลงทุกฐานที่ใช้ · ลบ 3 branch ตอนจบ RUN · โปรเจกต์ Neon มี 10 branch (เต็มเพดาน Launch)
 - สลับเลนเข้าฐานของตัวเองเมื่อ agent ของเลนจบรอบ (merge 300aa9f3 + ตั้ง .env.qc-svc ของเลน) — ไม่สลับกลางรอบ
 - 31 ต.ค. ~04Z · ✅ **D.18** (34/53) · merge 0b52804d · ด่าน M (ฐานหลัก): d.18 67/68 · probe-d18-b 25/25 · d.9/d.13 --no-regression 0 failed · smoke 6/6 · fitness 53/53 · tsc 0 · ORACLE-EDIT d.18 PHONE_RE ขอบเขตตัวอักษร · หนี้: ถอด QR กล้อง · ไฟล์ลายเซ็นสำรอง · QUOTA ครั้งแรกเรียกซ้ำ 1 ครั้ง · J3/J5 ระยะเก็บรูปฉลาก
+- 31 ต.ค. ~05Z · ✅ **D.17** (35/53) · merge 04bbdd7b (ชน D.18 7 ไฟล์ เก็บทั้งสอง · ลบ dorm.announce + dorm.parcel.manage จาก planned · เมนู LINE มี announce+parcel) · ด่าน N: d.17 61/64 · probe-d17-b 24/24 · d.18 67/68 · probe-d18-b 25/25 · d.11/d.9/d.13 0 failed · smoke · fitness 53/53 · tsc 0 · มติ R1–R5 (นับอ่านต่อคน · บล็อก ตัดไฟ/ตัดน้ำ + J3) · หนี้: แท็บประกาศ (D.15 + ORACLE-EDIT d.13 K-6) · ประกาศหยุดกลางรอบต้องกดส่งซ้ำเอง · stamp partyId ลง ServiceMessageLog นอก notifyCustomer (ย้ายเข้าสัญญากลางภายหลัง)
