@@ -1151,7 +1151,7 @@ console.log("\n── S: ไฟล์ที่แตะ (git · ตอนรั�
 const git = (args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const dirty = (paths: string[]) => git(["status", "--porcelain", "--untracked-files=all", "--", ...paths]).split("\n").filter(Boolean).map((l) => l.slice(3).trim().replace(/^"|"$/g, ""));
 const removedLines = (f: string) => git(["diff", "-U0", "HEAD", "--", f]).split("\n").filter((l) => /^-(?!-)/.test(l) && l.slice(1).trim());
-const OWN = new Set<string>([...NEW_FILES, F.dormIndex, F.defs, F.perm, F.consumers, F.autoLabels, F.minute, F.line]);
+const OWN = new Set<string>([...NEW_FILES, F.dormIndex, F.defs, F.perm, F.consumers, F.autoLabels, F.minute, F.line, "src/components/dorm/DormHome.tsx", "src/app/app/u/[unitSlug]/dorm/page.tsx" /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · d17-S1) F7 ปุ่มประกาศบนหน้าแรกหอ */]);
 {
   const headHas = (() => { try { git(["cat-file", "-e", `HEAD:${F.plat}`]); return true; } catch { return false; } })();
   const n1 = "แตะเฉพาะไฟล์ของใบ (§1)", n2 = "ไม่แตะไฟล์ต้องห้าม (prisma · core นอก defs/rooms+permissions · notify-customer · dorm-portal · postback-routes · แชท · payment · บัญชี · โมดูลหอนอก announce/index · คอมโพเนนต์หอเดิม · webhooks/labels) · ไฟล์ร่วมแก้แบบเพิ่ม (permissions ลบได้ 1 บรรทัด)";
