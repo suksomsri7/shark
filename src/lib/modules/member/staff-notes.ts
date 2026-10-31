@@ -8,6 +8,8 @@
 // 🔴 เป้าหมายของนโยบายตามกติกาเดิมของหน้า 360: ฟิลด์ในส่วนอ่อนไหว ⇒ SECTION/<sectionId> · ฟิลด์อ่อนไหวในส่วนปกติ ⇒ FIELD/<fieldId>
 // 🔴 อ่านอย่างเดียว — เขียนได้แค่ `MemberAccessLog` (ผ่าน logAccessMany) · ไม่มี console · DTO ไม่มีชื่อ/เบอร์/อีเมล/id
 // 🔴 กันบันทึกซ้ำ (R8): (ผู้ดู, ลูกค้า, เป้าหมาย, หน้า) วันละ 1 แถวตามวันไทย — จอรีเฟรชทุก 5 วิ
+//    "อ่านกันซ้ำ → เขียน" อยู่ใต้ pg_advisory_xact_lock ต่อ (ร้าน|ผู้ดู|หน้า|วันไทย) (รีวิว F1: โหลดพร้อมกันเคยได้แถวซ้ำ) ·
+//    วันไทยคิดจากเวลาจริง ไม่ใช่ opts.now (รีวิว F2: createdAt ของแถว = now() ของฐาน)
 // 🔴 ฟิลด์ระบบ (phone/email/birthDate …) ไม่ขึ้นเสมอ แม้ร้านใส่รหัสไว้ในค่าตั้ง (กันเบอร์หลุดผ่านค่าตั้ง)
 
 import type { MemberFieldType } from "@prisma/client";
@@ -19,6 +21,7 @@ import { evaluateSensitiveAccess, logAccessMany, type LogAccessEntry, type Sensi
 
 export type StaffNoteItem = { key: string; label: string; display: string; sensitive: boolean };
 export type StaffNotes = { items: StaffNoteItem[]; hidden: number };
+/** `now` ไม่ใช้กันบันทึกซ้ำ (แถวลงเวลาจริงของฐาน — รีวิว F2) · เก็บไว้ในสัญญาให้ผู้เรียกเดิม */
 export type StaffNotesInput = { customerIds: string[]; fieldKeys: string[]; page: string; now?: Date };
 
 /** ชนิดที่การ์ดงานแสดงได้ (มติ R7) — DATE/DATETIME/MONEY/FILE/LOOKUP ข้ามเงียบ */
@@ -30,6 +33,31 @@ const MAX_CUSTOMERS = 200;
 const MAX_FIELDS = 20;
 const DAY_MS = 86_400_000;
 const BKK_MS = 7 * 3_600_000;
+
+/**
+ * ทำ fn ทีละรายต่อกุญแจ: คิวในโปรเซส (ไม่ให้คำขอที่รอล็อกเดียวกันยึด connection ของ pool ค้างหลายตัว) +
+ * pg_advisory_xact_lock ใน tx สั้น (กันข้ามโปรเซส/เครื่อง) · fn ใช้ connection อื่นของ pool ได้ (ล็อกถือจน tx จบ) ·
+ * แบบเดียวกับ `pos-board-bridges.ts#underKeyLock`
+ */
+const localChains = new Map<string, Promise<unknown>>();
+async function underViewLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = localChains.get(key) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(() =>
+    prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+        return fn();
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    ),
+  );
+  localChains.set(key, run);
+  try {
+    return await run;
+  } finally {
+    if (localChains.get(key) === run) localChains.delete(key);
+  }
+}
 
 type CardField = { def: FieldDef; sensitive: boolean; target: { targetType: SensitiveTargetType; targetId: string } | null };
 
@@ -80,9 +108,10 @@ export async function staffNotesFor(ctx: MemberCtx, actor: MemberActor, input: S
   // (1) ลูกค้าของร้าน + ระบบสมาชิกนี้ที่ยังใช้งานอยู่
   const customers = await prisma.customer.findMany({
     where: { id: { in: ids }, tenantId: ctx.tenantId, memberSystemId: ctx.systemId, status: { in: [...CARD_STATUSES] } },
-    select: { id: true },
+    select: { id: true, homeUnitId: true },
   });
   if (customers.length === 0) return out;
+  const homeOf = new Map(customers.map((c) => [c.id, c.homeUnitId ?? ""]));
   const custIds = ids.filter((id) => customers.some((c) => c.id === id));
 
   // (2) ฟิลด์ตามลำดับค่าตั้ง — ข้ามรหัสไม่มีจริง/เก็บแล้ว (listLayout กรองให้)/ฟิลด์ระบบ/ชนิดที่ไม่รองรับ
@@ -104,6 +133,7 @@ export async function staffNotesFor(ctx: MemberCtx, actor: MemberActor, input: S
 
   // (3) คำตัดสินอ่อนไหว — evaluateSensitiveAccess ตัวเดียว · แคชภายในคำขอนี้ต่อ (เป้าหมาย, ลูกค้า)
   //     เป้าหมายที่นโยบายไม่ตั้ง sameUnitOnly คำตัดสินไม่ขึ้นกับลูกค้า ⇒ ตัดสินครั้งเดียวใช้ทุกคน (จอรีเฟรชถี่)
+  //     ตั้ง sameUnitOnly ⇒ คำตัดสินขึ้นกับ "สาขาหลัก" ของลูกค้าเท่านั้น ⇒ แคชต่อ (เป้าหมาย, homeUnitId) (รีวิว F3 · ไม่โตตามจำนวนลูกค้า)
   const targets = [...new Map(fields.filter((f) => f.target).map((f) => [`${f.target!.targetType}:${f.target!.targetId}`, f.target!])).values()];
   const perCustomer = new Set<string>();
   if (targets.length > 0) {
@@ -116,7 +146,7 @@ export async function staffNotesFor(ctx: MemberCtx, actor: MemberActor, input: S
   const cache = new Map<string, SensitiveDecision>();
   const decide = async (t: { targetType: SensitiveTargetType; targetId: string }, customerId: string): Promise<SensitiveDecision> => {
     const tk = `${t.targetType}:${t.targetId}`;
-    const k = perCustomer.has(tk) ? `${tk}:${customerId}` : tk;
+    const k = perCustomer.has(tk) ? `${tk}@${homeOf.get(customerId) ?? ""}` : tk;
     let d = cache.get(k);
     if (!d) {
       d = await evaluateSensitiveAccess(ctx, actor, { targetType: t.targetType, targetId: t.targetId, customerId });
@@ -150,22 +180,26 @@ export async function staffNotesFor(ctx: MemberCtx, actor: MemberActor, input: S
   }
 
   // (5) บันทึกการดู (D17) เฉพาะค่าอ่อนไหวที่ส่งออกจริง · กันซ้ำรายวันไทยต่อ (ผู้ดู, ลูกค้า, เป้าหมาย, หน้า)
+  //     อ่าน+เขียนใต้ล็อกต่อ (ร้าน|ผู้ดู|หน้า|วันไทย) ⇒ โหลดพร้อมกันได้แถวเดียว (รีวิว F1) · วันไทยจากเวลาจริง (รีวิว F2)
   if (toLog.size > 0 && actor.userId) {
-    const { from, to } = bkkDayRange(input.now instanceof Date && !Number.isNaN(input.now.getTime()) ? input.now : new Date());
+    const { from, to } = bkkDayRange(new Date());
     const entries = [...toLog.values()];
-    const seen = await prisma.memberAccessLog.findMany({
-      where: {
-        tenantId: ctx.tenantId,
-        userId: actor.userId,
-        page: input.page,
-        customerId: { in: [...new Set(entries.map((e) => e.customerId))] },
-        createdAt: { gte: from, lt: to },
-      },
-      select: { customerId: true, targetType: true, targetId: true },
+    const lockKey = `member.staffNotes.view|${ctx.tenantId}|${actor.userId}|${input.page}|${from.toISOString()}`;
+    await underViewLock(lockKey, async () => {
+      const seen = await prisma.memberAccessLog.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          userId: actor.userId,
+          page: input.page,
+          customerId: { in: [...new Set(entries.map((e) => e.customerId))] },
+          createdAt: { gte: from, lt: to },
+        },
+        select: { customerId: true, targetType: true, targetId: true },
+      });
+      const done = new Set(seen.map((r) => `${r.customerId}|${r.targetType}|${r.targetId}`));
+      const fresh = entries.filter((e) => !done.has(`${e.customerId}|${e.targetType}|${e.targetId}`));
+      if (fresh.length > 0) await logAccessMany(ctx, actor, fresh, input.page);
     });
-    const done = new Set(seen.map((r) => `${r.customerId}|${r.targetType}|${r.targetId}`));
-    const fresh = entries.filter((e) => !done.has(`${e.customerId}|${e.targetType}|${e.targetId}`));
-    if (fresh.length > 0) await logAccessMany(ctx, actor, fresh, input.page);
   }
   return out;
 }
