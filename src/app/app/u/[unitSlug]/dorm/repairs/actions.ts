@@ -3,9 +3,9 @@
 //   ไม่รับรหัสร้าน/หน่วย/ผู้ใช้จากฟอร์ม · สิทธิ์ dorm.repair.manage + ขอบเขตอาคารตรวจสดใน facade ทุกครั้ง — ไม่ผ่าน ⇒ NOT_FOUND · ไม่ throw ให้ผู้ใช้เห็น stack
 import { revalidatePath } from "next/cache";
 import { requireUnit } from "@/lib/core/context";
-import { completeDormRepair } from "@/lib/modules/dorm";
+import { completeDormRepair, REPAIR_NF_REASON } from "@/lib/modules/dorm";
 
-const NO_ACCESS = { ok: false as const, code: "NOT_FOUND" as const, reason: "ไม่พบงานซ่อมนี้ หรือบัญชีนี้ไม่มีสิทธิ์ทำรายการ" };
+const NO_ACCESS = { ok: false as const, code: "NOT_FOUND" as const, reason: REPAIR_NF_REASON }; // ผู้ตรวจ F1: ไบต์เดียวกับ notFound() ของ facade
 const BAD_INPUT = { ok: false as const, code: "INVALID_INPUT" as const, reason: "ข้อมูลที่ส่งมาไม่ถูกต้อง" };
 const MAX_FILES = 8;
 
