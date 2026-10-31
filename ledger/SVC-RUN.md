@@ -89,10 +89,10 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | B.11 | จอตั้งค่าจองคิว + สิทธิ์ | เบา | | ✅ | 64e6c184 | 84/95 · V-2 ภาพรอ build รวม |
 | B.12 | ปิด B1 (G1) ร้านตัดผม | — | ผู้คุม | ⬜ | | U1 |
 | B.13 | ทรัพยากร | เข้ม | | ✅ | 698cd1e4 | b.13 84/87 (V-1 · SF-1 accept-time · G-2 = b.3 S-9 เที่ยงคืน → ORACLE-EDIT แล้ว 74/75) · probe-b13-b 76/76 · b.2 93/93 · b.4/b.5/b.7/b.8/b.16 0 failed · smoke/fitness/tsc ผ่าน · 7 รอบแก้ Q1–Q19 · migration svc_b13 |
-| B.14 | ปฏิทินลากย้าย | เบา | | ⬜ | | |
+| B.14 | ปฏิทินลากย้าย | เบา | | ✅ | 9fd5fe72 | b.14 65/70 (A-* รอเจ้าของ · V-1 · SF-1) · probe-b14-b 48/48 deadlock 0 · ฉาก calendar · แก้ลำดับล็อก rescheduleByShop/BySelf (หนี้ B.13) |
 | B.15 | คู่รัก/กลุ่ม | เข้ม | | ⬜ | | |
 | B.16 | ความชอบลูกค้า | เบา | | ✅ | b15182dd | b.16 45/46 (S-1 accept-time) · probe-b16-b exit 0 · b.4/b.5/b.6/b.11 0 failed · b.0 แดงเฉพาะ G-8 (pos-p2.4 L2 ทะเบียน createSale จาก B.10 → แก้ใน G1-D) · member-m1.3 ข้อตรรกะผ่าน · S3.x ภาพต้องมี QC_BASE (ENV) · smoke/fitness/tsc ผ่าน |
-| B.17 | waitlist + ไม่มาซ้ำ | เบา | | ⬜ | | |
+| B.17 | waitlist + ไม่มาซ้ำ | เบา | | ✅ | 687df71d | b.17 72/73 (S-1) · probe-b17-b 38/40 (RT-2 MINOR หนี้ · RL-2 info) · migration svc_b17 · 2 รอบแก้ (W1 W2 + FIRST ห้ามแซง) |
 | B.18 | ปิดเฟส B + แก้สเปก | — | ผู้คุม | ⬜ | | G3 คู่ D.20 · U3 |
 | D.0 | migration svc_d | เบา | | ✅ | b113a1f4 | 107/108 + ORACLE-EDIT · ดัชนีหนี้ครบ |
 | D.1 | กฎหมาย + สูตรเงิน (pure) | เข้ม | | ✅ | ffe9d12b | 122/122 (pure e6213cde + defs) · 2 ผู้ตรวจ |
@@ -214,3 +214,4 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 31 ต.ค. ~16Z · ✅ **D.12** (41/53) · merge 1ab720fb · ด่าน S (ฐานหลัก): d.12 126/127 · probe-d12-b · d.5 · regression 9 ใบ 0 failed ยกเว้น d.6 S-5 (หนี้ FG-3 → D.15) · smoke/fitness/tsc ผ่าน
 - 31 ต.ค. ~16Z · ✅ **B.16** (42/53) · merge b15182dd · ด่าน T (ฐานหลัก): b.16 45/46 · probe-b16-b · regression 0 failed ยกเว้น b.0 G-8 (มาจาก B.10 · อยู่ในรอบแก้ G1-D) · m1.3 S3.x = ภาพไม่มี QC_BASE · smoke/fitness/tsc ผ่าน
 - 31 ต.ค. ~17Z · ✅ **B.13** (43/53) · merge 698cd1e4 · ด่าน U (ฐานหลัก): b.13 84/87 · probe-b13-b 76/76 · b.2 93/93 · regression 0 failed · ORACLE-EDIT b3-S9-midnight (ร้าน 24 ชม. ข้ามเที่ยงคืน) · หนี้: A9 walk-in ข้ามเที่ยงคืน · ปุ่ม 'มาถึง' = ตอนกด (คำถามเจ้าของ) · rescheduleByShop/BySelf ลำดับล็อกทรัพยากร → แก้ใน B.14 · 🔴 deploy: migration 20261225000000_svc_b13
+- 31 ต.ค. ~21Z · ✅ **B.17 + B.14** (45/53) · merge 687df71d + 9fd5fe72 · ด่าน W (ฐานหลัก): b.17 72/73 · probe-b17-b RT-2 เท่านั้น (หนี้) · ฉาก B.11→B.13→calendar · b.14 65/70 0 failed · probe-b14-b 48/48 · b.13/b.2/b.5/b.7/b.8/b.9 0 failed · b.11 แดง S-2/S-4/S-5/M-9 (ของ B.13/B.17 · แก้แล้วใน G1R2 efd8f2cf รอ merge) · smoke · fitness 2 โหมด · tsc 0 · 🔴 deploy: migration 20261226000000_svc_b17 · หนี้ B.17: RT-2 · FIRST ไม่ส่งต่อเมื่อคนถือออก · ปุ่มออกจากคิว · RL-2 · tick ต่อ entry · หนี้ B.14: startJob loadGate lock:false · strictHours ข้ามเที่ยงคืน
