@@ -131,6 +131,8 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 ### 3.2 หนี้ (ข้อที่ผ่านไม่ได้ · เหตุผล · ใบที่จะปิด)
 | ใบ | หนี้ | เหตุผล | ปิดใน |
 |---|---|---|---|
+| D.6 | ผู้ดูแลอาคาร 1 บันทึกมิเตอร์อาคาร 2 ผ่าน service submitReadings ได้ (ด่านขอบเขตอยู่ที่ action เท่านั้น · probe-d14-b FG-3) | ด่านขอบเขตอาคารใน service | D.15 |
+| D.14 | ref USAGE ชน namespace TOPUP/GRANT · ตัวอ่าน AI ใน tx ถือ connection · AuditLog เป็นที่เก็บข้อเสนอ (index tenantId+action+targetId) | ไม่มี migration | หลัง D.15 |
 | D.3/D.13 | r0.4 H-2: rooms.access.buildingAssignments (ตาราง record ว่าง) ในหน้าตั้งค่ากลางไม่มีช่องกรอก (แก้ได้เฉพาะหน้านโยบายหอ D.13) | SettingsForm/JsonNode ไม่รองรับ record ว่าง | D.15 |
 
 ---
