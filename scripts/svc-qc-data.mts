@@ -1098,3 +1098,105 @@ export const SQC_DORM_REPORT_SCENE = {
 /** ภาพ หอ 14 (ส่วนพื้นฐาน) — ก่อนถ่าย: roomboard → lease → billing (D.8) → dorm-home (D.13) → report (D.19) · ถ่าย --user owner */
 SQC_VISUAL_SPECS["d.19"] = [{ name: "dorm-reports", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/reports` }];
 // ◂ SVC D.19
+// SVC B.16 ▸ บล็อกของใบ B.16 เท่านั้น (ความชอบ/ข้อห้ามลูกค้าบนการ์ดงาน · ไม่มีภาพแบบ) — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-b.16.md · ข้อสอบ scripts/qc-svc-b.16.mts (ฉากบนร้านชั่วคราว qc-svc-b16-* เท่านั้น)
+//   🔴 อยู่ร่วมกับ svcqc: ใบนี้ **ไม่เขียนอะไรลงร้าน svcqc** (ไม่มีภาพ ⇒ ไม่มีสคริปต์ฉาก svcqc) · ไม่เขียน SettingValue/SettingProfile ของ svcqc ·
+//      ข้อสอบ Q-1 จดลายนิ้วมือค่าตั้ง/บันทึกการดูของ svcqc ก่อน–หลังรัน ต้องเท่ากัน
+//   🔴 ค่าล้วน — ชื่อ/เบอร์/ค่าฟิลด์ในนี้คือ "สิ่งที่ต้องไม่หลุด" ด้วย (ข้อสอบ X8 ไล่หาในทุก DTO · log · payload)
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcNoteField = {
+  section: "health" | "intake" | "prefs" | "system";
+  key: string;
+  label: string;
+  type: "TEXT" | "LONG_TEXT" | "NUMBER" | "DATE" | "SELECT" | "MULTI_SELECT" | "BOOLEAN" | "FILE" | "LOOKUP";
+  sensitive?: boolean;
+  archived?: boolean;
+  isSystem?: boolean;
+  options?: Record<string, unknown>;
+};
+const choice = (pairs: [string, string][]) => ({ choices: pairs.map(([value, label]) => ({ value, label })) });
+export const SQC_CUSTOMER_NOTES_SCENE = {
+  /** คีย์ค่าตั้ง (กลุ่ม privacy · ชั้น TENANT · เจ้าของเท่านั้น) — ค่าเริ่ม SPA = 2 ฟิลด์ของเทมเพลตสมาชิก salon */
+  settingKey: "booking.privacy.jobCardFields",
+  templateDefaults: { BARBER: [] as string[], SPA: ["pressurePref", "chemicalAllergy"], CLINIC: [] as string[] },
+  permissionKey: "booking.customer.notes",
+  roleRow: { id: "notes", labelTh: "เห็นความชอบ/ข้อห้ามลูกค้าบนการ์ดงาน", keys: ["booking.customer.notes"] },
+  presetRows: ["LEAD", "PROVIDER"],
+  pages: ["booking.today", "booking.mine"] as const,
+  /** ส่วน (MemberSection) ของร้านทดสอบ A — health/intake อ่อนไหวทั้งส่วน · prefs ไม่อ่อนไหว (oilAllergy อ่อนไหวรายฟิลด์) */
+  sections: [
+    { key: "system", label: "ข้อมูลหลัก", sensitive: false, isSystem: true },
+    { key: "health", label: "สุขภาพ", sensitive: true },
+    { key: "intake", label: "แบบสอบถามก่อนนวด", sensitive: true },
+    { key: "prefs", label: "ความชอบ", sensitive: false },
+  ],
+  fields: [
+    { section: "system", key: "phone", label: "เบอร์โทร", type: "TEXT", isSystem: true },
+    { section: "health", key: "pressurePref", label: "แรงกดที่ชอบ", type: "SELECT", options: choice([["LIGHT", "เบา"], ["MEDIUM", "ปานกลาง"], ["FIRM", "แน่น"]]) },
+    { section: "health", key: "chemicalAllergy", label: "แพ้สารเคมี", type: "LONG_TEXT", sensitive: true },
+    { section: "health", key: "stylistId", label: "ช่างประจำ", type: "LOOKUP", options: { target: "EMPLOYEE" } },
+    { section: "intake", key: "pregnant", label: "ตั้งครรภ์", type: "BOOLEAN" },
+    { section: "prefs", key: "musicPref", label: "เพลงที่ชอบ", type: "TEXT" },
+    { section: "prefs", key: "oilAllergy", label: "แพ้น้ำมัน", type: "MULTI_SELECT", sensitive: true, options: choice([["LEMONGRASS", "ตะไคร้"], ["EUCALYPTUS", "ยูคาลิปตัส"], ["COCONUT", "มะพร้าว"]]) },
+    { section: "prefs", key: "coldRoom", label: "ชอบห้องเย็น", type: "BOOLEAN" },
+    { section: "prefs", key: "massageCount", label: "จำนวนครั้งที่มา", type: "NUMBER" },
+    { section: "prefs", key: "longNote", label: "บันทึกจากหมอนวด", type: "LONG_TEXT" },
+    { section: "prefs", key: "photo", label: "รูปถ่าย", type: "FILE" },
+    { section: "prefs", key: "lastServiceAt", label: "ครั้งล่าสุด", type: "DATE" },
+    { section: "prefs", key: "oldNote", label: "โน้ตเก่า", type: "TEXT", archived: true },
+  ] as SqcNoteField[],
+  /** ค่าตั้งระดับร้าน (TENANT) ของร้าน A — ลำดับนี้ = ลำดับบนการ์ด · 6 ตัวท้ายต้องถูกข้าม (ฟิลด์ระบบ/อ้างอิง/ไฟล์/วันที่/เก็บแล้ว/ไม่มีจริง) */
+  tenantSetting: ["musicPref", "pressurePref", "chemicalAllergy", "oilAllergy", "pregnant", "coldRoom", "massageCount", "longNote", "phone", "stylistId", "photo", "lastServiceAt", "oldNote", "noSuchKey"],
+  shownOrder: ["musicPref", "pressurePref", "chemicalAllergy", "oilAllergy", "pregnant", "coldRoom", "massageCount", "longNote"],
+  /** นโยบายข้อมูลอ่อนไหว (MemberSensitivePolicy) — oilAllergy ไม่มีแถว = ค่าปริยายของระบบสมาชิก (OWNER · MANAGER) */
+  policies: [
+    { target: "SECTION:health", roles: ["MANAGER"], hrPositions: ["หมอนวด"], logAccess: true },
+    { target: "SECTION:intake", roles: ["MANAGER", "STAFF"], hrPositions: [] as string[], logAccess: false },
+  ],
+  hrPosition: "หมอนวด",
+  /** ลูกค้า (Customer) ของร้าน A · c1 ครบทุกฟิลด์ · c2 มีแค่ musicPref · c3 ไม่มีค่าเลย · merged/closed ต้องไม่ขึ้น */
+  customers: {
+    c1: { name: "คุณนิด ใบเตยทดสอบ", phone: "0861160001", email: "nid.b16@qc.invalid", memberCode: "B16-0001" },
+    c2: { name: "คุณต้น ใบเตยทดสอบ", phone: "0861160002", email: "ton.b16@qc.invalid", memberCode: "B16-0002" },
+    c3: { name: "คุณแพร ใบเตยทดสอบ", phone: "0861160003", email: "prae.b16@qc.invalid", memberCode: "B16-0003" },
+    merged: { name: "คุณรวม ใบเตยทดสอบ", phone: "0861160004", email: "merged.b16@qc.invalid", memberCode: "B16-0004" },
+    closed: { name: "คุณปิด ใบเตยทดสอบ", phone: "0861160005", email: "closed.b16@qc.invalid", memberCode: "B16-0005" },
+    other: { name: "คุณร้านบี ทดสอบ", phone: "0861160006", email: "other.b16@qc.invalid", memberCode: "B16-0006" },
+  },
+  /** ค่าของ c1 (ลงคอลัมน์แยกชนิดของ MemberFieldValue) */
+  c1Values: {
+    phone: "0861160001",
+    pressurePref: "MEDIUM",
+    chemicalAllergy: "แพ้น้ำมันหอมระเหยกลิ่นแรง ผื่นขึ้นที่แขน",
+    pregnant: false,
+    musicPref: "เพลงบรรเลงเปียโน",
+    oilAllergy: ["LEMONGRASS", "EUCALYPTUS"],
+    coldRoom: true,
+    massageCount: 7,
+    longNote: "ไหล่ซ้ายตึงมาก ".repeat(30).trim(),
+    photo: "svcb16-file-photo",
+    lastServiceAt: "2026-10-01",
+    oldNote: "โน้ตเก่าห้ามขึ้นบนการ์ด",
+  } as Record<string, unknown>,
+  c2Values: { musicPref: "เพลงลูกทุ่ง" } as Record<string, unknown>,
+  /** ค่าที่หน้าจอต้องแสดง (display) ของ c1 */
+  c1Display: {
+    musicPref: "เพลงบรรเลงเปียโน",
+    pressurePref: "ปานกลาง",
+    chemicalAllergy: "แพ้น้ำมันหอมระเหยกลิ่นแรง ผื่นขึ้นที่แขน",
+    oilAllergy: "ตะไคร้ · ยูคาลิปตัส",
+    pregnant: "ไม่ใช่",
+    coldRoom: "ใช่",
+    massageCount: "7",
+  } as Record<string, string>,
+  /** ข้อความยาว (TEXT/LONG_TEXT) ตัดที่ 120 ตัวอักษร + "…" · ช่องว่าง/ขึ้นบรรทัดยุบเป็นช่องเดียว */
+  textMax: 120,
+  /** ใครเห็นอะไรบนการ์ดของ c1 (ฟิลด์อ่อนไหวที่ตั้งไว้ 4 ตัว: pressurePref · chemicalAllergy · oilAllergy · pregnant) */
+  expectC1: {
+    owner: { shown: ["musicPref", "pressurePref", "chemicalAllergy", "oilAllergy", "pregnant", "coldRoom", "massageCount", "longNote"], hidden: 0 },
+    manager: { shown: ["musicPref", "pressurePref", "chemicalAllergy", "oilAllergy", "pregnant", "coldRoom", "massageCount", "longNote"], hidden: 0 },
+    thera1: { shown: ["musicPref", "pressurePref", "chemicalAllergy", "pregnant", "coldRoom", "massageCount", "longNote"], hidden: 1 },
+    thera2: { shown: ["musicPref", "pregnant", "coldRoom", "massageCount", "longNote"], hidden: 3 },
+  },
+} as const;
+// ◂ SVC B.16

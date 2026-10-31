@@ -4,8 +4,10 @@
 import Link from "next/link";
 import type { LineBlock, LineJob, TodayLineView } from "@/lib/modules/booking/today-line";
 import { JobButtons, TicketTag, dayLabel, hhmm, jobSubline, minLabel, type LineActions } from "./line-parts";
+import JobNotes, { hasJobNotes, type JobNotesMap } from "./JobNotes"; // SVC B.16
 
-type Props = { view: TodayLineView; unitSlug: string; actions: LineActions; at?: string; bookingHref?: string };
+// SVC B.16 ▸ notes = ความชอบ/ข้อห้ามลูกค้า (loadJobCustomerNotes) · ไม่ส่ง/{} ⇒ DOM เดิมทุกไบต์ ◂
+type Props = { view: TodayLineView; unitSlug: string; actions: LineActions; at?: string; bookingHref?: string; notes?: JobNotesMap };
 
 const LOOK_CLASS: Record<LineBlock["look"], string> = {
   now: "bg-[color:var(--color-ink)] text-[color:var(--color-surface)] border border-[color:var(--color-ink)]",
@@ -17,7 +19,7 @@ const LOOK_CLASS: Record<LineBlock["look"], string> = {
 };
 const LOOK_SUB: Partial<Record<LineBlock["look"], string>> = { done: "เสร็จ", noshow: "ไม่มา" };
 
-export default function TodayLine({ view, unitSlug, actions, at, bookingHref }: Props) {
+export default function TodayLine({ view, unitSlug, actions, at, bookingHref, notes }: Props) {
   const staff = view.staff.map((s) => ({ staffId: s.staffId, name: s.name }));
   const span = Math.max(1, view.axisEndMs - view.axisStartMs);
   const pct = (ms: number) => ((ms - view.axisStartMs) / span) * 100;
@@ -206,6 +208,7 @@ export default function TodayLine({ view, unitSlug, actions, at, bookingHref }: 
                     </div>
                     <small className="mt-0.5 block text-xs text-[color:var(--color-muted)]">{jobSubline(j)}</small>
                     {j.actions.length ? <div className="mt-2 flex flex-wrap gap-1.5">{btn(j, undefined, "call")}</div> : null}
+                    <JobNotes notes={notes} appointmentId={j.appointmentId} />
                   </div>
                 </div>
               );
@@ -215,12 +218,13 @@ export default function TodayLine({ view, unitSlug, actions, at, bookingHref }: 
             <div className="mt-3 border-t pt-3">
               <h4 className="text-xs font-semibold text-[color:var(--color-muted)]">กำลังทำ</h4>
               {view.inService.map((j) => (
-                <div key={j.appointmentId} data-line-inservice={j.appointmentId} className="flex items-center gap-2 py-2">
+                <div key={j.appointmentId} data-line-inservice={j.appointmentId} className={"flex items-center gap-2 py-2" + (hasJobNotes(notes, j.appointmentId) ? " flex-wrap" : "")}>
                   <TicketTag job={j} />
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {j.label} <small className="text-xs text-[color:var(--color-muted)]">· {j.staffName ?? ""} · ถึง {hhmm(j.plannedEndMs)}</small>
                   </span>
                   {j.actions.length ? <div className="flex gap-1.5">{btn(j)}</div> : null}
+                  <JobNotes notes={notes} appointmentId={j.appointmentId} />
                 </div>
               ))}
             </div>

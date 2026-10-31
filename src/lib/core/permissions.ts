@@ -247,6 +247,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "booking.deposit.waive": "ยกเว้นมัดจำ",
       "booking.deposit.forfeit": "ยึดมัดจำเมื่อลูกค้าไม่มา",
       "booking.customer.phoneFull": "เห็นเบอร์โทรลูกค้าเต็ม (ไม่ซ่อนเลขกลาง)",
+      "booking.customer.notes": "เห็นความชอบ/ข้อห้ามของลูกค้าบนการ์ดงาน (ข้อมูลอ่อนไหวตามนโยบายสมาชิก)", // SVC B.16
       "booking.report.view": "ดูรายงานและยอดเงินของระบบจอง",
     },
     // SVC B.11 ▸ คีย์ที่ยังไม่มีโค้ดเรียก assertCan/evaluate/canBookingAction (ใช้ผ่านตารางสิทธิ์ · ใบหลังเปิดใช้จริง) ◂
@@ -1006,13 +1007,15 @@ export const BOOKING_ROLE_ROWS: readonly { id: string; labelTh: string; keys: re
     ],
   },
   { id: "report", labelTh: "ดูรายงาน · ยอดเงิน", keys: ["booking.report.view"] },
+  // SVC B.16 ▸ แถวที่ 11 (ต่อท้าย — แถวเดิมไม่เลื่อน) · ฟิลด์อ่อนไหวยังผ่านนโยบายสมาชิกอีกชั้น ◂
+  { id: "notes", labelTh: "เห็นความชอบ/ข้อห้ามลูกค้าบนการ์ดงาน", keys: ["booking.customer.notes"] },
 ];
 
 export type BookingRolePreset = "LEAD" | "PROVIDER" | "CASHIER" | "ASSISTANT";
 
 const SHOP_PRESET: Partial<Record<BookingRolePreset, readonly string[]>> = {
-  LEAD: ["job.own", "job.any", "counter", "deposit.take", "reschedule", "deposit.waive", "deposit.forfeit", "phone", "report"],
-  PROVIDER: ["job.own", "counter"],
+  LEAD: ["job.own", "job.any", "counter", "deposit.take", "reschedule", "deposit.waive", "deposit.forfeit", "phone", "report", "notes"],
+  PROVIDER: ["job.own", "counter", "notes"], // SVC B.16: notes (หมอต้องรู้แรงกด/อาการแพ้ก่อนลงมือ · แคชเชียร์ไม่ได้)
   CASHIER: ["counter", "deposit.take", "reschedule", "phone"],
 };
 

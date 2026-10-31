@@ -614,3 +614,8 @@ export {
   /** ประทับ 1 ดวง (ใบที่ตั้ง PIN ต้อง PIN ตรง) → ข้อความแบนเนอร์ */
   staffStamp,
 } from "./staff-app";
+
+// ── SVC B.16 ▸ ความชอบ/ข้อห้ามลูกค้าบนการ์ดงาน (จองคิว: จอแถวเดียว + มือถือหมอ) ──
+// ประกอบ engine ฟิลด์เดิม + นโยบายอ่อนไหวเดิม (evaluateSensitiveAccess) + บันทึกการดู (logAccessMany · กันซ้ำรายวัน) ◂
+export type { StaffNoteItem, StaffNotes, StaffNotesInput } from "./staff-notes";
+export { staffNotesFor } from "./staff-notes";

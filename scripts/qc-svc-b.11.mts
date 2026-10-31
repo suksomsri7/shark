@@ -240,10 +240,11 @@ const ROLE_ROWS: { id: string; labelTh: string; keys: string[] }[] = [
   { id: "phone", labelTh: "เห็นเบอร์โทรลูกค้าเต็ม", keys: ["booking.customer.phoneFull"] },
   { id: "settings", labelTh: "แก้ตั้งค่า · บริการ · ช่าง", keys: ["booking.settings.edit", "booking.settings.money", "booking.service.create", "booking.service.update", "booking.service.setDeposit", "booking.staff.create", "booking.staff.delete", "booking.hours.set", "booking.devices.manage"] },
   { id: "report", labelTh: "ดูรายงาน · ยอดเงิน", keys: ["booking.report.view"] },
+  { id: "notes", labelTh: "เห็นความชอบ/ข้อห้ามลูกค้าบนการ์ดงาน", keys: ["booking.customer.notes"] }, // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b16-R1/R2): แถวที่ 11 ของ B.16 (K-3 · N-4) ต่อท้าย — แถวเดิมไม่เปลี่ยน
 ];
 const PRESET_ROWS: Record<string, string[]> = {
-  LEAD: ["job.own", "job.any", "counter", "deposit.take", "reschedule", "deposit.waive", "deposit.forfeit", "phone", "report"],
-  PROVIDER: ["job.own", "counter"],
+  LEAD: ["job.own", "job.any", "counter", "deposit.take", "reschedule", "deposit.waive", "deposit.forfeit", "phone", "report", "notes"], // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b16-R1/R2): + "notes" (K-4 · N-4)
+  PROVIDER: ["job.own", "counter", "notes"], // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b16-R1/R2): + "notes" (K-4 · N-4)
   CASHIER: ["counter", "deposit.take", "reschedule", "phone"],
   ASSISTANT: ["counter", "reschedule", "phone"],
 };
