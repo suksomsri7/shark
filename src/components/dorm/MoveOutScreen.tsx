@@ -87,6 +87,32 @@ const OK_TH: Record<string, string> = {
   transfer: "ย้ายห้องแล้ว",
 };
 
+/** SVC D.12 (Y24) ▸ คำเตือนจากระบบ ⇒ ภาษาไทย (ไม่แสดงรหัสดิบ) */
+const KIND_TH = (k: string | undefined) => (k === "ELEC" ? "ไฟ" : k === "WATER" ? "น้ำ" : "น้ำ/ไฟ");
+function warnTh(w: string): string {
+  const [code, a, b] = w.split(":");
+  const amt = (x: string | undefined) => (x && /^\d+$/.test(x) ? `฿${money(Number(x))}` : "");
+  switch (code) {
+    case "RATE_MISSING":
+      return `ยังไม่มีอัตราค่า${KIND_TH(a)}ของเดือนวันออก — ใส่บิลการไฟฟ้า/ประปาหรืออัตราคงที่ก่อน`;
+    case "RATE_FROM":
+      return `ใช้อัตราค่าน้ำไฟของงวด ${a ?? ""} (เดือนวันออกยังไม่มีอัตรา)`;
+    case "BASE_READING_MISSING":
+      return `ไม่พบเลขมิเตอร์${KIND_TH(a)}ที่ออกบิลครั้งล่าสุดหรือเลขวันเข้า`;
+    case "METER_BACKWARDS":
+      return `เลขมิเตอร์${KIND_TH(a)}วันออกต่ำกว่าเลขที่ออกบิลแล้ว — ตรวจเลขอีกครั้ง`;
+    case "METHOD_UNSUPPORTED":
+      return `วิธีคิดค่า${KIND_TH(a)}ของหอนี้ยังคิดถึงวันย้ายออกอัตโนมัติไม่ได้`;
+    case "ADVANCE_RENT_LEFT":
+      return `ค่าเช่าล่วงหน้าเหลือ ${amt(a)} ที่หักในใบนี้ไม่หมด — ระบบยังคืนนอกเงินประกันไม่ได้ (คืนเองแล้วบันทึกในบัญชี)`;
+    case "RENT_EXCESS_LEFT":
+      return `ค่าห้องเดือนสุดท้ายที่จ่ายเกินไว้ ${amt(a)} ลดหนี้ในบิลไม่ได้ (จ่ายแล้ว) — ระบบยังคืนนอกเงินประกันไม่ได้`;
+    default:
+      void b;
+      return "มีรายการที่ต้องตรวจสอบเพิ่มเติม";
+  }
+}
+
 function lineLabel(l: SummaryLine): string {
   if ((l.code === "ELEC" || l.code === "WATER") && l.qty && typeof l.unitPriceSatang === "number")
     return `หัก ${l.code === "ELEC" ? "ค่าไฟ" : "ค่าน้ำ"} ${num(l.qty)} × ${money(l.unitPriceSatang)}`;
@@ -162,7 +188,6 @@ export default function MoveOutScreen({ unitSlug, model, actions }: MoveOutScree
   const catalog = model.catalog ?? [];
   const files = model.files ?? [];
 
-  const meterOf = (kind: "ELEC" | "WATER") => model.meters.find((m) => m.kind === kind) ?? null;
   const unpaid = model.lines.filter((l) => l.code === "UNPAID");
   const settleBlocked = !model.canSettle.ok;
   const sendBlocked = !model.canSend.ok || frozen;
@@ -410,12 +435,11 @@ export default function MoveOutScreen({ unitSlug, model, actions }: MoveOutScree
                   {model.meterReadAt ? <small className="text-xs text-[color:var(--color-ink-soft)]">บันทึกแล้ว</small> : null}
                 </span>
                 <span className="flex flex-wrap gap-x-3 gap-y-2 text-sm text-[color:var(--color-ink-soft)]">
-                  {(["ELEC", "WATER"] as const).map((k) => {
-                    const m = meterOf(k);
-                    if (!m) return null;
+                  {model.meters.map((m) => {
+                    const k = m.kind;
                     return (
-                      <span key={k} className="flex flex-wrap items-center gap-2">
-                        <span data-moveout-meter={k}>
+                      <span key={m.meterId} className="flex flex-wrap items-center gap-2">
+                        <span data-moveout-meter={k} data-meter-id={m.meterId}>
                           {`${k === "ELEC" ? "ไฟ" : "น้ำ"} ${num(m.baseValue)} → `}
                           <b className="text-neutral-900">{m.value === null ? "ยังไม่จด" : num(m.value)}</b>
                           {m.units === null ? "" : ` (${num(m.units)} หน่วย)`}
@@ -523,7 +547,7 @@ export default function MoveOutScreen({ unitSlug, model, actions }: MoveOutScree
             <p className="mt-3 text-xs text-[color:var(--color-ink-soft)]">
               {`ลงบัญชีให้เอง: ล้างเงินประกันรับ ฿${money(model.heldSatang)} · ค่าใช้จ่ายวันออก ฿${money(model.chargesSatang)} · จ่ายคืน ฿${money(model.refundSatang)} · ห้อง ${model.roomNumber} → ทำความสะอาด`}
             </p>
-            {model.warnings.length ? <p className="mt-2 text-xs text-amber-700">{`ตรวจสอบ: ${model.warnings.join(" · ")}`}</p> : null}
+            {model.warnings.length ? <p className="mt-2 text-xs text-amber-700">{`ตรวจสอบ: ${model.warnings.map(warnTh).join(" · ")}`}</p> : null}
             {model.settled ? <p className="mt-2 text-xs">{`ปิดเงินประกันแล้ว · คืน ฿${money(model.settled.refundSatang)}`}</p> : null}
             <div className="mt-2">
               <Msg msg={msg} />
@@ -556,7 +580,8 @@ export default function MoveOutScreen({ unitSlug, model, actions }: MoveOutScree
               disabled={settleBlocked || busy !== null}
               {...(settleBlocked && model.canSettle.code ? { "data-blocked": model.canSettle.code } : {})}
               onClick={() => {
-                if (typeof window !== "undefined" && !window.confirm(`ยืนยันปิดเงินประกันห้อง ${model.roomNumber} · คืนผู้เช่า ฿${money(model.refundSatang)} — ระบบลงบัญชีให้ทันที`)) return;
+                const tail = model.tenantOwesSatang > 0 ? `ผู้เช่าต้องจ่ายเพิ่ม ฿${money(model.tenantOwesSatang)}` : `คืนผู้เช่า ฿${money(model.refundSatang)}`;
+                if (typeof window !== "undefined" && !window.confirm(`ยืนยันปิดเงินประกันห้อง ${model.roomNumber} · ${tail} — ระบบลงบัญชีให้ทันที`)) return;
                 void run("settle", { moveOutId: model.moveOutId, channel });
               }}
               className="flex-[1.3] rounded-lg bg-neutral-900 px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
@@ -595,6 +620,8 @@ export function MoveOutStart({ unitSlug, lease, actions }: MoveOutStartProps) {
   const [transferRent, setTransferRent] = useState("");
   const [oldReads, setOldReads] = useState<Record<string, string>>({});
   const [meterReason, setMeterReason] = useState("");
+  const [newReads, setNewReads] = useState<Record<string, string>>({});
+  const newMeters = (lease.roomMeters ?? {})[toRoom] ?? [];
   const shortNotice = lease.noticeDays > 0 && ymdParts(moveOutDate) && ymdParts(lease.today) ? (Date.parse(`${moveOutDate}T00:00:00Z`) - Date.parse(`${lease.today}T00:00:00Z`)) / 86_400_000 < lease.noticeDays : false;
   const toMoveOut = (r: unknown) => {
     const id = r && typeof r === "object" && typeof (r as { moveOutId?: unknown }).moveOutId === "string" ? (r as { moveOutId: string }).moveOutId : null;
@@ -614,6 +641,7 @@ export function MoveOutStart({ unitSlug, lease, actions }: MoveOutStartProps) {
         <span className="text-sm text-[color:var(--color-ink-soft)]">{`สัญญา ${thDate(lease.startDate)} – ${lease.endDate ? thDate(lease.endDate) : "ไม่กำหนด"} · ค่าห้อง ฿${money(lease.rentSatang)}/เดือน`}</span>
       </div>
       <Msg msg={msg} />
+      {lease.moveOutId ? <p className="rounded-xl border px-4 py-3 text-sm">สัญญานี้แจ้งย้ายออกแล้ว — ผู้มีสิทธิ์จัดการย้ายออกดูรายละเอียดได้ที่จอย้ายออก</p> : null}
       {lease.status !== "ACTIVE" ? <p className="rounded-xl border px-4 py-3 text-sm">สัญญานี้ไม่ได้อยู่ระหว่างเช่า — แจ้งย้ายออก/ต่อสัญญา/ย้ายห้องได้เฉพาะสัญญาที่ยังมีผล</p> : null}
       <div className="grid min-w-0 gap-4 lg:grid-cols-3">
         {lease.can.notice ? (
@@ -698,6 +726,12 @@ export function MoveOutStart({ unitSlug, lease, actions }: MoveOutStartProps) {
                 <input inputMode="numeric" value={oldReads[m.meterId] ?? ""} onChange={(e) => setOldReads((x) => ({ ...x, [m.meterId]: e.target.value }))} className="rounded border px-2 py-1 text-sm" />
               </label>
             ))}
+            {newMeters.map((m) => (
+              <label key={m.meterId} className="flex flex-col gap-1 text-xs">
+                {`เลขมิเตอร์${m.kind === "ELEC" ? "ไฟ" : "น้ำ"}ห้องใหม่ ณ วันเข้า`}
+                <input inputMode="numeric" value={newReads[m.meterId] ?? ""} onChange={(e) => setNewReads((x) => ({ ...x, [m.meterId]: e.target.value }))} className="rounded border px-2 py-1 text-sm" />
+              </label>
+            ))}
             {lease.oldMeters.length ? (
               <label className="flex flex-col gap-1 text-xs">
                 จดเลขไม่ได้? ระบุเหตุผล (อย่างน้อย 10 ตัวอักษร)
@@ -710,7 +744,8 @@ export function MoveOutStart({ unitSlug, lease, actions }: MoveOutStartProps) {
               disabled={busy !== null || lease.status !== "ACTIVE" || !toRoom}
               onClick={() => {
                 const rent = satangOf(transferRent);
-                const meterReadings = lease.oldMeters.filter((m) => (oldReads[m.meterId] ?? "").trim() !== "").map((m) => ({ meterId: m.meterId, value: Number((oldReads[m.meterId] ?? "").replace(/,/g, "")) }));
+                const pick = (ms: { meterId: string }[], vals: Record<string, string>) => ms.filter((m) => (vals[m.meterId] ?? "").trim() !== "").map((m) => ({ meterId: m.meterId, value: Number((vals[m.meterId] ?? "").replace(/,/g, "")) }));
+                const meterReadings = [...pick(lease.oldMeters, oldReads), ...pick(newMeters, newReads)];
                 void run("transfer", { leaseId: lease.leaseId, toRoomId: toRoom, effectiveDate: effDate, ...(rent ? { rentSatang: rent } : {}), meterReadings, meterReason: meterReason.trim() || null }, { reload: false, after: toLease });
               }}
               className="min-h-10 rounded-lg border px-3 text-sm font-bold disabled:opacity-50"

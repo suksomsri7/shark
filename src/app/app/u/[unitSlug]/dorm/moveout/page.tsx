@@ -36,7 +36,10 @@ export default async function DormMoveOutPage({
     unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [],
     permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
   };
-  if (!moveOutAccess(membership, unit.id).manage) notFound();
+  const access = moveOutAccess(membership, unit.id);
+  const leaseParam = typeof sp?.lease === "string" && sp.lease.trim() ? sp.lease.trim().slice(0, 64) : undefined;
+  // SVC D.12 (Y25) ▸ จอเริ่ม (?lease=) เปิดได้ด้วย dorm.lease.manage (ต่อสัญญา/ย้ายห้อง) · จอย้ายออกต้อง .manage (dorm.moveout.manage) ◂
+  if (!access.manage && !(leaseParam && access.lease)) notFound();
   const qc = qcNowOf(sp?.at, process.env.SVC_QC_CLOCK === "1");
   const ctx = { tenantId: auth.active.tenantId, actorUserId: auth.active.userId };
   const room = typeof sp?.room === "string" && sp.room.trim() ? sp.room.trim().slice(0, 20) : undefined;
@@ -46,7 +49,7 @@ export default async function DormMoveOutPage({
   if (!id && !room && leaseId) {
     const lease = await leaseChangeModel(ctx, { unitId: unit.id, leaseId }, { now: qc.now });
     if (!lease) notFound();
-    if (!lease.moveOutId)
+    if (!lease.moveOutId || !access.manage)
       return (
         <MoveOutStart
           unitSlug={unitSlug}
@@ -60,6 +63,7 @@ export default async function DormMoveOutPage({
       );
     id = lease.moveOutId;
   }
+  if (!access.manage) notFound();
   const model = await moveOutModel(ctx, { unitId: unit.id, ...(id ? { moveOutId: id } : room ? { roomNumber: room } : {}) }, { now: qc.now });
   if (!model) {
     return (

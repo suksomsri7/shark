@@ -21,6 +21,7 @@ import { evaluateLegal, findForbiddenTerms, isValidOutOfScopeReason, normalizeLe
 import { deleteFileAsset, privateFileUrl, uploadFile } from "@/lib/storage/service";
 import {
   createExternalCreditNote,
+  createExternalDebitNote,
   createExternalInvoice,
   runDormMoneyTx,
   securityDepositHeld,
@@ -215,6 +216,8 @@ type Frozen = {
   vat: VatConfig | null;
   /** SVC D.12 (Y16) ▸ ผู้ถือ dorm.deposit.deduct.approve ที่ตรึงใบเกินวงเงินเอง (อนุมัติตัวเอง · มี audit) ⇒ ผู้ไม่มีคีย์ปิดได้ไม่เกินยอดที่ตรึง ◂ */
   selfApprovedById: string | null;
+  /** SVC D.12 (Y23) ▸ ใบลดหนี้ค่าห้องส่วนเกินที่ต้องออกหลังตรึง (ยอดสะท้อนในบรรทัด UNPAID ที่ตรึงแล้ว) ◂ */
+  rentCredit: { billDocId: string; amount: number; refId: string; labelTh: string } | null;
 };
 /** ประวัติรุ่น — pending = จองรุ่นไว้ใต้ล็อกก่อนออกใบวันออก (Y1 แบบ D.8 F1) · lines/vat/totalSatang = ของใบที่ออก (Y4 ใบลดหนี้ใบกำพร้าใช้ชุดเดิม) */
 type Hist = {
@@ -318,6 +321,10 @@ function dedOf(v: unknown): Ded {
           invLines: docLinesOf(f.invLines),
           vat: vatCfgOf(f.vat),
           selfApprovedById: strOrNull(f.selfApprovedById),
+          rentCredit:
+            isRec(f.rentCredit) && isStr(f.rentCredit.billDocId) && isNat(f.rentCredit.amount) && isStr(f.rentCredit.refId)
+              ? { billDocId: f.rentCredit.billDocId, amount: f.rentCredit.amount, refId: f.rentCredit.refId, labelTh: strOr(f.rentCredit.labelTh, "คืนค่าห้องส่วนเกิน") }
+              : null,
         }
       : null,
     history: Array.isArray(r.history)
@@ -494,7 +501,10 @@ type BillRow = { id: string; leaseId: string; roomId: string; periodKey: string;
 const BILL_SEL = { id: true, leaseId: true, roomId: true, periodKey: true, status: true, sentVia: true, totalSatang: true, accountDocumentId: true, dueDate: true, lines: true } as const;
 /** SVC D.12 (Y9) ▸ ใบลดหนี้ค่าห้องส่วนเกินของบิลเดือนวันออก — ref idempotent ต่อ (ใบย้ายออก, วันออก) */
 const RENT_CREDIT_REF = "DormMoveOutRentCredit";
-const rentCreditRefId = (moveOutId: string, moveOutDate: string) => `${moveOutId}:${moveOutDate}`;
+/** SVC D.12 (Y23) ▸ ต่อรุ่นที่ตรึง (ออกหลังตรึงสำเร็จ) · กลับรายการตอนยกเลิกด้วยใบเพิ่มหนี้ ref RENT_CREDIT_REVERSE/<เลขใบลดหนี้> ◂ */
+const rentCreditRefId = (moveOutId: string, moveOutDate: string, rev: number) => `${moveOutId}:${moveOutDate}:r${rev}`;
+const RENT_CREDIT_REVERSE = "DormMoveOutRentCreditReverse";
+const LIVE_ST = (st: string) => !["VOIDED", "CANCELLED", "DRAFT"].includes(st);
 type DocHead = { id: string; docType: string; docNo: string | null; status: string; grandTotal: number; paidTotal: number; sourceDocId: string | null; refType: string | null; refId: string | null; dueDate: Date | null; issueDate: Date | null };
 
 /** เอกสารบัญชีของสาย: ใบแจ้งหนี้ของบิล + ใบลด/เพิ่มหนี้ของใบเหล่านั้น + ใบค่าน้ำไฟย้ายห้อง (DormTransfer) — อ่านผ่าน db/tx ของผู้เรียก (ผูกร้านทุกคำสั่ง) */
@@ -560,7 +570,8 @@ async function chainSig(db: SigDb, tenantId: string, unitId: string, chain: stri
     .update(
       canon({
         bills: bills.map((b) => [b.id, b.status, b.totalSatang, b.accountDocumentId, typeof b.sentVia === "string" && b.sentVia.startsWith("sending:")]),
-        docs: d.heads.map((h) => [h.id, h.docType, h.status, Number(h.grandTotal), d.pays.get(h.id) ?? 0]),
+        // Y23 ▸ ใบลดหนี้ค่าห้องส่วนเกินของใบนี้ออกหลังตรึง (ยอดอยู่ในบรรทัดที่ตรึงแล้ว) ⇒ ไม่อยู่ในลายนิ้วมือ ◂
+        docs: d.heads.filter((h) => !(h.docType === "CREDIT_NOTE" && h.refType === RENT_CREDIT_REF && (h.refId ?? "").startsWith(`${moveOutId}:`))).map((h) => [h.id, h.docType, h.status, Number(h.grandTotal), d.pays.get(h.id) ?? 0]),
         waived: waived.map((w) => w.targetId),
         items: insp.items,
         meters: insp.meters,
@@ -582,7 +593,13 @@ type MeterCalc = { meterId: string; kind: "ELEC" | "WATER"; baseValue: number | 
 async function baseReadings(tenantId: string, unitId: string, chain: string[], bills: BillRow[], meters: { id: string; kind: string }[], roomId: string): Promise<Map<string, number | null>> {
   const out = new Map<string, number | null>();
   // SVC D.12 (Y8) ▸ เฉพาะบิลของห้องนี้ (สายที่ย้ายห้องมา — บิลห้องเดิมเป็นมิเตอร์อื่น) · ไม่มี ⇒ MOVE_IN ของมิเตอร์นั้นในสาย ◂
-  const sorted = bills.filter((b) => b.roomId === roomId).sort((a, b) => (a.periodKey < b.periodKey ? 1 : a.periodKey > b.periodKey ? -1 : 0));
+  // SVC D.12 (Y26) ▸ เฉพาะ "ช่วงที่อยู่ห้องนี้ครั้งล่าสุด" = สัญญาท้ายสายที่ต่อเนื่องกันในห้องนี้ (A→B→A ไม่ใช้บิล/MOVE_IN ของช่วง A แรก) ◂
+  const rows = chain.length ? await tenantDb({ tenantId, unitId }).dormLease.findMany({ where: { id: { in: chain } }, select: { id: true, roomId: true } }) : [];
+  const roomOf = new Map(rows.map((r) => [r.id, r.roomId]));
+  const stint: string[] = [];
+  for (let i = chain.length - 1; i >= 0 && roomOf.get(chain[i]) === roomId; i--) stint.unshift(chain[i]);
+  chain = stint;
+  const sorted = bills.filter((b) => b.roomId === roomId && stint.includes(b.leaseId)).sort((a, b) => (a.periodKey < b.periodKey ? 1 : a.periodKey > b.periodKey ? -1 : 0));
   const fromBill = (kind: string): number | null => {
     for (const b of sorted) {
       if (!Array.isArray(b.lines)) continue;
@@ -796,14 +813,18 @@ async function computeLive(ctx: MoveOutCtx, g: D12Gate, mo: MoRow, now: Date): P
     const excess = Math.max(0, billedRent - usedRent);
     if (excess > 0) {
       const billDocId = monthBill.accountDocumentId as string;
-      const refId = rentCreditRefId(mo.id, moveOut);
-      const already = docs.heads.filter((h) => h.docType === "CREDIT_NOTE" && h.refType === RENT_CREDIT_REF && h.refId === refId && !["VOIDED", "CANCELLED", "DRAFT"].includes(h.status)).reduce((s2, h) => s2 + Number(h.grandTotal), 0);
+      const refId = rentCreditRefId(mo.id, moveOut, dedOf(mo.deductions).rev);
+      // ลดไปแล้วสุทธิ = ใบลดหนี้ของใบย้ายออกนี้ (ทุกรุ่น) − ใบเพิ่มหนี้ที่กลับรายการใบเหล่านั้น (ตามบัญชีจริง)
+      const cnRows = docs.heads.filter((h) => h.docType === "CREDIT_NOTE" && h.refType === RENT_CREDIT_REF && (h.refId ?? "").startsWith(`${mo.id}:${moveOut}`) && LIVE_ST(h.status));
+      const cnIds = new Set(cnRows.map((h) => h.id));
+      const reversed = docs.heads.filter((h) => h.docType === "DEBIT_NOTE" && h.refType === RENT_CREDIT_REVERSE && cnIds.has(h.refId ?? "") && LIVE_ST(h.status)).reduce((s2, h) => s2 + Number(h.grandTotal), 0);
+      const already = Math.max(0, cnRows.reduce((s2, h) => s2 + Number(h.grandTotal), 0) - reversed);
       const open = unpaid.find((u) => u.docId === billDocId)?.amount ?? 0;
       const plan = Math.max(0, Math.min(excess - already, open));
       if (plan > 0) {
         rentCredit = { billDocId, amount: plan, refId, labelTh: `คืนค่าห้องส่วนเกิน ${thMonth(month)} (ย้ายออก ${thDate(moveOut)})` };
         const u = unpaid.find((x) => x.docId === billDocId);
-        if (u) u.amount -= plan; // ใบสรุปแสดงยอดค้างหลังลดหนี้ (ใบลดหนี้ออกตอนส่งใบสรุป ก่อนตรึง)
+        if (u) u.amount -= plan; // ใบสรุปแสดงยอดค้างหลังลดหนี้ (Y23: ใบลดหนี้ออกหลังตรึงสำเร็จ · ปิดประกันออกให้ถ้ายังไม่มี)
       }
       if (excess - already - plan > 0) warnings.push(`RENT_EXCESS_LEFT:${excess - already - plan}`);
     }
@@ -974,6 +995,43 @@ export async function giveMoveOutNotice(
 }
 
 // ───────────────────────── 3.2 ยกเลิกการแจ้ง ─────────────────────────
+/**
+ * SVC D.12 (Y22/Y23) ▸ งานหลังยกเลิก (ซ้ำได้ · ใบ CANCELLED เท่านั้น): ใบวันออกกำพร้า ⇒ ใบลดหนี้ ·
+ *   ใบลดหนี้ค่าห้องส่วนเกินของใบนี้ที่ยังไม่กลับรายการ ⇒ ใบเพิ่มหนี้ ref RENT_CREDIT_REVERSE/<เลขใบลดหนี้> (บรรทัดเดิม) — ยอดบิลกลับเท่าเดิม
+ */
+async function cancelledCleanup(c: OrphanCtx, moveOutId: string, leaseId: string, roomId: string, now: Date): Promise<number> {
+  const row = await tenantDb({ tenantId: c.tenantId, unitId: c.unitId }).dormMoveOut.findFirst({ where: { id: moveOutId }, select: { status: true } });
+  if (row?.status !== "CANCELLED") return 0;
+  const uv = await unitVals(c.tenantId, c.unitId, roomId);
+  const of = await creditOrphans(c, moveOutId, leaseId, uv);
+  if (of) throw new Error(`orphan credit: ${of.code}`);
+  const cns = await tenantDb({ tenantId: c.tenantId }).$queryRaw<{ id: string; sourceDocId: string | null }[]>`
+    SELECT d."id", d."sourceDocId" FROM "AccountDocument" d
+    WHERE d."tenantId" = ${c.tenantId} AND d."refType" = ${RENT_CREDIT_REF} AND d."refId" LIKE ${`${moveOutId}:%`} AND d."docType"::text = 'CREDIT_NOTE' AND d."status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT')
+      AND NOT EXISTS (SELECT 1 FROM "AccountDocument" r WHERE r."tenantId" = d."tenantId" AND r."refType" = ${RENT_CREDIT_REVERSE} AND r."refId" = d."id" AND r."docType"::text = 'DEBIT_NOTE' AND r."status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT'))
+    ORDER BY d."id" ASC`;
+  let n = 0;
+  for (const cn of cns) {
+    if (!cn.sourceDocId) continue;
+    const lines = await docLinesFromDb(c.tenantId, cn.id);
+    if (!lines.length) continue;
+    const dn = await createExternalDebitNote({
+      tenantId: c.tenantId,
+      unitId: c.unitId,
+      sourceDocId: cn.sourceDocId,
+      refType: RENT_CREDIT_REVERSE,
+      refId: cn.id,
+      reason: "ยกเลิกการแจ้งย้ายออก — กลับรายการลดค่าห้องส่วนเกิน",
+      lines,
+      vat: vatOf(uv),
+      issueDate: bkkYmd(now),
+      createdById: c.actorUserId,
+    });
+    if (!dn.ok) throw new Error(`rent credit reverse: ${dn.code}`);
+    n++;
+  }
+  return n;
+}
 export async function cancelMoveOut(ctx: MoveOutCtx, input: { unitId: string; moveOutId: string; reason: string }, deps?: { now?: Date }): Promise<{ ok: true } | Fail> {
   try {
     if (!isRec(input)) return notFound();
@@ -985,24 +1043,30 @@ export async function cancelMoveOut(ctx: MoveOutCtx, input: { unitId: string; mo
     if (dedOf(mo.deductions).frozen) return fail("FROZEN", "ส่งใบสรุปให้ผู้เช่าแล้ว — เปิดใบสรุปใหม่ก่อนจึงยกเลิกได้");
     const reason = typeof input.reason === "string" ? input.reason.trim() : "";
     if ([...reason].length < 3) return fail("INVALID_INPUT", "ระบุเหตุผลที่ยกเลิกการแจ้งย้ายออก (อย่างน้อย 3 ตัวอักษร)");
-    // SVC D.12 (Y9) ▸ ลดค่าห้องส่วนเกินไปแล้ว (ใบลดหนี้ออกแล้ว) ⇒ ยกเลิกไม่ได้ (ไม่มีทางกลับรายการใบลดหนี้ในใบนี้) ◂
-    const rc = await tenantDb({ tenantId: g.tenantId }).$queryRaw<{ n: bigint | number }[]>`
-      SELECT count(*) AS "n" FROM "AccountDocument" WHERE "tenantId" = ${g.tenantId} AND "refType" = ${RENT_CREDIT_REF} AND "refId" LIKE ${`${mo.id}:%`} AND "docType"::text = 'CREDIT_NOTE' AND "status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT')`;
-    if (Number(rc[0]?.n ?? 0) > 0) return fail("CANCEL_BLOCKED", "ออกใบลดหนี้ค่าห้องส่วนเกินของเดือนที่ย้ายออกไปแล้ว — ยกเลิกการแจ้งไม่ได้ ให้เจ้าของปรับบัญชีก่อน");
-    // SVC D.12 (Y1) ▸ ใบวันออกที่ออกไปแล้วแต่ไม่ได้ตรึง (ส่งไม่จบ) ⇒ กำพร้า ⇒ ใบลดหนี้ก่อนยกเลิก (ผู้เช่าไม่ค้างหนี้ของใบที่ไม่ใช้) ◂
+    // SVC D.12 (Y1/Y22) ▸ ใบวันออกรุ่นเก่าที่ไม่ได้ตรึง ⇒ ใบลดหนี้ก่อน · รุ่นปัจจุบันที่ยังจองอยู่ (ผู้ส่งกำลังทำ) ⇒ BUSY ใต้ล็อก ◂
     {
-      const d0 = dedOf(mo.deductions);
-      if (d0.history.some((h) => h.rev === d0.rev && !h.creditNoteDocId)) await orphanizeRev(g, mo.id, mo.leaseId, d0.rev, null, "ยกเลิกการแจ้งย้ายออก", nowOf(deps?.now));
       const of = await creditOrphans(g, mo.id, mo.leaseId, await unitVals(g.tenantId, g.unitId, mo.lease.roomId));
       if (of) return of;
     }
+    const cancelNow = nowOf(deps?.now);
     const root = (await leaseChainOf(null, { tenantId: g.tenantId, unitId: g.unitId, leaseId: mo.leaseId })).root;
     const out = await d12Tx(async (tx) => {
       await advisoryLock(tx, leaseLockKey(root));
       if (root !== mo.leaseId) await advisoryLock(tx, leaseLockKey(mo.leaseId));
       const cur = await tx.dormMoveOut.findFirst({ where: { id: mo.id, tenantId: g.tenantId, unitId: g.unitId }, select: { status: true, deductions: true, inspection: true } });
       if (!cur || CLOSED.includes(cur.status) || cur.status === "CANCELLED") throw new Abort(fail("NOT_EDITABLE", "ใบย้ายออกนี้ปิดหรือยกเลิกไปแล้ว"));
-      if (dedOf(cur.deductions).frozen) throw new Abort(fail("FROZEN", "ส่งใบสรุปให้ผู้เช่าแล้ว — เปิดใบสรุปใหม่ก่อนจึงยกเลิกได้"));
+      const dc = dedOf(cur.deductions);
+      if (dc.frozen) throw new Abort(fail("FROZEN", "ส่งใบสรุปให้ผู้เช่าแล้ว — เปิดใบสรุปใหม่ก่อนจึงยกเลิกได้"));
+      if (dc.reopening) throw new Abort(REOPENING());
+      // Y22 ▸ ผู้ส่งใบสรุปจองรุ่นนี้อยู่ (กำลังออกใบ) ⇒ BUSY ไม่ยกเลิกทับ · จองค้างเกิน 10 นาที (ผู้ส่งตาย) ⇒ จดเป็นกำพร้าในแถวเดียวกันแล้วยกเลิกได้ (ใบลดหนี้ตามมาจากงานตามเวลา) ◂
+      const pend = dc.history.find((h) => h.rev === dc.rev && h.pending && !h.creditNoteDocId);
+      let dedPatch: Record<string, unknown> | null = null;
+      if (pend) {
+        if (Date.parse(pend.at) >= cancelNow.getTime() - PENDING_STALE_MS || Date.parse(pend.at) >= Date.now() - PENDING_STALE_MS)
+          throw new Abort(fail("BUSY", "กำลังส่งใบสรุปของใบนี้อยู่ — รอสักครู่แล้วกดยกเลิกอีกครั้ง (ยังไม่มีอะไรเปลี่ยน)"));
+        const rawD = isRec(cur.deductions) ? cur.deductions : {};
+        dedPatch = { ...rawD, rev: dc.rev + 1, history: dc.history.map((h) => (h === pend ? { ...h, pending: false, reason: h.reason || "ยกเลิกการแจ้งย้ายออก" } : h)) };
+      }
       const lease = await tx.dormLease.findFirst({ where: { id: mo.leaseId, tenantId: g.tenantId, unitId: g.unitId }, select: { status: true, occupancyId: true } });
       if (!lease || lease.status !== "NOTICE") throw new Abort(fail("NOT_EDITABLE", "สัญญานี้จบไปแล้ว — ยกเลิกการแจ้งย้ายออกไม่ได้"));
       const orig = inspOf(cur.inspection).originalEndDate;
@@ -1010,7 +1074,7 @@ export async function cancelMoveOut(ctx: MoveOutCtx, input: { unitId: string; mo
         const rs = await resizeOccupancy(tx, { tenantId: g.tenantId, unitId: g.unitId, occupancyId: lease.occupancyId, end: addDaysYmd(orig, 1) });
         if (!rs.ok) throw new Abort(rs.code === "ROOM_TAKEN" ? fail("CANCEL_BLOCKED", "ห้องนี้ถูกจอง/ให้เช่าต่อในช่วงหลังวันย้ายออกแล้ว — ยกเลิกการแจ้งไม่ได้ (ยกเลิกการจองนั้นก่อน)") : fail("NOT_EDITABLE", "คืนช่วงการถือห้องเดิมไม่ได้"));
       }
-      const u = await tx.dormMoveOut.updateMany({ where: { id: mo.id, tenantId: g.tenantId, unitId: g.unitId, status: { in: ["NOTICE", "INSPECTED"] } }, data: { status: "CANCELLED", approvalId: null } });
+      const u = await tx.dormMoveOut.updateMany({ where: { id: mo.id, tenantId: g.tenantId, unitId: g.unitId, status: { in: ["NOTICE", "INSPECTED"] } }, data: { status: "CANCELLED", approvalId: null, ...(dedPatch ? { deductions: json(dedPatch) } : {}) } });
       if (u.count !== 1) throw new Abort(fail("NOT_EDITABLE", "ใบย้ายออกนี้เปลี่ยนไปแล้ว — โหลดหน้าใหม่"));
       await tx.dormLease.updateMany({ where: { id: mo.leaseId, tenantId: g.tenantId, unitId: g.unitId, status: "NOTICE" }, data: { status: "ACTIVE", ...(orig ? { endDate: dbDate(orig) } : {}) } });
       await tx.dormMeterReading.deleteMany({ where: { tenantId: g.tenantId, unitId: g.unitId, leaseId: mo.leaseId, kind: "MOVE_OUT" } });
@@ -1020,6 +1084,8 @@ export async function cancelMoveOut(ctx: MoveOutCtx, input: { unitId: string; mo
       return { done: true };
     });
     if (isFail(out)) return out;
+    // หลัง commit (ล้ม ⇒ งานตามเวลาทำต่อ · idempotent): ใบกำพร้าที่เหลือ ⇒ ใบลดหนี้ · Y23 ใบลดหนี้ค่าห้องส่วนเกิน ⇒ ใบเพิ่มหนี้กลับรายการ
+    await cancelledCleanup({ tenantId: g.tenantId, unitId: g.unitId, actorUserId: g.actorUserId }, mo.id, mo.leaseId, mo.lease.roomId, cancelNow).catch((e) => logD12("cancel.cleanup", g.tenantId, e));
     return { ok: true };
   } catch (e) {
     await logD12("cancel", isRec(ctx) ? ctx.tenantId : null, e);
@@ -1570,7 +1636,11 @@ async function docLinesFromDb(tenantId: string, docId: string): Promise<External
  * SVC D.12 (Y1) ▸ ใบวันออกรุ่นที่ไม่ได้ตรึง (แข่ง/STALE/tx ล้ม/โพรเซสตาย) ⇒ จดเป็นกำพร้าในประวัติ + ขึ้นรุ่นใต้ล็อก (ทุกกรณี)
  *   ไม่แตะใบที่ตรึงอยู่ · รุ่นถูกขึ้นไปแล้ว ⇒ จดเลขใบอย่างเดียว · ใบลดหนี้ออกตอน creditOrphans (ครั้งส่งถัดไป)
  */
-async function orphanizeRev(g: D12Gate, moveOutId: string, leaseId: string, rev: number, invoiceDocId: string | null, reason: string, now: Date): Promise<void> {
+/** แถวจองรุ่นที่ค้างนานกว่านี้ = ผู้ส่งตายแล้ว (ใบ CANCELLED/งานตามเวลาถือเป็นกำพร้าได้) */
+const PENDING_STALE_MS = 10 * 60_000;
+/** ผู้กระทำของงานกำพร้า — คน (D12Gate) หรือระบบ (งานตามเวลา · actorUserId null) */
+type OrphanCtx = { tenantId: string; unitId: string; actorUserId: string | null };
+async function orphanizeRev(g: OrphanCtx, moveOutId: string, leaseId: string, rev: number, invoiceDocId: string | null, reason: string, now: Date): Promise<void> {
   const root = (await leaseChainOf(null, { tenantId: g.tenantId, unitId: g.unitId, leaseId })).root;
   await d12Tx(async (tx) => {
     await advisoryLock(tx, leaseLockKey(root));
@@ -1579,11 +1649,14 @@ async function orphanizeRev(g: D12Gate, moveOutId: string, leaseId: string, rev:
     const raw = isRec(cur?.deductions) ? cur.deductions : {};
     const d = dedOf(raw);
     if (d.frozen && d.rev === rev && (!invoiceDocId || d.frozen.invoiceDocId === invoiceDocId)) return { done: true }; // รุ่นนี้ตรึงด้วยใบนี้แล้ว — ไม่ใช่กำพร้า
+    // SVC D.12 (Y22 · N3) ▸ แถวเดียวต่อรุ่น: มีแถวรุ่นนี้แล้ว ⇒ ปรับแถวเดิม (ลดหนี้ "NONE" ไปแล้วแต่เพิ่งรู้เลขใบ ⇒ เปิดให้ลดหนี้ใหม่) · ไม่มี ⇒ ต่อแถว ◂
     let hit = false;
     const history = d.history.map((h) => {
-      if (h.rev !== rev || h.creditNoteDocId) return h;
+      if (h.rev !== rev) return h;
       hit = true;
-      return { ...h, pending: false, invoiceDocId: invoiceDocId ?? h.invoiceDocId, reason: h.reason || reason };
+      if (!h.creditNoteDocId) return { ...h, pending: false, invoiceDocId: invoiceDocId ?? h.invoiceDocId, reason: h.reason || reason };
+      if (h.creditNoteDocId === "NONE" && invoiceDocId && !h.invoiceDocId) return { ...h, pending: false, invoiceDocId, creditNoteDocId: null, reason: h.reason || reason };
+      return h;
     });
     if (!hit) history.push({ rev, invoiceDocId, creditNoteDocId: null, reason, at: now.toISOString(), pending: false });
     const bump = d.rev === rev && !d.frozen;
@@ -1592,10 +1665,18 @@ async function orphanizeRev(g: D12Gate, moveOutId: string, leaseId: string, rev:
   });
 }
 /** ใบแจ้งหนี้รุ่นที่ไม่ได้ตรึง ⇒ ใบลดหนี้เต็มใบด้วยบรรทัดเดิม + VAT ของใบนั้น (ไม่ลบ) แล้วจดในประวัติ — เห็นทุกรุ่นเก่าที่ยังไม่ลดหนี้ (รวมรุ่นที่จองไว้แต่ไม่รู้เลขใบ) */
-async function creditOrphans(g: D12Gate, moveOutId: string, leaseId: string, uv: UnitVals): Promise<Fail | null> {
-  const row = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).dormMoveOut.findFirst({ where: { id: moveOutId }, select: { deductions: true } });
+/** SVC D.12 (Y22) ▸ ทำงานได้กับใบทุกสถานะ (รวม CANCELLED — งานตามเวลาเรียกซ้ำได้ · idempotent ต่อ ref) · แถวที่ยังจอง (pending) ข้าม ◂ */
+async function creditOrphans(g: OrphanCtx, moveOutId: string, leaseId: string, uv: UnitVals): Promise<Fail | null> {
+  const row = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).dormMoveOut.findFirst({ where: { id: moveOutId }, select: { deductions: true, status: true } });
   const ded = dedOf(row?.deductions);
-  const orphans = ded.history.filter((h) => !h.creditNoteDocId && h.rev < ded.rev && !(ded.frozen && h.rev === ded.rev));
+  const staleMs = Date.now() - PENDING_STALE_MS;
+  const orphans = ded.history.filter(
+    (h) =>
+      !h.creditNoteDocId &&
+      (h.rev < ded.rev || row?.status === "CANCELLED") &&
+      (!h.pending || h.rev < ded.rev || Date.parse(h.at) < staleMs) &&
+      !(ded.frozen && h.rev === ded.rev),
+  );
   for (const h of orphans) {
     const inv = h.invoiceDocId
       ? ((await tenantDb({ tenantId: g.tenantId }).$queryRaw<{ id: string; grandTotal: number }[]>`SELECT "id", "grandTotal" FROM "AccountDocument" WHERE "tenantId" = ${g.tenantId} AND "id" = ${h.invoiceDocId}`)[0] ?? null)
@@ -1692,23 +1773,7 @@ async function sendOnce(ctx: MoveOutCtx, g: D12Gate, moveOutId: string, unitName
   // ใบรุ่นเก่าที่ค้าง (ไม่ได้ตรึง) ⇒ ใบลดหนี้ก่อน
   const orphanFail = await creditOrphans(g, mo.id, mo.leaseId, pre.uv);
   if (orphanFail) return orphanFail;
-  // SVC D.12 (Y9) ▸ ใบลดหนี้ค่าห้องส่วนเกินของบิลเดือนวันออก (นอก tx · ref idempotent ต่อใบย้ายออก+วันออก) — ก่อนอ่านลายนิ้วมือ ⇒ อยู่ในลายนิ้วมือ ◂
-  if (pre.rentCredit) {
-    const rc = pre.rentCredit;
-    const cn = await createExternalCreditNote({
-      tenantId: g.tenantId,
-      unitId: g.unitId,
-      sourceDocId: rc.billDocId,
-      refType: RENT_CREDIT_REF,
-      refId: rc.refId,
-      reason: `ย้ายออกก่อนสิ้นเดือน — ลดค่าห้องส่วนเกิน (${thDate(ymdOfDb(mo.moveOutDate))})`,
-      lines: [{ description: rc.labelTh, qty: 1, unitPriceSatang: rc.amount, taxKind: pre.vat.registered ? "EXEMPT" : "NONE" }],
-      vat: pre.vat,
-      issueDate: bkkYmd(now),
-      createdById: g.actorUserId,
-    });
-    if (!cn.ok) return cn.code === "EXCEEDS_REMAINING" || cn.code === "IDEMPOTENCY_CONFLICT" ? STALE() : fail(cn.code, cn.reason);
-  }
+  // SVC D.12 (Y23) ▸ ใบลดหนี้ค่าห้องส่วนเกินออก "หลังตรึงสำเร็จ" เท่านั้น (ดูท้ายฟังก์ชัน) — STALE ⇒ ไม่ออก ◂
   mo = (await readMo(g, mo.id)) ?? mo;
   ded = dedOf(mo.deductions);
   if (ded.frozen) return resendFrozen(ctx, g, mo, ded, unitName, now);
@@ -1720,7 +1785,7 @@ async function sendOnce(ctx: MoveOutCtx, g: D12Gate, moveOutId: string, unitName
   const snapMo = mo;
   const sig = await chainSig(scopedDb(g.tenantId, g.unitId), g.tenantId, g.unitId, chainIds, snapMo.id, snapMo.leaseId, await securityDepositHeld({ tenantId: g.tenantId, unitId: g.unitId, leaseId: root0 }), snapMo.inspection ?? null);
   const live = await computeLive(ctx, g, snapMo, now);
-  if (live.rentCredit || billPending(live.bills)) return STALE();
+  if (billPending(live.bills)) return STALE();
   const vars = varsOf(live);
   const needOwner = live.needsApproval && !g.approve;
   if (needOwner && !(await policyHasOwner(g.tenantId, g.unitId, live.deductSatang)))
@@ -1819,6 +1884,7 @@ async function sendOnce(ctx: MoveOutCtx, g: D12Gate, moveOutId: string, unitName
         invLines,
         vat: live.vat,
         selfApprovedById: selfApprove ? g.actorUserId : null,
+        rentCredit: live.rentCredit,
       };
       const history = d.history.filter((h) => !(h.rev === rev && h.pending && !h.creditNoteDocId)); // รุ่นที่จองไว้ = รุ่นที่ตรึงแล้ว
       await tx.dormMoveOut.updateMany({
@@ -1845,15 +1911,42 @@ async function sendOnce(ctx: MoveOutCtx, g: D12Gate, moveOutId: string, unitName
   if (isFail(out)) {
     // ปฏิเสธใต้ล็อก (STALE/NEEDS_APPROVAL/BUSY…) หลังออกใบ ⇒ กำพร้า + ขึ้นรุ่น (orphanizeRev ไม่แตะใบที่ตรึงอยู่)
     if (invoiceDocId || out.code !== "NOT_EDITABLE") await orphanizeRev(g, mo.id, mo.leaseId, rev, invoiceDocId, "ข้อมูลของสัญญาเปลี่ยนระหว่างออกใบสรุป", now);
+    // Y22 ▸ แพ้การยกเลิก (ใบ CANCELLED) ⇒ ลดหนี้ใบของรุ่นนี้ทันที (ล้ม ⇒ งานตามเวลาทำต่อ) ◂
+    if (out.code === "NOT_EDITABLE") await cancelledCleanup(g, mo.id, mo.leaseId, mo.lease.roomId, now).catch((e) => logD12("send.cancelled_cleanup", g.tenantId, e));
     return out;
   }
   if ("stale" in out) {
     await orphanizeRev(g, mo.id, mo.leaseId, rev, invoiceDocId, "ข้อมูลของสัญญาเปลี่ยนระหว่างออกใบสรุป", now);
     return STALE();
   }
+  // Y23 ▸ หลังตรึงสำเร็จ: ใบลดหนี้ค่าห้องส่วนเกิน (ref ต่อรุ่น · idempotent) — ล้มที่นี่ ⇒ ปิดประกันออกให้ก่อนหักเสมอ ◂
+  await issueRentCredit(g, mo.id, mo.leaseId, mo.lease.roomId, now).catch((e) => logD12("send.rent_credit", g.tenantId, e));
   const channel = await notifySummary(g, mo, rev, vars, now);
   await markSent(g, mo.id, mo.leaseId, rev, now);
   return { ok: true, duplicate: out.dup, rev, invoiceDocId, approvalId: out.approvalId, channel, status: "INSPECTED" };
+}
+/** ออกใบลดหนี้ค่าห้องส่วนเกินตาม frozen.rentCredit ของรุ่นที่ตรึงอยู่ (ซ้ำได้ · ref ต่อรุ่น) · ไม่มีแผน ⇒ null · สำเร็จ/มีอยู่แล้ว ⇒ เลขใบ */
+async function issueRentCredit(g: D12Gate, moveOutId: string, leaseId: string, roomId: string, now: Date): Promise<string | null | Fail> {
+  const row = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).dormMoveOut.findFirst({ where: { id: moveOutId }, select: { deductions: true, moveOutDate: true } });
+  const d = dedOf(row?.deductions);
+  const rc = d.frozen?.rentCredit;
+  if (!rc) return null;
+  const uv = await unitVals(g.tenantId, g.unitId, roomId);
+  const vat = d.frozen?.vat ?? vatOf(uv);
+  const cn = await createExternalCreditNote({
+    tenantId: g.tenantId,
+    unitId: g.unitId,
+    sourceDocId: rc.billDocId,
+    refType: RENT_CREDIT_REF,
+    refId: rc.refId,
+    reason: `ย้ายออกก่อนสิ้นเดือน — ลดค่าห้องส่วนเกิน (${thDate(ymdOfDb(row?.moveOutDate))})`,
+    lines: [{ description: rc.labelTh, qty: 1, unitPriceSatang: rc.amount, taxKind: vat.registered ? "EXEMPT" : "NONE" }],
+    vat,
+    issueDate: bkkYmd(now),
+    createdById: g.actorUserId,
+  });
+  void leaseId;
+  return cn.ok ? cn.docId : fail(cn.code, cn.reason);
 }
 
 // ───────────────────────── 3.6 เปิดใบสรุปใหม่ ─────────────────────────
@@ -1950,6 +2043,9 @@ const settleResultOf = (s: Settle, duplicate: boolean): SettleOk => ({
 /** ห้อง ⇒ ทำความสะอาด (หลัง commit · ครั้งเดียวต่อใบ · ไม่ทับห้องที่ทำความสะอาดแล้วหลังจากนั้น)
  *  SVC D.12 (Y16) ▸ ล้ม ⇒ จด hkAttempts/hkLastError ในใบ (งานตามเวลาข้ามแถวที่ล้มครบ HK_MAX ครั้ง — ไม่วนชนแถวเดิมทุกรอบ) ◂ */
 const HK_MAX = 5;
+/** SVC D.12 (Y26) ▸ เพดานครั้งของงานเติมใบค่าน้ำไฟย้ายห้อง */
+const TU_MAX = 5;
+const TRANSFER_UTILITY_FAILED = "dorm.lease.transfer_utility_failed";
 async function markHousekeeping(tenantId: string, unitId: string, moveOutId: string, leaseId: string, roomId: string): Promise<boolean> {
   const cur = await tenantDb({ tenantId, unitId }).dormMoveOut.findFirst({ where: { id: moveOutId }, select: { inspection: true, status: true } });
   if (!cur || !CLOSED.includes(cur.status) || inspOf(cur.inspection).hkMarkedAt) return false;
@@ -2050,6 +2146,11 @@ export async function settleMoveOut(
       if (g.approve) selfApproved = st !== "APPROVED";
       else if (!frozen.selfApprovedById && st !== "APPROVED") return fail("NEEDS_APPROVAL", "รออนุมัติหักเงินประกันเกินวงเงินจากเจ้าของ — ปิดได้หลังอนุมัติ");
     }
+    // Y23 ▸ ใบลดหนี้ค่าห้องส่วนเกินของรุ่นนี้ต้องมีก่อนหัก (ออกหลังตรึงแล้วล้ม ⇒ ออกตอนนี้ · idempotent) ◂
+    if (frozen.rentCredit) {
+      const rc = await issueRentCredit(g, mo.id, mo.leaseId, mo.lease.roomId, now);
+      if (isFail(rc)) return rc.code === "EXCEEDS_REMAINING" ? STALE() : rc;
+    }
     const chain = await leaseChainOf(null, { tenantId: g.tenantId, unitId: g.unitId, leaseId: mo.leaseId });
     const key = `dorm.moveout:${mo.id}:settle:${rev}`;
     const docIds = [...(frozen.invoiceDocId ? [frozen.invoiceDocId] : []), ...frozen.docIds];
@@ -2077,6 +2178,10 @@ export async function settleMoveOut(
       if (frozen.invoiceDocId) {
         const cn = await tx.$queryRaw<{ n: bigint | number }[]>`SELECT count(*) AS "n" FROM "AccountDocument" WHERE "tenantId" = ${g.tenantId} AND "sourceDocId" = ${frozen.invoiceDocId} AND "docType"::text = 'CREDIT_NOTE' AND "status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT')`;
         if (Number(cn[0]?.n ?? 0) > 0) throw new Abort(STALE()); // ใบวันออกถูกลดหนี้แล้ว (เปิดใบสรุปใหม่พร้อมกัน)
+      }
+      if (frozen.rentCredit) {
+        const rcn = await tx.$queryRaw<{ n: bigint | number }[]>`SELECT count(*) AS "n" FROM "AccountDocument" WHERE "tenantId" = ${g.tenantId} AND "refType" = ${RENT_CREDIT_REF} AND "refId" = ${frozen.rentCredit.refId} AND "docType"::text = 'CREDIT_NOTE' AND "status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT')`;
+        if (Number(rcn[0]?.n ?? 0) === 0) throw new Abort(STALE());
       }
       const held = heldNow;
       let s: Settle;
@@ -2208,19 +2313,36 @@ async function jobsOfTenant(tenantId: string, at: Date, today: string, left: () 
     if (left() < 3_000) return;
     if (await markHousekeeping(m.tenantId, m.unitId, m.id, m.leaseId, m.roomId).catch(() => false)) out.hkFixed++;
   }
+  // (5) SVC D.12 (Y22/Y23) ▸ ใบที่ยกเลิกแล้วแต่ยังมีใบวันออกกำพร้าที่ไม่ลดหนี้ หรือใบลดหนี้ค่าห้องที่ยังไม่กลับรายการ ⇒ ทำให้จบ (idempotent) ◂
+  const cx = await raw.$queryRaw<{ id: string; unitId: string; leaseId: string; roomId: string }[]>`
+    SELECT m."id", m."unitId", m."leaseId", l."roomId" FROM "DormMoveOut" m JOIN "DormLease" l ON l."id" = m."leaseId" AND l."tenantId" = m."tenantId"
+    WHERE m."tenantId" = ${tenantId} AND m."status" = 'CANCELLED'
+      AND (EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(m."deductions"->'history') = 'array' THEN m."deductions"->'history' ELSE '[]'::jsonb END) h WHERE h->>'creditNoteDocId' IS NULL)
+        OR EXISTS (SELECT 1 FROM "AccountDocument" d WHERE d."tenantId" = m."tenantId" AND d."refType" = ${RENT_CREDIT_REF} AND d."refId" LIKE m."id" || ':%' AND d."docType"::text = 'CREDIT_NOTE' AND d."status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT')
+          AND NOT EXISTS (SELECT 1 FROM "AccountDocument" r WHERE r."tenantId" = d."tenantId" AND r."refType" = ${RENT_CREDIT_REVERSE} AND r."refId" = d."id" AND r."docType"::text = 'DEBIT_NOTE' AND r."status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT'))))
+    ORDER BY m."id" ASC LIMIT 200`;
+  for (const m of cx) {
+    if (left() < 3_000) return;
+    await cancelledCleanup({ tenantId, unitId: m.unitId, actorUserId: null }, m.id, m.leaseId, m.roomId, at).catch((e) => logD12("jobs.cancelled_cleanup", tenantId, e));
+  }
   // (4) SVC D.12 (Y13) ▸ ใบค่าน้ำไฟห้องเดิมของการย้ายห้องที่ล้มหลัง commit (ย้อนหลัง 90 วัน · ไม่มีเครื่องหมายเสร็จ) — idempotent ต่อ ref ◂
   const since = new Date(at.getTime() - 90 * 86_400_000);
   const tr = await raw.$queryRaw<{ id: string; unitId: string }[]>`
     SELECT l."id", l."unitId" FROM "DormLease" l
     WHERE l."tenantId" = ${tenantId} AND l."status" = 'ENDED' AND l."endReason" = 'TRANSFER' AND l."endedAt" >= ${since}
       AND NOT EXISTS (SELECT 1 FROM "AuditLog" a WHERE a."tenantId" = l."tenantId" AND a."action" = ${TRANSFER_UTILITY_DONE} AND a."targetType" = 'DormLease' AND a."targetId" = l."id")
+      AND (SELECT count(*) FROM "AuditLog" f WHERE f."tenantId" = l."tenantId" AND f."action" = ${TRANSFER_UTILITY_FAILED} AND f."targetType" = 'DormLease' AND f."targetId" = l."id") < ${TU_MAX}
     ORDER BY l."id" ASC LIMIT 200`;
   for (const l of tr) {
     if (left() < 3_000) return;
     try {
       await transferUtilityInvoice(tenantId, l.unitId, null, l.id, at);
     } catch (e) {
+      // SVC D.12 (Y26) ▸ ล้ม ⇒ จดครั้ง + lastError (ครบ TU_MAX ครั้ง ⇒ หยุดเติมแถวนี้ · ให้คนดูจาก log) ◂
       await logD12("jobs.transfer_utility", tenantId, e);
+      await raw.auditLog
+        .create({ data: { tenantId, unitId: l.unitId, actorType: "SYSTEM", action: TRANSFER_UTILITY_FAILED, targetType: "DormLease", targetId: l.id, after: { lastError: (e instanceof Error ? e.message : String(e)).slice(0, 200), at: at.toISOString() } } })
+        .catch(() => undefined);
     }
   }
 }

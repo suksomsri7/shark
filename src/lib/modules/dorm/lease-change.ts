@@ -664,6 +664,8 @@ export type LeaseChangeModel = {
   moveOutId: string | null;
   rooms: { id: string; number: string }[];
   oldMeters: { meterId: string; kind: "ELEC" | "WATER" }[];
+  /** SVC D.12 (Y25) ▸ มิเตอร์ห้องของห้องปลายทางแต่ละห้อง (ช่องเลข MOVE_IN) ◂ */
+  roomMeters: Record<string, { meterId: string; kind: "ELEC" | "WATER" }[]>;
   can: { notice: boolean; lease: boolean };
 };
 /** อ่านอย่างเดียว · ด่านเดียวกับฟังก์ชันเขียน (ไม่ผ่าน ⇒ null) · ไม่มีเบอร์/เลขบัตร */
@@ -688,7 +690,10 @@ export async function leaseChangeModel(ctx: LeaseChangeCtx, input: { unitId: str
     const noticeDays = isInt(nd) && nd >= 0 ? nd : 30;
     const mo = await db.dormMoveOut.findFirst({ where: { leaseId: lease.id, status: { not: "CANCELLED" } }, select: { id: true } });
     const rooms = (await db.hotelRoom.findMany({ select: { id: true, number: true }, orderBy: { number: "asc" }, take: 500 })).filter((r) => r.id !== lease.roomId && roomVisible(g, r.id));
-    const meters = await db.dormMeter.findMany({ where: { roomId: lease.roomId, role: "ROOM", removedAt: null }, select: { id: true, kind: true }, orderBy: [{ kind: "asc" }, { id: "asc" }] });
+    const allMeters = await db.dormMeter.findMany({ where: { role: "ROOM", removedAt: null }, select: { id: true, kind: true, roomId: true }, orderBy: [{ kind: "asc" }, { id: "asc" }], take: 2000 });
+    const meters = allMeters.filter((m) => m.roomId === lease.roomId);
+    const roomMeters: LeaseChangeModel["roomMeters"] = {};
+    for (const m of allMeters) if (m.roomId && m.roomId !== lease.roomId && roomVisible(g, m.roomId)) (roomMeters[m.roomId] ??= []).push({ meterId: m.id, kind: m.kind === "WATER" ? "WATER" : "ELEC" });
     const end = ymdOfDb(lease.endDate) || null;
     const want = addDaysYmd(today, noticeDays);
     const suggestMoveOutDate = end && want > end ? end : want;
@@ -707,6 +712,7 @@ export async function leaseChangeModel(ctx: LeaseChangeCtx, input: { unitId: str
       moveOutId: mo?.id ?? null,
       rooms,
       oldMeters: meters.map((m) => ({ meterId: m.id, kind: m.kind === "WATER" ? "WATER" : "ELEC" })),
+      roomMeters,
       can: { notice: !!gm, lease: !!gl },
     };
   } catch (e) {
