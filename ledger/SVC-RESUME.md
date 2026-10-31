@@ -1,3 +1,9 @@
+## ▶️ 31 ต.ค. ~16:3xZ — **42/53 (79%)** · session/svc 698cd1e4 (B.13 merge · รอด่าน U)
+- ✅ ช่วงนี้: D.19 · D.12 · B.16 (ด่าน R/S/T บนฐานหลัก) · B.13 ผ่านผู้ตรวจ B (7 รอบแก้ Q1–Q19 · /root/svc-runs/fix/b13.md) → merge 698cd1e4 + migration svc_b13 ลงฐานหลัก/l1/l3 + generate ทรีหลัก/l3 · ด่าน U `/root/svc-runs/gate-u.sh` → gate-u.txt (เขียว ⇒ ✅ B.13 = 43/53)
+- 🟡 **G1 (B.12)** qc:all จบ 306/478 · คัดแดงแล้ว `/root/svc-runs/g1-classify.md` (บั๊กจริง 2: webhook settings.changed ซ้ำ · เมนูข้างไม่มีหน้าจองใหม่) · รอบแก้ `/root/svc-runs/fix/g1.md` builder ในเลน l2 · หลังจบ: ผู้คุมรันซ้ำบนฐานหลัก + ไล่กดบทบาท/ภาพ + ชุด UAT
+- เลน: l1 B.17 phase 2 (แก้ชน merge 698cd1e4 · migration svc_b17 · l1 มี nm แยกแล้ว /root/projects/shark-svc-nm-l1) · l2 G1 รอบแก้ · l3 ผู้เขียนข้อสอบ B.15 · l4 ผู้เขียนข้อสอบ B.14 (ฐาน l3 ร่วม) · ⚠️ l2 ยังไม่มี migration svc_b13 (merge session + migrate + generate หลัง G1 builder จบ)
+- หนี้ใหม่: b.3 S-9 ขึ้นกับเวลาของวัน (หลัง ~22:45 ไทย) · ปุ่ม "มาถึง" = ตอนกด (คำถามเจ้าของ) · A9 walk-in ข้ามเที่ยงคืน · env qc:all ขาด SESSION_SECRET · acc-v2 seed เน่าตามเวลา (โมดูลอื่น)
+
 ## ▶️ 31 ต.ค. ~08Z — **39/53 (74%)** · session/svc 9501cba6 (D.19 merge · รอด่าน R)
 - ✅ วันนี้: D.4 D.18 D.17 D.10 D.16 D.14 C.3 · D.19 ACCEPT รอด่าน R (`/root/svc-runs/gate-r.sh` เริ่มเองหลัง G1)
 - 🟡 **G1 (B.12)** qc:all 478 ชุด รันอยู่: unit `svc-g1-qcall` · worktree ตรึง `/root/projects/shark-svc-g1` (79e806f8) · log `/root/svc-runs/g1-qcall.log` · หลังจบ: คัดแดงทีละชุด (สภาพแวดล้อม ⇒ หนี้ · บั๊ก ⇒ แก้) + ไล่กดบทบาท (build QC + ภาพ)
