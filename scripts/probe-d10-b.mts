@@ -5,6 +5,7 @@
 //       SN เลขใบเสร็จ · SP หลังจ่ายครบ · SO outbox consumer · BZ 40P01 ฉีด · KL SIGKILL กลางทาง · XT ข้ามร้าน/ข้ามหน่วย · INV ค่าคงที่เงินหลังทุกฉาก
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { join, dirname } from "node:path";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
@@ -22,7 +23,7 @@ for (const n of ["DATABASE_URL", "DIRECT_URL"] as const) {
   const u = process.env[n] ?? "";
   let hn = "";
   try { hn = new URL(u).hostname; } catch { /* */ }
-  if (!hn.includes("ep-mute-scene")) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
+  if (!hn.includes(svcQcHostMark()) /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) */) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
 }
 if (process.env.APP_ENV === "production" || process.env.CI) { console.error("🔴 probe: env ต้องห้าม"); process.exit(4); }
 process.env.APP_URL = "https://qc-d10pb.invalid";
