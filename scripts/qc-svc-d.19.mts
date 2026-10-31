@@ -846,7 +846,7 @@ try {
     needReady();
     const bad: string[] = [];
     for (const [u, from, to] of [[DV, P_RUN, P_RUN], [DA, P0, P4]] as const) {
-      const r = okRes(await D.rev()(cOwn(), { unitId: u, fromMonth: from, toMonth: to }, { now: new Date(NOW_A) }), "revenue");
+      const r = okRes(await D.rev()(cOwn(), { unitId: u, fromMonth: from, toMonth: to }, { now: new Date(u === DV ? NOW_O : NOW_A) /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · d19-R2) DV ขอ 2026-11 ต้องใช้ NOW_O ตาม §3.2 (ข้อ O-3 บังคับ ≤ เดือนถัดไป) */ }), "revenue");
       const e = await expRevenue(u, from, to);
       for (const [i, m] of (r.months as Any[]).entries()) {
         if (!isDeepStrictEqual([m.total.netSatang, m.total.vatSatang, m.total.grossSatang], [e[i].posted.netSatang, e[i].posted.vatSatang, e[i].posted.grossSatang])) bad.push(`${m.periodKey} ${J(m.total)} ≠ บัญชี ${J(e[i].posted)}`);
