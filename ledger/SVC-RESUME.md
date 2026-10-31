@@ -1,3 +1,9 @@
+## ▶️ 31 ต.ค. ~08Z — **39/53 (74%)** · session/svc 9501cba6 (D.19 merge · รอด่าน R)
+- ✅ วันนี้: D.4 D.18 D.17 D.10 D.16 D.14 C.3 · D.19 ACCEPT รอด่าน R (`/root/svc-runs/gate-r.sh` เริ่มเองหลัง G1)
+- 🟡 **G1 (B.12)** qc:all 478 ชุด รันอยู่: unit `svc-g1-qcall` · worktree ตรึง `/root/projects/shark-svc-g1` (79e806f8) · log `/root/svc-runs/g1-qcall.log` · หลังจบ: คัดแดงทีละชุด (สภาพแวดล้อม ⇒ หนี้ · บั๊ก ⇒ แก้) + ไล่กดบทบาท (build QC + ภาพ)
+- เลน: l1 D.12 รอบแก้ 5 (Y33–Y34 · /root/svc-runs/fix/d12.md) · l3 B.13 ข้อสอบ · l4 B.16 ข้อสอบ (ใช้ฐานเลน l3 ร่วม)
+- ฐาน QC ต่อเลน: ดู memory reference_shark_svc_lane_qc_branches · หนี้ §3.2 · คำถามเจ้าของ SVC-OWNER-QUESTIONS (D.14 ค่าเริ่ม AI · บั๊กบัญชี V2 outstandingByContacts)
+
 ## ▶️ รับไม้ 30 ต.ค. ~11:4xZ (บัญชี B · ผู้คุมใหม่) — **33/53** (D.9 ✅ · D.4 ✅ 05014f81)
 - 📍 30 ต.ค. ~23Z: agent ตายทั้งหมด ~16Z (OAuth หมดอายุ) · งาน builder D.12/D.10 commit เป็น WIP บน wip/svc-l1 (84eab08b) / wip/svc-l2 (80394c52) · ORACLE-EDIT ผู้คุมอนุมัติแล้ว (d.8 Q-2/S-7 · d.5 S-8 · d.11 S-7 · r0.6 P-1/U-2 · probe-d9-b IA-1 · d.12 M-8/G-7 · d.10 S-1) · กำลังรีวิวเข้ม A+B ทั้ง 2 ใบ · ผู้คุมรัน d.12 เต็ม /root/svc-runs/ctl-d12.txt · l3 ว่าง · ถัดไป B.12
 - บัญชี A หมด weekly 11:29–11:34Z ⇒ builder D.10/D.4/D.12 ตาย · gate-k + D.4 probe/full ที่ค้างปล่อยรันจนจบ
