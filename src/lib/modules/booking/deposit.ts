@@ -139,7 +139,7 @@ async function groupMoneyOf(ctx: { tenantId: string; unitId: string }, appointme
 }
 /** สถานะมัดจำรวม: สลิปของกลุ่ม (ที่หัวกลุ่ม/แถวที่ส่ง) ก่อน · มีสมาชิกถือช่อง ⇒ AWAITING > UNDERPAID > PAID/NONE · ไม่มี ⇒ สถานะท้ายทางของสมาชิก */
 function groupStateOf(gm: GroupMoney): { state: DepositState; holdUntilMs: number | null } {
-  const slipSt = gm.facts.map((f) => f.slip?.status).find((x) => !!x);
+  const slipSt = gm.facts.filter((f) => !f.appt.depositPaidAt).map((f) => f.slip?.status).find((x) => !!x); // H1: สลิปเฉพาะแถวที่ยังไม่จ่าย (แบบ infoOf)
   const liveInfos = gm.facts.map((f, k) => ({ f, i: gm.infos[k] })).filter((x) => ACTIVE.has(x.f.appt.status)).map((x) => x.i);
   const holds = liveInfos.filter((i) => i.state === "AWAITING" && i.holdUntilMs !== null).map((i) => i.holdUntilMs as number);
   const holdUntilMs = holds.length ? Math.min(...holds) : null;
@@ -352,6 +352,13 @@ export async function submitDepositSlip(
     }
     // นัดถูกปล่อย/ยกเลิกระหว่างตรวจ (expire ไม่แตะนัดที่ถือ claim แต่ทางอื่นได้) ⇒ บอกความจริง (ไม่ตอบ ok)
     const after = await depositFactsOf(ctx, a.id);
+    if (gm1) {
+      // H7: กลุ่ม ⇒ ตัดสินจากสถานะรวม (หัวกลุ่มถูกยกเลิกรายคนได้ · เงินลงแถวที่ยังถือช่อง)
+      const gmA = await groupMoneyOf(ctx, a.id);
+      const stA = gmA ? groupStateOf(gmA).state : "AWAITING";
+      if (gmA && !gmA.live.length && !gmA.facts.some((x) => x.appt.depositPaidAt)) return gmA.facts.some((x) => x.appt.cancelReason === "DEPOSIT_TIMEOUT") ? sfail("EXPIRED", R.EXPIRED) : sfail("BAD_STATE", R.BAD_STATE);
+      return { ok: true, status: r.status, state: stA };
+    }
     if (after && !ACTIVE.has(after.appt.status) && !after.appt.depositPaidAt) return after.appt.cancelReason === "DEPOSIT_TIMEOUT" ? sfail("EXPIRED", R.EXPIRED) : sfail("BAD_STATE", R.BAD_STATE);
     return { ok: true, status: r.status, state: after ? infoOf(after).state : "AWAITING" };
   } finally {
@@ -425,19 +432,17 @@ export async function onDepositSlipApproved(evt: { tenantId: string; unitId?: st
  */
 async function slipApprovedGroup(ctx: { tenantId: string; unitId: string }, gm: GroupMoney, slipId: string, amount: number): Promise<void> {
   for (const f of gm.facts) if (await depositAuditExists(ctx.tenantId, f.appt.id, "booking.deposit.receive", slipId)) return; // สลิปนี้ลงเงินแล้ว
-  const payable = gm.facts.filter((f) => f.appt.depositSatang > 0);
+  // H1/H6: เงินลงแถวที่ยังไม่จ่ายก่อนตามลำดับสมาชิก (ยอด = มัดจำของแถว) — แถวที่ถือช่องก่อน · ไม่มีแถวถือช่องที่ค้าง (ยกเลิกทั้งกลุ่ม) ⇒ แถวที่ยังไม่จ่าย (ค้างคืน) ·
+  //   แถวที่ยกเลิกแล้วและยังไม่จ่ายไม่รับเงินเมื่อยังมีแถวถือช่อง · ส่วนเกินหลังทุกแถวจ่ายแล้ว ⇒ slipAfterPaid (แจ้งร้าน แบบ B.8)
+  const unpaid = gm.facts.filter((f) => !f.appt.depositPaidAt && f.appt.depositSatang > 0);
+  const liveUnpaid = unpaid.filter((f) => ACTIVE.has(f.appt.status));
+  const targets = liveUnpaid.length ? liveUnpaid : unpaid;
   const items: { appointmentId: string; saleId: string | null; amountSatang: number }[] = [];
   let left = amount;
-  let short = false;
-  for (const [k, mf] of payable.entries()) {
-    const give = k === payable.length - 1 ? left : Math.min(mf.appt.depositSatang, left);
-    if (give < mf.appt.depositSatang) short = true;
+  for (const mf of targets) {
+    const give = Math.min(mf.appt.depositSatang, left);
     if (give <= 0) break;
     left -= give;
-    if (mf.appt.depositPaidAt) {
-      await slipAfterPaid(ctx.tenantId, ctx.unitId, mf.appt.id, slipId, give, mf.appt.depositSaleId);
-      continue;
-    }
     const take = await takeAppointmentDeposit({
       tenantId: ctx.tenantId, unitId: ctx.unitId, appointmentId: mf.appt.id, amountSatang: give, payType: "PROMPTPAY",
       customerId: mf.appt.customerId, customerName: mf.appt.customerName || null, serviceName: mf.appt.serviceName,
@@ -450,8 +455,12 @@ async function slipApprovedGroup(ctx: { tenantId: string; unitId: string }, gm: 
     } else throw new Error(`[booking.deposit] ออกใบรับมัดจำไม่สำเร็จ: ${take.code}`); // คิวลองใหม่ (คีย์ต่อแถว ⇒ ไม่ซ้ำ)
     items.push({ appointmentId: mf.appt.id, saleId, amountSatang: give });
   }
+  const lead = gm.facts[0].appt;
+  if (left > 0) await slipAfterPaid(ctx.tenantId, ctx.unitId, lead.id, slipId, left, lead.depositSaleId);
   if (!items.length) return;
-  // จ่ายครบ ⇒ สมาชิกมัดจำ 0 ที่ยังรอ ยืนยันพร้อมกลุ่ม (ยกเว้น snapshot requireConfirm)
+  // จ่ายไม่ครบทั้งกลุ่ม (มีแถวถือช่องที่ยังขาด/ยังไม่จ่าย หลังสลิปนี้) ⇒ ไม่มีแถวยืนยันเอง (ruling G6) · ครบ ⇒ แถวมัดจำ 0 ที่ยังรอยืนยันพร้อมกลุ่ม
+  const got = new Map(items.map((x) => [x.appointmentId, x.amountSatang]));
+  const short = gm.live.some((f) => f.appt.depositSatang > 0 && (f.appt.depositPaidAt ? infoOf(f).state === "UNDERPAID" : (got.get(f.appt.id) ?? 0) < f.appt.depositSatang));
   const zeroPending = short ? [] : gm.live.filter((f) => f.appt.status === "PENDING" && !f.appt.depositPaidAt && f.appt.depositSatang <= 0
     && snapValues(f.appt.policySnapshot)["booking.booking.requireConfirm"] !== true).map((f) => f.appt.id);
   const bind = await bindGroupDeposit({
@@ -459,6 +468,7 @@ async function slipApprovedGroup(ctx: { tenantId: string; unitId: string }, gm: 
   });
   if (bind === "BUSY") throw new Error("[booking.deposit] แถวนัดไม่ว่าง — คิวลองใหม่");
   if (bind === "GONE") await logOps("WARN", "booking.deposit", "นัดกลุ่มหายระหว่างลงเงินมัดจำ", { tenantId: ctx.tenantId, detail: `slip=${slipId}` });
+  else if (bind.skippedSatang > 0) await slipAfterPaid(ctx.tenantId, ctx.unitId, lead.id, slipId, bind.skippedSatang, lead.depositSaleId); // แถวถูกจ่ายจากทางอื่นระหว่างนั้น ⇒ แจ้งร้าน
 }
 
 // ═════════════════════════ §3.4 จอร้าน ═════════════════════════
@@ -651,7 +661,8 @@ export async function refundDepositByShop(ctx: ShopCtx, input: { unitId: string;
   if (!f) return { ok: false, code: "NOT_FOUND", reason: SHOP_NF };
   const info = infoOf(f);
   // SVC B.15 ▸ หัวกลุ่ม ⇒ คืนทุกสมาชิกที่ค้างคืน (ทีละแถว · ใบคืนต่อใบรับ) ◂
-  const grp = await groupMoneyOf(sc, f.appt.id);
+  const grp0 = await groupMoneyOf(sc, f.appt.id);
+  const grp = grp0 && grp0.facts[0].appt.id === f.appt.id ? grp0 : null; // H3: ทั้งกลุ่มเฉพาะเมื่อกดที่หัวกลุ่ม · แถวสมาชิก ⇒ เฉพาะแถวนั้น
   if (grp) {
     const reasonG = typeof input.reason === "string" ? input.reason.normalize("NFKC").trim() : "";
     if (reasonG.length < 1 || reasonG.length > 200 || /[\u0000-\u001F\u007F]/.test(reasonG)) return { ok: false, code: "BAD_INPUT", reason: "ใส่เหตุผลการคืนเงิน 1–200 ตัวอักษร" };

@@ -1888,6 +1888,22 @@ async function openCountForPhone(tx: Pick<Prisma.TransactionClient, "$queryRaw">
   return r?.n ?? 0;
 }
 
+/** SVC B.15 ▸ H2: นัดค้างของเบอร์แบบนับกลุ่มเป็น 1 การจอง (count DISTINCT COALESCE(groupId, id)) — เงื่อนไขอื่นเท่า openCountForPhone ทุกข้อ ·
+ *  ไม่มีแถวกลุ่ม ⇒ ผลเท่าเดิมทุกค่า (ตัวเดิมคงไว้ไม่แก้) ◂ */
+async function openBookingsForPhone(tx: Pick<Prisma.TransactionClient, "$queryRaw">, tenantId: string, unitId: string, key: string, now: Date): Promise<number> {
+  const [r] = await tx.$queryRaw<{ n: number }[]>`
+    SELECT count(DISTINCT COALESCE(a."groupId", a."id"))::int AS n
+    FROM "Appointment" a
+    CROSS JOIN LATERAL (SELECT regexp_replace(COALESCE(a."customerPhone", ''), '[^0-9]', '', 'g') AS d1) p1
+    CROSS JOIN LATERAL (SELECT CASE WHEN p1.d1 LIKE '0066%' THEN substr(p1.d1, 5)
+                                    WHEN p1.d1 LIKE '66%' THEN substr(p1.d1, 3)
+                                    ELSE p1.d1 END AS d2) p2
+    WHERE a."tenantId" = ${tenantId} AND a."unitId" = ${unitId}
+      AND a."status" IN ('PENDING', 'CONFIRMED') AND a."startAt" > ${now}
+      AND (CASE WHEN p2.d2 = '' THEN '' WHEN p2.d2 LIKE '0%' THEN p2.d2 ELSE '0' || p2.d2 END) = ${key}`;
+  return r?.n ?? 0;
+}
+
 const isP2002 = (e: unknown): boolean => (e as { code?: string } | null)?.code === "P2002";
 
 /**
@@ -2023,7 +2039,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
       const prior = await prisma.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: APPT_LITE });
       return prior ? replayOf(prior, want) : null;
     };
-    if (capPhone && (await openCountForPhone(prisma, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+    if (capPhone && (await openBookingsForPhone(prisma, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
       return (await replayIfAny()) ?? fail("PHONE_LIMIT", PHONE_LIMIT_REASON);
     }
     const rows = await busyRowsOf(prisma, tenantId, cands.map((c) => c.staffId), dateStr);
@@ -2063,7 +2079,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
       if (capPhone) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:phone:${tenantId}:${unitId}:${phoneKey}`}, 0))`;
         // ④ เพดานนัดค้างต่อเบอร์ (SELF เท่านั้น · นับทุกช่องทาง) — ใต้ล็อกเบอร์
-        if ((await openCountForPhone(tx, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+        if ((await openBookingsForPhone(tx, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
           return { kind: "fail", code: "PHONE_LIMIT", reason: PHONE_LIMIT_REASON };
         }
       }
@@ -2237,10 +2253,20 @@ export async function expireDepositHolds(now: Date): Promise<{ expired: number }
       const groups = new Map<string, { tenantId: string; unitId: string }>();
       for (const c of cand) if (c.groupId && !groups.has(c.groupId)) groups.set(c.groupId, { tenantId: c.tenantId, unitId: c.unitId });
       for (const [groupId, g] of groups) {
-        const live = (await tx.$queryRaw<{ id: string }[]>`
-          SELECT "id" FROM "Appointment" WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "groupId" = ${groupId}
-            AND "status" NOT IN ('CANCELLED', 'NO_SHOW') ORDER BY "id"`).map((x) => x.id);
+        const allRows = await tx.$queryRaw<{ id: string; status: string }[]>`
+          SELECT "id", "status"::text AS "status" FROM "Appointment" WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "groupId" = ${groupId} ORDER BY "id"`;
+        const allIds = allRows.map((x) => x.id);
+        const live = allRows.filter((x) => x.status !== "CANCELLED" && x.status !== "NO_SHOW").map((x) => x.id);
         if (!live.length) continue;
+        // H7: สลิป/ด่านแนบสลิปผูกกับกลุ่ม (แถวใดก็ได้ รวมหัวกลุ่มที่ถูกยกเลิกรายคน) ⇒ ไม่ปล่อยใคร
+        const [blk] = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM "Appointment" x
+          WHERE x."id" = ANY(${allIds}::text[])
+            AND (COALESCE((x."policySnapshot" -> 'deposit' -> 'slipClaim' ->> 'until')::bigint, 0) > (extract(epoch from now()) * 1000)::bigint
+              OR EXISTS (SELECT 1 FROM "PaymentSlip" s
+                WHERE s."tenantId" = x."tenantId" AND s."domain" = 'BOOKING' AND s."refType" = 'APPT_DEPOSIT' AND s."refId" = x."id"
+                  AND (s."status" IN ('AUTO_APPROVED', 'APPROVED') OR (s."status" IN ('PENDING', 'NEEDS_REVIEW') AND x."startAt" > ${at}))))`;
+        if ((blk?.n ?? 0) > 0) continue;
         const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Appointment" WHERE "id" = ANY(${live}::text[]) ORDER BY "id" FOR UPDATE SKIP LOCKED`;
         if (locked.length !== live.length) continue; // สมาชิกบางคนถูกถือ (ร้านยืนยัน/สลิป/โพรเซสอื่น) ⇒ ไม่ปล่อยใครรอบนี้
         const [ok] = await tx.$queryRaw<{ n: number }[]>`
@@ -3413,7 +3439,7 @@ export async function bookGroupImpl(ctx: BookingCtx, i: GroupBookInput, opts?: {
   };
   // ตรวจล่วงหน้าแบบไม่ล็อก (สูตรเดียวกับใต้ล็อก) · ลำดับรหัสเดิม: เบอร์ ④ ก่อน เต็ม ⑤
   {
-    if (capPhone && (await openCountForPhone(prisma, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+    if (capPhone && (await openBookingsForPhone(prisma, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
       return (await replayIfAny()) ?? fail("PHONE_LIMIT", PHONE_LIMIT_REASON);
     }
     const rows = await busyRowsOf(prisma, tenantId, staffIds, dateStr);
@@ -3437,7 +3463,7 @@ export async function bookGroupImpl(ctx: BookingCtx, i: GroupBookInput, opts?: {
     }
     if (capPhone) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:phone:${tenantId}:${unitId}:${phoneKey}`}, 0))`;
-      if ((await openCountForPhone(tx, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+      if ((await openBookingsForPhone(tx, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
         return { kind: "res", res: fail("PHONE_LIMIT", PHONE_LIMIT_REASON) };
       }
     }
@@ -3763,8 +3789,8 @@ export async function bindGroupDeposit(i: {
   confirmIds?: readonly string[];
   /** กันซ้ำต่อสลิประดับกลุ่ม: มี audit รับเงินของสลิปนี้ที่สมาชิกใดแล้ว ⇒ ไม่ทำอะไร (ใต้ล็อกเดียวกัน) */
   dedupeSlipId?: string | null;
-}): Promise<"OK" | "GONE" | "BUSY"> {
-  const out = await apptTx(async (tx): Promise<"OK" | "GONE"> => {
+}): Promise<{ skippedSatang: number } | "GONE" | "BUSY"> {
+  const out = await apptTx(async (tx): Promise<{ skippedSatang: number } | "GONE"> => {
     const locked = new Map<string, LockedAppt>();
     const all = [...new Set([...(i.lockIds ?? []), ...i.items.map((x) => x.appointmentId), ...(i.confirmIds ?? [])])].sort();
     for (const id of all) {
@@ -3777,8 +3803,9 @@ export async function bindGroupDeposit(i: {
         where: { tenantId: i.tenantId, action: "booking.deposit.receive", targetType: "Appointment", targetId: { in: [...locked.keys()] }, after: { path: ["slipId"], equals: i.dedupeSlipId } },
         select: { id: true },
       });
-      if (hit) return "OK";
+      if (hit) return { skippedSatang: 0 };
     }
+    let skippedSatang = 0; // ยอดของแถวที่จ่ายแล้วจากทางอื่นระหว่างนั้น (ผู้เรียกแจ้งร้าน แบบ slipAfterPaid)
     for (const id of i.confirmIds ?? []) {
       const row = locked.get(id);
       if (!row || row.status !== "PENDING" || row.depositPaidAt || Number(row.depositSatang) > 0) continue;
@@ -3786,7 +3813,10 @@ export async function bindGroupDeposit(i: {
     }
     for (const it of i.items) {
       const row = locked.get(it.appointmentId);
-      if (!row || row.depositPaidAt) continue;
+      if (!row || row.depositPaidAt) {
+        if (row?.depositPaidAt) skippedSatang += it.amountSatang; // สลิปอื่น/ทางอื่นลงไปก่อน (สลิปเดียวกันถูกกันซ้ำด้านบนแล้ว)
+        continue;
+      }
       const d = it.saleId ? await tx.posDeposit.findUnique({ where: { receiptSaleId: it.saleId }, select: { amountSatang: true, tenantId: true } }) : null;
       const amount = d && d.tenantId === i.tenantId ? d.amountSatang : it.amountSatang;
       const open = row.status === "PENDING" || row.status === "CONFIRMED";
@@ -3818,7 +3848,7 @@ export async function bindGroupDeposit(i: {
         await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.late_money", after: { appointmentId: row.id, receiptSaleId: it.saleId, amountSatang: amount, status: row.status, via: i.via } } });
       }
     }
-    return "OK";
+    return { skippedSatang };
   });
   return out ?? "BUSY";
 }

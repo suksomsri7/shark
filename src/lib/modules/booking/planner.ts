@@ -656,7 +656,9 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
       const next = book.releasePoints(kinds, T).find((x) => x > T);
       if (next === undefined) break;
       const T2 = staffSync(es, next);
-      if (T2 - staffT > maxShift || es.some((e) => inWindow(e.s, staffT, staffT + e.d) && !inWindow(e.s, T2, T2 + e.d))) break;
+      // H5 (เทียบ Q12 ของ placeRes): ไม่ล้นหน้าต่างหมอที่เดิมจบทัน · ไม่ดันงานถัดไปของหมอให้จบเลยหน้าต่าง
+      if (T2 - staffT > maxShift || es.some((e) => (inWindow(e.s, staffT, staffT + e.d) && !inWindow(e.s, T2, T2 + e.d))
+        || cascadePastWindow(e.s, pendingOn(e.s.id, e.idx + 1).map((x) => x.job), T2, e.d, gapMs(ctx, e.job, e.s)))) break;
       T = T2;
     }
     for (const e of rooms) {

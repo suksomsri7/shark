@@ -309,6 +309,7 @@ export async function planAndWriteTx(
     : [];
   const etaOf = new Map(tickets.map((t) => [t.id, t.etaAt]));
   let planned = 0;
+  const etaWrites: { id: string; etaAt: Date | null }[] = [];
   for (const r of rows) {
     if (FINISHED.has(r.status)) continue;
     const pj = byId.get(r.id);
@@ -376,12 +377,14 @@ export async function planAndWriteTx(
         });
       }
     }
-    if (r.queueTicketId && etaOf.has(r.queueTicketId) && !sameTime(etaOf.get(r.queueTicketId) ?? null, pStart)) {
-      await tx.queueTicket.updateMany({
-        where: { id: r.queueTicketId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: { in: ["WAITING", "CALLED", "SERVING", "SKIPPED"] } },
-        data: { etaAt: pStart },
-      });
-    }
+    if (r.queueTicketId && etaOf.has(r.queueTicketId) && !sameTime(etaOf.get(r.queueTicketId) ?? null, pStart)) etaWrites.push({ id: r.queueTicketId, etaAt: pStart });
+  }
+  // SVC B.15 ▸ H4: แตะบัตรหลังวนแถวนัดครบ (ลำดับ แถวนัด → บัตร เดียวกับเช็กอินกลุ่ม · ปิดวงรอ) ◂
+  for (const t of etaWrites) {
+    await tx.queueTicket.updateMany({
+      where: { id: t.id, tenantId: ctx.tenantId, unitId: ctx.unitId, status: { in: ["WAITING", "CALLED", "SERVING", "SKIPPED"] } },
+      data: { etaAt: t.etaAt },
+    });
   }
   return planned;
 }
