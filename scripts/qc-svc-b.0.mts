@@ -167,6 +167,9 @@ const CAT: Row[] = [
   // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b17-R2): B.17 waitlist (กลุ่ม booking · R4)
   { n: "X3", key: "booking.booking.waitlistMode", type: "enum", chain: ["UNIT"], v: ["ALL", "FIRST", "OFF"] },
   { n: "X4", key: "booking.booking.waitlistMaxActive", type: "int", chain: ["UNIT"], v: x3(3) },
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1R2-2): B.13 ทรัพยากร (svc-brief-b.13 §3.2 · Q12) — ชนิดที่บริการต้องใช้ (SERVICE · ค่าเริ่ม [] ทุกแม่แบบ) · เพดานเลื่อนนัดเพราะห้อง/เตียงไม่ว่าง (UNIT · 60 นาที)
+  { n: "X5", key: "booking.service.resourceKinds", type: "table", chain: ["SERVICE"], v: x3([]) },
+  { n: "X6", key: "booking.planner.resourceShiftMaxMin", type: "minutes", chain: ["UNIT"], v: x3(60) },
 ];
 const MSG_KEYS = MSG_KINDS.map((k) => `booking.msg.${k}`);
 const ALL_KEYS = [...CAT.map((r) => r.key), ...MSG_KEYS];

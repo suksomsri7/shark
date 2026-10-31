@@ -210,7 +210,8 @@ const POLICY_CARDS = [
 ] as const;
 const cardKeys = (card: string): string[] => {
   if (card === "payments") return unitKeysOf("payments");
-  if (card === "queue") return unitKeysOf("booking", "queue").filter((k) => k !== "booking.queue.walkInPickStaff");
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1R2-1): B.13 Q12 booking.planner.resourceShiftMaxMin (กลุ่ม planner · ไม่มีการ์ดของตัวเอง) อยู่การ์ด 4 ลำดับคิว (มติ R2-1 "ลงกลุ่มหน้า 08")
+  if (card === "queue") return [...unitKeysOf("booking", "queue").filter((k) => k !== "booking.queue.walkInPickStaff"), ...unitKeysOf("booking", "planner").filter((k) => k === "booking.planner.resourceShiftMaxMin")];
   if (card === "notify") return [...unitKeysOf("booking", "notify"), ...unitKeysOf("messaging").filter((k) => k === "messaging.channelOrder")];
   return unitKeysOf("booking", card);
 };
@@ -256,6 +257,7 @@ const presetPerms = (role: string): Record<string, boolean> => {
   return Object.fromEntries(ROLE_ROWS.flatMap((r) => r.keys).map((k) => [k, on.has(k)]));
 };
 const ACTION_KEYS: Record<string, string[]> = {
+  excuseNoShowAction: ["booking.deposit.waive"], // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1R2-1): B.17 ยกเว้นไม่มา (ใบสั่ง svc-brief-b.17 · ข้อสอบ b.17 S-6 ผูก BOOKING_ACTIONS = booking.deposit.waive)
   setServiceDepositAction: ["booking.service.setDeposit"],
   recordDepositAction: ["booking.deposit.record", "booking.deposit.confirm"],
   refundDepositAction: ["booking.deposit.refund"],
@@ -319,7 +321,9 @@ await t("S-2", "คอมโพเนนต์ 4 ไฟล์: \"use client\" ·
     const src = read(f);
     if (!src) { p.push(`${f}: ไม่มี`); continue; }
     if (!/^\s*["']use client["']/.test(src)) p.push(`${f}: ไม่ใช่ "use client"`);
-    const bad = valueImports(src).filter((x) => /^@\/lib\/core\/(settings|db)|prisma|^@\/lib\/modules\/|_fixture/.test(x));
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1R2-1): ใบ B.13 §3.6 (svc-brief-b.13 บรรทัด "คอมโพเนนต์ client ห้าม import ค่าจาก @/lib/modules/* ยกเว้น resource-kinds ที่ pure") ⇒ ยอมไฟล์เดียวนี้ (ไม่มี import ค่า · ข้อสอบ b.13 T-0 ตรวจ)
+    const PURE_OK = new Set(["@/lib/modules/booking/resource-kinds"]);
+    const bad = valueImports(src).filter((x) => !PURE_OK.has(x) && /^@\/lib\/core\/(settings|db)|prisma|^@\/lib\/modules\/|_fixture/.test(x));
     if (bad.length) p.push(`${f}: ${bad.join(",")}`);
     if (/\buseRouter\s*\(/.test(stripComments(src))) p.push(`${f}: useRouter`);
   }
@@ -359,13 +363,14 @@ await t("S-5", "booking-settings.ts: \"use server\" · export async function เ
   ok(!/export\s+(const|let|type|interface|class|function\s)/.test(src.replace(/export\s+async\s+function/g, "")), "มี export ที่ไม่ใช่ async function");
   ok(/import\s*\{[^}]*\brefresh\b[^}]*\}\s*from\s*["']next\/cache["']/.test(src), "ไม่ import refresh จาก next/cache");
   const fns = exportedFns(raw);
-  eq(sorted(fns.map((f) => f.name)), sorted(["applyBookingTemplateAction", "setStaffServiceAction", "setServiceBookingAction", "applyBookingRolePresetAction"]), "ชื่อ action");
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1R2-1): + action ทรัพยากร 3 ตัวของ B.13 (svc-brief-b.13 §3.6 "action ใน src/lib/actions/booking-settings.ts: createResourceAction · updateResourceAction · setResourceMaintenanceAction") — กติกาลำดับ/สิทธิ์เดียวกันทุกตัว
+  eq(sorted(fns.map((f) => f.name)), sorted(["applyBookingTemplateAction", "setStaffServiceAction", "setServiceBookingAction", "applyBookingRolePresetAction", "createResourceAction", "updateResourceAction", "setResourceMaintenanceAction"]), "ชื่อ action");
   const p: string[] = [];
   for (const fn of fns) {
     if (/\b(tenantId|role|unitAccess|permissions|actor)\b\s*[:,)]/.test(fn.params)) p.push(`${fn.name}: รับค่าสิทธิ์จาก client`);
     const ru = fn.body.search(/requireUnit\s*\(/);
     const as = fn.body.search(new RegExp(`assertBookingAction\\s*\\([^)]*["']${fn.name}["']`));
-    const work = fn.body.search(/\b(applyBookingTemplate|setStaffService|setServiceBooking|applyBookingRolePreset)\s*\(/);
+    const work = fn.body.search(/\b(applyBookingTemplate|setStaffService|setServiceBooking|applyBookingRolePreset|createResource|updateResource|setResourceMaintenance)\s*\(/); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1R2-1) + งานทรัพยากรของ B.13
     if (ru < 0 || as < 0 || work < 0 || !(ru < as && as < work)) p.push(`${fn.name}: ลำดับ requireUnit(${ru}) → assert(${as}) → งาน(${work}) ผิด`);
   }
   ok(p.length === 0, p.join(" · "));
