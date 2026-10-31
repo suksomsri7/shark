@@ -262,6 +262,12 @@ const DEFS: SettingDef[] = [
     key: "rooms.meter.requirePhoto", type: "enum", labelTh: "บังคับถ่ายรูปมิเตอร์", // #18
     schema: z.enum(["NONE", "ELEC", "BOTH"]), defaults: { _fallback: "ELEC" }, chain: U,
   }),
+  // SVC D.14 ▸ เกณฑ์ความมั่นใจของระบบอ่านเลข (ต่ำกว่า ⇒ ต้องติ๊ก "ตรวจกับรูปแล้ว" ก่อนบันทึกค่าที่ระบบเสนอ) ◂
+  def({
+    key: "rooms.meter.aiMinConfidence", type: "int", labelTh: "ความมั่นใจขั้นต่ำของระบบอ่านเลขมิเตอร์ (%)",
+    helpTh: "ต่ำกว่านี้ต้องกดยืนยันว่าตรวจกับรูปแล้ว",
+    schema: z.number().int().min(50).max(99), defaults: { _fallback: 80 }, chain: U,
+  }),
 
   // ── ภาษี (#19–22) ──
   def({

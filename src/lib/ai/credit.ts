@@ -102,6 +102,12 @@ export type ChargeInput = {
    *    จากบิลของร้านทั้งก้อน (เรียกใช้บริการแล้วแต่ไม่ได้คิดเงิน) · ไม่ส่งมา = 0 ⇒ พฤติกรรมเดิมทุกจุดที่ไม่ได้ตั้งค่านี้
    */
   extraMicroUsd?: number;
+  /**
+   * SVC D.14 (มติ R1) ▸ กุญแจกันหักซ้ำ — เขียนลง `AiCreditTxn.ref` (unique ต่อร้าน `@@unique([tenantId, ref])`)
+   *   ref เดิมซ้ำ (กดซ้ำ/ส่งใหม่/พร้อมกันหลายโพรเซส) ⇒ ฐานปฏิเสธแถวที่สอง (P2002) ⇒ ทรานแซกชันย้อน (กระเป๋าไม่ถูกหัก) แล้วคืน 0
+   *   ไม่ส่ง = พฤติกรรมเดิมทุกจุด ◂
+   */
+  ref?: string;
 };
 
 /** ค่าที่ต้องหักจริงของรายการนี้ = ค่า token ของโมเดล + ค่าที่ผู้เรียกรายงานเพิ่ม (ปัดเป็นจำนวนเต็ม ≥ 0) */
@@ -120,6 +126,9 @@ export async function chargeUsage(ctx: Ctx, input: ChargeInput): Promise<number>
   const cost = totalCostMicro(input);
   if (cost <= 0) return 0;
 
+  // SVC D.14 (มติ R1) ▸ ref ว่าง/ไม่ใช่สตริง = ไม่ใช้ (เหมือนไม่ส่ง) ◂
+  const ref = typeof input.ref === "string" && input.ref.length > 0 ? input.ref : null;
+  try {
   await prisma.$transaction(async (tx) => {
     // อ่านยอดสดในทรานแซกชัน แล้วเขียนกลับด้วย decrement → สองคำขอพร้อมกันไม่หักทับกัน
     const w = await tx.aiCreditWallet.update({
@@ -139,10 +148,28 @@ export async function chargeUsage(ctx: Ctx, input: ChargeInput): Promise<number>
         ...(input.conversationId ? { conversationId: input.conversationId } : {}),
         ...(input.userId ? { userId: input.userId } : {}),
         ...(input.note ? { note: input.note } : {}),
+        ...(ref ? { ref } : {}), // SVC D.14 (R1) ◂
       },
     });
   });
+  } catch (e) {
+    // SVC D.14 (มติ R1) ▸ ref นี้หักไปแล้ว (P2002 บน (tenantId, ref)) — ทั้งทรานแซกชันย้อน ⇒ ไม่หักซ้ำ · คืน 0 ไม่ throw ◂
+    if (ref && isRefDuplicate(e)) return 0;
+    throw e;
+  }
   return cost;
+}
+
+/** SVC D.14 (R1) ▸ unique ชน — Prisma P2002 (ไล่ cause/driver adapter เผื่อถูกห่อ · 23505 = รหัส pg ของตัวเดียวกัน) ◂ */
+function isRefDuplicate(e: unknown): boolean {
+  let cur: unknown = e;
+  for (let d = 0; d < 6 && cur && typeof cur === "object"; d++) {
+    const o = cur as { code?: unknown; originalCode?: unknown; cause?: unknown; meta?: unknown };
+    if (o.code === "P2002" || o.code === "23505" || o.originalCode === "23505") return true;
+    const meta = o.meta && typeof o.meta === "object" ? (o.meta as { driverAdapterError?: unknown }) : null;
+    cur = o.cause ?? meta?.driverAdapterError;
+  }
+  return false;
 }
 
 /**

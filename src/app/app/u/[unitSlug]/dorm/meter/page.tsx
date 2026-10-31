@@ -1,13 +1,14 @@
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { bkkYmd } from "@/lib/core/quiet-hours";
-import { dormAccess, meterEstimates, meterFlags, meterWalk } from "@/lib/modules/dorm";
+import { dormAccess, meterAiStatus, meterEstimates, meterFlags, meterProposals, meterWalk } from "@/lib/modules/dorm";
 import MeterWalk from "@/components/dorm/MeterWalk";
-import { confirmMeterReadingAction, replaceMeterAction, submitMeterReadingsAction } from "./actions";
+import { confirmMeterReadingAction, proposeMeterReadingAction, replaceMeterAction, submitMeterReadingsAction } from "./actions";
 
 // จดมิเตอร์มือถือ (SVC D.6) — ภาพ ledger/design-dorm/03-meter-mobile.png · ข้อมูลผ่าน facade `@/lib/modules/dorm` (ไม่แตะ prisma)
 //   หน่วยต้องเป็น DORM · ต้องมี dorm.meter.read (คนจดมิเตอร์เห็นแค่หน้านี้) · ไม่มีสิทธิ์/ไม่ใช่หอ ⇒ 404
 //   ?period=YYYY-MM (ไม่ส่ง = เดือนนี้ไทย) · ?view=flags = รายการตรวจค่าผิดปกติ · ?floor=<key> · ?room=<roomId>
+//   SVC D.14 ▸ ?roomNo=<เลขห้อง> = เปิดแผงห้องนั้น · ปุ่ม "ถ่ายรูป ระบบอ่านเลข" + ข้อเสนอค้าง (meterAiStatus/meterProposals) ◂
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
@@ -36,6 +37,12 @@ export default async function DormMeterPage({
   const [walk, flags] = await Promise.all([meterWalk(ctx, { unitId: unit.id, periodKey }), meterFlags(ctx, { unitId: unit.id, periodKey })]);
   // SVC D.8 ▸ กล่องประมาณค่าน้ำไฟ — เฉพาะผู้ดูข้อมูลหอได้ (access.board) · คนจดมิเตอร์ไม่เห็นเงิน (ส่ง null) ◂
   const estimates = access.board ? await meterEstimates({ tenantId: auth.active.tenantId, actorUserId: auth.active.userId }, { unitId: unit.id, periodKey }) : null;
+  // SVC D.14 ▸ สถานะระบบอ่านเลข (อ่านอย่างเดียว) + ข้อเสนอค้างของงวด (รีเฟรชแล้วไม่หาย) ◂
+  const actorCtx = { tenantId: auth.active.tenantId, actorUserId: auth.active.userId };
+  const ai = await meterAiStatus(actorCtx, { unitId: unit.id });
+  const proposals = ai.enabled ? await meterProposals(actorCtx, { unitId: unit.id, periodKey }) : [];
+  const roomNo = one(sp.roomNo);
+  const roomByNo = roomNo ? walk.floors.flatMap((f) => f.rooms).find((r) => r.number === roomNo)?.roomId : undefined;
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
@@ -53,8 +60,11 @@ export default async function DormMeterPage({
         replace={replaceMeterAction.bind(null, unitSlug)}
         initialView={one(sp.view) === "flags" ? "flags" : "walk"}
         initialFloor={one(sp.floor)}
-        initialRoomId={one(sp.room)}
+        initialRoomId={roomByNo ?? one(sp.room)}
         estimates={estimates}
+        ai={ai}
+        proposals={proposals}
+        propose={ai.enabled ? proposeMeterReadingAction.bind(null, unitSlug) : undefined}
       />
     </div>
   );

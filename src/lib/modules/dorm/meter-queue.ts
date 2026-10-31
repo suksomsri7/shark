@@ -9,6 +9,9 @@ export type QueuedReading = {
   readAt: string;
   clientKey: string;
   photo?: { dataUrl: string; contentType: string } | null;
+  // SVC D.14 ▸ ข้อเสนอของระบบอ่านเลข (ส่งต่อให้ submitReadings) · ack = ติ๊ก "ตรวจกับรูปแล้ว" ◂
+  aiProposalId?: string | null;
+  ackLowConfidence?: boolean;
 };
 
 const DEFAULT_BATCH = 50;
@@ -23,7 +26,9 @@ export function enqueueReading(queue: readonly QueuedReading[], item: QueuedRead
   const i = queue.findIndex((q) => sameSlot(q, item));
   if (i < 0) return [...queue, { ...item }];
   const old = queue[i];
-  const merged: QueuedReading = { ...item, photo: item.photo ? item.photo : (old.photo ?? null) };
+  // SVC D.14 ▸ ข้อเสนอ: ใหม่มี ⇒ ใหม่ · ใหม่ไม่มีและไม่มีรูป ⇒ คงของเดิม (รูปหลักฐานไม่หาย) · ack ไม่คง (ค่าใหม่ต้องยืนยันใหม่) ◂
+  const keepAi = !item.aiProposalId && !item.photo && old.aiProposalId ? { aiProposalId: old.aiProposalId } : {};
+  const merged: QueuedReading = { ...item, photo: item.photo ? item.photo : (old.photo ?? null), ...keepAi };
   return queue.map((q, k) => (k === i ? merged : q));
 }
 
