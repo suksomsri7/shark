@@ -570,13 +570,21 @@ try {
     const on = await first(ids.T60, "ONLINE");
     const stf = await first(ids.T60, "STAFF");
     const t1 = Date.now();
-    ok(on >= t0 + 60 * 60_000 && on < t1 + 75 * 60_000, `ONLINE ช่องแรก ${new Date(on).toISOString()} (now ${new Date(t0).toISOString()})`);
-    ok(stf > t0 && stf <= t1 + 15 * 60_000, `STAFF ช่องแรก ${new Date(stf).toISOString()}`);
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b3-S9-midnight) ร้าน 24 ชม. ปิด 24:00 — ช่องที่ (ต้นที่เร็วสุด + นาทีบริการ) ข้ามเที่ยงคืนไม่มีจริง ⇒ ช่องแรกที่ถูก = พรุ่งนี้ 00:00
+    //   (เดิมแดงเมื่อรันหลัง ~22:45 ไทย) · นอกกรณีข้ามเที่ยงคืนความเข้มเดิมทุกตัว
+    const mid = bkkMs(tom, 0);
+    const Q = 15 * 60_000;
+    const okFirst = (got: number, lo: number, hiExcl: number, durMin: number, label: string) => {
+      const crosses = lo < mid && Math.ceil(lo / Q) * Q + durMin * 60_000 > mid;
+      ok((got >= lo && got < hiExcl) || (crosses && got === mid), `${label} ${new Date(got).toISOString()} (ช่วง ${new Date(lo).toISOString()}… · ข้ามเที่ยงคืน=${crosses})`);
+    };
+    okFirst(on, t0 + 60 * 60_000, t1 + 75 * 60_000, 60, "ONLINE ช่องแรก");
+    okFirst(stf, t0 + 1, t1 + 15 * 60_000 + 1, 60, "STAFF ช่องแรก");
     await setS([{ key: "booking.booking.minLeadMin", scope: "SERVICE", scopeId: ids.T30, value: 0 }]);
     const u0 = Date.now();
     const s30 = await first(ids.T30, "ONLINE");
     const u1 = Date.now();
-    ok(s30 >= u0 && s30 <= u1 + 15 * 60_000, `สระ lead 0 ช่องแรก ${new Date(s30).toISOString()}`);
+    okFirst(s30, u0, u1 + 15 * 60_000 + 1, 30, "สระ lead 0 ช่องแรก");
     ok((await first(ids.T60, "ONLINE")) >= u0 + 60 * 60_000, "ตัดผม (lead สาขา 60) ต้องไม่เปลี่ยน");
   });
   await st("S-10", "คอลัมน์ชนะค่าตั้ง: ตั้ง service.cleanupMin 30 + onlineBookable false ที่ตัดผม 60 ⇒ ช่อง ONLINE ไม่เปลี่ยน (ใช้ bufferMin/bookable ของแถว)", async () => {
