@@ -574,7 +574,8 @@ async function chainSig(db: SigDb, tenantId: string, unitId: string, chain: stri
         // Y23 ▸ ใบลดหนี้ค่าห้องส่วนเกินของใบนี้ออกหลังตรึง (ยอดอยู่ในบรรทัดที่ตรึงแล้ว) ⇒ ไม่อยู่ในลายนิ้วมือ ◂
         //   Y27 ▸ สถานะเอกสาร = มีผล/ไม่มีผล เท่านั้น (คิดจากยอดรวม · ยอดชำระ · ใบลด/เพิ่มหนี้อื่นที่อยู่ในรายการ) — ใบลดหนี้ค่าห้องของใบนี้ทำให้ PARTIAL→PAID ได้โดยไม่ STALE ◂
         docs: d.heads
-          .filter((h) => !(h.docType === "CREDIT_NOTE" && h.refType === RENT_CREDIT_REF && (h.refId ?? "").startsWith(`${moveOutId}:`)))
+          // Y30 ▸ ตัดเฉพาะใบที่ยังมีผล — ใบลดหนี้ค่าห้องที่ถูกยกเลิก (รุ่นใดก็ตาม) กลับเข้าลายนิ้วมือ ⇒ STALE ◂
+          .filter((h) => !(h.docType === "CREDIT_NOTE" && h.refType === RENT_CREDIT_REF && (h.refId ?? "").startsWith(`${moveOutId}:`) && LIVE_ST(h.status)))
           .map((h) => [h.id, h.docType, LIVE_ST(h.status) ? "LIVE" : "DEAD", Number(h.grandTotal), d.pays.get(h.id) ?? 0]),
         waived: waived.map((w) => w.targetId),
         items: insp.items,
@@ -2058,7 +2059,7 @@ const HK_MAX = 5;
 /** SVC D.12 (Y26) ▸ เพดานครั้งของงานเติมใบค่าน้ำไฟย้ายห้อง */
 const TU_MAX = 5;
 /** SVC D.12 (Y28) ▸ เพดานรอบของงานเก็บกวาดใบที่ยกเลิก */
-const CLEANUP_MAX = 5;
+const CLEANUP_MAX = 20;
 const TRANSFER_UTILITY_FAILED = "dorm.lease.transfer_utility_failed";
 async function markHousekeeping(tenantId: string, unitId: string, moveOutId: string, leaseId: string, roomId: string): Promise<boolean> {
   const cur = await tenantDb({ tenantId, unitId }).dormMoveOut.findFirst({ where: { id: moveOutId }, select: { inspection: true, status: true } });
@@ -2212,9 +2213,12 @@ export async function settleMoveOut(
           createdById: g.actorUserId,
         });
         if (!r.ok) throw new Abort(fail(r.code, r.reason));
+        // SVC D.12 (Y30) ▸ กันชั้นสอง: ยอดคืน/ยอดค้างที่บัญชีคิดได้ต้องเท่ากับใบสรุปที่ตรึง ไม่งั้นยกเลิกทั้ง tx (ไม่มี JV) ◂
+        if (r.refundSatang !== frozen.refundSatang || r.tenantOwesSatang !== frozen.tenantOwesSatang || r.heldSatang !== frozen.heldSatang) throw new Abort(STALE());
         s = { key, entryId: r.entryId, at: now.toISOString(), status: r.refundSatang > 0 ? "REFUNDED" : "SETTLED", heldSatang: r.heldSatang, appliedSatang: r.appliedSatang, refundSatang: r.refundSatang, tenantOwesSatang: r.tenantOwesSatang };
       } else {
         s = { key, entryId: null, at: now.toISOString(), status: "SETTLED", heldSatang: 0, appliedSatang: 0, refundSatang: 0, tenantOwesSatang: await outstandingInTx(tx, g.tenantId, docIds) };
+        if (frozen.refundSatang !== 0 || s.tenantOwesSatang !== frozen.tenantOwesSatang) throw new Abort(STALE()); // Y30 ◂
       }
       const u = await tx.dormMoveOut.updateMany({
         where: { id: mo.id, tenantId: g.tenantId, unitId: g.unitId, status: { in: ["NOTICE", "INSPECTED"] } },
@@ -2331,7 +2335,9 @@ async function jobsOfTenant(tenantId: string, at: Date, today: string, left: () 
   const cx = await raw.$queryRaw<{ id: string; unitId: string; leaseId: string; roomId: string }[]>`
     SELECT m."id", m."unitId", m."leaseId", l."roomId" FROM "DormMoveOut" m JOIN "DormLease" l ON l."id" = m."leaseId" AND l."tenantId" = m."tenantId"
     WHERE m."tenantId" = ${tenantId} AND m."status" = 'CANCELLED'
-      AND COALESCE(CASE WHEN jsonb_typeof(m."deductions"->'cleanup'->'attempts') = 'number' THEN (m."deductions"->'cleanup'->>'attempts')::int END, 0) < ${CLEANUP_MAX}
+      AND COALESCE(CASE WHEN jsonb_typeof(m."deductions"->'cleanup'->'fails') = 'number' THEN (m."deductions"->'cleanup'->>'fails')::int END, 0) < ${CLEANUP_MAX}
+      AND COALESCE(CASE WHEN jsonb_typeof(m."deductions"->'cleanup'->'runs') = 'number' THEN (m."deductions"->'cleanup'->>'runs')::int END, 0) < ${CLEANUP_MAX}
+      AND (jsonb_typeof(m."deductions"->'cleanup'->'nextAt') IS DISTINCT FROM 'string' OR (m."deductions"->'cleanup'->>'nextAt')::timestamptz <= ${at})
       AND (EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(m."deductions"->'history') = 'array' THEN m."deductions"->'history' ELSE '[]'::jsonb END) h
                    WHERE h->>'creditNoteDocId' IS NULL OR (h->>'creditNoteDocId' = 'NONE' AND h->>'invoiceDocId' IS NULL))
         OR EXISTS (SELECT 1 FROM "AccountDocument" d WHERE d."tenantId" = m."tenantId" AND d."refType" = ${RENT_CREDIT_REF} AND d."refId" LIKE m."id" || ':%' AND d."docType"::text = 'CREDIT_NOTE' AND d."status"::text NOT IN ('VOIDED', 'CANCELLED', 'DRAFT')
@@ -2346,14 +2352,20 @@ async function jobsOfTenant(tenantId: string, at: Date, today: string, left: () 
       err = (e instanceof Error ? e.message : String(e)).slice(0, 200);
       await logD12("jobs.cancelled_cleanup", tenantId, e);
     }
-    // Y28 ▸ นับครั้ง (+ lastError) ทุกรอบที่หยิบแถวนี้ — ครบ CLEANUP_MAX ⇒ หยุดตรวจแถวนี้ (แถว NONE ที่ไม่มีใบจริงไม่ถูกตรวจตลอดไป) ◂
+    // Y28/Y32 ▸ ตัวนับต่อแถว: fails = ล้มติดกัน (สำเร็จ ⇒ 0) · runs = รอบที่หยิบ · nextAt = backoff (15 นาที × 2^runs · ไม่เกิน 1 วัน)
+    //   หยุดเมื่อ fails ≥ CLEANUP_MAX หรือ runs ≥ CLEANUP_MAX (แถว NONE ที่ไม่มีใบจริงไม่ถูกตรวจตลอดไป) · Y31 ▸ ล็อกต้นสาย → สัญญา ก่อนอ่าน deductions ◂
+    const root = (await leaseChainOf(null, { tenantId, unitId: m.unitId, leaseId: m.leaseId })).root;
     await d12Tx(async (tx) => {
+      await advisoryLock(tx, leaseLockKey(root));
+      if (root !== m.leaseId) await advisoryLock(tx, leaseLockKey(m.leaseId));
       const cur = await tx.dormMoveOut.findFirst({ where: { id: m.id, tenantId, unitId: m.unitId }, select: { deductions: true, status: true } });
       if (!cur || cur.status !== "CANCELLED") return false;
       const rawD = isRec(cur.deductions) ? cur.deductions : {};
       const prev = isRec(rawD.cleanup) ? rawD.cleanup : {};
-      const attempts = (isInt(prev.attempts) ? prev.attempts : 0) + 1;
-      await tx.dormMoveOut.updateMany({ where: { id: m.id, tenantId, unitId: m.unitId, status: "CANCELLED" }, data: { deductions: json({ ...rawD, cleanup: { attempts, lastError: err, at: at.toISOString() } }) } });
+      const runs = (isInt(prev.runs) ? prev.runs : 0) + 1;
+      const fails = err ? (isInt(prev.fails) ? prev.fails : 0) + 1 : 0;
+      const nextAt = new Date(at.getTime() + Math.min(86_400_000, 15 * 60_000 * 2 ** Math.min(runs, 7))).toISOString();
+      await tx.dormMoveOut.updateMany({ where: { id: m.id, tenantId, unitId: m.unitId, status: "CANCELLED" }, data: { deductions: json({ ...rawD, cleanup: { runs, fails, lastError: err, at: at.toISOString(), nextAt } }) } });
       return true;
     }).catch(() => undefined);
   }

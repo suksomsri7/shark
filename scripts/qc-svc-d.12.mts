@@ -1524,6 +1524,28 @@ try {
       return [n?.ok === true && i?.ok === true && s1?.ok === true && cn > 0 && st?.ok === true && st.refundSatang === sum?.refundSatang && st.tenantOwesSatang === sum?.tenantOwesSatang && st.heldSatang === DEP && jv.length === 1,
         J({ s1: codeOf(s1), cn, st: st && [codeOf(st), st.refundSatang, st.tenantOwesSatang], sum: sum && [sum.refundSatang, sum.tenantOwesSatang, sum.frozen ? "frozen" : "live"], jv: jv.length })];
     });
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · Y30) — เพิ่มอย่างเดียว
+    await T("Y30-1", "ตรึงรุ่น 1 + ใบลดหนี้ค่าห้อง → เปิดใบสรุปใหม่ → ตรึงรุ่น 2 → ฝ่ายบัญชียกเลิกใบลดหนี้รุ่น 1 → ปิดประกัน ⇒ STALE · ไม่มี JV ปิด · ยอดถือคงเดิม", ["sendMoveOutSummary", "reopenMoveOutSummary", "settleMoveOut"], async () => {
+      const Y4 = await mkLease({ unitId: DY, roomId: await mkRoom(A, DY, DYx.ty, DYx.b, "904"), typeId: DYx.ty, name: "ผู้เช่า Y4", common: 0 });
+      await dep(Y4);
+      const hb = await histBill(Y4, "2026-11", { elec: [500, 500], water: [100, 100], paid: false, name: "ผู้เช่า Y4" });
+      const n = await notice(cO, Y4, "2026-11-15", "2026-10-10");
+      const mo = n?.moveOutId ?? "-";
+      const i1 = await inspect(cO, Y4, mo, NORMAL5, [], "2026-11-15");
+      const s1 = await sendSum(cO, Y4, mo, BK("2026-11-15", "11:00"));
+      const cn1 = (await liveDocs({ sourceDocId: hb.docId, docType: "CREDIT_NOTE" }))[0] ?? null;
+      const r = await fn("reopenMoveOutSummary")!(cO, { unitId: DY, moveOutId: mo, reason: "แก้ผลตรวจห้อง" }, { now: BK("2026-11-15", "11:10") });
+      const i2 = await inspect(cO, Y4, mo, NORMAL5, [], "2026-11-15");
+      const s2 = await sendSum(cO, Y4, mo, BK("2026-11-15", "11:20"));
+      const SVC: any = await tryImport("@/lib/modules/account/service");
+      const v = cn1 && SVC?.voidDocument ? await SVC.voidDocument(A, cn1.systemId, cn1.id, "ทดสอบ: ฝ่ายบัญชียกเลิกใบลดหนี้") : { ok: false, reason: "ไม่มีใบลดหนี้รุ่น 1 หรือ voidDocument" };
+      const heldBefore = await held(Y4);
+      const st = await settle(cO, Y4, mo, BK("2026-11-15", "12:00"));
+      const jv = await settleJvs(DY, Y4.leaseId);
+      const heldAfter = await held(Y4);
+      return [n?.ok === true && i1?.ok === true && s1?.ok === true && !!cn1 && r?.ok === true && i2?.ok === true && s2?.ok === true && v?.ok === true && failOk(st, "STALE") && jv.length === 0 && heldAfter === heldBefore && heldAfter === DEP,
+        J({ s1: codeOf(s1), cn1: !!cn1, r: codeOf(r), s2: codeOf(s2), v, st: codeOf(st), jv: jv.length, held: [heldBefore, heldAfter] })];
+    });
   }
 
   // ═══════════════ W. ต่อสัญญา (DS) ═══════════════

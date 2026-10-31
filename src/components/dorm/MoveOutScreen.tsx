@@ -7,7 +7,7 @@
 //   • ค่าเสื่อมสภาพปกติ "หักไม่ได้" — แถวปกติไม่มีช่องยอด/ยอดเงิน · ทุกรายการที่หักต้องมีหลักฐานที่แนบใบนี้ (ตรวจซ้ำที่ server)
 //   • เงินแสดงจากสตางค์จำนวนเต็มของ model (ไม่คำนวณเงินบนจอ — ยอดที่พิมพ์ในฟอร์มส่งให้ server คิด) · ไม่มีเบอร์โทร/เลขบัตร · ข้อความบริการล้วน (ประกาศ สคบ.)
 //   • เดสก์ท็อป 1440 = 2 คอลัมน์ · มือถือ 390 = ซ้อนลง ไม่ล้นแนวนอน
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LeaseChangeModel, MoveOutModel, SummaryLine } from "@/lib/modules/dorm";
 
 type ActionFn = (...a: never[]) => Promise<unknown>;
@@ -622,6 +622,23 @@ export function MoveOutStart({ unitSlug, lease, actions }: MoveOutStartProps) {
   const [meterReason, setMeterReason] = useState("");
   const [newReads, setNewReads] = useState<Record<string, string>>({});
   const newMeters = (lease.roomMeters ?? {})[toRoom] ?? [];
+  // SVC D.12 (Y32) ▸ ค่าที่กรอกในฟอร์มย้ายห้องอยู่รอดข้ามการเปลี่ยนห้องปลายทาง (โหลดหน้าใหม่ด้วย ?to=) — เก็บใน sessionStorage ของแท็บนี้ ◂
+  const FORM_KEY = `svc-d12-transfer:${lease.leaseId}`;
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(FORM_KEY);
+      if (!raw) return;
+      window.sessionStorage.removeItem(FORM_KEY);
+      const v = JSON.parse(raw) as { effDate?: string; transferRent?: string; oldReads?: Record<string, string>; meterReason?: string; newReads?: Record<string, string> };
+      if (typeof v.effDate === "string") setEffDate(v.effDate);
+      if (typeof v.transferRent === "string") setTransferRent(v.transferRent);
+      if (v.oldReads && typeof v.oldReads === "object") setOldReads(v.oldReads);
+      if (typeof v.meterReason === "string") setMeterReason(v.meterReason);
+      if (v.newReads && typeof v.newReads === "object") setNewReads(v.newReads);
+    } catch {
+      /* ไม่มีที่เก็บ/ข้อมูลเพี้ยน — เริ่มฟอร์มว่าง */
+    }
+  }, [FORM_KEY]);
   const shortNotice = lease.noticeDays > 0 && ymdParts(moveOutDate) && ymdParts(lease.today) ? (Date.parse(`${moveOutDate}T00:00:00Z`) - Date.parse(`${lease.today}T00:00:00Z`)) / 86_400_000 < lease.noticeDays : false;
   const toMoveOut = (r: unknown) => {
     const id = r && typeof r === "object" && typeof (r as { moveOutId?: unknown }).moveOutId === "string" ? (r as { moveOutId: string }).moveOutId : null;
@@ -709,7 +726,14 @@ export function MoveOutStart({ unitSlug, lease, actions }: MoveOutStartProps) {
                     const v = e.target.value;
                     setToRoom(v);
                     // Y29 ▸ มิเตอร์ห้องปลายทางโหลดจาก server เฉพาะห้องที่เลือก ◂
-                    if (typeof window !== "undefined") window.location.href = `/app/u/${unitSlug}/dorm/moveout?lease=${encodeURIComponent(lease.leaseId)}&to=${encodeURIComponent(v)}#transfer`;
+                    if (typeof window !== "undefined") {
+                      try {
+                        window.sessionStorage.setItem(FORM_KEY, JSON.stringify({ effDate, transferRent, oldReads, meterReason, newReads }));
+                      } catch {
+                        /* เก็บไม่ได้ — ไปต่อ (ค่าที่กรอกหาย) */
+                      }
+                      window.location.href = `/app/u/${unitSlug}/dorm/moveout?lease=${encodeURIComponent(lease.leaseId)}&to=${encodeURIComponent(v)}#transfer`;
+                    }
                   }}
                   className="rounded border px-2 py-1 text-sm"
                 >
