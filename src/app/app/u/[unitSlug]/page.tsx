@@ -42,6 +42,7 @@ const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
   DORM: [
     { href: "/dorm", label: "เปิดระบบหอพัก →" },
     { href: "/dorm/meter", label: "จดมิเตอร์" },
+    { href: "/dorm/parcels", label: "พัสดุ" }, // SVC D.18 ▸ ทางเข้าจอพัสดุ (แท็บหอคงเดิม — d.13 K-6) ◂
     { href: "/dorm/settings", label: "ตั้งค่าหอ" },
   ],
   CLINIC: [

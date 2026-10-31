@@ -832,6 +832,18 @@ DEFS.push(
 );
 // ◂ SVC D.4
 
+// SVC D.18 ▸ แม่แบบข้อความพัสดุ (ใบสั่ง ledger/svc-briefs/svc-brief-d.18.md §2.1) — กลุ่ม msg (การ์ด 4 ของหน้า 17 แสดงเอง · ตัวตรวจ TEMPLATE_NO_THREAT ใช้อยู่แล้ว)
+const PARCEL_VARS = ["roomNo", "unitName", "carrier", "receivedDate", "pickupLink"] as const;
+DEFS.push(
+  tpl("rooms.msg.parcelReceived", "ข้อความแจ้งพัสดุมาถึง", PARCEL_VARS,
+    "มีพัสดุถึงห้อง {roomNo} ({carrier}) รับได้ที่ {unitName} — เปิดลิงก์นี้แล้วแสดง QR ให้พนักงานตอนรับ {pickupLink}",
+    "A parcel for room {roomNo} ({carrier}) is waiting at {unitName}. Open this link and show the QR code to staff when you pick it up: {pickupLink}"),
+  tpl("rooms.msg.parcelReminder", "ข้อความเตือนพัสดุค้างรับ", [...PARCEL_VARS, "daysWaiting"],
+    "พัสดุของห้อง {roomNo} รอรับมา {daysWaiting} วันแล้ว รับได้ที่ {unitName} — แสดง QR ในลิงก์นี้ให้พนักงาน {pickupLink}",
+    "The parcel for room {roomNo} has been waiting {daysWaiting} days at {unitName}. Show the QR code in this link to staff: {pickupLink}"),
+);
+// ◂ SVC D.18
+
 const withLabels = (defs: SettingDef[]): SettingDef[] => defs.map((d) => (ENUM_LABELS_TH[d.key] ? { ...d, enumLabelsTh: ENUM_LABELS_TH[d.key] } : d));
 
 defineSettings("rooms", withLabels(DEFS), { templates: ROOM_TEMPLATES, snapshots: SNAPSHOTS, groupRules: GROUP_RULES, groupLabelsTh: GROUP_LABELS_TH });

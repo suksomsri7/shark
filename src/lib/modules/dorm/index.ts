@@ -162,3 +162,22 @@ export function moveIn(ctx: Parameters<typeof leaseMoveIn>[0], input: Parameters
   return leaseMoveIn(ctx, input);
 }
 // ◂ SVC D.4
+// ── SVC D.18 ▸ พัสดุหอ — สัญญา ledger/svc-briefs/svc-brief-d.18.md §3 (บล็อกนี้ของใบ D.18 เท่านั้น) ──
+export {
+  PARCEL_PICKUP_PURPOSE,
+  PARCEL_RATE,
+  PARCEL_NF_REASON,
+  receiveParcel,
+  listParcels,
+  pickupParcel,
+  returnParcel,
+  parcelPickupUrl,
+  sendParcelNotice,
+  onParcelReceived,
+  runDormParcelJobs,
+  loadParcelPickup,
+  parcelsForLeases,
+  parcelRoomsFor,
+} from "./parcel";
+export type { ParcelCtx, ParcelFile, ParcelFileDeps, ParcelFailCode, ParcelFail, ParcelStatus, ParcelRow, ParcelList, ParcelPickupView } from "./parcel";
+// ◂ SVC D.18

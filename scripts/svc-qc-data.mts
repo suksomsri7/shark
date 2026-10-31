@@ -887,3 +887,17 @@ export const SQC_IMPORT_SCENE = {
 } as const;
 SQC_VISUAL_SPECS["d.4"] = [{ name: "dorm-import", path: `/app/u/${SQC_IMPORT_SCENE.unit.slug}/dorm/tenants/import` }];
 // ◂ SVC D.4
+// SVC D.18 ▸ บล็อกของใบ D.18 เท่านั้น (พัสดุ · ไม่มีภาพอนุมัติ) — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-d.18.md §7 · ข้อสอบ scripts/qc-svc-d.18.mts (Q) · ฉาก scripts/svc-qc-parcel-scene.mts (builder)
+//   🔴 ฉากนี้ไม่เขียน SettingValue ใด ๆ (ระบบพัสดุบน svcqc คงปิด · ฉาก 17 ของ D.13 นับ "ปรับจากแม่แบบ 4 ข้อ") · ไม่ยิง event/ข้อความ
+// ═════════════════════════════════════════════════════════════════════════════
+/** ฉากพัสดุบนหน่วยหอ svcqc (ต่อจากฉาก D.13) — แถว DormParcel ล้วน · ระบุตัวด้วย trackingNo ขึ้นต้น trackingPrefix */
+export const SQC_DORM_PARCEL_SCENE = {
+  trackingPrefix: "SQCD18",
+  rooms: { waitingOverdue: "106", waiting: "204", pickedUp: "305" },
+  /** ห้อง 106 รับเมื่อ (วันนี้ไทย − overdueDays) ⇒ เกิน holdDays ค่าเริ่ม 14 */
+  overdueDays: 16,
+  carriers: { "106": "Kerry Express", "204": "Flash Express", "305": "ไปรษณีย์ไทย" } as Record<string, string>,
+  expect: { waiting: 2, overdue: 1, pickedUp: 1 },
+} as const;
+// ◂ SVC D.18

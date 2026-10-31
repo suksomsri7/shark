@@ -590,6 +590,15 @@ registerMinuteJob({
   run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-line")).runDormLineJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
 });
 // ◂ SVC D.9
+// SVC D.18 ▸ หอพัก: พัสดุ — ส่งแจ้งมาถึงซ้ำ (เวลาเงียบ/ล้ม ใน 3 วัน) + เตือนพัสดุค้างวันละครั้ง (วันไทย · ตาม rooms.parcel.holdDays) ·
+//   ซ้อนกันได้ = ข้อความ 1 ต่อ dedupeKey (X5) · โหลด facade หอตอนรันเท่านั้น
+registerMinuteJob({
+  name: "dorm.parcel",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormParcelJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.18
 
 function errorText(e: unknown): string {
   let s: string;

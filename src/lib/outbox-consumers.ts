@@ -1249,6 +1249,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   payload ตรง 7 คีย์ { unitId, billId, leaseId, periodKey, dueDate, outstandingSatang, daysLate } (ไม่มีชื่อ/เบอร์ · X8) · งานหลัก = no-op
   //   (ข้อความทวงส่งใน dunning ผ่าน notifyCustomer แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
   "dorm.bill.overdue": withAutomation(async () => {}),
+  // SVC D.18 ▸ พัสดุหอ — ยิงจาก `dorm/parcel.ts` ใน tx เดียวกับแถว (received · key `dorm.parcel.received:<parcelId>`) / CAS รับของ (picked_up ·
+  //   key `dorm.parcel.picked_up:<parcelId>`) · payload ตรง 3 คีย์ { unitId, parcelId, roomId } (ไม่มีชื่อ/เบอร์/token · X8)
+  //   received = แจ้งผู้เช่าทาง LINE (อ่านสด · notifyCustomer · ไม่ throw) · picked_up = no-op · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.parcel.received": withAutomation(async (evt) => (await import("@/lib/modules/dorm")).onParcelReceived(evt)),
+  "dorm.parcel.picked_up": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

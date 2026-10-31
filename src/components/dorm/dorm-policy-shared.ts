@@ -65,6 +65,11 @@ export const DORM_MSG_VAR_LABEL_TH: Record<string, string> = {
   overduePeriods: "งวดที่ค้าง",
   noticeDate: "วันออกหนังสือ",
   effectiveDate: "วันมีผล",
+  // SVC D.18 ▸ ตัวแปรข้อความพัสดุ (rooms.msg.parcelReceived · rooms.msg.parcelReminder) ◂
+  carrier: "ขนส่ง",
+  receivedDate: "วันที่รับ",
+  pickupLink: "ลิงก์รับพัสดุ",
+  daysWaiting: "จำนวนวันที่รอ",
 };
 
 /** ข้อความแม่แบบ → ส่วนข้อความ/ตัวแปร (ตัวแปรที่ไม่รู้จักคงเป็นข้อความเดิมโดยไม่มีวงเล็บ) */
