@@ -939,3 +939,28 @@ export const SQC_DORM_ANNOUNCE = {
 /** จอพนักงาน (ไม่มีภาพแบบ ⇒ HTTP < 400 + 1440/390 ไม่ล้น · ไม่ใช่ PARITY) — svcqc หน่วยหอ · ไม่ต้องรันฉาก */
 SQC_VISUAL_SPECS["d.17"] = [{ name: "dorm-announce", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/announce` }];
 // ◂ SVC D.17
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC D.16 ▸ บล็อกของใบ D.16 เท่านั้น (แจ้งซ่อม → บอร์ดงาน → LINE · มือถือช่าง หอ 13ค) — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-d.16.md §8 · ข้อสอบ scripts/qc-svc-d.16.mts (Q · V) · ฉาก scripts/svc-qc-repair-scene.mts (builder)
+//   🔴 ฉากนี้ไม่เขียน SettingValue / AppSystem / บอร์ดงาน / OutboxEvent / ServiceMessageLog ใด ๆ (svcqc ไม่มีระบบบอร์ดงาน — การ์ดไม่เกิด = ถูกต้อง)
+//   🔴 สถานะ IN_PROGRESS โดยตั้งใจ: หน้าแรกหอของ D.13 นับ "แจ้งซ่อมใหม่" เฉพาะ OPEN (ฉาก D.13 มี OPEN 2 แถว 302/204) ⇒ ฉากนี้ไม่ขยับตัวเลขของ D.13
+// ═════════════════════════════════════════════════════════════════════════════
+/** งานซ่อมตามภาพ หอ 13ค (ห้อง 204 ก๊อกน้ำหยด · ห้ามเข้าตอนไม่อยู่ · นัด อ. 3 พ.ย. 17:30) — แถว DormRepair ล้วน (id ตายตัว) */
+export const SQC_DORM_REPAIR_SCENE = {
+  id: "sqcd16-rep-204",
+  room: "204",
+  category: "PLUMBING",
+  text: "ก๊อกน้ำอ่างล้างหน้าหยดทั้งคืน ปิดสุดแล้วยังหยด",
+  allowEntry: false,
+  preferredTime: "อ. 3 พ.ย. 17:30",
+  status: "IN_PROGRESS",
+  /** หมวด PLUMBING ไม่มีค่าตั้งเฉพาะ ⇒ ใครจ่าย = _default ของ rooms.repair.payer = หอ (DORM) */
+  expect: { payer: "DORM", entry: "DENY" },
+} as const;
+/** ภาพ: หอ 13ค มือถือช่าง (390 · PARITY) + รายการแจ้งซ่อม (1440 · ไม่มีภาพแบบ — HTTP < 400 ไม่ล้น) — ก่อนถ่าย: ฉาก D.13 → svc-qc-repair-scene */
+SQC_VISUAL_SPECS["d.16"] = [
+  { name: "dorm-repair-job", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/repairs/${SQC_DORM_REPAIR_SCENE.id}` },
+  { name: "dorm-repairs", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/repairs` },
+];
+// ◂ SVC D.16
