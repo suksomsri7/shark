@@ -14,6 +14,7 @@
 // 🔴 เงิน = สตางค์ (Int) ทุกตัวในไฟล์นี้
 
 import { isProdDbUrl, PROD_HOST_MARK } from "./qc-env-guard.mjs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 
 // ═══════════════════ 1. env + ด่านกันฐานผิด ═══════════════════
 
@@ -24,7 +25,7 @@ export const CRM_QC_HOST_MARKS = ["ep-plain-art", "ep-cool-shadow", "ep-weathere
  *  ชุด POS ใช้ฐาน QC ของ SVC ได้ — ด่านเขียน `assertQc4BeforeWrite` ในแต่ละชุดเทียบค่านี้ · กรณีอื่นทั้งหมด = QC4 เหมือนเดิม
  *  (ด่าน prod/QC1–3 ใน loadPosQcEnv ทำงานก่อนเสมอ ไม่เปลี่ยน) ◂ */
 export const POS_QC_HOST_MARK: string =
-  process.env.QC_BRANCH === "qc-svc" && process.env.POS_QC_ALLOW_HOST === "ep-mute-scene" ? "ep-mute-scene" : "ep-frosty-lab";
+  process.env.QC_BRANCH === "qc-svc" && process.env.POS_QC_ALLOW_HOST === svcQcHostMark() ? svcQcHostMark() : "ep-frosty-lab"; // ผู้คุม 31 ต.ค. · ฐานต่อเลน
 
 function safeHost(url: string): string {
   try {

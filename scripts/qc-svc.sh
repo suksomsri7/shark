@@ -16,7 +16,18 @@ for U in "$D" "$P"; do
   [ -n "$H" ] || { echo "🔴 qc-svc: cannot read host — stop" >&2; exit 4; }
   case "$U" in *ep-royal-night*) echo "🔴 qc-svc: URL is production — stop" >&2; exit 4 ;; esac
   case "$H" in *ep-royal-night*|*ep-plain-art*|*ep-cool-shadow*|*ep-weathered-river*|*ep-frosty-lab*|*ep-fragrant-thunder*) echo "🔴 qc-svc: host $H is production or another RUN's QC — stop" >&2; exit 4 ;; esac
-  case "$H" in ep-mute-scene*) : ;; *) echo "🔴 qc-svc: host $H is not SVC QC (ep-mute-scene) — stop" >&2; exit 4 ;; esac
+  # 31 Oct 2026 (controller): exact allowlist = scripts/svc-qc-hosts.mts — main ep-mute-scene + per-lane branches (children of wo-svc-qc)
+  case "$H" in
+    ep-mute-scene-ao8gs9lq*) M=ep-mute-scene ;;
+    ep-royal-lake-aonedfp0*) M=ep-royal-lake-aonedfp0 ;;
+    ep-weathered-mode-ao3zx4hs*) M=ep-weathered-mode-ao3zx4hs ;;
+    ep-royal-bar-aoyw8uh0*) M=ep-royal-bar-aoyw8uh0 ;;
+    *) echo "🔴 qc-svc: host $H is not SVC QC (ep-mute-scene / lane branch) — stop" >&2; exit 4 ;;
+  esac
+  [ -z "${MARK:-}" ] || [ "$MARK" = "$M" ] || { echo "🔴 qc-svc: DATABASE_URL and DIRECT_URL point at different branches — stop" >&2; exit 4; }
+  MARK=$M
 done
+# one gate lock per DB (main keeps the original lock file)
+if [ "$MARK" = ep-mute-scene ]; then LOCK=/tmp/shark-gate-svc.lock; else LOCK=/tmp/shark-gate-svc-$MARK.lock; fi
 # POS_QC_ALLOW_HOST: loadPosQcEnv accepts QC4 only unless told — SVC QC is intentional (prod/QC1–3 still refused first)
-exec env DATABASE_URL="$P" DIRECT_URL="$D" QC_ENV_FILE="$F" GATE_LOCK_FILE=/tmp/shark-gate-svc.lock QC_BRANCH=qc-svc POS_QC_ALLOW_HOST=ep-mute-scene "$@"
+exec env DATABASE_URL="$P" DIRECT_URL="$D" QC_ENV_FILE="$F" GATE_LOCK_FILE="$LOCK" SVC_QC_HOST="$MARK" QC_BRANCH=qc-svc POS_QC_ALLOW_HOST="$MARK" "$@"

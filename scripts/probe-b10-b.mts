@@ -3,6 +3,7 @@
 // ข้อมูลใต้ร้าน slug `qc-svc-b10pb-*` + ผู้ใช้ `qc-svc-b10pb-*@qc.invalid` · ล้างใน finally ทุกครั้ง (+ กวาดค้างตอนเริ่ม)
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { existsSync, writeFileSync, appendFileSync, unlinkSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
@@ -19,7 +20,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 for (const n of ["DATABASE_URL", "DIRECT_URL"] as const) {
   let hn = "";
   try { hn = new URL(process.env[n] ?? "").hostname; } catch { /* */ }
-  if (!hn.startsWith("ep-mute-scene")) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
+  if (!hn.startsWith(svcQcHostMark()) /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) */) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
 }
 if (process.env.APP_ENV === "production" || process.env.CI) { console.error("🔴 probe: env ต้องห้าม"); process.exit(4); }
 
