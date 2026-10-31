@@ -51,6 +51,17 @@ export async function dormScopeFor(tenantId: string, unitId: string, mem: DormLi
   return { all: false, buildingIds: rows.map((b) => b.id).sort() };
 }
 
+/** SVC D.15 ▸ ขอบเขตอาคารของ "ผู้กระทำ" สำหรับทางเขียนของ service (D.6 submitReadings · หนี้ FG-3) — ตัวตัดสินเดียวกับ dormScopeFor
+ *   managerScope ≠ BUILDING ⇒ ทั้งหน่วย (เท่าที่ dormScopeFor ตอบทุกบทบาท · พฤติกรรม D.6 เดิม) · BUILDING ⇒ ต้องมี Membership สด
+ *   (ไม่มี actor/ไม่ใช่สมาชิก ⇒ ไม่เห็นอาคารใด = fail closed) แล้วตัดสินด้วย dormScopeFor · ผู้เรียกตรวจหน่วยแล้ว ◂ */
+export async function dormActorScope(tenantId: string, unitId: string, actorUserId: unknown): Promise<DormBuildingScope> {
+  const r = await resolveSettings({ tenantId }, ["rooms.access.managerScope"], { unitId });
+  if (r["rooms.access.managerScope"]?.value !== "BUILDING") return { all: true, buildingIds: null };
+  const mem = await dormLiveMember(tenantId, actorUserId);
+  if (!mem) return NONE;
+  return dormScopeFor(tenantId, unitId, mem);
+}
+
 export async function dormBuildingScope(ctx: { tenantId: string }, input: { unitId: string; userId: string }): Promise<DormBuildingScope> {
   const tenantId = isRec(ctx) ? ctx.tenantId : null;
   if (!isRec(input)) return NONE;

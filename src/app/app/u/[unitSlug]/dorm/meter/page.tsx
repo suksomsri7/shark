@@ -33,7 +33,8 @@ export default async function DormMeterPage({
 
   const asked = one(sp.period);
   const periodKey = asked && PERIOD_RE.test(asked) ? asked : bkkYmd(new Date()).slice(0, 7);
-  const ctx = { tenantId: auth.active.tenantId };
+  // SVC D.15 ▸ ส่งผู้ดูด้วย ⇒ จอจด/รายการตรวจเห็นเฉพาะอาคารที่ดูแล (rooms.access.buildingAssignments) ◂
+  const ctx = { tenantId: auth.active.tenantId, actorUserId: auth.active.userId };
   const [walk, flags] = await Promise.all([meterWalk(ctx, { unitId: unit.id, periodKey }), meterFlags(ctx, { unitId: unit.id, periodKey })]);
   // SVC D.8 ▸ กล่องประมาณค่าน้ำไฟ — เฉพาะผู้ดูข้อมูลหอได้ (access.board) · คนจดมิเตอร์ไม่เห็นเงิน (ส่ง null) ◂
   const estimates = access.board ? await meterEstimates({ tenantId: auth.active.tenantId, actorUserId: auth.active.userId }, { unitId: unit.id, periodKey }) : null;

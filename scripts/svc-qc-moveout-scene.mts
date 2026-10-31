@@ -57,6 +57,20 @@ const filePath = (n: number) => `t/${tenantId}/private/svcqc-d12-evidence-${n}.p
 const photoPath = `t/${tenantId}/private/svcqc-d12-movein-207.jpg`;
 const isRec = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
+/** SVC D.15 (D15-7) ▸ วันที่ลงบัญชีของฉาก (ออกใบแจ้งหนี้ · รับประกัน): งวดบัญชีของวันนั้นปิดแล้ว (AccountPeriod CLOSED) หรือก่อนวันล็อก (lockBeforeDate)
+ *   ⇒ เลื่อนเป็นวันแรกของเดือนถัดไปที่เปิดอยู่ (ไม่เปิดงวดที่ปิดแล้ว — ชุดอื่นบนฐานเดียวกันปิดงวดได้) · เลื่อนจนเลยวันนี้ ⇒ หยุดพร้อมเหตุผล ◂ */
+async function openYmd(ymd: string): Promise<string> {
+  const closed = new Set<string>((await prisma.accountPeriod.findMany({ where: { tenantId, status: "CLOSED" }, select: { periodKey: true } })).map((x) => x.periodKey));
+  const locks: string[] = (await prisma.accountSettings.findMany({ where: { tenantId, lockBeforeDate: { not: null } }, select: { lockBeforeDate: true } }))
+    .flatMap((x) => (x.lockBeforeDate ? [new Date(x.lockBeforeDate.getTime() + 7 * 3_600_000).toISOString().slice(0, 10)] : []));
+  const lock = locks.sort().pop() ?? "";
+  const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+  let d = ymd < lock ? lock : ymd;
+  while (closed.has(d.slice(0, 7))) d = `${shiftMonth(d.slice(0, 7), 1)}-01`;
+  if (d > today) throw new Error(`งวดบัญชีถึงเดือนนี้ปิด/ล็อกแล้ว (${[...closed].sort().join(",") || "—"} · ล็อกก่อน ${lock || "—"}) — ฉากลงวันที่ ${ymd} ไม่ได้ (ไม่เปิดงวดที่ปิดแล้ว)`);
+  return d;
+}
+
 async function clearScene() {
   const room = await prisma.hotelRoom.findFirst({ where: { tenantId, unitId, number: SCN.room }, select: { id: true } });
   const leases = room ? await prisma.dormLease.findMany({ where: { tenantId, unitId, roomId: room.id, createdById: MARK }, select: { id: true, partyId: true } }) : [];
@@ -186,7 +200,7 @@ try {
     // ── ประกัน ฿9,000 (facade จริง) ──
     const held = await securityDepositHeld({ tenantId, unitId, leaseId });
     if (held === 0) {
-      const r = await postSecurityDeposit({ tenantId, unitId, leaseId, amountSatang: SCN.depositSatang, idempotencyKey: SCN.depositKey, partyId: party.id, paidAt: new Date(`${DAYS.leaseStart}T10:00:00+07:00`), channel: "TRANSFER", note: `เงินประกันห้อง ${SCN.room} (ฉาก SVC QC D.12)` });
+      const r = await postSecurityDeposit({ tenantId, unitId, leaseId, amountSatang: SCN.depositSatang, idempotencyKey: SCN.depositKey, partyId: party.id, paidAt: new Date(`${await openYmd(DAYS.leaseStart)}T10:00:00+07:00`) /* SVC D.15 (D15-7) ◂ */, channel: "TRANSFER", note: `เงินประกันห้อง ${SCN.room} (ฉาก SVC QC D.12)` });
       if (!r.ok) throw new Error(`รับประกัน: ${r.code} ${r.reason}`);
       if (r.duplicate) throw new Error(`คีย์ ${SCN.depositKey} เคยใช้กับสัญญาอื่น — แก้ด้วย --clear แล้วรันใหม่`);
       sum.created++;
@@ -226,7 +240,7 @@ try {
       water: { kind: "METERED", segments: [{ start: SCN.meters.WATER.base - 8, end: SCN.meters.WATER.base }], method: { kind: "FIXED_RATE", satangPerUnit: SCN.meters.WATER.rateSatang } },
       vat: NOVAT,
     });
-    const issue = `${shiftMonth(P, -1)}-25`;
+    const issue = await openYmd(`${shiftMonth(P, -1)}-25`); // SVC D.15 (D15-7) ▸ ออกบิล 25 ของเดือนก่อน · งวดนั้นปิดแล้ว ⇒ วันแรกของเดือนเปิดถัดไป ◂
     let run = await prisma.dormBillRun.findFirst({ where: { tenantId, unitId, periodKey: P }, select: { id: true } });
     if (!run) {
       run = await prisma.dormBillRun.create({ data: { tenantId, unitId, periodKey: P, status: "DRAFT", issueDate: dbDate(issue), dueDate: dbDate(`${P}-05`), createdById: MARK }, select: { id: true } });
@@ -244,7 +258,7 @@ try {
     const billRow = await prisma.dormBill.findFirst({ where: { tenantId, leaseId, periodKey: P }, select: { id: true, status: true, totalSatang: true, accountDocumentId: true, paidSatang: true } });
     const billData = {
       status: "PAID", lines: JSON.parse(JSON.stringify(bill.lines)), subtotalSatang: bill.subtotalSatang, vatSatang: bill.vatSatang, totalSatang: bill.totalSatang, paidSatang: bill.totalSatang,
-      dueDate: dbDate(`${P}-05`), accountDocumentId: inv.docId, sentAt: new Date(`${issue}T10:00:00+07:00`), paidAt: new Date(`${P}-03T10:00:00+07:00`),
+      dueDate: dbDate(`${P}-05`), accountDocumentId: inv.docId, sentAt: new Date(`${issue}T10:00:00+07:00`), paidAt: new Date(`${issue > `${P}-03` ? issue : `${P}-03`}T10:00:00+07:00`), // SVC D.15 (D15-7) ▸ จ่ายไม่ก่อนวันออก ◂
     };
     if (!billRow) {
       await prisma.dormBill.create({ data: { tenantId, unitId, runId: run.id, leaseId, roomId: room.id, partyId: party.id, periodKey: P, ...billData } });

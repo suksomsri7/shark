@@ -2,6 +2,8 @@
 //   • ทางเดียวที่เขียนแถว PERIOD = submitReadings (หน้าจด · คิวออฟไลน์ · ฉาก · D.4 นำเข้า)
 //   • idempotent ต่อ มิเตอร์ × งวด — advisory lock ต่อ (มิเตอร์,งวด) ใน tx + ดัชนี unique ของ D.0 เป็นตัวตัดสินชั้นสุดท้าย
 //   • ขอบเขต (X1): อ่าน/เขียนผ่าน tenantDb({tenantId, unitId}) เท่านั้น (ไม่ import prisma ดิบ) · หน่วยต้องเป็น DORM ของร้านนี้
+//   • SVC D.15 ▸ submitReadings/confirmReading/replaceMeter ตรวจขอบเขตอาคารของผู้กระทำเอง (dormActorScope · ไม่พึ่ง action) — นอกอาคาร ⇒ NOT_FOUND
+//     meterWalk/meterFlags: ส่ง actorUserId ⇒ เฉพาะอาคารที่เห็น · ไม่ส่ง (billing/ฉาก) ⇒ ทั้งหน่วยเดิม ◂
 //   • ห้องว่างอ่านผ่าน facade `@/lib/modules/rooms` · การ์ดบอร์ดงานผ่าน `kanban/links.createCardFromExternal` (ประตูเดียว)
 //   • event `dorm.meter.flagged` ใน tx เดียวกับแถวเลข · payload id ล้วน (ไม่มีชื่อ/เบอร์/เงิน)
 //   • ไม่คิดเงิน/อัตรา (D.7) · ไม่แตะบิล (D.8 อ่าน heldRooms แล้วพักบิลเอง)
@@ -16,6 +18,7 @@ import { uploadFile } from "@/lib/storage/service";
 import { createCardFromExternal } from "@/lib/modules/kanban/links";
 import { listBuildings, occupancyRange, roomBoard } from "@/lib/modules/rooms";
 import { meterUnits, type MeterSegment } from "./calc";
+import { dormActorScope } from "./scope"; // SVC D.15 ▸ ขอบเขตอาคารใน service (หนี้ D.6 FG-3) ◂
 
 // ───────────────────────── ชนิด (สัญญา §3) ─────────────────────────
 export type MeterCtx = { tenantId: string; actorUserId?: string | null };
@@ -524,23 +527,47 @@ export async function submitReadings(
   const db = scoped(tenantId, unitId);
   const ids = [...new Set(items.map((it) => it.meterId))];
   const L = await loadLedger(db, tenantId, unitId, P, ids);
+  const inScope = await meterScopeOf(db, tenantId, unitId, ctx.actorUserId, L);
   let rooms: RoomInfo | null = null;
 
   const results: SubmitItemResult[] = [];
   for (const it of items) {
-    const r = await submitOne({ tenantId, unitId, actor: ctx.actorUserId ?? null, P, cfg, L, now, deps }, it, async () => (rooms ??= await roomInfo(tenantId, unitId)));
+    const r = await submitOne({ tenantId, unitId, actor: ctx.actorUserId ?? null, P, cfg, L, now, deps, inScope }, it, async () => (rooms ??= await roomInfo(tenantId, unitId)));
     results.push(r);
   }
   return { ok: true, results };
 }
 
-type OneCtx = { tenantId: string; unitId: string; actor: string | null; P: string; cfg: Cfg; L: Ledger; now: Date; deps?: SubmitDeps };
+/** SVC D.15 ▸ ทางอ่าน (meterWalk/meterFlags): ส่ง actorUserId (สตริง) ⇒ กรองตามขอบเขตอาคาร (ตัวตัดสินเดียวกับทางเขียน) · ไม่ส่ง/null ⇒ ทั้งหน่วย (billing · ฉาก) ◂ */
+async function readScopeOf(ctx: MeterCtx, tenantId: string, unitId: string, L: Ledger): Promise<(m: MeterRow) => boolean> {
+  if (!isStr(ctx?.actorUserId)) return () => true;
+  return meterScopeOf(scoped(tenantId, unitId), tenantId, unitId, ctx.actorUserId, L);
+}
+
+type OneCtx = { tenantId: string; unitId: string; actor: string | null; P: string; cfg: Cfg; L: Ledger; now: Date; deps?: SubmitDeps; inScope: (m: MeterRow) => boolean };
+
+/** SVC D.15 ▸ ขอบเขตอาคารของผู้กระทำ (dormActorScope = ตัวตัดสินเดียวกับหน้าจอ/meter-ai · rooms.access.buildingAssignments)
+ *   ถูกจำกัด ⇒ มิเตอร์ ROOM ใช้อาคารของห้อง · MAIN ใช้ buildingId ของมิเตอร์ · ไม่มีอาคาร ⇒ นอกขอบเขต · นอกขอบเขต = NOT_FOUND รายการ (เท่ามิเตอร์ร้านอื่น) ◂ */
+async function meterScopeOf(db: Tx, tenantId: string, unitId: string, actorUserId: unknown, L: Pick<Ledger, "meters">): Promise<(m: MeterRow) => boolean> {
+  const scope = await dormActorScope(tenantId, unitId, actorUserId);
+  if (scope.all) return () => true;
+  const allowed = new Set(scope.buildingIds);
+  if (!allowed.size) return () => false;
+  const roomIds = [...new Set([...L.meters.values()].map((m) => m.roomId).filter(isStr))];
+  const rooms = roomIds.length ? await db.hotelRoom.findMany({ where: { tenantId, unitId, id: { in: roomIds } }, select: { id: true, buildingId: true } }) : [];
+  const roomBld = new Map(rooms.map((r) => [r.id, r.buildingId]));
+  return (m) => {
+    const b = m.roomId ? (roomBld.get(m.roomId) ?? null) : m.buildingId;
+    return !!b && allowed.has(b);
+  };
+}
 
 async function submitOne(c: OneCtx, it: SubmitItem, getRooms: () => Promise<RoomInfo>): Promise<SubmitItemResult> {
   const { tenantId, unitId, P, L } = c;
   const rej = (code: string): SubmitItemResult => ({ meterId: it.meterId, status: "REJECTED", readingId: null, flag: null, held: false, units: null, code });
   const m = L.meters.get(it.meterId);
   if (!m || m.id !== it.meterId) return rej("NOT_FOUND");
+  if (!c.inScope(m)) return rej("NOT_FOUND"); // SVC D.15 ▸ นอกอาคารที่ดูแล = ไม่พบ (ก่อนตรวจค่า/ข้อเสนอ/ถอดแล้ว — ไม่บอกว่ามีอยู่) ◂
   if (m.removedAt) return rej("METER_REMOVED");
   if (!isReading(it.value)) return rej("INVALID_VALUE");
   let readAt = c.now;
@@ -648,6 +675,8 @@ export async function confirmReading(
   const L = await loadLedger(db, tenantId, unitId, P, [row.meterId]);
   const m = L.meters.get(row.meterId);
   if (!m) return fail("NOT_FOUND", "ไม่พบมิเตอร์ของรายการนี้");
+  // SVC D.15 ▸ นอกอาคารที่ดูแล ⇒ ไม่พบ (ข้อความเดียวกับแถวของร้านอื่น) ◂
+  if (!(await meterScopeOf(db, tenantId, unitId, ctx.actorUserId, L))(m)) return fail("NOT_FOUND", "ไม่พบเลขมิเตอร์รายการนี้");
   const actor = ctx.actorUserId ?? null;
 
   if (input.action === "ACCEPT") {
@@ -708,6 +737,8 @@ export async function replaceMeter(
   const db = scoped(tenantId, unitId);
   const oldRow = await db.dormMeter.findFirst({ where: { id: input.meterId, tenantId, unitId }, select: METER_SELECT });
   if (!oldRow) return fail("NOT_FOUND", "ไม่พบมิเตอร์นี้");
+  // SVC D.15 ▸ นอกอาคารที่ดูแล ⇒ ไม่พบ (ข้อความเดียวกับมิเตอร์ของร้านอื่น · ก่อนบอกว่าถอดแล้ว) ◂
+  { const om = toMeter(oldRow); if (!(await meterScopeOf(db, tenantId, unitId, ctx.actorUserId, { meters: new Map([[om.id, om]]) }))(om)) return fail("NOT_FOUND", "ไม่พบมิเตอร์นี้"); }
   if (oldRow.removedAt) return fail("METER_REMOVED", "มิเตอร์ตัวนี้ถูกเปลี่ยนออกไปแล้ว");
   if (!isReading(input.oldFinalReading) || !isReading(input.newStartReading)) return fail("INVALID_INPUT", "เลขมิเตอร์ต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป");
   const digits = input.digits ?? null;
@@ -815,7 +846,8 @@ export async function meterWalk(ctx: MeterCtx, input: { unitId: string; periodKe
   if (!g) return emptyWalk(typeof input?.periodKey === "string" ? input.periodKey : "");
   const { tenantId, unitId, P, L } = g;
   const [rooms, buildings] = await Promise.all([roomInfo(tenantId, unitId), listBuildings({ tenantId }, { unitId })]);
-  const meters = activeMeters(L);
+  const inScope = await readScopeOf(ctx, tenantId, unitId, L); // SVC D.15 ▸ มี actor ⇒ เฉพาะอาคารที่เห็น · ไม่มี (billing) ⇒ ทั้งหน่วยเดิม ◂
+  const meters = activeMeters(L).filter(inScope);
   const byRoom = new Map<string, MeterRow[]>();
   for (const m of meters) if (m.role === "ROOM" && m.roomId && rooms.has(m.roomId)) byRoom.set(m.roomId, [...(byRoom.get(m.roomId) ?? []), m]);
 
@@ -891,8 +923,9 @@ export async function meterFlags(ctx: MeterCtx, input: { unitId: string; periodK
   const g = await ledgerFor(ctx, input);
   if (!g) return [];
   const { tenantId, unitId, P, L } = g;
+  const inScope = await readScopeOf(ctx, tenantId, unitId, L); // SVC D.15 ◂
   const held: { m: MeterRow; v: ReadView; flag: MeterFlag }[] = [];
-  for (const m of activeMeters(L)) {
+  for (const m of activeMeters(L).filter(inScope)) {
     const v = viewOf(L, m, P);
     if (v.held && v.flag && v.row) held.push({ m, v, flag: v.flag });
   }

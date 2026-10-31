@@ -857,9 +857,15 @@ import { join as d9Join } from "node:path";
 //   ไม่สร้างบิล/สัญญา · ไม่แตะค่าตั้งระดับร้าน (payments.receiver ฯลฯ) · ไม่ทับค่าตั้งหน่วย · ถ่าย --user owner
 // ═════════════════════════════════════════════════════════════════════════════
 /** ค่าจากภาพ 06 (README หอ บรรทัด 32): 104 ชื่อผู้โอนไม่ตรง (กสิกร 2 พ.ย. 21:14) · 206 ยอดขาด ฿62.32 (กรุงเทพ 2 พ.ย. 20:03) · 309 สลิปซ้ำ (ไทยพาณิชย์ 3 ต.ค. 18:22) — ค่าล้วน */
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · D15-6) ▸ งวดของฉากรับเงิน = งวด P ของฉาก D.13 (svc-qc-dorm-home-scene: P = เดือนนี้ไทย + 1) — เดิมตายตัว "2026-11"
+//   ถูกเฉพาะตอนเดือนไทย = ต.ค. · ข้ามเดือนแล้วฉาก D.13 สร้างบิลงวด 2026-12 แต่ Q-2 อ่านงวด 2026-11 (= รอบ DRAFT ของฉาก D.8) ⇒ รับแล้ว/ยังไม่จ่าย = 0 ◂
+const sqcDormPayPeriod = (todayYmd: string): string => {
+  const m = Number(todayYmd.slice(5, 7)); // เดือนนี้ (1–12) + 1 ⇒ ดัชนี 0-based ของเดือนถัดไป = m
+  return `${Number(todayYmd.slice(0, 4)) + Math.floor(m / 12)}-${String((m % 12) + 1).padStart(2, "0")}`;
+};
 export const SQC_DORM_PAY_SCENE = {
   mark: "SvcQcScene:d10",
-  period: "2026-11",
+  period: sqcDormPayPeriod(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10)),
   slips: {
     "104": { amountSatang: 538240, payerName: "สมพร ช***", bankCode: "004", transferredAt: "2026-11-02T14:14:00.000Z", reasons: ["PAYER_NAME_MISMATCH"] },
     "206": { amountSatang: 550000, payerName: "รัตนา บ***", bankCode: "002", transferredAt: "2026-11-02T13:03:00.000Z", reasons: ["AMOUNT_SHORT"] },

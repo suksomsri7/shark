@@ -171,6 +171,65 @@ function JsonNode({ value, onChange, disabled, proto, id }: { value: Json; onCha
   );
 }
 
+// SVC D.15 ▸ ค่าชนิดตารางแบบ "รายการตามรหัส" (record: คีย์เพิ่ม/ลบได้ · ไม่มีรูปตายตัว) — ค่าว่าง {} JsonNode ไม่มีช่องให้กรอก (หนี้ r0.4 H-2)
+//   ทะเบียนต่อคีย์ (ป้ายคอลัมน์ + รูปค่าของแต่ละแถว) · คีย์ที่ไม่อยู่ในทะเบียนแต่ค่าเป็น {} และแม่แบบไม่มีรูป ⇒ ใช้ตัวแก้นี้ด้วย (ค่าแถว = ข้อความ) ◂
+type RecordSpec = { keyLabelTh: string; valueLabelTh: string; valueProto: Json; addTh: string };
+const TABLE_RECORDS: Record<string, RecordSpec> = {
+  "rooms.access.buildingAssignments": { keyLabelTh: "รหัสสมาชิกของผู้ดูแล", valueLabelTh: "รหัสอาคารที่เห็น", valueProto: [""], addTh: "+ เพิ่มผู้ดูแล" },
+};
+const RECORD_FALLBACK: RecordSpec = { keyLabelTh: "รหัส", valueLabelTh: "ค่า", valueProto: "", addTh: "+ เพิ่มแถว" };
+const cloneJson = (v: Json): Json => JSON.parse(JSON.stringify(v)) as Json;
+
+/** ตัวแก้ record เป็นตาราง: แถวละ รหัส | ค่า (ตัวแก้ตามรูปค่า) | ลบ · แถวใหม่ = พิมพ์รหัสแล้วกดเพิ่ม (รหัสซ้ำ/ว่าง ⇒ ปุ่มกดไม่ได้) */
+function RecordEditor({ id, value, onChange, disabled, spec }: { id: string; value: { [k: string]: Json }; onChange: (v: Json) => void; disabled: boolean; spec: RecordSpec }) {
+  const [draft, setDraft] = useState("");
+  const entries = Object.entries(value);
+  const k = draft.trim();
+  const canAdd = !disabled && k.length > 0 && !Object.prototype.hasOwnProperty.call(value, k);
+  return (
+    <div data-record-table={id} className="flex flex-col gap-2">
+      <div className="hidden text-xs text-[color:var(--color-muted)] sm:flex sm:gap-3">
+        <span className="sm:w-44 sm:shrink-0">{spec.keyLabelTh}</span>
+        <span className="flex-1">{spec.valueLabelTh}</span>
+      </div>
+      {entries.length === 0 && <p className="text-xs text-[color:var(--color-muted)]">ยังไม่มีรายการ</p>}
+      {entries.map(([key, v], i) => (
+        <div key={key} className="flex min-w-0 flex-col gap-2 rounded-lg border p-2 sm:flex-row sm:items-start sm:gap-3">
+          <span className="min-w-0 break-all text-sm sm:w-44 sm:shrink-0 sm:pt-2.5">{key}</span>
+          <div className="min-w-0 flex-1">
+            <JsonNode id={`${id}-r${i}`} value={v} disabled={disabled} proto={spec.valueProto} onChange={(nv) => onChange({ ...value, [key]: nv })} />
+          </div>
+          <button
+            type="button"
+            disabled={disabled}
+            className={`${BTN_GHOST} shrink-0`}
+            onClick={() => onChange(Object.fromEntries(entries.filter(([x]) => x !== key)))}
+          >
+            ลบ
+          </button>
+        </div>
+      ))}
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+        <label htmlFor={`${id}-new`} className="sr-only">
+          {spec.keyLabelTh}
+        </label>
+        <input id={`${id}-new`} type="text" className={INPUT} disabled={disabled} placeholder={spec.keyLabelTh} value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <button
+          type="button"
+          disabled={!canAdd}
+          className={`${BTN_GHOST} shrink-0`}
+          onClick={() => {
+            onChange({ ...value, [k]: cloneJson(spec.valueProto) });
+            setDraft("");
+          }}
+        >
+          {spec.addTh}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** ตัวแก้ "บัญชีรับเงิน" — ช่องพร้อมเพย์ + ชื่อบัญชี + เลขบัญชี */
 function ReceiverEditor({ id, value, onChange, disabled }: { id: string; value: unknown; onChange: (v: unknown) => void; disabled: boolean }) {
   const obj = isObj(value) ? value : null;
@@ -280,6 +339,15 @@ type FieldCtx = {
   toggleFollow(f: SettingsField, on: boolean): void;
 };
 
+/** SVC D.15 ▸ ช่องตารางนี้เป็น record ไหม: อยู่ในทะเบียน · หรือค่าเป็น {} และแม่แบบไม่มีรูปให้เดา (ไม่ใช่ ⇒ null = ใช้ JsonNode เดิม) ◂ */
+function recordSpecOf(f: SettingsField, cur: unknown): RecordSpec | null {
+  const reg = TABLE_RECORDS[f.key];
+  if (reg) return cur === null || cur === undefined || isObj(cur) ? reg : null;
+  const proto = f.templateValue ?? TABLE_STARTERS[f.key];
+  const emptyObj = (v: unknown) => isObj(v) && Object.keys(v).length === 0;
+  return emptyObj(cur) && (proto === undefined || proto === null || emptyObj(proto)) ? RECORD_FALLBACK : null;
+}
+
 function FieldBox({ f, c }: { f: SettingsField; c: FieldCtx }) {
   const id = `f-${f.key}`;
   const following = c.follow.has(f.key);
@@ -364,6 +432,9 @@ function FieldBox({ f, c }: { f: SettingsField; c: FieldCtx }) {
       widget =
         f.key === "payments.receiver" ? (
           <ReceiverEditor id={id} value={cur} disabled={disabled} onChange={(v) => c.setValue(f, v)} />
+        ) : recordSpecOf(f, cur) ? (
+          // SVC D.15 ▸ record (เช่น rooms.access.buildingAssignments) ⇒ ตาราง รหัส | ค่า ◂
+          <RecordEditor id={id} value={isObj(cur) ? cur : {}} disabled={disabled} spec={recordSpecOf(f, cur) as RecordSpec} onChange={(v) => c.setValue(f, v)} />
         ) : (
           <div className="flex flex-col gap-2">
             <JsonNode
