@@ -41,6 +41,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createServer, type AddressInfo, type Socket } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { svcRdView, svcExView, svcGit, svcPinStep, SVC_PIN_VIEW } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ข้อหมุด/ขอบเขตเลนของ POS ในทรี SVC เห็นไฟล์ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ณ ปลายทาง POS 940e3aca
+const SVC_PIN_IDS = new Set<string>(["ST3"]); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ข้อหมุด/ขอบเขตเลน (ตรวจตอนรับใบ POS) ที่ดูไฟล์ของ SVC ณ 940e3aca
 
 const SUITE = "qc-pos-p3-skel";
 const ROOT = process.cwd();
@@ -130,13 +132,13 @@ function chk(id: string, ok: unknown, expected: unknown, actual: unknown): boole
 /** ห่อข้อสอบหนึ่งข้อ — throw = แดงพร้อมเหตุผล (ไม่ล้มทั้งชุด) */
 async function step(id: string, fn: () => Promise<void> | void): Promise<void> {
   try {
-    await fn();
+    await (SVC_PIN_IDS.has(id) ? svcPinStep(fn) : fn()); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): เฉพาะข้อหมุด ST3
   } catch (e) {
     chk(id, false, "ไม่ throw", `harness throw: ${String((e as Error)?.message ?? e).slice(0, 160)}`);
   }
 }
-const rd = (p: string) => (existsSync(join(ROOT, p)) ? readFileSync(join(ROOT, p), "utf8") : "");
-const ex = (p: string) => existsSync(join(ROOT, p));
+const rd = (p: string) => svcRdView(ROOT, p, (q) => (existsSync(join(ROOT, q)) ? readFileSync(join(ROOT, q), "utf8") : "")); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
+const ex = (p: string) => svcExView(ROOT, p, (q) => existsSync(join(ROOT, q))); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
 const short = (v: unknown, n = 220) => {
   let s: string;
   try {
@@ -272,7 +274,7 @@ function gitBuf(args: string[]): Buffer | null {
     return null;
   }
 }
-const gitStr = (args: string[]) => gitBuf(args)?.toString("utf8") ?? null;
+const gitStr = (args: string[]) => svcGit(ROOT, args, (a) => gitBuf(a)?.toString("utf8") ?? null); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
 /** หมุดอ่านได้จริง (commit มีในทรี) — // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-SKEL-O1: แทน bases() หลายฐาน) ◂ */
 const revOk = (rev: string) => !!(gitStr(["rev-parse", "--verify", "-q", `${rev}^{commit}`]) ?? "").trim();
 const baseOk = () => revOk(PIN) && revOk(LANE_PIN);

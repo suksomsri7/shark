@@ -44,6 +44,7 @@ type Any = any;
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcRdView, svcExView, svcGit, svcPinStep, svcPinStepSync, SVC_PIN_VIEW } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ข้อหมุด/ขอบเขตเลนของ POS ในทรี SVC เห็นไฟล์ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-pos-p3.8";
 const ROOT = process.cwd();
@@ -124,10 +125,10 @@ function chk(id: string, ok: unknown, expected: unknown, actual: unknown): boole
   console.log(`  ${r.ok ? "✅" : "❌"} [${full}] ${TITLE.get(full)}${r.ok ? "" : ` — expected ${r.expected} | actual ${r.actual}`}`);
   return r.ok;
 }
-const rd = (p: string) => {
-  const abs = p.startsWith("/") ? p : join(ROOT, p);
+const rd = (p: string) => svcRdView(ROOT, p, (q) => { // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
+  const abs = q.startsWith("/") ? q : join(ROOT, q);
   return existsSync(abs) ? readFileSync(abs, "utf8") : "";
-};
+});
 const short = (v: unknown, n = 160) => {
   let s: string;
   try {
@@ -157,6 +158,9 @@ function walk(dir: string, out: string[] = [], re = /\.(tsx|ts)$/): string[] {
 const stripComments = (s: string) => s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
 const srcOf = (f: string) => stripComments(rd(f));
 function gitStr(args: string[]): string | null {
+  return svcGit(ROOT, args, gitStr0); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
+}
+function gitStr0(args: string[]): string | null {
   try {
     return execFileSync("git", ["-C", ROOT, ...args], { stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 }).toString("utf8");
   } catch {
@@ -320,8 +324,8 @@ function runStatic(): void {
     }
     stNotes[id] = r0;
   };
-  firstOk("ST2", st2);
-  firstOk("ST3", st3);
+  svcPinStepSync(() => firstOk("ST2", st2)); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ข้อหมุด — ไฟล์ของใบ SVC ที่ได้รับอนุญาต (outbox-consumers · prisma · kanban-bridges · automation/labels) ดู ณ 940e3aca
+  svcPinStepSync(() => firstOk("ST3", st3)); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ข้อหมุด — ไฟล์ของใบ SVC ที่ได้รับอนุญาต (outbox-consumers · prisma · kanban-bridges · automation/labels) ดู ณ 940e3aca
 }
 // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.8 CD-P38-B5 · CD-P38-B1 export addSystemCardComment): ข้อยกเว้นแคบที่สุดของ ST3 —
 //   src/lib/modules/kanban/integrations.ts ผ่านได้เฉพาะเมื่อ diff เทียบ BASE เป็นบรรทัดเพิ่มล้วน (ไม่มีบรรทัด "-" นอกหัว) และทุกบรรทัดเพิ่มที่ไม่ว่าง

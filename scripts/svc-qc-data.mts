@@ -685,11 +685,19 @@ SQC_VISUAL_SPECS["d.11"] = [{ name: "dorm-overdue", path: `/app/u/${SQC_UNITS.do
 // SVC B.10 ▸ บล็อกของใบ B.10 เท่านั้น (จบงาน → บิลจากคิว POS · ภาพ จอง 07) — ต่อท้ายโดยผู้เขียนข้อสอบ · เลนอื่นห้ามแก้ในบล็อกนี้
 //   ใบสั่ง ledger/svc-briefs/svc-brief-b.10.md §4 §6 · ข้อสอบ scripts/qc-svc-b.10.mts (V-1) · ฉาก scripts/svc-qc-done-pos-scene.mts (builder)
 // ═════════════════════════════════════════════════════════════════════════════
-/** วัน X ของฉาก B.10 = วันฉาก B.6 + 7 (P004 ส่งเคาน์เตอร์แล้ว 15:01 · ภาพ ข) · วัน Y = X + 7 (P004 ยังกำลังทำ 15:01 · ภาพ ก) · pure */
+/** วัน X ของฉาก B.10 = วันฉาก B.6 + 14 (P004 ส่งเคาน์เตอร์แล้ว 15:01 · ภาพ ข) · วัน Y = X + 7 (P004 ยังกำลังทำ 15:01 · ภาพ ก) · pure
+ *  G1-C (ผู้คุม 31 ต.ค.): เดิม X = B.6 + 7 = วันฉาก B.7 (sqcOnlineSceneDay · B.5 + 14) ⇒ --clear/สร้างใหม่ของ B.10 ลบนัดฉาก B.7 ·
+ *  วันฉากบนหน่วยบาร์เบอร์ (นับจากวันฉาก B.5): B.5 +0 · B.6 +7 · B.7 +14 · B.10 X +21 · Y +28 (ไม่ชนกัน · ฉาก B.10 จองช่อง STAFF ⇒ ไม่ติด horizon ออนไลน์)
+ *  วันฉากทั้งหมดของหน่วยนี้ = sqcBarberSceneDays() — ฉากใหม่ต้องเลือกวันที่ไม่อยู่ในรายการนั้น */
 export function sqcDonePosSceneDays(todayYmd: string): { x: string; y: string } {
   const [y, m, d] = sqcDeviceSceneDay(todayYmd).split("-").map(Number);
   const plus = (n: number) => new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-  return { x: plus(7), y: plus(14) };
+  return { x: plus(14), y: plus(21) };
+}
+/** ทะเบียนวันฉากของหน่วยบาร์เบอร์ svcqc (ชื่อฉาก → วัน) — ใช้ตรวจว่าวันฉากไม่ชนกัน · pure */
+export function sqcBarberSceneDays(todayYmd: string): Record<string, string> {
+  const dp = sqcDonePosSceneDays(todayYmd);
+  return { "B.5": sqcLineSceneDate(todayYmd), "B.6": sqcDeviceSceneDay(todayYmd), "B.7": sqcOnlineSceneDay(todayYmd), "B.10x": dp.x, "B.10y": dp.y };
 }
 export const SQC_DONE_POS_SCENE_DAYS = sqcDonePosSceneDays(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10));
 /**

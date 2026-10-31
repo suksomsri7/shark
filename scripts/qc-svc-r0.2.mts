@@ -56,6 +56,9 @@ const skip = (id: string, name: string, why: string, sev: Sev = "CRITICAL", allo
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 220);
 
 // ═══════════════ สัญญา (ใบสั่ง §3 — ตัวเลขจาก README · ข้อสอบถือเอง ไม่อ่านจาก SQC ของ builder) ═══════════════
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-C) คีย์นัดของฉากใบหลัง (D-14) — prefix ตายตัวของฉาก B.6/B.7/B.10 ตามด้วยวันฉาก
+const LATER_SCENE_KEY_RE = "^svcqc-(dev|online|b10)-[0-9]{4}-[0-9]{2}-[0-9]{2}";
+const LATER_SCENE_DAY_RE = "^svcqc-(?:dev|online|b10)-([0-9]{4}-[0-9]{2}-[0-9]{2})";
 const TA = "svcqc-tenant";
 const TB = "svcqc-other-tenant";
 const SVC_TENANTS = [TA, TB];
@@ -361,7 +364,10 @@ try {
     chk("D-5", "เวลาช่าง: เอก/บอย/นุ่น อ.–อา. 10–20 · แจ๊ค อ.–อา. 13–20 (พาร์ทไทม์)", shBad.length === 0, shBad.join(" "), "MAJOR");
 
     type SvcRow = { name: string; durationMin: number; priceSatang: number; depositSatang: number; bufferMin: number; active: boolean; bookable: boolean; itemId: string | null };
-    const svcOf = (unitId: string) => q<SvcRow>(`SELECT name, "durationMin", "priceSatang", "depositSatang", "bufferMin", active, bookable, "itemId" FROM "BookingService" WHERE "unitId" = $1`, [unitId]);
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-C): ไม่นับบริการ "ทรีตเมนต์บำรุงสี" ของฉาก B.10 (svc-qc-done-pos-scene · id ตายตัว svcqc-svc-barber-treatment ·
+    //   ตรงกับ b.6 Q-2 ORACLE-EDIT b6-Q2) — ไม่ใช่แถวของ seed · ฐาน 6+6 บริการ (D-6/D-7/D-9) เข้มเท่าเดิม
+    const SCENE_SVC_IDS = ["svcqc-svc-barber-treatment"];
+    const svcOf = (unitId: string) => q<SvcRow>(`SELECT name, "durationMin", "priceSatang", "depositSatang", "bufferMin", active, bookable, "itemId" FROM "BookingService" WHERE "unitId" = $1 AND id <> ALL($2::text[])`, [unitId, SCENE_SVC_IDS]);
     const bsv = await svcOf(U.barber);
     const svcBad = (rows: SvcRow[], spec: { names: string[]; min: number; price: number; dep: number; buf?: number }[]) => {
       const bad: string[] = [];
@@ -381,7 +387,7 @@ try {
       `SELECT count(*) FILTER (WHERE i.id IS NOT NULL AND i."tenantId" = b."tenantId" AND i.kind::text = 'SERVICE' AND i."systemId" = 'svcqc-sys-inv'
                AND i."priceSatang" = b."priceSatang" AND i."durationMin" = b."durationMin" AND i."depositSatang" = b."depositSatang" AND i."bufferMin" = b."bufferMin")::int AS ok,
               count(*)::int AS n
-         FROM "BookingService" b LEFT JOIN "InvItem" i ON i.id = b."itemId" WHERE b."unitId" = ANY($1::text[])`, [[U.barber, U.massage]]);
+         FROM "BookingService" b LEFT JOIN "InvItem" i ON i.id = b."itemId" WHERE b."unitId" = ANY($1::text[]) AND b.id <> ALL($2::text[])`, [[U.barber, U.massage], SCENE_SVC_IDS]); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-C) ไม่นับบริการฉาก B.10
     const links = await q<{ unitId: string; type: string; systemId: string }>(`SELECT "unitId", type::text, "systemId" FROM "AppSystemUnit" WHERE "tenantId" = $1`, [TA]);
     const linkOk = [U.barber, U.massage].every((u) => links.some((l) => l.unitId === u && l.type === "INVENTORY" && l.systemId === "svcqc-sys-inv") && links.some((l) => l.unitId === u && l.type === "POS" && l.systemId === "svcqc-sys-pos"));
     chk("D-7", "บริการทุกตัว (บาร์เบอร์+นวด) มีต้นฉบับ InvItem SERVICE ใน svcqc-sys-inv ค่าเท่ากัน · INVENTORY/POS ผูก barber+massage", inv[0].n === 12 && inv[0].ok === 12 && linkOk,
@@ -424,12 +430,22 @@ try {
     chk("D-13", "โรงแรม: B205 rentMode MONTHLY (เช่ารายเดือนผ่านหอ) · อีก 13 ห้อง rentMode null (ตามประเภท)", b205?.rentMode === "MONTHLY" && othersNull,
       `B205=${b205?.rentMode ?? "ไม่มีห้อง"} · ห้องอื่น null ครบ=${othersNull}`);
     const tx = await q<{ n: number }>(
-      `SELECT ((SELECT count(*) FROM "RoomOccupancy" WHERE "tenantId" = ANY($1::text[]) AND "refType" <> 'SvcQcScene') + (SELECT count(*) FROM "HotelReservation" WHERE "tenantId" = ANY($1::text[]))
+      `SELECT ((SELECT count(*) FROM "RoomOccupancy" o WHERE o."tenantId" = ANY($1::text[]) AND o."refType" <> 'SvcQcScene'
+                AND NOT (o."refType" = 'DormLease' AND EXISTS (SELECT 1 FROM "DormLease" l WHERE l.id = o."refId" AND l."tenantId" = o."tenantId" AND l."createdById" LIKE 'SvcQcScene%')))
+             + (SELECT count(*) FROM "HotelReservation" WHERE "tenantId" = ANY($1::text[]))
              + (SELECT count(*) FROM "Appointment" WHERE "tenantId" = ANY($1::text[]) AND COALESCE("idempotencyKey", '') NOT LIKE 'svcqc-line-%'
-                AND NOT ("unitId" = $2 AND to_char(("startAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')::date, 'YYYY-MM-DD') IN (SELECT substr("idempotencyKey", 12, 10) FROM "Appointment" WHERE "idempotencyKey" LIKE 'svcqc-line-%'))))::int AS n`, [SVC_TENANTS, U.barber]);
+                AND COALESCE("idempotencyKey", '') !~ $3
+                AND NOT ("unitId" = $2 AND to_char(("startAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')::date, 'YYYY-MM-DD') IN (SELECT substr("idempotencyKey", 12, 10) FROM "Appointment" WHERE "idempotencyKey" LIKE 'svcqc-line-%'))
+                AND NOT ("unitId" = $2 AND "idempotencyKey" IS NULL AND to_char(("startAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')::date, 'YYYY-MM-DD') IN
+                  (SELECT substring("idempotencyKey" from $4) FROM "Appointment" WHERE "tenantId" = ANY($1::text[]) AND "idempotencyKey" ~ $3))))::int AS n`,
+      [SVC_TENANTS, U.barber, LATER_SCENE_KEY_RE, LATER_SCENE_DAY_RE]);
     //   + walk-in ของฉาก B.5 (ไม่มีคีย์ · หน่วย barber · วันฉากเดียวกับคีย์ svcqc-line-YYYY-MM-DD)
     // ORACLE-EDIT 29 ต.ค. (ผู้คุม): ฉากจอคิวของ B.5 (scripts/svc-qc-today-line-scene.mts · idempotencyKey ขึ้นต้น svcqc-line-) ไม่ใช่ธุรกรรมของ seed — ไม่นับ
     // ORACLE-EDIT 28 ต.ค. (ผู้คุม): ฉากถ่ายภาพของใบหลัง (R0.9 scripts/svc-qc-roomboard-scene.mts · refType SvcQcScene) ไม่ใช่ธุรกรรมของ seed — ไม่นับ
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-C): ฉากของใบหลังอีก 4 ชุดไม่ใช่ธุรกรรมของ seed — ไม่นับ (จำกัดด้วย prefix/mark ของฉากเท่านั้น · แถวอื่นยังนับครบ)
+    //   • นัดคีย์ svcqc-dev-YYYY-MM-DD-… (B.6 svc-qc-device-scene) · svcqc-online-YYYY-MM-DD-… (B.7 svc-qc-online-scene) · svcqc-b10-YYYY-MM-DD-… (B.10 svc-qc-done-pos-scene)
+    //     + walk-in ไม่มีคีย์ของหน่วยบาร์เบอร์ในวันฉากเดียวกัน (แบบข้อยกเว้น B.5 ข้างบน)
+    //   • RoomOccupancy ของสัญญาหอที่ฉากสร้าง (DormLease.createdById ขึ้นต้น "SvcQcScene" — D.5 "SvcQcScene" · D.12 "SvcQcScene:d12")
     chk("D-14", "ใบนี้ไม่มีธุรกรรม (RoomOccupancy/HotelReservation/Appointment = 0 · ใบหลังเติม)", tx[0].n === 0, `มี ${tx[0].n} แถว`, "MINOR");
 
     // ร้าน B

@@ -18,6 +18,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { isSvcTree, svcPosGuard, SVC_BASE } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ขอบเขตเลน P6.1 ในทรี SVC ตรวจ ณ ปลายทาง POS 940e3aca + ด่านกันไฟล์ POS ที่ SVC แตะ
 
 const SUITE = "qc-pos-p6.1";
 const ROOT = process.cwd();
@@ -471,10 +472,13 @@ try {
   }
   // ── Z1 ──
   {
-    const tip = REV || "HEAD";
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ทรี SVC (940e3aca เป็นบรรพบุรุษ) ⇒ ขอบเขตเลน P6.1 = ช่วงหมุด → ปลายทาง POS 940e3aca (งานหลังจากนั้นเป็นของ SVC)
+    //   + ด่านกัน: ไฟล์ POS ที่ SVC แตะต้องอยู่ในทะเบียน scripts/lib/svc-pos-carry.mts (ใบ SVC ที่อนุญาตรายไฟล์) ไม่งั้นแดง
+    const svcT = !REV && isSvcTree(ROOT);
+    const tip = REV || (svcT ? SVC_BASE : "HEAD");
     const changed = new Set(git("diff", "--name-only", `${LANE_PIN}..${tip}`).split("\n").filter(Boolean));
-    if (!REV) for (const f of git("status", "--porcelain").split("\n").filter(Boolean)) changed.add(f.slice(3).replace(/^"|"$/g, ""));
-    const bad = [...changed].filter((f) => !/^(docs|scripts|ledger|prisma)\//.test(f)); // CD-P61-O1: + prisma/ (การ์ด P4)
+    if (!REV && !svcT) for (const f of git("status", "--porcelain").split("\n").filter(Boolean)) changed.add(f.slice(3).replace(/^"|"$/g, ""));
+    const bad = [...[...changed].filter((f) => !/^(docs|scripts|ledger|prisma)\//.test(f)), ...(svcT ? svcPosGuard(ROOT) : [])]; // CD-P61-O1: + prisma/ (การ์ด P4)
     chk("Z1", gitOk("cat-file", "-e", `${LANE_PIN}^{commit}`) && !bad.length, bad.length ? `นอกขอบเขต: ${bad.slice(0, 6).join(", ")}` : `${changed.size} ไฟล์ใน docs/ scripts/ ledger/ prisma/ (เทียบ ${LANE_PIN})`);
   }
   // ── G1 ──

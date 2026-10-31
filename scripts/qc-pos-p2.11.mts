@@ -31,6 +31,7 @@ type Any = any;
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcCarry, svcRead, SVC_BASE } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ไฟล์ที่ใบ SVC ได้รับอนุญาต ⇒ ข้อหมุดตรวจ ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-pos-p2.11";
 const ROOT = process.cwd();
@@ -272,7 +273,9 @@ const MB = (() => {
 const BASES = [MB, BASE_REV].filter((x, i, a) => !!x && a.indexOf(x) === i);
 /** ไฟล์ไม่ถูกแตะ = เนื้อหาเท่ากับที่ฐานใดฐานหนึ่ง (ไม่มีทั้งสองฝั่ง = ไม่แตะ) */
 function untouched(path: string): boolean {
-  const now = existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path), "utf8") : null;
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ไฟล์ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ⇒ เทียบเนื้อ ณ 940e3aca · ไฟล์อื่น = ทรีงาน
+  const sv = svcRead(ROOT, path);
+  const now = sv !== undefined ? sv : existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path), "utf8") : null;
   return BASES.some((b) => (git(["show", `${b}:${path}`]) ?? null) === now);
 }
 const lsAt = (rev: string, dir: string): string[] => (git(["ls-tree", "-r", "--name-only", rev, "--", dir]) ?? "").split("\n").filter(Boolean);
@@ -356,7 +359,9 @@ async function runStatic(): Promise<void> {
   {
     const p: string[] = [];
     if (!BASES.length) p.push("หา merge-base / f164d9d6 ไม่ได้ (git fetch origin session/pos ก่อน)");
-    const changed = BASES.map((b) => (git(["diff", "--name-only", b, "--", "prisma"]) ?? "?").split("\n").filter(Boolean));
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): prisma/ = SVC R0.1/B.0/D.0/D.4 (migration svc_* เพิ่มล้วน) ⇒ เทียบหมุดกับ prisma/ ณ 940e3aca
+    const svcPr = !!svcCarry(ROOT, "prisma/");
+    const changed = BASES.map((b) => (git(svcPr ? ["diff", "--name-only", b, SVC_BASE, "--", "prisma"] : ["diff", "--name-only", b, "--", "prisma"]) ?? "?").split("\n").filter(Boolean));
     const untracked = (git(["ls-files", "--others", "--exclude-standard", "--", "prisma"]) ?? "").split("\n").filter(Boolean);
     const best = changed.length ? changed.reduce((a, b) => (a.length <= b.length ? a : b)) : ["?"];
     if (best.length) p.push(`prisma/ ต่างจากฐาน: ${best.slice(0, 5).join(", ")}`);

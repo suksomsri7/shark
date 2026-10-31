@@ -433,7 +433,7 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,
 };
 /** ผู้เรียกใหม่ที่ใบอื่นได้รับอนุญาตให้เพิ่ม (P2.8 มติ: pos/order.ts 1 จุด) — ไม่นับเป็นความต่างของ P2.6 */
-const CALL_SITES_ALLOWED_LATER: Record<string, number> = { "src/lib/modules/pos/order.ts": 1 };
+const CALL_SITES_ALLOWED_LATER: Record<string, number> = { "src/lib/modules/pos/order.ts": 1, "src/lib/modules/pos/service-bill.ts": 1 }; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) + SVC B.10 จุด 1 บิลจากคิว: service-bill.ts payServiceBill → createSale จุดเดิม 1 จุด (ใบสั่ง svc-brief-b.10 §1 · 18→19 จุด/15→16 ไฟล์)
 const POS_NAV_BASE = ["overview", "register", "products", "stock", "sales", "shifts", "close", "reports", "settings"];
 const ROLE_TASKS_BASE = ["sell", "discount", "priceOverride", "void", "refund", "shiftOperate", "shiftManage", "productManage", "stockCount", "reports", "settings", "onlineOrders"];
 const PRINTER_DEFAULTS_BASE = { paper: "80", mode: "browser", autoPrint: false, drawerKick: false, thaiText: "raster", copies: 1 } as const;

@@ -31,6 +31,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcCarry, svcRead, svcSchemaFiles, atSvcBase } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ไฟล์ที่ใบ SVC ได้รับอนุญาต ⇒ ข้อหมุดตรวจเนื้อ ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-pos-p2.7";
 const ROOT = process.cwd();
@@ -389,7 +390,8 @@ function schemaAt(rev: string): string {
 }
 /** ไฟล์ตรงฐานใดฐานหนึ่งทุกไบต์ — คืน null = ตรง · ไม่งั้นข้อความเหตุผล */
 function sameAsBase(path: string): string | null {
-  const raw = existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path)) : null;
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ไฟล์ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts · เช่น service.ts = B.10 จุด 1) ⇒ เทียบเนื้อ ณ 940e3aca
+  const raw = svcCarry(ROOT, path) ? atSvcBase(ROOT, path) : existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path)) : null;
   if (!raw) return `${path} ไม่มีไฟล์`;
   const h = sha256(raw);
   const revs = baseRevs();
@@ -617,11 +619,15 @@ function migrationDirs(): string[] {
 async function runStatic(): Promise<void> {
   console.log("\n── ST ข้อสถิต (ไม่แตะ DB) ──");
   const schemaSrc = walk("prisma/schema", [], /\.prisma$/).map((f) => stripPrismaComments(rd(f))).join("\n");
+  const schemaSrcNow = schemaSrc; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ชื่อสำรองให้ ST1 เลือก schema ณ 940e3aca
   const revs = baseRevs();
   console.log(`   ฐานที่ยอมรับ: ${revs.map((r) => r.slice(0, 10)).join(" · ") || "(อ่าน git ไม่ได้)"}`);
   // ── ST1 schema + migration + ทะเบียน ──
   await step("ST1", async () => {
     const p: string[] = [];
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): prisma/ = SVC R0.1/B.0/D.0/D.4 (เพิ่มล้วน · scripts/lib/svc-pos-carry.mts) ⇒ ข้อ schema ของ P2.7 ตรวจ schema ณ 940e3aca
+    const svcSch = svcSchemaFiles(ROOT);
+    const schemaSrc = svcSch ? svcSch.map((x) => stripPrismaComments(x.text)).join("\n") : schemaSrcNow;
     const pay = enumValues(prismaBlock(schemaSrc, "enum", "PosOrderPaymentState"));
     if (setStr(pay) !== setStr([...PAY_STATES_BASE, ...PAY_STATES_NEW])) p.push(`PosOrderPaymentState = ${pay.join(",")} (คาด ${[...PAY_STATES_BASE, ...PAY_STATES_NEW].join(",")})`);
     const ad = enumValues(prismaBlock(schemaSrc, "enum", "SalesChannelAdapter"));
@@ -892,7 +898,8 @@ async function runStatic(): Promise<void> {
     const found = new Map<string, number>();
     for (const f of walk("src")) {
       if (f.endsWith("src/lib/modules/pos/service.ts") || f.endsWith("src/lib/contracts.ts")) continue;
-      const n = countCreateSale(rd(f));
+      const sv = svcRead(ROOT, f); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) service-bill.ts = SVC B.10 จุด 1 (createSale จุดเดิม) ⇒ นับ ณ 940e3aca
+      const n = countCreateSale(sv === undefined ? rd(f) : sv ?? "");
       if (n) found.set(f, n);
     }
     const regOkAt = revs.some((r) => {

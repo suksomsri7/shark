@@ -110,7 +110,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             { href: `${b}/booking/services`, label: "บริการ" },
             { href: `${b}/booking/staff`, label: "ใครรับคิว" },
             { href: `${b}/booking/hours`, label: "เวลาทำการ" },
-            { href: `${b}/booking/setup`, label: "ตั้งค่า" },
+            // SVC G1-A2 ▸ "ตั้งค่า" ชี้หน้าตั้งค่าการจองจริง (/booking/settings · B.11) — /booking/setup เป็นหน้าเปลี่ยนทางของลิงก์เก่า (ไปหน้าบริการ)
+            //   ปฏิทินนัด/ของฉัน (B.5 · หน่วยแถวเดียว) อยู่ในแถบแท็บของโมดูล (booking/layout.tsx) · ข้อความแจ้งเตือนอยู่ในเมนูหมวดตั้งค่า · จอทีวี อยู่ที่ปุ่มบนคิววันนี้ ◂
+            { href: `${b}/booking/settings`, label: "ตั้งค่า" },
           ];
         default:
           return undefined; // RENTAL/SCHOOL/CLINIC = หน้าเดียว ไม่ต้องกาง

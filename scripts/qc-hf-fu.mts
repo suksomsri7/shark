@@ -25,6 +25,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcCarry, SVC_BASE } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ไฟล์ห้ามแตะ/prisma ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ⇒ เทียบหมุดกับเนื้อ ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-hf-fu";
 const ROOT = process.cwd();
@@ -240,9 +241,11 @@ function mergeBase(): string | null {
 /** path (ไฟล์/โฟลเดอร์) ใน working tree ตรงกับ rev ไหม (รวมไฟล์ใหม่ที่ยังไม่ track) · null = git ใช้ไม่ได้ */
 function sameAsRev(rev: string, path: string): boolean | null {
   const spec = `:(literal)${path}`; // [id] ใน path = ตัวอักษรจริง ไม่ใช่ glob
-  const d = gitRun(["diff", "--quiet", rev, "--", spec]);
+  const carried = !!svcCarry(ROOT, path); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D)
+  const d = gitRun(carried ? ["diff", "--quiet", rev, SVC_BASE, "--", spec] : ["diff", "--quiet", rev, "--", spec]);
   if (!d.ok && d.status !== 1) return null;
   if (!d.ok) return false;
+  if (carried) return true; // ไฟล์ใหม่ที่ยังไม่ track ของทะเบียน = ไม่มี (ทะเบียนตัดไฟล์ที่ยังไม่ commit อยู่แล้ว)
   const u = gitRun(["ls-files", "--others", "--exclude-standard", "--", spec]);
   if (!u.ok) return null;
   return u.out.trim() === "";
@@ -301,7 +304,9 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/clinic/service.ts": 1, "src/lib/modules/giftcard/service.ts": 2, "src/lib/modules/hotel/service.ts": 2,
   "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/register.ts": 1,
   "src/lib/modules/rental/service.ts": 2, "src/lib/modules/restaurant/order.ts": 1, "src/lib/modules/school/service.ts": 1,
-  "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1, "src/lib/modules/pos/order.ts": 1,
+  "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,
+  "src/lib/modules/pos/order.ts": 1,
+  "src/lib/modules/pos/service-bill.ts": 1, // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) SVC B.10 จุด 1 บิลจากคิว — createSale จุดเดิม (ใบสั่ง svc-brief-b.10 §1)
 };
 /** คีย์ข้อความใหม่ (path ใต้ pos.json) — th = en · th ไทย · en ไม่มีไทย */
 const NEW_KEYS = [

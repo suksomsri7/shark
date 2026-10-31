@@ -35,6 +35,8 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcRdView, svcExView, svcGit, svcPinStep, SVC_PIN_VIEW, svcCarry, atSvcBase } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ข้อหมุด/ขอบเขตเลนของ POS ในทรี SVC เห็นไฟล์ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ณ ปลายทาง POS 940e3aca
+const SVC_PIN_IDS = new Set<string>(["ST1", "ST3"]); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ข้อหมุด/ขอบเขตเลน (ตรวจตอนรับใบ POS) ที่ดูไฟล์ของ SVC ณ 940e3aca
 
 const SUITE = "qc-pos-p3.7";
 const ROOT = process.cwd();
@@ -123,13 +125,13 @@ function chk(id: string, ok: unknown, expected: unknown, actual: unknown): boole
 /** ห่อข้อสอบหนึ่งข้อ — throw = แดงพร้อมเหตุผล (ไม่ล้มทั้งชุด) */
 async function step(id: string, fn: () => Promise<void> | void): Promise<void> {
   try {
-    await fn();
+    await (SVC_PIN_IDS.has(id) ? svcPinStep(fn) : fn()); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): เฉพาะข้อหมุด ST1/ST3
   } catch (e) {
     chk(id, false, "ไม่ throw", `harness throw: ${String((e as Error)?.message ?? e).slice(0, 160)}`);
   }
 }
-const rd = (p: string) => (existsSync(join(ROOT, p)) ? readFileSync(join(ROOT, p), "utf8") : "");
-const ex = (p: string) => existsSync(join(ROOT, p));
+const rd = (p: string) => svcRdView(ROOT, p, (q) => (existsSync(join(ROOT, q)) ? readFileSync(join(ROOT, q), "utf8") : "")); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
+const ex = (p: string) => svcExView(ROOT, p, (q) => existsSync(join(ROOT, q))); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
 const short = (v: unknown, n = 220) => {
   let s: string;
   try {
@@ -273,7 +275,7 @@ function gitBuf(args: string[]): Buffer | null {
     return null;
   }
 }
-const gitStr = (args: string[]) => gitBuf(args)?.toString("utf8") ?? null;
+const gitStr = (args: string[]) => svcGit(ROOT, args, (a) => gitBuf(a)?.toString("utf8") ?? null); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
 const baseOk = () => bases().length > 0;
 let basesCache: string[] | null = null;
 /**
@@ -300,7 +302,7 @@ const nearBase = (): string => revOk(LANE_PIN) ?? revOk(P37_PIN) ?? BASE_REV;
 const showAt = (path: string, rev = BASE_REV): string | null => gitStr(["show", `${rev}:${path}`]);
 /** ไฟล์ตรงฐานใดฐานหนึ่งทุกไบต์ — null = ตรง · ไม่งั้นเหตุผล */
 function sameAsBase(path: string): string | null {
-  const raw = ex(path) ? readFileSync(join(ROOT, path)) : null;
+  const raw = SVC_PIN_VIEW.on && svcCarry(ROOT, path) ? atSvcBase(ROOT, path) : ex(path) ? readFileSync(join(ROOT, path)) : null; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ไฟล์ของใบ SVC ที่ได้รับอนุญาต ⇒ ไบต์ ณ 940e3aca
   let why = "";
   for (const rev of bases()) {
     const b = gitBuf(["show", `${rev}:${path}`]);

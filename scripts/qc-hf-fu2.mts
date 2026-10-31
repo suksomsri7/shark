@@ -24,6 +24,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { svcCarry, SVC_BASE, isSvcTree, svcPosGuard } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ไฟล์ห้ามแตะ/prisma ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ⇒ เทียบหมุดกับเนื้อ ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-hf-fu2";
 const ROOT = process.cwd();
@@ -216,9 +217,11 @@ function cardBase(): string | null {
 /** path ใน working tree ตรงกับ rev ไหม (รวมไฟล์ใหม่ที่ยังไม่ track) · null = git ใช้ไม่ได้ */
 function sameAsRev(rev: string, path: string): boolean | null {
   const spec = `:(literal)${path}`;
-  const d = gitRun(["diff", "--quiet", rev, "--", spec]);
+  const carried = !!svcCarry(ROOT, path); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D)
+  const d = gitRun(carried ? ["diff", "--quiet", rev, SVC_BASE, "--", spec] : ["diff", "--quiet", rev, "--", spec]);
   if (!d.ok && d.status !== 1) return null;
   if (!d.ok) return false;
+  if (carried) return true; // ไฟล์ใหม่ที่ยังไม่ track ของทะเบียน = ไม่มี (ทะเบียนตัดไฟล์ที่ยังไม่ commit อยู่แล้ว)
   const u = gitRun(["ls-files", "--others", "--exclude-standard", "--", spec]);
   if (!u.ok) return null;
   return u.out.trim() === "";
@@ -436,28 +439,33 @@ async function runStatic(): Promise<void> {
     const chAt = showAt(mb, F.contract);
     if (chAt !== null && sha256(ch) !== sha256(chAt)) p.push("pos-sale-contract.json sha ต่างจากหมุด");
     // ทะเบียนผู้เรียก createSale — เทียบเฉพาะไฟล์ที่เปลี่ยนจากหมุด
-    const changed = gitRun(["diff", "--name-status", "--no-renames", mb, "--", "src", "scripts"]).out.split("\n").filter(Boolean).map((l) => l.split("\t") as [string, string]);
-    const untracked = gitRun(["ls-files", "--others", "--exclude-standard", "--", "src", "scripts"]).out.split("\n").filter(Boolean).map((f) => ["A", f] as [string, string]);
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ทรี SVC ⇒ ขอบเขตเลน HF-FU2 (ทะเบียน createSale ของไฟล์ที่เปลี่ยน · ทุก hunk มี HF-FU2) = ช่วงหมุด → ปลายทาง POS 940e3aca
+    //   (งานหลังจากนั้นเป็นของใบ SVC · ไม่มีเครื่องหมาย HF-FU2 โดยธรรมชาติ) + ด่านกัน: ไฟล์ POS ที่ SVC แตะต้องอยู่ในทะเบียน scripts/lib/svc-pos-carry.mts
+    const svcT = isSvcTree(ROOT);
+    if (svcT) p.push(...svcPosGuard(ROOT));
+    const changed = gitRun(svcT ? ["diff", "--name-status", "--no-renames", mb, SVC_BASE, "--", "src", "scripts"] : ["diff", "--name-status", "--no-renames", mb, "--", "src", "scripts"]).out.split("\n").filter(Boolean).map((l) => l.split("\t") as [string, string]);
+    const untracked = svcT ? [] : gitRun(["ls-files", "--others", "--exclude-standard", "--", "src", "scripts"]).out.split("\n").filter(Boolean).map((f) => ["A", f] as [string, string]);
     const all = [...changed, ...untracked];
+    const nowOf = (f: string): string => (svcT ? (showAt(SVC_BASE, f) ?? "") : existsSync(join(ROOT, f)) ? rd(f) : ""); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D)
     const csCount = (s: string | null) => (stripComments(s ?? "").match(/\bcreateSale\s*\(/g) ?? []).length;
     for (const [, f] of all) {
       if (!/^src\/.*\.(ts|tsx)$/.test(f) || f.endsWith(`${POS_DIR}/service.ts`) || f.endsWith("src/lib/contracts.ts")) continue;
       const a = csCount(showAt(mb, f));
-      const b = csCount(existsSync(join(ROOT, f)) ? rd(f) : "");
+      const b = csCount(nowOf(f));
       if (a !== b) p.push(`ผู้เรียก createSale ${f.replace("src/lib/", "")}: ${a}→${b}`);
     }
     // ทุก hunk มี HF-FU2
     let hunks = 0;
     for (const [st, f] of all) {
       if (!MARK_SCOPE(f) || st.startsWith("D")) continue;
-      const now = rd(f);
+      const now = nowOf(f); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D)
       if (st.startsWith("A")) {
         hunks++;
         if (!now.includes(MARK)) p.push(`${f.split("/").pop()} (ไฟล์ใหม่) ไม่มี ${MARK}`);
         continue;
       }
       const lines = now.split("\n");
-      const diff = gitRun(["diff", "--no-color", "-U0", mb, "--", `:(literal)${f}`]).out.split("\n");
+      const diff = gitRun(svcT ? ["diff", "--no-color", "-U0", mb, SVC_BASE, "--", `:(literal)${f}`] : ["diff", "--no-color", "-U0", mb, "--", `:(literal)${f}`]).out.split("\n"); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D)
       for (let i = 0; i < diff.length; i++) {
         const m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(diff[i]!);
         if (!m) continue;

@@ -46,6 +46,7 @@ process.env.SHARK_AI_MOCK = "1"; // R12 · AI_LAYER rule 5 — ห้ามเ�
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcRdView, svcExView, svcGit, svcPinStep, SVC_PIN_VIEW } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ข้อหมุด/ขอบเขตเลนของ POS ในทรี SVC เห็นไฟล์ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-pos-p3.9";
 const ROOT = process.cwd();
@@ -312,10 +313,10 @@ function chk(id: string, ok: unknown, expected: unknown, actual: unknown): boole
   console.log(`  ${r.ok ? "✅" : "❌"} [${full}] ${TITLE.get(full)}${r.ok ? "" : ` — expected ${r.expected} | actual ${r.actual}`}`);
   return r.ok;
 }
-const rd = (p: string) => {
-  const abs = p.startsWith("/") ? p : join(ROOT, p);
+const rd = (p: string) => svcRdView(ROOT, p, (q) => { // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
+  const abs = q.startsWith("/") ? q : join(ROOT, q);
   return existsSync(abs) ? readFileSync(abs, "utf8") : "";
-};
+});
 const short = (v: unknown, n = 160) => {
   let s: string;
   try {
@@ -347,6 +348,9 @@ function walk(dir: string, out: string[] = [], re = /\.(tsx|ts)$/): string[] {
 const stripComments = (s: string) => s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
 const srcOf = (f: string) => stripComments(rd(f));
 function gitStr(args: string[]): string | null {
+  return svcGit(ROOT, args, gitStr0); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
+}
+function gitStr0(args: string[]): string | null {
   try {
     return execFileSync("git", ["-C", ROOT, ...args], { stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 }).toString("utf8");
   } catch {
@@ -470,6 +474,7 @@ function runStatic(): void {
   }
   // ST4 หมุดไฟล์ห้ามแตะ
   {
+    SVC_PIN_VIEW.on = true; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ไฟล์ของใบ SVC ที่ได้รับอนุญาต (prisma · service.ts · register-*.ts · outbox-consumers) ดู ณ 940e3aca
     const p: string[] = [];
     const changed = gitStr(["diff", "--name-only", LANE_PIN]); // ORACLE-EDIT ผู้คุม 17.10 (CD-RP4 · หมุดเลน)
     if (changed === null) p.push(`git diff ${LANE_PIN} ไม่ได้`);
@@ -485,6 +490,7 @@ function runStatic(): void {
     const hit = [...new Set(files.filter(banned))];
     if (hit.length) p.push(`แก้ไฟล์ต้องห้าม: ${hit.join(", ")}`);
     stNotes.ST4 = p;
+    SVC_PIN_VIEW.on = false; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D)
   }
   // ST5 inventory/index.ts = บล็อกเดียว re-export
   {
