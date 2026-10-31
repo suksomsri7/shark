@@ -416,7 +416,7 @@ try {
     await U(A, DA, "rooms.access.managerScope", "BUILDING");
     await U(A, DA, "rooms.access.buildingAssignments", { [mem.sc]: [B1], [mem.sc2]: [BX] });
     const cS = { tenantId: A, actorUserId: SC }, cS2 = { tenantId: A, actorUserId: SC2 };
-    const b1Rooms = new Set((await prisma.hotelRoom.findMany({ where: { unitId: DA, buildingId: B1 }, select: { id: true } })).map((r: any) => r.id));
+    const b1Rooms = new Set<string>((await prisma.hotelRoom.findMany({ where: { unitId: DA, buildingId: B1 }, select: { id: true } })).map((r: any) => String(r.id)));
     const b1Keys = B1L.map((x) => x[0]);
     const ag = await DORM.dormAgingReport(cS, { unitId: DA }, { now: new Date(NOW) });
     const glB1 = await glOf(b1Keys);

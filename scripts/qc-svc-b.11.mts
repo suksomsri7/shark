@@ -257,6 +257,10 @@ const ACTION_KEYS: Record<string, string[]> = {
   setServiceDepositAction: ["booking.service.setDeposit"],
   recordDepositAction: ["booking.deposit.record", "booking.deposit.confirm"],
   refundDepositAction: ["booking.deposit.refund"],
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b11-S4) action มัดจำของ B.8 (788cdeb0) — คีย์ตาม modules/booking/access.ts BOOKING_ACTIONS
+  confirmDepositAction: ["booking.deposit.confirm", "booking.deposit.record"],
+  refundDueDepositAction: ["booking.deposit.refund"],
+  forfeitDueDepositAction: ["booking.deposit.forfeit"],
   addStaffAction: ["booking.staff.create"],
   setStaffReceivingAction: ["booking.staff.create"],
   linkStaffToHrAction: ["booking.staff.create"],
