@@ -70,6 +70,8 @@ export type PlanJob = {
   priority: boolean;
   policy?: { graceMin?: number; noShowAfterMin?: number; lateAction?: "RELEASE" | "HOLD" }; // snapshot ชนะ settings
   resourceIds?: string[]; // SVC B.13 ▸ นัด = ที่ถืออยู่ในฐาน (ข้อเท็จจริง) · walk-in = ไม่ผูกมัด ◂
+  /** SVC B.15 ▸ คู่รัก/กลุ่ม: นัดที่ groupId เดียวกัน (ที่ยังถือช่อง) เริ่มพร้อมกัน · ไม่ส่ง/กลุ่มขนาด 1 ⇒ ผลเท่าไม่ส่งทุกไบต์ ◂ */
+  groupId?: string;
 };
 
 export type PlanInput = {
@@ -540,8 +542,7 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
     return start;
   };
 
-  const placeLocked = (fixed: Set<string>) => locked.forEach(({ job, late }, idx) => {
-    if (fixed.has(job.id)) return;
+  const placeOne = (job: PlanJob, late: boolean, idx: number): void => {
     const startAt = job.startAt!;
     const s0 = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
     const arrived = job.checkedInAt !== null || job.status === "ARRIVED";
@@ -583,14 +584,241 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
       return;
     }
     placeOn(s0, start, !available ? "STAFF_UNAVAILABLE" : start > startAt ? "BOOKED_DELAYED" : "BOOKED_ON_TIME");
+  };
+
+  // SVC B.15 ▸ คู่รัก/กลุ่ม (§3.6): นัดล็อกที่ groupId เดียวกัน ≥ 2 แถว ⇒ เริ่มพร้อมกันที่เวลาช้าสุดที่ทุกคนลงได้ (หมอ + ห้อง) ·
+  //   กลุ่มขนาด 1 / ไม่มี groupId ⇒ ทาง B.13 เดิมทุกไบต์ (FZ-G0) · สมาชิกที่ถูกปล่อย/ไม่มา/มาสายเข้าแถว/กำลังทำ ไม่อยู่ใน locked ⇒ ไม่ถ่วง (PL-G4) ◂
+  const lockedGroups = new Map<string, number[]>();
+  locked.forEach(({ job }, idx) => {
+    if (!job.groupId) return;
+    const xs = lockedGroups.get(job.groupId);
+    if (xs) xs.push(idx);
+    else lockedGroups.set(job.groupId, [idx]);
   });
+  for (const [g, xs] of [...lockedGroups]) if (xs.length < 2) lockedGroups.delete(g);
+
+  type GEntry = { job: PlanJob; late: boolean; idx: number; s: PlanStaff; d: number; mover: boolean };
+  /** วางสมาชิกกลุ่มทุกคนที่ T เดียวกัน (ลองใหม่เมื่อหมอ/ห้องดันเวลา) · คืน T ที่ลงตัว · ย้อนได้ด้วย undoGroupRes */
+  const undoGroupRes = (es: readonly GEntry[]) => {
+    for (const e of es) {
+      ctx.book?.remove(e.job.id);
+      shortOf.delete(e.job.id);
+      resOf.delete(e.job.id);
+    }
+  };
+  /** ห้องของสมาชิก ณ T โดยไม่เลื่อน (ชิ้นเดิมก่อน · ไม่ว่าง ⇒ ชิ้นอื่นชนิดเดียวกัน · ไม่มี ⇒ ข้อเท็จจริงที่ T + resourceShort) */
+  const pinRes = (job: PlanJob, t: number, d: number): void => {
+    const book = ctx.book;
+    const kinds = kindsOfJob(ctx, job);
+    if (!book || !kinds.length) return;
+    book.remove(SOFT + job.id);
+    book.remove(job.id);
+    const facts = factsByKind(book, kinds, job.resourceIds);
+    const ids = facts.size
+      ? (book.pick(kinds, t, t + d, { fixed: facts, ignore: isSoft }) ?? book.pick(kinds, t, t + d, { ignore: isSoft, prefer: [...facts.values()] }))
+      : book.pick(kinds, t, t + d);
+    if (ids) {
+      for (const id of ids) book.add(id, job.id, t, t + d);
+      resOf.set(job.id, ids);
+      return;
+    }
+    for (const id of facts.values()) book.add(id, job.id, t, t + d);
+    shortOf.add(job.id);
+  };
+  const trialGroup = (es: readonly GEntry[]): number => {
+    let T = Math.max(...es.map((e) => startAfterBusy(ctx, e.s, Math.max(e.job.startAt!, now), e.d)));
+    for (let iter = 0; iter < 24; iter++) {
+      let moved = false;
+      for (const e of es) {
+        const st = startAfterBusy(ctx, e.s, T, e.d);
+        if (st > T) {
+          T = st;
+          moved = true;
+        }
+      }
+      if (moved) continue;
+      let maxT = T;
+      for (const e of es) {
+        const t = placeRes(e.job, e.s, T, e.d, pendingOn(e.s.id, e.idx + 1).map((x) => x.job));
+        if (t > maxT) maxT = t;
+      }
+      if (maxT === T) return T;
+      undoGroupRes(es);
+      T = maxT;
+    }
+    // ไม่ลงตัวในเพดานรอบ ⇒ ทุกคนที่ T (ห้องไม่ว่าง ⇒ resourceShort ให้จอเห็น · เวลาไม่แยก)
+    for (const e of es) {
+      const st = startAfterBusy(ctx, e.s, T, e.d);
+      if (st > T) T = st;
+    }
+    for (const e of es) pinRes(e.job, T, e.d);
+    return T;
+  };
+  const placeGroup = (idxs: readonly number[], fixed: Set<string>): void => {
+    const members = idxs.filter((i) => !fixed.has(locked[i].job.id));
+    const solo = (xs: readonly number[]) => { for (const i of xs) placeOne(locked[i].job, locked[i].late, i); };
+    const sync: GEntry[] = [];
+    const rest: number[] = [];
+    for (const i of members) {
+      const { job, late } = locked[i];
+      const s = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
+      const d = durMs(ctx, job, s);
+      if (s && canDo(s, job.serviceId) && inWindow(s, job.startAt!, job.startAt! + d)) sync.push({ job, late, idx: i, s, d, mover: false });
+      else rest.push(i);
+    }
+    if (sync.length < 2 || new Set(sync.map((e) => e.s.id)).size !== sync.length) {
+      solo(members);
+      return;
+    }
+    solo(rest);
+    const target = Math.max(...sync.map((e) => e.job.startAt!));
+    const flags = () => ({ s: new Set(roomDelayedStaff), j: new Set(roomDelayedJob) });
+    const restoreFlags = (f: { s: Set<string>; j: Set<string> }) => {
+      roomDelayedStaff.clear();
+      for (const x of f.s) roomDelayedStaff.add(x);
+      roomDelayedJob.clear();
+      for (const x of f.j) roomDelayedJob.add(x);
+    };
+    const f0 = flags();
+    let es = sync;
+    let T = trialGroup(es);
+    // กติกา 1 แบบกลุ่ม: สมาชิก "ใครก็ได้" ที่ยังไม่เช็กอินและเป็นตัวที่ทำให้ช้า ⇒ ย้ายหมอที่รับได้ตรงเวลา (ไม่ซ้ำกับสมาชิกอื่น) ถ้าทั้งกลุ่มได้ตรงเวลา
+    if (T > target && target >= now) {
+      const used = new Set(sync.map((e) => e.s.id));
+      const safety = settings.safetyBeforeBookingMin * MIN;
+      const alt: GEntry[] = [];
+      let all = true;
+      for (const e of sync) {
+        if (startAfterBusy(ctx, e.s, Math.max(e.job.startAt!, now), e.d) <= target) { alt.push(e); continue; }
+        const arrived = e.job.checkedInAt !== null || e.job.status === "ARRIVED";
+        let pick: PlanStaff | null = null;
+        if (e.job.assignMode === "ANY" && !arrived) {
+          for (const s of ctx.staff) {
+            if (used.has(s.id) || !canDo(s, e.job.serviceId) || atMaxJobs(ctx, s)) continue;
+            const d = durMs(ctx, e.job, s), g = gapMs(ctx, e.job, s);
+            if (!fitsAt(ctx, s, slotsOf(ctx, s.id), target, d, g)) continue;
+            if (pendingOn(s.id, e.idx + 1).some((x) => target + d + g > x.job.startAt! - safety)) continue;
+            pick = s;
+            break;
+          }
+        }
+        if (!pick) { all = false; break; }
+        used.add(pick.id);
+        alt.push({ ...e, s: pick, d: durMs(ctx, e.job, pick), mover: true });
+      }
+      if (all) {
+        undoGroupRes(es);
+        const f1 = flags();
+        restoreFlags(f0);
+        const T2 = trialGroup(alt);
+        if (T2 === target) {
+          es = alt;
+          T = T2;
+        } else {
+          undoGroupRes(alt);
+          restoreFlags(f1);
+          T = trialGroup(es);
+        }
+      }
+    }
+    for (const e of es) {
+      const startAt = e.job.startAt!;
+      const endAt = T + e.d;
+      if (kindsOfJob(ctx, e.job).length && (roomDelayedJob.has(e.job.id) || roomDelayedStaff.has(e.s.id)) && T > startAt && inWindow(e.s, startAt, startAt + e.d) && !inWindow(e.s, T, endAt)) shortOf.add(e.job.id);
+      occupy(ctx, e.s.id, { jobId: e.job.id, startAt: T, endAt, gapAfter: gapMs(ctx, e.job, e.s), booking: true });
+      const reason: PlanReason = T > startAt ? "BOOKED_DELAYED" : e.mover ? "BOOKED_MOVED_STAFF" : "BOOKED_ON_TIME";
+      out.set(e.job.id, { ...base(e.job), staffId: e.s.id, startAt: T, endAt, state: "SCHEDULED", reason, late: e.late });
+    }
+  };
+
+  const placeLocked = (fixed: Set<string>) => {
+    const doneGroups = new Set<string>();
+    locked.forEach(({ job, late }, idx) => {
+      if (fixed.has(job.id)) return;
+      const g = job.groupId ? lockedGroups.get(job.groupId) : undefined;
+      if (g) {
+        if (!doneGroups.has(job.groupId!)) {
+          doneGroups.add(job.groupId!);
+          placeGroup(g, fixed);
+        }
+        return;
+      }
+      placeOne(job, late, idx);
+    });
+  };
   resetBook(new Map());
   placeLocked(new Set());
+
+  /** SVC B.15 ▸ APPOINTMENT_FIRST ของกลุ่ม: มาครบ ⇒ หา T ร่วมเร็วสุด (≥ now · ก่อนเวลาเดิม) ที่ทุกคนลงได้ทั้งหมอและห้อง · ไม่ครบ/ไม่ได้ ⇒ คงเดิม ◂ */
+  const pullGroupEarly = (idxs: readonly number[], early: Set<string>): void => {
+    const ms = idxs.map((i) => {
+      const job = locked[i].job;
+      const pj = out.get(job.id);
+      const s = pj?.staffId ? ctx.staffById.get(pj.staffId) : undefined;
+      return { job, pj, s };
+    });
+    const ok = ms.every((m) => (m.job.checkedInAt !== null || m.job.status === "ARRIVED") && m.pj && m.pj.startAt !== null && m.s
+      && m.pj.reason !== "STAFF_UNAVAILABLE" && !shortOf.has(m.job.id));
+    if (!ok || new Set(ms.map((m) => m.s!.id)).size !== ms.length) return;
+    const upper = Math.min(...ms.map((m) => Math.min(m.job.startAt!, m.pj!.startAt!)));
+    if (!(upper > now)) return;
+    const es = ms.map((m) => {
+      const s = m.s!;
+      return { ...m, s, d: durMs(ctx, m.job, s), g: gapMs(ctx, m.job, s), kinds: kindsOfJob(ctx, m.job), pjs: m.pj! };
+    });
+    for (const e of es) {
+      release(ctx, e.s.id, e.job.id);
+      if (e.kinds.length && ctx.book) ctx.book.remove(e.job.id);
+    }
+    const pts = new Set<number>([now]);
+    for (const e of es) {
+      for (const w of e.s.windows) if (w.startAt > now) pts.add(w.startAt);
+      for (const x of slotsOf(ctx, e.s.id)) if (x.endAt + x.gapAfter > now) pts.add(x.endAt + x.gapAfter);
+      if (e.kinds.length && ctx.book) for (const t of ctx.book.releasePoints(e.kinds, now)) pts.add(t);
+    }
+    let chosen: { t: number; ids: Map<string, string[]> } | null = null;
+    for (const t of [...pts].sort((a, b) => a - b)) {
+      if (t >= upper) break;
+      if (!es.every((e) => fitsAt(ctx, e.s, slotsOf(ctx, e.s.id), t, e.d, e.g))) continue;
+      const ids = new Map<string, string[]>();
+      let fit = true;
+      for (const e of es) {
+        if (!e.kinds.length || !ctx.book) continue;
+        const got = ctx.book.pick(e.kinds, t, t + e.d, { prefer: resOf.get(e.job.id) });
+        if (!got) { fit = false; break; }
+        for (const id of got) ctx.book.add(id, e.job.id, t, t + e.d);
+        ids.set(e.job.id, got);
+      }
+      for (const e of es) if (ids.has(e.job.id)) ctx.book?.remove(e.job.id);
+      if (fit) { chosen = { t, ids }; break; }
+    }
+    for (const e of es) {
+      const start = chosen ? chosen.t : e.pjs.startAt!;
+      occupy(ctx, e.s.id, { jobId: e.job.id, startAt: start, endAt: start + e.d, gapAfter: e.g, booking: true });
+      if (chosen) {
+        early.add(e.job.id);
+        out.set(e.job.id, { ...e.pjs, startAt: start, endAt: start + e.d, reason: "BOOKED_EARLY" });
+        const got = chosen.ids.get(e.job.id);
+        if (got) resOf.set(e.job.id, got);
+      }
+      if (e.kinds.length && ctx.book) for (const id of resOf.get(e.job.id) ?? []) ctx.book.add(id, e.job.id, start, start + e.d);
+    }
+  };
 
   // 3) นัดก่อนเสมอ: นัดที่มาแล้วดึงขึ้นเร็วได้บนช่างเดิม (ก่อนวาง walk-in ทุกใบ)
   if (settings.queueOrder === "APPOINTMENT_FIRST") {
     const early = new Set<string>();
+    const seenGroups = new Set<string>();
     for (const { job } of locked) {
+      // SVC B.15 ▸ กลุ่ม: ดึงขึ้นเร็วเฉพาะเมื่อทุกสมาชิกที่ยังถือช่องมาถึงแล้ว และดึงพร้อมกัน (PL-G2) ◂
+      const grp = job.groupId ? lockedGroups.get(job.groupId) : undefined;
+      if (grp) {
+        if (!seenGroups.has(job.groupId!)) {
+          seenGroups.add(job.groupId!);
+          pullGroupEarly(grp, early);
+        }
+        continue;
+      }
       const arrived = job.checkedInAt !== null || job.status === "ARRIVED";
       const pj = out.get(job.id);
       if (!arrived || !pj || pj.startAt === null || pj.staffId === null || pj.reason === "STAFF_UNAVAILABLE") continue;

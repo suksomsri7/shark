@@ -177,6 +177,7 @@ const JOB_SELECT = {
   id: true, status: true, kind: true, assignMode: true, staffId: true, serviceId: true, startAt: true, endAt: true,
   createdAt: true, checkedInAt: true, startedAt: true, queueTicketId: true, plannedStartAt: true, plannedStaffId: true,
   policySnapshot: true, resourceId: true, // SVC B.13
+  groupId: true, // SVC B.15 ▸ คู่รัก/กลุ่ม — ตัววางคิวเริ่มพร้อมกัน ◂
 } as const;
 export type JobRow = Prisma.AppointmentGetPayload<{ select: typeof JOB_SELECT }>;
 
@@ -249,6 +250,7 @@ function planJobOf(r: JobRow, values: Record<string, unknown>, skippedAt?: numbe
     startedAt: r.startedAt ? r.startedAt.getTime() : null,
     priority: walkIn && job.priority, // J6: priority ของ walk-in คงอยู่ทุกรอบวางคิว
     ...(resIds.length ? { resourceIds: resIds } : {}), // SVC B.13
+    ...(!walkIn && r.groupId ? { groupId: r.groupId } : {}), // SVC B.15
     ...(policyOn
       ? { policy: { graceMin: pol.graceMin, noShowAfterMin: pol.noShowAfterMin === null ? Number.POSITIVE_INFINITY : pol.noShowAfterMin, lateAction: pol.afterGrace === "RELEASE_REQUEUE" ? "RELEASE" as const : "HOLD" as const } }
       : {}),

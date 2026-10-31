@@ -39,3 +39,7 @@ export type { DepositState, DepositInfo, DepositPay, SlipSubmitFail, ShopCtx, De
 export { listResources, createResource, updateResource, setResourceMaintenance, walkInNowByService } from "./resources";
 export { bookingResourcesModel } from "./settings-model";
 export type { ResourceCtx, ResourceActor, ResourceRow, ResourceResult, ResourceFail, ResourceInput, ResourcePatch, MaintenanceWindow, WalkInNowRow } from "./resources";
+
+// SVC B.15 ▸ คู่รัก/กลุ่ม (1 การจอง = หลายงาน · groupId) — จอปฏิทิน B.14 / ทางอื่นนอกโมดูลเรียกผ่าน facade ◂
+export { bookGroup, findGroupSlots, groupOf, cancelGroup, rescheduleGroup } from "./group";
+export type { GroupBookInput, GroupBookResult, GroupFailCode, GroupMemberInput, GroupOpFail, GroupOpResult, GroupSlot, GroupMember, GroupDeposit, GroupView } from "./group";

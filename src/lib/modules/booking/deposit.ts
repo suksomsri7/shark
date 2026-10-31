@@ -18,7 +18,11 @@ import { maskPhone } from "./privacy-shared";
 import {
   acceptPaidDeposit,
   bindDepositReceipt,
+  bindGroupDeposit,
+  claimGroupDeposit,
   claimSlipSubmit,
+  groupLeaderOf,
+  groupRowsOf,
   depositSnapOf,
   forfeitPendingDeposit,
   lockForRefund,
@@ -115,6 +119,23 @@ function infoOf(f: DepositFacts): DepositInfo {
 const validCtx = (ctx: unknown): ctx is { tenantId: string; unitId: string } =>
   isRec(ctx) && typeof ctx.tenantId === "string" && !!ctx.tenantId && typeof ctx.unitId === "string" && !!ctx.unitId;
 
+/**
+ * SVC B.15 ▸ มัดจำรวมของกลุ่ม — เฉพาะเมื่อ id = หัวกลุ่ม (ลิงก์/ปุ่มของหัวกลุ่ม = ทั้งกลุ่ม) · สมาชิกถือช่อง = PENDING/CONFIRMED ·
+ * total = Σ มัดจำของสมาชิกที่ถือช่อง · due = Σ ที่ยังไม่จ่าย (ยอด QR/สลิป) · ไม่ใช่หัวกลุ่ม/ไม่ใช่กลุ่ม ⇒ null (ทางเดิม) ◂
+ */
+type GroupDue = { groupId: string; allIds: string[]; unpaidIds: string[]; total: number; due: number };
+async function groupDueOf(ctx: { tenantId: string; unitId: string }, appointmentId: string): Promise<GroupDue | null> {
+  const g = await groupLeaderOf(ctx, appointmentId);
+  if (!g || g.leaderId !== appointmentId || g.ids.length < 2) return null;
+  const rows = await groupRowsOf(ctx, g.groupId);
+  const live = rows.filter((r) => ACTIVE.has(String(r.status)));
+  const unpaid = live.filter((r) => !r.depositPaidAt);
+  return {
+    groupId: g.groupId, allIds: rows.map((r) => r.id), unpaidIds: unpaid.map((r) => r.id),
+    total: live.reduce((t, r) => t + r.depositSatang, 0), due: unpaid.reduce((t, r) => t + r.depositSatang, 0),
+  };
+}
+
 /** สถานะมัดจำของนัดในหน่วยนี้ — นัดของหน่วยอื่น/ร้านอื่น ⇒ null */
 export async function depositInfo(ctx: { tenantId: string; unitId: string }, appointmentId: string): Promise<DepositInfo | null> {
   if (!validCtx(ctx)) return null;
@@ -172,10 +193,11 @@ export async function loadDepositPay(token: unknown, opts?: { now?: Date; ip?: s
   const f = await depositFactsOf(m.ctx, m.row.id);
   if (!f) return { ok: false, code: "NOT_FOUND" };
   const info = infoOf(f);
+  const grp = await groupDueOf(m.ctx, f.appt.id); // SVC B.15 ▸ จ่ายครั้งเดียวผ่านหัวกลุ่ม: ยอด = Σ (QR ยอดล็อก = Σ ที่ยังไม่จ่าย) ◂
   let qr: DepositPay["qr"] = null;
   let noReceiver = false;
   if (info.state === "AWAITING") {
-    const q = await promptpayQrFor({ tenantId: m.ctx.tenantId }, { unitId: m.ctx.unitId, amountSatang: f.appt.depositSatang, ref: "" });
+    const q = await promptpayQrFor({ tenantId: m.ctx.tenantId }, { unitId: m.ctx.unitId, amountSatang: grp ? grp.due : f.appt.depositSatang, ref: "" });
     if (q.ok) qr = { svgDataUrl: q.svgDataUrl, displayName: q.displayName };
     else if (q.code === "NO_RECEIVER") noReceiver = true;
   }
@@ -184,7 +206,7 @@ export async function loadDepositPay(token: unknown, opts?: { now?: Date; ip?: s
     ok: true,
     pay: {
       state: info.state,
-      amountSatang: f.appt.depositSatang,
+      amountSatang: grp ? grp.total : f.appt.depositSatang,
       holdUntilMs: info.holdUntilMs,
       qr,
       noReceiver,
@@ -251,6 +273,7 @@ export async function submitDepositSlip(
 
   // V4: ด่านต่อนัด — claim (CAS บนแถวนัด · หมดอายุเอง) ก่อนอัปไฟล์/เรียกตัวตรวจ · ใต้ claim ตรวจซ้ำ (จ่ายแล้ว · สลิปค้าง · ถือช่อง) ·
   //   ไม่ถือ tx/ล็อกข้ามการเรียกตัวตรวจสลิป · ปล่อย claim เสมอ (finally)
+  const grpDue = await groupDueOf(ctx, a.id); // SVC B.15 ▸ สลิปของหัวกลุ่ม = ยอดรวมของกลุ่ม ◂
   const claim = await claimSlipSubmit(ctx, a.id, slipKey);
   if (!claim.ok) {
     if (claim.code === "HELD") return sfail("IN_REVIEW", R.IN_REVIEW);
@@ -269,7 +292,7 @@ export async function submitDepositSlip(
       {
         unitId: ctx.unitId, domain: "BOOKING", refType: "APPT_DEPOSIT", refId: a.id, file,
         ...(qrPayload !== undefined ? { qrPayload } : {}),
-        expectedSatang: claim.row.depositSatang, // จากแถวนัด (ไม่รับจาก client)
+        expectedSatang: grpDue ? grpDue.due : claim.row.depositSatang, // จากแถวนัด (ไม่รับจาก client) · กลุ่ม = Σ ที่ยังไม่จ่าย
         expectedPayerNames: a.customerName ? [a.customerName] : [], // ใช้เทียบเท่านั้น (ตัวตรวจไม่เก็บ)
         idempotencyKey: slipKey,
       },
@@ -334,6 +357,11 @@ export async function onDepositSlipApproved(evt: { tenantId: string; unitId?: st
     await slipAfterPaid(tenantId, ctx.unitId, id, slip.id, amount, f.appt.depositSaleId);
     return;
   }
+  const grp = await groupDueOf(ctx, id);
+  if (grp && grp.unpaidIds.length) {
+    await slipApprovedGroup(ctx, grp, slip.id, amount);
+    return;
+  }
   const take = await takeAppointmentDeposit({
     tenantId, unitId: ctx.unitId, appointmentId: id, amountSatang: amount, payType: "PROMPTPAY",
     customerId: f.appt.customerId, customerName: f.appt.customerName || null, serviceName: f.appt.serviceName,
@@ -350,6 +378,35 @@ export async function onDepositSlipApproved(evt: { tenantId: string; unitId?: st
   // V8: ชน/ALREADY ที่ไม่ใช่การลงเงินของสลิปนี้เอง ⇒ เตือนเสมอ (แม้ใบรับเดียวกัน — เงินเข้า 2 ก้อนต้องมีคนเห็น)
   if (bind.kind === "ALREADY" && !(await depositAuditExists(tenantId, id, "booking.deposit.receive", slip.id))) await slipAfterPaid(tenantId, ctx.unitId, id, slip.id, amount, bind.saleId);
   if (bind.kind === "GONE") await logOps("WARN", "booking.deposit", "นัดหายระหว่างลงเงินมัดจำ", { tenantId, detail: `slip=${slip.id}` });
+}
+
+/**
+ * SVC B.15 ▸ สลิปของหัวกลุ่มอนุมัติ: แบ่งยอดตามลำดับสมาชิก (เต็มยอดทีละคน · คนสุดท้ายได้ส่วนที่เหลือ) ⇒ ใบรับต่อสมาชิก (คีย์ booking-deposit-<id สมาชิก>) ·
+ * ผูกทุกแถวในธุรกรรมเดียว · ยอดรวม < Σ ⇒ ไม่มีแถวยืนยันเอง (UNDERPAID) · Σ ใบรับ = ยอดที่เข้า · ยิงซ้ำ = ใบรับเดิม (คีย์ต่อแถว) ◂
+ */
+async function slipApprovedGroup(ctx: { tenantId: string; unitId: string }, grp: GroupDue, slipId: string, amount: number): Promise<void> {
+  const facts = (await Promise.all(grp.unpaidIds.map((x) => depositFactsOf(ctx, x)))).filter((x): x is DepositFacts => !!x);
+  const items: { appointmentId: string; saleId: string | null; amountSatang: number }[] = [];
+  let left = amount;
+  for (const [k, mf] of facts.entries()) {
+    const give = k === facts.length - 1 ? left : Math.min(mf.appt.depositSatang, left);
+    if (give <= 0) break;
+    left -= give;
+    const take = await takeAppointmentDeposit({
+      tenantId: ctx.tenantId, unitId: ctx.unitId, appointmentId: mf.appt.id, amountSatang: give, payType: "PROMPTPAY",
+      customerId: mf.appt.customerId, customerName: mf.appt.customerName || null, serviceName: mf.appt.serviceName,
+    });
+    let saleId: string | null;
+    if (take.ok) saleId = take.saleId;
+    else if (take.code === "CONFLICT") {
+      saleId = await liveDepositReceiptOf(ctx.tenantId, mf.appt.id);
+      if (!saleId) throw new Error(`[booking.deposit] ใบรับของนัดชนคีย์แต่ไม่พบใบที่มีผล (${take.code})`);
+    } else throw new Error(`[booking.deposit] ออกใบรับมัดจำไม่สำเร็จ: ${take.code}`); // คิวลองใหม่ (คีย์ต่อแถว ⇒ ไม่ซ้ำ)
+    items.push({ appointmentId: mf.appt.id, saleId, amountSatang: give });
+  }
+  const bind = await bindGroupDeposit({ tenantId: ctx.tenantId, unitId: ctx.unitId, groupId: grp.groupId, items, via: "SLIP", groupPartial: amount < grp.due, slipId });
+  if (bind === "BUSY") throw new Error("[booking.deposit] แถวนัดไม่ว่าง — คิวลองใหม่");
+  if (bind === "GONE") await logOps("WARN", "booking.deposit", "นัดกลุ่มหายระหว่างลงเงินมัดจำ", { tenantId: ctx.tenantId, detail: `slip=${slipId}` });
 }
 
 // ═════════════════════════ §3.4 จอร้าน ═════════════════════════
@@ -434,6 +491,12 @@ export async function confirmDepositByShop(ctx: ShopCtx, input: { unitId: string
   if (f.appt.depositSatang <= 0 && !f.appt.depositPaidAt) return { ok: false, code: "NO_DEPOSIT", reason: "นัดนี้ไม่ต้องมัดจำ" };
   if (info.state === "NONE" || info.state === "EXPIRED") return { ok: false, code: "BAD_STATE", reason: "นัดนี้ถูกปล่อยช่องหรือจบแล้ว — รับมัดจำไม่ได้" };
   if (info.state === "IN_REVIEW" || info.state === "RECORDING") return { ok: false, code: "SLIP_IN_REVIEW", reason: "นัดนี้มีสลิปรอตรวจ/กำลังบันทึก — ตัดสินที่คิวตรวจสลิป" };
+  // SVC B.15 ▸ หัวกลุ่ม ⇒ ทั้งกลุ่ม (สมาชิกที่ค้างจ่าย/รับไม่ครบ) — ก่อนทางลัดของแถวเดียว (หัวกลุ่มจ่ายแล้วไม่ได้แปลว่าทั้งกลุ่มจ่ายแล้ว) ◂
+  const grp = await groupDueOf(sc, id);
+  if (grp) {
+    const payTypeG = typeof input.payType === "string" && PAY_TYPES.has(input.payType) ? input.payType : "PROMPTPAY";
+    return confirmGroupByShop(s, sc, grp, payTypeG, info);
+  }
   if (info.state === "PAID") return { ok: true, info, duplicated: true };
   if (info.state === "UNDERPAID") {
     const r = await acceptPaidDeposit({ tenantId: s.tenantId, unitId: s.unitId, appointmentId: id, actorUserId: s.userId, amountSatang: info.paidSatang });
@@ -465,6 +528,56 @@ export async function confirmDepositByShop(ctx: ShopCtx, input: { unitId: string
   return { ok: true, info: now };
 }
 
+/**
+ * SVC B.15 ▸ ร้านยืนยันมัดจำที่หัวกลุ่ม ⇒ ใบรับต่อสมาชิก (ยอด = มัดจำของแถว) + ทุกแถวจ่ายแล้ว/CONFIRMED พร้อมกันในธุรกรรมเดียว ·
+ * จองสิทธิ์รับเงินบนทุกสมาชิกก่อนออกใบรับ (expireDepositHolds ข้ามทั้งกลุ่ม · ถูกปล่อยไปก่อน ⇒ ไม่รับเงิน) · ยิงซ้ำ/พร้อมกัน ⇒ ใบรับเดิม ◂
+ */
+const GROUP_CONFIRM_KEY = "bq-shop-confirm";
+async function confirmGroupByShop(s: { tenantId: string; unitId: string; userId: string }, sc: { tenantId: string; unitId: string }, grp: GroupDue, payType: string, leaderInfo: DepositInfo): Promise<ConfirmOut> {
+  const facts = (await Promise.all(grp.unpaidIds.map((x) => depositFactsOf(sc, x)))).filter((x): x is DepositFacts => !!x);
+  const leaderAfter = async (): Promise<DepositInfo> => {
+    const again = await depositFactsOf(sc, grp.allIds[0]);
+    return again ? infoOf(again) : leaderInfo;
+  };
+  // รับไม่ครบ (สลิปกลุ่มแบ่งไม่พอ) ⇒ ร้านยอมรับยอดที่ได้ต่อแถว (V21 · ไม่ออกใบรับเพิ่ม)
+  for (const mf of facts) {
+    const mi = infoOf(mf);
+    if (mi.state !== "UNDERPAID") continue;
+    const r = await acceptPaidDeposit({ tenantId: s.tenantId, unitId: s.unitId, appointmentId: mf.appt.id, actorUserId: s.userId, amountSatang: mi.paidSatang });
+    if (r === "BUSY") return { ok: false, code: "BUSY", reason: R.BUSY };
+  }
+  const awaiting = facts.filter((mf) => infoOf(mf).state === "AWAITING");
+  if (!awaiting.length) return { ok: true, info: await leaderAfter(), duplicated: true };
+  const ids = awaiting.map((mf) => mf.appt.id);
+  const claim = await claimGroupDeposit(sc, ids, GROUP_CONFIRM_KEY);
+  if (claim === "BUSY") return { ok: false, code: "BUSY", reason: R.BUSY };
+  if (claim === "HELD") return { ok: false, code: "SLIP_IN_REVIEW", reason: "นัดนี้มีสลิปรอตรวจ/กำลังบันทึก — ตัดสินที่คิวตรวจสลิป" };
+  if (claim === "GONE") return { ok: false, code: "BAD_STATE", reason: "นัดนี้ถูกปล่อยช่องหรือจบแล้ว — รับมัดจำไม่ได้" };
+  try {
+    const items: { appointmentId: string; saleId: string | null; amountSatang: number }[] = [];
+    for (const mf of awaiting) {
+      const take = await takeAppointmentDeposit({
+        tenantId: s.tenantId, unitId: s.unitId, appointmentId: mf.appt.id, amountSatang: mf.appt.depositSatang, payType: payType as "PROMPTPAY" | "TRANSFER" | "CASH",
+        customerId: mf.appt.customerId, customerName: mf.appt.customerName || null, serviceName: mf.appt.serviceName,
+      });
+      let saleId: string | null;
+      if (take.ok) saleId = take.saleId;
+      else if (take.code === "SHIFT_REQUIRED") return { ok: false, code: "SHIFT_REQUIRED", reason: take.reason };
+      else if (take.code === "CONFLICT") {
+        saleId = await liveDepositReceiptOf(s.tenantId, mf.appt.id);
+        if (!saleId) return { ok: false, code: "BUSY", reason: R.BUSY };
+      } else return { ok: false, code: "BUSY", reason: take.reason };
+      items.push({ appointmentId: mf.appt.id, saleId, amountSatang: mf.appt.depositSatang });
+    }
+    const bind = await bindGroupDeposit({ tenantId: s.tenantId, unitId: s.unitId, groupId: grp.groupId, items, via: "SHOP", groupPartial: false, actorUserId: s.userId, payType });
+    if (bind === "BUSY") return { ok: false, code: "BUSY", reason: R.BUSY };
+    if (bind === "GONE") return { ok: false, code: "NOT_FOUND", reason: SHOP_NF };
+  } finally {
+    for (const x of ids) await releaseSlipSubmit(sc, x, GROUP_CONFIRM_KEY);
+  }
+  return { ok: true, info: await leaderAfter() };
+}
+
 type RefundOut = { ok: true; info: DepositInfo; duplicated?: true } | { ok: false; code: "NOT_FOUND" | "BAD_STATE" | "BAD_INPUT" | "SHIFT_REQUIRED" | "BUSY"; reason: string };
 
 export async function refundDepositByShop(ctx: ShopCtx, input: { unitId: string; appointmentId: string; reason: string }): Promise<RefundOut> {
@@ -474,10 +587,39 @@ export async function refundDepositByShop(ctx: ShopCtx, input: { unitId: string;
   const f = await depositFactsOf(sc, typeof input.appointmentId === "string" ? input.appointmentId : "");
   if (!f) return { ok: false, code: "NOT_FOUND", reason: SHOP_NF };
   const info = infoOf(f);
+  // SVC B.15 ▸ หัวกลุ่ม ⇒ คืนทุกสมาชิกที่ค้างคืน (ทีละแถว · ใบคืนต่อใบรับ) ◂
+  const grp = await groupDueOf(sc, f.appt.id);
+  if (grp) {
+    const reasonG = typeof input.reason === "string" ? input.reason.normalize("NFKC").trim() : "";
+    if (reasonG.length < 1 || reasonG.length > 200 || /[\u0000-\u001F\u007F]/.test(reasonG)) return { ok: false, code: "BAD_INPUT", reason: "ใส่เหตุผลการคืนเงิน 1–200 ตัวอักษร" };
+    let any = false;
+    let fresh = false;
+    for (const x of grp.allIds) {
+      const mf = x === f.appt.id ? f : await depositFactsOf(sc, x);
+      if (!mf) continue;
+      const mi = infoOf(mf);
+      if (mi.state !== "REFUND_DUE" && mi.state !== "FORFEIT_PENDING") continue;
+      any = true;
+      const r = await refundOne(s, sc, mf, mi, reasonG);
+      if (!r.ok) return r;
+      if (!r.duplicated) fresh = true;
+    }
+    if (!any) {
+      if (info.state === "REFUNDED") return { ok: true, info, duplicated: true };
+      return { ok: false, code: "BAD_STATE", reason: "คืนได้เฉพาะมัดจำที่ค้างคืน (นัดถูกยกเลิก/ไม่มา) — ยกเลิกนัดก่อน" };
+    }
+    const again = await depositFactsOf(sc, f.appt.id);
+    return { ok: true, info: again ? infoOf(again) : info, ...(!fresh ? { duplicated: true as const } : {}) };
+  }
   if (info.state === "REFUNDED") return { ok: true, info, duplicated: true };
   if (info.state !== "REFUND_DUE" && info.state !== "FORFEIT_PENDING") return { ok: false, code: "BAD_STATE", reason: "คืนได้เฉพาะมัดจำที่ค้างคืน (นัดถูกยกเลิก/ไม่มา) — ยกเลิกนัดก่อน" };
   const reason = typeof input.reason === "string" ? input.reason.normalize("NFKC").trim() : "";
   if (reason.length < 1 || reason.length > 200 || /[\u0000-\u001F\u007F]/.test(reason)) return { ok: false, code: "BAD_INPUT", reason: "ใส่เหตุผลการคืนเงิน 1–200 ตัวอักษร" };
+  return refundOne(s, sc, f, info, reason);
+}
+
+/** คืนมัดจำของนัดหนึ่งแถว (ทางเดิมของ refundDepositByShop ทุกขั้น — แยกออกมาให้ทางกลุ่มใช้ซ้ำ) */
+async function refundOne(s: { tenantId: string; unitId: string; userId: string }, sc: { tenantId: string; unitId: string }, f: DepositFacts, info: DepositInfo, reason: string): Promise<RefundOut> {
   if (!f.appt.depositSaleId || !f.dep) return { ok: false, code: "BAD_STATE", reason: "มัดจำนี้ไม่ได้ออกใบรับในระบบขาย — คืนที่หน้าบิลแบบเดิม" };
   // V11: ตรวจใต้ล็อกแถวนัดว่ายังจบแบบไม่ใช้บริการ + อ้างใบรับเดิม (ไม่ถือล็อกข้ามธุรกรรมคืนเงินของ POS — หนี้)
   const lk = await lockForRefund(sc, f.appt.id, f.appt.depositSaleId);

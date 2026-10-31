@@ -1042,6 +1042,7 @@ try {
     eq(rows.map((a) => [a.status, a.depositPaidAt !== null]), [["CONFIRMED", true], ["CONFIRMED", true]], "แถว");
     const m = await moneyOf(d1!.ids);
     eq([m.rc.reduce((t, x) => t + x.grand, 0), m.paid], [DEP_PAIR, DEP_PAIR], "ใบรับ/PosDeposit");
+    await pump(); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b15-D3-pump) GL ใบรับลงผ่าน outbox pos.sale.paid — แบบเดียวกับข้อ GL ทุกข้อของ B.8
     const l = await jv(m.rc.map((x) => x.id));
     eq([netCr(l, (c) => c === "2110" || c === "2200"), -netCr(l, (c) => c.startsWith("1")), balanced(l)], [DEP_PAIR, DEP_PAIR, true], "GL");
     const v = await GR.of()(cD, d1!.groupId);
@@ -1098,7 +1099,13 @@ try {
     const m = await moneyOf(g.ids);
     const l = await jv([...m.rc.map((x) => x.id), ...fb.map((x) => x.id)]);
     const lf = await jv(fb.map((x) => x.id));
-    eq([balanced(l), netCr(lf, (c) => c.startsWith("4") || c === "2200")], [true, FORFEIT_PAIR], "GL");
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b15-D7-vat) แบบบัญชี B.8 (F-2 "2200 = VAT ครั้งเดียว"): VAT ลงตอนใบรับมัดจำ · บิลริบลงรายได้ = ฐานภาษีของยอดริบต่อแถว
+    //   เดิมคาด รายได้+2200 ในบิลริบ = ${FORFEIT_PAIR} ขัดแบบ B.8 · ความเข้มคงไว้: ฐานภาษีต่อแถวแบบ splitIncludedVat ตรงทุกสตางค์ + บิลริบไม่ลง 2200 ซ้ำ + GL รวมสมดุล
+    const vatMod = (await tryImport<{ splitIncludedVat: (g: number, bp: number) => { baseSatang: number; vatSatang: number } }>("@/lib/money/vat" as string)).mod;
+    ok(!!vatMod, "โหลด money/vat ไม่ได้");
+    const baseOf = (g: number) => vatMod!.splitIncludedVat(g, 700).baseSatang;
+    const expBase = baseOf(Math.floor(DEP_OIL * 50 / 100)) + baseOf(Math.floor(DEP_ARO * 50 / 100));
+    eq([balanced(l), netCr(lf, (c) => c.startsWith("4")), netCr(lf, (c) => c === "2200")], [true, expBase, 0], "GL");
   });
   await st("D-8", `คู่รักผ่าน bookAppointment ONLINE (staffCount 2) ⇒ groupId · 2 แถว · มัดจำรวม ${DEP_OIL * 2} · หน้าจ่ายหัวกลุ่มยอดเดียวกัน`, async () => {
     needTpl();
