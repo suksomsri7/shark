@@ -544,6 +544,27 @@ const DEFS: SettingDef[] = [
     key: "rooms.payment.partial", type: "enum", labelTh: "รับชำระบางส่วน", // #58
     schema: z.enum(["ALLOW_CARRY_FORWARD", "DENY"]), defaults: { _fallback: "ALLOW_CARRY_FORWARD" }, chain: U, sensitivity: "MONEY",
   }),
+  // SVC D.10 ▸ ตรวจสลิป/รับเงินหอ (ใบสั่ง ledger/svc-briefs/svc-brief-d.10.md §2) ◂
+  def({
+    key: "rooms.payment.afterPaidSlip", type: "enum", labelTh: "สลิปที่อนุมัติหลังบิลจ่ายครบแล้ว",
+    helpTh: "พักให้พนักงานตัดสิน = ยังไม่ลงบัญชีจนกว่าจะเลือกเก็บเป็นเงินรับล่วงหน้าหรือคืนเงิน · เก็บเป็นเงินรับล่วงหน้า = ลงบัญชีทันที ไม่ใช่รายได้",
+    schema: z.enum(["REVIEW", "CREDIT"]), defaults: { _fallback: "REVIEW" }, chain: U, sensitivity: "MONEY",
+  }),
+  def({
+    key: "rooms.payment.notifyReceipt", type: "bool", labelTh: "ส่งใบเสร็จให้ผู้เช่าทาง LINE อัตโนมัติเมื่อรับเงิน",
+    schema: z.boolean(), defaults: { _fallback: true }, chain: U,
+  }),
+  def({
+    key: "rooms.payment.chatSlipKeepDays", type: "days", labelTh: "เก็บรูปสลิปจากแชทที่ยังไม่แนบบิล (วัน)",
+    helpTh: "เก็บเฉพาะรูปจากผู้เช่าที่มีบิลค้างหลายใบ ให้พนักงานเลือกบิลเอง · เกินกำหนดระบบลบรูปให้",
+    schema: z.number().int().min(1).max(90), defaults: { _fallback: 30 }, chain: U,
+  }),
+  tpl("rooms.msg.slipRejected", "ข้อความแจ้งสลิปไม่ผ่าน", ["tenantName", "roomNo", "unitName", "amount", "reason", "payLink"],
+    "เรียนคุณ{tenantName} สลิปห้อง {roomNo} ยอด {amount} ยังไม่ผ่านการตรวจ เนื่องจาก {reason} รบกวนชำระหรือแนบสลิปใหม่ที่ {payLink} ขอบคุณค่ะ — {unitName}",
+    "Dear {tenantName}, the slip for room {roomNo} ({amount}) could not be accepted: {reason}. Please pay or attach a new slip at {payLink}. Thank you — {unitName}"),
+  tpl("rooms.msg.payMore", "ข้อความขอให้โอนเพิ่ม", ["tenantName", "roomNo", "unitName", "amount", "payLink"],
+    "เรียนคุณ{tenantName} ได้รับเงินห้อง {roomNo} แล้ว ยังขาดอีก {amount} รบกวนโอนเพิ่มที่ {payLink} ขอบคุณค่ะ — {unitName}",
+    "Dear {tenantName}, we received your payment for room {roomNo}. {amount} is still due. Please pay the balance at {payLink}. Thank you — {unitName}"),
 
   // ── ซ่อม · ประกาศ · พัสดุ (#59–62) ──
   def({
@@ -819,6 +840,7 @@ const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
   "rooms.lease.reservationAppliesTo": { DEPOSIT: "หักเข้าเงินประกัน", FIRST_RENT: "หักเข้าค่าเช่างวดแรก" },
   "rooms.lease.signMethod": { ON_SCREEN: "เซ็นบนหน้าจอ", PAPER: "เซ็นบนกระดาษ" },
   "rooms.payment.partial": { ALLOW_CARRY_FORWARD: "รับได้ ยอดค้างยกไปงวดถัดไป", DENY: "ไม่รับ ต้องจ่ายเต็มจำนวน" },
+  "rooms.payment.afterPaidSlip": { REVIEW: "พักให้พนักงานตัดสิน", CREDIT: "เก็บเป็นเงินรับล่วงหน้า" }, // SVC D.10 ◂
   "rooms.access.roomEntry": { PERMISSION_EACH_TIME: "ขออนุญาตทุกครั้ง", STANDING_PERMISSION: "ขออนุญาตไว้ล่วงหน้าในสัญญา" },
   "rooms.access.managerScope": { UNIT: "ทั้งหอ", BUILDING: "เฉพาะอาคารที่ดูแล" },
 };

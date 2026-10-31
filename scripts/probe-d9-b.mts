@@ -651,14 +651,17 @@ try {
     const m = mark();
     const ia = (k: string, n: number) => ({ op: "image", tag: k, ctx: pctx(k), messageId: `9${Date.now() % 1_000_000_000}3${n}` });
     const before = await slipsOn([BILL.IA1.id, BILL.IA2.id, BILL.IM.id, BILL.IM2.id]);
-    const outs = (await procs([[ia("IA", 1), ia("IA", 2)], [ia("IM", 3), ia("IM", 4)], [ia("CN", 5), ia("PTo2", 6), { op: "image", tag: "forged", ctx: { ...pctx("CN"), partyId: P.PT }, messageId: `9${Date.now() % 1_000_000_000}37` }]])).flat();
+    // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-5): D.10 R8 เก็บรูปกรณีกำกวม (IA/IM ดึงรูปได้) ⇒ นับการดึงรูปเฉพาะ messageId ของผู้ส่งที่ไม่รู้จัก (CN · PTo2) ต้อง = 0
+    const unk = [ia("CN", 5), ia("PTo2", 6)];
+    const unkMids = new Set(unk.map((x) => x.messageId));
+    const outs = (await procs([[ia("IA", 1), ia("IA", 2)], [ia("IM", 3), ia("IM", 4)], [...unk, { op: "image", tag: "forged", ctx: { ...pctx("CN"), partyId: P.PT }, messageId: `9${Date.now() % 1_000_000_000}37` }]])).flat();
     const after = await slipsOn([BILL.IA1.id, BILL.IA2.id, BILL.IM.id, BILL.IM2.id]);
     const res = Object.fromEntries(outs.map((o) => [`${o.tag}`, { h: o.r?.handled, a: !!o.r?.attached, reply: !!o.r?.reply }]));
-    const gets = contentGets(m).length;
+    const gets = contentGets(m).filter((r) => [...unkMids].some((mid) => r.path.includes(`/${mid}/`))).length; // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-5)
     const ambOk = outs.filter((o) => o.tag === "IA" || o.tag === "IM").every((o) => o.r?.handled === true && o.r?.attached === null);
     const unkOk = outs.filter((o) => o.tag === "CN" || o.tag === "PTo2").every((o) => o.r?.handled === false && o.r?.attached === null && !o.r?.reply);
     const forged = outs.find((o) => o.tag === "forged");
-    rec("IA-1", after.length === before.length && ambOk && unkOk && gets <= (forged?.r?.attached ? 1 : 0) && !badOf(outs).length, "CRITICAL", "กำกวม (Party 2 สัญญา · สัญญาเดียวค้าง 2 งวด) / ไม่รู้จัก (ไม่มี Party · ผู้เช่าบน OA อื่น) พร้อมกัน 3 โพรเซส ⇒ ไม่มีสลิป · ไม่ดึงรูปของผู้ไม่รู้จัก",
+    rec("IA-1", after.length === before.length && ambOk && unkOk && gets === 0 /* ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-5) */ && !badOf(outs).length, "CRITICAL", "กำกวม (Party 2 สัญญา · สัญญาเดียวค้าง 2 งวด) / ไม่รู้จัก (ไม่มี Party · ผู้เช่าบน OA อื่น) พร้อมกัน 3 โพรเซส ⇒ ไม่มีสลิป · ไม่ดึงรูปของผู้ไม่รู้จัก",
       { res, slipsBefore: before.length, slipsAfter: after.length, contentGets: gets, forgedCtx: { h: forged?.r?.handled, a: !!forged?.r?.attached }, bad: badOf(outs).slice(0, 2) });
     if (forged?.r?.attached) console.log("    ℹ️ IA-1: ctx ประกอบเอง (partyId ของผู้เช่า + chatContactId ของคนอื่น) แนบได้ — onLineImage เชื่อ ctx.partyId; webhook สร้าง ctx จากแถวผู้ติดต่อเสมอ (ไม่ใช่ทางโจมตีจากภายนอก)");
   });

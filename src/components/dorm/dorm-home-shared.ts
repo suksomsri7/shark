@@ -55,3 +55,13 @@ export function bahtText(satang: number): string {
 export function bahtFloor(satang: number): string {
   return Math.floor(Math.max(0, satang) / 100).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
+
+// SVC D.10 ▸ แท็บ "บิล/รับเงิน" (ภาพ หอ 06) — เฉพาะผู้มี dorm.slip.review หรือ dorm.payment.manual · แทรกก่อน "ตั้งค่า"
+//   แยกจาก dormTabsFor (ผลของ dormTabsFor คงเดิมทุกไบต์) · ผู้เรียกส่งผลของ dormTabsFor + สิทธิ์ ◂
+export const DORM_PAY_TAB = { key: "payments", labelTh: "บิล/รับเงิน", path: "/dorm/payments" } as const;
+export function dormTabsWithPay(tabs: DormTabLink[], pay: boolean, base: string): DormTabLink[] {
+  if (!pay) return tabs;
+  const link = { key: DORM_PAY_TAB.key as unknown as DormTabKey, labelTh: DORM_PAY_TAB.labelTh, href: `${base}${DORM_PAY_TAB.path}` };
+  const at = tabs.findIndex((t) => t.key === "settings");
+  return at < 0 ? [...tabs, link] : [...tabs.slice(0, at), link, ...tabs.slice(at)];
+}

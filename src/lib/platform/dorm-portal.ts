@@ -13,7 +13,7 @@ import { bkkYmd } from "@/lib/core/quiet-hours";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { resolveSettings } from "@/lib/core/settings";
 import { signLink, verifyLink } from "@/lib/core/signed-link";
-import { docLinkInfo, listDocPayments } from "@/lib/modules/account";
+import { docLinkInfo, dormReceiptRows, listDocPayments } from "@/lib/modules/account";
 import {
   portalBillVisible,
   portalFileAssets,
@@ -322,12 +322,14 @@ export async function loadPortalReceipt(token: string, q: { bill: string }, opts
       payments = [{ paidAt: b.paidAt ?? "", amountSatang: b.paidSatang, channelTh: "รับชำระ" }];
     }
     if (!payments.length) return null;
+    // SVC D.10 ▸ R3: เลขใบเสร็จของการรับเงินล่าสุด (ไม่มีใบเสร็จ D.10 = เลขใบแจ้งหนี้เดิม) ◂
+    const lastReceipt = b.docId ? (await dormReceiptRows(g.tenantId, { docIds: [b.docId] })).filter((r) => r.status === "ISSUED").pop() : undefined;
     return {
       unitName: g.lease.unitName,
       roomNumber: g.lease.roomNumber,
       billId: b.id,
       periodLabel: b.periodLabel,
-      docNo: b.docNo,
+      docNo: lastReceipt?.docNo ?? b.docNo,
       titleTh: b.outstandingSatang <= 0 ? "ใบเสร็จรับเงิน" : "หลักฐานการรับชำระ (บางส่วน)",
       totalSatang: b.totalSatang,
       paidSatang: b.paidSatang,

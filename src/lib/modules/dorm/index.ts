@@ -133,6 +133,9 @@ export {
 } from "./portal";
 export type { PortalLeaseRow, PortalBillRow, PortalSlipStatus } from "./portal";
 // ◂ SVC D.9
+// SVC D.10 ▸ ยอดค้างนิยามเดียว (A11) ◂
+export { billBalances, billPaidSatang } from "./balance";
+export type { DormBillBalance } from "./balance";
 // ── SVC D.4 ▸ นำเข้า Excel/CSV (ภาพ หอ 12) — สัญญา ledger/svc-briefs/svc-brief-d.4.md §3 §4 (บล็อกนี้ของใบ D.4 เท่านั้น) ──
 export { uploadImport, guessColumns, previewImport, createImport, undoImport, getImport, listImports, importIssuesCsv } from "./import";
 export type {

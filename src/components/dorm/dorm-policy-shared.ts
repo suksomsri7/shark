@@ -70,6 +70,8 @@ export const DORM_MSG_VAR_LABEL_TH: Record<string, string> = {
   receivedDate: "วันที่รับ",
   pickupLink: "ลิงก์รับพัสดุ",
   daysWaiting: "จำนวนวันที่รอ",
+  // SVC D.10 ▸ ตัวแปรข้อความสลิปไม่ผ่าน (rooms.msg.slipRejected) ◂
+  reason: "เหตุผล",
 };
 
 /** ข้อความแม่แบบ → ส่วนข้อความ/ตัวแปร (ตัวแปรที่ไม่รู้จักคงเป็นข้อความเดิมโดยไม่มีวงเล็บ) */
