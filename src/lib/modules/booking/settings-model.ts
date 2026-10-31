@@ -42,12 +42,16 @@ import {
   type HoursSource,
   type MessagesModel,
   type PolicyModel,
+  type ResourcesModel,
+  type ResourceViewRow,
   type RoleColumn,
   type ServicesModel,
   type StaffModel,
 } from "@/components/booking/settings/booking-settings-shared";
 import { updateStaffAccess } from "@/lib/staff/service";
 import { canBookingAction } from "./access";
+import { isResourceKind, kindsFromSetting, kindsLabelTh, RESOURCE_KIND_LABELS_TH } from "./resource-kinds"; // SVC B.13
+import type { ResourceRow } from "./resources"; // SVC B.13
 
 type Unit = { id: string; name: string; slug: string };
 type PageQuery = { unitId: string; page: string; serviceId?: string; staffId?: string; msgKind?: string };
@@ -372,7 +376,7 @@ async function servicesModel(actor: SettingsActor, ctx: SettingsCtx, unit: Unit,
     loadSettingsForm(actor, ctx, { domains: ["booking"], unitId: unit.id }),
     sel ? loadSettingsForm(actor, ctx, { domains: ["booking"], unitId: unit.id, scope: "SERVICE", scopeId: sel.id }) : Promise.resolve(null),
     whoCanMap(ctx, unit.id, staff),
-    services.length ? resolveSettingsMany(ctx, [K_WALKIN, K_RESOURCE], services.map((s) => ({ unitId: unit.id, serviceId: s.id }))) : Promise.resolve([]),
+    services.length ? resolveSettingsMany(ctx, [K_WALKIN, K_RESOURCE, LAYOUT.serviceKindsKey], services.map((s) => ({ unitId: unit.id, serviceId: s.id }))) : Promise.resolve([]),
   ]);
   if (!shopFull) return null;
   const shopForm = pickForm(shopFull, shopFieldKeys("services", fieldsOf(shopFull)));
@@ -383,9 +387,11 @@ async function servicesModel(actor: SettingsActor, ctx: SettingsCtx, unit: Unit,
     const w = svcSets[i]?.[K_WALKIN]?.value;
     const walkIn = isRec(w) && w.enabled === true && (w.closeAtOrAboveMin === null || (typeof w.closeAtOrAboveMin === "number" && s.durationMin < w.closeAtOrAboveMin));
     const rr = svcSets[i]?.[K_RESOURCE]?.value;
+    // SVC B.13 ▸ คอลัมน์ "ต้องใช้" = ชนิดที่บริการประกาศ (ป้ายไทย) · ยังไม่ประกาศ ⇒ ป้ายแสดงผลเดิม (#14 resourceRule) ◂
+    const kinds = kindsFromSetting(svcSets[i]?.[LAYOUT.serviceKindsKey]?.value);
     return {
       ...s,
-      requiresTh: typeof rr === "string" ? (resDef?.enumLabelsTh?.[rr] ?? "—") : "—",
+      requiresTh: kinds.length ? kindsLabelTh(kinds) : typeof rr === "string" ? (resDef?.enumLabelsTh?.[rr] ?? "—") : "—",
       canCount: staff.filter((x) => who.can(x.id, s.id)).length,
       staffTotal: staff.length,
       walkIn,
@@ -477,6 +483,57 @@ async function staffModel(actor: SettingsActor, ctx: SettingsCtx, unit: Unit, ba
     rows,
     selectedId: sel?.id ?? null,
     week,
+  };
+}
+
+// ───────────────────────── SVC B.13 ▸ จอง 12 ส่วนทรัพยากร ─────────────────────────
+
+const TH_MONTH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+/** "5 พ.ย." ของวันไทย (epoch + 7 ชม. · ไม่ใช้นาฬิกาเครื่อง) — ปลายช่วงพอดีเที่ยงคืน = วันก่อนหน้า (ถึงสิ้นวันนั้น) */
+function thDay(iso: string): string {
+  const ms = Date.parse(iso) + 7 * 3_600_000;
+  const d = new Date(ms - (ms % 86_400_000 === 0 ? 1 : 0));
+  return `${d.getUTCDate()} ${TH_MONTH[d.getUTCMonth()]}`;
+}
+
+/**
+ * โมเดลตาราง "ห้อง · เตียง · อุปกรณ์" (JSON ล้วน) จากผลของ listResources —
+ * ใช้กับบริการ = บริการ active ที่ประกาศชนิดนั้น (อนุมาน §9 ข้อ 2) · สถานะ ใช้งาน / ปิดซ่อมถึง … / ปิดใช้
+ */
+export async function bookingResourcesModel(actor: SettingsActor, ctx: SettingsCtx, unitId: string, rows: readonly ResourceRow[], opts?: { now?: Date }): Promise<ResourcesModel | null> {
+  const unit = await bookingUnit(actor, ctx, unitId);
+  if (!unit) return null;
+  const nowMs = (opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date()).getTime();
+  const services = await activeServices(ctx, unit.id);
+  const sets = services.length ? await resolveSettingsMany(ctx, [LAYOUT.serviceKindsKey], services.map((x) => ({ unitId: unit.id, serviceId: x.id }))) : [];
+  const byKind = new Map<string, string[]>();
+  services.forEach((x, i) => {
+    for (const k of kindsFromSetting(sets[i]?.[LAYOUT.serviceKindsKey]?.value)) byKind.set(k, [...(byKind.get(k) ?? []), x.name]);
+  });
+  const view: ResourceViewRow[] = rows.map((r) => {
+    const live = r.maintenance.find((w) => Date.parse(w.startAt) <= nowMs && (w.endAt === null || Date.parse(w.endAt) > nowMs));
+    const status = !r.active ? "OFF" : live ? "MAINT" : "ACTIVE";
+    return {
+      id: r.id,
+      name: r.name,
+      kind: r.kind,
+      kindTh: isResourceKind(r.kind) ? RESOURCE_KIND_LABELS_TH[r.kind] : r.kind,
+      capacity: r.capacity,
+      cleanupMin: r.cleanupMin,
+      sortOrder: r.sortOrder,
+      active: r.active,
+      servicesTh: (byKind.get(r.kind) ?? []).join(" · ") || "—",
+      status,
+      statusTh: status === "OFF" ? "ปิดใช้" : live ? (live.endAt ? `ปิดซ่อมถึง ${thDay(live.endAt)}` : "ปิดซ่อม (ยังไม่กำหนดวันเปิด)") : "ใช้งาน",
+      maintenance: r.maintenance.map((w) => ({ startAt: w.startAt, endAt: w.endAt, note: w.note ?? null })),
+    };
+  });
+  const m = membershipOf(actor);
+  return {
+    rows: view,
+    total: view.filter((r) => r.active).length,
+    underRepair: view.filter((r) => r.status === "MAINT").length,
+    canEdit: canBookingAction(m, unit.id, "updateResourceAction"),
   };
 }
 

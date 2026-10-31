@@ -187,6 +187,23 @@ model SvcResource {
   @@index([tenantId, unitId])
 }
 
+// SVC B.13 — ช่วงปิดซ่อมของทรัพยากร (มติผู้คุม R1 ทาง A · migration svc_b13) · ไม่มี FK (แบบ B.0)
+//   endAt null = ปิดจนกว่าจะปลด · เขียน/ตรวจ IN_USE ใต้ล็อกแถว SvcResource เดียวกับทางจอง
+model SvcResourceBlock {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String
+  resourceId  String
+  startAt     DateTime
+  endAt       DateTime?
+  reason      String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([tenantId, resourceId, startAt])
+}
+
 // วันหยุด/เวลาพิเศษรายวัน (11 ส.ค. 2026 — เจ้าของทัก: เดิมตั้งได้แค่รายสัปดาห์)
 // ใช้ทับ BookingHours ของ weekday นั้นเฉพาะวันที่ระบุ
 //   closed=true  → ปิดทั้งวัน (ปีใหม่ สงกรานต์ ลาพักร้อน)

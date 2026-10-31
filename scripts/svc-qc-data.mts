@@ -1238,3 +1238,42 @@ export const SQC_WAITLIST_SCENE = {
   reasonMustNotContain: ["ไม่มา", "no-show", "no show"],
 } as const;
 // ◂ SVC B.17
+
+// SVC B.13 ▸ บล็อกของใบ B.13 เท่านั้น (ทรัพยากรร้านนวด · ภาพ จอง 12 ส่วนทรัพยากร + 11 คอลัมน์ "ต้องใช้") — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-b.13.md §8 · ข้อสอบ scripts/qc-svc-b.13.mts (Q · V-1) · ฉาก scripts/svc-qc-resource-scene.mts (builder)
+//   🔴 ฉากนี้เขียนค่าตั้งเฉพาะชั้น SERVICE/RESOURCE ของหน่วย massage — ห้ามเขียนชั้น TENANT/UNIT (ข้อสอบ Q-4 เทียบก่อน/หลัง) · ไม่สร้างนัด
+//   ตัวเลขจาก README จองคิว ("เตียงไทย 5 (ปิดซ่อม 1) · โซฟานวดเท้า 3 · ห้องน้ำมัน A/B · ห้องคู่ VIP 1 · ชุดหินร้อน") = SQC_PENDING.massage.resources
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcResourceKind = "CHAIR" | "BED" | "SOFA" | "ROOM" | "COUPLE_ROOM" | "EQUIPMENT" | "EXAM_ROOM";
+export type SqcResource = { id: string; name: string; kind: SqcResourceKind; capacity: number; cleanupMin: number; sortOrder: number };
+/** 12 ชิ้น ตามภาพ 12 (เก็บ/เตรียม · รับได้) · id ตายตัว (prefix svcqc-res-) */
+export const SQC_RESOURCE_SCENE = {
+  unit: "massage" as SqcUnitKey,
+  idPrefix: "svcqc-res-",
+  resources: [
+    ...[1, 2, 3, 4, 5].map((n) => ({ id: `svcqc-res-bed-${n}`, name: `เตียงนวดไทย ${n}`, kind: "BED", capacity: 1, cleanupMin: 5, sortOrder: n })),
+    ...[1, 2, 3].map((n) => ({ id: `svcqc-res-sofa-${n}`, name: `โซฟานวดเท้า ${n}`, kind: "SOFA", capacity: 1, cleanupMin: 0, sortOrder: 10 + n })),
+    { id: "svcqc-res-oil-a", name: "ห้องน้ำมัน A", kind: "ROOM", capacity: 1, cleanupMin: 15, sortOrder: 21 },
+    { id: "svcqc-res-oil-b", name: "ห้องน้ำมัน B", kind: "ROOM", capacity: 1, cleanupMin: 15, sortOrder: 22 },
+    { id: "svcqc-res-vip", name: "ห้องคู่ VIP", kind: "COUPLE_ROOM", capacity: 2, cleanupMin: 20, sortOrder: 31 },
+    { id: "svcqc-res-hotstone", name: "ชุดหินร้อน", kind: "EQUIPMENT", capacity: 1, cleanupMin: 10, sortOrder: 41 },
+  ] as SqcResource[],
+  /** ปิดซ่อม (ภาพ 12 "ปิดซ่อมถึง 5 พ.ย." เมื่อวันภาพ = 31 ต.ค.) — สัมพัทธ์กับวันนี้ไทย: เริ่มเมื่อวาน 00:00 · ถึง วันนี้+5 00:00 */
+  maintenance: [{ resourceId: "svcqc-res-bed-5", fromOffsetDays: -1, untilOffsetDays: 5, note: "ปิดซ่อม" }],
+  /** บริการ (ชื่อตาม SQC_MASSAGE_SERVICES) → ชนิดที่ต้องใช้ (ค่าตั้ง booking.service.resourceKinds ชั้น SERVICE) — ภาพ 11 คอลัมน์ "ต้องใช้" */
+  serviceKinds: {
+    "นวดไทย": ["BED"],
+    "นวดไทย+ประคบ": ["BED"],
+    "นวดเท้า": ["SOFA"],
+    "น้ำมันอโรมา": ["ROOM"],
+    "คู่รัก VIP": ["COUPLE_ROOM"],
+    "หินร้อน": ["ROOM", "EQUIPMENT"],
+  } as Record<string, SqcResourceKind[]>,
+  expect: { total: 12, underRepairNow: 1, activeKinds: { BED: 5, SOFA: 3, ROOM: 2, COUPLE_ROOM: 1, EQUIPMENT: 1 } as Record<string, number> },
+} as const;
+/** ภาพ จอง 12 (ส่วนทรัพยากร) — ก่อนถ่าย: seed → booking-settings scene (B.11) → resource scene (B.13) · ถ่าย --user owner */
+SQC_VISUAL_SPECS["b.13"] = [
+  { name: "booking-staff-resources", path: `/app/u/${SQC_UNITS.massage.slug}/booking/staff?staff=${encodeURIComponent("พี่นก")}` },
+  { name: "booking-services-resources", path: `/app/u/${SQC_UNITS.massage.slug}/booking/services?service=${encodeURIComponent("น้ำมันอโรมา")}` },
+];
+// ◂ SVC B.13

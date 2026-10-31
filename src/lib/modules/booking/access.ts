@@ -29,6 +29,10 @@ export const BOOKING_ACTIONS: Record<string, readonly string[]> = {
   setServiceBookingAction: ["booking.service.update"],
   applyBookingRolePresetAction: ["booking.settings.edit"],
   excuseNoShowAction: ["booking.deposit.waive"], // SVC B.17 ▸ ร้านยกเว้นไม่มาครั้งนี้ (R11) ◂
+  // SVC B.13 ▸ ทรัพยากร (ห้อง/เตียง/อุปกรณ์) — สร้าง/แก้/ปิดซ่อม = ค่าตั้งของร้าน ◂
+  createResourceAction: ["booking.settings.edit"],
+  updateResourceAction: ["booking.settings.edit"],
+  setResourceMaintenanceAction: ["booking.settings.edit"],
 };
 
 const STATUS_KEYS: Record<string, readonly string[]> = {
