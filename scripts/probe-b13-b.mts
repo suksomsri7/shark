@@ -266,7 +266,7 @@ async function finishSetup(list: Unit[]) {
 }
 
 // ═══════════ ตัวกวาด invariant (SQL) ═══════════
-type Occ = { id: string; s: number; e: number; ps: number };
+type Occ = { id: string; s: number; e: number; ps: number; pe: number };
 async function holdsOf(unitId: string): Promise<{ res: any[]; occ: Map<string, Occ[]>; blocks: Map<string, { s: number; e: number }[]>; bad: string[] }> {
   const res = await q(`SELECT id, kind, capacity, "cleanupMin", active FROM "SvcResource" WHERE "unitId" = $1`, [unitId]);
   const rows = await q(`SELECT a.id, a.status::text AS status, a."serviceId", a."startAt", a."endAt", a."resourceId", a."plannedStartAt", a."startedAt", a."policySnapshot", s."bufferMin", a."tenantId"
@@ -282,16 +282,19 @@ async function holdsOf(unitId: string): Promise<{ res: any[]; occ: Map<string, O
     const rids: string[] = Array.isArray(job.resourceIds) ? job.resourceIds : a.resourceId ? [a.resourceId] : [];
     const s = a.startAt.getTime();
     const dur = typeof job.durationMin === "number" ? job.durationMin * MIN : a.endAt.getTime() - s - (job.bufferMin ?? a.bufferMin) * MIN;
-    let e = s + dur; let ps = s;
-    if (a.status === "ARRIVED" && a.plannedStartAt) { e = Math.max(e, a.plannedStartAt.getTime() + dur); ps = Math.min(ps, a.plannedStartAt.getTime()); }
-    if (a.status === "IN_SERVICE" && a.startedAt) { e = Math.max(e, a.startedAt.getTime() + dur); ps = Math.min(ps, a.startedAt.getTime()); }
+    // มติผู้คุม Q1 (31 ต.ค.): เริ่ม = IN_SERVICE ⇒ startedAt · อื่น ⇒ plannedStartAt ?? startAt · ปลาย = เริ่ม + นาที (ไม่ยืดถึง now)
+    void s;
+    const st0 = a.status === "IN_SERVICE" ? (a.startedAt ?? a.plannedStartAt ?? a.startAt).getTime() : (a.plannedStartAt ?? a.startAt).getTime();
+    const e = st0 + dur;
+    // physical = ใช้ห้องจริง: IN_SERVICE ที่เลยเวลายังอยู่ในห้องถึง now จริง (เฉพาะฉากวันนี้)
+    const pe = a.status === "IN_SERVICE" ? Math.max(e, Date.now()) : e;
     const need = u?.kinds.get(a.serviceId) ?? [];
     if (need.length && rids.length && (rids.length !== need.length || rids.some((x, k) => res.find((r) => r.id === x)?.kind !== need[k]))) bad.push(`KIND ${a.id.slice(-6)} ถือ ${J(rids.map((x) => res.find((r) => r.id === x)?.kind ?? "??"))} ต้อง ${J(need)}`);
     if (need.length && !rids.length) bad.push(`UNBOUND ${a.id.slice(-6)} ${a.status} ไม่ถือทรัพยากร`);
     for (const x of rids) {
       const r = res.find((y) => y.id === x);
       if (!r) { bad.push(`FOREIGN ${a.id.slice(-6)} ถือ ${x}`); continue; }
-      occ.get(x)!.push({ id: a.id, s, e: e + r.cleanupMin * MIN, ps });
+      occ.get(x)!.push({ id: a.id, s: st0, e: e + r.cleanupMin * MIN, ps: st0, pe: pe + r.cleanupMin * MIN });
     }
   }
   return { res, occ, blocks, bad };
@@ -304,8 +307,9 @@ async function sweep(unitId: string): Promise<{ contract: string[]; physical: st
     const xs = occ.get(r.id)!;
     for (const [mode, out] of [["c", contract], ["p", physical]] as const) {
       const sOf = (o: Occ) => (mode === "c" ? o.s : o.ps);
+      const eOf = (o: Occ) => (mode === "c" ? o.e : o.pe);
       for (const x of xs) {
-        const n = xs.filter((y) => sOf(y) <= sOf(x) && y.e > sOf(x)).length;
+        const n = xs.filter((y) => sOf(y) <= sOf(x) && eOf(y) > sOf(x)).length;
         if (n > r.capacity) { out.push(`${r.id.slice(-10)} ซ้อน ${n} > จุ ${r.capacity} ที่ ${HM(sOf(x))}`); break; }
       }
       if (mode === "c") for (const x of xs) if ((blocks.get(r.id) ?? []).some((b) => x.s < b.e && b.s < x.e)) { out.push(`${r.id.slice(-10)} ทับปิดซ่อม ${HM(x.s)}`); break; }
@@ -382,6 +386,7 @@ try {
   await mk("P14o", { staffN: 2, res: room1, svcs: OILS });
   await mk("P14b", { tenant: ids.tB, staffN: 2, res: room1, svcs: OILS });
   await mk("P15", { staffN: 2, res: room1, svcs: OILS });
+  await mk("P17", { staffN: 3, res: room1, svcs: OILS, hours: [0, 1440] });
   await finishSetup(units);
   console.log(`(fixtures พร้อม · ${units.length} หน่วย · วัน ${DS} · now จริง ${new Date().toISOString()})`);
   const dlSetup = await readDeadlocks();
@@ -797,6 +802,25 @@ try {
     });
   }
 
+  // ═══════════ P17 งานกำลังทำเลยเวลา (วันนี้ · นาฬิกาจริง) ∥ จองห้องเดียวกันตอนนี้ — มติ Q1 "ไม่ยืดถึง now" vs ตัววางคิว PL-11 ═══════════
+  if (want("P17")) {
+    console.log("\n── P17: IN_SERVICE เลยเวลา 20 นาที (วันนี้) ⇒ จองห้องเดียวกันอีก 3 นาที ──");
+    await step("P17", async () => {
+      const u = U.P17;
+      const nowMs = Date.now();
+      const nowMin = Math.floor(((nowMs + 7 * 3_600_000) % 86_400_000) / MIN);
+      const apId = T("P17ap");
+      await insertRow("Appointment", { id: apId, tenantId: u.tenantId, unitId: u.id, serviceId: u.svc.OIL, staffId: u.staff[0], startAt: new Date(nowMs - 80 * MIN), endAt: new Date(nowMs - 20 * MIN), status: "IN_SERVICE", startedAt: new Date(nowMs - 80 * MIN), plannedStartAt: new Date(nowMs - 80 * MIN),
+        resourceId: u.res.rA, policySnapshot: JSON.stringify({ job: { durationMin: 60, bufferMin: 0, resourceIds: [u.res.rA] } }), customerName: "เลยเวลา", customerPhone: newPhone(), updatedAt: new Date() });
+      const view = (await RS.walkInNowByService(u.ctx, { now: new Date(nowMs) })).find((r: any) => r.serviceId === u.svc.OIL30);
+      const bk = await BK.bookAppointment(u.ctx, bkIn(u, "OIL30", 1, TODAY, nowMin + 3));
+      const planSaysBusy = !!view && view.startAt !== null && new Date(view.startAt).getTime() > nowMs + 3 * MIN;
+      rec("P17", !(bk.ok && planSaysBusy), "MAJOR",
+        "ด่านเดียว (§2): ตัววางคิวบอกห้องยังไม่ว่าง (งานเลยเวลา ยืดถึง now+5 + เก็บ 15 · PL-11) ⇒ การจองห้องเดียวกันตอนนี้ต้องไม่ผ่าน (มติ Q1 ฝั่งฐานไม่ยืดถึง now)",
+        { nowBkk: HM(nowMs), walkInNow: view ? { start: view.startAt ? HM(new Date(view.startAt).getTime()) : null, limitedBy: view.limitedBy } : null, book: bk.ok ? "OK" : `${bk.code} ${bk.reason ?? ""}` });
+    });
+  }
+
   // ═══════════ P16 fuzz ตัววางคิว (pure) ═══════════
   if (want("P16")) {
     const N = Math.max(100, Number(process.env.PROBE_B13_FUZZ_N ?? 20000) || 20000);
@@ -807,6 +831,7 @@ try {
       const Tm = (m: number) => DAY0 + m * MIN;
       const fails: Record<string, string[]> = { cap: [], block: [], kind: [], past: [], quote: [], late: [], det: [], delay: [] };
       const ts: number[] = [];
+      const q10 = { delayed: [] as number[], onTimeHit: 0, pastWindow: [] as string[], far: [] as string[] };
       for (let k = 0; k < N; k++) {
         const r = mul(9157 + k * 7919);
         const ri = (a: number, b: number) => a + Math.floor(r() * (b - a + 1));
@@ -846,7 +871,7 @@ try {
         const input = { now, settings: { queueOrder: "SINGLE_LINE", backfill: r() < 0.7, safetyBeforeBookingMin: pick([0, 5]), graceMin: 15, noShowAfterMin: 30, lateAction: pick(["RELEASE", "HOLD"]), priorityEnabled: false, walkInMaxWaitMin: 600, overrunExtendMin: 5, minBreakMin: pick([0, 5]), maxJobsPerDay: null }, staff, services, jobs, resources };
         const t0 = performance.now(); const p = PL.planDay(input); ts.push(performance.now() - t0);
         const resOf = (id: string) => resources.find((x) => x.id === id);
-        const occ = new Map<string, { s: number; e: number; j: string; fact: boolean }[]>();
+        const occ = new Map<string, { s: number; e: number; j: string; fact: boolean; gated: boolean; short: boolean }[]>();
         for (const j of p.jobs) {
           if (!(j.state === "SCHEDULED" || j.state === "IN_SERVICE") || j.startAt == null || j.endAt == null) continue;
           const src = jobs.find((x) => x.id === j.jobId);
@@ -856,14 +881,14 @@ try {
           // fact = นัดที่เวลาไม่ขยับ/กำลังทำ · gated = จุดลงที่ §4.5(ค) บังคับตรวจห้อง (walk-in/มาสายเข้าแถว/มาก่อน) · อื่น = นัดที่เลื่อนตามหมอ (BOOKED_DELAYED ฯลฯ)
           const fact = src.kind === "BOOKED" && j.startAt === (src.startedAt ?? src.startAt);
           const gated = src.kind === "WALKIN" || ["LATE_ARRIVAL_AS_WALKIN", "BOOKED_EARLY"].includes(j.reason);
-          for (const id of j.resourceIds) { const x = resOf(id); occ.set(id, [...(occ.get(id) ?? []), { s: j.startAt, e: j.endAt + x.cleanupMin * MIN, j: `${j.jobId}/${j.reason}`, fact, gated }]); }
+          for (const id of j.resourceIds) { const x = resOf(id); occ.set(id, [...(occ.get(id) ?? []), { s: j.startAt, e: j.endAt + x.cleanupMin * MIN, j: `${j.jobId}/${j.reason}`, fact, gated, short: j.resourceShort === true }]); }
         }
         for (const [id, xs] of occ) {
           const x = resOf(id);
           for (const a of xs) {
             const ov = xs.filter((y) => y.s <= a.s && y.e > a.s);
-            if (ov.length > x.capacity && ov.some((y) => !y.fact)) { (ov.some((y) => y.gated) ? fails.cap : fails.delay).push(`#${k} ${id} ${HM(a.s)} cap ${x.capacity} (${ov.map((y) => y.j).join(",")})`); break; }
-            if (!a.fact && x.blocks.some((b: any) => a.s < b.endAt && b.startAt < a.e)) { (a.gated ? fails.block : fails.delay).push(`#${k} ${a.j} ${id} ทับปิดซ่อม`); break; }
+            if (ov.length > x.capacity && ov.some((y) => !y.fact) && !ov.some((y) => y.short && !y.gated)) { (ov.some((y) => y.gated) ? fails.cap : fails.delay).push(`#${k} ${id} ${HM(a.s)} cap ${x.capacity} (${ov.map((y) => y.j).join(",")})`); break; }
+            if (!a.fact && !(a.short && !a.gated) && x.blocks.some((b: any) => a.s < b.endAt && b.startAt < a.e)) { (a.gated ? fails.block : fails.delay).push(`#${k} ${a.j} ${id} ทับปิดซ่อม`); break; }
           }
         }
         // ด่านเดียว: นัดที่ยังไม่มา (CONFIRMED/LATE ไม่ได้เช็กอิน) ที่ตัววางคิวปล่อยช่อง — ฐานยังนับว่าถือห้อง [startAt, startAt+dur+cleanup)
@@ -873,9 +898,30 @@ try {
           const dur = services.find((s) => s.id === src.serviceId)!.durationMin * MIN;
           for (const id of src.resourceIds) {
             const x = resOf(id); const hs = src.startAt, he = src.startAt + dur + x.cleanupMin * MIN;
-            const clash = (occ.get(id) ?? []).filter((y) => !y.fact && y.s < he && hs < y.e);
-            const n = (occ.get(id) ?? []).filter((y) => y.s < he && hs < y.e).length;
-            if (clash.length && n + 1 > x.capacity) fails.late.push(`#${k} ${j.jobId}(${j.state}) ${id} ทับงานที่วางใหม่ ${clash.map((c) => c.j).join(",")}`);
+            // นับ ณ จุดเวลา (point-in-time) — จุดสูงสุดอยู่ที่ hs หรือจุดเริ่มของงานอื่นภายใน [hs, he)
+            const xs2 = (occ.get(id) ?? []).filter((y) => y.j.split("/")[0] !== j.jobId);
+            const pts = [hs, ...xs2.map((y) => y.s).filter((t) => t > hs && t < he)];
+            const peak = Math.max(...pts.map((t) => xs2.filter((y) => y.s <= t && y.e > t).length));
+            const clash = xs2.filter((y) => !y.fact && y.s < he && hs < y.e);
+            if (clash.length && peak + 1 > x.capacity) fails.late.push(`#${k} ${j.jobId}(${j.state}) ${id} ทับงานที่วางใหม่ ${clash.map((c) => c.j).join(",")}`);
+          }
+        }
+        // Q10: นัดที่ถูกเลื่อน "เพราะห้อง" (เทียบแผนเดียวกันที่ไม่สนห้อง) — วัดระยะเลื่อน · เลยหน้าต่างหมอ · ไม่มีสัญญาณ resourceShort
+        {
+          const p0 = PL.planDay({ ...input, services: services.map(({ resourceKinds: _k, ...x }) => { void _k; return x; }), jobs: jobs.map(({ resourceIds: _r, ...x }: any) => { void _r; return x; }), resources: undefined });
+          for (const j of p.jobs) {
+            const src = jobs.find((x) => x.id === j.jobId);
+            if (src.kind !== "BOOKED" || j.state !== "SCHEDULED" || j.startAt == null) continue;
+            const j0 = p0.jobs.find((x: any) => x.jobId === j.jobId);
+            if (!j0 || j0.state !== "SCHEDULED" || j0.startAt == null) continue;
+            const dm = Math.round((j.startAt - j0.startAt) / MIN);
+            if (dm <= 0) continue;
+            q10.delayed.push(dm);
+            if (j0.startAt === src.startAt) q10.onTimeHit++;
+            const st = staff.find((x) => x.id === j.staffId);
+            const wEnd = st ? Math.max(...st.windows.map((w: any) => w.endAt)) : Infinity;
+            if (j.endAt > wEnd && j0.endAt <= wEnd && !j.resourceShort) q10.pastWindow.push(`#${k} ${j.jobId} ${HM(j0.startAt)}→${HM(j.startAt)} จบ ${HM(j.endAt)} > ปิดหมอ ${HM(wEnd)}`);
+            if (dm > 120 && !j.resourceShort && j.reason !== "LATE_ARRIVAL_AS_WALKIN") q10.far.push(`#${k} ${j.jobId}/${j.reason} เลื่อน ${dm} นาที (${HM(j0.startAt)}→${HM(j.startAt)})`);
           }
         }
         if (k % 20 === 0) {
@@ -895,6 +941,11 @@ try {
       rec("P16-fuzz", core, "CRITICAL", `fuzz ${N} ชุด: ความจุ/ปิดซ่อม/ชนิด/เวลาไม่ย้อน/quote/deterministic`, { perf, ...Object.fromEntries(Object.entries(fails).filter(([x]) => x !== "late" && x !== "delay").map(([x, v]) => [x, `${v.length} ${v.slice(0, 3).join(" · ")}`])) });
       rec("P16-late", fails.late.length === 0, "MAJOR", "fuzz: ตัววางคิววางงาน (walk-in/นัดที่เลื่อน) ทับห้องของนัดที่ปล่อยช่อง (RELEASED_LATE/NO_SHOW_DUE) ซึ่งฐานยังนับว่าถือ (§4.6) — สองสูตร", `${fails.late.length} ชุด · ${fails.late.slice(0, 3).join(" · ")}`);
       rec("P16-delay", fails.delay.length === 0, "MINOR", "fuzz: นัดที่ตัววางคิวเลื่อนตามหมอ (BOOKED_DELAYED/STAFF_UNAVAILABLE/BOOKED_MOVED_STAFF) คงห้องเดิมแม้ชนนัดอื่น/ปิดซ่อม และ resourceShort=false (จอ B.14 ไม่เห็น)", `${fails.delay.length} ชุด · ${fails.delay.slice(0, 3).join(" · ")}`);
+      const dl = [...q10.delayed].sort((a, b) => a - b);
+      const q10s = { delayedJobs: dl.length, onTimeDelayedByRoom: q10.onTimeHit, p50: dl[Math.floor(dl.length * 0.5)] ?? 0, p95: dl[Math.floor(dl.length * 0.95)] ?? 0, max: dl[dl.length - 1] ?? 0, over120NoSignal: q10.far.length, pastStaffWindowNoSignal: q10.pastWindow.length };
+      console.log(`   ⏱  Q10 เลื่อนเพราะห้อง: ${J(q10s)}`);
+      rec("P16-q10-window", q10.pastWindow.length === 0, "MAJOR", "Q10: นัดที่ถูกเลื่อนเพราะห้องต้องไม่จบเลยเวลางานของหมอ (ทั้งที่แผนไม่สนห้องจบทัน) โดยไม่มี resourceShort", `${q10.pastWindow.length} · ${q10.pastWindow.slice(0, 3).join(" · ")}`);
+      rec("P16-q10-far", q10.far.length === 0, "MINOR", "Q10: นัด (ไม่นับมาสายเข้าแถว) ที่ถูกเลื่อนเพราะห้อง > 120 นาทีต้องมีสัญญาณ resourceShort (จอ B.14 เห็น)", { ...q10s, sample: q10.far.slice(0, 3) });
       rec("P16-perf", perf.p95 < 50, "MAJOR", "fuzz planDay p95 < 50 ms", perf);
     });
   }
