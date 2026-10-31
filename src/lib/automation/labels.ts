@@ -274,6 +274,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "dorm.announcement.published", label: "เมื่อหอพักเผยแพร่ประกาศถึงผู้เช่าแล้ว" },
   { value: "dorm.bill.paid", label: "เมื่อบิลหอพักชำระครบแล้ว" }, // SVC D.10 ◂
   { value: "dorm.bill.partially_paid", label: "เมื่อบิลหอพักรับชำระบางส่วน" }, // SVC D.10 ◂
+  // SVC D.16 ▸ หอพัก — แจ้งซ่อม · ตัวยิง `dorm/repair.ts` (ผู้เช่าแจ้งซ่อม / งานซ่อมเสร็จ — การ์ดเสร็จ หรือช่างกดเสร็จ)
+  //   payload { unitId, repairId, roomId, category } — ไม่มีชื่อ/เบอร์/ข้อความผู้เช่า (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.repair.created", label: "เมื่อผู้เช่าหอแจ้งซ่อม" },
+  { value: "dorm.repair.done", label: "เมื่องานซ่อมของหอเสร็จแล้ว" },
   // CRM C3.2 ▸ โควตาถึงเกณฑ์ (80 % / 100 %) — ตัวยิง = `crm/quotas.ts#checkReached` (หลัง tx ของการรับเงิน COUNTED / การเข้า WON commit)
   //   key `crm.quota.reached#<systemId>:<ownerType>:<ownerId>:<periodKey>#<threshold>` (R-C.8 · ครั้งเดียวต่อเจ้าของ+งวด+เกณฑ์ ตลอดไป ·
   //   INSERT … ON CONFLICT DO NOTHING) · payload { quotaId, ownerType, ownerId, periodKey, threshold, pct } = id ล้วน (X8)

@@ -221,3 +221,36 @@ export type {
   AnnounceCursor,
 } from "./announce";
 // ◂ SVC D.17
+// ── SVC D.16 ▸ แจ้งซ่อม → บอร์ดงาน → LINE — สัญญา ledger/svc-briefs/svc-brief-d.16.md §3 (บล็อกนี้ของใบ D.16 เท่านั้น) ──
+export {
+  REPAIR_SOURCE_PREFIX,
+  REPAIR_RATE,
+  REPAIR_NF_REASON,
+  repairTicketNo,
+  submitPortalRepair,
+  loadPortalRepairs,
+  ratePortalRepair,
+  repairPortalUrl,
+  listDormRepairs,
+  dormRepairJob,
+  completeDormRepair,
+  linkRepairCard,
+  applyRepairCardState,
+  sendRepairDoneNotice,
+  onRepairDone,
+  runDormRepairJobs,
+} from "./repair";
+export type {
+  RepairStatus,
+  RepairCtx,
+  RepairFile,
+  RepairFileDeps,
+  RepairFailCode,
+  RepairFail,
+  RepairRow,
+  RepairJob,
+  RepairList,
+  PortalRepairItem,
+  PortalRepairView,
+} from "./repair";
+// ◂ SVC D.16
