@@ -591,7 +591,7 @@ try {
     const p = [pushesTo(PTY.QA.ext, m0).length, pushesTo(PTY.QB.ext, m0).length];
     const after = (await logs(`booking:waitlistOpen:${E.QA}:%`)).map((r) => r.status);
     const quietSeen = lq.some(([k, s2]) => k === true && s2 === "SKIPPED_QUIET");
-    return [!!(b?.ok && b2?.ok && quietSeen && lqb === 0 && p[0] === 0 && p[1] === 0 && !after.slice(1).includes("SENT")), { p, lq, lqb, after, b: b?.ok, b2: b2?.ok }];
+    return [!!((b as { ok?: boolean } | undefined)?.ok && (b2 as { ok?: boolean } | undefined)?.ok && quietSeen && lqb === 0 && p[0] === 0 && p[1] === 0 && !after.slice(1).includes("SENT")), { p, lq, lqb, after, b: (b as { ok?: boolean } | undefined)?.ok, b2: (b2 as { ok?: boolean } | undefined)?.ok }];
   });
 
   // ═══════════════ R5 · ช่วงว่างขยาย ═══════════════
