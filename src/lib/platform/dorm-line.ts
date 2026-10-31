@@ -212,7 +212,9 @@ export async function onDormPostback(ctx: PostbackCtx, evt: PostbackEvent, opts?
       return { text: `พัสดุรอรับ — เปิดลิงก์แล้วแสดง QR ให้พนักงานตอนรับของ\n\n${t}` };
     }
     // ◂ SVC D.18
-    default: // announce — จนถึง D.17
+    case "announce": // SVC D.17 ▸ ประกาศที่สัญญาของผู้กดเห็น ≤ 3 ฉบับ (ลิงก์หน้าประกาศของสัญญาตัวเอง) · ไม่เขียนอะไร ◂
+      return (await import("./dorm-announce")).dormAnnounceMenuReply({ tenantId: ctx.tenantId }, leases, { now });
+    default: // ไม่รู้จัก ⇒ ข้อความกลาง (SVC D.17 + D.18 ลงครบแล้ว)
       return { text: T.STAFF_REPLY };
   }
 }

@@ -1254,6 +1254,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   received = แจ้งผู้เช่าทาง LINE (อ่านสด · notifyCustomer · ไม่ throw) · picked_up = no-op · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
   "dorm.parcel.received": withAutomation(async (evt) => (await import("@/lib/modules/dorm")).onParcelReceived(evt)),
   "dorm.parcel.picked_up": withAutomation(async () => {}),
+  // SVC D.17 ▸ เผยแพร่ประกาศหอแล้ว — ยิงจาก `dorm/announce.ts#publishDormAnnouncement` ใน tx เดียวกับ CAS publishedAt · key `dorm.announcement.published:<announcementId>` ·
+  //   payload ตรง 3 คีย์ { unitId, announcementId, audience (kind) } (ไม่มีหัวเรื่อง/เนื้อหา/ชื่อ/เบอร์ · X8) · งานหลัก = ส่ง LINE ผ่าน notifyCustomer
+  //   (อ่านสด · ผู้รับคิด ณ ตอนส่ง · dedupe ต่อคน · ไม่ throw) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.announcement.published": withAutomation(async (evt) => (await import("@/lib/platform/dorm-announce")).onDormAnnouncementPublished(evt)),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

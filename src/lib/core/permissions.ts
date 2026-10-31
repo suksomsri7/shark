@@ -301,7 +301,6 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "dorm.moveout.manage",
       "dorm.deposit.deduct.approve",
       "dorm.repair.manage",
-      "dorm.announce",
       "dorm.settings.legal",
     ],
   },

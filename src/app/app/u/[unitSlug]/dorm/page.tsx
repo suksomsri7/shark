@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { bkkYmd } from "@/lib/core/quiet-hours";
+import { evaluate } from "@/lib/core/rbac";
 import { dormAccess, dormHomeModel } from "@/lib/modules/dorm";
 import { roomBoard } from "@/lib/modules/rooms";
 import RoomBoard from "@/components/rooms/RoomBoard";
@@ -27,9 +28,11 @@ export default async function DormFloorPlanPage({ params }: { params: Promise<{ 
   const cells = await roomBoard(ctx, { unitId: unit.id, date });
   const home = await dormHomeModel(actor, ctx, { unitId: unit.id, date, cells });
   if (!home) notFound();
+  // SVC D.17 ▸ ปุ่ม "ประกาศ" เฉพาะผู้ถือ dorm.announce (จอประกาศตรวจสิทธิ์+ขอบเขตอาคารสดซ้ำเอง) ◂
+  const canAnnounce = evaluate(actor, { module: "dorm", action: "dorm.announce", unitId: unit.id });
 
   return (
-    <DormHome model={home} unitSlug={unitSlug}>
+    <DormHome model={home} unitSlug={unitSlug} announceHref={canAnnounce ? `/app/u/${unitSlug}/dorm/announce` : null}>
       <RoomBoard cells={home.cells} date={home.date} buildings={home.buildings} occupantLabels={home.occupantLabels} finance={home.finance} />
     </DormHome>
   );

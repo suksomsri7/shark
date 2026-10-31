@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import type { DormHomeModel } from "@/lib/modules/dorm";
 import { bahtText, thaiMonthShort, thaiMonthYear, thaiShortDate } from "./dorm-home-shared";
 
-type Props = { model: DormHomeModel; unitSlug: string; children?: ReactNode };
+type Props = { model: DormHomeModel; unitSlug: string; children?: ReactNode; /** SVC D.17 ▸ ลิงก์จอประกาศ (เฉพาะผู้ถือ dorm.announce — หน้าเป็นผู้ตัดสิน) ◂ */ announceHref?: string | null };
 
 const baht = (satang: number) => `฿${bahtText(satang)}`;
 
@@ -46,7 +46,7 @@ function Sub({ children }: { children: ReactNode }) {
   return <span className="text-xs leading-snug text-[color:var(--color-muted)]">{children}</span>;
 }
 
-export default function DormHome({ model, unitSlug, children }: Props) {
+export default function DormHome({ model, unitSlug, children, announceHref }: Props) {
   const k = model.kpi;
   const base = model.basePath || `/app/u/${unitSlug}/dorm`;
   const period = model.billing?.periodKey ?? model.kpi.collected?.periodKey ?? null;
@@ -67,6 +67,12 @@ export default function DormHome({ model, unitSlug, children }: Props) {
         {model.scope.all ? null : (
           <span className="rounded-full bg-[color:var(--color-surface-2)] px-3 py-1 text-xs text-[color:var(--color-ink-soft)]">เห็นเฉพาะอาคารที่ดูแล</span>
         )}
+        {/* SVC D.17 ▸ ปุ่มไปจอประกาศถึงผู้เช่า (มติ R4 · ยังไม่ใช่แท็บ) ◂ */}
+        {announceHref ? (
+          <a data-dorm-announce-link="" href={announceHref} className="ml-auto inline-flex min-h-[44px] items-center rounded-xl border border-[color:var(--color-line)] px-4 text-sm font-semibold text-[color:var(--color-ink)]">
+            ประกาศ
+          </a>
+        ) : null}
       </header>
 
       <section data-dorm-kpi="" aria-label="ภาพรวมหอ" className={`grid min-w-0 grid-cols-1 overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] sm:grid-cols-2 ${cols}`}>
