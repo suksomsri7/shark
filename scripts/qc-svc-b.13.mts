@@ -1155,7 +1155,11 @@ try {
       const m0 = (await apRow(a)).policySnapshot?.job as Record<string, unknown> | undefined;
       ok(m0?.unplacedAt === undefined && m0?.unplacedFor === undefined, `${via} ยกเลิกต้องล้างเครื่องหมาย ${fmt(m0)}`);
       eq((await BK().setAppointmentStatus(ids.tA, u, plain[0], "CANCELLED")).ok, true, `${via} ช่องหมอว่าง`);
-      if (via === "viaConfirmed") eq((await BK().setAppointmentStatus(ids.tA, u, a, "CONFIRMED")).ok, true, "ปลุกเป็น CONFIRMED");
+      if (via === "viaConfirmed") {
+        eq((await BK().setAppointmentStatus(ids.tA, u, a, "CONFIRMED")).ok, true, "ปลุกเป็น CONFIRMED");
+        // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B13-Q19) — เพิ่มอย่างเดียว: ยกเลิกจาก ARRIVED ล้าง checkedInAt ⇒ ปลุกเป็น CONFIRMED แล้วไม่มีเวลาเช็กอินค้าง
+        eq((await q<{ c: Date | null }>(`SELECT "checkedInAt" AS c FROM "Appointment" WHERE id = $1`, [a]))[0]?.c ?? null, null, "checkedInAt หลังยกเลิก→ปลุกเป็น CONFIRMED");
+      }
       const y = await BK().setAppointmentStatus(ids.tA, u, a, "ARRIVED");
       if (!y.ok) continue; // ปลุกไม่ได้ = ไม่มีลูกค้าถือห้อง (ตัวควบคุมแบบ P23)
       const m1 = (await apRow(a)).policySnapshot?.job as Record<string, unknown> | undefined;

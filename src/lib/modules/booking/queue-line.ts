@@ -667,7 +667,7 @@ export async function cancelByShop(ctx: LineCtx, appointmentId: string, opts?: {
   return jobTx(ctx, appointmentId, now, async (tx, a) => {
     if (!SHOP_CANCELLABLE.has(a.status)) return jobFail("BAD_STATE", R.JOB_BAD_STATE);
     const unmark = withoutUnplaced(a.policySnapshot); // SVC B.13 ▸ Q18: ออกจาก ARRIVED ⇒ ล้างเครื่องหมาย ◂
-    if (!(await casAppt(tx, ctx, a, { status: "CANCELLED", cancelReason: "SHOP", plannedStartAt: null, plannedStaffId: null, ...(unmark !== undefined ? { policySnapshot: unmark } : {}) }))) {
+    if (!(await casAppt(tx, ctx, a, { status: "CANCELLED", cancelReason: "SHOP", plannedStartAt: null, plannedStaffId: null, ...(a.status === "ARRIVED" ? { checkedInAt: null } : {}), ...(unmark !== undefined ? { policySnapshot: unmark } : {}) }))) {
       return jobFail("LOST_RACE", R.LOST_RACE);
     }
     if (a.queueTicketId) {
