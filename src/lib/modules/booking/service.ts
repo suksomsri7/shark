@@ -15,7 +15,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import * as queue from "@/lib/modules/queue/service"; // SVC B.4 ▸ บัตรเดินตามงาน (เส้น booking→queue · ทิศเดียว) ◂
 import { manageToken, manageTokenHash } from "./manage-token"; // SVC B.7 ▸ ลิงก์จัดการนัด (pure) ◂
 // SVC B.13 ▸ ทรัพยากร: ด่านเดียว (planner-resources ผ่าน resources.loadGate) · ชนิดของบริการอ่านก่อน tx · บริการไม่ประกาศชนิด ⇒ ทุกไบต์เดิม ◂
-import { isBusyDbError, loadGate, needKinds, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources";
+import { isBusyDbError, loadGate, needKinds, overrunMinOf, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources";
 
 /** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อกเมื่อนำบริการเข้าคลัง */
 export type BookingCtx = { tenantId: string; unitId: string; actorUserId?: string };
@@ -751,6 +751,7 @@ export async function createAppointment(input: {
   const memberSystemId = await systemForUnit(input.tenantId, input.unitId, "MEMBER");
   // SVC B.13 ▸ R5: บริการที่ประกาศชนิด ⇒ ด่านทรัพยากรเดียวกันใต้ล็อกเดิม (BookingStaff → SvcResource) · ไม่ประกาศ ⇒ ทุกไบต์เดิม ◂
   const resKinds = (await resourceKindsOf(svcCtx, [service.id])).get(service.id) ?? [];
+  const overrunMin = resKinds.length ? await overrunMinOf(svcCtx) : 0; // Q11
 
   try {
     const legacyTx = () => prisma.$transaction(async (tx) => {
@@ -784,7 +785,7 @@ export async function createAppointment(input: {
       let resIds: string[] = [];
       if (resKinds.length) {
         const s0 = startAt.getTime();
-        const book = await loadGate(tx, input.tenantId, input.unitId, { lock: true, startMs: s0, endMs: s0 + 24 * 3_600_000, nowMs: Date.now() });
+        const book = await loadGate(tx, input.tenantId, input.unitId, { lock: true, startMs: s0, endMs: s0 + 24 * 3_600_000, nowMs: Date.now(), overrunMin });
         const got = book.pick(resKinds, s0, s0 + terms.durationMin * 60_000);
         if (!got) throw new Error("RES_TAKEN");
         resIds = got;
@@ -981,6 +982,7 @@ export async function setAppointmentStatus(
   const gateMove = reviving || backFromDone;
   const reviveKinds = gateMove ? ((await resourceKindsOf({ tenantId, unitId }, [before!.serviceId])).get(before!.serviceId) ?? []) : [];
   const reviveHeld = gateMove ? resourceIdsOfRow(before!.resourceId, before!.policySnapshot) : [];
+  const reviveOverrun = gateMove ? await overrunMinOf({ tenantId, unitId }) : 0; // Q11
   const reviveSpan = reviveKinds.length || reviveHeld.length
     ? await (async () => {
         const job = before!.policySnapshot && typeof before!.policySnapshot === "object" ? (before!.policySnapshot as { job?: { durationMin?: unknown; bufferMin?: unknown } }).job : undefined;
@@ -993,7 +995,7 @@ export async function setAppointmentStatus(
     : null;
   if (reviveSpan) {
     if (backFromDone && (await reviveClash(prisma, tenantId, appointmentId, before!))) return { ok: false as const, reason: REVIVE_CLASH_REASON };
-    const g = await loadGate(prisma, tenantId, unitId, { lock: false, startMs: reviveSpan.s0, endMs: reviveSpan.e0, nowMs: Date.now(), exclude: [appointmentId] });
+    const g = await loadGate(prisma, tenantId, unitId, { lock: false, startMs: reviveSpan.s0, endMs: reviveSpan.e0, nowMs: Date.now(), overrunMin: reviveOverrun, exclude: [appointmentId] });
     if (!g.pick(needKinds(reviveKinds, reviveHeld, g), reviveSpan.s0, reviveSpan.e0, { prefer: reviveSpan.prefer })) return { ok: false as const, reason: REVIVE_RES_REASON };
   }
   // SVC B.8 ▸ V1: ปลุกนัดที่ยกเลิกช้า (CANCELLED/CUSTOMER_LATE) = คืนบิลริบแบบเดียวกับออกจาก NO_SHOW ◂
@@ -1026,7 +1028,7 @@ export async function setAppointmentStatus(
       }
       if (reviveSpan) {
         // SVC B.13 ▸ ล็อกทรัพยากรทั้งสาขาหลังช่าง ก่อนแถวนัด (§5) → เลือกชิ้น (ชิ้นเดิมก่อน) · ไม่ว่าง ⇒ ไม่เปลี่ยนแถว ◂
-        const book = await loadGate(tx, tenantId, unitId, { lock: true, startMs: reviveSpan.s0, endMs: reviveSpan.e0, nowMs: Date.now(), exclude: [appointmentId] });
+        const book = await loadGate(tx, tenantId, unitId, { lock: true, startMs: reviveSpan.s0, endMs: reviveSpan.e0, nowMs: Date.now(), overrunMin: reviveOverrun, exclude: [appointmentId] });
         const got = book.pick(needKinds(reviveKinds, reviveHeld, book), reviveSpan.s0, reviveSpan.e0, { prefer: reviveSpan.prefer });
         if (!got) {
           reviveFail = REVIVE_RES_REASON;
@@ -1745,9 +1747,10 @@ export async function findSlots(
   const rows = await busyRowsExcept(prisma, tenantId, cands.map((c) => c.staffId), q.dateStr, opts?.excludeAppointmentId);
   // SVC B.13 ▸ ช่อง t ต้องมีทรัพยากรครบชนิดว่าง [t, t+นาทีของช่าง + เก็บ) ด้วย (ด่านเดียวกับ bookAppointment · ไม่นับแถวที่กำลังเลื่อน) ◂
   const kinds = (await resourceKindsOf(ctx, [service.id])).get(service.id) ?? [];
+  const overrunMin = kinds.length ? await overrunMinOf(ctx) : 0; // Q11
   const gate = kinds.length
     ? await loadGate(prisma, tenantId, unitId, {
-        lock: false, startMs: localToUtc(q.dateStr, 0).getTime(), endMs: localToUtc(q.dateStr, 24 * 60).getTime(), nowMs,
+        lock: false, startMs: localToUtc(q.dateStr, 0).getTime(), endMs: localToUtc(q.dateStr, 24 * 60).getTime(), nowMs, overrunMin,
         exclude: opts?.excludeAppointmentId ? [opts.excludeAppointmentId] : [],
       })
     : null;
@@ -1985,6 +1988,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
   }
   const capPhone = self && rules.maxOpenPerPhone !== null;
   const resKinds = (await resourceKindsOf(ctx, [service.id])).get(service.id) ?? []; // SVC B.13 ▸ ก่อน tx (G2) ◂
+  const overrunMin = resKinds.length ? await overrunMinOf(ctx) : 0; // Q11 ▸ ก่อน tx ◂
 
   // ตรวจล่วงหน้าแบบไม่ล็อก (ลดลูกค้าสมาชิกที่สร้างแล้วจองไม่ได้ — ผลจริงตัดสินใต้ล็อกด้านล่างเสมอ) · ลำดับรหัสเดิม: เบอร์ ④ ก่อน เต็ม ⑤
   {
@@ -2006,7 +2010,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
     // SVC B.13 ▸ ตรวจทรัพยากรล่วงหน้าแบบไม่ล็อก — Q4: "ใครก็ได้" คัดช่างที่ได้ห้อง (นาทีของช่างคนนั้น) ก่อนเลือก ⇒ ผลเท่า findSlots ·
     //   ยืนยันซ้ำใต้ล็อกด้านล่าง ◂
     if (resKinds.length) {
-      const g = await loadGate(prisma, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs });
+      const g = await loadGate(prisma, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, overrunMin });
       cands = cands.filter((c) => g.pick(resKinds, startAt.getTime(), startAt.getTime() + c.durationMin * B3_MIN_MS) !== null);
       if (!cands.length) return (await replayIfAny()) ?? fail("FULL", self ? FULL_REASON : RES_FULL_REASON);
     }
@@ -2053,7 +2057,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
       let resIds: string[] = [];
       if (resKinds.length) {
         const s0 = startAt.getTime();
-        const book = await loadGate(tx, tenantId, unitId, { lock: true, startMs: s0, endMs: s0 + B3_DAY_MS, nowMs });
+        const book = await loadGate(tx, tenantId, unitId, { lock: true, startMs: s0, endMs: s0 + B3_DAY_MS, nowMs, overrunMin });
         const got = book.pick(resKinds, s0, s0 + chosen.durationMin * B3_MIN_MS);
         if (!got) return { kind: "fail", code: "FULL", reason: self ? FULL_REASON : RES_FULL_REASON };
         resIds = got;
@@ -2452,12 +2456,13 @@ export async function rescheduleBySelf(
   const resKinds = (await resourceKindsOf(ctx, [service.id])).get(service.id) ?? [];
   const resHeld = resourceIdsOfRow(null, cur.policySnapshot);
   const usesRes = resKinds.length > 0 || resHeld.length > 0; // Q6: ชิ้นที่ถืออยู่ก็ต้องผ่านด่าน แม้บริการไม่ประกาศชนิดแล้ว
+  const overrunMin = usesRes ? await overrunMinOf(ctx) : 0; // Q11
   {
     const rows = await busyRowsExcept(prisma, tenantId, cands.map((c) => c.staffId), dateStr, cur.id);
     const anyFree = cands.some((c) => selfQuotaOk(c, dayLoadOf(rows, c.staffId, dateStr), c.durationMin + buf) && slotClear(dateStr, startMin, c, buf, rows, true));
     if (!anyFree) return fail("FULL", FULL_REASON);
     if (usesRes) {
-      const g = await loadGate(prisma, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, exclude: [cur.id] });
+      const g = await loadGate(prisma, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, overrunMin, exclude: [cur.id] });
       const need = needKinds(resKinds, resHeld, g);
       cands = cands.filter((c) => g.pick(need, startAt.getTime(), startAt.getTime() + c.durationMin * B3_MIN_MS) !== null); // Q4
       if (!cands.length) return fail("FULL", FULL_REASON);
@@ -2489,7 +2494,7 @@ export async function rescheduleBySelf(
     // SVC B.13 ▸ ทรัพยากร (ล็อกแล้วใน lockUnitTx) อ่านผ่าน tx · ไม่นับตัวเอง · ชิ้นเดิมก่อน ◂
     let resIds: string[] | null = null;
     if (usesRes) {
-      const book = await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, exclude: [a.id] });
+      const book = await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, overrunMin, exclude: [a.id] });
       const held = resourceIdsOfRow(a.resourceId, a.policySnapshot);
       resIds = book.pick(needKinds(resKinds, held, book), startAt.getTime(), startAt.getTime() + chosen.durationMin * B3_MIN_MS, { prefer: held });
       if (!resIds) return fail("FULL", FULL_REASON);

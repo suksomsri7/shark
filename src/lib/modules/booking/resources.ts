@@ -78,6 +78,13 @@ export type HoldRow = { id: string; ids: string[]; s: number; e: number; status:
 
 export const RESOURCE_KINDS_KEY = "booking.service.resourceKinds";
 
+/** Q11 ▸ นาทีที่ยืดงานเลยเวลา (booking.queue.overrunExtendMin ของสาขา · อ่านก่อน tx เสมอ) — ด่านฐานใช้ค่าเดียวกับตัววางคิว */
+export async function overrunMinOf(ctx: { tenantId: string; unitId: string }): Promise<number> {
+  const r = await resolveSettings({ tenantId: ctx.tenantId }, ["booking.queue.overrunExtendMin"], { unitId: ctx.unitId });
+  const v = r["booking.queue.overrunExtendMin"]?.value;
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
 /** ชนิดที่บริการต้องใช้ (ค่าตั้ง · อ่านก่อน tx เสมอ) — serviceId → ชนิด ([] = ไม่ใช้ทรัพยากร · พฤติกรรมเดิม) */
 export async function resourceKindsOf(ctx: { tenantId: string; unitId: string }, serviceIds: readonly string[]): Promise<Map<string, ResourceKind[]>> {
   const ids = [...new Set(serviceIds.filter((x) => typeof x === "string" && x))];
@@ -155,7 +162,7 @@ export async function readHolds(
   client: RawReader,
   tenantId: string,
   unitId: string,
-  o: { from: Date; to: Date; nowMs: number; resourceId?: string },
+  o: { from: Date; to: Date; nowMs: number; resourceId?: string; overrunMin?: number },
 ): Promise<HoldRow[]> {
   const rid = o.resourceId ?? null;
   const rows = await client.$queryRaw<RawHold[]>`
@@ -180,7 +187,8 @@ export async function readHolds(
     const buf = numOr(job.bufferMin, numOr(r.bufferMin, 0)) ?? 0;
     const dur = numOr(job.durationMin, null) !== null ? (job.durationMin as number) * MIN_MS : Math.max(0, r.endAt.getTime() - start - buf * MIN_MS);
     const s = r.status === "IN_SERVICE" ? (r.startedAt ?? r.plannedStartAt ?? r.startAt).getTime() : (r.plannedStartAt ?? r.startAt).getTime();
-    const e = s + dur;
+    // Q11: งานกำลังทำที่เลยเวลา ⇒ ถือถึง now + overrunExtendMin (กติกาเดียวกับตัววางคิว PL-11) · ยังไม่เลย ⇒ เริ่ม + นาที
+    const e = r.status === "IN_SERVICE" && s + dur <= o.nowMs ? o.nowMs + (o.overrunMin ?? 0) * MIN_MS : s + dur;
     void start;
     if (e <= o.from.getTime() || s >= o.to.getTime()) continue;
     out.push({ id: r.id, ids, s, e, status: r.status, kind: r.kind });
@@ -228,12 +236,12 @@ export async function loadGate(
   client: RawReader,
   tenantId: string,
   unitId: string,
-  o: { lock: boolean; startMs: number; endMs: number; nowMs: number; exclude?: readonly string[]; skipQueuedWalkIns?: boolean },
+  o: { lock: boolean; startMs: number; endMs: number; nowMs: number; overrunMin: number; exclude?: readonly string[]; skipQueuedWalkIns?: boolean },
 ): Promise<ResBook> {
   const rows = o.lock ? await lockUnitResourcesTx(client, tenantId, unitId) : await readUnitResources(client, tenantId, unitId);
   const w = dayWindow(o.startMs, o.endMs);
   const blocks = await readUnitBlocks(client, tenantId, unitId, w.from, w.to);
-  const holds = await readHolds(client, tenantId, unitId, { from: w.from, to: w.to, nowMs: o.nowMs });
+  const holds = await readHolds(client, tenantId, unitId, { from: w.from, to: w.to, nowMs: o.nowMs, overrunMin: o.overrunMin });
   return gateBook(rows, blocks, holds, new Set(o.exclude ?? []), o.skipQueuedWalkIns === true);
 }
 
@@ -413,6 +421,7 @@ export async function updateResource(actor: ResourceActor, ctx: ResourceCtx, id:
   const p = cleanPatch(patch);
   if (typeof p === "string") return fail("BAD_INPUT", p);
   const nowMs = nowOf(opts).getTime();
+  const overrunMin = await overrunMinOf(ctx); // Q11 ▸ ก่อน tx ◂
   type Out = { kind: "fail"; res: ResourceResult } | { kind: "ok"; row: ResRowLite };
   const attempt = () => db.$transaction(async (tx): Promise<Out> => {
     const cur = await lockOneResourceTx(tx, ctx, id);
@@ -422,7 +431,7 @@ export async function updateResource(actor: ResourceActor, ctx: ResourceCtx, id:
     const rekind = next.kind !== cur.kind;
     const shrink = next.capacity < cur.capacity || next.cleanupMin > cur.cleanupMin;
     if (deactivate || rekind || shrink) {
-      const holds = await readHolds(tx, ctx.tenantId, ctx.unitId, { from: new Date(nowMs - DAY_MS), to: ALL_TO, nowMs, resourceId: id });
+      const holds = await readHolds(tx, ctx.tenantId, ctx.unitId, { from: new Date(nowMs - DAY_MS), to: ALL_TO, nowMs, resourceId: id, overrunMin });
       const cur0 = liveSpans(holds, cur.cleanupMin, nowMs);
       if ((deactivate || rekind) && cur0.length) {
         return { kind: "fail", res: fail("IN_USE", inUseReason(cur0.length, deactivate ? "ปิดใช้" : "เปลี่ยนชนิด")) };
@@ -504,12 +513,13 @@ export async function setResourceMaintenance(actor: ResourceActor, ctx: Resource
   const ws = cleanWindows(windows);
   if (!ws) return fail("BAD_INPUT", R.MAINT);
   const nowMs = nowOf(opts).getTime();
+  const overrunMin = await overrunMinOf(ctx); // Q11 ▸ ก่อน tx ◂
   type Out = { kind: "fail"; res: ResourceResult } | { kind: "ok"; row: ResRowLite };
   const attempt = () => db.$transaction(async (tx): Promise<Out> => {
     const cur = await lockOneResourceTx(tx, ctx, id);
     if (!cur) return { kind: "fail", res: fail("NOT_FOUND", R.NOT_FOUND) };
     if (ws.length) {
-      const holds = await readHolds(tx, ctx.tenantId, ctx.unitId, { from: new Date(nowMs - DAY_MS), to: ALL_TO, nowMs, resourceId: id });
+      const holds = await readHolds(tx, ctx.tenantId, ctx.unitId, { from: new Date(nowMs - DAY_MS), to: ALL_TO, nowMs, resourceId: id, overrunMin });
       const spans = liveSpans(holds, cur.cleanupMin, nowMs);
       const hit = spans.filter((x) => ws.some((w) => x.s < (w.e ?? OPEN_END) && w.s < x.e));
       if (hit.length) return { kind: "fail", res: fail("IN_USE", inUseReason(hit.length, "ปิดซ่อมช่วงนี้")) };

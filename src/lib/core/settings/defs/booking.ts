@@ -285,6 +285,12 @@ const DEFS: SettingDef[] = [
     helpTh: "เลือกชนิดห้อง/เตียง/อุปกรณ์ที่ต้องว่างพร้อมผู้ให้บริการ (ไม่เกิน 3 ชนิด) · ว่าง = ไม่ต้องใช้ทรัพยากร",
     schema: uniqArr(RESOURCE_KIND, 0, 3), chain: SV, v: x3([]),
   }),
+  // SVC B.13 ▸ Q12: ตัววางคิวเลื่อนนัดเพราะห้อง/เตียงไม่ว่างได้ไม่เกินกี่นาที — เกิน/เลยเวลางานของผู้ให้บริการ ⇒ คงเวลาเดิม + แจ้งบนจอ (resourceShort) ◂
+  row({
+    key: "booking.planner.resourceShiftMaxMin", type: "minutes", labelTh: "เลื่อนนัดเพราะห้อง/เตียงไม่ว่างได้ไม่เกิน (นาที)",
+    helpTh: "เกินนี้หรือเลยเวลางานของผู้ให้บริการ ⇒ คงเวลานัดเดิมและแจ้งบนจอว่าห้อง/เตียงไม่พอ",
+    schema: z.number().int().min(0).max(600), chain: U, v: x3(60),
+  }),
   row({ key: "booking.service.staffCount", type: "int", labelTh: "จำนวนผู้ให้บริการต่องาน", schema: z.number().int().min(1).max(10), chain: SV, v: x3(1) }), // #15
   row({ key: "booking.service.onlineBookable", type: "bool", labelTh: "จองออนไลน์ได้", helpTh: "ค่าตั้งต้นของบริการใหม่ — บริการที่มีอยู่ใช้ BookingService.bookable (คอลัมน์ชนะ)", schema: z.boolean(), chain: SV, v: x3(true) }), // #16
   row({
@@ -532,6 +538,7 @@ const GROUP_LABELS_TH: Record<string, string> = {
   money: "ค่าคอมมิชชันและเงิน",
   course: "คอร์ส",
   privacy: "ความเป็นส่วนตัว",
+  planner: "ตัวจัดคิว", // SVC B.13
 };
 
 const ENUM_LABELS_TH: Record<string, Record<string, string>> = {

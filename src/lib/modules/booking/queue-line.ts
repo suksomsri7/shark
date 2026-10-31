@@ -31,7 +31,7 @@ import {
   runPlanner,
   skippedOf,
 } from "./planner-run";
-import { loadGate, needKinds, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources"; // SVC B.13
+import { loadGate, needKinds, overrunMinOf, resourceIdsOfRow, resourceKindsOf, snapWithResources } from "./resources"; // SVC B.13
 import { bookingPhoneKey, isRealDateStr, linkPartyAfterCommit, staffDayProfiles } from "./service";
 import { localToUtc } from "./slots";
 import { staffServiceTerms } from "./staff-hours";
@@ -544,6 +544,7 @@ export async function startJob(ctx: LineCtx, appointmentId: string, opts?: { now
   const kinds = (await resourceKindsOf(ctx, [pre.serviceId])).get(pre.serviceId) ?? [];
   const usesRes = kinds.length > 0 || resourceIdsOfRow(pre.resourceId, pre.policySnapshot).length > 0;
   const svcBuf = usesRes ? ((await prisma.bookingService.findFirst({ where: { id: pre.serviceId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { bufferMin: true } }))?.bufferMin ?? 0) : 0;
+  const overrunMin = usesRes ? await overrunMinOf(ctx) : 0; // Q11 ▸ ก่อน tx ◂
   return jobTx(ctx, appointmentId, now, async (tx, a) => {
     if (a.status !== "ARRIVED" && a.status !== "QUEUED") return jobFail("BAD_STATE", R.JOB_BAD_STATE);
     const data: Prisma.AppointmentUncheckedUpdateManyInput = { status: "IN_SERVICE", startedAt: now, plannedStartAt: now, plannedStaffId: a.staffId };
@@ -571,7 +572,7 @@ export async function startJob(ctx: LineCtx, appointmentId: string, opts?: { now
       const held = resourceIdsOfRow(a.resourceId, a.policySnapshot);
       const job = jobOf(a.policySnapshot);
       const durMs = (job.durationMin ?? Math.max(0, (a.endAt.getTime() - a.startAt.getTime()) / MIN_MS - (job.bufferMin ?? svcBuf))) * MIN_MS;
-      const book = await loadGate(tx, ctx.tenantId, ctx.unitId, { lock: false, startMs: now.getTime(), endMs: now.getTime() + durMs, nowMs: now.getTime(), exclude: [a.id], skipQueuedWalkIns: true });
+      const book = await loadGate(tx, ctx.tenantId, ctx.unitId, { lock: false, startMs: now.getTime(), endMs: now.getTime() + durMs, nowMs: now.getTime(), overrunMin, exclude: [a.id], skipQueuedWalkIns: true });
       const ids = book.pick(needKinds(kinds, held, book), now.getTime(), now.getTime() + durMs, { prefer: held });
       if (!ids) return jobFail("CLASH", R.CLASH_RES);
       if (ids.join("|") !== held.join("|")) {
@@ -724,6 +725,7 @@ export async function rescheduleByShop(
   const buf = jobOf(cur.policySnapshot).bufferMin ?? service.bufferMin;
   const endAt = new Date(startAt.getTime() + (terms.durationMin + buf) * MIN_MS);
   const kinds = (await resourceKindsOf(ctx, [service.id])).get(service.id) ?? []; // SVC B.13 ▸ ก่อน tx ◂
+  const overrunMin = await overrunMinOf(ctx); // Q11
 
   type TxOut = RescheduleResult & { ev?: true };
   const res = await retryBusy(() => prisma.$transaction(async (tx): Promise<TxOut> => {
@@ -744,7 +746,7 @@ export async function rescheduleByShop(
     const held = resourceIdsOfRow(a.resourceId, a.policySnapshot);
     if (kinds.length || held.length) {
       const durMs = terms.durationMin * MIN_MS;
-      const book = await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + durMs, nowMs: now.getTime(), exclude: [a.id] });
+      const book = await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + durMs, nowMs: now.getTime(), overrunMin, exclude: [a.id] });
       const ids = book.pick(needKinds(kinds, held, book), startAt.getTime(), startAt.getTime() + durMs, { prefer: held }); // Q6
       if (!ids) return fail("FULL", R.FULL_RES);
       data.resourceId = ids[0];

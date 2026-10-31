@@ -72,7 +72,12 @@ export type PlanJob = {
   resourceIds?: string[]; // SVC B.13 ▸ นัด = ที่ถืออยู่ในฐาน (ข้อเท็จจริง) · walk-in = ไม่ผูกมัด ◂
 };
 
-export type PlanInput = { now: number; settings: PlanSettings; staff: PlanStaff[]; services: PlanService[]; jobs: PlanJob[]; resources?: PlanResource[] };
+export type PlanInput = {
+  now: number; settings: PlanSettings; staff: PlanStaff[]; services: PlanService[]; jobs: PlanJob[];
+  resources?: PlanResource[];
+  /** SVC B.13 ▸ Q12: เลื่อนนัดเพราะห้องได้ไม่เกินกี่นาที (ไม่ส่ง = 60) ◂ */
+  resourceShiftMaxMin?: number;
+};
 
 export type PlanState = "IN_SERVICE" | "SCHEDULED" | "RELEASED_LATE" | "NO_SHOW_DUE" | "UNPLACED";
 export type PlanReason =
@@ -493,8 +498,12 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
       } else shortOf.add(job.id);
       return start;
     }
+    // Q12: เลื่อนได้ไม่เกินเพดาน และต้องจบในหน้าต่างงานของหมอ (ถ้าเวลาเดิมจบทัน) — ไม่งั้นคงที่เดิม + resourceShort
+    const maxShift = (input.resourceShiftMaxMin ?? 60) * MIN;
+    const okWindow = (x: number) => !s || !inWindow(s, start, start + d) || inWindow(s, x, x + d);
     let t = start;
     for (let iter = 0; iter < 64; iter++) {
+      if (t - start > maxShift || !okWindow(t)) break;
       const ids = book.pick(kinds, t, t + d, { fixed: facts, ignore: isSoft }) ?? book.pick(kinds, t, t + d, { ignore: isSoft, prefer: [...facts.values()] });
       if (ids) {
         for (const id of ids) book.add(id, job.id, t, t + d);
@@ -521,6 +530,8 @@ function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo)
       const d = durMs(ctx, job, s);
       const t = placeRes(job, s, start, d); // SVC B.13 ▸ Q10 ◂
       const endAt = t + d;
+      // Q12: งานที่ใช้ทรัพยากรถูกดันจนจบเลยเวลางานของหมอ (ทั้งที่เวลานัดเดิมจบทัน — เช่น งานก่อนหน้าถูกเลื่อนเพราะห้อง) ⇒ แจ้งบนจอ
+      if (ctx.book && t > startAt && inWindow(s, startAt, startAt + d) && !inWindow(s, t, endAt)) shortOf.add(job.id);
       occupy(ctx, s.id, { jobId: job.id, startAt: t, endAt, gapAfter: gapMs(ctx, job, s), booking: true });
       out.set(job.id, { ...base(job), staffId: s.id, startAt: t, endAt, state: "SCHEDULED", reason: t > start ? "BOOKED_DELAYED" : reason, late });
     };

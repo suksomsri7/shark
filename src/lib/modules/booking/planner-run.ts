@@ -51,6 +51,7 @@ const LINE_KEYS: readonly string[] = [...new Set([
   "booking.late.graceMin",
   "booking.late.noShowAfterMin",
   "booking.late.afterGrace",
+  "booking.planner.resourceShiftMaxMin", // SVC B.13 ▸ Q12 ◂
   ...PLAN_SETTING_KEYS,
 ])];
 
@@ -259,6 +260,7 @@ export function planInputOf(pre: PlanPre, rows: readonly JobRow[], nowMs: number
   return {
     now: nowMs, settings: pre.settings, staff: pre.staff, services: pre.services, jobs: rows.map((r) => planJobOf(r, pre.values, skipped?.get(r.id))),
     ...(pre.useRes ? { resources: res } : {}),
+    ...(pre.useRes && typeof pre.values["booking.planner.resourceShiftMaxMin"] === "number" ? { resourceShiftMaxMin: pre.values["booking.planner.resourceShiftMaxMin"] as number } : {}),
   };
 }
 
