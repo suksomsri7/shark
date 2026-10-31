@@ -304,7 +304,29 @@ const COMPAT_REDIRECTS = new Set<string>([
   // ชี้มาที่ `/app/sys/<id>/chat?c=<id>` ⇒ ไฟล์ต้องอยู่ต่อและ redirect พา `?c=` ไปด้วย
   // ถ้าบังคับให้มีในเมนู = ได้แท็บซ้ำที่พาไปที่เดิม ซึ่งขัดกับ §6.1 (เหลือ 2 แท็บ)
   "src/app/app/sys/[id]/chat/page.tsx",
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-A2): หน้าตั้งค่าจองคิวเดิมถูกแตกเป็น "บริการ" + "ใครรับคิว" — ไฟล์เหลือแค่ redirect ไป /booking/services
+  //   (ลิงก์เก่า/widget หน้า "การจัดการ" ที่บันทึกไว้ต้องไม่ตาย) · เมนู "ตั้งค่า" ย้ายไปชี้ /booking/settings (SVC B.11) แล้ว
+  "src/app/app/u/[unitSlug]/booking/setup/page.tsx",
 ]);
+
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-A2): หน้าที่ทางเข้าคือ "แท็บ/เมนูหมวดในหน้าของระบบ" ไม่ใช่เมนูข้าง — ยกเว้นจาก S5 ได้เฉพาะรายชื่อนี้
+//   และ **ต้องพิสูจน์ได้ว่ามีทางเข้าจริง**: ไฟล์ทางเข้าต้องมี href ตามที่ระบุ (ไม่เจอ ⇒ ไม่ยกเว้น ⇒ S5 แดงเหมือนเดิม — หน้ากำพร้ายังโดนจับ)
+//   เหตุผล: ปฏิทินนัด/ของฉัน/จอทีวี ใช้ได้เฉพาะหน่วยแถวเดียว (ร้านเดิม = 404) — แท็บของโมดูลโชว์เฉพาะตอนใช้ได้ ส่วนเมนูข้างเป็นรายการคงที่
+//   ใส่ในเมนูข้าง = ลิงก์ตาย (ขัด S1) · ข้อความแจ้งเตือน = หมวดย่อยของหน้าตั้งค่า (เมนูหมวดตั้งค่า หน้า 08/14) · ห้ามเพิ่มเมนูรก (UX minimal)
+const IN_PAGE_ENTRIES: { type: string; rest: string; entryFile: string; href: RegExp }[] = [
+  { type: "BOOKING", rest: "/booking/day", entryFile: "src/app/app/u/[unitSlug]/booking/layout.tsx", href: /href:\s*`\$\{base\}\/day`/ },
+  { type: "BOOKING", rest: "/booking/mine", entryFile: "src/app/app/u/[unitSlug]/booking/layout.tsx", href: /href:\s*`\$\{base\}\/mine`/ },
+  { type: "BOOKING", rest: "/booking/devices", entryFile: "src/components/booking/TodayLine.tsx", href: /href=\{`\/app\/u\/\$\{unitSlug\}\/booking\/devices`\}/ },
+  { type: "BOOKING", rest: "/booking/settings/messages", entryFile: "src/components/booking/settings/BookingPolicySettings.tsx", href: /href:\s*`\$\{basePath\}\/settings\/messages(#[a-z]+)?`/ },
+];
+const inPageOk = new Map<string, Set<string>>();
+for (const e of IN_PAGE_ENTRIES) {
+  const f = join(ROOT, e.entryFile);
+  if (!existsSync(f) || !e.href.test(readFileSync(f, "utf8"))) continue; // ไม่มีทางเข้าจริง ⇒ ไม่ยกเว้น
+  const set = inPageOk.get(e.type) ?? new Set<string>();
+  set.add(e.rest);
+  inPageOk.set(e.type, set);
+}
 
 function routesUnder(dir: string, baseForRest: string): string[] {
   if (!existsSync(dir)) return [];
@@ -402,7 +424,7 @@ for (const b of BIZ_COMPLETE) {
 const incomplete: string[] = [];
 for (const [type, required] of requiredByType) {
   const declared = declaredByType.get(type) ?? new Set<string>();
-  const missing = required.filter((r) => !declared.has(r));
+  const missing = required.filter((r) => !declared.has(r) && !inPageOk.get(type)?.has(r)); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-A2) ทางเข้าในหน้าที่พิสูจน์แล้ว
   if (missing.length > 0) {
     incomplete.push(`${type}: ขาด ${missing.map((m) => m || "(ภาพรวม)").join(", ")}`);
   }

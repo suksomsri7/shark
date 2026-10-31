@@ -55,6 +55,7 @@ export const WIDGET_DEFS: WidgetDef[] = [
   B("BOOKING", "/booking/staff", "ใครรับคิว", "🧑‍🔧"),
   B("BOOKING", "/booking/hours", "เวลาทำการ", "🕘"),
   B("BOOKING", "/booking/setup", "ตั้งค่าจองคิว", "⚙️"),
+  B("BOOKING", "/booking/settings", "ตั้งค่าการจอง", "⚙️"), // SVC G1-A2 ▸ เมนู "ตั้งค่า" ชี้หน้านี้แล้ว · widget /booking/setup คงไว้ให้หน้าที่บันทึกไว้เดิม (เปลี่ยนทางไปบริการ) ◂
   // หน้างานแบบหน้าเดียว (ไม่มีเมนูย่อยใน childrenFor)
   B("RENTAL", "", "เช่าสินทรัพย์", "🛵"),
   B("SCHOOL", "", "คอร์สเรียน", "🎓"),

@@ -2,7 +2,7 @@
 
 > as of `6c2352f7` (`session/pos` · 24 ต.ค. 2569 · POS P6.2) — สร้างจากโค้ด: model · event · facade · สิทธิ์ (มติ 7 ของ brief P6) · แทนที่ฉบับ AS-BUILT 2026-07-16 (POS v1 = PosSale/Line/Payment/ReceiptCounter)
 > คู่กับ `docs/modules/14-pos.md` (V2 · ฟังก์ชันต่อหมวด) · ส่งมอบ ledger/HANDOVER-2026-10-POS.md (ไฟล์ของผู้คุม) · สัญญา REST `docs/api/POS-API.md` · ตารางสิทธิ์ทุกพื้นผิว `scripts/pos-authz-matrix.json`
-> ตัวเลขที่ข้อสอบ `scripts/qc-pos-p6.2.mts` (D2) อ่านจากโค้ดวันนี้: model 48 · คีย์ outbox `pos.*` 17 · export ของ facade 79 + `export type *` 1 · คีย์สิทธิ์ 24 · การ์ดเชื่อม 13 · op REST 49 ใน 9 กลุ่ม
+> ตัวเลขที่ข้อสอบ `scripts/qc-pos-p6.2.mts` (D2) อ่านจากโค้ดวันนี้: model 48 · คีย์ outbox `pos.*` 17 · export ของ facade 88 + `export type *` 1 (79 ณ P6.2 + 9 ของ SVC B.10 บิลจากคิว · G1-B 31 ต.ค.) · คีย์สิทธิ์ 24 · การ์ดเชื่อม 13 · op REST 49 ใน 9 กลุ่ม
 
 ## 1. หน้าที่ · ชั้น · ไฟล์
 - **จุดตัดเงินกลาง** (contract 2.1): ทุกบิลเกิดที่ `createSale` (`src/lib/modules/pos/service.ts`) ในธุรกรรมเดียว (บิล + บรรทัด + วิธีจ่าย + เลขใบเสร็จ + แต้ม/คูปอง/สิทธิ์สมาชิกที่ใช้ + outbox) · ผู้เรียกที่มีธุรกรรมเองส่ง `callerTx` แล้วเรียก `afterSaleCommitted` หลัง commit (HF-TX)
@@ -88,7 +88,7 @@ enum ที่สำคัญ: `PosSaleStatus` · `PosPayType` · `PosSaleDocTyp
 
 `pos.sale.expired` ของสเปก v1 ไม่มี — แทนด้วย `pos.order.cancelled` + PosOrderEvent `expired` (P2.7 มติ 8) · ข้อสอบ `scripts/qc-pos-p2.14.mts` H2 ตรึงว่าตาราง Event ⊇ ทุกคีย์ในทะเบียนตัวรับ
 
-## 4. Facade `src/lib/modules/pos/index.ts` (79 ชื่อ + `export type * from "./order-shared"`)
+## 4. Facade `src/lib/modules/pos/index.ts` (88 ชื่อ + `export type * from "./order-shared"`)
 ห่อบางล้วน ไม่มีตรรกะ · ผู้เรียกนอกโมดูลใช้ไฟล์นี้ (ภายในโมดูล import ไฟล์ย่อยได้) · fitness F15.5 กันตัวบ่งชี้ระบบหลุด
 - **บิล/ปิดวัน** (`service.ts`): `createSale` · `afterSaleCommitted` · `voidSale` · `closeDaySummary` · `closeDayBills` · `bkkToday` · `posSystemForSale` · `saleStatusByKey` · `PosSaleError` · types `CreateSaleInput` `MemberSaleChoices` `SaleResult` `CloseCtx` `PosDaySummary` `PosDayBill` `PayMethodLine`
 - **แคตตาล็อก** (`catalog.ts`): namespace `catalog` (createProduct · updateProduct · setPrice · archive · restore · listForUnit · byBarcode · ensureForInvItem · createCategory · checkCatalogWrite · createOptionGroup · setProductOptionGroups · setRecipe · setRecipeChoiceLines · setBomEnabled · setChannelPrices · bulkChannelMarkup · webPricesForShop · setAvailability · availabilityFor) · `CatalogError` · types `CatalogCtx` `CatalogActor` `CatalogClient` `CatalogErrorCode` `CatalogRowScope` `CatalogWriteVerdict` `PosProductView` `PosOptionGroupView` `TrackStockMode`
@@ -97,6 +97,7 @@ enum ที่สำคัญ: `PosSaleStatus` · `PosPayType` · `PosSaleDocTyp
 - **ออเดอร์** (`order.ts` · `order-adapters.ts` · `order-shared`): namespace `orders` (ingestOrder · ingestInTx · sourceCancelledInTx · afterCommit · acceptOrder · rejectOrder · markPreparing · markReady · handOver · cancelOrder · payOrder · setPrepMinutes · setChannelOrderSettings · listOrders · getOrder · onShopOrderPaid · onSaleVoided · webLineSources · webClaimInTx · webSaleBoundInTx · webClaimRevertInTx · onIntentPaid · expirePreorders · kitchenProgressInTx) · `ORDER_ADAPTERS` · types `OrderAdapter` `OrderAdapterKind` · `export type *` ของ `order-shared` (ชนิดสถานะ/ผลของออเดอร์)
 - **แชท** (`chat-link.ts` · `chat-order.ts` · `chat-link-shared.ts`): namespace `chatLink` (settingsOf · systemForUnit · setSettings · receiptPlan · refundPlan · orderPlan · orderIdOfIntent · ordersForChat · statusUrl · preorderLink · requestPayment) · `POS_CHAT_DEFAULTS` · `POS_CHAT_STATUS_LABELS` · `bangkokHHmm` · `chatMoney` · `chatReasonLabel` · `chatText` · `matchBotIntent` · `posChatLang` · `posChatSettings` · `withStatusLink` · types `ChatPaymentPosResult` `ChatPaymentRefusal` `ChatPaymentCode` `PosChatTarget` `ReceiptChatPlan` `RefundChatPlan` `OrderChatPlan` `OrderChatFacts` `ChatOrderItem` `ChatPreorderLinkResult` `PosChatSettingsResult` `PosBotIntent` `PosChatLang` `PosChatSettings` `PosChatStatusKind` `PosChatTextKey`
 - **ชนิดของหน้าขาย** (`register-shared.ts`): `RegisterActor` · `RegisterCtx`
+- **บิลจากคิว** (`service-bill.ts` · SVC B.10 · จุด createSale ที่เจ้าของอนุญาต): namespace `serviceBills` (openServiceBill · replaceServiceBillLines · discardServiceBill · serviceBillStatus · serviceBillOfSale · productPrices · depositForBill · posOfUnit · liveBillTx · voidPaidServiceBill · listServiceBills · serviceBillView · payServiceBill) · `SERVICE_BILL_SALE_PREFIX` · types `ServiceBillLineInput` `ServiceBillListItem` `ServiceBillView` `ServiceBillViewLine` `PayServiceBillInput` `PayServiceBillResult` `OpenServiceBillInput` · action หน้าขาย `listServiceBillsAction` · `serviceBillViewAction` · `payServiceBillAction` (`register-actions.ts` · ด่าน session + sessionScope เหมือนหน้าขาย · รับเงินผูกเครื่อง deviceScope · แถวใน `scripts/pos-authz-matrix.json`) — G1-B ผู้คุม 31 ต.ค.
 
 ## 5. Permissions (24 คีย์ · `src/lib/core/permissions.ts`)
 OWNER ผ่านทุกอย่าง · MANAGER ผ่านในสาขาที่ดูแล · STAFF ต้องได้คีย์ (หรือ `pos.*`) — คำอธิบายต่อคีย์ + บทบาทปริยาย = `docs/modules/14-pos.md` §13

@@ -37,6 +37,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcCarry, atSvcBase } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ไฟล์ที่ใบ SVC ได้รับอนุญาต ⇒ ข้อหมุดตรวจเนื้อ ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-pos-p2.8";
 const ROOT = process.cwd();
@@ -450,6 +451,7 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/member/subscription.ts": 1, "src/lib/modules/pos/register.ts": 1,
   "src/lib/modules/rental/service.ts": 2, "src/lib/modules/restaurant/order.ts": 1, "src/lib/modules/school/service.ts": 1,
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,
+  "src/lib/modules/pos/service-bill.ts": 1, // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) SVC B.10 จุด 1 บิลจากคิว — createSale จุดเดิม (ใบสั่ง svc-brief-b.10 §1)
 };
 
 const srcOf = (f: string) => stripComments(rd(f));
@@ -728,7 +730,8 @@ async function runStatic(): Promise<void> {
     const p: string[] = [];
     const mb = mergeBase();
     for (const [f, base] of Object.entries(PAR_FILES)) {
-      const raw = existsSync(join(ROOT, f)) ? readFileSync(join(ROOT, f)) : Buffer.from("");
+      // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): service.ts = SVC B.10 จุด 1 (scripts/lib/svc-pos-carry.mts) ⇒ เทียบเนื้อ ณ 940e3aca · ไฟล์อื่น = ทรีงาน
+      const raw = svcCarry(ROOT, f) ? (atSvcBase(ROOT, f) ?? Buffer.from("")) : existsSync(join(ROOT, f)) ? readFileSync(join(ROOT, f)) : Buffer.from("");
       const h = sha256(raw);
       if (h === base) continue;
       const atMb = mb ? shaAt(mb, f) : null;

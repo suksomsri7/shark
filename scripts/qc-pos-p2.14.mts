@@ -693,7 +693,9 @@ async function runStatic(): Promise<void> {
     if (sw.err) p.push(sw.err);
     const files = [
       ...walk("src/app/app/sys/[id]/pos", [], /^page\.tsx$/),
-      ...walk("src/app/(store)/d", [], /^page\.tsx$/),
+      // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): พอร์ทัลผู้เช่าหอ /d/[token]/** (SVC D.9 · ใบสั่ง svc-brief-d.9 · ไม่ใช่หน้า POS · ไม่ชน /d ของจอลูกค้า POS) ไม่นับ —
+      //   ยกเว้นเฉพาะไฟล์ที่ไม่ import โมดูล POS (import ⇒ นับเหมือนเดิม) · /d/page.tsx ของ POS ยังตรวจครบ
+      ...walk("src/app/(store)/d", [], /^page\.tsx$/).filter((f) => !(f.startsWith("src/app/(store)/d/[token]/") && !/["']@\/lib\/modules\/pos(\/|["'])/.test(rd(f)))),
       ...walk("src/app/(store)/r", [], /^page\.tsx$/),
       ...walk("src/app/(store)/q", [], /^page\.tsx$/),
       ...walk("src/app/developers/pos", [], /^page\.tsx$/),

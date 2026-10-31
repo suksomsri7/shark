@@ -104,7 +104,20 @@ const OLD_SOURCES = ["MANUAL", "AI", "IMPORT", "INBOX", "CRM", "POS", "RECURRING
 
 // ═══════════════ P. ไฟล์ ═══════════════
 console.log("\n── P: ไฟล์ของใบ ──");
-await st("P-1", "src แตะได้แค่ src/lib/core/scope.ts (เพิ่มอย่างเดียว) + src/lib/payment/slip-verify.ts (findByKey) — โค้ดหอ/บัญชีเป็นของ D.2+", () => {
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): หมวด P-1/P-4 ตรวจขอบเขตไฟล์ "ตอนรับ D.0" เท่านั้น (แบบ B.0-G1 / SF-1 ของใบอื่น) — เมื่อ D.0 merge แล้ว
+//   (b113a1f4 เป็นบรรพบุรุษของ HEAD) และใบหลังมี commit แตะ src/ หรือ scripts/qc-* ⇒ SKIP พร้อมเหตุผล · อ่าน git ไม่ได้/ยังไม่ merge ⇒ ตรวจเต็มเหมือนเดิม
+const D0_MERGE = "b113a1f4";
+const laterTouchD0 = (paths: string[]): string => {
+  try {
+    git(["merge-base", "--is-ancestor", D0_MERGE, "HEAD"]);
+    return git(["log", "--format=%h %s", `${D0_MERGE}..HEAD`, "--", ...paths]).trim().split("\n")[0] ?? "";
+  } catch { return ""; }
+};
+const acceptOnlyP = async (id: string, name: string, paths: string[], fn: () => void, sev: Sev = "CRITICAL") => {
+  const later = laterTouchD0(paths);
+  return later ? skip(id, name, `D.0 merge แล้ว · ใบหลังแตะไฟล์ (${later.slice(0, 80)}) — ข้อนี้ตรวจเฉพาะตอนรับ D.0`, sev) : st(id, name, fn, sev);
+};
+await acceptOnlyP("P-1", "src แตะได้แค่ src/lib/core/scope.ts (เพิ่มอย่างเดียว) + src/lib/payment/slip-verify.ts (findByKey) — โค้ดหอ/บัญชีเป็นของ D.2+", ["src"], () => {
   const ch = changedFiles(["src"]);
   const outside = ch.filter((f) => !["src/lib/core/scope.ts", "src/lib/payment/slip-verify.ts"].includes(f));
   const del = deletedLines(["src/lib/core/scope.ts"]);
@@ -126,7 +139,7 @@ await st("P-3", "qc-acc-v2-schema.mts: แก้เฉพาะข้อ enum Ac
   ok(minus.every((l) => /AccountDocSource|MANUAL,AI,IMPORT/.test(l)) && plus.every((l) => /AccountDocSource|MANUAL,AI,IMPORT/.test(l)), `แก้บรรทัดอื่น: ${[...minus, ...plus].filter((l) => !/AccountDocSource|MANUAL,AI,IMPORT/.test(l)).slice(0, 2).join(" | ")}`);
   ok(minus.length <= 2 && plus.length <= 2, `แก้ ${minus.length}/${plus.length} บรรทัด (ต้อง ≤ 2)`);
 }, "MAJOR");
-await st("P-4", "ชุดข้อสอบอื่น (scripts/qc-*) ไม่ถูกแตะ ยกเว้น qc-acc-v2-schema.mts", () => {
+await acceptOnlyP("P-4", "ชุดข้อสอบอื่น (scripts/qc-*) ไม่ถูกแตะ ยกเว้น qc-acc-v2-schema.mts", ["scripts/qc-*"], () => { // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) SKIP หลังรับใบ
   const ch = changedFiles(["scripts"]).filter((f) => /^scripts\/qc-/.test(f) && f !== SELF && f !== "scripts/qc-acc-v2-schema.mts");
   ok(ch.length === 0, `แตะ: ${ch.slice(0, 6).join(", ")}`);
 }, "MAJOR");

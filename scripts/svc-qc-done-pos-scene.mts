@@ -2,10 +2,10 @@
 //
 // ใช้:
 //   bash scripts/iso.sh bash scripts/qc-svc.sh pnpm exec tsx scripts/svc-qc-done-pos-scene.mts            # สร้าง/ปรับฉาก วัน X + วัน Y
-//   bash scripts/iso.sh bash scripts/qc-svc.sh pnpm exec tsx scripts/svc-qc-done-pos-scene.mts --clear    # ลบงานฉาก + บิลพักของงานฉาก
+//   bash scripts/iso.sh bash scripts/qc-svc.sh pnpm exec tsx scripts/svc-qc-done-pos-scene.mts --clear    # ลบงานฉาก + บิลพักของงานฉาก + บริการ/สินค้าที่ทำเพิ่ม (G1-C)
 //
 // ฉาก (ใบสั่ง svc-brief-b.10 §6 · ข้อมูล SQC_DONE_POS_SCENE):
-//   วัน X = SQC_DONE_POS_SCENE_DAYS.x (วันฉาก B.6 + 7): SQC_TODAY_LINE_SCENE ทั้งวัน + P004 รับมัดจำ ฿200 (PROMPTPAY) ก่อนเช็กอิน +
+//   วัน X = SQC_DONE_POS_SCENE_DAYS.x (วันฉาก B.6 + 14 · G1-C ไม่ชนวันฉาก B.7): SQC_TODAY_LINE_SCENE ทั้งวัน + P004 รับมัดจำ ฿200 (PROMPTPAY) ก่อนเช็กอิน +
 //          A008 เสร็จ 14:41 + P004 เสร็จ 15:01 พร้อม ทรีตเมนต์บำรุงสี + แว็กซ์จัดแต่งทรง (ผู้ทำ ช่างเอก) · บิลจากคิวอื่นของวันจ่ายแล้ว
 //          (เหลือ P004 ฿1,290 + A008 ฿180 รอที่เคาน์เตอร์ · ภาพ ข --user cashier · ?at= 15:02)
 //   วัน Y = X + 7: ฉากเดียวกันถึง 15:01 แต่ P004 ยังไม่กดเสร็จ (ภาพ ก --user ek · ?finish=P004&add=… · ?at= 15:01)
@@ -22,6 +22,7 @@ import {
   SQC_DONE_POS_SCENE_DAYS as DAYS,
   SQC_BOOKING_SETTINGS_SCENE as BSS,
   SQC_SYSTEMS,
+  sqcBarberSceneDays,
   type SqcLineEvent,
 } from "./svc-qc-data.mjs";
 
@@ -38,6 +39,15 @@ if (unknown.length) {
   process.exit(2);
 }
 const clear = argv.includes("--clear");
+// G1-C (ผู้คุม 31 ต.ค.) ▸ วันฉากต้องไม่ชนฉากอื่นของหน่วยบาร์เบอร์ (ทะเบียน sqcBarberSceneDays ใน svc-qc-data.mts) — ชน ⇒ หยุดก่อนแตะฐาน ◂
+{
+  const all = sqcBarberSceneDays(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10));
+  const others = Object.entries(all).filter(([k]) => !k.startsWith("B.10")).map(([, v]) => v);
+  if (others.includes(DAYS.x) || others.includes(DAYS.y) || DAYS.x === DAYS.y) {
+    console.error(`🔴 svc-qc-done-pos-scene: วันฉาก B.10 (${DAYS.x} · ${DAYS.y}) ชนฉากอื่น ${JSON.stringify(all)} — หยุด`);
+    process.exit(2);
+  }
+}
 
 const { prisma } = await import("@/lib/core/db");
 const { applyTemplate, setSettings, resolveSettings } = await import("@/lib/core/settings");
@@ -148,6 +158,26 @@ async function ensureExtras(): Promise<void> {
   }
 }
 
+/** G1-C (ผู้คุม 31 ต.ค.) ▸ --clear ลบของที่ทำเพิ่มของฉาก (id ตายตัว) ด้วย — ไม่งั้นหน่วยบาร์เบอร์ค้าง 7 บริการ (r0.2 D-6/D-7 · b.6 Q-2)
+ *  ลบหลังลบงานฉากแล้ว (Appointment.serviceId = FK Restrict) · ยังมีนัดอื่นชี้บริการนี้ ⇒ ไม่ลบ (แจ้ง) · บิลขายที่จ่ายแล้วชี้ id หลวม (ไม่มี FK) คงไว้
+ *  ระบบ HR/ช่างเอก (ฉาก B.5) + ค่าคอมฯ ร้าน (ฉาก B.11) ใช้ร่วมกับฉากอื่น ⇒ ไม่แตะ ◂ */
+async function removeExtras(): Promise<void> {
+  const t = DPS.extras.treatment;
+  const svc = await prisma.bookingService.findUnique({ where: { id: t.id }, select: { tenantId: true, unitId: true } });
+  if (svc) {
+    if (svc.tenantId !== tenantId || svc.unitId !== unitId) throw new Error(`BookingService ${t.id} เป็นของร้าน/สาขาอื่น — หยุด`);
+    const refs = await prisma.appointment.count({ where: { serviceId: t.id } });
+    if (refs) console.log(`${LABEL}: --clear ไม่ลบบริการ ${t.id} (ยังมีนัด ${refs} แถวชี้อยู่)`);
+    else sum.removed += (await prisma.bookingService.deleteMany({ where: { id: t.id, tenantId, unitId } })).count;
+  }
+  const w = DPS.extras.wax;
+  const p = await prisma.posProduct.findUnique({ where: { id: w.id }, select: { tenantId: true, systemId: true } });
+  if (p) {
+    if (p.tenantId !== tenantId || p.systemId !== posSystemId) throw new Error(`PosProduct ${w.id} เป็นของร้าน/ระบบอื่น — หยุด`);
+    sum.removed += (await prisma.posProduct.deleteMany({ where: { id: w.id, tenantId, systemId: posSystemId } })).count;
+  }
+}
+
 async function serviceIds(): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const s of SQC.barber.services) {
@@ -162,7 +192,8 @@ async function serviceIds(): Promise<Record<string, string>> {
 
 /** ลบงานของวันฉาก + บิลพักของงานเหล่านั้น + บัตร + ลำดับเลขบัตรของวัน (บิลขายที่จ่ายแล้วไม่ลบ) */
 async function wipeDay(ds: string): Promise<number> {
-  const appts = await prisma.appointment.findMany({ where: { tenantId, unitId, OR: [{ startAt: dayRange(ds) }, { idempotencyKey: { startsWith: keyOf(ds, "") } }] }, select: { id: true } });
+  // G1-C (ผู้คุม 31 ต.ค.) ▸ ลบเฉพาะนัดของฉากนี้ (คีย์ svcqc-b10-<วัน>) + walk-in ไม่มีคีย์ของวันนั้น — นัดที่มีคีย์ของฉากอื่น (svcqc-online-/dev-/line-) ไม่แตะ ◂
+  const appts = await prisma.appointment.findMany({ where: { tenantId, unitId, OR: [{ startAt: dayRange(ds), idempotencyKey: null }, { idempotencyKey: { startsWith: keyOf(ds, "") } }] }, select: { id: true } });
   const ids = appts.map((a) => a.id);
   if (ids.length) sum.removed += (await prisma.posHeldCart.deleteMany({ where: { tenantId, serviceJobId: { in: ids } } })).count;
   await prisma.queueTicket.deleteMany({ where: { tenantId, unitId, refType: "APPOINTMENT", OR: [{ businessDate: ds }, ...(ids.length ? [{ refId: { in: ids } }] : [])] } });
@@ -268,7 +299,8 @@ try {
   const plan: [string, boolean][] = [[DAYS.x, true], [DAYS.y, false]];
   if (clear) {
     for (const ds of new Set([...(await sceneDays()), DAYS.x, DAYS.y])) sum.removed += await wipeDay(ds);
-    console.log(`${LABEL}: --clear ลบงานฉาก (วัน ${DAYS.x} · ${DAYS.y} + วันฉากเดิม) และบิลพักของงานเหล่านั้น`);
+    await removeExtras(); // G1-C ▸ บริการ/สินค้าที่ทำเพิ่มของฉาก ◂
+    console.log(`${LABEL}: --clear ลบงานฉาก (วัน ${DAYS.x} · ${DAYS.y} + วันฉากเดิม) บิลพักของงานเหล่านั้น และบริการ/สินค้าที่ทำเพิ่มของฉาก`);
   } else {
     const tpl = await applyTemplate(OWNER, { tenantId }, { unitId, domain: "booking", templateKey: "BARBER", overwrite: "KEEP_CUSTOM" });
     if (!tpl.ok) throw new Error(`applyTemplate BARBER: ${tpl.code} ${JSON.stringify(tpl.issues ?? null).slice(0, 200)}`);

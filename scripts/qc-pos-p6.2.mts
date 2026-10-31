@@ -23,6 +23,7 @@ type Any = any;
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { isSvcTree, svcPosGuard, SVC_BASE } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ขอบเขตเลน P6.2 (Z1) ในทรี SVC ตรวจ ณ ปลายทาง POS 940e3aca + ด่านกันไฟล์ POS ที่ SVC แตะ
 
 const SUITE = "qc-pos-p6.2";
 const ROOT = process.cwd();
@@ -920,13 +921,19 @@ function realInputs(): Inputs {
   const wo = ls("ledger/wo-notes");
   const plan = read(F.plan) ?? "";
   const changed = new Set<string>();
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ทรี SVC ⇒ ขอบเขตเลน P6.2 = ช่วงหมุด → ปลายทาง POS 940e3aca (งานหลังจากนั้นเป็นของ SVC · layout.tsx/registry.ts = G1-A2 เมนูจองคิว)
+  //   + ด่านกัน: ไฟล์ POS ที่ SVC แตะต้องอยู่ในทะเบียน scripts/lib/svc-pos-carry.mts ไม่งั้นนับเป็นนอกขอบเขต
+  const svcT = !REV && isSvcTree(ROOT);
+  const Z_TIP = svcT ? SVC_BASE : TIP;
+  const Z_REV = REV || (svcT ? SVC_BASE : "");
   if (gitOk("cat-file", "-e", `${LANE_PIN}^{commit}`)) {
-    for (const f of git("diff", "--name-only", `${LANE_PIN}..${TIP}`).split("\n").filter(Boolean)) changed.add(f);
-    if (!REV) for (const l of git("status", "--porcelain", "--untracked-files=all").split("\n").filter(Boolean)) changed.add(l.slice(3).replace(/^"|"$/g, "").replace(/^.* -> /, ""));
+    for (const f of git("diff", "--name-only", `${LANE_PIN}..${Z_TIP}`).split("\n").filter(Boolean)) changed.add(f);
+    if (!REV && !svcT) for (const l of git("status", "--porcelain", "--untracked-files=all").split("\n").filter(Boolean)) changed.add(l.slice(3).replace(/^"|"$/g, "").replace(/^.* -> /, ""));
+    if (svcT) for (const g of svcPosGuard(ROOT)) changed.add(g);
   } else changed.add(`(หมุดเลน ${LANE_PIN} ไม่มีในทรี)`);
-  const settingsDiff = REV ? git("diff", "-U0", LANE_PIN, REV, "--", F.settings) : git("diff", "-U0", LANE_PIN, "--", F.settings);
-  const layoutDiff = REV ? git("diff", "-U0", LANE_PIN, REV, "--", F.layout) : git("diff", "-U0", LANE_PIN, "--", F.layout);
-  const registryDiff = REV ? git("diff", "-U0", LANE_PIN, REV, "--", F.registry2) : git("diff", "-U0", LANE_PIN, "--", F.registry2); // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1b qc-pages RG-1: เมนูข้างต้องมี widget ⇒ อนุญาต src/lib/pages/registry.ts กติกาเดียวกับ layout.tsx) // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
+  const settingsDiff = Z_REV ? git("diff", "-U0", LANE_PIN, Z_REV, "--", F.settings) : git("diff", "-U0", LANE_PIN, "--", F.settings);
+  const layoutDiff = Z_REV ? git("diff", "-U0", LANE_PIN, Z_REV, "--", F.layout) : git("diff", "-U0", LANE_PIN, "--", F.layout);
+  const registryDiff = Z_REV ? git("diff", "-U0", LANE_PIN, Z_REV, "--", F.registry2) : git("diff", "-U0", LANE_PIN, "--", F.registry2); // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1b qc-pages RG-1: เมนูข้างต้องมี widget ⇒ อนุญาต src/lib/pages/registry.ts กติกาเดียวกับ layout.tsx) // ORACLE-EDIT ผู้คุม 24.10 (CD-P62-O1 qc-nav-functions S5: อนุญาตบรรทัดเมนูข้าง /pos/help ใน layout.tsx ≤ 2 บรรทัดเพิ่ม · ลบ 0)
   return {
     exists,
     read,

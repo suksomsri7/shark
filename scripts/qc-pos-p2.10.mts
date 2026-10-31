@@ -37,6 +37,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcCarry, svcOracleEdited, isSvcTree, SVC_BASE } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ไฟล์ที่ใบ SVC ได้รับอนุญาต ⇒ ข้อหมุดตรวจ ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-pos-p2.10";
 const ROOT = process.cwd();
@@ -225,7 +226,9 @@ const MB = (() => {
 })();
 /** บรรทัดที่เพิ่ม (เลขบรรทัดของไฟล์ปัจจุบัน) + จำนวนบรรทัดที่ลบ เทียบ MB (รวมของที่ยังไม่ commit) */
 function diffLines(f: string): { added: number[]; removed: number; err: string } {
-  const out = gitStr(["diff", "--no-color", "-U0", MB, "--", f]);
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ไฟล์ที่ใบ SVC ได้รับอนุญาต (held-cart/service/register-actions = B.10 จุด 1 · outbox-consumers = ทะเบียน event ของใบ SVC ·
+  //   scripts/lib/svc-pos-carry.mts) ⇒ เทียบหมุดกับเนื้อ ณ 940e3aca (ปลายทาง POS) · ไฟล์อื่น = ทรีงานเหมือนเดิม
+  const out = gitStr(svcCarry(ROOT, f) ? ["diff", "--no-color", "-U0", MB, SVC_BASE, "--", f] : ["diff", "--no-color", "-U0", MB, "--", f]);
   if (out === null) return { added: [], removed: 0, err: `git diff ${MB} ไม่ได้` };
   const added: number[] = [];
   let removed = 0;
@@ -357,7 +360,9 @@ function runStatic(): void {
     }
     // ข้อสอบเดิมไม่ถูกแก้ (ยกเว้น ORACLE-EDIT p1.18 บรรทัด rewardNearCustomerDisplay)
     // ORACLE-EDIT ผู้คุม 16 ต.ค. (CD-FU2a): "ข้อสอบเดิมไม่ถูกแก้" = เทียบเฉพาะไฟล์ที่มีอยู่แล้วที่หมุด (M) · ไฟล์ข้อสอบใหม่ของใบถัดไป (A) ไม่ใช่ "ข้อสอบเดิม" — กฎคงเดิม
-    const changed = (gitStr(["diff", "--name-only", "--diff-filter=M", MB, "--", "scripts"]) ?? "").split("\n").filter((f) => /^scripts\/qc-(pos|hf)-[^/]+\.mts$/.test(f) && f !== F.self);
+    const changed = (gitStr(["diff", "--name-only", "--diff-filter=M", MB, "--", "scripts"]) ?? "").split("\n").filter((f) => /^scripts\/qc-(pos|hf)-[^/]+\.mts$/.test(f) && f !== F.self)
+      // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ทรี SVC — ข้อสอบที่ SVC แก้หลัง 940e3aca ด้วย ORACLE-EDIT ติดป้าย (svcOracleEdited) และไม่ต่างจากหมุดที่ 940e3aca ⇒ ไม่นับ (ช่วง POS ยังตรวจครบ)
+      .filter((f) => !(isSvcTree(ROOT) && svcOracleEdited(ROOT, f) && (gitStr(["diff", "--name-only", MB, SVC_BASE, "--", f]) ?? "x").trim() === ""));
     for (const f of changed) {
       if (f !== F.p118) {
         pins.push(`${f} ถูกแก้ (CONTROLLER-DECISION)`);

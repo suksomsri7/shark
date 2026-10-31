@@ -70,6 +70,7 @@ type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { svcCarry, atSvcBase } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ไฟล์ที่ใบ SVC ได้รับอนุญาต ⇒ ตรวจเนื้อ ณ ปลายทาง POS
 
 const SUITE = "qc-pos-p1.3";
 const ROOT = process.cwd();
@@ -734,7 +735,11 @@ async function runStatic() {
     [LEGACY_UI]: "d661c7edf2abc93a35632e02b3dcc4fae9a6c1739739efa350ce451eafb66cfb", // ORACLE-EDIT MAIN-MERGE (ผู้คุม 10 ต.ค.) ▸ main HF-O23 3a93a773 ◂
     [LEGACY_ACTIONS]: "ccd87cfc5fd9d57ec2017dc0fb8fe06bf34783549a9635a129c2bdb509f4a8d3", // ORACLE-EDIT ผู้คุม B 23.10 (CD-P51-O4/O4b · P5.1 MA3: legacy action กัน V2 + assertLegacySaleAllowed + manual-confirm + เพดานส่วนลดผู้ขาย · old e076ca3d) · ORACLE-EDIT MAIN-MERGE ▸ main HF-O23 3a93a773 + R2 70ab5b86 ◂
   };
-  const shaOf = (p: string) => (existsSync(join(ROOT, p)) ? createHash("sha256").update(readFileSync(join(ROOT, p))).digest("hex") : "absent");
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): register-ui.tsx = SVC B.10 จุด 1 (แผงบิลจากคิว · เจ้าของอนุญาต) ⇒ ไบต์จอเดิมตรวจ ณ ปลายทาง POS 940e3aca (scripts/lib/svc-pos-carry.mts) · ไฟล์อื่น = ทรีงานเหมือนเดิม
+  const shaOf = (p: string) => {
+    const b = svcCarry(ROOT, p) ? atSvcBase(ROOT, p) : existsSync(join(ROOT, p)) ? readFileSync(join(ROOT, p)) : null;
+    return b ? createHash("sha256").update(b).digest("hex") : "absent";
+  };
   const shaBad = Object.entries(LEGACY_SHA).filter(([p, h]) => shaOf(p) !== h).map(([p]) => `${p}=${shaOf(p).slice(0, 12)}`);
   const legacyRows = ["pos-pay-button", "pos-member-select", "pos-catalog-item"].filter((t) => !rows.some((r) => r.testid === t && r.page === "/app/sys/[id]/pos/register"));
   chk("P1.3-S5.12", shaBad.length === 0 && legacyRows.length === 0, "ไบต์ตรงฐาน · แถวจอเดิม 3", `ไบต์ต่าง: ${shaBad.join(", ") || "-"} · แถวหาย: ${legacyRows.join(", ") || "-"}`);

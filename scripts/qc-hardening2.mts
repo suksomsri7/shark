@@ -117,7 +117,24 @@ try {
     "src/app/api/store/[tenantSlug]/[unitSlug]/restaurant/session/route.ts",
     "src/app/api/store/[tenantSlug]/[unitSlug]/slots/route.ts",
   ];
-  const noRl = PUBLIC_WRITE_ROUTES.filter((f) => !/checkRateLimit/.test(read(f)));
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): route ที่ย้ายด่านไปไว้ในฟังก์ชันโมดูลที่มันเรียก (SVC B.7: book → bookOnline ใน booking/online.ts · checkRateLimitDb ต่อ IP + ต่อร้าน ก่อนอ่านฐาน · ตอบ 429)
+  //   นับว่ามีด่านเมื่อ route import+เรียกฟังก์ชันนั้นจริง และตัวฟังก์ชัน (ตั้งแต่ export async function จนถึงบรรทัดแรกที่ resolve ร้าน) มี checkRateLimit — route อื่นตรวจแบบเดิม
+  const RL_DELEGATE: Record<string, { mod: string; fn: string; before: RegExp }> = {
+    "src/app/api/store/[tenantSlug]/[unitSlug]/book/route.ts": { mod: "src/lib/modules/booking/online.ts", fn: "bookOnline", before: /resolvePublicUnit\(/ },
+  };
+  const delegatedRl = (f: string): boolean => {
+    const d = RL_DELEGATE[f];
+    if (!d) return false;
+    const r = read(f);
+    if (!new RegExp(`import\\s*\\{[^}]*\\b${d.fn}\\b[^}]*\\}\\s*from\\s*["']@/${d.mod.replace(/^src\//, "").replace(/\.ts$/, "")}["']`).test(r) || !new RegExp(`\\b${d.fn}\\s*\\(`).test(r)) return false;
+    const m = read(d.mod);
+    const at = m.search(new RegExp(`export\\s+async\\s+function\\s+${d.fn}\\b`));
+    if (at < 0) return false;
+    const body = m.slice(at);
+    const stop = body.search(d.before);
+    return stop > 0 && /checkRateLimit/.test(body.slice(0, stop));
+  };
+  const noRl = PUBLIC_WRITE_ROUTES.filter((f) => !/checkRateLimit/.test(read(f)) && !delegatedRl(f));
   chk("H2-3.1", `endpoint สาธารณะ ${PUBLIC_WRITE_ROUTES.length} ตัวมีด่านกันถล่มครบ`, noRl.length === 0, "0 ที่ขาด", noRl.map((f) => f.split("/").slice(-2)[0]).join(","));
   chk("H2-3.2", "OTP ฝั่งแอปส่ง IP เข้าด่านกันถล่ม (ไม่งั้นด่านต่อ IP ไม่ทำงาน)", /requestLogin\(email, ip\)/.test(read("src/app/api/mobile/auth/otp/route.ts")), "ส่ง ip", "ไม่ส่ง");
 

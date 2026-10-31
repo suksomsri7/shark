@@ -44,6 +44,8 @@ type Any = any;
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcRdView, svcExView, svcGit, svcPinStep, svcMigrationDirs, svcCarry, atSvcBase, SVC_PIN_VIEW } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ข้อหมุดของ POS ในทรี SVC เห็นไฟล์ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ณ ปลายทาง POS 940e3aca
+const SVC_PIN_IDS = new Set<string>(["ST2"]); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ข้อหมุดสัญญา/ผู้เรียก createSale/ไฟล์ร้อน
 
 const SUITE = "qc-pos-p3.4";
 const ROOT = process.cwd();
@@ -154,8 +156,8 @@ function chk(id: string, ok: unknown, expected: unknown, actual: unknown): boole
   return r.ok;
 }
 const abs = (p: string) => (p.startsWith("/") ? p : join(ROOT, p));
-const ex = (p: string) => existsSync(abs(p));
-const rd = (p: string) => (ex(p) ? readFileSync(abs(p), "utf8") : "");
+const ex = (p: string) => svcExView(ROOT, p, (q) => existsSync(abs(q))); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
+const rd = (p: string) => svcRdView(ROOT, p, (q) => (existsSync(abs(q)) ? readFileSync(abs(q), "utf8") : "")); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
 const short = (v: unknown, n = 200) => {
   let s: string;
   try {
@@ -226,7 +228,7 @@ function gitBuf(args: string[]): Buffer | null {
     return null;
   }
 }
-const gitStr = (args: string[]) => gitBuf(args)?.toString("utf8") ?? null;
+const gitStr = (args: string[]) => svcGit(ROOT, args, (a) => gitBuf(a)?.toString("utf8") ?? null); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
 const showAt = (rev: string, f: string): string | null => gitStr(["show", `${rev}:${f}`]);
 const BASE_OK = !!gitStr(["rev-parse", "--verify", "-q", `${BASE_REV}^{commit}`])?.trim();
 // ORACLE-EDIT ผู้คุม 17 ต.ค. (CD-RP1 qc-pos-p3.4 ST1/ST2): ใบพี่น้อง P3.5 S merge เข้า session/pos ก่อน (688fc3ed = 72669941 + HF-FU2 + P3.5 S) —
@@ -380,7 +382,7 @@ let SHARED_PURE = false;
 let sh: Any = null; // โมดูล offline-shared (โหลดหลัง ST3 ผ่าน)
 const step = async (id: string, fn: () => Promise<void> | void) => {
   try {
-    await fn();
+    await (SVC_PIN_IDS.has(id) ? svcPinStep(fn) : fn()); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D)
   } catch (e) {
     chk(id, false, "ตรวจได้ (ไม่ crash)", `THROW ${(e as Error)?.message?.slice(0, 160)}`);
   }
@@ -482,6 +484,7 @@ async function runStatic(): Promise<void> {
     if (SIB_OK) for (const x of (gitStr(["ls-tree", "--name-only", SIB_REV, `${F.migrations}/`]) ?? "").split("\n")) if (!/_pos_p34_offline$/.test(x)) baseDirs.add(x.split("/").pop() ?? "");
     // ORACLE-EDIT ผู้คุม 21.10 (CD-RP9 qc-pos-p3.4 ST1): migration ของใบที่ merge หลัง P3.4 (P3.6 S: *_pos_p36_credit_enum · *_pos_p36_credit) มีอยู่ที่หมุดเลน LANE_REV = ไม่ใช่ "ใหม่อื่น" — ใบนี้ยังต้องมี *_pos_p34_offline ใบเดียวและเพิ่มล้วน ◂
     if (LANE_OK) for (const x of (gitStr(["ls-tree", "--name-only", LANE_REV, `${F.migrations}/`]) ?? "").split("\n")) if (!/_pos_p34_offline$/.test(x)) baseDirs.add(x.split("/").pop() ?? "");
+    for (const d of svcMigrationDirs(ROOT)) baseDirs.add(d); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): migration svc_* ของใบ SVC (R0.1/B.0/D.0/D.4 · เพิ่มล้วน) ไม่ใช่ "ใหม่อื่น" ของ P3.4
     const fresh = dirs.filter((d) => !baseDirs.has(d));
     const mine = dirs.filter((d) => /_pos_p34_offline$/.test(d));
     if (mine.length !== 1) p.push(`migration *_pos_p34_offline ${mine.length} ใบ (คาด 1)`);
@@ -586,7 +589,7 @@ async function runStatic(): Promise<void> {
     };
     p.push(...firstOk((rv) => {
       const ob = gitBuf(["show", `${rv}:${F.outbox}`]);
-      const oh = ex(F.outbox) ? readFileSync(abs(F.outbox)) : null;
+      const oh = SVC_PIN_VIEW.on && svcCarry(ROOT, F.outbox) ? atSvcBase(ROOT, F.outbox) : ex(F.outbox) ? readFileSync(abs(F.outbox)) : null; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) outbox-consumers = ทะเบียน event ของใบ SVC ⇒ ไบต์ ณ 940e3aca
       return !ob || !oh || !ob.equals(oh) ? ["outbox-consumers.ts ไม่ตรงไบต์กับฐาน"] : [];
     }));
     p.push(...firstOk((rv) => {

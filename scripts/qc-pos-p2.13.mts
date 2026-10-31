@@ -45,6 +45,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcCarry, svcRead, SVC_BASE } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) ไฟล์ที่ใบ SVC ได้รับอนุญาต ⇒ ข้อหมุดตรวจ ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-pos-p2.13";
 const ROOT = process.cwd();
@@ -529,13 +530,15 @@ function runStatic(): void {
     const raw = rd(F.contract);
     const h = raw ? sha256hex(raw) : "";
     if (h !== CONTRACT_SHA) p.push(`contract sha ${h.slice(0, 12) || "อ่านไม่ได้"} (คาด ${CONTRACT_SHA.slice(0, 12)})`);
-    const prismaDiff = gitStr(["diff", "--name-only", MB, "--", "prisma/"]);
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): prisma/ · outbox-consumers.ts · service-bill.ts = ของใบ SVC ที่ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ⇒ เทียบหมุดกับเนื้อ ณ 940e3aca
+    const svcAt = (f: string) => (svcCarry(ROOT, f) ? [MB, SVC_BASE] : [MB]);
+    const prismaDiff = gitStr(["diff", "--name-only", ...svcAt("prisma/"), "--", "prisma/"]);
     if (prismaDiff === null) p.push(`git diff ${MB} ไม่ได้`);
     else if (prismaDiff.trim()) p.push(`prisma/ เปลี่ยน: ${prismaDiff.trim().split("\n").slice(0, 3).join(",")}`);
     const untracked = (gitStr(["ls-files", "--others", "--exclude-standard", "--", "prisma/"]) ?? "").trim();
     if (untracked) p.push(`prisma/ มีไฟล์ใหม่: ${untracked.split("\n")[0]}`);
     for (const f of [F.outbox, F.tools, F.pkg]) {
-      const d = gitStr(["diff", "--name-only", MB, "--", f]);
+      const d = gitStr(["diff", "--name-only", ...svcAt(f), "--", f]);
       if (d && d.trim()) p.push(`${f} ถูกแก้`);
     }
     // createSale( ต่อไฟล์ = ฐาน ยกเว้น ops/sales.ts → 0
@@ -544,7 +547,8 @@ function runStatic(): void {
     const now: Record<string, number> = {};
     for (const f of walk("src")) {
       if (skip(f)) continue;
-      const n = count(rd(f));
+      const sv = svcRead(ROOT, f); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) service-bill.ts = SVC B.10 จุด 1 ⇒ นับ ณ 940e3aca
+      const n = count(sv === undefined ? rd(f) : sv ?? "");
       if (n) now[f] = n;
     }
     const base: Record<string, number> = {};

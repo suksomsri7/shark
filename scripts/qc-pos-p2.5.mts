@@ -531,7 +531,7 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,
 };
 /** ผู้เรียกที่ใบอื่นเพิ่มได้ (P2.8 มติ: pos/order.ts 1 จุด) — มี = ต้องเท่านี้พอดี · ไม่มี = ผ่าน */
-const CALL_SITES_ALLOWED_LATER: Record<string, number> = { "src/lib/modules/pos/order.ts": 1 };
+const CALL_SITES_ALLOWED_LATER: Record<string, number> = { "src/lib/modules/pos/order.ts": 1, "src/lib/modules/pos/service-bill.ts": 1 }; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) + SVC B.10 จุด 1 บิลจากคิว: service-bill.ts payServiceBill → createSale จุดเดิม 1 จุด (ใบสั่ง svc-brief-b.10 §1 · 18→19 จุด/15→16 ไฟล์)
 /** register.ts เรียก ticketForSale ณ 4449123f (ทางใบขอรับเงิน :2460 + ทางปกติ :2805 · §7 ไม่มีจุดใหม่บนทางแยกบิล) */
 const TICKET_FOR_SALE_IN_REGISTER = 2;
 /** ลายเซ็น export ของโมดูลร้านอาหาร (= qc-pos-p2.4 SIGS_BASE ตรงตัว · R11/§7 แช่แข็ง รวม moveSession/mergeSession) */

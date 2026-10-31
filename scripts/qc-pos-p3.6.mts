@@ -42,6 +42,7 @@ type Any = any;
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { svcRdView, svcExView, svcGit, svcPinStep, svcPinStepSync, SVC_PIN_VIEW } from "./lib/svc-pos-carry.mjs"; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): ข้อหมุด/ขอบเขตเลนของ POS ในทรี SVC เห็นไฟล์ที่ใบ SVC ได้รับอนุญาต (scripts/lib/svc-pos-carry.mts) ณ ปลายทาง POS 940e3aca
 
 const SUITE = "qc-pos-p3.6";
 const ROOT = process.cwd();
@@ -200,11 +201,11 @@ function skipChk(id: string, reason: string): void {
   results.set(full, { ok: true, expected: "-", actual: reason, skipped: true });
   console.log(`  ⏭️  [${full}] SKIP-with-reason: ${reason}`);
 }
-const rd = (p: string) => {
-  const abs = p.startsWith("/") ? p : join(ROOT, p);
+const rd = (p: string) => svcRdView(ROOT, p, (q) => { // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
+  const abs = q.startsWith("/") ? q : join(ROOT, q);
   return existsSync(abs) ? readFileSync(abs, "utf8") : "";
-};
-const ex = (p: string) => existsSync(join(ROOT, p));
+});
+const ex = (p: string) => svcExView(ROOT, p, (q) => existsSync(join(ROOT, q))); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
 const short = (v: unknown, n = 160) => {
   let s: string;
   try {
@@ -230,6 +231,9 @@ function walk(dir: string, out: string[] = [], re = /\.(tsx|ts)$/): string[] {
 const stripComments = (s: string) => s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
 const srcOf = (f: string) => stripComments(rd(f));
 function gitStr(args: string[]): string | null {
+  return svcGit(ROOT, args, gitStr0); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) มุมมองหมุดเท่านั้น
+}
+function gitStr0(args: string[]): string | null {
   try {
     return execFileSync("git", ["-C", ROOT, ...args], { stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 }).toString("utf8");
   } catch {
@@ -563,7 +567,7 @@ function runStatic(): void {
       if (/\.\s*(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(seam)) p.push("pos-seam.ts เขียนตารางเอง (ต้องผ่านภายในของ CRM เดิม)");
       if (/["']@\/lib\/modules\/pos/.test(seam)) p.push("pos-seam.ts import โมดูล POS (ทิศกลับ)");
     }
-    const changed = changedSincePin();
+    const changed = svcPinStepSync(() => changedSincePin()); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): รายการไฟล์ที่เปลี่ยนตั้งแต่หมุด — ไฟล์ของใบ SVC ที่ได้รับอนุญาตดู ณ 940e3aca · การตรวจเนื้อไฟล์ที่เหลืออ่านทรีงาน
     if (!changed) p.push(`git diff ${PIN} ไม่ได้`);
     const WRITE = (model: string) => new RegExp(`\\.${model}\\s*\\.\\s*(create|createMany|update|updateMany|upsert|delete|deleteMany)\\s*\\(`);
     for (const f of (changed ?? []).filter((x) => /^src\/.*\.(ts|tsx)$/.test(x) && ex(x))) {
@@ -597,6 +601,7 @@ function runStatic(): void {
   }
   // ── ST4 ไฟล์ห้ามแตะ ──
   {
+    SVC_PIN_VIEW.on = true; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D): register-ui.tsx = SVC B.10 จุด 1 ⇒ ไบต์ ณ 940e3aca
     const p: string[] = [];
     for (const f of [F.regUi, F.shift]) {
       const d = gitStr(["diff", "--stat", LANE_PIN, "--", f]); // ORACLE-EDIT ผู้คุม POS (B) 21 ต.ค. (CD-P36-O1: LANE_PIN ◂
@@ -605,6 +610,7 @@ function runStatic(): void {
       if (!ex(f)) p.push(`${f} หาย`);
     }
     stNotes.ST4 = p;
+    SVC_PIN_VIEW.on = false; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D)
   }
 }
 function finishStatic(): void {
