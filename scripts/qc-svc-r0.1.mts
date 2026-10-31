@@ -15,6 +15,7 @@
 // ทุกแถวทดสอบอยู่ใต้ tenant ชั่วคราว slug `qc-svc-r01-*` · ลบใน finally ทุกครั้ง (+ กวาดของค้างจากรอบก่อนตอนเริ่ม)
 // รัน: bash scripts/iso.sh bash scripts/qc-svc.sh pnpm exec tsx scripts/qc-svc-r0.1.mts
 import { existsSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync, execFileSync } from "node:child_process";
@@ -22,7 +23,7 @@ import pg from "pg";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LABEL = "qc-svc-r0.1";
-const SVC_HOST = "ep-mute-scene"; // qc-svc (wo-svc-qc) — ดู scripts/qc-svc.sh
+const SVC_HOST = svcQcHostMark(); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) เดิม "ep-mute-scene" // qc-svc (wo-svc-qc) — ดู scripts/qc-svc.sh
 const FORBIDDEN_HOSTS = ["ep-royal-night", "ep-plain-art", "ep-cool-shadow", "ep-weathered-river", "ep-frosty-lab", "ep-fragrant-thunder"];
 const BASE_SHA = "33e8272c"; // tip session/svc ตอน R0.0 (ก่อน R0.1)
 

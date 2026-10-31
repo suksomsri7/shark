@@ -16,6 +16,7 @@
 //    bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-d.2.mts
 // ข้อมูล: tenant ใช้แล้วทิ้ง 2 ร้าน (slug ขึ้นต้น "svc-d2-") · ลบทั้งหมดใน finally · วันที่สัมพัทธ์ทั้งหมด · สุ่มแบบมีเมล็ด (SEED=… ทำซ้ำได้)
 import { existsSync, readFileSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -26,7 +27,7 @@ type Any = any;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LABEL = "qc-svc-d.2";
-const SVC_HOST = "ep-mute-scene";
+const SVC_HOST = svcQcHostMark(); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) เดิม "ep-mute-scene"
 const FORBIDDEN_HOSTS = ["ep-royal-night", "ep-plain-art", "ep-cool-shadow", "ep-weathered-river", "ep-frosty-lab", "ep-fragrant-thunder"];
 const RUN_HINT = "bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-svc-d.2.mts";
 
@@ -42,7 +43,7 @@ const RUN_HINT = "bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-g
     if (!hn.startsWith(SVC_HOST)) { console.error(`🔴 ${LABEL}: ${n} host ไม่ใช่ qc-svc (${SVC_HOST}) — หยุด`); process.exit(4); }
   }
   if (process.env.APP_ENV === "production") { console.error(`🔴 ${LABEL}: APP_ENV=production`); process.exit(4); }
-  if (process.env.SHARK_GATE_LOCK_MARKER !== "1" || process.env.GATE_LOCK_FILE !== "/tmp/shark-gate-svc.lock") {
+  if (process.env.SHARK_GATE_LOCK_MARKER !== "1" || !/^\/tmp\/shark-gate-svc(-ep-[a-z0-9-]+)?\.lock$/.test(process.env.GATE_LOCK_FILE ?? "") /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · ล็อกต่อฐาน) */) {
     console.error(`🔴 ${LABEL}: ไม่ได้รันใต้ gate lock ของ SVC (with-gate-lock.sh ผ่าน qc-svc.sh) — รันผ่าน: ${RUN_HINT}`);
     process.exit(4);
   }

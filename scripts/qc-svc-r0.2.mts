@@ -17,6 +17,7 @@
 //    (ข้อ O เทียบร้านอื่นทั้งฐาน — ข้อสอบอื่นเขียน qc-svc พร้อมกัน = O แดงปลอม · ร้านที่สร้างภายใน 2 ชม. ไม่นับ)
 // ค่าที่ข้อสอบแก้ชั่วคราว (I-5 · SM-3) คืนใน finally เสมอ
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -24,7 +25,7 @@ import pg from "pg";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LABEL = "qc-svc-r0.2";
-const SVC_HOST = "ep-mute-scene";
+const SVC_HOST = svcQcHostMark(); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) เดิม "ep-mute-scene"
 const FORBIDDEN_HOSTS = ["ep-royal-night", "ep-plain-art", "ep-cool-shadow", "ep-weathered-river", "ep-frosty-lab", "ep-fragrant-thunder"];
 
 // ═══════════════ 0. ด่านฐานข้อมูล (ในตัวข้อสอบ — ไม่พึ่งไฟล์ของ builder) ═══════════════

@@ -1,4 +1,5 @@
 ## ▶️ รับไม้ 30 ต.ค. ~11:4xZ (บัญชี B · ผู้คุมใหม่) — **33/53** (D.9 ✅ · D.4 ✅ 05014f81)
+- 📍 30 ต.ค. ~23Z: agent ตายทั้งหมด ~16Z (OAuth หมดอายุ) · งาน builder D.12/D.10 commit เป็น WIP บน wip/svc-l1 (84eab08b) / wip/svc-l2 (80394c52) · ORACLE-EDIT ผู้คุมอนุมัติแล้ว (d.8 Q-2/S-7 · d.5 S-8 · d.11 S-7 · r0.6 P-1/U-2 · probe-d9-b IA-1 · d.12 M-8/G-7 · d.10 S-1) · กำลังรีวิวเข้ม A+B ทั้ง 2 ใบ · ผู้คุมรัน d.12 เต็ม /root/svc-runs/ctl-d12.txt · l3 ว่าง · ถัดไป B.12
 - บัญชี A หมด weekly 11:29–11:34Z ⇒ builder D.10/D.4/D.12 ตาย · gate-k + D.4 probe/full ที่ค้างปล่อยรันจนจบ
 - เปิด builder ใหม่ "ทำต่อจากทรี": l1 D.12 (เริ่มจาก 95/121 · log /tmp/svc-d12-build-2.log) · l2 D.10 (โค้ดราวครึ่ง) · l3 D.4 รอผล /tmp/svc-d4-probe-2.log + /tmp/svc-d4-build-full2.log แล้วผู้คุมรับ/ส่งผู้ตรวจยืนยันซ้ำ
 

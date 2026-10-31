@@ -8,9 +8,10 @@
 // 🔴 พิมพ์เฉพาะ host — ห้ามพิมพ์ URL เต็ม/รหัสผ่าน
 
 import { isProdDbUrl, PROD_HOST_MARK } from "./qc-env-guard.mjs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 
 /** host ของฐาน QC ของ RUN SVC (`wo-svc-qc`) */
-export const SVC_QC_HOST_MARK = "ep-mute-scene";
+export const SVC_QC_HOST_MARK: string = svcQcHostMark(); // ผู้คุม 31 ต.ค. · ฐานต่อเลน (เดิม "ep-mute-scene")
 /** host ของฐาน QC ที่ RUN อื่นถืออยู่ — SVC ห้ามแตะ (QC1–QC3 ของ CRM · QC4/QC5 ของ POS) */
 export const OTHER_RUN_QC_HOST_MARKS = ["ep-plain-art", "ep-cool-shadow", "ep-weathered-river", "ep-frosty-lab", "ep-fragrant-thunder"] as const;
 
