@@ -1258,7 +1258,7 @@ const git = (args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { enc
 const dirty = (paths: string[]) => git(["status", "--porcelain", "--untracked-files=all", "--", ...paths]).split("\n").filter(Boolean).map((l) => l.slice(3).trim().replace(/^"|"$/g, ""));
 const removedLines = (f: string) => git(["diff", "-U0", "HEAD", "--", f]).split("\n").filter((l) => /^-(?!-)/.test(l) && l.slice(1).trim());
 // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-1): + dorm/layout.tsx (แท็บ "บิล/รับเงิน") · dorm-policy-shared.ts (ป้ายตัวแปร reason ของ d.13 R-8)
-const OWN_FIXED = new Set<string>(["src/app/app/u/[unitSlug]/dorm/layout.tsx", "src/components/dorm/dorm-policy-shared.ts", F.pay, F.balance, F.dormIndex, F.latefee, F.dormPortal, F.portal, F.line, F.slipVerify, F.accIndex, F.accService, F.consumers, F.autoLabels, F.hookLabels, F.defs, F.page, F.actions, F.comp, F.homeShared]);
+const OWN_FIXED = new Set<string>(["src/lib/platform/minute-jobs.ts" /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · d10-S1b) Z6 งานลบรูปตามเวลา */, "src/app/app/u/[unitSlug]/dorm/layout.tsx", "src/components/dorm/dorm-policy-shared.ts", F.pay, F.balance, F.dormIndex, F.latefee, F.dormPortal, F.portal, F.line, F.slipVerify, F.accIndex, F.accService, F.consumers, F.autoLabels, F.hookLabels, F.defs, F.page, F.actions, F.comp, F.homeShared]);
 {
   const ch = dirty(["src", "prisma", "public"]);
   const headHas = (() => { try { git(["cat-file", "-e", `HEAD:${F.pay}`]); return true; } catch { return false; } })();
