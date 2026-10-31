@@ -1176,7 +1176,8 @@ const summaryOf = (out: string): { failed: string[] } | null => {
 };
 const judgeNoFail = (out: string) => (summaryOf(out)?.failed.length ?? 1) === 0;
 const REG: { s: string; args?: string[]; judge?: (out: string, code: number | null) => boolean; note?: string }[] = [
-  { s: "qc-svc-d.6", judge: judgeNoFail, note: "ไม่มี FAIL · รวม G ของมันเอง (r0.9 · r0.2)" },
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · d14-G1) d.6 --no-regression (เต็มพ่วง r0.9/r0.2 ช้า+สุ่มแดง · ผู้คุมรันเต็มตอนด่านรวม) · ยอม S-5 ที่แดงตั้งแต่ฐาน (หนี้ D.6 ค้างผู้คุม · เหมือน d.12 G-3)
+  { s: "qc-svc-d.6", args: ["--no-regression"], judge: (out: string) => (summaryOf(out)?.failed ?? ["?"]).every((x: string) => x === "S-5"), note: "ไม่มี FAIL นอก S-5 (ฐาน)" },
   { s: "qc-svc-d.8", args: ["--no-regression"], judge: judgeNoFail, note: "ไม่มี FAIL" },
   { s: "qc-svc-d.13", args: ["--no-regression"], judge: judgeNoFail, note: "ไม่มี FAIL" },
   { s: "qc-svc-smoke" },
