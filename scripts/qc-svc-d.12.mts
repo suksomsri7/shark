@@ -445,7 +445,11 @@ try {
   }
   {
     const both = moSrc + "\n" + chSrc;
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · d12-S13 · มติ Y23) ใบเพิ่มหนี้ยอมได้ **จุดเดียว**: กลับรายการใบลดหนี้ค่าห้องส่วนเกิน (ref DormMoveOutRentCreditReverse) — นับจุดเรียกต้อง = 1 และต้องอยู่คู่ ref นั้น · ทางอื่นยังห้าม
+    const dnCalls = both.match(/\bcreateExternalDebitNote\s*\(/g)?.length ?? 0;
+    const dnOk = dnCalls === 1 && /createExternalDebitNote\s*\(\{[\s\S]{0,400}?refType:\s*RENT_CREDIT_REVERSE\b/.test(both) && /\bRENT_CREDIT_REVERSE\s*=\s*"DormMoveOutRentCreditReverse"/.test(both);
     const newMoney = ["postSecurityDeposit", "recordExternalPayment", "applyExternalDepositReceipt", "applyExternalDepositRefund", "reverseEntry", "reverseSecurityDepositSettlement", "createExternalDebitNote"]
+      .filter((n) => !(n === "createExternalDebitNote" && dnOk))
       .filter((n) => new RegExp(`\\b${n}(InTx)?\\s*\\(`).test(both));
     const delAcc = /account\w*\.(delete|deleteMany)\s*\(|DELETE\s+FROM\s+"Account/i.test(both);
     const par = /Promise\.(all|allSettled|any|race)\s*\([\s\S]{0,600}?(settleSecurityDeposit|createExternalInvoice|createExternalCreditNote)/.test(both) || /\.map\(\s*async[\s\S]{0,400}?(settleSecurityDeposit|createExternalInvoice|createExternalCreditNote)/.test(both);
@@ -1452,6 +1456,58 @@ try {
     const bad = badOf([...a, ...b], ["BILL_PENDING", "ALREADY_BILLED", "RUN_BUSY", "BUSY"]);
     return [jan.length === 1 && g?.heldSatang === DEP && !bad.length, J({ jan: jan.length, kid: !!kid, held: g?.heldSatang, a: a.map(codeOf), b: b.map((r) => `${r?.stage}:${codeOf(r)}`), bad: bad.slice(0, 2) })];
   });
+
+  // ═══════════════ ORACLE-EDIT (ผู้คุม 31 ต.ค. · Y22/Y23) — เพิ่มอย่างเดียว ═══════════════
+  console.log("\n── Y22/Y23 ส่งใบสรุป ∥ ยกเลิก · ยกเลิกหลังใบลดหนี้ค่าห้องส่วนเกิน (ORACLE-EDIT) ──");
+  {
+    const DYx = await plainUnit("y");
+    const DY = DYx.u;
+    const YL: Record<string, L> = {};
+    for (const [k, no] of [["Y1", "901"], ["Y2", "902"]] as const) { YL[k] = await mkLease({ unitId: DY, roomId: await mkRoom(A, DY, DYx.ty, DYx.b, no), typeId: DYx.ty, name: `ผู้เช่า ${k}`, common: 0 }); await dep(YL[k]); }
+    const NORMAL5 = [{ key: "wall", labelTh: "ผนัง · สี", verdict: "NORMAL" }];
+    const liveDocs = async (where: any) => (await prisma.accountDocument.findMany({ where: { tenantId: A, ...where } })).filter((d: any) => !["VOIDED", "CANCELLED", "DRAFT"].includes(String(d.status)));
+    const creditedOf = async (docId: string) => (await liveDocs({ sourceDocId: docId, docType: "CREDIT_NOTE" })).reduce((a: number, d: any) => a + Number(d.grandTotal), 0);
+    const debitedOf = async (docId: string) => (await liveDocs({ sourceDocId: docId, docType: "DEBIT_NOTE" })).reduce((a: number, d: any) => a + Number(d.grandTotal), 0);
+    await T("Y22-1", "ส่งใบสรุป ∥ ยกเลิกการแจ้ง (4 โพรเซส × 6 + 6 · Y1): ใบ CANCELLED ⇒ ใบแจ้งหนี้วันออกทุกใบถูกลดหนี้เต็มใบ (หลังงานตามเวลา 1 รอบ) · ตรึง ⇒ ใบมีผล ≤ 1 · ประวัติรุ่นไม่ซ้ำ · ไม่มี throw", ["sendMoveOutSummary", "cancelMoveOut"], async () => {
+      const n = await notice(cO, YL.Y1, "2026-10-31", "2026-09-20");
+      const mo = n?.moveOutId ?? "-";
+      const i = await inspect(cO, YL.Y1, mo, NORMAL5, [], "2026-10-31");
+      const at = Date.now() + SYNC_MS;
+      const [a, b] = await Promise.all([
+        fanout("sendMoveOutSummary", cO, Array.from({ length: 6 }, () => ({ unitId: DY, moveOutId: mo })), { now: ISO("2026-10-31", "11:00") }, 3, 0, at),
+        fanout("cancelMoveOut", cO, Array.from({ length: 6 }, () => ({ unitId: DY, moveOutId: mo, reason: "ผู้เช่าอยู่ต่อ (ทดสอบแข่ง)" })), { now: ISO("2026-10-31", "11:00") }, 2, 0, at),
+      ]);
+      await jobs(BK("2026-10-31", "11:30"));
+      const row = await prisma.dormMoveOut.findFirst({ where: { id: mo } });
+      const invs = (await liveDocs({ refType: "DormMoveOut", refId: { startsWith: mo }, docType: "INVOICE" }));
+      const open: string[] = [];
+      for (const d of invs) if ((await creditedOf(d.id)) < Number(d.grandTotal)) open.push(d.id);
+      const hist = Array.isArray((row?.deductions as any)?.history) ? (row?.deductions as any).history : [];
+      const revs = hist.map((h: any) => h.rev);
+      const uniq = new Set(revs).size === revs.length;
+      const ok = row?.status === "CANCELLED" ? open.length === 0 : open.length <= 1 && !!(row?.deductions as any)?.frozen;
+      const bad = badOf([...a, ...b], ["BUSY", "FROZEN", "NOT_EDITABLE", "STALE", "REOPENING"]);
+      return [n?.ok === true && i?.ok === true && ok && uniq && !bad.length, J({ st: row?.status, invs: invs.length, open: open.length, revs, a: a.map(codeOf), b: b.map(codeOf), bad: bad.slice(0, 2) })];
+    });
+    await T("Y23-1", "ใบลดหนี้ค่าห้องส่วนเกิน (ออก 15 พ.ย. · บิล พ.ย. ค้าง): ออกหลังตรึงเท่านั้น · เปิดใบสรุปใหม่แล้วยกเลิกการแจ้ง ⇒ ยกเลิกได้ + ใบเพิ่มหนี้กลับรายการ ⇒ ยอดบิล พ.ย. ในบัญชีกลับเท่าเดิม", ["sendMoveOutSummary", "reopenMoveOutSummary", "cancelMoveOut"], async () => {
+      const hb = await histBill(YL.Y2, "2026-11", { elec: [500, 500], water: [100, 100], paid: false, name: "ผู้เช่า Y2" });
+      const n = await notice(cO, YL.Y2, "2026-11-15", "2026-10-10");
+      const mo = n?.moveOutId ?? "-";
+      const i = await inspect(cO, YL.Y2, mo, NORMAL5, [], "2026-11-15");
+      const cnBefore = await creditedOf(hb.docId);
+      const s1 = await sendSum(cO, YL.Y2, mo, BK("2026-11-15", "11:00"));
+      const cnAfterSend = await creditedOf(hb.docId);
+      const r = await fn("reopenMoveOutSummary")!(cO, { unitId: DY, moveOutId: mo, reason: "ผู้เช่าขออยู่ต่อ" }, { now: BK("2026-11-15", "12:00") });
+      const c = await fn("cancelMoveOut")!(cO, { unitId: DY, moveOutId: mo, reason: "ผู้เช่าขออยู่ต่อ" }, { now: BK("2026-11-15", "12:05") });
+      await jobs(BK("2026-11-15", "12:30"));
+      const cn = await creditedOf(hb.docId), dn = await debitedOf(hb.docId);
+      const doc = await prisma.accountDocument.findFirst({ where: { id: hb.docId } });
+      const row = await prisma.dormMoveOut.findFirst({ where: { id: mo } });
+      const net = Number(doc?.grandTotal ?? 0) - cn + dn;
+      return [n?.ok === true && i?.ok === true && s1?.ok === true && cnBefore === 0 && cnAfterSend > 0 && r?.ok === true && c?.ok === true && row?.status === "CANCELLED" && dn === cn && net === hb.total,
+        J({ n: codeOf(n), i: codeOf(i), s1: codeOf(s1), cn0: cnBefore, cn1: cnAfterSend, r: codeOf(r), c: codeOf(c), st: row?.status, cn, dn, net, total: hb.total })];
+    });
+  }
 
   // ═══════════════ W. ต่อสัญญา (DS) ═══════════════
   console.log("\n── W ต่อสัญญา (ขึ้นราคาได้ตอนนี้เท่านั้น) ──");
