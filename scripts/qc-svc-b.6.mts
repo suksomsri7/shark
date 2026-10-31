@@ -1219,7 +1219,9 @@ try {
       eq(tv!.chairs.map((c) => [c.seat, c.state, c.ticketNumber]), DSC.expect.chairs.map((c) => [c.seat, c.state, c.ticketNumber]), "เก้าอี้");
       eq(tv!.next.map((n) => [n.ticketNumber, hhmm(n.startMs)]), DSC.expect.next.map((x) => [x[0], x[1]]), "ถัดไป");
       const k = await PUB.kiosk()(DSC.devices.kiosk.token, { now });
-      eq([k?.services.length, k?.paperTicket], [6, true], "ตู้ฉาก");
+      // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b6-Q2) ฉาก B.10 (svc-qc-done-pos-scene) เพิ่มบริการ "ทรีตเมนต์บำรุงสี" (svcqc-svc-barber-treatment) ให้ร้านเดียวกัน ⇒ ไม่นับบริการของฉาก B.10 · ฐาน 6 บริการคงเดิม
+      const kSvc = (k?.services as { id?: string; name?: string }[] | undefined)?.filter((x) => x.id !== "svcqc-svc-barber-treatment" && x.name !== "ทรีตเมนต์บำรุงสี");
+      eq([kSvc?.length, k?.paperTicket], [6, true], "ตู้ฉาก");
       const tv2 = await PUB.ticket()(tkToken(SQC.tenant.id, SQC.units.barber.id, DD, "A011"), { now });
       eq([tv2?.ticketNumber, tv2?.aheadCount], ["A011", DSC.expect.ticketA011.aheadCount], "หน้าบัตร");
     }, "MAJOR");
