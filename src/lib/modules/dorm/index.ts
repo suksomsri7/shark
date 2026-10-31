@@ -259,3 +259,25 @@ export { proposeMeterReading, meterProposals, meterAiStatus, defaultMeterReader 
 export type { MeterPhotoReader, MeterProposal, MeterAiManualReason } from "./meter-ai";
 export { previewReading } from "./meter";
 // ◂ SVC D.14
+// ── SVC D.19 ▸ รายงานหลักหอ (ลูกหนี้ตามอายุ · อัตราเข้าพัก · รายได้แยกประเภท · CSV) — สัญญา ledger/svc-briefs/svc-brief-d.19.md §3 (บล็อกนี้ของใบ D.19 เท่านั้น) ──
+export { DORM_REPORT_NF_REASON, DORM_REVENUE_TYPES, dormAgingReport, dormOccupancyReport, dormRevenueReport, dormReportModel, dormReportCsv } from "./report";
+export type {
+  DormRevenueType,
+  DormReportCtx,
+  DormReportFailCode,
+  DormReportFail,
+  DormAgingBucket,
+  DormAgingBuckets,
+  DormAgingBill,
+  DormAgingRow,
+  DormAgingReport,
+  DormOccupancyMonth,
+  DormOccupancyReport,
+  DormMoney3,
+  DormRevenueMonth,
+  DormRevenueReport,
+  DormReportRange,
+  DormReportModel,
+  DormReportCsvKind,
+} from "./report";
+// ◂ SVC D.19
