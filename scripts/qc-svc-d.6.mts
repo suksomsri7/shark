@@ -228,8 +228,12 @@ try {
   {
     const all = [F.walk, F.page, F.actions, F.meter].map(read).join("\n");
     const legal = LEGAL_BAD.exec(all);
-    const money = /฿|Satang|toFixed\(\s*2\s*\)|currency\s*:\s*["']THB/.test(stripComments(walkSrc));
-    chk("S-5", "จอ/หน้า/service มิเตอร์ไม่มีคำต้องห้าม สคบ. (ตัดไฟ/ตัดน้ำ/ล็อกห้อง…) · MeterWalk ไม่คิดเงิน (กล่องประมาณเงิน = D.7)", !!walkSrc && !legal && !money, walkSrc ? `คำต้องห้าม=${legal?.[0] ?? "—"} เงิน=${money}` : "ยังไม่มี MeterWalk.tsx", "CRITICAL");
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · D15-3) ▸ จำกัดขอบเขต: ยอมเฉพาะกล่องประมาณค่าน้ำไฟใน src/components/dorm/MeterWalk.tsx (บล็อก `// SVC D.8 ▸ กล่องประมาณค่าน้ำไฟของห้อง` = estMoney + function EstimateBox ·
+    //   ยอดมาจาก meterEstimates ฝั่ง server (billing.ts D.8 ← utilityCharges D.7) — svc-brief-d.8 §6) · กล่องต้องไม่คิดเงินเอง (ไม่มีคูณ/บวกจำนวนเงิน — แปลงสตางค์→ข้อความเท่านั้น) · ส่วนอื่นของไฟล์ห้ามเงินเท่าเดิม ◂
+    const estBlock = /\/\/ SVC D\.8 ▸ กล่องประมาณค่าน้ำไฟของห้อง[^\n]*\n(?:const estMoney\b[^\n]*\n)?function EstimateBox\([\s\S]*?\n\}\n/.exec(walkSrc)?.[0] ?? "";
+    const estCalc = /\b(?:totalSatang|rateSatangPerUnit|units)\s*[-+*]\s*[\w(]|[\w)]\s*[-+*]\s*(?:x|e)\.(?:totalSatang|rateSatangPerUnit|units)\b/.test(stripComments(estBlock));
+    const money = /฿|Satang|toFixed\(\s*2\s*\)|currency\s*:\s*["']THB/.test(stripComments(estBlock ? walkSrc.replace(estBlock, "") : walkSrc)) || estCalc;
+    chk("S-5", "จอ/หน้า/service มิเตอร์ไม่มีคำต้องห้าม สคบ. (ตัดไฟ/ตัดน้ำ/ล็อกห้อง…) · MeterWalk ไม่คิดเงิน (กล่องประมาณเงิน = D.7)", !!walkSrc && !legal && !money, walkSrc ? `คำต้องห้าม=${legal?.[0] ?? "—"} เงิน=${money} (กล่อง D.8 ${estBlock ? "แยกแล้ว" : "ไม่พบ"} · คิดเงินในกล่อง=${estCalc})` : "ยังไม่มี MeterWalk.tsx", "CRITICAL");
   }
   {
     const p = read(F.page);
@@ -839,6 +843,127 @@ try {
     return [eb.length === 1 && eb[0].unitId === DB && eb[0].payload?.unitId === DB && leak === 0, `B=${eb.length} unit=${eb[0]?.unitId === DB} รั่ว=${leak}`];
   }, "MAJOR");
 
+  // ═══════════════ XB. ขอบเขตอาคารใน service ═══════════════
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · D15-1) ▸ เพิ่มอย่างเดียว — หนี้ D.6 (probe-d14-b FG-3): submitReadings ตรวจขอบเขตอาคารเอง (ไม่พึ่ง action)
+  //   ร้าน C แยก (ไม่แตะสถานะของข้อก่อน) · managerScope BUILDING · ผู้ดูแล MS = อาคาร 1 · ผู้ใช้ svc-d6xb-*@shark.local ลบใน finally ◂
+  console.log("\n── XB ขอบเขตอาคารใน submitReadings (D15-1) ──");
+  const tC = await prisma.tenant.create({ data: { name: "QC D6 C", slug: `qc-svc-d6-c-${stamp}` } }); tenantIds.push(tC.id);
+  const C = tC.id;
+  const DC = await mkUnit(C, "DORM", "c");
+  const tyC = await mkType(C, DC);
+  const bC1 = await mkBld(C, DC, "อาคาร 1"), bC2 = await mkBld(C, DC, "อาคาร 2");
+  const RC: Record<string, string> = { "101": await mkRoom(C, DC, tyC, bC1, "101", 1), "201": await mkRoom(C, DC, tyC, bC2, "201", 2), "999": await mkRoom(C, DC, tyC, null, "999", null) };
+  for (const no of ["101", "201", "999"]) await lease(C, DC, RC[no], D(-400), D(400), `lease-c${no}`);
+  const XC: Record<string, string> = {};
+  for (const no of ["101", "201", "999"]) { XC[no] = await mkMeter(C, DC, RC[no], "ELEC"); await history(C, DC, XC[no]); }
+  XC.M1 = await mkMeter(C, DC, null, "ELEC", { buildingId: bC1 }); await history(C, DC, XC.M1);
+  XC.M2 = await mkMeter(C, DC, null, "ELEC", { buildingId: bC2 }); await history(C, DC, XC.M2);
+  XC.R2 = await mkMeter(C, DC, RC["201"], "WATER", { removedAt: new Date() }); // ถอดแล้ว (อาคาร 2) ⇒ ต้องตอบ NOT_FOUND ไม่ใช่ METER_REMOVED
+  const xbUser = async (key: string, role: string, perms: string[], tenantId = C, unitId = DC) => {
+    const u = await prisma.user.create({ data: { email: `svc-d6xb-${stamp}-${key}@shark.local`, name: `QC D6 ${key}` } });
+    const m = await prisma.membership.create({ data: { userId: u.id, tenantId, role, unitAccess: role === "OWNER" ? ["*"] : [unitId], permissions: Object.fromEntries(perms.map((x) => [x, true])), acceptedAt: new Date() } });
+    return { userId: u.id as string, membershipId: m.id as string };
+  };
+  const uOwn = await xbUser("own", "OWNER", []), uMs = await xbUser("ms", "STAFF", ["dorm.meter.read"]), uNx = await xbUser("nx", "STAFF", ["dorm.meter.read"]);
+  const uA = await xbUser("owner-a", "OWNER", [], A, DA); // เจ้าของร้าน A (ไม่มี Membership ในร้าน C)
+  const setC = async (key: string, value: unknown) => {
+    await prisma.settingValue.deleteMany({ where: { tenantId: C, key, scope: "UNIT", scopeId: DC } });
+    await prisma.settingValue.create({ data: { tenantId: C, key, scope: "UNIT", scopeId: DC, value, setById: "qc-d6" } });
+  };
+  await setC("rooms.access.managerScope", "BUILDING");
+  await setC("rooms.access.buildingAssignments", { [uMs.membershipId]: [bC1] });
+  const cOwn = { tenantId: C, actorUserId: uOwn.userId }, cMs = { tenantId: C, actorUserId: uMs.userId }, cNx = { tenantId: C, actorUserId: uNx.userId };
+  const NF = (meterId: string) => ({ meterId, status: "REJECTED", readingId: null, flag: null, held: false, units: null, code: "NOT_FOUND" });
+  const subC = (ctx: any, items: any[]) => fn("submitReadings")!(ctx, { unitId: DC, periodKey: P0, items });
+  const nRows = (ids: string[]) => prisma.dormMeterReading.count({ where: { meterId: { in: ids }, periodKey: P0, kind: "PERIOD" } });
+  await T("XB-1", "X1 อาคาร: ผู้ดูแลอาคาร 1 ส่งเลข ห้อง 201 (อาคาร 2) · MAIN อาคาร 2 · ห้องไม่มีอาคาร · มิเตอร์อาคาร 2 ที่ถอดแล้ว ⇒ REJECTED NOT_FOUND ทุกรายการ (deep-equal เท่ามิเตอร์ร้านอื่น) · ไม่มีแถว/event", ["submitReadings"], async () => {
+    const ids = [XC["201"], XC.M2, XC["999"], XC.R2];
+    const e0 = await prisma.outboxEvent.count({ where: { tenantId: C, type: EV } });
+    const r = await subC(cMs, ids.map((meterId) => ({ meterId, value: 1395 })));
+    const xt = await subC(cMs, [{ meterId: ME["101"], value: 1395 }]); // มิเตอร์ร้าน A ผ่านหน่วยของ C = ตัวเทียบ "ข้ามร้าน"
+    const same = r?.ok === true && ids.every((id, i) => J(r.results?.[i]) === J(NF(id))) && xt?.ok === true && J(xt.results?.[0]) === J(NF(ME["101"]));
+    const n = await nRows(ids), e1 = await prisma.outboxEvent.count({ where: { tenantId: C, type: EV } });
+    return [same && n === 0 && e1 === e0, `${J(r).slice(0, 400)} ข้ามร้าน=${J(xt)} แถว=${n} event ${e0}→${e1}`];
+  }, "CRITICAL");
+  await T("XB-2", "ตัวควบคุมบวก: ผู้ดูแลอาคาร 1 ส่ง ห้อง 101 + MAIN อาคาร 1 ⇒ CREATED ทั้งคู่ · readById = ผู้ดูแล", ["submitReadings"], async () => {
+    const r = await subC(cMs, [{ meterId: XC["101"], value: 1395 }, { meterId: XC.M1, value: 1395 }]);
+    const rows = await prisma.dormMeterReading.findMany({ where: { meterId: { in: [XC["101"], XC.M1] }, periodKey: P0, kind: "PERIOD" } });
+    return [r?.ok === true && r.results?.every((x: any) => x?.status === "CREATED") && rows.length === 2 && rows.every((x: any) => x.readById === uMs.userId), `${J(r).slice(0, 300)} แถว=${rows.length}`];
+  }, "CRITICAL");
+  await T("XB-3", "ชุดผสม: ห้อง 101 (ค่าเดิม) + ห้อง 201 ⇒ 101 UNCHANGED · 201 NOT_FOUND (รายการอื่นทำต่อ)", ["submitReadings"], async () => {
+    const r = await subC(cMs, [{ meterId: XC["101"], value: 1395 }, { meterId: XC["201"], value: 1395 }]);
+    return [r?.ok === true && r.results?.[0]?.status === "UNCHANGED" && J(r.results?.[1]) === J(NF(XC["201"])) && (await nRows([XC["201"]])) === 0, J(r).slice(0, 300)];
+  }, "CRITICAL");
+  await T("XB-4", "fail closed (BUILDING): ผู้ดูแลไม่มีรายการอาคาร · actor ไม่ใช่สมาชิก · ไม่มี actor · สมาชิกร้านอื่น ⇒ ห้อง 101/201 NOT_FOUND · ไม่มีแถวใหม่", ["submitReadings"], async () => {
+    const before = await prisma.dormMeterReading.findFirst({ where: { meterId: XC["101"], periodKey: P0, kind: "PERIOD" } });
+    const ctxs: [string, any][] = [["ไม่มีรายการ", cNx], ["ไม่ใช่สมาชิก", { tenantId: C, actorUserId: "qc-d6-actor" }], ["ไม่มี actor", { tenantId: C }], ["actor null", { tenantId: C, actorUserId: null }], ["สมาชิกร้านอื่น", { tenantId: C, actorUserId: uA.userId }]];
+    const out: Record<string, string> = {};
+    let ok = true;
+    for (const [k, ctx] of ctxs) {
+      const r = await subC(ctx, [{ meterId: XC["101"], value: 1400 }, { meterId: XC["201"], value: 1400 }]);
+      out[k] = `${r?.results?.[0]?.code}/${r?.results?.[1]?.code}`;
+      ok &&= r?.ok === true && J(r.results?.[0]) === J(NF(XC["101"])) && J(r.results?.[1]) === J(NF(XC["201"]));
+    }
+    const after = await prisma.dormMeterReading.findFirst({ where: { meterId: XC["101"], periodKey: P0, kind: "PERIOD" } });
+    return [ok && after?.value === 1395 && after?.updatedAt.getTime() === before?.updatedAt.getTime() && (await nRows([XC["201"]])) === 0, `${J(out)} 101=${after?.value}`];
+  }, "CRITICAL");
+  await T("XB-5", "เจ้าของเห็นทั้งหอ: OWNER ส่ง ห้อง 201 + MAIN อาคาร 2 ⇒ CREATED · แล้วผู้ดูแลอาคาร 1 แก้ 201 เป็นค่าอื่น ⇒ NOT_FOUND · แถวไม่ขยับ", ["submitReadings"], async () => {
+    const r = await subC(cOwn, [{ meterId: XC["201"], value: 1395 }, { meterId: XC.M2, value: 1395 }]);
+    const before = await prisma.dormMeterReading.findFirst({ where: { meterId: XC["201"], periodKey: P0, kind: "PERIOD" } });
+    const x = await subC(cMs, [{ meterId: XC["201"], value: 1399 }]);
+    const after = await prisma.dormMeterReading.findFirst({ where: { meterId: XC["201"], periodKey: P0, kind: "PERIOD" } });
+    return [r?.ok === true && r.results?.every((y: any) => y?.status === "CREATED") && J(x?.results?.[0]) === J(NF(XC["201"])) && after?.value === 1395 && after?.updatedAt.getTime() === before?.updatedAt.getTime(), `${J(r).slice(0, 200)} ms=${J(x)} ค่า=${after?.value}`];
+  }, "CRITICAL");
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · D15-5) ▸ เพิ่มอย่างเดียว — confirmReading/replaceMeter ตรวจอาคารใน service · meterWalk/meterFlags มี actor ⇒ เฉพาะอาคารที่เห็น · ไม่มี actor ⇒ ทั้งหน่วย (billing) ◂
+  await T("XB-7", "X1 อาคาร: ผู้ดูแลอาคาร 1 ยืนยัน/จดใหม่แถวห้อง 201 (อาคาร 2 · เจ้าของจดค่าสูงผิดปกติ) ⇒ NOT_FOUND deep-equal เท่าแถวของร้านอื่น · แถวไม่ขยับ", ["submitReadings", "confirmReading"], async () => {
+    const w = await subC(cOwn, [{ meterId: XC["201"], value: 1500 }]);
+    const row = await prisma.dormMeterReading.findFirst({ where: { meterId: XC["201"], periodKey: P0, kind: "PERIOD" } });
+    const xRow = (await rowsOf(ME["202"]))[0]; // แถวของร้าน A = ตัวเทียบ "ข้ามร้าน"
+    const C_ = fn("confirmReading")!;
+    const a = await C_(cMs, { unitId: DC, readingId: row?.id, action: "ACCEPT" });
+    const b = await C_(cMs, { unitId: DC, readingId: row?.id, action: "REREAD", value: 1395 });
+    const xa = await C_(cMs, { unitId: DC, readingId: xRow?.id, action: "ACCEPT" });
+    const xb = await C_(cMs, { unitId: DC, readingId: xRow?.id, action: "REREAD", value: 1395 });
+    const after = await prisma.dormMeterReading.findFirst({ where: { meterId: XC["201"], periodKey: P0, kind: "PERIOD" } });
+    const ok = w?.results?.[0]?.status === "UPDATED" && row?.flag === "HIGH" && a?.ok === false && a?.code === "NOT_FOUND" && J(a) === J(xa) && J(b) === J(xb)
+      && after?.value === 1500 && after?.confirmedAt === null && after?.updatedAt.getTime() === row?.updatedAt.getTime();
+    return [ok, `owner=${J(w?.results?.[0])} flag=${row?.flag} accept=${J(a)} ข้ามร้าน=${J(xa)} reread=${J(b)}/${J(xb)} ค่า=${after?.value}`];
+  }, "CRITICAL");
+  await T("XB-8", "X1 อาคาร: ผู้ดูแลอาคาร 1 เปลี่ยนมิเตอร์ ห้อง 201 · MAIN อาคาร 2 · มิเตอร์อาคาร 2 ที่ถอดแล้ว ⇒ NOT_FOUND deep-equal เท่ามิเตอร์ร้านอื่น · ไม่มีมิเตอร์ใหม่/ไม่ถูกถอด", ["replaceMeter"], async () => {
+    const R_ = fn("replaceMeter")!;
+    const n0 = await prisma.dormMeter.count({ where: { tenantId: C } });
+    const inp = (meterId: string) => ({ unitId: DC, meterId, oldFinalReading: 1600, newStartReading: 0 });
+    const rs = [await R_(cMs, inp(XC["201"])), await R_(cMs, inp(XC.M2)), await R_(cMs, inp(XC.R2))];
+    const xt = await R_(cMs, inp(ME["101"]));
+    const n1 = await prisma.dormMeter.count({ where: { tenantId: C } });
+    const live = await prisma.dormMeter.count({ where: { id: { in: [XC["201"], XC.M2] }, removedAt: null } });
+    return [xt?.code === "NOT_FOUND" && rs.every((r: any) => J(r) === J(xt)) && n1 === n0 && live === 2, `${J(rs)} ข้ามร้าน=${J(xt)} มิเตอร์ ${n0}→${n1} active=${live}`];
+  }, "CRITICAL");
+  await T("XB-9", "meterWalk/meterFlags: ผู้ดูแลอาคาร 1 ⇒ ห้อง 101 + MAIN อาคาร 1 เท่านั้น · ไม่มีป้ายห้อง 201 · เจ้าของ ⇒ ครบ 101/201/999 + MAIN 2 ตัว · ไม่ส่ง actor (billing) ⇒ เท่าเจ้าของ · ผู้ไม่มีรายการ ⇒ ว่าง", ["meterWalk", "meterFlags"], async () => {
+    const W = fn("meterWalk")!, Fl = fn("meterFlags")!;
+    const view = async (ctx: any) => {
+      const w = await W(ctx, { unitId: DC, periodKey: P0 });
+      const f = await Fl(ctx, { unitId: DC, periodKey: P0 });
+      return { rooms: (w?.floors ?? []).flatMap((x: any) => x.rooms.map((r: any) => r.number)).sort(), main: (w?.main ?? []).map((m: any) => m.meterId).sort(), progress: w?.progress, flags: (f ?? []).map((x: any) => x.meterId).sort() };
+    };
+    const ms = await view(cMs), own = await view(cOwn), sys = await view({ tenantId: C }), nx = await view(cNx);
+    const ok = J(ms.rooms) === J(["101"]) && J(ms.main) === J([XC.M1]) && ms.progress?.rooms === 1 && !ms.flags.includes(XC["201"])
+      && J(own.rooms) === J(["101", "201", "999"]) && J(own.main) === J([XC.M1, XC.M2].sort()) && own.flags.includes(XC["201"])
+      && J(sys) === J(own) && nx.rooms.length === 0 && nx.main.length === 0 && nx.flags.length === 0;
+    return [ok, `ms=${J(ms)} own=${J(own)} sys=${J(sys) === J(own)} nx=${J(nx)}`];
+  }, "CRITICAL");
+  await T("XB-10", "ตัวควบคุมบวก: ผู้ดูแลอาคาร 1 จดห้อง 101 ค่าสูงผิดปกติแล้วยืนยันเอง ⇒ ok · confirmedById = ผู้ดูแล", ["submitReadings", "confirmReading"], async () => {
+    const w = await subC(cMs, [{ meterId: XC["101"], value: 1500 }]);
+    const r = await fn("confirmReading")!(cMs, { unitId: DC, readingId: w?.results?.[0]?.readingId, action: "ACCEPT", note: "ตรวจแล้ว" });
+    const row = await prisma.dormMeterReading.findFirst({ where: { meterId: XC["101"], periodKey: P0, kind: "PERIOD" } });
+    return [w?.results?.[0]?.flag === "HIGH" && r?.ok === true && !!row?.confirmedAt && row?.confirmedById === uMs.userId, `${J(w?.results?.[0])} ${J(r)}`];
+  }, "MAJOR");
+  await T("XB-6", "managerScope = UNIT ⇒ พฤติกรรม D.6 เดิม: ผู้ดูแล (รายการอาคาร 1) ส่ง ห้องไม่มีอาคาร ⇒ CREATED", ["submitReadings"], async () => {
+    await setC("rooms.access.managerScope", "UNIT");
+    const r = await subC(cMs, [{ meterId: XC["999"], value: 1395 }]);
+    return [r?.ok === true && r.results?.[0]?.status === "CREATED" && (await nRows([XC["999"]])) === 1, J(r)];
+  }, "MAJOR");
+
   // ═══════════════ U. จอ + คิวออฟไลน์ ═══════════════
   console.log("\n── U MeterWalk (render) · คิวออฟไลน์ pure ──");
   const q = (meterId: string, value: number, periodKey = P0, clientKey = `${meterId}-${value}`, photo: any = null) => ({ meterId, periodKey, value, readAt: `${TODAY}T03:00:00.000Z`, clientKey, photo });
@@ -1000,6 +1125,7 @@ try {
   fail("CRASH", "จบกลางทาง", errMsg(e), "CRITICAL");
 } finally {
   try { await cleanup(tenantIds); } catch (e) { console.log(`  ⚠️ cleanup: ${errMsg(e)}`); }
+  try { await prisma.user.deleteMany({ where: { email: { startsWith: "svc-d6xb-" } } }); } catch (e) { console.log(`  ⚠️ ลบ user: ${errMsg(e)}`); } // ORACLE-EDIT (ผู้คุม 31 ต.ค. · D15-1) ◂
   try {
     const left = await leftovers(tenantIds);
     if (!left.length) pass("Z-1", `ล้างครบ: ทุกตารางที่มี tenantId ของร้านทดสอบ ${tenantIds.length} ร้าน = 0 แถว (ฉาก svcqc คงไว้ให้ถ่ายภาพ — ล้างด้วย scripts/svc-qc-meter-scene.mts --clear)`);
