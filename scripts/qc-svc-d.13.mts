@@ -382,7 +382,9 @@ await t("S-7", "core actions.ts: saveSettingsAction เรียก writeViaIssu
   ok(a >= 0 && b > a, `saveSettingsAction: writeViaIssues(${a}) ก่อน setSettings(${b})`);
   ok(c >= 0 && d > c, `resetSettingAction: writeViaIssues(${c}) ก่อน resetSetting(${d})`);
 });
-await t("S-8", "ไม่แตะไฟล์ต้องห้าม (prisma · service/form/template ของเครื่องยนต์ · components/settings · RoomBoard · meter · utility · law · UtilityLawSettings · DormSettingsNav) · types/registry แก้แบบเพิ่มอย่างเดียว (ไม่มีบรรทัดถูกลบ · บรรทัดเพิ่มเกี่ยว writeVia)", () => {
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · d13-S8) ตรวจไฟล์ต้องห้ามด้วย git status = ตรวจตอนรับใบ D.13 เท่านั้น · ใบหลังที่ได้รับอนุญาตแตะ meter.ts/utility.ts ฯลฯ (D.4 D.12 D.14) ทำให้แดงเท็จ ⇒ SKIP เมื่อมีไฟล์ของใบหลังแล้ว
+if (existsSync(join(ROOT, "src/lib/modules/dorm/import.ts"))) skip("S-8", "ไม่แตะไฟล์ต้องห้าม (ตรวจตอนรับ D.13)", "มีไฟล์ของใบหลัง (D.4 import.ts) แล้ว — ข้อนี้ตรวจเฉพาะตอนรับ D.13");
+else await t("S-8", "ไม่แตะไฟล์ต้องห้าม (prisma · service/form/template ของเครื่องยนต์ · components/settings · RoomBoard · meter · utility · law · UtilityLawSettings · DormSettingsNav) · types/registry แก้แบบเพิ่มอย่างเดียว (ไม่มีบรรทัดถูกลบ · บรรทัดเพิ่มเกี่ยว writeVia)", () => {
   // ORACLE-EDIT (ผู้คุม 29 ต.ค. · fix P3): service.ts แตะได้เฉพาะ applyTemplate RESET_ALL ข้ามคีย์ writeVia + rooms.access.* ⇒ บรรทัดเพิ่ม/ลบที่ไม่ว่างต้องอ้าง writeVia หรือ rooms.access
   {
     const d = spawnSync("git", ["diff", "-U0", "HEAD", "--", "src/lib/core/settings/service.ts"], { cwd: ROOT, encoding: "utf8" }).stdout ?? "";
