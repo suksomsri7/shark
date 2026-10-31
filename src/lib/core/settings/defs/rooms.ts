@@ -417,6 +417,18 @@ const DEFS: SettingDef[] = [
     schema: z.boolean(), defaults: { _fallback: true }, chain: U, sensitivity: "MONEY",
   }),
   // ◂ SVC D.9
+  // SVC D.17 ▸ ประกาศถึงผู้เช่า (ใบสั่ง ledger/svc-briefs/svc-brief-d.17.md §2) — กลุ่มเดิม notify ⇒ การ์ดหน้า 17 แสดงเอง ◂
+  def({
+    key: "rooms.notify.announceLine", type: "bool", labelTh: "ส่งประกาศทาง LINE ของหอ (ปิด = แสดงในหน้าผู้เช่าอย่างเดียว)",
+    helpTh: "ส่งตามเวลาเงียบของหน่วย · ส่งถึงผู้เช่าที่สัญญายังมีผล ณ ตอนส่ง · คนละ 1 ข้อความแม้เช่าหลายห้อง",
+    schema: z.boolean(), defaults: { _fallback: true }, chain: U,
+  }),
+  def({
+    key: "rooms.notify.announcePortalDays", type: "days", labelTh: "แสดงประกาศในหน้าผู้เช่าย้อนหลัง (วัน)",
+    helpTh: "ผู้เช่าเห็นเฉพาะประกาศที่เผยแพร่ตั้งแต่วันเข้าอยู่ของสัญญาตัวเอง",
+    schema: z.number().int().min(1).max(365), defaults: { _fallback: 30 }, chain: U,
+  }),
+  // ◂ SVC D.17
   def({
     key: "rooms.lease.terminationNoticeDays", type: "days", labelTh: "หนังสือบอกเลิกสัญญามีผลหลังวันออก (วัน)",
     helpTh: `${PENDING}ป.พ.พ. ม.560 บอกกล่าวล่วงหน้าไม่น้อยกว่า 15 วัน`,

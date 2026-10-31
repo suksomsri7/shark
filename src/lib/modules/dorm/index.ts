@@ -162,3 +162,40 @@ export function moveIn(ctx: Parameters<typeof leaseMoveIn>[0], input: Parameters
   return leaseMoveIn(ctx, input);
 }
 // ◂ SVC D.4
+// ── SVC D.17 ▸ ประกาศถึงผู้เช่า + อ่านแล้ว — สัญญา ledger/svc-briefs/svc-brief-d.17.md §3.1 §3.2 (บล็อกนี้ของใบ D.17 เท่านั้น) ──
+export {
+  createDormAnnouncement,
+  updateDormAnnouncement,
+  previewDormAnnouncement,
+  publishDormAnnouncement,
+  dormAnnouncementStats,
+  dormAnnounceModel,
+  // ตัวอ่านไม่มีผู้กระทำ — platform/dorm-announce ใช้หลังตรวจ token/event/ด่านพนักงานแล้ว
+  announceStaffGate,
+  announceForSend,
+  announceRecipients,
+  announceTemplate,
+  announceSendBlocked,
+  announceStampLogParty,
+  announceVisibleForLease,
+  announceMarkRead,
+  announceDateLabel,
+  announceResendCandidates,
+  announceAuditOnce,
+  ANNOUNCE_BLOCKED_ACTION,
+  ANNOUNCE_IDLE_ACTION,
+} from "./announce";
+export type {
+  AnnounceAudience,
+  AnnounceCtx,
+  AnnounceFail,
+  AnnounceStats,
+  DormAnnouncementRow,
+  DormAnnounceModel,
+  AnnounceForSend,
+  AnnounceRecipient,
+  AnnounceLeaseRef,
+  AnnounceVisibleRow,
+  AnnounceCursor,
+} from "./announce";
+// ◂ SVC D.17

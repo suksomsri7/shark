@@ -202,7 +202,9 @@ export async function onDormPostback(ctx: PostbackCtx, evt: PostbackEvent, opts?
     }
     case "repair": // W3: บอกให้พิมพ์ "แจ้งซ่อม" ก่อน (ไม่ชวนส่งรูปลอย ๆ มาในแชทที่แนบสลิปอัตโนมัติ) — จนถึง D.16
       return { text: T.REPAIR };
-    default: // announce · parcel — จนถึง D.17/D.18
+    case "announce": // SVC D.17 ▸ ประกาศที่สัญญาของผู้กดเห็น ≤ 3 ฉบับ (ลิงก์หน้าประกาศของสัญญาตัวเอง) · ไม่เขียนอะไร ◂
+      return (await import("./dorm-announce")).dormAnnounceMenuReply({ tenantId: ctx.tenantId }, leases, { now });
+    default: // parcel — จนถึง D.18
       return { text: T.STAFF_REPLY };
   }
 }
