@@ -278,15 +278,16 @@ async function holdsOf(unitId: string): Promise<{ res: any[]; occ: Map<string, O
   const bad: string[] = [];
   const u = units.find((x) => x.id === unitId);
   for (const a of rows) {
-    // มติ Q14/Q15 (ทาง 1): แถว ARRIVED ที่เข้าแถวใหม่ (เช็กอินหลังเวลานัด · มีบัตร) และตัววางคิววางไม่ได้ (plannedStartAt null) ⇒ ไม่นับ
-    if (a.status === "ARRIVED" && !a.plannedStartAt && a.queueTicketId && a.checkedInAt && a.checkedInAt.getTime() > a.startAt.getTime()) continue;
     const job = a.policySnapshot?.job ?? {};
+    // มติ Q16: ข้ามเฉพาะ ARRIVED ที่ตัววางคิวประเมินแล้วว่าวางไม่ได้ (job.unplacedAt) และไม่มีแผน · ARRIVED ที่ยังไม่ถูกประเมิน ถือจาก max(startAt, checkedInAt)
+    if (a.status === "ARRIVED" && !a.plannedStartAt && job.unplacedAt !== undefined && job.unplacedAt !== null) continue;
     const rids: string[] = Array.isArray(job.resourceIds) ? job.resourceIds : a.resourceId ? [a.resourceId] : [];
     const s = a.startAt.getTime();
     const dur = typeof job.durationMin === "number" ? job.durationMin * MIN : a.endAt.getTime() - s - (job.bufferMin ?? a.bufferMin) * MIN;
     // มติผู้คุม Q1 (31 ต.ค.): เริ่ม = IN_SERVICE ⇒ startedAt · อื่น ⇒ plannedStartAt ?? startAt · ปลาย = เริ่ม + นาที (ไม่ยืดถึง now)
     void s;
-    const st0 = a.status === "IN_SERVICE" ? (a.startedAt ?? a.plannedStartAt ?? a.startAt).getTime() : (a.plannedStartAt ?? a.startAt).getTime();
+    const arrivedFrom = a.status === "ARRIVED" && a.checkedInAt ? Math.max(a.startAt.getTime(), a.checkedInAt.getTime()) : a.startAt.getTime();
+    const st0 = a.status === "IN_SERVICE" ? (a.startedAt ?? a.plannedStartAt ?? a.startAt).getTime() : (a.plannedStartAt?.getTime() ?? arrivedFrom);
     const e = st0 + dur;
     // physical = ใช้ห้องจริง: IN_SERVICE ที่เลยเวลายังอยู่ในห้องถึง now จริง (เฉพาะฉากวันนี้)
     const pe = a.status === "IN_SERVICE" ? Math.max(e, Date.now()) : e;
@@ -393,6 +394,8 @@ try {
   for (let r = 0; r < 3; r++) await mk(`P20r${r}`, { staffN: 5, res: room1, svcs: OILS });
   await mk("P20det", { staffN: 3, res: room1, svcs: OILS });
   await mk("P21", { staffN: 3, res: room1, svcs: OILS });
+  await mk("P22det", { staffN: 5, res: room1, svcs: OILS });
+  for (let r = 0; r < 3; r++) await mk(`P22r${r}`, { staffN: 5, res: room1, svcs: OILS });
   await finishSetup(units);
   console.log(`(fixtures พร้อม · ${units.length} หน่วย · วัน ${DS} · now จริง ${new Date().toISOString()})`);
   const dlSetup = await readDeadlocks();
@@ -926,6 +929,50 @@ try {
       rec("P21-pure", flagged && c.endAt <= Tm("20:00") && c.resourceShort === false, "MAJOR",
         "pure: B ชนห้องกับ A และเลื่อนไม่ได้ ⇒ ต้องมีธง (B หรือ A) หรือ A ถูกเลื่อนให้พ้น · C (ไม่ใช้ห้อง) ไม่ถูกดันเลยเวลาและไม่มีธง",
         { A: [HM(a.startAt), HM(a.endAt), a.reason, a.resourceShort], B: [HM(b.startAt), HM(b.endAt), b.reason, b.resourceShort], C: [HM(c.startAt), HM(c.endAt), c.reason, c.resourceShort] });
+    });
+  }
+
+  // ═══════════ P22 เครื่องหมาย unplacedAt ค้าง (Q16 หนี้) ⇒ จองทับลูกค้าที่อยู่หน้าร้านได้ไหม ═══════════
+  if (want("P22")) {
+    console.log("\n── P22: มาสายวางไม่ได้ (ได้เครื่องหมาย) → ถอยเป็น CONFIRMED → ร้านเลื่อนไปพรุ่งนี้ → พรุ่งนี้เช็กอิน ∥ จองห้องเดียวกัน ──");
+    const prep = async (u: Unit) => {
+      const a = await bookOk(u, "OIL", 0, DS, 1125);                                   // 18:45
+      const ci = await LN.checkIn(u.ctx, { appointmentId: a }, { via: "STAFF", now: at(DS, 1150) }); // 19:10 สาย ⇒ วางไม่ได้วันนี้
+      await RN.runPlanner(u.ctx, { now: at(DS, 1150) });
+      const m1 = (await apRow(a)).policySnapshot?.job?.unplacedAt ?? null;
+      const undo = await BK.setAppointmentStatus(u.tenantId, u.id, a, "CONFIRMED");    // ร้านถอย "มาถึง" (กดผิด/ลูกค้าขอเลื่อน)
+      const rs = await LN.rescheduleByShop(u.ctx, a, { dateStr: DS2, startMin: 600 }, { now: at(DS, 1152) }); // ไปพรุ่งนี้ 10:00
+      const r1 = await apRow(a);
+      return { a, info: { checkIn1: ci.ok ? (ci.asWalkIn ? "asWalkIn" : "ok") : ci.code, markerAfterPlan: m1, undo: undo.ok, resched: rs.ok ? "OK" : rs.code, statusAfter: r1.status, markerAfterResched: r1.policySnapshot?.job?.unplacedAt ?? null, planned: r1.plannedStartAt ? HM(r1.plannedStartAt.getTime()) : null } };
+    };
+    await step("P22-det", async () => {
+      const u = U.P22det;
+      const { a, info } = await prep(u);
+      const ci = await LN.checkIn(u.ctx, { appointmentId: a }, { via: "STAFF", now: at(DS2, 605) }); // พรุ่งนี้ มาสาย 5 นาที (ในผ่อนผัน · วางได้)
+      // สถานะที่ค้างถ้า replan หลัง commit ล้ม (replan กลืน error): แถว ARRIVED + เครื่องหมายเก่าจากเมื่อวาน + ไม่มีแผน
+      await q(`UPDATE "Appointment" SET "plannedStartAt" = NULL, "plannedStaffId" = NULL, "policySnapshot" = jsonb_set("policySnapshot", '{job,unplacedAt}', to_jsonb($2::text)) WHERE id = $1`, [a, info.markerAfterResched ?? at(DS, 1150).toISOString()]);
+      const r2 = await apRow(a);
+      const bk = await BK.bookAppointment(u.ctx, bkIn(u, "OIL30", 1, DS2, 640));
+      const sw = await sweep(u.id);
+      rec("P22-det", !bk.ok && sw.contract.length === 0, "MAJOR",
+        "เครื่องหมาย unplacedAt ของวันก่อนค้างบนแถว ⇒ เช็กอินใหม่ (ยังไม่ถูกประเมิน) ฐานต้องยังนับว่าถือห้อง · จองห้องเดียวกันทับ 10:40 ต้อง FULL",
+        { ...info, checkIn2: ci.ok ? (ci.asWalkIn ? "asWalkIn" : "inGrace") : ci.code, markerOnRecheck: r2.policySnapshot?.job?.unplacedAt ?? null, bookOverlap: bk.ok ? "OK!" : bk.code, sweep: sw.contract });
+    });
+    for (let r = 0; r < 3; r++) await step(`P22-${r}`, async () => {
+      const u = U[`P22r${r}`];
+      const { a, info } = await prep(u);
+      const now = D(at(DS2, 605));
+      const outs = await fan(`p22-${r}`, spread([
+        { op: "checkIn", a: [u.ctx, a, now] },
+        ...[1, 2, 3, 4].map((k) => ({ ...bookCall(u, "OIL30", k, DS2, 630 + k * 5), delayMs: 5 + k * 6 + r * 3 })),
+      ], 5));
+      await RN.runPlanner(u.ctx, { now: at(DS2, 605) });
+      const books = outs.filter((o) => o.op === "book" && o.r?.ok).length;
+      const sw = await sweep(u.id);
+      const ra = await apRow(a);
+      rec(`P22-${r}`, books === 0 && sw.contract.length === 0, "MAJOR",
+        "เครื่องหมายค้าง + เช็กอินพรุ่งนี้ ∥ จองห้องเดียวกันทับช่วงนัด ⇒ จองต้องไม่ได้",
+        { markerAfterResched: info.markerAfterResched, books, codes: codesOf(outs), apptA: { st: ra.status, planned: ra.plannedStartAt ? HM(ra.plannedStartAt.getTime()) : null, marker: ra.policySnapshot?.job?.unplacedAt ?? null }, sweep: sw.contract });
     });
   }
 
