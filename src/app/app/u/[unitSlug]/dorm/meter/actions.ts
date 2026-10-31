@@ -3,7 +3,7 @@
 //   ไม่ throw ให้ผู้ใช้เห็น stack: ไม่มีสิทธิ์/ข้อมูลผิด ⇒ { ok:false, code, reason (ไทย) } · รูปรับเป็น dataURL (≤ 5 MB หลังถอดรหัส)
 import { revalidatePath } from "next/cache";
 import { requireUnit } from "@/lib/core/context";
-import { confirmReading, dormAccess, replaceMeter, submitReadings } from "@/lib/modules/dorm";
+import { confirmReading, dormAccess, proposeMeterReading, replaceMeter, submitReadings } from "@/lib/modules/dorm";
 
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const DATA_URL = /^data:(image\/(?:jpeg|png|webp|heic|heif));base64,([A-Za-z0-9+/=]+)$/;
@@ -38,7 +38,7 @@ export async function submitMeterReadingsAction(unitSlug: string, input: unknown
   const g = await gate(unitSlug);
   if (!g) return NO_ACCESS;
   if (!isRec(input) || typeof input.periodKey !== "string" || !Array.isArray(input.items)) return BAD_INPUT;
-  const items: { meterId: string; value: number; readAt?: string; clientKey?: string; photo?: { data: Uint8Array; contentType: string } | null }[] = [];
+  const items: { meterId: string; value: number; readAt?: string; clientKey?: string; photo?: { data: Uint8Array; contentType: string } | null; aiProposalId?: string; ackLowConfidence?: boolean }[] = [];
   for (const it of input.items) {
     if (!isRec(it) || typeof it.meterId !== "string" || typeof it.value !== "number") return BAD_INPUT;
     items.push({
@@ -47,6 +47,9 @@ export async function submitMeterReadingsAction(unitSlug: string, input: unknown
       ...(typeof it.readAt === "string" ? { readAt: it.readAt } : {}),
       ...(typeof it.clientKey === "string" ? { clientKey: it.clientKey.slice(0, 80) } : {}),
       photo: photoOf(it.photo),
+      // SVC D.14 ▸ ข้อเสนอของระบบอ่านเลข (เซิร์ฟเวอร์ตรวจว่าเป็นของ ร้าน+หน่วย+มิเตอร์+งวด เดียวกัน) ◂
+      ...(typeof it.aiProposalId === "string" && it.aiProposalId.length > 0 && it.aiProposalId.length <= 64 ? { aiProposalId: it.aiProposalId } : {}),
+      ...(it.ackLowConfidence === true ? { ackLowConfidence: true } : {}),
     });
   }
   const res = await submitReadings(g.ctx, { unitId: g.unitId, periodKey: input.periodKey, items });
@@ -82,4 +85,14 @@ export async function replaceMeterAction(unitSlug: string, input: unknown) {
   });
   if (res.ok) revalidatePath(`/app/u/${unitSlug}/dorm/meter`);
   return res;
+}
+
+// SVC D.14 ▸ ถ่ายรูป ⇒ ข้อเสนอเลขมิเตอร์ (ยังไม่บันทึก) — ร้าน/ผู้กระทำจาก session · ไม่รับตัวอ่าน/เวลาจากผู้ใช้ ◂
+export async function proposeMeterReadingAction(unitSlug: string, input: unknown) {
+  const g = await gate(unitSlug);
+  if (!g) return NO_ACCESS;
+  if (!isRec(input) || typeof input.meterId !== "string" || typeof input.periodKey !== "string") return BAD_INPUT;
+  const photo = photoOf(input.photo);
+  if (!photo) return refuse("INVALID_FILE", "รับเฉพาะรูป JPEG/PNG/WebP ขนาดไม่เกิน 5 MB — ถ่ายใหม่ หรือพิมพ์เลขเอง");
+  return proposeMeterReading(g.ctx, { unitId: g.unitId, meterId: input.meterId, periodKey: input.periodKey, photo });
 }

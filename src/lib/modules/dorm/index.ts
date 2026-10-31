@@ -254,3 +254,8 @@ export type {
   PortalRepairView,
 } from "./repair";
 // ◂ SVC D.16
+// ── SVC D.14 ▸ AI อ่านเลขมิเตอร์จากรูป (ระบบเสนอ · คนยืนยัน) — สัญญา ledger/svc-briefs/svc-brief-d.14.md §3 (บล็อกนี้ของใบ D.14 เท่านั้น) ──
+export { proposeMeterReading, meterProposals, meterAiStatus, defaultMeterReader } from "./meter-ai";
+export type { MeterPhotoReader, MeterProposal, MeterAiManualReason } from "./meter-ai";
+export { previewReading } from "./meter";
+// ◂ SVC D.14

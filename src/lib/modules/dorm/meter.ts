@@ -41,6 +41,9 @@ export type SubmitItem = {
   readAt?: string;
   clientKey?: string;
   photo?: { data: Uint8Array; contentType: string } | null;
+  // SVC D.14 ▸ บันทึกจากข้อเสนอของระบบอ่านเลข (คนยืนยัน) — ledger/svc-briefs/svc-brief-d.14.md §4 · ไม่ส่ง = D.6 เดิม ◂
+  aiProposalId?: string | null;
+  ackLowConfidence?: boolean;
 };
 export type SubmitDeps = {
   put?: (path: string, data: Uint8Array, contentType: string) => Promise<void>;
@@ -547,6 +550,16 @@ async function submitOne(c: OneCtx, it: SubmitItem, getRooms: () => Promise<Room
     readAt = d;
   }
 
+  // SVC D.14 ▸ ข้อเสนอต้องเป็นของ ร้าน+หน่วย+มิเตอร์+งวด เดียวกัน (ไม่ใช่ ⇒ NOT_FOUND) · มั่นใจต่ำ + ค่าเท่าที่เสนอ ⇒ ต้องติ๊กยืนยัน ◂
+  let ai: MeterAiProposalRec | null = null;
+  if (it.aiProposalId !== undefined && it.aiProposalId !== null) {
+    ai = await meterAiProposalById(tenantId, unitId, m.id, P, it.aiProposalId);
+    if (!ai) return rej("NOT_FOUND");
+    if (ai.source === "AI" && ai.value === it.value && ai.lowConfidence && it.ackLowConfidence !== true) return rej("AI_NEEDS_CONFIRM");
+  }
+  const aiCols = ai ? { source: ai.source === "AI" && ai.value === it.value ? "AI" : "MANUAL", aiValue: ai.source === "AI" ? ai.value : null } : null;
+  const aiPhoto = ai && ai.fileId && !(it.photo && it.photo.data instanceof Uint8Array && it.photo.data.length > 0) ? ai.fileId : null;
+
   const ev = await evaluateValue(tenantId, unitId, c.cfg, L, m, P, it.value, readAt);
   const value = it.value;
 
@@ -561,10 +574,10 @@ async function submitOne(c: OneCtx, it: SubmitItem, getRooms: () => Promise<Room
         // ถอดมิเตอร์ระหว่างรอคิว (replaceMeter) ⇒ ปฏิเสธ
         const live = await tx.dormMeter.findFirst({ where: { id: m.id, tenantId, unitId, removedAt: null }, select: { id: true } });
         if (!live) return { status: "METER_REMOVED", id: null, flag: null, confirmed: false, existingValue: null };
-        const cur = await tx.dormMeterReading.findFirst({ where: { tenantId, unitId, meterId: m.id, periodKey: P, kind: "PERIOD" }, select: { id: true, value: true, flag: true, confirmedAt: true } });
+        const cur = await tx.dormMeterReading.findFirst({ where: { tenantId, unitId, meterId: m.id, periodKey: P, kind: "PERIOD" }, select: { id: true, value: true, flag: true, confirmedAt: true, source: true } });
         if (!cur) {
           const row = await tx.dormMeterReading.create({
-            data: { tenantId, unitId, meterId: m.id, periodKey: P, kind: "PERIOD", value, readAt, readById: c.actor, source: c.deps?.source === "IMPORT" ? "IMPORT" : "MANUAL", flag: ev.flag },
+            data: { tenantId, unitId, meterId: m.id, periodKey: P, kind: "PERIOD", value, readAt, readById: c.actor, source: c.deps?.source === "IMPORT" ? "IMPORT" : "MANUAL", flag: ev.flag, ...(aiCols ?? {}), ...(aiPhoto ? { photoFileId: aiPhoto } : {}) }, // SVC D.14 ◂
             select: { id: true },
           });
           if (ev.flag) await emitFlagged(tx, tenantId, unitId, m, P, row.id, ev.flag);
@@ -574,7 +587,9 @@ async function submitOne(c: OneCtx, it: SubmitItem, getRooms: () => Promise<Room
         if (c.deps?.ifAbsent) return { status: cur.value === value ? "UNCHANGED" : "CONFLICT", id: cur.id, flag: curFlag, confirmed: !!cur.confirmedAt, existingValue: cur.value }; // SVC D.4 (X10) ◂
         if (cur.value === value) return { status: "UNCHANGED", id: cur.id, flag: curFlag, confirmed: !!cur.confirmedAt, existingValue: cur.value };
         if (cur.confirmedAt) return { status: "LOCKED", id: cur.id, flag: curFlag, confirmed: true, existingValue: cur.value };
-        await tx.dormMeterReading.update({ where: { id: cur.id, tenantId, unitId }, data: { value, readAt, readById: c.actor, flag: ev.flag, flagNote: null } });
+        // SVC D.14 ▸ จากข้อเสนอ ⇒ source/aiValue/รูปของข้อเสนอ · ไม่มีข้อเสนอบนแถว AI ⇒ MANUAL + aiValue null (§4 ข้อ 6) ◂
+        const aiUpd = aiCols ? { ...aiCols, ...(aiPhoto ? { photoFileId: aiPhoto } : {}) } : cur.source === "AI" ? { source: "MANUAL", aiValue: null } : {};
+        await tx.dormMeterReading.update({ where: { id: cur.id, tenantId, unitId }, data: { value, readAt, readById: c.actor, flag: ev.flag, flagNote: null, ...aiUpd } });
         if (ev.flag && ev.flag !== curFlag) await emitFlagged(tx, tenantId, unitId, m, P, cur.id, ev.flag);
         return { status: "UPDATED", id: cur.id, flag: ev.flag, confirmed: false, existingValue: cur.value };
       });
@@ -934,3 +949,105 @@ export async function periodUsage(ctx: MeterCtx, input: { unitId: string; period
       };
     });
 }
+
+// ───────────────────────── SVC D.14 ▸ ข้อเสนอของระบบอ่านเลข + ตัวอย่างล่วงหน้า (ledger/svc-briefs/svc-brief-d.14.md §2 ข้อ 3 · §3.5 · §4) ─────────────────────────
+//   ข้อเสนอเก็บเป็น AuditLog (ไม่มี migration · ไม่ใช่แถว DormMeterReading) — meter-ai.ts เขียน · ที่นี่อ่านตอนบันทึก (ร้าน+หน่วย+มิเตอร์+งวด ต้องตรง)
+export const METER_AI_ACTION = "dorm.meter.ai.proposed";
+export type MeterAiProposalRec = {
+  id: string;
+  meterId: string;
+  periodKey: string;
+  photoSha: string;
+  fileId: string | null;
+  source: "AI" | "MANUAL";
+  manualReason: string | null;
+  value: number | null;
+  confidence: number | null;
+  lowConfidence: boolean;
+  model: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  ref: string;
+  charged: boolean;
+  createdAt: Date;
+};
+const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const strOrNull = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+/** แถว AuditLog → ข้อเสนอ (รูปไม่ครบ ⇒ null) */
+export function meterAiRecOf(row: { id: string; targetId: string | null; after: unknown; createdAt: Date }): MeterAiProposalRec | null {
+  const a = row.after;
+  if (!isRec(a) || !isStr(row.targetId) || !periodOk(a.periodKey) || !isStr(a.photoSha) || !isStr(a.ref)) return null;
+  const source = a.source === "AI" ? "AI" : "MANUAL";
+  return {
+    id: row.id,
+    meterId: row.targetId,
+    periodKey: a.periodKey,
+    photoSha: a.photoSha,
+    fileId: strOrNull(a.fileId),
+    source,
+    manualReason: source === "AI" ? null : strOrNull(a.manualReason),
+    value: source === "AI" && isInt(a.value) ? a.value : null,
+    confidence: source === "AI" ? numOrNull(a.confidence) : null,
+    lowConfidence: source === "AI" && a.lowConfidence === true,
+    model: strOrNull(a.model),
+    tokensIn: isInt(a.tokensIn) ? a.tokensIn : 0,
+    tokensOut: isInt(a.tokensOut) ? a.tokensOut : 0,
+    ref: a.ref,
+    charged: a.charged === true,
+    createdAt: row.createdAt,
+  };
+}
+const AI_REC_SELECT = { id: true, targetId: true, after: true, createdAt: true } as const;
+async function meterAiProposalById(tenantId: string, unitId: string, meterId: string, P: string, id: unknown): Promise<MeterAiProposalRec | null> {
+  if (!isStr(id) || id.length > 64) return null;
+  const row = await tenantDb({ tenantId }).auditLog.findFirst({ where: { id, tenantId, unitId, action: METER_AI_ACTION, targetType: "DormMeter", targetId: meterId }, select: AI_REC_SELECT });
+  const rec = row ? meterAiRecOf(row) : null;
+  return rec && rec.periodKey === P ? rec : null;
+}
+
+export type MeterPreview = { prevValue: number | null; units: number | null; flag: MeterFlag | null };
+/**
+ * ตัวอย่างล่วงหน้าหลายมิเตอร์ (ไม่เขียน · ผู้เรียกตรวจขอบเขตแล้ว) — กติกาเดียวกับ submitReadings (evaluateValue)
+ *   value null ⇒ แค่เลขก่อนหน้า (units/flag null) · มิเตอร์ไม่อยู่ในหน่วย ⇒ ไม่มีในผล
+ */
+export async function meterPreviewMany(tenantId: string, unitId: string, P: string, list: { meterId: string; value: number | null }[], readAt: Date): Promise<Map<string, MeterPreview>> {
+  const out = new Map<string, MeterPreview>();
+  if (!list.length || !periodOk(P)) return out;
+  const L = await loadLedger(scoped(tenantId, unitId), tenantId, unitId, P, [...new Set(list.map((x) => x.meterId))]);
+  let cfg: Cfg | null = null;
+  for (const x of list) {
+    const m = L.meters.get(x.meterId);
+    if (!m) continue;
+    if (x.value === null || !isReading(x.value)) {
+      out.set(x.meterId, { prevValue: prevOf(L, m.id, P).value, units: null, flag: null });
+      continue;
+    }
+    cfg ??= await anomalyCfg(tenantId, unitId);
+    const ev = await evaluateValue(tenantId, unitId, cfg, L, m, P, x.value, readAt);
+    out.set(x.meterId, { prevValue: ev.usage.prevValue, units: ev.usage.units, flag: ev.flag });
+  }
+  return out;
+}
+
+/** §3.5 ▸ ผลเท่ากับที่ submitReadings จะได้ถ้าส่งค่านี้ — ไม่เขียนอะไร · ขอบเขตร้าน/หน่วยแบบ D.6 */
+export async function previewReading(
+  ctx: MeterCtx,
+  input: { unitId: string; meterId: string; periodKey: string; value: number; readAt?: string },
+): Promise<({ ok: true } & MeterPreview) | Fail> {
+  const tenantId = ctx?.tenantId;
+  const unitId = input?.unitId;
+  if (!(await dormUnitOk(tenantId, unitId))) return fail("NOT_FOUND", "ไม่พบหอพักนี้");
+  if (!isStr(input.meterId)) return fail("NOT_FOUND", "ไม่พบมิเตอร์นี้");
+  if (!periodOk(input.periodKey)) return fail("INVALID_INPUT", "งวดต้องอยู่ในรูป ปปปป-ดด เช่น 2026-10");
+  if (!isReading(input.value)) return fail("INVALID_INPUT", "เลขมิเตอร์ต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป");
+  let readAt = new Date();
+  if (input.readAt !== undefined && input.readAt !== null) {
+    const d = asDate(input.readAt);
+    if (!d) return fail("INVALID_INPUT", "เวลาจดไม่ถูกต้อง");
+    readAt = d;
+  }
+  const pv = (await meterPreviewMany(tenantId, unitId, input.periodKey, [{ meterId: input.meterId, value: input.value }], readAt)).get(input.meterId);
+  if (!pv) return fail("NOT_FOUND", "ไม่พบมิเตอร์นี้");
+  return { ok: true, ...pv };
+}
+// ◂ SVC D.14

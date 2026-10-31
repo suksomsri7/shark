@@ -988,3 +988,26 @@ SQC_VISUAL_SPECS["d.16"] = [
   { name: "dorm-repairs", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/repairs` },
 ];
 // ◂ SVC D.16
+// SVC D.14 ▸ บล็อกของใบ D.14 เท่านั้น (AI อ่านเลขมิเตอร์จากรูป · ภาพ หอ 03 แผง ข) — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-d.14.md §7 · ข้อสอบ scripts/qc-svc-d.14.mts (Q · V) · ฉาก scripts/svc-qc-meter-ai-scene.mts (builder)
+//   🔴 ฉากนี้เป็น "ข้อเสนอค้าง" ล้วน: ไม่เขียน DormMeterReading / SettingValue / OutboxEvent / แถว AiCreditTxn USAGE (ตัวอ่านของฉากคืน token 0)
+//      ⇒ ฉาก D.6 (จดแล้ว 27/36) · D.8 (พักบิล) · D.13 อยู่ร่วมกันได้ · ห้อง 209 ยังไม่จดในฉาก D.6
+// ═════════════════════════════════════════════════════════════════════════════
+/** ข้อเสนอค้างบนหน่วยหอ svcqc — ห้อง 209 ไฟ งวดเดือนนี้ไทย · ค่าที่ระบบอ่าน = เลขก่อนหน้า + unitsOverPrev · ความมั่นใจต่ำกว่าค่าเริ่ม 80 ⇒ ต้องติ๊ก "ตรวจกับรูปแล้ว" */
+export const SQC_DORM_METER_AI_SCENE = {
+  room: "209",
+  kind: "ELEC",
+  photoSeed: "svcqc-d14-room209-elec",
+  unitsOverPrev: 150,
+  confidence: 0.62,
+  actor: "owner",
+  expect: { source: "AI", lowConfidence: true, needsConfirm: true, flag: null, progress: { rooms: 36, done: 27 } },
+} as const;
+/** รูปตายตัวของฉาก (JPEG: magic FF D8 FF … FF D9 · เนื้อจาก seed) — ฉากและข้อสอบใช้ไบต์เดียวกัน ⇒ รันซ้ำ = ข้อเสนอเดิม */
+export function sqcMeterAiPhoto(seed: string = SQC_DORM_METER_AI_SCENE.photoSeed): { data: Uint8Array; contentType: string } {
+  const body = Array.from(new TextEncoder().encode(`qc-d14:${seed}`));
+  return { data: Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, ...body, 0xff, 0xd9]), contentType: "image/jpeg" };
+}
+/** ภาพ หอ 03 แผง ข — ก่อนถ่ายรันฉาก roomboard → meter → meter-ai · ถ่ายด้วย --user meter (คนจดมิเตอร์) */
+SQC_VISUAL_SPECS["d.14"] = [{ name: "dorm-meter-ai", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/meter?roomNo=209` }];
+// ◂ SVC D.14

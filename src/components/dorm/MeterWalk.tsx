@@ -5,12 +5,12 @@
 //   • ไม่มีเงิน/คำนวณยอด (กล่องประมาณเงินเป็นของ D.7) · ไม่มีชื่อผู้เช่า (D.5/D.13 เติม) · ห้องผิดปกติ = "พักบิลรอตรวจ" เท่านั้น
 //   • 390px ไม่ล้นแนวนอน · ปุ่ม/ช่องกรอกสูง ≥ 44px · สถานะสื่อด้วยข้อความ ไม่พึ่งสีอย่างเดียว
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MeterEstimate, MeterFlagRow, MeterWalk as MeterWalkData } from "@/lib/modules/dorm";
+import type { MeterEstimate, MeterFlagRow, MeterProposal, MeterWalk as MeterWalkData } from "@/lib/modules/dorm";
 import { enqueueReading, nextBatch, settleBatch, type QueuedReading } from "@/lib/modules/dorm/meter-queue";
 
 type SubmitInput = {
   periodKey: string;
-  items: { meterId: string; value: number; readAt?: string; clientKey?: string; photo?: { dataUrl: string; contentType: string } | null }[];
+  items: { meterId: string; value: number; readAt?: string; clientKey?: string; photo?: { dataUrl: string; contentType: string } | null; aiProposalId?: string | null; ackLowConfidence?: boolean }[];
 };
 type ConfirmInput = { readingId: string; action: "ACCEPT" | "REREAD"; value?: number; note?: string | null };
 type ReplaceInput = { meterId: string; oldFinalReading: number; newStartReading: number; readingId?: string | null };
@@ -28,6 +28,10 @@ export type MeterWalkProps = {
   initialView?: "walk" | "flags";
   /** SVC D.8 ▸ กล่อง "ประมาณค่าน้ำไฟเดือนนี้" ต่อห้อง (meterEstimates · เฉพาะผู้มีสิทธิ์ดูเงิน) — ไม่ส่ง = ไม่มีกล่อง ◂ */
   estimates?: Record<string, MeterEstimate> | null;
+  /** SVC D.14 ▸ ระบบอ่านเลขจากรูป (ไม่ส่ง/ปิด = หน้าตาเท่า D.6) · propose = ถ่ายรูป ⇒ ข้อเสนอ (ไม่บันทึกเอง) · proposals = ข้อเสนอค้างของงวด ◂ */
+  ai?: { enabled: boolean; available: boolean; minConfidence: number } | null;
+  propose?: (input: { meterId: string; periodKey: string; photo: { dataUrl: string; contentType: string } }) => Promise<unknown>;
+  proposals?: MeterProposal[];
 };
 
 type Room = MeterWalkData["floors"][number]["rooms"][number];
@@ -37,11 +41,20 @@ type Flag = NonNullable<Room["flag"]>;
 const KIND_LABEL: Record<"ELEC" | "WATER", string> = { ELEC: "ไฟ", WATER: "น้ำ" };
 const KIND_FULL: Record<"ELEC" | "WATER", string> = { ELEC: "ไฟฟ้า", WATER: "น้ำประปา" };
 const FLAG_TEXT: Record<Flag, string> = { HIGH: "สูงกว่าปกติ", LOW: "ต่ำกว่าปกติ", BACKWARDS: "เลขถอยหลัง", VACANT_USAGE: "ห้องว่างมีการใช้" };
+// SVC D.14 ▸ เหตุที่ระบบอ่านเลขไม่ได้ (สุภาพ · ไม่มีคำทางเทคนิค) ◂
+const MANUAL_TEXT: Record<string, string> = {
+  AI_OFF: "ปิดระบบอ่านเลขไว้",
+  NO_PROVIDER: "ระบบอ่านเลขยังไม่พร้อม",
+  NO_CREDIT: "เครดิตระบบอ่านเลขหมด",
+  AI_FAILED: "ระบบอ่านเลขไม่ได้ ลองใหม่ได้",
+  UNREADABLE: "ระบบอ่านเลขไม่ได้ เลขในรูปไม่ชัด",
+};
 const REJECT_TEXT: Record<string, string> = {
   NOT_FOUND: "ไม่พบมิเตอร์",
   METER_REMOVED: "มิเตอร์ถูกเปลี่ยนไปแล้ว",
   INVALID_VALUE: "เลขไม่ถูกต้อง",
   LOCKED: "เลขนี้ยืนยันแล้ว แก้ไม่ได้",
+  AI_NEEDS_CONFIRM: "ระบบอ่านเลขไม่แน่ใจ — ติ๊ก “ตรวจกับรูปแล้ว” ก่อนบันทึก",
 };
 
 const fmt = (n: number | null): string => (n === null ? "-" : n.toLocaleString("en-US"));
@@ -69,10 +82,21 @@ const sanitizeQueue = (raw: unknown): QueuedReading[] => {
     if (!isRec(x)) continue;
     if (typeof x.meterId !== "string" || typeof x.periodKey !== "string" || typeof x.value !== "number" || typeof x.readAt !== "string" || typeof x.clientKey !== "string") continue;
     const p = isRec(x.photo) && typeof x.photo.dataUrl === "string" && typeof x.photo.contentType === "string" ? { dataUrl: x.photo.dataUrl, contentType: x.photo.contentType } : null;
-    out.push({ meterId: x.meterId, periodKey: x.periodKey, value: x.value, readAt: x.readAt, clientKey: x.clientKey, photo: p });
+    out.push({
+      meterId: x.meterId, periodKey: x.periodKey, value: x.value, readAt: x.readAt, clientKey: x.clientKey, photo: p,
+      ...(typeof x.aiProposalId === "string" && x.aiProposalId ? { aiProposalId: x.aiProposalId } : {}), // SVC D.14 ◂
+      ...(x.ackLowConfidence === true ? { ackLowConfidence: true } : {}),
+    });
   }
   return out;
 };
+
+/** SVC D.14 ▸ ผล propose → ข้อเสนอ (รูปร่างไม่รู้จัก ⇒ null) ◂ */
+function proposalOf(res: unknown): MeterProposal | null {
+  if (!isRec(res) || res.ok !== true || typeof res.proposalId !== "string" || typeof res.meterId !== "string") return null;
+  if (res.source !== "AI" && res.source !== "MANUAL") return null;
+  return res as unknown as MeterProposal;
+}
 
 /** ย่อรูปในเบราว์เซอร์ก่อนส่ง (ด้านยาว ≤ 1280 · JPEG) — เล็กพอส่งผ่านสัญญาณมือถือและเก็บในคิวออฟไลน์ */
 async function shrinkPhoto(file: File): Promise<{ dataUrl: string; contentType: string } | null> {
@@ -257,6 +281,41 @@ function EstimateBox({ roomId, e }: { roomId: string; e: MeterEstimate }) {
   );
 }
 
+// ───────────────────────── SVC D.14 ▸ กล่องข้อเสนอของระบบอ่านเลข (ภาพ หอ 03 แผง ข) ─────────────────────────
+//   AI: "อ่านจากรูป" (+ ไม่แน่ใจ ⇒ ติ๊ก "ตรวจกับรูปแล้ว") (+ ป้ายล่วงหน้าแบบ D.6) · MANUAL: "พิมพ์เอง" + เหตุสุภาพ — เป็นข้อเสนอเสมอ คนกดบันทึกเอง
+function AiProposalBox({ p, ack, onAck }: { p: MeterProposal; ack: boolean; onAck: (v: boolean) => void }) {
+  if (p.source !== "AI") {
+    return (
+      <div data-ai-proposal={p.meterId} data-ai-source="MANUAL" className="rounded-xl bg-[color:var(--color-surface-2)] px-3 py-2 text-[13px] text-[color:var(--color-ink-soft)]">
+        <b>พิมพ์เอง</b>
+        {` · ${MANUAL_TEXT[p.manualReason ?? ""] ?? "ระบบอ่านเลขไม่ได้"} · รูปแนบไว้แล้ว`}
+      </div>
+    );
+  }
+  const pct = p.confidence === null ? null : Math.round(p.confidence * 100);
+  return (
+    <div
+      data-ai-proposal={p.meterId}
+      data-ai-source="AI"
+      data-ai-low={p.lowConfidence ? "true" : undefined}
+      data-ai-flag={p.flag ?? undefined}
+      className={`flex flex-col gap-1.5 rounded-xl px-3 py-2 text-[13px] ${p.lowConfidence || p.flag ? "border border-[color:var(--color-danger)]" : "bg-[color:var(--color-accent-soft)]"}`}
+    >
+      <p className="text-[color:var(--color-ink-soft)]">
+        <b className={p.lowConfidence || p.flag ? "" : "text-[color:var(--color-accent)]"}>อ่านจากรูป</b>
+        {p.lowConfidence ? ` · ระบบไม่แน่ใจ${pct === null ? "" : ` (${pct}%)`} ตรวจเลขกับรูปก่อนบันทึก` : " · ตรวจแล้วกดบันทึก แก้เลขได้ถ้าไม่ตรง"}
+      </p>
+      {p.flag ? <p className="font-semibold text-[color:var(--color-danger)]">{`${FLAG_TEXT[p.flag]} · บันทึกแล้วพักบิลรอตรวจ`}</p> : null}
+      {p.lowConfidence ? (
+        <label className="flex min-h-11 items-center gap-2 font-semibold">
+          <input type="checkbox" data-ai-ack={p.meterId} checked={ack} onChange={(e) => onAck(e.target.checked)} className="h-5 w-5" />
+          ตรวจกับรูปแล้ว
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
 // ───────────────────────── จอหลัก ─────────────────────────
 export default function MeterWalk(props: MeterWalkProps) {
   const { unitId, periodKey, walk, flags = [], submit } = props;
@@ -276,6 +335,16 @@ export default function MeterWalk(props: MeterWalkProps) {
   const [roomId, setRoomId] = useState<string | null>(props.initialRoomId && roomsAll.some((r) => r.roomId === props.initialRoomId) ? props.initialRoomId : null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [photos, setPhotos] = useState<Record<string, { dataUrl: string; contentType: string }>>({});
+  // SVC D.14 ▸ ข้อเสนอต่อมิเตอร์ · ติ๊กยืนยัน · กำลังอ่าน — ai ไม่ส่ง/ปิด ⇒ ไม่มีอะไรของ D.14 บนจอ ◂
+  const aiOn = props.ai?.enabled === true;
+  const aiRead = aiOn && props.ai?.available === true && typeof props.propose === "function";
+  const [aiProps, setAiProps] = useState<Record<string, MeterProposal>>(() => {
+    const out: Record<string, MeterProposal> = {};
+    if (props.ai?.enabled === true) for (const p of props.proposals ?? []) if (p.periodKey === periodKey && !out[p.meterId]) out[p.meterId] = p;
+    return out;
+  });
+  const [acks, setAcks] = useState<Record<string, boolean>>({});
+  const [reading, setReading] = useState<Record<string, boolean>>({});
   const [note, setNote] = useState("");
   const [rejected, setRejected] = useState<{ meterId: string; code: string | null }[]>([]);
   const [queue, setQueueState] = useState<QueuedReading[]>([]);
@@ -312,7 +381,11 @@ export default function MeterWalk(props: MeterWalkProps) {
         try {
           res = await submitRef.current({
             periodKey: batch.periodKey,
-            items: batch.items.map((q) => ({ meterId: q.meterId, value: q.value, readAt: q.readAt, clientKey: q.clientKey, photo: q.photo ?? null })),
+            items: batch.items.map((q) => ({
+              meterId: q.meterId, value: q.value, readAt: q.readAt, clientKey: q.clientKey, photo: q.photo ?? null,
+              ...(q.aiProposalId ? { aiProposalId: q.aiProposalId } : {}), // SVC D.14 ◂
+              ...(q.ackLowConfidence === true ? { ackLowConfidence: true } : {}),
+            })),
           });
         } catch {
           setNote("ยังส่งไม่ได้ — เก็บไว้ในเครื่อง จะส่งให้เมื่อมีสัญญาณ");
@@ -363,9 +436,14 @@ export default function MeterWalk(props: MeterWalkProps) {
   const room = roomId ? roomsAll.find((r) => r.roomId === roomId) ?? null : null;
   const pct = walk.progress.rooms > 0 ? Math.round((walk.progress.done / walk.progress.rooms) * 100) : 0;
 
+  // SVC D.14 ▸ ค่าที่ระบบเสนอเติมช่องกรอก (คนแก้ได้ · ไม่ส่งเอง) ◂
+  const aiValueOf = (meterId: string): string => {
+    const p = aiOn ? aiProps[meterId] : undefined;
+    return p && p.source === "AI" && p.value !== null ? String(p.value) : "";
+  };
   const openRoom = (r: Room) => {
     const d: Record<string, string> = {};
-    for (const m of r.meters) d[m.meterId] = m.value === null ? "" : String(m.value);
+    for (const m of r.meters) d[m.meterId] = m.value === null ? aiValueOf(m.meterId) : String(m.value);
     setDraft(d);
     setPhotos({});
     setNote("");
@@ -387,8 +465,19 @@ export default function MeterWalk(props: MeterWalkProps) {
     if (picked.length === 0) return setNote("กรอกเลขอย่างน้อย 1 ช่อง");
     let q = queueRef.current;
     const at = new Date().toISOString();
-    for (const { m, n } of picked) q = enqueueReading(q, { meterId: m.meterId, periodKey, value: n, readAt: at, clientKey: newKey(), photo: photos[m.meterId] ?? null });
+    for (const { m, n } of picked) {
+      const p = aiOn ? aiProps[m.meterId] : undefined; // SVC D.14 ▸ ส่งพร้อมข้อเสนอ (+ติ๊กยืนยันเมื่อมั่นใจต่ำ) ◂
+      q = enqueueReading(q, {
+        meterId: m.meterId, periodKey, value: n, readAt: at, clientKey: newKey(), photo: photos[m.meterId] ?? null,
+        ...(p ? { aiProposalId: p.proposalId } : {}),
+        ...(p && p.lowConfidence && acks[m.meterId] === true ? { ackLowConfidence: true } : {}),
+      });
+    }
     setQueue(q);
+    if (aiOn) {
+      const savedIds = new Set(picked.map((x) => x.m.meterId));
+      setAiProps((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => !savedIds.has(k))));
+    }
     setNote("");
     const list = rf.rooms;
     const idx = list.findIndex((r) => r.roomId === room.roomId);
@@ -401,8 +490,32 @@ export default function MeterWalk(props: MeterWalkProps) {
   async function pickPhoto(meterId: string, file: File | undefined) {
     if (!file) return;
     const p = await shrinkPhoto(file);
-    if (p) setPhotos((prev) => ({ ...prev, [meterId]: p }));
-    else setNote("อ่านรูปไม่ได้ — บันทึกเลขต่อได้ ไม่ต้องแนบรูป");
+    if (!p) return setNote("อ่านรูปไม่ได้ — บันทึกเลขต่อได้ ไม่ต้องแนบรูป");
+    if (!aiRead || !props.propose) {
+      setPhotos((prev) => ({ ...prev, [meterId]: p }));
+      return;
+    }
+    // SVC D.14 ▸ ถ่ายรูป ⇒ ระบบเสนอเลข (เติมช่อง ไม่บันทึก) · ส่งไม่ได้/ล้ม ⇒ แนบรูปแบบเดิมแล้วพิมพ์เอง ◂
+    setReading((r) => ({ ...r, [meterId]: true }));
+    setNote("");
+    try {
+      const res = await props.propose({ meterId, periodKey, photo: p });
+      const prop = proposalOf(res);
+      if (!prop || prop.meterId !== meterId) {
+        setPhotos((prev) => ({ ...prev, [meterId]: p }));
+        setNote(outcomeOf(res).reason || "ระบบอ่านเลขไม่ได้ — พิมพ์เลขเอง รูปแนบไว้แล้ว");
+        return;
+      }
+      setPhotos((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== meterId)));
+      setAiProps((prev) => ({ ...prev, [meterId]: prop }));
+      setAcks((prev) => ({ ...prev, [meterId]: false }));
+      if (prop.source === "AI" && prop.value !== null) setDraft((d) => ({ ...d, [meterId]: String(prop.value) }));
+    } catch {
+      setPhotos((prev) => ({ ...prev, [meterId]: p }));
+      setNote("ยังส่งรูปให้ระบบอ่านไม่ได้ — พิมพ์เลขเอง รูปแนบไว้แล้ว");
+    } finally {
+      setReading((r) => ({ ...r, [meterId]: false }));
+    }
   }
 
   const rejectedBanner = rejected.length ? (
@@ -468,7 +581,8 @@ export default function MeterWalk(props: MeterWalkProps) {
         </div>
         {room.vacant ? <p className="text-[13px] text-[color:var(--color-muted)]">ห้องว่าง — จดไว้ด้วย ช่วยจับไฟรั่ว/น้ำรั่ว</p> : null}
         {room.meters.map((m) => {
-          const raw = draft[m.meterId] ?? (m.value === null ? "" : String(m.value));
+          const raw = draft[m.meterId] ?? (m.value === null ? aiValueOf(m.meterId) : String(m.value));
+          const ap = aiOn ? (aiProps[m.meterId] ?? null) : null;
           const n = parseNum(raw);
           const prev = m.prevValue;
           const units = n !== null && prev !== null && n >= prev ? n - prev : null;
@@ -495,9 +609,12 @@ export default function MeterWalk(props: MeterWalkProps) {
               <p className="text-[13px] text-[color:var(--color-ink-soft)]">
                 {back ? "เลขน้อยกว่าครั้งก่อน — ถ้าเปลี่ยนมิเตอร์ให้แจ้งในหน้า “ตรวจค่าผิดปกติ”" : units !== null ? `${fmt(units)} หน่วย` : m.units !== null ? `${fmt(m.units)} หน่วย` : "ใส่เลขแล้วระบบคิดหน่วยให้"}
               </p>
+              {ap ? <AiProposalBox p={ap} ack={acks[m.meterId] === true} onAck={(v) => setAcks((a) => ({ ...a, [m.meterId]: v }))} /> : null}
               <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed px-3 text-[13px] text-[color:var(--color-muted)]">
                 <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => void pickPhoto(m.meterId, e.target.files?.[0])} />
-                {photos[m.meterId] ? "แนบรูปแล้ว · เปลี่ยนรูป" : m.photo ? "มีรูปแล้ว · ถ่ายใหม่" : `ถ่ายรูปมิเตอร์${KIND_LABEL[m.kind]} (ไม่บังคับ)`}
+                {aiRead
+                  ? reading[m.meterId] ? "กำลังอ่านเลขจากรูป…" : ap ? "ถ่ายรูปใหม่ · ระบบอ่านเลข" : `ถ่ายรูป ระบบอ่านเลข${KIND_LABEL[m.kind]}`
+                  : photos[m.meterId] ? "แนบรูปแล้ว · เปลี่ยนรูป" : m.photo ? "มีรูปแล้ว · ถ่ายใหม่" : `ถ่ายรูปมิเตอร์${KIND_LABEL[m.kind]} (ไม่บังคับ)`}
               </label>
             </div>
           );
