@@ -1137,6 +1137,34 @@ try {
     eq(codeOf(await book(c, xSvc(u, "OIL"), xStaff(u)[1], d2, 640)), "FULL", "จองห้องเดียวกันทับลูกค้าที่มาถึงวันใหม่");
     eq(await resViolations(u), [], "ฐาน");
   });
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B13-PB-13) — ข้อเพิ่ม (เพิ่มอย่างเดียว · มติ Q18 "ยุคการมาถึง"): แถวกลับเข้า ARRIVED ทางที่ไม่ใช่ checkIn
+  //   (ยกเลิกโดยร้าน → ปลุกตรง / ผ่าน CONFIRMED) ต้องเริ่มยุคใหม่ (checkedInAt ใหม่ · ไม่มีเครื่องหมายเก่า) ⇒ จองห้องทับไม่ได้ ·
+  //   หน่วย uX4 (ห้องเดียว) วัน dd(20)/dd(21) ไม่ชนฉาก X
+  await st("W-12", "Q18: มาสายวางไม่ได้ (เครื่องหมาย) → cancelByShop → ช่องหมอว่าง → ปลุกกลับ ARRIVED (ตรง/ผ่าน CONFIRMED) ⇒ ไม่มีเครื่องหมายเก่า · จองห้องเดียวกันทับ 10:30 = FULL · ฐานไม่ล้น", async () => {
+    needTpl();
+    const u = ids.uX4, c = cX(u);
+    for (const [ds, via] of [[dd(20), "direct"], [dd(21), "viaConfirmed"]] as const) {
+      const a = await bookOk(c, xSvc(u, "OIL"), xStaff(u)[0], ds, 600, `${via} นัดห้อง 10:00`);
+      const plain: string[] = [];
+      for (let h = 0; h < 9; h++) plain.push(await bookOk(c, xSvc(u, "PLAIN"), xStaff(u)[0], ds, 660 + h * 60, `${via} หมอเต็ม ${h}`));
+      const ci = await LN().checkIn(c, { appointmentId: a }, { via: "STAFF", now: at(ds, 620) });
+      if (!ci.ok) throw new AssertFail(`${via} เช็กอิน ${ci.code} ${ci.reason}`);
+      await RN().runPlanner(c, { now: at(ds, 620) });
+      const cancelByShop = (LN() as LineApi & { cancelByShop: (ctx: Ctx, id: string, opts?: { now?: Date }) => Promise<JobResult> }).cancelByShop;
+      eq(codeOf(await cancelByShop(c, a, { now: at(ds, 621) })), "OK", `${via} ยกเลิกโดยร้าน`);
+      const m0 = (await apRow(a)).policySnapshot?.job as Record<string, unknown> | undefined;
+      ok(m0?.unplacedAt === undefined && m0?.unplacedFor === undefined, `${via} ยกเลิกต้องล้างเครื่องหมาย ${fmt(m0)}`);
+      eq((await BK().setAppointmentStatus(ids.tA, u, plain[0], "CANCELLED")).ok, true, `${via} ช่องหมอว่าง`);
+      if (via === "viaConfirmed") eq((await BK().setAppointmentStatus(ids.tA, u, a, "CONFIRMED")).ok, true, "ปลุกเป็น CONFIRMED");
+      const y = await BK().setAppointmentStatus(ids.tA, u, a, "ARRIVED");
+      if (!y.ok) continue; // ปลุกไม่ได้ = ไม่มีลูกค้าถือห้อง (ตัวควบคุมแบบ P23)
+      const m1 = (await apRow(a)).policySnapshot?.job as Record<string, unknown> | undefined;
+      ok(m1?.unplacedAt === undefined && m1?.unplacedFor === undefined, `${via} กลับเข้า ARRIVED ต้องไม่มีเครื่องหมายเก่า ${fmt(m1)}`);
+      eq(codeOf(await book(c, xSvc(u, "OIL"), xStaff(u)[1], ds, 630)), "FULL", `${via} จองห้องเดียวกันทับลูกค้าหน้าร้าน`);
+      await RN().runPlanner(c, { now: at(ds, 622) });
+      eq(await resViolations(u), [], `${via} ฐาน`);
+    }
+  });
 
   // ═══════════════ E _fallback ═══════════════
   console.log("\n── E: _fallback = พฤติกรรม B1 (ไม่มีทรัพยากร/ไม่ประกาศชนิด) ──");

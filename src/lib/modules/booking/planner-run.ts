@@ -319,9 +319,12 @@ export async function planAndWriteTx(
     let snapNow: unknown = r.policySnapshot;
     if (r.kind === "BOOKED" && r.status === "ARRIVED" && ((kindsOf.get(r.serviceId) ?? []).length || resourceIdsOfRow(r.resourceId, r.policySnapshot).length)) {
       const job0 = (r.policySnapshot && typeof r.policySnapshot === "object" && !Array.isArray(r.policySnapshot) ? (r.policySnapshot as { job?: Record<string, unknown> }).job : undefined) ?? {};
-      const marked = job0.unplacedAt !== undefined && job0.unplacedAt !== null;
-      if (!placed && !marked) snapNow = withJob(r.policySnapshot, { unplacedAt: new Date(nowMs).toISOString() });
-      else if (placed && marked) snapNow = withJob(r.policySnapshot, { unplacedAt: undefined });
+      // Q18: เครื่องหมายผูกยุคการมาถึง (unplacedFor = checkedInAt ที่ประเมิน) · ยุคใหม่/วางได้ ⇒ เขียนใหม่/ลบ
+      const epoch = r.checkedInAt ? r.checkedInAt.toISOString() : null;
+      const anyMark = job0.unplacedAt !== undefined || job0.unplacedFor !== undefined;
+      const fresh = epoch !== null && job0.unplacedFor === epoch;
+      if (!placed && epoch !== null && !fresh) snapNow = withJob(r.policySnapshot, { unplacedAt: new Date(nowMs).toISOString(), unplacedFor: epoch });
+      else if (placed && anyMark) snapNow = withJob(r.policySnapshot, { unplacedAt: undefined, unplacedFor: undefined });
       if (snapNow !== r.policySnapshot) data.policySnapshot = snapNow as Prisma.InputJsonValue;
     }
     if (!sameTime(r.plannedStartAt, pStart)) data.plannedStartAt = pStart;

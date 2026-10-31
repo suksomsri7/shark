@@ -1016,7 +1016,9 @@ export async function setAppointmentStatus(
   //   CAS ผูก queueTicketId ที่อ่านด้วย (เช็กอินจอเดิมที่ออกบัตรให้ระหว่างนั้น = แพ้ ⇒ LOST_RACE) · ร้านเดิม (ไม่มีบัตร) ผลเดิม + ล้าง checkedInAt ◂
   const undoArrive = before.status === "ARRIVED" && (status === "CONFIRMED" || status === "PENDING");
   // SVC B.13 ▸ Q17: ออกจาก ARRIVED ⇒ ล้างเครื่องหมาย job.unplacedAt (ไม่ชนกับ manualHoldSnap/reviveIds — ทั้งสองมาจากสถานะอื่น) ◂
-  const unmarkSnap = before.status === "ARRIVED" && status !== "ARRIVED" ? withoutUnplaced(before.policySnapshot) : undefined;
+  //   Q18 "ยุคการมาถึง": เข้า ARRIVED จากสถานะอื่น (ปลุก · ปุ่มมาถึง · ถอยกลับ) ⇒ checkedInAt = now + ล้างเครื่องหมายใน CAS เดียวกัน
+  const enterArrived = status === "ARRIVED" && before.status !== "ARRIVED";
+  const unmarkSnap = (before.status === "ARRIVED" && status !== "ARRIVED") || enterArrived ? withoutUnplaced(before.policySnapshot) : undefined;
   // SVC B.13 ▸ Q5: ชนชั่วคราวลองใหม่ 1 ครั้ง ⇒ BUSY (ไม่ throw) · maxWait ≤ 20s timeout ≤ 30s ◂
   const statusTx = () => prisma.$transaction(async (tx) => {
     reviveFail = null;
@@ -1055,9 +1057,10 @@ export async function setAppointmentStatus(
         ...(reviving ? { status, cancelReason: null } : { status }),
         ...(manualHoldSnap ? { policySnapshot: manualHoldSnap } : {}),
         // SVC B.13 ▸ ชิ้นที่ได้ + ล้างแผนเก่า (ช่วงถือในฐานนับจาก plannedStartAt · ตัววางคิววางใหม่หลัง commit) ◂
-        ...(reviveIds ? { resourceId: reviveIds[0] ?? null, policySnapshot: snapWithResources(manualHoldSnap ?? before.policySnapshot, reviveIds), plannedStartAt: null, plannedStaffId: null } : {}),
+        ...(reviveIds ? { resourceId: reviveIds[0] ?? null, policySnapshot: ((x: Prisma.InputJsonValue) => withoutUnplaced(x) ?? x)(snapWithResources(manualHoldSnap ?? before.policySnapshot, reviveIds)), plannedStartAt: null, plannedStaffId: null } : {}),
         ...(undoArrive ? { checkedInAt: null, queueTicketId: null } : {}),
-        ...(unmarkSnap !== undefined ? { policySnapshot: unmarkSnap } : {}),
+        ...(unmarkSnap !== undefined && !reviveIds ? { policySnapshot: manualHoldSnap ? (withoutUnplaced(manualHoldSnap) ?? manualHoldSnap) : unmarkSnap } : {}),
+        ...(enterArrived ? { checkedInAt: new Date() } : {}),
       },
     });
     if (cas.count === 0) {
