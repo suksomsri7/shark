@@ -387,6 +387,7 @@ try {
   await mk("P14b", { tenant: ids.tB, staffN: 2, res: room1, svcs: OILS });
   await mk("P15", { staffN: 2, res: room1, svcs: OILS });
   await mk("P17", { staffN: 3, res: room1, svcs: OILS, hours: [0, 1440] });
+  await mk("P18", { staffN: 3, res: room1, svcs: OILS });
   await finishSetup(units);
   console.log(`(fixtures พร้อม · ${units.length} หน่วย · วัน ${DS} · now จริง ${new Date().toISOString()})`);
   const dlSetup = await readDeadlocks();
@@ -818,6 +819,49 @@ try {
       rec("P17", !(bk.ok && planSaysBusy), "MAJOR",
         "ด่านเดียว (§2): ตัววางคิวบอกห้องยังไม่ว่าง (งานเลยเวลา ยืดถึง now+5 + เก็บ 15 · PL-11) ⇒ การจองห้องเดียวกันตอนนี้ต้องไม่ผ่าน (มติ Q1 ฝั่งฐานไม่ยืดถึง now)",
         { nowBkk: HM(nowMs), walkInNow: view ? { start: view.startAt ? HM(new Date(view.startAt).getTime()) : null, limitedBy: view.limitedBy } : null, book: bk.ok ? "OK" : `${bk.code} ${bk.reason ?? ""}` });
+    });
+  }
+
+  // ═══════════ P18 มาสายเข้าแถวที่วางไม่ได้วันนี้ ∥ walk-in ห้องเดียวกัน (หนี้ที่ผู้สร้างเปิด) ═══════════
+  if (want("P18")) {
+    console.log("\n── P18: นัด 18:45 มาสาย 19:10 (วางไม่ได้ · เลยเวลาปิด) + walk-in 30 นาทีห้องเดียวกัน ──");
+    await step("P18", async () => {
+      const u = U.P18;
+      const a = await bookOk(u, "OIL", 0, DS, 1125);
+      const ch = await LN.checkIn(u.ctx, { appointmentId: a }, { via: "STAFF", now: at(DS, 1150) });
+      const w = await LN.createWalkIn(u.ctx, { serviceId: u.svc.OIL30, staffId: u.staff[1], channel: "STAFF" }, { now: at(DS, 1150) });
+      await RN.runPlanner(u.ctx, { now: at(DS, 1150) });
+      const ra = await apRow(a);
+      const sw = await sweep(u.id);
+      rec("P18", sw.contract.length === 0, "MINOR",
+        "แถวมาสายที่ตัววางคิววางไม่ได้ (plannedStartAt null) ฐานยังนับที่เวลานัด แต่ตัววางคิวไม่นับ ⇒ walk-in ลงห้องเดียวกันได้ · ฐานล้นตามนิยาม (ไม่ซ้อนจริง — ลูกค้ายังไม่ได้เข้าห้อง)",
+        { checkIn: ch.ok ? (ch.asWalkIn ? "asWalkIn" : "ok") : ch.code, apptA: { st: ra.status, planned: ra.plannedStartAt ? HM(ra.plannedStartAt.getTime()) : null }, walkIn: w.ok ? HM(new Date(w.plannedStartAt).getTime()) : w.code, contract: sw.contract, physical: sw.physical });
+    });
+  }
+
+  // ═══════════ P19 resourceShort ขึ้นธงเกิน (pure) ═══════════
+  if (want("P19")) {
+    console.log("\n── P19: resourceShort false positive — งานเลื่อนเพราะหมอ (ไม่ใช่ห้อง) จนเลยเวลาปิด ──");
+    await step("P19", async () => {
+      const D0 = Date.UTC(2026, 10, 6) - 7 * 3_600_000; const Tm = (h: string) => { const [x, y] = h.split(":").map(Number); return D0 + (x * 60 + y) * MIN; };
+      const S0 = { queueOrder: "SINGLE_LINE", backfill: true, safetyBeforeBookingMin: 0, graceMin: 15, noShowAfterMin: 30, lateAction: "RELEASE", priorityEnabled: false, walkInMaxWaitMin: 600, overrunExtendMin: 5, minBreakMin: 0, maxJobsPerDay: null };
+      const svcs = [{ id: "PLAIN", name: "p", durationMin: 60, bufferAfterMin: 0 }, { id: "OIL", name: "o", durationMin: 60, bufferAfterMin: 0, resourceKinds: ["ROOM"] }];
+      const res = [{ id: "rA", kind: "ROOM", name: "rA", sortOrder: 1, capacity: 1, cleanupMin: 15, blocks: [] }, { id: "rB", kind: "ROOM", name: "rB", sortOrder: 2, capacity: 1, cleanupMin: 15, blocks: [] }];
+      const st = [{ id: "s0", name: "s0", sortOrder: 1, windows: [{ startAt: Tm("10:00"), endAt: Tm("20:00") }], services: null }];
+      const jb = (id: string, svc: string, h: string, o: any = {}) => ({ id, label: id, kind: "BOOKED", status: "CONFIRMED", serviceId: svc, assignMode: "SPECIFIC", staffId: "s0", startAt: Tm(h), issuedAt: Tm("08:00"), checkedInAt: null, startedAt: null, priority: false, ...o });
+      const overrun = jb("A", "PLAIN", "18:00", { status: "IN_SERVICE", checkedInAt: Tm("18:00"), startedAt: Tm("18:20") });
+      const b = (svc: string, ids?: string[]) => jb("B", svc, "19:00", { status: "ARRIVED", checkedInAt: Tm("18:55"), ...(ids ? { resourceIds: ids } : {}) });
+      const pick = (inp: any) => PL.planDay(inp).jobs.find((x: any) => x.jobId === "B");
+      const plainWithRes = pick({ now: Tm("19:20"), settings: S0, staff: st, services: svcs, resources: res, jobs: [overrun, b("PLAIN")] });
+      const plainNoRes = pick({ now: Tm("19:20"), settings: S0, staff: st, services: svcs, resources: [], jobs: [overrun, b("PLAIN")] });
+      const oilFreeRoom = pick({ now: Tm("19:20"), settings: S0, staff: st, services: svcs, resources: res, jobs: [overrun, b("OIL", ["rA"])] });
+      const control = pick({ now: Tm("19:20"), settings: S0, staff: st, services: [svcs[0]], jobs: [overrun, b("PLAIN")] });
+      rec("P19-plain", plainWithRes.resourceShort === false && plainNoRes.resourceShort === false && control.resourceShort === false, "MAJOR",
+        "§3.1: บริการไม่ใช้ทรัพยากร ⇒ resourceShort false เสมอ — งานธรรมดาถูกหมอดันเลยเวลาปิด (สาขามีบริการประกาศชนิด) ต้องไม่ขึ้นธงห้องไม่พอ",
+        { plainWithRes: [HM(plainWithRes.startAt), plainWithRes.resourceShort, J(plainWithRes.resourceIds)], plainResEmpty: plainNoRes.resourceShort, controlNoKinds: control.resourceShort });
+      rec("P19-oil", oilFreeRoom.resourceShort === false, "MINOR",
+        "บริการใช้ห้อง · ห้องว่างทั้ง 2 ห้อง · เลยเวลาปิดเพราะหมอเลยเวลา (ไม่ใช่ห้อง) ⇒ ไม่ควรขึ้นธง resourceShort (จอ B.14 จะบอกผิดว่าห้องไม่พอ)",
+        { start: HM(oilFreeRoom.startAt), short: oilFreeRoom.resourceShort, ids: oilFreeRoom.resourceIds });
     });
   }
 
