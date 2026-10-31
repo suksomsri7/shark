@@ -1409,7 +1409,8 @@ try {
     ok(rows.length > 0, "ไม่มี event");
     const json = JSON.stringify(rows);
     eq(piiLeak(json), [], "PII");
-    const toks = [...TOKENS_USED].filter((t) => json.includes(t) || json.includes(sha256hex(t)));
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · b8-EV2) นับเฉพาะ token จริง (≥16 ตัว) — token ขยะสั้นที่ใช้ทดสอบการปฏิเสธ (เช่น "abc") บังเอิญเป็นส่วนของ id สุ่มใน payload ⇒ แดงเท็จ · hash ยังตรวจทุกตัว
+    const toks = [...TOKENS_USED].filter((t) => (t.length >= 16 && json.includes(t)) || json.includes(sha256hex(t)));
     eq(toks.length, 0, "token/hash");
     const allow: Record<string, string[]> = {
       "booking.deposit_paid": ["appointmentId", "unitId", "amountSatang", "requiredSatang", "via", "partial", "late", "status", "tenantId"],
