@@ -4,6 +4,7 @@
 // หมวด: WS ยกเว้นระหว่างส่งรอบ (หนี้ #6) · MX ผสมเงิน 4 โพรเซส 3 เฟส · TB ไม่ทบต้น · WA ยกเว้น/อนุมัติ · DN เตือน/ทวง · XT ข้ามร้าน/สิทธิ์
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { join, dirname } from "node:path";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 
@@ -20,7 +21,7 @@ for (const n of ["DATABASE_URL", "DIRECT_URL"] as const) {
   const u = process.env[n] ?? "";
   let hn = "";
   try { hn = new URL(u).hostname; } catch { /* */ }
-  if (!hn.includes("ep-mute-scene")) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
+  if (!hn.includes(svcQcHostMark()) /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) */) { console.error(`🔴 probe: ${n} ไม่ใช่ฐาน qc-svc — หยุด`); process.exit(4); }
 }
 if (process.env.APP_ENV === "production" || process.env.CI) { console.error("🔴 probe: env ต้องห้าม"); process.exit(4); }
 

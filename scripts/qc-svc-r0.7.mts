@@ -21,6 +21,7 @@
 // 🔴 ไม่ยิง LINE จริง: ข้อสอบเปิดตัวจำลอง (node:http 127.0.0.1) + ตั้ง LINE_API_BASE + ครอบ fetch (คำขอออกนอกเครื่อง = บล็อก + จด)
 // แถวของข้อสอบ: ชื่อ/ID ขึ้นต้น "svc-r07-" · dedupeKey "svc-r07:" · ลบใน finally (รวมของรอบก่อนที่ค้าง) · วันที่สัมพัทธ์กับเวลาจริงตอนรัน
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { svcQcHostMark } from "./svc-qc-hosts.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
@@ -34,7 +35,7 @@ type Any = any;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LABEL = "qc-svc-r0.7";
-const SVC_HOST = "ep-mute-scene";
+const SVC_HOST = svcQcHostMark(); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · ฐานต่อเลน) เดิม "ep-mute-scene"
 const FORBIDDEN_HOSTS = ["ep-royal-night", "ep-plain-art", "ep-cool-shadow", "ep-weathered-river", "ep-frosty-lab", "ep-fragrant-thunder"];
 
 // ═══════════════ 0. ด่านฐานข้อมูล (ในตัวข้อสอบ) ═══════════════
