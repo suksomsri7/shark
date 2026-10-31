@@ -83,6 +83,9 @@ async function runOp(c: Call): Promise<any> {
       const codes: string[] = [];
       for (let k = 0; k < a[3]; k++) { const x = await RS.updateResource(a[0], a[1], a[2], { sortOrder: k % 2 ? a[4] : a[5] }); codes.push(x.ok ? "OK" : x.code); }
       r = { ok: true, code: null, reason: codes.slice(0, 4).join(",") };
+    } else if (c.op === "submit") {
+      const PNG = Uint8Array.from(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(96)]));
+      r = await DP.submitDepositSlip(a[0], { file: { data: PNG, contentType: "image/png" }, idempotencyKey: a[1] }, { ip: a[2], deps: { put: async () => undefined, del: async () => 200 } });
     } else if (c.op === "quote") r = { ok: true, code: null, reason: String(await ON.lateForfeitSatangOf(a[0], a[1])) };
     else r = { unknownOp: c.op };
     return { op: c.op, tag: c.tag ?? null, r: slim(r), ms: Date.now() - t0 };
@@ -514,6 +517,8 @@ try {
   const dRooms: ResSpec[] = [1, 2, 3].map((k) => ({ key: `dv${k}`, kind: "COUPLE_ROOM", sortOrder: k, cleanup: 0, cap: 2 }));
   for (let r = 0; r < 6; r++) await mk(`P5e${r}`, { staffN: 4, res: dRooms, svcs: DSVCS, dep: { payWithinMin: 1, minDurationMin: null } });
   for (const k of ["P5p", "P5l", "P5f", "P5n", "P5g", "P5h", "P5i"]) await mk(k, { staffN: 6, res: dRooms, svcs: DSVCS, dep: { payWithinMin: 1440, minDurationMin: k === "P5h" ? 90 : null } });
+  for (const k of ["P12a", "P12c", "P12d", "P12e"]) await mk(k, { staffN: 6, res: dRooms, svcs: DSVCS, dep: { payWithinMin: 1440, minDurationMin: null } });
+  for (let r = 0; r < 3; r++) await mk(`P12b${r}`, { staffN: 4, res: dRooms, svcs: DSVCS, dep: { payWithinMin: 1, minDurationMin: null } });
   await mk("P6", { staffN: 12, res: [...vip(), { key: "vip2", kind: "COUPLE_ROOM", sortOrder: 2, cleanup: 15, cap: 2 }, { key: "vip3", kind: "COUPLE_ROOM", sortOrder: 3, cleanup: 15, cap: 2 }], svcs: SVCS });
   await mk("P7a", { staffN: 3, res: vip(), svcs: SVCS });
   await mk("P7a2", { staffN: 3, res: vip(), svcs: SVCS });
@@ -1255,6 +1260,128 @@ try {
       rec("P9-det", fails.det.length === 0, "MAJOR", "deterministic เมื่อสลับลำดับ jobs/resources", sm("det"));
       rec("P9-perf", perf.p95 < 50, "MAJOR", "fuzz planDay p95 < 50 ms", perf);
     });
+  }
+
+  // ═══════════ P12 (รอบแก้ 1) ตัวตัดสินกลุ่มใหม่: สลิป 2+ ใบ · 4 ทาง · คืน ∥ สลิปมาช้า · ยกเลิกรายคนแล้วสลิปเข้า ═══════════
+  if (want("P12")) {
+    console.log("\n── P12: สลิปกลุ่มซ้อน · สลิป∥ยืนยัน∥ยกเลิก∥หมดเวลา · คืน∥สลิปช้า · ยกเลิกรายคนแล้วสลิปเข้า ──");
+    const d0 = await readDeadlocks();
+    const moneyRec2 = async (id: string, sev: string, what: string, m: Money, extra: string[], detail: Record<string, unknown> = {}) => {
+      const bal = balanced(await jv(m.saleIds));
+      rec(id, m.issues.length === 0 && extra.length === 0 && bal, sev, what, { issues: [...m.issues, ...extra], balanced: bal, paid: m.paid, refunded: m.refunded, rows: m.perRow, ...detail });
+    };
+    // P12a ลูกค้าส่งสลิป 4 ใบพร้อมกัน (key ต่าง) → ร้านอนุมัติทุกใบที่ค้าง → consumer ทุก event ×3 พร้อมกัน
+    await step("P12a", async () => {
+      const u = U.P12a;
+      const g = await groupOk(u, pair, 840, "ONLINE");
+      const tok = await tokenOf(u, g.ids[0]);
+      const subs = await fan("p12a-s", Array.from({ length: 4 }, () => [{ op: "submit", a: [tok, `b15p-s-${randomBytes(6).toString("hex")}`, newIp()] }]));
+      const slips = await q(`SELECT id, status FROM "PaymentSlip" WHERE "refId" = ANY($1::text[]) AND status IN ('PENDING','NEEDS_REVIEW')`, [g.ids]);
+      const evs: string[] = [];
+      for (const sl of slips) {
+        const d = await SV.decideSlip({ userId: ids.owner }, { tenantId: ids.tA }, sl.id, { reason: "ตรวจแล้ว", transRef: newTR(), decision: "APPROVE" });
+        if (d?.ok) { const ev = (await q(`SELECT id FROM "OutboxEvent" WHERE type = 'payment.slip.approved' AND payload->>'slipId' = $1`, [sl.id]))[0]; if (ev) evs.push(ev.id); }
+      }
+      const outs = evs.length ? await fan("p12a-c", [evs.map((e) => ({ op: "consumeEvt", a: [e] })), evs.map((e) => ({ op: "consumeEvt", a: [e], delayMs: 4 })), evs.map((e) => ({ op: "consumeEvt", a: [e], delayMs: 9 }))]) : [];
+      await pump();
+      const m = await moneyOf(g.ids);
+      const extra: string[] = [];
+      if (m.rc !== 2 || m.paid !== DEP_PAIR) extra.push(`ใบรับ ${m.rc} · Σ ${m.paid} ≠ 2 · ${DEP_PAIR}`);
+      if (!m.rows.every((a) => a.status === "CONFIRMED")) extra.push(`สถานะ ${m.rows.map((a) => a.status).join(",")}`);
+      const sap = Number((await q(`SELECT count(*)::int AS n FROM "AuditLog" WHERE "targetId" = ANY($1::text[]) AND action = 'booking.deposit.slip_after_paid'`, [g.ids]))[0].n);
+      if (evs.length > 1 && sap === 0) extra.push(`สลิปเกิน ${evs.length - 1} ใบ ไม่มี audit slip_after_paid`);
+      if (badOf([...subs, ...outs]).length) extra.push(`throw ${J(badOf([...subs, ...outs])[0])}`);
+      await moneyRec2("P12a", "CRITICAL", `ส่งสลิป 4 ใบพร้อมกัน ⇒ อนุมัติทุกใบที่ค้าง · consumer ×3 ต่อ event ⇒ ใบรับต่อแถว 1 · Σ ${DEP_PAIR} · ใบที่เกินมีเตือน`, m, extra, { slips: slips.length, events: evs.length, slipAfterPaid: sap, subs: codesOf(subs) });
+    });
+    // P12b สลิปอนุมัติ ∥ ร้านยืนยัน ∥ ลูกค้ายกเลิก ∥ หมดเวลา (ถือ 1 นาที) · 3 รอบ
+    for (let r = 0; r < 3; r++) await step(`P12b-${r}`, async () => {
+      const u = U[`P12b${r}`];
+      const g = await groupOk(u, pair, 840, "ONLINE");
+      const created = (await apRow(g.ids[0])).createdAt.getTime();
+      const tok = await tokenOf(u, g.ids[0]);
+      const s = await slipApproved(tok, g.ids[0], { decision: "APPROVE" });
+      const per: Call[][] = [
+        [{ op: "consumeEvt", a: [s.evId], delayMs: r * 7 }, { op: "expire", a: [created + 3 * MIN] }],
+        [{ op: "confirm", a: [SHOP, { unitId: u.id, appointmentId: g.ids[r % 2] }] }, { op: "cancelOnline", a: [tok, { ip: newIp() }], delayMs: 3 }],
+        [{ op: "cancelOnline", a: [tok, { ip: newIp() }] }, { op: "consumeEvt", a: [s.evId], delayMs: 12 }],
+        [{ op: "expire", a: [created + 3 * MIN] }, { op: "confirm", a: [SHOP, { unitId: u.id, appointmentId: g.ids[0] }], delayMs: 5 }],
+        [{ op: "consumeEvt", a: [s.evId], delayMs: 2 }, { op: "expire", a: [created + 3 * MIN], delayMs: 6 }],
+      ];
+      const outs = await fan(`p12b-${r}`, per);
+      await pump();
+      const m = await moneyOf(g.ids);
+      const v = await GR.groupOf(u.ctx, g.groupId);
+      const st = new Set(m.rows.map((a) => a.status));
+      const extra: string[] = [];
+      if (st.size !== 1) extra.push(`สถานะผสม ${[...st].join(",")}`);
+      if (m.paid !== DEP_PAIR || m.rc !== 2) extra.push(`เงินเข้า ${m.paid} ใบ ${m.rc} (สลิป ${DEP_PAIR} อนุมัติแล้ว ⇒ ต้องลงครบ 2 ใบ)`);
+      if (st.has("CANCELLED") && v?.deposit?.refundDueSatang !== m.paid) extra.push(`ยกเลิกแล้วค้างคืน ${v?.deposit?.refundDueSatang} ≠ ${m.paid}`);
+      if (m.rows.some((a) => a.cancelReason === "DEPOSIT_TIMEOUT")) extra.push("สลิปอนุมัติแล้วแต่ถูกปล่อยเพราะหมดเวลา");
+      if (badOf(outs).length) extra.push(`throw ${J(badOf(outs)[0])}`);
+      await moneyRec2(`P12b-${r}`, "CRITICAL", `${u.key}: สลิปอนุมัติ (consumer ×3) ∥ confirm ×2 ∥ cancelOnline ×2 ∥ expire ×3 ⇒ ใบรับต่อแถว 1 · Σ ${DEP_PAIR} · สถานะไม่ผสม · ยกเลิก ⇒ ค้างคืนเต็ม · ไม่ถูกปล่อยเพราะหมดเวลา`, m, extra, { codes: codesOf(outs), refundDue: v?.deposit?.refundDueSatang });
+    });
+    // P12c ร้านยกเลิกกลุ่ม → สลิปที่อนุมัติไว้มาช้า (consumer ×2) ∥ ร้านคืนเงิน ×5 → คืนรอบสุดท้าย ⇒ คืนครบครั้งเดียวต่อใบรับ
+    await step("P12c", async () => {
+      const u = U.P12c;
+      const g = await groupOk(u, pair, 840, "ONLINE");
+      const tok = await tokenOf(u, g.ids[0]);
+      const s = await slipApproved(tok, g.ids[0], { decision: "APPROVE" });
+      const cx = await GR.cancelGroup(u.ctx, g.groupId);
+      const refund = (id: string, delayMs = 0): Call => ({ op: "refund", a: [SHOP, { unitId: u.id, appointmentId: id, reason: "ร้านยกเลิก probe" }], delayMs });
+      const outs = await fan("p12c", [[{ op: "consumeEvt", a: [s.evId] }, refund(g.ids[0], 6)], [{ op: "consumeEvt", a: [s.evId], delayMs: 3 }, refund(g.ids[1], 2)], [refund(g.ids[0]), refund(g.ids[0], 15)]]);
+      await pump();
+      const last = await DP.refundDepositByShop(SHOP, { unitId: u.id, appointmentId: g.ids[0], reason: "คืนรอบสุดท้าย" });
+      await pump();
+      const m = await moneyOf(g.ids);
+      const v = await GR.groupOf(u.ctx, g.groupId);
+      const extra: string[] = [];
+      if (!cx.ok) extra.push(`cancelGroup ${cx.code}`);
+      if (m.paid !== DEP_PAIR || m.rc !== 2) extra.push(`เงินเข้า ${m.paid} ใบ ${m.rc}`);
+      if (m.refunded !== m.paid || m.refundCount !== m.rc) extra.push(`คืน ${m.refunded}/${m.paid} · ใบคืน ${m.refundCount}/${m.rc}`);
+      if ((v?.deposit?.refundDueSatang ?? -1) !== 0) extra.push(`ยังค้างคืน ${v?.deposit?.refundDueSatang}`);
+      if (badOf(outs).length) extra.push(`throw ${J(badOf(outs)[0])}`);
+      await moneyRec2("P12c", "CRITICAL", "ร้านยกเลิกกลุ่ม · สลิปที่อนุมัติไว้มาช้า ∥ คืนเงิน ×5 ⇒ ใบรับต่อแถว · คืนครบครั้งเดียว · ไม่ค้างคืน", m, extra, { codes: codesOf(outs), last: last.ok ? `OK dup=${last.duplicated ?? false}` : last.code });
+    });
+    // P12d ร้านยกเลิกสมาชิกคนที่ 2 → ลูกค้าจ่ายผ่านลิงก์หัวกลุ่ม (ยอด = ของหัวกลุ่ม) → สลิปอนุมัติ (consumer ×2)
+    await step("P12d", async () => {
+      const u = U.P12d;
+      const g = await groupOk(u, pair, 840, "ONLINE");
+      const cs = await LN.cancelByShop(u.ctx, g.ids[1]);
+      const tok = await tokenOf(u, g.ids[0]);
+      const p = await DP.loadDepositPay(tok, { ip: newIp() });
+      const s = await slipApproved(tok, g.ids[0], { decision: "APPROVE" });
+      const outs = await fan("p12d", [[{ op: "consumeEvt", a: [s.evId] }], [{ op: "consumeEvt", a: [s.evId], delayMs: 5 }]]);
+      await pump();
+      const m = await moneyOf(g.ids);
+      const extra: string[] = [];
+      if (!cs.ok) extra.push(`cancelByShop ${cs.code}`);
+      if (!p.ok || p.pay.amountSatang !== DEP_OIL || s.expected !== DEP_OIL) extra.push(`หน้าจ่าย ${p.ok ? p.pay.amountSatang : p.code} · สลิปคาด ${s.expected} (ต้อง ${DEP_OIL})`);
+      if (J(m.perRow.map((x) => x.rc)) !== J([[DEP_OIL], []])) extra.push(`ใบรับต่อแถว ${J(m.perRow.map((x) => x.rc))} ≠ [[${DEP_OIL}],[]]`);
+      if (m.rows[0].status !== "CONFIRMED") extra.push(`หัวกลุ่มจ่ายครบแต่ ${m.rows[0].status} (ไม่ยืนยันเอง)`);
+      if (badOf(outs).length) extra.push(`throw ${J(badOf(outs)[0])}`);
+      await moneyRec2("P12d", "MAJOR", `ยกเลิกสมาชิกรายคนแล้วสลิปหัวกลุ่มเข้า (ยอด ${DEP_OIL}) ⇒ ใบรับเฉพาะหัวกลุ่ม ${DEP_OIL} · หัวกลุ่ม CONFIRMED · สมาชิกที่ถูกยกเลิกไม่ได้เงิน`, m, extra);
+    });
+    // P12e ร้านยกเลิกหัวกลุ่ม → ลูกค้าจ่ายผ่านลิงก์หัวกลุ่ม (ยอด = ของสมาชิกที่เหลือ) → สลิปอนุมัติ
+    await step("P12e", async () => {
+      const u = U.P12e;
+      const g = await groupOk(u, pair, 840, "ONLINE");
+      const cs = await LN.cancelByShop(u.ctx, g.ids[0]);
+      const tok = await tokenOf(u, g.ids[0]);
+      const p = await DP.loadDepositPay(tok, { ip: newIp() });
+      if (!p.ok || p.pay.state !== "AWAITING") { info("P12e-pay", "หัวกลุ่มถูกยกเลิก ⇒ ลิงก์หัวกลุ่มจ่ายมัดจำของสมาชิกที่เหลือไม่ได้ (ข้อมูล · ลูกค้าไม่มีลิงก์อื่น)", { cancel: cs.ok ? "OK" : cs.code, pay: p.ok ? { state: p.pay.state, amount: p.pay.amountSatang } : p.code }); return; }
+      const s = await slipApproved(tok, g.ids[0], { decision: "APPROVE" });
+      const outs = await fan("p12e", [[{ op: "consumeEvt", a: [s.evId] }], [{ op: "consumeEvt", a: [s.evId], delayMs: 5 }]]);
+      await pump();
+      const m = await moneyOf(g.ids);
+      const extra: string[] = [];
+      if (p.pay.amountSatang !== DEP_ARO || s.expected !== DEP_ARO) extra.push(`หน้าจ่าย ${p.pay.amountSatang} · สลิปคาด ${s.expected} (ต้อง ${DEP_ARO})`);
+      if (J(m.perRow.map((x) => x.rc)) !== J([[], [DEP_ARO]])) extra.push(`ใบรับต่อแถว ${J(m.perRow.map((x) => x.rc))} ≠ [[],[${DEP_ARO}]] (เงินไปลงแถวที่ถูกยกเลิก)`);
+      if (m.rows[1].status !== "CONFIRMED") extra.push(`สมาชิกที่เหลือจ่ายครบแต่ ${m.rows[1].status}`);
+      if (badOf(outs).length) extra.push(`throw ${J(badOf(outs)[0])}`);
+      await moneyRec2("P12e", "MAJOR", `ยกเลิกหัวกลุ่มรายคนแล้วจ่ายผ่านลิงก์หัวกลุ่ม (ยอด ${DEP_ARO}) ⇒ ใบรับที่สมาชิกที่เหลือ ${DEP_ARO} · CONFIRMED · แถวที่ถูกยกเลิกไม่ได้เงิน`, m, extra);
+    });
+    const n = await dlCheck("P12", d0);
+    rec("P12-deadlock", n === 0, "MAJOR", "deadlock ระหว่าง P12 = 0", { n });
   }
 
   // ═══════════ ท้าย: invariant ทุกหน่วย ═══════════
