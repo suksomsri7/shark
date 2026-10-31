@@ -1200,3 +1200,41 @@ export const SQC_CUSTOMER_NOTES_SCENE = {
   },
 } as const;
 // ◂ SVC B.16
+// SVC B.17 ▸ บล็อกของใบ B.17 เท่านั้น (waitlist "แจ้งฉันถ้ามีคนยกเลิก" + ไม่มาซ้ำ · ไม่มีภาพแบบ) — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-b.17.md · ข้อสอบ scripts/qc-svc-b.17.mts (ฉากบนร้านชั่วคราว qc-svc-b17-* เท่านั้น)
+//   🔴 อยู่ร่วมกับ svcqc: ใบนี้ **ไม่เขียนอะไรลงร้าน svcqc** (ไม่มีภาพ ⇒ ไม่มีสคริปต์ฉาก svcqc · ไม่เขียน SettingValue/SettingProfile ของร้านจริง) ·
+//      ข้อสอบ Q-1 จดลายนิ้วมือค่าตั้ง/นัดของ svcqc ก่อน–หลังรัน ต้องเท่ากัน
+// ═════════════════════════════════════════════════════════════════════════════
+export const SQC_WAITLIST_SCENE = {
+  settings: {
+    mode: "booking.booking.waitlistMode",
+    maxActive: "booking.booking.waitlistMaxActive",
+    message: "booking.msg.waitlistOpen",
+    enabled: "booking.msg.enabled",
+    repeatNoShow: "booking.late.repeatNoShow",
+  },
+  modes: ["OFF", "FIRST", "ALL"] as const,
+  /** ค่าเริ่ม BARBER · SPA · CLINIC · _fallback (ใบสั่ง §5 · R4) */
+  modeDefaults: { BARBER: "ALL", SPA: "FIRST", CLINIC: "OFF", _fallback: "OFF" },
+  maxActiveDefault: 3,
+  messageVars: ["ชื่อ", "ร้าน", "เวลา", "ช่าง", "บริการ", "ลิงก์จอง"],
+  /** #32 ค่าเริ่มของ B.0 (ข้อสอบ PC-1 ยืนยันว่ายังเป็นค่านี้) */
+  repeatNoShowDefaults: {
+    BARBER: { count: 2, windowDays: 90, action: "REQUIRE_DEPOSIT" },
+    SPA: { count: 2, windowDays: 90, action: "REQUIRE_DEPOSIT" },
+    CLINIC: { count: 3, windowDays: 180, action: "PHONE_ONLY" },
+  },
+  /** ตาราง (R1 · ใบสั่ง §4) — ยังไม่มีใน prisma/schema/booking.prisma ณ b15182dd */
+  table: "BookingWaitlist",
+  columns: ["id", "tenantId", "unitId", "partyId", "serviceId", "staffId", "dateStr", "fromMin", "toMin", "status", "expiresAt", "endedAt", "endReason", "createdAt", "updatedAt"],
+  statuses: ["ACTIVE", "BOOKED", "CANCELLED", "EXPIRED"],
+  /** คีย์กันส่งซ้ำ (ใบสั่ง §3.3 ข้อ 3) — m = Math.floor(epochMs / 60000) ของเวลาเริ่มช่วงว่าง */
+  dedupeKey: (entryId: string, staffId: string, slotStartMs: number) => `booking:waitlistOpen:${entryId}:${staffId}:${Math.floor(slotStartMs / 60_000)}`,
+  rate: { joinIp: { limit: 10, windowMs: 600_000 } },
+  minuteJob: "booking.waitlist.tick",
+  /** สิทธิ์ของ "ยกเว้นไม่มาครั้งนี้" (R11 · ออกจาก planned) */
+  excusePermission: "booking.deposit.waive",
+  /** ห้ามมีในข้อความปฏิเสธ (R12) */
+  reasonMustNotContain: ["ไม่มา", "no-show", "no show"],
+} as const;
+// ◂ SVC B.17
