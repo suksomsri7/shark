@@ -202,7 +202,17 @@ export async function onDormPostback(ctx: PostbackCtx, evt: PostbackEvent, opts?
     }
     case "repair": // W3: บอกให้พิมพ์ "แจ้งซ่อม" ก่อน (ไม่ชวนส่งรูปลอย ๆ มาในแชทที่แนบสลิปอัตโนมัติ) — จนถึง D.16
       return { text: T.REPAIR };
-    default: // announce · parcel — จนถึง D.17/D.18
+    // SVC D.18 ▸ พัสดุที่รอรับของผู้กด (สัญญา live ของผู้กดเท่านั้น · ≤ 5 รายการ · ลิงก์ QR รับพัสดุ) — อ่านล้วน ไม่เขียน log/audit ·
+    //   ไม่มีชื่อ/เบอร์ · หน่วยของผู้กดปิดระบบพัสดุทั้งหมด ⇒ ข้อความคงที่เดิม ◂
+    case "parcel": {
+      const r = await (await import("@/lib/modules/dorm")).parcelsForLeases({ tenantId: ctx.tenantId }, leases, { now });
+      if (!r.enabled) return { text: T.STAFF_REPLY };
+      if (!r.items.length) return { text: "ยังไม่มีพัสดุรอรับที่หอ — เมื่อหอรับพัสดุของคุณไว้ จะแจ้งทางแชทนี้พร้อมลิงก์ QR สำหรับรับของ" };
+      const t = r.items.map((x) => `ห้อง ${x.roomNumber}\n${x.url}`).join("\n\n");
+      return { text: `พัสดุรอรับ — เปิดลิงก์แล้วแสดง QR ให้พนักงานตอนรับของ\n\n${t}` };
+    }
+    // ◂ SVC D.18
+    default: // announce — จนถึง D.17
       return { text: T.STAFF_REPLY };
   }
 }

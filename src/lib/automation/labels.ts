@@ -265,6 +265,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // SVC D.11 ▸ หอพัก — บิลเลยกำหนดชำระและยังค้าง (ครั้งเดียวต่อบิล) · ตัวยิง `dorm/dunning.ts#runDormDunningJobs`
   //   payload { unitId, billId, leaseId, periodKey, dueDate, outstandingSatang, daysLate } — ไม่มีชื่อ/เบอร์ (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
   { value: "dorm.bill.overdue", label: "เมื่อบิลหอพักเลยกำหนดชำระและยังค้างอยู่" },
+  // SVC D.18 ▸ หอพัก — พัสดุ · ตัวยิง `dorm/parcel.ts` (รับพัสดุ / ผู้เช่ารับของแล้ว) · payload { unitId, parcelId, roomId } — ไม่มีชื่อ/เบอร์ (X8)
+  //   เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.parcel.received", label: "เมื่อหอรับพัสดุของผู้เช่าไว้แล้ว" },
+  { value: "dorm.parcel.picked_up", label: "เมื่อผู้เช่ารับพัสดุจากหอแล้ว" },
   // CRM C3.2 ▸ โควตาถึงเกณฑ์ (80 % / 100 %) — ตัวยิง = `crm/quotas.ts#checkReached` (หลัง tx ของการรับเงิน COUNTED / การเข้า WON commit)
   //   key `crm.quota.reached#<systemId>:<ownerType>:<ownerId>:<periodKey>#<threshold>` (R-C.8 · ครั้งเดียวต่อเจ้าของ+งวด+เกณฑ์ ตลอดไป ·
   //   INSERT … ON CONFLICT DO NOTHING) · payload { quotaId, ownerType, ownerId, periodKey, threshold, pct } = id ล้วน (X8)
