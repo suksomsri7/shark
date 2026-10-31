@@ -1011,3 +1011,18 @@ export function sqcMeterAiPhoto(seed: string = SQC_DORM_METER_AI_SCENE.photoSeed
 /** ภาพ หอ 03 แผง ข — ก่อนถ่ายรันฉาก roomboard → meter → meter-ai · ถ่ายด้วย --user meter (คนจดมิเตอร์) */
 SQC_VISUAL_SPECS["d.14"] = [{ name: "dorm-meter-ai", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/meter?roomNo=209` }];
 // ◂ SVC D.14
+// SVC D.19 ▸ บล็อกของใบ D.19 เท่านั้น (รายงานหลักหอ · ภาพ หอ 14 ส่วนพื้นฐาน) — ผู้เขียนข้อสอบตั้ง · builder/เลนอื่นห้ามแก้ในบล็อกนี้
+//   ใบสั่ง ledger/svc-briefs/svc-brief-d.19.md §7 · ข้อสอบ scripts/qc-svc-d.19.mts (Q · V-1) · ฉาก scripts/svc-qc-report-scene.mts (builder)
+//   🔴 ฉากนี้ไม่เขียน SettingValue ใด ๆ · ไม่ยิง event/ข้อความ/เอกสารบัญชี · งวดประวัติไม่ชน PP = M−1 (D.13) · M (D.8) · P = M+1 (D.13)
+// ═════════════════════════════════════════════════════════════════════════════
+/** งวดประวัติบนหน่วยหอ svcqc = เดือนนี้ไทย + historyOffsets · รอบ createdById = mark · บิล PAID ไม่มีเอกสารบัญชี (สำเนาบรรทัดบิลงวด P ของสัญญา) */
+export const SQC_DORM_REPORT_SCENE = {
+  mark: "SvcQcScene:d19",
+  historyOffsets: [-5, -4, -3, -2],
+  dueDay: 5,
+  paidDay: 4,
+  range: "6M",
+} as const;
+/** ภาพ หอ 14 (ส่วนพื้นฐาน) — ก่อนถ่าย: roomboard → lease → billing (D.8) → dorm-home (D.13) → report (D.19) · ถ่าย --user owner */
+SQC_VISUAL_SPECS["d.19"] = [{ name: "dorm-reports", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/reports` }];
+// ◂ SVC D.19
