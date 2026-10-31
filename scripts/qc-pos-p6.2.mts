@@ -227,6 +227,13 @@ const GIT: Git = {
   runBase: RUN_BASE,
 };
 GIT.oeTip = TIP_FULL ? GIT.oeList(TIP_FULL).length : 0;
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1R2-5): ทรี SVC ⇒ §3 นับ ORACLE-EDIT ของ RUN POS เท่านั้น = ช่วง RUN_BASE..940e3aca (ปลายทาง POS) + commit หลัง 940e3aca ที่ "ไม่ใช่" ของ SVC
+//   (หัวเรื่องไม่ใช่ `<ชนิด>(svc…):` / `merge(svc)` / Merge … into session/svc) — ORACLE-EDIT ของ POS ที่เกิดหลังจากนั้นยังถูกนับ (ความเข้มของ POS เท่าเดิม)
+if (TIP_FULL && !REV && isSvcTree(ROOT)) {
+  const posOnlyAfter = git("log", "--grep", "ORACLE-EDIT", "--format=%s", `${SVC_BASE}..${TIP_FULL}`).split("\n").filter(Boolean)
+    .filter((sub) => !/^[a-z-]+\(svc[^)]*\):/.test(sub) && !/^Merge .* into session\/svc/.test(sub) && !/^ORACLE-EDIT\(svc[^)]*\)/.test(sub));
+  GIT.oeTip = GIT.oeList(SVC_BASE).length + posOnlyAfter.length;
+}
 
 // ═════════════════════════ ตัวช่วยข้อความ ═════════════════════════
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

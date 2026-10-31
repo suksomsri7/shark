@@ -896,6 +896,12 @@ try {
 console.log("\n── G: regression โรงแรม · ชิ้นกลาง R0.6/R0.8 · D.1 · smoke · บัญชี V2 (AccountDocSource) ──");
 // ยอมแดง: qc-acc-v2-schema ข้อ `pnpm drift` = drift HR ของฐาน qc-svc (baseline 28 ต.ค. แดงข้อเดียวนี้ก่อนใบ) — ข้ออื่นต้องเขียว
 const ALLOW_FAIL: Record<string, RegExp> = { "qc-acc-v2-schema": /pnpm drift/ };
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1R2-4): qc-acc-v2-recurring P4.13b/P4.13c เน่าตามวัน (โมดูลบัญชี · ไม่ใช่ SVC) — ข้อสอบยิง "วันที่ 5 ของเดือนไทยปัจจุบัน" แต่แถวแจ้งเตือนเกิด ณ เวลาจริง
+//   ⇒ วันไทยวันนี้ < 5 ⇒ วันที่ 5 อยู่ในอนาคต · ตัวกันซ้ำ (createdAt ≥ ต้นวันของ now ที่ส่งเข้า) มองไม่เห็นแถวที่เพิ่งเขียน ⇒ ยิงซ้ำ 2 แถว
+//   หลักฐาน: G-9 เขียวรอบ 31 ต.ค. 14:2xZ (วันไทย 31) · แดงหลัง 17:00Z (วันไทย 1 พ.ย.) ทั้งฐานหลักและฐาน l2 ด้วยโค้ดเดียวกัน · notifyUsersOncePerDay ไม่ถูก SVC แตะ (diff 940e3aca ว่าง)
+//   ยอมเฉพาะ 2 ข้อนี้ และเฉพาะเมื่อวันไทยวันนี้ < 5 — วันอื่นต้องเขียวทุกข้อเหมือนเดิม
+const BKK_DOM = Number(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(8, 10));
+if (BKK_DOM < 5) ALLOW_FAIL["qc-acc-v2-recurring"] = /P4\.13b ยิงซ้ำวันที่ 5|P4\.13c จำนวนแถวเตือน ภ\.พ\.30/;
 const REG_SUITES = [
   "qc-hotel-money", "qc-hotel-public", "qc-hotel-refund", "qc-svc-r0.8", "qc-svc-r0.6", "qc-svc-d.1", "qc-svc-smoke",
   "qc-acc-v2-schema", "qc-acc-v2-recurring", "qc-acc-v2-import", "qc-account-api-write-docs", "qc-pos-account",

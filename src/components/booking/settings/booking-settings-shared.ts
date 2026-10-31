@@ -52,6 +52,8 @@ export const BOOKING_SETTINGS_LAYOUT: {
       labelTh: "walk-in และลำดับคิว",
       groups: [{ domain: "booking", group: "queue" }],
       excludeKeys: ["booking.queue.walkInPickStaff"],
+      // SVC G1R2-1 ▸ B.13 Q12: เลื่อนนัดเพราะห้อง/เตียงไม่ว่าง (ตัววางคิว · ชั้น UNIT) — ไม่มีการ์ดของกลุ่ม planner ⇒ อยู่การ์ดลำดับคิว (หน้า 08) ◂
+      extraKeys: ["booking.planner.resourceShiftMaxMin"],
     },
     { key: "money", no: 5, column: "right", labelTh: "ค่าคอมมิชชัน", groups: [{ domain: "booking", group: "money" }] },
     {
