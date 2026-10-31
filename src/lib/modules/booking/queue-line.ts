@@ -231,7 +231,7 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
   };
 
   // ── หาแถว (นอกล็อก · ผลจริงตัดสินใต้ FOR UPDATE) ──
-  let id: string;
+  let id: string | undefined;
   let group: { groupId: string; ids: string[] } | null = null; // SVC B.15
   if ("token" in by) {
     const v = verifyLink(by.token, "booking.checkin");
@@ -257,11 +257,16 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
     // SVC B.15 ▸ ทุกนัดที่ยังไม่เช็กอินเป็นกลุ่มเดียวกัน ⇒ เช็กอินทั้งกลุ่ม (ไม่ใช่ AMBIGUOUS · ruling G7) ◂
     const g0 = open.length ? open[0].groupId : null;
     if (g0 && open.every((h) => h.groupId === g0)) group = { groupId: g0, ids: open.map((h) => h.id) };
-    else if (pool.length > 1) {
+    else if (!open.length && pool.length > 1 && pool[0].groupId && pool.every((h) => h.groupId === pool[0].groupId)) {
+      // G4: ทั้งกลุ่มเช็กอินแล้ว · กดเบอร์ซ้ำ ⇒ บัตรเดิมของหัวกลุ่ม (ไม่ใช่ AMBIGUOUS)
+      const lead = (await groupLeaderOf(ctx, pool[0].id))?.leaderId;
+      id = pool.find((h) => h.id === lead)?.id ?? pool[0].id;
+    } else if (pool.length > 1) {
       return { ok: false, code: "AMBIGUOUS", reason: R.AMBIGUOUS, candidates: pool.map((h) => ({ appointmentId: h.id, startAt: h.startAt, staffId: h.staffId })) };
     }
-    id = pool[0].id;
+    id ??= pool[0].id;
   } else return fail("BAD_INPUT", R.BAD_INPUT);
+  const rowId: string = id;
 
   const pType = await queue.ensureSystemQueueType({ tenantId: ctx.tenantId, unitId: ctx.unitId }, "APPOINTMENT", prefixesOf(values).appointment);
   if (!pType) return fail("NOT_SINGLE_LINE", R.QUEUE_SETUP);
@@ -328,15 +333,18 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
   const leaderId = group ? ((await groupLeaderOf(ctx, group.ids[0]))?.leaderId ?? null) : null;
   const attempt = () => prisma.$transaction(async (tx): Promise<TxOut> => {
     if (!group) {
-      const a = await lockAppt(tx, ctx, id);
+      const a = await lockAppt(tx, ctx, rowId);
       if (!a) return { kind: "fail", res: NF() };
       return oneTx(tx, a);
     }
-    const outs = new Map<string, TxOut>();
+    // G1: ล็อกแถวสมาชิกครบ (เรียง id) ก่อน แล้วค่อยออกบัตรทีละแถว (§5 แถวนัดก่อนบัตร)
+    const rowsL: LockedAppt[] = [];
     for (const gid of [...group.ids].sort()) {
       const a = await lockAppt(tx, ctx, gid);
-      if (a) outs.set(gid, await oneTx(tx, a));
+      if (a) rowsL.push(a);
     }
+    const outs = new Map<string, TxOut>();
+    for (const a of rowsL) outs.set(a.id, await oneTx(tx, a));
     const okIds = group.ids.filter((x) => outs.get(x)?.kind === "ok");
     if (!okIds.length) return outs.get(leaderId ?? group.ids[0]) ?? outs.values().next().value ?? { kind: "fail", res: NF() };
     const pickId = leaderId && okIds.includes(leaderId) ? leaderId : okIds[0];

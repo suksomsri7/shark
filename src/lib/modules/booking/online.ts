@@ -587,7 +587,7 @@ export async function cancelOnline(token: unknown, opts?: { now?: Date; ip?: str
   if (!(await tokenGate(m.token, now)).ok) return fail("RATE_LIMITED", R.RATE);
   const { row, ctx } = m;
   const grp = await groupLeaderOf(ctx, row.id); // SVC B.15 ▸ ลิงก์หัวกลุ่ม ⇒ ยกเลิกทั้งกลุ่ม ◂
-  if (grp && grp.ids.length > 1) return cancelGroupOnline(m, grp.groupId, now, opts);
+  if (grp && grp.leaderId === row.id && grp.ids.length > 1) return cancelGroupOnline(m, grp.groupId, now, opts); // G3: ลิงก์สมาชิก = ทางเดี่ยว
   const policy = await snapshotSelfPolicy(ctx, row);
   const pre = selfChangeState(row, policy, now);
   // SVC B.8 ▸ §3.5 ยกเลิกช้า: เลยเวลาฟรี + snapshot lateCancelMode FORFEIT (ไม่มีคีย์ = BLOCK) ⇒ ต้องกดยอมรับยอดที่ร้านเก็บ (acceptForfeit) ·

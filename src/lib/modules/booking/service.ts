@@ -1737,6 +1737,17 @@ export async function findSlots(
   const { tenantId, unitId } = ctx;
   if (!q || !B3_CHANNELS.includes(q.channel) || typeof q.dateStr !== "string" || !isRealDateStr(q.dateStr)) return [];
   if (typeof q.serviceId !== "string" || (q.staffId !== null && typeof q.staffId !== "string")) return [];
+  // SVC B.15 ▸ G7 หาเวลา = จอง: บริการ staffCount ≥ 2 ⇒ ช่องของทั้งกลุ่ม (findGroupSlots · สมาชิกแรก = หมอที่เลือก · ที่เหลือใครก็ได้) ◂
+  {
+    const n = await serviceStaffCountOf(ctx, q.serviceId);
+    if (n >= 2) {
+      const gs = await findGroupSlotsImpl(ctx, { members: Array.from({ length: n }, (_, k) => ({ serviceId: q.serviceId, staffId: k === 0 ? q.staffId : null })), dateStr: q.dateStr, channel: q.channel }, {
+        ...(opts?.now ? { now: opts.now } : {}), viaStaffCount: true,
+        ...(opts?.excludeAppointmentId ? { excludeGroupId: (await groupLeaderOf(ctx, opts.excludeAppointmentId))?.groupId } : {}),
+      });
+      return gs.map((x) => ({ startMin: x.startMin, hhmm: x.hhmm, staffId: x.staffIds[0] }));
+    }
+  }
   const self = isSelfChannel(q.channel);
   const db = tenantDb({ tenantId, unitId });
   const service = await db.bookingService.findFirst({ where: { id: q.serviceId, active: true } });
@@ -3171,7 +3182,7 @@ async function bookViaGroup(ctx: BookingCtx, i: BookInput, n: number): Promise<B
     dateStr: i.dateStr, startMin: i.startMin, channel: i.channel, customerName: i.customerName, customerPhone: i.customerPhone,
     ...(i.note !== undefined ? { note: i.note } : {}), ...(i.idempotencyKey !== undefined ? { idempotencyKey: i.idempotencyKey } : {}),
     ...(i.partyId !== undefined ? { partyId: i.partyId } : {}),
-  });
+  }, { viaStaffCount: true });
   if (!r.ok) return { ok: false, code: r.code === "GROUP_SIZE" ? "BAD_INPUT" : r.code, reason: r.code === "GROUP_SIZE" ? BAD_INPUT_REASON : r.reason };
   return { ok: true, id: r.ids[0], staffId: r.staffIds[0], status: r.status, holdUntil: r.holdUntil, groupId: r.groupId };
 }
@@ -3243,7 +3254,10 @@ function groupOkOf(rows: readonly GroupRow[]): Extract<GroupBookResult, { ok: tr
     ids: rows.map((r) => r.id),
     staffIds: rows.map((r) => r.staffId),
     status: lead.status === "PENDING" ? "PENDING" : "CONFIRMED",
-    holdUntil: holdUntilOf({ ...lead, status: String(lead.status) }),
+    holdUntil: ((): Date | null => { // ถือช่องสั้นสุดของสมาชิกที่ค้างจ่าย (หัวกลุ่มมัดจำ 0 ได้)
+      const hs = rows.map((r) => holdUntilOf({ ...r, status: String(r.status) })).filter((x): x is Date => x !== null);
+      return hs.length ? new Date(Math.min(...hs.map((x) => x.getTime()))) : null;
+    })(),
     depositSatang: rows.reduce((t, r) => t + r.depositSatang, 0),
   };
 }
@@ -3283,7 +3297,7 @@ type GroupPrep =
   | { ok: true; ms: GMember[]; svcById: Map<string, GSvc>; rules: UnitRules; kindsBy: Map<string, string[]>; overrunMin: number; profiles: StaffDayProfile[] };
 
 /** ① บริการ/หมอ ② ลา/ทำไม่ได้ (ข้อความเดิมของ B.3) — อ่านก่อน tx ทั้งหมด */
-async function groupPrep(ctx: BookingCtx, members: readonly GroupMemberInput[], dateStr: string, self: boolean): Promise<GroupPrep> {
+async function groupPrep(ctx: BookingCtx, members: readonly GroupMemberInput[], dateStr: string, self: boolean, viaStaffCount = false): Promise<GroupPrep> {
   const { tenantId, unitId } = ctx;
   const db = tenantDb({ tenantId, unitId });
   const svcIds = [...new Set(members.map((m) => m.serviceId))];
@@ -3300,8 +3314,9 @@ async function groupPrep(ctx: BookingCtx, members: readonly GroupMemberInput[], 
   }
   const rules = await unitRulesOf(ctx, members[0].serviceId);
   if (self) {
+    // G8: ทาง staffCount — สมาชิกที่ 2..N เป็น "ใครก็ได้" เสมอ (ไม่ใช่ตัวเลือกของลูกค้า) · คนแรกยังต้องตามค่าตั้ง
     for (const sid of svcIds) {
-      if (!members.some((m) => m.serviceId === sid && m.staffId === null)) continue;
+      if (!members.some((m, k) => m.serviceId === sid && m.staffId === null && !(viaStaffCount && k > 0))) continue;
       if (!(await unitRulesOf(ctx, sid)).anyStaff) return { ok: false, code: "ANY_DISABLED", reason: "ร้านนี้ให้เลือกช่างก่อนจอง" };
     }
   }
@@ -3327,7 +3342,7 @@ async function groupPrep(ctx: BookingCtx, members: readonly GroupMemberInput[], 
 }
 
 /** §3.1 bookGroup — ลำดับตรวจ = bookAppointment (B.3 ①–⑥) ต่อสมาชิก + ขนาดกลุ่ม · ตรวจล่วงหน้าไม่ล็อก แล้วตัดสินใต้ล็อก · ไม่ throw ในทางปกติ */
-export async function bookGroupImpl(ctx: BookingCtx, i: GroupBookInput): Promise<GroupBookResult> {
+export async function bookGroupImpl(ctx: BookingCtx, i: GroupBookInput, opts?: { viaStaffCount?: boolean }): Promise<GroupBookResult> {
   const fail = (code: GroupFailCode, reason: string): GroupBookResult => ({ ok: false, code, reason });
   const BAD = BAD_INPUT_REASON;
   if (!ctx || typeof ctx.tenantId !== "string" || typeof ctx.unitId !== "string" || !ctx.tenantId || !ctx.unitId) return fail("NOT_FOUND", "ไม่พบบริการที่เลือก");
@@ -3352,7 +3367,7 @@ export async function bookGroupImpl(ctx: BookingCtx, i: GroupBookInput): Promise
     if (prior) return groupReplayOf(prisma, tenantId, prior, want);
   }
   // ① ②
-  const prep = await groupPrep(ctx, members, dateOk ? i.dateStr : "", self);
+  const prep = await groupPrep(ctx, members, dateOk ? i.dateStr : "", self, opts?.viaStaffCount === true);
   if (!prep.ok) return fail(prep.code, prep.reason);
   if (!dateOk || !name || phoneKey === "" || phoneKey === "0") return fail("BAD_INPUT", BAD);
   if (linePartyId && !(await tenantDb({ tenantId }).party.findFirst({ where: { id: linePartyId, tenantId, mergedIntoId: null }, select: { id: true } }))) {
@@ -3505,6 +3520,8 @@ export async function bookGroupImpl(ctx: BookingCtx, i: GroupBookInput): Promise
     if (idem && isP2002(e)) {
       const dup = await prisma.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: { unitId: true, groupId: true } });
       if (dup) return groupReplayOf(prisma, tenantId, dup, want);
+      // G13: คีย์ของสมาชิก (`<key>#n`) ชนนัดอื่นที่ใช้คีย์นั้นอยู่ ⇒ ไม่ throw ออก facade
+      return fail("BAD_INPUT", "รหัสอ้างอิงการจองนี้ถูกใช้กับรายการอื่นแล้ว กรุณาลองใหม่");
     }
     throw e;
   }
@@ -3533,14 +3550,14 @@ export async function groupLeaderOf(ctx: { tenantId: string; unitId: string }, a
 export async function findGroupSlotsImpl(
   ctx: BookingCtx,
   q: { members: GroupMemberInput[]; dateStr: string; channel: BookingChannel },
-  opts?: { now?: Date; excludeGroupId?: string },
+  opts?: { now?: Date; excludeGroupId?: string; viaStaffCount?: boolean },
 ): Promise<GroupSlot[]> {
   if (!ctx || typeof ctx.tenantId !== "string" || typeof ctx.unitId !== "string" || !q || typeof q !== "object") return [];
   const members = groupMembersIn(q.members);
   if (typeof members === "string" || !B3_CHANNELS.includes(q.channel) || typeof q.dateStr !== "string" || !isRealDateStr(q.dateStr)) return [];
   const { tenantId, unitId } = ctx;
   const self = isSelfChannel(q.channel);
-  const prep = await groupPrep(ctx, members, q.dateStr, self);
+  const prep = await groupPrep(ctx, members, q.dateStr, self, opts?.viaStaffCount === true);
   if (!prep.ok) return [];
   const { ms, rules, overrunMin } = prep;
   const nowMs = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now.getTime() : Date.now();
@@ -3614,7 +3631,7 @@ export async function rescheduleGroupCore(
     const svc = svcById.get(r.serviceId);
     if (!svc) return NF();
     const p = profiles.find((x) => x.staffId === r.staffId);
-    if (!p) return fail("NOT_FOUND", "ไม่พบช่างของนัดนี้");
+    if (!p) return NF();
     if (p.onLeave) return fail("ON_LEAVE", `${p.name} ลาในวันที่เลือก`);
     const c = candOf(p, svc);
     if (!c) return fail("NOT_QUALIFIED", `${p.name} ไม่ได้ให้บริการ "${svc.name}"`);
@@ -3740,14 +3757,33 @@ export type GroupBindItem = { appointmentId: string; saleId: string | null; amou
 export async function bindGroupDeposit(i: {
   tenantId: string; unitId: string; groupId: string; items: readonly GroupBindItem[]; via: "SLIP" | "SHOP"; groupPartial: boolean;
   slipId?: string | null; actorUserId?: string | null; payType?: string | null;
+  /** ล็อกทุกแถวของกลุ่ม (เรียง id) ก่อนตัดสิน — กันซ้ำระดับกลุ่ม */
+  lockIds?: readonly string[];
+  /** แถวมัดจำ 0 ที่ยังรอ (PENDING) ⇒ CONFIRMED พร้อมกลุ่ม (ร้านยืนยัน) */
+  confirmIds?: readonly string[];
+  /** กันซ้ำต่อสลิประดับกลุ่ม: มี audit รับเงินของสลิปนี้ที่สมาชิกใดแล้ว ⇒ ไม่ทำอะไร (ใต้ล็อกเดียวกัน) */
+  dedupeSlipId?: string | null;
 }): Promise<"OK" | "GONE" | "BUSY"> {
   const out = await apptTx(async (tx): Promise<"OK" | "GONE"> => {
     const locked = new Map<string, LockedAppt>();
-    for (const id of i.items.map((x) => x.appointmentId).sort()) {
+    const all = [...new Set([...(i.lockIds ?? []), ...i.items.map((x) => x.appointmentId), ...(i.confirmIds ?? [])])].sort();
+    for (const id of all) {
       const r = await lockApptRow(tx, i.tenantId, i.unitId, id);
       if (r) locked.set(id, r);
     }
     if (!locked.size) return "GONE";
+    if (i.dedupeSlipId) {
+      const hit = await tx.auditLog.findFirst({
+        where: { tenantId: i.tenantId, action: "booking.deposit.receive", targetType: "Appointment", targetId: { in: [...locked.keys()] }, after: { path: ["slipId"], equals: i.dedupeSlipId } },
+        select: { id: true },
+      });
+      if (hit) return "OK";
+    }
+    for (const id of i.confirmIds ?? []) {
+      const row = locked.get(id);
+      if (!row || row.status !== "PENDING" || row.depositPaidAt || Number(row.depositSatang) > 0) continue;
+      await tx.appointment.updateMany({ where: { id, tenantId: i.tenantId, unitId: i.unitId, status: "PENDING" }, data: { status: "CONFIRMED", policySnapshot: withDepositSnap(row.policySnapshot, { slipClaim: undefined }) } });
+    }
     for (const it of i.items) {
       const row = locked.get(it.appointmentId);
       if (!row || row.depositPaidAt) continue;
