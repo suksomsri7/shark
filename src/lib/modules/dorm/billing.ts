@@ -1000,7 +1000,8 @@ async function prepareInternal(g: G, periodKey: unknown, now: Date, legalParams:
   );
   if (res === "BUSY") return BUSY();
   // SVC D.11 (L4) ▸ สัญญาที่ "ค้าง" (ฐานค่าปรับเปลี่ยนระหว่างคำนวณ) ⇒ คำนวณใหม่ 1 ครั้ง · ยังค้าง ⇒ บอกในผล (ไม่หลุดเงียบ) ◂
-  if (res.stale > 0 && !retried) {
+  // SVC D.12 (Y17) ▸ สัญญาที่ถูกตัดตอนล็อก (ปิด/ย้ายห้อง/ยกเลิกระหว่างคำนวณ) ⇒ คำนวณใหม่ 1 ครั้งเช่นกัน — สัญญาใหม่จากการย้ายห้องที่เกิดหลังคำนวณได้บิลในรอบนี้ (ไม่หายทั้งคู่) ◂
+  if ((res.stale > 0 || res.dropped.length > 0) && !retried) {
     const again = await prepareInternal(g, P, now, legalParams, true);
     if (!again.ok) return again;
     const seen = new Set(again.skipped.map((s) => s.leaseId)); // SVC D.4 (Y3) ▸ สัญญาที่ถูกตัดในรอบแรกยังอยู่ในผล ◂

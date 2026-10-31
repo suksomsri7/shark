@@ -238,7 +238,7 @@ try {
     });
     if (!inv.ok) throw new Error(`ใบแจ้งหนี้งวด ${P}: ${inv.code} ${inv.reason}`);
     if (inv.created) sum.created++;
-    const pay = await recordExternalPayment({ tenantId, unitId, docId: inv.docId, amountSatang: bill.totalSatang, idempotencyKey: `${SCN.depositKey}:pay:${P}`, paidAt: new Date(`${P}-03T10:00:00+07:00`) });
+    const pay = await recordExternalPayment({ tenantId, unitId, docId: inv.docId, amountSatang: bill.totalSatang, idempotencyKey: `${SCN.depositKey}:pay:${leaseId}:${P}` /* Y18 ▸ ผูกสัญญาของฉาก — --clear แล้วสร้างสัญญาใหม่ ใบแจ้งหนี้ใหม่ไม่ชนคีย์รับชำระของใบเดิม ◂ */, paidAt: new Date(`${P}-03T10:00:00+07:00`) });
     if (!pay.ok) throw new Error(`รับชำระงวด ${P}: ${pay.code} ${pay.reason}`);
     if (!pay.duplicate) sum.created++;
     const billRow = await prisma.dormBill.findFirst({ where: { tenantId, leaseId, periodKey: P }, select: { id: true, status: true, totalSatang: true, accountDocumentId: true, paidSatang: true } });

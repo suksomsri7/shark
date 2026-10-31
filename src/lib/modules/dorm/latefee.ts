@@ -663,11 +663,28 @@ export async function lateFeeLedger(
 // SVC D.12 ▸ (มติ R6) สัญญาที่ใบย้ายออกตรึงใบสรุปแล้ว (deductions.frozen) หรือปิดประกันแล้ว ⇒ ยกเว้นค่าปรับไม่ได้ (ใบสรุปเก็บค่าปรับนั้นไปแล้ว)
 //   อ่านผ่าน db/tx ของผู้เรียก — ตัวตัดสินจริงอยู่ใต้ล็อก dorm.latefee:<leaseId> (ล็อกเดียวกับที่การตรึงใบย้ายออกถือ) ◂
 const MOVEOUT_FROZEN = (): Fail => fail("MOVEOUT_FROZEN", "สัญญานี้ส่งใบสรุปย้ายออก/ปิดเงินประกันแล้ว (คิดค่าปรับนี้ในใบสรุปแล้ว) — ยกเว้นค่าปรับไม่ได้ ให้เปิดใบสรุปใหม่ที่หน้าย้ายออกก่อน");
-async function moveOutFrozen(db: Pick<Tx, "dormMoveOut">, tenantId: string, unitId: string, leaseId: string): Promise<boolean> {
-  const mo = await db.dormMoveOut.findFirst({ where: { tenantId, unitId, leaseId }, select: { status: true, deductions: true } });
-  if (!mo) return false;
-  if (mo.status === "SETTLED" || mo.status === "REFUNDED") return true;
-  return mo.status !== "CANCELLED" && isRec(mo.deductions) && isRec(mo.deductions.frozen);
+//   SVC D.12 (Y11) ▸ ตรวจทั้งสายสัญญา (previousLeaseId ไปหน้า/ย้อนหลัง ร้าน/หน่วย/ผู้เช่าเดียวกัน ≤ 50 ขั้น) — ใบสรุปของสัญญาท้ายสายเก็บค่าปรับของทั้งสาย ◂
+async function moveOutFrozen(db: Pick<Tx, "dormMoveOut" | "dormLease">, tenantId: string, unitId: string, leaseId: string): Promise<boolean> {
+  const ids = new Set<string>([leaseId]);
+  const self = await db.dormLease.findFirst({ where: { tenantId, unitId, id: leaseId }, select: { partyId: true, previousLeaseId: true } });
+  if (self) {
+    let prev = self.previousLeaseId;
+    for (let i = 0; i < 50 && prev && !ids.has(prev); i++) {
+      const p: { id: string; previousLeaseId: string | null } | null = await db.dormLease.findFirst({ where: { tenantId, unitId, id: prev, partyId: self.partyId }, select: { id: true, previousLeaseId: true } });
+      if (!p) break;
+      ids.add(p.id);
+      prev = p.previousLeaseId;
+    }
+    let cur = leaseId;
+    for (let i = 0; i < 50; i++) {
+      const n: { id: string } | null = await db.dormLease.findFirst({ where: { tenantId, unitId, previousLeaseId: cur, partyId: self.partyId, status: { not: "CANCELLED" } }, select: { id: true }, orderBy: { id: "asc" } });
+      if (!n || ids.has(n.id)) break;
+      ids.add(n.id);
+      cur = n.id;
+    }
+  }
+  const mos = await db.dormMoveOut.findMany({ where: { tenantId, unitId, leaseId: { in: [...ids] } }, select: { status: true, deductions: true } });
+  return mos.some((mo) => mo.status === "SETTLED" || mo.status === "REFUNDED" || (mo.status !== "CANCELLED" && isRec(mo.deductions) && isRec(mo.deductions.frozen)));
 }
 type WaiveSrc = { id: string; leaseId: string; periodKey: string };
 /**

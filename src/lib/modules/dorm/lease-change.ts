@@ -261,7 +261,7 @@ export { endedEvent as emitLeaseEnded };
 // ═════════════════════════ 4.2 ย้ายห้อง ═════════════════════════
 export async function transferRoom(
   ctx: LeaseChangeCtx,
-  input: { unitId: string; leaseId: string; toRoomId: string; effectiveDate: string; rentSatang?: number; meterReadings?: { meterId: string; value: number }[] },
+  input: { unitId: string; leaseId: string; toRoomId: string; effectiveDate: string; rentSatang?: number; meterReadings?: { meterId: string; value: number }[]; meterReason?: string | null },
   deps?: { now?: Date },
 ): Promise<{ ok: true; duplicate: boolean; mode: "IN_PLACE" | "NEW_LEASE"; leaseId: string; previousLeaseId: string | null; carriedDepositSatang: number } | ChangeFail> {
   const tenantForLog = isRec(ctx) ? ctx.tenantId : null;
@@ -287,8 +287,11 @@ export async function transferRoom(
 
     // ซ้ำ (คำขอเดิม) ⇒ ผลเดิม
     const kid = await db.dormLease.findFirst({ where: { previousLeaseId: lease.id, endReason: null, status: { not: "CANCELLED" } }, select: { id: true, roomId: true, startDate: true } });
-    if (lease.status === "ENDED" && lease.previousLeaseId !== undefined && kid && kid.roomId === toRoom.id && ymdOfDb(kid.startDate) === eff)
+    if (lease.status === "ENDED" && lease.previousLeaseId !== undefined && kid && kid.roomId === toRoom.id && ymdOfDb(kid.startDate) === eff) {
+      // SVC D.12 (Y20) ▸ ซ้ำหลังโพรเซสตายหลัง commit ⇒ เติมใบค่าน้ำไฟห้องเดิม (idempotent ต่อ ref + เครื่องหมายเสร็จ) ◂
+      await transferUtilityInvoice(g.tenantId, g.unitId, g.actorUserId, lease.id, deps?.now instanceof Date ? deps.now : new Date()).catch((e) => logD12("transfer.utility", g.tenantId, e));
       return { ok: true, duplicate: true, mode: "NEW_LEASE", leaseId: kid.id, previousLeaseId: lease.id, carriedDepositSatang: await carried() };
+    }
     const start = ymdOfDb(lease.startDate);
     if (lease.status === "ACTIVE" && lease.roomId === toRoom.id && eff === start)
       return { ok: true, duplicate: true, mode: "IN_PLACE", leaseId: lease.id, previousLeaseId: null, carriedDepositSatang: await carried() };
@@ -351,6 +354,12 @@ export async function transferRoom(
       const m = meters.find((x) => x.id === r.meterId);
       if (!m || (m.roomId !== lease.roomId && m.roomId !== toRoom.id)) return notFound();
     }
+    // SVC D.12 (Y13) ▸ ห้องเดิมมีมิเตอร์ ⇒ ต้องจดเลขห้องเดิมวันย้ายครบทุกตัว (ค่าน้ำไฟถึงวันย้าย) หรือระบุเหตุผล ≥ 10 ตัว (จด audit) ◂
+    const oldMeters = await db.dormMeter.findMany({ where: { roomId: lease.roomId, role: "ROOM", removedAt: null }, select: { id: true } });
+    const meterReason = typeof input.meterReason === "string" ? input.meterReason.trim() : "";
+    const missingOld = oldMeters.filter((m) => !readingsIn.some((r) => r.meterId === m.id));
+    if (missingOld.length && [...meterReason].length < 10)
+      return fail("METER_MISSING", "ห้องเดิมมีมิเตอร์น้ำ/ไฟ — จดเลขมิเตอร์ห้องเดิม ณ วันย้ายให้ครบ (หรือระบุเหตุผลอย่างน้อย 10 ตัวอักษรว่าทำไมจดไม่ได้)");
     const newId = `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`.slice(0, 25);
     const P = periodOfRentMonth(effMonth, timing);
     const out = await d12Tx(async (tx) => {
@@ -440,13 +449,14 @@ export async function transferRoom(
       await tx.auditLog.create({
         data: {
           tenantId: g.tenantId, unitId: g.unitId, actorType: "USER", actorId: g.actorUserId, action: "dorm.lease.transferred", targetType: "DormLease", targetId: newId,
-          after: { mode: "NEW_LEASE", previousLeaseId: lease.id, fromRoomId: lease.roomId, toRoomId: toRoom.id, effectiveDate: eff, rentSatang: rent, carriedDepositSatang: heldNow, depositLeaseId: root },
+          after: { mode: "NEW_LEASE", previousLeaseId: lease.id, fromRoomId: lease.roomId, toRoomId: toRoom.id, effectiveDate: eff, rentSatang: rent, carriedDepositSatang: heldNow, depositLeaseId: root, ...(missingOld.length ? { meterMissingReason: meterReason } : {}) },
         },
       });
       return { dup: false, id: newId };
     });
     if (isFail(out)) return out;
-    if (!out.dup && readingsIn.length) await transferUtilityInvoice(g, lease.id, lease.partyId, lease.roomId, effMonth).catch((e) => logD12("transfer.utility", g.tenantId, e));
+    // ล้มหลัง commit ⇒ งานตามเวลา dorm.moveout เติมให้ (transferUtilityBackfill · idempotent ต่อ ref)
+    await transferUtilityInvoice(g.tenantId, g.unitId, g.actorUserId, lease.id, deps?.now instanceof Date ? deps.now : new Date()).catch((e) => logD12("transfer.utility", g.tenantId, e));
     return { ok: true, duplicate: out.dup, mode: "NEW_LEASE", leaseId: out.id, previousLeaseId: lease.id, carriedDepositSatang: await carried() };
   } catch (e) {
     await logD12("transfer", tenantForLog, e);
@@ -458,26 +468,47 @@ const roomTaken = () => fail("ROOM_TAKEN", "ห้องปลายทางม
 /**
  * ค่าน้ำไฟห้องเดิมถึงวันย้าย (§4.2) — ใบแจ้งหนี้ ref DormTransfer/<oldLeaseId> (นอก tx · idempotent ต่อ ref) · สูตร §2.3 ข้อ 7 (ตัวเดียวกับใบย้ายออก)
  *   นับเป็นหนี้ของสายสัญญา (ใบย้ายออกหักด้วยประกันตอนจบสาย)
+ *   SVC D.12 (Y13) ▸ จบแล้ว (ออกใบ หรือไม่มีบรรทัด) ⇒ AuditLog dorm.lease.transfer_utility (เครื่องหมายว่างานเติมไม่ต้องทำซ้ำ) ◂
  */
-async function transferUtilityInvoice(g: D12Gate, oldLeaseId: string, partyId: string, roomId: string, effMonth: string): Promise<void> {
+export const TRANSFER_UTILITY_DONE = "dorm.lease.transfer_utility";
+export async function transferUtilityInvoice(tenantId: string, unitId: string, actorUserId: string | null, oldLeaseId: string, now: Date): Promise<boolean> {
+  const db = tenantDb({ tenantId, unitId });
+  if (await db.auditLog.findFirst({ where: { action: TRANSFER_UTILITY_DONE, targetType: "DormLease", targetId: oldLeaseId }, select: { id: true } })) return false;
+  const old = await db.dormLease.findFirst({ where: { id: oldLeaseId, status: "ENDED", endReason: "TRANSFER" }, select: { id: true, roomId: true, partyId: true, endDate: true } });
+  if (!old || !old.endDate) return false;
+  const effMonth = addDaysYmd(ymdOfDb(old.endDate), 1).slice(0, 7);
   const mo = await import("./moveout");
-  const lines = await mo.utilityLinesForLease(g.tenantId, g.unitId, oldLeaseId, roomId, effMonth);
-  if (!lines || !lines.lines.length) return;
-  const party = await tenantDb({ tenantId: g.tenantId }).party.findFirst({ where: { id: partyId }, select: { name: true } });
-  await createExternalInvoice({
-    tenantId: g.tenantId,
-    sourceKind: "DORM",
-    unitId: g.unitId,
-    refType: "DormTransfer",
-    refId: oldLeaseId,
-    customer: { name: party?.name ?? "ผู้เช่า" },
-    partyId,
-    lines: lines.lines,
-    vat: lines.vat,
-    issueDate: bkkYmd(new Date()),
-    dueDate: bkkYmd(new Date()),
-    createdById: g.actorUserId,
+  const lines = await mo.utilityLinesForLease(tenantId, unitId, oldLeaseId, old.roomId, effMonth);
+  let docId: string | null = null;
+  if (lines && lines.lines.length) {
+    const party = await tenantDb({ tenantId }).party.findFirst({ where: { id: old.partyId }, select: { name: true } });
+    const r = await createExternalInvoice({
+      tenantId,
+      sourceKind: "DORM",
+      unitId,
+      refType: "DormTransfer",
+      refId: oldLeaseId,
+      customer: { name: party?.name ?? "ผู้เช่า" },
+      partyId: old.partyId,
+      lines: lines.lines,
+      vat: lines.vat,
+      issueDate: bkkYmd(now),
+      dueDate: bkkYmd(now),
+      createdById: actorUserId,
+    });
+    if (!r.ok) throw new Error(`transfer utility invoice: ${r.code}`);
+    docId = r.docId;
+  }
+  // เครื่องหมายเสร็จครั้งเดียว (ล็อกต่อสัญญาเดิม · ตรวจซ้ำใต้ล็อก — เรียกพร้อมกันหลายทางไม่จดซ้ำ)
+  const marked = await d12Tx(async (tx) => {
+    await advisoryLock(tx, `dorm.transfer_utility:${oldLeaseId}`);
+    if (await tx.auditLog.findFirst({ where: { tenantId, action: TRANSFER_UTILITY_DONE, targetType: "DormLease", targetId: oldLeaseId }, select: { id: true } })) return false;
+    await tx.auditLog.create({
+      data: { tenantId, unitId, actorType: actorUserId ? "USER" : "SYSTEM", actorId: actorUserId, action: TRANSFER_UTILITY_DONE, targetType: "DormLease", targetId: oldLeaseId, after: { docId, effMonth } },
+    });
+    return true;
   });
+  return marked === true;
 }
 
 // ═════════════════════════ 4.3 ต่อสัญญา ═════════════════════════
@@ -614,5 +645,72 @@ export async function renewLease(
   } catch (e) {
     await logD12("renew", tenantForLog, e);
     return unavailable();
+  }
+}
+
+// ═════════════════════════ SVC D.12 (Y2) ▸ โมเดลจอเริ่ม (แจ้งย้ายออก · ต่อสัญญา · ย้ายห้อง จากหน้าสัญญา) ═════════════════════════
+export type LeaseChangeModel = {
+  leaseId: string;
+  roomNumber: string;
+  tenantName: string;
+  status: string;
+  startDate: string;
+  endDate: string | null;
+  rentSatang: number;
+  noticeDays: number;
+  today: string;
+  suggestMoveOutDate: string;
+  suggestTransferDate: string;
+  moveOutId: string | null;
+  rooms: { id: string; number: string }[];
+  oldMeters: { meterId: string; kind: "ELEC" | "WATER" }[];
+  can: { notice: boolean; lease: boolean };
+};
+/** อ่านอย่างเดียว · ด่านเดียวกับฟังก์ชันเขียน (ไม่ผ่าน ⇒ null) · ไม่มีเบอร์/เลขบัตร */
+export async function leaseChangeModel(ctx: LeaseChangeCtx, input: { unitId: string; leaseId: string }, deps?: { now?: Date }): Promise<LeaseChangeModel | null> {
+  try {
+    if (!isRec(input)) return null;
+    const gm = await d12Gate(ctx, input.unitId, "manage");
+    const gl = await d12Gate(ctx, input.unitId, "lease");
+    const g = gm ?? gl;
+    if (!g) return null;
+    const db = tenantDb({ tenantId: g.tenantId, unitId: g.unitId });
+    const lease = isStr(input.leaseId)
+      ? await db.dormLease.findFirst({ where: { id: input.leaseId }, select: { id: true, roomId: true, partyId: true, status: true, startDate: true, endDate: true, rentSatang: true, policySnapshot: true } })
+      : null;
+    if (!lease || !roomVisible(g, lease.roomId)) return null;
+    const now = deps?.now instanceof Date ? deps.now : new Date();
+    const today = bkkYmd(now);
+    const room = await db.hotelRoom.findFirst({ where: { id: lease.roomId }, select: { number: true } });
+    const party = await tenantDb({ tenantId: g.tenantId }).party.findFirst({ where: { id: lease.partyId }, select: { name: true } });
+    const snap = isRec(lease.policySnapshot) && isRec(lease.policySnapshot.values) ? lease.policySnapshot.values : {};
+    const nd = snap["rooms.moveout.noticeDays"];
+    const noticeDays = isInt(nd) && nd >= 0 ? nd : 30;
+    const mo = await db.dormMoveOut.findFirst({ where: { leaseId: lease.id, status: { not: "CANCELLED" } }, select: { id: true } });
+    const rooms = (await db.hotelRoom.findMany({ select: { id: true, number: true }, orderBy: { number: "asc" }, take: 500 })).filter((r) => r.id !== lease.roomId && roomVisible(g, r.id));
+    const meters = await db.dormMeter.findMany({ where: { roomId: lease.roomId, role: "ROOM", removedAt: null }, select: { id: true, kind: true }, orderBy: [{ kind: "asc" }, { id: "asc" }] });
+    const end = ymdOfDb(lease.endDate) || null;
+    const want = addDaysYmd(today, noticeDays);
+    const suggestMoveOutDate = end && want > end ? end : want;
+    return {
+      leaseId: lease.id,
+      roomNumber: room?.number ?? "",
+      tenantName: party?.name ?? "",
+      status: lease.status,
+      startDate: ymdOfDb(lease.startDate),
+      endDate: end,
+      rentSatang: lease.rentSatang,
+      noticeDays,
+      today,
+      suggestMoveOutDate,
+      suggestTransferDate: `${addMonthsKey(today.slice(0, 7), 1)}-01`,
+      moveOutId: mo?.id ?? null,
+      rooms,
+      oldMeters: meters.map((m) => ({ meterId: m.id, kind: m.kind === "WATER" ? "WATER" : "ELEC" })),
+      can: { notice: !!gm, lease: !!gl },
+    };
+  } catch (e) {
+    await logD12("lease-model", isRec(ctx) ? ctx.tenantId : null, e);
+    return null;
   }
 }

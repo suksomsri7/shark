@@ -147,8 +147,8 @@ export {
   runDormMoveOutJobs,
 } from "./moveout";
 export type { MoveOutCtx, SummaryLine, MoveOutSummary, MoveOutModel, MoveOutStatus } from "./moveout";
-export { transferRoom, renewLease, depositLeaseIdOf } from "./lease-change";
-export type { LeaseChangeCtx } from "./lease-change";
+export { transferRoom, renewLease, depositLeaseIdOf, leaseChangeModel } from "./lease-change";
+export type { LeaseChangeCtx, LeaseChangeModel } from "./lease-change";
 export { moveOutAccess } from "./moveout-access";
 // ◂ SVC D.12
 // ── SVC D.4 ▸ นำเข้า Excel/CSV (ภาพ หอ 12) — สัญญา ledger/svc-briefs/svc-brief-d.4.md §3 §4 (บล็อกนี้ของใบ D.4 เท่านั้น) ──

@@ -120,6 +120,7 @@ export async function transferRoomAction(unitSlug: string, input: unknown) {
     effectiveDate: str(input.effectiveDate),
     rentSatang: int(input.rentSatang),
     meterReadings: readings(input.meterReadings),
+    meterReason: str(input.meterReason) || null,
   });
   refresh(unitSlug);
   return r;
