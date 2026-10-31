@@ -2240,6 +2240,18 @@ async function busyRowsExcept(
   return k < 0 ? rows : [...rows.slice(0, k), ...rows.slice(k + 1)];
 }
 
+/** SVC B.14 ▸ ด่านคนแบบ J5 ของ bookAppointment ช่อง STAFF (busyRowsOf + slotClear non-self · ไม่นับแถว excludeId) —
+ *  ให้ queue-line.rescheduleByShop (ลากย้ายบนปฏิทิน/เลื่อนฝั่งร้าน) ใช้สูตรเดียวกับการจอง · เรียกใต้ล็อกช่างของผู้เรียก ◂ */
+export async function staffSlotClear(
+  client: Pick<Prisma.TransactionClient, "$queryRaw">,
+  tenantId: string,
+  i: { staffId: string; dateStr: string; startMin: number; durationMin: number; bufferMin: number; excludeId: string },
+): Promise<boolean> {
+  const rows = await busyRowsExcept(client, tenantId, [i.staffId], i.dateStr, i.excludeId);
+  const c: B3Cand = { staffId: i.staffId, name: "", onLeave: false, windows: [], durationMin: i.durationMin, priceSatang: 0, minBreakMin: 0, onlineSharePct: 0, maxJobsPerDay: null };
+  return slotClear(i.dateStr, i.startMin, c, i.bufferMin, rows, false);
+}
+
 /** กติกาจองระดับสาขา(+บริการ) ของ B.3 (horizon · lead · ช่อง · ใครก็ได้) — ให้หน้าจองออนไลน์ใช้ตัวเดียวกับ findSlots/bookAppointment */
 export function onlineRulesOf(ctx: { tenantId: string; unitId: string }, serviceId: string): Promise<{ horizonDays: number; minLeadMin: number; stepMin: number; anyStaff: boolean }> {
   return unitRulesOf(ctx, serviceId);
@@ -2480,6 +2492,8 @@ export async function rescheduleBySelf(
   type TxOut = { ok: true; startAt: Date } | { ok: false; code: SelfRescheduleFail; reason: string };
   const res = await retryBusy(() => prisma.$transaction(async (tx): Promise<TxOut> => {
     await lockUnitTx(tx, ctx); // advisory สาขา → ช่างทั้งสาขา (ตัวเดิม + ตัวใหม่ ตาม sortOrder)
+    // SVC B.14 ▸ มติผู้คุม (B14-lock): ล็อก SvcResource (ORDER BY id) + อ่านด่านทรัพยากร "ก่อน" ล็อกแถวนัด (ลำดับ §5) — เดิมอ่านหลัง lockAppt ◂
+    const book0 = usesRes ? await loadGate(tx, tenantId, unitId, { lock: true, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, overrunMin, exclude: [cur.id] }) : null;
     const a = await lockAppt(tx, ctx, cur.id);
     if (!a || a.kind !== "BOOKED") return fail("NOT_FOUND", SELF_R.NOT_FOUND);
     const live = await tx.appointment.findFirst({ where: { id: a.id, tenantId, unitId }, select: { rescheduleCount: true, assignMode: true, channel: true, depositSatang: true, depositPaidAt: true } });
@@ -2500,7 +2514,7 @@ export async function rescheduleBySelf(
     // SVC B.13 ▸ ทรัพยากร (ล็อกแล้วใน lockUnitTx) อ่านผ่าน tx · ไม่นับตัวเอง · ชิ้นเดิมก่อน ◂
     let resIds: string[] | null = null;
     if (usesRes) {
-      const book = await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, overrunMin, exclude: [a.id] });
+      const book = book0 as NonNullable<typeof book0>; // SVC B.14 ▸ อ่านใต้ล็อกแล้วก่อน lockAppt (usesRes ⇒ ไม่ null) ◂
       const held = resourceIdsOfRow(a.resourceId, a.policySnapshot);
       resIds = book.pick(needKinds(resKinds, held, book), startAt.getTime(), startAt.getTime() + chosen.durationMin * B3_MIN_MS, { prefer: held });
       if (!resIds) return fail("FULL", FULL_REASON);

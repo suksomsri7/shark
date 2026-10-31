@@ -39,3 +39,6 @@ export type { DepositState, DepositInfo, DepositPay, SlipSubmitFail, ShopCtx, De
 export { listResources, createResource, updateResource, setResourceMaintenance, walkInNowByService } from "./resources";
 export { bookingResourcesModel } from "./settings-model";
 export type { ResourceCtx, ResourceActor, ResourceRow, ResourceResult, ResourceFail, ResourceInput, ResourcePatch, MaintenanceWindow, WalkInNowRow } from "./resources";
+// SVC B.14 ▸ ปฏิทินนัด (วัน/สัปดาห์ · คน/ห้อง · ลากย้าย · จองจากปฏิทิน) ◂
+export { loadCalendar, moveAppointment, bookForCustomer } from "./calendar";
+export type { CalendarActor, CalendarView, CalColumn, CalBlock, CalMode, CalRange, CalMoveTo, CalMoveFail, CalMoveResult } from "./calendar";

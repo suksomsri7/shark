@@ -1264,7 +1264,8 @@ export const SQC_CALENDAR_SCENE = {
     { key: "mod", staff: "may", service: "นวดไทย+ประคบ", start: "12:00", name: "คุณมด", phone: "0861000002", then: "DONE", arriveAt: "11:50", startAt: "12:00", doneAt: "14:00" },
     { key: "ton", staff: "jan", service: "นวดไทย", start: "12:00", name: "คุณต้น", phone: "0861000003", then: "DONE", arriveAt: "11:58", startAt: "12:00", doneAt: "13:00" },
     { key: "wan", staff: "nok", service: "น้ำมันอโรมา", start: "12:30", name: "คุณวรรณ", phone: "0861000004", then: "DONE", arriveAt: "12:25", startAt: "12:30", doneAt: "14:00" },
-    { key: "somchai", staff: "daeng", service: "นวดไทย+ประคบ", start: "13:30", name: "คุณสมชาย", phone: "0861000005", then: "IN_SERVICE", arriveAt: "13:25", startAt: "13:30" },
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-Q-somchai) พี่แดงไม่รับ "นวดไทย+ประคบ" ตามฉาก B.11 (NOT_QUALIFIED) ⇒ ใช้ "นวดไทย" 60 · ไม่แตะฉาก B.11 ที่รับแล้ว · PARITY: บล็อกคุณสมชายสั้นกว่าภาพ (ยอมรับ)
+    { key: "somchai", staff: "daeng", service: "นวดไทย", start: "13:30", name: "คุณสมชาย", phone: "0861000005", then: "IN_SERVICE", arriveAt: "13:25", startAt: "13:30" },
     { key: "nid", staff: "may", service: "น้ำมันอโรมา", start: "14:30", name: "คุณนิด", phone: "0861000006", then: "ARRIVED", arriveAt: "14:16" },
     { key: "ploy", staff: "jan", service: "คู่รัก VIP", start: "15:00", name: "คุณพลอย", phone: "0861000007", then: null },
     { key: "james", staff: "fai", service: "คู่รัก VIP", start: "15:00", name: "คุณเจนส์", phone: "0861000008", then: null },

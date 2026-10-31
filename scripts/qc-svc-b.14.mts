@@ -134,6 +134,14 @@ const calLoad = await loadIf<CalApi>(F.cal, "@/lib/modules/booking/calendar");
 const bookingLoad = await tryImport<BookingApi>("@/lib/modules/booking/service");
 const resLoad = await tryImport<ResApi>("@/lib/modules/booking/resources");
 const accessLoad = await tryImport<AccessApi>("@/lib/modules/booking/access");
+// ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock) ▸ ฉากแข่ง "เลื่อน ∥ ปิดซ่อม/ลดความจุ" ทั้งสองเส้น (rescheduleByShop · rescheduleBySelf) ◂
+type ReschedOut = { ok: boolean; code?: string; reason?: string };
+type LockApi = {
+  rescheduleByShop?: (ctx: Ctx, id: string, to: { dateStr: string; startMin: number; staffId?: string }, opts?: { now?: Date }) => Promise<ReschedOut>;
+  rescheduleBySelf?: (ctx: Ctx, id: string, to: { dateStr: string; startMin: number; staffId: string | null }, opts?: { now?: Date }) => Promise<ReschedOut>;
+  updateResource?: (actor: Actor, ctx: Ctx, id: string, patch: { capacity?: number }, opts?: { now?: Date }) => Promise<{ ok: boolean; code?: string }>;
+};
+const lineLoadB14 = await tryImport<LockApi>("@/lib/modules/booking/queue-line");
 const fnOf = <Fn,>(load: { mod: unknown; err: string }, name: string, rel: string): Fn => {
   const f = (load.mod as Record<string, unknown> | null)?.[name];
   if (typeof f !== "function") throw new AssertFail(load.mod ? `«${rel}» ยังไม่มี export ${name}` : `โหลด «${rel}» ไม่ได้: ${load.err}`);
@@ -156,7 +164,10 @@ const hasCal = typeof calLoad.mod?.loadCalendar === "function" && typeof calLoad
 type CallSpec =
   | { fn: "move"; actor: Actor; ctx: Ctx; id: string; to: CalMoveTo; expect: { startAt: string; staffId: string } }
   | { fn: "book"; actor: Actor; ctx: Ctx; input: BookForInput }
-  | { fn: "maint"; actor: Actor; ctx: Ctx; id: string; windows: { startAt: string; endAt: string | null; note?: string }[] };
+  | { fn: "maint"; actor: Actor; ctx: Ctx; id: string; windows: { startAt: string; endAt: string | null; note?: string }[] }
+  | { fn: "shop"; ctx: Ctx; id: string; to: { dateStr: string; startMin: number; staffId: string } } // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock)
+  | { fn: "self"; ctx: Ctx; id: string; to: { dateStr: string; startMin: number; staffId: string } } // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock)
+  | { fn: "cap"; actor: Actor; ctx: Ctx; id: string; capacity: number }; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock)
 type CallOut = { fn: CallSpec["fn"]; ok: boolean; code: string | null; id: string | null; threw: string | null };
 type ChildSpec = { run: string; idx: number; scenarios: { key: string; calls: CallSpec[] }[] };
 type Scenario = { key: string; perChild: CallSpec[][] };
@@ -167,6 +178,19 @@ async function runCall(c: CallSpec): Promise<CallOut> {
   try {
     if (c.fn === "move") { const r = await CAL.move()(c.actor, c.ctx, c.id, c.to, { expect: c.expect }); return r.ok ? { ...o, ok: true, id: c.id } : { ...o, id: c.id, code: r.code }; }
     if (c.fn === "book") { const r = await CAL.book()(c.actor, c.ctx, c.input); return r.ok ? { ...o, ok: true, id: r.id } : { ...o, code: r.code }; }
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock)
+    if (c.fn === "shop" || c.fn === "self") {
+      const f = c.fn === "shop" ? lineLoadB14.mod?.rescheduleByShop : (bookingLoad.mod as unknown as LockApi | null)?.rescheduleBySelf;
+      if (typeof f !== "function") throw new Error(`ไม่มี ${c.fn === "shop" ? "rescheduleByShop" : "rescheduleBySelf"}`);
+      const r = await f(c.ctx, c.id, c.to);
+      return r.ok ? { ...o, ok: true, id: c.id } : { ...o, id: c.id, code: r.code ?? "FAIL" };
+    }
+    if (c.fn === "cap") {
+      const f = (resLoad.mod as unknown as LockApi | null)?.updateResource;
+      if (typeof f !== "function") throw new Error("ไม่มี updateResource");
+      const r = await f(c.actor, c.ctx, c.id, { capacity: c.capacity });
+      return r.ok ? { ...o, ok: true, id: c.id } : { ...o, code: r.code ?? "FAIL" };
+    }
     const r = await RSX.maint()(c.actor, c.ctx, c.id, c.windows);
     return r.ok ? { ...o, ok: true, id: c.id } : { ...o, code: r.code ?? "FAIL" };
   } catch (e) {
@@ -289,6 +313,7 @@ async function cleanupUsers() {
 const TODAY = bkkToday();
 const dd = (k: number) => addDays(TODAY, 5 + k);
 const D = { C: dd(0), M: dd(2), J: dd(3), R: dd(4), K: dd(6), X: dd(8), X2: dd(9) };
+const D6 = dd(7); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock) ▸ วันปลายทางของ XC6/XC7 (ในกรอบจองล่วงหน้าของแม่แบบ SPA)
 const TID = (k: string) => `svcb14_${k}_${RUN}`;
 const ids = {
   tA: TID("tA"), tB: TID("tB"), owner: TID("owner"), uRunUser: TID("uRunUser"), hrSys: TID("hrSys"), empS1: TID("empS1"), empS4: TID("empS4"),
@@ -303,6 +328,7 @@ const ids = {
 };
 const sM = [TID("s1"), TID("s2"), TID("s3"), TID("s4")];
 const XU = [TID("uX1"), TID("uX2"), TID("uX3"), TID("uX4"), TID("uX5")];
+const XL = [TID("uX6"), TID("uX7")]; // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock)
 const xStaff = (u: string) => Array.from({ length: 11 }, (_, i) => `${u}_s${i}`);
 const xSvc = (u: string, k: "PLAIN" | "OIL30") => `${u}_${k}`;
 const xRoom = (u: string) => `${u}_room`;
@@ -509,6 +535,14 @@ try {
       await svc(xSvc(u, "PLAIN"), ids.tA, u, "ธรรมดาแข่ง 60", 60); await svc(xSvc(u, "OIL30"), ids.tA, u, "น้ำมันแข่ง 30", 30);
       await res(xRoom(u), ids.tA, u, "ห้องเดียว", "ROOM", 1, 0);
     }
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock) ▸ หน่วยแข่ง XC6 (ลูกค้าเลื่อนเอง ∥ ปิดซ่อม) · XC7 (ร้านเลื่อน ∥ ลดความจุ 2 → 1)
+    for (const [i, u] of XL.entries()) {
+      await insertRow("BusinessUnit", { id: u, tenantId: ids.tA, type: "BOOKING", name: `สาขา xl${i + 1}`, slug: `b14-xl${i + 1}-${RUN}`, updatedAt: new Date() });
+      for (let w = 0; w < 7; w++) await insertRow("BookingHours", { id: rid("bh"), tenantId: ids.tA, unitId: u, weekday: w, openMin: 600, closeMin: 1200, closed: false, updatedAt: new Date() });
+      for (const [k, id] of xStaff(u).entries()) await staff(id, ids.tA, u, `หมอแข่ง ${k}`, k + 1);
+      await svc(xSvc(u, "OIL30"), ids.tA, u, "น้ำมันแข่ง 30", 30);
+      await insertRow("SvcResource", { id: xRoom(u), tenantId: ids.tA, unitId: u, kind: "ROOM", name: "ห้องแข่ง", capacity: i === 1 ? 2 : 1, cleanupMin: 0, active: true, sortOrder: 1, createdAt: new Date(), updatedAt: new Date() });
+    }
     setupOk = true;
   } catch (e) { console.log(`  ❌ สร้างข้อมูลทดสอบไม่สำเร็จ: ${errMsg(e)}`); }
 
@@ -535,6 +569,17 @@ try {
       ...XU.map((u) => ({ key: KEY_KINDS, scope: "SERVICE", scopeId: xSvc(u, "OIL30"), value: ["ROOM"] })),
     ]);
     await setS(ids.tB, [{ key: KEY_KINDS, scope: "SERVICE", scopeId: ids.BSVC, value: ["ROOM"] }]);
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock)
+    for (const u of XL) {
+      const a = await SETTINGS().applyTemplate(OWNER, { tenantId: ids.tA }, { unitId: u, domain: "booking", templateKey: "SPA", overwrite: "RESET_ALL" });
+      ok(a.ok, `applyTemplate SPA ${u}: ${a.code} ${fmt(a.issues)}`);
+    }
+    await setS(ids.tA, XL.flatMap((u) => [
+      { key: "booking.staff.minBreakMin", scope: "UNIT", scopeId: u, value: 0 },
+      { key: "booking.queue.safetyMin", scope: "UNIT", scopeId: u, value: 0 },
+      { key: "booking.staff.maxJobsPerDay", scope: "UNIT", scopeId: u, value: null },
+      { key: KEY_KINDS, scope: "SERVICE", scopeId: xSvc(u, "OIL30"), value: ["ROOM"] },
+    ]));
     // วัน C (ภาพรวม view) — ลำดับจองกำหนดห้องที่ด่านเลือก
     fx.c1 = await bookOk(cM, ids.OIL, sM[0], D.C, 600, "c1 น้ำมัน หมอ1 10:00"); // ห้อง A
     fx.c2 = await bookOk(cM, ids.HOT, sM[1], D.C, 600, "c2 หินร้อน หมอ2 10:00"); // ห้อง B + ชุดหินร้อน
@@ -937,6 +982,10 @@ try {
       xa.x3 = [await bookOk(cX(u3), xSvc(u3, "PLAIN"), xStaff(u3)[0], D.X, 600, "XC3")];
       xa.x4 = []; for (let k = 0; k < 5; k++) xa.x4.push(await bookOk(cX(u4), xSvc(u4, "OIL30"), xStaff(u4)[k], D.X, 600 + 30 * k, `XC4 ${k}`));
       xa.x5 = []; for (let k = 0; k < 9; k++) xa.x5.push(await bookOk(cX(u5), xSvc(u5, "OIL30"), xStaff(u5)[k], D.X, 600 + 30 * k, `XC5 ${k}`));
+      // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock) ▸ XC6: 9 นัด (ห้องเดียว) · XC7: 9 นัด + 1 นัดถือห้อง (ความจุ 2) ที่เวลาปลายทาง D6 14:00
+      xa.x6 = []; for (let k = 0; k < 9; k++) xa.x6.push(await bookOk(cX(XL[0]), xSvc(XL[0], "OIL30"), xStaff(XL[0])[k], D.X, 600 + 30 * k, `XC6 ${k}`));
+      xa.x7 = []; for (let k = 0; k < 9; k++) xa.x7.push(await bookOk(cX(XL[1]), xSvc(XL[1], "OIL30"), xStaff(XL[1])[k], D.X, 600 + 30 * k, `XC7 ${k}`));
+      xa.x7pre = [await bookOk(cX(XL[1]), xSvc(XL[1], "OIL30"), xStaff(XL[1])[9], D6, 840, "XC7 ถือห้องที่ปลายทาง")];
       for (const id of Object.values(xa).flat()) xExp[id] = await expOf(id);
       return true;
     } catch (e) { console.log(`  ⚠️ ข้อมูลตั้งต้น XC: ${errMsg(e)}`); return false; }
@@ -954,6 +1003,15 @@ try {
     { key: "XC5", perChild: spread([
       { fn: "maint", actor: OWNER, ctx: cX(u5), id: xRoom(u5), windows: [{ startAt: at(D.X2, 780).toISOString(), endAt: at(D.X2, 960).toISOString(), note: "ปิดซ่อม XC5" }] },
       ...xa.x5.map((id) => mvCall(u5, id, { dateStr: D.X2, startMin: 840 })),
+    ]) },
+    // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock)
+    { key: "XC6", perChild: spread([
+      { fn: "maint", actor: OWNER, ctx: cX(XL[0]), id: xRoom(XL[0]), windows: [{ startAt: at(D6, 780).toISOString(), endAt: at(D6, 960).toISOString(), note: "ปิดซ่อม XC6" }] },
+      ...xa.x6.map((id, k): CallSpec => ({ fn: "self", ctx: cX(XL[0]), id, to: { dateStr: D6, startMin: 840, staffId: xStaff(XL[0])[k] } })),
+    ]) },
+    { key: "XC7", perChild: spread([
+      { fn: "cap", actor: OWNER, ctx: cX(XL[1]), id: xRoom(XL[1]), capacity: 1 },
+      ...xa.x7.map((id, k): CallSpec => ({ fn: "shop", ctx: cX(XL[1]), id, to: { dateStr: D6, startMin: 840, staffId: xStaff(XL[1])[k] } })),
     ]) },
   ] : [];
   let xOut: Map<string, CallOut[]> | null = null;
@@ -995,6 +1053,25 @@ try {
     if (m.ok) eq(moves, 0, "ปิดซ่อมสำเร็จแต่ยังลากเข้า");
     else { ok(m.code === "IN_USE" || m.code === "BUSY", `รหัสปิดซ่อม ${m.code}`); if (m.code === "IN_USE") eq(moves, 1, "IN_USE ต้องมีนัดที่ลากเข้าแล้ว"); }
     eq(await resViolations(u5, await maintOf(u5)), [], "ฐาน");
+  });
+  // ORACLE-EDIT (ผู้คุม 31 ต.ค. · B14-lock)
+  await st("XC-6", "ลูกค้าเลื่อนเอง (rescheduleBySelf) 9 ∥ ปิดซ่อมห้อง 13:00–16:00 (เลื่อนไป 14:00) ⇒ ปิดซ่อมสำเร็จ ⇒ เลื่อนได้ 0 · IN_USE ⇒ เลื่อนได้ 1 · ≤ 1 · ฐานไม่มีนัดในช่วงปิดซ่อม (ลำดับล็อก: SvcResource ก่อนแถวนัด)", async () => {
+    const os = outsOf("XC6"); noThrow(os);
+    const m = os.find((o) => o.fn === "maint")!;
+    const moves = okN(os, "self");
+    ok(moves <= 1, `เลื่อนได้ ${moves} (${fmt(os.map((o) => `${o.fn}:${o.code ?? "OK"}`))})`);
+    if (m.ok) eq(moves, 0, "ปิดซ่อมสำเร็จแต่ยังเลื่อนเข้า");
+    else { ok(m.code === "IN_USE" || m.code === "BUSY", `รหัสปิดซ่อม ${m.code}`); if (m.code === "IN_USE") eq(moves, 1, "IN_USE ต้องมีนัดที่เลื่อนเข้าแล้ว"); }
+    eq(await resViolations(XL[0], await maintOf(XL[0])), [], "ฐาน");
+  });
+  await st("XC-7", "ร้านเลื่อน (rescheduleByShop) 9 ∥ ลดความจุห้อง 2 → 1 (มีนัดถือห้องที่ปลายทางแล้ว 1) ⇒ ลดสำเร็จ ⇒ เลื่อนได้ 0 · IN_USE ⇒ เลื่อนได้ 1 · ≤ 1 · ฐานไม่เกินความจุ", async () => {
+    const os = outsOf("XC7"); noThrow(os);
+    const c = os.find((o) => o.fn === "cap")!;
+    const moves = okN(os, "shop");
+    ok(moves <= 1, `เลื่อนได้ ${moves} (${fmt(os.map((o) => `${o.fn}:${o.code ?? "OK"}`))})`);
+    if (c.ok) eq(moves, 0, "ลดความจุสำเร็จแต่ยังเลื่อนเข้า");
+    else { ok(c.code === "IN_USE" || c.code === "BUSY", `รหัสลดความจุ ${c.code}`); if (c.code === "IN_USE") eq(moves, 1, "IN_USE ต้องมีนัดที่เลื่อนเข้าแล้ว"); }
+    eq(await resViolations(XL[1]), [], "ฐาน");
   });
   await st("XC-9", "deadlock ของฐาน (pg_stat_database.deadlocks) ไม่ขยับตลอดฉาก XC (ลำดับล็อก: สาขา → ช่าง → SvcResource ORDER BY id → แถวนัด)", async () => {
     ok(!!xOut, `สายยิงพร้อมกันไม่ทำงาน: ${xErr}`);

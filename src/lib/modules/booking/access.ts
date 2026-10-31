@@ -32,6 +32,9 @@ export const BOOKING_ACTIONS: Record<string, readonly string[]> = {
   createResourceAction: ["booking.settings.edit"],
   updateResourceAction: ["booking.settings.edit"],
   setResourceMaintenanceAction: ["booking.settings.edit"],
+  // SVC B.14 ▸ ปฏิทินนัด: ลากย้าย/เลื่อนนัด/ย้ายหมอ·ห้อง = เลื่อนนัดแทนลูกค้า (§9 ข้อ 2 · job.run/queue.operate ไม่พอ) · คลิกช่องว่าง = จองให้ลูกค้า ◂
+  moveAppointmentAction: ["booking.appointment.reschedule"],
+  bookForCustomerAction: ["booking.appointment.create"],
 };
 
 const STATUS_KEYS: Record<string, readonly string[]> = {
