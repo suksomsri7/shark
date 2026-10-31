@@ -269,7 +269,7 @@ async function finishSetup(list: Unit[]) {
 type Occ = { id: string; s: number; e: number; ps: number; pe: number };
 async function holdsOf(unitId: string): Promise<{ res: any[]; occ: Map<string, Occ[]>; blocks: Map<string, { s: number; e: number }[]>; bad: string[] }> {
   const res = await q(`SELECT id, kind, capacity, "cleanupMin", active FROM "SvcResource" WHERE "unitId" = $1`, [unitId]);
-  const rows = await q(`SELECT a.id, a.status::text AS status, a."serviceId", a."startAt", a."endAt", a."resourceId", a."plannedStartAt", a."startedAt", a."policySnapshot", s."bufferMin", a."tenantId"
+  const rows = await q(`SELECT a.id, a.status::text AS status, a."serviceId", a."startAt", a."endAt", a."resourceId", a."plannedStartAt", a."startedAt", a."policySnapshot", s."bufferMin", a."tenantId", a."checkedInAt", a."queueTicketId"
     FROM "Appointment" a JOIN "BookingService" s ON s.id = a."serviceId" WHERE a."unitId" = $1 AND a.status::text NOT IN ('CANCELLED','NO_SHOW','DONE')`, [unitId]);
   const bl = await q(`SELECT "resourceId", "startAt", "endAt" FROM "SvcResourceBlock" WHERE "unitId" = $1`, [unitId]);
   const blocks = new Map<string, { s: number; e: number }[]>();
@@ -278,6 +278,8 @@ async function holdsOf(unitId: string): Promise<{ res: any[]; occ: Map<string, O
   const bad: string[] = [];
   const u = units.find((x) => x.id === unitId);
   for (const a of rows) {
+    // มติ Q14/Q15 (ทาง 1): แถว ARRIVED ที่เข้าแถวใหม่ (เช็กอินหลังเวลานัด · มีบัตร) และตัววางคิววางไม่ได้ (plannedStartAt null) ⇒ ไม่นับ
+    if (a.status === "ARRIVED" && !a.plannedStartAt && a.queueTicketId && a.checkedInAt && a.checkedInAt.getTime() > a.startAt.getTime()) continue;
     const job = a.policySnapshot?.job ?? {};
     const rids: string[] = Array.isArray(job.resourceIds) ? job.resourceIds : a.resourceId ? [a.resourceId] : [];
     const s = a.startAt.getTime();
@@ -388,6 +390,9 @@ try {
   await mk("P15", { staffN: 2, res: room1, svcs: OILS });
   await mk("P17", { staffN: 3, res: room1, svcs: OILS, hours: [0, 1440] });
   await mk("P18", { staffN: 3, res: room1, svcs: OILS });
+  for (let r = 0; r < 3; r++) await mk(`P20r${r}`, { staffN: 5, res: room1, svcs: OILS });
+  await mk("P20det", { staffN: 3, res: room1, svcs: OILS });
+  await mk("P21", { staffN: 3, res: room1, svcs: OILS });
   await finishSetup(units);
   console.log(`(fixtures พร้อม · ${units.length} หน่วย · วัน ${DS} · now จริง ${new Date().toISOString()})`);
   const dlSetup = await readDeadlocks();
@@ -833,9 +838,94 @@ try {
       await RN.runPlanner(u.ctx, { now: at(DS, 1150) });
       const ra = await apRow(a);
       const sw = await sweep(u.id);
-      rec("P18", sw.contract.length === 0, "MINOR",
-        "แถวมาสายที่ตัววางคิววางไม่ได้ (plannedStartAt null) ฐานยังนับที่เวลานัด แต่ตัววางคิวไม่นับ ⇒ walk-in ลงห้องเดียวกันได้ · ฐานล้นตามนิยาม (ไม่ซ้อนจริง — ลูกค้ายังไม่ได้เข้าห้อง)",
-        { checkIn: ch.ok ? (ch.asWalkIn ? "asWalkIn" : "ok") : ch.code, apptA: { st: ra.status, planned: ra.plannedStartAt ? HM(ra.plannedStartAt.getTime()) : null }, walkIn: w.ok ? HM(new Date(w.plannedStartAt).getTime()) : w.code, contract: sw.contract, physical: sw.physical });
+      // Q15 พิสูจน์: ร้านกดเริ่มงานแถวมาสายนั้นขณะ walk-in ใช้ห้องอยู่ (19:15) ⇒ ต้อง CLASH (ห้องไม่ซ้อนจริง)
+      const sw0 = w.ok ? await LN.startJob(u.ctx, w.appointmentId, { now: at(DS, 1150) }) : null;
+      const sa = await LN.startJob(u.ctx, a, { now: at(DS, 1155) });
+      const sw2 = await sweep(u.id);
+      rec("P18", sw.contract.length === 0 && !!sw0?.ok && !sa.ok && sa.code === "CLASH" && sw2.contract.length === 0, "MAJOR",
+        "มติ Q15: แถวมาสายที่วางไม่ได้ไม่นับในฐาน (นิยามเดียวกับตัววางคิว) · walk-in ลงห้องได้ · ร้านกดเริ่มงานแถวมาสายขณะ walk-in อยู่ในห้อง ⇒ CLASH · ฐานไม่ล้น",
+        { checkIn: ch.ok ? (ch.asWalkIn ? "asWalkIn" : "ok") : ch.code, apptA: { st: ra.status, planned: ra.plannedStartAt ? HM(ra.plannedStartAt.getTime()) : null }, walkIn: w.ok ? HM(new Date(w.plannedStartAt).getTime()) : w.code,
+          sweepBefore: sw.contract, startWalkIn: sw0 ? (sw0.ok ? "OK" : sw0.code) : null, startLateA: sa.ok ? "OK!" : sa.code, sweepAfter: sw2.contract, physicalAfter: sw2.physical });
+    });
+  }
+
+  // ═══════════ P20 ช่องว่าง Q14: เช็กอินสาย (ในเวลาผ่อนผัน) → ก่อน/ไม่มี replan แถวไม่มี plannedStartAt ⇒ ฐานไม่นับ ═══════════
+  if (want("P20")) {
+    console.log("\n── P20: เช็กอินสาย 5 นาที ∥ จองห้องเดียวกัน (แข่ง) · และ replan ล้มหลังเช็กอิน (กำหนด) ──");
+    for (let r = 0; r < 3; r++) await step(`P20-${r}`, async () => {
+      const u = U[`P20r${r}`];
+      const a = await bookOk(u, "OIL", 0, DS, 600); // ห้อง 10:00–11:00 (+15)
+      const now = D(at(DS, 605));
+      const outs = await fan(`p20-${r}`, spread([
+        { op: "checkIn", a: [u.ctx, a, now] },
+        ...[1, 2, 3, 4].map((k) => ({ ...bookCall(u, "OIL30", k, DS, 630 + k * 5), delayMs: 5 + k * 6 + r * 3 })),
+      ], 5));
+      await RN.runPlanner(u.ctx, { now: at(DS, 605) });
+      const books = outs.filter((o) => o.op === "book" && o.r?.ok).length;
+      const sw = await sweep(u.id);
+      const ra = await apRow(a);
+      rec(`P20-${r}`, books === 0 && sw.contract.length === 0 && sw.physical.length === 0, "MAJOR",
+        "เช็กอินสายในเวลาผ่อนผัน ∥ จองห้องเดียวกันทับช่วงนัด ⇒ จองต้องไม่ได้ (นัดยังถือห้อง) · ฐานไม่ล้นหลังวางคิว",
+        { books, codes: codesOf(outs), apptA: { st: ra.status, planned: ra.plannedStartAt ? HM(ra.plannedStartAt.getTime()) : null, short: null }, sweep: sw.contract });
+    });
+    await step("P20-det", async () => {
+      const u = U.P20det;
+      const a = await bookOk(u, "OIL", 0, DS, 600);
+      const ch = await LN.checkIn(u.ctx, { appointmentId: a }, { via: "STAFF", now: at(DS, 605) });
+      // จำลอง replan หลัง commit ล้ม (replan กลืน error · tick รอบถัดไปยังไม่มา) — แถวคง ARRIVED ไม่มี plannedStartAt
+      await q(`UPDATE "Appointment" SET "plannedStartAt" = NULL, "plannedStaffId" = NULL WHERE id = $1`, [a]);
+      const bk = await BK.bookAppointment(u.ctx, bkIn(u, "OIL30", 1, DS, 640));
+      const sw1 = await sweep(u.id);
+      await RN.runPlanner(u.ctx, { now: at(DS, 606) });
+      const ra = await apRow(a);
+      const sw2 = await sweep(u.id);
+      const rowsAfter = (await q(`SELECT id, status::text AS st, "startAt", "plannedStartAt", "resourceId", "policySnapshot"->'job' AS job FROM "Appointment" WHERE "unitId" = $1 ORDER BY "startAt"`, [u.id]))
+        .map((x: any) => [x.id === a ? "A" : "B", x.st, HM(x.startAt.getTime()), x.plannedStartAt ? HM(x.plannedStartAt.getTime()) : null, x.resourceId ? "rA" : null, x.job?.resourceIds?.length ?? 0]);
+      const sa = await LN.startJob(u.ctx, a, { now: at(DS, 607) });
+      rec("P20-det", !bk.ok, "MAJOR",
+        "Q14 นับแถว 'เช็กอินหลังเวลานัด + ไม่มี plannedStartAt' เป็นแถวมาสายที่วางไม่ได้ — แต่รวมถึงแถวสายในเวลาผ่อนผันช่วงก่อน replan/เมื่อ replan ล้ม ⇒ จองห้องเดียวกันทับได้",
+        { checkIn: ch.ok ? (ch.asWalkIn ? "asWalkIn" : "inGrace") : ch.code, bookOverlap1040: bk.ok ? "OK!" : bk.code, sweepGap: sw1.contract, afterPlan: { planned: ra.plannedStartAt ? HM(ra.plannedStartAt.getTime()) : null }, rowsAfter, sweepAfterPlan: sw2.contract, startA: sa.ok ? "OK" : sa.code });
+    });
+  }
+
+  // ═══════════ P21 กติกา Q13 "ไม่เลื่อนถ้าดันนัดถัดไปของหมอเลยเวลา" ⇒ คงเวลาเดิม + ธง — ห้องซ้อนจริงไหม ═══════════
+  if (want("P21")) {
+    console.log("\n── P21: B สาย (ในผ่อนผัน) ชนห้องกับ A · เลื่อน B จะดัน C เลยเวลาปิด ⇒ B คงเวลา+ธง · เริ่มงานจริงต้อง CLASH ──");
+    await step("P21", async () => {
+      const u = U.P21;
+      const A = await bookOk(u, "OIL", 1, DS, 1035);  // s1 17:15–18:15 ห้อง
+      const B = await bookOk(u, "OIL", 0, DS, 960);   // s0 16:00 ห้อง (ถึง 17:15)
+      const C = await bookOk(u, "PLAIN", 0, DS, 1140); // s0 19:00–20:00 ไม่ใช้ห้อง
+      const ch = await LN.checkIn(u.ctx, { appointmentId: B }, { via: "STAFF", now: at(DS, 970) }); // สาย 10 นาที ⇒ B 16:10–17:10 +15 = 17:25 ชน A 17:15
+      await RN.runPlanner(u.ctx, { now: at(DS, 970) });
+      const rb = await apRow(B), ra = await apRow(A), rc = await apRow(C);
+      const sw1 = await sweep(u.id);
+      const plan = await (async () => { try { const v = await RS.walkInNowByService(u.ctx, { now: at(DS, 970) }); return v.length; } catch { return -1; } })();
+      const sb = await LN.startJob(u.ctx, B, { now: at(DS, 970) });
+      const ca = await LN.checkIn(u.ctx, { appointmentId: A }, { via: "STAFF", now: at(DS, 1030) });
+      await RN.runPlanner(u.ctx, { now: at(DS, 1035) });
+      const sa = await LN.startJob(u.ctx, A, { now: at(DS, 1035) }); // B ยังไม่เสร็จ (ถือถึง 17:10 → เลยเวลา ⇒ now+5 + เก็บ 15)
+      const sw2 = await sweep(u.id);
+      rec("P21", !sa.ok && sa.code === "CLASH" && sw2.physical.length === 0, "CRITICAL",
+        "Q13 คงเวลาเดิม+ธง ⇒ แผน/ฐานอาจล้นตามนิยาม (ข้อเท็จจริงชนะ · มีธง) แต่ห้องต้องไม่ซ้อนจริง: เริ่ม A ขณะ B ยังถือห้อง ⇒ CLASH",
+        { checkInB: ch.ok ? (ch.asWalkIn ? "asWalkIn" : "inGrace") : ch.code, planB: rb.plannedStartAt ? HM(rb.plannedStartAt.getTime()) : null, planA: ra.plannedStartAt ? HM(ra.plannedStartAt.getTime()) : null, planC: rc.plannedStartAt ? HM(rc.plannedStartAt.getTime()) : null,
+          sweepAfterPlan: sw1.contract, startB: sb.ok ? "OK" : sb.code, checkInA: ca.ok, startA: sa.ok ? "OK!" : sa.code, sweepAfterStart: sw2.contract, physical: sw2.physical, viewRows: plan });
+    });
+    await step("P21-pure", async () => {
+      // แผน pure เดียวกัน: ดูว่า B ได้ธงและ C ไม่โดนดันเลยเวลา
+      const D0 = Date.UTC(2026, 10, 6) - 7 * 3_600_000; const Tm = (h: string) => { const [x, y] = h.split(":").map(Number); return D0 + (x * 60 + y) * MIN; };
+      const S0 = { queueOrder: "SINGLE_LINE", backfill: true, safetyBeforeBookingMin: 0, graceMin: 15, noShowAfterMin: 30, lateAction: "RELEASE", priorityEnabled: false, walkInMaxWaitMin: 600, overrunExtendMin: 5, minBreakMin: 0, maxJobsPerDay: null };
+      const st = ["s0", "s1"].map((id, i) => ({ id, name: id, sortOrder: i + 1, windows: [{ startAt: Tm("10:00"), endAt: Tm("20:00") }], services: null }));
+      const jb = (id: string, svc: string, sid: string, h: string, o: any = {}) => ({ id, label: id, kind: "BOOKED", status: "CONFIRMED", serviceId: svc, assignMode: "SPECIFIC", staffId: sid, startAt: Tm(h), issuedAt: Tm("08:00"), checkedInAt: null, startedAt: null, priority: false, ...o });
+      const p = PL.planDay({ now: Tm("16:10"), settings: S0, staff: st, services: [{ id: "OIL", name: "o", durationMin: 60, bufferAfterMin: 0, resourceKinds: ["ROOM"] }, { id: "PLAIN", name: "p", durationMin: 60, bufferAfterMin: 0 }],
+        resources: [{ id: "rA", kind: "ROOM", name: "rA", sortOrder: 1, capacity: 1, cleanupMin: 15, blocks: [] }],
+        jobs: [jb("A", "OIL", "s1", "17:15", { resourceIds: ["rA"] }), jb("B", "OIL", "s0", "16:00", { status: "ARRIVED", checkedInAt: Tm("16:10"), resourceIds: ["rA"] }), jb("C", "PLAIN", "s0", "19:00")] });
+      const g = (id: string) => p.jobs.find((x: any) => x.jobId === id);
+      const [a, b, c] = [g("A"), g("B"), g("C")];
+      const flagged = b.resourceShort === true || a.resourceShort === true || a.startAt >= b.endAt + 15 * MIN;
+      rec("P21-pure", flagged && c.endAt <= Tm("20:00") && c.resourceShort === false, "MAJOR",
+        "pure: B ชนห้องกับ A และเลื่อนไม่ได้ ⇒ ต้องมีธง (B หรือ A) หรือ A ถูกเลื่อนให้พ้น · C (ไม่ใช้ห้อง) ไม่ถูกดันเลยเวลาและไม่มีธง",
+        { A: [HM(a.startAt), HM(a.endAt), a.reason, a.resourceShort], B: [HM(b.startAt), HM(b.endAt), b.reason, b.resourceShort], C: [HM(c.startAt), HM(c.endAt), c.reason, c.resourceShort] });
     });
   }
 
