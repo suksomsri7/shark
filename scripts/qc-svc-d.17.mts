@@ -801,7 +801,7 @@ try {
       const r2 = await PL.resend()(cO, { unitId: DA, announcementId: AN.ALL }, { now: NOW });
       const r3 = await PL.resend()(cO, { unitId: DA, announcementId: AN.ALL }, { now: NOW });
       eq([pushKeys(m2), r2?.sent, r3?.sent], [["C9"], 1, 0], "ผู้เช่าใหม่");
-    } finally { await prisma.dormLease.update({ where: { id: ids.L9 }, data: { status: "ENDED", endedAt: new Date("2026-11-03T05:00:00Z"), endDate: dbDate("2026-11-03") } }); }
+    } finally { await prisma.dormLease.update({ where: { id: ids.L9 }, data: { status: "ENDED", endedAt: new Date("2026-11-03T05:00:00Z"), endDate: dbDate("2026-11-04") /* ORACLE-EDIT (ผู้คุม 31 ต.ค. · d17-N4) endDate ต้อง > startDate (DormLease_dates_check) */ } }); }
   });
   await st("A-4", "เผยแพร่+ส่งทีละกลุ่ม ⇒ ถูกคน: อาคาร A (C1 C2 C4 C5) · อาคาร B (C5 · P7 ไม่มี LINE · P6 เลยวันจบไม่ได้) · ชั้น A1 (C1 C2) · ชั้น A2 (C4 C5) · ห้องว่าง+ห้องปิด (ไม่มีใคร · recipients 0) · 2 ห้องของ P5 (C5 ครั้งเดียว) · ไม่มีใครนอกกลุ่ม", async () => {
     needAn("BA", "BB", "F1", "F2", "R103", "R5");
@@ -895,7 +895,7 @@ try {
     }
     ok(new Set(outs).size === 1 && JSON.parse(outs[0])?.code === "NOT_FOUND", `ผลต่างกัน: ${J(uniq(outs)).slice(0, 220)}`);
     eq(loads.map((x) => x ?? null), cases.map(() => null), "load");
-    eq([await PL.load()(tok(ids.L3), { a: null }, popt("r5x")), await PL.load()(tok(ids.LB, B), { a: null }, popt("r5y"))], [null, null], "load ไม่ระบุประกาศ");
+    eq([await PL.load()(tok(ids.L3), { a: null }, popt("r5x"))], [null], "load ไม่ระบุประกาศ"); // ORACLE-EDIT (ผู้คุม 31 ต.ค. · d17-R5) LB = พอร์ทัลของร้าน B เอง (เห็นประกาศร้าน B ได้ตาม D.9 §3.1) · กรณี LB×AN.F1 ในตาราง cases คงไว้
     eq(await prisma.dormAnnouncementRead.count({ where: { tenantId: { in: [A, B] } } }), n0, "แถว");
   });
   await st("R-6", "rate limit ก่อนทุกอย่าง (ถัง dorm:portal:view): ครบ 120 ครั้ง/10 นาทีต่อ clientKey ⇒ ครั้งที่ 121 load = null · mark = RATE_LIMITED แม้ลิงก์ถูก", async () => {
