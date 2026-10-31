@@ -590,6 +590,15 @@ registerMinuteJob({
   run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-line")).runDormLineJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
 });
 // ◂ SVC D.9
+// SVC D.10 Z6 ▸ หอพัก: ลบรูปสลิปจากแชทที่ยังไม่แนบบิลเมื่อเกิน rooms.payment.chatSlipKeepDays (PDPA · R8)
+//   ทุก 60 นาที · ข้ามร้าน · ซ้อนกันได้ (ปิดรายการด้วย id กำหนดได้ — ชน = มีคนปิดแล้ว · ลบไฟล์ซ้ำไม่เป็นไร · X5) ◂
+registerMinuteJob({
+  name: "dorm.chatSlipSweep",
+  everyMinutes: 60,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-pay")).sweepExpiredChatSlips(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.10
 
 function errorText(e: unknown): string {
   let s: string;

@@ -2,7 +2,7 @@
 // SVC D.10 ▸ จอ "รับเงิน" — ภาพอ้างอิง ledger/design-dorm/06-slip-payments.png · สัญญา DOM ledger/svc-briefs/svc-brief-d.10.md §4
 //   ข้อมูลทั้งหมดจาก dormPaymentsModel (ไฟล์นี้ import type เท่านั้นจาก lib) · action รับทาง prop ⇒ render ด้วย renderToStaticMarkup ได้
 //   เงินแสดงจากสตางค์จำนวนเต็ม (ไม่คำนวณเงินบนจอ) · ไม่มีเบอร์ · ไม่มีชื่อเต็ม · ไม่มี URL ไฟล์สลิป
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import type { DormPaymentsModel, DormReviewRow, DormSlipFlag } from "@/lib/platform/dorm-pay";
 import { bahtText, thaiMonthShort, thaiShortDate } from "./dorm-home-shared";
 
@@ -49,6 +49,21 @@ const Fail = ({ r }: { r: unknown }) => {
   const t = failText(r);
   return t ? <p role="alert" className={`text-sm ${danger}`}>{t}</p> : null;
 };
+type OkShape = { ok: true; duplicate?: boolean; status?: string; receipt?: { docNo?: string } | null; held?: { note?: string } };
+const okOf = (r: unknown): OkShape | null => (r && typeof r === "object" && (r as { ok?: unknown }).ok === true ? (r as OkShape) : null);
+/** Z13 ▸ ข้อความสำเร็จ (ใบเสร็จ/พัก/ปฏิเสธ) */
+const Done = ({ r }: { r: unknown }) => {
+  const o = okOf(r);
+  if (!o) return null;
+  const t = o.held?.note
+    ? o.held.note
+    : o.duplicate
+      ? `รายการนี้บันทึกไปแล้ว${o.receipt?.docNo ? ` · ใบเสร็จ ${o.receipt.docNo}` : ""}`
+      : o.status === "REJECTED"
+        ? "ไม่รับสลิปแล้ว · แจ้งผู้เช่าทาง LINE"
+        : `บันทึกแล้ว${o.receipt?.docNo ? ` · ใบเสร็จ ${o.receipt.docNo}` : ""}`;
+  return <p role="status" data-pay-done="" className="text-sm font-bold">{t}</p>;
+};
 const newKey = () => `cash-${globalThis.crypto.randomUUID()}`;
 
 function Kpi({ k, label, tone, children, foot }: { k: string; label: string; tone?: "accent" | "danger"; children: React.ReactNode; foot: string }) {
@@ -62,11 +77,34 @@ function Kpi({ k, label, tone, children, foot }: { k: string; label: string; ton
   );
 }
 
-function Panel({ row, period, actions }: { row: DormReviewRow; period: string; actions: DormPaymentsActions }) {
+/** Z13 ▸ รายการตรวจอัตโนมัติ (จากธงของสลิป) — ✓ ผ่าน / ! ต้องดู */
+function checklist(row: DormReviewRow): { ok: boolean; text: string }[] {
+  if (row.status === "HELD") return [{ ok: false, text: `พักไว้ — ${flagTh(row.flags[0] ?? "OTHER", row.diffSatang)}` }];
+  const f = new Set(row.flags);
+  return [
+    { ok: !f.has("OTHER"), text: f.has("OTHER") ? "สลิป/บัญชีผู้รับ ต้องตรวจเพิ่ม" : "สลิปจริง · ผู้รับคือบัญชีหอ" },
+    { ok: !f.has("DUPLICATE"), text: f.has("DUPLICATE") ? "สลิปซ้ำ — เคยใช้มาก่อน" : "ไม่เคยใช้สลิปนี้มาก่อน" },
+    { ok: !f.has("PAYER_NAME"), text: f.has("PAYER_NAME") ? "ชื่อผู้โอนไม่ใช่ผู้เช่า" : "ชื่อผู้โอนตรงชื่อในสัญญา" },
+    {
+      ok: !f.has("SHORT") && !f.has("OVER"),
+      text: f.has("SHORT") ? `ยอดไม่ตรงบิล — ขาด ฿${bahtText(Math.abs(row.diffSatang))}` : f.has("OVER") ? `ยอดไม่ตรงบิล — เกิน ฿${bahtText(Math.abs(row.diffSatang))}` : "ยอดตรงบิล",
+    },
+  ];
+}
+/** Z13 ▸ ตัวอย่างผลลงบัญชีของตัวเลือก (ไม่คำนวณเงิน — แค่บอกว่าเกิดอะไร) */
+const previewOf = (a: string): string =>
+  a === "REJECT" || a === "REFUND_DUE"
+    ? "ไม่ออกใบเสร็จ · ไม่ลงบัญชี"
+    : a === "CREDIT"
+      ? "รับแล้ว → ใบเสร็จเลขถัดไปของสมุด · ลงบัญชี: เงินฝากธนาคาร ↑ · เงินรับล่วงหน้า ↑ (ระบบบัญชี V2)"
+      : "รับแล้ว → ใบเสร็จเลขถัดไปของสมุด · ลงบัญชี: เงินฝากธนาคาร ↑ · ลูกหนี้ค่าเช่า ↓ (ระบบบัญชี V2)";
+
+function Panel({ row, period, actions, skipHref }: { row: DormReviewRow; period: string; actions: DormPaymentsActions; skipHref: string }) {
   const held = row.status === "HELD";
   const [state, act, pending] = useActionState(held ? actions.resolve : actions.review, null);
   const [choice, setChoice] = useState<string>(row.actions[0] ?? "REJECT");
   const head = row.flags[0] ? flagTh(row.flags[0], row.diffSatang) : "ตรวจสลิป";
+  const done = !!okOf(state);
   return (
     <aside data-pay-panel={row.slipId} className={`flex w-full min-w-0 flex-col gap-4 rounded-2xl border bg-[color:var(--color-surface)] p-5 lg:w-[400px] lg:shrink-0 ${line}`}>
       <div>
@@ -78,6 +116,15 @@ function Panel({ row, period, actions }: { row: DormReviewRow; period: string; a
         <b className="text-2xl tabular-nums">{row.slipSatang === null ? "—" : `฿${bahtText(row.slipSatang)}`}</b>
         <span className={`text-xs ${soft}`}>{bkkWhen(row.transferredAt)}</span>
       </div>
+      <ul data-pay-checks="" className="flex flex-col gap-2 text-sm">
+        {checklist(row).map((c) => (
+          <li key={c.text} className="flex items-center gap-2">
+            <span aria-hidden className={`grid h-5 w-5 place-items-center rounded-full text-xs font-bold text-[color:var(--color-surface)] ${c.ok ? "bg-[color:var(--color-ink)]" : "bg-[color:var(--color-danger,#c81e1e)]"}`}>{c.ok ? "✓" : "!"}</span>
+            <span className={c.ok ? "" : `font-bold ${danger}`}>{c.text}</span>
+          </li>
+        ))}
+      </ul>
+      {done ? <Done r={state} /> : (
       <form action={act} className="flex flex-col gap-3">
         <input type="hidden" name="slipId" value={row.slipId} />
         {row.actions.map((a) => {
@@ -91,18 +138,30 @@ function Panel({ row, period, actions }: { row: DormReviewRow; period: string; a
         })}
         {choice === "APPROVE" ? <input name="transRef" placeholder="เลขอ้างอิงการโอน (กรอกเมื่อสลิปไม่มีเลข)" className={`rounded-xl border px-3 py-2 text-sm ${line}`} /> : null}
         <input name="reason" required maxLength={500} placeholder="เหตุผล (เช่น ญาติจ่ายแทน)" className={`rounded-xl border px-3 py-2 text-sm ${line}`} />
+        <p data-pay-preview="" className={`text-xs ${soft}`}>{previewOf(choice)}</p>
         <Fail r={state} />
-        <button type="submit" data-pay-confirm="" disabled={pending} className="rounded-xl bg-[color:var(--color-ink)] px-4 py-3 text-sm font-bold text-[color:var(--color-surface)] disabled:opacity-60">ยืนยัน · ส่งใบเสร็จ</button>
+        <div className="flex gap-3">
+          <a href={skipHref} data-pay-skip="" className={`flex-1 rounded-xl border px-4 py-3 text-center text-sm ${line}`}>ข้าม</a>
+          <button type="submit" data-pay-confirm="" disabled={pending} className="flex-[2] rounded-xl bg-[color:var(--color-ink)] px-4 py-3 text-sm font-bold text-[color:var(--color-surface)] disabled:opacity-60">ยืนยัน · ส่งใบเสร็จ</button>
+        </div>
       </form>
+      )}
     </aside>
   );
 }
 
 function CashForm({ model, action, onClose }: { model: DormPaymentsModel; action: ActionFn; onClose: () => void }) {
   const [state, act, pending] = useActionState(action, null);
-  const [key] = useState(newKey);
+  const [key, setKey] = useState(newKey);
+  const form = useRef<HTMLFormElement>(null);
+  // Z4 ▸ สำเร็จแล้ว: คีย์ใหม่ + ล้างฟอร์ม (กดซ้ำด้วยข้อมูลเดิม = รายการใหม่โดยตั้งใจ · กดซ้ำก่อนผลกลับ = คีย์เดิม ⇒ "รายการนี้บันทึกไปแล้ว")
+  useEffect(() => {
+    if (!okOf(state)) return;
+    setKey(newKey());
+    form.current?.reset();
+  }, [state]);
   return (
-    <form action={act} data-pay-cash-form="" className={`flex flex-wrap items-end gap-3 rounded-2xl border bg-[color:var(--color-surface)] p-4 ${line}`}>
+    <form ref={form} action={act} data-pay-cash-form="" className={`flex flex-wrap items-end gap-3 rounded-2xl border bg-[color:var(--color-surface)] p-4 ${line}`}>
       <input type="hidden" name="idempotencyKey" value={key} />
       <label className="flex flex-col gap-1 text-sm">ห้อง/บิล
         <select name="billId" required className={`rounded-xl border px-3 py-2 ${line}`}>
@@ -117,6 +176,7 @@ function CashForm({ model, action, onClose }: { model: DormPaymentsModel; action
       <button type="submit" disabled={pending} className="rounded-xl bg-[color:var(--color-ink)] px-4 py-2 text-sm font-bold text-[color:var(--color-surface)] disabled:opacity-60">บันทึกรับเงิน</button>
       <button type="button" onClick={onClose} className={`rounded-xl border px-4 py-2 text-sm ${line}`}>ปิด</button>
       <Fail r={state} />
+      <Done r={state} />
     </form>
   );
 }
@@ -165,6 +225,10 @@ export default function DormPayments({ model, unitSlug, selected, actions }: Dor
   const { kpi } = model;
   const row = model.review.find((r) => r.slipId === selected) ?? null;
   const base = `/app/u/${unitSlug}/dorm/payments?period=${model.periodKey}`;
+  // Z13 ▸ "ข้าม" = ไปสลิปถัดไปในคิว (สุดคิว ⇒ ปิดแผง)
+  const at = row ? model.review.findIndex((r) => r.slipId === row.slipId) : -1;
+  const nextRow = at >= 0 ? model.review[at + 1] : undefined;
+  const skipHref = nextRow ? `${base}&slip=${nextRow.slipId}` : base;
   const unpaid = model.open.filter((b) => !b.overdue && !b.inReview);
   const overdue = model.open.filter((b) => b.overdue);
   const tabs: { key: Tab; label: string; n: number }[] = [
@@ -187,6 +251,7 @@ export default function DormPayments({ model, unitSlug, selected, actions }: Dor
         <span className="flex-1" />
         {model.can.manual ? <button type="button" data-pay-cash="" onClick={() => setCashOpen((v) => !v)} className={`rounded-xl border px-4 py-2 text-sm ${line}`}>บันทึกรับเงินสด</button> : null}
         {model.links.statementMatch ? <a data-pay-statement="" href={model.links.statementMatch} className={`rounded-xl border px-4 py-2 text-sm ${line}`}>จับคู่รายการธนาคาร</a> : null}
+        <a data-pay-dun="" href={`/app/u/${unitSlug}/dorm/overdue`} className={`rounded-xl border px-4 py-2 text-sm ${line}`}>ทวงที่ยังไม่จ่าย ({kpi.unpaidBills})</a>
       </div>
       {cashOpen && model.can.manual ? <CashForm model={model} action={actions.cash} onClose={() => setCashOpen(false)} /> : null}
       <div className="flex min-w-0 flex-col items-start gap-5 lg:flex-row">
@@ -228,11 +293,11 @@ export default function DormPayments({ model, unitSlug, selected, actions }: Dor
           </div>
           {tab === "review" || tab === "paid" ? (
             <div data-pay-recent="" className={`rounded-2xl border bg-[color:var(--color-surface)] p-5 ${line}`}>
-              <div className="flex items-center gap-3"><h2 className="font-bold">รับเงินล่าสุด</h2><span className="flex-1" /><span className={`text-xs ${soft}`}>ไม่ต้องทำอะไร · ใบเสร็จส่งเข้า LINE แล้ว</span></div>
+              <div className="flex items-center gap-3"><h2 className="font-bold">ผ่านอัตโนมัติล่าสุด</h2><span className="flex-1" /><span className={`text-xs ${soft}`}>ไม่ต้องทำอะไร · ใบเสร็จส่งเข้า LINE แล้ว</span></div>
               {model.recent.map((r) => (
                 <div key={r.billId} data-pay-receipt={r.docNo ?? ""} className={`flex flex-wrap items-center gap-3 border-t py-3 text-sm ${line}`}>
                   <b className="tabular-nums">{r.roomNumber}</b>
-                  <span className={soft}>{r.tenantShort} · {VIA_TH[r.via]} {bkkWhen(r.at)}</span>
+                  <span className={soft}>{r.tenantShort} · {r.via === "CASH" ? "เงินสดที่สำนักงาน" : `${VIA_TH[r.via]} ${bkkWhen(r.at)}`}</span>
                   <span className="flex-1" />
                   <b className="tabular-nums">฿{bahtText(r.amountSatang)}</b>
                   <span className={`tabular-nums ${soft}`}>{r.docNo ?? "—"}</span>
@@ -248,7 +313,7 @@ export default function DormPayments({ model, unitSlug, selected, actions }: Dor
             </div>
           ) : null}
         </div>
-        {row ? <Panel key={row.slipId} row={row} period={row.periodKey} actions={actions} /> : null}
+        {row && model.can.review ? <Panel key={row.slipId} row={row} period={row.periodKey} actions={actions} skipHref={skipHref} /> : null}
       </div>
     </div>
   );

@@ -8710,6 +8710,9 @@ export async function dormVoidReceipt(input: { tenantId: string; systemId: strin
       const doc = await tx.accountDocument.findFirst({ where: { id: receiptId, tenantId, systemId, docType: "RECEIPT", source: "DORM", refType: DORM_RECEIPT_REF_TYPE, refSystemId: unitId }, select: { id: true, status: true } });
       if (!doc) throw new DormTxReject("NOT_FOUND", DORM_NOT_FOUND);
       if (doc.status === "VOIDED" || doc.status === "CANCELLED") throw new DormTxReject("ALREADY_VOID", "ใบเสร็จนี้ถูกยกเลิกไปแล้ว");
+      // Z1 ▸ ทุกรายการเงินของการรับนี้ = คีย์ "<refId ของใบเสร็จ>:<docId>" (ผู้เรียกตั้งตาม (การรับ, เอกสาร)) — อ่าน refId จากแถวใต้ล็อก ไม่เชื่อรายการคีย์ของผู้เรียกอย่างเดียว ◂
+      const dormRecvRef = (await tx.accountDocument.findFirst({ where: { id: receiptId, tenantId, systemId }, select: { refId: true } }))?.refId ?? null;
+      const dormOfRecv = (key: string | null | undefined, head: string): boolean => !!dormRecvRef && !!key && key.startsWith(`${head}${dormRecvRef}:`) && /^[A-Za-z0-9_-]+$/.test(key.slice(`${head}${dormRecvRef}:`.length));
       const pays = await tx.accountDocumentPayment.findMany({
         where: { tenantId, systemId, voidedAt: null, idempotencyKey: { in: input.paymentKeys.map((k) => dormPayKey(tenantId, k)) } },
         select: { id: true, documentId: true },
@@ -8719,12 +8722,33 @@ export async function dormVoidReceipt(input: { tenantId: string; systemId: strin
         await voidPaymentInTx(tx, tenantId, systemId, p.documentId, p.id, input.reason);
         await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, [p.documentId]);
       }
+      // Z1 ▸ รับชำระของการรับนี้บนเอกสารที่ไม่อยู่ในรายการของผู้เรียก (เช่น ขั้นที่ลงได้ 0 แต่ส่วนเกินอยู่ที่เอกสารนั้น) — prefix ใต้ล็อก · ตรงตัวในโค้ด (คีย์มี ":" ได้) ◂
+      if (dormRecvRef) {
+        const dormMorePays = await tx.accountDocumentPayment.findMany({
+          where: { tenantId, systemId, voidedAt: null, idempotencyKey: { startsWith: dormPayKey(tenantId, `${dormRecvRef}:`) } },
+          select: { id: true, documentId: true, idempotencyKey: true },
+          orderBy: { id: "asc" },
+        });
+        for (const p of dormMorePays.filter((x) => dormOfRecv(x.idempotencyKey, dormPayKey(tenantId, "")))) {
+          await voidPaymentInTx(tx, tenantId, systemId, p.documentId, p.id, input.reason);
+          await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, [p.documentId]);
+        }
+      }
       const excess = await tx.accountJournalEntry.findMany({
         where: { tenantId, systemId, refType: DORM_EXCESS_REF_TYPE, refId: { in: input.paymentKeys }, reversalOfId: null, status: "POSTED" },
         select: { id: true },
         orderBy: { id: "asc" },
       });
       for (const e of excess) await reverseEntry(ctx, e.id, input.reason, tx);
+      // Z1 ▸ JV ส่วนเกิน 2110 ทุกตัวของการรับนี้ (refId = "<การรับ>:<docId>") — ตัวที่กลับแล้วสถานะไม่ใช่ POSTED จึงไม่กลับซ้ำ ◂
+      if (dormRecvRef) {
+        const dormMoreExcess = await tx.accountJournalEntry.findMany({
+          where: { tenantId, systemId, refType: DORM_EXCESS_REF_TYPE, refId: { startsWith: `${dormRecvRef}:` }, reversalOfId: null, status: "POSTED" },
+          select: { id: true, refId: true },
+          orderBy: { id: "asc" },
+        });
+        for (const e of dormMoreExcess.filter((x) => dormOfRecv(x.refId, ""))) await reverseEntry(ctx, e.id, input.reason, tx);
+      }
       await tx.accountDocument.update({ where: { id: receiptId }, data: { status: "VOIDED", voidedAt: new Date(), voidReason: input.reason } });
       await finalizeDocNos(tx);
       return { ok: true as const };
@@ -8732,5 +8756,29 @@ export async function dormVoidReceipt(input: { tenantId: string; systemId: strin
   } catch (e) {
     return dormFromError(e, "ยกเลิกใบเสร็จของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง");
   }
+}
+
+/**
+ * Z15 ▸ คีย์รับเงินของหอ (คีย์ที่ผู้เรียกส่งให้ dormRecordPayment) ตัวไหน "ลงเงินไปแล้ว" — มีแถวรับชำระ (รวมที่ถูกยกเลิก) หรือ JV ส่วนเกิน 2110 ของคีย์นั้น
+ *   อ่านอย่างเดียว · ผูก tenantId · ใช้ตัดสินว่าแผนลงเงินที่ค้างทิ้งได้ (ยังไม่ขยับเงิน) หรือต้องทำต่อ
+ */
+export async function dormPaymentKeysUsed(tenantId: string, keys: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  const ks = [...new Set(keys.filter((k) => typeof k === "string" && k))];
+  if (!tenantId || !ks.length) return out;
+  const pays = await prisma.accountDocumentPayment.findMany({ where: { tenantId, idempotencyKey: { in: ks.map((k) => dormPayKey(tenantId, k)) } }, select: { idempotencyKey: true } });
+  const byFull = new Map(ks.map((k) => [dormPayKey(tenantId, k), k]));
+  for (const p of pays) { const k = p.idempotencyKey ? byFull.get(p.idempotencyKey) : undefined; if (k) out.add(k); }
+  const ex = await prisma.accountJournalEntry.findMany({ where: { tenantId, refType: DORM_EXCESS_REF_TYPE, refId: { in: ks }, reversalOfId: null }, select: { refId: true } });
+  for (const e of ex) if (e.refId) out.add(e.refId);
+  return out;
+}
+
+/** SV-1 ▸ เอกสารของหอที่ "ตายแล้ว" (ร่าง/ยกเลิก) จากชุด id — อ่านอย่างเดียว · ผูก tenantId · ไม่พบ = ไม่อยู่ในผล */
+export async function dormDocsDead(tenantId: string, ids: string[]): Promise<Set<string>> {
+  const ds = [...new Set(ids.filter((x) => typeof x === "string" && x))];
+  if (!tenantId || !ds.length) return new Set();
+  const rows = await prisma.accountDocument.findMany({ where: { tenantId, id: { in: ds }, status: { in: [...DORM_DEAD_STATUS] } }, select: { id: true } });
+  return new Set(rows.map((r) => r.id));
 }
 // ◂ SVC D.10

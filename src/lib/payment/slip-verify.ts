@@ -605,6 +605,13 @@ function reviewOfSlip(domain: string) {
   return async (tenantId: string, actor: unknown, unitId: string): Promise<boolean> =>
     (await canReview(tenantId, actor, unitId)) || (domain === "DORM" && evaluate(await membershipOf(tenantId, actor), { module: "dorm", action: DORM_SLIP_REVIEW_KEY, unitId }));
 }
+// SVC D.10 Z18 ▸ R1 จำกัดเฉพาะ refType "DORM_BILL": สลิปหอชนิดอื่น (เช่น เงินประกันในอนาคต) ต้องถือ payments.slip.review เดิมเท่านั้น
+//   (ด่านเสริมต่อจาก reviewOfSlip · ผูกตัวตรวจเดิมไว้ก่อนถูกเงาในบล็อก decideSlip/slipFileUrl) ◂
+const canReviewPaymentsOnly = canReview;
+async function dormBillOnlyGate(slip: { domain: string; refType: string } | null, tenantId: string, actor: unknown, unitId: string): Promise<boolean> {
+  if (!slip || slip.domain !== "DORM" || slip.refType === "DORM_BILL") return true;
+  return canReviewPaymentsOnly(tenantId, actor, unitId);
+}
 
 // ═══════════════ decideSlip ═══════════════
 /**
@@ -621,6 +628,7 @@ export async function decideSlip(actor: SlipActor, ctx: SlipCtx, slipId: string,
     if (!slip) return refuse("NOT_FOUND");
     const canReview = reviewOfSlip(slip.domain); // SVC D.10 ▸ R1 ◂
     if (!(await canReview(c.tenantId, actor, slip.unitId))) return refuse("PERMISSION_DENIED");
+    if (!(await dormBillOnlyGate(slip, c.tenantId, actor, slip.unitId))) return refuse("PERMISSION_DENIED"); // SVC D.10 Z18 ◂
 
     if (!isRec(input)) return refuse("VALIDATION");
     const decision = input.decision;
@@ -767,6 +775,7 @@ export async function slipFileUrl(actor: SlipActor, ctx: SlipCtx, slipId: string
     if (!slip) return refuse("NOT_FOUND");
     const canReview = reviewOfSlip((await prisma.paymentSlip.findFirst({ where: { id: slip.id, tenantId: c.tenantId }, select: { domain: true } }))?.domain ?? ""); // SVC D.10 ▸ R1 ◂
     if (!(await canReview(c.tenantId, actor, slip.unitId))) return refuse("PERMISSION_DENIED");
+    if (!(await dormBillOnlyGate(await prisma.paymentSlip.findFirst({ where: { id: slip.id, tenantId: c.tenantId }, select: { domain: true, refType: true } }), c.tenantId, actor, slip.unitId))) return refuse("PERMISSION_DENIED"); // SVC D.10 Z18 ◂
     const file = await prisma.fileAsset.findFirst({ where: { id: slip.fileId, tenantId: c.tenantId }, select: { id: true } });
     if (!file) return refuse("NOT_FOUND", "ไม่พบไฟล์สลิป");
     const url = privateFileUrl(file.id, { kind: "STAFF", id: (actor as SlipActor).userId }, SLIP_VIEW_TTL_SEC);

@@ -4,9 +4,10 @@
 import { revalidatePath } from "next/cache";
 import { requireUnit } from "@/lib/core/context";
 import { parseBahtToSatang } from "@/lib/modules/dorm";
-import { attachChatSlip, dismissChatSlip, recordDormPayment, resolveHeldSlip, reviewDormSlip, voidDormReceipt, type DormReviewAction } from "@/lib/platform/dorm-pay";
+import { attachChatSlip, dismissChatSlip, DORM_PAY_NF, recordDormPayment, resolveHeldSlip, reviewDormSlip, voidDormReceipt, type DormReviewAction } from "@/lib/platform/dorm-pay";
 
-const NO_ACCESS = { ok: false as const, code: "NOT_FOUND", reason: "ไม่พบหอนี้ หรือบัญชีนี้ไม่มีสิทธิ์ทำรายการรับเงิน" };
+// Z11 ▸ ไม่ผ่านด่านหน่วย = เนื้อเดียวกับ NOT_FOUND ของ dorm-pay ทุกไบต์ (X1)
+const NO_ACCESS = { ok: false as const, code: "NOT_FOUND" as const, reason: DORM_PAY_NF };
 const str = (fd: FormData, k: string): string => {
   const v = fd.get(k);
   return typeof v === "string" ? v.trim() : "";

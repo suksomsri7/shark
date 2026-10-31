@@ -2378,6 +2378,8 @@ export async function externalTaxSeller(input: { tenantId: string; unitId: strin
 // ── SVC D.10 ▸ facade แคบของรับเงินหอ (R2 · เพิ่มอย่างเดียว) — ใบเสร็จ RECEIPT ต่อการรับ · ยกเลิกแบบกลับรายการ · อ่านเอกสารที่จ่ายได้ของบิล · สมุดของหน่วย ──
 export { dormBillDocsMany, dormReceiptRows, DORM_RECEIPT_REF_TYPE, type DormBillDoc, type DormBillDocs, type DormReceiptRow } from "./service";
 import { dormIssueReceipt, dormVoidReceipt } from "./service";
+export { dormPaymentKeysUsed } from "./service";
+export { dormDocsDead } from "./service"; // SVC D.10 SV-1 ▸ อ่านอย่างเดียว: ใบแจ้งหนี้ของบิลถูกยกเลิกแล้วหรือยัง ◂ // SVC D.10 Z15 ▸ อ่านอย่างเดียว: คีย์รับเงินของหอที่ลงเงินแล้ว ◂
 
 /** สมุดบัญชีที่ผูกหน่วยหอนี้ — ไม่ผูก/ผูกหลายเล่ม ⇒ null */
 export async function dormUnitBookId(tenantId: string, unitId: string): Promise<string | null> {
