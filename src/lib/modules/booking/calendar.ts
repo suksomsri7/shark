@@ -410,7 +410,7 @@ export async function loadCalendar(
 // ═════════════════════════ ลากย้าย ═════════════════════════
 
 export type CalMoveTo = { dateStr: string; startMin: number; staffId?: string; resourceId?: string };
-export type CalMoveFail = "FORBIDDEN" | "NOT_FOUND" | "BAD_INPUT" | "BAD_STATE" | "FULL" | "PAST" | "ON_LEAVE" | "NOT_QUALIFIED" | "OUTSIDE_HOURS" | "LOST_RACE" | "BUSY";
+export type CalMoveFail = "FORBIDDEN" | "NOT_FOUND" | "BAD_INPUT" | "BAD_STATE" | "FULL" | "PAST" | "ON_LEAVE" | "NOT_QUALIFIED" | "OUTSIDE_HOURS" | "LOST_RACE" | "BUSY" | "GROUP"; // SVC B.15 ▸ GROUP = ลากนัดกลุ่มไปเวลาอื่นรายคนไม่ได้ (เลื่อนทั้งกลุ่ม) ◂
 export type CalMoveResult = { ok: true; appointmentId: string; startAt: Date; staffId: string; resourceIds: string[] } | { ok: false; code: CalMoveFail; reason: string };
 
 const M = {

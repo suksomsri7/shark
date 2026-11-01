@@ -24,6 +24,9 @@ import {
   bookAppointment,
   depositFactsOf,
   depositForfeitPctOf,
+  findGroupSlotsImpl,
+  groupLeaderOf,
+  groupRowsOf,
   forfeitAfterLateCancel,
   withDepositSnap,
   memberExemptTierForIdentity,
@@ -88,6 +91,8 @@ export type ManageView = {
   icsPath: string;
   /** anyStaff = เพิ่มจากสัญญา (ร้านเปิดตัวเลือก "ใครก็ได้" — ให้จอแสดงชิปได้ถูก) */
   reschedule: { staff: OnlineStaff[]; staffSel: string | null; days: OnlineDay[]; dateSel: string | null; times: OnlineTime[]; anyStaff: boolean } | null;
+  /** SVC B.15 ▸ ลิงก์ของหัวกลุ่ม = ทั้งกลุ่ม: จำนวนคนที่ยังถือช่อง (เดี่ยว = ไม่มีคีย์) · depositSatang ด้านบน = Σ ของกลุ่ม ◂ */
+  groupSize?: number;
 };
 export type ManageFail = "NOT_FOUND" | "RATE_LIMITED" | "LATE_CHANGE" | "MAX_RESCHEDULE" | "BAD_STATE" | "LOST_RACE" | "BUSY"
   | "FULL" | "PAST" | "LEAD_TIME" | "BEYOND_HORIZON" | "OFF_GRID" | "OUTSIDE_HOURS" | "NOT_QUALIFIED" | "ON_LEAVE" | "BAD_INPUT"
@@ -530,10 +535,23 @@ export async function loadManageView(
   const canCancel = st.cancelBlock === null;
   const canReschedule = st.rescheduleBlock === null;
   const hold = holdUntilOf({ ...row, status });
+  // SVC B.15 ▸ หัวกลุ่ม: แสดงทั้งกลุ่ม (จำนวนคน + มัดจำรวม) · สถานะ/เวลา = ของหัวกลุ่ม (ทุกคนเวลาเดียวกัน) ·
+  //   โหมดเลื่อน: หมอเดิมของหัวกลุ่มเท่านั้น · เวลาว่าง = ช่องที่ทั้งกลุ่มลงได้ (findGroupSlots สูตรเดียวกับ rescheduleBySelf ทั้งกลุ่ม) ◂
+  const grp = await groupLeaderOf(ctx, row.id);
+  const grpRows = grp && grp.leaderId === row.id && grp.ids.length > 1
+    ? (await groupRowsOf(ctx, grp.groupId)).filter((r) => r.status !== "CANCELLED" && r.status !== "NO_SHOW")
+    : null;
   let reschedule: ManageView["reschedule"] = null;
   if (opts?.reschedule && canReschedule && svc.active && svc.bookable) {
-    const two = await stepTwoOf(ctx, svc, { staff: str(opts.reschedule.staff), date: str(opts.reschedule.date, 10) }, now, row.id);
-    reschedule = { staff: two.staff, staffSel: two.staffSel, days: two.days, dateSel: two.dateSel, times: two.times, anyStaff: two.anyStaff };
+    const two = await stepTwoOf(ctx, svc, { staff: grpRows ? row.staffId : str(opts.reschedule.staff), date: str(opts.reschedule.date, 10) }, now, row.id);
+    let times = two.times;
+    if (grpRows && grp && two.dateSel) {
+      const ok = new Set((await findGroupSlotsImpl(ctx, { members: grpRows.map((r) => ({ serviceId: r.serviceId, staffId: r.staffId })), dateStr: two.dateSel, channel: "ONLINE" }, { now, excludeGroupId: grp.groupId })).map((x) => x.startMin));
+      times = times.map((x) => ({ ...x, free: x.free && ok.has(x.startMin) }));
+    }
+    reschedule = grpRows
+      ? { staff: two.staff.filter((x) => x.id === row.staffId), staffSel: row.staffId, days: two.days, dateSel: two.dateSel, times, anyStaff: false }
+      : { staff: two.staff, staffSel: two.staffSel, days: two.days, dateSel: two.dateSel, times: two.times, anyStaff: two.anyStaff };
   }
   const startMs = row.startAt.getTime();
   return {
@@ -548,6 +566,7 @@ export async function loadManageView(
       canCancel, canReschedule, cancelBlock: st.cancelBlock, rescheduleBlock: st.rescheduleBlock,
       icsPath: `/bq/m/${m.token}/ics`,
       reschedule,
+      ...(grpRows ? { groupSize: grpRows.length, depositSatang: grpRows.reduce((t, r) => t + r.depositSatang, 0) } : {}),
     },
   };
 }
@@ -581,6 +600,8 @@ export async function cancelOnline(token: unknown, opts?: { now?: Date; ip?: str
   if (!m) return nfOp();
   if (!(await tokenGate(m.token, now)).ok) return fail("RATE_LIMITED", R.RATE);
   const { row, ctx } = m;
+  const grp = await groupLeaderOf(ctx, row.id); // SVC B.15 ▸ ลิงก์หัวกลุ่ม ⇒ ยกเลิกทั้งกลุ่ม ◂
+  if (grp && grp.leaderId === row.id && grp.ids.length > 1) return cancelGroupOnline(m, grp.groupId, now, opts); // G3: ลิงก์สมาชิก = ทางเดี่ยว
   const policy = await snapshotSelfPolicy(ctx, row);
   const pre = selfChangeState(row, policy, now);
   // SVC B.8 ▸ §3.5 ยกเลิกช้า: เลยเวลาฟรี + snapshot lateCancelMode FORFEIT (ไม่มีคีย์ = BLOCK) ⇒ ต้องกดยอมรับยอดที่ร้านเก็บ (acceptForfeit) ·
@@ -635,6 +656,16 @@ export function lateCancelModeOf(snap: unknown): "BLOCK" | "FORFEIT" {
 }
 /** ยอดที่ร้านจะเก็บถ้ายกเลิกช้าตอนนี้ = floor(คงเหลือใบรับ × forfeitPct / 100) · ยังไม่จ่าย/ไม่มีใบรับ POS/ไม่ริบ ⇒ 0 (นิยามเดียวของหน้าจ่ายและ cancelOnline · V14) */
 export async function lateForfeitSatangOf(ctx: Ctx, appointmentId: string): Promise<number> {
+  // SVC B.15 ▸ หัวกลุ่ม ⇒ Σ ต่อสมาชิกที่ยังถือช่อง (ริบ floor ต่อแถว · ruling G5) ◂
+  const grp = await groupLeaderOf(ctx, appointmentId);
+  if (grp && grp.leaderId === appointmentId && grp.ids.length > 1) {
+    let t = 0;
+    for (const r of await groupRowsOf(ctx, grp.groupId)) if (r.status === "PENDING" || r.status === "CONFIRMED") t += await lateForfeitOne(ctx, r.id);
+    return t;
+  }
+  return lateForfeitOne(ctx, appointmentId);
+}
+async function lateForfeitOne(ctx: Ctx, appointmentId: string): Promise<number> {
   const f = await depositFactsOf(ctx, appointmentId);
   if (!f || !f.appt.depositPaidAt) return 0;
   const left = f.dep ? Math.max(0, f.dep.amountSatang - f.dep.usedSatang - f.dep.refundedSatang) : 0;
@@ -642,6 +673,70 @@ export async function lateForfeitSatangOf(ctx: Ctx, appointmentId: string): Prom
   return pct === null ? 0 : Math.floor((left * pct) / 100);
 }
 export { resolveManage as resolveManageToken, ipGate as manageIpGate, tokenGate as manageTokenGate };
+
+/**
+ * SVC B.15 ▸ ลิงก์หัวกลุ่ม: ยกเลิกทุกสมาชิกที่ถือช่องใน tx เดียว (ล็อกแถวเรียง id) — กติกา = cancelOnline ต่อแถว (CUSTOMER / CUSTOMER_LATE + deposit.late ต่อแถว) ·
+ * ยอดยกเลิกช้า = Σ floor ต่อแถว · ลูกค้ายอมรับ Σ ⇒ แต่ละแถวเก็บไม่เกินยอดของแถวนั้น · มีสมาชิกมาถึง/กำลังทำ ⇒ BAD_STATE ไม่แตะใคร · ริบต่อแถวหลัง commit ◂
+ */
+async function cancelGroupOnline(m: Managed, groupId: string, now: Date, opts?: { acceptForfeit?: boolean; acceptForfeitSatang?: number }): Promise<{ ok: true } | { ok: false; code: ManageFail; reason: string }> {
+  const { row, ctx } = m;
+  const policy = await snapshotSelfPolicy(ctx, row);
+  const pre = selfChangeState(row, policy, now);
+  const lateOk = pre.cancelBlock === "LATE_CHANGE" && lateCancelModeOf(row.policySnapshot) === "FORFEIT";
+  if (pre.cancelBlock && !lateOk) return fail(pre.cancelBlock, R[pre.cancelBlock as "BAD_STATE" | "LATE_CHANGE"]);
+  const rows0 = (await groupRowsOf(ctx, groupId)).filter((r) => r.status !== "CANCELLED" && r.status !== "NO_SHOW");
+  if (!rows0.length || rows0.some((r) => r.status !== "PENDING" && r.status !== "CONFIRMED")) return fail("BAD_STATE", R.BAD_STATE);
+  const fcr = (keep: number) => fail("FORFEIT_CONFIRM_REQUIRED" as const, `ยกเลิกหลังเวลาฟรี ร้านจะเก็บมัดจำ ฿${(keep / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })} — กดยืนยันอีกครั้งเพื่อยกเลิกนัด`);
+  const accRaw = opts?.acceptForfeitSatang;
+  const acc = typeof accRaw === "number" && Number.isFinite(accRaw) && accRaw >= 0 ? Math.floor(accRaw) : null;
+  const quoteOf: Record<string, number> = {}; // ยอดริบต่อแถว (floor ต่อแถว)
+  for (const r of rows0) quoteOf[r.id] = lateOk ? await lateForfeitOne(ctx, r.id) : 0;
+  const quote = Object.values(quoteOf).reduce((t, x) => t + x, 0);
+  if (lateOk && (opts?.acceptForfeit !== true || (acc !== null && quote > acc))) return fcr(quote);
+  const paidBefore = new Map(rows0.map((r) => [r.id, r.depositPaidAt !== null]));
+
+  type Out = { ok: true; paid: string[] } | { ok: false; code: ManageFail; reason: string; requote?: true };
+  const res = await runLineTx(async (tx): Promise<Out> => {
+    const locked: NonNullable<Awaited<ReturnType<typeof lockAppt>>>[] = [];
+    for (const id of rows0.map((r) => r.id).sort()) {
+      const a = await lockAppt(tx, ctx, id);
+      if (!a || a.kind !== "BOOKED") return nfOp();
+      locked.push(a);
+    }
+    const lead = locked.find((a) => a.id === row.id);
+    const cur = await tx.appointment.findMany({ where: { id: { in: locked.map((a) => a.id) }, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { id: true, rescheduleCount: true, depositSatang: true, depositPaidAt: true } });
+    const curOf = new Map(cur.map((c) => [c.id, c]));
+    if (!lead || !curOf.has(lead.id)) return nfOp();
+    const st = selfChangeState({ status: lead.status, startAt: lead.startAt, rescheduleCount: curOf.get(lead.id)!.rescheduleCount }, policy, now);
+    if (st.cancelBlock && !(lateOk && st.cancelBlock === "LATE_CHANGE")) return fail(st.cancelBlock, R[st.cancelBlock as "BAD_STATE" | "LATE_CHANGE"]);
+    if (locked.some((a) => a.status !== "PENDING" && a.status !== "CONFIRMED")) return fail("BAD_STATE", R.BAD_STATE);
+    const why = st.cancelBlock ? "CUSTOMER_LATE" : "CUSTOMER";
+    const paid: string[] = [];
+    for (const a of locked) {
+      const c = curOf.get(a.id)!;
+      const paidNow = c.depositPaidAt !== null;
+      if (why === "CUSTOMER_LATE" && paidNow !== paidBefore.get(a.id)) return { ok: false, code: "FORFEIT_CONFIRM_REQUIRED", reason: "", requote: true };
+      const keep = paidNow ? (quoteOf[a.id] ?? 0) : 0;
+      const lateSnap = why === "CUSTOMER_LATE" ? { policySnapshot: withDepositSnap(a.policySnapshot, { late: { paid: paidNow, acceptSatang: keep } }) } : {};
+      if (!(await casAppt(tx, ctx, a, { status: "CANCELLED", cancelReason: why, plannedStartAt: null, plannedStaffId: null, ...lateSnap }))) return fail("LOST_RACE", R.LOST_RACE);
+      await emitOutbox(tx, {
+        tenantId: ctx.tenantId, unitId: ctx.unitId, type: "booking.cancelled", idempotencyKey: `booking.cancelled#${a.id}`,
+        payload: {
+          appointmentId: a.id, unitId: a.unitId, staffId: a.staffId, kind: a.kind, channel: a.channel, serviceId: a.serviceId,
+          reason: why, from: a.status, depositSatang: c.depositSatang, depositPaid: paidNow, groupId,
+          ...(why === "CUSTOMER_LATE" ? { acceptedForfeitSatang: keep } : {}),
+        },
+      });
+      if (paidNow && keep > 0) paid.push(a.id);
+    }
+    return { ok: true, paid };
+  });
+  if (!res) return fail("BUSY", R.BUSY);
+  if (!res.ok) return "requote" in res && res.requote ? fcr(await lateForfeitSatangOf(ctx, row.id)) : fail(res.code, res.reason);
+  await replan(ctx, now);
+  if (lateOk) for (const id of res.paid) await forfeitAfterLateCancel(ctx.tenantId, ctx.unitId, id);
+  return { ok: true };
+}
 
 // .ics (RFC 5545): CRLF · พับบรรทัด 75 ไบต์ · escape \ ; , ขึ้นบรรทัดใหม่
 const icsEsc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");

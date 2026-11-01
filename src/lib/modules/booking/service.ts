@@ -16,6 +16,9 @@ import * as queue from "@/lib/modules/queue/service"; // SVC B.4 ▸ บัต�
 import { manageToken, manageTokenHash } from "./manage-token"; // SVC B.7 ▸ ลิงก์จัดการนัด (pure) ◂
 // SVC B.13 ▸ ทรัพยากร: ด่านเดียว (planner-resources ผ่าน resources.loadGate) · ชนิดของบริการอ่านก่อน tx · บริการไม่ประกาศชนิด ⇒ ทุกไบต์เดิม ◂
 import { isBusyDbError, loadGate, needKinds, overrunMinOf, resourceIdsOfRow, resourceKindsOf, snapWithResources, withoutUnplaced } from "./resources";
+import { pickGroupResources } from "./planner-group"; // SVC B.15 ▸ ห้องเดียวของกลุ่ม (pure) ◂
+import type { ResBook } from "./planner-resources";
+import { randomUUID } from "node:crypto";
 
 /** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อกเมื่อนำบริการเข้าคลัง */
 export type BookingCtx = { tenantId: string; unitId: string; actorUserId?: string };
@@ -1537,7 +1540,7 @@ export type BookFailCode =
   | "REPEAT_NO_SHOW" // SVC B.17 ▸ ติดกติกาไม่มาซ้ำ (ต้องโทรจอง / บังคับมัดจำแต่ร้านไม่มีทางรับมัดจำ) ◂
   | "BUSY"; // SVC B.13 ▸ R4: ชนชั่วคราวของฐาน (40P01/40001/P2028) ลองใหม่ 1 ครั้งแล้วยังชน ◂
 export type BookResult =
-  | { ok: true; id: string; staffId: string; status: "PENDING" | "CONFIRMED"; holdUntil: Date | null }
+  | { ok: true; id: string; staffId: string; status: "PENDING" | "CONFIRMED"; holdUntil: Date | null; groupId?: string } // SVC B.15 ▸ groupId เฉพาะบริการ staffCount ≥ 2 ◂
   | { ok: false; code: BookFailCode; reason: string };
 
 const B3_CHANNELS: readonly BookingChannel[] = ["ONLINE", "LINE", "STAFF", "PHONE"];
@@ -1735,6 +1738,17 @@ export async function findSlots(
   const { tenantId, unitId } = ctx;
   if (!q || !B3_CHANNELS.includes(q.channel) || typeof q.dateStr !== "string" || !isRealDateStr(q.dateStr)) return [];
   if (typeof q.serviceId !== "string" || (q.staffId !== null && typeof q.staffId !== "string")) return [];
+  // SVC B.15 ▸ G7 หาเวลา = จอง: บริการ staffCount ≥ 2 ⇒ ช่องของทั้งกลุ่ม (findGroupSlots · สมาชิกแรก = หมอที่เลือก · ที่เหลือใครก็ได้) ◂
+  {
+    const n = await serviceStaffCountOf(ctx, q.serviceId);
+    if (n >= 2) {
+      const gs = await findGroupSlotsImpl(ctx, { members: Array.from({ length: n }, (_, k) => ({ serviceId: q.serviceId, staffId: k === 0 ? q.staffId : null })), dateStr: q.dateStr, channel: q.channel }, {
+        ...(opts?.now ? { now: opts.now } : {}), viaStaffCount: true,
+        ...(opts?.excludeAppointmentId ? { excludeGroupId: (await groupLeaderOf(ctx, opts.excludeAppointmentId))?.groupId } : {}),
+      });
+      return gs.map((x) => ({ startMin: x.startMin, hhmm: x.hhmm, staffId: x.staffIds[0] }));
+    }
+  }
   const self = isSelfChannel(q.channel);
   const db = tenantDb({ tenantId, unitId });
   const service = await db.bookingService.findFirst({ where: { id: q.serviceId, active: true } });
@@ -1875,6 +1889,22 @@ async function openCountForPhone(tx: Pick<Prisma.TransactionClient, "$queryRaw">
   return r?.n ?? 0;
 }
 
+/** SVC B.15 ▸ H2: นัดค้างของเบอร์แบบนับกลุ่มเป็น 1 การจอง (count DISTINCT COALESCE(groupId, id)) — เงื่อนไขอื่นเท่า openCountForPhone ทุกข้อ ·
+ *  ไม่มีแถวกลุ่ม ⇒ ผลเท่าเดิมทุกค่า (ตัวเดิมคงไว้ไม่แก้) ◂ */
+async function openBookingsForPhone(tx: Pick<Prisma.TransactionClient, "$queryRaw">, tenantId: string, unitId: string, key: string, now: Date): Promise<number> {
+  const [r] = await tx.$queryRaw<{ n: number }[]>`
+    SELECT count(DISTINCT COALESCE(a."groupId", a."id"))::int AS n
+    FROM "Appointment" a
+    CROSS JOIN LATERAL (SELECT regexp_replace(COALESCE(a."customerPhone", ''), '[^0-9]', '', 'g') AS d1) p1
+    CROSS JOIN LATERAL (SELECT CASE WHEN p1.d1 LIKE '0066%' THEN substr(p1.d1, 5)
+                                    WHEN p1.d1 LIKE '66%' THEN substr(p1.d1, 3)
+                                    ELSE p1.d1 END AS d2) p2
+    WHERE a."tenantId" = ${tenantId} AND a."unitId" = ${unitId}
+      AND a."status" IN ('PENDING', 'CONFIRMED') AND a."startAt" > ${now}
+      AND (CASE WHEN p2.d2 = '' THEN '' WHEN p2.d2 LIKE '0%' THEN p2.d2 ELSE '0' || p2.d2 END) = ${key}`;
+  return r?.n ?? 0;
+}
+
 const isP2002 = (e: unknown): boolean => (e as { code?: string } | null)?.code === "P2002";
 
 /**
@@ -1909,6 +1939,12 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
   const { tenantId, unitId } = ctx;
   if (!i || typeof i !== "object" || !B3_CHANNELS.includes(i.channel)) return fail("BAD_INPUT", BAD);
   if (typeof i.serviceId !== "string" || (i.staffId !== null && typeof i.staffId !== "string")) return fail("BAD_INPUT", BAD);
+  // SVC B.15 ▸ บริการคู่รัก/กลุ่ม (#15 booking.service.staffCount ≥ 2) ⇒ ทางเดียวกับ bookGroup (หมอคนแรก = ที่เลือก · ที่เหลือ = ใครก็ได้) ·
+  //   ค่า 1 (ค่าเริ่มทุกแม่แบบ) ⇒ ทางเดิมทุกไบต์ ◂
+  {
+    const n = await serviceStaffCountOf(ctx, i.serviceId);
+    if (n >= 2) return bookViaGroup(ctx, i, n);
+  }
   const self = isSelfChannel(i.channel);
   const linePartyId = i.channel === "LINE" && typeof i.partyId === "string" && i.partyId ? i.partyId : null; // SVC B.7
   const phoneUnverified = i.channel === "ONLINE"; // SVC B.7 ▸ เบอร์กรอกเองบนหน้าจอง (ไม่ผ่าน OTP · ไม่ใช่ลิงก์ตัวตน LINE) ◂
@@ -2011,7 +2047,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
       const prior = await prisma.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: APPT_LITE });
       return prior ? replayOf(prior, want) : null;
     };
-    if (capPhone && (await openCountForPhone(prisma, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+    if (capPhone && (await openBookingsForPhone(prisma, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
       return (await replayIfAny()) ?? fail("PHONE_LIMIT", PHONE_LIMIT_REASON);
     }
     const rows = await busyRowsOf(prisma, tenantId, cands.map((c) => c.staffId), dateStr);
@@ -2051,7 +2087,7 @@ export async function bookAppointment(ctx: BookingCtx, i: BookInput): Promise<Bo
       if (capPhone) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:phone:${tenantId}:${unitId}:${phoneKey}`}, 0))`;
         // ④ เพดานนัดค้างต่อเบอร์ (SELF เท่านั้น · นับทุกช่องทาง) — ใต้ล็อกเบอร์
-        if ((await openCountForPhone(tx, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+        if ((await openBookingsForPhone(tx, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
           return { kind: "fail", code: "PHONE_LIMIT", reason: PHONE_LIMIT_REASON };
         }
       }
@@ -2194,37 +2230,76 @@ const HOLD_EXPIRE_TX = { maxWait: 5_000, timeout: 10_000 } as const;
 export async function expireDepositHolds(now: Date): Promise<{ expired: number }> {
   const at = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date(Date.now());
   let expired = 0;
+  // SVC B.15 ▸ กลุ่ม: ปล่อยทั้งกลุ่มใน tx เดียว (ล็อกสมาชิกที่ยังถือช่องครบทุกแถวแบบ SKIP LOCKED — ไม่ได้ครบ ⇒ ข้ามรอบนี้ · ไม่รอล็อก) ·
+  //   ทุกสมาชิกต้องยังค้างจ่าย (PENDING · ยังไม่จ่าย · ไม่มีด่านแนบสลิป/ร้านกำลังยืนยัน · ไม่มีสลิปค้าง/อนุมัติ) — มีคนจ่าย/สลิปค้าง ⇒ ไม่ปล่อยใคร ·
+  //   แถวที่เห็นแล้วในรอบนี้ไม่เลือกซ้ำ (seen) ⇒ ข้ามก้อน HOLD_EXPIRE_BATCH ได้โดยไม่มีครึ่งกลุ่ม · นัดเดี่ยว = เงื่อนไขเดิมทุกข้อ ◂
+  const seen: string[] = [];
   for (let b = 0; b < HOLD_EXPIRE_MAX_BATCHES; b++) {
-    const n = await prisma.$transaction(async (tx) => {
+    const r = await prisma.$transaction(async (tx) => {
       // SVC B.8 ▸ §3.7: สลิปค้างตรวจ (PENDING/NEEDS_REVIEW) = หยุดนับจนถึงเวลาเริ่มนัด (มติ Q3) · สลิปอนุมัติแล้ว (รอ consumer ลงเงิน) = ไม่ปล่อย ·
       //   สลิปถูกปฏิเสธ = นับต่อ · ปล่อยจริง ⇒ booking.cancelled (DEPOSIT_TIMEOUT) ใน tx เดียวกับ UPDATE (ซ้อนกันหลายโพรเซส = ปล่อยครั้งเดียว event เดียว) ◂
-      const rows = await tx.$queryRaw<HoldReleased[]>`
+      const cand = await tx.$queryRaw<{ id: string; tenantId: string; unitId: string; groupId: string | null }[]>`
+        SELECT x."id", x."tenantId", x."unitId", x."groupId" FROM "Appointment" x
+        WHERE x."status" = 'PENDING' AND x."depositPaidAt" IS NULL AND x."depositSatang" > 0
+          AND x."channel" IN ('ONLINE', 'LINE')
+          AND (x."policySnapshot" -> 'values' ->> 'booking.deposit.method') <> 'NONE'
+          AND jsonb_typeof(x."policySnapshot" -> 'values' -> 'booking.deposit.payWithinMin') = 'number'
+          AND x."createdAt" + (CASE WHEN jsonb_typeof(x."policySnapshot" -> 'values' -> 'booking.deposit.payWithinMin') = 'number'
+                                    THEN (x."policySnapshot" -> 'values' ->> 'booking.deposit.payWithinMin')::numeric END
+                               * interval '1 minute') <= ${at}
+          AND NOT EXISTS (
+            SELECT 1 FROM "PaymentSlip" s
+            WHERE s."tenantId" = x."tenantId" AND s."domain" = 'BOOKING' AND s."refType" = 'APPT_DEPOSIT' AND s."refId" = x."id"
+              AND (s."status" IN ('AUTO_APPROVED', 'APPROVED') OR (s."status" IN ('PENDING', 'NEEDS_REVIEW') AND x."startAt" > ${at})))
+          AND COALESCE((x."policySnapshot" -> 'deposit' -> 'slipClaim' ->> 'until')::bigint, 0) <= (extract(epoch from now()) * 1000)::bigint
+          AND NOT (x."id" = ANY(${seen}::text[]))
+        ORDER BY x."createdAt" ASC, x."id" ASC
+        LIMIT ${HOLD_EXPIRE_BATCH}
+        FOR UPDATE SKIP LOCKED`;
+      const release = (ids: string[]) => tx.$queryRaw<HoldReleased[]>`
         UPDATE "Appointment" a
         SET "status" = 'CANCELLED', "cancelReason" = 'DEPOSIT_TIMEOUT', "updatedAt" = now()
-        WHERE a."id" IN (
-          SELECT x."id" FROM "Appointment" x
-          WHERE x."status" = 'PENDING' AND x."depositPaidAt" IS NULL AND x."depositSatang" > 0
-            AND x."channel" IN ('ONLINE', 'LINE')
-            AND (x."policySnapshot" -> 'values' ->> 'booking.deposit.method') <> 'NONE'
-            AND jsonb_typeof(x."policySnapshot" -> 'values' -> 'booking.deposit.payWithinMin') = 'number'
-            AND x."createdAt" + (CASE WHEN jsonb_typeof(x."policySnapshot" -> 'values' -> 'booking.deposit.payWithinMin') = 'number'
-                                      THEN (x."policySnapshot" -> 'values' ->> 'booking.deposit.payWithinMin')::numeric END
-                                 * interval '1 minute') <= ${at}
+        WHERE a."id" = ANY(${ids}::text[]) AND a."status" = 'PENDING' AND a."depositPaidAt" IS NULL
+        RETURNING a."id", a."tenantId", a."unitId", a."staffId", a."kind"::text AS "kind", a."channel"::text AS "channel", a."serviceId", a."depositSatang", a."groupId"`;
+      const out: HoldReleased[] = [];
+      const solo = cand.filter((c) => !c.groupId).map((c) => c.id);
+      if (solo.length) out.push(...(await release(solo)));
+      const groups = new Map<string, { tenantId: string; unitId: string }>();
+      for (const c of cand) if (c.groupId && !groups.has(c.groupId)) groups.set(c.groupId, { tenantId: c.tenantId, unitId: c.unitId });
+      for (const [groupId, g] of groups) {
+        const allRows = await tx.$queryRaw<{ id: string; status: string }[]>`
+          SELECT "id", "status"::text AS "status" FROM "Appointment" WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "groupId" = ${groupId} ORDER BY "id"`;
+        const allIds = allRows.map((x) => x.id);
+        const live = allRows.filter((x) => x.status !== "CANCELLED" && x.status !== "NO_SHOW").map((x) => x.id);
+        if (!live.length) continue;
+        // H7: สลิป/ด่านแนบสลิปผูกกับกลุ่ม (แถวใดก็ได้ รวมหัวกลุ่มที่ถูกยกเลิกรายคน) ⇒ ไม่ปล่อยใคร
+        const [blk] = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM "Appointment" x
+          WHERE x."id" = ANY(${allIds}::text[])
+            AND (COALESCE((x."policySnapshot" -> 'deposit' -> 'slipClaim' ->> 'until')::bigint, 0) > (extract(epoch from now()) * 1000)::bigint
+              OR EXISTS (SELECT 1 FROM "PaymentSlip" s
+                WHERE s."tenantId" = x."tenantId" AND s."domain" = 'BOOKING' AND s."refType" = 'APPT_DEPOSIT' AND s."refId" = x."id"
+                  AND (s."status" IN ('AUTO_APPROVED', 'APPROVED') OR (s."status" IN ('PENDING', 'NEEDS_REVIEW') AND x."startAt" > ${at}))))`;
+        if ((blk?.n ?? 0) > 0) continue;
+        const locked = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Appointment" WHERE "id" = ANY(${live}::text[]) ORDER BY "id" FOR UPDATE SKIP LOCKED`;
+        if (locked.length !== live.length) continue; // สมาชิกบางคนถูกถือ (ร้านยืนยัน/สลิป/โพรเซสอื่น) ⇒ ไม่ปล่อยใครรอบนี้
+        const [ok] = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM "Appointment" x
+          WHERE x."id" = ANY(${live}::text[]) AND x."status" = 'PENDING' AND x."depositPaidAt" IS NULL
+            AND COALESCE((x."policySnapshot" -> 'deposit' -> 'slipClaim' ->> 'until')::bigint, 0) <= (extract(epoch from now()) * 1000)::bigint
             AND NOT EXISTS (
               SELECT 1 FROM "PaymentSlip" s
               WHERE s."tenantId" = x."tenantId" AND s."domain" = 'BOOKING' AND s."refType" = 'APPT_DEPOSIT' AND s."refId" = x."id"
-                AND (s."status" IN ('AUTO_APPROVED', 'APPROVED') OR (s."status" IN ('PENDING', 'NEEDS_REVIEW') AND x."startAt" > ${at})))
-            AND COALESCE((x."policySnapshot" -> 'deposit' -> 'slipClaim' ->> 'until')::bigint, 0) <= (extract(epoch from now()) * 1000)::bigint
-          ORDER BY x."createdAt" ASC
-          LIMIT ${HOLD_EXPIRE_BATCH}
-          FOR UPDATE SKIP LOCKED
-        ) AND a."status" = 'PENDING' AND a."depositPaidAt" IS NULL
-        RETURNING a."id", a."tenantId", a."unitId", a."staffId", a."kind"::text AS "kind", a."channel"::text AS "channel", a."serviceId", a."depositSatang"`;
-      for (const r of rows) await emitHoldReleasedTx(tx, r); // SVC B.8
-      return rows.length;
+                AND (s."status" IN ('AUTO_APPROVED', 'APPROVED') OR (s."status" IN ('PENDING', 'NEEDS_REVIEW') AND x."startAt" > ${at})))`;
+        if ((ok?.n ?? 0) !== live.length) continue;
+        out.push(...(await release(live)));
+      }
+      for (const x of out) await emitHoldReleasedTx(tx, x); // SVC B.8
+      return { n: cand.length, ids: cand.map((c) => c.id), released: out.length };
     }, HOLD_EXPIRE_TX);
-    expired += n;
-    if (n < HOLD_EXPIRE_BATCH) break;
+    expired += r.released;
+    seen.push(...r.ids);
+    if (r.n < HOLD_EXPIRE_BATCH) break;
   }
   return { expired };
 }
@@ -2414,6 +2489,9 @@ export async function rescheduleBySelf(
   const db = tenantDb({ tenantId, unitId });
   const cur = await db.appointment.findFirst({ where: { id: appointmentId, tenantId, unitId, kind: "BOOKED" }, select: MANAGE_ROW });
   if (!cur) return fail("NOT_FOUND", SELF_R.NOT_FOUND);
+  // SVC B.15 ▸ นัดกลุ่ม: ลูกค้ามีลิงก์เฉพาะหัวกลุ่ม ⇒ สมาชิกอื่น NOT_FOUND · หัวกลุ่ม ⇒ เลื่อนทั้งกลุ่ม (ด้านล่าง) ◂
+  const grp = await groupLeaderOf(ctx, cur.id);
+  if (grp && grp.leaderId !== cur.id) return fail("NOT_FOUND", SELF_R.NOT_FOUND);
   const pol = await snapshotSelfPolicy(ctx, cur);
   const st0 = selfChangeState(cur, pol, now);
   if (st0.rescheduleBlock) return gate(st0.rescheduleBlock, SELF_R[st0.rescheduleBlock]);
@@ -2434,6 +2512,12 @@ export async function rescheduleBySelf(
   const sameAs = (r: { startAt: Date; staffId: string; assignMode: string }) =>
     r.startAt.getTime() === localToUtc(dateStr, startMin).getTime() && (staffId === null ? r.assignMode === "ANY" : r.assignMode !== "ANY" && r.staffId === staffId);
   if (sameAs(cur)) return { ok: true, startAt: cur.startAt };
+  if (grp) {
+    // SVC B.15 ▸ หัวกลุ่ม: หมอเดิมของหัวกลุ่ม (หรือไม่ระบุ) · หมอคนอื่นคงเดิม · ทั้งกลุ่มเวลาใหม่เดียวกันใน tx เดียว (กติกาจองเองของ B.7) ◂
+    if (staffId !== null && staffId !== cur.staffId) return fail("BAD_INPUT", BAD_INPUT_REASON);
+    const r = await rescheduleGroupCore(ctx, grp.groupId, { dateStr, startMin }, { now, mode: "SELF", requireConfirm: pol.requireConfirm, leader: { id: cur.id, rescheduleCount: cur.rescheduleCount } });
+    return r.ok ? { ok: true, startAt: localToUtc(dateStr, startMin) } : fail(r.code, r.reason);
+  }
 
   // บริการ/ช่าง (ของหน่วยนี้เท่านั้น · ลูกค้าเลือกชื่อไม่ได้ = ไม่พบ)
   const service = await db.bookingService.findFirst({ where: { id: cur.serviceId, active: true } });
@@ -2578,7 +2662,7 @@ export async function rescheduleBySelf(
 // 🔴 แถวนัด = ตัวตัดสินเดียว: ผูกใบรับใต้ FOR UPDATE ของแถว (CAS depositPaidAt IS NULL) + event/audit ใน tx เดียวกัน
 // 🔴 ไม่มี connection ที่สองใต้ tx · event นอก tx (บิลริบ) กันชน unique ด้วยการกลืน P2002 (คีย์เดียวกัน = event เดียว)
 
-type HoldReleased = { id: string; tenantId: string; unitId: string; staffId: string; kind: string; channel: string | null; serviceId: string; depositSatang: number };
+type HoldReleased = { id: string; tenantId: string; unitId: string; staffId: string; kind: string; channel: string | null; serviceId: string; depositSatang: number; groupId?: string | null };
 /** booking.cancelled ของนัดที่ปล่อยช่องเพราะไม่จ่ายมัดจำ (คีย์เดียวกับทางยกเลิกอื่น) — เรียกใน tx ของ UPDATE */
 async function emitHoldReleasedTx(tx: Prisma.TransactionClient, r: HoldReleased): Promise<void> {
   await emitOutbox(tx, {
@@ -2586,6 +2670,7 @@ async function emitHoldReleasedTx(tx: Prisma.TransactionClient, r: HoldReleased)
     payload: {
       appointmentId: r.id, unitId: r.unitId, staffId: r.staffId, kind: r.kind, channel: r.channel, serviceId: r.serviceId,
       reason: "DEPOSIT_TIMEOUT", from: "PENDING", depositSatang: Number(r.depositSatang), depositPaid: false,
+      ...(r.groupId ? { groupId: r.groupId } : {}), // SVC B.15
     },
   });
 }
@@ -2653,6 +2738,8 @@ export type DepositSnap = {
   lateMoney?: boolean;
   /** V4: ด่านแนบสลิปต่อนัด */
   slipClaim?: { key: string; until: number };
+  /** SVC B.15 ▸ J1: แผนแบ่งเงินของสลิปกลุ่มที่ล็อกไว้แล้ว (เก็บที่หัวกลุ่ม · ต่อสลิป) — ทุก consumer ของสลิปเดียวกันใช้แผนเดียว · ลบเมื่อผูกเสร็จ */
+  slipPlans?: Record<string, GroupSlipPlan>;
 };
 export function depositSnapOf(snap: unknown): DepositSnap {
   const d = snap && typeof snap === "object" && !Array.isArray(snap) ? (snap as Record<string, unknown>).deposit : undefined;
@@ -2772,6 +2859,12 @@ export async function writeDepositAudit(a: { tenantId: string; unitId: string; a
 }
 
 /** ใบรับมัดจำของนัดที่ยัง PAID (คีย์ฐาน booking-deposit-<id> หรือ -r<n>) — ใช้เมื่อสองทางรับเงินชนคีย์เดียวกันด้วย payload ต่างกัน */
+/** SVC B.15 ▸ PB-12: แถวที่ยังไม่ผูกแต่มีใบรับมัดจำ PAID ค้าง (ทางอื่นรับเงินแล้วล้มก่อนผูก) — ยอดที่ค้างกลุ่มไม่ขอซ้ำ */
+export async function unboundReceiptIdsOf(tenantId: string, appointmentIds: readonly string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (const id of appointmentIds) if (await liveDepositReceiptOf(tenantId, id)) out.add(id);
+  return out;
+}
 export async function liveDepositReceiptOf(tenantId: string, appointmentId: string): Promise<string | null> {
   const s = await prisma.posSale.findFirst({
     where: { tenantId, sourceModule: "POS_DEPOSIT", status: "PAID", docType: "SALE", idempotencyKey: { startsWith: `booking-deposit-${appointmentId}` } },
@@ -2781,6 +2874,12 @@ export async function liveDepositReceiptOf(tenantId: string, appointmentId: stri
   return s?.id ?? null;
 }
 
+/** SVC B.15 ▸ ป้ายต้นทางสลิปในหมายเหตุใบรับมัดจำ · อ่านกลับด้วย slipOfNote ◂ */
+const slipTag = (slipId: string) => `[slip:${slipId}]`;
+export function slipOfNote(note: string | null | undefined): string | null {
+  const m = typeof note === "string" ? /\[slip:([A-Za-z0-9_-]{1,64})\]$/.exec(note) : null; // ป้ายท้ายข้อความเท่านั้น (ชื่อบริการปลอมป้ายไม่ได้)
+  return m ? m[1] : null;
+}
 export type TakeDepositResult = { ok: true; saleId: string | null; duplicated: boolean } | { ok: false; code: "SHIFT_REQUIRED" | "CONFLICT" | "BUSY"; reason: string };
 /**
  * ใบรับมัดจำของนัด (ทุกทางรับเงิน: สลิปอนุมัติ · ร้านกดยืนยัน) — moduleTakeDeposit คีย์ฐานเดียวกับ recordDeposit (`booking-deposit-<id>`) ⇒
@@ -2788,13 +2887,15 @@ export type TakeDepositResult = { ok: true; saleId: string | null; duplicated: b
  */
 export async function takeAppointmentDeposit(i: {
   tenantId: string; unitId: string; appointmentId: string; amountSatang: number; payType: PosPayType; customerId: string | null; customerName: string | null; serviceName: string;
+  /** SVC B.15 ▸ ต้นทางของใบรับ (consumer สลิปกลุ่ม) — ฝังใน PosDeposit.note เป็น `[slip:<id>]` (ไม่มีคอลัมน์ใหม่) · ไม่ส่ง = ข้อความเดิมทุกไบต์ ◂ */
+  slipId?: string;
 }): Promise<TakeDepositResult> {
   const posSystemId = await systemForUnit(i.tenantId, i.unitId, "POS");
   if (!posSystemId) return { ok: true, saleId: null, duplicated: false };
   try {
     const posDeposit = await import("@/lib/modules/pos/deposit");
     const sale = await posDeposit.moduleTakeDeposit(
-      { tenantId: i.tenantId, unitId: i.unitId, systemId: posSystemId, keyBase: `booking-deposit-${i.appointmentId}`, amountSatang: i.amountSatang, payType: i.payType, customerId: i.customerId, customerName: i.customerName, note: `มัดจำ ${i.serviceName}`, createdBy: "module:booking" },
+      { tenantId: i.tenantId, unitId: i.unitId, systemId: posSystemId, keyBase: `booking-deposit-${i.appointmentId}`, amountSatang: i.amountSatang, payType: i.payType, customerId: i.customerId, customerName: i.customerName, note: i.slipId ? `มัดจำ ${i.serviceName} ${slipTag(i.slipId)}` : `มัดจำ ${i.serviceName}`, createdBy: "module:booking" },
       (tx, k) =>
         bookingTxSale(tx, {
           tenantId: i.tenantId,
@@ -3108,3 +3209,840 @@ export async function forfeitPendingDeposit(ctx: { tenantId: string; unitId: str
   return { forfeited: false, reason: "นัดนี้ไม่อยู่ในสถานะที่ริบมัดจำได้" };
 }
 // ◂ SVC B.8
+
+// ═════════ SVC B.15 ▸ คู่รัก/กลุ่ม — 1 การจอง = หลายงาน (groupId) · ใบสั่ง ledger/svc-briefs/svc-brief-b.15.md §3–§5 (เพิ่มเท่านั้น) ═════════
+// 🔴 ด่านเดียว (groupFit): หมอ = กติกา B.3 ต่อสมาชิกที่เวลา t เดียวกัน (busyRowsOf · slotClear · selfQuotaOk ชุดเดิม) · ห้อง = planner-group.ts
+//    (ชิ้นเดียวต่อชนิดทั้งกลุ่ม · ResBook ของ planner-resources · ช่วงถือต่อแถวตาม B.13 §4.6) — ใช้ร่วม findGroupSlots · bookGroup · ทาง staffCount · rescheduleGroup
+// 🔴 อะตอมมิก: ตรวจ → เขียน N แถว ในธุรกรรมเดียว ใต้ idem → เบอร์ → lockUnitTx (advisory สาขา → หมอทั้งสาขา → ทรัพยากรทั้งสาขา) → แถวนัด (เรียง id)
+//    ไม่มี connection ที่สองใต้ล็อก (ค่าตั้ง/โปรไฟล์/ชนิดทรัพยากร/snapshot อ่านก่อน tx) · ชนชั่วคราว ⇒ ลองใหม่ 1 ครั้ง ⇒ BUSY (ไม่ throw)
+// 🔴 หัวกลุ่ม = แถวสมาชิกแรก (createdAt, id น้อยสุด — createdAt ไล่ทีละ 1 ms ตามลำดับสมาชิก) · ถือ idempotencyKey ของคำขอ + ลิงก์จัดการนัด (SELF)
+// 🔴 ไม่มี event ใหม่ · ไม่มีคอลัมน์ใหม่ · ไม่มี groupId ⇒ ทุกทางเดิมทุกไบต์
+export type GroupMemberInput = { serviceId: string; staffId: string | null };
+export type GroupBookInput = {
+  members: GroupMemberInput[];
+  dateStr: string; startMin: number; channel: BookingChannel;
+  customerName: string; customerPhone: string; note?: string; idempotencyKey?: string; partyId?: string;
+};
+export type GroupFailCode = BookFailCode | "GROUP_SIZE";
+export type GroupBookResult =
+  | { ok: true; groupId: string; ids: string[]; staffIds: string[]; status: "PENDING" | "CONFIRMED"; holdUntil: Date | null; depositSatang: number }
+  | { ok: false; code: GroupFailCode; reason: string };
+export type GroupSlot = { startMin: number; hhmm: string; staffIds: string[] };
+export type GroupOpFail = "NOT_FOUND" | "BAD_STATE" | "FULL" | "PAST" | "BAD_INPUT" | "ON_LEAVE" | "NOT_QUALIFIED" | "LOST_RACE" | "BUSY";
+export type GroupOpResult = { ok: true; ids: string[] } | { ok: false; code: GroupOpFail; reason: string };
+
+const GROUP_MIN = 2;
+const GROUP_MAX = 10; // ช่วง schema ของ #15 (ruling G4)
+const GROUP_SIZE_REASON = `จองกลุ่มได้ ${GROUP_MIN}–${GROUP_MAX} คนต่อครั้ง`;
+export const GROUP_NOT_FOUND_REASON = "ไม่พบการจองกลุ่มนี้"; // X1: ข้อความเดียวทุกกรณี
+const GROUP_HOLDING = new Set<string>(["PENDING", "CONFIRMED", "LATE"]);
+
+/** #15 จำนวนผู้ให้บริการต่องานของบริการ (ค่าตั้งชั้น SERVICE · ไม่ใช่ตัวเลข 1–10 ⇒ 1) */
+async function serviceStaffCountOf(ctx: BookingCtx, serviceId: string): Promise<number> {
+  if (!ctx || typeof ctx.tenantId !== "string" || typeof ctx.unitId !== "string" || typeof serviceId !== "string" || !serviceId) return 1;
+  const r = await resolveSettings({ tenantId: ctx.tenantId }, ["booking.service.staffCount"], { unitId: ctx.unitId, serviceId });
+  const v = r["booking.service.staffCount"]?.value;
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= GROUP_MAX ? v : 1;
+}
+
+/** §3.2 ทาง staffCount ของ bookAppointment ⇒ bookGroup (สมาชิกแรก = หมอที่เลือก · ที่เหลือ = ใครก็ได้) · ผล = ของหัวกลุ่ม + groupId */
+async function bookViaGroup(ctx: BookingCtx, i: BookInput, n: number): Promise<BookResult> {
+  const r = await bookGroupImpl(ctx, {
+    members: Array.from({ length: n }, (_, k) => ({ serviceId: i.serviceId, staffId: k === 0 ? i.staffId : null })),
+    dateStr: i.dateStr, startMin: i.startMin, channel: i.channel, customerName: i.customerName, customerPhone: i.customerPhone,
+    ...(i.note !== undefined ? { note: i.note } : {}), ...(i.idempotencyKey !== undefined ? { idempotencyKey: i.idempotencyKey } : {}),
+    ...(i.partyId !== undefined ? { partyId: i.partyId } : {}),
+  }, { viaStaffCount: true });
+  if (!r.ok) return { ok: false, code: r.code === "GROUP_SIZE" ? "BAD_INPUT" : r.code, reason: r.code === "GROUP_SIZE" ? BAD_INPUT_REASON : r.reason };
+  return { ok: true, id: r.ids[0], staffId: r.staffIds[0], status: r.status, holdUntil: r.holdUntil, groupId: r.groupId };
+}
+
+type GSvc = { id: string; name: string; durationMin: number; priceSatang: number; bufferMin: number; depositSatang: number; bookable: boolean };
+const GSVC_SELECT = { id: true, name: true, durationMin: true, priceSatang: true, bufferMin: true, depositSatang: true, bookable: true } as const;
+/** สมาชิกในมุมด่าน: spec = หมอระบุตัว (cands = [คนนั้น]) · ใครก็ได้ = cands ทุกคนที่ทำบริการได้ (ลำดับ sortOrder, createdAt, id) */
+type GMember = { spec: string | null; svc: GSvc; buf: number; kinds: readonly string[]; cands: B3Cand[]; prefer?: readonly string[] };
+type GFit = { ok: true; picks: B3Cand[]; resIds: string[][] } | { ok: false; res: boolean };
+
+/**
+ * ด่านกลุ่ม (§4 · pure เหนือแถวที่อ่านมา): หมอระบุตัวก่อน → ใครก็ได้ตามลำดับสมาชิก (ไม่ซ้ำกับสมาชิกอื่น) · ทุกคนผ่านกติกาหมอของ B.3 ที่ t เดียวกัน ·
+ * ห้อง = ชิ้นเดียวต่อชนิดทั้งกลุ่ม · ได้ทุกคนหรือไม่ได้เลย · needWindow = หมอระบุตัวต้องอยู่ในเวลางาน (หาเวลา / SELF)
+ */
+function groupFit(dateStr: string, startMin: number, ms: readonly GMember[], rows: readonly BusyRow[], self: boolean, gate: ResBook | null, needWindow: boolean): GFit {
+  const picks: (B3Cand | null)[] = ms.map(() => null);
+  const used = new Set<string>();
+  const staffOk = (m: GMember, c: B3Cand) =>
+    (!self || selfQuotaOk(c, dayLoadOf(rows, c.staffId, dateStr), c.durationMin + m.buf)) && slotClear(dateStr, startMin, c, m.buf, rows, self);
+  for (const [k, m] of ms.entries()) {
+    if (m.spec === null) continue;
+    const c = m.cands[0];
+    if (!c || used.has(c.staffId) || (needWindow && !inWindows(c.windows, startMin, c.durationMin)) || !staffOk(m, c)) return { ok: false, res: false };
+    picks[k] = c;
+    used.add(c.staffId);
+  }
+  for (const [k, m] of ms.entries()) {
+    if (m.spec !== null) continue;
+    const c = m.cands.find((x) => !used.has(x.staffId) && inWindows(x.windows, startMin, x.durationMin) && (!self || x.onlineSharePct > 0) && staffOk(m, x));
+    if (!c) return { ok: false, res: false };
+    picks[k] = c;
+    used.add(c.staffId);
+  }
+  const chosen = picks as B3Cand[];
+  if (!gate || !ms.some((m) => m.kinds.length)) return { ok: true, picks: chosen, resIds: ms.map(() => []) };
+  const t0 = localToUtc(dateStr, startMin).getTime();
+  const got = pickGroupResources(gate, ms.map((m, k) => ({ kinds: m.kinds, start: t0, endService: t0 + chosen[k].durationMin * B3_MIN_MS, ...(m.prefer ? { prefer: m.prefer } : {}) })));
+  return got ? { ok: true, picks: chosen, resIds: got } : { ok: false, res: true };
+}
+
+/** แถวถือช่องของหมอ (busyRowsOf ทุกไบต์) ตัดแถวของนัดใน excludeIds ออก (จับด้วยหมอ + เริ่ม + จบของแถวนั้น ทีละแถว) */
+async function busyRowsExceptMany(client: Pick<Prisma.TransactionClient, "$queryRaw">, tenantId: string, staffIds: string[], dateStr: string, excludeIds: readonly string[]): Promise<BusyRow[]> {
+  const rows = await busyRowsOf(client, tenantId, staffIds, dateStr);
+  if (!excludeIds.length || !rows.length) return rows;
+  const mine = await client.$queryRaw<{ staffId: string; startAt: Date; endAt: Date }[]>`
+    SELECT "staffId", "startAt", "endAt" FROM "Appointment"
+    WHERE "id" = ANY(${[...excludeIds]}::text[]) AND "tenantId" = ${tenantId} AND "status" NOT IN ('CANCELLED', 'NO_SHOW')`;
+  const out = [...rows];
+  for (const me of mine) {
+    const k = out.findIndex((r) => r.staffId === me.staffId && r.startAt.getTime() === me.startAt.getTime() && r.endAt.getTime() === me.endAt.getTime());
+    if (k >= 0) out.splice(k, 1);
+  }
+  return out;
+}
+
+const GROUP_ROW = {
+  id: true, unitId: true, staffId: true, serviceId: true, startAt: true, customerPhone: true, assignMode: true, status: true, channel: true,
+  depositSatang: true, depositPaidAt: true, createdAt: true, policySnapshot: true, groupId: true,
+} as const;
+type GroupRow = Prisma.AppointmentGetPayload<{ select: typeof GROUP_ROW }>;
+type GroupWant = { unitId: string; startAtMs: number | null; phoneKey: string; members: readonly GroupMemberInput[] };
+
+/** ผลรวมของแถวกลุ่ม (เรียงหัวกลุ่มก่อน) — status/holdUntil ของหัวกลุ่ม · depositSatang = Σ */
+function groupOkOf(rows: readonly GroupRow[]): Extract<GroupBookResult, { ok: true }> {
+  const lead = rows[0];
+  return {
+    ok: true,
+    groupId: lead.groupId as string,
+    ids: rows.map((r) => r.id),
+    staffIds: rows.map((r) => r.staffId),
+    status: lead.status === "PENDING" ? "PENDING" : "CONFIRMED",
+    holdUntil: ((): Date | null => { // ถือช่องสั้นสุดของสมาชิกที่ค้างจ่าย (หัวกลุ่มมัดจำ 0 ได้)
+      const hs = rows.map((r) => holdUntilOf({ ...r, status: String(r.status) })).filter((x): x is Date => x !== null);
+      return hs.length ? new Date(Math.min(...hs.map((x) => x.getTime()))) : null;
+    })(),
+    depositSatang: rows.reduce((t, r) => t + r.depositSatang, 0),
+  };
+}
+
+/** key ที่เคยสร้างกลุ่มแล้ว ⇒ กลุ่มเดิม (สาขา/ข้อมูลต่าง ⇒ BAD_INPUT · มีสมาชิกไม่ถือช่องแล้ว ⇒ RELEASED) — แบบ replayOf ของ B.3 */
+async function groupReplayOf(client: Pick<Prisma.TransactionClient, "appointment">, tenantId: string, prior: { unitId: string; groupId: string | null }, want: GroupWant): Promise<GroupBookResult> {
+  const bad: GroupBookResult = { ok: false, code: "BAD_INPUT", reason: BAD_INPUT_REASON };
+  if (prior.unitId !== want.unitId || !prior.groupId) return bad;
+  const rows = await client.appointment.findMany({ where: { tenantId, unitId: want.unitId, groupId: prior.groupId }, select: GROUP_ROW, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+  if (rows.length !== want.members.length) return bad;
+  const same = rows.every((r, k) => {
+    const m = want.members[k];
+    return r.serviceId === m.serviceId && (m.staffId === null ? r.assignMode === "ANY" : r.assignMode !== "ANY" && r.staffId === m.staffId)
+      && want.startAtMs !== null && r.startAt.getTime() === want.startAtMs && bookingPhoneKey(r.customerPhone) === want.phoneKey;
+  });
+  if (!same) return bad;
+  if (rows.some((r) => r.status === "CANCELLED" || r.status === "NO_SHOW")) return { ok: false, code: "RELEASED", reason: RELEASED_REASON };
+  return groupOkOf(rows);
+}
+
+/** ตรวจ+แปลงสมาชิก (รูปข้อมูล) — ไม่ใช่ array / < 2 / > 10 ⇒ GROUP_SIZE · ช่องผิด/หมอระบุซ้ำ ⇒ BAD_INPUT */
+function groupMembersIn(raw: unknown): GroupMemberInput[] | "GROUP_SIZE" | "BAD_INPUT" {
+  if (!Array.isArray(raw) || raw.length < GROUP_MIN || raw.length > GROUP_MAX) return "GROUP_SIZE";
+  const out: GroupMemberInput[] = [];
+  for (const m of raw as unknown[]) {
+    if (!m || typeof m !== "object") return "BAD_INPUT";
+    const o = m as { serviceId?: unknown; staffId?: unknown };
+    if (typeof o.serviceId !== "string" || !o.serviceId || (o.staffId !== null && (typeof o.staffId !== "string" || !o.staffId))) return "BAD_INPUT";
+    out.push({ serviceId: o.serviceId, staffId: o.staffId as string | null });
+  }
+  const specs = out.map((m) => m.staffId).filter((x): x is string => x !== null);
+  return new Set(specs).size === specs.length ? out : "BAD_INPUT";
+}
+
+type GroupPrep =
+  | { ok: false; code: GroupFailCode; reason: string }
+  | { ok: true; ms: GMember[]; svcById: Map<string, GSvc>; rules: UnitRules; kindsBy: Map<string, string[]>; overrunMin: number; profiles: StaffDayProfile[] };
+
+/** ① บริการ/หมอ ② ลา/ทำไม่ได้ (ข้อความเดิมของ B.3) — อ่านก่อน tx ทั้งหมด */
+async function groupPrep(ctx: BookingCtx, members: readonly GroupMemberInput[], dateStr: string, self: boolean, viaStaffCount = false): Promise<GroupPrep> {
+  const { tenantId, unitId } = ctx;
+  const db = tenantDb({ tenantId, unitId });
+  const svcIds = [...new Set(members.map((m) => m.serviceId))];
+  const svcs = await db.bookingService.findMany({ where: { id: { in: svcIds }, active: true }, select: GSVC_SELECT });
+  const svcById = new Map(svcs.map((s) => [s.id, s]));
+  for (const m of members) {
+    const s = svcById.get(m.serviceId);
+    if (!s || (self && !s.bookable)) return { ok: false, code: "NOT_FOUND", reason: "ไม่พบบริการที่เลือก" };
+  }
+  const specs = members.map((m) => m.staffId).filter((x): x is string => x !== null);
+  if (specs.length) {
+    const st = await db.bookingStaff.findMany({ where: { id: { in: specs }, active: true }, select: { id: true } });
+    if (st.length !== specs.length) return { ok: false, code: "NOT_FOUND", reason: "ไม่พบช่างที่เลือก" };
+  }
+  const rules = await unitRulesOf(ctx, members[0].serviceId);
+  if (self) {
+    // G8: ทาง staffCount — สมาชิกที่ 2..N เป็น "ใครก็ได้" เสมอ (ไม่ใช่ตัวเลือกของลูกค้า) · คนแรกยังต้องตามค่าตั้ง
+    for (const sid of svcIds) {
+      if (!members.some((m, k) => m.serviceId === sid && m.staffId === null && !(viaStaffCount && k > 0))) continue;
+      if (!(await unitRulesOf(ctx, sid)).anyStaff) return { ok: false, code: "ANY_DISABLED", reason: "ร้านนี้ให้เลือกช่างก่อนจอง" };
+    }
+  }
+  const profiles = isRealDateStr(dateStr) ? await staffDayProfiles({ tenantId, unitId }, dateStr) : [];
+  const kindsBy = await resourceKindsOf(ctx, svcIds);
+  const ms: GMember[] = [];
+  for (const m of members) {
+    const svc = svcById.get(m.serviceId) as GSvc;
+    const kinds = kindsBy.get(svc.id) ?? [];
+    if (m.staffId !== null) {
+      const p = profiles.find((x) => x.staffId === m.staffId);
+      if (!p) return { ok: false, code: "NOT_FOUND", reason: "ไม่พบช่างที่เลือก" };
+      if (p.onLeave) return { ok: false, code: "ON_LEAVE", reason: `${p.name} ลาในวันที่เลือก` };
+      const c = candOf(p, svc);
+      if (!c) return { ok: false, code: "NOT_QUALIFIED", reason: `${p.name} ไม่ได้ให้บริการ "${svc.name}"` };
+      ms.push({ spec: m.staffId, svc, buf: svc.bufferMin, kinds, cands: [c] });
+    } else {
+      ms.push({ spec: null, svc, buf: svc.bufferMin, kinds, cands: profiles.flatMap((p) => { const c = p.onLeave ? null : candOf(p, svc); return c ? [c] : []; }) });
+    }
+  }
+  const overrunMin = ms.some((m) => m.kinds.length) ? await overrunMinOf(ctx) : 0;
+  return { ok: true, ms, svcById, rules, kindsBy: new Map([...kindsBy].map(([k, v]) => [k, [...v]])), overrunMin, profiles };
+}
+
+/** §3.1 bookGroup — ลำดับตรวจ = bookAppointment (B.3 ①–⑥) ต่อสมาชิก + ขนาดกลุ่ม · ตรวจล่วงหน้าไม่ล็อก แล้วตัดสินใต้ล็อก · ไม่ throw ในทางปกติ */
+export async function bookGroupImpl(ctx: BookingCtx, i: GroupBookInput, opts?: { viaStaffCount?: boolean }): Promise<GroupBookResult> {
+  const fail = (code: GroupFailCode, reason: string): GroupBookResult => ({ ok: false, code, reason });
+  const BAD = BAD_INPUT_REASON;
+  if (!ctx || typeof ctx.tenantId !== "string" || typeof ctx.unitId !== "string" || !ctx.tenantId || !ctx.unitId) return fail("NOT_FOUND", "ไม่พบบริการที่เลือก");
+  if (!i || typeof i !== "object") return fail("BAD_INPUT", BAD);
+  const members = groupMembersIn((i as { members?: unknown }).members);
+  if (members === "GROUP_SIZE") return fail("GROUP_SIZE", GROUP_SIZE_REASON);
+  if (!B3_CHANNELS.includes(i.channel) || members === "BAD_INPUT") return fail("BAD_INPUT", BAD);
+  const { tenantId, unitId } = ctx;
+  const self = isSelfChannel(i.channel);
+  const linePartyId = i.channel === "LINE" && typeof i.partyId === "string" && i.partyId ? i.partyId : null;
+  const phoneUnverified = i.channel === "ONLINE";
+  const idem = typeof i.idempotencyKey === "string" ? i.idempotencyKey.trim() || null : null;
+  const name = typeof i.customerName === "string" ? i.customerName.trim() : "";
+  const phone = typeof i.customerPhone === "string" ? i.customerPhone.trim() : "";
+  const phoneKey = bookingPhoneKey(phone);
+  const dateOk = typeof i.dateStr === "string" && isRealDateStr(i.dateStr) && Number.isInteger(i.startMin) && i.startMin >= 0 && i.startMin < 24 * 60;
+  const want: GroupWant = { unitId, startAtMs: dateOk ? localToUtc(i.dateStr, i.startMin).getTime() : null, phoneKey, members };
+
+  // ⑥ idempotency: key เคยสร้างกลุ่มแล้ว ⇒ กลุ่มเดิม
+  if (idem) {
+    const prior = await prisma.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: { unitId: true, groupId: true } });
+    if (prior) return groupReplayOf(prisma, tenantId, prior, want);
+  }
+  // ① ②
+  const prep = await groupPrep(ctx, members, dateOk ? i.dateStr : "", self, opts?.viaStaffCount === true);
+  if (!prep.ok) return fail(prep.code, prep.reason);
+  if (!dateOk || !name || phoneKey === "" || phoneKey === "0") return fail("BAD_INPUT", BAD);
+  if (linePartyId && !(await tenantDb({ tenantId }).party.findFirst({ where: { id: linePartyId, tenantId, mergedIntoId: null }, select: { id: true } }))) {
+    return fail("BAD_INPUT", BAD);
+  }
+  const { dateStr, startMin } = i;
+  const { ms, rules, overrunMin } = prep;
+  // ③ เวลา
+  const startAt = localToUtc(dateStr, startMin);
+  const nowMs = Date.now();
+  if (startAt.getTime() <= nowMs) return fail("PAST", "เวลาที่เลือกผ่านไปแล้ว");
+  if (self) {
+    if (dateStr > addDaysToDateStr(bkkDateStrAt(nowMs), rules.horizonDays - 1)) return fail("BEYOND_HORIZON", `เปิดให้จองล่วงหน้าได้ไม่เกิน ${rules.horizonDays} วัน`);
+    if (startAt.getTime() < nowMs + rules.minLeadMin * B3_MIN_MS) return fail("LEAD_TIME", `ต้องจองล่วงหน้าอย่างน้อย ${rules.minLeadMin} นาที`);
+    if (startMin % rules.stepMin !== 0) return fail("OFF_GRID", `เวลาเริ่มต้องเป็นช่วงทุก ${rules.stepMin} นาที`);
+    for (const m of ms) {
+      if (m.spec !== null && !inWindows(m.cands[0].windows, startMin, m.cands[0].durationMin)) return fail("OUTSIDE_HOURS", `${m.cands[0].name} ไม่ได้ทำงานในช่วงเวลาที่เลือก`);
+    }
+  }
+  if (ms.some((m) => m.spec === null && !m.cands.some((c) => inWindows(c.windows, startMin, c.durationMin) && (!self || c.onlineSharePct > 0)))) return fail("FULL", FULL_REASON);
+
+  // ก่อนธุรกรรม (G2): snapshot ค่าตั้งต่อ (บริการ, หมอ) · ลูกค้าสมาชิก · ข้อยกเว้นมัดจำ
+  const perStaff = (SNAPSHOT_KEYS.appointment ?? []).some((k) => {
+    const def = getDef(k) as { chain?: readonly string[] } | undefined;
+    return !!def?.chain?.includes("STAFF");
+  });
+  const snaps = new Map<string, Awaited<ReturnType<typeof snapshotPolicy>>>();
+  const snapKey = (serviceId: string, staffId: string) => (perStaff ? `${serviceId}|${staffId}` : serviceId);
+  for (const m of ms) {
+    for (const c of perStaff ? m.cands : m.cands.slice(0, 1)) {
+      const k = snapKey(m.svc.id, c.staffId);
+      if (!snaps.has(k)) snaps.set(k, await snapshotPolicy({ tenantId }, "appointment", { unitId, staffId: c.staffId, serviceId: m.svc.id }));
+    }
+  }
+  const capPhone = self && rules.maxOpenPerPhone !== null;
+  const usesRes = ms.some((m) => m.kinds.length > 0);
+  const staffIds = [...new Set(ms.flatMap((m) => m.cands.map((c) => c.staffId)))];
+  const fullOf = (res: boolean) => fail("FULL", res && !self ? RES_FULL_REASON : FULL_REASON);
+  const replayIfAny = async (): Promise<GroupBookResult | null> => {
+    if (!idem) return null;
+    const prior = await prisma.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: { unitId: true, groupId: true } });
+    return prior ? groupReplayOf(prisma, tenantId, prior, want) : null;
+  };
+  // ตรวจล่วงหน้าแบบไม่ล็อก (สูตรเดียวกับใต้ล็อก) · ลำดับรหัสเดิม: เบอร์ ④ ก่อน เต็ม ⑤
+  {
+    if (capPhone && (await openBookingsForPhone(prisma, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+      return (await replayIfAny()) ?? fail("PHONE_LIMIT", PHONE_LIMIT_REASON);
+    }
+    const rows = await busyRowsOf(prisma, tenantId, staffIds, dateStr);
+    const gate = usesRes ? await loadGate(prisma, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, overrunMin }) : null;
+    const f = groupFit(dateStr, startMin, ms, rows, self, gate, self);
+    if (!f.ok) return (await replayIfAny()) ?? fullOf(f.res);
+  }
+  const memberSystemId = await systemForUnit(tenantId, unitId, "MEMBER");
+  const customerId = memberSystemId && !phoneUnverified ? await memberCustomerIdFor({ tenantId, memberSystemId, phone, name, self }) : null;
+  const exemptTier = i.channel === "LINE"
+    ? (linePartyId ? await memberExemptTierForIdentity({ tenantId, unitId }, { partyId: linePartyId }) : null)
+    : !self && customerId ? await memberExemptTierOf({ tenantId, unitId }, customerId) : null;
+  const { lockUnitTx } = await import("./planner-run");
+
+  type TxOut = { kind: "rows"; rows: GroupRow[] } | { kind: "res"; res: GroupBookResult };
+  const attemptTx = () => prisma.$transaction(async (tx): Promise<TxOut> => {
+    if (idem) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:idem:${tenantId}:${idem}`}, 0))`;
+      const dup = await tx.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: { unitId: true, groupId: true } });
+      if (dup) return { kind: "res", res: await groupReplayOf(tx, tenantId, dup, want) };
+    }
+    if (capPhone) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:phone:${tenantId}:${unitId}:${phoneKey}`}, 0))`;
+      if ((await openBookingsForPhone(tx, tenantId, unitId, phoneKey, new Date(nowMs))) >= (rules.maxOpenPerPhone as number)) {
+        return { kind: "res", res: fail("PHONE_LIMIT", PHONE_LIMIT_REASON) };
+      }
+    }
+    await lockUnitTx(tx, ctx); // §5: advisory สาขา → หมอทั้งสาขา → ทรัพยากรทั้งสาขา
+    const rows = await busyRowsOf(tx, tenantId, staffIds, dateStr);
+    const gate = usesRes ? await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, overrunMin }) : null;
+    const f = groupFit(dateStr, startMin, ms, rows, self, gate, self);
+    if (!f.ok) return { kind: "res", res: fullOf(f.res) };
+
+    const groupId = `grp_${randomUUID()}`;
+    const baseMs = Date.now();
+    const plan = ms.map((m, k) => {
+      const c = f.picks[k];
+      const snap = snaps.get(snapKey(m.svc.id, c.staffId)) ?? snaps.get(snapKey(m.svc.id, m.cands[0].staffId))!;
+      const depositBase = computeDepositSatang(snapVal(snap, "booking.deposit.amount") ?? null, { priceSatang: c.priceSatang, durationMin: c.durationMin, serviceDepositSatang: m.svc.depositSatang });
+      const depositSatang = exemptTier && depositBase > 0 ? 0 : depositBase; // #37 ใช้กับทุกแถว (ลูกค้าคนเดียว)
+      const holding = self && holdMinutesOf(i.channel, depositSatang, snap) !== null;
+      const pending = self && (snapVal(snap, "booking.booking.requireConfirm") === true || holding);
+      return { m, c, snap, depositBase, depositSatang, pending, resIds: f.resIds[k] };
+    });
+    const status: AppointmentStatus = plan.some((p) => p.pending) ? "PENDING" : "CONFIRMED"; // สถานะเท่ากันทุกแถว
+    const created: GroupRow[] = [];
+    for (const [k, p] of plan.entries()) {
+      created.push(await tx.appointment.create({
+        data: {
+          tenantId, unitId, customerId, staffId: p.c.staffId, serviceId: p.m.svc.id, startAt,
+          endAt: localToUtc(dateStr, startMin + p.c.durationMin + p.m.svc.bufferMin),
+          status, customerName: name, customerPhone: phone, note: typeof i.note === "string" ? i.note : undefined,
+          source: self ? "ONLINE" : "STAFF", priceSatang: p.c.priceSatang, depositSatang: p.depositSatang,
+          idempotencyKey: idem ? (k === 0 ? idem : `${idem}#${k + 1}`) : null,
+          kind: "BOOKED", assignMode: p.m.spec === null ? "ANY" : "SPECIFIC", channel: i.channel,
+          groupId, createdAt: new Date(baseMs + k),
+          policySnapshot: {
+            ...p.snap,
+            job: { durationMin: p.c.durationMin, bufferMin: p.m.svc.bufferMin, ...(p.resIds.length ? { resourceIds: p.resIds } : {}) },
+            ...(exemptTier && p.depositBase > 0 ? { deposit: { exempt: "MEMBER_TIER", tier: exemptTier } } : {}),
+          } as unknown as Prisma.InputJsonValue,
+          ...(linePartyId ? { partyId: linePartyId } : {}),
+          ...(p.resIds.length ? { resourceId: p.resIds[0] } : {}),
+        },
+        select: GROUP_ROW,
+      }));
+    }
+    if (self) {
+      const lead = created[0];
+      const tok = manageToken(lead.id);
+      if (tok) await tx.appointment.updateMany({ where: { id: lead.id, tenantId, unitId }, data: { manageTokenHash: manageTokenHash(tok) } });
+      for (const r of created) {
+        await emitOutbox(tx, {
+          tenantId, unitId, type: "booking.created", idempotencyKey: `booking.created#${r.id}`,
+          payload: { appointmentId: r.id, unitId, staffId: r.staffId, kind: "BOOKED", channel: i.channel, serviceId: r.serviceId, assignMode: r.assignMode, status: r.status, groupId },
+        });
+      }
+    }
+    if (customerId) {
+      for (const [k, r] of created.entries()) {
+        await member.logActivity({
+          tenantId, customerId, unitId, module: "booking", type: "APPOINTMENT_BOOKED", refType: "Appointment", refId: r.id,
+          summary: `จองนัด ${plan[k].m.svc.name} · ${dateStr} ${minutesToHHMM(startMin)}`,
+        }, tx);
+      }
+    }
+    return { kind: "rows", rows: created };
+  }, BOOK_TX);
+  try {
+    const out = await (async (): Promise<TxOut> => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await attemptTx();
+        } catch (e) {
+          if (!isBusyDbError(e)) throw e;
+          if (attempt >= 1) return { kind: "res", res: fail("BUSY", BUSY_REASON) };
+        }
+      }
+    })();
+    if (out.kind === "res") return out.res;
+    if (!linePartyId && !phoneUnverified) for (const r of out.rows) await linkPartyAfterCommit(tenantId, r.id, name, phone);
+    return groupOkOf(out.rows);
+  } catch (e) {
+    if (idem && isP2002(e)) {
+      const dup = await prisma.appointment.findFirst({ where: { tenantId, idempotencyKey: idem }, select: { unitId: true, groupId: true } });
+      if (dup) return groupReplayOf(prisma, tenantId, dup, want);
+      // G13: คีย์ของสมาชิก (`<key>#n`) ชนนัดอื่นที่ใช้คีย์นั้นอยู่ ⇒ ไม่ throw ออก facade
+      return fail("BAD_INPUT", "รหัสอ้างอิงการจองนี้ถูกใช้กับรายการอื่นแล้ว กรุณาลองใหม่");
+    }
+    throw e;
+  }
+}
+
+/** แถวสมาชิกของกลุ่มใน ctx (หัวกลุ่มก่อน) — ทางใช้ร่วม group.ts / deposit.ts / online.ts / queue-line.ts */
+export async function groupRowsOf(ctx: { tenantId: string; unitId: string }, groupId: string) {
+  if (typeof groupId !== "string" || !groupId || groupId.length > 200) return [];
+  return prisma.appointment.findMany({
+    where: { tenantId: ctx.tenantId, unitId: ctx.unitId, groupId, kind: "BOOKED" },
+    select: { id: true, status: true, staffId: true, serviceId: true, startAt: true, endAt: true, resourceId: true, policySnapshot: true, depositSatang: true, depositPaidAt: true, rescheduleCount: true, assignMode: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+}
+
+/** นัดนี้อยู่ในกลุ่มไหม ⇒ { groupId, leaderId, ids } (หัวกลุ่ม = แถวแรก) · ไม่ใช่กลุ่ม/ไม่พบ ⇒ null */
+export async function groupLeaderOf(ctx: { tenantId: string; unitId: string }, appointmentId: string): Promise<{ groupId: string; leaderId: string; ids: string[] } | null> {
+  if (typeof appointmentId !== "string" || !appointmentId) return null;
+  const a = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { groupId: true } });
+  if (!a?.groupId) return null;
+  const rows = await groupRowsOf(ctx, a.groupId);
+  return rows.length ? { groupId: a.groupId, leaderId: rows[0].id, ids: rows.map((r) => r.id) } : null;
+}
+
+/** §3.1 findGroupSlots — ช่อง t ที่ bookGroup ณ ตอนนั้นจะผ่าน (ด่านเดียว groupFit) · หมอระบุตัวต้องอยู่ในเวลางาน · excludeGroupId = ไม่นับแถวของกลุ่มนั้น */
+export async function findGroupSlotsImpl(
+  ctx: BookingCtx,
+  q: { members: GroupMemberInput[]; dateStr: string; channel: BookingChannel },
+  opts?: { now?: Date; excludeGroupId?: string; viaStaffCount?: boolean },
+): Promise<GroupSlot[]> {
+  if (!ctx || typeof ctx.tenantId !== "string" || typeof ctx.unitId !== "string" || !q || typeof q !== "object") return [];
+  const members = groupMembersIn(q.members);
+  if (typeof members === "string" || !B3_CHANNELS.includes(q.channel) || typeof q.dateStr !== "string" || !isRealDateStr(q.dateStr)) return [];
+  const { tenantId, unitId } = ctx;
+  const self = isSelfChannel(q.channel);
+  const prep = await groupPrep(ctx, members, q.dateStr, self, opts?.viaStaffCount === true);
+  if (!prep.ok) return [];
+  const { ms, rules, overrunMin } = prep;
+  const nowMs = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now.getTime() : Date.now();
+  if (self && q.dateStr > addDaysToDateStr(bkkDateStrAt(nowMs), rules.horizonDays - 1)) return [];
+  const exclude = typeof opts?.excludeGroupId === "string" && opts.excludeGroupId ? (await groupRowsOf(ctx, opts.excludeGroupId)).map((r) => r.id) : [];
+  const staffIds = [...new Set(ms.flatMap((m) => m.cands.map((c) => c.staffId)))];
+  if (!staffIds.length) return [];
+  const rows = await busyRowsExceptMany(prisma, tenantId, staffIds, q.dateStr, exclude);
+  const gate = ms.some((m) => m.kinds.length)
+    ? await loadGate(prisma, tenantId, unitId, { lock: false, startMs: localToUtc(q.dateStr, 0).getTime(), endMs: localToUtc(q.dateStr, 24 * 60).getTime(), nowMs, overrunMin, exclude })
+    : null;
+  const out: GroupSlot[] = [];
+  // SELF = ช่องตามค่าตั้ง (OFF_GRID) · ร้านจองให้ไม่ติดช่อง (bookGroup รับทุกนาที) ⇒ แสดงละเอียดสุด 15 นาที (ไม่หยาบกว่าค่าตั้ง)
+  const step = self ? rules.stepMin : Math.min(rules.stepMin, 15);
+  for (let t = 0; t < 24 * 60; t += step) {
+    if (!earliestOk(localToUtc(q.dateStr, t).getTime(), nowMs, self, rules.minLeadMin)) continue;
+    const f = groupFit(q.dateStr, t, ms, rows, self, gate, true);
+    if (f.ok) out.push({ startMin: t, hhmm: minutesToHHMM(t), staffIds: f.picks.map((c) => c.staffId) });
+  }
+  return out;
+}
+
+class GroupAbort extends Error {
+  constructor(readonly code: GroupOpFail, readonly why: string) {
+    super(code);
+  }
+}
+type SelfOnlyFail = "LEAD_TIME" | "BEYOND_HORIZON" | "OFF_GRID" | "OUTSIDE_HOURS";
+export type GroupRescheduleResult = { ok: true; ids: string[] } | { ok: false; code: GroupOpFail | SelfOnlyFail; reason: string };
+
+/**
+ * เลื่อนทั้งกลุ่ม (§3.1 rescheduleGroup · ทางหัวกลุ่มของ rescheduleBySelf): สมาชิกที่ยังถือช่องต้อง PENDING/CONFIRMED/LATE ทุกคน · หมอเดิมทุกคน ·
+ * เวลาใหม่เดียวกัน · ไม่นับแถวของกลุ่มเอง · ด่านหมอ (SHOP = กติการ้านจองให้ · SELF = กติกาจองเอง) + ห้อง (ชิ้นเดิมว่าง ⇒ คง ·
+ * ไม่งั้นชิ้นใหม่ชนิดเดียวกันที่จุพอทั้งกลุ่ม) · ล้ม ⇒ ไม่มีแถวใดขยับ · LATE ⇒ CONFIRMED · ใต้ lockUnitTx → แถวนัดเรียง id · CAS ทุกแถว
+ */
+export async function rescheduleGroupCore(
+  ctx: BookingCtx,
+  groupId: string,
+  to: { dateStr: string; startMin: number },
+  opts: { now?: Date; mode: "SHOP" | "SELF"; requireConfirm?: boolean; leader?: { id: string; rescheduleCount: number } },
+): Promise<GroupRescheduleResult> {
+  const fail = (code: GroupOpFail | SelfOnlyFail, reason: string): GroupRescheduleResult => ({ ok: false, code, reason });
+  const NF = () => fail("NOT_FOUND", GROUP_NOT_FOUND_REASON);
+  if (!ctx || typeof ctx.tenantId !== "string" || typeof ctx.unitId !== "string" || !ctx.tenantId || !ctx.unitId) return NF();
+  const now = opts.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
+  const nowMs = now.getTime();
+  const { tenantId, unitId } = ctx;
+  const all = await groupRowsOf(ctx, groupId);
+  if (!all.length) return NF();
+  const hold = all.filter((r) => r.status !== "CANCELLED" && r.status !== "NO_SHOW");
+  if (!hold.length || hold.some((r) => !GROUP_HOLDING.has(r.status))) return fail("BAD_STATE", "การจองกลุ่มนี้เลื่อนไม่ได้ในสถานะปัจจุบัน (มีสมาชิกมาถึง/กำลังทำ/จบแล้ว)");
+  const t = to as { dateStr?: unknown; startMin?: unknown } | null;
+  if (!t || typeof t !== "object" || typeof t.dateStr !== "string" || !isRealDateStr(t.dateStr) || typeof t.startMin !== "number" || !Number.isInteger(t.startMin) || t.startMin < 0 || t.startMin >= 24 * 60) {
+    return fail("BAD_INPUT", BAD_INPUT_REASON);
+  }
+  const dateStr = t.dateStr;
+  const startMin = t.startMin;
+  const startAt = localToUtc(dateStr, startMin);
+  if (startAt.getTime() <= nowMs) return fail("PAST", "เวลาที่เลือกผ่านไปแล้ว");
+  const ids = all.map((r) => r.id);
+  if (hold.every((r) => r.startAt.getTime() === startAt.getTime())) return { ok: true, ids };
+  const self = opts.mode === "SELF";
+  const db = tenantDb({ tenantId, unitId });
+  const svcIds = [...new Set(hold.map((r) => r.serviceId))];
+  const svcs = await db.bookingService.findMany({ where: { id: { in: svcIds } }, select: GSVC_SELECT });
+  const svcById = new Map(svcs.map((s) => [s.id, s]));
+  const profiles = await staffDayProfiles({ tenantId, unitId }, dateStr, { staffIds: hold.map((r) => r.staffId) });
+  const kindsBy = await resourceKindsOf(ctx, svcIds);
+  const ms: GMember[] = [];
+  for (const r of hold) {
+    const svc = svcById.get(r.serviceId);
+    if (!svc) return NF();
+    const p = profiles.find((x) => x.staffId === r.staffId);
+    if (!p) return NF();
+    if (p.onLeave) return fail("ON_LEAVE", `${p.name} ลาในวันที่เลือก`);
+    const c = candOf(p, svc);
+    if (!c) return fail("NOT_QUALIFIED", `${p.name} ไม่ได้ให้บริการ "${svc.name}"`);
+    const buf = jobOf0(r.policySnapshot).bufferMin ?? svc.bufferMin;
+    ms.push({ spec: r.staffId, svc, buf, kinds: kindsBy.get(svc.id) ?? [], cands: [c], prefer: resourceIdsOfRow(r.resourceId, r.policySnapshot) });
+  }
+  if (self) {
+    const rules = await unitRulesOf(ctx, hold[0].serviceId);
+    if (dateStr > addDaysToDateStr(bkkDateStrAt(nowMs), rules.horizonDays - 1)) return fail("BEYOND_HORIZON", `เปิดให้จองล่วงหน้าได้ไม่เกิน ${rules.horizonDays} วัน`);
+    if (startAt.getTime() < nowMs + rules.minLeadMin * B3_MIN_MS) return fail("LEAD_TIME", `ต้องจองล่วงหน้าอย่างน้อย ${rules.minLeadMin} นาที`);
+    if (startMin % rules.stepMin !== 0) return fail("OFF_GRID", `เวลาเริ่มต้องเป็นช่วงทุก ${rules.stepMin} นาที`);
+    for (const m of ms) if (!inWindows(m.cands[0].windows, startMin, m.cands[0].durationMin)) return fail("OUTSIDE_HOURS", `${m.cands[0].name} ไม่ได้ทำงานในช่วงเวลาที่เลือก`);
+  }
+  const usesRes = ms.some((m) => m.kinds.length || (m.prefer?.length ?? 0) > 0);
+  const overrunMin = usesRes ? await overrunMinOf(ctx) : 0;
+  const holdIds = hold.map((r) => r.id);
+  const staffIds = hold.map((r) => r.staffId);
+  /** ชนิดที่ต้องตรวจต่อสมาชิก (Q6) = ชนิดของบริการ ∪ ชนิดของชิ้นที่ถือ */
+  const withNeed = (book: ResBook | null): GMember[] => (book ? ms.map((m) => ({ ...m, kinds: needKinds(m.kinds, m.prefer ?? [], book) })) : ms);
+  const fullReason = (res: boolean) => (res && !self ? RES_FULL_REASON : FULL_REASON);
+  {
+    const rows = await busyRowsExceptMany(prisma, tenantId, staffIds, dateStr, holdIds);
+    const gate = usesRes ? await loadGate(prisma, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, overrunMin, exclude: holdIds }) : null;
+    const f = groupFit(dateStr, startMin, withNeed(gate), rows, self, gate, self);
+    if (!f.ok) return fail("FULL", fullReason(f.res));
+  }
+  const { lockUnitTx, LINE_TX } = await import("./planner-run");
+  const { lockAppt, retryBusy } = await import("./queue-line");
+  let res: GroupRescheduleResult | null;
+  try {
+    res = await retryBusy(() => prisma.$transaction(async (tx): Promise<GroupRescheduleResult> => {
+      await lockUnitTx(tx, ctx);
+      const locked: NonNullable<Awaited<ReturnType<typeof lockAppt>>>[] = [];
+      for (const id of [...holdIds].sort()) {
+        const a = await lockAppt(tx, ctx, id);
+        const r0 = hold.find((x) => x.id === id)!;
+        if (!a || a.kind !== "BOOKED" || !GROUP_HOLDING.has(a.status) || a.startAt.getTime() !== r0.startAt.getTime() || a.staffId !== r0.staffId) {
+          throw new GroupAbort("LOST_RACE", "การจองกลุ่มนี้เพิ่งถูกเปลี่ยน กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง");
+        }
+        locked.push(a);
+      }
+      const rows = await busyRowsExceptMany(tx, tenantId, staffIds, dateStr, holdIds);
+      const gate = usesRes ? await loadGate(tx, tenantId, unitId, { lock: false, startMs: startAt.getTime(), endMs: startAt.getTime() + B3_DAY_MS, nowMs, overrunMin, exclude: holdIds }) : null;
+      const f = groupFit(dateStr, startMin, withNeed(gate), rows, self, gate, self);
+      if (!f.ok) return fail("FULL", fullReason(f.res));
+      for (const [k, r0] of hold.entries()) {
+        const a = locked.find((x) => x.id === r0.id)!;
+        const c = f.picks[k];
+        const m = ms[k];
+        const resIds = f.resIds[k];
+        const base = snapAfterSelfMove(a.policySnapshot, c.durationMin, m.buf);
+        const snap1 = resIds.length ? snapWithResources(base, resIds) : base;
+        const data: Prisma.AppointmentUncheckedUpdateManyInput = {
+          startAt, endAt: localToUtc(dateStr, startMin + c.durationMin + m.buf), plannedStartAt: null, plannedStaffId: null,
+          policySnapshot: withoutUnplaced(snap1) ?? snap1,
+          ...(resIds.length ? { resourceId: resIds[0] } : {}),
+          ...(a.status === "LATE" ? { status: "CONFIRMED" as AppointmentStatus, lateAt: null } : {}),
+          ...(self ? { rescheduleCount: { increment: 1 } } : {}),
+          ...(self && opts.requireConfirm && !(holdMinutesOf(a.channel, r0.depositSatang, a.policySnapshot) !== null && r0.depositPaidAt === null) ? { status: "PENDING" as AppointmentStatus } : {}),
+        };
+        const where = { id: a.id, tenantId, unitId, status: a.status, ...(opts.leader && opts.leader.id === a.id ? { rescheduleCount: opts.leader.rescheduleCount } : {}) };
+        const w = await tx.appointment.updateMany({ where, data });
+        if (w.count !== 1) throw new GroupAbort("LOST_RACE", "การจองกลุ่มนี้เพิ่งถูกเปลี่ยน กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง");
+        let key = `booking.rescheduled#${a.id}#${startAt.toISOString()}#${a.staffId}`;
+        for (let n = 2; await tx.outboxEvent.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } }, select: { id: true } }); n++) {
+          key = `booking.rescheduled#${a.id}#${startAt.toISOString()}#${a.staffId}#${n}`;
+        }
+        await emitOutbox(tx, {
+          tenantId, unitId, type: "booking.rescheduled", idempotencyKey: key,
+          payload: {
+            appointmentId: a.id, unitId, staffId: a.staffId, kind: a.kind, channel: a.channel, serviceId: a.serviceId,
+            fromStartAt: a.startAt.toISOString(), fromStaffId: a.staffId, startAt: startAt.toISOString(), by: self ? "CUSTOMER" : "SHOP", groupId,
+          },
+        });
+      }
+      return { ok: true, ids };
+    }, LINE_TX));
+  } catch (e) {
+    if (e instanceof GroupAbort) return fail(e.code, e.why);
+    throw e;
+  }
+  if (!res) return fail("BUSY", BUSY_REASON);
+  if (res.ok) await replanAfterCommit(tenantId, unitId, now);
+  return res;
+}
+
+/** policySnapshot.job.bufferMin (ไม่มี ⇒ null) */
+function jobOf0(snap: unknown): { bufferMin: number | null } {
+  const j = snap && typeof snap === "object" && !Array.isArray(snap) ? (snap as { job?: { bufferMin?: unknown } }).job : undefined;
+  return { bufferMin: typeof j?.bufferMin === "number" && Number.isFinite(j.bufferMin) ? j.bufferMin : null };
+}
+
+// ── มัดจำรวมของกลุ่ม (deposit.ts เรียก · แถวนัด = ตัวตัดสินเดียว · ล็อกแถวสมาชิกเรียง id อย่างเดียว) ──
+export type GroupClaim = "OK" | "HELD" | "GONE" | "BUSY";
+/** จองสิทธิ์ "กำลังรับเงินกลุ่ม" บนทุกสมาชิกที่ยังไม่จ่ายใน tx เดียว (expireDepositHolds ข้ามทั้งกลุ่มระหว่างนี้) · key เดียวกัน = ได้ · สมาชิกไม่ถือช่อง ⇒ GONE */
+export async function claimGroupDeposit(ctx: { tenantId: string; unitId: string }, allIds: readonly string[], needIds: readonly string[], key: string): Promise<GroupClaim> {
+  // J2: ล็อก+จองสิทธิ์ทุกแถวของกลุ่ม (รวมที่จ่ายแล้ว/หัวกลุ่ม) · ใต้ล็อก: แถวที่ต้องรับเงินต้องยังถือช่อง · ไม่มีสลิปค้างตรวจ/อนุมัติแล้วยังไม่ลงเงิน ⇒ อื่น HELD
+  const out = await apptTx(async (tx): Promise<GroupClaim> => {
+    const rows: LockedAppt[] = [];
+    for (const id of [...new Set([...allIds, ...needIds])].sort()) {
+      const r = await lockApptRow(tx, ctx.tenantId, ctx.unitId, id);
+      if (!r) {
+        if (needIds.includes(id)) return "GONE";
+        continue;
+      }
+      if (needIds.includes(id) && r.status !== "PENDING" && r.status !== "CONFIRMED") return "GONE"; // ถูกปล่อย/ยกเลิกไปก่อน ⇒ ไม่รับเงิน
+      rows.push(r);
+    }
+    const nowMs = Date.now();
+    for (const r of rows) {
+      const c = depositSnapOf(r.policySnapshot).slipClaim;
+      if (c && typeof c.until === "number" && c.until > nowMs && c.key !== key) return "HELD";
+    }
+    const slips = await tx.paymentSlip.findMany({
+      where: { tenantId: ctx.tenantId, domain: "BOOKING", refType: "APPT_DEPOSIT", refId: { in: rows.map((r) => r.id) }, status: { in: ["PENDING", "NEEDS_REVIEW", "APPROVED", "AUTO_APPROVED"] } },
+      select: { id: true, status: true },
+    });
+    for (const sl of slips) {
+      if (sl.status === "PENDING" || sl.status === "NEEDS_REVIEW") return "HELD";
+      const done = await tx.auditLog.findFirst({
+        where: { tenantId: ctx.tenantId, action: { in: ["booking.deposit.receive", "booking.deposit.slip_after_paid"] }, targetType: "Appointment", targetId: { in: rows.map((r) => r.id) }, after: { path: ["slipId"], equals: sl.id } },
+        select: { id: true },
+      });
+      if (!done) return "HELD";
+    }
+    for (const r of rows) {
+      await tx.appointment.updateMany({ where: { id: r.id, tenantId: ctx.tenantId, unitId: ctx.unitId }, data: { policySnapshot: withDepositSnap(r.policySnapshot, { slipClaim: { key, until: nowMs + SLIP_CLAIM_TTL_MS } }) } });
+    }
+    return "OK";
+  });
+  return out ?? "BUSY";
+}
+
+/**
+ * แผนแบ่งเงินของสลิปกลุ่ม (รอบแก้ 6 · มติ ทาง ข): คำนวณใหม่ใต้ล็อกแถวทั้งกลุ่ม (เรียง id) ทุกครั้งจาก "ใบรับจริง" — ไม่พึ่งแผนที่เก็บไว้ ·
+ * ใบรับพกต้นทาง (`[slip:<id>]` ใน PosDeposit.note) ⇒ ใบค้างไม่ผูกของแถวที่ยังไม่จ่ายแบ่งเป็น
+ *   ① ของสลิปนี้ ⇒ fixed (ผูกตามยอดจริง · หักจากเงินสลิป) — วางแผนใหม่ได้ผลเดิม
+ *   ② ของสลิปอื่น ⇒ แถวนั้นถูกจองโดยสลิปอื่น (สลิปนี้ไม่ให้เงินและไม่ผูก — เจ้าของผูกเองตอนลองใหม่)
+ *   ③ ไม่มีต้นทางสลิป (ร้าน/อื่น) ⇒ others (ผูกเป็นเงินของแถวนั้น · ไม่หักเงินสลิป)
+ * เงินสลิปที่เหลือ (หลังหักใบของสลิปนี้ทุกใบ รวมที่ถูกผูกไปแล้ว) ⇒ แถวค้างอื่นตามลำดับ · ส่วนเกิน ⇒ แถวใหม่สุดท้าย · ไม่มี ⇒ afterPaid ·
+ * ลงเงินแล้ว (audit receive/slip_after_paid ของสลิปนี้) ⇒ DONE
+ */
+export async function planGroupSlip(ctx: { tenantId: string; unitId: string }, allIds: readonly string[], slipId: string, amount: number): Promise<{ plan: GroupSlipPlan } | "DONE" | "GONE" | "BUSY"> {
+  const out = await apptTx(async (tx): Promise<{ plan: GroupSlipPlan } | "DONE" | "GONE"> => {
+    const locked: LockedAppt[] = [];
+    for (const id of [...allIds].sort()) {
+      const r = await lockApptRow(tx, ctx.tenantId, ctx.unitId, id);
+      if (r) locked.push(r);
+    }
+    if (!locked.length) return "GONE";
+    const done = await tx.auditLog.findFirst({
+      where: { tenantId: ctx.tenantId, action: { in: ["booking.deposit.receive", "booking.deposit.slip_after_paid"] }, targetType: "Appointment", targetId: { in: locked.map((r) => r.id) }, after: { path: ["slipId"], equals: slipId } },
+      select: { id: true },
+    });
+    if (done) return "DONE";
+    const order = new Map(allIds.map((x, k) => [x, k]));
+    const rows = [...locked].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    // ใบรับมัดจำ PAID ของทุกแถว (คีย์ booking-deposit-<id>[-r<n>]) + ยอดจริง + ต้นทาง
+    const recs: { id: string; saleId: string; amount: number; slip: string | null }[] = [];
+    for (const r of rows) {
+      const sales = await tx.posSale.findMany({
+        where: { tenantId: ctx.tenantId, sourceModule: "POS_DEPOSIT", status: "PAID", docType: "SALE", idempotencyKey: { startsWith: `booking-deposit-${r.id}` } },
+        select: { id: true, grandTotalSatang: true },
+      });
+      for (const sale of sales) {
+        const dep = await tx.posDeposit.findUnique({ where: { receiptSaleId: sale.id }, select: { amountSatang: true, tenantId: true, note: true } });
+        if (dep && dep.tenantId !== ctx.tenantId) continue;
+        recs.push({ id: r.id, saleId: sale.id, amount: dep ? dep.amountSatang : sale.grandTotalSatang, slip: slipOfNote(dep?.note) });
+      }
+    }
+    const isLive = (st: string) => st === "PENDING" || st === "CONFIRMED";
+    const unboundOf = (r: LockedAppt) => recs.filter((x) => x.id === r.id && !r.depositPaidAt && r.depositSaleId !== x.saleId);
+    const items: GroupSlipPlan["items"] = [];
+    const others: { id: string; saleId: string; amount: number }[] = [];
+    const taken = new Set<string>();
+    for (const r of rows) {
+      if (r.depositPaidAt) continue;
+      const un = unboundOf(r);
+      const mine = un.find((x) => x.slip === slipId);
+      if (mine) { items.push({ id: r.id, give: mine.amount, saleId: mine.saleId }); taken.add(r.id); continue; }
+      if (un.some((x) => x.slip !== null)) { taken.add(r.id); continue; } // ② จองโดยสลิปอื่น
+      const foreign = un.find((x) => x.slip === null);
+      if (foreign) { others.push({ id: r.id, saleId: foreign.saleId, amount: foreign.amount }); taken.add(r.id); }
+    }
+    const usedBySlip = recs.filter((x) => x.slip === slipId).reduce((t, x) => t + x.amount, 0); // ใบของสลิปนี้ทุกใบ (รวมที่ทางอื่นผูกไปแล้ว)
+    let left = Math.max(0, amount - usedBySlip);
+    const cand = rows.filter((r) => !r.depositPaidAt && Number(r.depositSatang) > 0 && !taken.has(r.id));
+    const anyLiveUnpaid = rows.some((r) => !r.depositPaidAt && Number(r.depositSatang) > 0 && isLive(r.status));
+    let lastNew = -1;
+    for (const r of anyLiveUnpaid ? cand.filter((x) => isLive(x.status)) : cand) {
+      const give = Math.min(Number(r.depositSatang), left);
+      if (give <= 0) break;
+      left -= give;
+      items.push({ id: r.id, give, isNew: true });
+      lastNew = items.length - 1;
+    }
+    if (left > 0 && lastNew >= 0) {
+      items[lastNew].give += left;
+      left = 0;
+    }
+    return { plan: { items, afterPaid: left, ...(others.length ? { others } : {}) } };
+  });
+  return out ?? "BUSY";
+}
+
+export type GroupBindItem = { appointmentId: string; saleId: string | null; amountSatang: number; /** PB-12: ใบรับค้างจากทางอื่น ⇒ ผูกแบบร้านยืนยัน + audit recover */ recovered?: boolean };
+
+/** แผนแบ่งเงินของสลิปกลุ่ม: ใบรับต่อแถว (ยอด) + ส่วนที่ไม่มีแถวรับ (แจ้งร้าน slipAfterPaid) */
+export type GroupSlipPlan = {
+  /** ใบรับของสลิปนี้ต่อแถว: saleId = ใบที่ออกแล้ว (ผูกตามยอดจริง) · isNew = ยังไม่ออก (ผู้เรียกออกแล้ววางแผนซ้ำ) */
+  items: { id: string; give: number; saleId?: string; isNew?: boolean }[]; afterPaid: number;
+  /** PB-12: ใบรับค้างไม่ผูกที่มาจากทางอื่น (ร้านเงินสด/โอนแล้วล้มก่อนผูก) ⇒ ผูกเป็นเงินของแถวนั้น · แถวนั้นไม่รับเงินสลิปนี้ */
+  others?: { id: string; saleId: string; amount: number }[];
+};
+/**
+ * แบ่งเงินสลิปกลุ่ม (pure · H1/H6/I2/J1): แถวที่ยังไม่จ่ายแต่มีใบรับอยู่แล้ว (ออกไปก่อนตาย/ทางอื่น) ⇒ ผูกตามยอดใบรับจริง (fixed · ห้ามวางแผนใหม่) ·
+ * ยอดที่เหลือ ⇒ แถวที่ยังไม่จ่ายตามลำดับสมาชิก (ถือช่องก่อน · ไม่มีแถวถือช่องค้าง ⇒ แถวที่ยังไม่จ่ายทั้งหมด = ค้างคืน) แถวละไม่เกินมัดจำ ·
+ * ส่วนเกินลงแถวสุดท้ายที่ออกใบรับใหม่ในสลิปนี้ · ไม่มีแถวใหม่รับ ⇒ afterPaid
+ */
+export function allocateGroupSlip(
+  rows: readonly { id: string; status: string; depositPaidAt: Date | null; depositSatang: number }[], amount: number, fixed: ReadonlyMap<string, number> = new Map(),
+): GroupSlipPlan {
+  // fixed = แถวที่มีเงินของตัวเองค้างอยู่แล้ว (ใบรับจากทางอื่น) ⇒ ถือว่าจ่ายแล้ว ไม่รับเงินสลิปนี้ (PB-12)
+  const items: { id: string; give: number }[] = [];
+  let left = amount;
+  const unpaid = rows.filter((r) => !r.depositPaidAt && r.depositSatang > 0 && !fixed.has(r.id));
+  const live = unpaid.filter((r) => r.status === "PENDING" || r.status === "CONFIRMED");
+  const liveFixed = rows.some((r) => !r.depositPaidAt && fixed.has(r.id) && (r.status === "PENDING" || r.status === "CONFIRMED"));
+  let lastNew = -1;
+  for (const r of live.length || liveFixed ? live : unpaid) {
+    const give = Math.min(r.depositSatang, left);
+    if (give <= 0) break;
+    left -= give;
+    items.push({ id: r.id, give });
+    lastNew = items.length - 1;
+  }
+  if (left > 0 && lastNew >= 0) {
+    items[lastNew].give += left;
+    left = 0;
+  }
+  return { items, afterPaid: Math.max(0, left) };
+}
+
+/**
+ * ผูกใบรับต่อสมาชิกในธุรกรรมเดียว (แบบ bindDepositReceipt ต่อแถว · CAS depositPaidAt IS NULL) — สถานะทุกแถวเปลี่ยนพร้อมกัน ·
+ * groupPartial (ยอดเข้ารวม < Σ) ⇒ ไม่มีแถวยืนยันเอง (SLIP) · event booking.deposit_paid + audit ต่อแถว (+ groupId)
+ */
+export async function bindGroupDeposit(i: {
+  tenantId: string; unitId: string; groupId: string; items: readonly GroupBindItem[]; via: "SLIP" | "SHOP"; groupPartial: boolean;
+  slipId?: string | null; actorUserId?: string | null; payType?: string | null;
+  /** ล็อกทุกแถวของกลุ่ม (เรียง id) ก่อนตัดสิน — กันซ้ำระดับกลุ่ม */
+  lockIds?: readonly string[];
+  /** แถวมัดจำ 0 ที่ยังรอ (PENDING) ⇒ CONFIRMED พร้อมกลุ่ม (ร้านยืนยัน) */
+  confirmIds?: readonly string[];
+  /** กันซ้ำต่อสลิประดับกลุ่ม: มี audit รับเงินของสลิปนี้ที่สมาชิกใดแล้ว ⇒ ไม่ทำอะไร (ใต้ล็อกเดียวกัน) */
+  dedupeSlipId?: string | null;
+  /** J1: ลบแผนที่ล็อกไว้ของสลิปนี้ออกจากหัวกลุ่ม (ใน tx เดียวกับการผูก) */
+  clearPlanOf?: { leaderId: string; slipId: string };
+}): Promise<{ skippedSatang: number } | "GONE" | "BUSY"> {
+  const out = await apptTx(async (tx): Promise<{ skippedSatang: number } | "GONE"> => {
+    const locked = new Map<string, LockedAppt>();
+    const all = [...new Set([...(i.lockIds ?? []), ...i.items.map((x) => x.appointmentId), ...(i.confirmIds ?? [])])].sort();
+    for (const id of all) {
+      const r = await lockApptRow(tx, i.tenantId, i.unitId, id);
+      if (r) locked.set(id, r);
+    }
+    if (!locked.size) return "GONE";
+    if (i.dedupeSlipId) {
+      const hit = await tx.auditLog.findFirst({
+        where: { tenantId: i.tenantId, action: "booking.deposit.receive", targetType: "Appointment", targetId: { in: [...locked.keys()] }, after: { path: ["slipId"], equals: i.dedupeSlipId } },
+        select: { id: true },
+      });
+      if (hit) return { skippedSatang: 0 };
+    }
+    // J1: ผูกด้วยใบรับจริงตามแผนที่ล็อกไว้ (ไม่วางแผนใหม่) · แถวยกเลิกระหว่างทาง ⇒ ผูก + ค้างคืน (เงินมาช้า) · แถวถูกจ่ายทางอื่น ⇒ skippedSatang
+    let skippedSatang = 0; // ยอดของแถวที่จ่ายแล้วจากทางอื่นระหว่างนั้น (ผู้เรียกแจ้งร้าน แบบ slipAfterPaid)
+    // ล้างแผนของสลิปนี้ที่หัวกลุ่มใน UPDATE เดียวกับแถวนั้น (ไม่ UPDATE แถวเดียวซ้ำใน tx)
+    const planLead = i.clearPlanOf?.leaderId ?? null;
+    let planCleared = !planLead || !locked.has(planLead);
+    const baseSnap = (row: LockedAppt): unknown => {
+      if (row.id !== planLead || !i.clearPlanOf) return row.policySnapshot;
+      planCleared = true;
+      const plans = { ...(depositSnapOf(row.policySnapshot).slipPlans ?? {}) };
+      delete plans[i.clearPlanOf.slipId];
+      return withDepositSnap(row.policySnapshot, { slipPlans: Object.keys(plans).length ? plans : undefined });
+    };
+    for (const id of i.confirmIds ?? []) {
+      const row = locked.get(id);
+      if (!row || row.status !== "PENDING" || row.depositPaidAt || Number(row.depositSatang) > 0) continue;
+      await tx.appointment.updateMany({ where: { id, tenantId: i.tenantId, unitId: i.unitId, status: "PENDING" }, data: { status: "CONFIRMED", policySnapshot: withDepositSnap(baseSnap(row), { slipClaim: undefined }) } });
+      row.policySnapshot = null; // แถวนี้เขียนแล้ว
+      locked.delete(id);
+      if (row.id === planLead) planCleared = true;
+    }
+    for (const it of i.items) {
+      const row = locked.get(it.appointmentId);
+      if (!row || row.depositPaidAt) {
+        // แถวถูกจ่ายด้วยใบอื่นระหว่างทาง ⇒ เงินสลิปของแถวนี้ไม่มีที่ลง (แจ้งร้าน) · ใบของสลิปนี้เองถูกผูกไปแล้ว (ร้านยืนยันชนคีย์) = เงินลงแล้ว · ใบค้างทางอื่นไม่ใช่เงินสลิป
+        if (row?.depositPaidAt && !it.recovered && (it.saleId === null || row.depositSaleId !== it.saleId)) skippedSatang += it.amountSatang; // ไม่ผูก POS: ไม่มีใบให้เทียบ ⇒ จ่ายแล้ว = ทางอื่น
+        continue;
+      }
+      const d = it.saleId ? await tx.posDeposit.findUnique({ where: { receiptSaleId: it.saleId }, select: { amountSatang: true, tenantId: true } }) : null;
+      const amount = d && d.tenantId === i.tenantId ? d.amountSatang : it.amountSatang;
+      const open = row.status === "PENDING" || row.status === "CONFIRMED";
+      const required = Number(row.depositSatang);
+      const partial = i.groupPartial || amount < required;
+      const via = it.recovered && !i.groupPartial ? "SHOP" : i.via; // m (รอบ 6): กลุ่มยังขาดเงิน ⇒ คงสถานะ ให้ร้านยืนยันพร้อมกลุ่ม (G6/G12)
+      let status = row.status;
+      if (open && (via === "SHOP" || (!partial && snapVal(row.policySnapshot, "booking.booking.requireConfirm") !== true))) status = "CONFIRMED";
+      const claimFree = withDepositSnap(baseSnap(row), { slipClaim: undefined });
+      const w = await tx.appointment.updateMany({
+        where: { id: row.id, tenantId: i.tenantId, unitId: i.unitId, depositPaidAt: null },
+        data: {
+          depositPaidAt: new Date(), depositSaleId: it.saleId,
+          ...(status !== row.status ? { status: status as AppointmentStatus } : {}),
+          policySnapshot: via === "SHOP" && open ? withDepositSnap(claimFree, { accepted: true }) : !open ? withDepositSnap(claimFree, { lateMoney: true }) : claimFree,
+        },
+      });
+      if (w.count !== 1) continue;
+      await emitOutbox(tx, {
+        tenantId: i.tenantId, unitId: i.unitId, type: "booking.deposit_paid", idempotencyKey: `booking.deposit_paid#${row.id}#${it.saleId ?? "none"}`,
+        payload: { appointmentId: row.id, unitId: i.unitId, amountSatang: amount, requiredSatang: required, via, partial, late: !open, status, groupId: i.groupId },
+      });
+      const base = { tenantId: i.tenantId, unitId: i.unitId, targetType: "Appointment", targetId: row.id };
+      if (it.recovered) {
+        await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.recover", after: { receiptSaleId: it.saleId, amountSatang: amount, partial, late: !open, groupId: i.groupId, duringSlipId: i.slipId ?? null } } });
+      } else if (i.via === "SLIP") {
+        await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.receive", after: { slipId: i.slipId ?? null, receiptSaleId: it.saleId, amountSatang: amount, partial, late: !open, groupId: i.groupId } } });
+      } else {
+        await tx.auditLog.create({ data: { ...base, actorType: "USER", actorId: i.actorUserId ?? "unknown", action: "booking.deposit.confirm", after: { receiptSaleId: it.saleId, amountSatang: amount, payType: i.payType ?? null, partial, late: !open, groupId: i.groupId } } });
+      }
+      if (!open) {
+        await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.late_money", after: { appointmentId: row.id, receiptSaleId: it.saleId, amountSatang: amount, status: row.status, via: i.via } } });
+      }
+    }
+    if (!planCleared && planLead) {
+      const lr = locked.get(planLead);
+      if (lr) await tx.appointment.updateMany({ where: { id: lr.id, tenantId: i.tenantId, unitId: i.unitId }, data: { policySnapshot: baseSnap(lr) as Prisma.InputJsonValue } });
+    }
+    return { skippedSatang };
+  });
+  return out ?? "BUSY";
+}
+// ◂ SVC B.15

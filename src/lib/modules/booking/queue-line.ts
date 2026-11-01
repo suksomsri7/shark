@@ -32,7 +32,7 @@ import {
   skippedOf,
 } from "./planner-run";
 import { loadGate, needKinds, overrunMinOf, resourceIdsOfRow, resourceKindsOf, snapWithResources, withoutUnplaced } from "./resources"; // SVC B.13
-import { bookingPhoneKey, isRealDateStr, linkPartyAfterCommit, staffDayProfiles, staffSlotClear } from "./service"; // SVC B.14 ▸ staffSlotClear ◂
+import { bookingPhoneKey, groupLeaderOf, groupRowsOf, isRealDateStr, linkPartyAfterCommit, staffDayProfiles, staffSlotClear } from "./service"; // SVC B.14 ▸ staffSlotClear ◂ · SVC B.15 ▸ groupLeaderOf/groupRowsOf ◂
 import { localToUtc } from "./slots";
 import { staffServiceTerms } from "./staff-hours";
 
@@ -43,7 +43,7 @@ export type CheckInBy = { appointmentId: string } | { token: string } | { phone:
 export type CheckInVia = "QR" | "LINE" | "PHONE" | "STAFF";
 export type CheckInFail = "NOT_FOUND" | "NOT_TODAY" | "TOO_LATE" | "NOT_CONFIRMED" | "BAD_STATE" | "AMBIGUOUS" | "NOT_SINGLE_LINE" | "BAD_INPUT" | "BUSY";
 export type CheckInResult =
-  | { ok: true; appointmentId: string; ticketId: string; ticketNumber: string; already: boolean; asWalkIn: boolean }
+  | { ok: true; appointmentId: string; ticketId: string; ticketNumber: string; already: boolean; asWalkIn: boolean; groupIds?: string[] } // SVC B.15 ▸ groupIds = สมาชิกที่เช็กอินพร้อมกัน ◂
   | { ok: false; code: CheckInFail; reason: string; candidates?: { appointmentId: string; startAt: Date; staffId: string }[] };
 
 export type WalkInChannel = "KIOSK" | "STAFF" | "REMOTE";
@@ -55,7 +55,7 @@ export type WalkInResult =
 
 export type JobFail = "NOT_FOUND" | "BAD_STATE" | "LOST_RACE" | "CLASH" | "BUSY";
 export type JobResult = { ok: true } | { ok: false; code: JobFail; reason: string };
-export type RescheduleFail = JobFail | "FULL" | "PAST" | "BAD_INPUT" | "ON_LEAVE" | "NOT_QUALIFIED" | "OUTSIDE_HOURS"; // SVC B.14 ▸ + OUTSIDE_HOURS (strictHours) ◂
+export type RescheduleFail = JobFail | "FULL" | "PAST" | "BAD_INPUT" | "ON_LEAVE" | "NOT_QUALIFIED" | "OUTSIDE_HOURS" | "GROUP"; // SVC B.14 ▸ + OUTSIDE_HOURS (strictHours) ◂ · SVC B.15 ▸ GROUP = นัดกลุ่มเลื่อนเวลารายคนไม่ได้ ◂
 export type RescheduleResult = { ok: true } | { ok: false; code: RescheduleFail; reason: string };
 
 // ───────────────────────── ข้อความ ─────────────────────────
@@ -86,6 +86,7 @@ const R = {
   RES_NOT_FOUND: "ไม่พบห้อง/เตียงที่เลือก", // SVC B.14
   RES_KIND: "ห้อง/เตียงที่เลือกไม่ใช่ชนิดที่บริการนี้ใช้", // SVC B.14
   QUEUE_SETUP: "ตั้งค่าบัตรคิวของสาขายังไม่พร้อม (ประเภทบัตรถูกปิดหรือตัวอักษรนำเลขชนประเภทอื่น) — แจ้งผู้ดูแลร้าน",
+  GROUP: "นัดนี้เป็นการจองกลุ่ม — เลื่อนทั้งกลุ่ม", // SVC B.15
 } as const;
 
 /** J1: ข้อผิดพลาดชั่วคราวของฐาน (deadlock 40P01 · serialization · หมดเวลา tx) ⇒ ลองใหม่ได้ ไม่ใช่บั๊ก */
@@ -186,12 +187,12 @@ export async function checkInToken(ctx: LineCtx, appointmentId: string): Promise
   return signLink({ tenantId: ctx.tenantId, purpose: "booking.checkin", subjectId: a.id, expMin: Math.min(minutes, SIGNED_LINK_MAX_MIN) });
 }
 
-type PhoneHit = { id: string; startAt: Date; staffId: string; status: string; policySnapshot: unknown };
+type PhoneHit = { id: string; startAt: Date; staffId: string; status: string; policySnapshot: unknown; groupId: string | null };
 
 /** นัดของเบอร์ในวันไทยของ now (คีย์เบอร์ของ B.3 ฉบับ SQL — เท่ากับ bookingPhoneKey) */
 async function phoneHits(ctx: LineCtx, key: string, dayStr: string): Promise<PhoneHit[]> {
   return prisma.$queryRaw<PhoneHit[]>`
-    SELECT a."id", a."startAt", a."staffId", a."status"::text AS "status", a."policySnapshot"
+    SELECT a."id", a."startAt", a."staffId", a."status"::text AS "status", a."policySnapshot", a."groupId"
     FROM "Appointment" a
     CROSS JOIN LATERAL (SELECT regexp_replace(COALESCE(a."customerPhone", ''), '[^0-9]', '', 'g') AS d1) p1
     CROSS JOIN LATERAL (SELECT CASE WHEN p1.d1 LIKE '0066%' THEN substr(p1.d1, 5)
@@ -233,11 +234,18 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
   };
 
   // ── หาแถว (นอกล็อก · ผลจริงตัดสินใต้ FOR UPDATE) ──
-  let id: string;
+  let id: string | undefined;
+  let group: { groupId: string; ids: string[] } | null = null; // SVC B.15
   if ("token" in by) {
     const v = verifyLink(by.token, "booking.checkin");
     if (!v || v.tenantId !== ctx.tenantId) return NF();
     id = v.subjectId;
+    // SVC B.15 ▸ QR/LINE ของสมาชิกกลุ่ม ⇒ เช็กอินทุกสมาชิกที่ยังไม่มา (CONFIRMED/LATE · วันนี้) ◂
+    const gl = await groupLeaderOf(ctx, id);
+    if (gl) {
+      const rows = (await groupRowsOf(ctx, gl.groupId)).filter((r) => r.id === id || ((r.status === "CONFIRMED" || r.status === "LATE") && dayOk(r.startAt, r.policySnapshot)));
+      if (rows.length > 1) group = { groupId: gl.groupId, ids: rows.map((r) => r.id) };
+    }
   } else if ("appointmentId" in by) {
     if (typeof by.appointmentId !== "string" || !by.appointmentId) return NF();
     id = by.appointmentId;
@@ -249,11 +257,19 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
     // ยังไม่เช็กอิน 1 นัด = นัดนั้น · ไม่มีที่ยังไม่เช็กอิน แต่มีที่เช็กอินแล้ว 1 นัด = คืนบัตรเดิม (กดซ้ำ/ยิงพร้อมกัน)
     const pool = open.length ? open : hits;
     if (pool.length === 0) return NF();
-    if (pool.length > 1) {
+    // SVC B.15 ▸ ทุกนัดที่ยังไม่เช็กอินเป็นกลุ่มเดียวกัน ⇒ เช็กอินทั้งกลุ่ม (ไม่ใช่ AMBIGUOUS · ruling G7) ◂
+    const g0 = open.length ? open[0].groupId : null;
+    if (g0 && open.every((h) => h.groupId === g0)) group = { groupId: g0, ids: open.map((h) => h.id) };
+    else if (!open.length && pool.length > 1 && pool[0].groupId && pool.every((h) => h.groupId === pool[0].groupId)) {
+      // G4: ทั้งกลุ่มเช็กอินแล้ว · กดเบอร์ซ้ำ ⇒ บัตรเดิมของหัวกลุ่ม (ไม่ใช่ AMBIGUOUS)
+      const lead = (await groupLeaderOf(ctx, pool[0].id))?.leaderId;
+      id = pool.find((h) => h.id === lead)?.id ?? pool[0].id;
+    } else if (pool.length > 1) {
       return { ok: false, code: "AMBIGUOUS", reason: R.AMBIGUOUS, candidates: pool.map((h) => ({ appointmentId: h.id, startAt: h.startAt, staffId: h.staffId })) };
     }
-    id = pool[0].id;
+    id ??= pool[0].id;
   } else return fail("BAD_INPUT", R.BAD_INPUT);
+  const rowId: string = id;
 
   const pType = await queue.ensureSystemQueueType({ tenantId: ctx.tenantId, unitId: ctx.unitId }, "APPOINTMENT", prefixesOf(values).appointment);
   if (!pType) return fail("NOT_SINGLE_LINE", R.QUEUE_SETUP);
@@ -264,9 +280,7 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
    *   ทางนี้ไม่ขอล็อกช่างเลย ⇒ ขอบรอมีทิศเดียว แถวนัด → บัตร/ลำดับเลขบัตร (ไม่มีวงกับ planner/tick)
    */
   type TxOut = { kind: "fail"; res: CheckInResult } | { kind: "ok"; res: Extract<CheckInResult, { ok: true }>; changed: boolean };
-  const attempt = () => prisma.$transaction(async (tx): Promise<TxOut> => {
-    const a = await lockAppt(tx, ctx, id);
-    if (!a) return { kind: "fail", res: NF() };
+  const oneTx = async (tx: Prisma.TransactionClient, a: LockedAppt): Promise<TxOut> => {
     const pol = latePolicyOf(a.policySnapshot, values);
     const lateArrival = (at: number) => a.kind === "BOOKED" && at >= a.startAt.getTime() + pol.graceMin * MIN_MS && pol.afterGrace === "RELEASE_REQUEUE";
     const issue = () => queue.issueTicketTx(tx, {
@@ -317,6 +331,28 @@ export async function checkIn(ctx: LineCtx, by: CheckInBy, opts: { via: CheckInV
     const asWalkIn = lateArrival(now.getTime());
     await emit(tx, ctx, "booking.checked_in", `booking.checked_in#${a.id}#${ticket.id}`, evPayload(a, { ticketId: ticket.id, via, asWalkIn }));
     return { kind: "ok", res: { ok: true, appointmentId: a.id, ticketId: ticket.id, ticketNumber: ticket.number, already: false, asWalkIn }, changed: true };
+  };
+  // SVC B.15 ▸ กลุ่ม: ล็อกแถวสมาชิกเรียง id → เช็กอินทีละแถว (บัตรต่อคน) ในธุรกรรมเดียว · ผลคืน = ของหัวกลุ่ม (หรือสมาชิกแรกที่เช็กอิน) ◂
+  const leaderId = group ? ((await groupLeaderOf(ctx, group.ids[0]))?.leaderId ?? null) : null;
+  const attempt = () => prisma.$transaction(async (tx): Promise<TxOut> => {
+    if (!group) {
+      const a = await lockAppt(tx, ctx, rowId);
+      if (!a) return { kind: "fail", res: NF() };
+      return oneTx(tx, a);
+    }
+    // G1: ล็อกแถวสมาชิกครบ (เรียง id) ก่อน แล้วค่อยออกบัตรทีละแถว (§5 แถวนัดก่อนบัตร)
+    const rowsL: LockedAppt[] = [];
+    for (const gid of [...group.ids].sort()) {
+      const a = await lockAppt(tx, ctx, gid);
+      if (a) rowsL.push(a);
+    }
+    const outs = new Map<string, TxOut>();
+    for (const a of rowsL) outs.set(a.id, await oneTx(tx, a));
+    const okIds = group.ids.filter((x) => outs.get(x)?.kind === "ok");
+    if (!okIds.length) return outs.get(leaderId ?? group.ids[0]) ?? outs.values().next().value ?? { kind: "fail", res: NF() };
+    const pickId = leaderId && okIds.includes(leaderId) ? leaderId : okIds[0];
+    const pick = outs.get(pickId) as Extract<TxOut, { kind: "ok" }>;
+    return { kind: "ok", res: { ...pick.res, groupIds: okIds }, changed: okIds.some((x) => (outs.get(x) as Extract<TxOut, { kind: "ok" }>).changed) };
   }, LINE_TX);
   let out: TxOut | null;
   try {
@@ -681,6 +717,44 @@ export async function cancelByShop(ctx: LineCtx, appointmentId: string, opts?: {
   });
 }
 
+/**
+ * SVC B.15 ▸ ยกเลิกทั้งกลุ่มฝั่งร้าน (group.ts cancelGroup): ล็อกแถวสมาชิกเรียง id อย่างเดียว (ไม่ล็อกหมอ/ทรัพยากรหลังแถวนัด · §5) →
+ * CANCELLED/NO_SHOW แล้วข้าม · มีสมาชิก IN_SERVICE/DONE ⇒ BAD_STATE ไม่แตะใคร · ที่เหลือ ⇒ แบบ cancelByShop ทุกขั้น (บัตร · เครื่องหมาย Q18 ·
+ * checkedInAt Q19) + booking.cancelled ต่อสมาชิก (คีย์เดิม + groupId) ใน tx เดียว · ยกเลิกแล้วทั้งกลุ่ม ⇒ ok ไม่ยิงซ้ำ · replan หลัง commit ◂
+ */
+export async function cancelGroupByShop(ctx: LineCtx, groupId: string, ids: readonly string[], opts?: { now?: Date; note?: string }): Promise<JobResult> {
+  const now = nowOf(opts);
+  if (!okCtx(ctx) || !ids.length) return jobFail("NOT_FOUND", R.JOB_NOT_FOUND);
+  type Out = { ok: true; changed: boolean } | { ok: false; code: JobFail; reason: string };
+  const res = await retryBusy(() => prisma.$transaction(async (tx): Promise<Out> => {
+    const rows: LockedAppt[] = [];
+    for (const id of [...ids].sort()) {
+      const a = await lockAppt(tx, ctx, id);
+      if (a) rows.push(a);
+    }
+    if (rows.some((a) => a.status === "IN_SERVICE" || a.status === "DONE")) return jobFail("BAD_STATE", "มีสมาชิกในกลุ่มกำลังรับบริการหรือเสร็จแล้ว — ยกเลิกทั้งกลุ่มไม่ได้ (ยกเลิกรายคนแทน)") as Out;
+    const todo = rows.filter((a) => SHOP_CANCELLABLE.has(a.status));
+    for (const a of todo) {
+      const unmark = withoutUnplaced(a.policySnapshot);
+      if (!(await casAppt(tx, ctx, a, { status: "CANCELLED", cancelReason: "SHOP", plannedStartAt: null, plannedStaffId: null, ...(a.status === "ARRIVED" ? { checkedInAt: null } : {}), ...(unmark !== undefined ? { policySnapshot: unmark } : {}) }))) {
+        throw new TxAbort();
+      }
+      if (a.queueTicketId) {
+        await queue.moveTicketTx(tx, { tenantId: ctx.tenantId, unitId: ctx.unitId }, a.queueTicketId, "CANCELLED", { now, actorType: "STAFF", actorId: ctx.actorUserId ?? null, cancelReason: "STAFF" });
+      }
+      await emit(tx, ctx, "booking.cancelled", `booking.cancelled#${a.id}`, evPayload(a, { ticketId: a.queueTicketId, reason: "SHOP", from: a.status, groupId }));
+    }
+    return { ok: true, changed: todo.length > 0 };
+  }, LINE_TX)).catch((e: unknown) => {
+    if (e instanceof TxAbort) return { ok: false as const, code: "LOST_RACE" as const, reason: R.LOST_RACE };
+    throw e;
+  });
+  if (!res) return jobFail("BUSY", R.BUSY);
+  if (!res.ok) return res;
+  if (res.changed) await replan(ctx, now);
+  return { ok: true };
+}
+
 const RESCHEDULABLE = new Set<string>(["PENDING", "CONFIRMED", "LATE"]);
 
 /** N1: policySnapshot ที่ตัด job.manualHold ออก (คีย์อื่นคงเดิมทุกตัว) · ไม่มี manualHold ⇒ undefined (ไม่เขียน snapshot) */
@@ -716,7 +790,7 @@ export async function rescheduleByShop(
   const { tenantId, unitId } = ctx;
   const cur = await prisma.appointment.findFirst({
     where: { id: appointmentId, tenantId, unitId },
-    select: { id: true, status: true, staffId: true, serviceId: true, policySnapshot: true, resourceId: true },
+    select: { id: true, status: true, staffId: true, serviceId: true, policySnapshot: true, resourceId: true, groupId: true, startAt: true },
   });
   if (!cur) return fail("NOT_FOUND", R.JOB_NOT_FOUND);
   if (!RESCHEDULABLE.has(cur.status)) return fail("BAD_STATE", R.JOB_BAD_STATE);
@@ -734,6 +808,8 @@ export async function rescheduleByShop(
     if (!Number.isFinite(ms) || typeof expect?.staffId !== "string" || !expect.staffId) return fail("BAD_INPUT", R.BAD_INPUT);
     expectMs = ms;
   }
+  // SVC B.15 ▸ นัดกลุ่ม: เปลี่ยนหมออย่างเดียว (เวลาเดิม) ได้ · เปลี่ยนเวลา ⇒ GROUP (เลื่อนทั้งกลุ่มที่ rescheduleGroup · ruling G9) ◂
+  if (cur.groupId && localToUtc(to.dateStr, to.startMin).getTime() !== cur.startAt.getTime()) return fail("GROUP", R.GROUP);
   const staffId = to.staffId ?? cur.staffId;
   const service = await prisma.bookingService.findFirst({
     where: { id: cur.serviceId, tenantId, unitId },
@@ -778,6 +854,7 @@ export async function rescheduleByShop(
     const a = await lockAppt(tx, ctx, appointmentId);
     if (!a) return fail("NOT_FOUND", R.JOB_NOT_FOUND);
     if (!RESCHEDULABLE.has(a.status)) return fail("BAD_STATE", R.JOB_BAD_STATE);
+    if (cur.groupId && a.startAt.getTime() !== startAt.getTime()) return fail("GROUP", R.GROUP); // SVC B.15 ▸ ใต้ล็อก (กลุ่มถูกเลื่อนระหว่างนั้น) ◂
     // SVC B.14 ▸ จอเก่า: เวลา/คนที่ผู้ใช้เห็นต้องตรงแถวใต้ล็อก (คน = staffId หรือคนตามแผนของตัววางคิว) ◂
     const [meta] = await tx.$queryRaw<{ plannedStaffId: string | null; updatedAt: Date }[]>`
       SELECT "plannedStaffId", "updatedAt" FROM "Appointment" WHERE "id" = ${a.id} AND "tenantId" = ${tenantId} AND "unitId" = ${unitId}`;

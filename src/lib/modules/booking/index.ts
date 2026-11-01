@@ -51,3 +51,7 @@ export { localToUtc } from "./slots";
 // SVC B.14 ▸ ปฏิทินนัด (วัน/สัปดาห์ · คน/ห้อง · ลากย้าย · จองจากปฏิทิน) ◂
 export { loadCalendar, moveAppointment, bookForCustomer } from "./calendar";
 export type { CalendarActor, CalendarView, CalColumn, CalBlock, CalMode, CalRange, CalMoveTo, CalMoveFail, CalMoveResult } from "./calendar";
+
+// SVC B.15 ▸ คู่รัก/กลุ่ม (1 การจอง = หลายงาน · groupId) — จอปฏิทิน B.14 / ทางอื่นนอกโมดูลเรียกผ่าน facade ◂
+export { bookGroup, findGroupSlots, groupOf, cancelGroup, rescheduleGroup } from "./group";
+export type { GroupBookInput, GroupBookResult, GroupFailCode, GroupMemberInput, GroupOpFail, GroupOpResult, GroupSlot, GroupMember, GroupDeposit, GroupView } from "./group";
