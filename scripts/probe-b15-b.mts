@@ -2009,6 +2009,12 @@ try {
         await insertRow("OutboxEvent", { ...e, id: evB, idempotencyKey: `b15p-slipB-${idB}`, payload: JSON.stringify({ ...(e.payload ?? {}), slipId: idB }), status: "PENDING", processedAt: null, createdAt: new Date() });
       } catch (err) { extra.push(`ตั้งฉาก B: สร้างสลิป B ไม่ได้ ${errMsg(err).slice(0, 160)}`); }
       const outsB = evB ? await fan("p16vi-b", [[{ op: "consumeEvt", a: [evB] }], [{ op: "consumeEvt", a: [evB], delayMs: 4 }]]) : [];
+      // จุดตรวจ: หลัง consumer B คืน OK (ก่อน A ลองใหม่ · ก่อนระบายคิว) — B ต้องลงเงินของตัวเองแล้ว (receive/slip_after_paid ของ B) ·
+      //   ไม่งั้นตัวระบายจริงจะปิด event B (DONE) ⇒ เงิน B หายเงียบ · หรือ consumer ต้อง throw ให้คิวลองใหม่
+      const bAud = evB ? await q(`SELECT action, (after->>'amountSatang')::int AS amount FROM "AuditLog" WHERE "targetId" = ANY($1::text[]) AND action IN ('booking.deposit.receive','booking.deposit.slip_after_paid') AND after->>'slipId' <> $2`, [g.ids, sA.slipId]) : [];
+      const bOk = outsB.length > 0 && outsB.every((o) => o.r?.ok && !o.threw);
+      console.log(`   ↳ P16-vi จุดตรวจหลัง B: consumer B ${bOk ? "คืน OK" : "throw/ไม่ OK"} · audit ของ B ${bAud.length} รายการ ${J(bAud.map((x) => `${x.action.replace("booking.deposit.", "")}:${x.amount}`))}`);
+      if (evB) rec("P16-vi-b", !(bOk && bAud.length === 0), "MAJOR", "vi จุดตรวจ: consumer สลิป B คืน OK ⇒ ต้องลงเงิน B แล้ว (ไม่งั้นตัวระบายจริงปิด event แล้วเงิน B หาย) · ถ้ายังลงไม่ได้ต้อง throw ให้คิวลองใหม่", { bOk, bAudit: bAud.length, codes: codesOf(outsB) });
       const outsA = await fan("p16vi-a", [[{ op: "consumeEvt", a: [sA.evId] }], [{ op: "consumeEvt", a: [sA.evId], delayMs: 4 }]]);
       await pump();
       const b = await bi6(g.ids);
