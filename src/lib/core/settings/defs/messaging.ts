@@ -17,6 +17,8 @@ const DEFS: SettingDef[] = [
       .refine((a) => new Set(a).size === a.length, { message: "ช่องทางซ้ำ" }),
     defaults: { _fallback: ["LINE", "WEB_LINK"] },
     chain: ["TENANT", "UNIT"], editPermission: EDIT,
+    // G1UI ▸ ป้ายไทยของรายการ (เพิ่มอย่างเดียว) ◂
+    tableTh: { ordered: true, item: { kind: "enum", labelTh: "ช่องทาง", options: { LINE: "LINE ร้าน", SMS: "SMS", WEB_LINK: "ลิงก์เว็บ" } } },
   },
   {
     key: "messaging.lineConnectionId", domain: "messaging", group: "channel", type: "text", labelTh: "LINE OA ที่ใช้ส่งของสาขานี้",
@@ -29,6 +31,7 @@ const DEFS: SettingDef[] = [
     schema: z.object({ start: HHMM, end: HHMM }).nullable(),
     defaults: { _fallback: { start: "21:00", end: "08:00" } },
     chain: ["TENANT", "UNIT"], editPermission: EDIT,
+    tableTh: { nullTh: "ส่งได้ทุกเวลา", fields: { start: { kind: "clockText", labelTh: "เริ่มงดส่ง", shortTh: "งดส่ง" }, end: { kind: "clockText", labelTh: "ถึง", shortTh: "ถึง" } }, starter: { start: "21:00", end: "08:00" } }, // G1UI
   },
 ];
 

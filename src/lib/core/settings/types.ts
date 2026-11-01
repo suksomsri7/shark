@@ -82,9 +82,59 @@ export type SettingDef = {
   enumLabelsTh?: Record<string, string>;
   /** B.11 ▸ type=percent: หน่วยที่เก็บ — 100 = % เต็ม (0–100) · 10000 หรือไม่ตั้ง = basis point (พฤติกรรมเดิม) · ตั้งได้เฉพาะ percent ◂ */
   percentScale?: 100 | 10000;
+  /** G1UI ▸ type=table: ป้ายไทย + ชนิดของช่องย่อย (หน้าตั้งค่าแสดง/แก้เป็นช่องย่อย ไม่ใช่ข้อความดิบ) — JSON ล้วน (ส่งเข้าโมเดลฟอร์มได้) ◂ */
+  tableTh?: TableSpecTh;
   /** D.13 ▸ writeVia = ป้ายไทยของหน้าเฉพาะที่ต้องไปเปลี่ยนค่านี้ — action ทั่วไป (saveSettingsAction/resetSettingAction) ปฏิเสธคีย์ที่มี writeVia ◂ */
   writeVia?: string;
 };
+
+/**
+ * G1UI ▸ ชนิดช่องย่อยของค่าชนิดตาราง
+ *  int = จำนวนเต็ม (+unitTh) · bp = basis point แสดงเป็น % · minutes = นาที · duration = นาที แสดงแบบ "1 วัน · 2 ชม." · days = วัน
+ *  clock = นาทีจากเที่ยงคืน แสดง/กรอก HH:MM · clockText = ข้อความ HH:MM · bool · enum (options ป้ายไทย) · text · object (fields ซ้อน)
+ */
+export type TableCellKind = "int" | "bp" | "minutes" | "duration" | "days" | "clock" | "clockText" | "bool" | "enum" | "text" | "object";
+export type TableCellSpecTh = {
+  kind: TableCellKind;
+  /** ป้ายเต็ม (ตัวแก้) */
+  labelTh: string;
+  /** ป้ายนำหน้าในข้อความสรุป ("" = แสดงค่าอย่างเดียว · ไม่ตั้ง = ใช้ labelTh) */
+  shortTh?: string;
+  /** หน่วยท้ายค่า (int) */
+  unitTh?: string;
+  /** enum: ป้ายไทยทุกตัวเลือก (ลำดับ = ลำดับในตัวเลือก) */
+  options?: Record<string, string>;
+  /** enum: ป้ายในข้อความสรุป ("" = ไม่แสดงช่องนี้ในสรุป) */
+  summaryOptions?: Record<string, string>;
+  /** ค่า null แสดงว่าอะไร (และช่องว่าง = null ได้) */
+  nullTh?: string;
+  /** ป้ายนำในสรุปเมื่อค่าเป็น null ("" = แสดง nullTh อย่างเดียว · ไม่ตั้ง = ใช้ shortTh) */
+  nullShortTh?: string;
+  /** bool: ป้ายเมื่อเปิด/ปิดในสรุป */
+  onTh?: string;
+  offTh?: string;
+  /** ช่องที่อาจไม่มีในค่า (ไม่มี = ข้ามในสรุป) */
+  optional?: boolean;
+  /** kind=object */
+  fields?: Record<string, TableCellSpecTh>;
+};
+export type TableSpecTh = {
+  /** ค่าเป็นออบเจกต์: ช่องย่อยตามลำดับที่ต้องแสดง */
+  fields?: Record<string, TableCellSpecTh>;
+  /** ค่าเป็นรายการ: ชนิดของแต่ละรายการ */
+  item?: TableCellSpecTh;
+  /** รายการ: ลำดับมีความหมาย (แสดงลูกศร · ปุ่มเลื่อนขึ้น) */
+  ordered?: boolean;
+  /** รายการว่างแสดงว่าอะไร */
+  emptyTh?: string;
+  /** ค่าทั้งก้อนเป็น null แสดงว่าอะไร */
+  nullTh?: string;
+  /** ออบเจกต์แบบมีตัวแยกชนิด: ช่องตัวแยก + ช่องที่เหลือของแต่ละชนิด (ค่าตั้งต้นเมื่อเปลี่ยนชนิด) */
+  discriminator?: { key: string; variants: Record<string, { [k: string]: TableJson }> };
+  /** ค่าตั้งต้นเมื่อเปลี่ยนจาก null เป็น "ตั้งค่า" (ไม่ตั้ง ⇒ ค่าแม่แบบ) */
+  starter?: TableJson;
+};
+export type TableJson = null | string | number | boolean | TableJson[] | { [k: string]: TableJson };
 
 export type TemplateDef = {
   key: string;

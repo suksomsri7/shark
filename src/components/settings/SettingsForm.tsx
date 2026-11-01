@@ -21,6 +21,7 @@ import {
   type SettingsField,
   type SettingsFormModel,
 } from "./settings-shared";
+import TableSpecEditor from "./TableSpecEditor";
 
 type Actions = {
   save(changes: unknown, opts?: { ackLegalWarn?: boolean }): Promise<SetResult>;
@@ -432,6 +433,17 @@ function FieldBox({ f, c }: { f: SettingsField; c: FieldCtx }) {
       widget =
         f.key === "payments.receiver" ? (
           <ReceiverEditor id={id} value={cur} disabled={disabled} onChange={(v) => c.setValue(f, v)} />
+        ) : f.tableSpec ? (
+          // G1UI-1 ▸ ทะเบียนให้ป้ายช่องย่อย ⇒ ช่องย่อยป้ายไทย (% · นาที · เวลา · ตัวเลือกไทย) ◂
+          <TableSpecEditor
+            id={id}
+            spec={f.tableSpec}
+            value={cur}
+            disabled={disabled}
+            nullable={f.nullable}
+            proto={f.templateValue ?? TABLE_STARTERS[f.key]}
+            onChange={(v) => c.setValue(f, v)}
+          />
         ) : recordSpecOf(f, cur) ? (
           // SVC D.15 ▸ record (เช่น rooms.access.buildingAssignments) ⇒ ตาราง รหัส | ค่า ◂
           <RecordEditor id={id} value={isObj(cur) ? cur : {}} disabled={disabled} spec={recordSpecOf(f, cur) as RecordSpec} onChange={(v) => c.setValue(f, v)} />

@@ -16,6 +16,9 @@ import { loadSvcQcEnv } from "./svc-qc-env.mjs";
 import { SQC, SQC_DORM_PORTAL_SCENE as SCN } from "./svc-qc-data.mjs";
 
 const LABEL = "svc-qc-portal-scene";
+// ORACLE-EDIT (ผู้คุม 1 พ.ย. · G1UI-QR): PaymentProfile ระดับร้านใช้ชื่อร้าน (SQC_TENANT.name) — เดิมใช้ SCN.receiver.displayName = ชื่อหอ
+//   ⇒ QR มัดจำร้านบาร์เบอร์ (สืบผู้รับจากร้าน) ขึ้นชื่อหอ · --clear ลบทั้งชื่อใหม่และชื่อรุ่นก่อน (ให้ rebuild สร้างใหม่ด้วยชื่อร้าน)
+const SHOP_RECEIVER = { promptpayId: SCN.receiver.promptpayId, displayName: SQC.tenant.name };
 const argv = process.argv.slice(2);
 const unknown = argv.filter((a) => a !== "--clear");
 if (unknown.length) {
@@ -44,7 +47,7 @@ try {
       sum.removed++;
     }
     // โปรไฟล์ที่ฉากสร้าง (ค่าตรงฉากทุกช่อง) ⇒ ลบ · ของร้าน/ของข้อสอบอื่นไม่แตะ
-    sum.removed += (await prisma.paymentProfile.deleteMany({ where: { tenantId, promptpayId: SCN.receiver.promptpayId, displayName: SCN.receiver.displayName } })).count;
+    sum.removed += (await prisma.paymentProfile.deleteMany({ where: { tenantId, promptpayId: SCN.receiver.promptpayId, displayName: { in: [SHOP_RECEIVER.displayName, SCN.receiver.displayName] } } })).count; // ORACLE-EDIT G1UI-QR
     if (existsSync(FILE)) {
       rmSync(FILE);
       sum.removed++;
@@ -80,7 +83,7 @@ try {
       const pp = await prisma.paymentProfile.findUnique({ where: { tenantId }, select: { id: true } });
       const otherSetting = await prisma.settingValue.count({ where: { tenantId, key: RKEY, NOT: { setById: MARK } } });
       if (!pp && otherSetting === 0) {
-        await prisma.paymentProfile.create({ data: { tenantId, promptpayId: SCN.receiver.promptpayId, displayName: SCN.receiver.displayName } });
+        await prisma.paymentProfile.create({ data: { tenantId, promptpayId: SHOP_RECEIVER.promptpayId, displayName: SHOP_RECEIVER.displayName } }); // ORACLE-EDIT G1UI-QR
         sum.created++;
       }
       const ended = await prisma.dormLease.findFirst({ where: { tenantId, unitId, status: "ENDED" }, select: { id: true }, orderBy: [{ id: "asc" }] });

@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────
 import { z } from "zod";
 import { defineSettings } from "../registry";
-import type { GroupIssue, GroupRule, ScopeKind, SettingDef, SettingValueType, TemplateDef } from "../types";
+import type { GroupIssue, GroupRule, ScopeKind, SettingDef, SettingValueType, TableSpecTh, TemplateDef } from "../types";
 
 const EDIT = "booking.settings.edit";
 const MONEY_EDIT = "booking.settings.money";
@@ -265,7 +265,7 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.general.resourceLabel", type: "text", labelTh: "คำเรียกทรัพยากร", schema: LABEL, chain: U, v: ["เก้าอี้", "เตียง/ห้อง", "ห้องตรวจ"] }), // #3
   row({ key: "booking.general.customerLocales", type: "table", labelTh: "ภาษาที่ลูกค้าเลือกได้", schema: uniqArr(LOCALE, 1, 2), chain: U, v: [["th", "en"], ["th", "en"], ["th"]] }), // #4
   row({
-    key: "booking.general.defaultHours", type: "table", labelTh: "เวลาทำการเริ่มต้น (นาทีจากเที่ยงคืน)", helpTh: "ค่าตั้งต้นของสาขาใหม่ — เวลาทำการในตาราง BookingHours ชนะ", // #5
+    key: "booking.general.defaultHours", type: "table", labelTh: "เวลาทำการเริ่มต้น", helpTh: "ค่าตั้งต้นของสาขาใหม่ — ถ้าตั้งเวลาทำการรายวันไว้ ใช้เวลาทำการรายวัน", // #5
     schema: z
       .object({ openMin: z.number().int().min(0).max(1440), closeMin: z.number().int().min(0).max(1440) })
       .strict()
@@ -284,13 +284,13 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.staff.customerCanChoose", type: "bool", labelTh: "ลูกค้าเลือกผู้ให้บริการได้", schema: z.boolean(), chain: ST, v: x3(true) }), // #10
   row({
     key: "booking.staff.servicesMode", type: "enum", labelTh: "บริการที่ผู้ให้บริการทำได้", // #11
-    helpTh: "ALL = ทำทุกบริการ · ASSIGNED = เฉพาะที่ผูกไว้ (แถว BookingStaffService)",
+    helpTh: "ทำได้ทุกบริการ หรือเฉพาะบริการที่ผูกไว้กับแต่ละคน",
     schema: z.enum(["ALL", "ASSIGNED"]), chain: ST, v: ["ALL", "ALL", "ASSIGNED"],
   }),
 
   // ── บริการ (#12–18) ──
   row({ key: "booking.service.durationSource", type: "enum", labelTh: "แหล่งระยะเวลาบริการ", schema: z.enum(["CATALOG"]), chain: SV, v: x3("CATALOG") }), // #12
-  row({ key: "booking.service.cleanupMin", type: "minutes", labelTh: "เวลาเก็บ/ทำความสะอาดหลังบริการ (นาที)", helpTh: "ค่าตั้งต้นของบริการใหม่ — บริการที่มีอยู่ใช้ BookingService.bufferMin (คอลัมน์ชนะ)", schema: MIN, chain: U_SV_RS, v: [0, 10, 5] }), // #13
+  row({ key: "booking.service.cleanupMin", type: "minutes", labelTh: "เวลาเก็บ/ทำความสะอาดหลังบริการ (นาที)", helpTh: "ค่าตั้งต้นของบริการใหม่ — บริการที่มีอยู่ใช้เวลาเก็บห้องที่ตั้งในบริการนั้น", schema: MIN, chain: U_SV_RS, v: [0, 10, 5] }), // #13
   row({ key: "booking.service.resourceRule", type: "enum", labelTh: "การใช้ทรัพยากรของบริการ", schema: z.enum(["STAFF_CHAIR", "PER_SERVICE", "EXAM_ROOM"]), chain: SV, v: ["STAFF_CHAIR", "PER_SERVICE", "EXAM_ROOM"] }), // #14
   // SVC B.13 ▸ ชนิดทรัพยากรที่บริการต้องใช้ (ร้านประกาศเองรายบริการ = ภาพ 11 "ต้องใช้") · ค่าเริ่ม [] ทุกแม่แบบ = ไม่ใช้ทรัพยากร (พฤติกรรมเดิม) ◂
   row({
@@ -305,10 +305,10 @@ const DEFS: SettingDef[] = [
     schema: z.number().int().min(0).max(600), chain: U, v: x3(60),
   }),
   row({ key: "booking.service.staffCount", type: "int", labelTh: "จำนวนผู้ให้บริการต่องาน", schema: z.number().int().min(1).max(10), chain: SV, v: x3(1) }), // #15
-  row({ key: "booking.service.onlineBookable", type: "bool", labelTh: "จองออนไลน์ได้", helpTh: "ค่าตั้งต้นของบริการใหม่ — บริการที่มีอยู่ใช้ BookingService.bookable (คอลัมน์ชนะ)", schema: z.boolean(), chain: SV, v: x3(true) }), // #16
+  row({ key: "booking.service.onlineBookable", type: "bool", labelTh: "จองออนไลน์ได้", helpTh: "ค่าตั้งต้นของบริการใหม่ — บริการที่มีอยู่ใช้สวิตช์จองออนไลน์ของบริการนั้น", schema: z.boolean(), chain: SV, v: x3(true) }), // #16
   row({
     key: "booking.service.walkIn", type: "table", labelTh: "รับ walk-in", // #17
-    helpTh: "closeAtOrAboveMin = ปิดรับ walk-in สำหรับบริการที่ยาวตั้งแต่กี่นาที (ว่าง = รับทุกบริการ)",
+    helpTh: "ปิดรับ walk-in สำหรับบริการที่ยาวตั้งแต่กี่นาที (ว่าง = รับทุกบริการ)",
     schema: z.object({ enabled: z.boolean(), closeAtOrAboveMin: POS_MIN.nullable() }).strict(),
     chain: SV, v: [{ enabled: true, closeAtOrAboveMin: 90 }, { enabled: true, closeAtOrAboveMin: null }, { enabled: true, closeAtOrAboveMin: null }],
   }),
@@ -348,7 +348,7 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.deposit.method", type: "enum", labelTh: "วิธีรับมัดจำ", schema: z.enum(["NONE", "PROMPTPAY_SLIP"]), chain: U, v: ["PROMPTPAY_SLIP", "PROMPTPAY_SLIP", "NONE"] }), // #33
   row({
     key: "booking.deposit.amount", type: "table", labelTh: "ยอดมัดจำ", // #34
-    helpTh: "PERCENT = % ของราคา (bp) เมื่อบริการยาวตั้งแต่ minDurationMin นาที · PER_SERVICE = ตามที่ตั้งในบริการ · ว่าง = ไม่เก็บ",
+    helpTh: "% ของราคา (เฉพาะบริการที่ยาวตั้งแต่ที่กำหนด) หรือตามที่ตั้งในแต่ละบริการ · ไม่ตั้ง = ไม่เก็บ",
     schema: z
       .discriminatedUnion("mode", [
         z.object({ mode: z.literal("PERCENT"), bp: BP, minDurationMin: POS_MIN.nullable() }).strict(),
@@ -380,7 +380,7 @@ const DEFS: SettingDef[] = [
     schema: z.object({ walkIn: PREFIX, appointment: PREFIX, priority: PREFIX.nullable() }).strict(),
     chain: U, v: [{ walkIn: "A", appointment: "P", priority: null }, { walkIn: "A", appointment: "P", priority: null }, { walkIn: "A", appointment: "P", priority: "B" }],
   }),
-  row({ key: "booking.queue.singleLine", type: "bool", labelTh: "โหมดแถวเดียว (นัด + walk-in)", helpTh: "รวมคิว walk-in เข้ากับนัดในแถวเดียว (CC §6.1) · ร้านเดิมที่ยังไม่เลือกแม่แบบ = ปิด", schema: z.boolean(), chain: U, v: x3(true) }),
+  row({ key: "booking.queue.singleLine", type: "bool", labelTh: "โหมดแถวเดียว (นัด + walk-in)", helpTh: "รวมคิว walk-in เข้ากับนัดในแถวเดียว · ร้านเดิมที่ยังไม่เลือกแม่แบบ = ปิด", schema: z.boolean(), chain: U, v: x3(true) }),
   row({ key: "booking.queue.overrunExtendMin", type: "minutes", labelTh: "ขยายเวลาเมื่องานเกินเวลา (นาที)", schema: MIN, chain: U, v: x3(5) }),
 
   // ── แจ้งเตือน (#48–50) · #47 = messaging.channelOrder ──
@@ -418,7 +418,7 @@ const DEFS: SettingDef[] = [
   row({ key: "booking.money.onDone", type: "enum", labelTh: "เมื่องานเสร็จ", schema: z.enum(["POS_HELD_BILL"]), chain: U, v: x3("POS_HELD_BILL") }), // #59
   row({ key: "booking.money.commissionTo", type: "enum", labelTh: "ค่าคอมฯ ให้ใคร", schema: z.enum(["PERFORMER", "OFF"]), chain: U, v: ["PERFORMER", "PERFORMER", "OFF"] }), // #60
   row({
-    key: "booking.money.commissionRate", type: "table", labelTh: "อัตราค่าคอมฯ (bp)", // #61
+    key: "booking.money.commissionRate", type: "table", labelTh: "อัตราค่าคอมฯ", // #61
     schema: z.object({ serviceBp: BP, productBp: BP }).strict().nullable(),
     chain: U_SV_ST, v: [{ serviceBp: 0, productBp: 0 }, { serviceBp: 0, productBp: 0 }, null],
   }),
@@ -590,6 +590,107 @@ const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
   "booking.money.commissionTo": { PERFORMER: "ผู้ให้บริการ", OFF: "ไม่คิดค่าคอมฯ" },
 };
 
+// G1UI ▸ ป้ายไทย + ชนิดช่องย่อยของค่าชนิดตาราง (หน้าตั้งค่าแสดง "20% · บริการ ≥ 90 นาที" แทน "mode PERCENT · bp 2000 · minDurationMin 90")
+//   เพิ่มป้ายอย่างเดียว — ไม่แตะ key/ค่าเริ่ม/chain/schema/editPermission · ช่องย่อยต้องตรงกับ schema ของ def ◂
+const LOCALE_TH = { th: "ไทย", en: "อังกฤษ" };
+const TABLE_TH: Record<string, TableSpecTh> = {
+  "booking.general.customerLocales": { item: { kind: "enum", labelTh: "ภาษา", options: LOCALE_TH } },
+  "booking.general.defaultHours": {
+    fields: { openMin: { kind: "clock", labelTh: "เปิด" }, closeMin: { kind: "clock", labelTh: "ปิด" } },
+  },
+  "booking.staff.hoursSource": {
+    ordered: true,
+    item: { kind: "enum", labelTh: "แหล่งเวลาทำงาน", options: { HR_SHIFT: "กะจากระบบพนักงาน", STAFF_WEEKLY: "ตารางรายสัปดาห์", UNIT_HOURS: "เวลาร้าน" } },
+  },
+  "booking.service.resourceKinds": { item: { kind: "enum", labelTh: "ชนิดทรัพยากร", options: ENUM_LABELS_TH["booking.service.resourceKinds"] }, emptyTh: "ไม่ต้องใช้" },
+  "booking.service.walkIn": {
+    fields: {
+      enabled: { kind: "bool", labelTh: "รับ walk-in", shortTh: "", onTh: "รับ", offTh: "ไม่รับ" },
+      // มติผู้คุม G1UI: ว่าง ⇒ "รับ · ทุกบริการ" (ไม่มีป้ายนำ) · มีเพดาน ⇒ "รับ · ปิดเมื่อบริการ ≥ 90 นาที"
+      closeAtOrAboveMin: { kind: "minutes", labelTh: "ปิดรับเมื่อบริการยาวตั้งแต่ (นาที)", shortTh: "ปิดเมื่อบริการ ≥", nullTh: "ทุกบริการ", nullShortTh: "" },
+    },
+  },
+  "booking.late.repeatNoShow": {
+    nullTh: "ปิด",
+    fields: {
+      count: { kind: "int", labelTh: "ไม่มาครบ (ครั้ง)", shortTh: "", unitTh: "ครั้ง" },
+      windowDays: { kind: "days", labelTh: "ภายใน (วัน)", shortTh: "ใน" },
+      action: {
+        kind: "enum",
+        labelTh: "แล้วให้",
+        shortTh: "",
+        options: { REQUIRE_DEPOSIT: "ต้องจ่ายมัดจำทุกการจอง", PHONE_ONLY: "จองทางโทรศัพท์เท่านั้น" },
+        summaryOptions: { REQUIRE_DEPOSIT: "ต้องมัดจำ", PHONE_ONLY: "จองทางโทรเท่านั้น" },
+      },
+    },
+    starter: { count: 2, windowDays: 90, action: "REQUIRE_DEPOSIT" },
+  },
+  "booking.deposit.amount": {
+    nullTh: "ไม่เก็บ",
+    fields: {
+      mode: {
+        kind: "enum",
+        labelTh: "คิดมัดจำแบบ",
+        shortTh: "",
+        options: { PERCENT: "% ของราคาบริการ", PER_SERVICE: "ตามที่ตั้งในแต่ละบริการ" },
+        summaryOptions: { PERCENT: "", PER_SERVICE: "ตามที่ตั้งในบริการ" },
+      },
+      bp: { kind: "bp", labelTh: "เปอร์เซ็นต์ของราคา", shortTh: "" },
+      minDurationMin: { kind: "minutes", labelTh: "เก็บเมื่อบริการยาวตั้งแต่ (นาที)", shortTh: "บริการ ≥", nullTh: "ทุกบริการ" },
+    },
+    discriminator: { key: "mode", variants: { PERCENT: { bp: 2000, minDurationMin: null }, PER_SERVICE: {} } },
+    starter: { mode: "PER_SERVICE" },
+  },
+  "booking.queue.remoteTicket": {
+    fields: {
+      enabled: { kind: "bool", labelTh: "เปิดรับบัตรทางมือถือ", shortTh: "" },
+      maxWaitMin: { kind: "minutes", labelTh: "เปิดเฉพาะตอนรอไม่เกิน (นาที)", shortTh: "รอไม่เกิน", nullTh: "ไม่จำกัด" },
+      maxPerHour: { kind: "int", labelTh: "เพดานบัตรต่อชั่วโมง", shortTh: "เพดาน", unitTh: "ใบ/ชม.", nullTh: "ไม่จำกัด", optional: true },
+    },
+  },
+  "booking.queue.priorityGroups": { item: { kind: "enum", labelTh: "กลุ่ม", options: { ELDERLY: "ผู้สูงอายุ", MONK: "พระสงฆ์", DISABLED: "ผู้พิการ" } }, emptyTh: "ไม่มี" },
+  "booking.queue.prefixes": {
+    fields: {
+      walkIn: { kind: "text", labelTh: "walk-in" },
+      appointment: { kind: "text", labelTh: "นัด" },
+      priority: { kind: "text", labelTh: "คิวพิเศษ", nullTh: "—" },
+    },
+  },
+  "booking.notify.reminderOffsetsMin": { item: { kind: "duration", labelTh: "เตือนก่อนนัด (นาที)" }, emptyTh: "ไม่เตือน" },
+  "booking.display.tvShow": {
+    fields: {
+      label: { kind: "enum", labelTh: "แสดงชื่อ", shortTh: "แสดง", options: { PROVIDER: "ผู้ให้บริการ", RESOURCE: "ห้อง/เตียง" } },
+      showCustomerName: { kind: "bool", labelTh: "แสดงชื่อลูกค้า", shortTh: "ชื่อลูกค้า", onTh: "แสดง", offTh: "ไม่แสดง" },
+    },
+  },
+  "booking.display.voice": { item: { kind: "enum", labelTh: "ภาษา", options: LOCALE_TH }, emptyTh: "ไม่มีเสียง" },
+  "booking.money.commissionRate": {
+    nullTh: "ไม่ตั้ง",
+    fields: { serviceBp: { kind: "bp", labelTh: "บริการ" }, productBp: { kind: "bp", labelTh: "สินค้าที่ขาย", shortTh: "สินค้า" } },
+    starter: { serviceBp: 0, productBp: 0 },
+  },
+  "booking.course.policy": {
+    nullTh: "ไม่ตั้ง",
+    fields: {
+      validityMonths: { kind: "int", labelTh: "อายุคอร์ส (เดือน)", shortTh: "อายุ", unitTh: "เดือน" },
+      extendMonths: { kind: "int", labelTh: "ต่ออายุได้ (เดือน)", shortTh: "ต่อได้", unitTh: "เดือน" },
+      crossBranch: { kind: "bool", labelTh: "ใช้ข้ามสาขาได้", shortTh: "ข้ามสาขา", onTh: "ได้", offTh: "ไม่ได้" },
+      transferable: { kind: "bool", labelTh: "โอนให้คนอื่นได้", shortTh: "โอน", onTh: "ได้", offTh: "ไม่ได้" },
+      noShowDeductSessions: { kind: "int", labelTh: "ไม่มาหักครั้ง", shortTh: "ไม่มาหัก", unitTh: "ครั้ง" },
+      refund: {
+        kind: "object",
+        labelTh: "คืนเงิน",
+        fields: {
+          mode: { kind: "enum", labelTh: "วิธีคืนเงิน", shortTh: "", options: { REMAINING_PRORATA: "คืนตามครั้งที่เหลือ", NONE: "ไม่คืนเงิน" } },
+          feeBp: { kind: "bp", labelTh: "หักค่าธรรมเนียม (%)", shortTh: "หัก" },
+        },
+      },
+      expiryWarnDays: { kind: "days", labelTh: "เตือนก่อนหมดอายุ (วัน)", shortTh: "เตือนก่อน" },
+    },
+  },
+  "booking.privacy.jobCardFields": { item: { kind: "text", labelTh: "รหัสฟิลด์สมาชิก" }, emptyTh: "ไม่แสดง", ordered: true },
+};
+
 /** def ชนิด percent ที่เก็บเป็น % เต็ม 0–100 (มติผู้คุม 29 ต.ค. · บั๊กหน่วย) — เพิ่ม def percent ใหม่ต้องตั้งที่นี่ด้วย */
 const WHOLE_PERCENT_KEYS: ReadonlySet<string> = new Set(["booking.booking.onlineSharePct", "booking.deposit.forfeitPct"]);
 
@@ -597,6 +698,7 @@ const LABELED_DEFS: SettingDef[] = DEFS.map((d) => ({
   ...d,
   ...(ENUM_LABELS_TH[d.key] ? { enumLabelsTh: ENUM_LABELS_TH[d.key] } : {}),
   ...(WHOLE_PERCENT_KEYS.has(d.key) ? { percentScale: 100 as const } : {}),
+  ...(TABLE_TH[d.key] ? { tableTh: TABLE_TH[d.key] } : {}), // G1UI
 }));
 
 defineSettings("booking", LABELED_DEFS, { templates: BOOKING_TEMPLATES, snapshots: SNAPSHOTS, groupRules: GROUP_RULES, groupLabelsTh: GROUP_LABELS_TH });

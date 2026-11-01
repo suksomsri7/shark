@@ -85,7 +85,13 @@ function sourceLabelOf(source: string, scope: ScopeKind): string {
   return `มาจากชั้น ${SCOPE_LABEL_TH[source] ?? source}`;
 }
 
-const specOf = (def: SettingDef, masked: boolean): FieldFormatSpec => ({ key: def.key, type: def.type, options: optionsOf(def, schemaInfo(def)), masked });
+const specOf = (def: SettingDef, masked: boolean): FieldFormatSpec => ({
+  key: def.key,
+  type: def.type,
+  options: optionsOf(def, schemaInfo(def)),
+  masked,
+  ...(def.tableTh ? { tableSpec: def.tableTh } : {}), // G1UI ▸ ประวัติ/สรุปข้อเสนอใช้ป้ายช่องย่อยเดียวกับหน้า ◂
+});
 
 // ───────────────────────── loadSettingsForm ─────────────────────────
 
@@ -221,6 +227,7 @@ export async function loadSettingsForm(actor: SettingsActor, ctx: SettingsCtx, q
       sensitivity: def.sensitivity ?? null,
       ownerOnly: isOwnerOnly(def),
       ...(def.percentScale !== undefined ? { percentScale: def.percentScale } : {}),
+      ...(def.tableTh ? { tableSpec: def.tableTh } : {}), // G1UI
     };
     const gk = `${def.domain}|${def.group}`;
     let gi = groupAt.get(gk);
