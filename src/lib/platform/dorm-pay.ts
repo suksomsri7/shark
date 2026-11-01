@@ -21,7 +21,7 @@ import { logOps } from "@/lib/core/ops";
 import { emitOutboxOutsideTx } from "@/lib/core/outbox";
 import { bkkYmd } from "@/lib/core/quiet-hours";
 import { resolveSettings } from "@/lib/core/settings";
-import { dormDocsDead, dormPaymentKeysUsed, dormReceiptRows, dormUnitBookId, issueDormReceipt, recordExternalPayment, voidDormReceiptDoc, type DormReceiptRow } from "@/lib/modules/account";
+import { dormDocsDead, dormPaymentKeysUsed, dormReceiptRows, dormUnitBookId, firstReceiveFinanceId, issueDormReceipt, recordExternalPayment, voidDormReceiptDoc, type DormReceiptRow } from "@/lib/modules/account";
 import { fetchLineMessageContent } from "@/lib/modules/chat";
 import {
   billBalances,
@@ -349,6 +349,13 @@ const planSteps = (plan: Plan): { item: PlanItem | null; pass: number }[] =>
 /** ขั้นเงิน → ใบเสร็จ → บิล/event ตามแผน (ผู้เรียกถือ claim · ต่ออายุก่อนเรียก facade ทุกครั้ง) — ซ้ำได้ทุกขั้น */
 async function settle(hold: Hold, tenantId: string, unitId: string, plan: Plan): Promise<string> {
   const paidAt = new Date(plan.paidAt);
+  // SVC G2-F F3 ▸ เงินโอน/พร้อมเพย์ที่แผนไม่ระบุบัญชี ⇒ ช่องทางรับเงินของสมุด (`firstReceiveFinanceId` — ตัวเดียวกับที่ลิงก์จ่าย D.8 ใช้)
+  //   เดิม null ⇒ GL ลง mapping BANK รวม (1010) ไม่ใช่บัญชีรับเงินของสมุด · เงินสดคงเดิม (null ⇒ mapping CASH) · สมุดไม่มีช่องรับเงิน ⇒ null ตามเดิม ◂
+  let financeAccountId = plan.financeAccountId;
+  if (!financeAccountId && plan.channel !== "CASH") {
+    const book = await dormUnitBookId(tenantId, unitId);
+    financeAccountId = book ? await firstReceiveFinanceId({ tenantId, systemId: book }) : null;
+  }
   const allocations: Alloc[] = [];
   let moved = 0;
   for (const s of planSteps(plan)) {
@@ -357,7 +364,7 @@ async function settle(hold: Hold, tenantId: string, unitId: string, plan: Plan):
     const r = await twice(() =>
       recordExternalPayment({
         tenantId, unitId, docId, amountSatang: s.pass, idempotencyKey: payKey(plan.recv, docId), paidAt, channel: plan.channel,
-        financeAccountId: plan.financeAccountId, slipId: plan.slipId, note: plan.note, createdById: plan.actorId,
+        financeAccountId, slipId: plan.slipId, note: plan.note, createdById: plan.actorId,
       }),
       hold,
     );

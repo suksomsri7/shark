@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { loadAccountSystem } from "@/lib/modules/account/guard";
+import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
 
 // WO 6.2: การสร้าง JV ด้วยมือย้ายไปเป็น **modal** บนหน้าสมุดรายวัน (เฟรม g16-journal-modal.png)
@@ -8,6 +8,7 @@ import { assertAccountCan } from "@/lib/modules/account/access";
 export default async function NewJvRedirectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { auth } = await loadAccountSystem(id);
+  accountPageGate(auth, "account.journal.adjust"); // SVC G2-F F2 ▸ ไม่มีสิทธิ์ ⇒ ไม่พบ (ไม่ใช่ 500) ◂
   assertAccountCan(auth, "account.journal.adjust");
   redirect(`/app/sys/${id}/account/journal?new=1`);
 }

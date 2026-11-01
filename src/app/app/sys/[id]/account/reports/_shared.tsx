@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { loadAccountSystem } from "@/lib/modules/account/guard";
+import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
 import { fiscalYearOf, getPolicy, type AccountPolicy, type FiscalYear } from "@/lib/modules/account/policy";
 
 // helper ร่วมของหน้ารายงาน (server) — โหลดระบบ + ตรวจสิทธิ์ report.view (§9)
 export async function loadReport(id: string) {
   const ctx = await loadAccountSystem(id);
+  accountPageGate(ctx.auth, "account.report.view"); // SVC G2-F F2 ▸ ไม่มีสิทธิ์ ⇒ ไม่พบ (ไม่ใช่ 500) ◂
   assertAccountCan(ctx.auth, "account.report.view"); // OWNER/MANAGER — STAFF ต้อง custom
   return ctx;
 }
@@ -31,6 +32,7 @@ export async function loadReportWithPolicy(id: string): Promise<{
   policy: AccountPolicy;
 }> {
   const ctx = await loadAccountSystem(id);
+  accountPageGate(ctx.auth, "account.report.view"); // SVC G2-F F2 ▸ ไม่มีสิทธิ์ ⇒ ไม่พบ (ไม่ใช่ 500) ◂
   assertAccountCan(ctx.auth, "account.report.view");
   const policy = await getPolicy({ tenantId: ctx.tenantId, systemId: ctx.systemId });
   return { tenantId: ctx.tenantId, systemId: ctx.systemId, policy };
