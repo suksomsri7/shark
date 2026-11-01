@@ -16,9 +16,10 @@ import { addDaysStr, bkkDayOf, lineSettingsOf } from "./planner-run";
 import { rescheduleByShop } from "./queue-line";
 import { RESOURCE_KINDS, RESOURCE_KIND_LABELS_TH, isResourceKind } from "./resource-kinds";
 import { overrunMinOf, readHolds, readUnitBlocks, readUnitResources, resourceIdsOfRow, resourceKindsOf, walkInNowByService, type RawReader, type WalkInNowRow } from "./resources";
-import { bookAppointment, getUnitHours, isRealDateStr, staffDayProfiles, type BookResult, type StaffDayProfile } from "./service";
+import { cancelGroup, rescheduleGroup } from "./group"; // SVC B.15-UI ▸ จัดการทั้งกลุ่มจากปฏิทิน (ผล/ด่านของ facade กลุ่มเดิม · ไฟล์นี้ไม่เขียนแถวนัดเอง) ◂
+import { bookAppointment, getUnitHours, groupRowsOf, isRealDateStr, staffDayProfiles, type BookResult, type StaffDayProfile } from "./service";
 import { localToUtc, localWeekday } from "./slots";
-import { unitDayWindows } from "./staff-hours";
+import { staffServiceTerms, unitDayWindows } from "./staff-hours";
 
 const MIN_MS = 60_000;
 const DAY_MS = 24 * 60 * MIN_MS;
@@ -41,6 +42,8 @@ export type CalBlock = {
   resourceNames: string[];
   ticketNumber: string | null;
   movable: boolean;
+  /** SVC B.15-UI ▸ สมาชิกของการจองกลุ่ม (คู่รัก/กลุ่ม) · size = สมาชิกที่ยังไม่ยกเลิก/ไม่มา · null = นัดเดี่ยว ◂ */
+  group: { id: string; size: number } | null;
 };
 export type CalClosedCode = "LEAVE" | "OFF" | "SHOP_CLOSED" | "MAINTENANCE";
 export type CalColumn = {
@@ -74,6 +77,13 @@ export type CalCard = {
   depositPaid: boolean;
   movable: boolean;
   canStart: boolean;
+  /** SVC B.15-UI ▸ การ์ดของสมาชิกกลุ่ม: รายชื่อทั้งกลุ่ม (หัวกลุ่มก่อน · ไม่มีเบอร์) · canCancel = มีสิทธิ์ยกเลิกทั้งกลุ่ม (สถานะตัดสินที่ server) ◂ */
+  group: null | {
+    id: string;
+    size: number;
+    canCancel: boolean;
+    members: { appointmentId: string; label: string; serviceName: string; staffName: string | null; status: string; leader: boolean }[];
+  };
 };
 export type CalendarView = {
   unitId: string;
@@ -136,7 +146,7 @@ type Row = {
   id: string; kind: string; status: string; staffId: string; plannedStaffId: string | null; serviceId: string;
   startAt: Date; endAt: Date; plannedStartAt: Date | null; startedAt: Date | null; checkedInAt: Date | null;
   resourceId: string | null; customerName: string; queueTicketId: string | null; policySnapshot: unknown;
-  priceSatang: number; depositSatang: number; depositPaidAt: Date | null;
+  priceSatang: number; depositSatang: number; depositPaidAt: Date | null; groupId: string | null;
 };
 /** เริ่มแสดง: IN_SERVICE = เริ่มจริง · QUEUED/ARRIVED ที่มีแผน = แผน · อื่น = เวลานัด */
 const dispStart = (r: Row): number =>
@@ -210,6 +220,7 @@ export async function loadCalendar(
       select: {
         id: true, kind: true, status: true, staffId: true, plannedStaffId: true, serviceId: true, startAt: true, endAt: true, plannedStartAt: true, startedAt: true,
         checkedInAt: true, resourceId: true, customerName: true, queueTicketId: true, policySnapshot: true, priceSatang: true, depositSatang: true, depositPaidAt: true,
+        groupId: true, // SVC B.15-UI
       },
     }),
     resolveSettings({ tenantId }, ["booking.general.providerLabel"], { unitId }),
@@ -242,6 +253,10 @@ export async function loadCalendar(
     const e = s + durMsOf(r, svcOf.get(r.serviceId)?.bufferMin ?? 0);
     jobs.push({ r, day, s, e, holdStaff: s + (r.endAt.getTime() - r.startAt.getTime()), resIds: resourceIdsOfRow(r.resourceId, r.policySnapshot), colStaff: r.plannedStaffId ?? r.staffId });
   }
+  // SVC B.15-UI ▸ ขนาดกลุ่ม = สมาชิกที่ยังถือการจอง (ไม่ยกเลิก/ไม่มา) ในช่วงที่อ่าน — สมาชิกกลุ่มเริ่มเวลาเดียวกันเสมอ (B.15) ⇒ อยู่ในช่วงเดียวกัน ◂
+  const groupSize = new Map<string, number>();
+  for (const r of rows) if (r.groupId && String(r.status) !== "NO_SHOW") groupSize.set(r.groupId, (groupSize.get(r.groupId) ?? 0) + 1);
+  const groupOfRow = (r: Row): CalBlock["group"] => (r.groupId ? { id: r.groupId, size: groupSize.get(r.groupId) ?? 1 } : null);
   const movableOf = (r: Row) => access.move && r.kind === "BOOKED" && MOVABLE.has(r.status) && r.startAt.getTime() > nowMs;
   const blockOf = (j: Job, holdEndMs: number): CalBlock => {
     const tk = j.r.queueTicketId ? ticketNo.get(j.r.queueTicketId) ?? null : null;
@@ -260,6 +275,7 @@ export async function loadCalendar(
       resourceNames: j.resIds.map((id) => resName.get(id) ?? ""),
       ticketNumber: tk,
       movable: movableOf(j.r),
+      group: groupOfRow(j.r),
     };
   };
   const sortBlocks = (bs: CalBlock[]) => bs.sort((a, b) => a.startMs - b.startMs || cmpId(a.appointmentId, b.appointmentId));
@@ -374,8 +390,34 @@ export async function loadCalendar(
         depositPaid: pick.r.depositPaidAt !== null,
         movable: movableOf(pick.r),
         canStart: pick.r.status === "ARRIVED" && (la.runAny || la.runOwn),
+        group: null,
       }
     : null;
+  // SVC B.15-UI ▸ การ์ดของสมาชิกกลุ่ม: รายชื่อทั้งกลุ่ม (อ่านทุกแถวของกลุ่มในหน่วยนี้ · ไม่มีเบอร์/ตัวตน) ◂
+  if (card && pick?.r.groupId) {
+    const gid = pick.r.groupId;
+    const gAll = await groupRowsOf(ctx, gid);
+    const leaderId = gAll[0]?.id ?? null; // หัวกลุ่ม = แถวแรก (B.15)
+    const gRows = gAll.filter((g) => String(g.status) !== "CANCELLED" && String(g.status) !== "NO_SHOW");
+    const names = new Map(rows.filter((x) => x.groupId === gid).map((x) => [x.id, x.customerName]));
+    const missing = gRows.filter((g) => !names.has(g.id)).map((g) => g.id);
+    if (missing.length) {
+      for (const x of await db.appointment.findMany({ where: { tenantId, unitId, id: { in: missing } }, select: { id: true, customerName: true } })) names.set(x.id, x.customerName);
+    }
+    card.group = {
+      id: gid,
+      size: gRows.length,
+      canCancel: canBookingAction(member, unitId, "cancelGroupAction"),
+      members: gRows.map((g) => ({
+        appointmentId: g.id,
+        label: names.get(g.id) ?? "",
+        serviceName: svcOf.get(g.serviceId)?.name ?? "",
+        staffName: staffName.get(g.staffId) ?? null,
+        status: String(g.status),
+        leader: g.id === leaderId,
+      })),
+    };
+  }
 
   const shopToday = shopOf.get(dateStr) ?? (await shopDay(ctx, dateStr));
   return {
@@ -502,4 +544,92 @@ export async function bookForCustomer(
       idempotencyKey: i.idempotencyKey,
     },
   );
+}
+
+// ═════════════════════════ กลุ่ม (SVC B.15-UI) ═════════════════════════
+// ลากสมาชิกกลุ่มไปเวลาอื่น ⇒ เลื่อนทั้งกลุ่ม (rescheduleGroup · ผู้ให้บริการเดิมทุกคน · เวลาใหม่เดียวกัน) · ยกเลิกทั้งกลุ่ม (cancelGroup)
+// 🔴 ผล/ด่านของ facade กลุ่มไม่เปลี่ยน — ไฟล์นี้เพิ่มเฉพาะ: สิทธิ์ (BOOKING_ACTIONS) · ขอบเขต (แถวของหน่วย ctx) · expect (จอเก่า) · กรอบเวลาคน (strictHours แบบ B.14)
+// 🔴 expect เทียบนอกล็อกก่อนเรียก facade — ช่วงระหว่างตรวจกับการอ่านของ rescheduleGroupCore สั้นมาก และ core ตรวจซ้ำใต้ล็อกว่าแถวไม่ขยับจากที่มันอ่าน (LOST_RACE)
+
+export type CalGroupFail = "FORBIDDEN" | "NOT_FOUND" | "BAD_INPUT" | "BAD_STATE" | "FULL" | "PAST" | "ON_LEAVE" | "NOT_QUALIFIED" | "OUTSIDE_HOURS" | "LOST_RACE" | "BUSY";
+export type CalGroupResult = { ok: true; groupId: string; ids: string[] } | { ok: false; code: CalGroupFail; reason: string };
+
+const G = {
+  MOVE_FORBIDDEN: "บัญชีนี้เลื่อนนัดแทนลูกค้าไม่ได้ — ขอสิทธิ์ \"ยกเลิก/เลื่อนนัดแทนลูกค้า\" จากเจ้าของร้าน",
+  CANCEL_FORBIDDEN: "บัญชีนี้ยกเลิกนัดแทนลูกค้าไม่ได้ — ขอสิทธิ์ \"ยกเลิก/เลื่อนนัดแทนลูกค้า\" จากเจ้าของร้าน",
+  NOT_GROUP: "นัดนี้ไม่ได้อยู่ในการจองกลุ่ม",
+  STALE: "นัดนี้เพิ่งถูกเปลี่ยน กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+} as const;
+
+/** แถวนัดของหน่วย ctx ที่เป็นสมาชิกกลุ่ม (ข้ามร้าน/หน่วย ⇒ null = NOT_FOUND ข้อความเดียว) */
+async function groupRowOf(ctx: Ctx, appointmentId: string) {
+  return tenantDb(ctx).appointment.findFirst({
+    where: { id: appointmentId, tenantId: ctx.tenantId, unitId: ctx.unitId },
+    select: { id: true, groupId: true, startAt: true, staffId: true, plannedStaffId: true },
+  });
+}
+
+/** เลื่อนทั้งกลุ่มจากปฏิทิน (ลาก/ฟอร์ม "เลื่อนทั้งกลุ่ม") — ลำดับ: สิทธิ์ → แถว (ขอบเขต) → รูปข้อมูล → expect → กรอบเวลาคน → rescheduleGroup */
+export async function moveGroup(
+  actor: CalendarActor,
+  ctx: Ctx,
+  appointmentId: string,
+  to: { dateStr: string; startMin: number },
+  opts: { expect: { startAt: string; staffId: string }; now?: Date },
+): Promise<CalGroupResult> {
+  const fail = (code: CalGroupFail, reason: string): CalGroupResult => ({ ok: false, code, reason });
+  const member = memberOf(actor);
+  const unitId = okCtx(ctx) ? ctx.unitId : "";
+  if (!member || !canBookingAction(member, unitId, "moveGroupAction")) return fail("FORBIDDEN", G.MOVE_FORBIDDEN);
+  if (!okCtx(ctx) || !isStr(appointmentId)) return fail("NOT_FOUND", M.NOT_FOUND);
+  const row = await groupRowOf(ctx, appointmentId);
+  if (!row) return fail("NOT_FOUND", M.NOT_FOUND);
+  if (!row.groupId) return fail("BAD_INPUT", G.NOT_GROUP);
+  const t = to as Partial<Record<"dateStr" | "startMin", unknown>> | null;
+  const e = opts && typeof opts === "object" ? (opts.expect as unknown) : null;
+  const exp = isRec(e) ? e : null;
+  if (!t || typeof t !== "object" || !isStr(t.dateStr) || !isRealDateStr(t.dateStr)
+    || typeof t.startMin !== "number" || !Number.isInteger(t.startMin) || t.startMin < 0 || t.startMin >= 24 * 60
+    || !exp || !isStr(exp.startAt) || !Number.isFinite(Date.parse(exp.startAt)) || !isStr(exp.staffId)) {
+    return fail("BAD_INPUT", M.BAD_INPUT);
+  }
+  const dateStr = t.dateStr;
+  const startMin = t.startMin;
+  // expect (จอเก่า · แบบ B.14): เวลานัด + คนที่ผู้ใช้เห็น (คนจริงหรือคนตามแผน)
+  if (row.startAt.getTime() !== Date.parse(exp.startAt) || (exp.staffId !== row.staffId && exp.staffId !== row.plannedStaffId)) return fail("LOST_RACE", G.STALE);
+  // กรอบเวลาคน (strictHours แบบ moveAppointment) — ทุกสมาชิกที่ยังถือช่อง ต่อคนเดิมของตัวเอง
+  const hold = (await groupRowsOf(ctx, row.groupId)).filter((g) => String(g.status) !== "CANCELLED" && String(g.status) !== "NO_SHOW");
+  if (hold.length) {
+    const db = tenantDb(ctx);
+    const [svcs, profs] = await Promise.all([
+      db.bookingService.findMany({ where: { tenantId: ctx.tenantId, unitId, id: { in: [...new Set(hold.map((g) => g.serviceId))] } }, select: { id: true, durationMin: true, priceSatang: true } }),
+      staffDayProfiles(ctx, dateStr, { staffIds: [...new Set(hold.map((g) => g.staffId))] }),
+    ]);
+    for (const g of hold) {
+      const p = profs.find((x) => x.staffId === g.staffId);
+      const svc = svcs.find((x) => x.id === g.serviceId);
+      if (!p || !svc || p.onLeave) continue; // ไม่พบ/ลา ⇒ ให้ facade ตัดสิน (NOT_FOUND / ON_LEAVE ข้อความของมันเอง)
+      const terms = staffServiceTerms(p.services, svc);
+      if (!terms) continue; // ⇒ NOT_QUALIFIED จาก facade
+      if (!p.windows.some((w) => startMin >= w.startMin && startMin + terms.durationMin <= w.endMin)) return fail("OUTSIDE_HOURS", `${p.name} ไม่ได้ทำงานในช่วงเวลาที่เลือก`);
+    }
+  }
+  const r = await rescheduleGroup({ tenantId: ctx.tenantId, unitId, actorUserId: isStr(actor.userId) ? actor.userId : undefined }, row.groupId, { dateStr, startMin }, { now: opts.now });
+  if (!r.ok) return fail(r.code, r.reason);
+  return { ok: true, groupId: row.groupId, ids: r.ids };
+}
+
+/** ยกเลิกทั้งกลุ่มจากการ์ดนัด (ร้าน · cancelReason SHOP) — สิทธิ์เดียวกับร้านยกเลิกรายคน (setStatusAction → CANCELLED) */
+export async function cancelGroupFromCalendar(actor: CalendarActor, ctx: Ctx, appointmentId: string, opts?: { now?: Date }): Promise<CalGroupResult> {
+  const fail = (code: CalGroupFail, reason: string): CalGroupResult => ({ ok: false, code, reason });
+  const member = memberOf(actor);
+  const unitId = okCtx(ctx) ? ctx.unitId : "";
+  if (!member || !canBookingAction(member, unitId, "cancelGroupAction")) return fail("FORBIDDEN", G.CANCEL_FORBIDDEN);
+  if (!okCtx(ctx) || !isStr(appointmentId)) return fail("NOT_FOUND", M.NOT_FOUND);
+  const row = await groupRowOf(ctx, appointmentId);
+  if (!row) return fail("NOT_FOUND", M.NOT_FOUND);
+  if (!row.groupId) return fail("BAD_INPUT", G.NOT_GROUP);
+  const r = await cancelGroup({ tenantId: ctx.tenantId, unitId, actorUserId: isStr(actor.userId) ? actor.userId : undefined }, row.groupId, { now: opts?.now });
+  if (!r.ok) return fail(r.code, r.reason);
+  return { ok: true, groupId: row.groupId, ids: r.ids };
 }

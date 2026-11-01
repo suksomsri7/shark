@@ -36,6 +36,9 @@ export const BOOKING_ACTIONS: Record<string, readonly string[]> = {
   // SVC B.14 ▸ ปฏิทินนัด: ลากย้าย/เลื่อนนัด/ย้ายหมอ·ห้อง = เลื่อนนัดแทนลูกค้า (§9 ข้อ 2 · job.run/queue.operate ไม่พอ) · คลิกช่องว่าง = จองให้ลูกค้า ◂
   moveAppointmentAction: ["booking.appointment.reschedule"],
   bookForCustomerAction: ["booking.appointment.create"],
+  // SVC B.15-UI ▸ ปฏิทิน: เลื่อนทั้งกลุ่ม = เลื่อนนัดแทนลูกค้า (คีย์เดียวกับลากย้าย) · ยกเลิกทั้งกลุ่ม = คีย์เดียวกับร้านยกเลิกรายคน (setStatusAction → CANCELLED) ◂
+  moveGroupAction: ["booking.appointment.reschedule"],
+  cancelGroupAction: ["booking.appointment.setStatus", "booking.appointment.reschedule"],
 };
 
 const STATUS_KEYS: Record<string, readonly string[]> = {

@@ -5,7 +5,7 @@
 //   client แค่แสดงตำแหน่งปลายทางระหว่างลาก · ล้ม ⇒ server redirect ?err= และบล็อกอยู่ที่เดิมเพราะไม่ย้ายฝั่ง client) ·
 //   คลิกช่องว่าง/ปุ่ม "+ จองให้ลูกค้า" = ฟอร์มจอง (bookForCustomerAction) · กล่องข้าง: walk-in ตอนนี้ · ห้อง/เตียงตอนนี้ · การ์ดงาน
 // 🔴 สัญญา DOM: [data-bq-calendar] · [data-cal-col=<key>][data-closed] · [data-cal-block=<id>] (movable ⇒ draggable="true" + data-movable) ·
-//    [data-cal-range] · [data-cal-mode] · [data-cal-book] · [data-cal-prev] · [data-cal-next] · [data-cal-now] · [data-bq-walkin-now] · [data-bq-res-now] · [data-cal-card]
+//    [data-cal-group=<groupId>] + [data-cal-group-tag] (SVC B.15-UI) · [data-cal-range] · [data-cal-mode] · [data-cal-book] · [data-cal-prev] · [data-cal-next] · [data-cal-now] · [data-bq-walkin-now] · [data-bq-res-now] · [data-cal-card]
 // 🔴 actions มาทาง props · ไม่ import ค่าจาก @/lib/modules/* (ยกเว้น pure) · @/lib/actions/* · core/db · @prisma/client · ไม่มีเบอร์ลูกค้า
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition, type DragEvent, type MouseEvent } from "react";
@@ -87,6 +87,29 @@ export default function CalendarBoard({ view, unitSlug, actions, at, err, notes 
     e.preventDefault();
     const m = minAt(e, drag.grabMin);
     const b = drag.block;
+    // SVC B.15-UI ▸ สมาชิกกลุ่มไปเวลาอื่น ⇒ ถามยืนยันแล้วเลื่อนทั้งกลุ่ม (ผู้ให้บริการเดิมทุกคน · ไม่สนคอลัมน์ปลายทาง) ·
+    //   เวลาเดิม (เปลี่ยนคน/ห้องอย่างเดียว) = ทางเดิม moveAppointmentAction ◂
+    const fromDay = new Date(b.startMs + 7 * 3_600_000).toISOString().slice(0, 10);
+    const sameTime = fromDay === c.dateStr && minOf(b.startMs, fromDay) === m;
+    if (b.group && !sameTime && actions.moveGroup) {
+      const moveGroup = actions.moveGroup;
+      const when = `${c.dateStr !== fromDay ? `${dayLabel(c.dateStr)} ` : ""}${hm(m)}`;
+      setDrag(null);
+      setHover(null);
+      if (!window.confirm(`ย้ายทั้งกลุ่ม ${b.group.size} คน ไป ${when}\n(ผู้ให้บริการเดิมทุกคน · ระบบตรวจว่างทั้งคนและห้องก่อนย้าย)`)) return;
+      const gd = new FormData();
+      gd.set("appointmentId", b.appointmentId);
+      gd.set("dateStr", c.dateStr);
+      gd.set("startMin", String(m));
+      gd.set("expectStartAt", new Date(b.startMs).toISOString());
+      gd.set("expectStaffId", b.staffId ?? "");
+      for (const [k, v] of Object.entries(viewFields(view, at))) gd.set(k, v);
+      setMoving(b.appointmentId);
+      startTransition(async () => {
+        await moveGroup(gd);
+      });
+      return;
+    }
     const fd = new FormData();
     fd.set("appointmentId", b.appointmentId);
     fd.set("dateStr", c.dateStr);
@@ -304,6 +327,7 @@ export default function CalendarBoard({ view, unitSlug, actions, at, err, notes 
                               data-cal-block={b.appointmentId}
                               data-status={b.status}
                               data-movable={b.movable ? "" : undefined}
+                              data-cal-group={b.group ? b.group.id : undefined}
                               draggable={b.movable ? true : undefined}
                               onDragStart={
                                 b.movable
@@ -316,7 +340,7 @@ export default function CalendarBoard({ view, unitSlug, actions, at, err, notes 
                                   : undefined
                               }
                               onDragEnd={b.movable ? () => { setDrag(null); setHover(null); } : undefined}
-                              title={`${hhmm(b.startMs)}–${hhmm(b.endMs)} · ${b.label} · ${b.serviceName}`}
+                              title={`${hhmm(b.startMs)}–${hhmm(b.endMs)} · ${b.label} · ${b.serviceName}${b.group ? ` · กลุ่ม ${b.group.size} คน` : ""}`}
                               className={
                                 "absolute inset-x-1.5 z-[2] overflow-hidden rounded-[11px] text-xs leading-[1.38] " +
                                 blockClass(b) +
@@ -330,6 +354,11 @@ export default function CalendarBoard({ view, unitSlug, actions, at, err, notes 
                                 <b className="block truncate text-[13px]">{head1}</b>
                                 {line2 ? <span className="block truncate">{line2}</span> : null}
                                 {b.status === "DONE" || b.status === "NO_SHOW" ? null : <span className="block truncate">{b.serviceName}</span>}
+                                {b.group ? (
+                                  <span data-cal-group-tag="" className={"mt-[3px] inline-block rounded-md border px-1.5 text-[11.5px] font-bold " + (dark ? "border-[color:var(--color-surface)]" : "border-[color:var(--color-ink)]")}>
+                                    กลุ่ม {b.group.size} คน
+                                  </span>
+                                ) : null}
                                 {chips.length ? (
                                   <span className="mt-[3px] flex flex-wrap gap-1">
                                     {chips.map((n, i) => (

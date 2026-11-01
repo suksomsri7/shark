@@ -2,7 +2,8 @@
 // 🔴 เวลาไทยจาก epoch + 7 ชม. / วันที่ปฏิทินล้วน (ไม่ใช้นาฬิกาเครื่อง)
 import type { CalendarView } from "@/lib/modules/booking/calendar";
 
-export type CalActions = Record<"move" | "book" | "start", (fd: FormData) => Promise<void>>;
+// SVC B.15-UI ▸ moveGroup/cancelGroup ไม่บังคับ (จอ/ข้อสอบที่ส่งแค่ 3 ตัวเดิมยังทำงาน · ไม่มี ⇒ ไม่มีปุ่ม/ไม่ถามย้ายทั้งกลุ่ม) ◂
+export type CalActions = Record<"move" | "book" | "start", (fd: FormData) => Promise<void>> & Partial<Record<"moveGroup" | "cancelGroup", (fd: FormData) => Promise<void>>>;
 export const ROW_PX = 84; // ความสูงต่อชั่วโมง (ภาพ 02)
 export const SNAP_MIN = 15;
 

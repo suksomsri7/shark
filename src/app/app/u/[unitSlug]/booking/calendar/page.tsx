@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import CalendarBoard from "@/components/booking/CalendarBoard";
 import { qcNowOf } from "@/components/booking/line-page";
-import { bookForCustomerAction, moveAppointmentAction } from "@/lib/actions/booking-calendar";
+import { bookForCustomerAction, cancelGroupAction, moveAppointmentAction, moveGroupAction } from "@/lib/actions/booking-calendar";
 import { startJobAction } from "@/lib/actions/booking-line";
 import { loadCalendar, type CalendarActor } from "@/lib/modules/booking/calendar";
 import { loadJobCustomerNotes } from "@/lib/modules/booking/customer-notes";
@@ -52,6 +52,8 @@ export default async function BookingCalendarPage({ params, searchParams }: { pa
         move: moveAppointmentAction.bind(null, unitSlug),
         book: bookForCustomerAction.bind(null, unitSlug),
         start: startJobAction.bind(null, unitSlug),
+        moveGroup: moveGroupAction.bind(null, unitSlug), // SVC B.15-UI
+        cancelGroup: cancelGroupAction.bind(null, unitSlug), // SVC B.15-UI
       }}
     />
   );
