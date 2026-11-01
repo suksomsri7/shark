@@ -22,7 +22,7 @@
 - action ของหน้าคิวเดิมที่แตะบัตร **รับเฉพาะหน่วยชนิด QUEUE** (`ticketCtxOf`) · housekeeping ข้ามบัตร `refType APPOINTMENT` · สิทธิ์ใช้คีย์ `booking.*`
 
 ## 3. ยังไม่มี (ที่สเปก v1 เคยติ๊ก ✅)
-หน้าตู้ kiosk ของหน่วย QUEUE (`/q/kiosk`) · SSE realtime (จอ/มือถือ) · เสียงเรียก TTS/chime · สั่นเตือน · แจ้งเตือนใกล้ถึงคิวของบัตรทั่วไป (`notifyBeforeCount`/`notifiedAt` ไม่มีผู้ใช้ — แจ้งเตือนมีเฉพาะบัตรแถวเดียว B.9) · ลูกค้ายกเลิกบัตรเองจากหน้าสถานะ · เวลารอจากค่าเฉลี่ยจริง (ใช้ค่าตั้งต้นต่อประเภท) · handoff นัด ARRIVED → บัตรหน่วย QUEUE · สถิติ/รายงานคิว · `transferToFront`/`recallAnnounceMax`/`starvationRatio` (ไม่มีผู้อ่าน) · หน้า `/q/tickets` `/q/reports` · facade `queue/index.ts`
+หน้าตู้ kiosk ของหน่วย QUEUE (`/q/kiosk`) · SSE realtime (จอ/มือถือ) · เสียงเรียก TTS/chime · สั่นเตือน · แจ้งเตือนใกล้ถึงคิวของบัตรทั่วไป (`notifyBeforeCount`/`notifiedAt` ไม่มีผู้ใช้ — แจ้งเตือนมีเฉพาะบัตรแถวเดียว B.9) · ลูกค้ายกเลิกบัตรเองจากหน้าสถานะ · เวลารอจากค่าเฉลี่ยจริง (ใช้ค่าตั้งต้นต่อประเภท) · handoff นัด ARRIVED → บัตรหน่วย QUEUE · สถิติ/รายงานคิว · `transferToFront`/`recallAnnounceMax`/`starvationRatio` (ไม่มีผู้อ่าน) · หน้า `/q/tickets` `/q/reports` · ไฟล์ facade (index.ts) ของโมดูล queue
 
 ---
 

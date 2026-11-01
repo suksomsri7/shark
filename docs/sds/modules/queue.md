@@ -60,7 +60,7 @@ enum: `QueueTypeStatus` · `QueueCounterStatus` · `QueueTicketStatus` · `Queue
 - บัตรแถวเดียว: `scripts/qc-svc-b.4.mts` (บัตร P ผูก ref ถูก · หน่วย QUEUE เดิมทำงานเหมือนเดิม · housekeeping ข้ามบัตรจองคิว) · `qc-svc-b.5.mts` · `qc-svc-b.6.mts` (ทีวี/หน้าบัตรไม่มีชื่อ/เบอร์ X8 · token ผิด = คำตอบเดียว X7) · `qc-svc-b.9.mts` (ถึงคิว/ใกล้ถึงคิว · บัตรจากมือถือ)
 
 ## 8. หนี้ที่รู้ (as-built)
-- ไม่มี facade `src/lib/modules/queue/index.ts` — จองคิว import `queue/service.ts` ตรง (ขัดแบบแผน facade ของ RUN อื่น)
+- ไม่มีไฟล์ facade (index.ts) ในโฟลเดอร์โมดูล queue — จองคิว import `queue/service.ts` ตรง (ขัดแบบแผน facade ของ RUN อื่น)
 - บัตรคิวทั่วไป: ไม่มีแจ้งเตือนใกล้ถึงคิว (`notifyBeforeCount`/`notifiedAt` ไม่มีผู้ใช้ — แจ้งเตือนมีเฉพาะบัตรแถวเดียวผ่าน `booking-notify.ts`) · ไม่มีเสียงเรียก/SSE (จอรีเฟรช 5 วินาที) · ไม่มีหน้าตู้ kiosk ของหน่วย QUEUE (ตู้มีเฉพาะจองคิว `/bq/kiosk/[token]`) · ลูกค้ายกเลิกบัตรเองจากหน้าสถานะไม่ได้ · ไม่มีรายงาน/สถิติคิว
 - `QueuePolicy.transferToFront` · `recallAnnounceMax` · `starvationRatio` ไม่มีผู้อ่าน (strict priority) · rate limit รับบัตรออนไลน์เป็น in-memory ต่อ instance (ไม่ข้ามเครื่อง · ต่างจากของจองคิวที่ใช้ `checkRateLimitDb`)
 - ใบเลื่อน KT.1: SSE · เสียงเรียก · พิมพ์บัตรความร้อน (ทั้งบัตรทั่วไปและแถวเดียว)

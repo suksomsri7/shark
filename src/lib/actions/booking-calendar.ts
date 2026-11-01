@@ -9,7 +9,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
 import { assertBookingActionAllowed } from "@/lib/modules/booking/access";
-import { bookForCustomer, moveAppointment, type CalendarActor } from "@/lib/modules/booking/calendar";
+import { bookForCustomer, cancelGroupFromCalendar, moveAppointment, moveGroup, type CalendarActor } from "@/lib/modules/booking/calendar";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 
 type Auth = Awaited<ReturnType<typeof requireUnit>>["auth"];
@@ -142,4 +142,53 @@ export async function bookForCustomerAction(unitSlug: string, formData: FormData
   if (!r.ok) redirect(viewUrl(unitSlug, formData, { err: (r.reason || "จองไม่สำเร็จ").slice(0, 300) }, qc.at));
   done(unitSlug);
   redirect(viewUrl(unitSlug, formData, { appt: r.id }, qc.at));
+}
+
+// ═════════════ SVC B.15-UI ▸ จัดการทั้งกลุ่มจากปฏิทิน ═════════════
+
+const GroupMoveForm = z.object({
+  appointmentId: z.string().min(1).max(64),
+  dateStr: z.string().regex(DATE),
+  startMin: z.coerce.number().int().min(0).max(1439),
+  expectStartAt: z.string().min(1).max(64),
+  expectStaffId: z.string().min(1).max(64),
+});
+
+/** ลากสมาชิกกลุ่มไปเวลาอื่น (หลังผู้ใช้ยืนยัน "ย้ายทั้งกลุ่ม") / ฟอร์ม "เลื่อนทั้งกลุ่ม" — rescheduleGroup ผ่าน moveGroup · ผู้ให้บริการเดิมทุกคน */
+export async function moveGroupAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingActionAllowed(memberOf(auth), unit.id, "moveGroupAction");
+  const qc = qcAtOf(formData);
+  const p = GroupMoveForm.safeParse({
+    appointmentId: String(formData.get("appointmentId") ?? ""),
+    dateStr: String(formData.get("dateStr") ?? ""),
+    startMin: String(formData.get("startMin") ?? ""),
+    expectStartAt: String(formData.get("expectStartAt") ?? ""),
+    expectStaffId: String(formData.get("expectStaffId") ?? ""),
+  });
+  if (!p.success) redirect(viewUrl(unitSlug, formData, { err: "ข้อมูลการเลื่อนกลุ่มไม่ครบหรือไม่ถูกต้อง กรุณาลองใหม่" }, qc.at));
+  const f = p.data;
+  const r = await moveGroup(
+    actorOf(auth),
+    { tenantId: auth.active.tenantId, unitId: unit.id },
+    f.appointmentId,
+    { dateStr: f.dateStr, startMin: f.startMin },
+    { expect: { startAt: f.expectStartAt, staffId: f.expectStaffId }, now: qc.now },
+  );
+  if (!r.ok) redirect(viewUrl(unitSlug, formData, { err: (r.reason || "เลื่อนทั้งกลุ่มไม่สำเร็จ").slice(0, 300), appt: f.appointmentId }, qc.at));
+  done(unitSlug);
+  redirect(viewUrl(unitSlug, formData, { appt: f.appointmentId }, qc.at));
+}
+
+/** ปุ่ม "ยกเลิกทั้งกลุ่ม" บนการ์ดนัด (หลังยืนยัน) — cancelGroup ผ่าน cancelGroupFromCalendar */
+export async function cancelGroupAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingActionAllowed(memberOf(auth), unit.id, "cancelGroupAction");
+  const qc = qcAtOf(formData);
+  const id = String(formData.get("appointmentId") ?? "");
+  if (!ID.test(id)) redirect(viewUrl(unitSlug, formData, { err: "ไม่พบนัดนี้ในสาขานี้" }, qc.at));
+  const r = await cancelGroupFromCalendar(actorOf(auth), { tenantId: auth.active.tenantId, unitId: unit.id }, id, { now: qc.now });
+  if (!r.ok) redirect(viewUrl(unitSlug, formData, { err: (r.reason || "ยกเลิกทั้งกลุ่มไม่สำเร็จ").slice(0, 300), appt: id }, qc.at));
+  done(unitSlug);
+  redirect(viewUrl(unitSlug, formData, {}, qc.at));
 }
