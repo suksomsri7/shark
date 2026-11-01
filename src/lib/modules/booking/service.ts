@@ -2831,6 +2831,12 @@ export async function writeDepositAudit(a: { tenantId: string; unitId: string; a
 }
 
 /** ใบรับมัดจำของนัดที่ยัง PAID (คีย์ฐาน booking-deposit-<id> หรือ -r<n>) — ใช้เมื่อสองทางรับเงินชนคีย์เดียวกันด้วย payload ต่างกัน */
+/** SVC B.15 ▸ PB-12: แถวที่ยังไม่ผูกแต่มีใบรับมัดจำ PAID ค้าง (ทางอื่นรับเงินแล้วล้มก่อนผูก) — ยอดที่ค้างกลุ่มไม่ขอซ้ำ */
+export async function unboundReceiptIdsOf(tenantId: string, appointmentIds: readonly string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (const id of appointmentIds) if (await liveDepositReceiptOf(tenantId, id)) out.add(id);
+  return out;
+}
 export async function liveDepositReceiptOf(tenantId: string, appointmentId: string): Promise<string | null> {
   const s = await prisma.posSale.findFirst({
     where: { tenantId, sourceModule: "POS_DEPOSIT", status: "PAID", docType: "SALE", idempotencyKey: { startsWith: `booking-deposit-${appointmentId}` } },
@@ -3816,8 +3822,10 @@ export async function planGroupSlip(ctx: { tenantId: string; unitId: string }, a
     const order = new Map(allIds.map((x, k) => [x, k]));
     const rows = [...locked].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
       .map((r) => ({ id: r.id, status: r.status, depositPaidAt: r.depositPaidAt, depositSatang: Number(r.depositSatang) }));
-    // ใบรับที่ออกไปแล้วของแถวที่ยังไม่ผูก (consumer ก่อนหน้าตายหลังออกใบรับ / ทางอื่นค้าง) ⇒ ยอดจริงของใบนั้น (J1 · ห้ามวางแผนใหม่ทับ)
+    // PB-12: ใบรับของสลิปนี้ออกหลังเก็บแผนเท่านั้น ⇒ ตอนวางแผนครั้งแรก ใบรับค้างไม่ผูกของแถวที่ยังไม่จ่าย = เงินจากทางอื่น (ร้านเงินสด/โอนแล้วล้ม) ·
+    //   ผูกเป็นเงินของแถวนั้น (แบบร้านยืนยันสำเร็จ) · แถวนั้นไม่รับเงินสลิป ⇒ เงินสลิปแบ่งแถวค้างอื่น · เหลือ ⇒ slip_after_paid
     const fixed = new Map<string, number>();
+    const others: { id: string; saleId: string; amount: number }[] = [];
     for (const r of rows) {
       if (r.depositPaidAt) continue;
       const sale = await tx.posSale.findFirst({
@@ -3826,9 +3834,11 @@ export async function planGroupSlip(ctx: { tenantId: string; unitId: string }, a
       });
       if (!sale) continue;
       const dep = await tx.posDeposit.findUnique({ where: { receiptSaleId: sale.id }, select: { amountSatang: true, tenantId: true } });
-      fixed.set(r.id, dep && dep.tenantId === ctx.tenantId ? dep.amountSatang : sale.grandTotalSatang);
+      const amt = dep && dep.tenantId === ctx.tenantId ? dep.amountSatang : sale.grandTotalSatang;
+      fixed.set(r.id, amt);
+      others.push({ id: r.id, saleId: sale.id, amount: amt });
     }
-    const plan = allocateGroupSlip(rows, amount, fixed);
+    const plan: GroupSlipPlan = { ...allocateGroupSlip(rows, amount, fixed), ...(others.length ? { others } : {}) };
     await tx.appointment.updateMany({
       where: { id: lead.id, tenantId: ctx.tenantId, unitId: ctx.unitId },
       data: { policySnapshot: withDepositSnap(lead.policySnapshot, { slipPlans: { ...(depositSnapOf(lead.policySnapshot).slipPlans ?? {}), [slipId]: plan } }) },
@@ -3838,10 +3848,14 @@ export async function planGroupSlip(ctx: { tenantId: string; unitId: string }, a
   return out ?? "BUSY";
 }
 
-export type GroupBindItem = { appointmentId: string; saleId: string | null; amountSatang: number };
+export type GroupBindItem = { appointmentId: string; saleId: string | null; amountSatang: number; /** PB-12: ใบรับค้างจากทางอื่น ⇒ ผูกแบบร้านยืนยัน + audit recover */ recovered?: boolean };
 
 /** แผนแบ่งเงินของสลิปกลุ่ม: ใบรับต่อแถว (ยอด) + ส่วนที่ไม่มีแถวรับ (แจ้งร้าน slipAfterPaid) */
-export type GroupSlipPlan = { items: { id: string; give: number }[]; afterPaid: number };
+export type GroupSlipPlan = {
+  items: { id: string; give: number }[]; afterPaid: number;
+  /** PB-12: ใบรับค้างไม่ผูกที่มาจากทางอื่น (ร้านเงินสด/โอนแล้วล้มก่อนผูก) ⇒ ผูกเป็นเงินของแถวนั้น · แถวนั้นไม่รับเงินสลิปนี้ */
+  others?: { id: string; saleId: string; amount: number }[];
+};
 /**
  * แบ่งเงินสลิปกลุ่ม (pure · H1/H6/I2/J1): แถวที่ยังไม่จ่ายแต่มีใบรับอยู่แล้ว (ออกไปก่อนตาย/ทางอื่น) ⇒ ผูกตามยอดใบรับจริง (fixed · ห้ามวางแผนใหม่) ·
  * ยอดที่เหลือ ⇒ แถวที่ยังไม่จ่ายตามลำดับสมาชิก (ถือช่องก่อน · ไม่มีแถวถือช่องค้าง ⇒ แถวที่ยังไม่จ่ายทั้งหมด = ค้างคืน) แถวละไม่เกินมัดจำ ·
@@ -3850,14 +3864,9 @@ export type GroupSlipPlan = { items: { id: string; give: number }[]; afterPaid: 
 export function allocateGroupSlip(
   rows: readonly { id: string; status: string; depositPaidAt: Date | null; depositSatang: number }[], amount: number, fixed: ReadonlyMap<string, number> = new Map(),
 ): GroupSlipPlan {
+  // fixed = แถวที่มีเงินของตัวเองค้างอยู่แล้ว (ใบรับจากทางอื่น) ⇒ ถือว่าจ่ายแล้ว ไม่รับเงินสลิปนี้ (PB-12)
   const items: { id: string; give: number }[] = [];
   let left = amount;
-  for (const r of rows) {
-    const f = fixed.get(r.id);
-    if (r.depositPaidAt || f === undefined) continue;
-    items.push({ id: r.id, give: f });
-    left -= f;
-  }
   const unpaid = rows.filter((r) => !r.depositPaidAt && r.depositSatang > 0 && !fixed.has(r.id));
   const live = unpaid.filter((r) => r.status === "PENDING" || r.status === "CONFIRMED");
   const liveFixed = rows.some((r) => !r.depositPaidAt && fixed.has(r.id) && (r.status === "PENDING" || r.status === "CONFIRMED"));
@@ -3930,7 +3939,7 @@ export async function bindGroupDeposit(i: {
     for (const it of i.items) {
       const row = locked.get(it.appointmentId);
       if (!row || row.depositPaidAt) {
-        if (row?.depositPaidAt) skippedSatang += it.amountSatang; // สลิปอื่น/ทางอื่นลงไปก่อน (สลิปเดียวกันถูกกันซ้ำด้านบนแล้ว)
+        if (row?.depositPaidAt && !it.recovered) skippedSatang += it.amountSatang; // สลิปอื่น/ทางอื่นลงไปก่อน (สลิปเดียวกันถูกกันซ้ำด้านบนแล้ว) · ใบรับค้างของทางอื่นไม่ใช่เงินสลิป
         continue;
       }
       const d = it.saleId ? await tx.posDeposit.findUnique({ where: { receiptSaleId: it.saleId }, select: { amountSatang: true, tenantId: true } }) : null;
@@ -3938,24 +3947,27 @@ export async function bindGroupDeposit(i: {
       const open = row.status === "PENDING" || row.status === "CONFIRMED";
       const required = Number(row.depositSatang);
       const partial = i.groupPartial || amount < required;
+      const via = it.recovered ? "SHOP" : i.via;
       let status = row.status;
-      if (open && (i.via === "SHOP" || (!partial && snapVal(row.policySnapshot, "booking.booking.requireConfirm") !== true))) status = "CONFIRMED";
+      if (open && (via === "SHOP" || (!partial && snapVal(row.policySnapshot, "booking.booking.requireConfirm") !== true))) status = "CONFIRMED";
       const claimFree = withDepositSnap(baseSnap(row), { slipClaim: undefined });
       const w = await tx.appointment.updateMany({
         where: { id: row.id, tenantId: i.tenantId, unitId: i.unitId, depositPaidAt: null },
         data: {
           depositPaidAt: new Date(), depositSaleId: it.saleId,
           ...(status !== row.status ? { status: status as AppointmentStatus } : {}),
-          policySnapshot: i.via === "SHOP" && open ? withDepositSnap(claimFree, { accepted: true }) : !open ? withDepositSnap(claimFree, { lateMoney: true }) : claimFree,
+          policySnapshot: via === "SHOP" && open ? withDepositSnap(claimFree, { accepted: true }) : !open ? withDepositSnap(claimFree, { lateMoney: true }) : claimFree,
         },
       });
       if (w.count !== 1) continue;
       await emitOutbox(tx, {
         tenantId: i.tenantId, unitId: i.unitId, type: "booking.deposit_paid", idempotencyKey: `booking.deposit_paid#${row.id}#${it.saleId ?? "none"}`,
-        payload: { appointmentId: row.id, unitId: i.unitId, amountSatang: amount, requiredSatang: required, via: i.via, partial, late: !open, status, groupId: i.groupId },
+        payload: { appointmentId: row.id, unitId: i.unitId, amountSatang: amount, requiredSatang: required, via, partial, late: !open, status, groupId: i.groupId },
       });
       const base = { tenantId: i.tenantId, unitId: i.unitId, targetType: "Appointment", targetId: row.id };
-      if (i.via === "SLIP") {
+      if (it.recovered) {
+        await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.recover", after: { receiptSaleId: it.saleId, amountSatang: amount, partial, late: !open, groupId: i.groupId, duringSlipId: i.slipId ?? null } } });
+      } else if (i.via === "SLIP") {
         await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.receive", after: { slipId: i.slipId ?? null, receiptSaleId: it.saleId, amountSatang: amount, partial, late: !open, groupId: i.groupId } } });
       } else {
         await tx.auditLog.create({ data: { ...base, actorType: "USER", actorId: i.actorUserId ?? "unknown", action: "booking.deposit.confirm", after: { receiptSaleId: it.saleId, amountSatang: amount, payType: i.payType ?? null, partial, late: !open, groupId: i.groupId } } });

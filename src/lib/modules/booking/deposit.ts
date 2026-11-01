@@ -24,6 +24,7 @@ import {
   groupLeaderOf,
   groupRowsOf,
   planGroupSlip,
+  unboundReceiptIdsOf,
   depositSnapOf,
   forfeitPendingDeposit,
   lockForRefund,
@@ -136,7 +137,10 @@ async function groupMoneyOf(ctx: { tenantId: string; unitId: string }, appointme
   const facts = (await Promise.all(g.ids.map((x) => depositFactsOf(ctx, x)))).filter((x): x is DepositFacts => !!x);
   if (!facts.length) return null;
   const live = facts.filter((f) => ACTIVE.has(f.appt.status));
-  const dueRows = live.filter((f) => !f.appt.depositPaidAt && f.appt.depositSatang > 0);
+  // PB-12: แถวที่มีใบรับค้างไม่ผูก (ร้านรับเงินแล้วล้มก่อนผูก) = จ่ายแล้วในมุมยอดค้าง (ไม่ขอลูกค้าซ้ำ · ผูกเมื่อร้านยืนยัน/สลิปกลุ่มเข้า)
+  const unpaid0 = live.filter((f) => !f.appt.depositPaidAt && f.appt.depositSatang > 0);
+  const held = unpaid0.length ? await unboundReceiptIdsOf(ctx.tenantId, unpaid0.map((f) => f.appt.id)) : new Set<string>();
+  const dueRows = unpaid0.filter((f) => !held.has(f.appt.id));
   let slipHold: GroupMoney["slipHold"] = null;
   for (const f of facts) {
     const st = f.slip?.status;
@@ -454,12 +458,13 @@ async function slipApprovedGroup(ctx: { tenantId: string; unitId: string }, gm: 
   const p = await planGroupSlip(ctx, allIds, slipId, amount);
   if (p === "DONE" || p === "GONE") return;
   if (p === "BUSY") throw new Error("[booking.deposit] แถวนัดไม่ว่าง — คิวลองใหม่");
-  if (!p.plan.items.length) {
+  const others = p.plan.others ?? [];
+  if (!p.plan.items.length && !others.length) {
     await slipAfterPaid(ctx.tenantId, ctx.unitId, lead.id, slipId, amount, lead.depositSaleId);
     return;
   }
   const factOf = new Map(gm.facts.map((f) => [f.appt.id, f]));
-  const items: { appointmentId: string; saleId: string | null; amountSatang: number }[] = [];
+  const items: { appointmentId: string; saleId: string | null; amountSatang: number; recovered?: boolean }[] = others.map((o) => ({ appointmentId: o.id, saleId: o.saleId, amountSatang: o.amount, recovered: true }));
   for (const { id, give } of p.plan.items) {
     const mf = factOf.get(id) ?? (await depositFactsOf(ctx, id));
     if (!mf) continue;
