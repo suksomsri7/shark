@@ -2849,7 +2849,7 @@ export async function liveDepositReceiptOf(tenantId: string, appointmentId: stri
 /** SVC B.15 ▸ ป้ายต้นทางสลิปในหมายเหตุใบรับมัดจำ · อ่านกลับด้วย slipOfNote ◂ */
 const slipTag = (slipId: string) => `[slip:${slipId}]`;
 export function slipOfNote(note: string | null | undefined): string | null {
-  const m = typeof note === "string" ? /\[slip:([A-Za-z0-9_-]{1,64})\]/.exec(note) : null;
+  const m = typeof note === "string" ? /\[slip:([A-Za-z0-9_-]{1,64})\]$/.exec(note) : null; // ป้ายท้ายข้อความเท่านั้น (ชื่อบริการปลอมป้ายไม่ได้)
   return m ? m[1] : null;
 }
 export type TakeDepositResult = { ok: true; saleId: string | null; duplicated: boolean } | { ok: false; code: "SHIFT_REQUIRED" | "CONFLICT" | "BUSY"; reason: string };
@@ -3972,7 +3972,7 @@ export async function bindGroupDeposit(i: {
       const row = locked.get(it.appointmentId);
       if (!row || row.depositPaidAt) {
         // แถวถูกจ่ายด้วยใบอื่นระหว่างทาง ⇒ เงินสลิปของแถวนี้ไม่มีที่ลง (แจ้งร้าน) · ใบของสลิปนี้เองถูกผูกไปแล้ว (ร้านยืนยันชนคีย์) = เงินลงแล้ว · ใบค้างทางอื่นไม่ใช่เงินสลิป
-        if (row?.depositPaidAt && !it.recovered && row.depositSaleId !== it.saleId) skippedSatang += it.amountSatang;
+        if (row?.depositPaidAt && !it.recovered && (it.saleId === null || row.depositSaleId !== it.saleId)) skippedSatang += it.amountSatang; // ไม่ผูก POS: ไม่มีใบให้เทียบ ⇒ จ่ายแล้ว = ทางอื่น
         continue;
       }
       const d = it.saleId ? await tx.posDeposit.findUnique({ where: { receiptSaleId: it.saleId }, select: { amountSatang: true, tenantId: true } }) : null;

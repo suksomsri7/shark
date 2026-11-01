@@ -457,12 +457,14 @@ async function slipApprovedGroup(ctx: { tenantId: string; unitId: string }, gm: 
   const lead = gm.facts.find((f) => f.appt.id === allIds[0])?.appt ?? gm.facts[0].appt;
   const factOf = new Map(gm.facts.map((f) => [f.appt.id, f]));
   let plan: GroupSlipPlan | null = null;
+  // หน่วยไม่ผูก POS ⇒ ไม่มีใบรับ (ไม่มีชนคีย์) ⇒ ผูกตามแผนรอบแรกด้วย saleId null แบบทางเดี่ยว B.8 (ยอดเงินของแถว + slip_after_paid = เงินสลิป)
+  let noPos = false;
   for (let round = 0; round < 5; round++) {
     const p = await planGroupSlip(ctx, allIds, slipId, amount);
     if (p === "DONE" || p === "GONE") return;
     if (p === "BUSY") throw new Error("[booking.deposit] แถวนัดไม่ว่าง — คิวลองใหม่");
     const fresh = p.plan.items.filter((x) => x.isNew);
-    if (!fresh.length) { plan = p.plan; break; }
+    if (!fresh.length || noPos) { plan = p.plan; break; }
     for (const { id, give } of fresh) {
       const mf = factOf.get(id) ?? (await depositFactsOf(ctx, id));
       if (!mf) continue;
@@ -472,12 +474,14 @@ async function slipApprovedGroup(ctx: { tenantId: string; unitId: string }, gm: 
       });
       // CONFLICT = แถวนี้มีใบรับของทางอื่น/สลิปอื่นแล้ว ⇒ วางแผนซ้ำจะจัดชนิดให้เอง (ไม่หยิบใบนั้นเป็นของสลิปนี้)
       if (!take.ok && take.code !== "CONFLICT") throw new Error(`[booking.deposit] ออกใบรับมัดจำไม่สำเร็จ: ${take.code}`); // คิวลองใหม่ (ใบที่ออกแล้วพกต้นทาง ⇒ ไม่ซ้ำ)
+      if (take.ok && take.saleId === null) noPos = true;
     }
+    if (noPos) { plan = p.plan; break; }
   }
   if (!plan) throw new Error("[booking.deposit] สถานะกลุ่มเปลี่ยนต่อเนื่องระหว่างลงเงิน — คิวลองใหม่");
   const others = plan.others ?? [];
   const items: { appointmentId: string; saleId: string | null; amountSatang: number; recovered?: boolean }[] = [
-    ...plan.items.filter((x) => x.saleId).map((x) => ({ appointmentId: x.id, saleId: x.saleId as string, amountSatang: x.give })),
+    ...plan.items.filter((x) => x.saleId || noPos).map((x) => ({ appointmentId: x.id, saleId: x.saleId ?? null, amountSatang: x.give })),
     ...others.map((o) => ({ appointmentId: o.id, saleId: o.saleId, amountSatang: o.amount, recovered: true })),
   ];
   if (!items.length) {
