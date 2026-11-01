@@ -693,7 +693,7 @@ export async function leaseChangeModel(ctx: LeaseChangeCtx, input: { unitId: str
     const nd = snap["rooms.moveout.noticeDays"];
     const noticeDays = isInt(nd) && nd >= 0 ? nd : 30;
     const mo = await db.dormMoveOut.findFirst({ where: { leaseId: lease.id, status: { not: "CANCELLED" } }, select: { id: true } });
-    const rooms = (await db.hotelRoom.findMany({ where: { active: true }, select: { id: true, number: true }, orderBy: { number: "asc" }, take: 500 })) // SVC D.15-K M2 ▸ ห้องปิดไม่เป็นปลายทาง ◂.filter((r) => r.id !== lease.roomId && roomVisible(g, r.id));
+    const rooms = (await db.hotelRoom.findMany({ where: { active: true }, select: { id: true, number: true }, orderBy: { number: "asc" }, take: 500 })).filter((r) => r.id !== lease.roomId && roomVisible(g, r.id)); // SVC D.15-K M2 ▸ ห้องปิดไม่เป็นปลายทาง (where active) ◂
     // SVC D.12 (Y29) ▸ มิเตอร์เฉพาะห้องต้นทาง + ห้องปลายทางที่เลือก (?to=) — ไม่อ่านทั้งหน่วย ◂
     const toId = isStr(input.toRoomId) && rooms.some((r) => r.id === input.toRoomId) ? input.toRoomId : (rooms[0]?.id ?? null);
     const allMeters = await db.dormMeter.findMany({ where: { role: "ROOM", removedAt: null, roomId: { in: toId ? [lease.roomId, toId] : [lease.roomId] } }, select: { id: true, kind: true, roomId: true }, orderBy: [{ kind: "asc" }, { id: "asc" }] });

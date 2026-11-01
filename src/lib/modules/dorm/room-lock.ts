@@ -1,5 +1,5 @@
 // SVC D.15-K M2 ▸ ล็อกแถวห้อง (HotelRoom) ของหอ — กัน race "ปิดห้อง ∥ ทำสัญญา/ย้ายเข้า"
-//   • ทางที่ "ใส่ของลงห้อง" (createLease · transferRoom · renewLease) = FOR SHARE ทันทีก่อน claimRoom/moveOccupancy (หลังล็อก advisory ของสัญญา)
+//   • ทางที่ "ใส่ของลงห้อง" (createLease · transferRoom — renewLease ไม่ล็อก: ห้องเดิมมีสัญญา ACTIVE ⇒ ทางปิดตอบ IN_USE อยู่แล้ว · import.ts ยังไม่ล็อก = หนี้) = FOR SHARE ทันทีก่อน claimRoom/moveOccupancy (หลังล็อก advisory ของสัญญา)
 //     ⇒ claimRoom/moveOccupancy อ่าน active หลังได้ล็อก = ค่าล่าสุดที่ commit แล้ว (ปิดไปแล้ว ⇒ ROOM_INACTIVE ตามแบบข้อผิดพลาดเดิมของไฟล์)
 //   • ทางปิดห้อง (setup.ts archiveDormRoom) = FOR UPDATE เป็นคำสั่งแรกของ tx แล้วจึงตรวจสัญญา/occupancy + ตั้ง active=false ใน tx เดียว
 //     ⇒ FOR SHARE ∥ FOR UPDATE ขัดกันเสมอ: ฝั่งใดได้ก่อน อีกฝั่งรอจน commit แล้วเห็นผลของอีกฝั่ง
