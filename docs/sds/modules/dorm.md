@@ -1,15 +1,15 @@
 # SDS — หอพัก / อพาร์ตเมนต์ (DORM) · AS-BUILT V2
 
-> as of `266b4c4a` (เลน `shark-svc-l4` · 1 พ.ย. 2569 · SVC D.20 ส่วนเอกสาร) — โค้ดหอล่าสุด `936bd20d` (หนี้ D.15) · สร้างจากโค้ด: model · event · facade · สิทธิ์ · เงิน · ข้อสอบ
+> as of `2e86fd2f` + ใบแก้ D.15-K (ยังไม่ commit · เลน `shark-svc-l4` · 1 พ.ย. 2569 · SVC D.20 ส่วนเอกสาร) — โค้ดหอก่อนใบแก้ `936bd20d` (หนี้ D.15) · สร้างจากโค้ด: model · event · facade · สิทธิ์ · เงิน · ข้อสอบ
 > คู่กับแผน `ledger/SVC-MASTER-PLAN.md` (D.0–D.20) · สัญญากลาง `ledger/SVC-CORE-CONTRACT.md` · ใบสั่งต่อใบ `ledger/svc-briefs/svc-brief-d.*.md` · คำถามกฎหมาย/บัญชี `ledger/wo-notes/svc-legal-questions.md` · ชุด UAT `ledger/wo-notes/svc-uat-u2-dorm.md` (U2) · `ledger/wo-notes/svc-uat-u4-dorm-d2.md` (U4)
-> ตัวเลขนับจากโค้ดวันนี้: model 13 (`prisma/schema/dorm.prisma`) · คีย์ outbox `dorm.*` ที่มีตัวรับ 15 · export ของ facade 317 ชื่อ (ค่า 175 + type 142) · คีย์สิทธิ์ 16 · งานรายนาที 9 · ค่าตั้ง `rooms.*` 112 คีย์ (ไม่นับ `rooms.hotel.*` = 89) · ตัวตรวจกฎหมาย 12 ข้อ · ข้อสอบ `qc-svc-d.*` 19 ชุด + probe 14 ไฟล์
+> ตัวเลขนับจากโค้ดวันนี้: model 13 (`prisma/schema/dorm.prisma`) · คีย์ outbox `dorm.*` ที่มีตัวรับ 15 · export ของ facade 328 ชื่อ (ค่า 183 + type 145) · คีย์สิทธิ์ 16 · งานรายนาที 9 · ค่าตั้ง `rooms.*` 112 คีย์ (ไม่นับ `rooms.hotel.*` = 89) · ตัวตรวจกฎหมาย 12 ข้อ · ข้อสอบ `qc-svc-d.*` 19 ชุด + probe 14 ไฟล์
 > 🔴 **ยังไม่ใช้กับลูกค้าจริง** จนกว่าที่ปรึกษากฎหมายตรวจ (J3 · `ledger/SVC-MASTER-PLAN.md` §7) — G2 (D.15) ยัง ⬜
 
 ## 1. หน้าที่ · ชั้น · ไฟล์
 - **หอพักรายเดือน**: ผู้เช่า/สัญญา/เงินประกัน → จดมิเตอร์ → ค่าน้ำไฟตามกฎหมาย สคบ. 2568 → รอบบิลรายเดือน → ส่ง LINE/พอร์ทัล → ตรวจสลิป/รับเงิน → ใบเสร็จ → GL บัญชี V2 · เตือน/ทวง/ค่าปรับ · ย้ายออก/คืนประกัน · แจ้งซ่อม · ประกาศ · พัสดุ · รายงาน
 - Layer 3 · scope = unit (BusinessUnit ชนิด `DORM` · `prisma/schema/core.prisma`) · ทุกแถวผูก `tenantId` + `unitId` (ลงทะเบียน `src/lib/core/scope.ts` เป็น `unit` ยกเว้น `DormAuthorityTariff` = ตารางรัฐใช้ร่วม) · อ่าน/เขียนผ่าน `tenantDb` เท่านั้น · id ข้ามโมดูล (party/file/doc/card/approval) = String หลวม ไม่มี FK · เงิน = สตางค์ Int (`*Satang` + CHECK ≥ 0 ใน migration)
 - ห้อง/อาคาร/ประเภทห้อง/การครอบครอง ใช้แกนห้องร่วมกับโรงแรม (`HotelRoom` · `RoomBuilding` · `HotelRoomType` · `RoomOccupancy` — `src/lib/modules/rooms/*` · R0.8/R0.9) · สลิปใช้ `PaymentSlip` กลาง (`prisma/schema/payment.prisma` domain `DORM` refType `DORM_BILL`) · รหัสผูก LINE ใช้ `ChatLinkCode` (`prisma/schema/chat.prisma` purpose `DORM_LEASE`) · เอกสารบัญชีติดแหล่ง `AccountDocSource.DORM` (`prisma/schema/account.prisma`)
-- **โค้ดโมดูล** `src/lib/modules/dorm/` (30 ไฟล์):
+- **โค้ดโมดูล** `src/lib/modules/dorm/` (31 ไฟล์):
 
 | ไฟล์ | หน้าที่ (ใบ) |
 |---|---|
@@ -24,12 +24,13 @@
 | `portal.ts` | ตัวอ่านฝั่งผู้เช่าให้ชั้น platform (D.9) |
 | `import.ts` · `import-parse.ts` · `import-ai.ts` | นำเข้า Excel/CSV (D.4) |
 | `home.ts` · `policy.ts` | หน้าแรกหอ/KPI · นโยบาย/ชุดสิทธิ์ (D.13) |
+| `setup.ts` | อาคาร · ชั้น · ห้อง · ประเภทห้อง/ค่าเช่า (D.15-K2) |
 | `repair.ts` · `announce.ts` · `parcel.ts` · `report.ts` | แจ้งซ่อม · ประกาศ · พัสดุ · รายงาน (D.16 · D.17 · D.18 · D.19) |
 | `index.ts` | facade (§4) |
 
 - **ชั้น platform** (ใช้หอ + บัญชี + สลิป + แชทพร้อมกัน): `src/lib/platform/dorm-pay.ts` (ตรวจสลิป/รับเงิน D.10) · `src/lib/platform/dorm-line.ts` (รหัสผูกห้อง · postback · rich menu · ส่งบิล D.9) · `src/lib/platform/dorm-portal.ts` (พอร์ทัลลิงก์เซ็น D.9) · `src/lib/platform/dorm-announce.ts` (ส่งประกาศ/หน้าประกาศ D.17) · `src/lib/platform/dorm-richmenu-image.ts` (รูปเมนู 6 ช่อง) · สะพานบอร์ดงาน `src/lib/platform/kanban-bridges.ts` (`onDormRepairCreated` · `onDormRepairDone` · `sweepDormRepairCards`) · route postback `src/lib/platform/postback-routes.ts` (prefix `dorm.`)
 - **หน้าพนักงาน** `src/app/app/u/[unitSlug]/dorm/**` (layout ตรวจ `unit.type === "DORM"` · แท็บตามสิทธิ์ `src/components/dorm/dorm-home-shared.ts`: ผังห้อง · ผู้เช่า/สัญญา · จดมิเตอร์ · ตั้งค่า · บิล/รับเงิน):
-  `/dorm` (หน้าแรก+ผัง) · `/dorm/tenants` · `/dorm/tenants/new` · `/dorm/tenants/[leaseId]/print` · `/dorm/tenants/[leaseId]/line` · `/dorm/tenants/import` (+ `template/route.ts`) · `/dorm/meter` · `/dorm/billing` · `/dorm/billing/[billId]/print` · `/dorm/billing/[billId]/tax-invoice` · `/dorm/payments` · `/dorm/overdue` · `/dorm/overdue/[leaseId]/notice` · `/dorm/moveout` · `/dorm/repairs` · `/dorm/repairs/[repairId]` · `/dorm/announce` · `/dorm/parcels` · `/dorm/reports` · `/dorm/settings` · `/dorm/settings/utility` — จอ client อยู่ `src/components/dorm/*` · ทางเข้าจากหน้าหน่วย `src/app/app/u/[unitSlug]/page.tsx` (เปิดระบบหอพัก · จดมิเตอร์ · พัสดุ · แจ้งซ่อม · รายงาน · ตั้งค่าหอ)
+  `/dorm` (หน้าแรก+ผัง) · `/dorm/tenants` · `/dorm/tenants/new` · `/dorm/tenants/[leaseId]/print` · `/dorm/tenants/[leaseId]/line` · `/dorm/tenants/import` (+ `template/route.ts`) · `/dorm/meter` · `/dorm/billing` · `/dorm/billing/[billId]/print` · `/dorm/billing/[billId]/tax-invoice` · `/dorm/payments` · `/dorm/overdue` · `/dorm/overdue/[leaseId]/notice` · `/dorm/moveout` · `/dorm/repairs` · `/dorm/repairs/[repairId]` · `/dorm/announce` · `/dorm/parcels` · `/dorm/reports` · `/dorm/settings` · `/dorm/settings/utility` · `/dorm/settings/rooms` — จอ client อยู่ `src/components/dorm/*` · ทางเข้าจากหน้าหน่วย `src/app/app/u/[unitSlug]/page.tsx` (เปิดระบบหอพัก · จดมิเตอร์ · พัสดุ · แจ้งซ่อม · รายงาน · รอบบิล · นำเข้าข้อมูล · ตั้งค่าหอ) · ปุ่มบนหน้าแรกหอ (`src/components/dorm/DormHome.tsx`): รอบบิล (ผู้เห็นเงิน) · นำเข้าข้อมูล (`dorm.import`) · ประกาศ (`dorm.announce`) · หน้าผู้เช่ามีปุ่ม "นำเข้าจากไฟล์" (`dorm.import`) · เมนูตั้งค่าหอ `src/components/dorm/DormSettingsNav.tsx`
 - **หน้าผู้เช่า (สาธารณะ · ไม่มี session · ลิงก์เซ็น `signLink` purpose `dorm.portal` subject = สัญญา — `src/lib/core/signed-link.ts`)**: `src/app/(store)/d/[token]/page.tsx` (บิล/จ่าย QR/แนบสลิป) · `.../receipt` · `.../lease` · `.../news` · `.../repair` · `.../f/[fileId]/route.ts` (ไฟล์สัญญา) · `src/app/(store)/dp/[token]/page.tsx` (QR รับพัสดุ) — ทุกทางเข้า: rate limit → ลายเซ็น → สัญญา live → ของในสัญญานี้ · ล้ม = 404 เนื้อเดียวกัน (X7) · `/d` ระดับบนเป็นจอลูกค้า POS (`src/app/(store)/d/page.tsx`) อยู่ร่วมเส้นทาง
 - **LINE ขาเข้า**: `src/app/api/chat/webhook/[connectionId]/route.ts` → `onDormPostback` · `onDormLinked` · `onLineImage` (`dorm-line.ts`)
 - schema: `prisma/schema/dorm.prisma` · migration `prisma/migrations/20261223000000_svc_d` (12 ตาราง + CHECK/partial index มือ) · `prisma/migrations/20261224000000_svc_d4` (`DormImportBatch`) · ข้อควรระวัง deploy `ledger/wo-notes/svc-deploy-checklist.md`
@@ -38,7 +39,7 @@
 | model | หน้าที่ | ผู้เขียน (grep `create/update*` + SQL ดิบ) |
 |---|---|---|
 | `DormLease` | สัญญาเช่า (DRAFT/ACTIVE/NOTICE/ENDED/CANCELLED) · ค่าห้อง/ส่วนกลาง/ประกัน/ล่วงหน้า/เงินจอง · ลงชื่อ · รูปเข้าอยู่ · `policySnapshot` (dueDay/ค่าปรับ ล็อกตอนทำ) · FK `HotelRoom` Restrict | `lease.ts` · `lease-change.ts` · `moveout.ts` · `import.ts` |
-| `DormMeter` | มิเตอร์ไฟ/น้ำ ROOM/MAIN (MAIN ต่ออาคาร) · หลักหน้าปัด (rollover) · เปลี่ยนตัว `replacedById` · unique ห้อง×ชนิดที่ใช้งาน | `meter.ts` · `import.ts` |
+| `DormMeter` | มิเตอร์ไฟ/น้ำ ROOM/MAIN (MAIN ต่ออาคาร) · หลักหน้าปัด (rollover) · เปลี่ยนตัว `replacedById` · unique ห้อง×ชนิดที่ใช้งาน | `meter.ts` · `import.ts` · `setup.ts` (ถอดมิเตอร์เมื่อปิดห้อง) |
 | `DormMeterReading` | เลขต่องวด (PERIOD/MOVE_IN/MOVE_OUT/REPLACE) · source MANUAL/AI/IOT/IMPORT · `aiValue` · ป้ายผิดปกติ · ยืนยัน · unique มิเตอร์×งวด (PERIOD) | `meter.ts` · `lease.ts` · `lease-change.ts` · `moveout.ts` · `import.ts` |
 | `DormUtilityRate` | บิลการไฟฟ้า/ประปารายเดือนต่อ (หน่วย, อาคาร\|null, ชนิด, งวด) · ยอด/หน่วย/อัตรา · `legalCheck` (การยอมรับ) | `utility.ts` |
 | `DormAuthorityTariff` | ตารางอัตรา กฟภ./กฟน./ประปา มีวันมีผล (global · ไม่มี tenantId) | ไม่มีผู้เขียนในแอป (อ่านใน `utility.ts#authorityTariffFor`) |
@@ -51,7 +52,7 @@
 | `DormParcel` | พัสดุ (WAITING/PICKED_UP/RETURNED) · รูป · ลายเซ็น · ตัวนับเตือน | `parcel.ts` (INSERT/UPDATE ดิบ) |
 | `DormImportBatch` | ชุดนำเข้า (DRAFT/CREATING/CREATED/UNDOING/UNDONE) · unique หน่วย×hash ไฟล์ · CAS status+version + claimToken | `import.ts` (สร้าง/เปลี่ยนสถานะ) · `lease.ts` · `meter.ts` (ต่ออายุ claim ระหว่างนำเข้าเท่านั้น) |
 
-ไม่มีตารางสลิป/รหัสผูก/ใบย้ายออกแยก (ใช้ของกลาง §1) · ข้อเสนอ AI อ่านมิเตอร์เก็บใน AuditLog action `dorm.meter.ai.proposed` (`meter.ts#METER_AI_ACTION` · ไม่มี migration) · ยกเว้นค่าปรับ = AuditLog `dorm.latefee.waived` (`latefee.ts`)
+ไม่มีตารางสลิป/รหัสผูก/ใบย้ายออกแยก (ใช้ของกลาง §1) · ห้อง/ประเภทห้อง/อาคารของหอ (`HotelRoom` · `HotelRoomType` · `RoomBuilding` ของแกนห้อง) เขียนโดย `import.ts` และ `setup.ts` (อาคารผ่าน facade rooms `createBuilding`/`updateBuilding`/`deleteBuilding` · ค่าเช่าผ่าน `setRoomTypeRent`) · ข้อเสนอ AI อ่านมิเตอร์เก็บใน AuditLog action `dorm.meter.ai.proposed` (`meter.ts#METER_AI_ACTION` · ไม่มี migration) · ยกเว้นค่าปรับ = AuditLog `dorm.latefee.waived` (`latefee.ts`)
 
 ## 3. Outbox events `dorm.*` (15 · ตัวรับใน `src/lib/outbox-consumers.ts` ห่อ `withAutomation`)
 payload เป็น id/ยอดล้วน ไม่มีชื่อ/เบอร์ (X8) · ป้ายภาษาไทยใน `src/lib/automation/labels.ts`
@@ -74,7 +75,7 @@ payload เป็น id/ยอดล้วน ไม่มีชื่อ/เบ
 event กลางที่หอรับ: `payment.slip.approved` → `dorm-pay.ts#onDormSlipApproved` (คู่กับมัดจำจองคิว · `bothMain`) · ผลอนุมัติ `dorm.latefee.waive` → `applyLateFeeWaiverApproval` (`src/lib/approval-effects.ts`) · คำขออนุมัติหักประกัน entity `dorm.moveout.deduction` (`moveout.ts`)
 **งานรายนาที 9** (`src/lib/platform/minute-jobs.ts`): `dorm.billing` (ส่งตามเวลาตั้ง) · `dorm.dunning` · `dorm.line` (ส่งบิลซ้ำ) · `dorm.parcel` · `dorm.announce` · `dorm.chatSlipSweep` · `dorm.repair` · `dorm.repair.cards` · `dorm.moveout`
 
-## 4. Facade `src/lib/modules/dorm/index.ts` (ค่า 175 · type 142 — แบ่งเป็นบล็อกต่อใบ)
+## 4. Facade `src/lib/modules/dorm/index.ts` (ค่า 183 · type 145 — แบ่งเป็นบล็อกต่อใบ)
 ผู้เรียกนอกโมดูลใช้ไฟล์นี้เท่านั้น · `createLease`/`moveIn` ห่อเป็นรุ่น 2 อาร์กิวเมนต์ (X17: อาร์กิวเมนต์ภายในของงานนำเข้าไม่ออกนอกโมดูล)
 - **มิเตอร์ D.6/D.14** (`meter.ts` · `meter-queue.ts` · `meter-ai.ts`): `createMeter` · `listMeters` · `submitReadings` · `confirmReading` · `replaceMeter` · `meterWalk` · `meterFlags` · `heldRooms` · `periodUsage` · `previewReading` · `enqueueReading` · `nextBatch` · `settleBatch` · `proposeMeterReading` · `meterProposals` · `meterAiStatus` · `defaultMeterReader`
 - **ค่าน้ำไฟ/กฎหมาย D.7** (`utility.ts` · `law.ts`): `recordAuthorityBill` · `utilityCharges` · `utilityBillingGate` · `acceptUtilityLegalWarn` · `authorityTariffFor` · `parseBahtToSatang` · `setDormLegalMode` · `dormLawModel`
@@ -91,6 +92,7 @@ event กลางที่หอรับ: `payment.slip.approved` → `dorm-pa
 - **ประกาศ D.17** (`announce.ts`): `createDormAnnouncement` · `updateDormAnnouncement` · `previewDormAnnouncement` · `publishDormAnnouncement` · `dormAnnouncementStats` · `dormAnnounceModel` · `announceStaffGate` · `announceForSend` · `announceRecipients` · `announceTemplate` · `announceSendBlocked` · `announceStampLogParty` · `announceVisibleForLease` · `announceMarkRead` · `announceDateLabel` · `announceResendCandidates` · `announceAuditOnce` + `ANNOUNCE_BLOCKED_ACTION` `ANNOUNCE_IDLE_ACTION`
 - **แจ้งซ่อม D.16** (`repair.ts`): `repairTicketNo` · `submitPortalRepair` · `loadPortalRepairs` · `ratePortalRepair` · `repairPortalUrl` · `listDormRepairs` · `dormRepairJob` · `completeDormRepair` · `linkRepairCard` · `applyRepairCardState` · `sendRepairDoneNotice` · `onRepairDone` · `runDormRepairJobs` + `REPAIR_SOURCE_PREFIX` `REPAIR_RATE` `REPAIR_NF_REASON`
 - **รายงาน D.19** (`report.ts`): `dormAgingReport` · `dormOccupancyReport` · `dormRevenueReport` · `dormReportModel` · `dormReportCsv` + `DORM_REPORT_NF_REASON` `DORM_REVENUE_TYPES`
+- **ตั้งค่าห้อง D.15-K2** (`setup.ts`): `dormSetupModel` · `saveDormBuilding` · `removeDormBuilding` · `saveDormRoomType` · `archiveDormRoomType` · `saveDormRoom` · `archiveDormRoom` + `DORM_SETUP_NF_REASON`
 - ตัวรับเงิน/สลิปไม่อยู่ใน facade นี้ — อยู่ `src/lib/platform/dorm-pay.ts` (`reviewDormSlip` · `resolveHeldSlip` · `recordDormPayment` · `voidDormReceipt` · `dormBillReceipts` · `dormPaymentsModel` · `stashChatSlip` · `attachChatSlip` · `dismissChatSlip` · `sweepExpiredChatSlips` · `onDormSlipApproved`)
 
 ## 5. สิทธิ์ · ขอบเขต
@@ -98,6 +100,7 @@ event กลางที่หอรับ: `payment.slip.approved` → `dorm-pa
 - OWNER ผ่านทุกอย่าง · MANAGER ผ่านในหน่วยที่คุม (`evaluate` ของ `src/lib/core/rbac.ts`) · STAFF ต้องถือคีย์ — ยกเว้น `dorm.deposit.deduct.approve` ที่ต้อง **ถือคีย์จริง** (ผู้จัดการไม่ได้เพราะคุมหน่วย · `moveout-access.ts` R7)
 - deciders pure: `access.ts#dormAccess` → `{ board (dorm.view) · meter (dorm.meter.read) · money (คีย์เงินตัวใดก็ได้ของ bill.run/bill.send/slip.review/payment.manual) · lease · settings }` · `lease-access.ts#leaseAccess` → `{ view, manage }` · `moveout-access.ts#moveOutAccess` → `{ manage, approve, lease }` · "คนจดมิเตอร์เห็นแค่หน้าจด" (ถือ `dorm.meter.read` อย่างเดียว ⇒ แท็บจดมิเตอร์อย่างเดียว)
 - **ชุดสิทธิ์ตามบทบาท** (หน้า 17 · `DORM_ROLE_ROWS` 11 แถว × คอลัมน์ เจ้าของ/ผู้ดูแล/ช่าง/บัญชี · `applyDormRolePreset`): ผู้ดูแล = บิล/สลิป/มิเตอร์/ดูผัง/สัญญา+ย้ายออก/ซ่อม/ประกาศ+พัสดุ (หักประกัน · ยกเว้นค่าปรับ = ยื่นขอ REQUEST) · ช่าง = มิเตอร์ + ซ่อม · บัญชี = บิล/สลิป/ดูผัง · ตั้งค่า/นำเข้า/โหมดกฎหมาย = เจ้าของ
+- **ตั้งค่าห้อง** (`setup.ts` · `/dorm/settings/rooms`): ดู = `dorm.view` · แก้ = `dorm.settings.edit` (ชุดบทบาท: เจ้าของ · MANAGER ผ่านตามหน่วย) · ผู้ถูกจำกัดอาคาร (`dormActorScope`) เห็น/เพิ่ม/แก้/ปิดห้องเฉพาะอาคารตัวเอง · อาคารและประเภทห้อง (ใช้ทั้งหน่วย) แก้ได้เฉพาะผู้ที่เห็นทั้งหน่วย · ห้องที่มีสัญญา (ร่าง/อยู่/แจ้งออก) หรือการครองห้องที่ยังไม่จบ ปิดไม่ได้
 - **ขอบเขตอาคาร** (`scope.ts`): ค่าตั้ง `rooms.access.managerScope` = `BUILDING` ⇒ ทุกบทบาทที่ไม่ใช่ OWNER (รวม MANAGER) เห็นเฉพาะอาคารใน `rooms.access.buildingAssignments[membershipId]` · ไม่มีรายการ ⇒ ไม่เห็นห้องใด (fail closed) · `dormBuildingScope` / `dormVisibleRoomsFor` (อ่าน Membership สดทุกครั้ง ไม่เชื่อ role ที่ผู้เรียกส่ง) · `dormActorScope` = ด่านเดียวกันสำหรับทางเขียนของ service (D.15 ปิดหนี้ FG-3: submit/confirm/replace/walk/flags ของมิเตอร์ · `936bd20d`) · ตั้งรายการที่หน้านโยบาย `setDormBuildingAssignment` (`src/app/app/u/[unitSlug]/dorm/settings/scope-actions.ts`)
 - **ข้ามร้าน/ข้ามอาคาร/id เดา/สิทธิ์ไม่พอ ⇒ NOT_FOUND เหตุผลเดียวกัน** (X1) — เช่น `MOVEOUT_NF_REASON` (`moveout-access.ts`) · `REPAIR_NF_REASON` · `PARCEL_NF_REASON` · `DORM_REPORT_NF_REASON` · `DORM_PAY_NF` (`dorm-pay.ts` Z3: ผู้ดูแลถูกจำกัดอาคาร = บิลนอกขอบเขตไม่พบ) · หน้า = `notFound()`
 - ตัวตนผู้เช่าทาง LINE: ผูก Party ได้จาก **รหัสผูกห้องที่พนักงานออก** เท่านั้น (`issueDormLinkCode` · `resolveDormParty`) — ห้ามเดาจากเบอร์/ชื่อ/ชื่อผู้โอน
@@ -110,7 +113,7 @@ event กลางที่หอรับ: `payment.slip.approved` → `dorm-pa
 - **บรรทัดเอกสาร** (`account-bridge.ts#dormBillInvoiceLines` pure): 1 บรรทัดบิล = 1 บรรทัดเอกสาร qty 1 × amountSatang · บรรทัดมิเตอร์แสดงหน่วย × บาท/หน่วย
 - **ยอดค้างนิยามเดียว** (`balance.ts#billBalances`): จากบัญชี ณ ตอนเรียก (grandTotal − รับชำระไม่ยกเลิก (+WHT) − ใบลดหนี้) · ใช้ทุกจอ (พอร์ทัล · สลิป · ทวง · รายงาน)
 - **รับเงิน** (`src/lib/platform/dorm-pay.ts`): สลิปจากพอร์ทัล (`submitPortalSlip`) / รูปในแชท (`stashChatSlip` → แนบอัตโนมัติเมื่อมีบิลเปิดใบเดียว · กำกวม = ให้เลือก) → ตรวจสลิปกลาง R0.6 → ป้าย `PAYER_NAME` `SHORT` `OVER` `DUPLICATE` `AFTER_PAID` `BILL_VOID` `NO_INVOICE` `OTHER` → พนักงาน `reviewDormSlip` (APPROVE · PARTIAL_CARRY · ASK_MORE · REJECT) · รับมือ `recordDormPayment` (เงินสด/โอน · `dorm.payment.manual`) · ลงเงิน `recordExternalPayment` + ใบเสร็จ `issueDormReceipt` (RC) · ยกเลิกใบเสร็จ `voidDormReceipt` → `voidDormReceiptDoc` (กลับรายการ ไม่ลบแถว) · claim CAS ต่อบิล (หนึ่งบิลลงเงินได้ทีละทาง) + แผนลงเงินจดบนบิลก่อนลง (ตายกลางทาง = ทำต่อได้ผลเดิม) · จ่ายบางส่วนตามค่าตั้ง `rooms.payment.partial` (ค่าเริ่ม `ALLOW_CARRY_FORWARD`) · ยอดยก = ป้าย `carriedSatang` ไม่ย้ายลูกหนี้
-- **GL**: สมุดบัญชีของหอ = ระบบบัญชีที่ผูกหน่วยหอ **เล่มเดียว** (`dormUnitBookId` ใน `src/lib/modules/account/index.ts` · ไม่ผูก = `NOT_LINKED` · ผูก > 1 = `AMBIGUOUS_LINK`) · เงินประกันเป็นหนี้สิน บัญชีกลุ่ม 2140 (`TENANT_DEPOSIT_CODES` ใน `src/lib/modules/account/gl.ts`) ผ่าน `postSecurityDepositInTx` / `settleSecurityDepositInTx` / `reverseSecurityDepositReceiptInTx` · รับเกินลง 2110 (J4 ค้าง) · ทุกเส้นเงินผ่าน facade บัญชี (`src/lib/modules/account`) — หอไม่เขียนตารางบัญชีเอง
+- **GL**: สมุดบัญชีของหอ = ระบบบัญชีที่ผูกหน่วยหอ **เล่มเดียว** (`dormUnitBookId` ใน `src/lib/modules/account/index.ts` · ไม่ผูก = `NOT_LINKED` · ผูก > 1 = `AMBIGUOUS_LINK`) · ผูกที่หน้าบัญชี `/app/sys/<บัญชี>/account/settings/connections` การ์ด "หอพัก · <ชื่อหอ>" 1 ใบต่อหน่วย DORM (`src/lib/modules/account/connections.ts` `buildConnectionCards(..., { dormUnits: true })` · แถว `AccountSystemLink` BUSINESS · ผูกหอที่ผูกเล่มอื่นอยู่แล้ว = ปฏิเสธ `DORM_OTHER_BOOK` · REST `/links` คงชุดการ์ดเดิม) · เงินประกันเป็นหนี้สิน บัญชีกลุ่ม 2140 (`TENANT_DEPOSIT_CODES` ใน `src/lib/modules/account/gl.ts`) ผ่าน `postSecurityDepositInTx` / `settleSecurityDepositInTx` / `reverseSecurityDepositReceiptInTx` · รับเกินลง 2110 (J4 ค้าง) · ทุกเส้นเงินผ่าน facade บัญชี (`src/lib/modules/account`) — หอไม่เขียนตารางบัญชีเอง
 - **ใบกำกับเต็มรูป ม.86/4** (`tax-invoice.ts`): เฉพาะหอจด VAT (`rooms.vat.registered` ค่าเริ่ม false) · `issueBillTaxInvoice` / `reissueBillTaxInvoice` (ยกเลิก = ออกฉบับใหม่แทน · วันที่ตาม `rooms.vat.reissueDate`) · หน้า `/dorm/billing/[billId]/tax-invoice` (`?copy=1` สำเนา)
 - **ค่าปรับ** (`latefee.ts`): สูตร D.1 · ฐาน = เงินต้นค้างจากบัญชี · เพดาน = min(capPerBill ของสัญญา, LATE_FEE_CAP) · ว่างทั้งคู่ ⇒ เพดานกันพิมพ์ผิด `rooms.lateFee.guardRentBp` · ลงบิลงวดถัดไปเป็นบรรทัด `LATE_FEE` meta.auto · ยกเว้น `waiveLateFee` (ผู้ไม่ใช่เจ้าของ ⇒ งานอนุมัติ `dorm.latefee.waive` ค่าเริ่ม `rooms.lateFee.waiverApproval` = OWNER_APPROVAL) · บิลที่ส่งแล้ว ⇒ ใบลดหนี้
 - **เตือน/ทวง** (`dunning.ts`): ข้อความผ่าน `notifyCustomer` (`src/lib/platform/notify-customer.ts` · เวลาเงียบ · OA ต่อหน่วย · ยินยอม · QUOTA · dedupe) เท่านั้น · ตรวจคำต้องห้ามบนข้อความที่ render แล้วทุกครั้ง · ค่าเริ่ม เตือนก่อน `[2, 0]` วัน · ทวงหลัง `[3, 7, 14]` วัน · นัดจ่าย `setPaymentPromise` · หนังสือบอกเลิก `terminationNotice` (หน้า `/dorm/overdue/[leaseId]/notice`)
@@ -118,6 +121,7 @@ event กลางที่หอรับ: `payment.slip.approved` → `dorm-pa
 
 ## 7. มิเตอร์ · AI อ่านมิเตอร์
 - `meter.ts`: `createMeter` · `submitReadings` (ทีละห้อง · ตรวจขอบเขตอาคารผู้กระทำ `dormActorScope`) · ผิดปกติ `HIGH`/`LOW`/`BACKWARDS`/`VACANT_USAGE` ตามค่าตั้ง `rooms.meter.anomaly` (ค่าเริ่ม ±50% จากเฉลี่ย 3 งวด · ห้องว่าง > 5 หน่วย · ถอยหลัง) ⇒ event `dorm.meter.flagged` + พักบิล (`heldRooms`) · ยืนยัน `confirmReading` · เปลี่ยนมิเตอร์ `replaceMeter` (เลข REPLACE) · rollover ตามหลักหน้าปัด (`digits`) · จอเดินจด `meterWalk` / รายการผิดปกติ `meterFlags` (`/dorm/meter?view=flags`)
+- มิเตอร์ห้องสร้างได้ 2 ทาง: นำเข้า (`import.ts`) และเพิ่มห้องที่ `/dorm/settings/rooms` (`setup.ts#saveDormRoom` → `createMeter` ไฟ+น้ำ เลขเริ่มจากฟอร์ม) · ไม่มีจอเพิ่มมิเตอร์หลัก (MAIN) แยก
 - **ออฟไลน์** `meter-queue.ts` (pure · ใช้ใน `src/components/dorm/MeterWalk.tsx`): `enqueueReading` → `nextBatch` → `settleBatch` (จดตอนไม่มีเน็ตแล้วส่งทีหลัง)
 - **AI** `meter-ai.ts` (D.14 · ระบบเสนอ คนยืนยัน): `proposeMeterReading` อ่านรูป → ข้อเสนอเก็บ AuditLog (ไม่มีรูป/ชื่อ/เบอร์) · ความมั่นใจต่ำกว่า `rooms.meter.aiMinConfidence` (ค่าเริ่ม 80) ⇒ ต้องคนยืนยัน · เปิด/ปิด `rooms.meter.aiRead` (ค่าเริ่ม **เปิด** · หักเครดิต AI ต่อครั้ง ผ่าน `src/lib/ai/credit.ts` ref กันหักซ้ำ — คำถามเจ้าของ 31 ต.ค.) · บังคับรูป `rooms.meter.requirePhoto` (ค่าเริ่ม ELEC)
 
@@ -195,8 +199,9 @@ event กลางที่หอรับ: `payment.slip.approved` → `dorm-pa
 - D.16: เก็บค่าซ่อมในบิล · คลิป · นัดเวลา (ยังไม่มี)
 - D.17: แท็บประกาศไม่มีในแถบหอ (เข้าจากปุ่มหน้าแรก · d.13 K-6) · ประกาศหยุดกลางรอบต้องกดส่งซ้ำเอง · stamp partyId ลง ServiceMessageLog นอก notifyCustomer
 - D.18: ถอด QR กล้อง · ไฟล์ลายเซ็นสำรอง · QUOTA ครั้งแรกเรียกซ้ำ 1 ครั้ง · J3/J5 ระยะเก็บรูปฉลาก
-- ทางเข้าหน้า: `/dorm/billing` และ `/dorm/tenants/import` ไม่มีลิงก์จากแท็บ/หน้าแรก (เข้าด้วย URL ตรง) · `/dorm/payments` → `/dorm/overdue` · `/dorm/tenants` → `/dorm/moveout`
-- สิทธิ์: `dorm.settings.legal` ยังอยู่ `planned` ใน `src/lib/core/permissions.ts` ทั้งที่โหมดกฎหมายเปิดใช้แล้ว (ตรวจเจ้าของสด ไม่ใช่คีย์)
+- ทางเข้าหน้า: `/dorm/payments` → `/dorm/overdue` · `/dorm/tenants` → `/dorm/moveout` · แถบแท็บหอคงเดิม (d.13 K-6) — รอบบิล/นำเข้า/ประกาศ/ซ่อม/พัสดุ/รายงาน เข้าจากปุ่มหน้าแรกหอหรือหน้าหน่วย
+- สิทธิ์: `dorm.settings.legal` **คงใน `planned` โดยตั้งใจ** (`src/lib/core/permissions.ts` · D.15-K4) — หน้าโหมดกฎหมายใช้งานแล้วแต่ด่านคือเจ้าของสด (`law.ts`) ไม่อ่านคีย์ ⇒ ติ๊กให้พนักงานไม่มีผล · ถอดเมื่อมีมติให้ผู้ถือคีย์เปลี่ยนโหมดได้
+- ตั้งค่าห้อง (D.15-K2): ลบอาคาร = ปลดห้องที่ปิดแล้วออกจากอาคาร · เปิดห้องที่ปิดไว้กลับ = เพิ่มเลขห้องเดิม · ยังไม่มีพื้นที่ ตร.ม./สิ่งอำนวยความสะดวกของประเภทห้องในจอ (มีในฐาน `areaSqm` · `amenities`)
 
 **คำถามเจ้าของ/นอกโมดูล** (`ledger/SVC-OWNER-QUESTIONS.md`)
 - AI อ่านมิเตอร์ค่าเริ่ม "เปิด" (หักเครดิตทุกครั้งที่กดให้ AI อ่าน)

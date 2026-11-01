@@ -143,6 +143,8 @@ const FALLBACK_CODE: Record<string, string> = {
 export type LinkConfig = Partial<Record<ToggleKey, boolean>>;
 
 export type ConnectionCard = {
+  /** SVC D.15-K1 ▸ กุญแจของการ์ดในหน้า (testid/React key/สถานะสวิตช์) — การ์ดแคตตาล็อก = kind เดิม · การ์ดหอ = `DORM-<unitId>` ◂ */
+  key: string;
   kind: AccountLinkedKind;
   label: string;
   icon: string;
@@ -182,8 +184,16 @@ export async function listLinks(ctx: Ctx) {
 /** `linkedId` ของ kind นี้ที่เชื่อมอยู่ตอนนี้ (รวมที่ตัดการเชื่อมแล้ว) — REST `PATCH`/`DELETE /links/{kind}`
  *  ไม่มี linkedId ในเส้นทาง (ตัดสินใจจาก kind เดียว) ⇒ ต้องคลี่ก่อนส่งต่อให้ `disconnect`/`setLinkOptions` */
 export async function linkedIdOfKind(ctx: Ctx, kind: AccountLinkedKind): Promise<string | null> {
-  const row = await dbOf(ctx).accountSystemLink.findFirst({ where: { linkedKind: kind }, select: { linkedId: true } });
-  return row?.linkedId ?? null;
+  // SVC D.15-K1 ▸ BUSINESS อาจมีแถวของหน่วยหอด้วย — REST `/links/BUSINESS` คงความหมายเดิม (การ์ด "จอง/ทริป") ⇒ ข้ามแถวของหน่วย DORM ◂
+  const dormIds = kind === "BUSINESS" ? await dormUnitIds(dbOf(ctx)) : new Set<string>();
+  const rows = await dbOf(ctx).accountSystemLink.findMany({ where: { linkedKind: kind }, select: { linkedId: true } });
+  return rows.find((r) => !dormIds.has(r.linkedId))?.linkedId ?? null;
+}
+
+/** SVC D.15-K1 ▸ id หน่วยหอ (BusinessUnit DORM) ทุกสถานะของร้าน — แยกแถว BUSINESS ของหอออกจากการ์ด "จอง/ทริป" ◂ */
+async function dormUnitIds(db: Db): Promise<Set<string>> {
+  const rows = await db.businessUnit.findMany({ where: { type: "DORM" }, select: { id: true } });
+  return new Set(rows.map((r) => r.id));
 }
 
 /**
@@ -201,7 +211,8 @@ export async function isValidLinkTarget(ctx: Ctx, kind: AccountLinkedKind, linke
     return !!s;
   }
   if (kind === "BUSINESS") {
-    const u = await db.businessUnit.findFirst({ where: { id: linkedId, type: "BOOKING", status: "ACTIVE" }, select: { id: true } });
+    // SVC D.15-K1 ▸ หน่วยหอ (DORM) ผูกสมุดได้ด้วย — ตัวกลางบัญชีของหอ (`index.ts#dormBook`) หาสมุดจากแถว BUSINESS นี้ ◂
+    const u = await db.businessUnit.findFirst({ where: { id: linkedId, type: { in: ["BOOKING", "DORM"] }, status: "ACTIVE" }, select: { id: true } });
     return !!u;
   }
   return false;
@@ -222,6 +233,15 @@ export async function connect(
   tx?: Prisma.TransactionClient, // POS P1.18 ▸ F7 ◂
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (!linkedId) return { ok: false, reason: "ยังไม่มีระบบนี้ในร้าน — เปิดระบบก่อนแล้วค่อยกลับมาเชื่อม" };
+  // SVC D.15-K1 ▸ หอ 1 หน่วย = สมุด 1 เล่ม (ผูก > 1 เล่ม ⇒ dormBook ตอบ AMBIGUOUS_LINK ทุกเส้นเงิน) — กันตั้งแต่ตอนเชื่อม ◂
+  if (kind === "BUSINESS" && !tx) {
+    const unit = await dbOf(ctx).businessUnit.findFirst({ where: { id: linkedId, type: "DORM" }, select: { id: true } });
+    if (unit) {
+      const { findAccountLinksFor } = await import("./service");
+      const others = (await findAccountLinksFor(ctx.tenantId, "BUSINESS", unit.id)).filter((id) => id !== ctx.systemId);
+      if (others.length > 0) return { ok: false, reason: DORM_OTHER_BOOK };
+    }
+  }
   const db = linkDbOf(ctx, tx);
   const existing = await db.accountSystemLink.findFirst({ where: { ...ownScope(ctx, tx), linkedKind: kind, linkedId } });
   if (existing) {
@@ -237,6 +257,8 @@ export async function connect(
   });
   return { ok: true };
 }
+
+export const DORM_OTHER_BOOK = "หอนี้เชื่อมกับสมุดบัญชีเล่มอื่นอยู่แล้ว — ตัดการเชื่อมที่เล่มนั้นก่อน (หอ 1 แห่งลงบัญชีได้สมุดเดียว)";
 
 /** ตัดการเชื่อม — ไม่ลบแถว (ตัวเลือก/บัญชีที่ผูกยังอยู่) แค่หยุดลงบัญชี */
 export async function disconnect(
@@ -320,6 +342,17 @@ export async function linkActivity(ctx: Ctx, kind: AccountLinkedKind, monthStart
   return { lastPostedAt: null, monthCount: 0 };
 }
 
+/** SVC D.15-K1 ▸ หอ → AccountDocument source DORM ที่ refSystemId = หน่วยหอ (ใบแจ้งหนี้/ใบเสร็จ/ใบลด-เพิ่มหนี้ของหอนั้น) ◂ */
+async function dormLinkActivity(ctx: Ctx, unitId: string, monthStart: Date): Promise<LinkActivity> {
+  const db = dbOf(ctx);
+  const where = { source: "DORM" as const, refSystemId: unitId };
+  const [last, count] = await Promise.all([
+    db.accountDocument.findFirst({ where, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    db.accountDocument.count({ where: { ...where, createdAt: { gte: monthStart } } }),
+  ]);
+  return { lastPostedAt: last?.createdAt ?? null, monthCount: count };
+}
+
 /** รหัสบัญชีที่การ์ดนี้ใช้ — อ่านจาก mapping จริงของร้าน (ไม่มี = ค่าปริยายของผัง §4.14) */
 export async function accountCodesFor(ctx: Ctx, keys: readonly string[]): Promise<string[]> {
   if (keys.length === 0) return [];
@@ -337,15 +370,25 @@ export async function accountCodesFor(ctx: Ctx, keys: readonly string[]): Promis
  * การ์ดทั้งหมดของหน้า §9.5 — ระบบที่ร้านเปิดจริง + สถานะการเชื่อม + ตัวเลือก + ตัวเลขจริง
  * (ระบบที่ร้านยังไม่เปิด → "ยังไม่มีระบบ" · เปิดแล้วแต่ยังไม่ผูก → "ยังไม่เชื่อม" + ปุ่มเชื่อม)
  */
-export async function buildConnectionCards(ctx: Ctx, now: Date): Promise<ConnectionCard[]> {
+export async function buildConnectionCards(
+  ctx: Ctx,
+  now: Date,
+  // SVC D.15-K1 ▸ true = ต่อท้ายการ์ด "หอพัก" 1 ใบต่อหน่วย DORM ที่ ACTIVE (หน้าตั้งค่าเท่านั้น) · ไม่ส่ง = ผลเดิมทุกไบต์ (REST /links · ข้อสอบเดิม) ◂
+  opts?: { dormUnits?: boolean },
+): Promise<ConnectionCard[]> {
   const db = dbOf(ctx);
-  const [systems, links, bookingUnit] = await Promise.all([
+  const [systems, allLinks, bookingUnit, dormUnits] = await Promise.all([
     db.appSystem.findMany({ where: { active: true }, select: { id: true, type: true, name: true } }),
     listLinks(ctx),
     // การ์ด "จอง/ทริป" (kind BUSINESS) ผูกกับ `BusinessUnit` ไม่ใช่ `AppSystem`
     // (SHARK ยังไม่มี SystemType BOOKING — แต่มีสาขาชนิด BOOKING อยู่แล้ว ⇒ เชื่อมได้จริงตามเฟรม g14)
     db.businessUnit.findFirst({ where: { type: "BOOKING", status: "ACTIVE" }, select: { id: true, name: true } }),
+    db.businessUnit.findMany({ where: { type: "DORM" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true, status: true } }),
   ]);
+  // SVC D.15-K1 ▸ แถว BUSINESS ของหน่วยหอไม่ใช่ของการ์ด "จอง/ทริป" — แยกออกก่อนจับคู่การ์ดแคตตาล็อก (ร้านที่ไม่มีหอ = ชุดเดิม) ◂
+  const dormIds = new Set(dormUnits.map((u) => u.id));
+  const isDormLink = (l: { linkedKind: AccountLinkedKind; linkedId: string }) => l.linkedKind === "BUSINESS" && dormIds.has(l.linkedId);
+  const links = allLinks.filter((l) => !isDormLink(l));
   const monthStart = new Date(
     new Date(now.toLocaleString("en-US", { timeZone: "Asia/Bangkok" })).getFullYear(),
     new Date(now.toLocaleString("en-US", { timeZone: "Asia/Bangkok" })).getMonth(),
@@ -371,6 +414,7 @@ export async function buildConnectionCards(ctx: Ctx, now: Date): Promise<Connect
       linked ? accountCodesFor(ctx, item.accountKeys) : Promise.resolve([]),
     ]);
     out.push({
+      key: item.kind,
       kind: item.kind,
       label: item.label,
       icon: item.icon,
@@ -385,6 +429,31 @@ export async function buildConnectionCards(ctx: Ctx, now: Date): Promise<Connect
       lastPostedAt: activity.lastPostedAt,
       monthCount: activity.monthCount,
     });
+  }
+  if (opts?.dormUnits) {
+    const dormLinks = new Map(allLinks.filter(isDormLink).map((l) => [l.linkedId, l]));
+    for (const u of dormUnits) {
+      const link = dormLinks.get(u.id);
+      if (u.status !== "ACTIVE" && !link) continue;
+      const linked = !!link && link.enabled;
+      const activity = linked ? await dormLinkActivity(ctx, u.id, monthStart) : { lastPostedAt: null, monthCount: 0 };
+      out.push({
+        key: `DORM-${u.id}`,
+        kind: "BUSINESS",
+        label: `หอพัก · ${u.name}`,
+        icon: "home",
+        hint: linked ? "บิลค่าเช่า · ใบเสร็จ · เงินประกันของหอนี้ลงสมุดเล่มนี้" : "เชื่อมเพื่อให้บิลค่าเช่า ใบเสร็จ และเงินประกันของหอนี้ลงสมุดเล่มนี้ (หอ 1 แห่งเชื่อมได้สมุดเดียว)",
+        status: linked ? "linked" : "unlinked",
+        statusLabel: linked ? "เชื่อมแล้ว" : "ยังไม่เชื่อม",
+        linkedId: u.id,
+        linkedName: u.name,
+        toggles: [], // หอลงบัญชีทุกเส้นเมื่อเชื่อม (ไม่มีตัวเลือก — ตัวกลางบัญชีของหอไม่อ่าน config)
+        accountCodes: [],
+        lastPostedText: activity.lastPostedAt ? formatPostedAt(activity.lastPostedAt) : "",
+        lastPostedAt: activity.lastPostedAt,
+        monthCount: activity.monthCount,
+      });
+    }
   }
   return out;
 }

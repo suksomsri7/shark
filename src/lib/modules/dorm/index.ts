@@ -299,3 +299,7 @@ export type {
   DormReportCsvKind,
 } from "./report";
 // ◂ SVC D.19
+// ── SVC D.15-K2 ▸ ตั้งค่าอาคาร · ชั้น · ห้อง · ประเภทห้อง (จอ /dorm/settings/rooms · บล็อกนี้ของใบ D.15-K เท่านั้น) ──
+export { DORM_SETUP_NF_REASON, dormSetupModel, saveDormBuilding, removeDormBuilding, saveDormRoomType, archiveDormRoomType, saveDormRoom, archiveDormRoom } from "./setup";
+export type { DormSetupCtx, DormSetupModel, DormSetupResult } from "./setup";
+// ◂ SVC D.15-K2

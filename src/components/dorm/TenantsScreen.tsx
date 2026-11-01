@@ -8,6 +8,8 @@ import type { LeaseDetail, LeaseList, LeaseRow, LeaseTab } from "@/lib/modules/d
 
 export type TenantsScreenProps = {
   unitSlug: string;
+  /** SVC D.15-K3 ▸ ทางเข้านำเข้าจากไฟล์ (เฉพาะผู้ถือ dorm.import — หน้าเป็นผู้ตัดสิน) ◂ */
+  importHref?: string | null;
   tab: LeaseTab;
   q?: string | null;
   list: LeaseList;
@@ -53,7 +55,7 @@ function termNote(r: LeaseRow): string {
   return `${r.months} เดือน`;
 }
 
-export default function TenantsScreen({ unitSlug, tab, q, list, selected }: TenantsScreenProps) {
+export default function TenantsScreen({ unitSlug, tab, q, list, selected, importHref }: TenantsScreenProps) {
   const base = `/app/u/${unitSlug}/dorm/tenants`;
   const qs = (t: LeaseTab, extra?: Record<string, string>) => {
     const p = new URLSearchParams({ tab: t, ...(q ? { q } : {}), ...(extra ?? {}) });
@@ -77,6 +79,11 @@ export default function TenantsScreen({ unitSlug, tab, q, list, selected }: Tena
                 className="min-h-11 w-56 max-w-full rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-3 text-sm"
               />
             </form>
+            {importHref ? (
+              <a data-dorm-import-link="" href={importHref} className="inline-flex min-h-11 items-center rounded-xl border border-[color:var(--color-line)] px-4 text-sm font-semibold">
+                นำเข้าจากไฟล์
+              </a>
+            ) : null}
             <a href={`${base}/new`} className="inline-flex min-h-11 items-center rounded-xl bg-[color:var(--color-ink)] px-4 text-sm font-semibold text-[color:var(--color-surface)]">
               + ทำสัญญาใหม่
             </a>

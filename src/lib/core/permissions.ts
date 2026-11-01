@@ -300,6 +300,8 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     // SVC D.13 ▸ คีย์ที่ยังไม่มีหน้า/โค้ดเรียก (ใบหลังเปิดใช้จริง) ◂
     planned: [
       // SVC D.12 ▸ dorm.moveout.manage · dorm.deposit.deduct.approve ใช้จริงแล้ว ◂ (D.16/D.17/D.18 ถอดของตัวเองแล้ว)
+      // SVC D.15-K4 ▸ คงไว้โดยตั้งใจ: หน้าโหมดกฎหมาย (/dorm/settings/utility) ใช้งานแล้ว แต่ด่านคือ "เจ้าของสด" (law.ts setDormLegalMode · isLiveOwner)
+      //   ไม่ได้อ่านคีย์นี้ ⇒ ติ๊กให้ STAFF/MANAGER ไม่มีผล — ป้าย "กำลังพัฒนา" กันแอดมินเข้าใจผิด · ถอดเมื่อมติให้ผู้ถือคีย์เปลี่ยนโหมดได้ ◂
       "dorm.settings.legal",
     ],
   },

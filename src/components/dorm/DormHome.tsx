@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import type { DormHomeModel } from "@/lib/modules/dorm";
 import { bahtText, thaiMonthShort, thaiMonthYear, thaiShortDate } from "./dorm-home-shared";
 
-type Props = { model: DormHomeModel; unitSlug: string; children?: ReactNode; /** SVC D.17 ▸ ลิงก์จอประกาศ (เฉพาะผู้ถือ dorm.announce — หน้าเป็นผู้ตัดสิน) ◂ */ announceHref?: string | null };
+type Props = { model: DormHomeModel; unitSlug: string; children?: ReactNode; /** SVC D.17 ▸ ลิงก์จอประกาศ (เฉพาะผู้ถือ dorm.announce — หน้าเป็นผู้ตัดสิน) ◂ */ announceHref?: string | null; /** SVC D.15-K3 ▸ ทางเข้ารอบบิล (ผู้เห็นเงิน) · นำเข้า (dorm.import) — หน้าเป็นผู้ตัดสิน ◂ */ billingHref?: string | null; importHref?: string | null };
 
 const baht = (satang: number) => `฿${bahtText(satang)}`;
 
@@ -50,7 +50,7 @@ function Sub({ children }: { children: ReactNode }) {
   return <span className="text-xs leading-snug text-[color:var(--color-muted)]">{children}</span>;
 }
 
-export default function DormHome({ model, unitSlug, children, announceHref }: Props) {
+export default function DormHome({ model, unitSlug, children, announceHref, billingHref, importHref }: Props) {
   const k = model.kpi;
   const base = model.basePath || `/app/u/${unitSlug}/dorm`;
   const period = model.billing?.periodKey ?? model.kpi.collected?.periodKey ?? null;
@@ -71,9 +71,20 @@ export default function DormHome({ model, unitSlug, children, announceHref }: Pr
         {model.scope.all ? null : (
           <span className="rounded-full bg-[color:var(--color-surface-2)] px-3 py-1 text-xs text-[color:var(--color-ink-soft)]">เห็นเฉพาะอาคารที่ดูแล</span>
         )}
+        {/* SVC D.15-K3 ▸ ทางเข้ารอบบิล/นำเข้า (แท็บหอคงเดิม — d.13 K-6) · ml-auto ที่ปุ่มแรกที่มี ◂ */}
+        {billingHref ? (
+          <a data-dorm-billing-link="" href={billingHref} className="ml-auto inline-flex min-h-[44px] items-center rounded-xl border border-[color:var(--color-line)] px-4 text-sm font-semibold text-[color:var(--color-ink)]">
+            รอบบิล
+          </a>
+        ) : null}
+        {importHref ? (
+          <a data-dorm-import-link="" href={importHref} className={`${billingHref ? "" : "ml-auto "}inline-flex min-h-[44px] items-center rounded-xl border border-[color:var(--color-line)] px-4 text-sm font-semibold text-[color:var(--color-ink)]`}>
+            นำเข้าข้อมูล
+          </a>
+        ) : null}
         {/* SVC D.17 ▸ ปุ่มไปจอประกาศถึงผู้เช่า (มติ R4 · ยังไม่ใช่แท็บ) ◂ */}
         {announceHref ? (
-          <a data-dorm-announce-link="" href={announceHref} className="ml-auto inline-flex min-h-[44px] items-center rounded-xl border border-[color:var(--color-line)] px-4 text-sm font-semibold text-[color:var(--color-ink)]">
+          <a data-dorm-announce-link="" href={announceHref} className={`${billingHref || importHref ? "" : "ml-auto "}inline-flex min-h-[44px] items-center rounded-xl border border-[color:var(--color-line)] px-4 text-sm font-semibold text-[color:var(--color-ink)]`}>
             ประกาศ
           </a>
         ) : null}
