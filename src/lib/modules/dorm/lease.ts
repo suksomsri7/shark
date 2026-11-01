@@ -37,6 +37,7 @@ import { postSecurityDepositInTx, prepareSecurityDepositContact, runDormMoneyTx,
 import { requestStatuses, resolvePolicy, submitForApproval } from "@/lib/modules/approval";
 import { attachPersonTaxId, findOrCreate, normalizePartyPhone, normalizePartyTaxId, resolveCanonical, updateContactInfo } from "@/lib/modules/party";
 import { claimRoom, exclusiveEnd, releaseOccupancy } from "@/lib/modules/rooms";
+import { lockDormRoomShared } from "./room-lock"; // SVC D.15-K M2 ◂
 import { leaseAccess } from "./lease-access";
 import { dormScopeFor, dormVisibleRoomIds } from "./scope"; // SVC D.13 ▸ ขอบเขตอาคาร (#64) ◂
 import { depositLeaseIdOf, depositRootsOf } from "./lease-change"; // SVC D.12 ▸ ยอดถือ/ใบรับประกันอ่านตามต้นสาย (มติ R2) ◂
@@ -659,7 +660,7 @@ export async function createLease(ctx: LeaseCtx, input: CreateLeaseInput, intern
     const { tenantId, unitId } = g;
     if (!isStr(input.roomId) || !roomVisible(g, input.roomId)) return notFound(); // D.13 ▸ ห้องนอกขอบเขตอาคาร = ไม่พบ ◂
     const room = await scoped(tenantId, unitId).hotelRoom.findFirst({
-      where: { id: input.roomId },
+      where: { id: input.roomId, active: true }, // SVC D.15-K M2 ▸ ห้องปิดใช้งาน = ไม่พบ (ยืนยันซ้ำใต้ล็อกแถวห้องใน tx) ◂
       select: { id: true, number: true, roomTypeId: true, roomType: { select: { name: true, monthlyRateSatang: true } } },
     });
     if (!room) return notFound();
@@ -876,7 +877,8 @@ export async function createLease(ctx: LeaseCtx, input: CreateLeaseInput, intern
       }
       const party = await tx.party.findFirst({ where: { tenantId, id: partyId }, select: { name: true } });
       if (!party) throw new Abort(notFound());
-      // ห้อง — EXCLUDE ของฐานตัดสิน
+      // ห้อง — EXCLUDE ของฐานตัดสิน · SVC D.15-K M2 ▸ ล็อกแถวห้อง (share) ก่อน claim ⇒ ปิดห้องพร้อมกันไม่หลุด (room-lock.ts) ◂
+      await lockDormRoomShared(tx, tenantId, unitId, room.id);
       const c = await claimRoom(tx, {
         tenantId,
         unitId,

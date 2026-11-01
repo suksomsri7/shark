@@ -211,8 +211,8 @@ export async function isValidLinkTarget(ctx: Ctx, kind: AccountLinkedKind, linke
     return !!s;
   }
   if (kind === "BUSINESS") {
-    // SVC D.15-K1 ▸ หน่วยหอ (DORM) ผูกสมุดได้ด้วย — ตัวกลางบัญชีของหอ (`index.ts#dormBook`) หาสมุดจากแถว BUSINESS นี้ ◂
-    const u = await db.businessUnit.findFirst({ where: { id: linkedId, type: { in: ["BOOKING", "DORM"] }, status: "ACTIVE" }, select: { id: true } });
+    // SVC D.15-K m2 ▸ ทาง REST คง BOOKING เท่านั้น (หอผูกสมุดได้จากหน้าจอเท่านั้น — connect() ตรวจหน่วย DORM เอง) ◂
+    const u = await db.businessUnit.findFirst({ where: { id: linkedId, type: "BOOKING", status: "ACTIVE" }, select: { id: true } });
     return !!u;
   }
   return false;
@@ -235,7 +235,9 @@ export async function connect(
   if (!linkedId) return { ok: false, reason: "ยังไม่มีระบบนี้ในร้าน — เปิดระบบก่อนแล้วค่อยกลับมาเชื่อม" };
   // SVC D.15-K1 ▸ หอ 1 หน่วย = สมุด 1 เล่ม (ผูก > 1 เล่ม ⇒ dormBook ตอบ AMBIGUOUS_LINK ทุกเส้นเงิน) — กันตั้งแต่ตอนเชื่อม ◂
   if (kind === "BUSINESS" && !tx) {
-    const unit = await dbOf(ctx).businessUnit.findFirst({ where: { id: linkedId, type: "DORM" }, select: { id: true } });
+    const unit = await dbOf(ctx).businessUnit.findFirst({ where: { id: linkedId, type: "DORM" }, select: { id: true, status: true } });
+    // m3 ▸ หอที่ไม่ ACTIVE เชื่อมไม่ได้ (ตัดการเชื่อมยังทำได้ตามเดิม) ◂
+    if (unit && unit.status !== "ACTIVE") return { ok: false, reason: "หอนี้ปิดใช้งานอยู่ — เปิดหน่วยหอก่อนแล้วค่อยเชื่อม" };
     if (unit) {
       const { findAccountLinksFor } = await import("./service");
       const others = (await findAccountLinksFor(ctx.tenantId, "BUSINESS", unit.id)).filter((id) => id !== ctx.systemId);
@@ -434,7 +436,7 @@ export async function buildConnectionCards(
     const dormLinks = new Map(allLinks.filter(isDormLink).map((l) => [l.linkedId, l]));
     for (const u of dormUnits) {
       const link = dormLinks.get(u.id);
-      if (u.status !== "ACTIVE" && !link) continue;
+      if (u.status !== "ACTIVE" && !(link && link.enabled)) continue; // m3 ▸ หอไม่ ACTIVE แสดงเฉพาะที่ยังเชื่อมอยู่ (ให้ตัดได้) ◂
       const linked = !!link && link.enabled;
       const activity = linked ? await dormLinkActivity(ctx, u.id, monthStart) : { lastPostedAt: null, monthCount: 0 };
       out.push({

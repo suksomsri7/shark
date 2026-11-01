@@ -1,6 +1,10 @@
 // SVC D.15-K2 ▸ ตั้งค่า "อาคาร · ชั้น · ห้อง" + "ประเภทห้อง · ค่าเช่า" ของหอ (จอ /dorm/settings/rooms) — ก่อนนี้สร้างห้องได้ทางนำเข้า (D.4) เท่านั้น
 //   • อาคาร: ผ่าน facade `@/lib/modules/rooms` (createBuilding · updateBuilding · deleteBuilding) · ห้อง/ประเภทห้อง: ตาราง HotelRoom/HotelRoomType
-//     ของแกนห้อง R0.8 ผ่าน tenantDb (แบบเดียวกับ import.ts — rooms facade ยังไม่มีตัวสร้างห้อง/ประเภท) · ค่าเช่ารายเดือนผ่าน `setRoomTypeRent`
+//     ของแกนห้อง R0.8 ผ่าน tenantDb (แบบเดียวกับ import.ts — rooms facade ยังไม่มีตัวสร้างห้อง/ประเภท)
+//     แก้ประเภทห้อง = UPDATE คำสั่งเดียว (ชื่อ + ค่าเช่า + rentMode) — `setRoomTypeRent` ของ rooms ไม่รับ tx ⇒ ไม่ใช้ (กันค้างครึ่ง: ชื่อเปลี่ยนแต่ค่าเช่าไม่เปลี่ยน · D.15-K m6)
+//   • หน่วยต้องเป็น DORM ที่ ACTIVE (m3) · เลขห้องซ้ำ ⇒ ข้อความกลาง "เลขห้องนี้ใช้ไม่ได้" ไม่บอกว่ามีห้องปิด/ห้องอาคารอื่น (M1 · m8)
+//     เปิดห้องที่ปิดไว้กลับ: อาคารเดิม = อาคารที่เลือก (และอยู่ในขอบเขต) หรือผู้ทำเห็นทั้งหน่วย เท่านั้น (M1 — กันยึดห้อง/ประวัติข้ามอาคาร)
+//   • ปิดห้อง: tx เดียว — FOR UPDATE แถวห้อง (room-lock.ts) → ตรวจสัญญา/occupancy → active=false + ถอดมิเตอร์ (M2 · ทางสัญญาล็อก FOR SHARE ก่อน claim)
 //   • ด่าน (X1): หน่วย DORM ของร้าน + Membership สด · ดู = dormAccess().board (dorm.view) · แก้ = dormAccess().settings (dorm.settings.edit)
 //     ขอบเขตอาคาร = dormActorScope (ตัวตัดสินเดียวกับทางเขียนของมิเตอร์ D.15) — ถูกจำกัดอาคาร ⇒ เห็น/แก้ห้องเฉพาะอาคารตัวเอง ·
 //     อาคารและประเภทห้อง (ใช้ทั้งหน่วย) แก้ได้เฉพาะผู้ที่เห็นทั้งหน่วย · ไม่ผ่าน/id เดา/ข้ามร้าน ⇒ NOT_FOUND เหตุผลเดียวกัน · ไม่ throw
@@ -12,10 +16,11 @@ import { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { tenantDb } from "@/lib/core/db";
 import { bkkYmd } from "@/lib/core/quiet-hours";
-import { createBuilding, deleteBuilding, setRoomTypeRent, updateBuilding } from "@/lib/modules/rooms";
+import { createBuilding, deleteBuilding, updateBuilding } from "@/lib/modules/rooms";
 import { dormAccess } from "./access";
 import { createMeter } from "./meter";
-import { dormActorScope, dormLiveMember, dormUnitOf, type DormBuildingScope } from "./scope";
+import { lockDormRoomForUpdate } from "./room-lock";
+import { dormActorScope, dormLiveMember, type DormBuildingScope } from "./scope";
 
 export const DORM_SETUP_NF_REASON = "ไม่พบหอ อาคาร ห้อง หรือประเภทห้องที่ระบุ หรือบัญชีนี้ไม่มีสิทธิ์แก้ไข";
 
@@ -40,6 +45,7 @@ const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0
 const isRec = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
 const NF: DormSetupResult = { ok: false, code: "NOT_FOUND", reason: DORM_SETUP_NF_REASON };
+const NUM_TAKEN = "เลขห้องนี้ใช้ไม่ได้ — เลือกเลขอื่น";
 const bad = (code: string, reason: string): DormSetupResult => ({ ok: false, code, reason });
 const LIVE_LEASE = ["DRAFT", "ACTIVE", "NOTICE"];
 const NAME_MAX = 60;
@@ -50,7 +56,9 @@ type Gate = { tenantId: string; unitId: string; unitName: string; slug: string; 
 
 async function gate(ctx: DormSetupCtx, unitId: unknown): Promise<Gate | null> {
   if (!isRec(ctx) || !isStr(ctx.tenantId) || !isStr(ctx.actorUserId)) return null;
-  const unit = await dormUnitOf(ctx.tenantId, unitId);
+  if (!isStr(unitId)) return null;
+  // m3 ▸ หน่วย DORM ที่ ACTIVE เท่านั้น (dormUnitOf ของ scope.ts ไม่กรองสถานะ — ใช้ร่วมหลายใบ จึงไม่แก้ที่นั่น)
+  const unit = await tenantDb({ tenantId: ctx.tenantId }).businessUnit.findFirst({ where: { id: unitId, type: "DORM", status: "ACTIVE" }, select: { id: true, name: true, slug: true } });
   if (!unit) return null;
   const mem = await dormLiveMember(ctx.tenantId, ctx.actorUserId);
   if (!mem) return null;
@@ -179,10 +187,9 @@ export async function saveDormRoomType(ctx: DormSetupCtx, input: { unitId: strin
     if (isStr(input.roomTypeId)) {
       const t = await db.hotelRoomType.findFirst({ where: { id: input.roomTypeId, active: true }, select: { id: true, rentMode: true } });
       if (!t) return NF;
-      await db.hotelRoomType.update({ where: { id: t.id }, data: { name } });
-      // หอ = รายเดือน · ประเภทที่เคยเป็น BOTH คงไว้ (ใช้ร่วมรายคืน)
-      const r = await setRoomTypeRent({ tenantId: g.tenantId }, { unitId: g.unitId, roomTypeId: t.id, rentMode: t.rentMode === "BOTH" ? "BOTH" : "MONTHLY", monthlyRateSatang: rate });
-      if (!r.ok) return r.code === "NOT_FOUND" ? NF : bad(r.code, r.message);
+      // m6 ▸ ชื่อ + ค่าเช่า + โหมด ใน UPDATE เดียว (หอ = รายเดือน · ประเภทที่เป็น BOTH คงไว้) · ถูกปิดระหว่างทาง ⇒ ไม่พบ
+      const u = await db.hotelRoomType.updateMany({ where: { id: t.id, active: true }, data: { name, monthlyRateSatang: rate, rentMode: t.rentMode === "BOTH" ? "BOTH" : "MONTHLY" } });
+      if (u.count !== 1) return NF;
       await audit(g, "dorm.setup.roomType.updated", "HotelRoomType", t.id, { name, monthlyRateSatang: rate });
       return { ok: true, id: t.id };
     }
@@ -242,17 +249,22 @@ export async function saveDormRoom(
     if (isStr(input.roomId)) {
       const room = await db.hotelRoom.findFirst({ where: { id: input.roomId, active: true }, select: { id: true, buildingId: true } });
       if (!room || !inScope(g, room.buildingId)) return NF;
-      const clash = await db.hotelRoom.findFirst({ where: { number, id: { not: room.id } }, select: { active: true } });
-      if (clash) return bad("DUPLICATE", clash.active ? `มีห้อง ${number} อยู่แล้ว` : `เลขห้อง ${number} เคยใช้กับห้องที่ปิดไว้ — เพิ่มห้องเลขนี้ใหม่เพื่อเปิดห้องเดิมกลับ`);
+      const clash = await db.hotelRoom.findFirst({ where: { number, id: { not: room.id } }, select: { active: true, buildingId: true } });
+      if (clash) return bad("DUPLICATE", clash.active && inScope(g, clash.buildingId) ? `มีห้อง ${number} อยู่แล้ว` : NUM_TAKEN);
       await db.hotelRoom.update({ where: { id: room.id }, data });
       await audit(g, "dorm.setup.room.updated", "HotelRoom", room.id, data);
       return { ok: true, id: room.id };
     }
-    const old = await db.hotelRoom.findFirst({ where: { number }, select: { id: true, active: true } });
-    if (old?.active) return bad("DUPLICATE", `มีห้อง ${number} อยู่แล้ว`);
-    const id = old
-      ? (await db.hotelRoom.update({ where: { id: old.id }, data: { ...data, active: true }, select: { id: true } })).id
-      : (await db.hotelRoom.create({ data: { tenantId: g.tenantId, unitId: g.unitId, ...data }, select: { id: true } })).id;
+    const old = await db.hotelRoom.findFirst({ where: { number }, select: { id: true, active: true, buildingId: true } });
+    if (old?.active) return bad("DUPLICATE", inScope(g, old.buildingId) ? `มีห้อง ${number} อยู่แล้ว` : NUM_TAKEN);
+    // M1 ▸ เปิดห้องที่ปิดไว้กลับ = อาคารเดิมตรงอาคารที่เลือก (ผ่าน inScope แล้วข้างบน) หรือผู้ทำเห็นทั้งหน่วย · อื่น ⇒ ข้อความกลาง
+    if (old && old.buildingId !== b.id && !g.scope.all) return bad("DUPLICATE", NUM_TAKEN);
+    let id: string;
+    if (old) {
+      const u = await db.hotelRoom.updateMany({ where: { id: old.id, active: false }, data: { ...data, active: true } });
+      if (u.count !== 1) return bad("DUPLICATE", NUM_TAKEN);
+      id = old.id;
+    } else id = (await db.hotelRoom.create({ data: { tenantId: g.tenantId, unitId: g.unitId, ...data }, select: { id: true } })).id;
     // มิเตอร์ไฟ+น้ำของห้อง (ห้องเปิดกลับที่มิเตอร์ถูกถอดตอนปิด ⇒ สร้างตัวใหม่) · DUPLICATE = มีอยู่แล้ว ข้าม
     const meters: string[] = [];
     for (const [kind, start] of [["ELEC", elecStart ?? 0], ["WATER", waterStart ?? 0]] as const) {
@@ -262,7 +274,7 @@ export async function saveDormRoom(
     await audit(g, old ? "dorm.setup.room.reopened" : "dorm.setup.room.created", "HotelRoom", id, { ...data, meters });
     return { ok: true, id };
   } catch (e) {
-    if (isUnique(e)) return bad("DUPLICATE", `มีห้อง ${number} อยู่แล้ว`);
+    if (isUnique(e)) return bad("DUPLICATE", NUM_TAKEN);
     throw e;
   }
 }
@@ -273,13 +285,20 @@ export async function archiveDormRoom(ctx: DormSetupCtx, input: { unitId: string
   const db = dbOf(g);
   const room = await db.hotelRoom.findFirst({ where: { id: input.roomId, active: true }, select: { id: true, buildingId: true } });
   if (!room || !inScope(g, room.buildingId)) return NF;
-  if ((await roomsInUse(g, [room.id])).size > 0) return bad("ROOM_IN_USE", "ห้องนี้ยังมีสัญญาหรือการจองที่ยังไม่จบ — ปิดห้องไม่ได้");
+  const IN_USE = -2;
   const meters = await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).$transaction(async (tx) => {
     const T = { tenantId: g.tenantId, unitId: g.unitId };
+    // M2 ▸ คำสั่งแรก = FOR UPDATE แถวห้อง (ขัดกับ FOR SHARE ของ createLease/transferRoom) → ตรวจใต้ล็อก → ปิด
+    if ((await lockDormRoomForUpdate(tx as unknown as Prisma.TransactionClient, g.tenantId, g.unitId, room.id)) !== true) return -1;
+    const today = new Date(`${bkkYmd(new Date())}T00:00:00.000Z`);
+    const leases = await tx.dormLease.count({ where: { ...T, roomId: room.id, status: { in: LIVE_LEASE } } });
+    const occs = await tx.roomOccupancy.count({ where: { ...T, roomId: room.id, active: true, endDate: { gt: today } } });
+    if (leases + occs > 0) return IN_USE;
     const n = await tx.hotelRoom.updateMany({ where: { ...T, id: room.id, active: true }, data: { active: false } });
     if (n.count !== 1) return -1;
     return (await tx.dormMeter.updateMany({ where: { ...T, roomId: room.id, removedAt: null }, data: { removedAt: new Date() } })).count;
   });
+  if (meters === IN_USE) return bad("ROOM_IN_USE", "ห้องนี้ยังมีสัญญาหรือการจองที่ยังไม่จบ — ปิดห้องไม่ได้");
   if (meters < 0) return NF;
   await audit(g, "dorm.setup.room.archived", "HotelRoom", room.id, { metersRemoved: meters });
   return { ok: true, id: room.id };
