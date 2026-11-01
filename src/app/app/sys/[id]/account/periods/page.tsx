@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { loadAccountSystem } from "@/lib/modules/account/guard";
+import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan, accountCan, writeAudit } from "@/lib/modules/account/access";
 import {
   listPeriods,
@@ -31,6 +31,7 @@ export default async function PeriodsPage({
   const { id } = await params;
   const sp = await searchParams;
   const { auth, tenantId, systemId } = await loadAccountSystem(id);
+  accountPageGate(auth, "account.period.close"); // SVC G2-F F2 ▸ ไม่มีสิทธิ์ ⇒ ไม่พบ (ไม่ใช่ 500) ◂
   assertAccountCan(auth, "account.period.close");
   const ctx = { tenantId, systemId };
   const base = `/app/sys/${id}/account`;

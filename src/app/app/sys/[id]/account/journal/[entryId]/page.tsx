@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { loadAccountSystem } from "@/lib/modules/account/guard";
+import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan, accountCan } from "@/lib/modules/account/access";
 import { journalEntryDetail, JOURNAL_TYPE_LABEL } from "@/lib/modules/account/journal-v2";
 import { formatDateTh } from "@/lib/ui/date";
@@ -21,6 +21,7 @@ export default async function JournalEntryPage({
   const { id, entryId } = await params;
   const sp = await searchParams;
   const { auth, tenantId, systemId } = await loadAccountSystem(id);
+  accountPageGate(auth, "account.journal.view"); // SVC G2-F F2 ▸ ไม่มีสิทธิ์ ⇒ ไม่พบ (ไม่ใช่ 500) ◂
   assertAccountCan(auth, "account.journal.view");
   const canAdjust = accountCan(auth, "account.journal.adjust");
 
