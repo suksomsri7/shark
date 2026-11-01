@@ -17,6 +17,7 @@ import {
   type GroupRule,
   type ScopeKind,
   type SettingDef,
+  type TableCellSpecTh,
   type TemplateDef,
 } from "./types";
 
@@ -115,6 +116,18 @@ export function defineSettings(domain: string, defs: readonly SettingDef[], opts
     if (typeof d.editPermission !== "string" || !d.editPermission.includes(".")) problems.push(`${key}: editPermission ไม่ถูกต้อง`);
     if (!nonEmpty(d.labelTh)) problems.push(`${key}: labelTh ว่าง`);
     if (d.percentScale !== undefined && (d.type !== "percent" || (d.percentScale !== 100 && d.percentScale !== 10000))) problems.push(`${key}: percentScale ตั้งได้เฉพาะ type percent และค่า 100 หรือ 10000 (ได้ ${String(d.percentScale)})`);
+    if (d.tableTh !== undefined && d.type !== "table") problems.push(`${key}: tableTh ตั้งได้เฉพาะ type table`); // G1UI
+    if (d.tableTh !== undefined && d.type === "table") {
+      const cells = (c: Record<string, TableCellSpecTh> | undefined, path: string): void => {
+        for (const [ck, cs] of Object.entries(c ?? {})) {
+          if (!nonEmpty(cs.labelTh)) problems.push(`${key}: tableTh ${path}${ck} ป้ายว่าง`);
+          for (const [ov, ol] of Object.entries(cs.options ?? {})) if (!nonEmpty(ol)) problems.push(`${key}: tableTh ${path}${ck} ตัวเลือก ${ov} ป้ายว่าง`);
+          if (cs.fields) cells(cs.fields, `${path}${ck}.`);
+        }
+      };
+      cells(d.tableTh.fields, "");
+      if (d.tableTh.item) cells({ item: d.tableTh.item }, "");
+    }
     if (d.writeVia !== undefined && !(typeof d.writeVia === "string" && /[\u0E00-\u0E7F]/.test(d.writeVia) && d.writeVia.trim().length > 0)) problems.push(`${key}: writeVia ต้องเป็นข้อความไทย (ได้ ${String(d.writeVia)})`);
     const cp = chainProblem(d.chain);
     if (cp) problems.push(`${key}: ${cp}`);

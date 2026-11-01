@@ -1102,9 +1102,13 @@ try {
           ok(hit, `ไม่พบ ${sel}`);
         };
         const pollUntil = async (what: string, f: () => Promise<boolean>) => { const t0 = Date.now(); while (Date.now() - t0 < 15_000) { if (await f()) return; await sleep(400); } throw new AssertFail(`${what}: ฐานไม่เปลี่ยนใน 15 วิ (ทำแล้ว: ${done.join(" → ")})`); };
-        const pick = async (a: LineAction): Promise<string> => {
+        // ORACLE-EDIT (ผู้คุม 1 พ.ย. · G1UI-3): ณ 14:40 งานที่ย้ายช่างได้มีงานเดียว (คุณบีม · นัดใครก็ได้ ยังไม่เช็กอิน — walk-in A009–A011 ถูกยกเลิกในข้อก่อนหน้า)
+        //   และคุณบีมเป็นงานแรกที่มีปุ่ม checkin ⇒ ขั้น checkin เช็กอินคุณบีมไปก่อน (ARRIVED ⇒ ย้ายไม่ได้ตามสัญญา movable/moveJobStaff = BAD_STATE)
+        //   ⇒ ขั้นอื่นเลือกงานที่ไม่ใช่งานเดียวที่ย้ายได้ก่อน (avoid) · ไม่มีทางเลือกอื่น ⇒ ใช้ตัวแรกเหมือนเดิม · หลักฐาน: probe dump 14:40 (รายงาน G1UI-3)
+        const pick = async (a: LineAction, avoid?: LineAction): Promise<string> => {
           const v = await TL.load()(cS, V.owner, { now: T40 });
-          const cand = [...(v ? allJobs(v) : []).map((j) => ({ id: j.appointmentId, acts: j.actions })), ...(v?.todo ?? []).map((t) => ({ id: t.appointmentId, acts: t.actions }))].find((x) => x.acts.includes(a));
+          const all = [...(v ? allJobs(v) : []).map((j) => ({ id: j.appointmentId, acts: j.actions })), ...(v?.todo ?? []).map((t) => ({ id: t.appointmentId, acts: t.actions }))].filter((x) => x.acts.includes(a));
+          const cand = (avoid ? all.find((x) => !x.acts.includes(avoid)) : undefined) ?? all[0];
           ok(!!cand, `ไม่มีงานที่มีปุ่ม ${a} ณ 14:40`);
           return cand!.id;
         };
@@ -1121,15 +1125,15 @@ try {
         await open(); await click(btn("recall", c));
         await pollUntil("recall", async () => (await tkRow(tk0)).status === "CALLED"); done.push("recall");
         await open();
-        const ci = await pick("checkin");
+        const ci = await pick("checkin", "move"); // ORACLE-EDIT G1UI-3
         await click(btn("checkin", ci));
         await pollUntil("checkin", async () => (await apRow(ci)).status === "ARRIVED"); done.push("checkin");
         await open();
-        const s = await pick("start");
+        const s = await pick("start", "move"); // ORACLE-EDIT G1UI-3
         await click(btn("start", s));
         await pollUntil("start", async () => (await apRow(s)).status === "IN_SERVICE"); done.push("start");
         await open();
-        const d = await pick("done");
+        const d = await pick("done", "move"); // ORACLE-EDIT G1UI-3
         await click(btn("done", d));
         await pollUntil("done", async () => (await apRow(d)).status === "DONE"); done.push("done");
         await open();

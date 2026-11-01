@@ -20,6 +20,7 @@ import {
   type SettingsField,
   type SettingsFormModel,
 } from "@/components/settings/settings-shared";
+import TableSpecEditor from "@/components/settings/TableSpecEditor";
 import { fieldsOf, type BookingSettingsPage, type PolicyModel } from "./booking-settings-shared";
 
 // ───────────────────────── ชนิด actions (หน้าห่อ bind unitSlug ให้แล้ว) ─────────────────────────
@@ -49,6 +50,8 @@ export const BTN_GHOST = `${BTN} bg-[color:var(--color-surface)] text-[color:var
 export const CARD = "rounded-2xl border bg-[color:var(--color-surface)] p-4 sm:p-5";
 export const CHIP = "inline-flex items-center whitespace-nowrap rounded-md bg-[color:var(--color-accent-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--color-accent)]";
 export const MUTED = "text-[color:var(--color-muted)]";
+/** G1UI-1 ▸ ป้ายในแถวค่าตั้ง — ตัดบรรทัดได้ (CHIP เดิม nowrap ⇒ ป้ายยาวดันการ์ดล้นที่ 390) ◂ */
+const ROW_CHIP = "inline-flex max-w-full items-center break-words rounded-md bg-[color:var(--color-accent-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--color-accent)]";
 const INPUT = "input min-h-11 w-full min-w-0";
 
 export function Switch({ checked, onChange, disabled, label }: { checked: boolean; onChange?: (v: boolean) => void; disabled?: boolean; label: string }) {
@@ -201,6 +204,8 @@ const isScalar = (v: unknown) => v === null || ["string", "number", "boolean"].i
 function TableEditor({ f, value, onChange }: { f: SettingsField; value: unknown; onChange: (v: unknown) => void }) {
   const [text, setText] = useState(() => (value === null || value === undefined ? "" : JSON.stringify(value, null, 1)));
   const [err, setErr] = useState<string | null>(null);
+  // G1UI-1 ▸ ทะเบียนให้ป้ายช่องย่อย ⇒ ตัวแก้ช่องย่อยป้ายไทยตัวเดียวกับ SettingsForm ◂
+  if (f.tableSpec) return <TableSpecEditor id={`bk-${f.key}`} spec={f.tableSpec} value={value} disabled={false} nullable={f.nullable} proto={f.templateValue} onChange={onChange} />;
   if (Array.isArray(value) && value.every((x) => typeof x === "string" || typeof x === "number")) {
     const nums = value.length > 0 && value.every((x) => typeof x === "number");
     return (
@@ -334,25 +339,26 @@ export function SettingRow({ form, f, ownLabel }: { form: SettingsFormModel; f: 
   const shown = follow ? f.templateValue : value;
   return (
     <div data-setting-key={f.key} {...(locked ? { "data-locked": "true" } : {})} className="flex flex-col gap-2 border-b py-3 last:border-b-0">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
+      {/* G1UI-1 ▸ ห่อบรรทัดได้: ป้ายซ้ายกว้างขั้นต่ำ 10rem (ไม่ถูกบีบเป็นคอลัมน์แคบ) · ค่าขวาตกบรรทัดใหม่เมื่อยาวเกิน (ไม่ล้นการ์ด) ◂ */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="min-w-[10rem] flex-1 basis-48">
           <div className="text-sm font-medium">{f.labelTh}</div>
           {f.helpTh && <div className={cx("text-xs", MUTED)}>{f.helpTh}</div>}
           {locked && f.lockedReasonTh && <div className={cx("text-xs", MUTED)}>ล็อก · {f.lockedReasonTh}</div>}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
           {f.differsFromTemplate && (
-            <span data-bk-chip="changed" className={CHIP}>
+            <span data-bk-chip="changed" className={ROW_CHIP}>
               ปรับแล้ว · แม่แบบ = {formatFieldValue(f, f.templateValue)}
             </span>
           )}
           {f.overrideCount > 0 && (
-            <span data-bk-chip="override" className={CHIP}>
+            <span data-bk-chip="override" className={ROW_CHIP}>
               {ownLabel ?? "ปรับรายคน"} {f.overrideCount}
             </span>
           )}
           {f.hasOwn && form.scope !== "UNIT" && form.scope !== "TENANT" && (
-            <span data-bk-chip="own" className={CHIP}>
+            <span data-bk-chip="own" className={ROW_CHIP}>
               ทับค่าร้าน
             </span>
           )}
@@ -360,11 +366,11 @@ export function SettingRow({ form, f, ownLabel }: { form: SettingsFormModel; f: 
           {f.type === "bool" ? (
             <Switch checked={shown === true} disabled={locked || follow} label={f.labelTh} onChange={(v) => d?.setValue(form, f.key, v)} />
           ) : locked ? (
-            <span data-bk-pill="" className="inline-flex min-h-11 items-center rounded-lg border px-3 text-sm font-semibold">
+            <span data-bk-pill="" className="inline-flex min-h-11 max-w-full items-center break-words rounded-lg border px-3 text-right text-sm font-semibold">
               {formatFieldValue(f, shown)}
             </span>
           ) : (
-            <button type="button" data-bk-pill="" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={cx(BTN, "font-semibold")}>
+            <button type="button" data-bk-pill="" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={cx(BTN, "max-w-full break-words text-right font-semibold")}>
               {formatFieldValue(f, shown)}
             </button>
           )}

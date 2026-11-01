@@ -21,6 +21,8 @@ type Drag = { id: string; colKey: string; durMin: number; grabMin: number; block
 
 const AXIS_W = 64;
 const HEAD_H = 62;
+const COL_MIN_DAY = 104; // G1UI-2 ▸ กว้างขั้นต่ำต่อคน/ห้อง (มุมวัน) — 6 คอลัมน์ + แกนเวลา ≈ 690px พอดีกริดที่ 1440 ◂
+const COL_MIN_WEEK = 132;
 const BODY_H = 588;
 
 function blockClass(b: CalBlock): string {
@@ -204,7 +206,8 @@ export default function CalendarBoard({ view, unitSlug, actions, at, err, notes 
             <p className="p-6 text-sm text-[color:var(--color-muted)]">{view.mode === "STAFF" ? `ยังไม่มี${view.providerLabel}ในสาขานี้` : "ยังไม่มีห้อง/เตียงในสาขานี้ — เพิ่มได้ที่ ตั้งค่า"}</p>
           ) : (
             <div ref={scrollRef} className="relative overflow-auto" style={{ maxHeight: BODY_H + HEAD_H }}>
-              <div className="relative flex min-w-max">
+              {/* G1UI-2 ▸ คอลัมน์ยืดตามพื้นที่ (basis-0 · ไม่ขยายตามความยาวข้อความหัว) · เลื่อนแนวนอนเฉพาะเมื่อคอลัมน์เกินพื้นที่จริง (ภาพ 02 = 6 คนในจอเดียวที่ 1440) ◂ */}
+              <div className="relative flex w-full" style={{ minWidth: AXIS_W + view.columns.length * (view.range === "WEEK" ? COL_MIN_WEEK : COL_MIN_DAY) }}>
                 {/* แกนเวลา */}
                 <div className="sticky left-0 z-20 flex-none bg-[color:var(--color-surface)]" style={{ width: AXIS_W }}>
                   <div className="sticky top-0 z-10 border-b bg-[color:var(--color-surface-2)]" style={{ height: HEAD_H }} />
@@ -232,8 +235,8 @@ export default function CalendarBoard({ view, unitSlug, actions, at, err, notes 
                       key={c.key}
                       data-cal-col={c.key}
                       data-closed={closed ? closed.code : undefined}
-                      className="flex min-w-[132px] flex-1 flex-col border-l"
-                      style={{ width: view.range === "WEEK" ? 132 : undefined }}
+                      className="flex min-w-0 flex-1 basis-0 flex-col border-l"
+                      style={{ minWidth: view.range === "WEEK" ? COL_MIN_WEEK : COL_MIN_DAY }}
                     >
                       <div className="sticky top-0 z-10 flex items-center gap-2.5 border-b bg-[color:var(--color-surface-2)] px-2.5" style={{ height: HEAD_H }}>
                         {c.kind === "STAFF" && view.range === "DAY" ? (
@@ -243,7 +246,7 @@ export default function CalendarBoard({ view, unitSlug, actions, at, err, notes 
                         ) : null}
                         <span className="min-w-0">
                           <b className={"block truncate text-[14.5px] leading-tight " + (isToday(c.dateStr) && view.range === "WEEK" ? "text-[color:var(--color-accent)]" : "")}>{head}</b>
-                          <small className="block truncate text-xs text-[color:var(--color-muted)]">{sub}</small>
+                          <small className="line-clamp-2 break-words text-xs leading-tight text-[color:var(--color-muted)]" title={sub}>{sub}</small>
                         </span>
                       </div>
                       <div
