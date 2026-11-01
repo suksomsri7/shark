@@ -2852,6 +2852,16 @@ export async function depositAuditExists(tenantId: string, appointmentId: string
   });
   return !!hit;
 }
+/** SVC B8-PB12 ▸ audit ของนัดครั้งเดียวต่อ (นัด, action, slipId) — ล็อก advisory + ตรวจซ้ำใน tx เดียวกับที่เขียน · คืน true เมื่อเขียนจริง ◂ */
+export async function writeDepositAuditOnce(a: { tenantId: string; unitId: string; appointmentId: string; action: string; actorType: "USER" | "SYSTEM"; actorId: string; after: Record<string, unknown> }, slipId: string): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:audit-once:${a.tenantId}:${a.appointmentId}:${a.action}:${slipId}`}, 0))`;
+    const hit = await tx.auditLog.findFirst({ where: { tenantId: a.tenantId, action: a.action, targetType: "Appointment", targetId: a.appointmentId, after: { path: ["slipId"], equals: slipId } }, select: { id: true } });
+    if (hit) return false;
+    await tx.auditLog.create({ data: { tenantId: a.tenantId, unitId: a.unitId, actorType: a.actorType, actorId: a.actorId, action: a.action, targetType: "Appointment", targetId: a.appointmentId, after: a.after as Prisma.InputJsonValue } });
+    return true;
+  }, { maxWait: 15_000, timeout: 20_000 });
+}
 export async function writeDepositAudit(a: { tenantId: string; unitId: string; appointmentId: string; action: string; actorType: "USER" | "SYSTEM"; actorId: string; after: Record<string, unknown> }): Promise<void> {
   await prisma.auditLog.create({
     data: { tenantId: a.tenantId, unitId: a.unitId, actorType: a.actorType, actorId: a.actorId, action: a.action, targetType: "Appointment", targetId: a.appointmentId, after: a.after as Prisma.InputJsonValue },
@@ -2859,6 +2869,19 @@ export async function writeDepositAudit(a: { tenantId: string; unitId: string; a
 }
 
 /** ใบรับมัดจำของนัดที่ยัง PAID (คีย์ฐาน booking-deposit-<id> หรือ -r<n>) — ใช้เมื่อสองทางรับเงินชนคีย์เดียวกันด้วย payload ต่างกัน */
+/**
+ * SVC B8-PB12 ▸ ใบรับมัดจำ PAID ที่ค้างไม่ผูกของนัดที่ยังไม่จ่าย + ยอดจริง + ต้นทาง (ป้าย [slip:<id>] ท้าย PosDeposit.note · ไม่มี = ร้าน/ทางอื่น) ·
+ * นัดจ่ายแล้ว/ไม่มีใบค้าง ⇒ null ◂
+ */
+export async function heldDepositReceiptOf(ctx: { tenantId: string; unitId: string }, appointmentId: string): Promise<{ saleId: string; amountSatang: number; slipId: string | null } | null> {
+  const a = await prisma.appointment.findFirst({ where: { id: appointmentId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { depositPaidAt: true, depositSaleId: true } });
+  if (!a || a.depositPaidAt) return null;
+  const saleId = await liveDepositReceiptOf(ctx.tenantId, appointmentId);
+  if (!saleId || saleId === a.depositSaleId) return null;
+  const d = await prisma.posDeposit.findUnique({ where: { receiptSaleId: saleId }, select: { amountSatang: true, tenantId: true, note: true } });
+  const sale = d && d.tenantId === ctx.tenantId ? null : await prisma.posSale.findFirst({ where: { id: saleId, tenantId: ctx.tenantId }, select: { grandTotalSatang: true } });
+  return { saleId, amountSatang: d && d.tenantId === ctx.tenantId ? d.amountSatang : (sale?.grandTotalSatang ?? 0), slipId: d && d.tenantId === ctx.tenantId ? slipOfNote(d.note) : null };
+}
 /** SVC B.15 ▸ PB-12: แถวที่ยังไม่ผูกแต่มีใบรับมัดจำ PAID ค้าง (ทางอื่นรับเงินแล้วล้มก่อนผูก) — ยอดที่ค้างกลุ่มไม่ขอซ้ำ */
 export async function unboundReceiptIdsOf(tenantId: string, appointmentIds: readonly string[]): Promise<Set<string>> {
   const out = new Set<string>();
@@ -3950,7 +3973,7 @@ export function allocateGroupSlip(
  * groupPartial (ยอดเข้ารวม < Σ) ⇒ ไม่มีแถวยืนยันเอง (SLIP) · event booking.deposit_paid + audit ต่อแถว (+ groupId)
  */
 export async function bindGroupDeposit(i: {
-  tenantId: string; unitId: string; groupId: string; items: readonly GroupBindItem[]; via: "SLIP" | "SHOP"; groupPartial: boolean;
+  tenantId: string; unitId: string; /** null = นัดเดี่ยว (B8-PB12 · ไม่ใส่คีย์ groupId ใน payload/audit) */ groupId: string | null; items: readonly GroupBindItem[]; via: "SLIP" | "SHOP"; groupPartial: boolean;
   slipId?: string | null; actorUserId?: string | null; payType?: string | null;
   /** ล็อกทุกแถวของกลุ่ม (เรียง id) ก่อนตัดสิน — กันซ้ำระดับกลุ่ม */
   lockIds?: readonly string[];
@@ -4023,15 +4046,15 @@ export async function bindGroupDeposit(i: {
       if (w.count !== 1) continue;
       await emitOutbox(tx, {
         tenantId: i.tenantId, unitId: i.unitId, type: "booking.deposit_paid", idempotencyKey: `booking.deposit_paid#${row.id}#${it.saleId ?? "none"}`,
-        payload: { appointmentId: row.id, unitId: i.unitId, amountSatang: amount, requiredSatang: required, via, partial, late: !open, status, groupId: i.groupId },
+        payload: { appointmentId: row.id, unitId: i.unitId, amountSatang: amount, requiredSatang: required, via, partial, late: !open, status, ...(i.groupId ? { groupId: i.groupId } : {}) },
       });
       const base = { tenantId: i.tenantId, unitId: i.unitId, targetType: "Appointment", targetId: row.id };
       if (it.recovered) {
-        await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.recover", after: { receiptSaleId: it.saleId, amountSatang: amount, partial, late: !open, groupId: i.groupId, duringSlipId: i.slipId ?? null } } });
+        await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.recover", after: { receiptSaleId: it.saleId, amountSatang: amount, partial, late: !open, ...(i.groupId ? { groupId: i.groupId } : {}), duringSlipId: i.slipId ?? null } } });
       } else if (i.via === "SLIP") {
-        await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.receive", after: { slipId: i.slipId ?? null, receiptSaleId: it.saleId, amountSatang: amount, partial, late: !open, groupId: i.groupId } } });
+        await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.receive", after: { slipId: i.slipId ?? null, receiptSaleId: it.saleId, amountSatang: amount, partial, late: !open, ...(i.groupId ? { groupId: i.groupId } : {}) } } });
       } else {
-        await tx.auditLog.create({ data: { ...base, actorType: "USER", actorId: i.actorUserId ?? "unknown", action: "booking.deposit.confirm", after: { receiptSaleId: it.saleId, amountSatang: amount, payType: i.payType ?? null, partial, late: !open, groupId: i.groupId } } });
+        await tx.auditLog.create({ data: { ...base, actorType: "USER", actorId: i.actorUserId ?? "unknown", action: "booking.deposit.confirm", after: { receiptSaleId: it.saleId, amountSatang: amount, payType: i.payType ?? null, partial, late: !open, ...(i.groupId ? { groupId: i.groupId } : {}) } } });
       }
       if (!open) {
         await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.late_money", after: { appointmentId: row.id, receiptSaleId: it.saleId, amountSatang: amount, status: row.status, via: i.via } } });
