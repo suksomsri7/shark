@@ -18,6 +18,7 @@ import { createExternalInvoice, runDormMoneyTx, securityDepositHeld } from "@/li
 import { claimRoom, exclusiveEnd, moveOccupancy, resizeOccupancy } from "@/lib/modules/rooms";
 import { MOVEOUT_NF_REASON, moveOutAccess } from "./moveout-access";
 import { dormScopeFor, dormVisibleRoomIds } from "./scope";
+import { lockDormRoomShared } from "./room-lock"; // SVC D.15-K M2 ◂
 
 // ───────────────────────── ชนิด · ค่าคงที่ ─────────────────────────
 export type LeaseChangeCtx = { tenantId: string; actorUserId: string };
@@ -273,7 +274,7 @@ export async function transferRoom(
     const lease = isStr(input.leaseId) ? await db.dormLease.findFirst({ where: { id: input.leaseId }, select: LEASE_SEL }) : null;
     if (!lease || !roomVisible(g, lease.roomId)) return notFound();
     const toRoom = isStr(input.toRoomId)
-      ? await db.hotelRoom.findFirst({ where: { id: input.toRoomId }, select: { id: true, number: true, roomTypeId: true, roomType: { select: { monthlyRateSatang: true } } } })
+      ? await db.hotelRoom.findFirst({ where: { id: input.toRoomId, active: true }, select: { id: true, number: true, roomTypeId: true, roomType: { select: { monthlyRateSatang: true } } } }) // SVC D.15-K M2 ▸ ห้องปิด = ไม่พบ ◂
       : null;
     if (!toRoom || !roomVisible(g, toRoom.id)) return notFound();
     const eff = parseYmd(input.effectiveDate) ? input.effectiveDate : null;
@@ -314,6 +315,7 @@ export async function transferRoom(
         if (cur.status !== "ACTIVE") throw new Abort(fail("NOT_EDITABLE", "ย้ายห้องได้เฉพาะสัญญาที่ยังมีผล"));
         if ((await tx.dormBill.count({ where: { tenantId: g.tenantId, unitId: g.unitId, leaseId: lease.id, status: { not: "VOID" } } })) > 0)
           throw new Abort(fail("ALREADY_BILLED", "สัญญานี้ออกบิลแล้ว — ย้ายห้องได้ตั้งแต่วันที่ 1 ของเดือนที่ยังไม่ออกบิล"));
+        await lockDormRoomShared(tx, g.tenantId, g.unitId, toRoom.id); // SVC D.15-K M2 ◂
         const r = await moveOccupancy(tx, { tenantId: g.tenantId, unitId: g.unitId, occupancyId: lease.occupancyId as string, toRoomId: toRoom.id });
         if (!r.ok) throw new Abort(r.code === "ROOM_TAKEN" ? roomTaken() : r.code === "ROOM_INACTIVE" ? fail("ROOM_UNAVAILABLE", "ห้องปลายทางปิดซ่อมหรือปิดใช้งานอยู่") : notFound());
         const u = await tx.dormLease.updateMany({ where: { id: lease.id, tenantId: g.tenantId, unitId: g.unitId, status: "ACTIVE", roomId: lease.roomId }, data: { roomId: toRoom.id } });
@@ -382,6 +384,7 @@ export async function transferRoom(
       if (!cur.occupancyId) throw new Abort(fail("NOT_EDITABLE", "สัญญานี้ไม่มีการถือห้อง — ย้ายห้องไม่ได้"));
       const rs = await resizeOccupancy(tx, { tenantId: g.tenantId, unitId: g.unitId, occupancyId: cur.occupancyId, end: eff });
       if (!rs.ok) throw new Abort(rs.code === "ROOM_TAKEN" ? roomTaken() : fail("NOT_EDITABLE", "ปรับช่วงการถือห้องเดิมไม่ได้"));
+      await lockDormRoomShared(tx, g.tenantId, g.unitId, toRoom.id); // SVC D.15-K M2 ◂
       const c = await claimRoom(tx, {
         tenantId: g.tenantId,
         unitId: g.unitId,
@@ -690,7 +693,7 @@ export async function leaseChangeModel(ctx: LeaseChangeCtx, input: { unitId: str
     const nd = snap["rooms.moveout.noticeDays"];
     const noticeDays = isInt(nd) && nd >= 0 ? nd : 30;
     const mo = await db.dormMoveOut.findFirst({ where: { leaseId: lease.id, status: { not: "CANCELLED" } }, select: { id: true } });
-    const rooms = (await db.hotelRoom.findMany({ select: { id: true, number: true }, orderBy: { number: "asc" }, take: 500 })).filter((r) => r.id !== lease.roomId && roomVisible(g, r.id));
+    const rooms = (await db.hotelRoom.findMany({ where: { active: true }, select: { id: true, number: true }, orderBy: { number: "asc" }, take: 500 })) // SVC D.15-K M2 ▸ ห้องปิดไม่เป็นปลายทาง ◂.filter((r) => r.id !== lease.roomId && roomVisible(g, r.id));
     // SVC D.12 (Y29) ▸ มิเตอร์เฉพาะห้องต้นทาง + ห้องปลายทางที่เลือก (?to=) — ไม่อ่านทั้งหน่วย ◂
     const toId = isStr(input.toRoomId) && rooms.some((r) => r.id === input.toRoomId) ? input.toRoomId : (rooms[0]?.id ?? null);
     const allMeters = await db.dormMeter.findMany({ where: { role: "ROOM", removedAt: null, roomId: { in: toId ? [lease.roomId, toId] : [lease.roomId] } }, select: { id: true, kind: true, roomId: true }, orderBy: [{ kind: "asc" }, { id: "asc" }] });

@@ -45,6 +45,8 @@ const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
     { href: "/dorm/parcels", label: "พัสดุ" }, // SVC D.18 ▸ ทางเข้าจอพัสดุ (แท็บหอคงเดิม — d.13 K-6) ◂
     { href: "/dorm/repairs", label: "แจ้งซ่อม" }, // SVC D.16 ▸ ทางเข้าจอแจ้งซ่อม/มือถือช่าง (แท็บหอคงเดิม — d.13 K-6) ◂
     { href: "/dorm/reports", label: "รายงาน" }, // SVC D.19 ▸ ทางเข้าจอรายงานหอ (แท็บหอคงเดิม — d.13 K-6 · R7) ◂
+    { href: "/dorm/billing", label: "รอบบิล" }, // SVC D.15-K3 ▸ ทางเข้ารอบบิล (หน้าตรวจ dorm.view เอง) ◂
+    { href: "/dorm/tenants/import", label: "นำเข้าข้อมูล" }, // SVC D.15-K3 ▸ ทางเข้านำเข้า (หน้าตรวจ dorm.import เอง) ◂
     { href: "/dorm/settings", label: "ตั้งค่าหอ" },
   ],
   CLINIC: [

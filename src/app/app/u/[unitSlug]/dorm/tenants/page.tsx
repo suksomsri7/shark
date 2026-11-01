@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
+import { evaluate } from "@/lib/core/rbac";
 import { getLease, leaseAccess, listLeases, type LeaseDetail, type LeaseTab } from "@/lib/modules/dorm";
 import TenantsScreen from "@/components/dorm/TenantsScreen";
 
@@ -51,7 +52,14 @@ export default async function DormTenantsPage({
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
       <p className="text-xs text-[color:var(--color-muted)]">{unit.name}</p>
-      <TenantsScreen unitSlug={unitSlug} tab={tab} q={q} list={list} selected={selected} />
+      <TenantsScreen
+        unitSlug={unitSlug}
+        tab={tab}
+        q={q}
+        list={list}
+        selected={selected}
+        importHref={evaluate(membership, { module: "dorm", action: "dorm.import", unitId: unit.id }) ? `/app/u/${unitSlug}/dorm/tenants/import` : null}
+      />
     </div>
   );
 }

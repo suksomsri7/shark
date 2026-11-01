@@ -30,9 +30,15 @@ export default async function DormFloorPlanPage({ params }: { params: Promise<{ 
   if (!home) notFound();
   // SVC D.17 ▸ ปุ่ม "ประกาศ" เฉพาะผู้ถือ dorm.announce (จอประกาศตรวจสิทธิ์+ขอบเขตอาคารสดซ้ำเอง) ◂
   const canAnnounce = evaluate(actor, { module: "dorm", action: "dorm.announce", unitId: unit.id });
+  // SVC D.15-K3 ▸ รอบบิล = ผู้เห็นเงิน (หน้า /dorm/billing ตรวจ dorm.view + สิทธิ์ส่งเอง) · นำเข้า = dorm.import (หน้าตรวจซ้ำ) ◂
+  const showBilling = dormAccess(actor, unit.id).money;
+  const canImport = evaluate(actor, { module: "dorm", action: "dorm.import", unitId: unit.id });
 
   return (
-    <DormHome model={home} unitSlug={unitSlug} announceHref={canAnnounce ? `/app/u/${unitSlug}/dorm/announce` : null}>
+    <DormHome model={home} unitSlug={unitSlug} announceHref={canAnnounce ? `/app/u/${unitSlug}/dorm/announce` : null}
+      billingHref={showBilling ? `/app/u/${unitSlug}/dorm/billing` : null}
+      importHref={canImport ? `/app/u/${unitSlug}/dorm/tenants/import` : null}
+    >
       <RoomBoard cells={home.cells} date={home.date} buildings={home.buildings} occupantLabels={home.occupantLabels} finance={home.finance} />
     </DormHome>
   );

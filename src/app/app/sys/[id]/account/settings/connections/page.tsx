@@ -65,7 +65,8 @@ export default async function AccountConnectionsSettingsPage({
   const sub = hasSub ? subRaw! : DEFAULT_CONNECTION_SUB;
 
   // อ่านเฉพาะที่หัวข้อนั้นใช้จริง (คีย์/ฮุคเป็น query ของแพลตฟอร์ม — ไม่ควรจ่ายทุกครั้งที่เปิดหน้าการ์ด)
-  const cards = sub === "shark" ? await buildConnectionCards(ctx, new Date()) : [];
+  // SVC D.15-K1 ▸ หน้านี้แสดงการ์ด "หอพัก" ต่อหน่วย DORM ด้วย (REST /links คงชุดเดิม) ◂
+  const cards = sub === "shark" ? await buildConnectionCards(ctx, new Date(), { dormUnits: true }) : [];
   const [keysAll, endpoints, deliveries] =
     sub === "api"
       ? await Promise.all([listApiKeys({ tenantId }), listEndpoints({ tenantId }), listDeliveries({ tenantId }, 10)])
@@ -100,7 +101,7 @@ export default async function AccountConnectionsSettingsPage({
       cards={cards}
       soonCards={CONNECTION_SOON}
       mappingHref={`${base}/accounts/mapping`}
-      recentHrefs={Object.fromEntries(cards.map((c) => [c.kind, recentHrefFor(base, c.kind)]))}
+      recentHrefs={Object.fromEntries(cards.map((c) => [c.key, c.key.startsWith("DORM-") ? `${base}/documents` : recentHrefFor(base, c.kind)]))}
       apiKeys={keys.map((k) => ({
         id: k.id,
         name: k.name,
