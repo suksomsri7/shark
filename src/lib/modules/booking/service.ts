@@ -3776,6 +3776,25 @@ export async function claimGroupDeposit(ctx: { tenantId: string; unitId: string 
 }
 
 export type GroupBindItem = { appointmentId: string; saleId: string | null; amountSatang: number };
+
+/**
+ * แบ่งเงินสลิปกลุ่ม (pure · H1/H6/I2): แถวที่ยังไม่จ่ายตามลำดับสมาชิก (ถือช่องก่อน · ไม่มีแถวถือช่องค้าง ⇒ แถวที่ยังไม่จ่ายทั้งหมด = ค้างคืน) ·
+ * แถวละไม่เกินมัดจำ · ส่วนเกินลงแถวสุดท้ายที่รับ · ไม่มีแถวรับ ⇒ [] (ผู้เรียกแจ้ง slipAfterPaid) — ใช้ทั้งก่อนออกใบรับและใต้ล็อก (ตรวจว่าแผนยังตรง)
+ */
+export function allocateGroupSlip(rows: readonly { id: string; status: string; depositPaidAt: Date | null; depositSatang: number }[], amount: number): { id: string; give: number }[] {
+  const unpaid = rows.filter((r) => !r.depositPaidAt && r.depositSatang > 0);
+  const live = unpaid.filter((r) => r.status === "PENDING" || r.status === "CONFIRMED");
+  const plan: { id: string; give: number }[] = [];
+  let left = amount;
+  for (const r of live.length ? live : unpaid) {
+    const give = Math.min(r.depositSatang, left);
+    if (give <= 0) break;
+    left -= give;
+    plan.push({ id: r.id, give });
+  }
+  if (plan.length && left > 0) plan[plan.length - 1].give += left;
+  return plan;
+}
 /**
  * ผูกใบรับต่อสมาชิกในธุรกรรมเดียว (แบบ bindDepositReceipt ต่อแถว · CAS depositPaidAt IS NULL) — สถานะทุกแถวเปลี่ยนพร้อมกัน ·
  * groupPartial (ยอดเข้ารวม < Σ) ⇒ ไม่มีแถวยืนยันเอง (SLIP) · event booking.deposit_paid + audit ต่อแถว (+ groupId)
@@ -3789,8 +3808,10 @@ export async function bindGroupDeposit(i: {
   confirmIds?: readonly string[];
   /** กันซ้ำต่อสลิประดับกลุ่ม: มี audit รับเงินของสลิปนี้ที่สมาชิกใดแล้ว ⇒ ไม่ทำอะไร (ใต้ล็อกเดียวกัน) */
   dedupeSlipId?: string | null;
-}): Promise<{ skippedSatang: number } | "GONE" | "BUSY"> {
-  const out = await apptTx(async (tx): Promise<{ skippedSatang: number } | "GONE"> => {
+  /** สลิป: ยอดของสลิป ⇒ ใต้ล็อกคำนวณแผนแบ่งเงินซ้ำจากแถวที่ล็อก — ไม่ตรงกับ items ⇒ STALE (ผู้เรียกลองใหม่) */
+  planAmount?: number;
+}): Promise<{ skippedSatang: number } | "GONE" | "BUSY" | "STALE"> {
+  const out = await apptTx(async (tx): Promise<{ skippedSatang: number } | "GONE" | "STALE"> => {
     const locked = new Map<string, LockedAppt>();
     const all = [...new Set([...(i.lockIds ?? []), ...i.items.map((x) => x.appointmentId), ...(i.confirmIds ?? [])])].sort();
     for (const id of all) {
@@ -3804,6 +3825,14 @@ export async function bindGroupDeposit(i: {
         select: { id: true },
       });
       if (hit) return { skippedSatang: 0 };
+    }
+    if (typeof i.planAmount === "number") {
+      const rows = [...locked.values()].map((r) => ({ id: r.id, status: r.status, depositPaidAt: r.depositPaidAt, depositSatang: Number(r.depositSatang) }));
+      const order = new Map((i.lockIds ?? []).map((x, k) => [x, k]));
+      rows.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+      const want = allocateGroupSlip(rows, i.planAmount);
+      const same = want.length === i.items.length && want.every((w, k) => w.id === i.items[k].appointmentId && w.give === i.items[k].amountSatang);
+      if (!same) return "STALE";
     }
     let skippedSatang = 0; // ยอดของแถวที่จ่ายแล้วจากทางอื่นระหว่างนั้น (ผู้เรียกแจ้งร้าน แบบ slipAfterPaid)
     for (const id of i.confirmIds ?? []) {
