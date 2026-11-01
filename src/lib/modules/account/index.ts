@@ -1549,8 +1549,19 @@ export async function listPortalDocs(
   return out.sort((a, b) => b.issueDate.getTime() - a.issueDate.getTime() || (a.id < b.id ? 1 : -1)).slice(0, take);
 }
 
-export async function firstReceiveFinanceId(ctx: AccountCtx): Promise<string | null> {
+export async function firstReceiveFinanceId(ctx: AccountCtx, opts?: { nonCash?: boolean }): Promise<string | null> {
   if (!ctx.tenantId || !ctx.systemId) return null;
+  // SVC G2-F F3 ▸ nonCash: เงินโอน/พร้อมเพย์ต้องลงบัญชีธนาคาร/e-wallet เท่านั้น (ห้ามเงินสด/เงินสดย่อย) · มีพร้อมเพย์ก่อน · ไม่มี ⇒ null (mapping BANK)
+  //   ไม่ส่ง opts = พฤติกรรมเดิมทุกไบต์ (ลิงก์จ่าย D.8 · พอร์ทัล CRM) ◂
+  if (opts?.nonCash) {
+    const rows = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountFinance.findMany({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, useForReceive: true, archivedAt: null, type: { in: ["BANK", "E_WALLET"] } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, promptpayId: true },
+      take: 50,
+    });
+    return (rows.find((r) => !!r.promptpayId) ?? rows[0])?.id ?? null;
+  }
   const row = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountFinance.findFirst({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, useForReceive: true, archivedAt: null },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
