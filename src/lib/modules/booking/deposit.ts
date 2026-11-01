@@ -22,6 +22,7 @@ import {
   claimGroupDeposit,
   claimSlipSubmit,
   groupLeaderOf,
+  heldDepositReceiptOf,
   groupRowsOf,
   planGroupSlip,
   type GroupSlipPlan,
@@ -41,6 +42,7 @@ import {
   snapshotSelfPolicy,
   takeAppointmentDeposit,
   writeDepositAudit,
+  writeDepositAuditOnce,
   type DepositFacts,
 } from "./service";
 
@@ -239,7 +241,10 @@ export async function loadDepositPay(token: unknown, opts?: { now?: Date; ip?: s
   // SVC B.15 ▸ กลุ่ม (G10): สถานะ/ยอด/เวลาถือช่อง = ของทั้งกลุ่ม (ยอด Σ · QR ยอดล็อก Σ ที่ยังไม่จ่าย · ถือช่องสั้นสุดของสมาชิกที่ค้าง) ◂
   const gm = await groupMoneyOf(m.ctx, f.appt.id);
   const gs = gm ? groupStateOf(gm) : null;
-  const info = gm && gs ? { ...info0, state: gs.state, holdUntilMs: gs.holdUntilMs, forfeitedSatang: sumOf(gm, "forfeitedSatang"), refundDueSatang: sumOf(gm, "refundDueSatang") } : info0;
+  // SVC B8-PB12 ▸ นัดเดี่ยวที่มีใบรับค้างไม่ผูก (ร้านรับเงินแล้วล้มก่อนผูก) ⇒ ไม่ขอเงินซ้ำ: RECORDING (ซ่อน QR · ส่งสลิปไม่ได้) ◂
+  const heldSingle = !gm && info0.state === "AWAITING" ? await heldDepositReceiptOf(m.ctx, f.appt.id) : null;
+  const info = gm && gs ? { ...info0, state: gs.state, holdUntilMs: gs.holdUntilMs, forfeitedSatang: sumOf(gm, "forfeitedSatang"), refundDueSatang: sumOf(gm, "refundDueSatang") }
+    : heldSingle ? { ...info0, state: "RECORDING" as DepositState } : info0;
   let qr: DepositPay["qr"] = null;
   let noReceiver = false;
   if (info.state === "AWAITING") {
@@ -323,7 +328,8 @@ export async function submitDepositSlip(
     return sfail("BAD_STATE", R.BAD_STATE);
   };
   const gm0 = await groupMoneyOf(ctx, a.id);
-  const g0 = gm0 ? groupGate(gm0) : gate(a, f.slip?.status);
+  const heldGate = async (): Promise<SubmitOut | null> => ((await heldDepositReceiptOf(ctx, a.id)) ? sfail("ALREADY_PAID", R.ALREADY_PAID) : null); // B8-PB12
+  const g0 = gm0 ? groupGate(gm0) : (gate(a, f.slip?.status) ?? (await heldGate()));
   if (g0) return g0;
   if (!file || !KEY_RE.test(key) || (x.qrPayload !== undefined && x.qrPayload !== null && qrPayload === undefined)) return sfail("BAD_INPUT", R.BAD_INPUT);
   if (!(await receiverFor({ tenantId: ctx.tenantId }, ctx.unitId))) return sfail("NO_RECEIVER", R.NO_RECEIVER);
@@ -341,7 +347,7 @@ export async function submitDepositSlip(
     if (again) return okOf(again.status);
     const lastSlip = (await tenantDb(ctx).paymentSlip.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, domain: "BOOKING", refType: "APPT_DEPOSIT", refId: a.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { status: true } }))?.status;
     const gm1 = gm0 ? await groupMoneyOf(ctx, a.id) : null;
-    const g1 = gm1 ? groupGate(gm1) : gate(claim.row, lastSlip);
+    const g1 = gm1 ? groupGate(gm1) : (gate(claim.row, lastSlip) ?? (await heldGate()));
     if (g1) return g1;
     const deps = isRec(opts?.deps) ? opts!.deps! : {};
     const r = await submitSlip(
@@ -389,7 +395,8 @@ export async function submitDepositSlip(
 // ═════════════════════════ §3.3 consumer เงินเข้า (สลิปอนุมัติ) ═════════════════════════
 async function slipAfterPaid(tenantId: string, unitId: string, appointmentId: string, slipId: string, amountSatang: number, receiptSaleId: string | null): Promise<void> {
   if (await depositAuditExists(tenantId, appointmentId, "booking.deposit.slip_after_paid", slipId)) return;
-  await writeDepositAudit({ tenantId, unitId, appointmentId, action: "booking.deposit.slip_after_paid", actorType: "SYSTEM", actorId: "module:booking", after: { slipId, amountSatang, receiptSaleId } });
+  // B8-PB12: consumer ซ้ำพร้อมกัน ⇒ เขียนครั้งเดียว (ล็อกต่อนัด+สลิป ตรวจซ้ำใน tx เดียวกับที่เขียน)
+  if (!(await writeDepositAuditOnce({ tenantId, unitId, appointmentId, action: "booking.deposit.slip_after_paid", actorType: "SYSTEM", actorId: "module:booking", after: { slipId, amountSatang, receiptSaleId } }, slipId))) return;
   await logOps("WARN", "booking.deposit", "มีสลิปอนุมัติของนัดที่รับมัดจำแล้ว — ไม่ออกใบรับที่สอง ตรวจว่าเป็นการโอนซ้ำจริงไหม", { tenantId, detail: `appointment=${appointmentId} slip=${slipId}` });
 }
 
@@ -426,17 +433,46 @@ export async function onDepositSlipApproved(evt: { tenantId: string; unitId?: st
     await slipAfterPaid(tenantId, ctx.unitId, id, slip.id, amount, f.appt.depositSaleId);
     return;
   }
-  const take = await takeAppointmentDeposit({
-    tenantId, unitId: ctx.unitId, appointmentId: id, amountSatang: amount, payType: "PROMPTPAY",
-    customerId: f.appt.customerId, customerName: f.appt.customerName || null, serviceName: f.appt.serviceName,
-  });
+  // SVC B8-PB12 ▸ ใบรับค้างไม่ผูกของนัด (ก่อนออกใบ · และหลังชนคีย์) จัดตามต้นทาง:
+  //   ป้ายสลิปนี้ ⇒ ใบของตัวเอง (ผูก · ลองใหม่ได้ผลเดิม) · ป้ายสลิปอื่น ⇒ ไม่ผูก เงินสลิปนี้ ⇒ slip_after_paid ·
+  //   ไม่มีป้าย (ร้าน/ทางอื่นรับเงินแล้วล้มก่อนผูก) ⇒ ผูกใบนั้นเป็นเงินของนัด (recover) แล้วเงินสลิปทั้งก้อน ⇒ slip_after_paid · ไม่มีใบค้าง ⇒ ทางเดิม ◂
+  const settleHeld = async (held: { saleId: string; amountSatang: number; slipId: string | null }): Promise<string | null | "DONE"> => {
+    if (held.slipId === slip.id) return held.saleId;
+    if (held.slipId === null) {
+      const b = await bindGroupDeposit({
+        tenantId, unitId: ctx.unitId, groupId: null, lockIds: [id], items: [{ appointmentId: id, saleId: held.saleId, amountSatang: held.amountSatang, recovered: true }],
+        via: "SLIP", groupPartial: false, slipId: slip.id,
+      });
+      if (b === "BUSY") throw new Error("[booking.deposit] แถวนัดไม่ว่าง — คิวลองใหม่");
+    }
+    await slipAfterPaid(tenantId, ctx.unitId, id, slip.id, amount, held.saleId);
+    return "DONE";
+  };
+  const held0 = await heldDepositReceiptOf(ctx, id);
   let saleId: string | null;
-  if (take.ok) saleId = take.saleId;
-  else if (take.code === "CONFLICT") {
-    // อีกทาง (ร้านกด/รับมัดจำเดิม) ออกใบรับของคีย์นี้ด้วยยอด/วิธีอื่นไปแล้ว ⇒ ใบรับนั้นคือมัดจำของนัด (ไม่ออกซ้ำ)
-    saleId = await liveDepositReceiptOf(tenantId, id);
-    if (!saleId) throw new Error(`[booking.deposit] ใบรับของนัดชนคีย์แต่ไม่พบใบที่มีผล (${take.code})`);
-  } else throw new Error(`[booking.deposit] ออกใบรับมัดจำไม่สำเร็จ: ${take.code}`); // คิวลองใหม่
+  if (held0) {
+    const r = await settleHeld(held0);
+    if (r === "DONE") return;
+    saleId = r;
+  } else {
+    const take = await takeAppointmentDeposit({
+      tenantId, unitId: ctx.unitId, appointmentId: id, amountSatang: amount, payType: "PROMPTPAY",
+      customerId: f.appt.customerId, customerName: f.appt.customerName || null, serviceName: f.appt.serviceName, slipId: slip.id,
+    });
+    if (take.ok) saleId = take.saleId;
+    else if (take.code === "CONFLICT") {
+      // อีกทางออกใบรับของคีย์นี้ไปแล้วระหว่างนั้น ⇒ จัดตามต้นทางของใบนั้น (ไม่หยิบใบของทางอื่นเป็นเงินของสลิปนี้)
+      const held1 = await heldDepositReceiptOf(ctx, id);
+      if (held1) {
+        const r = await settleHeld(held1);
+        if (r === "DONE") return;
+        saleId = r;
+      } else {
+        saleId = await liveDepositReceiptOf(tenantId, id);
+        if (!saleId) throw new Error(`[booking.deposit] ใบรับของนัดชนคีย์แต่ไม่พบใบที่มีผล (${take.code})`);
+      }
+    } else throw new Error(`[booking.deposit] ออกใบรับมัดจำไม่สำเร็จ: ${take.code}`); // คิวลองใหม่
+  }
   const bind = await bindDepositReceipt({ tenantId, unitId: ctx.unitId, appointmentId: id, saleId, amountSatang: amount, via: "SLIP", slipId: slip.id });
   if (bind.kind === "BUSY") throw new Error("[booking.deposit] แถวนัดไม่ว่าง — คิวลองใหม่");
   // V8: ชน/ALREADY ที่ไม่ใช่การลงเงินของสลิปนี้เอง ⇒ เตือนเสมอ (แม้ใบรับเดียวกัน — เงินเข้า 2 ก้อนต้องมีคนเห็น)
