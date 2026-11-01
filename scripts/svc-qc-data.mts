@@ -455,6 +455,14 @@ SQC_VISUAL_SPECS["d.13"] = [
   { name: "dorm-home", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm` },
   { name: "dorm-settings-policies", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/settings` },
 ];
+// SVC D.15-K (ผู้คุม 1 พ.ย.) ▸ จอ อาคาร/ห้อง/ประเภทห้อง · ลิงก์รอบบิล/นำเข้า · การ์ดหอในหน้าเชื่อมต่อบัญชี (สมุดหอ id ส่งทาง env SVC_VIS_DORM_BOOK)
+SQC_VISUAL_SPECS["d.15k"] = [
+  { name: "dorm-settings-rooms", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/settings/rooms` },
+  { name: "dorm-home", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm` },
+  { name: "dorm-tenants", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/tenants` },
+  { name: "dorm-unit", path: `/app/u/${SQC_UNITS.dorm.slug}` },
+  ...(process.env.SVC_VIS_DORM_BOOK ? [{ name: "account-connections", path: `/app/sys/${process.env.SVC_VIS_DORM_BOOK}/account/settings/connections` }] : []),
+];
 
 /** README หอ "3 พ.ย." — ยอดบิลรอบ พ.ย. ต่อห้อง (สตางค์) · 31 ห้องที่มีผู้เช่า · Σ = 17,412,640 (฿174,126.40) */
 const D13_NOV_BILLS: Record<string, number> = {
