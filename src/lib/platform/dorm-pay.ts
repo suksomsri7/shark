@@ -354,7 +354,7 @@ async function settle(hold: Hold, tenantId: string, unitId: string, plan: Plan):
   let financeAccountId = plan.financeAccountId;
   if (!financeAccountId && plan.channel !== "CASH") {
     const book = await dormUnitBookId(tenantId, unitId);
-    financeAccountId = book ? await firstReceiveFinanceId({ tenantId, systemId: book }) : null;
+    financeAccountId = book ? await firstReceiveFinanceId({ tenantId, systemId: book }, { nonCash: true }) : null; // ห้ามบัญชีเงินสด (ผู้ตรวจ G2-F MAJOR-1)
   }
   const allocations: Alloc[] = [];
   let moved = 0;

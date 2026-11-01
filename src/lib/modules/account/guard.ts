@@ -6,7 +6,7 @@ import { ensureJournalSequences } from "./gl";
 
 // โหลดระบบบัญชี (feature) + ตรวจว่าเป็นของ tenant + ชนิด ACCOUNT
 // opts.can = action สิทธิ์ที่ต้องมี "ก่อนโหลดข้อมูลใด ๆ" (WO 0.2 — ด่านระดับ page)
-//   ไม่ผ่าน → โยน ForbiddenError (รูปแบบเดียวกับที่ /journal, /ledger, /accounts, /periods, /reports/* ใช้อยู่เดิม)
+//   ไม่ผ่าน → notFound() (G2-F · เดิมโยน ForbiddenError ⇒ 500) · action/route ไม่ส่ง can แล้วเรียก assertAccountCan เอง (403 เหมือนเดิม)
 export async function loadAccountSystem(systemId: string, opts?: { can?: string }) {
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;

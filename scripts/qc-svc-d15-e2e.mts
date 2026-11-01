@@ -228,6 +228,8 @@ try {
   const BOOK = book.id as string;
   await ASV.saveSettings(T, BOOK, { orgName: "หอดีสิบห้า", vatRegistered: false });
   await GL.ensureAccounting({ tenantId: T, systemId: BOOK });
+  // ORACLE-EDIT (ผู้คุม 1 พ.ย. · G2F-cash-first) ▸ เงินสดถูกสร้างก่อนธนาคาร (useForReceive ปริยาย) — สลิปพร้อมเพย์ต้องไม่ลงบัญชีเงินสด ◂
+  await prisma.accountFinance.create({ data: { tenantId: T, systemId: BOOK, type: "CASH", name: "เงินสดหน้าเคาน์เตอร์", useForReceive: true, createdAt: new Date(Date.now() - 60_000) } });
   await prisma.accountFinance.create({ data: { tenantId: T, systemId: BOOK, type: "BANK", name: "บัญชีรับเงินหอ", promptpayId: "0812345678", useForReceive: true } });
   const UNIT = (await prisma.businessUnit.create({ data: { tenantId: T, type: "DORM", name: "หอดีสิบห้า", slug: `d15e2e-${STAMP}` } })).id as string;
   await prisma.accountSystemLink.create({ data: { tenantId: T, systemId: BOOK, linkedKind: "BUSINESS", linkedId: UNIT, enabled: true } });
@@ -485,6 +487,8 @@ try {
     let expAcc: string | null = null;
     if (pay.financeAccountId) {
       const fa = await prisma.accountFinance.findFirst({ where: { id: pay.financeAccountId, systemId: BOOK }, select: { ledgerAccountId: true, type: true } });
+      // ORACLE-EDIT (ผู้คุม 1 พ.ย. · G2F-cash-first) ▸ ช่องทางไม่ใช่เงินสด ⇒ บัญชีเงินต้องไม่ใช่ CASH/PETTY_CASH ◂
+      if (pay.channel !== "CASH" && (fa?.type === "CASH" || fa?.type === "PETTY_CASH")) throw new Error(`สลิป ${pay.channel} ลงบัญชีเงินสด (${fa?.type})`);
       expAcc = fa?.ledgerAccountId ?? (await prisma.accountMapping.findFirst({ where: { systemId: BOOK, key: fa?.type === "CASH" ? "CASH" : "BANK" } }))?.accountId ?? null;
     } else {
       expAcc = (await prisma.accountMapping.findFirst({ where: { systemId: BOOK, key: pay.channel === "CASH" ? "CASH" : "BANK" } }))?.accountId ?? null;
