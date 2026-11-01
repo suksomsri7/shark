@@ -87,7 +87,7 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 | B.9 | แจ้งเตือน + ผูก LINE | เข้ม | | ✅ | 96521c79 | 60/62 เต็มรวม G · 2 ผู้ตรวจ (BLOCKER สวมเบอร์ยึด LINE + MAJOR 1 ปิด · probe breach 0) · V-1 รอ build |
 | B.10 | จบงาน→บิลพัก POS + ค่าคอมฯ | เข้ม | | ✅ | 20e5421c | 61/64 · 2 ผู้ตรวจ (Q1–Q11 ปิด · probe 27 HOLD 0 BREACH) · POS 2 จุด · void บิลจ่ายแล้วฝั่งจองคิว · หนี้: เปิดบิลใหม่หลัง void · ชุด/สูตร/ชั่ง = BAD_INPUT |
 | B.11 | จอตั้งค่าจองคิว + สิทธิ์ | เบา | | ✅ | 64e6c184 | 84/95 · V-2 ภาพรอ build รวม |
-| B.12 | ปิด B1 (G1) ร้านตัดผม | — | ผู้คุม | ⬜ | | U1 |
+| B.12 | ปิด B1 (G1) ร้านตัดผม | — | ผู้คุม | ✅ | e9cb508d | U1 · G1 qc:all คัดแดง + ไล่กด 336 โหลด 0 error · รอบแก้ 2 + UI (ไทยทั้งหมด · ปฏิทิน 6 คอลัมน์) · ภาพผู้คุมตรวจ PARITY · แพ็ก `ledger/wo-notes/svc-uat-u1-barber.md` |
 | B.13 | ทรัพยากร | เข้ม | | ✅ | 698cd1e4 | b.13 84/87 (V-1 · SF-1 accept-time · G-2 = b.3 S-9 เที่ยงคืน → ORACLE-EDIT แล้ว 74/75) · probe-b13-b 76/76 · b.2 93/93 · b.4/b.5/b.7/b.8/b.16 0 failed · smoke/fitness/tsc ผ่าน · 7 รอบแก้ Q1–Q19 · migration svc_b13 |
 | B.14 | ปฏิทินลากย้าย | เบา | | ✅ | 9fd5fe72 | b.14 65/70 (A-* รอเจ้าของ · V-1 · SF-1) · probe-b14-b 48/48 deadlock 0 · ฉาก calendar · แก้ลำดับล็อก rescheduleByShop/BySelf (หนี้ B.13) |
 | B.15 | คู่รัก/กลุ่ม | เข้ม | | ⬜ | | |
@@ -124,14 +124,15 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 ### 3.1 ด่านเต็ม
 | ด่าน | เมื่อ | ผล | log |
 |---|---|---|---|
-| G1 | B.12 | ⬜ | |
+| G1 | B.12 | ✅ | `/root/svc-runs/g1-b12/` + `/root/svc-runs/g1-ui/chain.txt` |
 | G2 | D.15 | ⬜ | |
 | G3 | B.18 + D.20 | ⬜ | |
 
 ### 3.2 หนี้ (ข้อที่ผ่านไม่ได้ · เหตุผล · ใบที่จะปิด)
 | ใบ | หนี้ | เหตุผล | ปิดใน |
 |---|---|---|---|
-| D.6 | ผู้ดูแลอาคาร 1 บันทึกมิเตอร์อาคาร 2 ผ่าน service submitReadings ได้ (ด่านขอบเขตอยู่ที่ action เท่านั้น · probe-d14-b FG-3) | ด่านขอบเขตอาคารใน service | D.15 |
+| D.6 | ~~ผู้ดูแลอาคาร 1 บันทึกมิเตอร์อาคาร 2 ผ่าน service~~ ปิดแล้ว 8827ca1b (XB-1…10 · ด่าน Y) | — | D.15 ✅ |
+| B.12 | ตารางทรัพยากรบนมือถือเลื่อนแนวนอนโดยไม่มีตัวบอก (m) · walk-in/บริการ CSV import ไม่มี | m | B.18 |
 | C.3 | เตือนเกินเมื่อถอดแล้ววางคีย์ใหม่ก่อน consumer ของเหตุเก่า (E-STALE) · quota() ซ้ำเมื่องานซ้อน · isRetryable ดู cause.originalCode | MINOR/INFO | หลัง D.15 |
 | D.14 | ref USAGE ชน namespace TOPUP/GRANT · ตัวอ่าน AI ใน tx ถือ connection · AuditLog เป็นที่เก็บข้อเสนอ (index tenantId+action+targetId) | ไม่มี migration | หลัง D.15 |
 | D.3/D.13 | r0.4 H-2: rooms.access.buildingAssignments (ตาราง record ว่าง) ในหน้าตั้งค่ากลางไม่มีช่องกรอก (แก้ได้เฉพาะหน้านโยบายหอ D.13) | SettingsForm/JsonNode ไม่รองรับ record ว่าง | D.15 |
@@ -215,3 +216,5 @@ X1 ขอบเขต (ข้ามร้าน/ข้ามหน่วย/ข�
 - 31 ต.ค. ~16Z · ✅ **B.16** (42/53) · merge b15182dd · ด่าน T (ฐานหลัก): b.16 45/46 · probe-b16-b · regression 0 failed ยกเว้น b.0 G-8 (มาจาก B.10 · อยู่ในรอบแก้ G1-D) · m1.3 S3.x = ภาพไม่มี QC_BASE · smoke/fitness/tsc ผ่าน
 - 31 ต.ค. ~17Z · ✅ **B.13** (43/53) · merge 698cd1e4 · ด่าน U (ฐานหลัก): b.13 84/87 · probe-b13-b 76/76 · b.2 93/93 · regression 0 failed · ORACLE-EDIT b3-S9-midnight (ร้าน 24 ชม. ข้ามเที่ยงคืน) · หนี้: A9 walk-in ข้ามเที่ยงคืน · ปุ่ม 'มาถึง' = ตอนกด (คำถามเจ้าของ) · rescheduleByShop/BySelf ลำดับล็อกทรัพยากร → แก้ใน B.14 · 🔴 deploy: migration 20261225000000_svc_b13
 - 31 ต.ค. ~21Z · ✅ **B.17 + B.14** (45/53) · merge 687df71d + 9fd5fe72 · ด่าน W (ฐานหลัก): b.17 72/73 · probe-b17-b RT-2 เท่านั้น (หนี้) · ฉาก B.11→B.13→calendar · b.14 65/70 0 failed · probe-b14-b 48/48 · b.13/b.2/b.5/b.7/b.8/b.9 0 failed · b.11 แดง S-2/S-4/S-5/M-9 (ของ B.13/B.17 · แก้แล้วใน G1R2 efd8f2cf รอ merge) · smoke · fitness 2 โหมด · tsc 0 · 🔴 deploy: migration 20261226000000_svc_b17 · หนี้ B.17: RT-2 · FIRST ไม่ส่งต่อเมื่อคนถือออก · ปุ่มออกจากคิว · RL-2 · tick ต่อ entry · หนี้ B.14: startJob loadGate lock:false · strictHours ข้ามเที่ยงคืน
+- 1 พ.ย. ~01Z · ด่าน Y (ฐานหลัก · หนี้ D.15 merge 8827ca1b): rebuild หอ · d.3–d.19 16 ชุด + r0.4 + b.11 0 failed · probe-d14-b 28/28 · smoke · fitness · tsc 0 ⇒ หนี้ D.15 ยืนยัน · D.15 ยังรอ G2
+- 1 พ.ย. ~03Z · ✅ **B.12** (46/53) · G1 รอบ UI merge 6ea2b843→e9cb508d · ฐานหลัก: rebuild หอ · tsc 0 · build QC · b.11 85/95 · b.13 79/87 · b.14 59/70 · b.5 60/71 (E-1 ผ่าน) 0 failed · smoke 6/6 · fitness 53/53 · ภาพ `.qc-shots/svc/g1-ui/pairs/` ผู้คุมตรวจเอง (ตั้งค่าไทย/ไม่ล้น · ปฏิทิน 6 คอลัมน์ที่ 1440) · ORACLE-EDIT G1UI-3 (b.5 เลือกงานเลี่ยงงานที่มีปุ่มย้าย) · G1UI-QR (ฉาก portal ผู้รับ = ชื่อร้าน) · UI-4 สมมติฐานผิด (ฉากเปลี่ยนระหว่างถ่าย) · B.15 รอบ 4 ผู้ตรวจ A PASS (m-1…m-4 หนี้)
