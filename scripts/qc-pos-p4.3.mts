@@ -329,7 +329,8 @@ function judgeD4(due: string, surf: Record<string, Any>): string[] {
   }
   return p;
 }
-const isForbidden = (o: Outcome) => o.kind === "throw" && (/Forbidden/.test(o.code) || /ไม่มีสิทธิ์|HTTP_ERROR_FALLBACK;403/.test(o.text));
+// ORACLE-EDIT (ผู้คุม SVC 2 พ.ย. · p43-D1-notfound) ▸ SVC G2-F: หน้าบัญชีที่ไม่มีสิทธิ์ ⇒ notFound() (404) แทน ForbiddenError (500 บนจอ) — ยังเป็น "ปฏิเสธ" · action/REST คง 403 · OWNER ต้องผ่านเหมือนเดิม ◂
+const isForbidden = (o: Outcome) => o.kind === "throw" && (/Forbidden/.test(o.code) || /ไม่มีสิทธิ์|HTTP_ERROR_FALLBACK;40[34]/.test(o.text));
 function judgeD1(x: { cashier: Record<string, Outcome>; owner: Record<string, Outcome> }): string[] {
   const p: string[] = [];
   for (const [k, o] of Object.entries(x.cashier)) if (!isForbidden(o)) p.push(`CASHIER ${k} → ${o.kind}/${o.code} ${o.text.slice(0, 60)} (คาด ForbiddenError)`);
@@ -595,7 +596,9 @@ function runProbes(): void {
     const ok: Outcome = { kind: "ok", code: "OK", text: "" };
     const d1good = judgeD1({ cashier: { print: fb, settings: fb }, owner: { print: ok, settings: ok } }).length === 0;
     const d1leak = judgeD1({ cashier: { print: ok, settings: fb }, owner: { print: ok, settings: ok } }).length === 1;
-    const d1nf = judgeD1({ cashier: { print: { kind: "throw", code: "Error", text: "NEXT_HTTP_ERROR_FALLBACK;404" }, settings: fb }, owner: { print: ok, settings: ok } }).length === 1;
+    // ORACLE-EDIT (ผู้คุม SVC 2 พ.ย. · p43-D1-notfound) ▸ 404 ของ CASHIER = ปฏิเสธแล้ว (G2-F) · หน้าหายจริงจับด้วยตัวควบคุมบวก OWNER (d1pos/d1ownNf) ◂
+    const d1nf = judgeD1({ cashier: { print: { kind: "throw", code: "Error", text: "NEXT_HTTP_ERROR_FALLBACK;404" }, settings: fb }, owner: { print: ok, settings: ok } }).length === 0;
+    const d1ownNf = judgeD1({ cashier: { print: fb, settings: fb }, owner: { print: { kind: "throw", code: "Error", text: "NEXT_HTTP_ERROR_FALLBACK;404" }, settings: ok } }).length === 1;
     const d1pos = judgeD1({ cashier: { print: fb, settings: fb }, owner: { print: fb, settings: ok } }).length === 1;
     const r = (status: number, ctype = "text/html; charset=utf-8", location = ""): Outcome => ({ kind: "response", code: String(status), text: "", status, ctype, location });
     const html = "<!doctype html><html><body><script>window.print()</script></body></html>";
@@ -610,7 +613,7 @@ function runProbes(): void {
     const d6cross = judgeD6("x/route.ts", { ...base, mgrA2: r(200) }).length === 1;
     const d6cross404 = judgeD6("x/route.ts", { ...base, mgrA2: r(404) }).length === 1;
     const d6own = judgeD6("x/route.ts", { ...base, mgrA1: r(403), ownerA2: r(403) }).length === 2;
-    const all = d1good && d1leak && d1nf && d1pos && d6good && d6redir && d6none && d6anon && d6staff && d6json && d6noprint && d6cross && d6cross404 && d6own;
+    const all = d1good && d1leak && d1nf && d1ownNf && d1pos && d6good && d6redir && d6none && d6anon && d6staff && d6json && d6noprint && d6cross && d6cross404 && d6own;
     chk("N9", all, "D1/D6 ถูกต้อง เขียว · รั่ว/404/ตัวควบคุม/ไม่มี route/ANON 200/STAFF 200/json/ไม่มี print/ข้ามสาขา 200 หรือ 404/ของตัวเองถูกปฏิเสธ แดงทีละข้อ", `D1 ถูก→${d1good} รั่ว→${d1leak} 404→${d1nf} บวก→${d1pos} · D6 ถูก→${d6good} login→${d6redir} ไม่มี→${d6none} anon→${d6anon} staff→${d6staff} json→${d6json} print→${d6noprint} ข้าม200→${d6cross} ข้าม404→${d6cross404} ของตัวเอง→${d6own}`);
   });
   step("N10", () => {
