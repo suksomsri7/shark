@@ -1693,7 +1693,7 @@ const REG: { s: string; args?: string[]; env?: Record<string, string>; judge?: (
   { s: "qc-svc-b.7", args: ["--no-regression"], judge: judgeSvc((x) => /^(H|V|Q|G)-/.test(x) || x === "S-1", (x) => x === "S-1" || x === "S-2"), note: "ไม่มี FAIL ยกเว้น S-1/S-2 (ไฟล์ของใบ B.8 ยังไม่ commit) · SKIP เฉพาะ H/V/Q/G/S-1" },
   { s: "qc-svc-b.3", env: { SVC_B3_NO_REGRESSION: "1" }, judge: judgeSvc((x) => x.startsWith("G-") || x === "ST-1", (x) => x === "ST-1"), note: "ไม่มี FAIL ยกเว้น ST-1 · SKIP เฉพาะ G-*/ST-1" },
   { s: "qc-svc-b.4", args: ["--no-regression"], judge: judgeSvc((x) => x.startsWith("G-") || x === "ST-1", (x) => x === "ST-1"), note: "ไม่มี FAIL ยกเว้น ST-1 · SKIP เฉพาะ G-*/ST-1" },
-  { s: "qc-svc-b.9", args: ["--no-regression"], judge: judgeSvc((x) => /^(H|V|Q|G)-/.test(x) || x === "S-1", (x) => x === "S-1" || x === "S-2"), note: "ไม่มี FAIL ยกเว้น S-1/S-2 · SKIP เฉพาะ H/V/Q/G/S-1" },
+  { s: "qc-svc-b.9", args: ["--no-regression"], judge: judgeSvc((x) => /^(H|V|Q|G)-/.test(x) || x === "S-1" || x === "S-2", (x) => x === "S-1" || x === "S-2"), note: "ไม่มี FAIL ยกเว้น S-1/S-2 · SKIP เฉพาะ H/V/Q/G/S-1/S-2" }, // ORACLE-EDIT (ผู้คุม 1 พ.ย. · b8-G4-S2skip) ▸ b.9 S-2 = ข้อตอนรับใบ SKIP เองหลัง merge (อนุญาต FAIL อยู่แล้ว ⇒ อนุญาต SKIP ไม่หลวมกว่า) ◂
   { s: "qc-svc-r0.6", judge: (out) => /JSON_SUMMARY/.test(out) && !/❌/.test(out.split("\n").filter((l) => !/\[F-\d+\]/.test(l)).join("\n")), note: "ไม่มี ❌ นอกหมวด F (ไล่ไฟล์ทะเบียน event)" },
   { s: "qc-booking-deposit" },
   { s: "qc-pos-p5.1" },
