@@ -2710,6 +2710,8 @@ export type DepositSnap = {
   lateMoney?: boolean;
   /** V4: ด่านแนบสลิปต่อนัด */
   slipClaim?: { key: string; until: number };
+  /** SVC B.15 ▸ J1: แผนแบ่งเงินของสลิปกลุ่มที่ล็อกไว้แล้ว (เก็บที่หัวกลุ่ม · ต่อสลิป) — ทุก consumer ของสลิปเดียวกันใช้แผนเดียว · ลบเมื่อผูกเสร็จ */
+  slipPlans?: Record<string, GroupSlipPlan>;
 };
 export function depositSnapOf(snap: unknown): DepositSnap {
   const d = snap && typeof snap === "object" && !Array.isArray(snap) ? (snap as Record<string, unknown>).deposit : undefined;
@@ -3753,21 +3755,37 @@ function jobOf0(snap: unknown): { bufferMin: number | null } {
 // ── มัดจำรวมของกลุ่ม (deposit.ts เรียก · แถวนัด = ตัวตัดสินเดียว · ล็อกแถวสมาชิกเรียง id อย่างเดียว) ──
 export type GroupClaim = "OK" | "HELD" | "GONE" | "BUSY";
 /** จองสิทธิ์ "กำลังรับเงินกลุ่ม" บนทุกสมาชิกที่ยังไม่จ่ายใน tx เดียว (expireDepositHolds ข้ามทั้งกลุ่มระหว่างนี้) · key เดียวกัน = ได้ · สมาชิกไม่ถือช่อง ⇒ GONE */
-export async function claimGroupDeposit(ctx: { tenantId: string; unitId: string }, ids: readonly string[], key: string): Promise<GroupClaim> {
+export async function claimGroupDeposit(ctx: { tenantId: string; unitId: string }, allIds: readonly string[], needIds: readonly string[], key: string): Promise<GroupClaim> {
+  // J2: ล็อก+จองสิทธิ์ทุกแถวของกลุ่ม (รวมที่จ่ายแล้ว/หัวกลุ่ม) · ใต้ล็อก: แถวที่ต้องรับเงินต้องยังถือช่อง · ไม่มีสลิปค้างตรวจ/อนุมัติแล้วยังไม่ลงเงิน ⇒ อื่น HELD
   const out = await apptTx(async (tx): Promise<GroupClaim> => {
     const rows: LockedAppt[] = [];
-    for (const id of [...ids].sort()) {
+    for (const id of [...new Set([...allIds, ...needIds])].sort()) {
       const r = await lockApptRow(tx, ctx.tenantId, ctx.unitId, id);
-      if (!r || (r.status !== "PENDING" && r.status !== "CONFIRMED")) return "GONE"; // ถูกปล่อย/ยกเลิกไปก่อน ⇒ ไม่รับเงิน
+      if (!r) {
+        if (needIds.includes(id)) return "GONE";
+        continue;
+      }
+      if (needIds.includes(id) && r.status !== "PENDING" && r.status !== "CONFIRMED") return "GONE"; // ถูกปล่อย/ยกเลิกไปก่อน ⇒ ไม่รับเงิน
       rows.push(r);
     }
     const nowMs = Date.now();
-    const open = rows.filter((r) => !r.depositPaidAt);
-    for (const r of open) {
+    for (const r of rows) {
       const c = depositSnapOf(r.policySnapshot).slipClaim;
       if (c && typeof c.until === "number" && c.until > nowMs && c.key !== key) return "HELD";
     }
-    for (const r of open) {
+    const slips = await tx.paymentSlip.findMany({
+      where: { tenantId: ctx.tenantId, domain: "BOOKING", refType: "APPT_DEPOSIT", refId: { in: rows.map((r) => r.id) }, status: { in: ["PENDING", "NEEDS_REVIEW", "APPROVED", "AUTO_APPROVED"] } },
+      select: { id: true, status: true },
+    });
+    for (const sl of slips) {
+      if (sl.status === "PENDING" || sl.status === "NEEDS_REVIEW") return "HELD";
+      const done = await tx.auditLog.findFirst({
+        where: { tenantId: ctx.tenantId, action: { in: ["booking.deposit.receive", "booking.deposit.slip_after_paid"] }, targetType: "Appointment", targetId: { in: rows.map((r) => r.id) }, after: { path: ["slipId"], equals: sl.id } },
+        select: { id: true },
+      });
+      if (!done) return "HELD";
+    }
+    for (const r of rows) {
       await tx.appointment.updateMany({ where: { id: r.id, tenantId: ctx.tenantId, unitId: ctx.unitId }, data: { policySnapshot: withDepositSnap(r.policySnapshot, { slipClaim: { key, until: nowMs + SLIP_CLAIM_TTL_MS } }) } });
     }
     return "OK";
@@ -3775,26 +3793,89 @@ export async function claimGroupDeposit(ctx: { tenantId: string; unitId: string 
   return out ?? "BUSY";
 }
 
+/**
+ * J1: แผนแบ่งเงินของสลิปกลุ่ม — ตัดสินครั้งเดียวใต้ล็อกแถวทั้งกลุ่ม (เรียง id) ก่อนออกใบรับใด ๆ แล้วเก็บไว้ที่หัวกลุ่ม ·
+ * consumer ซ้ำของสลิปเดียวกันได้แผนเดิม (ใบรับคีย์ต่อแถว ยอดเท่ากัน ⇒ ใบเดียว) · ลงเงินแล้ว ⇒ DONE
+ */
+export async function planGroupSlip(ctx: { tenantId: string; unitId: string }, allIds: readonly string[], slipId: string, amount: number): Promise<{ plan: GroupSlipPlan } | "DONE" | "GONE" | "BUSY"> {
+  const out = await apptTx(async (tx): Promise<{ plan: GroupSlipPlan } | "DONE" | "GONE"> => {
+    const locked: LockedAppt[] = [];
+    for (const id of [...allIds].sort()) {
+      const r = await lockApptRow(tx, ctx.tenantId, ctx.unitId, id);
+      if (r) locked.push(r);
+    }
+    if (!locked.length) return "GONE";
+    const done = await tx.auditLog.findFirst({
+      where: { tenantId: ctx.tenantId, action: { in: ["booking.deposit.receive", "booking.deposit.slip_after_paid"] }, targetType: "Appointment", targetId: { in: locked.map((r) => r.id) }, after: { path: ["slipId"], equals: slipId } },
+      select: { id: true },
+    });
+    if (done) return "DONE";
+    const lead = locked.find((r) => r.id === allIds[0]) ?? locked[0];
+    const stored = depositSnapOf(lead.policySnapshot).slipPlans?.[slipId];
+    if (stored && Array.isArray(stored.items)) return { plan: stored };
+    const order = new Map(allIds.map((x, k) => [x, k]));
+    const rows = [...locked].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+      .map((r) => ({ id: r.id, status: r.status, depositPaidAt: r.depositPaidAt, depositSatang: Number(r.depositSatang) }));
+    // ใบรับที่ออกไปแล้วของแถวที่ยังไม่ผูก (consumer ก่อนหน้าตายหลังออกใบรับ / ทางอื่นค้าง) ⇒ ยอดจริงของใบนั้น (J1 · ห้ามวางแผนใหม่ทับ)
+    const fixed = new Map<string, number>();
+    for (const r of rows) {
+      if (r.depositPaidAt) continue;
+      const sale = await tx.posSale.findFirst({
+        where: { tenantId: ctx.tenantId, sourceModule: "POS_DEPOSIT", status: "PAID", docType: "SALE", idempotencyKey: { startsWith: `booking-deposit-${r.id}` } },
+        orderBy: { createdAt: "desc" }, select: { id: true, grandTotalSatang: true },
+      });
+      if (!sale) continue;
+      const dep = await tx.posDeposit.findUnique({ where: { receiptSaleId: sale.id }, select: { amountSatang: true, tenantId: true } });
+      fixed.set(r.id, dep && dep.tenantId === ctx.tenantId ? dep.amountSatang : sale.grandTotalSatang);
+    }
+    const plan = allocateGroupSlip(rows, amount, fixed);
+    await tx.appointment.updateMany({
+      where: { id: lead.id, tenantId: ctx.tenantId, unitId: ctx.unitId },
+      data: { policySnapshot: withDepositSnap(lead.policySnapshot, { slipPlans: { ...(depositSnapOf(lead.policySnapshot).slipPlans ?? {}), [slipId]: plan } }) },
+    });
+    return { plan };
+  });
+  return out ?? "BUSY";
+}
+
 export type GroupBindItem = { appointmentId: string; saleId: string | null; amountSatang: number };
 
+/** แผนแบ่งเงินของสลิปกลุ่ม: ใบรับต่อแถว (ยอด) + ส่วนที่ไม่มีแถวรับ (แจ้งร้าน slipAfterPaid) */
+export type GroupSlipPlan = { items: { id: string; give: number }[]; afterPaid: number };
 /**
- * แบ่งเงินสลิปกลุ่ม (pure · H1/H6/I2): แถวที่ยังไม่จ่ายตามลำดับสมาชิก (ถือช่องก่อน · ไม่มีแถวถือช่องค้าง ⇒ แถวที่ยังไม่จ่ายทั้งหมด = ค้างคืน) ·
- * แถวละไม่เกินมัดจำ · ส่วนเกินลงแถวสุดท้ายที่รับ · ไม่มีแถวรับ ⇒ [] (ผู้เรียกแจ้ง slipAfterPaid) — ใช้ทั้งก่อนออกใบรับและใต้ล็อก (ตรวจว่าแผนยังตรง)
+ * แบ่งเงินสลิปกลุ่ม (pure · H1/H6/I2/J1): แถวที่ยังไม่จ่ายแต่มีใบรับอยู่แล้ว (ออกไปก่อนตาย/ทางอื่น) ⇒ ผูกตามยอดใบรับจริง (fixed · ห้ามวางแผนใหม่) ·
+ * ยอดที่เหลือ ⇒ แถวที่ยังไม่จ่ายตามลำดับสมาชิก (ถือช่องก่อน · ไม่มีแถวถือช่องค้าง ⇒ แถวที่ยังไม่จ่ายทั้งหมด = ค้างคืน) แถวละไม่เกินมัดจำ ·
+ * ส่วนเกินลงแถวสุดท้ายที่ออกใบรับใหม่ในสลิปนี้ · ไม่มีแถวใหม่รับ ⇒ afterPaid
  */
-export function allocateGroupSlip(rows: readonly { id: string; status: string; depositPaidAt: Date | null; depositSatang: number }[], amount: number): { id: string; give: number }[] {
-  const unpaid = rows.filter((r) => !r.depositPaidAt && r.depositSatang > 0);
-  const live = unpaid.filter((r) => r.status === "PENDING" || r.status === "CONFIRMED");
-  const plan: { id: string; give: number }[] = [];
+export function allocateGroupSlip(
+  rows: readonly { id: string; status: string; depositPaidAt: Date | null; depositSatang: number }[], amount: number, fixed: ReadonlyMap<string, number> = new Map(),
+): GroupSlipPlan {
+  const items: { id: string; give: number }[] = [];
   let left = amount;
-  for (const r of live.length ? live : unpaid) {
+  for (const r of rows) {
+    const f = fixed.get(r.id);
+    if (r.depositPaidAt || f === undefined) continue;
+    items.push({ id: r.id, give: f });
+    left -= f;
+  }
+  const unpaid = rows.filter((r) => !r.depositPaidAt && r.depositSatang > 0 && !fixed.has(r.id));
+  const live = unpaid.filter((r) => r.status === "PENDING" || r.status === "CONFIRMED");
+  const liveFixed = rows.some((r) => !r.depositPaidAt && fixed.has(r.id) && (r.status === "PENDING" || r.status === "CONFIRMED"));
+  let lastNew = -1;
+  for (const r of live.length || liveFixed ? live : unpaid) {
     const give = Math.min(r.depositSatang, left);
     if (give <= 0) break;
     left -= give;
-    plan.push({ id: r.id, give });
+    items.push({ id: r.id, give });
+    lastNew = items.length - 1;
   }
-  if (plan.length && left > 0) plan[plan.length - 1].give += left;
-  return plan;
+  if (left > 0 && lastNew >= 0) {
+    items[lastNew].give += left;
+    left = 0;
+  }
+  return { items, afterPaid: Math.max(0, left) };
 }
+
 /**
  * ผูกใบรับต่อสมาชิกในธุรกรรมเดียว (แบบ bindDepositReceipt ต่อแถว · CAS depositPaidAt IS NULL) — สถานะทุกแถวเปลี่ยนพร้อมกัน ·
  * groupPartial (ยอดเข้ารวม < Σ) ⇒ ไม่มีแถวยืนยันเอง (SLIP) · event booking.deposit_paid + audit ต่อแถว (+ groupId)
@@ -3808,10 +3889,10 @@ export async function bindGroupDeposit(i: {
   confirmIds?: readonly string[];
   /** กันซ้ำต่อสลิประดับกลุ่ม: มี audit รับเงินของสลิปนี้ที่สมาชิกใดแล้ว ⇒ ไม่ทำอะไร (ใต้ล็อกเดียวกัน) */
   dedupeSlipId?: string | null;
-  /** สลิป: ยอดของสลิป ⇒ ใต้ล็อกคำนวณแผนแบ่งเงินซ้ำจากแถวที่ล็อก — ไม่ตรงกับ items ⇒ STALE (ผู้เรียกลองใหม่) */
-  planAmount?: number;
-}): Promise<{ skippedSatang: number } | "GONE" | "BUSY" | "STALE"> {
-  const out = await apptTx(async (tx): Promise<{ skippedSatang: number } | "GONE" | "STALE"> => {
+  /** J1: ลบแผนที่ล็อกไว้ของสลิปนี้ออกจากหัวกลุ่ม (ใน tx เดียวกับการผูก) */
+  clearPlanOf?: { leaderId: string; slipId: string };
+}): Promise<{ skippedSatang: number } | "GONE" | "BUSY"> {
+  const out = await apptTx(async (tx): Promise<{ skippedSatang: number } | "GONE"> => {
     const locked = new Map<string, LockedAppt>();
     const all = [...new Set([...(i.lockIds ?? []), ...i.items.map((x) => x.appointmentId), ...(i.confirmIds ?? [])])].sort();
     for (const id of all) {
@@ -3826,19 +3907,25 @@ export async function bindGroupDeposit(i: {
       });
       if (hit) return { skippedSatang: 0 };
     }
-    if (typeof i.planAmount === "number") {
-      const rows = [...locked.values()].map((r) => ({ id: r.id, status: r.status, depositPaidAt: r.depositPaidAt, depositSatang: Number(r.depositSatang) }));
-      const order = new Map((i.lockIds ?? []).map((x, k) => [x, k]));
-      rows.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-      const want = allocateGroupSlip(rows, i.planAmount);
-      const same = want.length === i.items.length && want.every((w, k) => w.id === i.items[k].appointmentId && w.give === i.items[k].amountSatang);
-      if (!same) return "STALE";
-    }
+    // J1: ผูกด้วยใบรับจริงตามแผนที่ล็อกไว้ (ไม่วางแผนใหม่) · แถวยกเลิกระหว่างทาง ⇒ ผูก + ค้างคืน (เงินมาช้า) · แถวถูกจ่ายทางอื่น ⇒ skippedSatang
     let skippedSatang = 0; // ยอดของแถวที่จ่ายแล้วจากทางอื่นระหว่างนั้น (ผู้เรียกแจ้งร้าน แบบ slipAfterPaid)
+    // ล้างแผนของสลิปนี้ที่หัวกลุ่มใน UPDATE เดียวกับแถวนั้น (ไม่ UPDATE แถวเดียวซ้ำใน tx)
+    const planLead = i.clearPlanOf?.leaderId ?? null;
+    let planCleared = !planLead || !locked.has(planLead);
+    const baseSnap = (row: LockedAppt): unknown => {
+      if (row.id !== planLead || !i.clearPlanOf) return row.policySnapshot;
+      planCleared = true;
+      const plans = { ...(depositSnapOf(row.policySnapshot).slipPlans ?? {}) };
+      delete plans[i.clearPlanOf.slipId];
+      return withDepositSnap(row.policySnapshot, { slipPlans: Object.keys(plans).length ? plans : undefined });
+    };
     for (const id of i.confirmIds ?? []) {
       const row = locked.get(id);
       if (!row || row.status !== "PENDING" || row.depositPaidAt || Number(row.depositSatang) > 0) continue;
-      await tx.appointment.updateMany({ where: { id, tenantId: i.tenantId, unitId: i.unitId, status: "PENDING" }, data: { status: "CONFIRMED", policySnapshot: withDepositSnap(row.policySnapshot, { slipClaim: undefined }) } });
+      await tx.appointment.updateMany({ where: { id, tenantId: i.tenantId, unitId: i.unitId, status: "PENDING" }, data: { status: "CONFIRMED", policySnapshot: withDepositSnap(baseSnap(row), { slipClaim: undefined }) } });
+      row.policySnapshot = null; // แถวนี้เขียนแล้ว
+      locked.delete(id);
+      if (row.id === planLead) planCleared = true;
     }
     for (const it of i.items) {
       const row = locked.get(it.appointmentId);
@@ -3853,7 +3940,7 @@ export async function bindGroupDeposit(i: {
       const partial = i.groupPartial || amount < required;
       let status = row.status;
       if (open && (i.via === "SHOP" || (!partial && snapVal(row.policySnapshot, "booking.booking.requireConfirm") !== true))) status = "CONFIRMED";
-      const claimFree = withDepositSnap(row.policySnapshot, { slipClaim: undefined });
+      const claimFree = withDepositSnap(baseSnap(row), { slipClaim: undefined });
       const w = await tx.appointment.updateMany({
         where: { id: row.id, tenantId: i.tenantId, unitId: i.unitId, depositPaidAt: null },
         data: {
@@ -3876,6 +3963,10 @@ export async function bindGroupDeposit(i: {
       if (!open) {
         await tx.auditLog.create({ data: { ...base, actorType: "SYSTEM", actorId: "module:booking", action: "booking.deposit.late_money", after: { appointmentId: row.id, receiptSaleId: it.saleId, amountSatang: amount, status: row.status, via: i.via } } });
       }
+    }
+    if (!planCleared && planLead) {
+      const lr = locked.get(planLead);
+      if (lr) await tx.appointment.updateMany({ where: { id: lr.id, tenantId: i.tenantId, unitId: i.unitId }, data: { policySnapshot: baseSnap(lr) as Prisma.InputJsonValue } });
     }
     return { skippedSatang };
   });
