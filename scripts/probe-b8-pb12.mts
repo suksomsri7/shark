@@ -2,6 +2,7 @@
 // รัน: bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-b8-pb12.mts
 // ข้อมูลใต้ร้าน slug `qc-svc-b8pb12-*` + ผู้ใช้ `qc-svc-b8pb12-*@qc.invalid` · IP `b8pb12-*` · ล้างใน finally (+ กวาดค้างตอนเริ่ม)
 // ฉาก: S0 ทางปกติ (ตัวควบคุม) · S1 ใบเงินสดค้างไม่ผูก + สลิป · S2 ใบของสลิปตัวเองค้างแล้ว consumer ลองใหม่ · S3 สองสลิปบนแถวเดียว · S4 หน่วยไม่ผูก POS · S5 หน้าจ่ายเมื่อมีใบค้าง
+// ผู้ตรวจ B เพิ่ม: S6 ร้านยืนยันเงินสด ∥ consumer (2 ลำดับ + พร้อมกัน) · S7 ใบค้างของนัดที่ยกเลิก + สลิป ⇒ ค้างคืน · S8 consumer ×3 ⇒ slip_after_paid 1 · S9 หน้าจ่าย RECORDING ⇒ ผูกได้ไม่ค้าง
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { randomBytes, createHash } from "node:crypto";
 import pg from "pg";
@@ -347,6 +348,98 @@ try {
     if (sb.ok) extra.push("ลูกค้าส่งสลิปได้ทั้งที่ร้านรับเงินแล้ว");
     if (!c?.ok) extra.push(`ร้านยืนยัน ${c?.code}`);
     rec("S5", extra.length === 0, "MINOR", "ใบเงินสดค้างไม่ผูก ⇒ หน้าจ่ายไม่ขอเงินซ้ำ · ส่งสลิปไม่ได้ · ร้านยืนยันผูกใบเดิม", { issues: extra, pay: p?.ok ? p.pay.state : p?.code, submit: sb.ok ? "OK" : sb.code });
+  });
+
+  // ═══════════ เพิ่มโดยผู้ตรวจ B (S6–S9) ═══════════
+  const LN: any = await import("@/lib/modules/booking/queue-line" as string);
+  const confirmCash = async (id: string) => { try { return await DP.confirmDepositByShop(SHOP, { unitId: uP.id, appointmentId: id, payType: "CASH" }); } catch (e) { return { ok: false, code: `THREW ${errMsg(e).slice(0, 80)}` }; } };
+  const tookCash = (c: any) => !!c?.ok && !c?.duplicated; // ร้านรับเงินสดจริง (ไม่ใช่ทางลัดจ่ายแล้ว)
+  // S6 ร้านยืนยันเงินสด ∥ consumer สลิป (ลำดับ: consumer ก่อน · ร้านก่อน · พร้อมกัน ×3) ⇒ ใบรับ ≤1 ผูก · ผูก + แจ้งเกิน = เงินเข้า (สลิป + เงินสดถ้าร้านรับจริง) · ไม่มีใบลอย
+  for (const mode of ["consumer-first", "shop-first", "concurrent-0", "concurrent-1", "concurrent-2"] as const) await step(`S6-${mode}`, async () => {
+    const id = await bookOnline(uP);
+    const tok = await tokenOf(uP, id);
+    const sb = await submit(tok);
+    if (!sb.ok) throw new Error(`submit ${sb.code}`);
+    const sl = await latestSlip(id);
+    await approve(sl.id);
+    let c: any; let thrown: string[] = [];
+    if (mode === "consumer-first") { thrown = await consume(uP, sl.id); c = await confirmCash(id); }
+    else if (mode === "shop-first") { c = await confirmCash(id); thrown = await consume(uP, sl.id); }
+    else { const k = Number(mode.slice(-1)); const [cc, tt] = await Promise.all([(async () => { await new Promise((r) => setTimeout(r, k * 4)); return confirmCash(id); })(), consume(uP, sl.id)]); c = cc; thrown = tt; }
+    await pump();
+    const moneyIn = DEP + (tookCash(c) ? DEP : 0);
+    const m = await money(id, moneyIn);
+    const extra = [...m.issues];
+    if (m.row.status !== "CONFIRMED") extra.push(`สถานะ ${m.row.status}`);
+    if (thrown.length) extra.push(`throw ${thrown[0]}`);
+    rec(`S6-${mode}`, extra.length === 0, "CRITICAL", `ร้านยืนยันเงินสด ∥ consumer สลิป (${mode}) ⇒ ใบรับ ≤1 ผูก · ผูก + แจ้งเกิน = เงินเข้า ${moneyIn}`, { issues: extra, confirm: c?.ok ? `OK${c.duplicated ? "/dup" : ""}` : c?.code, bound: m.bound, sap: m.sap });
+  });
+  // S7 ใบค้างของนัดที่ถูกยกเลิกแล้ว + สลิป ⇒ ค้างคืน (CANCELLED · ไม่ฟื้น) · ผูก + แจ้งเกิน = เงินเข้า
+  for (const kind of ["cash", "own-slip"] as const) await step(`S7-${kind}`, async () => {
+    const id = await bookOnline(uP);
+    const tok = await tokenOf(uP, id);
+    const sb = await submit(tok);
+    if (!sb.ok) throw new Error(`submit ${sb.code}`);
+    const sl = await latestSlip(id);
+    if (kind === "own-slip") await approve(sl.id);
+    const t = await BK.takeAppointmentDeposit({ tenantId: ids.tA, unitId: uP.id, appointmentId: id, amountSatang: DEP, payType: kind === "cash" ? "CASH" : "PROMPTPAY", customerId: null, customerName: null, serviceName: "probe", ...(kind === "own-slip" ? { slipId: sl.id } : {}) });
+    if (!t?.ok) throw new Error(`ใบค้าง ${J(t)}`);
+    const cx = await LN.cancelByShop(uP.ctx, id);
+    if (kind === "cash") await approve(sl.id);
+    const thrown = await consume(uP, sl.id, 2);
+    await pump();
+    const moneyIn = kind === "cash" ? DEP * 2 : DEP;
+    const m = await money(id, moneyIn);
+    const inf = await DP.depositInfo(uP.ctx, id);
+    const extra = [...m.issues];
+    if (!cx?.ok) extra.push(`ยกเลิก ${cx?.code}`);
+    if (m.row.status !== "CANCELLED") extra.push(`นัดที่ยกเลิกกลายเป็น ${m.row.status}`);
+    if (!inf || inf.refundDueSatang !== m.bound) extra.push(`ค้างคืน ${inf?.refundDueSatang} (${inf?.state}) ≠ ใบที่ผูก ${m.bound}`);
+    if (thrown.length) extra.push(`throw ${thrown[0]}`);
+    rec(`S7-${kind}`, extra.length === 0, "CRITICAL", `ใบค้าง (${kind === "cash" ? "เงินสดร้าน" : "ของสลิปตัวเอง"}) ของนัดที่ถูกยกเลิก + สลิป ⇒ CANCELLED + ค้างคืนเท่าใบที่ผูก · ผูก + แจ้งเกิน = ${moneyIn}`, { issues: extra, bound: m.bound, sap: m.sap, state: inf?.state, refundDue: inf?.refundDueSatang });
+  });
+  // S8 consumer ×3 พร้อมกัน (+ ซ้ำอีก ×3) เมื่อเงินสลิปต้องไปแจ้งเกิน ⇒ slip_after_paid 1 รายการพอดี
+  for (let r = 0; r < 3; r++) await step(`S8-${r}`, async () => {
+    const id = await bookOnline(uP);
+    const tok = await tokenOf(uP, id);
+    const sb = await submit(tok);
+    if (!sb.ok) throw new Error(`submit ${sb.code}`);
+    const sl = await latestSlip(id);
+    const cash = await BK.takeAppointmentDeposit({ tenantId: ids.tA, unitId: uP.id, appointmentId: id, amountSatang: DEP, payType: "CASH", customerId: null, customerName: null, serviceName: "probe" });
+    if (!cash?.ok) throw new Error(`ใบเงินสด ${J(cash)}`);
+    await approve(sl.id);
+    const t1 = await consume(uP, sl.id, 3);
+    const t2 = await consume(uP, sl.id, 3);
+    await pump();
+    const m = await money(id, DEP * 2);
+    const n = (await sapOf(id)).length;
+    const extra = [...m.issues];
+    if (n !== 1) extra.push(`slip_after_paid ${n} รายการ (ต้อง 1)`);
+    if ([...t1, ...t2].length) extra.push(`throw ${[...t1, ...t2][0]}`);
+    rec(`S8-${r}`, extra.length === 0, "MAJOR", "consumer ×3 พร้อมกัน + ซ้ำ ×3 (เงินสลิปต้องแจ้งเกิน) ⇒ slip_after_paid 1 รายการ · เงินครบ", { issues: extra, sapN: n, sap: m.sap });
+  });
+  // S9 หน้าจ่าย RECORDING เมื่อมีใบค้าง ⇒ ร้านกดยืนยันผูกได้ ⇒ หลังผูกไม่ค้าง RECORDING (ไม่ค้างถาวร) · ใบของสลิปตัวเองค้าง ⇒ consumer ลองใหม่แล้วหลุด RECORDING
+  for (const kind of ["cash", "own-slip"] as const) await step(`S9-${kind}`, async () => {
+    const id = await bookOnline(uP);
+    const tok = await tokenOf(uP, id);
+    let slId = "";
+    if (kind === "own-slip") { const sb = await submit(tok); if (!sb.ok) throw new Error(`submit ${sb.code}`); slId = (await latestSlip(id)).id; await approve(slId); }
+    const t = await BK.takeAppointmentDeposit({ tenantId: ids.tA, unitId: uP.id, appointmentId: id, amountSatang: DEP, payType: kind === "cash" ? "CASH" : "PROMPTPAY", customerId: null, customerName: null, serviceName: "probe", ...(slId ? { slipId: slId } : {}) });
+    if (!t?.ok) throw new Error(`ใบค้าง ${J(t)}`);
+    const p1 = await DP.loadDepositPay(tok, { ip: newIp() });
+    let c: any = null; let thrown: string[] = [];
+    if (kind === "cash") c = await confirmCash(id);
+    else { c = await confirmCash(id); thrown = await consume(uP, slId, 2); }
+    await pump();
+    const p2 = await DP.loadDepositPay(tok, { ip: newIp() });
+    const m = await money(id, DEP);
+    const extra = [...m.issues];
+    if (!p1?.ok || p1.pay.state !== "RECORDING") extra.push(`หน้าจ่ายก่อนผูก ${p1?.ok ? p1.pay.state : p1?.code} (คาด RECORDING)`);
+    if (!p2?.ok || p2.pay.state === "RECORDING" || p2.pay.state === "AWAITING") extra.push(`หน้าจ่ายหลังผูก ${p2?.ok ? p2.pay.state : p2?.code} (ค้าง)`);
+    if (kind === "cash" && !c?.ok) extra.push(`ร้านยืนยันผูกไม่ได้ ${c?.code}`);
+    if (!m.row.depositPaidAt || m.row.status !== "CONFIRMED") extra.push(`แถว ${m.row.status} paid=${!!m.row.depositPaidAt}`);
+    if (thrown.length) extra.push(`throw ${thrown[0]}`);
+    rec(`S9-${kind}`, extra.length === 0, "MAJOR", `ใบค้าง (${kind}) ⇒ หน้าจ่าย RECORDING → ${kind === "cash" ? "ร้านยืนยัน" : "consumer ลองใหม่"} ผูกได้ ⇒ PAID ไม่ค้าง · เงินครบ`, { issues: extra, before: p1?.ok ? p1.pay.state : p1?.code, after: p2?.ok ? p2.pay.state : p2?.code, confirm: c?.ok ? `OK${c.duplicated ? "/dup" : ""}` : c?.code });
   });
 } catch (e) {
   rec("FATAL", false, "ERR", "probe ล้ม", errMsg(e));
