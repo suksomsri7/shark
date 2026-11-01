@@ -1313,10 +1313,12 @@ const OWN = new Set<string>([F.group, F.service, F.line, F.online, F.deposit, F.
   }, "MAJOR");
 }
 await st("SF-2", `ไม่มี migration/แก้ schema (ruling R1): prisma/ ไม่ถูกแตะทั้ง working tree และ commit หลัง ${BASE_SHA} · 3 ทะเบียน event ไม่เปลี่ยน (ไม่มี event ใหม่)`, () => {
-  const changed = new Set([...dirty(["prisma"]), ...git(["diff", "--name-only", `${BASE_SHA}`, "HEAD", "--", "prisma"]).split("\n").filter(Boolean)]);
+  // ORACLE-EDIT (ผู้คุม 1 พ.ย. · b15-SF2-merged) ▸ หลัง merge เข้า session: นับเฉพาะ commit ของใบ B.15 (ไม่ใช่ merge · หัวเรื่องมี "B.15") — migration ของใบอื่นที่ผู้คุมอนุมัติ (svc_b17) ไม่ใช่ของใบนี้ ◂
+  const ownPrisma = git(["log", "--no-merges", "--format=@@%s", "--name-only", `${BASE_SHA}..HEAD`, "--", "prisma"]).split("@@").filter((b) => /B\.15/.test(b.split("\n")[0] ?? "")).flatMap((b) => b.split("\n").slice(1).filter(Boolean));
+  const changed = new Set([...dirty(["prisma"]), ...ownPrisma]);
   ok(changed.size === 0, `prisma ถูกแตะ: ${[...changed].slice(0, 4).join(" · ")}`);
   const reg = ["src/lib/outbox-consumers.ts", "src/lib/automation/labels.ts", "src/lib/webhooks/labels.ts"];
-  const regCh = new Set([...dirty(reg), ...git(["diff", "--name-only", `${BASE_SHA}`, "HEAD", "--", ...reg]).split("\n").filter(Boolean)]);
+  const regCh = new Set([...dirty(reg), ...git(["log", "--no-merges", "--format=@@%s", "--name-only", `${BASE_SHA}..HEAD`, "--", ...reg]).split("@@").filter((b) => /B\.15/.test(b.split("\n")[0] ?? "")).flatMap((b) => b.split("\n").slice(1).filter(Boolean))]); // ORACLE-EDIT b15-SF2-merged ◂
   ok(regCh.size === 0, `ทะเบียน event ถูกแตะ: ${[...regCh].join(" · ")}`);
 }, "MAJOR");
 await st("SF-3", "group.ts: ไม่มี any · ไม่มีเวลาเครื่องดิบ (.getDay/.getHours/.getDate) · ไม่มี Math.random · ไม่มีตัวกันในหน่วยความจำ (Map/Set ระดับโมดูลที่ชื่อ lock/busy/inflight)", () => {
