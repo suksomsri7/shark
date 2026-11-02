@@ -456,6 +456,8 @@ SQC_VISUAL_SPECS["d.13"] = [
   { name: "dorm-settings-policies", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/settings` },
 ];
 // SVC D.15-K (ผู้คุม 1 พ.ย.) ▸ จอ อาคาร/ห้อง/ประเภทห้อง · ลิงก์รอบบิล/นำเข้า · การ์ดหอในหน้าเชื่อมต่อบัญชี (สมุดหอ id ส่งทาง env SVC_VIS_DORM_BOOK)
+// SVC G3 (ผู้คุม 2 พ.ย.) ▸ ภาพนัดคู่รัก/กลุ่มบนปฏิทินร้านนวด (B.15-UI) — path จากฉาก .qc-shots/svc/g3/group-scene.mts ส่งทาง env SVC_VIS_GROUP_PATH ◂
+SQC_VISUAL_SPECS["g3-group"] = process.env.SVC_VIS_GROUP_PATH ? [{ name: "calendar-group", path: process.env.SVC_VIS_GROUP_PATH }] : [];
 SQC_VISUAL_SPECS["d.15k"] = [
   { name: "dorm-settings-rooms", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm/settings/rooms` },
   { name: "dorm-home", path: `/app/u/${SQC_UNITS.dorm.slug}/dorm` },
