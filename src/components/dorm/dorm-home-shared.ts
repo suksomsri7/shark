@@ -65,3 +65,17 @@ export function dormTabsWithPay(tabs: DormTabLink[], pay: boolean, base: string)
   const at = tabs.findIndex((t) => t.key === "settings");
   return at < 0 ? [...tabs, link] : [...tabs.slice(0, at), link, ...tabs.slice(at)];
 }
+
+// SVC G3 ▸ แท็บ "แจ้งซ่อม · ประกาศ · รายงาน" (ภาพ หอ 01/07/13/14 แถบบน · PARITY G3) — แทรกก่อน "ตั้งค่า" ตามลำดับในแบบ
+//   แยกจาก dormTabsFor/dormTabsWithPay (ผลเดิมคงทุกไบต์) · แท็บไม่ใช่ด่าน: แต่ละหน้าตรวจสิทธิ์สดเอง (notFound) ◂
+export const DORM_MORE_TABS = [
+  { key: "repairs", labelTh: "แจ้งซ่อม", path: "/dorm/repairs" },
+  { key: "announce", labelTh: "ประกาศ", path: "/dorm/announce" },
+  { key: "reports", labelTh: "รายงาน", path: "/dorm/reports" },
+] as const;
+export function dormTabsWithMore(tabs: DormTabLink[], acc: { repairs: boolean; announce: boolean; reports: boolean }, base: string): DormTabLink[] {
+  const more = DORM_MORE_TABS.filter((t) => acc[t.key]).map((t) => ({ key: t.key as unknown as DormTabKey, labelTh: t.labelTh, href: `${base}${t.path}` }));
+  if (!more.length) return tabs;
+  const at = tabs.findIndex((t) => t.key === "settings");
+  return at < 0 ? [...tabs, ...more] : [...tabs.slice(0, at), ...more, ...tabs.slice(at)];
+}

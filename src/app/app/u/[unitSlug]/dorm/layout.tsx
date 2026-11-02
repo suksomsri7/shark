@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { dormAccess, leaseAccess } from "@/lib/modules/dorm";
 import DormTabs from "@/components/dorm/DormTabs";
-import { dormTabsFor, dormTabsWithPay } from "@/components/dorm/dorm-home-shared";
+import { dormTabsFor, dormTabsWithMore, dormTabsWithPay } from "@/components/dorm/dorm-home-shared";
 import { evaluate } from "@/lib/core/rbac";
 
 // SVC D.13 ▸ แท็บโมดูลหอ (ภาพ หอ 01/17 แถบบน) — ใบสั่ง ledger/svc-briefs/svc-brief-d.13.md §8
@@ -21,7 +21,14 @@ export default async function DormLayout({ children, params }: { children: React
   const tabs = dormTabsFor({ board: acc.board, meter: acc.meter, leaseView: leaseAccess(m, unit.id).view }, `/app/u/${unitSlug}`);
   // SVC D.10 ▸ แท็บ "บิล/รับเงิน" เฉพาะผู้มี dorm.slip.review หรือ dorm.payment.manual (หน้า /dorm/payments ตรวจสิทธิ์สดเองอีกชั้น) ◂
   const pay = (["dorm.slip.review", "dorm.payment.manual"] as const).some((action) => evaluate(m, { module: "dorm", action, unitId: unit.id }));
-  const shown = dormTabsWithPay(tabs, pay, `/app/u/${unitSlug}`);
+  const withPay = dormTabsWithPay(tabs, pay, `/app/u/${unitSlug}`);
+  // SVC G3 ▸ แจ้งซ่อม ⇔ dorm.repair.manage · ประกาศ ⇔ dorm.announce · รายงาน ⇔ ดูผัง+เห็นเงิน (ตรงด่านของแต่ละหน้า) ◂
+  const more = {
+    repairs: evaluate(m, { module: "dorm", action: "dorm.repair.manage", unitId: unit.id }),
+    announce: evaluate(m, { module: "dorm", action: "dorm.announce", unitId: unit.id }),
+    reports: acc.board && acc.money,
+  };
+  const shown = dormTabsWithMore(withPay, more, `/app/u/${unitSlug}`);
   return (
     <div className="flex w-full min-w-0 flex-col gap-5">
       <DormTabs tabs={shown} />
