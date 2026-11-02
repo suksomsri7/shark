@@ -252,13 +252,13 @@ try {
     });
     if (!inv.ok) throw new Error(`ใบแจ้งหนี้งวด ${P}: ${inv.code} ${inv.reason}`);
     if (inv.created) sum.created++;
-    const pay = await recordExternalPayment({ tenantId, unitId, docId: inv.docId, amountSatang: bill.totalSatang, idempotencyKey: `${SCN.depositKey}:pay:${leaseId}:${P}` /* Y18 ▸ ผูกสัญญาของฉาก — --clear แล้วสร้างสัญญาใหม่ ใบแจ้งหนี้ใหม่ไม่ชนคีย์รับชำระของใบเดิม ◂ */, paidAt: new Date(`${P}-03T10:00:00+07:00`) });
+    const pay = await recordExternalPayment({ tenantId, unitId, docId: inv.docId, amountSatang: bill.totalSatang, idempotencyKey: `${SCN.depositKey}:pay:${leaseId}:${P}` /* Y18 ▸ ผูกสัญญาของฉาก — --clear แล้วสร้างสัญญาใหม่ ใบแจ้งหนี้ใหม่ไม่ชนคีย์รับชำระของใบเดิม ◂ */, paidAt: new Date(`${await openYmd(issue > `${P}-03` ? issue : `${P}-03`)}T10:00:00+07:00`) /* ORACLE-EDIT (ผู้คุม 2 พ.ย. · moveout-pay-openperiod) ▸ งวดรับชำระปิดแล้ว (ข้ามเดือน) ⇒ วันแรกของงวดเปิด · ไม่ก่อนวันออกบิล ◂ */ });
     if (!pay.ok) throw new Error(`รับชำระงวด ${P}: ${pay.code} ${pay.reason}`);
     if (!pay.duplicate) sum.created++;
     const billRow = await prisma.dormBill.findFirst({ where: { tenantId, leaseId, periodKey: P }, select: { id: true, status: true, totalSatang: true, accountDocumentId: true, paidSatang: true } });
     const billData = {
       status: "PAID", lines: JSON.parse(JSON.stringify(bill.lines)), subtotalSatang: bill.subtotalSatang, vatSatang: bill.vatSatang, totalSatang: bill.totalSatang, paidSatang: bill.totalSatang,
-      dueDate: dbDate(`${P}-05`), accountDocumentId: inv.docId, sentAt: new Date(`${issue}T10:00:00+07:00`), paidAt: new Date(`${issue > `${P}-03` ? issue : `${P}-03`}T10:00:00+07:00`), // SVC D.15 (D15-7) ▸ จ่ายไม่ก่อนวันออก ◂
+      dueDate: dbDate(`${P}-05`), accountDocumentId: inv.docId, sentAt: new Date(`${issue}T10:00:00+07:00`), paidAt: new Date(`${await openYmd(issue > `${P}-03` ? issue : `${P}-03`)}T10:00:00+07:00`), // SVC D.15 (D15-7) ▸ จ่ายไม่ก่อนวันออก ◂ · ORACLE-EDIT moveout-pay-openperiod
     };
     if (!billRow) {
       await prisma.dormBill.create({ data: { tenantId, unitId, runId: run.id, leaseId, roomId: room.id, partyId: party.id, periodKey: P, ...billData } });
