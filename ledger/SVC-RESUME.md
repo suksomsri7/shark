@@ -37,6 +37,14 @@
 > อัปเดตล่าสุด: **27 ต.ค. 2569** · ผู้วางแผน RUN · branch ปัจจุบันของเอกสาร `session/svc-design` (worktree `/root/projects/shark-svc`)
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/SVC-RUN.md` §1 (กติกาเหล็ก) + §3 (สถานะ) + ท้าย §4 → `ledger/SVC-CORE-CONTRACT.md` → แถวใบที่จะทำใน `ledger/SVC-MASTER-PLAN.md` §4 → แบบ `ledger/DESIGN-BOOKING-QUEUE.md` / `ledger/DESIGN-DORM-HOTEL.md` (§ ที่ใบอ้าง)
 
+## 🟢 2 พ.ย. 2569 ~10Z — 98% (51/52) · เหลือ C.2 เท่านั้น
+- ปิดแล้ว: B.18 + D.20 + G3 (125728d6 บน session/svc) · รายละเอียด SVC-RUN §4 บรรทัดท้าย
+- C.1 ⏸ เลื่อนตามเจ้าของ (ตรวจสลิปเอง) · เฟส H โรงแรม V2 ยังไม่เริ่ม (เจ้าของสั่ง 1 พ.ย.)
+- **C.2 รอเจ้าของ**: LINE OA ทดสอบที่ต่อแชต SHARK + iPhone 1 + Android 1 มี LINE · ผู้คุมเขียนคู่มือร้านตอนเริ่ม
+- เลน: ไม่มี builder ทำงาน · server QC `svc-g1-serve` ยังเปิดที่ 3241 (หยุดได้) · ล้าง Neon branch เลน l1–l3 ตอนจบ RUN
+- ⚠️ session/svc ถูก force-with-lease 2 พ.ย. (reword หัว commit 4e51c758→c49caa71 · ต้นไม้เท่าเดิม) — ทรีอื่นที่อยู่บน SHA เก่าให้ checkout ใหม่
+
+
 ---
 
 ## ▶️ RUNNING ต่อ 28 ต.ค. ~14:4xZ (เจ้าของสั่ง "Run งานยาวตามแผน") — เลน: l3 builder R0.6 · l1 ข้อสอบ R0.7 · l2 ข้อสอบ B.0
