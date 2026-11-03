@@ -76,4 +76,5 @@ _(เติมเมื่อถึงใบ)_
 - **3 พ.ย. ~14:3xZ** เปิด RUN · worktree `/root/projects/shark-sec` @ e59e5707 · node_modules bind rw จาก shark-svc (SVC พัก 98% · `prisma generate` จะเขียนลง node_modules ร่วม — SVC ต้อง generate ใหม่ถ้ากลับมา) · คัดลอก DESIGN/MASTER-PLAN/ภาพ (jpg 4.1 MB) เข้า ledger · spawn ผู้สำรวจ S0.1
 - มติ: ฐาน QC เลขา = Neon branch ใหม่ `wo-sec-qc` ลูกของ `wo-svc-qc` (มี POS v2 + SVC v2 schema) — ดู §4 ถัดไปเรื่องเพดาน 10 branch
 - **3 พ.ย. ~15:0xZ ⏸** เจ้าของสั่งพักก่อนเริ่มใบแรก (รอ weekly reset) · หยุดผู้สำรวจ S0.1 (ยังไม่ได้เขียนไฟล์) · baseline ปล่อยรันต่อ (ไม่ใช้โควตา) · Neon: ลบ `wo-crm-qc3` (CRM จบแล้ว) เพื่อให้มีที่สร้าง `wo-sec-qc`
+- **3 พ.ย. ~15:3xZ** baseline บน `wo-sec-qc` (2c2062c7): migrate up to date · 60 ชุด (`qc-ai-*` 26 + mobile/approval/chat) exit=0 ไม่มี failed → `ledger/qc-baseline/sec-baseline-2c2062c7.txt`
 - ของที่รอเจ้าของ (ไม่บล็อกโค้ด เพราะ mock ก่อน): คีย์ SMS provider (S1.19) · คีย์ Anthropic "shark" (S1.20) · ยืนยัน Play Console (S3a.3) · W40 POS_DEVICE_KEY (S3a.2)

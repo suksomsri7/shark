@@ -4,12 +4,12 @@
 > ทรี `/root/projects/shark-sec` · branch `session/secretary` · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
 
 ## ⏸ PAUSE 3 พ.ย. 2026 ~15:0xZ — เจ้าของสั่ง "วางแผนบันทึกให้เรียบร้อย ยังไม่ต้องเริ่มงาน รอ weekly limit reset" · 0/48
-สิ่งที่พร้อมแล้ว (ไม่ต้องทำซ้ำ): worktree ผู้คุม + branch · เลน b `/root/projects/shark-sec-b` (`wip/sec-s0.2` · node_modules ro) · ฐาน QC Neon `wo-sec-qc` + `.env.qc-sec` + `scripts/qc-sec.sh` · run pack ครบ · ใบสั่ง S0.1 (`sec-brief-S0.1.md` = พรอมป์ผู้สำรวจ) + S0.2 (`sec-brief-S0.2.md`) · baseline `scripts/sec-baseline.sh` → `ledger/qc-baseline/sec-baseline-2c2062c7.txt` (รันอยู่ตอนพัก · ไม่ใช้โควตา · ดูผลตอนกลับมา)
+สิ่งที่พร้อมแล้ว (ไม่ต้องทำซ้ำ): worktree ผู้คุม + branch · เลน b `/root/projects/shark-sec-b` (`wip/sec-s0.2` · node_modules ro) · ฐาน QC Neon `wo-sec-qc` + `.env.qc-sec` + `scripts/qc-sec.sh` · run pack ครบ · ใบสั่ง S0.1 (`sec-brief-S0.1.md` = พรอมป์ผู้สำรวจ) + S0.2 (`sec-brief-S0.2.md`) · baseline `scripts/sec-baseline.sh` → `ledger/qc-baseline/sec-baseline-2c2062c7.txt` (✅ จบแล้ว 3 พ.ย. ~15:3xZ: migrate up to date 195 migrations · 60 ชุดข้อสอบเดิม exit=0 ทั้งหมด · ไม่มี failed)
 สิ่งที่ถูกหยุด: ผู้สำรวจ S0.1 (ถูกหยุดก่อนเขียนไฟล์ — ต้องสั่งใหม่ทั้งใบ)
 
 ### ▶️ RESUME STEPS (ทำตามลำดับตอนกลับมา)
 1. `cd /root/projects/shark-sec && git status --short` (ต้องว่าง) · ถ้าเครื่องรีบูต: remount node_modules (บรรทัดบนสุด) ทั้ง shark-sec (rw จาก shark-svc) และ shark-sec-b (ro)
-2. อ่าน `ledger/qc-baseline/sec-baseline-2c2062c7.txt` — ทุกชุดต้อง exit=0 · ชุดที่แดงบนฐานนี้ = baseline แดง (จดใน RUN §4 · ไม่ใช่งานของเรา)
+2. baseline ตรวจแล้ว (60/60 เขียว) — ข้ามได้
 3. spawn ผู้สำรวจ S0.1 ด้วยพรอมป์ใน `sec-brief-S0.1.md` (background) → ระหว่างรอ: เขียน oracle `scripts/qc-sec-s0.2.mts` (static · ตาม Acceptance ในใบ S0.2) → spawn builder Opus บนเลน b ด้วย `sec-brief-S0.2.md`
 4. รับ S0.1 → เขียน `sec-brief-RESOLUTIONS.md` → ออกใบ S0.3 (docs+seed · เลน c = สร้าง worktree `shark-sec-c` branch `wip/sec-s0.3`) และ S0.4 (pack.ts · ผู้คุมเขียน oracle แล้วให้เลน c ทำต่อจาก S0.3)
 5. ปิด S0 → CP0 ส่ง TG (ภาพคู่ C3 สว่าง/มืด + ข้อขัดแย้งจาก REVIEW) → S1.1 migration
