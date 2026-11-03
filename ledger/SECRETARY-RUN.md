@@ -1,6 +1,6 @@
 # SECRETARY-RUN — กติกาเหล็ก · สถานะสด · บันทึกเหตุการณ์ (RUN "เลขา AI" · แอป native + หลังบ้าน)
 
-> สถานะ RUN: **▶️ เริ่ม 3 พ.ย. 2026 ~14:3xZ** (เจ้าของตอบคำถาม Q1–Q10 ครบ · เปิดก่อน SVC 100% เพราะข้อที่เหลือของ SVC รอของจากเจ้าของ)
+> สถานะ RUN: **⏸ PAUSED 3 พ.ย. ~15:0xZ (เจ้าของรอ weekly limit reset · เตรียมของครบแล้ว · ดู RESUME บล็อกบนสุด)** · เดิม ▶️ เริ่ม 3 พ.ย. 2026 ~14:3xZ (เจ้าของตอบคำถาม Q1–Q10 ครบ · เปิดก่อน SVC 100% เพราะข้อที่เหลือของ SVC รอของจากเจ้าของ)
 > แผน/ใบงาน = `ledger/SECRETARY-MASTER-PLAN.md` · แบบ+มติ = `ledger/DESIGN-SECRETARY.md` · ภาพ = `ledger/design-secretary/` · กติกาเลน = `ledger/secretary-briefs/sec-brief-COMMON.md` · จุดต่อ = `ledger/SECRETARY-RESUME.md` · prompt = `ledger/SECRETARY-KICKOFF-PROMPT.md`
 > ไฟล์นี้ = ที่เดียวที่ผู้คุมแก้สถานะ (§3) และจดเหตุการณ์/มติเทคนิค (§4)
 
@@ -75,4 +75,5 @@ _(เติมเมื่อถึงใบ)_
 ## 4. บันทึกเหตุการณ์ · มติเทคนิค
 - **3 พ.ย. ~14:3xZ** เปิด RUN · worktree `/root/projects/shark-sec` @ e59e5707 · node_modules bind rw จาก shark-svc (SVC พัก 98% · `prisma generate` จะเขียนลง node_modules ร่วม — SVC ต้อง generate ใหม่ถ้ากลับมา) · คัดลอก DESIGN/MASTER-PLAN/ภาพ (jpg 4.1 MB) เข้า ledger · spawn ผู้สำรวจ S0.1
 - มติ: ฐาน QC เลขา = Neon branch ใหม่ `wo-sec-qc` ลูกของ `wo-svc-qc` (มี POS v2 + SVC v2 schema) — ดู §4 ถัดไปเรื่องเพดาน 10 branch
+- **3 พ.ย. ~15:0xZ ⏸** เจ้าของสั่งพักก่อนเริ่มใบแรก (รอ weekly reset) · หยุดผู้สำรวจ S0.1 (ยังไม่ได้เขียนไฟล์) · baseline ปล่อยรันต่อ (ไม่ใช้โควตา) · Neon: ลบ `wo-crm-qc3` (CRM จบแล้ว) เพื่อให้มีที่สร้าง `wo-sec-qc`
 - ของที่รอเจ้าของ (ไม่บล็อกโค้ด เพราะ mock ก่อน): คีย์ SMS provider (S1.19) · คีย์ Anthropic "shark" (S1.20) · ยืนยัน Play Console (S3a.3) · W40 POS_DEVICE_KEY (S3a.2)
