@@ -1,0 +1,78 @@
+# SECRETARY-RUN — กติกาเหล็ก · สถานะสด · บันทึกเหตุการณ์ (RUN "เลขา AI" · แอป native + หลังบ้าน)
+
+> สถานะ RUN: **▶️ เริ่ม 3 พ.ย. 2026 ~14:3xZ** (เจ้าของตอบคำถาม Q1–Q10 ครบ · เปิดก่อน SVC 100% เพราะข้อที่เหลือของ SVC รอของจากเจ้าของ)
+> แผน/ใบงาน = `ledger/SECRETARY-MASTER-PLAN.md` · แบบ+มติ = `ledger/DESIGN-SECRETARY.md` · ภาพ = `ledger/design-secretary/` · กติกาเลน = `ledger/secretary-briefs/sec-brief-COMMON.md` · จุดต่อ = `ledger/SECRETARY-RESUME.md` · prompt = `ledger/SECRETARY-KICKOFF-PROMPT.md`
+> ไฟล์นี้ = ที่เดียวที่ผู้คุมแก้สถานะ (§3) และจดเหตุการณ์/มติเทคนิค (§4)
+
+---
+
+## 1. กติกาเหล็ก (ละเมิด = ตีกลับทั้งใบ)
+1. ทรีผู้คุม `/root/projects/shark-sec` · branch `session/secretary` ตัดจาก `session/svc` @ e59e5707 (= main a84bca2b + POS v2 940e3aca + SVC v2) · เลน `/root/projects/shark-sec-{b,c,d}` branch `wip/sec-<wo>` · **ห้าม push main · ห้าม deploy · ห้าม EAS/OTA/สโตร์** จนเจ้าของสั่งต่อครั้ง
+2. ฐานข้อมูล = ฐาน QC ของ RUN นี้เท่านั้น (`.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · ล็อก `/tmp/shark-gate-sec.lock`) · ห้ามอ่าน/แก้/source `.env` (production) · ห้าม `CI=1`
+3. ทุก tsx/tsc/build/qc ผ่าน `bash scripts/iso.sh …` · เพดาน 3 เลนรวมทุกงานบนเครื่อง (เลน 3 เบา) · ห้ามลบ/กวาด `/tmp` · ห้ามแก้สคริปต์ที่ unit กำลังรัน
+4. migration เฉพาะ S1.1 (`secretary_a`) เพิ่มอย่างเดียว · core.prisma FROZEN (เบอร์โทร = `UserPhone` ตารางแยก)
+5. ด่าน 12 ข้อ + กลุ่ม X + 14 ขั้น = `AI-TEAM-MASTER-PLAN.md` §3–§5 · ตรวจเบาต่อใบ + ด่านเต็มต่อชุด merge = `SVC-RUN.md` §1.4 · ตรวจเข้ม 2 reviewer: เงิน/สิทธิ์/ห้องร่วม/โควตา/คิวเบื้องหลัง (S1.3 S1.5 S1.6 S1.7 S1.8 S1.13 S1.19)
+6. ผู้คุมเขียนข้อสอบ oracle ก่อน (`scripts/qc-sec-<wo>.mts`) · builder ห้ามแก้ข้อสอบ · ORACLE-EDIT โดยผู้คุมเท่านั้น · ผู้คุมเขียนเอกสาร/ใบสั่ง/wo-notes เอง
+7. โมเดล: `SHARK_AI_MOCK=1` ทุกใบ · ของจริงเฉพาะ S3a.1 (ผู้คุมรัน · คีย์ shark เท่านั้น)
+8. Telegram เฉพาะ `📊 SEC · N% (x/48) · <wo> ✅` หลังปิดใบ + จุดตรวจ CP0–CP5 · ระหว่างพักห้าม tg รายชั่วโมง
+9. ภาพ: 1 ภาพคู่ MOCKUP|RENDER ต่อหน้าที่อนุมัติ × สว่าง/มืด · ผู้คุมเปิดดูเองแล้วเขียน `PARITY: ผ่าน/ตีกลับ` · ห้ามรับใบ UI จากคำบรรยาย
+
+## 2. สัญญาต่อใบ (ผู้คุมเติมตอนออกข้อสอบ · ย่อ: ชื่อฟังก์ชัน · ข้อสอบ S-group · จำนวนข้อ)
+_(เติมเมื่อถึงใบ)_
+
+## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 0/48 · 0%
+
+| ใบ | สถานะ | commit | หมายเหตุ |
+|---|---|---|---|
+| S0.1 | 🔍 | | ผู้สำรวจเขียน REVIEW-SECRETARY-DESIGN-2026-11-03.md (เริ่ม 14:3xZ) · ผู้คุมเตรียม run pack + ฐาน QC |
+| S0.2 | ⬜ | | ธีม Airy RN + shoot-sec/parity-sec (ไม่มีโค้ด T0.3 เดิมให้ยก — 601f4540 มีแค่ wo-notes) · ต้องตั้งสำเนา QC มือถือใหม่ (`/root/qc-shark-mobile` ไม่มีแล้ว) |
+| S0.3 | ⬜ | | docs/modules/31-secretary.md + docs/api/SECRETARY-API.md + seed-secretary-qc |
+| S0.4 | ⬜ | | pack.ts FREE_PACK 100 งาน/กิจการ/เดือน |
+| S1.1 | ⬜ | | 🎯 migration secretary_a |
+| S1.2 | ⬜ | | เลขาผูกผู้ใช้ |
+| S1.3 | ⬜ | | 🎯 สิทธิ์ต่อกิจการ×ระบบ |
+| S1.4 | ⬜ | | 🎯 ห้อง = งาน |
+| S1.5 | ⬜ | | 🎯 คิวเบื้องหลัง |
+| S1.6 | ⬜ | | 🎯 ห้องร่วม |
+| S1.7 | ⬜ | | ต้องอนุมัติเสมอ |
+| S1.8 | ⬜ | | 🎯 บันทึก + ย้อน 24 ชม. |
+| S1.9 | ⬜ | | งานประจำ |
+| S1.10 | ⬜ | | ตีกลับ + สอน |
+| S1.11 | ⬜ | | ข้อเสนอ + กล่องรวม |
+| S1.12 | ⬜ | | เครื่องมือที่ขาด (chat.send) |
+| S1.13 | ⬜ | | 🎯 โควตางาน |
+| S1.15 | ⬜ | | 🎯 วงจรเรียนรู้ |
+| S1.16 | ⬜ | | ข้อมูลสดรายวัน |
+| S1.17 | ⬜ | | Support Desk ต่อแอป |
+| S1.18 | ⬜ | | ชุดข้อมูลเทรน |
+| S1.19 | ⬜ | | 🎯 SMS OTP เบอร์ = ID (รอคีย์ SMS จากเจ้าของ · โหมด mock ก่อน) |
+| S1.20 | ⬜ | | Anthropic ตรง (รอคีย์ shark จากเจ้าของ · mock ก่อน) |
+| S1.14 | ⬜ | | 🎯 API ชุดเดียว |
+| S2.1 | ⬜ | | โครงแอป |
+| S2.2 | ⬜ | | A1 C3 |
+| S2.3 | ⬜ | | A2 |
+| S2.4 | ⬜ | | A3 A4 A5 C4 |
+| S2.5 | ⬜ | | A6 A7 |
+| S2.6 | ⬜ | | A8 push |
+| S2.7 | ⬜ | | B1 B2 B8 |
+| S2.8 | ⬜ | | B3 B4 B5 |
+| S2.9 | ⬜ | | B6 B7 |
+| S2.10 | ⬜ | | D1 D2 D3 |
+| S2.11 | ⬜ | | C1 |
+| S2.12 | ⬜ | | 🎯 สมัคร/เข้า (SMS OTP) |
+| S2.15 | ⬜ | | H1 H2 |
+| S2.16 | ⬜ | | H3 H4 backoffice |
+| S2.13 | ⬜ | | โหมดมืด 26 หน้า |
+| S2.14 | ⬜ | | ปิด S2 ต่อ API จริง |
+| S3a.1 | ⬜ | | 🎯 ข้อสอบรวม + นักล่า + โมเดลจริง |
+| S3a.2 | ⬜ | | ขึ้น prod (รอเจ้าของ) |
+| S3a.3 | ⬜ | | 🎯 TestFlight/Internal (รอเจ้าของ) |
+| S3a.4 | ⬜ | | รับผลทดสอบ |
+| S3b.1 | ⬜ | | เอกสาร/ข้อตกลง |
+| S3b.2 | ⬜ | | ภาพสโตร์ |
+| S3b.3 | ⬜ | | ยื่นสโตร์ (รอเจ้าของ) |
+
+## 4. บันทึกเหตุการณ์ · มติเทคนิค
+- **3 พ.ย. ~14:3xZ** เปิด RUN · worktree `/root/projects/shark-sec` @ e59e5707 · node_modules bind rw จาก shark-svc (SVC พัก 98% · `prisma generate` จะเขียนลง node_modules ร่วม — SVC ต้อง generate ใหม่ถ้ากลับมา) · คัดลอก DESIGN/MASTER-PLAN/ภาพ (jpg 4.1 MB) เข้า ledger · spawn ผู้สำรวจ S0.1
+- มติ: ฐาน QC เลขา = Neon branch ใหม่ `wo-sec-qc` ลูกของ `wo-svc-qc` (มี POS v2 + SVC v2 schema) — ดู §4 ถัดไปเรื่องเพดาน 10 branch
+- ของที่รอเจ้าของ (ไม่บล็อกโค้ด เพราะ mock ก่อน): คีย์ SMS provider (S1.19) · คีย์ Anthropic "shark" (S1.20) · ยืนยัน Play Console (S3a.3) · W40 POS_DEVICE_KEY (S3a.2)
