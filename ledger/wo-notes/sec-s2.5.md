@@ -30,11 +30,11 @@
 - spec oracle forced #2: `JSON_SUMMARY {"total":9,"passed":9,"failed":[],"skipped":[],"findings":[]}` exit 0
 - `qc-sec-s2.1` forced: `{"total":14,"passed":14,…}` exit 0 · `qc-sec-s2.12` forced: `{"total":13,"passed":13,…}` exit 0 · spec s2.2 forced: `{"total":11,"passed":11,…}` exit 0 · spec s2.4 forced: `{"total":7,"passed":7,…}` exit 0
 - push handler: `pnpm exec node apps/mobile/qc/push-link-test.mjs` → `JSON_SUMMARY {"total":9,"passed":9,"failed":[]}` exit 0
-- regression unforced (qc-sec.sh + gate lock · SHARK_AI_MOCK=1) เทียบ `ledger/qc-baseline/sec-baseline-bfad2f15.txt`: ดู §5.1
+- regression unforced (qc-sec.sh + gate lock · SHARK_AI_MOCK=1) เทียบ `ledger/qc-baseline/sec-baseline-bfad2f15.txt`: เท่าเดิมทั้ง 4 (§5.1)
 - mobile typecheck 0 (M-1 ของทุก oracle ข้างบน + `npm run typecheck` ใน iso) · fitness D-1 (มี env) / D-2 (ไม่มี env) ผ่านทุกรอบ · pre-commit fitness ผ่าน
 
 ### 5.1 regression
-(เติมหลังรัน — ต้องรอ gate lock ของ qc:all ผู้คุม)
+รันหลัง qc:all ของผู้คุมปล่อย gate lock (`bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env SHARK_AI_MOCK=1 pnpm exec tsx scripts/<t>.mts`) = baseline ทุกตัว: qc-mobile-app 38/38 exit 0 · qc-mobile-auth 31/31 exit 0 · qc-mobile-chat 29/29 exit 0 (push-register เดิม) · qc-mobile-authz-hotfix 12/12 `JSON_SUMMARY {"total":12,"passed":12,"findings":[]}` exit 0
 
 ## 6. ภาพ
 คำสั่ง (สำเนา/พอร์ตของเลนนี้):
