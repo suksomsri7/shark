@@ -90,6 +90,8 @@ export type PlanExecResult = {
   results: PlanStepResult[];
   doneCount: number;
   needsSecondConfirm?: boolean;
+  /** SEC S1.7 R-S1.7a — เหตุที่ไม่เริ่มแผน (ด่านผู้อนุมัติของห้องเลขา) · ไทย · optional */
+  note?: string;
 };
 
 // ── ลงมือทำแผนจริง — อ่าน step จาก DB, ตรวจสิทธิ์คนกดต่อ step, รันต่อเนื่องผ่าน runKind ──
@@ -128,6 +130,11 @@ export async function executePlan(
   const levelBlock = await planLevelBlock(ctx.tenantId, preSteps);
   if (levelBlock) return { ok: false, results: [levelBlock], doneCount: 0 };
 
+  // SEC S1.7 ▸ R-S1.7a ด่านผู้อนุมัติของห้องเลขา (มีแถว AiRoom) ต่อทุกขั้น **ก่อน claim** — ผู้กดต้องเป็น OWNER/MANAGER ที่เห็นห้อง (R-K4)
+  //   ไม่ผ่าน ⇒ ไม่ทำสักขั้น · แผน **คง PENDING** · ห้องเดิม (ไม่มี AiRoom) = ผ่านเหมือนเดิม · import ตอนเรียก (approval-gate → proposals) ◂
+  const approverNote = await planApproverBlock(ctx.tenantId, m, row.conversationId, preSteps, opts?.userId ?? null);
+  if (approverNote) return { ok: false, results: [], doneCount: 0, note: approverNote };
+
   // ── ยืนยัน 2 ชั้นระดับแผน เมื่อมี step ลบ/ยกเลิกถาวร ──
   // ชั้นแรก (ไม่มี confirm2x) → คง PENDING ไม่ทำจริง แจ้ง UI ให้ถามยืนยันอีกครั้ง
   if (row.hasDestructive && !opts?.confirm2x) {
@@ -152,7 +159,7 @@ export async function executePlan(
     if (failed) break; // step ที่เหลือคง PENDING (ไม่รันต่อ)
     try {
       const idx = steps.indexOf(st);
-      const note = await runKind(m, ctx.tenantId, st.kind, st.payload, `plan-${planId}-${idx}`, opts?.userId ?? null); // SEC S1.8 §B.3: ผู้กดยืนยันแผน ◂
+      const note = await runKind(m, ctx.tenantId, st.kind, st.payload, `plan-${planId}-${idx}`, opts?.userId ?? null, st.summary); // SEC S1.8 §B.3 ผู้กดยืนยันแผน · R-S1.8g สรุปของขั้น ◂
       st.status = "DONE";
       st.note = note;
       results.push({ summary: st.summary, ok: true, note });
@@ -198,6 +205,16 @@ async function planLevelBlock(tenantId: string, steps: readonly StepState[]): Pr
     return null;
   } catch {
     return { summary: "", ok: false, note: "ตรวจสิทธิ์ของเลขาไม่ได้ชั่วคราว ลองใหม่อีกครั้ง" };
+  }
+}
+
+// SEC S1.7 ▸ R-S1.7a ด่านผู้อนุมัติของแผน (null = ผ่าน) — โหลดโมดูลไม่ได้ = ปฏิเสธไทย (ปิดไว้ก่อน) ◂
+async function planApproverBlock(tenantId: string, m: MembershipCtx, conversationId: string, steps: readonly StepState[], userId: string | null): Promise<string | null> {
+  try {
+    const { planApprovalGate } = await import("./secretary/approval-gate");
+    return await planApprovalGate(tenantId, m, conversationId, steps, userId);
+  } catch {
+    return "ตรวจกฎอนุมัติไม่ได้ ลองใหม่อีกครั้ง";
   }
 }
 

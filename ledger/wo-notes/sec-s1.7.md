@@ -77,3 +77,46 @@
 
 ## 9. คืนสภาพฐาน QC เลขา
 oracle `finally` ลบ aiActionLog/aiApprovalRule/aiRoom*/aiProposal/aiPlan/… ของร้าน + tenant + user `qcs17-*` · ตรวจแล้ว tenant 0 · user 0 · AiActionLog กำพร้าจาก regression 31 แถว ลบแล้ว (`DELETE … WHERE NOT EXISTS Tenant`)
+
+---
+
+## รอบ 2 (RESOLUTIONS §K · รีวิว G/H) — 2026-11-04 ~15:3xZ
+
+ฐาน: merge ผู้คุม `31ac2f7e` (oracle 27 ข้อ + §K) · ขัดกันที่ `docs/modules/31-secretary.md` §9 เท่านั้น — คงแถว `ai.room.member_added` → S1.23 ของผู้คุม + แถว `ai.action.*` = เลื่อน ของ builder (ยังไม่มี emit/consumer ในโค้ด) · merge commit `790fcfb4`
+
+### R1. ไฟล์ที่แตะ (รอบ 2)
+| ไฟล์ | ทำอะไร | §K |
+|---|---|---|
+| `src/lib/ai/kind-tables.ts` | **ใหม่ · ไม่ import อะไรเลย** — `StaticProposalKind` · `STATIC_KIND_ACCESS` · `KIND_ACCESS` · `DESTRUCTIVE_KINDS` (ชุดคงที่) · `isKnownKind` · `kindAccessOf` · `registerDerivedKinds` | R-S1.7d |
+| `src/lib/ai/proposals.ts` | ตารางย้ายออก → `registerDerivedKinds({access, destructive})` ตอนโหลด (ลำดับเดิม) + re-export `DESTRUCTIVE_KINDS` · `isKnownKind`/`kindAccessOf` คงลายเซ็นเดิม (type guard) · `secApprovalGate` try/catch fail-closed · ผลคืน `why?` · `runKind(…, userId, summary?)` | R-S1.7b/d · R-S1.8g |
+| `src/lib/ai/secretary/kind-class.ts` | import จาก `../kind-tables` เท่านั้น · prefix เงิน/ถึงลูกค้า · kind ไม่รู้จัก `destructive:true` | R-S1.7c/d |
+| `src/lib/ai/secretary/approval-gate.ts` | `approvalGate` ห้องเดิมคืน `{ok:true}` ไม่อ่านกฎ · ห้องเลขา try/catch → "ตรวจกฎอนุมัติไม่ได้ ลองใหม่อีกครั้ง" · `planApprovalGate` · `setRule` ตรวจ `by.tenantId` ก่อน role + Membership สดในฐาน | R-S1.7a/b/e |
+| `src/lib/ai/plans.ts` | `planApproverBlock` ก่อนยืนยัน 2 ชั้น/ก่อน claim · `PlanExecResult.note?` · ส่ง `st.summary` เข้า runKind | R-S1.7a · R-S1.8g |
+| `src/lib/ai/kanban-ops.ts` | out.entity เฉพาะ `cards.create`/`cards.move` | R-S1.8h |
+| `src/lib/ai/secretary/actions.ts` | `undoPermission` · `isPiiKey` + ตัวกรองค่า (≥9 หลัก / `@`) · `snapshotAfter` → `payload.after` · summary ผ่านตัวปิด PII · undo ใหม่ (ห้องเลขา = OWNER/MANAGER · สิทธิ์กลับทาง · ระดับต่อระบบ · ตรวจสภาพปัจจุบัน · การ์ด/ดีลผ่าน op ด้วยตัวตนผู้ย้อน · นัด status/time/unit) | R-S1.8b–f |
+| `docs/modules/31-secretary.md` | §5.7–§5.9 ตามโค้ด (ท้ายคอลัมน์ · MANAGER listLog · `now` ทดสอบเท่านั้น · หนี้ G-12/H-6) · §7 แถวอนุมัติแผน/ย้อน/ดูบันทึก | เอกสาร §K |
+
+### R2. ผลข้อสอบ (รอบ 2)
+- `qc-sec-s1.7` (27 ข้อ · ไม่แก้ oracle) forced #1 `JSON_SUMMARY {"total":27,"passed":27,"failed":[],"skipped":[],"findings":[]}` · forced #2 เหมือนกัน · unforced เหมือนกัน (D-1/D-2 fitness มี env/ไม่มี env ✅ ทุกรอบ · D-3 kind-class ไม่ import proposals ✅)
+- regression (ฐาน QC เลขา ep-calm-flower · SHARK_AI_MOCK=1): qc-sec-s1.4 28/28 · qc-sec-s1.6 16/16 · qc-sec-s1.3b 13/13 · qc-sec-s1.9 10/10 (forced) · qc-ai-proposals 16/16 · qc-ai-plan 7/7 (unforced) — เท่า baseline 85751098
+- typecheck (iso · heap 5632 · ISO_MEM 6500M): 9 error ทั้งหมดอยู่ใน oracle ของใบที่ยังไม่สร้าง (`qc-sec-s1.10/s1.13/s1.17/s1.21.mts`) · ไฟล์ที่แตะ 0
+- fitness: D-1/D-2 ใน oracle ×3 ✅ · pre-commit ✅
+
+### R3. ส่วนที่ต่างจาก §K / การตีความ
+- **R-S1.7d ส่วน derive**: ตารางที่ derive จากทะเบียน op (บัญชี/บอร์ดงาน/สมาชิก/CRM/POS) ย้ายเข้า kind-tables ตรง ๆ ไม่ได้ เพราะทะเบียนพวกนั้น import service/prisma — ใช้ `registerDerivedKinds` ที่ proposals.ts เรียกตอนโหลดแทน (kind-tables เองไม่ import อะไร) · ผลข้างเคียง: โค้ด pure ที่ไม่ได้โหลด proposals.ts เห็นแค่ชุดคงที่ → kind ของทะเบียนถูกจัดเป็น "ไม่รู้จัก" = เสี่ยงทุกชั้น (fail-closed · ไม่มีทางผ่านหลวม) · `ProposalKind` (มี `` `crm.${string}` ``) คงอยู่ใน proposals.ts (qc-crm-c1.10 อ่านซอร์ส)
+- **R-S1.7b "0 query เพิ่ม"**: ห้องเดิมยังมี query หาแถว `AiRoom` 1 ครั้ง (รหัสห้องเลขาเป็น `u~` เหมือนห้องเดิม แยกด้วยรหัสไม่ได้) — ที่ตัดคือ `listRules`/`whyApproval` · `why` คืนเป็นฟิลด์ optional ของผล `executeProposal` (ห้องเลขาเท่านั้น)
+- **R-S1.7c**: ไม่ลบ `point`/`reward` ออกจาก MONEY_MODULES — ยังเป็นโมดูลของ `point_adjust`/`reward_redeem` (ไม่ใช่คีย์ตาย) · whyApproval ของ kind ไม่รู้จักไม่ต่อท้าย "ลบ/ยกเลิกถาวร" (ข้อความ "ไม่รู้จัก…" พอ)
+- **R-S1.7e**: `by.tenantId` เป็น optional (oracle R-2/R-3 ส่ง `{userId, membership}`) — ส่งมาแล้วไม่ตรง ⇒ Forbidden ก่อน role · เพิ่มตรวจ Membership สด (`tenantId`+`userId`+accepted = OWNER) ก่อนเขียน เพื่อผูก tenant จริงเมื่อไม่ส่ง tenantId
+- **R-S1.8c ย้อนสร้างการ์ดของ kind มือ `kanban_create_card`**: คงทาง `kanbanSvc.archiveCard` (service — ทางเดียวกับตอนสร้างที่ไม่ผ่านบทบาทบอร์ด) + ตรวจผู้ย้อนเห็นบอร์ด (`boardRoleOf` ≠ null) · ถ้าส่งผ่าน op `cards.archive` จะต้องเป็น EDITOR ของบอร์ด ⇒ U-3 (MANAGER บนบอร์ดกลาง TENANT = VIEWER) และ U-6 (STAFF มีคีย์ delete) แดง · `kanban.cards.create` / `kanban.cards.move` / `crm.deals.move` ผ่าน op ตาม §K · ทางนี้ไม่ตั้ง `archivedById` และไม่ emit `kanban.card.archived` (service เดิม — ไม่ใช่ไฟล์ของใบ)
+- ย้ายการ์ด/ดีลที่ไม่มี `payload.after` (แถวก่อนรอบ 2 / snapshot ล้ม) ⇒ ปฏิเสธ (fail-closed) · นัดที่ไม่มี after ใช้กติกา status/เวลา
+- **R-S1.8b แถวห้องเดิม**: การมองเห็นคงเดิม (OWNER · ผู้สั่ง/ผู้อนุมัติ) — MANAGER ที่ไม่ใช่คู่กรณีของแถวห้องเดิม = "ไม่พบรายการ" (ตาม "เหมือนเดิม" + B5)
+- **R-S1.8f**: `maskPiiPatterns` ไม่ได้ export ผ่าน facade CRM และด่าน fitness ห้าม import `modules/crm/api/serialize` จากนอกโมดูล ⇒ เรียก `crmApi.maskPiiDeep(summary)` (กับสตริง = `maskPiiPatterns` ตรงทุกไบต์) · ล้ม = regex ปิดเบอร์/อีเมลสำรอง
+- ย้อนการ์ด/ดีลส่ง `proposalId = undo-<logId>` เข้า dispatch (requestId/audit `ai-proposal-undo-…`)
+
+### R4. หนี้ (เพิ่มจาก §8)
+| เรื่อง | ใบ |
+|---|---|
+| purge `Ai*` ตอนลบร้าน/ลบผู้ใช้ (G-12) | S1.25 / S3 |
+| ประตู CRM ข้ามด่านผู้อนุมัติ + log (H-6) | หนี้เดิม · ผู้คุมตัดสิน |
+| event `ai.action.*` | ใบ UI ของบันทึก |
+| ย้อน `kanban_create_card` ไม่ emit webhook `kanban.card.archived` (service เดิม) | ถ้าต้องการ: เพิ่ม `archivedById`/outbox ใน `kanbanSvc.archiveCard` (ใบของบอร์ดงาน) |

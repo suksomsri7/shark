@@ -612,7 +612,7 @@ export async function dispatchKanbanKind(
   kind: string,
   rawPayload: unknown,
   userId?: string | null,
-  /** SEC S1.8 (R-S1.8a) — ตั้ง `out.entity` = การ์ด/บอร์ดที่ op คืนมา (ชนิดคืนคงเดิม) */
+  /** SEC S1.8 (R-S1.8a · R-S1.8h) — ตั้ง `out.entity` = การ์ดที่ `cards.create`/`cards.move` คืนมา (ชนิดคืนคงเดิม) */
   out?: { entity?: { type: string; id: string; unitId?: string | null } | null },
 ): Promise<string> {
   const payload = isRecord(rawPayload) ? rawPayload : {};
@@ -643,12 +643,12 @@ export async function dispatchKanbanKind(
       reason,
       audit: { proposalId, actor: "ai-assistant" },
     });
-    // SEC S1.8 ▸ entity ของของที่ op สร้าง/แตะ (cards.* = การ์ด · boards.* = บอร์ด) ◂
-    if (out) {
+    // SEC S1.8 ▸ entity ของการ์ดที่ op สร้าง/ย้าย — R-S1.8h: ตั้งเฉพาะ `cards.create` / `cards.move` (op อื่นคืน id ของสิ่งอื่น
+    //   เช่น เช็กลิสต์/ความเห็น — ตั้งเป็นการ์ดจะผิดชนิด) ◂
+    if (out && (op.id === "cards.create" || op.id === "cards.move")) {
       const d = isRecord(env.data) ? env.data : {};
-      const eid = typeof d.id === "string" ? d.id : typeof d.cardId === "string" ? d.cardId : null;
-      const res = op.id.split(".")[0] ?? "";
-      if (eid) out.entity = { type: res === "boards" ? "kanban.board" : res === "cards" ? "kanban.card" : `kanban.${res}`, id: eid };
+      const eid = op.id === "cards.move" ? (typeof d.cardId === "string" ? d.cardId : null) : typeof d.id === "string" ? d.id : null;
+      if (eid) out.entity = { type: "kanban.card", id: eid };
     }
     return noteOf(op, env.data);
   } catch (e) {

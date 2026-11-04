@@ -1,14 +1,15 @@
-// kind-class.ts — ชั้นความเสี่ยงของข้อเสนอ (S1.7 · R-K3 · R-K3b) · ส่วน pure (ไม่อ่าน/เขียนฐานข้อมูล)
+// kind-class.ts — ชั้นความเสี่ยงของข้อเสนอ (S1.7 · R-K3 · R-K3b · R-S1.7c · R-S1.7d) · ส่วน pure (ไม่อ่าน/เขียนฐานข้อมูล)
 //
 // ชั้น derive จากของที่มีอยู่แล้ว ไม่เพิ่มคอลัมน์ใน AiProposal:
-//   destructive = DESTRUCTIVE_KINDS ของ proposals.ts (ชุดเดียวกับ risk=DESTRUCTIVE / ยืนยัน 2 ชั้น)
-//   money / customerFacing / piiExport = จาก `kindAccessOf(kind).module` + ชื่อ kind
-//   ไม่รู้จัก kind (ไม่อยู่ในตารางสิทธิ์ของข้อเสนอ) ⇒ fail-closed: ถือว่ามีเงิน + ส่งถึงลูกค้า
+//   destructive = DESTRUCTIVE_KINDS (ชุดเดียวกับ risk=DESTRUCTIVE / ยืนยัน 2 ชั้น)
+//   money / customerFacing / piiExport = จาก `kindAccessOf(kind).module` + ชื่อ/prefix ของ kind
+//   ไม่รู้จัก kind (ไม่อยู่ในตารางสิทธิ์ของข้อเสนอ) ⇒ fail-closed ทั้ง 3 ชั้น: ลบถาวร + มีเงิน + ส่งถึงลูกค้า (R-S1.7c)
 // `ALWAYS_APPROVE` = ค่าคงที่ในโค้ด ปิดด้วยการตั้งค่าใด ๆ ไม่ได้ · `AiApprovalRule` เก็บแค่ 3 กฎตั้งค่าได้ (`RULE_KEYS`)
 // R-K3b: รุ่นแรกทุกข้อเสนอเขียนยังต้องมีคนอนุมัติ — กฎมีผลแค่ข้อความ "ทำไมต้องอนุมัติ" (whyApproval) + หน้า B4
-// 🔴 import proposals.ts แบบค่า (ไม่ใช่ type) — proposals.ts ต้อง import ไฟล์ secretary ที่ใช้ไฟล์นี้แบบ dynamic เท่านั้น (กันวงโหลด)
+// 🔴 R-S1.7d: import ได้จาก `../kind-tables` เท่านั้น (pure ล้วน) — ห้าม import proposals.ts / ฐานข้อมูล / service
+//    ตารางส่วนที่ derive จากทะเบียน op ถูกเติมเมื่อ proposals.ts โหลด (ฝั่ง server เสมอ) · ฝั่งที่ไม่ได้โหลด = เห็นชุดคงที่ + fail-closed
 
-import { DESTRUCTIVE_KINDS, kindAccessOf, type ProposalKind } from "../proposals";
+import { DESTRUCTIVE_KINDS, kindAccessOf } from "../kind-tables";
 
 export type KindClass = { destructive: boolean; money: boolean; customerFacing: boolean; piiExport: boolean; known: boolean };
 
@@ -24,20 +25,25 @@ export function isRuleKey(k: unknown): k is RuleKey {
 }
 
 // โมดูลที่ทุกการเขียน = เงิน (บัญชี · แต้ม · รางวัล · ตั๋ว · ร้านอาหาร · การชำระ)
+//   `point`/`reward` ยังใช้จริง (point_adjust · reward_redeem ใน STATIC_KIND_ACCESS) — คงไว้
 const MONEY_MODULES = new Set(["account", "payments", "finance", "cheques", "point", "reward", "ticket", "restaurant"]);
-// kind ส่งถึงลูกค้า (ตรงตัว) + prefix
+// R-S1.7c: prefix ของ kind ระบบสมาชิกที่เป็นมูลค่า (แต้ม · บัตรของขวัญ · กระเป๋าเงิน · รางวัล · บัตรกำนัล)
+const MONEY_PREFIXES = ["member.points.", "member.giftcards.", "member.wallet.", "member.rewards.", "member.vouchers."];
+// kind ส่งถึงลูกค้า (ตรงตัว) + prefix (R-S1.7c: + เส้นทางอัตโนมัติ · แจ้งเตือนสมาชิก · ลำดับติดตามของ CRM)
 const CUSTOMER_KINDS = new Set(["chat.send", "marketing_create_campaign", "coupon_create"]);
-const CUSTOMER_PREFIXES = ["crm.emails.", "member.campaigns."];
+const CUSTOMER_PREFIXES = ["crm.emails.", "member.campaigns.", "member.journeys.", "member.notifications.", "crm.sequences."];
 
 export function classOfKind(kind: string): KindClass {
   const k = typeof kind === "string" ? kind : "";
   const access = k ? kindAccessOf(k) : null;
-  const destructive = DESTRUCTIVE_KINDS.has(k as ProposalKind);
   const piiExport = /export|csv/i.test(k);
-  if (!access) return { destructive, money: true, customerFacing: true, piiExport, known: false };
+  // ไม่รู้จัก ⇒ fail-closed ทั้ง 3 ชั้น (R-S1.7c)
+  if (!access) return { destructive: true, money: true, customerFacing: true, piiExport, known: false };
+  const destructive = DESTRUCTIVE_KINDS.has(k);
   const mod = access.module;
   const money =
     MONEY_MODULES.has(mod) ||
+    MONEY_PREFIXES.some((p) => k.startsWith(p)) ||
     (mod === "pos" && /void|refund|sale/i.test(k)) ||
     (mod === "shop" && /refund/i.test(k)) ||
     (mod === "school" && /mark_paid|pay/i.test(k)) ||
@@ -80,7 +86,7 @@ export function whyApproval(kind: string, payload: unknown, rules: RuleMap): str
   const c = classOfKind(kind);
   const out: string[] = [];
   if (!c.known) out.push("ไม่รู้จักประเภทรายการนี้ — ต้องให้คนตรวจก่อนเสมอ");
-  if (c.destructive) out.push("ลบ/ยกเลิกถาวร — ต้องยืนยัน 2 ชั้น");
+  if (c.destructive && c.known) out.push("ลบ/ยกเลิกถาวร — ต้องยืนยัน 2 ชั้น");
   if (c.money && c.known) {
     const amt = amountSatangOf(payload);
     const lim = rules?.["money.limit"];
