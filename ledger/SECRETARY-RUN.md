@@ -56,8 +56,8 @@ _(เติมเมื่อถึงใบ)_
 | S2.2 | ✅ | | built ceb8452d + padding 5d100c44 (เลน d) · spec 11/11 ×3 · §Q fix-forward 6 ข้อ · คู่ A1/A2 สว่าง/มืด ผู้คุมดู ✅ · interaction run ผ่าน · qc-mobile-* เท่าเดิม · merge 9b5e4f7d6 · deviation รับ: บรรทัดรองการ์ด = สถานะ (ไม่มี summary ใน DTO) · ไม่มีคำว่าพูด (ไม่มีไมค์) · path table ใน src/api/secretary.ts · หนี้: + บนจอ 403 → S2.20 · ยืนยันชื่อ endpoint หลัง S1.14 |
 | S2.3 | ✅ | | รวมในชุด S2-2 · A2 (ทักทาย/ข้อเสนอ/สั่งบ่อย/ระบบ/ช่องพิมพ์) · merge 9b5e4f7d6 |
 | S2.4 | ✅ | | built aef1772b…0267be7f (เลน d · merge tip A.11 แล้ว) · spec 7/7 ×2 + ผู้คุม 6/7 · คู่ A3/A4/A5 สว่าง/มืด + C4 ผู้คุมดู A4/A5 ✅ โครงตรงแบบ (เนื้อหาต่างตาม fixture) · interaction run ครบ (approve 2 ขั้น · ตีกลับ JOB/RULE · แก้ patch · ย้อน · สอน · ทำซ้ำ · polling 5/15 วิ) · merge 0267be7f8 (light + ผู้ตรวจ UX fix-forward → S2.10) · DTO-REQ 1–3 ส่งให้ S1.14 (why/editable/classes ใน proposals · plans ใน room · link ใน log) · หนี้: path secretary/me vs secretary/secretary · Sheet โปร่งบน web export · fixture undo window หมด 5 พ.ย. 19:40Z |
-| S2.5 | 🔍 | | built 24c1ba86…c427b76a (เลน d) · spec 9/9 ×2 + ผู้คุม 8/9 · คู่ A6/A7 · push-link-test 9/9 · interaction ครบ · **รอ builder merge tip ใหม่ (S2.10+oracle fixes) แล้ว ff** · DTO-REQ 4–6 → S1.14 รอบ 2 (classes ใน inbox · data.tenantId ใน push · PUT scheduled เต็ม) |
-| S2.6 | 🔍 | | รวมในชุด S2-5 · push handler 5 ลิงก์ + badge |
+| S2.5 | ✅ | | built 24c1ba86 + merge tip ×2 (8348b02f · A.11) (เลน d) · spec 9/9 ×3 + ผู้คุม · คู่ A6/A7 สว่าง/มืด (ผู้คุมดู A6 ✅) · push-link-test 9/9 · interaction ครบ · merge 51504cb0c · deviation รับ: (app)/_layout เพิ่ม listener · client.ts tenant override · Tabs testID · reject disabled เมื่อ canApprove=false · DTO-REQ 4–6 อยู่ใน §T |
+| S2.6 | ✅ | | รวมในชุด S2-5 · push handler 5 ลิงก์ + badge · merge 51504cb0c |
 | S2.7 | ✍️ | | ใบ S2-7 (S2.7+S2.8+S2.9) + spec s2.7.json · รอ S2.1+S1.14 |
 | S2.8 | ✍️ | | รวมในชุด S2-7 |
 | S2.9 | ✍️ | | รวมในชุด S2-7 |
@@ -70,8 +70,8 @@ _(เติมเมื่อถึงใบ)_
 | S2.18 | 🔨 | | รวมในชุด S2-17 (เลน c) |
 | S2.19 | 🔨 | | รวมในชุด S2-17 (เลน c) |
 | S2.20 | ✍️ | | รวมในชุด S2-13 |
-| S2.21 | ✍️ | | ใบ S2-21 (S2.21+S2.22) + spec s2.21.json · รอ S2.1+S2.10 |
-| S2.22 | ✍️ | | รวมในชุด S2-21 |
+| S2.21 | 🔨 | | builder Opus เลน d `wip/sec-s2.21` @51504cb0c เริ่ม 5 พ.ย. ~21:3xZ |
+| S2.22 | 🔨 | | รวมในชุด S2-21 (เลน d) |
 | S2.23 | ✍️ | | รวมในชุด S2-16 |
 | S2.13 | ✍️ | | ใบ S2-13 (S2.13+S2.20) + spec s2.13.json · หลังทุกจอ S2 |
 | S2.14 | ✍️ | | ใบ S2-14 ปิด S2 (ด่านเต็ม) |
@@ -109,25 +109,26 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย. ~22:2xZ** รับ S1.3b (merge) · S1.6 เสร็จ (14/14) → ORACLE-EDIT s1.4 G-3 (seeHistory) · spawn ผู้ตรวจ 2 คน S1.6 · เลน d → `wip/sec-s1.9` ชุด S1-7 · ใบ S1-12 (S1.17+S1.23) + oracle เขียนแล้ว
 - **4 พ.ย. ~23:0xZ** รีวิว S1.6 (E สิทธิ์ · F สัญญา) ⇒ แก้รอบ 2 (§J) · ใบ S1-15 (S1.21+S1.24) เขียนแล้ว · เตรียมครบถึง S1-15 — เหลือ S1.11+S1.16 · S1.22 · S1.25 · S1.14 ที่ยังไม่มีใบ
 
-- **4 พ.ย. ~23:2xZ** S1.9 ✅ (ORACLE-EDIT R-4 ของผู้คุมผิดเอง) merge ad938ac6 · S1.6 รอบ 2 ✅ merge 2edcef81 · ผู้ตรวจ G/H ชุด S1-6 → MERGE-AFTER-FIX 4 MAJOR ร่วม (แผนข้ามด่าน R-K4 · undo สิทธิ์/สถานะเก่า · PII ใน log · kind-class) → §K รอบ 2 · tip 2edcef81 · **37/58 (64%)**
+- **4 พ.ย. ~23:2xZ** S1.9 ✅ (ORACLE-EDIT R-4 ของผู้คุมผิดเอง) merge ad938ac6 · S1.6 รอบ 2 ✅ merge 2edcef81 · ผู้ตรวจ G/H ชุด S1-6 → MERGE-AFTER-FIX 4 MAJOR ร่วม (แผนข้ามด่าน R-K4 · undo สิทธิ์/สถานะเก่า · PII ใน log · kind-class) → §K รอบ 2 · tip 2edcef81 · **39/58 (67%)**
 - **4 พ.ย. ~23:4xZ** §K + oracle s1.7 รอบ 2 (27 ข้อ · 31ac2f7e) · spawn 3 เลน: c=S1-6 รอบ 2 · b=S1-11 (S1.13) · d=S1-12 (S1.17+S1.23)
 - **5 พ.ย. ~00:1xZ** ใบครบทั้ง S1: S1-9 S1-10 S1-16 S1-17 S1-18 เขียนแล้ว (oracle ตามมาเมื่อเลนใกล้ว่าง · ลำดับ spawn: S1-10 → S1-9 → S1-15 → S1-16 → S1-17 → S1-18)
-- **5 พ.ย. ~00:5xZ** S1.17+S1.23 ✅ merge cd37937d · เลน d → S1-10 (S1.12) · S1-6 รอบ 2 27/27 รอ re-check · **37/58 (64%)**
+- **5 พ.ย. ~00:5xZ** S1.17+S1.23 ✅ merge cd37937d · เลน d → S1-10 (S1.12) · S1-6 รอบ 2 27/27 รอ re-check · **39/58 (67%)**
 - **5 พ.ย. ~01:3xZ** S1-6 re-check MERGE (+N1/N2 LOW → builder) · S1.13 DECISION-1 → §L (คง assist ฟรี · gate ชุดเดิมด้วย FREE_PACK.enabled · เพดาน $0.50/วัน) · oracle S1.14 (11 ข้อ) + S1.22 (12) + S1.25 (15) + S1.11 (15) + S1.12 (14) เขียนครบ
-- **5 พ.ย. ~02:0xZ** S1.7+S1.8 ✅ merge d06331a0 · เลน c → S1-9 (S1.11+S1.16) · **37/58 (64%)**
-- **5 พ.ย. ~02:1xZ** S1.7+S1.8 ✅ merge 38632d7f (docs conflict §9 แก้มือ) · เลน c → S1-9 (S1.11+S1.16) · **37/58 (64%)**
-- **5 พ.ย. ~04:2xZ** S1.11+S1.16 ✅ merge 9adb47a9 · S1.13 รีวิว I/J → §L.2 รอบ 3 · S1.12 รีวิว K → §M รอบ 2 · เลน c → S1-15 (S1.21+S1.24) · **37/58 (64%)**
-- **5 พ.ย. ~05:0xZ** S1.13 ✅ merge 4d6cdd35 · เลน b → S1-16 (S1.22) · **37/58 (64%)**
-- **5 พ.ย. ~05:4xZ** S1.12 ✅ merge 75b2b689 · migration secretary_b pre-merge + generate (client ร่วม: คอลัมน์เพิ่มเท่านั้น) · S1.21 ORACLE-EDIT ×3 (f98cb08e) · เลน d → S1-17 (S1.25) · ⚠️ ผู้คุมพลาด: git apply ไม่ใส่ -p0 ทำให้ chain ล้ม เลน d reset ช้า — แก้แล้ว · **37/58 (64%)**
+- **5 พ.ย. ~02:0xZ** S1.7+S1.8 ✅ merge d06331a0 · เลน c → S1-9 (S1.11+S1.16) · **39/58 (67%)**
+- **5 พ.ย. ~02:1xZ** S1.7+S1.8 ✅ merge 38632d7f (docs conflict §9 แก้มือ) · เลน c → S1-9 (S1.11+S1.16) · **39/58 (67%)**
+- **5 พ.ย. ~04:2xZ** S1.11+S1.16 ✅ merge 9adb47a9 · S1.13 รีวิว I/J → §L.2 รอบ 3 · S1.12 รีวิว K → §M รอบ 2 · เลน c → S1-15 (S1.21+S1.24) · **39/58 (67%)**
+- **5 พ.ย. ~05:0xZ** S1.13 ✅ merge 4d6cdd35 · เลน b → S1-16 (S1.22) · **39/58 (67%)**
+- **5 พ.ย. ~05:4xZ** S1.12 ✅ merge 75b2b689 · migration secretary_b pre-merge + generate (client ร่วม: คอลัมน์เพิ่มเท่านั้น) · S1.21 ORACLE-EDIT ×3 (f98cb08e) · เลน d → S1-17 (S1.25) · ⚠️ ผู้คุมพลาด: git apply ไม่ใส่ -p0 ทำให้ chain ล้ม เลน d reset ช้า — แก้แล้ว · **39/58 (67%)**
 - **5 พ.ย. ~07:0xZ** S1.21 รีวิว L/M → §N รอบ 2 (oracle +4 ข้อ) · S1.22 12/12 → ผู้ตรวจ N · S1.25 รอบ 1 15/15 → R-S1.25a รันซ้ำ
-- **5 พ.ย. ~08:5xZ** S1.22 ✅ merge c1e1110d · เลน b → S1-8 (S1.10+S1.15) · S1.21 รอบ 2 19/19 → ถอด alias → re-check · **37/58 (64%)**
-- **5 พ.ย. ~10:2xZ** S1.21+S1.24 ✅ merge e182aee9 · เลน c ว่าง (รอ S1.25/S1.10 merge แล้วเริ่ม S1.14 ด่านเต็ม) · **37/58 (64%)**
-- **5 พ.ย. ~10:4xZ** S1.25 ✅ merge af21290a · เลน c/d ว่าง · เหลือ S1.10+S1.15 (เลน b) แล้ว S1.14 · **37/58 (64%)**
-- **5 พ.ย. ~12:5xZ** S1.10+S1.15 ✅ merge 95a14b66 · baseline ใหม่ `sec-baseline-bfad2f15.txt` (60 ชุด · แดงใหม่ 2: qc-chat-v2-context CX-7.2 + qc-chat-v2-icons IC-4.1 = emoji ใน chat/routing.ts จาก S1.24 — oracle s1.21 H-1/H-2 ของผู้คุมเรียกร้อง emoji ผิดกฎโมดูลแชท → แก้ oracle + hotfix ใน S1.14) · เลน b → S1.14 ด่านเต็ม · **37/58 (64%)**
+- **5 พ.ย. ~08:5xZ** S1.22 ✅ merge c1e1110d · เลน b → S1-8 (S1.10+S1.15) · S1.21 รอบ 2 19/19 → ถอด alias → re-check · **39/58 (67%)**
+- **5 พ.ย. ~10:2xZ** S1.21+S1.24 ✅ merge e182aee9 · เลน c ว่าง (รอ S1.25/S1.10 merge แล้วเริ่ม S1.14 ด่านเต็ม) · **39/58 (67%)**
+- **5 พ.ย. ~10:4xZ** S1.25 ✅ merge af21290a · เลน c/d ว่าง · เหลือ S1.10+S1.15 (เลน b) แล้ว S1.14 · **39/58 (67%)**
+- **5 พ.ย. ~12:5xZ** S1.10+S1.15 ✅ merge 95a14b66 · baseline ใหม่ `sec-baseline-bfad2f15.txt` (60 ชุด · แดงใหม่ 2: qc-chat-v2-context CX-7.2 + qc-chat-v2-icons IC-4.1 = emoji ใน chat/routing.ts จาก S1.24 — oracle s1.21 H-1/H-2 ของผู้คุมเรียกร้อง emoji ผิดกฎโมดูลแชท → แก้ oracle + hotfix ใน S1.14) · เลน b → S1.14 ด่านเต็ม · **39/58 (67%)**
 - **5 พ.ย. ~13:3xZ** ใบ S2 ครบทุกชุด (S2.1 S2.2+3 S2.4 S2.5+6 S2.7–9 S2.10+11 S2.12 S2.13+20 S2.14 S2.15 S2.16+23 S2.17–19 S2.21+22) · oracle ทั่วไป `qc-sec-screen.mts` + spec ต่อใบ · รอ S1.14 (ด่านเต็ม) · S2.1/S2.12 กำลังทำ
-- **5 พ.ย. ~13:5xZ** S2.1 ✅ merge fa790d96 · S2.12 รอ merge tip+ผู้ตรวจ · เลน d → S2-2 (S2.2+S2.3) · **37/58 (64%)**
-- **5 พ.ย. ~15:3xZ** S2.2+S2.3 ✅ merge 9b5e4f7d6 · เลน d → S2.4 (ห้อง) · **37/58 (64%)**
-- **5 พ.ย. ~16:3xZ** S2.12 ✅ merge 49347eb86 (ff ไม่ได้เพราะ ledger ขยับ) (ผ่าน worktree e · ลบแล้ว) · **37/58 (64%)**
-- **5 พ.ย. ~17:1xZ** S2.4 ✅ merge 0267be7f8 · เลน d → S2-5 (S2.5+S2.6) · **37/58 (64%)**
-- **5 พ.ย. ~18:3xZ** S2.7+S2.8+S2.9 ✅ merge 59a99149d · เลน c → S2-10 (S2.10+S2.11) · **37/58 (64%)**
+- **5 พ.ย. ~13:5xZ** S2.1 ✅ merge fa790d96 · S2.12 รอ merge tip+ผู้ตรวจ · เลน d → S2-2 (S2.2+S2.3) · **39/58 (67%)**
+- **5 พ.ย. ~15:3xZ** S2.2+S2.3 ✅ merge 9b5e4f7d6 · เลน d → S2.4 (ห้อง) · **39/58 (67%)**
+- **5 พ.ย. ~16:3xZ** S2.12 ✅ merge 49347eb86 (ff ไม่ได้เพราะ ledger ขยับ) (ผ่าน worktree e · ลบแล้ว) · **39/58 (67%)**
+- **5 พ.ย. ~17:1xZ** S2.4 ✅ merge 0267be7f8 · เลน d → S2-5 (S2.5+S2.6) · **39/58 (67%)**
+- **5 พ.ย. ~18:3xZ** S2.7+S2.8+S2.9 ✅ merge 59a99149d · เลน c → S2-10 (S2.10+S2.11) · **39/58 (67%)**
 - **5 พ.ย. ~20:1xZ** S2.10+S2.11 ✅ ff 3094d036 · S1.14 built → ORACLE-EDIT ×4 ของผู้คุม → 11/11 → ผู้ตรวจ 2 คน · S2.5 รอ merge tip · เลน c → S2-17 (ลูกค้า) · **37/58 (64%%)**
+- **5 พ.ย. ~21:3xZ** S2.5+S2.6 ✅ merge 51504cb0c · เลน d → S2-21 (S2.21+S2.22) · **39/58 (67%)**
