@@ -20,6 +20,8 @@ import {
 import { applyDegrade } from "./usage";
 import { balanceOf, canSpend, chargeUsageSafe } from "./credit";
 import type { AiCreditSource } from "@prisma/client";
+import { identityOf, secretaryOf } from "./secretary/secretary";
+import { getAccess } from "./secretary/access";
 
 export type Ctx = { tenantId: string };
 /**
@@ -157,12 +159,16 @@ export async function sendMessage(
 
   // persona ต้องรู้ชื่อกิจการ + ระบบที่เปิด + ความจำถาวรของร้าน + แนวทางที่ปรับปรุงระดับแพลตฟอร์ม
   // (พ่วง Promise.all เดิม ไม่เพิ่ม round-trip แยก · promptTweaks best-effort: query พลาด → "" ไม่ให้แชทพัง)
-  const [tenant, systems, memories, promptTweaks] = await Promise.all([
+  // SEC S1.2/S1.3 ▸ + ตัวตนเลขาของคนที่พิมพ์ (อ่านอย่างเดียว ไม่สร้าง · คีย์/งานภายใน = ไม่มี) + ระดับต่อระบบของร้าน (ไม่มีแถว = ค่าเริ่มต้น) ◂
+  const [tenant, systems, memories, promptTweaks, secretaryRow, access] = await Promise.all([
     prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId } }),
     db.appSystem.findMany({ select: { type: true, name: true }, orderBy: { createdAt: "asc" } }),
     memoryBlock({ tenantId: ctx.tenantId, actor: ctx.actor }), // CRM C5.5-G3: the viewer's memories only (own + shop facts)
     approvedPromptTweaksText().catch(() => ""),
+    ctx.actor.kind === "member" ? secretaryOf(ctx.actor.userId) : Promise.resolve(null),
+    getAccess(ctx.tenantId),
   ]);
+  const secretary = secretaryRow ? identityOf(secretaryRow) : undefined;
   // สรุป DNA facts (ข้อมูลตอนสร้างกิจการ) — ฉีดเข้า persona ให้ AI เข้าใจธุรกิจตั้งแต่แรก (best-effort)
   const dnaSummary = await dnaFactsSummary(ctx.tenantId);
 
@@ -173,7 +179,7 @@ export async function sendMessage(
   const defOf = (name: string) => registry.find((t) => t.def.name === name)?.def;
   // CRM C5.5-G1 ▸ ยื่นเฉพาะสิ่งที่ผู้กระทำใช้ได้: สกิลที่ไม่มีเครื่องมือให้ผู้กระทำนี้เลย = ไม่อยู่ในสารบัญ · แกนกลาง/สกิลที่โหลด
   //   = กรองรายเครื่องมือ (runTool ตรวจซ้ำทุกครั้งอยู่แล้ว — ชั้นนี้คือไม่ชวนโมเดลเรียกสิ่งที่จะโดนปฏิเสธ + ประหยัด token) ◂
-  const offeredOf = (names: readonly string[]) => toolsOfferedTo(ctx.actor, names);
+  const offeredOf = (names: readonly string[]) => toolsOfferedTo(ctx.actor, names, access);
   const visibleSkills = skillsForTenant(systems.map((s) => s.type)).filter((s) => offeredOf(s.tools).length > 0);
   const loadedSkillIds = new Set<string>();
   const activeToolNames = new Set<string>(offeredOf(CORE_TOOLS));
@@ -208,7 +214,7 @@ export async function sendMessage(
     {
       role: "system",
       content: [
-        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks }),
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access }),
         skillIndexPrompt(visibleSkills),
       ].filter(Boolean).join("\n\n"),
     },
@@ -296,7 +302,7 @@ export async function sendMessage(
         // ส่ง conversation.id เข้าไปด้วย — action tool ต้องใช้ผูก proposal กับบทสนทนา
         // CRM C5.5-G1 ▸ ผู้กระทำของเทิร์นนี้ไปกับทุกการเรียก (runTool ตรวจสิทธิ์ซ้ำ — ชื่อที่ไม่ได้ยื่นก็โดนปฏิเสธ) ◂
         const result = await runTool(
-          { tenantId: ctx.tenantId, actor: ctx.actor, conversationId: conversation.id },
+          { tenantId: ctx.tenantId, actor: ctx.actor, conversationId: conversation.id, access },
           tc.name,
           tc.args,
         );
