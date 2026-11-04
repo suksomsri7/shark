@@ -138,6 +138,18 @@ try {
   const pr = await call("rooms/[id]/proposals", "GET", undefined, H, { id: roomM });
   const mem = (m2.body.members ?? m2.body.items ?? []) as { userId: string }[];
   chk("H-2", "members POST/GET/DELETE 200 · รายชื่อมี staff หลังเพิ่ม · proposals GET 200 array", m1.status === 200 && m2.status === 200 && mem.some((x) => x.userId === U.staff) && m3.status === 200 && pr.status === 200 && Array.isArray(pr.body.items ?? pr.body.proposals ?? pr.body), JSON.stringify({ m1: m1.status, m2: m2.status, m3: m3.status, pr: pr.status }));
+  // H-3 (R-S1.14a): POST rooms ส่ง clientMessageId ซ้ำ ⇒ duplicate ห้องเดิม · นับงานครั้งเดียว
+  const jobsBefore = (await prisma.aiJobCounter.findFirst({ where: { tenantId: tid } }))?.jobs ?? 0;
+  const cm = `qc114-${Date.now()}`;
+  const d1 = await call("rooms", "POST", { instruction: "งานกันซ้ำ", clientMessageId: cm });
+  const d2 = await call("rooms", "POST", { instruction: "งานกันซ้ำ", clientMessageId: cm });
+  const jobsAfter = (await prisma.aiJobCounter.findFirst({ where: { tenantId: tid } }))?.jobs ?? 0;
+  chk("H-3", "POST rooms + clientMessageId: ครั้งแรก 200 roomId · ซ้ำ ⇒ 200 duplicate:true roomId เดิม · ตัวนับงาน +1 เท่านั้น", d1.status === 200 && !!d1.body.roomId && d2.status === 200 && d2.body.duplicate === true && d2.body.roomId === d1.body.roomId && jobsAfter === jobsBefore + 1, JSON.stringify({ d1: d1.status, d2: d2.status, dup: d2.body.duplicate, jobs: [jobsBefore, jobsAfter] }));
+  // A-2 (T/U gaps): STAFF เขียน access/rules ⇒ 403 · STAFF GET after-hours ⇒ 403
+  const sA = await call("access", "PUT", { module: "kanban", level: "OFF" }, HS);
+  const sR = await call("rules", "PUT", { key: "chat.send", enabled: false }, HS);
+  const sH = await call("after-hours", "GET", undefined, HS);
+  chk("A-2", "STAFF: PUT access ⇒ 403 · PUT rules ⇒ 403 · GET after-hours ⇒ 403", sA.status === 403 && sR.status === 403 && sH.status === 403, JSON.stringify({ sA: sA.status, sR: sR.status, sH: sH.status }));
 
   console.log("── Q: quota · home ──");
   const walletsBefore = await prisma.aiCreditWallet.count({ where: { tenantId: tid } });
@@ -152,7 +164,7 @@ try {
   console.log("── X: DTO ──");
   const gets: [string, Record<string, string>][] = [["secretary", {}], ["rooms", {}], ["log", {}], ["access", {}], ["rules", {}], ["scheduled", {}], ["lessons", {}], ["memories/pending", {}], ["support/cases", {}], ["notify", {}], ["badge", {}], ["staff", {}], ["staff/invites", {}], ["after-hours", {}], ["quota", {}], ["suggestions", {}]];
   const leaks: string[] = [];
-  for (const [p, params] of gets) { const r = await call(p, "GET", undefined, H, params); const s = JSON.stringify(r.body); if (r.status !== 200) leaks.push(`${p}:${r.status}`); if (/"(token|accessToken|secret|codeHash|credentials|channelSecret|apiKey|passwordHash)"/i.test(s)) leaks.push(`${p}:leak`); }
+  for (const [p, params] of gets) { const r = await call(p, "GET", undefined, H, params); const s = JSON.stringify(r.body); if (r.status !== 200) leaks.push(`${p}:${r.status}`); if (/"(token|accessToken|secret|codeHash|credentials|channelSecret|apiKey|passwordHash|balanceMicro|costMicro)"/i.test(s) || /"\+66\d{9}"|@example\.com/.test(s)) leaks.push(`${p}:leak`); }
   chk("X-1", "GET ทุกเส้นในชุด 200 · ไม่มีคีย์ token/accessToken/secret/codeHash/credentials/apiKey ใน body", leaks.length === 0, leaks.join(" · "), "CRITICAL");
 
   console.log("── L: rate-limit ──");

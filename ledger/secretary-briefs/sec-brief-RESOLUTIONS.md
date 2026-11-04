@@ -194,3 +194,17 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S2.4e (S-8/S-9/S-10/S-11)** polling หยุดเมื่อ AppState background + backoff ตอน offline · `clientMessageId` ใหม่เมื่อแก้ร่างหลังส่งล้ม + แจ้งเมื่อ duplicate · ปิดห้องมีชีตยืนยัน · guard กดซ้ำใช้ ref
 - **R-S2.4f (S-13)** การ์ด chat.send แสดงบรรทัดลงชื่อที่จะต่อท้ายจริง (R-S1.12c) ใต้ข้อความ
 - **สัญญา S1.14 เพิ่ม (S-5)**: proposals items มี `canApprove` (approvalGate แบบ dry-run สำหรับผู้ดู) · log items มี `canUndo` (สิทธิ์+เวลา server) · เอกสาร `RoomStatus` ค่าจริงจาก `roomStatusOf` (แอป S2.10 ปรับ fixture/สถานะให้ตรง · ไม่มี WAITING_APPROVAL ถ้า server ไม่ส่ง)
+
+## T. รีวิว S1.14 ผู้ตรวจ T/U — มติรอบ 2 (5 พ.ย. ~21:0xZ)
+- **R-S1.14a (T-1/U-1 CRITICAL)** `POST rooms` รับ `clientMessageId` (optional · Id) · claim key `sec:cmid:<tenant>:new:<user>:<id>` ก่อน `startRoom` · ซ้ำ ⇒ 200 `{ duplicate:true, roomId, conversationId }` ของห้องเดิม (ไม่นับงานซ้ำ) · oracle H-3
+- **R-S1.14b (T-2)** `server-actions.ts` ทุก action เรียก `checkRateLimitDb` คีย์เดียวกับ route (send 10/นาที · อื่น 30/นาที) · (T-8) GET หนัก `inbox` `log` `digest` 60/นาที
+- **R-S1.14c (T-3/T-4)** `support/upload`: อนุญาตเฉพาะ jpeg/png/webp/heic/heif/gif · ตรวจ magic bytes · ไม่มี svg · ไม่มี content-length ⇒ 411 · เพดาน 4 MB (Vercel 4.5) จดใน docs · แอป (S2.15) บีบอัดก่อนส่ง
+- **R-S1.14d (U-2)** lib `listMessages(ctx, conv, { before?, take })` เรียงใหม่→เก่าแล้ว reverse · route `messages` ใช้ตัวนี้ (cursor คู่ `<iso>|<id>`) · docs row 36 แก้
+- **R-S1.14e (U-3 REQ-4)** inbox item มี `classes` (`classOfKind`) · แผนมี `kinds[]` + `classes` รวม
+- **R-S1.14f (U-4 REQ-6)** lib `updateTask(ctx, id, patch:{instruction?, hourBkk?, frequency?, days?, channels?, active?})` ใน `scheduled.ts` (cleanDays/cleanChannels เดิม · คง ownerUserId/lastRunDay · เจ้าของงานหรือ OWNER) · `PUT scheduled/[id]` รับ patch เต็ม
+- **R-S1.14g (U-6/U-7/U-8/U-9/T-7)** 429 ทุกที่ = `{ error:"rate_limited", retryAfterSec }` + header · `roomCardDto` มี `pendingProposals` · cursor คู่ใน rooms list · `planCardDto` มี `hasDestructive` + `createdAt` · ข้อความ gate ไทยตาม `g.error` · `decodeURIComponent` ครอบ try/catch ⇒ 404
+- **R-S1.14h (T-5/U-10)** `account/delete`: ลบสำเร็จก่อนแล้วค่อย revoke sessions · (หนี้ S3: step-up OTP)
+- **R-S1.14i (T-6)** `proposals/[id]/edit` เฉพาะผู้ที่อนุมัติได้ (OWNER/MANAGER ตาม canApprove) · lib `editProposal` ต่อท้าย summary ด้วย "(แก้แล้ว: <field>=<value> …)" ของฟิลด์ที่เปลี่ยน · route คืน `summary` ใหม่
+- **R-S1.14j (REQ-5 + S2.7/S2.10 asks)** `notifyUser` ใส่ `data.tenantId` ทุก push (notify.ts — ผู้คุมอนุญาตแตะ) · `GET access` คืนเฉพาะโมดูลของระบบที่ร้านเปิด (+ `ai` เสมอ) · proposal DTO มี `approvers: [{userId, name}]` (OWNER/MANAGER สมาชิกห้องที่ canApprove) และ `signature: CHAT_SEND_SIGNATURE` สำหรับ chat.send · staff row มี `units: [{id, name}]`
+- **T-9 (ข้อมูล)** support attachments data-URL ตัดออกจาก docs (readBody 64 KB) · **หนี้ S3**: `AiMessage.clientMessageId` คอลัมน์ (secretary_c) แทนตาราง rate · step-up ลบบัญชี
+- oracle รอบ 2 `qc-sec-s1.14.mts`: H-3 (POST rooms + clientMessageId ซ้ำ ⇒ duplicate ห้องเดิม · job นับ 1) · A-2 (STAFF PUT access/rules ⇒ 403 · STAFF GET after-hours ⇒ 403 · MANAGER invite role MANAGER ⇒ 4xx) · X-1 ขยาย regex (balanceMicro|costMicro|codeHash|phone":"\+66|@example) → 14 ข้อ
