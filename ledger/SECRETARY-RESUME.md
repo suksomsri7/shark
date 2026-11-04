@@ -3,6 +3,10 @@
 > เริ่มใหม่ = อ่านไฟล์นี้บล็อกบนสุด → `SECRETARY-RUN.md` §3 สถานะ + §4 เหตุการณ์ → ใบถัดไปใน `SECRETARY-MASTER-PLAN.md` §3 → `secretary-briefs/sec-brief-COMMON.md`
 > ทรี `/root/projects/shark-sec` · branch `session/secretary` · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
 
+## ▶️ 4 พ.ย. 2026 ~09:3xZ — เดินเครื่อง (เจ้าของสั่ง "เริ่มทำงานได้") · 0/58
+- รัน: ผู้สำรวจ S0.1 (background · เขียน REVIEW-SECRETARY-DESIGN-2026-11-04.md) · เลน b builder S0.2 (`wip/sec-s0.2`)
+- ถัดไป: รับ S0.1 → RESOLUTIONS → ใบ S0-3 (S0.3+S0.4 เลน c) + S1-1 migration (เลน a=ผู้คุมเขียน oracle · builder เลน c หลัง S0-3)
+
 ## 4 พ.ย. 2026 (ต่อ 2) — มติ 16 ปรับตามการวิเคราะห์ทั้งหมด → แผน v7: 58 ใบ / 41 ชุด ≈254 ชม. · TestFlight ≈15–16 วัน · ชุด ช G1–G5 ใหม่ · S0.2 ต้องรวม `qc-sec-ui.mts` + สี 3 โซน + ไม่มีไมค์ · ใบ S0.1 พรอมป์ให้ครอบ G1–G5 และ chat routing ด้วย · ยังพัก
 
 ## 4 พ.ย. 2026 (ต่อ) — มติ 15 ผู้ดูแล/เรียกช่วย/กฎรับเรื่อง → K5 + S1.24 · แผน 56 ใบ · ยังพัก
