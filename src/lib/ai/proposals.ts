@@ -431,6 +431,9 @@ export async function executeProposal(
     }
     throw e;
   }
+  // SEC S1.3 ▸ สิทธิ์สุทธิ = สิทธิ์คนกด ∩ ระดับต่อระบบของร้าน (ต้อง DRAFT) — ไม่ผ่าน = คง PENDING (เจ้าของเปิดระดับแล้วกดใหม่ได้) ◂
+  const level = await accessLevelGate(ctx.tenantId, row.kind);
+  if (!level.ok) return { ok: false, note: level.reason };
 
   // ── ยืนยัน 2 ชั้น สำหรับรายการลบ/ยกเลิกถาวร (DESTRUCTIVE) ──
   // ชั้นแรก (ไม่มี confirm2x) → คง PENDING ไม่ทำจริง แจ้ง UI ให้ถามยืนยันอีกครั้ง
@@ -496,7 +499,16 @@ export async function runKind(
     if (e instanceof ForbiddenError) throw new Error("คุณยังไม่มีสิทธิ์ทำรายการนี้ ให้ผู้มีสิทธิ์เป็นผู้กดยืนยัน");
     throw e;
   }
+  const level = await accessLevelGate(tenantId, kind); // SEC S1.3 ◂
+  if (!level.ok) throw new Error(level.reason);
   return dispatch(tenantId, refId ?? `run-${kind}-${Date.now()}`, kind, payload, m, userId ?? null);
+}
+
+// SEC S1.3 ▸ ด่านระดับต่อระบบตอนลงมือ (executeProposal · runKind) — import ตอนเรียก: secretary/access → tool-access → ไฟล์นี้
+//   (import บนหัวไฟล์ = วงโหลด) · ไม่มีแถว AiSystemAccess = ทุกโมดูล DRAFT ⇒ ผ่านเสมอ (พฤติกรรมเดิม) ◂
+async function accessLevelGate(tenantId: string, kind: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const { getAccess, kindAllowedByAccess } = await import("./secretary/access");
+  return kindAllowedByAccess(await getAccess(tenantId), kind);
 }
 
 // ── dispatch ตาม kind → service เดิม (คืนข้อความผลลัพธ์ภาษาไทย) ──

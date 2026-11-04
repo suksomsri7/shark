@@ -42,6 +42,7 @@ import { visibleCustomerIds } from "@/lib/modules/member/service";
 import { toMemberActor } from "@/lib/modules/member/access";
 import { listPending as approvalListPending } from "@/lib/modules/approval/service";
 import { actorBranches, membershipCan } from "./tool-access";
+import type { AccessMap } from "./secretary/access-rules";
 
 export type ToolCtx = {
   tenantId: string;
@@ -58,6 +59,8 @@ export type ToolCtx = {
    * ไม่ส่ง = ให้ tool เลือกระบบของร้านเองตามเดิม
    */
   systemId?: string;
+  /** SEC S1.3 ▸ ระดับต่อระบบของร้าน (OFF/READ/DRAFT) — runTool ตรวจหลังด่าน membership · ไม่ส่ง = เดิม ◂ */
+  access?: AccessMap;
 };
 
 export type AiTool = {
@@ -2417,7 +2420,7 @@ export async function runTool(ctx: ToolCtx, name: string, args: unknown): Promis
   try {
     const crmLegacyLead =
       actor.kind === "apiKey" && name === crmApi.LEGACY_CRM_LEAD_TOOL_DEF.name ? await crmApi.crmLegacyLeadOpen(ctx.tenantId, ctx.systemId ?? null) : false;
-    const verdict = toolVerdict(actor, name, { crmLegacyLead });
+    const verdict = toolVerdict(actor, name, { crmLegacyLead, ...(ctx.access ? { access: ctx.access } : {}) }); // SEC S1.3 ◂
     if (!verdict.ok) return JSON.stringify({ error: verdict.reason });
     return await tool.execute(ctx, args);
   } catch (e) {
