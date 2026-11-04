@@ -53,8 +53,8 @@ _(เติมเมื่อถึงใบ)_
 | S1.25 | ✅ | | รอบ 2 d84880c9 + รอบ 3 ffefcf36 (เลน d) · oracle 19/19 ×3 + ×1 ผู้คุมหลัง merge · ผู้ตรวจ O/P → §P · re-check → §P.2 ปิดครบ · s1.19 26/26 · staff-perms 49/49 · merge af21290a · มติสำคัญ: ผู้ใช้เดิมต้องกดรับคำเชิญเอง (auto-join เฉพาะสมัครใหม่) · คีย์อ่อนไหวไม่ให้ผ่านระดับ (system เป็น OFF-only) · หนี้: IP rate-limit บน route preview/accept (S2.21) · คีย์เก่าไม่หายตอน OFF · revokeStaffAccess เดิม MANAGER ถอน OWNER |
 | S1.14 | ✍️ | | ใบ S1-18 `sec-brief-S1.14.md` (ตารางเส้นทาง + sec-real-path.mts) · oracle ยังไม่มี · 🎯 API ชุดเดียว + เส้นทางจริง 3 เส้น (ปิด S1) |
 | S2.1 | 🔨 | | ใบ `sec-brief-S2.1.md` + oracle `qc-sec-s2.1.mts` · builder Opus เลน d `wip/sec-s2.1` เริ่ม 5 พ.ย. ~11:3xZ (ขนานกับ S1.10/S1.14 — แตะเฉพาะ apps/mobile) |
-| S2.2 | ⬜ | | A1 C3 |
-| S2.3 | ⬜ | | A2 |
+| S2.2 | ✍️ | | ใบ S2-2 (S2.2+S2.3) `sec-brief-S2.2.md` + spec `qc-sec-specs/s2.2.json` (oracle ทั่วไป `qc-sec-screen.mts`) · รอ S2.1+S1.14 merge |
+| S2.3 | ✍️ | | รวมในชุด S2-2 |
 | S2.4 | ⬜ | | A3 A4 A5 C4 |
 | S2.5 | ⬜ | | A6 A7 |
 | S2.6 | ⬜ | | A8 push |
