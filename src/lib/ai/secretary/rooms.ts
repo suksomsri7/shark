@@ -40,7 +40,7 @@ export type StartRoomInput = {
 };
 
 export type StartRoomResult =
-  | { ok: true; roomId: string; conversationId: string; jobsUsed: number; jobsLimit: number }
+  | { ok: true; roomId: string; conversationId: string; messageId: string; jobsUsed: number; jobsLimit: number }
   | { ok: false; error: "empty" | "actor" | "quota"; message: string; resetAt?: Date; jobsUsed?: number; jobsLimit?: number };
 
 const TITLE_MAX = 60;
@@ -106,7 +106,7 @@ class QuotaExceeded extends Error {
 /**
  * เปิดห้องงานใหม่ + นับงาน 1 ครั้ง (R-K6: ตัวนับงานอยู่ที่นี่ ไม่ใช่ sendMessage · สั่งเพิ่มในห้องเดิมไม่นับ)
  *   ใน `prisma.$transaction` เดียว: (1) แถวตัวนับของเดือน (INSERT … ON CONFLICT DO NOTHING) (2) conditional `updateMany` `jobs < limit`
- *   → count 0 = โควตาหมด ⇒ throw ⇒ ย้อนทั้ง tx (3) AiConversation (4) AiRoom (5) ข้อความ USER (`authorUserId`)
+ *   → count 0 = โควตาหมด ⇒ throw ⇒ ย้อนทั้ง tx (3) AiConversation (4) AiRoom (5) ข้อความ USER (`authorUserId` · รหัสคืนใน `messageId`)
  *   `now` ฉีดได้ (เดือนไทยของตัวนับ + วันรีเซ็ต)
  */
 export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor }, input: StartRoomInput, now: Date = new Date()): Promise<StartRoomResult> {
@@ -147,11 +147,15 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
         data: { conversationId, tenantId, startedById: actor.userId, title, systems, ...(contextJson ? { contextJson } : {}), jobsCounted: inc },
         select: { id: true },
       });
-      await tx.aiMessage.create({ data: { tenantId, conversationId, role: "USER", content: instruction, authorUserId: actor.userId } });
+      // S1.9 ▸ คืนรหัสข้อความสั่งงานแรก — งานประจำต่อคิว (`enqueueRoomJob`) ด้วยรหัสนี้ ◂
+      const msg = await tx.aiMessage.create({
+        data: { tenantId, conversationId, role: "USER", content: instruction, authorUserId: actor.userId },
+        select: { id: true },
+      });
       const counter = await tx.aiJobCounter.findUnique({ where: { tenantId_month: { tenantId, month } }, select: { jobs: true } });
-      return { roomId: room.id, jobsUsed: counter?.jobs ?? inc };
+      return { roomId: room.id, messageId: msg.id, jobsUsed: counter?.jobs ?? inc };
     });
-    return { ok: true, roomId: res.roomId, conversationId, jobsUsed: res.jobsUsed, jobsLimit: limit };
+    return { ok: true, roomId: res.roomId, conversationId, messageId: res.messageId, jobsUsed: res.jobsUsed, jobsLimit: limit };
   } catch (e) {
     if (!(e instanceof QuotaExceeded)) throw e;
     const resetAt = nextResetBangkok(now);

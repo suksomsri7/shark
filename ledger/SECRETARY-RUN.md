@@ -33,9 +33,9 @@ _(เติมเมื่อถึงใบ)_
 | S1.3 | ✅ | 4 พ.ย. ~16:2xZ | **S1.3b ✅** merge (wip/sec-s1.3b 2b0b1fd1 · oracle 13/13 ×2) ปิดช่องรีวิว C/D: อ่านข้ามโมดูลเคารพ OFF · unmapped fail-closed · route คีย์ API ส่ง access · setAccess โหลด membership · แผนตรวจระดับก่อน claim · CRM door · identity bidi/grapheme · หนี้: setAccessAsPlatform ยังไม่มีผู้เรียก (S2.16) · customer_points ยังถูกยื่นเมื่อ point OFF · access-rules.ts (pure) + access.ts · toolVerdict/toolsOfferedTo รับ access · HAND_TOOL_MODULE (27 โมดูล) · ด่านใน executeProposal/runKind (dynamic import กันวงกลม) · หนี้: route คีย์ API ภายนอกยังไม่ส่ง access · propose_plan ปล่อยขั้นของระบบ OFF ไปตกตอนรัน · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | ✅ | 4 พ.ย. ~18:0xZ | merge (wip/sec-s1.4 33cfaf47) · oracle 28/28 ×3 (ORACLE-EDIT fixture tenantId) · S1.2 ยังเขียวหลัง merge · regression 9 ชุดเท่า baseline · rooms.ts 329 บรรทัด · ConvSight +memberOf/tenantRooms · roomSightFor/canSeeConversationById · rejectPlan room-aware · 🎯 ห้อง = งาน |
 | S1.5 | ✅ | 4 พ.ย. ~20:0xZ | merge (wip/sec-s1.5 d1e0ed19) · oracle 16/16 ×3 · regression 6 ชุดเท่า baseline · worker.ts 279 บรรทัด · minute job `secretary.roomJobs` (crm-cron VPS + outbox hook) · รวม hotfix `secretaryOf().catch` · หนี้: รูปแนบในคิว (ไม่มีคอลัมน์ → secretary_b) · ข้อความ 2 อันในห้องเดียวรันพร้อมกันได้ · docs §6 ห้องปิด · 🎯 คิวเบื้องหลัง |
-| S1.6 | 🔍 | | built d87c8a4f (เลน b) · oracle 14/14 ×3 (ผู้คุม) · s1.4 28/28 หลัง ORACLE-EDIT G-3 · s1.3b/s1.5 เขียวหลัง merge tip · **รอผู้ตรวจ 2 คน (E สิทธิ์ · F สัญญา)** · 🎯 ห้องร่วม |
-| S1.7 | 🔨 | | builder Opus เลน c `wip/sec-s1.7` @f385caa9 เริ่ม 4 พ.ย. ~21:2xZ · oracle `qc-sec-s1.7.mts` · ต้องอนุมัติเสมอ |
-| S1.8 | 🔨 | | รวมในชุด S1-6 (เลน c) · 🎯 บันทึก + ย้อน 24 ชม. |
+| S1.6 | 🔁 | | รอบ 1 built d87c8a4f · oracle 14/14 ×3 · **รีวิว E/F: MERGE-AFTER-FIX** (ข้อเสนอ/แผนก่อนเข้าห้องรั่วถึงสมาชิก seeHistory=false · push ถึงคนที่ถูกถอนสิทธิ์ · ข้อความระบบนับ unread) → RESOLUTIONS §J R-S1.6a–d · oracle เพิ่ม H-3/R-4 · รอบ 2 บนเลน b · 🎯 ห้องร่วม |
+| S1.7 | 🔍 | | built 5fbf0b8f (เลน c) · oracle 22/22 ×3 หลัง ORACLE-EDIT G-2 (ผู้จัดการต้องเป็นสมาชิกห้อง) · s1.4/s1.2/s1.3b เขียว · **รอผู้ตรวจ 2 คน (G สิทธิ์/undo · H สัญญา)** · ต้องอนุมัติเสมอ |
+| S1.8 | 🔍 | | รวมในชุด S1-6 · actions.ts 334 บรรทัด · UNDOABLE 5 kinds · 🎯 บันทึก + ย้อน 24 ชม. |
 | S1.9 | 🔨 | | builder Opus เลน d `wip/sec-s1.9` @a6f98e88 เริ่ม 4 พ.ย. ~22:3xZ · งานประจำ |
 | S1.10 | ✍️ | | ใบ S1-8 (S1.10+S1.15) + oracle `qc-sec-s1.10.mts` (6000cfb1) พร้อม · ตีกลับ + สอน |
 | S1.11 | ⬜ | | ข้อเสนอ + กล่องรวม |
@@ -43,13 +43,13 @@ _(เติมเมื่อถึงใบ)_
 | S1.13 | ✍️ | | ใบ S1-11 + oracle `qc-sec-s1.13.mts` พร้อม (canRunAi · ensureWallet ไม่ GRANT ร้านใหม่ · quotaStatus · GET usage ไม่เขียน) · 🎯 โควตางาน |
 | S1.15 | ✍️ | | รวมในชุด S1-8 · 🎯 วงจรเรียนรู้ |
 | S1.16 | ⬜ | | ข้อมูลสดรายวัน |
-| S1.17 | ⬜ | | Support Desk ต่อแอป |
+| S1.17 | ✍️ | | ใบ S1-12 (S1.17+S1.23) + oracle `qc-sec-s1.17.mts` (4d4a2cd0) พร้อม · Support Desk ต่อแอป |
 | S1.19 | ✅ | 4 พ.ย. ~21:1xZ | merge (wip/sec-s1.19 b52e0a48) · รอบ 1 รีวิว 2 คน BLOCK (CRITICAL อีเมลไม่ยืนยัน) → รอบ 2 ตาม RESOLUTIONS §H · oracle 26/26 ×3 (ORACLE-EDIT Q-3 · R2-Q-2 · R2-ENV) · regression 5 ชุดเท่า baseline · placeholder `<เบอร์>@phone.shark.in.th` + prefs.pendingEmail · normalizeThaiMobile · mock ถูกเมินใน production · 503 เมื่อไม่มีผู้ให้บริการ · deviation รับ: resendAfterSec คงที่ 60 ใน route (กันรั่ว) · otp_used · หนี้: S1.19b ยืนยันอีเมล · index PhoneOtp(ip,createdAt) → secretary_b · step-up เปลี่ยนเบอร์ · 🎯 SMS OTP เบอร์ = ID (รอคีย์ SMS จากเจ้าของ · โหมด mock ก่อน) |
 | S1.20 | ✅ | 4 พ.ย. ~19:2xZ | merge (wip/sec-s1.20 59333ba5) · oracle 19/19 ×3 · regression 6 ชุดเท่า baseline · raw fetch Messages API · `AI_PROVIDER=anthropic` + `SHARK_ANTHROPIC_KEY` (เจ้าของตั้งตอน S3a.2) · หนี้: pricing sonnet 5 คิด 3/15 (จริง 2/10) · cache token คิดเต็ม · ยังไม่เคยยิง API จริง · Anthropic ตรง (รอคีย์ shark จากเจ้าของ · mock ก่อน) |
-| S1.21 | ⬜ | | 🎯 แชทลูกค้า API มือถือ |
+| S1.21 | ✍️ | | ใบ S1-15 (S1.21+S1.24) + oracle `qc-sec-s1.21.mts` (ee9db7ca) พร้อม · 🎯 แชทลูกค้า API มือถือ |
 | S1.22 | ⬜ | | 🎯 สะพานเลขา↔ห้องลูกค้า |
-| S1.23 | ⬜ | | แจ้งเตือน+เรียลไทม์ |
-| S1.24 | ⬜ | | 🎯 ผู้ดูแล · เรียกช่วย · กฎรับเรื่อง · เข้าเวร |
+| S1.23 | ✍️ | | รวมในชุด S1-12 · แจ้งเตือน+เรียลไทม์ |
+| S1.24 | ✍️ | | รวมในชุด S1-15 · 🎯 ผู้ดูแล · เรียกช่วย · กฎรับเรื่อง · เข้าเวร |
 | S1.25 | ⬜ | | 🎯 กิจการ/เชิญ/สิทธิ์ต่อคน API |
 | S1.14 | ⬜ | | 🎯 API ชุดเดียว + เส้นทางจริง 3 เส้น (ปิด S1) |
 | S2.1 | ⬜ | | โครงแอป |
@@ -104,3 +104,4 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย. ~20:0xZ** รับ S1.5 (merge) · ORACLE-EDIT s0.3 ชื่อฟังก์ชัน (getAccess/roomSightFor) · ใบ S1-2b (S1.3b) + oracle → เลน d · เลน b → `wip/sec-s1.6` ชุด S1-5
 - **4 พ.ย. ~21:1xZ** รับ S1.19 รอบ 2 (merge) · เลน c → `wip/sec-s1.7` ชุด S1-6 (S1.7+S1.8 · 2 ผู้ตรวจ)
 - **4 พ.ย. ~22:2xZ** รับ S1.3b (merge) · S1.6 เสร็จ (14/14) → ORACLE-EDIT s1.4 G-3 (seeHistory) · spawn ผู้ตรวจ 2 คน S1.6 · เลน d → `wip/sec-s1.9` ชุด S1-7 · ใบ S1-12 (S1.17+S1.23) + oracle เขียนแล้ว
+- **4 พ.ย. ~23:0xZ** รีวิว S1.6 (E สิทธิ์ · F สัญญา) ⇒ แก้รอบ 2 (§J) · ใบ S1-15 (S1.21+S1.24) เขียนแล้ว · เตรียมครบถึง S1-15 — เหลือ S1.11+S1.16 · S1.22 · S1.25 · S1.14 ที่ยังไม่มีใบ

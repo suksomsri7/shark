@@ -845,6 +845,17 @@ const scheduleTask: AiTool = {
       properties: {
         instruction: { type: "string", description: "สิ่งที่จะให้ผู้ช่วยทำเป็นงานประจำ (ภาษาไทย)" },
         hourBkk: { type: "integer", minimum: 0, maximum: 23, description: "ชั่วโมงที่จะทำ 0-23 ตามเวลาไทย (เช่น 18 = 18:00)" },
+        // S1.9 ▸ ความถี่ (ไม่บังคับ · ปริยาย DAILY) + วันที่เลือก ◂
+        frequency: {
+          type: "string",
+          enum: ["DAILY", "WEEKLY", "MONTHLY"],
+          description: "ความถี่ (ไม่บังคับ · ปริยาย DAILY): DAILY = ทุกวัน · WEEKLY = ทุกสัปดาห์ตามวันใน days · MONTHLY = ทุกเดือนตามวันที่ใน days",
+        },
+        days: {
+          type: "array",
+          items: { type: "integer", minimum: 0, maximum: 31 },
+          description: "วันที่เลือก (ใช้กับ WEEKLY/MONTHLY เท่านั้น): WEEKLY = วันในสัปดาห์ 0=อาทิตย์ 1=จันทร์ … 6=เสาร์ · MONTHLY = วันที่ของเดือน 1-31 · DAILY ไม่ต้องใส่",
+        },
       },
       required: ["instruction", "hourBkk"],
       additionalProperties: false,
@@ -859,12 +870,28 @@ const scheduleTask: AiTool = {
       return JSON.stringify({ error: "ชั่วโมงที่ให้ทำต้องอยู่ระหว่าง 0-23 (เวลาไทย)", suggestion: "เช่น 18 = หกโมงเย็น" });
     }
     const hh = String(hourBkk).padStart(2, "0");
-    // บอกค่าใช้จ่ายบนการ์ดยืนยันด้วย — งานประจำ 1 งานกินเครดิตพอ ๆ กับคุยเองทุกวัน
-    // (วัดจริง: งานที่ต้องดึงข้อมูล ~$0.036/ครั้ง ≈ $1.1/เดือน) เจ้าของต้องเห็นก่อนกดตกลง
+    // S1.9 ▸ ความถี่ไม่ระบุ = ข้อเสนอแบบเดิมทุกตัวอักษร (ทุกวัน) · ระบุ = ตรวจเบื้องต้น + ใส่ใน payload (createTask ตรวจซ้ำตอนยืนยัน) ◂
+    const freqRaw = a.frequency === undefined || a.frequency === null || a.frequency === "" ? "" : String(a.frequency).trim().toUpperCase();
+    if (freqRaw && !["DAILY", "WEEKLY", "MONTHLY"].includes(freqRaw)) {
+      return JSON.stringify({ error: `ไม่รู้จักความถี่ "${freqRaw}"`, suggestion: "ใช้ DAILY (ทุกวัน) WEEKLY (ทุกสัปดาห์) หรือ MONTHLY (ทุกเดือน)" });
+    }
+    const days = Array.isArray(a.days) ? a.days.map((x) => Number(x)).filter((n) => Number.isInteger(n)) : [];
+    if ((freqRaw === "WEEKLY" || freqRaw === "MONTHLY") && days.length === 0) {
+      return JSON.stringify({ error: "งานประจำรายสัปดาห์/รายเดือนต้องระบุวันใน days", suggestion: "WEEKLY: 1 = จันทร์ · MONTHLY: 1 = วันที่ 1" });
+    }
+    if (!freqRaw || freqRaw === "DAILY") {
+      // บอกค่าใช้จ่ายบนการ์ดยืนยันด้วย — งานประจำ 1 งานกินเครดิตพอ ๆ กับคุยเองทุกวัน
+      // (วัดจริง: งานที่ต้องดึงข้อมูล ~$0.036/ครั้ง ≈ $1.1/เดือน) เจ้าของต้องเห็นก่อนกดตกลง
+      const summary =
+        `ตั้งงานประจำทุกวันเวลา ${hh}:00 น. — ${instruction}\n` +
+        `⚡ ใช้เครดิตประมาณ $0.01–0.04 ต่อครั้ง (~$0.3–1.1 หรือ 10–40 บาทต่อเดือน) ปิดทีหลังได้ที่ ตั้งค่า → เครดิต AI`;
+      return propose(ctx, "ai_schedule_task", summary, freqRaw ? { instruction, hourBkk, frequency: "DAILY" } : { instruction, hourBkk });
+    }
+    const { describeFrequency } = await import("./scheduled");
     const summary =
-      `ตั้งงานประจำทุกวันเวลา ${hh}:00 น. — ${instruction}\n` +
-      `⚡ ใช้เครดิตประมาณ $0.01–0.04 ต่อครั้ง (~$0.3–1.1 หรือ 10–40 บาทต่อเดือน) ปิดทีหลังได้ที่ ตั้งค่า → เครดิต AI`;
-    return propose(ctx, "ai_schedule_task", summary, { instruction, hourBkk });
+      `ตั้งงานประจำ${describeFrequency(freqRaw, days)} เวลา ${hh}:00 น. — ${instruction}\n` +
+      `⚡ ใช้งานจากโควตา 1 งานต่อครั้งที่ทำ ปิดทีหลังได้ที่หน้างานประจำ`;
+    return propose(ctx, "ai_schedule_task", summary, { instruction, hourBkk, frequency: freqRaw, days });
   },
 };
 
