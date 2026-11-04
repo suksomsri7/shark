@@ -1,5 +1,5 @@
 // POST /api/mobile/secretary/account/delete {confirm: "ลบบัญชี"} — ลบบัญชีผู้ใช้ (App Store 5.1.1(v) · Q10) · Bearer อย่างเดียว · 3/นาที
-//   ถอนทุก session ของผู้ใช้ก่อน (โทเค็นแอป/เว็บใช้ไม่ได้ทันที) → `deleteAccount` (ส่งมอบร้าน/คิวลบร้าน/ลบ User — Session cascade)
+//   `deleteAccount` ก่อน (ส่งมอบร้าน/คิวลบร้าน/ลบ User — Session cascade) → สำเร็จแล้วถอน Session ที่อาจเหลือ (R-S1.14h · ลบล้ม = ยังเข้าใช้ได้ตามเดิม) · หนี้ S3: step-up OTP
 import { z } from "zod";
 import { prisma } from "@/lib/core/db";
 import { deleteAccount } from "@/lib/platform/account-deletion";
@@ -17,9 +17,9 @@ export async function POST(req: Request) {
   if (!b.ok) return b.res;
   if (b.v.confirm.trim() !== CONFIRM) return fail(400, "confirm_required", `พิมพ์คำว่า "${CONFIRM}" เพื่อยืนยัน`);
   try {
-    await prisma.session.updateMany({ where: { userId: a.userId, revokedAt: null }, data: { revokedAt: new Date() } });
     const r = await deleteAccount(a.userId);
     if (!r.ok) return fail(404, "not_found", r.reason);
+    await prisma.session.updateMany({ where: { userId: a.userId, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
     return ok({ ok: true, impact: r.impact });
   } catch (e) {
     return thrown(e, "account.delete");

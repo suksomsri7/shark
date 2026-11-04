@@ -129,6 +129,56 @@ async function createOwnedTask(
   return { id: row.id };
 }
 
+/** S1.14 R-S1.14f ▸ แก้งานประจำ — ช่องที่ส่งมาเท่านั้น (ไม่ส่ง = คงเดิม) · ownerUserId/lastRunDay คงเดิม ◂ */
+export type TaskPatch = { instruction?: string; hourBkk?: number; frequency?: Frequency; days?: number[]; channels?: Channel[]; active?: boolean };
+
+/**
+ * แก้งานประจำ (S1.14 R-S1.14f) — ผู้แก้ = เจ้าของงาน (`ownerUserId`) หรือ OWNER ของร้าน (โหลด Membership ที่รับแล้วจากฐาน · งานแบบเดิมที่ไม่มีเจ้าของ = OWNER เท่านั้น)
+ *   ตรวจด้วยตัวเดียวกับตอนสร้าง (`cleanDays` · `cleanChannels` · ชั่วโมง 0–23 · คำสั่งไม่ว่าง) — ผิด = throw ไทย ไม่เขียน
+ *   เปลี่ยนความถี่โดยไม่ส่งวัน ⇒ ตรวจวันเดิมกับความถี่ใหม่ (DAILY ล้างวันเป็น []) · ไม่พบ/ร้านอื่น = not_found · ไม่ใช่ผู้มีสิทธิ์ = forbidden
+ */
+export async function updateTask(
+  ctx: Ctx & { userId: string },
+  id: string,
+  patch: TaskPatch,
+): Promise<{ ok: true; task: AiScheduledTask } | { ok: false; error: "not_found" | "forbidden" }> {
+  const tid = typeof id === "string" ? id.trim() : "";
+  const row = tid ? await tenantDb(ctx).aiScheduledTask.findFirst({ where: { id: tid } }) : null;
+  if (!row) return { ok: false, error: "not_found" };
+  const me = await prisma.membership.findFirst({ where: { tenantId: ctx.tenantId, userId: ctx.userId, acceptedAt: { not: null } }, select: { role: true } });
+  if (!me || !(me.role === "OWNER" || (row.ownerUserId !== null && row.ownerUserId === ctx.userId))) return { ok: false, error: "forbidden" };
+  const p = patch ?? {};
+  const data: Record<string, unknown> = {};
+  if (p.instruction !== undefined) {
+    const instruction = String(p.instruction ?? "").trim();
+    if (!instruction) throw new Error("ต้องระบุสิ่งที่จะให้ผู้ช่วยทำเป็นงานประจำ");
+    data.instruction = instruction;
+  }
+  if (p.hourBkk !== undefined) {
+    const h = Math.round(Number(p.hourBkk));
+    if (!Number.isFinite(h) || h < 0 || h > 23) throw new Error("ชั่วโมงที่ให้ทำต้องอยู่ระหว่าง 0-23 (เวลาไทย)");
+    data.hourBkk = h;
+  }
+  if (p.frequency !== undefined || p.days !== undefined) {
+    const freqRaw = String(p.frequency ?? row.frequency ?? "DAILY").trim().toUpperCase();
+    if (!(FREQUENCIES as readonly string[]).includes(freqRaw)) throw new Error(`ไม่รู้จักความถี่ "${String(p.frequency).slice(0, 20)}" — ใช้ได้เฉพาะ ทุกวัน (DAILY) ทุกสัปดาห์ (WEEKLY) หรือทุกเดือน (MONTHLY)`);
+    const frequency = freqRaw as Frequency;
+    data.frequency = frequency;
+    data.days = cleanDays(frequency, p.days !== undefined ? p.days : row.days);
+  }
+  if (p.channels !== undefined) data.channels = cleanChannels(p.channels);
+  if (p.active !== undefined) {
+    if (typeof p.active !== "boolean") throw new Error("ค่าเปิด/ปิดงานประจำต้องเป็นใช่หรือไม่ใช่");
+    data.active = p.active;
+  }
+  if (Object.keys(data).length > 0) {
+    const r = await tenantDb(ctx).aiScheduledTask.updateMany({ where: { id: row.id }, data });
+    if (r.count !== 1) return { ok: false, error: "not_found" };
+  }
+  const task = await tenantDb(ctx).aiScheduledTask.findFirst({ where: { id: row.id } });
+  return task ? { ok: true, task } : { ok: false, error: "not_found" };
+}
+
 /** คำอธิบายความถี่ภาษาไทย (pure) — เช่น "ทุกวัน" · "ทุกสัปดาห์ (วันจันทร์)" · "ทุกเดือน (วันที่ 1, 15)" */
 export function describeFrequency(frequency: string | null | undefined, days: number[] | null | undefined): string {
   const f = (FREQUENCIES as readonly string[]).includes(String(frequency)) ? (frequency as Frequency) : "DAILY";

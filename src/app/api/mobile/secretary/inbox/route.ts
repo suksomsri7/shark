@@ -3,11 +3,13 @@
 //   การอนุมัติจริงยิง approve พร้อม x-tenant-id ของร้านนั้น (ตรวจซ้ำทั้งหมด)
 import { inboxForUser } from "@/lib/ai/secretary/inbox";
 import { inboxItemDto } from "@/lib/ai/secretary/dto";
-import { fail, ok, optId, takeOf, userGate } from "../_shared";
+import { fail, ok, optId, takeOf, userGate, withRateLimit } from "../_shared";
 
 export async function GET(req: Request) {
   const a = await userGate(req);
   if (!a.ok) return a.res;
+  const rl = await withRateLimit(a.userId, "inbox", 60); // GET หนัก (ทุกร้าน · R-S1.14b)
+  if (rl) return rl;
   const q = new URL(req.url).searchParams;
   const tenantId = optId(q.get("tenantId"));
   const kind = q.get("kind");

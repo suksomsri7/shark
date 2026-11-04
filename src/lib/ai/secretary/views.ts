@@ -3,7 +3,7 @@
 // อ่านอย่างเดียว ไม่มีผลข้างเคียง: ประกอบผลของ lib ที่มีอยู่ (approvalGate · planApprovalGate · kindAllowedByAccess · UNDOABLE_KINDS) ให้เป็นธงต่อผู้ดู
 //   🔴 ธงเป็นแค่ "คำใบ้ของจอ" — การกดจริงยังผ่าน executeProposal / executePlan / undoAction ที่ตรวจซ้ำทุกด่าน
 import type { AiActionLog } from "@prisma/client";
-import { tenantDb } from "@/lib/core/db";
+import { prisma, tenantDb } from "@/lib/core/db";
 import { bkkYmd } from "@/lib/core/quiet-hours";
 import type { MembershipCtx } from "@/lib/core/rbac";
 import type { AiMemberActor } from "../actor";
@@ -11,11 +11,13 @@ import type { ConvCtx } from "../conversation-owner";
 import { listPendingProposals } from "../proposals";
 import { listPendingPlans } from "../plans";
 import { actorCanConfirmKind, membershipCan } from "../tool-access";
-import { getAccess, kindAllowedByAccess, type AccessMap } from "./access";
+import { kindAccessOf } from "../kind-tables";
+import type { RoomCard } from "./rooms";
+import { AI_MODULES, getAccess, kindAllowedByAccess, MODULE_LABEL_TH, type AccessMap } from "./access";
 import { approvalGate, planApprovalGate } from "./approval-gate";
 import { UNDOABLE_KINDS } from "./actions";
 import { visibleSinceFor } from "./members";
-import { logDto, planCardDto, planDto, proposalDto } from "./dto";
+import { classesOf, logDto, planCardDto, planDto, proposalDto, roomCardDto } from "./dto";
 
 type Viewer = { tenantId: string; userId: string; m: MembershipCtx; conv: { tenantId: string; actor: AiMemberActor } };
 
@@ -34,7 +36,16 @@ async function accessOf(tenantId: string): Promise<AccessMap | null> {
  *   ข้อเสนอที่ยังเตรียมเนื้อ (`resultNote` WORKING#) = canApprove false
  */
 export async function pendingItemsFor(v: Viewer, conversationId: string) {
-  const [props, plans, access] = await Promise.all([listPendingProposals(v.conv, conversationId), listPendingPlans(v.conv, conversationId), accessOf(v.tenantId)]);
+  const [props, plans, access, pool] = await Promise.all([
+    listPendingProposals(v.conv, conversationId),
+    listPendingPlans(v.conv, conversationId),
+    accessOf(v.tenantId),
+    approverPool(v.tenantId, conversationId),
+  ]);
+  const approversOf = (kinds: string[]) =>
+    !access || kinds.length === 0 || !kinds.every((k) => kindAllowedByAccess(access, k).ok)
+      ? []
+      : pool.filter((a) => kinds.every((k) => { const q = kindAccessOf(k); return !!q && membershipCan(a.m, q, a.userId); })).map((a) => ({ userId: a.userId, name: a.name }));
   const pItems = [];
   for (const p of props) {
     let canApprove = false;
@@ -46,7 +57,7 @@ export async function pendingItemsFor(v: Viewer, conversationId: string) {
       canApprove = g.ok;
       why = g.ok ? g.why : undefined;
     }
-    pItems.push({ ...proposalDto(p, why), canApprove });
+    pItems.push({ ...proposalDto(p, why), canApprove, approvers: approversOf([p.kind]) });
   }
   const plItems = [];
   for (const p of plans) {
@@ -54,7 +65,7 @@ export async function pendingItemsFor(v: Viewer, conversationId: string) {
     const kinds = steps.map((s) => String(s?.kind ?? ""));
     let canApprove = !!access && kinds.length > 0 && kinds.every((k) => kindAllowedByAccess(access!, k).ok && actorCanConfirmKind(v.conv.actor, k));
     if (canApprove) canApprove = (await planApprovalGate(v.tenantId, v.m, p.conversationId, steps, v.userId)) === null;
-    plItems.push({ ...planDto(p), canApprove });
+    plItems.push({ ...planDto(p), kinds, classes: classesOf(kinds), canApprove, approvers: approversOf(kinds) });
   }
   return [...pItems, ...plItems].sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime());
 }
@@ -120,4 +131,64 @@ async function logLinks(tenantId: string, rows: AiActionLog[]): Promise<Map<stri
     if (l) out.set(r.id, l);
   }
   return out;
+}
+
+/**
+ * ผู้ที่อนุมัติข้อเสนอในห้องนี้ได้ (R-S1.14j · การ์ด "รอใครอนุมัติ") — OWNER ทุกคน + MANAGER ที่เป็นผู้เปิด/สมาชิกห้อง (R-K4 · มองเห็นห้อง)
+ *   Membership ที่รับแล้วของร้าน · ผู้เรียกกรองต่อด้วย `membershipCan` ของ kind + ระดับเลขา (กติกาเดียวกับ approvalGate)
+ */
+async function approverPool(tenantId: string, conversationId: string): Promise<{ userId: string; name: string; m: MembershipCtx }[]> {
+  const room = await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId }, select: { startedById: true, members: { select: { userId: true } } } });
+  if (!room) return [];
+  const inRoom = new Set([room.startedById, ...room.members.map((x) => x.userId)]);
+  const rows = await prisma.membership.findMany({
+    where: { tenantId, acceptedAt: { not: null }, role: { in: ["OWNER", "MANAGER"] } },
+    select: { userId: true, role: true, unitAccess: true, permissions: true, user: { select: { name: true, email: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows
+    .filter((r) => r.role === "OWNER" || inRoom.has(r.userId))
+    .map((r) => ({
+      userId: r.userId,
+      name: r.user?.name?.trim() || "สมาชิก",
+      m: { role: r.role, unitAccess: Array.isArray(r.unitAccess) ? (r.unitAccess as string[]) : [], permissions: (r.permissions ?? {}) as Record<string, unknown> },
+    }));
+}
+
+/** ผู้เรียกอนุมัติข้อเสนอนี้ได้ไหม (dry-run เดียวกับ pendingItemsFor) — ด่านของเส้นแก้ก่อนอนุมัติ (R-S1.14i) · มองไม่เห็น/ไม่ PENDING = null */
+export async function proposalApprovableBy(v: Viewer, proposalId: string): Promise<boolean | null> {
+  const row = await tenantDb({ tenantId: v.tenantId }).aiProposal.findFirst({ where: { id: proposalId }, select: { conversationId: true } });
+  if (!row) return null;
+  const items = await pendingItemsFor(v, row.conversationId);
+  const it = items.find((x) => x.type === "proposal" && x.id === proposalId);
+  return it ? it.canApprove : null;
+}
+
+/** การ์ดห้อง + `pendingProposals` (ข้อเสนอ+แผน PENDING ที่ยังไม่หมดอายุ ต่อห้อง · 2 groupBy ต่อหน้า) */
+export async function roomCardsFor(tenantId: string, rows: RoomCard[], now: Date = new Date()) {
+  if (rows.length === 0) return [];
+  const convIds = rows.map((r) => r.conversationId);
+  const db = tenantDb({ tenantId });
+  const [props, plans] = await Promise.all([
+    db.aiProposal.groupBy({ by: ["conversationId"], where: { conversationId: { in: convIds }, status: "PENDING", expiresAt: { gt: now } }, _count: { _all: true } }),
+    db.aiPlan.groupBy({ by: ["conversationId"], where: { conversationId: { in: convIds }, status: "PENDING", expiresAt: { gt: now } }, _count: { _all: true } }),
+  ]);
+  const n = new Map<string, number>();
+  for (const g of [...props, ...plans]) n.set(g.conversationId, (n.get(g.conversationId) ?? 0) + g._count._all);
+  return rows.map((r) => roomCardDto(r, n.get(r.conversationId) ?? 0));
+}
+
+/**
+ * ระดับเลขาต่อระบบ — เฉพาะโมดูลของระบบที่ร้านเปิดอยู่ (AppSystem active · BusinessUnit ที่ไม่ ARCHIVED) + แถว `ai` เสมอ (ปิดไม่ได้ · R-S1.14j)
+ *   โมดูลที่ไม่ผูกกับระบบใด (kb · approval · automation · system · calendar) ไม่แสดงในรุ่นนี้ — ระดับยังมีผลตามค่าในฐาน
+ */
+export async function accessItemsFor(tenantId: string, levels: AccessMap) {
+  const [systems, units] = await Promise.all([
+    prisma.appSystem.findMany({ where: { tenantId, active: true }, select: { type: true } }),
+    prisma.businessUnit.findMany({ where: { tenantId, status: { not: "ARCHIVED" } }, select: { type: true } }),
+  ]);
+  const enabled = new Set([...systems.map((x) => String(x.type).toLowerCase()), ...units.map((x) => String(x.type).toLowerCase())]);
+  const items: { module: string; label: string; level: string; alwaysOn: boolean }[] = [{ module: "ai", label: "ผู้ช่วย AI", level: "DRAFT", alwaysOn: true }];
+  for (const m of AI_MODULES) if (enabled.has(m)) items.push({ module: m, label: MODULE_LABEL_TH[m], level: levels[m], alwaysOn: false });
+  return items;
 }

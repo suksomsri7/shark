@@ -6,6 +6,7 @@
 import type { AiActionLog, AiLesson, AiMessage, AiPlan, AiProposal, AiScheduledTask } from "@prisma/client";
 import { classOfKind } from "./kind-class";
 import { FREE_PACK } from "./pack";
+import { CHAT_SEND_SIGNATURE } from "./chat-send";
 import type { RoomCard, RoomStatus } from "./rooms";
 import type { RoomMemberRow } from "./members";
 import type { InboxItem } from "./inbox";
@@ -18,7 +19,20 @@ export function secretaryDto(identity: SecretaryIdentity, sample: string, saved:
   return { name: identity.name, suffix: identity.suffix, tone: identity.tone, languages: identity.languages, sample, saved };
 }
 
-export function roomCardDto(r: RoomCard) {
+/** ชั้นรวมของหลาย kind (แผน) — ชั้นใดจริงในขั้นใดขั้นหนึ่ง = จริง */
+export function classesOf(kinds: readonly string[]) {
+  const out = { money: false, customerFacing: false, destructive: false };
+  for (const k of kinds) {
+    const c = classOfKind(k);
+    out.money ||= c.money;
+    out.customerFacing ||= c.customerFacing;
+    out.destructive ||= c.destructive;
+  }
+  return out;
+}
+
+/** การ์ดห้อง · `pendingProposals` = ข้อเสนอ+แผนที่รออนุมัติของห้อง (ตัวนับ — ผู้เรียกส่งมา) */
+export function roomCardDto(r: RoomCard, pendingProposals = 0) {
   return {
     id: r.id,
     conversationId: r.conversationId,
@@ -29,6 +43,7 @@ export function roomCardDto(r: RoomCard) {
     startedByName: r.startedByName,
     memberIds: r.memberIds,
     unread: r.unread,
+    pendingProposals,
     updatedAt: r.updatedAt,
     closedAt: r.closedAt,
   };
@@ -84,6 +99,8 @@ export function proposalDto(p: Pick<AiProposal, "id" | "kind" | "risk" | "summar
     class: { destructive: k.destructive, money: k.money, customerFacing: k.customerFacing, piiExport: k.piiExport },
     /** สัญญาจอ A3/A4 (ผู้คุม S2.4) — ชั้นที่การ์ดแสดงป้าย */
     classes: { money: k.money, customerFacing: k.customerFacing, destructive: k.destructive },
+    /** chat.send: บรรทัดลงชื่อที่ระบบต่อท้ายตอนส่งจริง (R-S1.12c) — การ์ดแสดงให้ผู้อนุมัติเห็นทั้งฉบับ */
+    ...(p.kind === "chat.send" ? { signature: CHAT_SEND_SIGNATURE } : {}),
     /** เหตุผลไทยว่าทำไมต้องอนุมัติ (`whyApproval` + กฎของร้าน — ข้อความเดียวกับกล่องรวม) · ไม่ส่ง = ไม่มี */
     ...(why ? { why } : {}),
     /** แก้ก่อนอนุมัติได้ = kind ของทะเบียน op เท่านั้น (Q9) · chat.send / kind เขียนมือ = false */
@@ -109,7 +126,7 @@ export type PlanStepStatus = "PENDING" | "RUNNING" | "DONE" | "FAILED" | "SKIPPE
  * แผนสำหรับการ์ดขั้น (A3) — สถานะขั้นจาก stepsJson (PENDING/DONE/FAILED ที่ executePlan เขียน) +
  *   แผน RUNNING: ขั้น PENDING แรก = RUNNING · ขั้น PENDING หลังขั้นที่ FAILED = SKIPPED (executePlan หยุดที่ขั้นล้ม)
  */
-export function planCardDto(p: Pick<AiPlan, "id" | "title" | "status" | "stepsJson">) {
+export function planCardDto(p: Pick<AiPlan, "id" | "title" | "status" | "stepsJson" | "hasDestructive" | "createdAt">) {
   let failed = false;
   let runningSet = false;
   const steps = (Array.isArray(p.stepsJson) ? p.stepsJson : [])
@@ -126,7 +143,7 @@ export function planCardDto(p: Pick<AiPlan, "id" | "title" | "status" | "stepsJs
       }
       return { kind: x.kind as string, summary: x.summary as string, status };
     });
-  return { id: p.id, title: p.title, status: p.status, steps };
+  return { id: p.id, title: p.title, status: p.status, hasDestructive: p.hasDestructive, createdAt: p.createdAt, steps };
 }
 
 /** บันทึกการกระทำ (B5) — ไม่มี payload (ids ภายใน) · `canUndo` = ยังอยู่ในกรอบ 24 ชม. และยังไม่ย้อน (สิทธิ์จริงตรวจตอนกด) */
@@ -182,6 +199,8 @@ export function inboxItemDto(i: InboxItem) {
     conversationId: i.conversationId,
     summary: i.summary,
     ...(i.kind ? { kind: i.kind } : {}),
+    ...(i.kinds ? { kinds: i.kinds } : {}),
+    classes: classesOf(i.kind ? [i.kind] : (i.kinds ?? [])),
     ...(i.risk ? { risk: i.risk } : {}),
     canApprove: i.canApprove,
     ...(i.why ? { why: i.why } : {}),

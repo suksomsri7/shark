@@ -2,11 +2,13 @@
 //   ต่อแถว `canUndo` (สิทธิ์จริงของผู้เรียก) + `link` (พาธ /app สำหรับ WebView `?open=` · ไม่รู้ = null) · OWNER ทุกแถว · คนอื่น = ห้องที่ตัวเองเปิด/เป็นสมาชิก + แถวที่ตัวเองสั่ง/อนุมัติ · day = YYYY-MM-DD เวลาไทย
 import { listLog } from "@/lib/ai/secretary/actions";
 import { logItemsFor } from "@/lib/ai/secretary/views";
-import { fail, gate, ok, optId, takeOf } from "../_shared";
+import { fail, gate, ok, optId, takeOf, withRateLimit } from "../_shared";
 
 export async function GET(req: Request) {
   const a = await gate(req);
   if (!a.ok) return a.res;
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "log", 60); // GET หนัก (R-S1.14b)
+  if (rl) return rl;
   const q = new URL(req.url).searchParams;
   const day = q.get("day") ?? undefined;
   if (day !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return fail(400, "invalid", "วันที่ต้องเป็นรูปแบบ YYYY-MM-DD", { field: "day" });

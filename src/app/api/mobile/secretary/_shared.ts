@@ -10,7 +10,7 @@ import { ForbiddenError, type AccessQuery, type MembershipCtx } from "@/lib/core
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { logOps } from "@/lib/core/ops";
 import { prisma } from "@/lib/core/db";
-import { requireMobile, mobileError, mobileUser, type MobileAuth } from "@/lib/mobile/auth";
+import { requireMobile, mobileUser, type MobileAuth } from "@/lib/mobile/auth";
 import { AI_CHAT, mobileAiCtx, mobileDenied } from "@/lib/mobile/guard";
 import type { AiMemberActor } from "@/lib/ai/actor";
 
@@ -34,6 +34,13 @@ export const forbidden = (message = "บัญชีนี้ยังไม่�
 export const ok = (body: unknown) => Response.json(body);
 
 const DENY_TH = "บัญชีนี้ยังไม่มีสิทธิ์ใช้เลขา AI ของกิจการนี้ — ขอสิทธิ์จากเจ้าของกิจการ";
+/** ข้อความไทยของด่าน `requireMobile` ตามรหัส (R-S1.14g) */
+const GATE_TH: Record<string, string> = {
+  unauthorized: "เข้าสู่ระบบใหม่อีกครั้ง",
+  missing_tenant: "เลือกกิจการก่อนใช้งาน",
+  forbidden: "บัญชีนี้ไม่ได้อยู่ในกิจการนี้ หรือยังไม่ได้รับคำเชิญ",
+  suspended: "กิจการนี้ถูกระงับการใช้งาน — ติดต่อทีมงาน SHARK",
+};
 
 /**
  * ด่านของเส้นระดับกิจการ — Bearer + x-tenant-id (Membership ที่รับแล้ว · ร้านไม่ถูกระงับ) + คีย์สิทธิ์
@@ -41,7 +48,7 @@ const DENY_TH = "บัญชีนี้ยังไม่มีสิทธิ
  */
 export async function gate(req: Request, access: AccessQuery | null = AI_CHAT): Promise<{ ok: true; c: SecCtx } | { ok: false; res: Response }> {
   const g = await requireMobile(req);
-  if (!g.ok) return { ok: false, res: Response.json({ error: g.error, message: g.status === 401 ? "เข้าสู่ระบบใหม่อีกครั้ง" : "บัญชีนี้ไม่ได้อยู่ในกิจการนี้" }, { status: g.status }) };
+  if (!g.ok) return { ok: false, res: Response.json({ error: g.error, message: GATE_TH[g.error] ?? GATE_TH.forbidden }, { status: g.status }) };
   if (access && mobileDenied(g, access)) return { ok: false, res: forbidden(access === AI_CHAT ? DENY_TH : undefined) };
   const ua = Array.isArray(g.membership.unitAccess) ? (g.membership.unitAccess as unknown[]).filter((u): u is string => typeof u === "string") : [];
   const m: MembershipCtx = { role: g.membership.role, unitAccess: ua, permissions: (g.membership.permissions ?? {}) as Record<string, unknown> };
@@ -51,7 +58,7 @@ export async function gate(req: Request, access: AccessQuery | null = AI_CHAT): 
 /** ด่านของเส้นระดับผู้ใช้ (ไม่ต้องมี x-tenant-id): inbox · tenants/create · invites/accept · account/* */
 export async function userGate(req: Request): Promise<{ ok: true; userId: string } | { ok: false; res: Response }> {
   const user = await mobileUser(req);
-  if (!user) return { ok: false, res: mobileError({ ok: false, status: 401, error: "unauthorized" }) };
+  if (!user) return { ok: false, res: Response.json({ error: "unauthorized", message: GATE_TH.unauthorized }, { status: 401 }) };
   return { ok: true, userId: user.id };
 }
 
@@ -97,7 +104,12 @@ export async function readBody<T extends z.ZodType>(req: Request, schema: T): Pr
 /** id จาก path — string 1..80 ตัว ไม่งั้น null (ผู้เรียกตอบ 404) */
 export async function idParam<P extends string>(ctx: RouteCtx<P> | undefined, name: P): Promise<string | null> {
   const raw = ctx ? (await ctx.params)[name] : undefined;
-  const v = typeof raw === "string" ? decodeURIComponent(raw).trim() : "";
+  let v = "";
+  try {
+    v = typeof raw === "string" ? decodeURIComponent(raw).trim() : "";
+  } catch {
+    return null; // % เสีย ⇒ 404 (ไม่โยน 500)
+  }
   return v && v.length <= ID_MAX ? v : null;
 }
 
@@ -151,4 +163,36 @@ export async function claimClientMessageId(tenantId: string, roomId: string, cli
   const key = `sec:cmid:${tenantId}:${roomId}:${clientMessageId}`;
   const r = await checkRateLimitDb(key, { limit: 1, windowMs: 24 * 3_600_000 });
   return { first: r.ok, release: async () => void (await prisma.chatRateBucket.deleteMany({ where: { key } }).catch(() => {})) };
+}
+
+/** cursor คู่ `before=<iso>|<id>` (แบบ inbox R-S1.21h) — ไม่ส่ง = undefined · รูปผิด = null (ผู้เรียกตอบ 400) */
+export function pairCursor(v: string | null): { at: Date; id: string } | undefined | null {
+  if (v === null || v === "") return undefined;
+  const i = v.lastIndexOf("|");
+  if (i <= 0) return null;
+  const at = new Date(v.slice(0, i));
+  const id = v.slice(i + 1).trim();
+  if (Number.isNaN(at.getTime()) || !id || id.length > ID_MAX) return null;
+  return { at, id };
+}
+export const cursorOf = (at: Date, id: string) => `${at.toISOString()}|${id}`;
+
+/**
+ * กันเปิดห้องซ้ำ (R-S1.14a) — `POST rooms` ที่แอป retry ด้วย clientMessageId เดิม
+ *   claim `sec:cmid:<ร้าน>:new:<ผู้ใช้>:<id>` (คำสั่งเดียว · 24 ชม.) ก่อน startRoom · สำเร็จแล้วจดห้องไว้ที่ `<claim>:room:<roomId>`
+ *   ซ้ำ ⇒ อ่านห้องจากกุญแจที่จดไว้ (ยังสร้างไม่เสร็จ = `pending` ให้แอปลองใหม่) · หนี้ S3: คอลัมน์ clientMessageId (secretary_c)
+ */
+export async function claimNewRoom(tenantId: string, userId: string, clientMessageId: string) {
+  const key = `sec:cmid:${tenantId}:new:${userId}:${clientMessageId}`;
+  const r = await checkRateLimitDb(key, { limit: 1, windowMs: 24 * 3_600_000 });
+  return {
+    first: r.ok,
+    release: async () => void (await prisma.chatRateBucket.deleteMany({ where: { key } }).catch(() => {})),
+    remember: async (roomId: string) =>
+      void (await prisma.chatRateBucket.create({ data: { key: `${key}:room:${roomId}`, count: 1, windowStart: new Date() } }).catch(() => {})),
+    existingRoomId: async (): Promise<string | null> => {
+      const row = await prisma.chatRateBucket.findFirst({ where: { key: { startsWith: `${key}:room:` } }, select: { key: true } });
+      return row ? row.key.slice(`${key}:room:`.length) || null : null;
+    },
+  };
 }
