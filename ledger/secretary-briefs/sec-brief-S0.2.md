@@ -21,6 +21,10 @@ Read `sec-brief-COMMON.md` first. Contract: SECRETARY-RUN §2 S0.2. Mockups: `le
 ## Files you own
 `apps/mobile/src/theme/**`, `apps/mobile/src/theme.ts` (shim only), `apps/mobile/src/lib/theme-store.ts`, `apps/mobile/src/components/airy/**`, `apps/mobile/app/(app)/secretary/{_gallery,index}.tsx`, `apps/mobile/qc/shoot-sec.mjs`, `apps/mobile/qc/fixtures/secretary/**`, `scripts/parity-sec.sh`. Do **not** touch `apps/mobile/app/(app)/_layout.tsx` or any 1.0 screen (the route is reachable only by URL for now — S2.1 wires the entry).
 
+## Also in this WO (decision 16): shared UI oracle + zone colours
+- `scripts/qc-sec-ui.mts` — ONE static oracle reused by every S2 WO: `ROUTES=/secretary,/secretary/new … pnpm exec tsx scripts/qc-sec-ui.mts` checks per route: every pressable in the screen file has `testID`; no hex/rgba literal; fixture file exists for the route; `shots-sec/summary.json` has the route light+dark with `overflow:false`, `errors:[]`, `unmocked:[]`; parity pair file exists. Prints JSON_SUMMARY like other oracles.
+- Zone colours in theme: active TopBar icon background = `accent` for secretary, `zone.customers` (#1f8f4a) for customers, `zone.team` (#5a64d8) for team — same in dark. No mic button in `InputBar`.
+
 ## Acceptance (oracle `scripts/qc-sec-s0.2.mts`, static — no DB)
 S1 `C/R/S` snapshot of `src/theme.ts` identical to base · S2 light/dark token key sets equal + every value a valid colour/number · S3 no hex literal / rgba literal in `components/airy/**` and `app/(app)/secretary/**` (regex) · S4 every `Pressable/TouchableOpacity` in those dirs has `testID` · S5 `shoot-sec.mjs` parses, `parity-sec.sh` exits 2 on bad args, 0 on the sample pair · S6 `summary.json` exists with `/secretary` light+dark, `overflow:false`, `unmocked:[]`, `errors:[]` · S7 `_gallery` route guarded (static grep) · S8 mobile `npm run typecheck` 0 · X10 nothing in the fixture resembles a real token/key.
 

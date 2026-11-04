@@ -63,6 +63,9 @@ CSS+=r'''
 .fld.in{font-size:18px;font-weight:500;padding:15px 18px;flex:none}.fld.in.ph{color:#aeaeb2;font-weight:400}
 .otp{display:flex;gap:10px;justify-content:center;margin-top:30px}.otp div{width:58px;height:72px;border-radius:18px;display:grid;place-items:center;font-size:30px;font-weight:600}.otp .cur{outline:2.5px solid #16161c}
 .ses .t b .dot{display:inline-block;margin-top:0}
+.inp .s{margin-left:auto}
+.ib.on.zc{background:#1f8f4a;border-color:#1f8f4a}.ib.on.zt{background:#5a64d8;border-color:#5a64d8}.ib.on.zc svg,.ib.on.zt svg{stroke:#fff}
+.lvl3{display:flex;gap:6px;margin-top:10px}.lvl3 span{flex:1;text-align:center;padding:8px 0;font-size:12px;border-radius:10px;background:rgba(150,150,185,.12);color:#6e6e73}.lvl3 .a{background:#16161c;color:#fff;font-weight:600}
 .ck{width:26px;height:26px;border-radius:50%;border:2px solid #c5c7d6;flex:none;display:grid;place-items:center}.ck.on{background:#16161c;border-color:#16161c}.ck svg{stroke:#fff;stroke-width:3}
 '''
 dk=open('/root/design/chat-glass/gen_airy_dark.py').read()
@@ -81,6 +84,8 @@ DARK+=r'''
 .ib.on{background:#f2f2f7;border-color:#f2f2f7}.ib.on svg{stroke:#16161c}
 .oth .bb,.otp div{background:linear-gradient(135deg,rgba(255,255,255,.115),rgba(255,255,255,.045));border:1.5px solid rgba(255,255,255,.13)}
 .otp .cur{outline-color:#f2f2f7}.sysl{background:rgba(255,255,255,.08);color:#a6a6b4}.fl{color:#c2c2d0}
+.ib.on.zc{background:#1f8f4a;border-color:#1f8f4a}.ib.on.zt{background:#5a64d8;border-color:#5a64d8}.ib.on.zc svg,.ib.on.zt svg{stroke:#fff}
+.lvl3 span{background:rgba(255,255,255,.08)}.lvl3 .a{background:#f2f2f7;color:#16161c}
 .ck{border-color:#5c5c6c}.ck.on{background:#f2f2f7;border-color:#f2f2f7}.ck svg{stroke:#16161c}
 '''
 INLINE=eval(re.search(r"INLINE=(\[.*?\n\])",dk,re.S).group(1))
@@ -102,14 +107,14 @@ def step(k,b,s,state='ok'):
     return f'<div class="step gl">{kk(k)}<div class="x"><b>{b}</b><span>{s}</span></div>{tail}</div>'
 MIC='<svg class="mic" width="24" height="24" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>'
 SEND='<div class="s"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></div>'
-INP=lambda ph: f'<div class="inp"><div class="pl"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>{ph}{MIC}{SEND}</div>'
+INP=lambda ph: f'<div class="inp"><div class="pl"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>{ph}{SEND}</div>'
 CHATI=lambda on: f'<div class="ib{" on" if on else ""}"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V17A2.5 2.5 0 0 1 4 14.5z"/></svg></div>'
-TEAMI=lambda on: f'<div class="ib{" on" if on else ""}"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.4c1.9.8 3 2.8 3 5.6"/></svg></div>'
+TEAMI=lambda on: f'<div class="ib{" on zt" if on else ""}"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.4c1.9.8 3 2.8 3 5.6"/></svg></div>'
 ADDP='<div class="ib"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 20c0-3.6 2.9-6 6.5-6 1.2 0 2.3.3 3.3.8M18 14v6M15 17h6"/></svg></div>'
 CKON='<div class="ck on"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg></div>'
 CKOFF='<div class="ck"></div>'
 HELPI=lambda on: f'<div class="ib{" on" if on else ""}"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/></svg></div>'
-CUSTI=lambda on: f'<div class="ib{" on" if on else ""}"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M4 13l2.2-7A1.5 1.5 0 0 1 7.6 5h8.8a1.5 1.5 0 0 1 1.4 1l2.2 7v4.5A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"/><path d="M4 13h4.5l1.2 2h4.6l1.2-2H20"/></svg></div>'
+CUSTI=lambda on: f'<div class="ib{" on zc" if on else ""}"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M4 13l2.2-7A1.5 1.5 0 0 1 7.6 5h8.8a1.5 1.5 0 0 1 1.4 1l2.2 7v4.5A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"/><path d="M4 13h4.5l1.2 2h4.6l1.2-2H20"/></svg></div>'
 TOP=bar(CHATI(1)+CUSTI(0)+TEAMI(0),'',HELPI(0)+PLUS)
 TOPT=bar(CHATI(0)+CUSTI(0)+TEAMI(1),'',HELPI(0))
 TOPH=bar(CHATI(0)+CUSTI(0)+TEAMI(0),'',HELPI(1)+PLUS)
@@ -215,8 +220,6 @@ A8=f'''<div class="lock">
  <div class="tm">9:41</div><div class="dt">วันพุธ 1 ตุลาคม</div>
  <div class="ntf gl" style="margin-top:46px"><div class="h"><div class="appic">S</div>SHARK · Shark<span class="tm2">ตอนนี้</span></div><b>ใบเสนอราคา Q-0012 พร้อมแล้ว รออนุมัติ</b><p>ร้านดอยช้าง ฿12,500 · อนุมัติแล้วส่ง LINE ให้ทันที</p><div class="acts"><div>ดู</div><div class="d">อนุมัติและส่ง</div></div></div>
  <div class="ntf gl"><div class="h"><div class="appic">S</div>SHARK · Shark<span class="tm2">3 นาที</span></div><b>ตามลูกค้าเงียบ — เสร็จแล้ว</b><p>ส่งข้อความ 11 ราย · ตอบกลับแล้ว 2 · สรุปอยู่ในงาน</p></div>
- <div class="ntf gl" style="padding:14px 18px"><div style="font-size:13px;color:#8e8e93;font-weight:600;letter-spacing:.8px">เปิดงานเดิมต่อได้จากทุกที่</div>
-  <div class="dev"><div class="gl">📱 แอป HUB<span>งานทั้งหมด</span></div><div class="gl">💻 เว็บ shark.in.th<span>งานเดียวกัน</span></div><div class="gl soon">💬 LINE<span>รุ่นถัดไป</span></div></div></div>
 </div>'''
 
 # ---------- ชุด ข ----------
@@ -336,19 +339,19 @@ B8=f'''<div class="pg">{bar(BACK)}
 
 S1=f'''<div class="pg">{bar('','ขั้น 1 จาก 3','')}
  <div class="prog"><i></i><i class="n"></i><i class="n"></i></div>
- <div class="hero" style="margin-top:28px">{SEC(84)}<h2>สมัครใช้ SHARK</h2><p>ใส่ชื่อ เบอร์โทร และอีเมล<br>เราจะส่งรหัสยืนยันไปที่อีเมลของคุณ</p></div>
+ <div class="hero" style="margin-top:28px">{SEC(84)}<h2>สมัครใช้ SHARK</h2><p>ใส่ชื่อ เบอร์โทร และอีเมล<br>เราจะส่งรหัสยืนยันทาง SMS ไปที่เบอร์ของคุณ</p></div>
  <div class="fl" style="margin-top:26px">ชื่อ</div><div class="fld in">สุข</div>
  <div class="fl">เบอร์โทร</div><div class="fld in">081-234-5678</div>
  <div class="fl">อีเมล</div><div class="fld in">suk@thebean.co</div>
  <div class="note" style="margin-top:22px">กดส่งรหัสถือว่ายอมรับข้อตกลงการใช้งานและนโยบายความเป็นส่วนตัว</div>
- </div><div class="foot" style="flex-direction:column;align-items:stretch;gap:0"><div class="btn1" style="flex:none;height:60px">ส่งรหัสยืนยันทางอีเมล</div><div class="note" style="margin-top:14px">มีบัญชีแล้ว? <b style="color:inherit">เข้าสู่ระบบ</b></div></div>'''
+ </div><div class="foot" style="flex-direction:column;align-items:stretch;gap:0"><div class="btn1" style="flex:none;height:60px">ส่งรหัสยืนยันทาง SMS</div><div class="note" style="margin-top:14px">มีบัญชีแล้ว? <b style="color:inherit">เข้าสู่ระบบ</b></div></div>'''
 
 S2=f'''<div class="pg">{bar(BACK,'ขั้น 2 จาก 3','')}
  <div class="prog"><i></i><i></i><i class="n"></i></div>
- <div class="hero" style="margin-top:50px"><h2>ใส่รหัสจากอีเมล</h2><p>ส่งรหัส 6 หลักไปที่ <b>suk@thebean.co</b> แล้ว<br>ไม่เห็นเมล ลองดูในกล่องจดหมายขยะ</p></div>
+ <div class="hero" style="margin-top:50px"><h2>ใส่รหัสจาก SMS</h2><p>ส่งรหัส 6 หลักไปที่ <b>081-234-5678</b> แล้ว<br>หมดอายุใน 5 นาที</p></div>
  <div class="otp"><div class="gl">4</div><div class="gl">8</div><div class="gl">2</div><div class="gl cur"></div><div class="gl"></div><div class="gl"></div></div>
  <div class="note" style="margin-top:26px">ส่งรหัสอีกครั้งได้ใน 0:42</div>
- <div class="note" style="margin-top:8px"><b style="color:inherit">แก้อีเมล</b></div>
+ <div class="note" style="margin-top:8px">ไม่ได้รับ SMS? <b style="color:inherit">ส่งรหัสทางอีเมล suk@thebean.co แทน</b> · <b style="color:inherit">แก้เบอร์</b></div>
  </div><div class="foot"><div class="btn1 off">ยืนยัน</div></div>'''
 
 C1=f'''<div class="pg">{bar(BACK,'ขั้น 3 จาก 3','')}
@@ -520,7 +523,6 @@ K5=f'''<div class="pg">{bar(BACK,'กฎรับเรื่องใหม่<
  <div class="sec">ลูกค้าใหม่ทักเข้ามา → ให้ใครรับ</div>
  {rule('วนตามลำดับคนที่เข้าเวร','น้ำ · สมใจ · ก้อง (3 คนเข้าเวรอยู่) · ไม่มีใครเข้าเวร → เจ้าของ',True)}
  {rule('ลูกค้าเก่า → คนเดิมที่เคยดูแล','ถ้าคนนั้นเข้าเวรอยู่',True)}
- {rule('ตามหัวข้อ (Shark จัดหมวดข้อความแรก)','หอพัก → ก้อง · ขาย/ใบเสนอราคา → น้ำ · ทั่วไป → วนตามเวร',False,'ข้อเสนอ')}
  {rule('นอกเวลาทำการ → Shark ตอบก่อน','ตามกฎ "คุยกับลูกค้าแทนร้าน" · เปิดร้านแล้วค่อยมอบหมาย',True)}
  <div class="sec">ไม่มีคนตอบ</div>
  {rule('เตือนผู้ดูแลเมื่อไม่ตอบเกิน','',True,'15 นาที')}
@@ -529,20 +531,80 @@ K5=f'''<div class="pg">{bar(BACK,'กฎรับเรื่องใหม่<
  <div style="display:flex;gap:10px;margin-top:10px;align-items:center">{HP('h2','น')}{HP('h3','ส')}{HP('h3','ก')}<span class="st" style="margin:0">น้ำ · สมใจ · ก้อง</span><span style="margin-left:auto;font-size:13px;color:#6a5ad8">พนักงานกดเข้า/ออกเวรเองในแอป</span></div>
  </div>'''
 
+# ---------- ชุด ช กิจการ · พนักงาน · บัญชี · ops ----------
+def lv3(a,opts=('ปิด','ดูได้','ใช้งาน')): return '<div class="lvl3">'+''.join(f'<span{" class=a" if i==a else ""}>{o}</span>' for i,o in enumerate(opts))+'</div>'
+def srow(k,label,sub,a,opts=('ปิด','ดูได้','ใช้งาน')): return f'<div class="sysrow gl"><div class="h">{kk(k)}{label}<small>{sub}</small></div>{lv3(a,opts)}</div>'
+G1=f'''<div class="pg">{bar(CLOSE,'สร้างกิจการใหม่','')}
+ <div class="fl" style="margin-top:20px">ชื่อกิจการ</div><div class="fld in">The Bean Café</div>
+ <div class="fl">ประเภท</div>
+ <div class="chips" style="flex-wrap:wrap;row-gap:8px"><span class="a">คาเฟ่/ร้านอาหาร</span><span>ร้านค้า</span><span>บริการ/จองคิว</span><span>หอพัก/ห้องเช่า</span><span>คลินิก</span><span>อื่น ๆ</span></div>
+ <div class="fl">ระบบที่จะเปิดใช้ (เปลี่ยนทีหลังได้)</div>
+ <div style="margin-top:4px;line-height:2.3">{sp('pos','crm','mem','acc','kb','chat')}<span class="sysp soon"><i class="s-bk"></i>จองคิว</span><span class="sysp soon"><i class="s-dorm"></i>หอพัก</span></div>
+ <div class="note" style="text-align:left;margin-top:18px">Shark จะตั้งค่าเริ่มต้นให้ แล้วถามสิ่งที่ต้องรู้ (เวลาเปิด · สินค้า/บริการหลัก · วิธีรับเงิน) ในงานแรก · คุณเป็นเจ้าของกิจการนี้ · โควตาฟรี 100 งาน/เดือน</div>
+ </div><div class="foot"><div class="btn1">สร้างและเริ่มใช้</div></div>'''
+
+G2=f'''<div class="pg">{bar(CLOSE,'เชิญพนักงาน<small>The Bean Café</small>','')}
+ <div class="fl" style="margin-top:16px">ชื่อ</div><div class="fld in">ก้อง</div>
+ <div class="fl">เบอร์โทร (ใช้เข้าแอป)</div><div class="fld in">089-876-5432</div>
+ <div class="fl">บทบาท</div>{seg(['พนักงาน','ผู้จัดการ'],0)}
+ <div class="fl">หน่วย/สาขา</div><div class="chips"><span>สาขาหลัก</span><span class="a">หอพัก</span></div>
+ <div class="fl">สิทธิ์ต่อระบบ · ค่าเริ่มต้น = ปิดทุกระบบ</div>
+ {srow('chat','แชทลูกค้า','เห็นเฉพาะหน่วยที่เลือก',2,('ไม่เห็น','ดูได้','ตอบได้'))}
+ {srow('dorm','หอพัก','',2)}
+ {srow('pos','POS','',0)}
+ <div class="kb gl" style="margin-top:14px"><div class="ic">💬</div><div class="t"><b>SMS ที่ก้องจะได้รับ</b><span>SHARK: คุณสุขเชิญคุณเข้าร่วม The Bean Café แตะเพื่อเข้าใช้ shark.in.th/i/XK7Q (ลิงก์ใช้ได้ 7 วัน)</span></div></div>
+ </div><div class="foot"><div class="btn1">ส่งคำเชิญทาง SMS</div></div>'''
+
+G3=f'''<div class="pg">{bar(BACK,'ก้อง<small>หอพัก · พนักงาน · เข้าเวรอยู่ · เข้าร่วม 12 ต.ค.</small>',DOTS)}
+ <div class="fl" style="margin-top:14px">บทบาท</div>{seg(['พนักงาน','ผู้จัดการ'],0)}
+ <div class="fl">หน่วย/สาขา</div><div class="chips"><span>สาขาหลัก</span><span class="a">หอพัก</span></div>
+ <div class="fl">สิทธิ์ต่อระบบ</div>
+ {srow('chat','แชทลูกค้า','หอพัก',2,('ไม่เห็น','ดูได้','ตอบได้'))}
+ {srow('dorm','หอพัก','ผู้เช่า · ห้อง · บิล',2)}
+ {srow('bk','จองคิว','',1)}
+ {srow('acc','บัญชี','',0)}
+ {srow('pos','POS','',0)}
+ <div class="note" style="text-align:left;margin-top:14px">Shark ใช้สิทธิ์ชุดนี้เมื่อก้องสั่งงาน · เปลี่ยนแล้วมีผลทันทีกับงานที่ค้าง</div>
+ <div class="acts" style="margin-top:14px"><div>ระงับชั่วคราว</div><div style="color:#d8436a">เอาออกจากกิจการ</div></div>
+ </div>'''
+
+G4=f'''<div class="pg">{bar(BACK,'บัญชีของฉัน','')}
+ <div style="text-align:center;margin-top:10px"><div style="display:flex;justify-content:center">{HP('h1','ส')}</div><div style="font-size:24px;font-weight:700;margin-top:12px;letter-spacing:-.4px">สุข สมศรี</div><div class="st">เจ้าของ 2 กิจการ · พนักงาน 1 กิจการ</div></div>
+ <div style="margin-top:10px">{pr('เบอร์โทร (ใช้เข้าแอป)','081-234-5678')}{pr('อีเมล (สำรอง · ใบเสร็จ)','suk@thebean.co')}{pr('เข้าด้วย Apple','เชื่อมแล้ว')}</div>
+ <div class="opt" style="margin-top:14px"><div class="n">ธีม</div>{seg(['ตามระบบ','สว่าง','มืด'],0)}</div>
+ <div style="margin-top:6px">{pr('การแจ้งเตือน','เลขา · ลูกค้า · ช่วยเหลือ')}{pr('ภาษา','ไทย')}{pr('เข้าเวร','เข้าเวรอยู่ · 09:02')}</div>
+ <div class="acts" style="margin-top:18px"><div>ออกจากระบบ</div><div style="color:#d8436a">ลบบัญชี</div></div>
+ <div class="note" style="margin-top:12px">ลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน</div>
+ </div>'''
+
+G5=f'''<div class="pg">{bar('','<b style="font-size:17px">Backoffice · คิวเลขา</b><small>ทีม SHARK · เว็บ (ใหม่)</small>','')}
+ <div class="grid"><div><b>12</b><span>กำลังรัน</span></div><div><b>3</b><span>รอคิว</span></div><div><b style="color:#d8436a">2</b><span>ล้มเหลว 1 ชม.</span></div><div><b>฿418</b><span>ต้นทุนวันนี้</span></div></div>
+ <div class="sec">ค้าง/ล้มเหลว</div>
+ {brow('บลูเฮาส์ หอพัก','ห้อง #a81f','คืนมัดจำห้อง 204 · ขั้น 3/4 บัญชี','ล้มเหลว · เครื่องมือ account.refund ตอบ 500','8:15<span class="bd">!</span>','')}
+ {brow('The Bean Café','ห้อง #c042','ตามลูกค้าเงียบ · ขั้น 2/3','ค้าง 14 นาที · lease หมดแล้ว 2 ครั้ง','9:40','')}
+ <div class="acts" style="margin-top:10px"><div>ลองใหม่</div><div>ยกเลิกงาน</div><div class="d">เปิดห้อง (อ่านอย่างเดียว)</div></div>
+ <div class="sec">ต้นทุนต่อร้าน · 30 วัน</div>
+ {ur('The Bean Café · 348 งาน',31,'pos')}{ur('บลูเฮาส์ หอพัก · 212 งาน',22,'dorm')}{ur('Sweet Studio · 96 งาน',9,'bk')}
+ <div class="sec">ข้อผิดพลาดโมเดล 24 ชม.</div>
+ <div class="lnk gl">{kk('chat')}timeout 2 · rate limit 0 · คำตอบผิดรูปแบบ 1<span>ดู ›</span></div>
+ </div>'''
+
 def phone(b,l): return f'<div class="phone"><div class="screen">{STATUS}{b}</div><div class="label">{l}</div></div>'
 SETS={
  'a':('เลขา AI · session — ชุด ก ใช้งานประจำวัน','เลขาคนเดียว · เปิดงาน (session) ได้ไม่จำกัด · ทำงานเบื้องหลังในทุกระบบ SHARK · สถานะ กำลังทำ / รออนุมัติ / เสร็จ',
   [(A1,'A1 · หน้าหลัก ห้องแชทของฉัน'),(A2,'A2 · เริ่มงานใหม่'),(A3,'A3 · งานกำลังทำ'),(A4,'A4 · งานรออนุมัติ'),(A5,'A5 · งานเสร็จ'),(A6,'A6 · รออนุมัติรวมทุกกิจการ'),(A7,'A7 · งานประจำ'),(A8,'A8 · แจ้งเตือน · เปิดต่อจากทุกที่')]),
  'b':('เลขา AI · session — ชุด ข ตั้งค่า · ความปลอดภัย · PDPA','สิทธิ์ตามคนสั่ง · กฎต้องอนุมัติเสมอ · บันทึกทุกการกระทำ · เปิดเผยว่าเป็น AI · ข้อมูลไม่ข้ามกิจการ',
   [(B1,'B1 · สลับกิจการ'),(B2,'B2 · เลขาของฉัน'),(B3,'B3 · สิทธิ์ต่อระบบ'),(B4,'B4 · ต้องอนุมัติเสมอ + ผู้อนุมัติ'),(B5,'B5 · บันทึกการกระทำ'),(B6,'B6 · ความรู้ของกิจการ'),(B7,'B7 · คุยกับลูกค้า + PDPA'),(B8,'B8 · โควตา / แพ็ก')]),
- 'c':('เลขา AI · session — ชุด ค เริ่มใช้ครั้งแรก · สอนงาน','สมัครด้วยชื่อ + เบอร์โทร + อีเมล ยืนยัน OTP ทางอีเมล · ตั้งชื่อเลขา (เริ่มต้น Shark) · งานแรก · ตีกลับแล้วจำเป็นกฎของกิจการ',
-  [(S1,'S1 · สมัคร ชื่อ + เบอร์โทร + อีเมล (ใหม่)'),(S2,'S2 · ยืนยัน OTP ทางอีเมล (ใหม่)'),(C1,'C1 · ตั้งชื่อเลขา (ครั้งแรก)'),(C3,'C3 · ยังไม่มีงาน'),(C4,'C4 · ตีกลับ + สอน Shark')]),
+ 'c':('เลขา AI · session — ชุด ค เริ่มใช้ครั้งแรก · สอนงาน','สมัครด้วยชื่อ + เบอร์โทร + อีเมล ยืนยัน OTP ทาง SMS (สำรองทางอีเมล) · ตั้งชื่อเลขา (เริ่มต้น Shark) · งานแรก · ตีกลับแล้วจำเป็นกฎของกิจการ',
+  [(S1,'S1 · สมัคร ชื่อ + เบอร์โทร + อีเมล (ใหม่)'),(S2,'S2 · ยืนยัน OTP ทาง SMS (ใหม่)'),(C1,'C1 · ตั้งชื่อเลขา (ครั้งแรก)'),(C3,'C3 · ยังไม่มีงาน'),(C4,'C4 · ตีกลับ + สอน Shark')]),
  'd':('เลขา AI · session — ชุด ง พนักงาน · ห้องร่วม','ไอคอนซ้ายบน: ห้องแชท / พนักงาน · เพิ่มพนักงานเข้าห้องแชทได้ · สั่งงานและอนุมัติตามสิทธิ์ของแต่ละคน',
   [(D1,'D1 · ทุกคนในกิจการ = พนักงาน (ใหม่)'),(D2,'D2 · ห้องแชทที่มีหลายคน (ใหม่)'),(D3,'D3 · เพิ่มพนักงานเข้าห้อง (ใหม่)')]),
  'h':('เลขา AI · session — ชุด จ ช่วยเหลือ · แจ้งปัญหา','ไอคอน ? ซ้ายบน → ห้องแชทแจ้งปัญหากับทีม SHARK · แนบห้องงานที่เกี่ยวอัตโนมัติ · ฝั่ง backoffice เห็นทุกร้าน (ต่อยอด Support Desk ที่มีอยู่)',
   [(H1,'H1 · ช่วยเหลือ (แอป · ใหม่)'),(H2,'H2 · ห้องแจ้งปัญหา (แอป · ใหม่)'),(H3,'H3 · backoffice รายการเรื่องแจ้ง (ปรับ)'),(H4,'H4 · backoffice ห้องแชทกับผู้ใช้ (ปรับ)')]),
  'k':('เลขา AI · session — ชุด ฉ ลูกค้า · แชทรวมในแอป','ไอคอนที่ 2 ซ้ายบน = แชทลูกค้า (LINE · เว็บแชท · Facebook ต่อไป) ต่อยอดระบบแชทรวมบนเว็บ · ผู้ดูแล 1 คน + เรียกคนช่วย + กฎรับเรื่องอัตโนมัติตามเวร · Shark ร่างตอบ/สรุป/รับงานจากห้องลูกค้าได้',
   [(K1,'K1 · รายการลูกค้า (ใหม่)'),(K2,'K2 · ห้องแชทลูกค้า (ใหม่)'),(K3,'K3 · ข้อมูลลูกค้า · ผู้ดูแล · เรียกช่วย (ใหม่)'),(K4,'K4 · ช่องทาง · ตอบเร็ว (ใหม่)'),(K5,'K5 · กฎรับเรื่องใหม่ · เข้าเวร (ใหม่)')]),
+ 'g':('เลขา AI · session — ชุด ช กิจการ · พนักงาน · บัญชี · ops','สร้างกิจการจากแอป · เชิญพนักงานด้วยเบอร์ (SMS) · สิทธิ์ต่อคน · บัญชีของฉัน (ลบบัญชีตามกฎ Apple) · backoffice คิวเลขา',
+  [(G1,'G1 · สร้างกิจการใหม่ (ใหม่)'),(G2,'G2 · เชิญพนักงาน (ใหม่)'),(G3,'G3 · สิทธิ์ต่อคน (ใหม่)'),(G4,'G4 · บัญชีของฉัน (ใหม่)'),(G5,'G5 · backoffice คิวเลขา (ใหม่)')]),
 }
 def dark_inline(m):
     s=m.group(0)
