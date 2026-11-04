@@ -115,7 +115,7 @@ try {
     const sk = ss.map((s) => s.key);
     chk("S-2", "STAFF ไม่มีคีย์ account/crm ⇒ ไม่เห็น collect_overdue/follow_quiet", !sk.includes("collect_overdue") && !sk.includes("follow_quiet"), JSON.stringify(sk));
     const own = actor(tid, U.owner, "OWNER");
-    for (const title of ["สรุปยอดขายวันนี้", "สรุปยอดขายวันนี้ ", "ตามหนี้ลูกค้า", "สรุป ยอดขาย วันนี้"]) await rooms.startRoom({ tenantId: tid, actor: own }, { instruction: title });
+    for (const title of ["สรุปยอดขายวันนี้", "สรุปยอดขายวันนี้ ", "ตามหนี้ลูกค้า", "สรุป ยอดขาย วันนี้"]) await rooms.startRoom({ tenantId: tid, actor: own as never }, { instruction: title });
     const fr = await sg.frequentInstructions({ tenantId: tid, actor: own }, 5) as { instruction: string; count: number }[];
     chk("S-3", "frequentInstructions: 'สรุปยอดขายวันนี้' นับ 3 (normalize ช่องว่าง) · ไม่มีรายการ count 1", fr.length === 1 && fr[0]!.count === 3 && /สรุปยอดขายวันนี้|สรุป ยอดขาย วันนี้/.test(fr[0]!.instruction), JSON.stringify(fr).slice(0, 200));
   }
@@ -126,12 +126,12 @@ try {
     const t2 = await mkTenant("b"); const tid2 = t2.id;
     await mk(tid2, "OWNER", U.outsider); await mk(tid2, "STAFF", U.staff, { "ai.chat.send": true });
     const mkProp = (tenantId: string, convId: string, summary: string) => prisma.aiProposal.create({ data: { tenantId, conversationId: convId, kind: "kanban_create_card", summary, payload: { title: summary, phone: "0899999999" } as never, risk: "NORMAL", expiresAt: new Date(Date.now() + 3_600_000) } });
-    const rS = await rooms.startRoom({ tenantId: tid, actor: actor(tid, U.staff, "STAFF", { "ai.chat.send": true }) }, { instruction: "ห้องของ staff" });
+    const rS = (await rooms.startRoom({ tenantId: tid, actor: actor(tid, U.staff, "STAFF", { "ai.chat.send": true }) as never }, { instruction: "ห้องของ staff" })) as { roomId: string; conversationId: string }; // ORACLE-EDIT typing
     await prisma.aiRoomMember.create({ data: { tenantId: tid, roomId: rS.roomId, userId: U.mgr, addedById: U.staff, seeHistory: true } });
     const pRoom = await mkProp(tid, rS.conversationId, "การ์ดจากห้องเลขา โทร 0899999999");
     const legacy = await prisma.aiConversation.create({ data: { id: `u~${U.owner}~qcs111-${Date.now().toString(36)}`, tenantId: tid, title: "ห้องเดิม" } });
     const pLegacy = await mkProp(tid, legacy.id, "การ์ดจากห้องเดิม");
-    const rB = await rooms.startRoom({ tenantId: tid2, actor: actor(tid2, U.staff, "STAFF", { "ai.chat.send": true }) }, { instruction: "ห้องร้าน b" });
+    const rB = (await rooms.startRoom({ tenantId: tid2, actor: actor(tid2, U.staff, "STAFF", { "ai.chat.send": true }) as never }, { instruction: "ห้องร้าน b" })) as { roomId: string; conversationId: string };
     const pB = await mkProp(tid2, rB.conversationId, "ข้อเสนอร้าน b");
     const expired = await prisma.aiProposal.create({ data: { tenantId: tid, conversationId: rS.conversationId, kind: "kanban_create_card", summary: "หมดอายุ", payload: {} as never, risk: "NORMAL", expiresAt: new Date(Date.now() - 1000) } });
     type Item = { tenantId: string; id: string; type: string; canApprove: boolean; summary: string; tenantName: string; why?: string };

@@ -117,6 +117,19 @@ try {
     const jOver = await credit.canRunAi(OLD, { scope: "job", now: NOW });
     const qCap = await quota.quotaStatus(OLD, NOW) as { assist?: { usedMicro: number; capMicro: number } };
     chk("C-6", "R-S1.13b: assistDailyMicro=500000 · ใช้ไป cap−1 ⇒ assist ok · ถึง cap ⇒ ok:false reason credit resetAt message ไทยมี 'วันนี้' · วันถัดไป ok · job ไม่ติดเพดานนี้ · quotaStatus.assist {usedMicro=cap, capMicro}", capMicro === 500_000 && aUnder.ok === true && aOver.ok === false && aOver.reason === "credit" && aOver.resetAt instanceof Date && /วันนี้/.test(aOver.message ?? "") && aNext.ok === true && jOver.ok === true && qCap.assist?.usedMicro === capMicro && qCap.assist?.capMicro === capMicro, JSON.stringify({ aUnder, aOver, aNext: aNext.ok, jOver: jOver.ok, q: qCap.assist }).slice(0, 240));
+    // C-8 (รีวิว I-1 · R-S1.13c เข้ม): ข้ามด่านเฉพาะทาง worker (deps.userMessageId) ของห้องที่ยังเปิด · ประตูเดิมเข้าห้องเลขายังผ่านด่าน
+    const realNow = new Date();
+    await prisma.aiCreditTxn.create({ data: { tenantId: OLD, kind: "USAGE", source: "CHAT", balanceAfter: 0, amountMicro: -capMicro, ref: "qc-s113-cap-real", createdAt: new Date(realNow.getTime() - 1000) } as never }).catch(() => null);
+    const rooms8 = await import("@/lib/ai/secretary/rooms");
+    const r8 = (await rooms8.startRoom({ tenantId: OLD, actor: actor(OLD) as never }, { instruction: "ห้องทดสอบเพดาน" })) as { ok?: boolean; roomId: string; conversationId: string; messageId: string };
+    const p8 = new Scripted();
+    const smDoor = await service.sendMessage({ tenantId: OLD, actor: actor(OLD) }, { conversationId: r8.conversationId, text: "ต่อจากประตูเดิม" }, { provider: p8 }) as { ok: boolean; scope?: string };
+    const callsDoor = p8.calls;
+    const smWorker = await service.sendMessage({ tenantId: OLD, actor: actor(OLD) }, { conversationId: r8.conversationId, text: "ต่อจาก worker" }, { provider: p8, userMessageId: r8.messageId }) as { ok: boolean; scope?: string };
+    await prisma.aiRoom.update({ where: { id: r8.roomId }, data: { closedAt: new Date() } });
+    const smClosed = await service.sendMessage({ tenantId: OLD, actor: actor(OLD) }, { conversationId: r8.conversationId, text: "ห้องปิดแล้ว" }, { provider: p8, userMessageId: r8.messageId }) as { ok: boolean; scope?: string };
+    await prisma.aiCreditTxn.deleteMany({ where: { tenantId: OLD, ref: "qc-s113-cap-real" } });
+    chk("C-8", "ที่เพดานวันนี้: ประตูเดิมเข้าห้องเลขา (ไม่มี userMessageId) ⇒ ok:false scope day · โมเดลไม่ถูกเรียก · ทาง worker (userMessageId) ห้องเปิด ⇒ ok · ห้องปิดแล้ว ⇒ ok:false", smDoor.ok === false && smDoor.scope === "day" && callsDoor === 0 && smWorker.ok === true && p8.calls === 1 && smClosed.ok === false, JSON.stringify({ smDoor, smWorker: smWorker.ok, smClosed, calls: p8.calls }).slice(0, 200));
 
     console.log("── R: GET /api/mobile/usage ──");
     const route = (await import("@/app/api/mobile/usage/route")) as AnyMod;
