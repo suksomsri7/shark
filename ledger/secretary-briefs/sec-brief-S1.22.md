@@ -1,0 +1,34 @@
+# S1-16 — S1.22 สะพานเลขา ↔ ห้องลูกค้า (`secretary/customer-context.ts` · `chat/ai-suggest.ts` · `chat/after-hours.ts`) (Opus · `wip/sec-s1.22` · หลัง S1.12 + S1.21 merge · light-check + ผู้ตรวจ 1 คน (PDPA))
+
+Read `sec-brief-COMMON.md`, `sec-brief-RESOLUTIONS.md` (R-K15 R-K13 R-K14 · §K R-S1.8e · §B.5), plan row S1.22, แบบ §5 + §10 จุดเชื่อม (1)(3)(4) + K2/K3/K4 (`ledger/DESIGN-SECRETARY.md`), `sec-brief-S1.12.md` (kind `chat.send` · meta `ai_*`), `sec-brief-S1.21.md` (routes inbox), `docs/modules/31-secretary.md` §5, และ oracle `scripts/qc-sec-s1.22.mts`. Verified code: `startRoom` รับ `context {chatConversationId, contactId}` → `AiRoom.contextJson` (rooms.ts `cleanContext`) · `suggestReply` ai-suggest.ts:312 (ตรวจ `aiSuggestEnabled` · `canSpend` :350 · หัก `CHAT_SUGGEST`) · `recordSuggestionOutcome` :453 · `getThread` :2051 · `getLinkedMember(tenantId, customerId)` :2332 · `readBusinessHours` business-hours.ts:199 · `ChatSetting.offlineMessage` (map ภาษา) :445 · `receiveInbound`/`receiveExternalInbound` service.ts:786/:1118 · `PersonaContext` persona.ts:8 · `AiSettings(tenantId @unique, weeklyReportEnabled)` ai_credit.prisma:79 — **ไม่มีที่เก็บสวิตช์ B7 ⇒ เก็บใน `AiSecretary`? ไม่ (ต่อผู้ใช้) ⇒ ใช้ `AiSystemAccess`? ไม่ ⇒ มติ: เก็บใน `ChatSetting.theme`? ไม่ — ใช้คอลัมน์ใหม่ nullable บน `AiSettings`: `afterHoursReply Boolean @default(false)` `afterHoursHandoff Boolean @default(true)` `aiDisclosure String?` ผ่าน migration `secretary_b` (ใบนี้เป็นใบเดียวที่แตะ prisma หลัง S1.1 · additive · ชื่อโฟลเดอร์ต้องเรียงหลัง `20261227000000_secretary_a` เช่น `20261227100000_secretary_b` · `prisma generate` กระทบทุกเลน ⇒ ทำ schema+migration เป็น commit แรก แจ้งผู้คุมก่อน generate — COMMON A.8)**.
+
+## (3) บริบทลูกค้าในห้องเลขา — `src/lib/ai/secretary/customer-context.ts`
+```ts
+export type CustomerContext = { contactId: string; chatConversationId: string; displayName: string; channel: string; tags: string[]; assignee: string | null; linked: { member?: { tier: string | null; points: number | null }; deals?: { id: string; title: string; stage: string; valueSatang: number | null }[]; openDocs?: { id: string; docNo: string; status: string; grandTotal: number }[] } ; recent: { direction: "IN" | "OUT"; text: string; at: Date }[] };
+export async function customerContextOf(tenantId: string, ctx: { chatConversationId: string; contactId?: string }, actor: AiMemberActor): Promise<CustomerContext | null>;
+   // ห้องลูกค้าต้องเป็นของ tenant และ actor ต้องเห็น (unitAccess + `chat.conversation.read`) ไม่งั้น null · deals ≤ 5 (CRM เปิด) · openDocs ≤ 5 (account เปิด · status AWAITING_PAYMENT/PARTIAL/AWAITING_ACCEPT) · recent ≤ 10 ข้อความล่าสุด ตัด 200 ตัว · **X8: ไม่มีเบอร์/อีเมล/ที่อยู่/เลขบัตร — ผ่าน `maskPiiPatterns` ทุก string** · ไม่มี isInternal notes
+export function customerBlock(c: CustomerContext): string;  // ไทย ≤ 400 token "ลูกค้าที่กำลังคุย: <ชื่อ> (LINE) · แท็ก … · ดีล … · เอกสารค้าง … · ข้อความล่าสุด: …"
+```
+- `service.ts` ห้องที่ `AiRoom.contextJson.chatConversationId` มี ⇒ `PersonaContext.customer = customerBlock(...)` (บล็อก "ลูกค้าที่เกี่ยวกับงานนี้:" หลัง digest) · ไม่มี ⇒ prompt เดิมทุกไบต์ · tool `send_customer_message` (S1.12) ใช้ `conversationId` นี้เป็นค่าปริยายเมื่อโมเดลไม่ส่ง (อ่านจาก ctx ของห้อง)
+- `startRoom` ตรวจ context: `chatConversationId` ต้องเป็นห้องของ tenant ที่ actor เห็น ไม่งั้น throw ไทย "ไม่พบห้องลูกค้าหรือไม่มีสิทธิ์" (ตอนนี้ `cleanContext` แค่ trim)
+
+## (1) Shark ร่างตอบ (ของเดิม · ปรับให้นับต้นทุนแต่ไม่นับงาน)
+- `suggestReply` ไม่เปลี่ยนสัญญา · เพิ่ม `source?: "web" | "app"` (default web) · ใช้ `canRunAi(tenantId, { scope: "assist" })` (S1.13) แทน `canSpend` **เมื่อ S1.13 merge แล้ว** (ถ้ายังไม่ merge คง canSpend และจดไว้) · ไม่แตะ `AiJobCounter` (มติ K4 ไม่นับงาน)
+- `recordSuggestionOutcome` เดิม + เรียก `learn.recordOutcome` (S1.15) ถ้ามี: outcome SENT_EDITED ⇒ EDITED · SENT_AS_IS ⇒ APPROVED · IGNORED ⇒ REJECTED (best-effort)
+
+## (4) นอกเวลาทำการ Shark ตอบแทน — `src/lib/modules/chat/after-hours.ts`
+```ts
+export type AfterHoursSettings = { reply: boolean; handoff: boolean; disclosure: string }; // disclosure ปริยาย "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
+export async function afterHoursSettings(tenantId: string): Promise<AfterHoursSettings>;
+export async function setAfterHours(tenantId: string, by: { userId: string; membership: MembershipCtx }, patch: Partial<AfterHoursSettings>): Promise<AfterHoursSettings>; // OWNER เท่านั้น (ForbiddenError) · disclosure ≤ 200 ตัว ห้ามว่าง
+export function isAfterHours(raw: unknown, now: Date): boolean;   // readBusinessHours · null (ไม่ตั้ง) = false (ไม่ถือว่านอกเวลา)
+export type AfterHoursVerdict = { action: "reply"; body: string } | { action: "handoff"; reason: "money" | "complaint" | "unknown" | "disabled" | "no_window" | "in_hours" };
+export async function afterHoursAutoReply(args: { tenantId: string; systemId: string; conversationId: string; inboundText: string; now?: Date; provider?: AiProvider }): Promise<AfterHoursVerdict>;
+   // reply=false ⇒ disabled · ในเวลาทำการ ⇒ in_hours · ข้อความมีคำเงิน/ราคา/โอน/คืน/ส่วนลด (regex ไทย+อังกฤษ) ⇒ money · ร้องเรียน/โกรธ/ไม่พอใจ/แย่ ⇒ complaint · โมเดล (SHARK_AI_MOCK ใช้ Scripted) ตอบจาก FAQ ของร้าน (`memoryBlock` + `dnaFactsSummary` + เวลาทำการ) ด้วย system prompt ที่สั่ง "ตอบได้เฉพาะเรื่องที่มีในข้อมูล · ไม่รู้ = ตอบ UNKNOWN" ⇒ UNKNOWN ⇒ unknown · ได้คำตอบ ⇒ ส่งผ่าน `sendReply({ senderUserId: <OWNER ของร้าน>, senderName: "Shark (ผู้ช่วย AI)", body: <คำตอบ>+"\n"+disclosure, meta: { ai_afterHours: "1" }, clientMessageId: "ah:"+<inbound messageId> })` · ต้นทุนหัก `CHAT_SUGGEST` (canRunAi assist) · handoff ⇒ ถ้า `handoff=true` ตั้ง `ChatConversationEvent` kind NOTE meta `{ ai: "handoff", reason }` + ป้าย "รอคน" = `conversation.tags` เพิ่ม "รอคน" (ถ้า tags เป็น string[]) + แจ้ง OWNER/MANAGER ผ่าน push (`notifyUsers` เดิม) 1 ครั้ง/ห้อง/วัน
+```
+- hook: `receiveInbound`/`receiveExternalInbound` หลังบันทึกข้อความลูกค้า (ไม่ใช่ internal · ไม่ใช่ echo) ⇒ `afterHoursAutoReply(...)` best-effort ใน `after()`/catch → logOps · ห้ามทำให้ inbound ล้ม · ห้ามตอบซ้ำข้อความเดิม (clientMessageId) · ห้ามตอบถ้าห้องมี assignee ตอบไปแล้วหลังข้อความนั้น
+- ห้ามส่ง PII ลูกค้าเข้าโมเดลเกิน inboundText (ไม่ส่งชื่อ/เบอร์/ประวัติ)
+
+## Files you own
+`prisma/schema/ai_credit.prisma` (3 คอลัมน์) + migration `secretary_b` · `src/lib/ai/secretary/customer-context.ts` · `src/lib/ai/secretary/rooms.ts` (ตรวจ context) · `src/lib/ai/service.ts` + `persona.ts` (บล็อก customer มีเงื่อนไข) · `src/lib/modules/chat/{after-hours.ts, ai-suggest.ts (2 hunks), service.ts (hook 2 จุด)}` · docs §5 + §10 · `ledger/wo-notes/sec-s1.22.md`
+## Acceptance = `scripts/qc-sec-s1.22.mts` PASS + `qc-chat-ai-suggest` `qc-chat-business-hours` `qc-chat-learning` `qc-chat-core-v2` `qc-chat-security` `qc-ai-tools` `qc-sec-s1.2` `qc-sec-s1.12` เท่าเดิม · migration additive (oracle อ่าน SQL) · typecheck 0 · fitness ×2
