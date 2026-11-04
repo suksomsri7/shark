@@ -1,6 +1,6 @@
 {
- "generatedAt": "2026-11-04T20:39:24.019Z",
- "base": "http://127.0.0.1:4724",
+ "generatedAt": "2026-11-04T20:49:28.633Z",
+ "base": "http://127.0.0.1:4726",
  "view": {
   "tag": "iphone",
   "w": 390,
@@ -8,8 +8,8 @@
   "scale": 2
  },
  "fixture": {
-  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.2.json",
-  "sha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9"
+  "path": "/root/projects/shark-sec-e/apps/mobile/qc/fixtures/secretary/s2.12.json",
+  "sha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154"
  },
  "screens": [
   {
@@ -1191,6 +1191,192 @@
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-dark.png",
    "generatedAt": "2026-11-04T20:39:23.824Z"
+  },
+  {
+   "name": "login",
+   "route": "/login",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "login",
+    "login-phone",
+    "login-sms",
+    "login-google",
+    "login-email-toggle",
+    "login-signup"
+   ],
+   "texts": "SHARK HUB\nผู้ช่วย AI ประจำกิจการของคุณ\nเข้าด้วยเบอร์มือถือ\nรับรหัสทาง SMS\nเข้าด้วยอีเมล\nหรือเข้าสู่ระบบด้วย\n\n\n\n\nยังไม่มีบัญชี? สมัคร",
+   "unmocked": [],
+   "url": "/login",
+   "file": "/root/projects/shark-sec-e/apps/mobile/qc/shots-sec/login.png",
+   "generatedAt": "2026-11-04T20:49:09.427Z"
+  },
+  {
+   "name": "signup",
+   "route": "/signup",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "signup",
+    "signup-name",
+    "signup-phone",
+    "signup-email",
+    "signup-submit",
+    "signup-login"
+   ],
+   "texts": "ขั้น 1 จาก 3\nสมัครใช้ SHARK\nใส่ชื่อ เบอร์โทร และอีเมล\nเราจะส่งรหัสยืนยันทาง SMS ไปที่เบอร์ของคุณ\nชื่อ\nเบอร์โทร\nอีเมล\nยังไม่ยืนยัน\nกดส่งรหัสถือว่ายอมรับข้อตกลงการใช้งาน\nและนโยบายความเป็นส่วนตัว\nส่งรหัสยืนยันทาง SMS\nมีบัญชีแล้ว? เข้าสู่ระบบ",
+   "unmocked": [],
+   "url": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
+   "file": "/root/projects/shark-sec-e/apps/mobile/qc/shots-sec/signup.png",
+   "generatedAt": "2026-11-04T20:49:12.140Z"
+  },
+  {
+   "name": "otp",
+   "route": "/otp",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "otp",
+    "otp-input",
+    "otp-resend",
+    "otp-edit-email",
+    "otp-submit"
+   ],
+   "texts": "\nขั้น 2 จาก 3\nใส่รหัสจาก SMS\nส่งรหัส 6 หลักไปที่ 081-•••-5678 แล้ว\nหมดอายุใน 10 นาที\nส่งรหัสอีกครั้งได้ใน 0:58 \nไม่ได้รับ SMS? แก้เบอร์หรืออีเมล\nยืนยัน",
+   "unmocked": [],
+   "url": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
+   "file": "/root/projects/shark-sec-e/apps/mobile/qc/shots-sec/otp.png",
+   "generatedAt": "2026-11-04T20:49:14.827Z"
+  },
+  {
+   "name": "phone",
+   "route": "/phone",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "phone",
+    "phone-input",
+    "phone-request",
+    "phone-logout"
+   ],
+   "texts": "ยืนยันเบอร์มือถือ\nบัญชีนี้ยังไม่มีเบอร์มือถือ\nผูกเบอร์ครั้งเดียว ใช้เข้าแอปและรับคำเชิญจากร้านได้\nเบอร์โทร\nรับรหัสทาง SMS\nออกจากระบบ",
+   "unmocked": [],
+   "url": "/phone",
+   "file": "/root/projects/shark-sec-e/apps/mobile/qc/shots-sec/phone.png",
+   "generatedAt": "2026-11-04T20:49:17.498Z"
+  },
+  {
+   "name": "login-dark",
+   "route": "/login",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "login",
+    "login-phone",
+    "login-sms",
+    "login-google",
+    "login-email-toggle",
+    "login-signup"
+   ],
+   "texts": "SHARK HUB\nผู้ช่วย AI ประจำกิจการของคุณ\nเข้าด้วยเบอร์มือถือ\nรับรหัสทาง SMS\nเข้าด้วยอีเมล\nหรือเข้าสู่ระบบด้วย\n\n\n\n\nยังไม่มีบัญชี? สมัคร",
+   "unmocked": [],
+   "url": "/login",
+   "file": "/root/projects/shark-sec-e/apps/mobile/qc/shots-sec/login-dark.png",
+   "generatedAt": "2026-11-04T20:49:20.463Z"
+  },
+  {
+   "name": "signup-dark",
+   "route": "/signup",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "signup",
+    "signup-name",
+    "signup-phone",
+    "signup-email",
+    "signup-submit",
+    "signup-login"
+   ],
+   "texts": "ขั้น 1 จาก 3\nสมัครใช้ SHARK\nใส่ชื่อ เบอร์โทร และอีเมล\nเราจะส่งรหัสยืนยันทาง SMS ไปที่เบอร์ของคุณ\nชื่อ\nเบอร์โทร\nอีเมล\nยังไม่ยืนยัน\nกดส่งรหัสถือว่ายอมรับข้อตกลงการใช้งาน\nและนโยบายความเป็นส่วนตัว\nส่งรหัสยืนยันทาง SMS\nมีบัญชีแล้ว? เข้าสู่ระบบ",
+   "unmocked": [],
+   "url": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
+   "file": "/root/projects/shark-sec-e/apps/mobile/qc/shots-sec/signup-dark.png",
+   "generatedAt": "2026-11-04T20:49:23.183Z"
+  },
+  {
+   "name": "otp-dark",
+   "route": "/otp",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "otp",
+    "otp-input",
+    "otp-resend",
+    "otp-edit-email",
+    "otp-submit"
+   ],
+   "texts": "\nขั้น 2 จาก 3\nใส่รหัสจาก SMS\nส่งรหัส 6 หลักไปที่ 081-•••-5678 แล้ว\nหมดอายุใน 10 นาที\nส่งรหัสอีกครั้งได้ใน 0:58 \nไม่ได้รับ SMS? แก้เบอร์หรืออีเมล\nยืนยัน",
+   "unmocked": [],
+   "url": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
+   "file": "/root/projects/shark-sec-e/apps/mobile/qc/shots-sec/otp-dark.png",
+   "generatedAt": "2026-11-04T20:49:25.856Z"
+  },
+  {
+   "name": "phone-dark",
+   "route": "/phone",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "phone",
+    "phone-input",
+    "phone-request",
+    "phone-logout"
+   ],
+   "texts": "ยืนยันเบอร์มือถือ\nบัญชีนี้ยังไม่มีเบอร์มือถือ\nผูกเบอร์ครั้งเดียว ใช้เข้าแอปและรับคำเชิญจากร้านได้\nเบอร์โทร\nรับรหัสทาง SMS\nออกจากระบบ",
+   "unmocked": [],
+   "url": "/phone",
+   "file": "/root/projects/shark-sec-e/apps/mobile/qc/shots-sec/phone-dark.png",
+   "generatedAt": "2026-11-04T20:49:28.506Z"
   }
  ]
 }
