@@ -1,0 +1,37 @@
+{
+  "_about": "fixture ของใบ S0.2 — ข้อมูลจำลองล้วน (ไม่มีข้อมูลร้านจริง ไม่มี token จริง) · รูปแบบดู README.md ในโฟลเดอร์นี้",
+  "screen": {
+    "tenantName": "The Bean Café",
+    "secretaryName": "Shark",
+    "subtitle": "เลขา Shark · ยังไม่มีงานในกิจการนี้",
+    "heroTitle": "สั่งงานแรกได้เลย",
+    "heroBody": "พิมพ์หรือพูดเป็นภาษาปกติ\nผมหาข้อมูลในระบบ ร่างให้ แล้วขออนุมัติก่อนทำจริง",
+    "suggestLabel": "ลองสั่งแบบนี้",
+    "suggestions": [
+      { "id": "s1", "sys": "pos", "badge": "POS", "title": "สรุปยอดขายเมื่อวาน กับของที่ใกล้หมด", "sub": "อ่านอย่างเดียว · เสร็จเองได้" },
+      { "id": "s2", "sys": "crm", "badge": "CRM", "title": "ลูกค้าคนไหนไม่ได้ซื้อนานเกิน 1 เดือน", "sub": "อ่านอย่างเดียว · เสร็จเองได้" },
+      { "id": "s3", "sys": "bk", "badge": "คิว", "title": "เช็กคิวพรุ่งนี้ แล้วร่างข้อความยืนยันลูกค้า", "sub": "ร่างแล้วรอคุณอนุมัติก่อนส่ง" }
+    ],
+    "inputPlaceholder": "สั่งงานแรกให้ Shark…"
+  },
+  "noAuth": ["/login"],
+  "expect": {
+    "/secretary": ["sec-home", "sec-top-secretary", "sec-top-customers", "sec-top-team", "sec-top-help", "sec-top-new", "sec-suggest-s1", "sec-suggest-s2", "sec-suggest-s3", "sec-input"],
+    "/secretary/_gallery": ["sec-gallery"]
+  },
+  "tall": { "/secretary/_gallery": 2900 },
+  "endpoints": {
+    "GET /api/mobile/me": {
+      "user": { "id": "u-qc-owner", "email": "owner@qc.invalid", "name": "คุณสุข (QC)" },
+      "memberships": [{ "tenantId": "t1", "name": "The Bean Café", "role": "OWNER", "branding": null }]
+    },
+    "GET /api/mobile/usage": { "used": 12, "limit": 100, "pct": 12 },
+    "GET /api/mobile/conversations": {
+      "conversations": [
+        { "id": "c-qc-1", "title": "สรุปยอดขายเมื่อวาน", "updatedAt": "2026-09-01T03:00:00.000Z", "unread": true },
+        { "id": "c-qc-2", "title": "ใบเสนอราคา ร้านตัวอย่าง", "updatedAt": "2026-08-28T03:00:00.000Z", "unread": false }
+      ]
+    },
+    "POST /api/mobile/push/register": { "ok": true }
+  }
+}
