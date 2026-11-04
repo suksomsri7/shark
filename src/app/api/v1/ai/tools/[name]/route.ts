@@ -14,6 +14,7 @@ import { prisma } from "@/lib/core/db";
 import { crmApi } from "@/lib/modules/crm";
 import { aiApiKeyActor } from "@/lib/ai/actor";
 import { toolVerdict } from "@/lib/ai/tool-access";
+import { getAccess } from "@/lib/ai/secretary/access";
 import { newConversationId } from "@/lib/ai/conversation-owner";
 import { findVisibleConversation } from "@/lib/ai/conversations";
 import { generalToolGate, posToolNeedsPosKey } from "../../general-key-gate";
@@ -74,7 +75,9 @@ export async function POST(
   // CRM C5.5-G1 r2 (F4) ▸ ด่านเดียวกับ executor (tool-access) ก่อนแตะอะไร — ไม่ผ่าน = 403 แบบเดียวกับการปฏิเสธอื่นของ route นี้
   //   (เดิม 200 + error ข้างใน · และไม่เปิดห้องแชทเปล่าให้คำขอที่ทำไม่ได้) ◂
   const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId, scopesMalformed: auth.scopesMalformed });
-  const verdict = toolVerdict(actor, name, { crmLegacyLead });
+  // S1.3b ▸ (รีวิว C2) ระดับต่อระบบของร้าน (OFF/READ/DRAFT) ใช้กับคีย์ API ด้วย — ไม่งั้นระบบที่เจ้าของปิดยังเรียกตรงจากภายนอกได้ ◂
+  const access = await getAccess(auth.tenantId);
+  const verdict = toolVerdict(actor, name, { crmLegacyLead, access });
   if (!verdict.ok) return apiJson({ error: verdict.reason }, 403);
 
   let body: { args?: unknown; conversationId?: string };
@@ -104,6 +107,7 @@ export async function POST(
     {
       tenantId: auth.tenantId,
       actor,
+      access, // S1.3b ▸ runTool ตรวจระดับซ้ำ + เครื่องมือที่อ่านข้ามโมดูลตัดส่วนที่ปิด ◂
       ...(conversationId ? { conversationId } : {}),
       ...(systemId ? { systemId } : {}),
     },

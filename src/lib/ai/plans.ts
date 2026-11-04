@@ -121,6 +121,11 @@ export async function executePlan(
   }
   // ◂ HF-HR-0
 
+  // S1.3b ▸ (รีวิว C6 D3) ระดับต่อระบบของร้าน — อ่านครั้งเดียว · ทุกขั้นต้องผ่าน (DRAFT) **ก่อน claim** ไม่งั้นแผนทำครึ่งเดียวแล้ว FAILED
+  //   ขั้นใดไม่ผ่าน ⇒ ไม่ทำสักขั้น · แผน **คง PENDING** (ต่างจาก HF-HR-0: เจ้าของเปิดระดับแล้วกดใหม่ได้) · runKind ยังตรวจซ้ำรายขั้น ◂
+  const levelBlock = await planLevelBlock(ctx.tenantId, preSteps);
+  if (levelBlock) return { ok: false, results: [levelBlock], doneCount: 0 };
+
   // ── ยืนยัน 2 ชั้นระดับแผน เมื่อมี step ลบ/ยกเลิกถาวร ──
   // ชั้นแรก (ไม่มี confirm2x) → คง PENDING ไม่ทำจริง แจ้ง UI ให้ถามยืนยันอีกครั้ง
   if (row.hasDestructive && !opts?.confirm2x) {
@@ -176,6 +181,22 @@ export async function executePlan(
   }
 
   return { ok: !failed, results, doneCount };
+}
+
+// S1.3b ▸ ขั้นแรกที่ระดับต่อระบบไม่ยอม (null = ผ่านทุกขั้น) · import ตอนเรียก (secretary/access → tool-access → proposals ← ไฟล์นี้)
+//   อ่านฐานไม่ได้ = ปฏิเสธด้วยข้อความไทย (ปิดไว้ก่อน — แบบเดียวกับ accessLevelGate ของ proposals.ts) ◂
+async function planLevelBlock(tenantId: string, steps: readonly StepState[]): Promise<PlanStepResult | null> {
+  try {
+    const { getAccess, kindAllowedByAccess } = await import("./secretary/access");
+    const access = await getAccess(tenantId);
+    for (const st of steps) {
+      const v = kindAllowedByAccess(access, String(st?.kind ?? ""));
+      if (!v.ok) return { summary: String(st?.summary ?? ""), ok: false, note: v.reason };
+    }
+    return null;
+  } catch {
+    return { summary: "", ok: false, note: "ตรวจสิทธิ์ของเลขาไม่ได้ชั่วคราว ลองใหม่อีกครั้ง" };
+  }
 }
 
 // ── ยกเลิกแผน — PENDING→REJECTED เท่านั้น (สถานะอื่น/ไม่พบ → false) ──
