@@ -32,7 +32,8 @@ export function apiErrorText(e: unknown): string {
   return "เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่";
 }
 
-type ApiOpts = { method?: string; body?: unknown; auth?: boolean; tenant?: boolean };
+// tenantId: ใส่ X-Tenant-Id ของกิจการที่ระบุแทนกิจการ active (S2.5 กล่องรวมทุกกิจการ — อนุมัติรายการของร้านนั้นโดยไม่ต้องสลับร้าน)
+type ApiOpts = { method?: string; body?: unknown; auth?: boolean; tenant?: boolean; tenantId?: string };
 
 // เรียก API แบบ JSON — auth ใส่ Bearer (default true) · tenant ใส่ X-Tenant-Id (default true)
 export async function api<T>(path: string, opts: ApiOpts = {}): Promise<T> {
@@ -42,7 +43,7 @@ export async function api<T>(path: string, opts: ApiOpts = {}): Promise<T> {
     if (token) headers.authorization = `Bearer ${token}`;
   }
   if (opts.tenant !== false) {
-    const tid = await getTenantId();
+    const tid = opts.tenantId ?? (await getTenantId());
     if (tid) headers["x-tenant-id"] = tid;
   }
   const res = await fetch(`${BASE_URL}${path}`, {

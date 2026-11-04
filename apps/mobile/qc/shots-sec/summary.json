@@ -1,6 +1,6 @@
 {
- "generatedAt": "2026-11-04T22:31:23.543Z",
- "base": "http://127.0.0.1:4725",
+ "generatedAt": "2026-11-04T23:11:53.198Z",
+ "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
   "w": 390,
@@ -8,8 +8,8 @@
   "scale": 2
  },
  "fixture": {
-  "path": "/root/projects/shark-sec-c/apps/mobile/qc/fixtures/secretary/s2.4.json",
-  "sha256": "53f1160c09f11293bef55c4cef317ecf8b699a6ec27d98f27e11bff519766ef2"
+  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.5.json",
+  "sha256": "4ac6f8fea6ce688e83ba58b4f12c8e454d1025b17c09533d437f99c200a55317"
  },
  "screens": [
   {
@@ -49,52 +49,6 @@
    "url": "/secretary/_gallery",
    "file": "/root/projects/shark-sec-b/apps/mobile/qc/shots-sec/secretary-_gallery-dark.png",
    "generatedAt": "2026-11-04T11:43:01.867Z"
-  },
-  {
-   "name": "secretary-inbox",
-   "route": "/secretary/inbox",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-inbox",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nรออนุมัติทุกกิจการ\nกำลังสร้าง (ใบ S2.5)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.5 วาดตามแบบหน้า A6",
-   "unmocked": [],
-   "url": "/secretary/inbox",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox.png",
-   "generatedAt": "2026-11-04T20:24:42.297Z"
-  },
-  {
-   "name": "secretary-scheduled",
-   "route": "/secretary/scheduled",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-scheduled",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nงานประจำ\nกำลังสร้าง (ใบ S2.5)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.5 วาดตามแบบหน้า A7",
-   "unmocked": [],
-   "url": "/secretary/scheduled",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled.png",
-   "generatedAt": "2026-11-04T20:24:46.020Z"
   },
   {
    "name": "secretary-staff-m1",
@@ -302,52 +256,6 @@
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new.png",
    "generatedAt": "2026-11-04T20:26:00.927Z"
-  },
-  {
-   "name": "secretary-inbox-dark",
-   "route": "/secretary/inbox",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-inbox",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nรออนุมัติทุกกิจการ\nกำลังสร้าง (ใบ S2.5)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.5 วาดตามแบบหน้า A6",
-   "unmocked": [],
-   "url": "/secretary/inbox",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox-dark.png",
-   "generatedAt": "2026-11-04T20:26:19.101Z"
-  },
-  {
-   "name": "secretary-scheduled-dark",
-   "route": "/secretary/scheduled",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-scheduled",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nงานประจำ\nกำลังสร้าง (ใบ S2.5)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.5 วาดตามแบบหน้า A7",
-   "unmocked": [],
-   "url": "/secretary/scheduled",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled-dark.png",
-   "generatedAt": "2026-11-04T20:26:22.998Z"
   },
   {
    "name": "secretary-staff-m1-dark",
@@ -1511,6 +1419,110 @@
    "url": "/secretary/room/r1",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-room-r1-dark.png",
    "generatedAt": "2026-11-04T22:31:23.408Z"
+  },
+  {
+   "name": "secretary-inbox",
+   "route": "/secretary/inbox",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "4ac6f8fea6ce688e83ba58b4f12c8e454d1025b17c09533d437f99c200a55317",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-inbox",
+    "sec-inbox-back",
+    "sec-inbox-tab-all",
+    "sec-inbox-tab-money",
+    "sec-inbox-tab-customer",
+    "sec-inbox-tab-delete",
+    "sec-inbox-item",
+    "sec-inbox-approve",
+    "sec-inbox-reject",
+    "sec-inbox-open",
+    "sec-inbox-why"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nรออนุมัติ\n5 รายการ · ทุกกิจการ · คุณอนุมัติได้ 4\nทั้งหมด 5\nเงิน 2\nส่งลูกค้า 1\nลบ/ยกเลิก 1\nThe Bean Café\nบัญชี\nออกเอกสารบัญชี\nเมื่อวาน\nใบเสนอราคา Q-0012 ฿12,500\nคุณลูกค้า QC · เครื่องชง 2 ชุด ลด 5% · ส่งทาง LINE\nทำไมต้องอนุมัติ: เงิน + ส่งถึงลูกค้า\nดู\nตีกลับ\nอนุมัติ\nแชท\nส่งข้อความถึงลูกค้า\n3/11\nตอบรีวิว 1 ดาวบน Facebook: \"ขออภัยค่ะ กาแฟรอนานเกินไป ครั้งหน้า…\" (ลงชื่อว่าเป็นผู้ช่วย AI)\nทำไมต้องอนุมัติ: ส่งถึงลูกค้าสาธารณะ\nดู\nตีกลับ\nอนุมัติและส่ง\nงาน\nงานใน บอร์ดงาน\n3/11\nลบการ์ดงานซ้ำ 3 ใบ ในบอร์ดหน้าร้าน\nทำไมต้องอนุมัติ: ลบถาวร ย้อนไม่ได้\nดู\nตีกลับ\nอนุมัติ\nบลูเฮาส์ หอพัก\nคิว\nคืนมัดจำ\nเมื่อวาน\nคืนเงินมัดจำห้อง 204 ฿2,400\nยกเลิกก่อน 7 วันตามนโยบาย · โอนเข้าบัญชีเดิม\nทำไมต้องอนุมัติ: คืนเงิน = ต้องอนุมัติเสมอ\nดู\nตีกลับ\nอนุมัติ\nแผนหลายขั้น\n2/11\nเตือนค่าหอค้างชำระ 12 ห้อง + บันทึกยอดค้าง\nต้องให้เจ้าของหรือผู้จัดการที่มีสิทธิ์ในระบบนี้อนุมัติ\nดู\nตีกลับ\nอนุมัติ",
+   "unmocked": [],
+   "url": "/secretary/inbox",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox.png",
+   "generatedAt": "2026-11-04T23:11:41.556Z"
+  },
+  {
+   "name": "secretary-scheduled",
+   "route": "/secretary/scheduled",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "4ac6f8fea6ce688e83ba58b4f12c8e454d1025b17c09533d437f99c200a55317",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-sched",
+    "sec-sched-back",
+    "sec-sched-add",
+    "sec-sched-item",
+    "sec-sched-toggle"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\nงานประจำ\nงานที่ Shark เปิดเองตามเวลา · ผลมาเป็นงานใหม่ในหน้าหลัก\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nทุกวัน 08:00 · ส่งผลทาง แจ้งเตือน + ห้องงาน\nวันนี้ 08:00\nตามดีลที่เงียบเกิน 14 วัน แล้วร่างข้อความรออนุมัติ\nทุก จ. 09:00 · ส่งผลทาง ห้องงาน\nจ. 09:00\nยืนยันคิวล่วงหน้า 1 วัน\nทุกวัน 18:00 · ส่งผลทาง แจ้งเตือน\nตั้งโดยคนอื่นในทีม\nปิดอยู่\nงานประจำใช้สิทธิ์เดียวกับงานที่สั่งเอง · งานที่อ่านอย่างเดียวจบเองได้ · งานที่เขียน/ส่งลูกค้า รออนุมัติทุกครั้ง",
+   "unmocked": [],
+   "url": "/secretary/scheduled",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled.png",
+   "generatedAt": "2026-11-04T23:11:45.339Z"
+  },
+  {
+   "name": "secretary-inbox-dark",
+   "route": "/secretary/inbox",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "4ac6f8fea6ce688e83ba58b4f12c8e454d1025b17c09533d437f99c200a55317",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-inbox",
+    "sec-inbox-back",
+    "sec-inbox-tab-all",
+    "sec-inbox-tab-money",
+    "sec-inbox-tab-customer",
+    "sec-inbox-tab-delete",
+    "sec-inbox-item",
+    "sec-inbox-approve",
+    "sec-inbox-reject",
+    "sec-inbox-open",
+    "sec-inbox-why"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nรออนุมัติ\n5 รายการ · ทุกกิจการ · คุณอนุมัติได้ 4\nทั้งหมด 5\nเงิน 2\nส่งลูกค้า 1\nลบ/ยกเลิก 1\nThe Bean Café\nบัญชี\nออกเอกสารบัญชี\nเมื่อวาน\nใบเสนอราคา Q-0012 ฿12,500\nคุณลูกค้า QC · เครื่องชง 2 ชุด ลด 5% · ส่งทาง LINE\nทำไมต้องอนุมัติ: เงิน + ส่งถึงลูกค้า\nดู\nตีกลับ\nอนุมัติ\nแชท\nส่งข้อความถึงลูกค้า\n3/11\nตอบรีวิว 1 ดาวบน Facebook: \"ขออภัยค่ะ กาแฟรอนานเกินไป ครั้งหน้า…\" (ลงชื่อว่าเป็นผู้ช่วย AI)\nทำไมต้องอนุมัติ: ส่งถึงลูกค้าสาธารณะ\nดู\nตีกลับ\nอนุมัติและส่ง\nงาน\nงานใน บอร์ดงาน\n3/11\nลบการ์ดงานซ้ำ 3 ใบ ในบอร์ดหน้าร้าน\nทำไมต้องอนุมัติ: ลบถาวร ย้อนไม่ได้\nดู\nตีกลับ\nอนุมัติ\nบลูเฮาส์ หอพัก\nคิว\nคืนมัดจำ\nเมื่อวาน\nคืนเงินมัดจำห้อง 204 ฿2,400\nยกเลิกก่อน 7 วันตามนโยบาย · โอนเข้าบัญชีเดิม\nทำไมต้องอนุมัติ: คืนเงิน = ต้องอนุมัติเสมอ\nดู\nตีกลับ\nอนุมัติ\nแผนหลายขั้น\n2/11\nเตือนค่าหอค้างชำระ 12 ห้อง + บันทึกยอดค้าง\nต้องให้เจ้าของหรือผู้จัดการที่มีสิทธิ์ในระบบนี้อนุมัติ\nดู\nตีกลับ\nอนุมัติ",
+   "unmocked": [],
+   "url": "/secretary/inbox",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox-dark.png",
+   "generatedAt": "2026-11-04T23:11:49.181Z"
+  },
+  {
+   "name": "secretary-scheduled-dark",
+   "route": "/secretary/scheduled",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "4ac6f8fea6ce688e83ba58b4f12c8e454d1025b17c09533d437f99c200a55317",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-sched",
+    "sec-sched-back",
+    "sec-sched-add",
+    "sec-sched-item",
+    "sec-sched-toggle"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\nงานประจำ\nงานที่ Shark เปิดเองตามเวลา · ผลมาเป็นงานใหม่ในหน้าหลัก\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nทุกวัน 08:00 · ส่งผลทาง แจ้งเตือน + ห้องงาน\nวันนี้ 08:00\nตามดีลที่เงียบเกิน 14 วัน แล้วร่างข้อความรออนุมัติ\nทุก จ. 09:00 · ส่งผลทาง ห้องงาน\nจ. 09:00\nยืนยันคิวล่วงหน้า 1 วัน\nทุกวัน 18:00 · ส่งผลทาง แจ้งเตือน\nตั้งโดยคนอื่นในทีม\nปิดอยู่\nงานประจำใช้สิทธิ์เดียวกับงานที่สั่งเอง · งานที่อ่านอย่างเดียวจบเองได้ · งานที่เขียน/ส่งลูกค้า รออนุมัติทุกครั้ง",
+   "unmocked": [],
+   "url": "/secretary/scheduled",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled-dark.png",
+   "generatedAt": "2026-11-04T23:11:53.078Z"
   }
  ]
 }

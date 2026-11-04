@@ -1,0 +1,224 @@
+{
+ "_about": "fixture ของใบ S2.5+S2.6 — กล่องรวมรออนุมัติ 2 กิจการ 5 รายการ (เงิน/ส่งลูกค้า/ลบ/แผนที่อนุมัติไม่ได้) · งานประจำ 3 รายการ (ทุกวัน ×2 · ทุกสัปดาห์ · 1 รายการของคนอื่น) · ข้อมูลจำลองล้วน",
+ "noAuth": [
+  "/login"
+ ],
+ "expect": {
+  "/secretary/inbox": [
+   "sec-inbox",
+   "sec-inbox-back",
+   "sec-inbox-tab-all",
+   "sec-inbox-tab-money",
+   "sec-inbox-tab-customer",
+   "sec-inbox-tab-delete",
+   "sec-inbox-item",
+   "sec-inbox-approve",
+   "sec-inbox-reject",
+   "sec-inbox-open",
+   "sec-inbox-why"
+  ],
+  "/secretary/scheduled": [
+   "sec-sched",
+   "sec-sched-back",
+   "sec-sched-add",
+   "sec-sched-item",
+   "sec-sched-toggle"
+  ]
+ },
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@qc.invalid",
+    "name": "คุณสุข (QC)"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "MANAGER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 0,
+    "approvedClean": 0,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 5,
+   "canApprove": 4
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 0
+  },
+  "GET /api/mobile/secretary/inbox": {
+   "items": [
+    {
+     "tenantId": "t1",
+     "tenantName": "The Bean Café",
+     "type": "proposal",
+     "id": "p-quote",
+     "roomId": "r1",
+     "conversationId": "c-qc-r1",
+     "summary": "ใบเสนอราคา Q-0012 ฿12,500 · คุณลูกค้า QC · เครื่องชง 2 ชุด ลด 5% · ส่งทาง LINE",
+     "kind": "account.documents.create",
+     "risk": "WRITE",
+     "canApprove": true,
+     "why": "เงิน + ส่งถึงลูกค้า",
+     "createdAt": "2026-11-04T02:41:00.000Z",
+     "expiresAt": "2026-11-12T02:41:00.000Z"
+    },
+    {
+     "tenantId": "t2",
+     "tenantName": "บลูเฮาส์ หอพัก",
+     "type": "proposal",
+     "id": "p-refund",
+     "roomId": "r2",
+     "conversationId": "c-qc-r2",
+     "summary": "คืนเงินมัดจำห้อง 204 ฿2,400 · ยกเลิกก่อน 7 วันตามนโยบาย · โอนเข้าบัญชีเดิม",
+     "kind": "booking_refund_deposit",
+     "risk": "WRITE",
+     "canApprove": true,
+     "why": "คืนเงิน = ต้องอนุมัติเสมอ",
+     "createdAt": "2026-11-04T01:15:00.000Z",
+     "expiresAt": "2026-11-12T01:15:00.000Z"
+    },
+    {
+     "tenantId": "t1",
+     "tenantName": "The Bean Café",
+     "type": "proposal",
+     "id": "p-review",
+     "roomId": "r3",
+     "conversationId": "c-qc-r3",
+     "summary": "ตอบรีวิว 1 ดาวบน Facebook: \"ขออภัยค่ะ กาแฟรอนานเกินไป ครั้งหน้า…\" (ลงชื่อว่าเป็นผู้ช่วย AI)",
+     "kind": "chat.send",
+     "risk": "WRITE",
+     "canApprove": true,
+     "why": "ส่งถึงลูกค้าสาธารณะ",
+     "createdAt": "2026-11-03T09:20:00.000Z",
+     "expiresAt": "2026-11-11T09:20:00.000Z"
+    },
+    {
+     "tenantId": "t1",
+     "tenantName": "The Bean Café",
+     "type": "proposal",
+     "id": "p-del",
+     "roomId": "r4",
+     "conversationId": "c-qc-r4",
+     "summary": "ลบการ์ดงานซ้ำ 3 ใบ ในบอร์ดหน้าร้าน",
+     "kind": "kanban.cards.delete",
+     "risk": "DESTRUCTIVE",
+     "canApprove": true,
+     "why": "ลบถาวร ย้อนไม่ได้",
+     "createdAt": "2026-11-03T07:05:00.000Z",
+     "expiresAt": "2026-11-11T07:05:00.000Z"
+    },
+    {
+     "tenantId": "t2",
+     "tenantName": "บลูเฮาส์ หอพัก",
+     "type": "plan",
+     "id": "plan-rent",
+     "roomId": "r5",
+     "conversationId": "c-qc-r5",
+     "summary": "เตือนค่าหอค้างชำระ 12 ห้อง + บันทึกยอดค้าง",
+     "canApprove": false,
+     "createdAt": "2026-11-02T03:00:00.000Z",
+     "expiresAt": "2026-11-11T03:00:00.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/scheduled": {
+   "max": 10,
+   "items": [
+    {
+     "id": "st1",
+     "instruction": "สรุปยอดขายเมื่อวาน + ของใกล้หมด",
+     "hourBkk": 8,
+     "frequency": "DAILY",
+     "days": [],
+     "channels": [
+      "push",
+      "room"
+     ],
+     "describe": "ทุกวัน",
+     "active": true,
+     "ownerUserId": "u-qc-owner",
+     "mine": true,
+     "lastRunDay": null,
+     "createdAt": "2026-10-01T01:00:00.000Z",
+     "updatedAt": "2026-10-01T01:00:00.000Z"
+    },
+    {
+     "id": "st2",
+     "instruction": "ตามดีลที่เงียบเกิน 14 วัน แล้วร่างข้อความรออนุมัติ",
+     "hourBkk": 9,
+     "frequency": "WEEKLY",
+     "days": [
+      1
+     ],
+     "channels": [
+      "room"
+     ],
+     "describe": "ทุกสัปดาห์ (วันจันทร์)",
+     "active": true,
+     "ownerUserId": "u-qc-owner",
+     "mine": true,
+     "lastRunDay": null,
+     "createdAt": "2026-10-01T01:00:00.000Z",
+     "updatedAt": "2026-10-01T01:00:00.000Z"
+    },
+    {
+     "id": "st3",
+     "instruction": "ยืนยันคิวล่วงหน้า 1 วัน",
+     "hourBkk": 18,
+     "frequency": "DAILY",
+     "days": [],
+     "channels": [
+      "push"
+     ],
+     "describe": "ทุกวัน",
+     "active": false,
+     "ownerUserId": "u-qc-staff",
+     "mine": false,
+     "lastRunDay": null,
+     "createdAt": "2026-10-01T01:00:00.000Z",
+     "updatedAt": "2026-10-01T01:00:00.000Z"
+    }
+   ]
+  },
+  "PUT /api/mobile/secretary/scheduled/st1": {
+   "ok": true,
+   "active": false
+  },
+  "POST /api/mobile/secretary/scheduled": {
+   "id": "st9"
+  },
+  "DELETE /api/mobile/secretary/scheduled/st1": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/proposals/p-quote/approve": {
+   "ok": true,
+   "note": "ออกใบเสนอราคาแล้ว"
+  },
+  "POST /api/mobile/secretary/proposals/p-quote/reject": {
+   "ok": true
+  }
+ }
+}

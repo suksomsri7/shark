@@ -4,7 +4,7 @@ import { Text } from "@/src/components/ui/text";
 import { glassStyle, shadow, useTheme } from "@/src/theme/index";
 import { radii } from "@/src/theme/tokens";
 
-/** testID (S2.17 · ไม่ใส่ = `<testID>-<key>` เหมือนเดิม) */
+// testID ต่อแท็บ (ไม่บังคับ · S2.5) — ปริยาย `${testID}-${key}`
 export type TabItem = { key: string; label: string; count?: number; tone?: "run" | "wait"; testID?: string };
 
 export function Tabs({ items, active, onChange, testID }: { items: TabItem[]; active: string; onChange?: (key: string) => void; testID: string }) {

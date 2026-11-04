@@ -1,0 +1,105 @@
+{
+ "inboxGet": [
+  {
+   "q": "?take=100",
+   "tenant": null
+  }
+ ],
+ "cards": 5,
+ "groups": 2,
+ "planApproveAria": "true",
+ "planRejectAria": "true",
+ "cannot": "ต้องให้เจ้าของหรือผู้จัดการที่มีสิทธิ์ในระบบนี้อนุมัติ",
+ "planApproveCalls": 0,
+ "tab_money": 2,
+ "tab_customer": 1,
+ "tab_delete": 1,
+ "tab_all": 5,
+ "approveQuote": [
+  {
+   "body": "{}",
+   "tenant": "t1"
+  }
+ ],
+ "approveFlash": "ออกใบเสนอราคาแล้ว",
+ "approveRefund": [
+  {
+   "body": "{}",
+   "tenant": "t2"
+  }
+ ],
+ "activeAfterApprove": "t1",
+ "inboxReloads": 3,
+ "approveDel": [
+  {
+   "body": "{}",
+   "tenant": "t1"
+  },
+  {
+   "body": "{\"confirm2x\":true}",
+   "tenant": "t1"
+  }
+ ],
+ "deniedNote": "รายการนี้หมดอายุแล้ว",
+ "rejectRefund": [
+  {
+   "body": "{\"remember\":\"JOB\"}",
+   "tenant": "t2"
+  }
+ ],
+ "tapUrl": "/secretary/room/r2",
+ "tapActive": "t2",
+ "roomFetchTenant": "t2",
+ "openSameTenantUrl": "/secretary/room/r1",
+ "openSameTenantActive": "t1",
+ "inboxEmpty": true,
+ "schedGetTenant": "t1",
+ "togglePut": [
+  {
+   "body": "{\"active\":false}",
+   "tenant": "t1"
+  }
+ ],
+ "toggleChecked": "false",
+ "toggleFailChecked": "true",
+ "toggleFailMsg": "ไม่พบงานประจำนี้",
+ "monthlyOption": false,
+ "emptyErr": "พิมพ์สิ่งที่ให้ทำก่อน",
+ "noDayErr": "เลือกอย่างน้อย 1 วัน",
+ "createPost": [
+  {
+   "body": "{\"instruction\":\"สรุปรีวิวใหม่ของสัปดาห์\",\"hourBkk\":18,\"frequency\":\"WEEKLY\",\"days\":[1,3],\"channels\":[\"room\"]}",
+   "tenant": "t1"
+  }
+ ],
+ "createFlash": "บันทึกงานประจำแล้ว",
+ "sheetClosed": true,
+ "server400": "ตั้งงานประจำได้สูงสุด 10 รายการต่อร้าน — ลบหรือปิดรายการเดิมก่อนถ้าต้องการเพิ่ม",
+ "editOrder": [
+  "POST scheduled {\"instruction\":\"สรุปยอดขายเมื่อวาน + ของใกล้หมด\",\"hourBkk\":7,\"frequency\":\"DAILY\",\"channels\":[\"push\",\"room\"]}",
+  "DELETE st1 "
+ ],
+ "editAtCapOrder": [
+  "DELETE st1 ",
+  "POST scheduled {\"instruction\":\"สรุปยอดขายเมื่อวาน + ของใกล้หมด\",\"hourBkk\":7,\"frequency\":\"DAILY\",\"channels\":[\"push\",\"room\"]}",
+  "POST scheduled {\"instruction\":\"สรุปยอดขายเมื่อวาน + ของใกล้หมด\",\"hourBkk\":8,\"frequency\":\"DAILY\",\"channels\":[\"push\",\"room\"]}"
+ ],
+ "editAtCapErr": "ข้อมูลไม่ถูกต้อง",
+ "capMsg": "ตั้งงานประจำได้สูงสุด 3 รายการต่อกิจการ — ลบรายการเดิมก่อนถ้าต้องการเพิ่ม",
+ "capSheet": false,
+ "capPost": 0,
+ "deleteBeforeConfirm": 0,
+ "deleteAfterConfirm": [
+  {
+   "body": null,
+   "tenant": "t1"
+  }
+ ],
+ "deleteFlash": "ลบงานประจำแล้ว",
+ "ownerOtherSave": false,
+ "ownerOtherDelete": true,
+ "staffOtherToggleAria": "true",
+ "staffOtherSheet": false,
+ "staffOtherPut": 0,
+ "schedEmpty": true
+}
