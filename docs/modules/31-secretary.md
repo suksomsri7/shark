@@ -304,9 +304,13 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `canSpend` (credit.ts:74) คงชื่อสำหรับผู้เรียก 22 จุด แต่ภายใน = `canRunAi(…, {scope: "assist"})` · ยังเขียน `AiCreditTxn` เป็นบันทึกต้นทุน (ติดลบได้ตาม `chargeUsage` เดิม)
 - `ensureWallet` (:34) ไม่สร้างแถว GRANT เมื่อ `tenant.createdAt >= SECRETARY_LAUNCH_AT` · `GET /api/mobile/usage` เปลี่ยนเป็น `canSpendPeek` (:85 · อ่านอย่างเดียว)
 
-### 5.16 `src/lib/ai/provider.ts` (เปลี่ยน · S1.20 · R-K18)
-- `class AnthropicProvider(key: string, model: string) implements AiProvider` — `chat(messages, opts?: { maxTokens?; tools? }) → Promise<AiReply>` · Messages API · `system` แยก · tools → `input_schema` · `cache_control` บน system/tools · `usage.{input,output,cache_read_input,cache_creation_input}_tokens` รวมเข้า `tokensIn/tokensOut` เดิม
-- `MODEL_IDS = { fast: { openrouter; anthropic }, smart: { … } }` · `pickModel(text, hasImages) → "fast" | "smart"` (คืน tier) · `resolveProvider(tier) → AiProvider | null` อ่าน env `AI_PROVIDER=anthropic|openrouter` (ปริยาย openrouter) + `SHARK_ANTHROPIC_KEY` · `pricing.priceOf` รู้จัก id ตรง · `SHARK_AI_MOCK=1` ⇒ Mock (ทุก oracle) · `qc-ai-brain` ห้ามเปลี่ยน
+### 5.16 `src/lib/ai/provider.ts` (เปลี่ยน · S1.20 · มีแล้ว · R-K18 + R-K18b)
+- `ANTHROPIC_MODEL_IDS: Readonly<Record<string, string>>` — `{ [FAST_MODEL]: "claude-haiku-4-5", [SMART_MODEL]: "claude-sonnet-5" }` · `FAST_MODEL`/`SMART_MODEL` คงเป็น slug OpenRouter (R-K18b · `service.ts` เทียบ `=== FAST_MODEL`) · `pickModel` คงคืน slug เดิม (`qc-ai-brain` ไม่เปลี่ยน)
+- `toAnthropicModelId(slugOrId: string) → string` — pure · ตาราง → id · ขึ้นต้น `claude-` คืนเดิม · อื่น ๆ ตัด `anthropic/` + แทน `.` ด้วย `-`
+- `buildAnthropicRequestBody(model, messages: AiChatMessage[], tools: AiToolDef[] | undefined, opts?: { maxTokens? }) → Record<string, unknown>` — pure · `system` block เดียว + `cache_control` · tool_use/tool_result (ผลที่ติดกันรวม user message เดียว) · รูป base64/url · tools `input_schema` + `cache_control` ตัวสุดท้าย · `max_tokens` ปริยาย 1024 · ไม่มีพารามิเตอร์สุ่ม/thinking
+- `parseAnthropicReply(json: unknown, fallbackModel: string) → AiReply` — pure · `tokensIn = input + cache_creation_input + cache_read_input` · `tokensOut = output` · refusal ⇒ throw "AI ปฏิเสธคำขอนี้ (…)" · ว่าง ⇒ throw "AI provider ตอบว่าง"
+- `class AnthropicProvider(key: string, model: string, deps?: { fetchImpl?: typeof fetch; version?: string }) implements AiProvider` — `readonly model` · `chat(messages, opts?: { maxTokens?; tools? }) → Promise<AiReply>` · `POST https://api.anthropic.com/v1/messages` (`x-api-key` · `anthropic-version: 2023-06-01`) · `!res.ok` ⇒ throw `AI provider <status>: …`
+- `resolveProvider(tier = "smart") → AiProvider | null` — `SHARK_AI_MOCK=1` ⇒ Mock · `AI_PROVIDER=anthropic` ⇒ `SHARK_ANTHROPIC_KEY` (ไม่มี ⇒ null) + `toAnthropicModelId(SHARK_AI_MODEL ?? FAST/SMART ตาม tier)` · อื่น ๆ ⇒ OpenRouter ทางเดิม · `pricing.priceOf` จับ id ตรงด้วย substring เดิม (ราคา sonnet ยังเป็นค่าเก่า — หนี้ S3a.2)
 
 ### 5.17 `src/lib/ai/scheduled.ts` (เปลี่ยน · S1.9 · R-K5)
 - `createTask(ctx, input: { instruction; hourBkk; frequency?: "DAILY" | "WEEKLY"; days?: number[]; channels?: string[] }) → Promise<{ id }>` — งานใหม่จากห้องเลขาบันทึก `ownerUserId` (จาก `dispatch(ai_schedule_task)` ที่มี `userId` อยู่แล้ว) · เพดาน `FREE_PACK.scheduledMax`
