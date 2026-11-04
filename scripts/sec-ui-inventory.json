@@ -350,6 +350,209 @@
    "screen": "/secretary/room/[id] (A3–A5 · C4)",
    "action": "router.push /secretary/new?q=<คำสั่งแรกของห้อง>",
    "wo": "S2.4"
+  },
+  {
+   "testID": "sec-inbox-back",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "router.back · ไม่มีก่อนหน้า = /secretary",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-tab-all",
+   "file": "apps/mobile/src/components/airy/Tabs.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "กรองทั้งหมด (ฝั่งแอป)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-tab-money",
+   "file": "apps/mobile/src/components/airy/Tabs.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "กรองชั้นเงิน",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-tab-customer",
+   "file": "apps/mobile/src/components/airy/Tabs.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "กรองส่งถึงลูกค้า",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-tab-delete",
+   "file": "apps/mobile/src/components/airy/Tabs.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "กรองลบ/ยกเลิก (risk DESTRUCTIVE)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-item",
+   "file": "apps/mobile/src/components/secretary/InboxItem.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "switchTenant(row.tenantId) ถ้าต่าง → router.push /secretary/room/[roomId] (ไม่มีห้อง = /chat/[conversationId])",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-open",
+   "file": "apps/mobile/src/components/secretary/InboxItem.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "เหมือน sec-inbox-item (ปุ่ม ดู)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-reject",
+   "file": "apps/mobile/src/components/secretary/InboxItem.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "ชีต C4 (sec-inbox-reject-sheet) → POST proposals|plans/[id]/reject ด้วย x-tenant-id ของรายการ · canApprove=false = ปิด",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-approve",
+   "file": "apps/mobile/src/components/secretary/InboxItem.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "POST proposals|plans/[id]/approve ด้วย x-tenant-id ของรายการ · needsSecondConfirm ⇒ sec-inbox-confirm2x · canApprove=false = ปิด",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-retry",
+   "file": "apps/mobile/app/(app)/secretary/inbox.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "โหลด GET secretary/inbox ใหม่ (ออฟไลน์)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-confirm2x-ok",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "POST …/approve {confirm2x:true} (ชีตยืนยันชุดเดียวกับห้องงาน)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-reject-sheet-job",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "ตีกลับเฉพาะงานนี้ {remember:JOB}",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-reject-sheet-rule",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "ตีกลับ + จดเป็นกฎ {note, remember:RULE}",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-back",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "router.back · ไม่มีก่อนหน้า = /secretary",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-add",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "เปิดชีตงานประจำใหม่ · เต็ม max ⇒ ข้อความ sec-sched-cap",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-item",
+   "file": "apps/mobile/app/(app)/secretary/scheduled.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "เปิดชีตแก้ (ของฉัน DAILY/WEEKLY) · เจ้าของกิจการ+งานคนอื่น/รายเดือน = ชีตล็อก (ลบได้) · คนอื่น = ไม่ทำอะไร",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-toggle",
+   "file": "apps/mobile/app/(app)/secretary/scheduled.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "PUT secretary/scheduled/[id] {active} · ล้ม = คืนค่า",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-retry",
+   "file": "apps/mobile/app/(app)/secretary/scheduled.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "โหลด GET secretary/scheduled ใหม่",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-freq-daily",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ความถี่ DAILY",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-freq-weekly",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ความถี่ WEEKLY (+วัน)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-day-<0..6>",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "เลือก/เอาออกวันในสัปดาห์ (0=อา.)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-hour-<0..23>",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ตั้ง hourBkk",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-ch-push",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ช่องทาง push",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-ch-room",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ช่องทาง room",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-save",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ใหม่ = POST secretary/scheduled · แก้ = POST ใหม่ + DELETE เดิม (เต็มเพดาน = DELETE ก่อน · ล้ม = ตั้งเดิมคืน)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-delete",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ขอยืนยันลบ (ยังไม่ยิง)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-delete-confirm",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "DELETE secretary/scheduled/[id]",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-delete-cancel",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ยกเลิกการลบ",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ปิดชีต",
+   "wo": "S2.5"
   }
  ]
 }
