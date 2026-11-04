@@ -157,6 +157,23 @@ export function newMemoryId(ctx: ConvCtx): { id: string; shared: boolean } {
   return m.owner && m.ownFact ? { id: `${m.ownFact}${rand}`, shared: true } : { id: `${m.own}${rand}`, shared: false };
 }
 
+/**
+ * SEC S1.10 (R-K3) ▸ รหัส "ข้อเท็จจริงของร้าน" (`o~<userId>~…`) ของผู้จดที่เป็นคนในร้าน **ไม่ว่าบทบาทไหน** —
+ *   ใช้กับความจำที่รอเจ้าของยืนยัน (`AiMemory.status = "PENDING"`: กติกาจากการตีกลับ · remember_fact ในห้องเลขาของคนที่ไม่ใช่ OWNER)
+ *   ผู้จดไม่ใช่คนในร้าน (คีย์ API / งานภายใน) หรือไม่ชัด = throw · ไม่แตะ `newMemoryId` (กติกาเดิมทุกตัวอักษร) ◂
+ */
+export function newShopMemoryId(ctx: ConvCtx): string {
+  const m = memorySightOf(ctx);
+  if (!m.own || !m.ownFact) throw new Error("AI shop memory needs a known member creator");
+  return `${m.ownFact}${randomBytes(12).toString("hex")}`;
+}
+
+/** SEC S1.10 ▸ ผู้จดของความจำจากรหัส (`o~<userId>~…` / `u~<userId>~…`) — รุ่นเดิม/คีย์/งานภายใน = null ◂ */
+export function memoryAuthorOf(id: string): string | null {
+  const parts = String(id ?? "").split(SEP);
+  return parts.length === 3 && (parts[0] === "o" || parts[0] === TAG.member) && parts[1] ? parts[1] : null;
+}
+
 const isLegacyId = (id: string) => !id.includes(SEP);
 
 /** ผู้ดูนี้เห็นความจำนี้ไหม (เข้า prompt / อยู่ในรายการ) — ตรวจตรงตัวอักษรทุกแถว */
