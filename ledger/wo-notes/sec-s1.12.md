@@ -56,3 +56,9 @@
 | `AiApprovalRule chat.send` ปิดได้โดย OWNER | R-K3b รุ่นแรกมีผลแค่ข้อความ "ทำไมต้องอนุมัติ" | – |
 
 ## 9. คืนสภาพฐาน — ข้อสอบ `finally` ลบร้าน `qc-sec-s112-*` + ผู้ใช้ `qcs112-*`
+
+## 10. รอบ 2 — merge ทิปผู้คุม (S1.7/S1.8 รอบ 2 @38632d7f + ORACLE-EDIT S1.12-E2 @4a1e955d)
+- ความขัดแย้ง: `proposals.ts` 2 hunk (บล็อก `StaticProposalKind` + `STATIC_KIND_ACCESS` ที่ S1.7 ย้ายออก) ⇒ ใช้ฝั่ง session ทั้งคู่ · ย้าย 4 บรรทัดของใบนี้ (`chat.send` · `booking_refund_deposit` ใน union + ตาราง) ไป `src/lib/ai/kind-tables.ts` · `docs/modules/31-secretary.md` §5.7 ⇒ ใช้ §5.7 ของ S1.7 + บรรทัด kind ใหม่ของใบนี้ + §5.7a คงไว้
+- สัญญา S1.8 ของจริงคือ out-param (`DispatchOut` · R-S1.8a — handler คืน string เหมือนเดิม) ไม่ใช่ค่าคืน `{note, entity}`: `dispatchChatSend` ตั้ง `out.entity = { type: "chat.message", id: messageId }` (ส่งซ้ำ = แถวเดิม) · `dispatchBookingRefundDeposit` ตั้ง `{ type: "booking.appointment", id, unitId }` · ทั้งคู่ไม่อยู่ใน `UNDOABLE_KINDS` ⇒ `undoableUntil` null
+- มติผู้คุม: summary ของ log (ชื่อลูกค้า + 80 ตัวแรก) รับได้ เพราะ `recordAction` ผ่าน maskPiiDeep (R-S1.8f)
+- ผลรอบ 2: `qc-sec-s1.12` forced #1 / #2 / unforced = `{"total":14,"passed":14,"failed":[],"skipped":[]}` ×3 (K-4 · E-5 รันจริง) · fitness ×2 (D-1/D-2) เขียว · qc-sec-s1.7 forced 27/27 · qc-sec-s1.2 28/28 · qc-ai-tools 18/18 · qc-ai-skills 23/23 · qc-chat-replies 60/60 · typecheck: src 0 error (เหลือ scripts ของ S1.10/11/13/21/22/25 ที่ยังไม่ build)

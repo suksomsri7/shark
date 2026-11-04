@@ -1,3 +1,10 @@
+## ▶️ 5 พ.ย. ~01:0xZ — จุดต่อล่าสุด (บัญชี B · ผู้คุม Fable)
+- สถานะ **15/58 (26%)** · tip session/secretary = ดู `git log -1` · ใบ+oracle ครบทุกชุด S1 แล้ว (S1-9 S1-10 S1-16 S1-17 S1-18 เขียน 5 พ.ย.)
+- เลน b `wip/sec-s1.13` builder S1-11 (S1.13 โควตา) กำลังทำ · เลน c `wip/sec-s1.7` @580d64d3 S1-6 รอบ 2 27/27 ×3 **รอ re-check reviewer** → merge · เลน d `wip/sec-s1.12` builder S1-10 (chat.send) กำลังทำ
+- ลำดับถัดไป: merge S1-6 → spawn S1-9 (S1.11+S1.16 เลนว่าง) → S1-15 (S1.21+S1.24 · 2 ผู้ตรวจ) → S1-16 (S1.22 · migration secretary_b แจ้งก่อน generate) → S1-17 (S1.25 · 2 ผู้ตรวจ) → S1-18 (S1.14 ด่านเต็ม) → S2
+- หนี้ที่จดใน RUN §3: purge Ai* ตอนลบร้าน/ผู้ใช้ · CRM door kinds ข้ามด่าน · ai.room.member_added · channels ['room'] ยัง push · support_open_case 'ai-assistant'
+- กติกาเดิมคงทุกข้อ (ห้าม .env · QC ผ่าน qc-sec.sh · ห้าม CI=1 · ห้าม push main/deploy/eas · 3 เลน · tg เฉพาะ 📊 หลังปิดใบ)
+
 # SECRETARY-RESUME — จุดต่องาน RUN "เลขา AI"
 
 > เริ่มใหม่ = อ่านไฟล์นี้บล็อกบนสุด → `SECRETARY-RUN.md` §3 สถานะ + §4 เหตุการณ์ → ใบถัดไปใน `SECRETARY-MASTER-PLAN.md` §3 → `secretary-briefs/sec-brief-COMMON.md`
