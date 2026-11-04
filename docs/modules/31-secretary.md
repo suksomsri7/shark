@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | 1 | ชื่อเลขา | ผู้ใช้ตั้งเอง · ค่าเริ่มต้น **"Shark"** | [C1](../../ledger/DESIGN-SECRETARY.md) · B2 | `AiSecretary.name @default("Shark")` · §5.2 |
 | 2 | เลขาผูกกับ | **ผู้ใช้** (ตามไปทุกกิจการ · สิทธิ์แยกตามกิจการ) | B1 B2 | `AiSecretary` axis global (§4) |
-| 3 | เห็นงานของกัน | **เจ้าของเห็นงานทุกคนในกิจการ** · คนอื่นเห็นของตัวเอง (+ ห้องที่ถูกเพิ่ม R5) | A1 D1 | R-K1 · `sightForUser` · §7 |
+| 3 | เห็นงานของกัน | **เจ้าของเห็นงานทุกคนในกิจการ** · คนอื่นเห็นของตัวเอง (+ ห้องที่ถูกเพิ่ม R5) | A1 D1 | R-K1 · `roomSightFor` (conversations.ts) · §7 |
 | 4 | ช่องทางรุ่นแรก | **แอปเท่านั้น** (เว็บมีเฉพาะระบบ) · LINE รุ่นถัดไป | A8 | API มือถือชุดเดียว · §11 |
 | 5 | "ครั้งหน้าไม่ต้องถาม" | **รุ่นแรกไม่มี** — ทุกงานที่เขียน/ส่งลูกค้ารออนุมัติ · อ่าน/สรุป/ร่างทำเอง | A4 B3 | ไม่มีระดับ AUTO · `setAccess(AUTO)` ปฏิเสธ (§5.3) |
 | 6 | ย้อนกลับ | **24 ชั่วโมง** เฉพาะชนิดที่ย้อนได้จริง | A5 B5 | `AiActionLog.undoableUntil` · `undoAction` |
@@ -37,7 +37,7 @@
 
 | # | สรุป 1 บรรทัด | ที่ใช้ในเอกสารนี้ |
 |---|---|---|
-| R-K1 | ขยาย `ConvSight` เป็น `{own; ownerExtras; tenantAll; memberOf}` · OWNER เห็นทุกห้อง **เฉพาะห้องที่มี `AiRoom`** · `AiRoom.startedById` = `conversationCreatorOf(id).id` | §5.4 §5.19 §7 |
+| R-K1 | ขยาย `ConvSight` เป็น `{own; ownerExtras; memberOf?; tenantRooms?}` (S1.4 · ชื่อตามใบ S1.4) · OWNER เห็นทุกห้อง **เฉพาะห้องที่มี `AiRoom`** · `AiRoom.startedById` = `conversationCreatorOf(id).id` | §5.4 §5.18 §7 |
 | R-K2 | `AiMessage.authorUserId String?` เขียนเฉพาะ actor member · migration ก่อนโค้ด | §4 §10 |
 | R-K3 | `classOfKind` (pure) · `ALWAYS_APPROVE` ค่าคงที่ · `AiApprovalRule` 3 กฎ · ความจำในห้องเลขาเป็นข้อเสนอ | §5.7 |
 | R-K4 | ด่านผู้อนุมัติ role ≥ MANAGER เฉพาะห้องที่มี `AiRoom` · hook `approvalGate` หลังด่านเดิมของ `executeProposal` | §5.8 §7 |
@@ -228,13 +228,23 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `setAccess(ctx, module: string, level: "OFF" | "READ" | "DRAFT" | "AUTO") → Promise<{ ok: true } | { ok: false; reason: string }>` — OWNER เท่านั้น · `AUTO` ⇒ `{ok:false, reason:"รุ่นแรกยังไม่เปิดให้เลขาทำเองโดยไม่ถาม"}` · upsert `@@unique([tenantId, module])`
 - ต่อด่านเดิม 2 ชั้น: `toolsOfferedTo` (tool-access.ts:289) ตัดเครื่องมือของโมดูล OFF / ตัดเครื่องมือเขียนของ READ · `toolVerdict` ใน `runTool` (tools.ts:2411) ปฏิเสธซ้ำ · `executeProposal` ตรวจระดับอีกครั้งตอน execute (COMMON §C.2)
 
-### 5.4 rooms.ts (แผน · S1.4) — ห้องงาน
-- `sightForUser(tenantId: string, membership: { userId; role }) → Promise<ConvSight>` — อ่าน DB ครั้งเดียวต่อ request: `memberOf` จาก `AiRoomMember` · `tenantAll = role === "OWNER"` (R-K1)
-- `startRoom(ctx, input: { instruction: string; context?: { chatConversationId?; contactId? }; source?: "user" | "scheduled" }) → Promise<{ ok: true; roomId; conversationId; jobId } | { ok: false; error: "quota_exhausted" | "ai_disabled"; scope?: "jobs" }>` — ใน tx เดียว: `AiConversation` (id จาก `newConversationId` :63) + `AiRoom` (`startedById` = ผู้สั่ง) + `AiMessage` USER (`authorUserId`) + `AiRoomJob` + นับงาน `AiJobCounter` (conditional `INSERT … ON CONFLICT DO UPDATE SET jobs = jobs + 1 WHERE jobs < limit RETURNING`) · โควตาหมด = ไม่สร้างอะไร · event `ai.room.started`
-- `roomStatus(room: { closedAt; pendingProposals: number; pendingPlans: number; activeJobs: number }) → "OPEN" | "RUNNING" | "WAITING" | "DONE"` — pure · ลำดับ: closedAt ⇒ DONE · มี PENDING ⇒ WAITING · มี job QUEUED/RUNNING ⇒ RUNNING · อื่น ๆ ⇒ OPEN
-- `listRooms(ctx, opts: { scope: "mine" | "tenant"; status?; q?; before?: Date; take?: number }) → Promise<{ items: RoomCardDto[]; nextBefore: string | null }>` — `tenant` = OWNER เท่านั้น (อื่น = ว่าง/404) · ป้าย "สั่งโดย" จาก `conversationCreatorOf` (:161) · "ร่วมกับ" จาก `AiRoomMember`
-- `closeRoom(ctx, roomId: string) → Promise<boolean>` · `renameRoom(ctx, roomId, title) → Promise<boolean>` — ผู้สร้างหรือ OWNER
-- เปลี่ยนที่ conversation-owner.ts: `ConvSight` + `sightOf`/`sightOfConfirmer` รับ `memberOf`/`tenantAll` · `visibleConversationWhere` เพิ่ม `OR id IN memberOf` และ (tenantAll) `OR id IN (AiRoom.conversationId ของกิจการ)` · ห้อง `u~` เดิมของคนอื่นยังมองไม่เห็น
+### 5.4 rooms.ts (S1.4 · มีแล้ว · `src/lib/ai/secretary/rooms.ts`) — ห้องงาน
+- `roomTitleFrom(instruction: string) → string` — pure · บรรทัดแรกที่มีตัวอักษร (trim) · > 60 ตัว = ตัด 60 + "…" · ว่าง = "งานใหม่"
+- `roomStatusOf(x: { closedAt: Date | null; queuedJobs: number; pendingProposals: number; pendingPlans: number }) → RoomStatus` — pure · ลำดับ **DONE > RUNNING > WAITING > OPEN** (`RoomStatus = "OPEN" | "RUNNING" | "WAITING" | "DONE"`)
+- `startRoom(ctx: { tenantId; actor: AiMemberActor }, input: { instruction: string; title?: string; systems?: string[]; context?: { chatConversationId?; contactId? } }, now?: Date) → Promise<StartRoomResult>`
+  - `StartRoomResult = { ok: true; roomId; conversationId; jobsUsed; jobsLimit } | { ok: false; error: "empty" | "actor" | "quota"; message: string (ไทย); resetAt?: Date; jobsUsed?; jobsLimit? }`
+  - ใน `prisma.$transaction` เดียว: (1) แถว `AiJobCounter(tenantId, month = monthKeyBangkok(now))` ด้วย `createMany … skipDuplicates` (= `INSERT … ON CONFLICT DO NOTHING`) (2) `updateMany({ where: { tenantId, month, jobs: { lt: FREE_PACK.jobsPerMonth } }, data: { jobs: { increment: countsAsJob({kind:"room_new"}) } } })` — count 0 ⇒ โควตาหมด ⇒ ย้อนทั้ง tx ไม่สร้างอะไร (X3 · ห้ามอ่านแล้วเขียน) (3) `AiConversation` (id = `newConversationId` → `u~<userId>~…`) (4) `AiRoom` (`startedById` = actor.userId = `conversationCreatorOf(conversationId).id` · `jobsCounted` 1) (5) `AiMessage` USER (`authorUserId`)
+  - ยังไม่เรียกโมเดล และยังไม่สร้าง `AiRoomJob` (S1.5 ต่อคิว) · ไม่มี event (`ai.room.started` เลื่อนไป S1.5 พร้อม consumer + ทะเบียน 3 ที่)
+  - actor ไม่ใช่คนในร้าน / `actorProblem` ⇒ `error:"actor"` · คำสั่งว่าง ⇒ `error:"empty"` · โควตาหมด ⇒ `error:"quota"` + `message = quotaMessage(...).text` + `resetAt = nextResetBangkok(now)` · ไม่ตรวจ `ai.chat.send` เอง (route S1.14 ตรวจ)
+- `roomStatus(tenantId: string, conversationId: string, now?: Date) → Promise<RoomStatus>` — db · `AiRoomJob` QUEUED/RUNNING · `AiProposal` PENDING ไม่หมดอายุ · `AiPlan` PENDING ไม่หมดอายุ · ไม่มีห้อง = OPEN
+- `listRooms(ctx: ConvCtx, opts?: { scope?: "mine" | "tenant"; status?: RoomStatus; q?: string; take?: number; before?: Date }) → Promise<RoomCard[]>`
+  - `RoomCard = { id; conversationId; title; status; systems; startedById; startedByName; memberIds; updatedAt; closedAt; unread }`
+  - `tenant` = OWNER เท่านั้น (คนอื่นส่งมา = `mine` เงียบ ๆ) · `mine` = `startedById = userId` ∪ `AiRoomMember.userId` · เรียง `AiRoom.updatedAt` desc · take ปริยาย 50 สูงสุด 100 · `before` = updatedAt < before · `q` = title contains (insensitive) · สถานะของการ์ด 3 groupBy รวม (ไม่ N+1) · `unread` = มี ASSISTANT ใหม่กว่า `AiConversation.lastReadAt` (ค่าเดียวต่อห้อง)
+- `getRoom(ctx, roomId) → Promise<(AiRoom & { status }) | null>` — ผู้เปิด · สมาชิก · OWNER · อื่น = null
+- `closeRoom(ctx, roomId, now?) → Promise<boolean>` — ผู้เปิดห้องหรือ OWNER · ตั้ง `closedAt` · ปิดซ้ำ = false
+- `renameRoom(ctx, roomId, title) → Promise<boolean>` — ผู้เปิดห้องหรือ OWNER · `AiRoom.title` + `AiConversation.title` ใน tx เดียว · ≤ 60 ตัว
+- การมองเห็น (R-K1) อยู่ที่ `conversations.ts` (ไม่ใช่ rooms.ts): `roomSightFor(ctx) → Promise<ConvSight>` (1 query: `AiRoomMember` ของผู้ใช้ → `memberOf` · `tenantRooms = role === "OWNER"`) · `findVisibleConversation` (แถวมี `room`) · `canSeeConversationById(ctx, id)` (ยกเลิกข้อเสนอ) · `canConfirmerSeeConversation(tenantId, m, userId, id)` (ยืนยันข้อเสนอ/แผน) — ใช้ใน `listMessages` · `sendMessage` · `listPendingProposals` · `rejectProposal` · `executeProposal` · `executePlan` · เครื่องมือ (`ToolCtx.sight` ที่ `sendMessage` ตรวจแล้ว · `guarded` ใช้ `ctx.sight ?? sightOf(ctx)`)
+- 🔴 ห้าม import `service.ts` จาก rooms.ts (วงกลม)
 
 ### 5.5 worker.ts (แผน · S1.5) — คิวเบื้องหลัง (R-K8)
 - `enqueueRoomJob(ctx, input: { roomId; messageId; authorUserId }) → Promise<{ jobId }>` — `messageId @unique` กันซ้ำ
@@ -295,8 +305,13 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `createTask(ctx, input: { instruction; hourBkk; frequency?: "DAILY" | "WEEKLY"; days?: number[]; channels?: string[] }) → Promise<{ id }>` — งานใหม่จากห้องเลขาบันทึก `ownerUserId` (จาก `dispatch(ai_schedule_task)` ที่มี `userId` อยู่แล้ว) · เพดาน `FREE_PACK.scheduledMax`
 - `runScheduledTasks(now: Date, deps?: { provider? }) → Promise<number>` — claim `updateMany({id, lastRunDay: {not: today}}) → {lastRunDay: today}` (X5) · แถวมี `ownerUserId` → โหลด `Membership` สด (`acceptedAt ≠ null` ไม่งั้นข้าม + จด) → `aiMemberActor` → `startRoom({source: "scheduled"})` (นับงาน · หมด = ข้าม + จด) → `sendPushToUser(owner)` · แถว null = ทางเดิมทุกตัวอักษร
 
-### 5.18 `src/lib/ai/conversation-owner.ts` (เปลี่ยน · S1.4 · R-K1)
-- `type ConvSight = { own: string | null; ownerExtras: boolean; tenantAll: boolean; memberOf: ReadonlySet<string> }` · `sightOf(ctx, extra?: { memberOf?; tenantAll? }) → ConvSight` · `sightOfConfirmer(m, userId, extra?) → ConvSight` · `canSeeConversationId(s, id) → boolean` (+ memberOf + tenantAll ของห้องที่มี AiRoom ตามชุดที่ผู้เรียกส่ง) · ไฟล์ยังเบา (ไม่มี db)
+### 5.18 `src/lib/ai/conversation-owner.ts` (เปลี่ยน · S1.4 · R-K1 · ยัง pure · เพิ่มเท่านั้น)
+- `type ConvSight = { own: string | null; ownerExtras: boolean; memberOf?: ReadonlySet<string>; tenantRooms?: boolean }` — สองช่องใหม่ optional · ไม่มี = กติกาเดิมทุกตัวอักษร
+- `withRoomSight(s, extra: { memberOf?: Iterable<string>; tenantRooms?: boolean }) → ConvSight` — pure · คืนค่าใหม่
+- `canSeeConversationId(s, id)` — เดิม + `s.memberOf?.has(id)` (string-only: `tenantRooms` ตัดสินไม่ได้ ⇒ ไม่นับ)
+- `canSeeConversation(s, row: { id; room?: { id } | null }) → boolean` — `canSeeConversationId || (s.tenantRooms && !!row.room)`
+- `visibleConversationWhere(s)` — เดิม + `OR { id: { in: [...memberOf] } }` + (tenantRooms) `OR { room: { isNot: null } }` · sight ไม่มีสองช่อง = รูปเดิม
+- OWNER เห็นห้องของคนอื่น **เฉพาะห้องที่มีแถว `AiRoom`** — ห้อง `u~` เดิมที่ไม่มี AiRoom ยังไม่มีใครเห็น (baseline `qc-ai-*` คงเดิม) · `sightOf`/`sightOfConfirmer` ไม่เปลี่ยน (ตัวอ่าน DB เติมผ่าน `withRoomSight`)
 
 ### 5.19 phone-auth.ts (แผน · `src/lib/core` · S1.19 · R-K9/K10) — ไม่ import env กลาง (แบบ `sms.ts`)
 - `requestPhoneOtp(phone: string, ip: string | null, opts?: { now?: Date }) → Promise<{ ok: true; resendAfterSec: number } | { ok: false; reason: string }>` — `toE164Thai` · 6 หลัก · หมดอายุ 10 นาที · ผิดได้ 5 ครั้ง · ขอซ้ำทุก 60 วิ · rate-limit ต่อเบอร์ + ต่อ IP (`checkRateLimitDb` rate-limit-db.ts:38) · เก็บ `codeHash` เท่านั้น · `SMS_PROVIDER=mock` เขียนรหัสลง `logOps` (QC)
@@ -348,7 +363,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
                              ▼
                             DONE ── ข้อความใหม่ = เปิดต่อ (closedAt = null · ไม่นับงาน)
 ```
-สถานะไม่ถูกเก็บเป็นคอลัมน์ — `roomStatus` คำนวณจาก `closedAt` + ข้อเสนอ/แผน PENDING + `AiRoomJob` QUEUED/RUNNING (ลำดับ DONE > WAITING > RUNNING > OPEN)
+สถานะไม่ถูกเก็บเป็นคอลัมน์ — `roomStatus`/`roomStatusOf` (S1.4) คำนวณจาก `closedAt` + `AiRoomJob` QUEUED/RUNNING + ข้อเสนอ/แผน PENDING ที่ยังไม่หมดอายุ (ลำดับ **DONE > RUNNING > WAITING > OPEN** — งานที่ยังรันอยู่แสดง RUNNING แม้มีข้อเสนอรอแล้ว) · ห้องที่เพิ่งเปิดยังไม่มี job (S1.5 ต่อคิว) ⇒ OPEN จนกว่าคิวจะเกิด · `ai.room.*` event ยังไม่ส่งใน S1.4
 
 | เหตุการณ์ | จาก → ไป | ใครทำได้ | event | push |
 |---|---|---|---|---|
