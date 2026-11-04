@@ -25,7 +25,7 @@
 
 ## 5. ผลข้อสอบ
 - spec oracle forced #1 (ก่อน commit · หลัง merge ทิป): แดงครั้งแรก X-2 `{"miss":["JOB"]}` (literal "JOB" มีแค่ในคอมเมนต์) ⇒ แก้โค้ดให้ body ตั้ง `remember: choice === "RULE" ? "RULE" : "JOB"` ชัด (ไม่แตะ spec) → `JSON_SUMMARY {"total":7,"passed":7,"failed":[],"skipped":[],"findings":[]}` exit 0
-- spec oracle forced #2 (หลัง commit): RUN2_PLACEHOLDER
+- spec oracle forced #2 (หลัง commit fb5b31de): `JSON_SUMMARY {"total":7,"passed":7,"failed":[],"skipped":[],"findings":[]}` exit 0
 - `qc-sec-s2.1` forced: `JSON_SUMMARY {"total":14,"passed":14,"failed":[],"skipped":[],"findings":[]}` exit 0
 - spec s2.2 forced: `JSON_SUMMARY {"total":11,"passed":11,"failed":[],"skipped":[],"findings":[]}` exit 0
 - `qc-sec-s2.12` forced (หลัง merge ทิป · A.11): `JSON_SUMMARY {"total":13,"passed":13,"failed":[],"skipped":[],"findings":[]}` exit 0
