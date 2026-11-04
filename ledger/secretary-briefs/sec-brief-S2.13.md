@@ -11,3 +11,6 @@ Read COMMON · RESOLUTIONS §F (R-UI3 theme-store · C17) · `sec-brief-S2.1.md`
 ## Files you own
 `apps/mobile/app.json` (userInterfaceStyle) · `app/(app)/secretary/_layout.tsx` (StatusBar) · `src/components/secretary/SecTopBar.tsx` (badges) · `src/lib/push-register.ts` (handler ขยาย) · `qc/three-chats.mjs` · fixture `s2.20.json` · แก้สีฝัง/ธีมในจอ S2 ใด ๆ ที่พบ (จดรายการ) · `ledger/wo-notes/sec-s2.13.md`
 ## Acceptance = ทุก spec S2 เขียว + `SPEC=s2.13.json` ×2 + `three-chats.json ok` + ภาพคู่มืดครบ (CP2 ผู้คุม/เจ้าของดู) · typecheck 0 · fitness ×2
+## fix-forward จากการดูภาพคู่ (ผู้คุม 5 พ.ย.)
+- D1 `/secretary/staff`: แถว "รอรับคำเชิญ" ท้ายรายการถูกปุ่ม "เพิ่มพนักงาน" ลอยทับ — ใส่ padding ล่างของรายการ = ความสูงปุ่ม + inset (แบบเดียวกับ A1 ของ S2.2)
+- ตรวจทุกจอที่มีแถบ/ปุ่มลอยล่าง (A1 · A2 · A6 · K1 · K2 · D1 · H1) ว่า contentContainer padding พอ ทั้ง 2 ธีม
