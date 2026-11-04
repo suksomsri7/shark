@@ -1,0 +1,73 @@
+{
+ "generatedAt": "2026-11-04T19:51:49.823Z",
+ "base": "http://127.0.0.1:4724",
+ "view": {
+  "tag": "iphone",
+  "w": 390,
+  "h": 844,
+  "scale": 2
+ },
+ "fixture": {
+  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.1.json",
+  "sha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7"
+ },
+ "screens": [
+  {
+   "name": "index",
+   "route": "/",
+   "dark": false,
+   "ok": false,
+   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "viewportH": 844,
+   "errors": [
+    "wait Waiting for selector `[data-testid=\"home-open-secretary\"]` failed"
+   ],
+   "missing": [
+    "home-open-secretary"
+   ],
+   "overflow": false,
+   "expect": [
+    "home-open-secretary"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\nReact Native WebView does not support this platform.",
+   "unmocked": [],
+   "url": "/",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/base-s2.1/index.png",
+   "generatedAt": "2026-11-04T19:51:43.118Z"
+  },
+  {
+   "name": "login",
+   "route": "/login",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [],
+   "texts": "SHARK HUB\nผู้ช่วย AI ประจำกิจการของคุณ\nอีเมลของคุณ\nขอรหัสเข้าสู่ระบบ\nหรือเข้าสู่ระบบด้วย\n\n\n\n",
+   "unmocked": [],
+   "url": "/login",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/base-s2.1/login.png",
+   "generatedAt": "2026-11-04T19:51:46.439Z"
+  },
+  {
+   "name": "sessions",
+   "route": "/sessions",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n‹\nผู้ช่วย AI\n＋\nแก้ชื่อ\nลบ\nสรุปยอดขายเมื่อวาน\n1/9\nแก้ชื่อ\nลบ\nใบเสนอราคา ร้านตัวอย่าง\n28/8",
+   "unmocked": [],
+   "url": "/sessions",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/base-s2.1/sessions.png",
+   "generatedAt": "2026-11-04T19:51:49.552Z"
+  }
+ ]
+}

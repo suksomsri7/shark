@@ -202,6 +202,20 @@ export default function DashboardScreen() {
           )}
         </Pressable>
         )}
+
+        {/* S2.1 เลขา AI ▸ ทางเข้าเดียวจากหน้าแรก 1.0 → /secretary · ลอยมุมล่างขวา (ที่เดิมของ orb ที่ซ่อนไว้ · ถ้าเปิด orb คืน ปุ่มนี้ขยับขึ้นเหนือ orb)
+            โชว์ตลอด (ระหว่างโหลด/พลาดด้วย) ยกเว้นตอนเว็บขอเต็มจอ (chat-fullscreen) · สีจาก C ของ 1.0 (ไม่ใช้ธีมใหม่ในจอนี้) ◂ */}
+        {!hideOrb && (
+          <Pressable
+            testID="home-open-secretary"
+            onPress={() => router.push("/secretary")}
+            accessibilityRole="button"
+            hitSlop={8}
+            style={[styles.secBtn, !ORB_HIDDEN_FOR_NOW && styles.secBtnAboveOrb]}
+          >
+            <Text style={styles.secText}>เลขา AI</Text>
+          </Pressable>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -232,6 +246,19 @@ const styles = StyleSheet.create({
     right: S.lg,
     bottom: S.lg,
   },
+  // S2.1 ปุ่มเข้าเลขา AI (ลอยมุมล่างขวา · แคปซูลทึบ)
+  secBtn: {
+    position: "absolute",
+    right: S.lg,
+    bottom: S.lg,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: S.lg,
+    borderRadius: R.full,
+    backgroundColor: C.text,
+  },
+  secBtnAboveOrb: { bottom: S.lg + 64 + S.md },
+  secText: { color: C.bg, fontSize: 15, fontFamily: "IBMPlexSansThai_700Bold" },
   // spinner เล็กทับ orb ระหว่างรอ welcome (ห้ามค้างเงียบ)
   orbSpinner: {
     position: "absolute",

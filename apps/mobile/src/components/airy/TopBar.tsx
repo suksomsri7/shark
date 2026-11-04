@@ -1,22 +1,38 @@
 // แถบบน .bar — ซ้าย = กลุ่มไอคอน · กลาง = ชื่อ + บรรทัดรอง · ขวา = ช่องปุ่ม (ระยะห่าง 10 = 14 ของแบบย่อเป็น 390)
+// S2.1: เพิ่ม prop `center` (ชิ้นส่วนกลางกำหนดเอง เช่น ชื่อกิจการแตะได้ของ SecTopBar) — ใส่แล้วแทน title/subtitle · ไม่ใส่ = เหมือนเดิม
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { useTheme } from "@/src/theme/index";
 import { size, type as T } from "@/src/theme/tokens";
 
-export function TopBar({ left, title, subtitle, right, testID }: { left?: ReactNode; title?: string; subtitle?: string; right?: ReactNode; testID?: string }) {
+export function TopBar({
+  left,
+  title,
+  subtitle,
+  right,
+  center,
+  testID,
+}: {
+  left?: ReactNode;
+  title?: string;
+  subtitle?: string;
+  right?: ReactNode;
+  center?: ReactNode;
+  testID?: string;
+}) {
   const { c } = useTheme();
   return (
     <View testID={testID} style={styles.bar}>
       <View style={styles.side}>{left}</View>
       <View style={styles.center}>
-        {title ? (
+        {center}
+        {!center && title ? (
           <Text style={[styles.title, { color: c.text }]} numberOfLines={1}>
             {title}
           </Text>
         ) : null}
-        {subtitle ? (
+        {!center && subtitle ? (
           <Text style={[styles.sub, { color: c.textMuted }]} numberOfLines={1}>
             {subtitle}
           </Text>
