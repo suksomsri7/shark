@@ -124,9 +124,10 @@ try {
     //    "การตัดสินใจตัดผู้ใช้" ซึ่งย้ายไป lib/ai/credit.ts และมีข้อสอบของตัวเองที่ qc-ai-credit (BL-4.x)
     //    AU-4.x เดิม (โควตาหมด → ตัด) จึงถูกแทนด้วยข้อสอบยืนยันว่า **ย้ายจริง ไม่ใช่หายไปเฉย ๆ**
     const svcSrc = read("src/lib/ai/service.ts");
-    chk("AU-4.1", "service.ts ตัดสินใจตัดด้วยกระเป๋าเครดิต ไม่ใช่หน้าต่างโควตาแล้ว",
-      svcSrc.includes("canSpend") && !svcSrc.includes("getQuotaStatus"), "canSpend มี · getQuotaStatus ไม่มี",
-      JSON.stringify({ canSpend: svcSrc.includes("canSpend"), quota: svcSrc.includes("getQuotaStatus") }));
+    // ORACLE-EDIT S1.13 (R-S1.13a): ด่านของ service.ts = canRunAi (credit.ts · R-K7) แทนคำว่า canSpend
+    chk("AU-4.1", "service.ts ตัดสินใจตัดด้วยด่านเครดิต canRunAi ไม่ใช่หน้าต่างโควตาแล้ว",
+      /canRunAi\(/.test(svcSrc) && !svcSrc.includes("getQuotaStatus"), "canRunAi( มี · getQuotaStatus ไม่มี",
+      JSON.stringify({ canRunAi: /canRunAi\(/.test(svcSrc), quota: svcSrc.includes("getQuotaStatus") }));
     chk("AU-4.2", "ตอบสำเร็จแล้วหักเงินจากกระเป๋าจริง (chargeUsageSafe)",
       svcSrc.includes("chargeUsageSafe"), "มี chargeUsageSafe", "ไม่มี");
     chk("AU-4.3", "ยังลดชั้นเป็นโมเดลประหยัดเมื่อเครดิตใกล้หมด (applyDegrade ไม่ถูกทิ้ง)",

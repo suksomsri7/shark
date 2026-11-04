@@ -41,3 +41,15 @@
 | เว็บ `actions.ts creditView` ยังเรียก `ensureWallet` (เขียนตอนโหลดแถบ) | นอกไฟล์ของใบ | ผู้คุมตัดสิน (S1.14/S3) |
 | ไม่มีตาข่ายรายวันในผู้เรียก canSpend นอก sendMessage (แปล/ร่างตอบ/สรุปโทร ฯลฯ) เมื่อ assist ฟรี | ตาข่ายรายวันมีแค่ sendMessage | ผู้คุมตัดสิน |
 | `SECRETARY_LAUNCH_AT` ยังเป็นค่าชั่วคราว 2026-11-04 | §E.4 | S3a.2 |
+
+## 10. รอบ 2 — มติ §L (R-S1.13a/b · 5 พ.ย.)
+- merge ทิปผู้คุม 5973f70b เข้า `wip/sec-s1.13` (fbd5fc08)
+- **R-S1.13b**: `FREE_PACK.assistDailyMicro = 500_000` (pack.ts) · `credit.assistUsedMicroOfDay(tenantId, now)` (1 aggregate Σ USAGE ในวันไทย · index [tenantId, createdAt]) · `canRunAi(assist)` แพ็กเปิด ⇒ ผ่านเมื่อ used < cap ไม่งั้น `{reason:"credit", resetAt: เที่ยงคืนไทยถัดไป, message มี 'วันนี้'}` · job ไม่ใช้เพดาน · `quotaStatus.assist {usedMicro, capMicro}`
+- deviation: `sendMessage` แปลง "credit + resetAt" (เพดานรายวัน) เป็น `scope:"day"` ⇒ ผู้ใช้เห็น "วันนี้ใช้ผู้ช่วย AI ครบโควตาแล้ว กลับมาใช้ได้ …" แทน "เติมเครดิต" (ปุ่มเติมปิด 7.3)
+- **ORACLE-EDIT ชุดเดิม (ผู้คุมอนุญาต · กติกา `FREE_PACK.enabled ? ผ่าน+USAGE : เดิม`):**
+  - qc-ai-credit: tenant หลัก createdAt = LAUNCH−1 วัน (WA-2.x) · BL-4.1 canSpend = FREE_PACK.enabled · BL-4.2 ok + provider 1 ครั้ง + USAGE +1 · BL-4.3 นับ call ต่อจาก BL-4.2
+  - qc-chat-ai-suggest AS-8.1/8.2 · qc-chat-translate TR-8.1/8.2: ok + USAGE ≥1 · ยิง LLM ≥1
+  - qc-ai-usage AU-4.1: `/canRunAi\(/` แทนคำ canSpend
+  - **แก้แล้ว ยังไม่ได้รันที่นี่ (ฐานอื่น · S1.14 qc:all จะรัน):** qc-svc-d.14 PC-4 (canSpend(Z) = FREE_ON) · P-13 (เรียกตัวอ่าน 1 · charged · USAGE Z 1 · ยอดติดลบ) · C-7 (Z available = FREE_ON) · qc-crm-c2.4 S2.4 (N ถอดเสียงได้ + ข้อเสนอ 1 + USAGE ≥1 · อีก 2 ทางยังปฏิเสธ 0 call) · S8.4 (N = READY) · S8.9 (N ได้ aiSummary + AI +1 + USAGE crm.chat 1) · S8.12 (N อ่านนามบัตรได้ ข้อเสนอ 1 + USAGE crm.card.scan ≥1) · qc-crm-c3.4 CR.3 (ok + 1 call + USAGE +1) · qc-acc-v2-inbox T11.4–T11.6 (DONE · ไม่มีคำ "เติมเครดิต" · call 1 + USAGE 1) — S8.9/S8.12/C-7/T11.5–6 อยู่นอกรายการ §L แต่คาด "ปฏิเสธเพราะไม่มีเครดิต" เหมือนกัน
+- **ORACLE-EDIT ที่ขอ (oracle S1.13 C-6):** แถว fixture `aiCreditTxn.create` บรรทัด 112/114 ขาดฟิลด์บังคับ `source` + `balanceAfter` (schema ไม่มี default) ⇒ create ล้ม (⚠️ txn cap) ⇒ usedMicro 0 ⇒ C-6 แดง · แก้: เพิ่ม `source: "CHAT", balanceAfter: 0` ทั้ง 2 แถว · ยืนยันด้วยสำเนาชั่วคราว (ลบแล้ว) = 13/13
+- หนี้: `canSpendPeek`/GET usage ยังไม่สะท้อนเพดานรายวัน (blocked null แม้ชนเพดาน) · ห้องเลขา: ข้อความต่อในห้อง (sendMessage = assist) ชนเพดานรายวันได้แม้มีโควตางานเหลือ

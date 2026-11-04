@@ -140,7 +140,9 @@ export async function sendMessage(
   //   รุ่นแรกแพ็กฟรีเปิด ⇒ assist ผ่านเสมอ (ยังหักลง AiCreditTxn เป็นบันทึกต้นทุน) · แพ็กปิด ⇒ ต้องมียอด > 0 เหมือนเดิม ◂
   const run = await canRunAi(ctx.tenantId, { scope: "assist", now });
   if (!run.ok) {
-    return { ok: false, error: "over_budget", scope: run.reason, ...(run.resetAt ? { resetAt: run.resetAt.toISOString() } : {}) };
+    // R-S1.13b ▸ ชนเพดานต้นทุน assist ของวัน (reason credit + resetAt) = ตาข่ายรายวัน ⇒ scope "day" (ข้อความ "วันนี้…กลับมาใช้ได้ …") ไม่ใช่ "เติมเครดิต" ◂
+    const scope = run.reason === "credit" && run.resetAt ? "day" : run.reason;
+    return { ok: false, error: "over_budget", scope, ...(run.resetAt ? { resetAt: run.resetAt.toISOString() } : {}) };
   }
 
   // เพดานรายวันเดิม = ตาข่ายชั้นนอก (กันยอดรวมทั้งวันของร้าน — ยังคงไว้ ไม่ถอด)

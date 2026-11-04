@@ -12,6 +12,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { costMicroUsd, MICRO_PER_USD } from "./pricing";
 import { FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage as packQuotaMessage, SECRETARY_LAUNCH_AT } from "./secretary/pack";
+import { bkkDayStart } from "@/lib/core/quiet-hours";
 import type { AiCreditKind, AiCreditSource } from "@prisma/client";
 
 export type Ctx = { tenantId: string };
@@ -114,10 +115,35 @@ async function jobsLeftOf(tenantId: string, now: Date): Promise<{ used: number; 
   return { used, left: Math.max(0, FREE_PACK.jobsPerMonth - used) };
 }
 
+/**
+ * R-S1.13b ▸ ต้นทุน assist ของวันไทยที่ครอบ `now` = Σ|amountMicro| ของแถว USAGE ของร้าน (1 aggregate · index [tenantId, createdAt])
+ *   คืนช่วงวันด้วย (resetAt = เที่ยงคืนไทยถัดไป) ◂
+ */
+export async function assistUsedMicroOfDay(tenantId: string, now: Date = new Date()): Promise<{ usedMicro: number; capMicro: number; resetAt: Date }> {
+  const start = bkkDayStart(now);
+  const resetAt = new Date(start.getTime() + 86_400_000);
+  const agg = await prisma.aiCreditTxn.aggregate({
+    where: { tenantId, kind: "USAGE", createdAt: { gte: start, lt: resetAt } },
+    _sum: { amountMicro: true },
+  });
+  const sum = Number(agg?._sum?.amountMicro ?? 0) || 0;
+  return { usedMicro: Math.abs(sum), capMicro: FREE_PACK.assistDailyMicro, resetAt };
+}
+
+/** ข้อความไทยเมื่อชนเพดานต้นทุน assist ของวัน (ไม่บอกตัวเงิน — §C.6) */
+export function assistDailyCapMessage(): string {
+  return "วันนี้ใช้ผู้ช่วย AI ครบเพดานของแพ็กฟรีแล้ว — กลับมาใช้ได้หลังเที่ยงคืน (งานในห้องเลขายังเปิดได้ตามโควตา)";
+}
+
 export async function canRunAi(tenantId: string, opts: { scope: RunScope; now?: Date }): Promise<CanRun> {
   const now = opts.now ?? new Date();
   if (opts.scope === "assist") {
-    if (FREE_PACK.enabled) return { ok: true };
+    if (FREE_PACK.enabled) {
+      // R-S1.13b ▸ ฟรีแต่มีเพดานต่อวัน — ถึงเพดาน = ปฏิเสธแบบ "credit" พร้อมเวลาเริ่มใหม่ ◂
+      const day = await assistUsedMicroOfDay(tenantId, now);
+      if (day.usedMicro < day.capMicro) return { ok: true };
+      return { ok: false, reason: "credit", resetAt: day.resetAt, message: assistDailyCapMessage() };
+    }
     if (((await balancePeek(tenantId)) ?? 0) > 0) return { ok: true };
     return { ok: false, reason: "credit", message: outOfCreditMessage() };
   }

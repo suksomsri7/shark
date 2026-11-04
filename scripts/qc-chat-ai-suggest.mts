@@ -47,6 +47,8 @@ const { readFileSync, existsSync } = await import("node:fs");
 const { createRequire } = await import("node:module");
 const { resolve } = await import("node:path");
 const { Prisma } = await import("@prisma/client");
+// ORACLE-EDIT S1.13 (R-S1.13a · มติ 7.1/7.3): แพ็กฟรีเปิด ⇒ "เครดิตหมด" ไม่ปฏิเสธ assist (ยังลงแถว USAGE)
+const { FREE_PACK } = (await import("@/lib/ai/secretary/pack" as string)) as { FREE_PACK: { enabled: boolean } };
 
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];
@@ -451,9 +453,12 @@ try {
     if (!suggestReply) { chk("AS-8.0", "มี suggestReply", false, "มี", "ยังไม่มี"); return; }
     seedShop({ balanceMicro: 0 });
     const a = await suggestReply({ tenantId: "T1", systemId: "S1", conversationId: "cv1", userId: "U1" }).catch(() => ({ ok: undefined } as SRes));
-    chk("AS-8.1", "เครดิตหมด → บอกตรง ๆ เป็นภาษาไทย ไม่เงียบ",
-      a?.ok === false && /[฀-๿]/.test(String(a?.reason ?? "")), "ok:false + reason ไทย", j(a));
-    chk("AS-8.2", "🔴 เครดิตหมดต้องไม่ยิง LLM เลย", AI_CALLS().length === 0, "0 ครั้ง", `${AI_CALLS().length} ครั้ง`);
+    const usageRows = (tables.aiCreditTxn ?? []).filter((t) => t.kind === "USAGE").length;
+    chk("AS-8.1", FREE_PACK.enabled ? "แพ็กฟรีเปิด: เครดิตหมด → ยังร่างได้ (ok) + มีแถว USAGE" : "เครดิตหมด → บอกตรง ๆ เป็นภาษาไทย ไม่เงียบ",
+      FREE_PACK.enabled ? a?.ok === true && usageRows >= 1 : a?.ok === false && /[฀-๿]/.test(String(a?.reason ?? "")),
+      FREE_PACK.enabled ? "ok:true + USAGE ≥1" : "ok:false + reason ไทย", `${j(a)} · usage=${usageRows}`);
+    chk("AS-8.2", FREE_PACK.enabled ? "แพ็กฟรีเปิด: เครดิตหมดยังยิง LLM (คิดต้นทุน)" : "🔴 เครดิตหมดต้องไม่ยิง LLM เลย",
+      FREE_PACK.enabled ? AI_CALLS().length >= 1 : AI_CALLS().length === 0, FREE_PACK.enabled ? "≥1 ครั้ง" : "0 ครั้ง", `${AI_CALLS().length} ครั้ง`);
 
     seedShop();
     netMode = "throw";
