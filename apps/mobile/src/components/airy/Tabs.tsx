@@ -4,7 +4,8 @@ import { Text } from "@/src/components/ui/text";
 import { glassStyle, shadow, useTheme } from "@/src/theme/index";
 import { radii } from "@/src/theme/tokens";
 
-export type TabItem = { key: string; label: string; count?: number; tone?: "run" | "wait" };
+/** testID (S2.17 · ไม่ใส่ = `<testID>-<key>` เหมือนเดิม) */
+export type TabItem = { key: string; label: string; count?: number; tone?: "run" | "wait"; testID?: string };
 
 export function Tabs({ items, active, onChange, testID }: { items: TabItem[]; active: string; onChange?: (key: string) => void; testID: string }) {
   const { c } = useTheme();
@@ -14,7 +15,7 @@ export function Tabs({ items, active, onChange, testID }: { items: TabItem[]; ac
         const on = it.key === active;
         return (
           <Pressable
-            testID={`${testID}-${it.key}`}
+            testID={it.testID ?? `${testID}-${it.key}`}
             key={it.key}
             onPress={() => onChange?.(it.key)}
             accessibilityRole="tab"
