@@ -107,9 +107,11 @@ try {
     await prisma.aiJobCounter.update({ where: { tenantId_month: { tenantId: tid, month } }, data: { jobs: pack.FREE_PACK.jobsPerMonth } });
     const NOW4 = new Date("2026-11-13T11:00:00Z");
     const p4 = new Scripted("ok");
+    // ORACLE-EDIT s1.9-R-4: รอบ R-3 งาน DAILY ของ owner ก็ถึงเวลาและเปิดห้องที่ 3 โดยชอบ — เทียบกับจำนวนก่อนรัน ไม่ใช่ค่าคงที่
+    const roomsBefore4 = await prisma.aiRoom.count({ where: { tenantId: tid, startedById: U.owner } });
     const ran4 = await sched.runScheduledTasks(NOW4, { provider: p4, post });
     const roomsQ = await prisma.aiRoom.count({ where: { tenantId: tid, startedById: U.owner } });
-    chk("R-4", "โควตาเต็ม ⇒ งานใหม่ข้าม (ไม่มีห้องเพิ่ม) · ไม่ throw · แถวเดิมยังรัน (AppNotification)", roomsQ === 2 && ran4 >= 1 && (await prisma.appNotification.count({ where: { tenantId: tid } })) >= notiBefore + 2, `ran4=${ran4} rooms=${roomsQ}`);
+    chk("R-4", "โควตาเต็ม ⇒ งานใหม่ข้าม (ไม่มีห้องเพิ่ม) · ไม่ throw · แถวเดิมยังรัน (AppNotification)", roomsQ === roomsBefore4 && ran4 >= 1 && (await prisma.appNotification.count({ where: { tenantId: tid } })) >= notiBefore + 2, `ran4=${ran4} rooms=${roomsQ}`);
     await prisma.aiJobCounter.update({ where: { tenantId_month: { tenantId: tid, month } }, data: { jobs: 2 } });
     chk("R-5", "cap งานประจำต่อร้าน = FREE_PACK.scheduledMax (ข้อความไทยบอกเพดาน)", await (async () => { for (let i = 0; i < pack.FREE_PACK.scheduledMax; i++) { try { await sched.createTask(ctx, { instruction: `cap ${i}`, hourBkk: 1, ownerUserId: U.owner }); } catch { /* */ } } const e = await throws(() => sched.createTask(ctx, { instruction: "เกิน", hourBkk: 1, ownerUserId: U.owner })); return thai(e) && new RegExp(String(pack.FREE_PACK.scheduledMax)).test(e ?? ""); })(), "ดูข้อความ cap", "MAJOR");
 
