@@ -20,7 +20,7 @@
 ## 2. สัญญาต่อใบ (ผู้คุมเติมตอนออกข้อสอบ · ย่อ: ชื่อฟังก์ชัน · ข้อสอบ S-group · จำนวนข้อ)
 _(เติมเมื่อถึงใบ)_
 
-## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 4/58 (41 ชุด) · 7%
+## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 5/58 (41 ชุด) · 9%
 
 | ใบ | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|
@@ -28,7 +28,7 @@ _(เติมเมื่อถึงใบ)_
 | S0.2 | ✅ | 4 พ.ย. ~12:1xZ | merge 5973db2e (wip/sec-s0.2 e5705e2e) · oracle 30/30 ×3 (ผู้คุมรันเอง forced ×2 + unforced) · ภาพคู่ C3 สว่าง/มืด ตรงแบบ (ผู้คุมดูเอง) · จอ 1.0 /sessions 0 px ต่าง · /login ต่างเฉพาะ orb แอนิเมชัน · light-check โดยผู้คุม (ไม่ใช่ชุดตรวจเข้ม) · มติ R-UI1–UI3 (สเกล 0.73 · Feather · theme-store) |
 | S0.3 | ✅ | 4 พ.ย. ~14:4xZ | merge (wip/sec-s0.3 c38d910a) · oracle 52/53 ×3 (D4.3 typecheck SKIP — ผู้คุมรันเองรวมตอน S1.1) · docs/modules/31-secretary.md 460 บรรทัด · SECRETARY-API.md 72 เส้นทาง · seed idempotent (รอบ 2 เขียน 0) · light-check ผู้คุม · oracle `qc-sec-s0.3.mts` (f92f3466 · unforced SKIP · forced 4/29 แดงถูกเหตุผล) · docs/modules/31-secretary.md + docs/api/SECRETARY-API.md + seed-secretary-qc |
 | S0.4 | ✅ | 4 พ.ย. ~14:4xZ | pack.ts (FREE_PACK · countsAsJob · quotaMessage · nextResetBangkok · monthKeyBangkok · SECRETARY_LAUNCH_AT) unit ครบใน oracle D3 · pack.ts FREE_PACK 100 งาน/กิจการ/เดือน |
-| S1.1 | 🔨 | | builder Opus เลน b `wip/sec-s1.1` @4c8709be เริ่ม 4 พ.ย. ~12:5xZ · oracle `qc-sec-s1.1.mts` (4c8709be · 65 ข้อ · unforced SKIP · forced บนฐานเดิม 6/65 แดงถูกเหตุผล) · 🎯 migration secretary_a |
+| S1.1 | ✅ | 4 พ.ย. ~15:2xZ | merge (wip/sec-s1.1 fd5922d5) · oracle 66/66 ×3 (ผู้คุมรันเอง) · migration `20261227000000_secretary_a` (16 ตาราง · 28 ดัชนี · 6 FK Cascade · additive) ลง QC แล้ว · baseline `sec-baseline-85751098.txt` 60/60 (qc-mobile-app รันซ้ำหลัง ORACLE-EDIT APP-6.1) · core.prisma +2 back-relation (R-S1.1a) · drift ไม่มี DROP · oracle `qc-sec-s1.1.mts` (4c8709be · 65 ข้อ · unforced SKIP · forced บนฐานเดิม 6/65 แดงถูกเหตุผล) · 🎯 migration secretary_a |
 | S1.2 | 🔨 | | builder Opus เลน c `wip/sec-s1.2` @7c69188a เริ่ม 4 พ.ย. ~14:5xZ · ใบ S1-2 (S1.2+S1.3) + oracle `qc-sec-s1.2.mts` เขียนแล้ว 4 พ.ย. (unforced SKIP · forced บนฐานเดิม P-1 snapshot ผ่าน · แดง P-2/3/5 ถูกเหตุผล) · รอ S1.1 merge → เลน c · เลขาผูกผู้ใช้ |
 | S1.3 | 🔨 | | รวมในชุด S1-2 (เลน c) · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | ⬜ | | 🎯 ห้อง = งาน |
@@ -96,3 +96,4 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย.** ผู้คุมเขียนล่วงหน้า: ใบ S1-2 + oracle `qc-sec-s1.2.mts` (3f1e94c4) · ใบ S1-3 (S1.4) + oracle `qc-sec-s1.4.mts` (d4cbb6ce) · ถาม builder S1.1 เรื่องชื่อ migration `20261227000000` (อนาคต) → ให้เปลี่ยนเป็น timestamp จริง + แก้แถว `_prisma_migrations` บน QC
 - **4 พ.ย. ~14:1xZ** รับรายงาน S1.1 รอบแรก 53/65 → ORACLE-EDIT (ผู้คุม): I-* ตัด quote ของ indexdef · M-4/M-5 + chat.prisma/core.prisma · **M-6 ยกเว้น core FROZEN เฉพาะ back-relation 2 บรรทัดบน User** (`secretary AiSecretary?` · `userPhone UserPhone?` — กัน `pnpm drift` DROP FK · ไม่มี SQL) · B-1 เทียบ finished_at จริง (ชื่อโฟลเดอร์ 20261227 ต่อจาก svc_b17 20261226 ยอมรับ · ใบถัดไปต้อง > นี้) · ยอมรับ deviation `tenantId` บน AiRoomMember/AiRoomJob · **qc-mobile-app APP-6.1** แดงเพราะ S0.2 ทำ theme.ts เป็น shim (หลุดจาก S0-2 — ผู้คุมไม่ได้รัน qc-mobile-app ตอนรับ) → ORACLE-EDIT อ่าน theme/light.ts ด้วย · แก้ TS1501 (regex flag s · target ES2017) ใน qc-sec-s0.2/qc-sec-ui · oracle S1.1 บนทรีผู้คุม 64/65 (เหลือ B-1 รอ baseline ของเลน b)
 - **4 พ.ย. ~14:4xZ** รับ S0-3 (merge) · แก้ doc §4 ที่เขียนว่า "ไม่มี FK" (SQL มี FK Cascade จริง) · เลน c ว่าง → `wip/sec-s1.2` สำหรับชุด S1-2 (เริ่มได้ก่อน S1.1 ปิดสมบูรณ์ เพราะ schema pre-merge แล้ว)
+- **4 พ.ย. ~15:2xZ** รับ S1.1 (merge) · เลน b remount ro คืน · เลน b → `wip/sec-s1.4` ชุด S1-3 · เขียนใบ+oracle S1-4 (S1.5 worker · R-K8b ราง minute-jobs) ล่วงหน้า
