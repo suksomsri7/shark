@@ -1,0 +1,80 @@
+{
+ "wo": "S2.10+S2.11",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s2.10.json",
+ "routes": [
+  {
+   "route": "/secretary/staff",
+   "file": "app/(app)/secretary/staff/index.tsx",
+   "testIds": [
+    "sec-staff",
+    "sec-staff-row",
+    "sec-staff-chat-badge",
+    "sec-staff-invite",
+    "sec-staff-pending"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/room/r2",
+   "file": "app/(app)/secretary/room/[id].tsx",
+   "testIds": [
+    "sec-room-member-bubble",
+    "sec-room-add-member",
+    "sec-room-system-msg"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/onboarding/name",
+   "file": "app/(app)/secretary/onboarding/name.tsx",
+   "testIds": [
+    "sec-onb-name",
+    "sec-onb-name-input",
+    "sec-onb-suffix",
+    "sec-onb-tone",
+    "sec-onb-preview",
+    "sec-onb-save"
+   ],
+   "pair": true
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "staff list ใช้ GET /secretary/staff (listStaffAccess includeInvites) · ป้ายแชท NONE/VIEW/REPLY · หน่วย · เข้าเวร · แถว pending",
+   "file": "app/(app)/secretary/staff/index.tsx",
+   "must": [
+    "secretary/staff",
+    "NONE|VIEW|REPLY",
+    "pending",
+    "onDuty|shift"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-2",
+   "name": "ชีตเพิ่มคนเข้าห้อง: POST rooms/[id]/members {userId, seeHistory} · สวิตช์เห็นข้อความก่อนหน้า ปริยาย false",
+   "file": "src/components/secretary/AddMemberSheet.tsx",
+   "must": [
+    "members",
+    "seeHistory"
+   ],
+   "mustNot": [
+    "seeHistory:\\s*true\\s*[,}]\\s*//\\s*default"
+   ]
+  },
+  {
+   "id": "X-3",
+   "name": "C1: ค่าเริ่มต้นชื่อ Shark · ไม่มีรายการชื่อตัวอย่าง (R9) · PUT /secretary แล้วไป /secretary",
+   "file": "app/(app)/secretary/onboarding/name.tsx",
+   "must": [
+    "Shark",
+    "PUT|updateSecretary",
+    "router\\.(replace|push)\\(\"/secretary\"\\)"
+   ],
+   "mustNot": [
+    "sampleNames|exampleNames|ตัวอย่างชื่อ"
+   ]
+  }
+ ]
+}
