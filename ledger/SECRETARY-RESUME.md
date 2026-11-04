@@ -6,8 +6,8 @@
 ## ▶️ 4 พ.ย. 2026 ~12:2xZ — 2/58 (3%) · S0.1 ✅ S0.2 ✅ · กำลังทำ S0-3 (เลน c) · S1.1 รอ oracle
 - tip `session/secretary` = 5973db2e (merge S0.2) · RESOLUTIONS f92f3466 = กฎเหนือแผน §3
 - รัน: เลน c `/root/projects/shark-sec-c` builder Opus S0-3 (docs 31-secretary + SECRETARY-API + seed-secretary-qc + pack.ts · oracle `qc-sec-s0.3.mts`)
-- เลน b `/root/projects/shark-sec-b` = `wip/sec-s1.1` @5973db2e ว่าง (รอ oracle `qc-sec-s1.1.mts` ที่ผู้คุมกำลังเขียน → spawn builder S1.1)
-- ถัดไป: เขียน `qc-sec-s1.1.mts` → spawn S1.1 (เลน b) ∥ รับ S0-3 (oracle forced ×2 ผ่าน qc-sec.sh + typecheck · light-check) → merge → CP0 ส่ง TG (ภาพคู่ C3 + 5 ข้อขัดแย้งสำคัญ) → S1-2 (S1.2+S1.3) เลน c
+- เลน b `/root/projects/shark-sec-b` = `wip/sec-s1.1` @4c8709be builder Opus S1.1 กำลังทำ (migration + scope + baseline 60 ชุด ≈1–1.5 ชม.) · node_modules เลน b remount rw ชั่วคราว (คืน ro หลัง merge)
+- ถัดไป: รับ S0-3 (oracle forced ×2 ผ่าน qc-sec.sh + typecheck · light-check) → merge → CP0 ส่ง TG (ภาพคู่ C3 + 5 ข้อขัดแย้งสำคัญ) → S1-2 (S1.2+S1.3) เลน c
 - ภาพคู่ C3 ที่รับแล้ว: `apps/mobile/qc/shots-sec/secretary-c3-pair.png` + `secretary-dark-c3-pair.png`
 
 ## ▶️ 4 พ.ย. 2026 ~09:3xZ — เดินเครื่อง (เจ้าของสั่ง "เริ่มทำงานได้") · 0/58

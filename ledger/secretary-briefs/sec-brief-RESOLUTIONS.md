@@ -60,3 +60,8 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-UI1 สเกลจอ:** จอในภาพแบบกว้าง 536 px = 1.37× ของเครื่อง 390 dp · ทุกจอ S2 ใช้กติกาเดียวกับ C3 ของ S0.2: มุมโค้ง/ตัวอักษร = ค่าตาม `tokens.radii`/`tokens.type` (px ของแบบ) · ขนาดชิ้นส่วนจาก `tokens.size` (ปุ่มไอคอน 44 · ช่องสั่งงาน 56 · ปุ่มส่ง 44 · orb hero 76) · ตำแหน่ง/ระยะแนวตั้ง = แบบ × 0.73 (ค่าคงที่ `F` ใน `src/theme/index.ts` — S2.1 ย้ายจากไฟล์จอมาไว้ที่ธีม) · ตัวอักษรไม่ย่อต่ำกว่า `tokens.type` (อ่านได้บนเครื่องจริงสำคัญกว่าพิกเซลตรง) · ภาพคู่ตัดสินด้วยตา: ลำดับ/สัดส่วน/สี/ระยะตรงแบบ ±10 dp
 - **R-UI2 ไอคอน:** `@expo/vector-icons` Feather (ไม่มี react-native-svg) · กระจก/ไล่สี = JS ล้วน (เว็บ backgroundImage+backdropFilter · มือถือ experimental_backgroundImage + boxShadow) · ไม่มี expo-blur · จอใหม่ import `@/src/theme/index` (ไม่ใช่ `@/src/theme` ที่ชี้ shim)
 - **R-UI3 ธีม:** theme-store คีย์ `shark_theme` (เว็บ localStorage · มือถือ expo-secure-store) · S2.13 โหมดมืดใช้ store นี้ · S2.7 B2 ตั้งค่า
+
+## G. ข้อยกเว้นหลัง S1.1 (4 พ.ย.)
+- **R-S1.1a** core.prisma FROZEN ยกเว้น back-relation field 2 บรรทัดบน `User` (`secretary AiSecretary?` · `userPhone UserPhone?`) — ไม่มีคอลัมน์/SQL · เพื่อให้ FK Cascade ของ AiSecretary/UserPhone อยู่ใน schema (ไม่งั้น `pnpm drift` ขอ DROP)
+- **R-S1.1b** ชื่อ migration ใช้ timestamp อนาคตต่อจากของ SVC (`20261227000000_secretary_a`) — migration ใบถัดไปของ RUN นี้ต้องชื่อ > 20261227000000 (เช่น 20261228000000_secretary_b)
+- **R-S1.1c** `AiRoomMember`/`AiRoomJob` มี `tenantId` (tenantDb inject) — ใบ S1.4/S1.5/S1.6 ต้องใส่ตอน create

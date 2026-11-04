@@ -97,7 +97,7 @@ if (!FORCED && !existsSync(THEME)) {
     const src = readFileSync(f, "utf8");
     const rel = f.slice(ROOT.length + 1);
     if (/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, ""))) hex.push(rel);
-    const opens = src.match(/<(Pressable|TouchableOpacity)\b[^>]*>/gs) ?? [];
+    const opens = src.match(/<(Pressable|TouchableOpacity)\b[^>]*>/g) ?? [];
     for (const o of opens) if (!/testID=/.test(o)) noId.push(rel);
   }
   chk("S3.1", "ไม่มี #hex / rgb( ใน components/airy + app/(app)/secretary", hex.length === 0, hex.slice(0, 5).join(", "));
