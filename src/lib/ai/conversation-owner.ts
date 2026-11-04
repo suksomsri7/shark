@@ -34,8 +34,14 @@ const TAG = { member: "u", apiKey: "k", system: "s" } as const;
 /** ctx ของประตูที่อ่าน/แตะบทสนทนา — ร้าน + **ผู้ดู (บังคับ)** */
 export type ConvCtx = { tenantId: string; actor: AiActor };
 
-/** สิ่งที่ผู้ดูคนหนึ่งเห็น: prefix ของห้องตัวเอง + (เจ้าของร้าน) ห้องที่ไม่ได้สร้างโดยคนในร้าน */
-export type ConvSight = { own: string | null; ownerExtras: boolean };
+/**
+ * สิ่งที่ผู้ดูคนหนึ่งเห็น: prefix ของห้องตัวเอง + (เจ้าของร้าน) ห้องที่ไม่ได้สร้างโดยคนในร้าน
+ * S1.4 (R-K1 ห้องเลขาร่วม) ▸ เพิ่มเท่านั้น — ผู้เรียกที่อ่าน DB แล้ว (`conversations.ts#roomSightFor`) ใส่ให้ผ่าน `withRoomSight`:
+ *   `memberOf` = รหัสบทสนทนาของห้องเลขาที่ผู้ดูเป็นสมาชิก (ตัดสินจากรหัสได้) ·
+ *   `tenantRooms` = (role OWNER) เห็นทุกห้องที่มีแถว `AiRoom` — ตัดสินจากรหัสไม่ได้ ⇒ ต้องมีแถว (`canSeeConversation`)
+ *   ไม่มีสองช่องนี้ = กติกาเดิมทุกตัวอักษร (ห้อง `u~` เดิมของคนอื่นที่ไม่มี AiRoom ยังไม่มีใครเห็น แม้เป็นเจ้าของร้าน) ◂
+ */
+export type ConvSight = { own: string | null; ownerExtras: boolean; memberOf?: ReadonlySet<string>; tenantRooms?: boolean };
 
 const NOTHING: ConvSight = { own: null, ownerExtras: false };
 
@@ -59,6 +65,14 @@ export function sightOfConfirmer(m: Pick<MembershipCtx, "role">, userId: string 
   return { own: prefixOf("member", userId ?? null), ownerExtras: m?.role === "OWNER" };
 }
 
+/** S1.4 (R-K1) ▸ sight + ห้องเลขาที่ผู้ดูเป็นสมาชิก / ทุกห้องเลขาของร้าน (OWNER) — คืนค่าใหม่ ไม่แก้ตัวเดิม (pure) ◂ */
+export function withRoomSight(s: ConvSight, extra: { memberOf?: Iterable<string>; tenantRooms?: boolean }): ConvSight {
+  const memberOf = new Set<string>(s.memberOf ?? []);
+  for (const id of extra.memberOf ?? []) if (typeof id === "string" && id) memberOf.add(id);
+  const tenantRooms = s.tenantRooms === true || extra.tenantRooms === true;
+  return { own: s.own, ownerExtras: s.ownerExtras, ...(memberOf.size > 0 ? { memberOf } : {}), ...(tenantRooms ? { tenantRooms } : {}) };
+}
+
 /** รหัสบทสนทนาใหม่ที่ฝังผู้สร้าง — ผู้สร้างไม่ชัด = throw (ห้ามสร้างห้องที่ไม่มีเจ้าของ) */
 export function newConversationId(ctx: ConvCtx): string {
   const own = sightOf(ctx).own;
@@ -71,7 +85,17 @@ export function canSeeConversationId(s: ConvSight, conversationId: string | null
   const id = typeof conversationId === "string" ? conversationId : "";
   if (!id) return false;
   if (s.own && id.startsWith(s.own)) return true;
+  if (s.memberOf?.has(id)) return true; // S1.4 R-K1: สมาชิกห้องเลขา (tenantRooms ตัดสินจากรหัสไม่ได้ ⇒ ไม่นับที่นี่)
   return s.ownerExtras && !id.startsWith(MEMBER_TAG);
+}
+
+/**
+ * S1.4 (R-K1) ▸ ผู้ดูนี้เห็นแถวบทสนทนานี้ไหม — กติกาตามรหัส + (tenantRooms) แถวที่มีห้องเลขา (`room` ต้อง include มาจาก query ของร้านนี้)
+ *   ห้อง `u~` ของคนอื่นที่ไม่มี AiRoom = ไม่เห็น เหมือนเดิม ◂
+ */
+export function canSeeConversation(s: ConvSight, row: { id: string; room?: { id: string } | null } | null | undefined): boolean {
+  if (!row) return false;
+  return canSeeConversationId(s, row.id) || (s.tenantRooms === true && !!row.room);
 }
 
 /**
@@ -79,6 +103,16 @@ export function canSeeConversationId(s: ConvSight, conversationId: string | null
  * 🔴 เป็นตัวกรองชั้นแรกเท่านั้น (LIKE) — แถวที่ได้ต้องผ่าน `canSeeConversationId` ซ้ำเสมอ
  */
 export function visibleConversationWhere(s: ConvSight): Prisma.AiConversationWhereInput {
+  // S1.4 R-K1 ▸ ห้องเลขาร่วม: OR รหัสที่เป็นสมาชิก · (OWNER) OR มีแถว AiRoom — ไม่มีสองช่องนี้ = รูปเดิมทุกตัวอักษร ◂
+  const rooms: Prisma.AiConversationWhereInput[] = [];
+  if (s.memberOf && s.memberOf.size > 0) rooms.push({ id: { in: [...s.memberOf] } });
+  if (s.tenantRooms === true) rooms.push({ room: { isNot: null } });
+  if (rooms.length === 0) return legacyVisibleWhere(s);
+  if (!s.own && !s.ownerExtras) return rooms.length === 1 ? rooms[0] : { OR: rooms };
+  return { OR: [legacyVisibleWhere(s), ...rooms] };
+}
+
+function legacyVisibleWhere(s: ConvSight): Prisma.AiConversationWhereInput {
   if (s.own && s.ownerExtras) return { OR: [{ id: { startsWith: likePrefix(s.own) } }, { NOT: { id: { startsWith: MEMBER_TAG } } }] };
   if (s.own) return { id: { startsWith: likePrefix(s.own) } };
   if (s.ownerExtras) return { NOT: { id: { startsWith: MEMBER_TAG } } };

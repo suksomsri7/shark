@@ -11,8 +11,8 @@ import { tenantDb } from "@/lib/core/db";
 import { type MembershipCtx } from "@/lib/core/rbac";
 import type { Prisma } from "@prisma/client";
 import { DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
-import { canSeeConversationId, sightOf, sightOfConfirmer, type ConvCtx } from "./conversation-owner";
-import { findVisibleConversation } from "./conversations";
+import { canSeeConversationId, sightOf, type ConvCtx } from "./conversation-owner";
+import { canConfirmerSeeConversation, findVisibleConversation } from "./conversations";
 
 type Ctx = { tenantId: string };
 
@@ -101,7 +101,7 @@ export async function executePlan(
 ): Promise<PlanExecResult> {
   const row = await tenantDb(ctx).aiPlan.findFirst({ where: { id: planId } });
   if (!row) return { ok: false, results: [], doneCount: 0 };
-  if (!canSeeConversationId(sightOfConfirmer(m, opts?.userId ?? null), row.conversationId)) return { ok: false, results: [], doneCount: 0 };
+  if (!(await canConfirmerSeeConversation(ctx.tenantId, m, opts?.userId ?? null, row.conversationId))) return { ok: false, results: [], doneCount: 0 }; // S1.4 R-K1
 
   // ไม่ใช่ PENDING (ทำไปแล้ว/ถูกปิด) → ไม่ทำซ้ำ
   if (row.status !== "PENDING") return { ok: false, results: [], doneCount: 0 };
