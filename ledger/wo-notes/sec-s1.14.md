@@ -61,3 +61,22 @@
 - เริ่ม 21:58Z · 185/511 ชุดใน ~62 นาที (✅128 ❌56) · **หยุดเอง 23:00Z** เพราะถือ `/tmp/shark-gate-sec.lock` ยาว ~3 ชม. ขวางเลน c/d (flock รอได้ 30 นาที) · ชุดที่ถูกตัดกลาง = qc-crm-c2.7 (อาจเหลือแถวทดสอบ CRM บนฐาน sec)
 - แดงทั้งหมดที่เห็น = ชุดที่ต้องใช้ฐานอื่น: `acc-v2-*` (seed บัญชี V2 `SIAM DIVE QC` ไม่มีบนฐาน sec — "เตรียมชุดข้อมูล" ล้ม) · `account-api-*` · `crm-*` (ฐาน CRM QC1/QC2) — ไม่มีชุด ai/chat/mobile/approval/sec แดง (60 ชุดนั้นรันครบใน baseline §4)
 - log: scratchpad `qcall-partial.log` · ผู้คุมควรรัน qc:all เต็มตอนเลนอื่นว่าง
+
+## 6. รอบ 2 — RESOLUTIONS §T (ผู้ตรวจ T/U · merge ทิปผู้คุม 9943ff164 เป็น fc28eb970 · แก้ 42ccf4ca9)
+| ข้อ | ทำอะไร (ไฟล์) |
+|---|---|
+| R-S1.14a | `POST rooms` รับ `clientMessageId` · `claimNewRoom` (_shared) claim `sec:cmid:<t>:new:<u>:<id>` ก่อน startRoom · สำเร็จจด `<claim>:room:<roomId>` · ซ้ำ ⇒ `{duplicate, roomId, conversationId}` · ห้องแรกยังไม่เสร็จ ⇒ 409 pending · startRoom ล้ม ⇒ คืน claim |
+| R-S1.14b | server-actions ทุกตัว `limited()` = `checkRateLimitDb` คีย์เดียวกับ route (เขียน 30 · send 10 · อ่าน 60) · route inbox/log/digest 60/นาที |
+| R-S1.14c | upload: Content-Length บังคับ (411) · 4 MB · allowlist jpeg/png/webp/heic/heif/gif + magic bytes (ประกาศกับจริงต้องตรง · heic≈heif) · svg ไม่รับ |
+| R-S1.14d | `service.listMessages(ctx, conv, {before, take})` (ตัวเลข = เดิมทุกตัวอักษร) · route messages cursor `<iso>\|<id>` |
+| R-S1.14e | `InboxItem.kinds` (inbox.ts) · `inboxItemDto.classes` (`classesOf`) |
+| R-S1.14f | `scheduled.updateTask(ctx+userId, id, patch)` (Membership จากฐาน · เจ้าของงาน/OWNER · cleanDays/cleanChannels) · PUT เต็ม |
+| R-S1.14g | 429 shape เดิมทุกเส้น · `roomCardsFor` → `pendingProposals` · `listRooms` before = `{at,id}` (rooms.ts) · `planCardDto` hasDestructive/createdAt · `GATE_TH` ตาม `g.error` · `idParam` decode try/catch ⇒ 404 |
+| R-S1.14h | ลบก่อน แล้ว revoke Session |
+| R-S1.14i | `views.proposalApprovableBy` ⇒ 403 · `editProposal` ต่อท้าย "(แก้แล้ว: k=v · …)" (แทนวงเล็บเดิม · คืน `summary`) |
+| R-S1.14j | `notifyUser` `data.tenantId` · `accessItemsFor` (แถว ai + โมดูลของ AppSystem active/BusinessUnit) · proposal `approvers` + `signature` · staff `units:[{id,name}]` + `allUnits` |
+- ข้อสอบรอบ 2 มี **13 ข้อ** (ไม่ใช่ 14 — ไม่มีข้อ MANAGER เชิญ MANAGER ในไฟล์) · forced ×2 + unforced 13/13
+- typecheck (`pnpm typecheck` ทั้งรีโป รวม scripts) = 0
+- qc-sec-* forced (42ccf4ca9): ทุกตัวเขียว · s1.1 B-1 MAJOR (baseline รอผู้คุมสร้างใหม่) · s0.3 51/53 (D1.7/D4.3 skipped)
+- baseline 60 ชุด: เท่าเดิมทุกบรรทัด ยกเว้น qc-chat-v2-context 52→53 · qc-chat-v2-icons 34→35 (exit 1→0)
+- fitness: D-1/D-2 ของข้อสอบ ×3 รอบ + pre-commit ✅ · next build = ผู้คุมรันเอง (ไม่ได้รันในรอบนี้)
