@@ -56,11 +56,11 @@ _(เติมเมื่อถึงใบ)_
 | S2.2 | ✍️ | | ใบ S2-2 (S2.2+S2.3) `sec-brief-S2.2.md` + spec `qc-sec-specs/s2.2.json` (oracle ทั่วไป `qc-sec-screen.mts`) · รอ S2.1+S1.14 merge |
 | S2.3 | ✍️ | | รวมในชุด S2-2 |
 | S2.4 | ✍️ | | ใบ `sec-brief-S2.4.md` + spec `s2.4.json` · รอ S2.1+S1.14 merge |
-| S2.5 | ⬜ | | A6 A7 |
-| S2.6 | ⬜ | | A8 push |
-| S2.7 | ⬜ | | B1 B2 B8 |
-| S2.8 | ⬜ | | B3 B4 B5 |
-| S2.9 | ⬜ | | B6 B7 |
+| S2.5 | ✍️ | | ใบ S2-5 (S2.5+S2.6) + spec s2.5.json · รอ S2.1+S1.14 |
+| S2.6 | ✍️ | | รวมในชุด S2-5 |
+| S2.7 | ✍️ | | ใบ S2-7 (S2.7+S2.8+S2.9) + spec s2.7.json · รอ S2.1+S1.14 |
+| S2.8 | ✍️ | | รวมในชุด S2-7 |
+| S2.9 | ✍️ | | รวมในชุด S2-7 |
 | S2.10 | ⬜ | | D1 D2 D3 |
 | S2.11 | ⬜ | | C1 |
 | S2.12 | 🔨 | | ใบ `sec-brief-S2.12.md` + oracle `qc-sec-s2.12.mts` · builder Opus เลน c `wip/sec-s2.12` เริ่ม 5 พ.ย. ~12:0xZ (ขนานกับ S2.1) |
