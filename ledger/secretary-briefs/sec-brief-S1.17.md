@@ -1,0 +1,29 @@
+# S1-12 — S1.17 Support Desk ต่อแอป · S1.23 แจ้งเตือน (prefs · badge · กันสแปม · แชทลูกค้าตาม pref) (Opus · `wip/sec-s1.17` · light-check)
+
+Read `sec-brief-COMMON.md`, `sec-brief-RESOLUTIONS.md` (**R-K12 R-K20** §B.7), plan rows S1.17/S1.23, แบบ H1–H4 + K4 แจ้งเตือน, `docs/modules/31-secretary.md` §5, และ oracle `scripts/qc-sec-s1.17.mts`. Verified code: `src/lib/support/service.ts` (`createCase` :65 caseNo race-safe · `openCaseFromAi` :110 · `listMyCasesWithMeta` :130 ทั้งร้าน · `unreadCaseTotal` :157 · `markCaseRead` · `listCaseMessages` · `addShopMessage` :196 · `CaseMeta`) · `src/lib/platform/support.ts` (`listAllCases({status?})` :19 · `addPlatformMessage(pu, caseId, body)` :71 แทรก AI room เมื่อ `conversationId` + push ผู้สร้างห้อง · `setCaseStatus` :48 · `suspendTenant` :140) · `SupportCase.{source, category, roomId}` (S1.1) · `src/lib/core/push.ts` (`PushMsg {title, body, data?}` :13 · `deliverBatch` payload :52 · `sendPushToUser` :145 · `sendPushToUsers` :211 · `sendPushToChatStaff({tenantId, systemId, conversationId, assigneeUserId, title, body, data})` :291 กรอง viewing window + muted) · `src/lib/modules/chat/service.ts` `unreadCount(tenantId, systemId)` :2072 · `AiNotifyPref(userId, tenantId?, kind inbox|approval|room|help, mode ALL|ASSIGNED|OFF)` · `src/lib/ai/secretary/worker.ts` (push หลัง DONE/FAILED — S1.5) · `src/lib/ai/conversations.ts` `roomSightFor`.
+
+## S1.17 — `src/lib/support/service.ts` (เพิ่ม) + `src/lib/platform/support.ts` (แก้)
+```ts
+export const CASE_CATEGORIES = ["secretary_wrong", "bug", "question", "billing", "feature", "other"] as const;
+export async function openCaseFromApp(ctx: Ctx, input: { userId: string; subject: string; body: string; attachments?: Attachment[]; category?: string; roomId?: string | null }): Promise<{ id: string; caseNo: number }>;
+   // createCase เดิม + update { source: "APP", category (∉ CASE_CATEGORIES ⇒ "other"), roomId: มีจริงในร้านและผู้แจ้งมองเห็น (AiRoom.startedById = userId หรือ สมาชิก หรือ OWNER) ไม่งั้น null } · **ไม่ตั้ง conversationId** (R-K12) · category "secretary_wrong" + roomId ⇒ best-effort `recordFeedback({ conversationId: room.conversationId, userText: subject, replyText: body, rating: "DOWN", note: "help:" + caseId })` (ล้มไม่ throw)
+export async function listCasesForUser(ctx: Ctx, userId: string, role: Role, take = 50): Promise<CaseMeta[]>; // openedByUserId = userId หรือ role OWNER (เห็นทุกเคสรวม "ai-assistant") · meta unread เหมือน listMyCasesWithMeta
+export async function unreadCaseTotalForUser(ctx: Ctx, userId: string, role: Role): Promise<number>;
+export async function setResolvedByShop(ctx: Ctx, userId: string, role: Role, caseId: string): Promise<boolean>; // เคสที่เห็น · status → RESOLVED · ไม่เห็น = false
+```
+- `platform/support.ts`: `addPlatformMessage(pu, caseId, body, deps?: { post?: PushPost })` — แทรก `🛟 ทีมงาน:` ลงห้อง AI **เฉพาะ `source !== "APP"` และมี conversationId** (เดิม) · push: เคส APP ⇒ `notifyUser(openedByUserId, tenantId, "help", { title: "ทีมงานตอบกลับแล้ว", body ≤80, data: { link: "/help/<caseId>", caseId } }, deps)` · เคสอื่น = เดิม · `assignCase(pu, caseId)` ตั้ง assigneePlatformUserId · `listAllCases({ status?, source?, category?, assigneePlatformUserId? })` · `caseDetail` ส่ง `roomId`/`source`/`category` ด้วย
+## S1.23 — `src/lib/ai/secretary/notify.ts` (ใหม่) + `core/push.ts` (badge · pref ใน sendPushToChatStaff)
+```ts
+export const NOTIFY_KINDS = ["inbox", "approval", "room", "help"] as const; export const NOTIFY_MODES = ["ALL", "ASSIGNED", "OFF"] as const;
+export async function getNotifyPrefs(userId: string, tenantId?: string | null): Promise<Record<NotifyKind, NotifyMode>>; // แถวของ tenant ชนะแถว tenantId null · ปริยาย ALL
+export async function setNotifyPref(userId: string, input: { tenantId?: string | null; kind: string; mode: string }): Promise<Record<NotifyKind, NotifyMode>>; // validate ไทย · upsert
+export async function badgeTotalFor(userId: string, tenantId: string): Promise<number>; // ห้องเลขาที่ผู้ใช้เห็น (startedBy/สมาชิก · ไม่นับ OWNER-ทุกห้อง) ที่มี ASSISTANT ใหม่กว่า lastReadAt + chat `unreadCount` ของทุกระบบ CHAT ในร้านที่ผู้ใช้มีสิทธิ์ `chat.conversation.read` + `unreadCaseTotalForUser`
+export async function notifyUser(userId: string, tenantId: string, kind: NotifyKind, msg: { title: string; body: string; data: Record<string, unknown> & { link: string } }, deps?: { post?: PushPost; now?: Date; assigneeUserId?: string | null }): Promise<{ sent: number; skipped: "pref" | "spam" | "none" | null }>;
+   // pref OFF ⇒ skipped pref · ASSIGNED ⇒ ส่งเฉพาะเมื่อ deps.assigneeUserId === userId (kind inbox) · กันสแปม: คีย์ `${userId}:${data.link}` ภายใน 60 วิ ⇒ skipped spam (Map ในหน่วยความจำ + `now` ฉีดได้) · ใส่ `badge: await badgeTotalFor(...)` · `sendPushToUser(userId, {...msg, badge}, { post })` ไม่กรอง tenant (R-K20) · ไม่ throw
+```
+- `core/push.ts`: `PushMsg.badge?: number` → payload `badge` (hunk เดียวใน deliverBatch) · `sendPushToChatStaff` รับ `deps?: { post?, prefs?: (userId) => Promise<NotifyMode> }`: กรองผู้รับด้วย `getNotifyPrefs(userId, tenantId).inbox` — OFF ตัด · ASSIGNED ⇒ เฉพาะ `assigneeUserId` · data เพิ่ม `link: "/inbox/<conversationId>"` (คง `conversationId` เดิม) · ไม่มีแถว pref = เดิมทุกไบต์
+- `worker.ts` (S1.5): push หลัง DONE/FAILED ⇒ ผ่าน `notifyUser(uid, tenantId, "room", …, { post })` (ใช้ pref + badge + กันสแปม) · ผล oracle S1.5 P-1/P-2 ต้องยังผ่าน (link เดิม)
+- `platform/support.ts` ใช้ `notifyUser(..., "help", ...)` ตามข้างบน
+## Files you own
+`src/lib/support/service.ts` · `src/lib/platform/support.ts` · `src/lib/ai/secretary/notify.ts` · `src/lib/core/push.ts` (2 hunk) · `src/lib/ai/secretary/worker.ts` (push hunk) · docs §5 · `ledger/wo-notes/sec-s1.17.md`
+## Acceptance = `scripts/qc-sec-s1.17.mts` PASS ทั้งหมด + `qc-support` `qc-support-ai` `qc-help-v2` `qc-mobile-help` `qc-backoffice` `qc-chat-push-badge` `qc-chat-notify` `qc-chat-notify-v2` + `qc-sec-s1.5` เท่าเดิม · typecheck 0 · fitness ×2
