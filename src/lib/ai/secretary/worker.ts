@@ -22,6 +22,7 @@ import type { AiProvider } from "../provider";
 import { sendMessage, type SendResult } from "../service";
 import { quotaMessage } from "../usage";
 import { roomPushRecipients } from "./members";
+import { notifyUser } from "./notify";
 
 export const ROOM_JOB_LEASE_MS = 120_000; // 2 นาที
 export const ROOM_JOB_MAX_ATTEMPTS = 3;
@@ -192,7 +193,10 @@ async function processJob(job: AiRoomJob, attempt: number, deps: RoomJobDeps): P
   return (await finish({ status: "DONE", error: null, leaseUntil: null, finishedAt: new Date() })) ? { kind: "done", reply: res.reply } : { kind: "lost" };
 }
 
-/** push ถึงผู้เปิดห้อง ∪ สมาชิกห้อง ที่ Membership ยังรับอยู่ (S1.6 R-S1.6c · `roomPushRecipients`) · ไม่กรองร้านของเครื่อง (R-K20) · ล้ม = log ไม่ throw */
+/**
+ * push ถึงผู้เปิดห้อง ∪ สมาชิกห้อง ที่ Membership ยังรับอยู่ (S1.6 R-S1.6c · `roomPushRecipients`) · ไม่กรองร้านของเครื่อง (R-K20) · ล้ม = log ไม่ throw
+ *   S1.23 ▸ ผ่าน `notifyUser(uid, tenantId, "room", …)` = เคารพค่าตั้ง "ห้องเลขา" (OFF = ไม่ส่ง) + badge + กันสแปม (ห้องเดิมถึงคนเดิมใน 60 วิ) ◂
+ */
 async function pushRoom(job: AiRoomJob, text: string, deps: RoomJobDeps): Promise<void> {
   try {
     const room = await tenantDb({ tenantId: job.tenantId }).aiRoom.findFirst({
@@ -208,7 +212,7 @@ async function pushRoom(job: AiRoomJob, text: string, deps: RoomJobDeps): Promis
     };
     for (const uid of to) {
       try {
-        await sendPushToUser(uid, msg, deps.post ? { post: deps.post } : undefined);
+        await notifyUser(uid, job.tenantId, "room", msg, deps.post ? { post: deps.post } : undefined);
       } catch (e) {
         await logOps("WARN", "push", `secretary.roomJobs: push ล้ม (ผู้ใช้ ${uid})`, { tenantId: job.tenantId, detail: String(e) }).catch(() => {});
       }

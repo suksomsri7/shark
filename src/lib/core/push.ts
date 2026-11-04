@@ -10,8 +10,9 @@ import {
   VIEWING_WINDOW_MS,
 } from "@/lib/modules/chat/notify";
 
-type PushMsg = { title: string; body: string; data?: Record<string, unknown> };
-type PushDeps = { post?: (payloads: unknown[]) => Promise<unknown[]> };
+// S1.23 (R-K20) ▸ `badge` = ตัวเลขบนไอคอนแอป (ส่งต่อใน payload เฉพาะเมื่อผู้เรียกใส่ — ไม่ใส่ = payload เดิมทุกไบต์) ◂
+type PushMsg = { title: string; body: string; data?: Record<string, unknown>; badge?: number };
+type PushDeps = { post?: (payloads: unknown[]) => Promise<unknown> };
 
 const CHUNK = 100; // Expo push API รับได้ ≤100/ครั้ง
 
@@ -47,7 +48,7 @@ async function expoPost(payloads: unknown[]): Promise<unknown[]> {
 async function deliverBatch(
   batch: { expoToken: string }[],
   msg: PushMsg,
-  post: (payloads: unknown[]) => Promise<unknown[]>,
+  post: (payloads: unknown[]) => Promise<unknown>,
 ): Promise<{ sent: number; dead: string[]; failures: string[]; okIndexes: Set<number> }> {
   const payloads = batch.map((d) => ({
     to: d.expoToken,
@@ -55,8 +56,19 @@ async function deliverBatch(
     body: msg.body,
     data: msg.data,
     sound: "default",
+    ...(typeof msg.badge === "number" && Number.isFinite(msg.badge) ? { badge: Math.max(0, Math.floor(msg.badge)) } : {}),
   }));
-  const tickets = (await post(payloads)) as Ticket[];
+  // S1.23 ▸ transport ที่ฉีดเข้ามาอาจคืน `{ tickets }` / `{ data }` แทน array — อ่านได้ทั้งสามแบบ (ตัวจริงคืน array) ◂
+  const raw = await post(payloads);
+  const tickets = (
+    Array.isArray(raw)
+      ? raw
+      : Array.isArray((raw as { tickets?: unknown })?.tickets)
+        ? (raw as { tickets: unknown[] }).tickets
+        : Array.isArray((raw as { data?: unknown })?.data)
+          ? (raw as { data: unknown[] }).data
+          : []
+  ) as Ticket[];
   const dead: string[] = []; // token ที่ตาย → ลบทิ้ง
   const failures: string[] = [];
   // K3.9 — ผู้เรียกที่ส่งให้ "หลายคน" ต้องรู้ว่าใบไหนถึงจริง (คนหนึ่งมีหลายเครื่อง) ไม่ใช่แค่ยอดรวม
@@ -296,8 +308,9 @@ export async function sendPushToChatStaff(args: {
   title: string;
   body: string;
   data?: Record<string, string>;
-}): Promise<{ sent: number; skipped: number }> {
+}, deps?: { post?: PushDeps["post"]; prefs?: (userId: string) => Promise<"ALL" | "ASSIGNED" | "OFF"> }): Promise<{ sent: number; skipped: number }> {
   const { tenantId, systemId, conversationId } = args;
+  const post = deps?.post ?? expoPost;
   let sent = 0;
   let skipped = 0;
   try {
@@ -329,14 +342,41 @@ export async function sendPushToChatStaff(args: {
       }),
     ]);
 
-    const recipientUserIds = selectChatNotifyRecipients({
+    const assigneeUserId = args.assigneeUserId ?? conv?.assigneeUserId ?? null;
+    const selected = selectChatNotifyRecipients({
       members: memberRows.map(toChatNotifyMember),
       unitId: conv?.unitId ?? null,
       // ผู้เรียกรู้ค่าล่าสุดกว่าเสมอ (เพิ่ง assign ในทรานแซกชันเดียวกัน) → ให้ค่าที่ส่งมาชนะ
-      assigneeUserId: args.assigneeUserId ?? conv?.assigneeUserId ?? null,
+      assigneeUserId,
       readers: readerRows,
       mutedUserIds: mutedRows.map((r) => r.userId),
     });
+    // S1.23 (R-K20) ▸ ค่าตั้งแจ้งเตือน "แชทลูกค้า" ของแต่ละคน (`AiNotifyPref` kind inbox): OFF ตัด · ASSIGNED เหลือเฉพาะผู้ดูแลเธรด
+    //   ไม่มีใครตั้ง = Map ว่าง = ผู้รับเดิมทุกคน · อ่านค่าตั้งไม่ได้ = ไม่กรอง (แจ้งเตือนห้ามหายเงียบ) ◂
+    let modeOf: (uid: string) => Promise<"ALL" | "ASSIGNED" | "OFF">;
+    if (deps?.prefs) modeOf = deps.prefs;
+    else {
+      let modes = new Map<string, "ALL" | "ASSIGNED" | "OFF">();
+      try {
+        const { notifyModesFor } = await import("@/lib/ai/secretary/notify");
+        modes = await notifyModesFor(tenantId, selected, "inbox");
+      } catch (e) {
+        await logPushError(`อ่านค่าตั้งแจ้งเตือนไม่ได้ (แชท ${systemId}/${conversationId})`, String(e), tenantId);
+      }
+      modeOf = async (uid) => modes.get(uid) ?? "ALL";
+    }
+    const recipientUserIds: string[] = [];
+    for (const uid of selected) {
+      let mode: "ALL" | "ASSIGNED" | "OFF" = "ALL";
+      try {
+        mode = await modeOf(uid);
+      } catch {
+        mode = "ALL";
+      }
+      if (mode === "OFF") continue;
+      if (mode === "ASSIGNED" && uid !== assigneeUserId) continue;
+      recipientUserIds.push(uid);
+    }
 
     // เรียงเครื่องตามลำดับผู้รับ — ผู้รับผิดชอบต้องได้ก่อนคนอื่นจริง ๆ ในคิวส่ง
     const rank = new Map(recipientUserIds.map((u, i) => [u, i]));
@@ -346,11 +386,12 @@ export async function sendPushToChatStaff(args: {
     skipped += devices.length - targets.length;
     if (targets.length === 0) return { sent: 0, skipped };
 
-    const msg: PushMsg = { title: args.title, body: args.body, data: args.data };
+    // S1.23 (R-K20) ▸ deep-link ของแอป `data.link = "/inbox/<id>"` (ผู้เรียกส่ง link มาเองชนะ) · คีย์เดิมของผู้เรียกคงอยู่ ◂
+    const msg: PushMsg = { title: args.title, body: args.body, data: { link: `/inbox/${conversationId}`, ...(args.data ?? {}) } };
     for (let i = 0; i < targets.length; i += CHUNK) {
       const batch = targets.slice(i, i + CHUNK);
       try {
-        const r = await deliverBatch(batch, msg, expoPost);
+        const r = await deliverBatch(batch, msg, post);
         sent += r.sent;
         skipped += batch.length - r.sent;
         if (r.failures.length > 0) {
