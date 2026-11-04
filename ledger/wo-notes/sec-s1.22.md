@@ -67,3 +67,10 @@
 
 ## 9. คืนสภาพฐาน QC
 - oracle `finally` ลบ tenant `qc-sec-s122-*` + ผู้ใช้ `qcs122-*` ทุกตาราง (รวม aiSettings · chatConversationEvent · appNotification)
+
+## 10. รอบ 2 (ผู้ตรวจ N · RESOLUTIONS §O) — merge ทิป `90989b9d`
+- R-S1.22a `sendReply({ aiAfterHours: true })` ไม่แตะ staffUnreadCount/firstResponseAt (A-6)
+- R-S1.22b ลำดับ disabled → no_window → in_hours → human/money/complaint (regex) → ตอบแล้ว (ah:) → answered (OUT · senderUserId ไม่ null · ไม่ใช่ meta.ai_afterHours) → ด่านต้นทุน → โมเดล → ตรวจคำตอบ (MONEY_RE/AMOUNT_RE ⇒ money ไม่ส่ง) · reason ใหม่ human/answered · regex ขยายตาม §O (A-7)
+- R-S1.22c ข้อมูลร้าน (เวลาทำการ+DNA+ความจำ) ผ่าน maskPiiDeep + ตัวเลข ≥ 8 หลัก · prompt ห้ามไล่/อ้างข้อมูลร้าน
+- R-S1.22d body = "Shark (ผู้ช่วย AI): " + คำตอบ + "\n" + disclosure · disclosure ต้องมี AI/เอไอ/ผู้ช่วย (setAfterHours throw ไทย · แถวที่ไม่ผ่าน = ข้อความปริยาย)
+- R-S1.22e `LINK_CODE_MASK` ย้ายไป `chat/link-code.ts` (route import) + hook ข้าม · docNo/tier ผ่าน mask · event handoff ครั้งแรกต่อห้องต่อวัน (createdAt = now) · `by.tenantId` ชนิดบังคับ + ไม่ตรง ⇒ Forbidden + ตรวจ Membership OWNER จากฐานเสมอ (ข้อสอบ A-1 ยังไม่ส่ง tenantId — ORACLE-EDIT) · context มีแต่ contactId ⇒ ทิ้ง

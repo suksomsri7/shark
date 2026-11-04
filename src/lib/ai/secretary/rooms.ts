@@ -97,7 +97,9 @@ function cleanContext(v: StartRoomInput["context"]): Prisma.InputJsonObject | un
     const s = typeof v[k] === "string" ? v[k].trim() : "";
     if (s) out[k] = s.slice(0, 200);
   }
-  return Object.keys(out).length > 0 ? out : undefined;
+  // S1.22 R-S1.22e ▸ ผู้ติดต่อที่ไม่มีห้องลูกค้ากำกับ = ตรวจสิทธิ์ไม่ได้ ⇒ ทิ้งทั้งก้อน (ไม่เก็บ contactId ลอย ๆ) ◂
+  if (!out.chatConversationId) return undefined;
+  return out;
 }
 
 class QuotaExceeded extends Error {

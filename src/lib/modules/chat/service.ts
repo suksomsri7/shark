@@ -1339,6 +1339,9 @@ function isLiveInbound(sentAt: Date | undefined | null): boolean {
 async function scheduleAfterHours(a: { tenantId: string; systemId: string; conversationId: string; messageId: string; text: string }): Promise<void> {
   const run = async () => {
     try {
+      // R-S1.22e ▸ รหัสผูกบัญชี LINE ถูกบันทึกเป็นข้อความแทน (ตัวรหัสจริงไม่อยู่ในแถว) — ไม่ใช่คำถามของลูกค้า ⇒ ไม่ตอบ ◂
+      const { LINK_CODE_MASK } = await import("./link-code");
+      if (a.text.trim() === LINK_CODE_MASK) return;
       const { afterHoursAutoReply } = await import("./after-hours");
       await afterHoursAutoReply({ tenantId: a.tenantId, systemId: a.systemId, conversationId: a.conversationId, inboundText: a.text, inboundMessageId: a.messageId });
     } catch (e) {
@@ -1529,6 +1532,11 @@ export async function sendReply(args: {
    *   ไม่ส่ง = พฤติกรรมเดิมทุกประการ ◂
    */
   clientMessageId?: string;
+  /**
+   * SEC S1.22 ▸ R-S1.22a: ข้อความตอบนอกเวลาทำการของ Shark — **ไม่** ล้าง `staffUnreadCount` และไม่ตั้ง `firstResponseAt`
+   *   (ข้อความลูกค้ายังค้างคิวให้คนดูตอนเช้า · SLA ไม่ถูกนับว่าคนตอบแล้ว) · ไม่ส่ง = พฤติกรรมเดิมทุกประการ ◂
+   */
+  aiAfterHours?: true;
 }): Promise<{ ok: boolean; reason?: string; messageId?: string; duplicate?: boolean }> {
   // 🔴 เงื่อนไขเดิมคือ `if (!body) return` ⇒ ทีมส่ง "รูปอย่างเดียว" ไม่ได้เลย (G3)
   //    กติกาใหม่: ต้องมีอย่างน้อย body **หรือ** ไฟล์แนบ (ตรงกับขาเข้า receiveExternalInbound)
@@ -1732,8 +1740,8 @@ export async function sendReply(args: {
           lastMessageAt: created.createdAt,
           lastMessagePreview: previewText,
           lastMessageDirection: "OUT",
-          staffUnreadCount: 0,
-          firstResponseAt: conv.firstResponseAt ?? new Date(),
+          // SEC S1.22 R-S1.22a ▸ Shark ตอบกลางคืน ≠ คนตอบ: unread/firstResponseAt คงเดิม ◂
+          ...(args.aiAfterHours === true ? {} : { staffUnreadCount: 0, firstResponseAt: conv.firstResponseAt ?? new Date() }),
         },
       });
     }

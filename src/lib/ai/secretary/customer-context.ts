@@ -166,9 +166,9 @@ async function scrub(c: CustomerContext): Promise<CustomerContext> {
     tags: c.tags.map(m),
     assignee: c.assignee === null ? null : m(c.assignee),
     linked: {
-      ...(c.linked.member ? { member: c.linked.member } : {}),
+      ...(c.linked.member ? { member: { ...c.linked.member, tier: c.linked.member.tier === null ? null : m(c.linked.member.tier) } } : {}),
       ...(c.linked.deals ? { deals: c.linked.deals.map((d) => ({ ...d, title: m(d.title), stage: m(d.stage) })) } : {}),
-      ...(c.linked.openDocs ? { openDocs: c.linked.openDocs } : {}),
+      ...(c.linked.openDocs ? { openDocs: c.linked.openDocs.map((d) => ({ ...d, docNo: m(d.docNo) })) } : {}), // R-S1.22e: docNo ผ่าน mask
     },
     recent: c.recent.map((r) => ({ ...r, text: m(r.text) })),
   };
