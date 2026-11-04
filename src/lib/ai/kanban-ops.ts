@@ -614,6 +614,8 @@ export async function dispatchKanbanKind(
   userId?: string | null,
   /** SEC S1.8 (R-S1.8a · R-S1.8h) — ตั้ง `out.entity` = การ์ดที่ `cards.create`/`cards.move` คืนมา (ชนิดคืนคงเดิม) */
   out?: { entity?: { type: string; id: string; unitId?: string | null } | null },
+  /** SEC S1.8 รอบ 2 — ป้ายผู้กระทำใน audit (`after.actor`) · ปริยาย "ai-assistant" · การย้อนของเลขาส่ง "ai-undo" */
+  auditActor?: string,
 ): Promise<string> {
   const payload = isRecord(rawPayload) ? rawPayload : {};
   const opId = typeof payload.opId === "string" ? payload.opId : kind.slice(KIND_PREFIX.length);
@@ -641,7 +643,7 @@ export async function dispatchKanbanKind(
       requestId: `ai-proposal-${proposalId}`,
       idempotencyKey: `ai-${proposalId}`,
       reason,
-      audit: { proposalId, actor: "ai-assistant" },
+      audit: { proposalId, actor: auditActor ?? "ai-assistant" },
     });
     // SEC S1.8 ▸ entity ของการ์ดที่ op สร้าง/ย้าย — R-S1.8h: ตั้งเฉพาะ `cards.create` / `cards.move` (op อื่นคืน id ของสิ่งอื่น
     //   เช่น เช็กลิสต์/ความเห็น — ตั้งเป็นการ์ดจะผิดชนิด) ◂

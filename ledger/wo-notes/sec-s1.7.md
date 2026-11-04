@@ -111,7 +111,8 @@ oracle `finally` ลบ aiActionLog/aiApprovalRule/aiRoom*/aiProposal/aiPlan/…
 - ย้ายการ์ด/ดีลที่ไม่มี `payload.after` (แถวก่อนรอบ 2 / snapshot ล้ม) ⇒ ปฏิเสธ (fail-closed) · นัดที่ไม่มี after ใช้กติกา status/เวลา
 - **R-S1.8b แถวห้องเดิม**: การมองเห็นคงเดิม (OWNER · ผู้สั่ง/ผู้อนุมัติ) — MANAGER ที่ไม่ใช่คู่กรณีของแถวห้องเดิม = "ไม่พบรายการ" (ตาม "เหมือนเดิม" + B5)
 - **R-S1.8f**: `maskPiiPatterns` ไม่ได้ export ผ่าน facade CRM และด่าน fitness ห้าม import `modules/crm/api/serialize` จากนอกโมดูล ⇒ เรียก `crmApi.maskPiiDeep(summary)` (กับสตริง = `maskPiiPatterns` ตรงทุกไบต์) · ล้ม = regex ปิดเบอร์/อีเมลสำรอง
-- ย้อนการ์ด/ดีลส่ง `proposalId = undo-<logId>` เข้า dispatch (requestId/audit `ai-proposal-undo-…`)
+- ย้อนการ์ด/ดีลส่ง `proposalId = undo-<logId>` เข้า dispatch (requestId/audit `ai-proposal-undo-…`) · **รีวิวซ้ำ N2**: ป้าย audit `after.actor = "ai-undo"` (เดิม "ai-assistant") ผ่านพารามิเตอร์ optional ท้าย `dispatchKanbanKind(…, out?, auditActor?)` + ฟิลด์ optional `CrmToolCtx.auditActor` (`src/lib/modules/crm/api/tools.ts` · additive · ปริยายเดิม)
+- **รีวิวซ้ำ N1**: `confirmPlanAction` (src/lib/ai/actions.ts) คืน `res.note` เมื่อด่านผู้อนุมัติไม่ยอม (เดิมขึ้น "แผนนี้ถูกดำเนินการหรือปิดไปแล้ว" ทั้งที่แผนคง PENDING) · route มือถือส่ง `res` ทั้งก้อนอยู่แล้ว (มี note)
 
 ### R4. หนี้ (เพิ่มจาก §8)
 | เรื่อง | ใบ |

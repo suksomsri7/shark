@@ -270,6 +270,8 @@ const APPROVER_ROLES = new Set(["OWNER", "MANAGER"]);
 const ROOM_UNDO_NOTE = "รายการจากห้องเลขาต้องให้เจ้าของหรือผู้จัดการเป็นผู้ย้อน";
 const NO_UNDO_PERM_NOTE = "คุณยังไม่มีสิทธิ์ย้อนรายการนี้ ให้ผู้มีสิทธิ์ของระบบนั้นเป็นผู้กด";
 const UNDO_REASON = "ย้อนการกระทำของเลขา AI";
+/** ป้ายผู้กระทำใน AuditLog.after ของการย้อน (ผู้กระทำจริง = ผู้ย้อน · actorId ของ audit = userId ของเขา) */
+const UNDO_AUDIT_ACTOR = "ai-undo";
 
 /** ด่านระดับต่อระบบของเลขา (S1.3) สำหรับการย้อน — ระบบที่ปิด/ดูอย่างเดียว = ย้อนไม่ได้ · อ่านฐานไม่ได้ = ปฏิเสธไทย (ปิดไว้ก่อน) */
 async function undoLevelGate(tenantId: string, kind: string): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -377,7 +379,7 @@ async function runUndo(tenantId: string, m: MembershipCtx, userId: string, row: 
       if (!card) throw new Error("ไม่พบการ์ดนี้แล้ว");
       if (card.status !== "ACTIVE") throw new Error("การ์ดนี้ถูกเก็บไปแล้ว");
       // R-S1.8c: ผ่านทะเบียน op ด้วยตัวตนผู้ย้อน (บทบาทบอร์ด · กิจกรรม · webhook `kanban.card.archived` ตรงของเดิม)
-      await dispatchKanbanKind(m, tenantId, reqId, "kanban.cards.archive", { systemId: card.systemId, params: { id: entityId }, input: { reason: UNDO_REASON } }, userId);
+      await dispatchKanbanKind(m, tenantId, reqId, "kanban.cards.archive", { systemId: card.systemId, params: { id: entityId }, input: { reason: UNDO_REASON } }, userId, undefined, UNDO_AUDIT_ACTOR);
       return "ย้อนแล้ว — เก็บการ์ดที่เลขาสร้างเรียบร้อย";
     }
     case "kanban.cards.move": {
@@ -389,7 +391,7 @@ async function runUndo(tenantId: string, m: MembershipCtx, userId: string, row: 
       if (!afterColumnId) throw new Error("ไม่พบสภาพหลังเลขาย้าย ย้อนไม่ได้");
       if (card.columnId !== afterColumnId) throw new Error("การ์ดถูกย้ายไปแล้วหลังจากเลขาย้าย — ย้อนไม่ได้ (กันทับงานของคน)");
       // R-S1.8c: ผ่านทะเบียน op · ไปท้ายคอลัมน์เดิม (ไม่คืนตำแหน่งเดิมตรง) · ออกจากคอลัมน์ "เสร็จ" = completedAt ว่าง
-      await dispatchKanbanKind(m, tenantId, reqId, "kanban.cards.move", { systemId: card.systemId, params: { id: entityId }, input: { toColumnId: fromColumnId } }, userId);
+      await dispatchKanbanKind(m, tenantId, reqId, "kanban.cards.move", { systemId: card.systemId, params: { id: entityId }, input: { toColumnId: fromColumnId } }, userId, undefined, UNDO_AUDIT_ACTOR);
       return "ย้อนแล้ว — ย้ายการ์ดกลับคอลัมน์เดิมเรียบร้อย";
     }
     case "crm.deals.move": {
@@ -405,7 +407,7 @@ async function runUndo(tenantId: string, m: MembershipCtx, userId: string, row: 
       const systemId = strOf(before, "systemId") || deal.systemId;
       // R-S1.8c: ผ่านทะเบียน op ของ CRM ด้วยตัวตนผู้ย้อน (การมองเห็นดีล · กิจกรรม · webhook ตรงของเดิม)
       await crmSvc.crmApi.dispatchCrmKind(
-        { tenantId, systemId, userId, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions, proposalId: reqId },
+        { tenantId, systemId, userId, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions, proposalId: reqId, auditActor: UNDO_AUDIT_ACTOR },
         "crm.deals.move",
         { systemId, params: { id: entityId }, input: { stageId: fromStageId } },
       );
