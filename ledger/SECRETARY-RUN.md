@@ -33,10 +33,10 @@ _(เติมเมื่อถึงใบ)_
 | S1.3 | ✅ | 4 พ.ย. ~16:2xZ | **S1.3b ✅** merge (wip/sec-s1.3b 2b0b1fd1 · oracle 13/13 ×2) ปิดช่องรีวิว C/D: อ่านข้ามโมดูลเคารพ OFF · unmapped fail-closed · route คีย์ API ส่ง access · setAccess โหลด membership · แผนตรวจระดับก่อน claim · CRM door · identity bidi/grapheme · หนี้: setAccessAsPlatform ยังไม่มีผู้เรียก (S2.16) · customer_points ยังถูกยื่นเมื่อ point OFF · access-rules.ts (pure) + access.ts · toolVerdict/toolsOfferedTo รับ access · HAND_TOOL_MODULE (27 โมดูล) · ด่านใน executeProposal/runKind (dynamic import กันวงกลม) · หนี้: route คีย์ API ภายนอกยังไม่ส่ง access · propose_plan ปล่อยขั้นของระบบ OFF ไปตกตอนรัน · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | ✅ | 4 พ.ย. ~18:0xZ | merge (wip/sec-s1.4 33cfaf47) · oracle 28/28 ×3 (ORACLE-EDIT fixture tenantId) · S1.2 ยังเขียวหลัง merge · regression 9 ชุดเท่า baseline · rooms.ts 329 บรรทัด · ConvSight +memberOf/tenantRooms · roomSightFor/canSeeConversationById · rejectPlan room-aware · 🎯 ห้อง = งาน |
 | S1.5 | ✅ | 4 พ.ย. ~20:0xZ | merge (wip/sec-s1.5 d1e0ed19) · oracle 16/16 ×3 · regression 6 ชุดเท่า baseline · worker.ts 279 บรรทัด · minute job `secretary.roomJobs` (crm-cron VPS + outbox hook) · รวม hotfix `secretaryOf().catch` · หนี้: รูปแนบในคิว (ไม่มีคอลัมน์ → secretary_b) · ข้อความ 2 อันในห้องเดียวรันพร้อมกันได้ · docs §6 ห้องปิด · 🎯 คิวเบื้องหลัง |
-| S1.6 | 🔨 | | builder Opus เลน b `wip/sec-s1.6` @d8625b70 เริ่ม 4 พ.ย. ~20:1xZ · oracle `qc-sec-s1.6.mts` · 🎯 ห้องร่วม |
+| S1.6 | 🔍 | | built d87c8a4f (เลน b) · oracle 14/14 ×3 (ผู้คุม) · s1.4 28/28 หลัง ORACLE-EDIT G-3 · s1.3b/s1.5 เขียวหลัง merge tip · **รอผู้ตรวจ 2 คน (E สิทธิ์ · F สัญญา)** · 🎯 ห้องร่วม |
 | S1.7 | 🔨 | | builder Opus เลน c `wip/sec-s1.7` @f385caa9 เริ่ม 4 พ.ย. ~21:2xZ · oracle `qc-sec-s1.7.mts` · ต้องอนุมัติเสมอ |
 | S1.8 | 🔨 | | รวมในชุด S1-6 (เลน c) · 🎯 บันทึก + ย้อน 24 ชม. |
-| S1.9 | ✍️ | | ใบ S1-7 + oracle `qc-sec-s1.9.mts` (f4556fcf) พร้อม · งานประจำ |
+| S1.9 | 🔨 | | builder Opus เลน d `wip/sec-s1.9` @a6f98e88 เริ่ม 4 พ.ย. ~22:3xZ · งานประจำ |
 | S1.10 | ✍️ | | ใบ S1-8 (S1.10+S1.15) + oracle `qc-sec-s1.10.mts` (6000cfb1) พร้อม · ตีกลับ + สอน |
 | S1.11 | ⬜ | | ข้อเสนอ + กล่องรวม |
 | S1.12 | ⬜ | | เครื่องมือที่ขาด (chat.send) |
