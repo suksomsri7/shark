@@ -1,0 +1,117 @@
+{
+ "_about": "ทะเบียนปุ่ม (Pressable) ของแอปเลขา AI — testID → ไฟล์ → จอ → ทำอะไร (COMMON §C.12) · เริ่มใบ S2.1 · ใบ S2.x เพิ่มแถวของตัวเอง",
+ "items": [
+  {
+   "testID": "sec-top-secretary",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "ทุกจอเลขา/ลูกค้า/ทีม",
+   "action": "router.navigate /secretary",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-customers",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "ทุกจอเลขา/ลูกค้า/ทีม",
+   "action": "router.navigate /customers",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-team",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "ทุกจอเลขา/ลูกค้า/ทีม",
+   "action": "router.navigate /secretary/staff",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-help",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "ทุกจอเลขา/ลูกค้า/ทีม",
+   "action": "router.push /secretary/help",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-new",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "โซนเลขา + โซนทีม",
+   "action": "router.push /secretary/new (เลขา) · /secretary/staff/invite (ทีม) · โซนลูกค้าไม่มีปุ่ม",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-tenant",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "จอโครงทุกจอ (กลางแถบบน)",
+   "action": "เปิด BusinessSwitcherSheet",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-tenant",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "/secretary (หัวใหญ่ A1/C3)",
+   "action": "เปิด BusinessSwitcherSheet",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-switcher-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ชีตสลับกิจการ",
+   "action": "ปิดชีต",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-switch-tenant-<tenantId>",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตสลับกิจการ",
+   "action": "switchTenant (auth-context 1.0) แล้วปิดชีต",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-switch-add",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตสลับกิจการ",
+   "action": "router.push /business/new",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-switch-my-secretary",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตสลับกิจการ",
+   "action": "router.push /secretary/settings/secretary",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-suggest-s1|s2|s3",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary (C3)",
+   "action": "router.push /secretary/new",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-room-<id>",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary (A1 โครง)",
+   "action": "router.push /secretary/room/<id>",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-input-plus",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary",
+   "action": "router.push /secretary/new",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-input-send",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary",
+   "action": "router.push /secretary/new",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "home-open-secretary",
+   "file": "apps/mobile/app/(app)/index.tsx",
+   "screen": "/ (หน้าแรก 1.0)",
+   "action": "router.push /secretary",
+   "wo": "S2.1"
+  }
+ ]
+}

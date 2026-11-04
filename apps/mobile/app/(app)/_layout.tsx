@@ -170,7 +170,14 @@ export default function AppLayout() {
         //    ปิดท่าสไลด์ (เมนูนี้ยังอยู่ในโค้ด เผื่อเปิดคืน) · "ผู้ช่วย AI" ไปอยู่ในเมนูเว็บ → เว็บส่ง {ev:"open-ai"} มาที่ index.tsx
         swipeEnabled: false,
       }}
-    />
+    >
+      {/* S2.1 เลขา AI ▸ เพิ่มจอของโซนเลขา/ลูกค้า/สร้างกิจการ (Stack ของตัวเองในแต่ละโฟลเดอร์) · ไม่ย้าย/ไม่ลบของ 1.0
+          "index" ต้องอยู่ลำดับแรก: expo-router วางจอที่ประกาศไว้ก่อนจอที่เหลือ → ไม่ประกาศ = drawer ย้อนกลับ (firstRoute) ไปโซนเลขาแทนหน้าแรก ◂ */}
+      <Drawer.Screen name="index" />
+      <Drawer.Screen name="secretary" options={{ headerShown: false }} />
+      <Drawer.Screen name="customers" options={{ headerShown: false }} />
+      <Drawer.Screen name="business" options={{ headerShown: false }} />
+    </Drawer>
   );
 }
 

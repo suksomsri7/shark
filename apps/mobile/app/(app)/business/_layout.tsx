@@ -1,0 +1,20 @@
+// สร้างกิจการใหม่จากแอปเลขา (ใบ S2.1 · แบบ G1) — Stack ซ้อนใน Drawer ของกิจการ
+// ไม่มีแถบล่าง (ไม่ใช้ navigator แบบแท็บ) · ปุ่มกลับย้อนตาม stack จริง (แบบเดียวกับ crm/member ของ 1.0)
+// BusinessSwitcherHost = ชีตสลับกิจการชั้นบนสุดของโซน · โหลด secretary/me ครั้งเดียว (ภาษาของจอ + ชื่อเลขา)
+import { useEffect } from "react";
+import { Stack } from "expo-router";
+import { BusinessSwitcherHost } from "@/src/components/secretary/BusinessSwitcherSheet";
+import { loadSecretaryMe } from "@/src/api/secretary";
+import { useTheme } from "@/src/theme/index";
+
+export default function BusinessLayout() {
+  const { c } = useTheme();
+  useEffect(() => {
+    void loadSecretaryMe();
+  }, []);
+  return (
+    <BusinessSwitcherHost>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg.base }, animation: "slide_from_right" }} />
+    </BusinessSwitcherHost>
+  );
+}
