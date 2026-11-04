@@ -3,6 +3,7 @@ import { drainAll } from "@/lib/outbox-consumers";
 import { isCronAuthorized } from "@/lib/core/cron-auth";
 import { logOps } from "@/lib/core/ops";
 import { runMinuteJobs } from "@/lib/platform/minute-jobs";
+import "@/lib/ai/secretary/room-jobs-job"; // SEC S1.5 ▸ ลงทะเบียน "secretary.roomJobs" (ตัวเก็บตกคิวห้องเลขา · R-K8b) ◂
 
 // ระบาย outbox (~20 วิ) + งานรายนาที (งบ 20 วิ + บันทึกท้ายรอบ) ≈ 41–45 วิ — ค่าเริ่มต้นที่สั้นกว่าจะตัดคำตอบทิ้งพร้อมผลการระบาย
 export const maxDuration = 60;

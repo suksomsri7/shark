@@ -109,6 +109,12 @@ export async function sendMessage(
      * บรรทัด "เครื่องมือที่ใช้" ใต้คำตอบ · ไม่ส่ง = พฤติกรรมเดิมทุกประการ · callback ล้ม = ข้าม (ไม่พาแชทล้ม)
      */
     onToolCall?: (name: string) => void;
+    /**
+     * SEC S1.5 ▸ ข้อความ USER ที่บันทึกไว้แล้ว (ห้องเลขา: `startRoom`/`sendRoomMessage` เขียนแถวก่อนเข้าคิว) —
+     *   มี ⇒ ไม่สร้างแถว USER ซ้ำ · ประวัติที่ป้อนโมเดลไม่รวมแถวนี้ (ส่งเป็นเทิร์นปัจจุบันผ่าน `text` แล้ว) ·
+     *   บทสนทนาที่ผู้กระทำมองไม่เห็น ⇒ throw (ห้ามเปิดห้องใหม่ให้ข้อความที่อยู่ในคิว) · ไม่ส่ง = พฤติกรรมเดิมทุกไบต์ ◂
+     */
+    userMessageId?: string;
   },
 ): Promise<SendResult> {
   const text = input.text.trim();
@@ -167,7 +173,8 @@ export async function sendMessage(
     db.appSystem.findMany({ select: { type: true, name: true }, orderBy: { createdAt: "asc" } }),
     memoryBlock({ tenantId: ctx.tenantId, actor: ctx.actor }), // CRM C5.5-G3: the viewer's memories only (own + shop facts)
     approvedPromptTweaksText().catch(() => ""),
-    ctx.actor.kind === "member" ? secretaryOf(ctx.actor.userId) : Promise.resolve(null),
+    // ตัวตนเลขาเป็นของแต่ง — อ่านแถวพลาด (ฐานสะดุด) = ใช้ persona ปริยาย ไม่ให้แชททั้งหมดล้ม (ระดับสิทธิ์ getAccess ยังล้มแบบปิด)
+    ctx.actor.kind === "member" ? secretaryOf(ctx.actor.userId).catch(() => null) : Promise.resolve(null),
     getAccess(ctx.tenantId),
   ]);
   const secretary = secretaryRow ? identityOf(secretaryRow) : undefined;
@@ -198,6 +205,8 @@ export async function sendMessage(
   // CRM C5.5-G2 ▸ ต่อได้เฉพาะห้องที่ผู้กระทำเห็น (ของตัวเอง · เจ้าของร้าน + ห้องที่ไม่ได้สร้างโดยคนในร้าน) — ห้องของคนอื่น
   //   = เหมือนไม่มีอยู่ ⇒ เปิดห้องใหม่ของผู้กระทำ (รหัสฝังผู้สร้าง) · ประวัติที่ป้อนโมเดลกรองด้วยกติกาเดียวกันอีกชั้นใน query ◂
   const conv = input.conversationId ? await findVisibleConversation(ctx, input.conversationId) : null;
+  // SEC S1.5 ▸ ข้อความในคิวต้องตอบในห้องของมันเท่านั้น ◂
+  if (deps?.userMessageId && !conv) throw new Error("AI room conversation is not visible to this actor");
   const conversation =
     conv ??
     (await prisma.aiConversation.create({
@@ -208,7 +217,11 @@ export async function sendMessage(
   if (!canSeeConversationId(sight, conversation.id)) throw new Error("AI conversation is not visible to this actor");
 
   const history = await db.aiMessage.findMany({
-    where: { conversationId: conversation.id, conversation: visibleConversationWhere(sight) },
+    where: {
+      conversationId: conversation.id,
+      conversation: visibleConversationWhere(sight),
+      ...(deps?.userMessageId ? { NOT: { id: deps.userMessageId } } : {}), // SEC S1.5 ▸ เทิร์นปัจจุบันไม่ซ้ำในประวัติ ◂
+    },
     orderBy: { createdAt: "desc" },
     take: HISTORY_TAKE,
   });
@@ -320,11 +333,17 @@ export async function sendMessage(
   if (!finalText.trim()) finalText = FALLBACK_REPLY;
 
   // persist คู่ข้อความ + ยอดใช้ อะตอมมิก (ผ่าน prisma ตรง — ใส่ tenantId เองให้ตรง type)
+  // SEC S1.5 ▸ มี userMessageId = แถว USER มีอยู่แล้ว (ไม่สร้างซ้ำ) ◂
+  const userRow = deps?.userMessageId
+    ? []
+    : [
+        prisma.aiMessage.create({
+          // S1.4 (R-K2) ▸ ห้องเลขา: เก็บคนที่พิมพ์ (ห้องร่วมมีหลายคน) · ห้องเดิม (ไม่มี AiRoom) = แถวเดิมทุกตัวอักษร ◂
+          data: { tenantId: ctx.tenantId, conversationId: conversation.id, role: "USER", content: text, ...(conv?.room && ctx.actor.kind === "member" ? { authorUserId: ctx.actor.userId } : {}) },
+        }),
+      ];
   await prisma.$transaction([
-    prisma.aiMessage.create({
-      // S1.4 (R-K2) ▸ ห้องเลขา: เก็บคนที่พิมพ์ (ห้องร่วมมีหลายคน) · ห้องเดิม (ไม่มี AiRoom) = แถวเดิมทุกตัวอักษร ◂
-      data: { tenantId: ctx.tenantId, conversationId: conversation.id, role: "USER", content: text, ...(conv?.room && ctx.actor.kind === "member" ? { authorUserId: ctx.actor.userId } : {}) },
-    }),
+    ...userRow,
     prisma.aiMessage.create({
       data: {
         tenantId: ctx.tenantId,
