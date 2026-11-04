@@ -16,6 +16,8 @@ Gates, X-groups and the 14 steps = `ledger/AI-TEAM-MASTER-PLAN.md` §3–§5 ver
 10. **Commits:** explicit paths only (`git add <path>…`), on your `wip/sec-<wo>` branch, then push it. Message ends with the attribution line the controller gives you. No model names in commits/PRs/code comments.
 11. **Timezone:** Asia/Bangkok through the repo helpers (never raw `getDay()/getDate()`); anything periodic takes an injectable `now`.
 
+- **A.8 (บทเรียน 4 พ.ย.)** `node_modules` ใช้ร่วมทุกทรี (bind จาก shark-svc) ⇒ `prisma generate` ของเลนใดเปลี่ยน client ทุกเลน: ใบที่แก้ schema ต้อง commit schema+migration+scope.ts **ก่อน** generate และแจ้งผู้คุมทันที (ผู้คุม pre-merge 3 commit นั้นเข้า session/secretary) · เลนอื่นห้ามรัน generate · ถ้าเจอ `[scope] N model ยังไม่ได้ลงทะเบียน` = เหตุนี้ ไม่ใช่บั๊กของคุณ → ff เลนไปทิปใหม่
+
 ## B. Order of work (oracle-first, every WO)
 1. **Controller writes the oracle** `scripts/qc-sec-<wo>.mts` from the brief (unforced → SKIP exit 0 with the right reason; forced → RED for the right reason; residue 0). Commit `test(sec): <wo>`.
 2. **Builder** makes it green without editing the oracle. Wrong check ⇒ request **ORACLE-EDIT** (check id · exact hunk · reason) in the report; the controller rules and edits with an `ORACLE-EDIT <wo>-<id>` line.
