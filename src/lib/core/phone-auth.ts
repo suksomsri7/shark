@@ -114,6 +114,23 @@ async function reserveAttempt(otpId: string): Promise<boolean> {
   return r.count === 1;
 }
 
+// SEC S1.25 ▸ hook คำเชิญพนักงาน (R-K11 · R-S1.25b): **เฉพาะคนสมัครใหม่** (signupWithPhone) ⇒ รับคำเชิญของเบอร์นี้อัตโนมัติ ·
+//   ผู้ใช้เดิม (ล็อกอิน OTP / ผูกเบอร์) ไม่สร้าง Membership — เห็นใบผ่าน pendingInvitesForUser แล้วกดรับเอง · best-effort (ล้ม = logOps ไม่เปลี่ยนผลเดิม)
+//   lazy import — ไฟล์นี้ไม่ลากชั้นสิทธิ์/แจ้งเตือนเข้ากราฟ · log ไม่มีเบอร์ (R-S1.8e) ◂
+async function claimStaffInvites(userId: string, phone: string): Promise<void> {
+  try {
+    const { claimInvitesForPhone } = await import("@/lib/staff/invite");
+    await claimInvitesForPhone(userId, phone);
+  } catch (e) {
+    try {
+      const { logOps } = await import("./ops");
+      await logOps("WARN", "staff-invite", "claim ล้ม", { detail: JSON.stringify({ userId, err: e instanceof Error ? e.message.slice(0, 160) : "error" }) });
+    } catch {
+      /* logger ห้ามพางานหลัก */
+    }
+  }
+}
+
 // ── ขอรหัส ────────────────────────────────────────────────────
 export async function requestPhoneOtp(
   rawPhone: string,
@@ -250,6 +267,7 @@ export async function signupWithPhone(
       await tx.userPhone.create({ data: { userId: u.id, phone, verifiedAt: new Date() } });
       return u;
     });
+    await claimStaffInvites(user.id, phone); // SEC S1.25 ▸ สมัครด้วยเบอร์ ◂
     return { ok: true, user };
   } catch (e) {
     if (e instanceof OtpUsedError) return { ok: false, reason: "otp_used", message: MSG.otpUsed };
