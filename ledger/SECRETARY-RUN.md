@@ -20,7 +20,7 @@
 ## 2. สัญญาต่อใบ (ผู้คุมเติมตอนออกข้อสอบ · ย่อ: ชื่อฟังก์ชัน · ข้อสอบ S-group · จำนวนข้อ)
 _(เติมเมื่อถึงใบ)_
 
-## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 7/58 (41 ชุด) · 12%
+## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 8/58 (41 ชุด) · 14%
 
 | ใบ | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|
@@ -31,7 +31,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.1 | ✅ | 4 พ.ย. ~15:2xZ | merge (wip/sec-s1.1 fd5922d5) · oracle 66/66 ×3 (ผู้คุมรันเอง) · migration `20261227000000_secretary_a` (16 ตาราง · 28 ดัชนี · 6 FK Cascade · additive) ลง QC แล้ว · baseline `sec-baseline-85751098.txt` 60/60 (qc-mobile-app รันซ้ำหลัง ORACLE-EDIT APP-6.1) · core.prisma +2 back-relation (R-S1.1a) · drift ไม่มี DROP · oracle `qc-sec-s1.1.mts` (4c8709be · 65 ข้อ · unforced SKIP · forced บนฐานเดิม 6/65 แดงถูกเหตุผล) · 🎯 migration secretary_a |
 | S1.2 | ✅ | 4 พ.ย. ~16:2xZ | merge (wip/sec-s1.2 1be8df6d) · oracle 28/28 ×3 (ORACLE-EDIT R-2 regex) · regression 6 ชุดเท่า baseline · identity.ts (pure) + secretary.ts · persona snapshot เดิมตรงทุกไบต์ · ใบ S1-2 (S1.2+S1.3) + oracle `qc-sec-s1.2.mts` เขียนแล้ว 4 พ.ย. (unforced SKIP · forced บนฐานเดิม P-1 snapshot ผ่าน · แดง P-2/3/5 ถูกเหตุผล) · รอ S1.1 merge → เลน c · เลขาผูกผู้ใช้ |
 | S1.3 | ✅ | 4 พ.ย. ~16:2xZ | access-rules.ts (pure) + access.ts · toolVerdict/toolsOfferedTo รับ access · HAND_TOOL_MODULE (27 โมดูล) · ด่านใน executeProposal/runKind (dynamic import กันวงกลม) · หนี้: route คีย์ API ภายนอกยังไม่ส่ง access · propose_plan ปล่อยขั้นของระบบ OFF ไปตกตอนรัน · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
-| S1.4 | 🔨 | | builder Opus เลน b `wip/sec-s1.4` @6f2710a0 เริ่ม 4 พ.ย. ~15:3xZ · oracle `qc-sec-s1.4.mts` · 🎯 ห้อง = งาน |
+| S1.4 | ✅ | 4 พ.ย. ~18:0xZ | merge (wip/sec-s1.4 33cfaf47) · oracle 28/28 ×3 (ORACLE-EDIT fixture tenantId) · S1.2 ยังเขียวหลัง merge · regression 9 ชุดเท่า baseline · rooms.ts 329 บรรทัด · ConvSight +memberOf/tenantRooms · roomSightFor/canSeeConversationById · rejectPlan room-aware · 🎯 ห้อง = งาน |
 | S1.5 | ✍️ | | ใบ S1-4 + oracle `qc-sec-s1.5.mts` (00086018) รอ S1.4 merge · 🎯 คิวเบื้องหลัง |
 | S1.6 | ✍️ | | ใบ S1-5 + oracle `qc-sec-s1.6.mts` (47027ca0) รอ S1.4 merge · 🎯 ห้องร่วม |
 | S1.7 | ✍️ | | ใบ S1-6 (S1.7+S1.8) + oracle `qc-sec-s1.7.mts` เขียนแล้ว (R-K3b · R-S1.8a) รอ S1.4 merge · ต้องอนุมัติเสมอ |
@@ -99,3 +99,4 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย. ~15:2xZ** รับ S1.1 (merge) · เลน b remount ro คืน · เลน b → `wip/sec-s1.4` ชุด S1-3 · เขียนใบ+oracle S1-4 (S1.5 worker · R-K8b ราง minute-jobs) ล่วงหน้า
 - **4 พ.ย. ~16:2xZ** รับ S1-2 (merge) · หนี้จด (นักล่า S3a.1 ตรวจ): (1) `/api/v1/ai/tools/*` (คีย์ API) ไม่ส่ง access level (2) ข้อเสนอจากปุ่ม CRM ออกก่อนด่านระดับ (3) `propose_plan` รับขั้นของระบบ OFF (ตกตอนรัน) · เลน c ว่าง → ใบถัดไป S1-13 (S1.19 SMS OTP)
 - **4 พ.ย. ~17:4xZ** เปิดเลน d `/root/projects/shark-sec-d` (worktree · node_modules bind ro จาก shark-svc · .env.qc-sec) สำหรับใบอิสระ S1.20 — เลนรวม 3 (b/c/d) ตามเพดาน · S1.4 รอบสอง (rejectPlan) กำลังปิดบนเลน b
+- **4 พ.ย. ~18:0xZ** รับ S1.4 (merge) · เลน b → `wip/sec-s1.5` ชุด S1-4 (คิวเบื้องหลัง) · ถัดไปเมื่อเลนว่าง: S1-5 (S1.6) · S1-6 (S1.7+S1.8)
