@@ -28,7 +28,7 @@ _(เติมเมื่อถึงใบ)_
 | S0.2 | ✅ | 4 พ.ย. ~12:1xZ | merge 5973db2e (wip/sec-s0.2 e5705e2e) · oracle 30/30 ×3 (ผู้คุมรันเอง forced ×2 + unforced) · ภาพคู่ C3 สว่าง/มืด ตรงแบบ (ผู้คุมดูเอง) · จอ 1.0 /sessions 0 px ต่าง · /login ต่างเฉพาะ orb แอนิเมชัน · light-check โดยผู้คุม (ไม่ใช่ชุดตรวจเข้ม) · มติ R-UI1–UI3 (สเกล 0.73 · Feather · theme-store) |
 | S0.3 | 🔨 | | builder Opus เลน c `wip/sec-s0.3` @5973db2e เริ่ม 4 พ.ย. ~12:2xZ · oracle `qc-sec-s0.3.mts` (f92f3466 · unforced SKIP · forced 4/29 แดงถูกเหตุผล) · docs/modules/31-secretary.md + docs/api/SECRETARY-API.md + seed-secretary-qc |
 | S0.4 | 🔨 | | รวมในชุด S0-3 (เลน c) · pack.ts FREE_PACK 100 งาน/กิจการ/เดือน |
-| S1.1 | ✍️ | | ใบ final (f92f3466) · เลน b ชี้ `wip/sec-s1.1` @5973db2e รอ oracle `qc-sec-s1.1.mts` · 🎯 migration secretary_a |
+| S1.1 | 🔨 | | builder Opus เลน b `wip/sec-s1.1` @4c8709be เริ่ม 4 พ.ย. ~12:5xZ · oracle `qc-sec-s1.1.mts` (4c8709be · 65 ข้อ · unforced SKIP · forced บนฐานเดิม 6/65 แดงถูกเหตุผล) · 🎯 migration secretary_a |
 | S1.2 | ⬜ | | เลขาผูกผู้ใช้ |
 | S1.3 | ⬜ | | 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | ⬜ | | 🎯 ห้อง = งาน |
@@ -91,3 +91,4 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย. ~09:3xZ ▶️** เจ้าของสั่งเริ่ม · spawn ผู้สำรวจ S0.1 (รอบ 2) · oracle S0.2 → เลน b
 - ของที่รอเจ้าของ (ไม่บล็อกโค้ด เพราะ mock ก่อน): คีย์ SMS provider (S1.19) · คีย์ Anthropic "shark" (S1.20) · ยืนยัน Play Console (S3a.3) · W40 POS_DEVICE_KEY (S3a.2)
 - **4 พ.ย. ~11:4xZ–12:2xZ** รับ S0.1 → RESOLUTIONS (R-K1…K20 · Q1–Q10 ค่าปริยายทั้งหมด + Q9 editProposal/Q10 account-delete+moduleLevel) · 5 ข้อสำคัญ: K1 สิทธิ์ห้องฝังในรหัส→ขยาย ConvSight · K7 canSpend/GRANT→canRunAi · K8 ไม่มี cron รายนาที→ตอบใน request+after() · K11 เชิญ→StaffInvite · K16 dorm ไม่มี→booking refund · รับ S0.2 (merge 5973db2e) · ff เลน c → spawn builder S0-3 · เลน b → `wip/sec-s1.1`
+- **4 พ.ย. ~12:5xZ** oracle S1.1 (4c8709be) → spawn builder S1.1 เลน b · **remount เลน b node_modules เป็น rw** (`mount -o remount,bind,rw /root/projects/shark-sec-b/node_modules`) เพราะ `prisma generate` ต้องเขียน `.pnpm/@prisma+client…/.prisma` (bind จาก shark-svc · ro เดิม) — คืนเป็น ro หลัง merge S1.1 (`mount -o remount,bind,ro …`) · ผลข้างเคียง: client ที่ generate ใหม่ใช้ร่วมทุกทรี (shark-svc/shark-sec/เลน c) — โค้ดเก่าไม่อ้างโมเดลใหม่จึงไม่พัง · SVC กลับมาเมื่อไรต้อง generate ใหม่เอง
