@@ -129,6 +129,7 @@ try {
     await prisma.aiRoom.update({ where: { id: r8.roomId }, data: { closedAt: new Date() } });
     const smClosed = await service.sendMessage({ tenantId: OLD, actor: actor(OLD) }, { conversationId: r8.conversationId, text: "ห้องปิดแล้ว" }, { provider: p8, userMessageId: r8.messageId }) as { ok: boolean; scope?: string };
     await prisma.aiCreditTxn.deleteMany({ where: { tenantId: OLD, ref: "qc-s113-cap-real" } });
+    await prisma.aiCreditTxn.deleteMany({ where: { tenantId: OLD, conversationId: r8.conversationId } }); await prisma.aiCreditWallet.update({ where: { tenantId: OLD }, data: { balanceMicro: 10_000_000 } }); // ORACLE-EDIT S1.13-C-8: ล้างต้นทุนของห้องทดสอบก่อน R-2
     chk("C-8", "ที่เพดานวันนี้: ประตูเดิมเข้าห้องเลขา (ไม่มี userMessageId) ⇒ ok:false scope day · โมเดลไม่ถูกเรียก · ทาง worker (userMessageId) ห้องเปิด ⇒ ok · ห้องปิดแล้ว ⇒ ok:false", smDoor.ok === false && smDoor.scope === "day" && callsDoor === 0 && smWorker.ok === true && p8.calls === 1 && smClosed.ok === false, JSON.stringify({ smDoor, smWorker: smWorker.ok, smClosed, calls: p8.calls }).slice(0, 200));
 
     console.log("── R: GET /api/mobile/usage ──");
