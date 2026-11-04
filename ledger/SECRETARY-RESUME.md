@@ -1,9 +1,9 @@
-## ▶️ 5 พ.ย. ~12:1xZ — จุดต่อล่าสุด (บัญชี B · ผู้คุม Fable)
-- สถานะ **25/58 (43%)** · S1 เหลือ S1.10+S1.15 (เลน b · รอผล 13/13 หลัง ORACLE-EDIT) แล้ว S1.14 (ด่านเต็ม) · S2 เริ่มขนานแล้ว: S2.1 โครงแอป (เลน d) · S2.12 สมัคร/เข้า SMS OTP (เลน c)
-- baseline ใหม่กำลังรันเบื้องหลัง `scripts/sec-baseline.sh` → `ledger/qc-baseline/sec-baseline-<tip>.txt` (log /tmp/sec-baseline-run.log) ใช้เทียบที่ S1.14
-- มติใหม่รอบนี้: §L.2 (เพดาน assist/วัน $0.50 ไม่นับห้องเลขา · ไม่ใช้ยอดกระเป๋าต่อ) · §M (chat.send เต็มฉบับ+ลงชื่อ Shark · ห้ามใส่ในแผน) · §N/§N.2 (assign key · handoff · SLA · attachments) · §O (AI กลางคืนไม่ล้าง unread · mask ความจำร้าน) · §P/§P.2 (ผู้ใช้เดิมต้องกดรับคำเชิญ · คีย์อ่อนไหวไม่ผ่านระดับ · rate-limit SMS)
-- ใบ S2 ครบทุกชุด (spec ใน `scripts/qc-sec-specs/*.json` + `qc-sec-screen.mts`) · เลนเพิ่ม: `/root/projects/shark-sec-e` (worktree ชั่วคราวสำหรับ merge S2.12 — ลบหลัง merge) · กฎ COMMON A.11: builder แอป merge tip ก่อนจบ (i18n/summary ชนบ่อย)
-- ของเจ้าของที่ต้องเห็นตอน CP: มติ assist ฟรี+เพดาน (R-S1.13g) · ผู้ใช้เดิมกดรับคำเชิญ (R-S1.25b) · SMS/Anthropic keys · W40 · Play Console
+## ▶️ 5 พ.ย. ~18:4xZ — จุดต่อล่าสุด (บัญชี B · ผู้คุม Fable)
+- สถานะ **35/58 (60%)** · S1 เหลือ S1.14 (เลน b · ด่านเต็ม · ได้สัญญาเพิ่ม 6 ข้อจากฝั่งแอป: why/editable/classes/canApprove ใน proposals · plans ใน room · link/canUndo ใน log · RoomStatus doc · secretary/me alias) · S2 ✅: S2.1 S2.2 S2.3 S2.4 S2.7 S2.8 S2.9 S2.12 · กำลังทำ: S2.5+S2.6 (เลน d) · S2.10+S2.11+§S fix-forward (เลน c)
+- ถัดไปเมื่อเลนว่าง: S2.17–S2.19 (ลูกค้า · หลัง S1.14+S1.21) · S2.15 (ช่วยเหลือ) · S2.21+S2.22 (หลัง S2.10) · S2.16+S2.23 (backoffice · ผู้คุมเขียน oracle qc-sec-s2.16) · S2.13+S2.20 (มืด/แถบบน · หลังทุกจอ) · S2.14 ปิด S2 (ด่านเต็ม) → S3a
+- กติกาใหม่: COMMON A.11 (builder แอป merge tip ก่อนจบ) · ภาพคู่: ผู้คุมดูเองก่อน merge (เปิดด้วย Read หลังย่อครึ่ง)
+- release gate ของเจ้าของ (จาก §R/§L/§P): SMS provider บน prod + บัญชี reviewer มีเบอร์ · assist ฟรีมีเพดาน $0.50/วัน · ผู้ใช้เดิมต้องกดรับคำเชิญ · ปุ่ม "เลขา AI" ลอยบนหน้าแรก 1.0 ตรวจเครื่องจริง (CP2)
+- baseline ปัจจุบัน `ledger/qc-baseline/sec-baseline-bfad2f15.txt` (แดงเดิม 2 ชุด emoji — S1.14 hotfix)
 
 ## ▶️ 4 พ.ย. 2026 ~21:1xZ — 11/58 (19%) · ปิด S0 · S1.1–S1.5 · S1.19 · S1.20 · กำลังทำ: S1.6 (เลน b) · S1.7+S1.8 (เลน c) · S1.3b (เลน d) · พร้อมปล่อย: S1.9 · S1.10+S1.15 · S1.13 (ใบ+oracle ใน ledger/secretary-briefs + scripts/qc-sec-s1.*.mts)
 
