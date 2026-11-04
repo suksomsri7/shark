@@ -62,3 +62,9 @@
 
 ## 9. คืนสภาพฐาน QC
 - oracle `finally` ลบ tenant `qc-sec-s110-*` + `qcs110-*` (aiLesson · aiTrainingSample รวมอยู่) · ตรวจหลังชุด: AiLesson กำพร้า 0 · AiTrainingSample model chat-suggest 0 · secretary กำพร้า 2 (จาก qc-sec-s1.7 — ลบแล้ว)
+
+## 10. รอบ 2 — merge ทิปผู้คุม bfad2f15 (ORACLE-EDIT T-1/T-4/E-2 + cleanup · S1.21+S1.24 · S1.25) · 2026-11-04 (UTC)
+- merge สะอาด (ไม่มี conflict) · ผู้คุมรับส่วนเบี่ยง 1–7
+- `qc-sec-s1.10` forced ×2 + unforced: `JSON_SUMMARY {"total":13,"passed":13,"failed":[],"skipped":[],"findings":[]}` ×3 · exit 0
+- forced: s1.2 28/28 · s1.7 27/27 · s1.12 15/15 · s1.22 14/14 · unforced: qc-ai-memory 7/7 · qc-ai-proposals 16/16 · qc-chat-ai-suggest 44/44
+- fitness มี env / ไม่มี env: 53/53 ×2 · typecheck เต็ม: `src/**` 0 error · 3 error อยู่ใน `scripts/qc-sec-s1.25.mts` (ไม่ใช่ไฟล์ของใบนี้)
