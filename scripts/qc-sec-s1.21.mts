@@ -139,13 +139,22 @@ try {
     const s2 = await routing.sweepChatSla(new Date(), { notify });
     const convSlow = await prisma.chatConversation.findUnique({ where: { id: cSlow.conv.id } });
     chk("S-1", "ห้องไม่มีผู้ดูแล 30 นาที ⇒ เตือน OWNER/MANAGER (1 ครั้ง) · ห้องของ a ไม่ตอบเกิน 2×SLA ⇒ ย้ายให้ MANAGER/OWNER + บันทึกภายใน · รอบที่ 2 ไม่เตือนซ้ำ", s1.alerted >= 1 && notified.some((n) => n.userId === U.owner || n.userId === U.mgr) && s1.escalated === 1 && convSlow?.assigneeUserId !== U.a && [U.owner, U.mgr].includes(convSlow?.assigneeUserId ?? "") && s2.alerted === 0 && s2.escalated === 0 && (await prisma.chatMessage.count({ where: { conversationId: cSlow.conv.id, isInternal: true } })) >= 1, JSON.stringify({ s1, s2, assignee: convSlow?.assigneeUserId, n: notified.length }).slice(0, 160));
+    // S-2 (R-S1.21c): ผู้ดูแลถูกถอน ⇒ ถือว่าไม่มีผู้ดูแล เตือน OWNER/MANAGER · ไม่ push ถึงคนที่ถูกถอน
+    await prisma.user.create({ data: { id: "qcs121-gone", email: "qcs121-gone@example.com", name: "คนที่ออกแล้ว" } }).catch(() => null);
+    const memGone = await mk("STAFF", "qcs121-gone", ["*"], replyPerm);
+    const cGone = await mkConv("gone", unitA.id, { assigneeUserId: "qcs121-gone", firstCustomerMessageAt: old, lastMessageAt: old, createdAt: old });
+    await prisma.membership.delete({ where: { id: memGone.id } });
+    notified.length = 0;
+    await routing.sweepChatSla(new Date(), { notify });
+    const toBoss = notified.filter((n) => [U.owner, U.mgr].includes(String(n.userId)) && JSON.stringify(n).includes(cGone.conv.id));
+    chk("S-2", "ผู้ดูแลที่ถูกถอน ⇒ sweep เตือน OWNER/MANAGER สำหรับห้องนั้น · ไม่ push ถึงคนที่ถูกถอน", toBoss.length >= 1 && !notified.some((n) => n.userId === "qcs121-gone"), JSON.stringify(notified.map((n) => n.userId)).slice(0, 160));
 
     console.log("── A: routes /api/mobile/inbox ──");
     const tok = async (uid: string) => (await issueMobileToken(uid, { userAgent: "qc" })).token;
     const H = async (uid: string) => ({ authorization: `Bearer ${await tok(uid)}`, "x-tenant-id": tid });
     const ld = async (p: string) => (await import(`@/app/api/mobile/inbox/${p}/route`).catch(() => null)) as AnyMod | null;
     const rSystems = await ld("systems"), rList = await ld("conversations"), rThread = await ld("conversations/[id]"), rReply = await ld("conversations/[id]/reply"), rAssign = await ld("conversations/[id]/assign"), rUnread = await ld("unread"), rStaff = await ld("staff");
-    if (!rSystems || !rList || !rThread || !rReply || !rAssign || !rUnread) { for (const i of [1, 2, 3, 4, 5]) skip(`A-${i}`, "routes", "ไม่มี route ครบ (systems · conversations · [id] · reply · assign · unread)"); }
+    if (!rSystems || !rList || !rThread || !rReply || !rAssign || !rUnread) { for (const i of [1, 2, 3, 4, 5, 6, 7, 8]) skip(`A-${i}`, "routes", "ไม่มี route ครบ (systems · conversations · [id] · reply · assign · unread)"); }
     else {
       const ctxId = (id: string) => ({ params: Promise.resolve({ id }) });
       const g1 = await json(await rSystems.GET(req("/api/mobile/inbox/systems", "GET", undefined, await H(U.a))));
@@ -169,6 +178,31 @@ try {
       const un = await json(await rUnread.GET(req(`/api/mobile/inbox/unread?systemId=${sid}`, "GET", undefined, await H(U.a))));
       const st = rStaff ? await json(await rStaff.GET(req(`/api/mobile/inbox/staff?systemId=${sid}&unitId=${unitA.id}`, "GET", undefined, await H(U.a)))) : { status: 0, body: {} as AnyMod };
       chk("A-4", "assign ให้ guard (ตอบไม่ได้) ⇒ 4xx ไทย · ให้ b ⇒ 200 · unread ⇒ {unread:number} · staff?unitId=A ⇒ ไม่มี guard/unitB", as1.status >= 400 && as1.status < 500 && thai(as1.body.message ?? as1.body.error) && as2.status === 200 && un.status === 200 && typeof un.body.unread === "number" && (!rStaff || (st.status === 200 && Array.isArray(st.body.staff ?? st.body) && !(st.body.staff ?? st.body).some((s: AnyMod) => s.userId === U.guard || s.userId === U.unitB))), JSON.stringify({ as1: as1.status, as2: as2.status, un: un.body, st: st.status }).slice(0, 160));
+      // A-6 cross-tenant (รีวิว L): conversation ของร้านอื่นด้วย header ร้านนี้ ⇒ 404
+      const t2 = await prisma.tenant.create({ data: { name: "QC S1.21 อื่น", slug: `qc-sec-s121-o-${Date.now().toString(36)}` } });
+      const sys2 = await prisma.appSystem.create({ data: { tenantId: t2.id, type: "CHAT", name: "แชทอื่น" } as never });
+      const ct2 = await prisma.chatContact.create({ data: { tenantId: t2.id, systemId: sys2.id, channel: "WEBCHAT", externalUserId: `qcs121-x-${Date.now().toString(36)}`, displayName: "ลูกค้าร้านอื่น" } as never });
+      const cv2 = await prisma.chatConversation.create({ data: { tenantId: t2.id, systemId: sys2.id, channel: "WEBCHAT", contactId: ct2.id, status: "OPEN" } as never });
+      const x1 = await json(await rThread.GET(req(`/api/mobile/inbox/conversations/${cv2.id}?systemId=${sid}`, "GET", undefined, await H(U.a)), ctxId(cv2.id)));
+      const x2 = await json(await rThread.GET(req(`/api/mobile/inbox/conversations/${cv2.id}?systemId=${sys2.id}`, "GET", undefined, await H(U.a)), ctxId(cv2.id)));
+      const x3 = await json(await rReply.POST(req(`/api/mobile/inbox/conversations/${cv2.id}/reply`, "POST", { systemId: sys2.id, body: "รั่ว", clientMessageId: "qcs121-x" }, await H(U.owner)), ctxId(cv2.id)));
+      for (const m of ["chatMessage", "chatConversation", "chatContact", "appSystem"]) { try { await (prisma as AnyMod)[m].deleteMany({ where: { tenantId: t2.id } }); } catch { /* */ } }
+      await prisma.tenant.delete({ where: { id: t2.id } }).catch(() => null);
+      chk("A-6", "ข้ามร้าน: thread ด้วย systemId ร้านนี้ ⇒ 404 · ด้วย systemId ร้านอื่น ⇒ 403/404 · reply ⇒ 403/404 · ไม่มีข้อความเกิด", x1.status === 404 && [403, 404].includes(x2.status) && [403, 404].includes(x3.status), JSON.stringify({ x1: x1.status, x2: x2.status, x3: x3.status }));
+      // A-7 (R-S1.21a/b): assign ต้องมีคีย์ assign ยกเว้นรับห้องว่างให้ตัวเอง · handoff เฉพาะผู้ดูแล/helper/ผู้มีคีย์ assign · ห้ามส่งให้ตัวเอง
+      const rHandoff = await ld("conversations/[id]/handoff");
+      const cFree = await mkConv("free", unitA.id);
+      const claim = await json(await rAssign.POST(req(`/api/mobile/inbox/conversations/${cFree.conv.id}/assign`, "POST", { systemId: sid, assigneeUserId: U.a }, await H(U.a)), ctxId(cFree.conv.id)));
+      const steal = await json(await rAssign.POST(req(`/api/mobile/inbox/conversations/${cA.conv.id}/assign`, "POST", { systemId: sid, assigneeUserId: U.a }, await H(U.a)), ctxId(cA.conv.id))); // cA เป็นของ b หลัง A-4 · a มีแค่ send
+      const bossAssign = await json(await rAssign.POST(req(`/api/mobile/inbox/conversations/${cA.conv.id}/assign`, "POST", { systemId: sid, assigneeUserId: U.a }, await H(U.owner)), ctxId(cA.conv.id)));
+      const hoNotOwner = rHandoff ? await json(await rHandoff.POST(req(`/api/mobile/inbox/conversations/${cA.conv.id}/handoff`, "POST", { systemId: sid, toUserId: U.b, reason: "x" }, await H(U.b)), ctxId(cA.conv.id))) : { status: 0, body: {} };
+      const hoSelf = rHandoff ? await json(await rHandoff.POST(req(`/api/mobile/inbox/conversations/${cA.conv.id}/handoff`, "POST", { systemId: sid, toUserId: U.a, reason: "x" }, await H(U.a)), ctxId(cA.conv.id))) : { status: 0, body: {} };
+      const hoOk = rHandoff ? await json(await rHandoff.POST(req(`/api/mobile/inbox/conversations/${cA.conv.id}/handoff`, "POST", { systemId: sid, toUserId: U.b, reason: "ออกเวร" }, await H(U.a)), ctxId(cA.conv.id))) : { status: 0, body: {} };
+      chk("A-7", "รับห้องว่างให้ตัวเอง (send) ⇒ 200 · แย่งห้องของคนอื่นโดยไม่มีคีย์ assign ⇒ 403 · OWNER assign ⇒ 200 · handoff โดยคนที่ไม่ใช่ผู้ดูแล ⇒ 403 · ส่งให้ตัวเอง ⇒ 4xx · ผู้ดูแลส่งต่อ ⇒ 200", claim.status === 200 && steal.status === 403 && bossAssign.status === 200 && hoNotOwner.status === 403 && hoSelf.status >= 400 && hoSelf.status < 500 && hoOk.status === 200, JSON.stringify({ claim: claim.status, steal: steal.status, boss: bossAssign.status, hoNotOwner: hoNotOwner.status, hoSelf: hoSelf.status, hoOk: hoOk.status }));
+      // A-8 (R-S1.21e): attachments route มี · ไม่มี Bearer ⇒ 401
+      const rAtt = await ld("attachments");
+      const att401 = rAtt?.POST ? await json(await rAtt.POST(req(`/api/mobile/inbox/attachments`, "POST", {}, { "x-tenant-id": tid }))) : { status: 0, body: {} };
+      chk("A-8", "POST inbox/attachments มี (R-K13) · ไม่มี Bearer ⇒ 401", !!rAtt?.POST && att401.status === 401, JSON.stringify({ has: !!rAtt?.POST, st: att401.status }));
       // rate limit: 61 reply ใน 1 นาที ⇒ 429 (ใช้ clientMessageId ต่างกัน)
       let got429 = false; for (let i = 0; i < 65 && !got429; i++) { const r = await rReply.POST(req(`/api/mobile/inbox/conversations/${cA.conv.id}/reply`, "POST", { systemId: sid, body: `rl ${i}`, clientMessageId: `${cid}-rl-${i}` }, await H(U.b)), ctxId(cA.conv.id)); if (r.status === 429) got429 = true; }
       chk("A-5", "reply เกิน 60/นาที/ผู้ใช้ ⇒ 429 (X7)", got429, "ไม่เจอ 429 ใน 65 ครั้ง", "MAJOR");

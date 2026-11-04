@@ -112,7 +112,7 @@ try {
   }
 
   console.log("── A: after-hours ──");
-  if (!ah) { for (const i of [1, 2, 3, 4, 5]) skip(`A-${i}`, "after-hours", "ไม่มี after-hours.ts"); }
+  if (!ah) { for (const i of [1, 2, 3, 4, 5, 6, 7]) skip(`A-${i}`, "after-hours", "ไม่มี after-hours.ts"); }
   else {
     const s0 = await ah.afterHoursSettings(tid) as { reply: boolean; handoff: boolean; disclosure: string };
     const eMgr = await throws(() => ah.setAfterHours(tid, { userId: U.mgr, membership: M("MANAGER") }, { reply: true }));
@@ -126,6 +126,7 @@ try {
     const vMoney = await ah.afterHoursAutoReply({ ...base, inboundText: "ราคาเท่าไหร่ โอนได้ไหม", now: atBkk(23), provider: new Scripted("x") }) as { action: string; reason?: string };
     const vComp = await ah.afterHoursAutoReply({ ...base, inboundText: "บริการแย่มาก ไม่พอใจเลย", now: atBkk(23), provider: new Scripted("x") }) as { action: string; reason?: string };
     const vUnk = await ah.afterHoursAutoReply({ ...base, inboundText: "มีที่จอดรถไหม", now: atBkk(23), provider: new Scripted("UNKNOWN") }) as { action: string; reason?: string };
+    await prisma.chatConversation.update({ where: { id: conv.id }, data: { staffUnreadCount: 3, firstResponseAt: null } });
     const before = await prisma.chatMessage.count({ where: { conversationId: conv.id, direction: "OUT" } });
     const inRow = await inMsg("เปิดกี่โมงครับ");
     const p = new Scripted("เปิด 9 โมงครับ");
@@ -134,11 +135,24 @@ try {
     const meta = (out?.meta ?? {}) as Record<string, unknown>;
     const vRep2 = await ah.afterHoursAutoReply({ ...base, inboundText: "เปิดกี่โมงครับ", inboundMessageId: inRow.id, now: atBkk(23), provider: p }) as { action: string };
     const after = await prisma.chatMessage.count({ where: { conversationId: conv.id, direction: "OUT" } });
-    chk("A-3", "ในเวลาทำการ ⇒ in_hours · เงิน ⇒ handoff money · ร้องเรียน ⇒ handoff complaint · UNKNOWN ⇒ handoff unknown · ตอบได้ ⇒ reply + ChatMessage OUT senderName Shark · body มี disclosure · meta.ai_afterHours · clientMessageId ah:<id> · ซ้ำ id เดิม ⇒ ไม่สร้างแถวใหม่", vIn.reason === "in_hours" && vMoney.action === "handoff" && vMoney.reason === "money" && vComp.reason === "complaint" && vUnk.reason === "unknown" && vRep.action === "reply" && !!out && out.senderName === "Shark (ผู้ช่วย AI)" && /เปิด 9 โมง/.test(out.body ?? "") && /ตอบโดย Shark ผู้ช่วย AI/.test(out.body ?? "") && meta.ai_afterHours === "1" && out.clientMessageId === `ah:${inRow.id}` && after === before + 1 && vRep2.action !== "reply" || (vRep2.action === "reply" && after === before + 1), JSON.stringify({ vIn, vMoney, vComp, vUnk, vRep, out: out?.body?.slice(0, 40), cm: out?.clientMessageId, n: after - before }).slice(0, 300));
+    chk("A-3", "ในเวลาทำการ ⇒ in_hours · เงิน ⇒ handoff money · ร้องเรียน ⇒ handoff complaint · UNKNOWN ⇒ handoff unknown · ตอบได้ ⇒ reply + ChatMessage OUT senderName Shark · body มี disclosure · meta.ai_afterHours · clientMessageId ah:<id> · ซ้ำ id เดิม ⇒ ไม่สร้างแถวใหม่", vIn.reason === "in_hours" && vMoney.action === "handoff" && vMoney.reason === "money" && vComp.reason === "complaint" && vUnk.reason === "unknown" && vRep.action === "reply" && !!out && out.senderName === "Shark (ผู้ช่วย AI)" && /เปิด 9 โมง/.test(out.body ?? "") && /ตอบโดย Shark ผู้ช่วย AI/.test(out.body ?? "") && meta.ai_afterHours === "1" && out.clientMessageId === `ah:${inRow.id}` && after === before + 1 && (out.body ?? "").startsWith("Shark (ผู้ช่วย AI):") && (vRep2.action !== "reply" || after === before + 1), JSON.stringify({ vIn, vMoney, vComp, vUnk, vRep, out: out?.body?.slice(0, 40), cm: out?.clientMessageId, n: after - before }).slice(0, 300)); // ORACLE-EDIT N14: วงเล็บ
     const convAfter = await prisma.chatConversation.findUnique({ where: { id: conv.id } });
     const ev = await prisma.chatConversationEvent.findMany({ where: { conversationId: conv.id }, orderBy: { createdAt: "asc" } });
     const handEv = ev.filter((e) => JSON.stringify(e.meta ?? {}).includes("handoff"));
     chk("A-4", "handoff: tags มี 'รอคน' ครั้งเดียว (3 handoff ไม่ซ้ำ) · มี ChatConversationEvent meta ai=handoff พร้อม reason · ไม่ส่ง PII เข้าโมเดล (provider ไม่ถูกเรียกใน money/complaint)", JSON.stringify(convAfter?.tags).split("รอคน").length === 2 && handEv.length >= 1 && /money|complaint|unknown/.test(JSON.stringify(handEv[0]!.meta)), JSON.stringify({ tags: convAfter?.tags, ev: handEv.length }));
+    // A-6 (R-S1.22a/b): AI ตอบแล้ว unread/firstResponseAt ไม่เปลี่ยน · คำถามเงินหลังมี AI ตอบ ⇒ ยัง handoff money (ไม่นับ AI เป็นคนตอบ)
+    const convU = await prisma.chatConversation.findUnique({ where: { id: conv.id }, select: { staffUnreadCount: true, firstResponseAt: true } });
+    const inMoney = await inMsg("ราคาเท่าไร ค่าส่งเท่าไหร");
+    const vMoney2 = await ah.afterHoursAutoReply({ ...base, inboundText: "ราคาเท่าไร ค่าส่งเท่าไหร", inboundMessageId: inMoney.id, now: atBkk(23), provider: new Scripted("x") }) as { action: string; reason?: string };
+    chk("A-6", "หลัง AI ตอบ: staffUnreadCount คง 3 · firstResponseAt คง null · 'ราคาเท่าไร' (ไม่มีวรรณยุกต์) หลังมี AI ตอบ ⇒ handoff money", convU?.staffUnreadCount === 3 && convU?.firstResponseAt === null && vMoney2.action === "handoff" && vMoney2.reason === "money", JSON.stringify({ convU, vMoney2 }));
+    // A-7 (R-S1.22b): ขอคุยกับคน ⇒ handoff human · คำตอบของโมเดลมีราคา ⇒ handoff money · มีคนตอบแล้ว ⇒ answered
+    const vHuman = await ah.afterHoursAutoReply({ ...base, inboundText: "ขอคุยกับคนหน่อยครับ", now: atBkk(23), provider: new Scripted("x") }) as { action: string; reason?: string };
+    const inSvc = await inMsg("มีบริการอะไรบ้าง");
+    const vPrice = await ah.afterHoursAutoReply({ ...base, inboundText: "มีบริการอะไรบ้าง", inboundMessageId: inSvc.id, now: atBkk(23), provider: new Scripted("มีนวดไทย 500 บาทครับ") }) as { action: string; reason?: string };
+    const inAsk = await inMsg("เปิดวันอาทิตย์ไหม");
+    await prisma.chatMessage.create({ data: { tenantId: tid, systemId: chatSys.id, conversationId: conv.id, direction: "OUT", type: "TEXT", body: "เปิดครับ", senderUserId: U.owner } as never });
+    const vAns = await ah.afterHoursAutoReply({ ...base, inboundText: "เปิดวันอาทิตย์ไหม", inboundMessageId: inAsk.id, now: atBkk(23), provider: new Scripted("เปิดครับ") }) as { action: string; reason?: string };
+    chk("A-7", "'ขอคุยกับคน' ⇒ handoff human · คำตอบมี '500 บาท' ⇒ handoff money (ไม่ส่ง) · พนักงานตอบแล้ว ⇒ handoff answered ไม่ส่งซ้ำ", vHuman.action === "handoff" && vHuman.reason === "human" && vPrice.action === "handoff" && vPrice.reason === "money" && !(await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, body: { contains: "500 บาท" } } })) && vAns.action === "handoff" && vAns.reason === "answered", JSON.stringify({ vHuman, vPrice, vAns }));
     // hook จริง: ตั้งเวลาทำการให้ "ตอนนี้" อยู่นอกเวลา แล้วยิง receiveExternalInbound
     const nowH = bkkHour(new Date());
     // ORACLE-EDIT S1.22-A-5: หน้าต่างต้อง open < close และไม่คลุมชั่วโมงปัจจุบัน (ตอน 21–23 น. เดิมได้ 23:00–00:00 ถูก validate ปัดตก)
