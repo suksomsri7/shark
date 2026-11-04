@@ -32,6 +32,9 @@ if (!FORCED && !existsSync(PA_FILE)) {
   for (const n of ["DATABASE_URL", "DIRECT_URL"] as const) { const u = process.env[n] ?? ""; if (!u || !hostOf(u).startsWith(SEC_HOST)) { console.error(`🔴 ${LABEL}: ${n} ไม่ใช่ฐาน QC เลขา — รันผ่าน scripts/qc-sec.sh`); process.exit(4); } }
   if (process.env.SEC_QC_HOST !== SEC_HOST || process.env.APP_ENV === "production") { console.error(`🔴 ${LABEL}: SEC_QC_HOST/APP_ENV ไม่ถูก — หยุด`); process.exit(4); }
 }
+// ORACLE-EDIT R2-ENV: โหลดไฟล์ env ของ QC (ตัวที่ export มาแล้วชนะ) เพื่อให้ @/lib/env (SESSION_SECRET ฯลฯ) ผ่าน — host ตรวจแล้วข้างบน
+try { process.loadEnvFile(process.env.QC_ENV_FILE ?? ".env.qc-sec"); } catch { /* ไม่มีไฟล์ */ }
+if (!new URL(process.env.DATABASE_URL ?? "").hostname.toLowerCase().startsWith(SEC_HOST)) { console.error(`🔴 ${LABEL}: env file เปลี่ยน DATABASE_URL — หยุด`); process.exit(4); }
 process.env.SMS_PROVIDER = "mock";
 delete process.env.SMS_API_KEY; delete process.env.SMS_ENDPOINT;
 type Sev = "CRITICAL" | "MAJOR" | "MINOR"; type Res = "PASS" | "FAIL" | "SKIP";
@@ -87,9 +90,10 @@ try {
     // R-S1.19f: ขอซ้ำภายใน 60 วิ ⇒ ok โดยไม่สร้างแถว — ข้อสอบเลื่อน now ทีละ 61 วิ เพื่อทดสอบเพดาน 5/10 นาที
     const rThrottle = await pa.requestPhoneOtp(P.a, { send, ip: "10.0.0.1" });
     const rowsAfterThrottle = await prisma.phoneOtp.count({ where: { phone: P.a } });
+    const sentAfterThrottle = sent.length; // ORACLE-EDIT R2-Q-2
     for (let i = 1; i <= 4; i++) await pa.requestPhoneOtp(P.a, { send, ip: "10.0.0.1", now: new Date(Date.now() + i * 61_000) });
     const r6 = await pa.requestPhoneOtp(P.a, { send, ip: "10.0.0.1", now: new Date(Date.now() + 5 * 61_000) });
-    chk("Q-2", "ขอซ้ำใน 60 วิ ⇒ ok ไม่สร้างแถว (resendAfterSec 1–60) · ขอครั้งที่ 6 ใน 10 นาที (เลื่อนเวลา) ⇒ rate_limited (ไทย) · แถว 5", rThrottle.ok === true && rowsAfterThrottle === 1 && rThrottle.resendAfterSec >= 1 && rThrottle.resendAfterSec <= 60 && sent.length === 1 && r6.ok === false && r6.reason === "rate_limited" && thai(r6.message) && (await prisma.phoneOtp.count({ where: { phone: P.a } })) === 5, JSON.stringify({ rThrottle, rowsAfterThrottle, sent: sent.length, r6 }).slice(0, 200));
+    chk("Q-2", "ขอซ้ำใน 60 วิ ⇒ ok ไม่สร้างแถว (resendAfterSec 1–60) · ขอครั้งที่ 6 ใน 10 นาที (เลื่อนเวลา) ⇒ rate_limited (ไทย) · แถว 5", rThrottle.ok === true && rowsAfterThrottle === 1 && rThrottle.resendAfterSec >= 1 && rThrottle.resendAfterSec <= 60 && sentAfterThrottle === 1 && r6.ok === false && r6.reason === "rate_limited" && thai(r6.message) && (await prisma.phoneOtp.count({ where: { phone: P.a } })) === 5, JSON.stringify({ rThrottle, rowsAfterThrottle, sent: sentAfterThrottle, r6 }).slice(0, 200));
     for (let i = 0; i < 20; i++) await pa.requestPhoneOtp(`+668000179${String(i).padStart(2, "0")}`, { send, ip: "10.9.9.9" }); // ORACLE-EDIT builder S1.19: 20 เบอร์ต่างกันจริง
     const rIp = await pa.requestPhoneOtp(P.b, { send, ip: "10.9.9.9" });
     chk("Q-3", "ip เดียวขอครั้งที่ 21 (คนละเบอร์) ⇒ rate_limited", rIp.ok === false && rIp.reason === "rate_limited", JSON.stringify(rIp).slice(0, 120), "MAJOR");

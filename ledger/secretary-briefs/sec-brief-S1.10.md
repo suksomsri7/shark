@@ -1,0 +1,32 @@
+# S1-8 — S1.10 ตีกลับ+สอน+แก้ก่อนอนุมัติ (`secretary/teach.ts`) · S1.15 วงจรเรียนรู้ (`secretary/learn.ts`) (Opus · `wip/sec-s1.10` · หลัง S1.7 merge · light-check)
+
+Read `sec-brief-COMMON.md`, `sec-brief-RESOLUTIONS.md` (R-K3 ข้อ remember_fact · §C Q9 · §B.4), plan rows S1.10/S1.15, แบบ C4 + B6 + §8 ชั้น 1–2 (`ledger/DESIGN-SECRETARY.md`), `docs/modules/31-secretary.md` §5, และ oracle `scripts/qc-sec-s1.10.mts`. Verified code: `src/lib/ai/memory.ts` (`rememberFact` · `listMemories` · `forgetMemory` · `memoryBlock` · เพดาน 100 · ด่าน PII `findContactData`) · `src/lib/ai/conversation-owner.ts` (`newMemoryId` · `o~`=ของร้าน · `u~`=ส่วนตัว · `canSeeMemory`) · `src/lib/ai/dataset.ts` (`anonymize` · `recordSample` gated `SHARK_AI_COLLECT`) · `src/lib/ai/proposals.ts` (`rejectProposal` :357 · `executeProposal` · `kindAccessOf`) · `src/lib/ai/kanban-ops.ts` (`validateOpInput(op, input)` ภายใน · `kanbanToolOps()`) + account-ops/member-ops/crm/pos เทียบเท่า · `src/lib/ai/persona.ts` (`PersonaContext`) · `src/lib/ai/service.ts` (prompt build · `remember_fact` tool ผ่าน tools.ts) · ตาราง `AiMemory.status` · `AiTrainingSample.{outcome,editedReply,stepsJson,roomId,proposalId}` · `AiLesson` · `AiSecretary.prefs` · `AiActionLog` (S1.8 — ถ้า merge แล้ว hook `recordOutcome` ไว้ข้าง `recordAction`).
+
+## `src/lib/ai/secretary/teach.ts`
+```ts
+export async function rejectWithNote(ctx: ConvCtx, proposalId: string, input: { note: string; remember: "JOB" | "RULE" }): Promise<{ ok: true; memoryId?: string } | { ok: false; error: "not_found" | "not_pending" | "empty" | "pii"; message: string }>;
+   // มองไม่เห็น (room-aware: `canSeeConversationById`) ⇒ not_found · ไม่ใช่ PENDING ⇒ not_pending · note ว่าง ⇒ empty · updateMany PENDING→REJECTED + resultNote "ตีกลับ: <note>" · ข้อความระบบในห้อง (ASSISTANT · authorUserId null) "🔁 <ชื่อ> ตีกลับ: <note>" · remember RULE ⇒ AiMemory ของร้าน (id `o~<userId>~…` ผ่าน helper ใหม่ `newShopMemoryId(ctx)` ใน conversation-owner.ts) status = ผู้ตีกลับเป็น OWNER ? null : "PENDING" · PII ใน note เมื่อ RULE ⇒ pii (ไม่ตีกลับ ไม่จด — ให้แก้ข้อความ) · JOB ⇒ ไม่จดอะไร · เรียก learn.recordOutcome("REJECTED") เสมอ
+export async function editProposal(ctx: ConvCtx, proposalId: string, patch: Record<string, unknown>): Promise<{ ok: true; payload: unknown } | { ok: false; error: "not_found" | "not_pending" | "not_editable" | "invalid"; message: string }>;
+   // Q9: เฉพาะ kind ของทะเบียน op (`account.*` `kanban.*` `member.*` `crm.*` `pos.*`) · merge `payload.input` (shallow) กับ patch · ตรวจด้วย zod ของ op นั้น (หา op จาก `<module>ToolOps()`; export ตัวช่วย `validateProposalInput(kind, input)` ใน teach.ts ที่ใช้ `op.input.safeParse`) · ผิด ⇒ invalid ข้อความไทย · kind เขียนมือ ⇒ not_editable "แก้ก่อนอนุมัติได้เฉพาะ… ตีกลับแล้วสั่งใหม่" · บันทึก `payload._edited = { at, byUserId, before }` · อัปเดต summary ถ้า patch มี title/name
+export async function pendingMemories(ctx: ConvCtx): Promise<{ id; content; createdAt; byUserId }[]>;   // OWNER เท่านั้น (คนอื่น = [])
+export async function confirmMemory(ctx: ConvCtx, id: string): Promise<boolean>; // OWNER · status PENDING → null
+export async function rejectMemory(ctx: ConvCtx, id: string): Promise<boolean>;  // OWNER · ลบ
+```
+- `memory.ts`: `memoryBlock`/`listMemories` **ไม่รวม** status "PENDING" (ยกเว้น `listMemories(ctx, take, { includePending: true })`) · `rememberFact(ctx, content, opts?: { pending?: boolean })` — tools.ts `remember_fact`: เมื่อห้องมี `AiRoom` (ctx.sight?.memberOf/room ⇒ ใช้ `findVisibleConversation` include room) และ actor ไม่ใช่ OWNER ⇒ `pending: true` + ตอบผู้ใช้ว่า "จดไว้รอเจ้าของยืนยัน" (R-K3)
+## `src/lib/ai/secretary/learn.ts`
+```ts
+export type Outcome = "APPROVED" | "EDITED" | "REJECTED";
+export async function recordOutcome(tenantId: string, input: { proposalId: string; conversationId: string; kind: string; outcome: Outcome; note?: string; before?: unknown; after?: unknown; model?: string }): Promise<void>;
+   // เสมอ (ไม่ขึ้นกับ SHARK_AI_COLLECT) · anonymize ทุก string (dataset.anonymize) · AiTrainingSample { userText: "", replyText: "", model: model ?? "secretary", outcome, editedReply: note, stepsJson: {before, after} (anonymized), roomId: AiRoom.id ของ conversation ?? null, proposalId } · best-effort (log ไม่ throw)
+export async function noteLesson(tenantId: string, input: { kind: string; pattern: string; example: string; sourceRoomId?: string | null; sourceUserId: string }): Promise<{ id: string; occurrences: number; suggest: boolean }>;
+   // pattern normalize (trim · ตัวเล็ก · ยุบช่องว่าง · anonymize) · มีแถว tenant+kind+pattern (status ≠ REJECTED) ⇒ occurrences+1 · suggest = occurrences ≥ 2 && status PENDING
+export async function listLessons(ctx: ConvCtx, opts?: { status?: "PENDING"|"CONFIRMED"|"REJECTED" }): Promise<AiLesson[]>;  // OWNER ทุกแถว · อื่นเฉพาะ sourceUserId ตัวเอง
+export async function confirmLesson(ctx: ConvCtx, id: string): Promise<boolean>; // OWNER เท่านั้น (คนอื่น = ForbiddenError) → CONFIRMED confirmedById
+export async function rejectLesson(ctx: ConvCtx, id: string): Promise<boolean>;  // OWNER → REJECTED
+export async function lessonBlock(tenantId: string): Promise<string>;              // CONFIRMED ≤ 20 แถว "- [<kind>] <pattern>" · "" ถ้าไม่มี
+```
+- hooks: `executeProposal` สำเร็จ ⇒ `recordOutcome(outcome: payload._edited ? "EDITED" : "APPROVED", before/after จาก _edited)` · EDITED ⇒ `noteLesson({ kind, pattern: "แก้ก่อนอนุมัติ: " + รายชื่อคีย์ที่เปลี่ยน, example: summary })` · `rejectWithNote` ⇒ `recordOutcome("REJECTED", note)` + `noteLesson({ kind, pattern: note, example: summary })`
+- `persona.ts`: `PersonaContext.lessons?: string` ⇒ บล็อก "บทเรียนที่เจ้าของยืนยันแล้ว:" ก่อน "กติกา:" (ไม่มี = prompt เดิมทุกไบต์ · snapshot) · `service.ts` ส่ง `lessons: await lessonBlock(tenantId).catch(() => "")` ใน Promise.all
+## Files you own
+`src/lib/ai/secretary/{teach,learn}.ts` · `src/lib/ai/memory.ts` · `src/lib/ai/conversation-owner.ts` (`newShopMemoryId` เพิ่ม) · `src/lib/ai/tools.ts` (remember_fact hunk) · `src/lib/ai/proposals.ts` (hook recordOutcome) · `src/lib/ai/persona.ts` (บล็อก lessons) · `src/lib/ai/service.ts` (1 hunk) · docs §5 · `ledger/wo-notes/sec-s1.10.md`
+## Acceptance = `scripts/qc-sec-s1.10.mts` PASS ทั้งหมด + `qc-ai-memory` `qc-ai-feedback` `qc-ai-eval` `qc-ai-brain` `qc-ai-proposals` `qc-ai-quality` `qc-ai-tuning` + `qc-sec-s1.2` (persona snapshot) `qc-sec-s1.7` เท่าเดิม · typecheck 0 · fitness ×2

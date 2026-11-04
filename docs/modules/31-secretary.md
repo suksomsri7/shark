@@ -263,10 +263,26 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - การมองเห็น (R-K1) อยู่ที่ `conversations.ts` (ไม่ใช่ rooms.ts): `roomSightFor(ctx) → Promise<ConvSight>` (1 query: `AiRoomMember` ของผู้ใช้ → `memberOf` · `tenantRooms = role === "OWNER"`) · `findVisibleConversation` (แถวมี `room`) · `canSeeConversationById(ctx, id)` (ยกเลิกข้อเสนอ) · `canConfirmerSeeConversation(tenantId, m, userId, id)` (ยืนยันข้อเสนอ/แผน) — ใช้ใน `listMessages` · `sendMessage` · `listPendingProposals` · `rejectProposal` · `executeProposal` · `executePlan` · เครื่องมือ (`ToolCtx.sight` ที่ `sendMessage` ตรวจแล้ว · `guarded` ใช้ `ctx.sight ?? sightOf(ctx)`)
 - 🔴 ห้าม import `service.ts` จาก rooms.ts (วงกลม)
 
-### 5.5 worker.ts (แผน · S1.5) — คิวเบื้องหลัง (R-K8)
-- `enqueueRoomJob(ctx, input: { roomId; messageId; authorUserId }) → Promise<{ jobId }>` — `messageId @unique` กันซ้ำ
-- `runRoomJobs(opts: { now: Date; limit?: number; jobId?: string; deps?: { provider? } }) → Promise<{ ran: number; failed: number; released: number }>` — claim ด้วย `updateMany({status in [QUEUED, RUNNING], leaseUntil < now}) → RUNNING + leaseUntil = now + 2 นาที + attempts = attempts + 1` (X5 · สองรอบซ้อนทำครั้งเดียว) · attempts > 3 ⇒ FAILED · รัน `sendMessage` (service.ts:97) ด้วย actor ของ **ผู้เขียนข้อความ** (`aiMemberActor` จาก Membership สด) · จบแล้ว push ถ้าสถานะเป็น WAITING/DONE
-- เรียกจาก: `POST /api/mobile/secretary/rooms/[id]/send` (ทำทันทีใน `after()` ของ request เดียวกัน) + เก็บตกใน `api/cron/hourly` และ `api/cron/outbox` (S1.5 จดความถี่จริงของ outbox ใน wo-notes) · ไม่มี cron รายนาที · SSE เดิม `sendMobileChat` (mobile/chat.ts:15) คงไว้
+### 5.5 worker.ts (S1.5 · มีแล้ว · `src/lib/ai/secretary/worker.ts` + `room-jobs-job.ts`) — คิวเบื้องหลัง (R-K8 · R-K8b)
+- ค่าคงที่ `ROOM_JOB_LEASE_MS = 120_000` (2 นาที) · `ROOM_JOB_MAX_ATTEMPTS = 3` · `ROOM_JOBS_MINUTE_JOB = "secretary.roomJobs"`
+- `enqueueRoomJob(tenantId, roomId, messageId, authorUserId) → Promise<AiRoomJob>` — idempotent บน `messageId @unique` (มีแล้ว = คืนแถวเดิม · ยิงพร้อมกันชน P2002 = คืนแถวของทางแรก) · ห้องต้องเป็นของร้าน + ข้อความต้องอยู่ในบทสนทนาของห้อง (ไม่งั้น throw — ผู้เรียกประกอบผิด) · แถวใส่ `tenantId` (R-S1.1c)
+- `sendRoomMessage(ctx: { tenantId; actor: AiMemberActor }, roomId, input: { text; imageUrls? }) → Promise<{ ok: true; messageId; jobId } | { ok: false; error: "not_found" | "closed" | "empty"; message (ไทย) }>`
+  - ข้อความว่าง ⇒ `empty` · ไม่มีห้อง / ร้านอื่น / มองไม่เห็น (`findVisibleConversation` → `roomSightFor`: ผู้เปิด ∪ สมาชิก ∪ OWNER) ⇒ `not_found` · `closedAt` ⇒ `closed`
+  - tx เดียว: `AiMessage` USER (`authorUserId` = ผู้ส่ง · R-K2) + `AiRoomJob` QUEUED + แตะ `AiRoom.updatedAt` · **ไม่เรียกโมเดล · ไม่นับงาน** (R-K6) · route S1.14 เรียก `runRoomJobs` ต่อใน `after()`
+  - `imageUrls` ยังไม่ไปถึงโมเดลทางคิว (ไม่มีคอลัมน์เก็บรูป — ดู wo-notes S1.5 §8)
+- `runRoomJobs(deps?: { provider?; post?; now?; limit? (ปริยาย 5 · ≤ 50); deadline? }) → Promise<{ claimed; done; failed; requeued }>` — **ไม่ throw**
+  1. หางาน `status = QUEUED` หรือ (`RUNNING` และ `leaseUntil < now`) · `attempts < 3` · เรียง `createdAt` · ≤ limit (คิวกลางข้ามร้าน)
+  2. claim ทีละตัว: `updateMany({ where: { id, …เงื่อนไขข้อ 1 }, data: { status: RUNNING, leaseUntil: now + 2 นาที, attempts: +1, startedAt: now } })` — count 0 = อีกรอบได้ไป ข้าม (X5)
+  3. `Membership` สดของ `authorUserId` (`acceptedAt ≠ null`) ไม่มี ⇒ FAILED "ผู้สั่งไม่ได้เป็นสมาชิกของกิจการแล้ว" · ผู้สั่งมองไม่เห็นห้องแล้ว ⇒ FAILED "ผู้สั่งไม่ได้อยู่ในห้องนี้แล้ว" (ไม่เรียกโมเดล · ไม่ retry)
+  4. `sendMessage({ tenantId, actor: aiMemberActor(…) }, { conversationId: room.conversationId, text: message.content }, { provider, source: "CHAT", userMessageId: message.id })`
+  5. ok ⇒ DONE (`finishedAt` · `error = null`) · !ok ⇒ FAILED + ข้อความไทย (`usage.quotaMessage` / AI ปิดอยู่ / ว่าง) ไม่ retry · throw ⇒ `attempts < 3` ? กลับ QUEUED (`leaseUntil = null` · error ไทยทั่วไป — รายละเอียดดิบไป `logOps` WARN เท่านั้น) : FAILED
+     · การเขียนผลทุกครั้งมีเงื่อนไข `status = RUNNING AND attempts = ค่าตอน claim` (fencing — รอบที่ lease หมดแล้วถูกหยิบต่อ เขียนทับผลไม่ได้)
+  6. หลัง DONE/FAILED: push `sendPushToUser(uid, { title: room.title, body: ≤ 120 ตัวของคำตอบ | "ทำไม่ได้: …", data: { link: "/secretary/room/<roomId>", conversationId, roomId, kind: "room" } }, { post })` ถึง `room.startedById ∪ AiRoomMember.userId` · ไม่กรองร้าน (R-K20) · push ล้ม = log ไม่กระทบงาน
+  - `deadline` (ms · ไม่บังคับ) = หยุดหยิบงานใหม่เมื่อถึงเวลา — งานรายนาทีส่ง `ctrl.deadline − 8 วิ`
+- `registerRoomJobsMinuteJob() → void` — `registerMinuteJob({ name: "secretary.roomJobs", everyMinutes: 1, run: (now) => runRoomJobs({ now, limit: 5 }) })` · `room-jobs-job.ts` เรียกตอน import
+- `service.sendMessage` deps ใหม่ `userMessageId?: string` — มี ⇒ ไม่สร้างแถว USER ซ้ำ · ประวัติ `NOT id = userMessageId` · บทสนทนาที่มองไม่เห็น ⇒ throw (ไม่เปิดห้องใหม่) · ไม่ส่ง = เดิมทุกไบต์
+- เรียกจาก (R-K8b): route ส่งข้อความ S1.14 (`after()` ใน request เดียวกัน) · ตัวเก็บตก = งานรายนาที `secretary.roomJobs` ผ่าน `scripts/crm-cron.mts minute` (crontab VPS ทุกนาที) + hook `runMinuteJobs` ใน `POST /api/cron/outbox` (import `room-jobs-job`) · `vercel.json` ไม่แตะ (มีแค่ `tick` รายวัน + `hourly` · ไม่มีตัวตั้งเวลาใดชี้ `/api/cron/outbox`) · ไม่มี event `ai.room.*` ในใบนี้ · SSE เดิม `sendMobileChat` คงไว้
+- 🔴 rooms.ts ห้าม import worker.ts (วงกลม) · worker → service → conversations
 
 ### 5.6 members.ts (แผน · S1.6) — ห้องร่วม (R5)
 - `addMember(ctx, roomId: string, input: { userId: string; seeHistory: boolean }) → Promise<{ ok: true } | { ok: false; reason }>` — ผู้เพิ่ม = ผู้เปิดห้องหรือ OWNER · ผู้ถูกเพิ่มต้องมี `Membership.acceptedAt ≠ null` ในกิจการเดียวกัน · ข้อความระบบ "X เพิ่ม Y เข้าห้อง" · event `ai.room.member_added`
@@ -384,7 +400,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
                              ▼
                             DONE ── ข้อความใหม่ = เปิดต่อ (closedAt = null · ไม่นับงาน)
 ```
-สถานะไม่ถูกเก็บเป็นคอลัมน์ — `roomStatus`/`roomStatusOf` (S1.4) คำนวณจาก `closedAt` + `AiRoomJob` QUEUED/RUNNING + ข้อเสนอ/แผน PENDING ที่ยังไม่หมดอายุ (ลำดับ **DONE > RUNNING > WAITING > OPEN** — งานที่ยังรันอยู่แสดง RUNNING แม้มีข้อเสนอรอแล้ว) · ห้องที่เพิ่งเปิดยังไม่มี job (S1.5 ต่อคิว) ⇒ OPEN จนกว่าคิวจะเกิด · `ai.room.*` event ยังไม่ส่งใน S1.4
+สถานะไม่ถูกเก็บเป็นคอลัมน์ — `roomStatus`/`roomStatusOf` (S1.4) คำนวณจาก `closedAt` + `AiRoomJob` QUEUED/RUNNING + ข้อเสนอ/แผน PENDING ที่ยังไม่หมดอายุ (ลำดับ **DONE > RUNNING > WAITING > OPEN** — งานที่ยังรันอยู่แสดง RUNNING แม้มีข้อเสนอรอแล้ว) · ห้องที่เพิ่งเปิดยังไม่มี job ⇒ OPEN จนกว่าคิวจะเกิด (S1.5: `enqueueRoomJob`/`sendRoomMessage` สร้าง job QUEUED → RUNNING ระหว่างรัน → DONE/FAILED ⇒ ห้องกลับ OPEN/WAITING) · ห้องที่ `closedAt` แล้ว ⇒ `sendRoomMessage` ตอบ `closed` (ยังไม่เปิดต่ออัตโนมัติในรุ่นนี้) · `ai.room.*` event ยังไม่ส่งถึง S1.5
 
 | เหตุการณ์ | จาก → ไป | ใครทำได้ | event | push |
 |---|---|---|---|---|
