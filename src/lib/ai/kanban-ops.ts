@@ -612,6 +612,8 @@ export async function dispatchKanbanKind(
   kind: string,
   rawPayload: unknown,
   userId?: string | null,
+  /** SEC S1.8 (R-S1.8a) — ตั้ง `out.entity` = การ์ด/บอร์ดที่ op คืนมา (ชนิดคืนคงเดิม) */
+  out?: { entity?: { type: string; id: string; unitId?: string | null } | null },
 ): Promise<string> {
   const payload = isRecord(rawPayload) ? rawPayload : {};
   const opId = typeof payload.opId === "string" ? payload.opId : kind.slice(KIND_PREFIX.length);
@@ -641,6 +643,13 @@ export async function dispatchKanbanKind(
       reason,
       audit: { proposalId, actor: "ai-assistant" },
     });
+    // SEC S1.8 ▸ entity ของของที่ op สร้าง/แตะ (cards.* = การ์ด · boards.* = บอร์ด) ◂
+    if (out) {
+      const d = isRecord(env.data) ? env.data : {};
+      const eid = typeof d.id === "string" ? d.id : typeof d.cardId === "string" ? d.cardId : null;
+      const res = op.id.split(".")[0] ?? "";
+      if (eid) out.entity = { type: res === "boards" ? "kanban.board" : res === "cards" ? "kanban.card" : `kanban.${res}`, id: eid };
+    }
     return noteOf(op, env.data);
   } catch (e) {
     throw new Error(mapError(e).message_th);

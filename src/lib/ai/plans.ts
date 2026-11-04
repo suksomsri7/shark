@@ -145,7 +145,7 @@ export async function executePlan(
     if (failed) break; // step ที่เหลือคง PENDING (ไม่รันต่อ)
     try {
       const idx = steps.indexOf(st);
-      const note = await runKind(m, ctx.tenantId, st.kind, st.payload, `plan-${planId}-${idx}`);
+      const note = await runKind(m, ctx.tenantId, st.kind, st.payload, `plan-${planId}-${idx}`, opts?.userId ?? null); // SEC S1.8 §B.3: ผู้กดยืนยันแผน ◂
       st.status = "DONE";
       st.note = note;
       results.push({ summary: st.summary, ok: true, note });

@@ -37,6 +37,8 @@ import * as automationSvc from "@/lib/automation/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
 import type { ConvCtx } from "./conversation-owner";
+import type { DispatchOut } from "./secretary/actions"; // SEC S1.8 (type เท่านั้น — ไม่มีวงโหลด) ◂
+import { logOps } from "@/lib/core/ops";
 import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
 import {
   accountDestructiveKinds,
@@ -460,8 +462,12 @@ export async function executeProposal(
 
   try {
     // ส่ง m (คนกดยืนยัน) ให้ dispatch ด้วย — kind ที่ต้องใช้สิทธิ์ผู้กด (เช่น approval_decide) จะหยิบไปใช้
-    const note = await dispatch(ctx.tenantId, row.id, row.kind as ProposalKind, row.payload, m, opts?.userId ?? null);
+    const out: DispatchOut = {}; // SEC S1.8 ▸ entity ของของที่สร้าง/แตะ (out-param · R-S1.8a) ◂
+    const before = await secSnapshotBefore(ctx.tenantId, row.kind, row.payload); // SEC S1.8 ◂
+    const note = await dispatch(ctx.tenantId, row.id, row.kind as ProposalKind, row.payload, m, opts?.userId ?? null, out);
     await tenantDb(ctx).aiProposal.update({ where: { id }, data: { resultNote: note } });
+    // SEC S1.8 ▸ บันทึกการกระทำ (ล้ม = log เท่านั้น · ผลข้อเสนอยังสำเร็จ) ◂
+    await secRecordAction({ tenantId: ctx.tenantId, conversationId: row.conversationId, kind: row.kind, summary: row.summary, approverId: opts?.userId ?? null, proposalId: row.id, payload: row.payload, out, before });
     return { ok: true, note };
   } catch (e) {
     // service โยน → FAILED + เหตุผลไทย (rollback สถานะจาก EXECUTED)
@@ -507,13 +513,40 @@ export async function runKind(
   }
   const level = await accessLevelGate(tenantId, kind); // SEC S1.3 ◂
   if (!level.ok) throw new Error(level.reason);
-  return dispatch(tenantId, refId ?? `run-${kind}-${Date.now()}`, kind, payload, m, userId ?? null);
+  // SEC S1.8 ▸ out-param + บันทึกการกระทำของขั้นแผน (planId จาก refId `plan-<id>-<i>` · ล้ม = log เท่านั้น) ◂
+  const out: DispatchOut = {};
+  const before = await secSnapshotBefore(tenantId, kind, payload);
+  const note = await dispatch(tenantId, refId ?? `run-${kind}-${Date.now()}`, kind, payload, m, userId ?? null, out);
+  const planId = typeof refId === "string" ? (/^plan-([^-]+)-\d+$/.exec(refId)?.[1] ?? null) : null;
+  if (planId) {
+    const plan = await tenantDb({ tenantId }).aiPlan.findFirst({ where: { id: planId }, select: { conversationId: true, title: true } }).catch(() => null);
+    await secRecordAction({ tenantId, conversationId: plan?.conversationId ?? null, kind, summary: plan?.title ?? kind, approverId: userId ?? null, planId, payload, out, before });
+  }
+  return note;
 }
 
 // SEC S1.7/S1.8 ▸ hook ของเลขา — import ตอนเรียก (secretary/* import ไฟล์นี้ = วงโหลดถ้า import บนหัวไฟล์) ◂
 async function secApprovalGate(tenantId: string, m: MembershipCtx, row: { kind: string; conversationId: string; payload: unknown }, userId: string | null) {
   const { approvalGate } = await import("./secretary/approval-gate");
   return approvalGate(tenantId, m, row, userId);
+}
+
+async function secSnapshotBefore(tenantId: string, kind: string, payload: unknown): Promise<unknown | null> {
+  try {
+    const { snapshotBefore } = await import("./secretary/actions");
+    return await snapshotBefore(tenantId, kind, payload);
+  } catch {
+    return null;
+  }
+}
+
+async function secRecordAction(input: { tenantId: string; conversationId: string | null; kind: string; summary: string; approverId: string | null; proposalId?: string | null; planId?: string | null; payload: unknown; out: DispatchOut; before: unknown }): Promise<void> {
+  try {
+    const { recordFromDispatch } = await import("./secretary/actions");
+    await recordFromDispatch({ ...input, executedAt: new Date() });
+  } catch (e) {
+    await logOps("WARN", "ai", `secretary.actionLog: บันทึกการกระทำไม่สำเร็จ (${input.kind})`, { tenantId: input.tenantId, detail: String(e).slice(0, 300) }).catch(() => {});
+  }
 }
 // ◂ SEC S1.7/S1.8
 
@@ -533,6 +566,8 @@ async function dispatch(
   m?: MembershipCtx,
   /** K3.5 — id ของคนที่กดยืนยัน (MembershipCtx ไม่มีช่องนี้) · null = ไม่รู้ตัวคน */
   userId?: string | null,
+  /** SEC S1.8 (R-S1.8a) — handler ตั้ง `out.entity` เมื่อรู้ id ของของที่สร้าง/แตะ (ชนิดคืนของ handler คงเดิม) */
+  out?: DispatchOut,
 ): Promise<string> {
   const payload = (rawPayload ?? {}) as Record<string, unknown>;
 
@@ -552,7 +587,7 @@ async function dispatch(
     if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการบอร์ดงานได้");
     // 🔴 K3.5: ส่ง userId ของคนกดต่อลงไปด้วย — ประวัติของบอร์ด (`actorUserId`) ต้องชี้ไปที่ "คนกด"
     //    ไม่ใช่ null (= ระบบทำเอง) และบางคำสั่ง (สร้างการ์ดจากแชท) ต้องมีตัวตนของคนจริงถึงจะทำได้
-    return dispatchKanbanKind(m, tenantId, proposalId, kind, payload, userId);
+    return dispatchKanbanKind(m, tenantId, proposalId, kind, payload, userId, out); // SEC S1.8 ▸ out ◂
   }
 
   // ── ระบบสมาชิก (M1.11) ────────────────────────────────────────────────────
@@ -786,6 +821,7 @@ async function dispatch(
       description: p.detail ? String(p.detail).trim() : null,
     });
     if (!card) throw new Error("สร้างการ์ดไม่สำเร็จ");
+    if (out) out.entity = { type: "kanban.card", id: card.id }; // SEC S1.8 ◂
     return `เพิ่มการ์ด "${title}" ลงบอร์ด "${board.name}" เรียบร้อยแล้ว`;
   }
 
@@ -882,6 +918,7 @@ async function dispatch(
       idempotencyKey: `ai-appt-${proposalId}`, // execute ซ้ำ = กันสร้างนัดซ้ำโดยธรรมชาติ
     });
     if (!res.ok) throw new Error(res.reason);
+    if (out) out.entity = { type: "booking.appointment", id: res.id, unitId: unit.id }; // SEC S1.8 ◂
     return `จองนัด "${service.name}" ให้ ${String(p.customerName ?? "").trim() || "ลูกค้า"} กับ ${staff.name} เรียบร้อยแล้ว`;
   }
 
