@@ -113,3 +113,21 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - หนี้จด RUN: `creditView` (เว็บ actions.ts) ยังเขียนกระเป๋าตอนอ่าน (นอกใบ) · `startRoom` อ่าน balancePeek นอก tx (ชนกันได้ 1 งาน — ยอมรับ)
 - **R-S1.13c ห้องเลขาไม่ผ่านด่าน assist** (จาก open item ของ builder รอบ 2): บทสนทนาที่มี `AiRoom` — `sendMessage`/worker **ไม่เรียก `canRunAi`** (ห้องถูกนับและอนุญาตแล้วที่ `startRoom` · ข้อความต่อในห้องไม่นับ Q3 · ไม่ติดเพดาน assist/วัน · ไม่ติดเครดิต) · ยังบันทึกต้นทุน AiCreditTxn/AiUsage ตามเดิม · ห้องเดิมคง scope "assist"
 - ORACLE-EDIT S1.13-C-6 (5 พ.ย. ~02:3xZ): fixture AiCreditTxn ต้องมี `source`/`balanceAfter` (ผู้คุมผิดเอง) · 653d5a06
+
+### L.2 รีวิว S1.13 ผู้ตรวจ I/J — มติรอบ 3 (5 พ.ย. ~04:1xZ)
+- **R-S1.13d (I-1)** ข้ามด่านเฉพาะ `deps.userMessageId && conv.room && !conv.room.closedAt` (ทาง worker ของห้องที่ยังเปิด) · ประตูเดิม (`api/mobile/chat/send` · `sendAiMessageAction`) ที่ชี้ conversation ของห้องเลขา ⇒ ผ่าน `canRunAi("assist")` ตามปกติ · oracle C-8
+- **R-S1.13e (I-2/J-2)** เพิ่ม `canSpendWhy(tenantId, now?) → CanRun` ใน credit.ts · ผู้เรียก `outOfCreditMessage()` 8 จุด (translate.ts ×2 · ai-suggest.ts · inbox-ai.ts · crm/calls.ts ×2 · crm/ai-bridges.ts · kanban/ai.ts) เปลี่ยนเป็นข้อความจาก `CanRun.message` (วันนี้/เครดิต) — `canSpend()` คงชื่อ/สัญญาเดิม
+- **R-S1.13f (I-3/J-1 มติผู้คุม)** ต้นทุนห้องเลขา **ไม่นับ** ในเพดาน assist/วัน: ผลรวม USAGE ตัดแถวที่ `conversationId` มี `AiRoom` (subquery เดียว) · ห้องเลขาคุมด้วยโควตางานอยู่แล้ว
+- **R-S1.13g (I-3/J-3 มติผู้คุม)** เมื่อถึงเพดาน **ไม่** fall-through ไป `balance > 0` (ยุคแพ็กฟรี: เพดานคุมต้นทุนก่อน · เติมเงินปิด 7.3) · ยอด $10 ร้านเดิมเป็นบัญชีต้นทุน ไม่ใช่สิทธิ์ใช้เกินเพดาน · ✍️ จดในบันทึกมติเจ้าของ (B8) ให้เจ้าของเห็นตอน CP
+- **R-S1.13h (I-4)** overflow ด้วยกระเป๋า (Q4) ต้อง `balancePeek ≥ LOW_BALANCE_MICRO` (ไม่ใช่ > 0) · แก้ wo-notes ว่าเป็น burst ไม่ใช่ 1 งาน
+- **R-S1.13i (I-6/J-5)** `canSpendPeek` รวมเพดานวัน (blocked ไม่ null ตอนถึงเพดาน) · `getsWelcomeGrant`: ไม่มี Tenant ⇒ false (I-9) · route usage ใช้ `getsWelcomeGrant` export เดียว (I-7) · **wire shape quota สำหรับ S1.14 = ใบ S1.14** `{ jobs:{used,limit,left,resetAt}, assist:{usedMicro,capMicro}, pack }` ไม่มี balanceMicro (§C.6) · B8 cap แถบ 100%
+- **J-4** docs §8 แก้: ห้องเลขาไม่อยู่ใต้ assist · scope "jobs" = reserved · "day" ตอนถึงเพดาน
+- หนี้ (ไม่ทำรอบนี้): oracle Q-3 month rollover / createdAt===LAUNCH (ผู้คุมเพิ่มทีหลัง) · qc-ai-credit ใช้ร้านเดิมทั้งชุด (J-7 ยอมรับ) · `creditView` เขียนตอนอ่าน
+
+## M. รีวิว S1.12 ผู้ตรวจ K — มติรอบ 2 (5 พ.ย. ~04:1xZ)
+- **R-S1.12a (K-1)** summary ของ `chat.send` = "ส่งข้อความถึง <ชื่อ> (<ช่องทาง>):\n<body เต็ม>" (ผู้อนุมัติต้องเห็นทั้งฉบับ · ≤1000) · ชื่อผ่าน `maskPiiDeep` (K-7)
+- **R-S1.12b (K-2)** `chat.send` + `booking_refund_deposit` เข้า `PLAN_HUMAN_ONLY` (เสนอเป็นแผนไม่ได้) · export `isPlanHumanOnly(kind)` · เพิ่ม tool `refund_booking_deposit` ของตัวเอง (summary จากเซิร์ฟเวอร์: จำนวนเงิน + ชื่อลูกค้า (mask) + วันนัด · payload ids) · oracle P-1
+- **R-S1.12c (K-3)** `dispatchChatSend` ต่อท้าย body ด้วยบรรทัดลงชื่อคงที่ "\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน" (สำรองที่ใน 1000 ตัว · ช่องทางที่ไม่แสดง senderName ยังเห็น) · oracle E-2 แก้แล้ว
+- **R-S1.12d (K-4)** ข้อความใน persona/tool description = "ต้องผ่านการอนุมัติจากผู้มีสิทธิ์" (ไม่สัญญา OWNER/MANAGER) · กติกา chat ฉีดเฉพาะเมื่อเครื่องมือถูกเสนอ (ไม่ใช่ `!ctx.access`)
+- **R-S1.12e (K-5/K-6)** `clientMessageId = "ai:" + proposalId` · lookup ซ้ำกรอง `direction: "OUT"` · ตรวจ `canAccessConvUnit` ด้วย unitAccess ผู้อนุมัติ **ก่อน claim** (ไม่ผ่าน ⇒ คง PENDING + note สิทธิ์) · `chat.send` ไม่ editable (S1.10)
+- **K-8** จด docs: `kind:"followup"` = ติดตามงานบริการ ไม่ใช่การตลาด (ไม่ตรวจ consent รุ่นแรก)
