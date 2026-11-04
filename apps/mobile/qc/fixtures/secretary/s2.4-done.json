@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.4 — ห้อง r1 เสร็จ (A5): สรุปของเลขา + บันทึก 4 แถว (2 แถวย้อนได้ถึง 2026-11-05T19:4xZ · ลิงก์ของจริง ดีล/การ์ด) + ย้อน/สอน/ทำซ้ำ",
+ "_about": "fixture ของใบ S2.4 — ห้อง r1 เสร็จ (A5): สรุปของเลขา + บันทึก 4 แถว (2 แถวย้อนได้ถึง 2026-11-05T19:4xZ · ลิงก์ของจริง ดีล/การ์ด) + ย้อน/สอน/ทำซ้ำ · S2.10: ค่า RoomStatus/DTO ตามสัญญา S1.14 (WAITING · OPEN = เสร็จแต่ยังไม่ปิด · ขั้น PENDING · classes · canApprove · log.link)",
  "noAuth": [
   "/login"
  ],
@@ -96,7 +96,7 @@
    "id": "r1",
    "conversationId": "c-r1",
    "title": "ใบเสนอราคา ร้านดอยช้าง",
-   "status": "DONE",
+   "status": "OPEN",
    "systems": [
     "crm",
     "account",
@@ -168,7 +168,8 @@
      "undoableUntil": null,
      "undoneAt": null,
      "canUndo": false,
-     "createdAt": "2026-11-04T19:42:00.000Z"
+     "createdAt": "2026-11-04T19:42:00.000Z",
+     "link": null
     },
     {
      "id": "l1",
@@ -186,7 +187,8 @@
      "undoableUntil": "2026-11-05T19:42:10.000Z",
      "undoneAt": null,
      "canUndo": true,
-     "createdAt": "2026-11-04T19:42:10.000Z"
+     "createdAt": "2026-11-04T19:42:10.000Z",
+     "link": null
     },
     {
      "id": "l2",
@@ -201,7 +203,8 @@
      "undoableUntil": null,
      "undoneAt": null,
      "canUndo": false,
-     "createdAt": "2026-11-04T19:43:00.000Z"
+     "createdAt": "2026-11-04T19:43:00.000Z",
+     "link": null
     },
     {
      "id": "l3",
@@ -219,7 +222,8 @@
      "undoableUntil": "2026-11-05T19:43:30.000Z",
      "undoneAt": null,
      "canUndo": true,
-     "createdAt": "2026-11-04T19:43:30.000Z"
+     "createdAt": "2026-11-04T19:43:30.000Z",
+     "link": null
     }
    ]
   },

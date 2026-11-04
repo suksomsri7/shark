@@ -1,0 +1,92 @@
+{
+ "d1Rows": 5,
+ "d1Chat": [
+  "แชทลูกค้า: ตอบได้",
+  "แชทลูกค้า: ตอบได้",
+  "แชทลูกค้า: ดูได้",
+  "ไม่เห็นแชทลูกค้า",
+  "แชทลูกค้า: ตอบได้"
+ ],
+ "d1Pending": 1,
+ "d1ResendPosts": [
+  "{}"
+ ],
+ "d1ResendNote": "ส่งคำเชิญอีกครั้งแล้ว",
+ "d1CancelBeforeOk": 0,
+ "d1CancelAfterOk": 1,
+ "d1RowUrl": "/secretary/staff/m2",
+ "d1StaffDenied": true,
+ "d1StaffInviteBtn": 0,
+ "d1StaffPlus": 1,
+ "d3Candidates": [
+  "ก\nก้อง พนักงาน\nดู/ใช้ได้: หอพัก",
+  "ย\nยิ่ง พนักงาน\nยังไม่ได้ตั้งสิทธิ์ระบบ"
+ ],
+ "d3HistoryDefault": null,
+ "d3ConfirmLabel": "เพิ่ม 2 คน",
+ "d3Posts": [
+  "{\"userId\":\"u-qc-kong\",\"seeHistory\":false}",
+  "{\"userId\":\"u-qc-ying\",\"seeHistory\":false}"
+ ],
+ "d3SheetClosed": true,
+ "d3RemoveBeforeOk": 0,
+ "d3RemoveAfterOk": 1,
+ "editFieldIds": [
+  "sec-room-edit-sheet-field-title",
+  "sec-room-edit-sheet-field-note"
+ ],
+ "editBody": [
+  "{\"patch\":{\"note\":\"เครดิต 45 วัน (โทรยืนยัน)\"}}"
+ ],
+ "editedFields": "ช่องที่แก้แล้ว\nชื่อ: ใบเสนอราคา Q-0012\nหมายเหตุ: เครดิต 45 วัน (โทรยืนยัน)",
+ "cardsBefore": 1,
+ "cardsAt600ms": 0,
+ "proposalsGetsAt600ms": 2,
+ "approveFlash": "ออกใบเสนอราคา Q-0012 แล้ว",
+ "cardsAfterReload": 0,
+ "deniedReloadGets": [
+  1,
+  2
+ ],
+ "deniedNote": "หมดอายุแล้ว",
+ "closeBeforeOk": 0,
+ "closeAfterOk": [
+  "{}"
+ ],
+ "cmidSameOnRetry": true,
+ "cmidNewAfterEdit": true,
+ "cmidCount": 3,
+ "dupFlash": "ข้อความนี้ส่งไปแล้ว — ไม่ส่งซ้ำ",
+ "undoButtons": 1,
+ "signature": "บรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน",
+ "undoConfirmItem": "ย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา",
+ "undoBeforeOk": 0,
+ "undoAfterOk": [
+  "{}"
+ ],
+ "undoNote": "ย้อนกลับแล้ว — ดีลกลับไปขั้นเดิม",
+ "undoHiddenWhenServerSaysNo": true,
+ "planFlash": "ทำแล้ว 1/2 ขั้น · ขั้นที่ล้ม: ยังไม่ได้ตั้งเลขผู้เสียภาษี",
+ "planCardsAfter": 1,
+ "planReloaded": true,
+ "appState": {
+  "foreground6s": 2,
+  "hiddenStart": 2,
+  "hiddenAfter11s": 2,
+  "afterVisible800ms": 3
+ },
+ "offlineGapsMs": [
+  5027,
+  10012,
+  20008
+ ],
+ "c1Default": "Shark",
+ "c1Preview": "ตัวอย่างการพูด\nสวัสดีค่ะ คุณสุข Nana เลขาของคุณพร้อมแล้วค่ะ สั่งงานได้เลย ทุกครั้งที่ต้องส่งถึงลูกค้าหรือเกี่ยวกับเงิน จะขออนุมัติก่อนค่ะ",
+ "c1SaveLabel": "เริ่มใช้ Nana",
+ "c1Put": [
+  "{\"name\":\"Nana\",\"suffix\":\"ค่ะ\",\"tone\":\"polite\"}"
+ ],
+ "c1Url": "/secretary",
+ "c1SkipPuts": 0,
+ "c1SkipUrl": "/secretary"
+}

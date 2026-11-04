@@ -103,3 +103,9 @@ pnpm exec node apps/mobile/qc/push-link-test.mjs
 
 ## ต่อจากนี้ (ถ้า restart)
 แก้จอแล้ว: รันบล็อก §6 → `bash scripts/iso.sh env QC_FORCE=1 SPEC=scripts/qc-sec-specs/s2.5.json pnpm exec tsx scripts/qc-sec-screen.mts`
+
+## 9. A.11 รอบ 2 — merge ทิป d35de315 (S2.10+S2.11)
+- ชน 6 ไฟล์ แก้แบบ union: i18n th/en (656 คีย์เท่ากัน · ไม่มีคีย์ซ้ำ) · `summary.json` = ชุดของทิป + 4 ภาพของ S2.5 · `sec-ui-inventory.json` = ของทิป + 29 แถว S2.5 · `s2.1.json` = ของทิป + expect/mock inbox/scheduled · `src/api/secretary.ts` = PATH/GetMap/PATH_ID ทั้งสองฝั่ง · `USER_LEVEL` = me + secretary + inbox · ลบงานประจำใช้ `secDeleteId` ของ S2.9 (เพิ่ม `secretary/scheduled/[id]` ใน DeleteIdMap)
+- ห้องงาน/StepCard/SecTopBar/ธีม = ของทิป (S2.5 ไม่แตะ) · `_layout.tsx` hunk push/badge merge อัตโนมัติ
+- ปรับตาม API ใหม่ของ `useApprovalFlow` (S2.10 · R-S2.4b): `onDone(item, removed)` ⇒ removed = เอารายการออกทันที + โหลดใหม่ + badge · flash = `{text, warn}` · `inboxToApproval` ส่ง `canApprove`
+- หลัง merge: s2.5 forced 9/9 · s2.10 forced 10/10 · s2.4 forced 7/7 · qc-sec-s2.1 forced 14/14 (ทุกตัวมี M-1 typecheck + D-1/D-2 fitness) · push-link-test 9/9 · ถ่ายใหม่ + ภาพคู่ A6/A7 ใหม่ + กดจริงซ้ำ (ผลเท่าเดิม)

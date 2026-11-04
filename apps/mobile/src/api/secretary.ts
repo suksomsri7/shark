@@ -18,8 +18,18 @@ const PATH = {
   "secretary/access": "/api/mobile/secretary/access",
   "secretary/inbox/count": "/api/mobile/secretary/inbox/count",
   "inbox/unread": "/api/mobile/inbox/unread",
-  // S2.4 ห้องงาน — ชื่อ = path ใต้ /api/mobile (S1.14) · "[id]" แทนด้วย id ตอนเรียก (secGetId/secPostId)
-  "secretary/log": "/api/mobile/secretary/log",
+  // ตั้งค่า (ใบ S2.7–S2.9 · ชื่อตาม S1.14 docs/api/SECRETARY-API.md)
+  "secretary": "/api/mobile/secretary/secretary",
+  "secretary/quota": "/api/mobile/secretary/quota",
+  "secretary/rules": "/api/mobile/secretary/rules",
+  "secretary/log": "/api/mobile/secretary/log", // ใช้ร่วม S2.4 (ห้องงาน ?roomId) + S2.8 (B5)
+  "secretary/lessons": "/api/mobile/secretary/lessons",
+  "secretary/memories/pending": "/api/mobile/secretary/memories/pending",
+  "secretary/digest": "/api/mobile/secretary/digest",
+  "secretary/after-hours": "/api/mobile/secretary/after-hours",
+  "secretary/staff": "/api/mobile/secretary/staff",
+  // S2.10 D1: จุดเข้าเวร (eligibleResponders · onDuty) — เส้นแชทลูกค้า (ไม่ใช่ secretary/*) · พลาด = ไม่แสดงเวร
+  "inbox/staff": "/api/mobile/inbox/staff",
   // S2.5 กล่องรวมรออนุมัติ (ทุกกิจการ · ไม่ส่ง x-tenant-id) · งานประจำ · S2.6 badge ไอคอนแอป
   "secretary/inbox": "/api/mobile/secretary/inbox",
   "secretary/scheduled": "/api/mobile/secretary/scheduled",
@@ -40,6 +50,15 @@ const PATH_ID = {
   "secretary/plans/[id]/approve": "/api/mobile/secretary/plans/[id]/approve",
   "secretary/plans/[id]/reject": "/api/mobile/secretary/plans/[id]/reject",
   "secretary/log/[id]/undo": "/api/mobile/secretary/log/[id]/undo",
+  // S2.9 ความรู้ของกิจการ (B6)
+  "secretary/lessons/[id]": "/api/mobile/secretary/lessons/[id]",
+  "secretary/lessons/[id]/confirm": "/api/mobile/secretary/lessons/[id]/confirm",
+  "secretary/memories/[id]": "/api/mobile/secretary/memories/[id]",
+  "secretary/memories/[id]/confirm": "/api/mobile/secretary/memories/[id]/confirm",
+  // S2.10 D1/D3 สมาชิกห้อง + คำเชิญค้าง
+  "secretary/rooms/[id]/members": "/api/mobile/secretary/rooms/[id]/members",
+  "secretary/staff/invites/[id]": "/api/mobile/secretary/staff/invites/[id]",
+  "secretary/staff/invites/[id]/resend": "/api/mobile/secretary/staff/invites/[id]/resend",
   "secretary/scheduled/[id]": "/api/mobile/secretary/scheduled/[id]",
 } as const;
 export type SecIdPath = keyof typeof PATH_ID;
@@ -100,10 +119,19 @@ type GetMap = {
   "secretary/rooms": { items?: RoomRaw[]; nextBefore?: string | null };
   "secretary/suggestions": { items?: unknown[]; frequent?: unknown[] } | unknown[];
   "secretary/frequent": { items?: unknown[] } | unknown[];
-  "secretary/access": { items?: AccessItem[]; autoAvailable?: boolean };
+  "secretary/access": { items?: AccessItem[]; levels?: string[]; autoAvailable?: boolean };
   "secretary/inbox/count": InboxCount;
   "inbox/unread": { unread: number };
-  "secretary/log": { items?: unknown[] };
+  "secretary": SecretaryIdentity;
+  "secretary/quota": QuotaView;
+  "secretary/rules": RulesView;
+  "secretary/log": { items?: LogRow[] };
+  "secretary/lessons": { items?: Lesson[] };
+  "secretary/memories/pending": { items?: PendingMemory[] };
+  "secretary/digest": { digest?: Digest | null };
+  "secretary/after-hours": AfterHours;
+  "secretary/staff": { items?: StaffRow[] };
+  "inbox/staff": { items?: { userId: string; name?: string | null; role?: string; onDuty?: boolean }[] };
   "secretary/inbox": { items?: unknown[] };
   "secretary/scheduled": { items?: unknown[]; max?: number };
   "secretary/badge": { badge?: number };
@@ -124,8 +152,8 @@ function url(path: SecPath, q?: Query): string {
   return qs ? `${PATH[path]}?${qs}` : PATH[path];
 }
 
-/** เส้นระดับผู้ใช้ (ไม่ส่ง x-tenant-id · SECRETARY-API ข้อ 1): secretary/me · กล่องรวมทุกกิจการ secretary/inbox */
-const USER_LEVEL: ReadonlySet<SecPath> = new Set<SecPath>(["secretary/me", "secretary/inbox"]);
+/** เส้นระดับผู้ใช้ (ข้ามกิจการ · ไม่ส่ง x-tenant-id · SECRETARY-API ข้อ 1): secretary/me · secretary · กล่องรวมทุกกิจการ secretary/inbox */
+const USER_LEVEL: ReadonlySet<SecPath> = new Set<SecPath>(["secretary/me", "secretary", "secretary/inbox"]);
 
 /** GET เส้นของเลขา · เส้นระดับผู้ใช้ไม่ส่ง x-tenant-id */
 export function secGet<P extends keyof GetMap>(path: P, q?: Query): Promise<GetMap[P]> {
@@ -138,7 +166,7 @@ export function secPost<P extends keyof PostMap>(path: P, body: PostMap[P]["body
 
 // ───────── เส้นที่มี [id] (S2.4 ห้องงาน · ชื่อ/รูปตาม S1.14 docs/api/SECRETARY-API.md) ─────────
 /** ผลอนุมัติ (200 เสมอ · ไม่ผ่าน = ok:false + note ไทย) · DESTRUCTIVE ที่ยังไม่ยืนยัน 2 ชั้น ⇒ needsSecondConfirm */
-export type ApproveRes = { ok: boolean; note?: string; needsSecondConfirm?: boolean; why?: string; doneCount?: number };
+export type ApproveRes = { ok: boolean; note?: string; needsSecondConfirm?: boolean; why?: string; doneCount?: number; results?: { summary?: string; ok?: boolean; note?: string }[] };
 export type RejectBody = { note?: string; remember?: "JOB" | "RULE" };
 /** POST/PUT งานประจำ (สัญญา SECRETARY-API · รุ่นแรกแอปตั้งได้แค่ DAILY/WEEKLY) */
 export type ScheduleBody = { instruction: string; hourBkk: number; frequency: "DAILY" | "WEEKLY"; days?: number[]; channels: ("push" | "room")[] };
@@ -146,6 +174,7 @@ type GetIdMap = {
   "secretary/rooms/[id]": Record<string, unknown>;
   "secretary/rooms/[id]/messages": { items?: unknown[]; nextBefore?: string | null };
   "secretary/rooms/[id]/proposals": { items?: unknown[] };
+  "secretary/rooms/[id]/members": { items?: unknown[]; max?: number };
 };
 type PostIdMap = {
   "secretary/rooms/[id]/send": { body: { text: string; clientMessageId: string }; res: { ok?: boolean; messageId?: string; jobId?: string; duplicate?: boolean } };
@@ -156,7 +185,12 @@ type PostIdMap = {
   "secretary/plans/[id]/approve": { body: { confirm2x?: boolean }; res: ApproveRes };
   "secretary/plans/[id]/reject": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/log/[id]/undo": { body: Record<string, never>; res: { ok: boolean; note?: string } };
+  "secretary/lessons/[id]/confirm": { body: Record<string, never>; res: { ok: boolean } };
+  "secretary/memories/[id]/confirm": { body: Record<string, never>; res: { ok: boolean } };
+  "secretary/rooms/[id]/members": { body: { userId: string; seeHistory: boolean }; res: { ok: boolean; member?: unknown } };
+  "secretary/staff/invites/[id]/resend": { body: Record<string, never>; res: { ok: boolean; sms?: string; expiresAt?: string; link?: string | null } };
 };
+type DeleteIdMap = { "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean }; "secretary/staff/invites/[id]": { ok: boolean }; "secretary/scheduled/[id]": { ok: boolean } };
 
 function urlId(path: SecIdPath, id: string, q?: Query): string {
   const base = PATH_ID[path].replace("[id]", encodeURIComponent(id));
@@ -183,8 +217,14 @@ export function secPutId(path: "secretary/scheduled/[id]", id: string, body: { a
   return api(urlId(path, id), { method: "PUT", body });
 }
 
-export function secDeleteId(path: "secretary/scheduled/[id]", id: string): Promise<{ ok: boolean }> {
-  return api(urlId(path, id), { method: "DELETE" });
+/** DELETE เส้นที่มี [id] (S2.9 ไม่รับบทเรียน / ลบความจำ · S2.5 ลบงานประจำ) */
+export function secDeleteId<P extends keyof DeleteIdMap>(path: P, id: string): Promise<DeleteIdMap[P]> {
+  return api<DeleteIdMap[P]>(urlId(path, id), { method: "DELETE" });
+}
+
+/** ถอดสมาชิกออกจากห้อง (D3 · DELETE secretary/rooms/[id]/members/[userId] — 2 พารามิเตอร์ จึงแยกจาก PATH_ID) */
+export function secDeleteRoomMember(roomId: string, userId: string): Promise<{ ok: boolean }> {
+  return api<{ ok: boolean }>(`${urlId("secretary/rooms/[id]/members", roomId)}/${encodeURIComponent(userId)}`, { method: "DELETE" });
 }
 
 /** รหัสข้อความฝั่งแอป (กันส่งซ้ำ · POST rooms) */
@@ -298,13 +338,16 @@ export function normalizeMessages(v: unknown): MsgRow[] {
     .filter((m) => m.id && m.content.trim());
 }
 
-export type StepStatus = "done" | "run" | "wait";
+/** สถานะขั้น (S1.14: PENDING|RUNNING|DONE|FAILED|SKIPPED) → done ✓ · run ● · wait ⏸ · fail ✕ · skip – */
+export type StepStatus = "done" | "run" | "wait" | "fail" | "skip";
 export type StepRow = { kind: string; module: string; summary: string; status: StepStatus };
 function stepStatus(v: unknown, fallback: StepStatus): StepStatus {
   const s = String(v ?? "").toUpperCase();
   if (s === "DONE" || s === "OK" || s === "EXECUTED") return "done";
   if (s === "RUNNING" || s === "RUN") return "run";
   if (s === "WAITING" || s === "PENDING" || s === "WAIT") return "wait";
+  if (s === "FAILED" || s === "FAIL" || s === "ERROR") return "fail";
+  if (s === "SKIPPED" || s === "SKIP") return "skip";
   return fallback;
 }
 
@@ -324,9 +367,11 @@ export type ProposalItem = {
   editable: boolean;
   input: Record<string, unknown> | null;
   edited: boolean;
+  /** dry-run ของด่านจริงสำหรับผู้ดู (S1.14 · ไม่ส่งมา = ถือว่าได้ แล้วให้ผล approve ตัดสิน) */
+  canApprove: boolean;
   at: string;
 };
-export type PlanItem = { type: "plan"; id: string; title: string; steps: StepRow[]; destructive: boolean; why: string | null; pending: boolean; at: string };
+export type PlanItem = { type: "plan"; id: string; title: string; steps: StepRow[]; destructive: boolean; why: string | null; pending: boolean; canApprove: boolean; at: string };
 export type ApprovalItem = ProposalItem | PlanItem;
 
 const whyOf = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).join(" · ") || null : null);
@@ -339,7 +384,7 @@ function planOf(o: Record<string, unknown>, pending: boolean): PlanItem {
       const kind = str(x.kind);
       return { kind, module: str(x.module) || moduleOfKind(kind), summary: str(x.summary), status: stepStatus(x.status, "wait") };
     });
-  return { type: "plan", id: str(o.id), title: str(o.title), steps, destructive: o.hasDestructive === true, why: whyOf(o.why), pending, at: isoOf(o.createdAt) };
+  return { type: "plan", id: str(o.id), title: str(o.title), steps, destructive: o.hasDestructive === true, why: whyOf(o.why), pending, canApprove: o.canApprove !== false, at: isoOf(o.createdAt) };
 }
 
 /** GET rooms/[id]/proposals → ข้อเสนอ + แผนที่รออนุมัติ */
@@ -366,6 +411,7 @@ export function normalizeApprovals(v: unknown): ApprovalItem[] {
         editable: o.editable === true && !!input,
         input,
         edited: o.edited === true,
+        canApprove: o.canApprove !== false,
         at: isoOf(o.createdAt),
       };
     })
@@ -383,7 +429,8 @@ export type LogItem = {
   canUndo: boolean;
   at: string;
 };
-/** GET log?roomId → การ์ด "ทำแล้ว" (canUndo จากเซิร์ฟเวอร์ ∩ ยังไม่เลยเวลาที่เครื่อง) */
+/** GET log?roomId → การ์ด "ทำแล้ว" · ย้อนได้ = `canUndo` ของเซิร์ฟเวอร์ (สิทธิ์ + นาฬิกาเซิร์ฟเวอร์ · R-S2.4a) ∩ ยังไม่ย้อน
+ *  เซิร์ฟเวอร์รุ่นเก่าไม่ส่ง canUndo ⇒ เทียบ undoableUntil ตอนโหลด (logCanUndo) · `link` อยู่ระดับแถว (S1.14) หรือใน entity */
 export function normalizeLog(v: unknown, nowMs: number): LogItem[] {
   return listOf(v)
     .map((x) => {
@@ -392,16 +439,16 @@ export function normalizeLog(v: unknown, nowMs: number): LogItem[] {
       const kind = str(o.kind);
       const until = isoOrNull(o.undoableUntil);
       const undoneAt = isoOrNull(o.undoneAt);
-      const inTime = !!until && Date.parse(until) > nowMs;
+      const link = typeof o.link === "string" ? o.link : typeof e.link === "string" ? e.link : null;
       return {
         id: str(o.id),
         kind,
         module: str(o.module) || moduleOfKind(kind),
         summary: str(o.summary),
-        entity: str(e.type) && str(e.id) ? { type: str(e.type), id: str(e.id), link: typeof e.link === "string" ? e.link : null } : null,
+        entity: str(e.type) && str(e.id) ? { type: str(e.type), id: str(e.id), link } : null,
         undoableUntil: until,
         undoneAt,
-        canUndo: (o.canUndo === undefined ? true : o.canUndo === true) && !undoneAt && inTime,
+        canUndo: logCanUndo({ undoneAt, undoableUntil: until, canUndo: typeof o.canUndo === "boolean" ? o.canUndo : undefined }, nowMs),
         at: isoOf(o.createdAt),
       };
     })
@@ -420,7 +467,7 @@ export type RoomDetail = {
   updatedAt: string;
   closed: boolean;
   canManage: boolean;
-  members: { userId: string; name: string | null }[];
+  members: { userId: string; name: string | null; role: string; seeHistory: boolean }[];
   /** ความคืบหน้าของแผนที่กำลังทำ (ถ้าเซิร์ฟเวอร์ส่ง `plans`) */
   plans: PlanItem[];
 };
@@ -437,8 +484,12 @@ export function normalizeRoomDetail(v: unknown): RoomDetail {
     updatedAt: isoOf(o.updatedAt),
     closed: !!o.closedAt || raw === "CLOSED",
     canManage: o.canManage === true,
-    members: (Array.isArray(o.members) ? o.members : []).map((m) => rec(m)).filter((m) => str(m.userId)).map((m) => ({ userId: str(m.userId), name: str(m.name) || null })),
-    plans: (Array.isArray(o.plans) ? o.plans : []).map((p) => planOf(rec(p), false)).filter((p) => p.id && p.steps.length > 0),
+    members: (Array.isArray(o.members) ? o.members : [])
+      .map((m) => rec(m))
+      .filter((m) => str(m.userId))
+      .map((m) => ({ userId: str(m.userId), name: str(m.name) || null, role: str(m.role), seeHistory: m.seeHistory === true })),
+    // แผนของห้อง (S1.14: PENDING + RUNNING) — แผน PENDING ซ้ำกับการ์ดอนุมัติ จอกรองออกด้วย id
+    plans: (Array.isArray(o.plans) ? o.plans : []).map((p) => planOf(rec(p), str(rec(p).status).toUpperCase() === "PENDING")).filter((p) => p.id && p.steps.length > 0),
   };
 }
 
@@ -557,6 +608,189 @@ export function useSecretaryZone(): void {
   );
 }
 
+// ───────── ตั้งค่า (ใบ S2.7 B1/B2/B8 · S2.8 B3/B4/B5 · S2.9 B6/B7) — รูปตาม S1.14 dto.ts ─────────
+/** ตัวตนเลขา (GET/PUT secretary · ระดับผู้ใช้) — `sample` = ประโยคตัวอย่างของเซิร์ฟเวอร์ */
+export type SecretaryIdentity = { name: string; suffix: string; tone: "polite" | "friendly" | "brief" | string; languages: string[]; sample?: string; saved?: boolean };
+export const TONES = ["polite", "friendly", "brief"] as const;
+export type Tone = (typeof TONES)[number];
+/** ภาษาที่เลขาตอบได้ (LANGUAGES ใน lib identity.ts) */
+export const SEC_LANGUAGES = ["th", "en", "zh", "ja"] as const;
+/** คำลงท้าย = ค่าจริงที่ส่งเซิร์ฟเวอร์ (ข้อมูล ไม่ใช่ข้อความบนจอ — ป้ายบนจออยู่ใน i18n sec.me.suffix.*) */
+export const SUFFIXES = [
+  { key: "khrap", value: "ครับ" },
+  { key: "kha", value: "ค่ะ" },
+  { key: "none", value: "" },
+] as const;
+export type SuffixKey = (typeof SUFFIXES)[number]["key"];
+export function suffixKeyOf(v: string | undefined | null): SuffixKey {
+  return SUFFIXES.find((s) => s.value === (v ?? "").trim())?.key ?? "none";
+}
+export function suffixValueOf(k: SuffixKey): string {
+  return SUFFIXES.find((s) => s.key === k)?.value ?? "";
+}
+
+/** โควตา (R-S1.13i wire shape) — ไม่มียอดเงิน · assist มาเป็นหน่วยไมโคร แต่จอแสดงเป็น % เท่านั้น (§C.6) */
+export type QuotaView = {
+  jobs?: { used?: number; limit?: number; left?: number; pct?: number; level?: string; text?: string | null; resetAt?: string; month?: string };
+  assist?: { usedMicro?: number; capMicro?: number; pct?: number };
+  credit?: { blocked?: string | null };
+  pack?: { enabled?: boolean; jobsPerMonth?: number; scheduledMax?: number; approversMax?: number };
+};
+const pct100 = (v: number) => Math.max(0, Math.min(100, Math.round(Number.isFinite(v) ? v : 0)));
+/** ตัวเลขที่จอโควตาใช้ — ทุก % ถูกตัดที่ 0..100 (B8 cap) · ไม่คืนค่าที่เป็นเงิน */
+export function quotaNumbers(q: QuotaView | null | undefined): { used: number; limit: number; left: number; pct: number; assistPct: number; resetAt: string | null; level: string; text: string | null; blocked: boolean } {
+  const used = Math.max(0, Number(q?.jobs?.used ?? 0) || 0);
+  const limit = Math.max(0, Number(q?.jobs?.limit ?? q?.pack?.jobsPerMonth ?? 0) || 0);
+  const left = Math.max(0, Number(q?.jobs?.left ?? limit - used) || 0);
+  const pct = pct100(q?.jobs?.pct ?? (limit > 0 ? (used / limit) * 100 : 0));
+  const a = q?.assist;
+  const cap = Number(a?.capMicro ?? 0) || 0;
+  const assistPct = pct100(a?.pct ?? (cap > 0 ? ((Number(a?.usedMicro ?? 0) || 0) / cap) * 100 : 0));
+  return { used, limit, left, pct, assistPct, resetAt: q?.jobs?.resetAt ?? null, level: q?.jobs?.level ?? "ok", text: q?.jobs?.text ?? null, blocked: !!q?.credit?.blocked };
+}
+
+/** ระดับเลขาต่อระบบ — รุ่นแรก 3 ระดับ (AUTO ไม่มีใน API · จอแสดงขั้นที่ 4 แบบล็อก) */
+export const ACCESS_LEVELS = ["OFF", "READ", "DRAFT"] as const;
+export type AccessLevel = (typeof ACCESS_LEVELS)[number];
+
+/** กฎอนุมัติ 3 ข้อ (R-K3b: เก็บ + แสดง + ใช้ในข้อความ "ทำไมต้องอนุมัติ") */
+export const RULE_KEYS = ["chat.send", "money.limit", "pii.export"] as const;
+export type RuleKey = (typeof RULE_KEYS)[number];
+export type RuleState = { enabled: boolean; limitSatang: number | null };
+export type RulesView = { rules?: Partial<Record<RuleKey, RuleState>>; keys?: string[]; alwaysApprove?: string[] };
+
+/** บันทึกการกระทำ (B5 · logDto) */
+export type LogRow = {
+  id: string;
+  kind: string;
+  module: string;
+  summary: string;
+  roomId?: string | null;
+  proposalId?: string | null;
+  userId?: string | null;
+  approverId?: string | null;
+  entity?: { type: string; id: string } | null;
+  undoableUntil?: string | null;
+  undoneAt?: string | null;
+  canUndo?: boolean;
+  createdAt: string;
+};
+/** ย้อนได้ = ยังไม่ย้อน และเซิร์ฟเวอร์บอก canUndo (สิทธิ์ + เวลา ฝั่งเซิร์ฟเวอร์ · RESOLUTIONS R-S2.4a ไม่ใช้นาฬิกาเครื่อง)
+ *  · เซิร์ฟเวอร์ไม่ส่ง canUndo (รุ่นเก่า) ⇒ ดู undoableUntil เทียบตอนโหลด · สิทธิ์จริงตรวจตอนกด */
+export function logCanUndo(r: Pick<LogRow, "undoneAt" | "undoableUntil" | "canUndo">, nowMs: number): boolean {
+  if (r.undoneAt) return false;
+  if (typeof r.canUndo === "boolean") return r.canUndo;
+  const until = r.undoableUntil ? Date.parse(r.undoableUntil) : NaN;
+  return Number.isFinite(until) && until > nowMs;
+}
+
+export type Lesson = { id: string; kind: string; pattern: string; example?: string | null; status: "PENDING" | "CONFIRMED" | "REJECTED" | string; occurrences?: number; sourceRoomId?: string | null; sourceUserId?: string | null; createdAt?: string; updatedAt?: string };
+export type PendingMemory = { id: string; content: string; createdAt?: string; byUserId?: string | null };
+/** ข้อมูลสดของกิจการ (computeDigest → digestForViewer · ส่วนที่อ่านไม่ได้ = null) */
+export type Digest = {
+  at?: string;
+  activeSystems?: string[];
+  sales?: { todaySatang: number; todayCount: number; d7Satang: number; d7Count: number; d30Satang: number; d30Count: number } | null;
+  quietCustomers?: { count: number } | null;
+  lowStock?: { count: number } | null;
+  receivables?: { count: number; totalSatang: number; overdueCount: number } | null;
+  tomorrow?: { appointments: number; firstAt?: string | null } | null;
+  pending?: { approvalsAged: number; leavesAged: number; shopOrders: number } | null;
+};
+/** ตอบลูกค้านอกเวลา (B7 · afterHoursSettings) */
+export type AfterHours = { reply: boolean; handoff: boolean; disclosure: string };
+/** แถวของ GET secretary/staff (S1.14 · listStaffAccess includeInvites + staffViewOf) — รูปดิบ · จอ D1/D3 ใช้ผ่าน normalizeStaff */
+export type StaffRow = {
+  pending?: boolean;
+  userId?: string;
+  name?: string | null;
+  role?: string;
+  me?: boolean;
+  active?: boolean;
+  membershipId?: string;
+  joinedAt?: string | null;
+  units?: string[];
+  levels?: Record<string, string>;
+  chat?: string;
+  inviteId?: string;
+  phoneMasked?: string | null;
+  expiresAt?: string;
+  expired?: boolean;
+};
+/** ระดับแชทลูกค้าของพนักงาน (staffViewOf.chat · R-S1.25h) */
+export type ChatLevel = "NONE" | "VIEW" | "REPLY";
+export const CHAT_LEVELS: readonly ChatLevel[] = ["NONE", "VIEW", "REPLY"];
+export type StaffPerson = { membershipId: string; userId: string; name: string; role: string; active: boolean; me: boolean; units: string[]; levels: Record<string, string>; chat: ChatLevel };
+export type StaffInvite = { inviteId: string; name: string; phoneMasked: string; role: string; expiresAt: string; expired: boolean };
+export function chatLevelOf(v: unknown): ChatLevel {
+  return v === "REPLY" || v === "VIEW" ? v : "NONE";
+}
+/** แยกพนักงาน / คำเชิญค้าง (แถว pending:true) · ระดับต่อโมดูลไม่มีแชท (ดู chat) */
+export function normalizeStaff(v: unknown): { people: StaffPerson[]; invites: StaffInvite[] } {
+  const people: StaffPerson[] = [];
+  const invites: StaffInvite[] = [];
+  for (const x of listOf(v)) {
+    const o = rec(x);
+    if (o.pending === true) {
+      if (!str(o.inviteId)) continue;
+      invites.push({ inviteId: str(o.inviteId), name: str(o.name), phoneMasked: str(o.phoneMasked), role: str(o.role) || "STAFF", expiresAt: isoOf(o.expiresAt), expired: o.expired === true });
+      continue;
+    }
+    if (!str(o.userId)) continue;
+    const lv = rec(o.levels);
+    people.push({
+      membershipId: str(o.membershipId),
+      userId: str(o.userId),
+      name: str(o.name),
+      role: str(o.role) || "STAFF",
+      active: o.active !== false,
+      me: o.me === true,
+      units: Array.isArray(o.units) ? o.units.filter((u): u is string => typeof u === "string") : [],
+      levels: Object.fromEntries(Object.entries(lv).filter(([, l]) => typeof l === "string")) as Record<string, string>,
+      chat: chatLevelOf(o.chat),
+    });
+  }
+  return { people, invites };
+}
+
+/** ข้อความแจ้งลูกค้าต้องบอกว่าเป็น AI (กติกาเดียวกับเซิร์ฟเวอร์ · RESOLUTIONS R-S1.22d) · ≤ 200 ตัว */
+export const DISCLOSURE_MAX = 200;
+const DISCLOSURE_AI_RE = /AI|เอไอ|ผู้ช่วย/i;
+export function disclosureProblem(v: string): "empty" | "noAi" | "long" | null {
+  const d = v.trim();
+  if (!d) return "empty";
+  if (Array.from(d).length > DISCLOSURE_MAX) return "long";
+  if (!DISCLOSURE_AI_RE.test(d)) return "noAi";
+  return null;
+}
+
+type PutMap = {
+  secretary: { body: { name?: string; suffix?: string; tone?: string; languages?: string[] }; res: SecretaryIdentity };
+  "secretary/access": { body: { module: string; level: AccessLevel }; res: { items?: AccessItem[] } };
+  "secretary/rules": { body: { key: RuleKey; enabled?: boolean; limitSatang?: number | null }; res: RulesView };
+  "secretary/after-hours": { body: Partial<AfterHours>; res: AfterHours };
+};
+/** บันทึกตัวตนเลขา (PUT secretary · ระดับผู้ใช้ — B2 + C1) */
+export function updateSecretary(body: PutMap["secretary"]["body"]): Promise<SecretaryIdentity> {
+  return secPut("secretary", body);
+}
+
+/** PUT เส้นตั้งค่า (เซิร์ฟเวอร์ตรวจสิทธิ์เจ้าของเอง — จอแค่ซ่อนปุ่ม) */
+export function secPut<P extends keyof PutMap>(path: P, body: PutMap[P]["body"]): Promise<PutMap[P]["res"]> {
+  return api<PutMap[P]["res"]>(url(path), { method: "PUT", body, tenant: !USER_LEVEL.has(path) });
+}
+
+/** ข้อความไทยของเซิร์ฟเวอร์ (400/403 ของ lib) — ไม่มี = null (จอใช้ข้อความ i18n ของตัวเอง) */
+export function serverNote(e: unknown): string | null {
+  return e instanceof ApiError && typeof e.detail === "string" && e.detail.trim() ? e.detail.trim() : null;
+}
+
+/** บทบาทของผู้ใช้ในกิจการที่ใช้อยู่ (จาก /me) — หน้าตั้งค่าของเจ้าของแสดงอ่านอย่างเดียวเมื่อไม่ใช่ OWNER */
+export function useActiveRole(): string | null {
+  const { tenants, activeTenantId } = useAuth();
+  return tenants.find((x) => x.tenantId === activeTenantId)?.role ?? null;
+}
+
 // ───────── S2.5 กล่องรวมรออนุมัติทุกกิจการ (A6) — GET secretary/inbox (ไม่ส่ง x-tenant-id) ─────────
 /** ชั้นของรายการในกล่องรวม (แท็บ เงิน/ส่งลูกค้า/ลบ) */
 export type InboxClass = { money: boolean; customer: boolean; destructive: boolean };
@@ -628,7 +862,7 @@ export function normalizeInbox(v: unknown): InboxRow[] {
 
 /** แถวกล่องรวม → รูปของการ์ดอนุมัติ (ใช้ useApprovalFlow เดิม: ยืนยัน 2 ชั้น · ชีตตีกลับ C4) — ไม่มี payload ⇒ แก้ไม่ได้ (แก้ในห้อง) */
 export function inboxToApproval(r: InboxRow): ApprovalItem {
-  if (r.type === "plan") return { type: "plan", id: r.id, title: r.summary, steps: [], destructive: r.cls.destructive, why: r.why, pending: true, at: r.createdAt };
+  if (r.type === "plan") return { type: "plan", id: r.id, title: r.summary, steps: [], destructive: r.cls.destructive, why: r.why, pending: true, canApprove: r.canApprove, at: r.createdAt };
   return {
     type: "proposal",
     id: r.id,
@@ -643,6 +877,7 @@ export function inboxToApproval(r: InboxRow): ApprovalItem {
     editable: false,
     input: null,
     edited: false,
+    canApprove: r.canApprove,
     at: r.createdAt,
   };
 }

@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.4 — ห้อง r1 รออนุมัติ (A4): 4 ข้อความ (ผู้ใช้ · เลขา · ระบบ 🔔 · เลขา) + แผน 3 ขั้น (✓ ● ⏸) + 2 ข้อเสนอ (kanban.cards.create แก้ได้ · chat.send ส่งลูกค้า แก้ไม่ได้ · ทั้งคู่มี why) + log 1 แถวย้อนได้ (ถึง 2026-11-05T19:40Z — ถ่ายหลังเวลานี้ปุ่มย้อนจะหาย ให้เลื่อนวันที่) · ข้อมูลจำลองล้วน",
+ "_about": "fixture ของใบ S2.4 — ห้อง r1 รออนุมัติ (A4): 4 ข้อความ (ผู้ใช้ · เลขา · ระบบ 🔔 · เลขา) + แผน 3 ขั้น (✓ ● ⏸) + 2 ข้อเสนอ (kanban.cards.create แก้ได้ · chat.send ส่งลูกค้า แก้ไม่ได้ · ทั้งคู่มี why) + log 1 แถวย้อนได้ (ถึง 2026-11-05T19:40Z — ถ่ายหลังเวลานี้ปุ่มย้อนจะหาย ให้เลื่อนวันที่) · ข้อมูลจำลองล้วน · S2.10: ค่า RoomStatus/DTO ตามสัญญา S1.14 (WAITING · OPEN = เสร็จแต่ยังไม่ปิด · ขั้น PENDING · classes · canApprove · log.link)",
  "noAuth": [
   "/login"
  ],
@@ -109,7 +109,7 @@
    "id": "r1",
    "conversationId": "c-r1",
    "title": "ใบเสนอราคา ร้านดอยช้าง",
-   "status": "WAITING_APPROVAL",
+   "status": "WAITING",
    "systems": [
     "crm",
     "account",
@@ -152,9 +152,10 @@
       {
        "kind": "chat.send",
        "summary": "ส่ง LINE ถึงคุณสมชาย — รออนุมัติ",
-       "status": "WAITING"
+       "status": "PENDING"
       }
-     ]
+     ],
+     "status": "RUNNING"
     }
    ]
   },
@@ -213,7 +214,13 @@
      "edited": false,
      "why": "ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ",
      "createdAt": "2026-11-04T19:41:10.000Z",
-     "expiresAt": "2026-11-07T19:41:10.000Z"
+     "expiresAt": "2026-11-07T19:41:10.000Z",
+     "classes": {
+      "money": false,
+      "customerFacing": true,
+      "destructive": false
+     },
+     "canApprove": true
     },
     {
      "id": "p-card",
@@ -236,7 +243,13 @@
      "edited": false,
      "why": "เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ",
      "createdAt": "2026-11-04T19:41:20.000Z",
-     "expiresAt": "2026-11-07T19:41:20.000Z"
+     "expiresAt": "2026-11-07T19:41:20.000Z",
+     "classes": {
+      "money": false,
+      "customerFacing": false,
+      "destructive": false
+     },
+     "canApprove": true
     }
    ]
   },
@@ -258,7 +271,8 @@
      "undoableUntil": "2026-11-05T19:40:00.000Z",
      "undoneAt": null,
      "canUndo": true,
-     "createdAt": "2026-11-04T19:40:00.000Z"
+     "createdAt": "2026-11-04T19:40:00.000Z",
+     "link": null
     }
    ]
   },

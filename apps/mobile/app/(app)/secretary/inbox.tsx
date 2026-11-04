@@ -110,15 +110,20 @@ export default function SecretaryInboxScreen() {
           ? secPostId("secretary/plans/[id]/reject", item.id, {}, { tenantId })
           : secPostId("secretary/proposals/[id]/reject", item.id, body, { tenantId });
       },
-      edit: async () => {},
+      edit: async () => ({ ok: false }),
     }),
     [],
   );
-  const onChanged = useCallback(() => {
-    void load();
-    if (activeTenantId) void refreshZoneBadges();
-  }, [load, activeTenantId]);
-  const flow = useApprovalFlow({ actions, onChanged, name, ids: AP_IDS });
+  // R-S2.4b: ok ⇒ เอารายการออกทันที (แล้วโหลดใหม่ให้ตรงเซิร์ฟเวอร์) · ok:false/409/410 ⇒ โหลดใหม่ทันที
+  const onDone = useCallback(
+    (item: { id: string }, removed: boolean) => {
+      if (removed) setRows((l) => (l ?? []).filter((x) => x.id !== item.id));
+      void load();
+      if (activeTenantId) void refreshZoneBadges();
+    },
+    [load, activeTenantId],
+  );
+  const flow = useApprovalFlow({ actions, onDone, name, ids: AP_IDS });
   const { flash } = flow;
   const clearRef = useRef(flow.clearFlash);
   clearRef.current = flow.clearFlash;
@@ -130,6 +135,8 @@ export default function SecretaryInboxScreen() {
     }, 4000);
     return () => clearTimeout(h);
   }, [flash, openErr]);
+  const flashText = openErr ?? flash?.text ?? null;
+  const flashWarn = !!openErr || !!flash?.warn;
 
   // แตะรายการ: กิจการต่างจาก active ⇒ switchTenant ก่อน (รายการของร้านที่เป็นสมาชิกเท่านั้น) แล้วเปิดห้องงาน
   const open = async (r: InboxRow) => {
@@ -229,9 +236,9 @@ export default function SecretaryInboxScreen() {
         ) : null}
       </ScrollView>
 
-      {flash || openErr ? (
-        <Text testID="sec-inbox-flash" style={[styles.flash, { color: openErr ? c.warn.fg : c.text, backgroundColor: openErr ? c.warn.bg : c.chip.bg }]}>
-          {openErr ?? flash}
+      {flashText ? (
+        <Text testID="sec-inbox-flash" style={[styles.flash, { color: flashWarn ? c.warn.fg : c.text, backgroundColor: flashWarn ? c.warn.bg : c.chip.bg }]}>
+          {flashText}
         </Text>
       ) : null}
       {flow.sheets}

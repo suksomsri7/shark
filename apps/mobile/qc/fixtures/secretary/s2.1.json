@@ -43,11 +43,13 @@
    "sec-sched-item"
   ],
   "/secretary/staff": [
-   "sec-secretary-staff",
+   "sec-staff",
    "sec-top-secretary",
    "sec-top-customers",
    "sec-top-team",
-   "sec-top-help"
+   "sec-top-help",
+   "sec-staff-row",
+   "sec-staff-invite"
   ],
   "/secretary/staff/m1": [
    "sec-secretary-staff-member",
@@ -64,53 +66,47 @@
    "sec-top-help"
   ],
   "/secretary/settings": [
-   "sec-secretary-settings",
+   "sec-settings",
    "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
    "sec-top-help"
   ],
   "/secretary/settings/secretary": [
-   "sec-secretary-settings-secretary",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-me",
+   "sec-me-name",
+   "sec-me-suffix",
+   "sec-me-tone",
+   "sec-me-lang",
+   "sec-me-save",
+   "sec-me-stat",
+   "sec-me-sample"
   ],
   "/secretary/settings/access": [
-   "sec-secretary-settings-access",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-access"
   ],
   "/secretary/settings/rules": [
-   "sec-secretary-settings-rules",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-rules",
+   "sec-rules-row",
+   "sec-rules-limit",
+   "sec-rules-approver"
   ],
   "/secretary/settings/log": [
-   "sec-secretary-settings-log",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-log",
+   "sec-log-filter",
+   "sec-log-empty"
   ],
   "/secretary/settings/knowledge": [
-   "sec-secretary-settings-knowledge",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-know",
+   "sec-know-fact",
+   "sec-know-lesson",
+   "sec-know-digest"
   ],
   "/secretary/settings/customers": [
-   "sec-secretary-settings-customers",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-cust",
+   "sec-cust-afterhours",
+   "sec-cust-handoff",
+   "sec-cust-disclosure",
+   "sec-cust-save",
+   "sec-cust-sample"
   ],
   "/secretary/settings/account": [
    "sec-secretary-settings-account",
@@ -120,18 +116,15 @@
    "sec-top-help"
   ],
   "/secretary/settings/quota": [
-   "sec-secretary-settings-quota",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-quota",
+   "sec-quota-ring",
+   "sec-quota-assist",
+   "sec-quota-packs"
   ],
   "/secretary/onboarding/name": [
-   "sec-secretary-onboarding-name",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-onb-name",
+   "sec-onb-name-input",
+   "sec-onb-save"
   ],
   "/secretary/help": [
    "sec-secretary-help",
@@ -328,6 +321,205 @@
    "items": []
   },
   "GET /api/mobile/secretary/log": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th",
+    "en"
+   ],
+   "sample": "สวัสดีครับ Sharkพร้อมช่วยงานแล้วครับ วันนี้มีอะไรให้ช่วยดูแลบ้างครับ",
+   "saved": true
+  },
+  "GET /api/mobile/secretary/quota": {
+   "jobs": {
+    "used": 62,
+    "limit": 100,
+    "left": 38,
+    "pct": 62,
+    "level": "ok",
+    "text": null,
+    "resetAt": "2026-11-30T17:00:00.000Z",
+    "month": "2026-11"
+   },
+   "assist": {
+    "usedMicro": 155000,
+    "capMicro": 500000,
+    "pct": 31
+   },
+   "credit": {
+    "blocked": null
+   },
+   "pack": {
+    "enabled": true,
+    "jobsPerMonth": 100,
+    "scheduledMax": 10,
+    "approversMax": 5
+   }
+  },
+  "GET /api/mobile/secretary/rules": {
+   "rules": {
+    "chat.send": {
+     "enabled": true,
+     "limitSatang": null
+    },
+    "money.limit": {
+     "enabled": true,
+     "limitSatang": 2000000
+    },
+    "pii.export": {
+     "enabled": true,
+     "limitSatang": null
+    }
+   },
+   "keys": [
+    "chat.send",
+    "money.limit",
+    "pii.export"
+   ],
+   "alwaysApprove": [
+    "destructive",
+    "money",
+    "piiExport"
+   ]
+  },
+  "GET /api/mobile/secretary/staff": {
+   "items": [
+    {
+     "pending": false,
+     "membershipId": "m1",
+     "userId": "u-qc-owner",
+     "name": "คุณสุข (QC)",
+     "active": true,
+     "me": true,
+     "role": "OWNER"
+    },
+    {
+     "pending": false,
+     "membershipId": "m2",
+     "userId": "u-qc-2",
+     "name": "คุณนัท",
+     "active": true,
+     "me": false,
+     "role": "MANAGER"
+    },
+    {
+     "pending": false,
+     "membershipId": "m3",
+     "userId": "u-qc-3",
+     "name": "มิ้นท์",
+     "active": true,
+     "me": false,
+     "role": "STAFF"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/lessons": {
+   "items": [
+    {
+     "id": "ls1",
+     "kind": "REJECT_NOTE",
+     "pattern": "ใบเสนอราคาต้องมีเลขผู้เสียภาษีของลูกค้า",
+     "example": null,
+     "status": "PENDING",
+     "occurrences": 4,
+     "sourceRoomId": "r1",
+     "sourceUserId": "u-qc-owner",
+     "createdAt": "2026-10-28T03:00:00.000Z",
+     "updatedAt": "2026-11-04T03:00:00.000Z"
+    },
+    {
+     "id": "ls2",
+     "kind": "EDIT_DIFF",
+     "pattern": "ส่งใบเสนอราคาทาง LINE ก่อนโทรตามเสมอ",
+     "example": null,
+     "status": "CONFIRMED",
+     "occurrences": 2,
+     "sourceRoomId": null,
+     "sourceUserId": "u-qc-owner",
+     "createdAt": "2026-10-01T03:00:00.000Z",
+     "updatedAt": "2026-10-02T03:00:00.000Z"
+    },
+    {
+     "id": "ls3",
+     "kind": "REJECT_NOTE",
+     "pattern": "บทเรียนที่ไม่รับแล้ว",
+     "example": null,
+     "status": "REJECTED",
+     "occurrences": 1,
+     "sourceRoomId": null,
+     "sourceUserId": "u-qc-owner",
+     "createdAt": "2026-10-01T03:00:00.000Z",
+     "updatedAt": "2026-10-02T03:00:00.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/memories/pending": {
+   "items": [
+    {
+     "id": "mm1",
+     "content": "ส่วนลดสูงสุด 10% · ลูกค้าประจำ 15% ต้องให้เจ้าของอนุมัติ",
+     "createdAt": "2026-11-03T03:00:00.000Z",
+     "byUserId": "u-qc-2"
+    },
+    {
+     "id": "mm2",
+     "content": "เปิด จ.–ส. 7:30–18:00 · หยุดวันนักขัตฤกษ์",
+     "createdAt": "2026-11-03T04:00:00.000Z",
+     "byUserId": "u-qc-3"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/digest": {
+   "digest": {
+    "at": "2026-11-05T02:00:00.000Z",
+    "activeSystems": [
+     "pos",
+     "crm",
+     "account",
+     "booking"
+    ],
+    "sales": {
+     "todaySatang": 1845000,
+     "todayCount": 23,
+     "d7Satang": 9850000,
+     "d7Count": 141,
+     "d30Satang": 40200000,
+     "d30Count": 602
+    },
+    "quietCustomers": {
+     "count": 6,
+     "sample": []
+    },
+    "lowStock": {
+     "count": 3,
+     "sample": []
+    },
+    "receivables": {
+     "count": 4,
+     "totalSatang": 3250000,
+     "overdueCount": 1
+    },
+    "tomorrow": {
+     "appointments": 5,
+     "firstAt": "2026-11-06T02:30:00.000Z"
+    },
+    "pending": {
+     "approvalsAged": 2,
+     "leavesAged": 0,
+     "shopOrders": 1
+    }
+   }
+  },
+  "GET /api/mobile/secretary/after-hours": {
+   "reply": true,
+   "handoff": true,
+   "disclosure": "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
+  },
+  "GET /api/mobile/inbox/staff": {
    "items": []
   },
   "GET /api/mobile/secretary/inbox": {

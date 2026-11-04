@@ -1,4 +1,4 @@
-// การ์ดขั้นตอนของแผน (ใบ S2.4 · แบบ A3 sec-a.jpg หน้า 3 · .step) — กล่องสีระบบ + ข้อความขั้น + ท้าย ✓ เสร็จ / ● กำลังทำ / ⏸ รอ
+// การ์ดขั้นตอนของแผน (ใบ S2.4 · แบบ A3 sec-a.jpg หน้า 3 · .step) — กล่องสีระบบ + ข้อความขั้น + ท้าย ✓ เสร็จ / ● กำลังทำ / ⏸ รอ / ✕ ล้ม / – ข้าม (หลังขั้นที่ล้ม · S1.14)
 // ใช้ในห้องงาน (ความคืบหน้าของแผน) และในการ์ดอนุมัติแผน (ApprovalCard)
 import { StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
@@ -25,6 +25,8 @@ function StepMark({ status }: { status: StepStatus }) {
   const { c } = useTheme();
   if (status === "done") return <Icon name="check" size={16} color={c.status.run} />;
   if (status === "run") return <View style={[styles.run, { backgroundColor: c.status.wait }]} />;
+  if (status === "fail") return <Icon name="x" size={16} color={c.bad.fg} />;
+  if (status === "skip") return <Icon name="minus" size={15} color={c.textMuted} />;
   return <Icon name="pause" size={15} color={c.status.wait} />;
 }
 
