@@ -60,6 +60,8 @@ try {
 } catch (e) {
   sumErr = `อ่าน summary.json ไม่ได้: ${String(e)}`;
 }
+// NO_PAIR=/a,/b — route ที่ยังเป็นโครง (placeholder) ของใบนั้น ไม่ต้องมีภาพคู่ (ORACLE-EDIT S2.1 · ใบที่วาดจอจริงห้ามใช้)
+const NO_PAIR = new Set((process.env.NO_PAIR ?? "").split(",").map((x) => x.trim()).filter(Boolean));
 const pairs = existsSync(SHOTS) ? readdirSync(SHOTS).filter((f) => /pair.*\.png$/i.test(f)) : [];
 const fixtures = existsSync(FIX_DIR) ? readdirSync(FIX_DIR).filter((f) => f.endsWith(".json")).map((f) => join(FIX_DIR, f)) : [];
 function fixtureFor(route: string): string | null {
@@ -113,6 +115,7 @@ for (const spec of ROUTES) {
   // U6 ภาพคู่ parity
   const lightPair = pairs.filter((f) => f.startsWith(R + "-") && !f.startsWith(R + "-dark-"));
   const darkPair = pairs.filter((f) => f.startsWith(R + "-dark-"));
+  if (NO_PAIR.has(route)) { cks.push({ id: `U6-${R}`, name: `${route}: ภาพคู่ (ข้าม NO_PAIR)`, res: "SKIP", sev: "CRITICAL", why: "NO_PAIR" }); console.log(`  ⏭️  [U6-${R}] ${route}: ภาพคู่ — SKIP (NO_PAIR: จอโครง/placeholder ของใบ)`); } else
   chk(`U6-${R}`, `${route}: มีภาพคู่ parity สว่าง (${R}-…pair.png) และมืด (${R}-dark-…pair.png)`, lightPair.length > 0 && darkPair.length > 0, `สว่าง ${lightPair.length} · มืด ${darkPair.length}`);
 }
 
