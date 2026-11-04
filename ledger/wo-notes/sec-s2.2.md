@@ -27,10 +27,10 @@
 
 ## 5. ผลข้อสอบ
 - spec oracle forced #1 (ก่อน commit): `JSON_SUMMARY {"total":11,"passed":11,"failed":[],"skipped":[],"findings":[]}` exit 0
-- spec oracle forced #2 (หลัง commit): ดู §ต่อท้าย
-- `qc-sec-s2.1` forced: ดู §ต่อท้าย
-- regression unforced (qc-sec.sh + gate lock · SHARK_AI_MOCK=1) เทียบ `sec-baseline-bfad2f15.txt`: ดู §ต่อท้าย
-- mobile typecheck 0 · fitness ×2 (ใน oracle D-1/D-2)
+- spec oracle forced #2 (หลัง commit ceb8452d): `JSON_SUMMARY {"total":11,"passed":11,"failed":[],"skipped":[],"findings":[]}` exit 0
+- `qc-sec-s2.1` forced: `JSON_SUMMARY {"total":14,"passed":14,"failed":[],"skipped":[],"findings":[]}` exit 0
+- regression unforced (qc-sec.sh + gate lock · SHARK_AI_MOCK=1) = `sec-baseline-bfad2f15.txt`: qc-mobile-app 38/38 exit 0 · qc-mobile-auth 31/31 exit 0 · qc-mobile-chat 29/29 exit 0 · qc-mobile-authz-hotfix 12/12 exit 0
+- mobile typecheck 0 · fitness ×2 (oracle D-1/D-2 ผ่านทั้งสองรอบ) · pre-commit fitness ผ่าน
 
 ## 6. ภาพ
 คำสั่ง (สำเนา/พอร์ตของเลนนี้):
