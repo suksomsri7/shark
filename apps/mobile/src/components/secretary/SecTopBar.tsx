@@ -3,14 +3,13 @@
 //   ปุ่มของโซนปัจจุบัน = พื้นทึบสีโซน (accent / zone.customers / zone.team ใน src/theme) · badge ต่อปุ่ม (≤ 99 · มีจุดเมื่อ > 0)
 // ขวา: ? (help-circle → /secretary/help) + ปุ่ม + ตามโซน: เลขา → /secretary/new · ลูกค้า = ไม่มี + · ทีม → /secretary/staff/invite
 // กลาง: ชื่อกิจการ active (จาก /api/mobile/me) + ลูกศรเล็ก แตะ = ตัวสลับกิจการ (BusinessSwitcherSheet) · `center="none"` = ว่าง (จอ A1/C3 วางชื่อใหญ่เอง)
-// ไม่มีรูปโปรไฟล์ · ไอคอน Feather เท่านั้น (R-UI2) · badges ไม่ส่งมา ⇒ ดึงเอง (secretary/inbox/count · inbox/unread) พลาด = 0
-import { useEffect, useState } from "react";
+// ไม่มีรูปโปรไฟล์ · ไอคอน Feather เท่านั้น (R-UI2) · badges ไม่ส่งมา ⇒ อ่าน store กลาง useZoneBadgeCounts (layout โหลด secretary/inbox/count · inbox/unread) พลาด = 0
 import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon, IconBtn, TopBar, type IconName } from "@/src/components/airy";
 import { useAuth } from "@/src/lib/auth-context";
-import { customerUnread, inboxCount } from "@/src/api/secretary";
+import { useZoneBadgeCounts } from "@/src/api/secretary";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme, type ZoneKey } from "@/src/theme/index";
 import { size, type as T } from "@/src/theme/tokens";
@@ -38,23 +37,6 @@ export function badgeText(n: number | undefined): string | null {
   return n > 99 ? "99+" : String(Math.floor(n));
 }
 
-/** นับงานรออนุมัติ (โซนเลขา) + แชทลูกค้ายังไม่อ่าน (โซนลูกค้า) ของกิจการ active · ทีม = ยังไม่มีแหล่ง (S2.10) */
-function useZoneBadges(enabled: boolean): ZoneBadges {
-  const { activeTenantId } = useAuth();
-  const [b, setB] = useState<ZoneBadges>({});
-  useEffect(() => {
-    if (!enabled || !activeTenantId) return;
-    let live = true;
-    void Promise.all([inboxCount().catch(() => null), customerUnread().catch(() => null)]).then(([sec, cust]) => {
-      if (live) setB({ secretary: sec?.canApprove ?? 0, customers: cust?.unread ?? 0 });
-    });
-    return () => {
-      live = false;
-    };
-  }, [enabled, activeTenantId]);
-  return b;
-}
-
 export function SecTopBar({
   zone,
   badges,
@@ -72,8 +54,8 @@ export function SecTopBar({
   const t = useT();
   const router = useRouter();
   const switcher = useBusinessSwitcher();
-  const fetched = useZoneBadges(badges === undefined);
-  const counts = badges ?? fetched;
+  const shared = useZoneBadgeCounts(); // R-S2.1e: store กลาง (โหลดที่ layout ของโซน) ไม่ยิงต่อ mount
+  const counts = badges ?? shared;
   const plus = PLUS[zone];
 
   return (
