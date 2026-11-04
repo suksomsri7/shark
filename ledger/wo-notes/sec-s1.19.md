@@ -3,7 +3,8 @@
 > RUN "เลขา AI" (SECRETARY) · tree ผู้คุมงาน `/root/projects/shark-sec` · branch `session/secretary` · เลน `shark-sec-c` branch `wip/sec-s1.19` (จาก e7317705) · 2026-11-04T13:35Z · ผู้คุมงาน: Fable 5.1 · builder: Opus (เลน c)
 > สัญญา: `ledger/secretary-briefs/sec-brief-S1.19.md` (+ COMMON + RESOLUTIONS R-K9/K10 · §B.8 · §G) · แบบ S1/S2 + มติ 13 + R8
 > ข้อสอบ: `scripts/qc-sec-s1.19.mts` (21 ข้อ · commit test: e7317705 · **แก้หลัง commit หรือไม่: ไม่** — ขอ ORACLE-EDIT 1 รายการ §7)
-> commit ของใบ: `301aee1e` mock SMS · `c0a56ecf` phone-auth core · `042035fb` routes + me.phone + API doc · (ไฟล์นี้ = commit ถัดไป)
+> commit ของใบ รอบ 1: `301aee1e` mock SMS · `c0a56ecf` phone-auth core · `042035fb` routes + me.phone + API doc · `21d40ce3` notes
+> **รอบ 2 (หลังรีวิว 2 คน · RESOLUTIONS §H R-S1.19a–h)**: merge `session/secretary` → `ff68b0db` · `db115e04` core · `5c500c16` routes + doc · ไฟล์นี้ = commit ถัดไป · ดู §R2 ท้ายไฟล์ (มาแทน §5/§7/§8 ส่วนที่ขัดกัน)
 
 ## 1. ไฟล์ที่แตะ
 | ไฟล์ | สถานะ | ทำอะไร | ไฟล์ร่วม (COMMON §D)? |
@@ -102,3 +103,60 @@
 
 ## 9. คืนสภาพฐาน QC เลขา
 - ข้อสอบ `finally` ลบ PhoneOtp/UserPhone ขึ้นต้น `+6680001` · Session ของ user `qcs19-*` · User `qcs19-*` · ใบนี้ไม่มี seed · ไม่สร้างแถวถาวรนอกจาก OpsEvent (`sms-mock`, `sms-otp`)
+
+
+## R2. รอบ 2 — แก้ตามรีวิว (4 พ.ย. ~14Z)
+
+### R2.1 ไฟล์ที่แตะเพิ่ม/แก้
+| ไฟล์ | ทำอะไร |
+|---|---|
+| `src/lib/core/phone-auth.ts` | `normalizeThaiMobile` (export · `+66[689]\d{8}` · พับ +660/660 · ใช้ทุกฟังก์ชัน) · `phonePlaceholderEmail` / `isPhonePlaceholderEmail` / `publicEmailOf` / `PHONE_PLACEHOLDER_DOMAIN` · `PHONE_RL_PER_PHONE_DAY = 20` · request: throttle 60 วิ (แถวยังไม่ใช้+ยังไม่หมดอายุ ⇒ ok · ไม่สร้าง/ไม่ส่ง · `resendAfterSec` = วินาทีที่เหลือ) → 5/10 นาที + 20/วัน ต่อเบอร์ → 20/ip · `opts.now` ใช้กับ throttle/rate-limit/createdAt/expiresAt · ส่งล้ม ⇒ แถวคงอยู่แบบ consumed · verify: code ตัดเหลือตัวเลข · **จอง attempt ก่อนเทียบ** (`updateMany attempts<5`) · ถูก ⇒ คืน attempt (decrement) · signup: `User.email` = placeholder + `prefs.pendingEmail` · `opts.otpId` ⇒ consume + สร้าง User/UserPhone ใน `$transaction` เดียว · `email_taken` + otpId ⇒ จอง 1 attempt · อีเมลโดเมน placeholder = bad_input · link: `phone_change_locked` เมื่อมีเบอร์อื่น (ไม่เปลี่ยนเบอร์อีกแล้ว) · `opts.otpId` ⇒ ตรวจครบก่อน consume แล้ว consume+เขียนใน tx · reason ใหม่ `otp_used` (consume แข่งกัน) |
+| `src/lib/core/sms.ts` | mock ถูกเมินเมื่อ `APP_ENV === "production"` (คืน null) |
+| `src/lib/core/email.ts` | `sendEmail` ข้ามปลายทาง `@phone.shark.in.th` เงียบ ๆ (1 hunk · ไม่ throw) |
+| `src/app/api/mobile/auth/sms/request/route.ts` | `!smsEnabled()` ⇒ 503 `sms_unavailable` ไทย (หลังตรวจ body · ก่อนเรียก) · `resendAfterSec` ของ route คงที่ 60 |
+| `src/app/api/mobile/auth/sms/verify/route.ts` | `user = {id, email (null ถ้า placeholder), pendingEmail, name, phone}` · signup ส่ง `otpId` (consume ใน tx) · `otp_used` ⇒ 401 invalid |
+| `src/app/api/mobile/auth/phone/link/route.ts` | ส่ง `otpId` เข้า `linkPhoneToUser` (consume ใน tx) · 409 `phone_change_locked` · `otp_used` ⇒ 401 |
+| `src/app/api/mobile/me/route.ts` | `...publicEmailOf(user)` ⇒ `email` null สำหรับ placeholder + `pendingEmail` (null สำหรับบัญชีปกติ) |
+| `docs/api/SECRETARY-API.md` | แถว me / sms/request (503 · throttle · 20/วัน) / sms/verify (code ตัดตัวเลข · signup ถูกเมินเมื่อมีบัญชี · placeholder/pendingEmail · attempt) / phone/link (400 · phone_change_locked) ตาม B12 |
+
+### R2.2 ผลข้อสอบ (วางจริง)
+- ⚠️ คำสั่งทางการ (`… env QC_FORCE=1 pnpm exec tsx scripts/qc-sec-s1.19.mts`) **ล้มกลางทาง ZodError `SESSION_SECRET`** — S-2b/S-2c import `@/lib/core/auth` + `@/lib/core/email` ⇒ `@/lib/env` parse แต่ `qc-sec.sh` ส่งแค่ DB env (ข้อสอบไม่เรียก `loadLegacyQcEnv` แบบชุด legacy) ⇒ ORACLE-EDIT R2-ENV · รันด้วย `SESSION_SECRET=<สุ่ม 48 ตัว ทิ้งหลังรัน>` บนบรรทัดคำสั่ง (ไม่ได้อ่าน .env):
+- forced #1: `JSON_SUMMARY {"total":26,"passed":25,"failed":["Q-2"],"skipped":[],"findings":[{"id":"Q-2","sev":"CRITICAL"}]}` exit=1
+- forced #2: `JSON_SUMMARY {"total":26,"passed":25,"failed":["Q-2"],"skipped":[],"findings":[{"id":"Q-2","sev":"CRITICAL"}]}` exit=1
+- unforced: `JSON_SUMMARY {"total":26,"passed":25,"failed":["Q-2"],"skipped":[],"findings":[{"id":"Q-2","sev":"CRITICAL"}]}` exit=1
+- สำเนาชั่วคราวที่ใส่ hunk ORACLE-EDIT R2-Q-2 (ลบแล้ว): `JSON_SUMMARY {"total":26,"passed":26,"failed":[],"skipped":[],"findings":[]}` exit=0
+- regressions (หลัง round 2 · เทียบ baseline 85751098): `qc-mobile-auth: 31/31 ผ่าน · CRITICAL fail 0` exit=0 · `qc-mobile-authz-hotfix` `JSON_SUMMARY {"total":12,"passed":12,"findings":[]}` exit=0 · `qc-account-deletion` `JSON_SUMMARY {"total":18,"passed":18,"findings":[]}` exit=0 · `qc-security-hotfix` `QC Security Hotfix: 14/14 ผ่าน` exit=0 · `qc-onboarding-drip` `JSON_SUMMARY {"total":6,"passed":6,"findings":[]}` exit=0 — เท่ารอบ 1 / baseline
+- typecheck: 0 ในไฟล์ที่แตะ · ที่เหลือ 7 ตัวอยู่ใน `scripts/qc-sec-s1.5/s1.6/s1.7/s1.13.mts` (import โมดูลที่ยังไม่สร้าง) · fitness มี env `{"total":53,"passed":53}` · `env -u DATABASE_URL -u DIRECT_URL` `{"total":53,"passed":53}` · D-1/D-2/D-3 ✅ · pre-commit ผ่าน
+
+### R2.3 ORACLE-EDIT (รอบ 2)
+- **R2-Q-2** — `sent.length === 1` ถูกประเมินตอน `chk` หลังลูป 4 คำขอที่เลื่อนเวลา (ซึ่งต้องสร้างแถว ⇒ ต้องส่ง) ⇒ ตอนนั้น `sent.length` = 5 เสมอ (ข้อเดียวกันยังบังคับแถว = 5) · hunk:
+  ```diff
+       const rowsAfterThrottle = await prisma.phoneOtp.count({ where: { phone: P.a } });
+  +    const sentAfterThrottle = sent.length;
+  ...
+  -    … && sent.length === 1 && r6.ok === false …
+  +    … && sentAfterThrottle === 1 && r6.ok === false …
+  ```
+- **R2-ENV** — ให้ข้อสอบตั้ง env ที่ `@/lib/env` ต้องการก่อน import auth/email (เช่น `loadLegacyQcEnv("qc-sec-s1.19")` จาก `./qc-env-guard.mjs` แบบ qc-mobile-auth หรือ `process.env.SESSION_SECRET ??= "<qc-only 32+ ตัว>"` ก่อน `await import("@/lib/core/auth")`) — ไม่งั้นคำสั่งทางการ crash ที่ S-2b
+- ORACLE-EDIT S1.19-Q-3 ของรอบ 1 ผู้คุมแก้แล้ว (บรรทัด 95) ✅
+
+### R2.4 มติ builder (รอบ 2)
+- route `sms/request` ตอบ `resendAfterSec: 60` คงที่ — ไม่ส่งวินาทีที่เหลือของ throttle ออกนอก (ไม่งั้นคนนอกรู้ว่ามีคนเพิ่งขอรหัสของเบอร์นั้น) · ฟังก์ชันคืนวินาทีที่เหลือตาม R-S1.19f
+- ลำดับ request: เบอร์ → throttle 60 วิ → 5/10 นาที + 20/วัน → ip — throttle มาก่อน (ไม่สร้างแถว · ไม่ส่ง)
+- 503 ตรวจหลัง body (400) และก่อนเบอร์ (เบอร์ผิดตอนไม่มีผู้ให้บริการ = 503 เหมือนกัน · ไม่รั่วต่อเบอร์)
+- verify รหัสไม่ครบ 6 หลักหลังตัดตัวเลข = invalid (กิน 1 attempt)
+- consume ใน `$transaction` ล้ม (แข่งกัน) ⇒ reason ใหม่ `otp_used` ⇒ route 401 invalid · ไม่มีบัญชีค้าง (ย้อนทั้ง tx)
+- เข้าด้วยบัญชีที่มีอยู่ = consume คำสั่งเดียว + ออก token (ไม่มีการเขียนบัญชี จึงไม่ต้อง tx)
+- link: ตรวจ phone_taken/phone_change_locked ใน tx **ก่อน** consume ⇒ ถูกปฏิเสธแล้วรหัสยังไม่เสีย
+- `publicEmailOf` คืน `pendingEmail` เสมอ (null สำหรับบัญชีปกติ) · `User.prefs` เดิมของบัญชีปกติไม่ถูกแตะ
+- ใครได้/เสียสิทธิ์: อีเมลที่พิมพ์ตอนสมัครด้วยเบอร์ไม่ให้สิทธิ์อะไรเลยจนกว่าจะยืนยัน (S1.19b) ⇒ ไม่มีทางยึดบัญชีผ่าน OTP อีเมล / Apple / Google / grantStaffAccess (S-2b) · เจ้าของเบอร์ที่มีเบอร์อยู่แล้วเปลี่ยนเบอร์เองไม่ได้ (ต้องติดต่อทีมงาน)
+
+### R2.5 หนี้ที่เหลือ (แทน §8 ส่วนที่ขัด)
+| เรื่อง | ใบที่จะปิด |
+|---|---|
+| ยืนยันอีเมล: OTP อีเมล → ย้าย `prefs.pendingEmail` เป็น `User.email` ถ้ายังว่าง (บัญชี placeholder ยังรับอีเมลแจ้งเตือน/คำเชิญที่ผูกอีเมลไม่ได้จนกว่าจะยืนยัน) | **S1.19b** |
+| index `PhoneOtp(ip, createdAt)` (นับต่อ ip) | migration **`secretary_b`** (`> 20261227000000`) |
+| เปลี่ยนเบอร์แบบ step-up (ยืนยันเบอร์เดิม/อีเมล ก่อนย้าย) — วันนี้ `phone_change_locked` | รุ่นถัดไป · S2.12 แสดงข้อความติดต่อทีมงาน (รวมทางตัน `phone_taken` ตอน link) |
+| rate-limit นับแถวแล้วค่อยสร้าง (อ่าน→เขียน) — ยิงพร้อมกันอาจเกินเพดานเล็กน้อย | ถ้าจำเป็น: advisory lock ต่อเบอร์ |
+| ไม่มีงานลบแถว PhoneOtp ที่หมดอายุ/ส่งล้ม | cron ใบภายหลัง |
+| จอแอป (ขอรหัส/ใส่รหัส/สมัคร/บังคับผูกเบอร์/สลับไปอีเมลเมื่อ 503) | S2.12 |
