@@ -5,6 +5,7 @@
 // 🔴 "use server": export เฉพาะ async function (ห้าม export type/ค่าคงที่ — reference_next_use_server_no_type_export) · ตัวตน/ร้าน/เวลา มาจาก session เท่านั้น
 // ชื่อ `sec<Verb><Entity>Action` · ผลล้มเหลว = `{ ok:false, error, message }` (ไทย · code เดียวกับ route)
 // (ชื่อไฟล์ไม่ใช่ `actions.ts` ตามใบ เพราะ `./actions.ts` = บันทึก/ย้อนของ S1.8 อยู่แล้ว — ดู wo-notes sec-s1.14)
+import { after } from "next/server";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
 import { aiMemberActor } from "../actor";
@@ -55,6 +56,14 @@ function failOf(e: unknown): Fail {
   return { ok: false, error: "server_error", message: "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง" };
 }
 const nf = (message: string): Fail => ({ ok: false, error: "not_found", message });
+/** worker หลังตอบ — `after()` คืน promise ให้ waitUntil (ห้าม promise ลอย: ถูกแช่แข็งกลางทาง N9) · นอกคำขอ = รอจนจบ · ตัวเก็บตกรายนาทีมีอยู่แล้ว (R-K8b) */
+async function workAfter(): Promise<void> {
+  try {
+    after(() => runRoomJobs());
+  } catch {
+    await runRoomJobs().catch(() => {});
+  }
+}
 
 // ── ตัวตนเลขา ──
 export async function secGetSecretaryAction() {
@@ -86,7 +95,7 @@ export async function secStartRoomAction(input: { instruction: string; systems?:
   const r = await startRoom(w.conv, { instruction: String(input?.instruction ?? ""), systems: input?.systems, context: input?.context });
   if (!r.ok) return { ok: false as const, error: r.error, message: r.message, resetAt: r.resetAt ?? null };
   await enqueueRoomJob(w.tenantId, r.roomId, r.messageId, w.userId);
-  void runRoomJobs().catch(() => {}); // worker เก็บตกด้วยงานรายนาทีอยู่แล้ว (R-K8b) — ไม่ถ่วงการตอบของหน้าเว็บ
+  await workAfter();
   return { ok: true as const, roomId: r.roomId, conversationId: r.conversationId, jobsUsed: r.jobsUsed, jobsLimit: r.jobsLimit };
 }
 export async function secGetRoomAction(roomId: string) {
@@ -105,7 +114,7 @@ export async function secSendRoomMessageAction(roomId: string, text: string) {
   const w = await webAi();
   const r = await sendRoomMessage(w.conv, roomId, { text: String(text ?? "") });
   if (!r.ok) return { ok: false as const, error: r.error, message: r.message };
-  void runRoomJobs().catch(() => {});
+  await workAfter();
   return { ok: true as const, messageId: r.messageId };
 }
 export async function secCloseRoomAction(roomId: string) {
