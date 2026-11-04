@@ -3,7 +3,10 @@
 > เริ่มใหม่ = อ่านไฟล์นี้บล็อกบนสุด → `SECRETARY-RUN.md` §3 สถานะ + §4 เหตุการณ์ → ใบถัดไปใน `SECRETARY-MASTER-PLAN.md` §3 → `secretary-briefs/sec-brief-COMMON.md`
 > ทรี `/root/projects/shark-sec` · branch `session/secretary` · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
 
-## ▶️ 4 พ.ย. 2026 ~12:2xZ — 2/58 (3%) · S0.1 ✅ S0.2 ✅ · กำลังทำ S0-3 (เลน c) · S1.1 รอ oracle
+## ▶️ 4 พ.ย. 2026 ~14:4xZ — 4/58 (7%) · S0 ปิดครบ (S0.1–S0.4 ✅) · S1.1 รอบสอง (เลน b: core relation + baseline qc-mobile-app) · S1-2 เริ่มบนเลน c
+- schema S1.1 pre-merge อยู่ใน session/secretary แล้ว (69542c20) · migration ลง QC แล้ว · oracle S1.2/S1.4 เขียนแล้ว (ใบ S1-2 เลน c · S1-3 เลน b หลัง S1.1 ปิด)
+
+## ▶️ 4 พ.ย. 2026 ~12:2xZ — 2/58 (3%) (เก่า)
 - tip `session/secretary` = 5973db2e (merge S0.2) · RESOLUTIONS f92f3466 = กฎเหนือแผน §3
 - รัน: เลน c `/root/projects/shark-sec-c` builder Opus S0-3 (docs 31-secretary + SECRETARY-API + seed-secretary-qc + pack.ts · oracle `qc-sec-s0.3.mts`)
 - เลน b `/root/projects/shark-sec-b` = `wip/sec-s1.1` @4c8709be builder Opus S1.1 กำลังทำ (migration + scope + baseline 60 ชุด ≈1–1.5 ชม.) · node_modules เลน b remount rw ชั่วคราว (คืน ro หลัง merge)

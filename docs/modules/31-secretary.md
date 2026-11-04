@@ -167,13 +167,13 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 
 แหล่ง: `ledger/secretary-briefs/sec-brief-S1.1.md` §Schema (ต้องตรงกันที่ CP0) · ไฟล์ใหม่ secretary.prisma ในโฟลเดอร์ `prisma/schema` + คอลัมน์ nullable บนตารางเดิม · `core.prisma` คง FROZEN (เบอร์อยู่ที่ตาราง `UserPhone`)
 ทุกโมเดลใหม่: `id` cuid · `createdAt @default(now())` · `updatedAt @updatedAt` เมื่อแถวเปลี่ยนได้ · `tenantId` บนแถวระดับกิจการ · FK `onDelete: Cascade` ไปที่แม่ (`AiRoom`→`AiConversation` · `AiRoomMember`/`AiRoomJob`→`AiRoom`) · ดัชนีในวงเล็บ [ ] · ทุกโมเดลลง `src/lib/core/scope.ts` ตาม axis (fitness F1)
-> ตรงกับ migration ที่ merge แล้ว (`prisma/migrations/20261227000000_secretary_a/migration.sql` · session/secretary d4cbb6ce): `AiSecretary.userId` · `UserPhone.userId` · `ChatConversationHelper.conversationId` เป็น **อ้างอิงเชิงตรรกะ ไม่มี FK** (`core.prisma` + `chat.prisma` ไม่ถูกแก้ · ลบผู้ใช้/ห้องแชทต้องลบแถวเหล่านี้ในบริการ) · `AiRoomMember` `AiRoomJob` `ChatShift` `ChatConversationHelper` มี `tenantId` ด้วย (axis tenant)
+> ตรงกับ migration ที่ merge แล้ว (`prisma/migrations/20261227000000_secretary_a/migration.sql` · session/secretary d4cbb6ce): `AiSecretary.userId` · `UserPhone.userId` · `ChatConversationHelper.conversationId` มี **FK ON DELETE CASCADE** ใน SQL ของ migration (บรรทัด 370–376) · relation field ฝั่ง `User`/`ChatConversation` เพิ่มใน S1.1 รอบสอง (RESOLUTIONS R-S1.1a · back-relation 2 บรรทัดบน User) · `AiRoomMember` `AiRoomJob` `ChatShift` `ChatConversationHelper` มี `tenantId` ด้วย (axis tenant)
 
 ### 4.1 M-table — 16 โมเดลใหม่
 
 | M | โมเดล | axis | ฟิลด์ | ดัชนี / unique | ใบที่ใช้ |
 |---|---|---|---|---|---|
-| M1 | `AiSecretary` | global `g(...)` | `userId @unique` (อ้าง User · ไม่มี FK) · `name String @default("Shark")` · `suffix String @default("ครับ")` · `tone String @default("polite")` · `languages String[] @default(["th"])` · `prefs Json @default("{}")` (ไม่มี PII) | `userId` unique | S1.2 · S1.15 |
+| M1 | `AiSecretary` | global `g(...)` | `userId @unique` (→ User · Cascade) · `name String @default("Shark")` · `suffix String @default("ครับ")` · `tone String @default("polite")` · `languages String[] @default(["th"])` · `prefs Json @default("{}")` (ไม่มี PII) | `userId` unique | S1.2 · S1.15 |
 | M2 | `AiRoom` | tenant | `conversationId @unique` (→ AiConversation · Cascade) · `tenantId` · `startedById String` (= `conversationCreatorOf(conversationId).id` · denormalized · R-K1) · `title String` · `closedAt DateTime?` · `systems String[] @default([])` · `contextJson Json?` ({chatConversationId, contactId} ของ S1.22) · `jobsCounted Int @default(1)` | [tenantId, startedById, updatedAt] · [tenantId, closedAt] | S1.4 |
 | M2 | `AiRoomMember` | tenant | `tenantId` · `roomId` (→ AiRoom · Cascade) · `userId` · `addedById` · `addedAt @default(now())` · `seeHistory Boolean @default(false)` | `@@unique([roomId, userId])` · [userId] | S1.6 |
 | M8 | `AiRoomJob` | tenant | `tenantId` · `roomId` (→ AiRoom · Cascade) · `messageId String @unique` (AiMessage id) · `authorUserId String?` · `status String @default("QUEUED")` (QUEUED/RUNNING/DONE/FAILED) · `leaseUntil DateTime?` · `attempts Int @default(0)` · `error String?` · `startedAt DateTime?` · `finishedAt DateTime?` | [status, leaseUntil] · [roomId, createdAt] | S1.5 |
@@ -185,8 +185,8 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | M9 | `StaffInvite` (R-K11) | tenant | `tenantId` · `phone String` (E.164) · `name String` · `role String` (MANAGER/STAFF) · `unitAccess Json @default("[]")` · `permissions Json @default("{}")` · `codeHash String @unique` · `expiresAt DateTime` · `acceptedAt DateTime?` · `acceptedUserId String?` · `invitedById String` | [tenantId, phone] · [tenantId, acceptedAt] | S1.25 |
 | M11 | `ChatRoutingRule` | tenant | `tenantId` · `systemId String` · `channel String?` · `mode String` (ROUND_ROBIN/LAST_ASSIGNEE/OWNER) · `enabled Boolean @default(false)` · `order Int @default(0)` | `@@index([tenantId, systemId, enabled, order])` | S1.24 |
 | M11 | `ChatShift` | tenant | `tenantId` · `userId` · `onDutyAt DateTime` · `offDutyAt DateTime?` | `@@index([tenantId, userId, offDutyAt])` | S1.24 |
-| M11 | `ChatConversationHelper` | tenant | `tenantId` · `conversationId` (อ้าง ChatConversation · ไม่มี FK) · `userId` · `calledById` · `note String?` | `@@unique([conversationId, userId])` · [userId] | S1.24 |
-| M9 | `UserPhone` | global `g(...)` | `userId @unique` (อ้าง User · ไม่มี FK) · `phone String @unique` (E.164) · `verifiedAt DateTime?` | `userId` unique · `phone` unique | S1.19 |
+| M11 | `ChatConversationHelper` | tenant | `tenantId` · `conversationId` (→ ChatConversation · Cascade) · `userId` · `calledById` · `note String?` | `@@unique([conversationId, userId])` · [userId] | S1.24 |
+| M9 | `UserPhone` | global `g(...)` | `userId @unique` (→ User · Cascade) · `phone String @unique` (E.164) · `verifiedAt DateTime?` | `userId` unique · `phone` unique | S1.19 |
 | M9 | `PhoneOtp` (R-K9) | global `g(...)` | `phone String` · `codeHash String` · `expiresAt DateTime` · `consumedAt DateTime?` · `attempts Int @default(0)` · `ip String?` | [phone, createdAt] · [expiresAt] | S1.19 |
 | M12 | `AiNotifyPref` (R-K20) | global `g(...)` | `userId` · `tenantId String?` · `kind String` (inbox/approval/room/help) · `mode String` (ALL/ASSIGNED/OFF) | `@@unique([userId, tenantId, kind])` | S1.23 |
 
