@@ -81,7 +81,6 @@
 ## 8. หนี้ / สิ่งที่ยังไม่ทำ
 | เรื่อง | เหตุผล | ใบที่จะปิด |
 |---|---|---|
-| `rejectPlan` (plans.ts :185) ยังใช้ `sightOf` เดิม — สมาชิก/OWNER ยืนยันแผนในห้องร่วมได้แต่ยกเลิกไม่ได้ | ใบให้แตะ plans.ts 1 จุด | S1.6 (หรือผู้คุมอนุญาต 1 บรรทัด `canSeeConversationById`) |
 | `listPendingPlans` ใช้ `findVisibleConversation` แล้ว (ได้ห้องร่วมอัตโนมัติ) | — | — |
 | `seeHistory=false` ยังไม่กรองใน `listMessages` | ของ S1.6 (oracle G-3 ต้องการให้สมาชิกเห็นข้อความเดิม) | S1.6 |
 | `startRoom` ไม่สร้าง `AiRoomJob` / ไม่ส่ง event `ai.room.started` | ใบ: S1.5 ต่อคิว · event ต้องมี consumer+labels+replay | S1.5 |
@@ -94,3 +93,18 @@
 ## 9. คืนสภาพฐาน QC เลขา
 - oracle `finally` ลบตามรายชื่อตาราง + tenant + user `qcs14-*` · ตรวจ 2 ครั้ง (หลังรอบ crash ของตัวจริง + สำเนา forced #1 · และหลังรอบ unforced สุดท้าย): tenant/user/room/conv/member = 0
 - คำสั่งซ้ำ: `bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-sec-s1.4.mts`
+
+## 10. รอบ 2 (มติผู้คุมหลังรีวิว · 4 พ.ย.)
+- ผู้คุมรับ ORACLE-EDIT (`e94b0aa8` บน session/secretary) + มติ field names / tool-sight / authorUserId เฉพาะห้อง AiRoom / แผนหมดอายุ / ลำดับสถานะ ตามที่ทำ
+- `git merge session/secretary` (S1.2/S1.3 + oracle ที่แก้แล้ว) → merge commit `4c0245c1` · conflict 2 จุด แก้โดยเก็บทั้งสอง hunk:
+  - `service.ts` ctx ของ `runTool`: `{ tenantId, actor, conversationId, access, sight }` (S1.3 `access` + S1.4 `sight`)
+  - `tools.ts` `ToolCtx`: `access?: AccessMap` (S1.3) ตามด้วย `sight?: ConvSight` (S1.4)
+  - `proposals.ts` merge อัตโนมัติ (hunk S1.3 `accessLevelGate` หลังด่านมองเห็นของ S1.4 — ไม่ทับกัน)
+- อนุญาตเพิ่ม: `rejectPlan` (plans.ts :185) → `canSeeConversationById(ctx, row.conversationId)` (ตัวเดียวกับ `rejectProposal` — ctx เป็น actor ไม่ใช่ผู้ยืนยัน) · ลบ import `canSeeConversationId`/`sightOf` ที่ไม่ใช้แล้ว ⇒ หนี้ rejectPlan ปิด
+- ผลรอบ 2 (oracle ตัวจริงที่ไม่ได้แก้เอง):
+  - forced #1 `JSON_SUMMARY {"total":28,"passed":28,"failed":[],"skipped":[],"findings":[]}`
+  - forced #2 `JSON_SUMMARY {"total":28,"passed":28,"failed":[],"skipped":[],"findings":[]}`
+  - unforced `JSON_SUMMARY {"total":28,"passed":28,"failed":[],"skipped":[],"findings":[]}`
+  - qc-ai-plan `JSON_SUMMARY {"total":7,"passed":7,"findings":[]}` = baseline · qc-ai-proposals `JSON_SUMMARY {"total":16,"passed":16,"findings":[]}` = baseline
+  - fitness มี env `JSON_SUMMARY {"total":53,"passed":53,"findings":[]}` · ไม่มี env `JSON_SUMMARY {"total":53,"passed":53,"findings":[]}`
+  - typecheck: 0 error ในไฟล์ที่แตะ (และ `qc-sec-s1.4.mts` 0 หลัง ORACLE-EDIT) · ที่เหลือ = oracle ของใบที่ยังไม่สร้าง: `qc-sec-s1.19.mts` 4 · `qc-sec-s1.5.mts` 2 · `qc-sec-s1.7.mts` 3

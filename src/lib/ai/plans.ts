@@ -11,8 +11,8 @@ import { tenantDb } from "@/lib/core/db";
 import { type MembershipCtx } from "@/lib/core/rbac";
 import type { Prisma } from "@prisma/client";
 import { DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
-import { canSeeConversationId, sightOf, type ConvCtx } from "./conversation-owner";
-import { canConfirmerSeeConversation, findVisibleConversation } from "./conversations";
+import type { ConvCtx } from "./conversation-owner";
+import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
 
 type Ctx = { tenantId: string };
 
@@ -182,7 +182,7 @@ export async function executePlan(
 // CRM C5.5-G2 ▸ เฉพาะแผนในบทสนทนาที่ผู้กดเห็น ◂
 export async function rejectPlan(ctx: ConvCtx, id: string): Promise<boolean> {
   const row = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.findFirst({ where: { id }, select: { conversationId: true } });
-  if (!row || !canSeeConversationId(sightOf(ctx), row.conversationId)) return false;
+  if (!row || !(await canSeeConversationById(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
