@@ -22,7 +22,7 @@
 | `apps/mobile/src/components/secretary/SecTopBar.tsx` | แก้ (เพิ่ม prop) | `showPlus` (STAFF ในโซนทีม = ไม่มี +) — สัญญาเดิมไม่เปลี่ยน |
 | `apps/mobile/src/api/secretary.ts` | ขยาย | PATH `inbox/staff` · PATH_ID `rooms/[id]/members` `staff/invites/[id]` `staff/invites/[id]/resend` · `secDeleteRoomMember` · `normalizeStaff`/`ChatLevel`/`StaffPerson`/`StaffInvite` · `updateSecretary` · `normalizeLog` ใช้ `logCanUndo` (canUndo ของเซิร์ฟเวอร์ชนะ) + `link` ระดับแถว · `canApprove` ใน ProposalItem/PlanItem · RoomDetail.members มี role/seeHistory · แผนของห้องมีธง pending · ApproveRes มี results |
 | `apps/mobile/src/theme/{light,dark}.ts` | แก้ (เพิ่มคีย์) | `bad.fg` (ป้าย "ไม่เห็นแชทลูกค้า" · ขั้นที่ล้ม · ปุ่มถอด) |
-| `apps/mobile/src/i18n/{th,en}.ts` | แก้ | +90 คีย์ `sec.staff.*` (รวม `sec.staff.add.*` ของ D3) `sec.onb.*` `sec.room.*` (§S) `sec.field.*` (+7) · th/en 597 คีย์เท่ากัน · en ไม่มีอักษรไทย (ลายเซ็น en = คำอธิบายภาษาอังกฤษ "(added in Thai)") |
+| `apps/mobile/src/i18n/{th,en}.ts` | แก้ | +90 คีย์ `sec.staff.*` (รวม `sec.staff.add.*` ของ D3) `sec.onb.*` `sec.room.*` (§S) `sec.field.*` (+7) · th/en 584 คีย์เท่ากัน (I-1 ของ qc-sec-s2.1 เขียว) · en ไม่มีอักษรไทย (ลายเซ็น en = คำอธิบายภาษาอังกฤษ "(added in Thai)") |
 | `apps/mobile/qc/fixtures/secretary/s2.10.json` | ใหม่ | เจ้าของ + 4 คน (ผู้จัดการ REPLY · พนักงาน REPLY / VIEW+เข้าเวร / NONE) + คำเชิญค้าง 1 · ห้อง r2 ร่วม 3 คน (ข้อความระบบ · ฟองสมใจ · การ์ดเอกสารเงินแก้แล้ว มี `contactId`/`boardId` ที่ต้องไม่แสดง) · C1 ยังไม่เคยตั้ง |
 | `apps/mobile/qc/fixtures/secretary/s2.4.json` · `s2.4-running.json` · `s2.4-done.json` | แก้ | ค่า S1.14 จริง: `WAITING_APPROVAL`→`WAITING` · done `DONE`(closedAt null)→`OPEN` (เสร็จแต่ยังไม่ปิด) · แผน `status` · ขั้น `WAITING`→`PENDING` · `classes` · `canApprove` · log `link` |
 | `apps/mobile/qc/fixtures/secretary/s2.1.json` | แก้ | expect ของ `/secretary/staff` `/secretary/onboarding/name` = testID ของจอจริง + mock `inbox/staff` (ถ่ายชุด S2.1 ซ้ำได้สะอาด) |
@@ -48,7 +48,7 @@
 - spec s2.4 forced: `JSON_SUMMARY {"total":7,"passed":7,"failed":[],"skipped":[],"findings":[]}` exit 0 (ภาพ A3/A4/A5 ถ่ายใหม่บนโค้ดนี้ + fixture ที่ปรับ)
 - spec s2.2 forced: `{"total":11,"passed":11,…}` exit 0 · spec s2.7 forced: `{"total":16,"passed":16,…}` exit 0
 - `qc-sec-s2.1` forced: `{"total":14,"passed":14,…}` exit 0 · `qc-sec-s2.12` forced: `{"total":13,"passed":13,…}` exit 0
-- regression unforced (`qc-sec.sh` + gate lock · SHARK_AI_MOCK=1) เทียบ `sec-baseline-bfad2f15.txt`: REGRESSION_RESULTS
+- regression unforced (`qc-sec.sh` + gate lock · SHARK_AI_MOCK=1) เทียบ `sec-baseline-bfad2f15.txt`: qc-mobile-app 38/38 exit 0 · qc-mobile-auth 31/31 exit 0 · qc-mobile-chat 29/29 exit 0 · qc-mobile-authz-hotfix 12/12 exit 0 (= baseline: exit 0 ทั้ง 4 · authz 12/12)
 - mobile typecheck 0 (M-1 ในทุกรอบของ spec) · fitness มี env / ไม่มี env ผ่าน (D-1/D-2 ทุกรอบ) · pre-commit fitness ผ่าน
 
 ## 6. ภาพ
