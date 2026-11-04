@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/core/db";
 import { mobileUser } from "@/lib/mobile/auth";
 import { getBrandingTokens } from "@/lib/branding/service";
-import { phoneOfUser } from "@/lib/core/phone-auth";
+import { phoneOfUser, publicEmailOf } from "@/lib/core/phone-auth";
 
 export async function GET(req: Request): Promise<Response> {
   const user = await mobileUser(req);
@@ -19,10 +19,11 @@ export async function GET(req: Request): Promise<Response> {
   // getBrandingTokens แคช 60 วิต่อร้าน ⇒ คนที่อยู่หลายร้านไม่ได้ยิง query เพิ่มทุกครั้งที่เปิดแอป
   const tokens = await Promise.all(memberships.map((m) => getBrandingTokens(m.tenantId)));
   // S1.19 · R8: เบอร์ที่ผูก (E.164) — null ⇒ แอปบังคับผูกเบอร์ก่อนใช้งานต่อ
+  // R-S1.19a: บัญชีที่สมัครด้วยเบอร์ email = null (placeholder) + pendingEmail (ยังไม่ยืนยัน)
   const phone = await phoneOfUser(user.id);
   return Response.json(
     {
-      user: { id: user.id, email: user.email, name: user.name, phone },
+      user: { id: user.id, ...publicEmailOf(user), name: user.name, phone },
       memberships: memberships.map((m, i) => {
         const t = tokens[i];
         return {
