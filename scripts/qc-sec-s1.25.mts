@@ -49,8 +49,8 @@ const tn = await import("@/lib/mobile/tenants");
 const inv = (await import("@/lib/staff/invite").catch(() => null)) as AnyMod | null;
 const lv = (await import("@/lib/staff/levels").catch(() => null)) as AnyMod | null;
 
-const U = { owner: "qcs125-owner", mgr: "qcs125-mgr", staff: "qcs125-staff", newbie: "qcs125-newbie", other: "qcs125-other" };
-const PH = { invite: "+66812345001", staff: "+66812345002", other: "+66812345003", signup: "+66812345004", resend: "+66812345005" };
+const U = { owner: "qcs125-owner", mgr: "qcs125-mgr", staff: "qcs125-staff", newbie: "qcs125-newbie", other: "qcs125-other", login: "qcs125-login" };
+const PH = { invite: "+66812345001", staff: "+66812345002", other: "+66812345003", signup: "+66812345004", resend: "+66812345005", login: "+66812345006", rl: "+66812345007" };
 const tids: string[] = [];
 const cleanup = async () => {
   for (const tid of tids) {
@@ -94,7 +94,7 @@ try {
   const OWN = ctxOf(tid, U.owner, "OWNER"), MGR = ctxOf(tid, U.mgr, "MANAGER"), STF = ctxOf(tid, U.staff, "STAFF", { "kanban.card.read": true });
 
   console.log("── I: invites ──");
-  if (!inv) { for (const i of [1, 2, 3, 4, 5, 6]) skip(`I-${i}`, "invite", "ไม่มี invite.ts"); }
+  if (!inv) { for (const i of [1, 2, 3, 4, 5, 6, 7, 8]) skip(`I-${i}`, "invite", "ไม่มี invite.ts"); }
   else {
     const now = new Date();
     const i1 = await inv.inviteStaff(OWN, { name: "สมชาย", phone: "081-234-5001", role: "STAFF", unitIds: [], permissions: { "kanban.card.create": true } }, now) as { ok: boolean; inviteId?: string; link?: string; sms?: string; expiresAt?: Date; reason?: string; message?: string };
@@ -138,10 +138,25 @@ try {
     const memS = su.ok && su.user ? await prisma.membership.findUnique({ where: { userId_tenantId: { userId: su.user.id, tenantId: tid } } }) : null;
     chk("I-6", "hook S1.19: signupWithPhone ด้วยเบอร์ที่มีคำเชิญ ⇒ Membership STAFF acceptedAt อัตโนมัติ", iS.ok === true && su.ok === true && memS?.role === "STAFF" && !!memS?.acceptedAt, JSON.stringify({ iS, su: su.ok, mem: memS?.role }));
     if (su.ok && su.user) { try { await prisma.user.delete({ where: { id: su.user.id } }); } catch { /* */ } }
+    // I-7 (R-S1.25b): ผู้ใช้เดิมผูกเบอร์ที่มีคำเชิญ ⇒ ไม่ auto-join · pendingInvitesForUser เห็น 1 · acceptInvite ⇒ สมาชิก
+    const iL = await inv.inviteStaff(OWN, { name: "ล็อกอินเดิม", phone: PH.login, role: "STAFF" }, new Date(now.getTime() + 240_000)) as { ok: boolean; inviteId?: string };
+    const link = await pa.linkPhoneToUser(U.login, PH.login) as { ok: boolean };
+    const memL0 = await prisma.membership.findUnique({ where: { userId_tenantId: { userId: U.login, tenantId: tid } } });
+    const pend = typeof inv.pendingInvitesForUser === "function" ? (await inv.pendingInvitesForUser(U.login)) as { inviteId: string; tenantName: string }[] : [];
+    const acc = typeof inv.acceptInvite === "function" && iL.inviteId ? (await inv.acceptInvite(U.login, iL.inviteId)) as { ok: boolean } : { ok: null };
+    const memL1 = await prisma.membership.findUnique({ where: { userId_tenantId: { userId: U.login, tenantId: tid } } });
+    chk("I-7", "ผู้ใช้เดิม linkPhoneToUser ⇒ ok · ไม่มี Membership (ไม่ auto-join) · pendingInvitesForUser = 1 มี tenantName · acceptInvite ⇒ ok + Membership STAFF acceptedAt", iL.ok === true && link.ok === true && memL0 === null && pend.length === 1 && pend[0]!.inviteId === iL.inviteId && !!pend[0]!.tenantName && acc.ok === true && memL1?.role === "STAFF" && !!memL1?.acceptedAt, JSON.stringify({ iL, link, pend: pend.length, acc, mem: memL1?.role }));
+    // I-8 (R-S1.25c): invite→cancel→invite วน — rate-limit ต่อ (ร้าน,เบอร์) 5/วัน ไม่ขึ้นกับแถว
+    let rlHit = false; let okCount = 0;
+    for (let k = 0; k < 7; k++) {
+      const r = await inv.inviteStaff(OWN, { name: "วนส่ง", phone: PH.rl, role: "STAFF" }, new Date(now.getTime() + 300_000 + k * 61_000)) as { ok: boolean; inviteId?: string; reason?: string };
+      if (r.ok) { okCount++; await inv.cancelInvite(OWN, r.inviteId!); } else if (r.reason === "rate_limited") { rlHit = true; break; }
+    }
+    chk("I-8", "invite→cancel→invite ซ้ำ ⇒ สำเร็จ ≤5 ครั้งแล้วเจอ rate_limited (ไม่ใช่ throttled/already_invited)", rlHit && okCount <= 5 && okCount >= 1, JSON.stringify({ okCount, rlHit }));
   }
 
   console.log("── L: levels ──");
-  if (!lv) { for (const i of [1, 2, 3, 4, 5]) skip(`L-${i}`, "levels", "ไม่มี levels.ts"); }
+  if (!lv) { for (const i of [1, 2, 3, 4, 5, 6, 7]) skip(`L-${i}`, "levels", "ไม่มี levels.ts"); }
   else {
     chk("L-1", "levelOfModule: {} = OFF · read อย่างเดียว = VIEW · มี create = USE · โมดูลอื่นไม่เกี่ยว", lv.levelOfModule({}, "kanban") === "OFF" && lv.levelOfModule({ "kanban.card.read": true }, "kanban") === "VIEW" && lv.levelOfModule({ "kanban.card.read": true, "kanban.card.create": true }, "kanban") === "USE" && lv.levelOfModule({ "pos.sale.read": true }, "kanban") === "OFF", "");
     const pv = lv.permissionsForLevel("kanban", "VIEW", { "pos.sale.read": true }) as Record<string, unknown>;
@@ -159,6 +174,20 @@ try {
     const memMgr = await prisma.membership.findUnique({ where: { userId_tenantId: { userId: U.mgr, tenantId: tid } } });
     const sRole = await lv.setStaffLevels(MGR, memStaff!.id, { role: "OWNER" }) as { ok: boolean };
     chk("L-4", "setStaffLevels OWNER: kanban USE + chat REPLY ⇒ permissions มี kanban.card.create+chat.message.send · staffViewOf levels.kanban=USE chat=REPLY · STAFF ตั้ง ⇒ ok:false · MANAGER ตั้ง role OWNER ⇒ ok:false", s1.ok === true && perms["kanban.card.create"] === true && perms["chat.message.send"] === true && view.levels.kanban === "USE" && view.chat === "REPLY" && sForb.ok === false && sRole.ok === false && !!memMgr, JSON.stringify({ s1, view, sForb, sRole }).slice(0, 200));
+    // L-6 (R-S1.25e/f): กวาดทุกโมดูล — USE ไม่ให้คีย์อ่อนไหว · คีย์ตัวเลขคงอยู่ทุกระดับ
+    const { PERMISSION_MODULES } = await import("@/lib/core/permissions");
+    const badKeys: string[] = [];
+    const MUST_NOT = ["crm.api.manage", "api.key.create", "account.payment.record", "hr.payroll.read", "member.point.adjust", "pos.sale.priceOverride", "settings.staff.write", "webhook.endpoint.create"];
+    for (const m of PERMISSION_MODULES as { module: string }[]) { const pu = lv.permissionsForLevel(m.module, "USE", {}) as Record<string, unknown>; for (const k of Object.keys(pu)) if ((typeof lv.isSensitiveKey === "function" && lv.isSensitiveKey(k)) || MUST_NOT.includes(k)) badKeys.push(k); }
+    const numKeep = ["OFF", "VIEW", "USE"].every((L) => { const r = lv.permissionsForLevel("crm", L, { "crm._maxReassignPerDay": 3, "crm.contact.read": true }) as Record<string, unknown>; return r["crm._maxReassignPerDay"] === 3; });
+    chk("L-6", "USE ทุกโมดูลไม่มีคีย์อ่อนไหว (isSensitiveKey export · crm.api.manage/api.key/payment.record/payroll/point.adjust/priceOverride/settings.staff.write ไม่โผล่) · คีย์ตัวเลข crm._maxReassignPerDay คงอยู่ทุกระดับ", typeof lv.isSensitiveKey === "function" && badKeys.length === 0 && numKeep, JSON.stringify({ bad: badKeys.slice(0, 8), numKeep }));
+    // L-7 (R-S1.25g/h): levels.chat ปฏิเสธ · levelsAvailableFor · staffViewOf ไม่มี levels.chat
+    const memMgr7 = await prisma.membership.findUnique({ where: { userId_tenantId: { userId: U.mgr, tenantId: tid } } });
+    const sChat = await lv.setStaffLevels(OWN, memMgr7!.id, { levels: { chat: "USE" } }) as { ok: boolean };
+    const avK = typeof lv.levelsAvailableFor === "function" ? (lv.levelsAvailableFor("kanban") as string[]) : [];
+    const avS = typeof lv.levelsAvailableFor === "function" ? (lv.levelsAvailableFor("settings") as string[]) : [];
+    const v7 = lv.staffViewOf({ role: "STAFF", unitAccess: ["*"], permissions: { "chat.conversation.read": true, "chat.message.send": true } }) as { levels: Record<string, string>; chat: string };
+    chk("L-7", "levels.chat ⇒ ok:false · levelsAvailableFor(kanban) = OFF/VIEW/USE · settings = [OFF] · staffViewOf.levels ไม่มี chat · chat read+send (ไม่ครบ 4) ≠ REPLY", sChat.ok === false && JSON.stringify(avK) === '["OFF","VIEW","USE"]' && JSON.stringify(avS) === '["OFF"]' && !("chat" in v7.levels) && v7.chat !== "REPLY", JSON.stringify({ sChat, avK, avS, v7 }).slice(0, 200));
     const rooms = await import("@/lib/ai/secretary/rooms");
     const r = await rooms.startRoom({ tenantId: tid, actor: { kind: "member", tenantId: tid, userId: U.owner, membership: M("OWNER") } as never }, { instruction: "ห้องทดสอบเอาออก" });
     await prisma.aiRoomMember.create({ data: { tenantId: tid, roomId: r.roomId, userId: U.staff, addedById: U.owner, seeHistory: false } });

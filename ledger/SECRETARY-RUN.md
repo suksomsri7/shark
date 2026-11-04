@@ -50,7 +50,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.22 | 🔁 | | รอบ 1 05283039 oracle 12/12 ×3 · **ผู้ตรวจ N: MERGE-AFTER-FIX** (AI ตอบกลางคืนล้างคิว unread · นับ AI เป็นคนตอบ · ความจำร้านเข้าโมเดลไม่ mask · regex เงิน/ร้องเรียนขาด · ไม่มีคำนำหน้า AI บน LINE) → §O + oracle 14 ข้อ (A-3 วงเล็บผิดของผู้คุม) · builder รอบ 2 |
 | S1.23 | ✅ | | รวมในชุด S1-12 · notify.ts (prefs · badge · กันสแปม per-process) · merge cd37937d |
 | S1.24 | 🔍 | | รวมในชุด S1-15 · routing.ts (rules/shift/helper/handoff/sla) · รวมในชุด S1-15 (เลน c) · รวมในชุด S1-15 · 🎯 ผู้ดูแล · เรียกช่วย · กฎรับเรื่อง · เข้าเวร |
-| S1.25 | 🔨 | | รอบ 1 2ebb74fe (เลน d) oracle 15/15 ×3 · R-S1.25a (CHAT_LEVELS จากรีวิว S1.21) ส่งให้ builder รันซ้ำ → ผู้ตรวจ 2 คน · qc-member-m3.11 แดงตั้งแต่ clean tree (ข้อมูล QC) |
+| S1.25 | 🔁 | | รอบ 1 ae94bf79 oracle 15/15 · **ผู้ตรวจ O/P: MERGE-AFTER-FIX** (SMS pumping ผ่าน invite→cancel · auto-join ไร้ความยินยอม · MANAGER ให้ payroll · USE ให้คีย์เงิน/แอดมิน · ระดับลบลิมิตตัวเลข · 30 โมดูลไม่มี VIEW) → §P + oracle 19 ข้อ · builder รอบ 2 · qc-member-m3.11 แดงตั้งแต่ clean tree (ข้อมูล QC) |
 | S1.14 | ✍️ | | ใบ S1-18 `sec-brief-S1.14.md` (ตารางเส้นทาง + sec-real-path.mts) · oracle ยังไม่มี · 🎯 API ชุดเดียว + เส้นทางจริง 3 เส้น (ปิด S1) |
 | S2.1 | ⬜ | | โครงแอป |
 | S2.2 | ⬜ | | A1 C3 |
