@@ -40,6 +40,11 @@ const SENSITIVE_PARTS = [
   "api.key.", "webhook.", ".api.manage", ".object.manage", ".visibility.manage", ".team.manage", "settings.", "branding.", "privacy.manage", "payadjust", "payroll",
   // เพิ่มจากรายการ §P (ผู้คุมชี้ขาดได้): ยืนยันสลิป = เงินเข้า · ตั้งนโยบายอนุมัติ / ทะเบียนระบบ = แอดมินโครงสร้างร้าน
   ".slip.review", "approval.policy.", "systems.",
+  // re-check N1 (RESOLUTIONS P.2) — ข้อมูลอ่อนไหว/เบอร์เต็ม · งวดบัญชี/ภาษีหัก ณ ที่จ่าย · รับเงินมือ/มัดจำ/ยกเว้น/ยึด/ตัดหนี้/จำหน่ายทรัพย์สิน · คอมมิชชัน · โอนแต้ม · เครดิต/การเงิน · สร้างระบบ
+  ".sensitive.", ".phonefull", ".period.", ".wht.", ".markpaid", ".payment.manual", ".deposit.", ".waive", ".forfeit", ".writeoff", ".dispose",
+  ".commission.approve", ".point.transfer", ".credit.manage", ".finance.manage", "system.system.",
+  // เพิ่มเอง (oracle L-6): เช็ค (ผ่าน/เด้ง) · รับชำระค่าเรียน
+  ".cheque.", ".enrollment.pay",
 ] as const;
 export function isSensitiveKey(key: string): boolean {
   const k = String(key ?? "").toLowerCase();
@@ -219,14 +224,8 @@ export async function setStaffLevels(
 export async function suspendStaff(ctx: LevelCtx, membershipId: string): Promise<StaffResult> {
   const g = await gate(ctx, membershipId);
   if (!g.ok) return g.res;
-  const r = await revokeStaffAccess({ tenantId: ctx.tenantId, actorUserId: ctx.actorUserId, membershipId: g.target.id });
-  if (r.ok) await detachPushDevices(ctx.tenantId, g.target.userId);
-  return r;
-}
-
-/** R-S1.25j: เครื่องของคนที่ถูกระงับ/เอาออก ไม่ผูกร้านนี้อีก (push เรื่องของร้านไม่ไปถึง) */
-async function detachPushDevices(tenantId: string, userId: string): Promise<void> {
-  await prisma.pushDevice.updateMany({ where: { userId, tenantId }, data: { tenantId: null } });
+  // R-S1.25j + re-check N5: ล้าง PushDevice.tenantId อยู่ใน revokeStaffAccess (เว็บก็ได้ด้วย)
+  return revokeStaffAccess({ tenantId: ctx.tenantId, actorUserId: ctx.actorUserId, membershipId: g.target.id });
 }
 
 /** เอาออก = ระงับ + ถอนออกจากห้องเลขาทุกห้องของร้าน + ลบคำเชิญค้างของเบอร์เขาในร้านนี้ · ไม่ลบ Membership (ประวัติ) */
@@ -236,7 +235,7 @@ export async function removeStaff(ctx: LevelCtx, membershipId: string): Promise<
   const r = await revokeStaffAccess({ tenantId: ctx.tenantId, actorUserId: ctx.actorUserId, membershipId: g.target.id });
   if (!r.ok) return r;
   const userId = g.target.userId;
-  await detachPushDevices(ctx.tenantId, userId);
+  await prisma.pushDevice.updateMany({ where: { userId, tenantId: ctx.tenantId }, data: { tenantId: null } }); // ถอนไปก่อนหน้าแล้ว (revoke คืนเร็ว) ก็ยังล้าง
   await prisma.aiRoomMember.deleteMany({ where: { tenantId: ctx.tenantId, userId } });
   const phone = await prisma.userPhone.findUnique({ where: { userId }, select: { phone: true } });
   if (phone) await prisma.staffInvite.deleteMany({ where: { tenantId: ctx.tenantId, phone: phone.phone, acceptedAt: null } });

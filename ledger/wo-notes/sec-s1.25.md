@@ -74,3 +74,8 @@
 | R-S1.25j push/SMS/tenants/listStaffAccess | CLOSED | `detachPushDevices` ใน suspend/remove · SMS "SHARK: " + `smsSafe` (URL/โดเมน/เลข ≥4 · ≤40 ตัว) · tenants: try/catch ต่อระบบ + logOps · `export TenantRuleError` · type lower-case · เพดานนับ OWNER ที่ถูกระงับ · `listStaffAccess(tenantId, {includeInvites:true})` (overload · ปริยายเดิม) แทน `listStaffAccessWithInvites` (ลบ) |
 - ผลรอบ 2: `qc-sec-s1.25` forced 18:52Z / forced 18:53Z / unforced 18:55Z `{"total":19,"passed":19,"failed":[],"skipped":[],"findings":[]}` exit=0 ×3 · s1.19 26/26 · s1.4 28/28 · s1.17 10/10 (forced) · chat-staff-perms 49/49 · mobile-auth exit 0 · account-deletion 18/18 · onboarding-drip 6/6 · fitness 53/53 ×2 · tsc แคบ (5 ไฟล์ + กราฟ) rc=0
 - หมายเหตุ QC: ถัง `ChatRateBucket` `staff-invite:*` ของข้อสอบไม่ถูกลบโดย cleanup (ร้านใหม่ทุกรอบ ⇒ ไม่ชนกัน · ถังผู้เชิญผูก tenantId)
+
+## 9. re-check P.2 (N1–N5 · merge bb0c5230)
+- N1 SENSITIVE_PARTS + 16 รายการ P.2 + เพิ่มเอง `.cheque.` `.enrollment.pay` (MUST_NOT ของ L-6 มี `account.cheque.clear/bounce` `school.enrollment.pay` ที่รายการ P.2 ไม่ครอบ) · ตาราง §5.23 สร้างใหม่ (`system` USE → OFF)
+- N2 `inviteRateOk` fail-closed (ครบ 3 ถัง · count เป็นตัวเลขทุกถัง) · N3 resend ทั้งก้อนใต้ล็อกร้าน (+ pending_cap เมื่อส่งซ้ำใบหมดอายุ) · N4 `smsSafe` `\p{Nd}{4,}`/u + แปลง `。．｡ [.] (.) (dot) [dot]` เป็นจุด + โดเมนมีช่องว่างรอบจุด · N5 ล้าง PushDevice.tenantId ใน `revokeStaffAccess` (service.ts) · removeStaff ล้างซ้ำเผื่อถูกถอนไปก่อน
+- ผล P.2: s1.25 forced 19:18Z/19:19Z + unforced 19:20Z 19/19 ×3 · s1.19 26/26 · s1.4 28/28 · chat-staff-perms 49/49 · account-deletion 18/18 · fitness 53/53 ×2 · tsc แคบ rc=0

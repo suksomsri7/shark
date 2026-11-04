@@ -160,9 +160,10 @@ async function checkGrant(
 /** R-S1.25j: ชื่อที่ร้านพิมพ์เองห้ามพา URL / เลขยาว (เบอร์ · เลขบัญชี) เข้า SMS ที่ออกในนาม SHARK */
 function smsSafe(v: string): string {
   return String(v ?? "")
-    .replace(/(?:https?:\/\/|www\.)\S+/gi, "")
-    .replace(/[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}(?:\/\S*)?/gi, "")
-    .replace(/\d{4,}/g, "")
+    .replace(/[。．｡]|\[\.\]|\(\.\)|\(dot\)|\[dot\]/giu, ".") // re-check N4: จุดแปลง ๆ ⇒ จุดก่อนตัดโดเมน
+    .replace(/(?:https?:\/\/|www\.)\S+/giu, "")
+    .replace(/[\w-]+(?:\s*\.\s*[\w-]+)*\s*\.\s*[a-z]{2,}(?:\/\S*)?/giu, "")
+    .replace(/\p{Nd}{4,}/gu, "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 40);
@@ -179,7 +180,8 @@ async function inviteRateOk(tenantId: string, inviterId: string, phone: string, 
     ],
     { now: now.getTime() },
   );
-  return r.every((x) => x.ok);
+  // re-check N2: fail-closed — ถังที่ไม่มีตัวเลข count (ตัวจำกัดล่ม/fail-open) ⇒ ไม่ส่ง
+  return r.length === 3 && r.every((x) => x.ok && typeof x.count === "number");
 }
 
 /** R-S1.25d: เบอร์นี้มี Membership ที่ถูกถอนในร้านซึ่งบทบาทสูงกว่าผู้เชิญหรือสูงกว่าบทบาทในใบ ⇒ ห้ามใช้คำเชิญฟื้น */
@@ -345,20 +347,32 @@ export async function resendInvite(ctx: InviteCtx, inviteId: string, now: Date =
   const row = typeof inviteId === "string" && inviteId ? await prisma.staffInvite.findFirst({ where: { id: inviteId, tenantId: ctx.tenantId } }) : null;
   if (!row || !canManageInviteRole(actor, row.role)) return failR("not_found", MSG.notFound);
   if (row.acceptedAt) return failR("accepted", MSG.accepted);
-  if (sentAtOf(row) > now.getTime() - INVITE_RESEND_SEC * 1000) return failR("throttled", MSG.throttled);
-  // ใบเก่าที่หมดอายุแล้ว แต่เบอร์เดียวกันมีใบใหม่ค้างอยู่ ⇒ ห้ามมีสองใบค้างพร้อมกัน
-  const other = await prisma.staffInvite.count({ where: { tenantId: ctx.tenantId, phone: row.phone, acceptedAt: null, expiresAt: { gt: now }, id: { not: row.id } } });
-  if (other > 0) return failR("already_invited", MSG.alreadyInvited);
   if (smsBlocked()) return failR("sms_unavailable", MSG.smsUnavailable);
-  if (!(await inviteRateOk(ctx.tenantId, ctx.actorUserId, row.phone, now))) return failR("rate_limited", MSG.rateLimited); // ส่งซ้ำนับรวม (R-S1.25c)
   const code = randomCode(INVITE_CODE_LEN, INVITE_ALPHABET);
   const expiresAt = new Date(now.getTime() + TTL_MS);
-  // conditional คำสั่งเดียว: ยังไม่รับ + ยังเป็นรอบส่งเดิม (กดส่งพร้อมกันได้รอบเดียว)
-  const r = await prisma.staffInvite.updateMany({
-    where: { id: row.id, tenantId: ctx.tenantId, acceptedAt: null, expiresAt: row.expiresAt },
-    data: { codeHash: hashInviteCode(code), expiresAt },
-  });
-  if (r.count !== 1) return failR("throttled", MSG.throttled);
+  // re-check N3: ตรวจทุกข้อใต้ล็อกระดับร้านเดียวกับ inviteStaff (เพดานใบค้าง · ใบค้างอื่นของเบอร์นี้ · throttle · rate-limit)
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`staff-invite:${ctx.tenantId}`}, 0))`;
+      const cur = await tx.staffInvite.findFirst({ where: { id: row.id, tenantId: ctx.tenantId } });
+      if (!cur) throw new InviteRuleError("not_found", MSG.notFound);
+      if (cur.acceptedAt) throw new InviteRuleError("accepted", MSG.accepted);
+      if (sentAtOf(cur) > now.getTime() - INVITE_RESEND_SEC * 1000) throw new InviteRuleError("throttled", MSG.throttled);
+      // ใบเก่าที่หมดอายุแล้ว แต่เบอร์เดียวกันมีใบใหม่ค้างอยู่ ⇒ ห้ามมีสองใบค้างพร้อมกัน
+      const other = await tx.staffInvite.count({ where: { tenantId: ctx.tenantId, phone: cur.phone, acceptedAt: null, expiresAt: { gt: now }, id: { not: cur.id } } });
+      if (other > 0) throw new InviteRuleError("already_invited", MSG.alreadyInvited);
+      // ส่งซ้ำใบที่หมดอายุแล้ว = ใบค้างเพิ่ม 1 ⇒ นับเพดานด้วย
+      if (cur.expiresAt <= now) {
+        const pending = await tx.staffInvite.count({ where: { tenantId: ctx.tenantId, acceptedAt: null, expiresAt: { gt: now } } });
+        if (pending >= INVITE_PENDING_MAX) throw new InviteRuleError("pending_cap", MSG.tooMany);
+      }
+      if (!(await inviteRateOk(ctx.tenantId, ctx.actorUserId, cur.phone, now))) throw new InviteRuleError("rate_limited", MSG.rateLimited); // ส่งซ้ำนับรวม (R-S1.25c)
+      await tx.staffInvite.update({ where: { id: cur.id }, data: { codeHash: hashInviteCode(code), expiresAt } });
+    });
+  } catch (e) {
+    if (e instanceof InviteRuleError) return failR(e.reason, e.message);
+    throw e;
+  }
   const link = `${INVITE_LINK_BASE}${code}`;
   const sms = await sendInviteSms(ctx.tenantId, row.name, row.phone, link);
   return { ok: true, inviteId: row.id, link, sms, expiresAt };

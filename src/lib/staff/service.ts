@@ -627,6 +627,8 @@ export async function revokeStaffAccess(input: RevokeStaffAccessInput): Promise<
     where: { id: target.id, tenantId: input.tenantId },
     data: { acceptedAt: null },
   });
+  // SEC S1.25 ▸ R-S1.25j/N5: เครื่องของคนที่ถูกถอน ไม่ผูกร้านนี้อีก (push เรื่องของร้านไม่ไปถึง) — ทุกทาง (เว็บ/แอป) ◂
+  await prisma.pushDevice.updateMany({ where: { userId: target.userId, tenantId: input.tenantId }, data: { tenantId: null } });
 
   await writeStaffAudit({
     tenantId: input.tenantId,
