@@ -53,7 +53,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.25 | ✅ | | รอบ 2 d84880c9 + รอบ 3 ffefcf36 (เลน d) · oracle 19/19 ×3 + ×1 ผู้คุมหลัง merge · ผู้ตรวจ O/P → §P · re-check → §P.2 ปิดครบ · s1.19 26/26 · staff-perms 49/49 · merge af21290a · มติสำคัญ: ผู้ใช้เดิมต้องกดรับคำเชิญเอง (auto-join เฉพาะสมัครใหม่) · คีย์อ่อนไหวไม่ให้ผ่านระดับ (system เป็น OFF-only) · หนี้: IP rate-limit บน route preview/accept (S2.21) · คีย์เก่าไม่หายตอน OFF · revokeStaffAccess เดิม MANAGER ถอน OWNER |
 | S1.14 | 🔨 | | builder Opus เลน b `wip/sec-s1.14` @95a14b66 เริ่ม 5 พ.ย. ~12:5xZ · งานแรก: hotfix emoji ใน chat/routing.ts (baseline ใหม่ bfad2f15 แดง CX-7.2/IC-4.1) · ใบ S1-18 `sec-brief-S1.14.md` (ตารางเส้นทาง + sec-real-path.mts) · oracle ยังไม่มี · 🎯 API ชุดเดียว + เส้นทางจริง 3 เส้น (ปิด S1) |
 | S2.1 | ✅ | | built e621f7f5+8fd7eb77 (เลน d) · oracle 14/14 ×2 builder + 13/14 ผู้คุม (M-1 ข้าม tsc) · 24 route × 2 ธีม · คู่ C3 · จอ 1.0 ต่างเฉพาะปุ่มใหม่+orb · qc-mobile-* เท่าเดิม · merge fa790d96 (light-check · ผู้ตรวจ nav ตามหลัง) · deviation รับ: (app)/_layout เป็น Drawer (index ก่อน) · SecSkeleton · src/api/secretary.ts · docs §2.3 · หนี้: inbox/count อยู่ในใบ S1.14 แล้ว · ซ่อนไอคอนลูกค้า/ทีมตามสิทธิ์ → S2.20 |
-| S2.2 | 🔨 | | builder Opus เลน d `wip/sec-s2.2` @fa790d96 เริ่ม 5 พ.ย. ~13:5xZ (API จาก fixture · ชื่อจริงตาม S1.14 เมื่อ merge) |
+| S2.2 | 🔍 | | built ceb8452d+1cb4fa43 (เลน d) · spec 11/11 ×2 + ผู้คุม 10/11 (M-1 ข้าม) · fix-forward §Q ครบ 6 ข้อ · คู่ A1/A2 สว่าง/มืด ผู้คุมดูแล้ว ✅ ตรงแบบ · แก้เล็ก: padding ใต้ช่องสั่งงาน A1 ทับการ์ดสุดท้าย → รอ reshoot แล้ว merge |
 | S2.3 | 🔨 | | รวมในชุด S2-2 (เลน d) |
 | S2.4 | ✍️ | | ใบ `sec-brief-S2.4.md` + spec `s2.4.json` · รอ S2.1+S1.14 merge |
 | S2.5 | ✍️ | | ใบ S2-5 (S2.5+S2.6) + spec s2.5.json · รอ S2.1+S1.14 |
