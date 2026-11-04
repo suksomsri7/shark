@@ -87,7 +87,7 @@ try {
   tid = t.id;
   for (const [k, id] of Object.entries(U)) await prisma.user.create({ data: { id, email: `${id}@example.com`, name: `ผู้ใช้ ${k}` } });
   const perms = { "kanban.card.create": true, "kanban.card.read": true, "ai.chat.send": true };
-  const mk = (role: "OWNER" | "MANAGER" | "STAFF", userId: string) => prisma.membership.create({ data: { tenantId: tid, userId, role, unitAccess: ["*"], permissions: role === "STAFF" ? perms : {}, acceptedAt: new Date() } });
+  const mk = (role: "OWNER" | "MANAGER" | "STAFF", userId: string) => prisma.membership.create({ data: { tenantId: tid, userId, role, unitAccess: ["*"], permissions: role === "STAFF" ? perms : {} as never, acceptedAt: new Date() } });
   await mk("OWNER", U.owner); await mk("MANAGER", U.mgr); await mk("STAFF", U.staff); await mk("STAFF", U.staff2);
   const actor = (userId: string, role: "OWNER" | "MANAGER" | "STAFF") => ({ kind: "member" as const, tenantId: tid, userId, membership: { role, unitAccess: ["*"], permissions: role === "STAFF" ? perms : {} } });
   const OWNER = actor(U.owner, "OWNER"), MGR = actor(U.mgr, "MANAGER"), STAFF = actor(U.staff, "STAFF"), STAFF2 = actor(U.staff2, "STAFF");
