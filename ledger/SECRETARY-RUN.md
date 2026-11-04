@@ -63,7 +63,7 @@ _(เติมเมื่อถึงใบ)_
 | S2.9 | ✍️ | | รวมในชุด S2-7 |
 | S2.10 | ✍️ | | ใบ S2-10 (S2.10+S2.11) + spec s2.10.json · รอ S2.1+S2.4 |
 | S2.11 | ✍️ | | รวมในชุด S2-10 |
-| S2.12 | 🔍 | | built 15fc8e39 (เลน c) · oracle 13/13 ×3 · คู่ S1/S2 สว่าง/มืด · qc-mobile-auth 31/31 · s1.19 26/26 · builder merge tip (i18n union) → ผู้ตรวจ auth flow → merge · deviation รับ: shoot-sec รับ query string · server คืน needSignup/invalid (แอปรองรับทั้งสอง) · ⚠️ deploy: ต้องมี SMS provider ก่อน OTA (gate /phone) · บัญชี reviewer ของ App Store ต้องมีเบอร์ |
+| S2.12 | 🔍 | | built 15fc8e39 + merge S2.1 7362d00b/06ee5c96 (เลน c) · oracle 13/13 ×3 + ผู้คุม 12/13 (M-1 ข้าม) · s2.1 บนสาขานี้ 13/14 · คู่ S1/S2 · post-signup flag → /business/new หรือ onboarding/name · **รอผู้ตรวจ R (auth flow)** · deviation รับ: shoot-sec รับ query string · server คืน needSignup/invalid (แอปรองรับทั้งสอง) · ⚠️ deploy: ต้องมี SMS provider ก่อน OTA (gate /phone) · บัญชี reviewer ของ App Store ต้องมีเบอร์ |
 | S2.15 | ✍️ | | ใบ S2-15 + spec s2.15.json · รอ S2.1+S1.14 |
 | S2.16 | ✍️ | | ใบ S2-16 (S2.16+S2.23) · oracle ผู้คุมเขียนตอนรับใบ |
 | S2.17 | ✍️ | | ใบ S2-17 (S2.17+S2.18+S2.19) + spec s2.17.json · รอ S2.1+S1.14 |
