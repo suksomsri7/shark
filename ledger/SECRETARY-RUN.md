@@ -29,8 +29,8 @@ _(เติมเมื่อถึงใบ)_
 | S0.3 | ✅ | 4 พ.ย. ~14:4xZ | merge (wip/sec-s0.3 c38d910a) · oracle 52/53 ×3 (D4.3 typecheck SKIP — ผู้คุมรันเองรวมตอน S1.1) · docs/modules/31-secretary.md 460 บรรทัด · SECRETARY-API.md 72 เส้นทาง · seed idempotent (รอบ 2 เขียน 0) · light-check ผู้คุม · oracle `qc-sec-s0.3.mts` (f92f3466 · unforced SKIP · forced 4/29 แดงถูกเหตุผล) · docs/modules/31-secretary.md + docs/api/SECRETARY-API.md + seed-secretary-qc |
 | S0.4 | ✅ | 4 พ.ย. ~14:4xZ | pack.ts (FREE_PACK · countsAsJob · quotaMessage · nextResetBangkok · monthKeyBangkok · SECRETARY_LAUNCH_AT) unit ครบใน oracle D3 · pack.ts FREE_PACK 100 งาน/กิจการ/เดือน |
 | S1.1 | 🔨 | | builder Opus เลน b `wip/sec-s1.1` @4c8709be เริ่ม 4 พ.ย. ~12:5xZ · oracle `qc-sec-s1.1.mts` (4c8709be · 65 ข้อ · unforced SKIP · forced บนฐานเดิม 6/65 แดงถูกเหตุผล) · 🎯 migration secretary_a |
-| S1.2 | ✍️ | | ใบ S1-2 (S1.2+S1.3) + oracle `qc-sec-s1.2.mts` เขียนแล้ว 4 พ.ย. (unforced SKIP · forced บนฐานเดิม P-1 snapshot ผ่าน · แดง P-2/3/5 ถูกเหตุผล) · รอ S1.1 merge → เลน c · เลขาผูกผู้ใช้ |
-| S1.3 | ✍️ | | รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
+| S1.2 | 🔨 | | builder Opus เลน c `wip/sec-s1.2` @7c69188a เริ่ม 4 พ.ย. ~14:5xZ · ใบ S1-2 (S1.2+S1.3) + oracle `qc-sec-s1.2.mts` เขียนแล้ว 4 พ.ย. (unforced SKIP · forced บนฐานเดิม P-1 snapshot ผ่าน · แดง P-2/3/5 ถูกเหตุผล) · รอ S1.1 merge → เลน c · เลขาผูกผู้ใช้ |
+| S1.3 | 🔨 | | รวมในชุด S1-2 (เลน c) · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | ⬜ | | 🎯 ห้อง = งาน |
 | S1.5 | ⬜ | | 🎯 คิวเบื้องหลัง |
 | S1.6 | ⬜ | | 🎯 ห้องร่วม |
