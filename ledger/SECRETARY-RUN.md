@@ -33,7 +33,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.3 | ✅ | 4 พ.ย. ~16:2xZ | access-rules.ts (pure) + access.ts · toolVerdict/toolsOfferedTo รับ access · HAND_TOOL_MODULE (27 โมดูล) · ด่านใน executeProposal/runKind (dynamic import กันวงกลม) · หนี้: route คีย์ API ภายนอกยังไม่ส่ง access · propose_plan ปล่อยขั้นของระบบ OFF ไปตกตอนรัน · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | 🔨 | | builder Opus เลน b `wip/sec-s1.4` @6f2710a0 เริ่ม 4 พ.ย. ~15:3xZ · oracle `qc-sec-s1.4.mts` · 🎯 ห้อง = งาน |
 | S1.5 | ✍️ | | ใบ S1-4 + oracle `qc-sec-s1.5.mts` (00086018) รอ S1.4 merge · 🎯 คิวเบื้องหลัง |
-| S1.6 | ⬜ | | 🎯 ห้องร่วม |
+| S1.6 | ✍️ | | ใบ S1-5 + oracle `qc-sec-s1.6.mts` (47027ca0) รอ S1.4 merge · 🎯 ห้องร่วม |
 | S1.7 | ✍️ | | ใบ S1-6 (S1.7+S1.8) + oracle `qc-sec-s1.7.mts` เขียนแล้ว (R-K3b · R-S1.8a) รอ S1.4 merge · ต้องอนุมัติเสมอ |
 | S1.8 | ✍️ | | รวมในชุด S1-6 · 🎯 บันทึก + ย้อน 24 ชม. |
 | S1.9 | ⬜ | | งานประจำ |
@@ -45,7 +45,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.16 | ⬜ | | ข้อมูลสดรายวัน |
 | S1.17 | ⬜ | | Support Desk ต่อแอป |
 | S1.19 | 🔨 | | builder Opus เลน c `wip/sec-s1.19` เริ่ม 4 พ.ย. ~16:5xZ · oracle `qc-sec-s1.19.mts` (unforced SKIP · forced แดง M-1 ถูกเหตุผล) · 🎯 SMS OTP เบอร์ = ID (รอคีย์ SMS จากเจ้าของ · โหมด mock ก่อน) |
-| S1.20 | ✍️ | | ใบ S1-14 + oracle `qc-sec-s1.20.mts` (pure · fetch ปลอม · snapshot ของเดิม) พร้อม · อิสระ ปล่อยได้เมื่อมีเลนว่าง · Anthropic ตรง (รอคีย์ shark จากเจ้าของ · mock ก่อน) |
+| S1.20 | 🔨 | | builder Opus เลน d `/root/projects/shark-sec-d` `wip/sec-s1.20` @47027ca0 เริ่ม 4 พ.ย. ~17:4xZ · oracle `qc-sec-s1.20.mts` (pure · fetch ปลอม · ห้ามเรียก API จริง) · Anthropic ตรง (รอคีย์ shark จากเจ้าของ · mock ก่อน) |
 | S1.21 | ⬜ | | 🎯 แชทลูกค้า API มือถือ |
 | S1.22 | ⬜ | | 🎯 สะพานเลขา↔ห้องลูกค้า |
 | S1.23 | ⬜ | | แจ้งเตือน+เรียลไทม์ |
@@ -98,3 +98,4 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย. ~14:4xZ** รับ S0-3 (merge) · แก้ doc §4 ที่เขียนว่า "ไม่มี FK" (SQL มี FK Cascade จริง) · เลน c ว่าง → `wip/sec-s1.2` สำหรับชุด S1-2 (เริ่มได้ก่อน S1.1 ปิดสมบูรณ์ เพราะ schema pre-merge แล้ว)
 - **4 พ.ย. ~15:2xZ** รับ S1.1 (merge) · เลน b remount ro คืน · เลน b → `wip/sec-s1.4` ชุด S1-3 · เขียนใบ+oracle S1-4 (S1.5 worker · R-K8b ราง minute-jobs) ล่วงหน้า
 - **4 พ.ย. ~16:2xZ** รับ S1-2 (merge) · หนี้จด (นักล่า S3a.1 ตรวจ): (1) `/api/v1/ai/tools/*` (คีย์ API) ไม่ส่ง access level (2) ข้อเสนอจากปุ่ม CRM ออกก่อนด่านระดับ (3) `propose_plan` รับขั้นของระบบ OFF (ตกตอนรัน) · เลน c ว่าง → ใบถัดไป S1-13 (S1.19 SMS OTP)
+- **4 พ.ย. ~17:4xZ** เปิดเลน d `/root/projects/shark-sec-d` (worktree · node_modules bind ro จาก shark-svc · .env.qc-sec) สำหรับใบอิสระ S1.20 — เลนรวม 3 (b/c/d) ตามเพดาน · S1.4 รอบสอง (rejectPlan) กำลังปิดบนเลน b

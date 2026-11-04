@@ -1,7 +1,7 @@
 # SECRETARY-RESUME — จุดต่องาน RUN "เลขา AI"
 
 > เริ่มใหม่ = อ่านไฟล์นี้บล็อกบนสุด → `SECRETARY-RUN.md` §3 สถานะ + §4 เหตุการณ์ → ใบถัดไปใน `SECRETARY-MASTER-PLAN.md` §3 → `secretary-briefs/sec-brief-COMMON.md`
-> ทรี `/root/projects/shark-sec` · branch `session/secretary` · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
+> ทรี `/root/projects/shark-sec` · branch `session/secretary` · เลน b/c/d = `shark-sec-b` `shark-sec-c` `shark-sec-d` (node_modules bind ro จาก shark-svc · หลังรีบูตต้อง mount ใหม่ทั้ง 4 ทรี) · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
 
 ## ▶️ 4 พ.ย. 2026 ~15:2xZ — 5/58 (9%) · S0 ครบ + S1.1 ✅ · กำลังทำ: S1-2 (เลน c `wip/sec-s1.2`) · S1-3 (เลน b `wip/sec-s1.4`) · ใบ/oracle S1-4 (S1.5) พร้อม
 
