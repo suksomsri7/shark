@@ -18,6 +18,16 @@ const PATH = {
   "secretary/access": "/api/mobile/secretary/access",
   "secretary/inbox/count": "/api/mobile/secretary/inbox/count",
   "inbox/unread": "/api/mobile/inbox/unread",
+  // ตั้งค่า (ใบ S2.7–S2.9 · ชื่อตาม S1.14 docs/api/SECRETARY-API.md)
+  "secretary": "/api/mobile/secretary/secretary",
+  "secretary/quota": "/api/mobile/secretary/quota",
+  "secretary/rules": "/api/mobile/secretary/rules",
+  "secretary/log": "/api/mobile/secretary/log",
+  "secretary/lessons": "/api/mobile/secretary/lessons",
+  "secretary/memories/pending": "/api/mobile/secretary/memories/pending",
+  "secretary/digest": "/api/mobile/secretary/digest",
+  "secretary/after-hours": "/api/mobile/secretary/after-hours",
+  "secretary/staff": "/api/mobile/secretary/staff",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -77,9 +87,18 @@ type GetMap = {
   "secretary/rooms": { items?: RoomRaw[]; nextBefore?: string | null };
   "secretary/suggestions": { items?: unknown[]; frequent?: unknown[] } | unknown[];
   "secretary/frequent": { items?: unknown[] } | unknown[];
-  "secretary/access": { items?: AccessItem[]; autoAvailable?: boolean };
+  "secretary/access": { items?: AccessItem[]; levels?: string[]; autoAvailable?: boolean };
   "secretary/inbox/count": InboxCount;
   "inbox/unread": { unread: number };
+  "secretary": SecretaryIdentity;
+  "secretary/quota": QuotaView;
+  "secretary/rules": RulesView;
+  "secretary/log": { items?: LogRow[] };
+  "secretary/lessons": { items?: Lesson[] };
+  "secretary/memories/pending": { items?: PendingMemory[] };
+  "secretary/digest": { digest?: Digest | null };
+  "secretary/after-hours": AfterHours;
+  "secretary/staff": { items?: StaffRow[] };
 };
 type PostMap = {
   "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[] }; res: { roomId: string; conversationId?: string; status?: string } };
@@ -96,9 +115,12 @@ function url(path: SecPath, q?: Query): string {
   return qs ? `${PATH[path]}?${qs}` : PATH[path];
 }
 
-/** GET เส้นของเลขา · secretary/me ไม่ส่ง x-tenant-id (ข้อมูลต่อผู้ใช้) */
+/** เส้นระดับผู้ใช้ (ข้ามกิจการ) — ไม่ส่ง x-tenant-id */
+const USER_LEVEL: ReadonlySet<SecPath> = new Set<SecPath>(["secretary/me", "secretary"]);
+
+/** GET เส้นของเลขา · secretary/me + secretary ไม่ส่ง x-tenant-id (ข้อมูลต่อผู้ใช้) */
 export function secGet<P extends keyof GetMap>(path: P, q?: Query): Promise<GetMap[P]> {
-  return api<GetMap[P]>(url(path, q), { tenant: path !== "secretary/me" });
+  return api<GetMap[P]>(url(path, q), { tenant: !USER_LEVEL.has(path) });
 }
 
 export function secPost<P extends keyof PostMap>(path: P, body: PostMap[P]["body"]): Promise<PostMap[P]["res"]> {
@@ -288,4 +310,146 @@ export function useSecretaryZone(): void {
       return () => sub.remove();
     }, [userId, activeTenantId]),
   );
+}
+
+// ───────── ตั้งค่า (ใบ S2.7 B1/B2/B8 · S2.8 B3/B4/B5 · S2.9 B6/B7) — รูปตาม S1.14 dto.ts ─────────
+/** ตัวตนเลขา (GET/PUT secretary · ระดับผู้ใช้) — `sample` = ประโยคตัวอย่างของเซิร์ฟเวอร์ */
+export type SecretaryIdentity = { name: string; suffix: string; tone: "polite" | "friendly" | "brief" | string; languages: string[]; sample?: string; saved?: boolean };
+export const TONES = ["polite", "friendly", "brief"] as const;
+export type Tone = (typeof TONES)[number];
+/** ภาษาที่เลขาตอบได้ (LANGUAGES ใน lib identity.ts) */
+export const SEC_LANGUAGES = ["th", "en", "zh", "ja"] as const;
+/** คำลงท้าย = ค่าจริงที่ส่งเซิร์ฟเวอร์ (ข้อมูล ไม่ใช่ข้อความบนจอ — ป้ายบนจออยู่ใน i18n sec.me.suffix.*) */
+export const SUFFIXES = [
+  { key: "khrap", value: "ครับ" },
+  { key: "kha", value: "ค่ะ" },
+  { key: "none", value: "" },
+] as const;
+export type SuffixKey = (typeof SUFFIXES)[number]["key"];
+export function suffixKeyOf(v: string | undefined | null): SuffixKey {
+  return SUFFIXES.find((s) => s.value === (v ?? "").trim())?.key ?? "none";
+}
+export function suffixValueOf(k: SuffixKey): string {
+  return SUFFIXES.find((s) => s.key === k)?.value ?? "";
+}
+
+/** โควตา (R-S1.13i wire shape) — ไม่มียอดเงิน · assist มาเป็นหน่วยไมโคร แต่จอแสดงเป็น % เท่านั้น (§C.6) */
+export type QuotaView = {
+  jobs?: { used?: number; limit?: number; left?: number; pct?: number; level?: string; text?: string | null; resetAt?: string; month?: string };
+  assist?: { usedMicro?: number; capMicro?: number; pct?: number };
+  credit?: { blocked?: string | null };
+  pack?: { enabled?: boolean; jobsPerMonth?: number; scheduledMax?: number; approversMax?: number };
+};
+const pct100 = (v: number) => Math.max(0, Math.min(100, Math.round(Number.isFinite(v) ? v : 0)));
+/** ตัวเลขที่จอโควตาใช้ — ทุก % ถูกตัดที่ 0..100 (B8 cap) · ไม่คืนค่าที่เป็นเงิน */
+export function quotaNumbers(q: QuotaView | null | undefined): { used: number; limit: number; left: number; pct: number; assistPct: number; resetAt: string | null; level: string; text: string | null; blocked: boolean } {
+  const used = Math.max(0, Number(q?.jobs?.used ?? 0) || 0);
+  const limit = Math.max(0, Number(q?.jobs?.limit ?? q?.pack?.jobsPerMonth ?? 0) || 0);
+  const left = Math.max(0, Number(q?.jobs?.left ?? limit - used) || 0);
+  const pct = pct100(q?.jobs?.pct ?? (limit > 0 ? (used / limit) * 100 : 0));
+  const a = q?.assist;
+  const cap = Number(a?.capMicro ?? 0) || 0;
+  const assistPct = pct100(a?.pct ?? (cap > 0 ? ((Number(a?.usedMicro ?? 0) || 0) / cap) * 100 : 0));
+  return { used, limit, left, pct, assistPct, resetAt: q?.jobs?.resetAt ?? null, level: q?.jobs?.level ?? "ok", text: q?.jobs?.text ?? null, blocked: !!q?.credit?.blocked };
+}
+
+/** ระดับเลขาต่อระบบ — รุ่นแรก 3 ระดับ (AUTO ไม่มีใน API · จอแสดงขั้นที่ 4 แบบล็อก) */
+export const ACCESS_LEVELS = ["OFF", "READ", "DRAFT"] as const;
+export type AccessLevel = (typeof ACCESS_LEVELS)[number];
+
+/** กฎอนุมัติ 3 ข้อ (R-K3b: เก็บ + แสดง + ใช้ในข้อความ "ทำไมต้องอนุมัติ") */
+export const RULE_KEYS = ["chat.send", "money.limit", "pii.export"] as const;
+export type RuleKey = (typeof RULE_KEYS)[number];
+export type RuleState = { enabled: boolean; limitSatang: number | null };
+export type RulesView = { rules?: Partial<Record<RuleKey, RuleState>>; keys?: string[]; alwaysApprove?: string[] };
+
+/** บันทึกการกระทำ (B5 · logDto) */
+export type LogRow = {
+  id: string;
+  kind: string;
+  module: string;
+  summary: string;
+  roomId?: string | null;
+  proposalId?: string | null;
+  userId?: string | null;
+  approverId?: string | null;
+  entity?: { type: string; id: string } | null;
+  undoableUntil?: string | null;
+  undoneAt?: string | null;
+  canUndo?: boolean;
+  createdAt: string;
+};
+/** ย้อนได้ = เซิร์ฟเวอร์บอก canUndo และยังไม่เลยกรอบเวลา (นาฬิกาเครื่อง) · สิทธิ์จริงตรวจตอนกด */
+export function logCanUndo(r: LogRow, nowMs: number): boolean {
+  if (r.undoneAt) return false;
+  const until = r.undoableUntil ? Date.parse(r.undoableUntil) : NaN;
+  if (r.canUndo === false) return false;
+  return Number.isFinite(until) && until > nowMs;
+}
+
+export type Lesson = { id: string; kind: string; pattern: string; example?: string | null; status: "PENDING" | "CONFIRMED" | "REJECTED" | string; occurrences?: number; sourceRoomId?: string | null; sourceUserId?: string | null; createdAt?: string; updatedAt?: string };
+export type PendingMemory = { id: string; content: string; createdAt?: string; byUserId?: string | null };
+/** ข้อมูลสดของกิจการ (computeDigest → digestForViewer · ส่วนที่อ่านไม่ได้ = null) */
+export type Digest = {
+  at?: string;
+  activeSystems?: string[];
+  sales?: { todaySatang: number; todayCount: number; d7Satang: number; d7Count: number; d30Satang: number; d30Count: number } | null;
+  quietCustomers?: { count: number } | null;
+  lowStock?: { count: number } | null;
+  receivables?: { count: number; totalSatang: number; overdueCount: number } | null;
+  tomorrow?: { appointments: number; firstAt?: string | null } | null;
+  pending?: { approvalsAged: number; leavesAged: number; shopOrders: number } | null;
+};
+/** ตอบลูกค้านอกเวลา (B7 · afterHoursSettings) */
+export type AfterHours = { reply: boolean; handoff: boolean; disclosure: string };
+export type StaffRow = { pending?: boolean; userId?: string; name?: string | null; role?: string; me?: boolean; active?: boolean };
+
+/** ข้อความแจ้งลูกค้าต้องบอกว่าเป็น AI (กติกาเดียวกับเซิร์ฟเวอร์ · RESOLUTIONS R-S1.22d) · ≤ 200 ตัว */
+export const DISCLOSURE_MAX = 200;
+const DISCLOSURE_AI_RE = /AI|เอไอ|ผู้ช่วย/i;
+export function disclosureProblem(v: string): "empty" | "noAi" | "long" | null {
+  const d = v.trim();
+  if (!d) return "empty";
+  if (Array.from(d).length > DISCLOSURE_MAX) return "long";
+  if (!DISCLOSURE_AI_RE.test(d)) return "noAi";
+  return null;
+}
+
+type PutMap = {
+  secretary: { body: { name?: string; suffix?: string; tone?: string; languages?: string[] }; res: SecretaryIdentity };
+  "secretary/access": { body: { module: string; level: AccessLevel }; res: { items?: AccessItem[] } };
+  "secretary/rules": { body: { key: RuleKey; enabled?: boolean; limitSatang?: number | null }; res: RulesView };
+  "secretary/after-hours": { body: Partial<AfterHours>; res: AfterHours };
+};
+/** PUT เส้นตั้งค่า (เซิร์ฟเวอร์ตรวจสิทธิ์เจ้าของเอง — จอแค่ซ่อนปุ่ม) */
+export function secPut<P extends keyof PutMap>(path: P, body: PutMap[P]["body"]): Promise<PutMap[P]["res"]> {
+  return api<PutMap[P]["res"]>(url(path), { method: "PUT", body, tenant: !USER_LEVEL.has(path) });
+}
+
+/** เส้นที่มีรหัสในทาง (log/[id]/undo · lessons/[id]/confirm · lessons/[id] · memories/[id]/confirm · memories/[id]) */
+const ID_PATH = {
+  "secretary/log/undo": (id: string) => `/api/mobile/secretary/log/${encodeURIComponent(id)}/undo`,
+  "secretary/lessons/confirm": (id: string) => `/api/mobile/secretary/lessons/${encodeURIComponent(id)}/confirm`,
+  "secretary/lessons": (id: string) => `/api/mobile/secretary/lessons/${encodeURIComponent(id)}`,
+  "secretary/memories/confirm": (id: string) => `/api/mobile/secretary/memories/${encodeURIComponent(id)}/confirm`,
+  "secretary/memories": (id: string) => `/api/mobile/secretary/memories/${encodeURIComponent(id)}`,
+} as const;
+type IdPostMap = { "secretary/log/undo": { ok: boolean; note?: string }; "secretary/lessons/confirm": { ok: boolean }; "secretary/memories/confirm": { ok: boolean } };
+type IdDeleteMap = { "secretary/lessons": { ok: boolean }; "secretary/memories": { ok: boolean } };
+export function secPostId<P extends keyof IdPostMap>(path: P, id: string): Promise<IdPostMap[P]> {
+  return api<IdPostMap[P]>(ID_PATH[path](id), { method: "POST", body: {} });
+}
+export function secDeleteId<P extends keyof IdDeleteMap>(path: P, id: string): Promise<IdDeleteMap[P]> {
+  return api<IdDeleteMap[P]>(ID_PATH[path](id), { method: "DELETE" });
+}
+
+/** ข้อความไทยของเซิร์ฟเวอร์ (400/403 ของ lib) — ไม่มี = null (จอใช้ข้อความ i18n ของตัวเอง) */
+export function serverNote(e: unknown): string | null {
+  return e instanceof ApiError && typeof e.detail === "string" && e.detail.trim() ? e.detail.trim() : null;
+}
+
+/** บทบาทของผู้ใช้ในกิจการที่ใช้อยู่ (จาก /me) — หน้าตั้งค่าของเจ้าของแสดงอ่านอย่างเดียวเมื่อไม่ใช่ OWNER */
+export function useActiveRole(): string | null {
+  const { tenants, activeTenantId } = useAuth();
+  return tenants.find((x) => x.tenantId === activeTenantId)?.role ?? null;
 }

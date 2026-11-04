@@ -189,6 +189,132 @@
    "screen": "/secretary/new A2 (402)",
    "action": "router.push /secretary/settings/quota",
    "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-settings-row-<key>",
+   "file": "apps/mobile/app/(app)/secretary/settings/index.tsx",
+   "screen": "/secretary/settings",
+   "action": "router.push หน้าย่อย (secretary/quota/access/rules/log/knowledge/customers/account) · switch = เปิด BusinessSwitcherSheet",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-<screen>-top-back",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "หน้าย่อยตั้งค่าทุกหน้า (SettingsTop)",
+   "action": "router.back · ไม่มี stack = /secretary/settings",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-tone-<polite|friendly|brief>",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "เลือกน้ำเสียง (ฟอร์ม)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-suffix-<khrap|kha|none>",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "เลือกคำลงท้าย (ฟอร์ม)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-lang-<th|en|zh|ja>",
+   "file": "apps/mobile/app/(app)/secretary/settings/secretary.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "เปิด/ปิดภาษา (เหลืออย่างน้อย 1)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-save",
+   "file": "apps/mobile/app/(app)/secretary/settings/secretary.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "PUT secretary {name,suffix,tone,languages} → โหลด secretary/me ใหม่",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-link-<access|rules|knowledge|quota>",
+   "file": "apps/mobile/app/(app)/secretary/settings/secretary.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "router.push หน้าตั้งค่า",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-access-level-<module>-<OFF|READ|DRAFT>",
+   "file": "apps/mobile/src/components/secretary/LevelPicker.tsx",
+   "screen": "/secretary/settings/access",
+   "action": "PUT secretary/access {module, level} (OWNER · บทบาทอื่นกดไม่ได้)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-rules-row-<id>-toggle",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "/secretary/settings/rules",
+   "action": "PUT secretary/rules {key, enabled} (OWNER · ข้อ always-approve ล็อก)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-log-filter-<all|today|undo|m-module>",
+   "file": "apps/mobile/src/components/airy/Chip.tsx",
+   "screen": "/secretary/settings/log",
+   "action": "GET secretary/log ?day= / ?module= · ย้อนได้ = กรองในแอป",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-log-undo-<id>",
+   "file": "apps/mobile/src/components/secretary/LogItem.tsx",
+   "screen": "/secretary/settings/log",
+   "action": "POST secretary/log/<id>/undo {} → แสดง note ของเซิร์ฟเวอร์ → โหลดใหม่",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-know-confirm-<id>",
+   "file": "apps/mobile/app/(app)/secretary/settings/knowledge.tsx",
+   "screen": "/secretary/settings/knowledge",
+   "action": "POST memories/<id>/confirm หรือ lessons/<id>/confirm (OWNER)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-know-reject-<id>",
+   "file": "apps/mobile/app/(app)/secretary/settings/knowledge.tsx",
+   "screen": "/secretary/settings/knowledge",
+   "action": "DELETE memories/<id> หรือ lessons/<id> (OWNER)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-know-room-<lessonId>",
+   "file": "apps/mobile/app/(app)/secretary/settings/knowledge.tsx",
+   "screen": "/secretary/settings/knowledge",
+   "action": "router.push /secretary/room/<sourceRoomId>",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-cust-afterhours",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "/secretary/settings/customers",
+   "action": "สลับ reply (ฟอร์ม · บันทึกด้วย sec-cust-save)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-cust-handoff",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "/secretary/settings/customers",
+   "action": "สลับ handoff (ฟอร์ม)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-cust-save",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "/secretary/settings/customers",
+   "action": "ตรวจ disclosure (AI/เอไอ/ผู้ช่วย) → PUT secretary/after-hours",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-cust-hours",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "/secretary/settings/customers",
+   "action": "router.push / ?open=/app/ (WebView 1.0)",
+   "wo": "S2.7"
   }
  ]
 }
