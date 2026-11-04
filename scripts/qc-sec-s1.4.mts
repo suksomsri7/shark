@@ -133,7 +133,7 @@ try {
     console.log("── L: listRooms ──");
     const staffConv = r1.conversationId as string, staffRoomId = r1.roomId as string;
     // staff2 เป็นสมาชิกห้องของ staff (แถวตรง — S1.6 ค่อยมี addMember)
-    await prisma.aiRoomMember.create({ data: { roomId: staffRoomId, userId: U.staff2, addedById: U.staff } });
+    await prisma.aiRoomMember.create({ data: { tenantId: tid, roomId: staffRoomId, userId: U.staff2, addedById: U.staff } }); // ORACLE-EDIT R-S1.1c
     const lo = await rooms.listRooms(ctxOf(OWNER), { scope: "tenant" });
     const lm = await rooms.listRooms(ctxOf(OWNER), { scope: "mine" });
     chk("L-1", "OWNER scope tenant เห็นทุกห้อง (รวมของ staff/staff2) · scope mine เห็นเฉพาะที่ตัวเองเปิด · การ์ดมี startedByName/memberIds/status", lo.some((c: AnyMod) => c.conversationId === staffConv) && lo.some((c: AnyMod) => c.startedById === U.staff2) && lm.every((c: AnyMod) => c.startedById === U.owner) && lm.length >= 2 && lo.find((c: AnyMod) => c.conversationId === staffConv)?.memberIds?.includes(U.staff2) && typeof lo[0]?.startedByName === "string" && ["OPEN", "RUNNING", "WAITING", "DONE"].includes(lo[0]?.status), `tenant=${lo.length} mine=${lm.length}`);
@@ -144,7 +144,7 @@ try {
     // สถานะ
     await prisma.aiProposal.create({ data: { tenantId: tid, conversationId: staffConv, kind: "kanban_create_card", summary: "qc", payload: { title: "x" }, expiresAt: new Date(Date.now() + 3_600_000) } });
     const ownerConv = r2.conversationId as string, ownerRoomId = r2.roomId as string;
-    await prisma.aiRoomJob.create({ data: { roomId: ownerRoomId, messageId: `qcs14-msg-${Date.now()}`, status: "QUEUED" } });
+    await prisma.aiRoomJob.create({ data: { tenantId: tid, roomId: ownerRoomId, messageId: `qcs14-msg-${Date.now()}`, status: "QUEUED" } }); // ORACLE-EDIT R-S1.1c
     const rN2 = rN.roomId as string;
     await prisma.aiRoom.update({ where: { id: rN2 }, data: { closedAt: new Date() } });
     const st = async (convId: string) => (await rooms.listRooms(ctxOf(OWNER), { scope: "tenant", take: 100 })).find((c: AnyMod) => c.conversationId === convId)?.status;

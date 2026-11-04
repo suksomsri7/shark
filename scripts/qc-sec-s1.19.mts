@@ -85,7 +85,7 @@ try {
     for (let i = 0; i < 4; i++) await pa.requestPhoneOtp(P.a, { send, ip: "10.0.0.1" });
     const r6 = await pa.requestPhoneOtp(P.a, { send, ip: "10.0.0.1" });
     chk("Q-2", "ขอครั้งที่ 6 ภายใน 10 นาที เบอร์เดิม ⇒ rate_limited (ไทย) · แถวยัง 5", r6.ok === false && r6.reason === "rate_limited" && thai(r6.message) && (await prisma.phoneOtp.count({ where: { phone: P.a } })) === 5, JSON.stringify(r6).slice(0, 120));
-    for (let i = 0; i < 20; i++) await pa.requestPhoneOtp(`${P.ip}${String(i).padStart(2, "0")}`.slice(0, 12), { send, ip: "10.9.9.9" });
+    for (let i = 0; i < 20; i++) await pa.requestPhoneOtp(`+668000179${String(i).padStart(2, "0")}`, { send, ip: "10.9.9.9" }); // ORACLE-EDIT builder S1.19: 20 เบอร์ต่างกันจริง
     const rIp = await pa.requestPhoneOtp(P.b, { send, ip: "10.9.9.9" });
     chk("Q-3", "ip เดียวขอครั้งที่ 21 (คนละเบอร์) ⇒ rate_limited", rIp.ok === false && rIp.reason === "rate_limited", JSON.stringify(rIp).slice(0, 120), "MAJOR");
     const before = await prisma.phoneOtp.count({ where: { phone: P.c } });

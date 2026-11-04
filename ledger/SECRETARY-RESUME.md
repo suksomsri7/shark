@@ -1,9 +1,11 @@
 # SECRETARY-RESUME — จุดต่องาน RUN "เลขา AI"
 
 > เริ่มใหม่ = อ่านไฟล์นี้บล็อกบนสุด → `SECRETARY-RUN.md` §3 สถานะ + §4 เหตุการณ์ → ใบถัดไปใน `SECRETARY-MASTER-PLAN.md` §3 → `secretary-briefs/sec-brief-COMMON.md`
-> ทรี `/root/projects/shark-sec` · branch `session/secretary` · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
+> ทรี `/root/projects/shark-sec` · branch `session/secretary` · เลน b/c/d = `shark-sec-b` `shark-sec-c` `shark-sec-d` (node_modules bind ro จาก shark-svc · หลังรีบูตต้อง mount ใหม่ทั้ง 4 ทรี) · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
 
-## ▶️ 4 พ.ย. 2026 ~15:2xZ — 5/58 (9%) · S0 ครบ + S1.1 ✅ · กำลังทำ: S1-2 (เลน c `wip/sec-s1.2`) · S1-3 (เลน b `wip/sec-s1.4`) · ใบ/oracle S1-4 (S1.5) พร้อม
+## ▶️ 4 พ.ย. 2026 ~18:0xZ — 8/58 (14%) · ปิด S0 · S1.1–S1.4 · กำลังทำ: S1.5 (เลน b) · S1.19 (เลน c) · S1.20 (เลน d) · พร้อมปล่อย: S1.6 · S1.7+S1.8 (ใบ+oracle ใน ledger/secretary-briefs + scripts/qc-sec-s1.*.mts)
+
+## (เก่า) 4 พ.ย. ~15:2xZ — 5/58
 
 ## (เก่า) 4 พ.ย. ~14:4xZ — 4/58
 - schema S1.1 pre-merge อยู่ใน session/secretary แล้ว (69542c20) · migration ลง QC แล้ว · oracle S1.2/S1.4 เขียนแล้ว (ใบ S1-2 เลน c · S1-3 เลน b หลัง S1.1 ปิด)
