@@ -201,6 +201,8 @@ export async function confirmPlanAction(
     if (res.ok) {
       return { ok: true, doneCount: res.doneCount, note: `ทำครบทั้ง ${res.doneCount} ขั้นเรียบร้อยแล้ว` };
     }
+    // SEC S1.7 ▸ R-S1.7a: ด่านผู้อนุมัติห้องเลขาไม่ยอม (แผนคง PENDING) — แสดงเหตุจริง ไม่ใช่ "ปิดไปแล้ว" ◂
+    if (res.note) return { ok: false, doneCount: 0, note: res.note };
     // ล้ม/ปิดไปแล้ว — สร้างข้อความไทยจากผลลัพธ์ที่มี
     if (res.results.length === 0) {
       return { ok: false, doneCount: 0, note: "แผนนี้ถูกดำเนินการหรือปิดไปแล้ว" };

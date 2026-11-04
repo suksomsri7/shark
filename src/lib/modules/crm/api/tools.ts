@@ -45,6 +45,8 @@ export type CrmToolCtx = {
   permissions?: Record<string, unknown>;
   /** id ข้อเสนอ — คีย์กันซ้ำตอนลงมือ */
   proposalId?: string | null;
+  /** SEC S1.8 รอบ 2 ▸ ป้ายผู้กระทำใน audit (`after.actor`) ของ dispatchCrmKind · ปริยาย "ai-assistant" · การย้อนของเลขาส่ง "ai-undo" ◂ */
+  auditActor?: string;
 };
 
 type Viewer = { userId: string; role: MembershipCtx["role"]; unitAccess: string[]; permissions: Record<string, unknown> };
@@ -465,7 +467,7 @@ export async function dispatchCrmKind(ctx: CrmToolCtx, kind: string, rawPayload:
       requestId: `ai-proposal-${proposalId}`,
       idempotencyKey: `ai-${proposalId}`,
       reason: typeof body.reason === "string" ? body.reason : undefined,
-      audit: { proposalId, actor: "ai-assistant" },
+      audit: { proposalId, actor: ctx.auditActor ?? "ai-assistant" },
     });
     const d = isRecord(env.data) ? env.data : {};
     const title = isRecord(d.deal) && typeof d.deal.title === "string" ? d.deal.title : isRecord(d.contact) && typeof d.contact.name === "string" ? d.contact.name : null;
