@@ -39,7 +39,8 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (!sid) return notFound("ไม่พบระบบแชทนี้");
   if (!(await visibleConv(c, sid, id))) return notFound();
 
-  const rl = await checkRateLimitDb(`mobile:inbox:reply:${c.userId}`, REPLY_RATE);
+  // ถังต่อ (ร้าน, ผู้ใช้) = ต่อ Membership — ถังของร้านหนึ่งไม่กินโควตาตอบลูกค้าของอีกร้าน ◂
+  const rl = await checkRateLimitDb(`mobile:inbox:reply:${c.tenantId}:${c.userId}`, REPLY_RATE);
   if (!rl.ok) {
     return Response.json(
       { error: "rate_limited", message: "ส่งถี่เกินไป รอสักครู่แล้วลองใหม่" },

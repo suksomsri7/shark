@@ -54,7 +54,11 @@
 | rate limit เส้นอื่นนอกจาก reply | brief กำหนดเฉพาะ reply | S3 |
 | assignIncoming ไม่ล็อก (คนกดรับพร้อมกฎ = คนเขียนทีหลังชนะ) | `assign()` เดิมเขียนตรง | ถ้าต้องการ: `assign` opts `onlyIfUnassigned` |
 | ห้องที่เปิดใหม่หลัง RESOLVED ใช้ firstCustomerMessageAt เดิม ⇒ SLA นับจากครั้งแรก | ตาม brief (waitingMin) | ทบทวนเมื่อมีข้อมูลจริง |
-| `ChatRateBucket` key `mobile:inbox:reply:qcs121-b` ค้างหลังข้อสอบ (ไม่ผูกร้าน · หมดหน้าต่าง 60 วิ) | ตัวจำกัดเดิม | – |
+| `ChatRateBucket` key `mobile:inbox:reply:<tenantId>:qcs121-b` ค้างหลังข้อสอบ (หมดหน้าต่าง 60 วิ · ร้านของข้อสอบถูกลบแล้ว) | ตัวจำกัดเดิมไม่มีตัวลบ | – |
 
 ## 9. คืนสภาพฐาน
 ข้อสอบ `finally` ลบตามร้าน + user `qcs121-*` + pushDevice — รวมรอบที่ล้มกลางทาง (try/finally) · routing ไม่เขียนแถวนอกร้านของข้อสอบ ยกเว้น `sweepChatSla` อ่านทุกร้านใน QC (เขียนเฉพาะห้องที่ถึงเกณฑ์ภายใน 24 ชม.)
+
+## 10. รอบ merge tip (5 พ.ย.)
+- merge `session/secretary` e40fbba3 (ORACLE-EDIT R3/R4/typing · S1.12 รอบ 2 · secretary_b) → conflict 2 จุดใน `sendReply` (lookup ซ้ำ) = เอาของ S1.12 (`direction: "OUT"`) · diff `service.ts` เทียบ tip = เหลือเฉพาะ hunk S1.21 · `aiMetaOf` อ่าน `ai_roomId/ai_proposalId/ai_approvedBy` ตรงกับ `proposals.ts:1489`
+- forced #2 ที่รันห่าง #1 แค่ 57 วิ: A-3 `rpN` 429 — ถัง rate limit `mobile:inbox:reply:<userId>` ของ user คงที่ `qcs121-b` ยังเต็มจาก A-5 ของรอบก่อน ⇒ เปลี่ยน key เป็น `<tenantId>:<userId>` (ต่อ Membership · ร้านใหม่ทุกรอบ = แยกถัง) · ผู้ใช้หลายร้าน = 60/นาที/ร้าน
