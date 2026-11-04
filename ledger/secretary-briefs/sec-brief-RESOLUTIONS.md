@@ -179,3 +179,9 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S2.1e (Q-6)** badge 3 ไอคอน = store กลางในชั้น layout ของโซน (โหลดตอน focus/foreground · ไม่ยิงทุก mount) · `GET secretary/inbox/count` อยู่ในสัญญา S1.14 (ยืนยัน)
 - **R-S2.1f (Q-7)** `airy/Sheet` รองรับ `BackHandler` (Android) ปิดชีตเมื่อ visible
 - จด: Q-3 ปุ่ม "เลขา AI" ลอยทับ WebView หน้าแรก 1.0 → **เจ้าของตรวจบนเครื่องจริงที่ CP2** (QC เว็บโหลด WebView ไม่ได้) · Q-8 ชื่อร้านตัด → S2.20 · Q-9 ภาษากระพริบ → S2.13 (cache ภาษาใน SecureStore) · Q-10 `_gallery` มี Redirect นอก dev แล้ว (S0.2) — ยืนยันตอน S2.14 · Q-11 oracle s2.1 ขาด back-path/cache reset → ผู้คุมเพิ่มใน spec s2.2 (X-3)
+
+## R. รีวิว S2.12 ผู้ตรวจ R — มติรอบ 2 (5 พ.ย. ~14:5xZ)
+- **R-S2.12a (F1)** gate หลังสมัครใหม่ไม่มีร้าน: ไปที่ `/dna` ตามเดิม (จนกว่า S2.21 ส่ง G1 จริง · `/business/new` ยังเป็นโครง) · อนุญาต `/business/new` เพิ่มได้แต่ห้ามบังคับ · เมื่อ S2.21 merge ค่อยสลับ (จดใน S2.21)
+- **R-S2.12b (F2)** ธง post-signup ผูกกับ `user.id` และล้างใน `signOut` + ตอนเริ่ม `signIn`
+- **R-S2.12c (F4/F5/F6)** `/phone`: reset busy ใน finally + ปุ่มลองใหม่เมื่อ refreshMe ล้ม · `locked` ⇒ ตัวนับยังเดิน ไม่ขอส่งใหม่ทันที · `needSignup` → `/signup` ไม่ขอรหัสซ้ำ (ใช้รหัสเดิม) · signup ที่เบอร์มีบัญชีอยู่แล้ว ⇒ แจ้ง "เบอร์นี้มีบัญชีแล้ว — เข้าสู่ระบบให้แล้ว"
+- **F3 (ของเจ้าของ — release gate)**: ก่อน build/OTA ใด ๆ ต้องมี SMS provider บน prod + บัญชี reviewer ของ App Store มีเบอร์ (หรือเบอร์ทดสอบ+รหัสคงที่ฝั่ง server — ตัดสินใน S3a) · F7 type email `string|null` · F8 R8 บังคับเฉพาะแอป (server ไม่ตรวจ) → S3 · F9 oracle gate เป็น pure function + เคส → S2.14
