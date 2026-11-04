@@ -12,6 +12,7 @@ import {
   setToken,
 } from "@/src/lib/session";
 import { currentPushToken, resetPushRegistration } from "@/src/lib/push-register";
+import { clearSignedUp, dropHeldCode, markSignedUp } from "@/src/lib/post-signup";
 
 // ธีมกิจการต่อ membership — ตรงกับ `branding` ที่ /api/mobile/me ส่งมา (null เมื่อร้านไม่ได้เปิด applyMobile)
 export type Branding = {
@@ -35,7 +36,8 @@ export type TenantRow = {
   } | null;
 };
 // phone: null = บัญชีเดิมยังไม่ผูกเบอร์ → ยามพาไป /phone (R8 · S2.12) · ไม่มีฟิลด์ (server เก่า) = ไม่บังคับ
-type Me = { user: { id: string; email: string; name: string | null; phone?: string | null; pendingEmail?: string | null }; memberships: TenantRow[] };
+// email: null = บัญชีที่สมัครด้วยเบอร์ (อีเมล placeholder · R-S1.19a)
+type Me = { user: { id: string; email: string | null; name: string | null; phone?: string | null; pendingEmail?: string | null }; memberships: TenantRow[] };
 
 type AuthState = {
   ready: boolean; // bootstrap จาก SecureStore เสร็จหรือยัง (ก่อน ready อย่าเพิ่ง redirect)
@@ -44,10 +46,10 @@ type AuthState = {
   tenants: TenantRow[];
   activeTenantId: string | null;
   activeBranding: Branding | null; // ธีมของกิจการ active — ก่อน ready คือค่าที่แคชไว้ (กันกะพริบ) หลัง ready คือของจริง
-  signIn: (token: string) => Promise<void>;
+  signIn: (token: string, opts?: { freshSignup?: boolean }) => Promise<void>;
   signOut: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
-  refreshMe: () => Promise<void>;
+  refreshMe: () => Promise<boolean>; // false = โหลด /me ไม่สำเร็จ (ออฟไลน์/token ตาย)
 };
 
 const AuthCtx = createContext<AuthState | null>(null);
@@ -111,11 +113,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, [ready, realBranding]);
 
-  const signIn = useCallback(async (newToken: string) => {
+  const signIn = useCallback(async (newToken: string, opts?: { freshSignup?: boolean }) => {
+    clearSignedUp(); // ธงของรอบก่อน (บัญชีอื่น) ห้ามติดมา · S2.12
     await setToken(newToken); // ลง SecureStore ก่อน — loadMe ใช้ token จาก store ได้ทันที
     const me = await loadMe();
     const first = me?.memberships[0] ?? null;
     if (first) { await setTenantId(first.tenantId); setActive(first.tenantId); }
+    if (opts?.freshSignup && me) markSignedUp(me.user.id); // S2.12: ยามพาไป C1 เฉพาะผู้ใช้คนนี้
     // ตั้ง state token เป็นลำดับสุดท้าย — Gate ต้องเห็น token พร้อมรายชื่อกิจการครบในเฟรมเดียว
     // (บั๊กเจ้าของเจอ: setTok ก่อน loadMe → เสี้ยววิที่ tenants ยัง [] → โดนเด้งเข้า /dna ทั้งที่มีกิจการ)
     setTok(newToken);
@@ -130,6 +134,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await api("/api/mobile/auth/logout", { body: expoToken ? { expoToken } : {}, tenant: false });
     } catch { /* ออฟไลน์ก็ออกได้ */ }
     resetPushRegistration();
+    clearSignedUp();
+    dropHeldCode();
     await clearSession();
     setTok(null); setUser(null); setTenants([]); setActive(null);
   }, []);
@@ -146,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await setTenantId(me.memberships[0].tenantId);
       setActive(me.memberships[0].tenantId);
     }
+    return !!me;
   }, [loadMe, activeTenantId]);
 
   const value = useMemo(

@@ -24,6 +24,7 @@ export default function PhoneLinkScreen() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [shakeKey, setShakeKey] = useState(0);
+  const [linked, setLinked] = useState(false); // ผูกสำเร็จแล้วแต่โหลด /me ไม่ได้ ⇒ ปุ่มลองใหม่ (ไม่ผูกซ้ำ · รหัสถูกใช้แล้ว)
 
   useEffect(() => {
     if (left <= 0) return;
@@ -61,20 +62,38 @@ export default function PhoneLinkScreen() {
     }
   }
 
+  // /me ได้เบอร์แล้ว ⇒ ยามหน้าประตูพาไปหน้าถัดไปเอง · โหลดไม่ได้ ⇒ คงจอไว้พร้อมปุ่มลองใหม่
+  async function reload() {
+    setErr(null);
+    setBusy(true);
+    try {
+      if (!(await refreshMe())) setErr(t("auth.phone.reloadFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function link(value = code) {
     if (value.length !== 6 || busy) return;
     setErr(null);
     setBusy(true);
+    let ok = false;
     try {
       await phoneLink(phone, value);
-      await refreshMe(); // /me ได้เบอร์แล้ว ⇒ ยามหน้าประตูพาไปหน้าถัดไปเอง
+      ok = true;
     } catch (e) {
       const why = authErrorCode(e);
       setErr(reason(e));
       if (why === "invalid") setShakeKey((k) => k + 1);
-      if (why === "expired" || why === "locked" || why === "not_found") setLeft(0);
+      // หมดอายุ/ไม่พบ ⇒ ส่งใหม่ได้ทันที · ล็อก ⇒ ตัวนับเดินต่อ (§R)
+      if (why === "expired" || why === "not_found") setLeft(0);
       setCode("");
+    } finally {
       setBusy(false);
+    }
+    if (ok) {
+      setLinked(true);
+      await reload();
     }
   }
 
@@ -122,7 +141,9 @@ export default function PhoneLinkScreen() {
           {err ? <NoteLine tone="error" top={F.v(20)}>{err}</NoteLine> : null}
         </ScrollView>
         <View style={s.foot}>
-          {step === "phone" ? (
+          {linked ? (
+            <PrimaryButton testID="phone-retry" label={busy ? t("auth.common.verifying") : t("auth.phone.retry")} onPress={() => void reload()} disabled={busy} />
+          ) : step === "phone" ? (
             <PrimaryButton testID="phone-request" label={busy ? t("auth.common.sending") : t("auth.phone.request")} onPress={() => void request()} disabled={!phoneOk || busy} />
           ) : (
             <PrimaryButton testID="phone-submit" label={busy ? t("auth.common.verifying") : t("auth.phone.submit")} onPress={() => void link()} disabled={code.length !== 6 || busy} />

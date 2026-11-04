@@ -86,3 +86,8 @@ bash scripts/iso.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-sec-s2.12.mts
 - shoot-sec: `fixture.locale` (s2.12 = th-TH) — ภาษาเครื่องของ chromium = en ⇒ จอ auth จะเป็นอังกฤษถ้าไม่ตั้ง
 - summary.json: 24 route S2.1 + 4 route S2.12 ถ่ายใหม่ในทรีนี้ (58 ภาพ ok ทั้งหมด) · ภาพคู่ secretary-c3 ทำใหม่
 - ผล: s2.12 forced ×2 + unforced 13/13 · s2.1 forced 14/14 · mobile-auth 31/31 · app 38/38 · chat 29/29 · authz-hotfix 12/12 · typecheck 0 · fitness ×2 ผ่าน
+
+## 8. รอบ 2 ตามรีวิว R (RESOLUTIONS §R)
+- R-S2.12a: สมัครใหม่ไม่มีร้าน ⇒ `/dna` ตามเดิม · `/business/new` เปิดได้แต่ไม่บังคับ — **S2.21 สลับเป็น G1 `/business/new` เมื่อจอจริงพร้อม**
+- R-S2.12b: ธงผูก `user.id` (`signIn(token, {freshSignup})` ตั้งหลังโหลด /me) · ล้างตอนเริ่ม `signIn` + ใน `signOut` · มีร้าน ⇒ `/secretary/onboarding/name` ครั้งเดียว
+- R-S2.12c: `/phone` busy ใน finally · ผูกแล้วแต่ `refreshMe` ล้ม ⇒ ปุ่ม `phone-retry` (refreshMe คืน boolean) · `locked` ⇒ ตัวนับเดินต่อ (otp + phone) · needSignup → `/signup?reuse=1` ⇒ ใช้รหัสเดิม (ถือในหน่วยความจำ `post-signup.ts`) ไม่ขอใหม่ · สมัครด้วยเบอร์ที่มีบัญชี (`isNew:false`) ⇒ แจ้ง `auth.otp.existingSignedIn` ก่อนเข้า · `Me.user.email: string | null`

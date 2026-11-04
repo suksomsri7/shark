@@ -8,6 +8,7 @@ import { AiryScreen, Orb, PrimaryButton } from "@/src/components/airy";
 import { AuthField, Hero, LinkLine, NoteLine, StepBar } from "@/src/components/auth/airy";
 import { authErrorCode, authErrorKey, smsRequest } from "@/src/lib/auth-api";
 import { formatThaiMobileInput, localThaiMobile, normalizeThaiMobile } from "@/src/lib/phone";
+import { hasHeldCode } from "@/src/lib/post-signup";
 import { useT } from "@/src/i18n";
 import { F } from "@/src/theme/index";
 import { spacing } from "@/src/theme/tokens";
@@ -18,7 +19,7 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 export default function SignupScreen() {
   const t = useT();
   const router = useRouter();
-  const q = useLocalSearchParams<{ name?: string; phone?: string; email?: string }>();
+  const q = useLocalSearchParams<{ name?: string; phone?: string; email?: string; reuse?: string }>();
   const [name, setName] = useState(one(q.name));
   const [phone, setPhone] = useState(formatThaiMobileInput(localThaiMobile(one(q.phone)) ?? one(q.phone)));
   const [email, setEmail] = useState(one(q.email));
@@ -46,13 +47,17 @@ export default function SignupScreen() {
     setErr(null);
     setSending(true);
     try {
-      const r = await smsRequest(phone);
+      // มาจาก OTP ที่ยังไม่มีบัญชี (reuse=1) + เบอร์เดิม ⇒ ใช้รหัสเดิมที่ถือไว้ ไม่ขอรหัสใหม่ (§R)
+      const local = localThaiMobile(phone) ?? phone;
+      const reuse = one(q.reuse) === "1" && hasHeldCode(local);
+      const r = reuse ? { resendAfterSec: 60 } : await smsRequest(phone);
       const p = new URLSearchParams({
         phone: localThaiMobile(phone) ?? phone,
         mode: "signup",
         name: name.trim(),
         email: email.trim(),
         resend: String(r.resendAfterSec ?? 60),
+        ...(reuse ? { reuse: "1" } : {}),
       });
       router.push(`/otp?${p.toString()}`);
     } catch (e) {

@@ -140,6 +140,9 @@ const en: Record<I18nKey, string> = {
   "auth.otp.emailTaken": "This email already has an account — sign in with email and link your number, or change the email",
   "auth.otp.phoneTaken": "This number already has an account. Try signing in with it",
   "auth.otp.badInput": "Sign-up details are incomplete. Go back and fix the name or email",
+  "auth.otp.existingSignedIn": "This number already has an account — you're signed in to it",
+  "auth.phone.reloadFailed": "Number linked, but your account didn't load — tap retry",
+  "auth.phone.retry": "Retry",
   "auth.otp.otherWays": "Use another way",
   // ── link phone (R8) ──
   "auth.phone.title": "Verify your mobile number",

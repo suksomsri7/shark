@@ -1,6 +1,6 @@
 // S2 · ใส่รหัสจาก SMS (ใบ S2.12 · แบบ sec-c หน้า 2) — query: phone · mode=signup|login · (signup) name, email · resend (วินาที)
 // verify → token ⇒ signIn (ยามหน้าประตูใน app/_layout.tsx พาไปต่อเอง) · ไม่มีบัญชี (needSignup / 404 no_account) ⇒ การ์ดชวนสมัคร
-// 401 รหัสผิด ⇒ สั่นช่อง · หมดอายุ/ล็อก ⇒ ส่งรหัสใหม่ได้ทันที · 503 sms_unavailable ⇒ ข้อความ + ปุ่มกลับไปเข้าวิธีอื่น (Apple/Google/อีเมล ที่ /login)
+// 401 รหัสผิด ⇒ สั่นช่อง · หมดอายุ/ไม่พบ ⇒ ส่งรหัสใหม่ได้ทันที · ล็อก ⇒ รอตัวนับเดิม (§R) · 503 sms_unavailable ⇒ ข้อความ + ปุ่มกลับไปเข้าวิธีอื่น (Apple/Google/อีเมล ที่ /login)
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -10,7 +10,7 @@ import { GlassButton, Hero, LinkLine, NoteLine, OtpBoxes, StepBar } from "@/src/
 import { attemptsLeftOf, authErrorCode, authErrorKey, smsRequest, smsVerify } from "@/src/lib/auth-api";
 import { localThaiMobile, maskPhone } from "@/src/lib/phone";
 import { useAuth } from "@/src/lib/auth-context";
-import { clearSignedUp, markSignedUp } from "@/src/lib/post-signup";
+import { holdCode, takeHeldCode } from "@/src/lib/post-signup";
 import { useT } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
 import { spacing, type } from "@/src/theme/tokens";
@@ -23,7 +23,7 @@ export default function OtpScreen() {
   const { c } = useTheme();
   const router = useRouter();
   const { signIn } = useAuth();
-  const q = useLocalSearchParams<{ phone?: string; mode?: string; name?: string; email?: string; resend?: string }>();
+  const q = useLocalSearchParams<{ phone?: string; mode?: string; name?: string; email?: string; resend?: string; reuse?: string }>();
   const phone = one(q.phone);
   const signup = one(q.mode) === "signup";
   const name = one(q.name);
@@ -46,6 +46,16 @@ export default function OtpScreen() {
     return () => clearInterval(id);
   }, [left > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // มาจาก "สมัครเลย" (needSignup) ⇒ ใช้รหัสเดิมที่ยังไม่ถูกใช้ ไม่ขอรหัสใหม่ (§R) — เติมช่องแล้วยืนยันพร้อมชื่อ/อีเมลทันที
+  useEffect(() => {
+    if (!signup || one(q.reuse) !== "1") return;
+    const held = takeHeldCode(phone);
+    if (held) {
+      setCode(held);
+      void verify(held);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function verify(value = code) {
     if (value.length !== 6 || busy) return;
     setErr(null);
@@ -54,15 +64,19 @@ export default function OtpScreen() {
     try {
       const r = await smsVerify(phone, value, signup ? { name, email } : undefined);
       if (r.needSignup) {
+        holdCode(phone, value); // รหัสยังไม่ถูกใช้ (server ไม่ consume) ⇒ ถือไว้ให้รอบสมัคร
         setNoAccount(true);
         setBusy(false);
         return;
       }
-      // บัญชีใหม่ (สมัครจากจอนี้) ⇒ ยามพาไป G1/C1 แทนหน้าแรก · เบอร์ที่มีบัญชีอยู่แล้ว (isNew:false) = เข้าใช้ตามปกติ
-      if (r.isNew) markSignedUp();
-      await signIn(r.token); // ยามหน้าประตูเด้งต่อเอง — คาสถานะ busy ไว้จนจอเปลี่ยน
+      // สมัครด้วยเบอร์ที่มีบัญชีอยู่แล้ว ⇒ server ให้เข้าใช้บัญชีเดิม — บอกผู้ใช้ก่อน ไม่เข้าเงียบ ๆ (§R)
+      if (signup && r.isNew === false) {
+        setInfo(t("auth.otp.existingSignedIn"));
+        await new Promise((res) => setTimeout(res, 1500));
+      }
+      // บัญชีใหม่ ⇒ ธงผูก user.id ให้ยามพาไป C1 (มีกิจการ) · ไม่มีกิจการ ⇒ /dna ตามเดิม
+      await signIn(r.token, { freshSignup: r.isNew === true }); // ยามหน้าประตูเด้งต่อเอง — คาสถานะ busy ไว้จนจอเปลี่ยน
     } catch (e) {
-      clearSignedUp();
       const why = authErrorCode(e);
       if (why === "no_account") setNoAccount(true);
       else if (why === "sms_unavailable") setSmsDown(true);
@@ -70,8 +84,8 @@ export default function OtpScreen() {
         const n = attemptsLeftOf(e);
         setErr(n !== null && (why === "invalid" || why === "bad_code") ? t("auth.otp.badCodeLeft", { n }) : t(authErrorKey(why)));
         if (why === "invalid" || why === "bad_code") setShakeKey((k) => k + 1);
-        // หมดอายุ/ล็อก/ไม่พบรหัส ⇒ รหัสเดิมใช้ไม่ได้แล้ว: ล้างช่อง + เปิดปุ่มส่งใหม่ทันที
-        if (why === "expired" || why === "locked" || why === "not_found") setLeft(0);
+        // หมดอายุ/ไม่พบรหัส ⇒ เปิดปุ่มส่งใหม่ทันที · ล็อก ⇒ ตัวนับเดินต่อ (กันกดขอรหัสรัว · §R)
+        if (why === "expired" || why === "not_found") setLeft(0);
       }
       setCode("");
       setBusy(false);
@@ -146,7 +160,7 @@ export default function OtpScreen() {
               <Text style={[s.cardT, { color: c.text }]}>{t("auth.otp.noAccountTitle")}</Text>
               <Text style={[s.cardP, { color: c.textMuted }]}>{t("auth.otp.noAccountBody")}</Text>
               <View style={s.cardBtn}>
-                <GlassButton testID="otp-signup" label={t("auth.otp.noAccountCta")} onPress={() => router.replace(`/signup?phone=${encodeURIComponent(localThaiMobile(phone) ?? phone)}`)} />
+                <GlassButton testID="otp-signup" label={t("auth.otp.noAccountCta")} onPress={() => router.replace(`/signup?phone=${encodeURIComponent(localThaiMobile(phone) ?? phone)}&reuse=1`)} />
               </View>
             </Glass>
           ) : null}

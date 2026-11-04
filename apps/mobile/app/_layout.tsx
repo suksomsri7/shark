@@ -30,24 +30,19 @@ function Gate({ children }: { children: React.ReactNode }) {
       if (segments[0] !== "phone") router.replace("/phone");
       return;
     }
-    // S2.12: เพิ่งสมัครด้วยเบอร์ ⇒ ไม่มีกิจการไป G1 /business/new · มีกิจการไป C1 /secretary/onboarding/name (ครั้งเดียว)
-    const fresh = isFreshSignup();
     if (tenants.length === 0) {
-      if (fresh) {
-        if (!(inApp && (segments as string[])[1] === "business")) router.replace("/business/new");
-        return;
-      }
-      // login แล้วแต่ยังไม่มีกิจการ → บังคับเข้า DNA Wizard สร้างกิจการแรก (คำสั่งเจ้าของ)
-      if (!atDna) router.replace("/dna");
+      // login แล้วแต่ยังไม่มีกิจการ → บังคับเข้า DNA Wizard สร้างกิจการแรก (คำสั่งเจ้าของ) · /business/new (G1) เปิดได้แต่ไม่บังคับ (R-S2.12a)
+      if (!atDna && !(inApp && (segments as string[])[1] === "business")) router.replace("/dna");
       return;
     }
-    if (fresh) {
+    // S2.12: เพิ่งสมัครด้วยเบอร์ (ธงผูก user.id) + มีกิจการ ⇒ C1 ตั้งชื่อเลขา ครั้งเดียว
+    if (isFreshSignup(user?.id)) {
       clearSignedUp();
       router.replace("/secretary/onboarding/name");
       return;
     }
     if (atLogin || (!inApp && !atDna)) router.replace("/(app)");
-  }, [ready, token, tenants.length, user?.phone, segments, router]);
+  }, [ready, token, tenants.length, user?.phone, user?.id, segments, router]);
 
   return <>{children}</>;
 }
