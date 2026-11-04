@@ -60,7 +60,7 @@ const U = { owner: "qcs112-owner", staff: "qcs112-staff" };
 let tid = "";
 const cleanup = async () => {
   if (tid) {
-    for (const m of ["aiSystemAccess", "aiActionLog", "aiProposal", "aiMessage", "aiConversation", "aiRoomMember", "aiRoom", "aiJobCounter", "chatMessage", "chatConversation", "chatContact", "chatSetting", "appSystem", "membership"]) { try { await (prisma as AnyMod)[m].deleteMany({ where: { tenantId: tid } }); } catch { /* */ } }
+    for (const m of ["aiSystemAccess", "aiTrainingSample", "aiLesson", "aiActionLog", "aiProposal", "aiMessage", "aiConversation", "aiRoomMember", "aiRoom", "aiJobCounter", "chatMessage", "chatConversation", "chatContact", "chatSetting", "appSystem", "membership"]) { try { await (prisma as AnyMod)[m].deleteMany({ where: { tenantId: tid } }); } catch { /* */ } }
     try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup tenant: ${errMsg(e)}`); }
   }
   try { await prisma.tenant.deleteMany({ where: { slug: { startsWith: "qc-sec-s112-" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } } }); } catch { /* */ }

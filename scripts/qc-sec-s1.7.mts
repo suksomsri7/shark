@@ -70,7 +70,7 @@ const U = { owner: "qcs17-owner", mgr: "qcs17-mgr", staff: "qcs17-staff", staff2
 let tid = "";
 const cleanup = async () => {
   if (tid) {
-    for (const m of ["aiActionLog", "aiApprovalRule", "aiRoomMember", "aiRoomJob", "aiRoom", "aiProposal", "aiPlan", "aiMessage", "aiConversation", "aiJobCounter", "aiUsage", "aiCreditTxn", "aiCreditWallet", "kanbanCard", "kanbanColumn", "kanbanBoard", "appSystem", "membership"]) { try { await (prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m]?.deleteMany({ where: { tenantId: tid } }); } catch { /* */ } }
+    for (const m of ["aiTrainingSample", "aiLesson", "aiActionLog", "aiApprovalRule", "aiRoomMember", "aiRoomJob", "aiRoom", "aiProposal", "aiPlan", "aiMessage", "aiConversation", "aiJobCounter", "aiUsage", "aiCreditTxn", "aiCreditWallet", "kanbanCard", "kanbanColumn", "kanbanBoard", "appSystem", "membership"]) { try { await (prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m]?.deleteMany({ where: { tenantId: tid } }); } catch { /* */ } }
     try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup tenant: ${errMsg(e)}`); }
   }
   try { await prisma.tenant.deleteMany({ where: { slug: { startsWith: "qc-sec-s17-" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } } }); } catch { /* */ }

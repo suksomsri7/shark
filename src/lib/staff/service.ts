@@ -189,8 +189,8 @@ function mergePermissions(current: PermissionMap, next: PermissionMap): Permissi
   return { ...legacy, ...next };
 }
 
-/** ตรวจการยกระดับสิทธิ์: ทุกข้อที่ "เพิ่มขึ้นจากของเดิม" ผู้สั่งต้องมีเองก่อน */
-function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: PermissionMap): StaffFail | null {
+/** ตรวจการยกระดับสิทธิ์: ทุกข้อที่ "เพิ่มขึ้นจากของเดิม" ผู้สั่งต้องมีเองก่อน · SEC S1.25 ▸ export ให้คำเชิญ (staff/invite.ts) ใช้ตัวตรวจชุดเดียวกัน ◂ */
+export function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: PermissionMap): StaffFail | null {
   for (const [key, val] of Object.entries(next)) {
     if (val === true) {
       if (current[key] === true) continue; // มีอยู่แล้ว ไม่ใช่การเพิ่ม
@@ -204,6 +204,10 @@ function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: P
       // SVC R0.5 ▸ ศูนย์เชื่อมต่อ (คีย์ผู้ให้บริการภายนอก) — ให้ได้เฉพาะเจ้าของร้าน แม้ผู้สั่งจะถือคีย์นี้เองก็ตาม (ใบสั่ง R0.5 §8 ข้อ 10) ◂
       if (SETTINGS_OWNER_ONLY_KEYS.includes(key) && actor.role !== "OWNER") {
         return fail(`สิทธิ์ “${permissionLabel(key)}” ให้ได้เฉพาะเจ้าของร้าน — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`);
+      }
+      // SEC S1.25 ▸ R-S1.25e: สิทธิ์เงินเดือน (`hr.payroll.*`) แจกได้เฉพาะคนที่ดูเงินเดือนได้เอง (OWNER / hr.payroll.read) — MANAGER ผ่าน evaluate แต่ไม่เห็นเงินเดือน ◂
+      if (key.startsWith("hr.payroll.") && !canViewPayroll(actor)) {
+        return fail(`สิทธิ์ “${permissionLabel(key)}” ให้ได้เฉพาะเจ้าของกิจการหรือผู้มีสิทธิ์ดูเงินเดือน`);
       }
       if (!canGrantPermission(actor, moduleName, key)) {
         return fail(
@@ -245,8 +249,27 @@ export type StaffAccessRow = {
   employee: { id: string; name: string; position: string | null; systemId: string } | null;
 };
 
-/** ผู้ใช้งานทั้งหมดของร้าน (รวมคนที่ถูกถอนสิทธิ์ เพื่อให้เปิดคืนได้) */
-export async function listStaffAccess(tenantId: string): Promise<StaffAccessRow[]> {
+/**
+ * ผู้ใช้งานทั้งหมดของร้าน (รวมคนที่ถูกถอนสิทธิ์ เพื่อให้เปิดคืนได้)
+ * SEC S1.25 ▸ R-S1.25j: `{ includeInvites: true }` ⇒ ต่อท้ายแถว "รอรับคำเชิญ" (`pending: true` · ไม่มี membershipId · เบอร์ปิดเลขกลาง) —
+ *   ปริยาย (ไม่ส่ง) = ชุดเดิมทุกไบต์ ◂
+ */
+export async function listStaffAccess(tenantId: string): Promise<StaffAccessRow[]>;
+export async function listStaffAccess(
+  tenantId: string,
+  opts: { includeInvites: true },
+): Promise<(StaffAccessRow | import("./invite").PendingInviteRow)[]>;
+export async function listStaffAccess(
+  tenantId: string,
+  opts?: { includeInvites?: boolean },
+): Promise<(StaffAccessRow | import("./invite").PendingInviteRow)[]> {
+  const rows = await listStaffAccessRows(tenantId);
+  if (!opts?.includeInvites) return rows;
+  const { pendingInviteRows } = await import("./invite"); // lazy — invite.ts import service.ts (กันวงตอนโหลด)
+  return [...rows, ...(await pendingInviteRows(tenantId))];
+}
+
+async function listStaffAccessRows(tenantId: string): Promise<StaffAccessRow[]> {
   const memberships = await prisma.membership.findMany({
     where: { tenantId },
     include: { user: true },
@@ -604,6 +627,8 @@ export async function revokeStaffAccess(input: RevokeStaffAccessInput): Promise<
     where: { id: target.id, tenantId: input.tenantId },
     data: { acceptedAt: null },
   });
+  // SEC S1.25 ▸ R-S1.25j/N5: เครื่องของคนที่ถูกถอน ไม่ผูกร้านนี้อีก (push เรื่องของร้านไม่ไปถึง) — ทุกทาง (เว็บ/แอป) ◂
+  await prisma.pushDevice.updateMany({ where: { userId: target.userId, tenantId: input.tenantId }, data: { tenantId: null } });
 
   await writeStaffAudit({
     tenantId: input.tenantId,

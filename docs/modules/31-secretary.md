@@ -453,22 +453,90 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `addPlatformMessage(pu, caseId, body, deps?: { post? })` — ข้อความ PLATFORM + `PENDING` + assignee (เดิม) · แทรก `🛟 ทีมงาน:` ลงห้อง AI **เฉพาะ `source !== "APP"` และมี `conversationId`** (bridge เดิม · `qc-help-v2`/`qc-mobile-help` เขียว) · push: เคส APP ⇒ (ผู้แจ้งยังเป็นสมาชิกที่รับแล้ว) `notifyUser(openedByUserId, tenantId, "help", { title: "ทีมงานตอบกลับแล้ว", body: ≤ 80, data: { link: "/help/<caseId>", caseId } })` · เคสอื่น = เดิม (`sendPushToUsers` ผู้สร้างห้อง/OWNER · `data.conversationId`)
 - "ระงับเลขาของร้าน" = `setAccess` ทุกโมดูล OFF (ไม่มีธงใหม่ · ไม่ใช้ `suspendTenant` :140) — ใบ S2.16
 
-### 5.22 `src/lib/mobile/tenants.ts` (เปลี่ยน · S1.25)
-- `createTenantFromApp(userId: string, input: { name: string; type: string; systems: string[] }) → Promise<{ tenantId; roomId }>` — ห่อ `createTenantForUser` (:8) + เปิดระบบที่เลือก (`applyBlueprint` ทางเดิม) + `startRoom` ห้องแรก "ตั้งค่าเริ่มต้น" (ไม่นับงาน: `couldNotAct`/งานต้อนรับ)
+### 5.22 `src/lib/mobile/tenants.ts` (เปลี่ยน · S1.25 · มีแล้ว)
+- `TENANT_TYPES = ["retail","restaurant","service","clinic","education","dorm","other"]` · `TENANT_MAX_OWNED = 3`
+- `createTenantFromApp(userId, input: { name; type; systems: string[] }, now?) → Promise<{ tenant: Tenant; systems: { type; id }[]; room: { roomId; conversationId } | null }>` — ชื่อ 2–60 ตัว (ไม่ผ่าน ⇒ throw ไทย) · type ไม่รู้จัก ⇒ `other` · systems ⊆ `SystemType` (ไม่รู้จัก/ซ้ำ = ตัด · ≤ 6) · เพดาน 3 ร้าน (`Membership` OWNER `acceptedAt≠null`) ตรวจใน tx เดียวกับการสร้าง + advisory lock ต่อผู้ใช้ (ร้านที่ 4 ⇒ throw ไทย) · tx เดิมของ `createTenantForUser` (แยกเป็น `createTenantTx` ภายใน · `createTenantForUser` พฤติกรรมเดิม) · หลัง tx: `createSystemAutoLink` ต่อระบบ (ชื่อ = label ของโมดูลในทะเบียนสิทธิ์) · `startRoom` ห้องแรก "ตั้งค่าเริ่มต้นของกิจการ …" ด้วย OWNER (นับงาน 1 ตามปกติ · โควตา/ล้ม ⇒ `room: null` + `logOps WARN tenant-create`) · ไม่สร้าง `AiSystemAccess` (ปริยาย DRAFT)
 
-### 5.23 invite.ts (แผน · `src/lib/mobile` · S1.25 · R-K11 + Q10)
-- `createInvite(ctx, input: { name; phone; role: "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, boolean> }) → Promise<{ ok: true; inviteId } | { ok: false; reason }>` — OWNER/MANAGER (`settings.staff.write` staff/service.ts:60) · ตรวจด้วย `validatePermissionInput` (:155) · `canAssignRole`/`canGrantUnitAccess`/`canGrantPermission` (rbac.ts:94–112) · รหัสสุ่ม → `codeHash` · หมดอายุ 7 วัน · `sendSms` ลิงก์ `https://shark.in.th/i/<code>`
-- `acceptInvite(userId: string, phone: string, opts: { now: Date }) → Promise<{ accepted: string[] }>` — หลัง `verifyPhoneOtp` · หา `StaffInvite` เบอร์ตรง + ยังไม่หมดอายุ + ยังไม่รับ → สร้าง `Membership(acceptedAt = now)` ผ่านตัวตรวจชุดเดียวกับ `updateStaffAccess` ใน tx เดียว · claim `updateMany({acceptedAt: null})` · ไม่ต้องมี HrEmployee · event `staff.invite.accepted`
-- `revokeInvite(ctx, inviteId: string) → Promise<boolean>`
-- `moduleLevel(permissions: Record<string, unknown>, module: string) → "OFF" | "VIEW" | "USE"` — pure · OFF = ไม่มีคีย์ของโมดูล · VIEW = มีเฉพาะคีย์ลงท้าย `.read`/`.view` · USE = `<module>.*` หรือมีคีย์เขียน ≥ 1
-- `setModuleLevel(permissions: Record<string, unknown>, module: string, level: "OFF" | "VIEW" | "USE") → Record<string, boolean>` — pure · ทางกลับของ `moduleLevel` · แชท 3 ระดับ = ไม่เห็น / ดูได้ (`chat.conversation.read`) / ตอบได้ (+ `chat.message.send`)
+### 5.23 `src/lib/staff/invite.ts` + `src/lib/staff/levels.ts` (S1.25 · มีแล้ว · R-K11 · R-K14 · Q10 · RESOLUTIONS §P R-S1.25a–j)
+**คำเชิญ (R-K11 — ไม่มี Membership จนกว่าจะรับ)** · ผู้เชิญอ่านจาก DB (OWNER/MANAGER ที่ยังใช้งาน) · **MANAGER แตะได้เฉพาะเป้าหมาย STAFF** (เชิญ/ส่งซ้ำ/ยกเลิก/ตั้งระดับ/ระงับ/เอาออก · R-S1.25d) · ตรวจด้วย `validatePermissionInput` + `checkNoEscalation` (staff/service.ts · export · `hr.payroll.*` ต้อง `canViewPayroll` ของผู้ให้ · R-S1.25e) + `canAssignRole`/`canGrantUnitAccess` · ตอนรับตรวจซ้ำกับสิทธิ์ **ปัจจุบัน** ของผู้เชิญ — ไม่ผ่าน ⇒ ใบหมดอายุทันที (`expiresAt = now`) + แจ้งผู้เชิญ (R-S1.25i) · เบอร์ที่มี Membership ถูกถอนซึ่งบทบาทสูงกว่าผู้เชิญหรือสูงกว่าบทบาทในใบ ⇒ เชิญ/รับไม่ได้ (ให้ `restoreStaffAccess` แทน)
+- `inviteStaff(ctx {tenantId, actorUserId, membership}, { name; phone; role: "MANAGER"|"STAFF"; unitIds?; permissions? }, now?) → { ok: true; inviteId; link; sms: "sent"|"mocked"|"unavailable"; expiresAt } | { ok: false; reason: forbidden|bad_phone|bad_role|bad_units|bad_permissions|already_member|already_invited|sms_unavailable|throttled|rate_limited|pending_cap; message }` — เบอร์ `normalizeThaiMobile` · รหัส 8 ตัว `[A-HJ-NP-Z2-9]` เก็บแค่ `codeHash = sha256("staff-invite:"+code)` · ลิงก์ `https://shark.in.th/i/<code>` · หมดอายุ 7 วัน · ใต้ advisory lock **ระดับร้าน**: already_member → ถูกถอนสูงกว่า (forbidden) → already_invited → throttled (1 ครั้ง/เบอร์/60 วิ · เวลาส่ง = `expiresAt − 7 วัน`) → `pending_cap` (20 ใบค้าง) → `rate_limited` (fail-closed: ถังไหนไม่มี count ⇒ ปฏิเสธ · `checkRateLimitDbMany` ถัง `ChatRateBucket` ไม่ขึ้นกับแถว: ร้าน+เบอร์ 5/วัน · ร้าน 50/วัน · ผู้เชิญในร้าน 30/วัน · ยกเลิกไม่คืน · ส่งซ้ำนับรวม · ชื่อถังเก็บ hash ของเบอร์) · SMS "SHARK: <ร้าน> เชิญคุณ <ชื่อ> เข้าใช้ SHARK · เปิดลิงก์ <link> (หมดอายุ 7 วัน)" (ชื่อร้าน/ชื่อคนตัด URL/โดเมน และเลขติดกัน ≥ 4 · ≤ 40 ตัว) · production ไม่มีผู้ให้บริการ ⇒ `sms_unavailable` ไม่สร้างแถว · dev ไม่มี ⇒ สร้างแถว `sms: "unavailable"` · `unitIds` ไม่ส่ง = `[]` (`["*"]` = ทุกสาขา)
+- `listInvites(ctx, { includeAccepted?, now? }) → InviteRow[]` — ไม่มี `codeHash`/เบอร์เต็ม · `phoneMasked` ผ่าน `crmApi.maskPiiDeep` (maskContactValue) · `expired`
+- `listStaffAccess(tenantId, { includeInvites: true })` (staff/service.ts) — ต่อท้ายแถว `{ pending: true; inviteId; name; phoneMasked; role; unitAccess; permissions; expiresAt; expired }` (`pendingInviteRows`) · ไม่ส่ง opts = ชุดเดิม
+- `cancelInvite(ctx, inviteId) → boolean` (ลบแถวที่ยังไม่รับ · ไม่คืนโควตา) · `resendInvite(ctx, inviteId, now?) → เหมือน inviteStaff` (+ `not_found`/`accepted` · รหัสใหม่ + หมดอายุใหม่ · ใต้ล็อกระดับร้านเดียวกับ inviteStaff: throttle · ใบค้างอื่นของเบอร์ · `pending_cap` เมื่อส่งซ้ำใบที่หมดอายุ · rate-limit)
+- `previewInvite(code, now?) → { ok: true; tenantName; name; role; phoneMasked; expiresAt } | { ok: false; reason: not_found|expired|accepted }` (หน้า /i/<code> · S2.21 — route ต้องมี IP rate-limit)
+- **ความยินยอม (R-S1.25b):** `claimInvitesForPhone(userId, phone, now?) → { accepted: { tenantId; membershipId }[] }` เรียกจาก hook `signupWithPhone` **เท่านั้น** (คนใหม่สมัครผ่านคำเชิญ) · ต้องเป็นเบอร์ verified ของ user · ต่อใบ 1 tx: จองใบแบบ conditional → Membership ไม่มี ⇒ สร้าง (`acceptedAt = now` · `invitedAt` = วันเชิญ) · ถูกถอน (ไม่สูงกว่า) ⇒ คืนตามใบ · active อยู่แล้ว ⇒ ไม่แตะ · แจ้งผู้เชิญ `AppNotification(recipientUserId)` + `notifyUser(…, "inbox", link "/staff")`
+- ผู้ใช้เดิม (ล็อกอิน OTP / `linkPhoneToUser`) **ไม่สร้าง Membership**: `pendingInvitesForUser(userId, now?) → { inviteId; tenantName; role; expiresAt }[]` (การ์ด S2.12) → `acceptInvite(userId, inviteId, now?)` หรือ `acceptInviteByCode(userId, code, now?)` → `{ ok: true; tenantId } | { ok: false; reason: not_found|expired|accepted|phone_mismatch }` (เบอร์ verified ต้องตรงใบ · ตรวจเบอร์ก่อนบอกสถานะใบ)
+- ไม่มี event ใหม่ในรุ่นนี้
 
-### 5.24 routing.ts (แผน · `src/lib/modules/chat` · S1.24 · R-K14)
-- `eligibleResponders(tenantId: string, unitId: string | null) → Promise<string[]>` — `listStaffAccess` ∩ `evaluate(m, {module: "chat", action: "chat.message.send"})` ∩ `canAccessConvUnit` (chat/service.ts:1994)
-- `assignIncoming(conv: { tenantId; systemId; conversationId; channel; unitId; contactId }, opts: { now: Date }) → Promise<{ assigneeUserId: string | null; reason: string }>` — เรียกจาก `receiveInbound` (:786) / `receiveExternalInbound` (:1118) · กฎ ROUND_ROBIN (คนเข้าเวร `ChatShift`) / LAST_ASSIGNEE / OWNER · ไม่มีคนตอบได้ ⇒ เจ้าของ · นอกเวลาทำการ ⇒ ไม่มอบหมาย + ป้าย Shark · ใช้ `assign` (:2136) ด้วย `opts.requireReplyPermission = true` · event `chat.conversation.auto_assigned`
-- `callHelper(ctx, input: { conversationId; userId; note? }) → Promise<{ ok: boolean; reason? }>` — `ChatConversationHelper` + บันทึกภายใน `isInternal` + แจ้งเตือน · ผู้ถูกเรียกต้อง `eligibleResponders`
-- `handoff(ctx, input: { conversationId; toUserId; reason: string }) → Promise<{ ok: boolean; reason? }>` — เปลี่ยนผู้ดูแล + บันทึกภายในพร้อมเหตุผล (ไม่แตะ enum `ChatEventType`)
-- `setShift(ctx, onDuty: boolean, opts: { now: Date }) → Promise<{ onDutyAt: string | null }>` · ยกระดับ SLA = คำนวณตอนอ่าน (`waitingMin` จาก `firstCustomerMessageAt`) + sweep ใน `api/cron/outbox` (R-K8)
+**ระดับสิทธิ์ (`levels.ts` · นิยามกลาง Q10)** — ทางลัดของหน้าจอ · ตัวตัดสินจริงยังเป็น `evaluate` บนคีย์ใน `Membership.permissions` · ทุกการตั้งผ่าน `updateStaffAccess` เดิม
+
+| ระดับ | อ่านจากสิทธิ์ (`levelOfModule`) | ตั้ง (`permissionsForLevel(module, level, base)`) |
+|---|---|---|
+| OFF (ปิด) | ไม่มีคีย์ของโมดูลที่ค่าเป็น true / ตัวเลข > 0 (ไม่นับคีย์ลิมิต `_…`) | ลบคีย์ของโมดูล (รวม `<module>.*` และคีย์อ่อนไหว) · **คงคีย์ลิมิต `_…`** |
+| VIEW (ดู) | มีเฉพาะคีย์ action ลงท้าย `.read` `.view` `.list` | คีย์อ่านที่ไม่อ่อนไหวของโมดูล · คงคีย์ลิมิต |
+| USE (ใช้งาน) | `<module>.*` หรือคีย์เขียน ≥ 1 หรือค่าตัวเลข > 0 | ทุกคีย์ที่ไม่อ่อนไหว + คงคีย์อ่อนไหวที่เคยให้รายคีย์ไว้ + คงคีย์ลิมิต |
+
+- `isSensitiveKey(key)` (export · ไม่มีระดับใดให้ · ต้องให้รายคีย์ผ่าน `extraPermissions`): คีย์ (ตัวพิมพ์เล็ก) มี `.money` `.refund` `.void` `.payment.record` `.doc.approve` `.period.close` `.journal.adjust` `.point.adjust` `.giftcard.` `.priceoverride` `.setprice` `.sell` · `.delete` `.merge` `.cancel` `.import` `.export` · `api.key.` `webhook.` `.api.manage` `.object.manage` `.visibility.manage` `.team.manage` `settings.` `branding.` `privacy.manage` `payadjust` `payroll` · (เพิ่ม) `.slip.review` `approval.policy.` `systems.` · (P.2 N1) `.sensitive.` `.phonefull` `.period.` `.wht.` `.markpaid` `.payment.manual` `.deposit.` `.waive` `.forfeit` `.writeoff` `.dispose` `.commission.approve` `.point.transfer` `.credit.manage` `.finance.manage` `system.system.` · (เพิ่ม) `.cheque.` `.enrollment.pay` · หรือส่วนใดขึ้นต้น delete/money/refund/void หรือเป็น setting(s)
+- `levelsAvailableFor(module) → ModuleLevel[]` — ไม่มีคีย์อ่านที่ให้ได้ ⇒ ไม่มี VIEW · ไม่มีคีย์เขียนที่ให้ได้ ⇒ ไม่มี USE · แชท = `[]` (ใช้ CHAT_LEVELS) · S2.22 แสดงเฉพาะระดับที่มี · `setStaffLevels` ปฏิเสธระดับที่ไม่มี
+- แชท 3 ระดับ `CHAT_LEVELS` (R-K14 + R-S1.25a/h): NONE `[]` (ถอนคีย์แชททั้งโมดูล) · VIEW `["chat.conversation.read","chat.conversation.markRead"]` (ถอนคีย์แชทอื่น) · REPLY `["chat.conversation.read","chat.conversation.markRead","chat.message.send","chat.conversation.setStatus"]` (ถอนแค่ `chat.*` · คีย์แชทรายคีย์อื่นคงไว้) · `assign`/`customer.link` ให้รายคีย์หรือ MANAGER · อ่านกลับ: REPLY = `chat.*` หรือครบ 4 คีย์ · VIEW = มี read · `levels.chat` ⇒ ok:false
+- `setStaffLevels(ctx, membershipId, { role?; unitIds?; levels?; chat?; extraPermissions? }) → StaffResult` — ผู้สั่ง OWNER/MANAGER (DB) · MANAGER: เป้าหมาย STAFF เท่านั้น และตั้ง role ได้แค่ STAFF · สาขา ⊆ ร้าน · แปลงเป็นคีย์แล้วเรียก `updateStaffAccess` (คีย์เก่าที่ทะเบียนไม่รู้จักคงไว้ตาม `mergePermissions`)
+- `suspendStaff(ctx, membershipId)` = `revokeStaffAccess` (ซึ่งตั้ง `PushDevice.tenantId = null` ของคนนั้นในร้านนี้ทุกทาง — เว็บด้วย · P.2 N5) · `removeStaff` = เหมือน suspend + ลบ `AiRoomMember` ในร้าน + ลบคำเชิญค้างของเบอร์เขาในร้าน · ไม่ลบ Membership
+- `staffViewOf({ role; unitAccess; permissions }) → { role; units; levels (ไม่มี chat); chat }` — OWNER/MANAGER = ระดับสูงสุดที่โมดูลมี + REPLY
+
+ระดับที่แต่ละโมดูลมี (`levelsAvailableFor`) + คีย์อ่อนไหวในทะเบียน (สร้างจากโค้ด 5 พ.ย.):
+
+| โมดูล | ชื่อ | ระดับที่มี | คีย์อ่อนไหว (ให้รายคีย์เท่านั้น) |
+|---|---|---|---|
+| `chat` | แชทลูกค้า | — (ใช้ CHAT_LEVELS) | `chat.setting.setMemberSystem` `chat.setting.setBusinessHours` `chat.setting.setRetention` |
+| `pos` | ขายหน้าร้าน (POS) | OFF / VIEW / USE | `pos.product.setPrice` `pos.sale.void` `pos.sale.refund` `pos.sale.priceOverride` `pos.settings.manage` `pos.settings.payment` `pos.credit.manage` |
+| `restaurant` | ร้านอาหาร | OFF / USE | `restaurant.setting.update` `restaurant.session.merge` `restaurant.order.cancelItem` `restaurant.checkout.void` |
+| `shop` | ร้านค้าออนไลน์ | OFF / USE | `shop.order.cancel` `shop.order.refund` |
+| `delivery` | การจัดส่ง | OFF / USE | — |
+| `booking` | นัดหมาย | OFF / VIEW / USE | `booking.deposit.record` `booking.deposit.refund` `booking.staff.delete` `booking.settings.edit` `booking.settings.money` `booking.deposit.confirm` `booking.deposit.waive` `booking.deposit.forfeit` `booking.customer.phoneFull` |
+| `hotel` | ที่พัก | OFF / USE | `hotel.reservation.cancel` `hotel.reservation.refund` `hotel.room.delete` `hotel.roomType.delete` |
+| `dorm` | หอพัก | OFF / VIEW / USE | `dorm.import` `dorm.slip.review` `dorm.payment.manual` `dorm.latefee.waive` `dorm.deposit.deduct.approve` `dorm.settings.edit` `dorm.settings.legal` |
+| `queue` | คิว | OFF / USE | `queue.type.delete` `queue.counter.delete` `queue.ticket.cancel` |
+| `ticket` | บัตรอีเวนต์ | OFF / USE | `ticket.type.delete` `ticket.order.markPaid` `ticket.order.cancel` |
+| `rental` | ให้เช่า | OFF / USE | `rental.booking.cancel` `rental.booking.refund` |
+| `clinic` | คลินิก | OFF / USE | `clinic.refund` |
+| `school` | โรงเรียน/คอร์สเรียน | OFF / USE | `school.enrollment.pay` `school.enrollment.cancel` `school.enrollment.refund` |
+| `member` | สมาชิก/ลูกค้า | OFF / VIEW / USE | `member.customer.merge` `member.customer.import` `member.customer.export` `member.customer.delete` `member.sensitive.read` `member.point.adjust` `member.point.transfer` `member.giftcard.sell` `member.giftcard.manage` `member.settings.manage` `member.privacy.manage` `member.api.manage` `member.subscription.cancel` |
+| `point` | แต้มสะสม | OFF | `point.adjust.create` `point.settings.update` |
+| `reward` | ของรางวัล | OFF / USE | `reward.redemption.cancel` |
+| `coupon` | คูปอง | OFF / USE | — |
+| `crm` | งานขาย (CRM) | OFF / VIEW / USE | `crm.contact.delete` `crm.contact.import` `crm.contact.export` `crm.contact.merge` `crm.company.delete` `crm.company.merge` `crm.company.import` `crm.company.export` `crm.deal.delete` `crm.deal.export` `crm.activity.delete` `crm.email.settings` `crm.object.manage` `crm.record.delete` `crm.team.manage` `crm.visibility.manage` `crm.commission.approve` `crm.settings.manage` `crm.api.manage` |
+| `marketing` | การตลาด | OFF / USE | — |
+| `inventory` | คลังสินค้า | OFF / VIEW / USE | `inventory.item.import` `inventory.po.cancel` |
+| `hr` | งานบุคคล | OFF / VIEW / USE | `hr.payadjust.request` `hr.payadjust.approve` `hr.payadjust.reject` `hr.payroll.read` `hr.payroll.create` `hr.payroll.approve` `hr.payroll.pay` `hr.payroll.reverse` |
+| `account` | บัญชี | OFF / VIEW / USE | `account.doc.approve` `account.doc.void` `account.payment.record` `account.payment.void` `account.settings.manage` `account.journal.adjust` `account.period.close` `account.period.reopen` `account.wht.manage` `account.wht.unmark` `account.finance.manage` `account.asset.dispose` `account.asset.writeoff` `account.cheque.manage` `account.cheque.deposit` `account.cheque.clear` `account.cheque.bounce` `account.cheque.void` `account.contact.merge` `account.import` |
+| `approval` | สายอนุมัติ | OFF / USE | `approval.policy.create` `approval.policy.update` |
+| `kanban` | บอร์ดงาน | OFF / VIEW / USE | `kanban.board.delete` `kanban.column.delete` `kanban.card.delete` |
+| `meeting` | ห้องคุยภายใน | OFF / USE | `meeting.channel.delete` `meeting.message.delete` |
+| `kb` | คลังความรู้ | OFF / USE | — |
+| `forms` | ฟอร์ม | OFF / USE | — |
+| `calendar` | ปฏิทินรวม | OFF / VIEW | — |
+| `reports` | รายงาน | OFF / USE | — |
+| `dashboard` | หน้าแรก | OFF / USE | — |
+| `pages` | หน้าเว็บของร้าน | OFF / USE | — |
+| `ai` | ผู้ช่วย AI | OFF / USE | — |
+| `automation` | ระบบอัตโนมัติ | OFF / USE | — |
+| `settings` | ผู้ใช้งานและสิทธิ์ | OFF | `settings.staff.read` `settings.staff.write` `settings.integrations.manage` `settings.payments.edit` `settings.messaging.edit` |
+| `payments` | รับเงินและตรวจสลิป | OFF | `payments.slip.review` |
+| `systems` | ทะเบียนระบบของร้าน | OFF | `systems.system.create` `systems.unit.update` `systems.link.create` `systems.link.delete` `systems.reward.create` `systems.reward.delete` |
+| `system` | ทะเบียนระบบ (ผ่านผู้ช่วย AI) | OFF | `system.system.create` |
+| `api` | API นักพัฒนา | OFF | `api.key.create` `api.key.revoke` |
+| `webhook` | Webhook | OFF | `webhook.endpoint.create` `webhook.endpoint.update` `webhook.endpoint.delete` |
+| `branding` | หน้าตาแบรนด์ | OFF | `branding.setting.update` |
+| `marketplace` | ตลาดเทมเพลต | OFF / USE | — |
+
+### 5.24 routing.ts (S1.24 · มีแล้ว · `src/lib/modules/chat/routing.ts` + `sla-job.ts` · R-K14 · R-K8b · รอบ 2 R-S1.21a–i)
+- คีย์สิทธิ์ทั้งโมดูลแชทที่ด่านใช้ร่วม = `src/lib/modules/chat/guard-keys.ts` (pure) re-export จาก `guard.ts`: `CHAT_READ_ACTION` `CHAT_REPLY_ACTION` (= `chat.message.send`) `CHAT_ASSIGN_ACTION` `CHAT_SET_STATUS_ACTION` `CHAT_MARK_READ_ACTION` `CHAT_CUSTOMER_LINK_ACTION`
+- `loadTeam(tenantId) → Team` (Membership ที่รับแล้ว + เวร · โหลดครั้งเดียว) · `respondersOf(team, unitId)` (pure) · `eligibleResponders(tenantId, systemId, unitId) → { userId; name; role; onDuty }[]` = ∩ `evaluate(m, CHAT_REPLY_ACTION)` ∩ `canAccessConvUnit` · `canRespond(tenantId, userId, unitId)` (ใช้กับ `assign(…, { requireReplyPermission: true })`)
+- `listRules` · `setRules(tenantId, by, systemId, rules[])` — OWNER/MANAGER (อื่น `ForbiddenError`) · mode/ช่องทางผิด / > 20 ข้อ ⇒ throw ไทย · แทนที่ทั้งชุดใน tx
+- `assignIncoming({ tenantId, systemId, conversationId, now?, deps?: { notify?, post?, team? } })` → `{ assigned; reason }` — เรียกจาก `receiveInbound`/`receiveExternalInbound` (ห้องยังไม่มีผู้ดูแล · best-effort) และจาก sweep · กฎแรกที่เปิด+ตรงช่องทางและหาคนได้ชนะ · นอกเวลาทำการ ⇒ off_hours · ROUND_ROBIN / LAST_ASSIGNEE / OWNER · ไม่มีใคร ⇒ OWNER คนแรกที่**เห็นหน่วย** (owner_fallback) · เขียนด้วย `assign(…, { onlyIfAssignee: null })` (updateMany มีเงื่อนไข — มีคนรับตัดหน้า = ของเขาชนะ, reason already) · สำเร็จ ⇒ push "ได้รับห้อง" (`?e=assigned` · ค่าตั้งของผู้รับ · `after()` ในคำขอ ไม่ถ่วง webhook · N.2-N5)
+- `callHelper` · `handoff({…, byCanAssign?})` — handoff ทำได้เฉพาะผู้ดูแลปัจจุบัน / ผู้ช่วยในห้อง / ผู้มีคีย์ assign (อื่น `{ ok:false, forbidden:true }` → 403) · ส่งให้ตัวเองไม่ได้ · เขียนด้วย `onlyIfAssignee: <ผู้ดูแลที่อ่านไว้>` (เปลี่ยนระหว่างกด ⇒ conflict → 409 · N.2-N4) · ผู้รับต้องตอบได้ในหน่วย · บันทึกภายใน 🙋/🔁 + push
+- `setShift(tenantId, userId, onDuty, now?)` — กดเข้าเวรซ้ำ = แถวเดิม · `listOnDuty(tenantId, onlyUserIds?)` (route กรองด้วยผู้ตอบได้ในหน่วยที่ผู้ดูเห็น)
+- `sweepChatSla(now?, deps?)` — งาน `chat.sla` ทุก 5 นาที · ทีมโหลดครั้งเดียวต่อร้าน · (0) ในเวลาทำการ + มีกฎเปิด: ห้องว่าง OPEN ย้อน 72 ชม. ⇒ `assignIncoming` (N.2-N3) · (1) ห้อง OPEN ที่ไม่มีผู้ดูแลจริง (null หรือผู้ดูแลตอบไม่ได้แล้ว — ถูกถอน/หลุดหน่วย) รอ ≥ `unassignedAlertMin` **เฉพาะในเวลาทำการ** ⇒ เตือน OWNER/MANAGER ที่ตอบได้ในหน่วย · (2) ผู้ดูแลที่ตอบได้ยังไม่ตอบแรก ≥ SLA ⇒ เตือน · ≥ 2× ⇒ ย้ายให้ MANAGER (ห้องน้อยสุด) ไม่มีค่อย OWNER ด้วย `onlyIfAssignee: <ผู้ดูแลเดิม>` แล้วจึงเขียนโน้ต `sla:escalated:` (ย้ายไม่สำเร็จ = ไม่เขียน · N.2-N1) · กันซ้ำ = บันทึกภายใน clientMessageId `sla:unassigned|first_response|escalated:<เวลาเริ่มรอ ms>` และ query กรองห้องที่มีโน้ตแล้วตั้งแต่ต้น (ไม่กินเพดาน 200 ห้อง) · ดูย้อนหลัง 24 ชม.
 
 ### 5.25 `src/lib/core/push.ts` (เปลี่ยน 2 hunk · S1.23 · มีแล้ว · R-K20)
 - `type PushMsg = { title; body; data?; badge?: number }` · payload Expo ใส่ `badge` **เฉพาะเมื่อผู้เรียกส่งมา** (ไม่ส่ง = payload เดิมทุกไบต์) · `deliverBatch` อ่านผลของ transport ได้ทั้ง array / `{ tickets }` / `{ data }` (ตัวจริงคืน array — ข้อสอบฉีดแบบ `{ tickets }`)
@@ -557,6 +625,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | ยืนยันความรู้/บทเรียน (B6) | ✅ | ❌ | ❌ | เสนอได้อย่างเดียว | – |
 | อ่านแชทลูกค้า (K1 K2) | ✅ | ✅ | ต้องมี `chat.conversation.read` + หน่วย | ตามผู้สั่ง (ยามสั่งสรุปแชท = ปฏิเสธ) | – |
 | ตอบลูกค้า · ถูกมอบหมาย · เรียกช่วย | ✅ | ✅ | ต้องมี `chat.message.send` + หน่วย | ข้อเสนอ `chat.send` เท่านั้น | `assignIncoming` เลือกเฉพาะ `eligibleResponders` |
+| แอป `/api/mobile/inbox/**` (S1.21) — ด่านต่อเส้น | ✅ | ✅ | อ่าน = `chat.conversation.read` · ตอบ/บันทึกภายใน/เรียกช่วย/ส่งต่อ/คำตอบสำเร็จรูป/เข้าเวร = `chat.message.send` · มอบหมาย = `chat.conversation.assign` · มีแค่ `chat.message.send` = รับห้องว่างให้ตัวเองเท่านั้น (R-S1.21a) · ส่งต่อ = ผู้ดูแล/ผู้ช่วย/ผู้มีคีย์ assign (R-S1.21b) · ผู้รับต้องตอบได้ในหน่วย · ปิด/เปิดห้อง = `chat.conversation.setStatus` · อ่านแล้ว = `chat.conversation.markRead` · ผูกสมาชิก = `chat.customer.link` (คีย์เดียวกับเว็บ) · ห้องหน่วยอื่น = 404 | – | ยกระดับ SLA (`chat.sla`) |
 | กฎรับเรื่อง / เวร (K5) | ✅ ตั้งกฎ | ✅ ตั้งกฎ | เข้า/ออกเวรของตัวเอง | ❌ | ยกระดับ SLA |
 | เชิญพนักงาน · สิทธิ์ต่อคน (G2 G3) | ✅ | ✅ ภายใต้ `canAssignRole`/`canGrantPermission` | ❌ | ❌ | – |
 | เรื่องแจ้งช่วยเหลือ (H1 H2) | เห็นทุกเรื่องของกิจการ | เฉพาะที่ตัวเองแจ้ง | เฉพาะที่ตัวเองแจ้ง | `support_open_case` ในนามผู้สั่ง | push เมื่อทีมตอบ |

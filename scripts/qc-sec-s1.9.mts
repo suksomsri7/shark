@@ -39,7 +39,7 @@ const { dayKeyBangkok } = await import("@/lib/ai/rules");
 const U = { owner: "qcs19x-owner", staff: "qcs19x-staff", gone: "qcs19x-gone" };
 let tid = "";
 const cleanup = async () => {
-  if (tid) { for (const m of ["aiScheduledTask", "appNotification", "aiRoomJob", "aiRoomMember", "aiRoom", "aiProposal", "aiMessage", "aiConversation", "aiJobCounter", "aiUsage", "aiCreditTxn", "aiCreditWallet", "appSystem", "membership"]) { try { await (prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m]?.deleteMany({ where: { tenantId: tid } }); } catch { /* */ } } try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup: ${errMsg(e)}`); } }
+  if (tid) { for (const m of ["aiTrainingSample", "aiLesson", "aiScheduledTask", "appNotification", "aiRoomJob", "aiRoomMember", "aiRoom", "aiProposal", "aiMessage", "aiConversation", "aiJobCounter", "aiUsage", "aiCreditTxn", "aiCreditWallet", "appSystem", "membership"]) { try { await (prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m]?.deleteMany({ where: { tenantId: tid } }); } catch { /* */ } } try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup: ${errMsg(e)}`); } }
   try { await prisma.tenant.deleteMany({ where: { slug: { startsWith: "qc-sec-s19x-" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } } }); } catch { /* */ }
   try { await prisma.pushDevice.deleteMany({ where: { expoToken: { startsWith: "ExponentPushToken[qcs19x-" } } }); } catch { /* */ }
   try { await prisma.user.deleteMany({ where: { id: { startsWith: "qcs19x-" } } }); } catch { /* */ }

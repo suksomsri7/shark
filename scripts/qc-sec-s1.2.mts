@@ -96,7 +96,7 @@ const U = { owner: "qcs12-owner", staff: "qcs12-staff", mgr: "qcs12-mgr" };
 let tid = "";
 const cleanup = async () => {
   if (tid) {
-    for (const m of ["aiRoom", "aiProposal", "aiMessage", "aiConversation", "aiSystemAccess", "aiUsage", "aiCreditTxn", "aiCreditWallet", "appSystem", "membership"]) {
+    for (const m of ["aiTrainingSample", "aiLesson", "aiRoom", "aiProposal", "aiMessage", "aiConversation", "aiSystemAccess", "aiUsage", "aiCreditTxn", "aiCreditWallet", "appSystem", "membership"]) {
       try { await (prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m]?.deleteMany({ where: { tenantId: tid } }); } catch { /* ไม่มีโมเดล/คอลัมน์ */ }
     }
     try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup tenant: ${errMsg(e)}`); }
