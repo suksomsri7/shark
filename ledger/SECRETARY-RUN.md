@@ -37,11 +37,11 @@ _(เติมเมื่อถึงใบ)_
 | S1.7 | ✅ | | รอบ 2 580d64d3 + N1/N2 371ea304 (เลน c) · oracle 27/27 ×3 (ผู้คุม) + ×1 หลัง N1/N2 · ผู้ตรวจ G/H → §K → re-check MERGE · regressions เท่า baseline · merge d06331a0 · deviation รับ: registerDerivedKinds · AiRoom lookup 1 query ห้องเดิม · kanban_create_card undo ผ่าน service (ไม่มี webhook archived — หนี้) · audit label ai-undo |
 | S1.8 | ✅ | | รวมในชุด S1-6 · actions.ts (undoPermission · payload.after · isPiiKey · maskPiiDeep) · merge d06331a0 |
 | S1.9 | ✅ | | built 9a46aef3 (เลน d) · ORACLE-EDIT s1.9-R-4 (a1dc3572: เทียบจำนวนห้องก่อน/หลัง — รอบ R-3 งาน DAILY ของ owner เปิดห้อง 3 โดยชอบ) · 10/10 ×3 · qc-ai-schedule 8/8 · merge ad938ac6 · หนี้: channels ['room'] ยัง push (worker.ts นอกใบ → S1.23) · runRoomJobs limit 1 รันงานเก่าสุดในคิว · MONTHLY วัน 29–31 ไม่รันเดือนสั้น (ตามสัญญา isDue) |
-| S1.10 | 🔨 | | builder Opus เลน b `wip/sec-s1.10` @c1e1110d เริ่ม 5 พ.ย. ~08:5xZ · ใบ S1-8 (S1.10+S1.15) + oracle `qc-sec-s1.10.mts` (6000cfb1) พร้อม · ตีกลับ + สอน |
+| S1.10 | ✅ | | built 478ac394 + merge 6de91e2b (เลน b) · oracle 13/13 ×3 (ผู้คุม) · s1.2/s1.7/s1.12 + ai-memory เท่าเดิม · merge 95a14b66 · ORACLE-EDIT T-1 (system author) T-4 (ลำดับ) E-2 (params.id) · deviation รับ: JOB = outcome row ไม่จด lesson · APPROVED/EDITED เฉพาะห้องเลขา · หนี้: forget_fact/kb_auto_save ยังไม่เป็นข้อเสนอ (R-K3) |
 | S1.11 | ✅ | | built 1b6dc382 (เลน c) · oracle 15/15 ×3 (ผู้คุม) · s1.2 28/28 · proactive/analyst/growth เท่า baseline · merge 9adb47a9 · deviation รับ: digest ตัดตามสิทธิ์ผู้ดู · คีย์สิทธิ์จริงแทน <module>.*.read · frequent ตัดช่องว่างทั้งหมด · inbox ตรวจ kindAllowedByAccess ด้วย · ORACLE-EDIT typing เท่านั้น |
 | S1.12 | ✅ | | รอบ 2 49776871 (เลน d) · oracle 15/15 ×3 (ผู้คุม) · s1.2/s1.7/s1.11 + ai-tools/skills/plan/chat-replies/core-v2 เท่าเดิม · ผู้ตรวจ K → §M ปิดครบ · merge 75b2b689 · deviation รับ: chat-send.ts แยก (วงจร import) · PersonaContext.customerChat · เครื่องมือ refund_booking_deposit ใน skill booking · ORACLE-EDIT E2 (fixture access level) |
 | S1.13 | ✅ | | รอบ 3 e4577084 (เลน b) · oracle 14/14 ×3 (ผู้คุม) · ชุดเดิมที่แก้ตาม §L เขียว (credit 32/32 · suggest 44/44 · translate 34/34) · ผู้ตรวจ I/J → §L.2 ปิดครบ · merge 4d6cdd35 · ORACLE-EDIT C-6/C-8 (fixture ผู้คุม) · มติเจ้าของที่ต้องแจ้ง CP: assist ฟรีมีเพดาน $0.50/วัน ไม่ใช้ยอดกระเป๋าต่อ (R-S1.13g) · หนี้: creditView เขียนตอนอ่าน · ชุด svc/crm/acc ที่แก้ยังไม่ได้รัน (S1.14 qc:all) · oracle Q-3 rollover |
-| S1.15 | 🔨 | | รวมในชุด S1-8 (เลน b) · รวมในชุด S1-8 · 🎯 วงจรเรียนรู้ |
+| S1.15 | ✅ | | รวมในชุด S1-8 · learn.ts (recordOutcome/noteLesson/lessonBlock · bridge ai-suggest) · merge 95a14b66 |
 | S1.16 | ✅ | | รวมในชุด S1-9 · digest.ts (cache 10 นาที · ตัวเลขตรง SQL) · merge 9adb47a9 |
 | S1.17 | ✅ | | built 998129a2 (เลน d) · oracle 10/10 ×3 · s1.5/s1.6/s1.9 + qc-support/mobile-help/push/chat-push-badge/notify-v2 เท่าเดิม · merge cd37937d · deviation รับ: push.ts รับ tickets หลายรูป · ASSIGNED กรองเฉพาะ inbox · หนี้: channels ['room'] ยัง push (scheduled.ts) · ai.room.member_added ยังไม่ emit · support_open_case ใช้ 'ai-assistant' (tools.ts) · pref ร้าน tenantId null ซ้ำได้ใต้ concurrent |
 | S1.19 | ✅ | 4 พ.ย. ~21:1xZ | merge (wip/sec-s1.19 b52e0a48) · รอบ 1 รีวิว 2 คน BLOCK (CRITICAL อีเมลไม่ยืนยัน) → รอบ 2 ตาม RESOLUTIONS §H · oracle 26/26 ×3 (ORACLE-EDIT Q-3 · R2-Q-2 · R2-ENV) · regression 5 ชุดเท่า baseline · placeholder `<เบอร์>@phone.shark.in.th` + prefs.pendingEmail · normalizeThaiMobile · mock ถูกเมินใน production · 503 เมื่อไม่มีผู้ให้บริการ · deviation รับ: resendAfterSec คงที่ 60 ใน route (กันรั่ว) · otp_used · หนี้: S1.19b ยืนยันอีเมล · index PhoneOtp(ip,createdAt) → secretary_b · step-up เปลี่ยนเบอร์ · 🎯 SMS OTP เบอร์ = ID (รอคีย์ SMS จากเจ้าของ · โหมด mock ก่อน) |
@@ -51,7 +51,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.23 | ✅ | | รวมในชุด S1-12 · notify.ts (prefs · badge · กันสแปม per-process) · merge cd37937d |
 | S1.24 | ✅ | | รวมในชุด S1-15 · routing.ts (rules/shift/helper/handoff/sla) · merge e182aee9 · รวมในชุด S1-15 · routing.ts (rules/shift/helper/handoff/sla) · รวมในชุด S1-15 (เลน c) · รวมในชุด S1-15 · 🎯 ผู้ดูแล · เรียกช่วย · กฎรับเรื่อง · เข้าเวร |
 | S1.25 | ✅ | | รอบ 2 d84880c9 + รอบ 3 ffefcf36 (เลน d) · oracle 19/19 ×3 + ×1 ผู้คุมหลัง merge · ผู้ตรวจ O/P → §P · re-check → §P.2 ปิดครบ · s1.19 26/26 · staff-perms 49/49 · merge af21290a · มติสำคัญ: ผู้ใช้เดิมต้องกดรับคำเชิญเอง (auto-join เฉพาะสมัครใหม่) · คีย์อ่อนไหวไม่ให้ผ่านระดับ (system เป็น OFF-only) · หนี้: IP rate-limit บน route preview/accept (S2.21) · คีย์เก่าไม่หายตอน OFF · revokeStaffAccess เดิม MANAGER ถอน OWNER |
-| S1.14 | ✍️ | | ใบ S1-18 `sec-brief-S1.14.md` (ตารางเส้นทาง + sec-real-path.mts) · oracle ยังไม่มี · 🎯 API ชุดเดียว + เส้นทางจริง 3 เส้น (ปิด S1) |
+| S1.14 | 🔨 | | builder Opus เลน b `wip/sec-s1.14` @95a14b66 เริ่ม 5 พ.ย. ~12:5xZ · งานแรก: hotfix emoji ใน chat/routing.ts (baseline ใหม่ bfad2f15 แดง CX-7.2/IC-4.1) · ใบ S1-18 `sec-brief-S1.14.md` (ตารางเส้นทาง + sec-real-path.mts) · oracle ยังไม่มี · 🎯 API ชุดเดียว + เส้นทางจริง 3 เส้น (ปิด S1) |
 | S2.1 | 🔨 | | ใบ `sec-brief-S2.1.md` + oracle `qc-sec-s2.1.mts` · builder Opus เลน d `wip/sec-s2.1` เริ่ม 5 พ.ย. ~11:3xZ (ขนานกับ S1.10/S1.14 — แตะเฉพาะ apps/mobile) |
 | S2.2 | ✍️ | | ใบ S2-2 (S2.2+S2.3) `sec-brief-S2.2.md` + spec `qc-sec-specs/s2.2.json` (oracle ทั่วไป `qc-sec-screen.mts`) · รอ S2.1+S1.14 merge |
 | S2.3 | ✍️ | | รวมในชุด S2-2 |
@@ -106,17 +106,18 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย. ~22:2xZ** รับ S1.3b (merge) · S1.6 เสร็จ (14/14) → ORACLE-EDIT s1.4 G-3 (seeHistory) · spawn ผู้ตรวจ 2 คน S1.6 · เลน d → `wip/sec-s1.9` ชุด S1-7 · ใบ S1-12 (S1.17+S1.23) + oracle เขียนแล้ว
 - **4 พ.ย. ~23:0xZ** รีวิว S1.6 (E สิทธิ์ · F สัญญา) ⇒ แก้รอบ 2 (§J) · ใบ S1-15 (S1.21+S1.24) เขียนแล้ว · เตรียมครบถึง S1-15 — เหลือ S1.11+S1.16 · S1.22 · S1.25 · S1.14 ที่ยังไม่มีใบ
 
-- **4 พ.ย. ~23:2xZ** S1.9 ✅ (ORACLE-EDIT R-4 ของผู้คุมผิดเอง) merge ad938ac6 · S1.6 รอบ 2 ✅ merge 2edcef81 · ผู้ตรวจ G/H ชุด S1-6 → MERGE-AFTER-FIX 4 MAJOR ร่วม (แผนข้ามด่าน R-K4 · undo สิทธิ์/สถานะเก่า · PII ใน log · kind-class) → §K รอบ 2 · tip 2edcef81 · **25/58 (43%)**
+- **4 พ.ย. ~23:2xZ** S1.9 ✅ (ORACLE-EDIT R-4 ของผู้คุมผิดเอง) merge ad938ac6 · S1.6 รอบ 2 ✅ merge 2edcef81 · ผู้ตรวจ G/H ชุด S1-6 → MERGE-AFTER-FIX 4 MAJOR ร่วม (แผนข้ามด่าน R-K4 · undo สิทธิ์/สถานะเก่า · PII ใน log · kind-class) → §K รอบ 2 · tip 2edcef81 · **27/58 (47%)**
 - **4 พ.ย. ~23:4xZ** §K + oracle s1.7 รอบ 2 (27 ข้อ · 31ac2f7e) · spawn 3 เลน: c=S1-6 รอบ 2 · b=S1-11 (S1.13) · d=S1-12 (S1.17+S1.23)
 - **5 พ.ย. ~00:1xZ** ใบครบทั้ง S1: S1-9 S1-10 S1-16 S1-17 S1-18 เขียนแล้ว (oracle ตามมาเมื่อเลนใกล้ว่าง · ลำดับ spawn: S1-10 → S1-9 → S1-15 → S1-16 → S1-17 → S1-18)
-- **5 พ.ย. ~00:5xZ** S1.17+S1.23 ✅ merge cd37937d · เลน d → S1-10 (S1.12) · S1-6 รอบ 2 27/27 รอ re-check · **25/58 (43%)**
+- **5 พ.ย. ~00:5xZ** S1.17+S1.23 ✅ merge cd37937d · เลน d → S1-10 (S1.12) · S1-6 รอบ 2 27/27 รอ re-check · **27/58 (47%)**
 - **5 พ.ย. ~01:3xZ** S1-6 re-check MERGE (+N1/N2 LOW → builder) · S1.13 DECISION-1 → §L (คง assist ฟรี · gate ชุดเดิมด้วย FREE_PACK.enabled · เพดาน $0.50/วัน) · oracle S1.14 (11 ข้อ) + S1.22 (12) + S1.25 (15) + S1.11 (15) + S1.12 (14) เขียนครบ
-- **5 พ.ย. ~02:0xZ** S1.7+S1.8 ✅ merge d06331a0 · เลน c → S1-9 (S1.11+S1.16) · **25/58 (43%)**
-- **5 พ.ย. ~02:1xZ** S1.7+S1.8 ✅ merge 38632d7f (docs conflict §9 แก้มือ) · เลน c → S1-9 (S1.11+S1.16) · **25/58 (43%)**
-- **5 พ.ย. ~04:2xZ** S1.11+S1.16 ✅ merge 9adb47a9 · S1.13 รีวิว I/J → §L.2 รอบ 3 · S1.12 รีวิว K → §M รอบ 2 · เลน c → S1-15 (S1.21+S1.24) · **25/58 (43%)**
-- **5 พ.ย. ~05:0xZ** S1.13 ✅ merge 4d6cdd35 · เลน b → S1-16 (S1.22) · **25/58 (43%)**
-- **5 พ.ย. ~05:4xZ** S1.12 ✅ merge 75b2b689 · migration secretary_b pre-merge + generate (client ร่วม: คอลัมน์เพิ่มเท่านั้น) · S1.21 ORACLE-EDIT ×3 (f98cb08e) · เลน d → S1-17 (S1.25) · ⚠️ ผู้คุมพลาด: git apply ไม่ใส่ -p0 ทำให้ chain ล้ม เลน d reset ช้า — แก้แล้ว · **25/58 (43%)**
+- **5 พ.ย. ~02:0xZ** S1.7+S1.8 ✅ merge d06331a0 · เลน c → S1-9 (S1.11+S1.16) · **27/58 (47%)**
+- **5 พ.ย. ~02:1xZ** S1.7+S1.8 ✅ merge 38632d7f (docs conflict §9 แก้มือ) · เลน c → S1-9 (S1.11+S1.16) · **27/58 (47%)**
+- **5 พ.ย. ~04:2xZ** S1.11+S1.16 ✅ merge 9adb47a9 · S1.13 รีวิว I/J → §L.2 รอบ 3 · S1.12 รีวิว K → §M รอบ 2 · เลน c → S1-15 (S1.21+S1.24) · **27/58 (47%)**
+- **5 พ.ย. ~05:0xZ** S1.13 ✅ merge 4d6cdd35 · เลน b → S1-16 (S1.22) · **27/58 (47%)**
+- **5 พ.ย. ~05:4xZ** S1.12 ✅ merge 75b2b689 · migration secretary_b pre-merge + generate (client ร่วม: คอลัมน์เพิ่มเท่านั้น) · S1.21 ORACLE-EDIT ×3 (f98cb08e) · เลน d → S1-17 (S1.25) · ⚠️ ผู้คุมพลาด: git apply ไม่ใส่ -p0 ทำให้ chain ล้ม เลน d reset ช้า — แก้แล้ว · **27/58 (47%)**
 - **5 พ.ย. ~07:0xZ** S1.21 รีวิว L/M → §N รอบ 2 (oracle +4 ข้อ) · S1.22 12/12 → ผู้ตรวจ N · S1.25 รอบ 1 15/15 → R-S1.25a รันซ้ำ
-- **5 พ.ย. ~08:5xZ** S1.22 ✅ merge c1e1110d · เลน b → S1-8 (S1.10+S1.15) · S1.21 รอบ 2 19/19 → ถอด alias → re-check · **25/58 (43%)**
-- **5 พ.ย. ~10:2xZ** S1.21+S1.24 ✅ merge e182aee9 · เลน c ว่าง (รอ S1.25/S1.10 merge แล้วเริ่ม S1.14 ด่านเต็ม) · **25/58 (43%)**
-- **5 พ.ย. ~10:4xZ** S1.25 ✅ merge af21290a · เลน c/d ว่าง · เหลือ S1.10+S1.15 (เลน b) แล้ว S1.14 · **25/58 (43%)**
+- **5 พ.ย. ~08:5xZ** S1.22 ✅ merge c1e1110d · เลน b → S1-8 (S1.10+S1.15) · S1.21 รอบ 2 19/19 → ถอด alias → re-check · **27/58 (47%)**
+- **5 พ.ย. ~10:2xZ** S1.21+S1.24 ✅ merge e182aee9 · เลน c ว่าง (รอ S1.25/S1.10 merge แล้วเริ่ม S1.14 ด่านเต็ม) · **27/58 (47%)**
+- **5 พ.ย. ~10:4xZ** S1.25 ✅ merge af21290a · เลน c/d ว่าง · เหลือ S1.10+S1.15 (เลน b) แล้ว S1.14 · **27/58 (47%)**
+- **5 พ.ย. ~12:5xZ** S1.10+S1.15 ✅ merge 95a14b66 · baseline ใหม่ `sec-baseline-bfad2f15.txt` (60 ชุด · แดงใหม่ 2: qc-chat-v2-context CX-7.2 + qc-chat-v2-icons IC-4.1 = emoji ใน chat/routing.ts จาก S1.24 — oracle s1.21 H-1/H-2 ของผู้คุมเรียกร้อง emoji ผิดกฎโมดูลแชท → แก้ oracle + hotfix ใน S1.14) · เลน b → S1.14 ด่านเต็ม · **27/58 (47%)**
