@@ -42,6 +42,7 @@ export function SecTopBar({
   badges,
   center = "tenant",
   testID = "sec-top",
+  showPlus = true,
 }: {
   zone: SecZone;
   /** ใส่มา = ใช้ค่านี้ (ไม่ดึงเอง) */
@@ -49,6 +50,8 @@ export function SecTopBar({
   /** "tenant" = ชื่อกิจการแตะได้ · "none" = ว่าง */
   center?: "tenant" | "none";
   testID?: string;
+  /** false = ซ่อนปุ่ม + ของโซน (เช่น STAFF ในโซนทีม = อ่านอย่างเดียว · S2.10) */
+  showPlus?: boolean;
 }) {
   const { c } = useTheme();
   const t = useT();
@@ -56,7 +59,7 @@ export function SecTopBar({
   const switcher = useBusinessSwitcher();
   const shared = useZoneBadgeCounts(); // R-S2.1e: store กลาง (โหลดที่ layout ของโซน) ไม่ยิงต่อ mount
   const counts = badges ?? shared;
-  const plus = PLUS[zone];
+  const plus = showPlus ? PLUS[zone] : null;
 
   return (
     <TopBar

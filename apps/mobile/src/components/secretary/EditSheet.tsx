@@ -1,4 +1,4 @@
-// ชีตแก้ก่อนอนุมัติ (ใบ S2.4 · A4 ปุ่ม "แก้") — ช่องของ `input` ระดับบน (ข้อความ/ตัวเลข) ของข้อเสนอที่แก้ได้ (kind ทะเบียน op · S1.10 Q9)
+// ชีตแก้ก่อนอนุมัติ (ใบ S2.4 · A4 ปุ่ม "แก้" · allowlist S2.10 R-S2.4d) — ช่องของ `input` ระดับบน (ข้อความ/ตัวเลข) ที่มีป้าย sec.field.* ของข้อเสนอที่แก้ได้ (kind ทะเบียน op · S1.10 Q9)
 // ชิ้นแสดงผลล้วน: ค่าที่พิมพ์ + การยิง `proposals/[id]/edit {patch}` อยู่ใน ApprovalCard (useApprovalFlow)
 //   ช่องที่เป็น object/array แก้ในแอปไม่ได้ (ไม่แสดง) · chat.send ไม่มีปุ่มแก้ตั้งแต่ต้น (editable=false · §M)
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -9,17 +9,21 @@ import th from "@/src/i18n/th";
 import { glassStyle, shadow, useTheme } from "@/src/theme/index";
 import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 
-/** ช่องที่แก้ได้ของ input (string / number ระดับบน) */
+/** คีย์ที่มีป้าย `sec.field.<key>` ใน i18n = allowlist (R-S2.4d) — คีย์อื่น (id ดิบ เช่น boardId/contactId) ไม่แสดงและแก้ไม่ได้ */
+export function hasFieldLabel(key: string): boolean {
+  return `sec.field.${key}` in th;
+}
+
+/** ช่องที่แก้ได้ของ input (string / number ระดับบน · เฉพาะคีย์ใน allowlist) */
 export function editableFields(input: Record<string, unknown> | null): { key: string; numeric: boolean; value: string }[] {
   if (!input) return [];
   return Object.entries(input)
-    .filter(([, v]) => typeof v === "string" || typeof v === "number")
+    .filter(([k, v]) => (typeof v === "string" || typeof v === "number") && hasFieldLabel(k))
     .map(([key, v]) => ({ key, numeric: typeof v === "number", value: String(v) }));
 }
 
-function fieldLabel(t: ReturnType<typeof useT>, key: string): string {
-  const k = `sec.field.${key}`;
-  return k in th ? t(k as I18nKey) : key;
+export function fieldLabel(t: ReturnType<typeof useT>, key: string): string {
+  return hasFieldLabel(key) ? t(`sec.field.${key}` as I18nKey) : key;
 }
 
 export function EditSheet({

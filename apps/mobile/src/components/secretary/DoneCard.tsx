@@ -1,13 +1,12 @@
 // การ์ด "ทำแล้ว" ของห้องงาน (ใบ S2.4 · แบบ A5 sec-a.jpg หน้า 5 · .lnk .acts) — จาก GET log?roomId
 //   แถวละการกระทำ: กล่องสีระบบ + สรุป + "เปิดดู ›" (ลิงก์ของจริงในแอป 1.0/WebView ตาม entity) · ย้อนแล้ว = ป้าย "ย้อนแล้ว"
-//   แถวปุ่ม: ย้อนกลับ (เฉพาะเมื่อมีแถวที่ย้อนได้ · undoableUntil > ตอนนี้ · R-S1.8a 24 ชม.) — ย้อน "ทีละแถว จากล่าสุดก่อน" (LIFO) แสดงเวลาที่เหลือของแถวนั้น ·
-//            สอน (เติมช่องพิมพ์ "ครั้งหน้า…") · ทำซ้ำ (ไป /secretary/new พร้อมคำสั่งเดิม)
-//   ผลย้อน = note ไทยของเซิร์ฟเวอร์ (ok:false เช่น ถูกย้ายไปแล้ว/เลยเวลา/สิทธิ์ไม่พอ) แสดงใต้การ์ด · สิทธิ์จริงตรวจที่เซิร์ฟเวอร์ตอนกด
-import { useState } from "react";
+//   ย้อน (S2.10 · R-S2.4a): ปุ่ม "ย้อน" อยู่ต่อแถวที่เซิร์ฟเวอร์บอก `canUndo` (สิทธิ์ + เวลา ฝั่งเซิร์ฟเวอร์ · ไม่คำนวณจากนาฬิกาเครื่อง) ·
+//            กดแล้วจอเปิดชีตยืนยันที่บอกชื่อรายการ (onAskUndo) — การยิง POST log/[id]/undo + note ผลอยู่ที่จอ · เวลาที่เหลือ = แสดงอย่างเดียว
+//   แถวปุ่ม: สอน (เติมช่องพิมพ์ "ครั้งหน้า…") · ทำซ้ำ (ไป /secretary/new พร้อมคำสั่งเดิม)
+//   ผลย้อน = note ไทยของเซิร์ฟเวอร์ (ok:false เช่น ถูกย้ายไปแล้ว/เลยเวลา/สิทธิ์ไม่พอ) แสดงใต้การ์ด
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { Icon, SysBadge } from "@/src/components/airy";
-import { ApiError } from "@/src/api/client";
 import type { LogItem } from "@/src/api/secretary";
 import { useT } from "@/src/i18n";
 import { glassStyle, useTheme } from "@/src/theme/index";
@@ -16,10 +15,11 @@ import { sysColor, sysShortKey } from "./sys";
 
 export type DoneIds = { card: string; link: string; undo: string; teach: string; repeat: string };
 
-/** แถวที่จะย้อนเมื่อกด "ย้อนกลับ" = แถวล่าสุดที่ยังย้อนได้ */
-export function undoTarget(logs: LogItem[]): LogItem | null {
-  for (let i = logs.length - 1; i >= 0; i--) if (logs[i]!.canUndo) return logs[i]!;
-  return null;
+/** เวลาที่เหลือของแถว (แสดงอย่างเดียว · สิทธิ์ย้อนจริง = canUndo ของเซิร์ฟเวอร์) */
+export function leftText(t: ReturnType<typeof useT>, l: LogItem, nowMs: number): string | null {
+  const ms = l.undoableUntil ? Date.parse(l.undoableUntil) - nowMs : NaN;
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return ms >= 3_600_000 ? t("sec.room.done.leftH", { n: Math.floor(ms / 3_600_000) }) : t("sec.room.done.leftM", { n: Math.max(1, Math.ceil(ms / 60_000)) });
 }
 
 export function DoneCard({
@@ -29,7 +29,9 @@ export function DoneCard({
   ids,
   canOpen,
   onOpen,
-  onUndo,
+  onAskUndo,
+  undoBusyId,
+  undoNote,
   onTeach,
   onRepeat,
 }: {
@@ -39,31 +41,16 @@ export function DoneCard({
   ids: DoneIds;
   canOpen: (l: LogItem) => boolean;
   onOpen: (l: LogItem) => void;
-  onUndo: (l: LogItem) => Promise<{ ok: boolean; note?: string }>;
+  /** เปิดชีตยืนยันย้อนของแถวนี้ (จอเป็นผู้ยิง) */
+  onAskUndo: (l: LogItem) => void;
+  undoBusyId: string | null;
+  undoNote: string | null;
   onTeach: () => void;
   onRepeat: () => void;
 }) {
   const { c } = useTheme();
   const t = useT();
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const target = undoTarget(logs);
-  const leftMs = target?.undoableUntil ? Date.parse(target.undoableUntil) - nowMs : 0;
-  const left = leftMs >= 3_600_000 ? t("sec.room.done.leftH", { n: Math.floor(leftMs / 3_600_000) }) : t("sec.room.done.leftM", { n: Math.max(1, Math.ceil(leftMs / 60_000)) });
-
-  const undo = async () => {
-    if (!target || busy) return;
-    setBusy(true);
-    setNote(null);
-    try {
-      const r = await onUndo(target);
-      setNote(r.note || (r.ok ? t("sec.room.done.undoOk") : t("sec.room.ap.err")));
-    } catch (e) {
-      setNote(e instanceof ApiError && e.detail ? e.detail : t("sec.room.ap.err"));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const note = undoNote;
 
   return (
     <View testID={ids.card}>
@@ -86,34 +73,42 @@ export function DoneCard({
             ) : null}
           </>
         );
-        return open ? (
-          <Pressable testID={ids.link} key={l.id} accessibilityRole="link" onPress={() => onOpen(l)} style={[glassStyle(c, 16), styles.lnk]}>
-            {body}
-          </Pressable>
-        ) : (
-          <View key={l.id} style={[glassStyle(c, 16), styles.lnk]}>
-            {body}
+        const undoable = l.canUndo && !l.undoneAt;
+        const busy = undoBusyId === l.id;
+        const left = undoable ? leftText(t, l, nowMs) : null;
+        return (
+          <View key={l.id} style={[glassStyle(c, 16), styles.lrow]}>
+            {open ? (
+              <Pressable testID={ids.link} accessibilityRole="link" onPress={() => onOpen(l)} style={styles.lnk}>
+                {body}
+              </Pressable>
+            ) : (
+              <View style={styles.lnk}>{body}</View>
+            )}
+            {undoable ? (
+              <Pressable
+                testID={ids.undo}
+                accessibilityRole="button"
+                accessibilityLabel={t("sec.room.done.undoRow", { what: l.summary })}
+                accessibilityState={{ disabled: undoBusyId !== null, busy }}
+                disabled={undoBusyId !== null}
+                onPress={() => onAskUndo(l)}
+                style={[styles.undo, { borderLeftColor: c.divider }, undoBusyId !== null && !busy && styles.dim]}
+              >
+                <Text style={[styles.undoT, { color: c.text }]} numberOfLines={1}>
+                  {t("sec.room.done.undo")}
+                </Text>
+                {left ? (
+                  <Text style={[styles.btnS, { color: c.textMuted }]} numberOfLines={1}>
+                    {left}
+                  </Text>
+                ) : null}
+              </Pressable>
+            ) : null}
           </View>
         );
       })}
       <View style={styles.acts}>
-        {target ? (
-          <Pressable
-            testID={ids.undo}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: busy, busy }}
-            disabled={busy}
-            onPress={() => void undo()}
-            style={[glassStyle(c, size.iconBtn / 2), styles.btn, busy && styles.dim]}
-          >
-            <Text style={[styles.btnT, { color: c.text }]} numberOfLines={1}>
-              {t("sec.room.done.undo")}
-            </Text>
-            <Text style={[styles.btnS, { color: c.textMuted }]} numberOfLines={1}>
-              {left}
-            </Text>
-          </Pressable>
-        ) : null}
         <Pressable testID={ids.teach} accessibilityRole="button" onPress={onTeach} style={[glassStyle(c, size.iconBtn / 2), styles.btn]}>
           <Text style={[styles.btnT, { color: c.text }]} numberOfLines={1}>
             {t("sec.room.done.teach", { name })}
@@ -137,7 +132,10 @@ export function DoneCard({
 
 const styles = StyleSheet.create({
   sec: { fontSize: 12, fontWeight: "600", letterSpacing: 1, marginTop: 14, marginLeft: 8 },
-  lnk: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 9, paddingHorizontal: 12, marginTop: 6 },
+  lrow: { flexDirection: "row", alignItems: "stretch", marginTop: 6 },
+  lnk: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 9, paddingHorizontal: 12 },
+  undo: { alignItems: "center", justifyContent: "center", paddingHorizontal: 12, borderLeftWidth: StyleSheet.hairlineWidth, minWidth: 64 },
+  undoT: { fontSize: 13, fontWeight: "600" },
   lt: { flex: 1, minWidth: 0, fontSize: T.sub, lineHeight: 20 },
   struck: { textDecorationLine: "line-through" },
   sideRow: { flexDirection: "row", alignItems: "center", gap: 2 },

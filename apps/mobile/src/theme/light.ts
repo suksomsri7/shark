@@ -83,6 +83,7 @@ export const light = {
   bubbleOther: { from: "rgba(255,255,255,0.74)", to: "rgba(255,255,255,0.42)", fg: "#1d1d24" }, // .oth .bb (กระจก)
   warn: { bg: "rgba(255,176,32,0.14)", fg: "#c47a12" }, // .why
   approval: { border: "rgba(255,190,90,0.7)" }, // .apc (ขอบการ์ดรออนุมัติ)
+  bad: { fg: "#d8436a" }, // ข้อความเตือนสีแดงอมชมพู (D1 "ไม่เห็นแชทลูกค้า" · ขั้นที่ล้ม · ปุ่มถอด) — S2.10
   inputBg: "rgba(255,255,255,0.74)",
   chip: { bg: "rgba(150,150,185,0.12)", fg: "#6e6e73" }, // .chips span
   tab: { fg: "#555566" }, // .tabs span

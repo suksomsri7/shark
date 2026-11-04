@@ -45,11 +45,13 @@
    "sec-top-help"
   ],
   "/secretary/staff": [
-   "sec-secretary-staff",
+   "sec-staff",
    "sec-top-secretary",
    "sec-top-customers",
    "sec-top-team",
-   "sec-top-help"
+   "sec-top-help",
+   "sec-staff-row",
+   "sec-staff-invite"
   ],
   "/secretary/staff/m1": [
    "sec-secretary-staff-member",
@@ -122,11 +124,9 @@
    "sec-quota-packs"
   ],
   "/secretary/onboarding/name": [
-   "sec-secretary-onboarding-name",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-onb-name",
+   "sec-onb-name-input",
+   "sec-onb-save"
   ],
   "/secretary/help": [
    "sec-secretary-help",
@@ -520,6 +520,9 @@
    "reply": true,
    "handoff": true,
    "disclosure": "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
+  },
+  "GET /api/mobile/inbox/staff": {
+   "items": []
   }
  }
 }

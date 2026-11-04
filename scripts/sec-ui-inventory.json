@@ -215,15 +215,15 @@
    "testID": "sec-room-menu-close",
    "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
    "screen": "/secretary/room/[id] (A3–A5 · C4)",
-   "action": "POST secretary/rooms/[id]/close (ผู้เปิดห้อง/OWNER · canManage)",
+   "action": "เปิดชีตยืนยันปิดห้อง (S2.10 R-S2.4e)",
    "wo": "S2.4"
   },
   {
    "testID": "sec-room-menu-members",
    "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
-   "screen": "/secretary/room/[id] (A3–A5 · C4)",
-   "action": "เพิ่มคนเข้าห้อง (รอ S2.10 · ตอนนี้แจ้งรุ่นถัดไป)",
-   "wo": "S2.4"
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "เปิด AddMemberSheet (canManage)",
+   "wo": "S2.10"
   },
   {
    "testID": "sec-room-menu-help",
@@ -334,7 +334,7 @@
    "testID": "sec-room-undo",
    "file": "apps/mobile/src/components/secretary/DoneCard.tsx",
    "screen": "/secretary/room/[id] (A3–A5 · C4)",
-   "action": "POST secretary/log/[id]/undo (แถวล่าสุดที่ย้อนได้ · LIFO)",
+   "action": "เปิดชีตยืนยันย้อนของแถวนี้ (ปุ่มต่อแถว · canUndo ของเซิร์ฟเวอร์ · S2.10 R-S2.4a)",
    "wo": "S2.4"
   },
   {
@@ -476,6 +476,167 @@
    "screen": "/secretary/settings/customers",
    "action": "router.push / ?open=/app/ (WebView 1.0)",
    "wo": "S2.7"
+  },
+  {
+   "testID": "sec-staff-row",
+   "file": "apps/mobile/src/components/secretary/StaffRow.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "router.push /secretary/staff/<membershipId> (OWNER/MANAGER · STAFF = แถวไม่กดได้)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-pending-resend",
+   "file": "apps/mobile/src/components/secretary/StaffRow.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "POST secretary/staff/invites/<id>/resend",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-pending-cancel",
+   "file": "apps/mobile/src/components/secretary/StaffRow.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "เปิดชีตยืนยันยกเลิกคำเชิญ",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-cancel-sheet-ok",
+   "file": "apps/mobile/app/(app)/secretary/staff/index.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "DELETE secretary/staff/invites/<id>",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-cancel-sheet-no",
+   "file": "apps/mobile/app/(app)/secretary/staff/index.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "ปิดชีต (ไม่ยกเลิก)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-cancel-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "ปิดชีต",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-invite",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "router.push /secretary/staff/invite (OWNER/MANAGER)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-add-member",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "เปิด AddMemberSheet (canManage)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-add-row",
+   "file": "apps/mobile/src/components/secretary/AddMemberSheet.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "ติ๊ก/เอาติ๊กออก คนที่จะเพิ่ม",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-add-history",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "สลับ seeHistory (ปริยายปิด)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-add-confirm",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "POST secretary/rooms/<id>/members {userId, seeHistory} ต่อคน",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-member-remove",
+   "file": "apps/mobile/src/components/secretary/AddMemberSheet.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "เปิดชีตยืนยันถอดสมาชิก",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-remove-confirm-ok",
+   "file": "apps/mobile/src/components/secretary/AddMemberSheet.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "DELETE secretary/rooms/<id>/members/<userId>",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-remove-confirm-cancel",
+   "file": "apps/mobile/src/components/secretary/AddMemberSheet.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "ปิดชีตยืนยันถอด",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-close-confirm-ok",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "POST secretary/rooms/<id>/close",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-close-confirm-cancel",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "ปิดชีตยืนยันปิดห้อง",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-undo-confirm-ok",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "POST secretary/log/<id>/undo (แถวที่เลือก)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-undo-confirm-cancel",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "ปิดชีตยืนยันย้อน",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-back",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "router.back (ไม่มี = /secretary)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-skip",
+   "file": "apps/mobile/app/(app)/secretary/onboarding/name.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "router.replace /secretary (ใช้ค่าปริยาย · ไม่ PUT)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-suffix",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "เลือกคำลงท้าย",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-tone",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "เลือกน้ำเสียง",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-save",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "PUT secretary {name, suffix, tone} → router.replace /secretary",
+   "wo": "S2.10"
   }
  ]
 }
