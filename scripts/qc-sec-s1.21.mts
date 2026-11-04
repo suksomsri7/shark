@@ -98,14 +98,15 @@ try {
     const onDuty = await routing.onDutyUsers(tid);
     // LAST_ASSIGNEE: contact ของ cA เคยมี a
     await routing.setRules(tid, { userId: U.owner }, sid, [{ mode: "LAST_ASSIGNEE", enabled: true, order: 0 }, { mode: "ROUND_ROBIN", enabled: true, order: 1 }]);
-    const convLA = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: sid, channel: "WEBCHAT", contactId: cA.contact.id, status: "OPEN", unitId: unitA.id, lastMessageAt: new Date(), firstCustomerMessageAt: new Date() } as never });
+    const cHist = await mkConv("hist", unitA.id, { assigneeUserId: U.a, status: "RESOLVED" }); // ห้องเก่าของลูกค้าคนนี้ (ปิดแล้ว · chat_conv_active = 1 ห้องเปิดต่อ contact)
+    const convLA = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: sid, channel: "WEBCHAT", contactId: cHist.contact.id, status: "OPEN", unitId: unitA.id, lastMessageAt: new Date(), firstCustomerMessageAt: new Date() } as never });
     const r4 = await routing.assignIncoming({ tenantId: tid, systemId: sid, conversationId: convLA.id });
     chk("R-3", "มีคนเข้ากะ ⇒ มอบหมายเฉพาะคนในกะ (unitB) · ออกกะแล้ว onDutyUsers ว่าง · LAST_ASSIGNEE: ลูกค้าเดิมของ a ⇒ a", r3.assigned === U.unitB && onDuty.length === 0 && r4.assigned === U.a && r4.reason === "rule", JSON.stringify({ r3, onDuty, r4 }).slice(0, 160));
     // OWNER mode · off_hours · no responder → owner_fallback
     await routing.setRules(tid, { userId: U.owner }, sid, [{ mode: "OWNER", enabled: true, order: 0 }]);
     const c5 = await mkConv("ownerrule", unitA.id);
     const r5 = await routing.assignIncoming({ tenantId: tid, systemId: sid, conversationId: c5.conv.id });
-    await prisma.chatSetting.update({ where: { systemId: sid }, data: { businessHours: { tz: "Asia/Bangkok", days: { mon: [["09:00", "18:00"]], tue: [["09:00", "18:00"]], wed: [["09:00", "18:00"]], thu: [["09:00", "18:00"]], fri: [["09:00", "18:00"]], sat: [], sun: [] } } as never } }).catch((e) => console.log("  ⚠️ businessHours: " + errMsg(e)));
+    await prisma.chatSetting.update({ where: { systemId: sid }, data: { businessHours: { tz: "Asia/Bangkok", days: [1, 2, 3, 4, 5].map((d) => ({ d, open: "09:00", close: "18:00" })), holidays: [] } as never } }).catch((e) => console.log("  ⚠️ businessHours: " + errMsg(e)));
     const c6 = await mkConv("offhours", unitA.id);
     const r6 = await routing.assignIncoming({ tenantId: tid, systemId: sid, conversationId: c6.conv.id, now: new Date("2026-11-08T05:00:00Z") }); // อาทิตย์ 12:00 BKK
     await prisma.chatSetting.update({ where: { systemId: sid }, data: { businessHours: null as never } });
@@ -120,13 +121,13 @@ try {
     const hU = await routing.callHelper({ tenantId: tid, systemId: sid, conversationId: cA.conv.id, byUserId: U.unitB, helperUserId: U.b, unitAccess: [unitB.id] });
     const helpers = await routing.listHelpers(tid, sid, cA.conv.id);
     const internal = await prisma.chatMessage.findFirst({ where: { conversationId: cA.conv.id, isInternal: true }, orderBy: { createdAt: "desc" } });
-    chk("H-1", "callHelper: guard (ไม่มีคีย์) ⇒ ปฏิเสธไทย · b ⇒ ok แถว helper + บันทึกภายใน 🙋 มีชื่อ+note + push ถึง b · ผู้เรียกที่ไม่เห็นหน่วย ⇒ ปฏิเสธ", h0.ok === false && thai(h0.reason) && h1.ok === true && hU.ok === false && helpers.length === 1 && helpers[0].userId === U.b && helpers[0].note === "ลูกค้าถามเรื่องบิล" && !!internal && internal.body.includes("🙋") && internal.body.includes("ลูกค้าถามเรื่องบิล") && internal.senderUserId === U.a && posts.some((p) => String(p.to).includes(U.b)), JSON.stringify({ h0, h1, hU, helpers: helpers.length, body: internal?.body?.slice(0, 40) }).slice(0, 200));
+    chk("H-1", "callHelper: guard (ไม่มีคีย์) ⇒ ปฏิเสธไทย · b ⇒ ok แถว helper + บันทึกภายใน 🙋 มีชื่อ+note + push ถึง b · ผู้เรียกที่ไม่เห็นหน่วย ⇒ ปฏิเสธ", h0.ok === false && thai(h0.reason) && h1.ok === true && hU.ok === false && helpers.length === 1 && helpers[0].userId === U.b && helpers[0].note === "ลูกค้าถามเรื่องบิล" && !!internal && (internal.body ?? "").includes("🙋") && (internal.body ?? "").includes("ลูกค้าถามเรื่องบิล") && internal.senderUserId === U.a && posts.some((p) => String(p.to).includes(U.b)), JSON.stringify({ h0, h1, hU, helpers: helpers.length, body: internal?.body?.slice(0, 40) }).slice(0, 200));
     posts.length = 0;
     const ho = await routing.handoff({ tenantId: tid, systemId: sid, conversationId: cA.conv.id, byUserId: U.a, toUserId: U.b, reason: "ผมออกเวรแล้ว", unitAccess: ["*"], deps: { post } });
     const hoBad = await routing.handoff({ tenantId: tid, systemId: sid, conversationId: cA.conv.id, byUserId: U.b, toUserId: U.guard, reason: "x", unitAccess: ["*"] });
     const convHO = await prisma.chatConversation.findUnique({ where: { id: cA.conv.id } });
     const hoMsg = await prisma.chatMessage.findFirst({ where: { conversationId: cA.conv.id, isInternal: true }, orderBy: { createdAt: "desc" } });
-    chk("H-2", "handoff a→b: assignee=b · helper row ของ b ถูกลบ · บันทึกภายใน 🔁 มี reason · push ถึง b · ส่งต่อให้ guard (ตอบไม่ได้) ⇒ ปฏิเสธ", ho.ok === true && convHO?.assigneeUserId === U.b && (await routing.listHelpers(tid, sid, cA.conv.id)).length === 0 && !!hoMsg && hoMsg.body.includes("🔁") && hoMsg.body.includes("ผมออกเวรแล้ว") && posts.some((p) => String(p.to).includes(U.b)) && hoBad.ok === false, JSON.stringify({ ho, hoBad, assignee: convHO?.assigneeUserId }).slice(0, 160));
+    chk("H-2", "handoff a→b: assignee=b · helper row ของ b ถูกลบ · บันทึกภายใน 🔁 มี reason · push ถึง b · ส่งต่อให้ guard (ตอบไม่ได้) ⇒ ปฏิเสธ", ho.ok === true && convHO?.assigneeUserId === U.b && (await routing.listHelpers(tid, sid, cA.conv.id)).length === 0 && !!hoMsg && (hoMsg.body ?? "").includes("🔁") && (hoMsg.body ?? "").includes("ผมออกเวรแล้ว") && posts.some((p) => String(p.to).includes(U.b)) && hoBad.ok === false, JSON.stringify({ ho, hoBad, assignee: convHO?.assigneeUserId }).slice(0, 160));
 
     console.log("── S: SLA sweep ──");
     const notified: AnyMod[] = []; const notify = async (userId: string, msg: AnyMod) => { notified.push({ userId, ...msg }); return { sent: 1 }; };

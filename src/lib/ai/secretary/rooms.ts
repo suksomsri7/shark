@@ -6,13 +6,14 @@
 // การมองเห็นห้อง (R-K1) = ผู้เปิดห้อง ∪ สมาชิกห้อง (`AiRoomMember`) ∪ เจ้าของร้าน (role OWNER) — ห้องที่มองไม่เห็น = เหมือนไม่มี (null/false)
 // สถานะห้องไม่เก็บเป็นคอลัมน์ — คำนวณจาก closedAt + งานที่ค้าง + ข้อเสนอ/แผนที่รออนุมัติ (ลำดับ DONE > RUNNING > WAITING > OPEN)
 //
-// 🔴 ห้าม import `../service` (วงกลม: service → conversations → …) · ข้อความถึงผู้ใช้เป็นไทย · ไม่แตะ usage.ts/credit.ts (S1.13)
+// 🔴 ห้าม import `../service` (วงกลม: service → conversations → …) · ข้อความถึงผู้ใช้เป็นไทย · จาก credit.ts ใช้แค่ `balancePeek` (S1.13 · อ่านอย่างเดียว)
 // 🔴 `AiRoom.startedById` = `conversationCreatorOf(conversationId).id` เสมอ (denormalize — ข้อสอบ S1.4 ตรวจ)
 
 import type { AiRoom, Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conversation-owner";
+import { balancePeek, LOW_BALANCE_MICRO } from "../credit";
 import { countsAsJob, FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage } from "./pack";
 import { NOT_SYSTEM_MESSAGE, roomMemberRows, type RoomMemberRow } from "./members";
 
@@ -131,6 +132,10 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
   const title = roomTitleFrom(typeof input.title === "string" && input.title.trim() ? input.title : instruction);
   const systems = cleanSystems(input.systems);
   const contextJson = cleanContext(input.context);
+  // SEC S1.13 (Q4 · R-K7) ▸ กระเป๋ามีเงิน ⇒ โควตาหมดแล้วนับต่อได้ (ตัวนับเกิน limit ได้ = งานที่จ่ายจากกระเป๋า) ·
+  //   อ่านอย่างเดียว (ไม่เปิดกระเป๋า) · ยังเป็น conditional update คำสั่งเดียวใน tx (X3) — แค่เงื่อนไขไม่มี `lt` ◂
+  //   R-S1.13h: เกณฑ์ = ยอด ≥ LOW_BALANCE_MICRO ($0.50) ไม่ใช่แค่ > 0 · ยอดอ่านก่อน tx ⇒ คำขอพร้อมกันอาจเกินเป็นชุด (burst) ไม่ใช่แค่ 1 งาน ◂
+  const paid = ((await balancePeek(tenantId)) ?? 0) >= LOW_BALANCE_MICRO;
 
   try {
     const res = await prisma.$transaction(async (tx) => {
@@ -138,7 +143,7 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
       await tx.aiJobCounter.createMany({ data: [{ tenantId, month, jobs: 0 }], skipDuplicates: true });
       // (2) X3: เงื่อนไข + บวก ในคำสั่งเดียว (แถวถูกล็อกจนจบ tx — ทางที่มาทีหลังเห็นค่าใหม่)
       const got = await tx.aiJobCounter.updateMany({
-        where: { tenantId, month, jobs: { lt: limit } },
+        where: paid ? { tenantId, month } : { tenantId, month, jobs: { lt: limit } },
         data: { jobs: { increment: inc } },
       });
       if (got.count === 0) throw new QuotaExceeded();

@@ -18,7 +18,7 @@ import {
   CORE_TOOLS, LOAD_SKILL_TOOL, skillById, skillIndexPrompt, skillsForTenant, toolNamesOfSkills,
 } from "./skills";
 import { applyDegrade } from "./usage";
-import { balanceOf, canSpend, chargeUsageSafe } from "./credit";
+import { canRunAi, chargeUsageSafe, LOW_BALANCE_MICRO, walletPeek } from "./credit";
 import type { AiCreditSource } from "@prisma/client";
 import { identityOf, secretaryOf } from "./secretary/secretary";
 import { getAccess } from "./secretary/access";
@@ -35,8 +35,7 @@ export type SendCtx = Ctx & { actor: AiActor };
 const HISTORY_MAX_CHARS = 24_000; // งบบริบทต่อ request (ประมาณ ~6k token)
 const HISTORY_TAKE = 40; // ดึงล่าสุดกี่แถวก่อน trim
 const MAX_TOOL_ROUNDS = 5; // เพดานรอบ agent loop (กันวนไม่จบ)
-// เครดิตเหลือน้อยกว่านี้ → ลดชั้นเป็น haiku อัตโนมัติ เพื่อยืดเครดิตก้อนสุดท้ายให้คุยได้นานขึ้น
-const LOW_BALANCE_MICRO = 500_000; // = $0.50
+// เครดิตเหลือน้อยกว่า LOW_BALANCE_MICRO ($0.50 · credit.ts) → ลดชั้นเป็น haiku อัตโนมัติ เพื่อยืดเครดิตก้อนสุดท้ายให้คุยได้นานขึ้น
 // ข้อความปิดสุภาพเมื่อวนครบเพดานแต่ยังไม่ได้คำตอบ
 const FALLBACK_REPLY =
   "ขอโทษครับ ผมยังหาคำตอบให้ไม่เสร็จในตอนนี้ ลองถามใหม่หรือถามให้เจาะจงขึ้นอีกนิดได้ครับ";
@@ -46,8 +45,8 @@ export type Clarify = { question: string; options: ClarifyOption[] };
 
 export type SendResult =
   | { ok: true; conversationId: string; reply: string; clarify?: Clarify }
-  // over_budget: scope="credit" = เครดิตในกระเป๋าหมด (ต้องเติม) · "day" = ชนตาข่ายกันยิงรัวรายวัน
-  | { ok: false; error: "ai_disabled" | "over_budget" | "empty"; scope?: "credit" | "day"; resetAt?: string };
+  // over_budget: scope="credit" = เครดิตในกระเป๋าหมด (ต้องเติม) · "day" = ชนตาข่ายกันยิงรัวรายวัน · "jobs" = โควตางานเลขาของเดือนหมด (SEC S1.13 · R-K6)
+  | { ok: false; error: "ai_disabled" | "over_budget" | "empty"; scope?: "credit" | "day" | "jobs"; resetAt?: string };
 
 // แปลง args ของ ask_clarify เป็น Clarify ที่สะอาด (กัน args เพี้ยน) — คืน null ถ้าไม่มีคำถาม/ตัวเลือกใช้ได้
 function parseClarify(rawArgs: unknown): Clarify | null {
@@ -137,9 +136,19 @@ export async function sendMessage(
   const now = new Date();
 
   // กระเป๋าเครดิต (prepaid) — เช็คก่อนแตะ provider เสมอ (ห้ามจ่ายเงินให้ผู้ให้บริการแล้วค่อยพบว่าเครดิตหมด)
-  // เครดิตหมด = ตัด ไม่มีโควตาฟรีรีเซ็ตรายรอบอีกแล้ว (กติกาเจ้าของ 8 ส.ค.)
-  if (!(await canSpend(ctx.tenantId))) {
-    return { ok: false, error: "over_budget", scope: "credit" };
+  // SEC S1.13 ▸ ด่านเดียว `canRunAi` (R-K7) แทน canSpend เดิม: ข้อความในห้อง = "assist" (ห้องเลขานับงานที่ startRoom แล้ว — R-K6)
+  //   รุ่นแรกแพ็กฟรีเปิด ⇒ assist ผ่านเสมอ (ยังหักลง AiCreditTxn เป็นบันทึกต้นทุน) · แพ็กปิด ⇒ ต้องมียอด > 0 เหมือนเดิม ◂
+  // R-S1.13c/d ▸ ทาง worker ของห้องเลขาที่ยังเปิด (`deps.userMessageId` + AiRoom ที่ผู้กระทำเห็น + ยังไม่ปิด) = นับงาน+ผ่านด่านแล้วตอน
+  //   startRoom (R-K6/Q3) ⇒ ไม่ผ่าน canRunAi (ทั้ง assist และ job) แต่ยังบันทึกต้นทุน AiCreditTxn/AiUsage ตามเดิม
+  //   ประตูเดิม (ไม่มี userMessageId) ที่ชี้ห้องเลขา · ห้องที่ปิดแล้ว · บทสนทนาเดิม ⇒ "assist" ตามปกติ
+  //   ตรวจจาก `findVisibleConversation` (ต้องมองเห็นห้อง) — รหัสห้องที่มองไม่เห็น = ไม่มี ⇒ ผ่านด่าน assist ◂
+  const conv = input.conversationId ? await findVisibleConversation(ctx, input.conversationId) : null;
+  const roomWorker = Boolean(deps?.userMessageId && conv?.room && !conv.room.closedAt);
+  const run = roomWorker ? ({ ok: true } as const) : await canRunAi(ctx.tenantId, { scope: "assist", now });
+  if (!run.ok) {
+    // R-S1.13b ▸ ชนเพดานต้นทุน assist ของวัน (reason credit + resetAt) = ตาข่ายรายวัน ⇒ scope "day" (ข้อความ "วันนี้…กลับมาใช้ได้ …") ไม่ใช่ "เติมเครดิต" ◂
+    const scope = run.reason === "credit" && run.resetAt ? "day" : run.reason;
+    return { ok: false, error: "over_budget", scope, ...(run.resetAt ? { resetAt: run.resetAt.toISOString() } : {}) };
   }
 
   // เพดานรายวันเดิม = ตาข่ายชั้นนอก (กันยอดรวมทั้งวันของร้าน — ยังคงไว้ ไม่ถอด)
@@ -157,7 +166,9 @@ export async function sendMessage(
   // soft degrade: ใกล้เต็มโควตา → ลดชั้นเหลือ haiku ก่อน (ยังคุยได้) ค่อยตัดเมื่อครบเพดานจริง
   // ข้อยกเว้น: เจ้าของบังคับโมเดลเอง (SHARK_AI_MODEL) หรือมีรูปแนบ (งาน vision) = ไม่ลดชั้น
   const forcedModel = Boolean(process.env.SHARK_AI_MODEL?.trim());
-  const lowBalance = (await balanceOf(ctx.tenantId)) < LOW_BALANCE_MICRO;
+  // SEC S1.13 ▸ อ่านยอดแบบไม่เปิดกระเป๋า: ไม่มีกระเป๋า (ร้านใหม่ในแพ็กฟรี) = ไม่ลดชั้น · ร้านเดิมยอด < $0.50 = ลดชั้นเหมือนเดิม ◂
+  const wallet = await walletPeek(ctx.tenantId);
+  const lowBalance = wallet !== null && wallet.grantedAt !== null && wallet.balanceMicro < LOW_BALANCE_MICRO;
   if (lowBalance && !forcedModel && !hasImages && !deps?.provider) {
     const degraded = applyDegrade(routedModel, true);
     if (degraded !== routedModel) {
@@ -194,6 +205,8 @@ export async function sendMessage(
   //   = กรองรายเครื่องมือ (runTool ตรวจซ้ำทุกครั้งอยู่แล้ว — ชั้นนี้คือไม่ชวนโมเดลเรียกสิ่งที่จะโดนปฏิเสธ + ประหยัด token) ◂
   const offeredOf = (names: readonly string[]) => toolsOfferedTo(ctx.actor, names, access);
   const visibleSkills = skillsForTenant(systems.map((s) => s.type)).filter((s) => offeredOf(s.tools).length > 0);
+  // SEC S1.12 ▸ R-S1.12d: กติกาส่งถึงลูกค้าใน prompt เฉพาะเมื่อยื่นเครื่องมือ send_customer_message ได้จริง (skill chat เห็น + ผู้ถามผ่านด่าน) ◂
+  const customerChatOffered = visibleSkills.some((s) => s.tools.includes("send_customer_message")) && offeredOf(["send_customer_message"]).length > 0;
   const loadedSkillIds = new Set<string>();
   const activeToolNames = new Set<string>(offeredOf(CORE_TOOLS));
   const currentTools = () => {
@@ -208,7 +221,7 @@ export async function sendMessage(
   // บทสนทนา: ต่อของเดิมถ้าระบุ ไม่งั้นเปิดใหม่
   // CRM C5.5-G2 ▸ ต่อได้เฉพาะห้องที่ผู้กระทำเห็น (ของตัวเอง · เจ้าของร้าน + ห้องที่ไม่ได้สร้างโดยคนในร้าน) — ห้องของคนอื่น
   //   = เหมือนไม่มีอยู่ ⇒ เปิดห้องใหม่ของผู้กระทำ (รหัสฝังผู้สร้าง) · ประวัติที่ป้อนโมเดลกรองด้วยกติกาเดียวกันอีกชั้นใน query ◂
-  const conv = input.conversationId ? await findVisibleConversation(ctx, input.conversationId) : null;
+  // (SEC S1.13c: `conv` อ่านไว้แล้วก่อนด่าน canRunAi ด้านบน — อ่านอย่างเดียว)
   // SEC S1.5 ▸ ข้อความในคิวต้องตอบในห้องของมันเท่านั้น ◂
   if (deps?.userMessageId && !conv) throw new Error("AI room conversation is not visible to this actor");
   const conversation =
@@ -240,7 +253,7 @@ export async function sendMessage(
     {
       role: "system",
       content: [
-        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}) }),
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customerChatOffered ? { customerChat: true } : {}) }), // SEC S1.12 R-S1.12d ◂
         skillIndexPrompt(visibleSkills),
       ].filter(Boolean).join("\n\n"),
     },

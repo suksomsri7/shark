@@ -17,7 +17,7 @@
 
 import { z } from "zod";
 import { resolveProvider, SMART_MODEL } from "@/lib/ai/provider";
-import { canSpend, chargeUsageSafe } from "@/lib/ai/credit";
+import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
 import { logActivity } from "./activity-log";
 import { getCardFullDetail } from "./cards";
 import { addItem, createChecklist } from "./checklists";
@@ -67,7 +67,7 @@ async function completionOf(ctx: KanbanCtx, deps?: KanbanAiDeps): Promise<(promp
   if (deps?.complete) return deps.complete;
   const provider = resolveProvider("smart");
   if (!provider) throw new Error(NO_AI_TH);
-  if (!(await canSpend(ctx.tenantId))) throw new Error(NO_AI_TH);
+  if (!(await canSpend(ctx.tenantId))) throw new Error(await spendRefusalMessage(ctx.tenantId, NO_AI_TH)); // R-S1.13e
   return async (prompt: string) => {
     const reply = await provider.chat([{ role: "user", content: prompt }], { maxTokens: MAX_TOKENS });
     if (reply.tokensOut >= MAX_TOKENS) {

@@ -17,7 +17,7 @@
 
 import { tenantDb } from "@/lib/core/db";
 import { resolveProvider, type AiChatMessage, type AiProvider } from "@/lib/ai/provider";
-import { canSpend, chargeUsageSafe, outOfCreditMessage } from "@/lib/ai/credit";
+import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
 import { accountRateGuard } from "./rate-limit";
 import { MICRO_PER_USD } from "@/lib/ai/pricing";
 import { safeReason } from "./errors";
@@ -311,7 +311,7 @@ export async function readBill(
 
   const provider = opts?.provider ?? resolveProvider("smart");
   if (!provider) return skipped("ยังไม่ได้เปิดผู้ช่วย AI ของกิจการนี้ — กรอกข้อมูลเองได้ตามปกติ");
-  if (!(await canSpend(ctx.tenantId))) return skipped(outOfCreditMessage());
+  if (!(await canSpend(ctx.tenantId))) return skipped(await spendRefusalMessage(ctx.tenantId)); // R-S1.13e
   // WO 9.2 ข้อ 11 — เพดานต่อร้านต่อวัน ซ้อนบน credit gate:
   //   เครดิตกันไม่ให้ "ใช้เกินเงินที่มี" แต่ไม่กัน "ยิงรัวจนหมดเครดิตในนาทีเดียว"
   //   นับเฉพาะตอนกำลังจะยิง provider จริง (cache/UNSUPPORTED/ปิด AI ไม่กินโควตา)

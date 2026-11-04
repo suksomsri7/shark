@@ -18,7 +18,7 @@
 
 import { tenantDb } from "@/lib/core/db";
 import { resolveProvider } from "@/lib/ai/provider";
-import { canSpend, chargeUsageSafe, outOfCreditMessage } from "@/lib/ai/credit";
+import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
 
 export type TranslateResult =
   | { ok: true; text: string; cached: boolean; detectedLang?: string }
@@ -228,7 +228,7 @@ export async function translateMessage(args: {
   }
 
   // 🔴 ด่านเงินต้องมาก่อนการยิง LLM เสมอ (TR-8.2)
-  if (!(await canSpend(tenantId))) return { ok: false, reason: outOfCreditMessage() };
+  if (!(await canSpend(tenantId))) return { ok: false, reason: await spendRefusalMessage(tenantId) }; // R-S1.13e
 
   const run = await runTranslate(source, target);
   if (!run.ok) return run;
@@ -300,7 +300,7 @@ export async function translateDraft(args: {
     return { ok: true, text: source, cached: true, detectedLang: target };
   }
 
-  if (!(await canSpend(tenantId))) return { ok: false, reason: outOfCreditMessage() };
+  if (!(await canSpend(tenantId))) return { ok: false, reason: await spendRefusalMessage(tenantId) }; // R-S1.13e
 
   const run = await runTranslate(source, target);
   if (!run.ok) return run;

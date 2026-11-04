@@ -54,7 +54,10 @@ export type StaticProposalKind =
   | "cancel_reservation"
   | "kanban_archive_card"
   | "shop_refund_order"
-  | "restaurant_close_bill";
+  | "restaurant_close_bill"
+  // SEC S1.12 ▸ ส่งข้อความถึงลูกค้าผ่านโมดูลแชท (R-K15) · คืนมัดจำนัดหมาย (เส้นสาธิต 3 · R-K16) ◂
+  | "chat.send"
+  | "booking_refund_deposit";
 
 // action string ต่อ kind — ต้องตรงกับ assertCan ของปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
 export const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; action: string }> = {
@@ -102,6 +105,9 @@ export const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; ac
   cancel_reservation: { module: "hotel", action: "hotel.reservation.cancel" },
   kanban_archive_card: { module: "kanban", action: "kanban.card.delete" },
   shop_refund_order: { module: "shop", action: "shop.order.refund" },
+  // SEC S1.12 ▸ R-K14 คีย์ตอบแชทเดิม (ไม่สร้างคีย์ใหม่) · คืนมัดจำ = คีย์ปุ่มคิวมัดจำของร้าน (booking/access.ts refundDueDepositAction) ◂
+  "chat.send": { module: "chat", action: "chat.message.send" },
+  booking_refund_deposit: { module: "booking", action: "booking.deposit.refund" },
 };
 
 export type KindAccess = { module: string; action: string };

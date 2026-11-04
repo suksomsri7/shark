@@ -10,6 +10,7 @@
 
 import { prisma, tenantDb } from "@/lib/core/db";
 import { FAST_MODEL, SMART_MODEL } from "./provider";
+import { FREE_PACK } from "./secretary/pack";
 
 export type Ctx = { tenantId: string };
 export type QuotaScope = "session" | "week";
@@ -175,12 +176,21 @@ export async function recordQuotaUsage(
 
 /** ข้อความไทยสุภาพเมื่อโควตาหมด — บอกด้วยว่ากลับมาใช้ได้เมื่อไหร่ (UI ทุกช่องทางใช้ตัวเดียวกัน) */
 export function quotaMessage(
-  scope?: QuotaScope | "day" | "credit" | null,
+  scope?: QuotaScope | "day" | "credit" | "jobs" | null,
   resetAt?: string | Date | null,
 ): string {
   // เครดิตหมด = ไม่มี "รอบใหม่" ให้รอ ต้องเติมเท่านั้น (โมเดล prepaid ตั้งแต่ 8 ส.ค. 2026)
   if (scope === "credit") {
     return "เครดิตผู้ช่วย AI หมดแล้วครับ — เติมเครดิตที่ ตั้งค่า → เครดิต AI แล้วคุยกันต่อได้ทันที";
+  }
+  // SEC S1.13 (R-K6) ▸ โควตางานเลขารายเดือนหมด — บอกวันเริ่มนับใหม่ (วันที่ไทย เช่น "1 ธ.ค.") ◂
+  if (scope === "jobs") {
+    const reset = resetAt ? new Date(resetAt) : null;
+    const dayTh =
+      reset && !Number.isNaN(reset.getTime())
+        ? new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short" }).format(reset)
+        : null;
+    return `โควตางานของเลขาเดือนนี้ครบ ${FREE_PACK.jobsPerMonth} งานแล้ว${dayTh ? ` — เริ่มนับใหม่ ${dayTh}` : " — เริ่มนับใหม่ต้นเดือนหน้า"}`;
   }
   const when = resetAt ? new Date(resetAt) : null;
   const timeTh =

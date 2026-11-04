@@ -1551,7 +1551,7 @@ export async function sendReply(args: {
   // SEC S1.12 ▸ ส่งซ้ำด้วยคีย์เดิม = แถวเดิม (ตรวจก่อน = ทางปกติไม่ต้องพึ่ง P2002 · ชนกันพร้อมกันจับที่ create ข้างล่าง) ◂
   const clientMessageId = typeof args.clientMessageId === "string" && args.clientMessageId.trim() ? args.clientMessageId.trim() : null;
   if (clientMessageId) {
-    const prior = await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, clientMessageId }, select: { id: true } });
+    const prior = await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, clientMessageId, direction: "OUT" }, select: { id: true } }); // R-S1.12e: ขาออกเท่านั้น
     if (prior) return { ok: true, messageId: prior.id, duplicate: true };
   }
 
@@ -1717,7 +1717,7 @@ export async function sendReply(args: {
     throw e;
   });
   if (!msg) {
-    const prior = await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, clientMessageId: clientMessageId ?? "" }, select: { id: true } });
+    const prior = await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, clientMessageId: clientMessageId ?? "", direction: "OUT" }, select: { id: true } });
     return prior ? { ok: true, messageId: prior.id, duplicate: true } : { ok: false, reason: "ส่งข้อความไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
 

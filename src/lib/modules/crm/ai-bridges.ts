@@ -26,7 +26,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
-import { canSpend, chargeUsageSafe } from "@/lib/ai/credit";
+import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
 import { resolveProvider, type AiChatMessage, type AiProvider } from "@/lib/ai/provider";
 import { canSeeConversationId, sightOfConfirmer } from "@/lib/ai/conversation-owner";
 import { prisma } from "./db";
@@ -508,7 +508,7 @@ export async function runAssist(ctx: AiBridgeCtx, actor: Actor, input: RunAssist
   // ── 2) ผู้ให้บริการ → เครดิต ──
   const ai = deps?.ai ?? resolveProvider("fast");
   if (!ai) throw fail("NOT_CONFIGURED", MSG.noAi);
-  if (!(await canSpend(tenantId))) throw fail("NO_CREDIT", MSG.noCredit);
+  if (!(await canSpend(tenantId))) throw fail("NO_CREDIT", await spendRefusalMessage(tenantId, MSG.noCredit)); // R-S1.13e
 
   // ── 3) ธงก่อน (ข้อเสนอที่ยังรออยู่ = ใช้ใบเดิม ไม่เรียกโมเดลซ้ำ ไม่หักซ้ำ) ──
   let claim: Claim | null = null;

@@ -107,6 +107,8 @@ if (!FORCE && !BUILT) {
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
 const { host } = accEnv.loadQcEnv();
 const { prisma } = await import("@/lib/core/db");
+// ORACLE-EDIT S1.13 (R-S1.13a · มติ 7.1/7.3): แพ็กฟรีเปิด ⇒ กระเป๋าว่างไม่ปฏิเสธ NO_CREDIT (ยังลงแถว USAGE) · ปิด ⇒ คาดเดิม
+const FREE_ON = Boolean(((await import("@/lib/ai/secretary/pack" as string).catch(() => ({}))) as { FREE_PACK?: { enabled?: boolean } }).FREE_PACK?.enabled);
 const P = prisma as Any;
 
 const rand = Math.random().toString(36).slice(2, 8).replace(/[^a-z]/g, "q");
@@ -825,8 +827,12 @@ try {
     const ch0 = await charges();
     const r = await assist(owner, "deal.summary", dMain, "nocredit");
     await fund(50_000_000);
-    chk("C3.4-CR.3", "credit: an empty wallet → NO_CREDIT refusal before the provider is called (canSpend first) — nothing charged",
-      r !== MISSING && !r.ok && /NO_CREDIT/i.test(`${r.code} ${r.err}`) && CAPS.length === c0 && (await charges()) === ch0, "NO_CREDIT · 0 calls", `run=${r.err || "ok"} calls=+${CAPS.length - c0}${ABSENT}`);
+    const ch1 = await charges();
+    chk("C3.4-CR.3", FREE_ON ? "credit (แพ็กฟรีเปิด): an empty wallet still runs the assist — provider called once and ONE USAGE row written (cost record)" : "credit: an empty wallet → NO_CREDIT refusal before the provider is called (canSpend first) — nothing charged",
+      FREE_ON
+        ? r !== MISSING && r.ok && CAPS.length === c0 + 1 && ch1 === ch0 + 1
+        : r !== MISSING && !r.ok && /NO_CREDIT/i.test(`${r.code} ${r.err}`) && CAPS.length === c0 && ch1 === ch0,
+      FREE_ON ? "ok · 1 call · +1 USAGE" : "NO_CREDIT · 0 calls", `run=${r.err || "ok"} calls=+${CAPS.length - c0} charges=+${ch1 - ch0}${ABSENT}`);
   }
   {
     const p = capOf("deal.draftEmail");

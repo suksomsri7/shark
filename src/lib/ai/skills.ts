@@ -138,8 +138,8 @@ export const SKILLS: Skill[] = [
   {
     id: "booking",
     label: "นัดหมายและคิว",
-    summary: "Appointments and walk-in queue: today's bookings, create an appointment, waiting queue, issue a queue ticket, upcoming schedule.",
-    tools: ["today_appointments", "booking_create_appointment", "queue_waiting", "queue_issue_ticket", "upcoming_schedule"],
+    summary: "Appointments and walk-in queue: today's bookings, create an appointment, refund a deposit that is due, waiting queue, issue a queue ticket, upcoming schedule.",
+    tools: ["today_appointments", "booking_create_appointment", "refund_booking_deposit", "queue_waiting", "queue_issue_ticket", "upcoming_schedule"], // SEC S1.12 ▸ + refund_booking_deposit ◂
     systems: ["BOOKING", "QUEUE"],
   },
   {
@@ -260,8 +260,8 @@ export const SKILLS: Skill[] = [
   {
     id: "chat",
     label: "แชทลูกค้า",
-    summary: "Customer chat: conversations with unread messages.",
-    tools: ["chat_unread_conversations"],
+    summary: "Customer chat: conversations with unread messages; propose a message to a customer linked to a member/CRM record (sent only after approval).",
+    tools: ["chat_unread_conversations", "send_customer_message"], // SEC S1.12 ▸ + ข้อเสนอส่งถึงลูกค้า ◂
     systems: ["CHAT"],
   },
   {

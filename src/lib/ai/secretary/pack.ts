@@ -10,8 +10,11 @@
 //   แพ็กเสียเงินแสดงปิด · ปุ่มเติมเงินปิด · ร้านใหม่ไม่ได้เครดิตต้อนรับ · เครดิต $10 ของร้านเดิมคงไว้ (R-K7)
 import { bkkParts } from "@/lib/core/quiet-hours";
 
-/** แพ็กฟรีรุ่นแรก (มติ 7.2) — scheduledMax = เพดานงานประจำต่อร้าน (เท่า MAX_TASKS_PER_TENANT เดิม) · approversMax = ผู้อนุมัติต่อร้าน */
-export const FREE_PACK = { enabled: true, jobsPerMonth: 100, scheduledMax: 10, approversMax: 5 } as const;
+/**
+ * แพ็กฟรีรุ่นแรก (มติ 7.2) — scheduledMax = เพดานงานประจำต่อร้าน (เท่า MAX_TASKS_PER_TENANT เดิม) · approversMax = ผู้อนุมัติต่อร้าน
+ * assistDailyMicro (R-S1.13b) = เพดานต้นทุน assist ต่อร้านต่อวันไทย (ไมโครดอลลาร์ ≈ $0.50) — กันทางที่ฟรีวิ่งไม่หยุด · ห้องเลขา (job) ไม่ใช้เพดานนี้
+ */
+export const FREE_PACK = { enabled: true, jobsPerMonth: 100, scheduledMax: 10, approversMax: 5, assistDailyMicro: 500_000 } as const;
 
 /**
  * เวลาเปิดใช้เลขา (R-K7): ร้านที่ `createdAt >= SECRETARY_LAUNCH_AT` ไม่ได้แถว GRANT เครดิตต้อนรับใน `ensureWallet`

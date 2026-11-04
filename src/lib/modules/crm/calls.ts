@@ -27,7 +27,7 @@ import { logOps } from "@/lib/core/ops";
 import { CRM_ERASE_AUDIT_ACTION } from "./privacy-shared"; // CRM C3.9 ▸ ธง "ลบแล้ว" (รีวิว S3) ◂
 import type { MemberActor } from "@/lib/modules/member";
 import { ALLOWED_UPLOAD_TYPES, deleteFileAsset, normalizeUploadType, openStoredFile, privateFileUrl, uploadFile, type DeleteDeps, type UploadDeps } from "@/lib/storage/service";
-import { canSpend, canSpendPeek, chargeUsageSafe } from "@/lib/ai/credit";
+import { canSpend, canSpendPeek, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
 import { resolveProvider, type AiProvider } from "@/lib/ai/provider";
 import { prisma } from "./db";
 import { crmCan, crmCanLinkCompany, crmForbiddenMessage } from "./access";
@@ -418,7 +418,7 @@ export async function transcribeCall(ctx: CallsCtx, actor: MemberActor, activity
   const ai = deps?.ai ?? resolveProvider();
   if (!ai) throw fail("NOT_CONFIGURED", `${CRM_TRANSCRIBER_MISSING_MSG} (ยังไม่ได้ตั้งค่าผู้ช่วย AI ของระบบ)`);
   if (!(await canSpend(ctx.tenantId))) {
-    throw fail("NO_CREDIT", "เครดิตผู้ช่วย AI หมดแล้ว — เติมเครดิตที่ ตั้งค่า → เครดิต AI แล้วกดถอดเสียงได้ทันที");
+    throw fail("NO_CREDIT", await spendRefusalMessage(ctx.tenantId, "เครดิตผู้ช่วย AI หมดแล้ว — เติมเครดิตที่ ตั้งค่า → เครดิต AI แล้วกดถอดเสียงได้ทันที")); // R-S1.13e
   }
   const asset = await prisma.fileAsset.findFirst({ where: { id: row.recordingFileId, tenantId: ctx.tenantId } });
   if (!asset) throw fail("VALIDATION", "ไม่พบไฟล์เสียงของสายนี้ในที่เก็บ (อาจถูกลบไปแล้ว) — แนบไฟล์ใหม่แล้วลองอีกครั้ง");
@@ -628,7 +628,7 @@ export async function scanBusinessCard(
   //    ร้านที่ยังไม่มีโมเดลจะได้คำตอบที่แก้ได้จริง (ให้ผู้ดูแลตั้งค่า) ไม่ใช่ให้ไปเติมเงินทั้งที่เติมแล้วก็ยังใช้ไม่ได้
   const ai = deps?.ai ?? resolveProvider();
   if (!ai) throw fail("NOT_CONFIGURED", "ยังไม่ได้ตั้งค่าผู้ช่วย AI ของระบบ — ขอให้ผู้ดูแลระบบตั้งค่าก่อน แล้วกดอ่านนามบัตรอีกครั้ง");
-  if (!(await canSpend(ctx.tenantId))) throw fail("NO_CREDIT", "เครดิตผู้ช่วย AI หมดแล้ว — เติมเครดิตที่ ตั้งค่า → เครดิต AI แล้วอ่านนามบัตรได้ทันที");
+  if (!(await canSpend(ctx.tenantId))) throw fail("NO_CREDIT", await spendRefusalMessage(ctx.tenantId, "เครดิตผู้ช่วย AI หมดแล้ว — เติมเครดิตที่ ตั้งค่า → เครดิต AI แล้วอ่านนามบัตรได้ทันที")); // R-S1.13e
   // 🔴 `data:` URL เท่านั้น — รูปไม่เคยถูกอัปโหลด ไม่เคยมีที่อยู่ถาวร
   const dataUrl = `data:${mime};base64,${Buffer.from(input.data).toString("base64")}`;
   const reply = await ai.chat([{ role: "user", content: CARD_PROMPT, imageUrls: [dataUrl] }], { maxTokens: 500 });

@@ -137,6 +137,8 @@ export const HAND_ACTION_KIND: Readonly<Record<string, string>> = {
   point_adjust: "point_adjust",
   ticket_mark_paid: "ticket_mark_paid",
   restaurant_close_bill: "restaurant_close_bill",
+  refund_booking_deposit: "booking_refund_deposit", // SEC S1.12 ▸ R-S1.12b booking.deposit.refund ของคนกด ◂
+  send_customer_message: "chat.send", // SEC S1.12 ▸ R-K14 chat.message.send ของคนกดอนุมัติ · ระดับ chat ต้อง DRAFT (ค่าเริ่มต้น READ ⇒ ไม่ยื่น) ◂
 };
 
 /**

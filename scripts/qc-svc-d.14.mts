@@ -184,6 +184,8 @@ const dbL = await tryImport("@/lib/core/db");
 const prisma: Any = dbL.mod?.prisma;
 if (!prisma) { console.error(`🔴 ${LABEL}: โหลด prisma ไม่ได้ (${dbL.err})`); process.exit(4); }
 const CR = (await tryImport("@/lib/ai/credit")).mod as Any;
+// ORACLE-EDIT S1.13 (R-S1.13a · มติ 7.1/7.3): แพ็กฟรีเปิด ⇒ "เครดิต 0" ไม่ปฏิเสธ assist (ยังลงแถว USAGE) · ปิด ⇒ คาดเดิม
+const FREE_ON = Boolean(((await tryImport("@/lib/ai/secretary/pack")).mod as Any)?.FREE_PACK?.enabled);
 const PRC = (await tryImport("@/lib/ai/pricing")).mod as Any;
 const PV = (await tryImport("@/lib/ai/provider")).mod as Any;
 const SET = (await tryImport("@/lib/core/settings")).mod as Any;
@@ -531,7 +533,7 @@ try {
   });
   await st("PC-4", "เครดิตเดิม: canSpend(A) true · canSpend(Z เครดิต 0) false · costMicroUsd(sonnet,1200,30) = 4050 · canSpendPeek(W ไม่มีกระเป๋า) true โดยไม่เปิดกระเป๋า", async () => {
     needReady();
-    ok((await CR.canSpend(A)) === true && (await CR.canSpend(ids.Z)) === false, "canSpend");
+    ok((await CR.canSpend(A)) === true && (await CR.canSpend(ids.Z)) === (FREE_ON ? true : false), FREE_ON ? "canSpend (แพ็กฟรีเปิด: Z true)" : "canSpend");
     eq(COST(), 4050, "costMicroUsd");
     ok((await CR.canSpendPeek(ids.W)) === true && (await prisma.aiCreditWallet.count({ where: { tenantId: ids.W } })) === 0, "canSpendPeek W");
   });
@@ -675,12 +677,18 @@ try {
     ok(isProposal(r) && r.source === "MANUAL" && r.manualReason === "NO_PROVIDER" && r.charged === false, J(r).slice(0, 200));
     eq((await usage(A)).length, u0, "USAGE");
   });
-  await st("P-13", "เครดิตหมด (ร้าน Z ยอด 0) ⇒ MANUAL NO_CREDIT · ไม่เรียกตัวอ่าน · ยอด/แถวของ Z ไม่เปลี่ยน", async () => {
+  await st("P-13", "เครดิตหมด (ร้าน Z ยอด 0) ⇒ แพ็กฟรีเปิด: อ่านได้+หัก 1 แถว · ปิด: MANUAL NO_CREDIT · ไม่เรียกตัวอ่าน · ยอด/แถวของ Z ไม่เปลี่ยน", async () => {
     needReady();
     const s = mkReader({ value: 1390, confidence: 0.9 });
     const r = await propose(cZ, ids.DZ, ME["z1E"], ph("z1"), { reader: s.reader });
-    ok(isProposal(r) && r.source === "MANUAL" && r.manualReason === "NO_CREDIT" && s.calls.length === 0, J(r).slice(0, 200));
-    ok((await bal(ids.Z)) === 0 && (await usage(ids.Z)).length === 0, "ยอด Z");
+    if (FREE_ON) {
+      // แพ็กฟรีเปิด: ไม่ปฏิเสธเพราะเครดิต ⇒ เรียกตัวอ่าน 1 ครั้ง · หัก 1 แถว USAGE (ยอด Z ติดลบได้)
+      ok(isProposal(r) && r.manualReason !== "NO_CREDIT" && r.charged === true && s.calls.length === 1, J(r).slice(0, 200));
+      ok((await usage(ids.Z)).length === 1 && ((await bal(ids.Z)) ?? 0) < 0, "ยอด Z (แพ็กฟรีเปิด: USAGE 1 · ยอดติดลบ)");
+    } else {
+      ok(isProposal(r) && r.source === "MANUAL" && r.manualReason === "NO_CREDIT" && s.calls.length === 0, J(r).slice(0, 200));
+      ok((await bal(ids.Z)) === 0 && (await usage(ids.Z)).length === 0, "ยอด Z");
+    }
   });
   await st("P-14", "X6 ไฟล์: SVG · JPEG ปลอม · PNG แต่บอกว่า JPEG · ว่าง · HEIC · > 5 MB ⇒ INVALID_FILE (ไทย) · ไม่มีไฟล์/ไม่เรียกตัวอ่าน/ไม่หัก", async () => {
     needReady();
@@ -794,7 +802,7 @@ try {
     const f = D.status();
     const a = await f(cOWN, { unitId: DA }), a2 = await f(cM1, { unitId: ids.DA2 }), a3 = await f(cM1, { unitId: ids.DA3 }), z = await f(cZ, { unitId: ids.DZ }), w = await f(cW, { unitId: ids.DW });
     eq([a, { m: a2?.minConfidence }, { e: a3?.enabled, a: a3?.available }, { a: z?.available }, { a: w?.available }],
-      [{ enabled: true, available: true, minConfidence: 80 }, { m: 50 }, { e: false, a: false }, { a: false }, { a: true }], "สถานะ");
+      [{ enabled: true, available: true, minConfidence: 80 }, { m: 50 }, { e: false, a: false }, { a: FREE_ON }, { a: true }], "สถานะ"); // ORACLE-EDIT S1.13: Z available = FREE_PACK.enabled
     eq([await prisma.aiCreditWallet.count({ where: { tenantId: ids.W } }), await prisma.aiCreditTxn.count({ where: { tenantId: ids.W } })], [0, 0], "กระเป๋า/แถว W");
   });
 
