@@ -304,7 +304,7 @@ type RestaurantCloseBillPayload = {
   tableName: string;
   payMethod?: "CASH" | "TRANSFER" | "PROMPTPAY";
 };
-type AiScheduleTaskPayload = { instruction: string; hourBkk: number };
+type AiScheduleTaskPayload = { instruction: string; hourBkk: number; frequency?: string; days?: number[] };
 type AutomationCreateRulePayload = {
   name: string;
   event: string;
@@ -1401,12 +1401,22 @@ async function dispatch(
   if (kind === "ai_schedule_task") {
     const p = payload as AiScheduleTaskPayload;
     // createTask ตรวจ instruction ว่าง / hour นอกช่วง / เกินเพดาน 10 เอง → โยน error ไทย (→ FAILED)
+    // S1.9 (R-K5) ▸ รู้ตัวคนกด = งานของคนตั้ง (ownerUserId · รันด้วยสิทธิ์ของเขา · ห้องใหม่ต่อรอบ) · ไม่รู้ = ทางเดิม ◂
+    const frequency = typeof p.frequency === "string" && p.frequency.trim() ? (p.frequency.trim().toUpperCase() as scheduledSvc.Frequency) : undefined;
+    const days = Array.isArray(p.days) ? p.days.map((x) => Number(x)) : undefined;
     await scheduledSvc.createTask(
       { tenantId },
-      { instruction: String(p.instruction ?? "").trim(), hourBkk: Math.round(Number(p.hourBkk)) },
+      {
+        instruction: String(p.instruction ?? "").trim(),
+        hourBkk: Math.round(Number(p.hourBkk)),
+        ownerUserId: userId ?? undefined,
+        ...(frequency ? { frequency } : {}),
+        ...(days ? { days } : {}),
+      },
     );
     const hh = String(Math.round(Number(p.hourBkk))).padStart(2, "0");
-    return `ตั้งงานประจำให้ผู้ช่วยทำทุกวันเวลา ${hh}:00 น. เรียบร้อยแล้ว — ผลจะส่งเป็นการแจ้งเตือนให้อ่าน`;
+    if (!userId) return `ตั้งงานประจำให้ผู้ช่วยทำทุกวันเวลา ${hh}:00 น. เรียบร้อยแล้ว — ผลจะส่งเป็นการแจ้งเตือนให้อ่าน`;
+    return `ตั้งงานประจำให้เลขาทำ${scheduledSvc.describeFrequency(frequency ?? "DAILY", days)} เวลา ${hh}:00 น. เรียบร้อยแล้ว — ทุกรอบจะเปิดห้องงานใหม่และแจ้งเตือนให้อ่าน`;
   }
 
   if (kind === "automation_create_rule") {
