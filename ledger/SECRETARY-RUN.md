@@ -38,8 +38,8 @@ _(เติมเมื่อถึงใบ)_
 | S1.8 | 🔁 | | รอบ 2 ร่วม S1.7 · รวมในชุด S1-6 · actions.ts 334 บรรทัด · UNDOABLE 5 kinds · 🎯 บันทึก + ย้อน 24 ชม. |
 | S1.9 | ✅ | | built 9a46aef3 (เลน d) · ORACLE-EDIT s1.9-R-4 (a1dc3572: เทียบจำนวนห้องก่อน/หลัง — รอบ R-3 งาน DAILY ของ owner เปิดห้อง 3 โดยชอบ) · 10/10 ×3 · qc-ai-schedule 8/8 · merge ad938ac6 · หนี้: channels ['room'] ยัง push (worker.ts นอกใบ → S1.23) · runRoomJobs limit 1 รันงานเก่าสุดในคิว · MONTHLY วัน 29–31 ไม่รันเดือนสั้น (ตามสัญญา isDue) |
 | S1.10 | ✍️ | | ใบ S1-8 (S1.10+S1.15) + oracle `qc-sec-s1.10.mts` (6000cfb1) พร้อม · ตีกลับ + สอน |
-| S1.11 | ✍️ | | ใบ S1-9 (S1.11+S1.16) `sec-brief-S1.11.md` เขียนแล้ว · oracle ยังไม่มี · ข้อเสนอ + กล่องรวม |
-| S1.12 | ✍️ | | ใบ S1-10 `sec-brief-S1.12.md` เขียนแล้ว (tool send_customer_message · kind chat.send · sendReply clientMessageId) · oracle ยังไม่มี · เครื่องมือที่ขาด (chat.send) |
+| S1.11 | ✍️ | | ใบ S1-9 (S1.11+S1.16) + oracle `qc-sec-s1.11.mts` (15 ข้อ: digest เทียบ SQL · suggestions · inbox 2 ร้าน) พร้อม · ข้อเสนอ + กล่องรวม |
+| S1.12 | ✍️ | | ใบ S1-10 + oracle `qc-sec-s1.12.mts` (14 ข้อ) พร้อม (tool send_customer_message · kind chat.send · sendReply clientMessageId) · เครื่องมือที่ขาด (chat.send) |
 | S1.13 | 🔨 | | builder Opus เลน b `wip/sec-s1.13` @31ac2f7e เริ่ม 4 พ.ย. ~23:4xZ · ใบ S1-11 + oracle `qc-sec-s1.13.mts` พร้อม (canRunAi · ensureWallet ไม่ GRANT ร้านใหม่ · quotaStatus · GET usage ไม่เขียน) · 🎯 โควตางาน |
 | S1.15 | ✍️ | | รวมในชุด S1-8 · 🎯 วงจรเรียนรู้ |
 | S1.16 | ✍️ | | รวมในชุด S1-9 · ข้อมูลสดรายวัน |
