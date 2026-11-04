@@ -1,5 +1,5 @@
 // QC — SECRETARY S1.22 · บริบทลูกค้าในห้องเลขา (X8 ไม่มี PII) · นอกเวลาทำการ Shark ตอบ/ส่งต่อคน · migration secretary_b (AiSettings 3 คอลัมน์)กลับ 24 ชม. · oracle ของผู้คุม — builder ห้ามแก้ไฟล์นี้
-// สัญญา: ledger/secretary-briefs/sec-brief-S1.7.md · RESOLUTIONS R-K3 R-K3b R-K4 R-S1.8a §B.3 §B.5 · ต้องการ S1.1 ตาราง + S1.4 rooms.ts
+// สัญญา: ledger/secretary-briefs/sec-brief-S1.22.md · RESOLUTIONS R-K15 R-K13 §K §M §L
 //
 // กลุ่มข้อ:
 //   M  migration secretary_b: โฟลเดอร์เรียงหลัง secretary_a · SQL additive · AiSettings มี afterHoursReply/afterHoursHandoff/aiDisclosure
