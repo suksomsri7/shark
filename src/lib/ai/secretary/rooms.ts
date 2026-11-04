@@ -14,6 +14,7 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conversation-owner";
 import { countsAsJob, FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage } from "./pack";
+import { roomMemberRows, type RoomMemberRow } from "./members";
 
 export type RoomStatus = "OPEN" | "RUNNING" | "WAITING" | "DONE";
 
@@ -284,8 +285,8 @@ export async function listRooms(
   });
 }
 
-/** ห้องเดียว (มองไม่เห็น / ไม่มี / ร้านอื่น = null) + สถานะ */
-export async function getRoom(ctx: ConvCtx, roomId: string): Promise<(AiRoom & { status: RoomStatus }) | null> {
+/** ห้องเดียว (มองไม่เห็น / ไม่มี / ร้านอื่น = null) + สถานะ + สมาชิก (S1.6 · ไม่รวมผู้เปิดห้อง · เรียง addedAt) */
+export async function getRoom(ctx: ConvCtx, roomId: string): Promise<(AiRoom & { status: RoomStatus; members: RoomMemberRow[] }) | null> {
   const actor = memberActorOf(ctx);
   const id = typeof roomId === "string" ? roomId.trim() : "";
   if (!actor || !id) return null;
@@ -293,7 +294,8 @@ export async function getRoom(ctx: ConvCtx, roomId: string): Promise<(AiRoom & {
   if (!row || !canSeeRoom(actor, row)) return null;
   const { members: _members, ...room } = row;
   void _members;
-  return { ...room, status: statusFrom(await statusCounts(ctx.tenantId, [room], new Date()), room) };
+  const [counts, members] = await Promise.all([statusCounts(ctx.tenantId, [room], new Date()), roomMemberRows(ctx.tenantId, room.id)]);
+  return { ...room, status: statusFrom(counts, room), members };
 }
 
 /** ห้องที่ผู้ใช้นี้ "ดูแล" ได้ (ปิด/เปลี่ยนชื่อ) = ผู้เปิดห้อง หรือ OWNER · ไม่เห็น/ไม่ใช่ = null */

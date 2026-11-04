@@ -284,10 +284,18 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - เรียกจาก (R-K8b): route ส่งข้อความ S1.14 (`after()` ใน request เดียวกัน) · ตัวเก็บตก = งานรายนาที `secretary.roomJobs` ผ่าน `scripts/crm-cron.mts minute` (crontab VPS ทุกนาที) + hook `runMinuteJobs` ใน `POST /api/cron/outbox` (import `room-jobs-job`) · `vercel.json` ไม่แตะ (มีแค่ `tick` รายวัน + `hourly` · ไม่มีตัวตั้งเวลาใดชี้ `/api/cron/outbox`) · ไม่มี event `ai.room.*` ในใบนี้ · SSE เดิม `sendMobileChat` คงไว้
 - 🔴 rooms.ts ห้าม import worker.ts (วงกลม) · worker → service → conversations
 
-### 5.6 members.ts (แผน · S1.6) — ห้องร่วม (R5)
-- `addMember(ctx, roomId: string, input: { userId: string; seeHistory: boolean }) → Promise<{ ok: true } | { ok: false; reason }>` — ผู้เพิ่ม = ผู้เปิดห้องหรือ OWNER · ผู้ถูกเพิ่มต้องมี `Membership.acceptedAt ≠ null` ในกิจการเดียวกัน · ข้อความระบบ "X เพิ่ม Y เข้าห้อง" · event `ai.room.member_added`
-- `removeMember(ctx, roomId: string, userId: string) → Promise<boolean>` — ผู้เปิดห้อง/OWNER/ตัวเอง
-- `listMessages` (service.ts:78) กรอง `createdAt ≥ addedAt` เมื่อ `seeHistory = false` (บังคับในบริการ ไม่ใช่ UI · COMMON §C.8)
+### 5.6 members.ts (S1.6 · มีแล้ว · `src/lib/ai/secretary/members.ts`) — ห้องร่วม (R5)
+ผู้เปิดห้องไม่มีแถว `AiRoomMember` (รหัสห้องคือแหล่งความจริง) · ห้องที่มองไม่เห็น = `not_found` (R-K1 · ไม่บอกว่ามีอยู่) · คีย์ API/งานภายใน = มองไม่เห็นห้อง · ข้อความถึงผู้ใช้เป็นไทย · ไม่มี event `ai.room.*` ในใบนี้ (แผนเดิมเขียน `ai.room.member_added` — เลื่อนไปพร้อม event ห้องชุดอื่น)
+- `ROOM_MEMBERS_MAX = 20` · `type RoomMemberRow = { userId; name; role: "OWNER" | "MANAGER" | "STAFF"; addedById; addedAt: Date; seeHistory: boolean }` (name = `User.name` → ส่วนหน้าอีเมล → "สมาชิก" · role จาก `Membership` ของร้านนี้)
+- `listMembers(ctx: ConvCtx, roomId) → Promise<RoomMemberRow[] | null>` — มองไม่เห็นห้อง = null · เรียง `addedAt` asc · ไม่รวมผู้เปิดห้อง
+- `addMember(ctx, roomId, input: { userId: string; seeHistory?: boolean }) → Promise<{ ok: true; member: RoomMemberRow } | { ok: false; error: "not_found" | "forbidden" | "not_member_of_tenant" | "self" | "already" | "limit" | "closed"; message }>`
+  - ลำดับตรวจ: มองไม่เห็น → `not_found` · ไม่ใช่ผู้เปิดห้อง/OWNER (รวมสมาชิกห้อง) → `forbidden` · `closedAt` → `closed` · ผู้ถูกเพิ่ม = ตัวเอง/ผู้เปิดห้อง → `self` · ไม่มี `Membership(userId, tenantId)` ที่ `acceptedAt ≠ null` (รวม user ไม่มีจริง) → `not_member_of_tenant` · มีแถวแล้ว → `already` · ครบ 20 → `limit`
+  - tx เดียว: `SELECT … FROM "AiRoom" … FOR UPDATE` (เพิ่มพร้อมกันไม่ทะลุ 20 · ตรวจปิด/ซ้ำ/จำนวนซ้ำใต้ล็อก · unique `[roomId, userId]` ชน = `already`) → `AiRoomMember(tenantId, roomId, userId, addedById = ผู้ทำ, seeHistory ปริยาย false)` → ข้อความระบบ `AiMessage(role ASSISTANT, content "🔔 <ผู้เพิ่ม> เพิ่ม <ผู้ถูกเพิ่ม> เข้าห้อง", authorUserId null, tokens 0)` (สร้างหลังแถว ⇒ `createdAt ≥ addedAt` — สมาชิกใหม่เห็นเป็นแถวแรก) → `AiRoom.updatedAt`
+- `removeMember(ctx, roomId, userId) → Promise<{ ok: true } | { ok: false; error: "not_found" | "forbidden" | "not_a_member"; message }>` — ผู้เปิดห้อง/OWNER เอาใครออกก็ได้ · สมาชิกเอาตัวเองออกได้ (ออกจากห้อง) · สมาชิกเอาคนอื่นออก = `forbidden` · ไม่มีแถว (รวมผู้เปิดห้อง) = `not_a_member` · tx: ลบแถว + ข้อความระบบ ("🔔 <ผู้ทำ> นำ <ชื่อ> ออกจากห้อง" · ออกเอง "🔔 <ชื่อ> ออกจากห้อง") + `AiRoom.updatedAt` · ออกแล้วมองไม่เห็นห้องทันที · ห้องปิดแล้วยังเอาออกได้
+- `visibleMessagesWhere(ctx, conversationId) → Promise<Prisma.AiMessageWhereInput>` — สมาชิก (ไม่ใช่ผู้เปิด · ไม่ใช่ OWNER) ที่ `seeHistory = false` ⇒ `{ createdAt: { gte: addedAt } }` · อื่น ๆ ⇒ `{}` (OWNER/ผู้เปิด/คีย์ = ไม่ query) — ใช้ใน `service.listMessages` (ทางห้องร่วมเท่านั้น · ห้องเดิม/ห้องตัวเอง = เดิมทุกไบต์) และประวัติที่ป้อนโมเดลใน `service.sendMessage` (บังคับในบริการ ไม่ใช่ UI · COMMON §C.8)
+- `roomMemberRows(tenantId, roomId)` — ตัวอ่านภายใน (ไม่ตรวจการมองเห็น) ที่ `rooms.getRoom` ใช้ ⇒ `getRoom` คืน `members: RoomMemberRow[]` เพิ่ม · `listRooms` การ์ดมี `memberIds` (S1.4)
+- X2: ข้อความที่สมาชิกพิมพ์ = `authorUserId` ของสมาชิก · เครื่องมือ/สกิลยื่นตามสิทธิ์ของผู้พิมพ์ (S1.4/S1.5) · ผู้อนุมัติผ่าน `actorCanConfirmKind`/`assertCan` ด้วยสิทธิ์ตัวเอง (เดิม)
+- 🔴 members.ts ห้าม import `../service` หรือ `./rooms` (rooms → members · service → members)
 
 ### 5.7 kind-class.ts (แผน · S1.7 · pure) — ชั้นความเสี่ยง (R-K3)
 - `classOfKind(kind: string) → { destructive: boolean; money: boolean; customerFacing: boolean; piiExport: boolean }` — derive จาก `DESTRUCTIVE_KINDS` (proposals.ts:128) + `kindAccessOf(kind).module` (:475): `account.*`/pos refund/`booking.refund_deposit` = money · `chat.send`/crm email/member campaign = customerFacing · ไม่รู้จัก = money + customerFacing (fail-closed)
@@ -425,6 +433,8 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | เปิดห้องงาน | ✅ | ✅ | ✅ ถ้ามี `ai.chat.send` | – | งานประจำ ด้วยสิทธิ์ผู้ตั้ง |
 | เห็นห้อง | ทุกห้องที่มี `AiRoom` ในกิจการ + ของตัวเอง | ของตัวเอง + ที่ถูกเพิ่ม | ของตัวเอง + ที่ถูกเพิ่ม | – | – |
 | เพิ่ม/เอาคนออกจากห้อง | ✅ ทุกห้อง | ห้องที่ตัวเองเปิด | ห้องที่ตัวเองเปิด | ❌ | – |
+| ออกจากห้อง (ตัวเอง) | – | ห้องที่ถูกเพิ่ม | ห้องที่ถูกเพิ่ม | ❌ | – |
+| เห็นข้อความก่อนถูกเพิ่ม | ✅ ทุกห้อง | ของตัวเอง · ห้องที่ถูกเพิ่มเมื่อ `seeHistory = true` | ของตัวเอง · ห้องที่ถูกเพิ่มเมื่อ `seeHistory = true` | – | – |
 | อ่านข้อมูลระบบ (เครื่องมืออ่าน) | ตามระดับ ≥ READ | ตามสิทธิ์ ∩ ระดับ | ตามสิทธิ์ ∩ ระดับ | ไม่เกินผู้สั่ง | – |
 | ร่างข้อเสนอเขียน | ระดับ DRAFT | ระดับ DRAFT + สิทธิ์ | ระดับ DRAFT + สิทธิ์ | ✅ (เป็นข้อเสนอเสมอ) | – |
 | อนุมัติข้อเสนอในห้องเลขา | ✅ + `assertCan` ตัวเอง | ✅ + `assertCan` ตัวเอง | ❌ (R-K4) | ❌ | ❌ |
