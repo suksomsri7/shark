@@ -198,7 +198,7 @@ export async function sendMessage(
   // persona ต้องรู้ชื่อกิจการ + ระบบที่เปิด + ความจำถาวรของร้าน + แนวทางที่ปรับปรุงระดับแพลตฟอร์ม
   // (พ่วง Promise.all เดิม ไม่เพิ่ม round-trip แยก · promptTweaks best-effort: query พลาด → "" ไม่ให้แชทพัง)
   // SEC S1.2/S1.3 ▸ + ตัวตนเลขาของคนที่พิมพ์ (อ่านอย่างเดียว ไม่สร้าง · คีย์/งานภายใน = ไม่มี) + ระดับต่อระบบของร้าน (ไม่มีแถว = ค่าเริ่มต้น) ◂
-  const [tenant, systems, memories, promptTweaks, secretaryRow, access] = await Promise.all([
+  const [tenant, systems, memories, promptTweaks, secretaryRow, access, lessons] = await Promise.all([
     prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId } }),
     db.appSystem.findMany({ select: { type: true, name: true }, orderBy: { createdAt: "asc" } }),
     memoryBlock({ tenantId: ctx.tenantId, actor: ctx.actor }), // CRM C5.5-G3: the viewer's memories only (own + shop facts)
@@ -206,6 +206,8 @@ export async function sendMessage(
     // ตัวตนเลขาเป็นของแต่ง — อ่านแถวพลาด (ฐานสะดุด) = ใช้ persona ปริยาย ไม่ให้แชททั้งหมดล้ม (ระดับสิทธิ์ getAccess ยังล้มแบบปิด)
     ctx.actor.kind === "member" ? secretaryOf(ctx.actor.userId).catch(() => null) : Promise.resolve(null),
     getAccess(ctx.tenantId),
+    // SEC S1.15 ▸ บทเรียนที่เจ้าของยืนยันแล้ว (best-effort · ไม่มี = "" ⇒ prompt เดิมทุกไบต์) · import ตอนเรียก ◂
+    import("./secretary/learn").then((m) => m.lessonBlock(ctx.tenantId)).catch(() => ""),
   ]);
   const secretary = secretaryRow ? identityOf(secretaryRow) : undefined;
   // สรุป DNA facts (ข้อมูลตอนสร้างกิจการ) — ฉีดเข้า persona ให้ AI เข้าใจธุรกิจตั้งแต่แรก (best-effort)
@@ -274,7 +276,7 @@ export async function sendMessage(
     {
       role: "system",
       content: [
-        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customer ? { customer } : {}), ...(customerChatOffered ? { customerChat: true } : {}) }), // SEC S1.12 R-S1.12d ◂
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customer ? { customer } : {}), ...(lessons ? { lessons } : {}), ...(customerChatOffered ? { customerChat: true } : {}) }), // SEC S1.12 R-S1.12d ◂
         skillIndexPrompt(visibleSkills),
       ].filter(Boolean).join("\n\n"),
     },

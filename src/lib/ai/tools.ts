@@ -2331,7 +2331,16 @@ const rememberFactTool: AiTool = {
   async execute(ctx, args) {
     const content = String(asRecord(args).content ?? "").trim();
     if (!content) return JSON.stringify({ error: "ต้องระบุเนื้อหาที่จะจำ" });
-    const { id, shared } = await rememberFact({ tenantId: ctx.tenantId, actor: ctx.actor }, content);
+    // SEC S1.10 (R-K3) ▸ ในห้องเลขา (มีแถว AiRoom) คนที่ไม่ใช่ OWNER จด = ข้อเท็จจริงของร้านที่รอเจ้าของยืนยัน (PENDING) ·
+    //   ห้องเดิม/OWNER = ทางเดิมทุกตัวอักษร · import ตอนเรียก (conversations อ่าน DB) ◂
+    let pending = false;
+    if (ctx.actor.kind === "member" && ctx.actor.membership.role !== "OWNER" && ctx.conversationId) {
+      const { findVisibleConversation } = await import("./conversations");
+      pending = !!(await findVisibleConversation({ tenantId: ctx.tenantId, actor: ctx.actor }, ctx.conversationId))?.room;
+    }
+    const saved = await rememberFact({ tenantId: ctx.tenantId, actor: ctx.actor }, content, pending ? { pending: true } : undefined);
+    if (saved.pending) return JSON.stringify({ จดไว้รอเจ้าของยืนยัน: content, id: saved.id, ขอบเขต: "ข้อเท็จจริงของร้าน — ใช้ได้เมื่อเจ้าของร้านยืนยันแล้ว" });
+    const { id, shared } = saved;
     return JSON.stringify({ จำแล้ว: content, id, ขอบเขต: shared ? "ความจำของร้าน (ทุกคนในร้านเห็น)" : "ความจำส่วนตัว (เฉพาะคุณ)" });
   },
 };
