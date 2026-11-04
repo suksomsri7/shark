@@ -109,9 +109,17 @@ ADDP='<div class="ib"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx
 CKON='<div class="ck on"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg></div>'
 CKOFF='<div class="ck"></div>'
 HELPI=lambda on: f'<div class="ib{" on" if on else ""}"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/></svg></div>'
-TOP=bar(CHATI(1)+TEAMI(0)+HELPI(0),'',PLUS)
-TOPT=bar(CHATI(0)+TEAMI(1)+HELPI(0),'','')
-TOPH=bar(CHATI(0)+TEAMI(0)+HELPI(1),'',PLUS)
+CUSTI=lambda on: f'<div class="ib{" on" if on else ""}"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M4 13l2.2-7A1.5 1.5 0 0 1 7.6 5h8.8a1.5 1.5 0 0 1 1.4 1l2.2 7v4.5A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"/><path d="M4 13h4.5l1.2 2h4.6l1.2-2H20"/></svg></div>'
+TOP=bar(CHATI(1)+CUSTI(0)+TEAMI(0),'',HELPI(0)+PLUS)
+TOPT=bar(CHATI(0)+CUSTI(0)+TEAMI(1),'',HELPI(0))
+TOPH=bar(CHATI(0)+CUSTI(0)+TEAMI(0),'',HELPI(1)+PLUS)
+TOPC=bar(CHATI(0)+CUSTI(1)+TEAMI(0),'',HELPI(0))
+LINEB='<i style="display:inline-grid;place-items:center;width:16px;height:16px;border-radius:5px;background:#06c755;color:#fff;font-size:9px;font-weight:800;font-style:normal;vertical-align:-3px;margin-right:6px">L</i>'
+WEBB='<i style="display:inline-grid;place-items:center;width:16px;height:16px;border-radius:5px;background:#5a64d8;color:#fff;font-size:9px;font-weight:800;font-style:normal;vertical-align:-3px;margin-right:6px">W</i>'
+def crow(c,l,ch,n,pv,tm,bd='',who='',tags='',ai=''):
+    return f'<div class="row">{HP(c,l)}<div class="t"><b>{ch}{n}{f"<em>{tags}</em>" if tags else ""}</b><span>{pv}</span>{f'<span style="color:#6a5ad8;white-space:normal">{ai}</span>' if ai else ''}</div><div class="r" style="font-size:12.5px;color:#aeaeb2;display:flex;flex-direction:column;align-items:flex-end;gap:6px">{tm}{bd}{who}</div></div>'
+def inb(c,l,t,tm): return f'<div class="oth">{HP(c,l)}<div><div class="nm">{tm}</div><div class="bb gl">{t}</div></div></div>'
+
 PLAT='<div class="hp" style="background:linear-gradient(135deg,#16161c,#4a4a60);font-size:12px">SH</div>'
 def hcase(st,no,t,s,r):
     d={'open':'wait','pend':'run','done':'done'}[st]
@@ -453,6 +461,58 @@ H4=f'''<div class="pg">{bar(BACK,'SHARK-00043 · บลูเฮาส์ หอ
  </div>
  {INP('พิมพ์ตอบผู้ใช้…')}'''
 
+# ---------- ชุด ฉ ลูกค้า (แชทรวม) ----------
+K1=f'''<div class="pg">{TOPC}
+ <div class="lt">ลูกค้า</div>
+ <div class="st">LINE 12 · เว็บแชท 3 · ยังไม่ตอบ 5 · ของฉัน 2</div>
+ <div class="srch gl"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>ค้นหาลูกค้า เบอร์ หรือข้อความ</div>
+ <div class="tabs"><span class="a">ทั้งหมด</span><span>ยังไม่ตอบ<em>5</em></span><span>ของฉัน 2</span><span>ปิดแล้ว</span></div>
+ <div class="chips" style="margin-top:14px"><span class="a">ทุกช่องทาง</span><span>LINE</span><span>เว็บแชท</span><span style="opacity:.5">Facebook · เร็ว ๆ นี้</span></div>
+ {crow('h3','ส',LINEB,'คุณสมชาย · ร้านดอยช้าง','ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหม','9:52','<span class="bd">2</span>',HP('h2','น'),'ดีล',ai='✨ Shark ร่างคำตอบไว้แล้ว')}
+ {crow('h1','ม',WEBB,'คุณมานี','สนใจคอร์สชงกาแฟวันเสาร์ค่ะ ยังมีที่ไหม','9:40','<span class="bd">1</span>','','ใหม่')}
+ {crow('h2','ป',LINEB,'ป้าแดง','[สติกเกอร์]','9:12','','',HP('h3','ก'))}
+ {crow('h3','ก',LINEB,'คุณเก่ง · บลูเฮาส์','คุณ: ส่งสลิปค่าเช่าแล้วนะครับ ขอบคุณครับ','เมื่อวาน','','',HP('h1','ส'),'หอพัก')}
+ {crow('h1','อ',WEBB,'ผู้เยี่ยมชม #4821','ร้านเปิดกี่โมงคะ · Shark ตอบแล้วนอกเวลาทำการ','เมื่อวาน','','','')}
+ <div class="note" style="margin-top:20px">ห้องสีเขียว = ลูกค้าเห็นข้อความที่คุณพิมพ์ · สั่งเลขาให้ไปที่ไอคอนแรก</div>
+ </div>'''
+
+K2=f'''<div class="pg">{bar(BACK,'คุณสมชาย · ร้านดอยช้าง<small>'+LINEB+'LINE · ผู้ดูแล น้ำ · ตอบได้อีก 23 ชม.</small>','<div class="ib"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg></div>')}
+ <div class="sysl" style="background:rgba(6,199,85,.14);color:#1f8f4a;font-weight:600">ลูกค้าเห็นข้อความที่คุณพิมพ์ในห้องนี้ · ไม่ใช่ห้องสั่งงานเลขา</div>
+ {inb('h3','ส','สวัสดีค่ะ ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหมคะ','คุณสมชาย · 9:52')}
+ <div class="kb gl" style="margin-top:12px;border:1.5px dashed #c47a12;background:rgba(255,176,32,.08)"><div class="ic">🔒</div><div class="t"><b>บันทึกภายใน · น้ำ 9:53</b><span>ลูกค้าเก่า จ่ายตรงทุกครั้ง ให้ได้ค่ะ (ลูกค้าไม่เห็นข้อความนี้)</span></div></div>
+ <div class="sum gl" style="margin-top:12px;border-left:3px solid #6a5ad8"><b>✨ Shark ร่างคำตอบ</b><p>สวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ</p><div class="acts" style="margin-top:10px"><div>แก้</div><div>สั่งเลขาแก้ใบเสนอราคา</div><div class="d">ส่งข้อความนี้</div></div></div>
+ <div class="ubb" style="margin-top:14px">แก้ใบเสนอราคา Q-0012 เป็นเครดิต 45 วันแล้วค่ะ แนบไฟล์ใหม่มาให้นะคะ<div style="margin-top:8px;font-size:13px;opacity:.85">📎 Q-0012-v2.pdf</div><div style="margin-top:6px;font-size:11.5px;opacity:.7">ส่งโดย Shark (ผู้ช่วย AI) · อนุมัติโดยคุณสุข 10:05 · อ่านแล้ว</div></div>
+ <div class="chips" style="margin-top:auto;margin-bottom:112px"><span>ขอบคุณค่ะ 🙏</span><span>ที่อยู่ร้าน</span><span>เวลาเปิด</span><span>โอนแล้วแจ้งได้เลย</span></div>
+ </div>
+ {INP('พิมพ์ถึงลูกค้า… (แตะ 🔒 = บันทึกภายใน)')}'''
+
+K3=f'''<div class="pg">{bar(BACK,'คุณสมชาย · ร้านดอยช้าง<small>'+LINEB+'LINE</small>','')}{inb('h3','ส','ขอเครดิต 45 วันได้ไหมคะ','คุณสมชาย · 9:52')}</div>
+ <div class="dim"></div>
+ <div class="sheet" style="top:200px"><div class="grab"></div>
+  <div style="display:flex;align-items:center;gap:14px">{HP('h3','ส')}<div><div style="font-size:22px;font-weight:700;letter-spacing:-.3px">คุณสมชาย</div><div class="st" style="margin-top:2px">ร้านดอยช้าง · 081-xxx-5678 · ลูกค้าตั้งแต่ ส.ค. 2568</div></div></div>
+  <div class="sec">ในระบบ SHARK</div>
+  <div class="lnk gl">{kk('crm')}ดีล "ดอยช้าง · เครื่องชง 2 ชุด"<span>ขั้นเสนอราคา ›</span></div>
+  <div class="lnk gl">{kk('mem')}สมาชิก · แต้ม 1,240 · ซื้อล่าสุด 12 ส.ค.<span>เปิด ›</span></div>
+  <div class="lnk gl">{kk('acc')}ใบเสนอราคา Q-0012 ฿12,500<span>รอลูกค้า ›</span></div>
+  <div class="sec">ห้องนี้</div>
+  {pr('ผู้ดูแล','น้ำ')}{pr('สถานะ','เปิด')}{pr('แท็ก','ดีล · ลูกค้าเก่า')}{pr('แจ้งเตือน','ทุกข้อความ')}
+  <div class="acts" style="margin-top:16px"><div>สร้างงานบอร์ด</div><div>ปิดห้อง</div><div class="d">สั่ง Shark เรื่องลูกค้านี้</div></div>
+ </div>'''
+
+K4=f'''<div class="pg">{bar(BACK,'ช่องทางและตอบเร็ว<small>The Bean Café</small>','')}
+ <div class="sec" style="margin-top:14px">ช่องทางที่เชื่อม</div>
+ <div class="row"><div class="lg" style="background:#06c755;color:#fff">L</div><div class="t"><b>LINE Official<em>@thebean</em></b><span>เชื่อมแล้ว · ข้อความวันนี้ 38</span></div><span class="dot run"></span></div>
+ <div class="row"><div class="lg" style="background:#5a64d8;color:#fff">W</div><div class="t"><b>เว็บแชท<em>shark.in.th/c/thebean</em></b><span>เปิดใช้ · ใส่ในเว็บร้านได้</span></div><span class="dot run"></span></div>
+ <div class="row" style="opacity:.55"><div class="lg" style="background:#1877f2;color:#fff">f</div><div class="t"><b>Facebook Page</b><span>เร็ว ๆ นี้ · เชื่อมได้บนเว็บ shark.in.th</span></div><span class="dot done"></span></div>
+ <div class="sec">เวลาทำการ · นอกเวลา</div>
+ {rule('นอกเวลาทำการให้ Shark ตอบแทน','09:00–18:00 · นอกเวลาตอบคำถามทั่วไป เรื่องเงิน/ร้องเรียนส่งต่อคน (ตั้งค่าใน "คุยกับลูกค้าแทนร้าน")',True)}
+ {rule('ให้ Shark เสนอคำตอบทุกข้อความ','ร่างให้ก่อน คุณกดส่งเอง · ไม่นับเป็นงาน',True)}
+ <div class="sec">ตอบเร็ว</div>
+ <div class="chips" style="flex-wrap:wrap;row-gap:8px"><span>ขอบคุณค่ะ 🙏</span><span>ที่อยู่ร้าน</span><span>เวลาเปิด</span><span>โอนแล้วแจ้งได้เลย</span><span>เมนูวันนี้</span><span style="border:1.5px dashed #c5c7d6;color:#8e8e93">+ เพิ่ม</span></div>
+ <div class="sec">แจ้งเตือน</div>
+ {seg(['ทุกข้อความ','เฉพาะที่มอบหมายให้ฉัน','ปิด'],0)}
+ </div>'''
+
 def phone(b,l): return f'<div class="phone"><div class="screen">{STATUS}{b}</div><div class="label">{l}</div></div>'
 SETS={
  'a':('เลขา AI · session — ชุด ก ใช้งานประจำวัน','เลขาคนเดียว · เปิดงาน (session) ได้ไม่จำกัด · ทำงานเบื้องหลังในทุกระบบ SHARK · สถานะ กำลังทำ / รออนุมัติ / เสร็จ',
@@ -465,6 +525,8 @@ SETS={
   [(D1,'D1 · ทุกคนในกิจการ = พนักงาน (ใหม่)'),(D2,'D2 · ห้องแชทที่มีหลายคน (ใหม่)'),(D3,'D3 · เพิ่มพนักงานเข้าห้อง (ใหม่)')]),
  'h':('เลขา AI · session — ชุด จ ช่วยเหลือ · แจ้งปัญหา','ไอคอน ? ซ้ายบน → ห้องแชทแจ้งปัญหากับทีม SHARK · แนบห้องงานที่เกี่ยวอัตโนมัติ · ฝั่ง backoffice เห็นทุกร้าน (ต่อยอด Support Desk ที่มีอยู่)',
   [(H1,'H1 · ช่วยเหลือ (แอป · ใหม่)'),(H2,'H2 · ห้องแจ้งปัญหา (แอป · ใหม่)'),(H3,'H3 · backoffice รายการเรื่องแจ้ง (ปรับ)'),(H4,'H4 · backoffice ห้องแชทกับผู้ใช้ (ปรับ)')]),
+ 'k':('เลขา AI · session — ชุด ฉ ลูกค้า · แชทรวมในแอป','ไอคอนที่ 2 ซ้ายบน = แชทลูกค้า (LINE · เว็บแชท · Facebook ต่อไป) ต่อยอดระบบแชทรวมบนเว็บ · Shark ร่างตอบ/สรุป/รับงานจากห้องลูกค้าได้ · แถบบน: เลขา · ลูกค้า · ทีม | ? · +',
+  [(K1,'K1 · รายการลูกค้า (ใหม่)'),(K2,'K2 · ห้องแชทลูกค้า (ใหม่)'),(K3,'K3 · ข้อมูลลูกค้า · มอบหมาย (ใหม่)'),(K4,'K4 · ช่องทาง · ตอบเร็ว (ใหม่)')]),
 }
 def dark_inline(m):
     s=m.group(0)
