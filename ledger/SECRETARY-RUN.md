@@ -34,8 +34,8 @@ _(เติมเมื่อถึงใบ)_
 | S1.4 | ✅ | 4 พ.ย. ~18:0xZ | merge (wip/sec-s1.4 33cfaf47) · oracle 28/28 ×3 (ORACLE-EDIT fixture tenantId) · S1.2 ยังเขียวหลัง merge · regression 9 ชุดเท่า baseline · rooms.ts 329 บรรทัด · ConvSight +memberOf/tenantRooms · roomSightFor/canSeeConversationById · rejectPlan room-aware · 🎯 ห้อง = งาน |
 | S1.5 | ✅ | 4 พ.ย. ~20:0xZ | merge (wip/sec-s1.5 d1e0ed19) · oracle 16/16 ×3 · regression 6 ชุดเท่า baseline · worker.ts 279 บรรทัด · minute job `secretary.roomJobs` (crm-cron VPS + outbox hook) · รวม hotfix `secretaryOf().catch` · หนี้: รูปแนบในคิว (ไม่มีคอลัมน์ → secretary_b) · ข้อความ 2 อันในห้องเดียวรันพร้อมกันได้ · docs §6 ห้องปิด · 🎯 คิวเบื้องหลัง |
 | S1.6 | 🔁 | | รอบ 1 built d87c8a4f · oracle 14/14 ×3 · **รีวิว E/F: MERGE-AFTER-FIX** (ข้อเสนอ/แผนก่อนเข้าห้องรั่วถึงสมาชิก seeHistory=false · push ถึงคนที่ถูกถอนสิทธิ์ · ข้อความระบบนับ unread) → RESOLUTIONS §J R-S1.6a–d · oracle เพิ่ม H-3/R-4 · รอบ 2 บนเลน b · 🎯 ห้องร่วม |
-| S1.7 | 🔨 | | builder Opus เลน c `wip/sec-s1.7` @f385caa9 เริ่ม 4 พ.ย. ~21:2xZ · oracle `qc-sec-s1.7.mts` · ต้องอนุมัติเสมอ |
-| S1.8 | 🔨 | | รวมในชุด S1-6 (เลน c) · 🎯 บันทึก + ย้อน 24 ชม. |
+| S1.7 | 🔍 | | built 5fbf0b8f (เลน c) · oracle 22/22 ×3 หลัง ORACLE-EDIT G-2 (ผู้จัดการต้องเป็นสมาชิกห้อง) · s1.4/s1.2/s1.3b เขียว · **รอผู้ตรวจ 2 คน (G สิทธิ์/undo · H สัญญา)** · ต้องอนุมัติเสมอ |
+| S1.8 | 🔍 | | รวมในชุด S1-6 · actions.ts 334 บรรทัด · UNDOABLE 5 kinds · 🎯 บันทึก + ย้อน 24 ชม. |
 | S1.9 | 🔨 | | builder Opus เลน d `wip/sec-s1.9` @a6f98e88 เริ่ม 4 พ.ย. ~22:3xZ · งานประจำ |
 | S1.10 | ✍️ | | ใบ S1-8 (S1.10+S1.15) + oracle `qc-sec-s1.10.mts` (6000cfb1) พร้อม · ตีกลับ + สอน |
 | S1.11 | ⬜ | | ข้อเสนอ + กล่องรวม |
