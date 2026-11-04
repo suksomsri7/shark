@@ -69,6 +69,7 @@
 - oracle `finally` ลบ tenant `qc-sec-s122-*` + ผู้ใช้ `qcs122-*` ทุกตาราง (รวม aiSettings · chatConversationEvent · appNotification)
 
 ## 10. รอบ 2 (ผู้ตรวจ N · RESOLUTIONS §O) — merge ทิป `90989b9d`
+- ผล: oracle forced ×2 + unforced = 14/14 ×3 · s1.2 28 · s1.12 15 · s1.13 14 · s1.21 2+13 SKIP (routing ยังไม่อยู่ในเลนนี้) · chat-ai-suggest 44 · business-hours 73 · learning 32 · core-v2 47 · security 38 · replies 60 · tsc ไฟล์ที่แตะ 0
 - R-S1.22a `sendReply({ aiAfterHours: true })` ไม่แตะ staffUnreadCount/firstResponseAt (A-6)
 - R-S1.22b ลำดับ disabled → no_window → in_hours → human/money/complaint (regex) → ตอบแล้ว (ah:) → answered (OUT · senderUserId ไม่ null · ไม่ใช่ meta.ai_afterHours) → ด่านต้นทุน → โมเดล → ตรวจคำตอบ (MONEY_RE/AMOUNT_RE ⇒ money ไม่ส่ง) · reason ใหม่ human/answered · regex ขยายตาม §O (A-7)
 - R-S1.22c ข้อมูลร้าน (เวลาทำการ+DNA+ความจำ) ผ่าน maskPiiDeep + ตัวเลข ≥ 8 หลัก · prompt ห้ามไล่/อ้างข้อมูลร้าน
