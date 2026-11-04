@@ -14,7 +14,7 @@ const LABEL = "qc-sec-screen";
 const FORCED = process.env.QC_FORCE === "1";
 const APP = join(M, "app/(app)");
 const SPEC_PATH = process.env.SPEC ?? "";
-type Spec = { wo: string; fixture: string; routes: { route: string; file: string; testIds: string[]; pair: boolean }[]; checks?: { id: string; name: string; file: string; must?: string[]; mustNot?: string[] }[] };
+type Spec = { wo: string; fixture: string; routes: { route: string; file: string; testIds: string[]; pair: boolean }[]; checks?: { id: string; name: string; file: string; must?: string[]; mustNot?: string[] }[]; jsonChecks?: { id: string; name: string; file: string; expect: Record<string, unknown> }[] };
 const SPEC = SPEC_PATH && existsSync(join(ROOT, SPEC_PATH)) ? (JSON.parse(readFileSync(join(ROOT, SPEC_PATH), "utf8")) as Spec) : null;
 if (!SPEC) { console.error(`🔴 ${LABEL}: ต้องตั้ง SPEC=scripts/qc-sec-specs/<ใบ>.json`); process.exit(4); }
 const FIRST = join(M, SPEC.routes[0]!.file);
@@ -41,6 +41,12 @@ for (const c of SPEC.checks ?? []) {
   const s = strip(rd(join(M, c.file)));
   const mustMiss = (c.must ?? []).filter((re) => !new RegExp(re).test(s)); const mustHit = (c.mustNot ?? []).filter((re) => new RegExp(re).test(s));
   chk(c.id, c.name, mustMiss.length === 0 && mustHit.length === 0, JSON.stringify({ miss: mustMiss.slice(0, 3), hit: mustHit.slice(0, 3) }));
+}
+console.log("── J: json ──");
+for (const c of SPEC.jsonChecks ?? []) {
+  const f = join(M, c.file); let ok = existsSync(f); const bad: string[] = [];
+  if (ok) { try { const j = JSON.parse(readFileSync(f, "utf8")) as Record<string, unknown>; for (const [k, v] of Object.entries(c.expect)) if (JSON.stringify(j[k]) !== JSON.stringify(v)) bad.push(`${k}=${JSON.stringify(j[k])}`); } catch (e) { ok = false; bad.push(String(e).slice(0, 80)); } }
+  chk(c.id, c.name, ok && bad.length === 0, ok ? bad.join(" · ") : "ไม่มีไฟล์ " + c.file);
 }
 console.log("── U: qc-sec-ui ──");
 {
