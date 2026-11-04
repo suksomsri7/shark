@@ -84,7 +84,7 @@ try {
     const p1After = await prisma.aiProposal.findUnique({ where: { id: p1.id } });
     const sysMsg = await prisma.aiMessage.findFirst({ where: { conversationId: convId }, orderBy: { createdAt: "desc" } });
     const tAgain = await teach.rejectWithNote(ctxOf(STAFF), p1.id, { note: "อีกครั้ง", remember: "JOB" });
-    chk("T-1", "มองไม่เห็น ⇒ not_found · note ว่าง ⇒ empty · JOB ⇒ ok REJECTED resultNote มี note · ข้อความระบบ 🔁 มีชื่อ+note · ไม่มีความจำ · ซ้ำ ⇒ not_pending", tS2.ok === false && tS2.error === "not_found" && tE.ok === false && tE.error === "empty" && tJ.ok === true && !tJ.memoryId && p1After?.status === "REJECTED" && (p1After?.resultNote ?? "").includes("ใส่กำหนดส่งด้วย") && !!sysMsg && sysMsg.content.includes("🔁") && sysMsg.content.includes("ใส่กำหนดส่งด้วย") && (sysMsg as AnyMod).authorUserId === null && (await prisma.aiMemory.count({ where: { tenantId: tid } })) === 0 && tAgain.ok === false && tAgain.error === "not_pending", JSON.stringify({ tS2, tE, tJ, st: p1After?.status, tAgain }).slice(0, 220));
+    chk("T-1", "มองไม่เห็น ⇒ not_found · note ว่าง ⇒ empty · JOB ⇒ ok REJECTED resultNote มี note · ข้อความระบบ 🔁 มีชื่อ+note · ไม่มีความจำ · ซ้ำ ⇒ not_pending", tS2.ok === false && tS2.error === "not_found" && tE.ok === false && tE.error === "empty" && tJ.ok === true && !tJ.memoryId && p1After?.status === "REJECTED" && (p1After?.resultNote ?? "").includes("ใส่กำหนดส่งด้วย") && !!sysMsg && sysMsg.content.includes("🔁") && sysMsg.content.includes("ใส่กำหนดส่งด้วย") && (sysMsg as AnyMod).authorUserId === "system" && (await prisma.aiMemory.count({ where: { tenantId: tid } })) === 0 && tAgain.ok === false && tAgain.error === "not_pending", JSON.stringify({ tS2, tE, tJ, st: p1After?.status, tAgain }).slice(0, 220));
     const p2 = await mkProp(convId, "kanban_create_card", { title: "การ์ด B" });
     const tR = await teach.rejectWithNote(ctxOf(STAFF), p2.id, { note: "การ์ดทุกใบต้องมีผู้รับผิดชอบ", remember: "RULE" });
     const memR = tR.ok && tR.memoryId ? await prisma.aiMemory.findUnique({ where: { id: tR.memoryId } }) : null;
@@ -101,12 +101,13 @@ try {
     const tO = await teach.rejectWithNote(ctxOf(OWNER), p4.id, { note: "ใช้ป้าย urgent เมื่อด่วน", remember: "RULE" });
     const memO = tO.ok && tO.memoryId ? await prisma.aiMemory.findUnique({ where: { id: tO.memoryId } }) : null;
     const p5 = await mkProp(convId, "kanban_create_card", { title: "การ์ด E" });
+    const blkO = await memory.memoryBlock(ctxOf(STAFF)); // ORACLE-EDIT T-4: อ่านก่อนลบ
     const rj = await teach.rejectMemory(ctxOf(OWNER), memO!.id);
-    chk("T-4", "OWNER RULE ⇒ ความจำยืนยันทันที (status null · เข้า block) · rejectMemory ลบได้", tO.ok === true && memO?.status === null && (await memory.memoryBlock(ctxOf(STAFF))).includes("urgent") && rj === true && (await prisma.aiMemory.count({ where: { id: memO!.id } })) === 0, JSON.stringify({ tO, st: memO?.status, rj }).slice(0, 160));
+    chk("T-4", "OWNER RULE ⇒ ความจำยืนยันทันที (status null · เข้า block) · rejectMemory ลบได้", tO.ok === true && memO?.status === null && blkO.includes("urgent") && rj === true && (await prisma.aiMemory.count({ where: { id: memO!.id } })) === 0, JSON.stringify({ tO, st: memO?.status, rj }).slice(0, 160));
 
     console.log("── E: editProposal ──");
     const col = await prisma.kanbanColumn.findFirst({ where: { boardId: board.id }, orderBy: { position: "asc" } as never });
-    const pK = await mkProp(convId, "kanban.cards.create", { opId: "cards.create", input: { columnId: col?.id, title: "ชื่อเดิม" } });
+    const pK = await mkProp(convId, "kanban.cards.create", { opId: "cards.create", params: { id: board.id }, input: { columnId: col?.id, title: "ชื่อเดิม" } });
     const e1 = await teach.editProposal(ctxOf(STAFF), pK.id, { title: "ชื่อใหม่", dueAt: "ไม่ใช่วันที่" });
     const e2 = await teach.editProposal(ctxOf(STAFF), pK.id, { title: "ชื่อใหม่" });
     const pKAfter = await prisma.aiProposal.findUnique({ where: { id: pK.id } });

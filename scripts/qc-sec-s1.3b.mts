@@ -54,7 +54,7 @@ const { ForbiddenError } = await import("@/lib/core/rbac");
 const U = { owner: "qcs13b-owner", mgr: "qcs13b-mgr" };
 let tid = "";
 const cleanup = async () => {
-  if (tid) { for (const m of ["aiSystemAccess", "aiSecretary", "aiProposal", "aiPlan", "aiMessage", "aiConversation", "aiRoom", "hrLeave", "hrEmployee", "posSale", "kanbanCard", "kanbanColumn", "kanbanBoard", "businessUnit", "appSystem", "membership"]) { try { await (prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m]?.deleteMany({ where: { tenantId: tid } }); } catch { /* */ } } try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup: ${errMsg(e)}`); } }
+  if (tid) { for (const m of ["aiTrainingSample", "aiLesson", "aiSystemAccess", "aiSecretary", "aiProposal", "aiPlan", "aiMessage", "aiConversation", "aiRoom", "hrLeave", "hrEmployee", "posSale", "kanbanCard", "kanbanColumn", "kanbanBoard", "businessUnit", "appSystem", "membership"]) { try { await (prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m]?.deleteMany({ where: { tenantId: tid } }); } catch { /* */ } } try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup: ${errMsg(e)}`); } }
   try { await prisma.tenant.deleteMany({ where: { slug: { startsWith: "qc-sec-s13b-" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } } }); } catch { /* */ }
   try { await (prisma as AnyMod).aiSecretary?.deleteMany({ where: { userId: { startsWith: "qcs13b-" } } }); } catch { /* */ }
   try { await prisma.user.deleteMany({ where: { id: { startsWith: "qcs13b-" } } }); } catch { /* */ }
