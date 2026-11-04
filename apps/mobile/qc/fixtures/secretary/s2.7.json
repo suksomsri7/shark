@@ -705,6 +705,168 @@
      "unread": false
     }
    ]
+  },
+  "GET /api/mobile/inbox/systems": {
+   "items": [
+    {
+     "id": "cs1",
+     "name": "แชทหน้าร้าน",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      },
+      {
+       "type": "WEBCHAT",
+       "label": "เว็บแชท"
+      }
+     ],
+     "unread": 3
+    },
+    {
+     "id": "cs2",
+     "name": "แชทหอพัก",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      }
+     ],
+     "unread": 0
+    }
+   ],
+   "canReply": true
+  },
+  "GET /api/mobile/inbox/connections": {
+   "items": [
+    {
+     "id": "cn1",
+     "type": "LINE",
+     "label": "LINE",
+     "displayName": "@thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:58:00.000Z",
+     "lastErrorAt": null
+    },
+    {
+     "id": "cn2",
+     "type": "WEBCHAT",
+     "label": "เว็บแชท",
+     "displayName": "shark.in.th/c/thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:40:00.000Z",
+     "lastErrorAt": null
+    }
+   ]
+  },
+  "GET /api/mobile/inbox/quick-replies": {
+   "items": [
+    {
+     "id": "q1",
+     "shortcut": "/thx",
+     "title": "ขอบคุณค่ะ 🙏",
+     "body": "ขอบคุณค่ะ 🙏",
+     "channelTypes": []
+    },
+    {
+     "id": "q2",
+     "shortcut": "/map",
+     "title": "ที่อยู่ร้าน",
+     "body": "ร้านอยู่ที่ {shop.address} ค่ะ",
+     "channelTypes": []
+    },
+    {
+     "id": "q3",
+     "shortcut": "/open",
+     "title": "เวลาเปิด",
+     "body": "ร้านเปิด 09:00–18:00 ทุกวันค่ะ",
+     "channelTypes": []
+    },
+    {
+     "id": "q4",
+     "shortcut": "/paid",
+     "title": "โอนแล้วแจ้งได้เลย",
+     "body": "โอนแล้วส่งสลิปในแชทนี้ได้เลยค่ะ",
+     "channelTypes": [
+      "LINE",
+      "WEBCHAT"
+     ]
+    },
+    {
+     "id": "q5",
+     "shortcut": "/menu",
+     "title": "เมนูวันนี้",
+     "body": "เมนูวันนี้ค่ะ",
+     "channelTypes": [
+      "FACEBOOK"
+     ]
+    }
+   ]
+  },
+  "GET /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "น้ำ",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "GET /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ALL",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "kinds": [
+    "inbox",
+    "approval",
+    "room",
+    "help"
+   ],
+   "modes": [
+    "ALL",
+    "ASSIGNED",
+    "OFF"
+   ]
   }
  }
 }

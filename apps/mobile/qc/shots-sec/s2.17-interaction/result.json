@@ -1,0 +1,258 @@
+{
+ "k1Rows": 5,
+ "k1Unassigned": 1,
+ "k1Counts": "LINE 4 · เว็บแชท 2 · ยังไม่ตอบ 2 · ของฉัน 1",
+ "k1UnansweredRows": 2,
+ "k1MineQuery": "?systemId=cs1&assignee=me",
+ "k1ClosedQuery": "?systemId=cs1&status=RESOLVED",
+ "k1SearchQuery": "?systemId=cs1&q=%E0%B8%AA%E0%B8%A1",
+ "k1OpenUrl": "/customers/x2?s=cs1",
+ "k2ReadPosts": [
+  {
+   "systemId": "cs1",
+   "lastReadMessageId": "n1"
+  }
+ ],
+ "k2ClaimBody": [
+  {
+   "systemId": "cs1",
+   "assigneeUserId": "u-qc-owner"
+  }
+ ],
+ "k2ClaimNote": "รับเรื่องแล้ว ห้องนี้อยู่ใน \"ของฉัน\"",
+ "k2Claim409Note": "ห้องนี้มีคนรับหรือย้ายไปแล้ว",
+ "k2Bubbles": {
+  "in": 5,
+  "out": 1,
+  "ai": 1,
+  "internal": 1,
+  "system": 2,
+  "sticker": 1,
+  "image": 1,
+  "audio": 1,
+  "file": 1,
+  "resend": 1
+ },
+ "k2AiLabel": "ส่งโดย Shark (ผู้ช่วย AI) · อนุมัติโดยคุณสุข 9:57",
+ "k2ReadBody": [
+  {
+   "systemId": "cs1",
+   "lastReadMessageId": "m10"
+  }
+ ],
+ "k2Suggest": 1,
+ "k2Reply": [
+  {
+   "systemId": "cs1",
+   "body": "เครดิต 45 วันได้ค่ะ",
+   "isInternal": false,
+   "clientMessageId": "c-mw2rfmde-d4h4h8ky"
+  }
+ ],
+ "k2InputAfter": "",
+ "k2SecretaryPosts": [],
+ "k2AllPosts": [
+  "POST /api/mobile/inbox/conversations/x1/read",
+  "POST /api/mobile/inbox/conversations/x1/ai-suggest",
+  "POST /api/mobile/inbox/conversations/x1/reply"
+ ],
+ "k2RateNote": "ส่งถี่เกินไป จะลองส่งอีกครั้งใน 1 วินาที",
+ "k2RateIds": [
+  "c-mw2rfrsq-nl2f9liz",
+  "c-mw2rfrsq-nl2f9liz"
+ ],
+ "k2RateGapMs": 1009,
+ "k2RateInputAfter": "",
+ "k2Rate2Posts": 2,
+ "k2Rate2Note": "ส่งถี่เกินไป รอสักครู่แล้วลองใหม่",
+ "k2RetrySameId": true,
+ "k2InternalChecked": null,
+ "k2InternalPh": "บันทึกภายใน (ลูกค้าไม่เห็น) · @ชื่อ",
+ "k2InternalReply": {
+  "systemId": "cs1",
+  "body": "@ก้อง ช่วยดูห้องพักที",
+  "isInternal": true,
+  "clientMessageId": "c-mw2rg721-19aytek2"
+ },
+ "k2QuickApply": [
+  {
+   "systemId": "cs1",
+   "conversationId": "x1"
+  }
+ ],
+ "k2QuickInput": "ร้านอยู่ที่ 12 ถนนนิมมาน เชียงใหม่ ค่ะ",
+ "k2QuickCount": 4,
+ "k2QuickReplyPostsBeforeSend": 1,
+ "k2DraftEditInput": "สวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ",
+ "k2DraftCardAfterEdit": 0,
+ "k2DraftSend": [
+  {
+   "systemId": "cs1",
+   "body": "สวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ",
+   "isInternal": false,
+   "clientMessageId": "c-mw2rgd6j-c03nyuao"
+  }
+ ],
+ "k2DraftCardAfterSend": 0,
+ "k2Resend": [
+  {
+   "systemId": "cs1",
+   "body": "ได้เลยค่ะ เดี๋ยวแก้ใบเสนอราคาให้นะคะ",
+   "isInternal": false,
+   "clientMessageId": "resend:m7"
+  }
+ ],
+ "k2Upload": {
+  "posts": 1,
+  "multipart": [
+   true
+  ]
+ },
+ "k2Attached": 1,
+ "k2AttachReply": [
+  {
+   "systemId": "cs1",
+   "attachments": [
+    {
+     "url": "https://cdn.qc.invalid/upload/photo.png",
+     "mimeType": "image/png",
+     "fileName": "photo.png",
+     "sizeBytes": 2048,
+     "width": 1,
+     "height": 1
+    }
+   ],
+   "isInternal": false,
+   "clientMessageId": "c-mw2rgl4y-e59tlrcj"
+  }
+ ],
+ "k2Viewer": 1,
+ "k2ViewerClosed": true,
+ "k3HelperUrl": "/customers/x1/info?s=cs1&open=helpers",
+ "k3HelperChoices": [
+  "น",
+  "ส"
+ ],
+ "k3HelperBody": [
+  {
+   "systemId": "cs1",
+   "helperUserId": "u-qc-nam",
+   "note": "ช่วยดูเรื่องห้องพัก"
+  }
+ ],
+ "k3HelperNote": "เรียกคนช่วยแล้ว",
+ "k3HandoffChoices": [
+  "ส",
+  "ก"
+ ],
+ "k3HandoffOkDisabledNoReason": null,
+ "k3HandoffBody": [
+  {
+   "systemId": "cs1",
+   "toUserId": "u-qc-2",
+   "reason": "ลูกค้าถามเรื่องห้องพัก"
+  }
+ ],
+ "k3Handoff409": "ห้องนี้มีคนรับหรือย้ายไปแล้ว",
+ "k3HandoffReload": [
+  2,
+  3
+ ],
+ "k3AssignBody": [
+  {
+   "systemId": "cs1",
+   "assigneeUserId": "u-qc-kong"
+  }
+ ],
+ "k3CloseBeforeOk": 1,
+ "k3StatusBodies": [
+  {
+   "systemId": "cs1",
+   "status": "PENDING"
+  },
+  {
+   "systemId": "cs1",
+   "status": "RESOLVED"
+  }
+ ],
+ "k3Tags": "แท็ก\nดีล",
+ "k3Contact": "ส\nคุณสมชาย · ร้านดอยช้าง\nL\nLINE · คุณสมชาย · 081-xxx-5678",
+ "k3TaskBtn": 0,
+ "k3LinkSearch": [
+  "?q=สม"
+ ],
+ "k3LinkBody": [
+  {
+   "systemId": "cs1",
+   "customerId": "mem1"
+  }
+ ],
+ "k3UnlinkBody": [
+  {
+   "systemId": "cs1",
+   "customerId": null
+  }
+ ],
+ "k3AskBody": [
+  {
+   "instruction": "สรุปประวัติการซื้อของลูกค้าคนนี้",
+   "clientMessageId": "m-mw2rh793-ol4d686y",
+   "context": {
+    "chatConversationId": "x1",
+    "contactId": "ct1"
+   }
+  }
+ ],
+ "k3AskUrl": "/secretary/room/r-cust1",
+ "k3AskReplyPosts": 0,
+ "k5RoutingPut": [
+  {
+   "systemId": "cs1",
+   "rules": [
+    {
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 2
+    }
+   ]
+  }
+ ],
+ "k5Shift": [
+  {
+   "onDuty": true
+  }
+ ],
+ "k4NotifyPut": [
+  {
+   "kind": "inbox",
+   "mode": "ASSIGNED"
+  }
+ ],
+ "k4NoSecrets": true,
+ "k5StaffSave": 0,
+ "k5StaffAdd": 0,
+ "k5StaffIntro": "กฎรับเรื่องตั้งได้เฉพาะเจ้าของร้านหรือผู้จัดการ",
+ "deniedScreen": 1,
+ "deniedCustIcon": 0,
+ "deniedSecIcon": 1,
+ "secZoneCustIconWhenDenied": 0,
+ "viewOnly": {
+  "readonly": 2,
+  "input": 0,
+  "draft": 0,
+  "quickGets": 0
+ }
+}

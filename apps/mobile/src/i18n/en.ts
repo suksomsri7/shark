@@ -743,7 +743,7 @@ const en: Record<I18nKey, string> = {
   "cust.draft.title": "Shark's draft reply",
   "cust.draft.edit": "Edit",
   "cust.draft.send": "Send this",
-  "cust.input.ph": "Message the customer… (🔒 = internal note)",
+  "cust.input.ph": "Message the customer…",
   "cust.input.internalPh": "Internal note (hidden from customer) · @name",
   "cust.input.internal": "Internal note",
   "cust.send.rateRetry": "Sending too fast, retrying in {n} s",
