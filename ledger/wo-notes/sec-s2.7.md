@@ -28,6 +28,7 @@
 | `scripts/sec-ui-inventory.json` | แก้ | +18 แถวปุ่มของ S2.7–S2.9 |
 
 ## 2. ผลข้อสอบ (ทิปหลัง merge session/secretary b7dc15c8 = มี S2.12 + S2.4 · ถ่าย/คู่/กดจริงใหม่ทั้งหมดบนทิปนี้)
+- ทิปสุดท้าย 66400393 (หลังแก้ canUndo): spec oracle forced ×2 = `{"total":16,"passed":16,…}` exit 0 ทั้งสองรอบ · กดจริง 24/24 · ถ่าย OWNER 16/16 · STAFF 6/6
 - spec oracle forced #1: `JSON_SUMMARY {"total":16,"passed":16,"failed":[],"skipped":[],"findings":[]}` exit 0
 - spec oracle forced #2: `JSON_SUMMARY {"total":16,"passed":16,"failed":[],"skipped":[],"findings":[]}` exit 0 (ทั้งสองรอบรวม M-1 typecheck mobile + D-1/D-2 fitness มี env/ไม่มี env)
 - `qc-sec-s2.1` forced: `{"total":14,"passed":14,…}` exit 0 · `qc-sec-s2.12` forced: `{"total":13,"passed":13,…}` exit 0 · spec s2.2 forced: `{"total":11,"passed":11,…}` exit 0
@@ -75,6 +76,7 @@ B2: บันทึกก่อนแก้ = 0 PUT · ตัวอย่าง�
 - merge ทิป 2 รอบ (COMMON A.11): S2.12 (c6d0436d) และ S2.4 (cda64e7b) · i18n = union (494 คีย์ th/en ชุดเดียวกัน) · summary.json = ทั้งสองชุด (ใหม่สุดต่อชื่อ) · inventory = union · s2.1.json: เก็บ mock `secretary/log` = `{items:[]}` ของ S2.4 ⇒ expect ของ `/secretary/settings/log` ใน s2.1 = สถานะว่าง
 - ใบเขียน `secretary-api.ts` — ใช้ `src/api/secretary.ts` ตามที่ S2.2 ตั้ง (จอเรียกด้วยชื่อเส้น `secGet("secretary/access")` ⇒ X-1…X-4 ของ spec จับสตริงได้โดยไม่ต้อง SPEC-EDIT)
 - ชื่อเส้นจาก S1.14 จริง: `secretary` (GET/PUT ตัวตน · ไม่ส่ง x-tenant-id) · `memories/pending` · `memories/[id](/confirm)` · `lessons/[id](/confirm)` · `log/[id]/undo` · `after-hours` · `staff`
+- B5 ปุ่มย้อน/ตัวกรอง "ย้อนได้" เชื่อ `canUndo` ของเซิร์ฟเวอร์ (R-S2.4a · 09f914e1) — ใช้นาฬิกาเครื่องเฉพาะเมื่อไม่มีฟิลด์ · ยังไม่มีชีตยืนยันก่อนย้อน (R-S2.4a บังคับในห้อง S2.10 — B5 จดเป็นหนี้)
 - OWNER-only = ปุ่มซ่อน/ล็อกในแอป + เซิร์ฟเวอร์ตรวจซ้ำ (403) · บทบาทอื่นไม่ยิงเส้นที่เซิร์ฟเวอร์ตอบ 403 แน่นอน (after-hours GET · memories/pending · staff สำหรับ STAFF)
 - ไม่มีเส้นที่เรียกโมเดลเพิ่ม · ไม่มีสิทธิ์ใหม่ (ทุกการเขียนผ่าน lib ของ S1.x ที่ตรวจสิทธิ์อยู่แล้ว) · ไม่มีตัวเงินดอลลาร์/ยอดคงเหลือบนจอใด (§C.6)
 
@@ -86,6 +88,7 @@ B2: บันทึกก่อนแก้ = 0 PUT · ตัวอย่าง�
 | GET access คืนทุก AI_MODULES (27) ไม่ใช่เฉพาะระบบที่ร้านเปิด | ใบเขียน "ต่อโมดูลที่ร้านเปิด" — กรองต้องทำฝั่งเซิร์ฟเวอร์ | S1.14/S3 |
 | ไม่มีเส้นรายการความจำที่ยืนยันแล้ว/เพิ่มความจำ/stats เลขา | S1.14 ไม่มี | ใบถัดไป |
 | แถว "เวลาทำการ" เปิดแค่หน้าแรกเว็บ (`?open=/app/`) | หน้าเวลาทำการอยู่ใต้ `/app/sys/<chatSystemId>` — แอปไม่รู้ systemId | S2.17+ |
+| B5 ย้อนยังไม่มีชีตยืนยัน (ห้องต้องมีตาม R-S2.4a) | ใบนี้ทำก่อนมติ §S | S2.10/ผู้คุม |
 | BusinessSwitcherSheet (B1) ยังไม่มีแถบโควตารวมตามแบบ | ไฟล์ของ S2.1 | S2.20 |
 
 ## ต่อจากนี้ (ถ้า restart)
