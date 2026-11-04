@@ -435,6 +435,12 @@ export async function executeProposal(
   const level = await accessLevelGate(ctx.tenantId, row.kind);
   if (!level.ok) return { ok: false, note: level.reason };
 
+  // SEC S1.7 ▸ R-K4 ด่านผู้อนุมัติของห้องเลขา (มีแถว AiRoom ⇒ OWNER/MANAGER + ตัวตัดสินของโมดูล) — ไม่ผ่าน = คง PENDING ·
+  //   ห้อง AI เดิม = ผ่านเสมอ (พฤติกรรมเดิม) · import ตอนเรียก (secretary/approval-gate → proposals = วงโหลด) ◂
+  const approval = await secApprovalGate(ctx.tenantId, m, row, opts?.userId ?? null);
+  if (!approval.ok) return { ok: false, note: approval.note };
+  // ◂ SEC S1.7
+
   // ── ยืนยัน 2 ชั้น สำหรับรายการลบ/ยกเลิกถาวร (DESTRUCTIVE) ──
   // ชั้นแรก (ไม่มี confirm2x) → คง PENDING ไม่ทำจริง แจ้ง UI ให้ถามยืนยันอีกครั้ง
   if (row.risk === "DESTRUCTIVE" && !opts?.confirm2x) {
@@ -503,6 +509,13 @@ export async function runKind(
   if (!level.ok) throw new Error(level.reason);
   return dispatch(tenantId, refId ?? `run-${kind}-${Date.now()}`, kind, payload, m, userId ?? null);
 }
+
+// SEC S1.7/S1.8 ▸ hook ของเลขา — import ตอนเรียก (secretary/* import ไฟล์นี้ = วงโหลดถ้า import บนหัวไฟล์) ◂
+async function secApprovalGate(tenantId: string, m: MembershipCtx, row: { kind: string; conversationId: string; payload: unknown }, userId: string | null) {
+  const { approvalGate } = await import("./secretary/approval-gate");
+  return approvalGate(tenantId, m, row, userId);
+}
+// ◂ SEC S1.7/S1.8
 
 // SEC S1.3 ▸ ด่านระดับต่อระบบตอนลงมือ (executeProposal · runKind) — import ตอนเรียก: secretary/access → tool-access → ไฟล์นี้
 //   (import บนหัวไฟล์ = วงโหลด) · ไม่มีแถว AiSystemAccess = ทุกโมดูล DRAFT ⇒ ผ่านเสมอ (พฤติกรรมเดิม) ◂
