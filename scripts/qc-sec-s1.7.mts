@@ -52,7 +52,7 @@ const act = existsSync(ACT_FILE) ? ((await import("@/lib/ai/secretary/actions").
 const hasTables = "aiActionLog" in prisma && "aiApprovalRule" in prisma && "aiRoom" in prisma;
 
 console.log("── C: kind-class ──");
-if (!kc) { for (const i of [1, 2, 3, 4]) skip(`C-${i}`, "kind-class", "ไม่มี kind-class.ts"); }
+if (!kc) { for (const i of [1, 2, 3, 4, 5]) skip(`C-${i}`, "kind-class", "ไม่มี kind-class.ts"); }
 else {
   const c = (k: string) => kc.classOfKind(k);
   chk("C-1", "classOfKind: void_sale destructive+money · kanban.cards.archive destructive · record_expense money · crm_create_lead ไม่มีชั้นใด · kanban_create_card ไม่มีชั้นใด (known)", c("void_sale").destructive && c("void_sale").money && c("kanban.cards.archive").destructive && c("record_expense").money && !c("crm_create_lead").destructive && !c("crm_create_lead").money && !c("crm_create_lead").customerFacing && c("kanban_create_card").known && !c("kanban_create_card").money, JSON.stringify({ v: c("void_sale"), k: c("kanban.cards.archive"), e: c("record_expense"), l: c("crm_create_lead") }).slice(0, 240));
@@ -63,6 +63,7 @@ else {
   const bad = kinds.filter((k) => !thai(kc.whyApproval(k, {}, rules)));
   const big = kc.whyApproval("record_expense", { amountSatang: 900000 }, rules), small = kc.whyApproval("record_expense", { amountSatang: 1000 }, rules);
   chk("C-4", "whyApproval ไทยไม่ว่างทุก kind · void_sale มี '2 ชั้น' · record_expense 9,000 บาท มี 'วงเงิน' · 10 บาท ไม่มี 'วงเงิน'", bad.length === 0 && /2 ชั้น|สองชั้น/.test(kc.whyApproval("void_sale", {}, rules)) && /วงเงิน/.test(big) && !/วงเงิน/.test(small), `ว่าง: ${bad.join(",")} big=${big.slice(0, 60)} small=${small.slice(0, 60)}`);
+  chk("C-5", "R-S1.7c: member.points.* / member.giftcards.* = money · member.journeys.* / crm.sequences.* = customerFacing · kind ไม่รู้จัก destructive=true", kc ? c("member.points.adjust").money === true && c("member.giftcards.issue").money === true && c("member.journeys.create").customerFacing === true && c("crm.sequences.enroll").customerFacing === true && c("nosuch_kind").destructive === true : false, kc ? JSON.stringify({ p: c("member.points.adjust"), u: c("nosuch_kind") }).slice(0, 200) : "ไม่มี kind-class");
 }
 
 const U = { owner: "qcs17-owner", mgr: "qcs17-mgr", staff: "qcs17-staff", staff2: "qcs17-staff2" };
@@ -127,7 +128,7 @@ try {
     chk("G-3", "ห้องเดิม (ไม่มี AiRoom): STAFF มีคีย์กด ⇒ ok เหมือนเดิม (baseline qc-ai-proposals)", exL.ok === true && (await prisma.kanbanCard.count({ where: { tenantId: tid, title: "การ์ดจากห้องเดิม" } })) === 1, JSON.stringify(exL).slice(0, 160));
 
     console.log("── L: AiActionLog ──");
-    if (!act) { for (const i of [1, 2, 3, 4]) skip(`L-${i}`, "actions", "ไม่มี actions.ts"); for (const i of [1, 2, 3, 4, 5]) skip(`U-${i}`, "undo", "ไม่มี actions.ts"); }
+    if (!act) { for (const i of [1, 2, 3, 4]) skip(`L-${i}`, "actions", "ไม่มี actions.ts"); for (const i of [1, 2, 3, 4, 5, 6, 7]) skip(`U-${i}`, "undo", "ไม่มี actions.ts"); skip("G-4", "gate", "ไม่มี actions.ts"); skip("L-5", "actions", "ไม่มี actions.ts"); }
     else {
       const room = await prisma.aiRoom.findUnique({ where: { conversationId: rS.conversationId } });
       const logs = await prisma.aiActionLog.findMany({ where: { tenantId: tid }, orderBy: { createdAt: "asc" } });
@@ -162,6 +163,45 @@ try {
       chk("U-4", "ย้อนซ้ำ ⇒ ปฏิเสธ 'ย้อนไปแล้ว' · เกิน 24 ชม. ⇒ ปฏิเสธมี '24' · แถว undo:* ⇒ 'ย้อนไม่ได้'", u2.ok === false && /แล้ว/.test(u2.note) && u3.ok === false && /24/.test(u3.note) && u4.ok === false && /ไม่ได้/.test(u4.note), JSON.stringify({ u2, u3, u4 }).slice(0, 240));
       const reg = act.UNDOABLE_KINDS as Record<string, unknown>;
       chk("U-5", "UNDOABLE_KINDS มี kanban_create_card · kanban.cards.create · kanban.cards.move · crm.deals.move · booking_create_appointment และไม่มี void_sale/record_expense/chat.send", ["kanban_create_card", "kanban.cards.create", "kanban.cards.move", "crm.deals.move", "booking_create_appointment"].every((k) => k in reg) && !("void_sale" in reg) && !("record_expense" in reg) && !("chat.send" in reg), Object.keys(reg).join(","));
+
+      console.log("── K: รอบ 2 (รีวิว G/H · RESOLUTIONS §K) ──");
+      // G-4 (R-S1.7a) แผนในห้องเลขา: STAFF กดยืนยัน ⇒ ปฏิเสธ · แผนคง PENDING
+      const plan2 = await prisma.aiPlan.create({ data: { tenantId: tid, conversationId: rS.conversationId, title: "แผน qc 2", stepsJson: [{ kind: "kanban_create_card", summary: "การ์ดจากแผน 2", payload: { title: "การ์ดจากแผน 2" }, status: "PENDING" }] as never, expiresAt: new Date(Date.now() + 3_600_000) } });
+      const prS = (await plans.executePlan(M("STAFF", kperm) as never, ctxT as never, plan2.id, { userId: U.staff })) as { ok: boolean; doneCount: number; note?: string };
+      const plan2After = await prisma.aiPlan.findUnique({ where: { id: plan2.id } });
+      chk("G-4", "แผนในห้องเลขา: STAFF กดยืนยัน ⇒ ok:false note มี 'เจ้าของ'/'ผู้จัดการ' · แผนคง PENDING · ไม่มีการ์ด · MANAGER กด ⇒ ok", prS.ok === false && prS.doneCount === 0 && /เจ้าของ|ผู้จัดการ/.test(prS.note ?? "") && plan2After?.status === "PENDING" && (await prisma.kanbanCard.count({ where: { tenantId: tid, title: "การ์ดจากแผน 2" } })) === 0 && (await plans.executePlan(M("MANAGER") as never, ctxT as never, plan2.id, { userId: U.mgr })).ok === true, JSON.stringify({ prS, st: plan2After?.status }).slice(0, 200));
+      // U-6 (R-S1.8b) สิทธิ์ย้อน = สิทธิ์กลับทาง · ห้องเลขา STAFF ย้อนไม่ได้แม้มีคีย์
+      const pL2 = await mkProp(legacyConv.id, "kanban_create_card", { title: "การ์ดจากห้องเดิม 2" });
+      await proposals.executeProposal(M("STAFF", kperm) as never, ctxT as never, pL2.id, { userId: U.staff });
+      const lL2 = await prisma.aiActionLog.findFirst({ where: { tenantId: tid, proposalId: pL2.id } });
+      const uNoDel = lL2 ? await act.undoAction(ctxOf(actor(U.staff, "STAFF", kperm)), lL2.id) : { ok: null, note: "ไม่มี log" };
+      const uDel = lL2 ? await act.undoAction(ctxOf(actor(U.staff, "STAFF", { ...kperm, "kanban.card.delete": true })), lL2.id) : { ok: null, note: "ไม่มี log" };
+      const pS2 = await mkProp(rS.conversationId, "kanban_create_card", { title: "การ์ดจากห้องเลขา 2" });
+      await proposals.executeProposal(M("MANAGER") as never, ctxT as never, pS2.id, { userId: U.mgr });
+      const lS2 = await prisma.aiActionLog.findFirst({ where: { tenantId: tid, proposalId: pS2.id } });
+      const uStaffRoom = lS2 ? await act.undoAction(ctxOf(actor(U.staff, "STAFF", { ...kperm, "kanban.card.delete": true })), lS2.id) : { ok: null, note: "ไม่มี log" };
+      const card2 = await prisma.kanbanCard.findFirst({ where: { tenantId: tid, title: "การ์ดจากห้องเลขา 2" } });
+      chk("U-6", "ห้องเดิม: ผู้สั่งไม่มี kanban.card.delete ⇒ ปฏิเสธ (ไทย) · มีคีย์ ⇒ ok การ์ดถูกเก็บ · ห้องเลขา: STAFF มีคีย์ delete ⇒ ปฏิเสธ note มี 'เจ้าของ'/'ผู้จัดการ' · การ์ดยังอยู่", uNoDel.ok === false && thai(uNoDel.note) && !/ไม่พบ/.test(uNoDel.note) && uDel.ok === true && uStaffRoom.ok === false && /เจ้าของ|ผู้จัดการ/.test(uStaffRoom.note) && !!card2 && !card2.archivedAt, JSON.stringify({ uNoDel, uDel, uStaffRoom }).slice(0, 240));
+      // U-7 (R-S1.8c) ย้อนการ์ดที่ถูกคนย้ายทีหลัง ⇒ ปฏิเสธ · ตรง after ⇒ ย้อนได้ (ไปคอลัมน์เดิม · completedAt ว่าง)
+      const cols = await prisma.kanbanColumn.findMany({ where: { tenantId: tid, boardId: board.id, status: "ACTIVE" }, orderBy: { sortOrder: "asc" } });
+      const mv = cols.length >= 3 ? await kanbanSvc.createCard({ tenantId: tid, systemId: kb.id, columnId: cols[0]!.id, title: "การ์ดย้าย qc" }) : null;
+      const mvId = (mv as { id?: string } | null)?.id ?? (mv as { card?: { id: string } } | null)?.card?.id ?? null;
+      let u7 = { ok: null as boolean | null, note: "ไม่มีคอลัมน์/การ์ด" }, u7b = { ok: null as boolean | null, note: "" }, mvAfter: { columnId: string; completedAt: Date | null } | null = null;
+      if (mvId) {
+        await kanbanSvc.moveCard({ tenantId: tid, systemId: kb.id, cardId: mvId, toColumnId: cols[1]!.id });
+        const mkMove = (fromId: string, toId: string) => prisma.aiActionLog.create({ data: { tenantId: tid, roomId: null, userId: U.owner, approverId: U.owner, module: "kanban", kind: "kanban.cards.move", summary: "qc ย้าย", payload: { params: { id: mvId }, before: { columnId: fromId }, after: { columnId: toId } } as never, entityType: "kanban.card", entityId: mvId, undoableUntil: new Date(Date.now() + 3_600_000) } });
+        const stale = await mkMove(cols[0]!.id, cols[1]!.id);
+        await kanbanSvc.moveCard({ tenantId: tid, systemId: kb.id, cardId: mvId, toColumnId: cols[2]!.id }); // คนย้ายต่อไป "เสร็จ"
+        u7 = await act.undoAction(ctxOf(OWNER), stale.id);
+        const fresh = await mkMove(cols[1]!.id, cols[2]!.id);
+        u7b = await act.undoAction(ctxOf(OWNER), fresh.id);
+        mvAfter = await prisma.kanbanCard.findUnique({ where: { id: mvId }, select: { columnId: true, completedAt: true } });
+      }
+      chk("U-7", "ย้อนย้ายการ์ด: after ≠ ปัจจุบัน ⇒ ปฏิเสธ note มี 'ถูกย้าย' (การ์ดไม่ขยับ) · after ตรง ⇒ ok การ์ดกลับคอลัมน์ก่อน · completedAt ว่าง", u7.ok === false && /ถูกย้าย/.test(u7.note) && u7b.ok === true && !!mvAfter && mvAfter.columnId === cols[1]?.id && mvAfter.completedAt === null, JSON.stringify({ u7, u7b, mvAfter }).slice(0, 240));
+      // L-5 (R-S1.8e) PII ที่ลงท้าย Id ไม่เข้า log
+      const ids = typeof act.payloadIdsOf === "function" ? (act.payloadIdsOf({ contactId: "c_abc123", input: { taxId: "1234567890123", lineUserId: "Uabcdef", promptpayId: "0812345678", dealId: "d_xyz", email: "a@b.co", phone: "0812345678" } }) as Record<string, string>) : {};
+      const idVals = JSON.stringify(ids);
+      chk("L-5", "payloadIdsOf: เก็บ contactId/dealId · ไม่เก็บ taxId/lineUserId/promptpayId/email/phone · isPiiKey export", Object.values(ids).includes("c_abc123") && Object.values(ids).includes("d_xyz") && !/1234567890123|Uabcdef|0812345678|a@b\.co/.test(idVals) && typeof act.isPiiKey === "function", idVals.slice(0, 200));
     }
   }
 } finally {
@@ -175,7 +215,7 @@ console.log("── D: fitness ──");
   const f2 = spawnSync("pnpm", ["fitness"], { cwd: ROOT, encoding: "utf8", env: env2, timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });
   chk("D-2", "pnpm fitness (ไม่มี env) exit 0", f2.status === 0, (f2.stdout ?? "").split("\n").filter((l) => /❌|CRITICAL/.test(l)).slice(0, 3).join(" | "));
   const kcSrc = existsSync(join(ROOT, "src/lib/ai/secretary/kind-class.ts")) ? readFileSync(join(ROOT, "src/lib/ai/secretary/kind-class.ts"), "utf8") : "";
-  chk("D-3", "kind-class.ts pure (ไม่ import prisma/core/db)", !kcSrc || !/@\/lib\/core\/db|from "@prisma\/client"/.test(kcSrc), "พบ import ฐานข้อมูล", "MAJOR");
+  chk("D-3", "kind-class.ts pure (ไม่ import prisma/core/db และไม่ import ../proposals — R-S1.7d ใช้ kind-tables.ts)", !kcSrc || !/@\/lib\/core\/db|from "@prisma\/client"|from "\.\.\/proposals"|from "@\/lib\/ai\/proposals"/.test(kcSrc), "พบ import ฐานข้อมูล/proposals", "MAJOR");
 }
 await prisma.$disconnect();
 const passed = cks.filter((c) => c.res === "PASS").length; const failed = cks.filter((c) => c.res === "FAIL"); const skipped = cks.filter((c) => c.res === "SKIP");
