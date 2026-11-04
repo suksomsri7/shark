@@ -60,7 +60,7 @@ const U = { owner: "qcs112-owner", staff: "qcs112-staff" };
 let tid = "";
 const cleanup = async () => {
   if (tid) {
-    for (const m of ["aiActionLog", "aiProposal", "aiMessage", "aiConversation", "aiRoomMember", "aiRoom", "aiJobCounter", "chatMessage", "chatConversation", "chatContact", "chatSetting", "appSystem", "membership"]) { try { await (prisma as AnyMod)[m].deleteMany({ where: { tenantId: tid } }); } catch { /* */ } }
+    for (const m of ["aiSystemAccess", "aiActionLog", "aiProposal", "aiMessage", "aiConversation", "aiRoomMember", "aiRoom", "aiJobCounter", "chatMessage", "chatConversation", "chatContact", "chatSetting", "appSystem", "membership"]) { try { await (prisma as AnyMod)[m].deleteMany({ where: { tenantId: tid } }); } catch { /* */ } }
     try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup tenant: ${errMsg(e)}`); }
   }
   try { await prisma.tenant.deleteMany({ where: { slug: { startsWith: "qc-sec-s112-" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } } }); } catch { /* */ }
@@ -71,6 +71,7 @@ try {
   const t = await prisma.tenant.create({ data: { name: "QC SEC S1.12", slug: `qc-sec-s112-${Date.now().toString(36)}` } });
   tid = t.id;
   for (const [k, id] of Object.entries(U)) await prisma.user.create({ data: { id, email: `${id}@example.com`, name: `ผู้ใช้ ${k}` } });
+  await (prisma as AnyMod).aiSystemAccess.create({ data: { tenantId: tid, module: "chat", level: "DRAFT", setById: U.owner } }); // ORACLE-EDIT S1.12-E2: ระดับ chat ปริยาย = READ (access-rules) ⇒ ต้องเปิด DRAFT ให้ร้านทดสอบ
   const mk = (role: "OWNER" | "MANAGER" | "STAFF", userId: string, permissions: Record<string, unknown> = {}) => prisma.membership.create({ data: { tenantId: tid, userId, role, unitAccess: ["*"], permissions: permissions as never, acceptedAt: new Date() } });
   await mk("OWNER", U.owner); await mk("STAFF", U.staff, { "ai.chat.send": true });
   const M = (role: "OWNER" | "MANAGER" | "STAFF", permissions: Record<string, unknown> = {}) => ({ role, unitAccess: ["*"], permissions });
