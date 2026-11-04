@@ -1,0 +1,110 @@
+{
+ "generatedAt": "2026-11-04T11:43:02.107Z",
+ "base": "http://127.0.0.1:4714",
+ "view": {
+  "tag": "iphone",
+  "w": 390,
+  "h": 844,
+  "scale": 2
+ },
+ "fixture": {
+  "path": "/root/projects/shark-sec-b/apps/mobile/qc/fixtures/secretary/s0.2.json",
+  "sha256": "fc2a5d56f095d21fb94725991934f1ddf26946350661df869cada026231a434f"
+ },
+ "screens": [
+  {
+   "name": "secretary",
+   "route": "/secretary",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "fc2a5d56f095d21fb94725991934f1ddf26946350661df869cada026231a434f",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-home",
+    "sec-top-secretary",
+    "sec-top-customers",
+    "sec-top-team",
+    "sec-top-help",
+    "sec-top-new",
+    "sec-suggest-s1",
+    "sec-suggest-s2",
+    "sec-suggest-s3",
+    "sec-input"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n\n\nThe Bean Café\n\nเลขา Shark · ยังไม่มีงานในกิจการนี้\nสั่งงานแรกได้เลย\nพิมพ์หรือพูดเป็นภาษาปกติ\nผมหาข้อมูลในระบบ ร่างให้ แล้วขออนุมัติก่อนทำจริง\nลองสั่งแบบนี้\nPOS\nสรุปยอดขายเมื่อวาน กับของที่ใกล้หมด\nอ่านอย่างเดียว · เสร็จเองได้\n\nCRM\nลูกค้าคนไหนไม่ได้ซื้อนานเกิน 1 เดือน\nอ่านอย่างเดียว · เสร็จเองได้\n\nคิว\nเช็กคิวพรุ่งนี้ แล้วร่างข้อความยืนยันลูกค้า\nร่างแล้วรอคุณอนุมัติก่อนส่ง\n\n\n",
+   "unmocked": [],
+   "url": "/secretary",
+   "file": "/root/projects/shark-sec-b/apps/mobile/qc/shots-sec/secretary.png",
+   "generatedAt": "2026-11-04T11:42:50.274Z"
+  },
+  {
+   "name": "secretary-_gallery",
+   "route": "/secretary/_gallery",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "fc2a5d56f095d21fb94725991934f1ddf26946350661df869cada026231a434f",
+   "viewportH": 2900,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-gallery"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\nLight\n\n\n\nTopBar\nsubtitle\n\nGlass · Orb · Dot\nSysTag · SysBadge\nPOS\nCRM\nจองคิว\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท\nหอพัก\nPOS\nCRM\nคิว\nสมา\nบัญชี\nงาน\nแชท\nหอ\nPOS\nCRM\nคิว\nสมา\nบัญชี\nงาน\nแชท\nหอ\nTabs · Segment · Chip\nทั้งหมด\nกำลังทำ 3\nรออนุมัติ 2\nครับ\nค่ะ\nไม่ระบุ\nสรุปยอดขาย\nใบเสนอราคา\nNote · PrimaryButton · InputBar\nข้อความกำกับแบบ .note\nทำไมต้องอนุมัติ: ออกเอกสารเงิน\nเปิด/ปิดแผ่นล่าง\nยืนยัน\n\n\nSheet\nSheet\nDark\n\n\n\nTopBar\nsubtitle\n\nGlass · Orb · Dot\nSysTag · SysBadge\nPOS\nCRM\nจองคิว\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท\nหอพัก\nPOS\nCRM\nคิว\nสมา\nบัญชี\nงาน\nแชท\nหอ\nPOS\nCRM\nคิว\nสมา\nบัญชี\nงาน\nแชท\nหอ\nTabs · Segment · Chip\nทั้งหมด\nกำลังทำ 3\nรออนุมัติ 2\nครับ\nค่ะ\nไม่ระบุ\nสรุปยอดขาย\nใบเสนอราคา\nNote · PrimaryButton · InputBar\nข้อความกำกับแบบ .note\nทำไมต้องอนุมัติ: ออกเอกสารเงิน\nเปิด/ปิดแผ่นล่าง\nยืนยัน\n\n\nSheet\nSheet",
+   "unmocked": [],
+   "url": "/secretary/_gallery",
+   "file": "/root/projects/shark-sec-b/apps/mobile/qc/shots-sec/secretary-_gallery.png",
+   "generatedAt": "2026-11-04T11:42:54.600Z"
+  },
+  {
+   "name": "secretary-dark",
+   "route": "/secretary",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "fc2a5d56f095d21fb94725991934f1ddf26946350661df869cada026231a434f",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-home",
+    "sec-top-secretary",
+    "sec-top-customers",
+    "sec-top-team",
+    "sec-top-help",
+    "sec-top-new",
+    "sec-suggest-s1",
+    "sec-suggest-s2",
+    "sec-suggest-s3",
+    "sec-input"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n\n\nThe Bean Café\n\nเลขา Shark · ยังไม่มีงานในกิจการนี้\nสั่งงานแรกได้เลย\nพิมพ์หรือพูดเป็นภาษาปกติ\nผมหาข้อมูลในระบบ ร่างให้ แล้วขออนุมัติก่อนทำจริง\nลองสั่งแบบนี้\nPOS\nสรุปยอดขายเมื่อวาน กับของที่ใกล้หมด\nอ่านอย่างเดียว · เสร็จเองได้\n\nCRM\nลูกค้าคนไหนไม่ได้ซื้อนานเกิน 1 เดือน\nอ่านอย่างเดียว · เสร็จเองได้\n\nคิว\nเช็กคิวพรุ่งนี้ แล้วร่างข้อความยืนยันลูกค้า\nร่างแล้วรอคุณอนุมัติก่อนส่ง\n\n\n",
+   "unmocked": [],
+   "url": "/secretary",
+   "file": "/root/projects/shark-sec-b/apps/mobile/qc/shots-sec/secretary-dark.png",
+   "generatedAt": "2026-11-04T11:42:57.435Z"
+  },
+  {
+   "name": "secretary-_gallery-dark",
+   "route": "/secretary/_gallery",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "fc2a5d56f095d21fb94725991934f1ddf26946350661df869cada026231a434f",
+   "viewportH": 2900,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-gallery"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\nLight\n\n\n\nTopBar\nsubtitle\n\nGlass · Orb · Dot\nSysTag · SysBadge\nPOS\nCRM\nจองคิว\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท\nหอพัก\nPOS\nCRM\nคิว\nสมา\nบัญชี\nงาน\nแชท\nหอ\nPOS\nCRM\nคิว\nสมา\nบัญชี\nงาน\nแชท\nหอ\nTabs · Segment · Chip\nทั้งหมด\nกำลังทำ 3\nรออนุมัติ 2\nครับ\nค่ะ\nไม่ระบุ\nสรุปยอดขาย\nใบเสนอราคา\nNote · PrimaryButton · InputBar\nข้อความกำกับแบบ .note\nทำไมต้องอนุมัติ: ออกเอกสารเงิน\nเปิด/ปิดแผ่นล่าง\nยืนยัน\n\n\nSheet\nSheet\nDark\n\n\n\nTopBar\nsubtitle\n\nGlass · Orb · Dot\nSysTag · SysBadge\nPOS\nCRM\nจองคิว\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท\nหอพัก\nPOS\nCRM\nคิว\nสมา\nบัญชี\nงาน\nแชท\nหอ\nPOS\nCRM\nคิว\nสมา\nบัญชี\nงาน\nแชท\nหอ\nTabs · Segment · Chip\nทั้งหมด\nกำลังทำ 3\nรออนุมัติ 2\nครับ\nค่ะ\nไม่ระบุ\nสรุปยอดขาย\nใบเสนอราคา\nNote · PrimaryButton · InputBar\nข้อความกำกับแบบ .note\nทำไมต้องอนุมัติ: ออกเอกสารเงิน\nเปิด/ปิดแผ่นล่าง\nยืนยัน\n\n\nSheet\nSheet",
+   "unmocked": [],
+   "url": "/secretary/_gallery",
+   "file": "/root/projects/shark-sec-b/apps/mobile/qc/shots-sec/secretary-_gallery-dark.png",
+   "generatedAt": "2026-11-04T11:43:01.867Z"
+  }
+ ]
+}
