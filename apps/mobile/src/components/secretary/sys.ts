@@ -44,3 +44,8 @@ export function sysLabelKey(module: string): I18nKey | null {
   const k = `sec.sys.${module}`;
   return k in th ? (k as I18nKey) : null;
 }
+
+/** คีย์ป้ายย่อของกล่องสี (SysBadge solid · .k ของแบบ: CRM/POS/บัญชี/งาน/แชท …) ตามสีระบบของโมดูล */
+export function sysShortKey(module: string): I18nKey {
+  return `sec.k.${sysColor(module)}` as I18nKey;
+}

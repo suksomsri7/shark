@@ -1,0 +1,301 @@
+{
+ "_about": "fixture ของใบ S2.4 — ห้อง r1 รออนุมัติ (A4): 4 ข้อความ (ผู้ใช้ · เลขา · ระบบ 🔔 · เลขา) + แผน 3 ขั้น (✓ ● ⏸) + 2 ข้อเสนอ (kanban.cards.create แก้ได้ · chat.send ส่งลูกค้า แก้ไม่ได้ · ทั้งคู่มี why) + log 1 แถวย้อนได้ (ถึง 2026-11-05T19:40Z — ถ่ายหลังเวลานี้ปุ่มย้อนจะหาย ให้เลื่อนวันที่) · ข้อมูลจำลองล้วน",
+ "noAuth": [
+  "/login"
+ ],
+ "expect": {
+  "/secretary/room/r1": [
+   "sec-room",
+   "sec-room-back",
+   "sec-room-menu",
+   "sec-room-title",
+   "sec-room-status",
+   "sec-room-bubble",
+   "sec-room-steps",
+   "sec-room-step",
+   "sec-room-approval",
+   "sec-room-approve",
+   "sec-room-reject",
+   "sec-room-edit",
+   "sec-room-why",
+   "sec-room-auto",
+   "sec-room-done",
+   "sec-room-open-link",
+   "sec-room-undo",
+   "sec-room-teach",
+   "sec-room-repeat",
+   "sec-room-input",
+   "sec-room-send"
+  ]
+ },
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@qc.invalid",
+    "name": "คุณสุข (QC)"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "MANAGER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 2,
+   "canApprove": 2
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 0
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 0,
+    "approvedClean": 0,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "languages": [
+    "th"
+   ]
+  },
+  "GET /api/mobile/usage": {
+   "used": 12,
+   "limit": 100,
+   "pct": 12
+  },
+  "GET /api/mobile/conversations": {
+   "conversations": [
+    {
+     "id": "c-qc-1",
+     "title": "สรุปยอดขายเมื่อวาน",
+     "updatedAt": "2026-09-01T03:00:00.000Z",
+     "unread": true
+    },
+    {
+     "id": "c-qc-2",
+     "title": "ใบเสนอราคา ร้านตัวอย่าง",
+     "updatedAt": "2026-08-28T03:00:00.000Z",
+     "unread": false
+    }
+   ]
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-code-0000"
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/rooms/r1": {
+   "id": "r1",
+   "conversationId": "c-r1",
+   "title": "ใบเสนอราคา ร้านดอยช้าง",
+   "status": "WAITING_APPROVAL",
+   "systems": [
+    "crm",
+    "account",
+    "chat",
+    "kanban"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "role": "STAFF",
+     "addedById": "u-qc-owner",
+     "addedAt": "2026-11-04T19:39:00.000Z",
+     "seeHistory": true
+    }
+   ],
+   "canManage": true,
+   "createdAt": "2026-11-04T19:38:00.000Z",
+   "updatedAt": "2026-11-04T19:41:00.000Z",
+   "closedAt": null,
+   "plans": [
+    {
+     "id": "pl1",
+     "title": "เตรียมใบเสนอราคา Q-0012",
+     "hasDestructive": false,
+     "createdAt": "2026-11-04T19:38:20.000Z",
+     "steps": [
+      {
+       "kind": "crm.contacts.search",
+       "summary": "ค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน",
+       "status": "DONE"
+      },
+      {
+       "kind": "account.documents.create",
+       "summary": "ร่างใบเสนอราคา Q-0012 · ฿12,500",
+       "status": "RUNNING"
+      },
+      {
+       "kind": "chat.send",
+       "summary": "ส่ง LINE ถึงคุณสมชาย — รออนุมัติ",
+       "status": "WAITING"
+      }
+     ]
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/rooms/r1/messages": {
+   "items": [
+    {
+     "id": "m1",
+     "role": "USER",
+     "content": "ทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-04T19:38:00.000Z"
+    },
+    {
+     "id": "m2",
+     "role": "ASSISTANT",
+     "content": "รับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-04T19:38:10.000Z"
+    },
+    {
+     "id": "m3",
+     "role": "ASSISTANT",
+     "content": "🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้",
+     "authorUserId": "system",
+     "system": true,
+     "createdAt": "2026-11-04T19:39:00.000Z"
+    },
+    {
+     "id": "m4",
+     "role": "ASSISTANT",
+     "content": "ร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-04T19:41:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r1/proposals": {
+   "items": [
+    {
+     "id": "p-chat",
+     "type": "proposal",
+     "kind": "chat.send",
+     "risk": "NORMAL",
+     "summary": "ส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ",
+     "class": {
+      "destructive": false,
+      "money": false,
+      "customerFacing": true,
+      "piiExport": false
+     },
+     "editable": false,
+     "edited": false,
+     "why": "ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ",
+     "createdAt": "2026-11-04T19:41:10.000Z",
+     "expiresAt": "2026-11-07T19:41:10.000Z"
+    },
+    {
+     "id": "p-card",
+     "type": "proposal",
+     "kind": "kanban.cards.create",
+     "risk": "NORMAL",
+     "summary": "สร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.",
+     "class": {
+      "destructive": false,
+      "money": false,
+      "customerFacing": false,
+      "piiExport": false
+     },
+     "editable": true,
+     "input": {
+      "title": "ติดตามดอยช้าง",
+      "dueDate": "2026-11-08",
+      "description": "โทรถามผลใบเสนอราคา Q-0012"
+     },
+     "edited": false,
+     "why": "เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ",
+     "createdAt": "2026-11-04T19:41:20.000Z",
+     "expiresAt": "2026-11-07T19:41:20.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/log": {
+   "items": [
+    {
+     "id": "l1",
+     "kind": "crm.deals.move",
+     "module": "crm",
+     "summary": "ย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา",
+     "roomId": "r1",
+     "proposalId": null,
+     "userId": "u-qc-owner",
+     "approverId": "u-qc-owner",
+     "entity": {
+      "type": "crm.deal",
+      "id": "d-qc-1"
+     },
+     "undoableUntil": "2026-11-05T19:40:00.000Z",
+     "undoneAt": null,
+     "canUndo": true,
+     "createdAt": "2026-11-04T19:40:00.000Z"
+    }
+   ]
+  },
+  "POST /api/mobile/secretary/rooms/r1/send": {
+   "ok": true,
+   "messageId": "m-new",
+   "jobId": "j-qc-1"
+  },
+  "POST /api/mobile/secretary/rooms/r1/close": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/proposals/p-chat/approve": {
+   "ok": true,
+   "note": "ส่งข้อความถึงคุณสมชายแล้ว"
+  },
+  "POST /api/mobile/secretary/proposals/p-card/approve": {
+   "ok": true,
+   "note": "สร้างการ์ดแล้ว"
+  },
+  "POST /api/mobile/secretary/proposals/p-chat/reject": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/proposals/p-card/reject": {
+   "ok": true,
+   "memoryId": "mem-qc-1"
+  },
+  "POST /api/mobile/secretary/proposals/p-card/edit": {
+   "ok": true,
+   "input": {
+    "title": "ติดตามดอยช้าง (โทร)",
+    "dueDate": "2026-11-08",
+    "description": "โทรถามผลใบเสนอราคา Q-0012"
+   }
+  },
+  "POST /api/mobile/secretary/log/l1/undo": {
+   "ok": true,
+   "note": "ย้อนกลับแล้ว — ดีลกลับไปขั้นเดิม"
+  }
+ }
+}
