@@ -33,10 +33,10 @@ _(เติมเมื่อถึงใบ)_
 | S1.3 | ✅ | 4 พ.ย. ~16:2xZ | **S1.3b ✅** merge (wip/sec-s1.3b 2b0b1fd1 · oracle 13/13 ×2) ปิดช่องรีวิว C/D: อ่านข้ามโมดูลเคารพ OFF · unmapped fail-closed · route คีย์ API ส่ง access · setAccess โหลด membership · แผนตรวจระดับก่อน claim · CRM door · identity bidi/grapheme · หนี้: setAccessAsPlatform ยังไม่มีผู้เรียก (S2.16) · customer_points ยังถูกยื่นเมื่อ point OFF · access-rules.ts (pure) + access.ts · toolVerdict/toolsOfferedTo รับ access · HAND_TOOL_MODULE (27 โมดูล) · ด่านใน executeProposal/runKind (dynamic import กันวงกลม) · หนี้: route คีย์ API ภายนอกยังไม่ส่ง access · propose_plan ปล่อยขั้นของระบบ OFF ไปตกตอนรัน · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | ✅ | 4 พ.ย. ~18:0xZ | merge (wip/sec-s1.4 33cfaf47) · oracle 28/28 ×3 (ORACLE-EDIT fixture tenantId) · S1.2 ยังเขียวหลัง merge · regression 9 ชุดเท่า baseline · rooms.ts 329 บรรทัด · ConvSight +memberOf/tenantRooms · roomSightFor/canSeeConversationById · rejectPlan room-aware · 🎯 ห้อง = งาน |
 | S1.5 | ✅ | 4 พ.ย. ~20:0xZ | merge (wip/sec-s1.5 d1e0ed19) · oracle 16/16 ×3 · regression 6 ชุดเท่า baseline · worker.ts 279 บรรทัด · minute job `secretary.roomJobs` (crm-cron VPS + outbox hook) · รวม hotfix `secretaryOf().catch` · หนี้: รูปแนบในคิว (ไม่มีคอลัมน์ → secretary_b) · ข้อความ 2 อันในห้องเดียวรันพร้อมกันได้ · docs §6 ห้องปิด · 🎯 คิวเบื้องหลัง |
-| S1.6 | 🔁 | | รอบ 1 built d87c8a4f · oracle 14/14 ×3 · **รีวิว E/F: MERGE-AFTER-FIX** (ข้อเสนอ/แผนก่อนเข้าห้องรั่วถึงสมาชิก seeHistory=false · push ถึงคนที่ถูกถอนสิทธิ์ · ข้อความระบบนับ unread) → RESOLUTIONS §J R-S1.6a–d · oracle เพิ่ม H-3/R-4 · รอบ 2 บนเลน b · 🎯 ห้องร่วม |
-| S1.7 | 🔨 | | builder Opus เลน c `wip/sec-s1.7` @f385caa9 เริ่ม 4 พ.ย. ~21:2xZ · oracle `qc-sec-s1.7.mts` · ต้องอนุมัติเสมอ |
-| S1.8 | 🔨 | | รวมในชุด S1-6 (เลน c) · 🎯 บันทึก + ย้อน 24 ชม. |
-| S1.9 | 🔨 | | builder Opus เลน d `wip/sec-s1.9` @a6f98e88 เริ่ม 4 พ.ย. ~22:3xZ · งานประจำ |
+| S1.6 | ✅ | | รอบ 2 72c1ca3b (เลน b) · oracle 16/16 ×3 · s1.4 28/28 · s1.5 · s1.9 · s1.3b · qc-ai-proposals/plan/mobile-chat เท่า baseline · merge 2edcef81 → session/secretary · ผู้ตรวจ E/F ปิดตาม §J · deviation รับ: rejectPlan ใช้ R-S1.6a · roomPushRecipients ตัด starter ที่ถูกถอน |
+| S1.7 | 🔁 | | built 5fbf0b8f · oracle 22/22 ×3 · **ผู้ตรวจ G/H: MERGE-AFTER-FIX** (แผนข้ามด่านอนุมัติ · undo ใช้สิทธิ์ผิด+ทับของคนย้ายทีหลัง · taxId/lineId หลุดเข้า log · member.points ไม่นับเงิน · gate ไม่ fail-closed) → §K + oracle รอบ 2 · builder เลน c รอบ 2 |
+| S1.8 | 🔁 | | รอบ 2 ร่วม S1.7 · รวมในชุด S1-6 · actions.ts 334 บรรทัด · UNDOABLE 5 kinds · 🎯 บันทึก + ย้อน 24 ชม. |
+| S1.9 | ✅ | | built 9a46aef3 (เลน d) · ORACLE-EDIT s1.9-R-4 (a1dc3572: เทียบจำนวนห้องก่อน/หลัง — รอบ R-3 งาน DAILY ของ owner เปิดห้อง 3 โดยชอบ) · 10/10 ×3 · qc-ai-schedule 8/8 · merge ad938ac6 · หนี้: channels ['room'] ยัง push (worker.ts นอกใบ → S1.23) · runRoomJobs limit 1 รันงานเก่าสุดในคิว · MONTHLY วัน 29–31 ไม่รันเดือนสั้น (ตามสัญญา isDue) |
 | S1.10 | ✍️ | | ใบ S1-8 (S1.10+S1.15) + oracle `qc-sec-s1.10.mts` (6000cfb1) พร้อม · ตีกลับ + สอน |
 | S1.11 | ⬜ | | ข้อเสนอ + กล่องรวม |
 | S1.12 | ⬜ | | เครื่องมือที่ขาด (chat.send) |
@@ -105,3 +105,5 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย. ~21:1xZ** รับ S1.19 รอบ 2 (merge) · เลน c → `wip/sec-s1.7` ชุด S1-6 (S1.7+S1.8 · 2 ผู้ตรวจ)
 - **4 พ.ย. ~22:2xZ** รับ S1.3b (merge) · S1.6 เสร็จ (14/14) → ORACLE-EDIT s1.4 G-3 (seeHistory) · spawn ผู้ตรวจ 2 คน S1.6 · เลน d → `wip/sec-s1.9` ชุด S1-7 · ใบ S1-12 (S1.17+S1.23) + oracle เขียนแล้ว
 - **4 พ.ย. ~23:0xZ** รีวิว S1.6 (E สิทธิ์ · F สัญญา) ⇒ แก้รอบ 2 (§J) · ใบ S1-15 (S1.21+S1.24) เขียนแล้ว · เตรียมครบถึง S1-15 — เหลือ S1.11+S1.16 · S1.22 · S1.25 · S1.14 ที่ยังไม่มีใบ
+
+- **4 พ.ย. ~23:2xZ** S1.9 ✅ (ORACLE-EDIT R-4 ของผู้คุมผิดเอง) merge ad938ac6 · S1.6 รอบ 2 ✅ merge 2edcef81 · ผู้ตรวจ G/H ชุด S1-6 → MERGE-AFTER-FIX 4 MAJOR ร่วม (แผนข้ามด่าน R-K4 · undo สิทธิ์/สถานะเก่า · PII ใน log · kind-class) → §K รอบ 2 · tip 2edcef81 · **13/58 (22%)**

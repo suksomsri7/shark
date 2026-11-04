@@ -254,7 +254,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `roomTitleFrom(instruction: string) → string` — pure · บรรทัดแรกที่มีตัวอักษร (trim) · > 60 ตัว = ตัด 60 + "…" · ว่าง = "งานใหม่"
 - `roomStatusOf(x: { closedAt: Date | null; queuedJobs: number; pendingProposals: number; pendingPlans: number }) → RoomStatus` — pure · ลำดับ **DONE > RUNNING > WAITING > OPEN** (`RoomStatus = "OPEN" | "RUNNING" | "WAITING" | "DONE"`)
 - `startRoom(ctx: { tenantId; actor: AiMemberActor }, input: { instruction: string; title?: string; systems?: string[]; context?: { chatConversationId?; contactId? } }, now?: Date) → Promise<StartRoomResult>`
-  - `StartRoomResult = { ok: true; roomId; conversationId; jobsUsed; jobsLimit } | { ok: false; error: "empty" | "actor" | "quota"; message: string (ไทย); resetAt?: Date; jobsUsed?; jobsLimit? }`
+  - `StartRoomResult = { ok: true; roomId; conversationId; messageId (ข้อความ USER แรก · S1.9); jobsUsed; jobsLimit } | { ok: false; error: "empty" | "actor" | "quota"; message: string (ไทย); resetAt?: Date; jobsUsed?; jobsLimit? }`
   - ใน `prisma.$transaction` เดียว: (1) แถว `AiJobCounter(tenantId, month = monthKeyBangkok(now))` ด้วย `createMany … skipDuplicates` (= `INSERT … ON CONFLICT DO NOTHING`) (2) `updateMany({ where: { tenantId, month, jobs: { lt: FREE_PACK.jobsPerMonth } }, data: { jobs: { increment: countsAsJob({kind:"room_new"}) } } })` — count 0 ⇒ โควตาหมด ⇒ ย้อนทั้ง tx ไม่สร้างอะไร (X3 · ห้ามอ่านแล้วเขียน) (3) `AiConversation` (id = `newConversationId` → `u~<userId>~…`) (4) `AiRoom` (`startedById` = actor.userId = `conversationCreatorOf(conversationId).id` · `jobsCounted` 1) (5) `AiMessage` USER (`authorUserId`)
   - ยังไม่เรียกโมเดล และยังไม่สร้าง `AiRoomJob` (S1.5 ต่อคิว) · ไม่มี event (`ai.room.started` เลื่อนไป S1.5 พร้อม consumer + ทะเบียน 3 ที่)
   - actor ไม่ใช่คนในร้าน / `actorProblem` ⇒ `error:"actor"` · คำสั่งว่าง ⇒ `error:"empty"` · โควตาหมด ⇒ `error:"quota"` + `message = quotaMessage(...).text` + `resetAt = nextResetBangkok(now)` · ไม่ตรวจ `ai.chat.send` เอง (route S1.14 ตรวจ)
@@ -289,10 +289,20 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - เรียกจาก (R-K8b): route ส่งข้อความ S1.14 (`after()` ใน request เดียวกัน) · ตัวเก็บตก = งานรายนาที `secretary.roomJobs` ผ่าน `scripts/crm-cron.mts minute` (crontab VPS ทุกนาที) + hook `runMinuteJobs` ใน `POST /api/cron/outbox` (import `room-jobs-job`) · `vercel.json` ไม่แตะ (มีแค่ `tick` รายวัน + `hourly` · ไม่มีตัวตั้งเวลาใดชี้ `/api/cron/outbox`) · ไม่มี event `ai.room.*` ในใบนี้ · SSE เดิม `sendMobileChat` คงไว้
 - 🔴 rooms.ts ห้าม import worker.ts (วงกลม) · worker → service → conversations
 
-### 5.6 members.ts (แผน · S1.6) — ห้องร่วม (R5)
-- `addMember(ctx, roomId: string, input: { userId: string; seeHistory: boolean }) → Promise<{ ok: true } | { ok: false; reason }>` — ผู้เพิ่ม = ผู้เปิดห้องหรือ OWNER · ผู้ถูกเพิ่มต้องมี `Membership.acceptedAt ≠ null` ในกิจการเดียวกัน · ข้อความระบบ "X เพิ่ม Y เข้าห้อง" · event `ai.room.member_added`
-- `removeMember(ctx, roomId: string, userId: string) → Promise<boolean>` — ผู้เปิดห้อง/OWNER/ตัวเอง
-- `listMessages` (service.ts:78) กรอง `createdAt ≥ addedAt` เมื่อ `seeHistory = false` (บังคับในบริการ ไม่ใช่ UI · COMMON §C.8)
+### 5.6 members.ts (S1.6 · มีแล้ว · `src/lib/ai/secretary/members.ts`) — ห้องร่วม (R5)
+ผู้เปิดห้องไม่มีแถว `AiRoomMember` (รหัสห้องคือแหล่งความจริง) · ห้องที่มองไม่เห็น = `not_found` (R-K1 · ไม่บอกว่ามีอยู่) · คีย์ API/งานภายใน = มองไม่เห็นห้อง · ข้อความถึงผู้ใช้เป็นไทย · ไม่มี event `ai.room.*` ในใบนี้ (`ai.room.member_added` → ใบ S1.23 notify · RESOLUTIONS §J) · สมาชิกที่ Membership ถูกถอน (`acceptedAt = null`) = ไม่แสดง · ไม่นับเพดาน · ไม่ได้ push (R-S1.6c · แถว `AiRoomMember` ยังอยู่)
+- `ROOM_MEMBERS_MAX = 20` · `type RoomMemberRow = { userId; name; role: "OWNER" | "MANAGER" | "STAFF"; addedById; addedAt: Date; seeHistory: boolean }` (name = `User.name` → ส่วนหน้าอีเมล → "สมาชิก" · role จาก `Membership` ของร้านนี้ที่ยังรับอยู่) · `SYSTEM_AUTHOR = "system"` · `NOT_SYSTEM_MESSAGE` (where ตัดข้อความระบบ — `authorUserId` null ผ่าน)
+- `listMembers(ctx: ConvCtx, roomId) → Promise<RoomMemberRow[] | null>` — มองไม่เห็นห้อง = null · เรียง `addedAt` asc · ไม่รวมผู้เปิดห้อง
+- `addMember(ctx, roomId, input: { userId: string; seeHistory?: boolean }) → Promise<{ ok: true; member: RoomMemberRow } | { ok: false; error: "not_found" | "forbidden" | "not_member_of_tenant" | "self" | "already" | "limit" | "closed"; message }>`
+  - ลำดับตรวจ: มองไม่เห็น → `not_found` · ไม่ใช่ผู้เปิดห้อง/OWNER (รวมสมาชิกห้อง) → `forbidden` · `closedAt` → `closed` · ผู้ถูกเพิ่ม = ตัวเอง/ผู้เปิดห้อง → `self` (OWNER เพิ่มตัวเอง: "คุณเห็นทุกห้องอยู่แล้ว…" · R-S1.6d) · ไม่มี `Membership(userId, tenantId)` ที่ `acceptedAt ≠ null` (รวม user ไม่มีจริง) → `not_member_of_tenant` · มีแถวแล้ว → `already` · ครบ 20 (นับเฉพาะสมาชิกที่ Membership ยังรับอยู่) → `limit` · เพิ่มซ้ำหลังถูกเอาออก = แถวใหม่ (seeHistory ตามที่เลือกใหม่)
+  - tx เดียว: `SELECT … FROM "AiRoom" … FOR UPDATE` (เพิ่มพร้อมกันไม่ทะลุ 20 · ตรวจปิด/ซ้ำ/จำนวนซ้ำใต้ล็อก · unique `[roomId, userId]` ชน = `already`) → `AiRoomMember(tenantId, roomId, userId, addedById = ผู้ทำ, seeHistory ปริยาย false)` → ข้อความระบบ `AiMessage(role ASSISTANT, content "🔔 <ผู้เพิ่ม> เพิ่ม <ผู้ถูกเพิ่ม> เข้าห้อง", authorUserId "system", tokens 0)` (R-S1.6b: ไม่นับ unread ใน `listRooms`/`mobile/conversations` · ไม่ป้อนเข้าประวัติของโมเดล) (สร้างหลังแถว ⇒ `createdAt ≥ addedAt` — สมาชิกใหม่เห็นเป็นแถวแรก) → `AiRoom.updatedAt`
+- `removeMember(ctx, roomId, userId) → Promise<{ ok: true } | { ok: false; error: "not_found" | "forbidden" | "not_a_member"; message }>` — ผู้เปิดห้อง/OWNER เอาใครออกก็ได้ · สมาชิกเอาตัวเองออกได้ (ออกจากห้อง) · สมาชิกเอาคนอื่นออก = `forbidden` · ผู้เปิดห้องออกเอง = `forbidden` "ผู้เปิดห้องออกไม่ได้ — ปิดห้องแทน" (R-S1.6d) · ไม่มีแถว (รวมผู้เปิดห้อง) = `not_a_member` · tx: ลบแถว + ข้อความระบบ ("🔔 <ผู้ทำ> นำ <ชื่อ> ออกจากห้อง" · ออกเอง "🔔 <ชื่อ> ออกจากห้อง") + `AiRoom.updatedAt` · ออกแล้วมองไม่เห็นห้องทันที · ห้องปิดแล้วยังเอาออกได้
+- `visibleSinceForUser(tenantId, role, userId, conversationId) → Promise<{ gte: Date } | null>` + `visibleSinceFor(ctx, conversationId)` — สมาชิก (ไม่ใช่ผู้เปิด · ไม่ใช่ OWNER) ที่ `seeHistory = false` ⇒ `{ gte: addedAt }` · อื่น ๆ ⇒ null (OWNER/ผู้เปิด/คีย์ = ไม่ query) · `withinSight(since, createdAt)` · `visibleMessagesWhere(ctx, conversationId)` = `{ createdAt: since }` หรือ `{}`
+  - ใช้ใน `service.listMessages` (ทางห้องร่วมเท่านั้น · ห้องเดิม/ห้องตัวเอง = เดิมทุกไบต์) · ประวัติที่ป้อนโมเดลใน `service.sendMessage` · R-S1.6a: `listPendingProposals` · `listPendingPlans` · `rejectProposal` · `rejectPlan` · ด่านมองเห็นของ `executeProposal`/`executePlan` (ข้อเสนอ/แผนที่ `createdAt < addedAt` = "ไม่พบ" เหมือนไม่มี) — บังคับในบริการ ไม่ใช่ UI (COMMON §C.8)
+- `roomPushRecipients(tenantId, roomId) → Promise<string[]>` (R-S1.6c) — ผู้เปิดห้อง ∪ สมาชิก เฉพาะคนที่ Membership ของร้านนี้ `acceptedAt ≠ null` · `worker.pushRoom` ใช้ตัวนี้
+- `roomMemberRows(tenantId, roomId)` — ตัวอ่านภายใน (ไม่ตรวจการมองเห็น) ที่ `rooms.getRoom` ใช้ ⇒ `getRoom` คืน `members: RoomMemberRow[]` เพิ่ม · `listRooms` การ์ดมี `memberIds` (S1.4)
+- X2: ข้อความที่สมาชิกพิมพ์ = `authorUserId` ของสมาชิก · เครื่องมือ/สกิลยื่นตามสิทธิ์ของผู้พิมพ์ (S1.4/S1.5) · ผู้อนุมัติผ่าน `actorCanConfirmKind`/`assertCan` ด้วยสิทธิ์ตัวเอง (เดิม)
+- 🔴 members.ts ห้าม import `../service` หรือ `./rooms` (rooms → members · service → members)
 
 ### 5.7 kind-class.ts (S1.7 · มีแล้ว · pure · `src/lib/ai/secretary/kind-class.ts`) — ชั้นความเสี่ยง (R-K3)
 - `classOfKind(kind: string) → KindClass` (`{ destructive; money; customerFacing; piiExport; known }`) — derive จาก `DESTRUCTIVE_KINDS` + `kindAccessOf(kind).module` ของ proposals.ts (ไม่อ่านฐาน · ไม่เพิ่มคอลัมน์ใน `AiProposal`)
@@ -355,9 +365,15 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `class AnthropicProvider(key: string, model: string, deps?: { fetchImpl?: typeof fetch; version?: string }) implements AiProvider` — `readonly model` · `chat(messages, opts?: { maxTokens?; tools? }) → Promise<AiReply>` · `POST https://api.anthropic.com/v1/messages` (`x-api-key` · `anthropic-version: 2023-06-01`) · `!res.ok` ⇒ throw `AI provider <status>: …`
 - `resolveProvider(tier = "smart") → AiProvider | null` — `SHARK_AI_MOCK=1` ⇒ Mock · `AI_PROVIDER=anthropic` ⇒ `SHARK_ANTHROPIC_KEY` (ไม่มี ⇒ null) + `toAnthropicModelId(SHARK_AI_MODEL ?? FAST/SMART ตาม tier)` · อื่น ๆ ⇒ OpenRouter ทางเดิม · `pricing.priceOf` จับ id ตรงด้วย substring เดิม (ราคา sonnet ยังเป็นค่าเก่า — หนี้ S3a.2)
 
-### 5.17 `src/lib/ai/scheduled.ts` (เปลี่ยน · S1.9 · R-K5)
-- `createTask(ctx, input: { instruction; hourBkk; frequency?: "DAILY" | "WEEKLY"; days?: number[]; channels?: string[] }) → Promise<{ id }>` — งานใหม่จากห้องเลขาบันทึก `ownerUserId` (จาก `dispatch(ai_schedule_task)` ที่มี `userId` อยู่แล้ว) · เพดาน `FREE_PACK.scheduledMax`
-- `runScheduledTasks(now: Date, deps?: { provider? }) → Promise<number>` — claim `updateMany({id, lastRunDay: {not: today}}) → {lastRunDay: today}` (X5) · แถวมี `ownerUserId` → โหลด `Membership` สด (`acceptedAt ≠ null` ไม่งั้นข้าม + จด) → `aiMemberActor` → `startRoom({source: "scheduled"})` (นับงาน · หมด = ข้าม + จด) → `sendPushToUser(owner)` · แถว null = ทางเดิมทุกตัวอักษร
+### 5.17 `src/lib/ai/scheduled.ts` (เปลี่ยน · S1.9 · มีแล้ว · R-K5 · R-K8b)
+- `FREQUENCIES = ["DAILY","WEEKLY","MONTHLY"]` · `CHANNELS = ["push","room"]` · `TaskInput = { instruction; hourBkk; ownerUserId?; frequency?; days?; channels? }`
+- `createTask(ctx, input: TaskInput) → Promise<{ id }>` — ไม่มี `ownerUserId` = ทางเดิม (cap 10 · ไม่ตั้ง frequency) · มี `ownerUserId` = งานของคนตั้ง: frequency ปริยาย DAILY (แปลก = throw ไทย) · WEEKLY ⇒ `days` ⊆ 0–6 ไม่ว่าง (0 = อาทิตย์) · MONTHLY ⇒ `days` ⊆ 1–31 ไม่ว่าง · DAILY ⇒ `days = []` · `channels` ⊆ CHANNELS ปริยาย `["push","room"]` · ผู้ตั้งต้องมี Membership `acceptedAt ≠ null` ของร้านนี้ · เพดาน `FREE_PACK.scheduledMax` ต่อร้าน (ข้อความไทยบอกเพดาน) — ทุกข้อผิดพลาด = throw ไทย ไม่มีแถว
+- `isDue(task, now) → boolean` (pure · เวลาไทยผ่าน `bkkParts`) — active · `hourBkk` = ชั่วโมงไทย · `lastRunDay` ≠ วันไทย · DAILY/null ทุกวัน · WEEKLY วันในสัปดาห์ไทย ∈ days · MONTHLY วันที่ไทย ∈ days (วันที่ 31 ในเดือนที่มี 30 วัน = ไม่รัน)
+- `describeFrequency(frequency, days) → string` (pure · ไทย) — "ทุกวัน" · "ทุกสัปดาห์ (วันจันทร์)" · "ทุกเดือน (วันที่ 1, 15)"
+- `runScheduledTasks(now: Date, deps?: { provider?; post? }) → Promise<number>` — ไม่ throw · แถว `ownerUserId = null` = ทางเดิมทุกตัวอักษร (AppNotification + `sendPushToTenant` · mark หลังรัน) · แถวมี `ownerUserId`: (1) `isDue` (2) claim `updateMany({ id, active: true, OR: [{lastRunDay: null}, {lastRunDay: {not: today}}] }) → { lastRunDay: today }` count 0 = ข้าม (X5) (3) Membership สด (`acceptedAt ≠ null`) ไม่มี ⇒ `logOps WARN "scheduled-skip"` + ข้าม (4) `startRoom({ tenantId, actor: aiMemberActor(owner) }, { instruction, systems: [] }, now)` — นับงาน 1 · โควตาหมด ⇒ จด + ข้าม (5) `enqueueRoomJob(room, startRoom.messageId, owner)` → `runRoomJobs({ provider, post, now, limit: 1 })` (worker เรียกโมเดลด้วยสิทธิ์ผู้ตั้ง · push ถึงผู้เปิดห้อง ∪ สมาชิก · `data.link = /secretary/room/<id>`) · ไม่สร้าง AppNotification · ผลเขียน = ข้อเสนอในห้อง · claim แล้วข้าม (ผู้ตั้งถูกถอน/โควตาหมด) = ไม่ลองซ้ำในวันเดียวกัน
+- `listTasks(ctx)` คืนทุกคอลัมน์ (รวม `ownerUserId` `frequency` `days` `channels`)
+- tool `schedule_task`: params ไม่บังคับ `frequency` (enum) + `days` (int[]) · ไม่ระบุ = ข้อเสนอแบบเดิม · `dispatch(ai_schedule_task)` ส่ง `ownerUserId: userId ?? undefined` + `frequency` + `days` · note บอกความถี่
+- หนี้: `channels` บันทึกแล้วแต่ worker ยัง push ทุกครั้ง (`["room"]` อย่างเดียวยังได้ push) — ตัวกรองต้องแก้ `worker.ts` (นอกใบ S1.9)
 
 ### 5.18 `src/lib/ai/conversation-owner.ts` (เปลี่ยน · S1.4 · R-K1 · ยัง pure · เพิ่มเท่านั้น)
 - `type ConvSight = { own: string | null; ownerExtras: boolean; memberOf?: ReadonlySet<string>; tenantRooms?: boolean }` — สองช่องใหม่ optional · ไม่มี = กติกาเดิมทุกตัวอักษร
@@ -442,6 +458,8 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | เปิดห้องงาน | ✅ | ✅ | ✅ ถ้ามี `ai.chat.send` | – | งานประจำ ด้วยสิทธิ์ผู้ตั้ง |
 | เห็นห้อง | ทุกห้องที่มี `AiRoom` ในกิจการ + ของตัวเอง | ของตัวเอง + ที่ถูกเพิ่ม | ของตัวเอง + ที่ถูกเพิ่ม | – | – |
 | เพิ่ม/เอาคนออกจากห้อง | ✅ ทุกห้อง | ห้องที่ตัวเองเปิด | ห้องที่ตัวเองเปิด | ❌ | – |
+| ออกจากห้อง (ตัวเอง) | – | ห้องที่ถูกเพิ่ม | ห้องที่ถูกเพิ่ม | ❌ | – |
+| เห็นข้อความก่อนถูกเพิ่ม | ✅ ทุกห้อง | ของตัวเอง · ห้องที่ถูกเพิ่มเมื่อ `seeHistory = true` | ของตัวเอง · ห้องที่ถูกเพิ่มเมื่อ `seeHistory = true` | – | – |
 | อ่านข้อมูลระบบ (เครื่องมืออ่าน) | ตามระดับ ≥ READ | ตามสิทธิ์ ∩ ระดับ | ตามสิทธิ์ ∩ ระดับ | ไม่เกินผู้สั่ง | – |
 | ร่างข้อเสนอเขียน | ระดับ DRAFT | ระดับ DRAFT + สิทธิ์ | ระดับ DRAFT + สิทธิ์ | ✅ (เป็นข้อเสนอเสมอ) | – |
 | อนุมัติข้อเสนอในห้องเลขา | ✅ + `assertCan` ตัวเอง | ✅ + `assertCan` ตัวเอง | ❌ (R-K4) | ❌ | ❌ |
@@ -478,7 +496,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 |---|---|---|---|---|---|
 | `ai.room.started` | `{tenantId, roomId, startedById}` | `startRoom` | withAutomation เปล่า | เมื่อเลขาเริ่มงานใหม่ | S1.4 |
 | `ai.room.status_changed` | `{tenantId, roomId, from, to}` | worker / `closeRoom` | push ผู้สร้าง/ผู้อนุมัติ (`sendPushToUser`) | เมื่อสถานะงานของเลขาเปลี่ยน | S1.5 |
-| `ai.room.member_added` | `{tenantId, roomId, userId, addedById}` | `addMember` | push ผู้ถูกเพิ่ม | เมื่อมีคนถูกเพิ่มเข้าห้องงาน | S1.6 |
+| `ai.room.member_added` | `{tenantId, roomId, userId, addedById}` | `addMember` | push ผู้ถูกเพิ่ม | เมื่อมีคนถูกเพิ่มเข้าห้องงาน | S1.23 (notify · RESOLUTIONS §J) |
 | `ai.action.executed` | `{tenantId, actionLogId, kind, roomId?}` | `recordAction` | withAutomation | เมื่อเลขาทำงานที่อนุมัติแล้ว | S1.8 → เลื่อน (ใบสั่งไม่มี · `outbox-consumers.ts` ไม่อยู่ในไฟล์ของใบ · wo-notes sec-s1.7 §8) |
 | `ai.action.undone` | `{tenantId, actionLogId}` | `undoAction` | withAutomation | เมื่อย้อนการกระทำของเลขา | S1.8 → เลื่อน (เหมือนข้างบน) |
 | `staff.invite.accepted` | `{tenantId, inviteId, membershipId}` | `acceptInvite` | push ผู้เชิญ | เมื่อพนักงานรับคำเชิญ | S1.25 |

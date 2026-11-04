@@ -6,22 +6,54 @@
 // - ผลลัพธ์ = AppNotification + push แจ้งเข้าเครื่อง (ไม่ทำ mutation — งานประจำห้ามลงมือแก้ข้อมูลเงียบ ๆ)
 // - createTask/listTasks/setTaskActive/deleteTask เป็น tenant-scoped → tenantDb({ tenantId }) inject tenantId
 // - runScheduledTasks เดินข้ามร้าน (cron ระดับแพลตฟอร์ม) → prisma ตรงได้ (นอก modules) · task พังตัวเดียว ไม่ล้มทั้งรอบ
+//
+// เลขา AI S1.9 (R-K5) ▸ งานที่มี `ownerUserId` = "งานของคนตั้ง" — รันด้วยสิทธิ์สดของผู้ตั้ง (Membership acceptedAt ≠ null)
+//   ทุกรอบเปิด "ห้องงานใหม่" ผ่าน `startRoom` (นับงาน 1) → ต่อคิว `enqueueRoomJob` → `runRoomJobs` (worker ส่ง push ถึงผู้ตั้งเอง)
+//   claim ก่อนรัน (conditional updateMany ตั้ง lastRunDay = วันนี้ · count 0 = อีกรอบได้ไปแล้ว — X5) · ไม่สร้าง AppNotification
+//   ความถี่ DAILY / WEEKLY (วันในสัปดาห์ไทย 0=อา) / MONTHLY (วันที่ไทย) ผ่าน `isDue` (pure) · ไม่มีนาที (R-K8 — รันรอบ hourly ของ hourBkk)
+//   แถว `ownerUserId = null` = ทางเดิมทุกตัวอักษร ◂
 
+import type { AiScheduledTask } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
+import { logOps } from "@/lib/core/ops";
+import { bkkParts } from "@/lib/core/quiet-hours";
 import { sendMessage } from "./service";
-import { aiSystemActor } from "./actor";
+import { aiMemberActor, aiSystemActor } from "./actor";
 import { resolveProvider, type AiProvider } from "./provider";
 import { dayKeyBangkok } from "./rules";
+import { FREE_PACK } from "./secretary/pack";
+import { startRoom } from "./secretary/rooms";
+import type { RoomJobDeps } from "./secretary/worker";
 
 type Ctx = { tenantId: string };
+
+export const FREQUENCIES = ["DAILY", "WEEKLY", "MONTHLY"] as const;
+export const CHANNELS = ["push", "room"] as const;
+export type Frequency = (typeof FREQUENCIES)[number];
+export type Channel = (typeof CHANNELS)[number];
+type PushPost = NonNullable<RoomJobDeps["post"]>;
+
+/** ข้อมูลตั้งงานประจำ — ไม่มี ownerUserId = ทางเดิม (frequency/days/channels ไม่ถูกใช้) */
+export type TaskInput = {
+  instruction: string;
+  hourBkk: number;
+  ownerUserId?: string;
+  frequency?: Frequency;
+  days?: number[];
+  channels?: Channel[];
+};
+
+const FREQ_LABEL: Record<Frequency, string> = { DAILY: "ทุกวัน", WEEKLY: "ทุกสัปดาห์", MONTHLY: "ทุกเดือน" };
+const WEEKDAY_TH = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
 
 const MAX_TASKS_PER_TENANT = 10; // กันตั้งงานประจำล้นร้าน
 const MAX_TENANT_TASKS_PER_RUN = 100; // เพดานต่อรอบ cron (กันงานบานปลายในชั่วโมงเดียว)
 
 // ── สร้างงานประจำ ── instruction ว่าง / hourBkk นอก 0-23 → throw ไทย · เกิน 10 ต่อร้าน → throw
+//   S1.9 ▸ มี ownerUserId = งานของคนตั้ง → ตรวจความถี่/วัน/ช่องทาง/สมาชิก + เพดาน FREE_PACK.scheduledMax (createOwnedTask) ◂
 export async function createTask(
   ctx: Ctx,
-  input: { instruction: string; hourBkk: number },
+  input: TaskInput,
 ): Promise<{ id: string }> {
   const instruction = String(input.instruction ?? "").trim();
   if (!instruction) throw new Error("ต้องระบุสิ่งที่จะให้ผู้ช่วยทำเป็นงานประจำ");
@@ -29,6 +61,8 @@ export async function createTask(
   if (!Number.isFinite(hourBkk) || hourBkk < 0 || hourBkk > 23) {
     throw new Error("ชั่วโมงที่ให้ทำต้องอยู่ระหว่าง 0-23 (เวลาไทย)");
   }
+  const ownerUserId = typeof input.ownerUserId === "string" ? input.ownerUserId.trim() : "";
+  if (ownerUserId) return createOwnedTask(ctx, { ...input, instruction, hourBkk, ownerUserId });
   const count = await tenantDb(ctx).aiScheduledTask.count();
   if (count >= MAX_TASKS_PER_TENANT) {
     throw new Error(`ตั้งงานประจำได้สูงสุด ${MAX_TASKS_PER_TENANT} รายการต่อร้าน — ลบรายการเดิมก่อนถ้าต้องการเพิ่ม`);
@@ -37,6 +71,91 @@ export async function createTask(
     data: { tenantId: ctx.tenantId, instruction, hourBkk },
   });
   return { id: row.id };
+}
+
+/** วันที่เลือกของ WEEKLY (0–6) / MONTHLY (1–31) — ต้องเป็นจำนวนเต็มในช่วง ไม่ว่าง · ตัดซ้ำ + เรียง */
+function cleanDays(frequency: Frequency, raw: unknown): number[] {
+  if (frequency === "DAILY") return [];
+  const [lo, hi] = frequency === "WEEKLY" ? [0, 6] : [1, 31];
+  const what = frequency === "WEEKLY" ? "วันในสัปดาห์ (0=อาทิตย์ … 6=เสาร์)" : "วันที่ของเดือน (1–31)";
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error(`งานประจำ${FREQ_LABEL[frequency]}ต้องเลือก${what}อย่างน้อย 1 วัน`);
+  const out = new Set<number>();
+  for (const x of raw) {
+    const n = Number(x);
+    if (!Number.isInteger(n) || n < lo || n > hi) throw new Error(`${what} ต้องอยู่ระหว่าง ${lo}–${hi} — ได้ค่า "${String(x).slice(0, 10)}"`);
+    out.add(n);
+  }
+  return [...out].sort((x, y) => x - y);
+}
+
+/** ช่องทางส่งผล ⊆ CHANNELS · ไม่ระบุ = ["push","room"] · ระบุแต่ว่าง/แปลก = throw ไทย */
+function cleanChannels(raw: unknown): Channel[] {
+  if (raw === undefined || raw === null) return [...CHANNELS];
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error("ต้องเลือกช่องทางส่งผลอย่างน้อย 1 ช่องทาง (push หรือ room)");
+  const out: Channel[] = [];
+  for (const x of raw) {
+    const c = typeof x === "string" ? x.trim().toLowerCase() : "";
+    if (!(CHANNELS as readonly string[]).includes(c)) throw new Error(`ไม่รู้จักช่องทางส่งผล "${String(x).slice(0, 20)}" — ใช้ได้เฉพาะ push หรือ room`);
+    if (!out.includes(c as Channel)) out.push(c as Channel);
+  }
+  return out;
+}
+
+/** งานประจำของคนตั้ง (S1.9) — ผู้ตั้งต้องเป็นสมาชิกที่รับคำเชิญแล้วของร้านนี้ · เพดาน FREE_PACK.scheduledMax ต่อร้าน */
+async function createOwnedTask(
+  ctx: Ctx,
+  input: TaskInput & { instruction: string; hourBkk: number; ownerUserId: string },
+): Promise<{ id: string }> {
+  const freqRaw = input.frequency === undefined || input.frequency === null ? "DAILY" : String(input.frequency).trim().toUpperCase();
+  if (!(FREQUENCIES as readonly string[]).includes(freqRaw)) {
+    throw new Error(`ไม่รู้จักความถี่ "${String(input.frequency).slice(0, 20)}" — ใช้ได้เฉพาะ ทุกวัน (DAILY) ทุกสัปดาห์ (WEEKLY) หรือทุกเดือน (MONTHLY)`);
+  }
+  const frequency = freqRaw as Frequency;
+  const days = cleanDays(frequency, input.days);
+  const channels = cleanChannels(input.channels);
+  const member = await prisma.membership.findFirst({
+    where: { tenantId: ctx.tenantId, userId: input.ownerUserId, acceptedAt: { not: null } },
+    select: { id: true },
+  });
+  if (!member) throw new Error("ผู้ตั้งงานประจำต้องเป็นสมาชิกของกิจการนี้ที่รับคำเชิญแล้ว");
+  const max = FREE_PACK.scheduledMax;
+  const count = await tenantDb(ctx).aiScheduledTask.count();
+  if (count >= max) {
+    throw new Error(`ตั้งงานประจำได้สูงสุด ${max} รายการต่อร้าน — ลบหรือปิดรายการเดิมก่อนถ้าต้องการเพิ่ม`);
+  }
+  const row = await tenantDb(ctx).aiScheduledTask.create({
+    data: { tenantId: ctx.tenantId, instruction: input.instruction, hourBkk: input.hourBkk, ownerUserId: input.ownerUserId, frequency, days, channels },
+  });
+  return { id: row.id };
+}
+
+/** คำอธิบายความถี่ภาษาไทย (pure) — เช่น "ทุกวัน" · "ทุกสัปดาห์ (วันจันทร์)" · "ทุกเดือน (วันที่ 1, 15)" */
+export function describeFrequency(frequency: string | null | undefined, days: number[] | null | undefined): string {
+  const f = (FREQUENCIES as readonly string[]).includes(String(frequency)) ? (frequency as Frequency) : "DAILY";
+  const d = Array.isArray(days) ? days : [];
+  if (f === "WEEKLY" && d.length > 0) return `${FREQ_LABEL.WEEKLY} (วัน${d.map((x) => WEEKDAY_TH[x] ?? String(x)).join(", ")})`;
+  if (f === "MONTHLY" && d.length > 0) return `${FREQ_LABEL.MONTHLY} (วันที่ ${d.join(", ")})`;
+  return FREQ_LABEL[f];
+}
+
+/**
+ * ถึงเวลารันงานนี้ไหม ณ `now` (pure · เวลาไทย) — active · hourBkk = ชั่วโมงไทย · lastRunDay ≠ วันไทย
+ *   DAILY/null = ทุกวัน · WEEKLY = วันในสัปดาห์ไทย (0=อา) ∈ days · MONTHLY = วันที่ไทย ∈ days · ความถี่แปลก = ไม่รัน
+ */
+export function isDue(
+  task: Pick<AiScheduledTask, "active" | "hourBkk" | "frequency" | "days" | "lastRunDay">,
+  now: Date,
+): boolean {
+  if (!task.active) return false;
+  const p = bkkParts(now);
+  if (task.hourBkk !== p.h) return false;
+  if (task.lastRunDay === dayKeyBangkok(now)) return false;
+  const days = Array.isArray(task.days) ? task.days : [];
+  const f = task.frequency ?? "DAILY";
+  if (f === "DAILY") return true;
+  if (f === "WEEKLY") return days.includes(new Date(Date.UTC(p.y, p.mo, p.day)).getUTCDay());
+  if (f === "MONTHLY") return days.includes(p.day);
+  return false;
 }
 
 // ── งานประจำทั้งหมดของร้าน (ใหม่→เก่า) ──
@@ -65,7 +184,7 @@ export async function deleteTask(ctx: Ctx, id: string): Promise<boolean> {
  */
 export async function runScheduledTasks(
   now: Date = new Date(),
-  deps?: { provider?: AiProvider },
+  deps?: { provider?: AiProvider; post?: PushPost },
 ): Promise<number> {
   // งานประจำ = สรุป/อ่าน → tier "fast" (haiku) ประหยัด · ไม่มี provider (ยังไม่เปิด AI) = ข้ามเงียบ ๆ
   const provider = deps?.provider ?? resolveProvider("fast");
@@ -87,6 +206,11 @@ export async function runScheduledTasks(
 
   let ran = 0;
   for (const task of tasks) {
+    // S1.9 ▸ งานของคนตั้ง = ห้องงานใหม่ต่อรอบ (ไม่ throw) · แถวเดิม (ownerUserId null) เดินโค้ดเดิมด้านล่าง ◂
+    if (task.ownerUserId) {
+      if (await runOwnedTask(task, now, today, provider, deps?.post)) ran++;
+      continue;
+    }
     try {
       // รัน AI แบบเดียวกับผู้ใช้พิมพ์คำสั่งเอง (มีเครื่องมืออ่านข้อมูลจริงครบ) — ฉีด provider fast
       // CRM C5.5-G1 ▸ ไม่มีคนกด + แถวงานไม่เก็บผู้ตั้ง · ผลส่งเป็นแจ้งเตือนที่ "ทุกคนในร้าน" เห็น (recipientUserId null)
@@ -123,4 +247,55 @@ export async function runScheduledTasks(
     }
   }
   return ran;
+}
+
+/** จดเหตุที่ข้ามงานของคนตั้ง (ไม่ throw) */
+async function logSkip(task: AiScheduledTask, reason: string, detail?: string): Promise<void> {
+  await logOps("WARN", "ai", `scheduled-skip: งานประจำ ${task.id} ข้าม (${reason})`, {
+    tenantId: task.tenantId,
+    detail: JSON.stringify({ taskId: task.id, ownerUserId: task.ownerUserId, reason, ...(detail ? { detail } : {}) }).slice(0, 2000),
+  }).catch(() => {});
+}
+
+/**
+ * งานของคนตั้ง 1 รอบ (S1.9 · R-K5) — คืน true = เปิดห้อง + ต่อคิวสำเร็จ · ไม่ throw เด็ดขาด
+ *   (1) isDue (2) claim: conditional updateMany ตั้ง lastRunDay = วันนี้ (count 0 = อีกรอบได้ไป · X5)
+ *   (3) Membership สดของผู้ตั้ง (acceptedAt ≠ null) ไม่มี = จด + ข้าม (4) startRoom ด้วยสิทธิ์ผู้ตั้ง (นับงาน 1 · โควตาหมด = จด + ข้าม)
+ *   (5) enqueueRoomJob(ข้อความแรกของห้อง) → runRoomJobs limit 1 (worker เรียกโมเดล + push ถึงผู้ตั้ง/สมาชิกห้อง)
+ */
+async function runOwnedTask(task: AiScheduledTask, now: Date, today: string, provider: AiProvider, post?: PushPost): Promise<boolean> {
+  try {
+    const ownerUserId = task.ownerUserId;
+    if (!ownerUserId || !isDue(task, now)) return false;
+    const got = await prisma.aiScheduledTask.updateMany({
+      where: { id: task.id, tenantId: task.tenantId, active: true, OR: [{ lastRunDay: null }, { lastRunDay: { not: today } }] },
+      data: { lastRunDay: today },
+    });
+    if (got.count === 0) return false;
+    const membership = await prisma.membership.findFirst({
+      where: { tenantId: task.tenantId, userId: ownerUserId, acceptedAt: { not: null } },
+      select: { role: true, unitAccess: true, permissions: true },
+    });
+    if (!membership) {
+      await logSkip(task, "owner-not-member");
+      return false;
+    }
+    const actor = aiMemberActor(task.tenantId, ownerUserId, membership);
+    const started = await startRoom({ tenantId: task.tenantId, actor }, { instruction: task.instruction, systems: [] }, now);
+    if (!started.ok) {
+      await logSkip(task, started.error, started.message);
+      return false;
+    }
+    // worker นำเข้าแบบ dynamic (worker → service → … → proposals → scheduled — กันวงกลมตอนโหลดโมดูล)
+    const { enqueueRoomJob, runRoomJobs } = await import("./secretary/worker");
+    await enqueueRoomJob(task.tenantId, started.roomId, started.messageId, ownerUserId);
+    await runRoomJobs({ provider, ...(post ? { post } : {}), now, limit: 1 });
+    return true;
+  } catch (e) {
+    await logOps("WARN", "ai", `scheduled: งานประจำ ${task.id} ล้ม`, {
+      tenantId: task.tenantId,
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    }).catch(() => {});
+    return false;
+  }
 }

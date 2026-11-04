@@ -14,6 +14,7 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conversation-owner";
 import { countsAsJob, FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage } from "./pack";
+import { NOT_SYSTEM_MESSAGE, roomMemberRows, type RoomMemberRow } from "./members";
 
 export type RoomStatus = "OPEN" | "RUNNING" | "WAITING" | "DONE";
 
@@ -39,7 +40,7 @@ export type StartRoomInput = {
 };
 
 export type StartRoomResult =
-  | { ok: true; roomId: string; conversationId: string; jobsUsed: number; jobsLimit: number }
+  | { ok: true; roomId: string; conversationId: string; messageId: string; jobsUsed: number; jobsLimit: number }
   | { ok: false; error: "empty" | "actor" | "quota"; message: string; resetAt?: Date; jobsUsed?: number; jobsLimit?: number };
 
 const TITLE_MAX = 60;
@@ -105,7 +106,7 @@ class QuotaExceeded extends Error {
 /**
  * เปิดห้องงานใหม่ + นับงาน 1 ครั้ง (R-K6: ตัวนับงานอยู่ที่นี่ ไม่ใช่ sendMessage · สั่งเพิ่มในห้องเดิมไม่นับ)
  *   ใน `prisma.$transaction` เดียว: (1) แถวตัวนับของเดือน (INSERT … ON CONFLICT DO NOTHING) (2) conditional `updateMany` `jobs < limit`
- *   → count 0 = โควตาหมด ⇒ throw ⇒ ย้อนทั้ง tx (3) AiConversation (4) AiRoom (5) ข้อความ USER (`authorUserId`)
+ *   → count 0 = โควตาหมด ⇒ throw ⇒ ย้อนทั้ง tx (3) AiConversation (4) AiRoom (5) ข้อความ USER (`authorUserId` · รหัสคืนใน `messageId`)
  *   `now` ฉีดได้ (เดือนไทยของตัวนับ + วันรีเซ็ต)
  */
 export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor }, input: StartRoomInput, now: Date = new Date()): Promise<StartRoomResult> {
@@ -146,11 +147,15 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
         data: { conversationId, tenantId, startedById: actor.userId, title, systems, ...(contextJson ? { contextJson } : {}), jobsCounted: inc },
         select: { id: true },
       });
-      await tx.aiMessage.create({ data: { tenantId, conversationId, role: "USER", content: instruction, authorUserId: actor.userId } });
+      // S1.9 ▸ คืนรหัสข้อความสั่งงานแรก — งานประจำต่อคิว (`enqueueRoomJob`) ด้วยรหัสนี้ ◂
+      const msg = await tx.aiMessage.create({
+        data: { tenantId, conversationId, role: "USER", content: instruction, authorUserId: actor.userId },
+        select: { id: true },
+      });
       const counter = await tx.aiJobCounter.findUnique({ where: { tenantId_month: { tenantId, month } }, select: { jobs: true } });
-      return { roomId: room.id, jobsUsed: counter?.jobs ?? inc };
+      return { roomId: room.id, messageId: msg.id, jobsUsed: counter?.jobs ?? inc };
     });
-    return { ok: true, roomId: res.roomId, conversationId, jobsUsed: res.jobsUsed, jobsLimit: limit };
+    return { ok: true, roomId: res.roomId, conversationId, messageId: res.messageId, jobsUsed: res.jobsUsed, jobsLimit: limit };
   } catch (e) {
     if (!(e instanceof QuotaExceeded)) throw e;
     const resetAt = nextResetBangkok(now);
@@ -260,7 +265,7 @@ export async function listRooms(
   const [counts, users, lastReplies] = await Promise.all([
     statusCounts(ctx.tenantId, rows, now),
     prisma.user.findMany({ where: { id: { in: starterIds } }, select: { id: true, name: true, email: true } }),
-    db.aiMessage.groupBy({ by: ["conversationId"], where: { conversationId: { in: convIds }, role: "ASSISTANT" }, _max: { createdAt: true } }),
+    db.aiMessage.groupBy({ by: ["conversationId"], where: { conversationId: { in: convIds }, role: "ASSISTANT", ...NOT_SYSTEM_MESSAGE }, _max: { createdAt: true } }), // R-S1.6b: ข้อความระบบไม่นับ unread
   ]);
   const nameOf = new Map(users.map((u) => [u.id, u.name?.trim() || u.email.split("@")[0] || "สมาชิก"]));
   const lastReplyOf = new Map(lastReplies.map((m) => [m.conversationId, m._max.createdAt]));
@@ -284,8 +289,8 @@ export async function listRooms(
   });
 }
 
-/** ห้องเดียว (มองไม่เห็น / ไม่มี / ร้านอื่น = null) + สถานะ */
-export async function getRoom(ctx: ConvCtx, roomId: string): Promise<(AiRoom & { status: RoomStatus }) | null> {
+/** ห้องเดียว (มองไม่เห็น / ไม่มี / ร้านอื่น = null) + สถานะ + สมาชิก (S1.6 · ไม่รวมผู้เปิดห้อง · เรียง addedAt) */
+export async function getRoom(ctx: ConvCtx, roomId: string): Promise<(AiRoom & { status: RoomStatus; members: RoomMemberRow[] }) | null> {
   const actor = memberActorOf(ctx);
   const id = typeof roomId === "string" ? roomId.trim() : "";
   if (!actor || !id) return null;
@@ -293,7 +298,8 @@ export async function getRoom(ctx: ConvCtx, roomId: string): Promise<(AiRoom & {
   if (!row || !canSeeRoom(actor, row)) return null;
   const { members: _members, ...room } = row;
   void _members;
-  return { ...room, status: statusFrom(await statusCounts(ctx.tenantId, [room], new Date()), room) };
+  const [counts, members] = await Promise.all([statusCounts(ctx.tenantId, [room], new Date()), roomMemberRows(ctx.tenantId, room.id)]);
+  return { ...room, status: statusFrom(counts, room), members };
 }
 
 /** ห้องที่ผู้ใช้นี้ "ดูแล" ได้ (ปิด/เปลี่ยนชื่อ) = ผู้เปิดห้อง หรือ OWNER · ไม่เห็น/ไม่ใช่ = null */

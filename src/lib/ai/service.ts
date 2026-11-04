@@ -22,6 +22,7 @@ import { balanceOf, canSpend, chargeUsageSafe } from "./credit";
 import type { AiCreditSource } from "@prisma/client";
 import { identityOf, secretaryOf } from "./secretary/secretary";
 import { getAccess } from "./secretary/access";
+import { NOT_SYSTEM_MESSAGE, visibleMessagesWhere } from "./secretary/members";
 
 export type Ctx = { tenantId: string };
 /**
@@ -82,8 +83,10 @@ export async function listMessages(ctx: ConvCtx, conversationId: string, take = 
   const base = sightOf(ctx);
   const s = canSeeConversationId(base, conversationId) ? base : await roomSightFor(ctx);
   if (!canSeeConversationId(s, conversationId) && s.tenantRooms !== true) return [];
+  // S1.6 ▸ สมาชิกห้องที่ seeHistory=false เห็นเฉพาะข้อความหลัง addedAt (ผู้เปิดห้อง/OWNER/ห้องเดิม = {}) ◂
+  const since = s === base ? {} : await visibleMessagesWhere(ctx, conversationId);
   return tenantDb({ tenantId: ctx.tenantId }).aiMessage.findMany({
-    where: { conversationId, conversation: visibleConversationWhere(s) },
+    where: { conversationId, conversation: visibleConversationWhere(s), ...since },
     orderBy: { createdAt: "asc" },
     take,
   });
@@ -215,11 +218,15 @@ export async function sendMessage(
   // S1.4 R-K1 ▸ ห้องเลขาที่เห็นผ่านห้องร่วม (สมาชิก/OWNER — `findVisibleConversation` ตรวจแถวแล้ว) ⇒ sight ของเทิร์นนี้รวมห้องนี้ ◂
   const sight = conv && !canSeeConversationId(sightOf(ctx), conv.id) ? withRoomSight(sightOf(ctx), { memberOf: [conv.id] }) : sightOf(ctx);
   if (!canSeeConversationId(sight, conversation.id)) throw new Error("AI conversation is not visible to this actor");
+  // S1.6 ▸ ประวัติที่ป้อนโมเดลกรอง seeHistory แบบเดียวกับ listMessages (สมาชิกห้อง seeHistory=false ⇒ หลัง addedAt) ◂
+  const since = conv?.room && !canSeeConversationId(sightOf(ctx), conv.id) ? await visibleMessagesWhere(ctx, conv.id) : {};
 
   const history = await db.aiMessage.findMany({
     where: {
       conversationId: conversation.id,
       conversation: visibleConversationWhere(sight),
+      ...since,
+      ...NOT_SYSTEM_MESSAGE, // S1.6 R-S1.6b: ข้อความระบบห้องเลขา (🔔) ไม่ป้อนเข้าประวัติของโมเดล
       ...(deps?.userMessageId ? { NOT: { id: deps.userMessageId } } : {}), // SEC S1.5 ▸ เทิร์นปัจจุบันไม่ซ้ำในประวัติ ◂
     },
     orderBy: { createdAt: "desc" },

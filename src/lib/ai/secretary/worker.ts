@@ -21,6 +21,7 @@ import { findVisibleConversation } from "../conversations";
 import type { AiProvider } from "../provider";
 import { sendMessage, type SendResult } from "../service";
 import { quotaMessage } from "../usage";
+import { roomPushRecipients } from "./members";
 
 export const ROOM_JOB_LEASE_MS = 120_000; // 2 นาที
 export const ROOM_JOB_MAX_ATTEMPTS = 3;
@@ -191,15 +192,15 @@ async function processJob(job: AiRoomJob, attempt: number, deps: RoomJobDeps): P
   return (await finish({ status: "DONE", error: null, leaseUntil: null, finishedAt: new Date() })) ? { kind: "done", reply: res.reply } : { kind: "lost" };
 }
 
-/** push ถึงผู้เปิดห้อง ∪ สมาชิกห้อง (ไม่กรองร้าน — R-K20) · ล้ม = log ไม่ throw */
+/** push ถึงผู้เปิดห้อง ∪ สมาชิกห้อง ที่ Membership ยังรับอยู่ (S1.6 R-S1.6c · `roomPushRecipients`) · ไม่กรองร้านของเครื่อง (R-K20) · ล้ม = log ไม่ throw */
 async function pushRoom(job: AiRoomJob, text: string, deps: RoomJobDeps): Promise<void> {
   try {
     const room = await tenantDb({ tenantId: job.tenantId }).aiRoom.findFirst({
       where: { id: job.roomId },
-      select: { id: true, title: true, conversationId: true, startedById: true, members: { select: { userId: true } } },
+      select: { id: true, title: true, conversationId: true },
     });
     if (!room) return;
-    const to = [...new Set([room.startedById, ...room.members.map((m) => m.userId)].filter((u) => typeof u === "string" && u))];
+    const to = await roomPushRecipients(job.tenantId, room.id);
     const msg = {
       title: room.title || "เลขา",
       body: pushBody(text),

@@ -40,6 +40,7 @@ import type { ConvCtx } from "./conversation-owner";
 import type { DispatchOut } from "./secretary/actions"; // SEC S1.8 (type เท่านั้น — ไม่มีวงโหลด) ◂
 import { logOps } from "@/lib/core/ops";
 import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
+import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/members";
 import {
   accountDestructiveKinds,
   accountKindAccess,
@@ -306,7 +307,7 @@ type RestaurantCloseBillPayload = {
   tableName: string;
   payMethod?: "CASH" | "TRANSFER" | "PROMPTPAY";
 };
-type AiScheduleTaskPayload = { instruction: string; hourBkk: number };
+type AiScheduleTaskPayload = { instruction: string; hourBkk: number; frequency?: string; days?: number[] };
 type AutomationCreateRulePayload = {
   name: string;
   event: string;
@@ -344,8 +345,9 @@ export async function createProposal(
 export async function listPendingProposals(ctx: ConvCtx, conversationId: string) {
   const conv = await findVisibleConversation(ctx, conversationId);
   if (!conv) return [];
+  const since = conv.room ? await visibleSinceFor(ctx, conv.id) : null; // S1.6 R-S1.6a: สมาชิก seeHistory=false ไม่เห็นข้อเสนอก่อน addedAt
   return tenantDb({ tenantId: ctx.tenantId }).aiProposal.findMany({
-    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() } },
+    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() }, ...(since ? { createdAt: since } : {}) },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -357,10 +359,11 @@ export async function listPendingProposals(ctx: ConvCtx, conversationId: string)
 //   🔴 ช่องโหว่เดียวกันของ kind โมดูลอื่น (ปิดอะไรก็ได้ด้วย id) ยังอยู่ — จดเป็น finding ให้เลน AI/สมาชิก (CRM-RUN §4) ◂
 // CRM C5.5-G2 ▸ ยกเลิกได้เฉพาะข้อเสนอในบทสนทนาที่ผู้กดเห็น (ของคนอื่น = false เหมือนไม่มีอยู่) ◂
 export async function rejectProposal(ctx: ConvCtx, id: string): Promise<boolean> {
-  const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true } });
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true, createdAt: true } });
   if (!row) return false;
   if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false; // CRM C3.4 ◂
   if (!(await canSeeConversationById(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
+  if (!withinSight(await visibleSinceFor(ctx, row.conversationId), row.createdAt)) return false; // S1.6 R-S1.6a
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
@@ -403,7 +406,10 @@ export async function executeProposal(
   // CRM C5.5-G2 ▸ ข้อเสนอเป็นของบทสนทนาที่มันเกิด: คนกดต้องเห็นบทสนทนานั้น (ผู้สร้าง · เจ้าของร้านสำหรับห้องที่ไม่ได้สร้างโดยคนในร้าน
   //   เช่นห้องของคีย์ API ที่ route เขียนไว้ว่า "เจ้าของต้องกดยืนยันในแอป/เว็บ") — ไม่เห็น = ตอบแบบเดียวกับไม่มีข้อเสนอนี้
   //   (ประตู CRM ข้างบนมีด่านการมองเห็นของตัวเองแล้ว — ข้อเสนอเหล่านั้นไม่ได้อยู่ในห้องแชท) ◂
-  if (!(await canConfirmerSeeConversation(ctx.tenantId, m, opts?.userId ?? null, row.conversationId))) { // S1.4 R-K1: + ห้องเลขาร่วม
+  if (
+    !(await canConfirmerSeeConversation(ctx.tenantId, m, opts?.userId ?? null, row.conversationId)) || // S1.4 R-K1: + ห้องเลขาร่วม
+    !withinSight(await visibleSinceForUser(ctx.tenantId, m.role, opts?.userId, row.conversationId), row.createdAt) // S1.6 R-S1.6a
+  ) {
     return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
   }
 
@@ -1451,12 +1457,22 @@ async function dispatch(
   if (kind === "ai_schedule_task") {
     const p = payload as AiScheduleTaskPayload;
     // createTask ตรวจ instruction ว่าง / hour นอกช่วง / เกินเพดาน 10 เอง → โยน error ไทย (→ FAILED)
+    // S1.9 (R-K5) ▸ รู้ตัวคนกด = งานของคนตั้ง (ownerUserId · รันด้วยสิทธิ์ของเขา · ห้องใหม่ต่อรอบ) · ไม่รู้ = ทางเดิม ◂
+    const frequency = typeof p.frequency === "string" && p.frequency.trim() ? (p.frequency.trim().toUpperCase() as scheduledSvc.Frequency) : undefined;
+    const days = Array.isArray(p.days) ? p.days.map((x) => Number(x)) : undefined;
     await scheduledSvc.createTask(
       { tenantId },
-      { instruction: String(p.instruction ?? "").trim(), hourBkk: Math.round(Number(p.hourBkk)) },
+      {
+        instruction: String(p.instruction ?? "").trim(),
+        hourBkk: Math.round(Number(p.hourBkk)),
+        ownerUserId: userId ?? undefined,
+        ...(frequency ? { frequency } : {}),
+        ...(days ? { days } : {}),
+      },
     );
     const hh = String(Math.round(Number(p.hourBkk))).padStart(2, "0");
-    return `ตั้งงานประจำให้ผู้ช่วยทำทุกวันเวลา ${hh}:00 น. เรียบร้อยแล้ว — ผลจะส่งเป็นการแจ้งเตือนให้อ่าน`;
+    if (!userId) return `ตั้งงานประจำให้ผู้ช่วยทำทุกวันเวลา ${hh}:00 น. เรียบร้อยแล้ว — ผลจะส่งเป็นการแจ้งเตือนให้อ่าน`;
+    return `ตั้งงานประจำให้เลขาทำ${scheduledSvc.describeFrequency(frequency ?? "DAILY", days)} เวลา ${hh}:00 น. เรียบร้อยแล้ว — ทุกรอบจะเปิดห้องงานใหม่และแจ้งเตือนให้อ่าน`;
   }
 
   if (kind === "automation_create_rule") {
