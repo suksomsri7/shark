@@ -45,3 +45,6 @@ Gates, X-groups and the 14 steps = `ledger/AI-TEAM-MASTER-PLAN.md` §3–§5 ver
 ## E. Before claiming done (paste the final summary line + exit code of each)
 Your WO oracle forced ×2 + unforced (residue 0) · every `qc-sec-*` oracle of earlier accepted WOs · the touched-module suites named in your brief · typecheck (web; mobile for UI WOs) · `pnpm fitness` with env and with `env -u DATABASE_URL`.
 Report format (crm-brief-COMMON "Reports"): per acceptance item → files:lines → how → result · DEFERRED + reason · ORACLE-EDIT requests · decisions for the controller · who gains/loses access to what · every new path that calls the model (each must be metered) · for UI WOs the parity pairs' paths.
+
+### A.11 แอป S2 — ไฟล์ชนบ่อย (5 พ.ย.)
+`apps/mobile/src/i18n/{th,en}.ts` และ `apps/mobile/qc/shots-sec/summary.json` ถูกแก้โดยทุกใบ S2 ⇒ **ก่อนรายงานจบ builder ต้อง merge tip ล่าสุดของ session/secretary เข้าสาขาตัวเอง** แก้ชนแบบ union (คีย์ทั้งสองฝั่ง · summary ทั้งสองชุด) แล้วรัน oracle ของตัวเองซ้ำ · ผู้คุม merge แบบ fast-forward เท่านั้น
