@@ -29,7 +29,7 @@
 8. hash รหัส = `sha256("staff-invite:"+code)` ไม่มี pepper (phone-auth `hashCode` ก็ไม่มี pepper และผูกเบอร์ ⇒ ใช้กับการค้นด้วยรหัสอย่างเดียวไม่ได้) — รหัส 40 บิต · การรับยังต้องมีเบอร์ที่ยืนยันตรงใบ
 9. ปิดเลขกลาง: `maskContactValue` ไม่อยู่บน facade CRM ⇒ ใช้ `crmApi.maskPiiDeep({phone})` (facade · lazy import เฉพาะใน list/preview — ทาง claim ไม่ลาก CRM) ผล = `xxxxxxxx001`
 10. "รอรับคำเชิญ" แยกเป็น `listStaffAccessWithInvites(ctx)` ใน invite.ts (ไม่ใช่ service.ts — กันวง import service↔invite) · `listStaffAccess` เดิมไม่เปลี่ยน
-11. ระดับ: คีย์อ่อนไหวถูกตัดจาก VIEW ด้วย (เช่น `hr.payroll.read`) · USE คงคีย์อ่อนไหวที่เคยให้รายคีย์ · แชท NONE/VIEW ถอนคีย์แชททั้งโมดูล · REPLY ถอนแค่ `chat.*` · `staffViewOf` OWNER/MANAGER = USE ทุกโมดูล + REPLY
+11. ระดับ: คีย์อ่อนไหวถูกตัดจาก VIEW ด้วย (เช่น `hr.payroll.read`) · USE คงคีย์อ่อนไหวที่เคยให้รายคีย์ · แชท (R-S1.25a หลัง merge fd85925c): VIEW = read+markRead · REPLY = read+markRead+send+setStatus · NONE/VIEW ถอนคีย์แชททั้งโมดูล · REPLY ถอนแค่ `chat.*` · `staffViewOf` อ่านแชทจาก read/send · `staffViewOf` OWNER/MANAGER = USE ทุกโมดูล + REPLY
 12. `setStaffLevels/suspendStaff/removeStaff` ผู้สั่งต้องเป็น OWNER/MANAGER (อ่านจาก DB · เข้มกว่า `settings.staff.write`) · MANAGER แตะแถว OWNER ไม่ได้ (revokeStaffAccess เดิมไม่ตรวจข้อนี้)
 13. ไม่มี event ใหม่ (`staff.invite.accepted` ใน docs เดิม ไม่อยู่ในใบ) · แจ้งผู้เชิญ = `AppNotification(recipientUserId)` + `notifyUser(…,"inbox",{link:"/staff"}, {assigneeUserId: ผู้เชิญ})`
 14. ห้องแรก: ข้อความใช้ป้ายไทยของประเภท (เช่น "ร้านค้า") แทนคีย์ `retail`
@@ -54,3 +54,8 @@
 - route มือถือ/เว็บ (`POST api/mobile/tenants` แบบใหม่ · `/i/<code>` · หน้าพนักงาน) = S2.21/S2.22 — previewInvite/acceptInviteByCode ต้องมี rate-limit ที่ route (รหัส 40 บิต)
 - คีย์เก่าที่ทะเบียนไม่รู้จัก (เช่น `kanban.card.read`) ลบผ่านระดับ OFF ไม่ได้ — `mergePermissions` ของ updateStaffAccess คงไว้โดยตั้งใจ ⇒ `levelOfModule` ยังอ่านโมดูลนั้นเป็น VIEW หลังตั้ง OFF (ต้องมีทางล้างคีย์เก่าแยก ถ้าผู้คุมต้องการ)
 - ORACLE-EDIT: ไม่มี
+
+## 7. รอบ R-S1.25a (merge fd85925c · ORACLE-EDIT L-3 ของผู้คุม)
+- `CHAT_LEVELS` VIEW = read+markRead · REPLY = read+markRead+send+setStatus (ไม่มี assign/customer.link) · docs §5.23 แก้ตาม
+- tsc แคบ rc=0 · `qc-sec-s1.25` forced 18:28Z / forced 18:28Z / unforced 18:29Z: `{"total":15,"passed":15,"failed":[],"skipped":[],"findings":[]}` exit=0 ×3 (D-1/D-2 fitness ในข้อสอบผ่าน)
+- regression ไม่รันซ้ำ: รอบนี้แก้แค่ `levels.ts` (มีแต่ข้อสอบ s1.25 ที่ import) + merge มีแต่ ledger/oracle

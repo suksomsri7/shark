@@ -18,11 +18,12 @@ type LevelCtx = { tenantId: string; actorUserId: string; membership: MembershipC
 
 export const MODULE_LEVELS: readonly ModuleLevel[] = ["OFF", "VIEW", "USE"];
 const CHAT_MODULE = "chat";
-/** R-K14: ตอบแชท = `chat.message.send` (ไม่มีคีย์ใหม่) */
+/** R-K14: ตอบแชท = `chat.message.send` (ไม่มีคีย์ใหม่) · R-S1.25a: แอปใช้คีย์เว็บ ⇒ VIEW มี markRead · REPLY มี markRead+setStatus
+ *  (assign / customer.link ไม่อยู่ในระดับ — ให้รายคีย์ผ่าน extraPermissions หรือบทบาท MANAGER) */
 export const CHAT_LEVELS = {
   NONE: [],
-  VIEW: ["chat.conversation.read"],
-  REPLY: ["chat.conversation.read", "chat.message.send"],
+  VIEW: ["chat.conversation.read", "chat.conversation.markRead"],
+  REPLY: ["chat.conversation.read", "chat.conversation.markRead", "chat.message.send", "chat.conversation.setStatus"],
 } as const;
 export type ChatLevel = keyof typeof CHAT_LEVELS;
 
@@ -84,6 +85,7 @@ function permissionsForChat(level: ChatLevel, base: PermissionMap): PermissionMa
   return out;
 }
 
+/** อ่านระดับแชท (ฝั่งอ่านผ่อน: ตัดสินจาก read/send — แถวเก่าที่ไม่มี markRead/setStatus ยังแสดงตรงกับ evaluate ของคีย์หลัก) */
 function chatLevelOf(p: PermissionMap): ChatLevel {
   if (p[`${CHAT_MODULE}.*`] === true) return "REPLY";
   const read = p["chat.conversation.read"] === true;
