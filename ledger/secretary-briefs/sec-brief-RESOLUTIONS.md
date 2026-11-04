@@ -131,3 +131,18 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S1.12d (K-4)** ข้อความใน persona/tool description = "ต้องผ่านการอนุมัติจากผู้มีสิทธิ์" (ไม่สัญญา OWNER/MANAGER) · กติกา chat ฉีดเฉพาะเมื่อเครื่องมือถูกเสนอ (ไม่ใช่ `!ctx.access`)
 - **R-S1.12e (K-5/K-6)** `clientMessageId = "ai:" + proposalId` · lookup ซ้ำกรอง `direction: "OUT"` · ตรวจ `canAccessConvUnit` ด้วย unitAccess ผู้อนุมัติ **ก่อน claim** (ไม่ผ่าน ⇒ คง PENDING + note สิทธิ์) · `chat.send` ไม่ editable (S1.10)
 - **K-8** จด docs: `kind:"followup"` = ติดตามงานบริการ ไม่ใช่การตลาด (ไม่ตรวจ consent รุ่นแรก)
+
+## N. รีวิว S1.21+S1.24 ผู้ตรวจ L/M — มติรอบ 2 (5 พ.ย. ~06:4xZ)
+- **R-S1.21a (L-F2)** `assign` ต้องมีคีย์ `chat.conversation.assign` (เหมือนเว็บ) · ยกเว้น "รับห้องที่ยังไม่มีผู้ดูแลให้ตัวเอง" ใช้ `chat.message.send` ได้ (assigneeUserId = ตัวเอง และห้อง assignee null)
+- **R-S1.21b (L-F1)** `handoff` ทำได้เฉพาะ ผู้ดูแลปัจจุบัน หรือ helper ของห้อง หรือผู้มีคีย์ assign · `toUserId === byUserId` ⇒ ปฏิเสธ
+- **R-S1.21c (L-F3/M-4/M-5)** SLA sweep: ผู้ดูแลที่ไม่ผ่าน `canRespond(unit)` (ถูกถอน/หลุดหน่วย) ⇒ ถือว่าไม่มีผู้ดูแล เตือน OWNER/MANAGER · นอกเวลาทำการไม่เตือน "ไม่มีผู้ดูแล" และ sweep เรียก `assignIncoming` ให้ห้อง OPEN ที่ยังไม่มีผู้ดูแลเมื่ออยู่ในเวลาทำการ (ล้าง backlog ตอนเปิดร้าน) · `assignIncoming` สำเร็จ ⇒ push "assigned" ถึงผู้รับ (notify pref) · `assign` ใน assignIncoming/escalation ใช้ `updateMany where assigneeUserId: null` (L-7)
+- **R-S1.21d (L-F4)** rate-limit `checkRateLimitDb` บน helpers/handoff (20/นาที/ร้าน+ผู้ใช้) และ assign/status/contact/shift (60/นาที) · shift สลับซ้ำไม่สร้างแถวใหม่
+- **R-S1.21e (M-1)** `POST /api/mobile/inbox/attachments` (Bearer · ≤10 MB · ห่อ handler เดียวกับ `api/v1/chat/attachments` · คืน `{url, mimeType, size, durationMs?}`) — อยู่ใน R-K13 ไม่ใช่ deferred
+- **R-S1.21f (M-3/M-6)** message DTO เพิ่ม `deliveryStatus`, `stickerMeta`, attachments `{name,url,kind,mimeType,durationMs?}` · `POST quick-replies/[id]/apply` `{conversationId}` → `{body}` (render ตัวแปร + usageCount)
+- **R-S1.21g (L-8/L-9/L-5/L-6)** owner fallback เลือก OWNER ที่เห็นหน่วย · `GET routing` `onDuty` กรองด้วย eligibleResponders ของหน่วยผู้ดู · sweep ข้ามห้องที่มีโน้ต `sla:` แล้ว (ไม่ติด 200 แถวเดิม) · โหลด membership ครั้งเดียวต่อร้าน
+- **R-S1.21h (L-11/M-7)** cursor แบบคู่ `before=<iso>|<id>` ทั้ง conversations และ thread (แถวเวลาเท่ากันไม่หาย · lastMessageAt null ไม่ตัดหน้า)
+- **R-S1.21i (L-12/M-8)** `CHAT_REPLY_ACTION` + คีย์เว็บที่แอปใช้ ย้ายไป `chat/guard.ts` (import ไม่พิมพ์ซ้ำ) · รายการคืน `{items, canReply}` / `{items}` ตาม COMMON ข้อ 6 (แก้ docs)
+- **R-S1.25a (M-9b → S1.25)** `CHAT_LEVELS.VIEW = read+markRead` · `REPLY = read+markRead+send+setStatus` · assign/customer.link ให้รายคีย์ (extraPermissions) หรือ MANAGER
+- รับ (ไม่แก้): `?e=` ใน push link · bucket reply ต่อร้าน+ผู้ใช้ · contact POST ตรวจสมาชิก · 429 ก่อน de-dup (แอปถือว่า retry ได้ — จด docs)
+- หนี้/ตั๋ว (ก่อน S2.18/S2.19): `GET …/[id]/contact` · `inbox/settings` · tags/prefs/unread filter (M-2) · กฎเฉพาะช่องทางไม่ชนะ order (เอกสาร K5) · LAST_ASSIGNEE ไม่ดูกะ · แจ้ง S2 fixture lane เรื่อง `{items}`
+- oracle รอบ 2 `qc-sec-s1.21.mts`: A-6 cross-tenant 404 · A-7 assign/handoff สิทธิ์ · A-8 attachments route · S-2 SLA ผู้ดูแลถูกถอน (ผู้คุมเพิ่ม)
