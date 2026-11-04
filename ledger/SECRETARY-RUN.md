@@ -50,7 +50,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.22 | ✅ | | รอบ 2 c8383f66+79fe8841 (เลน b) · oracle 14/14 ×3 (ผู้คุม) · s1.2/s1.12 + chat-core-v2/business-hours เท่าเดิม · ผู้ตรวจ N → §O ปิดครบ · migration secretary_b (3 คอลัมน์ AiSettings) · merge c1e1110d · deviation รับ: LINK_CODE_MASK ย้ายไป chat/link-code.ts · learn.recordOutcome รอ S1.15 · หนี้: FAQ คัดกรอง · ที่อยู่ใน recent · deploy migration ก่อนโค้ด |
 | S1.23 | ✅ | | รวมในชุด S1-12 · notify.ts (prefs · badge · กันสแปม per-process) · merge cd37937d |
 | S1.24 | 🔍 | | รวมในชุด S1-15 · routing.ts (rules/shift/helper/handoff/sla) · รวมในชุด S1-15 (เลน c) · รวมในชุด S1-15 · 🎯 ผู้ดูแล · เรียกช่วย · กฎรับเรื่อง · เข้าเวร |
-| S1.25 | 🔁 | | รอบ 1 ae94bf79 oracle 15/15 · **ผู้ตรวจ O/P: MERGE-AFTER-FIX** (SMS pumping ผ่าน invite→cancel · auto-join ไร้ความยินยอม · MANAGER ให้ payroll · USE ให้คีย์เงิน/แอดมิน · ระดับลบลิมิตตัวเลข · 30 โมดูลไม่มี VIEW) → §P + oracle 19 ข้อ · builder รอบ 2 · qc-member-m3.11 แดงตั้งแต่ clean tree (ข้อมูล QC) |
+| S1.25 | 🔍 | | รอบ 2 d84880c9 (เลน d) · oracle 19/19 ×3 (ผู้คุม) · s1.19 26/26 · staff-perms 49/49 · §P ปิดครบ (deviation: inviter limit ต่อร้าน · payments/systems เป็น OFF-only) · **รอ re-check** · qc-member-m3.11 แดงตั้งแต่ clean tree (ข้อมูล QC) |
 | S1.14 | ✍️ | | ใบ S1-18 `sec-brief-S1.14.md` (ตารางเส้นทาง + sec-real-path.mts) · oracle ยังไม่มี · 🎯 API ชุดเดียว + เส้นทางจริง 3 เส้น (ปิด S1) |
 | S2.1 | ⬜ | | โครงแอป |
 | S2.2 | ⬜ | | A1 C3 |
