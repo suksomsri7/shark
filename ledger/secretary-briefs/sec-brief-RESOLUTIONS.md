@@ -83,3 +83,10 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - FIX-NOW: `service.ts` `secretaryOf(...).catch(() => null)` → ฝากใบ S1.5 (กำลังแตะไฟล์)
 - ก่อน S1.14: (1) `upcoming_schedule`/`growth_recommendations` อ่านข้ามโมดูล — ต้องเคารพ access (ส่ง ctx.access เข้า tool หรือ extra-modules list) (2) `propose_plan`/executePlan ตรวจ `kindAllowedByAccess` ทุกขั้นก่อน claim (ไม่งั้นแผนรันครึ่งเดียวแล้ว FAILED) (3) route คีย์ API `/api/v1/ai/tools*` ส่ง access · ข้อเสนอประตู CRM ผ่านด่านระดับ
 - ต่อมา: identity.ts ปฏิเสธ zero-width/RTL + นับ grapheme · accessLevelGate ห่อ error เป็นไทย
+
+## J. คำตัดสินหลังรีวิว S1.6 (2 ผู้ตรวจ · 4 พ.ย. ~23Z)
+- **R-S1.6a** ข้อเสนอ/แผน PENDING ที่ `createdAt < addedAt` ของสมาชิก seeHistory=false = มองไม่เห็น (listPendingProposals · listPendingPlans · rejectProposal · executeProposal/executePlan ตอบเหมือนไม่มี)
+- **R-S1.6b** ข้อความระบบในห้อง (🔔/🔁) เขียน `authorUserId = "system"` (ไม่ใช่ null) · ไม่นับ unread (listRooms · mobile/conversations) · ไม่ป้อนเข้า history ของโมเดล
+- **R-S1.6c** สมาชิกที่ Membership `acceptedAt = null`: ไม่ได้ push (`roomPushRecipients(tenantId, roomId)` ใน members.ts = ผู้เปิด ∪ สมาชิกที่ accepted — worker ใช้ตัวนี้) · ไม่โผล่ใน listMembers · ไม่นับ cap · roomSightFor ไม่รวมห้องของ membership ที่ถูกถอน (ถอนแล้วเข้าไม่ได้อยู่แล้ว — บันทึกไว้)
+- **R-S1.6d** ข้อความ: OWNER เพิ่มตัวเอง = self ด้วยข้อความ "คุณเห็นทุกห้องอยู่แล้ว" · ผู้เปิดห้องออกเอง = forbidden "ผู้เปิดห้องออกไม่ได้ — ปิดห้องแทน" · เพิ่มซ้ำหลังถูกเอาออก = แถวใหม่ (seeHistory ตามที่เลือก) — จดใน D3
+- หนี้: ตอบหลังถูกเอาออกกลางทาง (re-check ก่อนบันทึก) · title/contextJson ของห้องเห็นได้โดยสมาชิก seeHistory=false (ยอมรับ · แจ้งใน D3) · event `ai.room.member_added` → ใบ S1.23 (notify) ส่ง push ผู้ถูกเพิ่ม

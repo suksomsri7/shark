@@ -117,6 +117,7 @@ try {
     const exS = await proposals.executeProposal(M("STAFF", kperm) as never, ctxT as never, pStaff.id, { userId: U.staff });
     const st1 = await prisma.aiProposal.findUnique({ where: { id: pStaff.id } });
     chk("G-1", "ห้อง AiRoom: STAFF (มีคีย์) กดอนุมัติ ⇒ ok:false note มี 'เจ้าของ' หรือ 'ผู้จัดการ' · คง PENDING · ไม่สร้างการ์ด", exS.ok === false && /เจ้าของ|ผู้จัดการ/.test(exS.note) && st1?.status === "PENDING" && (await prisma.kanbanCard.count({ where: { tenantId: tid, title: "การ์ดจากห้องเลขา" } })) === 0, `${JSON.stringify(exS)} st=${st1?.status}`);
+    await prisma.aiRoomMember.create({ data: { tenantId: tid, roomId: rS.roomId, userId: U.mgr, addedById: U.staff, seeHistory: true } }); // ORACLE-EDIT S1.7-G-2: ผู้จัดการต้องเห็นห้องก่อน (กติกา S1.4 G-6)
     const exM = await proposals.executeProposal(M("MANAGER") as never, ctxT as never, pStaff.id, { userId: U.mgr });
     const card1 = await prisma.kanbanCard.findFirst({ where: { tenantId: tid, title: "การ์ดจากห้องเลขา" } });
     chk("G-2", "ห้อง AiRoom: MANAGER กด ⇒ ok · การ์ดถูกสร้าง · EXECUTED", exM.ok === true && !!card1 && (await prisma.aiProposal.findUnique({ where: { id: pStaff.id } }))?.status === "EXECUTED", JSON.stringify(exM).slice(0, 160));

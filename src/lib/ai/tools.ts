@@ -36,13 +36,13 @@ import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { actorProblem, aiActorMembership, aiActorUserId, type AiActor } from "./actor";
 import { canSeeConversationId, memoryScopeOf, sightOf, type ConvSight } from "./conversation-owner";
 import { contactDataRefusal, findContactData } from "./contact-data";
-import { actorCanConfirmKind, toolVerdict } from "./tool-access";
+import { actorCanConfirmKind, kindAllowedByAccess, toolVerdict } from "./tool-access";
 import { contactWhere, crmApi } from "@/lib/modules/crm";
 import { visibleCustomerIds } from "@/lib/modules/member/service";
 import { toMemberActor } from "@/lib/modules/member/access";
 import { listPending as approvalListPending } from "@/lib/modules/approval/service";
 import { actorBranches, membershipCan } from "./tool-access";
-import type { AccessMap } from "./secretary/access-rules";
+import { levelVerdict, moduleOff, skippedSectionNote, type AccessMap } from "./secretary/access-rules";
 
 export type ToolCtx = {
   tenantId: string;
@@ -281,10 +281,14 @@ const growthRecommendations: AiTool = {
   },
   async execute(ctx) {
     const { tenantId } = ctx;
+    // S1.3b ▸ (รีวิว C1) อ่านข้ามโมดูล: สมาชิก (จำนวนลูกค้า) / POS (จำนวนบิล) ที่เจ้าของปิด ⇒ ไม่นับ + ไม่ใช้กติกาที่อาศัยตัวเลขนั้น + บอกว่าข้าม ◂
+    const memberOff = moduleOff(ctx.access, "member");
+    const posOff = moduleOff(ctx.access, "pos");
+    const skipped = [...(memberOff ? [skippedSectionNote("member")] : []), ...(posOff ? [skippedSectionNote("pos")] : [])];
     // metric ระดับร้าน (รวมทุกระบบย่อย) — ใช้ตัดสินใจเชิงเติบโต · อ่านตรงแบบเดียวกับ resolveSystem ใน proposals
     const [customers, posPaid, systems] = await Promise.all([
-      prisma.customer.count({ where: { tenantId } }),
-      prisma.posSale.count({ where: { tenantId, status: "PAID", docType: "SALE" } }),
+      memberOff ? Promise.resolve(0) : prisma.customer.count({ where: { tenantId } }),
+      posOff ? Promise.resolve(0) : prisma.posSale.count({ where: { tenantId, status: "PAID", docType: "SALE" } }),
       prisma.appSystem.findMany({ where: { tenantId }, select: { type: true } }),
     ]);
     const open = new Set<SystemType>(systems.map((s) => s.type));
@@ -311,13 +315,15 @@ const growthRecommendations: AiTool = {
       .filter((r) => r.when && !open.has(r.type))
       .map((r) => ({ ระบบ: r.type, ชื่อ: systemDef(r.type)?.label ?? r.type, เหตุผล: r.reason }));
 
+    const skipNote = skipped.length > 0 ? { ข้าม: skipped } : {};
     if (recs.length === 0) {
       return JSON.stringify({
         คำแนะนำ: [],
         สรุป: "ยังไม่มีคำแนะนำให้เปิดระบบเพิ่มตอนนี้ — ธุรกิจยังไม่ถึงเกณฑ์ หรือเปิดระบบที่จำเป็นครบแล้ว",
+        ...skipNote,
       });
     }
-    return JSON.stringify({ คำแนะนำ: recs });
+    return JSON.stringify({ คำแนะนำ: recs, ...skipNote });
   },
 };
 
@@ -968,6 +974,16 @@ const proposePlan: AiTool = {
     const denied = steps.find((st) => st.kind && isKnownKindName(st.kind) && !actorCanConfirmKind(ctx.actor, st.kind));
     if (denied) {
       return JSON.stringify({ error: `คุณไม่มีสิทธิ์ทำขั้นตอน "${denied.summary || denied.kind}" ในแผนนี้ — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน หรือให้ผู้มีสิทธิ์เป็นผู้สั่ง` });
+    }
+    // S1.3b ▸ (รีวิว C6) ระดับต่อระบบของร้าน: ทุกขั้นต้อง "ร่างให้อนุมัติ" — ระบบที่ปิด/ดูอย่างเดียว ⇒ ไม่สร้างแผน (ไม่งั้นแผนติดตอนกดทำ)
+    //   ไม่ส่ง access (ประตูเดิม) = เดิม · kind ที่ไม่รู้จักปล่อยให้ createPlan ปฏิเสธด้วยข้อความเดิม ◂
+    if (ctx.access) {
+      const access = ctx.access;
+      for (const st of steps) {
+        if (!st.kind || !isKnownKindName(st.kind)) continue;
+        const v = kindAllowedByAccess(access, st.kind);
+        if (!v.ok) return JSON.stringify({ error: `ขั้นตอน "${st.summary || st.kind}" ในแผนนี้ทำไม่ได้ — ${v.reason}` });
+      }
     }
     try {
       const p = await createPlan(
@@ -1821,11 +1837,15 @@ const financialSummary: AiTool = {
   },
   async execute(ctx) {
     const start = monthStartBkk();
+    // S1.3b ▸ (รีวิว C4) รายได้มาจากบิล POS — pos OFF ⇒ ไม่อ่านยอดขาย · ไม่คืนรายได้/กำไร (กำไรเผยรายได้) · บอกว่าข้าม ◂
+    const posOff = moduleOff(ctx.access, "pos");
     const [revAgg, expAgg] = await Promise.all([
-      prisma.posSale.aggregate({
-        where: { tenantId: ctx.tenantId, status: "PAID", docType: "SALE", createdAt: { gte: start } },
-        _sum: { grandTotalSatang: true },
-      }),
+      posOff
+        ? Promise.resolve(null)
+        : prisma.posSale.aggregate({
+            where: { tenantId: ctx.tenantId, status: "PAID", docType: "SALE", createdAt: { gte: start } },
+            _sum: { grandTotalSatang: true },
+          }),
       prisma.accountDocument.aggregate({
         where: {
           tenantId: ctx.tenantId,
@@ -1836,8 +1856,16 @@ const financialSummary: AiTool = {
         _sum: { grandTotal: true },
       }),
     ]);
-    const revenue = Math.round(revAgg._sum.grandTotalSatang ?? 0) / 100;
     const expense = Math.round(expAgg._sum.grandTotal ?? 0) / 100;
+    if (!revAgg) {
+      return JSON.stringify({
+        เดือน: dayKeyBangkok(start).slice(0, 7),
+        ...(expense === 0 ? { ข้อความ: "ยังไม่มีข้อมูลรายจ่ายเดือนนี้" } : { รายจ่ายบาท: expense }),
+        ข้าม: [skippedSectionNote("pos")],
+        หมายเหตุ: "ไม่ได้ดูรายได้จากยอดขายหน้าร้าน จึงสรุปกำไรไม่ได้ · ตัวเลขรายจ่ายเป็นประมาณการจากค่าใช้จ่ายที่บันทึกไว้ ไม่ใช่งบการเงินทางบัญชี",
+      });
+    }
+    const revenue = Math.round(revAgg._sum.grandTotalSatang ?? 0) / 100;
     if (revenue === 0 && expense === 0) {
       return JSON.stringify({ เดือน: dayKeyBangkok(start).slice(0, 7), ข้อความ: "ยังไม่มีข้อมูลการเงินเดือนนี้" });
     }
@@ -1928,6 +1956,9 @@ const customerPoints: AiTool = {
     },
   },
   async execute(ctx, args) {
+    // S1.3b ▸ (รีวิว C1) แต้มคือเนื้อหาทั้งหมดของเครื่องมือนี้ ⇒ point OFF = ปฏิเสธทั้งเครื่องมือ (ไม่ค้นสมาชิกเลย) ◂
+    const pointLevel = ctx.access ? levelVerdict(ctx.access, "point", false) : null;
+    if (pointLevel && !pointLevel.ok) return JSON.stringify({ error: pointLevel.reason });
     const query = String(asRecord(args).query ?? "").trim();
     if (!query) return JSON.stringify({ ข้อความ: "ยังไม่ได้ระบุชื่อ/เบอร์/รหัสสมาชิกของลูกค้า" });
     // CRM C5.5-G1 ▸ เฉพาะสมาชิกที่ผู้ถามมองเห็น (ไม่เห็น = "ไม่พบ" เหมือนหน้าสมาชิก ไม่บอกว่ามีอยู่) ◂
@@ -1975,20 +2006,35 @@ const upcomingSchedule: AiTool = {
     //   ความหมายเดียวกัน (unitWhere) · วันลาต้องมี `hr.leave.read` เพิ่ม (calendar/service ตัวเดียวกัน) — ไม่มี = ไม่ดึงเลย ◂
     const lm = aiActorMembership(ctx.actor);
     const seesLeaves = ctx.actor.kind === "apiKey" || (!!lm && membershipCan(lm, { module: "hr", action: "hr.leave.read" }));
+    // S1.3b ▸ (รีวิว C1 D2) อ่านข้ามโมดูล: นัดหมาย (booking) · เข้าพัก (hotel) · วันลา (hr) ที่เจ้าของปิด ⇒ ไม่ดึงส่วนนั้น + บอกว่าข้าม
+    //   (ไม่ปฏิเสธทั้งเครื่องมือ — ส่วนที่เหลือยังตอบได้) ◂
+    const offBooking = moduleOff(ctx.access, "booking");
+    const offHotel = moduleOff(ctx.access, "hotel");
+    const offHr = moduleOff(ctx.access, "hr");
+    const skipped = [
+      ...(offBooking ? [skippedSectionNote("booking")] : []),
+      ...(offHotel ? [skippedSectionNote("hotel")] : []),
+      ...(offHr ? [skippedSectionNote("hr")] : []),
+    ];
+    const skipNote = skipped.length > 0 ? { ข้าม: skipped } : {};
     const [appts, stays, leaves] = await Promise.all([
-      prisma.appointment.findMany({
-        where: { tenantId: ctx.tenantId, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
-        orderBy: { startAt: "asc" },
-        take: 50,
-        include: { service: { select: { name: true } } },
-      }),
-      prisma.hotelReservation.findMany({
-        where: { tenantId: ctx.tenantId, status: { not: "CANCELLED" }, checkInDate: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
-        orderBy: { checkInDate: "asc" },
-        take: 50,
-        include: { roomType: { select: { name: true } } },
-      }),
-      seesLeaves
+      offBooking
+        ? Promise.resolve([])
+        : prisma.appointment.findMany({
+            where: { tenantId: ctx.tenantId, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
+            orderBy: { startAt: "asc" },
+            take: 50,
+            include: { service: { select: { name: true } } },
+          }),
+      offHotel
+        ? Promise.resolve([])
+        : prisma.hotelReservation.findMany({
+            where: { tenantId: ctx.tenantId, status: { not: "CANCELLED" }, checkInDate: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
+            orderBy: { checkInDate: "asc" },
+            take: 50,
+            include: { roomType: { select: { name: true } } },
+          }),
+      seesLeaves && !offHr
         ? prisma.hrLeave.findMany({
             where: { tenantId: ctx.tenantId, status: { in: ["PENDING", "APPROVED"] }, fromDate: { gte: from, lt: to } },
             orderBy: { fromDate: "asc" },
@@ -1998,7 +2044,7 @@ const upcomingSchedule: AiTool = {
         : Promise.resolve([]),
     ]);
     if (appts.length === 0 && stays.length === 0 && leaves.length === 0) {
-      return JSON.stringify({ ข้อความ: `ยังไม่มีนัด/เข้าพัก/วันลา ในช่วง ${days} วันข้างหน้า` });
+      return JSON.stringify({ ข้อความ: `ยังไม่มีนัด/เข้าพัก/วันลา ในช่วง ${days} วันข้างหน้า`, ...skipNote });
     }
     const timeBkk = (d: Date) =>
       d.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "short", timeStyle: "short" });
@@ -2007,6 +2053,7 @@ const upcomingSchedule: AiTool = {
       นัดหมาย: appts.map((a) => ({ เมื่อ: timeBkk(a.startAt), บริการ: a.service?.name ?? "นัดหมาย", ลูกค้า: a.customerName })),
       การเข้าพัก: stays.map((r) => ({ เช็คอิน: safeDate(r.checkInDate), ห้อง: r.roomType?.name ?? "ห้องพัก", ผู้เข้าพัก: r.guestName })),
       วันลา: leaves.map((l) => ({ ตั้งแต่: safeDate(l.fromDate), ถึง: safeDate(l.toDate), พนักงาน: l.employee?.name ?? "พนักงาน", ประเภท: l.type })),
+      ...skipNote,
     });
   },
 };

@@ -1,7 +1,7 @@
 // identity.ts — ตัวตนเลขา (ชื่อ · คำลงท้าย · น้ำเสียง · ภาษา) ส่วน pure (S1.2)
 //
 // ไฟล์นี้ไม่ import อะไรเลย (persona.ts ใช้ได้โดยไม่ลากฐานข้อมูลเข้ากราฟ) — ส่วนฐานข้อมูลอยู่ที่ ./secretary.ts
-// กติกา: ค่าทุกตัวเป็น "ค่าตั้งของผู้ใช้" ไม่ใช่คำสั่ง — ตรวจรูปแบบที่นี่ก่อนเขียนลงฐาน (ชื่อยาวไม่เกิน 30 ตัว ไม่มีอักขระควบคุม)
+// กติกา: ค่าทุกตัวเป็น "ค่าตั้งของผู้ใช้" ไม่ใช่คำสั่ง — ตรวจรูปแบบที่นี่ก่อนเขียนลงฐาน (ชื่อยาวไม่เกิน 30 grapheme ไม่มีอักขระควบคุม/มองไม่เห็น)
 
 export const SECRETARY_DEFAULT = { name: "Shark", suffix: "ครับ", tone: "polite", languages: ["th"] } as const;
 export const TONES = ["polite", "friendly", "brief"] as const; // สุภาพ · เป็นกันเอง · สั้นกระชับ
@@ -23,9 +23,26 @@ const TONE_RULE: Record<Tone, string> = {
 };
 
 // อักขระควบคุม (ขึ้นบรรทัดใหม่ · tab · ฯลฯ) — ห้ามอยู่ในชื่อ/คำลงท้าย (ค่าพวกนี้ไปอยู่ใน system prompt)
+// S1.3b ▸ (รีวิว C8 D4) + อักขระที่มองไม่เห็น/กลับทิศ: zero-width U+200B–U+200F · ทิศทาง U+202A–U+202E · U+2060–U+2069 · BOM U+FEFF
+//   (ชื่อที่ "ดูเหมือนว่าง" หรือกลับทิศข้อความใน prompt/หน้าจอ) ◂
 // eslint-disable-next-line no-control-regex
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
-const len = (s: string) => [...s].length;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
+const CONTROL_ALL = new RegExp(CONTROL.source, "g");
+/** ชื่อต้องมีตัวอักษรหรือตัวเลขอย่างน้อย 1 ตัว (ไม่ใช่จุด/สัญลักษณ์ล้วน) */
+const HAS_LETTER = /[\p{L}\p{N}]/u;
+
+// S1.3b ▸ (D5) นับความยาวเป็น grapheme (ตัวที่คนเห็น) — "ที่" = 1 ตัว ไม่ใช่ 3 code point ◂
+type GraphemeSegmenter = { segment(s: string): Iterable<{ segment: string }> };
+let segmenter: GraphemeSegmenter | null | undefined;
+function graphemes(s: string): string[] {
+  if (segmenter === undefined) {
+    const Seg = (Intl as unknown as { Segmenter?: new (loc: string, o: { granularity: "grapheme" }) => GraphemeSegmenter }).Segmenter;
+    segmenter = Seg ? new Seg("th", { granularity: "grapheme" }) : null;
+  }
+  return segmenter ? Array.from(segmenter.segment(s), (x) => x.segment) : [...s];
+}
+const len = (s: string) => graphemes(s).length;
+const clampText = (s: string, max: number) => graphemes(s.replace(CONTROL_ALL, "")).slice(0, max).join("").trim();
 
 export const isTone = (v: unknown): v is Tone => typeof v === "string" && (TONES as readonly string[]).includes(v);
 export const isLanguage = (v: unknown): v is Language => typeof v === "string" && (LANGUAGES as readonly string[]).includes(v);
@@ -41,15 +58,16 @@ export function normalizeIdentityPatch(patch: Record<string, unknown>): Partial<
   const out: Partial<SecretaryIdentity> = {};
   if (patch.name !== undefined) {
     if (typeof patch.name !== "string") throw new Error("ชื่อเลขาต้องเป็นข้อความ");
-    if (CONTROL.test(patch.name)) throw new Error("ชื่อเลขาต้องอยู่บรรทัดเดียว ห้ามขึ้นบรรทัดใหม่");
+    if (CONTROL.test(patch.name)) throw new Error("ชื่อเลขาต้องอยู่บรรทัดเดียว และห้ามมีอักขระที่มองไม่เห็น — พิมพ์ใหม่ด้วยตัวอักษรปกติ");
     const name = patch.name.trim();
     if (len(name) < 1) throw new Error("กรุณาตั้งชื่อเลขาอย่างน้อย 1 ตัวอักษร");
+    if (!HAS_LETTER.test(name)) throw new Error("ชื่อเลขาต้องมีตัวอักษรหรือตัวเลขอย่างน้อย 1 ตัว");
     if (len(name) > NAME_MAX) throw new Error(`ชื่อเลขายาวได้ไม่เกิน ${NAME_MAX} ตัวอักษร`);
     out.name = name;
   }
   if (patch.suffix !== undefined) {
     if (typeof patch.suffix !== "string") throw new Error("คำลงท้ายต้องเป็นข้อความ");
-    if (CONTROL.test(patch.suffix)) throw new Error("คำลงท้ายต้องอยู่บรรทัดเดียว ห้ามขึ้นบรรทัดใหม่");
+    if (CONTROL.test(patch.suffix)) throw new Error("คำลงท้ายต้องอยู่บรรทัดเดียว และห้ามมีอักขระที่มองไม่เห็น");
     const suffix = patch.suffix.trim();
     if (len(suffix) > SUFFIX_MAX) throw new Error(`คำลงท้ายยาวได้ไม่เกิน ${SUFFIX_MAX} ตัวอักษร`);
     out.suffix = suffix;
@@ -69,12 +87,17 @@ export function normalizeIdentityPatch(patch: Record<string, unknown>): Partial<
   return out;
 }
 
-/** แถว/ค่าดิบ → ตัวตนที่ใช้ได้เสมอ (ค่าที่เพี้ยนในฐาน = ค่าเริ่มต้นของช่องนั้น) */
+/**
+ * แถว/ค่าดิบ → ตัวตนที่ใช้ได้เสมอ (ค่าที่เพี้ยนในฐาน = ค่าเริ่มต้นของช่องนั้น)
+ * S1.3b ▸ (C8) clamp แถวที่เขียนด้วยทางอื่น (ไม่ผ่าน normalizeIdentityPatch): ตัดอักขระควบคุม/มองไม่เห็น + จำกัดความยาวเป็น grapheme ·
+ *   ชื่อที่เหลือไม่มีตัวอักษร/ตัวเลข = ชื่อเริ่มต้น ◂
+ */
 export function identityOf(row: { name: string; suffix: string; tone: string; languages: string[] }): SecretaryIdentity {
   const langs = [...new Set(row.languages.filter(isLanguage))];
+  const name = clampText(String(row.name ?? ""), NAME_MAX);
   return {
-    name: row.name.trim() || SECRETARY_DEFAULT.name,
-    suffix: row.suffix,
+    name: name && HAS_LETTER.test(name) ? name : SECRETARY_DEFAULT.name,
+    suffix: clampText(String(row.suffix ?? ""), SUFFIX_MAX),
     tone: isTone(row.tone) ? row.tone : SECRETARY_DEFAULT.tone,
     languages: langs.length > 0 ? langs : [...SECRETARY_DEFAULT.languages],
   };

@@ -391,6 +391,10 @@ export async function executeProposal(
     (row.kind === "crm_create_lead" && crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) ||
     (row.kind.startsWith("crm.") && typeof payloadObj.requestedByUserId === "string" && payloadObj.requestedByUserId.length > 0)
   ) {
+    // S1.3b ▸ (รีวิว C7) ด่านระดับต่อระบบมาก่อนประตู CRM — crm OFF/READ ⇒ คง PENDING (เจ้าของเปิดระดับแล้วกดใหม่ได้) ·
+    //   kind ของประตูที่ไม่มีใน KIND_ACCESS (crm.assist.tasks · crm.activity.ai_fill) ตรวจด้วยโมดูล crm ◂
+    const doorLevel = await accessLevelGate(ctx.tenantId, row.kind, "crm");
+    if (!doorLevel.ok) return { ok: false, note: doorLevel.reason };
     if (!opts?.userId) return { ok: false, note: "ต้องรู้ตัวผู้กดยืนยันก่อนจึงจะทำรายการของ CRM ได้ — เปิดจากหน้าแอปแล้วลองอีกครั้ง" };
     const r = await crmSvc.aiBridges.confirmProposalById(ctx.tenantId, { userId: opts.userId, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, id, { confirm2x: opts?.confirm2x === true });
     return { ok: r.ok, note: r.note };
@@ -552,9 +556,17 @@ async function secRecordAction(input: { tenantId: string; conversationId: string
 
 // SEC S1.3 ▸ ด่านระดับต่อระบบตอนลงมือ (executeProposal · runKind) — import ตอนเรียก: secretary/access → tool-access → ไฟล์นี้
 //   (import บนหัวไฟล์ = วงโหลด) · ไม่มีแถว AiSystemAccess = ทุกโมดูล DRAFT ⇒ ผ่านเสมอ (พฤติกรรมเดิม) ◂
-async function accessLevelGate(tenantId: string, kind: string): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const { getAccess, kindAllowedByAccess } = await import("./secretary/access");
-  return kindAllowedByAccess(await getAccess(tenantId), kind);
+// S1.3b ▸ (D6) อ่านฐานไม่ได้ ⇒ ปฏิเสธด้วยข้อความไทย (ไม่ปล่อยข้อความของ Prisma ออกไปถึงผู้ใช้ · ไม่ลงมือ = ปิดไว้ก่อน) ·
+//   `fallbackModule` = kind ที่ไม่มีใน KIND_ACCESS แต่รู้ว่าเป็นของโมดูลไหน (ประตู CRM) ◂
+async function accessLevelGate(tenantId: string, kind: string, fallbackModule?: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    const { getAccess, kindAllowedByAccess, levelVerdict } = await import("./secretary/access");
+    const access = await getAccess(tenantId);
+    if (fallbackModule && !kindAccessOf(kind)) return levelVerdict(access, fallbackModule, true);
+    return kindAllowedByAccess(access, kind);
+  } catch {
+    return { ok: false, reason: "ตรวจสิทธิ์ของเลขาไม่ได้ชั่วคราว ลองใหม่อีกครั้ง" };
+  }
 }
 
 // ── dispatch ตาม kind → service เดิม (คืนข้อความผลลัพธ์ภาษาไทย) ──

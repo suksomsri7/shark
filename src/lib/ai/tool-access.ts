@@ -143,7 +143,7 @@ export const HAND_ACTION_KIND: Readonly<Record<string, string>> = {
  * SEC S1.3 ▸ เครื่องมือเขียนมือที่ไม่มีคีย์สิทธิ์ (needs ว่าง) แต่อ่านข้อมูลของโมดูลหนึ่ง → โมดูลนั้น (ใช้กับระดับต่อระบบเท่านั้น
  *   ไม่เปลี่ยนด่าน membership) · ไม่อยู่ที่นี่และ needs ว่าง = แกนกลาง (list_systems · ask_clarify · ความจำ · เปิดเคส · คำแนะนำการเติบโต) ◂
  */
-const HAND_TOOL_MODULE: Readonly<Record<string, string>> = {
+export const HAND_TOOL_MODULE: Readonly<Record<string, string>> = {
   low_stock: "inventory",
   pending_leaves: "hr",
   kb_search: "kb",
@@ -157,6 +157,27 @@ const HAND_TOOL_MODULE: Readonly<Record<string, string>> = {
   approvals_pending: "approval",
   recent_leads: "crm",
 };
+
+/**
+ * S1.3b ▸ (รีวิว C3) เครื่องมือแกนกลางที่ประกาศชัด — ไม่แตะข้อมูลของโมดูลใด ⇒ ระดับต่อระบบไม่ตัด (`toolModuleOf` = null)
+ *   เครื่องมือเขียนมือที่ `needs` ว่างต้องอยู่ที่นี่ หรือใน HAND_TOOL_MODULE — ไม่อยู่ทั้งคู่ = "__unmapped__" ⇒ `accessVerdict` ปฏิเสธ (ปิดไว้ก่อน)
+ *   growth_recommendations: ส่วนที่อ่านลูกค้า/บิลตัดในตัวเครื่องมือตาม TOOL_EXTRA_MODULES (access-rules.ts)
+ *   propose_plan / load_skill อยู่ในรายการเพื่อให้ทะเบียนครบ (propose_plan ตรวจระดับรายขั้น · load_skill เป็นของชั้น service) ◂
+ */
+export const HAND_TOOL_CORE: ReadonlySet<string> = new Set([
+  "ask_clarify",
+  "list_systems",
+  "propose_plan",
+  "load_skill",
+  "remember_fact",
+  "forget_fact",
+  "list_memories",
+  "support_open_case",
+  "growth_recommendations",
+]);
+
+/** S1.3b ▸ โมดูลของเครื่องมือที่ไม่มีใครประกาศ — ไม่อยู่ใน AI_MODULES/ALWAYS_ON ⇒ `levelVerdict` ปฏิเสธเสมอ ◂ */
+export const UNMAPPED_TOOL_MODULE = "__unmapped__";
 
 /** `propose_plan` — ยื่นให้ทุกคน · แต่ละขั้นตรวจด้วย kind ของขั้นนั้นใน tools.ts (`actorCanConfirmKind`) */
 export const PLAN_TOOL = "propose_plan";
@@ -324,12 +345,21 @@ export function toolsOfferedTo(actor: AiActor, names: readonly string[], access?
 
 const has = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
-/** โมดูลที่เครื่องมือนี้แตะ · null = แกนกลาง (ไม่ถูกตัดด้วยระดับ) */
+/**
+ * โมดูลที่เครื่องมือนี้แตะ · null = แกนกลาง (ไม่ถูกตัดด้วยระดับ)
+ * S1.3b ▸ ชื่อที่ไม่ได้ประกาศที่ใดเลย (hand tool needs ว่างที่ไม่อยู่ใน CORE/MODULE · kind ไม่รู้จัก · ชื่อแปลก) = "__unmapped__" (ปิดไว้ก่อน) ◂
+ */
 export function toolModuleOf(name: string): string | null {
-  if (has(HAND_TOOL_ACCESS, name)) return HAND_TOOL_MODULE[name] ?? HAND_TOOL_ACCESS[name].needs[0]?.module ?? null;
-  if (has(HAND_ACTION_KIND, name)) return kindAccessOf(HAND_ACTION_KIND[name])?.module ?? null;
-  if (name === PLAN_TOOL) return null; // แต่ละขั้นตรวจระดับตอนรัน (runKind)
-  return moduleToolQuery(name)?.module ?? null;
+  if (has(HAND_TOOL_ACCESS, name)) {
+    if (has(HAND_TOOL_MODULE, name)) return HAND_TOOL_MODULE[name];
+    const first = HAND_TOOL_ACCESS[name].needs[0]?.module;
+    if (first) return first;
+    return HAND_TOOL_CORE.has(name) ? null : UNMAPPED_TOOL_MODULE;
+  }
+  if (has(HAND_ACTION_KIND, name)) return kindAccessOf(HAND_ACTION_KIND[name])?.module ?? UNMAPPED_TOOL_MODULE;
+  if (name === PLAN_TOOL) return null; // แต่ละขั้นตรวจระดับตอนเสนอ (tools.ts propose_plan) + ก่อน claim (plans.ts) + ตอนรัน (runKind)
+  if (HAND_TOOL_CORE.has(name)) return null; // load_skill (ชั้น service)
+  return moduleToolQuery(name)?.module ?? UNMAPPED_TOOL_MODULE;
 }
 
 /** เครื่องมือของทะเบียน op ที่เป็นการเขียน (op.kind ≠ read) · null = ไม่ใช่เครื่องมือของทะเบียน */
@@ -350,7 +380,12 @@ export function toolIsWrite(name: string): boolean {
 
 /** ระดับของร้านยอมให้ใช้เครื่องมือนี้ไหม (OFF = ปฏิเสธ · READ + เขียน = ปฏิเสธ) · โมดูลที่สองที่เครื่องมืออ่านมาประกอบ (แชท) ต้องไม่ OFF */
 export function accessVerdict(access: AccessMap, name: string): ToolVerdict {
-  const main = levelVerdict(access, toolModuleOf(name), toolIsWrite(name));
+  const module = toolModuleOf(name);
+  if (module === UNMAPPED_TOOL_MODULE) {
+    // S1.3b ▸ (C3) ไม่รู้ว่าเครื่องมือนี้แตะระบบไหน ⇒ ไม่ให้ใช้เมื่อร้านตั้งระดับต่อระบบ (ปิดไว้ก่อน) ◂
+    return { ok: false, reason: `เครื่องมือ "${name}" ยังไม่ได้ระบุว่าแตะระบบใดของร้าน จึงยังให้เลขาใช้ไม่ได้ — แจ้งทีมงาน SHARK ได้ที่เมนูช่วยเหลือ` };
+  }
+  const main = levelVerdict(access, module, toolIsWrite(name));
   if (!main.ok) return main;
   for (const q of EXTRA_MODULE_TOOL_NEEDS[name] ?? []) {
     const extra = levelVerdict(access, q.module, false);
