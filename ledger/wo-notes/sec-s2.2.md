@@ -83,3 +83,9 @@ bash scripts/iso.sh node apps/mobile/qc/shots-sec/s2.2-interaction/README-click.
 
 ## ต่อจากนี้ (ถ้า restart)
 แก้จอแล้ว: รันบล็อก §6 (export ใหม่) → `bash scripts/iso.sh env QC_FORCE=1 SPEC=scripts/qc-sec-specs/s2.2.json pnpm exec tsx scripts/qc-sec-screen.mts`
+
+## 9. แก้ตามผู้คุม (หลังดูภาพคู่) — ช่องสั่งงานล่างทับการ์ดสุดท้าย
+- `secretary/index.tsx`: `LIST_BOTTOM = size.inputH + INPUT_BOTTOM + cardGap` · `paddingBottom: LIST_BOTTOM + insets.bottom` (ใช้ทั้ง A1 และ C3 — ScrollView เดียวกัน)
+- วัดจริงตอนเลื่อนสุด (`s2.2-interaction/README-scroll.mjs.txt`): การ์ดสุดท้าย bottom 750 · ช่องสั่งงาน top 762 ⇒ ห่าง 12 = cardGap (สว่าง+มืด) · ภาพ `s2.2-interaction/a1-scrolled-end.png` · `a1-scrolled-end-dark.png`
+- ถ่ายใหม่ `/secretary` สองธีม (s2.2 + s2.2-empty) · ภาพคู่ใหม่ `shots-sec/secretary-a1-pair.png` · `secretary-dark-a1-pair.png` (+ `s2.2-empty/secretary{,-dark}-c3-pair.png`) — ภาพที่ตำแหน่งเลื่อน 0 ยังเห็นช่องลอยเหนือการ์ดที่ 4–5 เพราะ 5 การ์ดยาวเกินจอ (ปกติของรายการเลื่อน)
+- spec oracle forced: `JSON_SUMMARY {"total":11,"passed":11,"failed":[],"skipped":[],"findings":[]}` exit 0 · `qc-sec-s2.1` forced 14/14 exit 0

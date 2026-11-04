@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T20:29:47.793Z",
+ "generatedAt": "2026-11-04T20:39:24.019Z",
  "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
@@ -1063,6 +1063,62 @@
    "generatedAt": "2026-11-04T20:27:31.443Z"
   },
   {
+   "name": "secretary-new",
+   "route": "/secretary/new",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-new",
+    "sec-new-close",
+    "sec-new-input",
+    "sec-new-send",
+    "sec-new-suggestion",
+    "sec-new-suggestion-follow_quiet",
+    "sec-new-suggestion-reorder",
+    "sec-new-frequent",
+    "sec-new-frequent-0",
+    "sec-new-system"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nเริ่มงานใหม่\nThe Bean Café\nสวัสดีครับคุณสุข ให้ Shark ช่วยอะไรดี\nสั่งเป็นภาษาพูดได้เลย ทำในระบบ SHARK ให้ทั้งหมด\nShark เสนอจากข้อมูลวันนี้ · ไม่เริ่มจนกว่าคุณกดส่ง\nCRM\nมีดีล 3 รายการเงียบเกิน 14 วัน\nช่วยร่างข้อความตามลูกค้า 3 รายที่เงียบเกิน 14 วัน แล้วเสนอให้ผมดูก่อนส่ง\n\nสต็อก\nเมล็ดกาแฟเอธิโอเปียเหลือ 2 กก.\nช่วยร่างใบสั่งซื้อเมล็ดกาแฟถึงซัพพลายเออร์เดิม ให้ผมตรวจก่อนส่ง\n\nงานที่สั่งบ่อย\nสรุปยอดขายเมื่อวาน\nใบเสนอราคา\nตามลูกค้าเงียบ\nเช็กคิวพรุ่งนี้\nค้างชำระหอพัก\nโพสต์โปรเดือนนี้\nระบบที่ Shark เข้าถึงได้ในกิจการนี้\nPOS\nCRM\nจองคิว\nหอพัก\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท LINE/FB\n\n",
+   "unmocked": [],
+   "url": "/secretary/new",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new.png",
+   "generatedAt": "2026-11-04T20:29:39.876Z"
+  },
+  {
+   "name": "secretary-new-dark",
+   "route": "/secretary/new",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-new",
+    "sec-new-close",
+    "sec-new-input",
+    "sec-new-send",
+    "sec-new-suggestion",
+    "sec-new-suggestion-follow_quiet",
+    "sec-new-suggestion-reorder",
+    "sec-new-frequent",
+    "sec-new-frequent-0",
+    "sec-new-system"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nเริ่มงานใหม่\nThe Bean Café\nสวัสดีครับคุณสุข ให้ Shark ช่วยอะไรดี\nสั่งเป็นภาษาพูดได้เลย ทำในระบบ SHARK ให้ทั้งหมด\nShark เสนอจากข้อมูลวันนี้ · ไม่เริ่มจนกว่าคุณกดส่ง\nCRM\nมีดีล 3 รายการเงียบเกิน 14 วัน\nช่วยร่างข้อความตามลูกค้า 3 รายที่เงียบเกิน 14 วัน แล้วเสนอให้ผมดูก่อนส่ง\n\nสต็อก\nเมล็ดกาแฟเอธิโอเปียเหลือ 2 กก.\nช่วยร่างใบสั่งซื้อเมล็ดกาแฟถึงซัพพลายเออร์เดิม ให้ผมตรวจก่อนส่ง\n\nงานที่สั่งบ่อย\nสรุปยอดขายเมื่อวาน\nใบเสนอราคา\nตามลูกค้าเงียบ\nเช็กคิวพรุ่งนี้\nค้างชำระหอพัก\nโพสต์โปรเดือนนี้\nระบบที่ Shark เข้าถึงได้ในกิจการนี้\nPOS\nCRM\nจองคิว\nหอพัก\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท LINE/FB\n\n",
+   "unmocked": [],
+   "url": "/secretary/new",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new-dark.png",
+   "generatedAt": "2026-11-04T20:29:47.674Z"
+  },
+  {
    "name": "secretary",
    "route": "/secretary",
    "dark": false,
@@ -1097,35 +1153,7 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary.png",
-   "generatedAt": "2026-11-04T20:29:36.117Z"
-  },
-  {
-   "name": "secretary-new",
-   "route": "/secretary/new",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-new",
-    "sec-new-close",
-    "sec-new-input",
-    "sec-new-send",
-    "sec-new-suggestion",
-    "sec-new-suggestion-follow_quiet",
-    "sec-new-suggestion-reorder",
-    "sec-new-frequent",
-    "sec-new-frequent-0",
-    "sec-new-system"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nเริ่มงานใหม่\nThe Bean Café\nสวัสดีครับคุณสุข ให้ Shark ช่วยอะไรดี\nสั่งเป็นภาษาพูดได้เลย ทำในระบบ SHARK ให้ทั้งหมด\nShark เสนอจากข้อมูลวันนี้ · ไม่เริ่มจนกว่าคุณกดส่ง\nCRM\nมีดีล 3 รายการเงียบเกิน 14 วัน\nช่วยร่างข้อความตามลูกค้า 3 รายที่เงียบเกิน 14 วัน แล้วเสนอให้ผมดูก่อนส่ง\n\nสต็อก\nเมล็ดกาแฟเอธิโอเปียเหลือ 2 กก.\nช่วยร่างใบสั่งซื้อเมล็ดกาแฟถึงซัพพลายเออร์เดิม ให้ผมตรวจก่อนส่ง\n\nงานที่สั่งบ่อย\nสรุปยอดขายเมื่อวาน\nใบเสนอราคา\nตามลูกค้าเงียบ\nเช็กคิวพรุ่งนี้\nค้างชำระหอพัก\nโพสต์โปรเดือนนี้\nระบบที่ Shark เข้าถึงได้ในกิจการนี้\nPOS\nCRM\nจองคิว\nหอพัก\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท LINE/FB\n\n",
-   "unmocked": [],
-   "url": "/secretary/new",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new.png",
-   "generatedAt": "2026-11-04T20:29:39.876Z"
+   "generatedAt": "2026-11-04T20:39:19.567Z"
   },
   {
    "name": "secretary-dark",
@@ -1162,35 +1190,7 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-dark.png",
-   "generatedAt": "2026-11-04T20:29:43.914Z"
-  },
-  {
-   "name": "secretary-new-dark",
-   "route": "/secretary/new",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-new",
-    "sec-new-close",
-    "sec-new-input",
-    "sec-new-send",
-    "sec-new-suggestion",
-    "sec-new-suggestion-follow_quiet",
-    "sec-new-suggestion-reorder",
-    "sec-new-frequent",
-    "sec-new-frequent-0",
-    "sec-new-system"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nเริ่มงานใหม่\nThe Bean Café\nสวัสดีครับคุณสุข ให้ Shark ช่วยอะไรดี\nสั่งเป็นภาษาพูดได้เลย ทำในระบบ SHARK ให้ทั้งหมด\nShark เสนอจากข้อมูลวันนี้ · ไม่เริ่มจนกว่าคุณกดส่ง\nCRM\nมีดีล 3 รายการเงียบเกิน 14 วัน\nช่วยร่างข้อความตามลูกค้า 3 รายที่เงียบเกิน 14 วัน แล้วเสนอให้ผมดูก่อนส่ง\n\nสต็อก\nเมล็ดกาแฟเอธิโอเปียเหลือ 2 กก.\nช่วยร่างใบสั่งซื้อเมล็ดกาแฟถึงซัพพลายเออร์เดิม ให้ผมตรวจก่อนส่ง\n\nงานที่สั่งบ่อย\nสรุปยอดขายเมื่อวาน\nใบเสนอราคา\nตามลูกค้าเงียบ\nเช็กคิวพรุ่งนี้\nค้างชำระหอพัก\nโพสต์โปรเดือนนี้\nระบบที่ Shark เข้าถึงได้ในกิจการนี้\nPOS\nCRM\nจองคิว\nหอพัก\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท LINE/FB\n\n",
-   "unmocked": [],
-   "url": "/secretary/new",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new-dark.png",
-   "generatedAt": "2026-11-04T20:29:47.674Z"
+   "generatedAt": "2026-11-04T20:39:23.824Z"
   }
  ]
 }

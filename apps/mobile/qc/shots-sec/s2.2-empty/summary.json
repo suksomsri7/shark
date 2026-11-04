@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T20:31:31.309Z",
+ "generatedAt": "2026-11-04T20:39:33.200Z",
  "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
@@ -42,7 +42,7 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.2-empty/secretary.png",
-   "generatedAt": "2026-11-04T20:31:28.390Z"
+   "generatedAt": "2026-11-04T20:39:29.158Z"
   },
   {
    "name": "secretary-dark",
@@ -74,7 +74,7 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.2-empty/secretary-dark.png",
-   "generatedAt": "2026-11-04T20:31:31.183Z"
+   "generatedAt": "2026-11-04T20:39:33.058Z"
   }
  ]
 }

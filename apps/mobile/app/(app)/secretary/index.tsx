@@ -29,12 +29,14 @@ import {
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { radii, size, spacing, type as T } from "@/src/theme/tokens";
+import { cardGap, radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 /** ระยะล่างของช่องสั่งงาน (เหนือขอบจอ) */
 const INPUT_BOTTOM = 26;
 const POLL_MS = 15_000;
 const SEARCH_H = size.iconBtn;
+/** ระยะท้ายรายการ (A1 + C3) = ความสูงช่องสั่งงาน + ระยะล่างของช่อง + cardGap ⇒ การ์ด/ข้อเสนอสุดท้ายเลื่อนขึ้นพ้นช่องได้ทั้งใบ */
+const LIST_BOTTOM = size.inputH + INPUT_BOTTOM + cardGap;
 
 /** ข้อเสนอตั้งต้นของ C3 เมื่อ secretary/suggestions ไม่มี/พลาด (ข้อความใน i18n) */
 const FALLBACK: { id: "s1" | "s2" | "s3"; system: string }[] = [
@@ -170,7 +172,7 @@ export default function SecretaryHome() {
     <AiryScreen testID="sec-secretary">
       <ScrollView
         testID="sec-home"
-        contentContainerStyle={[styles.page, { paddingBottom: size.inputH + INPUT_BOTTOM + insets.bottom + spacing.xl }]}
+        contentContainerStyle={[styles.page, { paddingBottom: LIST_BOTTOM + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={c.textMuted} />}
