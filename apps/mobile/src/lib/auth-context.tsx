@@ -34,7 +34,8 @@ export type TenantRow = {
     navTone: "LIGHT" | "BRAND" | "DARK";
   } | null;
 };
-type Me = { user: { id: string; email: string; name: string | null }; memberships: TenantRow[] };
+// phone: null = บัญชีเดิมยังไม่ผูกเบอร์ → ยามพาไป /phone (R8 · S2.12) · ไม่มีฟิลด์ (server เก่า) = ไม่บังคับ
+type Me = { user: { id: string; email: string; name: string | null; phone?: string | null; pendingEmail?: string | null }; memberships: TenantRow[] };
 
 type AuthState = {
   ready: boolean; // bootstrap จาก SecureStore เสร็จหรือยัง (ก่อน ready อย่าเพิ่ง redirect)

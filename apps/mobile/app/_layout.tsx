@@ -10,7 +10,7 @@ import { C } from "@/src/theme";
 
 
 function Gate({ children }: { children: React.ReactNode }) {
-  const { ready, token, tenants } = useAuth();
+  const { ready, token, tenants, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -19,8 +19,14 @@ function Gate({ children }: { children: React.ReactNode }) {
     const inApp = segments[0] === "(app)";
     const atLogin = segments[0] === "login";
     const atDna = segments[0] === "dna";
+    // S2.12: สมัคร/OTP เปิดได้โดยยังไม่ login · R8: มี token แต่ /me ไม่มีเบอร์ → /phone ก่อนตรวจร้าน (ไม่มีทางผ่าน)
+    const atSignup = segments[0] === "signup" || segments[0] === "otp";
     if (!token) {
-      if (!atLogin) router.replace("/login");
+      if (!atLogin && !atSignup) router.replace("/login");
+      return;
+    }
+    if (user?.phone === null) {
+      if (segments[0] !== "phone") router.replace("/phone");
       return;
     }
     if (tenants.length === 0) {
@@ -29,7 +35,7 @@ function Gate({ children }: { children: React.ReactNode }) {
       return;
     }
     if (atLogin || (!inApp && !atDna)) router.replace("/(app)");
-  }, [ready, token, tenants.length, segments, router]);
+  }, [ready, token, tenants.length, user?.phone, segments, router]);
 
   return <>{children}</>;
 }
