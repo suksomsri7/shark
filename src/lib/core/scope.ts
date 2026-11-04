@@ -205,6 +205,24 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AiScheduledTask: tenant,
   AiFeedback: tenant,
   AiPromptTweak: { axis: "platform", why: "ปรับ prompt AI ระดับแพลตฟอร์ม (ทุกร้าน) — เข้าผ่าน src/lib/platform เท่านั้น" }, // Phase 3.5 — ข้อเสนอการกระทำ (WO-0020)
+  // เลขา AI (SECRETARY S1.1 · prisma/schema/secretary.prisma · RESOLUTIONS §B.1) — แกน tenant ทุกตัวมี tenantId
+  AiRoom: tenant,
+  AiRoomMember: tenant,
+  AiRoomJob: tenant,
+  AiSystemAccess: tenant,
+  AiApprovalRule: tenant,
+  AiActionLog: tenant,
+  AiJobCounter: tenant,
+  AiLesson: tenant,
+  StaffInvite: tenant, // R-K11 คำเชิญพนักงาน — ยังไม่มี Membership จนกว่าจะรับ
+  ChatRoutingRule: tenant,
+  ChatShift: tenant,
+  ChatConversationHelper: tenant,
+  // เลขา AI แกน global (ผูก user ไม่ผูกร้าน · แบบ PushDevice)
+  AiSecretary: g("บุคลิกเลขาของ \"คน\" (1 แถว/user) ใช้ข้ามทุกร้านที่เป็นสมาชิก — ไม่มี tenantId"),
+  UserPhone: g("เบอร์ของ user (แทน User.phone · core FROZEN) — login ด้วยเบอร์ต้องหาก่อนรู้ร้าน"),
+  PhoneOtp: g("OTP SMS ขั้น login — สร้างก่อนรู้ว่า user/ร้านไหน (แบบ AuthToken)"),
+  AiNotifyPref: g("การตั้งค่าแจ้งเตือนต่อคน — tenantId null = ทุกร้าน · push ห้องเลขาไม่กรองร้าน (R-K20)"),
   // Observability (WO-0041) — logger กลางเขียน · backoffice อ่าน (ข้ามร้านโดยเจตนา)
   OpsEvent: { axis: "platform", why: "ops log ข้ามร้าน — เขียนผ่าน core/ops.ts อ่านทาง backoffice" },
   OpsAlertState: { axis: "platform", why: "สถานะ throttle alert — ไม่ใช่ข้อมูลร้าน" },
