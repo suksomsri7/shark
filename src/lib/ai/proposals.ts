@@ -37,6 +37,7 @@ import * as automationSvc from "@/lib/automation/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
 import type { ConvCtx } from "./conversation-owner";
+import { CHAT_SEND_BODY_MAX, CHAT_SEND_SENDER_NAME, CHAT_SEND_SIGNATURE, chatSendClientMessageId } from "./secretary/chat-send"; // SEC S1.12 (pure) ◂
 import type { DispatchOut } from "./secretary/actions"; // SEC S1.8 (type เท่านั้น — ไม่มีวงโหลด) ◂
 import { logOps } from "@/lib/core/ops";
 import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
@@ -352,6 +353,12 @@ export async function executeProposal(
   if (!approval.ok) return { ok: false, note: approval.note };
   const why = approval.why; // R-S1.7b: เหตุผลไทยของห้องเลขา — คืนให้ผู้เรียก (การ์ด/แอป) ไม่ทิ้ง ◂
   // ◂ SEC S1.7
+
+  // SEC S1.12 ▸ R-S1.12e (K-6): ผู้อนุมัติต้องเห็นห้องแชทลูกค้านั้นตามสาขา **ก่อน claim** — ไม่ผ่าน = คง PENDING (คนที่เห็นห้องมากดทีหลังได้) ◂
+  if (row.kind === "chat.send") {
+    const unitNote = await chatSendUnitGate(ctx.tenantId, m, payloadObj);
+    if (unitNote) return { ok: false, note: unitNote };
+  }
 
   // ── ยืนยัน 2 ชั้น สำหรับรายการลบ/ยกเลิกถาวร (DESTRUCTIVE) ──
   // ชั้นแรก (ไม่มี confirm2x) → คง PENDING ไม่ทำจริง แจ้ง UI ให้ถามยืนยันอีกครั้ง
@@ -1425,8 +1432,18 @@ async function dispatch(
 //   ข้อความ ≤ 1,000 ตัวอักษร · ไม่มีไฟล์แนบในรุ่นแรก · `clientMessageId` = id ข้อเสนอ ⇒ ส่งซ้ำ = ไม่ส่งซ้ำ (unique ของแชท)
 //   ป้าย meta คีย์แบน `ai_roomId` `ai_proposalId` `ai_approvedBy` — S1.21 อ่านไปทำป้าย "ส่งโดย Shark · อนุมัติโดย X"
 //   ข้อความที่ส่งแล้วย้อนไม่ได้ (ไม่อยู่ในรายการย้อนของ S1.8)
-export const CHAT_SEND_SENDER_NAME = "Shark (ผู้ช่วย AI)";
-export const CHAT_SEND_MAX_CHARS = 1000;
+export { CHAT_SEND_SENDER_NAME, CHAT_SEND_MAX_CHARS, CHAT_SEND_SIGNATURE, CHAT_SEND_BODY_MAX, chatSendClientMessageId } from "./secretary/chat-send";
+
+/** R-S1.12e (K-6): ผู้อนุมัติเห็นห้องนี้ตามสาขาไหม — null = ผ่าน (ห้องไม่พบ/ข้อมูลอื่นผิด ให้ dispatch ตัดสินเป็น FAILED ตามเดิม) */
+async function chatSendUnitGate(tenantId: string, m: MembershipCtx, payload: Record<string, unknown>): Promise<string | null> {
+  if (m.role === "OWNER") return null;
+  const conversationId = typeof payload.conversationId === "string" ? payload.conversationId.trim() : "";
+  if (!conversationId) return null;
+  const conv = await prisma.chatConversation.findFirst({ where: { id: conversationId, tenantId }, select: { unitId: true } });
+  if (!conv) return null;
+  const { canAccessConvUnit } = await import("@/lib/modules/chat/service");
+  return canAccessConvUnit(m.unitAccess, conv.unitId) ? null : "คุณไม่มีสิทธิ์ตอบแชทลูกค้าของสาขานี้ — ให้ผู้มีสิทธิ์ของสาขานั้นเป็นผู้กดอนุมัติ";
+}
 
 async function dispatchChatSend(
   tenantId: string,
@@ -1441,7 +1458,7 @@ async function dispatchChatSend(
   const body = typeof payload.body === "string" ? payload.body.trim() : "";
   if (!conversationId) throw new Error("ข้อเสนอนี้ไม่ได้ระบุห้องแชทลูกค้า — สั่งเลขาใหม่อีกครั้ง");
   if (!body) throw new Error("ข้อความถึงลูกค้าว่างอยู่ — สั่งเลขาเขียนข้อความใหม่");
-  if (body.length > CHAT_SEND_MAX_CHARS) throw new Error(`ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_MAX_CHARS.toLocaleString("th-TH")} ตัวอักษร — ให้เลขาย่อข้อความแล้วเสนอใหม่`);
+  if (body.length > CHAT_SEND_BODY_MAX) throw new Error(`ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร — ให้เลขาย่อข้อความแล้วเสนอใหม่`);
   const conv = await prisma.chatConversation.findFirst({
     where: { id: conversationId, tenantId },
     select: { id: true, systemId: true, contactId: true, channel: true, status: true, replyWindowExpiresAt: true, contact: { select: { customerId: true, displayName: true } } },
@@ -1467,10 +1484,10 @@ async function dispatchChatSend(
     conversationId: conv.id,
     senderUserId: userId,
     senderName: CHAT_SEND_SENDER_NAME,
-    body,
+    body: `${body}${CHAT_SEND_SIGNATURE}`, // R-S1.12c ◂
     unitAccess: m.role === "OWNER" ? ["*"] : m.unitAccess,
     meta: { ...(room ? { ai_roomId: room.id } : {}), ai_proposalId: proposalId, ai_approvedBy: userId },
-    clientMessageId: proposalId,
+    clientMessageId: chatSendClientMessageId(proposalId), // R-S1.12e ◂
   });
   if (!res.ok) throw new Error(res.reason ? `ส่งข้อความถึงลูกค้าไม่สำเร็จ: ${res.reason}` : "ส่งข้อความถึงลูกค้าไม่สำเร็จ");
   // SEC S1.8 (R-S1.8a) ▸ log ชี้แถวข้อความที่ส่งจริง (ซ้ำ = แถวเดิม) · ไม่อยู่ใน UNDOABLE_KINDS ⇒ undoableUntil null ◂

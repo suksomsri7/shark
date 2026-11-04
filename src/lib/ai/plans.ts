@@ -41,6 +41,9 @@ const PLAN_HUMAN_ONLY: Record<string, string> = {
   //   และการลงมือของ POS ต้องรู้ตัวผู้กด (ไม่ส่ง userId เข้าแผนโดยตั้งใจ) · kind `pos.*` ทุกตัวใช้ข้อความเดียวกัน (humanOnlyNote) ◂
   void_sale: "ทำรายการขายหน้าร้านผ่านแผนงานอัตโนมัติไม่ได้ — ให้ผู้ช่วยเสนอทีละรายการแล้วกดยืนยันเอง",
   pos_draft_po: "ทำรายการขายหน้าร้านผ่านแผนงานอัตโนมัติไม่ได้ — ให้ผู้ช่วยเสนอทีละรายการแล้วกดยืนยันเอง",
+  // SEC S1.12 ▸ R-S1.12b (K-2): ส่งถึงลูกค้า + คืนเงินมัดจำ = ผู้อนุมัติต้องเห็นข้อความ/ยอดเต็มทีละใบ (summary ของขั้นแผนมาจากโมเดล) ◂
+  "chat.send": "ส่งข้อความถึงลูกค้าผ่านแผนงานไม่ได้ — ให้เลขาเสนอทีละข้อความแล้วผู้มีสิทธิ์กดอนุมัติเอง",
+  booking_refund_deposit: "คืนมัดจำผ่านแผนงานไม่ได้ — ให้เลขาเสนอทีละรายการแล้วผู้มีสิทธิ์กดอนุมัติเอง",
 };
 const humanOnlyNote = (kind: unknown): string | null =>
   typeof kind === "string" && Object.prototype.hasOwnProperty.call(PLAN_HUMAN_ONLY, kind)
@@ -49,6 +52,10 @@ const humanOnlyNote = (kind: unknown): string | null =>
       ? PLAN_HUMAN_ONLY.void_sale!
       : null;
 // ◂ HF-HR-0
+/** SEC S1.12 ▸ R-S1.12b: kind นี้ต้องให้คนกดยืนยันเองทีละใบ (เสนอเป็นขั้นของแผนไม่ได้) ◂ */
+export function isPlanHumanOnly(kind: string): boolean {
+  return humanOnlyNote(kind) !== null;
+}
 
 // ── สร้างแผน (PENDING + TTL 24 ชม.) — steps ว่าง/เกิน 8 หรือ kind ปลอม → throw ไทย ──
 export async function createPlan(

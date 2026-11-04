@@ -27,6 +27,7 @@ import { memberTools } from "./tools-member";
 import { crmTools } from "./tools-crm";
 import { posTools } from "./tools-pos"; // POS P3.9 ▸ R1 ◂
 import { createProposal, isKnownKind as isKnownKindName, type ProposalKind } from "./proposals";
+import { CHAT_SEND_BODY_MAX } from "./secretary/chat-send"; // SEC S1.12 (pure — ใช้ตอนโหลดโมดูล) ◂
 import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
 import { rememberFact, forgetMemory, listMemories } from "./memory";
@@ -1431,12 +1432,12 @@ const sendCustomerMessage: AiTool = {
   def: {
     name: "send_customer_message",
     description:
-      "Propose a message to a customer in the shop's customer chat (LINE / web chat). Nothing is sent until an owner or manager approves it; the customer sees it signed \"Shark (ผู้ช่วย AI)\". Only for customers linked to a member/CRM record. conversationId = the customer chat conversation from the room context (ask the user if you do not have it). body = the exact message, at most 1000 characters, no promises about money or discounts the owner did not ask for. kind = reply | followup | quote.",
+      `Propose a message to a customer in the shop's customer chat (LINE / web chat). Nothing is sent until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์); the customer sees it signed "Shark (ผู้ช่วย AI)" with a fixed signature line added by the system. Only for customers linked to a member/CRM record. conversationId = the customer chat conversation from the room context (ask the user if you do not have it). body = the exact message, at most ${CHAT_SEND_BODY_MAX} characters, no promises about money or discounts the owner did not ask for. kind = reply | followup (service follow-up, not marketing) | quote.`,
     parameters: {
       type: "object",
       properties: {
         conversationId: { type: "string", description: "Customer chat conversation id (from the room context)" },
-        body: { type: "string", description: "Exact message text for the customer (max 1000 characters)" },
+        body: { type: "string", description: `Exact message text for the customer (max ${CHAT_SEND_BODY_MAX} characters)` },
         kind: { type: "string", enum: [...CUSTOMER_MESSAGE_KINDS], description: "reply (default) · followup · quote" },
         documentId: { type: "string", description: "Accounting document this message is about (optional)" },
         dealId: { type: "string", description: "CRM deal this message is about (optional)" },
@@ -1453,7 +1454,7 @@ const sendCustomerMessage: AiTool = {
       return JSON.stringify({ error: "ยังไม่รู้ว่าจะส่งถึงลูกค้าห้องไหน", suggestion: "ถามผู้ใช้ด้วย ask_clarify ว่าลูกค้าคนไหน หรือเปิดงานจากห้องแชทลูกค้า" });
     }
     if (!body) return JSON.stringify({ error: "ข้อความถึงลูกค้าว่างอยู่ — เขียนข้อความที่จะส่งก่อน" });
-    if (body.length > 1000) return JSON.stringify({ error: "ข้อความถึงลูกค้ายาวเกิน 1,000 ตัวอักษร — ย่อให้สั้นลงแล้วเสนอใหม่" });
+    if (body.length > CHAT_SEND_BODY_MAX) return JSON.stringify({ error: `ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร (สำรองที่ให้บรรทัดลงชื่อ Shark) — ย่อให้สั้นลงแล้วเสนอใหม่` });
     const kindRaw = a.kind === undefined || a.kind === null || a.kind === "" ? "reply" : String(a.kind).trim().toLowerCase();
     if (!(CUSTOMER_MESSAGE_KINDS as readonly string[]).includes(kindRaw)) {
       return JSON.stringify({ error: `ไม่รู้จักชนิดข้อความ "${kindRaw}"`, suggestion: "ใช้ reply (ตอบ) followup (ติดตาม) หรือ quote (ส่งใบเสนอราคา)" });
@@ -1477,12 +1478,50 @@ const sendCustomerMessage: AiTool = {
       return JSON.stringify({ error: "ห้องแชทนี้ปิดไปแล้ว จึงยังส่งข้อความไม่ได้", suggestion: "ให้ผู้ใช้เปิดห้องใหม่จากหน้าแชทลูกค้าก่อน" });
     }
     const who = conv.contact.displayName?.trim() || "ลูกค้า";
-    const short = body.length > 80 ? `${body.slice(0, 80)}…` : body;
-    const summary = `ส่งข้อความถึง ${who} (${channelSentenceLabel(conv.channel)}): ${short}`;
+    // R-S1.12a (K-1/K-7): ผู้อนุมัติต้องเห็นข้อความเต็มฉบับ · ชื่อผ่าน maskPiiDeep (ชื่อที่เป็นเบอร์/อีเมลถูกปิด) ◂
+    const summary = `ส่งข้อความถึง ${String(crmApi.maskPiiDeep(who))} (${channelSentenceLabel(conv.channel)}):\n${body}`;
     const documentId = typeof a.documentId === "string" && a.documentId.trim() ? a.documentId.trim() : null;
     const dealId = typeof a.dealId === "string" && a.dealId.trim() ? a.dealId.trim() : null;
     const refs = documentId || dealId ? { refs: { ...(documentId ? { documentId } : {}), ...(dealId ? { dealId } : {}) } } : {};
     return propose(ctx, "chat.send", summary, { systemId: conv.systemId, conversationId: conv.id, contactId: conv.contactId, body, kind: kindRaw, ...refs });
+  },
+};
+
+// ── SEC S1.12 ▸ R-S1.12b refund_booking_deposit — เสนอคืนมัดจำของนัดที่ค้างคืน (kind booking_refund_deposit · เงินออก ⇒ อนุมัติเสมอ) ──
+//   summary สร้างที่เซิร์ฟเวอร์จากข้อมูลจริง (ยอดค้างคืน · ชื่อลูกค้า mask · วันนัด) — ไม่ใช้ข้อความของโมเดล · payload = ids เท่านั้น
+//   สาขา = `actorBranches` (ประตูเว็บ requireUnit) · ห้ามเป็นขั้นของแผน (PLAN_HUMAN_ONLY) ◂
+const refundBookingDeposit: AiTool = {
+  action: true,
+  def: {
+    name: "refund_booking_deposit",
+    description:
+      "Propose refunding the deposit of an appointment that was cancelled or marked no-show (state: refund due). Nothing is refunded until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์). The amount comes from the system, never from you. appointmentId = the appointment (use today_appointments / upcoming_schedule or ask the user).",
+    parameters: {
+      type: "object",
+      properties: { appointmentId: { type: "string", description: "Appointment id" } },
+      required: ["appointmentId"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const appointmentId = String(asRecord(args).appointmentId ?? "").trim();
+    if (!appointmentId) return JSON.stringify({ error: "ต้องระบุนัดหมายที่จะคืนมัดจำ", suggestion: "ถามผู้ใช้ด้วย ask_clarify ว่านัดของใคร วันไหน" });
+    const appt = await prisma.appointment.findFirst({
+      where: { tenantId: ctx.tenantId, id: appointmentId, ...unitWhere(ctx.actor) },
+      select: { id: true, unitId: true, customerName: true, startAt: true },
+    });
+    if (!appt) return JSON.stringify({ error: "ไม่พบนัดหมายนี้ในร้าน", suggestion: "ตรวจนัดหมายอีกครั้ง หรือถามผู้ใช้ว่านัดของใคร" });
+    const { depositInfo } = await import("@/lib/modules/booking/deposit");
+    const info = await depositInfo({ tenantId: ctx.tenantId, unitId: appt.unitId }, appt.id);
+    if (!info || info.state === "REFUNDED") return JSON.stringify({ error: info ? "มัดจำของนัดนี้คืนไปแล้ว" : "นัดนี้ไม่มีมัดจำให้คืน" });
+    if ((info.state !== "REFUND_DUE" && info.state !== "FORFEIT_PENDING") || info.refundDueSatang <= 0) {
+      return JSON.stringify({ error: "คืนได้เฉพาะมัดจำที่ค้างคืน (นัดถูกยกเลิกหรือลูกค้าไม่มา)", suggestion: "ถ้าจะยกเลิกนัดก่อน ให้เสนอยกเลิกนัดแยกอีกรายการ" });
+    }
+    const baht = (info.refundDueSatang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const who = String(crmApi.maskPiiDeep(appt.customerName?.trim() || "ลูกค้า"));
+    const day = appt.startAt.toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", year: "numeric" });
+    const summary = `คืนมัดจำ ${baht} บาท ให้ ${who} (นัดวันที่ ${day})`;
+    return propose(ctx, "booking_refund_deposit", summary, { appointmentId: appt.id, unitId: appt.unitId });
   },
 };
 
@@ -2484,6 +2523,7 @@ function registryTools(): AiTool[] {
     shopPendingOrders,
     chatUnreadConversations,
     sendCustomerMessage, // SEC S1.12 ▸ เสนอส่งถึงลูกค้า (skill chat) ◂
+    refundBookingDeposit, // SEC S1.12 ▸ R-S1.12b เสนอคืนมัดจำนัดหมาย (skill booking) ◂
     // Phase B2 read — คำขอรออนุมัติ / สัญญาเช่าค้างคืน
     approvalsPending,
     rentalActive,

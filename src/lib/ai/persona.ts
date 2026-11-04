@@ -3,7 +3,7 @@
 // SEC S1.2/S1.3 ▸ `secretary` (ตัวตนเลขาของคนที่พิมพ์) + `access` (ระดับต่อระบบของร้าน) — ไม่ส่ง/ค่าเริ่มต้น ⇒ prompt เดิมทุกไบต์ ◂
 
 import { languageRule, secretaryHeadline, secretaryPromptBlock, type SecretaryIdentity } from "./secretary/identity";
-import { accessSummaryForPrompt, defaultLevelOf } from "./secretary/access-rules";
+import { accessSummaryForPrompt } from "./secretary/access-rules";
 
 export type PersonaContext = {
   tenantName: string;
@@ -18,6 +18,8 @@ export type PersonaContext = {
   secretary?: SecretaryIdentity;
   /** SEC S1.3 ▸ ระดับต่อระบบของร้าน — ค่าที่ไม่ใช่ค่าเริ่มต้นถูกบอกโมเดลท้ายกติกา ◂ */
   access?: Readonly<Record<string, string>>;
+  /** SEC S1.12 ▸ R-S1.12d: service ยื่นเครื่องมือ send_customer_message ให้ผู้ถามแล้ว ⇒ เพิ่มกติกาส่งถึงลูกค้า ◂ */
+  customerChat?: boolean;
   /** SEC S1.16 ▸ ข้อมูลกิจการสด (bullet ไทยจาก digestBlockFor) — มีเฉพาะห้องเลขา (AiRoom) · ไม่ส่ง = prompt เดิมทุกไบต์ ◂ */
   digest?: string;
 };
@@ -37,12 +39,11 @@ const ACCOUNTANT_RULES: string[] = [
 ];
 
 /**
- * SEC S1.12 ▸ กติกาส่งถึงลูกค้า (แบบ §5 PDPA) — ฉีดเฉพาะเมื่อเครื่องมือ send_customer_message ถูกยื่นได้:
- *   ร้านเปิดระบบแชท (CHAT · เงื่อนไขเดียวกับ skill `chat`) และระดับ chat ของร้านยอมให้เสนอการเขียน (DRAFT — ค่าเริ่มต้น READ = ไม่ฉีด)
- *   ไม่มีระบบแชท / ระดับดูอย่างเดียว ⇒ prompt เดิมทุกไบต์ ◂
+ * SEC S1.12 ▸ กติกาส่งถึงลูกค้า (แบบ §5 PDPA) — ฉีดเฉพาะเมื่อชั้น service ยื่นเครื่องมือ send_customer_message ให้ผู้ถามจริง
+ *   (`customerChat` — R-S1.12d) · ไม่ส่ง ⇒ prompt เดิมทุกไบต์ ◂
  */
 const CUSTOMER_CHAT_RULE =
-  "- ข้อความถึงลูกค้าทุกฉบับ (send_customer_message) ต้องผ่านการอนุมัติของเจ้าของ/ผู้จัดการก่อนส่ง · ลงชื่อ Shark (ผู้ช่วย AI) · ส่งได้เฉพาะลูกค้าที่ผูกกับสมาชิก/CRM แล้ว · ห้ามสัญญาเรื่องเงิน/ส่วนลดที่เจ้าของไม่ได้สั่ง";
+  "- ข้อความถึงลูกค้าทุกฉบับ (send_customer_message) ต้องผ่านการอนุมัติจากผู้มีสิทธิ์ก่อนส่ง · ระบบลงชื่อ Shark (ผู้ช่วย AI) ให้เอง · ส่งได้เฉพาะลูกค้าที่ผูกกับสมาชิก/CRM แล้ว · ห้ามสัญญาเรื่องเงิน/ส่วนลดที่เจ้าของไม่ได้สั่ง";
 
 export function buildSystemPrompt(ctx: PersonaContext): string {
   const sysList =
@@ -68,8 +69,7 @@ export function buildSystemPrompt(ctx: PersonaContext): string {
     : [];
   // บล็อก "นักบัญชี" — ฉีดเฉพาะร้านที่เปิดระบบบัญชี (ร้านที่ไม่มี = ไม่เสีย token ฟรี ๆ ทุกข้อความ)
   const accountBlock = ctx.systems.some((s) => s.type === "ACCOUNT") ? ACCOUNTANT_RULES : [];
-  const customerChatBlock =
-    ctx.systems.some((s) => s.type === "CHAT") && (!ctx.access || (ctx.access.chat ?? defaultLevelOf("chat")) === "DRAFT") ? [CUSTOMER_CHAT_RULE] : []; // SEC S1.12 ◂
+  const customerChatBlock = ctx.customerChat === true ? [CUSTOMER_CHAT_RULE] : []; // SEC S1.12 R-S1.12d ◂
   // SEC S1.2 ▸ ตัวตนเลขา: บรรทัดแรก · บล็อกชื่อ/ลงท้าย/น้ำเสียงก่อนกติกา · กติกาภาษา — ไม่มี secretary = บรรทัดเดิม ◂
   const sec = ctx.secretary;
   const identityBlock = sec ? [secretaryPromptBlock(sec), ""] : [];
