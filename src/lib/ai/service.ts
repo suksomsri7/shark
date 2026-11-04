@@ -205,6 +205,8 @@ export async function sendMessage(
   //   = กรองรายเครื่องมือ (runTool ตรวจซ้ำทุกครั้งอยู่แล้ว — ชั้นนี้คือไม่ชวนโมเดลเรียกสิ่งที่จะโดนปฏิเสธ + ประหยัด token) ◂
   const offeredOf = (names: readonly string[]) => toolsOfferedTo(ctx.actor, names, access);
   const visibleSkills = skillsForTenant(systems.map((s) => s.type)).filter((s) => offeredOf(s.tools).length > 0);
+  // SEC S1.12 ▸ R-S1.12d: กติกาส่งถึงลูกค้าใน prompt เฉพาะเมื่อยื่นเครื่องมือ send_customer_message ได้จริง (skill chat เห็น + ผู้ถามผ่านด่าน) ◂
+  const customerChatOffered = visibleSkills.some((s) => s.tools.includes("send_customer_message")) && offeredOf(["send_customer_message"]).length > 0;
   const loadedSkillIds = new Set<string>();
   const activeToolNames = new Set<string>(offeredOf(CORE_TOOLS));
   const currentTools = () => {
@@ -251,7 +253,7 @@ export async function sendMessage(
     {
       role: "system",
       content: [
-        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}) }),
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customerChatOffered ? { customerChat: true } : {}) }), // SEC S1.12 R-S1.12d ◂
         skillIndexPrompt(visibleSkills),
       ].filter(Boolean).join("\n\n"),
     },
