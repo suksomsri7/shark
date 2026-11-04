@@ -3,7 +3,9 @@
 > เริ่มใหม่ = อ่านไฟล์นี้บล็อกบนสุด → `SECRETARY-RUN.md` §3 สถานะ + §4 เหตุการณ์ → ใบถัดไปใน `SECRETARY-MASTER-PLAN.md` §3 → `secretary-briefs/sec-brief-COMMON.md`
 > ทรี `/root/projects/shark-sec` · branch `session/secretary` · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
 
-## ▶️ 4 พ.ย. 2026 ~14:4xZ — 4/58 (7%) · S0 ปิดครบ (S0.1–S0.4 ✅) · S1.1 รอบสอง (เลน b: core relation + baseline qc-mobile-app) · S1-2 เริ่มบนเลน c
+## ▶️ 4 พ.ย. 2026 ~15:2xZ — 5/58 (9%) · S0 ครบ + S1.1 ✅ · กำลังทำ: S1-2 (เลน c `wip/sec-s1.2`) · S1-3 (เลน b `wip/sec-s1.4`) · ใบ/oracle S1-4 (S1.5) พร้อม
+
+## (เก่า) 4 พ.ย. ~14:4xZ — 4/58
 - schema S1.1 pre-merge อยู่ใน session/secretary แล้ว (69542c20) · migration ลง QC แล้ว · oracle S1.2/S1.4 เขียนแล้ว (ใบ S1-2 เลน c · S1-3 เลน b หลัง S1.1 ปิด)
 
 ## ▶️ 4 พ.ย. 2026 ~12:2xZ — 2/58 (3%) (เก่า)

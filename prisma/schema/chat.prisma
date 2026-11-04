@@ -197,6 +197,7 @@ model ChatConversation {
   events     ChatConversationEvent[]
   readStates ChatReadState[]
   prefs      ChatConversationPref[]
+  helpers    ChatConversationHelper[] // S1.1 เลขา AI — ผู้ช่วย/ส่งต่อห้อง (R-K14)
 
   @@index([systemId, status, lastMessageAt(sort: Desc)])
   @@index([systemId, channel, status])
