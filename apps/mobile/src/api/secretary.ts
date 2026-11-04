@@ -632,11 +632,12 @@ export type LogRow = {
   canUndo?: boolean;
   createdAt: string;
 };
-/** ย้อนได้ = เซิร์ฟเวอร์บอก canUndo และยังไม่เลยกรอบเวลา (นาฬิกาเครื่อง) · สิทธิ์จริงตรวจตอนกด */
+/** ย้อนได้ = ยังไม่ย้อน และเซิร์ฟเวอร์บอก canUndo (สิทธิ์ + เวลา ฝั่งเซิร์ฟเวอร์ · RESOLUTIONS R-S2.4a ไม่ใช้นาฬิกาเครื่อง)
+ *  · เซิร์ฟเวอร์ไม่ส่ง canUndo (รุ่นเก่า) ⇒ ดู undoableUntil เทียบตอนโหลด · สิทธิ์จริงตรวจตอนกด */
 export function logCanUndo(r: LogRow, nowMs: number): boolean {
   if (r.undoneAt) return false;
+  if (typeof r.canUndo === "boolean") return r.canUndo;
   const until = r.undoableUntil ? Date.parse(r.undoableUntil) : NaN;
-  if (r.canUndo === false) return false;
   return Number.isFinite(until) && until > nowMs;
 }
 
