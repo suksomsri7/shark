@@ -3,6 +3,13 @@
 > เริ่มใหม่ = อ่านไฟล์นี้บล็อกบนสุด → `SECRETARY-RUN.md` §3 สถานะ + §4 เหตุการณ์ → ใบถัดไปใน `SECRETARY-MASTER-PLAN.md` §3 → `secretary-briefs/sec-brief-COMMON.md`
 > ทรี `/root/projects/shark-sec` · branch `session/secretary` · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
 
+## ▶️ 4 พ.ย. 2026 ~12:2xZ — 2/58 (3%) · S0.1 ✅ S0.2 ✅ · กำลังทำ S0-3 (เลน c) · S1.1 รอ oracle
+- tip `session/secretary` = 5973db2e (merge S0.2) · RESOLUTIONS f92f3466 = กฎเหนือแผน §3
+- รัน: เลน c `/root/projects/shark-sec-c` builder Opus S0-3 (docs 31-secretary + SECRETARY-API + seed-secretary-qc + pack.ts · oracle `qc-sec-s0.3.mts`)
+- เลน b `/root/projects/shark-sec-b` = `wip/sec-s1.1` @5973db2e ว่าง (รอ oracle `qc-sec-s1.1.mts` ที่ผู้คุมกำลังเขียน → spawn builder S1.1)
+- ถัดไป: เขียน `qc-sec-s1.1.mts` → spawn S1.1 (เลน b) ∥ รับ S0-3 (oracle forced ×2 ผ่าน qc-sec.sh + typecheck · light-check) → merge → CP0 ส่ง TG (ภาพคู่ C3 + 5 ข้อขัดแย้งสำคัญ) → S1-2 (S1.2+S1.3) เลน c
+- ภาพคู่ C3 ที่รับแล้ว: `apps/mobile/qc/shots-sec/secretary-c3-pair.png` + `secretary-dark-c3-pair.png`
+
 ## ▶️ 4 พ.ย. 2026 ~09:3xZ — เดินเครื่อง (เจ้าของสั่ง "เริ่มทำงานได้") · 0/58
 - รัน: ผู้สำรวจ S0.1 (background · เขียน REVIEW-SECRETARY-DESIGN-2026-11-04.md) · เลน b builder S0.2 (`wip/sec-s0.2`)
 - ถัดไป: รับ S0.1 → RESOLUTIONS → ใบ S0-3 (S0.3+S0.4 เลน c) + S1-1 migration (เลน a=ผู้คุมเขียน oracle · builder เลน c หลัง S0-3)

@@ -20,15 +20,15 @@
 ## 2. สัญญาต่อใบ (ผู้คุมเติมตอนออกข้อสอบ · ย่อ: ชื่อฟังก์ชัน · ข้อสอบ S-group · จำนวนข้อ)
 _(เติมเมื่อถึงใบ)_
 
-## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 0/58 (41 ชุด) · 0%
+## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 2/58 (41 ชุด) · 3%
 
 | ใบ | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|
-| S0.1 | 🔍 | | ผู้สำรวจรอบ 2 เริ่ม 4 พ.ย. ~09:3xZ → REVIEW-SECRETARY-DESIGN-2026-11-04.md (รอบแรก 3 พ.ย. ถูกหยุดก่อนเขียน) |
-| S0.2 | 🔨 | | oracle qc-sec-s0.2.mts เขียนแล้ว 4 พ.ย. · builder Opus เลน b · ธีม Airy RN + shoot-sec/parity-sec (ไม่มีโค้ด T0.3 เดิมให้ยก — 601f4540 มีแค่ wo-notes) · ต้องตั้งสำเนา QC มือถือใหม่ (`/root/qc-shark-mobile` ไม่มีแล้ว) |
-| S0.3 | ⬜ | | docs/modules/31-secretary.md + docs/api/SECRETARY-API.md + seed-secretary-qc |
-| S0.4 | ⬜ | | pack.ts FREE_PACK 100 งาน/กิจการ/เดือน |
-| S1.1 | ⬜ | | 🎯 migration secretary_a |
+| S0.1 | ✅ | 4 พ.ย. ~11:4xZ | REVIEW-SECRETARY-DESIGN-2026-11-04.md (≈230 ชื่อยืนยัน · 38/38 หน้า · K1–K20 · Q1–Q10) → `sec-brief-RESOLUTIONS.md` (f92f3466) · แก้แผน §3 note + คีย์ `chat.message.send` + OTP SMS |
+| S0.2 | ✅ | 4 พ.ย. ~12:1xZ | merge 5973db2e (wip/sec-s0.2 e5705e2e) · oracle 30/30 ×3 (ผู้คุมรันเอง forced ×2 + unforced) · ภาพคู่ C3 สว่าง/มืด ตรงแบบ (ผู้คุมดูเอง) · จอ 1.0 /sessions 0 px ต่าง · /login ต่างเฉพาะ orb แอนิเมชัน · light-check โดยผู้คุม (ไม่ใช่ชุดตรวจเข้ม) · มติ R-UI1–UI3 (สเกล 0.73 · Feather · theme-store) |
+| S0.3 | 🔨 | | builder Opus เลน c `wip/sec-s0.3` @5973db2e เริ่ม 4 พ.ย. ~12:2xZ · oracle `qc-sec-s0.3.mts` (f92f3466 · unforced SKIP · forced 4/29 แดงถูกเหตุผล) · docs/modules/31-secretary.md + docs/api/SECRETARY-API.md + seed-secretary-qc |
+| S0.4 | 🔨 | | รวมในชุด S0-3 (เลน c) · pack.ts FREE_PACK 100 งาน/กิจการ/เดือน |
+| S1.1 | ✍️ | | ใบ final (f92f3466) · เลน b ชี้ `wip/sec-s1.1` @5973db2e รอ oracle `qc-sec-s1.1.mts` · 🎯 migration secretary_a |
 | S1.2 | ⬜ | | เลขาผูกผู้ใช้ |
 | S1.3 | ⬜ | | 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | ⬜ | | 🎯 ห้อง = งาน |
@@ -90,3 +90,4 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย.** มติ 16 (เจ้าของ "ปรับปรุงตามที่แนะนำทั้งหมด"): เติม G1–G5 (+S1.25 S2.21–S2.23) · ตัด S1.18/TOPIC/A8 box/A7 รายเดือน/K2 แปล/B7 ย่อ/digest table · S1/S2 เป็น SMS · ไม่มีไมค์ · สี 3 โซน · **41 ชุดงาน** (§4 แผน) · ข้อสอบ UI ร่วม `qc-sec-ui.mts` (ทำใน S0.2) · Sonnet หน้า layout · ตรวจเข้มเฉพาะ 7 ชุด · เส้นทางจริงตอนปิด S1 → 58 ใบ ≈254 ชม. · TestFlight ≈15–16 วัน
 - **4 พ.ย. ~09:3xZ ▶️** เจ้าของสั่งเริ่ม · spawn ผู้สำรวจ S0.1 (รอบ 2) · oracle S0.2 → เลน b
 - ของที่รอเจ้าของ (ไม่บล็อกโค้ด เพราะ mock ก่อน): คีย์ SMS provider (S1.19) · คีย์ Anthropic "shark" (S1.20) · ยืนยัน Play Console (S3a.3) · W40 POS_DEVICE_KEY (S3a.2)
+- **4 พ.ย. ~11:4xZ–12:2xZ** รับ S0.1 → RESOLUTIONS (R-K1…K20 · Q1–Q10 ค่าปริยายทั้งหมด + Q9 editProposal/Q10 account-delete+moduleLevel) · 5 ข้อสำคัญ: K1 สิทธิ์ห้องฝังในรหัส→ขยาย ConvSight · K7 canSpend/GRANT→canRunAi · K8 ไม่มี cron รายนาที→ตอบใน request+after() · K11 เชิญ→StaffInvite · K16 dorm ไม่มี→booking refund · รับ S0.2 (merge 5973db2e) · ff เลน c → spawn builder S0-3 · เลน b → `wip/sec-s1.1`
