@@ -97,8 +97,9 @@ exit=0
 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 JSON_SUMMARY {"total":24,"passed":24,"findings":[]}
 exit=0
-== qc-mobile-app 12:25:30Z
-exit=1
+# re-run 2026-11-04T12:51:10Z after merge of session/secretary 405cd2e9 (ORACLE-EDIT: APP-6.1 reads src/theme/light.ts) · HEAD 285f054a + core back-relations (uncommitted at run time)
+== qc-mobile-app 12:50:59Z
+exit=0
 == qc-mobile-auth 12:25:37Z
 exit=0
 == qc-mobile-authz-hotfix 12:25:42Z
