@@ -33,7 +33,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.3 | ✅ | 4 พ.ย. ~16:2xZ | **S1.3b** (เลน d) ปิดช่องจากรีวิว C/D · access-rules.ts (pure) + access.ts · toolVerdict/toolsOfferedTo รับ access · HAND_TOOL_MODULE (27 โมดูล) · ด่านใน executeProposal/runKind (dynamic import กันวงกลม) · หนี้: route คีย์ API ภายนอกยังไม่ส่ง access · propose_plan ปล่อยขั้นของระบบ OFF ไปตกตอนรัน · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | ✅ | 4 พ.ย. ~18:0xZ | merge (wip/sec-s1.4 33cfaf47) · oracle 28/28 ×3 (ORACLE-EDIT fixture tenantId) · S1.2 ยังเขียวหลัง merge · regression 9 ชุดเท่า baseline · rooms.ts 329 บรรทัด · ConvSight +memberOf/tenantRooms · roomSightFor/canSeeConversationById · rejectPlan room-aware · 🎯 ห้อง = งาน |
 | S1.5 | ✅ | 4 พ.ย. ~20:0xZ | merge (wip/sec-s1.5 d1e0ed19) · oracle 16/16 ×3 · regression 6 ชุดเท่า baseline · worker.ts 279 บรรทัด · minute job `secretary.roomJobs` (crm-cron VPS + outbox hook) · รวม hotfix `secretaryOf().catch` · หนี้: รูปแนบในคิว (ไม่มีคอลัมน์ → secretary_b) · ข้อความ 2 อันในห้องเดียวรันพร้อมกันได้ · docs §6 ห้องปิด · 🎯 คิวเบื้องหลัง |
-| S1.6 | ✍️ | | ใบ S1-5 + oracle `qc-sec-s1.6.mts` (47027ca0) รอ S1.4 merge · 🎯 ห้องร่วม |
+| S1.6 | 🔨 | | builder Opus เลน b `wip/sec-s1.6` @d8625b70 เริ่ม 4 พ.ย. ~20:1xZ · oracle `qc-sec-s1.6.mts` · 🎯 ห้องร่วม |
 | S1.7 | ✍️ | | ใบ S1-6 (S1.7+S1.8) + oracle `qc-sec-s1.7.mts` เขียนแล้ว (R-K3b · R-S1.8a) รอ S1.4 merge · ต้องอนุมัติเสมอ |
 | S1.8 | ✍️ | | รวมในชุด S1-6 · 🎯 บันทึก + ย้อน 24 ชม. |
 | S1.9 | ✍️ | | ใบ S1-7 + oracle `qc-sec-s1.9.mts` (f4556fcf) พร้อม · งานประจำ |
