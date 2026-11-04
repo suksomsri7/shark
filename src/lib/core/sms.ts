@@ -47,7 +47,7 @@ export function toE164Thai(raw: string | null | undefined): string | null {
 
 // 🔴 โหมด mock (S1.19) — เฉพาะเมื่อตั้ง `SMS_PROVIDER=mock` ตรง ๆ เท่านั้น (dev/QC ที่ยังไม่มีเกตเวย์)
 //    "ส่ง" = เขียนข้อความลง OpsEvent (logOps INFO "sms-mock") แล้วคืน ok — ไม่ออกนอกเครื่อง
-//    ข้อความอาจมีรหัส OTP ⇒ ห้ามตั้ง mock บน production (ฝั่งจริงต้องตั้ง SMS_PROVIDER/SMS_API_KEY/SMS_ENDPOINT)
+//    ข้อความอาจมีรหัส OTP ⇒ `APP_ENV=production` เมิน mock เสมอ (R-S1.19c) · ฝั่งจริงต้องตั้ง SMS_PROVIDER/SMS_API_KEY/SMS_ENDPOINT
 const mockProvider: SmsProvider = {
   name: "mock",
   async send(msg: SmsMessage): Promise<SmsSendResult> {
@@ -60,7 +60,8 @@ const mockProvider: SmsProvider = {
 
 function resolveProvider(): SmsProvider | null {
   const kind = (process.env.SMS_PROVIDER ?? "").trim().toLowerCase();
-  if (kind === "mock") return mockProvider; // ก่อนตรวจคีย์/endpoint (mock ไม่ต้องมี)
+  // ก่อนตรวจคีย์/endpoint (mock ไม่ต้องมี) · production เมิน mock เสมอ (R-S1.19c) ⇒ null = ช่องทาง SMS ปิด
+  if (kind === "mock") return process.env.APP_ENV === "production" ? null : mockProvider;
   const apiKey = (process.env.SMS_API_KEY ?? "").trim();
   const sender = (process.env.SMS_SENDER ?? "SHARK").trim();
   if (!kind || !apiKey) return null;
