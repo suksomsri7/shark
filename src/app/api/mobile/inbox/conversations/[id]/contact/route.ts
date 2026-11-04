@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import { linkCustomer } from "@/lib/modules/chat/service";
-import { fail, gate, LINK_CUSTOMER, notFound, readBody, systemOf, visibleConv, type RouteCtx } from "../../../_shared";
+import { fail, gate, limited, LINK_CUSTOMER, notFound, readBody, systemOf, visibleConv, type RouteCtx } from "../../../_shared";
 
 const Body = z.object({ systemId: z.string().max(64).optional(), customerId: z.string().min(1).max(64).nullable() }).strict();
 
@@ -18,6 +18,8 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (!sid) return notFound("ไม่พบระบบแชทนี้");
   const conv = await visibleConv(c, sid, id);
   if (!conv) return notFound();
+  const rl = await limited(c, "contact", 60);
+  if (rl) return rl;
   if (b.v.customerId) {
     const setting = await tenantDb({ tenantId: c.tenantId, systemId: sid }).chatSetting.findFirst({ where: { systemId: sid }, select: { memberSystemId: true } });
     const ok = setting?.memberSystemId

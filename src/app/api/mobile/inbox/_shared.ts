@@ -8,17 +8,24 @@ import type { AccessQuery, MembershipCtx } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
 import { requireMobile, mobileError, type MobileAuth } from "@/lib/mobile/auth";
 import { mobileDenied } from "@/lib/mobile/guard";
-import { CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
-import { CHAT_REPLY_ACTION } from "@/lib/modules/chat/routing";
+import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+import {
+  CHAT_ASSIGN_ACTION,
+  CHAT_CUSTOMER_LINK_ACTION,
+  CHAT_MARK_READ_ACTION,
+  CHAT_READ_ACTION,
+  CHAT_REPLY_ACTION,
+  CHAT_SET_STATUS_ACTION,
+} from "@/lib/modules/chat/guard";
 import { canAccessConvUnit, listStaff, resolveChatSystemId, unitAccessWhere, unreadCount } from "@/lib/modules/chat/service";
 
 export const READ: AccessQuery = { module: "chat", action: CHAT_READ_ACTION };
 export const REPLY: AccessQuery = { module: "chat", action: CHAT_REPLY_ACTION };
-/** คีย์เว็บของเรื่องเดียวกัน (permissions.ts) — แอปใช้กติกาเดียวกับเว็บ (mobile/guard.ts) */
-export const SET_STATUS: AccessQuery = { module: "chat", action: "chat.conversation.setStatus" };
-export const MARK_READ: AccessQuery = { module: "chat", action: "chat.conversation.markRead" };
-export const ASSIGN: AccessQuery = { module: "chat", action: "chat.conversation.assign" };
-export const LINK_CUSTOMER: AccessQuery = { module: "chat", action: "chat.customer.link" };
+/** คีย์เว็บของเรื่องเดียวกัน (guard.ts → permissions.ts) — แอปใช้กติกาเดียวกับเว็บ (mobile/guard.ts · R-S1.21i) */
+export const SET_STATUS: AccessQuery = { module: "chat", action: CHAT_SET_STATUS_ACTION };
+export const MARK_READ: AccessQuery = { module: "chat", action: CHAT_MARK_READ_ACTION };
+export const ASSIGN: AccessQuery = { module: "chat", action: CHAT_ASSIGN_ACTION };
+export const LINK_CUSTOMER: AccessQuery = { module: "chat", action: CHAT_CUSTOMER_LINK_ACTION };
 
 const DENY_TH: Record<string, string> = {
   [CHAT_READ_ACTION]: "บัญชีนี้ยังไม่มีสิทธิ์ดูแชทลูกค้า",
@@ -105,9 +112,32 @@ export async function convExtras(tenantId: string, systemId: string, ids: string
   return { aiDraft: new Set(drafts.map((d) => d.conversationId)), helpers: byConv };
 }
 
-/** ISO → Date (ค่าเพี้ยน = undefined) */
-export function dateParam(v: string | null): Date | undefined | null {
+/** ตรวจสิทธิ์จาก MembershipCtx ของผู้เรียก (ตัวเดียวกับ mobileDenied) */
+export const can = (c: InboxCtx, q: AccessQuery) => mobileDenied(c.g, q) === null;
+
+/**
+ * cursor คู่ `before=<iso>|<id>` (R-S1.21h) — `|<id>` (ไม่มีเวลา) = แถวที่ lastMessageAt null · ไม่ส่ง = หน้าแรก (undefined) · รูปผิด = null
+ * nextBefore ของหน้า = `cursorOf(แถวสุดท้าย)`
+ */
+export function parseCursor(v: string | null): { at: Date | null; id: string } | undefined | null {
   if (v === null || v === "") return undefined;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
+  const i = v.lastIndexOf("|");
+  if (i < 0) return null;
+  const iso = v.slice(0, i);
+  const id = v.slice(i + 1).trim();
+  if (!id || id.length > 64) return null;
+  if (!iso) return { at: null, id };
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? null : { at, id };
+}
+export const cursorOf = (at: Date | null | undefined, id: string) => `${at ? at.toISOString() : ""}|${id}`;
+
+/** เพดานต่อ (ร้าน, ผู้ใช้) ต่อเส้น — ต่อ Membership (R-S1.21d) · เกิน = 429 + Retry-After · ผ่าน = null */
+export async function limited(c: InboxCtx, name: string, perMinute: number): Promise<Response | null> {
+  const rl = await checkRateLimitDb(`mobile:inbox:${name}:${c.tenantId}:${c.userId}`, { limit: perMinute, windowMs: 60_000 });
+  if (rl.ok) return null;
+  return Response.json(
+    { error: "rate_limited", message: "ทำรายการถี่เกินไป รอสักครู่แล้วลองใหม่" },
+    { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
+  );
 }

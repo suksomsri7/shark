@@ -62,3 +62,17 @@
 ## 10. รอบ merge tip (5 พ.ย.)
 - merge `session/secretary` e40fbba3 (ORACLE-EDIT R3/R4/typing · S1.12 รอบ 2 · secretary_b) → conflict 2 จุดใน `sendReply` (lookup ซ้ำ) = เอาของ S1.12 (`direction: "OUT"`) · diff `service.ts` เทียบ tip = เหลือเฉพาะ hunk S1.21 · `aiMetaOf` อ่าน `ai_roomId/ai_proposalId/ai_approvedBy` ตรงกับ `proposals.ts:1489`
 - forced #2 ที่รันห่าง #1 แค่ 57 วิ: A-3 `rpN` 429 — ถัง rate limit `mobile:inbox:reply:<userId>` ของ user คงที่ `qcs121-b` ยังเต็มจาก A-5 ของรอบก่อน ⇒ เปลี่ยน key เป็น `<tenantId>:<userId>` (ต่อ Membership · ร้านใหม่ทุกรอบ = แยกถัง) · ผู้ใช้หลายร้าน = 60/นาที/ร้าน
+
+## 11. รอบ 2 — ผู้ตรวจ L/M · RESOLUTIONS §N (5 พ.ย.)
+| ข้อ | สถานะ | ที่ไหน |
+|---|---|---|
+| R-S1.21a assign ต้อง `chat.conversation.assign` · send = รับห้องว่างให้ตัวเอง | CLOSED (+ มอบให้คนที่ดูแลอยู่แล้ว = ok ไม่เปลี่ยน — ข้อสอบ A-4 `as2` ต้องการ 200 · รับตัดหน้า = 409) | `inbox/conversations/[id]/assign/route.ts` |
+| R-S1.21b handoff เฉพาะผู้ดูแล/ผู้ช่วย/ผู้มีคีย์ assign · ห้ามส่งให้ตัวเอง | CLOSED (ตรวจสิทธิ์ก่อน "ตัวเอง" ⇒ 403 มาก่อน 422) | `routing.handoff({byCanAssign})` + route |
+| R-S1.21c SLA: ผู้ดูแลตอบไม่ได้ = ไม่มีผู้ดูแล · นอกเวลาไม่เตือน · sweep เรียก assignIncoming · push assigned · updateMany มีเงื่อนไข | CLOSED | `sweepChatSla` (0)+(1) · `assign(…, {onlyIfAssignee})` ใน service.ts |
+| R-S1.21d rate limit helpers/handoff 20 · assign/status/contact/shift 60 · shift ซ้ำไม่สร้างแถว | CLOSED (+ attachments 20) | `_shared.limited` · `setShift` |
+| R-S1.21e `POST inbox/attachments` | CLOSED — ชุดเดียวกับ v1 (`uploadFile`/`CHAT_ATTACHMENT_MAX_BYTES`/`imageSize`) ไม่ได้เรียก handler v1 ตรง (ด่านคนละแบบ: คีย์ API vs Bearer) | `inbox/attachments/route.ts` |
+| R-S1.21f DTO deliveryStatus/stickerMeta/mimeType/durationMs · `quick-replies/[id]/apply` | CLOSED | `inbox-dto.ts` · `quick-replies/[id]/apply/route.ts` |
+| R-S1.21g owner fallback ดูหน่วย · onDuty กรองหน่วยผู้ดู · ข้ามห้องที่มีโน้ต sla · ทีมครั้งเดียวต่อร้าน | CLOSED | `firstOwner(team, unit)` · `routing/route.ts visibleResponders` · `messages: { none: … }` |
+| R-S1.21h cursor คู่ `<iso>\|<id>` | CLOSED — `listConversations`/`getThread` รับ `page` (ไม่ส่ง = เดิม) แทน `before: Date` รอบแรก | service.ts · `_shared.parseCursor/cursorOf` |
+| R-S1.21i คีย์ย้ายไป guard · `{items}` | CLOSED — ค่าอยู่ `chat/guard-keys.ts` (pure · guard.ts import `core/context`) re-export จาก guard.ts · systems/staff คืน `items` **+ ชื่อเดิม `systems`/`staff` ชั่วคราว** เพราะข้อสอบ A-1/A-4 ยังอ่านชื่อเดิม ⇒ ORACLE-EDIT S1.21-A1/A4 แล้วถอด alias | routes |
+- ORACLE-EDIT ขอ: `S1.21-A1` อ่าน `g1.body.items` · `S1.21-A4` อ่าน `st.body.items` (แล้วผมถอด alias `systems`/`staff`)

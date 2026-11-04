@@ -78,13 +78,16 @@ export type InboxMessageDto = {
   senderUserId: string | null;
   senderName: string | null;
   isInternal: boolean;
-  attachments: { name: string; url: string; kind: string }[];
+  /** PENDING (รอส่ง/รอแปลงเสียง) · SENT · FAILED (ฟองขึ้น ✗) — R-S1.21f */
+  deliveryStatus: string;
+  stickerMeta: unknown;
+  attachments: { name: string; url: string; kind: string; mimeType: string; durationMs: number | null }[];
   meta: { ai: NonNullable<ReturnType<typeof aiMetaOf>> } | null;
   createdAt: string;
 };
 export function messageDto(
   m: ChatMessage,
-  atts: readonly Pick<ChatAttachment, "fileName" | "url" | "kind">[],
+  atts: readonly Pick<ChatAttachment, "fileName" | "url" | "kind" | "mimeType" | "durationMs">[],
   names: ReadonlyMap<string, string>,
 ): InboxMessageDto {
   const ai = aiMetaOf(m.meta);
@@ -97,7 +100,9 @@ export function messageDto(
     // ทีมเห็นชื่อพนักงานจริง (ไม่ใช่นามแฝงที่ลูกค้าเห็น) · ระบบ/ไม่รู้จัก = ชื่อที่เก็บบนแถว
     senderName: (m.senderUserId ? names.get(m.senderUserId) : undefined) ?? m.senderName ?? null,
     isInternal: m.isInternal,
-    attachments: atts.map((a) => ({ name: a.fileName, url: a.url, kind: a.kind })),
+    deliveryStatus: m.deliveryStatus,
+    stickerMeta: m.stickerMeta ?? null,
+    attachments: atts.map((a) => ({ name: a.fileName, url: a.url, kind: a.kind, mimeType: a.mimeType, durationMs: a.durationMs ?? null })),
     meta: ai ? { ai } : null,
     createdAt: m.createdAt.toISOString(),
   };

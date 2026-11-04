@@ -12,5 +12,7 @@ export async function GET(req: Request) {
   const unitId = q.get("unitId") || null;
   if (!canAccessConvUnit(a.c.ua, unitId)) return notFound("ไม่พบหน่วยนี้");
   const staff = await eligibleResponders(a.c.tenantId, sid, unitId);
-  return Response.json({ staff: staff.map((s) => ({ userId: s.userId, name: s.name, role: s.role, onDuty: s.onDuty })) });
+  const items = staff.map((s) => ({ userId: s.userId, name: s.name, role: s.role, onDuty: s.onDuty }));
+  // `staff` = ชื่อเดิมของรอบแรก (ข้อสอบ A-4 ยังอ่านชื่อนี้) — แอปใช้ `items` (R-S1.21i) · ถอดหลัง ORACLE-EDIT S1.21-A4
+  return Response.json({ items, staff: items });
 }

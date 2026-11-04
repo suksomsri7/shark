@@ -2,14 +2,22 @@
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import { ForbiddenError } from "@/lib/core/rbac";
-import { listOnDuty, listRules, setRules } from "@/lib/modules/chat/routing";
+import { loadTeam, listOnDuty, listRules, respondersOf, setRules } from "@/lib/modules/chat/routing";
 import { ruleDto } from "@/lib/mobile/inbox-dto";
-import { fail, gate, notFound, READ, readBody, systemOf } from "../_shared";
+import { fail, gate, notFound, READ, readBody, systemOf, type InboxCtx } from "../_shared";
 
-async function routingDto(tenantId: string, systemId: string) {
+/** คนในเวรที่ผู้ดูตอบแทนได้ = ผู้ตอบได้ในหน่วยใดหน่วยหนึ่งที่ผู้ดูเห็น (เห็นทุกหน่วย = ทุกคนที่ตอบได้ · R-S1.21g) */
+async function visibleResponders(c: InboxCtx): Promise<Set<string>> {
+  const team = await loadTeam(c.tenantId);
+  const units: (string | null)[] = c.ua.includes("*") ? [null] : c.ua;
+  return new Set(units.flatMap((u) => respondersOf(team, u).map((r) => r.userId)));
+}
+
+async function routingDto(c: InboxCtx, systemId: string) {
+  const tenantId = c.tenantId;
   const [rules, onDuty, setting] = await Promise.all([
     listRules(tenantId, systemId),
-    listOnDuty(tenantId),
+    visibleResponders(c).then((ids) => listOnDuty(tenantId, ids)),
     tenantDb({ tenantId, systemId }).chatSetting.findFirst({ where: { systemId }, select: { slaFirstResponseMin: true, unassignedAlertMin: true } }),
   ]);
   return {
@@ -24,7 +32,7 @@ export async function GET(req: Request) {
   if (!a.ok) return a.res;
   const sid = await systemOf(a.c.tenantId, new URL(req.url).searchParams.get("systemId"));
   if (!sid) return notFound("ไม่พบระบบแชทนี้");
-  return Response.json(await routingDto(a.c.tenantId, sid));
+  return Response.json(await routingDto(a.c, sid));
 }
 
 const Rule = z.object({ channel: z.string().max(32).nullable().optional(), mode: z.string().max(32), enabled: z.boolean(), order: z.number().int().min(0).max(1000).optional() }).strict();
@@ -43,5 +51,5 @@ export async function PUT(req: Request) {
     if (e instanceof ForbiddenError) return fail(403, "forbidden", "ตั้งกฎรับเรื่องได้เฉพาะเจ้าของร้านหรือผู้จัดการ");
     return fail(422, "invalid", e instanceof Error ? e.message : "บันทึกกฎไม่สำเร็จ");
   }
-  return Response.json(await routingDto(a.c.tenantId, sid));
+  return Response.json(await routingDto(a.c, sid));
 }

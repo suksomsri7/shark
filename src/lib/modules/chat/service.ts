@@ -2058,14 +2058,25 @@ export async function listConversations(args: {
   q?: string;
   limit?: number;
   unitAccess?: string[]; // M11 — จาก auth.active.unitAccess
-  before?: Date; // SEC S1.21 ▸ cursor หน้าถัดไป = ห้องที่ lastMessageAt < before (ไม่ส่ง = เดิม · R-K13) ◂
+  /**
+   * SEC S1.21 ▸ โหมดแบ่งหน้า (แอป · R-K13 · R-S1.21h): ส่ง = เรียง `lastMessageAt desc nulls last, id desc` (ลำดับคงที่)
+   *   + `before` คู่ (เวลา, id) ของแถวสุดท้ายหน้าก่อน (เวลาเท่ากันไม่หาย · lastMessageAt null อยู่ท้ายและไม่ตัดหน้า) · ไม่ส่ง = เดิมทุกประการ ◂
+   */
+  page?: { before?: { at: Date | null; id: string } };
 }) {
   const where: Prisma.ChatConversationWhereInput = {
     tenantId: args.tenantId,
     systemId: args.systemId,
     ...unitAccessWhere(args.unitAccess),
   };
-  if (args.before) where.lastMessageAt = { lt: args.before }; // SEC S1.21 ◂
+  const cur = args.page?.before; // SEC S1.21 ▸ ◂
+  if (cur) {
+    where.AND = [
+      cur.at
+        ? { OR: [{ lastMessageAt: { lt: cur.at } }, { lastMessageAt: cur.at, id: { lt: cur.id } }, { lastMessageAt: null }] }
+        : { lastMessageAt: null, id: { lt: cur.id } },
+    ];
+  }
   if (args.status) where.status = args.status;
   if (args.channel) where.channel = args.channel;
   if (args.assignee === "none") where.assigneeUserId = null;
@@ -2084,7 +2095,7 @@ export async function listConversations(args: {
   return prisma.chatConversation.findMany({
     where,
     include: { contact: true },
-    orderBy: { lastMessageAt: "desc" },
+    orderBy: args.page ? [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { id: "desc" }] : { lastMessageAt: "desc" }, // SEC S1.21 ◂
     take: args.limit ?? 50,
   });
 }
@@ -2095,8 +2106,11 @@ export async function getThread(args: {
   conversationId: string;
   limit?: number;
   unitAccess?: string[]; // M11
-  /** SEC S1.21 ▸ ส่ง = หน้า "ใหม่สุด N ข้อความที่เก่ากว่า before" (เรียงเก่า→ใหม่เหมือนเดิม) · ไม่ส่ง = เดิม (เก่าสุด N ข้อความ) · R-K13 ◂ */
-  before?: Date;
+  /**
+   * SEC S1.21 ▸ โหมดแบ่งหน้า (แอป · R-K13 · R-S1.21h): ส่ง = หน้า "ใหม่สุด N ข้อความ" (ก่อน `before` คู่ (createdAt, id) ถ้ามี)
+   *   เรียงเก่า→ใหม่เหมือนเดิม · ไม่ส่ง = เดิม (เก่าสุด N ข้อความ) ◂
+   */
+  page?: { before?: { at: Date; id: string } };
 }) {
   const conversation = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
@@ -2104,10 +2118,15 @@ export async function getThread(args: {
   });
   if (!conversation) return null;
   if (!canAccessConvUnit(args.unitAccess, conversation.unitId)) return null; // M11: IDOR ต่าง unit
-  if (args.before) {
+  if (args.page) {
     // SEC S1.21 ▸ หยิบจากใหม่ลงเก่าแล้วกลับลำดับ — ผู้เรียกได้ลำดับเก่า→ใหม่เหมือนทางเดิม ◂
+    const b = args.page.before;
     const page = await prisma.chatMessage.findMany({
-      where: { systemId: args.systemId, conversationId: conversation.id, createdAt: { lt: args.before } },
+      where: {
+        systemId: args.systemId,
+        conversationId: conversation.id,
+        ...(b ? { OR: [{ createdAt: { lt: b.at } }, { createdAt: b.at, id: { lt: b.id } }] } : {}),
+      },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: args.limit ?? 100,
     });
@@ -2194,8 +2213,9 @@ export async function assign(
     actorUserId: string;
     unitAccess?: string[]; // M11
   },
-  // SEC S1.24 ▸ true = ผู้รับต้องตอบลูกค้าได้ในหน่วยของห้อง (`chat.message.send` + unit · R-K14) — ปริยาย false = เดิม ◂
-  opts?: { requireReplyPermission?: boolean },
+  // SEC S1.24 ▸ requireReplyPermission: ผู้รับต้องตอบลูกค้าได้ในหน่วยของห้อง (`chat.message.send` + unit · R-K14) — ปริยาย false = เดิม
+  //   onlyIfAssignee (ส่ง = มีคีย์): เขียนเฉพาะเมื่อผู้ดูแลตอนนี้ยังเป็นค่านี้ (`updateMany` มีเงื่อนไข · null = ห้องว่าง) — ไม่ตรง = ไม่เขียน ไม่มี event (R-S1.21c) ◂
+  opts?: { requireReplyPermission?: boolean; onlyIfAssignee?: string | null },
 ): Promise<{ ok: boolean; reason?: string }> {
   const conv = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
@@ -2217,16 +2237,25 @@ export async function assign(
       }
     }
   }
-  await prisma.chatConversation.update({
-    where: { id: conv.id },
-    data: { assigneeUserId: args.assigneeUserId },
-  });
+  const conditional = opts !== undefined && "onlyIfAssignee" in opts; // SEC S1.24 ◂
+  if (conditional) {
+    const won = await prisma.chatConversation.updateMany({
+      where: { id: conv.id, tenantId: args.tenantId, systemId: args.systemId, assigneeUserId: opts.onlyIfAssignee ?? null },
+      data: { assigneeUserId: args.assigneeUserId },
+    });
+    if (won.count !== 1) return { ok: false, reason: "ห้องนี้มีคนรับหรือย้ายไปแล้ว" };
+  } else {
+    await prisma.chatConversation.update({
+      where: { id: conv.id },
+      data: { assigneeUserId: args.assigneeUserId },
+    });
+  }
   await logEvent(conv.id, {
     tenantId: args.tenantId,
     systemId: args.systemId,
     type: "ASSIGNED",
     actorUserId: args.actorUserId,
-    meta: { fromUserId: conv.assigneeUserId, toUserId: args.assigneeUserId },
+    meta: { fromUserId: conditional ? (opts.onlyIfAssignee ?? null) : conv.assigneeUserId, toUserId: args.assigneeUserId },
   });
   return { ok: true };
 }

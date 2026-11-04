@@ -1,8 +1,8 @@
-// GET /api/mobile/inbox/conversations — รายการห้องแชทลูกค้า (ห่อ `listConversations` · cursor `before` · R-K13 · S1.21)
+// GET /api/mobile/inbox/conversations — รายการห้องแชทลูกค้า (ห่อ `listConversations` โหมด page · cursor คู่ `before=<iso>|<id>` · R-K13 · R-S1.21h)
 import { ChatChannelType } from "@prisma/client";
 import { listConversations } from "@/lib/modules/chat/service";
 import { conversationDto } from "@/lib/mobile/inbox-dto";
-import { convExtras, dateParam, fail, gate, notFound, READ, staffNames, systemOf } from "../_shared";
+import { convExtras, cursorOf, fail, gate, notFound, parseCursor, READ, staffNames, systemOf } from "../_shared";
 
 const STATUSES = new Set(["OPEN", "PENDING", "RESOLVED"]);
 const CHANNELS = new Set<string>(Object.values(ChatChannelType));
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   if (!sid) return notFound("ไม่พบระบบแชทนี้");
   const status = q.get("status") || undefined;
   const channel = q.get("channel") || undefined;
-  const before = dateParam(q.get("before"));
+  const before = parseCursor(q.get("before"));
   const limitRaw = Number(q.get("limit") ?? 30);
   if ((status && !STATUSES.has(status)) || (channel && !CHANNELS.has(channel)) || before === null || !Number.isFinite(limitRaw)) {
     return fail(422, "invalid", "ตัวกรองไม่ถูกต้อง");
@@ -32,12 +32,12 @@ export async function GET(req: Request) {
     callerUserId: c.userId,
     q: q.get("q") ?? undefined,
     limit,
-    before,
+    page: { before: before ?? undefined },
     unitAccess: c.ua,
   });
   const now = new Date();
   const [names, x] = await Promise.all([staffNames(c.tenantId), convExtras(c.tenantId, sid, rows.map((r) => r.id))]);
   const items = rows.map((r) => conversationDto(r, { now, names, aiDraft: x.aiDraft.has(r.id), helpers: x.helpers.get(r.id) ?? [] }));
   const last = rows[rows.length - 1];
-  return Response.json({ items, nextBefore: rows.length === limit && last?.lastMessageAt ? last.lastMessageAt.toISOString() : null });
+  return Response.json({ items, nextBefore: rows.length === limit && last ? cursorOf(last.lastMessageAt, last.id) : null });
 }

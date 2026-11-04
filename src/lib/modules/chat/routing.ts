@@ -20,12 +20,11 @@ import { notifyUser, type NotifyDeps } from "@/lib/ai/secretary/notify";
 import { prisma } from "./db";
 import { assign, canAccessConvUnit, sendReply } from "./service";
 import { minutesOfTime, readBusinessHours, type StoredBusinessHours } from "./business-hours";
+import { CHAT_REPLY_ACTION } from "./guard-keys";
 
 export const ROUTING_MODES = ["ROUND_ROBIN", "LAST_ASSIGNEE", "OWNER"] as const;
 export type RoutingMode = (typeof ROUTING_MODES)[number];
 
-/** คีย์ "ตอบลูกค้า" ในทะเบียนกลาง (`src/lib/core/permissions.ts` — chat.message.send · R-K14) · ผู้เรียกทุกตัว import ค่านี้ ห้ามพิมพ์สตริงซ้ำ */
-export const CHAT_REPLY_ACTION = "chat.message.send";
 
 /** ผู้กระทำของการมอบหมายอัตโนมัติ (ChatConversationEvent.actorUserId) */
 export const ROUTING_ACTOR = "system:routing";
@@ -43,6 +42,8 @@ const CHANNELS = new Set<string>(Object.values(ChatChannelType));
 
 type PushPost = NotifyDeps["post"];
 export type Responder = { userId: string; name: string; role: Role; onDuty: boolean };
+type SlaMsg = { title: string; body: string; data: Record<string, unknown> };
+type SlaNotify = (userId: string, msg: SlaMsg) => Promise<unknown>;
 
 // ───────────────────────── ใครตอบได้ ─────────────────────────
 
@@ -71,9 +72,11 @@ export async function onDutyUsers(tenantId: string): Promise<string[]> {
   return rows.map((r) => r.userId);
 }
 
-/** ผู้ตอบลูกค้าได้ในหน่วยนี้ (unitId null = ห้องระดับระบบ) เรียงตามวันที่เข้าร้าน · systemId ไว้ให้สัญญาเดียวกับผู้เรียก (สิทธิ์แชทเป็นระดับร้าน) */
-export async function eligibleResponders(tenantId: string, systemId: string, unitId: string | null): Promise<Responder[]> {
-  void systemId;
+type TeamMember = { userId: string; name: string; role: Role; ctx: MembershipCtx };
+/** ทีมของร้าน (Membership ที่รับแล้ว + เวร) — โหลดครั้งเดียวแล้วตัดต่อหน่วยด้วย `respondersOf` (R-S1.21g) */
+export type Team = { members: TeamMember[]; onDuty: Set<string> };
+
+export async function loadTeam(tenantId: string): Promise<Team> {
   const [rows, duty] = await Promise.all([
     prisma.membership.findMany({
       where: { tenantId, acceptedAt: { not: null } },
@@ -82,16 +85,27 @@ export async function eligibleResponders(tenantId: string, systemId: string, uni
     }),
     onDutyUsers(tenantId),
   ]);
-  const onDuty = new Set(duty);
   const seen = new Set<string>();
-  const out: Responder[] = [];
+  const members: TeamMember[] = [];
   for (const m of rows) {
     if (seen.has(m.userId)) continue;
     seen.add(m.userId);
-    if (!canReply(ctxOf(m), unitId)) continue;
-    out.push({ userId: m.userId, name: nameOf(m.user), role: m.role, onDuty: onDuty.has(m.userId) });
+    members.push({ userId: m.userId, name: nameOf(m.user), role: m.role, ctx: ctxOf(m) });
   }
-  return out;
+  return { members, onDuty: new Set(duty) };
+}
+
+/** ผู้ตอบได้ในหน่วยนี้จากทีมที่โหลดแล้ว (pure) */
+export function respondersOf(team: Team, unitId: string | null): Responder[] {
+  return team.members
+    .filter((m) => canReply(m.ctx, unitId))
+    .map((m) => ({ userId: m.userId, name: m.name, role: m.role, onDuty: team.onDuty.has(m.userId) }));
+}
+
+/** ผู้ตอบลูกค้าได้ในหน่วยนี้ (unitId null = ห้องระดับระบบ) เรียงตามวันที่เข้าร้าน · systemId ไว้ให้สัญญาเดียวกับผู้เรียก (สิทธิ์แชทเป็นระดับร้าน) */
+export async function eligibleResponders(tenantId: string, systemId: string, unitId: string | null): Promise<Responder[]> {
+  void systemId;
+  return respondersOf(await loadTeam(tenantId), unitId);
 }
 
 /** คนนี้ตอบลูกค้าได้ในหน่วยนี้ไหม — ใช้กับ `assign(…, { requireReplyPermission: true })` */
@@ -186,13 +200,9 @@ async function leastLoaded(tenantId: string, systemId: string, userIds: string[]
   return [...userIds].sort((a, b) => (load.get(a) ?? 0) - (load.get(b) ?? 0) || (a < b ? -1 : a > b ? 1 : 0))[0] ?? null;
 }
 
-async function firstOwner(tenantId: string): Promise<string | null> {
-  const m = await prisma.membership.findFirst({
-    where: { tenantId, role: "OWNER", acceptedAt: { not: null } },
-    orderBy: { createdAt: "asc" },
-    select: { userId: true },
-  });
-  return m?.userId ?? null;
+/** OWNER คนแรกของร้านที่ "เห็นหน่วย" ของห้อง (R-S1.21g) — OWNER ผ่าน evaluate เสมอ จึงเหลือแค่ด่านหน่วย */
+function firstOwner(team: Team, unitId: string | null): string | null {
+  return team.members.find((m) => m.role === "OWNER" && canAccessConvUnit(m.ctx.unitAccess, unitId))?.userId ?? null;
 }
 
 /**
@@ -206,6 +216,8 @@ export async function assignIncoming(args: {
   systemId: string;
   conversationId: string;
   now?: Date;
+  /** ตัวแจ้งเตือน "ได้รับห้อง" (ปริยาย notifyUser kind inbox · ค่าตั้ง ASSIGNED ผ่านเพราะเป็นผู้ดูแลแล้ว) · team = ทีมที่ผู้เรียกโหลดไว้แล้ว (sweep) */
+  deps?: { notify?: SlaNotify; post?: PushPost; team?: Team };
 }): Promise<{ assigned: string | null; reason: "rule" | "owner_fallback" | "no_rule" | "off_hours" | "already" | "no_responder" }> {
   const { tenantId, systemId, conversationId } = args;
   const now = args.now ?? new Date();
@@ -226,7 +238,8 @@ export async function assignIncoming(args: {
   const bh = readBusinessHours(setting?.businessHours ?? null);
   if (bh && !isWithinBusinessHours(bh, now)) return { assigned: null, reason: "off_hours" };
 
-  const all = await eligibleResponders(tenantId, systemId, conv.unitId);
+  const team = args.deps?.team ?? (await loadTeam(tenantId));
+  const all = respondersOf(team, conv.unitId);
   const inShift = all.filter((x) => x.onDuty);
   const pool = (inShift.length > 0 ? inShift : all).map((x) => x.userId);
 
@@ -247,12 +260,23 @@ export async function assignIncoming(args: {
 
   let reason: "rule" | "owner_fallback" = "rule";
   if (!chosen) {
-    chosen = await firstOwner(tenantId);
+    chosen = firstOwner(team, conv.unitId);
     reason = "owner_fallback";
     if (!chosen) return { assigned: null, reason: "no_responder" };
   }
-  const res = await assign({ tenantId, systemId, conversationId: conv.id, assigneeUserId: chosen, actorUserId: ROUTING_ACTOR });
-  if (!res.ok) return { assigned: null, reason: "no_responder" };
+  // ห้องว่างเท่านั้น (updateMany มีเงื่อนไข) — มีคนกดรับตัดหน้า = ของเขาชนะ ไม่ทับ (R-S1.21c · L-7)
+  const res = await assign(
+    { tenantId, systemId, conversationId: conv.id, assigneeUserId: chosen, actorUserId: ROUTING_ACTOR },
+    { onlyIfAssignee: null },
+  );
+  if (!res.ok) return { assigned: null, reason: "already" };
+  const note = { title: "มีแชทลูกค้าใหม่มอบหมายให้คุณ", body: "เปิดเพื่อตอบลูกค้า", data: { link: `/inbox/${conv.id}?e=assigned`, conversationId: conv.id, systemId, tenantId } };
+  try {
+    if (args.deps?.notify) await args.deps.notify(chosen, note);
+    else await notifyUser(chosen, tenantId, "inbox", note, { assigneeUserId: chosen, ...(args.deps?.post ? { post: args.deps.post } : {}) });
+  } catch {
+    // แจ้งเตือนล้ม = ห้องยังถูกมอบหมายแล้ว (ผู้รับเห็นในกล่อง)
+  }
   return { assigned: chosen, reason };
 }
 
@@ -338,12 +362,19 @@ export async function handoff(args: {
   toUserId: string;
   reason: string;
   unitAccess?: string[];
+  /** ผู้กดมีคีย์มอบหมาย (`chat.conversation.assign`) — ไม่มี = ต้องเป็นผู้ดูแลปัจจุบันหรือผู้ช่วยของห้อง (R-S1.21b) */
+  byCanAssign?: boolean;
   deps?: { post?: PushPost };
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
+}): Promise<{ ok: true } | { ok: false; reason: string; forbidden?: true }> {
   const { tenantId, systemId } = args;
   const conv = await convFor(tenantId, systemId, args.conversationId);
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
   if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" };
+  if (!args.byCanAssign && conv.assigneeUserId !== args.byUserId) {
+    const isHelper = await tenantDb({ tenantId }).chatConversationHelper.count({ where: { tenantId, conversationId: conv.id, userId: args.byUserId } });
+    if (isHelper === 0) return { ok: false, reason: "ส่งต่อได้เฉพาะผู้ดูแลห้อง ผู้ช่วยในห้อง หรือผู้มีสิทธิ์มอบหมาย", forbidden: true };
+  }
+  if (args.toUserId === args.byUserId) return { ok: false, reason: "เลือกเพื่อนร่วมทีมคนอื่นเพื่อส่งต่อ" };
   const why = (args.reason ?? "").trim().slice(0, REASON_MAX);
   if (!why) return { ok: false, reason: "ใส่เหตุผลที่ส่งต่อสั้น ๆ ให้คนรับรู้เรื่องด้วย" };
   if (conv.assigneeUserId === args.toUserId) return { ok: false, reason: "คนนี้ดูแลห้องนี้อยู่แล้ว" };
@@ -392,25 +423,33 @@ export async function listHelpers(
 
 // ───────────────────────── เวร ─────────────────────────
 
-/** เข้าเวร = แถวใหม่ (ปิดแถวเก่าที่ยังเปิดก่อน) · ออกเวร = ปิดแถวที่เปิดอยู่ */
+/** เข้าเวร = แถวใหม่ (เปิดอยู่แล้ว = คืนแถวเดิม) · ออกเวร = ปิดแถวที่เปิดอยู่ (ไม่มี = ไม่ทำอะไร) */
 export async function setShift(tenantId: string, userId: string, onDuty: boolean, now?: Date): Promise<{ onDuty: boolean; onDutyAt: Date | null }> {
   const at = now ?? new Date();
   const db = tenantDb({ tenantId });
+  if (onDuty) {
+    // กดเข้าเวรซ้ำ = แถวเดิม (ไม่สร้างแถวใหม่ · R-S1.21d) · ซ้อนกันหลายแถว (ข้อมูลเก่า) = เก็บแถวแรก ปิดที่เหลือ
+    const open = await db.chatShift.findMany({ where: { tenantId, userId, offDutyAt: null }, orderBy: { onDutyAt: "asc" }, select: { id: true, onDutyAt: true } });
+    if (open[0]) {
+      if (open.length > 1) await db.chatShift.updateMany({ where: { tenantId, userId, offDutyAt: null, id: { not: open[0].id } }, data: { offDutyAt: at } });
+      return { onDuty: true, onDutyAt: open[0].onDutyAt };
+    }
+    await db.chatShift.create({ data: { tenantId, userId, onDutyAt: at } });
+    return { onDuty: true, onDutyAt: at };
+  }
   await db.chatShift.updateMany({ where: { tenantId, userId, offDutyAt: null }, data: { offDutyAt: at } });
-  if (!onDuty) return { onDuty: false, onDutyAt: null };
-  await db.chatShift.create({ data: { tenantId, userId, onDutyAt: at } });
-  return { onDuty: true, onDutyAt: at };
+  return { onDuty: false, onDutyAt: null };
 }
 
 /** เวรที่เปิดอยู่ของร้าน (ชื่อ + เวลาเข้า) — ให้หน้ากฎรับเรื่อง */
-export async function listOnDuty(tenantId: string): Promise<{ userId: string; name: string; since: Date }[]> {
+export async function listOnDuty(tenantId: string, onlyUserIds?: ReadonlySet<string>): Promise<{ userId: string; name: string; since: Date }[]> {
   const rows = await tenantDb({ tenantId }).chatShift.findMany({
     where: { tenantId, offDutyAt: null },
     orderBy: { onDutyAt: "asc" },
     select: { userId: true, onDutyAt: true },
   });
   const first = new Map<string, Date>();
-  for (const r of rows) if (!first.has(r.userId)) first.set(r.userId, r.onDutyAt);
+  for (const r of rows) if (!first.has(r.userId) && (!onlyUserIds || onlyUserIds.has(r.userId))) first.set(r.userId, r.onDutyAt);
   if (first.size === 0) return [];
   const users = await prisma.user.findMany({ where: { id: { in: [...first.keys()] } }, select: { id: true, name: true, email: true } });
   const byId = new Map(users.map((u) => [u.id, u]));
@@ -419,9 +458,6 @@ export async function listOnDuty(tenantId: string): Promise<{ userId: string; na
 
 // ───────────────────────── SLA ─────────────────────────
 
-type SlaMsg = { title: string; body: string; data: Record<string, unknown> };
-type SlaNotify = (userId: string, msg: SlaMsg) => Promise<unknown>;
-
 /** บันทึกภายใน 1 ใบที่เป็นทั้งร่องรอยและตัวกันซ้ำ — true = ใบแรก (ผู้เรียกทำต่อ) · false = มีแล้ว/เขียนไม่ได้ */
 async function claimNote(tenantId: string, systemId: string, conversationId: string, key: string, body: string): Promise<boolean> {
   const r = await sendReply({ tenantId, systemId, conversationId, senderUserId: SLA_ACTOR, senderName: "ระบบแชท", body, isInternal: true, clientMessageId: key });
@@ -429,13 +465,17 @@ async function claimNote(tenantId: string, systemId: string, conversationId: str
 }
 
 const minsOf = (ms: number) => Math.max(0, Math.floor(ms / 60_000));
+const SLA_UNASSIGNED = "sla:unassigned:";
+const SLA_FIRST = "sla:first_response:";
+const SLA_ESCALATED = "sla:escalated:";
 
 /**
  * ตรวจ SLA ทุกระบบ CHAT ที่เปิดอยู่และมี ChatSetting (ข้ามร้าน · งานรายนาที `chat.sla` ทุก 5 นาที)
- *   (1) ห้อง OPEN ไม่มีผู้ดูแล รอ ≥ unassignedAlertMin ⇒ เตือน OWNER/MANAGER ที่ตอบได้ในหน่วย (1 ครั้งต่อการรอ)
- *   (2) มีผู้ดูแลแต่ยังไม่ตอบแรก รอ ≥ slaFirstResponseMin ⇒ เตือนผู้ดูแล (1 ครั้ง) · รอ ≥ 2× ⇒ ย้ายให้ MANAGER/OWNER ที่ตอบได้ (1 ครั้ง)
- *   เวลารอนับจาก `firstCustomerMessageAt` · ดูย้อนหลังไม่เกิน 24 ชม. · กันซ้ำ = clientMessageId `sla:<เรื่อง>:<เวลาเริ่มรอ>`
- *   ไม่ throw ทั้งรอบเพราะห้องเดียว (log แล้วไปห้องถัดไป) · `deps.deadline` (ms) = หยุดก่อนหมดงบ
+ *   (0)+(1) ห้อง OPEN ที่ "ไม่มีผู้ดูแลจริง" (assignee null หรือผู้ดูแลตอบไม่ได้แล้ว — ถูกถอน/หลุดหน่วย · R-S1.21c) รอ ≥ unassignedAlertMin
+ *       เฉพาะในเวลาทำการ: ห้องว่าง ⇒ ลอง `assignIncoming` ก่อน (ล้างคิวตอนเปิดร้าน) · ยังไม่มีใคร ⇒ เตือน OWNER/MANAGER ที่ตอบได้ในหน่วย (1 ครั้งต่อการรอ)
+ *   (2) มีผู้ดูแล (ตอบได้) แต่ยังไม่ตอบแรก รอ ≥ slaFirstResponseMin ⇒ เตือนผู้ดูแล (1 ครั้ง) · รอ ≥ 2× ⇒ ย้ายให้ MANAGER/OWNER ที่ตอบได้ (1 ครั้ง · ย้ายเฉพาะเมื่อผู้ดูแลยังเป็นคนเดิม)
+ *   เวลารอนับจาก `firstCustomerMessageAt` · ดูย้อนหลังไม่เกิน 24 ชม. · กันซ้ำ = clientMessageId `sla:<เรื่อง>:<เวลาเริ่มรอ>` · ห้องที่มีโน้ตแล้วถูกกรองตั้งแต่ query (ไม่กินโควตา 200 ห้อง)
+ *   ทีมโหลดครั้งเดียวต่อร้าน · ไม่ throw ทั้งรอบเพราะห้องเดียว · `deps.deadline` (ms) = หยุดก่อนหมดงบ
  */
 export async function sweepChatSla(
   now?: Date,
@@ -450,11 +490,14 @@ export async function sweepChatSla(
   const late = () => typeof deps?.deadline === "number" && Date.now() > deps.deadline;
 
   // ข้ามร้าน: ChatSetting ทุกแถว ∩ ระบบ CHAT ที่เปิด (แบบ chat/retention.ts) — ทุกคำสั่งหลังจากนี้ผูก tenantId+systemId ตรง
-  const settings = await prisma.chatSetting.findMany({ select: { tenantId: true, systemId: true, slaFirstResponseMin: true, unassignedAlertMin: true } });
+  const settings = await prisma.chatSetting.findMany({
+    select: { tenantId: true, systemId: true, slaFirstResponseMin: true, unassignedAlertMin: true, businessHours: true },
+  });
   const active = new Set(
     (await prisma.appSystem.findMany({ where: { id: { in: settings.map((s) => s.systemId) }, type: "CHAT", active: true }, select: { id: true } })).map((s) => s.id),
   );
   const since = new Date(at.getTime() - SLA_LOOKBACK_MS);
+  const teams = new Map<string, Team>();
 
   for (const s of settings) {
     if (!active.has(s.systemId) || late()) continue;
@@ -465,41 +508,77 @@ export async function sweepChatSla(
       data: { link: `/inbox/${convId}?e=sla`, conversationId: convId, systemId, tenantId },
     });
     try {
-      // (1) ยังไม่มีผู้ดูแล
-      if (s.unassignedAlertMin > 0) {
+      let team = teams.get(tenantId);
+      if (!team) teams.set(tenantId, (team = await loadTeam(tenantId)));
+      const t = team;
+      const validIn = (uid: string | null, unitId: string | null) => !!uid && respondersOf(t, unitId).some((r) => r.userId === uid);
+      const bh = readBusinessHours(s.businessHours);
+      const open = !bh || isWithinBusinessHours(bh, at);
+
+      // (0)+(1) ไม่มีผู้ดูแลจริง — นอกเวลาทำการไม่เตือน ไม่มอบหมาย
+      if (open && s.unassignedAlertMin > 0) {
+        const keyHolders = t.members.filter((m) => evaluate(m.ctx, { module: "chat", action: CHAT_REPLY_ACTION }));
+        // ผู้ถือคีย์ที่จำกัดหน่วย: ห้องนอกหน่วยของเขา = ผู้ดูแลที่ตอบไม่ได้ (ห้องไม่ผูกหน่วยตอบได้เสมอ — notIn ตัด null อยู่แล้ว)
+        const outOfUnit = keyHolders
+          .filter((m) => !m.ctx.unitAccess.includes("*"))
+          .map((m) => ({ assigneeUserId: m.userId, unitId: { notIn: m.ctx.unitAccess } }));
         const rooms = await prisma.chatConversation.findMany({
-          where: { tenantId, systemId, status: "OPEN", assigneeUserId: null, firstCustomerMessageAt: { gte: since, lte: new Date(at.getTime() - s.unassignedAlertMin * 60_000) } },
-          select: { id: true, unitId: true, firstCustomerMessageAt: true },
+          where: {
+            tenantId,
+            systemId,
+            status: "OPEN",
+            firstCustomerMessageAt: { gte: since, lte: new Date(at.getTime() - s.unassignedAlertMin * 60_000) },
+            messages: { none: { clientMessageId: { startsWith: SLA_UNASSIGNED } } },
+            OR: [{ assigneeUserId: null }, { assigneeUserId: { notIn: keyHolders.map((m) => m.userId) } }, ...outOfUnit],
+          },
+          select: { id: true, unitId: true, assigneeUserId: true, firstCustomerMessageAt: true },
           orderBy: { firstCustomerMessageAt: "asc" },
           take: SLA_ROOMS_PER_SYSTEM,
         });
+        const hasRules = rooms.some((c) => !c.assigneeUserId) && (await listRules(tenantId, systemId)).some((r) => r.enabled);
         for (const c of rooms) {
           if (late()) break;
+          if (validIn(c.assigneeUserId, c.unitId)) continue; // ตรวจซ้ำฝั่งแอป (ตัวกรอง SQL หยาบกว่า)
+          if (!c.assigneeUserId && hasRules) {
+            const r = await assignIncoming({ tenantId, systemId, conversationId: c.id, now: at, deps: { notify, team: t } });
+            if (r.assigned) continue;
+          }
           const waited = minsOf(at.getTime() - c.firstCustomerMessageAt!.getTime());
-          const claimed = await claimNote(tenantId, systemId, c.id, `sla:unassigned:${c.firstCustomerMessageAt!.getTime()}`, `⏰ ลูกค้ารอมา ${waited} นาที ยังไม่มีผู้ดูแลห้องนี้ — แจ้งเจ้าของ/ผู้จัดการแล้ว`);
+          const gone = c.assigneeUserId ? "ผู้ดูแลเดิมตอบห้องนี้ไม่ได้แล้ว" : "ยังไม่มีผู้ดูแลห้องนี้";
+          const claimed = await claimNote(tenantId, systemId, c.id, `${SLA_UNASSIGNED}${c.firstCustomerMessageAt!.getTime()}`, `⏰ ลูกค้ารอมา ${waited} นาที ${gone} — แจ้งเจ้าของ/ผู้จัดการแล้ว`);
           if (!claimed) continue;
-          const bosses = (await eligibleResponders(tenantId, systemId, c.unitId)).filter((x) => x.role === "OWNER" || x.role === "MANAGER");
+          const bosses = respondersOf(t, c.unitId).filter((x) => x.role === "OWNER" || x.role === "MANAGER");
           for (const b of bosses) await notify(b.userId, msg(c.id, "แชทลูกค้ายังไม่มีผู้ดูแล", `ลูกค้ารอมา ${waited} นาที — เปิดเพื่อรับเรื่องหรือมอบหมาย`));
           out.alerted++;
         }
       }
-      // (2) มีผู้ดูแลแต่ยังไม่ตอบแรก
+
+      // (2) มีผู้ดูแลที่ตอบได้ แต่ยังไม่ตอบแรก
       if (s.slaFirstResponseMin > 0) {
         const slaMs = s.slaFirstResponseMin * 60_000;
         const rooms = await prisma.chatConversation.findMany({
-          where: { tenantId, systemId, status: "OPEN", assigneeUserId: { not: null }, firstResponseAt: null, firstCustomerMessageAt: { gte: since, lte: new Date(at.getTime() - slaMs) } },
+          where: {
+            tenantId,
+            systemId,
+            status: "OPEN",
+            assigneeUserId: { not: null },
+            firstResponseAt: null,
+            firstCustomerMessageAt: { gte: since, lte: new Date(at.getTime() - slaMs) },
+            messages: { none: { clientMessageId: { startsWith: SLA_ESCALATED } } },
+          },
           select: { id: true, unitId: true, assigneeUserId: true, firstCustomerMessageAt: true },
           orderBy: { firstCustomerMessageAt: "asc" },
           take: SLA_ROOMS_PER_SYSTEM,
         });
         for (const c of rooms) {
           if (late()) break;
+          const from = c.assigneeUserId!;
+          if (!validIn(from, c.unitId)) continue; // ผู้ดูแลตอบไม่ได้แล้ว = งานของ (1) · ไม่ push ถึงคนที่ถูกถอน
           const anchor = c.firstCustomerMessageAt!.getTime();
           const waitedMs = at.getTime() - anchor;
           const waited = minsOf(waitedMs);
-          const from = c.assigneeUserId!;
           if (waitedMs >= 2 * slaMs) {
-            const responders = await eligibleResponders(tenantId, systemId, c.unitId);
+            const responders = respondersOf(t, c.unitId);
             const bosses = responders.filter((x) => (x.role === "MANAGER" || x.role === "OWNER") && x.userId !== from);
             // ผู้จัดการก่อน เจ้าของทีหลัง · ในกลุ่มเดียวกัน = คนที่ห้องน้อยสุด
             const managers = bosses.filter((x) => x.role === "MANAGER").map((x) => x.userId);
@@ -507,9 +586,10 @@ export async function sweepChatSla(
             if (target) {
               const fromName = responders.find((x) => x.userId === from)?.name ?? (await userName(from));
               const toName = bosses.find((x) => x.userId === target)?.name ?? "ผู้จัดการ";
-              const claimed = await claimNote(tenantId, systemId, c.id, `sla:escalated:${anchor}`, `⏫ ลูกค้ารอคำตอบแรกมา ${waited} นาที — ย้ายจาก ${fromName} ถึง ${toName}`);
+              const claimed = await claimNote(tenantId, systemId, c.id, `${SLA_ESCALATED}${anchor}`, `⏫ ลูกค้ารอคำตอบแรกมา ${waited} นาที — ย้ายจาก ${fromName} ถึง ${toName}`);
               if (claimed) {
-                const res = await assign({ tenantId, systemId, conversationId: c.id, assigneeUserId: target, actorUserId: SLA_ACTOR });
+                // ย้ายเฉพาะเมื่อผู้ดูแลยังเป็นคนเดิม (updateMany มีเงื่อนไข · L-7)
+                const res = await assign({ tenantId, systemId, conversationId: c.id, assigneeUserId: target, actorUserId: SLA_ACTOR }, { onlyIfAssignee: from });
                 if (res.ok) {
                   await notify(target, msg(c.id, "ย้ายแชทลูกค้าที่รอนานมาให้คุณ", `ลูกค้ารอคำตอบแรกมา ${waited} นาที`));
                   out.escalated++;
@@ -518,7 +598,7 @@ export async function sweepChatSla(
               continue;
             }
           }
-          const claimed = await claimNote(tenantId, systemId, c.id, `sla:first_response:${anchor}`, `⏰ ลูกค้ารอคำตอบแรกมา ${waited} นาที`);
+          const claimed = await claimNote(tenantId, systemId, c.id, `${SLA_FIRST}${anchor}`, `⏰ ลูกค้ารอคำตอบแรกมา ${waited} นาที`);
           if (!claimed) continue;
           await notify(from, msg(c.id, "ลูกค้ารอคำตอบอยู่", `ลูกค้ารอคำตอบแรกมา ${waited} นาที`));
           out.alerted++;
