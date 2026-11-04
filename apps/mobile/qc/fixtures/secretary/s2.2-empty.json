@@ -1,0 +1,209 @@
+{
+ "_about": "fixture ของใบ S2.2 สถานะว่าง — 0 ห้อง ⇒ /secretary = C3 (ข้อเสนองานแรกจาก secretary/suggestions) · ข้อมูลจำลองล้วน",
+ "noAuth": [
+  "/login"
+ ],
+ "expect": {
+  "/secretary": [
+   "sec-secretary",
+   "sec-home",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help",
+   "sec-tenant",
+   "sec-home-empty",
+   "sec-orb",
+   "sec-suggest-s1",
+   "sec-suggest-s2",
+   "sec-suggest-s3",
+   "sec-home-new",
+   "sec-input"
+  ]
+ },
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@qc.invalid",
+    "name": "คุณสุข (QC)"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "MANAGER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/rooms": {
+   "items": [],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 0,
+   "canApprove": 0
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 0
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 0,
+    "approvedClean": 0,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "languages": [
+    "th"
+   ]
+  },
+  "GET /api/mobile/usage": {
+   "used": 12,
+   "limit": 100,
+   "pct": 12
+  },
+  "GET /api/mobile/conversations": {
+   "conversations": [
+    {
+     "id": "c-qc-1",
+     "title": "สรุปยอดขายเมื่อวาน",
+     "updatedAt": "2026-09-01T03:00:00.000Z",
+     "unread": true
+    },
+    {
+     "id": "c-qc-2",
+     "title": "ใบเสนอราคา ร้านตัวอย่าง",
+     "updatedAt": "2026-08-28T03:00:00.000Z",
+     "unread": false
+    }
+   ]
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-code-0000"
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/suggestions": {
+   "items": [
+    {
+     "key": "boost_sales",
+     "system": "pos",
+     "title": "วันนี้ยังไม่มียอดขาย",
+     "instruction": "วันนี้ยังไม่มีบิลขายเลย ช่วยคิดโปรหรือข้อความชวนลูกค้าเข้าร้านช่วงเย็นนี้ให้หน่อย",
+     "priority": 3
+    },
+    {
+     "key": "follow_quiet",
+     "system": "crm",
+     "title": "ทักลูกค้าที่เงียบไป 12 ราย",
+     "instruction": "ช่วยร่างข้อความทักลูกค้าที่ไม่มีความเคลื่อนไหวเกิน 30 วัน 12 ราย แล้วเสนอให้ผมดูก่อนส่ง",
+     "priority": 2
+    },
+    {
+     "key": "prep_tomorrow",
+     "system": "booking",
+     "title": "เตรียมนัดพรุ่งนี้ 4 นัด",
+     "instruction": "ช่วยสรุปนัดหมายพรุ่งนี้ 4 นัด และบอกว่าต้องเตรียมอะไรบ้าง",
+     "priority": 2
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/frequent": {
+   "items": [
+    {
+     "instruction": "สรุปยอดขายเมื่อวาน",
+     "count": 9
+    },
+    {
+     "instruction": "ใบเสนอราคา",
+     "count": 7
+    },
+    {
+     "instruction": "ตามลูกค้าเงียบ",
+     "count": 6
+    },
+    {
+     "instruction": "เช็กคิวพรุ่งนี้",
+     "count": 5
+    },
+    {
+     "instruction": "ค้างชำระหอพัก",
+     "count": 4
+    },
+    {
+     "instruction": "โพสต์โปรเดือนนี้",
+     "count": 3
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [
+    {
+     "module": "pos",
+     "level": "DRAFT"
+    },
+    {
+     "module": "crm",
+     "level": "DRAFT"
+    },
+    {
+     "module": "booking",
+     "level": "DRAFT"
+    },
+    {
+     "module": "dorm",
+     "level": "DRAFT"
+    },
+    {
+     "module": "member",
+     "level": "DRAFT"
+    },
+    {
+     "module": "account",
+     "level": "DRAFT"
+    },
+    {
+     "module": "kanban",
+     "level": "DRAFT"
+    },
+    {
+     "module": "chat",
+     "level": "DRAFT"
+    },
+    {
+     "module": "hr",
+     "level": "OFF"
+    },
+    {
+     "module": "inventory",
+     "level": "OFF"
+    }
+   ],
+   "autoAvailable": false
+  },
+  "POST /api/mobile/secretary/rooms": {
+   "roomId": "r-new",
+   "conversationId": "c-new",
+   "status": "RUNNING"
+  }
+ }
+}

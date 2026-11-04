@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T20:00:11.500Z",
+ "generatedAt": "2026-11-04T20:39:24.019Z",
  "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
@@ -8,8 +8,8 @@
   "scale": 2
  },
  "fixture": {
-  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.1.json",
-  "sha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7"
+  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.2.json",
+  "sha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9"
  },
  "screens": [
   {
@@ -51,64 +51,11 @@
    "generatedAt": "2026-11-04T11:43:01.867Z"
   },
   {
-   "name": "secretary",
-   "route": "/secretary",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help",
-    "sec-home",
-    "sec-top-new",
-    "sec-tenant",
-    "sec-suggest-s1",
-    "sec-suggest-s2",
-    "sec-suggest-s3",
-    "sec-input"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n\n\nThe Bean Café\n\nเลขา Shark · ยังไม่มีงานในกิจการนี้\nสั่งงานแรกได้เลย\nพิมพ์หรือพูดเป็นภาษาปกติ\nผมหาข้อมูลในระบบ ร่างให้ แล้วขออนุมัติก่อนทำจริง\nลองสั่งแบบนี้\nPOS\nสรุปยอดขายเมื่อวาน กับของที่ใกล้หมด\nอ่านอย่างเดียว · เสร็จเองได้\n\nCRM\nลูกค้าคนไหนไม่ได้ซื้อนานเกิน 1 เดือน\nอ่านอย่างเดียว · เสร็จเองได้\n\nคิว\nเช็กคิวพรุ่งนี้ แล้วร่างข้อความยืนยันลูกค้า\nร่างแล้วรอคุณอนุมัติก่อนส่ง\n\n\n",
-   "unmocked": [],
-   "url": "/secretary",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary.png",
-   "generatedAt": "2026-11-04T19:57:16.968Z"
-  },
-  {
-   "name": "secretary-new",
-   "route": "/secretary/new",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-new",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nเริ่มงานใหม่\nกำลังสร้าง (ใบ S2.3)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.3 วาดตามแบบหน้า A2",
-   "unmocked": [],
-   "url": "/secretary/new",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new.png",
-   "generatedAt": "2026-11-04T19:57:20.686Z"
-  },
-  {
    "name": "secretary-room-r1",
    "route": "/secretary/room/r1",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -124,14 +71,14 @@
    "unmocked": [],
    "url": "/secretary/room/r1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1.png",
-   "generatedAt": "2026-11-04T19:57:24.383Z"
+   "generatedAt": "2026-11-04T20:24:38.514Z"
   },
   {
    "name": "secretary-inbox",
    "route": "/secretary/inbox",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -147,14 +94,14 @@
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox.png",
-   "generatedAt": "2026-11-04T19:57:28.104Z"
+   "generatedAt": "2026-11-04T20:24:42.297Z"
   },
   {
    "name": "secretary-scheduled",
    "route": "/secretary/scheduled",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -170,14 +117,14 @@
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled.png",
-   "generatedAt": "2026-11-04T19:57:31.817Z"
+   "generatedAt": "2026-11-04T20:24:46.020Z"
   },
   {
    "name": "secretary-staff",
    "route": "/secretary/staff",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -193,14 +140,14 @@
    "unmocked": [],
    "url": "/secretary/staff",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff.png",
-   "generatedAt": "2026-11-04T19:57:35.504Z"
+   "generatedAt": "2026-11-04T20:24:49.747Z"
   },
   {
    "name": "secretary-staff-m1",
    "route": "/secretary/staff/m1",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -216,14 +163,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1.png",
-   "generatedAt": "2026-11-04T19:57:39.144Z"
+   "generatedAt": "2026-11-04T20:24:53.436Z"
   },
   {
    "name": "secretary-staff-invite",
    "route": "/secretary/staff/invite",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -239,14 +186,14 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite.png",
-   "generatedAt": "2026-11-04T19:57:42.873Z"
+   "generatedAt": "2026-11-04T20:24:57.153Z"
   },
   {
    "name": "secretary-settings",
    "route": "/secretary/settings",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -262,14 +209,14 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings.png",
-   "generatedAt": "2026-11-04T19:57:46.589Z"
+   "generatedAt": "2026-11-04T20:25:01.126Z"
   },
   {
    "name": "secretary-settings-secretary",
    "route": "/secretary/settings/secretary",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -285,14 +232,14 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-secretary.png",
-   "generatedAt": "2026-11-04T19:57:50.284Z"
+   "generatedAt": "2026-11-04T20:25:08.163Z"
   },
   {
    "name": "secretary-settings-access",
    "route": "/secretary/settings/access",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -308,14 +255,14 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-access.png",
-   "generatedAt": "2026-11-04T19:57:54.058Z"
+   "generatedAt": "2026-11-04T20:25:12.050Z"
   },
   {
    "name": "secretary-settings-rules",
    "route": "/secretary/settings/rules",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -331,14 +278,14 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-rules.png",
-   "generatedAt": "2026-11-04T19:57:57.789Z"
+   "generatedAt": "2026-11-04T20:25:15.834Z"
   },
   {
    "name": "secretary-settings-log",
    "route": "/secretary/settings/log",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -354,14 +301,14 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-log.png",
-   "generatedAt": "2026-11-04T19:58:01.509Z"
+   "generatedAt": "2026-11-04T20:25:19.565Z"
   },
   {
    "name": "secretary-settings-knowledge",
    "route": "/secretary/settings/knowledge",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -377,14 +324,14 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-04T19:58:05.294Z"
+   "generatedAt": "2026-11-04T20:25:23.245Z"
   },
   {
    "name": "secretary-settings-customers",
    "route": "/secretary/settings/customers",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -400,14 +347,14 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-customers.png",
-   "generatedAt": "2026-11-04T19:58:08.991Z"
+   "generatedAt": "2026-11-04T20:25:26.959Z"
   },
   {
    "name": "secretary-settings-account",
    "route": "/secretary/settings/account",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -423,14 +370,14 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account.png",
-   "generatedAt": "2026-11-04T19:58:12.677Z"
+   "generatedAt": "2026-11-04T20:25:30.910Z"
   },
   {
    "name": "secretary-settings-quota",
    "route": "/secretary/settings/quota",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -446,14 +393,14 @@
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-quota.png",
-   "generatedAt": "2026-11-04T19:58:16.357Z"
+   "generatedAt": "2026-11-04T20:25:34.763Z"
   },
   {
    "name": "secretary-onboarding-name",
    "route": "/secretary/onboarding/name",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -469,14 +416,14 @@
    "unmocked": [],
    "url": "/secretary/onboarding/name",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-onboarding-name.png",
-   "generatedAt": "2026-11-04T19:58:18.983Z"
+   "generatedAt": "2026-11-04T20:25:38.596Z"
   },
   {
    "name": "secretary-help",
    "route": "/secretary/help",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -492,14 +439,14 @@
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help.png",
-   "generatedAt": "2026-11-04T19:58:22.599Z"
+   "generatedAt": "2026-11-04T20:25:42.360Z"
   },
   {
    "name": "secretary-help-c1",
    "route": "/secretary/help/c1",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -515,14 +462,14 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1.png",
-   "generatedAt": "2026-11-04T19:58:26.318Z"
+   "generatedAt": "2026-11-04T20:25:46.058Z"
   },
   {
    "name": "customers",
    "route": "/customers",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -538,14 +485,14 @@
    "unmocked": [],
    "url": "/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers.png",
-   "generatedAt": "2026-11-04T19:58:30.013Z"
+   "generatedAt": "2026-11-04T20:25:49.778Z"
   },
   {
    "name": "customers-x1",
    "route": "/customers/x1",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -561,14 +508,14 @@
    "unmocked": [],
    "url": "/customers/x1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1.png",
-   "generatedAt": "2026-11-04T19:58:33.655Z"
+   "generatedAt": "2026-11-04T20:25:53.478Z"
   },
   {
    "name": "customers-x1-info",
    "route": "/customers/x1/info",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -584,14 +531,14 @@
    "unmocked": [],
    "url": "/customers/x1/info",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-info.png",
-   "generatedAt": "2026-11-04T19:58:36.408Z"
+   "generatedAt": "2026-11-04T20:25:57.182Z"
   },
   {
    "name": "business-new",
    "route": "/business/new",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -607,67 +554,14 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new.png",
-   "generatedAt": "2026-11-04T19:58:39.068Z"
-  },
-  {
-   "name": "secretary-dark",
-   "route": "/secretary",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help",
-    "sec-home",
-    "sec-top-new",
-    "sec-tenant",
-    "sec-suggest-s1",
-    "sec-suggest-s2",
-    "sec-suggest-s3",
-    "sec-input"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n\n\nThe Bean Café\n\nเลขา Shark · ยังไม่มีงานในกิจการนี้\nสั่งงานแรกได้เลย\nพิมพ์หรือพูดเป็นภาษาปกติ\nผมหาข้อมูลในระบบ ร่างให้ แล้วขออนุมัติก่อนทำจริง\nลองสั่งแบบนี้\nPOS\nสรุปยอดขายเมื่อวาน กับของที่ใกล้หมด\nอ่านอย่างเดียว · เสร็จเองได้\n\nCRM\nลูกค้าคนไหนไม่ได้ซื้อนานเกิน 1 เดือน\nอ่านอย่างเดียว · เสร็จเองได้\n\nคิว\nเช็กคิวพรุ่งนี้ แล้วร่างข้อความยืนยันลูกค้า\nร่างแล้วรอคุณอนุมัติก่อนส่ง\n\n\n",
-   "unmocked": [],
-   "url": "/secretary",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-dark.png",
-   "generatedAt": "2026-11-04T19:58:42.776Z"
-  },
-  {
-   "name": "secretary-new-dark",
-   "route": "/secretary/new",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-new",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nเริ่มงานใหม่\nกำลังสร้าง (ใบ S2.3)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.3 วาดตามแบบหน้า A2",
-   "unmocked": [],
-   "url": "/secretary/new",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new-dark.png",
-   "generatedAt": "2026-11-04T19:58:45.561Z"
+   "generatedAt": "2026-11-04T20:26:00.927Z"
   },
   {
    "name": "secretary-room-r1-dark",
    "route": "/secretary/room/r1",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -683,14 +577,14 @@
    "unmocked": [],
    "url": "/secretary/room/r1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1-dark.png",
-   "generatedAt": "2026-11-04T19:58:49.291Z"
+   "generatedAt": "2026-11-04T20:26:15.286Z"
   },
   {
    "name": "secretary-inbox-dark",
    "route": "/secretary/inbox",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -706,14 +600,14 @@
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox-dark.png",
-   "generatedAt": "2026-11-04T19:58:53.092Z"
+   "generatedAt": "2026-11-04T20:26:19.101Z"
   },
   {
    "name": "secretary-scheduled-dark",
    "route": "/secretary/scheduled",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -729,14 +623,14 @@
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled-dark.png",
-   "generatedAt": "2026-11-04T19:58:56.737Z"
+   "generatedAt": "2026-11-04T20:26:22.998Z"
   },
   {
    "name": "secretary-staff-dark",
    "route": "/secretary/staff",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -752,14 +646,14 @@
    "unmocked": [],
    "url": "/secretary/staff",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-dark.png",
-   "generatedAt": "2026-11-04T19:59:00.500Z"
+   "generatedAt": "2026-11-04T20:26:26.906Z"
   },
   {
    "name": "secretary-staff-m1-dark",
    "route": "/secretary/staff/m1",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -775,14 +669,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1-dark.png",
-   "generatedAt": "2026-11-04T19:59:04.463Z"
+   "generatedAt": "2026-11-04T20:26:30.688Z"
   },
   {
    "name": "secretary-staff-invite-dark",
    "route": "/secretary/staff/invite",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -798,14 +692,14 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite-dark.png",
-   "generatedAt": "2026-11-04T19:59:08.347Z"
+   "generatedAt": "2026-11-04T20:26:34.406Z"
   },
   {
    "name": "secretary-settings-dark",
    "route": "/secretary/settings",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -821,14 +715,14 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-dark.png",
-   "generatedAt": "2026-11-04T19:59:12.028Z"
+   "generatedAt": "2026-11-04T20:26:38.159Z"
   },
   {
    "name": "secretary-settings-secretary-dark",
    "route": "/secretary/settings/secretary",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -844,14 +738,14 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-secretary-dark.png",
-   "generatedAt": "2026-11-04T19:59:15.694Z"
+   "generatedAt": "2026-11-04T20:26:41.873Z"
   },
   {
    "name": "secretary-settings-access-dark",
    "route": "/secretary/settings/access",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -867,14 +761,14 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-access-dark.png",
-   "generatedAt": "2026-11-04T19:59:18.490Z"
+   "generatedAt": "2026-11-04T20:26:45.556Z"
   },
   {
    "name": "secretary-settings-rules-dark",
    "route": "/secretary/settings/rules",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -890,14 +784,14 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-rules-dark.png",
-   "generatedAt": "2026-11-04T19:59:21.201Z"
+   "generatedAt": "2026-11-04T20:26:49.235Z"
   },
   {
    "name": "secretary-settings-log-dark",
    "route": "/secretary/settings/log",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -913,14 +807,14 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-log-dark.png",
-   "generatedAt": "2026-11-04T19:59:23.995Z"
+   "generatedAt": "2026-11-04T20:26:52.908Z"
   },
   {
    "name": "secretary-settings-knowledge-dark",
    "route": "/secretary/settings/knowledge",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -936,14 +830,14 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-knowledge-dark.png",
-   "generatedAt": "2026-11-04T19:59:27.700Z"
+   "generatedAt": "2026-11-04T20:26:56.586Z"
   },
   {
    "name": "secretary-settings-customers-dark",
    "route": "/secretary/settings/customers",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -959,14 +853,14 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-customers-dark.png",
-   "generatedAt": "2026-11-04T19:59:31.375Z"
+   "generatedAt": "2026-11-04T20:27:00.272Z"
   },
   {
    "name": "secretary-settings-account-dark",
    "route": "/secretary/settings/account",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -982,14 +876,14 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account-dark.png",
-   "generatedAt": "2026-11-04T19:59:35.162Z"
+   "generatedAt": "2026-11-04T20:27:03.959Z"
   },
   {
    "name": "secretary-settings-quota-dark",
    "route": "/secretary/settings/quota",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1005,14 +899,14 @@
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-quota-dark.png",
-   "generatedAt": "2026-11-04T19:59:39.128Z"
+   "generatedAt": "2026-11-04T20:27:07.624Z"
   },
   {
    "name": "secretary-onboarding-name-dark",
    "route": "/secretary/onboarding/name",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1028,14 +922,14 @@
    "unmocked": [],
    "url": "/secretary/onboarding/name",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-onboarding-name-dark.png",
-   "generatedAt": "2026-11-04T19:59:43.059Z"
+   "generatedAt": "2026-11-04T20:27:11.306Z"
   },
   {
    "name": "secretary-help-dark",
    "route": "/secretary/help",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1051,14 +945,14 @@
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-dark.png",
-   "generatedAt": "2026-11-04T19:59:47.029Z"
+   "generatedAt": "2026-11-04T20:27:14.997Z"
   },
   {
    "name": "secretary-help-c1-dark",
    "route": "/secretary/help/c1",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1074,14 +968,14 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1-dark.png",
-   "generatedAt": "2026-11-04T19:59:50.887Z"
+   "generatedAt": "2026-11-04T20:27:18.696Z"
   },
   {
    "name": "customers-dark",
    "route": "/customers",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1097,14 +991,14 @@
    "unmocked": [],
    "url": "/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-dark.png",
-   "generatedAt": "2026-11-04T19:59:54.722Z"
+   "generatedAt": "2026-11-04T20:27:21.358Z"
   },
   {
    "name": "customers-x1-dark",
    "route": "/customers/x1",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1120,14 +1014,14 @@
    "unmocked": [],
    "url": "/customers/x1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-dark.png",
-   "generatedAt": "2026-11-04T19:59:58.697Z"
+   "generatedAt": "2026-11-04T20:27:24.018Z"
   },
   {
    "name": "customers-x1-info-dark",
    "route": "/customers/x1/info",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1143,14 +1037,14 @@
    "unmocked": [],
    "url": "/customers/x1/info",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-info-dark.png",
-   "generatedAt": "2026-11-04T20:00:04.534Z"
+   "generatedAt": "2026-11-04T20:27:27.738Z"
   },
   {
    "name": "business-new-dark",
    "route": "/business/new",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "7f2e8b43d6fbbed58ff791090bdfb39581f0c6feac1343f879a424ca32c415b7",
+   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1166,7 +1060,137 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new-dark.png",
-   "generatedAt": "2026-11-04T20:00:10.805Z"
+   "generatedAt": "2026-11-04T20:27:31.443Z"
+  },
+  {
+   "name": "secretary-new",
+   "route": "/secretary/new",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-new",
+    "sec-new-close",
+    "sec-new-input",
+    "sec-new-send",
+    "sec-new-suggestion",
+    "sec-new-suggestion-follow_quiet",
+    "sec-new-suggestion-reorder",
+    "sec-new-frequent",
+    "sec-new-frequent-0",
+    "sec-new-system"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nเริ่มงานใหม่\nThe Bean Café\nสวัสดีครับคุณสุข ให้ Shark ช่วยอะไรดี\nสั่งเป็นภาษาพูดได้เลย ทำในระบบ SHARK ให้ทั้งหมด\nShark เสนอจากข้อมูลวันนี้ · ไม่เริ่มจนกว่าคุณกดส่ง\nCRM\nมีดีล 3 รายการเงียบเกิน 14 วัน\nช่วยร่างข้อความตามลูกค้า 3 รายที่เงียบเกิน 14 วัน แล้วเสนอให้ผมดูก่อนส่ง\n\nสต็อก\nเมล็ดกาแฟเอธิโอเปียเหลือ 2 กก.\nช่วยร่างใบสั่งซื้อเมล็ดกาแฟถึงซัพพลายเออร์เดิม ให้ผมตรวจก่อนส่ง\n\nงานที่สั่งบ่อย\nสรุปยอดขายเมื่อวาน\nใบเสนอราคา\nตามลูกค้าเงียบ\nเช็กคิวพรุ่งนี้\nค้างชำระหอพัก\nโพสต์โปรเดือนนี้\nระบบที่ Shark เข้าถึงได้ในกิจการนี้\nPOS\nCRM\nจองคิว\nหอพัก\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท LINE/FB\n\n",
+   "unmocked": [],
+   "url": "/secretary/new",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new.png",
+   "generatedAt": "2026-11-04T20:29:39.876Z"
+  },
+  {
+   "name": "secretary-new-dark",
+   "route": "/secretary/new",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-new",
+    "sec-new-close",
+    "sec-new-input",
+    "sec-new-send",
+    "sec-new-suggestion",
+    "sec-new-suggestion-follow_quiet",
+    "sec-new-suggestion-reorder",
+    "sec-new-frequent",
+    "sec-new-frequent-0",
+    "sec-new-system"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nเริ่มงานใหม่\nThe Bean Café\nสวัสดีครับคุณสุข ให้ Shark ช่วยอะไรดี\nสั่งเป็นภาษาพูดได้เลย ทำในระบบ SHARK ให้ทั้งหมด\nShark เสนอจากข้อมูลวันนี้ · ไม่เริ่มจนกว่าคุณกดส่ง\nCRM\nมีดีล 3 รายการเงียบเกิน 14 วัน\nช่วยร่างข้อความตามลูกค้า 3 รายที่เงียบเกิน 14 วัน แล้วเสนอให้ผมดูก่อนส่ง\n\nสต็อก\nเมล็ดกาแฟเอธิโอเปียเหลือ 2 กก.\nช่วยร่างใบสั่งซื้อเมล็ดกาแฟถึงซัพพลายเออร์เดิม ให้ผมตรวจก่อนส่ง\n\nงานที่สั่งบ่อย\nสรุปยอดขายเมื่อวาน\nใบเสนอราคา\nตามลูกค้าเงียบ\nเช็กคิวพรุ่งนี้\nค้างชำระหอพัก\nโพสต์โปรเดือนนี้\nระบบที่ Shark เข้าถึงได้ในกิจการนี้\nPOS\nCRM\nจองคิว\nหอพัก\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท LINE/FB\n\n",
+   "unmocked": [],
+   "url": "/secretary/new",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new-dark.png",
+   "generatedAt": "2026-11-04T20:29:47.674Z"
+  },
+  {
+   "name": "secretary",
+   "route": "/secretary",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-secretary",
+    "sec-home",
+    "sec-top-secretary",
+    "sec-top-customers",
+    "sec-top-team",
+    "sec-top-help",
+    "sec-top-new",
+    "sec-tenant",
+    "sec-home-search",
+    "sec-home-filter-all",
+    "sec-home-filter-working",
+    "sec-home-filter-approval",
+    "sec-home-filter-done",
+    "sec-home-card",
+    "sec-home-card-r1",
+    "sec-home-card-r4",
+    "sec-home-card-r5",
+    "sec-home-new",
+    "sec-input"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n\n\n\nThe Bean Café\n\nเลขา Shark · กำลังทำ 2 · รออนุมัติ 2 · เสร็จวันนี้ 0\n\nทั้งหมด\nกำลังทำ 2\nรออนุมัติ 2\nเสร็จ\nใบเสนอราคา ร้านดอยช้าง\nเมื่อวาน\n1\nรอคุณอนุมัติ 1 รายการ\nCRM\nบัญชี\nแชท LINE/FB\nร่วมกับ สมใจ\nตามลูกค้าที่เงียบเกิน 14 วัน\nตอนนี้\nกำลังทำงาน\nCRM\nแชท LINE/FB\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nตอนนี้\nกำลังทำงาน\nPOS\nปิดบิลค้างห้อง 204 · คืนมัดจำ\nเมื่อวาน\n1\nรอคุณอนุมัติ 1 รายการ · สั่งโดย สมใจ\nหอพัก\nบัญชี\nเช็กคิวพรุ่งนี้และร่างข้อความยืนยัน\n3/11\nเสร็จแล้ว\nจองคิว\nแชท LINE/FB\n\n",
+   "unmocked": [],
+   "url": "/secretary",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary.png",
+   "generatedAt": "2026-11-04T20:39:19.567Z"
+  },
+  {
+   "name": "secretary-dark",
+   "route": "/secretary",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "59f7a1a3fd77a806c3a6a27fc7a2e8fe7634a19297fdf5a0e35a2e8196f87de9",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-secretary",
+    "sec-home",
+    "sec-top-secretary",
+    "sec-top-customers",
+    "sec-top-team",
+    "sec-top-help",
+    "sec-top-new",
+    "sec-tenant",
+    "sec-home-search",
+    "sec-home-filter-all",
+    "sec-home-filter-working",
+    "sec-home-filter-approval",
+    "sec-home-filter-done",
+    "sec-home-card",
+    "sec-home-card-r1",
+    "sec-home-card-r4",
+    "sec-home-card-r5",
+    "sec-home-new",
+    "sec-input"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n\n\n\nThe Bean Café\n\nเลขา Shark · กำลังทำ 2 · รออนุมัติ 2 · เสร็จวันนี้ 0\n\nทั้งหมด\nกำลังทำ 2\nรออนุมัติ 2\nเสร็จ\nใบเสนอราคา ร้านดอยช้าง\nเมื่อวาน\n1\nรอคุณอนุมัติ 1 รายการ\nCRM\nบัญชี\nแชท LINE/FB\nร่วมกับ สมใจ\nตามลูกค้าที่เงียบเกิน 14 วัน\nตอนนี้\nกำลังทำงาน\nCRM\nแชท LINE/FB\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nตอนนี้\nกำลังทำงาน\nPOS\nปิดบิลค้างห้อง 204 · คืนมัดจำ\nเมื่อวาน\n1\nรอคุณอนุมัติ 1 รายการ · สั่งโดย สมใจ\nหอพัก\nบัญชี\nเช็กคิวพรุ่งนี้และร่างข้อความยืนยัน\n3/11\nเสร็จแล้ว\nจองคิว\nแชท LINE/FB\n\n",
+   "unmocked": [],
+   "url": "/secretary",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-dark.png",
+   "generatedAt": "2026-11-04T20:39:23.824Z"
   }
  ]
 }

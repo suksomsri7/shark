@@ -19,11 +19,10 @@
    "sec-input"
   ],
   "/secretary/new": [
-   "sec-secretary-new",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-new",
+   "sec-new-close",
+   "sec-new-input",
+   "sec-new-send"
   ],
   "/secretary/room/r1": [
    "sec-secretary-room",
@@ -267,6 +266,16 @@
   },
   "POST /api/mobile/push/register": {
    "ok": true
+  },
+  "GET /api/mobile/secretary/suggestions": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/frequent": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [],
+   "autoAvailable": false
   }
  }
 }
