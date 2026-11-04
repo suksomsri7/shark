@@ -22,7 +22,7 @@
 | `…/components/secretary/{LevelPicker,RuleRow,LogItem,QuotaRing}.tsx` | ใหม่ | ตามชื่อ (QuotaRing = % ใหญ่ + แถบไล่สี · ไม่มี svg) |
 | `…/components/secretary/bkk.ts` | ใหม่ (นอกรายการ) | เวลาไทย (HH:MM · YYYY-MM-DD · วัน/เดือน · วันถึง) + สตางค์→บาท |
 | `apps/mobile/src/api/secretary.ts` | ขยาย | PATH +9 เส้น (`secretary`=`/api/mobile/secretary/secretary` ฯลฯ) · `secPut` · `secPostId/secDeleteId` (ID_PATH) · type ของ DTO ตั้งค่า · `quotaNumbers` (cap 100 · ไม่คืนเงิน) · `logCanUndo` · `disclosureProblem` · `SUFFIXES` · `useActiveRole` · `serverNote` |
-| `apps/mobile/src/i18n/{th,en}.ts` | แก้ | +199 คีย์ `sec.set.* sec.me.* sec.quota.* sec.access.* sec.rules.* sec.log.* sec.know.* sec.cust.* sec.month.* sec.money.baht sec.date.dm` (ชุดเดียวกัน · en ไม่มีอักษรไทย) |
+| `apps/mobile/src/i18n/{th,en}.ts` | แก้ | +181 คีย์ `sec.set.* sec.me.* sec.quota.* sec.access.* sec.rules.* sec.log.* sec.know.* sec.cust.* sec.month.* sec.money.baht sec.date.dm` (ชุดเดียวกัน · en ไม่มีอักษรไทย) |
 | `apps/mobile/qc/fixtures/secretary/s2.7.json` · `s2.7-staff.json` | ใหม่ | OWNER (+ mock PUT/POST/DELETE สำหรับกดจริง) · STAFF (ไม่มี after-hours/memories/staff = ต้องไม่ถูกยิง) |
 | `apps/mobile/qc/fixtures/secretary/s2.1.json` | แก้ (นอกรายการ) | +mock GET ของ 9 เส้นตั้งค่า · expect 8 route ตั้งค่า = testID จอจริง (access ว่าง = `sec-access` เท่านั้น เพราะ s2.1 access = `{items:[]}`) — ถ่ายชุด S2.1 ทั้ง 24 route ซ้ำได้สะอาด (48/48 ok ในโฟลเดอร์ชั่วคราว) |
 | `scripts/sec-ui-inventory.json` | แก้ | +18 แถวปุ่มของ S2.7–S2.9 |
