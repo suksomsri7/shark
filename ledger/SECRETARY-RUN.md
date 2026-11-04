@@ -31,8 +31,8 @@ _(เติมเมื่อถึงใบ)_
 | S1.1 | ✅ | 4 พ.ย. ~15:2xZ | merge (wip/sec-s1.1 fd5922d5) · oracle 66/66 ×3 (ผู้คุมรันเอง) · migration `20261227000000_secretary_a` (16 ตาราง · 28 ดัชนี · 6 FK Cascade · additive) ลง QC แล้ว · baseline `sec-baseline-85751098.txt` 60/60 (qc-mobile-app รันซ้ำหลัง ORACLE-EDIT APP-6.1) · core.prisma +2 back-relation (R-S1.1a) · drift ไม่มี DROP · oracle `qc-sec-s1.1.mts` (4c8709be · 65 ข้อ · unforced SKIP · forced บนฐานเดิม 6/65 แดงถูกเหตุผล) · 🎯 migration secretary_a |
 | S1.2 | 🔨 | | builder Opus เลน c `wip/sec-s1.2` @7c69188a เริ่ม 4 พ.ย. ~14:5xZ · ใบ S1-2 (S1.2+S1.3) + oracle `qc-sec-s1.2.mts` เขียนแล้ว 4 พ.ย. (unforced SKIP · forced บนฐานเดิม P-1 snapshot ผ่าน · แดง P-2/3/5 ถูกเหตุผล) · รอ S1.1 merge → เลน c · เลขาผูกผู้ใช้ |
 | S1.3 | 🔨 | | รวมในชุด S1-2 (เลน c) · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
-| S1.4 | ⬜ | | 🎯 ห้อง = งาน |
-| S1.5 | ⬜ | | 🎯 คิวเบื้องหลัง |
+| S1.4 | 🔨 | | builder Opus เลน b `wip/sec-s1.4` @6f2710a0 เริ่ม 4 พ.ย. ~15:3xZ · oracle `qc-sec-s1.4.mts` · 🎯 ห้อง = งาน |
+| S1.5 | ✍️ | | ใบ S1-4 + oracle `qc-sec-s1.5.mts` (00086018) รอ S1.4 merge · 🎯 คิวเบื้องหลัง |
 | S1.6 | ⬜ | | 🎯 ห้องร่วม |
 | S1.7 | ⬜ | | ต้องอนุมัติเสมอ |
 | S1.8 | ⬜ | | 🎯 บันทึก + ย้อน 24 ชม. |
