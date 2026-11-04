@@ -1,0 +1,404 @@
+{
+ "_about": "fixture ของใบ S2.21+S2.22 (MANAGER · ภาพเดี่ยว) — ผู้จัดการ: เชิญได้แค่พนักงาน · แก้ก้อง (STAFF) ได้ · น้ำ (m2 ผู้จัดการอีกคน) อ่านอย่างเดียว · ข้อมูลจำลองล้วน",
+ "noAuth": [
+  "/login"
+ ],
+ "locale": "th-TH",
+ "expect": {
+  "/secretary/staff/invite": [
+   "inv-name",
+   "inv-role",
+   "inv-role-STAFF",
+   "inv-submit"
+  ],
+  "/secretary/staff/m1": [
+   "perm-role",
+   "perm-save",
+   "perm-suspend",
+   "perm-remove"
+  ],
+  "/secretary/staff/m2": [
+   "perm-role",
+   "perm-readonly"
+  ],
+  "/secretary/settings/account": [
+   "acct-phone",
+   "acct-email",
+   "acct-theme",
+   "acct-delete"
+  ]
+ },
+ "endpoints": {
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 1,
+   "canApprove": 1
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 0
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 0,
+    "approvedClean": 0,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "languages": [
+    "th"
+   ]
+  },
+  "GET /api/mobile/usage": {
+   "used": 12,
+   "limit": 100,
+   "pct": 12
+  },
+  "GET /api/mobile/conversations": {
+   "conversations": [
+    {
+     "id": "c-qc-1",
+     "title": "สรุปยอดขายเมื่อวาน",
+     "updatedAt": "2026-09-01T03:00:00.000Z",
+     "unread": true
+    },
+    {
+     "id": "c-qc-2",
+     "title": "ใบเสนอราคา ร้านตัวอย่าง",
+     "updatedAt": "2026-08-28T03:00:00.000Z",
+     "unread": false
+    }
+   ]
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-code-0000"
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "sample": "",
+   "saved": false
+  },
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-mgr",
+    "email": null,
+    "pendingEmail": "mgr@qc.invalid",
+    "name": "ฝน (QC)",
+    "phone": "+66891112222"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "MANAGER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/staff": {
+   "units": [
+    {
+     "id": "u-main",
+     "name": "สาขาหลัก"
+    },
+    {
+     "id": "u-dorm",
+     "name": "หอพัก"
+    }
+   ],
+   "items": [
+    {
+     "pending": false,
+     "membershipId": "m0",
+     "userId": "u-qc-owner",
+     "name": "สุข สมศรี",
+     "active": true,
+     "joinedAt": "2026-09-01T03:00:00.000Z",
+     "me": false,
+     "role": "OWNER",
+     "units": [],
+     "levels": {
+      "dorm": "USE",
+      "booking": "USE",
+      "account": "USE",
+      "pos": "USE",
+      "ai": "USE"
+     },
+     "chat": "REPLY"
+    },
+    {
+     "pending": false,
+     "membershipId": "m3",
+     "userId": "u-qc-mgr",
+     "name": "ฝน (QC)",
+     "active": true,
+     "joinedAt": "2026-09-03T03:00:00.000Z",
+     "me": true,
+     "role": "MANAGER",
+     "units": [],
+     "levels": {
+      "dorm": "USE",
+      "booking": "USE",
+      "account": "USE",
+      "pos": "USE",
+      "ai": "USE"
+     },
+     "chat": "REPLY"
+    },
+    {
+     "pending": false,
+     "membershipId": "m1",
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "active": true,
+     "joinedAt": "2026-10-12T03:00:00.000Z",
+     "me": false,
+     "role": "STAFF",
+     "units": [
+      "u-dorm"
+     ],
+     "levels": {
+      "dorm": "USE",
+      "booking": "VIEW",
+      "account": "OFF",
+      "pos": "OFF",
+      "ai": "OFF"
+     },
+     "chat": "REPLY"
+    },
+    {
+     "pending": false,
+     "membershipId": "m2",
+     "userId": "u-qc-nam",
+     "name": "น้ำ",
+     "active": true,
+     "joinedAt": "2026-09-02T03:00:00.000Z",
+     "me": false,
+     "role": "MANAGER",
+     "units": [],
+     "levels": {
+      "dorm": "USE",
+      "booking": "USE",
+      "account": "USE",
+      "pos": "USE",
+      "ai": "USE"
+     },
+     "chat": "REPLY"
+    },
+    {
+     "pending": true,
+     "inviteId": "inv1",
+     "name": "มิว",
+     "phoneMasked": "089-•••-5432",
+     "role": "STAFF",
+     "expiresAt": "2026-11-11T05:00:00.000Z",
+     "expired": false
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [
+    {
+     "module": "dorm",
+     "level": "DRAFT"
+    },
+    {
+     "module": "booking",
+     "level": "READ"
+    },
+    {
+     "module": "account",
+     "level": "READ"
+    },
+    {
+     "module": "pos",
+     "level": "OFF"
+    },
+    {
+     "module": "ai",
+     "level": "DRAFT"
+    }
+   ],
+   "levels": [
+    "OFF",
+    "READ",
+    "DRAFT"
+   ],
+   "autoAvailable": false
+  },
+  "GET /api/mobile/inbox/staff": {
+   "items": [
+    {
+     "userId": "u-qc-owner",
+     "name": "สุข สมศรี",
+     "role": "OWNER",
+     "onDuty": true
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "role": "STAFF",
+     "onDuty": true
+    },
+    {
+     "userId": "u-qc-mgr",
+     "name": "ฝน (QC)",
+     "role": "MANAGER",
+     "onDuty": false
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": [
+    {
+     "id": "inv1",
+     "name": "มิว",
+     "phoneMasked": "089-•••-5432",
+     "role": "STAFF",
+     "unitAccess": [
+      "*"
+     ],
+     "permissions": {},
+     "invitedById": "u-qc-owner",
+     "createdAt": "2026-11-04T05:00:00.000Z",
+     "expiresAt": "2026-11-11T05:00:00.000Z",
+     "expired": false
+    }
+   ]
+  },
+  "POST /api/mobile/secretary/staff/invite": {
+   "ok": true,
+   "inviteId": "inv2",
+   "sms": "mocked",
+   "expiresAt": "2026-11-11T05:00:00.000Z",
+   "link": "https://shark.in.th/i/QCQCQCQC"
+  },
+  "POST /api/mobile/secretary/staff/invites/inv1/resend": {
+   "ok": true,
+   "inviteId": "inv1",
+   "sms": "mocked",
+   "expiresAt": "2026-11-11T05:00:00.000Z",
+   "link": null
+  },
+  "DELETE /api/mobile/secretary/staff/invites/inv1": {
+   "ok": true
+  },
+  "PUT /api/mobile/secretary/staff/m1": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/staff/m1/suspend": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/staff/m1/remove": {
+   "ok": true
+  },
+  "PUT /api/mobile/secretary/staff/m2": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/staff/m2/suspend": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/staff/m2/remove": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/invites/pending": {
+   "items": []
+  },
+  "POST /api/mobile/secretary/invites/accept": {
+   "ok": true,
+   "tenantId": "t3"
+  },
+  "POST /api/mobile/secretary/tenants/create": {
+   "tenant": {
+    "id": "t4",
+    "name": "The Bean Café",
+    "slug": "the-bean-cafe-qc"
+   },
+   "systems": [
+    {
+     "type": "POS",
+     "id": "s1"
+    }
+   ],
+   "room": {
+    "roomId": "r9",
+    "conversationId": "c9"
+   }
+  },
+  "GET /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ALL",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "kinds": [
+    "inbox",
+    "approval",
+    "room",
+    "help"
+   ],
+   "modes": [
+    "ALL",
+    "ASSIGNED",
+    "OFF"
+   ]
+  },
+  "PUT /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ALL",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "scope": "tenant"
+  },
+  "POST /api/mobile/inbox/shift": {
+   "onDuty": false,
+   "onDutyAt": null
+  },
+  "GET /api/mobile/secretary/account/delete/preview": {
+   "tenantsToDelete": [
+    {
+     "id": "t2",
+     "name": "บลูเฮาส์ หอพัก"
+    }
+   ],
+   "tenantsHandedOver": [
+    {
+     "id": "t1",
+     "name": "The Bean Café",
+     "newOwner": "น้ำ"
+    }
+   ],
+   "tenantsLeftAlone": [
+    {
+     "id": "t3",
+     "name": "Sweet Studio"
+    }
+   ]
+  },
+  "POST /api/mobile/secretary/account/delete": {
+   "ok": true
+  },
+  "POST /api/mobile/auth/logout": {
+   "ok": true
+  }
+ }
+}

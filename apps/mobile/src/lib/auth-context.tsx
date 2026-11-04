@@ -37,7 +37,8 @@ export type TenantRow = {
 };
 // phone: null = บัญชีเดิมยังไม่ผูกเบอร์ → ยามพาไป /phone (R8 · S2.12) · ไม่มีฟิลด์ (server เก่า) = ไม่บังคับ
 // email: null = บัญชีที่สมัครด้วยเบอร์ (อีเมล placeholder · R-S1.19a)
-type Me = { user: { id: string; email: string | null; name: string | null; phone?: string | null; pendingEmail?: string | null }; memberships: TenantRow[] };
+// appleLinked: เข้าด้วย Apple ผูกแล้วหรือไม่ (G4 · S2.22) — /me ยังไม่ส่ง (DTO-REQ) ⇒ ไม่มีฟิลด์ = ไม่ทราบ
+type Me = { user: { id: string; email: string | null; name: string | null; phone?: string | null; pendingEmail?: string | null; appleLinked?: boolean | null }; memberships: TenantRow[] };
 
 type AuthState = {
   ready: boolean; // bootstrap จาก SecureStore เสร็จหรือยัง (ก่อน ready อย่าเพิ่ง redirect)

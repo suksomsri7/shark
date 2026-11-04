@@ -34,6 +34,18 @@ const PATH = {
   "secretary/inbox": "/api/mobile/secretary/inbox",
   "secretary/scheduled": "/api/mobile/secretary/scheduled",
   "secretary/badge": "/api/mobile/secretary/badge",
+  // S2.21/S2.22 กิจการ · เชิญพนักงาน · บัญชีของฉัน (ชื่อตาม S1.14 docs/api/SECRETARY-API.md)
+  "secretary/tenants/create": "/api/mobile/secretary/tenants/create",
+  "secretary/staff/invite": "/api/mobile/secretary/staff/invite",
+  "secretary/staff/invites": "/api/mobile/secretary/staff/invites",
+  "secretary/invites/accept": "/api/mobile/secretary/invites/accept",
+  // คำเชิญที่ส่งถึงตัวเรา (pendingInvitesForUser · R-S1.25b) — S1.14 ยังไม่มีเส้นนี้ (DTO-REQ ใน wo-notes sec-s2.21) · 404 = ไม่แสดงการ์ด
+  "secretary/invites/pending": "/api/mobile/secretary/invites/pending",
+  "secretary/notify": "/api/mobile/secretary/notify",
+  "secretary/account/delete": "/api/mobile/secretary/account/delete",
+  "secretary/account/delete/preview": "/api/mobile/secretary/account/delete/preview",
+  // เข้า/ออกเวร (เส้นแชทลูกค้า S1.24 · ไม่ใช่ secretary/*)
+  "inbox/shift": "/api/mobile/inbox/shift",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -60,6 +72,10 @@ const PATH_ID = {
   "secretary/staff/invites/[id]": "/api/mobile/secretary/staff/invites/[id]",
   "secretary/staff/invites/[id]/resend": "/api/mobile/secretary/staff/invites/[id]/resend",
   "secretary/scheduled/[id]": "/api/mobile/secretary/scheduled/[id]",
+  // S2.22 สิทธิ์ต่อคน (G3)
+  "secretary/staff/[id]": "/api/mobile/secretary/staff/[id]",
+  "secretary/staff/[id]/suspend": "/api/mobile/secretary/staff/[id]/suspend",
+  "secretary/staff/[id]/remove": "/api/mobile/secretary/staff/[id]/remove",
 } as const;
 export type SecIdPath = keyof typeof PATH_ID;
 
@@ -135,10 +151,19 @@ type GetMap = {
   "secretary/inbox": { items?: unknown[] };
   "secretary/scheduled": { items?: unknown[]; max?: number };
   "secretary/badge": { badge?: number };
+  "secretary/staff/invites": { items?: unknown[] };
+  "secretary/invites/pending": { items?: unknown[] } | unknown[];
+  "secretary/notify": { prefs?: Partial<Record<string, string>>; kinds?: string[]; modes?: string[] };
+  "secretary/account/delete/preview": DeletePreview;
 };
 type PostMap = {
   "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[] }; res: { roomId: string; conversationId?: string; status?: string } };
   "secretary/scheduled": { body: ScheduleBody; res: { id: string } };
+  "secretary/tenants/create": { body: { name: string; type: string; systems: string[] }; res: TenantCreateRes };
+  "secretary/staff/invite": { body: InviteBody; res: InviteRes };
+  "secretary/invites/accept": { body: { inviteId: string } | { code: string }; res: { ok: boolean; tenantId?: string } };
+  "secretary/account/delete": { body: { confirm: string }; res: { ok: boolean } };
+  "inbox/shift": { body: { onDuty: boolean }; res: { onDuty: boolean; onDutyAt: string | null } };
 };
 type Query = Record<string, string | number | undefined>;
 
@@ -153,7 +178,17 @@ function url(path: SecPath, q?: Query): string {
 }
 
 /** เส้นระดับผู้ใช้ (ข้ามกิจการ · ไม่ส่ง x-tenant-id · SECRETARY-API ข้อ 1): secretary/me · secretary · กล่องรวมทุกกิจการ secretary/inbox */
-const USER_LEVEL: ReadonlySet<SecPath> = new Set<SecPath>(["secretary/me", "secretary", "secretary/inbox"]);
+const USER_LEVEL: ReadonlySet<SecPath> = new Set<SecPath>([
+  "secretary/me",
+  "secretary",
+  "secretary/inbox",
+  // S2.21/S2.22: เส้นระดับผู้ใช้ (ยังไม่มี/ไม่ผูกกิจการ)
+  "secretary/tenants/create",
+  "secretary/invites/accept",
+  "secretary/invites/pending",
+  "secretary/account/delete",
+  "secretary/account/delete/preview",
+]);
 
 /** GET เส้นของเลขา · เส้นระดับผู้ใช้ไม่ส่ง x-tenant-id */
 export function secGet<P extends keyof GetMap>(path: P, q?: Query): Promise<GetMap[P]> {
@@ -161,7 +196,7 @@ export function secGet<P extends keyof GetMap>(path: P, q?: Query): Promise<GetM
 }
 
 export function secPost<P extends keyof PostMap>(path: P, body: PostMap[P]["body"]): Promise<PostMap[P]["res"]> {
-  return api<PostMap[P]["res"]>(url(path), { method: "POST", body });
+  return api<PostMap[P]["res"]>(url(path), { method: "POST", body, tenant: !USER_LEVEL.has(path) });
 }
 
 // ───────── เส้นที่มี [id] (S2.4 ห้องงาน · ชื่อ/รูปตาม S1.14 docs/api/SECRETARY-API.md) ─────────
@@ -189,6 +224,8 @@ type PostIdMap = {
   "secretary/memories/[id]/confirm": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/rooms/[id]/members": { body: { userId: string; seeHistory: boolean }; res: { ok: boolean; member?: unknown } };
   "secretary/staff/invites/[id]/resend": { body: Record<string, never>; res: { ok: boolean; sms?: string; expiresAt?: string; link?: string | null } };
+  "secretary/staff/[id]/suspend": { body: Record<string, never>; res: { ok: boolean } };
+  "secretary/staff/[id]/remove": { body: Record<string, never>; res: { ok: boolean } };
 };
 type DeleteIdMap = { "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean }; "secretary/staff/invites/[id]": { ok: boolean }; "secretary/scheduled/[id]": { ok: boolean } };
 
@@ -210,6 +247,11 @@ export function secGetId<P extends keyof GetIdMap>(path: P, id: string, q?: Quer
 /** opts.tenantId = ยิงในนามกิจการของรายการ (กล่องรวม S2.5) แทนกิจการ active */
 export function secPostId<P extends keyof PostIdMap>(path: P, id: string, body: PostIdMap[P]["body"], opts?: { tenantId?: string }): Promise<PostIdMap[P]["res"]> {
   return api<PostIdMap[P]["res"]>(urlId(path, id), { method: "POST", body, ...(opts?.tenantId ? { tenantId: opts.tenantId } : {}) });
+}
+
+/** PUT secretary/staff/[membershipId] (G3 · setStaffLevels) — levels เฉพาะโมดูลที่แก้ · chat เฉพาะเมื่อแก้ (ส่งค่าเดิมซ้ำ = เซิร์ฟเวอร์จัดคีย์ใหม่ตามระดับ) */
+export function putStaff(membershipId: string, body: StaffPutBody): Promise<{ ok: boolean }> {
+  return api(urlId("secretary/staff/[id]", membershipId), { method: "PUT", body });
 }
 
 /** PUT secretary/scheduled/[id] — เซิร์ฟเวอร์รุ่นนี้รับเฉพาะ {active} (เวลา/ความถี่ = 400 not_supported → ลบแล้วตั้งใหม่) */
@@ -720,7 +762,7 @@ export type StaffRow = {
 /** ระดับแชทลูกค้าของพนักงาน (staffViewOf.chat · R-S1.25h) */
 export type ChatLevel = "NONE" | "VIEW" | "REPLY";
 export const CHAT_LEVELS: readonly ChatLevel[] = ["NONE", "VIEW", "REPLY"];
-export type StaffPerson = { membershipId: string; userId: string; name: string; role: string; active: boolean; me: boolean; units: string[]; levels: Record<string, string>; chat: ChatLevel };
+export type StaffPerson = { membershipId: string; userId: string; name: string; role: string; active: boolean; me: boolean; units: string[]; levels: Record<string, string>; chat: ChatLevel; joinedAt?: string | null };
 export type StaffInvite = { inviteId: string; name: string; phoneMasked: string; role: string; expiresAt: string; expired: boolean };
 export function chatLevelOf(v: unknown): ChatLevel {
   return v === "REPLY" || v === "VIEW" ? v : "NONE";
@@ -748,6 +790,7 @@ export function normalizeStaff(v: unknown): { people: StaffPerson[]; invites: St
       units: Array.isArray(o.units) ? o.units.filter((u): u is string => typeof u === "string") : [],
       levels: Object.fromEntries(Object.entries(lv).filter(([, l]) => typeof l === "string")) as Record<string, string>,
       chat: chatLevelOf(o.chat),
+      joinedAt: isoOrNull(o.joinedAt),
     });
   }
   return { people, invites };
@@ -769,6 +812,7 @@ type PutMap = {
   "secretary/access": { body: { module: string; level: AccessLevel }; res: { items?: AccessItem[] } };
   "secretary/rules": { body: { key: RuleKey; enabled?: boolean; limitSatang?: number | null }; res: RulesView };
   "secretary/after-hours": { body: Partial<AfterHours>; res: AfterHours };
+  "secretary/notify": { body: { kind: NotifyKind; mode: NotifyMode }; res: { prefs?: Partial<Record<string, string>>; scope?: string } };
 };
 /** บันทึกตัวตนเลขา (PUT secretary · ระดับผู้ใช้ — B2 + C1) */
 export function updateSecretary(body: PutMap["secretary"]["body"]): Promise<SecretaryIdentity> {
@@ -949,3 +993,75 @@ export async function fetchAppBadge(): Promise<number | null> {
     return null;
   }
 }
+
+// ───────── S2.21 G1 สร้างกิจการ · G2 เชิญพนักงาน · S2.22 G3 สิทธิ์ต่อคน · G4 บัญชีของฉัน (สัญญา S1.14 docs/api/SECRETARY-API.md) ─────────
+/** ประเภทกิจการ (TENANT_TYPES ของ createTenantFromApp · ไม่รู้จัก = other) */
+export const TENANT_TYPES = ["restaurant", "retail", "service", "dorm", "clinic", "education", "other"] as const;
+export type TenantType = (typeof TENANT_TYPES)[number];
+/** ระบบที่เปิดได้ตอนสร้างจากแอป (SystemType ที่แอปมีจอ/เลขาใช้ได้) · เลือกได้ ≤ 6 (TENANT_SYSTEMS_MAX) */
+export const TENANT_SYSTEMS = ["POS", "CRM", "MEMBER", "ACCOUNT", "KANBAN", "CHAT", "BOOKING", "INVENTORY"] as const;
+export const TENANT_SYSTEMS_MAX = 6;
+export type TenantCreateRes = { tenant: { id: string; name: string; slug?: string }; systems?: { type: string; id: string }[]; room?: { roomId: string; conversationId?: string } | null };
+
+/** POST staff/invite — `unitIds` ส่งเสมอ (["*"] = ทุกสาขา) · `permissions` = คีย์จาก LevelGrid.permissionsFromLevels */
+export type InviteBody = { name: string; phone: string; role: "MANAGER" | "STAFF"; unitIds: string[]; permissions: Record<string, true> };
+export type InviteRes = { ok: boolean; inviteId?: string; sms?: "sent" | "mocked" | "unavailable" | string; expiresAt?: string; link?: string | null };
+/** เหตุผลปฏิเสธของ inviteStaff/resendInvite (S1.25) ที่จอแสดงข้อความไทยของตัวเอง */
+export const INVITE_REASONS = ["rate_limited", "already_member", "already_invited", "pending_cap", "bad_permissions", "sms_unavailable", "throttled", "bad_phone", "bad_role", "bad_units", "forbidden", "accepted", "not_found"] as const;
+export type InviteReason = (typeof INVITE_REASONS)[number];
+export function inviteReasonOf(e: unknown): InviteReason | null {
+  return e instanceof ApiError && (INVITE_REASONS as readonly string[]).includes(e.code) ? (e.code as InviteReason) : null;
+}
+
+/** แถวคำเชิญที่ร้านส่ง (GET staff/invites · listInvites) → รูปเดียวกับแถว pending ของ D1 (StaffInvite) */
+export function normalizeInvites(v: unknown): StaffInvite[] {
+  return listOf(v)
+    .map((x) => rec(x))
+    .filter((o) => str(o.id) || str(o.inviteId))
+    .map((o) => ({ inviteId: str(o.id) || str(o.inviteId), name: str(o.name), phoneMasked: str(o.phoneMasked), role: str(o.role) || "STAFF", expiresAt: isoOf(o.expiresAt), expired: o.expired === true }));
+}
+
+/** สาขา/หน่วยของกิจการ { id, name } — จาก GET secretary/staff: `units` ระดับบนสุด (DTO-REQ listTenantUnits) หรือ `units` ของแถวที่เป็น {id,name} (R-S1.14j) · ไม่มีชื่อ = ไม่แสดงชิป */
+export type UnitOpt = { id: string; name: string };
+export function normalizeUnits(v: unknown): UnitOpt[] {
+  const out: UnitOpt[] = [];
+  const add = (x: unknown) => {
+    const o = rec(x);
+    const id = str(o.id);
+    if (id && id !== "*" && str(o.name) && !out.some((u) => u.id === id)) out.push({ id, name: str(o.name) });
+  };
+  listOf(v, "units").forEach(add);
+  for (const row of listOf(v)) for (const u of listOf(rec(row).units ?? [], "units")) add(u);
+  return out;
+}
+/** รหัสหน่วยของแถว (units เป็น string หรือ {id}) */
+export function unitIdsOf(v: unknown): string[] {
+  return (Array.isArray(v) ? v : []).map((u) => (typeof u === "string" ? u : str(rec(u).id))).filter(Boolean);
+}
+
+/** PUT staff/[membershipId] (setStaffLevels) */
+export type StaffPutBody = { role?: "OWNER" | "MANAGER" | "STAFF"; unitIds?: string[]; levels?: Record<string, "OFF" | "VIEW" | "USE">; chat?: ChatLevel; extraPermissions?: Record<string, unknown> };
+
+/** คำเชิญที่ส่งถึงผู้ใช้คนนี้ (pendingInvitesForUser · R-S1.25b) */
+export type ReceivedInvite = { inviteId: string; tenantName: string; role: string; expiresAt: string };
+export function normalizeReceived(v: unknown): ReceivedInvite[] {
+  return listOf(v)
+    .map((x) => rec(x))
+    .filter((o) => str(o.inviteId) && str(o.tenantName))
+    .map((o) => ({ inviteId: str(o.inviteId), tenantName: str(o.tenantName), role: str(o.role) || "STAFF", expiresAt: isoOf(o.expiresAt) }));
+}
+
+/** แจ้งเตือน 4 ชนิด × 3 โหมด (S1.23 NOTIFY_KINDS/NOTIFY_MODES) */
+export const NOTIFY_KINDS = ["approval", "room", "inbox", "help"] as const;
+export type NotifyKind = (typeof NOTIFY_KINDS)[number];
+export const NOTIFY_MODES = ["ALL", "ASSIGNED", "OFF"] as const;
+export type NotifyMode = (typeof NOTIFY_MODES)[number];
+export type NotifyPrefs = Record<NotifyKind, NotifyMode>;
+export function normalizeNotify(v: unknown): NotifyPrefs {
+  const p = rec(rec(v).prefs);
+  const mode = (x: unknown): NotifyMode => ((NOTIFY_MODES as readonly unknown[]).includes(x) ? (x as NotifyMode) : "ALL");
+  return { approval: mode(p.approval), room: mode(p.room), inbox: mode(p.inbox), help: mode(p.help) };
+}
+
+/** ผลกระทบก่อนลบบัญชี (previewAccountDeletion) */
+export type DeletePreview = { tenantsToDelete?: { id: string; name: string }[]; tenantsHandedOver?: { id: string; name: string; newOwner?: string | null }[]; tenantsLeftAlone?: { id: string; name: string }[] };

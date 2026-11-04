@@ -1,6 +1,6 @@
 // สถานะชั่วคราวของการสมัครด้วยเบอร์ (ใบ S2.12 · RESOLUTIONS §R) — อยู่ในหน่วยความจำเท่านั้น (ปิดแอป = หาย = พฤติกรรมเดิม)
 // 1) ธง "เพิ่งสมัคร" ผูกกับ user.id: auth-context ตั้งหลังโหลด /me ใน signIn(token, {freshSignup}) · ล้างตอนเริ่ม signIn และใน signOut
-//    ยามหน้าประตูอ่าน: มีกิจการ ⇒ /secretary/onboarding/name ครั้งเดียว (ไม่มีกิจการ ⇒ /dna ตามเดิม จนกว่า S2.21 ส่ง G1 จริง)
+//    ยามหน้าประตูอ่าน: มีกิจการ ⇒ /secretary/onboarding/name ครั้งเดียว · ไม่มีกิจการ ⇒ /business/new (G1 · S2.21 สลับแล้ว · เดิม /dna)
 // 2) รหัส OTP ที่ยังใช้ได้ของเบอร์ที่ยังไม่มีบัญชี (needSignup) — ส่งต่อจากจอ OTP → /signup → /otp โดยไม่ขอรหัสใหม่ · ใช้ได้ครั้งเดียว
 let freshUserId: string | null = null;
 let held: { phone: string; code: string } | null = null;
