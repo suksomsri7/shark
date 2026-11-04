@@ -4,7 +4,7 @@ import { prisma } from "@/lib/core/db";
 import { Prisma, type ChatChannelConnection, type ChatChannelType } from "@prisma/client";
 import { getAdapter, isSupported } from "@/lib/modules/chat/adapter";
 import { replyLineMessages, pushLineMessagesToContact, type LineMessage } from "@/lib/modules/chat/line-flex";
-import { normalizeLinkCode } from "@/lib/modules/chat/link-code";
+import { LINK_CODE_MASK, normalizeLinkCode } from "@/lib/modules/chat/link-code"; // ข้อความแทนรหัสผูก (ย้ายไป link-code · S1.22) ◂
 import { credsOf, receiveInbound } from "@/lib/modules/chat/service";
 import { dispatchPostback, handleLinkCodeText, type PostbackReply } from "@/lib/platform/postback-routes";
 
@@ -127,8 +127,6 @@ async function logWebhook(
 
 // ───────────── SVC R0.7 ▸ postback + รหัสผูก (LINE) ─────────────
 
-/** ข้อความที่บันทึกแทนรหัสผูกที่ลูกค้าพิมพ์ */
-const LINK_CODE_MASK = "[รหัสผูกบัญชี LINE]";
 
 type LineEvent = {
   type?: string;

@@ -20,7 +20,7 @@
 import type { ChatChannelType, Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { resolveProvider, SMART_MODEL } from "@/lib/ai/provider";
-import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
+import { canRunAi, chargeUsageSafe, outOfCreditMessage } from "@/lib/ai/credit";
 import { readBusinessHours } from "./business-hours";
 import { searchAnswerExamples, saveAnswerExampleFromSuggestion, searchTerms } from "./learning";
 import { getLinkedMember } from "./service";
@@ -314,6 +314,8 @@ export async function suggestReply(args: {
   systemId: string;
   conversationId: string;
   userId: string;
+  /** SEC S1.22 ▸ ประตูที่กด (web = กล่องแชทบนเว็บ · app = แอปมือถือ) — ปริยาย web · มีผลแค่หมายเหตุต้นทุน ◂ */
+  source?: "web" | "app";
 }): Promise<SuggestResult> {
   const { tenantId, systemId, userId } = args;
   const d = db(tenantId, systemId);
@@ -347,7 +349,10 @@ export async function suggestReply(args: {
   }
 
   // 🔴 ด่านเงินมาก่อนการยิง LLM เสมอ (ยิงก่อนแล้วจ่ายไม่ได้ = จ่ายฟรีให้ผู้ให้บริการ)
-  if (!(await canSpend(tenantId))) return { ok: false, reason: await spendRefusalMessage(tenantId) }; // R-S1.13e: เพดานวัน ⇒ "วันนี้…"
+  // SEC S1.22 ▸ ด่านเดียว `canRunAi` scope assist (R-K7 · S1.13) — ร่างคำตอบ = นับต้นทุน ไม่นับงาน (มติ K4: ไม่แตะ AiJobCounter) ·
+  //   R-S1.13e: ชนเพดานวัน ⇒ ข้อความ "วันนี้…" · อื่น ๆ = ข้อความเครดิตเดิม (ผลเท่า spendRefusalMessage เดิม · ลด 1 query) ◂
+  const run = await canRunAi(tenantId, { scope: "assist" });
+  if (!run.ok) return { ok: false, reason: run.resetAt ? run.message : outOfCreditMessage() };
 
   const ctx = await buildContext({
     tenantId,
@@ -399,7 +404,7 @@ export async function suggestReply(args: {
       tokensOut: reply.tokensOut,
       conversationId: conv.id,
       userId,
-      note: "AI แนะนำคำตอบในกล่องแชทลูกค้า",
+      note: args.source === "app" ? "AI แนะนำคำตอบในกล่องแชทลูกค้า (แอป)" : "AI แนะนำคำตอบในกล่องแชทลูกค้า",
     },
   );
 

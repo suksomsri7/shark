@@ -861,6 +861,10 @@ export async function receiveInbound(args: {
   });
 
   await maybeAutoLinkMember(tenantId, systemId, contact.id);
+  // SEC S1.22 ▸ นอกเวลาทำการ Shark ตอบแทน/ส่งต่อคน — best-effort ไม่ทำให้ inbound ล้ม ◂
+  if (msgType === "TEXT" && (inbound.body ?? "").trim() && isLiveInbound(inbound.sentAt)) {
+    await scheduleAfterHours({ tenantId, systemId, conversationId: conv.id, messageId: msg.id, text: inbound.body ?? "" });
+  }
   return { ok: true, conversationId: conv.id };
 }
 
@@ -1310,7 +1314,50 @@ export async function receiveExternalInbound(args: {
   });
 
   await maybeAutoLinkMember(tenantId, systemId, contact.id);
+  // SEC S1.22 ▸ นอกเวลาทำการ Shark ตอบแทน/ส่งต่อคน — ข้อความสดเท่านั้น (ประวัติที่ย้ายเข้ามา/sentAt เก่า = ไม่ตอบ) · best-effort ◂
+  if (msgType === "TEXT" && body && isLiveInbound(args.sentAt)) {
+    await scheduleAfterHours({ tenantId, systemId, conversationId: conv.id, messageId: msg.id, text: body });
+  }
   return { ok: true, conversationId: conv.id, messageId: msg.id, createdAt: msg.createdAt.toISOString() };
+}
+
+// ───────────────────────── SEC S1.22 · นอกเวลาทำการ (hook ขาเข้า) ─────────────────────────
+
+/** ข้อความสด = ไม่ระบุเวลา หรือเวลาไม่เก่ากว่า 10 นาที (กันประวัติที่ย้ายเข้ามา/ยิงซ้ำช้า ๆ ถูกตอบย้อนหลัง) */
+const AFTER_HOURS_LIVE_MS = 10 * 60 * 1000;
+function isLiveInbound(sentAt: Date | undefined | null): boolean {
+  if (!(sentAt instanceof Date) || Number.isNaN(sentAt.getTime())) return true;
+  return Date.now() - sentAt.getTime() <= AFTER_HOURS_LIVE_MS;
+}
+
+/**
+ * เรียก `afterHoursAutoReply` หลังบันทึกข้อความลูกค้าแล้ว — ห้ามทำให้ inbound ล้มเด็ดขาด (catch → logOps)
+ * 🔴 ในคำขอ (webhook) = `after()` ตอบช่องทางก่อน แล้วค่อยเรียกโมเดล (LINE timeout แล้วยิงซ้ำ = ตอบซ้ำ/บิลซ้ำ — แบบเดียวกับแปลอัตโนมัติ)
+ *    นอกคำขอ (สคริปต์/cron/ข้อสอบ) `after()` โยน ⇒ รอจนจบก่อนคืนค่า (ผลเห็นได้ทันที · ไม่ทิ้งงานลอย)
+ * กันตอบซ้ำด้วย clientMessageId `ah:<messageId>` ใน after-hours.ts · ร้านที่ไม่เปิด `afterHoursReply` = อ่าน AiSettings 1 แถวแล้วจบ
+ */
+async function scheduleAfterHours(a: { tenantId: string; systemId: string; conversationId: string; messageId: string; text: string }): Promise<void> {
+  const run = async () => {
+    try {
+      // R-S1.22e ▸ รหัสผูกบัญชี LINE ถูกบันทึกเป็นข้อความแทน (ตัวรหัสจริงไม่อยู่ในแถว) — ไม่ใช่คำถามของลูกค้า ⇒ ไม่ตอบ ◂
+      const { LINK_CODE_MASK } = await import("./link-code");
+      if (a.text.trim() === LINK_CODE_MASK) return;
+      const { afterHoursAutoReply } = await import("./after-hours");
+      await afterHoursAutoReply({ tenantId: a.tenantId, systemId: a.systemId, conversationId: a.conversationId, inboundText: a.text, inboundMessageId: a.messageId });
+    } catch (e) {
+      try {
+        const { logOps } = await import("@/lib/core/ops");
+        await logOps("WARN", "chat", "after-hours ตอบนอกเวลาไม่สำเร็จ", { tenantId: a.tenantId, detail: e instanceof Error ? e.message : String(e) });
+      } catch {
+        // log พัง = เงียบ (ข้อความลูกค้าบันทึกครบแล้ว)
+      }
+    }
+  };
+  try {
+    after(() => run());
+  } catch {
+    await run();
+  }
 }
 
 // hook: ถ้าเชื่อมระบบ Member แล้ว → ผูก contact นี้เข้าสมาชิกที่มีอยู่จริงเท่านั้น (M1.12 · D18)
@@ -1485,6 +1532,11 @@ export async function sendReply(args: {
    *   ไม่ส่ง = พฤติกรรมเดิมทุกประการ ◂
    */
   clientMessageId?: string;
+  /**
+   * SEC S1.22 ▸ R-S1.22a: ข้อความตอบนอกเวลาทำการของ Shark — **ไม่** ล้าง `staffUnreadCount` และไม่ตั้ง `firstResponseAt`
+   *   (ข้อความลูกค้ายังค้างคิวให้คนดูตอนเช้า · SLA ไม่ถูกนับว่าคนตอบแล้ว) · ไม่ส่ง = พฤติกรรมเดิมทุกประการ ◂
+   */
+  aiAfterHours?: true;
 }): Promise<{ ok: boolean; reason?: string; messageId?: string; duplicate?: boolean }> {
   // 🔴 เงื่อนไขเดิมคือ `if (!body) return` ⇒ ทีมส่ง "รูปอย่างเดียว" ไม่ได้เลย (G3)
   //    กติกาใหม่: ต้องมีอย่างน้อย body **หรือ** ไฟล์แนบ (ตรงกับขาเข้า receiveExternalInbound)
@@ -1688,8 +1740,8 @@ export async function sendReply(args: {
           lastMessageAt: created.createdAt,
           lastMessagePreview: previewText,
           lastMessageDirection: "OUT",
-          staffUnreadCount: 0,
-          firstResponseAt: conv.firstResponseAt ?? new Date(),
+          // SEC S1.22 R-S1.22a ▸ Shark ตอบกลางคืน ≠ คนตอบ: unread/firstResponseAt คงเดิม ◂
+          ...(args.aiAfterHours === true ? {} : { staffUnreadCount: 0, firstResponseAt: conv.firstResponseAt ?? new Date() }),
         },
       });
     }
