@@ -55,7 +55,7 @@ _(เติมเมื่อถึงใบ)_
 | S2.1 | 🔨 | | ใบ `sec-brief-S2.1.md` + oracle `qc-sec-s2.1.mts` · builder Opus เลน d `wip/sec-s2.1` เริ่ม 5 พ.ย. ~11:3xZ (ขนานกับ S1.10/S1.14 — แตะเฉพาะ apps/mobile) |
 | S2.2 | ✍️ | | ใบ S2-2 (S2.2+S2.3) `sec-brief-S2.2.md` + spec `qc-sec-specs/s2.2.json` (oracle ทั่วไป `qc-sec-screen.mts`) · รอ S2.1+S1.14 merge |
 | S2.3 | ✍️ | | รวมในชุด S2-2 |
-| S2.4 | ⬜ | | A3 A4 A5 C4 |
+| S2.4 | ✍️ | | ใบ `sec-brief-S2.4.md` + spec `s2.4.json` · รอ S2.1+S1.14 merge |
 | S2.5 | ⬜ | | A6 A7 |
 | S2.6 | ⬜ | | A8 push |
 | S2.7 | ⬜ | | B1 B2 B8 |
