@@ -109,7 +109,7 @@ try {
   const t = await prisma.tenant.create({ data: { name: "QC SEC S1.2", slug: `qc-sec-s12-${Date.now().toString(36)}` } });
   tid = t.id;
   for (const [k, id] of Object.entries(U)) await prisma.user.create({ data: { id, email: `${id}@example.com`, name: k } });
-  const mk = (role: "OWNER" | "MANAGER" | "STAFF", userId: string, permissions: Record<string, unknown> = {}) => prisma.membership.create({ data: { tenantId: tid, userId, role, unitAccess: ["*"], permissions, acceptedAt: new Date() } });
+  const mk = (role: "OWNER" | "MANAGER" | "STAFF", userId: string, permissions: Record<string, unknown> = {}) => prisma.membership.create({ data: { tenantId: tid, userId, role, unitAccess: ["*"], permissions: permissions as never, acceptedAt: new Date() } });
   await mk("OWNER", U.owner); await mk("MANAGER", U.mgr); await mk("STAFF", U.staff, { "pos.sale.read": true, "pos.sale.create": true, "kanban.card.create": true, "kanban.card.read": true });
   await sys.createSystem(tid, "POS", "ขายหน้าร้าน"); await sys.createSystem(tid, "KANBAN", "บอร์ดงาน"); await sys.createSystem(tid, "CRM", "ลูกค้า");
   const actor = (userId: string, role: "OWNER" | "MANAGER" | "STAFF", permissions: Record<string, unknown> = {}) => ({ kind: "member" as const, tenantId: tid, userId, membership: { role, unitAccess: ["*"], permissions } });
@@ -149,7 +149,7 @@ try {
   else {
     const mods = new Set<string>([...(acc.AI_MODULES as string[]), ...(acc.ALWAYS_ON as string[])]);
     const seen = new Set<string>();
-    for (const r of Object.values(toolAccess.HAND_TOOL_ACCESS as Record<string, { needs: { module: string }[] }>)) for (const n of r.needs) seen.add(n.module);
+    for (const r of Object.values(toolAccess.HAND_TOOL_ACCESS as unknown as Record<string, { needs: readonly { module: string }[] }>)) for (const n of r.needs) seen.add(n.module);
     for (const k of Object.keys(toolAccess.HAND_ACTION_KIND)) { const q = proposals.kindAccessOf((toolAccess.HAND_ACTION_KIND as Record<string, string>)[k]); if (q) seen.add(q.module); }
     for (const t of tools.toolRegistry()) { const m = acc.toolModuleOf(t.def.name); if (m) seen.add(m); }
     const unknown = [...seen].filter((m) => !mods.has(m));
@@ -192,7 +192,7 @@ try {
     const vd = toolAccess.toolVerdict(OWNER, "sales_summary", { access: A });
     const vs = toolAccess.toolVerdict(STAFF, "pos_create_sale", { access: { ...A, pos: "DRAFT" } });
     const vs2 = toolAccess.toolVerdict(actor(U.staff, "STAFF", {}), "sales_summary", { access: { ...A, pos: "DRAFT" } });
-    chk("R-2", "toolVerdict: membership ∩ ระดับ — OWNER+pos OFF ปฏิเสธ · STAFF มีคีย์+DRAFT ผ่าน · STAFF ไม่มีคีย์+DRAFT ปฏิเสธด้วยเหตุผลสิทธิ์ (ไม่ใช่เหตุผลระดับ)", !vd.ok && vs.ok && !vs2.ok && !/ปิด|อย่างเดียว/.test(vs2.reason ?? ""), JSON.stringify({ vd, vs, vs2 }).slice(0, 200));
+    chk("R-2", "toolVerdict: membership ∩ ระดับ — OWNER+pos OFF ปฏิเสธ · STAFF มีคีย์+DRAFT ผ่าน · STAFF ไม่มีคีย์+DRAFT ปฏิเสธด้วยเหตุผลสิทธิ์ (ไม่ใช่เหตุผลระดับ)", !vd.ok && vs.ok && !vs2.ok && !/ปิดไม่ให้|อย่างเดียว/.test(vs2.reason ?? ""), JSON.stringify({ vd, vs, vs2 }).slice(0, 200));
     const r1 = await tools.runTool({ tenantId: tid, actor: OWNER, access: A } as never, "sales_summary", {});
     const r2 = await tools.runTool({ tenantId: tid, actor: OWNER } as never, "sales_summary", {});
     chk("R-3", "runTool: ctx.access pos OFF ⇒ {error} ไทย · ไม่ส่ง access ⇒ ทำงานตามเดิม (ไม่มี error สิทธิ์)", /"error"/.test(r1) && /[฀-๿]/.test(r1) && !/ปิดไม่ให้|อย่างเดียว/.test(r2), `r1=${r1.slice(0, 80)} r2=${r2.slice(0, 80)}`);

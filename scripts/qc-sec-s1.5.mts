@@ -62,7 +62,7 @@ const cleanup = async () => {
     try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup tenant: ${errMsg(e)}`); }
   }
   try { await prisma.tenant.deleteMany({ where: { slug: { startsWith: "qc-sec-s15-" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } } }); } catch { /* */ }
-  try { await prisma.pushDevice.deleteMany({ where: { userId: { startsWith: "qcs15-" } } }); } catch { /* */ }
+  try { await prisma.pushDevice.deleteMany({ where: { expoToken: { startsWith: "ExponentPushToken[qcs15-" } } }); } catch { /* */ }
   try { await prisma.user.deleteMany({ where: { id: { startsWith: "qcs15-" } } }); } catch { /* */ }
 };
 try {
@@ -77,7 +77,7 @@ try {
   const OWNER = actor(U.owner, "OWNER"), STAFF = actor(U.staff, "STAFF"), STAFF2 = actor(U.staff2, "STAFF"), MGR = actor(U.mgr, "MANAGER");
   const ctxOf = (a: ReturnType<typeof actor>) => ({ tenantId: tid, actor: a });
   // push devices (ปลอม) ให้ owner/staff/staff2 — sendPushToUser ต้องเจอเครื่อง
-  for (const uid of [U.owner, U.staff, U.staff2]) await prisma.pushDevice.create({ data: { userId: uid, tenantId: tid, token: `ExponentPushToken[qcs15-${uid}]`, platform: "ios" } as never }).catch((e) => console.log("  ⚠️ pushDevice: " + errMsg(e)));
+  for (const uid of [U.owner, U.staff, U.staff2]) await prisma.pushDevice.create({ data: { userId: uid, tenantId: tid, expoToken: `ExponentPushToken[qcs15-${uid}]`, platform: "ios" } }).catch((e) => console.log("  ⚠️ pushDevice: " + errMsg(e)));
 
   if (!worker || !rooms || !hasTables) {
     for (const id of ["W-1", "W-2", "W-3", "R-1", "R-2", "R-3", "R-4", "R-5", "R-6", "P-1", "P-2", "M-1", "M-2", "M-3"]) skip(id, "worker", !worker ? "ไม่มี worker.ts" : !rooms ? "ไม่มี rooms.ts (S1.4)" : "ไม่มีตาราง S1.1");
