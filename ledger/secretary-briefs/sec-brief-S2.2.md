@@ -1,0 +1,17 @@
+# S2-2 — S2.2 รายการห้อง A1/C3 · S2.3 เริ่มงานใหม่ A2 (Sonnet layout + Opus wiring ได้ · `wip/sec-s2.2` · หลัง S2.1 + S1.14 merge · light-check + ภาพคู่ผู้คุมดู)
+
+Read `sec-brief-COMMON.md`, `sec-brief-RESOLUTIONS.md` §F, `sec-brief-S2.1.md` + `ledger/wo-notes/sec-s2.1.md` (โครง/SecTopBar/i18n/fixture), `sec-brief-S1.14.md` ตารางเส้นทาง (ชื่อจริงอยู่ใน `docs/api/SECRETARY-API.md` หลัง S1.14 merge — ใช้ของจริง), plan rows S2.2/S2.3, แบบ A1 (`sec-a.jpg` หน้า 1 + dark) · A2 (`sec-a.jpg` หน้า 2) · C3 (`sec-c.jpg` หน้า 4 — มีแล้วจาก S0.2), และ spec `scripts/qc-sec-specs/s2.2.json` (oracle = `SPEC=… qc-sec-screen.mts`).
+
+## S2.2 — `/secretary` (A1 · C3)
+- ข้อมูล: `GET /api/mobile/secretary/rooms?status&take=50` → `{items:[{id, title, status (QUEUED|RUNNING|WAITING_APPROVAL|DONE|FAILED|CLOSED), systems[], startedBy{name,isMe}, members[]/sharedWith, updatedAt, badge:{pendingProposals, unread}}]}` (ตามของจริง) · `GET /api/mobile/secretary/inbox/count` → badge แถบบน · ว่าง (0 ห้อง) ⇒ C3 เดิม (orb + งานแรกแนะนำจาก `/secretary/suggestions`)
+- UI: SecTopBar โซนเลขา (badge รออนุมัติ) · ตัวกรอง 4 ชิป (ทั้งหมด/กำลังทำ/รออนุมัติ/เสร็จ · `Segment`/`Chip`) · ช่องค้นหา (กรองฝั่งแอป ชื่อห้อง) · การ์ด `Glass`: จุดสถานะ (`Dot` สีตาม status) · ชื่อห้อง (1–2 บรรทัด) · ป้ายระบบ (`SysTag` ≤3) · บรรทัดรอง "สั่งโดย <ชื่อ>" (ไม่ใช่เรา) / "ร่วมกับ <n> คน" · เวลา (relative ไทย/อังกฤษตาม i18n) · badge จำนวนรออนุมัติ · แตะ → `/secretary/room/[id]` · ปุ่ม + (แถบบน) และ FAB/ช่อง "สั่งงานใหม่" ล่าง → `/secretary/new` · pull-to-refresh (`RefreshControl`) · polling ทุก 15 วิ เฉพาะเมื่อหน้าอยู่ (useFocusEffect + setInterval · ล้างตอน blur) · สเกล/ระยะตามแบบ ×F (R-UI1)
+- testID: `sec-home` `sec-home-filter-{all,working,approval,done}` `sec-home-search` `sec-home-card` (ทุกการ์ด + `-<id>`) `sec-home-new` `sec-home-empty`
+## S2.3 — `/secretary/new` (A2)
+- ข้อมูล: `GET /api/mobile/secretary` (ชื่อ/ลงท้าย → ทักทาย "สวัสดี<ลงท้าย> ให้ <ชื่อ> ช่วยอะไรวันนี้") · `GET /secretary/suggestions` → รายการ {key, system, title, instruction} (แตะ = เติม instruction ลงช่อง · ไม่ส่งเอง มติ 9) · `GET /secretary/frequent` → "สั่งบ่อย" ชิป (แตะ = เติม) · `GET /secretary/access` → แถว "ระบบที่เลขาเข้าถึงได้" (`SysTag` + ระดับ) · ส่ง: `POST /api/mobile/secretary/rooms {instruction, systems?}` → `router.replace('/secretary/room/<roomId>')` · 402/429 `quota` ⇒ การ์ด "โควตางานเดือนนี้หมด" + ลิงก์ `/secretary/settings/quota` · ช่องพิมพ์ล่างสุด `InputBar` (ไม่มีไมค์ · มติ 16) · ปุ่มส่ง disabled เมื่อว่าง
+- testID: `sec-new` `sec-new-input` `sec-new-send` `sec-new-suggestion` (+`-<key>`) `sec-new-frequent` `sec-new-system` `sec-new-quota`
+## fixture `qc/fixtures/secretary/s2.2.json`
+- 2 สถานะ: ไฟล์หลัก (3 ห้อง: กำลังทำ/รออนุมัติ 2/เสร็จ · ผู้สั่งต่างกัน · ระบบ pos/crm/acc) · ไฟล์ `s2.2-empty.json` (0 ห้อง = C3) — qc-sec-ui ใช้ไฟล์หลัก (`expect` ทั้ง 2 route) · ถ่ายสถานะว่างเพิ่มด้วย `FIXTURE=s2.2-empty.json ROUTES=/secretary` (ภาพในรายงาน ไม่ต้องคู่)
+- ภาพคู่ `/secretary` ↔ sec-a หน้า 1 · `/secretary/new` ↔ sec-a หน้า 2 · สว่าง+มืด
+## Files you own
+`app/(app)/secretary/{index,new}.tsx` · `src/components/secretary/{RoomCard,RoomFilters,SuggestionList}.tsx` · `src/lib/secretary-api.ts` (ใหม่ · ห่อ `api()` ทุกเส้นของ S1.14 ที่ใบนี้ใช้ · ใบถัดไปเพิ่ม) · `src/i18n/{th,en}.ts` (คีย์ `sec.home.*` `sec.new.*`) · fixture 2 ไฟล์ · `ledger/wo-notes/sec-s2.2.md`
+## Acceptance = `SPEC=scripts/qc-sec-specs/s2.2.json qc-sec-screen.mts` PASS ×2 · ภาพคู่ 2 จอ × 2 ธีม ผู้คุมดู · `qc-sec-s2.1` ยังเขียว · typecheck mobile 0 · fitness ×2

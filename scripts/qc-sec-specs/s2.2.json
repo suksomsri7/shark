@@ -1,0 +1,64 @@
+{
+ "wo": "S2.2+S2.3",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s2.2.json",
+ "routes": [
+  {
+   "route": "/secretary",
+   "file": "app/(app)/secretary/index.tsx",
+   "testIds": [
+    "sec-home",
+    "sec-home-filter-all",
+    "sec-home-filter-working",
+    "sec-home-filter-approval",
+    "sec-home-filter-done",
+    "sec-home-search",
+    "sec-home-card",
+    "sec-home-new"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/new",
+   "file": "app/(app)/secretary/new.tsx",
+   "testIds": [
+    "sec-new",
+    "sec-new-input",
+    "sec-new-send",
+    "sec-new-suggestion",
+    "sec-new-frequent",
+    "sec-new-system"
+   ],
+   "pair": true
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "A1 ใช้ GET /api/mobile/secretary/rooms + polling (useEffect/setInterval หรือ useFocus) + RefreshControl · ว่าง = C3",
+   "file": "app/(app)/secretary/index.tsx",
+   "must": [
+    "secretary/rooms",
+    "RefreshControl",
+    "setInterval|useFocusEffect|refetch",
+    "sec-home-empty|C3|empty"
+   ],
+   "mustNot": [
+    "qc/fixtures/secretary/s0\\.2\\.json"
+   ]
+  },
+  {
+   "id": "X-2",
+   "name": "A2 ใช้ suggestions/frequent/secretary + ส่ง POST rooms แล้วไป room/[id] · ไม่มีไมค์",
+   "file": "app/(app)/secretary/new.tsx",
+   "must": [
+    "secretary/suggestions",
+    "secretary/frequent",
+    "POST|rooms",
+    "secretary/room/"
+   ],
+   "mustNot": [
+    "mic|Mic|microphone"
+   ]
+  }
+ ]
+}
