@@ -138,7 +138,11 @@ export async function sendMessage(
   // กระเป๋าเครดิต (prepaid) — เช็คก่อนแตะ provider เสมอ (ห้ามจ่ายเงินให้ผู้ให้บริการแล้วค่อยพบว่าเครดิตหมด)
   // SEC S1.13 ▸ ด่านเดียว `canRunAi` (R-K7) แทน canSpend เดิม: ข้อความในห้อง = "assist" (ห้องเลขานับงานที่ startRoom แล้ว — R-K6)
   //   รุ่นแรกแพ็กฟรีเปิด ⇒ assist ผ่านเสมอ (ยังหักลง AiCreditTxn เป็นบันทึกต้นทุน) · แพ็กปิด ⇒ ต้องมียอด > 0 เหมือนเดิม ◂
-  const run = await canRunAi(ctx.tenantId, { scope: "assist", now });
+  // R-S1.13c ▸ ห้องเลขา (มี AiRoom ที่ผู้กระทำเห็น) = นับงาน+ผ่านด่านแล้วตอน startRoom (R-K6/Q3) ⇒ ข้อความต่อในห้องไม่ผ่าน canRunAi
+  //   (ทั้ง assist และ job · ไม่ติดเพดานรายวัน/เครดิต) แต่ยังบันทึกต้นทุน AiCreditTxn/AiUsage ตามเดิม · ห้องเดิม = "assist"
+  //   ตรวจจาก `findVisibleConversation` (ต้องมองเห็นห้อง) — ส่งรหัสห้องที่มองไม่เห็นมา = ห้องเดิม ⇒ ผ่านด่าน assist ตามปกติ ◂
+  const conv = input.conversationId ? await findVisibleConversation(ctx, input.conversationId) : null;
+  const run = conv?.room ? ({ ok: true } as const) : await canRunAi(ctx.tenantId, { scope: "assist", now });
   if (!run.ok) {
     // R-S1.13b ▸ ชนเพดานต้นทุน assist ของวัน (reason credit + resetAt) = ตาข่ายรายวัน ⇒ scope "day" (ข้อความ "วันนี้…กลับมาใช้ได้ …") ไม่ใช่ "เติมเครดิต" ◂
     const scope = run.reason === "credit" && run.resetAt ? "day" : run.reason;
@@ -213,7 +217,7 @@ export async function sendMessage(
   // บทสนทนา: ต่อของเดิมถ้าระบุ ไม่งั้นเปิดใหม่
   // CRM C5.5-G2 ▸ ต่อได้เฉพาะห้องที่ผู้กระทำเห็น (ของตัวเอง · เจ้าของร้าน + ห้องที่ไม่ได้สร้างโดยคนในร้าน) — ห้องของคนอื่น
   //   = เหมือนไม่มีอยู่ ⇒ เปิดห้องใหม่ของผู้กระทำ (รหัสฝังผู้สร้าง) · ประวัติที่ป้อนโมเดลกรองด้วยกติกาเดียวกันอีกชั้นใน query ◂
-  const conv = input.conversationId ? await findVisibleConversation(ctx, input.conversationId) : null;
+  // (SEC S1.13c: `conv` อ่านไว้แล้วก่อนด่าน canRunAi ด้านบน — อ่านอย่างเดียว)
   // SEC S1.5 ▸ ข้อความในคิวต้องตอบในห้องของมันเท่านั้น ◂
   if (deps?.userMessageId && !conv) throw new Error("AI room conversation is not visible to this actor");
   const conversation =

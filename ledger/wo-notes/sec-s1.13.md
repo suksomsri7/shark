@@ -53,3 +53,9 @@
   - **แก้แล้ว ยังไม่ได้รันที่นี่ (ฐานอื่น · S1.14 qc:all จะรัน):** qc-svc-d.14 PC-4 (canSpend(Z) = FREE_ON) · P-13 (เรียกตัวอ่าน 1 · charged · USAGE Z 1 · ยอดติดลบ) · C-7 (Z available = FREE_ON) · qc-crm-c2.4 S2.4 (N ถอดเสียงได้ + ข้อเสนอ 1 + USAGE ≥1 · อีก 2 ทางยังปฏิเสธ 0 call) · S8.4 (N = READY) · S8.9 (N ได้ aiSummary + AI +1 + USAGE crm.chat 1) · S8.12 (N อ่านนามบัตรได้ ข้อเสนอ 1 + USAGE crm.card.scan ≥1) · qc-crm-c3.4 CR.3 (ok + 1 call + USAGE +1) · qc-acc-v2-inbox T11.4–T11.6 (DONE · ไม่มีคำ "เติมเครดิต" · call 1 + USAGE 1) — S8.9/S8.12/C-7/T11.5–6 อยู่นอกรายการ §L แต่คาด "ปฏิเสธเพราะไม่มีเครดิต" เหมือนกัน
 - **ORACLE-EDIT ที่ขอ (oracle S1.13 C-6):** แถว fixture `aiCreditTxn.create` บรรทัด 112/114 ขาดฟิลด์บังคับ `source` + `balanceAfter` (schema ไม่มี default) ⇒ create ล้ม (⚠️ txn cap) ⇒ usedMicro 0 ⇒ C-6 แดง · แก้: เพิ่ม `source: "CHAT", balanceAfter: 0` ทั้ง 2 แถว · ยืนยันด้วยสำเนาชั่วคราว (ลบแล้ว) = 13/13
 - หนี้: `canSpendPeek`/GET usage ยังไม่สะท้อนเพดานรายวัน (blocked null แม้ชนเพดาน) · ห้องเลขา: ข้อความต่อในห้อง (sendMessage = assist) ชนเพดานรายวันได้แม้มีโควตางานเหลือ
+
+## 11. รอบ 3 — R-S1.13c (ห้องเลขาไม่ผ่าน canRunAi)
+- merge ทิป 653d5a06 (ORACLE-EDIT S1.13-C-6 + S1.7/S1.8) เข้า `wip/sec-s1.13` (d66c428b)
+- `service.sendMessage`: ย้าย `findVisibleConversation` (อ่านอย่างเดียว) ขึ้นมาก่อนด่าน · `conv?.room` ⇒ ข้าม `canRunAi` (ทั้ง assist/job) · ห้องเดิม = assist · ต้นทุน AiCreditTxn/AiUsage + ตาข่ายรายวัน AiUsage คงเดิม · worker ของห้องเรียก sendMessage ⇒ ได้ผลเดียวกัน
+- กันเลี่ยงด่าน: ต้อง "มองเห็น" ห้อง — รหัสห้องที่มองไม่เห็น ⇒ conv null ⇒ ด่าน assist ปกติ (และเปิดบทสนทนาใหม่ตามเดิม)
+- ปิดหนี้ §10 ข้อ "ห้องเลขาชนเพดานรายวัน" · oracle S1.13 ไม่มีข้อที่ขัด
