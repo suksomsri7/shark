@@ -32,7 +32,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.2 | ✅ | 4 พ.ย. ~16:2xZ | merge (wip/sec-s1.2 1be8df6d) · oracle 28/28 ×3 (ORACLE-EDIT R-2 regex) · regression 6 ชุดเท่า baseline · identity.ts (pure) + secretary.ts · persona snapshot เดิมตรงทุกไบต์ · ใบ S1-2 (S1.2+S1.3) + oracle `qc-sec-s1.2.mts` เขียนแล้ว 4 พ.ย. (unforced SKIP · forced บนฐานเดิม P-1 snapshot ผ่าน · แดง P-2/3/5 ถูกเหตุผล) · รอ S1.1 merge → เลน c · เลขาผูกผู้ใช้ |
 | S1.3 | ✅ | 4 พ.ย. ~16:2xZ | access-rules.ts (pure) + access.ts · toolVerdict/toolsOfferedTo รับ access · HAND_TOOL_MODULE (27 โมดูล) · ด่านใน executeProposal/runKind (dynamic import กันวงกลม) · หนี้: route คีย์ API ภายนอกยังไม่ส่ง access · propose_plan ปล่อยขั้นของระบบ OFF ไปตกตอนรัน · รวมในชุด S1-2 · 🎯 สิทธิ์ต่อกิจการ×ระบบ |
 | S1.4 | ✅ | 4 พ.ย. ~18:0xZ | merge (wip/sec-s1.4 33cfaf47) · oracle 28/28 ×3 (ORACLE-EDIT fixture tenantId) · S1.2 ยังเขียวหลัง merge · regression 9 ชุดเท่า baseline · rooms.ts 329 บรรทัด · ConvSight +memberOf/tenantRooms · roomSightFor/canSeeConversationById · rejectPlan room-aware · 🎯 ห้อง = งาน |
-| S1.5 | ✍️ | | ใบ S1-4 + oracle `qc-sec-s1.5.mts` (00086018) รอ S1.4 merge · 🎯 คิวเบื้องหลัง |
+| S1.5 | 🔨 | | builder Opus เลน b `wip/sec-s1.5` @e78492a6 เริ่ม 4 พ.ย. ~18:1xZ · oracle `qc-sec-s1.5.mts` · 🎯 คิวเบื้องหลัง |
 | S1.6 | ✍️ | | ใบ S1-5 + oracle `qc-sec-s1.6.mts` (47027ca0) รอ S1.4 merge · 🎯 ห้องร่วม |
 | S1.7 | ✍️ | | ใบ S1-6 (S1.7+S1.8) + oracle `qc-sec-s1.7.mts` เขียนแล้ว (R-K3b · R-S1.8a) รอ S1.4 merge · ต้องอนุมัติเสมอ |
 | S1.8 | ✍️ | | รวมในชุด S1-6 · 🎯 บันทึก + ย้อน 24 ชม. |
