@@ -10,6 +10,11 @@ import { useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { useAuth } from "@/src/lib/auth-context";
 import { registerPush, conversationIdFromNotification } from "@/src/lib/push-register";
+// S2.6 เลขา AI ▸ แตะแจ้งเตือนของเลขา (data.link /secretary/… · /customers/<id>) → สลับกิจการตาม data.tenantId แล้วเปิดจอ · badge ไอคอนแอป ◂
+import { handleSecretaryPush, openLastSecretaryPush, syncAppBadge, type SecretaryPushDeps } from "@/src/lib/push-register";
+import { fetchAppBadge } from "@/src/api/secretary";
+import { useRef } from "react";
+import { AppState } from "react-native";
 // CRM C3.7 ▸ แตะแจ้งเตือนของ CRM (data.link จาก crmNotifLink) → จอ CRM ในแอป (ตัวแปลงบริสุทธิ์) ◂
 import { crmRouteFromLink } from "@/src/lib/crm-link";
 import { C, R, S } from "@/src/theme";
@@ -141,10 +146,25 @@ function DrawerBody(props: { navigation: DrawerNav }) {
 
 export default function AppLayout() {
   const router = useRouter();
+  // S2.6 ▸ สถานะล่าสุดของ auth ให้ตัวจัดการแจ้งเตือน (listener ผูกครั้งเดียว · อ่านค่าสดผ่าน ref) ◂
+  const { activeTenantId: secActive, tenants: secTenants, switchTenant: secSwitch } = useAuth();
+  const secDeps = useRef<SecretaryPushDeps>({ activeTenantId: null, tenantIds: [], switchTenant: secSwitch, push: (href) => router.push(href) });
+  secDeps.current = { activeTenantId: secActive, tenantIds: secTenants.map((x) => x.tenantId), switchTenant: secSwitch, push: (href) => router.push(href) };
+  useEffect(() => {
+    if (secTenants.length > 0) openLastSecretaryPush(secDeps.current);
+    if (!secActive) return;
+    void syncAppBadge(fetchAppBadge);
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") void syncAppBadge(fetchAppBadge);
+    });
+    return () => sub.remove();
+  }, [secActive, secTenants.length]);
   // ลงทะเบียน push ครั้งเดียวหลังเข้าโซนกิจการ + แตะแจ้งเตือน → เปิดห้องแชทที่เกี่ยว
   useEffect(() => {
     void registerPush();
     const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
+      // S2.6 ▸ ลิงก์ของเลขามาก่อน (ห้องเลขาส่ง conversationId มาด้วยเพื่อ build เก่า — build นี้เปิดห้องเลขา ไม่ใช่ /chat) ◂
+      if (handleSecretaryPush(resp, secDeps.current)) return;
       const cid = conversationIdFromNotification(resp);
       if (cid) {
         router.push(`/chat/${cid}`);

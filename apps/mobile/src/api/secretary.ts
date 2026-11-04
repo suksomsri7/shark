@@ -30,6 +30,10 @@ const PATH = {
   "secretary/staff": "/api/mobile/secretary/staff",
   // S2.10 D1: จุดเข้าเวร (eligibleResponders · onDuty) — เส้นแชทลูกค้า (ไม่ใช่ secretary/*) · พลาด = ไม่แสดงเวร
   "inbox/staff": "/api/mobile/inbox/staff",
+  // S2.5 กล่องรวมรออนุมัติ (ทุกกิจการ · ไม่ส่ง x-tenant-id) · งานประจำ · S2.6 badge ไอคอนแอป
+  "secretary/inbox": "/api/mobile/secretary/inbox",
+  "secretary/scheduled": "/api/mobile/secretary/scheduled",
+  "secretary/badge": "/api/mobile/secretary/badge",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -55,6 +59,7 @@ const PATH_ID = {
   "secretary/rooms/[id]/members": "/api/mobile/secretary/rooms/[id]/members",
   "secretary/staff/invites/[id]": "/api/mobile/secretary/staff/invites/[id]",
   "secretary/staff/invites/[id]/resend": "/api/mobile/secretary/staff/invites/[id]/resend",
+  "secretary/scheduled/[id]": "/api/mobile/secretary/scheduled/[id]",
 } as const;
 export type SecIdPath = keyof typeof PATH_ID;
 
@@ -127,9 +132,13 @@ type GetMap = {
   "secretary/after-hours": AfterHours;
   "secretary/staff": { items?: StaffRow[] };
   "inbox/staff": { items?: { userId: string; name?: string | null; role?: string; onDuty?: boolean }[] };
+  "secretary/inbox": { items?: unknown[] };
+  "secretary/scheduled": { items?: unknown[]; max?: number };
+  "secretary/badge": { badge?: number };
 };
 type PostMap = {
   "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[] }; res: { roomId: string; conversationId?: string; status?: string } };
+  "secretary/scheduled": { body: ScheduleBody; res: { id: string } };
 };
 type Query = Record<string, string | number | undefined>;
 
@@ -143,10 +152,10 @@ function url(path: SecPath, q?: Query): string {
   return qs ? `${PATH[path]}?${qs}` : PATH[path];
 }
 
-/** เส้นระดับผู้ใช้ (ข้ามกิจการ) — ไม่ส่ง x-tenant-id */
-const USER_LEVEL: ReadonlySet<SecPath> = new Set<SecPath>(["secretary/me", "secretary"]);
+/** เส้นระดับผู้ใช้ (ข้ามกิจการ · ไม่ส่ง x-tenant-id · SECRETARY-API ข้อ 1): secretary/me · secretary · กล่องรวมทุกกิจการ secretary/inbox */
+const USER_LEVEL: ReadonlySet<SecPath> = new Set<SecPath>(["secretary/me", "secretary", "secretary/inbox"]);
 
-/** GET เส้นของเลขา · secretary/me + secretary ไม่ส่ง x-tenant-id (ข้อมูลต่อผู้ใช้) */
+/** GET เส้นของเลขา · เส้นระดับผู้ใช้ไม่ส่ง x-tenant-id */
 export function secGet<P extends keyof GetMap>(path: P, q?: Query): Promise<GetMap[P]> {
   return api<GetMap[P]>(url(path, q), { tenant: !USER_LEVEL.has(path) });
 }
@@ -159,6 +168,8 @@ export function secPost<P extends keyof PostMap>(path: P, body: PostMap[P]["body
 /** ผลอนุมัติ (200 เสมอ · ไม่ผ่าน = ok:false + note ไทย) · DESTRUCTIVE ที่ยังไม่ยืนยัน 2 ชั้น ⇒ needsSecondConfirm */
 export type ApproveRes = { ok: boolean; note?: string; needsSecondConfirm?: boolean; why?: string; doneCount?: number; results?: { summary?: string; ok?: boolean; note?: string }[] };
 export type RejectBody = { note?: string; remember?: "JOB" | "RULE" };
+/** POST/PUT งานประจำ (สัญญา SECRETARY-API · รุ่นแรกแอปตั้งได้แค่ DAILY/WEEKLY) */
+export type ScheduleBody = { instruction: string; hourBkk: number; frequency: "DAILY" | "WEEKLY"; days?: number[]; channels: ("push" | "room")[] };
 type GetIdMap = {
   "secretary/rooms/[id]": Record<string, unknown>;
   "secretary/rooms/[id]/messages": { items?: unknown[]; nextBefore?: string | null };
@@ -179,7 +190,7 @@ type PostIdMap = {
   "secretary/rooms/[id]/members": { body: { userId: string; seeHistory: boolean }; res: { ok: boolean; member?: unknown } };
   "secretary/staff/invites/[id]/resend": { body: Record<string, never>; res: { ok: boolean; sms?: string; expiresAt?: string; link?: string | null } };
 };
-type DeleteIdMap = { "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean }; "secretary/staff/invites/[id]": { ok: boolean } };
+type DeleteIdMap = { "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean }; "secretary/staff/invites/[id]": { ok: boolean }; "secretary/scheduled/[id]": { ok: boolean } };
 
 function urlId(path: SecIdPath, id: string, q?: Query): string {
   const base = PATH_ID[path].replace("[id]", encodeURIComponent(id));
@@ -196,11 +207,17 @@ export function secGetId<P extends keyof GetIdMap>(path: P, id: string, q?: Quer
   return api<GetIdMap[P]>(urlId(path, id, q));
 }
 
-export function secPostId<P extends keyof PostIdMap>(path: P, id: string, body: PostIdMap[P]["body"]): Promise<PostIdMap[P]["res"]> {
-  return api<PostIdMap[P]["res"]>(urlId(path, id), { method: "POST", body });
+/** opts.tenantId = ยิงในนามกิจการของรายการ (กล่องรวม S2.5) แทนกิจการ active */
+export function secPostId<P extends keyof PostIdMap>(path: P, id: string, body: PostIdMap[P]["body"], opts?: { tenantId?: string }): Promise<PostIdMap[P]["res"]> {
+  return api<PostIdMap[P]["res"]>(urlId(path, id), { method: "POST", body, ...(opts?.tenantId ? { tenantId: opts.tenantId } : {}) });
 }
 
-/** DELETE เส้นที่มี [id] (S2.9 ไม่รับบทเรียน / ลบความจำ) */
+/** PUT secretary/scheduled/[id] — เซิร์ฟเวอร์รุ่นนี้รับเฉพาะ {active} (เวลา/ความถี่ = 400 not_supported → ลบแล้วตั้งใหม่) */
+export function secPutId(path: "secretary/scheduled/[id]", id: string, body: { active: boolean }): Promise<{ ok: boolean; active?: boolean }> {
+  return api(urlId(path, id), { method: "PUT", body });
+}
+
+/** DELETE เส้นที่มี [id] (S2.9 ไม่รับบทเรียน / ลบความจำ · S2.5 ลบงานประจำ) */
 export function secDeleteId<P extends keyof DeleteIdMap>(path: P, id: string): Promise<DeleteIdMap[P]> {
   return api<DeleteIdMap[P]>(urlId(path, id), { method: "DELETE" });
 }
@@ -772,4 +789,163 @@ export function serverNote(e: unknown): string | null {
 export function useActiveRole(): string | null {
   const { tenants, activeTenantId } = useAuth();
   return tenants.find((x) => x.tenantId === activeTenantId)?.role ?? null;
+}
+
+// ───────── S2.5 กล่องรวมรออนุมัติทุกกิจการ (A6) — GET secretary/inbox (ไม่ส่ง x-tenant-id) ─────────
+/** ชั้นของรายการในกล่องรวม (แท็บ เงิน/ส่งลูกค้า/ลบ) */
+export type InboxClass = { money: boolean; customer: boolean; destructive: boolean };
+export type InboxRow = {
+  tenantId: string;
+  tenantName: string;
+  type: "proposal" | "plan";
+  id: string;
+  roomId: string | null;
+  conversationId: string | null;
+  summary: string;
+  kind: string;
+  module: string;
+  canApprove: boolean;
+  /** เหตุผลที่ต้องอนุมัติจากเซิร์ฟเวอร์ (มีเมื่อ canApprove) — ไม่มี = ไม่แสดง */
+  why: string | null;
+  cls: InboxClass;
+  createdAt: string;
+  expiresAt: string | null;
+};
+
+// กระจกของ src/lib/ai/secretary/kind-class.ts (แอปอ่านโค้ดเซิร์ฟเวอร์ไม่ได้) — ใช้เฉพาะเมื่อ DTO ไม่ส่ง `class` มาเอง
+//   destructive = risk DESTRUCTIVE ของแถว (ชุดเดียวกับยืนยัน 2 ชั้น) · เงิน/ส่งลูกค้า = โมดูล + prefix ของ kind
+const MONEY_MODULES = new Set(["account", "payments", "finance", "cheques", "point", "reward", "ticket", "restaurant"]);
+const MONEY_PREFIXES = ["member.points.", "member.giftcards.", "member.wallet.", "member.rewards.", "member.vouchers."];
+const CUSTOMER_KINDS = new Set(["chat.send", "marketing_create_campaign", "coupon_create"]);
+const CUSTOMER_PREFIXES = ["crm.emails.", "member.campaigns.", "member.journeys.", "member.notifications.", "crm.sequences."];
+
+export function inboxClassOf(kind: string, risk: string, server?: unknown): InboxClass {
+  const s = rec(server);
+  if (Object.keys(s).length > 0) return { money: s.money === true, customer: s.customerFacing === true || s.customer === true, destructive: s.destructive === true || risk === "DESTRUCTIVE" };
+  const k = kind;
+  const mod = moduleOfKind(k);
+  return {
+    destructive: risk === "DESTRUCTIVE",
+    money: !!k && (MONEY_MODULES.has(mod) || MONEY_PREFIXES.some((p) => k.startsWith(p)) || /refund|void|pay/i.test(k)),
+    customer: CUSTOMER_KINDS.has(k) || CUSTOMER_PREFIXES.some((p) => k.startsWith(p)),
+  };
+}
+
+export function normalizeInbox(v: unknown): InboxRow[] {
+  return listOf(v)
+    .map((x): InboxRow | null => {
+      const o = rec(x);
+      const id = str(o.id);
+      const tenantId = str(o.tenantId);
+      if (!id || !tenantId) return null;
+      const kind = str(o.kind);
+      const risk = str(o.risk).toUpperCase();
+      return {
+        tenantId,
+        tenantName: str(o.tenantName),
+        type: o.type === "plan" ? "plan" : "proposal",
+        id,
+        roomId: str(o.roomId) || null,
+        conversationId: str(o.conversationId) || null,
+        summary: str(o.summary),
+        kind,
+        module: moduleOfKind(kind),
+        canApprove: o.canApprove === true,
+        why: whyOf(o.why),
+        cls: inboxClassOf(kind, risk, o.class ?? o.classes),
+        createdAt: isoOf(o.createdAt),
+        expiresAt: isoOrNull(o.expiresAt),
+      };
+    })
+    .filter((x): x is InboxRow => !!x);
+}
+
+/** แถวกล่องรวม → รูปของการ์ดอนุมัติ (ใช้ useApprovalFlow เดิม: ยืนยัน 2 ชั้น · ชีตตีกลับ C4) — ไม่มี payload ⇒ แก้ไม่ได้ (แก้ในห้อง) */
+export function inboxToApproval(r: InboxRow): ApprovalItem {
+  if (r.type === "plan") return { type: "plan", id: r.id, title: r.summary, steps: [], destructive: r.cls.destructive, why: r.why, pending: true, canApprove: r.canApprove, at: r.createdAt };
+  return {
+    type: "proposal",
+    id: r.id,
+    kind: r.kind,
+    module: r.module,
+    summary: r.summary,
+    destructive: r.cls.destructive,
+    money: r.cls.money,
+    customerFacing: r.cls.customer,
+    piiExport: false,
+    why: r.why,
+    editable: false,
+    input: null,
+    edited: false,
+    canApprove: r.canApprove,
+    at: r.createdAt,
+  };
+}
+
+// ───────── S2.5 งานประจำ (A7) — GET/POST secretary/scheduled · PUT/DELETE secretary/scheduled/[id] ─────────
+export type TaskRow = {
+  id: string;
+  instruction: string;
+  hourBkk: number;
+  /** DAILY | WEEKLY | อื่น ๆ ที่เซิร์ฟเวอร์มี (รายเดือนตั้งจากเว็บได้ — แอปรุ่นแรกแสดงอย่างเดียว) */
+  frequency: string;
+  days: number[];
+  channels: ("push" | "room")[];
+  active: boolean;
+  mine: boolean;
+  ownerUserId: string | null;
+};
+
+export function normalizeTasks(v: unknown, myUserId: string | null | undefined): TaskRow[] {
+  return listOf(v)
+    .map((x): TaskRow | null => {
+      const o = rec(x);
+      const id = str(o.id);
+      const hour = Math.floor(Number(o.hourBkk));
+      if (!id || !Number.isFinite(hour) || hour < 0 || hour > 23) return null;
+      const owner = str(o.ownerUserId) || null;
+      const channels = (Array.isArray(o.channels) ? o.channels : []).filter((c): c is "push" | "room" => c === "push" || c === "room");
+      return {
+        id,
+        instruction: str(o.instruction),
+        hourBkk: hour,
+        frequency: str(o.frequency).toUpperCase() || "DAILY",
+        days: (Array.isArray(o.days) ? o.days : []).map((d) => Math.floor(Number(d))).filter((d) => Number.isFinite(d)).sort((a, b) => a - b),
+        channels: channels.length ? channels : ["push", "room"],
+        active: o.active !== false,
+        mine: o.mine === true || (!!myUserId && owner === myUserId),
+        ownerUserId: owner,
+      };
+    })
+    .filter((x): x is TaskRow => !!x && !!x.instruction);
+}
+
+const BKK_OFFSET_MS = 7 * 3600_000;
+
+/**
+ * รอบถัดไปของงานประจำ (เวลาไทย · pure · `nowMs` ฉีดได้ — COMMON A.11) → วันที่ห่างจากวันนี้ + วันในสัปดาห์ (0=อา) + วันที่/เดือน
+ *   DAILY = ทุกวัน · WEEKLY = วันในสัปดาห์ไทย ∈ days · อื่น (รายเดือน) = วันที่ไทย ∈ days · ปิดอยู่/ไม่มีวัน = null
+ *   ชั่วโมงนี้เลยแล้ว (นาทีใด ๆ ของชั่วโมงนั้นนับว่าเลย — cron รันต้นชั่วโมง) ⇒ เริ่มนับจากพรุ่งนี้
+ */
+export function nextRunOf(task: Pick<TaskRow, "active" | "hourBkk" | "frequency" | "days">, nowMs: number): { inDays: number; weekday: number; day: number; month: number } | null {
+  if (!task.active) return null;
+  const now = new Date(nowMs + BKK_OFFSET_MS);
+  const start = now.getUTCHours() < task.hourBkk ? 0 : 1;
+  for (let i = start; i < start + 62; i++) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + i));
+    const ok = task.frequency === "DAILY" ? true : task.frequency === "WEEKLY" ? task.days.includes(d.getUTCDay()) : task.days.includes(d.getUTCDate());
+    if (ok) return { inDays: i, weekday: d.getUTCDay(), day: d.getUTCDate(), month: d.getUTCMonth() + 1 };
+  }
+  return null;
+}
+
+/** badge ไอคอนแอป (S2.6) — GET secretary/badge ของกิจการ active · พลาด = null */
+export async function fetchAppBadge(): Promise<number | null> {
+  try {
+    const r = await secGet("secretary/badge");
+    const n = Math.floor(Number(r?.badge));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch {
+    return null;
+  }
 }

@@ -61,3 +61,87 @@ export function conversationIdFromNotification(resp: Notifications.NotificationR
   const data = resp.notification.request.content.data as { conversationId?: unknown } | undefined;
   return typeof data?.conversationId === "string" ? data.conversationId : null;
 }
+
+// ───────── S2.6 แตะแจ้งเตือนของเลขา → deep link (data.link + data.tenantId) ─────────
+// 4 แบบของเซิร์ฟเวอร์ (รออนุมัติ · งานเสร็จ · โควตา · งานประจำ) ต่างกันแค่ link/ข้อความ — แอปอ่าน path อย่างเดียว (ตัด ?e=… / #… ทิ้ง · RESOLUTIONS §N)
+// link ที่รับ (สัมพัทธ์ของเราเท่านั้น · id ตัวอักษร/ตัวเลข/_- ≤ 80):
+//   /secretary/room/<id> · /secretary/inbox · /secretary/scheduled · /secretary/help/<id> (+ /help/<id> ของเซิร์ฟเวอร์ = ห้องแจ้งปัญหา) · /customers/<id>
+//   อื่น ๆ (เช่น /inbox/<convId> ของแชทลูกค้า · ลิงก์ CRM /app/sys/…) = null → ตัวจัดการเดิมใน (app)/_layout ทำต่อ (conversationId → /chat · CRM)
+// data.tenantId ต่างจากกิจการ active และผู้ใช้เป็นสมาชิก ⇒ switchTenant ก่อน แล้ว router.push(link)
+const SEC_ID = "([A-Za-z0-9_-]{1,80})";
+const SEC_LINKS: { re: RegExp; to: (id: string) => string }[] = [
+  { re: new RegExp(`^/secretary/room/${SEC_ID}$`), to: (id) => `/secretary/room/${id}` },
+  { re: /^\/secretary\/inbox$/, to: () => "/secretary/inbox" },
+  { re: /^\/secretary\/scheduled$/, to: () => "/secretary/scheduled" },
+  { re: new RegExp(`^/(?:secretary/)?help/${SEC_ID}$`), to: (id) => `/secretary/help/${id}` },
+  { re: new RegExp(`^/customers/${SEC_ID}$`), to: (id) => `/customers/${id}` },
+];
+
+/** data.link ของ push → เส้นทางในแอปเลขา · ไม่ใช่ลิงก์ของเลขา = null (pure) */
+export function secretaryRouteFromLink(link: unknown): string | null {
+  if (typeof link !== "string") return null;
+  const s = link.trim();
+  if (!s.startsWith("/") || s.startsWith("//") || s.includes("\\")) return null;
+  const path = s.split(/[?#]/)[0]!.replace(/\/+$/, "") || "/";
+  for (const l of SEC_LINKS) {
+    const m = l.re.exec(path);
+    if (m) return l.to(m[1] ?? "");
+  }
+  return null;
+}
+
+export type SecretaryPushDeps = {
+  activeTenantId: string | null;
+  tenantIds: readonly string[];
+  switchTenant: (tenantId: string) => Promise<void>;
+  push: (href: string) => void;
+};
+
+const handledPush = new Set<string>();
+
+/**
+ * แตะแจ้งเตือน: ลิงก์ของเลขา ⇒ จัดการ (สลับกิจการถ้าต้อง แล้วเปิด) และคืน true · อื่น ๆ = false (ผู้เรียกทำทางเดิมต่อ)
+ * ใบเดิมซ้ำ (listener + เปิดแอปจากแจ้งเตือน) = เปิดครั้งเดียว (จำ identifier)
+ */
+export function handleSecretaryPush(resp: Notifications.NotificationResponse, deps: SecretaryPushDeps): boolean {
+  const data = (resp?.notification?.request?.content?.data ?? {}) as { link?: unknown; tenantId?: unknown };
+  const href = secretaryRouteFromLink(data.link);
+  if (!href) return false;
+  const key = resp.notification.request.identifier ?? "";
+  if (key) {
+    if (handledPush.has(key)) return true;
+    handledPush.add(key);
+  }
+  const tid = typeof data.tenantId === "string" ? data.tenantId : "";
+  const go = async () => {
+    try {
+      if (tid && tid !== deps.activeTenantId && deps.tenantIds.includes(tid)) await deps.switchTenant(tid);
+    } catch {
+      // สลับไม่ได้ = เปิดในกิจการเดิม (จอแสดง "ไม่พบ" เอง)
+    }
+    deps.push(href);
+  };
+  void go();
+  return true;
+}
+
+/** เปิดแอปจากการแตะแจ้งเตือนตอนแอปปิดอยู่ — แจ้งเตือนล่าสุดที่เป็นลิงก์เลขา (ยังไม่เคยเปิด) · เปิดแล้วล้าง (ไม่เปิดซ้ำรอบหน้า) */
+export function openLastSecretaryPush(deps: SecretaryPushDeps): void {
+  try {
+    const last = Notifications.getLastNotificationResponse();
+    if (last && handleSecretaryPush(last, deps)) Notifications.clearLastNotificationResponse();
+  } catch {
+    // เงียบ (เว็บ/เครื่องที่ไม่มีโมดูล)
+  }
+}
+
+/** badge ไอคอนแอป (iOS/Android) = GET secretary/badge ของกิจการ active (ตอนเปิดแอป/กลับมา foreground) · พลาด = ไม่แตะ */
+export async function syncAppBadge(fetchBadge: () => Promise<number | null>): Promise<void> {
+  if (Platform.OS === "web") return; // เว็บไม่มี badge ไอคอนแอป (และไม่ยิงเส้นเพิ่มในจอ QC)
+  try {
+    const n = await fetchBadge();
+    if (typeof n === "number") await Notifications.setBadgeCountAsync(n);
+  } catch {
+    // เงียบ
+  }
+}
