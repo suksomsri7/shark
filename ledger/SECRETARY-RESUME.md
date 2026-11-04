@@ -3,7 +3,9 @@
 > เริ่มใหม่ = อ่านไฟล์นี้บล็อกบนสุด → `SECRETARY-RUN.md` §3 สถานะ + §4 เหตุการณ์ → ใบถัดไปใน `SECRETARY-MASTER-PLAN.md` §3 → `secretary-briefs/sec-brief-COMMON.md`
 > ทรี `/root/projects/shark-sec` · branch `session/secretary` · เลน b/c/d = `shark-sec-b` `shark-sec-c` `shark-sec-d` (node_modules bind ro จาก shark-svc · หลังรีบูตต้อง mount ใหม่ทั้ง 4 ทรี) · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
 
-## ▶️ 4 พ.ย. 2026 ~18:0xZ — 8/58 (14%) · ปิด S0 · S1.1–S1.4 · กำลังทำ: S1.5 (เลน b) · S1.19 (เลน c) · S1.20 (เลน d) · พร้อมปล่อย: S1.6 · S1.7+S1.8 (ใบ+oracle ใน ledger/secretary-briefs + scripts/qc-sec-s1.*.mts)
+## ▶️ 4 พ.ย. 2026 ~20:0xZ — 10/58 (17%) · ปิด S0 · S1.1–S1.5 · S1.20 · กำลังทำ: S1.6 (เลน b) · S1.19 รอบ 2 (เลน c · รีวิวพบช่องโหว่ → RESOLUTIONS §H) · S1.3b (เลน d · ปิดช่องรีวิว S1-2) · พร้อมปล่อย: S1.7+S1.8 · S1.13 (ใบ+oracle ใน ledger/secretary-briefs + scripts/qc-sec-s1.*.mts)
+
+## (เก่า) 4 พ.ย. ~18:0xZ — 8/58
 
 ## (เก่า) 4 พ.ย. ~15:2xZ — 5/58
 
