@@ -50,7 +50,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.22 | ✍️ | | ใบ S1-16 `sec-brief-S1.22.md` (customer-context · after-hours · migration secretary_b 3 คอลัมน์ AiSettings) · oracle ยังไม่มี · 🎯 สะพานเลขา↔ห้องลูกค้า |
 | S1.23 | 🔨 | | รวมในชุด S1-12 (เลน d) · รวมในชุด S1-12 · แจ้งเตือน+เรียลไทม์ |
 | S1.24 | ✍️ | | รวมในชุด S1-15 · 🎯 ผู้ดูแล · เรียกช่วย · กฎรับเรื่อง · เข้าเวร |
-| S1.25 | ✍️ | | ใบ S1-17 `sec-brief-S1.25.md` (createTenantFromApp · StaffInvite · levels ปิด/ดู/ใช้งาน) · oracle ยังไม่มี · 🎯 กิจการ/เชิญ/สิทธิ์ต่อคน API |
+| S1.25 | ✍️ | | ใบ S1-17 + oracle `qc-sec-s1.25.mts` (15 ข้อ) พร้อม (createTenantFromApp · StaffInvite · levels ปิด/ดู/ใช้งาน) · 🎯 กิจการ/เชิญ/สิทธิ์ต่อคน API |
 | S1.14 | ✍️ | | ใบ S1-18 `sec-brief-S1.14.md` (ตารางเส้นทาง + sec-real-path.mts) · oracle ยังไม่มี · 🎯 API ชุดเดียว + เส้นทางจริง 3 เส้น (ปิด S1) |
 | S2.1 | ⬜ | | โครงแอป |
 | S2.2 | ⬜ | | A1 C3 |
