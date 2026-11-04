@@ -21,13 +21,13 @@
 | `apps/mobile/src/components/secretary/SettingRow.tsx` | ใหม่ | `SettingsTop` (กลับ + ชื่อ) · `SettingRow` · `Toggle` (role switch · `locked`) · `OwnerOnlyBadge` |
 | `…/components/secretary/{LevelPicker,RuleRow,LogItem,QuotaRing}.tsx` | ใหม่ | ตามชื่อ (QuotaRing = % ใหญ่ + แถบไล่สี · ไม่มี svg) |
 | `…/components/secretary/bkk.ts` | ใหม่ (นอกรายการ) | เวลาไทย (HH:MM · YYYY-MM-DD · วัน/เดือน · วันถึง) + สตางค์→บาท |
-| `apps/mobile/src/api/secretary.ts` | ขยาย | PATH +9 เส้น (`secretary`=`/api/mobile/secretary/secretary` ฯลฯ) · `secPut` · `secPostId/secDeleteId` (ID_PATH) · type ของ DTO ตั้งค่า · `quotaNumbers` (cap 100 · ไม่คืนเงิน) · `logCanUndo` · `disclosureProblem` · `SUFFIXES` · `useActiveRole` · `serverNote` |
+| `apps/mobile/src/api/secretary.ts` | ขยาย | PATH +8 เส้น (`secretary`=`/api/mobile/secretary/secretary` ฯลฯ · `secretary/log` ใช้ร่วมกับ S2.4) · `secPut` · เส้น [id] ของ B6 ลงตาราง `PATH_ID` ของ S2.4 + `secDeleteId` ใหม่ (`secPostId` ของ S2.4) · type ของ DTO ตั้งค่า · `quotaNumbers` (cap 100 · ไม่คืนเงิน) · `logCanUndo` · `disclosureProblem` · `SUFFIXES` · `useActiveRole` · `serverNote` |
 | `apps/mobile/src/i18n/{th,en}.ts` | แก้ | +181 คีย์ `sec.set.* sec.me.* sec.quota.* sec.access.* sec.rules.* sec.log.* sec.know.* sec.cust.* sec.month.* sec.money.baht sec.date.dm` (ชุดเดียวกัน · en ไม่มีอักษรไทย) |
 | `apps/mobile/qc/fixtures/secretary/s2.7.json` · `s2.7-staff.json` | ใหม่ | OWNER (+ mock PUT/POST/DELETE สำหรับกดจริง) · STAFF (ไม่มี after-hours/memories/staff = ต้องไม่ถูกยิง) |
 | `apps/mobile/qc/fixtures/secretary/s2.1.json` | แก้ (นอกรายการ) | +mock GET ของ 9 เส้นตั้งค่า · expect 8 route ตั้งค่า = testID จอจริง (access ว่าง = `sec-access` เท่านั้น เพราะ s2.1 access = `{items:[]}`) — ถ่ายชุด S2.1 ทั้ง 24 route ซ้ำได้สะอาด (48/48 ok ในโฟลเดอร์ชั่วคราว) |
 | `scripts/sec-ui-inventory.json` | แก้ | +18 แถวปุ่มของ S2.7–S2.9 |
 
-## 2. ผลข้อสอบ (ทิปหลัง merge session/secretary fb7593f2 = มี S2.12)
+## 2. ผลข้อสอบ (ทิปหลัง merge session/secretary b7dc15c8 = มี S2.12 + S2.4 · ถ่าย/คู่/กดจริงใหม่ทั้งหมดบนทิปนี้)
 - spec oracle forced #1: `JSON_SUMMARY {"total":16,"passed":16,"failed":[],"skipped":[],"findings":[]}` exit 0
 - spec oracle forced #2: `JSON_SUMMARY {"total":16,"passed":16,"failed":[],"skipped":[],"findings":[]}` exit 0 (ทั้งสองรอบรวม M-1 typecheck mobile + D-1/D-2 fitness มี env/ไม่มี env)
 - `qc-sec-s2.1` forced: `{"total":14,"passed":14,…}` exit 0 · `qc-sec-s2.12` forced: `{"total":13,"passed":13,…}` exit 0 · spec s2.2 forced: `{"total":11,"passed":11,…}` exit 0
@@ -72,6 +72,7 @@ B2: บันทึกก่อนแก้ = 0 PUT · ตัวอย่าง�
 | ทุกจอ | ตัวอักษรใหญ่กว่าแบบ (สัดส่วน) | R-UI1: ตัวอักษร = tokens.type · ระยะแนวตั้ง × 0.73 |
 
 ## 4. มติทางเทคนิค / ส่วนต่างจากใบ
+- merge ทิป 2 รอบ (COMMON A.11): S2.12 (c6d0436d) และ S2.4 (cda64e7b) · i18n = union (494 คีย์ th/en ชุดเดียวกัน) · summary.json = ทั้งสองชุด (ใหม่สุดต่อชื่อ) · inventory = union · s2.1.json: เก็บ mock `secretary/log` = `{items:[]}` ของ S2.4 ⇒ expect ของ `/secretary/settings/log` ใน s2.1 = สถานะว่าง
 - ใบเขียน `secretary-api.ts` — ใช้ `src/api/secretary.ts` ตามที่ S2.2 ตั้ง (จอเรียกด้วยชื่อเส้น `secGet("secretary/access")` ⇒ X-1…X-4 ของ spec จับสตริงได้โดยไม่ต้อง SPEC-EDIT)
 - ชื่อเส้นจาก S1.14 จริง: `secretary` (GET/PUT ตัวตน · ไม่ส่ง x-tenant-id) · `memories/pending` · `memories/[id](/confirm)` · `lessons/[id](/confirm)` · `log/[id]/undo` · `after-hours` · `staff`
 - OWNER-only = ปุ่มซ่อน/ล็อกในแอป + เซิร์ฟเวอร์ตรวจซ้ำ (403) · บทบาทอื่นไม่ยิงเส้นที่เซิร์ฟเวอร์ตอบ 403 แน่นอน (after-hours GET · memories/pending · staff สำหรับ STAFF)
