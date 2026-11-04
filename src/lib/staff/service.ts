@@ -205,6 +205,10 @@ export function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, 
       if (SETTINGS_OWNER_ONLY_KEYS.includes(key) && actor.role !== "OWNER") {
         return fail(`สิทธิ์ “${permissionLabel(key)}” ให้ได้เฉพาะเจ้าของร้าน — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`);
       }
+      // SEC S1.25 ▸ R-S1.25e: สิทธิ์เงินเดือน (`hr.payroll.*`) แจกได้เฉพาะคนที่ดูเงินเดือนได้เอง (OWNER / hr.payroll.read) — MANAGER ผ่าน evaluate แต่ไม่เห็นเงินเดือน ◂
+      if (key.startsWith("hr.payroll.") && !canViewPayroll(actor)) {
+        return fail(`สิทธิ์ “${permissionLabel(key)}” ให้ได้เฉพาะเจ้าของกิจการหรือผู้มีสิทธิ์ดูเงินเดือน`);
+      }
       if (!canGrantPermission(actor, moduleName, key)) {
         return fail(
           `คุณยังไม่มีสิทธิ์ “${permissionLabel(key)}” จึงมอบให้คนอื่นไม่ได้ — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`,
@@ -245,8 +249,27 @@ export type StaffAccessRow = {
   employee: { id: string; name: string; position: string | null; systemId: string } | null;
 };
 
-/** ผู้ใช้งานทั้งหมดของร้าน (รวมคนที่ถูกถอนสิทธิ์ เพื่อให้เปิดคืนได้) */
-export async function listStaffAccess(tenantId: string): Promise<StaffAccessRow[]> {
+/**
+ * ผู้ใช้งานทั้งหมดของร้าน (รวมคนที่ถูกถอนสิทธิ์ เพื่อให้เปิดคืนได้)
+ * SEC S1.25 ▸ R-S1.25j: `{ includeInvites: true }` ⇒ ต่อท้ายแถว "รอรับคำเชิญ" (`pending: true` · ไม่มี membershipId · เบอร์ปิดเลขกลาง) —
+ *   ปริยาย (ไม่ส่ง) = ชุดเดิมทุกไบต์ ◂
+ */
+export async function listStaffAccess(tenantId: string): Promise<StaffAccessRow[]>;
+export async function listStaffAccess(
+  tenantId: string,
+  opts: { includeInvites: true },
+): Promise<(StaffAccessRow | import("./invite").PendingInviteRow)[]>;
+export async function listStaffAccess(
+  tenantId: string,
+  opts?: { includeInvites?: boolean },
+): Promise<(StaffAccessRow | import("./invite").PendingInviteRow)[]> {
+  const rows = await listStaffAccessRows(tenantId);
+  if (!opts?.includeInvites) return rows;
+  const { pendingInviteRows } = await import("./invite"); // lazy — invite.ts import service.ts (กันวงตอนโหลด)
+  return [...rows, ...(await pendingInviteRows(tenantId))];
+}
+
+async function listStaffAccessRows(tenantId: string): Promise<StaffAccessRow[]> {
   const memberships = await prisma.membership.findMany({
     where: { tenantId },
     include: { user: true },

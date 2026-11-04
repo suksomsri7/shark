@@ -25,7 +25,7 @@ export async function createTenantForUser(userId: string, name: string): Promise
 }
 
 // ── SEC S1.25 ▸ สร้างกิจการจากแอป (แบบ G1) ─────────────────────────────────────
-// ชื่อ 2–60 ตัว · ประเภทไม่รู้จัก = "other" · ระบบ ⊆ SystemType (ไม่รู้จัก/ซ้ำ = ตัด · ≤ 6) · เจ้าของได้ ≤ 3 ร้าน
+// ชื่อ 2–60 ตัว · ประเภท (ตัวพิมพ์เล็ก) ไม่รู้จัก = "other" · ระบบ ⊆ SystemType (ไม่รู้จัก/ซ้ำ = ตัด · ≤ 6) · เจ้าของได้ ≤ 3 ร้าน (นับแถว OWNER ที่ถูกระงับด้วย)
 // เพดาน 3 ร้านตรวจใน tx เดียวกับการสร้าง + advisory lock ต่อผู้ใช้ (กดพร้อมกันหลายครั้งไม่ทะลุ 3)
 // ระบบสร้างหลัง tx ด้วย `createSystemAutoLink` เดิม (ตัวนั้นใช้ prisma ของตัวเอง) · ห้องแรก = best-effort (นับงาน 1 ตามปกติ)
 export const TENANT_TYPES = ["retail", "restaurant", "service", "clinic", "education", "dorm", "other"] as const;
@@ -50,7 +50,8 @@ export type CreateTenantFromAppResult = {
   room: { roomId: string; conversationId: string } | null;
 };
 
-class TenantRuleError extends Error {}
+/** ข้อผิดพลาดตามกติกา (ข้อความไทยให้ผู้ใช้) — route แยกจาก error ระบบได้ (R-S1.25j) */
+export class TenantRuleError extends Error {}
 
 export async function createTenantFromApp(
   userId: string,
@@ -61,7 +62,8 @@ export async function createTenantFromApp(
   if (orgName.length < TENANT_NAME_MIN || orgName.length > TENANT_NAME_MAX) {
     throw new TenantRuleError(`ชื่อกิจการต้องยาว ${TENANT_NAME_MIN}–${TENANT_NAME_MAX} ตัวอักษร`);
   }
-  const type: TenantType = (TENANT_TYPES as readonly string[]).includes(input?.type) ? (input.type as TenantType) : "other";
+  const rawType = typeof input?.type === "string" ? input.type.trim().toLowerCase() : "";
+  const type: TenantType = (TENANT_TYPES as readonly string[]).includes(rawType) ? (rawType as TenantType) : "other";
   const known = new Set<string>(Object.values(SystemType));
   const systems: SystemType[] = [];
   for (const s of Array.isArray(input?.systems) ? input.systems : []) {
@@ -72,7 +74,8 @@ export async function createTenantFromApp(
 
   const tenant = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`tenant-create:${userId}`}, 0))`;
-    const owned = await tx.membership.count({ where: { userId, role: "OWNER", acceptedAt: { not: null } } });
+    // นับ OWNER ทุกแถวรวมที่ถูกระงับ (R-S1.25j) — ถูกระงับแล้วสร้างใหม่ ไม่ใช่ทางเลี่ยงเพดาน
+    const owned = await tx.membership.count({ where: { userId, role: "OWNER" } });
     if (owned >= TENANT_MAX_OWNED) {
       throw new TenantRuleError(`สร้างกิจการได้สูงสุด ${TENANT_MAX_OWNED} ร้านต่อบัญชี — ถ้าต้องการเพิ่ม ติดต่อทีมงาน`);
     }
@@ -83,8 +86,13 @@ export async function createTenantFromApp(
   const made: { type: string; id: string }[] = [];
   for (const st of systems) {
     const label = PERMISSION_MODULES.find((m) => m.module === st.toLowerCase())?.label ?? st;
-    const sys = await createSystemAutoLink(tenant.id, st, label);
-    made.push({ type: st, id: sys.id });
+    try {
+      const sys = await createSystemAutoLink(tenant.id, st, label);
+      made.push({ type: st, id: sys.id });
+    } catch (e) {
+      // ระบบหนึ่งล้มไม่พาร้าน/ระบบอื่นล้ม (R-S1.25j) — เจ้าของเปิดเพิ่มทีหลังได้
+      await logTenantOps(tenant.id, `เปิดระบบ ${st} ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 160) : "error"}`);
+    }
   }
 
   // ห้องแรก "ตั้งค่าเริ่มต้น" — โควตา/ล้ม ⇒ room null + logOps (ไม่ทำให้การสร้างร้านล้ม) · lazy: ไม่ลากชั้น AI เข้ากราฟของ onboarding เว็บ

@@ -10,17 +10,25 @@
 //   · รหัส 8 ตัว (ไม่มี 0/O/1/I) เก็บแค่ sha256 · ลิงก์ https://shark.in.th/i/<code> · หมดอายุ 7 วัน
 //   · เวลาส่งล่าสุด = expiresAt − 7 วัน (ไม่มีคอลัมน์ใหม่) → throttle 1 ครั้ง/เบอร์/60 วิ ต่อร้าน · ค้างได้ ≤ 20 ใบต่อร้าน
 //   · ห้ามคืนรหัส/codeHash/เบอร์เต็มออกจากรายการ · ห้ามเขียนรหัสหรือเบอร์ลง log
+// รอบ 2 (RESOLUTIONS §P): auto-join เฉพาะคนสมัครใหม่ (hook signupWithPhone → claimInvitesForPhone) · ผู้ใช้เดิมเห็นใบผ่าน
+//   `pendingInvitesForUser` แล้วกด `acceptInvite` เอง (R-S1.25b) · rate-limit ไม่ขึ้นกับแถว (R-S1.25c) · MANAGER แตะได้เฉพาะ STAFF +
+//   ใบเชิญห้ามฟื้นสมาชิกที่ถูกถอนซึ่งบทบาทสูงกว่า (R-S1.25d) · re-check ไม่ผ่าน ⇒ ใบหมดอายุทันที + แจ้งผู้เชิญ (R-S1.25i)
 import type { Prisma, Role, StaffInvite } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { randomCode, sha256 } from "@/lib/core/hash";
 import { normalizeThaiMobile } from "@/lib/core/phone-auth";
-import { canAssignRole, canGrantUnitAccess, type MembershipCtx } from "@/lib/core/rbac";
+import { canAssignRole, canGrantUnitAccess, ROLE_RANK, type MembershipCtx } from "@/lib/core/rbac";
+import { checkRateLimitDbMany } from "@/lib/core/rate-limit-db";
 import { getSmsProvider, sendSms } from "@/lib/core/sms";
-import { checkNoEscalation, listStaffAccess, listTenantUnits, validatePermissionInput, type StaffAccessRow } from "./service";
+import { checkNoEscalation, listTenantUnits, validatePermissionInput } from "./service";
 
 export const INVITE_TTL_DAYS = 7;
 export const INVITE_RESEND_SEC = 60;
 export const INVITE_PENDING_MAX = 20;
+/** R-S1.25c: เพดานต่อวัน (ถัง ChatRateBucket · ไม่ขึ้นกับแถว — ยกเลิกไม่คืนโควตา · ส่งซ้ำนับรวม) */
+export const INVITE_RL_PER_PHONE_DAY = 5;
+export const INVITE_RL_PER_TENANT_DAY = 50;
+export const INVITE_RL_PER_INVITER_DAY = 30;
 export const INVITE_LINK_BASE = "https://shark.in.th/i/";
 const INVITE_CODE_LEN = 8;
 const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 ตัว · ไม่มี 0/O/1/I
@@ -40,7 +48,11 @@ export type InviteFailReason =
   | "already_member"
   | "already_invited"
   | "sms_unavailable"
-  | "throttled";
+  | "throttled"
+  | "rate_limited"
+  | "pending_cap"
+  | "accepted"
+  | "not_found";
 export type InviteResult =
   | { ok: true; inviteId: string; link: string; sms: "sent" | "mocked" | "unavailable"; expiresAt: Date }
   | { ok: false; reason: InviteFailReason; message: string };
@@ -71,6 +83,8 @@ const MSG = {
   smsUnavailable: "ตอนนี้ระบบยังส่ง SMS ไม่ได้ — ลองใหม่ภายหลัง",
   throttled: `เพิ่งส่งคำเชิญถึงเบอร์นี้ไป รอสัก ${INVITE_RESEND_SEC} วินาทีแล้วลองใหม่`,
   tooMany: `มีคำเชิญที่ยังไม่ตอบรับครบ ${INVITE_PENDING_MAX} ใบแล้ว — ยกเลิกใบเก่าก่อนแล้วค่อยเชิญเพิ่ม`,
+  rateLimited: "วันนี้ส่งคำเชิญถึงเบอร์นี้หรือจากร้านนี้ครบเพดานแล้ว — ลองใหม่พรุ่งนี้",
+  revokedHigher: "เบอร์นี้เคยเป็นผู้ใช้งานระดับสูงกว่าที่ถูกระงับไว้ — ให้เจ้าของกิจการเปิดสิทธิ์คืนที่หน้าผู้ใช้งานแทนการเชิญใหม่",
 } as const;
 
 const failR = (reason: InviteFailReason, message: string): InviteResult => ({ ok: false, reason, message });
@@ -143,12 +157,52 @@ async function checkGrant(
   return { ok: true, value: { role, unitAccess, permissions: parsed.value } };
 }
 
+/** R-S1.25j: ชื่อที่ร้านพิมพ์เองห้ามพา URL / เลขยาว (เบอร์ · เลขบัญชี) เข้า SMS ที่ออกในนาม SHARK */
+function smsSafe(v: string): string {
+  return String(v ?? "")
+    .replace(/(?:https?:\/\/|www\.)\S+/gi, "")
+    .replace(/[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}(?:\/\S*)?/gi, "")
+    .replace(/\d{4,}/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40);
+}
+
+/** R-S1.25c: นับ 3 ถัง (ร้าน+เบอร์ · ร้าน · ผู้เชิญในร้าน) คำสั่งเดียว — ถังใดเต็ม ⇒ rate_limited · เบอร์เก็บเป็น hash ในชื่อถัง */
+async function inviteRateOk(tenantId: string, inviterId: string, phone: string, now: Date): Promise<boolean> {
+  const p = sha256(`staff-invite-rl:${phone}`).slice(0, 24);
+  const r = await checkRateLimitDbMany(
+    [
+      { key: `staff-invite:tp:${tenantId}:${p}`, limit: INVITE_RL_PER_PHONE_DAY, windowMs: DAY_MS },
+      { key: `staff-invite:t:${tenantId}`, limit: INVITE_RL_PER_TENANT_DAY, windowMs: DAY_MS },
+      { key: `staff-invite:by:${tenantId}:${inviterId}`, limit: INVITE_RL_PER_INVITER_DAY, windowMs: DAY_MS },
+    ],
+    { now: now.getTime() },
+  );
+  return r.every((x) => x.ok);
+}
+
+/** R-S1.25d: เบอร์นี้มี Membership ที่ถูกถอนในร้านซึ่งบทบาทสูงกว่าผู้เชิญหรือสูงกว่าบทบาทในใบ ⇒ ห้ามใช้คำเชิญฟื้น */
+async function revokedOutranks(
+  client: Prisma.TransactionClient | typeof prisma,
+  tenantId: string,
+  userId: string | null,
+  inviterRole: Role,
+  inviteRole: string,
+): Promise<boolean> {
+  if (!userId) return false;
+  const m = await client.membership.findFirst({ where: { tenantId, userId, acceptedAt: null }, select: { role: true } });
+  if (!m) return false;
+  const want = inviteRole === "MANAGER" ? ROLE_RANK.MANAGER : ROLE_RANK.STAFF;
+  return ROLE_RANK[m.role] < ROLE_RANK[inviterRole] || ROLE_RANK[m.role] < want;
+}
+
 /** ส่ง SMS คำเชิญ — คืนสถานะสำหรับหน้าจอ (ไม่ throw · ไม่ log รหัส) */
 async function sendInviteSms(tenantId: string, invitee: string, phone: string, link: string): Promise<"sent" | "mocked" | "unavailable"> {
   const provider = getSmsProvider();
   if (!provider) return "unavailable";
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
-  const text = `${tenant?.name ?? "ร้าน"} เชิญคุณ ${invitee} เข้าใช้ SHARK · เปิดลิงก์ ${link} (หมดอายุ ${INVITE_TTL_DAYS} วัน)`;
+  const text = `SHARK: ${smsSafe(tenant?.name ?? "") || "ร้าน"} เชิญคุณ ${smsSafe(invitee) || "พนักงาน"} เข้าใช้ SHARK · เปิดลิงก์ ${link} (หมดอายุ ${INVITE_TTL_DAYS} วัน)`;
   const r = await sendSms({ to: phone, text });
   if (!r.ok) return "unavailable";
   return provider.name === "mock" ? "mocked" : "sent";
@@ -184,18 +238,20 @@ export async function inviteStaff(
   let row: StaffInvite;
   try {
     row = await prisma.$transaction(async (tx) => {
-      // ต่อคิวต่อ (ร้าน, เบอร์) — สองคำขอพร้อมกันได้ใบเดียว
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`staff-invite:${ctx.tenantId}:${phone}`}, 0))`;
+      // ล็อกระดับร้าน (R-S1.25i) — เพดานใบค้าง + ใบซ้ำของเบอร์เดียวกัน ตัดสินทีละคำขอ
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`staff-invite:${ctx.tenantId}`}, 0))`;
       const holder = await tx.userPhone.findUnique({ where: { phone }, select: { userId: true } });
       if (holder) {
         const mem = await tx.membership.findFirst({ where: { tenantId: ctx.tenantId, userId: holder.userId, acceptedAt: { not: null } }, select: { id: true } });
         if (mem) throw new InviteRuleError("already_member", MSG.alreadyMember);
       }
+      if (await revokedOutranks(tx, ctx.tenantId, holder?.userId ?? null, actor.role, checked.value.role)) throw new InviteRuleError("forbidden", MSG.revokedHigher);
       const same = await tx.staffInvite.findMany({ where: { tenantId: ctx.tenantId, phone }, select: { acceptedAt: true, expiresAt: true } });
       if (same.some((r) => r.acceptedAt === null && r.expiresAt > now)) throw new InviteRuleError("already_invited", MSG.alreadyInvited);
       if (same.some((r) => sentAtOf(r) > now.getTime() - INVITE_RESEND_SEC * 1000)) throw new InviteRuleError("throttled", MSG.throttled);
       const pending = await tx.staffInvite.count({ where: { tenantId: ctx.tenantId, acceptedAt: null, expiresAt: { gt: now } } });
-      if (pending >= INVITE_PENDING_MAX) throw new InviteRuleError("throttled", MSG.tooMany);
+      if (pending >= INVITE_PENDING_MAX) throw new InviteRuleError("pending_cap", MSG.tooMany);
+      if (!(await inviteRateOk(ctx.tenantId, ctx.actorUserId, phone, now))) throw new InviteRuleError("rate_limited", MSG.rateLimited);
       return tx.staffInvite.create({
         data: {
           tenantId: ctx.tenantId,
@@ -244,28 +300,32 @@ export async function listInvites(ctx: InviteCtx, opts: { includeAccepted?: bool
   }));
 }
 
-/** ผู้ใช้งานของร้าน + แถว "รอรับคำเชิญ" (D1) — แยกจาก listStaffAccess เพื่อไม่เปลี่ยนรูปของผู้เรียกเดิม */
-export type StaffOrInviteRow =
-  | (StaffAccessRow & { pending: false })
-  | { pending: true; inviteId: string; name: string; phoneMasked: string; role: string; unitAccess: string[]; permissions: PermissionMap; expiresAt: Date; expired: boolean };
-export async function listStaffAccessWithInvites(ctx: InviteCtx, now: Date = new Date()): Promise<StaffOrInviteRow[]> {
-  const actor = await loadInviter(ctx.tenantId, ctx.actorUserId);
-  if (!actor) return [];
-  const [staff, invites] = await Promise.all([listStaffAccess(ctx.tenantId), listInvites(ctx, { now })]);
-  return [
-    ...staff.map((s) => ({ ...s, pending: false as const })),
-    ...invites.map((i) => ({
-      pending: true as const,
-      inviteId: i.id,
-      name: i.name,
-      phoneMasked: i.phoneMasked,
-      role: i.role,
-      unitAccess: i.unitAccess,
-      permissions: i.permissions,
-      expiresAt: i.expiresAt,
-      expired: i.expired,
-    })),
-  ];
+/** แถว "รอรับคำเชิญ" ของร้าน (D1) — ให้ `listStaffAccess(tenantId, { includeInvites: true })` ใน service.ts (ไม่ตรวจผู้สั่ง: ระดับเดียวกับ listStaffAccess) */
+export type PendingInviteRow = {
+  pending: true;
+  inviteId: string;
+  name: string;
+  phoneMasked: string;
+  role: string;
+  unitAccess: string[];
+  permissions: PermissionMap;
+  expiresAt: Date;
+  expired: boolean;
+};
+export async function pendingInviteRows(tenantId: string, now: Date = new Date()): Promise<PendingInviteRow[]> {
+  const rows = await prisma.staffInvite.findMany({ where: { tenantId, acceptedAt: null }, orderBy: { createdAt: "asc" } });
+  const masked = await maskPhones(rows);
+  return rows.map((r) => ({
+    pending: true as const,
+    inviteId: r.id,
+    name: r.name,
+    phoneMasked: masked.get(r) ?? "xxxxxxxxxx",
+    role: r.role,
+    unitAccess: jsonArr(r.unitAccess),
+    permissions: jsonObj(r.permissions),
+    expiresAt: r.expiresAt,
+    expired: r.expiresAt <= now,
+  }));
 }
 
 /** ยกเลิกคำเชิญที่ยังไม่รับ (ลบแถว) — MANAGER ยกเลิกได้เฉพาะใบระดับ STAFF */
@@ -283,13 +343,14 @@ export async function resendInvite(ctx: InviteCtx, inviteId: string, now: Date =
   const actor = await loadInviter(ctx.tenantId, ctx.actorUserId);
   if (!actor) return failR("forbidden", MSG.forbidden);
   const row = typeof inviteId === "string" && inviteId ? await prisma.staffInvite.findFirst({ where: { id: inviteId, tenantId: ctx.tenantId } }) : null;
-  if (!row || !canManageInviteRole(actor, row.role)) return failR("forbidden", MSG.notFound);
-  if (row.acceptedAt) return failR("already_member", MSG.accepted);
+  if (!row || !canManageInviteRole(actor, row.role)) return failR("not_found", MSG.notFound);
+  if (row.acceptedAt) return failR("accepted", MSG.accepted);
   if (sentAtOf(row) > now.getTime() - INVITE_RESEND_SEC * 1000) return failR("throttled", MSG.throttled);
   // ใบเก่าที่หมดอายุแล้ว แต่เบอร์เดียวกันมีใบใหม่ค้างอยู่ ⇒ ห้ามมีสองใบค้างพร้อมกัน
   const other = await prisma.staffInvite.count({ where: { tenantId: ctx.tenantId, phone: row.phone, acceptedAt: null, expiresAt: { gt: now }, id: { not: row.id } } });
   if (other > 0) return failR("already_invited", MSG.alreadyInvited);
   if (smsBlocked()) return failR("sms_unavailable", MSG.smsUnavailable);
+  if (!(await inviteRateOk(ctx.tenantId, ctx.actorUserId, row.phone, now))) return failR("rate_limited", MSG.rateLimited); // ส่งซ้ำนับรวม (R-S1.25c)
   const code = randomCode(INVITE_CODE_LEN, INVITE_ALPHABET);
   const expiresAt = new Date(now.getTime() + TTL_MS);
   // conditional คำสั่งเดียว: ยังไม่รับ + ยังเป็นรอบส่งเดิม (กดส่งพร้อมกันได้รอบเดียว)
@@ -323,7 +384,7 @@ export async function previewInvite(
 /**
  * รับ 1 ใบ ใน tx เดียว: จองใบแบบ conditional (ยังไม่รับ+ยังไม่หมดอายุ) → ตรวจซ้ำกับสิทธิ์ปัจจุบันของผู้เชิญ → Membership
  *   ไม่มีแถว ⇒ สร้าง (acceptedAt = now) · แถวที่ถูกถอน ⇒ คืนตามใบใหม่ · สมาชิก active อยู่แล้ว ⇒ ไม่แตะ (ไม่ลดบทบาท ไม่ทับสิทธิ์)
- *   ตรวจไม่ผ่าน ⇒ โยน ⇒ ย้อนทั้ง tx (ใบยังค้าง) · คืน null
+ *   ตรวจไม่ผ่าน ⇒ โยน ⇒ ย้อนทั้ง tx ⇒ ใบหมดอายุทันที (expiresAt = now) + แจ้งผู้เชิญ (R-S1.25i) · คืน null
  */
 async function claimOne(inv: StaffInvite, userId: string, now: Date): Promise<{ tenantId: string; membershipId: string } | null> {
   try {
@@ -335,6 +396,7 @@ async function claimOne(inv: StaffInvite, userId: string, now: Date): Promise<{ 
       if (got.count !== 1) throw new InviteRuleError("already_invited", "taken");
       const actor = await loadInviter(inv.tenantId, inv.invitedById, tx);
       if (!actor) throw new InviteRuleError("forbidden", "inviter");
+      if (await revokedOutranks(tx, inv.tenantId, userId, actor.role, inv.role)) throw new InviteRuleError("forbidden", "revoked_higher");
       const checked = await checkGrant(inv.tenantId, actor, { role: inv.role, unitAccess: inv.unitAccess, permissions: inv.permissions });
       if (!checked.ok) throw new InviteRuleError(checked.reason, "grant");
       const v = checked.value;
@@ -348,15 +410,30 @@ async function claimOne(inv: StaffInvite, userId: string, now: Date): Promise<{ 
     });
   } catch (e) {
     if (!(e instanceof InviteRuleError)) throw e;
-    if (e.message !== "taken") await logInvite(inv.tenantId, `คำเชิญ ${inv.id} รับไม่ได้: ${e.reason}`);
+    if (e.message !== "taken") {
+      await logInvite(inv.tenantId, `คำเชิญ ${inv.id} รับไม่ได้: ${e.message}`);
+      await expireAndNotify(inv, now);
+    }
     return null;
   }
 }
 
+/** R-S1.25i: ใบที่ตรวจซ้ำไม่ผ่าน ⇒ หมดอายุทันที (ไม่ค้าง 7 วัน) + แจ้งผู้เชิญ */
+async function expireAndNotify(inv: StaffInvite, now: Date): Promise<void> {
+  try {
+    await prisma.staffInvite.updateMany({ where: { id: inv.id, tenantId: inv.tenantId, acceptedAt: null }, data: { expiresAt: now } });
+  } catch {
+    /* best-effort */
+  }
+  await notifyInviter(inv, now, "คำเชิญใช้ไม่ได้แล้ว", `คำเชิญถึง ${inv.name} ใช้ไม่ได้แล้ว (สิทธิ์ในใบไม่ตรงกับสิทธิ์ปัจจุบัน) — เชิญใหม่ได้ที่หน้าพนักงาน`);
+}
+
 /** แจ้งผู้เชิญ "<ชื่อ> รับคำเชิญแล้ว" — กล่องแจ้งเตือนในแอป + push · best-effort */
 async function notifyAccepted(inv: StaffInvite, now: Date): Promise<void> {
-  const title = "พนักงานรับคำเชิญแล้ว";
-  const body = `${inv.name} รับคำเชิญแล้ว`;
+  await notifyInviter(inv, now, "พนักงานรับคำเชิญแล้ว", `${inv.name} รับคำเชิญแล้ว`);
+}
+
+async function notifyInviter(inv: StaffInvite, now: Date, title: string, body: string): Promise<void> {
   try {
     await prisma.appNotification.create({ data: { tenantId: inv.tenantId, recipientUserId: inv.invitedById, title, body } });
   } catch {
@@ -385,7 +462,7 @@ async function ownsVerifiedPhone(userId: string, phone: string): Promise<boolean
   return !!up && up.phone === phone && up.verifiedAt !== null;
 }
 
-/** รับทุกใบของเบอร์นี้ที่ยังไม่รับ+ยังไม่หมดอายุ (ทุกร้าน) — เรียกจาก hook ของ phone-auth หลังยืนยันเบอร์ */
+/** รับทุกใบของเบอร์นี้ที่ยังไม่รับ+ยังไม่หมดอายุ (ทุกร้าน) — เรียกจาก hook `signupWithPhone` เท่านั้น (คนใหม่สมัครผ่านคำเชิญ = ยินยอม · R-S1.25b) */
 export async function claimInvitesForPhone(userId: string, rawPhone: string, now: Date = new Date()): Promise<{ accepted: { tenantId: string; membershipId: string }[] }> {
   const phone = normalizeThaiMobile(rawPhone);
   if (!phone || !userId || !(await ownsVerifiedPhone(userId, phone))) return { accepted: [] };
@@ -410,9 +487,43 @@ export async function acceptInviteByCode(
   if (c.length !== INVITE_CODE_LEN || !userId) return { ok: false, reason: "not_found" };
   const inv = await prisma.staffInvite.findUnique({ where: { codeHash: hashInviteCode(c) } });
   if (!inv) return { ok: false, reason: "not_found" };
+  return acceptLoaded(inv, userId, now);
+}
+
+/** R-S1.25b: คำเชิญที่รอผู้ใช้เดิมกดรับ (เบอร์ verified ของเขา · ยังไม่รับ · ยังไม่หมดอายุ) — การ์ด S2.12 */
+export async function pendingInvitesForUser(
+  userId: string,
+  now: Date = new Date(),
+): Promise<{ inviteId: string; tenantName: string; role: string; expiresAt: Date }[]> {
+  const up = userId ? await prisma.userPhone.findUnique({ where: { userId }, select: { phone: true, verifiedAt: true } }) : null;
+  if (!up?.verifiedAt) return [];
+  const rows = await prisma.staffInvite.findMany({ where: { phone: up.phone, acceptedAt: null, expiresAt: { gt: now } }, orderBy: { createdAt: "asc" } });
+  if (rows.length === 0) return [];
+  const tenants = await prisma.tenant.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.tenantId))] } }, select: { id: true, name: true } });
+  const nameOf = new Map(tenants.map((t) => [t.id, t.name]));
+  return rows.filter((r) => nameOf.has(r.tenantId)).map((r) => ({ inviteId: r.id, tenantName: nameOf.get(r.tenantId)!, role: r.role, expiresAt: r.expiresAt }));
+}
+
+/** R-S1.25b: ผู้ใช้เดิมกดรับคำเชิญ 1 ใบ — เบอร์ verified ต้องตรงกับใบ */
+export async function acceptInvite(
+  userId: string,
+  inviteId: string,
+  now: Date = new Date(),
+): Promise<{ ok: true; tenantId: string } | { ok: false; reason: "not_found" | "expired" | "accepted" | "phone_mismatch" }> {
+  if (!userId || typeof inviteId !== "string" || !inviteId) return { ok: false, reason: "not_found" };
+  const inv = await prisma.staffInvite.findUnique({ where: { id: inviteId } });
+  if (!inv) return { ok: false, reason: "not_found" };
+  return acceptLoaded(inv, userId, now);
+}
+
+async function acceptLoaded(
+  inv: StaffInvite,
+  userId: string,
+  now: Date,
+): Promise<{ ok: true; tenantId: string } | { ok: false; reason: "not_found" | "expired" | "accepted" | "phone_mismatch" }> {
+  if (!(await ownsVerifiedPhone(userId, inv.phone))) return { ok: false, reason: "phone_mismatch" };
   if (inv.acceptedAt) return { ok: false, reason: "accepted" };
   if (inv.expiresAt <= now) return { ok: false, reason: "expired" };
-  if (!(await ownsVerifiedPhone(userId, inv.phone))) return { ok: false, reason: "phone_mismatch" };
   const r = await claimOne(inv, userId, now);
   if (!r) {
     const again = await prisma.staffInvite.findUnique({ where: { id: inv.id }, select: { acceptedAt: true } });

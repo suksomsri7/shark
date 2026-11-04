@@ -3,7 +3,8 @@
 // ชั้นแปลอย่างเดียว: ระดับ → PermissionMap แล้วส่งให้ `updateStaffAccess` เดิม (RBAC/การยกระดับสิทธิ์ตรวจซ้ำที่นั่นทุกข้อ)
 //   OFF  = ไม่มีคีย์ของโมดูล
 //   VIEW = เฉพาะคีย์อ่าน (action ลงท้าย .read/.view/.list) ที่ไม่ใช่คีย์อ่อนไหว
-//   USE  = ทุกคีย์ของโมดูล **ยกเว้น** คีย์อ่อนไหว (ลบ/เงิน/คืนเงิน/ยกเลิกบิล/ตั้งค่า/เงินเดือน) — ต้องให้รายคีย์ (extraPermissions)
+//   USE  = ทุกคีย์ของโมดูล **ยกเว้น** คีย์อ่อนไหว (`isSensitiveKey` · R-S1.25e) — ต้องให้รายคีย์ (extraPermissions)
+//   คีย์ลิมิต `_…` คงไว้ทุกระดับ (R-S1.25f) · ระดับที่โมดูลมีจริง = `levelsAvailableFor` (R-S1.25g) · แชทใช้ CHAT_LEVELS เท่านั้น (R-S1.25h)
 //          คีย์อ่อนไหวที่เคยให้รายคีย์ไว้แล้ว คงไว้ตอนตั้ง USE ซ้ำ (ไม่ถอนเงียบ ๆ) · ตั้ง VIEW/OFF = ถอน
 // 🔴 ระดับเป็นแค่ "ทางลัดของหน้าจอ" — ตัวตัดสินสิทธิ์จริงยังเป็น `evaluate` (rbac.ts) บนคีย์ที่เขียนลง Membership เหมือนเดิม
 import type { Role } from "@prisma/client";
@@ -28,9 +29,28 @@ export const CHAT_LEVELS = {
 export type ChatLevel = keyof typeof CHAT_LEVELS;
 
 const READ_ACTION = /\.(read|view|list)$/;
-/** คีย์อ่อนไหว: ส่วนใดของคีย์เป็น ลบ/เงิน/คืนเงิน/ยกเลิกบิล · ตั้งค่า (settings/setting) · หรือมีคำว่า payroll */
-function isSensitiveKey(key: string): boolean {
-  return key.split(".").some((s) => /^(delete|money|refund|void)/i.test(s) || /^settings?$/i.test(s) || /payroll/i.test(s));
+
+/** R-S1.25e: คีย์อ่อนไหว — ไม่มีระดับใดให้ (ต้องให้รายคีย์ผ่าน extraPermissions · ตัวตรวจยกระดับเดิมยังกันอยู่) */
+const SENSITIVE_PARTS = [
+  // เงิน
+  ".money", ".refund", ".void", ".payment.record", ".doc.approve", ".period.close", ".journal.adjust", ".point.adjust", ".giftcard.", ".priceoverride", ".setprice", ".sell",
+  // ทำลาย/ขนข้อมูล
+  ".delete", ".merge", ".cancel", ".import", ".export",
+  // แอดมิน
+  "api.key.", "webhook.", ".api.manage", ".object.manage", ".visibility.manage", ".team.manage", "settings.", "branding.", "privacy.manage", "payadjust", "payroll",
+  // เพิ่มจากรายการ §P (ผู้คุมชี้ขาดได้): ยืนยันสลิป = เงินเข้า · ตั้งนโยบายอนุมัติ / ทะเบียนระบบ = แอดมินโครงสร้างร้าน
+  ".slip.review", "approval.policy.", "systems.",
+] as const;
+export function isSensitiveKey(key: string): boolean {
+  const k = String(key ?? "").toLowerCase();
+  if (SENSITIVE_PARTS.some((p) => k.includes(p) || (p.startsWith(".") && k.startsWith(p.slice(1))))) return true;
+  // ของรอบแรก (กันคีย์ชื่อแปลก): ส่วนใดขึ้นต้น delete/money/refund/void · เป็น setting(s)
+  return k.split(".").some((s) => /^(delete|money|refund|void)/.test(s) || /^settings?$/.test(s));
+}
+
+/** R-S1.25f: คีย์ตัวเลข/ลิมิต (ส่วนใดขึ้นต้น `_` เช่น `_maxApproveSatang` `crm._maxReassignPerDay`) — คงไว้ทุกระดับ · ไม่นับเป็นระดับ */
+function isLimitKey(key: string): boolean {
+  return key.split(".").some((s) => s.startsWith("_"));
 }
 
 /** โมดูลของคีย์ — ทะเบียนก่อน · คีย์ที่ทะเบียนไม่รู้จัก (ของเก่า) ใช้ส่วนหน้าจุดแรก */
@@ -46,54 +66,69 @@ function moduleView(module: string) {
   return PERMISSION_MODULES.find((m) => m.module === module);
 }
 
-/** ระดับของโมดูลจากชุดสิทธิ์ (pure) */
+/** คีย์ที่ระดับให้ได้ของโมดูล (ไม่รวมคีย์อ่อนไหว) แยกอ่าน/เขียน */
+function grantableKeys(module: string): { read: string[]; write: string[] } {
+  const keys = (moduleView(module)?.actions ?? []).map((a) => a.key).filter((k) => !isSensitiveKey(k) && !isLimitKey(k));
+  return { read: keys.filter((k) => READ_ACTION.test(k)), write: keys.filter((k) => !READ_ACTION.test(k)) };
+}
+
+/**
+ * R-S1.25g: ระดับที่โมดูลนี้มีจริง — ไม่มีคีย์อ่าน ⇒ ไม่มี VIEW · ไม่มีคีย์เขียนที่ให้ได้ ⇒ ไม่มี USE · มีแต่คีย์อ่อนไหว ⇒ [OFF]
+ * แชทไม่ใช้ระดับโมดูล (ใช้ CHAT_LEVELS) ⇒ [] · โมดูลที่ไม่รู้จัก ⇒ [OFF]
+ */
+export function levelsAvailableFor(module: string): ModuleLevel[] {
+  if (module === CHAT_MODULE) return [];
+  const g = grantableKeys(module);
+  return ["OFF", ...(g.read.length ? (["VIEW"] as const) : []), ...(g.write.length ? (["USE"] as const) : [])];
+}
+
+/** ระดับของโมดูลจากชุดสิทธิ์ (pure) · คีย์ลิมิต `_…` ไม่นับ */
 export function levelOfModule(permissions: PermissionMap, module: string): ModuleLevel {
   let any = false;
   for (const [k, v] of Object.entries(permissions ?? {})) {
-    if (keyModule(k) !== module || !granted(v)) continue;
+    if (keyModule(k) !== module || isLimitKey(k) || !granted(v)) continue;
     if (k === `${module}.*` || typeof v === "number" || !READ_ACTION.test(k)) return "USE";
     any = true;
   }
   return any ? "VIEW" : "OFF";
 }
 
-/** ชุดสิทธิ์ใหม่เมื่อตั้งโมดูลเป็นระดับนี้ (pure) · base = สิทธิ์เดิม (โมดูลอื่นคงไว้) */
+/** ชุดสิทธิ์ใหม่เมื่อตั้งโมดูลเป็นระดับนี้ (pure) · base = สิทธิ์เดิม (โมดูลอื่น + คีย์ลิมิตของโมดูลนี้คงไว้) */
 export function permissionsForLevel(module: string, level: ModuleLevel, base: PermissionMap = {}): PermissionMap {
   const out: PermissionMap = {};
   const keptSensitive: PermissionMap = {};
   for (const [k, v] of Object.entries(base ?? {})) {
-    if (keyModule(k) !== module) out[k] = v;
+    if (keyModule(k) !== module || isLimitKey(k)) out[k] = v;
     else if (isSensitiveKey(k) && granted(v)) keptSensitive[k] = v;
   }
-  const keys = (moduleView(module)?.actions ?? []).map((a) => a.key).filter((k) => !isSensitiveKey(k));
-  if (level === "VIEW") for (const k of keys) if (READ_ACTION.test(k)) out[k] = true;
+  const g = grantableKeys(module);
+  if (level === "VIEW") for (const k of g.read) out[k] = true;
   if (level === "USE") {
-    for (const k of keys) out[k] = true;
-    Object.assign(out, keptSensitive);
+    for (const k of [...g.read, ...g.write]) out[k] = true;
+    Object.assign(out, keptSensitive); // คีย์อ่อนไหวที่เคยให้รายคีย์ไว้ ไม่ถอนเงียบ ๆ (ระดับไม่ "ให้" เพิ่ม)
   }
   return out;
 }
 
-/** ตั้งแชท 3 ระดับ (pure) — NONE/VIEW ถอนคีย์แชททั้งโมดูล · REPLY ถอนแค่ `chat.*` แล้วใส่ read+send (คีย์แชทอื่นที่ให้รายคีย์คงไว้) */
+/** ตั้งแชท 3 ระดับ (pure) — NONE/VIEW ถอนคีย์แชททั้งโมดูล · REPLY ถอนแค่ `chat.*` แล้วใส่ 4 คีย์ (คีย์แชทอื่นที่ให้รายคีย์คงไว้) · คีย์ลิมิตคงไว้ */
 function permissionsForChat(level: ChatLevel, base: PermissionMap): PermissionMap {
   const out: PermissionMap = {};
   for (const [k, v] of Object.entries(base)) {
-    if (keyModule(k) !== CHAT_MODULE) out[k] = v;
+    if (keyModule(k) !== CHAT_MODULE || isLimitKey(k)) out[k] = v;
     else if (level === "REPLY" && k !== `${CHAT_MODULE}.*`) out[k] = v;
   }
   for (const k of CHAT_LEVELS[level]) out[k] = true;
   return out;
 }
 
-/** อ่านระดับแชท (ฝั่งอ่านผ่อน: ตัดสินจาก read/send — แถวเก่าที่ไม่มี markRead/setStatus ยังแสดงตรงกับ evaluate ของคีย์หลัก) */
+/** อ่านระดับแชท (R-S1.25h): REPLY = `chat.*` หรือครบ 4 คีย์ · VIEW = มี read · อื่น ๆ = NONE */
 function chatLevelOf(p: PermissionMap): ChatLevel {
   if (p[`${CHAT_MODULE}.*`] === true) return "REPLY";
-  const read = p["chat.conversation.read"] === true;
-  if (read && p["chat.message.send"] === true) return "REPLY";
-  return read ? "VIEW" : "NONE";
+  if (CHAT_LEVELS.REPLY.every((k) => p[k] === true)) return "REPLY";
+  return p["chat.conversation.read"] === true ? "VIEW" : "NONE";
 }
 
-/** มุมมองของหน้าสิทธิ์ (D1/S2.22) — OWNER/MANAGER = ทุกโมดูล USE + แชท REPLY (ตรงกับ evaluate) */
+/** มุมมองของหน้าสิทธิ์ (D1/S2.22) — `levels` ไม่มีแชท (ดู `chat`) · OWNER/MANAGER = ระดับสูงสุดที่โมดูลมี + REPLY (ตรงกับ evaluate) */
 export function staffViewOf(m: { role: Role | string; unitAccess: unknown; permissions: unknown }): {
   role: string;
   units: string[];
@@ -104,16 +139,19 @@ export function staffViewOf(m: { role: Role | string; unitAccess: unknown; permi
   const units = Array.isArray(m.unitAccess) ? (m.unitAccess as unknown[]).filter((u): u is string => typeof u === "string") : [];
   const full = m.role === "OWNER" || m.role === "MANAGER";
   const levels: Record<string, ModuleLevel> = {};
-  for (const mod of PERMISSION_MODULES) levels[mod.module] = full ? "USE" : levelOfModule(p, mod.module);
+  for (const mod of PERMISSION_MODULES) {
+    if (mod.module === CHAT_MODULE) continue;
+    levels[mod.module] = full ? (levelsAvailableFor(mod.module).at(-1) ?? "OFF") : levelOfModule(p, mod.module);
+  }
   return { role: String(m.role), units, levels, chat: full ? "REPLY" : chatLevelOf(p) };
 }
 
 const fail = (reason: string): StaffResult => ({ ok: false, reason });
 const MSG_ROLE_ONLY = "เฉพาะเจ้าของกิจการหรือผู้จัดการเท่านั้นที่ตั้งสิทธิ์พนักงานได้";
 const MSG_NOT_FOUND = "ไม่พบผู้ใช้งานคนนี้ในกิจการนี้ — กรุณารีเฟรชหน้าแล้วลองใหม่";
-const MSG_OWNER_TARGET = "ผู้จัดการแก้สิทธิ์ของเจ้าของกิจการไม่ได้ — ให้เจ้าของกิจการเป็นผู้ทำรายการนี้";
+const MSG_MANAGER_STAFF_ONLY = "ผู้จัดการตั้งสิทธิ์/ระงับได้เฉพาะ “พนักงาน” — ให้เจ้าของกิจการเป็นผู้ทำรายการนี้";
 
-/** ผู้สั่ง (อ่านจาก DB · ไม่เชื่อ ctx.membership) ต้องเป็น OWNER/MANAGER · เป้าหมายต้องอยู่ในร้าน · MANAGER ห้ามแตะ OWNER */
+/** ผู้สั่ง (อ่านจาก DB · ไม่เชื่อ ctx.membership) ต้องเป็น OWNER/MANAGER · เป้าหมายต้องอยู่ในร้าน · MANAGER แตะได้เฉพาะ STAFF (R-S1.25d) */
 async function gate(ctx: LevelCtx, membershipId: string) {
   const actor = await prisma.membership.findFirst({
     where: { tenantId: ctx.tenantId, userId: ctx.actorUserId, acceptedAt: { not: null } },
@@ -122,8 +160,8 @@ async function gate(ctx: LevelCtx, membershipId: string) {
   if (!actor || (actor.role !== "OWNER" && actor.role !== "MANAGER")) return { ok: false as const, res: fail(MSG_ROLE_ONLY) };
   const target = await prisma.membership.findFirst({ where: { id: membershipId, tenantId: ctx.tenantId } });
   if (!target) return { ok: false as const, res: fail(MSG_NOT_FOUND) };
-  if (actor.role === "MANAGER" && target.role === "OWNER") return { ok: false as const, res: fail(MSG_OWNER_TARGET) };
-  return { ok: true as const, target };
+  if (actor.role === "MANAGER" && target.role !== "STAFF") return { ok: false as const, res: fail(MSG_MANAGER_STAFF_ONLY) };
+  return { ok: true as const, target, actorRole: actor.role };
 }
 
 /** ตั้งบทบาท/สาขา/ระดับต่อโมดูล/แชท ของพนักงาน 1 คน — แปลงเป็นคีย์แล้วเรียก `updateStaffAccess` เดิม */
@@ -135,6 +173,7 @@ export async function setStaffLevels(
   const g = await gate(ctx, membershipId);
   if (!g.ok) return g.res;
   if (input.role !== undefined && !["OWNER", "MANAGER", "STAFF"].includes(input.role)) return fail("บทบาทนี้ไม่มีในระบบ");
+  if (g.actorRole === "MANAGER" && input.role !== undefined && input.role !== "STAFF") return fail(MSG_MANAGER_STAFF_ONLY);
 
   let unitAccess: string[] | undefined;
   if (input.unitIds !== undefined) {
@@ -154,8 +193,9 @@ export async function setStaffLevels(
     let next: PermissionMap = {};
     for (const [k, v] of Object.entries(cur)) if (isPermissionKey(k) || isPermissionParamKey(k)) next[k] = v;
     for (const [mod, lvl] of Object.entries(input.levels ?? {})) {
+      if (mod === CHAT_MODULE) return fail("ตั้งสิทธิ์แชทด้วยช่อง “แชท” (ไม่เห็น / ดูได้ / ตอบได้) แทนระดับโมดูล");
       if (!moduleView(mod)) return fail(`ระบบไม่รู้จักโมดูล “${mod}”`);
-      if (!MODULE_LEVELS.includes(lvl)) return fail("ระดับสิทธิ์ต้องเป็น ปิด / ดู / ใช้งาน");
+      if (!MODULE_LEVELS.includes(lvl) || !levelsAvailableFor(mod).includes(lvl)) return fail("ระดับนี้ไม่มีในระบบนี้ — เลือก ปิด / ดู / ใช้งาน ตามที่หน้าจอแสดง");
       next = permissionsForLevel(mod, lvl, next);
     }
     if (input.chat !== undefined) {
@@ -179,7 +219,14 @@ export async function setStaffLevels(
 export async function suspendStaff(ctx: LevelCtx, membershipId: string): Promise<StaffResult> {
   const g = await gate(ctx, membershipId);
   if (!g.ok) return g.res;
-  return revokeStaffAccess({ tenantId: ctx.tenantId, actorUserId: ctx.actorUserId, membershipId: g.target.id });
+  const r = await revokeStaffAccess({ tenantId: ctx.tenantId, actorUserId: ctx.actorUserId, membershipId: g.target.id });
+  if (r.ok) await detachPushDevices(ctx.tenantId, g.target.userId);
+  return r;
+}
+
+/** R-S1.25j: เครื่องของคนที่ถูกระงับ/เอาออก ไม่ผูกร้านนี้อีก (push เรื่องของร้านไม่ไปถึง) */
+async function detachPushDevices(tenantId: string, userId: string): Promise<void> {
+  await prisma.pushDevice.updateMany({ where: { userId, tenantId }, data: { tenantId: null } });
 }
 
 /** เอาออก = ระงับ + ถอนออกจากห้องเลขาทุกห้องของร้าน + ลบคำเชิญค้างของเบอร์เขาในร้านนี้ · ไม่ลบ Membership (ประวัติ) */
@@ -189,6 +236,7 @@ export async function removeStaff(ctx: LevelCtx, membershipId: string): Promise<
   const r = await revokeStaffAccess({ tenantId: ctx.tenantId, actorUserId: ctx.actorUserId, membershipId: g.target.id });
   if (!r.ok) return r;
   const userId = g.target.userId;
+  await detachPushDevices(ctx.tenantId, userId);
   await prisma.aiRoomMember.deleteMany({ where: { tenantId: ctx.tenantId, userId } });
   const phone = await prisma.userPhone.findUnique({ where: { userId }, select: { phone: true } });
   if (phone) await prisma.staffInvite.deleteMany({ where: { tenantId: ctx.tenantId, phone: phone.phone, acceptedAt: null } });

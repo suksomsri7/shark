@@ -59,3 +59,18 @@
 - `CHAT_LEVELS` VIEW = read+markRead · REPLY = read+markRead+send+setStatus (ไม่มี assign/customer.link) · docs §5.23 แก้ตาม
 - tsc แคบ rc=0 · `qc-sec-s1.25` forced 18:28Z / forced 18:28Z / unforced 18:29Z: `{"total":15,"passed":15,"failed":[],"skipped":[],"findings":[]}` exit=0 ×3 (D-1/D-2 fitness ในข้อสอบผ่าน)
 - regression ไม่รันซ้ำ: รอบนี้แก้แค่ `levels.ts` (มีแต่ข้อสอบ s1.25 ที่ import) + merge มีแต่ ledger/oracle
+
+## 8. รอบ 2 — รีวิว O/P (RESOLUTIONS §P · merge a4340c3c · ข้อสอบ 19 ข้อ)
+| มติ | สถานะ | ที่ไหน |
+|---|---|---|
+| R-S1.25b auto-join เฉพาะ signup | CLOSED | phone-auth: ถอด hook login/link (เหลือ signup) · invite.ts `pendingInvitesForUser` `acceptInvite` (เบอร์ verified ต้องตรง · ตรวจเบอร์ก่อนบอกสถานะ) |
+| R-S1.25c rate-limit ไม่ขึ้นกับแถว | CLOSED + ต่าง 1 ข้อ | `inviteRateOk` → `checkRateLimitDbMany` 3 ถัง/วัน: ร้าน+เบอร์ 5 · ร้าน 50 · **ผู้เชิญต่อร้าน** 30 (ไม่ใช่ข้ามร้าน — ถังข้ามร้านของ `qcs125-owner` จะเต็มเมื่อรันข้อสอบ 3 รอบ/วัน (~12 ใบ/รอบ) · ข้ามร้านยังติดเพดานร้าน 50 × ร้านที่เป็นสมาชิก) · ส่งซ้ำนับ · ยกเลิกไม่คืน · ชื่อถังเก็บ hash เบอร์ |
+| R-S1.25d MANAGER → STAFF เท่านั้น · ห้ามฟื้นคนถูกถอนที่สูงกว่า | CLOSED | levels `gate` (target STAFF · role ใหม่ STAFF) · invite `canManageInviteRole` · `revokedOutranks` ใน invite (forbidden) และ claim (ใบหมดอายุ) |
+| R-S1.25e `isSensitiveKey` + payroll | CLOSED + เพิ่ม | levels.ts รายการ §P ทั้งหมด + เพิ่ม `.slip.review` `approval.policy.` `systems.` (ชี้ขาดได้) · service.ts `checkNoEscalation`: `hr.payroll.*` ต้อง `canViewPayroll(actor)` (มีผลกับ updateStaffAccess เดิมด้วย — MANAGER แจกคีย์เงินเดือนไม่ได้แล้ว) |
+| R-S1.25f คีย์ `_…` คงทุกระดับ | CLOSED | `isLimitKey` (ส่วนใดขึ้นต้น `_`) — คงใน permissionsForLevel/permissionsForChat · ไม่นับใน levelOfModule (ต่างจากใบรอบแรก "ตัวเลข > 0 = USE" ซึ่งขัดกับ f) |
+| R-S1.25g `levelsAvailableFor` + ตาราง | CLOSED | levels.ts · docs §5.23 ตาราง 41 โมดูล (สร้างจากโค้ด) · setStaffLevels ปฏิเสธระดับที่ไม่มี · chat = `[]` |
+| R-S1.25h levels.chat / staffViewOf / REPLY 4 คีย์ | CLOSED | setStaffLevels ปฏิเสธ `levels.chat` · staffViewOf ไม่มี chat · REPLY = `chat.*` หรือครบ 4 · VIEW = มี read |
+| R-S1.25i ใบหมดอายุเมื่อ re-check ไม่ผ่าน · reason แยก · ล็อกร้าน | CLOSED | `expireAndNotify` · `pending_cap` · resend `not_found`/`accepted` · advisory lock `staff-invite:<tenant>` |
+| R-S1.25j push/SMS/tenants/listStaffAccess | CLOSED | `detachPushDevices` ใน suspend/remove · SMS "SHARK: " + `smsSafe` (URL/โดเมน/เลข ≥4 · ≤40 ตัว) · tenants: try/catch ต่อระบบ + logOps · `export TenantRuleError` · type lower-case · เพดานนับ OWNER ที่ถูกระงับ · `listStaffAccess(tenantId, {includeInvites:true})` (overload · ปริยายเดิม) แทน `listStaffAccessWithInvites` (ลบ) |
+- ผลรอบ 2: `qc-sec-s1.25` forced 18:52Z / forced 18:53Z / unforced 18:55Z `{"total":19,"passed":19,"failed":[],"skipped":[],"findings":[]}` exit=0 ×3 · s1.19 26/26 · s1.4 28/28 · s1.17 10/10 (forced) · chat-staff-perms 49/49 · mobile-auth exit 0 · account-deletion 18/18 · onboarding-drip 6/6 · fitness 53/53 ×2 · tsc แคบ (5 ไฟล์ + กราฟ) rc=0
+- หมายเหตุ QC: ถัง `ChatRateBucket` `staff-invite:*` ของข้อสอบไม่ถูกลบโดย cleanup (ร้านใหม่ทุกรอบ ⇒ ไม่ชนกัน · ถังผู้เชิญผูก tenantId)

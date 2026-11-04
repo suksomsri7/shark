@@ -114,7 +114,8 @@ async function reserveAttempt(otpId: string): Promise<boolean> {
   return r.count === 1;
 }
 
-// SEC S1.25 ▸ hook คำเชิญพนักงาน (R-K11): ยืนยันเบอร์สำเร็จ ⇒ รับคำเชิญของเบอร์นี้ · best-effort (ล้ม = logOps ไม่เปลี่ยนผลเดิม)
+// SEC S1.25 ▸ hook คำเชิญพนักงาน (R-K11 · R-S1.25b): **เฉพาะคนสมัครใหม่** (signupWithPhone) ⇒ รับคำเชิญของเบอร์นี้อัตโนมัติ ·
+//   ผู้ใช้เดิม (ล็อกอิน OTP / ผูกเบอร์) ไม่สร้าง Membership — เห็นใบผ่าน pendingInvitesForUser แล้วกดรับเอง · best-effort (ล้ม = logOps ไม่เปลี่ยนผลเดิม)
 //   lazy import — ไฟล์นี้ไม่ลากชั้นสิทธิ์/แจ้งเตือนเข้ากราฟ · log ไม่มีเบอร์ (R-S1.8e) ◂
 async function claimStaffInvites(userId: string, phone: string): Promise<void> {
   try {
@@ -223,19 +224,7 @@ export async function consumePhoneOtp(otpId: string): Promise<boolean> {
     where: { id: otpId, consumedAt: null, expiresAt: { gt: now } },
     data: { consumedAt: now },
   });
-  if (r.count === 1) await claimStaffInvitesForOtp(otpId); // SEC S1.25 ▸ ล็อกอินด้วย OTP ◂
   return r.count === 1;
-}
-
-// SEC S1.25 ▸ เบอร์ของรหัสที่เพิ่ง consume → เจ้าของเบอร์ (มีบัญชีแล้วเท่านั้น) → รับคำเชิญ ◂
-async function claimStaffInvitesForOtp(otpId: string): Promise<void> {
-  try {
-    const otp = await prisma.phoneOtp.findUnique({ where: { id: otpId }, select: { phone: true } });
-    const owner = otp ? await prisma.userPhone.findUnique({ where: { phone: otp.phone }, select: { userId: true } }) : null;
-    if (owner && otp) await claimStaffInvites(owner.userId, otp.phone);
-  } catch {
-    /* best-effort */
-  }
 }
 
 type Tx = Prisma.TransactionClient;
@@ -299,7 +288,7 @@ export async function linkPhoneToUser(
   const phone = normalizeThaiMobile(rawPhone);
   if (!phone) return { ok: false, reason: "bad_phone", message: MSG.badPhone };
   try {
-    const res = await prisma.$transaction(async (tx): Promise<LinkPhoneResult> => {
+    return await prisma.$transaction(async (tx): Promise<LinkPhoneResult> => {
       const holder = await tx.userPhone.findUnique({ where: { phone }, select: { userId: true } });
       if (holder && holder.userId !== userId) return { ok: false, reason: "phone_taken", message: MSG.phoneTaken };
       const mine = await tx.userPhone.findUnique({ where: { userId }, select: { id: true, phone: true } });
@@ -311,8 +300,6 @@ export async function linkPhoneToUser(
       else await tx.userPhone.create({ data: { userId, phone, verifiedAt } });
       return { ok: true };
     });
-    if (res.ok) await claimStaffInvites(userId, phone); // SEC S1.25 ▸ ผูกเบอร์ ◂
-    return res;
   } catch (e) {
     if (e instanceof OtpUsedError) return { ok: false, reason: "otp_used", message: MSG.otpUsed };
     if (uniqueTarget(e) === null) throw e;
