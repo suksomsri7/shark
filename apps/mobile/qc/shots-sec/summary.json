@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T21:56:34.177Z",
+ "generatedAt": "2026-11-04T22:04:43.247Z",
  "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
@@ -1345,7 +1345,7 @@
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox.png",
-   "generatedAt": "2026-11-04T21:56:22.649Z"
+   "generatedAt": "2026-11-04T22:04:31.695Z"
   },
   {
    "name": "secretary-scheduled",
@@ -1368,7 +1368,7 @@
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled.png",
-   "generatedAt": "2026-11-04T21:56:26.389Z"
+   "generatedAt": "2026-11-04T22:04:35.459Z"
   },
   {
    "name": "secretary-inbox-dark",
@@ -1397,7 +1397,7 @@
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox-dark.png",
-   "generatedAt": "2026-11-04T21:56:30.251Z"
+   "generatedAt": "2026-11-04T22:04:39.326Z"
   },
   {
    "name": "secretary-scheduled-dark",
@@ -1420,7 +1420,7 @@
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled-dark.png",
-   "generatedAt": "2026-11-04T21:56:33.999Z"
+   "generatedAt": "2026-11-04T22:04:43.101Z"
   }
  ]
 }

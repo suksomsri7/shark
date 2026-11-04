@@ -23,6 +23,7 @@ export function splitSummary(s: string): { title: string; desc: string | null } 
 
 export function InboxItem({
   row,
+  canApprove,
   ids,
   time,
   busy,
@@ -33,6 +34,8 @@ export function InboxItem({
   onApprove,
 }: {
   row: InboxRow;
+  /** จอตัดสิน (canApprove ของเซิร์ฟเวอร์) — false ⇒ ปุ่มตีกลับ/อนุมัติปิด + บรรทัดเหตุผล */
+  canApprove: boolean;
   ids: InboxItemIds;
   time: string;
   /** มีรายการใดกำลังส่งอยู่ (กดซ้ำไม่ได้) */
@@ -48,7 +51,7 @@ export function InboxItem({
   const { c } = useTheme();
   const t = useT();
   const head = row.type === "plan" ? t("sec.inbox.plan") : kindLabel(t, row.kind, row.module);
-  const off = !row.canApprove || busy;
+  const off = !canApprove || busy;
   const { title, desc } = splitSummary(row.summary);
   const approveLabel = row.cls.customer ? t("sec.inbox.approveSend") : t("sec.inbox.approve");
   return (
@@ -69,12 +72,12 @@ export function InboxItem({
             {desc}
           </Text>
         ) : null}
-        {row.canApprove && row.why ? (
+        {canApprove && row.why ? (
           <Text testID={ids.why} style={[styles.box, { color: c.warn.fg, backgroundColor: c.warn.bg }]}>
             {t("sec.inbox.why", { why: row.why })}
           </Text>
         ) : null}
-        {!row.canApprove ? (
+        {!canApprove ? (
           <Text testID={ids.cannot} style={[styles.box, { color: c.textDim, backgroundColor: c.chip.bg }]}>
             {t("sec.inbox.cannot")}
           </Text>

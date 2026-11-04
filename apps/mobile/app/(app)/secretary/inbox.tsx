@@ -203,14 +203,19 @@ export default function SecretaryInboxScreen() {
               <View key={r.id} style={styles.item}>
                 <InboxItem
                   row={r}
+                  canApprove={r.canApprove}
                   ids={ITEM_IDS}
                   time={roomTime(t, "OPEN", r.createdAt, nowMs)}
                   busy={flow.busyId !== null}
                   mine={flow.busyId === r.id}
                   note={flow.notes[r.id] ?? null}
                   onOpen={() => void open(r)}
-                  onReject={() => flow.startReject(inboxToApproval(r))}
-                  onApprove={() => void flow.approve(inboxToApproval(r), false)}
+                  onReject={() => {
+                    if (r.canApprove) flow.startReject(inboxToApproval(r));
+                  }}
+                  onApprove={() => {
+                    if (r.canApprove) void flow.approve(inboxToApproval(r), false);
+                  }}
                 />
               </View>
             ))}
