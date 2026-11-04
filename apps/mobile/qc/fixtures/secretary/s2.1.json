@@ -82,8 +82,7 @@
    "sec-me-sample"
   ],
   "/secretary/settings/access": [
-   "sec-access",
-   "sec-access-row"
+   "sec-access"
   ],
   "/secretary/settings/rules": [
    "sec-rules",
