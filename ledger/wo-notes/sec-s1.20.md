@@ -41,6 +41,7 @@
 - `AI_PROVIDER` เทียบ `=== "anthropic"` ตรงตามใบ (ไม่ lowercase/trim) — ค่าอื่นใด ⇒ OpenRouter
 - รูปแนบแปลงเฉพาะ role user (ตามใบ) · data URL ที่ไม่ใช่ base64 ⇒ ส่งเป็น url source (API จะปฏิเสธเอง — ผู้เรียกปัจจุบันส่ง base64/http เท่านั้น)
 - tool result ติดกันรวม user message เดียว · tool result ที่ตามหลัง user text ⇒ user message ใหม่ (API รับ user ติดกันได้)
+- (แก้ตามผู้คุม · commit fix) assistant ที่ข้อความว่าง/มีแต่ช่องว่าง และไม่มี toolCalls ⇒ ทิ้ง turn (API 400 เมื่อ content ว่าง) · user สองก้อนที่ติดกันหลังทิ้ง ⇒ รวมเป็นก้อนเดียว (string+string ต่อด้วย "\n\n" · มี blocks ⇒ ต่อ array · string ⇒ text block) · ตรวจเองด้วยสคริปต์ชั่วคราว: `[user a, assistant "  ", user b]` ⇒ `[user "a\n\nb"]` · หลังแก้ oracle forced ×2 = 19/19 · fitness ×2 = 53/53
 - refusal ตรวจก่อน "ตอบว่าง" (refusal มักมาพร้อม content ว่าง)
 - `fetchImpl` ปริยาย = `(input, init) => fetch(input, init)` (ไม่ผูก fetch ตอน import)
 - ทางที่เรียกโมเดลเพิ่ม: ไม่มีทางใหม่ — `AnthropicProvider` เป็นแค่ backend ของ `resolveProvider` ที่ผู้เรียกเดิม 12 จุดคิดเงินอยู่แล้ว
@@ -52,7 +53,6 @@
 | `pricing.ts` คิด sonnet 3/15 ต่อ 1M แต่ราคาจริงของ id SMART ตรง = 2/10 (คิดเกิน ~33%) · haiku 1/5 ถูกต้อง | ใบนี้ห้ามแตะ pricing.ts (R-K18b) | S3a.2 |
 | cache_read คิดราคาเต็มขาเข้า (จริงถูกกว่ามาก) · cache_creation คิดเท่าขาเข้า (จริงแพงกว่าเล็กน้อย) — รวมเข้า tokensIn ตามสัญญา | สัญญา `AiReply` มีแค่ tokensIn/out | S3a.2 (ถ้าต้องการแม่น) |
 | ยังไม่เคยยิง API จริง (ไม่มีคีย์) — ทดสอบด้วย fetch ปลอมเท่านั้น | ห้ามเรียกจริงจน S3a.1 | S3a.1 |
-| ข้อความ assistant ที่ content ว่างและไม่มี toolCalls ถูกส่งเป็น string ว่าง (API อาจ 400) | ผู้เรียกปัจจุบันไม่สร้างกรณีนี้ · ไม่อยู่ในสเปก | ดูตอน S3a.1 |
 
 ### env ที่เจ้าของต้องตั้ง (Vercel · ตอน S3a.2)
 - `AI_PROVIDER=anthropic`

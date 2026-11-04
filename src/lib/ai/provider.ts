@@ -252,6 +252,23 @@ export function buildAnthropicRequestBody(
     .map((m) => m.content)
     .join("\n\n");
   const out: AnthropicMessage[] = [];
+  // ทิ้ง assistant ว่างแล้ว user สองก้อนจะติดกัน → ก้อนถัดไปต้องรวมเข้าก้อนก่อนหน้า
+  let mergeNextUser = false;
+  const pushUser = (content: string | AnthropicBlock[]) => {
+    const prev = out[out.length - 1];
+    if (mergeNextUser && prev?.role === "user") {
+      if (typeof prev.content === "string" && typeof content === "string") {
+        prev.content = [prev.content, content].filter((t) => t).join("\n\n");
+      } else {
+        const asBlocks = (c: string | AnthropicBlock[]): AnthropicBlock[] =>
+          typeof c === "string" ? (c ? [{ type: "text", text: c }] : []) : c;
+        prev.content = [...asBlocks(prev.content), ...asBlocks(content)];
+      }
+    } else {
+      out.push({ role: "user", content });
+    }
+    mergeNextUser = false;
+  };
   for (const m of messages) {
     if (m.role === "system") continue;
     if (m.role === "tool") {
@@ -262,8 +279,8 @@ export function buildAnthropicRequestBody(
         Array.isArray(prev.content) &&
         prev.content.length > 0 &&
         prev.content.every((b) => b.type === "tool_result");
-      if (prevIsToolResults) (prev.content as AnthropicBlock[]).push(block);
-      else out.push({ role: "user", content: [block] });
+      if (prevIsToolResults && !mergeNextUser) (prev.content as AnthropicBlock[]).push(block);
+      else pushUser([block]);
       continue;
     }
     if (m.role === "assistant") {
@@ -272,6 +289,9 @@ export function buildAnthropicRequestBody(
         if (m.content) blocks.push({ type: "text", text: m.content });
         for (const tc of m.toolCalls) blocks.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.args ?? {} });
         out.push({ role: "assistant", content: blocks });
+      } else if (!m.content || !m.content.trim()) {
+        // assistant ข้อความว่าง/มีแต่ช่องว่าง และไม่มี tool call → API ตอบ 400 (content ว่างไม่ได้) จึงทิ้ง turn นี้
+        mergeNextUser = true;
       } else {
         out.push({ role: "assistant", content: m.content });
       }
@@ -282,9 +302,9 @@ export function buildAnthropicRequestBody(
       const blocks: AnthropicBlock[] = [];
       if (m.content) blocks.push({ type: "text", text: m.content });
       for (const url of m.imageUrls) blocks.push(anthropicImageBlock(url));
-      out.push({ role: "user", content: blocks });
+      pushUser(blocks);
     } else {
-      out.push({ role: "user", content: m.content });
+      pushUser(m.content);
     }
   }
   const toolDefs =
