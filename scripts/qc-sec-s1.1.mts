@@ -124,7 +124,7 @@ const FKS: { id: string; table: string; col: string; ref: string; cascade: boole
 ];
 const NEW_MODELS = Object.keys(NEW_TABLES);
 const GLOBAL_MODELS = new Set(["AiSecretary", "UserPhone", "PhoneOtp", "AiNotifyPref"]);
-const OWNED_SCHEMA = new Set(["secretary.prisma", "ai.prisma", "support.prisma"]);
+const OWNED_SCHEMA = new Set(["secretary.prisma", "ai.prisma", "support.prisma", "chat.prisma", "core.prisma"]); // ORACLE-EDIT: chat.prisma (helpers back-relation) · core.prisma (2 relation lines only — M-6)
 
 // ═══════════════ M. migration file ═══════════════
 console.log("── M: migration secretary_a ──");
@@ -132,7 +132,8 @@ const migDir = join(ROOT, "prisma", "migrations");
 const migs = readdirSync(migDir).filter((d) => /^\d{14}_/.test(d)).sort();
 const mine = migs.filter((d) => /_secretary_a$/.test(d));
 let migName = "";
-chk("M-1", "มีโฟลเดอร์ migration `<ts>_secretary_a` ตัวเดียว และเป็นตัวท้ายสุด", mine.length === 1 && migs[migs.length - 1] === mine[0], `พบ ${mine.length}: ${mine.join(", ")} · ท้ายสุด=${migs[migs.length - 1]}`);
+let migAppliedAt: Date | null = null;
+chk("M-1", "มีโฟลเดอร์ migration `<ts>_secretary_a` ตัวเดียว และเป็นตัวท้ายสุด (SVC ใช้ชื่ออนาคต 20261225/26 แล้ว ⇒ ใบนี้ 20261227 · ใบถัดไปต้อง > นี้)", mine.length === 1 && migs[migs.length - 1] === mine[0], `พบ ${mine.length}: ${mine.join(", ")} · ท้ายสุด=${migs[migs.length - 1]}`);
 if (mine.length === 1) {
   migName = mine[0];
   const sql = readFileSync(join(migDir, migName, "migration.sql"), "utf8");
@@ -159,11 +160,15 @@ try {
   const untracked = execFileSync("git", ["-C", ROOT, "ls-files", "--others", "--exclude-standard", "prisma/schema"], { encoding: "utf8" }).split("\n").filter(Boolean);
   const outside = [...changed, ...untracked].map((p) => p.split("/").pop() ?? p).filter((f) => !OWNED_SCHEMA.has(f));
   chk("M-4", "แตะเฉพาะ secretary.prisma / ai.prisma / support.prisma", outside.length === 0, `ไฟล์นอกใบ: ${outside.join(", ")}`, "MAJOR");
-  const dels = execFileSync("git", ["-C", ROOT, "diff", "-w", "--ignore-blank-lines", "--numstat", BASE_SHA, "--", "prisma/schema/ai.prisma", "prisma/schema/support.prisma"], { encoding: "utf8" })
+  const dels = execFileSync("git", ["-C", ROOT, "diff", "-w", "--ignore-blank-lines", "--numstat", BASE_SHA, "--", "prisma/schema/ai.prisma", "prisma/schema/support.prisma", "prisma/schema/chat.prisma", "prisma/schema/core.prisma"], { encoding: "utf8" })
     .split("\n").filter(Boolean).map((l) => l.split("\t")).filter(([, d]) => d !== "-" && Number(d) > 0).map(([, d, f]) => `${f}(-${d})`);
   chk("M-5", "ai.prisma/support.prisma เพิ่มบรรทัดอย่างเดียว (ไม่ลบ/แก้บรรทัดเดิม)", dels.length === 0, dels.join(", "), "MAJOR");
-  const core = execFileSync("git", ["-C", ROOT, "diff", "--stat", BASE_SHA, "--", "prisma/schema/core.prisma"], { encoding: "utf8" }).trim();
-  chk("M-6", "core.prisma ไม่เปลี่ยน (FROZEN · §B.8)", core === "", core.slice(0, 120));
+  // ORACLE-EDIT (ผู้คุม 4 พ.ย.): core.prisma FROZEN ยกเว้น back-relation 2 บรรทัดบน User (secretary AiSecretary? · userPhone UserPhone?) — ไม่มีคอลัมน์/SQL (กัน drift DROP FK)
+  const coreDiff = execFileSync("git", ["-C", ROOT, "diff", "-U0", BASE_SHA, "--", "prisma/schema/core.prisma"], { encoding: "utf8" });
+  const added = coreDiff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++"));
+  const removed = coreDiff.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"));
+  const okAdded = added.every((l) => /^\+\s+\w+\s+(AiSecretary|UserPhone)\?\s*(\/\/.*)?$/.test(l) || /^\+\s*\/\//.test(l));
+  chk("M-6", "core.prisma ไม่เปลี่ยน ยกเว้นเพิ่ม back-relation ของ AiSecretary/UserPhone บน User (ไม่ลบบรรทัด)", removed.length === 0 && okAdded && added.length <= 4, `เพิ่ม ${added.length} ลบ ${removed.length}: ${[...added, ...removed].slice(0, 3).join(" | ").slice(0, 160)}`);
 } catch (e) { chk("M-4", "อ่าน git diff ได้", false, errMsg(e), "MAJOR"); }
 
 // ═══════════════ F. scope registry + client ═══════════════
@@ -261,8 +266,9 @@ try {
   console.log("── I: unique/index ──");
   const idxRows = await q<{ tablename: string; indexname: string; indexdef: string }>(`SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = current_schema() AND tablename = ANY($1)`, [[...new Set(IDX.map((x) => x.table))]]);
   for (const x of IDX) {
-    const want = `(${x.cols.map((c) => `"${c}"`).join(", ")})`;
-    const hit = idxRows.filter((r) => r.tablename === x.table && r.indexdef.replace(/\s+/g, " ").endsWith(want)).find((r) => (x.u ? /UNIQUE INDEX/.test(r.indexdef) : true));
+    // ORACLE-EDIT (builder S1.1): Postgres quote เฉพาะ identifier ที่ต้อง quote (เช่น (status, "leaseUntil")) — ตัด " ออกก่อนเทียบ
+    const want = `(${x.cols.join(", ")})`;
+    const hit = idxRows.filter((r) => r.tablename === x.table && r.indexdef.replace(/"/g, "").replace(/\s+/g, " ").endsWith(want)).find((r) => (x.u ? /UNIQUE INDEX/.test(r.indexdef) : true));
     chk(x.id, `${x.u ? "unique" : "index"} ${x.table}${want}`, !!hit, `ไม่พบ · มี: ${idxRows.filter((r) => r.tablename === x.table).map((r) => r.indexdef.replace(/.*USING btree /, "")).join(" ; ").slice(0, 200)}`);
   }
 
@@ -282,6 +288,7 @@ try {
   if (migName) {
     const m = await q<{ finished_at: Date | null; rolled_back_at: Date | null }>(`SELECT finished_at, rolled_back_at FROM "_prisma_migrations" WHERE migration_name = $1`, [migName]);
     chk("M-7", `migration ${migName} ลง wo-sec-qc แล้ว (finished · ไม่ rolled back)`, m.length === 1 && m[0].finished_at !== null && m[0].rolled_back_at === null, `แถว ${m.length}`);
+    migAppliedAt = m[0]?.finished_at ?? null;
   } else skip("M-7", "migration ลงฐานแล้ว", "ไม่มี migration");
 
   console.log("── C: พฤติกรรมบนฐาน ──");
@@ -317,7 +324,8 @@ try {
     const ref = readFileSync(join(dir, "sec-baseline-2c2062c7.txt"), "utf8");
     const refSuites = [...ref.matchAll(/^== (qc-[\w.-]+) /gm)].map((m) => m[1]);
     const files = existsSync(dir) ? readdirSync(dir).filter((f) => /^sec-baseline-[0-9a-f]+\.txt$/.test(f) && f !== "sec-baseline-2c2062c7.txt") : [];
-    const migTs = migName ? Number(migName.slice(0, 14)) : 0;
+    // ORACLE-EDIT (builder S1.1): ชื่อโฟลเดอร์เป็น timestamp อนาคต (ต่อจาก svc_b17 20261226) — เทียบเวลารัน baseline กับ finished_at จริงใน _prisma_migrations แทน
+    const migTs = migAppliedAt ? Number(migAppliedAt.toISOString().replace(/\D/g, "").slice(0, 14)) : Number.MAX_SAFE_INTEGER;
     const cand = files.map((f) => ({ f, txt: readFileSync(join(dir, f), "utf8") })).filter((x) => { const m = x.txt.match(/^== migrate status (\S+)/m); return m ? Number(m[1].replace(/\D/g, "").slice(0, 14)) >= migTs : false; });
     if (!migName || cand.length === 0) chk("B-1", "มีไฟล์ baseline ใหม่ (sec-baseline-<sha>.txt) ที่รันหลัง migration", false, "ไม่พบ — builder ต้องรัน bash scripts/sec-baseline.sh หลัง migrate deploy", "MAJOR");
     else {

@@ -36,7 +36,7 @@ const rd = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 const HEX = /#[0-9a-fA-F]{3,8}\b|rgba?\(/;
 function pressablesWithoutId(src: string): number {
-  const opens = src.match(/<(Pressable|TouchableOpacity)\b[^>]*>/gs) ?? [];
+  const opens = src.match(/<(Pressable|TouchableOpacity)\b[^>]*>/g) ?? [];
   return opens.filter((o) => !/testID=/.test(o)).length;
 }
 function walk(dir: string, out: string[] = []): string[] {
