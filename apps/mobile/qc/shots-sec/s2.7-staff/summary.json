@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T21:47:46.428Z",
+ "generatedAt": "2026-11-04T22:00:55.187Z",
  "base": "http://127.0.0.1:4735",
  "view": {
   "tag": "iphone",
@@ -30,7 +30,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings.png",
-   "generatedAt": "2026-11-04T21:47:25.892Z"
+   "generatedAt": "2026-11-04T22:00:35.652Z"
   },
   {
    "name": "secretary-settings-access",
@@ -51,7 +51,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access.png",
-   "generatedAt": "2026-11-04T21:47:29.907Z"
+   "generatedAt": "2026-11-04T22:00:39.749Z"
   },
   {
    "name": "secretary-settings-rules",
@@ -73,7 +73,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules.png",
-   "generatedAt": "2026-11-04T21:47:34.055Z"
+   "generatedAt": "2026-11-04T22:00:43.493Z"
   },
   {
    "name": "secretary-settings-log",
@@ -93,7 +93,7 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log.png",
-   "generatedAt": "2026-11-04T21:47:38.122Z"
+   "generatedAt": "2026-11-04T22:00:47.364Z"
   },
   {
    "name": "secretary-settings-knowledge",
@@ -115,7 +115,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-04T21:47:42.088Z"
+   "generatedAt": "2026-11-04T22:00:51.184Z"
   },
   {
    "name": "secretary-settings-customers",
@@ -136,7 +136,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-customers.png",
-   "generatedAt": "2026-11-04T21:47:46.106Z"
+   "generatedAt": "2026-11-04T22:00:54.958Z"
   }
  ]
 }

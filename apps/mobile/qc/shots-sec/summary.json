@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T21:47:19.592Z",
+ "generatedAt": "2026-11-04T22:00:28.897Z",
  "base": "http://127.0.0.1:4735",
  "view": {
   "tag": "iphone",
@@ -1065,7 +1065,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings.png",
-   "generatedAt": "2026-11-04T21:46:23.473Z"
+   "generatedAt": "2026-11-04T21:59:26.118Z"
   },
   {
    "name": "secretary-settings-secretary",
@@ -1092,7 +1092,7 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-secretary.png",
-   "generatedAt": "2026-11-04T21:46:27.043Z"
+   "generatedAt": "2026-11-04T21:59:29.446Z"
   },
   {
    "name": "secretary-settings-quota",
@@ -1114,7 +1114,7 @@
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-quota.png",
-   "generatedAt": "2026-11-04T21:46:30.901Z"
+   "generatedAt": "2026-11-04T21:59:33.148Z"
   },
   {
    "name": "secretary-settings-access",
@@ -1137,7 +1137,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-access.png",
-   "generatedAt": "2026-11-04T21:46:34.744Z"
+   "generatedAt": "2026-11-04T21:59:36.933Z"
   },
   {
    "name": "secretary-settings-rules",
@@ -1162,7 +1162,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-rules.png",
-   "generatedAt": "2026-11-04T21:46:38.582Z"
+   "generatedAt": "2026-11-04T21:59:40.214Z"
   },
   {
    "name": "secretary-settings-log",
@@ -1186,7 +1186,7 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-log.png",
-   "generatedAt": "2026-11-04T21:46:42.283Z"
+   "generatedAt": "2026-11-04T21:59:43.897Z"
   },
   {
    "name": "secretary-settings-knowledge",
@@ -1213,7 +1213,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-04T21:46:46.041Z"
+   "generatedAt": "2026-11-04T21:59:47.582Z"
   },
   {
    "name": "secretary-settings-customers",
@@ -1237,7 +1237,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-customers.png",
-   "generatedAt": "2026-11-04T21:46:49.520Z"
+   "generatedAt": "2026-11-04T21:59:50.863Z"
   },
   {
    "name": "secretary-settings-dark",
@@ -1262,7 +1262,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-dark.png",
-   "generatedAt": "2026-11-04T21:46:53.428Z"
+   "generatedAt": "2026-11-04T21:59:54.792Z"
   },
   {
    "name": "secretary-settings-secretary-dark",
@@ -1289,7 +1289,7 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-secretary-dark.png",
-   "generatedAt": "2026-11-04T21:46:56.695Z"
+   "generatedAt": "2026-11-04T21:59:58.205Z"
   },
   {
    "name": "secretary-settings-quota-dark",
@@ -1311,7 +1311,7 @@
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-quota-dark.png",
-   "generatedAt": "2026-11-04T21:47:00.391Z"
+   "generatedAt": "2026-11-04T22:00:04.758Z"
   },
   {
    "name": "secretary-settings-access-dark",
@@ -1334,7 +1334,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-access-dark.png",
-   "generatedAt": "2026-11-04T21:47:04.323Z"
+   "generatedAt": "2026-11-04T22:00:10.048Z"
   },
   {
    "name": "secretary-settings-rules-dark",
@@ -1359,7 +1359,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-rules-dark.png",
-   "generatedAt": "2026-11-04T21:47:07.809Z"
+   "generatedAt": "2026-11-04T22:00:15.360Z"
   },
   {
    "name": "secretary-settings-log-dark",
@@ -1383,7 +1383,7 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-log-dark.png",
-   "generatedAt": "2026-11-04T21:47:11.557Z"
+   "generatedAt": "2026-11-04T22:00:19.458Z"
   },
   {
    "name": "secretary-settings-knowledge-dark",
@@ -1410,7 +1410,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-knowledge-dark.png",
-   "generatedAt": "2026-11-04T21:47:15.350Z"
+   "generatedAt": "2026-11-04T22:00:23.746Z"
   },
   {
    "name": "secretary-settings-customers-dark",
@@ -1434,7 +1434,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-customers-dark.png",
-   "generatedAt": "2026-11-04T21:47:19.365Z"
+   "generatedAt": "2026-11-04T22:00:28.616Z"
   }
  ]
 }
