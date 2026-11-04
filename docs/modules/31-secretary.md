@@ -464,15 +464,23 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 
 ---
 
-## 8. โควตา (มติ 7 · Q3 · R-K6 · R-K7)
+## 8. โควตา (มติ 7 · Q3 · R-K6 · R-K7) — ของจริงหลังใบ S1.13
 
 - **นิยาม 1 งาน (Q3)**: 1 ห้องที่เปิด — สั่งเองผ่าน `startRoom` หรือ งานประจำ 1 รอบ (`countsAsJob`: room_new = 1 · scheduled_run = 1 · room_message = 0 · ทำอะไรไม่ได้เลย = 0) · **จุดนับงานอยู่ที่ `startRoom` เท่านั้น** ไม่ใช่ `sendMessage` (สั่งเพิ่มในห้องเดิมไม่นับ) · ร่างตอบแชทลูกค้า (`ChatAiSuggestion`) ไม่นับงาน แต่คิดต้นทุน
 - **แพ็กฟรี**: `FREE_PACK.jobsPerMonth = 100` ต่อกิจการต่อเดือนไทย (`AiJobCounter(tenantId, month)` · รีเซ็ต 00:00 วันที่ 1 ตาม `nextResetBangkok`) · งานประจำ ≤ `scheduledMax` 10 · ผู้อนุมัติ ≤ `approversMax` 5
-- **scope ที่สาม `"jobs"`**: `SendResult` (service.ts:43) เพิ่ม `scope: "jobs"` คู่กับ "credit"/"day" เดิม · `quotaMessage` ของ `usage.ts` รู้จัก "jobs" ("โควตางานเดือนนี้หมด…") · `startRoom` คืน `{ok:false, error:"quota_exhausted", scope:"jobs"}`
-- **ลำดับเงิน (Q4 · `canRunAi`)**: `canRunAi(tenantId, {scope: "job" | "assist"})` = `(FREE_PACK.enabled && scope === "assist") || (scope === "job" && jobsLeft > 0) || balance > 0` — ห้องเลขาเรียก "job" (นับที่ `startRoom` แล้ว) · ห้อง AI เดิม + ผู้เรียก 20 จุดของ `canSpend` = "assist" · กระเป๋า $10 ของร้านเดิมยังใช้ได้เมื่อโควตาหมด · ร้านที่สร้างหลัง `SECRETARY_LAUNCH_AT` ไม่ได้ GRANT
-- **ตาข่ายชั้นนอก**: เพดานรายวัน `AiUsage` × `dailyLimits()` (provider.ts:220) คงเดิม · degrade เมื่อกระเป๋า < $0.50 คงเดิม · ทุกการเรียกโมเดลยังเขียน `AiCreditTxn` (ต้นทุนจริง · ทีม SHARK เห็นใน G5)
-- **ผู้ใช้เห็น**: % · "≈ N งานที่เหลือ" · วันรีเซ็ต — ไม่เห็น token/บาท/ดอลลาร์ · 80% และ 95% = แถบเตือน (`warn80`/`warn95`) · 100% = เปิดห้องใหม่/งานประจำหยุด · ห้องค้างยังพิมพ์ต่อ/อนุมัติได้
-- **endpoint**: `GET /api/mobile/secretary/quota` อ่านอย่างเดียว (§B.6) · `GET /api/mobile/usage` เดิมเปลี่ยนเป็น `canSpendPeek`
+- **ด่านเดียว `canRunAi` (`src/lib/ai/credit.ts`)**: `canRunAi(tenantId, { scope: "job" | "assist", now? }) → { ok: true } | { ok: false, reason: "jobs" | "credit", resetAt?, message }` — ไม่เขียนอะไรเลย
+  - `assist` (ห้อง AI เดิม · ข้อความในห้องเลขา · ผู้เรียก `canSpend` ทุกจุด): `FREE_PACK.enabled` ⇒ ผ่านเสมอ (รุ่นแรก assist ฟรี) · แพ็กปิด ⇒ ยอดกระเป๋า > 0 (ไม่ผ่าน = `reason: "credit"`)
+  - `job` (เปิดห้องงาน): งานเหลือของเดือน > 0 ⇒ ผ่าน · ไม่งั้นยอดกระเป๋า > 0 ⇒ ผ่าน (Q4 ใช้กระเป๋าต่อ) · ไม่งั้น `{ reason: "jobs", resetAt: nextResetBangkok(now), message: pack.quotaMessage(...).text }`
+  - `canSpend(tenantId)` = `(await canRunAi(tenantId, { scope: "assist" })).ok` (ชื่อเดิม ผู้เรียกไม่แตะ) — **ไม่เปิดกระเป๋าแล้ว**: กระเป๋าเปิดตอนหักเงินจริงครั้งแรก (`chargeUsage` เจอกระเป๋าไม่มี ⇒ `ensureWallet` แล้วหักซ้ำ 1 ครั้ง)
+  - `balancePeek(tenantId) → number | null` / `walletPeek(tenantId) → { balanceMicro, grantedAt } | null` = อ่านอย่างเดียว (ไม่มี = null)
+  - `canSpendPeek(tenantId)`: ไม่มีกระเป๋า ⇒ ร้านเดิม = เครดิตต้อนรับ > 0 · ร้านใหม่ = `FREE_PACK.enabled` · มีกระเป๋า ⇒ ยอด > 0 หรือ `FREE_PACK.enabled`
+- **กระเป๋า (R-K7 · มติ 7.4)**: `ensureWallet` ของร้านที่ `tenant.createdAt >= SECRETARY_LAUNCH_AT` (pack.ts) ⇒ กระเป๋ายอด 0 · `grantedAt` null · **ไม่มีแถว GRANT** · ร้านเดิม (ก่อนเวลาเปิด) และบัญชีที่ไม่มีแถว Tenant (`__platform__`) = เดิมทุกไบต์ (GRANT $10 · ref `welcome-grant`) · ทุกการเรียกโมเดลยังเขียน `AiCreditTxn` (ต้นทุนจริง · ยอดติดลบได้ · ทีม SHARK เห็นใน G5)
+- **scope ที่สาม `"jobs"`**: `SendResult.scope` = `"credit" | "day" | "jobs"` · `usage.quotaMessage("jobs", resetAt)` = "โควตางานของเลขาเดือนนี้ครบ 100 งานแล้ว — เริ่มนับใหม่ 1 ธ.ค." · `sendMessage` ใช้ `canRunAi(…, "assist")` ⇒ ไม่ผ่าน = `{ ok:false, error:"over_budget", scope: reason, resetAt? }`
+- **`startRoom` (rooms.ts)**: conditional `updateMany` คำสั่งเดียวใน tx (X3) — ปกติ `jobs < limit` · ถ้า `balancePeek > 0` (อ่านก่อน tx) ⇒ เงื่อนไขไม่มี `lt` (ตัวนับเกิน limit ได้ = งานที่จ่ายจากกระเป๋า) · โควตาหมดและไม่มีเงิน ⇒ `{ ok:false, error:"quota", message (ไทย · มี "หมด"), resetAt, jobsUsed, jobsLimit }` และไม่สร้างอะไรเลย
+- **`quotaStatus(tenantId, now?)` (`src/lib/ai/secretary/quota.ts` · อ่านอย่างเดียว)** → `{ month, jobsUsed, jobsLimit, jobsLeft, pct, level: "ok"|"warn80"|"warn95"|"exhausted", text, resetAt, balanceMicro: number|null, blocked: "jobs"|null }` · `blocked = jobsLeft === 0 && !(balance > 0)` · `jobsLeft(tenantId, now?)` = งานที่เหลือ (ไม่รวมกระเป๋า) · `balanceMicro` ใช้ตัดสินในชั้น API เท่านั้น — จอเลขาแสดงงาน/%/วันรีเซ็ต (§C.6)
+- **ตาข่ายชั้นนอก**: เพดานรายวัน `AiUsage` × `dailyLimits()` คงเดิม · degrade (ลดชั้น haiku) เมื่อกระเป๋า < $0.50 **เฉพาะกระเป๋าที่ได้เครดิตต้อนรับ** (`grantedAt` ≠ null) · ไม่มีกระเป๋า/`grantedAt` null (ร้านใหม่ในแพ็กฟรี) ⇒ ไม่ลดชั้น
+- **ผู้ใช้เห็น**: % · "≈ N งานที่เหลือ" · วันรีเซ็ต — ไม่เห็น token/บาท/ดอลลาร์ · 80% และ 95% = แถบเตือน (`warn80`/`warn95`) · 100% = เปิดห้องใหม่/งานประจำหยุด (เว้นมีเงินในกระเป๋า) · ห้องค้างยังพิมพ์ต่อ/อนุมัติได้
+- **endpoint**: `GET /api/mobile/secretary/quota` (S1.14) อ่านอย่างเดียว (§B.6) · `GET /api/mobile/usage` เดิม **ไม่เขียนแล้ว** (`walletPeek` + `canSpendPeek` · ไม่เรียก `ensureWallet`) · ฟิลด์เดิมครบ `scope used limit pct warn degraded blocked resetAt balanceMicro` (build #19) · `blocked = canSpendPeek ? null : "credit"` · ไม่มีกระเป๋า: ร้านเดิม = แสดงเหมือนเพิ่งได้เครดิตต้อนรับ (limit = balanceMicro = $10) · ร้านใหม่ = used 0 · limit 1 · pct 0 · blocked null · balanceMicro 0 · กระเป๋าแพ็กฟรี (ไม่มี GRANT/TOPUP + grantedAt null) ⇒ used 0 · + ฟิลด์ใหม่ `jobs: QuotaStatus`
 
 ---
 

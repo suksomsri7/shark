@@ -18,7 +18,7 @@ import {
   CORE_TOOLS, LOAD_SKILL_TOOL, skillById, skillIndexPrompt, skillsForTenant, toolNamesOfSkills,
 } from "./skills";
 import { applyDegrade } from "./usage";
-import { balanceOf, canSpend, chargeUsageSafe } from "./credit";
+import { canRunAi, chargeUsageSafe, walletPeek } from "./credit";
 import type { AiCreditSource } from "@prisma/client";
 import { identityOf, secretaryOf } from "./secretary/secretary";
 import { getAccess } from "./secretary/access";
@@ -45,8 +45,8 @@ export type Clarify = { question: string; options: ClarifyOption[] };
 
 export type SendResult =
   | { ok: true; conversationId: string; reply: string; clarify?: Clarify }
-  // over_budget: scope="credit" = เครดิตในกระเป๋าหมด (ต้องเติม) · "day" = ชนตาข่ายกันยิงรัวรายวัน
-  | { ok: false; error: "ai_disabled" | "over_budget" | "empty"; scope?: "credit" | "day"; resetAt?: string };
+  // over_budget: scope="credit" = เครดิตในกระเป๋าหมด (ต้องเติม) · "day" = ชนตาข่ายกันยิงรัวรายวัน · "jobs" = โควตางานเลขาของเดือนหมด (SEC S1.13 · R-K6)
+  | { ok: false; error: "ai_disabled" | "over_budget" | "empty"; scope?: "credit" | "day" | "jobs"; resetAt?: string };
 
 // แปลง args ของ ask_clarify เป็น Clarify ที่สะอาด (กัน args เพี้ยน) — คืน null ถ้าไม่มีคำถาม/ตัวเลือกใช้ได้
 function parseClarify(rawArgs: unknown): Clarify | null {
@@ -136,9 +136,11 @@ export async function sendMessage(
   const now = new Date();
 
   // กระเป๋าเครดิต (prepaid) — เช็คก่อนแตะ provider เสมอ (ห้ามจ่ายเงินให้ผู้ให้บริการแล้วค่อยพบว่าเครดิตหมด)
-  // เครดิตหมด = ตัด ไม่มีโควตาฟรีรีเซ็ตรายรอบอีกแล้ว (กติกาเจ้าของ 8 ส.ค.)
-  if (!(await canSpend(ctx.tenantId))) {
-    return { ok: false, error: "over_budget", scope: "credit" };
+  // SEC S1.13 ▸ ด่านเดียว `canRunAi` (R-K7) แทน canSpend เดิม: ข้อความในห้อง = "assist" (ห้องเลขานับงานที่ startRoom แล้ว — R-K6)
+  //   รุ่นแรกแพ็กฟรีเปิด ⇒ assist ผ่านเสมอ (ยังหักลง AiCreditTxn เป็นบันทึกต้นทุน) · แพ็กปิด ⇒ ต้องมียอด > 0 เหมือนเดิม ◂
+  const run = await canRunAi(ctx.tenantId, { scope: "assist", now });
+  if (!run.ok) {
+    return { ok: false, error: "over_budget", scope: run.reason, ...(run.resetAt ? { resetAt: run.resetAt.toISOString() } : {}) };
   }
 
   // เพดานรายวันเดิม = ตาข่ายชั้นนอก (กันยอดรวมทั้งวันของร้าน — ยังคงไว้ ไม่ถอด)
@@ -156,7 +158,9 @@ export async function sendMessage(
   // soft degrade: ใกล้เต็มโควตา → ลดชั้นเหลือ haiku ก่อน (ยังคุยได้) ค่อยตัดเมื่อครบเพดานจริง
   // ข้อยกเว้น: เจ้าของบังคับโมเดลเอง (SHARK_AI_MODEL) หรือมีรูปแนบ (งาน vision) = ไม่ลดชั้น
   const forcedModel = Boolean(process.env.SHARK_AI_MODEL?.trim());
-  const lowBalance = (await balanceOf(ctx.tenantId)) < LOW_BALANCE_MICRO;
+  // SEC S1.13 ▸ อ่านยอดแบบไม่เปิดกระเป๋า: ไม่มีกระเป๋า (ร้านใหม่ในแพ็กฟรี) = ไม่ลดชั้น · ร้านเดิมยอด < $0.50 = ลดชั้นเหมือนเดิม ◂
+  const wallet = await walletPeek(ctx.tenantId);
+  const lowBalance = wallet !== null && wallet.grantedAt !== null && wallet.balanceMicro < LOW_BALANCE_MICRO;
   if (lowBalance && !forcedModel && !hasImages && !deps?.provider) {
     const degraded = applyDegrade(routedModel, true);
     if (degraded !== routedModel) {
