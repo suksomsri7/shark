@@ -56,3 +56,8 @@
 - **S1.14-H-2**: ห้องถูกปิดใน H-1 (r6) ก่อน H-2 เพิ่มสมาชิก ⇒ `addMember` คืน `closed` (กติกา S1.6 R5) ⇒ 409 · ข้อสอบคาด 200 · ขอ: H-2 ใช้ห้องใหม่ที่ยังเปิด (`const hid = String((await call("rooms","POST",{instruction:"ห้องทดสอบสมาชิก"})).body.roomId ?? "")` แล้ว m1/m2/m3 ใช้ `{ id: hid }`) — สำเนาที่แก้แบบนี้ผ่าน 11/11
 - **S1.21-H-2-parse** (ORACLE-EDIT 77d737b6 ของผู้คุม): `"ส่งต่อ"` ซ้อนในสตริง `"…"` บรรทัด 130 ⇒ esbuild/tsc parse error ⇒ ข้อสอบรันไม่ได้ + `pnpm typecheck`/`next build` แดง · ขอ: เปลี่ยนเป็น «ส่งต่อ» หรือ `\"`
 - **S0.3-D1.7** (ขาด createInvite/moduleLevel/setModuleLevel/callHelper ใน docs §5 — ชื่อจริงคือ inviteStaff/levelOfModule/permissionsForLevel/callHelper ใน §5.24) · **S0.3-D3.2** (FREE_PACK มี `assistDailyMicro` ตาม R-S1.13b) — แดงก่อนใบนี้ ไม่ใช่ไฟล์ของใบนี้
+
+## 5. qc:all (iso · qc-sec · SHARK_AI_MOCK=1) — หยุดกลางทาง
+- เริ่ม 21:58Z · 185/511 ชุดใน ~62 นาที (✅128 ❌56) · **หยุดเอง 23:00Z** เพราะถือ `/tmp/shark-gate-sec.lock` ยาว ~3 ชม. ขวางเลน c/d (flock รอได้ 30 นาที) · ชุดที่ถูกตัดกลาง = qc-crm-c2.7 (อาจเหลือแถวทดสอบ CRM บนฐาน sec)
+- แดงทั้งหมดที่เห็น = ชุดที่ต้องใช้ฐานอื่น: `acc-v2-*` (seed บัญชี V2 `SIAM DIVE QC` ไม่มีบนฐาน sec — "เตรียมชุดข้อมูล" ล้ม) · `account-api-*` · `crm-*` (ฐาน CRM QC1/QC2) — ไม่มีชุด ai/chat/mobile/approval/sec แดง (60 ชุดนั้นรันครบใน baseline §4)
+- log: scratchpad `qcall-partial.log` · ผู้คุมควรรัน qc:all เต็มตอนเลนอื่นว่าง
