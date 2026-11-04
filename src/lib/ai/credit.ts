@@ -30,12 +30,12 @@ export type Wallet = { tenantId: string; balanceMicro: number; grantedAt: Date |
 
 /**
  * SEC S1.13 (R-K7 · มติ 7.4) ▸ ร้านนี้ได้เครดิตต้อนรับไหม — ร้านที่สร้าง **ก่อน** `SECRETARY_LAUNCH_AT` = ได้ (เดิมทุกไบต์)
- *   ร้านที่สร้างตั้งแต่เวลาเปิดเลขา = ไม่ได้ (ใช้แพ็กฟรี 100 งาน/เดือนแทน) · ไม่มีแถว Tenant (เช่น `__platform__`) = เดิม (ได้) ◂
+ *   ร้านที่สร้างตั้งแต่เวลาเปิดเลขา = ไม่ได้ (ใช้แพ็กฟรี 100 งาน/เดือนแทน) · ไม่มีแถว Tenant (เช่น `__platform__`) = ไม่ได้ (R-S1.13i) ◂
  */
-async function getsWelcomeGrant(tenantId: string): Promise<boolean> {
-  if (tenantId === PLATFORM_LEDGER_ID) return true;
+export async function getsWelcomeGrant(tenantId: string): Promise<boolean> {
+  // R-S1.13i (I-9) ▸ ไม่มีแถว Tenant (รวม `__platform__`) ⇒ ไม่แจก — เครดิตต้อนรับเป็นของกิจการจริงเท่านั้น ◂
   const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { createdAt: true } });
-  if (!t) return true;
+  if (!t) return false;
   return t.createdAt.getTime() < new Date(SECRETARY_LAUNCH_AT).getTime();
 }
 
@@ -103,6 +103,8 @@ export async function walletPeek(tenantId: string): Promise<{ balanceMicro: numb
 // ลำดับ: (FREE_PACK.enabled && assist) || (job && jobsLeft > 0) || balance > 0
 //   รุ่นแรก assist ฟรี (ยังเขียน AiCreditTxn เป็นบันทึกต้นทุน · ยอดติดลบได้) · งานเกินโควตา = ใช้กระเป๋าต่อ (Q4) · ไม่เขียนอะไรเลย
 export type RunScope = "job" | "assist";
+/** ยอดกระเป๋าขั้นต่ำ ($0.50) — ต่ำกว่านี้ sendMessage ลดชั้นโมเดล · และเป็นเกณฑ์ใช้กระเป๋าต่อเมื่อโควตางานหมด (R-S1.13h) */
+export const LOW_BALANCE_MICRO = 500_000;
 export type CanRun = { ok: true } | { ok: false; reason: "jobs" | "credit"; resetAt?: Date; message: string };
 
 /** งานที่เหลือของเดือนไทยที่ครอบ `now` — อ่านตัวนับอย่างเดียว (ไม่มีแถว = ยังไม่ใช้ = เต็มโควตา) */
@@ -122,12 +124,37 @@ async function jobsLeftOf(tenantId: string, now: Date): Promise<{ used: number; 
 export async function assistUsedMicroOfDay(tenantId: string, now: Date = new Date()): Promise<{ usedMicro: number; capMicro: number; resetAt: Date }> {
   const start = bkkDayStart(now);
   const resetAt = new Date(start.getTime() + 86_400_000);
-  const agg = await prisma.aiCreditTxn.aggregate({
+  // R-S1.13f ▸ ต้นทุนของห้องเลขา (conversationId มี AiRoom) ไม่นับในเพดานนี้ — ห้องคุมด้วยโควตางานแล้ว
+  //   2 query ที่มีขอบเขต: รวมต่อ conversationId ของวันนี้ (index [tenantId, createdAt]) → หาว่าตัวไหนเป็นห้องเลขา ◂
+  const rows = await prisma.aiCreditTxn.groupBy({
+    by: ["conversationId"],
     where: { tenantId, kind: "USAGE", createdAt: { gte: start, lt: resetAt } },
     _sum: { amountMicro: true },
   });
-  const sum = Number(agg?._sum?.amountMicro ?? 0) || 0;
-  return { usedMicro: Math.abs(sum), capMicro: FREE_PACK.assistDailyMicro, resetAt };
+  const convIds = (rows ?? []).map((r) => r.conversationId).filter((c): c is string => typeof c === "string" && c.length > 0);
+  const roomConv = convIds.length > 0
+    ? new Set((await prisma.aiRoom.findMany({ where: { tenantId, conversationId: { in: convIds } }, select: { conversationId: true } })).map((r) => r.conversationId))
+    : new Set<string>();
+  let used = 0;
+  for (const r of rows ?? []) {
+    if (r.conversationId && roomConv.has(r.conversationId)) continue;
+    used += Math.abs(Number(r._sum?.amountMicro ?? 0) || 0);
+  }
+  return { usedMicro: used, capMicro: FREE_PACK.assistDailyMicro, resetAt };
+}
+
+/** R-S1.13e ▸ เหตุผลของ `canSpend` (assist) — ผู้เรียกใช้ `message` แทนข้อความ "เติมเครดิต" ตายตัว (ถึงเพดานวัน ⇒ "วันนี้…") ◂ */
+export async function canSpendWhy(tenantId: string, now?: Date): Promise<CanRun> {
+  return canRunAi(tenantId, { scope: "assist", now });
+}
+
+/**
+ * R-S1.13e ▸ ข้อความปฏิเสธของ assist: ชนเพดานวัน ⇒ ข้อความ "วันนี้…" · ไม่งั้น = `fallback` (ข้อความเครดิตเดิมของผู้เรียก)
+ *   เรียกเฉพาะหลัง `canSpend` ตอบ false (1 query เพิ่มเฉพาะทางปฏิเสธ) ◂
+ */
+export async function spendRefusalMessage(tenantId: string, fallback: string = outOfCreditMessage()): Promise<string> {
+  const why = await canSpendWhy(tenantId);
+  return !why.ok && why.resetAt ? why.message : fallback;
 }
 
 /** ข้อความไทยเมื่อชนเพดานต้นทุน assist ของวัน (ไม่บอกตัวเงิน — §C.6) */
@@ -142,6 +169,8 @@ export async function canRunAi(tenantId: string, opts: { scope: RunScope; now?: 
       // R-S1.13b ▸ ฟรีแต่มีเพดานต่อวัน — ถึงเพดาน = ปฏิเสธแบบ "credit" พร้อมเวลาเริ่มใหม่ ◂
       const day = await assistUsedMicroOfDay(tenantId, now);
       if (day.usedMicro < day.capMicro) return { ok: true };
+      // R-S1.13g ▸ ถึงเพดานแล้ว **ไม่** fall-through ไปยอดกระเป๋า (ยุคแพ็กฟรี: เพดานคุมต้นทุนก่อน · เติมเงินปิด 7.3 ·
+      //   $10 ของร้านเดิม = บัญชีต้นทุน ไม่ใช่สิทธิ์ใช้เกินเพดาน — บันทึกมติเจ้าของ B8) ◂
       return { ok: false, reason: "credit", resetAt: day.resetAt, message: assistDailyCapMessage() };
     }
     if (((await balancePeek(tenantId)) ?? 0) > 0) return { ok: true };
@@ -149,7 +178,8 @@ export async function canRunAi(tenantId: string, opts: { scope: RunScope; now?: 
   }
   const { used, left } = await jobsLeftOf(tenantId, now);
   if (left > 0) return { ok: true };
-  if (((await balancePeek(tenantId)) ?? 0) > 0) return { ok: true };
+  // R-S1.13h ▸ ใช้กระเป๋าต่อ (Q4) ต้องมียอด ≥ LOW_BALANCE_MICRO (ไม่ใช่แค่ > 0) ◂
+  if (((await balancePeek(tenantId)) ?? 0) >= LOW_BALANCE_MICRO) return { ok: true };
   const resetAt = nextResetBangkok(now);
   const limit = FREE_PACK.jobsPerMonth;
   const text = packQuotaMessage(Math.max(used, limit), limit, resetAt, now).text ?? "โควตางานเดือนนี้หมดแล้ว";
@@ -174,8 +204,13 @@ export async function canSpend(tenantId: string): Promise<boolean> {
 export async function canSpendPeek(tenantId: string): Promise<boolean> {
   const w = await prisma.aiCreditWallet.findUnique({ where: { tenantId }, select: { balanceMicro: true } });
   // SEC S1.13 (R-K7) ▸ ไม่มีกระเป๋า: ร้านเดิม = จะได้เครดิตต้อนรับ · ร้านใหม่ = แพ็กฟรี (assist ฟรี) · มีกระเป๋า: ยอด > 0 หรือแพ็กฟรีเปิด ◂
-  if (!w) return (await getsWelcomeGrant(tenantId)) ? welcomeGrantMicro() > 0 : FREE_PACK.enabled;
-  return w.balanceMicro > 0 || FREE_PACK.enabled;
+  // R-S1.13i ▸ แพ็กฟรีเปิด: เพดานต้นทุน assist ของวันมีผลด้วย (ถึงเพดาน ⇒ false · แถบ blocked ไม่ null) ◂
+  if (!w && (await getsWelcomeGrant(tenantId))) return welcomeGrantMicro() > 0;
+  if (FREE_PACK.enabled) {
+    const day = await assistUsedMicroOfDay(tenantId);
+    return day.usedMicro < day.capMicro;
+  }
+  return (w?.balanceMicro ?? 0) > 0;
 }
 
 export type ChargeInput = {

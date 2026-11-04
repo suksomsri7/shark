@@ -13,7 +13,7 @@ import type { AiRoom, Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conversation-owner";
-import { balancePeek } from "../credit";
+import { balancePeek, LOW_BALANCE_MICRO } from "../credit";
 import { countsAsJob, FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage } from "./pack";
 import { NOT_SYSTEM_MESSAGE, roomMemberRows, type RoomMemberRow } from "./members";
 
@@ -134,7 +134,8 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
   const contextJson = cleanContext(input.context);
   // SEC S1.13 (Q4 · R-K7) ▸ กระเป๋ามีเงิน ⇒ โควตาหมดแล้วนับต่อได้ (ตัวนับเกิน limit ได้ = งานที่จ่ายจากกระเป๋า) ·
   //   อ่านอย่างเดียว (ไม่เปิดกระเป๋า) · ยังเป็น conditional update คำสั่งเดียวใน tx (X3) — แค่เงื่อนไขไม่มี `lt` ◂
-  const paid = ((await balancePeek(tenantId)) ?? 0) > 0;
+  //   R-S1.13h: เกณฑ์ = ยอด ≥ LOW_BALANCE_MICRO ($0.50) ไม่ใช่แค่ > 0 · ยอดอ่านก่อน tx ⇒ คำขอพร้อมกันอาจเกินเป็นชุด (burst) ไม่ใช่แค่ 1 งาน ◂
+  const paid = ((await balancePeek(tenantId)) ?? 0) >= LOW_BALANCE_MICRO;
 
   try {
     const res = await prisma.$transaction(async (tx) => {

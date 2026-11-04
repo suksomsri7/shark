@@ -31,7 +31,7 @@
 - **ORACLE-EDIT ที่ขอ (ชุดเดิม):** qc-ai-credit — สร้าง `tenantId` ด้วย `createdAt: new Date(Date.parse(SECRETARY_LAUNCH_AT) - 86_400_000)` (WA-2.1/2.3 กลับเขียว) และ BL-4.1/4.2/4.3 คาดตาม `FREE_PACK.enabled` (true ⇒ canSpend true · sendMessage ok + มีแถว USAGE) · qc-chat-ai-suggest AS-8 / qc-chat-translate TR-8 / qc-svc-d.14 PC-4 P-13 / crm c2.4 c3.4 / acc-v2-inbox T11.4 — เปลี่ยนเป็น "แพ็กฟรีเปิด ⇒ ยิงได้และคิดต้นทุน" หรือ SKIP เมื่อ `FREE_PACK.enabled` · qc-ai-usage AU-4.1 ยังผ่านเพราะคำว่า `canSpend` อยู่ในคอมเมนต์ของ service.ts (เปราะ — ควรเปลี่ยนเป็น `canRunAi`)
 - `chargeUsage` เปิดกระเป๋าเองเมื่อไม่มี: จำเป็นเพราะ `canSpend` ไม่เปิดกระเป๋าแล้ว (ไม่งั้นการหักของร้านใหม่ล้มเงียบใน `chargeUsageSafe` — ข้อ C-4) · ทางที่มีกระเป๋าแล้ว = query เท่าเดิม
 - GET usage ร้านเดิมที่ยังไม่มีกระเป๋า: แสดงยอดต้อนรับเสมือน (limit = balanceMicro = $10) แทนการสร้างแถว · กระเป๋าแพ็กฟรีที่ติดลบ ⇒ used 0 (แถบ build #19 ไม่ขึ้น 100%)
-- `startRoom` อ่าน `balancePeek` ก่อน tx (1 query เพิ่มต่อการเปิดห้อง) · TOCTOU ยอมรับได้: ยอดเปลี่ยนระหว่างอ่านกับ update = เกินได้ 1 งาน
+- `startRoom` อ่าน `balancePeek` ก่อน tx (1 query เพิ่มต่อการเปิดห้อง) · TOCTOU ยอมรับได้: ยอดอ่านก่อน tx ⇒ คำขอพร้อมกันเกินได้เป็นชุด (burst) ไม่ใช่แค่ 1 งาน (แก้ตาม R-S1.13h)
 - ทางที่เรียกโมเดลเพิ่มในใบนี้: ไม่มี
 - ใครได้/เสียสิทธิ์: ร้านที่เครดิตหมด (ยอด ≤ 0) ใช้ AI ทุกทางได้อีกครั้งขณะ `FREE_PACK.enabled` (ต้นทุนยังลง `AiCreditTxn` · ยอดติดลบ) · ร้านใหม่ไม่ได้ $10 · ห้องเลขาเกิน 100 งานได้ถ้ากระเป๋ามีเงิน
 
@@ -59,3 +59,14 @@
 - `service.sendMessage`: ย้าย `findVisibleConversation` (อ่านอย่างเดียว) ขึ้นมาก่อนด่าน · `conv?.room` ⇒ ข้าม `canRunAi` (ทั้ง assist/job) · ห้องเดิม = assist · ต้นทุน AiCreditTxn/AiUsage + ตาข่ายรายวัน AiUsage คงเดิม · worker ของห้องเรียก sendMessage ⇒ ได้ผลเดียวกัน
 - กันเลี่ยงด่าน: ต้อง "มองเห็น" ห้อง — รหัสห้องที่มองไม่เห็น ⇒ conv null ⇒ ด่าน assist ปกติ (และเปิดบทสนทนาใหม่ตามเดิม)
 - ปิดหนี้ §10 ข้อ "ห้องเลขาชนเพดานรายวัน" · oracle S1.13 ไม่มีข้อที่ขัด
+
+## 12. รอบ 4 — รีวิว I/J §L.2 (R-S1.13d…i · J-4)
+- merge ทิป 1145d2bd (§L.2 + oracle C-8) ⇒ 765d7c4d
+- (d) `roomWorker = deps.userMessageId && conv.room && !conv.room.closedAt` เท่านั้นที่ข้าม canRunAi · ประตูเดิม/ห้องปิด ⇒ assist (C-8)
+- (e) `canSpendWhy` + `spendRefusalMessage(tenantId, fallback)` · 8 จุดเปลี่ยนข้อความปฏิเสธ (ยังเช็ก `canSpend` บรรทัดเดิม — regex ของ qc-acc-v2-security S11 ยังตรง) · ข้อความเครดิตเดิมของแต่ละจุดเป็น fallback
+- (f) `assistUsedMicroOfDay` = groupBy conversationId ของวัน + `aiRoom.findMany` ตัดห้องเลขา (2 query มีขอบเขต แทน subquery ดิบ — ชุด fake prisma ของ chat มี groupBy แต่ไม่มี $queryRaw)
+- (g) ไม่ fall-through ไปยอดกระเป๋าที่เพดาน — ✍️ **มติผู้คุมให้เจ้าของเห็นที่ B8**: ยุคแพ็กฟรีเพดานต้นทุน assist/วันคุมก่อน · $10 ร้านเดิม = บัญชีต้นทุน ไม่ใช่สิทธิ์ใช้เกินเพดาน
+- (h) `LOW_BALANCE_MICRO` ย้ายไป export จาก credit.ts (service.ts import ชื่อเดิม) · `startRoom` overflow + `canRunAi(job)` + `quotaStatus.blocked` ใช้เกณฑ์ ≥ LOW_BALANCE_MICRO เดียวกัน · burst (ดู §7)
+- (i) `canSpendPeek` รวมเพดานวัน · `getsWelcomeGrant` export · ไม่มี Tenant ⇒ false (รวม `__platform__` — prod มีกระเป๋าอยู่แล้ว ไม่กระทบ) · route usage ใช้ตัวเดียวกัน
+- J-4 docs §8 เขียนใหม่ (ห้องเลขาไม่อยู่ใต้ assist · "jobs" = สงวน · "day" ตอนถึงเพดาน)
+- ผล: oracle 13/14 ×3 — R-2 แดงเพราะ C-8 (ใหม่) หักกระเป๋าร้าน OLD 1,500 µ ผ่านทาง worker ก่อนถึง R-2 (ต้นทุนยังต้องบันทึก = ถูกต้องตามสัญญา) ⇒ **ORACLE-EDIT S1.13-C-8**: หลังบรรทัด `deleteMany({ ref: "qc-s113-cap-real" })` เพิ่ม `deleteMany({ tenantId: OLD, conversationId: r8.conversationId })` + `aiCreditWallet.update(OLD → 10_000_000)` · สำเนาชั่วคราว = 14/14 (ลบแล้ว)

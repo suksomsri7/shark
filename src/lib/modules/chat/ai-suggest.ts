@@ -20,7 +20,7 @@
 import type { ChatChannelType, Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { resolveProvider, SMART_MODEL } from "@/lib/ai/provider";
-import { canSpend, chargeUsageSafe, outOfCreditMessage } from "@/lib/ai/credit";
+import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
 import { readBusinessHours } from "./business-hours";
 import { searchAnswerExamples, saveAnswerExampleFromSuggestion, searchTerms } from "./learning";
 import { getLinkedMember } from "./service";
@@ -347,7 +347,7 @@ export async function suggestReply(args: {
   }
 
   // 🔴 ด่านเงินมาก่อนการยิง LLM เสมอ (ยิงก่อนแล้วจ่ายไม่ได้ = จ่ายฟรีให้ผู้ให้บริการ)
-  if (!(await canSpend(tenantId))) return { ok: false, reason: outOfCreditMessage() };
+  if (!(await canSpend(tenantId))) return { ok: false, reason: await spendRefusalMessage(tenantId) }; // R-S1.13e: เพดานวัน ⇒ "วันนี้…"
 
   const ctx = await buildContext({
     tenantId,

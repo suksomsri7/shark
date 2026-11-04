@@ -18,7 +18,7 @@ import {
   CORE_TOOLS, LOAD_SKILL_TOOL, skillById, skillIndexPrompt, skillsForTenant, toolNamesOfSkills,
 } from "./skills";
 import { applyDegrade } from "./usage";
-import { canRunAi, chargeUsageSafe, walletPeek } from "./credit";
+import { canRunAi, chargeUsageSafe, LOW_BALANCE_MICRO, walletPeek } from "./credit";
 import type { AiCreditSource } from "@prisma/client";
 import { identityOf, secretaryOf } from "./secretary/secretary";
 import { getAccess } from "./secretary/access";
@@ -35,8 +35,7 @@ export type SendCtx = Ctx & { actor: AiActor };
 const HISTORY_MAX_CHARS = 24_000; // งบบริบทต่อ request (ประมาณ ~6k token)
 const HISTORY_TAKE = 40; // ดึงล่าสุดกี่แถวก่อน trim
 const MAX_TOOL_ROUNDS = 5; // เพดานรอบ agent loop (กันวนไม่จบ)
-// เครดิตเหลือน้อยกว่านี้ → ลดชั้นเป็น haiku อัตโนมัติ เพื่อยืดเครดิตก้อนสุดท้ายให้คุยได้นานขึ้น
-const LOW_BALANCE_MICRO = 500_000; // = $0.50
+// เครดิตเหลือน้อยกว่า LOW_BALANCE_MICRO ($0.50 · credit.ts) → ลดชั้นเป็น haiku อัตโนมัติ เพื่อยืดเครดิตก้อนสุดท้ายให้คุยได้นานขึ้น
 // ข้อความปิดสุภาพเมื่อวนครบเพดานแต่ยังไม่ได้คำตอบ
 const FALLBACK_REPLY =
   "ขอโทษครับ ผมยังหาคำตอบให้ไม่เสร็จในตอนนี้ ลองถามใหม่หรือถามให้เจาะจงขึ้นอีกนิดได้ครับ";
@@ -139,11 +138,13 @@ export async function sendMessage(
   // กระเป๋าเครดิต (prepaid) — เช็คก่อนแตะ provider เสมอ (ห้ามจ่ายเงินให้ผู้ให้บริการแล้วค่อยพบว่าเครดิตหมด)
   // SEC S1.13 ▸ ด่านเดียว `canRunAi` (R-K7) แทน canSpend เดิม: ข้อความในห้อง = "assist" (ห้องเลขานับงานที่ startRoom แล้ว — R-K6)
   //   รุ่นแรกแพ็กฟรีเปิด ⇒ assist ผ่านเสมอ (ยังหักลง AiCreditTxn เป็นบันทึกต้นทุน) · แพ็กปิด ⇒ ต้องมียอด > 0 เหมือนเดิม ◂
-  // R-S1.13c ▸ ห้องเลขา (มี AiRoom ที่ผู้กระทำเห็น) = นับงาน+ผ่านด่านแล้วตอน startRoom (R-K6/Q3) ⇒ ข้อความต่อในห้องไม่ผ่าน canRunAi
-  //   (ทั้ง assist และ job · ไม่ติดเพดานรายวัน/เครดิต) แต่ยังบันทึกต้นทุน AiCreditTxn/AiUsage ตามเดิม · ห้องเดิม = "assist"
-  //   ตรวจจาก `findVisibleConversation` (ต้องมองเห็นห้อง) — ส่งรหัสห้องที่มองไม่เห็นมา = ห้องเดิม ⇒ ผ่านด่าน assist ตามปกติ ◂
+  // R-S1.13c/d ▸ ทาง worker ของห้องเลขาที่ยังเปิด (`deps.userMessageId` + AiRoom ที่ผู้กระทำเห็น + ยังไม่ปิด) = นับงาน+ผ่านด่านแล้วตอน
+  //   startRoom (R-K6/Q3) ⇒ ไม่ผ่าน canRunAi (ทั้ง assist และ job) แต่ยังบันทึกต้นทุน AiCreditTxn/AiUsage ตามเดิม
+  //   ประตูเดิม (ไม่มี userMessageId) ที่ชี้ห้องเลขา · ห้องที่ปิดแล้ว · บทสนทนาเดิม ⇒ "assist" ตามปกติ
+  //   ตรวจจาก `findVisibleConversation` (ต้องมองเห็นห้อง) — รหัสห้องที่มองไม่เห็น = ไม่มี ⇒ ผ่านด่าน assist ◂
   const conv = input.conversationId ? await findVisibleConversation(ctx, input.conversationId) : null;
-  const run = conv?.room ? ({ ok: true } as const) : await canRunAi(ctx.tenantId, { scope: "assist", now });
+  const roomWorker = Boolean(deps?.userMessageId && conv?.room && !conv.room.closedAt);
+  const run = roomWorker ? ({ ok: true } as const) : await canRunAi(ctx.tenantId, { scope: "assist", now });
   if (!run.ok) {
     // R-S1.13b ▸ ชนเพดานต้นทุน assist ของวัน (reason credit + resetAt) = ตาข่ายรายวัน ⇒ scope "day" (ข้อความ "วันนี้…กลับมาใช้ได้ …") ไม่ใช่ "เติมเครดิต" ◂
     const scope = run.reason === "credit" && run.resetAt ? "day" : run.reason;

@@ -4,7 +4,7 @@
 // 🔴 ตัวเลขที่ผู้ใช้เห็น = งาน · % · วันรีเซ็ต (COMMON §C.6) — `balanceMicro` มีไว้ให้ชั้น API ตัดสิน "blocked" เท่านั้น ห้ามส่งถึงจอเลขา
 // ตัวนับงานจริงอยู่ที่ `rooms.startRoom` (R-K6) · ด่านเงินอยู่ที่ `credit.canRunAi` (R-K7)
 import { prisma } from "@/lib/core/db";
-import { assistUsedMicroOfDay, balancePeek } from "../credit";
+import { assistUsedMicroOfDay, balancePeek, LOW_BALANCE_MICRO } from "../credit";
 import { FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage, type QuotaLevel } from "./pack";
 
 export type QuotaStatus = {
@@ -29,7 +29,7 @@ async function jobsUsedOf(tenantId: string, month: string): Promise<number> {
 
 /**
  * สถานะโควตาเดือนไทยที่ครอบ `now` — 3 query อ่าน (ตัวนับ · กระเป๋า · ต้นทุน assist ของวัน)
- *   blocked = "jobs" เมื่อโควตาหมด **และ** กระเป๋าไม่มีเงิน (มีเงิน ⇒ ใช้กระเป๋าต่อ · Q4) · ตัวนับเกิน limit ได้ (งานที่จ่ายจากกระเป๋า) ⇒ jobsLeft 0
+ *   blocked = "jobs" เมื่อโควตาหมด **และ** กระเป๋า < LOW_BALANCE_MICRO (ถึงเกณฑ์ ⇒ ใช้กระเป๋าต่อ · Q4 · R-S1.13h) · ตัวนับเกิน limit ได้ (งานที่จ่ายจากกระเป๋า) ⇒ jobsLeft 0
  */
 export async function quotaStatus(tenantId: string, now: Date = new Date()): Promise<QuotaStatus> {
   const month = monthKeyBangkok(now);
@@ -47,7 +47,7 @@ export async function quotaStatus(tenantId: string, now: Date = new Date()): Pro
     text: m.text,
     resetAt,
     balanceMicro,
-    blocked: m.jobsLeft === 0 && !((balanceMicro ?? 0) > 0) ? "jobs" : null,
+    blocked: m.jobsLeft === 0 && !((balanceMicro ?? 0) >= LOW_BALANCE_MICRO) ? "jobs" : null, // R-S1.13h: เกณฑ์เดียวกับ startRoom/canRunAi
     assist: { usedMicro: day.usedMicro, capMicro: day.capMicro },
   };
 }
