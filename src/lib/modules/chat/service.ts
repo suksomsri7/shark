@@ -860,6 +860,9 @@ export async function receiveInbound(args: {
     data: { lastInboundAt: new Date() },
   });
 
+  // SEC S1.24 ▸ ห้องที่ยังไม่มีผู้ดูแล → กฎรับเรื่อง (best-effort · ไม่มีกฎ = ไม่ทำอะไร · ล้ม = log ไม่กระทบผลเดิม) ◂
+  if (!conv.assigneeUserId) await autoAssignIncoming(tenantId, systemId, conv.id);
+
   await maybeAutoLinkMember(tenantId, systemId, contact.id);
   return { ok: true, conversationId: conv.id };
 }
@@ -1309,8 +1312,22 @@ export async function receiveExternalInbound(args: {
     data: { lastInboundAt: new Date() },
   });
 
+  // SEC S1.24 ▸ ห้องที่ยังไม่มีผู้ดูแล → กฎรับเรื่อง (best-effort · ไม่มีกฎ = ไม่ทำอะไร · ล้ม = log ไม่กระทบผลเดิม) ◂
+  if (!conv.assigneeUserId) await autoAssignIncoming(tenantId, systemId, conv.id);
+
   await maybeAutoLinkMember(tenantId, systemId, contact.id);
   return { ok: true, conversationId: conv.id, messageId: msg.id, createdAt: msg.createdAt.toISOString() };
+}
+
+// SEC S1.24 ▸ ตัวเรียกกฎรับเรื่องของขาเข้า 2 ทาง — ห้าม throw (ข้อความลูกค้าบันทึกครบแล้ว · มอบหมายไม่ได้ = ทีมกดรับเอง) ◂
+async function autoAssignIncoming(tenantId: string, systemId: string, conversationId: string): Promise<void> {
+  try {
+    const { assignIncoming } = await import("./routing");
+    await assignIncoming({ tenantId, systemId, conversationId });
+  } catch (e) {
+    const { logOps } = await import("@/lib/core/ops");
+    await logOps("WARN", "chat", `assignIncoming ล้ม (ห้อง ${conversationId})`, { tenantId, detail: e instanceof Error ? (e.stack ?? e.message) : String(e) }).catch(() => {});
+  }
 }
 
 // hook: ถ้าเชื่อมระบบ Member แล้ว → ผูก contact นี้เข้าสมาชิกที่มีอยู่จริงเท่านั้น (M1.12 · D18)
@@ -1479,7 +1496,13 @@ export async function sendReply(args: {
    * ที่ยิงซ้ำแล้วเกิดบันทึกใบที่สอง · ค่าที่ผู้เรียกส่งมาถูกผสมเข้า meta เดิม ไม่ทับคีย์ของระบบแชท
    */
   meta?: Record<string, string>;
-}): Promise<{ ok: boolean; reason?: string; messageId?: string }> {
+  /**
+   * SEC S1.12 ▸ คีย์กันส่งซ้ำของผู้เรียก (เลขาใช้ id ข้อเสนอ) — unique `[conversationId, clientMessageId]` ของ ChatMessage ·
+   *   ซ้ำ = คืน `{ ok: true, messageId: <แถวเดิม>, duplicate: true }` ไม่สร้างแถว/ไม่ส่งออกช่องทาง/ไม่แจ้งเตือนซ้ำ (แบบ webchat ขาเข้า) ·
+   *   ไม่ส่ง = พฤติกรรมเดิมทุกประการ ◂
+   */
+  clientMessageId?: string;
+}): Promise<{ ok: boolean; reason?: string; messageId?: string; duplicate?: boolean }> {
   // 🔴 เงื่อนไขเดิมคือ `if (!body) return` ⇒ ทีมส่ง "รูปอย่างเดียว" ไม่ได้เลย (G3)
   //    กติกาใหม่: ต้องมีอย่างน้อย body **หรือ** ไฟล์แนบ (ตรงกับขาเข้า receiveExternalInbound)
   const body = (args.body ?? "").trim();
@@ -1524,6 +1547,13 @@ export async function sendReply(args: {
   });
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
   if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" }; // M11
+
+  // SEC S1.12 ▸ ส่งซ้ำด้วยคีย์เดิม = แถวเดิม (ตรวจก่อน = ทางปกติไม่ต้องพึ่ง P2002 · ชนกันพร้อมกันจับที่ create ข้างล่าง) ◂
+  const clientMessageId = typeof args.clientMessageId === "string" && args.clientMessageId.trim() ? args.clientMessageId.trim() : null;
+  if (clientMessageId) {
+    const prior = await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, clientMessageId }, select: { id: true } });
+    if (prior) return { ok: true, messageId: prior.id, duplicate: true };
+  }
 
   // 🔴 VO-4 (ข) กันช่องทางที่ส่งเสียงไม่ได้ **ก่อนสร้างแถวข้อความ** ไม่ใช่สร้างแล้วมาร์ก FAILED
   //    เสียงที่อัดแล้วส่งไม่ออกคือ "ของที่หายไปเฉย ๆ" — ทีมเห็นฟองเสียงในห้องแล้วเข้าใจว่าลูกค้าได้ยิน
@@ -1596,6 +1626,7 @@ export async function sendReply(args: {
         senderName: rowSenderName,
         body: body || null,
         isInternal,
+        ...(clientMessageId ? { clientMessageId } : {}), // SEC S1.12 ◂
         ...(originalBody || pendingTranscode || extraMeta
           ? {
               meta: {
@@ -1680,7 +1711,15 @@ export async function sendReply(args: {
       });
     }
     return created;
+  }).catch((e: unknown) => {
+    // SEC S1.12 ▸ สองรายยิงคีย์เดียวกันพร้อมกัน — ผู้แพ้ได้แถวของผู้ชนะ (ไม่ส่งออกช่องทางซ้ำ · ไม่แจ้งเตือนซ้ำ) ◂
+    if (clientMessageId && e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return null;
+    throw e;
   });
+  if (!msg) {
+    const prior = await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, clientMessageId: clientMessageId ?? "" }, select: { id: true } });
+    return prior ? { ok: true, messageId: prior.id, duplicate: true } : { ok: false, reason: "ส่งข้อความไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
 
   let failReason: string | undefined;
   // `pendingTranscode` = ไฟล์ยังเป็น wav → **ไม่แตะ adapter** ปล่อยค้าง PENDING ให้ worker ส่งต่อ
@@ -2019,12 +2058,14 @@ export async function listConversations(args: {
   q?: string;
   limit?: number;
   unitAccess?: string[]; // M11 — จาก auth.active.unitAccess
+  before?: Date; // SEC S1.21 ▸ cursor หน้าถัดไป = ห้องที่ lastMessageAt < before (ไม่ส่ง = เดิม · R-K13) ◂
 }) {
   const where: Prisma.ChatConversationWhereInput = {
     tenantId: args.tenantId,
     systemId: args.systemId,
     ...unitAccessWhere(args.unitAccess),
   };
+  if (args.before) where.lastMessageAt = { lt: args.before }; // SEC S1.21 ◂
   if (args.status) where.status = args.status;
   if (args.channel) where.channel = args.channel;
   if (args.assignee === "none") where.assigneeUserId = null;
@@ -2054,6 +2095,8 @@ export async function getThread(args: {
   conversationId: string;
   limit?: number;
   unitAccess?: string[]; // M11
+  /** SEC S1.21 ▸ ส่ง = หน้า "ใหม่สุด N ข้อความที่เก่ากว่า before" (เรียงเก่า→ใหม่เหมือนเดิม) · ไม่ส่ง = เดิม (เก่าสุด N ข้อความ) · R-K13 ◂ */
+  before?: Date;
 }) {
   const conversation = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
@@ -2061,6 +2104,15 @@ export async function getThread(args: {
   });
   if (!conversation) return null;
   if (!canAccessConvUnit(args.unitAccess, conversation.unitId)) return null; // M11: IDOR ต่าง unit
+  if (args.before) {
+    // SEC S1.21 ▸ หยิบจากใหม่ลงเก่าแล้วกลับลำดับ — ผู้เรียกได้ลำดับเก่า→ใหม่เหมือนทางเดิม ◂
+    const page = await prisma.chatMessage.findMany({
+      where: { systemId: args.systemId, conversationId: conversation.id, createdAt: { lt: args.before } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: args.limit ?? 100,
+    });
+    return { conversation, messages: page.reverse() };
+  }
   const messages = await prisma.chatMessage.findMany({
     where: { systemId: args.systemId, conversationId: conversation.id },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -2133,14 +2185,18 @@ export async function setStatus(args: {
   return { ok: true };
 }
 
-export async function assign(args: {
-  tenantId: string;
-  systemId: string;
-  conversationId: string;
-  assigneeUserId: string | null;
-  actorUserId: string;
-  unitAccess?: string[]; // M11
-}): Promise<{ ok: boolean; reason?: string }> {
+export async function assign(
+  args: {
+    tenantId: string;
+    systemId: string;
+    conversationId: string;
+    assigneeUserId: string | null;
+    actorUserId: string;
+    unitAccess?: string[]; // M11
+  },
+  // SEC S1.24 ▸ true = ผู้รับต้องตอบลูกค้าได้ในหน่วยของห้อง (`chat.message.send` + unit · R-K14) — ปริยาย false = เดิม ◂
+  opts?: { requireReplyPermission?: boolean },
+): Promise<{ ok: boolean; reason?: string }> {
   const conv = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
   });
@@ -2152,6 +2208,13 @@ export async function assign(args: {
     const staff = await listStaff(args.tenantId);
     if (!staff.some((s) => s.userId === args.assigneeUserId)) {
       return { ok: false, reason: "ผู้รับมอบหมายไม่ใช่สมาชิกของร้านนี้" };
+    }
+    // SEC S1.24 ▸ นำเข้าแบบ dynamic — routing.ts import ไฟล์นี้กลับ (กันวงตอนโหลดโมดูล) ◂
+    if (opts?.requireReplyPermission) {
+      const { canRespond } = await import("./routing");
+      if (!(await canRespond(args.tenantId, args.assigneeUserId, conv.unitId))) {
+        return { ok: false, reason: "คนนี้ยังไม่มีสิทธิ์ตอบลูกค้าในหน่วยนี้" };
+      }
     }
   }
   await prisma.chatConversation.update({

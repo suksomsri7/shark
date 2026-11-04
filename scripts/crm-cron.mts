@@ -74,6 +74,8 @@ const { runMinuteJobs, settleOutstandingMinuteJobs } = await import("@/lib/platf
 await import("@/lib/modules/crm/sequences-job");
 // SEC S1.5 ▸ งานรายนาที "secretary.roomJobs" (เก็บตกคิวห้องเลขาที่ lease หมด · R-K8b) — ลงทะเบียนตอน import ◂
 await import("@/lib/ai/secretary/room-jobs-job");
+// SEC S1.24 ▸ งานรายนาที "chat.sla" (เตือน/ย้ายห้องแชทลูกค้าที่รอนาน ทุก 5 นาที · R-K8b) — ลงทะเบียนตอน import ◂
+await import("@/lib/modules/chat/sla-job");
 // CRM C2.4 ▸ งานรายนาที "crm.activity.remind" (เตือนงาน/นัดที่ถึงเวลา ทุก 5 นาที) — `crm/reminders` import ทะเบียนให้เอง ◂
 await import("@/lib/modules/crm/reminders");
 // CRM C2.5 ▸ งานรายนาที "crm.email.scheduled" (ส่งอีเมลที่ตั้งเวลาไว้และถึงเวลาแล้ว) — ลงทะเบียนตอน import ◂
