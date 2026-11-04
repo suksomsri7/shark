@@ -22,7 +22,7 @@ import { balanceOf, canSpend, chargeUsageSafe } from "./credit";
 import type { AiCreditSource } from "@prisma/client";
 import { identityOf, secretaryOf } from "./secretary/secretary";
 import { getAccess } from "./secretary/access";
-import { visibleMessagesWhere } from "./secretary/members";
+import { NOT_SYSTEM_MESSAGE, visibleMessagesWhere } from "./secretary/members";
 
 export type Ctx = { tenantId: string };
 /**
@@ -226,6 +226,7 @@ export async function sendMessage(
       conversationId: conversation.id,
       conversation: visibleConversationWhere(sight),
       ...since,
+      ...NOT_SYSTEM_MESSAGE, // S1.6 R-S1.6b: ข้อความระบบห้องเลขา (🔔) ไม่ป้อนเข้าประวัติของโมเดล
       ...(deps?.userMessageId ? { NOT: { id: deps.userMessageId } } : {}), // SEC S1.5 ▸ เทิร์นปัจจุบันไม่ซ้ำในประวัติ ◂
     },
     orderBy: { createdAt: "desc" },

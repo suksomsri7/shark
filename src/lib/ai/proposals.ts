@@ -38,6 +38,7 @@ import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
 import type { ConvCtx } from "./conversation-owner";
 import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
+import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/members";
 import {
   accountDestructiveKinds,
   accountKindAccess,
@@ -342,8 +343,9 @@ export async function createProposal(
 export async function listPendingProposals(ctx: ConvCtx, conversationId: string) {
   const conv = await findVisibleConversation(ctx, conversationId);
   if (!conv) return [];
+  const since = conv.room ? await visibleSinceFor(ctx, conv.id) : null; // S1.6 R-S1.6a: สมาชิก seeHistory=false ไม่เห็นข้อเสนอก่อน addedAt
   return tenantDb({ tenantId: ctx.tenantId }).aiProposal.findMany({
-    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() } },
+    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() }, ...(since ? { createdAt: since } : {}) },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -355,10 +357,11 @@ export async function listPendingProposals(ctx: ConvCtx, conversationId: string)
 //   🔴 ช่องโหว่เดียวกันของ kind โมดูลอื่น (ปิดอะไรก็ได้ด้วย id) ยังอยู่ — จดเป็น finding ให้เลน AI/สมาชิก (CRM-RUN §4) ◂
 // CRM C5.5-G2 ▸ ยกเลิกได้เฉพาะข้อเสนอในบทสนทนาที่ผู้กดเห็น (ของคนอื่น = false เหมือนไม่มีอยู่) ◂
 export async function rejectProposal(ctx: ConvCtx, id: string): Promise<boolean> {
-  const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true } });
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true, createdAt: true } });
   if (!row) return false;
   if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false; // CRM C3.4 ◂
   if (!(await canSeeConversationById(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
+  if (!withinSight(await visibleSinceFor(ctx, row.conversationId), row.createdAt)) return false; // S1.6 R-S1.6a
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
@@ -401,7 +404,10 @@ export async function executeProposal(
   // CRM C5.5-G2 ▸ ข้อเสนอเป็นของบทสนทนาที่มันเกิด: คนกดต้องเห็นบทสนทนานั้น (ผู้สร้าง · เจ้าของร้านสำหรับห้องที่ไม่ได้สร้างโดยคนในร้าน
   //   เช่นห้องของคีย์ API ที่ route เขียนไว้ว่า "เจ้าของต้องกดยืนยันในแอป/เว็บ") — ไม่เห็น = ตอบแบบเดียวกับไม่มีข้อเสนอนี้
   //   (ประตู CRM ข้างบนมีด่านการมองเห็นของตัวเองแล้ว — ข้อเสนอเหล่านั้นไม่ได้อยู่ในห้องแชท) ◂
-  if (!(await canConfirmerSeeConversation(ctx.tenantId, m, opts?.userId ?? null, row.conversationId))) { // S1.4 R-K1: + ห้องเลขาร่วม
+  if (
+    !(await canConfirmerSeeConversation(ctx.tenantId, m, opts?.userId ?? null, row.conversationId)) || // S1.4 R-K1: + ห้องเลขาร่วม
+    !withinSight(await visibleSinceForUser(ctx.tenantId, m.role, opts?.userId, row.conversationId), row.createdAt) // S1.6 R-S1.6a
+  ) {
     return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
   }
 

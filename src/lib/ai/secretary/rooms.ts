@@ -14,7 +14,7 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conversation-owner";
 import { countsAsJob, FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage } from "./pack";
-import { roomMemberRows, type RoomMemberRow } from "./members";
+import { NOT_SYSTEM_MESSAGE, roomMemberRows, type RoomMemberRow } from "./members";
 
 export type RoomStatus = "OPEN" | "RUNNING" | "WAITING" | "DONE";
 
@@ -261,7 +261,7 @@ export async function listRooms(
   const [counts, users, lastReplies] = await Promise.all([
     statusCounts(ctx.tenantId, rows, now),
     prisma.user.findMany({ where: { id: { in: starterIds } }, select: { id: true, name: true, email: true } }),
-    db.aiMessage.groupBy({ by: ["conversationId"], where: { conversationId: { in: convIds }, role: "ASSISTANT" }, _max: { createdAt: true } }),
+    db.aiMessage.groupBy({ by: ["conversationId"], where: { conversationId: { in: convIds }, role: "ASSISTANT", ...NOT_SYSTEM_MESSAGE }, _max: { createdAt: true } }), // R-S1.6b: ข้อความระบบไม่นับ unread
   ]);
   const nameOf = new Map(users.map((u) => [u.id, u.name?.trim() || u.email.split("@")[0] || "สมาชิก"]));
   const lastReplyOf = new Map(lastReplies.map((m) => [m.conversationId, m._max.createdAt]));

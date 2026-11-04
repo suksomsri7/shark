@@ -55,9 +55,26 @@
 | เรื่อง | เหตุผล | ใบที่จะปิด |
 |---|---|---|
 | ข้อสอบยิง addMember พร้อมกัน ≥10 ทาง (เพดาน 20) | oracle ไม่มีข้อนี้ · โค้ดใช้ FOR UPDATE แล้ว | ผู้คุม/นักล่า |
-| event `ai.room.member_added` / `member_removed` | ต้องมี consumer + labels + replay oracle | ใบ event ห้อง (ร่วมกับ `ai.room.*`) |
+| event `ai.room.member_added` / `member_removed` | ต้องมี consumer + labels + replay oracle | S1.23 (notify · RESOLUTIONS §J · doc §9 แก้แล้ว) |
 | ปรับ seeHistory ของสมาชิกที่อยู่แล้ว (สวิตช์ใน D3 หลังเพิ่ม) | ไม่อยู่ในสัญญา | S2.10 ถ้าแบบต้องการ |
-| สมาชิกที่ถูกถอน Membership ยังมีแถว `AiRoomMember` (role แสดง STAFF) | worker ตรวจ Membership สดอยู่แล้ว (S1.5) · ไม่ลบอัตโนมัติ | ใบ staff/ถอนสิทธิ์ |
+| สมาชิกที่ถูกถอน Membership ยังมีแถว `AiRoomMember` (ไม่แสดงใน listMembers/getRoom · ไม่นับเพดาน · ไม่ได้ push ตั้งแต่รอบ 2 — R-S1.6c · ~~role แสดง STAFF~~ ข้อความรอบ 1 ผิด) | ไม่ลบอัตโนมัติ (รับสิทธิ์คืน = กลับมาเห็น) | ใบ staff/ถอนสิทธิ์ |
+| ตอบหลังถูกเอาออกกลางทาง (re-check ก่อนบันทึก) · title/contextJson เห็นได้โดยสมาชิก seeHistory=false | RESOLUTIONS §J หนี้ (ยอมรับ · แจ้งใน D3) | S2.10 |
 
 ## 9. คืนสภาพฐาน QC เลขา
 - ข้อสอบ `finally` ลบทุกตารางของร้านทดสอบ + ผู้ใช้ `qcs16-*` · ไม่สร้าง seed
+
+## 10. รอบ 2 (หลัง 2 ผู้ตรวจ · MERGE-AFTER-FIX · RESOLUTIONS §J R-S1.6a–d) — merge session/secretary @ee9db7ca เข้าเลนก่อน
+- **R-S1.6a** `members.ts` `visibleSinceForUser(tenantId, role, userId, convId)` / `visibleSinceFor(ctx, convId)` → `{ gte: addedAt } | null` + `withinSight` · ใช้ใน `proposals.ts` (`listPendingProposals` · `rejectProposal` · ด่านมองเห็น `executeProposal`) และ `plans.ts` (`listPendingPlans` · `rejectPlan` · ด่านมองเห็น `executePlan`) — `createdAt < addedAt` = "ไม่พบ" · `rejectPlan` ทำเพิ่มเพื่อให้เหมือน `rejectProposal` (ผู้คุมไม่ได้ระบุ) · list = query เพิ่มเฉพาะเมื่อ `conv.room` และผู้ดูไม่ใช่ OWNER/ผู้เปิด
+- **R-S1.6b** ข้อความระบบ `authorUserId = "system"` (`SYSTEM_AUTHOR`) · `NOT_SYSTEM_MESSAGE` = `OR [{authorUserId: null}, {authorUserId: {not: "system"}}]` (Prisma `not` ตัด null) ใช้ใน `rooms.listRooms` (unread) · `mobile/conversations.ts` (unread) · `service.sendMessage` (ประวัติของโมเดล) · `listMessages` ยังแสดงข้อความระบบ (H-1) · ไม่มีข้อความ 🔁 ในโค้ดตอนนี้
+- **R-S1.6c** `roomPushRecipients(tenantId, roomId)` = ผู้เปิด ∪ สมาชิก ที่ Membership `acceptedAt ≠ null` (**ผู้เปิดที่ถูกถอนก็ตัดด้วย** — ตัดสินใจเอง: ปลอดภัยกว่า) · `worker.pushRoom` ใช้ตัวนี้ · `roomMemberRows` (listMembers/getRoom) กรอง accepted · เพดาน 20 นับเฉพาะ accepted (ใต้ล็อก FOR UPDATE)
+- **R-S1.6d** OWNER เพิ่มตัวเอง ⇒ `self` "คุณเห็นทุกห้องอยู่แล้วในฐานะเจ้าของร้าน — ไม่ต้องเพิ่มตัวเองเข้าห้อง" · ผู้เปิดห้องออกเอง ⇒ `forbidden` "ผู้เปิดห้องออกไม่ได้ — ปิดห้องแทน"
+- ไฟล์ที่แตะเพิ่ม: `src/lib/ai/proposals.ts` · `src/lib/ai/plans.ts` (hunk ด่านมองเห็น + import — ชนกับเลน d S1.3b ได้ที่ไฟล์เดียวกันแต่คนละ hunk) · `src/lib/ai/secretary/worker.ts` (pushRoom) · `src/lib/mobile/conversations.ts` (unread) · `rooms.ts` (unread) · `service.ts` (history) · docs §5.6 + §9
+- ผลรอบ 2:
+  - `qc-sec-s1.6` forced #1: `JSON_SUMMARY {"total":16,"passed":16,"failed":[],"skipped":[],"findings":[]}`
+  - `qc-sec-s1.6` forced #2: `JSON_SUMMARY {"total":16,"passed":16,"failed":[],"skipped":[],"findings":[]}`
+  - `qc-sec-s1.6` unforced: `JSON_SUMMARY {"total":16,"passed":16,"failed":[],"skipped":[],"findings":[]}`
+  - `qc-sec-s1.4`: `JSON_SUMMARY {"total":28,"passed":28,"failed":[],"skipped":[],"findings":[]}` (หลัง ORACLE-EDIT s1.4 G-3 ของผู้คุม 4d4a2cd0)
+  - `qc-sec-s1.5`: `JSON_SUMMARY {"total":16,"passed":16,"failed":[],"skipped":[],"findings":[]}`
+  - `qc-ai-proposals` `{"total":16,"passed":16,"findings":[]}` · `qc-ai-plan` `{"total":7,"passed":7,"findings":[]}` · `qc-mobile-chat` 29/29 exit 0 · `qc-ai-phase-b1` 9/9 · `qc-ai-phase-b2` 11/11 — เท่า baseline ทุกชุด
+  - typecheck: 12 errors ทั้งหมดในข้อสอบของใบที่ยังไม่ build (s1.10 2 · s1.13 1 · s1.17 1 · s1.21 5 · s1.7 3) · ไฟล์ที่ใบนี้แตะ 0
+  - fitness มี env `{"total":53,"passed":53,"findings":[]}` exit 0 · ไม่มี env `{"total":53,"passed":53,"findings":[]}` exit 0

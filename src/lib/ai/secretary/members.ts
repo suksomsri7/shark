@@ -3,9 +3,12 @@
 // สมาชิกห้อง = คนในกิจการที่ผู้เปิดห้องหรือ OWNER ชวนเข้าห้องงาน (แถว `AiRoomMember` · ผู้เปิดห้องไม่มีแถว)
 //   เพิ่ม/เอาออก = ผู้เปิดห้อง หรือ OWNER เท่านั้น · สมาชิกออกเองได้ · ห้องที่มองไม่เห็น = not_found (ไม่บอกว่ามีอยู่)
 //   ผู้ถูกเพิ่มต้องมี Membership ของกิจการเดียวกันที่รับแล้ว (acceptedAt ≠ null) · เพดาน 20 คน · ห้องปิดแล้วเพิ่มไม่ได้
-//   ทุกการเปลี่ยน = ข้อความระบบในห้อง (AiMessage ASSISTANT · authorUserId null · tokens 0) ใน transaction เดียวกับแถว
+//   ทุกการเปลี่ยน = ข้อความระบบในห้อง (AiMessage ASSISTANT · authorUserId = "system" · tokens 0) ใน transaction เดียวกับแถว
+//   R-S1.6b: ข้อความระบบไม่นับ unread (rooms.listRooms · mobile/conversations) และไม่ป้อนเข้าประวัติของโมเดล (service.sendMessage)
+//   R-S1.6c: สมาชิกที่ Membership ถูกถอน (acceptedAt = null) ไม่โผล่ใน listMembers/getRoom · ไม่นับเพดาน · ไม่ได้ push (`roomPushRecipients`)
 // seeHistory (COMMON §C.8): สมาชิกที่ seeHistory=false เห็นเฉพาะข้อความ createdAt ≥ addedAt — บังคับในบริการ
 //   (`visibleMessagesWhere` ใช้ใน service.listMessages + ประวัติที่ป้อนโมเดลใน sendMessage) ไม่ใช่ใน UI
+//   R-S1.6a: ข้อเสนอ/แผนที่เกิดก่อน addedAt ก็มองไม่เห็นเช่นกัน (`visibleSinceFor`/`visibleSinceForUser` ใน proposals.ts · plans.ts)
 //   ผู้เปิดห้อง · OWNER · สมาชิก seeHistory=true เห็นทั้งหมด · ห้องเดิม (ไม่มี AiRoom) = เดิม
 //
 // 🔴 ห้าม import `../service` หรือ `./rooms` (วงกลม: service → members · rooms → members) · ข้อความถึงผู้ใช้เป็นไทย
@@ -16,6 +19,10 @@ import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, type ConvCtx } from "../conversation-owner";
 
 export const ROOM_MEMBERS_MAX = 20;
+/** `AiMessage.authorUserId` ของข้อความระบบในห้อง (🔔 เพิ่ม/เอาออก) — R-S1.6b */
+export const SYSTEM_AUTHOR = "system";
+/** where ของข้อความที่ไม่ใช่ข้อความระบบ (authorUserId null ต้องผ่าน — `not` ของ Prisma ตัด null ทิ้ง) */
+export const NOT_SYSTEM_MESSAGE: Prisma.AiMessageWhereInput = { OR: [{ authorUserId: null }, { authorUserId: { not: SYSTEM_AUTHOR } }] };
 
 export type RoomMemberRow = {
   userId: string;
@@ -40,7 +47,10 @@ const MSG: Record<AddMemberError | RemoveMemberError, string> = {
   not_a_member: "คนนี้ไม่ได้อยู่ในห้องนี้",
 };
 
-const fail = <E extends AddMemberError | RemoveMemberError>(error: E) => ({ ok: false as const, error, message: MSG[error] });
+const MSG_OWNER_SELF = "คุณเห็นทุกห้องอยู่แล้วในฐานะเจ้าของร้าน — ไม่ต้องเพิ่มตัวเองเข้าห้อง";
+const MSG_STARTER_LEAVE = "ผู้เปิดห้องออกไม่ได้ — ปิดห้องแทน";
+
+const fail = <E extends AddMemberError | RemoveMemberError>(error: E, message: string = MSG[error]) => ({ ok: false as const, error, message });
 
 /** ผู้กระทำที่จัดการห้องได้ = คนในร้าน (member) ที่ actor ถูกต้องเท่านั้น (คีย์ API / งานภายใน = มองไม่เห็นห้อง) */
 function memberActorOf(ctx: { tenantId: string; actor?: unknown }): AiMemberActor | null {
@@ -83,7 +93,18 @@ const canManage = (actor: AiMemberActor, room: { startedById: string }) => actor
 
 const asRole = (r: Role | null | undefined): RoomMemberRow["role"] => (r === "OWNER" || r === "MANAGER" ? r : "STAFF");
 
-/** แถวสมาชิกของห้อง (ไม่ตรวจการมองเห็น — ผู้เรียกตรวจแล้ว) · เรียง addedAt เก่า→ใหม่ · ชื่อจาก User · บทบาทจาก Membership ของร้านนี้ */
+/** ผู้ใช้ชุดนี้ที่ยังมี Membership ของร้านนี้ที่รับแล้ว (acceptedAt ≠ null) → role · 1 query */
+async function acceptedRoles(db: Prisma.TransactionClient, tenantId: string, userIds: string[]): Promise<Map<string, Role>> {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (ids.length === 0) return new Map();
+  const rows = await db.membership.findMany({ where: { tenantId, userId: { in: ids }, acceptedAt: { not: null } }, select: { userId: true, role: true } });
+  return new Map(rows.map((m) => [m.userId, m.role]));
+}
+
+/**
+ * แถวสมาชิกของห้อง (ไม่ตรวจการมองเห็น — ผู้เรียกตรวจแล้ว) · เรียง addedAt เก่า→ใหม่ · ชื่อจาก User · บทบาทจาก Membership ของร้านนี้
+ *   R-S1.6c: สมาชิกที่ Membership ถูกถอน (acceptedAt = null / ไม่มีแถว) ไม่แสดง (แถว AiRoomMember ยังอยู่ — รับสิทธิ์คืนแล้วกลับมาเห็น)
+ */
 export async function roomMemberRows(tenantId: string, roomId: string): Promise<RoomMemberRow[]> {
   const rows = await tenantDb({ tenantId }).aiRoomMember.findMany({
     where: { roomId },
@@ -92,12 +113,8 @@ export async function roomMemberRows(tenantId: string, roomId: string): Promise<
   });
   if (rows.length === 0) return [];
   const userIds = rows.map((r) => r.userId);
-  const [names, memberships] = await Promise.all([
-    namesOf(userIds),
-    prisma.membership.findMany({ where: { tenantId, userId: { in: userIds } }, select: { userId: true, role: true } }),
-  ]);
-  const roleOf = new Map(memberships.map((m) => [m.userId, m.role]));
-  return rows.map((r) => ({
+  const [names, roleOf] = await Promise.all([namesOf(userIds), acceptedRoles(prisma, tenantId, userIds)]);
+  return rows.filter((r) => roleOf.has(r.userId)).map((r) => ({
     userId: r.userId,
     name: names.get(r.userId) ?? "สมาชิก",
     role: asRole(roleOf.get(r.userId)),
@@ -112,6 +129,20 @@ export async function listMembers(ctx: ConvCtx, roomId: string): Promise<RoomMem
   const v = await visibleRoom(ctx, roomId);
   if (!v) return null;
   return roomMemberRows(ctx.tenantId, v.room.id);
+}
+
+/**
+ * ผู้รับ push ของห้อง (R-S1.6c) = ผู้เปิดห้อง ∪ สมาชิกห้อง — เฉพาะคนที่ยังมี Membership ของร้านนี้ที่รับแล้ว (acceptedAt ≠ null)
+ *   ไม่ตรวจการมองเห็น (ตัวรันเบื้องหลังเรียก) · ห้องไม่มี/ร้านอื่น = [] · 2 query
+ */
+export async function roomPushRecipients(tenantId: string, roomId: string): Promise<string[]> {
+  const id = cleanId(roomId);
+  if (!tenantId || !id) return [];
+  const room = await tenantDb({ tenantId }).aiRoom.findFirst({ where: { id }, select: { startedById: true, members: { select: { userId: true }, orderBy: { addedAt: "asc" } } } });
+  if (!room) return [];
+  const all = [...new Set([room.startedById, ...room.members.map((m) => m.userId)].filter((u) => typeof u === "string" && u))];
+  const roleOf = await acceptedRoles(prisma, tenantId, all);
+  return all.filter((u) => roleOf.has(u));
 }
 
 class AddRefused extends Error {
@@ -140,6 +171,7 @@ export async function addMember(
   if (!canManage(actor, room)) return fail("forbidden");
   if (room.closedAt) return fail("closed");
   const userId = cleanId(input?.userId);
+  if (userId && userId === actor.userId && actor.membership.role === "OWNER" && userId !== room.startedById) return fail("self", MSG_OWNER_SELF); // R-S1.6d
   if (userId && (userId === actor.userId || userId === room.startedById)) return fail("self");
   if (!userId) return fail("not_member_of_tenant");
   const tenantId = ctx.tenantId;
@@ -149,7 +181,6 @@ export async function addMember(
   });
   if (!membership || membership.acceptedAt === null) return fail("not_member_of_tenant");
   if (room.members.some((m) => m.userId === userId)) return fail("already");
-  if (room.members.length >= ROOM_MEMBERS_MAX) return fail("limit");
   const seeHistory = input?.seeHistory === true;
 
   const names = await namesOf([actor.userId]);
@@ -164,13 +195,14 @@ export async function addMember(
       if (locked[0].closedAt) throw new AddRefused("closed");
       const existing = await tx.aiRoomMember.findMany({ where: { roomId: room.id, tenantId }, select: { userId: true } });
       if (existing.some((m) => m.userId === userId)) throw new AddRefused("already");
-      if (existing.length >= ROOM_MEMBERS_MAX) throw new AddRefused("limit");
+      // R-S1.6c: เพดานนับเฉพาะสมาชิกที่ Membership ยังรับอยู่ (ถูกถอน = ไม่กินที่)
+      if ((await acceptedRoles(tx, tenantId, existing.map((m) => m.userId))).size >= ROOM_MEMBERS_MAX) throw new AddRefused("limit");
       const created = await tx.aiRoomMember.create({
         data: { tenantId, roomId: room.id, userId, addedById: actor.userId, seeHistory },
         select: { userId: true, addedById: true, addedAt: true, seeHistory: true },
       });
       await tx.aiMessage.create({
-        data: { tenantId, conversationId: room.conversationId, role: "ASSISTANT", content: `🔔 ${actorName} เพิ่ม ${memberName} เข้าห้อง`, tokensIn: 0, tokensOut: 0, authorUserId: null },
+        data: { tenantId, conversationId: room.conversationId, role: "ASSISTANT", content: `🔔 ${actorName} เพิ่ม ${memberName} เข้าห้อง`, tokensIn: 0, tokensOut: 0, authorUserId: SYSTEM_AUTHOR },
       });
       await tx.aiRoom.updateMany({ where: { id: room.id, tenantId }, data: { updatedAt: new Date() } });
       return created;
@@ -198,6 +230,7 @@ export async function removeMember(
   const { actor, room } = v;
   const target = cleanId(userId);
   const leaving = target !== "" && target === actor.userId;
+  if (leaving && target === room.startedById) return fail("forbidden", MSG_STARTER_LEAVE); // R-S1.6d
   if (!leaving && !canManage(actor, room)) return fail("forbidden");
   if (!target || !room.members.some((m) => m.userId === target)) return fail("not_a_member");
 
@@ -210,7 +243,7 @@ export async function removeMember(
     const del = await tx.aiRoomMember.deleteMany({ where: { roomId: room.id, userId: target, tenantId } });
     if (del.count === 0) return false;
     await tx.aiMessage.create({
-      data: { tenantId, conversationId: room.conversationId, role: "ASSISTANT", content, tokensIn: 0, tokensOut: 0, authorUserId: null },
+      data: { tenantId, conversationId: room.conversationId, role: "ASSISTANT", content, tokensIn: 0, tokensOut: 0, authorUserId: SYSTEM_AUTHOR },
     });
     await tx.aiRoom.updateMany({ where: { id: room.id, tenantId }, data: { updatedAt: new Date() } });
     return true;
@@ -219,20 +252,41 @@ export async function removeMember(
 }
 
 /**
- * เงื่อนไขเพิ่มของข้อความที่ผู้ดูนี้เห็นในห้องเลขา (COMMON §C.8 · seeHistory)
- *   สมาชิก (ไม่ใช่ผู้เปิดห้อง · ไม่ใช่ OWNER) ที่ seeHistory=false ⇒ `{ createdAt: { gte: addedAt } }` · อื่น ๆ ⇒ `{}` (เห็นทั้งหมด)
- *   ห้องเดิม (ไม่มี AiRoom) / ไม่ใช่สมาชิก ⇒ `{}` — การมองเห็นห้องตัดสินที่ conversations.ts แล้ว ที่นี่จำกัดแค่ช่วงเวลา
- *   OWNER / ผู้เปิดห้อง / คีย์ API / งานภายใน = ไม่ query
+ * ขอบล่างของเวลาที่ผู้ใช้นี้เห็นในห้องเลขา (COMMON §C.8 · seeHistory · R-S1.6a) — ใช้กับข้อความ · ข้อเสนอ · แผน
+ *   สมาชิก (ไม่ใช่ผู้เปิดห้อง · ไม่ใช่ OWNER) ที่ seeHistory=false ⇒ `{ gte: addedAt }` · อื่น ๆ ⇒ null (เห็นทั้งหมด)
+ *   ห้องเดิม (ไม่มี AiRoom) / ไม่ใช่สมาชิก ⇒ null — การมองเห็นห้องตัดสินที่ conversations.ts แล้ว ที่นี่จำกัดแค่ช่วงเวลา
+ *   OWNER / ผู้เปิดห้อง / ไม่มีผู้ใช้ = ไม่ query · ตัวนี้ใช้กับ "คนกดยืนยัน" (executeProposal/executePlan) ที่มีแค่ role + userId
  */
-export async function visibleMessagesWhere(ctx: ConvCtx, conversationId: string): Promise<Prisma.AiMessageWhereInput> {
-  const actor = memberActorOf(ctx);
+export async function visibleSinceForUser(
+  tenantId: string,
+  role: string | null | undefined,
+  userId: string | null | undefined,
+  conversationId: string | null | undefined,
+): Promise<{ gte: Date } | null> {
   const id = cleanId(conversationId);
-  if (!actor || !id || actor.membership.role === "OWNER") return {};
+  const uid = cleanId(userId);
+  if (!tenantId || !id || !uid || role === "OWNER") return null;
   const creator = conversationCreatorOf(id);
-  if (creator?.kind === "member" && creator.id === actor.userId) return {};
-  const row = await tenantDb({ tenantId: ctx.tenantId }).aiRoomMember.findFirst({
-    where: { userId: actor.userId, room: { conversationId: id } },
+  if (creator?.kind === "member" && creator.id === uid) return null;
+  const row = await tenantDb({ tenantId }).aiRoomMember.findFirst({
+    where: { userId: uid, room: { conversationId: id } },
     select: { addedAt: true, seeHistory: true },
   });
-  return row && !row.seeHistory ? { createdAt: { gte: row.addedAt } } : {};
+  return row && !row.seeHistory ? { gte: row.addedAt } : null;
 }
+
+/** `visibleSinceForUser` ของผู้กระทำใน ctx — คีย์ API / งานภายใน / actor เสีย = null (การมองเห็นห้องตัดสินที่อื่น) */
+export async function visibleSinceFor(ctx: ConvCtx, conversationId: string | null | undefined): Promise<{ gte: Date } | null> {
+  const actor = memberActorOf(ctx);
+  if (!actor) return null;
+  return visibleSinceForUser(ctx.tenantId, actor.membership.role, actor.userId, conversationId);
+}
+
+/** เงื่อนไขเพิ่มของข้อความที่ผู้ดูนี้เห็น — `{ createdAt: { gte: addedAt } }` หรือ `{}` (ดู `visibleSinceFor`) */
+export async function visibleMessagesWhere(ctx: ConvCtx, conversationId: string): Promise<Prisma.AiMessageWhereInput> {
+  const since = await visibleSinceFor(ctx, conversationId);
+  return since ? { createdAt: since } : {};
+}
+
+/** แถวนี้ (ข้อเสนอ/แผน/ข้อความ) อยู่ในช่วงที่ผู้ดูเห็นไหม — since null = เห็นทั้งหมด */
+export const withinSight = (since: { gte: Date } | null, createdAt: Date) => since === null || createdAt.getTime() >= since.gte.getTime();
