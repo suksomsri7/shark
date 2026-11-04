@@ -19,12 +19,13 @@
 //   🔴 ไม่เรียก provider โมเดล · ไม่ระบายคิว outbox · ไม่ส่ง push/SMS
 import { loadSecQcEnv } from "./sec-qc-env.mjs";
 import { SEC, type SecChat, type SecUser } from "./sec-qc-data.mjs";
+import type { Prisma } from "@prisma/client"; // ชนิดล้วน (ลบทิ้งตอนรัน) — ตัวต่อฐานโหลดหลังด่าน host เท่านั้น
 
 // ด่านฐาน: ไม่ใช่ฐาน QC ของเลขา (prod / QC ของ RUN อื่น / host อื่น / ไม่มี env) ⇒ exit 4 ก่อนแตะฐาน
 loadSecQcEnv("seed-secretary-qc");
 
 const { prisma } = await import("@/lib/core/db");
-const { Prisma } = await import("@prisma/client");
+const { Prisma: PrismaNs } = await import("@prisma/client");
 const { newConversationId } = await import("@/lib/ai/conversation-owner");
 const { aiMemberActor } = await import("@/lib/ai/actor");
 
@@ -385,7 +386,7 @@ async function ensureSupportCase() {
       await prisma.supportCase.update({ where: { id: sc.id }, data: d });
     }
   }
-  const mWant = { tenantId: A, caseId: sc.id, authorSide: "SHOP" as const, authorId: sc.openedByUserId, body: sc.message.body, attachmentsJson: [] as unknown[], createdAt: at(sc.message.at) };
+  const mWant = { tenantId: A, caseId: sc.id, authorSide: "SHOP" as const, authorId: sc.openedByUserId, body: sc.message.body, attachmentsJson: [] as Prisma.InputJsonArray, createdAt: at(sc.message.at) };
   const m = await prisma.supportMessage.findUnique({ where: { id: sc.message.id } });
   if (m && m.tenantId !== A) throw new Error(`ข้อความเคส ${sc.message.id} เป็นของร้านอื่น — หยุด`);
   if (!m) {
@@ -422,7 +423,7 @@ const S1_1_COLUMNS: [string, string][] = [
 function s11Missing(): { models: string[]; columns: string[] } {
   const delegate = (m: string) => m.charAt(0).toLowerCase() + m.slice(1);
   const models = S1_1_MODELS.filter((m) => !(delegate(m) in prisma));
-  const dm = new Map(Prisma.dmmf.datamodel.models.map((m) => [m.name, new Set(m.fields.map((f) => f.name))]));
+  const dm = new Map(PrismaNs.dmmf.datamodel.models.map((m) => [m.name, new Set(m.fields.map((f) => f.name))]));
   const columns = S1_1_COLUMNS.filter(([m, f]) => !dm.get(m)?.has(f)).map(([m, f]) => `${m}.${f}`);
   return { models, columns };
 }

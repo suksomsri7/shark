@@ -15,7 +15,7 @@
 | `src/lib/ai/secretary/pack.ts` | S0.4 pure · `FREE_PACK` · `SECRETARY_LAUNCH_AT` · `countsAsJob` · `quotaMessage` · `nextResetBangkok` · `monthKeyBangkok` |
 | `ledger/wo-notes/sec-s0.3.md` | ไฟล์นี้ |
 
-Commits: 58be61ef docs · 344e195b seed · d8f36e7f pack (+ commit ของ wo-notes นี้) — pre-commit fitness ผ่านทุกครั้ง
+Commits: 58be61ef docs · 344e195b seed · d8f36e7f pack · 5c4bb7e6 wo-notes · (+ fix ชนิดใน seed) — pre-commit fitness ผ่านทุกครั้ง
 
 ## 2. seed
 - รันจริง (หลัง secretary_a ลงฐาน QC แล้ว): รอบ 1 `JSON_SUMMARY {"suite":"seed-secretary-qc","ok":true,"created":{"aiMessage":11,"aiProposal":2,"chatContact":2,"chatConversation":2,"chatMessage":8,"chatQuickReply":2,"supportCase":1,"supportMessage":1},"updated":{},"removed":{}}` (ร้าน/ระบบ/ผู้ใช้/ห้อง ถูกสร้างไปแล้วในรอบที่ล้มก่อน migration ลง — ดู §7)
@@ -28,7 +28,9 @@ Commits: 58be61ef docs · 344e195b seed · d8f36e7f pack (+ commit ของ wo-
 - `qc-sec-s0.3` forced (ไม่มีฐาน · ก่อนได้ .env.qc-sec): `JSON_SUMMARY {"total":37,"passed":35,"failed":[],"skipped":["D2.5","D4.3"],"findings":[]}`
 - forced #1 (ฐาน QC เลขา): `JSON_SUMMARY {"total":53,"passed":52,"failed":[],"skipped":["D4.3"],"findings":[]}` exit 0
 - forced #2: `JSON_SUMMARY {"total":53,"passed":52,"failed":[],"skipped":["D4.3"],"findings":[]}` exit 0
-- fitness ×2 อยู่ในข้อสอบ (D4.1 มี env · D4.2 ไม่มี env) ผ่าน · typecheck: ดูรายงานท้าย
+- forced #3 (หลังแก้ชนิดใน seed): `JSON_SUMMARY {"total":53,"passed":52,"failed":[],"skipped":["D4.3"],"findings":[]}` exit 0 · seed ซ้ำ `created/updated/removed` ว่าง
+- fitness: มี env (qc-sec.sh) `ผ่าน 53/53 · CRITICAL 0 · MAJOR 0 · MINOR 0` · `env -u DATABASE_URL -u DIRECT_URL` `ผ่าน 53/53 · 0/0/0`
+- typecheck: ครั้งที่ 1 (heap 5632) OOM ไม่มีผล · ครั้งที่ 2 (heap 7680 · ISO_MEM 9000M) พบ error ชนิดใน seed ของใบนี้ (namespace Prisma + attachmentsJson) → แก้ + ตรวจด้วย tsc เฉพาะไฟล์ของใบนี้ (0 error) · ครั้งที่ 3 เต็ม: **0 error ในไฟล์ของใบนี้** · เหลือ 13 error ในข้อสอบของผู้คุมเท่านั้น: `qc-sec-s1.2.mts` 8 + `qc-sec-s1.4.mts` 3 (ใบที่ยังไม่สร้าง — module `@/lib/ai/secretary/{secretary,access,rooms}` ยังไม่มี · มาจาก d4cbb6ce) · `qc-sec-s0.2.mts` 1 + `qc-sec-ui.mts` 1 (TS1501 regex flag ต้อง es2018 · ของ S0.2) — ไม่ใช่ของใบนี้ ไม่แก้ (ห้ามแตะสคริปต์เดิม)
 
 ## 7. มติทางเทคนิค / เหตุรอ
 - **รอ env + migration**: ทรีนี้ไม่มี `.env.qc-sec` ตอนเริ่ม (qc-sec.sh exit 2) → แจ้งผู้คุม · ระหว่างนั้น lane b รัน `prisma generate` ลง node_modules ร่วม ⇒ `@/lib/core/db` ล้มเพราะ scope.ts ของทรีนี้ไม่รู้จัก 16 โมเดล → ff ไป d4cbb6ce ตามคำสั่ง · seed รอบแรกล้ม P2022 (`AiMessage.authorUserId` ยังไม่มีในฐาน) หลังเขียน ร้าน/ระบบ/ผู้ใช้/ห้อง ไปแล้ว → ผู้คุม apply secretary_a → seed รอบใหม่ reconcile ครบ
