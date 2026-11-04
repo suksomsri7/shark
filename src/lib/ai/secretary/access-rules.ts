@@ -124,3 +124,28 @@ export function accessSummaryForPrompt(access: Readonly<Record<string, string>>)
   if (read.length > 0) lines.push(`- ระบบที่ดูได้อย่างเดียว (ดูข้อมูลได้ แต่ห้ามเสนอการเพิ่ม/แก้ไข/ลบ): ${read.join(" · ")}`);
   return lines.join("\n");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S1.3b ▸ เครื่องมือที่ "อ่านข้ามโมดูล" (รีวิวย้อนหลัง S1-2 C1 C4 D2) — ระดับของโมดูลหลักตรวจที่ด่าน (`accessVerdict`)
+//   ส่วนที่อ่านจากโมดูลอื่นตรวจในตัวเครื่องมือ: โมดูลนั้น OFF ⇒ ตัดส่วนนั้นออก + บอกในผลว่าข้าม (ไม่ปฏิเสธทั้งเครื่องมือ)
+//   ยกเว้น customer_points: แต้มคือเนื้อหาทั้งหมด ⇒ point OFF = ปฏิเสธทั้งเครื่องมือ ◂
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** ทะเบียน "อ่านเพิ่ม" — เครื่องมือ → โมดูลอื่นที่มันอ่านมาประกอบผล (นอกจากโมดูลหลักของ `toolModuleOf`) */
+export const TOOL_EXTRA_MODULES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  upcoming_schedule: Object.freeze(["booking", "hotel", "hr"]), // นัดหมาย · การเข้าพัก · วันลา (โมดูลหลัก = calendar)
+  financial_summary: Object.freeze(["pos"]), // รายได้จากบิล POS (โมดูลหลัก = account)
+  growth_recommendations: Object.freeze(["member", "pos"]), // จำนวนลูกค้า · จำนวนบิล (แกนกลาง)
+  customer_points: Object.freeze(["point"]), // แต้มคงเหลือ (โมดูลหลัก = member)
+});
+
+/** pure · โมดูลนี้ถูกเจ้าของปิด (OFF) ไหม — `access` ไม่ส่ง (ประตูเดิม) = ไม่ตัด = พฤติกรรมเดิม · โมดูลแกนกลาง = ไม่ตัด */
+export function moduleOff(access: AccessMap | undefined, module: string): boolean {
+  if (!access || isAlwaysOn(module)) return false;
+  return !levelVerdict(access, module, false).ok;
+}
+
+/** pure · บรรทัดที่ใส่ในผลของเครื่องมือเมื่อตัดส่วนของโมดูลที่ปิดไว้ (โมเดลจะบอกผู้ใช้ตรง ๆ ว่าส่วนนี้ไม่ได้ดู) */
+export function skippedSectionNote(module: string): string {
+  return `ข้ามส่วน ${moduleLabel(module)} (เจ้าของปิดไว้)`;
+}

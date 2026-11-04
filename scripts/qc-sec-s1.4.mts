@@ -133,7 +133,7 @@ try {
     console.log("── L: listRooms ──");
     const staffConv = r1.conversationId as string, staffRoomId = r1.roomId as string;
     // staff2 เป็นสมาชิกห้องของ staff (แถวตรง — S1.6 ค่อยมี addMember)
-    await prisma.aiRoomMember.create({ data: { tenantId: tid, roomId: staffRoomId, userId: U.staff2, addedById: U.staff } }); // ORACLE-EDIT R-S1.1c
+    await prisma.aiRoomMember.create({ data: { tenantId: tid, roomId: staffRoomId, userId: U.staff2, addedById: U.staff, seeHistory: true } }); // ORACLE-EDIT R-S1.1c · S1.6 G-3 (seeHistory กติกาใหม่)
     const lo = await rooms.listRooms(ctxOf(OWNER), { scope: "tenant" });
     const lm = await rooms.listRooms(ctxOf(OWNER), { scope: "mine" });
     chk("L-1", "OWNER scope tenant เห็นทุกห้อง (รวมของ staff/staff2) · scope mine เห็นเฉพาะที่ตัวเองเปิด · การ์ดมี startedByName/memberIds/status", lo.some((c: AnyMod) => c.conversationId === staffConv) && lo.some((c: AnyMod) => c.startedById === U.staff2) && lm.every((c: AnyMod) => c.startedById === U.owner) && lm.length >= 2 && lo.find((c: AnyMod) => c.conversationId === staffConv)?.memberIds?.includes(U.staff2) && typeof lo[0]?.startedByName === "string" && ["OPEN", "RUNNING", "WAITING", "DONE"].includes(lo[0]?.status), `tenant=${lo.length} mine=${lm.length}`);
