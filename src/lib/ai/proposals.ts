@@ -36,8 +36,8 @@ import * as accountFacade from "@/lib/modules/account";
 import * as automationSvc from "@/lib/automation/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
-import { canSeeConversationId, sightOf, sightOfConfirmer, type ConvCtx } from "./conversation-owner";
-import { findVisibleConversation } from "./conversations";
+import type { ConvCtx } from "./conversation-owner";
+import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
 import {
   accountDestructiveKinds,
   accountKindAccess,
@@ -358,7 +358,7 @@ export async function rejectProposal(ctx: ConvCtx, id: string): Promise<boolean>
   const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true } });
   if (!row) return false;
   if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false; // CRM C3.4 ◂
-  if (!canSeeConversationId(sightOf(ctx), row.conversationId)) return false;
+  if (!(await canSeeConversationById(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
@@ -397,7 +397,7 @@ export async function executeProposal(
   // CRM C5.5-G2 ▸ ข้อเสนอเป็นของบทสนทนาที่มันเกิด: คนกดต้องเห็นบทสนทนานั้น (ผู้สร้าง · เจ้าของร้านสำหรับห้องที่ไม่ได้สร้างโดยคนในร้าน
   //   เช่นห้องของคีย์ API ที่ route เขียนไว้ว่า "เจ้าของต้องกดยืนยันในแอป/เว็บ") — ไม่เห็น = ตอบแบบเดียวกับไม่มีข้อเสนอนี้
   //   (ประตู CRM ข้างบนมีด่านการมองเห็นของตัวเองแล้ว — ข้อเสนอเหล่านั้นไม่ได้อยู่ในห้องแชท) ◂
-  if (!canSeeConversationId(sightOfConfirmer(m, opts?.userId ?? null), row.conversationId)) {
+  if (!(await canConfirmerSeeConversation(ctx.tenantId, m, opts?.userId ?? null, row.conversationId))) { // S1.4 R-K1: + ห้องเลขาร่วม
     return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
   }
 

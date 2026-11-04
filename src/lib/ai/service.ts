@@ -11,8 +11,8 @@ import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
 import { runTool, toolRegistry } from "./tools";
 import type { AiActor } from "./actor";
-import { canSeeConversationId, newConversationId, sightOf, visibleConversationWhere, type ConvCtx } from "./conversation-owner";
-import { findVisibleConversation, latestVisibleConversation } from "./conversations";
+import { canSeeConversationId, newConversationId, sightOf, visibleConversationWhere, withRoomSight, type ConvCtx } from "./conversation-owner";
+import { findVisibleConversation, latestVisibleConversation, roomSightFor } from "./conversations";
 import { toolsOfferedTo } from "./tool-access";
 import {
   CORE_TOOLS, LOAD_SKILL_TOOL, skillById, skillIndexPrompt, skillsForTenant, toolNamesOfSkills,
@@ -78,8 +78,10 @@ export async function latestConversation(ctx: ConvCtx) {
  *   ตรวจสองชั้น: รหัสก่อน query + เงื่อนไขของห้องใน query เดียวกัน ◂
  */
 export async function listMessages(ctx: ConvCtx, conversationId: string, take = 100) {
-  const s = sightOf(ctx);
-  if (!canSeeConversationId(s, conversationId)) return [];
+  // S1.4 R-K1 ▸ ไม่เห็นจากรหัส ⇒ ดูห้องเลขาร่วม (สมาชิก · OWNER เฉพาะห้องที่มี AiRoom — เงื่อนไข room อยู่ใน query) ◂
+  const base = sightOf(ctx);
+  const s = canSeeConversationId(base, conversationId) ? base : await roomSightFor(ctx);
+  if (!canSeeConversationId(s, conversationId) && s.tenantRooms !== true) return [];
   return tenantDb({ tenantId: ctx.tenantId }).aiMessage.findMany({
     where: { conversationId, conversation: visibleConversationWhere(s) },
     orderBy: { createdAt: "asc" },
@@ -201,7 +203,8 @@ export async function sendMessage(
     (await prisma.aiConversation.create({
       data: { id: newConversationId(ctx), tenantId: ctx.tenantId, title: titleFrom(text) },
     }));
-  const sight = sightOf(ctx);
+  // S1.4 R-K1 ▸ ห้องเลขาที่เห็นผ่านห้องร่วม (สมาชิก/OWNER — `findVisibleConversation` ตรวจแถวแล้ว) ⇒ sight ของเทิร์นนี้รวมห้องนี้ ◂
+  const sight = conv && !canSeeConversationId(sightOf(ctx), conv.id) ? withRoomSight(sightOf(ctx), { memberOf: [conv.id] }) : sightOf(ctx);
   if (!canSeeConversationId(sight, conversation.id)) throw new Error("AI conversation is not visible to this actor");
 
   const history = await db.aiMessage.findMany({
@@ -302,7 +305,7 @@ export async function sendMessage(
         // ส่ง conversation.id เข้าไปด้วย — action tool ต้องใช้ผูก proposal กับบทสนทนา
         // CRM C5.5-G1 ▸ ผู้กระทำของเทิร์นนี้ไปกับทุกการเรียก (runTool ตรวจสิทธิ์ซ้ำ — ชื่อที่ไม่ได้ยื่นก็โดนปฏิเสธ) ◂
         const result = await runTool(
-          { tenantId: ctx.tenantId, actor: ctx.actor, conversationId: conversation.id, access },
+          { tenantId: ctx.tenantId, actor: ctx.actor, conversationId: conversation.id, access, sight },
           tc.name,
           tc.args,
         );
@@ -319,7 +322,8 @@ export async function sendMessage(
   // persist คู่ข้อความ + ยอดใช้ อะตอมมิก (ผ่าน prisma ตรง — ใส่ tenantId เองให้ตรง type)
   await prisma.$transaction([
     prisma.aiMessage.create({
-      data: { tenantId: ctx.tenantId, conversationId: conversation.id, role: "USER", content: text },
+      // S1.4 (R-K2) ▸ ห้องเลขา: เก็บคนที่พิมพ์ (ห้องร่วมมีหลายคน) · ห้องเดิม (ไม่มี AiRoom) = แถวเดิมทุกตัวอักษร ◂
+      data: { tenantId: ctx.tenantId, conversationId: conversation.id, role: "USER", content: text, ...(conv?.room && ctx.actor.kind === "member" ? { authorUserId: ctx.actor.userId } : {}) },
     }),
     prisma.aiMessage.create({
       data: {

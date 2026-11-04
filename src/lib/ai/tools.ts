@@ -34,7 +34,7 @@ import { openCaseFromAi } from "@/lib/support/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 // CRM C5.5-G1 ▸ ผู้กระทำ + ด่านสิทธิ์ต่อเครื่องมือ + helper การมองเห็นของโมดูล (CRM ผ่าน facade · สมาชิก/แชท/อนุมัติผ่าน service เดิม) ◂
 import { actorProblem, aiActorMembership, aiActorUserId, type AiActor } from "./actor";
-import { canSeeConversationId, memoryScopeOf, sightOf } from "./conversation-owner";
+import { canSeeConversationId, memoryScopeOf, sightOf, type ConvSight } from "./conversation-owner";
 import { contactDataRefusal, findContactData } from "./contact-data";
 import { actorCanConfirmKind, toolVerdict } from "./tool-access";
 import { contactWhere, crmApi } from "@/lib/modules/crm";
@@ -61,6 +61,11 @@ export type ToolCtx = {
   systemId?: string;
   /** SEC S1.3 ▸ ระดับต่อระบบของร้าน (OFF/READ/DRAFT) — runTool ตรวจหลังด่าน membership · ไม่ส่ง = เดิม ◂ */
   access?: AccessMap;
+  /**
+   * S1.4 (R-K1) ▸ การมองเห็นห้องที่ service ตรวจแล้วสำหรับเทิร์นนี้ (รวมห้องเลขาร่วม — สมาชิก/OWNER) · ไม่ส่ง = `sightOf(ctx)` เดิม
+   *   ส่งมาจากชั้นที่ตรวจแถวแล้วเท่านั้น (`sendMessage`) — ไม่ query ซ้ำต่อเครื่องมือ ◂
+   */
+  sight?: ConvSight;
 };
 
 export type AiTool = {
@@ -2312,7 +2317,7 @@ const guarded = (t: AiTool): AiTool => ({
     if (bad) return JSON.stringify({ error: bad });
     // CRM C5.5-G2 ▸ ห้องที่ผู้กระทำมองไม่เห็น (ของคนอื่น / ห้องเดิมสำหรับคนที่ไม่ใช่เจ้าของร้าน) = เหมือนไม่ได้อยู่ในห้อง —
     //   ข้อเสนอ/แผน/เคสแจ้งทีมงานจึงไม่มีวันถูกผูกเข้าห้องของคนอื่น (เครื่องมือที่ต้องมีห้องตอบ "ต้องอยู่ในบทสนทนาก่อน") ◂
-    if (ctx.conversationId !== undefined && !canSeeConversationId(sightOf(ctx), ctx.conversationId)) {
+    if (ctx.conversationId !== undefined && !canSeeConversationId(ctx.sight ?? sightOf(ctx), ctx.conversationId)) {
       return t.execute({ ...ctx, conversationId: undefined }, args);
     }
     return t.execute(ctx, args);
