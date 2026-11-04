@@ -108,7 +108,7 @@ export function useApprovalFlow({ actions, onChanged, name, ids }: { actions: Ap
       setBusyId(item.id);
       setSheetErr(null);
       try {
-        const body: RejectBody = item.type === "plan" ? {} : { ...(note ? { note } : {}), remember: choice };
+        const body: RejectBody = item.type === "plan" ? {} : { ...(note ? { note } : {}), remember: choice === "RULE" ? "RULE" : "JOB" };
         const r = await actions.reject(item, body);
         setOpen(null);
         setRejectNote("");

@@ -1,6 +1,6 @@
 {
- "generatedAt": "2026-11-04T20:49:28.633Z",
- "base": "http://127.0.0.1:4726",
+ "generatedAt": "2026-11-04T21:23:16.411Z",
+ "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
   "w": 390,
@@ -8,8 +8,8 @@
   "scale": 2
  },
  "fixture": {
-  "path": "/root/projects/shark-sec-e/apps/mobile/qc/fixtures/secretary/s2.12.json",
-  "sha256": "83544a6ed9bafd9a9410620ab030fde714618cec3704f9e8fa8d39027239d154"
+  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.4.json",
+  "sha256": "ade52b618f6e83a511925008576460bcf43a84058f0d2ffd781af66fd142ce16"
  },
  "screens": [
   {
@@ -49,29 +49,6 @@
    "url": "/secretary/_gallery",
    "file": "/root/projects/shark-sec-b/apps/mobile/qc/shots-sec/secretary-_gallery-dark.png",
    "generatedAt": "2026-11-04T11:43:01.867Z"
-  },
-  {
-   "name": "secretary-room-r1",
-   "route": "/secretary/room/r1",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-room",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nห้องงาน\nกำลังสร้าง (ใบ S2.4)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.4 วาดตามแบบหน้า A3–A5",
-   "unmocked": [],
-   "url": "/secretary/room/r1",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1.png",
-   "generatedAt": "2026-11-04T20:24:38.514Z"
   },
   {
    "name": "secretary-inbox",
@@ -555,29 +532,6 @@
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new.png",
    "generatedAt": "2026-11-04T20:26:00.927Z"
-  },
-  {
-   "name": "secretary-room-r1-dark",
-   "route": "/secretary/room/r1",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-room",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nห้องงาน\nกำลังสร้าง (ใบ S2.4)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.4 วาดตามแบบหน้า A3–A5",
-   "unmocked": [],
-   "url": "/secretary/room/r1",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1-dark.png",
-   "generatedAt": "2026-11-04T20:26:15.286Z"
   },
   {
    "name": "secretary-inbox-dark",
@@ -1377,6 +1331,84 @@
    "url": "/phone",
    "file": "/root/projects/shark-sec-e/apps/mobile/qc/shots-sec/phone-dark.png",
    "generatedAt": "2026-11-04T20:49:28.506Z"
+  },
+  {
+   "name": "secretary-room-r1",
+   "route": "/secretary/room/r1",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "ade52b618f6e83a511925008576460bcf43a84058f0d2ffd781af66fd142ce16",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-room",
+    "sec-room-back",
+    "sec-room-menu",
+    "sec-room-title",
+    "sec-room-status",
+    "sec-room-bubble",
+    "sec-room-steps",
+    "sec-room-step",
+    "sec-room-approval",
+    "sec-room-approve",
+    "sec-room-reject",
+    "sec-room-edit",
+    "sec-room-why",
+    "sec-room-auto",
+    "sec-room-done",
+    "sec-room-open-link",
+    "sec-room-undo",
+    "sec-room-teach",
+    "sec-room-repeat",
+    "sec-room-input",
+    "sec-room-send"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 22 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
+   "unmocked": [],
+   "url": "/secretary/room/r1",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1.png",
+   "generatedAt": "2026-11-04T21:23:12.090Z"
+  },
+  {
+   "name": "secretary-room-r1-dark",
+   "route": "/secretary/room/r1",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "ade52b618f6e83a511925008576460bcf43a84058f0d2ffd781af66fd142ce16",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-room",
+    "sec-room-back",
+    "sec-room-menu",
+    "sec-room-title",
+    "sec-room-status",
+    "sec-room-bubble",
+    "sec-room-steps",
+    "sec-room-step",
+    "sec-room-approval",
+    "sec-room-approve",
+    "sec-room-reject",
+    "sec-room-edit",
+    "sec-room-why",
+    "sec-room-auto",
+    "sec-room-done",
+    "sec-room-open-link",
+    "sec-room-undo",
+    "sec-room-teach",
+    "sec-room-repeat",
+    "sec-room-input",
+    "sec-room-send"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 22 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
+   "unmocked": [],
+   "url": "/secretary/room/r1",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1-dark.png",
+   "generatedAt": "2026-11-04T21:23:16.193Z"
   }
  ]
 }
