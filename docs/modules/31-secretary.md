@@ -116,6 +116,39 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 ```
 จอใหม่อยู่ในโฟลเดอร์ `apps/mobile/app/(app)/secretary` · ข้อมูลผ่าน secretary.ts (แผน · apps/mobile/src/api/) ที่ type จากเอกสารนี้ + `docs/api/SECRETARY-API.md` (COMMON §C.12)
 
+### 2.3 ตารางเส้นทางแอป (ใบ S2.1 · มีแล้ว · expo-router · deep link `sharkai://<path>` ตาม path โดยไม่แก้ native)
+ทุกจอใหม่ = โครง `SecSkeleton` (พื้น Airy + `SecTopBar` ตามโซน + หัวข้อ i18n + การ์ด "กำลังสร้าง (ใบ S2.x)") จนใบที่วาดจริงแทน · ไม่มีแถบล่าง · Stack ของตัวเองต่อโฟลเดอร์ (`secretary/_layout` · `customers/_layout` · `business/_layout` ครอบด้วย `BusinessSwitcherHost`) · Drawer ของ 1.0 เพิ่ม `Drawer.Screen` index (คงลำดับแรก) + secretary/customers/business
+| route | ไฟล์ (`apps/mobile/app/(app)/…`) | โซนแถบบน | testID ราก | หน้าแบบ | ใบที่วาดจริง |
+|---|---|---|---|---|---|
+| `/secretary` | `secretary/index.tsx` | เลขา (กลางว่าง · หัวใหญ่ = ชื่อกิจการ) | `sec-secretary` (+ `sec-home`) | A1 (มีห้อง · การ์ดเรียบ) / C3 (ไม่มีห้อง) | S2.2 |
+| `/secretary/new` | `secretary/new.tsx` | เลขา | `sec-secretary-new` | A2 | S2.3 |
+| `/secretary/room/[id]` | `secretary/room/[id].tsx` | เลขา | `sec-secretary-room` | A3–A5 · C4 | S2.4 |
+| `/secretary/inbox` | `secretary/inbox.tsx` | เลขา | `sec-secretary-inbox` | A6 | S2.5 |
+| `/secretary/scheduled` | `secretary/scheduled.tsx` | เลขา | `sec-secretary-scheduled` | A7 | S2.5 |
+| `/secretary/staff` | `secretary/staff/index.tsx` | ทีม | `sec-secretary-staff` | D1 | S2.10 |
+| `/secretary/staff/[membershipId]` | `secretary/staff/[membershipId].tsx` | ทีม | `sec-secretary-staff-member` | G3 | S2.22 |
+| `/secretary/staff/invite` | `secretary/staff/invite.tsx` | ทีม | `sec-secretary-staff-invite` | G2 | S2.21 |
+| `/secretary/settings` | `secretary/settings/index.tsx` | เลขา | `sec-secretary-settings` | B1 | S2.7 |
+| `/secretary/settings/secretary` | `secretary/settings/secretary.tsx` | เลขา | `sec-secretary-settings-secretary` | B2 | S2.7 |
+| `/secretary/settings/access` | `secretary/settings/access.tsx` | เลขา | `sec-secretary-settings-access` | B3 | S2.8 |
+| `/secretary/settings/rules` | `secretary/settings/rules.tsx` | เลขา | `sec-secretary-settings-rules` | B4 | S2.8 |
+| `/secretary/settings/log` | `secretary/settings/log.tsx` | เลขา | `sec-secretary-settings-log` | B5 | S2.8 |
+| `/secretary/settings/knowledge` | `secretary/settings/knowledge.tsx` | เลขา | `sec-secretary-settings-knowledge` | B6 | S2.9 |
+| `/secretary/settings/customers` | `secretary/settings/customers.tsx` | เลขา | `sec-secretary-settings-customers` | B7 | S2.9 |
+| `/secretary/settings/account` | `secretary/settings/account.tsx` | เลขา | `sec-secretary-settings-account` | G4 | S2.22 |
+| `/secretary/settings/quota` | `secretary/settings/quota.tsx` | เลขา | `sec-secretary-settings-quota` | B8 | S2.7 |
+| `/secretary/onboarding/name` | `secretary/onboarding/name.tsx` | เลขา | `sec-secretary-onboarding-name` | C1 | S2.11 |
+| `/secretary/help` | `secretary/help/index.tsx` | เลขา | `sec-secretary-help` | H1 | S2.15 |
+| `/secretary/help/[caseId]` | `secretary/help/[caseId].tsx` | เลขา | `sec-secretary-help-case` | H2 | S2.15 |
+| `/customers` | `customers/index.tsx` | ลูกค้า (ไม่มี +) | `sec-customers` | K1 | S2.17 |
+| `/customers/[id]` | `customers/[id]/index.tsx` | ลูกค้า | `sec-customers-detail` | K2 | S2.18 |
+| `/customers/[id]/info` | `customers/[id]/info.tsx` | ลูกค้า | `sec-customers-info` | K3 | S2.19 |
+| `/business/new` | `business/new.tsx` | เลขา | `sec-business-new` | G1 | S2.21 |
+- ทางเข้า: หน้าแรก 1.0 `(app)/index.tsx` ปุ่มลอย `home-open-secretary` → `/secretary` (ปุ่มเดียว · สี `C` ของ 1.0)
+- แถบบน `src/components/secretary/SecTopBar.tsx`: ซ้าย เลขา(message-circle→/secretary) · ลูกค้า(inbox→/customers) · ทีม(users→/secretary/staff) · ขวา ?(→/secretary/help) + +(เลขา→/secretary/new · ทีม→/secretary/staff/invite · ลูกค้าไม่มี) · กลาง = ชื่อกิจการ → `BusinessSwitcherSheet` (สลับ = `switchTenant` ของ 1.0 · "เลขาของฉัน" → /secretary/settings/secretary · "+ เพิ่มกิจการใหม่" → /business/new) · badge: `secretary/inbox/count.canApprove` · `inbox/unread.unread` (พลาด = 0)
+- ข้อมูลที่ใบ S2.1 อ่าน (`apps/mobile/src/api/secretary.ts`): `GET secretary/me` (ภาษา i18n = `languages[0]` · ชื่อเลขา) · `GET secretary/rooms?scope=mine` · `GET secretary/inbox/count` (เส้นนี้ยังไม่อยู่ใน SECRETARY-API.md — รอผู้คุมตัดสิน) · `GET inbox/unread`
+- i18n: `apps/mobile/src/i18n/{index,th,en}.ts` · `useT()` · คีย์ `sec.*` · ใบถัดไปเพิ่มคีย์ทั้งสองไฟล์ · จอ 1.0 ไม่ใช้
+
 ---
 
 ## 3. หน้าจอ 38 หน้า → องค์ประกอบ → ฟังก์ชัน/ตาราง

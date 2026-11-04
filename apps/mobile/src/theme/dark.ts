@@ -79,6 +79,8 @@ export const dark: Palette = {
   bubbleUser: { from: "#f6f6fb", to: "#d9d9ea", fg: "#16161c" },
   bubbleOther: { from: "rgba(255,255,255,0.115)", to: "rgba(255,255,255,0.045)", fg: "#f2f2f7" },
   warn: { bg: "rgba(255,176,32,0.16)", fg: "#ffc65c" },
+  approval: { border: "rgba(255,255,255,0.2)" }, // .apc (มืด: ขอบกระจกสว่างขึ้น)
+  bad: { fg: "#ff6b8f" }, // ข้อความเตือนสีแดงอมชมพู (D1 "ไม่เห็นแชทลูกค้า" · ขั้นที่ล้ม · ปุ่มถอด) — S2.10
   inputBg: "rgba(255,255,255,0.115)",
   chip: { bg: "rgba(255,255,255,0.09)", fg: "#b4b4c4" },
   tab: { fg: "#b4b4c4" },

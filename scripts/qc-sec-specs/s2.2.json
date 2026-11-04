@@ -59,6 +59,35 @@
    "mustNot": [
     "mic|Mic|microphone"
    ]
+  },
+  {
+   "id": "X-3",
+   "name": "fix-forward Q (R-S2.1a–f): initialRouteName ใน zone layouts · resetSecretaryMe · pick() dismissAll · 403≠empty · BackHandler ใน Sheet",
+   "file": "app/(app)/secretary/_layout.tsx",
+   "must": [
+    "unstable_settings",
+    "initialRouteName"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-4",
+   "name": "secretary.ts: cache ต่อ user + resetSecretaryMe export · BusinessSwitcherSheet dismissAll",
+   "file": "src/api/secretary.ts",
+   "must": [
+    "resetSecretaryMe",
+    "user\\.id|userId"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-5",
+   "name": "Sheet BackHandler (Android) · BusinessSwitcher dismissAll หลัง switch",
+   "file": "src/components/airy/Sheet.tsx",
+   "must": [
+    "BackHandler"
+   ],
+   "mustNot": []
   }
  ]
 }

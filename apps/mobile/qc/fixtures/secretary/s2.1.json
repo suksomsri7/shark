@@ -1,0 +1,528 @@
+{
+ "_about": "fixture ของใบ S2.1 — โครงแอปเลขา (24 route) + หน้าแรก 1.0 · ข้อมูลจำลองล้วน (ไม่มีข้อมูลร้านจริง ไม่มี token จริง) · รูปแบบดู README.md · rooms ว่าง ⇒ /secretary = C3",
+ "noAuth": [
+  "/login"
+ ],
+ "expect": {
+  "/secretary": [
+   "sec-secretary",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help",
+   "sec-home",
+   "sec-top-new",
+   "sec-tenant",
+   "sec-suggest-s1",
+   "sec-suggest-s2",
+   "sec-suggest-s3",
+   "sec-input"
+  ],
+  "/secretary/new": [
+   "sec-new",
+   "sec-new-close",
+   "sec-new-input",
+   "sec-new-send"
+  ],
+  "/secretary/room/r1": [
+   "sec-room",
+   "sec-room-back",
+   "sec-room-menu",
+   "sec-room-input"
+  ],
+  "/secretary/inbox": [
+   "sec-secretary-inbox",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/secretary/scheduled": [
+   "sec-secretary-scheduled",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/secretary/staff": [
+   "sec-staff",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help",
+   "sec-staff-row",
+   "sec-staff-invite"
+  ],
+  "/secretary/staff/m1": [
+   "sec-secretary-staff-member",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/secretary/staff/invite": [
+   "sec-secretary-staff-invite",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/secretary/settings": [
+   "sec-settings",
+   "sec-top-secretary",
+   "sec-top-help"
+  ],
+  "/secretary/settings/secretary": [
+   "sec-me",
+   "sec-me-name",
+   "sec-me-suffix",
+   "sec-me-tone",
+   "sec-me-lang",
+   "sec-me-save",
+   "sec-me-stat",
+   "sec-me-sample"
+  ],
+  "/secretary/settings/access": [
+   "sec-access"
+  ],
+  "/secretary/settings/rules": [
+   "sec-rules",
+   "sec-rules-row",
+   "sec-rules-limit",
+   "sec-rules-approver"
+  ],
+  "/secretary/settings/log": [
+   "sec-log",
+   "sec-log-filter",
+   "sec-log-empty"
+  ],
+  "/secretary/settings/knowledge": [
+   "sec-know",
+   "sec-know-fact",
+   "sec-know-lesson",
+   "sec-know-digest"
+  ],
+  "/secretary/settings/customers": [
+   "sec-cust",
+   "sec-cust-afterhours",
+   "sec-cust-handoff",
+   "sec-cust-disclosure",
+   "sec-cust-save",
+   "sec-cust-sample"
+  ],
+  "/secretary/settings/account": [
+   "sec-secretary-settings-account",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/secretary/settings/quota": [
+   "sec-quota",
+   "sec-quota-ring",
+   "sec-quota-assist",
+   "sec-quota-packs"
+  ],
+  "/secretary/onboarding/name": [
+   "sec-onb-name",
+   "sec-onb-name-input",
+   "sec-onb-save"
+  ],
+  "/secretary/help": [
+   "sec-secretary-help",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/secretary/help/c1": [
+   "sec-secretary-help-case",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/customers": [
+   "sec-customers",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/customers/x1": [
+   "sec-customers-detail",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/customers/x1/info": [
+   "sec-customers-info",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/business/new": [
+   "sec-business-new",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-help"
+  ],
+  "/": [
+   "home-open-secretary"
+  ]
+ },
+ "routes": [
+  "/login",
+  "/sessions"
+ ],
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@qc.invalid",
+    "name": "คุณสุข (QC)"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "MANAGER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/rooms": {
+   "items": [],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 0,
+   "canApprove": 0
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 0
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 0,
+    "approvedClean": 0,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "languages": [
+    "th"
+   ]
+  },
+  "GET /api/mobile/usage": {
+   "used": 12,
+   "limit": 100,
+   "pct": 12
+  },
+  "GET /api/mobile/conversations": {
+   "conversations": [
+    {
+     "id": "c-qc-1",
+     "title": "สรุปยอดขายเมื่อวาน",
+     "updatedAt": "2026-09-01T03:00:00.000Z",
+     "unread": true
+    },
+    {
+     "id": "c-qc-2",
+     "title": "ใบเสนอราคา ร้านตัวอย่าง",
+     "updatedAt": "2026-08-28T03:00:00.000Z",
+     "unread": false
+    }
+   ]
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-code-0000"
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/suggestions": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/frequent": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [],
+   "autoAvailable": false
+  },
+  "GET /api/mobile/secretary/rooms/r1": {
+   "id": "r1",
+   "conversationId": "c-r1",
+   "title": "ใบเสนอราคา ร้านดอยช้าง",
+   "status": "OPEN",
+   "systems": [
+    "crm",
+    "account",
+    "chat",
+    "kanban"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "role": "STAFF",
+     "addedById": "u-qc-owner",
+     "addedAt": "2026-11-04T19:39:00.000Z",
+     "seeHistory": true
+    }
+   ],
+   "canManage": true,
+   "createdAt": "2026-11-04T19:38:00.000Z",
+   "updatedAt": "2026-11-04T19:41:00.000Z",
+   "closedAt": null,
+   "plans": []
+  },
+  "GET /api/mobile/secretary/rooms/r1/messages": {
+   "items": [
+    {
+     "id": "m1",
+     "role": "USER",
+     "content": "ทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-04T19:38:00.000Z"
+    },
+    {
+     "id": "m2",
+     "role": "ASSISTANT",
+     "content": "รับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-04T19:38:10.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r1/proposals": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/log": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th",
+    "en"
+   ],
+   "sample": "สวัสดีครับ Sharkพร้อมช่วยงานแล้วครับ วันนี้มีอะไรให้ช่วยดูแลบ้างครับ",
+   "saved": true
+  },
+  "GET /api/mobile/secretary/quota": {
+   "jobs": {
+    "used": 62,
+    "limit": 100,
+    "left": 38,
+    "pct": 62,
+    "level": "ok",
+    "text": null,
+    "resetAt": "2026-11-30T17:00:00.000Z",
+    "month": "2026-11"
+   },
+   "assist": {
+    "usedMicro": 155000,
+    "capMicro": 500000,
+    "pct": 31
+   },
+   "credit": {
+    "blocked": null
+   },
+   "pack": {
+    "enabled": true,
+    "jobsPerMonth": 100,
+    "scheduledMax": 10,
+    "approversMax": 5
+   }
+  },
+  "GET /api/mobile/secretary/rules": {
+   "rules": {
+    "chat.send": {
+     "enabled": true,
+     "limitSatang": null
+    },
+    "money.limit": {
+     "enabled": true,
+     "limitSatang": 2000000
+    },
+    "pii.export": {
+     "enabled": true,
+     "limitSatang": null
+    }
+   },
+   "keys": [
+    "chat.send",
+    "money.limit",
+    "pii.export"
+   ],
+   "alwaysApprove": [
+    "destructive",
+    "money",
+    "piiExport"
+   ]
+  },
+  "GET /api/mobile/secretary/staff": {
+   "items": [
+    {
+     "pending": false,
+     "membershipId": "m1",
+     "userId": "u-qc-owner",
+     "name": "คุณสุข (QC)",
+     "active": true,
+     "me": true,
+     "role": "OWNER"
+    },
+    {
+     "pending": false,
+     "membershipId": "m2",
+     "userId": "u-qc-2",
+     "name": "คุณนัท",
+     "active": true,
+     "me": false,
+     "role": "MANAGER"
+    },
+    {
+     "pending": false,
+     "membershipId": "m3",
+     "userId": "u-qc-3",
+     "name": "มิ้นท์",
+     "active": true,
+     "me": false,
+     "role": "STAFF"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/lessons": {
+   "items": [
+    {
+     "id": "ls1",
+     "kind": "REJECT_NOTE",
+     "pattern": "ใบเสนอราคาต้องมีเลขผู้เสียภาษีของลูกค้า",
+     "example": null,
+     "status": "PENDING",
+     "occurrences": 4,
+     "sourceRoomId": "r1",
+     "sourceUserId": "u-qc-owner",
+     "createdAt": "2026-10-28T03:00:00.000Z",
+     "updatedAt": "2026-11-04T03:00:00.000Z"
+    },
+    {
+     "id": "ls2",
+     "kind": "EDIT_DIFF",
+     "pattern": "ส่งใบเสนอราคาทาง LINE ก่อนโทรตามเสมอ",
+     "example": null,
+     "status": "CONFIRMED",
+     "occurrences": 2,
+     "sourceRoomId": null,
+     "sourceUserId": "u-qc-owner",
+     "createdAt": "2026-10-01T03:00:00.000Z",
+     "updatedAt": "2026-10-02T03:00:00.000Z"
+    },
+    {
+     "id": "ls3",
+     "kind": "REJECT_NOTE",
+     "pattern": "บทเรียนที่ไม่รับแล้ว",
+     "example": null,
+     "status": "REJECTED",
+     "occurrences": 1,
+     "sourceRoomId": null,
+     "sourceUserId": "u-qc-owner",
+     "createdAt": "2026-10-01T03:00:00.000Z",
+     "updatedAt": "2026-10-02T03:00:00.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/memories/pending": {
+   "items": [
+    {
+     "id": "mm1",
+     "content": "ส่วนลดสูงสุด 10% · ลูกค้าประจำ 15% ต้องให้เจ้าของอนุมัติ",
+     "createdAt": "2026-11-03T03:00:00.000Z",
+     "byUserId": "u-qc-2"
+    },
+    {
+     "id": "mm2",
+     "content": "เปิด จ.–ส. 7:30–18:00 · หยุดวันนักขัตฤกษ์",
+     "createdAt": "2026-11-03T04:00:00.000Z",
+     "byUserId": "u-qc-3"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/digest": {
+   "digest": {
+    "at": "2026-11-05T02:00:00.000Z",
+    "activeSystems": [
+     "pos",
+     "crm",
+     "account",
+     "booking"
+    ],
+    "sales": {
+     "todaySatang": 1845000,
+     "todayCount": 23,
+     "d7Satang": 9850000,
+     "d7Count": 141,
+     "d30Satang": 40200000,
+     "d30Count": 602
+    },
+    "quietCustomers": {
+     "count": 6,
+     "sample": []
+    },
+    "lowStock": {
+     "count": 3,
+     "sample": []
+    },
+    "receivables": {
+     "count": 4,
+     "totalSatang": 3250000,
+     "overdueCount": 1
+    },
+    "tomorrow": {
+     "appointments": 5,
+     "firstAt": "2026-11-06T02:30:00.000Z"
+    },
+    "pending": {
+     "approvalsAged": 2,
+     "leavesAged": 0,
+     "shopOrders": 1
+    }
+   }
+  },
+  "GET /api/mobile/secretary/after-hours": {
+   "reply": true,
+   "handoff": true,
+   "disclosure": "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
+  },
+  "GET /api/mobile/inbox/staff": {
+   "items": []
+  }
+ }
+}

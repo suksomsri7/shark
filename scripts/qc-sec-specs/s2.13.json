@@ -1,0 +1,71 @@
+{
+ "wo": "S2.13+S2.20",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s2.20.json",
+ "routes": [
+  {
+   "route": "/secretary",
+   "file": "app/(app)/secretary/index.tsx",
+   "testIds": [
+    "sec-home"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/customers",
+   "file": "app/(app)/customers/index.tsx",
+   "testIds": [
+    "cust-list"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/staff",
+   "file": "app/(app)/secretary/staff/index.tsx",
+   "testIds": [
+    "sec-staff"
+   ],
+   "pair": true
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "app.json userInterfaceStyle automatic (C17)",
+   "file": "app.json",
+   "must": [
+    "\"userInterfaceStyle\":\\s*\"automatic\""
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-2",
+   "name": "StatusBar ตามธีม (expo-status-bar style จาก useTheme) ใน root layout ของ secretary",
+   "file": "app/(app)/secretary/_layout.tsx",
+   "must": [
+    "StatusBar",
+    "useTheme|theme"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-3",
+   "name": "SecTopBar badge 3 ไอคอน (secretary=inbox/count · customers=inbox/unread · team=คำเชิญ/เวร) + ปุ่ม ? ทุกหน้า",
+   "file": "src/components/secretary/SecTopBar.tsx",
+   "must": [
+    "badges",
+    "help-circle"
+   ],
+   "mustNot": []
+  }
+ ],
+ "jsonChecks": [
+  {
+   "id": "X-4",
+   "name": "three-chats.json ok (พิมพ์ในห้องลูกค้า ≠ สั่งเลขา ≠ แชท 1.0)",
+   "file": "qc/shots-sec/three-chats.json",
+   "expect": {
+    "ok": true
+   }
+  }
+ ]
+}

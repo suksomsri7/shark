@@ -6,11 +6,12 @@ import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "@/src/lib/auth-context";
 import { useAppFonts } from "@/src/lib/fonts";
+import { clearSignedUp, isFreshSignup } from "@/src/lib/post-signup";
 import { C } from "@/src/theme";
 
 
 function Gate({ children }: { children: React.ReactNode }) {
-  const { ready, token, tenants } = useAuth();
+  const { ready, token, tenants, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -19,17 +20,29 @@ function Gate({ children }: { children: React.ReactNode }) {
     const inApp = segments[0] === "(app)";
     const atLogin = segments[0] === "login";
     const atDna = segments[0] === "dna";
+    // S2.12: สมัคร/OTP เปิดได้โดยยังไม่ login · R8: มี token แต่ /me ไม่มีเบอร์ → /phone ก่อนตรวจร้าน (ไม่มีทางผ่าน)
+    const atSignup = segments[0] === "signup" || segments[0] === "otp";
     if (!token) {
-      if (!atLogin) router.replace("/login");
+      if (!atLogin && !atSignup) router.replace("/login");
+      return;
+    }
+    if (user?.phone === null) {
+      if (segments[0] !== "phone") router.replace("/phone");
       return;
     }
     if (tenants.length === 0) {
-      // login แล้วแต่ยังไม่มีกิจการ → บังคับเข้า DNA Wizard สร้างกิจการแรก (คำสั่งเจ้าของ)
-      if (!atDna) router.replace("/dna");
+      // login แล้วแต่ยังไม่มีกิจการ → บังคับเข้า DNA Wizard สร้างกิจการแรก (คำสั่งเจ้าของ) · /business/new (G1) เปิดได้แต่ไม่บังคับ (R-S2.12a)
+      if (!atDna && !(inApp && (segments as string[])[1] === "business")) router.replace("/dna");
+      return;
+    }
+    // S2.12: เพิ่งสมัครด้วยเบอร์ (ธงผูก user.id) + มีกิจการ ⇒ C1 ตั้งชื่อเลขา ครั้งเดียว
+    if (isFreshSignup(user?.id)) {
+      clearSignedUp();
+      router.replace("/secretary/onboarding/name");
       return;
     }
     if (atLogin || (!inApp && !atDna)) router.replace("/(app)");
-  }, [ready, token, tenants.length, segments, router]);
+  }, [ready, token, tenants.length, user?.phone, user?.id, segments, router]);
 
   return <>{children}</>;
 }

@@ -93,6 +93,7 @@ const cleanup = async () => {
   }
   try { await prisma.tenant.deleteMany({ where: { slug: { startsWith: "qc-sec-s114-" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } } }); } catch { /* */ }
   try { await prisma.user.deleteMany({ where: { id: { startsWith: "qcs114-" } } }); } catch { /* */ }
+  try { await (prisma as AnyMod).chatRateBucket.deleteMany({ where: { key: { startsWith: "sec:" } } }); } catch { /* */ } // ORACLE-EDIT: ล้างแถว rate-limit ของข้อสอบ
 };
 try {
   await cleanup();
@@ -130,10 +131,11 @@ try {
   const items = (r2.body.items ?? r2.body.rooms ?? []) as { id: string }[];
   const msgs = (r4.body.messages ?? r4.body.items ?? []) as unknown[];
   chk("H-1", "POST rooms 200 roomId · GET rooms มีห้อง · GET room 200 · messages ≥1 · send 200 · ส่งซ้ำ clientMessageId เดิม ⇒ 200 duplicate หรือ 409 · STAFF ที่ไม่ใช่สมาชิก ⇒ 404 · close 200", r1.status === 200 && !!roomId && items.some((x) => x.id === roomId) && r3.status === 200 && r4.status === 200 && msgs.length >= 1 && r5.status === 200 && r5b.status === 200 && (r5c.status === 409 || (r5c.status === 200 && r5c.body.duplicate === true)) && rS.status === 404 && r6.status === 200, JSON.stringify({ r1: r1.status, n: items.length, r3: r3.status, r4: r4.status, m: msgs.length, r5: r5.status, r5c: r5c.status, rS: rS.status, r6: r6.status }));
-  const m1 = await call("rooms/[id]/members", "POST", { userId: U.staff, seeHistory: true }, H, { id: roomId });
-  const m2 = await call("rooms/[id]/members", "GET", undefined, H, { id: roomId });
-  const m3 = await call("rooms/[id]/members/[userId]", "DELETE", undefined, H, { id: roomId, userId: U.staff });
-  const pr = await call("rooms/[id]/proposals", "GET", undefined, H, { id: roomId });
+  const rM = await call("rooms", "POST", { instruction: "ห้องสำหรับสมาชิก" }); const roomM = String(rM.body.roomId ?? rM.body.id ?? ""); // ORACLE-EDIT H-2: ห้องเปิดใหม่ (H-1 ปิดห้องแรกแล้ว)
+  const m1 = await call("rooms/[id]/members", "POST", { userId: U.staff, seeHistory: true }, H, { id: roomM });
+  const m2 = await call("rooms/[id]/members", "GET", undefined, H, { id: roomM });
+  const m3 = await call("rooms/[id]/members/[userId]", "DELETE", undefined, H, { id: roomM, userId: U.staff });
+  const pr = await call("rooms/[id]/proposals", "GET", undefined, H, { id: roomM });
   const mem = (m2.body.members ?? m2.body.items ?? []) as { userId: string }[];
   chk("H-2", "members POST/GET/DELETE 200 · รายชื่อมี staff หลังเพิ่ม · proposals GET 200 array", m1.status === 200 && m2.status === 200 && mem.some((x) => x.userId === U.staff) && m3.status === 200 && pr.status === 200 && Array.isArray(pr.body.items ?? pr.body.proposals ?? pr.body), JSON.stringify({ m1: m1.status, m2: m2.status, m3: m3.status, pr: pr.status }));
 

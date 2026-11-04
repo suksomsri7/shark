@@ -1,0 +1,61 @@
+{
+ "pollWaiting16s": [
+  1,
+  2
+ ],
+ "repeatUrl": "/secretary/new?q=ทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย",
+ "repeatFilled": "ทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย",
+ "pollAfterBlur16s": [
+  2,
+  2
+ ],
+ "pollRunning11s": [
+  1,
+  3
+ ],
+ "pollRunningGapsMs": [
+  5053,
+  4998
+ ],
+ "confirm2xSheet": true,
+ "approveBodies": [
+  "{}",
+  "{\"confirm2x\":true}"
+ ],
+ "approveFlash": "สร้างการ์ดแล้ว",
+ "sheetClosed": true,
+ "editButtons": 1,
+ "approveChatBodies": [
+  "{}"
+ ],
+ "deniedNote": "งานนี้ต้องให้เจ้าของหรือผู้จัดการอนุมัติ",
+ "cardsAfterDenied": 2,
+ "ruleDisabledEmpty": "true",
+ "ruleDisabledFilled": null,
+ "rejectRuleBody": [
+  "{\"note\":\"ข้อความถึงลูกค้าต้องลงท้ายด้วยชื่อร้านทุกครั้ง\",\"remember\":\"RULE\"}"
+ ],
+ "rejectFlash": "ตีกลับแล้ว",
+ "rejectJobBody": [
+  "{\"remember\":\"JOB\"}"
+ ],
+ "editBody": [
+  "{\"patch\":{\"title\":\"ติดตามดอยช้าง (โทร)\"}}"
+ ],
+ "editFlash": "บันทึกการแก้แล้ว",
+ "undoBody": [
+  "{}"
+ ],
+ "undoNote": "ย้อนกลับแล้ว — ดีลกลับไปขั้นเดิม",
+ "teachValue": "ครั้งหน้า ",
+ "sendBody": [
+  "{\"text\":\"ครั้งหน้า ใส่ชื่อร้านท้ายข้อความ\",\"clientMessageId\":\"m-mw2mkt2i-q3ewpa5g\"}"
+ ],
+ "inputAfterSend": "",
+ "closeBody": [
+  "{}"
+ ],
+ "helpUrl": "/secretary/help?roomId=r1",
+ "openLinkUrl": "/crm?dealId=d-qc-1",
+ "notFound": true
+}

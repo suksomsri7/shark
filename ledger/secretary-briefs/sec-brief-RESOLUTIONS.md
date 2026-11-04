@@ -170,3 +170,27 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - oracle รอบ 2: I-7 (ผู้ใช้เดิม link เบอร์ ⇒ ไม่ auto-join · pendingInvitesForUser 1 · acceptInvite ⇒ สมาชิก) · I-8 (invite→cancel→invite ×6 ⇒ rate_limited) · L-6 (กวาด USE ทุกโมดูลไม่มีคีย์อ่อนไหว · คีย์ตัวเลขคงอยู่) · L-7 (levels.chat ⇒ ok:false · levelsAvailableFor settings = [OFF] · staffViewOf ไม่มี levels.chat) → 19 ข้อ
 - **P.2 re-check S1.25 (5 พ.ย. ~09:3xZ)**: N1 ขยาย SENSITIVE_PARTS (`.sensitive.` `.phoneFull` `.period.` `.wht.` `.markPaid` `.payment.manual` `.deposit.` `.waive` `.forfeit` `.writeoff` `.dispose` `.commission.approve` `.point.transfer` `.credit.manage` `.finance.manage` `system.system.`) · oracle L-6 ใช้รายการตายตัว + กวาด VIEW ด้วย · N2 `inviteRateOk` fail-closed (count ต้องเป็นตัวเลขทุก bucket) · N3 resend อยู่ใน tx ล็อกร้านเดียวกับ cap · N4 `smsSafe` ใช้ `\p{Nd}{4,}`/u และ normalise `[.。]` · N5 `detachPushDevices` ย้ายเข้า `revokeStaffAccess` (เว็บด้วย)
 - **N.2 re-check S1.21 (5 พ.ย. ~09:5xZ)**: N1 โน้ต `sla:escalated:` เขียน **หลัง** assign แบบมีเงื่อนไขสำเร็จเท่านั้น (ไม่สำเร็จ = ไม่เขียน ไม่ตัดห้องออกจากรอบถัดไป) · N3 sweep ในเวลาทำการเรียก `assignIncoming` ให้ห้องว่างเสมอ (ไม่ขึ้นกับ unassignedAlertMin) · lookback 72 ชม. · N4 handoff ใช้ `onlyIfAssignee: conv.assigneeUserId` · N5 push "assigned" ใน `after()`/best-effort ไม่บล็อก webhook · หนี้: N2 sweep 200 แถวค้างกรณีไม่มีหัวหน้าคนอื่น · N6 อัปโหลดไม่มี Content-Length buffer ก่อนตรวจ (เหมือน v1)
+
+## Q. รีวิว S2.1 ผู้ตรวจ Q — fix-forward ในใบ S2-2 (5 พ.ย. ~14:1xZ)
+- **R-S2.1a (Q-1)** `secretary/_layout.tsx` + `customers/_layout.tsx` ใส่ `export const unstable_settings = { initialRouteName: "index" }` (deep link/push เปิดแล้วกดกลับต้องถึงรากโซน ไม่ใช่หน้าแรก 1.0)
+- **R-S2.1b (Q-2)** `src/api/secretary.ts`: cache `me` คีย์ด้วย `user.id` · export `resetSecretaryMe()` เรียกตอน signOut/switchTenant · ล้ม (offline/401) ⇒ ไม่ cache (inflight = null)
+- **R-S2.1c (Q-4)** `BusinessSwitcherSheet.pick()` หลัง `switchTenant` สำเร็จ ⇒ `router.dismissAll()` แล้วไปรากโซน (`/secretary` หรือ `/customers`)
+- **R-S2.1d (Q-5)** `/secretary`: แยก 403 (ไม่มีสิทธิ์ใช้เลขา ⇒ จอ "ยังเปิดใช้ไม่ได้" ไม่ใช่ C3) จาก ว่าง · refetch ด้วย `useFocusEffect` (กลับจากห้องต้องสด)
+- **R-S2.1e (Q-6)** badge 3 ไอคอน = store กลางในชั้น layout ของโซน (โหลดตอน focus/foreground · ไม่ยิงทุก mount) · `GET secretary/inbox/count` อยู่ในสัญญา S1.14 (ยืนยัน)
+- **R-S2.1f (Q-7)** `airy/Sheet` รองรับ `BackHandler` (Android) ปิดชีตเมื่อ visible
+- จด: Q-3 ปุ่ม "เลขา AI" ลอยทับ WebView หน้าแรก 1.0 → **เจ้าของตรวจบนเครื่องจริงที่ CP2** (QC เว็บโหลด WebView ไม่ได้) · Q-8 ชื่อร้านตัด → S2.20 · Q-9 ภาษากระพริบ → S2.13 (cache ภาษาใน SecureStore) · Q-10 `_gallery` มี Redirect นอก dev แล้ว (S0.2) — ยืนยันตอน S2.14 · Q-11 oracle s2.1 ขาด back-path/cache reset → ผู้คุมเพิ่มใน spec s2.2 (X-3)
+
+## R. รีวิว S2.12 ผู้ตรวจ R — มติรอบ 2 (5 พ.ย. ~14:5xZ)
+- **R-S2.12a (F1)** gate หลังสมัครใหม่ไม่มีร้าน: ไปที่ `/dna` ตามเดิม (จนกว่า S2.21 ส่ง G1 จริง · `/business/new` ยังเป็นโครง) · อนุญาต `/business/new` เพิ่มได้แต่ห้ามบังคับ · เมื่อ S2.21 merge ค่อยสลับ (จดใน S2.21)
+- **R-S2.12b (F2)** ธง post-signup ผูกกับ `user.id` และล้างใน `signOut` + ตอนเริ่ม `signIn`
+- **R-S2.12c (F4/F5/F6)** `/phone`: reset busy ใน finally + ปุ่มลองใหม่เมื่อ refreshMe ล้ม · `locked` ⇒ ตัวนับยังเดิน ไม่ขอส่งใหม่ทันที · `needSignup` → `/signup` ไม่ขอรหัสซ้ำ (ใช้รหัสเดิม) · signup ที่เบอร์มีบัญชีอยู่แล้ว ⇒ แจ้ง "เบอร์นี้มีบัญชีแล้ว — เข้าสู่ระบบให้แล้ว"
+- **F3 (ของเจ้าของ — release gate)**: ก่อน build/OTA ใด ๆ ต้องมี SMS provider บน prod + บัญชี reviewer ของ App Store มีเบอร์ (หรือเบอร์ทดสอบ+รหัสคงที่ฝั่ง server — ตัดสินใน S3a) · F7 type email `string|null` · F8 R8 บังคับเฉพาะแอป (server ไม่ตรวจ) → S3 · F9 oracle gate เป็น pure function + เคส → S2.14
+
+## S. รีวิว S2.4 ผู้ตรวจ S — fix-forward ในใบ S2-10 (ห้อง) + สัญญา S1.14 (5 พ.ย. ~17:5xZ)
+- **R-S2.4a (S-1)** ย้อน: ปุ่มย้อนอยู่ต่อแถวของ "สิ่งที่เปลี่ยนในระบบ" (ไม่ใช่ปุ่มรวม) · กดแล้วมีชีตยืนยันบอกชื่อรายการ · ใช้ `canUndo` จาก server (ไม่คำนวณจากนาฬิกาเครื่อง)
+- **R-S2.4b (S-2/S-7)** หลัง approve/reject/edit/send: ถ้า poll กำลังวิ่งให้ตั้งธง re-run (ไม่ทิ้ง) · ok ⇒ เอาการ์ดออกทันที · ok:false/409/expired ⇒ reload ทันที
+- **R-S2.4c (S-3)** แผน: แสดง "ทำแล้ว N/M" + note ของขั้นที่ล้มตัวแรก · doneCount>0 ⇒ reload
+- **R-S2.4d (S-4/S-6)** แก้ข้อเสนอ: การ์ดแสดงฟิลด์ที่แก้ (จาก `res.input`) · EditSheet แสดงเฉพาะคีย์ที่มี label `sec.field.*` (ห้ามโชว์ id ดิบ)
+- **R-S2.4e (S-8/S-9/S-10/S-11)** polling หยุดเมื่อ AppState background + backoff ตอน offline · `clientMessageId` ใหม่เมื่อแก้ร่างหลังส่งล้ม + แจ้งเมื่อ duplicate · ปิดห้องมีชีตยืนยัน · guard กดซ้ำใช้ ref
+- **R-S2.4f (S-13)** การ์ด chat.send แสดงบรรทัดลงชื่อที่จะต่อท้ายจริง (R-S1.12c) ใต้ข้อความ
+- **สัญญา S1.14 เพิ่ม (S-5)**: proposals items มี `canApprove` (approvalGate แบบ dry-run สำหรับผู้ดู) · log items มี `canUndo` (สิทธิ์+เวลา server) · เอกสาร `RoomStatus` ค่าจริงจาก `roomStatusOf` (แอป S2.10 ปรับ fixture/สถานะให้ตรง · ไม่มี WAITING_APPROVAL ถ้า server ไม่ส่ง)

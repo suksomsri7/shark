@@ -1,0 +1,120 @@
+{
+ "wo": "S2.21+S2.22",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s2.21.json",
+ "routes": [
+  {
+   "route": "/business/new",
+   "file": "app/(app)/business/new.tsx",
+   "testIds": [
+    "biz-new",
+    "biz-new-name",
+    "biz-new-type",
+    "biz-new-system",
+    "biz-new-submit"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/staff/invite",
+   "file": "app/(app)/secretary/staff/invite.tsx",
+   "testIds": [
+    "inv-name",
+    "inv-phone",
+    "inv-role",
+    "inv-unit",
+    "inv-level",
+    "inv-chat",
+    "inv-sms-preview",
+    "inv-submit",
+    "inv-pending-row",
+    "inv-resend",
+    "inv-cancel"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/staff/m1",
+   "file": "app/(app)/secretary/staff/[membershipId].tsx",
+   "testIds": [
+    "perm-role",
+    "perm-unit",
+    "perm-level",
+    "perm-chat",
+    "perm-save",
+    "perm-suspend",
+    "perm-remove"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/settings/account",
+   "file": "app/(app)/secretary/settings/account.tsx",
+   "testIds": [
+    "acct-phone",
+    "acct-email",
+    "acct-apple",
+    "acct-theme",
+    "acct-notify",
+    "acct-shift",
+    "acct-delete",
+    "acct-logout"
+   ],
+   "pair": true
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "invite: POST staff/invite · reasons rate_limited/already_member/already_invited/pending_cap/bad_permissions แสดงไทย · unitIds ส่งชัดเจน (ไม่ว่าง)",
+   "file": "app/(app)/secretary/staff/invite.tsx",
+   "must": [
+    "staff/invite",
+    "rate_limited",
+    "already_member",
+    "already_invited",
+    "pending_cap",
+    "unitIds"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-2",
+   "name": "สิทธิ์ต่อคน: PUT staff/[membershipId] {role, unitIds, levels, chat, extraPermissions} · แสดงเฉพาะระดับจาก levelsAvailableFor · chat NONE/VIEW/REPLY · suspend/remove ยืนยัน",
+   "file": "app/(app)/secretary/staff/[membershipId].tsx",
+   "must": [
+    "levels",
+    "levelsAvailable|available",
+    "NONE",
+    "VIEW",
+    "REPLY",
+    "suspend",
+    "remove"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-3",
+   "name": "บัญชีของฉัน: ธีม theme-store · แจ้งเตือน GET/PUT notify · เข้า/ออกเวร POST inbox/shift · ลบบัญชี preview→confirm 'ลบบัญชี' · pendingEmail",
+   "file": "app/(app)/secretary/settings/account.tsx",
+   "must": [
+    "theme-store|setTheme",
+    "notify",
+    "shift",
+    "account/delete",
+    "pendingEmail|phone"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-4",
+   "name": "สร้างกิจการ: POST tenants/create {name,type,systems} · หลังสร้าง switchTenant + ไป /secretary/onboarding/name หรือห้องแรก · เพดาน 3 ร้าน ข้อความไทย",
+   "file": "app/(app)/business/new.tsx",
+   "must": [
+    "tenants/create",
+    "switchTenant",
+    "onboarding/name|secretary/room"
+   ],
+   "mustNot": []
+  }
+ ]
+}

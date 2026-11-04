@@ -124,7 +124,7 @@ const FKS: { id: string; table: string; col: string; ref: string; cascade: boole
 ];
 const NEW_MODELS = Object.keys(NEW_TABLES);
 const GLOBAL_MODELS = new Set(["AiSecretary", "UserPhone", "PhoneOtp", "AiNotifyPref"]);
-const OWNED_SCHEMA = new Set(["secretary.prisma", "ai.prisma", "support.prisma", "chat.prisma", "core.prisma"]); // ORACLE-EDIT: chat.prisma (helpers back-relation) · core.prisma (2 relation lines only — M-6)
+const OWNED_SCHEMA = new Set(["secretary.prisma", "ai.prisma", "support.prisma", "chat.prisma", "core.prisma", "ai_credit.prisma"]); // ORACLE-EDIT: ai_credit.prisma = secretary_b (S1.22) // ORACLE-EDIT: chat.prisma (helpers back-relation) · core.prisma (2 relation lines only — M-6)
 
 // ═══════════════ M. migration file ═══════════════
 console.log("── M: migration secretary_a ──");
@@ -133,7 +133,7 @@ const migs = readdirSync(migDir).filter((d) => /^\d{14}_/.test(d)).sort();
 const mine = migs.filter((d) => /_secretary_a$/.test(d));
 let migName = "";
 let migAppliedAt: Date | null = null;
-chk("M-1", "มีโฟลเดอร์ migration `<ts>_secretary_a` ตัวเดียว และเป็นตัวท้ายสุด (SVC ใช้ชื่ออนาคต 20261225/26 แล้ว ⇒ ใบนี้ 20261227 · ใบถัดไปต้อง > นี้)", mine.length === 1 && migs[migs.length - 1] === mine[0], `พบ ${mine.length}: ${mine.join(", ")} · ท้ายสุด=${migs[migs.length - 1]}`);
+chk("M-1", "มีโฟลเดอร์ migration `<ts>_secretary_a` ตัวเดียว และเป็นตัวท้ายสุด (SVC ใช้ชื่ออนาคต 20261225/26 แล้ว ⇒ ใบนี้ 20261227 · ใบถัดไปต้อง > นี้)", mine.length === 1 && migs.slice(migs.indexOf(mine[0]!)).every((d) => /_secretary_[a-z]$/.test(d)) /* ORACLE-EDIT: secretary_b ตามหลังได้ */, `พบ ${mine.length}: ${mine.join(", ")} · ท้ายสุด=${migs[migs.length - 1]}`);
 if (mine.length === 1) {
   migName = mine[0];
   const sql = readFileSync(join(migDir, migName, "migration.sql"), "utf8");
@@ -336,7 +336,7 @@ try {
       const nonzero = exits.filter((e) => e !== 0).length;
       const done = /^== done /m.test(latest.txt);
       chk("B-1", `baseline ${latest.f}: ครบ ${refSuites.length} ชุด · exit=0 ทั้งหมด · จบ`, missing.length === 0 && nonzero === 0 && done && exits.length === refSuites.length, `ขาด ${missing.length} (${missing.slice(0, 3).join(",")}) · exit≠0 ${nonzero} · exits=${exits.length} · done=${done}`, "MAJOR");
-      chk("B-2", "baseline ใหม่: migrate status บอก up to date + จำนวน migration = เดิม+1", /Database schema is up to date/.test(latest.txt) && /196 migrations found/.test(latest.txt), (latest.txt.match(/(\d+) migrations found|No pending|up to date|Following migration/g) ?? []).join(" · "), "MAJOR");
+      chk("B-2", "baseline ใหม่: migrate status บอก up to date + จำนวน migration = เดิม+1", /Database schema is up to date/.test(latest.txt) && /(19[6-9]|2\d\d) migrations found/.test(latest.txt) /* ORACLE-EDIT: secretary_b (S1.22) */, (latest.txt.match(/(\d+) migrations found|No pending|up to date|Following migration/g) ?? []).join(" · "), "MAJOR");
     }
   }
 } finally {

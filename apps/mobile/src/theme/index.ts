@@ -104,3 +104,19 @@ export function haloStyle(color: string, halo: number = size.halo): ViewStyle {
 export function zoneColor(c: Palette, zone: ZoneKey): string {
   return zone === "secretary" ? c.accent : c.zone[zone];
 }
+
+// ───────── สเกลของจอเลขา (RESOLUTIONS §F R-UI1 · ย้ายจากไฟล์จอมาไว้ที่ธีมในใบ S2.1) ─────────
+// จอในภาพแบบกว้าง 536 px = 1.37× ของเครื่อง 390 dp ⇒ ตำแหน่ง/ระยะแนวตั้ง = ค่าในแบบ × 0.73 (`F.v(px)`)
+// ตัวอักษรของ C3 (S0.2) ≈ 0.85 ของแบบ — ชุดค่าที่ภาพคู่ C3 ผ่านแล้ว (`F.title` ฯลฯ) · จอใหม่ใช้ `type` ของ tokens
+export const F = {
+  /** ตัวคูณตำแหน่ง/ระยะแนวตั้งจากแบบ */
+  k: 0.73,
+  /** px ของแบบ → dp ของแอป (ปัดเป็นจำนวนเต็ม) */
+  v: (px: number) => Math.round(px * 0.73),
+  title: 30,
+  sub: 14,
+  h2: 22,
+  p: 14,
+  row: 14,
+  rowSub: 12,
+} as const;

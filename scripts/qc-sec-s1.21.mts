@@ -127,7 +127,7 @@ try {
     const hoBad = await routing.handoff({ tenantId: tid, systemId: sid, conversationId: cA.conv.id, byUserId: U.b, toUserId: U.guard, reason: "x", unitAccess: ["*"] });
     const convHO = await prisma.chatConversation.findUnique({ where: { id: cA.conv.id } });
     const hoMsg = await prisma.chatMessage.findFirst({ where: { conversationId: cA.conv.id, isInternal: true }, orderBy: { createdAt: "desc" } });
-    chk("H-2", "handoff a→b: assignee=b · helper row ของ b ถูกลบ · บันทึกภายใน "ส่งต่อ" มี reason · push ถึง b · ส่งต่อให้ guard (ตอบไม่ได้) ⇒ ปฏิเสธ", ho.ok === true && convHO?.assigneeUserId === U.b && (await routing.listHelpers(tid, sid, cA.conv.id)).length === 0 && !!hoMsg && /ส่งต่อ/.test(hoMsg.body ?? "") && (hoMsg.body ?? "").includes("ผมออกเวรแล้ว") && posts.some((p) => String(p.to).includes(U.b)) && hoBad.ok === false, JSON.stringify({ ho, hoBad, assignee: convHO?.assigneeUserId }).slice(0, 160));
+    chk("H-2", "handoff a→b: assignee=b · helper row ของ b ถูกลบ · บันทึกภายใน «ส่งต่อ» มี reason · push ถึง b · ส่งต่อให้ guard (ตอบไม่ได้) ⇒ ปฏิเสธ", ho.ok === true && convHO?.assigneeUserId === U.b && (await routing.listHelpers(tid, sid, cA.conv.id)).length === 0 && !!hoMsg && /ส่งต่อ/.test(hoMsg.body ?? "") && (hoMsg.body ?? "").includes("ผมออกเวรแล้ว") && posts.some((p) => String(p.to).includes(U.b)) && hoBad.ok === false, JSON.stringify({ ho, hoBad, assignee: convHO?.assigneeUserId }).slice(0, 160));
 
     console.log("── S: SLA sweep ──");
     const notified: AnyMod[] = []; const notify = async (userId: string, msg: AnyMod) => { notified.push({ userId, ...msg }); return { sent: 1 }; };
