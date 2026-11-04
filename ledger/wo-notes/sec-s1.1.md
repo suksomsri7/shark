@@ -14,7 +14,7 @@
 | `prisma/migrations/20261227000000_secretary_a/migration.sql` | ใหม่ | ดู §2 | — |
 | `src/lib/core/scope.ts` | แก้ (+18) | ลงทะเบียน 16 โมเดล · global = AiSecretary UserPhone PhoneOtp AiNotifyPref (มี `why`) · ที่เหลือ tenant | — |
 | `ledger/qc-baseline/sec-baseline-85751098.txt` | ใหม่ | baseline 60 ชุดหลัง migration | — |
-| `core.prisma` | **ไม่แตะ** (FROZEN) | | |
+| `prisma/schema/core.prisma` | แก้ (+2 · มติผู้คุม รอบ 2) | `User.secretary AiSecretary?` · `User.userPhone UserPhone?` — back-relation ล้วน ไม่มีคอลัมน์/SQL | — |
 
 ไม่ได้แตะ `docs/modules/31-secretary.md` (S0.3 ยังไม่ merge ในทรีนี้ — S0.3 คัดตาราง §4 จากใบ/ไฟล์ schema นี้)
 
@@ -70,14 +70,27 @@ X1 ใช้ (แกน scope · F-3) · X2–X11 N-A (ใบนี้มีแ�
 ## 8. หนี้
 | เรื่อง | เหตุผล | ใบที่จะปิด |
 |---|---|---|
-| drift 2 FK ไป User (CI `pnpm drift`) | core FROZEN | มติผู้คุม |
+| ~~drift 2 FK ไป User~~ | ปิดแล้วรอบ 2 (back-relation ใน core.prisma) | S1.1 |
 | `AiNotifyPref @@unique([userId, tenantId, kind])` — tenantId null ซ้ำได้ (Postgres NULL distinct) | Prisma ไม่รองรับ NULLS NOT DISTINCT | S1.23 upsert ด้วย findFirst/ทรานแซกชัน หรือ sentinel |
-| qc-mobile-app APP-6.1 แดงตั้งแต่ S0.2 | theme.ts เป็น shim | ผู้คุม (ORACLE-EDIT qc-mobile-app หรือ S0.2-fix) |
+| ~~qc-mobile-app APP-6.1~~ | ปิดแล้ว (ORACLE-EDIT 405cd2e9 · re-run 38/38) | S1.1 |
 | `docs/modules/31-secretary.md` §4 | S0.3 ยังไม่ merge | S0.3 คัดจากใบ |
-| typecheck 3 error ในข้อสอบผู้คุม | ไม่ใช่ไฟล์ของใบ | ผู้คุม / S0.3 |
+| typecheck 5 error ในข้อสอบผู้คุม (s0.3 ×1 · s1.2 ×4 — โมดูลของใบที่ยังไม่ทำ + s1.2:112 ส่ง `Record<string, unknown>` เข้า Json ต้อง cast) | ไม่ใช่ไฟล์ของใบ | ผู้คุม / S0.3 / S1.2 |
 
 ## 9. คืนสภาพฐาน QC
 ข้อสอบ `finally` ลบ tenant/AiConversation/AiRoom(+Cascade) ของตัวเอง + `qc-sec-s11-*` เก่ากว่า 1 ชม. · builder ไม่ได้เขียนฐานนอกจากข้อสอบ/baseline · ไม่ได้รัน deploy/UPDATE `_prisma_migrations`
 
 ## ทำต่อ (ถ้ารีสตาร์ต)
 หลังผู้คุมแก้ข้อสอบ: `bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-sec-s1.1.mts` (คาด 65/65 ถ้ามีมติเรื่อง qc-mobile-app ด้วย)
+
+## 10. รอบ 2 — หลังมติผู้คุม (4 พ.ย. ~12:4xZ)
+- มติ: ORACLE-EDIT ทั้ง 3 รับ (405cd2e9 · I-* ตัด `"` · M-4/M-5 รวม chat/core · M-6 ยอม back-relation 2 บรรทัด · B-1 เทียบ `finished_at`) · ชื่อโฟลเดอร์ 20261227000000 รับ · `tenantId` บน AiRoomMember/AiRoomJob รับ · drift ⇒ เพิ่ม back-relation ใน core.prisma
+- `git merge session/secretary` → 285f054a (ไม่มี conflict)
+- core.prisma +2 บรรทัด (ไม่จัดแนวบรรทัดเดิม · `prisma format` บนสำเนาไม่เปลี่ยนไฟล์) · secretary.prisma `AiSecretary.user` / `UserPhone.user` `@relation(fields: [userId], references: [id], onDelete: Cascade)` · หัวไฟล์ไม่มี FK เขียนมือแล้ว (ความเห็นหัว migration.sql ยังพูดถึง FK เขียนมือ — ไม่แก้ เพราะ checksum)
+- `migrate diff --from-schema <base> --to-schema prisma/schema` = ชุดคำสั่งเดียวกับ migration.sql ทุกตัว (ต่างแค่ลำดับ/บรรทัดว่าง + 4 NOT NULL ที่แก้มือ) ⇒ migration ไม่เปลี่ยน
+- drift (อ่านอย่างเดียว `qc-sec.sh … migrate diff --from-config-datasource --to-schema prisma/schema --script`): **ไม่มีคำสั่งของตาราง/คอลัมน์ S1.1 เลย · ไม่มี DROP CONSTRAINT ของ AiSecretary/UserPhone แล้ว** · ที่เหลือ = drift เดิมของ branch QC ล้วน HR (DropTable 13 · DropEnum 16 · DropForeignKey 15 · AlterTable 7 · AlterEnum 1 · RenameIndex 1 — ทุกตัว `"Hr…`) + DropIndex 6 (HR 5 + `DormUtilityRate_unitId_buildingId_kind_periodKey_key`)
+- `prisma generate` (12:4xZ · node_modules ร่วม shark-svc) · fitness มี env `JSON_SUMMARY {"total":53,"passed":53,"findings":[]}` · ไร้ env `JSON_SUMMARY {"total":53,"passed":53,"findings":[]}`
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=9500M`): 0 error ใน src/ prisma/ · 5 error ในข้อสอบผู้คุม (§8)
+- qc-mobile-app re-run 12:50:59Z: 38/38 exit=0 → แทนบล็อกใน `sec-baseline-85751098.txt` (บรรทัด `# re-run` นำ) · ไฟล์ = 60 ชุด exit=0 ทั้งหมด · `== done` คงเดิม
+- oracle forced #1: `JSON_SUMMARY {"total":66,"passed":66,"failed":[],"skipped":[],"findings":[]}`
+- oracle forced #2: `JSON_SUMMARY {"total":66,"passed":66,"failed":[],"skipped":[],"findings":[]}`
+- commits: 6c0267cc (core back-relations) · fa4e2627 (baseline re-run) · wo-notes (commit นี้)
