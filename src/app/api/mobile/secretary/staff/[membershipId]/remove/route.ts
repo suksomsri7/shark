@@ -7,7 +7,7 @@ import { staffResponse } from "../../_staff";
 export async function POST(req: Request, ctx: RouteCtx<"membershipId">) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "staff");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "staff");
   if (rl) return rl;
   const b = await readBody(req, z.object({}).strict());
   if (!b.ok) return b.res;

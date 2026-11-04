@@ -7,7 +7,7 @@ import { inviteResponse } from "../../../_staff";
 export async function POST(req: Request, ctx: RouteCtx) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "staff-invite", 10);
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "staff-invite", 10);
   if (rl) return rl;
   const b = await readBody(req, z.object({}).strict());
   if (!b.ok) return b.res;

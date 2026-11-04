@@ -27,7 +27,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "scheduled");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "scheduled");
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;

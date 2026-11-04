@@ -5,7 +5,7 @@ import { gate, idParam, notFound, ok, withRateLimit, type RouteCtx } from "../..
 export async function DELETE(req: Request, ctx: RouteCtx) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "staff-invite", 10);
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "staff-invite", 10);
   if (rl) return rl;
   const id = await idParam(ctx, "id");
   return id && (await cancelInvite({ tenantId: a.c.tenantId, actorUserId: a.c.userId, membership: a.c.m }, id)) ? ok({ ok: true }) : notFound("ไม่พบคำเชิญนี้");

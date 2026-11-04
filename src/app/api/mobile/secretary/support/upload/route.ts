@@ -9,7 +9,7 @@ const MAX_BYTES = 5 * 1024 * 1024;
 export async function POST(req: Request) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "support-upload", 10);
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "support-upload", 10);
   if (rl) return rl;
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BYTES + 64 * 1024) return fail(413, "too_large", "รูปใหญ่เกิน 5 MB");
   let form: FormData;

@@ -1,7 +1,7 @@
 // GET /api/mobile/secretary/log?module&day&roomId&take — บันทึกการกระทำของเลขา (B5 · `listLog`)
-//   OWNER ทุกแถว · คนอื่น = ห้องที่ตัวเองเปิด/เป็นสมาชิก + แถวที่ตัวเองสั่ง/อนุมัติ · day = YYYY-MM-DD เวลาไทย
+//   ต่อแถว `canUndo` (สิทธิ์จริงของผู้เรียก) + `link` (พาธ /app สำหรับ WebView `?open=` · ไม่รู้ = null) · OWNER ทุกแถว · คนอื่น = ห้องที่ตัวเองเปิด/เป็นสมาชิก + แถวที่ตัวเองสั่ง/อนุมัติ · day = YYYY-MM-DD เวลาไทย
 import { listLog } from "@/lib/ai/secretary/actions";
-import { logDto } from "@/lib/ai/secretary/dto";
+import { logItemsFor } from "@/lib/ai/secretary/views";
 import { fail, gate, ok, optId, takeOf } from "../_shared";
 
 export async function GET(req: Request) {
@@ -14,6 +14,5 @@ export async function GET(req: Request) {
   const module = optId(q.get("module"));
   if (roomId === null || module === null) return fail(400, "invalid", "ตัวกรองไม่ถูกต้อง");
   const rows = await listLog(a.c.conv, { ...(day ? { day } : {}), ...(module ? { module } : {}), ...(roomId ? { roomId } : {}), take: takeOf(q.get("take"), 50, 200) });
-  const now = new Date();
-  return ok({ items: rows.map((r) => logDto(r, now)) });
+  return ok({ items: await logItemsFor(a.c, rows) }); // + canUndo (dry-run ของ undoAction · นาฬิกาเซิร์ฟเวอร์) + link ทางเปิดของจริง
 }

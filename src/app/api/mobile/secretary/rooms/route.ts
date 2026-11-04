@@ -39,7 +39,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "rooms");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "rooms");
   if (rl) return rl;
   const b = await readBody(req, PostBody);
   if (!b.ok) return b.res;

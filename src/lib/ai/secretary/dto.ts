@@ -71,7 +71,7 @@ export function messageDto(m: Pick<AiMessage, "id" | "role" | "content" | "autho
 }
 
 /** ข้อเสนอรออนุมัติ — ไม่มี payload ดิบ · `input` เฉพาะ kind ของทะเบียน op (แก้ก่อนอนุมัติได้ · Q9) · ชั้นความเสี่ยงจาก `classOfKind` */
-export function proposalDto(p: Pick<AiProposal, "id" | "kind" | "risk" | "summary" | "payload" | "createdAt" | "expiresAt">) {
+export function proposalDto(p: Pick<AiProposal, "id" | "kind" | "risk" | "summary" | "payload" | "createdAt" | "expiresAt">, why?: string) {
   const payload = obj(p.payload);
   const input = typeof payload.opId === "string" && payload.opId ? obj(payload.input) : null;
   const k = classOfKind(p.kind);
@@ -82,6 +82,11 @@ export function proposalDto(p: Pick<AiProposal, "id" | "kind" | "risk" | "summar
     risk: p.risk === "DESTRUCTIVE" ? "DESTRUCTIVE" : "NORMAL",
     summary: p.summary,
     class: { destructive: k.destructive, money: k.money, customerFacing: k.customerFacing, piiExport: k.piiExport },
+    /** สัญญาจอ A3/A4 (ผู้คุม S2.4) — ชั้นที่การ์ดแสดงป้าย */
+    classes: { money: k.money, customerFacing: k.customerFacing, destructive: k.destructive },
+    /** เหตุผลไทยว่าทำไมต้องอนุมัติ (`whyApproval` + กฎของร้าน — ข้อความเดียวกับกล่องรวม) · ไม่ส่ง = ไม่มี */
+    ...(why ? { why } : {}),
+    /** แก้ก่อนอนุมัติได้ = kind ของทะเบียน op เท่านั้น (Q9) · chat.send / kind เขียนมือ = false */
     editable: input !== null,
     ...(input !== null ? { input } : {}),
     edited: !!payload._edited,
@@ -99,8 +104,33 @@ export function planDto(p: Pick<AiPlan, "id" | "title" | "hasDestructive" | "ste
   return { id: p.id, type: "plan" as const, title: p.title, hasDestructive: p.hasDestructive, steps, createdAt: p.createdAt, expiresAt: p.expiresAt };
 }
 
+export type PlanStepStatus = "PENDING" | "RUNNING" | "DONE" | "FAILED" | "SKIPPED";
+/**
+ * แผนสำหรับการ์ดขั้น (A3) — สถานะขั้นจาก stepsJson (PENDING/DONE/FAILED ที่ executePlan เขียน) +
+ *   แผน RUNNING: ขั้น PENDING แรก = RUNNING · ขั้น PENDING หลังขั้นที่ FAILED = SKIPPED (executePlan หยุดที่ขั้นล้ม)
+ */
+export function planCardDto(p: Pick<AiPlan, "id" | "title" | "status" | "stepsJson">) {
+  let failed = false;
+  let runningSet = false;
+  const steps = (Array.isArray(p.stepsJson) ? p.stepsJson : [])
+    .map((x) => obj(x))
+    .filter((x) => typeof x.kind === "string" && typeof x.summary === "string")
+    .map((x) => {
+      const raw = x.status === "DONE" || x.status === "FAILED" ? (x.status as PlanStepStatus) : "PENDING";
+      let status: PlanStepStatus = raw;
+      if (raw === "FAILED") failed = true;
+      else if (raw === "PENDING" && failed) status = "SKIPPED";
+      else if (raw === "PENDING" && p.status === "RUNNING" && !runningSet) {
+        status = "RUNNING";
+        runningSet = true;
+      }
+      return { kind: x.kind as string, summary: x.summary as string, status };
+    });
+  return { id: p.id, title: p.title, status: p.status, steps };
+}
+
 /** บันทึกการกระทำ (B5) — ไม่มี payload (ids ภายใน) · `canUndo` = ยังอยู่ในกรอบ 24 ชม. และยังไม่ย้อน (สิทธิ์จริงตรวจตอนกด) */
-export function logDto(l: AiActionLog, now: Date) {
+export function logDto(l: AiActionLog, now: Date, link: string | null = null) {
   return {
     id: l.id,
     kind: l.kind,
@@ -111,6 +141,8 @@ export function logDto(l: AiActionLog, now: Date) {
     userId: l.userId,
     approverId: l.approverId,
     entity: l.entityType && l.entityId ? { type: l.entityType, id: l.entityId } : null,
+    /** ทางเปิดของจริงในแอป (WebView `?open=` · พาธใต้ /app) — ไม่รู้ = null */
+    link,
     undoableUntil: l.undoableUntil,
     undoneAt: l.undoneAt,
     canUndo: !l.undoneAt && !!l.undoableUntil && l.undoableUntil.getTime() >= now.getTime(),

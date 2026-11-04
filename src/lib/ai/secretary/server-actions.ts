@@ -9,8 +9,8 @@ import { after } from "next/server";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
 import { aiMemberActor } from "../actor";
-import { executeProposal, listPendingProposals, rejectProposal } from "../proposals";
-import { executePlan, listPendingPlans, rejectPlan } from "../plans";
+import { executeProposal, rejectProposal } from "../proposals";
+import { executePlan, rejectPlan } from "../plans";
 import { listMessages } from "../service";
 import { createTask, describeFrequency, listTasks, setTaskActive, deleteTask, type Channel, type Frequency } from "../scheduled";
 import { aiBridges, wakeOutbox } from "@/lib/modules/crm";
@@ -29,6 +29,7 @@ import { quotaStatus } from "./quota";
 import { computeDigest, digestForViewer } from "./digest";
 import { getNotifyPrefs, setNotifyPref } from "./notify";
 import * as dto from "./dto";
+import { logItemsFor, pendingItemsFor, roomPlansFor } from "./views";
 
 type Fail = { ok: false; error: string; message: string };
 const THAI = /[฀-๿]/;
@@ -101,7 +102,7 @@ export async function secStartRoomAction(input: { instruction: string; systems?:
 export async function secGetRoomAction(roomId: string) {
   const w = await webAi();
   const room = await getRoom(w.conv, roomId);
-  return room ? dto.roomDto(room, { userId: w.userId, role: w.m.role }) : null;
+  return room ? { ...dto.roomDto(room, { userId: w.userId, role: w.m.role }), plans: await roomPlansFor(w.conv, room.conversationId) } : null;
 }
 export async function secListRoomMessagesAction(roomId: string, take = 100) {
   const w = await webAi();
@@ -145,8 +146,7 @@ export async function secListRoomProposalsAction(roomId: string) {
   const w = await webAi();
   const room = await getRoom(w.conv, roomId);
   if (!room) return null;
-  const [p, pl] = await Promise.all([listPendingProposals(w.conv, room.conversationId), listPendingPlans(w.conv, room.conversationId)]);
-  return [...p.map(dto.proposalDto), ...pl.map(dto.planDto)].sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime());
+  return pendingItemsFor(w, room.conversationId);
 }
 export async function secApproveProposalAction(proposalId: string, opts?: { confirm2x?: boolean }) {
   const w = await webAi();
@@ -188,8 +188,7 @@ export async function secRejectPlanAction(planId: string) {
 // ── บันทึก · ย้อน ──
 export async function secListLogAction(opts?: { module?: string; day?: string; roomId?: string; take?: number }) {
   const w = await webAi();
-  const now = new Date();
-  return (await listLog(w.conv, opts)).map((l) => dto.logDto(l, now));
+  return logItemsFor(w, await listLog(w.conv, opts));
 }
 export async function secUndoLogAction(logId: string) {
   const w = await webAi();

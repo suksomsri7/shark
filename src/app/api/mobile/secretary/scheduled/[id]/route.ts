@@ -24,7 +24,7 @@ async function ownTask(c: SecCtx, id: string) {
 export async function PUT(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "scheduled");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "scheduled");
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;
@@ -41,7 +41,7 @@ export async function PUT(req: Request, ctx: RouteCtx) {
 export async function DELETE(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "scheduled");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "scheduled");
   if (rl) return rl;
   const id = await idParam(ctx, "id");
   const t = id ? await ownTask(a.c, id) : null;

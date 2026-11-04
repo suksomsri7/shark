@@ -57,7 +57,8 @@ export async function userGate(req: Request): Promise<{ ok: true; userId: string
 
 /**
  * เพดานต่อผู้ใช้ต่อเส้น (`sec:<route>:<key>` · fixed window 1 นาที · DB ร่วมทุก instance) — เกิน = 429 · ผ่าน = null
- *   ปริยาย 30/นาที (เส้นเขียน) · ส่งข้อความห้อง 10/นาที · `key` = userId (หรือ IP ของเส้นสาธารณะ)
+ *   ปริยาย 30/นาที (เส้นเขียน) · ส่งข้อความห้อง 10/นาที · `key` = `<tenantId>:<userId>` บนเส้นระดับกิจการ (ต่อ Membership แบบ inbox R-S1.21d) ·
+ *   `<userId>` บนเส้นระดับผู้ใช้ · IP บนเส้นสาธารณะ
  */
 export async function withRateLimit(key: string, route: string, perMinute = 30): Promise<Response | null> {
   const rl = await checkRateLimitDb(`sec:${route}:${key}`, { limit: perMinute, windowMs: 60_000 });

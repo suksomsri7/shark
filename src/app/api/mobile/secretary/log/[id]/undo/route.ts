@@ -7,7 +7,7 @@ import { gate, idParam, notFound, ok, readBody, thrown, withRateLimit, type Rout
 export async function POST(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "undo");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "undo");
   if (rl) return rl;
   const b = await readBody(req, z.object({}).strict());
   if (!b.ok) return b.res;

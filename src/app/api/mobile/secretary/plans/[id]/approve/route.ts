@@ -9,7 +9,7 @@ const Body = z.object({ confirm2x: z.boolean().optional() }).strict();
 export async function POST(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "approve");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "approve");
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;

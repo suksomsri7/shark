@@ -9,7 +9,7 @@ const Body = z.object({ body: z.string().trim().min(1).max(4000), attachments: A
 export async function POST(req: Request, ctx: RouteCtx) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "support");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "support");
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;

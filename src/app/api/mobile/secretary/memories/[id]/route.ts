@@ -5,7 +5,7 @@ import { forbidden, gate, idParam, notFound, ok, withRateLimit, type RouteCtx } 
 export async function DELETE(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "memories");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "memories");
   if (rl) return rl;
   if (a.c.m.role !== "OWNER") return forbidden("ลบความจำของร้านได้เฉพาะเจ้าของกิจการ");
   const id = await idParam(ctx, "id");

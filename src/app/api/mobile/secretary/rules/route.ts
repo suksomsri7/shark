@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "rules");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "rules");
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;

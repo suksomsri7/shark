@@ -5,7 +5,7 @@ import { gate, idParam, notFound, ok, thrown, withRateLimit, type RouteCtx } fro
 export async function DELETE(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "lessons");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "lessons");
   if (rl) return rl;
   const id = await idParam(ctx, "id");
   if (!id) return notFound("ไม่พบบทเรียนนี้");

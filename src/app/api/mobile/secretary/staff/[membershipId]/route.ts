@@ -18,7 +18,7 @@ const Body = z
 export async function PUT(req: Request, ctx: RouteCtx<"membershipId">) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "staff");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "staff");
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;

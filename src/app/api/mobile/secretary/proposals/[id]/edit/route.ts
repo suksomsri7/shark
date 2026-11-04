@@ -8,7 +8,7 @@ const Body = z.object({ patch: z.record(z.string().max(80), z.unknown()) }).stri
 export async function POST(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "edit");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "edit");
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;

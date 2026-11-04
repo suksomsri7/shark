@@ -8,7 +8,7 @@ const Body = z.object({ title: z.string().trim().min(1).max(200) }).strict();
 export async function PUT(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "room-title");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "room-title");
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;

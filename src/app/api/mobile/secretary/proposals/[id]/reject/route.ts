@@ -11,7 +11,7 @@ const Body = z.object({ note: z.string().max(2000).optional(), remember: z.union
 export async function POST(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
-  const rl = await withRateLimit(a.c.userId, "reject");
+  const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "reject");
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;
