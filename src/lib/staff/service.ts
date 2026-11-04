@@ -189,8 +189,8 @@ function mergePermissions(current: PermissionMap, next: PermissionMap): Permissi
   return { ...legacy, ...next };
 }
 
-/** ตรวจการยกระดับสิทธิ์: ทุกข้อที่ "เพิ่มขึ้นจากของเดิม" ผู้สั่งต้องมีเองก่อน */
-function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: PermissionMap): StaffFail | null {
+/** ตรวจการยกระดับสิทธิ์: ทุกข้อที่ "เพิ่มขึ้นจากของเดิม" ผู้สั่งต้องมีเองก่อน · SEC S1.25 ▸ export ให้คำเชิญ (staff/invite.ts) ใช้ตัวตรวจชุดเดียวกัน ◂ */
+export function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: PermissionMap): StaffFail | null {
   for (const [key, val] of Object.entries(next)) {
     if (val === true) {
       if (current[key] === true) continue; // มีอยู่แล้ว ไม่ใช่การเพิ่ม
