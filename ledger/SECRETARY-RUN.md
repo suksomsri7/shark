@@ -20,7 +20,7 @@
 ## 2. สัญญาต่อใบ (ผู้คุมเติมตอนออกข้อสอบ · ย่อ: ชื่อฟังก์ชัน · ข้อสอบ S-group · จำนวนข้อ)
 _(เติมเมื่อถึงใบ)_
 
-## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 10/58 (41 ชุด) · 17%
+## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 11/58 (41 ชุด) · 19%
 
 | ใบ | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|
@@ -44,7 +44,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.15 | ✍️ | | รวมในชุด S1-8 · 🎯 วงจรเรียนรู้ |
 | S1.16 | ⬜ | | ข้อมูลสดรายวัน |
 | S1.17 | ⬜ | | Support Desk ต่อแอป |
-| S1.19 | 🔁 | | รอบ 1 เสร็จ (21/21 หลัง ORACLE-EDIT Q-3) · **รีวิว 2 คน: BLOCK** — CRITICAL อีเมลไม่ยืนยันตอนสมัครด้วยเบอร์ = ช่องยึดบัญชี (R-S1.19a) + MAJOR 6 ข้อ (R-S1.19b–g) → รอบ 2 บนเลน c · 🎯 SMS OTP เบอร์ = ID (รอคีย์ SMS จากเจ้าของ · โหมด mock ก่อน) |
+| S1.19 | ✅ | 4 พ.ย. ~21:1xZ | merge (wip/sec-s1.19 b52e0a48) · รอบ 1 รีวิว 2 คน BLOCK (CRITICAL อีเมลไม่ยืนยัน) → รอบ 2 ตาม RESOLUTIONS §H · oracle 26/26 ×3 (ORACLE-EDIT Q-3 · R2-Q-2 · R2-ENV) · regression 5 ชุดเท่า baseline · placeholder `<เบอร์>@phone.shark.in.th` + prefs.pendingEmail · normalizeThaiMobile · mock ถูกเมินใน production · 503 เมื่อไม่มีผู้ให้บริการ · deviation รับ: resendAfterSec คงที่ 60 ใน route (กันรั่ว) · otp_used · หนี้: S1.19b ยืนยันอีเมล · index PhoneOtp(ip,createdAt) → secretary_b · step-up เปลี่ยนเบอร์ · 🎯 SMS OTP เบอร์ = ID (รอคีย์ SMS จากเจ้าของ · โหมด mock ก่อน) |
 | S1.20 | ✅ | 4 พ.ย. ~19:2xZ | merge (wip/sec-s1.20 59333ba5) · oracle 19/19 ×3 · regression 6 ชุดเท่า baseline · raw fetch Messages API · `AI_PROVIDER=anthropic` + `SHARK_ANTHROPIC_KEY` (เจ้าของตั้งตอน S3a.2) · หนี้: pricing sonnet 5 คิด 3/15 (จริง 2/10) · cache token คิดเต็ม · ยังไม่เคยยิง API จริง · Anthropic ตรง (รอคีย์ shark จากเจ้าของ · mock ก่อน) |
 | S1.21 | ⬜ | | 🎯 แชทลูกค้า API มือถือ |
 | S1.22 | ⬜ | | 🎯 สะพานเลขา↔ห้องลูกค้า |
@@ -102,3 +102,4 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย. ~18:0xZ** รับ S1.4 (merge) · เลน b → `wip/sec-s1.5` ชุด S1-4 (คิวเบื้องหลัง) · ถัดไปเมื่อเลนว่าง: S1-5 (S1.6) · S1-6 (S1.7+S1.8)
 - **4 พ.ย. ~19:2xZ** รับ S1.20 (merge · light-check) · รีวิว S1.19 (A ความปลอดภัย · B สัญญา) ⇒ BLOCK → RESOLUTIONS §H · รีวิวย้อนหลัง S1-2 (C สิทธิ์ · D regression) ⇒ FIX-NOW: `upcoming_schedule`/`financial_summary`/`growth_recommendations`/`customer_points` อ่านข้ามโมดูลที่ OFF · `secretaryOf` ต้อง .catch · FIX-LATER ก่อน S1.14: route คีย์ API ส่ง access · setAccess โหลด membership เอง · แผนตรวจระดับทุกขั้นก่อน claim · ประตู CRM · → ออกใบ **S1.3b** (เลน d) 
 - **4 พ.ย. ~20:0xZ** รับ S1.5 (merge) · ORACLE-EDIT s0.3 ชื่อฟังก์ชัน (getAccess/roomSightFor) · ใบ S1-2b (S1.3b) + oracle → เลน d · เลน b → `wip/sec-s1.6` ชุด S1-5
+- **4 พ.ย. ~21:1xZ** รับ S1.19 รอบ 2 (merge) · เลน c → `wip/sec-s1.7` ชุด S1-6 (S1.7+S1.8 · 2 ผู้ตรวจ)
