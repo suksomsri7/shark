@@ -112,7 +112,10 @@ type StaticProposalKind =
   | "cancel_reservation"
   | "kanban_archive_card"
   | "shop_refund_order"
-  | "restaurant_close_bill";
+  | "restaurant_close_bill"
+  // SEC S1.12 ▸ ส่งข้อความถึงลูกค้าผ่านโมดูลแชท (R-K15) · คืนมัดจำนัดหมาย (เส้นสาธิต 3 · R-K16) ◂
+  | "chat.send"
+  | "booking_refund_deposit";
 
 /**
  * kind ทั้งหมด — รวมของโมดูลบัญชีที่ derive จากทะเบียน op (`account.documents.create` ฯลฯ)
@@ -191,6 +194,9 @@ const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; action: s
   cancel_reservation: { module: "hotel", action: "hotel.reservation.cancel" },
   kanban_archive_card: { module: "kanban", action: "kanban.card.delete" },
   shop_refund_order: { module: "shop", action: "shop.order.refund" },
+  // SEC S1.12 ▸ R-K14 คีย์ตอบแชทเดิม (ไม่สร้างคีย์ใหม่) · คืนมัดจำ = คีย์ปุ่มคิวมัดจำของร้าน (booking/access.ts refundDueDepositAction) ◂
+  "chat.send": { module: "chat", action: "chat.message.send" },
+  booking_refund_deposit: { module: "booking", action: "booking.deposit.refund" },
 };
 
 /**
@@ -1425,6 +1431,10 @@ async function dispatch(
     return `ตั้งงานประจำให้เลขาทำ${scheduledSvc.describeFrequency(frequency ?? "DAILY", days)} เวลา ${hh}:00 น. เรียบร้อยแล้ว — ทุกรอบจะเปิดห้องงานใหม่และแจ้งเตือนให้อ่าน`;
   }
 
+  // SEC S1.12 ▸ ส่งถึงลูกค้า (R-K15) · คืนมัดจำนัดหมาย (R-K16) ◂
+  if (kind === "chat.send") return dispatchChatSend(tenantId, proposalId, payload, m, userId);
+  if (kind === "booking_refund_deposit") return dispatchBookingRefundDeposit(tenantId, payload, userId);
+
   if (kind === "automation_create_rule") {
     const p = payload as AutomationCreateRulePayload;
     const name = String(p.name ?? "").trim();
@@ -1455,6 +1465,83 @@ async function dispatch(
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");
+}
+
+// ── SEC S1.12 ▸ chat.send — ข้อความถึงลูกค้าที่คนอนุมัติแล้ว ส่งผ่าน `sendReply` ของโมดูลแชท (ทางเดียวกับทีมพิมพ์ตอบ) ──
+// กติกา (R-K15 · แบบ §5 PDPA · §10 จุดเชื่อม 2):
+//   ผู้ส่ง = คนกดอนุมัติ (ไม่ใช่ผู้สั่ง) · ป้ายผู้ส่งที่ลูกค้าเห็น = "Shark (ผู้ช่วย AI)" ทับนามแฝงของร้าน (ลูกค้าต้องรู้ว่า AI เขียน)
+//   เฉพาะผู้ติดต่อที่ผูกสมาชิก/CRM แล้ว (`ChatContact.customerId`) · ห้องต้องยังไม่ปิด · หน้าต่างตอบของช่องทาง (FB/IG/WA) ต้องยังเปิด
+//   ข้อความ ≤ 1,000 ตัวอักษร · ไม่มีไฟล์แนบในรุ่นแรก · `clientMessageId` = id ข้อเสนอ ⇒ ส่งซ้ำ = ไม่ส่งซ้ำ (unique ของแชท)
+//   ป้าย meta คีย์แบน `ai_roomId` `ai_proposalId` `ai_approvedBy` — S1.21 อ่านไปทำป้าย "ส่งโดย Shark · อนุมัติโดย X"
+//   ข้อความที่ส่งแล้วย้อนไม่ได้ (ไม่อยู่ในรายการย้อนของ S1.8)
+export const CHAT_SEND_SENDER_NAME = "Shark (ผู้ช่วย AI)";
+export const CHAT_SEND_MAX_CHARS = 1000;
+
+async function dispatchChatSend(
+  tenantId: string,
+  proposalId: string,
+  payload: Record<string, unknown>,
+  m: MembershipCtx | undefined,
+  userId: string | null | undefined,
+): Promise<string> {
+  if (!m || !userId) throw new Error("ต้องรู้ตัวผู้กดอนุมัติก่อนจึงจะส่งข้อความถึงลูกค้าได้ — เปิดข้อเสนอจากแอปแล้วกดอนุมัติอีกครั้ง");
+  const conversationId = typeof payload.conversationId === "string" ? payload.conversationId.trim() : "";
+  const body = typeof payload.body === "string" ? payload.body.trim() : "";
+  if (!conversationId) throw new Error("ข้อเสนอนี้ไม่ได้ระบุห้องแชทลูกค้า — สั่งเลขาใหม่อีกครั้ง");
+  if (!body) throw new Error("ข้อความถึงลูกค้าว่างอยู่ — สั่งเลขาเขียนข้อความใหม่");
+  if (body.length > CHAT_SEND_MAX_CHARS) throw new Error(`ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_MAX_CHARS.toLocaleString("th-TH")} ตัวอักษร — ให้เลขาย่อข้อความแล้วเสนอใหม่`);
+  const conv = await prisma.chatConversation.findFirst({
+    where: { id: conversationId, tenantId },
+    select: { id: true, systemId: true, contactId: true, channel: true, status: true, replyWindowExpiresAt: true, contact: { select: { customerId: true, displayName: true } } },
+  });
+  if (!conv || (typeof payload.systemId === "string" && payload.systemId !== "" && payload.systemId !== conv.systemId)) {
+    throw new Error("ไม่พบห้องแชทลูกค้านี้ (อาจถูกลบไปแล้ว)");
+  }
+  if (typeof payload.contactId === "string" && payload.contactId !== "" && payload.contactId !== conv.contactId) {
+    throw new Error("ลูกค้าในข้อเสนอไม่ตรงกับห้องแชท — สั่งเลขาใหม่อีกครั้ง");
+  }
+  if (!conv.contact.customerId) throw new Error("ส่งได้เฉพาะลูกค้าที่ผูกกับสมาชิก/CRM แล้ว — ผูกลูกค้ารายนี้ในห้องแชทก่อน แล้วค่อยสั่งใหม่");
+  if (conv.status === "RESOLVED") throw new Error("ห้องแชทนี้ปิดไปแล้ว จึงยังส่งข้อความไม่ได้ — เปิดห้องใหม่จากหน้าแชทลูกค้าก่อน");
+  if (conv.replyWindowExpiresAt && conv.replyWindowExpiresAt.getTime() <= Date.now()) {
+    throw new Error("หน้าต่างตอบของช่องทางนี้ปิดแล้ว — รอลูกค้าทักเข้ามาใหม่ก่อนจึงจะส่งได้");
+  }
+  // ห้องเลขาที่ข้อเสนอเกิด (ถ้ามี) — ห้องเดิม/แผนงาน = ไม่มีคีย์ ai_roomId
+  const prop = await tenantDb({ tenantId }).aiProposal.findFirst({ where: { id: proposalId }, select: { conversationId: true } });
+  const room = prop ? await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId: prop.conversationId }, select: { id: true } }) : null;
+  const chatSvc = await import("@/lib/modules/chat/service");
+  const res = await chatSvc.sendReply({
+    tenantId,
+    systemId: conv.systemId,
+    conversationId: conv.id,
+    senderUserId: userId,
+    senderName: CHAT_SEND_SENDER_NAME,
+    body,
+    unitAccess: m.role === "OWNER" ? ["*"] : m.unitAccess,
+    meta: { ...(room ? { ai_roomId: room.id } : {}), ai_proposalId: proposalId, ai_approvedBy: userId },
+    clientMessageId: proposalId,
+  });
+  if (!res.ok) throw new Error(res.reason ? `ส่งข้อความถึงลูกค้าไม่สำเร็จ: ${res.reason}` : "ส่งข้อความถึงลูกค้าไม่สำเร็จ");
+  const { channelSentenceLabel } = await import("@/lib/modules/chat/channel-icon");
+  const who = conv.contact.displayName?.trim() || "ลูกค้า";
+  if (res.duplicate) return `ข้อความนี้ส่งถึง ${who} ไปแล้ว — ไม่ส่งซ้ำ`;
+  return `ส่งถึง ${who} ทาง ${channelSentenceLabel(conv.channel)} แล้ว (ลงชื่อ Shark ผู้ช่วย AI)`;
+}
+
+// ── SEC S1.12 ▸ booking_refund_deposit — คืนมัดจำนัดหมายที่ค้างคืน (เส้นสาธิต 3 · R-K16) ──
+//   ทางเดียวกับปุ่ม "คืนมัดจำ" ในคิวมัดจำของร้าน (`refundDepositByShop`: สิทธิ์สดของคนกด + ล็อกแถวนัด + ใบคืนของ POS + audit + event)
+//   เงินออก ⇒ classOfKind = money (ต้องอนุมัติเสมอ) · ไม่ใช่ DESTRUCTIVE (ไม่ลบข้อมูล)
+async function dispatchBookingRefundDeposit(tenantId: string, payload: Record<string, unknown>, userId: string | null | undefined): Promise<string> {
+  if (!userId) throw new Error("คืนมัดจำผ่านแผนงานอัตโนมัติไม่ได้ — กดอนุมัติข้อเสนอนี้จากแอป");
+  const appointmentId = typeof payload.appointmentId === "string" ? payload.appointmentId.trim() : "";
+  if (!appointmentId) throw new Error("ต้องระบุนัดหมายที่จะคืนมัดจำ");
+  const appt = await prisma.appointment.findFirst({ where: { tenantId, id: appointmentId }, select: { unitId: true } });
+  if (!appt) throw new Error("ไม่พบนัดหมายนี้");
+  const reason = typeof payload.reason === "string" && payload.reason.trim() ? payload.reason.trim() : "คืนมัดจำตามที่อนุมัติผ่านเลขา";
+  const { refundDepositByShop } = await import("@/lib/modules/booking/deposit");
+  const r = await refundDepositByShop({ tenantId, actorUserId: userId }, { unitId: appt.unitId, appointmentId, reason });
+  if (r.ok === false) throw new Error(r.reason);
+  const baht = (r.info.refundedSatang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return r.duplicated ? "มัดจำของนัดนี้คืนไปแล้ว — ไม่คืนซ้ำ" : `คืนมัดจำ ${baht} บาทเรียบร้อยแล้ว`;
 }
 
 // resolve หน่วยธุรกิจ (BusinessUnit) ที่จะทำรายการ — Phase B1

@@ -308,7 +308,15 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `classOfKind(kind: string) → { destructive: boolean; money: boolean; customerFacing: boolean; piiExport: boolean }` — derive จาก `DESTRUCTIVE_KINDS` (proposals.ts:128) + `kindAccessOf(kind).module` (:475): `account.*`/pos refund/`booking.refund_deposit` = money · `chat.send`/crm email/member campaign = customerFacing · ไม่รู้จัก = money + customerFacing (fail-closed)
 - `ALWAYS_APPROVE` (ค่าคงที่ · ปิดไม่ได้): เงินออก · DESTRUCTIVE · ส่งออก PII · `whyApprove(kind: string, rules: AiApprovalRuleDto[]) → string[]` — เหตุผลไทยบนการ์ด A4
 - ในห้องเลขา: `remember_fact`/`forget_fact`/`kb_auto_save` เป็นข้อเสนอ (`AiMemory.status = "PENDING"`) · `support_open_case` ยังเขียนทันที (ส่ง `aiActorUserId(actor)` แทน sentinel `"ai-assistant"`)
-- kind ใหม่: `chat.send` (R-K15 · S1.12) → `sendReply({senderUserId: approverUserId, senderName: "Shark (ผู้ช่วย AI)", meta: {ai: {roomId, proposalId, approvedBy}}, body, clientMessageId: proposalId})` เฉพาะผู้ติดต่อที่ `ChatContact.customerId` ผูกแล้ว · `booking.refund_deposit` (R-K16) → `bookingSvc.refundDeposit`
+- kind ใหม่ (S1.12 · มีแล้ว — รายละเอียด §5.7a): `chat.send` (R-K15) → `sendReply(...)` เฉพาะผู้ติดต่อที่ `ChatContact.customerId` ผูกแล้ว · `booking_refund_deposit` (R-K16 · ชื่อจริงในโค้ด — เดิมเขียน `booking.refund_deposit`) → `refundDepositByShop` (booking/deposit.ts · ทางเดียวกับปุ่มคิวมัดจำ)
+
+### 5.7a `chat.send` + `send_customer_message` (S1.12 · มีแล้ว · proposals.ts `dispatchChatSend` · tools.ts · chat/service.ts `sendReply`)
+- tool `send_customer_message({ conversationId, body, kind?: "reply"|"followup"|"quote", documentId?, dealId? })` — **เสนอเท่านั้น** (skill `chat` · `HAND_ACTION_KIND` → `chat.send` · ผู้สั่งต้องมี `chat.message.send` · ระดับ `chat` ของร้านต้อง DRAFT — ค่าเริ่มต้น READ ⇒ ไม่ยื่น) · ห้องหาในร้าน (`tenantId`) + สาขาตาม `canAccessConvUnit` (OWNER/คีย์ = ทั้งร้าน · มองไม่เห็น = "ไม่พบ") · ลูกค้าไม่ผูก ⇒ error ไทย "…ยังไม่ผูกกับสมาชิก/CRM — ผูกก่อนแล้วค่อยส่ง" (ไม่สร้างข้อเสนอ) · ห้อง RESOLVED ⇒ error · ข้อความ ≤ 1,000 ตัว
+- payload (ids + ข้อความ): `{ systemId, conversationId, contactId, body, kind, refs?: { documentId?, dealId? } }` · summary = `ส่งข้อความถึง <ชื่อลูกค้า> (<ช่องทาง>): <ข้อความ 80 ตัวแรก>`
+- dispatch (ตอนอนุมัติ · ตรวจซ้ำทุกข้อ): ห้องของร้าน + `systemId`/`contactId` ตรงห้อง · `contact.customerId` ไม่ว่าง ("ส่งได้เฉพาะลูกค้าที่ผูกกับสมาชิก/CRM แล้ว") · `status ≠ RESOLVED` (enum มีแค่ OPEN/PENDING/RESOLVED) · `replyWindowExpiresAt` หมด ⇒ "หน้าต่างตอบของช่องทางนี้ปิดแล้ว" · ไม่มีไฟล์แนบ → `sendReply({ senderUserId: <ผู้อนุมัติ>, senderName: "Shark (ผู้ช่วย AI)", unitAccess: ผู้อนุมัติ (OWNER = "*"), meta, clientMessageId: proposalId })` · resultNote `ส่งถึง <ชื่อ> ทาง <ช่องทาง> แล้ว (ลงชื่อ Shark ผู้ช่วย AI)` · ต้องรู้ userId ผู้อนุมัติ (ไม่รู้ = ปฏิเสธ)
+- **ป้ายใน `ChatMessage.meta` (คีย์แบน `Record<string,string>` — S1.21 อ่านไปทำป้าย "ส่งโดย Shark · อนุมัติโดย X"):** `ai_proposalId` (id ข้อเสนอ · แผนงาน = refId ของขั้น) · `ai_approvedBy` (userId ผู้อนุมัติ) · `ai_roomId` (`AiRoom.id` — มีเฉพาะข้อเสนอที่เกิดในห้องเลขา) · ผู้ส่งเห็นได้จาก `senderName` = "Shark (ผู้ช่วย AI)" (ทับ `senderAlias` ของร้าน)
+- `sendReply` รับ `clientMessageId?: string` (ไม่ส่ง = เดิมทุกประการ) · คีย์ซ้ำในห้องเดียวกัน ⇒ `{ ok: true, messageId: <แถวเดิม>, duplicate: true }` ไม่สร้างแถว/ไม่ส่งออกช่องทาง/ไม่ emit (ตรวจก่อน + จับ P2002 กรณีชนพร้อมกัน)
+- ย้อนไม่ได้ (ไม่อยู่ใน `UNDOABLE_KINDS` ของ S1.8) · log (S1.8) payload = ids เท่านั้น ไม่เก็บ body · persona: มีระบบ CHAT + ระดับ chat ให้เขียน ⇒ เพิ่มกติกา 1 บรรทัด (ต้องอนุมัติ · ลงชื่อ Shark · เฉพาะลูกค้าที่ผูก · ห้ามสัญญาเรื่องเงิน/ส่วนลด) · ไม่เข้าเงื่อนไข = prompt เดิมทุกไบต์
 
 ### 5.8 approval-gate.ts (แผน · S1.7) — ผู้อนุมัติ (R-K4)
 - `approvalGate(m: MembershipCtx, ctx: { tenantId }, proposal: { id; kind; conversationId; payload }, approverUserId: string) → Promise<{ ok: true } | { ok: false; reason: string }>` — เรียกใน `executeProposal` หลังด่านเห็นห้อง (proposals.ts:400) · ใช้เฉพาะข้อเสนอที่ห้องมี `AiRoom` · role ≥ MANAGER + `membershipCan` (tool-access.ts:167) · กฎ `money.limit` เทียบ `limitSatang` · ผู้อนุมัติยังต้องผ่าน `assertCan` เดิม (:427) ด้วยสิทธิ์ตัวเอง · ห้องเดิม = ผ่านทันที (`qc-ai-proposals` คงเขียว)
@@ -507,6 +515,13 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | `chat.conversation.auto_assigned` | `{tenantId, systemId, conversationId, assigneeUserId}` | `assignIncoming` | push ผู้ดูแล (`sendPushToChatStaff`) | เมื่อระบบมอบหมายแชทอัตโนมัติ | S1.24 |
 
 ไม่มี event ใหม่ของ support (ใช้ push ตรงใน `addPlatformMessage` เดิม) · ไม่มี event ที่ใบ S0.3/S0.4 emit
+
+**kind ข้อเสนอที่ใบเลขาเพิ่ม (ไม่มี event ใหม่ · ใช้ event เดิมของโมดูลปลายทาง):**
+
+| kind | สิทธิ์ผู้อนุมัติ (`KIND_ACCESS`) | ปลายทาง | ชั้น (`classOfKind`) | ย้อน | ใบ |
+|---|---|---|---|---|---|
+| `chat.send` | `chat` · `chat.message.send` | `chat/service.sendReply` (event เดิม `chat.message.sent`) | customerFacing | ไม่ได้ | S1.12 |
+| `booking_refund_deposit` | `booking` · `booking.deposit.refund` | `booking/deposit.refundDepositByShop` (event เดิม `booking.deposit_refunded`) | money | ไม่ได้ | S1.12 |
 
 ---
 

@@ -1422,6 +1422,70 @@ const chatUnreadConversations: AiTool = {
   },
 };
 
+// ── SEC S1.12 ▸ send_customer_message — เสนอส่งข้อความถึงลูกค้าในห้องแชทลูกค้า (kind chat.send · ส่งจริงเมื่อคนอนุมัติ) ──
+//   เครื่องมือ "เสนอ" เท่านั้น ห้ามส่งเอง · เฉพาะลูกค้าที่ผูกสมาชิก/CRM แล้ว (R-K15) · ห้องต้องอยู่ในสาขาที่ผู้สั่งเห็น (แบบกล่องแชท M11)
+//   payload = ids + ข้อความ (ไม่มีชื่อ/เบอร์ลูกค้า) · dispatch ตรวจซ้ำทุกข้อตอนอนุมัติ (proposals.ts dispatchChatSend) ◂
+const CUSTOMER_MESSAGE_KINDS = ["reply", "followup", "quote"] as const;
+const sendCustomerMessage: AiTool = {
+  action: true,
+  def: {
+    name: "send_customer_message",
+    description:
+      "Propose a message to a customer in the shop's customer chat (LINE / web chat). Nothing is sent until an owner or manager approves it; the customer sees it signed \"Shark (ผู้ช่วย AI)\". Only for customers linked to a member/CRM record. conversationId = the customer chat conversation from the room context (ask the user if you do not have it). body = the exact message, at most 1000 characters, no promises about money or discounts the owner did not ask for. kind = reply | followup | quote.",
+    parameters: {
+      type: "object",
+      properties: {
+        conversationId: { type: "string", description: "Customer chat conversation id (from the room context)" },
+        body: { type: "string", description: "Exact message text for the customer (max 1000 characters)" },
+        kind: { type: "string", enum: [...CUSTOMER_MESSAGE_KINDS], description: "reply (default) · followup · quote" },
+        documentId: { type: "string", description: "Accounting document this message is about (optional)" },
+        dealId: { type: "string", description: "CRM deal this message is about (optional)" },
+      },
+      required: ["conversationId", "body"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const conversationId = String(a.conversationId ?? "").trim();
+    const body = String(a.body ?? "").trim();
+    if (!conversationId) {
+      return JSON.stringify({ error: "ยังไม่รู้ว่าจะส่งถึงลูกค้าห้องไหน", suggestion: "ถามผู้ใช้ด้วย ask_clarify ว่าลูกค้าคนไหน หรือเปิดงานจากห้องแชทลูกค้า" });
+    }
+    if (!body) return JSON.stringify({ error: "ข้อความถึงลูกค้าว่างอยู่ — เขียนข้อความที่จะส่งก่อน" });
+    if (body.length > 1000) return JSON.stringify({ error: "ข้อความถึงลูกค้ายาวเกิน 1,000 ตัวอักษร — ย่อให้สั้นลงแล้วเสนอใหม่" });
+    const kindRaw = a.kind === undefined || a.kind === null || a.kind === "" ? "reply" : String(a.kind).trim().toLowerCase();
+    if (!(CUSTOMER_MESSAGE_KINDS as readonly string[]).includes(kindRaw)) {
+      return JSON.stringify({ error: `ไม่รู้จักชนิดข้อความ "${kindRaw}"`, suggestion: "ใช้ reply (ตอบ) followup (ติดตาม) หรือ quote (ส่งใบเสนอราคา)" });
+    }
+    const conv = await prisma.chatConversation.findFirst({
+      where: { id: conversationId, tenantId: ctx.tenantId },
+      select: { id: true, systemId: true, contactId: true, channel: true, status: true, unitId: true, contact: { select: { customerId: true, displayName: true } } },
+    });
+    const cm = aiActorMembership(ctx.actor);
+    const unitOk =
+      !!conv &&
+      (ctx.actor.kind === "apiKey" || cm?.role === "OWNER" || (await import("@/lib/modules/chat/service")).canAccessConvUnit(cm?.unitAccess ?? [], conv.unitId));
+    if (!conv || !unitOk) {
+      // ห้องของสาขาที่ผู้สั่งมองไม่เห็น = ตอบเหมือนไม่มี (404-not-403)
+      return JSON.stringify({ error: "ไม่พบห้องแชทลูกค้านี้ในร้าน", suggestion: "ตรวจห้องแชทลูกค้าอีกครั้ง หรือถามผู้ใช้ว่าลูกค้าคนไหน" });
+    }
+    if (!conv.contact.customerId) {
+      return JSON.stringify({ error: "ลูกค้ารายนี้ยังไม่ผูกกับสมาชิก/CRM — ผูกก่อนแล้วค่อยส่ง", suggestion: "ให้ผู้ใช้กดผูกลูกค้าในห้องแชทลูกค้า แล้วสั่งใหม่" });
+    }
+    if (conv.status === "RESOLVED") {
+      return JSON.stringify({ error: "ห้องแชทนี้ปิดไปแล้ว จึงยังส่งข้อความไม่ได้", suggestion: "ให้ผู้ใช้เปิดห้องใหม่จากหน้าแชทลูกค้าก่อน" });
+    }
+    const who = conv.contact.displayName?.trim() || "ลูกค้า";
+    const short = body.length > 80 ? `${body.slice(0, 80)}…` : body;
+    const summary = `ส่งข้อความถึง ${who} (${channelSentenceLabel(conv.channel)}): ${short}`;
+    const documentId = typeof a.documentId === "string" && a.documentId.trim() ? a.documentId.trim() : null;
+    const dealId = typeof a.dealId === "string" && a.dealId.trim() ? a.dealId.trim() : null;
+    const refs = documentId || dealId ? { refs: { ...(documentId ? { documentId } : {}), ...(dealId ? { dealId } : {}) } } : {};
+    return propose(ctx, "chat.send", summary, { systemId: conv.systemId, conversationId: conv.id, contactId: conv.contactId, body, kind: kindRaw, ...refs });
+  },
+};
+
 // ══════════════════════════════════════════════════════════════════
 // Phase B2 (ชุดปิด) — ทำแทน CRM·KB·โรงเรียน·คลินิก·เช่า·สายอนุมัติ·คลังตัดออก (action 8) + ดูข้อมูล (read 2)
 // resolve unit/course/asset/enrollment อยู่ใน dispatch (proposals.ts) — tool แค่รวบ payload แล้ว propose
@@ -2419,6 +2483,7 @@ function registryTools(): AiTool[] {
     queueWaiting,
     shopPendingOrders,
     chatUnreadConversations,
+    sendCustomerMessage, // SEC S1.12 ▸ เสนอส่งถึงลูกค้า (skill chat) ◂
     // Phase B2 read — คำขอรออนุมัติ / สัญญาเช่าค้างคืน
     approvalsPending,
     rentalActive,

@@ -260,8 +260,8 @@ export const SKILLS: Skill[] = [
   {
     id: "chat",
     label: "แชทลูกค้า",
-    summary: "Customer chat: conversations with unread messages.",
-    tools: ["chat_unread_conversations"],
+    summary: "Customer chat: conversations with unread messages; propose a message to a customer linked to a member/CRM record (sent only after approval).",
+    tools: ["chat_unread_conversations", "send_customer_message"], // SEC S1.12 ▸ + ข้อเสนอส่งถึงลูกค้า ◂
     systems: ["CHAT"],
   },
   {

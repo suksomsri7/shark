@@ -3,7 +3,7 @@
 // SEC S1.2/S1.3 ▸ `secretary` (ตัวตนเลขาของคนที่พิมพ์) + `access` (ระดับต่อระบบของร้าน) — ไม่ส่ง/ค่าเริ่มต้น ⇒ prompt เดิมทุกไบต์ ◂
 
 import { languageRule, secretaryHeadline, secretaryPromptBlock, type SecretaryIdentity } from "./secretary/identity";
-import { accessSummaryForPrompt } from "./secretary/access-rules";
+import { accessSummaryForPrompt, defaultLevelOf } from "./secretary/access-rules";
 
 export type PersonaContext = {
   tenantName: string;
@@ -34,6 +34,14 @@ const ACCOUNTANT_RULES: string[] = [
   "- ถ้าเครื่องมือปฏิเสธเพราะงวดบัญชีปิดแล้ว สิทธิ์ไม่พอ หรือเอกสารอยู่ในสถานะที่ทำไม่ได้ ให้อธิบายเป็นภาษาคนว่าติดอะไรและต้องทำอะไรต่อ (เช่น ต้องยกเลิกการชำระก่อนจึงยกเลิกใบได้) — ห้ามลองใหม่วนไปเรื่อย ๆ",
 ];
 
+/**
+ * SEC S1.12 ▸ กติกาส่งถึงลูกค้า (แบบ §5 PDPA) — ฉีดเฉพาะเมื่อเครื่องมือ send_customer_message ถูกยื่นได้:
+ *   ร้านเปิดระบบแชท (CHAT · เงื่อนไขเดียวกับ skill `chat`) และระดับ chat ของร้านยอมให้เสนอการเขียน (DRAFT — ค่าเริ่มต้น READ = ไม่ฉีด)
+ *   ไม่มีระบบแชท / ระดับดูอย่างเดียว ⇒ prompt เดิมทุกไบต์ ◂
+ */
+const CUSTOMER_CHAT_RULE =
+  "- ข้อความถึงลูกค้าทุกฉบับ (send_customer_message) ต้องผ่านการอนุมัติของเจ้าของ/ผู้จัดการก่อนส่ง · ลงชื่อ Shark (ผู้ช่วย AI) · ส่งได้เฉพาะลูกค้าที่ผูกกับสมาชิก/CRM แล้ว · ห้ามสัญญาเรื่องเงิน/ส่วนลดที่เจ้าของไม่ได้สั่ง";
+
 export function buildSystemPrompt(ctx: PersonaContext): string {
   const sysList =
     ctx.systems.length > 0
@@ -53,6 +61,8 @@ export function buildSystemPrompt(ctx: PersonaContext): string {
     : [];
   // บล็อก "นักบัญชี" — ฉีดเฉพาะร้านที่เปิดระบบบัญชี (ร้านที่ไม่มี = ไม่เสีย token ฟรี ๆ ทุกข้อความ)
   const accountBlock = ctx.systems.some((s) => s.type === "ACCOUNT") ? ACCOUNTANT_RULES : [];
+  const customerChatBlock =
+    ctx.systems.some((s) => s.type === "CHAT") && (!ctx.access || (ctx.access.chat ?? defaultLevelOf("chat")) === "DRAFT") ? [CUSTOMER_CHAT_RULE] : []; // SEC S1.12 ◂
   // SEC S1.2 ▸ ตัวตนเลขา: บรรทัดแรก · บล็อกชื่อ/ลงท้าย/น้ำเสียงก่อนกติกา · กติกาภาษา — ไม่มี secretary = บรรทัดเดิม ◂
   const sec = ctx.secretary;
   const identityBlock = sec ? [secretaryPromptBlock(sec), ""] : [];
@@ -92,6 +102,7 @@ export function buildSystemPrompt(ctx: PersonaContext): string {
     "- เมื่อได้ยินข้อเท็จจริงหรือความชอบถาวรที่ควรจำเกี่ยวกับร้าน/เจ้าของ (เช่น วันหยุดประจำ เวลาเปิด-ปิด สไตล์ที่ชอบ ชื่อลูกค้าประจำ เงื่อนไขเฉพาะร้าน) ให้เรียกเครื่องมือ remember_fact เพื่อจดไว้ใช้ในบทสนทนาต่อ ๆ ไป — จดทันทีไม่ต้องขอยืนยัน · ถ้าข้อมูลเดิมเปลี่ยน/ไม่จริงแล้ว ใช้ forget_fact ลบ",
     "- ระหว่างสนทนา ถ้าผู้ใช้ให้ข้อมูลที่เป็น 'ความรู้ถาวรของกิจการ' ที่ทีมงานร้านควรใช้ร่วมกัน (นโยบายร้าน ราคา ขั้นตอนการทำงาน กติกา ข้อมูลสินค้า-บริการ) ให้เรียกเครื่องมือ kb_auto_save เก็บเข้าคลังความรู้ทันทีโดยไม่ต้องถาม แล้วแจ้งผู้ใช้สั้น ๆ ว่าบันทึกแล้ว — ก่อนบันทึกให้เรียก kb_search เช็คกันซ้ำ ถ้ามีอยู่แล้วไม่ต้องเก็บใหม่ · แยกจาก remember_fact: remember_fact = ความจำสั้น/บริบทส่วนตัวของ AI ส่วน kb_auto_save = ความรู้ถาวรที่ทีมงานร้านอ่าน/ใช้ร่วมกัน · ห้ามใช้ kb_auto_save เก็บเรื่องชั่วคราว คำสั่งงาน หรือบทสนทนาทั่วไป",
     ...accountBlock,
+    ...customerChatBlock,
     "- ถ้าผู้ใช้แจ้งปัญหาระบบ ร้องเรียน หรือขอสิ่งที่คุณทำแทนให้ไม่ได้ (เช่น ระบบขัดข้อง บั๊ก ขอฟีเจอร์ใหม่ ปัญหาบิล/การเงินจากแพลตฟอร์ม) ให้เรียกเครื่องมือ support_open_case เพื่อเปิดเคสส่งทีมงานทันที แล้วตอบตามสคริปต์: รับทราบความต้องการแล้ว ทีมงานจะรีบดำเนินการให้เร็วที่สุด และให้ผู้ใช้อยู่ในห้องนี้เพราะทีมงานจะตอบกลับมาที่นี่ — ห้ามสัญญาเกินจริง ห้ามบอกว่าจะติดต่อกลับทางช่องทางอื่น",
     ...accessBlock,
   ].join("\n");
