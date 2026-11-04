@@ -62,7 +62,7 @@ try {
   const actor = (userId: string, role: "OWNER" | "MANAGER" | "STAFF", permissions: Record<string, unknown> = role === "STAFF" ? perms : {}) => ({ kind: "member" as const, tenantId: tid, userId, membership: { role, unitAccess: ["*"], permissions } });
   const OWNER = actor(U.owner, "OWNER"), MGR = actor(U.mgr, "MANAGER"), STAFF = actor(U.staff, "STAFF"), S2 = actor(U.s2, "STAFF"), S3 = actor(U.s3, "STAFF");
   const ctxOf = (a: ReturnType<typeof actor>) => ({ tenantId: tid, actor: a });
-  if (!mem || !rooms || !hasTables) { for (const id of ["A-1", "A-2", "A-3", "A-4", "A-5", "H-1", "H-2", "X-1", "X-2", "R-1", "R-2", "R-3"]) skip(id, "members", !mem ? "ไม่มี members.ts" : !rooms ? "ไม่มี rooms.ts" : "ไม่มีตาราง"); }
+  if (!mem || !rooms || !hasTables) { for (const id of ["A-1", "A-2", "A-3", "A-4", "A-5", "H-1", "H-2", "H-3", "X-1", "X-2", "R-1", "R-2", "R-3", "R-4"]) skip(id, "members", !mem ? "ไม่มี members.ts" : !rooms ? "ไม่มี rooms.ts" : "ไม่มีตาราง"); }
   else {
     console.log("── A: addMember ──");
     const r = await rooms.startRoom(ctxOf(STAFF), { instruction: "ข้อความแรกก่อนเพิ่มสมาชิก" });
@@ -77,10 +77,12 @@ try {
     const aOut = await mem.addMember(ctxOf(STAFF), roomId, { userId: U.out });
     const aNo = await mem.addMember(ctxOf(STAFF), roomId, { userId: "qcs16-nobody" });
     chk("A-2", "ผู้เปิดเพิ่มตัวเอง ⇒ self · คนที่ไม่ใช่สมาชิกกิจการ ⇒ not_member_of_tenant · user ไม่มี ⇒ not_member_of_tenant · ข้อความไทย", aSelf.ok === false && aSelf.error === "self" && aOut.ok === false && aOut.error === "not_member_of_tenant" && aNo.ok === false && aNo.error === "not_member_of_tenant" && thai(aOut.message), JSON.stringify({ aSelf, aOut, aNo }).slice(0, 200));
+    await prisma.aiConversation.update({ where: { id: convId }, data: { lastReadAt: new Date() } }); // ผู้เปิดอ่านครบแล้ว — ข้อความระบบต้องไม่ทำให้ unread
+    await new Promise((r) => setTimeout(r, 20));
     const a1 = await mem.addMember(ctxOf(STAFF), roomId, { userId: U.s2 });
     const row1 = await prisma.aiRoomMember.findUnique({ where: { roomId_userId: { roomId, userId: U.s2 } } });
     const sysMsg = await prisma.aiMessage.findFirst({ where: { conversationId: convId }, orderBy: { createdAt: "desc" } });
-    chk("A-3", "ผู้เปิด (STAFF) เพิ่ม s2 ⇒ ok · แถว (tenantId · addedById=staff · seeHistory false) · ข้อความระบบ 🔔 มีชื่อทั้งสอง authorUserId null · member.name มาจาก User", a1.ok === true && a1.member?.userId === U.s2 && a1.member?.name === "คุณs2" && a1.member?.seeHistory === false && row1?.tenantId === tid && row1?.addedById === U.staff && row1?.seeHistory === false && !!sysMsg && sysMsg.content.includes("🔔") && sysMsg.content.includes("คุณstaff") && sysMsg.content.includes("คุณs2") && (sysMsg as AnyMod).authorUserId === null && (await prisma.aiMessage.count({ where: { conversationId: convId } })) === beforeCount + 1, JSON.stringify({ a1, row1, sys: sysMsg?.content }).slice(0, 240));
+    chk("A-3", "ผู้เปิด (STAFF) เพิ่ม s2 ⇒ ok · แถว (tenantId · addedById=staff · seeHistory false) · ข้อความระบบ 🔔 มีชื่อทั้งสอง authorUserId=\"system\" · ไม่ทำให้ห้อง unread · member.name มาจาก User", a1.ok === true && a1.member?.userId === U.s2 && a1.member?.name === "คุณs2" && a1.member?.seeHistory === false && row1?.tenantId === tid && row1?.addedById === U.staff && row1?.seeHistory === false && !!sysMsg && sysMsg.content.includes("🔔") && sysMsg.content.includes("คุณstaff") && sysMsg.content.includes("คุณs2") && (sysMsg as AnyMod).authorUserId === "system" && (await prisma.aiMessage.count({ where: { conversationId: convId } })) === beforeCount + 1 && (await rooms.listRooms(ctxOf(STAFF), { scope: "mine" })).find((c: AnyMod) => c.conversationId === convId)?.unread === false, JSON.stringify({ a1, row1, sys: sysMsg?.content, author: (sysMsg as AnyMod)?.authorUserId }).slice(0, 240)); // ORACLE-EDIT รอบ 2 (รีวิว E3): ข้อความระบบ authorUserId="system" · ไม่นับ unread
     const aDup = await mem.addMember(ctxOf(OWNER), roomId, { userId: U.s2 });
     const a2 = await mem.addMember(ctxOf(OWNER), roomId, { userId: U.s3, seeHistory: true });
     const aMem = await mem.addMember(ctxOf(S2), roomId, { userId: U.mgr });
@@ -112,6 +114,19 @@ try {
     const hist = pH.captured[0]?.messages.filter((m) => m.role === "user" || m.role === "assistant").map((m) => m.content) ?? [];
     chk("H-2", "ประวัติที่ป้อนโมเดลสำหรับ s2 ไม่มีข้อความก่อน addedAt (seeHistory=false)", !hist.includes("ข้อความแรกก่อนเพิ่มสมาชิก") && !hist.includes("ข้อความที่สองก่อนเพิ่ม") && hist.includes("ข้อความหลังเพิ่มสมาชิก"), hist.join(" | ").slice(0, 200), "MAJOR");
 
+    // ORACLE-EDIT รอบ 2 (รีวิว E1/F2): ข้อเสนอ/แผน PENDING ที่เกิดก่อน addedAt ต้องไม่ถึงสมาชิก seeHistory=false
+    const rowS2 = await prisma.aiRoomMember.findUnique({ where: { roomId_userId: { roomId, userId: U.s2 } } });
+    const before = new Date(rowS2!.addedAt.getTime() - 60_000), after = new Date(rowS2!.addedAt.getTime() + 60_000);
+    const pOld = await prisma.aiProposal.create({ data: { tenantId: tid, conversationId: convId, kind: "kanban_create_card", summary: "ข้อเสนอก่อนเข้าห้อง", payload: { title: "เก่า" } as never, expiresAt: new Date(Date.now() + 3_600_000), createdAt: before } });
+    const pNew = await prisma.aiProposal.create({ data: { tenantId: tid, conversationId: convId, kind: "kanban_create_card", summary: "ข้อเสนอหลังเข้าห้อง", payload: { title: "ใหม่" } as never, expiresAt: new Date(Date.now() + 3_600_000), createdAt: after } });
+    const plOld = await prisma.aiPlan.create({ data: { tenantId: tid, conversationId: convId, title: "แผนก่อนเข้าห้อง", stepsJson: [] as never, expiresAt: new Date(Date.now() + 3_600_000), createdAt: before } });
+    const proposalsMod = await import("@/lib/ai/proposals"); const plansMod = await import("@/lib/ai/plans");
+    const lp2 = await proposalsMod.listPendingProposals(ctxOf(S2), convId), lp3 = await proposalsMod.listPendingProposals(ctxOf(S3), convId), lpO = await proposalsMod.listPendingProposals(ctxOf(OWNER), convId);
+    const pl2 = await plansMod.listPendingPlans(ctxOf(S2), convId), plO = await plansMod.listPendingPlans(ctxOf(OWNER), convId);
+    const rj = await proposalsMod.rejectProposal(ctxOf(S2), pOld.id);
+    chk("H-3", "seeHistory=false (s2): เห็นเฉพาะข้อเสนอหลังเข้าห้อง (1) · ไม่เห็นแผนก่อนเข้า (0) · ปฏิเสธข้อเสนอเก่า ⇒ false · s3 (seeHistory=true) และ OWNER เห็น 2/1", lp2.length === 1 && lp2[0].id === pNew.id && pl2.length === 0 && rj === false && lp3.length === 2 && lpO.length === 2 && plO.length === 1, `s2=${lp2.length} pl2=${pl2.length} rj=${rj} s3=${lp3.length} o=${lpO.length}`);
+    await prisma.aiProposal.deleteMany({ where: { id: { in: [pOld.id, pNew.id] } } }); await prisma.aiPlan.delete({ where: { id: plOld.id } });
+
     console.log("── X: X2 actor ของผู้เขียน ──");
     const lastUser = await prisma.aiMessage.findFirst({ where: { conversationId: convId, role: "USER" }, orderBy: { createdAt: "desc" } });
     const offered = (pH.captured[0]?.tools ?? []).map((t) => t.name);
@@ -132,6 +147,14 @@ try {
     const rm4 = await mem.removeMember(ctxOf(OWNER), roomId, U.s2);
     const rm5 = await mem.removeMember(ctxOf(MGR), roomId, U.staff);
     chk("R-2", "s2 ออกเอง ⇒ ok · หลังออกมองไม่เห็นห้อง (getRoom null) · เอาออกซ้ำ ⇒ not_a_member · MANAGER (มองไม่เห็น) ⇒ not_found", rm3.ok === true && vis === null && rm4.ok === false && rm4.error === "not_a_member" && rm5.ok === false && rm5.error === "not_found", JSON.stringify({ rm3, vis, rm4, rm5 }).slice(0, 160));
+    // ORACLE-EDIT รอบ 2 (รีวิว E2/F3): สมาชิกที่ถูกถอนสิทธิ์ร้าน (acceptedAt null) ต้องไม่ได้ push และไม่โผล่ใน listMembers/ไม่นับ cap
+    await mem.addMember(ctxOf(STAFF), roomId, { userId: U.s2 });
+    await prisma.membership.updateMany({ where: { tenantId: tid, userId: U.s2 }, data: { acceptedAt: null } });
+    const lmRev = await mem.listMembers(ctxOf(STAFF), roomId);
+    const recips = typeof mem.roomPushRecipients === "function" ? await mem.roomPushRecipients(tid, roomId) : null;
+    await prisma.membership.updateMany({ where: { tenantId: tid, userId: U.s2 }, data: { acceptedAt: new Date() } });
+    chk("R-4", "สมาชิกที่ถูกถอนสิทธิ์: listMembers ไม่แสดง · roomPushRecipients (ผู้เปิด ∪ สมาชิกที่ยัง accepted) ไม่มี s2 แต่มี staff", Array.isArray(lmRev) && !lmRev.some((m: AnyMod) => m.userId === U.s2) && Array.isArray(recips) && !recips.includes(U.s2) && recips.includes(U.staff), `lm=${JSON.stringify(lmRev?.map((m: AnyMod) => m.userId))} recips=${JSON.stringify(recips)}`);
+    await mem.removeMember(ctxOf(STAFF), roomId, U.s2);
     const g = await rooms.getRoom(ctxOf(OWNER), roomId);
     chk("R-3", "getRoom คืน members (ว่างหลังเอาออกหมด) · ห้องยังเปิด", Array.isArray(g?.members) && g.members.length === 0 && g?.closedAt === null, JSON.stringify(g).slice(0, 160), "MAJOR");
   }
