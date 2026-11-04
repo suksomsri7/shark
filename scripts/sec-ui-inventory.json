@@ -191,6 +191,167 @@
    "wo": "S2.2/S2.3"
   },
   {
+   "testID": "sec-room-back",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ย้อนกลับ (router.back · ไม่มี stack ⇒ /secretary)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-menu",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดชีตเมนู ⋯",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-menu-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ปิดชีตเมนู",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-menu-close",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST secretary/rooms/[id]/close (ผู้เปิดห้อง/OWNER · canManage)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-menu-members",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เพิ่มคนเข้าห้อง (รอ S2.10 · ตอนนี้แจ้งรุ่นถัดไป)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-menu-help",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "router.push /secretary/help?roomId=",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-gone-home",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ห้องหาย/ไม่มีสิทธิ์ ⇒ /secretary",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-input-plus",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ล้างช่องพิมพ์",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-send",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST secretary/rooms/[id]/send {text, clientMessageId}",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-edit",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดชีตแก้ (editable เท่านั้น · chat.send ไม่มีปุ่ม)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-reject",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดชีตตีกลับ C4",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-approve",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST proposals|plans/[id]/approve · needsSecondConfirm ⇒ ชีตยืนยันครั้งที่ 2",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-confirm2x-ok",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST …/approve {confirm2x:true}",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-confirm2x-cancel",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ปิดชีตยืนยันครั้งที่ 2 (ไม่ทำ)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-reject-sheet-job",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST proposals/[id]/reject {note?, remember:\"JOB\"}",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-reject-sheet-rule",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST proposals/[id]/reject {note, remember:\"RULE\"} (ต้องมีหมายเหตุ)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-reject-sheet-plan",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST plans/[id]/reject {}",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-edit-sheet-cancel",
+   "file": "apps/mobile/src/components/secretary/EditSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ปิดชีตแก้",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-edit-sheet-save",
+   "file": "apps/mobile/src/components/secretary/EditSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST proposals/[id]/edit {patch} (เฉพาะช่องที่เปลี่ยน)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-open-link",
+   "file": "apps/mobile/src/components/secretary/DoneCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดของจริง: ดีล → /crm?dealId= · นัด → /?open=/app/calendar · การ์ด → /?open=/app/ · link ของเซิร์ฟเวอร์ชนะ",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-undo",
+   "file": "apps/mobile/src/components/secretary/DoneCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST secretary/log/[id]/undo (แถวล่าสุดที่ย้อนได้ · LIFO)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-teach",
+   "file": "apps/mobile/src/components/secretary/DoneCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เติมช่องพิมพ์ \"ครั้งหน้า …\" + โฟกัส",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-repeat",
+   "file": "apps/mobile/src/components/secretary/DoneCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "router.push /secretary/new?q=<คำสั่งแรกของห้อง>",
+   "wo": "S2.4"
+  },
+  {
    "testID": "sec-settings-row-<key>",
    "file": "apps/mobile/app/(app)/secretary/settings/index.tsx",
    "screen": "/secretary/settings",

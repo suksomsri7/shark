@@ -57,5 +57,15 @@
    ],
    "mustNot": []
   }
+ ],
+ "jsonChecks": [
+  {
+   "id": "X-4",
+   "name": "three-chats.json ok (พิมพ์ในห้องลูกค้า ≠ สั่งเลขา ≠ แชท 1.0)",
+   "file": "qc/shots-sec/three-chats.json",
+   "expect": {
+    "ok": true
+   }
+  }
  ]
 }

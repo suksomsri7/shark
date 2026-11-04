@@ -25,11 +25,10 @@
    "sec-new-send"
   ],
   "/secretary/room/r1": [
-   "sec-secretary-room",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "sec-room",
+   "sec-room-back",
+   "sec-room-menu",
+   "sec-room-input"
   ],
   "/secretary/inbox": [
    "sec-secretary-inbox",
@@ -92,8 +91,8 @@
   ],
   "/secretary/settings/log": [
    "sec-log",
-   "sec-log-item",
-   "sec-log-filter"
+   "sec-log-filter",
+   "sec-log-empty"
   ],
   "/secretary/settings/knowledge": [
    "sec-know",
@@ -270,6 +269,62 @@
    "items": [],
    "autoAvailable": false
   },
+  "GET /api/mobile/secretary/rooms/r1": {
+   "id": "r1",
+   "conversationId": "c-r1",
+   "title": "ใบเสนอราคา ร้านดอยช้าง",
+   "status": "OPEN",
+   "systems": [
+    "crm",
+    "account",
+    "chat",
+    "kanban"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "role": "STAFF",
+     "addedById": "u-qc-owner",
+     "addedAt": "2026-11-04T19:39:00.000Z",
+     "seeHistory": true
+    }
+   ],
+   "canManage": true,
+   "createdAt": "2026-11-04T19:38:00.000Z",
+   "updatedAt": "2026-11-04T19:41:00.000Z",
+   "closedAt": null,
+   "plans": []
+  },
+  "GET /api/mobile/secretary/rooms/r1/messages": {
+   "items": [
+    {
+     "id": "m1",
+     "role": "USER",
+     "content": "ทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-04T19:38:00.000Z"
+    },
+    {
+     "id": "m2",
+     "role": "ASSISTANT",
+     "content": "รับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-04T19:38:10.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r1/proposals": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/log": {
+   "items": []
+  },
   "GET /api/mobile/secretary/secretary": {
    "name": "Shark",
    "suffix": "ครับ",
@@ -361,115 +416,6 @@
      "active": true,
      "me": false,
      "role": "STAFF"
-    }
-   ]
-  },
-  "GET /api/mobile/secretary/log": {
-   "items": [
-    {
-     "id": "l1",
-     "kind": "chat.send",
-     "module": "chat",
-     "summary": "ส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A",
-     "roomId": "r1",
-     "proposalId": null,
-     "userId": "u-qc-2",
-     "approverId": "u-qc-owner",
-     "entity": null,
-     "undoableUntil": null,
-     "undoneAt": null,
-     "canUndo": false,
-     "createdAt": "2026-11-05T02:44:00.000Z"
-    },
-    {
-     "id": "l2",
-     "kind": "crm.deals.move",
-     "module": "crm",
-     "summary": "ย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา",
-     "roomId": "r1",
-     "proposalId": null,
-     "userId": "u-qc-owner",
-     "approverId": "u-qc-owner",
-     "entity": null,
-     "undoableUntil": "2026-12-31T02:44:00.000Z",
-     "undoneAt": null,
-     "canUndo": true,
-     "createdAt": "2026-11-05T02:44:00.000Z"
-    },
-    {
-     "id": "l3",
-     "kind": "account.documents.create",
-     "module": "account",
-     "summary": "สร้างใบเสนอราคา Q-0012 ฿12,500",
-     "roomId": "r1",
-     "proposalId": null,
-     "userId": "u-qc-2",
-     "approverId": "u-qc-owner",
-     "entity": null,
-     "undoableUntil": null,
-     "undoneAt": null,
-     "canUndo": false,
-     "createdAt": "2026-11-05T02:43:00.000Z"
-    },
-    {
-     "id": "l4",
-     "kind": "pos.read",
-     "module": "pos",
-     "summary": "อ่านราคา + สต็อก Espresso M2",
-     "roomId": "r1",
-     "proposalId": null,
-     "userId": "u-qc-3",
-     "approverId": null,
-     "entity": null,
-     "undoableUntil": null,
-     "undoneAt": null,
-     "canUndo": false,
-     "createdAt": "2026-11-05T02:40:00.000Z"
-    },
-    {
-     "id": "l5",
-     "kind": "crm.read",
-     "module": "crm",
-     "summary": "ค้นหาลูกค้าที่เงียบเกิน 30 วัน",
-     "roomId": "r1",
-     "proposalId": null,
-     "userId": "u-qc-owner",
-     "approverId": null,
-     "entity": null,
-     "undoableUntil": null,
-     "undoneAt": null,
-     "canUndo": false,
-     "createdAt": "2026-11-05T02:38:00.000Z"
-    },
-    {
-     "id": "l6",
-     "kind": "kanban.cards.create",
-     "module": "kanban",
-     "summary": "สร้างการ์ดติดตามลูกค้า 6 ใบ",
-     "roomId": "r1",
-     "proposalId": null,
-     "userId": "u-qc-owner",
-     "approverId": "u-qc-owner",
-     "entity": null,
-     "undoableUntil": "2026-11-06T02:12:00.000Z",
-     "undoneAt": "2026-11-05T02:20:00.000Z",
-     "canUndo": false,
-     "createdAt": "2026-11-05T02:12:00.000Z"
-    },
-    {
-     "id": "l7",
-     "kind": "pos.report",
-     "module": "pos",
-     "summary": "สรุปยอดขาย 4 พ.ย.",
-     "roomId": "r1",
-     "proposalId": null,
-     "userId": "u-qc-owner",
-     "approverId": null,
-     "entity": null,
-     "undoableUntil": null,
-     "undoneAt": null,
-     "canUndo": false,
-     "createdAt": "2026-11-05T01:00:00.000Z"
     }
    ]
   },

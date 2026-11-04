@@ -63,8 +63,8 @@ export default function SecretaryKnowledgeScreen() {
     setBusy(a.id);
     setNote(null);
     try {
-      if (a.kind === "memory") await (a.confirm ? secPostId("secretary/memories/confirm", a.id) : secDeleteId("secretary/memories", a.id));
-      else await (a.confirm ? secPostId("secretary/lessons/confirm", a.id) : secDeleteId("secretary/lessons", a.id));
+      if (a.kind === "memory") await (a.confirm ? secPostId("secretary/memories/[id]/confirm", a.id, {}) : secDeleteId("secretary/memories/[id]", a.id));
+      else await (a.confirm ? secPostId("secretary/lessons/[id]/confirm", a.id, {}) : secDeleteId("secretary/lessons/[id]", a.id));
       setNote({ text: t(a.confirm ? "sec.know.confirmed" : "sec.know.removed"), warn: false });
       load();
     } catch (e) {

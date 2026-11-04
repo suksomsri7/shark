@@ -106,7 +106,7 @@ export default function SecretaryLogScreen() {
     setBusyId(row.id);
     setNote(null);
     try {
-      const r = await secPostId("secretary/log/undo", row.id);
+      const r = await secPostId("secretary/log/[id]/undo", row.id, {});
       setNote({ text: r.note?.trim() || t(r.ok ? "sec.log.undoDone" : "sec.log.undoFail"), warn: !r.ok });
       if (r.ok) load(filter.kind === "undo" ? { kind: "all" } : filter);
     } catch (e) {

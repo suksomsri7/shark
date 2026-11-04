@@ -22,7 +22,7 @@ const PATH = {
   "secretary": "/api/mobile/secretary/secretary",
   "secretary/quota": "/api/mobile/secretary/quota",
   "secretary/rules": "/api/mobile/secretary/rules",
-  "secretary/log": "/api/mobile/secretary/log",
+  "secretary/log": "/api/mobile/secretary/log", // ใช้ร่วม S2.4 (ห้องงาน ?roomId) + S2.8 (B5)
   "secretary/lessons": "/api/mobile/secretary/lessons",
   "secretary/memories/pending": "/api/mobile/secretary/memories/pending",
   "secretary/digest": "/api/mobile/secretary/digest",
@@ -30,6 +30,27 @@ const PATH = {
   "secretary/staff": "/api/mobile/secretary/staff",
 } as const;
 export type SecPath = keyof typeof PATH;
+
+/** เส้นที่มี [id] (ห้อง/ข้อเสนอ/แผน/บันทึก) — แยกตารางเพราะต้องแทน id */
+const PATH_ID = {
+  "secretary/rooms/[id]": "/api/mobile/secretary/rooms/[id]",
+  "secretary/rooms/[id]/messages": "/api/mobile/secretary/rooms/[id]/messages",
+  "secretary/rooms/[id]/proposals": "/api/mobile/secretary/rooms/[id]/proposals",
+  "secretary/rooms/[id]/send": "/api/mobile/secretary/rooms/[id]/send",
+  "secretary/rooms/[id]/close": "/api/mobile/secretary/rooms/[id]/close",
+  "secretary/proposals/[id]/approve": "/api/mobile/secretary/proposals/[id]/approve",
+  "secretary/proposals/[id]/reject": "/api/mobile/secretary/proposals/[id]/reject",
+  "secretary/proposals/[id]/edit": "/api/mobile/secretary/proposals/[id]/edit",
+  "secretary/plans/[id]/approve": "/api/mobile/secretary/plans/[id]/approve",
+  "secretary/plans/[id]/reject": "/api/mobile/secretary/plans/[id]/reject",
+  "secretary/log/[id]/undo": "/api/mobile/secretary/log/[id]/undo",
+  // S2.9 ความรู้ของกิจการ (B6)
+  "secretary/lessons/[id]": "/api/mobile/secretary/lessons/[id]",
+  "secretary/lessons/[id]/confirm": "/api/mobile/secretary/lessons/[id]/confirm",
+  "secretary/memories/[id]": "/api/mobile/secretary/memories/[id]",
+  "secretary/memories/[id]/confirm": "/api/mobile/secretary/memories/[id]/confirm",
+} as const;
+export type SecIdPath = keyof typeof PATH_ID;
 
 export type SecretaryMe = {
   name: string;
@@ -127,6 +148,53 @@ export function secPost<P extends keyof PostMap>(path: P, body: PostMap[P]["body
   return api<PostMap[P]["res"]>(url(path), { method: "POST", body });
 }
 
+// ───────── เส้นที่มี [id] (S2.4 ห้องงาน · ชื่อ/รูปตาม S1.14 docs/api/SECRETARY-API.md) ─────────
+/** ผลอนุมัติ (200 เสมอ · ไม่ผ่าน = ok:false + note ไทย) · DESTRUCTIVE ที่ยังไม่ยืนยัน 2 ชั้น ⇒ needsSecondConfirm */
+export type ApproveRes = { ok: boolean; note?: string; needsSecondConfirm?: boolean; why?: string; doneCount?: number };
+export type RejectBody = { note?: string; remember?: "JOB" | "RULE" };
+type GetIdMap = {
+  "secretary/rooms/[id]": Record<string, unknown>;
+  "secretary/rooms/[id]/messages": { items?: unknown[]; nextBefore?: string | null };
+  "secretary/rooms/[id]/proposals": { items?: unknown[] };
+};
+type PostIdMap = {
+  "secretary/rooms/[id]/send": { body: { text: string; clientMessageId: string }; res: { ok?: boolean; messageId?: string; jobId?: string; duplicate?: boolean } };
+  "secretary/rooms/[id]/close": { body: Record<string, never>; res: { ok: boolean } };
+  "secretary/proposals/[id]/approve": { body: { confirm2x?: boolean }; res: ApproveRes };
+  "secretary/proposals/[id]/reject": { body: RejectBody; res: { ok: boolean; memoryId?: string } };
+  "secretary/proposals/[id]/edit": { body: { patch: Record<string, unknown> }; res: { ok: boolean; input?: Record<string, unknown> | null } };
+  "secretary/plans/[id]/approve": { body: { confirm2x?: boolean }; res: ApproveRes };
+  "secretary/plans/[id]/reject": { body: Record<string, never>; res: { ok: boolean } };
+  "secretary/log/[id]/undo": { body: Record<string, never>; res: { ok: boolean; note?: string } };
+  "secretary/lessons/[id]/confirm": { body: Record<string, never>; res: { ok: boolean } };
+  "secretary/memories/[id]/confirm": { body: Record<string, never>; res: { ok: boolean } };
+};
+type DeleteIdMap = { "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean } };
+
+function urlId(path: SecIdPath, id: string, q?: Query): string {
+  const base = PATH_ID[path].replace("[id]", encodeURIComponent(id));
+  const qs = q
+    ? Object.entries(q)
+        .filter(([, v]) => v !== undefined && v !== "")
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+        .join("&")
+    : "";
+  return qs ? `${base}?${qs}` : base;
+}
+
+export function secGetId<P extends keyof GetIdMap>(path: P, id: string, q?: Query): Promise<GetIdMap[P]> {
+  return api<GetIdMap[P]>(urlId(path, id, q));
+}
+
+export function secPostId<P extends keyof PostIdMap>(path: P, id: string, body: PostIdMap[P]["body"]): Promise<PostIdMap[P]["res"]> {
+  return api<PostIdMap[P]["res"]>(urlId(path, id), { method: "POST", body });
+}
+
+/** DELETE เส้นที่มี [id] (S2.9 ไม่รับบทเรียน / ลบความจำ) */
+export function secDeleteId<P extends keyof DeleteIdMap>(path: P, id: string): Promise<DeleteIdMap[P]> {
+  return api<DeleteIdMap[P]>(urlId(path, id), { method: "DELETE" });
+}
+
 /** รหัสข้อความฝั่งแอป (กันส่งซ้ำ · POST rooms) */
 export function clientMessageId(): string {
   return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -208,6 +276,191 @@ export function normalizeFrequent(v: unknown, key = "items"): Frequent[] {
       return { title: str(o.title) || instruction, instruction };
     })
     .filter((f) => f.instruction);
+}
+
+// ───────── ห้องงาน (S2.4) — normalize DTO ของ S1.14 (รับรูปที่ขยายภายหลังได้: why · step.status · room.plans · entity.link) ─────────
+const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+const isoOf = (v: unknown): string => (typeof v === "string" ? v : "");
+const isoOrNull = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+
+/** โมดูลจาก kind ("chat.send" → chat · "kanban_create_card" → kanban · "member.points.give" → member) */
+export function moduleOfKind(kind: string): string {
+  return (kind.split(/[._]/)[0] ?? "").toLowerCase();
+}
+
+export type MsgRow = { id: string; role: "user" | "assistant" | "system"; content: string; authorId: string | null; at: string };
+export function normalizeMessages(v: unknown): MsgRow[] {
+  return listOf(v)
+    .map((x) => {
+      const o = rec(x);
+      const role = String(o.role ?? "").toLowerCase();
+      const system = o.system === true || o.authorUserId === "system";
+      return {
+        id: str(o.id),
+        role: system ? "system" : role === "user" ? "user" : role === "assistant" ? "assistant" : "system",
+        content: typeof o.content === "string" ? o.content : "",
+        authorId: typeof o.authorUserId === "string" && o.authorUserId !== "system" ? o.authorUserId : null,
+        at: isoOf(o.createdAt),
+      } as MsgRow;
+    })
+    .filter((m) => m.id && m.content.trim());
+}
+
+export type StepStatus = "done" | "run" | "wait";
+export type StepRow = { kind: string; module: string; summary: string; status: StepStatus };
+function stepStatus(v: unknown, fallback: StepStatus): StepStatus {
+  const s = String(v ?? "").toUpperCase();
+  if (s === "DONE" || s === "OK" || s === "EXECUTED") return "done";
+  if (s === "RUNNING" || s === "RUN") return "run";
+  if (s === "WAITING" || s === "PENDING" || s === "WAIT") return "wait";
+  return fallback;
+}
+
+export type ProposalItem = {
+  type: "proposal";
+  id: string;
+  kind: string;
+  module: string;
+  /** ข้อความเต็มจากเซิร์ฟเวอร์ (chat.send = เนื้อความทั้งฉบับ · §M) */
+  summary: string;
+  destructive: boolean;
+  money: boolean;
+  customerFacing: boolean;
+  piiExport: boolean;
+  /** เหตุผล "ทำไมต้องอนุมัติ" จากเซิร์ฟเวอร์ (approvalGate) — ไม่มี = ไม่แสดง (ไม่แต่งเอง) */
+  why: string | null;
+  editable: boolean;
+  input: Record<string, unknown> | null;
+  edited: boolean;
+  at: string;
+};
+export type PlanItem = { type: "plan"; id: string; title: string; steps: StepRow[]; destructive: boolean; why: string | null; pending: boolean; at: string };
+export type ApprovalItem = ProposalItem | PlanItem;
+
+const whyOf = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).join(" · ") || null : null);
+
+function planOf(o: Record<string, unknown>, pending: boolean): PlanItem {
+  const steps = (Array.isArray(o.steps) ? o.steps : [])
+    .map((x) => rec(x))
+    .filter((x) => typeof x.summary === "string")
+    .map((x) => {
+      const kind = str(x.kind);
+      return { kind, module: str(x.module) || moduleOfKind(kind), summary: str(x.summary), status: stepStatus(x.status, "wait") };
+    });
+  return { type: "plan", id: str(o.id), title: str(o.title), steps, destructive: o.hasDestructive === true, why: whyOf(o.why), pending, at: isoOf(o.createdAt) };
+}
+
+/** GET rooms/[id]/proposals → ข้อเสนอ + แผนที่รออนุมัติ */
+export function normalizeApprovals(v: unknown): ApprovalItem[] {
+  return listOf(v)
+    .map((x): ApprovalItem | null => {
+      const o = rec(x);
+      if (!str(o.id)) return null;
+      if (o.type === "plan") return planOf(o, true);
+      const kind = str(o.kind);
+      const cls = rec(o.class ?? o.classes);
+      const input = o.input && typeof o.input === "object" && !Array.isArray(o.input) ? (o.input as Record<string, unknown>) : null;
+      return {
+        type: "proposal",
+        id: str(o.id),
+        kind,
+        module: moduleOfKind(kind),
+        summary: typeof o.summary === "string" ? o.summary.trim() : "",
+        destructive: o.risk === "DESTRUCTIVE" || cls.destructive === true || o.destructive === true,
+        money: cls.money === true,
+        customerFacing: cls.customerFacing === true,
+        piiExport: cls.piiExport === true,
+        why: whyOf(o.why),
+        editable: o.editable === true && !!input,
+        input,
+        edited: o.edited === true,
+        at: isoOf(o.createdAt),
+      };
+    })
+    .filter((x): x is ApprovalItem => !!x);
+}
+
+export type LogItem = {
+  id: string;
+  kind: string;
+  module: string;
+  summary: string;
+  entity: { type: string; id: string; link: string | null } | null;
+  undoableUntil: string | null;
+  undoneAt: string | null;
+  canUndo: boolean;
+  at: string;
+};
+/** GET log?roomId → การ์ด "ทำแล้ว" (canUndo จากเซิร์ฟเวอร์ ∩ ยังไม่เลยเวลาที่เครื่อง) */
+export function normalizeLog(v: unknown, nowMs: number): LogItem[] {
+  return listOf(v)
+    .map((x) => {
+      const o = rec(x);
+      const e = rec(o.entity);
+      const kind = str(o.kind);
+      const until = isoOrNull(o.undoableUntil);
+      const undoneAt = isoOrNull(o.undoneAt);
+      const inTime = !!until && Date.parse(until) > nowMs;
+      return {
+        id: str(o.id),
+        kind,
+        module: str(o.module) || moduleOfKind(kind),
+        summary: str(o.summary),
+        entity: str(e.type) && str(e.id) ? { type: str(e.type), id: str(e.id), link: typeof e.link === "string" ? e.link : null } : null,
+        undoableUntil: until,
+        undoneAt,
+        canUndo: (o.canUndo === undefined ? true : o.canUndo === true) && !undoneAt && inTime,
+        at: isoOf(o.createdAt),
+      };
+    })
+    .filter((l) => l.id && l.summary)
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
+
+export type RoomDetail = {
+  id: string;
+  title: string;
+  status: RoomStatus;
+  /** สถานะดิบ (QUEUED/RUNNING ⇒ poll เร็ว) */
+  rawStatus: string;
+  startedById: string;
+  createdAt: string;
+  updatedAt: string;
+  closed: boolean;
+  canManage: boolean;
+  members: { userId: string; name: string | null }[];
+  /** ความคืบหน้าของแผนที่กำลังทำ (ถ้าเซิร์ฟเวอร์ส่ง `plans`) */
+  plans: PlanItem[];
+};
+export function normalizeRoomDetail(v: unknown): RoomDetail {
+  const o = rec(rec(v).room ?? v);
+  const raw = str(o.status).toUpperCase();
+  return {
+    id: str(o.id),
+    title: str(o.title),
+    status: normStatus(raw),
+    rawStatus: raw,
+    startedById: str(o.startedById),
+    createdAt: isoOf(o.createdAt),
+    updatedAt: isoOf(o.updatedAt),
+    closed: !!o.closedAt || raw === "CLOSED",
+    canManage: o.canManage === true,
+    members: (Array.isArray(o.members) ? o.members : []).map((m) => rec(m)).filter((m) => str(m.userId)).map((m) => ({ userId: str(m.userId), name: str(m.name) || null })),
+    plans: (Array.isArray(o.plans) ? o.plans : []).map((p) => planOf(rec(p), false)).filter((p) => p.id && p.steps.length > 0),
+  };
+}
+
+/**
+ * ลิงก์ "เปิดของจริง" ของ entity → เส้นทางแอป · `link` ของเซิร์ฟเวอร์ (/app/…) ชนะ (เปิดใน WebView หน้าแรก 1.0 ด้วย `?open=`)
+ *   crm.deal → จอดีล native (/crm?dealId=) · booking.appointment → ปฏิทินของร้าน · kanban.card → หน้าแรกเว็บของร้าน (ยังไม่มีลิงก์ตรงจนเซิร์ฟเวอร์ส่ง link)
+ */
+export function entityRoute(e: { type: string; id: string; link: string | null } | null, nonce: string): { pathname: string; params: Record<string, string> } | null {
+  if (!e) return null;
+  if (e.link && /^\/app\/[A-Za-z0-9_\-/]*(\?[A-Za-z0-9_=&\-]*)?$/.test(e.link)) return { pathname: "/", params: { open: e.link, t: nonce } };
+  if (e.type === "crm.deal") return { pathname: "/crm", params: { dealId: e.id } };
+  if (e.type === "booking.appointment") return { pathname: "/", params: { open: "/app/calendar", t: nonce } };
+  if (e.type === "kanban.card") return { pathname: "/", params: { open: "/app/", t: nonce } };
+  return null;
 }
 
 // ───────── secretary/me — cache ต่อผู้ใช้ (R-S2.1b) · ล้ม = ไม่ cache ─────────
@@ -424,23 +677,6 @@ type PutMap = {
 /** PUT เส้นตั้งค่า (เซิร์ฟเวอร์ตรวจสิทธิ์เจ้าของเอง — จอแค่ซ่อนปุ่ม) */
 export function secPut<P extends keyof PutMap>(path: P, body: PutMap[P]["body"]): Promise<PutMap[P]["res"]> {
   return api<PutMap[P]["res"]>(url(path), { method: "PUT", body, tenant: !USER_LEVEL.has(path) });
-}
-
-/** เส้นที่มีรหัสในทาง (log/[id]/undo · lessons/[id]/confirm · lessons/[id] · memories/[id]/confirm · memories/[id]) */
-const ID_PATH = {
-  "secretary/log/undo": (id: string) => `/api/mobile/secretary/log/${encodeURIComponent(id)}/undo`,
-  "secretary/lessons/confirm": (id: string) => `/api/mobile/secretary/lessons/${encodeURIComponent(id)}/confirm`,
-  "secretary/lessons": (id: string) => `/api/mobile/secretary/lessons/${encodeURIComponent(id)}`,
-  "secretary/memories/confirm": (id: string) => `/api/mobile/secretary/memories/${encodeURIComponent(id)}/confirm`,
-  "secretary/memories": (id: string) => `/api/mobile/secretary/memories/${encodeURIComponent(id)}`,
-} as const;
-type IdPostMap = { "secretary/log/undo": { ok: boolean; note?: string }; "secretary/lessons/confirm": { ok: boolean }; "secretary/memories/confirm": { ok: boolean } };
-type IdDeleteMap = { "secretary/lessons": { ok: boolean }; "secretary/memories": { ok: boolean } };
-export function secPostId<P extends keyof IdPostMap>(path: P, id: string): Promise<IdPostMap[P]> {
-  return api<IdPostMap[P]>(ID_PATH[path](id), { method: "POST", body: {} });
-}
-export function secDeleteId<P extends keyof IdDeleteMap>(path: P, id: string): Promise<IdDeleteMap[P]> {
-  return api<IdDeleteMap[P]>(ID_PATH[path](id), { method: "DELETE" });
 }
 
 /** ข้อความไทยของเซิร์ฟเวอร์ (400/403 ของ lib) — ไม่มี = null (จอใช้ข้อความ i18n ของตัวเอง) */
