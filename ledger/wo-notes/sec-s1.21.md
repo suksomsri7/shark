@@ -78,3 +78,9 @@
 - ORACLE-EDIT ขอ: `S1.21-A1` อ่าน `g1.body.items` · `S1.21-A4` อ่าน `st.body.items` (แล้วผมถอด alias `systems`/`staff`)
 
 - รอบ 3: ORACLE-EDIT S1.21-A1/A4 ผู้คุมแก้แล้ว (อ่าน `items`) ⇒ ถอด alias `systems`/`staff` — systems = `{items, canReply}` · staff = `{items}`
+
+## 12. re-check §N.2 (5 พ.ย.)
+- N1 CLOSED: escalation = `assign(onlyIfAssignee: from)` ก่อน → สำเร็จจึงเขียนโน้ต `sla:escalated:` + push · ไม่สำเร็จ = ไม่เขียนอะไร (รอบหน้าดูใหม่)
+- N3 CLOSED: sweep ขั้น (0) ในเวลาทำการ + มีกฎเปิด ⇒ `assignIncoming` ห้องว่าง OPEN ย้อน 72 ชม. (ไม่ขึ้นกับ unassignedAlertMin) · ขั้น (1) เหลือแค่เตือน
+- N4 CLOSED: `handoff` ใช้ `onlyIfAssignee: conv.assigneeUserId` · ไม่สำเร็จ ⇒ `{conflict:true}` → route 409
+- N5 CLOSED: push "assigned" ใน `assignIncoming` = `after()` ในคำขอ · นอกคำขอรอจนจบ (แบบ S1.22 `scheduleAfterHours`)

@@ -19,5 +19,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (rl) return rl;
   const r = await handoff({ tenantId: c.tenantId, systemId: sid, conversationId: id, byUserId: c.userId, toUserId: b.v.toUserId, reason: b.v.reason, unitAccess: c.ua, byCanAssign: can(c, ASSIGN) });
   if (r.ok) return Response.json({ ok: true });
-  return "forbidden" in r && r.forbidden ? fail(403, "forbidden", r.reason) : fail(422, "invalid", r.reason);
+  if ("forbidden" in r && r.forbidden) return fail(403, "forbidden", r.reason);
+  if ("conflict" in r && r.conflict) return fail(409, "conflict", r.reason); // มีคนรับ/ย้ายห้องตัดหน้า (N.2-N4)
+  return fail(422, "invalid", r.reason);
 }

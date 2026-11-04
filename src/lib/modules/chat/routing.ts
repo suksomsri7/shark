@@ -12,6 +12,8 @@
 // 🔴 แจ้งเตือนเรียกนอกทรานแซกชันเสมอ (network call) · `now` ฉีดได้ทุกตัวที่ขึ้นกับเวลา
 
 import { ChatChannelType } from "@prisma/client";
+// `after()` = ตอบคำขอไปก่อน แล้วค่อยทำงานที่เหลือ (นอกคำขอโยน ⇒ ทำทันที) — แบบเดียวกับ S1.22 after-hours
+import { after } from "next/server";
 import type { ChatRoutingRule, Role } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { evaluate, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
@@ -32,6 +34,8 @@ export const ROUTING_ACTOR = "system:routing";
 export const SLA_ACTOR = "system:sla";
 /** SLA ดูเฉพาะห้องที่ลูกค้าเริ่มรอภายในช่วงนี้ — กันวันแรกที่เปิดใช้ปลุกเตือนห้องค้างเก่าทั้งร้าน */
 export const SLA_LOOKBACK_MS = 24 * 60 * 60_000;
+/** ช่วงย้อนหลังของ "มอบหมายห้องค้างตอนเปิดร้าน" (sweep ขั้น 0 · N.2-N3) — ข้ามคืน/ข้ามวันหยุดยาวได้ */
+export const ASSIGN_BACKLOG_MS = 72 * 60 * 60_000;
 const SLA_ROOMS_PER_SYSTEM = 200;
 const RULES_MAX = 20;
 const NOTE_MAX = 500;
@@ -271,11 +275,20 @@ export async function assignIncoming(args: {
   );
   if (!res.ok) return { assigned: null, reason: "already" };
   const note = { title: "มีแชทลูกค้าใหม่มอบหมายให้คุณ", body: "เปิดเพื่อตอบลูกค้า", data: { link: `/inbox/${conv.id}?e=assigned`, conversationId: conv.id, systemId, tenantId } };
+  const to = chosen;
+  const push = async () => {
+    try {
+      if (args.deps?.notify) await args.deps.notify(to, note);
+      else await notifyUser(to, tenantId, "inbox", note, { assigneeUserId: to, ...(args.deps?.post ? { post: args.deps.post } : {}) });
+    } catch {
+      // แจ้งเตือนล้ม = ห้องยังถูกมอบหมายแล้ว (ผู้รับเห็นในกล่อง)
+    }
+  };
+  // 🔴 ห้ามถ่วงทาง webhook ขาเข้า (N.2-N5): ในคำขอ = `after()` · นอกคำขอ (sweep/สคริปต์/ข้อสอบ) `after()` โยน ⇒ รอจนจบ
   try {
-    if (args.deps?.notify) await args.deps.notify(chosen, note);
-    else await notifyUser(chosen, tenantId, "inbox", note, { assigneeUserId: chosen, ...(args.deps?.post ? { post: args.deps.post } : {}) });
+    after(() => push());
   } catch {
-    // แจ้งเตือนล้ม = ห้องยังถูกมอบหมายแล้ว (ผู้รับเห็นในกล่อง)
+    await push();
   }
   return { assigned: chosen, reason };
 }
@@ -365,7 +378,7 @@ export async function handoff(args: {
   /** ผู้กดมีคีย์มอบหมาย (`chat.conversation.assign`) — ไม่มี = ต้องเป็นผู้ดูแลปัจจุบันหรือผู้ช่วยของห้อง (R-S1.21b) */
   byCanAssign?: boolean;
   deps?: { post?: PushPost };
-}): Promise<{ ok: true } | { ok: false; reason: string; forbidden?: true }> {
+}): Promise<{ ok: true } | { ok: false; reason: string; forbidden?: true; conflict?: true }> {
   const { tenantId, systemId } = args;
   const conv = await convFor(tenantId, systemId, args.conversationId);
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
@@ -381,15 +394,12 @@ export async function handoff(args: {
   const to = (await eligibleResponders(tenantId, systemId, conv.unitId)).find((x) => x.userId === args.toUserId);
   if (!to) return { ok: false, reason: "คนนี้ยังไม่มีสิทธิ์ตอบลูกค้าในหน่วยนี้" };
 
-  const res = await assign({
-    tenantId,
-    systemId,
-    conversationId: conv.id,
-    assigneeUserId: to.userId,
-    actorUserId: args.byUserId,
-    unitAccess: args.unitAccess,
-  });
-  if (!res.ok) return { ok: false, reason: res.reason ?? "ส่งต่อไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  // เขียนเฉพาะเมื่อผู้ดูแลยังเป็นคนที่อ่านไว้ (N.2-N4) — ส่งต่อค้างจอไม่ทับการรับห้องที่เพิ่งเกิด
+  const res = await assign(
+    { tenantId, systemId, conversationId: conv.id, assigneeUserId: to.userId, actorUserId: args.byUserId, unitAccess: args.unitAccess },
+    { onlyIfAssignee: conv.assigneeUserId },
+  );
+  if (!res.ok) return { ok: false, reason: res.reason ?? "ส่งต่อไม่สำเร็จ ลองใหม่อีกครั้ง", conflict: true };
   await tenantDb({ tenantId }).chatConversationHelper.deleteMany({ where: { tenantId, conversationId: conv.id, userId: to.userId } });
   const byName = await userName(args.byUserId);
   await sendReply({
@@ -471,9 +481,11 @@ const SLA_ESCALATED = "sla:escalated:";
 
 /**
  * ตรวจ SLA ทุกระบบ CHAT ที่เปิดอยู่และมี ChatSetting (ข้ามร้าน · งานรายนาที `chat.sla` ทุก 5 นาที)
- *   (0)+(1) ห้อง OPEN ที่ "ไม่มีผู้ดูแลจริง" (assignee null หรือผู้ดูแลตอบไม่ได้แล้ว — ถูกถอน/หลุดหน่วย · R-S1.21c) รอ ≥ unassignedAlertMin
- *       เฉพาะในเวลาทำการ: ห้องว่าง ⇒ ลอง `assignIncoming` ก่อน (ล้างคิวตอนเปิดร้าน) · ยังไม่มีใคร ⇒ เตือน OWNER/MANAGER ที่ตอบได้ในหน่วย (1 ครั้งต่อการรอ)
- *   (2) มีผู้ดูแล (ตอบได้) แต่ยังไม่ตอบแรก รอ ≥ slaFirstResponseMin ⇒ เตือนผู้ดูแล (1 ครั้ง) · รอ ≥ 2× ⇒ ย้ายให้ MANAGER/OWNER ที่ตอบได้ (1 ครั้ง · ย้ายเฉพาะเมื่อผู้ดูแลยังเป็นคนเดิม)
+ *   (0) เฉพาะในเวลาทำการ + มีกฎเปิด: ห้อง OPEN ที่ยังว่าง (ย้อน 72 ชม.) ⇒ `assignIncoming` (ล้างคิวตอนเปิดร้าน · N.2-N3)
+ *   (1) ห้อง OPEN ที่ "ไม่มีผู้ดูแลจริง" (assignee null หรือผู้ดูแลตอบไม่ได้แล้ว — ถูกถอน/หลุดหน่วย · R-S1.21c) รอ ≥ unassignedAlertMin
+ *       เฉพาะในเวลาทำการ ⇒ เตือน OWNER/MANAGER ที่ตอบได้ในหน่วย (1 ครั้งต่อการรอ)
+ *   (2) มีผู้ดูแล (ตอบได้) แต่ยังไม่ตอบแรก รอ ≥ slaFirstResponseMin ⇒ เตือนผู้ดูแล (1 ครั้ง) · รอ ≥ 2× ⇒ ย้ายให้ MANAGER/OWNER ที่ตอบได้
+ *       (ย้ายเฉพาะเมื่อผู้ดูแลยังเป็นคนเดิม · โน้ต `sla:escalated:` เขียนหลังย้ายสำเร็จเท่านั้น — ไม่สำเร็จ = รอบหน้าดูใหม่ · N.2-N1)
  *   เวลารอนับจาก `firstCustomerMessageAt` · ดูย้อนหลังไม่เกิน 24 ชม. · กันซ้ำ = clientMessageId `sla:<เรื่อง>:<เวลาเริ่มรอ>` · ห้องที่มีโน้ตแล้วถูกกรองตั้งแต่ query (ไม่กินโควตา 200 ห้อง)
  *   ทีมโหลดครั้งเดียวต่อร้าน · ไม่ throw ทั้งรอบเพราะห้องเดียว · `deps.deadline` (ms) = หยุดก่อนหมดงบ
  */
@@ -515,7 +527,21 @@ export async function sweepChatSla(
       const bh = readBusinessHours(s.businessHours);
       const open = !bh || isWithinBusinessHours(bh, at);
 
-      // (0)+(1) ไม่มีผู้ดูแลจริง — นอกเวลาทำการไม่เตือน ไม่มอบหมาย
+      // (0) ในเวลาทำการ: ห้อง OPEN ที่ยังว่าง (ย้อน 72 ชม. · ไม่ขึ้นกับ unassignedAlertMin) ⇒ กฎรับเรื่อง (ล้างคิวตอนเปิดร้าน · N.2-N3)
+      if (open && (await listRules(tenantId, systemId)).some((r) => r.enabled)) {
+        const backlog = await prisma.chatConversation.findMany({
+          where: { tenantId, systemId, status: "OPEN", assigneeUserId: null, firstCustomerMessageAt: { gte: new Date(at.getTime() - ASSIGN_BACKLOG_MS), lte: at } },
+          select: { id: true },
+          orderBy: { firstCustomerMessageAt: "asc" },
+          take: SLA_ROOMS_PER_SYSTEM,
+        });
+        for (const c of backlog) {
+          if (late()) break;
+          await assignIncoming({ tenantId, systemId, conversationId: c.id, now: at, deps: { notify, team: t } });
+        }
+      }
+
+      // (1) ไม่มีผู้ดูแลจริง — นอกเวลาทำการไม่เตือน
       if (open && s.unassignedAlertMin > 0) {
         const keyHolders = t.members.filter((m) => evaluate(m.ctx, { module: "chat", action: CHAT_REPLY_ACTION }));
         // ผู้ถือคีย์ที่จำกัดหน่วย: ห้องนอกหน่วยของเขา = ผู้ดูแลที่ตอบไม่ได้ (ห้องไม่ผูกหน่วยตอบได้เสมอ — notIn ตัด null อยู่แล้ว)
@@ -535,14 +561,9 @@ export async function sweepChatSla(
           orderBy: { firstCustomerMessageAt: "asc" },
           take: SLA_ROOMS_PER_SYSTEM,
         });
-        const hasRules = rooms.some((c) => !c.assigneeUserId) && (await listRules(tenantId, systemId)).some((r) => r.enabled);
         for (const c of rooms) {
           if (late()) break;
           if (validIn(c.assigneeUserId, c.unitId)) continue; // ตรวจซ้ำฝั่งแอป (ตัวกรอง SQL หยาบกว่า)
-          if (!c.assigneeUserId && hasRules) {
-            const r = await assignIncoming({ tenantId, systemId, conversationId: c.id, now: at, deps: { notify, team: t } });
-            if (r.assigned) continue;
-          }
           const waited = minsOf(at.getTime() - c.firstCustomerMessageAt!.getTime());
           const gone = c.assigneeUserId ? "ผู้ดูแลเดิมตอบห้องนี้ไม่ได้แล้ว" : "ยังไม่มีผู้ดูแลห้องนี้";
           const claimed = await claimNote(tenantId, systemId, c.id, `${SLA_UNASSIGNED}${c.firstCustomerMessageAt!.getTime()}`, `⏰ ลูกค้ารอมา ${waited} นาที ${gone} — แจ้งเจ้าของ/ผู้จัดการแล้ว`);
@@ -586,14 +607,13 @@ export async function sweepChatSla(
             if (target) {
               const fromName = responders.find((x) => x.userId === from)?.name ?? (await userName(from));
               const toName = bosses.find((x) => x.userId === target)?.name ?? "ผู้จัดการ";
-              const claimed = await claimNote(tenantId, systemId, c.id, `${SLA_ESCALATED}${anchor}`, `⏫ ลูกค้ารอคำตอบแรกมา ${waited} นาที — ย้ายจาก ${fromName} ถึง ${toName}`);
-              if (claimed) {
-                // ย้ายเฉพาะเมื่อผู้ดูแลยังเป็นคนเดิม (updateMany มีเงื่อนไข · L-7)
-                const res = await assign({ tenantId, systemId, conversationId: c.id, assigneeUserId: target, actorUserId: SLA_ACTOR }, { onlyIfAssignee: from });
-                if (res.ok) {
-                  await notify(target, msg(c.id, "ย้ายแชทลูกค้าที่รอนานมาให้คุณ", `ลูกค้ารอคำตอบแรกมา ${waited} นาที`));
-                  out.escalated++;
-                } else await logOps("WARN", "chat", `chat.sla: ย้ายห้อง ${c.id} ไม่สำเร็จ`, { tenantId, detail: res.reason }).catch(() => {});
+              // ย้ายก่อน (updateMany มีเงื่อนไข: ผู้ดูแลยังเป็นคนเดิม · L-7) แล้วค่อยเขียนโน้ต (N.2-N1)
+              //   ย้ายไม่สำเร็จ (มีคนรับ/ย้ายตัดหน้า) = ไม่เขียนอะไร ⇒ รอบหน้าห้องนี้ถูกพิจารณาใหม่ด้วยสภาพจริง
+              const res = await assign({ tenantId, systemId, conversationId: c.id, assigneeUserId: target, actorUserId: SLA_ACTOR }, { onlyIfAssignee: from });
+              if (res.ok) {
+                await claimNote(tenantId, systemId, c.id, `${SLA_ESCALATED}${anchor}`, `⏫ ลูกค้ารอคำตอบแรกมา ${waited} นาที — ย้ายจาก ${fromName} ถึง ${toName}`);
+                await notify(target, msg(c.id, "ย้ายแชทลูกค้าที่รอนานมาให้คุณ", `ลูกค้ารอคำตอบแรกมา ${waited} นาที`));
+                out.escalated++;
               }
               continue;
             }
