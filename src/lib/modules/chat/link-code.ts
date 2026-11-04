@@ -13,6 +13,8 @@ import { prisma } from "./db";
 import { linkChatContactParty, type ChatPartyCtx } from "./party-bridge";
 
 /** 31 ตัว — ไม่มี 0 O 1 I L */
+/** ข้อความที่บันทึกแทนรหัสผูกที่ลูกค้าพิมพ์ (webhook LINE) — S1.22 R-S1.22e: hook นอกเวลาทำการข้ามข้อความนี้ */
+export const LINK_CODE_MASK = "[รหัสผูกบัญชี LINE]";
 export const LINK_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const LINK_CODE_LENGTH = 8;
 export const LINK_PURPOSES = ["DORM_LEASE", "QUEUE_TICKET", "APPOINTMENT"] as const;

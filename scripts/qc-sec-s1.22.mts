@@ -115,9 +115,9 @@ try {
   if (!ah) { for (const i of [1, 2, 3, 4, 5, 6, 7]) skip(`A-${i}`, "after-hours", "ไม่มี after-hours.ts"); }
   else {
     const s0 = await ah.afterHoursSettings(tid) as { reply: boolean; handoff: boolean; disclosure: string };
-    const eMgr = await throws(() => ah.setAfterHours(tid, { userId: U.mgr, membership: M("MANAGER") }, { reply: true }));
-    const eEmpty = await throws(() => ah.setAfterHours(tid, { userId: U.owner, membership: M("OWNER") }, { disclosure: "   " }));
-    const s1 = await ah.setAfterHours(tid, { userId: U.owner, membership: M("OWNER") }, { reply: true, disclosure: "ตอบโดย Shark ผู้ช่วย AI ครับ" }) as { reply: boolean; handoff: boolean; disclosure: string };
+    const eMgr = await throws(() => ah.setAfterHours(tid, { userId: U.mgr, tenantId: tid, membership: M("MANAGER") }, { reply: true }));
+    const eEmpty = await throws(() => ah.setAfterHours(tid, { userId: U.owner, tenantId: tid, membership: M("OWNER") }, { disclosure: "   " }));
+    const s1 = await ah.setAfterHours(tid, { userId: U.owner, tenantId: tid, membership: M("OWNER") }, { reply: true, disclosure: "ตอบโดย Shark ผู้ช่วย AI ครับ" }) as { reply: boolean; handoff: boolean; disclosure: string };
     const rowS = await prisma.aiSettings.findUnique({ where: { tenantId: tid } }) as Record<string, unknown> | null;
     chk("A-1", "settings ปริยาย reply=false handoff=true disclosure ไทย · MANAGER ตั้ง ⇒ throw · disclosure ว่าง ⇒ throw ไทย · OWNER ตั้ง ⇒ บันทึก AiSettings.afterHoursReply=true", s0.reply === false && s0.handoff === true && thai(s0.disclosure) && !!eMgr && thai(eEmpty) && s1.reply === true && s1.disclosure === "ตอบโดย Shark ผู้ช่วย AI ครับ" && rowS?.afterHoursReply === true, JSON.stringify({ s0, eMgr, eEmpty, s1 }).slice(0, 220));
     chk("A-2", "isAfterHours: ไม่ตั้ง (null) = false · 23:30 BKK = true · 12:30 BKK = false · 08:30 = true", ah.isAfterHours(null, atBkk(23)) === false && ah.isAfterHours(hours, atBkk(23)) === true && ah.isAfterHours(hours, atBkk(12)) === false && ah.isAfterHours(hours, atBkk(8)) === true, "");

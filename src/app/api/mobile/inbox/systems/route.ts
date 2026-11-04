@@ -19,6 +19,5 @@ export async function GET(req: Request) {
     const types = [...new Set((await listConnections(c.tenantId, s.id)).map((x) => x.type))];
     systems.push({ id: s.id, name: s.name, channels: types.map((type) => ({ type, label: channelLabel(type) })), unread: await unreadFor(c, s.id) });
   }
-  // `systems` = ชื่อเดิมของรอบแรก (ข้อสอบ A-1 ยังอ่านชื่อนี้) — แอปใช้ `items` (COMMON ข้อ 6 · R-S1.21i) · ถอดหลัง ORACLE-EDIT S1.21-A1
-  return Response.json({ items: systems, canReply: mobileDenied(c.g, REPLY) === null, systems });
+  return Response.json({ items: systems, canReply: mobileDenied(c.g, REPLY) === null }); // COMMON ข้อ 6 · R-S1.21i
 }

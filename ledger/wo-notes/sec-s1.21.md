@@ -76,3 +76,5 @@
 | R-S1.21h cursor คู่ `<iso>\|<id>` | CLOSED — `listConversations`/`getThread` รับ `page` (ไม่ส่ง = เดิม) แทน `before: Date` รอบแรก | service.ts · `_shared.parseCursor/cursorOf` |
 | R-S1.21i คีย์ย้ายไป guard · `{items}` | CLOSED — ค่าอยู่ `chat/guard-keys.ts` (pure · guard.ts import `core/context`) re-export จาก guard.ts · systems/staff คืน `items` **+ ชื่อเดิม `systems`/`staff` ชั่วคราว** เพราะข้อสอบ A-1/A-4 ยังอ่านชื่อเดิม ⇒ ORACLE-EDIT S1.21-A1/A4 แล้วถอด alias | routes |
 - ORACLE-EDIT ขอ: `S1.21-A1` อ่าน `g1.body.items` · `S1.21-A4` อ่าน `st.body.items` (แล้วผมถอด alias `systems`/`staff`)
+
+- รอบ 3: ORACLE-EDIT S1.21-A1/A4 ผู้คุมแก้แล้ว (อ่าน `items`) ⇒ ถอด alias `systems`/`staff` — systems = `{items, canReply}` · staff = `{items}`

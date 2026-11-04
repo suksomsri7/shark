@@ -24,6 +24,7 @@ import { identityOf, secretaryOf } from "./secretary/secretary";
 import { getAccess } from "./secretary/access";
 import { NOT_SYSTEM_MESSAGE, visibleMessagesWhere } from "./secretary/members";
 import { digestBlockFor } from "./secretary/digest";
+import { customerBlock, customerContextOf } from "./secretary/customer-context";
 
 export type Ctx = { tenantId: string };
 /**
@@ -64,6 +65,20 @@ function parseClarify(rawArgs: unknown): Clarify | null {
     : [];
   if (!question || options.length === 0) return null;
   return { question, options };
+}
+
+/** SEC S1.22 ▸ รหัสห้องแชทลูกค้าใน `AiRoom.contextJson` (ไม่มี/รูปเพี้ยน = null) ◂ */
+function roomCustomerConversationId(contextJson: unknown): string | null {
+  if (!contextJson || typeof contextJson !== "object" || Array.isArray(contextJson)) return null;
+  const v = (contextJson as Record<string, unknown>).chatConversationId;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+/** SEC S1.22 ▸ เติม conversationId ปริยายให้ send_customer_message เมื่อโมเดลไม่ส่ง (ค่าที่ส่งมาชนะเสมอ) ◂ */
+function withDefaultCustomerConversation(args: unknown, conversationId: string): unknown {
+  const a = args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
+  const given = typeof a.conversationId === "string" ? a.conversationId.trim() : "";
+  return given ? args : { ...a, conversationId };
 }
 
 /**
@@ -249,11 +264,17 @@ export async function sendMessage(
 
   // SEC S1.16 ▸ ข้อมูลกิจการสด เฉพาะห้องเลขา (มีแถว AiRoom) ตามสิทธิ์ของคนที่พิมพ์ ∩ ระดับของร้าน · ห้องเดิม = ไม่อ่าน (prompt เดิมทุกไบต์) ◂
   const digest = conv?.room ? await digestBlockFor(ctx.tenantId, { actor: ctx.actor, access }).catch(() => "") : "";
+  // SEC S1.22 ▸ ห้องเลขาที่เปิดจากห้องแชทลูกค้า ⇒ บริบทลูกค้าตามสายตาของคนที่พิมพ์ (มองไม่เห็น/อ่านพลาด = ไม่แทรก · ห้องอื่น = prompt เดิมทุกไบต์) ◂
+  const roomCustomerConvId = roomCustomerConversationId(conv?.room?.contextJson);
+  const customer =
+    roomCustomerConvId && ctx.actor.kind === "member"
+      ? await customerContextOf(ctx.tenantId, { chatConversationId: roomCustomerConvId }, ctx.actor).then((c) => (c ? customerBlock(c) : "")).catch(() => "")
+      : "";
   const messages: AiChatMessage[] = [
     {
       role: "system",
       content: [
-        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customerChatOffered ? { customerChat: true } : {}) }), // SEC S1.12 R-S1.12d ◂
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customer ? { customer } : {}), ...(customerChatOffered ? { customerChat: true } : {}) }), // SEC S1.12 R-S1.12d ◂
         skillIndexPrompt(visibleSkills),
       ].filter(Boolean).join("\n\n"),
     },
@@ -340,10 +361,12 @@ export async function sendMessage(
         }
         // ส่ง conversation.id เข้าไปด้วย — action tool ต้องใช้ผูก proposal กับบทสนทนา
         // CRM C5.5-G1 ▸ ผู้กระทำของเทิร์นนี้ไปกับทุกการเรียก (runTool ตรวจสิทธิ์ซ้ำ — ชื่อที่ไม่ได้ยื่นก็โดนปฏิเสธ) ◂
+        // SEC S1.22 ▸ send_customer_message ในห้องที่ผูกห้องลูกค้า: โมเดลไม่ส่ง conversationId ⇒ ใช้ห้องลูกค้าของห้องนี้ (เครื่องมือตรวจสิทธิ์ซ้ำเอง) ◂
+        const toolArgs = tc.name === "send_customer_message" && roomCustomerConvId ? withDefaultCustomerConversation(tc.args, roomCustomerConvId) : tc.args;
         const result = await runTool(
           { tenantId: ctx.tenantId, actor: ctx.actor, conversationId: conversation.id, access, sight },
           tc.name,
-          tc.args,
+          toolArgs,
         );
         messages.push({ role: "tool", content: result, toolCallId: tc.id });
       }

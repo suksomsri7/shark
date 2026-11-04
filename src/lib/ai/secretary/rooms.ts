@@ -16,6 +16,7 @@ import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conve
 import { balancePeek, LOW_BALANCE_MICRO } from "../credit";
 import { countsAsJob, FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage } from "./pack";
 import { NOT_SYSTEM_MESSAGE, roomMemberRows, type RoomMemberRow } from "./members";
+import { visibleCustomerConversation } from "./customer-context";
 
 export type RoomStatus = "OPEN" | "RUNNING" | "WAITING" | "DONE";
 
@@ -51,6 +52,7 @@ const LIST_TAKE_MAX = 100;
 const SYSTEMS_MAX = 20;
 const ACTIVE_JOB_STATUSES = ["QUEUED", "RUNNING"];
 const MSG_EMPTY = "พิมพ์งานที่อยากให้เลขาช่วยก่อนนะ";
+const MSG_BAD_CUSTOMER = "ไม่พบห้องลูกค้าหรือไม่มีสิทธิ์";
 const MSG_ACTOR = "เปิดห้องงานได้เฉพาะคนในกิจการที่เข้าสู่ระบบอยู่ — ลองเข้าสู่ระบบใหม่อีกครั้ง";
 
 /** ชื่อห้องจากคำสั่ง — บรรทัดแรกที่มีตัวอักษร (trim) · ยาวเกิน 60 ตัว = ตัดแล้วเติม "…" · ว่าง = "งานใหม่" (pure) */
@@ -95,7 +97,9 @@ function cleanContext(v: StartRoomInput["context"]): Prisma.InputJsonObject | un
     const s = typeof v[k] === "string" ? v[k].trim() : "";
     if (s) out[k] = s.slice(0, 200);
   }
-  return Object.keys(out).length > 0 ? out : undefined;
+  // S1.22 R-S1.22e ▸ ผู้ติดต่อที่ไม่มีห้องลูกค้ากำกับ = ตรวจสิทธิ์ไม่ได้ ⇒ ทิ้งทั้งก้อน (ไม่เก็บ contactId ลอย ๆ) ◂
+  if (!out.chatConversationId) return undefined;
+  return out;
 }
 
 class QuotaExceeded extends Error {
@@ -131,7 +135,13 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
   const inc = countsAsJob({ kind: "room_new" });
   const title = roomTitleFrom(typeof input.title === "string" && input.title.trim() ? input.title : instruction);
   const systems = cleanSystems(input.systems);
-  const contextJson = cleanContext(input.context);
+  let contextJson = cleanContext(input.context);
+  // S1.22 ▸ ห้องลูกค้าที่แนบมาต้องเป็นของร้านนี้และผู้เปิดห้องมองเห็น (สิทธิ์อ่านแชท + สาขา) — ไม่งั้น throw ไทย · contactId ยึดตามห้องจริง ◂
+  if (typeof contextJson?.chatConversationId === "string") {
+    const seen = await visibleCustomerConversation(tenantId, { chatConversationId: contextJson.chatConversationId, ...(typeof contextJson.contactId === "string" ? { contactId: contextJson.contactId } : {}) }, actor);
+    if (!seen) throw new Error(MSG_BAD_CUSTOMER);
+    contextJson = { ...contextJson, ...seen };
+  }
   // SEC S1.13 (Q4 · R-K7) ▸ กระเป๋ามีเงิน ⇒ โควตาหมดแล้วนับต่อได้ (ตัวนับเกิน limit ได้ = งานที่จ่ายจากกระเป๋า) ·
   //   อ่านอย่างเดียว (ไม่เปิดกระเป๋า) · ยังเป็น conditional update คำสั่งเดียวใน tx (X3) — แค่เงื่อนไขไม่มี `lt` ◂
   //   R-S1.13h: เกณฑ์ = ยอด ≥ LOW_BALANCE_MICRO ($0.50) ไม่ใช่แค่ > 0 · ยอดอ่านก่อน tx ⇒ คำขอพร้อมกันอาจเกินเป็นชุด (burst) ไม่ใช่แค่ 1 งาน ◂
