@@ -30,7 +30,7 @@
 ## 5. ผลข้อสอบ
 - forced #1: `JSON_SUMMARY {"total":14,"passed":14,"failed":[],"skipped":[],"findings":[]}` exit 0
 - unforced: เหมือนกัน 14/14 (ไฟล์มีแล้ว ⇒ ไม่ SKIP)
-- forced #2 (หลัง commit): ดูรายงาน
+- forced #2 (หลัง commit e621f7f5): `JSON_SUMMARY {"total":14,"passed":14,"failed":[],"skipped":[],"findings":[]}` exit 0
 - ข้อสอบก่อนหน้า: `qc-sec-s0.2` forced 30/30
 - regression (unforced · qc-sec.sh + gate lock · SHARK_AI_MOCK=1): qc-mobile-app 38/38 · qc-mobile-auth 31/31 · qc-mobile-chat 29/29 · qc-mobile-authz-hotfix 12/12 — exit 0 ทั้งหมด = baseline `sec-baseline-85751098.txt`
 - mobile typecheck 0 · `pnpm fitness` 53/53 ทั้งมี env และ `env -u DATABASE_URL`
