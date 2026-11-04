@@ -14,6 +14,8 @@ import { glassStyle, useTheme } from "@/src/theme/index";
 import { radii, spacing, type as T } from "@/src/theme/tokens";
 
 type Switcher = { open: () => void; close: () => void; visible: boolean };
+/** รากโซนที่กลับไปหลังสลับกิจการ (R-S2.1c) */
+export type ZoneRoot = "/secretary" | "/customers";
 const Ctx = createContext<Switcher | null>(null);
 const NOOP: Switcher = { open: () => {}, close: () => {}, visible: false };
 
@@ -23,7 +25,7 @@ export function useBusinessSwitcher(): Switcher {
 }
 
 /** ครอบ Stack ของโซน — ชีตอยู่ชั้นบนสุดของโซนนั้น */
-export function BusinessSwitcherHost({ children }: { children?: ReactNode }) {
+export function BusinessSwitcherHost({ children, root = "/secretary" }: { children?: ReactNode; root?: ZoneRoot }) {
   const [visible, setVisible] = useState(false);
   const open = useCallback(() => setVisible(true), []);
   const close = useCallback(() => setVisible(false), []);
@@ -32,7 +34,7 @@ export function BusinessSwitcherHost({ children }: { children?: ReactNode }) {
     <Ctx.Provider value={value}>
       <View style={styles.host}>
         {children}
-        <BusinessSwitcherSheet visible={visible} onClose={close} />
+        <BusinessSwitcherSheet visible={visible} onClose={close} root={root} />
       </View>
     </Ctx.Provider>
   );
@@ -40,16 +42,24 @@ export function BusinessSwitcherHost({ children }: { children?: ReactNode }) {
 
 const ROLE_KEYS: Record<string, I18nKey> = { OWNER: "sec.role.OWNER", MANAGER: "sec.role.MANAGER", STAFF: "sec.role.STAFF" };
 
-export function BusinessSwitcherSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export function BusinessSwitcherSheet({ visible, onClose, root = "/secretary" }: { visible: boolean; onClose: () => void; root?: ZoneRoot }) {
   const { c } = useTheme();
   const t = useT();
   const router = useRouter();
   const { tenants, activeTenantId, switchTenant } = useAuth();
   const sec = useSecretaryMe();
 
+  // R-S2.1c: สลับสำเร็จ ⇒ ปิด stack ของโซน (ห้อง/ตั้งค่าของกิจการเดิมไม่ค้าง) แล้วไปรากโซน
+  //   cache เลขา + badge ล้างเองใน useSecretaryZone (activeTenantId เปลี่ยน ⇒ resetSecretaryMe)
   async function pick(id: string) {
-    if (id !== activeTenantId) await switchTenant(id);
+    if (id === activeTenantId) {
+      onClose();
+      return;
+    }
+    await switchTenant(id);
     onClose();
+    if (router.canDismiss()) router.dismissAll();
+    router.navigate(root);
   }
   function go(path: string) {
     onClose();

@@ -1,12 +1,21 @@
 // แผ่นล่าง .dim + .sheet — วาดเป็น View วางทับแบบ absolute (Modal ของ RN-web ไม่เรนเดอร์ใน headless)
-// แตะพื้นมืดเพื่อปิด · แผ่นมน 48 ขอบห่าง 8
-import type { ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+// แตะพื้นมืด (หรือปุ่มย้อนของ Android) เพื่อปิด · แผ่นมน 48 ขอบห่าง 8
+import { useEffect, type ReactNode } from "react";
+import { BackHandler, Pressable, StyleSheet, View } from "react-native";
 import { bgImage, linear, useTheme } from "@/src/theme/index";
 import { radii, size } from "@/src/theme/tokens";
 
 export function Sheet({ visible, onClose, testID, children, top = 120 }: { visible: boolean; onClose?: () => void; testID: string; children?: ReactNode; top?: number }) {
   const { c } = useTheme();
+  // R-S2.1f: ปุ่มย้อนของ Android ปิดชีตก่อน (ไม่ย้อนจอข้างหลัง) · เว็บ/iOS ไม่มีผล
+  useEffect(() => {
+    if (!visible || !onClose) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, onClose]);
   if (!visible) return null;
   return (
     <View testID={testID} style={StyleSheet.absoluteFill}>

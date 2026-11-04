@@ -112,6 +112,83 @@
    "screen": "/ (หน้าแรก 1.0)",
    "action": "router.push /secretary",
    "wo": "S2.1"
+  },
+  {
+   "testID": "sec-home-filter-{all,working,approval,done}",
+   "file": "apps/mobile/src/components/secretary/RoomFilters.tsx (testID จาก index.tsx)",
+   "screen": "/secretary A1",
+   "action": "กรองรายการห้องตามสถานะ (ในแอป)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-home-card-<roomId>",
+   "file": "apps/mobile/src/components/secretary/RoomCard.tsx (กรอบ sec-home-card)",
+   "screen": "/secretary A1",
+   "action": "router.push /secretary/room/<id>",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-home-new",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary A1/C3",
+   "action": "router.push /secretary/new (ช่องสั่งงานล่าง · InputBar sec-input กดไม่ได้ข้างใน)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-suggest-s{1,2,3}",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary C3",
+   "action": "router.push /secretary/new?q=<instruction> (เติมคำสั่ง ไม่ส่งเอง)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-home-denied-back",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary (403)",
+   "action": "router.navigate / (หน้าแรก 1.0)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-close",
+   "file": "apps/mobile/app/(app)/secretary/new.tsx",
+   "screen": "/secretary/new A2",
+   "action": "router.back (ไม่มีหน้าก่อน = replace /secretary)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-suggestion-<key>",
+   "file": "apps/mobile/src/components/secretary/SuggestionList.tsx",
+   "screen": "/secretary/new A2",
+   "action": "เติม instruction ลงช่องพิมพ์ (ไม่ส่งเอง · มติ 9)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-frequent-<i>",
+   "file": "apps/mobile/app/(app)/secretary/new.tsx",
+   "screen": "/secretary/new A2",
+   "action": "เติมคำสั่งที่สั่งบ่อยลงช่องพิมพ์",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-send",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx (sendTestID จาก new.tsx)",
+   "screen": "/secretary/new A2",
+   "action": "POST secretary/rooms → router.replace /secretary/room/<roomId> · ว่าง/กำลังส่ง = disabled",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-input-plus",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary/new A2",
+   "action": "ล้างช่องพิมพ์ (เริ่มพิมพ์ใหม่)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-quota-link",
+   "file": "apps/mobile/app/(app)/secretary/new.tsx",
+   "screen": "/secretary/new A2 (402)",
+   "action": "router.push /secretary/settings/quota",
+   "wo": "S2.2/S2.3"
   }
  ]
 }
