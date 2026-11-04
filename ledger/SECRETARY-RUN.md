@@ -20,7 +20,7 @@
 ## 2. สัญญาต่อใบ (ผู้คุมเติมตอนออกข้อสอบ · ย่อ: ชื่อฟังก์ชัน · ข้อสอบ S-group · จำนวนข้อ)
 _(เติมเมื่อถึงใบ)_
 
-## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 8/58 (41 ชุด) · 14%
+## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 9/58 (41 ชุด) · 16%
 
 | ใบ | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|
@@ -40,12 +40,12 @@ _(เติมเมื่อถึงใบ)_
 | S1.10 | ⬜ | | ตีกลับ + สอน |
 | S1.11 | ⬜ | | ข้อเสนอ + กล่องรวม |
 | S1.12 | ⬜ | | เครื่องมือที่ขาด (chat.send) |
-| S1.13 | ⬜ | | 🎯 โควตางาน |
+| S1.13 | ✍️ | | ใบ S1-11 + oracle `qc-sec-s1.13.mts` พร้อม (canRunAi · ensureWallet ไม่ GRANT ร้านใหม่ · quotaStatus · GET usage ไม่เขียน) · 🎯 โควตางาน |
 | S1.15 | ⬜ | | 🎯 วงจรเรียนรู้ |
 | S1.16 | ⬜ | | ข้อมูลสดรายวัน |
 | S1.17 | ⬜ | | Support Desk ต่อแอป |
-| S1.19 | 🔨 | | builder Opus เลน c `wip/sec-s1.19` เริ่ม 4 พ.ย. ~16:5xZ · oracle `qc-sec-s1.19.mts` (unforced SKIP · forced แดง M-1 ถูกเหตุผล) · 🎯 SMS OTP เบอร์ = ID (รอคีย์ SMS จากเจ้าของ · โหมด mock ก่อน) |
-| S1.20 | 🔨 | | builder Opus เลน d `/root/projects/shark-sec-d` `wip/sec-s1.20` @47027ca0 เริ่ม 4 พ.ย. ~17:4xZ · oracle `qc-sec-s1.20.mts` (pure · fetch ปลอม · ห้ามเรียก API จริง) · Anthropic ตรง (รอคีย์ shark จากเจ้าของ · mock ก่อน) |
+| S1.19 | 🔁 | | รอบ 1 เสร็จ (21/21 หลัง ORACLE-EDIT Q-3) · **รีวิว 2 คน: BLOCK** — CRITICAL อีเมลไม่ยืนยันตอนสมัครด้วยเบอร์ = ช่องยึดบัญชี (R-S1.19a) + MAJOR 6 ข้อ (R-S1.19b–g) → รอบ 2 บนเลน c · 🎯 SMS OTP เบอร์ = ID (รอคีย์ SMS จากเจ้าของ · โหมด mock ก่อน) |
+| S1.20 | ✅ | 4 พ.ย. ~19:2xZ | merge (wip/sec-s1.20 59333ba5) · oracle 19/19 ×3 · regression 6 ชุดเท่า baseline · raw fetch Messages API · `AI_PROVIDER=anthropic` + `SHARK_ANTHROPIC_KEY` (เจ้าของตั้งตอน S3a.2) · หนี้: pricing sonnet 5 คิด 3/15 (จริง 2/10) · cache token คิดเต็ม · ยังไม่เคยยิง API จริง · Anthropic ตรง (รอคีย์ shark จากเจ้าของ · mock ก่อน) |
 | S1.21 | ⬜ | | 🎯 แชทลูกค้า API มือถือ |
 | S1.22 | ⬜ | | 🎯 สะพานเลขา↔ห้องลูกค้า |
 | S1.23 | ⬜ | | แจ้งเตือน+เรียลไทม์ |
@@ -100,3 +100,4 @@ _(เติมเมื่อถึงใบ)_
 - **4 พ.ย. ~16:2xZ** รับ S1-2 (merge) · หนี้จด (นักล่า S3a.1 ตรวจ): (1) `/api/v1/ai/tools/*` (คีย์ API) ไม่ส่ง access level (2) ข้อเสนอจากปุ่ม CRM ออกก่อนด่านระดับ (3) `propose_plan` รับขั้นของระบบ OFF (ตกตอนรัน) · เลน c ว่าง → ใบถัดไป S1-13 (S1.19 SMS OTP)
 - **4 พ.ย. ~17:4xZ** เปิดเลน d `/root/projects/shark-sec-d` (worktree · node_modules bind ro จาก shark-svc · .env.qc-sec) สำหรับใบอิสระ S1.20 — เลนรวม 3 (b/c/d) ตามเพดาน · S1.4 รอบสอง (rejectPlan) กำลังปิดบนเลน b
 - **4 พ.ย. ~18:0xZ** รับ S1.4 (merge) · เลน b → `wip/sec-s1.5` ชุด S1-4 (คิวเบื้องหลัง) · ถัดไปเมื่อเลนว่าง: S1-5 (S1.6) · S1-6 (S1.7+S1.8)
+- **4 พ.ย. ~19:2xZ** รับ S1.20 (merge · light-check) · รีวิว S1.19 (A ความปลอดภัย · B สัญญา) ⇒ BLOCK → RESOLUTIONS §H · รีวิวย้อนหลัง S1-2 (C สิทธิ์ · D regression) ⇒ FIX-NOW: `upcoming_schedule`/`financial_summary`/`growth_recommendations`/`customer_points` อ่านข้ามโมดูลที่ OFF · `secretaryOf` ต้อง .catch · FIX-LATER ก่อน S1.14: route คีย์ API ส่ง access · setAccess โหลด membership เอง · แผนตรวจระดับทุกขั้นก่อน claim · ประตู CRM · → ออกใบ **S1.3b** (เลน d) 
