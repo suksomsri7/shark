@@ -8,3 +8,4 @@ Read COMMON · RESOLUTIONS §F · §J (สมาชิก seeHistory · ข้�
 ## Files you own
 `app/(app)/secretary/staff/index.tsx` · `app/(app)/secretary/onboarding/name.tsx` · `app/(app)/secretary/room/[id].tsx` (เฉพาะส่วน D2) · `src/components/secretary/{StaffRow,AddMemberSheet,MemberBubble}.tsx` · `secretary-api.ts` · i18n · fixture · `ledger/wo-notes/sec-s2.10.md`
 ## Acceptance = `SPEC=scripts/qc-sec-specs/s2.10.json qc-sec-screen.mts` ×2 · `qc-sec-s2.4` spec ยังเขียว · ภาพคู่ · typecheck 0 · fitness ×2
+## เพิ่ม (รีวิว S2.4 · RESOLUTIONS §S): ทำ R-S2.4a–f ในห้องด้วย (ย้อนต่อแถว+ยืนยัน · re-run poll · ผลแผน N/M · ฟิลด์ที่แก้ · EditSheet allowlist · AppState/backoff/clientMessageId/ปิดห้องยืนยัน/ref guard · บรรทัดลงชื่อ chat.send) · ปรับ fixture s2.4*.json ให้ใช้ค่า RoomStatus/DTO จริงของ S1.14 (why/plans/canApprove/canUndo/link)

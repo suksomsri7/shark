@@ -185,3 +185,12 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S2.12b (F2)** ธง post-signup ผูกกับ `user.id` และล้างใน `signOut` + ตอนเริ่ม `signIn`
 - **R-S2.12c (F4/F5/F6)** `/phone`: reset busy ใน finally + ปุ่มลองใหม่เมื่อ refreshMe ล้ม · `locked` ⇒ ตัวนับยังเดิน ไม่ขอส่งใหม่ทันที · `needSignup` → `/signup` ไม่ขอรหัสซ้ำ (ใช้รหัสเดิม) · signup ที่เบอร์มีบัญชีอยู่แล้ว ⇒ แจ้ง "เบอร์นี้มีบัญชีแล้ว — เข้าสู่ระบบให้แล้ว"
 - **F3 (ของเจ้าของ — release gate)**: ก่อน build/OTA ใด ๆ ต้องมี SMS provider บน prod + บัญชี reviewer ของ App Store มีเบอร์ (หรือเบอร์ทดสอบ+รหัสคงที่ฝั่ง server — ตัดสินใน S3a) · F7 type email `string|null` · F8 R8 บังคับเฉพาะแอป (server ไม่ตรวจ) → S3 · F9 oracle gate เป็น pure function + เคส → S2.14
+
+## S. รีวิว S2.4 ผู้ตรวจ S — fix-forward ในใบ S2-10 (ห้อง) + สัญญา S1.14 (5 พ.ย. ~17:5xZ)
+- **R-S2.4a (S-1)** ย้อน: ปุ่มย้อนอยู่ต่อแถวของ "สิ่งที่เปลี่ยนในระบบ" (ไม่ใช่ปุ่มรวม) · กดแล้วมีชีตยืนยันบอกชื่อรายการ · ใช้ `canUndo` จาก server (ไม่คำนวณจากนาฬิกาเครื่อง)
+- **R-S2.4b (S-2/S-7)** หลัง approve/reject/edit/send: ถ้า poll กำลังวิ่งให้ตั้งธง re-run (ไม่ทิ้ง) · ok ⇒ เอาการ์ดออกทันที · ok:false/409/expired ⇒ reload ทันที
+- **R-S2.4c (S-3)** แผน: แสดง "ทำแล้ว N/M" + note ของขั้นที่ล้มตัวแรก · doneCount>0 ⇒ reload
+- **R-S2.4d (S-4/S-6)** แก้ข้อเสนอ: การ์ดแสดงฟิลด์ที่แก้ (จาก `res.input`) · EditSheet แสดงเฉพาะคีย์ที่มี label `sec.field.*` (ห้ามโชว์ id ดิบ)
+- **R-S2.4e (S-8/S-9/S-10/S-11)** polling หยุดเมื่อ AppState background + backoff ตอน offline · `clientMessageId` ใหม่เมื่อแก้ร่างหลังส่งล้ม + แจ้งเมื่อ duplicate · ปิดห้องมีชีตยืนยัน · guard กดซ้ำใช้ ref
+- **R-S2.4f (S-13)** การ์ด chat.send แสดงบรรทัดลงชื่อที่จะต่อท้ายจริง (R-S1.12c) ใต้ข้อความ
+- **สัญญา S1.14 เพิ่ม (S-5)**: proposals items มี `canApprove` (approvalGate แบบ dry-run สำหรับผู้ดู) · log items มี `canUndo` (สิทธิ์+เวลา server) · เอกสาร `RoomStatus` ค่าจริงจาก `roomStatusOf` (แอป S2.10 ปรับ fixture/สถานะให้ตรง · ไม่มี WAITING_APPROVAL ถ้า server ไม่ส่ง)
