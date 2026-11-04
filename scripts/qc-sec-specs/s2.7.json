@@ -1,0 +1,150 @@
+{
+ "wo": "S2.7+S2.8+S2.9",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s2.7.json",
+ "routes": [
+  {
+   "route": "/secretary/settings",
+   "file": "app/(app)/secretary/settings/index.tsx",
+   "testIds": [
+    "sec-settings",
+    "sec-settings-row"
+   ],
+   "pair": false
+  },
+  {
+   "route": "/secretary/settings/secretary",
+   "file": "app/(app)/secretary/settings/secretary.tsx",
+   "testIds": [
+    "sec-me",
+    "sec-me-name",
+    "sec-me-suffix",
+    "sec-me-tone",
+    "sec-me-lang",
+    "sec-me-save",
+    "sec-me-stat"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/settings/quota",
+   "file": "app/(app)/secretary/settings/quota.tsx",
+   "testIds": [
+    "sec-quota",
+    "sec-quota-ring",
+    "sec-quota-assist"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/settings/access",
+   "file": "app/(app)/secretary/settings/access.tsx",
+   "testIds": [
+    "sec-access",
+    "sec-access-row",
+    "sec-access-level"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/settings/rules",
+   "file": "app/(app)/secretary/settings/rules.tsx",
+   "testIds": [
+    "sec-rules",
+    "sec-rules-row",
+    "sec-rules-limit",
+    "sec-rules-approver"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/settings/log",
+   "file": "app/(app)/secretary/settings/log.tsx",
+   "testIds": [
+    "sec-log",
+    "sec-log-item",
+    "sec-log-undo",
+    "sec-log-filter"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/settings/knowledge",
+   "file": "app/(app)/secretary/settings/knowledge.tsx",
+   "testIds": [
+    "sec-know",
+    "sec-know-fact",
+    "sec-know-lesson",
+    "sec-know-confirm",
+    "sec-know-reject",
+    "sec-know-digest"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/settings/customers",
+   "file": "app/(app)/secretary/settings/customers.tsx",
+   "testIds": [
+    "sec-cust",
+    "sec-cust-afterhours",
+    "sec-cust-handoff",
+    "sec-cust-disclosure",
+    "sec-cust-save"
+   ],
+   "pair": true
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "access: OWNER เท่านั้นแก้ (role จาก /me) · 3 ระดับ OFF/READ/DRAFT · 'ทำเองได้' ล็อก (AUTO ไม่มี)",
+   "file": "app/(app)/secretary/settings/access.tsx",
+   "must": [
+    "OWNER",
+    "OFF",
+    "READ",
+    "DRAFT",
+    "secretary/access"
+   ],
+   "mustNot": [
+    "\"AUTO\"\\s*[:,]"
+   ]
+  },
+  {
+   "id": "X-2",
+   "name": "rules: chat.send/money.limit/pii.export · limitSatang แสดงเป็นบาท · ผู้อนุมัติ = OWNER/MANAGER (display)",
+   "file": "app/(app)/secretary/settings/rules.tsx",
+   "must": [
+    "chat.send",
+    "money.limit",
+    "pii.export",
+    "limitSatang",
+    "secretary/rules"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-3",
+   "name": "quota: ใช้ GET secretary/quota · ไม่แสดงเงินดอลลาร์ (§C.6) · แพ็กเสียเงินแสดงปิด",
+   "file": "app/(app)/secretary/settings/quota.tsx",
+   "must": [
+    "secretary/quota",
+    "assist"
+   ],
+   "mustNot": [
+    "\\$|balanceMicro|USD"
+   ]
+  },
+  {
+   "id": "X-4",
+   "name": "customers (B7): GET/PUT after-hours · disclosure มีคำ AI",
+   "file": "app/(app)/secretary/settings/customers.tsx",
+   "must": [
+    "after-hours",
+    "afterHoursReply|reply",
+    "handoff",
+    "disclosure"
+   ],
+   "mustNot": []
+  }
+ ]
+}

@@ -4,11 +4,12 @@
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { AiryScreen, Orb, PrimaryButton } from "@/src/components/airy";
-import { AuthField, GlassButton, Hero, LinkLine, NoteLine, OtpBoxes, fy } from "@/src/components/auth/airy";
+import { AuthField, GlassButton, Hero, LinkLine, NoteLine, OtpBoxes } from "@/src/components/auth/airy";
 import { authErrorCode, authErrorKey, phoneLink, smsRequest } from "@/src/lib/auth-api";
 import { formatThaiMobileInput, maskPhone, normalizeThaiMobile } from "@/src/lib/phone";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT } from "@/src/i18n";
+import { F } from "@/src/theme/index";
 import { spacing } from "@/src/theme/tokens";
 
 const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
@@ -81,14 +82,14 @@ export default function PhoneLinkScreen() {
     <AiryScreen testID="phone">
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <Hero top={fy(88)} orb={<Orb size={64} />} title={t("auth.phone.title")}>
+          <Hero top={F.v(88)} orb={<Orb size={64} />} title={t("auth.phone.title")}>
             {step === "phone" ? t("auth.phone.sub") : t("auth.phone.codeSent", { phone: maskPhone(phone) })}
           </Hero>
 
           {step === "phone" ? (
             <AuthField
               testID="phone-input"
-              top={fy(26)}
+              top={F.v(26)}
               label={t("auth.common.phoneLabel")}
               value={phone}
               onChangeText={(v) => {
@@ -105,20 +106,20 @@ export default function PhoneLinkScreen() {
             />
           ) : (
             <>
-              <OtpBoxes testID="phone-otp" top={fy(30)} value={code} onChange={setCode} onFilled={(v) => void link(v)} shakeKey={shakeKey} editable={!busy} />
+              <OtpBoxes testID="phone-otp" top={F.v(30)} value={code} onChange={setCode} onFilled={(v) => void link(v)} shakeKey={shakeKey} editable={!busy} />
               <LinkLine
                 testID="phone-resend"
-                top={fy(26)}
+                top={F.v(26)}
                 lead={left > 0 ? t("auth.otp.resendIn", { time: clock(left) }) : undefined}
                 cta={left > 0 ? "" : t("auth.otp.resend")}
                 disabled={left > 0 || busy}
                 onPress={() => void request()}
               />
-              <LinkLine testID="phone-change" top={fy(8)} cta={t("auth.phone.changePhone")} onPress={() => { setStep("phone"); setCode(""); setErr(null); }} />
+              <LinkLine testID="phone-change" top={F.v(8)} cta={t("auth.phone.changePhone")} onPress={() => { setStep("phone"); setCode(""); setErr(null); }} />
             </>
           )}
 
-          {err ? <NoteLine tone="error" top={fy(20)}>{err}</NoteLine> : null}
+          {err ? <NoteLine tone="error" top={F.v(20)}>{err}</NoteLine> : null}
         </ScrollView>
         <View style={s.foot}>
           {step === "phone" ? (
@@ -136,7 +137,7 @@ export default function PhoneLinkScreen() {
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
-  page: { paddingHorizontal: spacing.page + 2, paddingTop: fy(14), paddingBottom: spacing.xl },
-  foot: { paddingHorizontal: spacing.page + 4, paddingBottom: fy(30), paddingTop: spacing.sm },
+  page: { paddingHorizontal: spacing.page + 2, paddingTop: F.v(14), paddingBottom: spacing.xl },
+  foot: { paddingHorizontal: spacing.page + 4, paddingBottom: F.v(30), paddingTop: spacing.sm },
   gap: { height: spacing.md },
 });

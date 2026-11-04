@@ -1,14 +1,9 @@
-## ▶️ 5 พ.ย. ~01:0xZ — จุดต่อล่าสุด (บัญชี B · ผู้คุม Fable)
-- สถานะ **15/58 (26%)** · tip session/secretary = ดู `git log -1` · ใบ+oracle ครบทุกชุด S1 แล้ว (S1-9 S1-10 S1-16 S1-17 S1-18 เขียน 5 พ.ย.)
-- เลน b `wip/sec-s1.13` builder S1-11 (S1.13 โควตา) กำลังทำ · เลน c `wip/sec-s1.7` @580d64d3 S1-6 รอบ 2 27/27 ×3 **รอ re-check reviewer** → merge · เลน d `wip/sec-s1.12` builder S1-10 (chat.send) กำลังทำ
-- ลำดับถัดไป: merge S1-6 → spawn S1-9 (S1.11+S1.16 เลนว่าง) → S1-15 (S1.21+S1.24 · 2 ผู้ตรวจ) → S1-16 (S1.22 · migration secretary_b แจ้งก่อน generate) → S1-17 (S1.25 · 2 ผู้ตรวจ) → S1-18 (S1.14 ด่านเต็ม) → S2
-- หนี้ที่จดใน RUN §3: purge Ai* ตอนลบร้าน/ผู้ใช้ · CRM door kinds ข้ามด่าน · ai.room.member_added · channels ['room'] ยัง push · support_open_case 'ai-assistant'
-- กติกาเดิมคงทุกข้อ (ห้าม .env · QC ผ่าน qc-sec.sh · ห้าม CI=1 · ห้าม push main/deploy/eas · 3 เลน · tg เฉพาะ 📊 หลังปิดใบ)
-
-# SECRETARY-RESUME — จุดต่องาน RUN "เลขา AI"
-
-> เริ่มใหม่ = อ่านไฟล์นี้บล็อกบนสุด → `SECRETARY-RUN.md` §3 สถานะ + §4 เหตุการณ์ → ใบถัดไปใน `SECRETARY-MASTER-PLAN.md` §3 → `secretary-briefs/sec-brief-COMMON.md`
-> ทรี `/root/projects/shark-sec` · branch `session/secretary` · เลน b/c/d = `shark-sec-b` `shark-sec-c` `shark-sec-d` (node_modules bind ro จาก shark-svc · หลังรีบูตต้อง mount ใหม่ทั้ง 4 ทรี) · ฐาน QC `.env.qc-sec` ผ่าน `scripts/qc-sec.sh` · หลังรีบูตเครื่อง: `mount --bind /root/projects/shark-svc/node_modules /root/projects/shark-sec/node_modules` แล้ว `[ -x node_modules/.bin/tsx ]`
+## ▶️ 5 พ.ย. ~12:1xZ — จุดต่อล่าสุด (บัญชี B · ผู้คุม Fable)
+- สถานะ **25/58 (43%)** · S1 เหลือ S1.10+S1.15 (เลน b · รอผล 13/13 หลัง ORACLE-EDIT) แล้ว S1.14 (ด่านเต็ม) · S2 เริ่มขนานแล้ว: S2.1 โครงแอป (เลน d) · S2.12 สมัคร/เข้า SMS OTP (เลน c)
+- baseline ใหม่กำลังรันเบื้องหลัง `scripts/sec-baseline.sh` → `ledger/qc-baseline/sec-baseline-<tip>.txt` (log /tmp/sec-baseline-run.log) ใช้เทียบที่ S1.14
+- มติใหม่รอบนี้: §L.2 (เพดาน assist/วัน $0.50 ไม่นับห้องเลขา · ไม่ใช้ยอดกระเป๋าต่อ) · §M (chat.send เต็มฉบับ+ลงชื่อ Shark · ห้ามใส่ในแผน) · §N/§N.2 (assign key · handoff · SLA · attachments) · §O (AI กลางคืนไม่ล้าง unread · mask ความจำร้าน) · §P/§P.2 (ผู้ใช้เดิมต้องกดรับคำเชิญ · คีย์อ่อนไหวไม่ผ่านระดับ · rate-limit SMS)
+- ใบ/oracle S2 ที่มี: S2.1, S2.12 · ถัดไปเขียน S2.2+S2.3 (A1/A2) · S2.4 (ห้อง) · ใช้ `qc-sec-ui.mts` (+NO_PAIR) + oracle static ต่อใบ
+- ของเจ้าของที่ต้องเห็นตอน CP: มติ assist ฟรี+เพดาน (R-S1.13g) · ผู้ใช้เดิมกดรับคำเชิญ (R-S1.25b) · SMS/Anthropic keys · W40 · Play Console
 
 ## ▶️ 4 พ.ย. 2026 ~21:1xZ — 11/58 (19%) · ปิด S0 · S1.1–S1.5 · S1.19 · S1.20 · กำลังทำ: S1.6 (เลน b) · S1.7+S1.8 (เลน c) · S1.3b (เลน d) · พร้อมปล่อย: S1.9 · S1.10+S1.15 · S1.13 (ใบ+oracle ใน ledger/secretary-briefs + scripts/qc-sec-s1.*.mts)
 

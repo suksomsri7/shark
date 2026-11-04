@@ -1,6 +1,71 @@
-// พจนานุกรมไทย — คีย์แบนราบ · ชุดคีย์ต้องเท่ากับ en.ts ทุกตัว
-// auth.* = จอเข้า/สมัคร/OTP/ผูกเบอร์ (ใบ S2.12)
-export const th: Record<string, string> = {
+// ข้อความภาษาไทยของจอเลขา AI (ใบ S2.1) — จอ 1.0 ไม่ใช้ไฟล์นี้ (สตริงไทยของ 1.0 ฝังในจอเดิม ห้ามแตะ)
+// กติกา: คีย์ `sec.*` หนึ่งบรรทัดต่อคีย์ · en.ts ต้องมีคีย์ชุดเดียวกันทุกตัว (type บังคับ + ข้อสอบ I-1) · ตัวแปรเขียน {ชื่อ}
+// ใบถัดไปเพิ่มคีย์ของตัวเองทั้งสองไฟล์พร้อมกัน
+const th = {
+  "sec.zone.secretary": "เลขา",
+  "sec.zone.customers": "ลูกค้า",
+  "sec.zone.team": "ทีม",
+  "sec.top.help": "ช่วยเหลือ",
+  "sec.top.new": "เริ่มงานใหม่",
+  "sec.top.invite": "เชิญพนักงาน",
+  "sec.top.switch": "สลับกิจการ",
+  "sec.top.badge": "{count} รายการใหม่",
+  "sec.tenant.fallback": "กิจการของฉัน",
+  "sec.switch.title": "กิจการ",
+  "sec.switch.sub": "เลขาคนเดียวกัน แต่ข้อมูลและสิทธิ์แยกตามกิจการ",
+  "sec.switch.active": "กิจการที่ใช้อยู่",
+  "sec.switch.add": "เพิ่มกิจการใหม่",
+  "sec.switch.mySecretary": "เลขาของฉัน · ตั้งค่า",
+  "sec.switch.note": "งานที่สั่งในกิจการหนึ่ง เลขาจะเห็นเฉพาะข้อมูลของกิจการนั้น ลูกค้า บัญชี และแชทไม่ข้ามกัน",
+  "sec.role.OWNER": "เจ้าของ",
+  "sec.role.MANAGER": "ผู้จัดการ",
+  "sec.role.STAFF": "พนักงาน",
+  "sec.building.title": "กำลังสร้าง (ใบ {wo})",
+  "sec.building.body": "หน้านี้เป็นโครงของแอปเลขา · ใบ {wo} วาดตามแบบหน้า {page}",
+  "sec.c3.sub": "เลขา {name} · ยังไม่มีงานในกิจการนี้",
+  "sec.c3.heroTitle": "สั่งงานแรกได้เลย",
+  "sec.c3.heroBody": "พิมพ์หรือพูดเป็นภาษาปกติ\nผมหาข้อมูลในระบบ ร่างให้ แล้วขออนุมัติก่อนทำจริง",
+  "sec.c3.suggestLabel": "ลองสั่งแบบนี้",
+  "sec.c3.s1.badge": "POS",
+  "sec.c3.s1.title": "สรุปยอดขายเมื่อวาน กับของที่ใกล้หมด",
+  "sec.c3.s1.sub": "อ่านอย่างเดียว · เสร็จเองได้",
+  "sec.c3.s2.badge": "CRM",
+  "sec.c3.s2.title": "ลูกค้าคนไหนไม่ได้ซื้อนานเกิน 1 เดือน",
+  "sec.c3.s2.sub": "อ่านอย่างเดียว · เสร็จเองได้",
+  "sec.c3.s3.badge": "คิว",
+  "sec.c3.s3.title": "เช็กคิวพรุ่งนี้ แล้วร่างข้อความยืนยันลูกค้า",
+  "sec.c3.s3.sub": "ร่างแล้วรอคุณอนุมัติก่อนส่ง",
+  "sec.c3.input": "สั่งงานแรกให้ {name}…",
+  "sec.a1.sub": "เลขา {name} · {count} งาน",
+  "sec.a1.input": "สั่งงานให้ {name}…",
+  "sec.status.OPEN": "เปิดอยู่",
+  "sec.status.RUNNING": "กำลังทำ",
+  "sec.status.WAITING": "รออนุมัติ",
+  "sec.status.DONE": "เสร็จ",
+  "sec.title.new": "เริ่มงานใหม่",
+  "sec.title.room": "ห้องงาน",
+  "sec.title.inbox": "รออนุมัติทุกกิจการ",
+  "sec.title.scheduled": "งานประจำ",
+  "sec.title.staff": "ทุกคนในกิจการ",
+  "sec.title.staffMember": "สิทธิ์ต่อคน",
+  "sec.title.staffInvite": "เชิญพนักงาน",
+  "sec.title.settings": "ตั้งค่า",
+  "sec.title.settingsSecretary": "เลขาของฉัน",
+  "sec.title.settingsAccess": "สิทธิ์ต่อระบบ",
+  "sec.title.settingsRules": "ต้องอนุมัติเสมอ",
+  "sec.title.settingsLog": "บันทึกการกระทำ",
+  "sec.title.settingsKnowledge": "ความรู้ของกิจการ",
+  "sec.title.settingsCustomers": "คุยกับลูกค้าแทนร้าน",
+  "sec.title.settingsAccount": "บัญชีของฉัน",
+  "sec.title.settingsQuota": "โควตางาน",
+  "sec.title.onboardingName": "ตั้งชื่อเลขาของคุณ",
+  "sec.title.help": "ช่วยเหลือ",
+  "sec.title.helpCase": "เรื่องที่แจ้ง",
+  "sec.title.customers": "ลูกค้า",
+  "sec.title.customer": "ห้องแชทลูกค้า",
+  "sec.title.customerInfo": "ข้อมูลลูกค้า",
+  "sec.title.businessNew": "สร้างกิจการใหม่",
+  // ════ auth.* — จอเข้า/สมัคร/OTP/ผูกเบอร์ (ใบ S2.12) ════
   // ── ร่วม ──
   "auth.common.stepOf": "ขั้น {n} จาก {total}",
   "auth.common.back": "ย้อนกลับ",
@@ -87,4 +152,7 @@ export const th: Record<string, string> = {
   "auth.phone.locked": "บัญชีนี้มีเบอร์อื่นอยู่แล้ว — เปลี่ยนเบอร์ต้องติดต่อทีมงาน",
   "auth.phone.unavailable": "ตอนนี้ยังส่ง SMS ไม่ได้ ลองใหม่อีกครั้งภายหลัง",
   "auth.phone.session": "หมดเวลาเข้าสู่ระบบ กรุณาออกแล้วเข้าใหม่",
-};
+} as const;
+
+export type I18nKey = keyof typeof th;
+export default th;

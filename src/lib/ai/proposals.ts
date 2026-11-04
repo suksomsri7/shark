@@ -385,6 +385,7 @@ export async function executeProposal(
     await tenantDb(ctx).aiProposal.update({ where: { id }, data: { resultNote: note } });
     // SEC S1.8 ▸ บันทึกการกระทำ (ล้ม = log เท่านั้น · ผลข้อเสนอยังสำเร็จ) ◂
     await secRecordAction({ tenantId: ctx.tenantId, conversationId: row.conversationId, kind: row.kind, summary: row.summary, approverId: opts?.userId ?? null, proposalId: row.id, payload: row.payload, out, before });
+    await secRecordOutcome(ctx.tenantId, { id: row.id, conversationId: row.conversationId, kind: row.kind, summary: row.summary, payload: row.payload }); // SEC S1.15 ◂
     return why ? { ok: true, note, why } : { ok: true, note };
   } catch (e) {
     // service โยน → FAILED + เหตุผลไทย (rollback สถานะจาก EXECUTED)
@@ -471,6 +472,13 @@ async function secRecordAction(input: { tenantId: string; conversationId: string
   } catch (e) {
     await logOps("WARN", "ai", `secretary.actionLog: บันทึกการกระทำไม่สำเร็จ (${input.kind})`, { tenantId: input.tenantId, detail: String(e).slice(0, 300) }).catch(() => {});
   }
+}
+// SEC S1.15 ▸ ผลของข้อเสนอห้องเลขา (APPROVED / EDITED เมื่อ payload._edited) — ห้องเดิมไม่เขียน · ล้ม = log เท่านั้น ◂
+async function secRecordOutcome(tenantId: string, row: { id: string; conversationId: string; kind: string; summary: string; payload: unknown }): Promise<void> {
+  try {
+    const { recordExecutedProposal } = await import("./secretary/learn");
+    await recordExecutedProposal(tenantId, row);
+  } catch { /* best-effort — learn.ts log เองแล้ว */ }
 }
 // ◂ SEC S1.7/S1.8
 

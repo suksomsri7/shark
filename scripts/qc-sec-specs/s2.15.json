@@ -1,0 +1,62 @@
+{
+ "wo": "S2.15",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s2.15.json",
+ "routes": [
+  {
+   "route": "/secretary/help",
+   "file": "app/(app)/secretary/help/index.tsx",
+   "testIds": [
+    "help-home",
+    "help-chip",
+    "help-case-row",
+    "help-input",
+    "help-send"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/help/c1",
+   "file": "app/(app)/secretary/help/[caseId].tsx",
+   "testIds": [
+    "help-room",
+    "help-bubble",
+    "help-attach",
+    "help-input",
+    "help-send",
+    "help-resolved-card",
+    "help-resolve-yes",
+    "help-resolve-no",
+    "help-link"
+   ],
+   "pair": true
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "H1: support/cases list + open (category จากชิป · roomId จาก query) · สถานะจุด 3 สี",
+   "file": "app/(app)/secretary/help/index.tsx",
+   "must": [
+    "support/cases",
+    "category",
+    "roomId",
+    "secretary_wrong|bug|question|billing|feature"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-2",
+   "name": "H2: reply + upload ภาพ (support/upload) + resolve + ลิงก์หน้าในแอปจากทีม (router.push ตาม link ภายใน) · ห้องงานที่แนบแสดงการ์ด",
+   "file": "app/(app)/secretary/help/[caseId].tsx",
+   "must": [
+    "support/cases/",
+    "/reply",
+    "support/upload",
+    "/resolve",
+    "router\\.push",
+    "roomId"
+   ],
+   "mustNot": []
+  }
+ ]
+}

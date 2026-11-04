@@ -487,6 +487,7 @@ export async function recordSuggestionOutcome(args: {
       where: { id: sug.id, tenantId, systemId },
       data: { outcome: "IGNORED" satisfies SuggestionOutcome },
     });
+    await learnFromSuggestion(tenantId, sug, "IGNORED"); // SEC S1.15 ◂
     return { ok: true, outcome: "IGNORED" };
   }
   if (!sentBody) return { ok: false, reason: "ไม่ได้ระบุข้อความที่ส่งจริง" };
@@ -507,6 +508,7 @@ export async function recordSuggestionOutcome(args: {
       sentMessageId: args.sentMessageId ?? null,
     },
   });
+  await learnFromSuggestion(tenantId, sug, outcome, similarity); // SEC S1.15 ◂
 
   // ── เข้าคลังเรียนรู้ (เส้นทางที่ 1) ──
   // H3: อ่านคำถามต้นทาง + เธรด จาก DB จริงเสมอ ห้ามเชื่อค่าที่ผู้เรียกส่งมา
@@ -536,6 +538,34 @@ export async function recordSuggestionOutcome(args: {
   });
 
   return { ok: true, outcome, similarity, ...(saved.exampleId ? { exampleId: saved.exampleId } : {}) };
+}
+
+/**
+ * SEC S1.15 ▸ สะพานผลคำแนะนำ → วงจรเรียนรู้ของเลขา (`learn.recordOutcome` · best-effort ไม่ throw · import ตอนเรียก)
+ *   SENT_EDITED ⇒ EDITED · SENT_AS_IS ⇒ APPROVED · IGNORED ⇒ REJECTED · 🔴 ไม่ส่งเนื้อข้อความ (คำตอบลูกค้ามักมีชื่อ/ข้อมูลลูกค้า —
+ *   COMMON §C.9) เก็บแค่ช่องทาง + ความเหมือน · proposalId = id คำแนะนำ · conversationId = ห้องแชทลูกค้า (ไม่มี AiRoom ⇒ roomId null) ◂
+ */
+async function learnFromSuggestion(
+  tenantId: string,
+  sug: { id: string; conversationId: string },
+  outcome: SuggestionOutcome,
+  similarity?: number,
+): Promise<void> {
+  const mapped = outcome === "SENT_EDITED" ? "EDITED" : outcome === "SENT_AS_IS" ? "APPROVED" : outcome === "IGNORED" ? "REJECTED" : null;
+  if (!mapped) return;
+  try {
+    const { recordOutcome } = await import("@/lib/ai/secretary/learn");
+    await recordOutcome(tenantId, {
+      proposalId: sug.id,
+      conversationId: sug.conversationId,
+      kind: "chat.suggest",
+      outcome: mapped,
+      model: "chat-suggest",
+      ...(typeof similarity === "number" ? { after: { similarity } } : {}),
+    });
+  } catch {
+    /* best-effort — ผลคำแนะนำบันทึกแล้ว */
+  }
 }
 
 /** ทีมกดข้ามคำแนะนำทั้งชุดของข้อความนั้น (เส้นทางที่ 3) */

@@ -5,6 +5,7 @@
 // เบอร์ normalize เป็น +66… ก่อนส่งทุกครั้ง (server ตรวจซ้ำ) · ไม่เก็บรหัสไว้ที่ไหนนอกจาก state ของจอ
 import { api, ApiError } from "@/src/api/client";
 import { normalizeThaiMobile } from "@/src/lib/phone";
+import type { I18nKey } from "@/src/i18n";
 
 export type SmsRequestResult = { ok: true; resendAfterSec: number };
 export type SignupInput = { name: string; email: string };
@@ -40,7 +41,7 @@ export function authErrorCode(e: unknown): string {
 }
 
 /** รหัสเหตุผล → คีย์ i18n (auth.*) ที่จอแสดง · ไม่รู้จัก ⇒ ข้อความกลาง */
-export function authErrorKey(code: string): string {
+export function authErrorKey(code: string): I18nKey {
   switch (code) {
     case "network":
       return "auth.common.network";

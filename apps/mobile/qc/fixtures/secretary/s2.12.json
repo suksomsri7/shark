@@ -1,5 +1,6 @@
 {
   "_about": "S2.12 จอเข้า/สมัคร/OTP/ผูกเบอร์ (Airy) — mock route SMS OTP ของ S1.19 · /login /signup /otp เปิดแบบยังไม่ login · /phone เปิดด้วย token + /me ที่ user.phone = null (ยามหน้าประตูพามาเอง) · ถ่าย /signup และ /otp ด้วย query (ดู ledger/wo-notes/sec-s2.12.md)",
+  "locale": "th-TH",
   "noAuth": ["/login", "/signup", "/otp"],
   "expect": {
     "/login": ["login", "login-phone", "login-sms", "login-google", "login-email-toggle", "login-signup"],

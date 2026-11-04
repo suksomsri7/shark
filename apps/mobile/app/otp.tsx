@@ -6,12 +6,13 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "re
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { AiryScreen, Glass, PrimaryButton } from "@/src/components/airy";
-import { GlassButton, Hero, LinkLine, NoteLine, OtpBoxes, StepBar, fy } from "@/src/components/auth/airy";
+import { GlassButton, Hero, LinkLine, NoteLine, OtpBoxes, StepBar } from "@/src/components/auth/airy";
 import { attemptsLeftOf, authErrorCode, authErrorKey, smsRequest, smsVerify } from "@/src/lib/auth-api";
 import { localThaiMobile, maskPhone } from "@/src/lib/phone";
 import { useAuth } from "@/src/lib/auth-context";
+import { clearSignedUp, markSignedUp } from "@/src/lib/post-signup";
 import { useT } from "@/src/i18n";
-import { useTheme } from "@/src/theme/index";
+import { F, useTheme } from "@/src/theme/index";
 import { spacing, type } from "@/src/theme/tokens";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
@@ -57,8 +58,11 @@ export default function OtpScreen() {
         setBusy(false);
         return;
       }
+      // บัญชีใหม่ (สมัครจากจอนี้) ⇒ ยามพาไป G1/C1 แทนหน้าแรก · เบอร์ที่มีบัญชีอยู่แล้ว (isNew:false) = เข้าใช้ตามปกติ
+      if (r.isNew) markSignedUp();
       await signIn(r.token); // ยามหน้าประตูเด้งต่อเอง — คาสถานะ busy ไว้จนจอเปลี่ยน
     } catch (e) {
+      clearSignedUp();
       const why = authErrorCode(e);
       if (why === "no_account") setNoAccount(true);
       else if (why === "sms_unavailable") setSmsDown(true);
@@ -112,29 +116,29 @@ export default function OtpScreen() {
             backTestID="otp-back"
             backLabel={t("auth.common.back")}
           />
-          <Hero top={fy(50)} title={t("auth.otp.title")}>
+          <Hero top={F.v(50)} title={t("auth.otp.title")}>
             {t("auth.otp.sentTo")} <Text style={[s.b, { color: c.textDim }]}>{maskPhone(phone)}</Text> {t("auth.otp.sentToTail")}
             {"\n"}
             {t("auth.otp.expires")}
           </Hero>
 
-          <OtpBoxes testID="otp-input" top={fy(30)} value={code} onChange={setCode} onFilled={(v) => void verify(v)} shakeKey={shakeKey} editable={!busy && !noAccount} />
+          <OtpBoxes testID="otp-input" top={F.v(30)} value={code} onChange={setCode} onFilled={(v) => void verify(v)} shakeKey={shakeKey} editable={!busy && !noAccount} />
 
-          {err ? <NoteLine tone="error" top={fy(20)}>{err}</NoteLine> : null}
-          {info && !err ? <NoteLine tone="ok" top={fy(20)}>{info}</NoteLine> : null}
+          {err ? <NoteLine tone="error" top={F.v(20)}>{err}</NoteLine> : null}
+          {info && !err ? <NoteLine tone="ok" top={F.v(20)}>{info}</NoteLine> : null}
 
           <LinkLine
             testID="otp-resend"
-            top={fy(26)}
+            top={F.v(26)}
             lead={left > 0 ? t("auth.otp.resendIn", { time: clock(left) }) : undefined}
             cta={left > 0 ? "" : resending ? t("auth.common.sending") : t("auth.otp.resend")}
             disabled={left > 0 || resending}
             onPress={() => void resend()}
           />
           {signup ? (
-            <LinkLine testID="otp-edit-email" top={fy(8)} lead={t("auth.otp.noSms")} cta={t("auth.otp.editEmail")} onPress={editSignup} />
+            <LinkLine testID="otp-edit-email" top={F.v(8)} lead={t("auth.otp.noSms")} cta={t("auth.otp.editEmail")} onPress={editSignup} />
           ) : (
-            <LinkLine testID="otp-edit-phone" top={fy(8)} lead={t("auth.otp.noSms")} cta={t("auth.otp.editPhone")} onPress={() => router.replace("/login")} />
+            <LinkLine testID="otp-edit-phone" top={F.v(8)} lead={t("auth.otp.noSms")} cta={t("auth.otp.editPhone")} onPress={() => router.replace("/login")} />
           )}
 
           {noAccount ? (
@@ -171,10 +175,10 @@ export default function OtpScreen() {
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
-  page: { paddingHorizontal: spacing.page + 2, paddingTop: fy(14), paddingBottom: spacing.xl },
-  foot: { paddingHorizontal: spacing.page + 4, paddingBottom: fy(40), paddingTop: spacing.sm },
+  page: { paddingHorizontal: spacing.page + 2, paddingTop: F.v(14), paddingBottom: spacing.xl },
+  foot: { paddingHorizontal: spacing.page + 4, paddingBottom: F.v(40), paddingTop: spacing.sm },
   b: { fontWeight: "600" },
-  card: { marginTop: fy(30) },
+  card: { marginTop: F.v(30) },
   cardT: { fontSize: type.h, fontWeight: "600", textAlign: "center" },
   cardP: { fontSize: type.sub, lineHeight: 21, textAlign: "center", marginTop: spacing.xs },
   cardBtn: { marginTop: spacing.md },

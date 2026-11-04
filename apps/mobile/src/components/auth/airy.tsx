@@ -1,15 +1,11 @@
 // ชิ้นส่วนจอเข้า/สมัครธีม Airy (ใบ S2.12 · แบบ sec-c หน้า 1–2) — สีจาก src/theme/index เท่านั้น · ทุกปุ่มรับ testID
-// สเกล R-UI1: ตำแหน่ง/ระยะแนวตั้ง = แบบ × 0.73 · ตัวอักษร/มุมโค้งไม่ต่ำกว่า tokens · ui.tsx (ชุดเดิมของ 1.0/DNA) ไม่แตะ
+// สเกล R-UI1: ตำแหน่ง/ระยะแนวตั้ง = แบบ × 0.73 (F.v ของ src/theme/index) · ตัวอักษร/มุมโค้งไม่ต่ำกว่า tokens · ui.tsx (ชุดเดิมของ 1.0/DNA) ไม่แตะ
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, Platform, Pressable, StyleSheet, View, type TextInputProps } from "react-native";
 import { Text, TextInput } from "@/src/components/ui/text";
 import { IconBtn } from "@/src/components/airy";
-import { glassStyle, useTheme } from "@/src/theme/index";
+import { F, glassStyle, useTheme } from "@/src/theme/index";
 import { radii, size, spacing, type } from "@/src/theme/tokens";
-
-/** ระยะแนวตั้งของแบบ (px ในภาพ 536) → dp ของจอ 390 */
-export const F = 0.73;
-export const fy = (px: number) => Math.round(px * F);
 
 // ช่องกรอกบนเว็บไม่ต้องมีกรอบโฟกัสของเบราว์เซอร์ (กรอบกระจกของเราแทน)
 const NO_OUTLINE = (Platform.OS === "web" ? { outlineWidth: 0 } : {}) as object;
@@ -57,7 +53,7 @@ export function Hero({ orb, title, children, top }: { orb?: ReactNode; title: st
   return (
     <View style={[st.hero, { marginTop: top }]}>
       {orb}
-      <Text style={[st.h2, { color: c.text, marginTop: orb ? fy(22) : 0 }]}>{title}</Text>
+      <Text style={[st.h2, { color: c.text, marginTop: orb ? F.v(22) : 0 }]}>{title}</Text>
       {children ? <Text style={[st.p, { color: c.textMuted }]}>{children}</Text> : null}
     </View>
   );
@@ -180,15 +176,15 @@ export function GlassButton({ label, onPress, testID, tone = "normal" }: { label
 }
 
 const st = StyleSheet.create({
-  bar: { height: fy(52), flexDirection: "row", alignItems: "center" },
+  bar: { height: F.v(52), flexDirection: "row", alignItems: "center" },
   side: { width: size.iconBtn, alignItems: "flex-start" },
   barTitle: { flex: 1, textAlign: "center", fontSize: 15, fontWeight: "600" },
-  prog: { flexDirection: "row", gap: 6, marginTop: fy(6) },
+  prog: { flexDirection: "row", gap: 6, marginTop: F.v(6) },
   progI: { flex: 1, height: 3, borderRadius: 2 },
   hero: { alignItems: "center" },
   h2: { fontSize: type.lt, fontWeight: "700", letterSpacing: -0.6, textAlign: "center" },
-  p: { fontSize: type.sub, lineHeight: 22, textAlign: "center", marginTop: fy(8) },
-  flRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: fy(22), marginBottom: fy(8), marginLeft: 3 },
+  p: { fontSize: type.sub, lineHeight: 22, textAlign: "center", marginTop: F.v(8) },
+  flRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: F.v(22), marginBottom: F.v(8), marginLeft: 3 },
   fl: { fontSize: 13, fontWeight: "600" },
   badge: { fontSize: 11, paddingHorizontal: 8, paddingVertical: 1, borderRadius: radii.k, overflow: "hidden" },
   fld: { height: 46, paddingHorizontal: 14, fontSize: type.body, fontWeight: "500" },

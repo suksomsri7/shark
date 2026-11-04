@@ -5,10 +5,11 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AiryScreen, Orb, PrimaryButton } from "@/src/components/airy";
-import { AuthField, Hero, LinkLine, NoteLine, StepBar, fy } from "@/src/components/auth/airy";
+import { AuthField, Hero, LinkLine, NoteLine, StepBar } from "@/src/components/auth/airy";
 import { authErrorCode, authErrorKey, smsRequest } from "@/src/lib/auth-api";
 import { formatThaiMobileInput, localThaiMobile, normalizeThaiMobile } from "@/src/lib/phone";
 import { useT } from "@/src/i18n";
+import { F } from "@/src/theme/index";
 import { spacing } from "@/src/theme/tokens";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -72,12 +73,12 @@ export default function SignupScreen() {
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <StepBar title={t("auth.common.stepOf", { n: 1, total: 3 })} step={1} />
-          <Hero top={fy(28)} orb={<Orb size={64} />} title={t("auth.signup.title")}>
+          <Hero top={F.v(28)} orb={<Orb size={64} />} title={t("auth.signup.title")}>
             {t("auth.signup.sub")}
           </Hero>
           <AuthField
             testID="signup-name"
-            top={fy(26)}
+            top={F.v(26)}
             label={t("auth.signup.name")}
             value={name}
             onChangeText={edit(setName)}
@@ -113,12 +114,12 @@ export default function SignupScreen() {
             onSubmitEditing={submit}
             returnKeyType="send"
           />
-          {hint || err ? <NoteLine tone="error" top={fy(16)}>{err ?? hint}</NoteLine> : null}
-          <NoteLine top={fy(22)}>{t("auth.signup.terms")}</NoteLine>
+          {hint || err ? <NoteLine tone="error" top={F.v(16)}>{err ?? hint}</NoteLine> : null}
+          <NoteLine top={F.v(22)}>{t("auth.signup.terms")}</NoteLine>
         </ScrollView>
         <View style={s.foot}>
           <PrimaryButton testID="signup-submit" label={sending ? t("auth.common.sending") : t("auth.signup.submit")} onPress={submit} disabled={!ready || sending} />
-          <LinkLine testID="signup-login" top={fy(14)} lead={t("auth.signup.haveAccount")} cta={t("auth.signup.login")} onPress={() => router.replace("/login")} />
+          <LinkLine testID="signup-login" top={F.v(14)} lead={t("auth.signup.haveAccount")} cta={t("auth.signup.login")} onPress={() => router.replace("/login")} />
         </View>
       </KeyboardAvoidingView>
     </AiryScreen>
@@ -127,6 +128,6 @@ export default function SignupScreen() {
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
-  page: { paddingHorizontal: spacing.page + 2, paddingTop: fy(14), paddingBottom: spacing.xl },
-  foot: { paddingHorizontal: spacing.page + 4, paddingBottom: fy(30), paddingTop: spacing.sm },
+  page: { paddingHorizontal: spacing.page + 2, paddingTop: F.v(14), paddingBottom: spacing.xl },
+  foot: { paddingHorizontal: spacing.page + 4, paddingBottom: F.v(30), paddingTop: spacing.sm },
 });

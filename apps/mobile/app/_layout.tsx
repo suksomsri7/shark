@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "@/src/lib/auth-context";
 import { useAppFonts } from "@/src/lib/fonts";
+import { clearSignedUp, isFreshSignup } from "@/src/lib/post-signup";
 import { C } from "@/src/theme";
 
 
@@ -29,9 +30,20 @@ function Gate({ children }: { children: React.ReactNode }) {
       if (segments[0] !== "phone") router.replace("/phone");
       return;
     }
+    // S2.12: เพิ่งสมัครด้วยเบอร์ ⇒ ไม่มีกิจการไป G1 /business/new · มีกิจการไป C1 /secretary/onboarding/name (ครั้งเดียว)
+    const fresh = isFreshSignup();
     if (tenants.length === 0) {
+      if (fresh) {
+        if (!(inApp && (segments as string[])[1] === "business")) router.replace("/business/new");
+        return;
+      }
       // login แล้วแต่ยังไม่มีกิจการ → บังคับเข้า DNA Wizard สร้างกิจการแรก (คำสั่งเจ้าของ)
       if (!atDna) router.replace("/dna");
+      return;
+    }
+    if (fresh) {
+      clearSignedUp();
+      router.replace("/secretary/onboarding/name");
       return;
     }
     if (atLogin || (!inApp && !atDna)) router.replace("/(app)");

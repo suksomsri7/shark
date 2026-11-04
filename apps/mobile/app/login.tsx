@@ -12,13 +12,13 @@ import { Text } from "@/src/components/ui/text";
 import { api, ApiError, apiErrorText } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
 import { AiryScreen, Glass, PrimaryButton } from "@/src/components/airy";
-import { AuthField, LinkLine, NoteLine, OtpBoxes, fy } from "@/src/components/auth/airy";
+import { AuthField, LinkLine, NoteLine, OtpBoxes } from "@/src/components/auth/airy";
 import { SOCIAL_BRAND } from "@/src/components/auth/social";
 import { AnimatedOrb } from "@/src/components/ui/orb";
 import { authErrorCode, authErrorKey, smsRequest } from "@/src/lib/auth-api";
 import { formatThaiMobileInput, localThaiMobile, normalizeThaiMobile } from "@/src/lib/phone";
 import { useT } from "@/src/i18n";
-import { glassStyle, useTheme } from "@/src/theme/index";
+import { F, glassStyle, useTheme } from "@/src/theme/index";
 import { radii, spacing, type } from "@/src/theme/tokens";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -254,7 +254,7 @@ export default function LoginScreen() {
               <>
                 <AuthField
                   testID="login-phone"
-                  top={fy(14)}
+                  top={F.v(14)}
                   label={t("auth.login.phoneTitle")}
                   value={phone}
                   onChangeText={(v) => {
@@ -276,7 +276,7 @@ export default function LoginScreen() {
               <>
                 <AuthField
                   testID="login-email"
-                  top={fy(14)}
+                  top={F.v(14)}
                   label={t("auth.login.emailLabel")}
                   value={email}
                   onChangeText={(v) => {
@@ -296,9 +296,9 @@ export default function LoginScreen() {
               </>
             ) : (
               <>
-                <NoteLine top={fy(14)}>{t("auth.login.codeTo")}</NoteLine>
+                <NoteLine top={F.v(14)}>{t("auth.login.codeTo")}</NoteLine>
                 <Text style={[s.emailShown, { color: c.text }]}>{email.trim()}</Text>
-                <OtpBoxes testID="login-code" top={fy(14)} value={code} onChange={setCode} onFilled={(v) => void verify(v)} editable={!verifying} />
+                <OtpBoxes testID="login-code" top={F.v(14)} value={code} onChange={setCode} onFilled={(v) => void verify(v)} editable={!verifying} />
                 <View style={s.gap} />
                 <PrimaryButton testID="login-verify" label={verifying ? t("auth.common.verifying") : t("auth.common.verify")} onPress={() => void verify()} disabled={verifying || code.length !== 6} />
                 <View style={s.row}>
@@ -312,11 +312,11 @@ export default function LoginScreen() {
                 </View>
               </>
             )}
-            {err ? <NoteLine tone="error" top={fy(12)}>{err}</NoteLine> : null}
+            {err ? <NoteLine tone="error" top={F.v(12)}>{err}</NoteLine> : null}
             <View style={s.gapSm} />
           </Glass>
 
-          <LinkLine testID="login-email-toggle" top={fy(20)} cta={method === "phone" ? t("auth.login.emailToggle") : t("auth.login.phoneToggle")} onPress={switchMethod} />
+          <LinkLine testID="login-email-toggle" top={F.v(20)} cta={method === "phone" ? t("auth.login.emailToggle") : t("auth.login.phoneToggle")} onPress={switchMethod} />
 
           {/* social login — ซ่อนตอนกรอกรหัสอีเมล 6 หลัก (ไม่เกี่ยว social) */}
           {phase === "email" && (
@@ -344,11 +344,11 @@ export default function LoginScreen() {
                   </Pressable>
                 ))}
               </View>
-              {notice ? <NoteLine top={fy(16)}>{notice}</NoteLine> : null}
+              {notice ? <NoteLine top={F.v(16)}>{notice}</NoteLine> : null}
             </View>
           )}
 
-          <LinkLine testID="login-signup" top={fy(30)} lead={t("auth.login.noAccount")} cta={t("auth.login.signupCta")} onPress={() => router.push("/signup")} />
+          <LinkLine testID="login-signup" top={F.v(30)} lead={t("auth.login.noAccount")} cta={t("auth.login.signupCta")} onPress={() => router.push("/signup")} />
         </ScrollView>
       </KeyboardAvoidingView>
     </AiryScreen>
@@ -361,12 +361,12 @@ const s = StyleSheet.create({
   hero: { alignItems: "center" },
   brand: { fontSize: 28, fontWeight: "700", letterSpacing: 2, textAlign: "center", marginTop: spacing.md },
   tagline: { fontSize: type.sub, textAlign: "center", marginTop: spacing.xs },
-  card: { marginTop: fy(36) },
+  card: { marginTop: F.v(36) },
   emailShown: { fontSize: 15, fontWeight: "600", textAlign: "center", marginTop: spacing.xs },
   gap: { height: spacing.lg },
   gapSm: { height: spacing.md },
   row: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.sm },
-  social: { marginTop: fy(26) },
+  social: { marginTop: F.v(26) },
   dividerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   dividerLine: { flex: 1, height: 1 },
   dividerText: { fontSize: 13 },

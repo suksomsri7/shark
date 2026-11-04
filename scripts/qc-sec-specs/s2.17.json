@@ -1,0 +1,137 @@
+{
+ "wo": "S2.17+S2.18+S2.19",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s2.17.json",
+ "routes": [
+  {
+   "route": "/customers",
+   "file": "app/(app)/customers/index.tsx",
+   "testIds": [
+    "cust-list",
+    "cust-tab-all",
+    "cust-tab-unanswered",
+    "cust-tab-mine",
+    "cust-tab-closed",
+    "cust-search",
+    "cust-channel-chip",
+    "cust-row",
+    "cust-row-unassigned"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/customers/x1",
+   "file": "app/(app)/customers/[id]/index.tsx",
+   "testIds": [
+    "cust-room",
+    "cust-room-claim",
+    "cust-room-helper",
+    "cust-room-banner",
+    "cust-bubble-in",
+    "cust-bubble-out",
+    "cust-bubble-internal",
+    "cust-bubble-ai",
+    "cust-draft-card",
+    "cust-draft-send",
+    "cust-draft-edit",
+    "cust-input",
+    "cust-send",
+    "cust-attach",
+    "cust-internal-toggle",
+    "cust-quick"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/customers/x1/info",
+   "file": "app/(app)/customers/[id]/info.tsx",
+   "testIds": [
+    "cust-info",
+    "cust-info-contact",
+    "cust-info-shark",
+    "cust-info-assign",
+    "cust-info-handoff",
+    "cust-info-helpers",
+    "cust-info-status",
+    "cust-info-tags",
+    "cust-info-task",
+    "cust-info-ask-shark",
+    "cust-info-close"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/settings/customers",
+   "file": "app/(app)/secretary/settings/customers.tsx",
+   "testIds": [
+    "cust-set-channels",
+    "cust-set-quick",
+    "cust-set-routing",
+    "cust-set-shift",
+    "cust-set-notify"
+   ],
+   "pair": false
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "K1 ใช้ /api/mobile/inbox/systems + conversations (items) · ตัวกรอง assignee=none/me · waitingMin · ซ่อนไอคอนลูกค้าเมื่อไม่มีสิทธิ์ (canReply/read)",
+   "file": "app/(app)/customers/index.tsx",
+   "must": [
+    "inbox/systems",
+    "inbox/conversations",
+    "assignee",
+    "waitingMin",
+    "items"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-2",
+   "name": "K2: thread + reply (clientMessageId · 429 retry เดิม) · attachments (Bearer) · quick-replies apply · meta.ai ป้าย 'ส่งโดย Shark' · ai-suggest การ์ดร่าง (recordSuggestionOutcome) · ไม่มี EventSource",
+   "file": "app/(app)/customers/[id]/index.tsx",
+   "must": [
+    "inbox/conversations/",
+    "/reply",
+    "clientMessageId",
+    "inbox/attachments",
+    "quick-replies",
+    "meta\\.ai|ai_proposalId",
+    "suggest"
+   ],
+   "mustNot": [
+    "EventSource",
+    "mobile/chat/send"
+   ]
+  },
+  {
+   "id": "X-3",
+   "name": "K3: assign/handoff/helpers/status/contact + สร้างงานบอร์ด + สั่ง Shark = POST secretary/rooms {context:{chatConversationId, contactId}}",
+   "file": "app/(app)/customers/[id]/info.tsx",
+   "must": [
+    "/assign",
+    "/handoff",
+    "/helpers",
+    "/status",
+    "/contact",
+    "chatConversationId",
+    "secretary/rooms"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-4",
+   "name": "K4/K5: connections masked · routing GET/PUT (OWNER/MANAGER) · shift · notify prefs",
+   "file": "app/(app)/secretary/settings/customers.tsx",
+   "must": [
+    "inbox/connections",
+    "inbox/routing",
+    "inbox/shift",
+    "notify"
+   ],
+   "mustNot": [
+    "accessToken|channelSecret"
+   ]
+  }
+ ]
+}
