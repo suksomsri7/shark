@@ -1,5 +1,5 @@
 // QC — SECRETARY S1.22 · บริบทลูกค้าในห้องเลขา (X8 ไม่มี PII) · นอกเวลาทำการ Shark ตอบ/ส่งต่อคน · migration secretary_b (AiSettings 3 คอลัมน์)กลับ 24 ชม. · oracle ของผู้คุม — builder ห้ามแก้ไฟล์นี้
-// สัญญา: ledger/secretary-briefs/sec-brief-S1.7.md · RESOLUTIONS R-K3 R-K3b R-K4 R-S1.8a §B.3 §B.5 · ต้องการ S1.1 ตาราง + S1.4 rooms.ts
+// สัญญา: ledger/secretary-briefs/sec-brief-S1.22.md · RESOLUTIONS R-K15 R-K13 §K §M §L
 //
 // กลุ่มข้อ:
 //   M  migration secretary_b: โฟลเดอร์เรียงหลัง secretary_a · SQL additive · AiSettings มี afterHoursReply/afterHoursHandoff/aiDisclosure
@@ -104,7 +104,7 @@ try {
     const cX = await cc.customerContextOf(tid2, { chatConversationId: conv.id }, { ...OWNER, tenantId: tid2 });
     const cN = await cc.customerContextOf(tid, { chatConversationId: "nosuch" }, OWNER);
     chk("C-2", "STAFF unit-x (ห้อง unit-y) ⇒ null · ร้านอื่น ⇒ null · id ไม่มี ⇒ null", cS === null && cX === null && cN === null, JSON.stringify({ cS: !!cS, cX: !!cX, cN: !!cN }));
-    const r = await rooms.startRoom({ tenantId: tid, actor: OWNER }, { instruction: "ช่วยตอบลูกค้ารายนี้", context: { chatConversationId: conv.id, contactId: contact.id } });
+    const r = (await rooms.startRoom({ tenantId: tid, actor: OWNER as never }, { instruction: "ช่วยตอบลูกค้ารายนี้", context: { chatConversationId: conv.id, contactId: contact.id } })) as { roomId: string }; // ORACLE-EDIT typing
     const room = await prisma.aiRoom.findUnique({ where: { id: r.roomId } });
     const eBad = await throws(() => rooms.startRoom({ tenantId: tid, actor: OWNER }, { instruction: "x", context: { chatConversationId: "nosuch" } }));
     const eUnit = await throws(() => rooms.startRoom({ tenantId: tid, actor: STAFF }, { instruction: "x", context: { chatConversationId: conv.id } }));
@@ -141,7 +141,8 @@ try {
     chk("A-4", "handoff: tags มี 'รอคน' ครั้งเดียว (3 handoff ไม่ซ้ำ) · มี ChatConversationEvent meta ai=handoff พร้อม reason · ไม่ส่ง PII เข้าโมเดล (provider ไม่ถูกเรียกใน money/complaint)", JSON.stringify(convAfter?.tags).split("รอคน").length === 2 && handEv.length >= 1 && /money|complaint|unknown/.test(JSON.stringify(handEv[0]!.meta)), JSON.stringify({ tags: convAfter?.tags, ev: handEv.length }));
     // hook จริง: ตั้งเวลาทำการให้ "ตอนนี้" อยู่นอกเวลา แล้วยิง receiveExternalInbound
     const nowH = bkkHour(new Date());
-    const open = `${String((nowH + 2) % 24).padStart(2, "0")}:00`, close = `${String((nowH + 3) % 24).padStart(2, "0")}:00`;
+    // ORACLE-EDIT S1.22-A-5: หน้าต่างต้อง open < close และไม่คลุมชั่วโมงปัจจุบัน (ตอน 21–23 น. เดิมได้ 23:00–00:00 ถูก validate ปัดตก)
+    const [open, close] = nowH >= 12 ? ["01:00", "02:00"] : ["22:00", "23:00"];
     await prisma.chatSetting.updateMany({ where: { tenantId: tid, systemId: chatSys.id }, data: { businessHours: { ...hours, days: [0, 1, 2, 3, 4, 5, 6].map((d) => ({ d, open, close })) } as never } });
     const r1 = await chat.receiveExternalInbound({ connection: conn as never, externalUserId: `qcs122-hook-${Date.now().toString(36)}`, body: "เปิดกี่โมงครับ", clientMessageId: `hook-${Date.now()}` });
     await new Promise((r) => setTimeout(r, 1500));
