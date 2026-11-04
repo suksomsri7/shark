@@ -24,7 +24,7 @@
 | 8 | งานข้ามกิจการ | ไม่ทำ · งานเปิดใต้กิจการเดียว | B1 | ทุกห้องมี `tenantId` เดียว |
 | 9 | เลขาเสนองานเอง | ทำ · เป็นแค่ข้อเสนอ ไม่เริ่มจนคนแตะ | A2 C3 | `suggestions` ไม่เปิดห้องเอง |
 | 10 | เลขาพัฒนาตัวเอง | ความจำ + ประสบการณ์ + ข้อมูลสด 3 ชั้น · เรียนจากสิ่งที่คนยืนยันเท่านั้น | B6 B2 A2 | `AiLesson` · `AiMemory.status` · `lessonBlock` · `computeDigest` |
-| 11 | ไอคอนช่วยเหลือ | แจ้งปัญหาเป็นห้องแชทกับทีม SHARK · ต่อยอด Support Desk | H1–H4 | R-K12 · §5.17 |
+| 11 | ไอคอนช่วยเหลือ | แจ้งปัญหาเป็นห้องแชทกับทีม SHARK · ต่อยอด Support Desk | H1–H4 | R-K12 · §5.20 §5.21 |
 | 12 | ชุดข้อมูลเทรน | เก็บตัวอย่าง + ผล ดี/แก้/ตีกลับ ไม่ระบุตัวตน · ร้านปิดได้ | — | `AiTrainingSample.{outcome, editedReply, …}` · `recordOutcome` |
 | 13 | เบอร์ = ID | สมัคร/เข้าด้วยเบอร์ + **SMS OTP** · อีเมลสำรอง · Apple/Google คงไว้ · บัญชีเดิมบังคับผูกเบอร์ | S1 S2 | R-K9/K10 · `PhoneOtp` + `UserPhone` |
 | 14 | แชทลูกค้าในแอป | ไอคอนที่ 2 = ลูกค้า (LINE · เว็บแชท) ต่อยอดโมดูล chat · แถบบน ซ้าย เลขา·ลูกค้า·ทีม / ขวา ?·+ | K1–K4 | R-K13 · `/api/mobile/inbox/*` |
@@ -47,7 +47,7 @@
 | R-K8 | ตอบใน request + `after()` · เก็บตกด้วย cron hourly/outbox · **ไม่มี cron รายนาที** | §5.5 §11 |
 | R-K9/K10 | `PhoneOtp` + `UserPhone` (global) · `phone-auth.ts` (แผน · core/) · SMS mock ใน QC | §4 §5.22 |
 | R-K11 | `StaffInvite` — ไม่สร้าง Membership จนกว่าจะรับ | §4 §5.25 |
-| R-K12 | `SupportCase.{source, category, roomId}` · `listCasesForUser` · `assignCase` · ระงับเลขา = `setAccess` ทุกโมดูล OFF | §5.23 §5.24 |
+| R-K12 | `SupportCase.{source, category, roomId}` · `listCasesForUser` · `assignCase` · ระงับเลขา = `setAccess` ทุกโมดูล OFF | §5.20 §5.21 |
 | R-K13 | route มือถือรับ `systemId?` · ด่าน Bearer ใช้ค่าคงที่จาก `guard.ts`/`permissions.ts` · cursor `before?` | `SECRETARY-API.md` |
 | R-K14 | คีย์ตอบแชท = **`chat.message.send`** · `eligibleResponders` | §5.26 §7 |
 | R-K15 | `chat.send` → `sendReply({senderUserId: approver, senderName: "Shark (ผู้ช่วย AI)", meta.ai, clientMessageId: proposalId})` | §5.7 §9 |
@@ -282,7 +282,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
   4. `sendMessage({ tenantId, actor: aiMemberActor(…) }, { conversationId: room.conversationId, text: message.content }, { provider, source: "CHAT", userMessageId: message.id })`
   5. ok ⇒ DONE (`finishedAt` · `error = null`) · !ok ⇒ FAILED + ข้อความไทย (`usage.quotaMessage` / AI ปิดอยู่ / ว่าง) ไม่ retry · throw ⇒ `attempts < 3` ? กลับ QUEUED (`leaseUntil = null` · error ไทยทั่วไป — รายละเอียดดิบไป `logOps` WARN เท่านั้น) : FAILED
      · การเขียนผลทุกครั้งมีเงื่อนไข `status = RUNNING AND attempts = ค่าตอน claim` (fencing — รอบที่ lease หมดแล้วถูกหยิบต่อ เขียนทับผลไม่ได้)
-  6. หลัง DONE/FAILED: push `sendPushToUser(uid, { title: room.title, body: ≤ 120 ตัวของคำตอบ | "ทำไม่ได้: …", data: { link: "/secretary/room/<roomId>", conversationId, roomId, kind: "room" } }, { post })` ถึง `room.startedById ∪ AiRoomMember.userId` · ไม่กรองร้าน (R-K20) · push ล้ม = log ไม่กระทบงาน
+  6. หลัง DONE/FAILED: push ผ่าน `notifyUser(uid, tenantId, "room", …)` (S1.23 · ค่าตั้ง + badge + กันสแปม 60 วิ · §5.25a) → `sendPushToUser(uid, { title: room.title, body: ≤ 120 ตัวของคำตอบ | "ทำไม่ได้: …", data: { link: "/secretary/room/<roomId>", conversationId, roomId, kind: "room" } }, { post })` ถึง `room.startedById ∪ AiRoomMember.userId` · ไม่กรองร้าน (R-K20) · push ล้ม = log ไม่กระทบงาน
   - `deadline` (ms · ไม่บังคับ) = หยุดหยิบงานใหม่เมื่อถึงเวลา — งานรายนาทีส่ง `ctrl.deadline − 8 วิ`
 - `registerRoomJobsMinuteJob() → void` — `registerMinuteJob({ name: "secretary.roomJobs", everyMinutes: 1, run: (now) => runRoomJobs({ now, limit: 5 }) })` · `room-jobs-job.ts` เรียกตอน import
 - `service.sendMessage` deps ใหม่ `userMessageId?: string` — มี ⇒ ไม่สร้างแถว USER ซ้ำ · ประวัติ `NOT id = userMessageId` · บทสนทนาที่มองไม่เห็น ⇒ throw (ไม่เปิดห้องใหม่) · ไม่ส่ง = เดิมทุกไบต์
@@ -377,15 +377,20 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `registerWithPhone(input: { phone; name; email; otpTicket }) → Promise<{ ok: true; userId } | { ok: false; reason }>` — `prisma.user.create({email, name})` + `UserPhone` ใน tx เดียว · อีเมลซ้ำแต่เบอร์ใหม่ ⇒ "อีเมลนี้มีบัญชีแล้ว เข้าด้วยอีเมลแล้วผูกเบอร์" (R8)
 - `bindPhone(userId: string, phone: string, code: string) → Promise<{ ok: boolean; reason? }>` — บัญชีเดิมผูกเบอร์ · `GET /api/mobile/me` เพิ่ม `phone` (nullable)
 
-### 5.20 `src/lib/support/service.ts` (เปลี่ยน · ฝั่งร้าน · S1.17 · R-K12)
-- `openCaseFromApp(ctx: { tenantId }, input: { userId; subject; body; category: "broken" | "ai_mistake" | "data" | "billing" | "feedback"; roomId?: string; attachments?: Attachment[] }) → Promise<{ id; caseNo }>` — `source = "APP"` · `roomId` ต้องเป็นห้องที่ผู้แจ้งเห็น · หมวด `ai_mistake` ⇒ คิว ai-quality
-- `listCasesForUser(ctx: { tenantId }, userId: string, role: Role) → Promise<CaseRowDto[]>` — `openedByUserId = userId OR role === "OWNER"` (เคส `ai-assistant` เดิม → OWNER เห็น) · `listMyCases` (:123) เดิมคงไว้ให้เว็บ
+### 5.20 `src/lib/support/service.ts` (เปลี่ยน · ฝั่งร้าน · S1.17 · มีแล้ว · R-K12)
+- `CASE_CATEGORIES = ["secretary_wrong", "bug", "question", "billing", "feature", "other"]` (ชิปหมวดของจอ H1)
+- `openCaseFromApp(ctx: { tenantId }, input: { userId; subject; body; attachments?: Attachment[]; category?: string; roomId?: string | null }) → Promise<{ id; caseNo }>` — `createCase` เดิม (caseNo race-safe + ข้อความแรก + ไฟล์แนบที่ผ่าน `cleanAttachments`) แล้วตั้ง `source = "APP"` · `category` (ไม่อยู่ใน `CASE_CATEGORIES` ⇒ `"other"`) · `roomId` = ห้องของร้านนี้ที่ผู้แจ้งเห็น (ผู้เปิดห้อง ∪ สมาชิก ∪ OWNER ที่รับแล้ว) ไม่งั้น `null` (ไม่บอกว่ามีอยู่) · **ไม่ตั้ง `conversationId`** · หมวด `secretary_wrong` + ห้อง ⇒ best-effort `recordFeedback({ conversationId: room.conversationId, userText: subject, replyText: body, rating: "DOWN", note: "help:<caseId>" })` (anonymize ใน recordFeedback · ล้มไม่ throw)
+- `listCasesForUser(ctx, userId, role: Role, take = 50 (≤ 200)) → Promise<CaseMeta[]>` — `openedByUserId = userId` หรือ `role === "OWNER"` (ทั้งร้าน รวมเคส `ai-assistant` เดิม) · meta unread เหมือน `listMyCasesWithMeta` (ข้อความ PLATFORM ใหม่กว่า `shopLastReadAt` · 2 query) · `listMyCases`/`listMyCasesWithMeta`/`unreadCaseTotal` เดิมคงไว้ให้เว็บ
+- `unreadCaseTotalForUser(ctx, userId, role) → Promise<number>` — ขอบเขตเดียวกับ `listCasesForUser` (นับเคส RESOLVED ที่ยังไม่อ่านด้วย)
+- `setResolvedByShop(ctx, userId, role, caseId) → Promise<boolean>` — เคสที่ผู้ใช้เห็น ⇒ `status = RESOLVED` · ไม่เห็น/ไม่มี/ร้านอื่น ⇒ `false`
+- หมายเหตุ: `shopLastReadAt` เป็นค่าเดียวต่อเคส (OWNER เปิดอ่าน = ผู้แจ้งก็เห็นว่าอ่านแล้ว) — เหมือนเว็บเดิม
 
-### 5.21 `src/lib/platform/support.ts` (เปลี่ยน · ฝั่งแพลตฟอร์ม · S1.17)
-- `listAllCases(filter?: { status?; source?; category?; assignee?: string }) → Promise<CaseWithTenant[]>` (:19)
-- `assignCase(caseId: string, platformUserId: string) → Promise<boolean>` — "รับเรื่อง" H4 · ตั้ง `assigneePlatformUserId`
-- `addPlatformMessage` (:71) แทรกลงห้อง AI เฉพาะเคส `source !== "APP"` (bridge เดิม · `qc-help-v2`/`qc-mobile-help` เขียว) · push ผู้แจ้งจริง `sendPushToUser(openedByUserId)` (push.ts:145)
-- "ระงับเลขาของร้าน" = `setAccess` ทุกโมดูล OFF (ไม่มีธงใหม่ · ไม่ใช้ `suspendTenant` :140)
+### 5.21 `src/lib/platform/support.ts` (เปลี่ยน · ฝั่งแพลตฟอร์ม · S1.17 · มีแล้ว)
+- `listAllCases(filter?: { status?; source?: string; category?: string; assigneePlatformUserId?: string }) → Promise<CaseWithTenant[]>` — ไม่ส่งตัวกรอง = เดิม
+- `assignCase(pu: PlatformUser, caseId: string) → Promise<boolean>` — "รับเรื่อง" H4 · `assigneePlatformUserId = pu.id` + `PlatformAuditLog` `support.assign` · ไม่มีเคส = `false`
+- `caseDetail(caseId)` — แถวเคสมี `source`/`category`/`roomId` ติดมาด้วย (คอลัมน์ของ S1.1)
+- `addPlatformMessage(pu, caseId, body, deps?: { post? })` — ข้อความ PLATFORM + `PENDING` + assignee (เดิม) · แทรก `🛟 ทีมงาน:` ลงห้อง AI **เฉพาะ `source !== "APP"` และมี `conversationId`** (bridge เดิม · `qc-help-v2`/`qc-mobile-help` เขียว) · push: เคส APP ⇒ (ผู้แจ้งยังเป็นสมาชิกที่รับแล้ว) `notifyUser(openedByUserId, tenantId, "help", { title: "ทีมงานตอบกลับแล้ว", body: ≤ 80, data: { link: "/help/<caseId>", caseId } })` · เคสอื่น = เดิม (`sendPushToUsers` ผู้สร้างห้อง/OWNER · `data.conversationId`)
+- "ระงับเลขาของร้าน" = `setAccess` ทุกโมดูล OFF (ไม่มีธงใหม่ · ไม่ใช้ `suspendTenant` :140) — ใบ S2.16
 
 ### 5.22 `src/lib/mobile/tenants.ts` (เปลี่ยน · S1.25)
 - `createTenantFromApp(userId: string, input: { name: string; type: string; systems: string[] }) → Promise<{ tenantId; roomId }>` — ห่อ `createTenantForUser` (:8) + เปิดระบบที่เลือก (`applyBlueprint` ทางเดิม) + `startRoom` ห้องแรก "ตั้งค่าเริ่มต้น" (ไม่นับงาน: `couldNotAct`/งานต้อนรับ)
@@ -404,8 +409,19 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `handoff(ctx, input: { conversationId; toUserId; reason: string }) → Promise<{ ok: boolean; reason? }>` — เปลี่ยนผู้ดูแล + บันทึกภายในพร้อมเหตุผล (ไม่แตะ enum `ChatEventType`)
 - `setShift(ctx, onDuty: boolean, opts: { now: Date }) → Promise<{ onDutyAt: string | null }>` · ยกระดับ SLA = คำนวณตอนอ่าน (`waitingMin` จาก `firstCustomerMessageAt`) + sweep ใน `api/cron/outbox` (R-K8)
 
-### 5.25 `src/lib/core/push.ts` (เปลี่ยน hunk เดียว · S1.23 · R-K20)
-- `type PushMsg = { title; body; data?; badge?: number }` · payload Expo ส่ง `badge` ต่อ · `data.link` ("/secretary/room/<id>" · "/inbox/<convId>" · "/help/<caseId>") + คง `data.conversationId` ให้ build เก่า · push ห้องเลขา = `sendPushToUser(userId)` ไม่กรอง tenant (A6) · เคารพ `AiNotifyPref`
+### 5.25 `src/lib/core/push.ts` (เปลี่ยน 2 hunk · S1.23 · มีแล้ว · R-K20)
+- `type PushMsg = { title; body; data?; badge?: number }` · payload Expo ใส่ `badge` **เฉพาะเมื่อผู้เรียกส่งมา** (ไม่ส่ง = payload เดิมทุกไบต์) · `deliverBatch` อ่านผลของ transport ได้ทั้ง array / `{ tickets }` / `{ data }` (ตัวจริงคืน array — ข้อสอบฉีดแบบ `{ tickets }`)
+- `sendPushToChatStaff(args, deps?: { post?; prefs?: (userId) => Promise<"ALL" | "ASSIGNED" | "OFF"> })` — หลัง `selectChatNotifyRecipients` เดิม กรองด้วยค่าตั้ง `inbox` (`notifyModesFor` 1 query · ปริยายจาก `AiNotifyPref`): OFF ตัด · ASSIGNED เหลือเฉพาะผู้ดูแลเธรด (`assigneeUserId` ที่ส่งมา ?? ของเธรด) · ไม่มีแถว = ผู้รับเดิม · อ่านค่าตั้งไม่ได้ = ไม่กรอง + log · `data` = `{ link: "/inbox/<conversationId>", ...data ของผู้เรียก }` (คีย์เดิมคงอยู่ · link ของผู้เรียกชนะ) · ไม่มี badge (ข้อความเดียวหลายคน)
+- push ห้องเลขา/ช่วยเหลือ = `sendPushToUser(userId)` ไม่กรอง tenant (A6) ผ่าน `notifyUser` (§5.25a)
+
+### 5.25a notify.ts (S1.23 · มีแล้ว · `src/lib/ai/secretary/notify.ts`) — ค่าตั้งแจ้งเตือน · badge · กันสแปม (R-K20)
+- `NOTIFY_KINDS = ["inbox", "approval", "room", "help"]` · `NOTIFY_MODES = ["ALL", "ASSIGNED", "OFF"]` · `NOTIFY_SPAM_WINDOW_MS = 60_000`
+- `getNotifyPrefs(userId, tenantId?) → Promise<Record<NotifyKind, NotifyMode>>` — แถวของร้านชนะแถว `tenantId = null` (ทุกร้าน) · ปริยาย ALL · ค่าที่ไม่รู้จักถูกเมิน · 1 query (`resolveNotifyPrefs` = ส่วน pure)
+- `setNotifyPref(userId, { tenantId?; kind; mode }) → Promise<prefs>` — ชนิด/โหมดผิด ⇒ throw ไทย · update-then-create (unique ที่มีคอลัมน์ null ใช้ upsert ไม่ได้ · P2002 ⇒ update ซ้ำ) · คืนค่าที่มีผลในร้านนั้น
+- `notifyModesFor(tenantId, userIds, kind) → Promise<Map<userId, mode>>` — เฉพาะคนที่มีแถว (ตัวกรองของ `sendPushToChatStaff`)
+- `badgeTotalFor(userId, tenantId) → Promise<number>` — ไม่มี Membership ที่รับแล้ว = 0 · (1) ห้องเลขาที่ผู้ใช้เปิด/เป็นสมาชิก (ไม่นับ OWNER-ทุกห้อง · ≤ 500 ห้องล่าสุด) ที่มีคำตอบเลขา (ไม่นับข้อความระบบ) ใหม่กว่า `lastReadAt` — สมาชิก seeHistory=false นับเฉพาะเมื่อคำตอบล่าสุด ≥ `addedAt` + (2) `unreadCount` ของทุกระบบ CHAT ที่ active ถ้ามีสิทธิ์ `chat.conversation.read` (`evaluate`) + (3) `unreadCaseTotalForUser`
+- `notifyUser(userId, tenantId, kind, msg: { title; body; data: { link; … } }, deps?: { post?; now?; assigneeUserId? }) → Promise<{ sent; skipped: "pref" | "spam" | "none" | null }>` — **ไม่ throw** · OFF ⇒ `pref` · `inbox` + ASSIGNED ⇒ ส่งเฉพาะ `deps.assigneeUserId === userId` (ASSIGNED ของชนิดอื่น = ALL) · คีย์ `${userId}:${link}` ส่งจริงไปแล้วภายใน 60 วิ ⇒ `spam` (Map ในหน่วยความจำต่อโปรเซส · นับจากครั้งที่ส่งจริง · จองก่อนส่ง) · `badge = badgeTotalFor` (อ่านไม่ได้ = ไม่ใส่) · `sendPushToUser(userId, { ...msg, badge }, { post })` · ไม่มีเครื่อง/Expo ไม่รับ ⇒ `none` · อ่านค่าตั้งไม่ได้ = ALL
+- ผู้เรียก: worker `pushRoom` (kind `room`) · `addPlatformMessage` เคส APP (kind `help`) · `sendPushToChatStaff` ใช้ `notifyModesFor` (kind `inbox`) · `approval` = ยังไม่มีผู้เรียก (ใบ S2.6/S1.14)
 
 ---
 
@@ -492,7 +508,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 |---|---|---|---|---|---|
 | `ai.room.started` | `{tenantId, roomId, startedById}` | `startRoom` | withAutomation เปล่า | เมื่อเลขาเริ่มงานใหม่ | S1.4 |
 | `ai.room.status_changed` | `{tenantId, roomId, from, to}` | worker / `closeRoom` | push ผู้สร้าง/ผู้อนุมัติ (`sendPushToUser`) | เมื่อสถานะงานของเลขาเปลี่ยน | S1.5 |
-| `ai.room.member_added` | `{tenantId, roomId, userId, addedById}` | `addMember` | push ผู้ถูกเพิ่ม | เมื่อมีคนถูกเพิ่มเข้าห้องงาน | S1.23 (notify · RESOLUTIONS §J) |
+| `ai.room.member_added` | `{tenantId, roomId, userId, addedById}` | `addMember` | push ผู้ถูกเพิ่ม | เมื่อมีคนถูกเพิ่มเข้าห้องงาน | S1.23 (notify · RESOLUTIONS §J) — ⏳ ยังไม่ทำใน S1.23: ไม่มี event นี้ใน `addMember` (members.ts นอกใบ) · `notifyUser(..., "room")` พร้อมใช้ |
 | `ai.action.executed` | `{tenantId, actionLogId, kind, roomId?}` | `logAction` (ใน tx ของ execute) | withAutomation | เมื่อเลขาทำงานที่อนุมัติแล้ว | S1.8 |
 | `ai.action.undone` | `{tenantId, actionLogId}` | `undoAction` | withAutomation | เมื่อย้อนการกระทำของเลขา | S1.8 |
 | `staff.invite.accepted` | `{tenantId, inviteId, membershipId}` | `acceptInvite` | push ผู้เชิญ | เมื่อพนักงานรับคำเชิญ | S1.25 |

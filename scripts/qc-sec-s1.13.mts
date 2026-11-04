@@ -107,6 +107,16 @@ try {
     chk("C-4", "ร้านใหม่ไม่มีกระเป๋า: canSpend true · canSpendPeek true (ไม่สร้างกระเป๋า) · sendMessage ⇒ ok (ไม่ over_budget) · หักค่าใช้จ่ายแล้วยอดติดลบ · ไม่มีแถว GRANT", cs === true && csp === true && noWallet && sm.ok === true && !!w2 && w2.balanceMicro < 0 && w2.grantedAt === null && tx2.length >= 1 && !tx2.some((t) => t.kind === "GRANT"), JSON.stringify({ cs, csp, noWallet, sm: sm.ok, w2: w2?.balanceMicro, kinds: tx2.map((t) => t.kind) }).slice(0, 200));
     const m = usage.quotaMessage("jobs", new Date("2026-11-30T17:00:00Z"));
     chk("C-5", "usage.quotaMessage('jobs', resetAt) ไทย · มี 'งาน' · มีวันที่ (ธ.ค./1) · scope credit/day เดิมไม่เปลี่ยน", thai(m) && /งาน/.test(m) && /ธ\.ค\.|1/.test(m) && /เครดิต/.test(usage.quotaMessage("credit")) && /วันนี้/.test(usage.quotaMessage("day")), m.slice(0, 120));
+    // R-S1.13b: เพดานต้นทุน assist ต่อวัน (วันไทยของ now)
+    const capMicro = Number(pack.FREE_PACK.assistDailyMicro);
+    await prisma.aiCreditTxn.create({ data: { tenantId: OLD, kind: "USAGE", amountMicro: -(capMicro - 1), ref: "qc-s113-cap", createdAt: new Date(NOW.getTime() - 60_000) } as never }).catch((e: unknown) => console.log("  ⚠️ txn cap: " + errMsg(e)));
+    const aUnder = await credit.canRunAi(OLD, { scope: "assist", now: NOW });
+    await prisma.aiCreditTxn.create({ data: { tenantId: OLD, kind: "USAGE", amountMicro: -1, ref: "qc-s113-cap2", createdAt: new Date(NOW.getTime() - 30_000) } as never }).catch(() => null);
+    const aOver = await credit.canRunAi(OLD, { scope: "assist", now: NOW });
+    const aNext = await credit.canRunAi(OLD, { scope: "assist", now: new Date(NOW.getTime() + 86_400_000) });
+    const jOver = await credit.canRunAi(OLD, { scope: "job", now: NOW });
+    const qCap = await quota.quotaStatus(OLD, NOW) as { assist?: { usedMicro: number; capMicro: number } };
+    chk("C-6", "R-S1.13b: assistDailyMicro=500000 · ใช้ไป cap−1 ⇒ assist ok · ถึง cap ⇒ ok:false reason credit resetAt message ไทยมี 'วันนี้' · วันถัดไป ok · job ไม่ติดเพดานนี้ · quotaStatus.assist {usedMicro=cap, capMicro}", capMicro === 500_000 && aUnder.ok === true && aOver.ok === false && aOver.reason === "credit" && aOver.resetAt instanceof Date && /วันนี้/.test(aOver.message ?? "") && aNext.ok === true && jOver.ok === true && qCap.assist?.usedMicro === capMicro && qCap.assist?.capMicro === capMicro, JSON.stringify({ aUnder, aOver, aNext: aNext.ok, jOver: jOver.ok, q: qCap.assist }).slice(0, 240));
 
     console.log("── R: GET /api/mobile/usage ──");
     const route = (await import("@/app/api/mobile/usage/route")) as AnyMod;

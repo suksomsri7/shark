@@ -4,6 +4,7 @@
 // ระงับ/เปิดร้าน = SUPER_ADMIN เท่านั้น (requirePlatformRole → throw ถ้าไม่ผ่าน)
 
 import type {
+  Prisma,
   PlatformAuditLog,
   PlatformUser,
   SupportCase,
@@ -15,12 +16,25 @@ import { requirePlatformRole } from "./auth";
 
 export type CaseWithTenant = SupportCase & { tenantName: string };
 
+// transport ของ push ที่ฉีดได้ (ทดสอบ) — ชนิดเดียวกับ core/push.ts
+type PushPost = (payloads: unknown[]) => Promise<unknown>;
+
 // เคสทุกร้าน (กรองสถานะได้) — ความเคลื่อนไหวล่าสุดก่อน + ชื่อร้านประกอบ
+// S1.17 (R-K12 · จอ H3) ▸ กรองเพิ่ม: ช่องทาง (`source` "APP"/"WEB"/"AI") · หมวด · ผู้รับเรื่อง — ไม่ส่งตัวกรอง = เดิม ◂
 export async function listAllCases(filter?: {
   status?: SupportCaseStatus;
+  source?: string;
+  category?: string;
+  assigneePlatformUserId?: string;
 }): Promise<CaseWithTenant[]> {
+  const where: Prisma.SupportCaseWhereInput = {
+    ...(filter?.status ? { status: filter.status } : {}),
+    ...(filter?.source ? { source: filter.source } : {}),
+    ...(filter?.category ? { category: filter.category } : {}),
+    ...(filter?.assigneePlatformUserId ? { assigneePlatformUserId: filter.assigneePlatformUserId } : {}),
+  };
   const cases = await prisma.supportCase.findMany({
-    where: filter?.status ? { status: filter.status } : undefined,
+    where: Object.keys(where).length > 0 ? where : undefined,
     orderBy: { updatedAt: "desc" },
   });
   const ids = [...new Set(cases.map((c) => c.tenantId))];
@@ -31,7 +45,7 @@ export async function listAllCases(filter?: {
   return cases.map((c) => ({ ...c, tenantName: nameById.get(c.tenantId) ?? "—" }));
 }
 
-// เคสเดียว + บทสนทนา (สำหรับหน้ารายละเอียด backoffice)
+// เคสเดียว + บทสนทนา (สำหรับหน้ารายละเอียด backoffice) · S1.17: แถวเคสมี `source`/`category`/`roomId` (ห้องงานที่แนบ) ติดมาด้วย
 export async function caseDetail(
   caseId: string,
 ): Promise<{ case: CaseWithTenant; messages: SupportMessage[] } | null> {
@@ -67,14 +81,31 @@ export async function setCaseStatus(
   return true;
 }
 
+// S1.17 (R-K12 · จอ H4 "รับเรื่อง") ▸ ทีมงานรับเรื่อง = ตั้งผู้รับเรื่องเป็นตัวเอง + audit "support.assign" · ไม่มีเคส = false ◂
+export async function assignCase(pu: PlatformUser, caseId: string): Promise<boolean> {
+  const c = await prisma.supportCase.findUnique({ where: { id: caseId }, select: { id: true } });
+  if (!c) return false;
+  await prisma.$transaction([
+    prisma.supportCase.update({ where: { id: caseId }, data: { assigneePlatformUserId: pu.id } }),
+    prisma.platformAuditLog.create({
+      data: { platformUserId: pu.id, action: "support.assign", targetType: "SupportCase", targetId: caseId },
+    }),
+  ]);
+  return true;
+}
+
 // แพลตฟอร์มตอบเคส → ตั้งสถานะ PENDING (ตอบแล้ว รอร้าน) + ผูก assignee
+// S1.17 (R-K12) ▸ เคสที่เปิดจากแอป (`source = "APP"`) ไม่แทรกข้อความลงห้อง AI · push ถึงผู้แจ้งตามค่าตั้ง "ช่วยเหลือ"
+//   (`notifyUser(..., "help")` · link /help/<caseId>) · เคสอื่น = เดิมทุกอย่าง · `deps.post` ฉีด transport ได้ (ทดสอบ) ◂
 export async function addPlatformMessage(
   pu: PlatformUser,
   caseId: string,
   body: string,
+  deps?: { post?: PushPost },
 ): Promise<boolean> {
   const c = await prisma.supportCase.findUnique({ where: { id: caseId } });
   if (!c) return false;
+  const fromApp = c.source === "APP";
   await prisma.$transaction([
     prisma.supportMessage.create({
       data: { tenantId: c.tenantId, caseId, authorSide: "PLATFORM", authorId: pu.id, body },
@@ -85,7 +116,7 @@ export async function addPlatformMessage(
     }),
     // help-v2 (mobile): เคสที่ AI เปิดจากห้องแชท → เด้งคำตอบทีมงานกลับ session เดิม
     //   (ห้องจะขึ้น unread เองในแอปเพราะมี ASSISTANT ใหม่กว่า lastReadAt — อย่าแตะ lastReadAt) + ดันห้องขึ้นบนสุด
-    ...(c.conversationId
+    ...(c.conversationId && !fromApp
       ? [
           prisma.aiMessage.create({
             data: {
@@ -107,7 +138,25 @@ export async function addPlatformMessage(
   // CRM C5.5-G3 (รีวิว G2-2) ▸ เดิมยิง **ทุกเครื่องในร้าน** (`sendPushToTenant`) พร้อมคำตอบของทีมงาน 80 ตัวอักษรบนจอล็อก
   //   ทั้งที่ห้องเปิดได้เฉพาะผู้สร้าง ⇒ ยิงเฉพาะคนที่เปิดห้องนั้นได้: ผู้สร้างห้อง (จากรหัสห้อง) · ห้องรุ่นเดิม/ของคีย์/งานภายใน
   //   = เจ้าของร้าน (OWNER ที่ยืนยันแล้ว) ตามกติกาการมองเห็นห้อง (lib/ai/conversation-owner.ts) ◂
-  if (c.conversationId) {
+  if (fromApp) {
+    try {
+      // ผู้แจ้งต้องยังเป็นสมาชิกของร้านนี้ (ออกจากร้านแล้ว = ไม่ยิงข้อความของทีมงานไปที่จอล็อก)
+      const stillMember =
+        (await prisma.membership.count({ where: { tenantId: c.tenantId, userId: c.openedByUserId, acceptedAt: { not: null } } })) > 0;
+      if (stillMember) {
+        const { notifyUser } = await import("@/lib/ai/secretary/notify");
+        await notifyUser(
+          c.openedByUserId,
+          c.tenantId,
+          "help",
+          { title: "ทีมงานตอบกลับแล้ว", body: body.slice(0, 80), data: { link: `/help/${c.id}`, caseId: c.id } },
+          deps?.post ? { post: deps.post } : undefined,
+        );
+      }
+    } catch {
+      // push พัง → เงียบ (เคสถูกบันทึกแล้ว)
+    }
+  } else if (c.conversationId) {
     try {
       const { sendPushToUsers } = await import("@/lib/core/push");
       const { conversationCreatorOf } = await import("@/lib/ai/conversation-owner");
@@ -128,7 +177,7 @@ export async function addPlatformMessage(
         title: "ทีมงานตอบกลับแล้ว",
         body: body.slice(0, 80),
         data: { conversationId: c.conversationId },
-      });
+      }, deps?.post ? { post: deps.post } : undefined);
     } catch {
       // push พัง → เงียบ (เคสถูกบันทึกแล้ว)
     }
