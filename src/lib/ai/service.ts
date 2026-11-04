@@ -23,6 +23,7 @@ import type { AiCreditSource } from "@prisma/client";
 import { identityOf, secretaryOf } from "./secretary/secretary";
 import { getAccess } from "./secretary/access";
 import { NOT_SYSTEM_MESSAGE, visibleMessagesWhere } from "./secretary/members";
+import { digestBlockFor } from "./secretary/digest";
 
 export type Ctx = { tenantId: string };
 /**
@@ -233,11 +234,13 @@ export async function sendMessage(
     take: HISTORY_TAKE,
   });
 
+  // SEC S1.16 ▸ ข้อมูลกิจการสด เฉพาะห้องเลขา (มีแถว AiRoom) ตามสิทธิ์ของคนที่พิมพ์ ∩ ระดับของร้าน · ห้องเดิม = ไม่อ่าน (prompt เดิมทุกไบต์) ◂
+  const digest = conv?.room ? await digestBlockFor(ctx.tenantId, { actor: ctx.actor, access }).catch(() => "") : "";
   const messages: AiChatMessage[] = [
     {
       role: "system",
       content: [
-        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access }),
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}) }),
         skillIndexPrompt(visibleSkills),
       ].filter(Boolean).join("\n\n"),
     },
