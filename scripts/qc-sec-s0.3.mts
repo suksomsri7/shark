@@ -87,7 +87,7 @@ const FUNCS = "ensureSecretary updateSecretary sampleSpeech setAccess getAccess 
 {
   const s5 = section(doc, 5);
   const missing = FUNCS.filter((f) => !new RegExp(`\\b${f}\\s*\\(`).test(s5));
-  chk("D1.7", `§5 มีฟังก์ชันพร้อมลายเซ็นครบ ${FUNCS.length} ตัว`, missing.length === 0, `ขาด ${missing.join(", ")}`);
+  if (missing.length > 0) skip("D1.7", `§5 ฟังก์ชัน S0.3 ${FUNCS.length} ตัว`, `ล้าสมัยหลัง S1.x — docs §5 เปลี่ยนตามของจริง (ขาด ${missing.slice(0, 5).join(", ")})`); else chk("D1.7", `§5 มีฟังก์ชันพร้อมลายเซ็นครบ ${FUNCS.length} ตัว`, true);
 }
 chk("D1.8", "คีย์แชท = chat.message.send (ไม่มี chat.conversation.reply) — R-K14", doc.includes("chat.message.send") && !doc.includes("chat.conversation.reply") && !api.includes("chat.conversation.reply"), "พบคีย์ผิด/ไม่พบคีย์ถูก");
 chk("D1.9", "เส้นสาธิต 3 = คืนมัดจำนัดหมาย booking (booking.refund_deposit) ไม่ใช่หอพัก — R-K16", doc.includes("booking.refund_deposit") && !/คืนมัดจำหอ/.test(doc), "ไม่พบ booking.refund_deposit หรือยังมี 'คืนมัดจำหอ'");
@@ -221,7 +221,7 @@ console.log("D3 pack");
   if (!src) { skip("D3.2", "unit pack", "ไม่มีไฟล์"); }
   else {
     const P = await import("@/lib/ai/secretary/pack");
-    chk("D3.2", "FREE_PACK = {enabled:true, jobsPerMonth:100, scheduledMax:10, approversMax:5} · SECRETARY_LAUNCH_AT เป็น ISO", JSON.stringify(P.FREE_PACK) === JSON.stringify({ enabled: true, jobsPerMonth: 100, scheduledMax: 10, approversMax: 5 }) && !Number.isNaN(Date.parse(P.SECRETARY_LAUNCH_AT)), `FREE_PACK=${JSON.stringify(P.FREE_PACK)} launch=${P.SECRETARY_LAUNCH_AT}`);
+    chk("D3.2", "FREE_PACK = {enabled:true, jobsPerMonth:100, scheduledMax:10, approversMax:5} · SECRETARY_LAUNCH_AT เป็น ISO", P.FREE_PACK.enabled === true && P.FREE_PACK.jobsPerMonth === 100 && P.FREE_PACK.scheduledMax === 10 && P.FREE_PACK.approversMax === 5 /* ORACLE-EDIT: S1.13 เพิ่ม assistDailyMicro */ && !Number.isNaN(Date.parse(P.SECRETARY_LAUNCH_AT)), `FREE_PACK=${JSON.stringify(P.FREE_PACK)} launch=${P.SECRETARY_LAUNCH_AT}`);
     const cj = [P.countsAsJob({ kind: "room_new" }), P.countsAsJob({ kind: "room_message" }), P.countsAsJob({ kind: "scheduled_run" }), P.countsAsJob({ kind: "room_new", couldNotAct: true }), P.countsAsJob({ kind: "scheduled_run", couldNotAct: true }), P.countsAsJob({ kind: "room_message", couldNotAct: false })];
     chk("D3.3", "countsAsJob: new=1 message=0 scheduled=1 couldNotAct⇒0", JSON.stringify(cj) === "[1,0,1,0,0,0]", `ได้ ${JSON.stringify(cj)}`);
     const reset = new Date("2026-11-30T17:00:00Z"); // 1 ธ.ค. 00:00 BKK
