@@ -1,0 +1,20 @@
+{
+  "_about": "S2.12 จอเข้า/สมัคร/OTP/ผูกเบอร์ (Airy) — mock route SMS OTP ของ S1.19 · /login /signup /otp เปิดแบบยังไม่ login · /phone เปิดด้วย token + /me ที่ user.phone = null (ยามหน้าประตูพามาเอง) · ถ่าย /signup และ /otp ด้วย query (ดู ledger/wo-notes/sec-s2.12.md)",
+  "locale": "th-TH",
+  "noAuth": ["/login", "/signup", "/otp"],
+  "expect": {
+    "/login": ["login", "login-phone", "login-sms", "login-google", "login-email-toggle", "login-signup"],
+    "/signup": ["signup", "signup-name", "signup-phone", "signup-email", "signup-submit", "signup-login"],
+    "/otp": ["otp", "otp-input", "otp-resend", "otp-edit-email", "otp-submit"],
+    "/phone": ["phone", "phone-input", "phone-request", "phone-logout"]
+  },
+  "endpoints": {
+    "GET /api/mobile/me": {
+      "user": { "id": "u-qc", "email": "owner@example.com", "pendingEmail": null, "name": "เจ้าของร้านทดสอบ", "phone": null },
+      "memberships": [{ "tenantId": "t1", "name": "ร้านทดสอบ", "role": "OWNER", "branding": null }]
+    },
+    "POST /api/mobile/auth/sms/request": { "ok": true, "resendAfterSec": 60 },
+    "POST /api/mobile/auth/sms/verify": { "token": "qc" },
+    "POST /api/mobile/auth/phone/link": { "ok": true, "phone": "+66812345678" }
+  }
+}

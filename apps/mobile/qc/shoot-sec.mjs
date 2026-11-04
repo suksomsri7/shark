@@ -3,10 +3,12 @@
 //
 // ตัวแปร:
 //   ROUTES      รายการ path คั่นด้วย , (ปริยาย "/secretary") เช่น ROUTES=/secretary,/secretary/_gallery,/login,/sessions
+//               ใส่ query ได้ (ROUTES=/otp?phone=0812345678&mode=signup) — ชื่อภาพ/expect/noAuth/tall ใช้ path ไม่รวม query
 //   FIXTURE     ไฟล์ JSON (ปริยาย qc/fixtures/secretary/s0.2.json · รูปแบบดู qc/fixtures/secretary/README.md)
 //               fixture.endpoints = { "<path>" | "<METHOD> <path>": body } · endpoint ที่ไม่มีใน fixture ⇒ 404 + ลงใน unmocked[]
 //               fixture.noAuth    = [path…] จอที่ต้องเปิดแบบยังไม่ login (ปริยาย ["/login"])
 //               fixture.expect    = { "<path>": [testID…] } testID ที่ต้องเห็นในจอนั้น (รอ + ตรวจ)
+//               fixture.locale    = "th-TH" (ไม่บังคับ) ภาษาเครื่องจำลอง (navigator.language) ก่อนโหลด
 //               fixture.tall      = { "<path>": ความสูง } จอยาว (เช่น gallery) ถ่ายด้วย viewport สูงขึ้น — ความกว้างคง 390
 //   QC_PREPARE=1        rsync + patch + `expo export --platform web` ในสำเนา แล้วเสิร์ฟเอง (QC_SKIP_EXPORT=1 = เสิร์ฟ dist เดิม)
 //   QC_COPY             สำเนา (ปริยาย /root/qc-shark-mobile-sec — แยกจากสำเนาของ CRM/สมาชิก)
@@ -134,7 +136,9 @@ const browser = await puppeteer.launch({ executablePath: "/usr/bin/chromium-brow
 const results = [];
 try {
   for (const dark of MODES) {
-    for (const route of ROUTES) {
+    for (const spec of ROUTES) {
+      // S2.12: route มี query ได้ (/otp?phone=…&mode=signup) — ชื่อภาพ/expect/noAuth/tall ใช้ path ไม่รวม query · goto ใช้ทั้งก้อน
+      const route = spec.split("?")[0];
       const name = routeName(route) + (dark ? "-dark" : "");
       const expect = EXPECT[route] ?? [];
       const page = await browser.newPage();
@@ -167,9 +171,11 @@ try {
         !NO_AUTH.has(route),
         dark ? "dark" : "light",
       );
+      // S2.12: fixture.locale (เช่น "th-TH") = ภาษาเครื่องจำลอง — จอที่เลือกภาษาจากเครื่อง (src/i18n deviceLang) ถ่ายตามภาษาของแบบ
+      if (FX.locale) await page.evaluateOnNewDocument((l) => Object.defineProperty(navigator, "language", { get: () => l }), FX.locale);
       const errors = [];
       page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 160)));
-      await page.goto(BASE + route, { waitUntil: "networkidle0", timeout: 60000 }).catch((e) => errors.push("goto " + String(e.message).slice(0, 100)));
+      await page.goto(BASE + spec, { waitUntil: "networkidle0", timeout: 60000 }).catch((e) => errors.push("goto " + String(e.message).slice(0, 100)));
       for (const id of expect) await page.waitForSelector(`[data-testid="${id}"]`, { timeout: 20000 }).catch((e) => errors.push("wait " + String(e.message).slice(0, 120)));
       await page.evaluate(() => document.fonts.ready).catch(() => {});
       await new Promise((r) => setTimeout(r, 1200));
