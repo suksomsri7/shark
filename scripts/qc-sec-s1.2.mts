@@ -109,7 +109,7 @@ try {
   const t = await prisma.tenant.create({ data: { name: "QC SEC S1.2", slug: `qc-sec-s12-${Date.now().toString(36)}` } });
   tid = t.id;
   for (const [k, id] of Object.entries(U)) await prisma.user.create({ data: { id, email: `${id}@example.com`, name: k } });
-  const mk = (role: "OWNER" | "MANAGER" | "STAFF", userId: string, permissions: Record<string, unknown> = {}) => prisma.membership.create({ data: { tenantId: tid, userId, role, unitAccess: ["*"], permissions, acceptedAt: new Date() } });
+  const mk = (role: "OWNER" | "MANAGER" | "STAFF", userId: string, permissions: Record<string, unknown> = {}) => prisma.membership.create({ data: { tenantId: tid, userId, role, unitAccess: ["*"], permissions: permissions as never, acceptedAt: new Date() } });
   await mk("OWNER", U.owner); await mk("MANAGER", U.mgr); await mk("STAFF", U.staff, { "pos.sale.read": true, "pos.sale.create": true, "kanban.card.create": true, "kanban.card.read": true });
   await sys.createSystem(tid, "POS", "ขายหน้าร้าน"); await sys.createSystem(tid, "KANBAN", "บอร์ดงาน"); await sys.createSystem(tid, "CRM", "ลูกค้า");
   const actor = (userId: string, role: "OWNER" | "MANAGER" | "STAFF", permissions: Record<string, unknown> = {}) => ({ kind: "member" as const, tenantId: tid, userId, membership: { role, unitAccess: ["*"], permissions } });
