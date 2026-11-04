@@ -78,3 +78,11 @@ bash scripts/iso.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-sec-s2.12.mts
 
 ## ต่อจากนี้ (ถ้า restart)
 ไม่มีงานค้าง — ผู้คุมรันซ้ำ §2 แล้วรีวิว · `apps/mobile/node_modules` = symlink ไป shark-in-th (ไม่ commit)
+
+## 7. รอบ merge S2.1 (commit 7362d00b)
+- i18n: ใช้ `index.ts` ของ S2.1 (I18nKey + ภาษาเครื่อง) · th/en = `sec.*` + `auth.*` · `authErrorKey` คืน I18nKey
+- `F` ของ components/auth ลบ · ใช้ `F.v` จาก `src/theme/index`
+- หลังสมัคร: `src/lib/post-signup.ts` (ธงในหน่วยความจำ) — otp ตั้งเมื่อ `isNew` · ยาม: ไม่มีกิจการ ⇒ `/business/new` (แทน /dna เฉพาะคนเพิ่งสมัคร) · มีกิจการ ⇒ `/secretary/onboarding/name` ครั้งเดียว
+- shoot-sec: `fixture.locale` (s2.12 = th-TH) — ภาษาเครื่องของ chromium = en ⇒ จอ auth จะเป็นอังกฤษถ้าไม่ตั้ง
+- summary.json: 24 route S2.1 + 4 route S2.12 ถ่ายใหม่ในทรีนี้ (58 ภาพ ok ทั้งหมด) · ภาพคู่ secretary-c3 ทำใหม่
+- ผล: s2.12 forced ×2 + unforced 13/13 · s2.1 forced 14/14 · mobile-auth 31/31 · app 38/38 · chat 29/29 · authz-hotfix 12/12 · typecheck 0 · fitness ×2 ผ่าน
