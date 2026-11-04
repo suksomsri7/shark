@@ -1,0 +1,76 @@
+{
+ "wo": "S2.5+S2.6",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s2.5.json",
+ "routes": [
+  {
+   "route": "/secretary/inbox",
+   "file": "app/(app)/secretary/inbox.tsx",
+   "testIds": [
+    "sec-inbox",
+    "sec-inbox-tab-all",
+    "sec-inbox-tab-money",
+    "sec-inbox-tab-customer",
+    "sec-inbox-tab-delete",
+    "sec-inbox-item",
+    "sec-inbox-approve",
+    "sec-inbox-reject",
+    "sec-inbox-open"
+   ],
+   "pair": true
+  },
+  {
+   "route": "/secretary/scheduled",
+   "file": "app/(app)/secretary/scheduled.tsx",
+   "testIds": [
+    "sec-sched",
+    "sec-sched-item",
+    "sec-sched-toggle",
+    "sec-sched-add",
+    "sec-sched-freq-daily",
+    "sec-sched-freq-weekly",
+    "sec-sched-hour",
+    "sec-sched-save",
+    "sec-sched-delete"
+   ],
+   "pair": true
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "inbox ใช้ GET /secretary/inbox (ไม่มี x-tenant-id · หลายร้าน) + approve/reject ต่อร้าน (x-tenant-id ของรายการ) · ปุ่มอนุมัติ disabled เมื่อ canApprove=false",
+   "file": "app/(app)/secretary/inbox.tsx",
+   "must": [
+    "secretary/inbox",
+    "canApprove",
+    "approve",
+    "reject",
+    "tenantId"
+   ],
+   "mustNot": []
+  },
+  {
+   "id": "X-2",
+   "name": "scheduled ใช้ GET/POST/PUT/DELETE secretary/scheduled · DAILY/WEEKLY เท่านั้น (MONTHLY ซ่อน) · hourBkk",
+   "file": "app/(app)/secretary/scheduled.tsx",
+   "must": [
+    "secretary/scheduled",
+    "DAILY",
+    "WEEKLY",
+    "hourBkk"
+   ],
+   "mustNot": [
+    "MONTHLY\\W*:\\s*\\{|\"MONTHLY\"\\s*,"
+   ]
+  },
+  {
+   "id": "X-3",
+   "name": "push deep-link: push-register เดิม + handler เปิด /secretary/room/<id> · /secretary/inbox · /customers/<id> (S2.6)",
+   "file": "src/lib/push-register.ts",
+   "must": [
+    "secretary/room/|secretary/inbox|customers/"
+   ],
+   "mustNot": []
+  }
+ ]
+}
