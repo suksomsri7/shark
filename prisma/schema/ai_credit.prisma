@@ -80,6 +80,10 @@ model AiSettings {
   id                  String   @id @default(cuid())
   tenantId            String   @unique
   weeklyReportEnabled Boolean  @default(false)
+  // นอกเวลาทำการ Shark ตอบแทน (S1.22 · แบบ B7) — ตอบเอง ปิดไว้ก่อน · ส่งต่อคน เปิดไว้ก่อน · ข้อความแจ้งว่าเป็น AI (null = ข้อความปริยาย)
+  afterHoursReply     Boolean  @default(false)
+  afterHoursHandoff   Boolean  @default(true)
+  aiDisclosure        String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
