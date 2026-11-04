@@ -146,3 +146,12 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - รับ (ไม่แก้): `?e=` ใน push link · bucket reply ต่อร้าน+ผู้ใช้ · contact POST ตรวจสมาชิก · 429 ก่อน de-dup (แอปถือว่า retry ได้ — จด docs)
 - หนี้/ตั๋ว (ก่อน S2.18/S2.19): `GET …/[id]/contact` · `inbox/settings` · tags/prefs/unread filter (M-2) · กฎเฉพาะช่องทางไม่ชนะ order (เอกสาร K5) · LAST_ASSIGNEE ไม่ดูกะ · แจ้ง S2 fixture lane เรื่อง `{items}`
 - oracle รอบ 2 `qc-sec-s1.21.mts`: A-6 cross-tenant 404 · A-7 assign/handoff สิทธิ์ · A-8 attachments route · S-2 SLA ผู้ดูแลถูกถอน (ผู้คุมเพิ่ม)
+
+## O. รีวิว S1.22 ผู้ตรวจ N — มติรอบ 2 (5 พ.ย. ~07:3xZ)
+- **R-S1.22a (N1)** `sendReply` รับ `aiAfterHours?: true` ⇒ **ไม่** แตะ `staffUnreadCount`/`firstResponseAt` (ข้อความกลางคืนยังค้างคิวให้คนดูตอนเช้า · SLA ไม่ถูกนับว่าตอบแล้ว)
+- **R-S1.22b (N2/N4/N5)** ลำดับใน `afterHoursAutoReply`: disabled → in_hours → **human/money/complaint (regex)** → "มีคนตอบแล้ว" (นับเฉพาะ OUT ที่ไม่ใช่ `meta.ai_afterHours` และ `senderUserId` ไม่ null) → โมเดล → **ตรวจคำตอบ**: ตรง MONEY_RE หรือมีจำนวนเงิน (บาท/฿/ตัวเลข+บาท) ⇒ handoff `money` · reason ใหม่ `human` (ขอคุยกับคน/พนักงาน/แอดมิน/human/agent/real person) และ `answered` (แทนการใช้ in_hours เมื่อมีคนตอบแล้ว) · ขยาย MONEY_RE (เท่าไร/เท่าไหร/ค่าส่ง/ค่าบริการ/ค่าธรรมเนียม/แพง/baht/THB/fee/charge/rate/quote) และ COMPLAINT_RE (เคลม/ชำรุด/พัง/ของไม่มา/ไม่ได้รับ/ช้า/broken/damaged/wrong/never arrived)
+- **R-S1.22c (N3)** ข้อมูลร้านที่เข้า prompt กลางคืน (`memoryBlock` + DNA facts) ต้องผ่าน `maskPiiDeep` + mask ตัวเลข ≥8 หลัก และ system prompt สั่ง "ห้ามไล่รายการ/อ้างอิงข้อมูลภายในร้าน ตอบเฉพาะคำถามที่ถาม · ไม่รู้ = UNKNOWN" · หนี้: แหล่ง FAQ คัดกรอง (S3)
+- **R-S1.22d (N6)** ข้อความที่ส่ง = `"Shark (ผู้ช่วย AI): " + คำตอบ + "\n" + disclosure` (คำนำหน้าคงที่ แก้ไม่ได้) · disclosure ต้องมี /AI|เอไอ|ผู้ช่วย/ ไม่งั้น throw ไทย
+- **R-S1.22e (N7/N8/N9/N10/N12)** ข้าม hook เมื่อ body = `LINK_CODE_MASK` · `docNo`/`tier` ผ่าน mask · เหตุการณ์ handoff เขียนครั้งแรกของห้องต่อวันเท่านั้น (ไม่สะสม) · `setAfterHours` ต้องมี `by.tenantId` ตรง (required) · context ที่มีแต่ `contactId` ไม่มี `chatConversationId` ⇒ ทิ้ง
+- รับ: deviations 1–8 ของ builder (deviation 2 ใช้ reason `answered`) · N11 push ทุก OWNER/MANAGER · หนี้: ที่อยู่/เบอร์ต่างประเทศใน recent (N8) · เลขาอ้างข้อมูลลูกค้าในห้องร่วม (N13 → ใบเชิญสมาชิก)
+- oracle: A-3 แก้วงเล็บ (ผู้คุมผิด · N14) · เพิ่ม A-6 (unread/firstResponseAt ไม่เปลี่ยน · เงินหลังมี AI ตอบ ⇒ money) · A-7 (human · คำตอบมีราคา ⇒ money) · ส่วน A-3 ตรวจ body ขึ้นต้น "Shark (ผู้ช่วย AI):"
