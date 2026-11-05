@@ -420,6 +420,20 @@
    "items": [],
    "unread": 0,
    "categories": []
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 1,
+   "customers": 0,
+   "team": {
+    "invites": 2,
+    "help": 0,
+    "support": 0
+   },
+   "total": 3
+  },
+  "GET /api/mobile/inbox/shift": {
+   "onDuty": false,
+   "onDutyAt": null
   }
  }
 }

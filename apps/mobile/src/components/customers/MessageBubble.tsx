@@ -5,6 +5,7 @@
 //   ลิงก์ไฟล์/เสียง/รูปเต็มจอ เปิดเฉพาะ https (isSafeLink · R-S2.17c)
 //   สติกเกอร์ (stickerMeta) = ช่องสติกเกอร์ (ไม่โหลดรูปจากภายนอก) · รูป = ย่อ แตะ = ตัวดูเต็มจอ · ไฟล์ = เปิด · เสียง = เล่น (เปิดลิงก์) + ความยาว
 //   deliveryStatus FAILED = ✗ + ปุ่มส่งใหม่
+import { useState } from "react";
 import { Image, Linking, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { Icon } from "@/src/components/airy";
@@ -106,7 +107,7 @@ export function MessageBubble({
         {msg.attachments.map((a, i) =>
           isImage(a) ? (
             <Pressable testID="cust-att-image" key={i} onPress={() => onImage(a.url)} accessibilityRole="imagebutton" accessibilityLabel={t("cust.msg.image")} style={styles.imgWrap}>
-              <Image source={{ uri: a.url }} style={[styles.img, { backgroundColor: c.chip.bg }]} resizeMode="cover" />
+              <ImageAtt url={a.url} />
             </Pressable>
           ) : isAudio(msg, a) ? (
             <Pressable testID="cust-att-audio" key={i} onPress={() => openSafe(a.url)} accessibilityRole="button" accessibilityLabel={t("cust.msg.audio")} style={styles.attRow}>
@@ -213,8 +214,23 @@ const styles = StyleSheet.create({
   resend: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 2 },
   sticker: { width: 96, height: 84, borderRadius: radii.segIn + 2, alignItems: "center", justifyContent: "center", gap: 4 },
   imgWrap: { marginTop: 4 },
-  img: { width: 180, height: 140, borderRadius: radii.segIn },
+  img: { width: 180, height: 140, borderRadius: radii.segIn, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   attRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
   attT: { fontSize: T.cap + 0.5, flexShrink: 1 },
   play: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
 });
+
+/** S2.14 F3: รูปของลูกค้า — พื้นรอ = surface กลาง + ไอคอนรูป (ไม่ใช่สีของพิกเซลรูป) · รูปโหลดได้ทับเต็มกรอบ · โหลดไม่ได้ = คงพื้นรอ
+ *  (เดิม: Image เปล่าบนพื้น chip.bg — fixture เป็น PNG 1×1 สีเขียว #00ff00 โปร่ง 50% ถูกยืดเต็มกรอบด้วย resizeMode cover ⇒ กล่องเขียวสด) */
+// R-S2.14l: โหลดรูปจากเครื่องอื่นเฉพาะ url ที่ผ่าน isSafeLink (https) — ไม่ผ่าน (data:/http:/javascript: ฯลฯ) = กรอบไอคอนรูปอย่างเดียว
+function ImageAtt({ url }: { url: string }) {
+  const { c } = useTheme();
+  const [failed, setFailed] = useState(false);
+  const safe = isSafeLink(url);
+  return (
+    <View style={[styles.img, { backgroundColor: c.surface, borderColor: c.divider, borderWidth: 1 }]}>
+      <Icon name="image" size={26} color={c.iconDim} />
+      {failed || !safe ? null : <Image source={{ uri: url }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setFailed(true)} />}
+    </View>
+  );
+}

@@ -1,4 +1,5 @@
 // ปุ่มหลัก .btn1 — สูง 60 มน 30 พื้น accent · ปิด = .btn1.off
+// S2.14: ปิด = Pressable disabled จริง (เดิมแค่ไม่ส่ง onPress ⇒ เว็บ/โปรแกรมอ่านจอเห็นเป็นปุ่มเปิดที่กดแล้วไม่มีอะไรเกิด)
 import { Pressable, StyleSheet } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { shadow, useTheme } from "@/src/theme/index";
@@ -10,6 +11,7 @@ export function PrimaryButton({ label, testID, onPress, disabled = false }: { la
     <Pressable
       testID={testID}
       onPress={disabled ? undefined : onPress}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       style={[styles.btn, disabled ? { backgroundColor: c.btnOff.bg } : [{ backgroundColor: c.accent }, shadow(c.accentShadow)]]}

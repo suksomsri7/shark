@@ -1,11 +1,13 @@
 // ชิ้นส่วน UI ธีม Airy ของเลขา AI — ทุกสีมาจาก src/theme/index (ไม่มีสีฝังในไฟล์ใด) · ทุกปุ่มมี testID
 export { AiryScreen } from "./Screen";
+export { BottomDock } from "./BottomDock";
 export { Chip } from "./Chip";
 export { Dot, type DotStatus } from "./Dot";
 export { Glass } from "./Glass";
 export { Icon, type IconName } from "./Icon";
 export { IconBtn } from "./IconBtn";
 export { InputBar } from "./InputBar";
+export { LoadError, Loading } from "./LoadState";
 export { Note } from "./Note";
 export { Orb } from "./Orb";
 export { PrimaryButton } from "./PrimaryButton";

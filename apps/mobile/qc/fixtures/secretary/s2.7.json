@@ -875,6 +875,16 @@
    "items": [],
    "unread": 0,
    "categories": []
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 2,
+   "customers": 1,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 0
+   },
+   "total": 3
   }
  }
 }

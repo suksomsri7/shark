@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { AiryScreen, Orb, PrimaryButton } from "@/src/components/airy";
 import { AuthField, GlassButton, Hero, LinkLine, NoteLine, OtpBoxes } from "@/src/components/auth/airy";
-import { authErrorCode, authErrorKey, phoneLink, smsRequest } from "@/src/lib/auth-api";
+import { authErrorCode, authErrorKey, keepCodeOnError, phoneLink, smsRequest } from "@/src/lib/auth-api";
 import { formatThaiMobileInput, maskPhone, normalizeThaiMobile } from "@/src/lib/phone";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT } from "@/src/i18n";
@@ -87,7 +87,8 @@ export default function PhoneLinkScreen() {
       if (why === "invalid") setShakeKey((k) => k + 1);
       // หมดอายุ/ไม่พบ ⇒ ส่งใหม่ได้ทันที · ล็อก ⇒ ตัวนับเดินต่อ (§R)
       if (why === "expired" || why === "not_found") setLeft(0);
-      setCode("");
+      // S2.14 (R-S2.14i): ล้มชั่วคราว (เน็ต · ≥500 ยกเว้น 503) ⇒ คงรหัสไว้กด "ยืนยัน" ซ้ำ · รหัสผิด/หมดอายุ ⇒ ล้างให้พิมพ์ใหม่
+      if (!keepCodeOnError(e)) setCode("");
     } finally {
       setBusy(false);
     }

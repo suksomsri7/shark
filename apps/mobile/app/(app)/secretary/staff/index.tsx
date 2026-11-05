@@ -10,7 +10,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-n
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, PrimaryButton, Sheet } from "@/src/components/airy";
+import { AiryScreen, BottomDock, Glass, Icon, LoadError, Loading, PrimaryButton, Sheet } from "@/src/components/airy";
 import { SecTopBar, TenantTitle } from "@/src/components/secretary/SecTopBar";
 import { PendingRow, StaffRow, type StaffRowIds, type StaffWork } from "@/src/components/secretary/StaffRow";
 import { dateBkk } from "@/src/components/secretary/bkk";
@@ -31,7 +31,7 @@ import {
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { radii, size, spacing, type as T, CTA_BOTTOM, LIST_BOTTOM } from "@/src/theme/tokens";
+import { radii, size, spacing, type as T, CTA_BOTTOM, DOCK_FADE, LIST_BOTTOM } from "@/src/theme/tokens";
 
 
 /** testID ของแถว (spec s2.10) — ป้ายแชท = "sec-staff-chat-badge" · ระดับที่แสดง NONE|VIEW|REPLY */
@@ -56,6 +56,7 @@ export default function SecretaryStaffScreen() {
   const [rooms, setRooms] = useState<RoomRaw[]>([]);
   const [onDuty, setOnDuty] = useState<Set<string>>(new Set());
   const [denied, setDenied] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -70,6 +71,7 @@ export default function SecretaryStaffScreen() {
     setInvites([]);
     setRooms([]);
     setDenied(false);
+    setFailed(false);
   }, [activeTenantId]);
 
   const load = useCallback(async () => {
@@ -85,10 +87,11 @@ export default function SecretaryStaffScreen() {
       if (isDenied(s.reason)) {
         setDenied(true);
         setPeople([]);
-      } else setPeople((p) => p ?? []);
+      } else setFailed(true); // S2.14: คงรายการเดิม · ยังไม่เคยได้ = LoadError (ไม่ใช่ "ยังไม่มีพนักงาน")
     } else {
       const v = normalizeStaff(s.value);
       setDenied(false);
+      setFailed(false);
       setPeople(v.people);
       setInvites(v.invites);
     }
@@ -101,6 +104,11 @@ export default function SecretaryStaffScreen() {
       void load();
     }, [load]),
   );
+
+  const retry = useCallback(() => {
+    setFailed(false);
+    void load();
+  }, [load]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -178,6 +186,8 @@ export default function SecretaryStaffScreen() {
             <Icon name="lock" size={22} color={c.textMuted} />
             <Text style={[styles.deniedT, { color: c.text }]}>{t("sec.staff.denied")}</Text>
           </Glass>
+        ) : people === null ? (
+          failed ? <LoadError testID="sec-staff-error" onRetry={retry} /> : <Loading testID="sec-staff-loading" />
         ) : (
           <>
             <View style={[glassStyle(c, SEARCH_H / 2), styles.search]}>
@@ -228,6 +238,7 @@ export default function SecretaryStaffScreen() {
         )}
       </ScrollView>
 
+      {manage && !denied ? <BottomDock height={CTA_BOTTOM + insets.bottom + size.btnH + DOCK_FADE} /> : null}
       {manage && !denied ? (
         <View style={[styles.cta, { bottom: CTA_BOTTOM + insets.bottom }]}>
           <PrimaryButton testID="sec-staff-invite" label={t("sec.staff.invite")} onPress={() => router.push("/secretary/staff/invite")} />

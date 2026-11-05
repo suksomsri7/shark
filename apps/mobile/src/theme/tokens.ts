@@ -61,6 +61,8 @@ export const cardPad = { v: 16, h: 18 } as const;
 /** ปุ่มหลักลอยล่าง (D1 · G1 · G2 · C1 · R-S2.13g): ระยะปุ่มจากขอบล่าง และ padding ล่างของรายการ = ความสูงปุ่ม + ระยะนั้น + ช่องไฟการ์ด (+ safe area ที่จอ) */
 export const CTA_BOTTOM = 26;
 export const LIST_BOTTOM = size.btnH + CTA_BOTTOM + cardGap;
+/** S2.14 F1: ส่วนไล่จางของแถบรอง (BottomDock) เหนือปุ่ม/ช่องลอย · ความสูงแถบ = ระยะจากขอบล่าง + ความสูงของลอย + DOCK_FADE */
+export const DOCK_FADE = 30;
 
 /** มุมโค้ง/ระยะห่างชุดเดิมของแอป 1.0 — ห้ามเปลี่ยนค่า (src/theme.ts ส่งออกเป็น R/S) */
 export const legacyR = { sm: 8, md: 12, lg: 16, full: 999 } as const; // radius

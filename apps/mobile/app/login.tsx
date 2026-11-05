@@ -1,7 +1,7 @@
 // จอเข้าสู่ระบบ ธีม Airy (ใบ S2.12 · ไม่มีหน้า login ในแบบ — ประกอบจากชิ้นเดียวกับ S1: orb + การ์ดกระจก + ปุ่มหลัก)
 // ทางเข้าหลัก = เบอร์มือถือ → ขอรหัส SMS → /otp?mode=login · ทางเดิมยังอยู่ครบ: อีเมล OTP 2 ขั้น (กด "เข้าด้วยอีเมล") +
 // ปุ่ม social (Apple/Google/LINE/Facebook ใช้จริง · TikTok เปิดใช้เร็ว ๆ นี้) · ทุกทางจบที่ signIn(token) แล้วยามหน้าประตูพาไปต่อเอง
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { FontAwesome6 } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
@@ -15,7 +15,7 @@ import { AiryScreen, Glass, PrimaryButton } from "@/src/components/airy";
 import { AuthField, LinkLine, NoteLine, OtpBoxes } from "@/src/components/auth/airy";
 import { SOCIAL_BRAND } from "@/src/components/auth/social";
 import { AnimatedOrb } from "@/src/components/ui/orb";
-import { authErrorCode, authErrorKey, smsRequest } from "@/src/lib/auth-api";
+import { authErrorCode, authErrorKey, keepCodeOnError, smsRequest } from "@/src/lib/auth-api";
 import { formatThaiMobileInput, localThaiMobile, normalizeThaiMobile } from "@/src/lib/phone";
 import { useT } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
@@ -50,6 +50,7 @@ export default function LoginScreen() {
   const [code, setCode] = useState("");
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const verifyingRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // ข้อความเทา (social ยังไม่เปิด) — ไม่ใช่ error
   const [socialBusy, setSocialBusy] = useState(false);
@@ -108,11 +109,14 @@ export default function LoginScreen() {
   }
 
   async function verify(value = code) {
+    // R-S2.14o: กันเรียกซ้ำ (กล่องรหัสส่งเองเมื่อครบ + กดปุ่ม "ยืนยัน" พร้อมกัน) — state verifying อัปเดตไม่ทันในรอบเดียวกัน
+    if (verifyingRef.current) return;
     const v = value.trim();
     if (v.length !== 6) {
       setErr(t("auth.login.code6"));
       return;
     }
+    verifyingRef.current = true;
     setErr(null);
     setVerifying(true);
     try {
@@ -125,7 +129,9 @@ export default function LoginScreen() {
     } catch (x) {
       if (x instanceof ApiError && x.status === 401) setErr(t("auth.login.codeWrong"));
       else setErr(apiErrorText(x));
-      setCode("");
+      // S2.14 (R-S2.14i): ล้มชั่วคราว (เน็ต · ≥500 ยกเว้น 503) ⇒ คงรหัสไว้กด "ยืนยัน" ซ้ำ · รหัสผิด (4xx) ⇒ ล้าง
+      if (!keepCodeOnError(x)) setCode("");
+      verifyingRef.current = false;
       setVerifying(false);
     }
   }

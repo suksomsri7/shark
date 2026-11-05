@@ -47,9 +47,11 @@ export function SettingRow({
   children?: ReactNode;
 }) {
   const { c } = useTheme();
+  // S2.14: แถวแสดงค่าอย่างเดียว (ไม่มี onPress) = View ไม่ใช่ปุ่มที่ปิดอยู่ (โปรแกรมอ่านจอไม่ประกาศเป็นปุ่ม · ทะเบียนปุ่ม = กล่องแสดงผล)
+  const Row = onPress ? Pressable : View;
   return (
     <Glass pad={false} radius={radii.sugg} style={styles.card}>
-      <Pressable testID={testID} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? "button" : undefined} style={styles.row}>
+      <Row testID={testID} {...(onPress ? { onPress, accessibilityRole: "button" as const } : {})} style={styles.row}>
         {icon ? (
           <View style={[styles.ico, { backgroundColor: c.surface }]}>
             <Icon name={icon} size={18} />
@@ -72,7 +74,7 @@ export function SettingRow({
         ) : null}
         {children}
         {onPress ? <Icon name="chevron-right" size={18} color={c.iconDim} /> : null}
-      </Pressable>
+      </Row>
     </Glass>
   );
 }

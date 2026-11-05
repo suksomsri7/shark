@@ -83,6 +83,16 @@ export function glassStyle(c: Palette, radius: number = radii.card): ViewStyle {
   };
 }
 
+/** S2.14 F1: แถบรองใต้ของลอยล่าง — ไล่จากใสด้านบนเป็นพื้นจอทึบ (การ์ดที่เลื่อนผ่านไม่ทะลุขึ้นมาข้างปุ่ม/ช่องพิมพ์) */
+export function dockStyle(c: Palette): ViewStyle {
+  return bgImage(`linear-gradient(180deg, ${c.dock.fade} 0%, ${c.dock.solid} 34%, ${c.dock.solid} 100%)`);
+}
+
+/** S2.14 F1: ช่องพิมพ์ลอย = พื้นทึบ (surface ของแถบ) + ขอบ/เงาแบบกระจก — ไม่โปร่งเหมือน .gl */
+export function solidBarStyle(c: Palette, radius: number = radii.input): ViewStyle {
+  return { borderRadius: radius, borderWidth: 1.5, borderColor: c.glass.border, backgroundColor: c.dock.bar, ...shadow(c.glass.shadow) };
+}
+
 /** ลูกแก้ว .ao.o1 */
 export function orbStyle(c: Palette, d: number): ViewStyle {
   const o = c.orb;

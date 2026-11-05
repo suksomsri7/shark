@@ -164,6 +164,8 @@ const th = {
   "sec.home.filter.working": "กำลังทำ",
   "sec.home.filter.approval": "รออนุมัติ",
   "sec.home.filter.done": "เสร็จ",
+  "sec.home.scope.mine": "ของฉัน",
+  "sec.home.scope.tenant": "ทุกคนในกิจการ",
   "sec.home.line.OPEN": "รอคำสั่งเพิ่ม",
   "sec.home.line.RUNNING": "กำลังทำงาน",
   "sec.home.line.WAITING": "รออนุมัติ",
@@ -1052,6 +1054,21 @@ const th = {
   "acct.delete.deleting": "กำลังลบ…",
   "acct.delete.fail": "ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง",
   "acct.delete.previewFail": "ตรวจผลกระทบไม่สำเร็จ ลองใหม่อีกครั้ง",
+  // S2.14
+  "inv.err.bad_level": "มีระดับสิทธิ์ที่ระบบนี้ให้ไม่ได้ — เลือกระดับใหม่",
+  "inv.err.sensitive_key": "สิทธิ์เรื่องเงิน/ลบข้อมูล/ผู้ดูแลให้ตอนเชิญไม่ได้ — ให้ทีหลังในหน้าสิทธิ์ของพนักงาน",
+  "sec.state.loading": "กำลังโหลด…",
+  "sec.state.error": "โหลดข้อมูลไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง",
+  "sec.state.denied": "บัญชีนี้ยังไม่มีสิทธิ์ดูส่วนนี้ — ขอให้เจ้าของหรือผู้จัดการเปิดให้",
+  "sec.new.lockedPh": "บัญชีนี้ยังสั่งงานเลขาไม่ได้",
+  "sec.state.retry": "ลองใหม่",
+  "cust.task.title": "สร้างงานบอร์ดจากแชทนี้",
+  "cust.task.sub": "การ์ดงานผูกกับห้องแชทและลูกค้านี้ ไปที่บอร์ดตามที่ร้านตั้งไว้",
+  "cust.task.ph": "ชื่องาน เช่น ส่งใบเสนอราคาให้ลูกค้า",
+  "cust.task.send": "สร้างการ์ดงาน",
+  "cust.task.ok": "สร้างการ์ดงาน #{n} แล้ว",
+  "cust.task.okNoNo": "สร้างการ์ดงานแล้ว",
+  "cust.task.default": "ติดตามลูกค้า {name}",
 } as const;
 
 export type I18nKey = keyof typeof th;

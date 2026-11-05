@@ -7,11 +7,11 @@ import { useCallback, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Note, SectionLabel } from "@/src/components/airy";
+import { AiryScreen, Glass, LoadError, Loading, Note, SectionLabel } from "@/src/components/airy";
 import { OwnerOnlyBadge, SettingsTop } from "@/src/components/secretary/SettingRow";
 import { RuleRow } from "@/src/components/secretary/RuleRow";
 import { bahtText } from "@/src/components/secretary/bkk";
-import { secGet, secPut, serverNote, useActiveRole, type RuleKey, type RuleState, type RulesView, type StaffRow } from "@/src/api/secretary";
+import { isDenied, secGet, secPut, serverNote, useActiveRole, type RuleKey, type RuleState, type RulesView, type StaffRow } from "@/src/api/secretary";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
@@ -40,9 +40,15 @@ export default function SecretaryRulesScreen() {
   const [view, setView] = useState<RulesView>({ rules: DEFAULTS, alwaysApprove: ["destructive", "money", "piiExport"] });
   const [limitText, setLimitText] = useState(String(DEFAULTS["money.limit"].limitSatang! / 100));
   const [approvers, setApprovers] = useState<StaffRow[] | null>(null);
+  // R-S2.14o: รายชื่อผู้อนุมัติ — ระหว่างโหลดไม่วาดแถวสำรอง (เจ้าของ/ผู้จัดการ) · โหลดไม่ได้/อ่านไม่ได้ (พนักงาน) = แถวตามบทบาท
+  const [approversDone, setApproversDone] = useState(false);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
+  // S2.14 รอบ 2 (R-S2.14): ก่อนได้ค่าจริงจากเซิร์ฟเวอร์ ห้ามแสดง/แก้สวิตช์จากค่าปริยาย ⇒ ตัวโหลด · ล้ม = การ์ดล้ม + ลองใหม่ · 403 = การ์ดล็อก
+  const [load, setLoad] = useState<"loading" | "ok" | "error" | "denied">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
   const tenantRef = useRef(activeTenantId);
   tenantRef.current = activeTenantId;
+  const loadedFor = useRef<string | null>(null);
 
   const apply = useCallback((r: RulesView) => {
     setView(r);
@@ -54,24 +60,35 @@ export default function SecretaryRulesScreen() {
     useCallback(() => {
       if (!activeTenantId) return;
       let live = true;
+      // กลับมาที่จอเดิมของกิจการเดิม = คงค่าที่โหลดแล้ว · กิจการใหม่/ยังไม่เคยโหลด = ตัวโหลด
+      const same = loadedFor.current === activeTenantId;
+      if (!same) setLoad("loading");
       secGet("secretary/rules")
-        .then((r) => live && apply(r))
-        .catch(() => live && setNote({ text: t("sec.set.loadFail"), warn: true }));
+        .then((r) => {
+          if (!live) return;
+          apply(r);
+          loadedFor.current = activeTenantId;
+          setLoad("ok");
+        })
+        .catch((e) => live && !same && setLoad(isDenied(e) ? "denied" : "error"));
       // ผู้อนุมัติ (แสดงอย่างเดียว) — อ่านรายชื่อได้เฉพาะเจ้าของ/ผู้จัดการ · อ่านไม่ได้ ⇒ แสดงตามบทบาท
+      if (!same) setApproversDone(false);
       if (role === "OWNER" || role === "MANAGER") secGet("secretary/staff")
         .then((r) => live && setApprovers((r.items ?? []).filter((x) => !x.pending && x.active !== false && (x.role === "OWNER" || x.role === "MANAGER"))))
-        .catch(() => live && setApprovers(null));
+        .catch(() => live && setApprovers(null))
+        .finally(() => live && setApproversDone(true));
+      else setApproversDone(true);
       return () => {
         live = false;
       };
-    }, [activeTenantId, apply, t, role]),
+    }, [activeTenantId, apply, role, reloadKey]),
   );
 
   const always = new Set(view.alwaysApprove ?? []);
   const ruleOf = (k: RuleKey): RuleState => view.rules?.[k] ?? DEFAULTS[k];
 
   const put = async (key: RuleKey, patch: { enabled?: boolean; limitSatang?: number | null }) => {
-    if (!owner) return;
+    if (!owner || load !== "ok") return;
     const tenant = activeTenantId;
     const before = view;
     setNote(null);
@@ -129,7 +146,9 @@ export default function SecretaryRulesScreen() {
           </Note>
         ) : null}
 
-        {ROWS.map((r) => {
+        {load === "loading" ? <Loading testID="sec-rules-loading" /> : null}
+        {load === "error" || load === "denied" ? <LoadError testID="sec-rules-error" denied={load === "denied"} onRetry={() => setReloadKey((k) => k + 1)} /> : null}
+        {load !== "ok" ? null : ROWS.map((r) => {
           const locked = !!r.always && always.has(r.always);
           const on = locked ? true : r.rule ? ruleOf(r.rule).enabled : true;
           return (
@@ -170,7 +189,8 @@ export default function SecretaryRulesScreen() {
 
         <SectionLabel style={styles.label}>{t("sec.rules.approvers")}</SectionLabel>
         <View testID="sec-rules-approver">
-          {approverRows.map((a) => (
+          {!approversDone ? <Loading testID="sec-rules-approver-loading" /> : null}
+          {!approversDone ? null : approverRows.map((a) => (
             <Glass key={a.key} testID={`sec-rules-approver-${a.key}`} radius={radii.sugg} style={styles.appr}>
               <View style={[styles.av, { backgroundColor: c.chip.bg }]}>
                 <Text style={[styles.avT, { color: c.text }]}>{a.initial}</Text>

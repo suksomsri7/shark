@@ -13,7 +13,7 @@ import { useCallback, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, Note, PrimaryButton, SectionLabel, Segment } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, LoadError, Loading, Note, PrimaryButton, SectionLabel, Segment } from "@/src/components/airy";
 import { Avatar, ChannelBadge, firstName, useChannelLabel } from "@/src/components/customers/parts";
 import {
   NOTIFY_MODES,
@@ -24,6 +24,7 @@ import {
   inboxPost,
   inboxPut,
   setInboxCanReply,
+  statusOf,
   type Connection,
   type NotifyMode,
   type QuickReply,
@@ -32,7 +33,7 @@ import {
 } from "@/src/api/inbox";
 import type { I18nKey } from "@/src/i18n";
 import { OwnerOnlyBadge, SettingRow, SettingsTop, Toggle } from "@/src/components/secretary/SettingRow";
-import { DISCLOSURE_MAX, disclosureProblem, secGet, secPut, serverNote, useActiveRole, type AfterHours } from "@/src/api/secretary";
+import { DISCLOSURE_MAX, disclosureProblem, isDenied, secGet, secPut, serverNote, useActiveRole, type AfterHours } from "@/src/api/secretary";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
@@ -54,6 +55,9 @@ export default function SecretaryCustomersScreen() {
   const [problem, setProblem] = useState<keyof typeof PROBLEM | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
+  // R-S2.14h: ล้มก่อนได้ after-hours = LoadError (403 = การ์ดล็อก · อื่น ๆ = ลองใหม่)
+  const [loadErr, setLoadErr] = useState<"denied" | "error" | null>(null);
+  const [tick, setTick] = useState(0);
   const tenantRef = useRef(activeTenantId);
   tenantRef.current = activeTenantId;
 
@@ -66,13 +70,18 @@ export default function SecretaryCustomersScreen() {
           if (!live) return;
           setSaved(r);
           setForm(r);
+          setLoadErr(null);
         })
-        .catch((e) => live && setNote({ text: serverNote(e) ?? t("sec.set.loadFail"), warn: true }));
+        .catch((e) => live && setLoadErr(isDenied(e) ? "denied" : "error"));
       return () => {
         live = false;
       };
-    }, [activeTenantId, owner, t]),
+    }, [activeTenantId, owner, tick]),
   );
+  const retry = useCallback(() => {
+    setLoadErr(null);
+    setTick((x) => x + 1);
+  }, []);
 
   const dirty = !!form && !same(form, saved);
   const set = (patch: Partial<AfterHours>) => {
@@ -124,6 +133,14 @@ export default function SecretaryCustomersScreen() {
           </Note>
         ) : null}
 
+        {/* S2.14: ก่อนได้ after-hours = Loading · ล้ม = LoadError เดียวกับทุกจอ (R-S2.14h) */}
+        {owner && !form ? (
+          loadErr ? (
+            <LoadError testID="sec-cust-error" denied={loadErr === "denied"} onRetry={retry} />
+          ) : (
+            <Loading testID="sec-cust-loading" />
+          )
+        ) : null}
         {owner && form ? (
           <>
             <Glass radius={radii.sugg} style={styles.card}>
@@ -227,6 +244,9 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
   const [notify, setNotify] = useState<NotifyMode | null>(null);
   const [routing, setRouting] = useState<Routing | null>(null);
   const [rules, setRules] = useState<Draft[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const busyRef = useRef(false);
@@ -247,28 +267,48 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
           setCanReply(sys.canReply !== false);
           setInboxCanReply(sys.canReply !== false);
           if (!sid) return;
+          // R-S2.14h: เส้นย่อยล้มที่ไม่ใช่ 403 = ทั้งส่วนเป็น LoadError (ไม่วาด "ยังไม่ได้เชื่อม/ยังไม่มีกฎ" แทนผลจริง) · 403 = ซ่อนส่วนนั้นตามเดิม
+          let subFailed = false;
+          const soft = <R,>(p: Promise<R>) =>
+            p.catch((e: unknown) => {
+              if (statusOf(e) !== 403) subFailed = true;
+              return null;
+            });
           const [cn, qr, rt, nf] = await Promise.all([
-            inboxGet("inbox/connections", { systemId: sid }).catch(() => null),
-            inboxGet("inbox/quick-replies", { systemId: sid }).catch(() => null),
-            inboxGet("inbox/routing", { systemId: sid }).catch(() => null),
-            inboxGet("secretary/notify").catch(() => null),
+            soft(inboxGet("inbox/connections", { systemId: sid })),
+            soft(inboxGet("inbox/quick-replies", { systemId: sid })),
+            soft(inboxGet("inbox/routing", { systemId: sid })),
+            soft(inboxGet("secretary/notify")),
           ]);
           if (!live) return;
+          if (subFailed) {
+            setFailed(true);
+            return;
+          }
+          setFailed(false);
           setConns(cn?.items ?? []);
           setQuick(qr?.items ?? []);
           setRouting(rt);
           setRules(toDraft(rt));
           const m = nf?.prefs?.inbox;
           setNotify(isNotify(m) ? m : nf ? "ALL" : null);
-        } catch {
-          if (live) setOk(false);
+          setLoaded(true);
+        } catch (e) {
+          if (!live) return;
+          // inbox/systems 403 = ไม่แสดงส่วนแชทลูกค้า (เดิม) · ล้มแบบอื่น = LoadError+ลองใหม่
+          if (statusOf(e) === 403) setOk(false);
+          else setFailed(true);
         }
       })();
       return () => {
         live = false;
       };
-    }, [activeTenantId]),
+    }, [activeTenantId, tick]),
   );
+  const retry = useCallback(() => {
+    setFailed(false);
+    setTick((x) => x + 1);
+  }, []);
 
   const guard = async (fn: () => Promise<void>) => {
     if (busyRef.current) return;
@@ -330,6 +370,8 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
     });
 
   if (ok === false) return null;
+  // S2.14: ยังไม่รู้ช่องทาง/กฎ = Loading (ไม่โชว์ "ยังไม่ได้เชื่อม/ยังไม่มีกฎ" ก่อนผลมา) · ล้มก่อนได้ผล = LoadError (R-S2.14h)
+  if (!loaded) return failed ? <LoadError testID="cust-set-error" onRetry={retry} /> : <Loading testID="cust-set-loading" />;
   const dutyNames = onDuty.map((d) => firstName(d.name)).filter(Boolean).join(" · ");
   return (
     <>

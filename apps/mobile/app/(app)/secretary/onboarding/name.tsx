@@ -7,7 +7,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Glass, IconBtn, Note, Orb, PrimaryButton, Segment } from "@/src/components/airy";
+import { AiryScreen, BottomDock, Glass, IconBtn, Note, Orb, PrimaryButton, Segment } from "@/src/components/airy";
 import {
   DEFAULT_SECRETARY_NAME,
   SUFFIXES,
@@ -23,7 +23,7 @@ import {
 import { useAuth } from "@/src/lib/auth-context";
 import { useT } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
-import { radii, size, spacing, type as T, CTA_BOTTOM, LIST_BOTTOM } from "@/src/theme/tokens";
+import { radii, size, spacing, type as T, CTA_BOTTOM, DOCK_FADE, LIST_BOTTOM } from "@/src/theme/tokens";
 
 
 const NAME_MAX = 30;
@@ -155,6 +155,7 @@ export default function SecretaryOnboardingNameScreen() {
           ) : null}
         </ScrollView>
 
+        <BottomDock height={CTA_BOTTOM + insets.bottom + size.btnH + DOCK_FADE} />
         <View style={[styles.cta, { bottom: CTA_BOTTOM + insets.bottom }]}>
           <PrimaryButton testID="sec-onb-save" label={busy ? t("sec.set.saving") : t("sec.onb.start", { name: shown })} disabled={!nameOk || busy} onPress={() => void save()} />
         </View>

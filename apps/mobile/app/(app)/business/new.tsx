@@ -10,7 +10,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Chip, IconBtn, Note, PrimaryButton, TopBar } from "@/src/components/airy";
+import { AiryScreen, BottomDock, Chip, IconBtn, Note, PrimaryButton, TopBar } from "@/src/components/airy";
 import { ReceivedInvites } from "@/src/components/secretary/InviteRow";
 import { sysColor } from "@/src/components/secretary/sys";
 import { ApiError } from "@/src/api/client";
@@ -19,7 +19,7 @@ import { useAuth } from "@/src/lib/auth-context";
 import { clearSignedUp } from "@/src/lib/post-signup";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
-import { CTA_BOTTOM, LIST_BOTTOM, radii, size, spacing, type as T } from "@/src/theme/tokens";
+import { CTA_BOTTOM, DOCK_FADE, LIST_BOTTOM, radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 const NAME_MIN = 2;
 const NAME_MAX = 60;
@@ -158,6 +158,7 @@ export default function BusinessNewScreen() {
           </Note>
         ) : null}
       </ScrollView>
+      <BottomDock height={CTA_BOTTOM + insets.bottom + size.btnH + DOCK_FADE} />
       <View style={[styles.cta, { bottom: CTA_BOTTOM + insets.bottom }]}>
         <PrimaryButton testID="biz-new-submit" label={busy ? t("biz.creating") : t("biz.submit")} disabled={!nameOk || busy} onPress={() => void submit()} />
       </View>

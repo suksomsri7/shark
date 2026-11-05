@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Dot, Glass, Icon, IconBtn, InputBar, Sheet } from "@/src/components/airy";
+import { AiryScreen, Dot, Glass, Icon, IconBtn, InputBar, LoadError, Loading, Sheet } from "@/src/components/airy";
 import { CaseBubble, type CaseBubbleIds } from "@/src/components/secretary/CaseBubble";
 import { caseStatusLine } from "@/src/components/secretary/CaseRow";
 import { AttachedRow, useHelpAttach } from "@/src/components/secretary/HelpAttach";
@@ -50,6 +50,8 @@ export default function SecretaryHelpCaseScreen() {
   const [msgs, setMsgs] = useState<HelpMsg[]>([]);
   const [gone, setGone] = useState(false);
   const [offline, setOffline] = useState(false);
+  // R-S2.14h: 403 = การ์ดล็อก (LoadError denied) แทนเธรด · ปิดช่องพิมพ์
+  const [denied, setDenied] = useState(false);
   const [roomTitle, setRoomTitle] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -72,6 +74,7 @@ export default function SecretaryHelpCaseScreen() {
       setMsgs(r.messages);
       setGone(false);
       setOffline(false);
+      setDenied(false);
       const sig = `${r.case.id}|${r.case.status}|${r.messages.length}|${r.messages[r.messages.length - 1]?.id ?? ""}`;
       if (seenSig.current !== sig) {
         seenSig.current = sig;
@@ -79,7 +82,10 @@ export default function SecretaryHelpCaseScreen() {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setGone(true);
-      else setOffline(true);
+      else if (e instanceof ApiError && e.status === 403) {
+        setDenied(true);
+        setOffline(false);
+      } else setOffline(true);
     }
   }, [id]);
 
@@ -196,7 +202,8 @@ export default function SecretaryHelpCaseScreen() {
               </View>
             ) : null}
           </View>
-          <IconBtn testID="help-menu" icon="more-horizontal" label={t("help.menu")} onPress={() => setMenu(true)} />
+          {/* R-S2.14o: ไม่มีสิทธิ์ (403) = ไม่มีเมนู ⋯ (ไม่มีอะไรให้ทำกับเรื่องที่เปิดไม่ได้) */}
+          {denied ? <View style={styles.barSpacer} /> : <IconBtn testID="help-menu" icon="more-horizontal" label={t("help.menu")} onPress={() => setMenu(true)} />}
         </View>
 
         {gone ? (
@@ -207,6 +214,10 @@ export default function SecretaryHelpCaseScreen() {
               <Text style={[styles.goneBtnT, { color: c.onAccent }]}>{t("help.toList")}</Text>
             </Pressable>
           </Glass>
+        ) : denied ? (
+          <View style={[styles.flex, styles.page]}>
+            <LoadError testID="help-case-denied" denied />
+          </View>
         ) : (
           <ScrollView
             ref={scroll}
@@ -272,7 +283,9 @@ export default function SecretaryHelpCaseScreen() {
                 {t("help.closedNote")}
               </Text>
             ) : null}
-            {offline ? <Text style={[styles.closed, { color: c.textMuted }]}>{t("help.offline")}</Text> : null}
+            {/* S2.14: ยังไม่ได้เรื่อง = Loading · ล้มก่อนได้เรื่อง = LoadError (poll ต่อเองด้วย) */}
+            {kase ? null : offline ? <LoadError testID="help-case-error" onRetry={() => void load()} /> : <Loading testID="help-case-loading" />}
+            {offline && kase ? <Text style={[styles.closed, { color: c.textMuted }]}>{t("help.offline")}</Text> : null}
           </ScrollView>
         )}
 
@@ -281,7 +294,7 @@ export default function SecretaryHelpCaseScreen() {
             {note.text}
           </Text>
         ) : null}
-        {gone ? null : (
+        {gone || denied ? null : (
           <>
             <AttachedRow testID="help-attached" atts={att.atts} uploading={att.uploading} onRemove={att.remove} />
             <InputBar
@@ -355,6 +368,7 @@ export default function SecretaryHelpCaseScreen() {
 }
 
 const styles = StyleSheet.create({
+  barSpacer: { width: size.iconBtn, height: size.iconBtn },
   flex: { flex: 1 },
   bar: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: spacing.page, paddingTop: 14, paddingBottom: 6 },
   center: { flex: 1, minWidth: 0, alignItems: "center" },

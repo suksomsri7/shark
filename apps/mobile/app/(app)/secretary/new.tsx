@@ -2,20 +2,22 @@
 //   ทักทายด้วยชื่อ/คำลงท้ายของเลขา (secretary/me) · ข้อเสนอจาก secretary/suggestions (แตะ = เติมคำสั่งลงช่อง ไม่ส่งเอง · มติ 9)
 //   "งานที่สั่งบ่อย" จาก secretary/frequent (แตะ = เติม) · "ระบบที่เลขาเข้าถึงได้" จาก secretary/access (ไม่โชว์ระบบที่ปิด)
 //   ส่ง = POST secretary/rooms { instruction, clientMessageId } → แทนที่จอด้วย /secretary/room/<roomId>
-//   402 / quota ⇒ การ์ด "โควตางานเดือนนี้หมด" + ลิงก์ /secretary/settings/quota · 429 / 403 / อื่น ๆ ⇒ ข้อความสั้นใต้ข้อเสนอ
+//   402 / quota ⇒ การ์ด "โควตางานเดือนนี้หมด" + ลิงก์ /secretary/settings/quota · 429 / อื่น ๆ ⇒ ข้อความสั้นใต้ข้อเสนอ
+//   403 (suggestions / access / POST rooms · R-S2.14h) ⇒ การ์ดล็อก `sec-new-denied` + ล็อกช่องพิมพ์ (ปุ่มส่ง/+ ปิด · ไม่รับการพิมพ์)
 //   ช่องพิมพ์ล่างสุด InputBar (ไม่มีปุ่มเสียง · มติ 16) · ปุ่มส่งกดไม่ได้เมื่อว่างหรือกำลังส่ง · ?q= เติมคำสั่งมาจาก C3
 // ทุกเส้นผ่าน src/api/secretary.ts · ข้อความผ่าน i18n · สเกล R-UI1 (F.v = แบบ × 0.73 · ตัวอักษรตาม tokens.type)
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, IconBtn, InputBar, Note, Orb, SectionLabel, SysTag, TopBar } from "@/src/components/airy";
+import { AiryScreen, Chip, Glass, IconBtn, InputBar, LoadError, Note, Orb, SectionLabel, SysTag, TopBar } from "@/src/components/airy";
 import { SuggestionList } from "@/src/components/secretary/SuggestionList";
 import { sysName } from "@/src/components/secretary/RoomCard";
 import { sysColor } from "@/src/components/secretary/sys";
 import {
   DEFAULT_SECRETARY_NAME,
   clientMessageId,
+  isDenied,
   normalizeFrequent,
   normalizeSuggestions,
   secGet,
@@ -52,6 +54,7 @@ export default function SecretaryNewScreen() {
   const [systems, setSystems] = useState<AccessItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<ErrKind | null>(null);
+  const [denied, setDenied] = useState(false);
   const tenantRef = useRef(activeTenantId);
 
   useEffect(() => {
@@ -66,7 +69,12 @@ export default function SecretaryNewScreen() {
     const tenant = activeTenantId;
     if (!tenant) return;
     const live = () => tenantRef.current === tenant;
-    const sugg = secGet("secretary/suggestions").catch(() => null);
+    setDenied(false);
+    const deny = (e: unknown) => {
+      if (isDenied(e) && live()) setDenied(true);
+      return null;
+    };
+    const sugg = secGet("secretary/suggestions").catch(deny);
     void sugg.then((r) => live() && setSuggestions(normalizeSuggestions(r)));
     // สั่งบ่อย: เส้นของตัวเอง · ไม่มี/ว่าง ⇒ ใช้ `frequent` ที่แนบมากับ suggestions (ร่าง API)
     void Promise.all([secGet("secretary/frequent").catch(() => null), sugg]).then(([f, s]) => {
@@ -76,7 +84,10 @@ export default function SecretaryNewScreen() {
     });
     void secGet("secretary/access")
       .then((r) => live() && setSystems((r.items ?? []).filter((x) => x.level !== "OFF")))
-      .catch(() => live() && setSystems([]));
+      .catch((e) => {
+        deny(e);
+        if (live()) setSystems([]);
+      });
   }, [activeTenantId]);
 
   useFocusEffect(
@@ -92,14 +103,16 @@ export default function SecretaryNewScreen() {
 
   const send = async () => {
     const instruction = text.trim();
-    if (!instruction || busy) return;
+    if (!instruction || busy || denied) return;
     setBusy(true);
     setErr(null);
     try {
       const r = await secPost("secretary/rooms", { instruction, clientMessageId: clientMessageId() });
       router.replace(`/secretary/room/${r.roomId}`);
     } catch (e) {
-      setErr(startErrorKind(e));
+      const k = startErrorKind(e);
+      if (k === "denied") setDenied(true);
+      else setErr(k);
     } finally {
       setBusy(false);
     }
@@ -131,7 +144,9 @@ export default function SecretaryNewScreen() {
             </View>
           </View>
 
-          {err === "quota" ? (
+          {denied ? (
+            <LoadError testID="sec-new-denied" denied />
+          ) : err === "quota" ? (
             <Glass testID="sec-new-quota" style={styles.quota}>
               <Text style={[styles.quotaT, { color: c.text }]}>{t("sec.new.quota.title")}</Text>
               <Text style={[styles.quotaB, { color: c.textMuted }]}>{t("sec.new.quota.body")}</Text>
@@ -182,15 +197,18 @@ export default function SecretaryNewScreen() {
         <InputBar
           testID="sec-new-input"
           sendTestID="sec-new-send"
-          placeholder={t("sec.new.input")}
           value={text}
           onChangeText={(v) => {
+            if (denied) return; // R-S2.14h: ล็อกช่องพิมพ์เมื่อไม่มีสิทธิ์ (InputBar locked ด้วย)
             setText(v);
             if (err && err !== "quota") setErr(null);
           }}
           onSend={() => void send()}
           onPlus={() => fill("")}
-          sendDisabled={!text.trim() || busy}
+          plusDisabled={denied}
+          sendDisabled={!text.trim() || busy || denied}
+          locked={denied}
+          placeholder={denied ? t("sec.new.lockedPh") : t("sec.new.input")}
           style={styles.input}
         />
       </KeyboardAvoidingView>

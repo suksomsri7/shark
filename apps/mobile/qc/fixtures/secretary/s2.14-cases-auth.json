@@ -1,0 +1,56 @@
+{
+ "_about": "S2.14 กรณีพิเศษของทะเบียนปุ่ม — สร้างโดย qc/states-sec.mjs --make จาก s2.1.json (อย่าแก้มือ) · __status อ่านโดย qc/sec-harness.mjs เท่านั้น",
+ "noAuth": [
+  "/login",
+  "/signup",
+  "/otp"
+ ],
+ "routes": [],
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-new",
+    "email": "qc@example.com",
+    "pendingEmail": null,
+    "name": "ทดสอบ QC",
+    "phone": null
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "ร้านทดสอบ",
+     "role": "OWNER",
+     "branding": null
+    }
+   ]
+  },
+  "POST /api/mobile/auth/otp": {
+   "ok": true
+  },
+  "POST /api/mobile/auth/verify": {
+   "__status": 401,
+   "__body": {
+    "error": "invalid_code",
+    "message": "รหัสไม่ถูกต้อง"
+   }
+  },
+  "POST /api/mobile/auth/sms/request": {
+   "__status": 503,
+   "__body": {
+    "error": "sms_unavailable",
+    "message": "ระบบส่ง SMS ขัดข้องชั่วคราว"
+   }
+  },
+  "POST /api/mobile/auth/sms/verify": {
+   "__status": 404,
+   "__body": {
+    "error": "no_account",
+    "message": "ยังไม่มีบัญชีของเบอร์นี้"
+   }
+  },
+  "POST /api/mobile/auth/phone/link": {
+   "ok": true,
+   "phone": "+66812345678"
+  }
+ }
+}
