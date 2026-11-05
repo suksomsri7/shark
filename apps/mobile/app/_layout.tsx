@@ -32,7 +32,13 @@ function Gate({ children }: { children: React.ReactNode }) {
     }
     if (tenants.length === 0) {
       // login แล้วแต่ยังไม่มีกิจการ → บังคับเข้า DNA Wizard สร้างกิจการแรก (คำสั่งเจ้าของ) · /business/new (G1) เปิดได้แต่ไม่บังคับ (R-S2.12a)
-      if (!atDna && !(inApp && (segments as string[])[1] === "business")) router.replace("/dna");
+      // S2.21 (สลับธงตาม R-S2.12a): เพิ่งสมัครด้วยเบอร์ (ธงผูก user.id) ⇒ G1 /business/new จริง แทน /dna · ธงล้างเมื่อสร้างกิจการแรกเสร็จ
+      const atBusiness = inApp && (segments as string[])[1] === "business";
+      if (isFreshSignup(user?.id)) {
+        if (!atBusiness) router.replace("/business/new");
+        return;
+      }
+      if (!atDna && !atBusiness) router.replace("/dna");
       return;
     }
     // S2.12: เพิ่งสมัครด้วยเบอร์ (ธงผูก user.id) + มีกิจการ ⇒ C1 ตั้งชื่อเลขา ครั้งเดียว

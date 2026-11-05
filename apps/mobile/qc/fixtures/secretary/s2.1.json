@@ -52,18 +52,16 @@
    "sec-staff-invite"
   ],
   "/secretary/staff/m1": [
-   "sec-secretary-staff-member",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "perm",
+   "perm-back"
   ],
   "/secretary/staff/invite": [
-   "sec-secretary-staff-invite",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "inv",
+   "inv-name",
+   "inv-phone",
+   "inv-role",
+   "inv-unit",
+   "inv-submit"
   ],
   "/secretary/settings": [
    "sec-settings",
@@ -111,11 +109,12 @@
    "cust-set-routing"
   ],
   "/secretary/settings/account": [
-   "sec-secretary-settings-account",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "acct",
+   "acct-phone",
+   "acct-email",
+   "acct-theme",
+   "acct-delete",
+   "acct-logout"
   ],
   "/secretary/settings/quota": [
    "sec-quota",
@@ -160,11 +159,11 @@
    "cust-info"
   ],
   "/business/new": [
-   "sec-business-new",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "biz-new",
+   "biz-new-name",
+   "biz-new-type",
+   "biz-new-system",
+   "biz-new-submit"
   ],
   "/": [
    "home-open-secretary"
@@ -1301,6 +1300,12 @@
      "points": 80
     }
    ]
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/invites/pending": {
+   "items": []
   },
   "GET /api/mobile/secretary/support/cases": {
    "items": [
