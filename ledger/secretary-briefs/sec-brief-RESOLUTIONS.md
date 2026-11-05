@@ -208,3 +208,10 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S1.14j (REQ-5 + S2.7/S2.10 asks)** `notifyUser` ใส่ `data.tenantId` ทุก push (notify.ts — ผู้คุมอนุญาตแตะ) · `GET access` คืนเฉพาะโมดูลของระบบที่ร้านเปิด (+ `ai` เสมอ) · proposal DTO มี `approvers: [{userId, name}]` (OWNER/MANAGER สมาชิกห้องที่ canApprove) และ `signature: CHAT_SEND_SIGNATURE` สำหรับ chat.send · staff row มี `units: [{id, name}]`
 - **T-9 (ข้อมูล)** support attachments data-URL ตัดออกจาก docs (readBody 64 KB) · **หนี้ S3**: `AiMessage.clientMessageId` คอลัมน์ (secretary_c) แทนตาราง rate · step-up ลบบัญชี
 - oracle รอบ 2 `qc-sec-s1.14.mts`: H-3 (POST rooms + clientMessageId ซ้ำ ⇒ duplicate ห้องเดิม · job นับ 1) · A-2 (STAFF PUT access/rules ⇒ 403 · STAFF GET after-hours ⇒ 403 · MANAGER invite role MANAGER ⇒ 4xx) · X-1 ขยาย regex (balanceMicro|costMicro|codeHash|phone":"\+66|@example) → 14 ข้อ
+
+## U. รีวิว S2.17–S2.19 ผู้ตรวจ V — มติรอบ 2 (5 พ.ย. ~23:0xZ)
+- **R-S2.17a (F3)** K3 ซ่อน/ปิดปุ่ม link/unlink · assign · helpers · status · handoff · close เมื่อ `inbox/systems.canReply=false` (อ่านจาก store) · ปุ่มรับเรื่อง/ส่งต่อ ตาม role
+- **R-S2.17b (F2/F5)** K2: เก็บข้อความทั้งหมดที่โหลดใน map เดียว · cursor "เก่ากว่า" จากข้อความเก่าสุดที่แสดงจริง · poll รวมด้วย id ไม่ทับ · K1: poll เมื่อมีมากกว่า 1 หน้า ⇒ รวมด้วย id (ไม่ทิ้งหน้าที่เลื่อนมา)
+- **R-S2.17c (F6/F7/F8/F9/F11)** ล้างข้อความ 429 เมื่อสำเร็จ · id ของ resend แยกจาก id ของข้อความพิมพ์ · บันทึกภายในแสดงไฟล์แนบ · ข้อความระบบตัดสินจาก senderUserId เท่านั้น · เปิดลิงก์เฉพาะ https · 403 จาก K2/K3 ⇒ setCustomersAccess(false) · currentSystemId ล้างตอนสลับร้าน
+- **ตั๋ว server (→ S3a / S1.14 follow-up)**: `linkedMember.phone` ต้องส่ง `phoneMasked` (เต็มเฉพาะมี booking.customer.phoneFull) · DTO ห้องลูกค้า: `canAssign/canSetStatus/canLinkCustomer` · `replyWindowEndsAt` · route ai-suggest แบบ Bearer + `suggestionId` ใน reply · `tags`/deals ใน DTO · task-from-chat route
+- รับ: ไฟล์ใหญ่ไม่มี fileSize บน native ให้ server ปัด (F12)
