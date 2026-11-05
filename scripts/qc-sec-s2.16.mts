@@ -87,17 +87,19 @@ try {
   console.log("── C: platform/support ──");
   if (!sup || typeof sup.listCasesForPlatform !== "function") { for (const i of [1, 2]) skip(`C-${i}`, "support", "ไม่มี listCasesForPlatform"); }
   else {
-    const mkCase = (subject: string, extra: Record<string, unknown>) => prisma.supportCase.create({ data: { tenantId: tid, openedByUserId: U.owner, subject, ...extra } as never });
+    let cn = 0; const mkCase = (subject: string, extra: Record<string, unknown>) => prisma.supportCase.create({ data: { tenantId: tid, openedByUserId: U.owner, subject, caseNo: ++cn, ...extra } as never }); // ORACLE-EDIT C-1: caseNo unique ต่อร้าน
     const cApp = await mkCase("เลขาทำผิด", { source: "APP", category: "secretary_wrong", roomId: room.id });
     const cBill = await mkCase("บิลผิด", { source: "APP", category: "billing" });
     const cWeb = await mkCase("จากเว็บ", { source: "WEB", category: "question" });
-    const all = await sup.listCasesForPlatform(support, { tab: "new" }) as { id: string; urgent?: boolean; source?: string; category?: string; roomId?: string | null }[];
-    const app = await sup.listCasesForPlatform(support, { tab: "new", source: "APP" }) as { id: string }[];
-    const sw = await sup.listCasesForPlatform(support, { tab: "new", category: "secretary_wrong" }) as { id: string }[];
+    type Row = { id: string; tenantId?: string; urgent?: boolean; source?: string; category?: string; roomId?: string | null };
+    const onlyMine = (xs: Row[]) => xs.filter((x) => x.tenantId === tid); // ORACLE-EDIT C-1: นับเฉพาะร้านทดสอบ (ฐาน QC มีเคสอื่น)
+    const all = onlyMine(await sup.listCasesForPlatform(support, { tab: "new" }) as Row[]);
+    const app = onlyMine(await sup.listCasesForPlatform(support, { tab: "new", source: "APP" }) as Row[]);
+    const sw = onlyMine(await sup.listCasesForPlatform(support, { tab: "new", category: "secretary_wrong" }) as Row[]);
     const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
     chk("C-1", "listCasesForPlatform: tab new มี 3 เคส · source=APP = 2 · category=secretary_wrong = 1 (มี roomId) · billing ⇒ urgent", ids(all).includes(cApp.id) && ids(all).includes(cBill.id) && ids(all).includes(cWeb.id) && app.length === 2 && sw.length === 1 && sw[0]!.id === cApp.id && all.find((c) => c.id === cBill.id)?.urgent === true && all.find((c) => c.id === cApp.id)?.roomId === room.id, JSON.stringify({ all: all.length, app: app.length, sw: sw.length }));
-    const a1 = await sup.assignCase(support, cApp.id) as { ok: boolean };
-    const mine = await sup.listCasesForPlatform(support, { tab: "mine" }) as { id: string }[];
+    const a1r = await sup.assignCase(support, cApp.id) as boolean | { ok: boolean }; const a1 = { ok: a1r === true || (typeof a1r === "object" && a1r?.ok === true) }; // ORACLE-EDIT C-2: S1.17 คืน boolean
+    const mine = onlyMine(await sup.listCasesForPlatform(support, { tab: "mine" }) as Row[]);
     const eFin = await throws(() => sup.assignCase(finance, cBill.id));
     chk("C-2", "assignCase (SUPPORT) ⇒ ok · tab mine มีเคสนั้น · FINANCE assign ⇒ throw", a1.ok === true && ids(mine).includes(cApp.id) && !!eFin, JSON.stringify({ a1, mine: mine.length, eFin }).slice(0, 160));
   }

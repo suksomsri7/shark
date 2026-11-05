@@ -78,6 +78,15 @@ export default async function BackofficeDashboard() {
           <Link href="/backoffice/ai-tuning" className="btn btn-ghost text-sm">
             AI ปรับปรุงตัวเอง →
           </Link>
+          {/* SEC S2.16/S2.23 ▸ เรื่องแจ้ง + คิวเลขา ◂ */}
+          <Link href="/backoffice/cases" className="btn btn-ghost text-sm">
+            เรื่องแจ้งจากผู้ใช้ →
+          </Link>
+          {user.role !== "FINANCE" && (
+            <Link href="/backoffice/secretary" className="btn btn-ghost text-sm">
+              คิวเลขา →
+            </Link>
+          )}
         </div>
       </Section>
     </div>

@@ -484,7 +484,27 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `assignCase(pu: PlatformUser, caseId: string) → Promise<boolean>` — "รับเรื่อง" H4 · `assigneePlatformUserId = pu.id` + `PlatformAuditLog` `support.assign` · ไม่มีเคส = `false`
 - `caseDetail(caseId)` — แถวเคสมี `source`/`category`/`roomId` ติดมาด้วย (คอลัมน์ของ S1.1)
 - `addPlatformMessage(pu, caseId, body, deps?: { post? })` — ข้อความ PLATFORM + `PENDING` + assignee (เดิม) · แทรก `🛟 ทีมงาน:` ลงห้อง AI **เฉพาะ `source !== "APP"` และมี `conversationId`** (bridge เดิม · `qc-help-v2`/`qc-mobile-help` เขียว) · push: เคส APP ⇒ (ผู้แจ้งยังเป็นสมาชิกที่รับแล้ว) `notifyUser(openedByUserId, tenantId, "help", { title: "ทีมงานตอบกลับแล้ว", body: ≤ 80, data: { link: "/help/<caseId>", caseId } })` · เคสอื่น = เดิม (`sendPushToUsers` ผู้สร้างห้อง/OWNER · `data.conversationId`)
-- "ระงับเลขาของร้าน" = `setAccess` ทุกโมดูล OFF (ไม่มีธงใหม่ · ไม่ใช้ `suspendTenant` :140) — ใบ S2.16
+- ~~"ระงับเลขาของร้าน" = `setAccess` ทุกโมดูล OFF~~ → ใบ S2.16 (brief ชนะ R-K12 ข้อนี้): รุ่นแรก = `suspendTenantSecretary` ด้านล่าง · สวิตช์จริง = หนี้ S3
+- **S2.16 (มีแล้ว · จอ H3/H4):**
+  - `CASE_TABS = ["new","waiting_shop","mine","closed"]` · `CASE_WRITE_ROLES = ["SUPER_ADMIN","SUPPORT"]` · `MONEY_WORDS_RE` · `isUrgentCase({category, subject}) → boolean` (= `category === "billing"` หรือหัวข้อมีคำเงิน)
+  - `listCasesForPlatform(pu, opts?: { tab?: CaseTab; source?: string; category?: string; take? (≤ 500 · ปริยาย 200) }) → Promise<(CaseWithTenant & { urgent: boolean; assigneeName: string | null })[]>` — ทุก role ของแพลตฟอร์มอ่านได้ (เท่าหน้าเดิม) · new = `OPEN` ∧ ไม่มีผู้รับ (ทุก source) · waiting_shop = `PENDING` · mine = ผู้รับ = ฉัน ∧ ไม่ `RESOLVED` · closed = `RESOLVED` · ไม่ส่ง tab = ทุกเคส · `roomId`/`source`/`category` ติดมาในแถว · `updatedAt` ใหม่ก่อน
+  - `caseTabCounts(pu) → Promise<Record<CaseTab, number>>` — ตัวเลขบนแท็บ
+  - `assignCase` (เดิม) **เพิ่มด่าน** `requirePlatformRole(pu, CASE_WRITE_ROLES)` — FINANCE ⇒ throw · คืน `boolean` เหมือนเดิม
+  - `suspendTenantSecretary(pu, tenantId, caseId?) → Promise<boolean>` — SUPER_ADMIN/SUPPORT · upsert `AiSettings.afterHoursReply = false` + `PlatformAuditLog` `secretary.suspend` (detail = `{afterHoursReplyBefore, caseId}`) ใน tx เดียว + `logOps WARN "ai"` (OpsEvent · tenantId) · ไม่มีร้าน = `false` · **ไม่** ปิดห้องงาน/AiSystemAccess (หนี้ S3: สวิตช์ระงับจริง)
+  - `resumeTenantSecretary(pu, tenantId) → Promise<boolean>` — audit ล่าสุดต้องเป็น suspend · คืน `afterHoursReply` เป็นค่าก่อนระงับ + audit `secretary.resume` + OpsEvent INFO
+  - `tenantSecretarySuspendedAt(tenantId) → Promise<Date | null>` — ป้าย "ระงับเลขาแล้ว" (audit ล่าสุด suspend/resume) · `platformUserBrief(id)` ชื่อผู้รับเรื่อง
+  - หน้า: `/backoffice/cases` (แท็บ+ตัวกรอง `?tab=&source=&category=` · ป้าย "!") · `/backoffice/cases/[id]` (รับเรื่อง · ระงับ/ยกเลิกระงับ · เปิดร้านใน backoffice = `/backoffice/tenants/<id>` (ไม่มีระบบ impersonate) · ห้องงานที่แนบ อ่านอย่างเดียว (`roomForSupport`) · ร่าง AI เดิม · ตอบ ⇒ push เคส APP ผ่าน `addPlatformMessage`) · `/backoffice/ai-quality` ส่วน "เรื่องแจ้ง เลขาทำผิด ที่ยังไม่ปิด" (category `secretary_wrong`) · ปุ่มย้อนของบันทึกการกระทำ **ซ่อน** (`undoAction` รับ actor สมาชิกร้านเท่านั้น · หนี้ S3)
+
+### 5.28 `src/lib/platform/secretary-ops.ts` (S2.23 · มีแล้ว · จอ G5 `/backoffice/secretary`) — คิวเลขาฝั่งทีมงาน
+- ทุกฟังก์ชัน `requirePlatformRole(actor, ["SUPER_ADMIN","SUPPORT"])` ก่อนแตะฐาน (FINANCE ⇒ throw) · prisma ตรงข้ามร้าน · ตัวเลขเงินอยู่ฝั่ง backoffice เท่านั้น (§C.6 ใช้กับแอป)
+- `listQueue(actor, now?) → Promise<{ running; queued; failed /*FAILED updatedAt ≥ now−24 ชม.*/; costTodayMicro /*Σ|amountMicro| USAGE วันไทย ทุกร้าน*/; items: QueueItem[] }>` — items = `QUEUED` ที่ `createdAt` < now−5 นาที ∪ `RUNNING` ที่ `leaseUntil` < now ∪ `FAILED` 24 ชม. (≤ 100 · `{id,status,stale,tenantId,tenantName,roomId,roomTitle,attempts,error,createdAt,updatedAt,ageMin}`)
+- `retryJob(actor, jobId) → Promise<{ok, note}>` — `updateMany where {id, status:"FAILED"}` ⇒ `QUEUED` · `attempts 0` · `error/leaseUntil/startedAt/finishedAt = null` · audit `secretary.job.retry` · ตัวรันรายนาที (`runRoomJobs`) หยิบเอง
+- `cancelJob(actor, jobId, now?) → Promise<{ok, note}>` — `updateMany where {id, status:"QUEUED"}` ⇒ `FAILED` · `error = CANCELLED_BY_SUPPORT` ("cancelled by support — …") · `finishedAt` · audit `secretary.job.cancel` · RUNNING/DONE ไม่แตะ
+- `costByTenant(actor, days, now?) → Promise<{ tenantId; tenantName; costMicro; txns; jobs }[]>` — `days` วันไทยล่าสุดรวมวันนี้ (1–90) · Σ|amountMicro| ของ `AiCreditTxn.kind = USAGE` ต่อร้าน · `jobs` = AiRoomJob ในช่วงเดียวกัน · มากไปน้อย · `__platform__` = "แพลตฟอร์ม"
+- `tenantsAtAssistCap(actor, now?) → Promise<{ tenantId; tenantName; usedMicro; capMicro }[]>` — วิธีนับเดียวกับ `assistUsedMicroOfDay` (ตัดต้นทุนห้องเลขา · R-S1.13f) แต่รวดเดียวทุกร้าน · `usedMicro ≥ FREE_PACK.assistDailyMicro`
+- `roomForSupport(actor, roomId) → Promise<RoomReadOnly | null>` — ห้อง + ข้อความ ≤ 200 + ข้อเสนอ ≤ 50 + `AiActionLog` ของห้อง ≤ 50 + job ≤ 20 · อ่านอย่างเดียว (หน้า `/backoffice/secretary/rooms/[id]` + ของที่แนบใน H4)
+- `moneyOfMicro(micro, thbPerUsd) → "$x.xx · ฿y.yy"` (อัตรา `thbPerUsd()` ของ topup.ts)
+- หน้า G5: การ์ด 4 ใบ · รายการค้าง/ล้ม + ลองใหม่ (FAILED) / ยกเลิก (QUEUED) / เปิดห้อง · ตารางต้นทุนต่อร้าน วันนี้/7 วัน (+งาน · สัดส่วน) · ร้านที่ถึงเพดาน assist · `router.refresh()` ทุก 30 วิ (เฉพาะแท็บที่เปิดดู) · `requireBackoffice(["SUPER_ADMIN","SUPPORT"])`
 
 ### 5.22 `src/lib/mobile/tenants.ts` (เปลี่ยน · S1.25 · มีแล้ว)
 - `TENANT_TYPES = ["retail","restaurant","service","clinic","education","dorm","other"]` · `TENANT_MAX_OWNED = 3`
@@ -634,6 +654,8 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | ปิดห้อง (`closeRoom`) | * → DONE | ผู้สร้าง · OWNER | `ai.room.status_changed` | – |
 | job ล้ม 3 ครั้ง | RUNNING → OPEN (+ข้อความ "ทำไม่สำเร็จ") | ระบบ | `ai.room.status_changed` | ผู้สร้าง |
 | ผู้สั่งถูกถอนสิทธิ์ | job ค้าง → FAILED | ระบบ (โหลด Membership สดทุกรอบ) | – | – |
+| ทีมงานกด "ลองใหม่" (G5 · S2.23) | job FAILED → QUEUED (attempts 0) ⇒ ห้องกลับ RUNNING เมื่อถูกหยิบ | PlatformUser SUPER_ADMIN/SUPPORT | – (audit `secretary.job.retry`) | ตามผลของ job |
+| ทีมงานกด "ยกเลิกงาน" (G5 · S2.23) | job QUEUED → FAILED (`cancelled by support`) | PlatformUser SUPER_ADMIN/SUPPORT | – (audit `secretary.job.cancel`) | – |
 
 ---
 
