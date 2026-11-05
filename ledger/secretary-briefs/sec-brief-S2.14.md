@@ -15,3 +15,4 @@ Read COMMON · ทุก `sec-brief-S2.*.md` + wo-notes · `docs/api/SECRETARY-A
 - F3 K2 placeholder รูปลูกค้า = surface กลาง + ไอคอน (ไม่ใช่กล่องเขียวสด) · ระบุแหล่งที่มาของสีเดิมใน wo-note
 - F4 แนบภาพ D1/G2 ตอนเลื่อนสุด (ทั้ง 2 ธีม) ใน wo-note
 - ลบตาราง LevelGrid ฝั่งแอปใน G2 เมื่อ S1.14b merge แล้ว (server รับ `levels`+`chat` · ปฏิเสธ `sensitive_key`) — ถ้า S1.14b ยังไม่ merge ตอนเริ่มใบ ให้ทำท้ายสุดหลัง merge tip
+- (จาก S1.14b · §X) `customers/[id]/info.tsx` แสดง `linkedMember.phoneMasked` (server ไม่ส่ง `phone` แล้ว) · K2: การ์ด "Shark ร่างคำตอบ" ใช้ `POST ai-suggest` ใหม่ (`ok:false` ⇒ ซ่อนการ์ด) และส่ง `suggestionId` ไปกับ reply เมื่อผู้ใช้ส่งจากร่าง · K3 ใช้ `conversation.can.*` ซ่อน/ปิดปุ่ม assign/setStatus/linkCustomer (แทนเดา role) · `conversation.tags` แสดงชิปแท็ก
