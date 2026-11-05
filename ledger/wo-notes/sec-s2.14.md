@@ -115,3 +115,18 @@
 - `three-chats.json` ok 3/3 · `states.json` 96/96 (เกณฑ์ใหม่: เห็น testID สถานะจริง) · reshoot ทั้งชุด FAIL=0 · padding 20/20
 - typecheck ทั้ง repo: แดง 2 จุด **เฉพาะ `scripts/qc-sec-s3a.1.mts` (oracle S3a.1 ของผู้คุมที่ merge มา · บรรทัด 167 `Property 'proposalId'/'error' does not exist on type '{ raw: any; }'`)** — ไม่ใช่ไฟล์ของใบนี้ ไม่แก้ · ⚠️ `next build` ตรวจ type `scripts/*.mts` ด้วย ⇒ ผู้คุมต้องแก้ก่อน build
 - ภาพคู่ที่เปลี่ยน: A1 ขอบเขต `apps/mobile/qc/shots-sec/s2.14-interaction/a1-scope-tenant{,-dark}-pair.png` · K2/K3 `customers-x1{,-dark}-k2-pair.png` `customers-x1-info{,-dark}-k3-pair.png` (fixture can.*/phoneMasked) · B4 สถานะ `s2.14-states/{loading,error,denied}/secretary-settings-rules.png` · ภาพคู่ทั้งชุดถ่ายใหม่
+
+## รอบ 3 (RESOLUTIONS §AA.3 R-S2.14m–o · merge ec44d3690 ด้วย SHA)
+| ข้อ | ไฟล์ | ทำอะไร |
+|---|---|---|
+| **R-S2.14m** | `qc/click-sec.mjs` · `qc/buttons-sec.json` (439) | ตัวสแกนจับ `(testID\|sendTestID\|plusTestID)=` (regex เดียวกับ oracle) · 7 ปุ่ม InputBar อยู่ในทะเบียน (`via: InputBar sendTestID/plusTestID`) และกดแล้วมีผล: `cust-send` POST …/x2/reply · `sec-new-send` POST secretary/rooms · `sec-room-send` POST …/r1/send · `help-send` POST support/cases · `cust-attach` `help-attach` `help-home-attach` = ตัวเลือกไฟล์ |
+| **R-S2.14n** | `customers/[id]/info.tsx` | ปุ่มแถวล่าง K3 (ปุ่มเดียวในแอปที่ยอมให้ 2 บรรทัด): `lineHeight = round(1.5 × ขนาดตัวอักษร)` (22) + `paddingVertical 7` ⇒ สระบน/วรรณยุกต์ครบ "สั่ง Shark เรื่องลูกค้านี้" · ถ่าย K3 ซ้ำ 2 ธีม |
+| **R-S2.14o** | `settings/rules.tsx` · `secretary/index.tsx` · `scheduled.tsx` · `help/[caseId].tsx` · `airy/InputBar.tsx` (`locked`) · `secretary/new.tsx` · `app/login.tsx` · `qc/sec-harness.mjs` · `qc/states-sec.mjs` | B4 ผู้อนุมัติ: ระหว่างโหลด `sec-rules-approver-loading` (ไม่วาดแถวสำรอง · เปลี่ยนกิจการ = โหลดใหม่) · A1 สลับขอบเขต = ล้างรายการเดิมทันที ⇒ ล้ม = `sec-home-error` (ไม่ใช่รายการเก่า) · harness รับคีย์ mock ที่ระบุ query ตรงตัว + กรณี `rooms?scope=tenant&take=50` ⇒ 500 · ยืนยันด้วย chromium: กด `sec-home-scope-tenant` ⇒ request `GET /api/mobile/secretary/rooms?scope=tenant&take=50` (s2.2 = รายการ + `sec-home-by` · s2.14-cases = `sec-home-error` + `-retry` ไม่มีการ์ดเก่า) · ผล GET ใน clicks แสดง query แล้ว · A7 denied ไม่มีปุ่ม + · H2 denied ไม่มี ⋯ (เว้นที่ไว้คงตำแหน่ง) · A2 denied: `InputBar locked` = จาง 0.55 + กุญแจแทน + · พิมพ์/ส่งไม่ได้ · placeholder "บัญชีนี้ยังสั่งงานเลขาไม่ได้" (i18n `sec.new.lockedPh`) · `login.tsx verify()` กันเรียกซ้ำด้วย ref (กล่องรหัสส่งเอง + กดยืนยันพร้อมกัน) |
+
+### ผลรอบ 3 (ทิป eea38c1cf + wo-note)
+- `qc-sec-s2.14` forced #1 `{"total":10,"passed":10,"failed":[],"skipped":[],"findings":[]}` exit 0 · #2 เท่ากัน exit 0 (B-1 รวม send/plusTestID · fitness ×2 ในทุกรอบ)
+- `clicks-sec.json` รอบเต็มรอบเดียว **439/439** · `meta {"generatedAt":"2026-11-05T20:37:44.919Z","registryHash":"390517abbe9c…21a9","distHash":"2aeb36c61fc9…bb34","resumed":false,"workers":4,"clicks":2533,"seconds":3289}` · กล่อง 248 · ปุ่ม 149 · ช่องพิมพ์ 23 · รากรวม 19
+- spec ซ้ำ: s2.2 10/11 · s2.17 11/12 (M-1 SKIP · failed []) · three-chats 3/3 · states 96/96 · reshoot ทั้งชุด FAIL=0 · padding 20/20
+- typecheck ทั้ง repo (`NODE_OPTIONS=--max-old-space-size=9000 ISO_MEM=10500M bash scripts/iso.sh pnpm exec tsc --noEmit`) **exit 0 · 0 error** (หลัง ec44d3690 แก้ qc-sec-s3a.1 แล้ว)
+- ภาพ K3 ใหม่: `apps/mobile/qc/shots-sec/customers-x1-info-k3-pair.png` · `apps/mobile/qc/shots-sec/customers-x1-info-dark-k3-pair.png` (+ ภาพเดี่ยว `customers-x1-info{,-dark}.png`)
+- หมายเหตุ: ชิปขอบเขต A1 (`sec-home-scope-*`) ประกาศ testID ในอาร์เรย์ตัวเลือก (`testID: "…"`) ไม่ใช่ `testID=` ⇒ ไม่อยู่ในทะเบียนตาม regex ของ oracle — ยืนยันการกดด้วยสคริปต์แยกข้างบน (ถ้าต้องการให้อยู่ในทะเบียน = ORACLE-EDIT/รูปแบบสแกนเพิ่ม)
