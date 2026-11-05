@@ -51,7 +51,7 @@ _(เติมเมื่อถึงใบ)_
 | S1.23 | ✅ | | รวมในชุด S1-12 · notify.ts (prefs · badge · กันสแปม per-process) · merge cd37937d |
 | S1.24 | ✅ | | รวมในชุด S1-15 · routing.ts (rules/shift/helper/handoff/sla) · merge e182aee9 · รวมในชุด S1-15 · routing.ts (rules/shift/helper/handoff/sla) · รวมในชุด S1-15 (เลน c) · รวมในชุด S1-15 · 🎯 ผู้ดูแล · เรียกช่วย · กฎรับเรื่อง · เข้าเวร |
 | S1.25 | ✅ | | รอบ 2 d84880c9 + รอบ 3 ffefcf36 (เลน d) · oracle 19/19 ×3 + ×1 ผู้คุมหลัง merge · ผู้ตรวจ O/P → §P · re-check → §P.2 ปิดครบ · s1.19 26/26 · staff-perms 49/49 · merge af21290a · มติสำคัญ: ผู้ใช้เดิมต้องกดรับคำเชิญเอง (auto-join เฉพาะสมัครใหม่) · คีย์อ่อนไหวไม่ให้ผ่านระดับ (system เป็น OFF-only) · หนี้: IP rate-limit บน route preview/accept (S2.21) · คีย์เก่าไม่หายตอน OFF · revokeStaffAccess เดิม MANAGER ถอน OWNER |
-| S1.14 | ✅ | | รอบ 2 42ccf4ca + รอบ 3 65d74187 (เลน b) · oracle 13/13 ×3 ผู้คุม (รอบ 2 และ 3) · ผู้ตรวจ T/U → §T · re-check N1–N7 ปิด · ทุก qc-sec-* เขียว (s1.1 B-1 รอ baseline ใหม่) · typecheck ทั้ง repo 0 · merge a6726f38 · **next build ยังไม่ผ่าน (OOM ×3 · รอบ 4 กำลังรัน)** · ตั๋ว server ที่เหลือใน RESUME |
+| S1.14 | ✅ | | รอบ 2 42ccf4ca + รอบ 3 65d74187 (เลน b) · oracle 13/13 ×3 ผู้คุม (รอบ 2 และ 3) · ผู้ตรวจ T/U → §T · re-check N1–N7 ปิด · ทุก qc-sec-* เขียว (s1.1 B-1 รอ baseline ใหม่) · typecheck ทั้ง repo 0 · merge a6726f38 · next build รอบ 4: compile ผ่าน 91 นาที แต่ OOM ตอน TypeScript stage → รอบ 5 บน tip ผู้คุมด้วย SHARK_TSC_PREBUILD_OK=1 (typecheck repo ผ่านแยกแล้ว) กำลังรัน · ตั๋ว server ที่เหลือใน RESUME |
 | S2.1 | ✅ | | built e621f7f5+8fd7eb77 (เลน d) · oracle 14/14 ×2 builder + 13/14 ผู้คุม (M-1 ข้าม tsc) · 24 route × 2 ธีม · คู่ C3 · จอ 1.0 ต่างเฉพาะปุ่มใหม่+orb · qc-mobile-* เท่าเดิม · merge fa790d96 (light-check · ผู้ตรวจ nav ตามหลัง) · deviation รับ: (app)/_layout เป็น Drawer (index ก่อน) · SecSkeleton · src/api/secretary.ts · docs §2.3 · หนี้: inbox/count อยู่ในใบ S1.14 แล้ว · ซ่อนไอคอนลูกค้า/ทีมตามสิทธิ์ → S2.20 |
 | S2.2 | ✅ | | built ceb8452d + padding 5d100c44 (เลน d) · spec 11/11 ×3 · §Q fix-forward 6 ข้อ · คู่ A1/A2 สว่าง/มืด ผู้คุมดู ✅ · interaction run ผ่าน · qc-mobile-* เท่าเดิม · merge 9b5e4f7d6 · deviation รับ: บรรทัดรองการ์ด = สถานะ (ไม่มี summary ใน DTO) · ไม่มีคำว่าพูด (ไม่มีไมค์) · path table ใน src/api/secretary.ts · หนี้: + บนจอ 403 → S2.20 · ยืนยันชื่อ endpoint หลัง S1.14 |
 | S2.3 | ✅ | | รวมในชุด S2-2 · A2 (ทักทาย/ข้อเสนอ/สั่งบ่อย/ระบบ/ช่องพิมพ์) · merge 9b5e4f7d6 |
@@ -74,7 +74,7 @@ _(เติมเมื่อถึงใบ)_
 | S2.22 | ✅ | | รวมในชุด S2-21 · G3/G4 · merge b307fe98e |
 | S2.23 | ✍️ | | รวมในชุด S2-16 |
 | S2.13 | ✍️ | | ใบ S2-13 (S2.13+S2.20) + spec s2.13.json · หลังทุกจอ S2 |
-| S2.14 | ✍️ | | ใบ S2-14 ปิด S2 (ด่านเต็ม) |
+| S2.14 | ✍️ | | ใบ S2-14 + oracle `qc-sec-s2.14.mts` (ทุก spec · ทะเบียนปุ่ม · ไม่มี fixture/console · three-chats · typecheck · fitness) · รอ S2.13+S2.20 |
 | S3a.1 | ⬜ | | 🎯 ข้อสอบรวม + นักล่า + โมเดลจริง |
 | S3a.2 | ⬜ | | ขึ้น prod (รอเจ้าของ) |
 | S3a.3 | ⬜ | | 🎯 TestFlight/Internal (รอเจ้าของ) |
