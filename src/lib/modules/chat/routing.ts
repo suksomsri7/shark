@@ -274,7 +274,7 @@ export async function assignIncoming(args: {
     { onlyIfAssignee: null },
   );
   if (!res.ok) return { assigned: null, reason: "already" };
-  const note = { title: "มีแชทลูกค้าใหม่มอบหมายให้คุณ", body: "เปิดเพื่อตอบลูกค้า", data: { link: `/inbox/${conv.id}?e=assigned`, conversationId: conv.id, systemId, tenantId } };
+  const note = { title: "มีแชทลูกค้าใหม่มอบหมายให้คุณ", body: "เปิดเพื่อตอบลูกค้า", data: { link: `/customers/${conv.id}?e=assigned`, conversationId: conv.id, systemId, tenantId } };
   const to = chosen;
   const push = async () => {
     try {
@@ -322,7 +322,7 @@ async function pushInbox(
     userId,
     tenantId,
     "inbox",
-    { title, body, data: { link: `/inbox/${conversationId}?e=${via}`, conversationId, systemId, tenantId } },
+    { title, body, data: { link: `/customers/${conversationId}?e=${via}`, conversationId, systemId, tenantId } },
     { assigneeUserId: userId, ...(post ? { post } : {}) },
   );
 }
@@ -517,7 +517,7 @@ export async function sweepChatSla(
     const msg = (convId: string, title: string, body: string): SlaMsg => ({
       title,
       body,
-      data: { link: `/inbox/${convId}?e=sla`, conversationId: convId, systemId, tenantId },
+      data: { link: `/customers/${convId}?e=sla`, conversationId: convId, systemId, tenantId },
     });
     try {
       let team = teams.get(tenantId);
