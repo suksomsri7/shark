@@ -286,3 +286,10 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S2.14l (AA/BB LOW)** fixture หลัก s2.1/s2.17/s2.20 → `linkedMember.phoneMasked` + `conversation.can.*` ตามสัญญา (ภาพคู่ K2/K3 ถ่ายใหม่) · docs §2.3b แถว /phone = `POST auth/phone/link` · ลบคอมเมนต์ค้าง auth-context.tsx · `ImageAtt` ผ่าน `isSafeLink` ก่อนโหลด · i18n ข้อความ server ไทยในโหมด en = หนี้ S3a
 - **รับทราบไม่แก้:** MINOR-4/L2 (badges.can.customers → S3a ตาม §AA) · L3 sec-harness (QC เท่านั้น)
 - บทเรียนผู้คุม: `pgrep -f … | xargs kill` ฆ่าเชลล์ตัวเอง (exit 144) ⇒ ใช้ `systemctl stop iso-*` อย่างเดียว
+
+### AA.3 re-check S2.14 รอบ 2 (ผู้ตรวจ CC) + ผู้คุมดูภาพ — มติรอบ 3 (7 พ.ย. ~01:1xZ) · FIX-FIRST แคบ
+- มติ e–l ปิดครบ · clicks meta ตรวจ hash แล้วจริง (registryHash = sha256(buttons-sec.json) · distHash ตรง dist)
+- **R-S2.14m (CC MAJOR-1)** ตัวสแกนทะเบียน + oracle จับ `(?:send|plus)TestID=` ด้วย (7 ปุ่ม InputBar: cust-send · cust-attach · sec-new-send · sec-room-send · help-send · help-attach · help-home-attach) · รันรอบเต็มใหม่ `resumed:false` · ORACLE-EDIT B-1 ทำแล้ว
+- **R-S2.14n (ผู้คุมดูภาพ K3 มืด)** ปุ่ม "สั่ง Shark เรื่องลูกค้านี้" สระบน/วรรณยุกต์ถูกตัด ("สัง…เรืองลูกค้านี") เมื่อข้อความ 2 บรรทัด → lineHeight/paddingVertical ของปุ่มต้องพอสำหรับอักษรไทย (ตรวจทุกปุ่มที่ allow 2 บรรทัด · ถ่าย K3 ซ้ำ 2 ธีม)
+- **R-S2.14o (CC MINOR-2/3/6/7)** B4 ส่วนผู้อนุมัติไม่วาดค่าสำรองก่อนได้ผล · A1 สลับขอบเขตแล้วล้ม ⇒ แสดง LoadError ไม่ใช่รายการเก่า + harness ยืนยัน `?scope=tenant` ใน request · จอ denied ซ่อนปุ่ม + (A7) และ ⋯ (H2) · ช่องพิมพ์ A2 ที่ล็อกต้องดูล็อก (สีจาง+ไอคอนกุญแจ) · `login.tsx verify()` ใส่ตัวกันเรียกซ้ำ
+- **รับทราบ → S3a**: CC MINOR-1 (hit-test ช่องพิมพ์) · MINOR-4 (regex denied vs error ใน states-sec) · MINOR-5 (B-1 เทียบ hash ปัจจุบัน)

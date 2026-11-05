@@ -51,7 +51,7 @@ console.log("── B: ทะเบียนปุ่ม ──");
       const Craw = JSON.parse(readFileSync(clk, "utf8")) as unknown; const C = (Array.isArray(Craw) ? Craw : ((Craw as { items?: unknown[] }).items ?? [])) as { testID: string; ok: boolean; effect?: string }[];
       const cmap = new Map(C.map((c) => [c.testID, c]));
       const screens = [...walk(join(APP, "secretary")), ...walk(join(APP, "customers")), ...walk(join(APP, "business")), join(M, "app/login.tsx"), join(M, "app/signup.tsx"), join(M, "app/otp.tsx"), join(M, "app/phone.tsx")].filter((f) => !/_gallery/.test(f));
-      const ids = new Set<string>(); for (const f of screens) for (const m of strip(rd(f)).matchAll(/testID=["'`]([a-z][a-z0-9-]+)/g)) ids.add(m[1]!);
+      const ids = new Set<string>(); for (const f of screens) for (const m of strip(rd(f)).matchAll(/(?:testID|sendTestID|plusTestID)=["'`]([a-z][a-z0-9-]+)/g)) ids.add(m[1]!); // ORACLE-EDIT (CC MAJOR-1): รวม sendTestID/plusTestID ของ InputBar
       // ORACLE-EDIT (ผู้คุม · R-S2.14e/f · ผู้ตรวจ BB MAJOR-1/2): ปุ่ม/ช่องพิมพ์ต้อง "กดแล้วมีผล" (effect ไม่ใช่ visible) · ทะเบียนต้องมีชุด template (`prefix-*`) ที่กดจริง · ไฟล์ผลต้องมี meta จากรอบเต็มรอบเดียว (resumed=false)
       const tmpl = new Set<string>(); for (const f of screens) for (const m of rd(f).matchAll(/testID=\{`([a-z][a-z0-9-]*?)-\$\{/g)) tmpl.add(m[1]! + "-*");
       const notInReg = [...ids].filter((id) => !B.some((b) => b.testID === id));
