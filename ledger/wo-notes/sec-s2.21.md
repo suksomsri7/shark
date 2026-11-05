@@ -125,7 +125,7 @@ console.log(JSON.stringify(out));
 | W-11 newOwner | `account.tsx` `acct.delete.toOwner` | "กิจการที่จะถูกลบ: บลูเฮาส์ หอพัก\nกิจการที่โอนให้คนอื่น: The Bean Café (ให้ น้ำ)\nกิจการที่คุณออกจากทีม: Sweet Studio\nข้อมูลส่วนตัวและเลขาของคุณจะถูกลบ · ออกจากระบบทุกเครื่องทันที" |
 | W-13 เบอร์ปลอมชัด | fixtures `+668000001xx/2xx` · masked `080-•••-0303/0505` · สคริปต์กด `0800000404` | — |
 - ภาพ/คู่ถ่ายใหม่ทั้งหมดบน dist นี้ (path เดิม §4) + `s2.21-interaction/{g2-manager,g3-demote}.png`
-- ผลรอบ 2: spec s2.21 forced ×2 = 12/12 exit 0 · s2.2 11/11 · s2.4 7/7 · s2.5 9/9 · s2.7 16/16 · s2.10 10/10 · qc-sec-s2.1 14/14 · qc-sec-s2.12 13/13 (M-1 typecheck 0 · D-1/D-2 fitness ผ่านทุกรอบ) · s2.17 ไม่ได้รัน (จอ S2.17 ยังไม่อยู่ในสาขานี้ — โครง)
+- ผลรอบ 2: spec s2.21 forced ×2 = 12/12 exit 0 · s2.2 11/11 · s2.4 7/7 · s2.5 9/9 · s2.7 16/16 · s2.10 10/10 · qc-sec-s2.1 14/14 · qc-sec-s2.12 13/13 (M-1 typecheck 0 · D-1/D-2 fitness ผ่านทุกรอบ) · หลัง merge ทิป a64e38e3 (S1.14 + S2.17–S2.19 · i18n/inventory/summary/s2.1 fixture รวมแบบ union) รันซ้ำทั้งชุด: s2.21 ×2 12/12 · s2.2 11/11 · s2.4 7/7 · s2.5 9/9 · s2.7 16/16 · s2.10 10/10 · s2.17 12/12 · s2.1 14/14 · s2.12 13/13 exit 0
 - ตารางระดับ→คีย์คงไว้ (ตั๋ว server: invite รับ levels+chat ⇒ ลบใน S2.14)
 
 ## ต่อจากนี้ (ถ้า restart)
