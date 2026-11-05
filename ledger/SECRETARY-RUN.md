@@ -65,7 +65,7 @@ _(เติมเมื่อถึงใบ)_
 | S2.11 | ✅ | | รวมในชุด S2-10 · C1 · ff-merge 3094d036 |
 | S2.12 | ✅ | | built 15fc8e39 + รอบ 2 f6bc506ee + merge tip 502b6584d (worktree e) · oracle 13/13 ×3 + ผู้คุม · s2.1 14/14 · s2.2 11/11 · ผู้ตรวจ R → §R ปิดครบ · คู่ S1/S2 สว่าง/มืด · merge 49347eb86 (ff ไม่ได้เพราะ ledger ขยับ) · **release gate (เจ้าของ): SMS provider บน prod + บัญชี reviewer มีเบอร์ (F3)** · หนี้: R8 ตรวจเฉพาะแอป (→ S3) · oracle gate pure function (→ S2.14) |
 | S2.15 | 🔨 | | builder Opus เลน c `wip/sec-s2.15` @f643eb178 เริ่ม 6 พ.ย. ~01:5xZ |
-| S2.16 | ✍️ | | ใบ S2-16 (S2.16+S2.23) + oracle `qc-sec-s2.16.mts` (7 ข้อ · สัญญา secretary-ops/support ล็อกในใบ) · รอเลนว่าง (web backoffice · ไม่ชน apps/mobile) |
+| S2.16 | 🔨 | | builder Opus เลน b `wip/sec-s2.16` เริ่ม 6 พ.ย. ~02:0xZ (web backoffice) |
 | S2.17 | ✅ | | built 1a24cc30 + รอบ 2 0f638e82 (เลน c) · spec 12/12 ×2 + ผู้คุม · ผู้ตรวจ V → §U ปิดครบ · คู่ K1/K2/K3 (ผู้คุมดู K2 ✅) · merge f643eb178 · ตั๋ว server: phoneMasked · flag สิทธิ์ · replyWindowEndsAt · ai-suggest Bearer · tags/deals · task-from-chat |
 | S2.18 | ✅ | | รวมในชุด S2-17 · K2 · merge f643eb178 |
 | S2.19 | ✅ | | รวมในชุด S2-17 · K3/K4/K5 · merge f643eb178 |
