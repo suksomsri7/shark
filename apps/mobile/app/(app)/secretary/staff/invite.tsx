@@ -20,6 +20,7 @@ import {
   inviteReasonOf,
   isDenied,
   normalizeInvites,
+  normalizeStaff,
   normalizeUnits,
   secDeleteId,
   secGet,
@@ -54,7 +55,14 @@ const REASON: Partial<Record<InviteReason, I18nKey>> = {
   throttled: "inv.err.throttled",
   bad_phone: "inv.err.bad_phone",
   forbidden: "inv.err.forbidden",
+  bad_units: "inv.err.bad_units",
 };
+
+/** ค่าเริ่มต้นสาขาของคำเชิญ (R-S2.21d) */
+function defaultUnits(owner: boolean, unitCount: number, mine: string[]): string[] {
+  if (owner) return unitCount > 1 ? [] : [ALL];
+  return mine.length ? (mine.includes(ALL) ? [ALL] : mine) : [];
+}
 
 export default function SecretaryStaffInviteScreen() {
   const { c } = useTheme();
@@ -70,7 +78,10 @@ export default function SecretaryStaffInviteScreen() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [inviteRole, setInviteRole] = useState<"STAFF" | "MANAGER">("STAFF");
-  const [units, setUnits] = useState<string[]>([ALL]);
+  // R-S2.21d: ค่าเริ่มต้นสาขาตั้งหลังโหลด — OWNER ที่มี >1 สาขา ต้องเลือกเอง · MANAGER = สาขาของตัวเอง
+  const [units, setUnits] = useState<string[]>([]);
+  const unitsTouched = useRef(false);
+  const [myUnits, setMyUnits] = useState<string[] | null>(null);
   const [levels, setLevels] = useState<Record<string, ModuleLevel>>({});
   const [chat, setChat] = useState<ChatLevel>("NONE");
   const [unitOpts, setUnitOpts] = useState<UnitOpt[]>([]);
@@ -100,27 +111,37 @@ export default function SecretaryStaffInviteScreen() {
       let live = true;
       void Promise.allSettled([secGet("secretary/staff"), secGet("secretary/access")]).then(([s, a]) => {
         if (!live) return;
-        if (s.status === "fulfilled") setUnitOpts(normalizeUnits(s.value));
+        if (s.status === "fulfilled") {
+          const opts = normalizeUnits(s.value);
+          const mine = normalizeStaff(s.value).people.find((x) => x.me)?.units ?? [];
+          setUnitOpts(opts);
+          setMyUnits(mine);
+          if (!unitsTouched.current) setUnits(defaultUnits(owner, opts.length, mine));
+        } else if (!unitsTouched.current) setUnits(owner ? [ALL] : []);
         if (a.status === "fulfilled") setModules(gridModules((a.value.items ?? []).map((x) => x.module)));
       });
       void loadInvites();
       return () => {
         live = false;
       };
-    }, [loadInvites, activeTenantId]),
+    }, [loadInvites, activeTenantId, owner]),
   );
 
   const e164 = normalizeThaiMobile(phone);
   const nameOk = name.trim().length > 0 && Array.from(name.trim()).length <= NAME_MAX;
-  const ready = manage && nameOk && !!e164 && units.length > 0 && !busy;
+  const ready = manage && !denied && nameOk && !!e164 && units.length > 0 && !busy;
+  // MANAGER ให้ได้เฉพาะสาขาของตัวเอง (server ตรวจซ้ำ bad_units) · ทุกสาขาเฉพาะเมื่อตัวเองมี "*"
+  const canAll = owner || (myUnits ?? []).includes(ALL);
+  const shownUnits = owner || canAll ? unitOpts : unitOpts.filter((u) => (myUnits ?? []).includes(u.id));
 
-  const toggleUnit = (id: string) =>
+  const toggleUnit = (id: string) => {
+    unitsTouched.current = true;
     setUnits((cur) => {
-      if (id === ALL) return [ALL];
+      if (id === ALL) return cur.includes(ALL) ? [] : [ALL];
       const base = cur.filter((u) => u !== ALL);
-      const next = base.includes(id) ? base.filter((u) => u !== id) : [...base, id];
-      return next.length ? next : [ALL]; // ว่าง = ทุกสาขา (ไม่ส่งรายการว่าง)
+      return base.includes(id) ? base.filter((u) => u !== id) : [...base, id]; // ว่าง = ยังไม่เลือก ⇒ ปุ่มส่งปิด (ไม่ส่งรายการว่าง)
     });
+  };
 
   const smsText = useMemo(() => t("inv.sms", { shop, name: name.trim() || t("inv.smsName") }), [t, shop, name]);
 
@@ -180,6 +201,8 @@ export default function SecretaryStaffInviteScreen() {
     if (i) await run(() => secDeleteId("secretary/staff/invites/[id]", i.inviteId), t("inv.cancelled"));
   };
 
+  // R-S2.21d: MANAGER แตะได้เฉพาะคำเชิญของพนักงาน (R-S1.25d)
+  const canTouch = (i: StaffInvite) => manage && (owner || i.role === "STAFF");
   const close = () => (router.canGoBack() ? router.back() : router.replace("/secretary/staff"));
   const until = result?.expiresAt ? dateBkk(result.expiresAt) : null;
   const isManagerInvite = inviteRole === "MANAGER";
@@ -236,11 +259,13 @@ export default function SecretaryStaffInviteScreen() {
 
         <Text style={[styles.label, { color: c.textDim }]}>{t("inv.units")}</Text>
         <View testID="inv-unit" style={styles.chips}>
-          <Chip testID="inv-unit-all" active={units.includes(ALL)} label={t("perm.unitAll")} onPress={() => toggleUnit(ALL)} />
-          {unitOpts.map((u) => (
+          {canAll ? <Chip testID="inv-unit-all" active={units.includes(ALL)} label={t("perm.unitAll")} onPress={() => toggleUnit(ALL)} /> : null}
+          {shownUnits.map((u) => (
             <Chip key={u.id} testID={`inv-unit-${u.id}`} active={units.includes(u.id)} label={u.name} onPress={() => toggleUnit(u.id)} />
           ))}
         </View>
+
+        {units.length === 0 ? <Text testID="inv-unit-pick" style={[styles.hint, { color: c.warn.fg }]}>{t("inv.unitPick")}</Text> : null}
 
         <Text style={[styles.label, { color: c.textDim }]}>{t("inv.levels")}</Text>
         {isManagerInvite ? (
@@ -275,7 +300,7 @@ export default function SecretaryStaffInviteScreen() {
             <Text style={[styles.smsH, { color: c.text }]}>
               {result.sms === "sent" ? t("inv.sent", { phone: maskPhone(result.phone) }) : t("inv.linkReady", { phone: maskPhone(result.phone) })}
             </Text>
-            {result.link ? (
+            {result.link && result.sms !== "sent" ? (
               <Text testID="inv-result-link" selectable style={[styles.link, { color: c.text, backgroundColor: c.chip.bg }]}>
                 {result.link}
               </Text>
@@ -286,7 +311,14 @@ export default function SecretaryStaffInviteScreen() {
 
         {invites.length ? <Text style={[styles.label, { color: c.textDim }]}>{t("inv.pendingTitle", { n: invites.length })}</Text> : null}
         {invites.map((i) => (
-          <InviteRow key={i.inviteId} invite={i} ids={ROW_IDS} busy={busy} onResend={manage ? () => resend(i) : undefined} onCancel={manage && !i.expired ? () => setCancelling(i) : undefined} />
+          <InviteRow
+            key={i.inviteId}
+            invite={i}
+            ids={ROW_IDS}
+            busy={busy}
+            onResend={canTouch(i) ? () => resend(i) : undefined}
+            onCancel={canTouch(i) && !i.expired ? () => setCancelling(i) : undefined}
+          />
         ))}
       </ScrollView>
 

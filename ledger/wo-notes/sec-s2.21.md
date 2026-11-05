@@ -115,5 +115,18 @@ console.log(JSON.stringify(out));
 ```
 แล้วแปลงเป็น `{ l, r, w }` (ตัดชื่อโมดูลหน้าจุดแรก) วางใน `LevelGrid.tsx`
 
+## 9. รอบ 2 ตามรีวิว W (RESOLUTIONS §V) — merge ทิป 4cb52316 ก่อนแก้
+| ข้อ | แก้ที่ | หลักฐาน (`s2.21-interaction/result.json`) |
+|---|---|---|
+| R-S2.21a `[]` = ยังไม่มีสาขา · `["*"]` = ทุกสาขา | `[membershipId].tsx` `allUnits` = มี "*" · `unitNames` [] ⇒ `perm.unitNone` · ถอนสาขาสุดท้าย = [] | หัว m2: "\nน้ำ\nยังไม่มีสาขา · ผู้จัดการ · เข้าร่วม 2 ก.ย." · ถอนสาขาเดียวของก้อง ⇒ "แชท\nแชท LINE/FB\nยังไม่มีสาขา\nไม่เห็น\nดูได้\nตอบได้" |
+| R-S2.21b OFF-only ที่ server ให้ระดับไว้ ⇒ "ให้รายคีย์ไว้" | `LevelGrid` (`<testID>-<module>-perkey`) · ฟอร์ม G3 เก็บระดับดิบของ server · ไม่ส่งระดับของโมดูล OFF-only | settings=VIEW ⇒ perkey 1 "\nให้รายคีย์ไว้" |
+| R-S2.21c role/unitIds เฉพาะเมื่อเปลี่ยน · ลด MANAGER→STAFF รีเซ็ตกริด | `save` + `pickRole` (ลดบทบาท ⇒ ระดับว่าง/แชท NONE แล้วส่งทั้งกริด + แชท — ระดับที่ "เก็บจริง" ของผู้จัดการ DTO ไม่ส่ง (staffViewOf ให้ค่าเต็ม) จึงเริ่มที่ปิดให้เจ้าของเลือก) | PUT แก้ระดับ: ["{\"levels\":{\"dorm\":\"VIEW\"},\"chat\":\"VIEW\",\"extraPermissions\":{}}"] · แก้สาขา: ["{\"unitIds\":[\"u-dorm\",\"u-main\"],\"levels\":{},\"extraPermissions\":{}}"] · ลดบทบาท: ["{\"role\":\"STAFF\",\"levels\":{\"dorm\":\"USE\",\"booking\":\"OFF\",\"account\":\"OFF\",\"pos\":\"OFF\",\"ai\":\"OFF\"},\"chat\":\"NONE\",\"extraPermissions\":{}}"] |
+| R-S2.21d สาขาเริ่มต้น · bad_units · ลิงก์ · MANAGER ปุ่มคำเชิญ · ready+denied · G1 ref · ลิงก์ออก | `invite.tsx` `defaultUnits` (OWNER >1 สาขา = ว่าง ต้องเลือก · MANAGER = สาขาตัวเอง · ซ่อนชิปทุกสาขาถ้าตัวเองไม่มี "*") · REASON +bad_units · ลิงก์เฉพาะ sms≠sent · `canTouch` · `ready` มี `!denied` · `new.tsx` `busyRef` + `biz-new-logout` (เมื่อยังไม่มีกิจการ) | OWNER ยังไม่เลือก: POST 0 → เลือกทุกสาขา ["{\"name\":\"ก้อง\",\"phone\":\"+66800000404\",\"role\":\"STAFF\",\"unitIds\":[\"*\"],\"permissions\":{}}"] · MANAGER ชิป ["inv-unit-u-dorm"] · คำเชิญ {"rows": 2, "resend": 1, "cancel": 1} (ใบ MANAGER ไม่มีปุ่ม) · body ["{\"name\":\"ก้อง\",\"phone\":\"+66800000404\",\"role\":\"STAFF\",\"unitIds\":[\"u-dorm\"],\"permissions\":{}}"] · sms=sent ⇒ ลิงก์ 0 · bad_units ⇒ "มีสาขาที่ให้ไม่ได้ (ไม่อยู่ในกิจการหรือเกินสาขาของคุณ) — เลือกใหม่" · G1 กดซ้ำ 2 ครั้ง ⇒ POST 1 · ลิงก์ออก 1 |
+| W-11 newOwner | `account.tsx` `acct.delete.toOwner` | "กิจการที่จะถูกลบ: บลูเฮาส์ หอพัก\nกิจการที่โอนให้คนอื่น: The Bean Café (ให้ น้ำ)\nกิจการที่คุณออกจากทีม: Sweet Studio\nข้อมูลส่วนตัวและเลขาของคุณจะถูกลบ · ออกจากระบบทุกเครื่องทันที" |
+| W-13 เบอร์ปลอมชัด | fixtures `+668000001xx/2xx` · masked `080-•••-0303/0505` · สคริปต์กด `0800000404` | — |
+- ภาพ/คู่ถ่ายใหม่ทั้งหมดบน dist นี้ (path เดิม §4) + `s2.21-interaction/{g2-manager,g3-demote}.png`
+- ผลรอบ 2: spec s2.21 forced ×2 = 12/12 exit 0 · s2.2 11/11 · s2.4 7/7 · s2.5 9/9 · s2.7 16/16 · s2.10 10/10 · qc-sec-s2.1 14/14 · qc-sec-s2.12 13/13 (M-1 typecheck 0 · D-1/D-2 fitness ผ่านทุกรอบ) · s2.17 ไม่ได้รัน (จอ S2.17 ยังไม่อยู่ในสาขานี้ — โครง)
+- ตารางระดับ→คีย์คงไว้ (ตั๋ว server: invite รับ levels+chat ⇒ ลบใน S2.14)
+
 ## ต่อจากนี้ (ถ้า restart)
 แก้จอแล้ว: รันบล็อก §4 (export ใหม่) → `bash scripts/iso.sh env QC_FORCE=1 SPEC=scripts/qc-sec-specs/s2.21.json pnpm exec tsx scripts/qc-sec-screen.mts` ×2 · `apps/mobile/node_modules` = symlink (ไม่ commit)

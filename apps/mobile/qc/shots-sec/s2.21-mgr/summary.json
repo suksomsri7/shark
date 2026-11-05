@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T23:54:50.314Z",
+ "generatedAt": "2026-11-05T00:22:51.353Z",
  "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
@@ -9,7 +9,7 @@
  },
  "fixture": {
   "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.21-mgr.json",
-  "sha256": "5f32c12e34155b9b0b0f5bf501859429ed39deede9487d2fbc524fca099fb4fc"
+  "sha256": "cc53b2264f6f7e7f2b03cfae5c6d1b107640f2088975f42e704299089db07aad"
  },
  "screens": [
   {
@@ -17,7 +17,7 @@
    "route": "/secretary/staff/invite",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "5f32c12e34155b9b0b0f5bf501859429ed39deede9487d2fbc524fca099fb4fc",
+   "fixtureSha256": "cc53b2264f6f7e7f2b03cfae5c6d1b107640f2088975f42e704299089db07aad",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -28,18 +28,18 @@
     "inv-role-STAFF",
     "inv-submit"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nเชิญพนักงาน\nThe Bean Café\nชื่อ\nเบอร์โทร (ใช้เข้าแอป)\nบทบาท\nพนักงาน\nผู้จัดการเชิญได้เฉพาะพนักงาน\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ · ค่าเริ่มต้น = ปิดทุกระบบ\nแชท\nแชท LINE/FB\nเห็นเฉพาะหน่วยที่เลือก\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\n\nSMS ที่น้องจะได้รับ\nSHARK: The Bean Café เชิญคุณ <ชื่อ> เข้าใช้ SHARK · เปิดลิงก์ shark.in.th/i/•••• (หมดอายุ 7 วัน)\nคำเชิญที่ยังไม่รับ (1)\nม\nมิว พนักงาน\nรอรับคำเชิญ · 089-•••-5432 · ถึง 11/11\nยกเลิก\nส่งอีกครั้ง\nส่งคำเชิญทาง SMS",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nเชิญพนักงาน\nThe Bean Café\nชื่อ\nเบอร์โทร (ใช้เข้าแอป)\nบทบาท\nพนักงาน\nผู้จัดการเชิญได้เฉพาะพนักงาน\nหน่วย/สาขา\nหอพัก\nสิทธิ์ต่อระบบ · ค่าเริ่มต้น = ปิดทุกระบบ\nแชท\nแชท LINE/FB\nเห็นเฉพาะหน่วยที่เลือก\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\n\nSMS ที่น้องจะได้รับ\nSHARK: The Bean Café เชิญคุณ <ชื่อ> เข้าใช้ SHARK · เปิดลิงก์ shark.in.th/i/•••• (หมดอายุ 7 วัน)\nคำเชิญที่ยังไม่รับ (2)\nม\nมิว พนักงาน\nรอรับคำเชิญ · 080-•••-0303 · ถึง 11/11\nยกเลิก\nส่งอีกครั้ง\nม\nเมย์ ผู้จัดการ\nรอรับคำเชิญ · 080-•••-0505 · ถึง 11/11\nส่งคำเชิญทาง SMS",
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-invite.png",
-   "generatedAt": "2026-11-04T23:54:25.777Z"
+   "generatedAt": "2026-11-05T00:22:24.831Z"
   },
   {
    "name": "secretary-staff-m1",
    "route": "/secretary/staff/m1",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "5f32c12e34155b9b0b0f5bf501859429ed39deede9487d2fbc524fca099fb4fc",
+   "fixtureSha256": "cc53b2264f6f7e7f2b03cfae5c6d1b107640f2088975f42e704299089db07aad",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -54,14 +54,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-m1.png",
-   "generatedAt": "2026-11-04T23:54:28.549Z"
+   "generatedAt": "2026-11-05T00:22:28.804Z"
   },
   {
    "name": "secretary-staff-m2",
    "route": "/secretary/staff/m2",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "5f32c12e34155b9b0b0f5bf501859429ed39deede9487d2fbc524fca099fb4fc",
+   "fixtureSha256": "cc53b2264f6f7e7f2b03cfae5c6d1b107640f2088975f42e704299089db07aad",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -70,18 +70,18 @@
     "perm-role",
     "perm-readonly"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nน้ำ\nทุกสาขา · ผู้จัดการ · เข้าร่วม 2 ก.ย.\nผู้จัดการแก้สิทธิ์ได้เฉพาะพนักงาน — ให้เจ้าของเป็นผู้แก้\nบทบาท\nผู้จัดการ\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ\nผู้จัดการใช้ได้ทุกระบบตามบทบาท (ไม่ต้องตั้งรายระบบ)\nแชท\nแชท LINE/FB\nทุกสาขา\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\nShark ใช้สิทธิ์ชุดนี้เมื่อน้ำสั่งงาน · เปลี่ยนแล้วมีผลกับงานที่ค้าง",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nน้ำ\nยังไม่มีสาขา · ผู้จัดการ · เข้าร่วม 2 ก.ย.\nผู้จัดการแก้สิทธิ์ได้เฉพาะพนักงาน — ให้เจ้าของเป็นผู้แก้\nบทบาท\nผู้จัดการ\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ\nผู้จัดการใช้ได้ทุกระบบตามบทบาท (ไม่ต้องตั้งรายระบบ)\nแชท\nแชท LINE/FB\nยังไม่มีสาขา\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\nShark ใช้สิทธิ์ชุดนี้เมื่อน้ำสั่งงาน · เปลี่ยนแล้วมีผลกับงานที่ค้าง",
    "unmocked": [],
    "url": "/secretary/staff/m2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-m2.png",
-   "generatedAt": "2026-11-04T23:54:32.188Z"
+   "generatedAt": "2026-11-05T00:22:32.722Z"
   },
   {
    "name": "secretary-settings-account",
    "route": "/secretary/settings/account",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "5f32c12e34155b9b0b0f5bf501859429ed39deede9487d2fbc524fca099fb4fc",
+   "fixtureSha256": "cc53b2264f6f7e7f2b03cfae5c6d1b107640f2088975f42e704299089db07aad",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -92,18 +92,18 @@
     "acct-theme",
     "acct-delete"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nบัญชีของฉัน\nฝ\nฝน (QC)\nพนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n089-111-2222\n\nอีเมล (สำรอง · ใบเสร็จ)\nยังไม่ยืนยัน\nmgr@qc.invalid\nเข้าด้วย Apple\n–\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nออกเวรแล้ว\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nบัญชีของฉัน\nฝ\nฝน (QC)\nพนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n080-000-0202\n\nอีเมล (สำรอง · ใบเสร็จ)\nยังไม่ยืนยัน\nmgr@qc.invalid\nเข้าด้วย Apple\n–\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nออกเวรแล้ว\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-settings-account.png",
-   "generatedAt": "2026-11-04T23:54:35.909Z"
+   "generatedAt": "2026-11-05T00:22:36.581Z"
   },
   {
    "name": "secretary-staff-invite-dark",
    "route": "/secretary/staff/invite",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "5f32c12e34155b9b0b0f5bf501859429ed39deede9487d2fbc524fca099fb4fc",
+   "fixtureSha256": "cc53b2264f6f7e7f2b03cfae5c6d1b107640f2088975f42e704299089db07aad",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -114,18 +114,18 @@
     "inv-role-STAFF",
     "inv-submit"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nเชิญพนักงาน\nThe Bean Café\nชื่อ\nเบอร์โทร (ใช้เข้าแอป)\nบทบาท\nพนักงาน\nผู้จัดการเชิญได้เฉพาะพนักงาน\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ · ค่าเริ่มต้น = ปิดทุกระบบ\nแชท\nแชท LINE/FB\nเห็นเฉพาะหน่วยที่เลือก\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\n\nSMS ที่น้องจะได้รับ\nSHARK: The Bean Café เชิญคุณ <ชื่อ> เข้าใช้ SHARK · เปิดลิงก์ shark.in.th/i/•••• (หมดอายุ 7 วัน)\nคำเชิญที่ยังไม่รับ (1)\nม\nมิว พนักงาน\nรอรับคำเชิญ · 089-•••-5432 · ถึง 11/11\nยกเลิก\nส่งอีกครั้ง\nส่งคำเชิญทาง SMS",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nเชิญพนักงาน\nThe Bean Café\nชื่อ\nเบอร์โทร (ใช้เข้าแอป)\nบทบาท\nพนักงาน\nผู้จัดการเชิญได้เฉพาะพนักงาน\nหน่วย/สาขา\nหอพัก\nสิทธิ์ต่อระบบ · ค่าเริ่มต้น = ปิดทุกระบบ\nแชท\nแชท LINE/FB\nเห็นเฉพาะหน่วยที่เลือก\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\n\nSMS ที่น้องจะได้รับ\nSHARK: The Bean Café เชิญคุณ <ชื่อ> เข้าใช้ SHARK · เปิดลิงก์ shark.in.th/i/•••• (หมดอายุ 7 วัน)\nคำเชิญที่ยังไม่รับ (2)\nม\nมิว พนักงาน\nรอรับคำเชิญ · 080-•••-0303 · ถึง 11/11\nยกเลิก\nส่งอีกครั้ง\nม\nเมย์ ผู้จัดการ\nรอรับคำเชิญ · 080-•••-0505 · ถึง 11/11\nส่งคำเชิญทาง SMS",
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-invite-dark.png",
-   "generatedAt": "2026-11-04T23:54:39.008Z"
+   "generatedAt": "2026-11-05T00:22:39.811Z"
   },
   {
    "name": "secretary-staff-m1-dark",
    "route": "/secretary/staff/m1",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "5f32c12e34155b9b0b0f5bf501859429ed39deede9487d2fbc524fca099fb4fc",
+   "fixtureSha256": "cc53b2264f6f7e7f2b03cfae5c6d1b107640f2088975f42e704299089db07aad",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -140,14 +140,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-m1-dark.png",
-   "generatedAt": "2026-11-04T23:54:42.781Z"
+   "generatedAt": "2026-11-05T00:22:43.504Z"
   },
   {
    "name": "secretary-staff-m2-dark",
    "route": "/secretary/staff/m2",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "5f32c12e34155b9b0b0f5bf501859429ed39deede9487d2fbc524fca099fb4fc",
+   "fixtureSha256": "cc53b2264f6f7e7f2b03cfae5c6d1b107640f2088975f42e704299089db07aad",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -156,18 +156,18 @@
     "perm-role",
     "perm-readonly"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nน้ำ\nทุกสาขา · ผู้จัดการ · เข้าร่วม 2 ก.ย.\nผู้จัดการแก้สิทธิ์ได้เฉพาะพนักงาน — ให้เจ้าของเป็นผู้แก้\nบทบาท\nผู้จัดการ\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ\nผู้จัดการใช้ได้ทุกระบบตามบทบาท (ไม่ต้องตั้งรายระบบ)\nแชท\nแชท LINE/FB\nทุกสาขา\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\nShark ใช้สิทธิ์ชุดนี้เมื่อน้ำสั่งงาน · เปลี่ยนแล้วมีผลกับงานที่ค้าง",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nน้ำ\nยังไม่มีสาขา · ผู้จัดการ · เข้าร่วม 2 ก.ย.\nผู้จัดการแก้สิทธิ์ได้เฉพาะพนักงาน — ให้เจ้าของเป็นผู้แก้\nบทบาท\nผู้จัดการ\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ\nผู้จัดการใช้ได้ทุกระบบตามบทบาท (ไม่ต้องตั้งรายระบบ)\nแชท\nแชท LINE/FB\nยังไม่มีสาขา\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\nShark ใช้สิทธิ์ชุดนี้เมื่อน้ำสั่งงาน · เปลี่ยนแล้วมีผลกับงานที่ค้าง",
    "unmocked": [],
    "url": "/secretary/staff/m2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-m2-dark.png",
-   "generatedAt": "2026-11-04T23:54:46.484Z"
+   "generatedAt": "2026-11-05T00:22:47.238Z"
   },
   {
    "name": "secretary-settings-account-dark",
    "route": "/secretary/settings/account",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "5f32c12e34155b9b0b0f5bf501859429ed39deede9487d2fbc524fca099fb4fc",
+   "fixtureSha256": "cc53b2264f6f7e7f2b03cfae5c6d1b107640f2088975f42e704299089db07aad",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -178,11 +178,11 @@
     "acct-theme",
     "acct-delete"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nบัญชีของฉัน\nฝ\nฝน (QC)\nพนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n089-111-2222\n\nอีเมล (สำรอง · ใบเสร็จ)\nยังไม่ยืนยัน\nmgr@qc.invalid\nเข้าด้วย Apple\n–\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nออกเวรแล้ว\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nออกจากระบบ\n\nบัญชีของฉัน\nฝ\nฝน (QC)\nพนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n080-000-0202\n\nอีเมล (สำรอง · ใบเสร็จ)\nยังไม่ยืนยัน\nmgr@qc.invalid\nเข้าด้วย Apple\n–\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nออกเวรแล้ว\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-settings-account-dark.png",
-   "generatedAt": "2026-11-04T23:54:50.200Z"
+   "generatedAt": "2026-11-05T00:22:51.110Z"
   }
  ]
 }

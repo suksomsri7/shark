@@ -5,7 +5,7 @@
 //      กิจการที่ 2–3 ไปห้องแรก /secretary/room/<roomId> ถ้าเซิร์ฟเวอร์เปิดให้ ไม่งั้น /secretary
 //   เข้าจาก BusinessSwitcherSheet "+ เพิ่มกิจการ" (S2.1) และจากยามหน้าประตูหลังสมัครใหม่ที่ยังไม่มีร้าน (RESOLUTIONS R-S2.12a · ธงสลับในใบนี้)
 //   ผู้ที่มีคำเชิญค้างถึงเบอร์ตัวเอง เห็นการ์ด "คุณได้รับคำเชิญจาก <ร้าน>" ด้านบน (R-S1.25b · กดรับแทนการสร้างร้านใหม่)
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -41,7 +41,8 @@ export default function BusinessNewScreen() {
   const t = useT();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { tenants, refreshMe, switchTenant } = useAuth();
+  const { tenants, refreshMe, switchTenant, signOut } = useAuth();
+  const busyRef = useRef(false); // R-S2.21d: กันกดซ้ำ (state ยังไม่ทันวาดใหม่)
   const [name, setName] = useState("");
   const [type, setType] = useState<TenantType>("restaurant");
   const [systems, setSystems] = useState<string[]>(PRESET.restaurant);
@@ -60,7 +61,8 @@ export default function BusinessNewScreen() {
   const close = () => (router.canGoBack() ? router.back() : router.replace("/secretary"));
 
   const submit = async () => {
-    if (!nameOk || busy) return;
+    if (!nameOk || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setNote(null);
     try {
@@ -77,6 +79,7 @@ export default function BusinessNewScreen() {
     } catch (e) {
       setNote(e instanceof ApiError && e.code === "rate_limited" ? t("biz.err.rate") : (serverNote(e) ?? t("biz.err.generic")));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -143,6 +146,12 @@ export default function BusinessNewScreen() {
         <Text testID="biz-new-explain" style={[styles.explain, { color: c.textMuted }]}>
           {t("biz.explain")}
         </Text>
+        {first ? (
+          // R-S2.21d: สมัครใหม่ยังไม่มีกิจการ = ทางออกเดียวของจอนี้
+          <Pressable testID="biz-new-logout" accessibilityRole="button" onPress={() => void signOut()} style={styles.logout}>
+            <Text style={[styles.logoutT, { color: c.textMuted }]}>{t("biz.logout")}</Text>
+          </Pressable>
+        ) : null}
         {note ? (
           <Note warn testID="biz-new-note">
             {note}
@@ -168,5 +177,7 @@ const styles = StyleSheet.create({
   sysT: { fontSize: 12.5, fontWeight: "600" },
   hint: { fontSize: T.cap - 0.5, marginTop: 8, marginLeft: 2 },
   explain: { fontSize: T.cap, lineHeight: 19, marginTop: F.v(24) },
+  logout: { alignSelf: "center", paddingVertical: 10, paddingHorizontal: 16, marginTop: spacing.md },
+  logoutT: { fontSize: T.sub, textDecorationLine: "underline" },
   cta: { position: "absolute", left: spacing.page, right: spacing.page },
 });

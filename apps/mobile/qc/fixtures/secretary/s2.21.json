@@ -116,7 +116,7 @@
     "id": "u-qc-owner",
     "email": "suk@qc.invalid",
     "name": "สุข สมศรี",
-    "phone": "+66812345678",
+    "phone": "+66800000101",
     "appleLinked": true
    },
    "memberships": [
@@ -215,7 +215,7 @@
      "pending": true,
      "inviteId": "inv1",
      "name": "มิว",
-     "phoneMasked": "089-•••-5432",
+     "phoneMasked": "080-•••-0303",
      "role": "STAFF",
      "expiresAt": "2026-11-11T05:00:00.000Z",
      "expired": false
@@ -273,7 +273,7 @@
     {
      "id": "inv1",
      "name": "มิว",
-     "phoneMasked": "089-•••-5432",
+     "phoneMasked": "080-•••-0303",
      "role": "STAFF",
      "unitAccess": [
       "*"

@@ -208,7 +208,13 @@ export function LevelGrid({
         return (
           <Glass key={m} testID={`${testID}-${m}`} radius={radii.sugg} pad={{ v: 12, h: 14 }}>
             <SysHead module={m} />
-            {locked ? (
+            {locked && (levels[m] === "VIEW" || levels[m] === "USE") ? (
+              // R-S2.21b: server บอกว่ามีสิทธิ์ (ให้รายคีย์ไว้) แต่โมดูลนี้ไม่มีระดับให้เลือก ⇒ ไม่แสดงเป็น "ปิด"
+              <View testID={`${testID}-${m}-perkey`} style={[styles.lock, { backgroundColor: c.warn.bg }]}>
+                <Icon name="key" size={14} color={c.warn.fg} />
+                <Text style={[styles.lockT, { color: c.warn.fg }]}>{t("perm.perKey")}</Text>
+              </View>
+            ) : locked ? (
               <View testID={`${testID}-${m}-locked`} style={[styles.lock, { backgroundColor: c.seg.track }]}>
                 <Icon name="lock" size={14} color={c.textMuted} />
                 <Text style={[styles.lockT, { color: c.textMuted }]}>{t("perm.offOnly")}</Text>

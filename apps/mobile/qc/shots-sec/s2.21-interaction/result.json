@@ -7,6 +7,7 @@
  "g1ActiveTenant": "t4",
  "g1Url": "/secretary/room/r9",
  "g1FirstNoClose": true,
+ "g1FirstLogout": 1,
  "g1FirstPost": [
   "{\"name\":\"QC แรก\",\"type\":\"restaurant\",\"systems\":[\"POS\",\"CRM\",\"MEMBER\",\"ACCOUNT\",\"KANBAN\",\"CHAT\"]}"
  ],
@@ -18,10 +19,12 @@
  "postSignupUrl": "/business/new",
  "noShopOldUrl": "/dna",
  "g2Sms": "\nSMS ที่น้องจะได้รับ\nSHARK: The Bean Café เชิญคุณ ก้อง เข้าใช้ SHARK · เปิดลิงก์ shark.in.th/i/•••• (หมดอายุ 7 วัน)",
+ "g2UnitPickShown": 1,
+ "g2PostsBeforeUnit": 0,
  "g2DefaultBody": [
-  "{\"name\":\"ก้อง\",\"phone\":\"+66898765432\",\"role\":\"STAFF\",\"unitIds\":[\"*\"],\"permissions\":{}}"
+  "{\"name\":\"ก้อง\",\"phone\":\"+66800000404\",\"role\":\"STAFF\",\"unitIds\":[\"*\"],\"permissions\":{}}"
  ],
- "g2Result": "สร้างคำเชิญของ 089-•••-5432 แล้ว — ยังไม่ได้ส่ง SMS ส่งลิงก์นี้ให้เองได้\nhttps://shark.in.th/i/QCQCQCQC\nใช้ได้ถึง 11/11",
+ "g2Result": "สร้างคำเชิญของ 080-•••-0404 แล้ว — ยังไม่ได้ส่ง SMS ส่งลิงก์นี้ให้เองได้\nhttps://shark.in.th/i/QCQCQCQC\nใช้ได้ถึง 11/11",
  "g2LevelButtons": [
   "inv-level-dorm-OFF",
   "inv-level-dorm-VIEW",
@@ -45,7 +48,7 @@
  ],
  "g2LevelsBody": {
   "name": "ก้อง",
-  "phone": "+66898765432",
+  "phone": "+66800000404",
   "role": "STAFF",
   "unitIds": [
    "u-dorm"
@@ -64,6 +67,7 @@
   "already_invited": "เบอร์นี้มีคำเชิญที่ยังไม่รับอยู่แล้ว — กดส่งอีกครั้งในรายการด้านล่าง",
   "pending_cap": "คำเชิญค้างครบ 20 ใบแล้ว ยกเลิกใบที่ไม่ใช้ก่อน",
   "bad_permissions": "สิทธิ์ที่เลือกให้ไม่ได้ (เกินสิทธิ์ของคุณหรือระบบไม่รองรับ) — ปรับระดับแล้วลองใหม่",
+  "bad_units": "มีสาขาที่ให้ไม่ได้ (ไม่อยู่ในกิจการหรือเกินสาขาของคุณ) — เลือกใหม่",
   "sms_unavailable": "ระบบส่ง SMS ยังไม่พร้อม ลองใหม่ภายหลัง"
  },
  "g2Resend": [
@@ -75,6 +79,19 @@
  "g2MgrRoles": [
   "inv-role-STAFF"
  ],
+ "g2MgrUnitChips": [
+  "inv-unit-u-dorm"
+ ],
+ "g2MgrInvites": {
+  "rows": 2,
+  "resend": 1,
+  "cancel": 1
+ },
+ "g2MgrBody": [
+  "{\"name\":\"ก้อง\",\"phone\":\"+66800000404\",\"role\":\"STAFF\",\"unitIds\":[\"u-dorm\"],\"permissions\":{}}"
+ ],
+ "g2SentLinkShown": 0,
+ "g2SentResult": "ส่ง SMS ถึง 080-•••-0404 แล้ว\nใช้ได้ถึง 11/11",
  "g3Buttons": [
   "perm-level-dorm-OFF",
   "perm-level-dorm-VIEW",
@@ -92,6 +109,8 @@
   "perm-level-ai-USE"
  ],
  "g3PointLocked": 1,
+ "g3SettingsPerKey": 1,
+ "g3PerKeyText": "\nให้รายคีย์ไว้",
  "g3Chat": [
   "perm-chat-NONE",
   "perm-chat-VIEW",
@@ -99,9 +118,22 @@
  ],
  "g3SaveDisabledClean": null,
  "g3Put": [
-  "{\"role\":\"STAFF\",\"unitIds\":[\"u-dorm\"],\"levels\":{\"dorm\":\"VIEW\"},\"chat\":\"VIEW\",\"extraPermissions\":{}}"
+  "{\"levels\":{\"dorm\":\"VIEW\"},\"chat\":\"VIEW\",\"extraPermissions\":{}}"
  ],
  "g3Note": "บันทึกสิทธิ์แล้ว",
+ "g3OwnerHeaderM2": "\nน้ำ\nยังไม่มีสาขา · ผู้จัดการ · เข้าร่วม 2 ก.ย.",
+ "g3DemoteChatSelected": [
+  "perm-chat-NONE:rgb(22, 22, 28)",
+  "perm-chat-VIEW:rgba(150, 150, 185, 0.12)",
+  "perm-chat-REPLY:rgba(150, 150, 185, 0.12)"
+ ],
+ "g3DemotePut": [
+  "{\"role\":\"STAFF\",\"levels\":{\"dorm\":\"USE\",\"booking\":\"OFF\",\"account\":\"OFF\",\"pos\":\"OFF\",\"ai\":\"OFF\"},\"chat\":\"NONE\",\"extraPermissions\":{}}"
+ ],
+ "g3UnitOnlyPut": [
+  "{\"unitIds\":[\"u-dorm\",\"u-main\"],\"levels\":{},\"extraPermissions\":{}}"
+ ],
+ "g3EmptyUnitsHeader": "แชท\nแชท LINE/FB\nยังไม่มีสาขา\nไม่เห็น\nดูได้\nตอบได้",
  "g3SuspendBefore": 0,
  "g3SuspendSheet": "ระงับ ก้อง ชั่วคราว?\nเข้าแอปของกิจการนี้ไม่ได้และไม่ได้รับแจ้งเตือน จนกว่าเจ้าของจะเปิดคืน\nยังไม่ทำ\nยืนยันระงับ",
  "g3SuspendAfter": [
@@ -146,7 +178,7 @@
  "g4ShiftAfter": null,
  "g4ShiftText": "เข้าเวร\nออกเวรแล้ว",
  "g4DelPreviewGet": 1,
- "g4DelPreview": "กิจการที่จะถูกลบ: บลูเฮาส์ หอพัก\nกิจการที่โอนให้คนอื่น: The Bean Café\nกิจการที่คุณออกจากทีม: Sweet Studio\nข้อมูลส่วนตัวและเลขาของคุณจะถูกลบ · ออกจากระบบทุกเครื่องทันที",
+ "g4DelPreview": "กิจการที่จะถูกลบ: บลูเฮาส์ หอพัก\nกิจการที่โอนให้คนอื่น: The Bean Café (ให้ น้ำ)\nกิจการที่คุณออกจากทีม: Sweet Studio\nข้อมูลส่วนตัวและเลขาของคุณจะถูกลบ · ออกจากระบบทุกเครื่องทันที",
  "g4DelDisabledBefore": "true",
  "g4DelDisabledPartial": "true",
  "g4DelPostAfterPartial": 0,

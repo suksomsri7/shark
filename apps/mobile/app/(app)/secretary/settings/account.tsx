@@ -234,7 +234,11 @@ export default function AccountScreen() {
             ? t("acct.delete.loading")
             : [
                 preview.tenantsToDelete?.length ? t("acct.delete.toDelete", { list: list(preview.tenantsToDelete) }) : null,
-                preview.tenantsHandedOver?.length ? t("acct.delete.handedOver", { list: list(preview.tenantsHandedOver) }) : null,
+                preview.tenantsHandedOver?.length
+                  ? t("acct.delete.handedOver", {
+                      list: preview.tenantsHandedOver.map((x) => (x.newOwner ? t("acct.delete.toOwner", { name: x.name, owner: x.newOwner }) : x.name)).join(", "),
+                    })
+                  : null,
                 preview.tenantsLeftAlone?.length ? t("acct.delete.leftAlone", { list: list(preview.tenantsLeftAlone) }) : null,
                 t("acct.delete.personal"),
               ]

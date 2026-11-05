@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@/src/components/ui/text";
 import { AiryScreen, Chip, Glass, Icon, IconBtn, Note, PrimaryButton, Segment, Sheet, TopBar } from "@/src/components/airy";
 import { ChatLevelPicker } from "@/src/components/secretary/ChatLevelPicker";
-import { LevelGrid, gridModules, levelOf, levelsAvailable, type ModuleLevel } from "@/src/components/secretary/LevelGrid";
+import { LevelGrid, gridModules, levelOf, levelsAvailable, offOnly, type ModuleLevel } from "@/src/components/secretary/LevelGrid";
 import { roleLabel } from "@/src/components/secretary/AddMemberSheet";
 import { dateBkk } from "@/src/components/secretary/bkk";
 import {
@@ -37,9 +37,10 @@ import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 const ALL = "*";
 type Role = "STAFF" | "MANAGER";
-type Form = { role: string; units: string[]; levels: Record<string, ModuleLevel>; chat: ChatLevel };
+type Form = { role: string; units: string[]; levels: Record<string, string>; chat: ChatLevel };
 const sameUnits = (a: string[], b: string[]) => [...a].sort().join(",") === [...b].sort().join(",");
-const allUnits = (u: string[]) => u.length === 0 || u.includes(ALL);
+/** R-S2.21a: เฉพาะ ["*"] = ทุกสาขา · [] = ยังไม่มีสาขา */
+const allUnits = (u: string[]) => u.includes(ALL);
 /** แชทลูกค้า 3 ระดับเท่านั้น (CHAT_LEVELS · R-S1.25h) — ค่าอื่นไม่ส่ง */
 const isChatLevel = (v: string): v is ChatLevel => v === "NONE" || v === "VIEW" || v === "REPLY";
 const CONFIRM_TEXT = {
@@ -83,7 +84,7 @@ export default function StaffPermissionScreen() {
     if (a.status === "fulfilled") setAccess((a.value.items ?? []).map((x) => x.module));
     if (d.status === "fulfilled" && p) setOnDuty((d.value.items ?? []).some((x) => x.userId === p.userId && x.onDuty === true));
     if (p) {
-      const f: Form = { role: p.role, units: p.units, levels: Object.fromEntries(Object.keys(p.levels).map((m) => [m, levelOf(p.levels, m)])), chat: p.chat };
+      const f: Form = { role: p.role, units: p.units, levels: { ...p.levels }, chat: p.chat }; // ระดับดิบของ server (โมดูล OFF-only ที่มีคีย์รายตัว = ป้าย "ให้รายคีย์ไว้")
       setSaved(f);
       setForm(f);
     }
@@ -101,16 +102,19 @@ export default function StaffPermissionScreen() {
   const roleOptions: Role[] = owner ? ["STAFF", "MANAGER"] : ["STAFF"];
   const managerForm = form?.role === "MANAGER";
 
+  // R-S2.21c: ลดผู้จัดการ → พนักงาน — ระดับที่แสดงของผู้จัดการคือค่าเต็มจาก staffViewOf (ไม่ใช่คีย์ที่เก็บจริง) ⇒ ส่งทุกโมดูลในกริด + แชท ตามที่เจ้าของเลือก
+  const demoting = saved?.role === "MANAGER" && form?.role === "STAFF";
   const changedLevels = useMemo(() => {
     if (!form || !saved) return {};
     const out: Record<string, ModuleLevel> = {};
     for (const m of modules) {
+      if (offOnly(m)) continue; // ระดับเดียว (ปิด) — ไม่ส่ง (คีย์รายตัวคงไว้)
       const l = levelOf(form.levels, m);
-      // ส่งเฉพาะระดับที่โมดูลมีจริง (levelsAvailable) และต่างจากเดิม
-      if (l !== levelOf(saved.levels, m) && levelsAvailable(m).includes(l)) out[m] = l;
+      // ส่งเฉพาะระดับที่โมดูลมีจริง (levelsAvailable) และต่างจากเดิม · ลดบทบาท = ส่งทั้งกริด
+      if ((demoting || l !== levelOf(saved.levels, m)) && levelsAvailable(m).includes(l)) out[m] = l;
     }
     return out;
-  }, [form, saved, modules]);
+  }, [form, saved, modules, demoting]);
   const dirty = !!form && !!saved && (form.role !== saved.role || !sameUnits(form.units, saved.units) || form.chat !== saved.chat || Object.keys(changedLevels).length > 0);
 
   const toggleUnit = (id: string) =>
@@ -119,7 +123,16 @@ export default function StaffPermissionScreen() {
       if (id === ALL) return { ...f, units: [ALL] };
       const base = f.units.filter((u) => u !== ALL);
       const next = base.includes(id) ? base.filter((u) => u !== id) : [...base, id];
-      return { ...f, units: next.length ? next : [ALL] };
+      return { ...f, units: next }; // ว่าง = ยังไม่มีสาขา (R-S2.21a)
+    });
+
+  // เลือกบทบาท: ผู้จัดการ → พนักงาน ⇒ กริดเริ่มที่ปิดทุกระบบ + แชทไม่เห็น ให้เจ้าของเลือกเอง (ไม่สืบค่าเต็มของผู้จัดการ) · กลับเป็นผู้จัดการ = ค่าที่โหลดมา
+  const pickRole = (k: string) =>
+    setForm((f) => {
+      if (!f || !saved) return f;
+      if (k === "STAFF" && saved.role === "MANAGER") return { ...f, role: k, levels: {}, chat: "NONE" };
+      if (k === saved.role) return { ...f, role: k, levels: saved.levels, chat: saved.chat };
+      return { ...f, role: k };
     });
 
   const save = async () => {
@@ -128,11 +141,12 @@ export default function StaffPermissionScreen() {
     setBusy(true);
     setNote(null);
     try {
+      // R-S2.21c: role / unitIds ส่งเฉพาะเมื่อเปลี่ยน
       await putStaff(membershipId, {
-        role: form.role === "MANAGER" ? "MANAGER" : "STAFF",
-        unitIds: form.units,
+        ...(form.role !== saved.role ? { role: form.role === "MANAGER" ? "MANAGER" : "STAFF" } : {}),
+        ...(!sameUnits(form.units, saved.units) ? { unitIds: form.units } : {}),
         levels: changedLevels,
-        ...(form.chat !== saved.chat && isChatLevel(form.chat) ? { chat: form.chat } : {}),
+        ...((demoting || form.chat !== saved.chat) && isChatLevel(form.chat) ? { chat: form.chat } : {}),
         extraPermissions: {},
       });
       setNote({ text: t("perm.saved"), warn: false });
@@ -165,7 +179,8 @@ export default function StaffPermissionScreen() {
   };
 
   const back = () => (router.canGoBack() ? router.back() : router.replace("/secretary/staff"));
-  const unitNames = (u: string[]) => (allUnits(u) ? t("perm.unitAll") : u.map((id) => unitOpts.find((x) => x.id === id)?.name ?? t("perm.unitOne")).join(", "));
+  const unitNames = (u: string[]) =>
+    allUnits(u) ? t("perm.unitAll") : u.length === 0 ? t("perm.unitNone") : u.map((id) => unitOpts.find((x) => x.id === id)?.name ?? t("perm.unitOne")).join(", ");
   const jd = dateBkk(person?.joinedAt);
   const sub = person
     ? [
@@ -202,7 +217,7 @@ export default function StaffPermissionScreen() {
             <Segment
               testID="perm-role"
               value={form.role}
-              onChange={(k) => editable && setForm((f) => (f ? { ...f, role: k } : f))}
+              onChange={(k) => editable && pickRole(k)}
               options={(editable ? roleOptions : [person.role]).map((r) => ({ key: r, label: roleLabel(t, r) }))}
             />
 
