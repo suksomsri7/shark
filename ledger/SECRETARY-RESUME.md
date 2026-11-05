@@ -1,9 +1,8 @@
-## ▶️ 5 พ.ย. ~18:4xZ — จุดต่อล่าสุด (บัญชี B · ผู้คุม Fable)
-- สถานะ **35/58 (60%)** · S1 เหลือ S1.14 (เลน b · ด่านเต็ม · ได้สัญญาเพิ่ม 6 ข้อจากฝั่งแอป: why/editable/classes/canApprove ใน proposals · plans ใน room · link/canUndo ใน log · RoomStatus doc · secretary/me alias) · S2 ✅: S2.1 S2.2 S2.3 S2.4 S2.7 S2.8 S2.9 S2.12 · กำลังทำ: S2.5+S2.6 (เลน d) · S2.10+S2.11+§S fix-forward (เลน c)
-- ถัดไปเมื่อเลนว่าง: S2.17–S2.19 (ลูกค้า · หลัง S1.14+S1.21) · S2.15 (ช่วยเหลือ) · S2.21+S2.22 (หลัง S2.10) · S2.16+S2.23 (backoffice · ผู้คุมเขียน oracle qc-sec-s2.16) · S2.13+S2.20 (มืด/แถบบน · หลังทุกจอ) · S2.14 ปิด S2 (ด่านเต็ม) → S3a
-- กติกาใหม่: COMMON A.11 (builder แอป merge tip ก่อนจบ) · ภาพคู่: ผู้คุมดูเองก่อน merge (เปิดด้วย Read หลังย่อครึ่ง)
-- release gate ของเจ้าของ (จาก §R/§L/§P): SMS provider บน prod + บัญชี reviewer มีเบอร์ · assist ฟรีมีเพดาน $0.50/วัน · ผู้ใช้เดิมต้องกดรับคำเชิญ · ปุ่ม "เลขา AI" ลอยบนหน้าแรก 1.0 ตรวจเครื่องจริง (CP2)
-- baseline ปัจจุบัน `ledger/qc-baseline/sec-baseline-bfad2f15.txt` (แดงเดิม 2 ชุด emoji — S1.14 hotfix)
+## ▶️ 6 พ.ย. ~01:2xZ — จุดต่อล่าสุด (บัญชี B · ผู้คุม Fable)
+- สถานะ **39/58 (67%)** · S1 เหลือ S1.14 รอบ 3 (เลน b · §T ปิดแล้ว · re-check N1–N7) + `next build` (watcher รอเครื่องว่าง · swap รวม 20 GB แล้ว · ดู reference_sec_next_build_memory) → merge → regen baseline (`bash scripts/sec-baseline.sh`) → s1.1 B-1 เขียว → **CP1 ปิด S1** (สรุปใหญ่ + ของเจ้าของ: assist cap · กดรับคำเชิญ · SMS provider · reviewer account เบอร์ · ปุ่มเลขาลอยหน้าแรก 1.0)
+- S2 ✅: S2.1 S2.2 S2.3 S2.4 S2.5 S2.6 S2.7 S2.8 S2.9 S2.10 S2.11 S2.12 · รอบ 2: S2.17–19 (เลน c · §U) · S2.21+22 (เลน d · §V) · รอเลน: S2.15 (ช่วยเหลือ) · S2.16+23 (backoffice · oracle พร้อม) · S2.13+20 (มืด/แถบบน/three-chats · หลังทุกจอ) · S2.14 ปิด S2 (ด่านเต็ม)
+- ตั๋ว server รวม (S1.14 follow-up หรือ S3a): invite รับ levels/chat + ปฏิเสธ sensitive · phoneMasked ใน inbox DTO · canAssign/canSetStatus/canLinkCustomer · replyWindowEndsAt · ai-suggest Bearer + suggestionId · tags/deals ใน DTO · task-from-chat route · invites/pending route · staff units ชื่อ (ทำแล้วใน §T j) · /me appleLinked · shift status · SENSITIVE_PARTS เพิ่ม (W-12) · AiMessage.clientMessageId (secretary_c) · step-up ลบบัญชี
+- กติกา: COMMON A.11 (builder แอป merge tip ก่อนจบ) · ผู้คุมดูภาพคู่เองก่อน merge · 3 เลน (b server · c/d แอป) · ห้าม push main/deploy/eas
 
 ## ▶️ 4 พ.ย. 2026 ~21:1xZ — 11/58 (19%) · ปิด S0 · S1.1–S1.5 · S1.19 · S1.20 · กำลังทำ: S1.6 (เลน b) · S1.7+S1.8 (เลน c) · S1.3b (เลน d) · พร้อมปล่อย: S1.9 · S1.10+S1.15 · S1.13 (ใบ+oracle ใน ledger/secretary-briefs + scripts/qc-sec-s1.*.mts)
 

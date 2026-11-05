@@ -8,6 +8,7 @@ import { useFocusEffect } from "expo-router";
 import { api, ApiError } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
 import { langFrom, setLang } from "@/src/i18n";
+import { resetInboxState } from "@/src/api/inbox";
 
 // ───────── ตารางเส้น (ชื่อที่จอใช้ → path จริง) ─────────
 const PATH = {
@@ -157,7 +158,8 @@ type GetMap = {
   "secretary/account/delete/preview": DeletePreview;
 };
 type PostMap = {
-  "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[] }; res: { roomId: string; conversationId?: string; status?: string } };
+  // S2.19 K3 "สั่ง Shark เรื่องลูกค้านี้": context = รหัสห้องแชทลูกค้า/ผู้ติดต่อ (ไม่ใส่ชื่อ/เบอร์ลูกค้า · เซิร์ฟเวอร์ resolve เอง)
+  "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string } }; res: { roomId: string; conversationId?: string; status?: string } };
   "secretary/scheduled": { body: ScheduleBody; res: { id: string } };
   "secretary/tenants/create": { body: { name: string; type: string; systems: string[] }; res: TenantCreateRes };
   "secretary/staff/invite": { body: InviteBody; res: InviteRes };
@@ -606,10 +608,39 @@ let badges: ZoneCounts = ZERO;
 const badgeListeners = new Set<() => void>();
 
 export async function refreshZoneBadges(): Promise<void> {
-  const [sec, cust] = await Promise.all([secGet("secretary/inbox/count").catch(() => null), secGet("inbox/unread").catch(() => null)]);
+  const [sec, cust] = await Promise.all([
+    secGet("secretary/inbox/count").catch(() => null),
+    secGet("inbox/unread").catch((e: unknown) => {
+      // S2.17: 403 = ไม่มีสิทธิ์ดูแชทลูกค้า ⇒ ซ่อนไอคอนโซนลูกค้า (ล้มแบบอื่น = ไม่เปลี่ยน)
+      if (isDenied(e)) setCustomersAccess(false);
+      return null;
+    }),
+  ]);
+  if (cust) setCustomersAccess(true);
   // ทีม = ยังไม่มีแหล่ง (S2.10)
   badges = { secretary: sec?.canApprove ?? 0, customers: cust?.unread ?? 0, team: 0 };
   badgeListeners.forEach((fn) => fn());
+}
+
+// ───────── สิทธิ์ดูแชทลูกค้า (S2.17) — false = ซ่อนไอคอน "ลูกค้า" ใน SecTopBar ─────────
+// ตั้งจาก inbox/unread (ด้านบน) และจาก GET inbox/systems ของ K1 (403) · เริ่มต้น = แสดง (ไม่รู้ = ไม่ซ่อน) · เปลี่ยนผู้ใช้/กิจการ = ล้าง
+let customersAccess = true;
+const accessListeners = new Set<() => void>();
+export function setCustomersAccess(ok: boolean): void {
+  if (customersAccess === ok) return;
+  customersAccess = ok;
+  accessListeners.forEach((fn) => fn());
+}
+const getCustomersAccess = () => customersAccess;
+export function useCustomersAccess(): boolean {
+  return useSyncExternalStore(
+    (l) => {
+      accessListeners.add(l);
+      return () => accessListeners.delete(l);
+    },
+    getCustomersAccess,
+    getCustomersAccess,
+  );
 }
 
 const getBadges = () => badges;
@@ -635,6 +666,8 @@ export function useSecretaryZone(): void {
     resetSecretaryMe();
     badges = ZERO;
     badgeListeners.forEach((fn) => fn());
+    setCustomersAccess(true);
+    resetInboxState(); // R-S2.17c: ระบบแชทที่เลือก + canReply ของร้านเดิมไม่ข้ามร้าน
     void loadSecretaryMe(userId);
     if (userId && activeTenantId) void refreshZoneBadges();
   }, [userId, activeTenantId]);

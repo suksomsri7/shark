@@ -252,7 +252,8 @@ export async function notifyUser(userId: string, tenantId: string, kind: NotifyK
     }
     const r = await sendPushToUser(
       uid,
-      { title: msg.title, body: msg.body, data: msg.data, ...(typeof badge === "number" ? { badge } : {}) },
+      // S1.14 R-S1.14j ▸ data.tenantId ทุกใบ — แอปสลับร้านก่อนเปิด deep link (push ห้องเลขาไม่กรองร้าน · R-K20) ◂
+      { title: msg.title, body: msg.body, data: { ...msg.data, tenantId }, ...(typeof badge === "number" ? { badge } : {}) },
       deps?.post ? { post: deps.post } : undefined,
     );
     return r.sent > 0 ? { sent: r.sent, skipped: null } : { sent: 0, skipped: "none" };

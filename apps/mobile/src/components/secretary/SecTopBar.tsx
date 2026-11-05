@@ -9,7 +9,7 @@ import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon, IconBtn, TopBar, type IconName } from "@/src/components/airy";
 import { useAuth } from "@/src/lib/auth-context";
-import { useZoneBadgeCounts } from "@/src/api/secretary";
+import { useCustomersAccess, useZoneBadgeCounts } from "@/src/api/secretary";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme, type ZoneKey } from "@/src/theme/index";
 import { size, type as T } from "@/src/theme/tokens";
@@ -60,11 +60,14 @@ export function SecTopBar({
   const shared = useZoneBadgeCounts(); // R-S2.1e: store กลาง (โหลดที่ layout ของโซน) ไม่ยิงต่อ mount
   const counts = badges ?? shared;
   const plus = showPlus ? PLUS[zone] : null;
+  // S2.17: ไม่มีสิทธิ์ดูแชทลูกค้า (inbox 403) ⇒ ไม่มีไอคอน "ลูกค้า" ทุกโซน (จอ /customers แสดง "ไม่มีสิทธิ์" เอง)
+  const custOk = useCustomersAccess();
+  const zones = custOk ? ZONES : ZONES.filter((z) => z.zone !== "customers");
 
   return (
     <TopBar
       testID={testID}
-      left={ZONES.map((z) => {
+      left={zones.map((z) => {
         const n = badgeText(counts[z.zone]);
         return (
           <View key={z.zone} style={styles.slot}>

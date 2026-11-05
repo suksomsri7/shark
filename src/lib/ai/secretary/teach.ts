@@ -167,7 +167,7 @@ export async function editProposal(
   ctx: ConvCtx,
   proposalId: string,
   patch: Record<string, unknown>,
-): Promise<{ ok: true; payload: unknown } | { ok: false; error: EditError; message: string }> {
+): Promise<{ ok: true; payload: unknown; summary: string } | { ok: false; error: EditError; message: string }> {
   const actor = memberActorOf(ctx);
   const row = await visibleProposal(ctx, proposalId);
   if (!actor || !row) return { ok: false, error: "not_found", message: MSG.not_found };
@@ -199,12 +199,23 @@ export async function editProposal(
     const newVal = oneLine(patch[field] as string, 300);
     summary = (oldVal && row.summary.includes(oldVal) ? row.summary.split(oldVal).join(newVal) : `${row.summary} · แก้เป็น: ${newVal}`).slice(0, SUMMARY_MAX);
   }
+  // S1.14 R-S1.14i ▸ ผู้อนุมัติเห็นว่าแก้อะไร: ต่อท้าย "(แก้แล้ว: <ช่อง>=<ค่า> …)" ของช่องที่ค่าเปลี่ยนจากต้นฉบับ (แทนวงเล็บเดิมของการแก้ครั้งก่อน) ◂
+  const original = isRec(next._edited) && isRec((next._edited as Record<string, unknown>).before) ? ((next._edited as Record<string, unknown>).before as Record<string, unknown>) : before;
+  const changed = Object.keys(merged).filter((k) => JSON.stringify(merged[k]) !== JSON.stringify(original[k]));
+  if (changed.length > 0) {
+    const show = (v: unknown) => oneLine(typeof v === "string" ? v : JSON.stringify(v) ?? "", 40);
+    const note = ` (แก้แล้ว: ${changed.slice(0, 5).map((k) => `${k}=${show(merged[k])}`).join(" · ")}${changed.length > 5 ? " …" : ""})`;
+    const cur = summary ?? row.summary;
+    const cut = cur.lastIndexOf(" (แก้แล้ว: ");
+    const base = cut >= 0 ? cur.slice(0, cut) : cur; // N3: ตัดวงเล็บของการแก้ครั้งก่อนทิ้งเสมอ (แก้ซ้ำ = ไม่ซ้อน)
+    summary = `${base.slice(0, Math.max(0, SUMMARY_MAX - note.length))}${note}`;
+  }
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
     where: { id: row.id, status: "PENDING" },
     data: { payload: next as never, ...(summary ? { summary } : {}) },
   });
   if (res.count !== 1) return { ok: false, error: "not_pending", message: MSG.not_pending };
-  return { ok: true, payload: next };
+  return { ok: true, payload: next, summary: summary ?? row.summary };
 }
 
 // ─────────────────────────────── ความจำที่รอเจ้าของยืนยัน ───────────────────────────────

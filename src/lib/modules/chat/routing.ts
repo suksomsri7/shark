@@ -359,7 +359,7 @@ export async function callHelper(args: {
     systemId,
     conversationId: conv.id,
     senderUserId: args.byUserId,
-    body: `🙋 ${byName} เรียก ${helper.name} มาช่วย${note ? `: ${note}` : ""}`,
+    body: `[เรียกคนช่วย] ${byName} เรียก ${helper.name} มาช่วย${note ? `: ${note}` : ""}`,
     isInternal: true,
   });
   await pushInbox(tenantId, systemId, helper.userId, conv.id, "helper", "มีคนเรียกให้ช่วยตอบแชท", `${byName} เรียกคุณมาช่วยตอบลูกค้า`, args.deps?.post);
@@ -407,7 +407,7 @@ export async function handoff(args: {
     systemId,
     conversationId: conv.id,
     senderUserId: args.byUserId,
-    body: `🔁 ส่งต่อจาก ${byName} ถึง ${to.name}: ${why}`,
+    body: `[ส่งต่อ] จาก ${byName} ถึง ${to.name}: ${why}`,
     isInternal: true,
   });
   await pushInbox(tenantId, systemId, to.userId, conv.id, "handoff", "มีห้องแชทส่งต่อถึงคุณ", `${byName} ส่งต่อห้องแชทลูกค้าให้คุณดูแล`, args.deps?.post);

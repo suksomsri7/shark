@@ -84,6 +84,9 @@ export const light = {
   warn: { bg: "rgba(255,176,32,0.14)", fg: "#c47a12" }, // .why
   approval: { border: "rgba(255,190,90,0.7)" }, // .apc (ขอบการ์ดรออนุมัติ)
   bad: { fg: "#d8436a" }, // ข้อความเตือนสีแดงอมชมพู (D1 "ไม่เห็นแชทลูกค้า" · ขั้นที่ล้ม · ปุ่มถอด) — S2.10
+  // โซนลูกค้า (S2.17–S2.19 · แบบ K1–K5): สีป้ายช่องทาง · แถบเขียว "ลูกค้าเห็นข้อความ" · บันทึกภายใน (เส้นประส้ม) · Shark (ม่วง) · รอคน (ส้ม)
+  channel: { LINE: "#06c755", WEBCHAT: "#5a64d8", FACEBOOK: "#1877f2", INSTAGRAM: "#d8436a", SHOPEE: "#ee4d2d", LAZADA: "#0f146d", WHATSAPP: "#25d366", TIKTOK: "#16161c", other: "#8e8e93" },
+  cust: { bannerBg: "rgba(52,199,89,0.16)", bannerFg: "#1a7f3c", noteBg: "rgba(255,240,224,0.75)", noteBorder: "rgba(196,122,18,0.55)", ai: "#6a4fd8", aiBg: "rgba(106,79,216,0.09)", aiBorder: "rgba(106,79,216,0.55)", waiting: "#ff9f0a" },
   inputBg: "rgba(255,255,255,0.74)",
   chip: { bg: "rgba(150,150,185,0.12)", fg: "#6e6e73" }, // .chips span
   tab: { fg: "#555566" }, // .tabs span

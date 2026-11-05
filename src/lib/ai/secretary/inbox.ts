@@ -33,6 +33,8 @@ export type InboxItem = {
   expiresAt: Date | null;
   canApprove: boolean;
   why?: string;
+  /** S1.14 R-S1.14e ▸ แผน: kind ของทุกขั้น (ไม่มี payload) ◂ */
+  kinds?: string[];
 };
 
 const TAKE_DEFAULT = 50;
@@ -165,6 +167,7 @@ async function tenantItems(t: Tenancy, userId: string, kind: "proposal" | "plan"
       createdAt: p.createdAt,
       expiresAt: p.expiresAt,
       canApprove,
+      kinds,
     });
   }
   return out.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, take);
