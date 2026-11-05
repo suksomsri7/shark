@@ -23,6 +23,7 @@ const chk = (id: string, name: string, ok: boolean, detail = "", sev: Sev = "CRI
 const rd = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 const walk = (d: string): string[] => (existsSync(d) ? readdirSync(d).flatMap((f) => { const q = join(d, f); return statSync(q).isDirectory() ? walk(q) : /\.tsx?$/.test(f) ? [q] : []; }) : []);
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 200);
 
 console.log("── S: ทุก spec ──");
 {
