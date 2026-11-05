@@ -4,7 +4,13 @@
 > ใบสั่ง `ledger/secretary-briefs/sec-brief-S2.14.md` (+ COMMON + RESOLUTIONS §W §W.2 §X §X.2 §Y §Y.2) · สัญญา server `docs/api/SECRETARY-API.md`
 > ข้อสอบ: `scripts/qc-sec-s2.14.mts` (S ทุก spec + s2.1/s2.12 · B ทะเบียนปุ่ม · F fixture/console + docs · T three-chats · M typecheck · D fitness) — **ไม่แก้ oracle/spec**
 
-## สถานะ: (เติมท้ายสุด)
+## สถานะ: เสร็จ (รอผู้คุม: ด่านเต็ม `next build` + qc-mobile-* + ผู้ตรวจ 2 คน + CP3 ภาพคู่) — ไม่ push
+- ผล (หลัง merge session/secretary 90da32041 ด้วย SHA · ทิป bf99a3de7 + commit wo-note):
+  - `qc-sec-s2.14` forced #1 `{"total":10,"passed":10,"failed":[],"skipped":[],"findings":[]}` exit 0 · forced #2 เท่ากัน exit 0 · ไม่ forced 10/10 (มี buttons-sec.json ⇒ รันเต็ม)
+  - ในนั้น: S-1 ทุก spec (9) เขียว · s2.1/s2.12 เขียว · B-1 391 testID ok 391 · F-1 · F-2 (33 แถว) · T-1 three-chats 3/3 · M-1 typecheck mobile 0 · D-1/D-2 fitness ×2
+  - typecheck ทั้ง repo (`NODE_OPTIONS=--max-old-space-size=9000 ISO_MEM=10500M bash scripts/iso.sh pnpm exec tsc --noEmit`) exit 0 (ก่อน merge · merge เพิ่มแค่ ledger + oracle S3a.1)
+  - `clicks-sec.json`: 391/391 ok (ปุ่ม 129 · ช่องพิมพ์ 23 · กล่อง 239 ตามชนิดที่เห็นจริงบนเว็บ) · `three-chats.json` ok 3/3 unmocked 0 · summary ราก 60 จอ ok · states 96/96 ok · padding 20/20
+  - ไม่ได้รัน: oracle เซิร์ฟเวอร์ `qc-sec-s1.*` (ใบนี้ไม่แตะ `src/**`/prisma) · `next build` (ผู้คุม)
 
 ## 1. fix-forward + hand-off ที่ทำ
 | ข้อ | ไฟล์ | ทำอะไร |
@@ -55,3 +61,25 @@
 - `expo export --platform web` ในสำเนา QC `/root/qc-shark-mobile-sec-d` ผ่าน (QC_PREPARE=1 ของ shoot-sec · exit 0 ทุกรอบ)
 - `npx expo-doctor` ไม่ได้รัน: ไม่มีใน node_modules และ npx จะดาวน์โหลดแพ็กเกจ (ห้ามติดตั้งแพ็กเกจ) — ขอผู้คุมรันในทรีที่มี/ข้าม
 - TODO/FIXME/XXX ในจอ+คอมโพเนนต์ S2 + `src/api/{secretary,inbox}.ts` = 0 · `console.log/debug` = 0 · import `@/qc/fixtures` = 0 (oracle F-1)
+
+## 6. ข้อที่ต่างจากใบ + เหตุผล
+| ใบ | ทำจริง | เหตุผล |
+|---|---|---|
+| docs "§6 ตารางจอ↔route↔endpoint" (ใบ) / "§2.3" (oracle F-2) | เพิ่ม **§2.3b** ใน `docs/modules/31-secretary.md` (33 แถว ขึ้นต้น `\| /…`) | §6 ของเอกสารเป็น state machine อยู่แล้ว · ตาราง §2.3 เดิมใช้ backtick ใน route ⇒ regex oracle ไม่นับ — ไม่แก้ตารางเดิม เพิ่มตารางใหม่ใต้ §2.3 |
+| "ลบตาราง LevelGrid ฝั่งแอปใน G2" | ลบตาราง **ระดับ→คีย์** (`permissionsFromLevels/keysForLevel/CHAT_KEYS` + รายการคีย์ r/w) · คงกริดปุ่ม UI + ตาราง `LEVELS_OF` (ระดับที่โมดูลมี) | server ไม่ส่ง `levelsAvailable` ⇒ ถ้าลบหมดแอปจะแสดงปุ่มระดับที่โมดูลไม่มีแล้วโดน 422 · ตั๋ว T2 |
+| fixture สถานะ | 4 สถานะ (เพิ่ม `denied` 403) | ไม่มีสิทธิ์ต่างจากล้ม (ข้อความไม่โทษผู้ใช้) |
+| ภาพสถานะ | ภาพเดี่ยวสว่าง 1x (390×844) + แผ่นรวม | ขนาดรีโป (ภาพ 2x ทั้ง 96 แผ่น ≈ 98 MB) |
+| `npx expo-doctor` | ไม่รัน | ต้องดาวน์โหลดแพ็กเกจ (ห้าม) |
+| `clicks-sec.json` | รอบเต็ม 1 ครั้งบน build สุดท้าย (381/391) + รอบ `RESUME=1` เฉพาะ fixture `s2.1/s2.17/s2.20` (ปุ่ม K3 10 ตัวที่ถูกนับเพดาน 3 ครั้งในทางเดินที่ชีตค้นสมาชิกเปิดทับ — แก้ตัวนับแล้ว: ทางเดินที่มีชีตทับไม่นับเพดาน) ⇒ 391/391 | ไฟล์ยังเขียนโดยสคริปต์ทั้งหมด · รอบเต็มใหม่ใช้ ~28 นาที (คำสั่งใน §8) |
+
+## 7. คำถามที่ต้องการมติ (ไม่เดา)
+1. **oracle B-1 กับ testID ที่ไม่ใช่ปุ่ม**: ทะเบียนมี 391 testID — ปุ่ม 154 · ช่องพิมพ์ 14 · **กล่องแสดงผล 223** (ราก AiryScreen · Note · การ์ดผล · ชีต) ซึ่ง "กดแล้วมีผล" ไม่ได้โดยธรรมชาติ · click-sec ให้ ok = "เห็นบนจอจริงใน fixture อย่างน้อย 1 ชุด" (`effect: visible (ไม่ใช่ปุ่ม)`) — ขอยืนยันนิยามนี้ หรือสั่ง ORACLE-EDIT ให้ B-1 ตรวจเฉพาะ `kind != view`
+2. ไอคอน "ลูกค้า" ของแถบบน: badges เส้นเดียวทำให้ซ่อนไอคอนได้เมื่อเปิด K1/K2/K3 แล้วเจอ 403 เท่านั้น (เดิมรู้จาก `inbox/unread` 403 ทันที) — รับได้จนกว่าตั๋ว T1 หรือให้ยิง `inbox/systems` เพิ่ม 1 เส้นเฉพาะครั้งแรกต่อกิจการ?
+3. ปุ่ม "สร้างงานบอร์ด" K3 (S1.14b task): แสดงเมื่อ `can.reply` (คีย์ `chat.message.send` ตรงด่าน route) — ถ้าร้านไม่ได้เปิดสร้างงานจากแชท ผู้ใช้จะเห็นปุ่มแล้วได้ข้อความ not_configured · ต้องการให้ server ส่งธง `can.task`/ค่าตั้ง ใน DTO เพื่อซ่อนปุ่มไหม
+4. `cust-info-tags` เปลี่ยนจากแถวข้อความเป็นชิป — ภาพแบบ K3 เป็นแถว "แท็ก" ข้อความ · ทำตาม hand-off §X ("แสดงชิปแท็ก") ⇒ ภาพคู่ K3 ต่างแบบเล็กน้อยที่แถวนี้
+
+## 8. หนี้ / คำสั่งรันซ้ำ
+- สร้าง fixture สถานะ+กรณีพิเศษ: `node apps/mobile/qc/states-sec.mjs --make` · ถ่ายสถานะ: `bash scripts/iso.sh env QC_COPY=/root/qc-shark-mobile-sec-d node apps/mobile/qc/states-sec.mjs`
+- ทะเบียน: `node apps/mobile/qc/click-sec.mjs --registry` · กดจริงเต็ม: `bash scripts/iso.sh env QC_COPY=/root/qc-shark-mobile-sec-d WORKERS=4 node apps/mobile/qc/click-sec.mjs` (ต้องมี dist: `shoot-sec.mjs` QC_PREPARE=1 ก่อน) · แก้เฉพาะตัวแดง: `RESUME=1 SCEN='<regex fixture>'`
+- ถ่ายใหม่ทั้งชุด + ภาพคู่ + เลื่อนสุด/ระยะ: `bash scripts/iso.sh bash apps/mobile/qc/shots-sec/s2.14-interaction/README-reshoot.sh.txt` (EXPORT=1 = export ก่อน)
+- หนี้: badge โหลด 3 ครั้งตอนเปิดโซน (effect + focus ซ้อน — มีมาตั้งแต่ S2.1 · ไม่กระทบตัวเลข) · Android `expo-system-ui` (R-S2.13i · S3a) · ตั๋ว server T1–T4 (§2)
