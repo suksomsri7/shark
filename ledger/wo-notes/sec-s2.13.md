@@ -115,3 +115,4 @@
 - **s2.13 forced #2 รวม typecheck**: `{"total":11,"passed":11,"failed":[],"skipped":[],"findings":[]}` exit 0
 - s2.2 10/11 · s2.15 7/8 · s2.17 11/12 · s2.21 11/12 · oracle s2.1 13/14 (M-1 SKIP · failed [] ทุกตัว · exit 0)
 - push-link-test 11/11 · mobile typecheck 0
+- หลัง merge session/secretary 6309c83a0 (S1.14b: `chat/routing.ts` ส่ง link `/customers/<id>?e=` แล้ว · `apps/mobile/src/api/inbox.ts` type ใหม่): s2.13 forced รวม typecheck `{"total":11,"passed":11,"failed":[],"skipped":[],"findings":[]}` exit 0 · push-link-test 11/11 (ลิงก์ `/customers/<id>?e=` = P-10 ข้อ b)
