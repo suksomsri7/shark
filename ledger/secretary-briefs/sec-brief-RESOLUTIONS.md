@@ -252,3 +252,9 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S1.14b-e (Q5)** `replyWindowEndsAt` = `ChatConversation.replyWindowExpiresAt` (คอลัมน์มีอยู่แล้ว · FB/IG/WA) แปลง iso หรือ null — เลิกคำนวณจาก adapter · LINE/WEBCHAT ยัง null (C-1 เดิม)
 - รับ: `permissionsForChat` export + default base (ข้อ 1) · `PATH_ID` task (ข้อ 3) · docs ที่ `docs/api/SECRETARY-API.md` (ข้อ 4) · shift แถวเปิดแถวแรก (ข้อ 5) · phoneMasked null เมื่อไม่มีเบอร์ (ข้อ 6)
 - ส่งต่อ S2.14: `customers/[id]/info.tsx` ใช้ `phoneMasked` · K2 เช็ก `ok` ของ ai-suggest + ส่ง `suggestionId` ตอนส่งคำตอบ (เพิ่มในใบ S2.14)
+
+### X.2 รีวิว S1.14b ผู้ตรวจ Y — มติรอบ 3 (6 พ.ย. ~08:3xZ)
+- **R-S1.14b-f (MAJOR-2 · แก้ก่อน merge)** คีย์ wildcard `<module>.*` ใน `extraPermissions`/`permissions` ของ `staff/invite` = `sensitive_key` เสมอ (422 · ไม่สร้างใบ) — ใส่ใน `buildPermissions` ของ route (ไม่แตะ `isSensitiveKey` เพื่อไม่กระทบ S1.25) · oracle V-5 ใหม่
+- **R-S1.14b-g (LOW-4 + MINOR-3)** `suggestionId` ที่ไม่ใช่ของห้อง/ร้าน/ระบบเดียวกัน ⇒ 422 `bad_suggestion` ก่อนส่ง (ไม่เงียบ) · oracle S-4 ใหม่ · บันทึกภายใน (`isInternal:true`) ห้ามใช้ `suggestionId` แทน `clientMessageId` ⇒ 422 เดิม (คีย์ `sugg:` เฉพาะคำตอบจริง)
+- **R-S1.14b-h (MINOR-4)** `task`: error จาก lib ที่มี `status` 403/404 ให้คืนตามนั้น (`{error:"forbidden"|"not_found", message}`) · อื่น ⇒ 422 `task_failed` · docs ตาม
+- MAJOR-1/MINOR-1/MINOR-2 = รอบ 2 ที่กำลังทำ (commit แล้วรัน oracle) · LOW-1 → S2.14 (ใบมีแล้ว) · LOW-2 รับทราบ (รูปแบบเดียวกับ thrown()) · LOW-3 → S3a: `can.aiSuggest` ใน DTO (จดใน RESUME)
