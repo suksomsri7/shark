@@ -1,0 +1,226 @@
+== migrate status 2026-11-05T06:01:26Z
+Prisma schema loaded from prisma/schema.
+Datasource "db": PostgreSQL database "neondb", schema "public" at "ep-calm-flower-aosbmxhm.c-2.ap-southeast-1.aws.neon.tech"
+
+197 migrations found in prisma/migrations
+
+Database schema is up to date!
+== qc-ai-actions 06:01:31Z
+FINDINGS: CRITICAL 1 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":12,"passed":11,"findings":["CRASH"]}
+exit=0
+== qc-ai-analyst 06:01:41Z
+FINDINGS: CRITICAL 2 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":9,"passed":7,"findings":["AN-2.1","AN-3.3"]}
+exit=0
+== qc-ai-automation 06:01:45Z
+exit=0
+== qc-ai-brain 06:01:49Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":8,"passed":8,"findings":[]}
+exit=0
+== qc-ai-credit 06:01:51Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":32,"passed":32,"findings":[]}
+exit=0
+== qc-ai-eval 06:01:56Z
+JSON_SUMMARY {"total":4,"passed":4,"findings":[]}
+exit=0
+== qc-ai-feedback 06:02:00Z
+JSON_SUMMARY {"total":5,"passed":5,"findings":[]}
+exit=0
+== qc-ai-growth 06:02:03Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":8,"passed":8,"findings":[]}
+exit=0
+== qc-ai-interview 06:02:08Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":9,"passed":9,"findings":[]}
+exit=0
+== qc-ai-kanban-board 06:02:09Z
+JSON_SUMMARY {"total":3,"passed":3,"findings":[]}
+exit=0
+== qc-ai-memory 06:02:14Z
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+exit=0
+== qc-ai-phase-a 06:02:19Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":9,"passed":9,"findings":[]}
+exit=0
+== qc-ai-phase-b1 06:02:26Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":9,"passed":9,"findings":[]}
+exit=0
+== qc-ai-phase-b2 06:02:35Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":11,"passed":11,"findings":[]}
+exit=0
+== qc-ai-plan 06:02:43Z
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+exit=0
+== qc-ai-proactive 06:02:49Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":6,"passed":6,"findings":[]}
+exit=0
+== qc-ai-proposals 06:03:16Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+exit=0
+== qc-ai-quality 06:03:23Z
+JSON_SUMMARY {"total":5,"passed":5,"findings":[]}
+exit=0
+== qc-ai-schedule 06:03:27Z
+JSON_SUMMARY {"total":8,"passed":8,"findings":[]}
+exit=0
+== qc-ai-skills 06:03:32Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":23,"passed":23,"findings":[]}
+exit=0
+== qc-ai-tools 06:03:36Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":18,"passed":18,"findings":[]}
+exit=0
+== qc-ai-tools2 06:03:43Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":8,"passed":8,"findings":[]}
+exit=0
+== qc-ai-tuning 06:03:48Z
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+exit=0
+== qc-ai-usage 06:03:50Z
+exit=0
+== qc-ai-vision 06:03:52Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":6,"passed":6,"findings":[]}
+exit=0
+== qc-ai-wave5b 06:03:58Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":24,"passed":24,"findings":[]}
+exit=0
+== qc-mobile-app 06:04:10Z
+exit=0
+== qc-mobile-auth 06:04:22Z
+exit=0
+== qc-mobile-authz-hotfix 06:04:27Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+exit=0
+== qc-mobile-chat 06:04:33Z
+exit=0
+== qc-mobile-help 06:04:41Z
+exit=0
+== qc-approval-edit 06:04:47Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+exit=0
+== qc-approval-wiring 06:04:50Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+exit=0
+== qc-approval 06:04:56Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+exit=0
+== qc-chat-ai-suggest 06:04:58Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":44,"passed":44,"findings":[]}
+exit=0
+== qc-chat-api-v1 06:05:03Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":89,"passed":89,"findings":[]}
+exit=0
+== qc-chat-attachments 06:05:07Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":37,"passed":37,"findings":[]}
+exit=0
+== qc-chat-business-hours 06:05:10Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":73,"passed":73,"findings":[]}
+exit=0
+== qc-chat-core-v2 06:05:13Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":47,"passed":47,"findings":[]}
+exit=0
+== qc-chat-inbox-ui 06:05:16Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":55,"passed":55,"findings":[]}
+exit=0
+== qc-chat-learning 06:05:17Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":32,"passed":32,"findings":[]}
+exit=0
+== qc-chat-member-autolink 06:05:20Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":11,"passed":11,"findings":[]}
+exit=0
+== qc-chat-notify-v2 06:05:23Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":30,"passed":30,"findings":[]}
+exit=0
+== qc-chat-notify 06:05:26Z
+JSON_SUMMARY {"passed":23,"findings":[]}
+exit=0
+== qc-chat-push-badge 06:05:44Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":48,"passed":48,"findings":[]}
+exit=0
+== qc-chat-replies 06:05:47Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":60,"passed":60,"findings":[]}
+exit=0
+== qc-chat-retention 06:05:50Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":50,"passed":50,"findings":[]}
+exit=0
+== qc-chat-security-scope 06:05:54Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":20,"passed":20,"findings":[]}
+exit=0
+== qc-chat-security 06:05:56Z
+JSON_SUMMARY {"total":38,"passed":38,"findings":[]}
+exit=0
+== qc-chat-staff-perms 06:06:14Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":49,"passed":49,"findings":[]}
+exit=0
+== qc-chat-translate 06:06:17Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":34,"passed":34,"findings":[]}
+exit=0
+== qc-chat-v2-composer 06:06:19Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+exit=0
+== qc-chat-v2-context 06:06:21Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
+exit=0
+== qc-chat-v2-icons 06:06:22Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":35,"passed":35,"findings":[]}
+exit=0
+== qc-chat-v2-list 06:06:23Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":41,"passed":41,"findings":[]}
+exit=0
+== qc-chat-v2-quickreply 06:06:24Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":28,"passed":28,"findings":[]}
+exit=0
+== qc-chat-v2-realtime 06:06:26Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":26,"passed":26,"findings":[]}
+exit=0
+== qc-chat-v2-room 06:06:27Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+exit=0
+== qc-chat-v2-shell 06:06:28Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":26,"passed":26,"findings":[]}
+exit=0
+== qc-chat-v2-voice 06:06:29Z
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":50,"passed":50,"findings":[]}
+exit=0
+== done 2026-11-05T06:06:32Z
