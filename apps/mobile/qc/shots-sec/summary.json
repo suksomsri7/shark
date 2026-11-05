@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T00:49:23.006Z",
+ "generatedAt": "2026-11-05T00:59:04.308Z",
  "base": "http://127.0.0.1:4725",
  "view": {
   "tag": "iphone",
@@ -1523,7 +1523,7 @@
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-help.png",
-   "generatedAt": "2026-11-05T00:49:07.800Z"
+   "generatedAt": "2026-11-05T00:58:50.233Z"
   },
   {
    "name": "secretary-help-c1",
@@ -1553,7 +1553,7 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-help-c1.png",
-   "generatedAt": "2026-11-05T00:49:13.088Z"
+   "generatedAt": "2026-11-05T00:58:54.449Z"
   },
   {
    "name": "secretary-help-dark",
@@ -1578,7 +1578,7 @@
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-help-dark.png",
-   "generatedAt": "2026-11-05T00:49:17.406Z"
+   "generatedAt": "2026-11-05T00:58:58.431Z"
   },
   {
    "name": "secretary-help-c1-dark",
@@ -1608,7 +1608,7 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-help-c1-dark.png",
-   "generatedAt": "2026-11-05T00:49:22.670Z"
+   "generatedAt": "2026-11-05T00:59:03.884Z"
   }
  ]
 }

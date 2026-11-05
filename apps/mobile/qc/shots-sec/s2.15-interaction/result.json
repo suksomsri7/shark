@@ -94,7 +94,7 @@
   "เปิดหน้านี้ในแอป",
   "เปิดหน้านี้ในแอป"
  ],
- "h2WebLinkUrl": "/?open=%2Fapp%2Fsettings%2Fchat&t=1793840007673",
+ "h2WebLinkUrl": "/?open=%2Fapp%2Fsettings%2Fchat&t=1793840393989",
  "h2Resolve": [
   {}
  ],
@@ -152,7 +152,7 @@
    "contentLength": "352",
    "transferEncoding": null,
    "bytes": 352,
-   "ct": "multipart/form-data; boundary=----WebKitFormBoundary2lApqCzq7ATX4dzk",
+   "ct": "multipart/form-data; boundary=----WebKitFormBoundary1BjTbE2QqPpyAkgF",
    "auth": true,
    "tenant": "t1",
    "fileField": true,

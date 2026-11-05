@@ -837,7 +837,7 @@ const en: Record<I18nKey, string> = {
   "cust.shift.sub": "On duty = receive new chats by rotation",
   "cust.shift.onOk": "You're on duty",
   "cust.shift.offOk": "You're off duty",
-  // S2.15 ช่วยเหลือ H1/H2
+  // S2.15 help H1/H2
   "help.title": "Help",
   "help.sub": "Report a problem · the SHARK team replies in chat · only you can see it",
   "help.subOwner": "Report a problem · the SHARK team replies in chat · owners see every case of the business",
