@@ -7,6 +7,7 @@
 
 import type { ChatAttachment, ChatChannelConnection, ChatContact, ChatConversation, ChatMessage, ChatRoutingRule } from "@prisma/client";
 import { channelLabel } from "@/lib/modules/chat/channel-icon";
+import { parseTags } from "@/lib/modules/chat/labels";
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 
@@ -35,6 +36,8 @@ export type InboxConversationDto = {
   waitingMin: number | null;
   aiDraft: boolean;
   helpers: string[];
+  /** ป้ายของห้อง (S1.14b · `parseTags` ตัวเดียวกับเว็บ · ค่าเพี้ยน = []) — "รอคน" = ป้ายส่งต่อคนของ S1.22 */
+  tags: string[];
 };
 export function conversationDto(
   c: ChatConversation & { contact: ChatContact },
@@ -54,8 +57,27 @@ export function conversationDto(
     waitingMin: waitingMinOf(c, x.now),
     aiDraft: x.aiDraft,
     helpers: x.helpers,
+    tags: parseTags(c.tags),
   };
 }
+
+/** ปุ่มที่ผู้เรียกกดได้ในห้อง (S1.14b · ตัดสินจากคีย์ของผู้เรียกฝั่ง server — แอปไม่คำนวณเอง) */
+export type InboxConversationCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean };
+/** ห้องในจอเธรด = รายการ + หน้าต่างตอบกลับ + ปุ่มที่กดได้ (S1.14b) */
+export type InboxConversationDetailDto = InboxConversationDto & {
+  /** ตอบได้ถึงเมื่อไร (ช่องทางที่มีหน้าต่าง เช่น FB/IG/WA = ข้อความลูกค้าล่าสุด + ชั่วโมงของช่องทาง) · LINE/WEBCHAT/ไม่มีข้อความลูกค้า = null */
+  replyWindowEndsAt: string | null;
+  can: InboxConversationCan;
+};
+
+/** สิ้นสุดหน้าต่างตอบกลับ (pure) — ช่องทางไม่มีหน้าต่าง (hours null) หรือยังไม่มีข้อความลูกค้า ⇒ null */
+export function replyWindowEndsAtOf(hours: number | null | undefined, lastInboundAt: Date | null | undefined): string | null {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0 || !lastInboundAt) return null;
+  return new Date(lastInboundAt.getTime() + hours * 3_600_000).toISOString();
+}
+
+/** สมาชิกที่ผูกกับห้อง — เบอร์ปิดเลขกลางเสมอ (`maskPhone` ของโมดูลสมาชิก · ไม่มีเบอร์เต็มใน DTO · R-S2.17 ตั๋ว) */
+export type InboxLinkedMemberDto = { id: string; name: string | null; phoneMasked: string | null };
 
 /**
  * ป้ายข้อความที่เลขาส่ง (RESOLUTIONS §M · S1.12): meta แบนคีย์ `ai_roomId` `ai_proposalId` `ai_approvedBy`

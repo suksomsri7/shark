@@ -46,8 +46,21 @@ const SENSITIVE_PARTS = [
   // เพิ่มเอง (oracle L-6): เช็ค (ผ่าน/เด้ง) · รับชำระค่าเรียน
   ".cheque.", ".enrollment.pay",
 ] as const;
+/** W-12 (RESOLUTIONS §V · S1.14b): คีย์เต็มที่อ่อนไหว (exact match · ตัวพิมพ์เล็ก) — ส่วนย่อยของมันไม่อ่อนไหวพอจะใส่ใน SENSITIVE_PARTS
+ *  (เช่น `.staff.manage` `.job.runany` จะลากคีย์ปกติของโมดูลอื่นไปด้วย) ⇒ ระบุทีละคีย์ */
+export const SENSITIVE_KEYS: ReadonlySet<string> = new Set([
+  "pos.staff.manage", // ตั้งพนักงาน/PIN ของ POS = แอดมินร้าน
+  "pos.device.manage", // ผูก/ถอดเครื่อง POS
+  "booking.service.setdeposit", // ตั้งมัดจำบริการ = เงิน
+  "account.approve.limit", // เพดานอนุมัติบัญชี = เงิน
+  "account.chart.manage", // ผังบัญชี = โครงสร้างบัญชี
+  "crm.quota.manage", // เป้าขาย/ค่าคอม
+  "crm.report.all", // รายงานทุกคน (ข้อมูลยอดขายของคนอื่น)
+  "booking.job.runany", // สั่งงานแทนคนอื่น
+]);
 export function isSensitiveKey(key: string): boolean {
   const k = String(key ?? "").toLowerCase();
+  if (SENSITIVE_KEYS.has(k)) return true;
   if (SENSITIVE_PARTS.some((p) => k.includes(p) || (p.startsWith(".") && k.startsWith(p.slice(1))))) return true;
   // ของรอบแรก (กันคีย์ชื่อแปลก): ส่วนใดขึ้นต้น delete/money/refund/void · เป็น setting(s)
   return k.split(".").some((s) => /^(delete|money|refund|void)/.test(s) || /^settings?$/.test(s));
@@ -116,7 +129,7 @@ export function permissionsForLevel(module: string, level: ModuleLevel, base: Pe
 }
 
 /** ตั้งแชท 3 ระดับ (pure) — NONE/VIEW ถอนคีย์แชททั้งโมดูล · REPLY ถอนแค่ `chat.*` แล้วใส่ 4 คีย์ (คีย์แชทอื่นที่ให้รายคีย์คงไว้) · คีย์ลิมิตคงไว้ */
-function permissionsForChat(level: ChatLevel, base: PermissionMap): PermissionMap {
+export function permissionsForChat(level: ChatLevel, base: PermissionMap = {}): PermissionMap {
   const out: PermissionMap = {};
   for (const [k, v] of Object.entries(base)) {
     if (keyModule(k) !== CHAT_MODULE || isLimitKey(k)) out[k] = v;

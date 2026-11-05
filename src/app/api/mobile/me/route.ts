@@ -5,6 +5,11 @@ import { mobileUser } from "@/lib/mobile/auth";
 import { getBrandingTokens } from "@/lib/branding/service";
 import { phoneOfUser, publicEmailOf } from "@/lib/core/phone-auth";
 
+const APPLE_RELAY = "@privaterelay.appleid.com";
+function appleLinkedOf(email: string | null | undefined): true | null {
+  return typeof email === "string" && email.trim().toLowerCase().endsWith(APPLE_RELAY) ? true : null;
+}
+
 export async function GET(req: Request): Promise<Response> {
   const user = await mobileUser(req);
   if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
@@ -23,7 +28,8 @@ export async function GET(req: Request): Promise<Response> {
   const phone = await phoneOfUser(user.id);
   return Response.json(
     {
-      user: { id: user.id, ...publicEmailOf(user), name: user.name, phone },
+      // S1.14b: appleLinked = true เมื่ออีเมลเป็นอีเมลซ่อนของ Apple · อื่น ๆ = null (ไม่รู้ — ยังไม่มีคอลัมน์ identity · หนี้ S3a · ห้ามเดา false)
+      user: { id: user.id, ...publicEmailOf(user), name: user.name, phone, appleLinked: appleLinkedOf(user.email) },
       memberships: memberships.map((m, i) => {
         const t = tokens[i];
         return {

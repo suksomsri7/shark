@@ -1,9 +1,19 @@
 // GET /api/mobile/inbox/conversations/[id] — เธรดห้องแชทลูกค้า (ห่อ `getThread` โหมด page · cursor คู่ `before=<iso>|<id>` · หน่วยอื่น = 404 · S1.21)
+//   S1.14b: conversation + `tags` · `replyWindowEndsAt` (ข้อความลูกค้าล่าสุด + ชั่วโมงของช่องทาง · LINE/WEBCHAT = null) · `can{}` ของผู้เรียก
+//           linkedMember = `{ id, name, phoneMasked }` (maskPhone · ไม่มีเบอร์เต็ม — ตั๋ว R-S2.17)
+import type { ChatChannelType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { getLinkedMember, getThread } from "@/lib/modules/chat/service";
 import { listHelpers } from "@/lib/modules/chat/routing";
-import { contactDto, conversationDto, messageDto } from "@/lib/mobile/inbox-dto";
-import { convExtras, cursorOf, fail, gate, notFound, parseCursor, READ, staffNames, systemOf, type RouteCtx } from "../../_shared";
+import { getAdapter, isSupported } from "@/lib/modules/chat/adapter";
+import { maskPhone } from "@/lib/modules/member/profile";
+import { contactDto, conversationDto, messageDto, replyWindowEndsAtOf, type InboxConversationDetailDto, type InboxLinkedMemberDto } from "@/lib/mobile/inbox-dto";
+import { ASSIGN, can, convExtras, cursorOf, fail, gate, LINK_CUSTOMER, notFound, parseCursor, READ, REPLY, SET_STATUS, staffNames, systemOf, type RouteCtx } from "../../_shared";
+
+/** ชั่วโมงหน้าต่างตอบกลับของช่องทาง — ช่องทางที่ยังไม่มี adapter ⇒ null (ไม่เดา) */
+function windowHoursOf(channel: ChatChannelType): number | null {
+  return isSupported(channel) ? getAdapter(channel).capabilities.replyWindowHours : null;
+}
 
 const LIMIT_MAX = 100;
 
@@ -30,13 +40,30 @@ export async function GET(req: Request, ctx: RouteCtx) {
     ids.length ? tenantDb({ tenantId: c.tenantId, systemId: sid }).chatAttachment.findMany({ where: { tenantId: c.tenantId, systemId: sid, messageId: { in: ids } }, orderBy: { createdAt: "asc" }, select: { messageId: true, fileName: true, url: true, kind: true, mimeType: true, durationMs: true } }) : [],
     t.conversation.contact.customerId ? getLinkedMember(c.tenantId, t.conversation.contact.customerId) : null,
   ]);
+  const hours = windowHoursOf(t.conversation.channel);
+  // ช่องทางมีหน้าต่าง ⇒ ข้อความลูกค้าล่าสุด (ไม่นับบันทึกภายใน) · ไม่มีหน้าต่าง ⇒ ไม่ query
+  const lastIn = hours
+    ? await tenantDb({ tenantId: c.tenantId, systemId: sid }).chatMessage.findFirst({
+        where: { tenantId: c.tenantId, systemId: sid, conversationId: t.conversation.id, direction: "IN", isInternal: false },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { createdAt: true },
+      })
+    : null;
+  const conversation: InboxConversationDetailDto = {
+    ...conversationDto(t.conversation, { now: new Date(), names, aiDraft: x.aiDraft.has(t.conversation.id), helpers: x.helpers.get(t.conversation.id) ?? [] }),
+    replyWindowEndsAt: replyWindowEndsAtOf(hours, lastIn?.createdAt),
+    can: { reply: can(c, REPLY), assign: can(c, ASSIGN), setStatus: can(c, SET_STATUS), linkCustomer: can(c, LINK_CUSTOMER) },
+  };
+  const linkedMember: InboxLinkedMemberDto | null = member
+    ? { id: member.id, name: member.name ?? null, phoneMasked: member.phone ? maskPhone(member.phone) : null }
+    : null;
   const attsOf = new Map<string, (typeof atts)[number][]>();
   for (const at of atts) attsOf.set(at.messageId, [...(attsOf.get(at.messageId) ?? []), at]);
   return Response.json({
-    conversation: conversationDto(t.conversation, { now: new Date(), names, aiDraft: x.aiDraft.has(t.conversation.id), helpers: x.helpers.get(t.conversation.id) ?? [] }),
+    conversation,
     messages: t.messages.map((m) => messageDto(m, attsOf.get(m.id) ?? [], names)),
     contact: contactDto(t.conversation.contact),
-    linkedMember: member ? { id: member.id, name: member.name ?? null, phone: member.phone ?? null } : null,
+    linkedMember,
     helpers: helpers.map((h) => ({ userId: h.userId, name: h.name, calledById: h.calledById, note: h.note, createdAt: h.createdAt.toISOString() })),
     nextBefore: t.messages.length === limit && t.messages[0] ? cursorOf(t.messages[0].createdAt, t.messages[0].id) : null,
   });
