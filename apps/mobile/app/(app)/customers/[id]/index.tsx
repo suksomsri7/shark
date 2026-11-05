@@ -104,6 +104,9 @@ export default function CustomerRoomScreen() {
   const draftAsked = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const atBottom = useRef(true);
+  // S2.13: เปิดห้อง (รวมจากแจ้งเตือน) ต้องอยู่ท้ายห้อง — ช่วง 2.5 วิ หลังโหลดแรก เนื้อหาโต (รูป · การ์ดร่าง) ⇒ เลื่อนลงเสมอ
+  //   (เดิมพึ่ง atBottom อย่างเดียว · onScroll ระหว่างเนื้อหาโตทำ atBottom=false แล้วค้างกลางห้องแบบสุ่ม)
+  const stickUntil = useRef(0);
   const composer = useRef<ComposerHandle>(null);
 
   useEffect(() => {
@@ -116,12 +119,19 @@ export default function CustomerRoomScreen() {
     setDraft(null);
     readSent.current = null;
     draftAsked.current = false;
+    stickUntil.current = 0;
     // S2.20: เปิดจากแจ้งเตือน/ลิงก์ตอนแอปเพิ่งเปิด — กิจการ (auth) มาหลัง focus ⇒ โหลดทันทีเมื่อรู้กิจการ (ไม่รอรอบ poll 5 วิ ที่จอว่าง/อ่านอย่างเดียว)
     if (activeTenantId) void loadRef.current();
   }, [activeTenantId, id]);
+  // R-S2.13h: ครั้งเดียวต่อ id (ref) · ไม่ผูก t — เปลี่ยนภาษาไม่ทำให้ข้อความเด้งซ้ำ
+  const pushNoted = useRef<string | null>(null);
+  const tRef = useRef(t);
+  tRef.current = t;
   useEffect(() => {
-    if (pushReason) setNote({ text: t(PUSH_REASON_KEY[pushReason]), warn: pushReason === "sla" });
-  }, [id, pushReason, t]);
+    if (!pushReason || pushNoted.current === id) return;
+    pushNoted.current = id;
+    setNote({ text: tRef.current(PUSH_REASON_KEY[pushReason]), warn: pushReason === "sla" });
+  }, [id, pushReason]);
 
   const merge = useCallback((rows: MsgItem[]) => {
     for (const m of rows) msgMap.current.set(m.id, m);
@@ -139,6 +149,10 @@ export default function CustomerRoomScreen() {
       if (tenantRef.current !== tenant) return;
       failCount.current = 0;
       setThread(th);
+      if (msgMap.current.size === 0) {
+        stickUntil.current = Date.now() + 2500;
+        atBottom.current = true;
+      }
       const all = merge(th.messages);
       setHasOlder((v) => (v === undefined ? !!th.nextBefore : v));
       setGone(null);
@@ -349,7 +363,7 @@ export default function CustomerRoomScreen() {
             atBottom.current = n.contentOffset.y + n.layoutMeasurement.height >= n.contentSize.height - 40;
           }}
           scrollEventThrottle={100}
-          onContentSizeChange={() => atBottom.current && scrollRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={() => (atBottom.current || Date.now() < stickUntil.current) && scrollRef.current?.scrollToEnd({ animated: false })}
         >
           {hasOlder ? (
             <Pressable testID="cust-room-more" onPress={() => void loadOlder()} disabled={moreBusy} accessibilityRole="button" style={styles.more}>

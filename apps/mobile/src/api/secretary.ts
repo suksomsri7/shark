@@ -212,7 +212,8 @@ export function secPost<P extends keyof PostMap>(path: P, body: PostMap[P]["body
 }
 
 // ───────── S2.20 badge แถบบน "หลัง action" — การกระทำที่เปลี่ยนตัวเลข badge สำเร็จ ⇒ โหลด badge ใหม่ (รวบ 400 ms เป็นครั้งเดียว) ─────────
-// รออนุมัติ (approve/reject ข้อเสนอ/แผน) · ทีม (เชิญ/ส่งใหม่/ยกเลิกคำเชิญ · รับคำเชิญ · เรื่องขอความช่วยเหลือ เปิด/ตอบ/ปิด/อ่าน)
+// รออนุมัติ (approve/reject ข้อเสนอ/แผน) · ทีม (เชิญ/ส่งใหม่/ยกเลิกคำเชิญ · รับคำเชิญ · เรื่องขอความช่วยเหลือ เปิด/ตอบ/ปิด)
+// R-S2.13f: GET support/cases/[id] (อ่านเรื่อง) ไม่อยู่ในชุดนี้ — H2 poll ทุก 15 วิ · จอ H2 เรียก scheduleZoneBadges() เองเมื่อโหลดแรก/ข้อความหรือสถานะเปลี่ยน
 const BADGE_AFTER = new Set<string>([
   "secretary/proposals/[id]/approve",
   "secretary/proposals/[id]/reject",
@@ -223,7 +224,6 @@ const BADGE_AFTER = new Set<string>([
   "secretary/staff/invites/[id]/resend",
   "secretary/invites/accept",
   "secretary/support/cases",
-  "secretary/support/cases/[id]",
   "secretary/support/cases/[id]/reply",
   "secretary/support/cases/[id]/resolve",
 ]);
@@ -289,8 +289,7 @@ function urlId(path: SecIdPath, id: string, q?: Query): string {
 }
 
 export function secGetId<P extends keyof GetIdMap>(path: P, id: string, q?: Query): Promise<GetIdMap[P]> {
-  // เปิดอ่านเรื่องขอความช่วยเหลือ = อ่านแล้ว ⇒ badge ทีมลด
-  return afterAction(path, api<GetIdMap[P]>(urlId(path, id, q)));
+  return api<GetIdMap[P]>(urlId(path, id, q));
 }
 
 /** opts.tenantId = ยิงในนามกิจการของรายการ (กล่องรวม S2.5) แทนกิจการ active */

@@ -58,6 +58,10 @@ export const size = {
 export const cardGap = 12;
 export const cardPad = { v: 16, h: 18 } as const;
 
+/** ปุ่มหลักลอยล่าง (D1 · G1 · G2 · C1 · R-S2.13g): ระยะปุ่มจากขอบล่าง และ padding ล่างของรายการ = ความสูงปุ่ม + ระยะนั้น + ช่องไฟการ์ด (+ safe area ที่จอ) */
+export const CTA_BOTTOM = 26;
+export const LIST_BOTTOM = size.btnH + CTA_BOTTOM + cardGap;
+
 /** มุมโค้ง/ระยะห่างชุดเดิมของแอป 1.0 — ห้ามเปลี่ยนค่า (src/theme.ts ส่งออกเป็น R/S) */
 export const legacyR = { sm: 8, md: 12, lg: 16, full: 999 } as const; // radius
 export const legacyS = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const; // spacing

@@ -52,6 +52,7 @@ export function BusinessSwitcherSheet({ visible, onClose, root = "/secretary" }:
   // S2.20 (หนี้ S2.7 · แบบ B1): แถบโควตางานของกิจการที่ใช้อยู่ — โหลดตอนเปิดชีต · พลาด/ไม่มีเพดาน = ไม่แสดง
   const [quota, setQuota] = useState<{ pct: number; reset: string | null } | null>(null);
   useEffect(() => {
+    setQuota(null); // R-S2.13h: เปิดชีตใหม่/สลับร้าน ⇒ ไม่โชว์ % ของร้านเดิมระหว่างโหลด
     if (!visible || !activeTenantId) return;
     let live = true;
     secGet("secretary/quota")

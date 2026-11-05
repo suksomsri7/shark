@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T06:33:21.585Z",
+ "generatedAt": "2026-11-05T07:11:52.365Z",
  "base": "http://127.0.0.1:4727",
  "view": {
   "tag": "iphone",
@@ -17,7 +17,7 @@
    "route": "/secretary/settings",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -30,14 +30,14 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings.png",
-   "generatedAt": "2026-11-05T06:28:55.391Z"
+   "generatedAt": "2026-11-05T07:11:11.574Z"
   },
   {
    "name": "secretary-settings-access",
    "route": "/secretary/settings/access",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -51,14 +51,14 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access.png",
-   "generatedAt": "2026-11-05T06:28:59.097Z"
+   "generatedAt": "2026-11-05T07:11:15.423Z"
   },
   {
    "name": "secretary-settings-rules",
    "route": "/secretary/settings/rules",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -73,14 +73,14 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules.png",
-   "generatedAt": "2026-11-05T06:29:02.409Z"
+   "generatedAt": "2026-11-05T07:11:18.784Z"
   },
   {
    "name": "secretary-settings-log",
    "route": "/secretary/settings/log",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -93,14 +93,14 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log.png",
-   "generatedAt": "2026-11-05T06:29:06.147Z"
+   "generatedAt": "2026-11-05T07:11:22.514Z"
   },
   {
    "name": "secretary-settings-knowledge",
    "route": "/secretary/settings/knowledge",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -115,112 +115,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-05T06:29:09.815Z"
-  },
-  {
-   "name": "secretary-settings-dark",
-   "route": "/secretary/settings",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-settings",
-    "sec-settings-row-access"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\n2\n\n1\n\n\n\nThe Bean Café\n\nตั้งค่า\nShark ทำงานตามที่ตั้งไว้ที่นี่ · แยกตามกิจการ\n\nเลขาของฉัน\nชื่อ น้ำเสียง คำลงท้าย และภาษาของเลขา\nShark\n\n\nโควตางาน\nงานที่ใช้เดือนนี้และวันเริ่มรอบใหม่\n62%\n\n\nสิทธิ์ต่อระบบ\nเลขาทำอะไรได้ในแต่ละระบบ\nเจ้าของเท่านั้น\n\n\nต้องอนุมัติเสมอ\nงานที่ต้องให้คนอนุมัติก่อนทำจริง\nเจ้าของเท่านั้น\n\n\nบันทึกการกระทำ\nทุกอย่างที่เลขาทำ · ย้อนได้ภายใน 24 ชม.\n\n\nความรู้ของกิจการ\nกฎ บทเรียน และข้อมูลสดของกิจการ\n\n\nคุยกับลูกค้าแทนร้าน\nตอบลูกค้านอกเวลาทำการ · บอกว่าเป็น AI\nเจ้าของเท่านั้น\n\n\nบัญชีของฉัน\nข้อมูลบัญชีและการลบบัญชี\n\n\nสลับกิจการ\nเลขาคนเดียวกัน ข้อมูลและสิทธิ์แยกตามกิจการ\n",
-   "unmocked": [],
-   "url": "/secretary/settings",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-dark.png",
-   "generatedAt": "2026-11-05T06:29:17.146Z"
-  },
-  {
-   "name": "secretary-settings-access-dark",
-   "route": "/secretary/settings/access",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-access",
-    "sec-access-row-pos",
-    "sec-owner-only"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nสิทธิ์ของ Shark\nThe Bean Café · ตั้งโดยเจ้าของ\nสิทธิ์เป็นของ \"คนที่สั่ง\" — Shark ทำได้ไม่เกินที่คุณทำได้ และไม่เกินระดับที่ตั้งไว้ต่อระบบ\n\nเจ้าของเท่านั้น · ดูได้อย่างเดียว\nPOS\nPOS\nขาย · บิล · สต็อก\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nCRM\nCRM\nลูกค้า · ดีล\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nจอง\nจองคิว\nคิว · ตารางงาน\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nสมา\nสมาชิก\nสมาชิก · แต้ม\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nบัญ\nบัญชี\nเอกสาร · ลงบัญชี\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nบอร\nบอร์ดงาน\nการ์ดงาน\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nแชท\nแชท LINE/FB\nตอบลูกค้า LINE/FB\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nรุ่นแรก \"ทำเองได้\" ยังปิดทุกระบบ (เปิดในรุ่นถัดไปเมื่อสถิติผ่านดี) · ลบ ยกเลิก คืนเงิน ไม่มีทางทำเองได้",
-   "unmocked": [],
-   "url": "/secretary/settings/access",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access-dark.png",
-   "generatedAt": "2026-11-05T06:29:20.901Z"
-  },
-  {
-   "name": "secretary-settings-rules-dark",
-   "route": "/secretary/settings/rules",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-rules",
-    "sec-rules-row",
-    "sec-owner-only",
-    "sec-rules-approver-OWNER"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nต้องอนุมัติเสมอ\nThe Bean Café\nรุ่นแรกทุกงานที่เขียนรออนุมัติอยู่แล้ว · รายการนี้คือสิ่งที่จะยังต้องอนุมัติเสมอแม้รุ่นถัดไปเปิด \"ทำเองได้\"\n\nเจ้าของเท่านั้น · ดูได้อย่างเดียว\nเงินออกจากกิจการ\nคืนเงิน · จ่ายซัพพลายเออร์ · ปรับยอดบิล\nปิดไม่ได้\nเอกสารเงินถึงลูกค้า\nใบเสนอราคา · ใบแจ้งหนี้ · ใบเสร็จ เกินวงเงิน\n> ฿20,000\nวงเงิน (บาท)\nบาท\nส่งข้อความถึงลูกค้า\nLINE · Facebook · SMS · โพสต์สาธารณะ\nทุกข้อความ\nลบ · ยกเลิก · แก้ย้อนหลัง\nลบลูกค้า · ยกเลิกคิว/การจอง · แก้บิลที่ปิดแล้ว\nปิดไม่ได้\nข้อมูลส่วนบุคคล\nส่งออกรายชื่อ · ดูเลขบัตร/ที่อยู่เต็ม\nปิดไม่ได้\nผู้อนุมัติ\nเ\nเจ้าของ\nเจ้าของ · ทุกเรื่อง\nผ\nผู้จัดการ\nผู้จัดการ · งานในห้องเลขาที่เห็น\nผู้อนุมัติยังต้องมีสิทธิ์ทำงานนั้นในระบบของตัวเอง",
-   "unmocked": [],
-   "url": "/secretary/settings/rules",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules-dark.png",
-   "generatedAt": "2026-11-05T06:29:24.069Z"
-  },
-  {
-   "name": "secretary-settings-log-dark",
-   "route": "/secretary/settings/log",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-log",
-    "sec-log-item"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 7\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย คุณ\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
-   "unmocked": [],
-   "url": "/secretary/settings/log",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log-dark.png",
-   "generatedAt": "2026-11-05T06:29:27.711Z"
-  },
-  {
-   "name": "secretary-settings-knowledge-dark",
-   "route": "/secretary/settings/knowledge",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "2dd60d487088b1d868fb23adae22a47e060b58c6b786dffa432cce11734c9042",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-know",
-    "sec-owner-only",
-    "sec-know-facts-empty",
-    "sec-know-digest"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nความรู้ของกิจการ\nสิ่งที่ Shark จำและใช้ทุกครั้งที่ทำงานใน The Bean Café\n\nเจ้าของเท่านั้น · ดูได้อย่างเดียว\nกฎและข้อเท็จจริงที่รอยืนยัน\nเจ้าของกิจการเป็นผู้ยืนยันกฎและข้อเท็จจริง\nShark เรียนรู้จากที่คุณสอน\nยังไม่มีบทเรียน\nข้อมูลสดวันนี้\n\nยอดขายวันนี้\n฿18,450 · 23 บิล\n\nยอดขาย 7 วัน\n฿98,500\n\nลูกค้าเงียบเกิน 30 วัน\n6 คน\n\nสินค้าใกล้หมด\n3 รายการ\n\nค้างรับ\n4 ใบ · ฿32,500\n\nนัดพรุ่งนี้\n5 นัด\n\nรายการค้างเกิน 2 วัน\n3 รายการ\nShark ใช้เฉพาะบทเรียนที่ยืนยันแล้ว · ไม่จดชื่อ เบอร์ หรือที่อยู่ของลูกค้า",
-   "unmocked": [],
-   "url": "/secretary/settings/knowledge",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge-dark.png",
-   "generatedAt": "2026-11-05T06:29:31.362Z"
+   "generatedAt": "2026-11-05T07:11:26.463Z"
   },
   {
    "name": "secretary-settings-customers",
@@ -241,7 +136,112 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-customers.png",
-   "generatedAt": "2026-11-05T06:33:17.612Z"
+   "generatedAt": "2026-11-05T07:11:30.196Z"
+  },
+  {
+   "name": "secretary-settings-dark",
+   "route": "/secretary/settings",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-settings",
+    "sec-settings-row-access"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\n2\n\n1\n\n\n\nThe Bean Café\n\nตั้งค่า\nShark ทำงานตามที่ตั้งไว้ที่นี่ · แยกตามกิจการ\n\nเลขาของฉัน\nชื่อ น้ำเสียง คำลงท้าย และภาษาของเลขา\nShark\n\n\nโควตางาน\nงานที่ใช้เดือนนี้และวันเริ่มรอบใหม่\n62%\n\n\nสิทธิ์ต่อระบบ\nเลขาทำอะไรได้ในแต่ละระบบ\nเจ้าของเท่านั้น\n\n\nต้องอนุมัติเสมอ\nงานที่ต้องให้คนอนุมัติก่อนทำจริง\nเจ้าของเท่านั้น\n\n\nบันทึกการกระทำ\nทุกอย่างที่เลขาทำ · ย้อนได้ภายใน 24 ชม.\n\n\nความรู้ของกิจการ\nกฎ บทเรียน และข้อมูลสดของกิจการ\n\n\nคุยกับลูกค้าแทนร้าน\nตอบลูกค้านอกเวลาทำการ · บอกว่าเป็น AI\nเจ้าของเท่านั้น\n\n\nบัญชีของฉัน\nข้อมูลบัญชีและการลบบัญชี\n\n\nสลับกิจการ\nเลขาคนเดียวกัน ข้อมูลและสิทธิ์แยกตามกิจการ\n",
+   "unmocked": [],
+   "url": "/secretary/settings",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-dark.png",
+   "generatedAt": "2026-11-05T07:11:34.006Z"
+  },
+  {
+   "name": "secretary-settings-access-dark",
+   "route": "/secretary/settings/access",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-access",
+    "sec-access-row-pos",
+    "sec-owner-only"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nสิทธิ์ของ Shark\nThe Bean Café · ตั้งโดยเจ้าของ\nสิทธิ์เป็นของ \"คนที่สั่ง\" — Shark ทำได้ไม่เกินที่คุณทำได้ และไม่เกินระดับที่ตั้งไว้ต่อระบบ\n\nเจ้าของเท่านั้น · ดูได้อย่างเดียว\nPOS\nPOS\nขาย · บิล · สต็อก\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nCRM\nCRM\nลูกค้า · ดีล\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nจอง\nจองคิว\nคิว · ตารางงาน\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nสมา\nสมาชิก\nสมาชิก · แต้ม\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nบัญ\nบัญชี\nเอกสาร · ลงบัญชี\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nบอร\nบอร์ดงาน\nการ์ดงาน\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nแชท\nแชท LINE/FB\nตอบลูกค้า LINE/FB\nปิด\nดูอย่างเดียว\nร่าง+รออนุมัติ\nทำเองได้\nรุ่นแรก \"ทำเองได้\" ยังปิดทุกระบบ (เปิดในรุ่นถัดไปเมื่อสถิติผ่านดี) · ลบ ยกเลิก คืนเงิน ไม่มีทางทำเองได้",
+   "unmocked": [],
+   "url": "/secretary/settings/access",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access-dark.png",
+   "generatedAt": "2026-11-05T07:11:37.892Z"
+  },
+  {
+   "name": "secretary-settings-rules-dark",
+   "route": "/secretary/settings/rules",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-rules",
+    "sec-rules-row",
+    "sec-owner-only",
+    "sec-rules-approver-OWNER"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nต้องอนุมัติเสมอ\nThe Bean Café\nรุ่นแรกทุกงานที่เขียนรออนุมัติอยู่แล้ว · รายการนี้คือสิ่งที่จะยังต้องอนุมัติเสมอแม้รุ่นถัดไปเปิด \"ทำเองได้\"\n\nเจ้าของเท่านั้น · ดูได้อย่างเดียว\nเงินออกจากกิจการ\nคืนเงิน · จ่ายซัพพลายเออร์ · ปรับยอดบิล\nปิดไม่ได้\nเอกสารเงินถึงลูกค้า\nใบเสนอราคา · ใบแจ้งหนี้ · ใบเสร็จ เกินวงเงิน\n> ฿20,000\nวงเงิน (บาท)\nบาท\nส่งข้อความถึงลูกค้า\nLINE · Facebook · SMS · โพสต์สาธารณะ\nทุกข้อความ\nลบ · ยกเลิก · แก้ย้อนหลัง\nลบลูกค้า · ยกเลิกคิว/การจอง · แก้บิลที่ปิดแล้ว\nปิดไม่ได้\nข้อมูลส่วนบุคคล\nส่งออกรายชื่อ · ดูเลขบัตร/ที่อยู่เต็ม\nปิดไม่ได้\nผู้อนุมัติ\nเ\nเจ้าของ\nเจ้าของ · ทุกเรื่อง\nผ\nผู้จัดการ\nผู้จัดการ · งานในห้องเลขาที่เห็น\nผู้อนุมัติยังต้องมีสิทธิ์ทำงานนั้นในระบบของตัวเอง",
+   "unmocked": [],
+   "url": "/secretary/settings/rules",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules-dark.png",
+   "generatedAt": "2026-11-05T07:11:41.187Z"
+  },
+  {
+   "name": "secretary-settings-log-dark",
+   "route": "/secretary/settings/log",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-log",
+    "sec-log-item"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 7\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย คุณ\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
+   "unmocked": [],
+   "url": "/secretary/settings/log",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log-dark.png",
+   "generatedAt": "2026-11-05T07:11:44.892Z"
+  },
+  {
+   "name": "secretary-settings-knowledge-dark",
+   "route": "/secretary/settings/knowledge",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-know",
+    "sec-owner-only",
+    "sec-know-facts-empty",
+    "sec-know-digest"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nความรู้ของกิจการ\nสิ่งที่ Shark จำและใช้ทุกครั้งที่ทำงานใน The Bean Café\n\nเจ้าของเท่านั้น · ดูได้อย่างเดียว\nกฎและข้อเท็จจริงที่รอยืนยัน\nเจ้าของกิจการเป็นผู้ยืนยันกฎและข้อเท็จจริง\nShark เรียนรู้จากที่คุณสอน\nยังไม่มีบทเรียน\nข้อมูลสดวันนี้\n\nยอดขายวันนี้\n฿18,450 · 23 บิล\n\nยอดขาย 7 วัน\n฿98,500\n\nลูกค้าเงียบเกิน 30 วัน\n6 คน\n\nสินค้าใกล้หมด\n3 รายการ\n\nค้างรับ\n4 ใบ · ฿32,500\n\nนัดพรุ่งนี้\n5 นัด\n\nรายการค้างเกิน 2 วัน\n3 รายการ\nShark ใช้เฉพาะบทเรียนที่ยืนยันแล้ว · ไม่จดชื่อ เบอร์ หรือที่อยู่ของลูกค้า",
+   "unmocked": [],
+   "url": "/secretary/settings/knowledge",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge-dark.png",
+   "generatedAt": "2026-11-05T07:11:48.557Z"
   },
   {
    "name": "secretary-settings-customers-dark",
@@ -262,7 +262,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-customers-dark.png",
-   "generatedAt": "2026-11-05T06:33:21.446Z"
+   "generatedAt": "2026-11-05T07:11:52.227Z"
   }
  ]
 }

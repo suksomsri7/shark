@@ -4,7 +4,7 @@
 //   (1) /customers/x1        พิมพ์ในช่อง cust-input แล้วกด cust-send       ⇒ ส่งได้ทางเดียว: POST /api/mobile/inbox/conversations/x1/reply
 //   (2) /secretary/room/r1   พิมพ์ในช่อง sec-room-input แล้วกด sec-room-send ⇒ ส่งได้ทางเดียว: POST /api/mobile/secretary/rooms/r1/send
 //   (3) /chat/c1 (จอ 1.0)    พิมพ์ในช่อง "พิมพ์ข้อความ…" แล้วกดปุ่มส่ง      ⇒ ส่งได้ทางเดียว: POST /api/mobile/chat/send (เส้นเดิม)
-// ทุกข้อ: ข้อความที่พิมพ์ (ไม่ซ้ำกันต่อข้อ) ต้องอยู่ใน body ของ request ที่คาดเท่านั้น · ไม่มี request "ส่งข้อความ" ไปเส้นของอีก 2 แชท
+// ทุกข้อ: ข้อความที่พิมพ์ (ไม่ซ้ำกันต่อข้อ) ต้องอยู่ใน body ของ request ที่คาดเท่านั้น · ไม่มี request ที่ไม่มี mock (unmocked = []) · ไม่มี request "ส่งข้อความ" ไปเส้นของอีก 2 แชท
 //   (เส้นส่ง = …/inbox/conversations/<id>/reply · …/secretary/rooms(/<id>/send)? · …/mobile/chat/send) · request อื่นของจอ (อ่านแล้ว · ร่างคำตอบ · badge) ไม่นับเป็นการส่ง
 //
 // ตัวแปร: QC_PREPARE=1 (rsync + expo export ในสำเนา เหมือน shoot-sec · QC_SKIP_EXPORT=1 = เสิร์ฟ dist เดิม) · QC_COPY · QC_NODE_MODULES · QC_PORT (ปริยาย 4716) · QC_BASE · FIXTURE · QC_OUT
@@ -147,8 +147,9 @@ try {
       ...carriers.filter((x) => x !== ch.expected).map((x) => `ข้อความไปเส้นอื่น: ${x}`),
     ];
     const hit = sends.filter((s) => `${s.method} ${s.path}` === ch.expected && s.hasTyped).length;
-    const ok = !why && errors.length === 0 && hit === 1 && leaks.length === 0;
-    if (!why && !ok) why = hit !== 1 ? `เส้นที่คาดถูกยิง ${hit} ครั้ง (ต้อง 1)` : leaks.length ? leaks.join(" · ") : errors.join(" · ");
+    // R-S2.13h (L1): ทุก request ของจอต้องมี mock (unmocked = 404 เงียบ อาจซ่อนทางส่งจริง)
+    const ok = !why && errors.length === 0 && hit === 1 && leaks.length === 0 && unmocked.length === 0;
+    if (!why && !ok) why = hit !== 1 ? `เส้นที่คาดถูกยิง ${hit} ครั้ง (ต้อง 1)` : leaks.length ? leaks.join(" · ") : unmocked.length ? `unmocked: ${unmocked.join(" · ")}` : errors.join(" · ");
     results.push({ name: ch.name, route: ch.route, typed: ch.typed, expected: ch.expected, sends, carriers, leaks, unmocked, errors, ok, why, shot: `three-chats-${ch.name}.png` });
   }
 } finally {

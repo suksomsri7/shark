@@ -21,6 +21,7 @@ import {
   helpDot,
   normalizeHelpDetail,
   normalizeRoomDetail,
+  scheduleZoneBadges,
   secGetId,
   secPostId,
   secUpload,
@@ -59,6 +60,8 @@ export default function SecretaryHelpCaseScreen() {
   const scroll = useRef<ScrollView>(null);
   const upload = useCallback((form: FormData) => secUpload("secretary/support/upload", form), []);
   const att = useHelpAttach(upload);
+  // R-S2.13f: badge ทีม (support unread) โหลดใหม่เฉพาะโหลดแรก หรือเมื่อข้อความ/สถานะเปลี่ยน — poll 15 วิ ไม่ลาก badge ตามทุกรอบ
+  const seenSig = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -69,6 +72,11 @@ export default function SecretaryHelpCaseScreen() {
       setMsgs(r.messages);
       setGone(false);
       setOffline(false);
+      const sig = `${r.case.id}|${r.case.status}|${r.messages.length}|${r.messages[r.messages.length - 1]?.id ?? ""}`;
+      if (seenSig.current !== sig) {
+        seenSig.current = sig;
+        scheduleZoneBadges();
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setGone(true);
       else setOffline(true);

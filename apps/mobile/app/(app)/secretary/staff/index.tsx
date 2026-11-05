@@ -31,11 +31,8 @@ import {
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { radii, size, spacing, type as T, cardGap } from "@/src/theme/tokens";
+import { radii, size, spacing, type as T, CTA_BOTTOM, LIST_BOTTOM } from "@/src/theme/tokens";
 
-// S2.13 fix-forward (D1): ปุ่มหลักลอยล่าง — รายการเว้นล่าง = ความสูงปุ่ม + ระยะปุ่มจากขอบ + ช่องไฟการ์ด (+ safe area) แบบเดียวกับ A1 (S2.2)
-const CTA_BOTTOM = 26;
-const LIST_BOTTOM = size.btnH + CTA_BOTTOM + cardGap;
 
 /** testID ของแถว (spec s2.10) — ป้ายแชท = "sec-staff-chat-badge" · ระดับที่แสดง NONE|VIEW|REPLY */
 const ROW_IDS: StaffRowIds = { row: "sec-staff-row", chat: "sec-staff-chat-badge", pending: "sec-staff-pending", resend: "sec-staff-pending-resend", cancel: "sec-staff-pending-cancel" };

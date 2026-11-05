@@ -83,3 +83,35 @@
 | คีย์บอร์ด/Alert ของจอ 1.0 ตามธีมเครื่อง | native · `automatic` มีผลทั้งแอป | เจ้าของดูบนเครื่องจริง CP2 |
 | ย้อนกลับข้ามโซนไปหน้าแรก 1.0 (หนี้ S2.1 "ถ้าต้องการ") | ไม่เปลี่ยน backBehavior ของ drawer 1.0 | คงเดิม |
 | `base-s2.1/summary.json` จอ index ไม่ ok | ภาพฐานเก่าของ S2.1 (ไม่ใช่ข้อสอบ) | ไม่แตะ |
+
+## รอบ 2 (มติ RESOLUTIONS §W · §W.2 · merge session/secretary 3acdc38c9 ด้วย SHA)
+| ข้อ | ไฟล์ | ทำอะไร |
+|---|---|---|
+| **M1** R-S2.13f | `src/api/secretary.ts` · `app/(app)/secretary/help/[caseId].tsx` | `secretary/support/cases/[id]` ออกจาก `BADGE_AFTER` (secGetId ไม่ครอบ afterAction แล้ว) · H2 จำลายเซ็น `caseId|status|จำนวนข้อความ|id ข้อความล่าสุด` ⇒ `scheduleZoneBadges()` เฉพาะโหลดแรกหรือเมื่อลายเซ็นเปลี่ยน · poll 15 วิ ที่ไม่มีอะไรเปลี่ยน = ไม่ยิง badge |
+| **m2** R-S2.13g | `src/theme/tokens.ts` · D1 · G2 · C1 · **G1 `business/new.tsx`** | `CTA_BOTTOM` / `LIST_BOTTOM` ประกาศที่เดียวใน tokens · 4 จอ import (G1 เลิก 120/26 ฝัง) |
+| **m3** | `BusinessSwitcherSheet.tsx` | `setQuota(null)` ต้น effect (เปิดชีต/สลับร้าน) |
+| **m4** | `customers/[id]/index.tsx` | note จาก `?e=` ครั้งเดียวต่อ id (`pushNoted` ref) · `t` ผ่าน ref ไม่อยู่ใน deps |
+| **L1** | `qc/three-chats.mjs` | ok ต้อง `unmocked.length === 0` ทุกห้อง (+ why บอก unmocked) |
+| **L2** | `s2.13-interaction/README-padding.mjs.txt` | เกณฑ์ `gap >= cardGap (12)` · จอที่ไม่มีอะไรเลื่อนได้วัดกับกล่อง ScrollView ใหญ่สุด (ไม่ข้ามเป็น ok) · ไม่พบกล่อง = ไม่ผ่าน · เพิ่ม G1 |
+| **L4** | `app/(app)/secretary/index.tsx` | สิทธิ์ 3 ค่า `unknown/ok/denied` · ปุ่ม + โผล่เมื่อ `ok` เท่านั้น (เปลี่ยนร้าน = กลับเป็น unknown) |
+| **R-S2.13i** | `src/components/ui/text.tsx` | Text/TextInput ที่ไม่ส่งสี = `C.text` ของธีมสว่าง 1.0 · Text ซ้อนใน Text ไม่ใส่ (context `InText` — รับสีตัวแม่เหมือนเดิม) · สีที่ส่งมาชนะเสมอ |
+| เพิ่ม (พบตอนถ่ายใหม่) | `customers/[id]/index.tsx` | K2 เปิดห้องแล้วค้างกลางห้องแบบสุ่ม (onScroll ระหว่างรูป/การ์ดร่างโต ⇒ atBottom=false) — 2.5 วิ หลังโหลดแรกเลื่อนลงเสมอ (`stickUntil`) · ถ่ายซ้ำ 3 รอบ: ตำแหน่งท้ายห้องทุกรอบ (ต่างกันได้ ≤ ~50 dp ตอนการ์ดร่างโตหลังเลื่อน) |
+
+### ผลรอบ 2
+- **จอ 1.0 ก่อน/หลัง R-S2.13i** (fixture s2.20 · `--both`): `apps/mobile/qc/shots-sec/base-s2.13/{index,sessions,chat-c1}{,-dark}.png` ↔ `apps/mobile/qc/shots-sec/after-s2.13/…` — **เท่ากันทุกพิกเซล 6/6** (diff threshold 24 · 0 px)
+- จอ S2 ทั้งชุด ถ่ายใหม่หลัง R-S2.13i เทียบรอบ 1: เท่ากันทุกภาพ ยกเว้น `login{,-dark}` (orb เคลื่อนไหว · bbox เฉพาะ orb) · `s2.4-done/secretary-room-r1{,-dark}` (116 px · จุดสถานะ) · `customers-x1{,-dark}` (ตำแหน่งเลื่อน — แก้ด้วย stickUntil แล้วถ่ายใหม่) ⇒ ไม่มีตัวอักษรของจอ S2 ที่เปลี่ยนสี (ทุกตัวส่งสีจาก useTheme)
+- summary ราก 60 + โฟลเดอร์ย่อยทั้งหมด ok · overflow false · unmocked [] · missing []
+- **padding** (`s2.13-interaction/padding.json`) 20/20 ok เกณฑ์ใหม่ `gap >= 12`: A1 12 · A2 98 · A6 40 · K1 32 · K2 16 · D1 12 · H1 24 · G2 12 · C1 12 · **G1 77** (เนื้อหาไม่ล้นจอ) — ทั้ง 2 ธีมเท่ากัน
+- **three-chats** (`three-chats.json`) ok:true 3/3 · unmocked 0 ทุกห้อง
+- ภาพคู่ทำใหม่ทั้งชุด (runner `README-reshoot.sh.txt`) + B1/C4/D3/K4/K5 ใน `s2.13-interaction/`
+
+### 7 (เพิ่ม) ตั๋ว/หนี้ตามมติ
+- **R-S2.13j (M2 · ตั๋ว server S3a)**: `sendPushToChatStaff` (chat/service.ts) ยังไม่ใส่ `data.tenantId` และใช้ link `/inbox/<id>` · ฝั่งแอปไม่แก้ — พฤติกรรมตอนนี้: แตะแจ้งเตือนของร้านที่ไม่ใช่ร้าน active ⇒ ไม่สลับร้าน · เปิด `/customers/<id>` ในร้าน active ⇒ server คืน 404 ⇒ K2 แสดง "ไม่พบ" (ไม่รั่วข้ามร้าน) · เมื่อ server ใส่ tenantId แอปจะสลับร้านเองตาม handler S2.6
+- **R-S2.13i (Android)**: `expo-system-ui` ไม่ติดตั้งในรอบนี้ (ห้ามแตะ package.json) ⇒ S3a "Android ต้องเพิ่ม expo-system-ui ก่อน Internal testing" · CP2 = iOS
+- R-S2.13b/c: badge "ขอความช่วยเหลือค้าง" (ChatConversationHelper) + `secretary/badges` เส้นเดียว + `chat/routing.ts` link `/customers/<id>` = ตั๋ว S3a
+
+### ข้อสอบรอบ 2 (fitness ×2 อยู่ในทุกรอบ)
+- s2.13 forced #1 (QC_SKIP_TSC): `{"total":11,"passed":10,"failed":[],"skipped":["M-1"],"findings":[]}` exit 0
+- **s2.13 forced #2 รวม typecheck**: `{"total":11,"passed":11,"failed":[],"skipped":[],"findings":[]}` exit 0
+- s2.2 10/11 · s2.15 7/8 · s2.17 11/12 · s2.21 11/12 · oracle s2.1 13/14 (M-1 SKIP · failed [] ทุกตัว · exit 0)
+- push-link-test 11/11 · mobile typecheck 0

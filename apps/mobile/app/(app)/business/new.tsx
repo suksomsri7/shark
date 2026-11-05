@@ -19,7 +19,7 @@ import { useAuth } from "@/src/lib/auth-context";
 import { clearSignedUp } from "@/src/lib/post-signup";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
-import { radii, size, spacing, type as T } from "@/src/theme/tokens";
+import { CTA_BOTTOM, LIST_BOTTOM, radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 const NAME_MIN = 2;
 const NAME_MAX = 60;
@@ -96,7 +96,7 @@ export default function BusinessNewScreen() {
 
   return (
     <AiryScreen testID="biz-new">
-      <ScrollView contentContainerStyle={[styles.page, { paddingBottom: 120 + insets.bottom }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.page, { paddingBottom: LIST_BOTTOM + insets.bottom }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <TopBar
           testID="biz-new-top"
           left={first ? <View style={styles.spacer} /> : <IconBtn testID="biz-new-close" icon="x" label={t("biz.close")} onPress={close} />}
@@ -158,7 +158,7 @@ export default function BusinessNewScreen() {
           </Note>
         ) : null}
       </ScrollView>
-      <View style={[styles.cta, { bottom: 26 + insets.bottom }]}>
+      <View style={[styles.cta, { bottom: CTA_BOTTOM + insets.bottom }]}>
         <PrimaryButton testID="biz-new-submit" label={busy ? t("biz.creating") : t("biz.submit")} disabled={!nameOk || busy} onPress={() => void submit()} />
       </View>
     </AiryScreen>

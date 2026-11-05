@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T06:36:30.033Z",
+ "generatedAt": "2026-11-05T07:17:36.326Z",
  "base": "http://127.0.0.1:4727",
  "view": {
   "tag": "iphone",
@@ -72,7 +72,7 @@
    "unmocked": [],
    "url": "/login",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/login.png",
-   "generatedAt": "2026-11-05T06:25:53.551Z"
+   "generatedAt": "2026-11-05T07:07:58.103Z"
   },
   {
    "name": "signup",
@@ -96,7 +96,7 @@
    "unmocked": [],
    "url": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/signup.png",
-   "generatedAt": "2026-11-05T06:25:56.887Z"
+   "generatedAt": "2026-11-05T07:08:01.000Z"
   },
   {
    "name": "otp",
@@ -119,7 +119,7 @@
    "unmocked": [],
    "url": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/otp.png",
-   "generatedAt": "2026-11-05T06:26:00.215Z"
+   "generatedAt": "2026-11-05T07:08:05.070Z"
   },
   {
    "name": "phone",
@@ -141,7 +141,7 @@
    "unmocked": [],
    "url": "/phone",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/phone.png",
-   "generatedAt": "2026-11-05T06:26:03.505Z"
+   "generatedAt": "2026-11-05T07:08:08.682Z"
   },
   {
    "name": "login-dark",
@@ -165,7 +165,7 @@
    "unmocked": [],
    "url": "/login",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/login-dark.png",
-   "generatedAt": "2026-11-05T06:26:06.900Z"
+   "generatedAt": "2026-11-05T07:08:11.757Z"
   },
   {
    "name": "signup-dark",
@@ -189,7 +189,7 @@
    "unmocked": [],
    "url": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/signup-dark.png",
-   "generatedAt": "2026-11-05T06:26:09.596Z"
+   "generatedAt": "2026-11-05T07:08:14.523Z"
   },
   {
    "name": "otp-dark",
@@ -212,7 +212,7 @@
    "unmocked": [],
    "url": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/otp-dark.png",
-   "generatedAt": "2026-11-05T06:26:12.725Z"
+   "generatedAt": "2026-11-05T07:08:17.842Z"
   },
   {
    "name": "phone-dark",
@@ -234,7 +234,7 @@
    "unmocked": [],
    "url": "/phone",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/phone-dark.png",
-   "generatedAt": "2026-11-05T06:26:15.384Z"
+   "generatedAt": "2026-11-05T07:08:21.035Z"
   },
   {
    "name": "secretary-new",
@@ -262,7 +262,7 @@
    "unmocked": [],
    "url": "/secretary/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new.png",
-   "generatedAt": "2026-11-05T06:26:27.834Z"
+   "generatedAt": "2026-11-05T07:08:33.545Z"
   },
   {
    "name": "secretary-new-dark",
@@ -290,7 +290,7 @@
    "unmocked": [],
    "url": "/secretary/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new-dark.png",
-   "generatedAt": "2026-11-05T06:26:35.527Z"
+   "generatedAt": "2026-11-05T07:08:41.282Z"
   },
   {
    "name": "secretary-room-r1",
@@ -325,11 +325,11 @@
     "sec-room-input",
     "sec-room-send"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 13 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 12 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
    "unmocked": [],
    "url": "/secretary/room/r1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1.png",
-   "generatedAt": "2026-11-05T06:26:53.220Z"
+   "generatedAt": "2026-11-05T07:08:58.602Z"
   },
   {
    "name": "secretary-room-r1-dark",
@@ -364,11 +364,11 @@
     "sec-room-input",
     "sec-room-send"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 13 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 12 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
    "unmocked": [],
    "url": "/secretary/room/r1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1-dark.png",
-   "generatedAt": "2026-11-05T06:26:57.312Z"
+   "generatedAt": "2026-11-05T07:09:03.033Z"
   },
   {
    "name": "secretary-inbox",
@@ -397,7 +397,7 @@
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox.png",
-   "generatedAt": "2026-11-05T06:27:24.825Z"
+   "generatedAt": "2026-11-05T07:09:31.529Z"
   },
   {
    "name": "secretary-scheduled",
@@ -420,7 +420,7 @@
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled.png",
-   "generatedAt": "2026-11-05T06:27:28.491Z"
+   "generatedAt": "2026-11-05T07:09:35.259Z"
   },
   {
    "name": "secretary-inbox-dark",
@@ -449,7 +449,7 @@
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox-dark.png",
-   "generatedAt": "2026-11-05T06:27:32.317Z"
+   "generatedAt": "2026-11-05T07:09:39.148Z"
   },
   {
    "name": "secretary-scheduled-dark",
@@ -472,7 +472,7 @@
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled-dark.png",
-   "generatedAt": "2026-11-05T06:27:36.039Z"
+   "generatedAt": "2026-11-05T07:09:42.859Z"
   },
   {
    "name": "secretary-settings",
@@ -497,7 +497,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings.png",
-   "generatedAt": "2026-11-05T06:27:44.738Z"
+   "generatedAt": "2026-11-05T07:09:51.404Z"
   },
   {
    "name": "secretary-settings-secretary",
@@ -524,7 +524,7 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-secretary.png",
-   "generatedAt": "2026-11-05T06:27:48.003Z"
+   "generatedAt": "2026-11-05T07:09:54.611Z"
   },
   {
    "name": "secretary-settings-quota",
@@ -546,7 +546,7 @@
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-quota.png",
-   "generatedAt": "2026-11-05T06:27:51.708Z"
+   "generatedAt": "2026-11-05T07:09:58.316Z"
   },
   {
    "name": "secretary-settings-access",
@@ -569,7 +569,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-access.png",
-   "generatedAt": "2026-11-05T06:27:55.483Z"
+   "generatedAt": "2026-11-05T07:10:03.801Z"
   },
   {
    "name": "secretary-settings-rules",
@@ -594,7 +594,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-rules.png",
-   "generatedAt": "2026-11-05T06:27:58.677Z"
+   "generatedAt": "2026-11-05T07:10:08.642Z"
   },
   {
    "name": "secretary-settings-log",
@@ -618,7 +618,7 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-log.png",
-   "generatedAt": "2026-11-05T06:28:02.575Z"
+   "generatedAt": "2026-11-05T07:10:12.556Z"
   },
   {
    "name": "secretary-settings-knowledge",
@@ -645,7 +645,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-05T06:28:06.285Z"
+   "generatedAt": "2026-11-05T07:10:16.362Z"
   },
   {
    "name": "secretary-settings-dark",
@@ -670,7 +670,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-dark.png",
-   "generatedAt": "2026-11-05T06:28:13.408Z"
+   "generatedAt": "2026-11-05T07:10:23.642Z"
   },
   {
    "name": "secretary-settings-secretary-dark",
@@ -697,7 +697,7 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-secretary-dark.png",
-   "generatedAt": "2026-11-05T06:28:16.557Z"
+   "generatedAt": "2026-11-05T07:10:26.897Z"
   },
   {
    "name": "secretary-settings-quota-dark",
@@ -719,7 +719,7 @@
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-quota-dark.png",
-   "generatedAt": "2026-11-05T06:28:20.198Z"
+   "generatedAt": "2026-11-05T07:10:30.693Z"
   },
   {
    "name": "secretary-settings-access-dark",
@@ -742,7 +742,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-access-dark.png",
-   "generatedAt": "2026-11-05T06:28:23.912Z"
+   "generatedAt": "2026-11-05T07:10:34.689Z"
   },
   {
    "name": "secretary-settings-rules-dark",
@@ -767,7 +767,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-rules-dark.png",
-   "generatedAt": "2026-11-05T06:28:27.132Z"
+   "generatedAt": "2026-11-05T07:10:38.075Z"
   },
   {
    "name": "secretary-settings-log-dark",
@@ -791,7 +791,7 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-log-dark.png",
-   "generatedAt": "2026-11-05T06:28:30.817Z"
+   "generatedAt": "2026-11-05T07:10:41.833Z"
   },
   {
    "name": "secretary-settings-knowledge-dark",
@@ -818,7 +818,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-knowledge-dark.png",
-   "generatedAt": "2026-11-05T06:28:34.653Z"
+   "generatedAt": "2026-11-05T07:10:45.616Z"
   },
   {
    "name": "secretary-room-r2",
@@ -849,7 +849,7 @@
    "unmocked": [],
    "url": "/secretary/room/r2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r2.png",
-   "generatedAt": "2026-11-05T06:29:43.735Z"
+   "generatedAt": "2026-11-05T07:12:01.119Z"
   },
   {
    "name": "secretary-onboarding-name",
@@ -875,7 +875,7 @@
    "unmocked": [],
    "url": "/secretary/onboarding/name",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-onboarding-name.png",
-   "generatedAt": "2026-11-05T06:29:46.801Z"
+   "generatedAt": "2026-11-05T07:12:05.179Z"
   },
   {
    "name": "secretary-room-r2-dark",
@@ -906,7 +906,7 @@
    "unmocked": [],
    "url": "/secretary/room/r2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r2-dark.png",
-   "generatedAt": "2026-11-05T06:29:54.581Z"
+   "generatedAt": "2026-11-05T07:12:13.112Z"
   },
   {
    "name": "secretary-onboarding-name-dark",
@@ -932,7 +932,7 @@
    "unmocked": [],
    "url": "/secretary/onboarding/name",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-onboarding-name-dark.png",
-   "generatedAt": "2026-11-05T06:29:57.802Z"
+   "generatedAt": "2026-11-05T07:12:16.596Z"
   },
   {
    "name": "secretary-help",
@@ -957,7 +957,7 @@
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help.png",
-   "generatedAt": "2026-11-05T06:30:10.916Z"
+   "generatedAt": "2026-11-05T07:12:25.605Z"
   },
   {
    "name": "secretary-help-c1",
@@ -987,7 +987,7 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1.png",
-   "generatedAt": "2026-11-05T06:30:15.398Z"
+   "generatedAt": "2026-11-05T07:12:29.481Z"
   },
   {
    "name": "secretary-help-dark",
@@ -1012,7 +1012,7 @@
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-dark.png",
-   "generatedAt": "2026-11-05T06:30:19.312Z"
+   "generatedAt": "2026-11-05T07:12:33.320Z"
   },
   {
    "name": "secretary-help-c1-dark",
@@ -1042,7 +1042,7 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1-dark.png",
-   "generatedAt": "2026-11-05T06:30:23.293Z"
+   "generatedAt": "2026-11-05T07:12:37.237Z"
   },
   {
    "name": "customers-x1-info",
@@ -1070,7 +1070,7 @@
    "unmocked": [],
    "url": "/customers/x1/info",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-info.png",
-   "generatedAt": "2026-11-05T06:30:44.138Z"
+   "generatedAt": "2026-11-05T07:12:53.830Z"
   },
   {
    "name": "secretary-settings-customers",
@@ -1098,7 +1098,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-customers.png",
-   "generatedAt": "2026-11-05T06:30:48.113Z"
+   "generatedAt": "2026-11-05T07:12:57.640Z"
   },
   {
    "name": "customers-x1-info-dark",
@@ -1126,7 +1126,7 @@
    "unmocked": [],
    "url": "/customers/x1/info",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-info-dark.png",
-   "generatedAt": "2026-11-05T06:31:04.298Z"
+   "generatedAt": "2026-11-05T07:13:09.860Z"
   },
   {
    "name": "secretary-settings-customers-dark",
@@ -1154,7 +1154,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-customers-dark.png",
-   "generatedAt": "2026-11-05T06:31:08.592Z"
+   "generatedAt": "2026-11-05T07:13:13.618Z"
   },
   {
    "name": "business-new",
@@ -1177,7 +1177,7 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new.png",
-   "generatedAt": "2026-11-05T06:31:17.702Z"
+   "generatedAt": "2026-11-05T07:13:22.913Z"
   },
   {
    "name": "secretary-staff-invite",
@@ -1206,7 +1206,7 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite.png",
-   "generatedAt": "2026-11-05T06:31:20.917Z"
+   "generatedAt": "2026-11-05T07:13:26.232Z"
   },
   {
    "name": "secretary-staff-m1",
@@ -1231,7 +1231,7 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1.png",
-   "generatedAt": "2026-11-05T06:31:24.733Z"
+   "generatedAt": "2026-11-05T07:13:30.093Z"
   },
   {
    "name": "secretary-settings-account",
@@ -1257,7 +1257,7 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account.png",
-   "generatedAt": "2026-11-05T06:31:28.536Z"
+   "generatedAt": "2026-11-05T07:13:33.935Z"
   },
   {
    "name": "business-new-dark",
@@ -1280,7 +1280,7 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new-dark.png",
-   "generatedAt": "2026-11-05T06:31:32.234Z"
+   "generatedAt": "2026-11-05T07:13:37.747Z"
   },
   {
    "name": "secretary-staff-invite-dark",
@@ -1309,7 +1309,7 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite-dark.png",
-   "generatedAt": "2026-11-05T06:31:35.514Z"
+   "generatedAt": "2026-11-05T07:13:41.198Z"
   },
   {
    "name": "secretary-staff-m1-dark",
@@ -1334,7 +1334,7 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1-dark.png",
-   "generatedAt": "2026-11-05T06:31:39.329Z"
+   "generatedAt": "2026-11-05T07:13:44.979Z"
   },
   {
    "name": "secretary-settings-account-dark",
@@ -1360,7 +1360,7 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account-dark.png",
-   "generatedAt": "2026-11-05T06:31:43.107Z"
+   "generatedAt": "2026-11-05T07:13:48.810Z"
   },
   {
    "name": "secretary",
@@ -1388,7 +1388,7 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary.png",
-   "generatedAt": "2026-11-05T06:32:25.534Z"
+   "generatedAt": "2026-11-05T07:14:32.377Z"
   },
   {
    "name": "customers",
@@ -1412,7 +1412,7 @@
    "unmocked": [],
    "url": "/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers.png",
-   "generatedAt": "2026-11-05T06:32:29.316Z"
+   "generatedAt": "2026-11-05T07:14:36.246Z"
   },
   {
    "name": "secretary-staff",
@@ -1437,7 +1437,7 @@
    "unmocked": [],
    "url": "/secretary/staff",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff.png",
-   "generatedAt": "2026-11-05T06:32:33.137Z"
+   "generatedAt": "2026-11-05T07:14:40.144Z"
   },
   {
    "name": "secretary-dark",
@@ -1465,7 +1465,7 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-dark.png",
-   "generatedAt": "2026-11-05T06:32:37.149Z"
+   "generatedAt": "2026-11-05T07:14:44.011Z"
   },
   {
    "name": "customers-dark",
@@ -1489,7 +1489,7 @@
    "unmocked": [],
    "url": "/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-dark.png",
-   "generatedAt": "2026-11-05T06:32:40.979Z"
+   "generatedAt": "2026-11-05T07:14:47.801Z"
   },
   {
    "name": "secretary-staff-dark",
@@ -1514,7 +1514,7 @@
    "unmocked": [],
    "url": "/secretary/staff",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-dark.png",
-   "generatedAt": "2026-11-05T06:32:45.050Z"
+   "generatedAt": "2026-11-05T07:14:51.601Z"
   },
   {
    "name": "customers-x1",
@@ -1547,7 +1547,7 @@
    "unmocked": [],
    "url": "/customers/x1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1.png",
-   "generatedAt": "2026-11-05T06:36:25.980Z"
+   "generatedAt": "2026-11-05T07:17:32.264Z"
   },
   {
    "name": "customers-x1-dark",
@@ -1580,7 +1580,7 @@
    "unmocked": [],
    "url": "/customers/x1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-dark.png",
-   "generatedAt": "2026-11-05T06:36:29.904Z"
+   "generatedAt": "2026-11-05T07:17:36.178Z"
   }
  ]
 }
