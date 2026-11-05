@@ -1,0 +1,170 @@
+{
+ "g1SubmitDisabledEmpty": null,
+ "g1Post": [
+  "{\"name\":\"QC ใหม่\",\"type\":\"service\",\"systems\":[\"BOOKING\",\"CRM\",\"MEMBER\",\"ACCOUNT\",\"CHAT\",\"INVENTORY\"]}"
+ ],
+ "g1PostTenantHeader": null,
+ "g1ActiveTenant": "t4",
+ "g1Url": "/secretary/room/r9",
+ "g1FirstNoClose": true,
+ "g1FirstPost": [
+  "{\"name\":\"QC แรก\",\"type\":\"restaurant\",\"systems\":[\"POS\",\"CRM\",\"MEMBER\",\"ACCOUNT\",\"KANBAN\",\"CHAT\"]}"
+ ],
+ "g1FirstActiveTenant": "t4",
+ "g1FirstUrl": "/secretary/onboarding/name",
+ "g1CapNote": "สร้างกิจการได้สูงสุด 3 ร้านต่อบัญชี — ถ้าต้องการเพิ่ม ติดต่อทีมงาน",
+ "g1CapUrl": "/business/new",
+ "postSignupVerify": 1,
+ "postSignupUrl": "/business/new",
+ "noShopOldUrl": "/dna",
+ "g2Sms": "\nSMS ที่น้องจะได้รับ\nSHARK: The Bean Café เชิญคุณ ก้อง เข้าใช้ SHARK · เปิดลิงก์ shark.in.th/i/•••• (หมดอายุ 7 วัน)",
+ "g2DefaultBody": [
+  "{\"name\":\"ก้อง\",\"phone\":\"+66898765432\",\"role\":\"STAFF\",\"unitIds\":[\"*\"],\"permissions\":{}}"
+ ],
+ "g2Result": "สร้างคำเชิญของ 089-•••-5432 แล้ว — ยังไม่ได้ส่ง SMS ส่งลิงก์นี้ให้เองได้\nhttps://shark.in.th/i/QCQCQCQC\nใช้ได้ถึง 11/11",
+ "g2LevelButtons": [
+  "inv-level-dorm-OFF",
+  "inv-level-dorm-VIEW",
+  "inv-level-dorm-USE",
+  "inv-level-booking-OFF",
+  "inv-level-booking-VIEW",
+  "inv-level-booking-USE",
+  "inv-level-account-OFF",
+  "inv-level-account-VIEW",
+  "inv-level-account-USE",
+  "inv-level-pos-OFF",
+  "inv-level-pos-VIEW",
+  "inv-level-pos-USE",
+  "inv-level-ai-OFF",
+  "inv-level-ai-USE"
+ ],
+ "g2ChatButtons": [
+  "inv-chat-NONE",
+  "inv-chat-VIEW",
+  "inv-chat-REPLY"
+ ],
+ "g2LevelsBody": {
+  "name": "ก้อง",
+  "phone": "+66898765432",
+  "role": "STAFF",
+  "unitIds": [
+   "u-dorm"
+  ],
+  "permKeys": 12,
+  "permSample": [
+   "booking.report.view",
+   "chat.conversation.read",
+   "chat.conversation.markRead"
+  ],
+  "anySensitive": []
+ },
+ "g2Reasons": {
+  "rate_limited": "วันนี้ส่งคำเชิญครบจำนวนแล้ว ลองใหม่พรุ่งนี้",
+  "already_member": "เบอร์นี้อยู่ในกิจการแล้ว",
+  "already_invited": "เบอร์นี้มีคำเชิญที่ยังไม่รับอยู่แล้ว — กดส่งอีกครั้งในรายการด้านล่าง",
+  "pending_cap": "คำเชิญค้างครบ 20 ใบแล้ว ยกเลิกใบที่ไม่ใช้ก่อน",
+  "bad_permissions": "สิทธิ์ที่เลือกให้ไม่ได้ (เกินสิทธิ์ของคุณหรือระบบไม่รองรับ) — ปรับระดับแล้วลองใหม่",
+  "sms_unavailable": "ระบบส่ง SMS ยังไม่พร้อม ลองใหม่ภายหลัง"
+ },
+ "g2Resend": [
+  "{}"
+ ],
+ "g2ResendNote": "ส่งคำเชิญอีกครั้งแล้ว",
+ "g2CancelBefore": 0,
+ "g2CancelAfter": 1,
+ "g2MgrRoles": [
+  "inv-role-STAFF"
+ ],
+ "g3Buttons": [
+  "perm-level-dorm-OFF",
+  "perm-level-dorm-VIEW",
+  "perm-level-dorm-USE",
+  "perm-level-booking-OFF",
+  "perm-level-booking-VIEW",
+  "perm-level-booking-USE",
+  "perm-level-account-OFF",
+  "perm-level-account-VIEW",
+  "perm-level-account-USE",
+  "perm-level-pos-OFF",
+  "perm-level-pos-VIEW",
+  "perm-level-pos-USE",
+  "perm-level-ai-OFF",
+  "perm-level-ai-USE"
+ ],
+ "g3PointLocked": 1,
+ "g3Chat": [
+  "perm-chat-NONE",
+  "perm-chat-VIEW",
+  "perm-chat-REPLY"
+ ],
+ "g3SaveDisabledClean": null,
+ "g3Put": [
+  "{\"role\":\"STAFF\",\"unitIds\":[\"u-dorm\"],\"levels\":{\"dorm\":\"VIEW\"},\"chat\":\"VIEW\",\"extraPermissions\":{}}"
+ ],
+ "g3Note": "บันทึกสิทธิ์แล้ว",
+ "g3SuspendBefore": 0,
+ "g3SuspendSheet": "ระงับ ก้อง ชั่วคราว?\nเข้าแอปของกิจการนี้ไม่ได้และไม่ได้รับแจ้งเตือน จนกว่าเจ้าของจะเปิดคืน\nยังไม่ทำ\nยืนยันระงับ",
+ "g3SuspendAfter": [
+  "{}"
+ ],
+ "g3SuspendUrl": "/secretary/staff",
+ "g3RemoveAfterNo": 0,
+ "g3RemoveAfterOk": 1,
+ "g3RefusedNote": "ระดับนี้ไม่มีในระบบนี้ — เลือก ปิด / ดู / ใช้งาน ตามที่หน้าจอแสดง",
+ "g3MgrOnManager": {
+  "readonly": 1,
+  "save": 0,
+  "suspend": 0,
+  "remove": 0
+ },
+ "g3MgrOnStaff": {
+  "roles": [
+   "perm-role-STAFF"
+  ],
+  "save": 1,
+  "suspend": 1
+ },
+ "recvCard": "\nคุณได้รับคำเชิญจาก ร้านเพื่อน QC\nพนักงาน · ใช้ได้ถึง 11/11\nรับคำเชิญ",
+ "recvPost": [
+  "{\"inviteId\":\"rinv1\"}"
+ ],
+ "recvPostTenantHeader": null,
+ "recvActive": "t5",
+ "recvUrl": "/secretary",
+ "g4ThemeStored": "dark",
+ "g4ThemeAfterReload": null,
+ "g4ThemeStoredAfterReload": "dark",
+ "g4NotifyGet": 1,
+ "g4NotifyPut": [
+  "{\"kind\":\"inbox\",\"mode\":\"OFF\"}"
+ ],
+ "g4NotifySummary": "การแจ้งเตือน\nอนุมัติ · เลขา · ช่วยเหลือ\n",
+ "g4ShiftBefore": null,
+ "g4ShiftPost": [
+  "{\"onDuty\":false}"
+ ],
+ "g4ShiftAfter": null,
+ "g4ShiftText": "เข้าเวร\nออกเวรแล้ว",
+ "g4DelPreviewGet": 1,
+ "g4DelPreview": "กิจการที่จะถูกลบ: บลูเฮาส์ หอพัก\nกิจการที่โอนให้คนอื่น: The Bean Café\nกิจการที่คุณออกจากทีม: Sweet Studio\nข้อมูลส่วนตัวและเลขาของคุณจะถูกลบ · ออกจากระบบทุกเครื่องทันที",
+ "g4DelDisabledBefore": "true",
+ "g4DelDisabledPartial": "true",
+ "g4DelPostAfterPartial": 0,
+ "g4DelPost": [
+  "{\"confirm\":\"ลบบัญชี\"}"
+ ],
+ "g4DelPostTenantHeader": null,
+ "g4DelLogout": 1,
+ "g4DelToken": null,
+ "g4DelUrl": "/login",
+ "g4Logout1": {
+  "posts": 0,
+  "label": "แตะอีกครั้งเพื่อออก"
+ },
+ "g4Logout2": {
+  "posts": 1,
+  "url": "/login"
+ },
+ "g4MgrEmail": "อีเมล (สำรอง · ใบเสร็จ)\nยังไม่ยืนยัน\nmgr@qc.invalid",
+ "g4MgrApple": "เข้าด้วย Apple\n–"
+}

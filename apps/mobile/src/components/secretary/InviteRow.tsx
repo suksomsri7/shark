@@ -17,13 +17,11 @@ import { useT } from "@/src/i18n";
 import { useTheme } from "@/src/theme/index";
 import { radii, size, type as T } from "@/src/theme/tokens";
 
-/** testID ของแถวคำเชิญค้างในจอ G2 (spec s2.21) */
-const G2_IDS: StaffRowIds = { row: "inv-pending-row", chat: "inv-pending-chat", pending: "inv-pending-row", resend: "inv-resend", cancel: "inv-cancel" };
-
-export function InviteRow({ invite, busy, onResend, onCancel }: { invite: StaffInvite; busy: boolean; onResend?: () => void; onCancel?: () => void }) {
+/** แถวคำเชิญค้าง · `ids` = testID ของจอที่เรียก (G2: inv-pending-row / inv-resend / inv-cancel) */
+export function InviteRow({ invite, ids, busy, onResend, onCancel }: { invite: StaffInvite; ids: StaffRowIds; busy: boolean; onResend?: () => void; onCancel?: () => void }) {
   const t = useT();
   const d = dateBkk(invite.expiresAt);
-  return <PendingRow invite={invite} ids={G2_IDS} busy={busy} dateText={d ? t("sec.staff.date", { d: d.date, m: d.month }) : ""} onResend={onResend} onCancel={onCancel} />;
+  return <PendingRow invite={invite} ids={ids} busy={busy} dateText={d ? t("sec.staff.date", { d: d.date, m: d.month }) : ""} onResend={onResend} onCancel={onCancel} />;
 }
 
 export function ReceivedInvites({ testID }: { testID: string }) {

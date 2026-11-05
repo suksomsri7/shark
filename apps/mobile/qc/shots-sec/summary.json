@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-04T23:11:53.198Z",
+ "generatedAt": "2026-11-04T23:54:21.708Z",
  "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
@@ -8,8 +8,8 @@
   "scale": 2
  },
  "fixture": {
-  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.5.json",
-  "sha256": "4ac6f8fea6ce688e83ba58b4f12c8e454d1025b17c09533d437f99c200a55317"
+  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.21.json",
+  "sha256": "f4775cb922ee0a5082f4b4232d886fc3483e3a7548fe81392fc7a3009b580c14"
  },
  "screens": [
   {
@@ -49,75 +49,6 @@
    "url": "/secretary/_gallery",
    "file": "/root/projects/shark-sec-b/apps/mobile/qc/shots-sec/secretary-_gallery-dark.png",
    "generatedAt": "2026-11-04T11:43:01.867Z"
-  },
-  {
-   "name": "secretary-staff-m1",
-   "route": "/secretary/staff/m1",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-staff-member",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nสิทธิ์ต่อคน\nกำลังสร้าง (ใบ S2.22)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.22 วาดตามแบบหน้า G3",
-   "unmocked": [],
-   "url": "/secretary/staff/m1",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1.png",
-   "generatedAt": "2026-11-04T20:24:53.436Z"
-  },
-  {
-   "name": "secretary-staff-invite",
-   "route": "/secretary/staff/invite",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-staff-invite",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nเชิญพนักงาน\nกำลังสร้าง (ใบ S2.21)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.21 วาดตามแบบหน้า G2",
-   "unmocked": [],
-   "url": "/secretary/staff/invite",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite.png",
-   "generatedAt": "2026-11-04T20:24:57.153Z"
-  },
-  {
-   "name": "secretary-settings-account",
-   "route": "/secretary/settings/account",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-settings-account",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nบัญชีของฉัน\nกำลังสร้าง (ใบ S2.22)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.22 วาดตามแบบหน้า G4",
-   "unmocked": [],
-   "url": "/secretary/settings/account",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account.png",
-   "generatedAt": "2026-11-04T20:25:30.910Z"
   },
   {
    "name": "secretary-help",
@@ -235,98 +166,6 @@
    "generatedAt": "2026-11-04T20:25:57.182Z"
   },
   {
-   "name": "business-new",
-   "route": "/business/new",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-business-new",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nสร้างกิจการใหม่\nกำลังสร้าง (ใบ S2.21)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.21 วาดตามแบบหน้า G1",
-   "unmocked": [],
-   "url": "/business/new",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new.png",
-   "generatedAt": "2026-11-04T20:26:00.927Z"
-  },
-  {
-   "name": "secretary-staff-m1-dark",
-   "route": "/secretary/staff/m1",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-staff-member",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nสิทธิ์ต่อคน\nกำลังสร้าง (ใบ S2.22)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.22 วาดตามแบบหน้า G3",
-   "unmocked": [],
-   "url": "/secretary/staff/m1",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1-dark.png",
-   "generatedAt": "2026-11-04T20:26:30.688Z"
-  },
-  {
-   "name": "secretary-staff-invite-dark",
-   "route": "/secretary/staff/invite",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-staff-invite",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nเชิญพนักงาน\nกำลังสร้าง (ใบ S2.21)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.21 วาดตามแบบหน้า G2",
-   "unmocked": [],
-   "url": "/secretary/staff/invite",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite-dark.png",
-   "generatedAt": "2026-11-04T20:26:34.406Z"
-  },
-  {
-   "name": "secretary-settings-account-dark",
-   "route": "/secretary/settings/account",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-settings-account",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nบัญชีของฉัน\nกำลังสร้าง (ใบ S2.22)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.22 วาดตามแบบหน้า G4",
-   "unmocked": [],
-   "url": "/secretary/settings/account",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account-dark.png",
-   "generatedAt": "2026-11-04T20:27:03.959Z"
-  },
-  {
    "name": "secretary-help-dark",
    "route": "/secretary/help",
    "dark": true,
@@ -440,29 +279,6 @@
    "url": "/customers/x1/info",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-info-dark.png",
    "generatedAt": "2026-11-04T20:27:27.738Z"
-  },
-  {
-   "name": "business-new-dark",
-   "route": "/business/new",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-business-new",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nสร้างกิจการใหม่\nกำลังสร้าง (ใบ S2.21)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.21 วาดตามแบบหน้า G1",
-   "unmocked": [],
-   "url": "/business/new",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new-dark.png",
-   "generatedAt": "2026-11-04T20:27:31.443Z"
   },
   {
    "name": "secretary-new",
@@ -1523,6 +1339,212 @@
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled-dark.png",
    "generatedAt": "2026-11-04T23:11:53.078Z"
+  },
+  {
+   "name": "business-new",
+   "route": "/business/new",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "f4775cb922ee0a5082f4b4232d886fc3483e3a7548fe81392fc7a3009b580c14",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "biz-new",
+    "biz-new-name",
+    "biz-new-type",
+    "biz-new-system",
+    "biz-new-submit"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nสร้างกิจการใหม่\nชื่อกิจการ\nประเภท\nคาเฟ่/ร้านอาหาร\nร้านค้า\nบริการ/จองคิว\nหอพัก/ห้องเช่า\nคลินิก\nโรงเรียน/คอร์ส\nอื่น ๆ\nระบบที่จะเปิดใช้ (เปลี่ยนทีหลังได้)\nPOS\nCRM\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท LINE/FB\nจองคิว\nสต็อก\nเลือกได้สูงสุด 6 ระบบ · เลือกแล้ว 6\nShark จะตั้งค่าเริ่มต้นให้ แล้วถามสิ่งที่ต้องรู้ (เวลาเปิด · สินค้า/บริการหลัก · วิธีรับเงิน) ในงานแรก · คุณเป็นเจ้าของกิจการนี้ · โควตาฟรี 100 งาน/เดือน\nสร้างและเริ่มใช้",
+   "unmocked": [],
+   "url": "/business/new",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new.png",
+   "generatedAt": "2026-11-04T23:53:55.541Z"
+  },
+  {
+   "name": "secretary-staff-invite",
+   "route": "/secretary/staff/invite",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "f4775cb922ee0a5082f4b4232d886fc3483e3a7548fe81392fc7a3009b580c14",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "inv-name",
+    "inv-phone",
+    "inv-role",
+    "inv-unit",
+    "inv-level",
+    "inv-chat",
+    "inv-sms-preview",
+    "inv-submit",
+    "inv-pending-row",
+    "inv-resend",
+    "inv-cancel"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nเชิญพนักงาน\nThe Bean Café\nชื่อ\nเบอร์โทร (ใช้เข้าแอป)\nบทบาท\nพนักงาน\nผู้จัดการ\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ · ค่าเริ่มต้น = ปิดทุกระบบ\nแชท\nแชท LINE/FB\nเห็นเฉพาะหน่วยที่เลือก\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\n\nSMS ที่น้องจะได้รับ\nSHARK: The Bean Café เชิญคุณ <ชื่อ> เข้าใช้ SHARK · เปิดลิงก์ shark.in.th/i/•••• (หมดอายุ 7 วัน)\nคำเชิญที่ยังไม่รับ (1)\nม\nมิว พนักงาน\nรอรับคำเชิญ · 089-•••-5432 · ถึง 11/11\nยกเลิก\nส่งอีกครั้ง\nส่งคำเชิญทาง SMS",
+   "unmocked": [],
+   "url": "/secretary/staff/invite",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite.png",
+   "generatedAt": "2026-11-04T23:53:58.650Z"
+  },
+  {
+   "name": "secretary-staff-m1",
+   "route": "/secretary/staff/m1",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "f4775cb922ee0a5082f4b4232d886fc3483e3a7548fe81392fc7a3009b580c14",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "perm-role",
+    "perm-unit",
+    "perm-level",
+    "perm-chat",
+    "perm-save",
+    "perm-suspend",
+    "perm-remove"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nก้อง\nหอพัก · พนักงาน · เข้าเวรอยู่ · เข้าร่วม 12 ต.ค.\nบทบาท\nพนักงาน\nผู้จัดการ\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ\nแชท\nแชท LINE/FB\nหอพัก\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\nShark ใช้สิทธิ์ชุดนี้เมื่อก้องสั่งงาน · เปลี่ยนแล้วมีผลกับงานที่ค้าง\nบันทึก\nระงับชั่วคราว\nเอาออกจากกิจการ",
+   "unmocked": [],
+   "url": "/secretary/staff/m1",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1.png",
+   "generatedAt": "2026-11-04T23:54:02.762Z"
+  },
+  {
+   "name": "secretary-settings-account",
+   "route": "/secretary/settings/account",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "f4775cb922ee0a5082f4b4232d886fc3483e3a7548fe81392fc7a3009b580c14",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "acct-phone",
+    "acct-email",
+    "acct-apple",
+    "acct-theme",
+    "acct-notify",
+    "acct-shift",
+    "acct-delete",
+    "acct-logout"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nบัญชีของฉัน\nส\nสุข สมศรี\nเจ้าของ 2 กิจการ · พนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n081-234-5678\n\nอีเมล (สำรอง · ใบเสร็จ)\nsuk@qc.invalid\nเข้าด้วย Apple\nเชื่อมแล้ว\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nเข้าเวรอยู่\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
+   "unmocked": [],
+   "url": "/secretary/settings/account",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account.png",
+   "generatedAt": "2026-11-04T23:54:06.960Z"
+  },
+  {
+   "name": "business-new-dark",
+   "route": "/business/new",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "f4775cb922ee0a5082f4b4232d886fc3483e3a7548fe81392fc7a3009b580c14",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "biz-new",
+    "biz-new-name",
+    "biz-new-type",
+    "biz-new-system",
+    "biz-new-submit"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nสร้างกิจการใหม่\nชื่อกิจการ\nประเภท\nคาเฟ่/ร้านอาหาร\nร้านค้า\nบริการ/จองคิว\nหอพัก/ห้องเช่า\nคลินิก\nโรงเรียน/คอร์ส\nอื่น ๆ\nระบบที่จะเปิดใช้ (เปลี่ยนทีหลังได้)\nPOS\nCRM\nสมาชิก\nบัญชี\nบอร์ดงาน\nแชท LINE/FB\nจองคิว\nสต็อก\nเลือกได้สูงสุด 6 ระบบ · เลือกแล้ว 6\nShark จะตั้งค่าเริ่มต้นให้ แล้วถามสิ่งที่ต้องรู้ (เวลาเปิด · สินค้า/บริการหลัก · วิธีรับเงิน) ในงานแรก · คุณเป็นเจ้าของกิจการนี้ · โควตาฟรี 100 งาน/เดือน\nสร้างและเริ่มใช้",
+   "unmocked": [],
+   "url": "/business/new",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new-dark.png",
+   "generatedAt": "2026-11-04T23:54:10.716Z"
+  },
+  {
+   "name": "secretary-staff-invite-dark",
+   "route": "/secretary/staff/invite",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "f4775cb922ee0a5082f4b4232d886fc3483e3a7548fe81392fc7a3009b580c14",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "inv-name",
+    "inv-phone",
+    "inv-role",
+    "inv-unit",
+    "inv-level",
+    "inv-chat",
+    "inv-sms-preview",
+    "inv-submit",
+    "inv-pending-row",
+    "inv-resend",
+    "inv-cancel"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nเชิญพนักงาน\nThe Bean Café\nชื่อ\nเบอร์โทร (ใช้เข้าแอป)\nบทบาท\nพนักงาน\nผู้จัดการ\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ · ค่าเริ่มต้น = ปิดทุกระบบ\nแชท\nแชท LINE/FB\nเห็นเฉพาะหน่วยที่เลือก\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\n\nSMS ที่น้องจะได้รับ\nSHARK: The Bean Café เชิญคุณ <ชื่อ> เข้าใช้ SHARK · เปิดลิงก์ shark.in.th/i/•••• (หมดอายุ 7 วัน)\nคำเชิญที่ยังไม่รับ (1)\nม\nมิว พนักงาน\nรอรับคำเชิญ · 089-•••-5432 · ถึง 11/11\nยกเลิก\nส่งอีกครั้ง\nส่งคำเชิญทาง SMS",
+   "unmocked": [],
+   "url": "/secretary/staff/invite",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite-dark.png",
+   "generatedAt": "2026-11-04T23:54:13.993Z"
+  },
+  {
+   "name": "secretary-staff-m1-dark",
+   "route": "/secretary/staff/m1",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "f4775cb922ee0a5082f4b4232d886fc3483e3a7548fe81392fc7a3009b580c14",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "perm-role",
+    "perm-unit",
+    "perm-level",
+    "perm-chat",
+    "perm-save",
+    "perm-suspend",
+    "perm-remove"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nก้อง\nหอพัก · พนักงาน · เข้าเวรอยู่ · เข้าร่วม 12 ต.ค.\nบทบาท\nพนักงาน\nผู้จัดการ\nหน่วย/สาขา\nทุกสาขา\nสาขาหลัก\nหอพัก\nสิทธิ์ต่อระบบ\nแชท\nแชท LINE/FB\nหอพัก\nไม่เห็น\nดูได้\nตอบได้\nหอ\nหอพัก\nปิด\nดูได้\nใช้งาน\nคิว\nจองคิว\nปิด\nดูได้\nใช้งาน\nบัญชี\nบัญชี\nปิด\nดูได้\nใช้งาน\nPOS\nPOS\nปิด\nดูได้\nใช้งาน\nงาน\nผู้ช่วย AI\nปิด\nใช้งาน\nShark ใช้สิทธิ์ชุดนี้เมื่อก้องสั่งงาน · เปลี่ยนแล้วมีผลกับงานที่ค้าง\nบันทึก\nระงับชั่วคราว\nเอาออกจากกิจการ",
+   "unmocked": [],
+   "url": "/secretary/staff/m1",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1-dark.png",
+   "generatedAt": "2026-11-04T23:54:17.765Z"
+  },
+  {
+   "name": "secretary-settings-account-dark",
+   "route": "/secretary/settings/account",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "f4775cb922ee0a5082f4b4232d886fc3483e3a7548fe81392fc7a3009b580c14",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "acct-phone",
+    "acct-email",
+    "acct-apple",
+    "acct-theme",
+    "acct-notify",
+    "acct-shift",
+    "acct-delete",
+    "acct-logout"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nบัญชีของฉัน\nส\nสุข สมศรี\nเจ้าของ 2 กิจการ · พนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n081-234-5678\n\nอีเมล (สำรอง · ใบเสร็จ)\nsuk@qc.invalid\nเข้าด้วย Apple\nเชื่อมแล้ว\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nเข้าเวรอยู่\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
+   "unmocked": [],
+   "url": "/secretary/settings/account",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account-dark.png",
+   "generatedAt": "2026-11-04T23:54:21.578Z"
   }
  ]
 }

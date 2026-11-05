@@ -13,6 +13,7 @@ import { Text, TextInput } from "@/src/components/ui/text";
 import { AiryScreen, Chip, Glass, Icon, IconBtn, Note, PrimaryButton, Segment, Sheet, TopBar } from "@/src/components/airy";
 import { ChatLevelPicker } from "@/src/components/secretary/ChatLevelPicker";
 import { InviteRow } from "@/src/components/secretary/InviteRow";
+import type { StaffRowIds } from "@/src/components/secretary/StaffRow";
 import { LevelGrid, gridModules, permissionsFromLevels, type ModuleLevel } from "@/src/components/secretary/LevelGrid";
 import { dateBkk } from "@/src/components/secretary/bkk";
 import {
@@ -39,6 +40,8 @@ import { F, glassStyle, useTheme } from "@/src/theme/index";
 import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 const ALL = "*";
+/** testID ของแถวคำเชิญค้าง (spec s2.21) */
+const ROW_IDS: StaffRowIds = { row: "inv-pending-row", chat: "inv-pending-chat", pending: "inv-pending-row", resend: "inv-resend", cancel: "inv-cancel" };
 const NAME_MAX = 80;
 /** เหตุผลปฏิเสธ → ข้อความไทยของจอ (ข้อความเซิร์ฟเวอร์ใช้กับเหตุผลอื่น) */
 const REASON: Partial<Record<InviteReason, I18nKey>> = {
@@ -283,7 +286,7 @@ export default function SecretaryStaffInviteScreen() {
 
         {invites.length ? <Text style={[styles.label, { color: c.textDim }]}>{t("inv.pendingTitle", { n: invites.length })}</Text> : null}
         {invites.map((i) => (
-          <InviteRow key={i.inviteId} invite={i} busy={busy} onResend={manage ? () => resend(i) : undefined} onCancel={manage && !i.expired ? () => setCancelling(i) : undefined} />
+          <InviteRow key={i.inviteId} invite={i} ids={ROW_IDS} busy={busy} onResend={manage ? () => resend(i) : undefined} onCancel={manage && !i.expired ? () => setCancelling(i) : undefined} />
         ))}
       </ScrollView>
 
