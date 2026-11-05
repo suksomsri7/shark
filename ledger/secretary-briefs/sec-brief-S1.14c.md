@@ -1,0 +1,13 @@
+# S1-14c — S1.14c ตั๋ว server ชุด 2 (push link + badges เส้นเดียว + can.aiSuggest) (Opus · เลน b · `wip/sec-s1.14c` · 6 พ.ย.)
+Read COMMON (A.8 ไม่มี migration) · RESOLUTIONS §W (R-S2.13b/c) §W.2 (R-S2.13j) §X.2 (LOW-3) · oracle `scripts/qc-sec-s1.14c.mts` = สัญญา · ใบนี้ **อนุญาตแตะ `src/lib/modules/chat/routing.ts` และ `service.ts` เฉพาะ payload แจ้งเตือน** (ไม่แตะตรรกะ assign/handoff/SLA)
+
+## งาน (ไม่มี schema change · Bearer · rate-limit เส้นเขียนไม่มีในใบนี้)
+1. **ลิงก์ push ห้องลูกค้า = `/customers/<conversationId>?e=<via>`** ทุกจุดที่ server ส่ง: `routing.ts` (assigned · helper · handoff · sla) และ `src/lib/core/push.ts` `sendPushToChatStaff` ค่าปริยาย `data.link` (`/customers/<id>` ไม่มี `?e=` สำหรับ "ลูกค้าทักเข้ามา") · ทุก payload มี `data.tenantId` · `data.conversationId` · `data.systemId` · ห้ามเหลือ `/inbox/` ใน data.link ของ push ใด ๆ (เว็บไม่ใช้ data.link) · `chat/service.ts` ส่ง `tenantId` ให้ `sendPushToChatStaff` อยู่แล้ว — ตรวจว่าถึง `data` จริง
+2. **`GET /api/mobile/secretary/badges`** (gate null = สมาชิกร้าน · 60/นาที) → `{ approvals, customers, team: { invites, help, support }, total }` · `approvals` = `inboxCount(userId).canApprove` · `customers` = ผลรวม `unreadFor` ทุกระบบแชท active ของร้านที่ผู้เรียกมีสิทธิ์อ่าน (0 ถ้าไม่มีสิทธิ์) · `team.invites` = ใบเชิญค้าง (ยังไม่รับ · ไม่หมดอายุ) ของร้าน เฉพาะ OWNER/MANAGER (STAFF = 0) · `team.help` = จำนวนห้อง OPEN ที่ผู้เรียกเป็น helper (`ChatConversationHelper.userId = me` join conversation status OPEN) · `team.support` = `unreadCaseTotalForUser` · `total` = approvals + customers + invites + help + support · ต้องเป็น query เบา (count/aggregate · ไม่ดึงรายการ) · เอกสาร route table
+3. **`conversation.can.aiSuggest`** ใน DTO ห้องลูกค้า (`GET inbox/conversations/[id]`) = `can(c, {module:"chat", action:"chat.ai.suggest"})` · type ใน `apps/mobile/src/api/inbox.ts` (type เท่านั้น)
+4. docs: `docs/api/SECRETARY-API.md` แถว badges + ฟิลด์ can.aiSuggest + หมายเหตุลิงก์ push · `ledger/wo-notes/sec-s1.14c.md`
+
+## Acceptance
+`qc-sec-s1.14c` เขียวทั้งหมด ×2 · regression `qc-sec-s1.21` (routing/helper/handoff) · `qc-sec-s1.22` · `qc-sec-s1.23` ถ้ามี (notify) · `qc-sec-s1.14b` ยังเขียว · typecheck 0 · fitness ×2 · A.11 merge tip ก่อนส่ง
+## Files you own
+`src/lib/modules/chat/routing.ts` (เฉพาะ payload แจ้งเตือน) · `src/lib/core/push.ts` (ค่าปริยาย link) · `src/lib/modules/chat/service.ts` (เฉพาะ args ของ sendPushToChatStaff) · `src/app/api/mobile/secretary/badges/route.ts` (ใหม่) · `src/app/api/mobile/inbox/conversations/[id]/route.ts` + `src/lib/mobile/inbox-dto.ts` (can.aiSuggest) · `apps/mobile/src/api/inbox.ts` (type) · docs/wo-notes · ห้ามแตะ prisma/ · ห้ามแตะจอแอป

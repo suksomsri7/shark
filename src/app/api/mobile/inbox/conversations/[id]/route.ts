@@ -1,11 +1,18 @@
 // GET /api/mobile/inbox/conversations/[id] — เธรดห้องแชทลูกค้า (ห่อ `getThread` โหมด page · cursor คู่ `before=<iso>|<id>` · หน่วยอื่น = 404 · S1.21)
+//   S1.14b: conversation + `tags` · `replyWindowEndsAt` (= คอลัมน์ `replyWindowExpiresAt` ของห้อง · FB/IG/WA · LINE/WEBCHAT = null · R-S1.14b-e) · `can{}` ของผู้เรียก
+//           linkedMember = `{ id, name, phoneMasked }` (maskPhone · ไม่มีเบอร์เต็ม — ตั๋ว R-S2.17)
+//   S1.14c (LOW-3): `can.aiSuggest` = คีย์ `chat.ai.suggest` (ด่านเดียวกับ POST …/ai-suggest · R-S1.14b-a)
+import type { AccessQuery } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
 import { getLinkedMember, getThread } from "@/lib/modules/chat/service";
 import { listHelpers } from "@/lib/modules/chat/routing";
-import { contactDto, conversationDto, messageDto } from "@/lib/mobile/inbox-dto";
-import { convExtras, cursorOf, fail, gate, notFound, parseCursor, READ, staffNames, systemOf, type RouteCtx } from "../../_shared";
+import { maskPhone } from "@/lib/modules/member/profile";
+import { contactDto, conversationDto, isoOrNull, messageDto, type InboxConversationDetailDto, type InboxLinkedMemberDto } from "@/lib/mobile/inbox-dto";
+import { ASSIGN, can, convExtras, cursorOf, fail, gate, LINK_CUSTOMER, notFound, parseCursor, READ, REPLY, SET_STATUS, staffNames, systemOf, type RouteCtx } from "../../_shared";
 
 const LIMIT_MAX = 100;
+/** คีย์เดียวกับด่านของ POST …/ai-suggest (`assertChatCan(auth, "chat.ai.suggest")` ของเว็บ) */
+const AI_SUGGEST: AccessQuery = { module: "chat", action: "chat.ai.suggest" };
 
 export async function GET(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [READ]);
@@ -30,13 +37,21 @@ export async function GET(req: Request, ctx: RouteCtx) {
     ids.length ? tenantDb({ tenantId: c.tenantId, systemId: sid }).chatAttachment.findMany({ where: { tenantId: c.tenantId, systemId: sid, messageId: { in: ids } }, orderBy: { createdAt: "asc" }, select: { messageId: true, fileName: true, url: true, kind: true, mimeType: true, durationMs: true } }) : [],
     t.conversation.contact.customerId ? getLinkedMember(c.tenantId, t.conversation.contact.customerId) : null,
   ]);
+  const conversation: InboxConversationDetailDto = {
+    ...conversationDto(t.conversation, { now: new Date(), names, aiDraft: x.aiDraft.has(t.conversation.id), helpers: x.helpers.get(t.conversation.id) ?? [] }),
+    replyWindowEndsAt: isoOrNull(t.conversation.replyWindowExpiresAt),
+    can: { reply: can(c, REPLY), assign: can(c, ASSIGN), setStatus: can(c, SET_STATUS), linkCustomer: can(c, LINK_CUSTOMER), aiSuggest: can(c, AI_SUGGEST) },
+  };
+  const linkedMember: InboxLinkedMemberDto | null = member
+    ? { id: member.id, name: member.name ?? null, phoneMasked: member.phone ? maskPhone(member.phone) : null }
+    : null;
   const attsOf = new Map<string, (typeof atts)[number][]>();
   for (const at of atts) attsOf.set(at.messageId, [...(attsOf.get(at.messageId) ?? []), at]);
   return Response.json({
-    conversation: conversationDto(t.conversation, { now: new Date(), names, aiDraft: x.aiDraft.has(t.conversation.id), helpers: x.helpers.get(t.conversation.id) ?? [] }),
+    conversation,
     messages: t.messages.map((m) => messageDto(m, attsOf.get(m.id) ?? [], names)),
     contact: contactDto(t.conversation.contact),
-    linkedMember: member ? { id: member.id, name: member.name ?? null, phone: member.phone ?? null } : null,
+    linkedMember,
     helpers: helpers.map((h) => ({ userId: h.userId, name: h.name, calledById: h.calledById, note: h.note, createdAt: h.createdAt.toISOString() })),
     nextBefore: t.messages.length === limit && t.messages[0] ? cursorOf(t.messages[0].createdAt, t.messages[0].id) : null,
   });

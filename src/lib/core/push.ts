@@ -386,8 +386,10 @@ export async function sendPushToChatStaff(args: {
     skipped += devices.length - targets.length;
     if (targets.length === 0) return { sent: 0, skipped };
 
-    // S1.23 (R-K20) ▸ deep-link ของแอป `data.link = "/inbox/<id>"` (ผู้เรียกส่ง link มาเองชนะ) · คีย์เดิมของผู้เรียกคงอยู่ ◂
-    const msg: PushMsg = { title: args.title, body: args.body, data: { link: `/inbox/${conversationId}`, ...(args.data ?? {}) } };
+    // S1.23 (R-K20) ▸ deep-link ของแอป · S1.14c (R-S2.13c/j) ▸ `data.link = "/customers/<id>"` (จอห้องลูกค้าของแอปเลขา) + `tenantId`/`systemId`
+    //   (แอปสลับกิจการตาม tenantId ก่อนเปิด) · ผู้เรียกส่ง link/คีย์มาเองชนะ · คีย์เดิมของผู้เรียกคงอยู่
+    //   🔴 ไม่ใส่คีย์ `conversationId` — แอป 1.0 อ่านคีย์นั้นแล้วเปิด /chat/<id> (แชท AI คนละชนิด) · ข้อสอบ NV-6.5/CP-1.3 เฝ้าอยู่ ◂
+    const msg: PushMsg = { title: args.title, body: args.body, data: { link: `/customers/${conversationId}`, tenantId, systemId, ...(args.data ?? {}) } };
     for (let i = 0; i < targets.length; i += CHUNK) {
       const batch = targets.slice(i, i + CHUNK);
       try {

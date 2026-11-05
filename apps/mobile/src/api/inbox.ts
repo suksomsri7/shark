@@ -34,8 +34,10 @@ const PATH_ID = {
   "inbox/conversations/[id]/helpers": "/api/mobile/inbox/conversations/[id]/helpers",
   "inbox/conversations/[id]/handoff": "/api/mobile/inbox/conversations/[id]/handoff",
   "inbox/conversations/[id]/contact": "/api/mobile/inbox/conversations/[id]/contact",
-  // ร่างคำตอบของ Shark (S1.22 ai-suggest) — ยังไม่มี route Bearer บนเซิร์ฟเวอร์ ⇒ 404 = ซ่อนการ์ด (หนี้ใน wo-notes sec-s2.17)
+  // ร่างคำตอบของ Shark (S1.22 ai-suggest) — route Bearer มีแล้ว (S1.14b) · ok:false = ซ่อนการ์ด
   "inbox/conversations/[id]/ai-suggest": "/api/mobile/inbox/conversations/[id]/ai-suggest",
+  // เปิดการ์ดงานจากห้อง (S1.14b · บอร์ดตามค่าตั้ง "สร้างงานจากแชท" ของร้าน · 404 not_configured = ซ่อนปุ่ม)
+  "inbox/conversations/[id]/task": "/api/mobile/inbox/conversations/[id]/task",
   "inbox/quick-replies/[id]/apply": "/api/mobile/inbox/quick-replies/[id]/apply",
 } as const;
 export type InboxIdPath = keyof typeof PATH_ID;
@@ -59,9 +61,19 @@ export type ConvItem = {
   waitingMin: number | null;
   aiDraft: boolean;
   helpers: string[];
-  /** ยังไม่อยู่ใน DTO ของ S1.21 (หนี้ §N tags) — มีเมื่อเซิร์ฟเวอร์ส่ง ("รอคน" = ป้ายส่งต่อคนของ S1.22 §O) */
+  /** ป้ายของห้อง (S1.14b · เซิร์ฟเวอร์ส่งเสมอ · "รอคน" = ป้ายส่งต่อคนของ S1.22 §O) — optional ไว้ให้ fixture เดิม */
   tags?: string[];
 };
+/** ปุ่มที่ผู้ใช้คนนี้กดได้ในห้อง (S1.14b · server ตัดสินจากคีย์ของผู้เรียก) · `aiSuggest` = คีย์ chat.ai.suggest (S1.14c · optional ไว้ให้ fixture เดิม) */
+export type ConvCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean; aiSuggest?: boolean };
+/** ห้องในจอเธรด (GET inbox/conversations/[id]) = ConvItem + หน้าต่างตอบกลับ + ปุ่มที่กดได้ (S1.14b) */
+export type ConvDetail = ConvItem & {
+  /** ตอบได้ถึงเมื่อไร (ช่องทางที่มีหน้าต่าง) · LINE/WEBCHAT = null */
+  replyWindowEndsAt?: string | null;
+  can?: ConvCan;
+};
+/** สมาชิกที่ผูกกับห้อง — เซิร์ฟเวอร์ส่ง `phoneMasked` เท่านั้น (S1.14b · ไม่มีเบอร์เต็ม) · `phone` = ของเดิม เซิร์ฟเวอร์ไม่ส่งแล้ว (จอย้ายไป phoneMasked ใน S2.14) */
+export type LinkedMember = { id: string; name: string | null; phoneMasked?: string | null; /** @deprecated เซิร์ฟเวอร์ไม่ส่งแล้ว (S1.14b) */ phone?: string | null };
 export type AiMeta = { roomId: string | null; proposalId: string; approvedBy: string | null };
 export type MsgAttachment = { name: string; url: string; kind: string; mimeType: string; durationMs: number | null };
 export type MsgItem = {
@@ -80,10 +92,10 @@ export type MsgItem = {
 };
 export type Helper = { userId: string; name: string | null; calledById: string | null; note: string | null; createdAt: string };
 export type Thread = {
-  conversation: ConvItem;
+  conversation: ConvDetail;
   messages: MsgItem[];
   contact: InboxContact;
-  linkedMember: { id: string; name: string | null; phone: string | null } | null;
+  linkedMember: LinkedMember | null;
   helpers: Helper[];
   nextBefore: string | null;
 };
@@ -99,6 +111,22 @@ export const NOTIFY_MODES: readonly NotifyMode[] = ["ALL", "ASSIGNED", "OFF"];
 export type Upload = { url: string; name?: string; mimeType: string; size?: number; width?: number | null; height?: number | null; durationMs?: number };
 export type ReplyAttachment = { url: string; mimeType: string; fileName?: string; sizeBytes?: number; width?: number; height?: number; durationMs?: number };
 export type MemberHit = { id: string; memberCode?: string; name: string; phoneMasked?: string };
+/** สถานะเวรของตัวเอง (GET/POST inbox/shift) */
+export type ShiftState = { onDuty: boolean; onDutyAt: string | null };
+/** ร่างคำตอบของ Shark (POST …/ai-suggest · S1.14b) — ok:false = ซ่อนการ์ด (reason ไทย) */
+export type SuggestOption = { id: string; body: string; warn: boolean };
+export type SuggestRes = {
+  ok?: boolean;
+  options?: SuggestOption[];
+  sourceMessageId?: string;
+  reason?: string;
+  /** @deprecated รูปเดิมที่จอเผื่อไว้ก่อนมี route — เซิร์ฟเวอร์ไม่ส่ง */
+  suggestionId?: string;
+  /** @deprecated รูปเดิมที่จอเผื่อไว้ก่อนมี route — เซิร์ฟเวอร์ไม่ส่ง */
+  body?: string;
+};
+/** ผลเปิดการ์ดงานจากห้อง (POST …/task · S1.14b) */
+export type TaskFromChatRes = { cardId: string; cardNo: number | null; cardHref: string; created: boolean };
 
 type GetMap = {
   "inbox/systems": { items?: InboxSystem[]; canReply?: boolean };
@@ -107,11 +135,12 @@ type GetMap = {
   "inbox/staff": { items?: StaffPick[] };
   "inbox/connections": { items?: Connection[] };
   "inbox/routing": Routing;
+  "inbox/shift": ShiftState;
   "secretary/notify": { prefs?: Partial<Record<string, string>> };
   "member/search": { items?: MemberHit[] };
 };
 type PostMap = {
-  "inbox/shift": { body: { onDuty: boolean }; res: { onDuty: boolean; onDutyAt: string | null } };
+  "inbox/shift": { body: { onDuty: boolean }; res: ShiftState };
 };
 type PutMap = {
   "inbox/routing": { body: { systemId?: string; rules: Omit<RoutingRule, "id">[] }; res: Routing };
@@ -123,15 +152,17 @@ type GetIdMap = {
 type PostIdMap = {
   "inbox/conversations/[id]/read": { body: { systemId?: string; lastReadMessageId?: string }; res: { ok: boolean } };
   "inbox/conversations/[id]/reply": {
-    body: { systemId?: string; body?: string; attachments?: ReplyAttachment[]; isInternal?: boolean; clientMessageId: string };
-    res: { messageId?: string; duplicate?: boolean; deliveryFailed?: boolean; message?: string };
+    /** suggestionId = ส่งจากร่างของ Shark (S1.14b · server บันทึกผล SENT_AS_IS/SENT_EDITED) */
+    body: { systemId?: string; body?: string; attachments?: ReplyAttachment[]; isInternal?: boolean; clientMessageId: string; suggestionId?: string };
+    res: { messageId?: string; duplicate?: boolean; deliveryFailed?: boolean; message?: string; suggestionOutcome?: string };
   };
   "inbox/conversations/[id]/assign": { body: { systemId?: string; assigneeUserId: string | null }; res: { ok: boolean } };
   "inbox/conversations/[id]/status": { body: { systemId?: string; status: ConvStatus }; res: { ok: boolean } };
   "inbox/conversations/[id]/helpers": { body: { systemId?: string; helperUserId: string; note?: string }; res: { ok: boolean } };
   "inbox/conversations/[id]/handoff": { body: { systemId?: string; toUserId: string; reason: string }; res: { ok: boolean } };
   "inbox/conversations/[id]/contact": { body: { systemId?: string; customerId: string | null }; res: { ok: boolean } };
-  "inbox/conversations/[id]/ai-suggest": { body: { systemId?: string }; res: { suggestionId?: string; options?: { id?: string; body: string }[]; body?: string } };
+  "inbox/conversations/[id]/ai-suggest": { body: { systemId?: string }; res: SuggestRes };
+  "inbox/conversations/[id]/task": { body: { systemId?: string; title: string; description?: string; dueAt?: string }; res: TaskFromChatRes };
   "inbox/quick-replies/[id]/apply": { body: { systemId?: string; conversationId: string }; res: { body: string } };
 };
 
@@ -216,7 +247,7 @@ export function replyMessageId(): string {
   return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** เบอร์สำหรับแสดง: เหลือ 3 ตัวหน้า + 4 ตัวท้าย (เซิร์ฟเวอร์ส่ง linkedMember.phone เต็ม — หนี้ PII ใน wo-notes) */
+/** เบอร์สำหรับแสดง: เหลือ 3 ตัวหน้า + 4 ตัวท้าย (S1.14b: เซิร์ฟเวอร์ส่ง linkedMember.phoneMasked แล้ว — ค่าที่ปิดแล้วผ่านซ้ำได้ผลเดิม) */
 export function maskPhone(v: string | null | undefined): string | null {
   const d = (v ?? "").replace(/\D/g, "");
   if (d.length < 7) return d ? "•••" : null;
