@@ -233,7 +233,8 @@ try {
 
   console.log("── T3: PII mask ใน tool ──");
   {
-    await (prisma as AnyMod).customer.create({ data: { tenantId: tid, name: "คุณสมหญิง", phone: "0899001234" } as never }).catch((e: unknown) => console.log("  ⚠️ customer: " + errMsg(e)));
+    const memSys = await prisma.appSystem.create({ data: { tenantId: tid, type: "MEMBER", name: "สมาชิก" } as never });
+    await (prisma as AnyMod).customer.create({ data: { tenantId: tid, memberSystemId: memSys.id, name: "คุณสมหญิง", phone: "0899001234" } as never }).catch((e: unknown) => console.log("  ⚠️ customer: " + (e instanceof Error ? e.message.split("\n").slice(-3).join(" ") : String(e)).slice(0, 200)));
     const r = await rooms.startRoom(OWNER, { instruction: "หาลูกค้า" });
     const out = await tools.runTool(toolCtx(U.owner, "OWNER", {}, r.conversationId) as never, "customer_search", { query: "สมหญิง" });
     chk("T3-1", "customer_search ผลลัพธ์ที่คืนโมเดลไม่มีเบอร์เต็ม 0899001234 (ปิดเลขกลาง)", !/0899001234|899001234/.test(out) && /สมหญิง/.test(out), out.slice(0, 160));
