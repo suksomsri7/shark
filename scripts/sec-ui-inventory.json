@@ -840,6 +840,419 @@
    "screen": "ชีตงานประจำ (A7)",
    "action": "ปิดชีต",
    "wo": "S2.5"
+  },
+  {
+   "testID": "cust-tab-all",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "แท็บทั้งหมด (ไม่กรอง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-tab-unanswered",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "แท็บยังไม่ตอบ (OPEN ไม่มีคนรับ หรือ staffUnreadCount>0 · กรองในแอป)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-tab-mine",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "แท็บของฉัน → GET inbox/conversations?assignee=me",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-tab-closed",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "แท็บปิดแล้ว → ?status=RESOLVED",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-system-chip",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "สลับระบบแชท (systemId)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-channel-chip",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "กรองช่องทาง → ?channel=",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-row",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "เปิดห้อง → /customers/<id>?s=<systemId>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-row-unassigned",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "เปิดห้องที่ยังไม่มีคนรับ → /customers/<id>?s=",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-more",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "หน้าต่อไป → ?before=<nextBefore>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-back",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ย้อน (ไม่มี stack = /customers)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-helper",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เรียกคนช่วย → /customers/<id>/info?open=helpers",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-info",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ข้อมูลลูกค้า → /customers/<id>/info",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-claim",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "รับเรื่อง → POST …/assign {assigneeUserId: ตัวเอง} (409 = แจ้ง+โหลดใหม่)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-more",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ข้อความก่อนหน้า → GET …/[id]?before=",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-draft-edit",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ร่าง Shark → ใส่ช่องพิมพ์",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-draft-send",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ร่าง Shark → ส่งผ่าน Composer (POST …/reply)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-quick",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ตอบเร็ว → POST quick-replies/[id]/apply → ช่องพิมพ์ (ไม่ส่ง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-attach",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "แนบรูป/วิดีโอ → POST inbox/attachments (multipart ≤10MB)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-attached-remove",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เอาไฟล์ที่แนบออก (ยังไม่ส่ง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-internal-toggle",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "สลับบันทึกภายใน (isInternal)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-send",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ส่ง → POST …/reply {body, attachments, isInternal, clientMessageId} · 429 ลองใหม่ 1 ครั้ง",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-image-close",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ปิดตัวดูรูปเต็มจอ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-att-image",
+   "file": "apps/mobile/src/components/customers/MessageBubble.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เปิดรูปเต็มจอ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-att-audio",
+   "file": "apps/mobile/src/components/customers/MessageBubble.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เล่นข้อความเสียง (เปิดลิงก์)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-att-file",
+   "file": "apps/mobile/src/components/customers/MessageBubble.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เปิดไฟล์แนบ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-bubble-resend",
+   "file": "apps/mobile/src/components/customers/MessageBubble.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ส่งฟองที่ล้มใหม่ → POST …/reply clientMessageId resend:<id>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-back",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ย้อน",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-member",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "เปิดสมาชิก → /member/<id>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-link",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตผูกสมาชิก (GET member/search)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-unlink",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ถอดสมาชิก → POST …/contact {customerId:null}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-link-go",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ค้นสมาชิก",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-link-row",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ผูก → POST …/contact {customerId}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-assign",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตมอบหมาย → POST …/assign",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-helpers",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตคนช่วย → POST …/helpers {helperUserId, note}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-status",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตสถานะ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-status-opt",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "POST …/status {status}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-tags",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "แท็ก (อ่านอย่างเดียว)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-handoff",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตส่งต่อ → POST …/handoff {toUserId, reason}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-task",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "สร้างงานบอร์ด — ซ่อน (ยังไม่มี route)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-ask-shark",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตสั่ง Shark",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-ask-send",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "POST secretary/rooms {instruction, clientMessageId, context:{chatConversationId, contactId}} → /secretary/room/<id>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-close",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ปิดห้อง (ชีตยืนยัน → status RESOLVED) · ห้องปิด = เปิดอีกครั้ง (status OPEN)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-assign-sheet-row",
+   "file": "apps/mobile/src/components/customers/parts.tsx",
+   "screen": "K3 ชีตเลือกพนักงาน",
+   "action": "เลือกคน (มอบหมาย/ส่งต่อ/คนช่วย ใช้ร่วม: -assign-sheet- -handoff-sheet- -helpers-sheet-)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-assign-sheet-ok",
+   "file": "apps/mobile/src/components/customers/parts.tsx",
+   "screen": "K3 ชีตเลือกพนักงาน",
+   "action": "ยืนยัน (ร่วม -handoff-sheet-ok -helpers-sheet-ok)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-close-sheet-ok",
+   "file": "apps/mobile/src/components/customers/parts.tsx",
+   "screen": "K3 ชีตยืนยันปิดห้อง",
+   "action": "POST …/status RESOLVED",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-close-sheet-cancel",
+   "file": "apps/mobile/src/components/customers/parts.tsx",
+   "screen": "K3 ชีตยืนยันปิดห้อง",
+   "action": "ยกเลิก",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-channels-web",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K4 /secretary/settings/customers",
+   "action": "เชื่อม/แก้ช่องทางบนเว็บ (หน้าแรก 1.0 ?open=/app/)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-quick-web",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K4 /secretary/settings/customers",
+   "action": "เพิ่มตอบเร็วบนเว็บ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-notify",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K4 /secretary/settings/customers",
+   "action": "แจ้งเตือนแชท ALL/ASSIGNED/OFF → PUT secretary/notify {kind:inbox, mode}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-channel",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "วนช่องทางของกฎ (ทุกช่องทาง/ช่องทางที่เชื่อม)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-up",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เลื่อนกฎขึ้น",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-down",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เลื่อนกฎลง",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-remove",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "ลบกฎ (ในร่าง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-toggle",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เปิด/ปิดกฎ (ในร่าง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-add",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เพิ่มกฎโหมด ROUND_ROBIN/LAST_ASSIGNEE/OWNER",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-routing-save",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "PUT inbox/routing {systemId, rules} (OWNER/MANAGER)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-shift-toggle",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เข้า/ออกเวร → POST inbox/shift {onDuty}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-sla-first",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "SLA อ่านอย่างเดียว",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-sla-unassigned",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "SLA อ่านอย่างเดียว",
+   "wo": "S2.17"
   }
  ]
 }
