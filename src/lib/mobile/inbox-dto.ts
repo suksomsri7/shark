@@ -62,7 +62,8 @@ export function conversationDto(
 }
 
 /** ปุ่มที่ผู้เรียกกดได้ในห้อง (S1.14b · ตัดสินจากคีย์ของผู้เรียกฝั่ง server — แอปไม่คำนวณเอง) */
-export type InboxConversationCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean };
+/** S1.14c: `aiSuggest` = คีย์ `chat.ai.suggest` (ปุ่ม "ให้ AI ร่าง" · ด่านเดียวกับ POST …/ai-suggest) */
+export type InboxConversationCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean; aiSuggest: boolean };
 /** ห้องในจอเธรด = รายการ + หน้าต่างตอบกลับ + ปุ่มที่กดได้ (S1.14b) */
 export type InboxConversationDetailDto = InboxConversationDto & {
   /** ตอบได้ถึงเมื่อไร = `ChatConversation.replyWindowExpiresAt` (FB/IG/WA · R-S1.14b-e) · LINE/WEBCHAT = null */

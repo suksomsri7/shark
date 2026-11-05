@@ -1,6 +1,8 @@
 // GET /api/mobile/inbox/conversations/[id] — เธรดห้องแชทลูกค้า (ห่อ `getThread` โหมด page · cursor คู่ `before=<iso>|<id>` · หน่วยอื่น = 404 · S1.21)
 //   S1.14b: conversation + `tags` · `replyWindowEndsAt` (= คอลัมน์ `replyWindowExpiresAt` ของห้อง · FB/IG/WA · LINE/WEBCHAT = null · R-S1.14b-e) · `can{}` ของผู้เรียก
 //           linkedMember = `{ id, name, phoneMasked }` (maskPhone · ไม่มีเบอร์เต็ม — ตั๋ว R-S2.17)
+//   S1.14c (LOW-3): `can.aiSuggest` = คีย์ `chat.ai.suggest` (ด่านเดียวกับ POST …/ai-suggest · R-S1.14b-a)
+import type { AccessQuery } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
 import { getLinkedMember, getThread } from "@/lib/modules/chat/service";
 import { listHelpers } from "@/lib/modules/chat/routing";
@@ -9,6 +11,8 @@ import { contactDto, conversationDto, isoOrNull, messageDto, type InboxConversat
 import { ASSIGN, can, convExtras, cursorOf, fail, gate, LINK_CUSTOMER, notFound, parseCursor, READ, REPLY, SET_STATUS, staffNames, systemOf, type RouteCtx } from "../../_shared";
 
 const LIMIT_MAX = 100;
+/** คีย์เดียวกับด่านของ POST …/ai-suggest (`assertChatCan(auth, "chat.ai.suggest")` ของเว็บ) */
+const AI_SUGGEST: AccessQuery = { module: "chat", action: "chat.ai.suggest" };
 
 export async function GET(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [READ]);
@@ -36,7 +40,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const conversation: InboxConversationDetailDto = {
     ...conversationDto(t.conversation, { now: new Date(), names, aiDraft: x.aiDraft.has(t.conversation.id), helpers: x.helpers.get(t.conversation.id) ?? [] }),
     replyWindowEndsAt: isoOrNull(t.conversation.replyWindowExpiresAt),
-    can: { reply: can(c, REPLY), assign: can(c, ASSIGN), setStatus: can(c, SET_STATUS), linkCustomer: can(c, LINK_CUSTOMER) },
+    can: { reply: can(c, REPLY), assign: can(c, ASSIGN), setStatus: can(c, SET_STATUS), linkCustomer: can(c, LINK_CUSTOMER), aiSuggest: can(c, AI_SUGGEST) },
   };
   const linkedMember: InboxLinkedMemberDto | null = member
     ? { id: member.id, name: member.name ?? null, phoneMasked: member.phone ? maskPhone(member.phone) : null }

@@ -64,8 +64,8 @@ export type ConvItem = {
   /** ป้ายของห้อง (S1.14b · เซิร์ฟเวอร์ส่งเสมอ · "รอคน" = ป้ายส่งต่อคนของ S1.22 §O) — optional ไว้ให้ fixture เดิม */
   tags?: string[];
 };
-/** ปุ่มที่ผู้ใช้คนนี้กดได้ในห้อง (S1.14b · server ตัดสินจากคีย์ของผู้เรียก) */
-export type ConvCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean };
+/** ปุ่มที่ผู้ใช้คนนี้กดได้ในห้อง (S1.14b · server ตัดสินจากคีย์ของผู้เรียก) · `aiSuggest` = คีย์ chat.ai.suggest (S1.14c · optional ไว้ให้ fixture เดิม) */
+export type ConvCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean; aiSuggest?: boolean };
 /** ห้องในจอเธรด (GET inbox/conversations/[id]) = ConvItem + หน้าต่างตอบกลับ + ปุ่มที่กดได้ (S1.14b) */
 export type ConvDetail = ConvItem & {
   /** ตอบได้ถึงเมื่อไร (ช่องทางที่มีหน้าต่าง) · LINE/WEBCHAT = null */
