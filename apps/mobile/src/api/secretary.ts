@@ -208,7 +208,40 @@ export function secGet<P extends keyof GetMap>(path: P, q?: Query): Promise<GetM
 }
 
 export function secPost<P extends keyof PostMap>(path: P, body: PostMap[P]["body"]): Promise<PostMap[P]["res"]> {
-  return api<PostMap[P]["res"]>(url(path), { method: "POST", body, tenant: !USER_LEVEL.has(path) });
+  return afterAction(path, api<PostMap[P]["res"]>(url(path), { method: "POST", body, tenant: !USER_LEVEL.has(path) }));
+}
+
+// ───────── S2.20 badge แถบบน "หลัง action" — การกระทำที่เปลี่ยนตัวเลข badge สำเร็จ ⇒ โหลด badge ใหม่ (รวบ 400 ms เป็นครั้งเดียว) ─────────
+// รออนุมัติ (approve/reject ข้อเสนอ/แผน) · ทีม (เชิญ/ส่งใหม่/ยกเลิกคำเชิญ · รับคำเชิญ · เรื่องขอความช่วยเหลือ เปิด/ตอบ/ปิด/อ่าน)
+const BADGE_AFTER = new Set<string>([
+  "secretary/proposals/[id]/approve",
+  "secretary/proposals/[id]/reject",
+  "secretary/plans/[id]/approve",
+  "secretary/plans/[id]/reject",
+  "secretary/staff/invite",
+  "secretary/staff/invites/[id]",
+  "secretary/staff/invites/[id]/resend",
+  "secretary/invites/accept",
+  "secretary/support/cases",
+  "secretary/support/cases/[id]",
+  "secretary/support/cases/[id]/reply",
+  "secretary/support/cases/[id]/resolve",
+]);
+let badgeTimer: ReturnType<typeof setTimeout> | null = null;
+/** โหลด badge ใหม่ครั้งเดียวหลังการกระทำ (หลายการกระทำติดกัน = ครั้งเดียว) */
+export function scheduleZoneBadges(): void {
+  if (badgeTimer) clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(() => {
+    badgeTimer = null;
+    void refreshZoneBadges();
+  }, 400);
+}
+function afterAction<T>(path: string, p: Promise<T>): Promise<T> {
+  if (!BADGE_AFTER.has(path)) return p;
+  return p.then((r) => {
+    scheduleZoneBadges();
+    return r;
+  });
 }
 
 // ───────── เส้นที่มี [id] (S2.4 ห้องงาน · ชื่อ/รูปตาม S1.14 docs/api/SECRETARY-API.md) ─────────
@@ -256,12 +289,13 @@ function urlId(path: SecIdPath, id: string, q?: Query): string {
 }
 
 export function secGetId<P extends keyof GetIdMap>(path: P, id: string, q?: Query): Promise<GetIdMap[P]> {
-  return api<GetIdMap[P]>(urlId(path, id, q));
+  // เปิดอ่านเรื่องขอความช่วยเหลือ = อ่านแล้ว ⇒ badge ทีมลด
+  return afterAction(path, api<GetIdMap[P]>(urlId(path, id, q)));
 }
 
 /** opts.tenantId = ยิงในนามกิจการของรายการ (กล่องรวม S2.5) แทนกิจการ active */
 export function secPostId<P extends keyof PostIdMap>(path: P, id: string, body: PostIdMap[P]["body"], opts?: { tenantId?: string }): Promise<PostIdMap[P]["res"]> {
-  return api<PostIdMap[P]["res"]>(urlId(path, id), { method: "POST", body, ...(opts?.tenantId ? { tenantId: opts.tenantId } : {}) });
+  return afterAction(path, api<PostIdMap[P]["res"]>(urlId(path, id), { method: "POST", body, ...(opts?.tenantId ? { tenantId: opts.tenantId } : {}) }));
 }
 
 /** PUT secretary/staff/[membershipId] (G3 · setStaffLevels) — levels เฉพาะโมดูลที่แก้ · chat เฉพาะเมื่อแก้ (ส่งค่าเดิมซ้ำ = เซิร์ฟเวอร์จัดคีย์ใหม่ตามระดับ) */
@@ -276,7 +310,7 @@ export function secPutId(path: "secretary/scheduled/[id]", id: string, body: { a
 
 /** DELETE เส้นที่มี [id] (S2.9 ไม่รับบทเรียน / ลบความจำ · S2.5 ลบงานประจำ) */
 export function secDeleteId<P extends keyof DeleteIdMap>(path: P, id: string): Promise<DeleteIdMap[P]> {
-  return api<DeleteIdMap[P]>(urlId(path, id), { method: "DELETE" });
+  return afterAction(path, api<DeleteIdMap[P]>(urlId(path, id), { method: "DELETE" }));
 }
 
 /** ถอดสมาชิกออกจากห้อง (D3 · DELETE secretary/rooms/[id]/members/[userId] — 2 พารามิเตอร์ จึงแยกจาก PATH_ID) */
@@ -620,18 +654,31 @@ const ZERO: ZoneCounts = { secretary: 0, customers: 0, team: 0 };
 let badges: ZoneCounts = ZERO;
 const badgeListeners = new Set<() => void>();
 
+// S2.20 ทีม = คำเชิญที่ร้านส่งแล้วรอรับ (ยังไม่หมดอายุ · เห็นเฉพาะ OWNER/MANAGER — STAFF ไม่ยิง) + เรื่องขอความช่วยเหลือที่ทีม SHARK ตอบแล้วรอเรา (support/cases.unread)
+// บทบาทมาจาก useSecretaryZone (ชั้น layout) — จอที่เรียก refreshZoneBadges() หลัง action ไม่ต้องรู้บทบาท
+let badgeRole: string | null = null;
+let badgeSeq = 0;
+/** จำนวนคำเชิญที่ยังรอรับ (ไม่หมดอายุ) — pure */
+export function pendingInviteCount(v: unknown, nowMs: number): number {
+  return normalizeInvites(v).filter((x) => !x.expired && (!x.expiresAt || Date.parse(x.expiresAt) > nowMs)).length;
+}
 export async function refreshZoneBadges(): Promise<void> {
-  const [sec, cust] = await Promise.all([
+  const seq = ++badgeSeq;
+  const manage = badgeRole === "OWNER" || badgeRole === "MANAGER";
+  const [sec, cust, inv, sup] = await Promise.all([
     secGet("secretary/inbox/count").catch(() => null),
     secGet("inbox/unread").catch((e: unknown) => {
       // S2.17: 403 = ไม่มีสิทธิ์ดูแชทลูกค้า ⇒ ซ่อนไอคอนโซนลูกค้า (ล้มแบบอื่น = ไม่เปลี่ยน)
       if (isDenied(e)) setCustomersAccess(false);
       return null;
     }),
+    manage ? secGet("secretary/staff/invites").catch(() => null) : Promise.resolve(null),
+    secGet("secretary/support/cases").catch(() => null),
   ]);
+  if (seq !== badgeSeq) return; // รอบใหม่กว่าเริ่มแล้ว (เปลี่ยนร้าน/กดซ้ำ) — ผลเก่าไม่ทับ
   if (cust) setCustomersAccess(true);
-  // ทีม = ยังไม่มีแหล่ง (S2.10)
-  badges = { secretary: sec?.canApprove ?? 0, customers: cust?.unread ?? 0, team: 0 };
+  const team = (inv ? pendingInviteCount(inv, Date.now()) : 0) + Math.max(0, Math.floor(Number(sup?.unread ?? 0) || 0));
+  badges = { secretary: sec?.canApprove ?? 0, customers: cust?.unread ?? 0, team };
   badgeListeners.forEach((fn) => fn());
 }
 
@@ -673,11 +720,13 @@ export function useZoneBadgeCounts(): ZoneCounts {
  * ผู้ใช้/กิจการเปลี่ยน (signOut · switchTenant) ⇒ resetSecretaryMe + โหลดใหม่ · badge โหลดตอน focus + กลับมา foreground
  */
 export function useSecretaryZone(): void {
-  const { user, activeTenantId } = useAuth();
+  const { user, activeTenantId, tenants } = useAuth();
   const userId = user?.id ?? null;
+  badgeRole = tenants.find((x) => x.tenantId === activeTenantId)?.role ?? null;
   useEffect(() => {
     resetSecretaryMe();
     badges = ZERO;
+    badgeSeq++; // ผลของร้านเดิมที่ยังค้างอยู่ไม่ทับร้านใหม่
     badgeListeners.forEach((fn) => fn());
     setCustomersAccess(true);
     resetInboxState(); // R-S2.17c: ระบบแชทที่เลือก + canReply ของร้านเดิมไม่ข้ามร้าน

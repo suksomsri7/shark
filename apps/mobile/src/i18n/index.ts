@@ -2,7 +2,11 @@
 // ลำดับเลือกภาษา: AiSecretary.languages[0] (จาก GET /api/mobile/secretary/me ผ่าน src/api/secretary.ts → setLang) ·
 // ก่อนได้ค่านั้น = ภาษาเครื่อง (Intl/navigator · ไม่มี expo-localization ในแอปและห้ามติดตั้งเพิ่ม) · ภาษาอื่น ⇒ ไทย
 // จอ 1.0 ไม่ใช้โมดูลนี้
+// S2.13 (Q-9 ภาษากระพริบ): ภาษาที่ได้จากเลขาล่าสุดเก็บในเครื่อง คีย์ "shark_lang" (เว็บ localStorage อ่านทันที · มือถือ SecureStore แบบ async)
+//   เปิดแอปครั้งถัดไป = ใช้ค่าที่เก็บก่อน (ไม่วาดภาษาเครื่องแล้วค่อยสลับ) · ค่าจากเซิร์ฟเวอร์ยังชนะเสมอเมื่อมาถึง
 import { useCallback, useSyncExternalStore } from "react";
+import { Platform } from "react-native";
+import * as SecureStore from "expo-secure-store";
 import th, { type I18nKey } from "./th";
 import en from "./en";
 
@@ -31,14 +35,51 @@ function deviceLang(): Lang {
   }
 }
 
-let lang: Lang = deviceLang();
+const LANG_KEY = "shark_lang";
+function cachedWebLang(): Lang | null {
+  try {
+    return typeof localStorage === "undefined" ? null : langFrom(localStorage.getItem(LANG_KEY));
+  } catch {
+    return null;
+  }
+}
+
+let lang: Lang = (Platform.OS === "web" ? cachedWebLang() : null) ?? deviceLang();
 const listeners = new Set<() => void>();
+/** ผู้ใช้/เซิร์ฟเวอร์ตั้งภาษาแล้วในรอบนี้ ⇒ ค่าที่อ่านจากเครื่องแบบ async มาทีหลังห้ามทับ */
+let langSetThisRun = false;
+
+if (Platform.OS !== "web") {
+  SecureStore.getItemAsync(LANG_KEY)
+    .then((v) => {
+      const l = langFrom(v);
+      if (l && !langSetThisRun && l !== lang) {
+        lang = l;
+        listeners.forEach((fn) => fn());
+      }
+    })
+    .catch(() => {});
+}
+
+function persistLang(l: Lang): void {
+  try {
+    if (Platform.OS === "web") {
+      if (typeof localStorage !== "undefined") localStorage.setItem(LANG_KEY, l);
+    } else {
+      void SecureStore.setItemAsync(LANG_KEY, l).catch(() => {});
+    }
+  } catch {
+    // เก็บไม่ได้ = ใช้ในหน่วยความจำต่อ
+  }
+}
 
 export function getLang(): Lang {
   return lang;
 }
 
 export function setLang(next: Lang): void {
+  langSetThisRun = true;
+  persistLang(next);
   if (next === lang) return;
   lang = next;
   listeners.forEach((l) => l());

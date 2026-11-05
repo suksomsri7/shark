@@ -177,7 +177,7 @@ export default function SecretaryHome() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={c.textMuted} />}
       >
-        <SecTopBar zone="secretary" center="none" />
+        <SecTopBar zone="secretary" center="none" showPlus={!denied} />
         <View style={styles.tenant}>
           <TenantTitle big />
         </View>

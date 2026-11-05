@@ -38,7 +38,11 @@ import { formatThaiMobileInput, maskPhone, normalizeThaiMobile } from "@/src/lib
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { radii, size, spacing, type as T } from "@/src/theme/tokens";
+import { radii, size, spacing, type as T, cardGap } from "@/src/theme/tokens";
+
+// S2.13 fix-forward (D1): ปุ่มหลักลอยล่าง — รายการเว้นล่าง = ความสูงปุ่ม + ระยะปุ่มจากขอบ + ช่องไฟการ์ด (+ safe area) แบบเดียวกับ A1 (S2.2)
+const CTA_BOTTOM = 26;
+const LIST_BOTTOM = size.btnH + CTA_BOTTOM + cardGap;
 
 const ALL = "*";
 /** testID ของแถวคำเชิญค้าง (spec s2.21) */
@@ -209,7 +213,7 @@ export default function SecretaryStaffInviteScreen() {
 
   return (
     <AiryScreen testID="inv">
-      <ScrollView contentContainerStyle={[styles.page, { paddingBottom: 120 + insets.bottom }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.page, { paddingBottom: LIST_BOTTOM + insets.bottom }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <TopBar testID="inv-top" left={<IconBtn testID="inv-close" icon="x" label={t("biz.close")} onPress={close} />} title={t("inv.title")} subtitle={shop} right={<View style={styles.spacer} />} />
 
         {!manage || denied ? (
@@ -322,7 +326,7 @@ export default function SecretaryStaffInviteScreen() {
         ))}
       </ScrollView>
 
-      <View style={[styles.cta, { bottom: 26 + insets.bottom }]}>
+      <View style={[styles.cta, { bottom: CTA_BOTTOM + insets.bottom }]}>
         <PrimaryButton testID="inv-submit" label={busy ? t("inv.sending") : t("inv.submit")} disabled={!ready} onPress={() => void submit()} />
       </View>
 

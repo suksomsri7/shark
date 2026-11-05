@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.4 — ห้อง r1 รออนุมัติ (A4): 4 ข้อความ (ผู้ใช้ · เลขา · ระบบ 🔔 · เลขา) + แผน 3 ขั้น (✓ ● ⏸) + 2 ข้อเสนอ (kanban.cards.create แก้ได้ · chat.send ส่งลูกค้า แก้ไม่ได้ · ทั้งคู่มี why) + log 1 แถวย้อนได้ (ถึง 2026-11-05T19:40Z — ถ่ายหลังเวลานี้ปุ่มย้อนจะหาย ให้เลื่อนวันที่) · ข้อมูลจำลองล้วน · S2.10: ค่า RoomStatus/DTO ตามสัญญา S1.14 (WAITING · OPEN = เสร็จแต่ยังไม่ปิด · ขั้น PENDING · classes · canApprove · log.link)",
+ "_about": "fixture ของใบ S2.4 — ห้อง r1 รออนุมัติ (A4): 4 ข้อความ (ผู้ใช้ · เลขา · ระบบ 🔔 · เลขา) + แผน 3 ขั้น (✓ ● ⏸) + 2 ข้อเสนอ (kanban.cards.create แก้ได้ · chat.send ส่งลูกค้า แก้ไม่ได้ · ทั้งคู่มี why) + log 1 แถวย้อนได้ (ถึง 2026-11-05T19:40Z — ถ่ายหลังเวลานี้ปุ่มย้อนจะหาย ให้เลื่อนวันที่) · ข้อมูลจำลองล้วน · S2.10: ค่า RoomStatus/DTO ตามสัญญา S1.14 (WAITING · OPEN = เสร็จแต่ยังไม่ปิด · ขั้น PENDING · classes · canApprove · log.link) · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -310,6 +310,14 @@
   "POST /api/mobile/secretary/log/l1/undo": {
    "ok": true,
    "note": "ย้อนกลับแล้ว — ดีลกลับไปขั้นเดิม"
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
   }
  }
 }

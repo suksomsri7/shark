@@ -1,4 +1,4 @@
-// QC (ใบ S2.6) — ทดสอบตัวจัดการแตะแจ้งเตือนของเลขาใน src/lib/push-register.ts ด้วย "การแตะปลอม" (ไม่มีเครื่องจริง · ไม่มีเซิร์ฟเวอร์)
+// QC (ใบ S2.6 · ขยาย S2.20 ห้องลูกค้า P-10/P-11) — ทดสอบตัวจัดการแตะแจ้งเตือนของเลขาใน src/lib/push-register.ts ด้วย "การแตะปลอม" (ไม่มีเครื่องจริง · ไม่มีเซิร์ฟเวอร์)
 // วิธี: esbuild รวม push-register.ts โดยแทนโมดูล native (expo-notifications/expo-device/expo-constants/react-native/api client) ด้วยตัวปลอม
 //   แล้วเรียก handleSecretaryPush / openLastSecretaryPush / syncAppBadge กับ NotificationResponse ปลอม 5 แบบลิงก์ + ลิงก์ที่ต้องปล่อยผ่าน
 // รัน (จากรากรีโป): pnpm exec node apps/mobile/qc/push-link-test.mjs   → พิมพ์ JSON_SUMMARY · exit 1 เมื่อมีข้อแดง
@@ -121,11 +121,11 @@ try {
   // 6 ลิงก์ที่ไม่ใช่ของเลขา ⇒ false (ตัวจัดการเดิมทำต่อ)
   {
     const { log, deps } = mkDeps("t1");
-    const links = ["/inbox/conv1?e=assigned", "/app/sys/s1/crm/deals/d1?n=x", "//evil.example/secretary/inbox", "https://evil.example/secretary/inbox", "/secretary/room/../../x", "/secretary/room/", null, 42];
+    const links = ["/app/sys/s1/crm/deals/d1?n=x", "/inbox", "/inbox/", "/inbox/a/b", "//evil.example/secretary/inbox", "https://evil.example/secretary/inbox", "/secretary/room/../../x", "/secretary/room/", null, 42];
     const r = links.map((l) => M.handleSecretaryPush(resp({ link: l, conversationId: "c1" }), deps));
     await tick();
     res.passThrough = { r, log };
-    chk("P-6", "ลิงก์อื่น (แชทลูกค้า /inbox · CRM · โดเมนอื่น · path แปลก · ไม่มีลิงก์) ⇒ false ไม่ push", r.every((x) => x === false) && log.length === 0, JSON.stringify(r));
+    chk("P-6", "ลิงก์อื่น (CRM · /inbox ที่ไม่มี id · โดเมนอื่น · path แปลก · ไม่มีลิงก์) ⇒ false ไม่ push", r.every((x) => x === false) && log.length === 0, JSON.stringify(r));
   }
   // 7 ใบเดิมซ้ำ (listener + เปิดแอปจากแจ้งเตือน) ⇒ เปิดครั้งเดียว
   {
@@ -145,11 +145,11 @@ try {
     M.openLastSecretaryPush(deps);
     await tick();
     const cleared = globalThis.__QC_CLEARED ?? 0;
-    globalThis.__QC_LAST = resp({ link: "/inbox/conv1" });
+    globalThis.__QC_LAST = resp({ link: "/app/sys/s1/crm/deals/d1" });
     M.openLastSecretaryPush(deps);
     await tick();
     res.coldStart = { log, cleared, clearedAfterOther: globalThis.__QC_CLEARED ?? 0 };
-    chk("P-8", "openLastSecretaryPush: ไม่มี ⇒ เฉย · ห้องเลขา ⇒ switch t2 + push + ล้าง 1 ครั้ง · /inbox ⇒ ไม่แตะ", JSON.stringify(log) === JSON.stringify([["switch", "t2"], ["push", "/secretary/room/r1"]]) && cleared === 1 && (globalThis.__QC_CLEARED ?? 0) === 1, JSON.stringify(res.coldStart));
+    chk("P-8", "openLastSecretaryPush: ไม่มี ⇒ เฉย · ห้องเลขา ⇒ switch t2 + push + ล้าง 1 ครั้ง · ลิงก์ CRM ⇒ ไม่แตะ", JSON.stringify(log) === JSON.stringify([["switch", "t2"], ["push", "/secretary/room/r1"]]) && cleared === 1 && (globalThis.__QC_CLEARED ?? 0) === 1, JSON.stringify(res.coldStart));
   }
   // 9 badge ไอคอนแอป
   {
@@ -167,6 +167,20 @@ try {
     });
     res.badge = { fetched, set: globalThis.__QC_BADGE ?? [] };
     chk("P-9", "syncAppBadge: อ่าน secretary/badge แล้วตั้ง badge 3 · null/ล้ม = ไม่ตั้ง ไม่ throw", fetched === 2 && JSON.stringify(globalThis.__QC_BADGE) === "[3]", JSON.stringify(res.badge));
+  }
+  // 10 S2.20 ห้องลูกค้า: ลิงก์ /inbox/<id>?e= ของเซิร์ฟเวอร์ (chat/routing.ts) และ /customers/<id>?e= ⇒ /customers/<id>?s=<systemId>&e=<เหตุ> · ไม่ตกไป /chat ของ 1.0
+  {
+    const { log, deps } = mkDeps("t1");
+    const a = M.handleSecretaryPush(resp({ link: "/inbox/conv1?e=assigned", conversationId: "conv1", systemId: "cs1", tenantId: "t2" }), deps);
+    const b = M.handleSecretaryPush(resp({ link: "/customers/x1?e=helper", tenantId: "t1" }), deps);
+    const c = M.handleSecretaryPush(resp({ link: "/inbox/x2?e=sla", systemId: "cs/../1" }), deps);
+    const d = M.handleSecretaryPush(resp({ link: "/customers/x3?e=bogus&x=1", systemId: "cs2" }), deps);
+    const e = M.handleSecretaryPush(resp({ link: "/inbox/x4?foo=1&e=handoff#z" }), deps);
+    await tick();
+    res.customersPush = { a, b, c, d, e, log };
+    const want = [["switch", "t2"], ["push", "/customers/x1?e=helper"], ["push", "/customers/x2?e=sla"], ["push", "/customers/x3?s=cs2"], ["push", "/customers/x4?e=handoff"], ["push", "/customers/conv1?s=cs1&e=assigned"]];
+    chk("P-10", "ห้องลูกค้า: /inbox|/customers/<id>?e= ⇒ /customers/<id>?s=&e= (เหตุที่รู้จักเท่านั้น · systemId รูปแปลก = ไม่ใส่) + สลับร้าน", [a, b, c, d, e].every(Boolean) && JSON.stringify(log) === JSON.stringify(want), JSON.stringify(log));
+    chk("P-11", "customerPushReason: รู้จัก 4 เหตุ · อื่น = null", M.customerPushReason("helper") === "helper" && M.customerPushReason("assigned") === "assigned" && M.customerPushReason("x") === null && M.customerPushReason(undefined) === null, "");
   }
   const failed = cks.filter((c) => !c.ok).map((c) => c.id);
   console.log("RESULT " + JSON.stringify(res));

@@ -6,7 +6,7 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { AiryScreen, type IconName } from "@/src/components/airy";
-import { SecTopBar } from "@/src/components/secretary/SecTopBar";
+import { SecTopBar, TenantTitle } from "@/src/components/secretary/SecTopBar";
 import { SettingRow } from "@/src/components/secretary/SettingRow";
 import { useBusinessSwitcher } from "@/src/components/secretary/BusinessSwitcherSheet";
 import { DEFAULT_SECRETARY_NAME, quotaNumbers, secGet, useActiveRole, useSecretaryMe } from "@/src/api/secretary";
@@ -62,7 +62,11 @@ export default function SecretarySettingsScreen() {
   return (
     <AiryScreen testID="sec-settings">
       <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
-        <SecTopBar zone="secretary" />
+        {/* S2.20 (Q-8): ชื่อกิจการไม่อัดอยู่กลางแถบ 5 ปุ่ม (ถูกตัด) — วางเต็มบรรทัดใต้แถบ แบบหน้า K */}
+        <SecTopBar zone="secretary" center="none" />
+        <View style={styles.tenant}>
+          <TenantTitle />
+        </View>
         <Text testID="sec-settings-title" style={[styles.h, { color: c.text }]}>
           {t("sec.title.settings")}
         </Text>
@@ -87,6 +91,7 @@ export default function SecretarySettingsScreen() {
 
 const styles = StyleSheet.create({
   page: { paddingHorizontal: spacing.page, paddingTop: 14, paddingBottom: spacing.xxl },
+  tenant: { marginTop: 14 },
   h: { fontSize: T.title, fontWeight: "700", letterSpacing: -0.8, lineHeight: 42, marginTop: F.v(19) },
   sub: { fontSize: T.sub, lineHeight: 20, marginTop: 4 },
   list: { marginTop: F.v(20) },

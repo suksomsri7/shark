@@ -1,8 +1,9 @@
-// พื้นจอ Airy (.screen) — สีฐาน + วงไล่สี 4 จุดจากธีม · เว้นขอบบนตาม safe area
+// พื้นจอ Airy (.screen) — สีฐาน + วงไล่สี 4 จุดจากธีม · เว้นขอบบนตาม safe area · S2.13: แถบสถานะตามธีม (ThemedStatusBar)
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { screenBg, useTheme } from "@/src/theme/index";
+import { ThemedStatusBar } from "./ThemedStatusBar";
 
 /** ขอบบนขั้นต่ำเมื่อเครื่องไม่รายงาน safe area (เว็บ) = แถบสถานะของ iPhone 390×844 */
 const MIN_TOP = 47;
@@ -12,6 +13,7 @@ export function AiryScreen({ children, testID }: { children?: ReactNode; testID?
   const insets = useSafeAreaInsets();
   return (
     <View testID={testID} style={[styles.root, screenBg(c), { paddingTop: Math.max(insets.top, MIN_TOP), paddingBottom: insets.bottom }]}>
+      <ThemedStatusBar />
       {children}
     </View>
   );

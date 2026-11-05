@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.15 — H1 ช่วยเหลือ: 3 เรื่อง 3 สถานะ (c1 PENDING มีข้อความทีมยังไม่อ่าน 1 = จุดเขียว · c2 OPEN = ส้ม · c3 RESOLVED = เทา) · H2 ห้อง c1: 5 ข้อความ (ร้าน+รูปแนบ · ทีม · ร้าน · ทีม+ลิงก์ sharkai:// · ทีม+path ภายใน) + ห้องงานที่แนบ r1 + การ์ดแก้แล้วหรือยัง (PENDING) · mock POST cases/reply/resolve/upload · ข้อมูลจำลองล้วน",
+ "_about": "fixture ของใบ S2.15 — H1 ช่วยเหลือ: 3 เรื่อง 3 สถานะ (c1 PENDING มีข้อความทีมยังไม่อ่าน 1 = จุดเขียว · c2 OPEN = ส้ม · c3 RESOLVED = เทา) · H2 ห้อง c1: 5 ข้อความ (ร้าน+รูปแนบ · ทีม · ร้าน · ทีม+ลิงก์ sharkai:// · ทีม+path ภายใน) + ห้องงานที่แนบ r1 + การ์ดแก้แล้วหรือยัง (PENDING) · mock POST cases/reply/resolve/upload · ข้อมูลจำลองล้วน · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -205,6 +205,9 @@
    "canManage": true,
    "members": [],
    "plans": []
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
   }
  }
 }

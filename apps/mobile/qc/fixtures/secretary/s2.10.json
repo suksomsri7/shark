@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.10+S2.11 — D1 ทุกคนในกิจการ (เจ้าของ + 4 คน: ผู้จัดการ REPLY · พนักงาน REPLY/VIEW+เข้าเวร/NONE · คำเชิญค้าง 1) · D2 ห้องร่วม r2 (3 คนในห้อง · ข้อความระบบ · ฟองสมใจ · การ์ดเอกสารเงินแก้แล้ว มี contactId/boardId ที่ต้องไม่แสดง) · C1 ตั้งชื่อเลขา (ยังไม่เคยตั้ง) · RoomStatus จริงของ S1.14 (OPEN|RUNNING|WAITING|DONE) · ข้อมูลจำลองล้วน",
+ "_about": "fixture ของใบ S2.10+S2.11 — D1 ทุกคนในกิจการ (เจ้าของ + 4 คน: ผู้จัดการ REPLY · พนักงาน REPLY/VIEW+เข้าเวร/NONE · คำเชิญค้าง 1) · D2 ห้องร่วม r2 (3 คนในห้อง · ข้อความระบบ · ฟองสมใจ · การ์ดเอกสารเงินแก้แล้ว มี contactId/boardId ที่ต้องไม่แสดง) · C1 ตั้งชื่อเลขา (ยังไม่เคยตั้ง) · RoomStatus จริงของ S1.14 (OPEN|RUNNING|WAITING|DONE) · ข้อมูลจำลองล้วน · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -491,6 +491,29 @@
   },
   "GET /api/mobile/secretary/suggestions": {
    "items": []
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": [
+    {
+     "id": "inv1",
+     "name": "บอย",
+     "phoneMasked": "081-xxx-4521",
+     "role": "STAFF",
+     "unitAccess": [
+      "unit-main"
+     ],
+     "permissions": {},
+     "invitedById": "u-qc-owner",
+     "createdAt": "2026-11-01T03:00:00.000Z",
+     "expiresAt": "2026-11-30T03:00:00.000Z",
+     "expired": false
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
   }
  }
 }

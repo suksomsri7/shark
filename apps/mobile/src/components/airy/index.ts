@@ -15,3 +15,4 @@ export { Sheet } from "./Sheet";
 export { SysBadge, SysTag } from "./SysTag";
 export { Tabs, type TabItem } from "./Tabs";
 export { TopBar } from "./TopBar";
+export { ThemedStatusBar } from "./ThemedStatusBar";

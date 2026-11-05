@@ -15,7 +15,8 @@ import { Text } from "@/src/components/ui/text";
 import { AiryScreen, Glass, Icon, IconBtn, InputBar, Note } from "@/src/components/airy";
 import { MessageBubble } from "@/src/components/customers/MessageBubble";
 import { ChannelBadge, firstName, useChannelLabel } from "@/src/components/customers/parts";
-import { setCustomersAccess } from "@/src/api/secretary";
+import { scheduleZoneBadges, setCustomersAccess } from "@/src/api/secretary";
+import { customerPushReason, type CustomerPushReason } from "@/src/lib/push-register";
 import {
   InboxError,
   UPLOAD_MAX_BYTES,
@@ -58,12 +59,22 @@ function approverOf(m: MsgItem): string | null {
   return ai.approvedBy && ai.approvedBy === m.senderUserId ? firstName(m.senderName) || null : null;
 }
 
+/** S2.20 ข้อความตามเหตุของแจ้งเตือน (?e=) */
+const PUSH_REASON_KEY: Record<CustomerPushReason, "cust.push.helper" | "cust.push.handoff" | "cust.push.sla" | "cust.push.assigned"> = {
+  helper: "cust.push.helper",
+  handoff: "cust.push.handoff",
+  sla: "cust.push.sla",
+  assigned: "cust.push.assigned",
+};
+
 export default function CustomerRoomScreen() {
   const { c } = useTheme();
   const t = useT();
   const router = useRouter();
   const chLabel = useChannelLabel();
-  const params = useLocalSearchParams<{ id?: string; s?: string }>();
+  const params = useLocalSearchParams<{ id?: string; s?: string; e?: string }>();
+  // S2.20 เปิดจากแจ้งเตือน: ?e=helper|handoff|sla|assigned ⇒ ข้อความบอกเหตุ (ครั้งเดียวต่อการเปิด)
+  const pushReason = customerPushReason(params.e);
   const id = typeof params.id === "string" ? params.id : "";
   const systemId = (typeof params.s === "string" && params.s) || getCurrentSystem() || undefined;
   const { activeTenantId, user } = useAuth();
@@ -105,7 +116,12 @@ export default function CustomerRoomScreen() {
     setDraft(null);
     readSent.current = null;
     draftAsked.current = false;
+    // S2.20: เปิดจากแจ้งเตือน/ลิงก์ตอนแอปเพิ่งเปิด — กิจการ (auth) มาหลัง focus ⇒ โหลดทันทีเมื่อรู้กิจการ (ไม่รอรอบ poll 5 วิ ที่จอว่าง/อ่านอย่างเดียว)
+    if (activeTenantId) void loadRef.current();
   }, [activeTenantId, id]);
+  useEffect(() => {
+    if (pushReason) setNote({ text: t(PUSH_REASON_KEY[pushReason]), warn: pushReason === "sla" });
+  }, [id, pushReason, t]);
 
   const merge = useCallback((rows: MsgItem[]) => {
     for (const m of rows) msgMap.current.set(m.id, m);
@@ -132,7 +148,9 @@ export default function CustomerRoomScreen() {
       const last = all[all.length - 1];
       if (last && readSent.current !== last.id) {
         readSent.current = last.id;
-        void inboxPostId("inbox/conversations/[id]/read", id, { systemId, lastReadMessageId: last.id }).catch(() => {});
+        void inboxPostId("inbox/conversations/[id]/read", id, { systemId, lastReadMessageId: last.id })
+          .then(() => scheduleZoneBadges()) // S2.20: badge "ลูกค้า" ลดหลังอ่าน
+          .catch(() => {});
       }
       // การ์ดร่างของ Shark: ห้องมีร่างค้าง (aiDraft) ⇒ ขอครั้งเดียวต่อการเปิด · route ยังไม่มี/ล้ม = ไม่มีการ์ด
       if (th.conversation.aiDraft && !draftAsked.current) {

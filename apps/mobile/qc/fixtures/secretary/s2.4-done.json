@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.4 — ห้อง r1 เสร็จ (A5): สรุปของเลขา + บันทึก 4 แถว (2 แถวย้อนได้ถึง 2026-11-05T19:4xZ · ลิงก์ของจริง ดีล/การ์ด) + ย้อน/สอน/ทำซ้ำ · S2.10: ค่า RoomStatus/DTO ตามสัญญา S1.14 (WAITING · OPEN = เสร็จแต่ยังไม่ปิด · ขั้น PENDING · classes · canApprove · log.link)",
+ "_about": "fixture ของใบ S2.4 — ห้อง r1 เสร็จ (A5): สรุปของเลขา + บันทึก 4 แถว (2 แถวย้อนได้ถึง 2026-11-05T19:4xZ · ลิงก์ของจริง ดีล/การ์ด) + ย้อน/สอน/ทำซ้ำ · S2.10: ค่า RoomStatus/DTO ตามสัญญา S1.14 (WAITING · OPEN = เสร็จแต่ยังไม่ปิด · ขั้น PENDING · classes · canApprove · log.link) · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -265,6 +265,14 @@
   "POST /api/mobile/secretary/log/l3/undo": {
    "ok": true,
    "note": "ย้อนกลับแล้ว — ลบการ์ดที่สร้าง"
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
   }
  }
 }

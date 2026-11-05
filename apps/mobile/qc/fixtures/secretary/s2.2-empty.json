@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.2 สถานะว่าง — 0 ห้อง ⇒ /secretary = C3 (ข้อเสนองานแรกจาก secretary/suggestions) · ข้อมูลจำลองล้วน",
+ "_about": "fixture ของใบ S2.2 สถานะว่าง — 0 ห้อง ⇒ /secretary = C3 (ข้อเสนองานแรกจาก secretary/suggestions) · ข้อมูลจำลองล้วน · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -204,6 +204,14 @@
    "roomId": "r-new",
    "conversationId": "c-new",
    "status": "RUNNING"
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
   }
  }
 }

@@ -66,7 +66,10 @@ export function conversationIdFromNotification(resp: Notifications.NotificationR
 // 4 แบบของเซิร์ฟเวอร์ (รออนุมัติ · งานเสร็จ · โควตา · งานประจำ) ต่างกันแค่ link/ข้อความ — แอปอ่าน path อย่างเดียว (ตัด ?e=… / #… ทิ้ง · RESOLUTIONS §N)
 // link ที่รับ (สัมพัทธ์ของเราเท่านั้น · id ตัวอักษร/ตัวเลข/_- ≤ 80):
 //   /secretary/room/<id> · /secretary/inbox · /secretary/scheduled · /secretary/help/<id> (+ /help/<id> ของเซิร์ฟเวอร์ = ห้องแจ้งปัญหา) · /customers/<id>
-//   อื่น ๆ (เช่น /inbox/<convId> ของแชทลูกค้า · ลิงก์ CRM /app/sys/…) = null → ตัวจัดการเดิมใน (app)/_layout ทำต่อ (conversationId → /chat · CRM)
+//   S2.20 ห้องลูกค้า: /customers/<id> และ /inbox/<id> (ลิงก์ที่ chat/routing.ts ของเซิร์ฟเวอร์ส่งจริงวันนี้) ⇒ /customers/<id>
+//     + `?s=<data.systemId>` (ระบบแชทของห้อง) + `&e=<เหตุ>` เมื่อ ?e= ของลิงก์ ∈ helper|handoff|sla|assigned (K2 แสดงข้อความตามเหตุ)
+//     🔴 3 แชทไม่ปน: ลิงก์แชทลูกค้าไม่ตกไปตัวจัดการเดิม (data.conversationId → /chat ของ 1.0 = ห้อง AI คนละชนิด)
+//   อื่น ๆ (เช่น ลิงก์ CRM /app/sys/…) = null → ตัวจัดการเดิมใน (app)/_layout ทำต่อ (conversationId → /chat · CRM)
 // data.tenantId ต่างจากกิจการ active และผู้ใช้เป็นสมาชิก ⇒ switchTenant ก่อน แล้ว router.push(link)
 const SEC_ID = "([A-Za-z0-9_-]{1,80})";
 const SEC_LINKS: { re: RegExp; to: (id: string) => string }[] = [
@@ -74,18 +77,36 @@ const SEC_LINKS: { re: RegExp; to: (id: string) => string }[] = [
   { re: /^\/secretary\/inbox$/, to: () => "/secretary/inbox" },
   { re: /^\/secretary\/scheduled$/, to: () => "/secretary/scheduled" },
   { re: new RegExp(`^/(?:secretary/)?help/${SEC_ID}$`), to: (id) => `/secretary/help/${id}` },
-  { re: new RegExp(`^/customers/${SEC_ID}$`), to: (id) => `/customers/${id}` },
+  { re: new RegExp(`^/(?:customers|inbox)/${SEC_ID}$`), to: (id) => `/customers/${id}` },
 ];
+/** เหตุของแจ้งเตือนห้องลูกค้า (?e= ของเซิร์ฟเวอร์) ที่ K2 รู้จัก */
+export const CUSTOMER_PUSH_REASONS = ["helper", "handoff", "sla", "assigned"] as const;
+export type CustomerPushReason = (typeof CUSTOMER_PUSH_REASONS)[number];
+export function customerPushReason(v: unknown): CustomerPushReason | null {
+  return typeof v === "string" && (CUSTOMER_PUSH_REASONS as readonly string[]).includes(v) ? (v as CustomerPushReason) : null;
+}
+const SYS_ID = /^[A-Za-z0-9_-]{1,80}$/;
 
-/** data.link ของ push → เส้นทางในแอปเลขา · ไม่ใช่ลิงก์ของเลขา = null (pure) */
-export function secretaryRouteFromLink(link: unknown): string | null {
+/** data.link ของ push → เส้นทางในแอปเลขา · ไม่ใช่ลิงก์ของเลขา = null (pure) · `systemId` = data.systemId (ห้องลูกค้าเท่านั้น) */
+export function secretaryRouteFromLink(link: unknown, systemId?: unknown): string | null {
   if (typeof link !== "string") return null;
   const s = link.trim();
   if (!s.startsWith("/") || s.startsWith("//") || s.includes("\\")) return null;
-  const path = s.split(/[?#]/)[0]!.replace(/\/+$/, "") || "/";
+  const [rawPath, rawQuery = ""] = s.split("#")[0]!.split("?");
+  const path = rawPath!.replace(/\/+$/, "") || "/";
   for (const l of SEC_LINKS) {
     const m = l.re.exec(path);
-    if (m) return l.to(m[1] ?? "");
+    if (!m) continue;
+    const to = l.to(m[1] ?? "");
+    if (!to.startsWith("/customers/")) return to;
+    // ห้องลูกค้า: ระบบแชท + เหตุ (ค่าที่ไม่รู้จัก/รูปแปลก = ไม่ใส่)
+    const q: string[] = [];
+    if (typeof systemId === "string" && SYS_ID.test(systemId)) q.push(`s=${systemId}`);
+    let e: string | null = null;
+    for (const kv of rawQuery.split("&")) if (kv.startsWith("e=")) e = kv.slice(2);
+    const reason = customerPushReason(e);
+    if (reason) q.push(`e=${reason}`);
+    return q.length ? `${to}?${q.join("&")}` : to;
   }
   return null;
 }
@@ -104,8 +125,8 @@ const handledPush = new Set<string>();
  * ใบเดิมซ้ำ (listener + เปิดแอปจากแจ้งเตือน) = เปิดครั้งเดียว (จำ identifier)
  */
 export function handleSecretaryPush(resp: Notifications.NotificationResponse, deps: SecretaryPushDeps): boolean {
-  const data = (resp?.notification?.request?.content?.data ?? {}) as { link?: unknown; tenantId?: unknown };
-  const href = secretaryRouteFromLink(data.link);
+  const data = (resp?.notification?.request?.content?.data ?? {}) as { link?: unknown; tenantId?: unknown; systemId?: unknown };
+  const href = secretaryRouteFromLink(data.link, data.systemId);
   if (!href) return false;
   const key = resp.notification.request.identifier ?? "";
   if (key) {

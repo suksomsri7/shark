@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.2+S2.3 — A1 รายการห้อง 5 ห้อง (รออนุมัติ 2 · กำลังทำ 2 · เสร็จ 1 · ผู้สั่งต่างกัน · ระบบ crm/acc/chat/pos/dorm/booking) + A2 เริ่มงานใหม่ (ข้อเสนอ 2 · สั่งบ่อย 6 · ระบบ 8) · ข้อมูลจำลองล้วน · รูปแบบดู README.md",
+ "_about": "fixture ของใบ S2.2+S2.3 — A1 รายการห้อง 5 ห้อง (รออนุมัติ 2 · กำลังทำ 2 · เสร็จ 1 · ผู้สั่งต่างกัน · ระบบ crm/acc/chat/pos/dorm/booking) + A2 เริ่มงานใหม่ (ข้อเสนอ 2 · สั่งบ่อย 6 · ระบบ 8) · ข้อมูลจำลองล้วน · รูปแบบดู README.md · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -320,6 +320,14 @@
    "roomId": "r-new",
    "conversationId": "c-new",
    "status": "RUNNING"
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
   }
  }
 }

@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.21+S2.22 (OWNER) — G1 สร้างกิจการ · G2 เชิญพนักงาน (คำเชิญค้าง 1 · สาขา 2 · ระบบของร้าน dorm/booking/account/pos/ai) · G3 สิทธิ์ของก้อง (m1 STAFF · หอพัก · แชทตอบได้ · หอพักใช้งาน · จองคิวดูได้) · G4 บัญชีของฉัน (เจ้าของ 2 · พนักงาน 1 · เบอร์ผูกแล้ว · Apple เชื่อมแล้ว) · ข้อมูลจำลองล้วน",
+ "_about": "fixture ของใบ S2.21+S2.22 (OWNER) — G1 สร้างกิจการ · G2 เชิญพนักงาน (คำเชิญค้าง 1 · สาขา 2 · ระบบของร้าน dorm/booking/account/pos/ai) · G3 สิทธิ์ของก้อง (m1 STAFF · หอพัก · แชทตอบได้ · หอพักใช้งาน · จองคิวดูได้) · G4 บัญชีของฉัน (เจ้าของ 2 · พนักงาน 1 · เบอร์ผูกแล้ว · Apple เชื่อมแล้ว) · ข้อมูลจำลองล้วน · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -403,6 +403,11 @@
   },
   "POST /api/mobile/auth/logout": {
    "ok": true
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
   }
  }
 }

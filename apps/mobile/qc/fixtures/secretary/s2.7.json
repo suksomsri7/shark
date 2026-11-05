@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.7+S2.8+S2.9 — หน้าตั้งค่าเลขา 8 route ในบทบาท OWNER (ร้าน t1) · เลขา/โควตา 62%/สิทธิ์ 7 ระบบ/กฎ 3 ข้อ (วงเงิน 20,000 บาท)/บันทึก 7 แถว (ย้อนได้ l2 · ย้อนแล้ว l6)/ความจำรอยืนยัน 2/บทเรียน 3 (REJECTED ไม่แสดง)/ข้อมูลสด/ตอบนอกเวลา + mock PUT/POST/DELETE สำหรับการกดจริง · ข้อมูลจำลองล้วน · รูปแบบดู README.md",
+ "_about": "fixture ของใบ S2.7+S2.8+S2.9 — หน้าตั้งค่าเลขา 8 route ในบทบาท OWNER (ร้าน t1) · เลขา/โควตา 62%/สิทธิ์ 7 ระบบ/กฎ 3 ข้อ (วงเงิน 20,000 บาท)/บันทึก 7 แถว (ย้อนได้ l2 · ย้อนแล้ว l6)/ความจำรอยืนยัน 2/บทเรียน 3 (REJECTED ไม่แสดง)/ข้อมูลสด/ตอบนอกเวลา + mock PUT/POST/DELETE สำหรับการกดจริง · ข้อมูลจำลองล้วน · รูปแบบดู README.md · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -867,6 +867,14 @@
     "ASSIGNED",
     "OFF"
    ]
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
   }
  }
 }

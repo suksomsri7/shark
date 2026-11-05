@@ -31,7 +31,11 @@ import {
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { radii, size, spacing, type as T } from "@/src/theme/tokens";
+import { radii, size, spacing, type as T, cardGap } from "@/src/theme/tokens";
+
+// S2.13 fix-forward (D1): ปุ่มหลักลอยล่าง — รายการเว้นล่าง = ความสูงปุ่ม + ระยะปุ่มจากขอบ + ช่องไฟการ์ด (+ safe area) แบบเดียวกับ A1 (S2.2)
+const CTA_BOTTOM = 26;
+const LIST_BOTTOM = size.btnH + CTA_BOTTOM + cardGap;
 
 /** testID ของแถว (spec s2.10) — ป้ายแชท = "sec-staff-chat-badge" · ระดับที่แสดง NONE|VIEW|REPLY */
 const ROW_IDS: StaffRowIds = { row: "sec-staff-row", chat: "sec-staff-chat-badge", pending: "sec-staff-pending", resend: "sec-staff-pending-resend", cancel: "sec-staff-pending-cancel" };
@@ -159,7 +163,7 @@ export default function SecretaryStaffScreen() {
   return (
     <AiryScreen testID="sec-staff">
       <ScrollView
-        contentContainerStyle={[styles.page, { paddingBottom: (manage ? 120 : 40) + insets.bottom }]}
+        contentContainerStyle={[styles.page, { paddingBottom: (manage ? LIST_BOTTOM : 40) + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={c.textMuted} />}
@@ -228,7 +232,7 @@ export default function SecretaryStaffScreen() {
       </ScrollView>
 
       {manage && !denied ? (
-        <View style={[styles.cta, { bottom: 26 + insets.bottom }]}>
+        <View style={[styles.cta, { bottom: CTA_BOTTOM + insets.bottom }]}>
           <PrimaryButton testID="sec-staff-invite" label={t("sec.staff.invite")} onPress={() => router.push("/secretary/staff/invite")} />
         </View>
       ) : null}

@@ -2,13 +2,14 @@
 // รายการกิจการของผู้ใช้จาก /api/mobile/me (useAuth().tenants) · แตะ = switchTenant เดิมของ 1.0 (src/lib/auth-context)
 // แถว "เลขาของฉัน" → /secretary/settings/secretary (B2) · "+ เพิ่มกิจการใหม่" → /business/new (G1) · ไม่มีรูปโปรไฟล์
 // BusinessSwitcherHost ครอบ Stack ของโซน (secretary/customers/business _layout) → SecTopBar เรียก useBusinessSwitcher().open()
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon, Sheet } from "@/src/components/airy";
 import { useAuth } from "@/src/lib/auth-context";
-import { DEFAULT_SECRETARY_NAME, useSecretaryMe } from "@/src/api/secretary";
+import { DEFAULT_SECRETARY_NAME, quotaNumbers, secGet, useSecretaryMe } from "@/src/api/secretary";
+import { dateBkk } from "./bkk";
 import { useT, type I18nKey } from "@/src/i18n";
 import { glassStyle, useTheme } from "@/src/theme/index";
 import { radii, spacing, type as T } from "@/src/theme/tokens";
@@ -48,6 +49,22 @@ export function BusinessSwitcherSheet({ visible, onClose, root = "/secretary" }:
   const router = useRouter();
   const { tenants, activeTenantId, switchTenant } = useAuth();
   const sec = useSecretaryMe();
+  // S2.20 (หนี้ S2.7 · แบบ B1): แถบโควตางานของกิจการที่ใช้อยู่ — โหลดตอนเปิดชีต · พลาด/ไม่มีเพดาน = ไม่แสดง
+  const [quota, setQuota] = useState<{ pct: number; reset: string | null } | null>(null);
+  useEffect(() => {
+    if (!visible || !activeTenantId) return;
+    let live = true;
+    secGet("secretary/quota")
+      .then((q) => {
+        const n = quotaNumbers(q);
+        const d = dateBkk(n.resetAt);
+        if (live) setQuota(n.limit > 0 ? { pct: n.pct, reset: d ? t("sec.switch.quotaReset", { d: d.date, m: d.month }) : null } : null);
+      })
+      .catch(() => live && setQuota(null));
+    return () => {
+      live = false;
+    };
+  }, [visible, activeTenantId, t]);
 
   // R-S2.1c: สลับสำเร็จ ⇒ ปิด stack ของโซน (ห้อง/ตั้งค่าของกิจการเดิมไม่ค้าง) แล้วไปรากโซน
   //   cache เลขา + badge ล้างเองใน useSecretaryZone (activeTenantId เปลี่ยน ⇒ resetSecretaryMe)
@@ -118,6 +135,15 @@ export function BusinessSwitcherSheet({ visible, onClose, root = "/secretary" }:
           <Icon name="chevron-right" size={16} color={c.iconDim} />
         </Pressable>
 
+        {quota ? (
+          <View testID="sec-switch-quota" style={styles.quota}>
+            <Text style={[styles.meta, { color: c.textMuted }]}>{t("sec.switch.quota", { n: quota.pct })}</Text>
+            <View style={[styles.bar, { backgroundColor: c.divider }]}>
+              <View style={[styles.barIn, { width: `${quota.pct}%`, backgroundColor: c.accent }]} />
+            </View>
+            {quota.reset ? <Text style={[styles.meta, { color: c.textMuted }]}>{quota.reset}</Text> : null}
+          </View>
+        ) : null}
         <Text style={[styles.note, { color: c.textMuted }]}>{t("sec.switch.note")}</Text>
       </ScrollView>
     </Sheet>
@@ -138,4 +164,7 @@ const styles = StyleSheet.create({
   name: { fontSize: T.body, fontWeight: "600", lineHeight: 22 },
   meta: { fontSize: T.cap, lineHeight: 18 },
   note: { fontSize: T.cap, lineHeight: 19, marginTop: spacing.lg },
+  quota: { marginTop: spacing.lg, gap: 6 },
+  bar: { height: 6, borderRadius: 3, overflow: "hidden" },
+  barIn: { height: 6, borderRadius: 3 },
 });
