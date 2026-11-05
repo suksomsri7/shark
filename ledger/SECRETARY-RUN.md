@@ -20,7 +20,7 @@
 ## 2. สัญญาต่อใบ (ผู้คุมเติมตอนออกข้อสอบ · ย่อ: ชื่อฟังก์ชัน · ข้อสอบ S-group · จำนวนข้อ)
 _(เติมเมื่อถึงใบ)_
 
-## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 48/58 · 83% · 🏁 CP1 S1 ปิดแล้ว (6 พ.ย. ~06:2xZ)
+## 3. สถานะสด (ผู้คุมแก้ทุกครั้งที่ปิดใบ) — 50/58 · 86% · 🏁 CP1 S1 ปิดแล้ว · S2 เหลือ S2.14
 
 | ใบ | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|
@@ -71,11 +71,11 @@ _(เติมเมื่อถึงใบ)_
 | S2.17 | ✅ | | built 1a24cc30 + รอบ 2 0f638e82 (เลน c) · spec 12/12 ×2 + ผู้คุม · ผู้ตรวจ V → §U ปิดครบ · คู่ K1/K2/K3 (ผู้คุมดู K2 ✅) · merge f643eb178 · ตั๋ว server: phoneMasked · flag สิทธิ์ · replyWindowEndsAt · ai-suggest Bearer · tags/deals · task-from-chat |
 | S2.18 | ✅ | | รวมในชุด S2-17 · K2 · merge f643eb178 |
 | S2.19 | ✅ | | รวมในชุด S2-17 · K3/K4/K5 · merge f643eb178 |
-| S2.20 | ✍️ | | รวมในชุด S2-13 |
+| S2.20 | ✅ | 6 พ.ย. ~11:1xZ | รวมใน S2.13 (ff 2e21d70d) · SecTopBar badge 3 ไอคอน (โหลดครั้งเดียวต่อ foreground + หลัง action) · push deep-link `/customers/<id>?e=` (+ `/inbox/` เดิม) · three-chats.json ok 3/3 (เกณฑ์รวม unmocked=0) · ภาพคู่ K1–K5 ×2 ธีม · ตั๋ว server: badge ทีมใช้ `secretary/badges` (S1.14c ทำแล้ว → แอปต่อใน S2.14) |
 | S2.21 | ✅ | | built 99454fbe + รอบ 2 cd636134/b307fe98 (เลน d · A.11 ×2) · spec 12/12 ×2 + ผู้คุม · ผู้ตรวจ W → §V ปิดครบ · คู่ G1–G4 (ผู้คุมดู G3 ✅) · merge b307fe98e · deviation รับ: ลดบทบาทรีเซ็ตกริดเป็นปิดทั้งหมดให้เจ้าของเลือก · ตั๋ว server ใน RESUME |
 | S2.22 | ✅ | | รวมในชุด S2-21 · G3/G4 · merge b307fe98e |
 | S2.23 | ✍️ | | รวมในชุด S2-16 |
-| S2.13 | ✍️ | | ใบ S2-13 (S2.13+S2.20) + spec s2.13.json · หลังทุกจอ S2 |
+| S2.13 | ✅ | 6 พ.ย. ~11:1xZ | ff 2e21d70d (เลน d · รอบ 1 79815dc4 + รอบ 2) · spec s2.13 11/11 ×3 ผู้คุม (รวม typecheck) · spec s2.2/s2.4/s2.10/s2.15/s2.17/s2.21 + s2.1/s2.12 เขียว · ภาพคู่มืด 35 แผ่นผู้คุมดูเอง (§W fix-forward F1–F4 → S2.14) · ผู้ตรวจ X → §W.2 ปิดครบ (M1 badge poll) · padding 20/20 (gap ≥12 · รวม G1) · จอ 1.0 ก่อน/หลัง text.tsx เท่าเดิม · userInterfaceStyle automatic (Android ต้อง expo-system-ui → S3a) |
 | S2.14 | ✍️ | | ใบ S2-14 + oracle `qc-sec-s2.14.mts` (ทุก spec · ทะเบียนปุ่ม · ไม่มี fixture/console · three-chats · typecheck · fitness) · รอ S2.13+S2.20 (builder เลน d เริ่ม 06:0xZ) |
 | S3a.1 | ⬜ | | 🎯 ข้อสอบรวม + นักล่า + โมเดลจริง |
 | S3a.2 | ⬜ | | ขึ้น prod (รอเจ้าของ) |
@@ -145,3 +145,4 @@ _(เติมเมื่อถึงใบ)_
 - **6 พ.ย. ~09:0xZ** S1.14b ✅ ff ca34f048 — server พร้อมสำหรับ S2.14 (invites/pending · invite levels/chat · DTO ห้องลูกค้า phoneMasked/tags/replyWindowEndsAt/can · ai-suggest Bearer (คีย์ chat.ai.suggest) + suggestionId · task-from-chat · /me appleLinked · shift GET) · หนี้ S3a: AiMessage.clientMessageId · step-up delete · platform-actor undo · suspend จริง · plans[] · appleLinked identity column · can.aiSuggest · secretary/badges เส้นเดียว · push link /customers + tenantId ใน sendPushToChatStaff · expo-system-ui (Android)
 - **6 พ.ย. ~09:3xZ** S1.14c เริ่มเลน b (ขนานกับ S2.13 รอบ 2 เลน d) · ใบ+oracle 8b14fa52
 - **6 พ.ย. ~10:4xZ** S1.14c ✅ merge a1f70913 — server ครบสำหรับ S2.14 (badges เส้นเดียว · push link /customers) · เลน b ว่าง · รอ S2.13 รอบ 2 (เลน d)
+- **6 พ.ย. ~11:1xZ** S2.13+S2.20 ✅ ff 2e21d70d → **50/58 (86%)** · เหลือ S2.14 (ปิด S2 · เลน d) → CP2/CP3 → S3a.1
