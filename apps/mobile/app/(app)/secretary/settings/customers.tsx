@@ -23,6 +23,7 @@ import {
   inboxNote,
   inboxPost,
   inboxPut,
+  setInboxCanReply,
   type Connection,
   type NotifyMode,
   type QuickReply,
@@ -244,6 +245,7 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
           setOk(!!sid);
           setSystemId(sid);
           setCanReply(sys.canReply !== false);
+          setInboxCanReply(sys.canReply !== false);
           if (!sid) return;
           const [cn, qr, rt, nf] = await Promise.all([
             inboxGet("inbox/connections", { systemId: sid }).catch(() => null),

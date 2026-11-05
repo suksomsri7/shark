@@ -8,6 +8,7 @@ import { useFocusEffect } from "expo-router";
 import { api, ApiError } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
 import { langFrom, setLang } from "@/src/i18n";
+import { resetInboxState } from "@/src/api/inbox";
 
 // ───────── ตารางเส้น (ชื่อที่จอใช้ → path จริง) ─────────
 const PATH = {
@@ -624,6 +625,7 @@ export function useSecretaryZone(): void {
     badges = ZERO;
     badgeListeners.forEach((fn) => fn());
     setCustomersAccess(true);
+    resetInboxState(); // R-S2.17c: ระบบแชทที่เลือก + canReply ของร้านเดิมไม่ข้ามร้าน
     void loadSecretaryMe(userId);
     if (userId && activeTenantId) void refreshZoneBadges();
   }, [userId, activeTenantId]);

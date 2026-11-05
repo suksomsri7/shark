@@ -5,6 +5,9 @@
 //   🔴 3 แชทไม่ปน: "สั่ง Shark เรื่องลูกค้านี้" = POST secretary/rooms {instruction, clientMessageId, context:{chatConversationId, contactId}}
 //      (รหัสเท่านั้น — ไม่ใส่ชื่อ/เบอร์ลูกค้าลงคำสั่ง) → เปิดห้องเลขา /secretary/room/<id> · จอนี้ไม่มีเส้นตอบลูกค้า
 //   🔴 PII: เบอร์สมาชิกแสดงแบบปิดกลาง (maskPhone) · ไม่เก็บลงเครื่อง
+//   สิทธิ์ (R-S2.17a): canReply จาก store (`inbox/systems` · โหลดซ้ำตอน focus) — false/ยังไม่รู้ ⇒ ซ่อน ผูก/ถอด · มอบหมาย · คนช่วย · สถานะ · ส่งต่อ · ปิดห้อง
+//     มอบหมายให้คนอื่น/ผูกสมาชิก = OWNER/MANAGER (คีย์ assign/customer.link · R-S1.25a) · พนักงาน = รับห้องที่ยังไม่มีผู้ดูแลให้ตัวเองเท่านั้น ·
+//     ส่งต่อ = ผู้ดูแลปัจจุบัน · คนช่วยในห้อง · OWNER/MANAGER (R-S1.21b) · เซิร์ฟเวอร์ตรวจซ้ำทุกเส้น · 403 ⇒ setCustomersAccess(false)
 //   สร้างงานบอร์ด: ยังไม่มี route Bearer ของ task-from-chat ⇒ ปุ่มซ่อน (TASK_ROUTE) · แท็ก: อ่านอย่างเดียว (ยังไม่มีเส้นแก้แท็ก · หนี้ §N)
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -12,7 +15,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
 import { AiryScreen, Glass, Icon, IconBtn, Note, PrimaryButton, SectionLabel, Sheet, TopBar } from "@/src/components/airy";
 import { Avatar, ChannelBadge, ConfirmSheet, StaffSheet, firstName, useChannelLabel } from "@/src/components/customers/parts";
-import { clientMessageId, secPost, startErrorKind } from "@/src/api/secretary";
+import { clientMessageId, secPost, setCustomersAccess, startErrorKind, useActiveRole } from "@/src/api/secretary";
 import {
   WAITING_HUMAN_TAG,
   getCurrentSystem,
@@ -21,7 +24,9 @@ import {
   inboxNote,
   inboxPostId,
   maskPhone,
+  setInboxCanReply,
   statusOf,
+  useInboxCanReply,
   type ConvStatus,
   type MemberHit,
   type StaffPick,
@@ -49,6 +54,9 @@ export default function CustomerInfoScreen() {
   const systemId = (typeof params.s === "string" && params.s) || getCurrentSystem() || undefined;
   const { activeTenantId, user } = useAuth();
   const myId = user?.id ?? null;
+  const role = useActiveRole();
+  const manager = role === "OWNER" || role === "MANAGER";
+  const canReply = useInboxCanReply() === true;
 
   const [thread, setThread] = useState<Thread | null>(null);
   const [gone, setGone] = useState<"notFound" | "denied" | null>(null);
@@ -79,9 +87,18 @@ export default function CustomerInfoScreen() {
     } catch (e) {
       const s = statusOf(e);
       if (s === 404) setGone("notFound");
-      else if (s === 403) setGone("denied");
-      else setNote({ text: t("cust.offline"), warn: true });
+      else if (s === 403) {
+        setGone("denied");
+        setCustomersAccess(false);
+      } else setNote({ text: t("cust.offline"), warn: true });
     }
+    inboxGet("inbox/systems")
+      .then((r) => tenantRef.current === tenant && setInboxCanReply(r.canReply !== false))
+      .catch((e) => {
+        if (statusOf(e) !== 403) return;
+        setInboxCanReply(false);
+        setCustomersAccess(false);
+      });
   }, [activeTenantId, id, systemId, t]);
 
   useFocusEffect(
@@ -91,11 +108,11 @@ export default function CustomerInfoScreen() {
   );
   // จาก K2 ปุ่ม "เรียกคนช่วย" (?open=helpers) ⇒ เปิดชีตคนช่วยครั้งแรกที่โหลดเสร็จ
   useEffect(() => {
-    if (thread && !opened.current && params.open === "helpers") {
+    if (thread && canReply && !opened.current && params.open === "helpers") {
       opened.current = true;
       openSheet("helpers");
     }
-  }, [thread, params.open]);
+  }, [thread, canReply, params.open]);
 
   const openSheet = (k: SheetKind) => {
     setSheet(k);
@@ -172,6 +189,12 @@ export default function CustomerInfoScreen() {
   const member = thread?.linkedMember ?? null;
   const helpers = thread?.helpers ?? [];
   const tags = conv?.tags ?? [];
+  const assignee = conv?.assigneeUserId ?? null;
+  const isHelper = !!myId && helpers.some((h) => h.userId === myId);
+  const canHandoff = canReply && !!conv && (manager || (!!myId && assignee === myId) || isHelper);
+  const canClaimSelf = canReply && !manager && !!conv && conv.status === "OPEN" && !assignee;
+  const claimSelf = () => myId && act(() => inboxPostId("inbox/conversations/[id]/assign", id, { systemId, assigneeUserId: myId }), "cust.room.claimed");
+  const assignPress = canReply && manager ? () => openSheet("assign") : canClaimSelf ? () => void claimSelf() : undefined;
   const nameOf = (uid: string | null) => (uid ? (firstName(staff.find((s) => s.userId === uid)?.name) || firstName(helpers.find((h) => h.userId === uid)?.name) || null) : null);
 
   if (gone) {
@@ -237,6 +260,7 @@ export default function CustomerInfoScreen() {
               <Text style={[styles.sysEmptyT, { color: c.textMuted }]}>{t("cust.info.noMember")}</Text>
             </Glass>
           )}
+          {canReply && manager ? (
           <View style={styles.linkRow}>
             <Pressable testID="cust-info-link" onPress={() => openSheet("link")} accessibilityRole="button" style={[styles.smallBtn, { backgroundColor: c.surface }]}>
               <Text style={[styles.smallBtnT, { color: c.text }]}>{member ? t("cust.info.relink") : t("cust.info.link")}</Text>
@@ -247,19 +271,27 @@ export default function CustomerInfoScreen() {
               </Pressable>
             ) : null}
           </View>
+          ) : null}
         </View>
 
         {/* ห้องนี้ */}
         <SectionLabel style={styles.label}>{t("cust.info.thisRoom")}</SectionLabel>
-        <InfoRow testID="cust-info-assign" title={t("cust.info.assignee")} value={firstName(conv?.assigneeName) || t("cust.info.nobody")} onPress={() => openSheet("assign")} />
-        <InfoRow testID="cust-info-helpers" title={t("cust.info.helpers")} value={helpers.map((h) => firstName(h.name)).filter(Boolean).join(", ") || t("cust.info.nobody")} onPress={() => openSheet("helpers")} />
-        <InfoRow testID="cust-info-status" title={t("cust.info.status")} value={conv ? t(STATUS_LABEL[conv.status] ?? "cust.status.OPEN") : ""} onPress={() => openSheet("status")} />
+        <InfoRow
+          testID="cust-info-assign"
+          title={t("cust.info.assignee")}
+          value={firstName(conv?.assigneeName) || (canClaimSelf ? t("cust.room.claim") : t("cust.info.nobody"))}
+          onPress={assignPress}
+        />
+        <InfoRow testID="cust-info-helpers" title={t("cust.info.helpers")} value={helpers.map((h) => firstName(h.name)).filter(Boolean).join(", ") || t("cust.info.nobody")} onPress={canReply ? () => openSheet("helpers") : undefined} />
+        <InfoRow testID="cust-info-status" title={t("cust.info.status")} value={conv ? t(STATUS_LABEL[conv.status] ?? "cust.status.OPEN") : ""} onPress={canReply ? () => openSheet("status") : undefined} />
         <InfoRow testID="cust-info-tags" title={t("cust.info.tags")} value={tags.map((g) => (g === WAITING_HUMAN_TAG ? t("cust.tag.waitingHuman") : g)).join(" · ") || t("cust.info.noTags")} />
 
         <View style={styles.btnRow}>
-          <Pressable testID="cust-info-handoff" onPress={() => openSheet("handoff")} accessibilityRole="button" style={[styles.btn, { backgroundColor: c.surface }]}>
-            <Text style={[styles.btnT, { color: c.text }]}>{t("cust.info.handoff")}</Text>
-          </Pressable>
+          {canHandoff ? (
+            <Pressable testID="cust-info-handoff" onPress={() => openSheet("handoff")} accessibilityRole="button" style={[styles.btn, { backgroundColor: c.surface }]}>
+              <Text style={[styles.btnT, { color: c.text }]}>{t("cust.info.handoff")}</Text>
+            </Pressable>
+          ) : null}
           {TASK_ROUTE ? (
             <Pressable testID="cust-info-task" accessibilityRole="button" style={[styles.btn, { backgroundColor: c.surface }]}>
               <Text style={[styles.btnT, { color: c.text }]}>{t("cust.info.task")}</Text>
@@ -271,7 +303,7 @@ export default function CustomerInfoScreen() {
             </Text>
           </Pressable>
         </View>
-        {conv && conv.status !== "RESOLVED" ? (
+        {!canReply || !conv ? null : conv.status !== "RESOLVED" ? (
           <Pressable testID="cust-info-close" onPress={() => openSheet("close")} accessibilityRole="button" style={styles.closeBtn}>
             <Text style={[styles.closeT, { color: c.bad.fg }]}>{t("cust.info.close")}</Text>
           </Pressable>

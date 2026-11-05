@@ -4,6 +4,7 @@
 //   เช่น inboxGet("inbox/conversations") · inboxPostId("inbox/conversations/[id]/reply", id, …)
 // 🔴 3 แชทไม่ปน: เส้นตอบลูกค้า (…/reply) อยู่ที่นี่เท่านั้น · ไฟล์นี้ไม่มีเส้นของห้องเลขา (secretary/rooms*) และไม่มี mobile/chat/send
 // 🔴 PII: ไม่เก็บข้อความ/เบอร์ลูกค้าลงเครื่อง (ไม่มี storage ในไฟล์นี้) · เบอร์ที่แสดงผ่าน maskPhone เสมอ
+import { useSyncExternalStore } from "react";
 import { getTenantId, getToken } from "@/src/lib/session";
 import { ApiError, BASE_URL } from "@/src/api/client";
 
@@ -242,11 +243,42 @@ export function replyWindowHours(channel: string, msgs: Pick<MsgItem, "direction
   return Math.max(0, Math.floor((at + REPLY_WINDOW_MS - nowMs) / 3600_000));
 }
 
-// ───────── ระบบแชทที่เลือกอยู่ (K1 → K2/K3 ส่งต่อทาง ?s=) ─────────
+/** เปิดลิงก์ไฟล์/เสียงได้เฉพาะ https (R-S2.17c) — อย่างอื่น (javascript: data: http: ฯลฯ) ไม่เปิด */
+export function isSafeLink(url: string | null | undefined): boolean {
+  return typeof url === "string" && /^https:\/\/[^\s]+$/i.test(url.trim());
+}
+
+// ───────── ระบบแชทที่เลือกอยู่ (K1 → K2/K3 ส่งต่อทาง ?s=) · ล้างตอนสลับผู้ใช้/ร้าน (resetInboxState) ─────────
 let currentSystemId: string | null = null;
 export function setCurrentSystem(id: string | null): void {
   currentSystemId = id;
 }
 export function getCurrentSystem(): string | null {
   return currentSystemId;
+}
+
+// ───────── สิทธิ์ตอบลูกค้า (inbox/systems.canReply) — store กลาง (R-S2.17a) · null = ยังไม่รู้ ─────────
+let canReplyState: boolean | null = null;
+const replyListeners = new Set<() => void>();
+export function setInboxCanReply(v: boolean | null): void {
+  if (canReplyState === v) return;
+  canReplyState = v;
+  replyListeners.forEach((fn) => fn());
+}
+const getCanReply = () => canReplyState;
+export function useInboxCanReply(): boolean | null {
+  return useSyncExternalStore(
+    (l) => {
+      replyListeners.add(l);
+      return () => replyListeners.delete(l);
+    },
+    getCanReply,
+    getCanReply,
+  );
+}
+
+/** สลับผู้ใช้/ร้าน ⇒ ล้างระบบที่เลือก + สิทธิ์ตอบ (เรียกจาก useSecretaryZone) */
+export function resetInboxState(): void {
+  currentSystemId = null;
+  setInboxCanReply(null);
 }

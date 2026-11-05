@@ -5,7 +5,8 @@
 //   🔴 3 แชทไม่ปน: ช่องพิมพ์ของจอนี้ส่งถึงลูกค้า (หรือบันทึกภายใน) ทาง …/reply เท่านั้น — ไม่มีเส้นห้องเลขาในไฟล์นี้ ·
 //      ทุกการส่ง (พิมพ์เอง · การ์ดร่าง Shark · ส่งใหม่ฟองที่ล้ม) ผ่าน `Composer.post()` ที่เดียว (clientMessageId · 429 ลองใหม่อัตโนมัติ 1 ครั้งหลัง Retry-After)
 //   ฟอง: ลูกค้า/เรา/บันทึกภายใน/ส่งโดย Shark (meta.ai → ป้ายผู้อนุมัติ · RESOLUTIONS §M)/ข้อความระบบ/สติกเกอร์/รูป/ไฟล์/เสียง/ส่งไม่สำเร็จ ✕
-//   poll 5 วิ ขณะจออยู่และแอปอยู่หน้า (ออฟไลน์ถอยห่าง) · ไม่มี SSE · หน้าต่างตอบ 24 ชม. ของ Facebook/Instagram หมด ⇒ แถบเตือน + ตอบลูกค้าไม่ได้ (บันทึกภายในได้)
+//   ข้อความทั้งหมดที่โหลดอยู่ใน map เดียว (คีย์ id · R-S2.17b): poll รวมทับตาม id (ไม่ทิ้งหน้าที่โหลดย้อน) · "ก่อนหน้า" ใช้ cursor ของข้อความเก่าสุดที่แสดงจริง
+//   poll 5 วิ ขณะจออยู่และแอปอยู่หน้า (ออฟไลน์ถอยห่าง) · ไม่มี SSE · 403 ⇒ setCustomersAccess(false) · หน้าต่างตอบ 24 ชม. ของ Facebook/Instagram หมด ⇒ แถบเตือน + ตอบลูกค้าไม่ได้ (บันทึกภายในได้)
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -14,6 +15,7 @@ import { Text } from "@/src/components/ui/text";
 import { AiryScreen, Glass, Icon, IconBtn, InputBar, Note } from "@/src/components/airy";
 import { MessageBubble } from "@/src/components/customers/MessageBubble";
 import { ChannelBadge, firstName, useChannelLabel } from "@/src/components/customers/parts";
+import { setCustomersAccess } from "@/src/api/secretary";
 import {
   InboxError,
   UPLOAD_MAX_BYTES,
@@ -25,6 +27,7 @@ import {
   inboxUpload,
   replyMessageId,
   replyWindowHours,
+  setInboxCanReply,
   statusOf,
   type MsgItem,
   type QuickReply,
@@ -42,6 +45,8 @@ const MAX_BACKOFF_MS = 60_000;
 const RETRY_CAP_SEC = 60;
 const BUBBLE_IDS = { in: "cust-bubble-in", out: "cust-bubble-out", ai: "cust-bubble-ai", internal: "cust-bubble-internal", system: "cust-bubble-system" };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** เรียงเก่า→ใหม่ (createdAt แล้ว id — ตรงกับ cursor คู่ของเซิร์ฟเวอร์) */
+const byTime = (a: MsgItem, b: MsgItem) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.createdAt < b.createdAt ? -1 : 1);
 
 type Gone = "notFound" | "denied" | null;
 type Draft = { id: string | null; body: string };
@@ -65,8 +70,11 @@ export default function CustomerRoomScreen() {
   const myId = user?.id ?? null;
 
   const [thread, setThread] = useState<Thread | null>(null);
-  const [older, setOlder] = useState<MsgItem[]>([]);
-  const [olderNext, setOlderNext] = useState<string | null | undefined>(undefined);
+  /** ทุกข้อความที่โหลดแล้ว (คีย์ id) — poll/ก่อนหน้า รวมเข้ามา · `msgs` = เรียงเวลา */
+  const msgMap = useRef(new Map<string, MsgItem>());
+  const [msgs, setMsgs] = useState<MsgItem[]>([]);
+  /** ยังมีข้อความเก่ากว่าที่แสดงอยู่ไหม (จาก nextBefore ของหน้าล่าสุดที่โหลดย้อน · undefined = ยังไม่รู้) */
+  const [hasOlder, setHasOlder] = useState<boolean | undefined>(undefined);
   const [gone, setGone] = useState<Gone>(null);
   const [offline, setOffline] = useState(false);
   const [canReply, setCanReply] = useState(true);
@@ -90,13 +98,21 @@ export default function CustomerRoomScreen() {
   useEffect(() => {
     tenantRef.current = activeTenantId;
     setThread(null);
-    setOlder([]);
-    setOlderNext(undefined);
+    msgMap.current = new Map();
+    setMsgs([]);
+    setHasOlder(undefined);
     setGone(null);
     setDraft(null);
     readSent.current = null;
     draftAsked.current = false;
   }, [activeTenantId, id]);
+
+  const merge = useCallback((rows: MsgItem[]) => {
+    for (const m of rows) msgMap.current.set(m.id, m);
+    const all = [...msgMap.current.values()].sort(byTime);
+    setMsgs(all);
+    return all;
+  }, []);
 
   const load = useCallback(async () => {
     const tenant = activeTenantId;
@@ -107,12 +123,13 @@ export default function CustomerRoomScreen() {
       if (tenantRef.current !== tenant) return;
       failCount.current = 0;
       setThread(th);
-      setOlderNext((v) => (v === undefined ? th.nextBefore : v));
+      const all = merge(th.messages);
+      setHasOlder((v) => (v === undefined ? !!th.nextBefore : v));
       setGone(null);
       setOffline(false);
       setNowMs(Date.now());
       // อ่านแล้ว: ครั้งแรกที่เปิด + ทุกครั้งที่มีข้อความใหม่ (สิทธิ์ markRead ไม่มี = 403 เงียบ)
-      const last = th.messages[th.messages.length - 1];
+      const last = all[all.length - 1];
       if (last && readSent.current !== last.id) {
         readSent.current = last.id;
         void inboxPostId("inbox/conversations/[id]/read", id, { systemId, lastReadMessageId: last.id }).catch(() => {});
@@ -131,15 +148,17 @@ export default function CustomerRoomScreen() {
       if (tenantRef.current !== tenant) return;
       const s = statusOf(e);
       if (s === 404) setGone("notFound");
-      else if (s === 403) setGone("denied");
-      else {
+      else if (s === 403) {
+        setGone("denied");
+        setCustomersAccess(false);
+      } else {
         setOffline(true);
         failCount.current = Math.min(failCount.current + 1, 6);
       }
     } finally {
       inflight.current = false;
     }
-  }, [activeTenantId, id, systemId]);
+  }, [activeTenantId, id, systemId, merge]);
 
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -153,8 +172,16 @@ export default function CustomerRoomScreen() {
   useEffect(() => {
     if (!activeTenantId) return;
     inboxGet("inbox/systems")
-      .then((r) => setCanReply(r.canReply !== false))
-      .catch((e) => statusOf(e) === 403 && setCanReply(false));
+      .then((r) => {
+        setCanReply(r.canReply !== false);
+        setInboxCanReply(r.canReply !== false);
+      })
+      .catch((e) => {
+        if (statusOf(e) !== 403) return;
+        setCanReply(false);
+        setInboxCanReply(false);
+        setCustomersAccess(false);
+      });
   }, [activeTenantId]);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (s) => {
@@ -179,13 +206,16 @@ export default function CustomerRoomScreen() {
     };
   }, [focused, active, gone]);
 
+  // ก่อนหน้า: cursor = ข้อความเก่าสุดที่แสดงอยู่จริง (`<iso>|<id>` · R-S1.21h)
   const loadOlder = async () => {
-    if (!olderNext || moreBusy) return;
+    const oldest = msgs[0];
+    if (!hasOlder || moreBusy || !oldest) return;
     setMoreBusy(true);
+    atBottom.current = false;
     try {
-      const th = await inboxGetId("inbox/conversations/[id]", id, { systemId, before: olderNext });
-      setOlder((cur) => [...th.messages, ...cur]);
-      setOlderNext(th.nextBefore);
+      const th = await inboxGetId("inbox/conversations/[id]", id, { systemId, before: `${oldest.createdAt}|${oldest.id}` });
+      merge(th.messages);
+      setHasOlder(!!th.nextBefore);
     } catch {
       setOffline(true);
     } finally {
@@ -214,7 +244,6 @@ export default function CustomerRoomScreen() {
 
   const conv = thread?.conversation ?? null;
   const name = thread?.contact.displayName ?? t("cust.noName");
-  const msgs = thread ? [...older.filter((o) => !thread.messages.some((m) => m.id === o.id)), ...thread.messages] : [];
   const windowH = conv ? replyWindowHours(conv.channel, msgs, nowMs) : null;
   const unassigned = !!conv && conv.status === "OPEN" && !conv.assigneeUserId;
   const subBits = conv
@@ -304,7 +333,7 @@ export default function CustomerRoomScreen() {
           scrollEventThrottle={100}
           onContentSizeChange={() => atBottom.current && scrollRef.current?.scrollToEnd({ animated: false })}
         >
-          {olderNext ? (
+          {hasOlder ? (
             <Pressable testID="cust-room-more" onPress={() => void loadOlder()} disabled={moreBusy} accessibilityRole="button" style={styles.more}>
               <Text style={[styles.moreT, { color: c.textMuted }]}>{moreBusy ? t("cust.busy") : t("cust.room.older")}</Text>
             </Pressable>
@@ -432,6 +461,7 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
   };
 
   /** ทางส่งทางเดียว: กันกดซ้ำ · รหัสข้อความ · ผล duplicate/deliveryFailed · ล้ม = เก็บรหัสไว้ส่งซ้ำ */
+  /** `fixedId` (ส่งใหม่ฟองที่ล้ม) = รหัสของตัวเอง — ไม่แตะรหัส/สถานะล้มของข้อความที่พิมพ์ค้างอยู่ (R-S2.17c) */
   const run = async (p: Payload, key: string, fixedId?: string): Promise<boolean> => {
     if (busyRef.current || !canReply) return false;
     if (!p.isInternal && windowClosed) {
@@ -441,18 +471,21 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
     busyRef.current = true;
     setBusy(true);
     setNote(null);
-    if (failedKey.current !== null && failedKey.current !== key) cmid.current = null;
+    if (!fixedId && failedKey.current !== null && failedKey.current !== key) cmid.current = null;
     const id = fixedId ?? (cmid.current = cmid.current ?? replyMessageId());
     try {
       const r = await post(p, id);
-      cmid.current = null;
-      failedKey.current = null;
+      if (!fixedId) {
+        cmid.current = null;
+        failedKey.current = null;
+      }
+      setNote(null); // ล้างข้อความ 429 "จะลองใหม่" เมื่อสำเร็จ
       if (r.duplicate) setNote({ text: t("cust.send.dup"), warn: false });
       else if (r.deliveryFailed) setNote({ text: r.message ?? t("cust.send.deliveryFailed"), warn: true });
       onSent();
       return true;
     } catch (e) {
-      failedKey.current = key;
+      if (!fixedId) failedKey.current = key;
       setNote({ text: inboxNote(e) ?? t("cust.send.fail"), warn: true });
       return false;
     } finally {

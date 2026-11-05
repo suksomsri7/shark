@@ -1,13 +1,14 @@
 // ฟองข้อความในห้องแชทลูกค้า (ใบ S2.18 · แบบ K2 sec-k.jpg หน้า 2) — แสดงผลอย่างเดียว (ไม่มีการส่งในไฟล์นี้ · การส่ง/ส่งใหม่ = onResend ของจอ)
 //   ลูกค้า (IN) = อวตาร + "ชื่อ · เวลา" + ฟองกระจกซ้าย · เรา (OUT) = ฟองทึบขวา + "ชื่อผู้ส่ง · เวลา"
 //   ส่งโดย Shark (meta.ai · RESOLUTIONS §M) = ฟองทึบขวา + ป้าย "ส่งโดย Shark (ผู้ช่วย AI) · อนุมัติโดย <ชื่อ>"
-//   บันทึกภายใน = การ์ดเส้นประ 🔒 "ลูกค้าไม่เห็น" + @ชื่อ เน้นสี · ข้อความระบบ (🙋 เรียกช่วย / 🔁 ส่งต่อ / sla:) = ป้ายกลาง
+//   บันทึกภายใน = การ์ดเส้นประ 🔒 "ลูกค้าไม่เห็น" + @ชื่อ เน้นสี + ไฟล์แนบ · ข้อความระบบ (type SYSTEM / ผู้ส่ง system:* เช่น SLA) = ป้ายกลาง
+//   ลิงก์ไฟล์/เสียง/รูปเต็มจอ เปิดเฉพาะ https (isSafeLink · R-S2.17c)
 //   สติกเกอร์ (stickerMeta) = ช่องสติกเกอร์ (ไม่โหลดรูปจากภายนอก) · รูป = ย่อ แตะ = ตัวดูเต็มจอ · ไฟล์ = เปิด · เสียง = เล่น (เปิดลิงก์) + ความยาว
 //   deliveryStatus FAILED = ✗ + ปุ่มส่งใหม่
 import { Image, Linking, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { Icon } from "@/src/components/airy";
-import type { MsgAttachment, MsgItem } from "@/src/api/inbox";
+import { isSafeLink, type MsgAttachment, type MsgItem } from "@/src/api/inbox";
 import { useT } from "@/src/i18n";
 import { bgImage, F, glassStyle, linear, shadow, useTheme } from "@/src/theme/index";
 import { radii, type as T } from "@/src/theme/tokens";
@@ -16,7 +17,9 @@ import { Avatar, firstName, hhmm } from "./parts";
 export type BubbleKind = "in" | "out" | "ai" | "internal" | "system";
 /** ชนิดฟองของข้อความ */
 export function bubbleKind(m: MsgItem): BubbleKind {
-  const sys = m.type === "SYSTEM" || (m.isInternal && ((m.senderUserId ?? "").startsWith("system:") || /^(\u{1F64B}|\u{1F501})/u.test(m.body ?? "")));
+  // R-S2.17c: ตัดสินจากผู้ส่งเท่านั้น (ไม่ดูเนื้อความ — ใครพิมพ์ 🙋/🔁 เองก็ไม่กลายเป็นข้อความระบบ) · `system:*` = SLA/ระบบแชท · บันทึกภายในไม่มีผู้ส่ง = ระบบ
+  const sid = m.senderUserId ?? "";
+  const sys = m.type === "SYSTEM" || sid.startsWith("system:") || (m.isInternal && !sid);
   if (sys) return "system";
   if (m.isInternal) return "internal";
   if (m.direction === "IN") return "in";
@@ -25,6 +28,9 @@ export function bubbleKind(m: MsgItem): BubbleKind {
 
 const isImage = (a: MsgAttachment) => a.kind === "IMAGE" || a.mimeType.startsWith("image/");
 const isAudio = (m: MsgItem, a: MsgAttachment) => m.type === "AUDIO" || a.kind === "AUDIO" || a.mimeType.startsWith("audio/");
+const openSafe = (url: string) => {
+  if (isSafeLink(url)) void Linking.openURL(url);
+};
 const dur = (ms: number | null) => {
   if (!ms || ms <= 0) return "";
   const s = Math.round(ms / 1000);
@@ -81,34 +87,18 @@ export function MessageBubble({
     );
   }
 
-  if (kind === "internal") {
-    return (
-      <View testID={ids.internal} style={[styles.note, { backgroundColor: c.cust.noteBg, borderColor: c.cust.noteBorder }]}>
-        <View style={[styles.lock, { backgroundColor: c.surface }]}>
-          <Icon name="lock" size={18} color={c.warn.fg} />
-        </View>
-        <View style={styles.noteBody}>
-          <Text style={[styles.noteH, { color: c.text }]}>
-            {t("cust.msg.internal")} · {firstName(msg.senderName) || t("cust.staff.noName")} {time}
-          </Text>
-          <Mentions body={body} color={c.textDim} hi={c.cust.ai} />
-          <Text style={[styles.noteHint, { color: c.textMuted }]}>{t("cust.msg.customerCantSee")}</Text>
-        </View>
-      </View>
-    );
-  }
-
-  const content = (light: boolean) => {
+  /** เนื้อหาฟอง · `withBody=false` = เฉพาะไฟล์แนบ (บันทึกภายในวาดข้อความเองพร้อม @ชื่อ) */
+  const content = (light: boolean, withBody = true) => {
     const fg = light ? c.bubbleOther.fg : c.bubbleUser.fg;
     return (
       <>
-        {msg.type === "STICKER" || msg.stickerMeta ? (
+        {withBody && (msg.type === "STICKER" || msg.stickerMeta) ? (
           <View testID="cust-att-sticker" style={[styles.sticker, { backgroundColor: c.chip.bg }]}>
             <Icon name="smile" size={30} color={c.iconDim} />
             <Text style={[styles.attT, { color: c.textMuted }]}>{t("cust.msg.sticker")}</Text>
           </View>
         ) : null}
-        {body ? (
+        {body && withBody ? (
           <Text style={[styles.t, { color: fg }]} selectable>
             {body}
           </Text>
@@ -119,7 +109,7 @@ export function MessageBubble({
               <Image source={{ uri: a.url }} style={[styles.img, { backgroundColor: c.chip.bg }]} resizeMode="cover" />
             </Pressable>
           ) : isAudio(msg, a) ? (
-            <Pressable testID="cust-att-audio" key={i} onPress={() => void Linking.openURL(a.url)} accessibilityRole="button" accessibilityLabel={t("cust.msg.audio")} style={styles.attRow}>
+            <Pressable testID="cust-att-audio" key={i} onPress={() => openSafe(a.url)} accessibilityRole="button" accessibilityLabel={t("cust.msg.audio")} style={styles.attRow}>
               <View style={[styles.play, { backgroundColor: light ? c.accent : c.onAccent }]}>
                 <Icon name="play" size={14} color={light ? c.onAccent : c.accent} />
               </View>
@@ -128,7 +118,7 @@ export function MessageBubble({
               </Text>
             </Pressable>
           ) : (
-            <Pressable testID="cust-att-file" key={i} onPress={() => void Linking.openURL(a.url)} accessibilityRole="link" style={styles.attRow}>
+            <Pressable testID="cust-att-file" key={i} onPress={() => openSafe(a.url)} accessibilityRole="link" style={styles.attRow}>
               <Icon name="paperclip" size={15} color={fg} />
               <Text style={[styles.attT, { color: fg }]} numberOfLines={1}>
                 {a.name}
@@ -139,6 +129,24 @@ export function MessageBubble({
       </>
     );
   };
+
+  if (kind === "internal") {
+    return (
+      <View testID={ids.internal} style={[styles.note, { backgroundColor: c.cust.noteBg, borderColor: c.cust.noteBorder }]}>
+        <View style={[styles.lock, { backgroundColor: c.surface }]}>
+          <Icon name="lock" size={18} color={c.warn.fg} />
+        </View>
+        <View style={styles.noteBody}>
+          <Text style={[styles.noteH, { color: c.text }]}>
+            {t("cust.msg.internal")} · {firstName(msg.senderName) || t("cust.staff.noName")} {time}
+          </Text>
+          {body ? <Mentions body={body} color={c.textDim} hi={c.cust.ai} /> : null}
+          {msg.attachments.length ? content(true, false) : null}
+          <Text style={[styles.noteHint, { color: c.textMuted }]}>{t("cust.msg.customerCantSee")}</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (kind === "in") {
     return (

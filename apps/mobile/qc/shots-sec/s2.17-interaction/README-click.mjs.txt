@@ -1,4 +1,4 @@
-// S2.17–S2.19 interaction check (QC web export of /root/qc-shark-mobile-sec-c/dist · mocks from fixture s2.17.json · no real server)
+// S2.17–S2.19 interaction check (+ round 2 · RESOLUTIONS §U) (QC web export of /root/qc-shark-mobile-sec-c/dist · mocks from fixture s2.17.json · no real server)
 // รัน: cp README-click.mjs.txt <scratch>/s217-click.mjs && bash scripts/iso.sh node <scratch>/s217-click.mjs <s2.17.json> <photo.png> <outdir>
 import puppeteer from "/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js";
 import { createServer } from "node:http"; import { readFileSync, existsSync, statSync, mkdirSync, rmSync, writeFileSync } from "node:fs"; import { join, extname } from "node:path";
@@ -118,6 +118,48 @@ try {
     await p.waitForSelector('[data-testid="cust-info-ask-input"]'); await type(p, "cust-info-ask-input", "สรุปประวัติการซื้อของลูกค้าคนนี้"); await p.screenshot({ path: `${OUT}/k3-ask-shark.png` });
     await p.click('[data-testid="cust-info-ask-send"]'); await sleep(1500);
     res.k3AskBody = bodies(log, "POST /api/mobile/secretary/rooms"); res.k3AskUrl = new URL(p.url()).pathname; res.k3AskReplyPosts = hits(log, R); await p.close(); }
+  // ── §U-b K2: ก่อนหน้า = cursor ของข้อความเก่าสุด · poll รวมด้วย id (ข้อความเก่าไม่หาย) ──
+  { const th = clone(FX.endpoints["GET /api/mobile/inbox/conversations/x1"]); th.nextBefore = "2026-11-05T02:52:00.000Z|m1";
+    const old = { id: "m0", direction: "IN", type: "TEXT", body: "ข้อความเก่าเมื่อวาน", senderUserId: null, senderName: null, isInternal: false, deliveryStatus: "SENT", stickerMeta: null, attachments: [], meta: null, createdAt: "2026-11-04T09:00:00.000Z" };
+    const { p, log } = await open("/customers/x1?s=cs1", FX, { "GET /api/mobile/inbox/conversations/x1": (b, l) => { const q = l[l.length - 1].q; return q.includes("before=") ? { body: { ...th, messages: [old], nextBefore: null } } : { body: th }; } });
+    await p.waitForSelector('[data-testid="cust-room-more"]'); const n0 = (await count(p, "cust-bubble-in"));
+    await p.click('[data-testid="cust-room-more"]'); await sleep(900);
+    res.u_olderQuery = decodeURIComponent(log.filter((x) => x.k === "GET /api/mobile/inbox/conversations/x1" && x.q.includes("before=")).map((x) => x.q).pop() ?? "");
+    const n1 = await count(p, "cust-bubble-in"); await sleep(6000); const n2 = await count(p, "cust-bubble-in");
+    res.u_olderMerge = { before: n0, afterOlder: n1, afterPoll: n2, polls: hits(log, "GET /api/mobile/inbox/conversations/x1"), moreBtnAfter: await count(p, "cust-room-more") }; await p.close(); }
+  // ── §U-c 429 แล้วสำเร็จ ⇒ ล้างข้อความ · resend ไม่แตะรหัสข้อความที่พิมพ์ค้าง ──
+  { let n = 0; const { p, log } = await open("/customers/x1?s=cs1", FX, { [R]: (body) => { n++; const j = JSON.parse(body); if (j.clientMessageId.startsWith("resend:")) return { body: { messageId: "r1" } }; return n === 1 ? { status: 429, headers: { "Retry-After": "1" }, body: { error: "rate_limited", message: "x" } } : n === 3 ? { status: 500, body: { error: "x", message: "ส่งไม่สำเร็จ" } } : { body: { messageId: "ok" } }; } });
+    await p.waitForSelector('[data-testid="cust-input-field"]'); await type(p, "cust-input-field", "ทดสอบ"); await p.click('[data-testid="cust-send"]'); await sleep(2200);
+    res.u_rateNoteAfterSuccess = await count(p, "cust-send-note");
+    await type(p, "cust-input-field", "ข้อความค้าง"); await p.click('[data-testid="cust-send"]'); await sleep(900);
+    await p.click('[data-testid="cust-bubble-resend"]'); await sleep(900); await p.click('[data-testid="cust-send"]'); await sleep(900);
+    const ids = bodies(log, R).map((x) => x.clientMessageId); res.u_resendIds = ids; res.u_typedIdKeptAcrossResend = ids.length >= 5 && ids[2] === ids[4] && ids[3] === "resend:m7"; await p.close(); }
+  // ── §U-c ลิงก์เปิดเฉพาะ https + ไฟล์แนบในบันทึกภายใน ──
+  { const fx = clone(FX); const th = fx.endpoints["GET /api/mobile/inbox/conversations/x1"];
+    th.messages = [{ id: "z1", direction: "OUT", type: "FILE", body: "แนบใบเสร็จไว้ให้ทีมดู", senderUserId: "u-qc-nam", senderName: "น้ำ", isInternal: true, deliveryStatus: "SENT", stickerMeta: null, attachments: [{ name: "evil.pdf", url: "javascript:alert(1)", kind: "FILE", mimeType: "application/pdf", durationMs: null }], meta: null, createdAt: "2026-11-05T02:50:00.000Z" }, { id: "z2", direction: "IN", type: "FILE", body: null, senderUserId: null, senderName: null, isInternal: false, deliveryStatus: "SENT", stickerMeta: null, attachments: [{ name: "plain.pdf", url: "http://cdn.qc.invalid/plain.pdf", kind: "FILE", mimeType: "application/pdf", durationMs: null }], meta: null, createdAt: "2026-11-05T02:51:00.000Z" }];
+    th.conversation.aiDraft = false;
+    const { p } = await open("/customers/x1?s=cs1", fx); await p.waitForSelector('[data-testid="cust-bubble-internal"]');
+    res.u_internalWithFile = await p.$eval('[data-testid="cust-bubble-internal"]', (e) => e.querySelectorAll('[data-testid="cust-att-file"]').length);
+    let opened = 0; b.on("targetcreated", () => opened++); const before = p.url();
+    for (const el of await p.$$('[data-testid="cust-att-file"]')) { await el.click(); await sleep(400); }
+    res.u_unsafeLinksOpened = { newTargets: opened, sameUrl: p.url() === before }; await p.screenshot({ path: `${OUT}/u-internal-attachment.png` }); await p.close(); }
+  // ── §U-a K3: canReply=false ⇒ ไม่มีปุ่มเขียน · STAFF (ตอบได้ ไม่ใช่ผู้ดูแล) ⇒ ไม่มีผูก/ส่งต่อ · มอบหมายไม่ได้ ──
+  { const fx = clone(FX); fx.endpoints["GET /api/mobile/inbox/systems"].canReply = false;
+    const { p, log } = await open("/customers/x1/info?s=cs1", fx); await p.waitForSelector('[data-testid="cust-info-ask-shark"]'); await sleep(500);
+    res.u_viewOnlyK3 = { link: await count(p, "cust-info-link"), unlink: await count(p, "cust-info-unlink"), handoff: await count(p, "cust-info-handoff"), close: await count(p, "cust-info-close"), askShark: await count(p, "cust-info-ask-shark") };
+    await p.click('[data-testid="cust-info-assign"]'); await p.click('[data-testid="cust-info-helpers"]'); await p.click('[data-testid="cust-info-status"]'); await sleep(500);
+    res.u_viewOnlyK3.sheetsOpened = (await count(p, "cust-info-assign-sheet")) + (await count(p, "cust-info-helpers-sheet")) + (await count(p, "cust-info-status-sheet")); res.u_viewOnlyK3.writes = posts(log, /inbox\/conversations\/x1\/(assign|helpers|status|handoff|contact)/).length;
+    await p.screenshot({ path: `${OUT}/u-k3-view-only.png` }); await p.close(); }
+  { const fx = clone(FX); fx.endpoints["GET /api/mobile/me"].memberships[0].role = "STAFF";
+    const { p } = await open("/customers/x1/info?s=cs1", fx); await p.waitForSelector('[data-testid="cust-info-status"]'); await sleep(500);
+    res.u_staffK3 = { link: await count(p, "cust-info-link"), handoff: await count(p, "cust-info-handoff"), close: await count(p, "cust-info-close") };
+    await p.click('[data-testid="cust-info-assign"]'); await sleep(400); res.u_staffK3.assignSheet = await count(p, "cust-info-assign-sheet"); await p.close(); }
+  { const fx = clone(FX); fx.endpoints["GET /api/mobile/me"].memberships[0].role = "STAFF"; fx.endpoints["GET /api/mobile/inbox/conversations/x1"].conversation.assigneeUserId = "u-qc-owner";
+    const { p } = await open("/customers/x1/info?s=cs1", fx); await p.waitForSelector('[data-testid="cust-info-status"]'); await sleep(500);
+    res.u_staffAssigneeHandoff = await count(p, "cust-info-handoff"); await p.close(); }
+  { const fx = clone(FX); fx.endpoints["GET /api/mobile/me"].memberships[0].role = "STAFF"; const cv = fx.endpoints["GET /api/mobile/inbox/conversations/x1"].conversation; cv.assigneeUserId = null; cv.assigneeName = null;
+    const { p, log } = await open("/customers/x1/info?s=cs1", fx); await p.waitForSelector('[data-testid="cust-info-assign"]'); await sleep(500); await p.click('[data-testid="cust-info-assign"]'); await sleep(900);
+    res.u_staffClaimSelf = bodies(log, "POST /api/mobile/inbox/conversations/x1/assign"); await p.close(); }
   // ── K4/K5 ตั้งค่า (OWNER): ภาพเดี่ยว · กฎ PUT · เวร · แจ้งเตือน ──
   { const { p, log } = await open("/secretary/settings/customers", FX); await p.waitForSelector('[data-testid="cust-set-channels"]');
     await p.$eval('[data-testid="cust-set-channels"]', (e) => e.scrollIntoView({ block: "start" })); await sleep(400); await p.screenshot({ path: `${OUT}/k4-channels-quick-notify.png` });

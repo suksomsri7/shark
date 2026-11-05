@@ -121,3 +121,12 @@ cp apps/mobile/qc/shots-sec/s2.17-interaction/README-click.mjs.txt <scratch>/s21
 
 ## ต่อจากนี้ (ถ้า restart)
 แก้จอแล้ว: รันบล็อก §7 → `bash scripts/iso.sh env QC_FORCE=1 SPEC=scripts/qc-sec-specs/s2.17.json pnpm exec tsx scripts/qc-sec-screen.mts`
+
+## 9. รอบ 2 — RESOLUTIONS §U (ผู้ตรวจ V: MERGE-AFTER-FIX) · merge ทิป 77732dc2 แล้ว
+| ข้อ | ทำที่ | หลักฐาน (`s2.17-interaction/result.json` คีย์ `u_*`) |
+|---|---|---|
+| R-S2.17a K3 ตาม canReply/บทบาท | `src/api/inbox.ts` store `useInboxCanReply`/`setInboxCanReply` (ตั้งจาก inbox/systems ใน K1/K2/K3/K4) · `info.tsx`: canReply ไม่จริง ⇒ ซ่อน ผูก/ถอด · ส่งต่อ · ปิดห้อง และแถว มอบหมาย/คนช่วย/สถานะ กดไม่ได้ · มอบหมายคนอื่น + ผูกสมาชิก = OWNER/MANAGER · STAFF = แตะแถวผู้ดูแลเพื่อรับห้องที่ยังว่างให้ตัวเอง · ส่งต่อ = ผู้ดูแล/คนช่วย/OWNER/MANAGER | canReply=false: link 0 · unlink 0 · handoff 0 · close 0 · ชีตเปิด 0 · POST เขียน 0 (`u-k3-view-only.png`) · STAFF ไม่ใช่ผู้ดูแล: link 0 · handoff 0 · ชีตมอบหมาย 0 · STAFF เป็นผู้ดูแล: handoff 1 · STAFF ห้องว่าง: `assign {assigneeUserId: ตัวเอง}` |
+| R-S2.17b K2 map เดียว + cursor + poll รวม · K1 รวมเมื่อ >1 หน้า | `[id]/index.tsx` `msgMap` (คีย์ id · เรียง createdAt,id) · ก่อนหน้า `before=<createdAt>|<id>` ของข้อความเก่าสุดที่แสดง · `index.tsx` `pages`/`filterKey`: poll หลายหน้า = หน้าแรกสด + แถวเดิมที่ไม่ซ้ำ id | `?before=2026-11-05T02:52:00.000Z|m1` · ฟองลูกค้า 5 → 6 หลังโหลดก่อนหน้า → 6 หลัง poll 2 รอบ · ปุ่มก่อนหน้าหายเมื่อ nextBefore null |
+| R-S2.17c | Composer: สำเร็จ ⇒ ล้างข้อความ 429 · `fixedId` (ส่งใหม่) ไม่แตะ cmid/failedKey ของข้อความที่พิมพ์ · `MessageBubble`: ข้อความระบบ = type SYSTEM / ผู้ส่ง `system:*` / บันทึกภายในไม่มีผู้ส่ง (ไม่ดูเนื้อความ) · บันทึกภายในแสดงไฟล์แนบ · เปิดลิงก์ผ่าน `isSafeLink` (https เท่านั้น) · K2/K3 403 ⇒ `setCustomersAccess(false)` · `useSecretaryZone` เปลี่ยนผู้ใช้/ร้าน ⇒ `resetInboxState()` (currentSystemId + canReply) + K1 ล้าง systemId | ข้อความหลังสำเร็จ 0 · รหัส: พิมพ์ล้ม `c-…ka7` → `resend:m7` → ส่งข้อความเดิมซ้ำ = `c-…ka7` (เดิม) · บันทึกภายในมีไฟล์ 1 · ลิงก์ `javascript:`/`http:` เปิดหน้าใหม่ 0 · ฟองระบบ 1 (SLA `system:sla`) · 🙋 ของพนักงาน = บันทึกภายใน (internal 2) |
+- fixture: m8 = โน้ต SLA ผู้ส่ง `system:sla` (แทน 🔁 ที่ตอนนี้เป็นบันทึกภายในตามผู้ส่ง) — s2.17.json + s2.1.json
+- ตั๋วเซิร์ฟเวอร์ (§U): phoneMasked · canAssign/canSetStatus/canLinkCustomer · replyWindowEndsAt · ai-suggest Bearer + suggestionId · tags/deals · task-from-chat — แอปคงการปิดเบอร์ + ปุ่มที่ซ่อนไว้

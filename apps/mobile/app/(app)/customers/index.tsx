@@ -5,7 +5,7 @@
 //   แท็บ: ทั้งหมด · ยังไม่ตอบ (OPEN ไม่มีคนรับ หรือ staffUnreadCount > 0 — กรองในแอป) · ของฉัน (assignee=me) · ปิดแล้ว (status RESOLVED)
 //   แถว: อวตารตัวอักษร · ป้ายช่องทาง · ชื่อ · แท็ก ("รอคน" เมื่อเซิร์ฟเวอร์ส่ง tags) · ตัวอย่างข้อความ · เวลา · ยังไม่อ่าน · ผู้ดูแล ·
 //     "Shark ร่างคำตอบไว้แล้ว" (aiDraft) · ไม่มีคนรับ = "ยังไม่มีคนรับ · รอ N นาที" (waitingMin) + กฎที่จะใช้
-//   ดึงลง + poll 15 วิ (จออยู่ + แอปอยู่หน้า) · หน้าต่อไปด้วย nextBefore · 403 ⇒ จอ "ไม่มีสิทธิ์" + ซ่อนไอคอนโซนลูกค้า (setCustomersAccess)
+//   ดึงลง + poll 15 วิ (จออยู่ + แอปอยู่หน้า) · หน้าต่อไปด้วย nextBefore · โหลดมากกว่า 1 หน้าแล้ว poll รวมด้วย id (ไม่ทิ้งหน้าที่เลื่อนมา · R-S2.17b) · 403 ⇒ จอ "ไม่มีสิทธิ์" + ซ่อนไอคอนโซนลูกค้า (setCustomersAccess)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -20,6 +20,7 @@ import {
   inboxGet,
   isUnanswered,
   setCurrentSystem,
+  setInboxCanReply,
   statusOf,
   type ConvItem,
   type InboxSystem,
@@ -76,6 +77,9 @@ export default function CustomersScreen() {
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(() => AppState.currentState !== "background");
   const seq = useRef(0);
+  /** จำนวนหน้าที่โหลดของตัวกรองปัจจุบัน + คีย์ตัวกรอง (เปลี่ยนตัวกรอง = เริ่มหน้าแรกใหม่) */
+  const pages = useRef(1);
+  const filterKey = useRef("");
 
   // ค้นหา: รอพิมพ์เสร็จ 400 ms
   useEffect(() => {
@@ -86,6 +90,10 @@ export default function CustomersScreen() {
   // กิจการเปลี่ยน ⇒ ล้างของเดิมทันที
   useEffect(() => {
     setSystems([]);
+    setSystemId(null);
+    setCurrentSystem(null);
+    pages.current = 1;
+    filterKey.current = "";
     setItems([]);
     setNext(null);
     setCounts(null);
@@ -103,6 +111,7 @@ export default function CustomersScreen() {
       const list = sys.items ?? [];
       setSystems(list);
       setCanReply(sys.canReply !== false);
+      setInboxCanReply(sys.canReply !== false);
       setDenied(false);
       setCustomersAccess(true);
       const sid = systemId && list.some((s) => s.id === systemId) ? systemId : (list[0]?.id ?? null);
@@ -119,8 +128,17 @@ export default function CustomersScreen() {
       ]);
       if (my !== seq.current) return;
       const rows = page.items ?? [];
-      setItems(rows);
-      setNext(page.nextBefore ?? null);
+      const key = JSON.stringify([sid, tab, channel, q]);
+      if (key === filterKey.current && pages.current > 1) {
+        // poll ขณะเลื่อนดูหลายหน้า: หน้าแรกสด + แถวที่โหลดไว้ (รวมด้วย id) · nextBefore ของหน้าท้ายเดิมคงไว้
+        const fresh = new Set(rows.map((x) => x.id));
+        setItems((cur) => [...rows, ...cur.filter((x) => !fresh.has(x.id))]);
+      } else {
+        filterKey.current = key;
+        pages.current = 1;
+        setItems(rows);
+        setNext(page.nextBefore ?? null);
+      }
       setRouting(rt);
       if (tab === "all" && !channel && !q) {
         const by = new Map<string, number>();
@@ -134,6 +152,7 @@ export default function CustomersScreen() {
       if (statusOf(e) === 403) {
         setDenied(true);
         setCustomersAccess(false);
+        setInboxCanReply(false);
       } else setOffline(true);
     } finally {
       if (my === seq.current) setLoading(false);
@@ -180,6 +199,7 @@ export default function CustomersScreen() {
         return [...cur, ...(page.items ?? []).filter((x) => !seen.has(x.id))];
       });
       setNext(page.nextBefore ?? null);
+      pages.current += 1;
     } catch {
       setOffline(true);
     } finally {
