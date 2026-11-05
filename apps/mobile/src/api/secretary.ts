@@ -20,6 +20,8 @@ const PATH = {
   "secretary/access": "/api/mobile/secretary/access",
   "secretary/inbox/count": "/api/mobile/secretary/inbox/count",
   "inbox/unread": "/api/mobile/inbox/unread",
+  // S2.14 (R-S2.13b · §Y.2): ตัวเลข badge 3 โซนในเส้นเดียว (S1.14c) — แทน inbox/count + inbox/unread + staff/invites + support/cases
+  "secretary/badges": "/api/mobile/secretary/badges",
   // ตั้งค่า (ใบ S2.7–S2.9 · ชื่อตาม S1.14 docs/api/SECRETARY-API.md)
   "secretary": "/api/mobile/secretary/secretary",
   "secretary/quota": "/api/mobile/secretary/quota",
@@ -135,6 +137,8 @@ export type Suggestion = { key: string; system: string; title: string; instructi
 export type Frequent = { title: string; instruction: string };
 export type AccessItem = { module: string; level: "OFF" | "READ" | "DRAFT" | "AUTO" | string };
 export type InboxCount = { total: number; canApprove: number };
+/** GET secretary/badges (S1.14c) — approvals = รออนุมัติของกิจการนี้ · customers = ห้องลูกค้าที่ยังไม่อ่าน · team = คำเชิญ + ขอให้ช่วย + เรื่องช่วยเหลือ */
+export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number }; total: number };
 
 /** ชื่อเลขาปริยายก่อนโหลด/เมื่อโหลดไม่ได้ (ค่าเริ่มต้นของระบบ · C1) */
 export const DEFAULT_SECRETARY_NAME = "Shark";
@@ -147,6 +151,7 @@ type GetMap = {
   "secretary/access": { items?: AccessItem[]; levels?: string[]; autoAvailable?: boolean };
   "secretary/inbox/count": InboxCount;
   "inbox/unread": { unread: number };
+  "secretary/badges": ZoneBadgesRes;
   "secretary": SecretaryIdentity;
   "secretary/quota": QuotaView;
   "secretary/rules": RulesView;
@@ -157,6 +162,7 @@ type GetMap = {
   "secretary/after-hours": AfterHours;
   "secretary/staff": { items?: StaffRow[] };
   "inbox/staff": { items?: { userId: string; name?: string | null; role?: string; onDuty?: boolean }[] };
+  "inbox/shift": { onDuty: boolean; onDutyAt: string | null };
   "secretary/inbox": { items?: unknown[] };
   "secretary/scheduled": { items?: unknown[]; max?: number };
   "secretary/badge": { badge?: number };
@@ -653,36 +659,29 @@ const ZERO: ZoneCounts = { secretary: 0, customers: 0, team: 0 };
 let badges: ZoneCounts = ZERO;
 const badgeListeners = new Set<() => void>();
 
-// S2.20 ทีม = คำเชิญที่ร้านส่งแล้วรอรับ (ยังไม่หมดอายุ · เห็นเฉพาะ OWNER/MANAGER — STAFF ไม่ยิง) + เรื่องขอความช่วยเหลือที่ทีม SHARK ตอบแล้วรอเรา (support/cases.unread)
-// บทบาทมาจาก useSecretaryZone (ชั้น layout) — จอที่เรียก refreshZoneBadges() หลัง action ไม่ต้องรู้บทบาท
-let badgeRole: string | null = null;
+// S2.14 (R-S2.13b · §Y.2): badge 3 โซนจาก `GET secretary/badges` เส้นเดียว (เดิมยิง 3–4 เส้น)
+//   เลขา = approvals (รออนุมัติที่ฉันกดได้ของกิจการนี้) · ลูกค้า = customers (ห้องที่ยังไม่อ่าน · ไม่มีสิทธิ์อ่านแชท = 0)
+//   ทีม = team.invites (คำเชิญรอรับ · server นับเฉพาะ OWNER/MANAGER) + team.help (ห้องที่ถูกเรียกมาช่วย) + team.support (เรื่องช่วยเหลือที่ยังไม่อ่าน)
+//   สิทธิ์ดูแชทลูกค้า: เส้นนี้ไม่บอก (customers=0 ทั้ง "ไม่มีสิทธิ์" และ "อ่านหมด") ⇒ ไอคอนลูกค้าซ่อนจาก 403 ของ K1/K2/K3 เท่านั้น (ตั๋ว server: เพิ่มธงสิทธิ์ใน badges)
 let badgeSeq = 0;
-/** จำนวนคำเชิญที่ยังรอรับ (ไม่หมดอายุ) — pure */
-export function pendingInviteCount(v: unknown, nowMs: number): number {
-  return normalizeInvites(v).filter((x) => !x.expired && (!x.expiresAt || Date.parse(x.expiresAt) > nowMs)).length;
+const nonNeg = (v: unknown) => Math.max(0, Math.floor(Number(v ?? 0) || 0));
+/** แปลงผล secretary/badges เป็นตัวเลข 3 โซน (pure · รูปเสีย = 0) */
+export function zoneCountsOf(r: Partial<ZoneBadgesRes> | null | undefined): ZoneCounts {
+  if (!r) return ZERO;
+  const team = r.team ?? { invites: 0, help: 0, support: 0 };
+  return { secretary: nonNeg(r.approvals), customers: nonNeg(r.customers), team: nonNeg(team.invites) + nonNeg(team.help) + nonNeg(team.support) };
 }
 export async function refreshZoneBadges(): Promise<void> {
   const seq = ++badgeSeq;
-  const manage = badgeRole === "OWNER" || badgeRole === "MANAGER";
-  const [sec, cust, inv, sup] = await Promise.all([
-    secGet("secretary/inbox/count").catch(() => null),
-    secGet("inbox/unread").catch((e: unknown) => {
-      // S2.17: 403 = ไม่มีสิทธิ์ดูแชทลูกค้า ⇒ ซ่อนไอคอนโซนลูกค้า (ล้มแบบอื่น = ไม่เปลี่ยน)
-      if (isDenied(e)) setCustomersAccess(false);
-      return null;
-    }),
-    manage ? secGet("secretary/staff/invites").catch(() => null) : Promise.resolve(null),
-    secGet("secretary/support/cases").catch(() => null),
-  ]);
+  const r = await secGet("secretary/badges").catch(() => null);
   if (seq !== badgeSeq) return; // รอบใหม่กว่าเริ่มแล้ว (เปลี่ยนร้าน/กดซ้ำ) — ผลเก่าไม่ทับ
-  if (cust) setCustomersAccess(true);
-  const team = (inv ? pendingInviteCount(inv, Date.now()) : 0) + Math.max(0, Math.floor(Number(sup?.unread ?? 0) || 0));
-  badges = { secretary: sec?.canApprove ?? 0, customers: cust?.unread ?? 0, team };
+  if (!r) return; // พลาด = คงตัวเลขเดิม (เปลี่ยนร้านล้างเป็น 0 แล้วที่ useSecretaryZone)
+  badges = zoneCountsOf(r);
   badgeListeners.forEach((fn) => fn());
 }
 
 // ───────── สิทธิ์ดูแชทลูกค้า (S2.17) — false = ซ่อนไอคอน "ลูกค้า" ใน SecTopBar ─────────
-// ตั้งจาก inbox/unread (ด้านบน) และจาก GET inbox/systems ของ K1 (403) · เริ่มต้น = แสดง (ไม่รู้ = ไม่ซ่อน) · เปลี่ยนผู้ใช้/กิจการ = ล้าง
+// ตั้งจาก 403 ของ K1/K2/K3 (inbox/systems · conversations) · K1 สำเร็จ = true · เริ่มต้น = แสดง (ไม่รู้ = ไม่ซ่อน) · เปลี่ยนผู้ใช้/กิจการ = ล้าง
 let customersAccess = true;
 const accessListeners = new Set<() => void>();
 export function setCustomersAccess(ok: boolean): void {
@@ -719,9 +718,8 @@ export function useZoneBadgeCounts(): ZoneCounts {
  * ผู้ใช้/กิจการเปลี่ยน (signOut · switchTenant) ⇒ resetSecretaryMe + โหลดใหม่ · badge โหลดตอน focus + กลับมา foreground
  */
 export function useSecretaryZone(): void {
-  const { user, activeTenantId, tenants } = useAuth();
+  const { user, activeTenantId } = useAuth();
   const userId = user?.id ?? null;
-  badgeRole = tenants.find((x) => x.tenantId === activeTenantId)?.role ?? null;
   useEffect(() => {
     resetSecretaryMe();
     badges = ZERO;
@@ -1232,11 +1230,11 @@ export const TENANT_SYSTEMS = ["POS", "CRM", "MEMBER", "ACCOUNT", "KANBAN", "CHA
 export const TENANT_SYSTEMS_MAX = 6;
 export type TenantCreateRes = { tenant: { id: string; name: string; slug?: string }; systems?: { type: string; id: string }[]; room?: { roomId: string; conversationId?: string } | null };
 
-/** POST staff/invite — `unitIds` ส่งเสมอ (["*"] = ทุกสาขา) · `permissions` = คีย์จาก LevelGrid.permissionsFromLevels */
-export type InviteBody = { name: string; phone: string; role: "MANAGER" | "STAFF"; unitIds: string[]; permissions: Record<string, true> };
+/** POST staff/invite — `unitIds` ส่งเสมอ (["*"] = ทุกสาขา) · S2.14: `levels` + `chat` ตรง ๆ (server แปลงเป็นคีย์เอง · S1.14b) — ไม่ส่ง permissions */
+export type InviteBody = { name: string; phone: string; role: "MANAGER" | "STAFF"; unitIds: string[]; levels?: Record<string, "OFF" | "VIEW" | "USE">; chat?: ChatLevel };
 export type InviteRes = { ok: boolean; inviteId?: string; sms?: "sent" | "mocked" | "unavailable" | string; expiresAt?: string; link?: string | null };
 /** เหตุผลปฏิเสธของ inviteStaff/resendInvite (S1.25) ที่จอแสดงข้อความไทยของตัวเอง */
-export const INVITE_REASONS = ["rate_limited", "already_member", "already_invited", "pending_cap", "bad_permissions", "sms_unavailable", "throttled", "bad_phone", "bad_role", "bad_units", "forbidden", "accepted", "not_found"] as const;
+export const INVITE_REASONS = ["rate_limited", "already_member", "already_invited", "pending_cap", "bad_permissions", "sms_unavailable", "throttled", "bad_phone", "bad_role", "bad_units", "forbidden", "accepted", "not_found", "bad_level", "bad_module", "sensitive_key"] as const;
 export type InviteReason = (typeof INVITE_REASONS)[number];
 export function inviteReasonOf(e: unknown): InviteReason | null {
   return e instanceof ApiError && (INVITE_REASONS as readonly string[]).includes(e.code) ? (e.code as InviteReason) : null;

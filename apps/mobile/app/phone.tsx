@@ -87,7 +87,8 @@ export default function PhoneLinkScreen() {
       if (why === "invalid") setShakeKey((k) => k + 1);
       // หมดอายุ/ไม่พบ ⇒ ส่งใหม่ได้ทันที · ล็อก ⇒ ตัวนับเดินต่อ (§R)
       if (why === "expired" || why === "not_found") setLeft(0);
-      setCode("");
+      // S2.14 (สถานะล้ม): เน็ต/เซิร์ฟเวอร์ขัดข้องชั่วคราว ⇒ คงรหัสไว้ให้กด "ยืนยัน" ซ้ำได้ · รหัสผิด/หมดอายุ ⇒ ล้างให้พิมพ์ใหม่
+      if (why !== "network" && why !== "server_error") setCode("");
     } finally {
       setBusy(false);
     }

@@ -13,7 +13,7 @@ import { useCallback, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, Note, PrimaryButton, SectionLabel, Segment } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, Loading, Note, PrimaryButton, SectionLabel, Segment } from "@/src/components/airy";
 import { Avatar, ChannelBadge, firstName, useChannelLabel } from "@/src/components/customers/parts";
 import {
   NOTIFY_MODES,
@@ -124,6 +124,8 @@ export default function SecretaryCustomersScreen() {
           </Note>
         ) : null}
 
+        {/* S2.14: ก่อนได้ after-hours = Loading (ล้ม = note ด้านบน) */}
+        {owner && !form && !note ? <Loading testID="sec-cust-loading" /> : null}
         {owner && form ? (
           <>
             <Glass radius={radii.sugg} style={styles.card}>
@@ -227,6 +229,7 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
   const [notify, setNotify] = useState<NotifyMode | null>(null);
   const [routing, setRouting] = useState<Routing | null>(null);
   const [rules, setRules] = useState<Draft[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const busyRef = useRef(false);
@@ -260,6 +263,7 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
           setRules(toDraft(rt));
           const m = nf?.prefs?.inbox;
           setNotify(isNotify(m) ? m : nf ? "ALL" : null);
+          setLoaded(true);
         } catch {
           if (live) setOk(false);
         }
@@ -330,6 +334,8 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
     });
 
   if (ok === false) return null;
+  // S2.14: ยังไม่รู้ช่องทาง/กฎ = Loading (ไม่โชว์ "ยังไม่ได้เชื่อม/ยังไม่มีกฎ" ก่อนผลมา)
+  if (!loaded) return <Loading testID="cust-set-loading" />;
   const dutyNames = onDuty.map((d) => firstName(d.name)).filter(Boolean).join(" · ");
   return (
     <>

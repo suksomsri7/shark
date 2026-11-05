@@ -208,6 +208,16 @@
   },
   "GET /api/mobile/secretary/staff/invites": {
    "items": []
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 0,
+   "customers": 0,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 1
+   },
+   "total": 1
   }
  }
 }

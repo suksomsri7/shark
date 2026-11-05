@@ -4,13 +4,14 @@
 //   มีห้อง ⇒ A1: ค้นหา (กรองชื่อในแอป) · ชิปกรอง 4 ตัว · การ์ดห้อง (RoomCard) → /secretary/room/[id]
 //   ไม่มีห้อง ⇒ C3: orb + ข้อเสนองานแรกจาก secretary/suggestions (ไม่มี/พลาด = ข้อเสนอตั้งต้นใน i18n) → /secretary/new พร้อมเติมคำสั่ง
 //   403 ⇒ "บัญชีนี้ยังใช้เลขาไม่ได้" (R-S2.1d · ไม่ใช่ C3)
+//   S2.14: ก่อนผลแรก = Loading (ไม่ใช่ C3) · ล้ม (500/เน็ต) ครั้งแรก = LoadError + ลองใหม่ (ไม่ตก C3)
 // ข้อความทั้งหมดผ่าน i18n · สเกล R-UI1: ระยะแนวตั้ง = แบบ × 0.73 (F.v) · ตัวอักษรตาม tokens.type
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, InputBar, Orb, SectionLabel, SysBadge } from "@/src/components/airy";
+import { AiryScreen, BottomDock, Glass, Icon, InputBar, LoadError, Loading, Orb, SectionLabel, SysBadge } from "@/src/components/airy";
 import { SecTopBar, TenantTitle } from "@/src/components/secretary/SecTopBar";
 import { RoomCard, isTodayBkk, sysName } from "@/src/components/secretary/RoomCard";
 import { RoomFilters, type RoomFilterKey, type RoomFilterOption } from "@/src/components/secretary/RoomFilters";
@@ -29,7 +30,7 @@ import {
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { cardGap, radii, size, spacing, type as T } from "@/src/theme/tokens";
+import { DOCK_FADE, cardGap, radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 /** ระยะล่างของช่องสั่งงาน (เหนือขอบจอ) */
 const INPUT_BOTTOM = 26;
@@ -60,6 +61,7 @@ export default function SecretaryHome() {
 
   const [rooms, setRooms] = useState<Room[] | null>(null);
   const [denied, setDenied] = useState(false);
+  const [failed, setFailed] = useState(false);
   // R-S2.13h (L4): สิทธิ์ใช้เลขา 3 ค่า — ปุ่ม + บนแถบบนโผล่เมื่อรู้ว่า "อนุญาต" เท่านั้น (ไม่แวบก่อน 403)
   const [access, setAccess] = useState<"unknown" | "ok" | "denied">("unknown");
   const [sugg, setSugg] = useState<C3Item[] | null>(null);
@@ -74,6 +76,7 @@ export default function SecretaryHome() {
     tenantRef.current = activeTenantId;
     setRooms(null);
     setDenied(false);
+    setFailed(false);
     setAccess("unknown");
     setSugg(null);
   }, [activeTenantId]);
@@ -86,6 +89,7 @@ export default function SecretaryHome() {
       const r = await secGet("secretary/rooms", { scope: "mine", take: 50 });
       if (tenantRef.current !== tenant) return;
       setDenied(false);
+      setFailed(false);
       setAccess("ok");
       setRooms((r.items ?? []).map((x) => normalizeRoom(x, userId)));
     } catch (e) {
@@ -94,7 +98,7 @@ export default function SecretaryHome() {
         setDenied(true);
         setAccess("denied");
         setRooms([]);
-      } else setRooms((prev) => prev ?? []); // ออฟไลน์/เส้นยังไม่ขึ้น: คงรายการเดิม
+      } else setFailed(true); // ออฟไลน์/เส้นยังไม่ขึ้น: คงรายการเดิม (ยังไม่เคยได้ = LoadError)
     }
     setNowMs(Date.now());
   }, [activeTenantId, userId]);
@@ -111,6 +115,11 @@ export default function SecretaryHome() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  }, [load]);
+
+  const retry = useCallback(() => {
+    setFailed(false);
+    void load();
   }, [load]);
 
   const hasRooms = !!rooms && rooms.length > 0;
@@ -244,9 +253,14 @@ export default function SecretaryHome() {
               </Pressable>
             ))}
           </View>
-        ) : null}
+        ) : failed ? (
+          <LoadError testID="sec-home-error" onRetry={retry} />
+        ) : (
+          <Loading testID="sec-home-loading" />
+        )}
       </ScrollView>
 
+      {denied ? null : <BottomDock height={INPUT_BOTTOM + insets.bottom + size.inputH + DOCK_FADE} />}
       {denied ? null : (
         <Pressable
           testID="sec-home-new"
@@ -256,7 +270,7 @@ export default function SecretaryHome() {
           style={[styles.input, { bottom: INPUT_BOTTOM + insets.bottom }]}
         >
           <View pointerEvents="none">
-            <InputBar testID="sec-input" placeholder={hasRooms ? t("sec.a1.input", { name }) : t("sec.c3.input", { name })} />
+            <InputBar testID="sec-input" placeholder={empty ? t("sec.c3.input", { name }) : t("sec.a1.input", { name })} />
           </View>
         </Pressable>
       )}

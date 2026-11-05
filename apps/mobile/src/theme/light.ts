@@ -88,6 +88,8 @@ export const light = {
   channel: { LINE: "#06c755", WEBCHAT: "#5a64d8", FACEBOOK: "#1877f2", INSTAGRAM: "#d8436a", SHOPEE: "#ee4d2d", LAZADA: "#0f146d", WHATSAPP: "#25d366", TIKTOK: "#16161c", other: "#8e8e93" },
   cust: { bannerBg: "rgba(52,199,89,0.16)", bannerFg: "#1a7f3c", noteBg: "rgba(255,240,224,0.75)", noteBorder: "rgba(196,122,18,0.55)", ai: "#6a4fd8", aiBg: "rgba(106,79,216,0.09)", aiBorder: "rgba(106,79,216,0.55)", waiting: "#ff9f0a" },
   inputBg: "rgba(255,255,255,0.74)",
+  // S2.14 F1: แถบรองใต้ปุ่ม/ช่องลอยล่าง (ไล่จากใส → พื้นจอทึบ) + พื้นทึบของช่องพิมพ์ — ข้อความการ์ดห้ามทะลุ
+  dock: { fade: "rgba(251,251,253,0)", solid: "#fbfbfd", bar: "#ffffff" },
   chip: { bg: "rgba(150,150,185,0.12)", fg: "#6e6e73" }, // .chips span
   tab: { fg: "#555566" }, // .tabs span
   seg: { track: "rgba(150,150,185,0.12)", on: "#ffffff", onShadow: "0px 2px 8px rgba(100,100,150,0.15)", fg: "#6e6e73", onFg: "#111111" }, // .segw

@@ -7,7 +7,7 @@ import { useCallback, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, Note, SectionLabel, type IconName } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, LoadError, Loading, Note, SectionLabel, type IconName } from "@/src/components/airy";
 import { OwnerOnlyBadge, SettingsTop } from "@/src/components/secretary/SettingRow";
 import { bahtText } from "@/src/components/secretary/bkk";
 import { DEFAULT_SECRETARY_NAME, secDeleteId, secGet, secPostId, serverNote, useActiveRole, useSecretaryMe, type Digest, type Lesson, type PendingMemory } from "@/src/api/secretary";
@@ -17,6 +17,10 @@ import { F, useTheme } from "@/src/theme/index";
 import { radii, spacing, type as T } from "@/src/theme/tokens";
 
 type Act = { kind: "memory" | "lesson"; id: string; confirm: boolean };
+/** S2.14: สถานะต่อส่วน — ข้อความว่างแสดงเมื่อได้ผลว่างจริงเท่านั้น */
+type Part = "loading" | "ok" | "error";
+type Parts = { facts: Part; lessons: Part; digest: Part };
+const LOADING: Parts = { facts: "loading", lessons: "loading", digest: "loading" };
 
 export default function SecretaryKnowledgeScreen() {
   const { c } = useTheme();
@@ -32,6 +36,7 @@ export default function SecretaryKnowledgeScreen() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [digest, setDigest] = useState<Digest | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [parts, setParts] = useState<Parts>(LOADING);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const seq = useRef(0);
 
@@ -39,17 +44,21 @@ export default function SecretaryKnowledgeScreen() {
     if (!activeTenantId) return;
     const my = ++seq.current;
     const live = () => my === seq.current;
+    const mark = (k: keyof Parts, v: Part) => live() && setParts((x) => ({ ...x, [k]: v }));
     if (owner) {
       secGet("secretary/memories/pending")
-        .then((r) => live() && setFacts(r.items ?? []))
-        .catch(() => live() && setFacts([]));
-    } else setFacts([]);
+        .then((r) => live() && (setFacts(r.items ?? []), mark("facts", "ok")))
+        .catch(() => live() && (setFacts([]), mark("facts", "error")));
+    } else {
+      setFacts([]);
+      mark("facts", "ok");
+    }
     secGet("secretary/lessons")
-      .then((r) => live() && setLessons((r.items ?? []).filter((x) => x.status !== "REJECTED")))
-      .catch(() => live() && setLessons([]));
+      .then((r) => live() && (setLessons((r.items ?? []).filter((x) => x.status !== "REJECTED")), mark("lessons", "ok")))
+      .catch(() => live() && (setLessons([]), mark("lessons", "error")));
     secGet("secretary/digest")
-      .then((r) => live() && setDigest(r.digest ?? null))
-      .catch(() => live() && setDigest(null));
+      .then((r) => live() && (setDigest(r.digest ?? null), mark("digest", "ok")))
+      .catch(() => live() && (setDigest(null), mark("digest", "error")));
   }, [activeTenantId, owner]);
 
   useFocusEffect(
@@ -100,6 +109,13 @@ export default function SecretaryKnowledgeScreen() {
       </View>
     ) : null;
 
+  const retry = () => {
+    setParts(LOADING);
+    load();
+  };
+  const anyLoading = parts.facts === "loading" || parts.lessons === "loading" || parts.digest === "loading";
+  const anyError = parts.facts === "error" || parts.lessons === "error" || parts.digest === "error";
+
   const d = digest;
   const digestRows: { key: string; icon: IconName; label: string; value: string }[] = [];
   if (d?.sales) {
@@ -125,79 +141,94 @@ export default function SecretaryKnowledgeScreen() {
           </Note>
         ) : null}
 
-        <SectionLabel style={styles.label}>{t("sec.know.factsLabel")}</SectionLabel>
-        {facts.length === 0 ? (
-          <Text testID="sec-know-facts-empty" style={[styles.empty, { color: c.textMuted }]}>
-            {owner ? t("sec.know.factsEmpty") : t("sec.know.factsOwner")}
-          </Text>
-        ) : (
-          facts.map((f) => (
-            <Glass key={f.id} testID="sec-know-fact" radius={radii.sugg} style={styles.card}>
-              <View testID={`sec-know-fact-${f.id}`} style={styles.row}>
-                <View style={[styles.ico, { backgroundColor: c.surface }]}>
-                  <Icon name="bookmark" size={18} />
-                </View>
-                <View style={styles.body}>
-                  <Text style={[styles.title, { color: c.text }]}>{f.content}</Text>
-                  <Text style={[styles.meta, { color: c.textMuted }]}>{t("sec.know.factMeta")}</Text>
-                </View>
-              </View>
-              {buttons("memory", f.id, true)}
-            </Glass>
-          ))
-        )}
+        {/* S2.14: ก่อนผลแรกครบ = Loading · ส่วนที่ล้ม = ซ่อน + LoadError (ไม่ใช่ข้อความว่าง) */}
+        {anyLoading ? <Loading testID="sec-know-loading" /> : anyError ? <LoadError testID="sec-know-error" onRetry={retry} /> : null}
 
-        <SectionLabel style={styles.label}>{t("sec.know.lessonsLabel", { name })}</SectionLabel>
-        {lessons.length === 0 ? (
-          <Text testID="sec-know-lessons-empty" style={[styles.empty, { color: c.textMuted }]}>
-            {t("sec.know.lessonsEmpty")}
-          </Text>
-        ) : (
-          lessons.map((l) => {
-            const pending = l.status === "PENDING";
-            return (
-              <Glass key={l.id} testID="sec-know-lesson" radius={radii.sugg} style={styles.card}>
-                <View testID={`sec-know-lesson-${l.id}`} style={styles.row}>
-                  <View style={[styles.ico, { backgroundColor: c.surface }]}>
-                    <Icon name="edit-3" size={18} />
-                  </View>
-                  <View style={styles.body}>
-                    <View style={styles.titleRow}>
-                      <Text style={[styles.title, styles.flex, { color: c.text }]}>{l.pattern}</Text>
-                      <View style={[styles.badge, { backgroundColor: pending ? c.accent : c.chip.bg }]}>
-                        <Text style={[styles.badgeT, { color: pending ? c.onAccent : c.textDim }]}>{t(pending ? "sec.know.pending" : "sec.know.inUse")}</Text>
-                      </View>
+        {!anyLoading && parts.facts === "ok" ? (
+          <>
+            <SectionLabel style={styles.label}>{t("sec.know.factsLabel")}</SectionLabel>
+            {facts.length === 0 ? (
+              <Text testID="sec-know-facts-empty" style={[styles.empty, { color: c.textMuted }]}>
+                {owner ? t("sec.know.factsEmpty") : t("sec.know.factsOwner")}
+              </Text>
+            ) : (
+              facts.map((f) => (
+                <Glass key={f.id} testID="sec-know-fact" radius={radii.sugg} style={styles.card}>
+                  <View testID={`sec-know-fact-${f.id}`} style={styles.row}>
+                    <View style={[styles.ico, { backgroundColor: c.surface }]}>
+                      <Icon name="bookmark" size={18} />
                     </View>
-                    <Text style={[styles.meta, { color: c.textMuted }]}>
-                      {t(l.sourceRoomId ? "sec.know.fromRoom" : "sec.know.fromTeach")} · {t("sec.know.used", { n: l.occurrences ?? 0 })}
-                    </Text>
+                    <View style={styles.body}>
+                      <Text style={[styles.title, { color: c.text }]}>{f.content}</Text>
+                      <Text style={[styles.meta, { color: c.textMuted }]}>{t("sec.know.factMeta")}</Text>
+                    </View>
                   </View>
-                  {l.sourceRoomId ? (
-                    <Pressable testID={`sec-know-room-${l.id}`} onPress={() => router.push(`/secretary/room/${l.sourceRoomId}`)} accessibilityRole="link" hitSlop={8}>
-                      <Icon name="chevron-right" size={18} color={c.iconDim} />
-                    </Pressable>
-                  ) : null}
-                </View>
-                {buttons("lesson", l.id, pending)}
-              </Glass>
-            );
-          })
-        )}
+                  {buttons("memory", f.id, true)}
+                </Glass>
+              ))
+            )}
+          </>
+        ) : null}
 
-        <SectionLabel style={styles.label}>{t("sec.know.digestLabel")}</SectionLabel>
-        <Glass testID="sec-know-digest" radius={radii.card} style={styles.card}>
-          {digestRows.length === 0 ? (
-            <Text style={[styles.meta, { color: c.textMuted }]}>{t("sec.know.digestEmpty")}</Text>
-          ) : (
-            digestRows.map((r, i) => (
-              <View key={r.key} testID={`sec-know-digest-${r.key}`} style={[styles.dRow, i > 0 && [styles.dSep, { borderTopColor: c.divider }]]}>
-                <Icon name={r.icon} size={16} color={c.textDim} />
-                <Text style={[styles.dL, { color: c.textDim }]}>{r.label}</Text>
-                <Text style={[styles.dV, { color: c.text }]}>{r.value}</Text>
-              </View>
-            ))
-          )}
-        </Glass>
+        {!anyLoading && parts.lessons === "ok" ? (
+          <>
+            <SectionLabel style={styles.label}>{t("sec.know.lessonsLabel", { name })}</SectionLabel>
+            {lessons.length === 0 ? (
+              <Text testID="sec-know-lessons-empty" style={[styles.empty, { color: c.textMuted }]}>
+                {t("sec.know.lessonsEmpty")}
+              </Text>
+            ) : (
+              lessons.map((l) => {
+                const pending = l.status === "PENDING";
+                return (
+                  <Glass key={l.id} testID="sec-know-lesson" radius={radii.sugg} style={styles.card}>
+                    <View testID={`sec-know-lesson-${l.id}`} style={styles.row}>
+                      <View style={[styles.ico, { backgroundColor: c.surface }]}>
+                        <Icon name="edit-3" size={18} />
+                      </View>
+                      <View style={styles.body}>
+                        <View style={styles.titleRow}>
+                          <Text style={[styles.title, styles.flex, { color: c.text }]}>{l.pattern}</Text>
+                          <View style={[styles.badge, { backgroundColor: pending ? c.accent : c.chip.bg }]}>
+                            <Text style={[styles.badgeT, { color: pending ? c.onAccent : c.textDim }]}>{t(pending ? "sec.know.pending" : "sec.know.inUse")}</Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.meta, { color: c.textMuted }]}>
+                          {t(l.sourceRoomId ? "sec.know.fromRoom" : "sec.know.fromTeach")} · {t("sec.know.used", { n: l.occurrences ?? 0 })}
+                        </Text>
+                      </View>
+                      {l.sourceRoomId ? (
+                        <Pressable testID={`sec-know-room-${l.id}`} onPress={() => router.push(`/secretary/room/${l.sourceRoomId}`)} accessibilityRole="link" hitSlop={8}>
+                          <Icon name="chevron-right" size={18} color={c.iconDim} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                    {buttons("lesson", l.id, pending)}
+                  </Glass>
+                );
+              })
+            )}
+          </>
+        ) : null}
+
+        {!anyLoading && parts.digest === "ok" ? (
+          <>
+            <SectionLabel style={styles.label}>{t("sec.know.digestLabel")}</SectionLabel>
+            <Glass testID="sec-know-digest" radius={radii.card} style={styles.card}>
+              {digestRows.length === 0 ? (
+                <Text style={[styles.meta, { color: c.textMuted }]}>{t("sec.know.digestEmpty")}</Text>
+              ) : (
+                digestRows.map((r, i) => (
+                  <View key={r.key} testID={`sec-know-digest-${r.key}`} style={[styles.dRow, i > 0 && [styles.dSep, { borderTopColor: c.divider }]]}>
+                    <Icon name={r.icon} size={16} color={c.textDim} />
+                    <Text style={[styles.dL, { color: c.textDim }]}>{r.label}</Text>
+                    <Text style={[styles.dV, { color: c.text }]}>{r.value}</Text>
+                  </View>
+                ))
+              )}
+            </Glass>
+          </>
+        ) : null}
         <Text style={[styles.foot, { color: c.textMuted }]}>{t("sec.know.foot", { name })}</Text>
       </ScrollView>
     </AiryScreen>

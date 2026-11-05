@@ -6,7 +6,7 @@ import { useCallback, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Note, SysBadge } from "@/src/components/airy";
+import { AiryScreen, Glass, Loading, Note, SysBadge } from "@/src/components/airy";
 import { OwnerOnlyBadge, SettingsTop } from "@/src/components/secretary/SettingRow";
 import { LevelPicker } from "@/src/components/secretary/LevelPicker";
 import { sysName } from "@/src/components/secretary/RoomCard";
@@ -86,6 +86,8 @@ export default function SecretaryAccessScreen() {
             {note}
           </Note>
         ) : null}
+        {/* S2.14: ก่อนผลแรก = Loading */}
+        {!loaded ? <Loading testID="sec-access-loading" /> : null}
         {loaded && items.length === 0 && !note ? <Text style={[styles.empty, { color: c.textMuted }]}>{t("sec.access.empty")}</Text> : null}
         {items.map((x) => {
           const sysLabel = sysName(t, x.module);

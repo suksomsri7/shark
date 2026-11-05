@@ -78,16 +78,21 @@ export default function OtpScreen() {
       await signIn(r.token, { freshSignup: r.isNew === true }); // ยามหน้าประตูเด้งต่อเอง — คาสถานะ busy ไว้จนจอเปลี่ยน
     } catch (e) {
       const why = authErrorCode(e);
-      if (why === "no_account") setNoAccount(true);
-      else if (why === "sms_unavailable") setSmsDown(true);
-      else {
+      if (why === "no_account") {
+        setNoAccount(true);
+        setCode("");
+      } else if (why === "sms_unavailable") {
+        setSmsDown(true);
+        setCode("");
+      } else {
         const n = attemptsLeftOf(e);
         setErr(n !== null && (why === "invalid" || why === "bad_code") ? t("auth.otp.badCodeLeft", { n }) : t(authErrorKey(why)));
         if (why === "invalid" || why === "bad_code") setShakeKey((k) => k + 1);
         // หมดอายุ/ไม่พบรหัส ⇒ เปิดปุ่มส่งใหม่ทันที · ล็อก ⇒ ตัวนับเดินต่อ (กันกดขอรหัสรัว · §R)
         if (why === "expired" || why === "not_found") setLeft(0);
+        // S2.14 (สถานะล้ม): เน็ต/เซิร์ฟเวอร์ขัดข้องชั่วคราว ⇒ คงรหัสไว้ให้กด "ยืนยัน" ซ้ำ · รหัสผิด/หมดอายุ ⇒ ล้างให้พิมพ์ใหม่
+        if (why !== "network" && why !== "server_error") setCode("");
       }
-      setCode("");
       setBusy(false);
     }
   }

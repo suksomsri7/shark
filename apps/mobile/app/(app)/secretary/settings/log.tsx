@@ -7,7 +7,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, Note } from "@/src/components/airy";
+import { AiryScreen, Chip, Glass, LoadError, Loading, Note } from "@/src/components/airy";
 import { SettingsTop } from "@/src/components/secretary/SettingRow";
 import { LogItem } from "@/src/components/secretary/LogItem";
 import { sysName } from "@/src/components/secretary/RoomCard";
@@ -34,6 +34,8 @@ export default function SecretaryLogScreen() {
   const [modules, setModules] = useState<string[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
+  // S2.14: โหลดล้ม (ยังไม่มีรายการ) ⇒ การ์ดล้ม + ลองใหม่ แทน "ไม่มีรายการในตัวกรองนี้"
+  const [failed, setFailed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
@@ -52,12 +54,13 @@ export default function SecretaryLogScreen() {
           setRows(items);
           setNowMs(now);
           setLoaded(true);
+          setFailed(false);
           if (f.kind === "all") setModules([...new Set(items.map((x) => x.module).filter(Boolean))].slice(0, 6));
         })
         .catch(() => {
           if (my !== seq.current) return;
           setLoaded(true);
-          setNote({ text: t("sec.set.loadFail"), warn: true });
+          setFailed(true);
         });
     },
     [activeTenantId, t],
@@ -148,6 +151,10 @@ export default function SecretaryLogScreen() {
               <LogItem key={r.id} row={r} testID="sec-log-item" undoTestID="sec-log-undo" nowMs={nowMs} nameOf={nameOf} busy={busyId === r.id} last={i === shown.length - 1} onUndo={(x) => void undo(x)} />
             ))}
           </Glass>
+        ) : !loaded ? (
+          <Loading testID="sec-log-loading" />
+        ) : failed ? (
+          <LoadError testID="sec-log-error" onRetry={() => load(filter.kind === "undo" ? { kind: "all" } : filter)} />
         ) : loaded ? (
           <Text testID="sec-log-empty" style={[styles.empty, { color: c.textMuted }]}>
             {t("sec.log.empty")}

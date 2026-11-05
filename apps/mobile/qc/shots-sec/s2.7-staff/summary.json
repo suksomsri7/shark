@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T07:11:52.365Z",
+ "generatedAt": "2026-11-05T12:26:19.122Z",
  "base": "http://127.0.0.1:4727",
  "view": {
   "tag": "iphone",
@@ -9,7 +9,7 @@
  },
  "fixture": {
   "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.7-staff.json",
-  "sha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49"
+  "sha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12"
  },
  "screens": [
   {
@@ -17,7 +17,7 @@
    "route": "/secretary/settings",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -30,14 +30,14 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings.png",
-   "generatedAt": "2026-11-05T07:11:11.574Z"
+   "generatedAt": "2026-11-05T12:25:46.046Z"
   },
   {
    "name": "secretary-settings-access",
    "route": "/secretary/settings/access",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -51,14 +51,14 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access.png",
-   "generatedAt": "2026-11-05T07:11:15.423Z"
+   "generatedAt": "2026-11-05T12:25:48.861Z"
   },
   {
    "name": "secretary-settings-rules",
    "route": "/secretary/settings/rules",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -73,14 +73,14 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules.png",
-   "generatedAt": "2026-11-05T07:11:18.784Z"
+   "generatedAt": "2026-11-05T12:25:51.939Z"
   },
   {
    "name": "secretary-settings-log",
    "route": "/secretary/settings/log",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -93,14 +93,14 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log.png",
-   "generatedAt": "2026-11-05T07:11:22.514Z"
+   "generatedAt": "2026-11-05T12:25:54.758Z"
   },
   {
    "name": "secretary-settings-knowledge",
    "route": "/secretary/settings/knowledge",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -115,14 +115,14 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-05T07:11:26.463Z"
+   "generatedAt": "2026-11-05T12:25:57.507Z"
   },
   {
    "name": "secretary-settings-customers",
    "route": "/secretary/settings/customers",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -136,14 +136,14 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-customers.png",
-   "generatedAt": "2026-11-05T07:11:30.196Z"
+   "generatedAt": "2026-11-05T12:26:00.341Z"
   },
   {
    "name": "secretary-settings-dark",
    "route": "/secretary/settings",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -156,14 +156,14 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-dark.png",
-   "generatedAt": "2026-11-05T07:11:34.006Z"
+   "generatedAt": "2026-11-05T12:26:04.209Z"
   },
   {
    "name": "secretary-settings-access-dark",
    "route": "/secretary/settings/access",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -177,14 +177,14 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access-dark.png",
-   "generatedAt": "2026-11-05T07:11:37.892Z"
+   "generatedAt": "2026-11-05T12:26:07.163Z"
   },
   {
    "name": "secretary-settings-rules-dark",
    "route": "/secretary/settings/rules",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -199,14 +199,14 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules-dark.png",
-   "generatedAt": "2026-11-05T07:11:41.187Z"
+   "generatedAt": "2026-11-05T12:26:10.415Z"
   },
   {
    "name": "secretary-settings-log-dark",
    "route": "/secretary/settings/log",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -219,14 +219,14 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log-dark.png",
-   "generatedAt": "2026-11-05T07:11:44.892Z"
+   "generatedAt": "2026-11-05T12:26:13.268Z"
   },
   {
    "name": "secretary-settings-knowledge-dark",
    "route": "/secretary/settings/knowledge",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -241,14 +241,14 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge-dark.png",
-   "generatedAt": "2026-11-05T07:11:48.557Z"
+   "generatedAt": "2026-11-05T12:26:16.121Z"
   },
   {
    "name": "secretary-settings-customers-dark",
    "route": "/secretary/settings/customers",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "73e080e318bfae2c0a2db6a4709406e03c7aefe58309099abe6134e4db70ee49",
+   "fixtureSha256": "3b55708b9cba49e66170d04d50da76b9289ac16ce34513b9cc95771bea18bb12",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -262,7 +262,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-customers-dark.png",
-   "generatedAt": "2026-11-05T07:11:52.227Z"
+   "generatedAt": "2026-11-05T12:26:18.953Z"
   }
  ]
 }

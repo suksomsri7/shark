@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, SectionLabel } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, Loading, SectionLabel } from "@/src/components/airy";
 import { SettingsTop } from "@/src/components/secretary/SettingRow";
 import { QuotaBar, QuotaRing } from "@/src/components/secretary/QuotaRing";
 import { dateBkk, daysUntil } from "@/src/components/secretary/bkk";
@@ -57,20 +57,27 @@ export default function SecretaryQuotaScreen() {
         <Text style={[styles.h, { color: c.text }]}>{t("sec.quota.packFree")}</Text>
         <Text style={[styles.sub, { color: c.textMuted }]}>{first ? t("sec.quota.subUser", { user: first, n: tenants.length }) : t("sec.quota.sub", { n: tenants.length })}</Text>
 
-        <View style={styles.ring}>
-          <QuotaRing testID="sec-quota-ring" pct={n.pct} caption={caption} />
-        </View>
-        {failed ? (
-          <Text testID="sec-quota-error" style={[styles.state, styles.stateGap, { color: c.warn.fg }]}>
-            {t("sec.set.loadFail")}
-          </Text>
+        {/* S2.14: ก่อนผลแรก = Loading (ไม่โชว์ 0% / ใช้ไป 0/0) · ล้ม = วง + ข้อความล้มเดิม */}
+        {!q && !failed ? (
+          <Loading testID="sec-quota-loading" />
         ) : (
-          <View style={styles.stateRow}>
-            <Icon name={levelOk ? "check" : "alert-circle"} size={14} color={levelOk ? c.status.run : c.warn.fg} />
-            <Text testID="sec-quota-level" style={[styles.state, { color: levelOk ? c.status.run : c.warn.fg }]}>
-              {levelOk ? t("sec.quota.ok") : (n.text ?? t(n.blocked ? "sec.quota.blocked" : "sec.quota.warn"))}
-            </Text>
-          </View>
+          <>
+            <View style={styles.ring}>
+              <QuotaRing testID="sec-quota-ring" pct={n.pct} caption={caption} />
+            </View>
+            {failed ? (
+              <Text testID="sec-quota-error" style={[styles.state, styles.stateGap, { color: c.warn.fg }]}>
+                {t("sec.set.loadFail")}
+              </Text>
+            ) : (
+              <View style={styles.stateRow}>
+                <Icon name={levelOk ? "check" : "alert-circle"} size={14} color={levelOk ? c.status.run : c.warn.fg} />
+                <Text testID="sec-quota-level" style={[styles.state, { color: levelOk ? c.status.run : c.warn.fg }]}>
+                  {levelOk ? t("sec.quota.ok") : (n.text ?? t(n.blocked ? "sec.quota.blocked" : "sec.quota.warn"))}
+                </Text>
+              </View>
+            )}
+          </>
         )}
 
         <Glass testID="sec-quota-packs" radius={radii.btn} style={[styles.packs, styles.dim]}>
@@ -80,17 +87,21 @@ export default function SecretaryQuotaScreen() {
           </View>
         </Glass>
 
-        <SectionLabel style={styles.label}>{t("sec.quota.assistLabel")}</SectionLabel>
-        <Glass testID="sec-quota-assist" radius={radii.card} style={styles.card}>
-          <View style={styles.assistRow}>
-            <Text style={[styles.assistName, { color: c.text }]}>{t("sec.quota.assist")}</Text>
-            <View style={styles.assistBar}>
-              <QuotaBar pct={n.assistPct} thin />
-            </View>
-            <Text style={[styles.assistPct, { color: c.text }]}>{t("sec.set.pct", { n: n.assistPct })}</Text>
-          </View>
-          <Text style={[styles.assistNote, { color: c.textMuted }]}>{t("sec.quota.assistNote")}</Text>
-        </Glass>
+        {!q && !failed ? null : (
+          <>
+            <SectionLabel style={styles.label}>{t("sec.quota.assistLabel")}</SectionLabel>
+            <Glass testID="sec-quota-assist" radius={radii.card} style={styles.card}>
+              <View style={styles.assistRow}>
+                <Text style={[styles.assistName, { color: c.text }]}>{t("sec.quota.assist")}</Text>
+                <View style={styles.assistBar}>
+                  <QuotaBar pct={n.assistPct} thin />
+                </View>
+                <Text style={[styles.assistPct, { color: c.text }]}>{t("sec.set.pct", { n: n.assistPct })}</Text>
+              </View>
+              <Text style={[styles.assistNote, { color: c.textMuted }]}>{t("sec.quota.assistNote")}</Text>
+            </Glass>
+          </>
+        )}
 
         <Glass testID="sec-quota-out" radius={radii.sugg} style={styles.card}>
           <View style={styles.outRow}>

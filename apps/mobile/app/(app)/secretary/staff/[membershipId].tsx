@@ -12,7 +12,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, Icon, IconBtn, Note, PrimaryButton, Segment, Sheet, TopBar } from "@/src/components/airy";
+import { AiryScreen, Chip, Glass, Icon, IconBtn, LoadError, Loading, Note, PrimaryButton, Segment, Sheet, TopBar } from "@/src/components/airy";
 import { ChatLevelPicker } from "@/src/components/secretary/ChatLevelPicker";
 import { LevelGrid, gridModules, levelOf, levelsAvailable, offOnly, type ModuleLevel } from "@/src/components/secretary/LevelGrid";
 import { roleLabel } from "@/src/components/secretary/AddMemberSheet";
@@ -61,6 +61,7 @@ export default function StaffPermissionScreen() {
   const [person, setPerson] = useState<StaffPerson | null>(null);
   const [missing, setMissing] = useState(false);
   const [denied, setDenied] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [unitOpts, setUnitOpts] = useState<UnitOpt[]>([]);
   const [access, setAccess] = useState<string[]>([]);
   const [onDuty, setOnDuty] = useState(false);
@@ -75,8 +76,10 @@ export default function StaffPermissionScreen() {
     const [s, a, d] = await Promise.allSettled([secGet("secretary/staff"), secGet("secretary/access"), secGet("inbox/staff")]);
     if (s.status === "rejected") {
       if (isDenied(s.reason)) setDenied(true);
+      else setFailed(true); // S2.14: ล้ม (500/เน็ต) — ยังไม่เคยได้ข้อมูล = LoadError
       return;
     }
+    setFailed(false);
     const p = normalizeStaff(s.value).people.find((x) => x.membershipId === membershipId) ?? null;
     setUnitOpts(normalizeUnits(s.value));
     setPerson(p);
@@ -178,6 +181,11 @@ export default function StaffPermissionScreen() {
     }
   };
 
+  const retry = () => {
+    setFailed(false);
+    void load();
+  };
+
   const back = () => (router.canGoBack() ? router.back() : router.replace("/secretary/staff"));
   const unitNames = (u: string[]) =>
     allUnits(u) ? t("perm.unitAll") : u.length === 0 ? t("perm.unitNone") : u.map((id) => unitOpts.find((x) => x.id === id)?.name ?? t("perm.unitOne")).join(", ");
@@ -205,6 +213,8 @@ export default function StaffPermissionScreen() {
             <Text style={[styles.deniedT, { color: c.text }]}>{denied ? t("sec.staff.denied") : t("perm.missing")}</Text>
           </Glass>
         ) : null}
+        {/* S2.14: ก่อนผลแรก = Loading · ล้ม = LoadError + ลองใหม่ */}
+        {!person && !denied && !missing ? failed ? <LoadError testID="perm-error" onRetry={retry} /> : <Loading testID="perm-loading" /> : null}
 
         {person && form ? (
           <>

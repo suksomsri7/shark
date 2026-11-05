@@ -1,7 +1,9 @@
 // ห้องแชทลูกค้า (ใบ S2.18 · แบบ K2 sec-k.jpg หน้า 2 · sec-dark-k.jpg หน้า 2)
 //   ข้อมูล (S1.21 · ชื่อเส้นในตาราง src/api/inbox.ts): GET inbox/conversations/[id]?systemId&before (cursor คู่) · POST …/read ตอนเปิด ·
 //     POST …/assign (รับเรื่อง = มอบให้ตัวเอง · R-S1.21a) · GET inbox/systems (canReply) · GET inbox/quick-replies + POST quick-replies/[id]/apply ·
-//     POST inbox/attachments (multipart ≤ 10 MB) · POST …/reply · POST …/ai-suggest (ยังไม่มี route ⇒ 404 = ซ่อนการ์ดร่าง)
+//     POST inbox/attachments (multipart ≤ 10 MB) · POST …/reply · POST …/ai-suggest (S1.14b: `ok:false` ⇒ ซ่อนการ์ดร่าง · ขอเฉพาะ `can.aiSuggest` ≠ false)
+//   S2.14: ส่งจากการ์ดร่าง (ส่งเลย หรือ "แก้" แล้วส่ง) ⇒ แนบ `suggestionId` ไปกับ reply (server บันทึก SENT_AS_IS/SENT_EDITED) ·
+//     ปุ่มตอบ/รับเรื่อง ใช้ `conversation.can.reply/assign` ของ server (ไม่มีฟิลด์ = ตาม inbox/systems.canReply เดิม)
 //   🔴 3 แชทไม่ปน: ช่องพิมพ์ของจอนี้ส่งถึงลูกค้า (หรือบันทึกภายใน) ทาง …/reply เท่านั้น — ไม่มีเส้นห้องเลขาในไฟล์นี้ ·
 //      ทุกการส่ง (พิมพ์เอง · การ์ดร่าง Shark · ส่งใหม่ฟองที่ล้ม) ผ่าน `Composer.post()` ที่เดียว (clientMessageId · 429 ลองใหม่อัตโนมัติ 1 ครั้งหลัง Retry-After)
 //   ฟอง: ลูกค้า/เรา/บันทึกภายใน/ส่งโดย Shark (meta.ai → ป้ายผู้อนุมัติ · RESOLUTIONS §M)/ข้อความระบบ/สติกเกอร์/รูป/ไฟล์/เสียง/ส่งไม่สำเร็จ ✕
@@ -12,7 +14,7 @@ import { AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView,
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, IconBtn, InputBar, Note } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, IconBtn, InputBar, Loading, Note } from "@/src/components/airy";
 import { MessageBubble } from "@/src/components/customers/MessageBubble";
 import { ChannelBadge, firstName, useChannelLabel } from "@/src/components/customers/parts";
 import { scheduleZoneBadges, setCustomersAccess } from "@/src/api/secretary";
@@ -89,6 +91,8 @@ export default function CustomerRoomScreen() {
   const [gone, setGone] = useState<Gone>(null);
   const [offline, setOffline] = useState(false);
   const [canReply, setCanReply] = useState(true);
+  /** S2.14: inbox/systems ตอบแล้ว (สำเร็จหรือล้ม) — ก่อนนั้นไม่ขึ้นช่องพิมพ์/ป้ายอ่านอย่างเดียว */
+  const [sysKnown, setSysKnown] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(() => AppState.currentState !== "background");
@@ -166,13 +170,15 @@ export default function CustomerRoomScreen() {
           .then(() => scheduleZoneBadges()) // S2.20: badge "ลูกค้า" ลดหลังอ่าน
           .catch(() => {});
       }
-      // การ์ดร่างของ Shark: ห้องมีร่างค้าง (aiDraft) ⇒ ขอครั้งเดียวต่อการเปิด · route ยังไม่มี/ล้ม = ไม่มีการ์ด
-      if (th.conversation.aiDraft && !draftAsked.current) {
+      // การ์ดร่างของ Shark: ห้องมีร่างค้าง (aiDraft) + ผู้ใช้มีคีย์ chat.ai.suggest (can.aiSuggest ≠ false) ⇒ ขอครั้งเดียวต่อการเปิด
+      //   ok:false (ร้านปิด AI แนะนำ · เครดิต/เพดาน · ไม่มีข้อความลูกค้า) / ล้ม = ไม่มีการ์ด · id ของตัวเลือกแรก = suggestionId ตอนส่ง
+      if (th.conversation.aiDraft && th.conversation.can?.aiSuggest !== false && !draftAsked.current) {
         draftAsked.current = true;
         inboxPostId("inbox/conversations/[id]/ai-suggest", id, { systemId })
           .then((r) => {
-            const body = (r.options?.[0]?.body ?? r.body ?? "").trim();
-            if (tenantRef.current === tenant && body) setDraft({ id: r.suggestionId ?? r.options?.[0]?.id ?? null, body });
+            const opt = r.ok === true ? r.options?.[0] : undefined;
+            const body = (opt?.body ?? "").trim();
+            if (tenantRef.current === tenant && opt && body) setDraft({ id: opt.id || null, body });
           })
           .catch(() => {});
       }
@@ -207,8 +213,10 @@ export default function CustomerRoomScreen() {
       .then((r) => {
         setCanReply(r.canReply !== false);
         setInboxCanReply(r.canReply !== false);
+        setSysKnown(true);
       })
       .catch((e) => {
+        setSysKnown(true);
         if (statusOf(e) !== 403) return;
         setCanReply(false);
         setInboxCanReply(false);
@@ -275,6 +283,8 @@ export default function CustomerRoomScreen() {
   const openInfo = (open?: string) => router.push(`/customers/${encodeURIComponent(id)}/info${systemId ? `?s=${encodeURIComponent(systemId)}` : ""}${open ? `${systemId ? "&" : "?"}open=${open}` : ""}`);
 
   const conv = thread?.conversation ?? null;
+  // S2.14: server บอกสิทธิ์ตอบของผู้ใช้คนนี้ในห้องนี้ (can.reply) — ไม่มีฟิลด์ = ตาม inbox/systems.canReply
+  const canReplyHere = canReply && conv?.can?.reply !== false;
   const name = thread?.contact.displayName ?? t("cust.noName");
   const windowH = conv ? replyWindowHours(conv.channel, msgs, nowMs) : null;
   const unassigned = !!conv && conv.status === "OPEN" && !conv.assigneeUserId;
@@ -329,7 +339,7 @@ export default function CustomerRoomScreen() {
               <Text style={[styles.claimT, { color: c.warn.fg }]} numberOfLines={1}>
                 {conv?.waitingMin != null ? t("cust.row.unassignedWait", { n: conv.waitingMin }) : t("cust.row.unassigned")}
               </Text>
-              {canReply ? (
+              {canReplyHere && conv?.can?.assign !== false ? (
                 <Pressable testID="cust-room-claim" onPress={() => void claim()} disabled={claiming} accessibilityRole="button" style={[styles.claimBtn, { backgroundColor: c.zone.customers }]}>
                   <Text style={[styles.claimBtnT, { color: c.zone.onZone }]}>{claiming ? t("cust.busy") : t("cust.room.claim")}</Text>
                 </Pressable>
@@ -365,6 +375,8 @@ export default function CustomerRoomScreen() {
           scrollEventThrottle={100}
           onContentSizeChange={() => (atBottom.current || Date.now() < stickUntil.current) && scrollRef.current?.scrollToEnd({ animated: false })}
         >
+          {/* S2.14: ก่อนได้ห้องครั้งแรก = Loading (ล้ม = note ออฟไลน์ด้านบน) */}
+          {!thread && !offline ? <Loading testID="cust-room-loading" /> : null}
           {hasOlder ? (
             <Pressable testID="cust-room-more" onPress={() => void loadOlder()} disabled={moreBusy} accessibilityRole="button" style={styles.more}>
               <Text style={[styles.moreT, { color: c.textMuted }]}>{moreBusy ? t("cust.busy") : t("cust.room.older")}</Text>
@@ -377,11 +389,11 @@ export default function CustomerRoomScreen() {
               customerName={name}
               approverName={approverOf(m)}
               onImage={setViewer}
-              onResend={canReply ? (x) => void composer.current?.resend(x) : undefined}
+              onResend={canReplyHere ? (x) => void composer.current?.resend(x) : undefined}
               ids={BUBBLE_IDS}
             />
           ))}
-          {draft && canReply ? (
+          {draft && canReplyHere ? (
             <View testID="cust-draft-card" style={[glassStyle(c, radii.sugg), styles.draft, { borderLeftColor: c.cust.aiBorder }]}>
               <Text style={[styles.draftH, { color: c.text }]}>✨ {t("cust.draft.title")}</Text>
               <Text style={[styles.draftB, { color: c.textDim }]} selectable>
@@ -391,7 +403,7 @@ export default function CustomerRoomScreen() {
                 <Pressable
                   testID="cust-draft-edit"
                   onPress={() => {
-                    composer.current?.fill(draft.body);
+                    composer.current?.fill(draft.body, draft.id);
                     setDraft(null);
                   }}
                   accessibilityRole="button"
@@ -401,7 +413,7 @@ export default function CustomerRoomScreen() {
                 </Pressable>
                 <Pressable
                   testID="cust-draft-send"
-                  onPress={() => void composer.current?.sendText(draft.body).then((ok) => ok && setDraft(null))}
+                  onPress={() => void composer.current?.sendText(draft.body, draft.id).then((ok) => ok && setDraft(null))}
                   accessibilityRole="button"
                   style={[styles.draftBtn, styles.draftSend, { backgroundColor: c.accent }]}
                 >
@@ -412,18 +424,21 @@ export default function CustomerRoomScreen() {
           ) : null}
         </ScrollView>
 
-        <Composer
-          ref={composer}
-          convId={id}
-          systemId={systemId}
-          channel={conv?.channel ?? null}
-          canReply={canReply && !!thread}
-          windowClosed={windowH === 0}
-          onSent={() => {
-            atBottom.current = true;
-            void load();
-          }}
-        />
+        {/* S2.14: ช่องพิมพ์/ป้าย "อ่านอย่างเดียว" ขึ้นเมื่อรู้ทั้งสิทธิ์ (inbox/systems) และห้องแล้ว — ไม่อ้างอ่านอย่างเดียวก่อนรู้ */}
+        {thread && sysKnown ? (
+          <Composer
+            ref={composer}
+            convId={id}
+            systemId={systemId}
+            channel={conv?.channel ?? null}
+            canReply={canReplyHere && !!thread}
+            windowClosed={windowH === 0}
+            onSent={() => {
+              atBottom.current = true;
+              void load();
+            }}
+          />
+        ) : null}
       </KeyboardAvoidingView>
 
       {viewer ? (
@@ -440,14 +455,14 @@ export default function CustomerRoomScreen() {
 
 // ───────── ช่องพิมพ์ (ทางส่งถึงลูกค้าทางเดียวของแอป) ─────────
 type ComposerHandle = {
-  /** ใส่ข้อความลงช่องพิมพ์ (การ์ดร่าง → แก้) */
-  fill: (text: string) => void;
+  /** ใส่ข้อความลงช่องพิมพ์ (การ์ดร่าง → แก้) · suggestionId = ร่างที่มา (แนบไปกับการส่งคำตอบจริงครั้งถัดไป) */
+  fill: (text: string, suggestionId?: string | null) => void;
   /** ส่งข้อความถึงลูกค้าทันที (การ์ดร่าง → ส่ง) · true = สำเร็จ */
-  sendText: (text: string) => Promise<boolean>;
+  sendText: (text: string, suggestionId?: string | null) => Promise<boolean>;
   /** ส่งฟองที่ล้มอีกครั้ง (ข้อความใหม่ · รหัสผูกกับฟองเดิม กดซ้ำไม่ซ้ำ) */
   resend: (m: MsgItem) => Promise<boolean>;
 };
-type Payload = { body?: string; attachments?: ReplyAttachment[]; isInternal: boolean };
+type Payload = { body?: string; attachments?: ReplyAttachment[]; isInternal: boolean; suggestionId?: string };
 
 const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string; channel: string | null; canReply: boolean; windowClosed: boolean; onSent: () => void }>(function Composer(
   { convId, systemId, channel, canReply, windowClosed, onSent },
@@ -466,6 +481,8 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
   const cmid = useRef<string | null>(null);
   /** เนื้อหาที่ล้มด้วยรหัสปัจจุบัน — แก้แล้ว = รหัสใหม่ · เหมือนเดิม = รหัสเดิม (เซิร์ฟเวอร์กันซ้ำ) */
   const failedKey = useRef<string | null>(null);
+  /** ร่างของ Shark ที่ใส่ลงช่องพิมพ์ ("แก้") — ส่งคำตอบจริงครั้งถัดไปแนบ suggestionId · ล้างช่อง/ส่งสำเร็จ = ทิ้ง */
+  const fromSuggestion = useRef<string | null>(null);
 
   useEffect(() => {
     if (!canReply) return;
@@ -480,7 +497,9 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
 
   /** POST …/reply · 429 ⇒ รอ Retry-After แล้วลองใหม่ 1 ครั้ง (รหัสเดิม) */
   const post = async (p: Payload, id: string) => {
-    const body = { systemId, ...p, clientMessageId: id };
+    // suggestionId เฉพาะคำตอบจริง (บันทึกภายในไม่แนบ · R-S1.14b-g)
+    const { suggestionId, ...rest } = p;
+    const body = { systemId, ...rest, clientMessageId: id, ...(suggestionId && !p.isInternal ? { suggestionId } : {}) };
     try {
       return await inboxPostId("inbox/conversations/[id]/reply", convId, body);
     } catch (e) {
@@ -530,19 +549,22 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
     const body = text.trim();
     if (!body && atts.length === 0) return;
     const attachments = atts.map(({ name, ...a }) => ({ ...a, fileName: a.fileName ?? name }));
-    const ok = await run({ body: body || undefined, attachments: attachments.length ? attachments : undefined, isInternal: internal }, JSON.stringify([body, internal, atts.map((a) => a.url)]));
+    const sugg = !internal && body ? (fromSuggestion.current ?? undefined) : undefined;
+    const ok = await run({ body: body || undefined, attachments: attachments.length ? attachments : undefined, isInternal: internal, suggestionId: sugg }, JSON.stringify([body, internal, atts.map((a) => a.url)]));
     if (ok) {
       setText("");
       setAtts([]);
+      fromSuggestion.current = null;
     }
   };
 
   useImperativeHandle(ref, () => ({
-    fill: (v) => {
+    fill: (v, sid) => {
       setInternal(false);
       setText(v);
+      fromSuggestion.current = sid ?? null;
     },
-    sendText: (v) => run({ body: v, isInternal: false }, JSON.stringify([v, false, []])),
+    sendText: (v, sid) => run({ body: v, isInternal: false, suggestionId: sid ?? undefined }, JSON.stringify([v, false, []])),
     resend: (m) =>
       run(
         { body: m.body ?? undefined, attachments: m.attachments.length ? m.attachments.map((a) => ({ url: a.url, mimeType: a.mimeType, fileName: a.name, ...(a.durationMs ? { durationMs: a.durationMs } : {}) })) : undefined, isInternal: false },
@@ -659,7 +681,10 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
         }
         placeholder={uploading ? t("cust.attach.uploading") : internal ? t("cust.input.internalPh") : t("cust.input.ph")}
         value={text}
-        onChangeText={setText}
+        onChangeText={(v) => {
+          setText(v);
+          if (!v.trim()) fromSuggestion.current = null;
+        }}
         multiline
         maxLength={4000}
         sendDisabled={busy || uploading || (!text.trim() && atts.length === 0)}

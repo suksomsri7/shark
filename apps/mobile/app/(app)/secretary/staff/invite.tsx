@@ -2,19 +2,21 @@
 //   ชื่อ · เบอร์ (มือถือไทย · normalize ก่อนส่ง) · บทบาท (OWNER เลือก พนักงาน/ผู้จัดการ · MANAGER เห็นเฉพาะพนักงาน R-S1.25d)
 //   หน่วย/สาขา (ติ๊ก · ส่ง `unitIds` ชัดเจนเสมอ · ค่าเริ่มต้น "ทุกสาขา" = ["*"]) · ระดับต่อระบบเริ่มต้น = ปิดทุกระบบ (เฉพาะระดับที่โมดูลมี · LevelGrid)
 //   แชทลูกค้า ไม่เห็น/ดูได้/ตอบได้ · ตัวอย่าง SMS (แม่แบบเดียวกับเซิร์ฟเวอร์ "SHARK: …")
-//   ส่ง ⇒ POST secretary/staff/invite {name, phone, role, unitIds, permissions} ⇒ ลิงก์ (เมื่อ SMS ไม่ได้ส่งจริง) + หมดอายุ
-//   เหตุผลปฏิเสธ (S1.25) แสดงข้อความไทยของจอ: rate_limited · already_member · already_invited · pending_cap · bad_permissions · sms_unavailable · throttled
+//   ส่ง ⇒ POST secretary/staff/invite {name, phone, role, unitIds, levels, chat} (S2.14: server แปลงระดับ → คีย์เอง · แอปไม่มีตารางคีย์แล้ว)
+//     ⇒ ลิงก์ (เมื่อ SMS ไม่ได้ส่งจริง) + หมดอายุ · ผู้จัดการ = ไม่ส่ง levels/chat (เข้าถึงตามบทบาท)
+//   เหตุผลปฏิเสธ (S1.25 · S1.14b) แสดงข้อความไทยของจอ: rate_limited · already_member · already_invited · pending_cap · bad_permissions · sms_unavailable · throttled ·
+//     bad_level · bad_module · sensitive_key
 //   คำเชิญค้าง (GET staff/invites) + ส่งอีกครั้ง (POST …/resend) / ยกเลิก (DELETE · ยืนยันก่อน)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, Icon, IconBtn, Note, PrimaryButton, Segment, Sheet, TopBar } from "@/src/components/airy";
+import { AiryScreen, BottomDock, Chip, Glass, Icon, IconBtn, Note, PrimaryButton, Segment, Sheet, TopBar } from "@/src/components/airy";
 import { ChatLevelPicker } from "@/src/components/secretary/ChatLevelPicker";
 import { InviteRow } from "@/src/components/secretary/InviteRow";
 import type { StaffRowIds } from "@/src/components/secretary/StaffRow";
-import { LevelGrid, gridModules, permissionsFromLevels, type ModuleLevel } from "@/src/components/secretary/LevelGrid";
+import { LevelGrid, gridModules, type ModuleLevel } from "@/src/components/secretary/LevelGrid";
 import { dateBkk } from "@/src/components/secretary/bkk";
 import {
   inviteReasonOf,
@@ -38,7 +40,7 @@ import { formatThaiMobileInput, maskPhone, normalizeThaiMobile } from "@/src/lib
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
-import { radii, size, spacing, type as T, CTA_BOTTOM, LIST_BOTTOM } from "@/src/theme/tokens";
+import { radii, size, spacing, type as T, CTA_BOTTOM, DOCK_FADE, LIST_BOTTOM } from "@/src/theme/tokens";
 
 
 const ALL = "*";
@@ -57,6 +59,9 @@ const REASON: Partial<Record<InviteReason, I18nKey>> = {
   bad_phone: "inv.err.bad_phone",
   forbidden: "inv.err.forbidden",
   bad_units: "inv.err.bad_units",
+  bad_level: "inv.err.bad_level",
+  bad_module: "inv.err.bad_level",
+  sensitive_key: "inv.err.sensitive_key",
 };
 
 /** ค่าเริ่มต้นสาขาของคำเชิญ (R-S2.21d) */
@@ -164,8 +169,8 @@ export default function SecretaryStaffInviteScreen() {
         phone: e164,
         role: inviteRole,
         unitIds: units,
-        // ผู้จัดการเข้าถึงทุกระบบตามบทบาท ⇒ ไม่ต้องให้คีย์ · พนักงาน = คีย์ของระดับที่เลือก (LevelGrid ที่เดียว)
-        permissions: inviteRole === "MANAGER" ? {} : permissionsFromLevels(levels, chat),
+        // ผู้จัดการเข้าถึงทุกระบบตามบทบาท ⇒ ไม่ส่งระดับ · พนักงาน = ระดับต่อโมดูลที่แสดง + แชท (server แปลงเป็นคีย์ · ปฏิเสธคีย์อ่อนไหว)
+        ...(inviteRole === "MANAGER" ? {} : { levels: Object.fromEntries(modules.flatMap((m) => (levels[m] && levels[m] !== "OFF" ? [[m, levels[m]]] : []))), chat }),
       });
       setResult({ ...r, phone: e164 });
       setName("");
@@ -323,6 +328,7 @@ export default function SecretaryStaffInviteScreen() {
         ))}
       </ScrollView>
 
+      <BottomDock height={CTA_BOTTOM + insets.bottom + size.btnH + DOCK_FADE} />
       <View style={[styles.cta, { bottom: CTA_BOTTOM + insets.bottom }]}>
         <PrimaryButton testID="inv-submit" label={busy ? t("inv.sending") : t("inv.submit")} disabled={!ready} onPress={() => void submit()} />
       </View>

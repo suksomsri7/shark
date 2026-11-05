@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Dot, Glass, Icon, IconBtn, InputBar, Sheet, type DotStatus } from "@/src/components/airy";
+import { AiryScreen, Dot, Glass, Icon, IconBtn, InputBar, LoadError, Loading, Sheet, type DotStatus } from "@/src/components/airy";
 import { ApprovalCard, useApprovalFlow, type ApprovalActions, type ApprovalDone, type ApprovalIds } from "@/src/components/secretary/ApprovalCard";
 import { AddMemberSheet, roleLabel, type AddMemberIds } from "@/src/components/secretary/AddMemberSheet";
 import { Bubble, ROOM_INDENT } from "@/src/components/secretary/Bubble";
@@ -528,7 +528,9 @@ export default function SecretaryRoomScreen() {
                 {r.node}
               </View>
             ))}
-            {offline ? <Text style={[styles.offline, { color: c.textMuted }]}>{t("sec.room.offline")}</Text> : null}
+            {/* S2.14: ยังไม่ได้ห้อง = Loading · ล้มก่อนได้ห้อง = LoadError (poll ต่อเองด้วย) */}
+            {room ? null : offline ? <LoadError testID="sec-room-error" onRetry={() => void load()} /> : <Loading testID="sec-room-loading" />}
+            {offline && room ? <Text style={[styles.offline, { color: c.textMuted }]}>{t("sec.room.offline")}</Text> : null}
           </ScrollView>
         )}
 

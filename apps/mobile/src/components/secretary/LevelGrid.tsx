@@ -1,16 +1,12 @@
-// ระดับสิทธิ์ต่อระบบ ปิด/ดู/ใช้งาน (ใบ S2.21 G2 · S2.22 G3 · แบบ sec-g.jpg หน้า 2–3) — **ที่เดียวของแอปที่แปลง ระดับ → คีย์สิทธิ์**
-//   ตาราง LEVEL_KEYS = สำเนาของ `levelsAvailableFor` + `permissionsForLevel` ฝั่งเซิร์ฟเวอร์ (src/lib/staff/levels.ts · RESOLUTIONS §P R-S1.25e/f/g)
-//   สร้างจากทะเบียน PERMISSION_MODULES (คีย์อ่อนไหว `isSensitiveKey` + คีย์ลิมิต `_…` ตัดออกแล้ว) วันที่ 5 พ.ย. 2026 — ทะเบียนเปลี่ยน ⇒ สร้างใหม่ (ดู wo-notes sec-s2.21 §4)
-//     l = ระดับที่โมดูลมี (O = ปิด · V = ดู · U = ใช้งาน) · r = คีย์อ่าน (VIEW) · w = คีย์เขียนที่ระดับให้ได้ (USE = r + w) · คีย์เขียนแบบย่อ (ตัดชื่อโมดูลหน้าจุดแรก)
-//   ใช้ 2 ทาง:
-//     G3 (PUT staff/[membershipId]) ส่ง `levels` ตรง ๆ — เซิร์ฟเวอร์แปลงเอง · ตารางนี้ใช้แค่ "แสดงเฉพาะระดับที่มี" + ล็อกโมดูลที่มีแต่ OFF
-//     G2 (POST staff/invite) รับแค่ `permissions` (คีย์) ⇒ `permissionsFromLevels` แปลงด้วยตารางนี้ (เซิร์ฟเวอร์ตรวจคีย์ซ้ำ: คีย์ไม่รู้จัก/ยกสิทธิ์เกินตัว ⇒ 400 bad_permissions)
-//   🔴 คีย์อ่อนไหว (เงิน/ลบ/แอดมิน) ไม่มีในตาราง — ไม่มีระดับใดให้ (R-S1.25e) · แชทใช้ CHAT_KEYS 3 ระดับเท่านั้น (R-S1.25h)
+// ระดับสิทธิ์ต่อระบบ ปิด/ดู/ใช้งาน (ใบ S2.21 G2 · S2.22 G3 · แบบ sec-g.jpg หน้า 2–3)
+//   S2.14 (§V ตั๋ว server → S1.14b): แอปไม่แปลง ระดับ → คีย์สิทธิ์ อีกแล้ว — G2 (POST staff/invite) และ G3 (PUT staff/[membershipId])
+//     ส่ง `levels` + `chat` ตรง ๆ · เซิร์ฟเวอร์แปลงเอง (`permissionsForLevel` · `permissionsForChat`) และปฏิเสธคีย์อ่อนไหว (`sensitive_key`)
+//   ตารางที่เหลือ LEVELS_OF = "ระดับที่โมดูลมี" อย่างเดียว (สำเนาของ `levelsAvailableFor` · src/lib/staff/levels.ts · R-S1.25e/f/g)
+//     ใช้แสดงเฉพาะปุ่มระดับที่มี + ล็อกโมดูลที่มีแต่ปิด · O = ปิด · V = ดู · U = ใช้งาน · ส่งระดับที่โมดูลไม่มี = server ตอบ 422 bad_level
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { Glass, Icon } from "@/src/components/airy";
 import { sysColor, sysLabelKey, sysShortKey } from "@/src/components/secretary/sys";
-import type { ChatLevel } from "@/src/api/secretary";
 import { useT, type I18nKey } from "@/src/i18n";
 import { shadow, useTheme } from "@/src/theme/index";
 import { radii, type as T } from "@/src/theme/tokens";
@@ -18,85 +14,62 @@ import { radii, type as T } from "@/src/theme/tokens";
 export type ModuleLevel = "OFF" | "VIEW" | "USE";
 export const MODULE_LEVELS: readonly ModuleLevel[] = ["OFF", "VIEW", "USE"];
 
-/** คีย์ของแชท 3 ระดับ (CHAT_LEVELS ของเซิร์ฟเวอร์ · R-K14 + R-S1.25a/h) — VIEW มี markRead · REPLY มี markRead+setStatus */
-export const CHAT_KEYS: Record<ChatLevel, readonly string[]> = {
-  NONE: [],
-  VIEW: ["chat.conversation.read", "chat.conversation.markRead"],
-  REPLY: ["chat.conversation.read", "chat.conversation.markRead", "chat.message.send", "chat.conversation.setStatus"],
-};
-
-type Row = { l: string; r: readonly string[]; w: readonly string[] };
-const LEVEL_KEYS: Record<string, Row> = {
-  pos: { l: "OVU", r: ["report.view", "sale.read"], w: ["sale.create", "product.manage", "shift.operate", "shift.manage", "report.anomaly", "stock.count", "device.manage", "staff.manage", "sale.manage", "taxinvoice.issue", "channel.manage", "price.rule", "order.accept", "order.reject", "offline.sync"] },
-  restaurant: { l: "OU", r: [], w: ["zone.create", "zone.archive", "table.create", "table.archive", "table.setStatus", "table.rotateQr", "category.create", "category.archive", "item.create", "item.duplicate", "item.archive", "item.setStock", "item.resetStock", "optionGroup.create", "optionGroup.archive", "choice.setStock", "station.create", "session.open", "session.close", "session.move", "session.linkMember", "order.create", "order.confirm", "order.rush", "kds.advance", "kds.recall", "kitchen.pause", "request.ack", "request.done", "checkout.create"] },
-  shop: { l: "OU", r: [], w: ["product.create", "product.update", "order.confirm"] },
-  delivery: { l: "OU", r: [], w: ["shipment.create", "shipment.update"] },
-  booking: { l: "OVU", r: ["report.view"], w: ["appointment.create", "appointment.setStatus", "service.create", "service.update", "service.setDeposit", "staff.create", "hours.set", "queue.operate", "checkin", "walkin.create", "job.run", "job.runAny", "devices.manage", "appointment.reschedule", "customer.notes"] },
-  hotel: { l: "OU", r: [], w: ["reservation.create", "reservation.checkIn", "reservation.checkOut", "room.create", "room.setStatus", "roomType.create"] },
-  dorm: { l: "OVU", r: ["view", "meter.read"], w: ["bill.run", "lease.manage", "bill.send", "moveout.manage", "repair.manage", "announce", "parcel.manage"] },
-  queue: { l: "OU", r: [], w: ["type.create", "counter.create", "counter.open", "counter.close", "counter.setTypes", "display.create", "display.revoke", "ticket.issue", "ticket.callNext", "ticket.recall", "ticket.recallSkipped", "ticket.serve", "ticket.done", "ticket.skip", "ticket.transfer"] },
-  ticket: { l: "OU", r: [], w: ["event.create", "event.setStatus", "event.archive", "type.create", "order.create", "checkin.scan"] },
-  rental: { l: "OU", r: [], w: ["asset.create", "asset.update", "booking.create", "booking.update", "booking.return"] },
-  clinic: { l: "OU", r: [], w: ["patient.create", "visit.create", "appointment.confirm", "appointment.reject", "appointment.complete", "dispense", "bill"] },
-  school: { l: "OU", r: [], w: ["course.create", "course.update", "class.create", "enrollment.create", "attendance.mark"] },
-  member: { l: "OVU", r: ["customer.read", "tier.read", "point.read", "loyalty.read", "promo.read", "review.read", "report.view"], w: ["customer.create", "customer.update", "tier.manage", "tier.setManual", "loyalty.manage", "loyalty.stamp", "loyalty.fulfil", "promo.issue", "promo.manage", "review.reply", "referral.manage", "tier.update", "plan.create", "plan.update", "subscription.create"] },
-  point: { l: "O", r: [], w: [] },
-  reward: { l: "OU", r: [], w: ["redemption.create", "redemption.fulfill"] },
-  coupon: { l: "OU", r: [], w: ["coupon.create", "coupon.toggle"] },
-  crm: { l: "OVU", r: ["contact.read", "company.read", "deal.read", "activity.read", "email.read", "record.read", "commission.view", "report.view"], w: ["contact.create", "contact.update", "contact.convert", "company.create", "company.update", "deal.create", "deal.update", "deal.move", "deal.quote", "deal.reassign", "deal.lines", "deal.forecast", "activity.create", "activity.complete", "email.send", "sequence.manage", "sequence.enroll", "automation.manage", "score.manage", "assignment.manage", "record.create", "record.update", "quota.manage", "report.team", "report.all", "tracking.manage", "portal.manage"] },
-  marketing: { l: "OU", r: [], w: ["campaign.create", "campaign.send"] },
-  inventory: { l: "OVU", r: ["item.read"], w: ["item.create", "item.update", "location.create", "movement.receive", "movement.consume", "movement.transfer", "movement.adjust", "lot.expiring", "supplier.create", "supplier.update", "po.create", "po.order", "po.receive"] },
-  hr: { l: "OVU", r: ["leave.read"], w: ["employee.create", "attendance.clock", "leave.request", "leave.decide"] },
-  account: { l: "OVU", r: ["doc.view", "journal.view", "tax.view", "report.view"], w: ["doc.create", "doc.issue", "doc.public_link", "contact.manage", "product.manage", "document.manage", "chart.manage", "mapping.manage", "asset.manage", "asset.register", "reconcile", "approve.limit"] },
-  approval: { l: "OU", r: [], w: ["request.decide"] },
-  kanban: { l: "OVU", r: ["board.read", "report.view"], w: ["board.create", "board.rename", "board.member.manage", "column.create", "card.create", "card.update", "card.move", "card.comment", "card.attach", "label.manage", "automation.manage", "template.manage"] },
-  meeting: { l: "OU", r: [], w: ["channel.create", "channel.invite", "channel.join", "channel.leave", "message.post", "message.edit"] },
-  kb: { l: "OU", r: [], w: ["article.create", "article.update"] },
-  forms: { l: "OU", r: [], w: ["form.create", "form.update"] },
-  calendar: { l: "OV", r: ["event.read"], w: [] },
-  reports: { l: "OU", r: [], w: ["report.run", "report.save"] },
-  dashboard: { l: "OU", r: [], w: ["layout.update"] },
-  pages: { l: "OU", r: [], w: ["page.manage"] },
-  ai: { l: "OU", r: [], w: ["chat.send", "schedule.create"] },
-  automation: { l: "OU", r: [], w: ["rule.create"] },
-  settings: { l: "O", r: [], w: [] },
-  payments: { l: "O", r: [], w: [] },
-  systems: { l: "O", r: [], w: [] },
-  system: { l: "O", r: [], w: [] },
-  api: { l: "O", r: [], w: [] },
-  webhook: { l: "O", r: [], w: [] },
-  branding: { l: "O", r: [], w: [] },
-  marketplace: { l: "OU", r: [], w: ["template.install"] },
+/** ระดับที่โมดูลมี (= levelsAvailableFor ของเซิร์ฟเวอร์) */
+const LEVELS_OF: Record<string, string> = {
+  pos: "OVU",
+  restaurant: "OU",
+  shop: "OU",
+  delivery: "OU",
+  booking: "OVU",
+  hotel: "OU",
+  dorm: "OVU",
+  queue: "OU",
+  ticket: "OU",
+  rental: "OU",
+  clinic: "OU",
+  school: "OU",
+  member: "OVU",
+  point: "O",
+  reward: "OU",
+  coupon: "OU",
+  crm: "OVU",
+  marketing: "OU",
+  inventory: "OVU",
+  hr: "OVU",
+  account: "OVU",
+  approval: "OU",
+  kanban: "OVU",
+  meeting: "OU",
+  kb: "OU",
+  forms: "OU",
+  calendar: "OV",
+  reports: "OU",
+  dashboard: "OU",
+  pages: "OU",
+  ai: "OU",
+  automation: "OU",
+  settings: "O",
+  payments: "O",
+  systems: "O",
+  system: "O",
+  api: "O",
+  webhook: "O",
+  branding: "O",
+  marketplace: "OU",
 };
 
 /** ระดับที่โมดูลนี้มีจริง (= levelsAvailableFor) · ไม่รู้จัก ⇒ [OFF] · แชท ⇒ [] (ใช้ ChatLevelPicker) */
 export function levelsAvailable(module: string): ModuleLevel[] {
   if (module === "chat") return [];
-  const row = LEVEL_KEYS[module];
+  const row = LEVELS_OF[module];
   if (!row) return ["OFF"];
-  return MODULE_LEVELS.filter((l) => row.l.includes(l[0]!));
+  return MODULE_LEVELS.filter((l) => row.includes(l[0]!));
 }
 
 /** โมดูลนี้ให้ได้แค่ "ปิด" (มีแต่คีย์อ่อนไหว) — แสดงเป็นแถวล็อก */
 export function offOnly(module: string): boolean {
   const a = levelsAvailable(module);
   return a.length === 1 && a[0] === "OFF";
-}
-
-/** คีย์ที่ระดับนี้ให้ (ไม่รวมคีย์อ่อนไหว) */
-export function keysForLevel(module: string, level: ModuleLevel): string[] {
-  const row = LEVEL_KEYS[module];
-  if (!row || level === "OFF" || !levelsAvailable(module).includes(level)) return [];
-  const full = (k: string) => `${module}.${k}`;
-  return level === "VIEW" ? row.r.map(full) : [...row.r, ...row.w].map(full);
-}
-
-/** สิทธิ์เริ่มต้นของคำเชิญ (POST staff/invite `permissions`) จากระดับต่อโมดูล + แชท — ระดับที่โมดูลไม่มี = ไม่ให้อะไร */
-export function permissionsFromLevels(levels: Record<string, ModuleLevel>, chat: ChatLevel): Record<string, true> {
-  const out: Record<string, true> = {};
-  for (const [m, l] of Object.entries(levels)) for (const k of keysForLevel(m, l)) out[k] = true;
-  for (const k of CHAT_KEYS[chat]) out[k] = true;
-  return out;
 }
 
 /** ระดับที่แสดงของโมดูล — ค่าจากเซิร์ฟเวอร์ที่โมดูลไม่มี ⇒ ปิด */
@@ -109,7 +82,7 @@ export function levelOf(levels: Record<string, string>, module: string): ModuleL
 export function gridModules(accessModules: readonly string[], current: Record<string, string> = {}): string[] {
   const out: string[] = [];
   const add = (m: string) => {
-    if (m && m !== "chat" && LEVEL_KEYS[m] && !out.includes(m)) out.push(m);
+    if (m && m !== "chat" && LEVELS_OF[m] && !out.includes(m)) out.push(m);
   };
   accessModules.forEach(add);
   Object.entries(current).forEach(([m, l]) => l !== "OFF" && add(m));

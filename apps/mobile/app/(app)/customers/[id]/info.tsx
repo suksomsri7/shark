@@ -4,16 +4,19 @@
 //     …/helpers · …/status · …/contact (ผูก/ถอดสมาชิก · ค้นจาก member/search เดิม)
 //   🔴 3 แชทไม่ปน: "สั่ง Shark เรื่องลูกค้านี้" = POST secretary/rooms {instruction, clientMessageId, context:{chatConversationId, contactId}}
 //      (รหัสเท่านั้น — ไม่ใส่ชื่อ/เบอร์ลูกค้าลงคำสั่ง) → เปิดห้องเลขา /secretary/room/<id> · จอนี้ไม่มีเส้นตอบลูกค้า
-//   🔴 PII: เบอร์สมาชิกแสดงแบบปิดกลาง (maskPhone) · ไม่เก็บลงเครื่อง
+//   🔴 PII: เบอร์สมาชิก = `linkedMember.phoneMasked` จาก server (S1.14b · ไม่มีเบอร์เต็มในแอป) · ไม่เก็บลงเครื่อง
 //   สิทธิ์ (R-S2.17a): canReply จาก store (`inbox/systems` · โหลดซ้ำตอน focus) — false/ยังไม่รู้ ⇒ ซ่อน ผูก/ถอด · มอบหมาย · คนช่วย · สถานะ · ส่งต่อ · ปิดห้อง
 //     มอบหมายให้คนอื่น/ผูกสมาชิก = OWNER/MANAGER (คีย์ assign/customer.link · R-S1.25a) · พนักงาน = รับห้องที่ยังไม่มีผู้ดูแลให้ตัวเองเท่านั้น ·
 //     ส่งต่อ = ผู้ดูแลปัจจุบัน · คนช่วยในห้อง · OWNER/MANAGER (R-S1.21b) · เซิร์ฟเวอร์ตรวจซ้ำทุกเส้น · 403 ⇒ setCustomersAccess(false)
-//   สร้างงานบอร์ด: ยังไม่มี route Bearer ของ task-from-chat ⇒ ปุ่มซ่อน (TASK_ROUTE) · แท็ก: อ่านอย่างเดียว (ยังไม่มีเส้นแก้แท็ก · หนี้ §N)
+//   S2.14 (§X): `conversation.can.{reply,assign,setStatus,linkCustomer}` ของ server แทนการเดาจาก role (ไม่มีฟิลด์ = กติกาเดิม) ·
+//     รับเรื่องให้ตัวเอง = can.reply (R-S1.21a) · มอบให้คนอื่น = can.assign · แท็ก = ชิปจาก `conversation.tags`
+//   สร้างงานบอร์ด (S2.14): POST …/task {title} (S1.14b · คีย์ chat.message.send = can.reply) → ข้อความ "สร้างการ์ด #N แล้ว" ·
+//     404 not_configured = ร้านยังไม่เปิดสร้างงานจากแชท (ข้อความไทยของ server) · แท็ก: อ่านอย่างเดียว (ยังไม่มีเส้นแก้แท็ก · หนี้ §N)
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, IconBtn, Note, PrimaryButton, SectionLabel, Sheet, TopBar } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, IconBtn, Loading, Note, PrimaryButton, SectionLabel, Sheet, TopBar } from "@/src/components/airy";
 import { Avatar, ChannelBadge, ConfirmSheet, StaffSheet, firstName, useChannelLabel } from "@/src/components/customers/parts";
 import { clientMessageId, secPost, setCustomersAccess, startErrorKind, useActiveRole } from "@/src/api/secretary";
 import {
@@ -23,7 +26,6 @@ import {
   inboxGetId,
   inboxNote,
   inboxPostId,
-  maskPhone,
   setInboxCanReply,
   statusOf,
   useInboxCanReply,
@@ -37,11 +39,9 @@ import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
 import { radii, spacing, type as T } from "@/src/theme/tokens";
 
-/** สร้างงานบอร์ดจากแชท: ยังไม่มี route (เว็บเป็น server action) ⇒ ไม่แสดงปุ่ม จนกว่าเซิร์ฟเวอร์มีเส้น */
-const TASK_ROUTE: string | null = null;
 const STATUSES: ConvStatus[] = ["OPEN", "PENDING", "RESOLVED"];
 const STATUS_LABEL: Record<string, I18nKey> = { OPEN: "cust.status.OPEN", PENDING: "cust.status.PENDING", RESOLVED: "cust.status.RESOLVED" };
-type SheetKind = "assign" | "handoff" | "helpers" | "status" | "close" | "link" | "ask" | null;
+type SheetKind = "assign" | "handoff" | "helpers" | "status" | "close" | "link" | "ask" | "task" | null;
 const ASK_ERR: Record<ReturnType<typeof startErrorKind>, I18nKey> = { quota: "cust.ask.quota", rate: "cust.ask.rate", denied: "cust.ask.denied", other: "cust.ask.fail" };
 
 export default function CustomerInfoScreen() {
@@ -149,6 +149,23 @@ export default function CustomerInfoScreen() {
   const handoff = () => pick && act(() => inboxPostId("inbox/conversations/[id]/handoff", id, { systemId, toUserId: pick, reason: text.trim() }), "cust.info.handedOff");
   const callHelper = () => pick && act(() => inboxPostId("inbox/conversations/[id]/helpers", id, { systemId, helperUserId: pick, note: text.trim() || undefined }), "cust.info.helperCalled");
   const setStatus = (s: ConvStatus) => act(() => inboxPostId("inbox/conversations/[id]/status", id, { systemId, status: s }), "cust.info.statusSaved");
+  const createTask = async () => {
+    const title = text.trim();
+    if (!title || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setSheetErr(null);
+    try {
+      const r = await inboxPostId("inbox/conversations/[id]/task", id, { systemId, title });
+      setSheet(null);
+      setNote({ text: r.cardNo != null ? t("cust.task.ok", { n: r.cardNo }) : t("cust.task.okNoNo"), warn: false });
+    } catch (e) {
+      setSheetErr(inboxNote(e) ?? t("cust.err"));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
   const link = (customerId: string | null) => act(() => inboxPostId("inbox/conversations/[id]/contact", id, { systemId, customerId }), customerId ? "cust.info.linked" : "cust.info.unlinked");
 
   const search = async () => {
@@ -191,11 +208,23 @@ export default function CustomerInfoScreen() {
   const tags = conv?.tags ?? [];
   const assignee = conv?.assigneeUserId ?? null;
   const isHelper = !!myId && helpers.some((h) => h.userId === myId);
-  const canHandoff = canReply && !!conv && (manager || (!!myId && assignee === myId) || isHelper);
-  const canClaimSelf = canReply && !manager && !!conv && conv.status === "OPEN" && !assignee;
+  // สิทธิ์ต่อปุ่มจาก server (can.*) · ไม่มี can (server เก่า/fixture เดิม) = เดาจาก role แบบเดิม
+  const can = conv?.can;
+  const replyOk = canReply && (can ? can.reply : true);
+  const assignOthers = replyOk && (can ? can.assign : manager);
+  const statusOk = replyOk && (can ? can.setStatus : true);
+  const linkOk = replyOk && (can ? can.linkCustomer : manager);
+  const canHandoff = replyOk && !!conv && (manager || (!!myId && assignee === myId) || isHelper);
+  const canClaimSelf = replyOk && !assignOthers && !!conv && conv.status === "OPEN" && !assignee;
   const claimSelf = () => myId && act(() => inboxPostId("inbox/conversations/[id]/assign", id, { systemId, assigneeUserId: myId }), "cust.room.claimed");
-  const assignPress = canReply && manager ? () => openSheet("assign") : canClaimSelf ? () => void claimSelf() : undefined;
+  const assignPress = assignOthers ? () => openSheet("assign") : canClaimSelf ? () => void claimSelf() : undefined;
   const nameOf = (uid: string | null) => (uid ? (firstName(staff.find((s) => s.userId === uid)?.name) || firstName(helpers.find((h) => h.userId === uid)?.name) || null) : null);
+
+  const noteEl = note ? (
+    <Note warn={note.warn} testID="cust-info-note">
+      {note.text}
+    </Note>
+  ) : null;
 
   if (gone) {
     return (
@@ -220,97 +249,124 @@ export default function CustomerInfoScreen() {
           right={<View style={styles.spacer} />}
         />
 
-        {/* ติดต่อ */}
-        <View testID="cust-info-contact" style={styles.contact}>
-          <Avatar name={name} seed={thread?.contact.id ?? name} size={46} />
-          <View style={styles.contactBody}>
-            <Text style={[styles.cName, { color: c.text }]} numberOfLines={1}>
-              {name}
-            </Text>
-            <View style={styles.cSubRow}>
-              {conv ? <ChannelBadge channel={conv.channel} size={14} /> : null}
-              <Text style={[styles.cSub, { color: c.textMuted }]} numberOfLines={2}>
-                {[conv ? chLabel(conv.channel) : null, member?.name ?? null, maskPhone(member?.phone)].filter(Boolean).join(" · ")}
-              </Text>
-            </View>
-          </View>
-        </View>
-        {note ? (
-          <Note warn={note.warn} testID="cust-info-note">
-            {note.text}
-          </Note>
-        ) : null}
-
-        {/* ในระบบ SHARK */}
-        <SectionLabel style={styles.label}>{t("cust.info.inShark")}</SectionLabel>
-        <View testID="cust-info-shark">
-          {member ? (
-            <Pressable testID="cust-info-member" onPress={() => router.push(`/member/${encodeURIComponent(member.id)}`)} accessibilityRole="button" style={[glassStyle(c, radii.sugg), styles.sysRow]}>
-              <View style={[styles.k, { backgroundColor: c.sys.mem }]}>
-                <Text style={[styles.kT, { color: c.onSys }]}>{t("cust.info.memberShort")}</Text>
+        {/* S2.14: ก่อนได้ห้อง = Loading (ไม่โชว์แถว "ลูกค้า/ยังไม่ผูก/ไม่มี") · ล้ม = note ออฟไลน์อย่างเดียว */}
+        {thread ? (
+          <>
+            {/* ติดต่อ */}
+            <View testID="cust-info-contact" style={styles.contact}>
+              <Avatar name={name} seed={thread?.contact.id ?? name} size={46} />
+              <View style={styles.contactBody}>
+                <Text style={[styles.cName, { color: c.text }]} numberOfLines={1}>
+                  {name}
+                </Text>
+                <View style={styles.cSubRow}>
+                  {conv ? <ChannelBadge channel={conv.channel} size={14} /> : null}
+                  <Text style={[styles.cSub, { color: c.textMuted }]} numberOfLines={2}>
+                    {[conv ? chLabel(conv.channel) : null, member?.name ?? null, member?.phoneMasked ?? null].filter(Boolean).join(" · ")}
+                  </Text>
+                </View>
               </View>
-              <Text style={[styles.sysT, { color: c.text }]} numberOfLines={1}>
-                {t("cust.info.member", { name: member.name ?? name })}
-              </Text>
-              <Text style={[styles.sysV, { color: c.textMuted }]}>{t("cust.info.open")}</Text>
-              <Icon name="chevron-right" size={16} color={c.iconDim} />
-            </Pressable>
-          ) : (
-            <Glass radius={radii.sugg} pad={{ v: 12, h: 14 }} style={styles.sysEmpty}>
-              <Text style={[styles.sysEmptyT, { color: c.textMuted }]}>{t("cust.info.noMember")}</Text>
-            </Glass>
-          )}
-          {canReply && manager ? (
-          <View style={styles.linkRow}>
-            <Pressable testID="cust-info-link" onPress={() => openSheet("link")} accessibilityRole="button" style={[styles.smallBtn, { backgroundColor: c.surface }]}>
-              <Text style={[styles.smallBtnT, { color: c.text }]}>{member ? t("cust.info.relink") : t("cust.info.link")}</Text>
-            </Pressable>
-            {member ? (
-              <Pressable testID="cust-info-unlink" onPress={() => void link(null)} accessibilityRole="button" style={[styles.smallBtn, { backgroundColor: c.surface }]}>
-                <Text style={[styles.smallBtnT, { color: c.bad.fg }]}>{t("cust.info.unlink")}</Text>
+            </View>
+            {noteEl}
+
+            {/* ในระบบ SHARK */}
+            <SectionLabel style={styles.label}>{t("cust.info.inShark")}</SectionLabel>
+            <View testID="cust-info-shark">
+              {member ? (
+                <Pressable testID="cust-info-member" onPress={() => router.push(`/member/${encodeURIComponent(member.id)}`)} accessibilityRole="button" style={[glassStyle(c, radii.sugg), styles.sysRow]}>
+                  <View style={[styles.k, { backgroundColor: c.sys.mem }]}>
+                    <Text style={[styles.kT, { color: c.onSys }]}>{t("cust.info.memberShort")}</Text>
+                  </View>
+                  <Text style={[styles.sysT, { color: c.text }]} numberOfLines={1}>
+                    {t("cust.info.member", { name: member.name ?? name })}
+                  </Text>
+                  <Text style={[styles.sysV, { color: c.textMuted }]}>{t("cust.info.open")}</Text>
+                  <Icon name="chevron-right" size={16} color={c.iconDim} />
+                </Pressable>
+              ) : (
+                <Glass radius={radii.sugg} pad={{ v: 12, h: 14 }} style={styles.sysEmpty}>
+                  <Text style={[styles.sysEmptyT, { color: c.textMuted }]}>{t("cust.info.noMember")}</Text>
+                </Glass>
+              )}
+              {linkOk ? (
+              <View style={styles.linkRow}>
+                <Pressable testID="cust-info-link" onPress={() => openSheet("link")} accessibilityRole="button" style={[styles.smallBtn, { backgroundColor: c.surface }]}>
+                  <Text style={[styles.smallBtnT, { color: c.text }]}>{member ? t("cust.info.relink") : t("cust.info.link")}</Text>
+                </Pressable>
+                {member ? (
+                  <Pressable testID="cust-info-unlink" onPress={() => void link(null)} accessibilityRole="button" style={[styles.smallBtn, { backgroundColor: c.surface }]}>
+                    <Text style={[styles.smallBtnT, { color: c.bad.fg }]}>{t("cust.info.unlink")}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              ) : null}
+            </View>
+
+            {/* ห้องนี้ */}
+            <SectionLabel style={styles.label}>{t("cust.info.thisRoom")}</SectionLabel>
+            <InfoRow
+              testID="cust-info-assign"
+              title={t("cust.info.assignee")}
+              value={firstName(conv?.assigneeName) || (canClaimSelf ? t("cust.room.claim") : t("cust.info.nobody"))}
+              onPress={assignPress}
+            />
+            <InfoRow testID="cust-info-helpers" title={t("cust.info.helpers")} value={helpers.map((h) => firstName(h.name)).filter(Boolean).join(", ") || t("cust.info.nobody")} onPress={replyOk ? () => openSheet("helpers") : undefined} />
+            <InfoRow testID="cust-info-status" title={t("cust.info.status")} value={conv ? t(STATUS_LABEL[conv.status] ?? "cust.status.OPEN") : ""} onPress={statusOk ? () => openSheet("status") : undefined} />
+            <View testID="cust-info-tags" style={[glassStyle(c, radii.sugg), styles.row, styles.tagRow]}>
+              <Text style={[styles.rowT, { color: c.text }]}>{t("cust.info.tags")}</Text>
+              <View style={styles.tagChips}>
+                {tags.length ? (
+                  tags.map((g) => (
+                    <View key={g} style={[styles.tagChip, { backgroundColor: g === WAITING_HUMAN_TAG ? c.warn.bg : c.chip.bg }]}>
+                      <Text style={[styles.tagChipT, { color: g === WAITING_HUMAN_TAG ? c.warn.fg : c.textDim }]} numberOfLines={1}>
+                        {g === WAITING_HUMAN_TAG ? t("cust.tag.waitingHuman") : g}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={[styles.rowV, { color: c.textMuted }]}>{t("cust.info.noTags")}</Text>
+                )}
+              </View>
+              <View style={styles.chev} />
+            </View>
+
+            <View style={styles.btnRow}>
+              {canHandoff ? (
+                <Pressable testID="cust-info-handoff" onPress={() => openSheet("handoff")} accessibilityRole="button" style={[styles.btn, { backgroundColor: c.surface }]}>
+                  <Text style={[styles.btnT, { color: c.text }]}>{t("cust.info.handoff")}</Text>
+                </Pressable>
+              ) : null}
+              {replyOk && conv ? (
+                <Pressable
+                  testID="cust-info-task"
+                  onPress={() => {
+                    openSheet("task");
+                    setText(t("cust.task.default", { name }));
+                  }}
+                  accessibilityRole="button"
+                  style={[styles.btn, { backgroundColor: c.surface }]}
+                >
+                  <Text style={[styles.btnT, { color: c.text }]}>{t("cust.info.task")}</Text>
+                </Pressable>
+              ) : null}
+              <Pressable testID="cust-info-ask-shark" onPress={() => openSheet("ask")} accessibilityRole="button" style={[styles.btn, styles.btnMain, { backgroundColor: c.accent }]}>
+                <Text style={[styles.btnT, { color: c.onAccent }]} numberOfLines={1}>
+                  {t("cust.info.askShark")}
+                </Text>
               </Pressable>
-            ) : null}
-          </View>
-          ) : null}
-        </View>
-
-        {/* ห้องนี้ */}
-        <SectionLabel style={styles.label}>{t("cust.info.thisRoom")}</SectionLabel>
-        <InfoRow
-          testID="cust-info-assign"
-          title={t("cust.info.assignee")}
-          value={firstName(conv?.assigneeName) || (canClaimSelf ? t("cust.room.claim") : t("cust.info.nobody"))}
-          onPress={assignPress}
-        />
-        <InfoRow testID="cust-info-helpers" title={t("cust.info.helpers")} value={helpers.map((h) => firstName(h.name)).filter(Boolean).join(", ") || t("cust.info.nobody")} onPress={canReply ? () => openSheet("helpers") : undefined} />
-        <InfoRow testID="cust-info-status" title={t("cust.info.status")} value={conv ? t(STATUS_LABEL[conv.status] ?? "cust.status.OPEN") : ""} onPress={canReply ? () => openSheet("status") : undefined} />
-        <InfoRow testID="cust-info-tags" title={t("cust.info.tags")} value={tags.map((g) => (g === WAITING_HUMAN_TAG ? t("cust.tag.waitingHuman") : g)).join(" · ") || t("cust.info.noTags")} />
-
-        <View style={styles.btnRow}>
-          {canHandoff ? (
-            <Pressable testID="cust-info-handoff" onPress={() => openSheet("handoff")} accessibilityRole="button" style={[styles.btn, { backgroundColor: c.surface }]}>
-              <Text style={[styles.btnT, { color: c.text }]}>{t("cust.info.handoff")}</Text>
-            </Pressable>
-          ) : null}
-          {TASK_ROUTE ? (
-            <Pressable testID="cust-info-task" accessibilityRole="button" style={[styles.btn, { backgroundColor: c.surface }]}>
-              <Text style={[styles.btnT, { color: c.text }]}>{t("cust.info.task")}</Text>
-            </Pressable>
-          ) : null}
-          <Pressable testID="cust-info-ask-shark" onPress={() => openSheet("ask")} accessibilityRole="button" style={[styles.btn, styles.btnMain, { backgroundColor: c.accent }]}>
-            <Text style={[styles.btnT, { color: c.onAccent }]} numberOfLines={1}>
-              {t("cust.info.askShark")}
-            </Text>
-          </Pressable>
-        </View>
-        {!canReply || !conv ? null : conv.status !== "RESOLVED" ? (
-          <Pressable testID="cust-info-close" onPress={() => openSheet("close")} accessibilityRole="button" style={styles.closeBtn}>
-            <Text style={[styles.closeT, { color: c.bad.fg }]}>{t("cust.info.close")}</Text>
-          </Pressable>
+            </View>
+            {!statusOk || !conv ? null : conv.status !== "RESOLVED" ? (
+              <Pressable testID="cust-info-close" onPress={() => openSheet("close")} accessibilityRole="button" style={styles.closeBtn}>
+                <Text style={[styles.closeT, { color: c.bad.fg }]}>{t("cust.info.close")}</Text>
+              </Pressable>
+            ) : (
+              <Pressable testID="cust-info-close" onPress={() => void setStatus("OPEN")} accessibilityRole="button" style={styles.closeBtn}>
+                <Text style={[styles.closeT, { color: c.textMuted }]}>{t("cust.info.reopen")}</Text>
+              </Pressable>
+            )}
+          </>
         ) : (
-          <Pressable testID="cust-info-close" onPress={() => void setStatus("OPEN")} accessibilityRole="button" style={styles.closeBtn}>
-            <Text style={[styles.closeT, { color: c.textMuted }]}>{t("cust.info.reopen")}</Text>
-          </Pressable>
+          (noteEl ?? <Loading testID="cust-info-loading" />)
         )}
       </ScrollView>
 
@@ -424,6 +480,27 @@ export default function CustomerInfoScreen() {
         </ScrollView>
         {sheetErr ? <Text style={[styles.err, { color: c.warn.fg }]}>{sheetErr}</Text> : null}
       </Sheet>
+      <Sheet visible={sheet === "task"} onClose={closeSheet} testID="cust-info-task-sheet" top={340}>
+        <Text style={[styles.sheetT, { color: c.text }]}>{t("cust.task.title")}</Text>
+        <Text style={[styles.askSub, { color: c.textMuted }]}>{t("cust.task.sub")}</Text>
+        <TextInput
+          testID="cust-info-task-input"
+          value={text}
+          onChangeText={setText}
+          maxLength={200}
+          placeholder={t("cust.task.ph")}
+          placeholderTextColor={c.placeholder}
+          style={[styles.taskIn, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+        />
+        {sheetErr ? (
+          <Text testID="cust-info-task-error" style={[styles.err, { color: c.warn.fg }]}>
+            {sheetErr}
+          </Text>
+        ) : null}
+        <View style={styles.sheetBtn}>
+          <PrimaryButton testID="cust-info-task-send" label={busy ? t("cust.busy") : t("cust.task.send")} disabled={busy || !text.trim()} onPress={() => void createTask()} />
+        </View>
+      </Sheet>
       <Sheet visible={sheet === "ask"} onClose={closeSheet} testID="cust-info-ask-sheet" top={300}>
         <Text style={[styles.sheetT, { color: c.text }]}>{t("cust.ask.title")}</Text>
         <Text style={[styles.askSub, { color: c.textMuted }]}>{t("cust.ask.sub")}</Text>
@@ -452,14 +529,16 @@ export default function CustomerInfoScreen() {
 
 function InfoRow({ testID, title, value, onPress }: { testID: string; title: string; value: string; onPress?: () => void }) {
   const { c } = useTheme();
+  // S2.14: ไม่มีสิทธิ์กด (ไม่มี onPress) = แถวแสดงผล (View) ไม่ใช่ปุ่มที่ปิดอยู่
+  const Row = onPress ? Pressable : View;
   return (
-    <Pressable testID={testID} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? "button" : undefined} style={[glassStyle(c, radii.sugg), styles.row]}>
+    <Row testID={testID} {...(onPress ? { onPress, accessibilityRole: "button" as const } : {})} style={[glassStyle(c, radii.sugg), styles.row]}>
       <Text style={[styles.rowT, { color: c.text }]}>{title}</Text>
       <Text style={[styles.rowV, { color: c.textMuted }]} numberOfLines={1}>
         {value}
       </Text>
       {onPress ? <Icon name="chevron-right" size={18} color={c.iconDim} /> : <View style={styles.chev} />}
-    </Pressable>
+    </Row>
   );
 }
 
@@ -489,6 +568,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 56, paddingHorizontal: 16, marginTop: 10 },
   rowT: { flex: 1, fontSize: T.body - 0.5 },
   rowV: { fontSize: T.sub - 0.5, maxWidth: 170 },
+  tagRow: { paddingVertical: 10 },
+  tagChips: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, maxWidth: 220 },
+  tagChip: { borderRadius: radii.pill, paddingVertical: 4, paddingHorizontal: 10, maxWidth: 200 },
+  tagChipT: { fontSize: T.cap, fontWeight: "600" },
   chev: { width: 18 },
   btnRow: { flexDirection: "row", gap: 10, marginTop: F.v(30) },
   btn: { flex: 1, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
@@ -508,4 +591,5 @@ const styles = StyleSheet.create({
   askSub: { fontSize: T.cap + 0.5, lineHeight: 19, marginBottom: 10 },
   askIn: { minHeight: 96, borderRadius: radii.segIn + 2, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: T.sub, lineHeight: 20, textAlignVertical: "top" },
   sheetBtn: { marginTop: 14 },
+  taskIn: { height: 46, borderRadius: radii.segIn + 2, borderWidth: 1, paddingHorizontal: 12, fontSize: T.sub },
 });

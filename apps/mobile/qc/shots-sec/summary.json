@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T07:17:36.326Z",
+ "generatedAt": "2026-11-05T12:28:51.371Z",
  "base": "http://127.0.0.1:4727",
  "view": {
   "tag": "iphone",
@@ -8,8 +8,8 @@
   "scale": 2
  },
  "fixture": {
-  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.17.json",
-  "sha256": "8333ec3f6ba877ee31b92d5277ad9e04c9b7cfc72c89669e36feaf35ffb556b6"
+  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.20.json",
+  "sha256": "e921091b6f9ccff05747c2a76f76660fb9430762b6e4c89ee4e6acf6bcc2e2bd"
  },
  "screens": [
   {
@@ -72,7 +72,7 @@
    "unmocked": [],
    "url": "/login",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/login.png",
-   "generatedAt": "2026-11-05T07:07:58.103Z"
+   "generatedAt": "2026-11-05T12:23:02.496Z"
   },
   {
    "name": "signup",
@@ -96,7 +96,7 @@
    "unmocked": [],
    "url": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/signup.png",
-   "generatedAt": "2026-11-05T07:08:01.000Z"
+   "generatedAt": "2026-11-05T12:23:05.829Z"
   },
   {
    "name": "otp",
@@ -119,7 +119,7 @@
    "unmocked": [],
    "url": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/otp.png",
-   "generatedAt": "2026-11-05T07:08:05.070Z"
+   "generatedAt": "2026-11-05T12:23:08.552Z"
   },
   {
    "name": "phone",
@@ -141,7 +141,7 @@
    "unmocked": [],
    "url": "/phone",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/phone.png",
-   "generatedAt": "2026-11-05T07:08:08.682Z"
+   "generatedAt": "2026-11-05T12:23:11.193Z"
   },
   {
    "name": "login-dark",
@@ -165,7 +165,7 @@
    "unmocked": [],
    "url": "/login",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/login-dark.png",
-   "generatedAt": "2026-11-05T07:08:11.757Z"
+   "generatedAt": "2026-11-05T12:23:14.096Z"
   },
   {
    "name": "signup-dark",
@@ -189,7 +189,7 @@
    "unmocked": [],
    "url": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/signup-dark.png",
-   "generatedAt": "2026-11-05T07:08:14.523Z"
+   "generatedAt": "2026-11-05T12:23:16.790Z"
   },
   {
    "name": "otp-dark",
@@ -212,7 +212,7 @@
    "unmocked": [],
    "url": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/otp-dark.png",
-   "generatedAt": "2026-11-05T07:08:17.842Z"
+   "generatedAt": "2026-11-05T12:23:19.412Z"
   },
   {
    "name": "phone-dark",
@@ -234,14 +234,14 @@
    "unmocked": [],
    "url": "/phone",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/phone-dark.png",
-   "generatedAt": "2026-11-05T07:08:21.035Z"
+   "generatedAt": "2026-11-05T12:23:22.023Z"
   },
   {
    "name": "secretary-new",
    "route": "/secretary/new",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "9b93435ac8fbc3f8494268cb74fbae7fb104b25857cbc4d72e24632ac480074d",
+   "fixtureSha256": "10ab1191b713087d350fe608e99729ea32ebc970be33a11547dabf603a178e33",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -262,14 +262,14 @@
    "unmocked": [],
    "url": "/secretary/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new.png",
-   "generatedAt": "2026-11-05T07:08:33.545Z"
+   "generatedAt": "2026-11-05T12:23:33.393Z"
   },
   {
    "name": "secretary-new-dark",
    "route": "/secretary/new",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "9b93435ac8fbc3f8494268cb74fbae7fb104b25857cbc4d72e24632ac480074d",
+   "fixtureSha256": "10ab1191b713087d350fe608e99729ea32ebc970be33a11547dabf603a178e33",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -290,14 +290,14 @@
    "unmocked": [],
    "url": "/secretary/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new-dark.png",
-   "generatedAt": "2026-11-05T07:08:41.282Z"
+   "generatedAt": "2026-11-05T12:23:40.274Z"
   },
   {
    "name": "secretary-room-r1",
    "route": "/secretary/room/r1",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "09e32220e801132af162ca211f39b21a686b2bc5c6dbe3f83e5d3631de86c09e",
+   "fixtureSha256": "82d4ad106ebbbdc0c78f591ce9b0c3c9a4223d4da9c9d25468ad30ea382ca867",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -325,18 +325,18 @@
     "sec-room-input",
     "sec-room-send"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 12 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 7 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
    "unmocked": [],
    "url": "/secretary/room/r1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1.png",
-   "generatedAt": "2026-11-05T07:08:58.602Z"
+   "generatedAt": "2026-11-05T12:23:54.919Z"
   },
   {
    "name": "secretary-room-r1-dark",
    "route": "/secretary/room/r1",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "09e32220e801132af162ca211f39b21a686b2bc5c6dbe3f83e5d3631de86c09e",
+   "fixtureSha256": "82d4ad106ebbbdc0c78f591ce9b0c3c9a4223d4da9c9d25468ad30ea382ca867",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -364,18 +364,18 @@
     "sec-room-input",
     "sec-room-send"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 12 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 7 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
    "unmocked": [],
    "url": "/secretary/room/r1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1-dark.png",
-   "generatedAt": "2026-11-05T07:09:03.033Z"
+   "generatedAt": "2026-11-05T12:23:58.161Z"
   },
   {
    "name": "secretary-inbox",
    "route": "/secretary/inbox",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "991ce132697a4995551646a7ae494e6fd3525206fce7b66af3543229f90951c6",
+   "fixtureSha256": "6b1d125962d3e95dcfc0565b8de4f3dd3d269697e7a30ea014ba8db4f2c949e4",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -397,14 +397,14 @@
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox.png",
-   "generatedAt": "2026-11-05T07:09:31.529Z"
+   "generatedAt": "2026-11-05T12:24:24.506Z"
   },
   {
    "name": "secretary-scheduled",
    "route": "/secretary/scheduled",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "991ce132697a4995551646a7ae494e6fd3525206fce7b66af3543229f90951c6",
+   "fixtureSha256": "6b1d125962d3e95dcfc0565b8de4f3dd3d269697e7a30ea014ba8db4f2c949e4",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -420,14 +420,14 @@
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled.png",
-   "generatedAt": "2026-11-05T07:09:35.259Z"
+   "generatedAt": "2026-11-05T12:24:27.355Z"
   },
   {
    "name": "secretary-inbox-dark",
    "route": "/secretary/inbox",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "991ce132697a4995551646a7ae494e6fd3525206fce7b66af3543229f90951c6",
+   "fixtureSha256": "6b1d125962d3e95dcfc0565b8de4f3dd3d269697e7a30ea014ba8db4f2c949e4",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -449,14 +449,14 @@
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox-dark.png",
-   "generatedAt": "2026-11-05T07:09:39.148Z"
+   "generatedAt": "2026-11-05T12:24:30.358Z"
   },
   {
    "name": "secretary-scheduled-dark",
    "route": "/secretary/scheduled",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "991ce132697a4995551646a7ae494e6fd3525206fce7b66af3543229f90951c6",
+   "fixtureSha256": "6b1d125962d3e95dcfc0565b8de4f3dd3d269697e7a30ea014ba8db4f2c949e4",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -472,14 +472,14 @@
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled-dark.png",
-   "generatedAt": "2026-11-05T07:09:42.859Z"
+   "generatedAt": "2026-11-05T12:24:33.171Z"
   },
   {
    "name": "secretary-settings",
    "route": "/secretary/settings",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -497,14 +497,14 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings.png",
-   "generatedAt": "2026-11-05T07:09:51.404Z"
+   "generatedAt": "2026-11-05T12:24:41.783Z"
   },
   {
    "name": "secretary-settings-secretary",
    "route": "/secretary/settings/secretary",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -524,14 +524,14 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-secretary.png",
-   "generatedAt": "2026-11-05T07:09:54.611Z"
+   "generatedAt": "2026-11-05T12:24:44.900Z"
   },
   {
    "name": "secretary-settings-quota",
    "route": "/secretary/settings/quota",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -546,14 +546,14 @@
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-quota.png",
-   "generatedAt": "2026-11-05T07:09:58.316Z"
+   "generatedAt": "2026-11-05T12:24:47.710Z"
   },
   {
    "name": "secretary-settings-access",
    "route": "/secretary/settings/access",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -569,14 +569,14 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-access.png",
-   "generatedAt": "2026-11-05T07:10:03.801Z"
+   "generatedAt": "2026-11-05T12:24:50.776Z"
   },
   {
    "name": "secretary-settings-rules",
    "route": "/secretary/settings/rules",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -594,14 +594,14 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-rules.png",
-   "generatedAt": "2026-11-05T07:10:08.642Z"
+   "generatedAt": "2026-11-05T12:24:53.944Z"
   },
   {
    "name": "secretary-settings-log",
    "route": "/secretary/settings/log",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -618,14 +618,14 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-log.png",
-   "generatedAt": "2026-11-05T07:10:12.556Z"
+   "generatedAt": "2026-11-05T12:24:56.819Z"
   },
   {
    "name": "secretary-settings-knowledge",
    "route": "/secretary/settings/knowledge",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -645,14 +645,14 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-05T07:10:16.362Z"
+   "generatedAt": "2026-11-05T12:24:59.633Z"
   },
   {
    "name": "secretary-settings-dark",
    "route": "/secretary/settings",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -670,14 +670,14 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-dark.png",
-   "generatedAt": "2026-11-05T07:10:23.642Z"
+   "generatedAt": "2026-11-05T12:25:07.333Z"
   },
   {
    "name": "secretary-settings-secretary-dark",
    "route": "/secretary/settings/secretary",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -697,14 +697,14 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-secretary-dark.png",
-   "generatedAt": "2026-11-05T07:10:26.897Z"
+   "generatedAt": "2026-11-05T12:25:10.706Z"
   },
   {
    "name": "secretary-settings-quota-dark",
    "route": "/secretary/settings/quota",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -719,14 +719,14 @@
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-quota-dark.png",
-   "generatedAt": "2026-11-05T07:10:30.693Z"
+   "generatedAt": "2026-11-05T12:25:13.579Z"
   },
   {
    "name": "secretary-settings-access-dark",
    "route": "/secretary/settings/access",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -742,14 +742,14 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-access-dark.png",
-   "generatedAt": "2026-11-05T07:10:34.689Z"
+   "generatedAt": "2026-11-05T12:25:16.506Z"
   },
   {
    "name": "secretary-settings-rules-dark",
    "route": "/secretary/settings/rules",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -767,14 +767,14 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-rules-dark.png",
-   "generatedAt": "2026-11-05T07:10:38.075Z"
+   "generatedAt": "2026-11-05T12:25:19.723Z"
   },
   {
    "name": "secretary-settings-log-dark",
    "route": "/secretary/settings/log",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -791,14 +791,14 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-log-dark.png",
-   "generatedAt": "2026-11-05T07:10:41.833Z"
+   "generatedAt": "2026-11-05T12:25:22.523Z"
   },
   {
    "name": "secretary-settings-knowledge-dark",
    "route": "/secretary/settings/knowledge",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "abed3ea24517e1fe63f5ce1d14e6dd292b69f9cfb502709c4397cb03665b99e8",
+   "fixtureSha256": "a14e8bbd221e67d98ec974742e147c463102651f0d856f46141346ca16377e03",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -818,14 +818,14 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-knowledge-dark.png",
-   "generatedAt": "2026-11-05T07:10:45.616Z"
+   "generatedAt": "2026-11-05T12:25:25.481Z"
   },
   {
    "name": "secretary-room-r2",
    "route": "/secretary/room/r2",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "8fc08d8897a5c2b999e0bf74b152f9fda8acecdb31fa1278519a27a4378b7ec7",
+   "fixtureSha256": "a11e4c43c28aec9f46f5823d58e110ddab05ea5560226bae0bbf1b3ea1fdbc1f",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -849,14 +849,14 @@
    "unmocked": [],
    "url": "/secretary/room/r2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r2.png",
-   "generatedAt": "2026-11-05T07:12:01.119Z"
+   "generatedAt": "2026-11-05T12:26:26.078Z"
   },
   {
    "name": "secretary-onboarding-name",
    "route": "/secretary/onboarding/name",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "8fc08d8897a5c2b999e0bf74b152f9fda8acecdb31fa1278519a27a4378b7ec7",
+   "fixtureSha256": "a11e4c43c28aec9f46f5823d58e110ddab05ea5560226bae0bbf1b3ea1fdbc1f",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -875,14 +875,14 @@
    "unmocked": [],
    "url": "/secretary/onboarding/name",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-onboarding-name.png",
-   "generatedAt": "2026-11-05T07:12:05.179Z"
+   "generatedAt": "2026-11-05T12:26:29.154Z"
   },
   {
    "name": "secretary-room-r2-dark",
    "route": "/secretary/room/r2",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "8fc08d8897a5c2b999e0bf74b152f9fda8acecdb31fa1278519a27a4378b7ec7",
+   "fixtureSha256": "a11e4c43c28aec9f46f5823d58e110ddab05ea5560226bae0bbf1b3ea1fdbc1f",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -906,14 +906,14 @@
    "unmocked": [],
    "url": "/secretary/room/r2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r2-dark.png",
-   "generatedAt": "2026-11-05T07:12:13.112Z"
+   "generatedAt": "2026-11-05T12:26:35.140Z"
   },
   {
    "name": "secretary-onboarding-name-dark",
    "route": "/secretary/onboarding/name",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "8fc08d8897a5c2b999e0bf74b152f9fda8acecdb31fa1278519a27a4378b7ec7",
+   "fixtureSha256": "a11e4c43c28aec9f46f5823d58e110ddab05ea5560226bae0bbf1b3ea1fdbc1f",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -932,14 +932,14 @@
    "unmocked": [],
    "url": "/secretary/onboarding/name",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-onboarding-name-dark.png",
-   "generatedAt": "2026-11-05T07:12:16.596Z"
+   "generatedAt": "2026-11-05T12:26:38.230Z"
   },
   {
    "name": "secretary-help",
    "route": "/secretary/help",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "a1dcecd609d6d7edcf70765ed7d8e2c1ed12400549e25016d02587cc36d8c944",
+   "fixtureSha256": "d43eeb8d5765fab0d7d0489fbd3f299a1278bc8c85f35f477b8a32c01d84e1ab",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -957,14 +957,14 @@
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help.png",
-   "generatedAt": "2026-11-05T07:12:25.605Z"
+   "generatedAt": "2026-11-05T12:26:45.506Z"
   },
   {
    "name": "secretary-help-c1",
    "route": "/secretary/help/c1",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "a1dcecd609d6d7edcf70765ed7d8e2c1ed12400549e25016d02587cc36d8c944",
+   "fixtureSha256": "d43eeb8d5765fab0d7d0489fbd3f299a1278bc8c85f35f477b8a32c01d84e1ab",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -987,14 +987,14 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1.png",
-   "generatedAt": "2026-11-05T07:12:29.481Z"
+   "generatedAt": "2026-11-05T12:26:49.332Z"
   },
   {
    "name": "secretary-help-dark",
    "route": "/secretary/help",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "a1dcecd609d6d7edcf70765ed7d8e2c1ed12400549e25016d02587cc36d8c944",
+   "fixtureSha256": "d43eeb8d5765fab0d7d0489fbd3f299a1278bc8c85f35f477b8a32c01d84e1ab",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1012,14 +1012,14 @@
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-dark.png",
-   "generatedAt": "2026-11-05T07:12:33.320Z"
+   "generatedAt": "2026-11-05T12:26:52.260Z"
   },
   {
    "name": "secretary-help-c1-dark",
    "route": "/secretary/help/c1",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "a1dcecd609d6d7edcf70765ed7d8e2c1ed12400549e25016d02587cc36d8c944",
+   "fixtureSha256": "d43eeb8d5765fab0d7d0489fbd3f299a1278bc8c85f35f477b8a32c01d84e1ab",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1042,14 +1042,47 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1-dark.png",
-   "generatedAt": "2026-11-05T07:12:37.237Z"
+   "generatedAt": "2026-11-05T12:26:56.078Z"
+  },
+  {
+   "name": "customers-x1",
+   "route": "/customers/x1",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "3d05b0adefeaaf2d4819334d4e37e60dc302297f6ab8dd6fa038fc6e4fc59077",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "cust-room",
+    "cust-room-helper",
+    "cust-room-banner",
+    "cust-bubble-in",
+    "cust-bubble-out",
+    "cust-bubble-internal",
+    "cust-bubble-ai",
+    "cust-draft-card",
+    "cust-draft-send",
+    "cust-draft-edit",
+    "cust-input",
+    "cust-send",
+    "cust-attach",
+    "cust-internal-toggle",
+    "cust-quick"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nคุณสมชาย · ร้านดอยช้าง\nL\nLINE · ผู้ดูแล น้ำ\n\n\nลูกค้าเห็นข้อความที่คุณพิมพ์ในห้องนี้ · ไม่ใช่ห้องสั่งงานเลขา\nส\nคุณสมชาย · ร้านดอยช้าง · 9:52\nสวัสดีค่ะ ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหมคะ\nส\nคุณสมชาย · ร้านดอยช้าง · 9:52\n\nสติกเกอร์\n\nบันทึกภายใน · น้ำ 9:53\n🙋 น้ำ เรียก ก้อง มาช่วย: ลูกค้าถามเรื่องห้องพักด้วย\nลูกค้าไม่เห็น\n\nบันทึกภายใน · น้ำ 9:53\nลูกค้าเก่า จ่ายตรงทุกครั้ง ให้ได้ค่ะ @ก้อง ช่วยดูเรื่องห้องพักที\nลูกค้าไม่เห็น\nส\nคุณสมชาย · ร้านดอยช้าง · 9:54\n\nส\nคุณสมชาย · ร้านดอยช้าง · 9:54\n\nข้อความเสียง 0:12\nได้เลยค่ะ เดี๋ยวแก้ใบเสนอราคาให้นะคะ\nน้ำ · 9:55\n✕ ส่งไม่สำเร็จ\n\nส่งใหม่\n⏰ ยังไม่มีคนตอบลูกค้าเกิน 15 นาที — เตือนผู้ดูแลแล้ว · 9:56\nแก้ใบเสนอราคา Q-0012 เป็นเครดิต 45 วันแล้วค่ะ แนบไฟล์ใหม่มาให้นะคะ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\n\nQ-0012-v2.pdf\nส่งโดย Shark (ผู้ช่วย AI) · อนุมัติโดยคุณสุข 9:57\nส\nคุณสมชาย · ร้านดอยช้าง · 9:58\nขอบคุณค่ะ ขอดูห้องพักวันเสาร์ด้วยได้ไหมคะ\n✨ Shark ร่างคำตอบ\nสวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ\nแก้\nส่งข้อความนี้\nขอบคุณค่ะ 🙏\nที่อยู่ร้าน\nเวลาเปิด\nโอนแล้วแจ้งได้เลย\n\n\n",
+   "unmocked": [],
+   "url": "/customers/x1",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1.png",
+   "generatedAt": "2026-11-05T12:27:07.897Z"
   },
   {
    "name": "customers-x1-info",
    "route": "/customers/x1/info",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "8333ec3f6ba877ee31b92d5277ad9e04c9b7cfc72c89669e36feaf35ffb556b6",
+   "fixtureSha256": "3d05b0adefeaaf2d4819334d4e37e60dc302297f6ab8dd6fa038fc6e4fc59077",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1066,18 +1099,18 @@
     "cust-info-ask-shark",
     "cust-info-close"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nข้อมูลลูกค้า\nส\nคุณสมชาย · ร้านดอยช้าง\nL\nLINE · คุณสมชาย · 081-xxx-5678\nในระบบ SHARK\nสมา\nสมาชิก · คุณสมชาย\nเปิด\n\nเปลี่ยนสมาชิก\nถอดสมาชิก\nห้องนี้\nผู้ดูแล\nน้ำ\n\nคนช่วย\nก้อง\n\nสถานะ\nเปิด\n\nแท็ก\nดีล\nส่งต่อ\nสั่ง Shark เรื่องลูกค้านี้\nปิดห้อง",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nข้อมูลลูกค้า\nส\nคุณสมชาย · ร้านดอยช้าง\nL\nLINE · คุณสมชาย\nในระบบ SHARK\nสมา\nสมาชิก · คุณสมชาย\nเปิด\n\nเปลี่ยนสมาชิก\nถอดสมาชิก\nห้องนี้\nผู้ดูแล\nน้ำ\n\nคนช่วย\nก้อง\n\nสถานะ\nเปิด\n\nแท็ก\nดีล\nส่งต่อ\nสร้างงานบอร์ด\nสั่ง Shark เรื่องลูกค้านี้\nปิดห้อง",
    "unmocked": [],
    "url": "/customers/x1/info",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-info.png",
-   "generatedAt": "2026-11-05T07:12:53.830Z"
+   "generatedAt": "2026-11-05T12:27:11.717Z"
   },
   {
    "name": "secretary-settings-customers",
    "route": "/secretary/settings/customers",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "8333ec3f6ba877ee31b92d5277ad9e04c9b7cfc72c89669e36feaf35ffb556b6",
+   "fixtureSha256": "3d05b0adefeaaf2d4819334d4e37e60dc302297f6ab8dd6fa038fc6e4fc59077",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1098,14 +1131,47 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-customers.png",
-   "generatedAt": "2026-11-05T07:12:57.640Z"
+   "generatedAt": "2026-11-05T12:27:14.683Z"
+  },
+  {
+   "name": "customers-x1-dark",
+   "route": "/customers/x1",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "3d05b0adefeaaf2d4819334d4e37e60dc302297f6ab8dd6fa038fc6e4fc59077",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "cust-room",
+    "cust-room-helper",
+    "cust-room-banner",
+    "cust-bubble-in",
+    "cust-bubble-out",
+    "cust-bubble-internal",
+    "cust-bubble-ai",
+    "cust-draft-card",
+    "cust-draft-send",
+    "cust-draft-edit",
+    "cust-input",
+    "cust-send",
+    "cust-attach",
+    "cust-internal-toggle",
+    "cust-quick"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nคุณสมชาย · ร้านดอยช้าง\nL\nLINE · ผู้ดูแล น้ำ\n\n\nลูกค้าเห็นข้อความที่คุณพิมพ์ในห้องนี้ · ไม่ใช่ห้องสั่งงานเลขา\nส\nคุณสมชาย · ร้านดอยช้าง · 9:52\nสวัสดีค่ะ ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหมคะ\nส\nคุณสมชาย · ร้านดอยช้าง · 9:52\n\nสติกเกอร์\n\nบันทึกภายใน · น้ำ 9:53\n🙋 น้ำ เรียก ก้อง มาช่วย: ลูกค้าถามเรื่องห้องพักด้วย\nลูกค้าไม่เห็น\n\nบันทึกภายใน · น้ำ 9:53\nลูกค้าเก่า จ่ายตรงทุกครั้ง ให้ได้ค่ะ @ก้อง ช่วยดูเรื่องห้องพักที\nลูกค้าไม่เห็น\nส\nคุณสมชาย · ร้านดอยช้าง · 9:54\n\nส\nคุณสมชาย · ร้านดอยช้าง · 9:54\n\nข้อความเสียง 0:12\nได้เลยค่ะ เดี๋ยวแก้ใบเสนอราคาให้นะคะ\nน้ำ · 9:55\n✕ ส่งไม่สำเร็จ\n\nส่งใหม่\n⏰ ยังไม่มีคนตอบลูกค้าเกิน 15 นาที — เตือนผู้ดูแลแล้ว · 9:56\nแก้ใบเสนอราคา Q-0012 เป็นเครดิต 45 วันแล้วค่ะ แนบไฟล์ใหม่มาให้นะคะ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\n\nQ-0012-v2.pdf\nส่งโดย Shark (ผู้ช่วย AI) · อนุมัติโดยคุณสุข 9:57\nส\nคุณสมชาย · ร้านดอยช้าง · 9:58\nขอบคุณค่ะ ขอดูห้องพักวันเสาร์ด้วยได้ไหมคะ\n✨ Shark ร่างคำตอบ\nสวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ\nแก้\nส่งข้อความนี้\nขอบคุณค่ะ 🙏\nที่อยู่ร้าน\nเวลาเปิด\nโอนแล้วแจ้งได้เลย\n\n\n",
+   "unmocked": [],
+   "url": "/customers/x1",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-dark.png",
+   "generatedAt": "2026-11-05T12:27:21.451Z"
   },
   {
    "name": "customers-x1-info-dark",
    "route": "/customers/x1/info",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "8333ec3f6ba877ee31b92d5277ad9e04c9b7cfc72c89669e36feaf35ffb556b6",
+   "fixtureSha256": "3d05b0adefeaaf2d4819334d4e37e60dc302297f6ab8dd6fa038fc6e4fc59077",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1122,18 +1188,18 @@
     "cust-info-ask-shark",
     "cust-info-close"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nข้อมูลลูกค้า\nส\nคุณสมชาย · ร้านดอยช้าง\nL\nLINE · คุณสมชาย · 081-xxx-5678\nในระบบ SHARK\nสมา\nสมาชิก · คุณสมชาย\nเปิด\n\nเปลี่ยนสมาชิก\nถอดสมาชิก\nห้องนี้\nผู้ดูแล\nน้ำ\n\nคนช่วย\nก้อง\n\nสถานะ\nเปิด\n\nแท็ก\nดีล\nส่งต่อ\nสั่ง Shark เรื่องลูกค้านี้\nปิดห้อง",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nข้อมูลลูกค้า\nส\nคุณสมชาย · ร้านดอยช้าง\nL\nLINE · คุณสมชาย\nในระบบ SHARK\nสมา\nสมาชิก · คุณสมชาย\nเปิด\n\nเปลี่ยนสมาชิก\nถอดสมาชิก\nห้องนี้\nผู้ดูแล\nน้ำ\n\nคนช่วย\nก้อง\n\nสถานะ\nเปิด\n\nแท็ก\nดีล\nส่งต่อ\nสร้างงานบอร์ด\nสั่ง Shark เรื่องลูกค้านี้\nปิดห้อง",
    "unmocked": [],
    "url": "/customers/x1/info",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-info-dark.png",
-   "generatedAt": "2026-11-05T07:13:09.860Z"
+   "generatedAt": "2026-11-05T12:27:24.519Z"
   },
   {
    "name": "secretary-settings-customers-dark",
    "route": "/secretary/settings/customers",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "8333ec3f6ba877ee31b92d5277ad9e04c9b7cfc72c89669e36feaf35ffb556b6",
+   "fixtureSha256": "3d05b0adefeaaf2d4819334d4e37e60dc302297f6ab8dd6fa038fc6e4fc59077",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1154,14 +1220,14 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-customers-dark.png",
-   "generatedAt": "2026-11-05T07:13:13.618Z"
+   "generatedAt": "2026-11-05T12:27:27.559Z"
   },
   {
    "name": "business-new",
    "route": "/business/new",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "23b984c43fd254ab07aab1349d08b606ab1fc876f72c1c74c1f4f01a37e4eead",
+   "fixtureSha256": "dbf187b60f731e50822cffda548653d3af2c9321f84f1693b2f7d318841cd26a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1177,14 +1243,14 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new.png",
-   "generatedAt": "2026-11-05T07:13:22.913Z"
+   "generatedAt": "2026-11-05T12:27:36.033Z"
   },
   {
    "name": "secretary-staff-invite",
    "route": "/secretary/staff/invite",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "23b984c43fd254ab07aab1349d08b606ab1fc876f72c1c74c1f4f01a37e4eead",
+   "fixtureSha256": "dbf187b60f731e50822cffda548653d3af2c9321f84f1693b2f7d318841cd26a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1206,14 +1272,14 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite.png",
-   "generatedAt": "2026-11-05T07:13:26.232Z"
+   "generatedAt": "2026-11-05T12:27:39.156Z"
   },
   {
    "name": "secretary-staff-m1",
    "route": "/secretary/staff/m1",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "23b984c43fd254ab07aab1349d08b606ab1fc876f72c1c74c1f4f01a37e4eead",
+   "fixtureSha256": "dbf187b60f731e50822cffda548653d3af2c9321f84f1693b2f7d318841cd26a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1231,14 +1297,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1.png",
-   "generatedAt": "2026-11-05T07:13:30.093Z"
+   "generatedAt": "2026-11-05T12:27:42.207Z"
   },
   {
    "name": "secretary-settings-account",
    "route": "/secretary/settings/account",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "23b984c43fd254ab07aab1349d08b606ab1fc876f72c1c74c1f4f01a37e4eead",
+   "fixtureSha256": "dbf187b60f731e50822cffda548653d3af2c9321f84f1693b2f7d318841cd26a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1253,18 +1319,18 @@
     "acct-delete",
     "acct-logout"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nบัญชีของฉัน\nส\nสุข สมศรี\nเจ้าของ 2 กิจการ · พนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n080-000-0101\n\nอีเมล (สำรอง · ใบเสร็จ)\nsuk@qc.invalid\nเข้าด้วย Apple\nเชื่อมแล้ว\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nเข้าเวรอยู่\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nบัญชีของฉัน\nส\nสุข สมศรี\nเจ้าของ 2 กิจการ · พนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n080-000-0101\n\nอีเมล (สำรอง · ใบเสร็จ)\nsuk@qc.invalid\nเข้าด้วย Apple\nเชื่อมแล้ว\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nเข้าเวรอยู่ · 08:30\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account.png",
-   "generatedAt": "2026-11-05T07:13:33.935Z"
+   "generatedAt": "2026-11-05T12:27:45.997Z"
   },
   {
    "name": "business-new-dark",
    "route": "/business/new",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "23b984c43fd254ab07aab1349d08b606ab1fc876f72c1c74c1f4f01a37e4eead",
+   "fixtureSha256": "dbf187b60f731e50822cffda548653d3af2c9321f84f1693b2f7d318841cd26a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1280,14 +1346,14 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new-dark.png",
-   "generatedAt": "2026-11-05T07:13:37.747Z"
+   "generatedAt": "2026-11-05T12:27:49.631Z"
   },
   {
    "name": "secretary-staff-invite-dark",
    "route": "/secretary/staff/invite",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "23b984c43fd254ab07aab1349d08b606ab1fc876f72c1c74c1f4f01a37e4eead",
+   "fixtureSha256": "dbf187b60f731e50822cffda548653d3af2c9321f84f1693b2f7d318841cd26a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1309,14 +1375,14 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite-dark.png",
-   "generatedAt": "2026-11-05T07:13:41.198Z"
+   "generatedAt": "2026-11-05T12:27:52.723Z"
   },
   {
    "name": "secretary-staff-m1-dark",
    "route": "/secretary/staff/m1",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "23b984c43fd254ab07aab1349d08b606ab1fc876f72c1c74c1f4f01a37e4eead",
+   "fixtureSha256": "dbf187b60f731e50822cffda548653d3af2c9321f84f1693b2f7d318841cd26a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1334,14 +1400,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1-dark.png",
-   "generatedAt": "2026-11-05T07:13:44.979Z"
+   "generatedAt": "2026-11-05T12:27:55.625Z"
   },
   {
    "name": "secretary-settings-account-dark",
    "route": "/secretary/settings/account",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "23b984c43fd254ab07aab1349d08b606ab1fc876f72c1c74c1f4f01a37e4eead",
+   "fixtureSha256": "dbf187b60f731e50822cffda548653d3af2c9321f84f1693b2f7d318841cd26a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1356,18 +1422,18 @@
     "acct-delete",
     "acct-logout"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nบัญชีของฉัน\nส\nสุข สมศรี\nเจ้าของ 2 กิจการ · พนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n080-000-0101\n\nอีเมล (สำรอง · ใบเสร็จ)\nsuk@qc.invalid\nเข้าด้วย Apple\nเชื่อมแล้ว\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nเข้าเวรอยู่\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nsuk@qc.invalid\nออกจากระบบ\n\nบัญชีของฉัน\nส\nสุข สมศรี\nเจ้าของ 2 กิจการ · พนักงาน 1 กิจการ\nเบอร์โทร (ใช้เข้าแอป)\n080-000-0101\n\nอีเมล (สำรอง · ใบเสร็จ)\nsuk@qc.invalid\nเข้าด้วย Apple\nเชื่อมแล้ว\nธีม\nตามระบบ\nสว่าง\nมืด\nการแจ้งเตือน\nอนุมัติ · เลขา · ลูกค้า · ช่วยเหลือ\n\nภาษา\nไทย\n\nเข้าเวร\nเข้าเวรอยู่ · 08:30\nออกจากระบบ\nลบบัญชี\nลบบัญชี = ลบข้อมูลส่วนตัวและเลขาของคุณภายใน 30 วัน · กิจการที่คุณเป็นเจ้าของต้องโอนให้คนอื่นก่อน",
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account-dark.png",
-   "generatedAt": "2026-11-05T07:13:48.810Z"
+   "generatedAt": "2026-11-05T12:27:59.353Z"
   },
   {
    "name": "secretary",
    "route": "/secretary",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "35845be1117d10e6e1d08b0c977ea316a442cf0dc7561247c33ebba0c9263561",
+   "fixtureSha256": "e921091b6f9ccff05747c2a76f76660fb9430762b6e4c89ee4e6acf6bcc2e2bd",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1388,14 +1454,14 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary.png",
-   "generatedAt": "2026-11-05T07:14:32.377Z"
+   "generatedAt": "2026-11-05T12:28:36.893Z"
   },
   {
    "name": "customers",
    "route": "/customers",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "35845be1117d10e6e1d08b0c977ea316a442cf0dc7561247c33ebba0c9263561",
+   "fixtureSha256": "e921091b6f9ccff05747c2a76f76660fb9430762b6e4c89ee4e6acf6bcc2e2bd",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1412,14 +1478,14 @@
    "unmocked": [],
    "url": "/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers.png",
-   "generatedAt": "2026-11-05T07:14:36.246Z"
+   "generatedAt": "2026-11-05T12:28:39.709Z"
   },
   {
    "name": "secretary-staff",
    "route": "/secretary/staff",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "35845be1117d10e6e1d08b0c977ea316a442cf0dc7561247c33ebba0c9263561",
+   "fixtureSha256": "e921091b6f9ccff05747c2a76f76660fb9430762b6e4c89ee4e6acf6bcc2e2bd",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1437,14 +1503,14 @@
    "unmocked": [],
    "url": "/secretary/staff",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff.png",
-   "generatedAt": "2026-11-05T07:14:40.144Z"
+   "generatedAt": "2026-11-05T12:28:42.642Z"
   },
   {
    "name": "secretary-dark",
    "route": "/secretary",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "35845be1117d10e6e1d08b0c977ea316a442cf0dc7561247c33ebba0c9263561",
+   "fixtureSha256": "e921091b6f9ccff05747c2a76f76660fb9430762b6e4c89ee4e6acf6bcc2e2bd",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1465,14 +1531,14 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-dark.png",
-   "generatedAt": "2026-11-05T07:14:44.011Z"
+   "generatedAt": "2026-11-05T12:28:45.531Z"
   },
   {
    "name": "customers-dark",
    "route": "/customers",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "35845be1117d10e6e1d08b0c977ea316a442cf0dc7561247c33ebba0c9263561",
+   "fixtureSha256": "e921091b6f9ccff05747c2a76f76660fb9430762b6e4c89ee4e6acf6bcc2e2bd",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1489,14 +1555,14 @@
    "unmocked": [],
    "url": "/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-dark.png",
-   "generatedAt": "2026-11-05T07:14:47.801Z"
+   "generatedAt": "2026-11-05T12:28:48.366Z"
   },
   {
    "name": "secretary-staff-dark",
    "route": "/secretary/staff",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "35845be1117d10e6e1d08b0c977ea316a442cf0dc7561247c33ebba0c9263561",
+   "fixtureSha256": "e921091b6f9ccff05747c2a76f76660fb9430762b6e4c89ee4e6acf6bcc2e2bd",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -1514,73 +1580,7 @@
    "unmocked": [],
    "url": "/secretary/staff",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-dark.png",
-   "generatedAt": "2026-11-05T07:14:51.601Z"
-  },
-  {
-   "name": "customers-x1",
-   "route": "/customers/x1",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "8333ec3f6ba877ee31b92d5277ad9e04c9b7cfc72c89669e36feaf35ffb556b6",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "cust-room",
-    "cust-room-helper",
-    "cust-room-banner",
-    "cust-bubble-in",
-    "cust-bubble-out",
-    "cust-bubble-internal",
-    "cust-bubble-ai",
-    "cust-draft-card",
-    "cust-draft-send",
-    "cust-draft-edit",
-    "cust-input",
-    "cust-send",
-    "cust-attach",
-    "cust-internal-toggle",
-    "cust-quick"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nคุณสมชาย · ร้านดอยช้าง\nL\nLINE · ผู้ดูแล น้ำ\n\n\nลูกค้าเห็นข้อความที่คุณพิมพ์ในห้องนี้ · ไม่ใช่ห้องสั่งงานเลขา\nส\nคุณสมชาย · ร้านดอยช้าง · 9:52\nสวัสดีค่ะ ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหมคะ\nส\nคุณสมชาย · ร้านดอยช้าง · 9:52\n\nสติกเกอร์\n\nบันทึกภายใน · น้ำ 9:53\n🙋 น้ำ เรียก ก้อง มาช่วย: ลูกค้าถามเรื่องห้องพักด้วย\nลูกค้าไม่เห็น\n\nบันทึกภายใน · น้ำ 9:53\nลูกค้าเก่า จ่ายตรงทุกครั้ง ให้ได้ค่ะ @ก้อง ช่วยดูเรื่องห้องพักที\nลูกค้าไม่เห็น\nส\nคุณสมชาย · ร้านดอยช้าง · 9:54\nส\nคุณสมชาย · ร้านดอยช้าง · 9:54\n\nข้อความเสียง 0:12\nได้เลยค่ะ เดี๋ยวแก้ใบเสนอราคาให้นะคะ\nน้ำ · 9:55\n✕ ส่งไม่สำเร็จ\n\nส่งใหม่\n⏰ ยังไม่มีคนตอบลูกค้าเกิน 15 นาที — เตือนผู้ดูแลแล้ว · 9:56\nแก้ใบเสนอราคา Q-0012 เป็นเครดิต 45 วันแล้วค่ะ แนบไฟล์ใหม่มาให้นะคะ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\n\nQ-0012-v2.pdf\nส่งโดย Shark (ผู้ช่วย AI) · อนุมัติโดยคุณสุข 9:57\nส\nคุณสมชาย · ร้านดอยช้าง · 9:58\nขอบคุณค่ะ ขอดูห้องพักวันเสาร์ด้วยได้ไหมคะ\n✨ Shark ร่างคำตอบ\nสวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ\nแก้\nส่งข้อความนี้\nขอบคุณค่ะ 🙏\nที่อยู่ร้าน\nเวลาเปิด\nโอนแล้วแจ้งได้เลย\n\n\n",
-   "unmocked": [],
-   "url": "/customers/x1",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1.png",
-   "generatedAt": "2026-11-05T07:17:32.264Z"
-  },
-  {
-   "name": "customers-x1-dark",
-   "route": "/customers/x1",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "8333ec3f6ba877ee31b92d5277ad9e04c9b7cfc72c89669e36feaf35ffb556b6",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "cust-room",
-    "cust-room-helper",
-    "cust-room-banner",
-    "cust-bubble-in",
-    "cust-bubble-out",
-    "cust-bubble-internal",
-    "cust-bubble-ai",
-    "cust-draft-card",
-    "cust-draft-send",
-    "cust-draft-edit",
-    "cust-input",
-    "cust-send",
-    "cust-attach",
-    "cust-internal-toggle",
-    "cust-quick"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nคุณสมชาย · ร้านดอยช้าง\nL\nLINE · ผู้ดูแล น้ำ\n\n\nลูกค้าเห็นข้อความที่คุณพิมพ์ในห้องนี้ · ไม่ใช่ห้องสั่งงานเลขา\nส\nคุณสมชาย · ร้านดอยช้าง · 9:52\nสวัสดีค่ะ ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหมคะ\nส\nคุณสมชาย · ร้านดอยช้าง · 9:52\n\nสติกเกอร์\n\nบันทึกภายใน · น้ำ 9:53\n🙋 น้ำ เรียก ก้อง มาช่วย: ลูกค้าถามเรื่องห้องพักด้วย\nลูกค้าไม่เห็น\n\nบันทึกภายใน · น้ำ 9:53\nลูกค้าเก่า จ่ายตรงทุกครั้ง ให้ได้ค่ะ @ก้อง ช่วยดูเรื่องห้องพักที\nลูกค้าไม่เห็น\nส\nคุณสมชาย · ร้านดอยช้าง · 9:54\nส\nคุณสมชาย · ร้านดอยช้าง · 9:54\n\nข้อความเสียง 0:12\nได้เลยค่ะ เดี๋ยวแก้ใบเสนอราคาให้นะคะ\nน้ำ · 9:55\n✕ ส่งไม่สำเร็จ\n\nส่งใหม่\n⏰ ยังไม่มีคนตอบลูกค้าเกิน 15 นาที — เตือนผู้ดูแลแล้ว · 9:56\nแก้ใบเสนอราคา Q-0012 เป็นเครดิต 45 วันแล้วค่ะ แนบไฟล์ใหม่มาให้นะคะ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\n\nQ-0012-v2.pdf\nส่งโดย Shark (ผู้ช่วย AI) · อนุมัติโดยคุณสุข 9:57\nส\nคุณสมชาย · ร้านดอยช้าง · 9:58\nขอบคุณค่ะ ขอดูห้องพักวันเสาร์ด้วยได้ไหมคะ\n✨ Shark ร่างคำตอบ\nสวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ\nแก้\nส่งข้อความนี้\nขอบคุณค่ะ 🙏\nที่อยู่ร้าน\nเวลาเปิด\nโอนแล้วแจ้งได้เลย\n\n\n",
-   "unmocked": [],
-   "url": "/customers/x1",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-dark.png",
-   "generatedAt": "2026-11-05T07:17:36.178Z"
+   "generatedAt": "2026-11-05T12:28:51.254Z"
   }
  ]
 }

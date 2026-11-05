@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, IconBtn, SectionLabel, Tabs, type TabItem } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, IconBtn, Loading, SectionLabel, Tabs, type TabItem } from "@/src/components/airy";
 import { useApprovalFlow, type ApprovalActions, type ApprovalIds } from "@/src/components/secretary/ApprovalCard";
 import { InboxItem, type InboxItemIds } from "@/src/components/secretary/InboxItem";
 import { roomTime } from "@/src/components/secretary/RoomCard";
@@ -184,13 +184,17 @@ export default function SecretaryInboxScreen() {
           <IconBtn testID="sec-inbox-back" icon="chevron-left" label={t("sec.inbox.back")} onPress={back} />
         </View>
         <Text style={[styles.h, { color: c.text }]}>{t("sec.inbox.title")}</Text>
-        <Text testID="sec-inbox-sub" style={[styles.sub, { color: c.textMuted }]}>
-          {t("sec.inbox.sub", { n: all.length, k: badge })}
-        </Text>
+        {/* S2.14: ตัวเลขโผล่เมื่อรู้ผลแล้วเท่านั้น (ไม่โชว์ "0 รายการ" ตอนโหลด/ล้มก่อนได้รายการ) */}
+        {rows && !(offline && all.length === 0) ? (
+          <Text testID="sec-inbox-sub" style={[styles.sub, { color: c.textMuted }]}>
+            {t("sec.inbox.sub", { n: all.length, k: badge })}
+          </Text>
+        ) : null}
+        {rows === null ? <Loading testID="sec-inbox-loading" /> : null}
 
         {all.length > 0 ? (
           <View style={styles.tabs}>
-            <Tabs testID="sec-inbox-tabs" items={tabs} active={tab} onChange={(k) => setTab(k as Tab)} />
+            <Tabs testID="sec-inbox-tabs" items={tabs} active={tab} onChange={(k) => setTab(k as Tab)} dense bleed={spacing.page - 2} />
           </View>
         ) : null}
 
@@ -251,7 +255,7 @@ const styles = StyleSheet.create({
   bar: { height: 52, flexDirection: "row", alignItems: "center" },
   h: { fontSize: F.title, fontWeight: "700", letterSpacing: -0.5, marginTop: F.v(40), lineHeight: 38 },
   sub: { fontSize: F.sub, lineHeight: 20, marginTop: 4 },
-  tabs: { marginTop: F.v(26), marginHorizontal: -2 },
+  tabs: { marginTop: F.v(26) - 4, marginHorizontal: -2 },
   group: { marginTop: F.v(30), marginBottom: 8 },
   item: { marginBottom: cardGap },
   empty: { marginTop: F.v(60), alignItems: "center", gap: spacing.sm, paddingVertical: 28 },

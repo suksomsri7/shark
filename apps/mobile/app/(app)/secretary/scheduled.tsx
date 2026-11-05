@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, IconBtn } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, IconBtn, Loading } from "@/src/components/airy";
 import { ScheduleSheet, hh, type ScheduleDraft, type ScheduleIds } from "@/src/components/secretary/ScheduleSheet";
 import { ApiError } from "@/src/api/client";
 import {
@@ -238,6 +238,8 @@ export default function SecretaryScheduledScreen() {
         <Text style={[styles.h, { color: c.text }]}>{t("sec.sched.title")}</Text>
         <Text style={[styles.sub, { color: c.textMuted }]}>{t("sec.sched.sub", { name })}</Text>
 
+        {/* S2.14: ก่อนผลแรก = Loading */}
+        {items === null ? <Loading testID="sec-sched-loading" /> : null}
         {items && list.length === 0 && !offline ? (
           <Glass testID="sec-sched-empty" style={styles.empty}>
             <Icon name="clock" size={26} color={c.textMuted} />

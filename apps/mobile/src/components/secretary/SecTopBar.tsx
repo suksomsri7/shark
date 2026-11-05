@@ -4,8 +4,8 @@
 // ขวา: ? (help-circle → /secretary/help) + ปุ่ม + ตามโซน: เลขา → /secretary/new · ลูกค้า = ไม่มี + · ทีม → /secretary/staff/invite
 // กลาง: ชื่อกิจการ active (จาก /api/mobile/me) + ลูกศรเล็ก แตะ = ตัวสลับกิจการ (BusinessSwitcherSheet) · `center="none"` = ว่าง (จอ A1/C3 วางชื่อใหญ่เอง)
 // ไม่มีรูปโปรไฟล์ · ไอคอน Feather เท่านั้น (R-UI2) · badges ไม่ส่งมา ⇒ อ่าน store กลาง useZoneBadgeCounts (src/api/secretary.ts) พลาด = 0
-// S2.20 badge 3 ไอคอน: เลขา = secretary/inbox/count.canApprove · ลูกค้า = inbox/unread รวม · ทีม = คำเชิญรอรับ (staff/invites ไม่หมดอายุ · OWNER/MANAGER)
-//   + เรื่องขอความช่วยเหลือที่รอเรา (support/cases.unread) · โหลดที่ layout ของโซน (focus/foreground) + หลัง action (scheduleZoneBadges) · ปุ่ม ? ทุกจอที่มีแถบนี้
+// S2.14 badge 3 ไอคอนจาก `GET secretary/badges` เส้นเดียว: เลขา = approvals (กิจการนี้) · ลูกค้า = customers (ห้องที่ยังไม่อ่าน) ·
+//   ทีม = team.invites + team.help + team.support · โหลดที่ layout ของโซน (focus/foreground) + หลัง action (scheduleZoneBadges) · ปุ่ม ? ทุกจอที่มีแถบนี้
 import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";

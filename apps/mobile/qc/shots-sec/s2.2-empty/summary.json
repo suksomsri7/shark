@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T07:08:51.944Z",
+ "generatedAt": "2026-11-05T12:23:48.996Z",
  "base": "http://127.0.0.1:4727",
  "view": {
   "tag": "iphone",
@@ -9,7 +9,7 @@
  },
  "fixture": {
   "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.2-empty.json",
-  "sha256": "4a86856d7b205896178955e051be21e50c14013f794f3df9d0d4e3ad19bb11ca"
+  "sha256": "c82bb60fec6f99f5c38f690a12f4ab3c000440500595eac349b77f45ae47a01a"
  },
  "screens": [
   {
@@ -17,7 +17,7 @@
    "route": "/secretary",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "4a86856d7b205896178955e051be21e50c14013f794f3df9d0d4e3ad19bb11ca",
+   "fixtureSha256": "c82bb60fec6f99f5c38f690a12f4ab3c000440500595eac349b77f45ae47a01a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -42,14 +42,14 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.2-empty/secretary.png",
-   "generatedAt": "2026-11-05T07:08:48.011Z"
+   "generatedAt": "2026-11-05T12:23:45.978Z"
   },
   {
    "name": "secretary-dark",
    "route": "/secretary",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "4a86856d7b205896178955e051be21e50c14013f794f3df9d0d4e3ad19bb11ca",
+   "fixtureSha256": "c82bb60fec6f99f5c38f690a12f4ab3c000440500595eac349b77f45ae47a01a",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -74,7 +74,7 @@
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.2-empty/secretary-dark.png",
-   "generatedAt": "2026-11-05T07:08:51.841Z"
+   "generatedAt": "2026-11-05T12:23:48.868Z"
   }
  ]
 }

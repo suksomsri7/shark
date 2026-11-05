@@ -507,7 +507,7 @@
      "attachments": [
       {
        "name": "slip.png",
-       "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+       "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
        "kind": "IMAGE",
        "mimeType": "image/png",
        "durationMs": null
@@ -653,13 +653,15 @@
    "ok": true
   },
   "POST /api/mobile/inbox/conversations/x1/ai-suggest": {
-   "suggestionId": "sg1",
+   "ok": true,
    "options": [
     {
      "id": "sg1",
-     "body": "สวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ"
+     "body": "สวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ",
+     "warn": false
     }
-   ]
+   ],
+   "sourceMessageId": "m10"
   },
   "GET /api/mobile/inbox/quick-replies": {
    "items": [
@@ -833,6 +835,16 @@
    "items": [],
    "unread": 0,
    "categories": []
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 2,
+   "customers": 3,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 0
+   },
+   "total": 5
   }
  }
 }

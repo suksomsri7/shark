@@ -72,8 +72,8 @@ export type ConvDetail = ConvItem & {
   replyWindowEndsAt?: string | null;
   can?: ConvCan;
 };
-/** สมาชิกที่ผูกกับห้อง — เซิร์ฟเวอร์ส่ง `phoneMasked` เท่านั้น (S1.14b · ไม่มีเบอร์เต็ม) · `phone` = ของเดิม เซิร์ฟเวอร์ไม่ส่งแล้ว (จอย้ายไป phoneMasked ใน S2.14) */
-export type LinkedMember = { id: string; name: string | null; phoneMasked?: string | null; /** @deprecated เซิร์ฟเวอร์ไม่ส่งแล้ว (S1.14b) */ phone?: string | null };
+/** สมาชิกที่ผูกกับห้อง — เซิร์ฟเวอร์ส่ง `phoneMasked` เท่านั้น (S1.14b · ไม่มีเบอร์เต็ม · จอ K3 แสดงตรงตามนี้ตั้งแต่ S2.14) */
+export type LinkedMember = { id: string; name: string | null; phoneMasked?: string | null };
 export type AiMeta = { roomId: string | null; proposalId: string; approvedBy: string | null };
 export type MsgAttachment = { name: string; url: string; kind: string; mimeType: string; durationMs: number | null };
 export type MsgItem = {
@@ -120,10 +120,6 @@ export type SuggestRes = {
   options?: SuggestOption[];
   sourceMessageId?: string;
   reason?: string;
-  /** @deprecated รูปเดิมที่จอเผื่อไว้ก่อนมี route — เซิร์ฟเวอร์ไม่ส่ง */
-  suggestionId?: string;
-  /** @deprecated รูปเดิมที่จอเผื่อไว้ก่อนมี route — เซิร์ฟเวอร์ไม่ส่ง */
-  body?: string;
 };
 /** ผลเปิดการ์ดงานจากห้อง (POST …/task · S1.14b) */
 export type TaskFromChatRes = { cardId: string; cardNo: number | null; cardHref: string; created: boolean };

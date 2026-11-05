@@ -1053,6 +1053,19 @@ const en: Record<I18nKey, string> = {
   "acct.delete.deleting": "Deleting...",
   "acct.delete.fail": "Could not delete the account. Please try again.",
   "acct.delete.previewFail": "Could not check the impact. Please try again.",
+  // S2.14
+  "inv.err.bad_level": "A permission level isn't available for this system - pick again",
+  "inv.err.sensitive_key": "Money, delete and admin permissions can't be given in an invite - grant them later on the staff member's permissions page",
+  "sec.state.loading": "Loading…",
+  "sec.state.error": "Couldn't load. Check your connection and try again.",
+  "sec.state.retry": "Try again",
+  "cust.task.title": "Create a board task from this chat",
+  "cust.task.sub": "The card is linked to this chat and customer, on the board your business has set",
+  "cust.task.ph": "Task name, e.g. send the quote",
+  "cust.task.send": "Create task card",
+  "cust.task.ok": "Task card #{n} created",
+  "cust.task.okNoNo": "Task card created",
+  "cust.task.default": "Follow up {name}",
 };
 
 export default en;

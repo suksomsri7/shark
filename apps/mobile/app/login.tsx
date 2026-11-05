@@ -125,7 +125,8 @@ export default function LoginScreen() {
     } catch (x) {
       if (x instanceof ApiError && x.status === 401) setErr(t("auth.login.codeWrong"));
       else setErr(apiErrorText(x));
-      setCode("");
+      // S2.14 (สถานะล้ม): เน็ต/เซิร์ฟเวอร์ขัดข้อง ⇒ คงรหัสไว้ให้กด "ยืนยัน" ซ้ำ · รหัสผิด (4xx) ⇒ ล้าง
+      if (x instanceof ApiError && x.status < 500) setCode("");
       setVerifying(false);
     }
   }

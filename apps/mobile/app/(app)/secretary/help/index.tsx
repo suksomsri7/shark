@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, Icon, InputBar, Note, SectionLabel } from "@/src/components/airy";
+import { AiryScreen, Chip, Glass, Icon, InputBar, Loading, Note, SectionLabel } from "@/src/components/airy";
 import { SecTopBar } from "@/src/components/secretary/SecTopBar";
 import { CaseRow } from "@/src/components/secretary/CaseRow";
 import { AttachedRow, useHelpAttach } from "@/src/components/secretary/HelpAttach";
@@ -172,6 +172,7 @@ export default function SecretaryHelpScreen() {
           ) : null}
 
           <SectionLabel style={styles.sec}>{t("help.myCases")}</SectionLabel>
+          {items === null ? <Loading testID="help-loading" /> : null}
           {items && list.length === 0 ? (
             <Note testID="help-empty" style={styles.empty}>
               {offline ? t("help.offline") : t("help.empty")}

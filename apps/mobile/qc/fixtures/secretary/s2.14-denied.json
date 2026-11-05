@@ -1,0 +1,439 @@
+{
+ "_about": "S2.14 สถานะ \"denied\" ของทุกจอ S2 — สร้างโดย qc/states-sec.mjs --make จาก s2.1.json (อย่าแก้มือ) · __status/__delayMs อ่านโดย qc/sec-harness.mjs เท่านั้น",
+ "noAuth": [
+  "/login"
+ ],
+ "routes": [
+  "/secretary",
+  "/secretary/new",
+  "/secretary/room/r1",
+  "/secretary/inbox",
+  "/secretary/scheduled",
+  "/secretary/staff",
+  "/secretary/staff/m1",
+  "/secretary/staff/invite",
+  "/secretary/settings",
+  "/secretary/settings/secretary",
+  "/secretary/settings/access",
+  "/secretary/settings/rules",
+  "/secretary/settings/log",
+  "/secretary/settings/knowledge",
+  "/secretary/settings/customers",
+  "/secretary/settings/account",
+  "/secretary/settings/quota",
+  "/secretary/onboarding/name",
+  "/secretary/help",
+  "/secretary/help/c1",
+  "/customers",
+  "/customers/x1",
+  "/customers/x1/info",
+  "/business/new"
+ ],
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@qc.invalid",
+    "name": "คุณสุข (QC)"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "MANAGER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/rooms": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/inbox/unread": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/me": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/usage": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/conversations": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-code-0000"
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/suggestions": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/frequent": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/access": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/rooms/r1": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/rooms/r1/messages": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/rooms/r1/proposals": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/log": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/secretary": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/quota": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/rules": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/staff": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/lessons": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/memories/pending": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/digest": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/after-hours": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/inbox/staff": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/inbox": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/scheduled": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/inbox/systems": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/inbox/conversations": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/inbox/routing": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "PUT /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "น้ำ",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "GET /api/mobile/inbox/conversations/x1": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "POST /api/mobile/inbox/conversations/x1/read": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/reply": {
+   "messageId": "m-new"
+  },
+  "POST /api/mobile/inbox/conversations/x1/assign": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/status": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/helpers": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/handoff": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/contact": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/ai-suggest": {
+   "ok": true,
+   "options": [
+    {
+     "id": "sg1",
+     "body": "สวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ",
+     "warn": false
+    }
+   ],
+   "sourceMessageId": "m10"
+  },
+  "GET /api/mobile/inbox/quick-replies": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "POST /api/mobile/inbox/quick-replies/q1/apply": {
+   "body": "ขอบคุณค่ะ 🙏"
+  },
+  "POST /api/mobile/inbox/quick-replies/q2/apply": {
+   "body": "ร้านอยู่ที่ 12 ถนนนิมมาน เชียงใหม่ ค่ะ"
+  },
+  "GET /api/mobile/inbox/connections": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "POST /api/mobile/inbox/shift": {
+   "onDuty": true,
+   "onDutyAt": "2026-11-05T03:00:00.000Z"
+  },
+  "POST /api/mobile/inbox/attachments": {
+   "url": "https://cdn.qc.invalid/upload/photo.png",
+   "name": "photo.png",
+   "mimeType": "image/png",
+   "size": 2048,
+   "width": 1,
+   "height": 1
+  },
+  "GET /api/mobile/secretary/notify": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "PUT /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ASSIGNED",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "scope": "tenant"
+  },
+  "GET /api/mobile/member/search": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/invites/pending": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/support/cases/c1": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/secretary/badges": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  },
+  "GET /api/mobile/inbox/shift": {
+   "__status": 403,
+   "__body": {
+    "error": "forbidden",
+    "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
+   }
+  }
+ }
+}

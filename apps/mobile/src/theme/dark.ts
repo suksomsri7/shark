@@ -85,6 +85,7 @@ export const dark: Palette = {
   channel: { LINE: "#06c755", WEBCHAT: "#7c85f0", FACEBOOK: "#4a90f5", INSTAGRAM: "#ff6b8f", SHOPEE: "#ff7a59", LAZADA: "#7f86d6", WHATSAPP: "#3ee07c", TIKTOK: "#f6f6fb", other: "#8e8e93" },
   cust: { bannerBg: "rgba(52,199,89,0.18)", bannerFg: "#6ee39a", noteBg: "rgba(255,176,32,0.08)", noteBorder: "rgba(255,198,92,0.5)", ai: "#a996ff", aiBg: "rgba(169,150,255,0.12)", aiBorder: "rgba(169,150,255,0.6)", waiting: "#ffb020" },
   inputBg: "rgba(255,255,255,0.115)",
+  dock: { fade: "rgba(14,14,21,0)", solid: "#0e0e15", bar: "#1d1d26" },
   chip: { bg: "rgba(255,255,255,0.09)", fg: "#b4b4c4" },
   tab: { fg: "#b4b4c4" },
   seg: { track: "rgba(255,255,255,0.08)", on: "rgba(255,255,255,0.24)", onShadow: "0px 0px 0px rgba(0,0,0,0)", fg: "#a6a6b4", onFg: "#ffffff" },

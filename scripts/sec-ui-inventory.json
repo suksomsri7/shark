@@ -1111,8 +1111,8 @@
    "testID": "cust-info-task",
    "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
    "screen": "K3 /customers/[id]/info",
-   "action": "สร้างงานบอร์ด — ซ่อน (ยังไม่มี route)",
-   "wo": "S2.17"
+   "action": "เปิดชีตสร้างงานบอร์ด (POST inbox/conversations/[id]/task · S2.14 ต่อเส้นจริง)",
+   "wo": "S2.17 · S2.14"
   },
   {
    "testID": "cust-info-ask-shark",
@@ -1701,6 +1701,62 @@
    "screen": "H2 /secretary/help/[caseId]",
    "action": "404 → router.navigate /secretary/help",
    "wo": "S2.15"
+  },
+  {
+   "testID": "cust-info-task-send",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 ข้อมูลลูกค้า (ชีตสร้างงานบอร์ด)",
+   "action": "POST inbox/conversations/[id]/task {title} → ข้อความ \"สร้างการ์ดงาน #N แล้ว\"",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-home-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-staff-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/staff/index.tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "perm-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/staff/[membershipId].tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-room-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-know-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/settings/knowledge.tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-log-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/settings/log.tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "help-case-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
   }
  ]
 }

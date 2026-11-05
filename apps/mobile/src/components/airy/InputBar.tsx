@@ -2,10 +2,11 @@
 // กระจกสูง size.inputH มนเต็ม · ปุ่มส่งกลม size.send พื้น accent
 // S2.3 (เพิ่ม prop เท่านั้น · ไม่ใส่ = เหมือนเดิม): sendTestID · sendDisabled (พื้น btnOff) · autoFocus
 // S2.18 (เพิ่ม prop เท่านั้น): plusTestID · plusDisabled · left (ปุ่มเสริมหลัง + เช่น สวิตช์บันทึกภายใน) · multiline · maxLength · inputStyle
+// S2.14 F1 (RESOLUTIONS §W): พื้นทึบ `solidBarStyle` (surface ของแถบ) แทนกระจกโปร่ง — ข้อความการ์ดใต้แถบไม่ทะลุ ทั้ง 2 ธีม
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { TextInput } from "@/src/components/ui/text";
-import { glassStyle, shadow, useTheme } from "@/src/theme/index";
+import { shadow, solidBarStyle, useTheme } from "@/src/theme/index";
 import { radii, size } from "@/src/theme/tokens";
 import { Icon } from "./Icon";
 
@@ -50,7 +51,7 @@ export function InputBar({
 }) {
   const { c } = useTheme();
   return (
-    <View testID={testID} style={[glassStyle(c, radii.input), styles.bar, style]}>
+    <View testID={testID} style={[solidBarStyle(c, radii.input), styles.bar, style]}>
       <Pressable testID={plusTestID ?? `${testID}-plus`} onPress={onPlus} disabled={plusDisabled} accessibilityRole="button" accessibilityState={{ disabled: plusDisabled }} style={[styles.plus, plusDisabled && styles.off]}>
         <Icon name="plus" />
       </Pressable>

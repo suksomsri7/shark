@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Dot, Glass, Icon, IconBtn, InputBar, Sheet } from "@/src/components/airy";
+import { AiryScreen, Dot, Glass, Icon, IconBtn, InputBar, LoadError, Loading, Sheet } from "@/src/components/airy";
 import { CaseBubble, type CaseBubbleIds } from "@/src/components/secretary/CaseBubble";
 import { caseStatusLine } from "@/src/components/secretary/CaseRow";
 import { AttachedRow, useHelpAttach } from "@/src/components/secretary/HelpAttach";
@@ -272,7 +272,9 @@ export default function SecretaryHelpCaseScreen() {
                 {t("help.closedNote")}
               </Text>
             ) : null}
-            {offline ? <Text style={[styles.closed, { color: c.textMuted }]}>{t("help.offline")}</Text> : null}
+            {/* S2.14: ยังไม่ได้เรื่อง = Loading · ล้มก่อนได้เรื่อง = LoadError (poll ต่อเองด้วย) */}
+            {kase ? null : offline ? <LoadError testID="help-case-error" onRetry={() => void load()} /> : <Loading testID="help-case-loading" />}
+            {offline && kase ? <Text style={[styles.closed, { color: c.textMuted }]}>{t("help.offline")}</Text> : null}
           </ScrollView>
         )}
 

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, Icon, Note, Tabs, type TabItem } from "@/src/components/airy";
+import { AiryScreen, Chip, Glass, Icon, Loading, Note, Tabs, type TabItem } from "@/src/components/airy";
 import { SecTopBar } from "@/src/components/secretary/SecTopBar";
 import { Avatar, ChannelBadge, firstName, useChannelLabel, useListTime } from "@/src/components/customers/parts";
 import { setCustomersAccess } from "@/src/api/secretary";
@@ -297,7 +297,9 @@ export default function CustomersScreen() {
         </ScrollView>
 
         {offline ? <Note warn testID="cust-offline">{t("cust.offline")}</Note> : null}
-        {!loading && shown.length === 0 ? (
+        {/* S2.14: ก่อนผลแรก = Loading · ล้มก่อนได้รายการ = แค่ note ออฟไลน์ (ไม่บอก "ยังไม่มีแชท") */}
+        {loading && !offline ? <Loading testID="cust-loading" /> : null}
+        {!loading && !(offline && items.length === 0) && shown.length === 0 ? (
           <Text testID="cust-empty" style={[styles.empty, { color: c.textMuted }]}>
             {q ? t("cust.empty.search") : t("cust.empty")}
           </Text>

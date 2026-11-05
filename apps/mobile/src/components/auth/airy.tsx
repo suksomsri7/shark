@@ -149,7 +149,7 @@ const OTP_R = 14;
 export function LinkLine({ lead, cta, onPress, testID, disabled = false, top }: { lead?: string; cta: string; onPress: () => void; testID: string; disabled?: boolean; top?: number }) {
   const { c } = useTheme();
   return (
-    <Pressable testID={testID} onPress={disabled ? undefined : onPress} accessibilityRole="button" accessibilityState={{ disabled }} hitSlop={8} style={[st.link, top !== undefined && { marginTop: top }]}>
+    <Pressable testID={testID} onPress={disabled ? undefined : onPress} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }} hitSlop={8} style={[st.link, top !== undefined && { marginTop: top }]}>
       <Text style={[st.note, { color: c.textMuted }]}>
         {lead ? `${lead} ` : ""}
         <Text style={[st.note, st.b, { color: disabled ? c.textFaint : c.textDim }]}>{cta}</Text>

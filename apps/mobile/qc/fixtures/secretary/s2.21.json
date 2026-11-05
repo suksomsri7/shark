@@ -408,6 +408,20 @@
    "items": [],
    "unread": 0,
    "categories": []
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 1,
+   "customers": 0,
+   "team": {
+    "invites": 1,
+    "help": 0,
+    "support": 0
+   },
+   "total": 2
+  },
+  "GET /api/mobile/inbox/shift": {
+   "onDuty": true,
+   "onDutyAt": "2026-11-05T01:30:00.000Z"
   }
  }
 }

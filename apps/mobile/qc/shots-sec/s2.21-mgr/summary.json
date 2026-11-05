@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T07:14:27.207Z",
+ "generatedAt": "2026-11-05T12:28:32.972Z",
  "base": "http://127.0.0.1:4727",
  "view": {
   "tag": "iphone",
@@ -9,7 +9,7 @@
  },
  "fixture": {
   "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.21-mgr.json",
-  "sha256": "84e41caa6411e49415bd8dda14015523ae7101ee2c5ce48bb89fd2ac761f24d9"
+  "sha256": "628399fb424b26c685d6553ec802e4c0c247b1c249baa82882b133d5aeab729e"
  },
  "screens": [
   {
@@ -17,7 +17,7 @@
    "route": "/secretary/staff/invite",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "84e41caa6411e49415bd8dda14015523ae7101ee2c5ce48bb89fd2ac761f24d9",
+   "fixtureSha256": "628399fb424b26c685d6553ec802e4c0c247b1c249baa82882b133d5aeab729e",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -32,14 +32,14 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-invite.png",
-   "generatedAt": "2026-11-05T07:14:01.176Z"
+   "generatedAt": "2026-11-05T12:28:11.233Z"
   },
   {
    "name": "secretary-staff-m1",
    "route": "/secretary/staff/m1",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "84e41caa6411e49415bd8dda14015523ae7101ee2c5ce48bb89fd2ac761f24d9",
+   "fixtureSha256": "628399fb424b26c685d6553ec802e4c0c247b1c249baa82882b133d5aeab729e",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -54,14 +54,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-m1.png",
-   "generatedAt": "2026-11-05T07:14:05.122Z"
+   "generatedAt": "2026-11-05T12:28:14.050Z"
   },
   {
    "name": "secretary-staff-m2",
    "route": "/secretary/staff/m2",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "84e41caa6411e49415bd8dda14015523ae7101ee2c5ce48bb89fd2ac761f24d9",
+   "fixtureSha256": "628399fb424b26c685d6553ec802e4c0c247b1c249baa82882b133d5aeab729e",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -74,14 +74,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-m2.png",
-   "generatedAt": "2026-11-05T07:14:08.808Z"
+   "generatedAt": "2026-11-05T12:28:16.825Z"
   },
   {
    "name": "secretary-settings-account",
    "route": "/secretary/settings/account",
    "dark": false,
    "ok": true,
-   "fixtureSha256": "84e41caa6411e49415bd8dda14015523ae7101ee2c5ce48bb89fd2ac761f24d9",
+   "fixtureSha256": "628399fb424b26c685d6553ec802e4c0c247b1c249baa82882b133d5aeab729e",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -96,14 +96,14 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-settings-account.png",
-   "generatedAt": "2026-11-05T07:14:12.658Z"
+   "generatedAt": "2026-11-05T12:28:20.495Z"
   },
   {
    "name": "secretary-staff-invite-dark",
    "route": "/secretary/staff/invite",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "84e41caa6411e49415bd8dda14015523ae7101ee2c5ce48bb89fd2ac761f24d9",
+   "fixtureSha256": "628399fb424b26c685d6553ec802e4c0c247b1c249baa82882b133d5aeab729e",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -118,14 +118,14 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-invite-dark.png",
-   "generatedAt": "2026-11-05T07:14:15.849Z"
+   "generatedAt": "2026-11-05T12:28:23.591Z"
   },
   {
    "name": "secretary-staff-m1-dark",
    "route": "/secretary/staff/m1",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "84e41caa6411e49415bd8dda14015523ae7101ee2c5ce48bb89fd2ac761f24d9",
+   "fixtureSha256": "628399fb424b26c685d6553ec802e4c0c247b1c249baa82882b133d5aeab729e",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -140,14 +140,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-m1-dark.png",
-   "generatedAt": "2026-11-05T07:14:19.573Z"
+   "generatedAt": "2026-11-05T12:28:26.396Z"
   },
   {
    "name": "secretary-staff-m2-dark",
    "route": "/secretary/staff/m2",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "84e41caa6411e49415bd8dda14015523ae7101ee2c5ce48bb89fd2ac761f24d9",
+   "fixtureSha256": "628399fb424b26c685d6553ec802e4c0c247b1c249baa82882b133d5aeab729e",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -160,14 +160,14 @@
    "unmocked": [],
    "url": "/secretary/staff/m2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-staff-m2-dark.png",
-   "generatedAt": "2026-11-05T07:14:23.235Z"
+   "generatedAt": "2026-11-05T12:28:29.174Z"
   },
   {
    "name": "secretary-settings-account-dark",
    "route": "/secretary/settings/account",
    "dark": true,
    "ok": true,
-   "fixtureSha256": "84e41caa6411e49415bd8dda14015523ae7101ee2c5ce48bb89fd2ac761f24d9",
+   "fixtureSha256": "628399fb424b26c685d6553ec802e4c0c247b1c249baa82882b133d5aeab729e",
    "viewportH": 844,
    "errors": [],
    "missing": [],
@@ -182,7 +182,7 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.21-mgr/secretary-settings-account-dark.png",
-   "generatedAt": "2026-11-05T07:14:27.028Z"
+   "generatedAt": "2026-11-05T12:28:32.852Z"
   }
  ]
 }
