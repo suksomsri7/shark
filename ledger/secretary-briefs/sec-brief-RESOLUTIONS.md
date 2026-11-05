@@ -274,3 +274,15 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S2.14c (Q3 ปุ่มสร้างงานบอร์ด)** ตั๋ว S3a: `conversation.can.task` = `chatTaskButtonConfig(tenantId) !== null && สิทธิ์ kanban.card.create` · ระหว่างนี้แสดงปุ่มแล้วรับ not_configured ได้
 - **R-S2.14d (Q4 แท็ก K3 เป็นชิป)** ยอมรับ (ตาม §X) · ภาพแบบแถวข้อความ = ล้าสมัย · ไม่ต้องแก้แบบ
 - **ตั๋ว server S3a (จาก S2.14 T1–T4)**: badges.can.customers · `levelsAvailable` ใน `GET secretary/staff` (หรือ `/access`) · `cardHref` ของ task เป็น path แอป (`/kanban/<boardId>/<cardId>`? → เจ้าของตัดสินว่าแอป 1.0 มีจอบอร์ด) · เส้นแก้แท็กห้อง `PUT inbox/conversations/[id]/tags`
+
+### AA.2 รีวิว S2.14 ผู้ตรวจ AA (UX) + BB (security/QC tools) — มติรอบ 2 (6 พ.ย. ~15:1xZ) · FIX-FIRST
+- **R-S2.14e (BB MAJOR-1)** `click-sec.mjs`: ก่อนกดตรวจ `document.elementFromPoint(กลางปุ่ม)` ต้องเป็นปุ่มนั้นหรือลูกของมัน · ถูกบัง ⇒ บันทึก `blocked` ไม่นับ ok · CASES กดเฉพาะ testID ที่เพิ่งโผล่ · รันเต็มใหม่ 1 รอบ **ห้าม RESUME** ในไฟล์ส่งมอบ
+- **R-S2.14f (BB MAJOR-2 + m1)** ทะเบียนรวมชุด template เป็น `prefix-*` (จาก `testID={\`prefix-${…}\`}`) และต้องกดจริง ≥1 ตัวต่อชุด · รากคอมโพเนนต์รวมที่ DOM เป็น View ต้องมีลูก `${id}-*` ok ≥1 · `clicks-sec.json` = `{ meta: { generatedAt, registryHash, distHash, resumed:false }, items: [...] }` · RESUME ปฏิเสธเมื่อ hash ไม่ตรง · ORACLE-EDIT B-1 ตาม (รับรูปแบบใหม่ + template + meta + ปุ่มต้องมี effect)
+- **R-S2.14g (AA MAJOR-1)** B4 กฎอนุมัติ: ห้ามแสดง/แก้ค่าปริยายก่อนได้ค่าจริง — `Loading` → ค่าจริง · ล้ม ⇒ `LoadError`+retry · ซ่อนสวิตช์/ช่องวงเงินจนกว่าจะโหลด
+- **R-S2.14h (AA MINOR-1/2 · BB m3)** ใช้ `LoadError` เดียวกันทุกจอ (B8 · K3 · B7/K4 · G2 · G4 · B2) · ไม่วาดตัวเลข/ค่าปริยายก่อนได้ผล · 403 เป็นการ์ดล็อกแบบ A1/D1/K1 ใน A6 · A7 · H2 · A2 ล็อกช่องพิมพ์เมื่อ denied · `states-sec.mjs` ok ต้องเห็น testID `*-loading`/`*-error`/`*-denied` ของจอนั้นจริง
+- **R-S2.14i (AA MINOR-3 · BB m2)** OTP/ผูกเบอร์/ยืนยันอีเมล: คงรหัสเมื่อ `ApiError.status >= 500` (ยกเว้น 503 sms_unavailable) หรือ network — เหมือน login
+- **R-S2.14j (AA MINOR-5 · BB L1)** K3: ป้ายปุ่มสั้นลง/ขึ้นบรรทัดได้ · fixture ทางสำเร็จ task 200 `{cardNo}` · K2 `applyQuick` ล้าง `fromSuggestion` · 422 `bad_suggestion` ⇒ ทิ้ง suggestionId แล้วส่งใหม่ครั้งเดียว
+- **R-S2.14k (AA MINOR-6 · story 10)** A1 (OWNER เท่านั้น): ชิปขอบเขต "ของฉัน / ทุกคนในกิจการ" ในแถวตัวกรอง → `GET rooms?scope=tenant` · การ์ดของคนอื่นแสดง "สั่งโดย <ชื่อ>" · ภาพคู่ A1 เพิ่ม 1 แผ่น (สว่าง/มืด) · spec s2.2 ไม่แก้
+- **R-S2.14l (AA/BB LOW)** fixture หลัก s2.1/s2.17/s2.20 → `linkedMember.phoneMasked` + `conversation.can.*` ตามสัญญา (ภาพคู่ K2/K3 ถ่ายใหม่) · docs §2.3b แถว /phone = `POST auth/phone/link` · ลบคอมเมนต์ค้าง auth-context.tsx · `ImageAtt` ผ่าน `isSafeLink` ก่อนโหลด · i18n ข้อความ server ไทยในโหมด en = หนี้ S3a
+- **รับทราบไม่แก้:** MINOR-4/L2 (badges.can.customers → S3a ตาม §AA) · L3 sec-harness (QC เท่านั้น)
+- บทเรียนผู้คุม: `pgrep -f … | xargs kill` ฆ่าเชลล์ตัวเอง (exit 144) ⇒ ใช้ `systemctl stop iso-*` อย่างเดียว
