@@ -87,7 +87,7 @@ const cleanup = async () => {
     try { await prisma.tenant.delete({ where: { id: tid } }); } catch (e) { console.log(`  ⚠️ cleanup tenant: ${errMsg(e)}`); }
   }
   try { await prisma.tenant.deleteMany({ where: { slug: { startsWith: "qc-sec-s114b-" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } } }); } catch { /* */ }
-  try { await prisma.staffInvite.deleteMany({ where: { phone: { in: [...Object.values(PH), "+66812345616"] } } }); } catch { /* */ }
+  try { await prisma.staffInvite.deleteMany({ where: { phone: { in: [...Object.values(PH), "+66812345616", "+66812345617"] } } }); } catch { /* */ }
   try { await prisma.userPhone.deleteMany({ where: { userId: { startsWith: "qcs114b-" } } }); } catch { /* */ }
   try { await prisma.session.deleteMany({ where: { userId: { startsWith: "qcs114b-" } } }); } catch { /* */ }
   try { await prisma.user.deleteMany({ where: { id: { startsWith: "qcs114b-" } } }); } catch { /* */ }
@@ -163,6 +163,11 @@ const replyPerm = { "chat.conversation.read": true, "chat.message.send": true, "
     const noRow = await prisma.staffInvite.count({ where: { tenantId: tid, phone: "+66812345616" } });
     chk("V-2", "คีย์อ่อนไหวใน extraPermissions/permissions ⇒ 422 sensitive_key + keys[] · ไม่สร้างใบ", sens.status === 422 && sens.json.error === "sensitive_key" && Array.isArray(sens.json.keys) && (sens.json.keys as string[]).includes("pos.staff.manage") && sens2.status === 422 && sens2.json.error === "sensitive_key" && noRow === 0, JSON.stringify({ sens: [sens.status, sens.json.error, sens.json.keys], sens2: [sens2.status, sens2.json.error], noRow }).slice(0, 300));
     chk("V-3", "levels{chat} ⇒ 422 bad_module (ข้อความไทย) · โมดูลไม่รู้จัก ⇒ 422 bad_module · ระดับแปลก ⇒ 422 bad_level", badMod.status === 422 && badMod.json.error === "bad_module" && thai(badMod.json.message) && badMod2.status === 422 && badMod2.json.error === "bad_module" && badLvl.status === 422 && badLvl.json.error === "bad_level", JSON.stringify({ badMod: [badMod.status, badMod.json.error], badMod2: [badMod2.status, badMod2.json.error], badLvl: [badLvl.status, badLvl.json.error] }).slice(0, 300));
+    // ORACLE-EDIT (ผู้คุม · R-S1.14b-f · ผู้ตรวจ Y MAJOR-2): wildcard `<module>.*` ต้องถูกปฏิเสธเป็น sensitive_key (เลี่ยงด่านรายคีย์ไม่ได้)
+    const wild = await call("secretary/staff/invite", "POST", { name: "x", phone: "081-234-5617", role: "STAFF", extraPermissions: { "pos.*": true } }, H);
+    const wild2 = await call("secretary/staff/invite", "POST", { name: "x", phone: "081-234-5617", role: "STAFF", permissions: { "account.*": true } }, H);
+    const wildRow = await prisma.staffInvite.count({ where: { tenantId: tid, phone: "+66812345617" } });
+    chk("V-5", "คีย์ wildcard `pos.*`/`account.*` ใน extraPermissions/permissions ⇒ 422 sensitive_key · ไม่สร้างใบ", wild.status === 422 && wild.json.error === "sensitive_key" && wild2.status === 422 && wild2.json.error === "sensitive_key" && wildRow === 0, JSON.stringify({ wild: [wild.status, wild.json.error], wild2: [wild2.status, wild2.json.error], wildRow }));
     const W12 = ["pos.staff.manage", "pos.device.manage", "booking.service.setDeposit", "account.approve.limit", "account.chart.manage", "crm.quota.manage", "crm.report.all", "booking.job.runAny"];
     const OLD = ["account.doc.approve", "pos.refund", "member.point.adjust", "api.key.create", "crm.contact.export", "kanban.board.delete", "booking.slip.review", "account.period.close"];
     const SAFE = ["kanban.card.create", "chat.message.send", "crm.contact.read", "booking.job.create", "member.member.read"];
@@ -198,6 +203,16 @@ const replyPerm = { "chat.conversation.read": true, "chat.message.send": true, "
     const rep = await call("inbox/conversations/[id]/reply", "POST", { systemId: sid, body: String(opts[0]?.body ?? "ตอบจากคำแนะนำ"), suggestionId: sidOpt }, HS, { id: conv.id });
     const sugg = sidOpt ? await (prisma as AnyMod).chatAiSuggestion.findUnique({ where: { id: sidOpt } }).catch(() => null) : null;
     chk("S-2", "reply + suggestionId ⇒ ส่งสำเร็จ (200) และ ChatAiSuggestion.outcome ∈ SENT_AS_IS/SENT_EDITED", rep.status === 200 && !!sugg && ["SENT_AS_IS", "SENT_EDITED"].includes(String(sugg.outcome)), JSON.stringify({ rep: [rep.status, rep.json.error], outcome: sugg?.outcome ?? null }).slice(0, 200));
+    // ORACLE-EDIT (ผู้คุม · R-S1.14b-g · ผู้ตรวจ Y LOW-4): suggestionId ของห้องอื่น ⇒ 422 bad_suggestion (ไม่ส่งข้อความ)
+    {
+      const contact2 = await prisma.chatContact.create({ data: { tenantId: tid, systemId: sid, channel: "WEBCHAT", externalUserId: `qcs114b-c2-${Date.now().toString(36)}`, displayName: "ลูกค้า QC 2" } as never });
+      const conv2 = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: sid, channel: "WEBCHAT", contactId: contact2.id, status: "OPEN", unitId: unit.id, lastMessageAt: new Date(), firstCustomerMessageAt: new Date(), staffUnreadCount: 1 } as never });
+      await prisma.chatMessage.create({ data: { tenantId: tid, systemId: sid, conversationId: conv2.id, direction: "IN", type: "TEXT", body: "สวัสดีค่ะ" } as never });
+      const before = await prisma.chatMessage.count({ where: { conversationId: conv2.id, direction: "OUT" } });
+      const cross = await call("inbox/conversations/[id]/reply", "POST", { systemId: sid, body: "ข้อความข้ามห้อง", suggestionId: sidOpt, clientMessageId: "qcs114b-cross-1" }, HS, { id: conv2.id });
+      const after = await prisma.chatMessage.count({ where: { conversationId: conv2.id, direction: "OUT" } });
+      chk("S-4", "reply ห้อง 2 ด้วย suggestionId ของห้อง 1 ⇒ 422 bad_suggestion · ไม่มีข้อความ OUT เพิ่ม", !!sidOpt && cross.status === 422 && cross.json.error === "bad_suggestion" && after === before, JSON.stringify({ s: cross.status, e: cross.json.error, before, after }));
+    }
     const denied = await call("inbox/conversations/[id]/ai-suggest", "POST", { systemId: sid }, HN, { id: conv.id });
     chk("S-3", "STAFF ไม่มีคีย์ chat.ai.suggest ⇒ 403", denied.status === 403, String(denied.status));
   }
