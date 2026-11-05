@@ -62,7 +62,7 @@ const worker = (await import("@/lib/ai/secretary/worker")) as AnyMod;
 const routing = (await import("@/lib/modules/chat/routing")) as AnyMod;
 const tools = (await import("@/lib/ai/tools")) as AnyMod;
 // ORACLE note: route POST rooms รัน job ทันที (runAfter → runRoomJobs ด้วย MockProvider) ⇒ ข้อเสนอ chat.send สร้างผ่าน runTool ในห้องนั้น (ขั้นโมเดลคุมโดย S1.5/S1.12 แล้ว)
-const proposeSend = async (roomConvId: string, convId: string, body: string) => { const r = await tools.runTool({ tenantId: tid, actor: { kind: "member", tenantId: tid, userId: U.owner, membership: { role: "OWNER", unitAccess: ["*"], permissions: {} } }, conversationId: roomConvId }, "send_customer_message", { conversationId: convId, body }); try { return JSON.parse(r) as Record<string, unknown>; } catch { return { raw: r }; } };
+const proposeSend = async (roomConvId: string, convId: string, body: string): Promise<Record<string, unknown>> => { const r = await tools.runTool({ tenantId: tid, actor: { kind: "member", tenantId: tid, userId: U.owner, membership: { role: "OWNER", unitAccess: ["*"], permissions: {} } }, conversationId: roomConvId }, "send_customer_message", { conversationId: convId, body }); try { return JSON.parse(r) as Record<string, unknown>; } catch { return { raw: r }; } };
 const U = { owner: "qcs3a1-owner", staff: "qcs3a1-staff", helper: "qcs3a1-helper", invitee: "qcs3a1-invitee" };
 const PH = { signup: "+66800013101", invitee: "+66800013102", staff: "+66800013103" };
 let tid = ""; let signupUserId = "";
