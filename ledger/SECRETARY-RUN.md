@@ -77,7 +77,7 @@ _(เติมเมื่อถึงใบ)_
 | S2.23 | ✍️ | | รวมในชุด S2-16 |
 | S2.13 | ✅ | 6 พ.ย. ~11:1xZ | ff 2e21d70d (เลน d · รอบ 1 79815dc4 + รอบ 2) · spec s2.13 11/11 ×3 ผู้คุม (รวม typecheck) · spec s2.2/s2.4/s2.10/s2.15/s2.17/s2.21 + s2.1/s2.12 เขียว · ภาพคู่มืด 35 แผ่นผู้คุมดูเอง (§W fix-forward F1–F4 → S2.14) · ผู้ตรวจ X → §W.2 ปิดครบ (M1 badge poll) · padding 20/20 (gap ≥12 · รวม G1) · จอ 1.0 ก่อน/หลัง text.tsx เท่าเดิม · userInterfaceStyle automatic (Android ต้อง expo-system-ui → S3a) |
 | S2.14 | ✍️ | | ใบ S2-14 + oracle `qc-sec-s2.14.mts` (ทุก spec · ทะเบียนปุ่ม · ไม่มี fixture/console · three-chats · typecheck · fitness) · รอ S2.13+S2.20 (builder เลน d เริ่ม 06:0xZ) |
-| S3a.1 | ⬜ | | 🎯 ข้อสอบรวม + นักล่า + โมเดลจริง |
+| S3a.1 | ✍️ | | ใบ `sec-brief-S3a.1.md` + **oracle `qc-sec-s3a.1.mts` 10 user stories ผ่าน route จริง = 16/17 บน tip (SKIP R-1 รอคีย์)** · นักล่า 6 เลนส์หลัง S2.14 · qc:all + build · โมเดลจริงรอคีย์ shark |
 | S3a.2 | ⬜ | | ขึ้น prod (รอเจ้าของ) |
 | S3a.3 | ⬜ | | 🎯 TestFlight/Internal (รอเจ้าของ) |
 | S3a.4 | ⬜ | | รับผลทดสอบ |
@@ -146,3 +146,4 @@ _(เติมเมื่อถึงใบ)_
 - **6 พ.ย. ~09:3xZ** S1.14c เริ่มเลน b (ขนานกับ S2.13 รอบ 2 เลน d) · ใบ+oracle 8b14fa52
 - **6 พ.ย. ~10:4xZ** S1.14c ✅ merge a1f70913 — server ครบสำหรับ S2.14 (badges เส้นเดียว · push link /customers) · เลน b ว่าง · รอ S2.13 รอบ 2 (เลน d)
 - **6 พ.ย. ~11:1xZ** S2.13+S2.20 ✅ ff 2e21d70d → **50/58 (86%)** · เหลือ S2.14 (ปิด S2 · เลน d) → CP2/CP3 → S3a.1
+- **6 พ.ย. ~12:0xZ** ระหว่างรอ S2.14: ผู้คุมเขียน oracle ข้อสอบรวม S3a.1 (U1–U10 ผ่าน route มือถือ · 17 ข้อ) → รันบน tip = 16/17 ตั้งแต่ครั้งแรกหลังแก้ fixture (ค้นพบ: POST rooms รัน job inline · chat.send ต้องผูก customerId + B3 แชท=DRAFT · OWNER ตีกลับ=กติกายืนยันทันที · สมัครด้วยเบอร์ใช้อีเมล placeholder) · ใบ S3a.1 เขียนแล้ว · `.env.qc-sec` ไม่มีคีย์ Anthropic → เส้นทางจริงรอเจ้าของ
