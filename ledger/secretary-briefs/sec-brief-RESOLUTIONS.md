@@ -235,3 +235,11 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
   - F2 A6 รออนุมัติ: แถวชิป "ทั้งหมด/เงิน/ส่งลูกค้า/ลบ-ยกเลิก" ล้นจอ (ชิปที่ 4 ถูกตัด) → ลด padding/ฟอนต์ให้พอดีจอ 390 หรือแถวเลื่อนได้แบบมีขอบจาง
   - F3 K2 ห้องลูกค้า: ข้อความรูปของลูกค้าแสดงเป็นกล่องเขียวสว่างเต็ม (fixture ไม่มีรูปจริง) → placeholder ต้องเป็น surface token กลาง + ไอคอนรูป (ห้ามสีสด) · ตรวจแหล่งสีเขียวนั้นว่ามาจากไหน
   - F4 ยืนยันซ้ำว่า D1/G2 ตอนเลื่อนสุดไม่ถูกปุ่มทับ (padding.json บอก ok แล้ว · แค่ถ่ายภาพคู่ตอนเลื่อนสุดแนบใน wo-note S2.14)
+
+### W.2 รีวิว S2.13+S2.20 ผู้ตรวจ X — มติรอบ 2 (6 พ.ย. ~07:5xZ)
+- **R-S2.13f (M1 · แก้ก่อน merge)** `secretary/support/cases/[id]` ออกจากชุด `BADGE_AFTER` · จอ H2 เรียก `scheduleZoneBadges()` เองเฉพาะโหลดครั้งแรกหรือเมื่อจำนวนข้อความ/สถานะอ่านเปลี่ยน — ห้ามให้ poll 15 วิ ของ H2 ลาก badge 3–4 request ตามทุกรอบ
+- **R-S2.13g (m2)** `CTA_BOTTOM`/`LIST_BOTTOM` ประกาศที่เดียวใน theme tokens/helper · G1 (`business/new.tsx`) ใช้ค่าเดียวกัน (เลิก 120/26 ฝัง) · เพิ่ม G1 ใน padding.json
+- **R-S2.13h (m3/m4/L1/L2/L4)** ชีตสลับกิจการ `setQuota(null)` ต้น effect · note จาก `?e=` แสดงครั้งเดียวต่อ id ด้วย ref (ไม่ผูก `t`) · three-chats ok ต้องรวม `unmocked.length === 0` · เกณฑ์ padding `gap >= cardGap` (ไม่ใช่ ≥0) · ปุ่ม + ใช้สถานะ 3 ค่า (ไม่รู้/อนุญาต/ปฏิเสธ) ซ่อนจนกว่าจะรู้
+- **R-S2.13i (m1 · Android)** `expo-system-ui` ต้องแตะ package.json ⇒ ไม่ทำใน RUN นี้ (ห้ามติดตั้งแพ็กเกจ) · เป้าหมายรุ่นแรก = iOS TestFlight · จด S3a: "Android ต้องเพิ่ม expo-system-ui ก่อน Internal testing" · CP2 เจ้าของดูโหมดมืดบน iOS รวมจอ 1.0 (คีย์บอร์ด/Alert) · ตัวห่อ Text ของ 1.0 ไม่มีสีตั้งต้น — builder ตรวจ `src/components/ui/text.tsx` ใส่สีตั้งต้นตามธีมสว่างของ 1.0 เพื่อกันตัวอักษรเปลี่ยนตามเครื่อง (ใบนี้ · ขอบเขตแคบ 1 ไฟล์)
+- **R-S2.13j (M2 · ตั๋ว server → S3a)** `sendPushToChatStaff` (chat/service.ts) ใส่ `data.tenantId` + `link=/customers/<id>` (รวมกับ R-S2.13c) · ฝั่งแอปไม่แก้ · builder จดใน wo-note ข้อ 7 ว่าพฤติกรรมใหม่ = เปิดห้องในกิจการ active แล้วเจอ "ไม่พบ" (ไม่รั่ว)
+- **m5** = R-S2.13b (ยืนยันนิยาม badge ทีมชั่วคราว + ตั๋ว `secretary/badges` เส้นเดียวใน S3a) · L3/L5 รับทราบ ไม่แก้ในใบนี้
