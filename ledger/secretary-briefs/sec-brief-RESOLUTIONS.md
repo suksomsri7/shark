@@ -243,3 +243,12 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S2.13i (m1 · Android)** `expo-system-ui` ต้องแตะ package.json ⇒ ไม่ทำใน RUN นี้ (ห้ามติดตั้งแพ็กเกจ) · เป้าหมายรุ่นแรก = iOS TestFlight · จด S3a: "Android ต้องเพิ่ม expo-system-ui ก่อน Internal testing" · CP2 เจ้าของดูโหมดมืดบน iOS รวมจอ 1.0 (คีย์บอร์ด/Alert) · ตัวห่อ Text ของ 1.0 ไม่มีสีตั้งต้น — builder ตรวจ `src/components/ui/text.tsx` ใส่สีตั้งต้นตามธีมสว่างของ 1.0 เพื่อกันตัวอักษรเปลี่ยนตามเครื่อง (ใบนี้ · ขอบเขตแคบ 1 ไฟล์)
 - **R-S2.13j (M2 · ตั๋ว server → S3a)** `sendPushToChatStaff` (chat/service.ts) ใส่ `data.tenantId` + `link=/customers/<id>` (รวมกับ R-S2.13c) · ฝั่งแอปไม่แก้ · builder จดใน wo-note ข้อ 7 ว่าพฤติกรรมใหม่ = เปิดห้องในกิจการ active แล้วเจอ "ไม่พบ" (ไม่รั่ว)
 - **m5** = R-S2.13b (ยืนยันนิยาม badge ทีมชั่วคราว + ตั๋ว `secretary/badges` เส้นเดียวใน S3a) · L3/L5 รับทราบ ไม่แก้ในใบนี้
+
+## X. รับ S1.14b (ตั๋ว server) — มติรอบ 2 (6 พ.ย. ~08:1xZ)
+- **R-S1.14b-a (Q1)** ด่าน `POST inbox/conversations/[id]/ai-suggest` = คีย์ `chat.ai.suggest` (ตรงเว็บ · least privilege) ไม่ใช่ `chat.message.send` · ORACLE-EDIT: STAFF ในข้อสอบได้ `chat.ai.suggest` รายคีย์ · S-3 (ไม่มีคีย์) ยัง 403 · หมายเหตุ S3a/เจ้าของ: จะรวม `chat.ai.suggest` เข้าระดับ REPLY ของ CHAT_LEVELS หรือไม่ (กระทบ S1.25 L-*) — ยังไม่ทำ
+- **R-S1.14b-b (Q2)** reply ไม่มี `clientMessageId` แต่มี `suggestionId` ⇒ ใช้คีย์กันซ้ำ `sugg:<suggestionId>` ได้ (ยอมรับ) · ไม่มีทั้งคู่ ⇒ 422 เดิม
+- **R-S1.14b-c (Q3)** อนุญาตแก้ `inbox/_shared.ts` `limited()` 1 บรรทัด: body `{ error:"rate_limited", message, retryAfterSec }` + header เดิม (ให้ตรง R-S1.14g)
+- **R-S1.14b-d (Q4)** `sensitive_key` ตัดสินจากชื่อคีย์ ไม่ดูค่า (false ก็ปฏิเสธ) และใช้กับ `permissions` เดิมด้วย — ยอมรับ (ไคลเอนต์เก่า = เว็บไม่ใช้เส้นนี้)
+- **R-S1.14b-e (Q5)** `replyWindowEndsAt` = `ChatConversation.replyWindowExpiresAt` (คอลัมน์มีอยู่แล้ว · FB/IG/WA) แปลง iso หรือ null — เลิกคำนวณจาก adapter · LINE/WEBCHAT ยัง null (C-1 เดิม)
+- รับ: `permissionsForChat` export + default base (ข้อ 1) · `PATH_ID` task (ข้อ 3) · docs ที่ `docs/api/SECRETARY-API.md` (ข้อ 4) · shift แถวเปิดแถวแรก (ข้อ 5) · phoneMasked null เมื่อไม่มีเบอร์ (ข้อ 6)
+- ส่งต่อ S2.14: `customers/[id]/info.tsx` ใช้ `phoneMasked` · K2 เช็ก `ok` ของ ai-suggest + ส่ง `suggestionId` ตอนส่งคำตอบ (เพิ่มในใบ S2.14)

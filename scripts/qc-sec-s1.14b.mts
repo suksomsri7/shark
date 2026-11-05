@@ -104,7 +104,8 @@ try {
   await prisma.userPhone.create({ data: { userId: U.invitee, phone: PH.invitee, verifiedAt: new Date() } });
   await prisma.userPhone.create({ data: { userId: U.staff, phone: PH.staff, verifiedAt: new Date() } });
   const unit = await prisma.businessUnit.create({ data: { tenantId: tid, type: "RESTAURANT", name: "สาขา A", slug: `u-${Date.now().toString(36)}` } });
-  const replyPerm = { "chat.conversation.read": true, "chat.message.send": true, "chat.conversation.markRead": true };
+  // ORACLE-EDIT (ผู้คุม · R-S1.14b-a): ด่าน ai-suggest = `chat.ai.suggest` ให้ตรงเว็บ ⇒ STAFF ของข้อสอบได้คีย์นี้ด้วย (ระดับ REPLY ไม่รวม ai.suggest — ให้รายคีย์)
+const replyPerm = { "chat.conversation.read": true, "chat.message.send": true, "chat.conversation.markRead": true, "chat.ai.suggest": true };
   await prisma.membership.create({ data: { tenantId: tid, userId: U.owner, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } as never });
   await prisma.membership.create({ data: { tenantId: tid, userId: U.staff, role: "STAFF", unitAccess: ["*"], permissions: replyPerm, acceptedAt: new Date() } as never });
   await prisma.membership.create({ data: { tenantId: tid, userId: U.nophone, role: "STAFF", unitAccess: ["*"], permissions: { "chat.conversation.read": true }, acceptedAt: new Date() } as never });
@@ -198,7 +199,7 @@ try {
     const sugg = sidOpt ? await (prisma as AnyMod).chatAiSuggestion.findUnique({ where: { id: sidOpt } }).catch(() => null) : null;
     chk("S-2", "reply + suggestionId ⇒ ส่งสำเร็จ (200) และ ChatAiSuggestion.outcome ∈ SENT_AS_IS/SENT_EDITED", rep.status === 200 && !!sugg && ["SENT_AS_IS", "SENT_EDITED"].includes(String(sugg.outcome)), JSON.stringify({ rep: [rep.status, rep.json.error], outcome: sugg?.outcome ?? null }).slice(0, 200));
     const denied = await call("inbox/conversations/[id]/ai-suggest", "POST", { systemId: sid }, HN, { id: conv.id });
-    chk("S-3", "STAFF ไม่มีคีย์ส่ง ⇒ 403", denied.status === 403, String(denied.status));
+    chk("S-3", "STAFF ไม่มีคีย์ chat.ai.suggest ⇒ 403", denied.status === 403, String(denied.status));
   }
 
   console.log("── T: task-from-chat ──");
