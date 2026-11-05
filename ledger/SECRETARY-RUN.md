@@ -65,7 +65,7 @@ _(เติมเมื่อถึงใบ)_
 | S2.11 | ✅ | | รวมในชุด S2-10 · C1 · ff-merge 3094d036 |
 | S2.12 | ✅ | | built 15fc8e39 + รอบ 2 f6bc506ee + merge tip 502b6584d (worktree e) · oracle 13/13 ×3 + ผู้คุม · s2.1 14/14 · s2.2 11/11 · ผู้ตรวจ R → §R ปิดครบ · คู่ S1/S2 สว่าง/มืด · merge 49347eb86 (ff ไม่ได้เพราะ ledger ขยับ) · **release gate (เจ้าของ): SMS provider บน prod + บัญชี reviewer มีเบอร์ (F3)** · หนี้: R8 ตรวจเฉพาะแอป (→ S3) · oracle gate pure function (→ S2.14) |
 | S2.15 | ✍️ | | ใบ S2-15 + spec s2.15.json · รอ S2.1+S1.14 |
-| S2.16 | ✍️ | | ใบ S2-16 (S2.16+S2.23) · oracle ผู้คุมเขียนตอนรับใบ |
+| S2.16 | ✍️ | | ใบ S2-16 (S2.16+S2.23) + oracle `qc-sec-s2.16.mts` (7 ข้อ · สัญญา secretary-ops/support ล็อกในใบ) · รอเลนว่าง (web backoffice · ไม่ชน apps/mobile) |
 | S2.17 | 🔍 | | built 1a24cc30…ba594105 (เลน c · มี tip) · spec 12/12 ×2 + ผู้คุม 11/12 · คู่ K1/K2/K3 สว่าง/มืด · interaction ครบ (3 แชทไม่ปน: K2 ส่งเฉพาะ reply · K3 เปิดห้องเลขาด้วย context) · **ผู้ตรวจ V: MERGE-AFTER-FIX** (K3 ไม่ซ่อนปุ่มเมื่อไม่มีสิทธิ์ · K2 paging ทิ้งข้อความเมื่อ ≥50) → §U รอบ 2 · เปิด: server ส่ง linkedMember.phone ไม่ mask (→ S1.14/S3) · ไม่มี route ai-suggest Bearer · tags/deals ไม่อยู่ใน DTO |
 | S2.18 | 🔨 | | รวมในชุด S2-17 (เลน c) |
 | S2.19 | 🔨 | | รวมในชุด S2-17 (เลน c) |
