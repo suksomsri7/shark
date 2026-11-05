@@ -106,3 +106,12 @@
 | `acct-email` `acct-apple` `acct-shift` `cust-set-sla-*` · `InfoRow` ที่ไม่มีสิทธิ์ | แถวแสดงค่าอย่างเดียวเป็น "ปุ่มปิด" | เป็น `View` (ไม่ประกาศเป็นปุ่ม) |
 | `sec-inbox-retry` `sec-sched-retry` | ข้อความออฟไลน์ที่กดได้ (ไม่เหมือนจออื่น) | `LoadError` + ปุ่มลองใหม่ `*-error-retry` |
 | `sec-rules-*` (B4) | สวิตช์/วงเงินแก้ได้จากค่าปริยายก่อนโหลด | ซ่อนจนได้ค่าจริง (R-S2.14g) |
+
+### ผลรอบ 2 (ทิป 0264e5675 · ทิป session/secretary 08dd22fcf อยู่ในสาขาแล้ว)
+- `qc-sec-s2.14` (B-1 ใหม่ของผู้คุม) forced #1 `{"total":10,"passed":10,"failed":[],"skipped":[],"findings":[]}` exit 0 · #2 เท่ากัน exit 0 (fitness ×2 = D-1/D-2 ในทุกรอบ · M-1 typecheck mobile 0)
+- `clicks-sec.json` รอบเต็มรอบเดียว **431/431** · `meta {"generatedAt":"2026-11-05T18:54:28.834Z","registryHash":"c23413584964…642d","distHash":"f194e4591091…a562","resumed":false,"workers":4,"clicks":2566,"seconds":3451}` · ชนิด: กล่อง 247 · ปุ่ม 142 · ช่องพิมพ์ 23 · รากรวม 19 (ผ่านลูก) · ปุ่ม/ช่องที่ effect = visible 0 · blocked 0 · template 22 ชุดผ่านสมาชิกทุกชุด
+  - หมายเหตุ: รอบเต็มก่อนหน้าบน build เดียวกันได้ 430 และ 427 (`sec-new-frequent-*` ตัวตรวจไม่เห็นค่าที่ชิปเติมลงช่องพิมพ์ ⇒ เพิ่มผล `field` · `cust-room-claim`/`cust-room-note`/`cust-info-task-error`/`sec-access-level-*` จังหวะเครื่องหนัก ⇒ สแกนซ้ำ/รอ) — แก้ที่ตัวกด ไม่มี RESUME ในไฟล์ส่งมอบ
+- spec ซ้ำ (forced · QC_SKIP_TSC): s2.2 10/11 · s2.4 6/7 · s2.7 15/16 · s2.17 11/12 (ข้อที่ขาด = M-1 SKIP · failed [] · exit 0)
+- `three-chats.json` ok 3/3 · `states.json` 96/96 (เกณฑ์ใหม่: เห็น testID สถานะจริง) · reshoot ทั้งชุด FAIL=0 · padding 20/20
+- typecheck ทั้ง repo: แดง 2 จุด **เฉพาะ `scripts/qc-sec-s3a.1.mts` (oracle S3a.1 ของผู้คุมที่ merge มา · บรรทัด 167 `Property 'proposalId'/'error' does not exist on type '{ raw: any; }'`)** — ไม่ใช่ไฟล์ของใบนี้ ไม่แก้ · ⚠️ `next build` ตรวจ type `scripts/*.mts` ด้วย ⇒ ผู้คุมต้องแก้ก่อน build
+- ภาพคู่ที่เปลี่ยน: A1 ขอบเขต `apps/mobile/qc/shots-sec/s2.14-interaction/a1-scope-tenant{,-dark}-pair.png` · K2/K3 `customers-x1{,-dark}-k2-pair.png` `customers-x1-info{,-dark}-k3-pair.png` (fixture can.*/phoneMasked) · B4 สถานะ `s2.14-states/{loading,error,denied}/secretary-settings-rules.png` · ภาพคู่ทั้งชุดถ่ายใหม่
