@@ -93,18 +93,38 @@ export async function latestConversation(ctx: ConvCtx) {
  * ข้อความในบทสนทนา (เรียงเก่า→ใหม่) — CRM C5.5-G2 ▸ เฉพาะบทสนทนาที่ผู้ดูเห็น (ไม่เห็น = ว่าง เหมือนไม่มีอยู่) ·
  *   ตรวจสองชั้น: รหัสก่อน query + เงื่อนไขของห้องใน query เดียวกัน ◂
  */
-export async function listMessages(ctx: ConvCtx, conversationId: string, take = 100) {
+/** S1.14 R-S1.14d ▸ หน้าแบบ cursor คู่ — `before` = แถวที่เก่าที่สุดของหน้าก่อน (createdAt, id) · ไม่ส่ง = หน้าล่าสุด ◂ */
+export type MessagePage = { before?: { at: Date; id: string } | null; take?: number };
+
+export async function listMessages(ctx: ConvCtx, conversationId: string, opts: number | MessagePage = 100) {
   // S1.4 R-K1 ▸ ไม่เห็นจากรหัส ⇒ ดูห้องเลขาร่วม (สมาชิก · OWNER เฉพาะห้องที่มี AiRoom — เงื่อนไข room อยู่ใน query) ◂
   const base = sightOf(ctx);
   const s = canSeeConversationId(base, conversationId) ? base : await roomSightFor(ctx);
   if (!canSeeConversationId(s, conversationId) && s.tenantRooms !== true) return [];
   // S1.6 ▸ สมาชิกห้องที่ seeHistory=false เห็นเฉพาะข้อความหลัง addedAt (ผู้เปิดห้อง/OWNER/ห้องเดิม = {}) ◂
   const since = s === base ? {} : await visibleMessagesWhere(ctx, conversationId);
-  return tenantDb({ tenantId: ctx.tenantId }).aiMessage.findMany({
-    where: { conversationId, conversation: visibleConversationWhere(s), ...since },
-    orderBy: { createdAt: "asc" },
+  if (typeof opts === "number") {
+    // ผู้เรียกเดิม (take เป็นตัวเลข) = เดิมทุกตัวอักษร: เก่า→ใหม่ จากต้นห้อง
+    return tenantDb({ tenantId: ctx.tenantId }).aiMessage.findMany({
+      where: { conversationId, conversation: visibleConversationWhere(s), ...since },
+      orderBy: { createdAt: "asc" },
+      take: opts,
+    });
+  }
+  // S1.14 ▸ หน้าล่าสุดก่อน: ใหม่→เก่า (createdAt, id) ตัดที่ cursor คู่ แล้วกลับเป็นเก่า→ใหม่ ◂
+  const take = Math.min(Math.max(Math.floor(Number(opts.take) || 50), 1), 200);
+  const b = opts.before;
+  const rows = await tenantDb({ tenantId: ctx.tenantId }).aiMessage.findMany({
+    where: {
+      AND: [
+        { conversationId, conversation: visibleConversationWhere(s), ...since },
+        ...(b ? [{ OR: [{ createdAt: { lt: b.at } }, { createdAt: b.at, id: { lt: b.id } }] }] : []),
+      ],
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take,
   });
+  return rows.reverse();
 }
 
 /** เปิดใช้ได้ไหม (มี provider) — UI ใช้ตัดสินใจแสดงสถานะ */

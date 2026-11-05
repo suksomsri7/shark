@@ -235,7 +235,7 @@ function canSeeRoom(actor: AiMemberActor, room: { startedById: string; members: 
  */
 export async function listRooms(
   ctx: ConvCtx,
-  opts?: { scope?: "mine" | "tenant"; status?: RoomStatus; q?: string; take?: number; before?: Date },
+  opts?: { scope?: "mine" | "tenant"; status?: RoomStatus; q?: string; take?: number; before?: Date | { at: Date; id: string } },
 ): Promise<RoomCard[]> {
   const actor = memberActorOf(ctx);
   if (!actor) return [];
@@ -248,6 +248,11 @@ export async function listRooms(
   const q = typeof opts?.q === "string" ? opts.q.trim().slice(0, 100) : "";
   if (q) and.push({ title: { contains: q, mode: "insensitive" } });
   if (opts?.before instanceof Date && !Number.isNaN(opts.before.getTime())) and.push({ updatedAt: { lt: opts.before } });
+  // S1.14 R-S1.14g ▸ cursor คู่ (updatedAt, id) ตามลำดับเรียงจริง — ห้องที่ updatedAt เท่ากันไม่หายข้ามหน้า ◂
+  else if (opts?.before && !(opts.before instanceof Date) && opts.before.at instanceof Date && !Number.isNaN(opts.before.at.getTime()) && typeof opts.before.id === "string") {
+    const { at, id } = opts.before;
+    and.push({ OR: [{ updatedAt: { lt: at } }, { updatedAt: at, id: { lt: id } }] });
+  }
 
   const status = opts?.status;
   if (status === "DONE") and.push({ closedAt: { not: null } });
