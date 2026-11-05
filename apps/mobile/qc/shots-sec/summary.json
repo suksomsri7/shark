@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T00:13:00.192Z",
+ "generatedAt": "2026-11-05T00:49:23.006Z",
  "base": "http://127.0.0.1:4725",
  "view": {
   "tag": "iphone",
@@ -8,8 +8,8 @@
   "scale": 2
  },
  "fixture": {
-  "path": "/root/projects/shark-sec-c/apps/mobile/qc/fixtures/secretary/s2.17.json",
-  "sha256": "3e460ede1f1714e424135f6e176e12121cd3d3de8dafd1b23dd324d1d997809e"
+  "path": "/root/projects/shark-sec-c/apps/mobile/qc/fixtures/secretary/s2.15.json",
+  "sha256": "3c752ed3161aa1e2625c156dc6c3f49c6864e8f436d145922ab93e74b988f41f"
  },
  "screens": [
   {
@@ -120,52 +120,6 @@
    "generatedAt": "2026-11-04T20:25:30.910Z"
   },
   {
-   "name": "secretary-help",
-   "route": "/secretary/help",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-help",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nช่วยเหลือ\nกำลังสร้าง (ใบ S2.15)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.15 วาดตามแบบหน้า H1",
-   "unmocked": [],
-   "url": "/secretary/help",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help.png",
-   "generatedAt": "2026-11-04T20:25:42.360Z"
-  },
-  {
-   "name": "secretary-help-c1",
-   "route": "/secretary/help/c1",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-help-case",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nเรื่องที่แจ้ง\nกำลังสร้าง (ใบ S2.15)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.15 วาดตามแบบหน้า H2",
-   "unmocked": [],
-   "url": "/secretary/help/c1",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1.png",
-   "generatedAt": "2026-11-04T20:25:46.058Z"
-  },
-  {
    "name": "business-new",
    "route": "/business/new",
    "dark": false,
@@ -256,52 +210,6 @@
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account-dark.png",
    "generatedAt": "2026-11-04T20:27:03.959Z"
-  },
-  {
-   "name": "secretary-help-dark",
-   "route": "/secretary/help",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-help",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nช่วยเหลือ\nกำลังสร้าง (ใบ S2.15)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.15 วาดตามแบบหน้า H1",
-   "unmocked": [],
-   "url": "/secretary/help",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-dark.png",
-   "generatedAt": "2026-11-04T20:27:14.997Z"
-  },
-  {
-   "name": "secretary-help-c1-dark",
-   "route": "/secretary/help/c1",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "64bfa2ccf3dc2eb97646a9b6a29cb4c8efb26974e93663ee3f45a95f5edaa757",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-secretary-help-case",
-    "sec-top-secretary",
-    "sec-top-customers",
-    "sec-top-team",
-    "sec-top-help"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\nThe Bean Café\n\n\n\nเรื่องที่แจ้ง\nกำลังสร้าง (ใบ S2.15)\nหน้านี้เป็นโครงของแอปเลขา · ใบ S2.15 วาดตามแบบหน้า H2",
-   "unmocked": [],
-   "url": "/secretary/help/c1",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1-dark.png",
-   "generatedAt": "2026-11-04T20:27:18.696Z"
   },
   {
    "name": "business-new-dark",
@@ -1569,6 +1477,116 @@
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-settings-customers-dark.png",
    "generatedAt": "2026-11-05T00:12:59.992Z"
+  },
+  {
+   "name": "secretary-help",
+   "route": "/secretary/help",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "3c752ed3161aa1e2625c156dc6c3f49c6864e8f436d145922ab93e74b988f41f",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "help-home",
+    "help-chip",
+    "help-case-row",
+    "help-input",
+    "help-send",
+    "sec-top-help",
+    "sec-top-secretary"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n\n\nช่วยเหลือ\nแจ้งปัญหาการใช้งาน · ทีม SHARK ตอบในห้องแชท · เจ้าของร้านเห็นทุกเรื่องของร้าน\nแจ้งเรื่องใหม่\nใช้งานไม่ได้\nเลขาทำผิด\nข้อมูลไม่ตรง\nบัญชี/การเงิน\nข้อเสนอแนะ\nเรื่องที่แจ้งไว้\nใบเสนอราคาไม่ส่ง LINE\nตอนนี้\nทีม SHARK ตอบแล้ว · รอคุณยืนยันว่าแก้แล้ว\n1\nSHARK-00042\nขอเพิ่มระบบคลังให้เลขาเห็น\nเมื่อวาน\nส่งแล้ว · รอทีม SHARK\nSHARK-00041\nล็อกอิน Apple ไม่ผ่าน\n28/10\nปิดแล้ว 28 ต.ค. · แก้แล้ว\nSHARK-00037\nเรื่องเร่งด่วนเกี่ยวกับเงินหรือข้อมูลหาย ทีมตอบภายใน 4 ชม.ทำการ · เรื่องทั่วไปภายใน 1 วันทำการ\n\n",
+   "unmocked": [],
+   "url": "/secretary/help",
+   "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-help.png",
+   "generatedAt": "2026-11-05T00:49:07.800Z"
+  },
+  {
+   "name": "secretary-help-c1",
+   "route": "/secretary/help/c1",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "3c752ed3161aa1e2625c156dc6c3f49c6864e8f436d145922ab93e74b988f41f",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "help-room",
+    "help-bubble",
+    "help-attach",
+    "help-input",
+    "help-send",
+    "help-resolved-card",
+    "help-resolve-yes",
+    "help-resolve-no",
+    "help-link",
+    "help-room-card",
+    "help-back",
+    "help-menu"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคาไม่ส่ง LINE\nSHARK-00042 ·\nทีม SHARK ตอบแล้ว\n\nกดอนุมัติใบเสนอราคาแล้ว แต่ลูกค้าบอกว่าไม่ได้รับทาง LINE\n\nรูปแนบ 1 รูป\n09:58\nเปิดเรื่อง SHARK-00042 · แนบห้องงาน \"ใบเสนอราคา ร้านดอยช้าง\" ให้ทีมดูอัตโนมัติ · 09:58\nSH\nทีม SHARK · 10:02\nรับเรื่องแล้วครับ กำลังดูห้องงานที่แนบมา\nเป็นลูกค้าที่ทักมาทาง LINE ครับ\n10:04\nSH\nทีม SHARK · 10:10\nตรวจแล้วครับ LINE ของร้านยังไม่ได้เชื่อมในระบบแชท เลขาจึงส่งไม่ได้ ผมเปิดหน้าตั้งค่าให้แล้ว กดเชื่อมได้ที่ลิงก์นี้ครับ\n\nเชื่อม LINE Official\n/secretary/settings/customers\nเปิด\n\nSH\nทีม SHARK · 10:12\nเชื่อมแล้วกดส่งใบเสนอราคาอีกครั้งในห้องงานได้เลยครับ\n\nเปิดหน้านี้ในแอป\n/secretary/room/r1\nเปิด\n\n\nปัญหาแก้แล้วหรือยัง\nตอบแล้วเรื่องจะปิด · พิมพ์ต่อได้ถ้ายังไม่หาย\nยังไม่แก้\nแก้แล้ว ปิดเรื่อง\n\n",
+   "unmocked": [],
+   "url": "/secretary/help/c1",
+   "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-help-c1.png",
+   "generatedAt": "2026-11-05T00:49:13.088Z"
+  },
+  {
+   "name": "secretary-help-dark",
+   "route": "/secretary/help",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "3c752ed3161aa1e2625c156dc6c3f49c6864e8f436d145922ab93e74b988f41f",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "help-home",
+    "help-chip",
+    "help-case-row",
+    "help-input",
+    "help-send",
+    "sec-top-help",
+    "sec-top-secretary"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n\n\nช่วยเหลือ\nแจ้งปัญหาการใช้งาน · ทีม SHARK ตอบในห้องแชท · เจ้าของร้านเห็นทุกเรื่องของร้าน\nแจ้งเรื่องใหม่\nใช้งานไม่ได้\nเลขาทำผิด\nข้อมูลไม่ตรง\nบัญชี/การเงิน\nข้อเสนอแนะ\nเรื่องที่แจ้งไว้\nใบเสนอราคาไม่ส่ง LINE\nตอนนี้\nทีม SHARK ตอบแล้ว · รอคุณยืนยันว่าแก้แล้ว\n1\nSHARK-00042\nขอเพิ่มระบบคลังให้เลขาเห็น\nเมื่อวาน\nส่งแล้ว · รอทีม SHARK\nSHARK-00041\nล็อกอิน Apple ไม่ผ่าน\n28/10\nปิดแล้ว 28 ต.ค. · แก้แล้ว\nSHARK-00037\nเรื่องเร่งด่วนเกี่ยวกับเงินหรือข้อมูลหาย ทีมตอบภายใน 4 ชม.ทำการ · เรื่องทั่วไปภายใน 1 วันทำการ\n\n",
+   "unmocked": [],
+   "url": "/secretary/help",
+   "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-help-dark.png",
+   "generatedAt": "2026-11-05T00:49:17.406Z"
+  },
+  {
+   "name": "secretary-help-c1-dark",
+   "route": "/secretary/help/c1",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "3c752ed3161aa1e2625c156dc6c3f49c6864e8f436d145922ab93e74b988f41f",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "help-room",
+    "help-bubble",
+    "help-attach",
+    "help-input",
+    "help-send",
+    "help-resolved-card",
+    "help-resolve-yes",
+    "help-resolve-no",
+    "help-link",
+    "help-room-card",
+    "help-back",
+    "help-menu"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคาไม่ส่ง LINE\nSHARK-00042 ·\nทีม SHARK ตอบแล้ว\n\nกดอนุมัติใบเสนอราคาแล้ว แต่ลูกค้าบอกว่าไม่ได้รับทาง LINE\n\nรูปแนบ 1 รูป\n09:58\nเปิดเรื่อง SHARK-00042 · แนบห้องงาน \"ใบเสนอราคา ร้านดอยช้าง\" ให้ทีมดูอัตโนมัติ · 09:58\nSH\nทีม SHARK · 10:02\nรับเรื่องแล้วครับ กำลังดูห้องงานที่แนบมา\nเป็นลูกค้าที่ทักมาทาง LINE ครับ\n10:04\nSH\nทีม SHARK · 10:10\nตรวจแล้วครับ LINE ของร้านยังไม่ได้เชื่อมในระบบแชท เลขาจึงส่งไม่ได้ ผมเปิดหน้าตั้งค่าให้แล้ว กดเชื่อมได้ที่ลิงก์นี้ครับ\n\nเชื่อม LINE Official\n/secretary/settings/customers\nเปิด\n\nSH\nทีม SHARK · 10:12\nเชื่อมแล้วกดส่งใบเสนอราคาอีกครั้งในห้องงานได้เลยครับ\n\nเปิดหน้านี้ในแอป\n/secretary/room/r1\nเปิด\n\n\nปัญหาแก้แล้วหรือยัง\nตอบแล้วเรื่องจะปิด · พิมพ์ต่อได้ถ้ายังไม่หาย\nยังไม่แก้\nแก้แล้ว ปิดเรื่อง\n\n",
+   "unmocked": [],
+   "url": "/secretary/help/c1",
+   "file": "/root/projects/shark-sec-c/apps/mobile/qc/shots-sec/secretary-help-c1-dark.png",
+   "generatedAt": "2026-11-05T00:49:22.670Z"
   }
  ]
 }

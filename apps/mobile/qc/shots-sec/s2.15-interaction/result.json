@@ -1,0 +1,170 @@
+{
+ "h1Rows": 3,
+ "h1Dots": {
+  "run": 1,
+  "wait": 1,
+  "done": 1
+ },
+ "h1DotColors": [
+  "help-dot-run=rgb(60, 196, 127)",
+  "help-dot-wait=rgb(255, 176, 32)",
+  "help-dot-done=rgb(197, 200, 212)"
+ ],
+ "h1Unread": 1,
+ "h1Chips": [
+  "ใช้งานไม่ได้",
+  "เลขาทำผิด",
+  "ข้อมูลไม่ตรง",
+  "บัญชี/การเงิน",
+  "ข้อเสนอแนะ"
+ ],
+ "h1ListTenant": [
+  "t1"
+ ],
+ "h1HelpBtnSelected": null,
+ "h1RowOpens": "/secretary/help/c1",
+ "h1RoomCard": "\nแนบห้องงาน: ใบเสนอราคา ร้านดอยช้าง\n",
+ "h1Preselected": [],
+ "h1OpenBodyFromRoom": [
+  {
+   "subject": "เลขาส่งใบเสนอราคาให้ลูกค้าผิดคน",
+   "body": "เลขาส่งใบเสนอราคาให้ลูกค้าผิดคน",
+   "category": "secretary_wrong",
+   "roomId": "r1"
+  }
+ ],
+ "h1AfterOpenUrl": "/secretary/help/c9",
+ "h1DetachedCard": 0,
+ "h1OpenBodyDetached": [
+  {
+   "subject": "ปุ่มพิมพ์ใบเสร็จกดไม่ได้",
+   "body": "ปุ่มพิมพ์ใบเสร็จกดไม่ได้",
+   "category": "bug"
+  }
+ ],
+ "h1BadRoomCard": 0,
+ "h1Upload": [
+  {
+   "multipart": true,
+   "len": null
+  }
+ ],
+ "h1Attached": 1,
+ "h1OpenBodyAtt": [
+  {
+   "subject": "ข้อความทดสอบ",
+   "body": "ข้อความทดสอบ",
+   "attachments": [
+    {
+     "name": "qc-photo.png",
+     "url": "https://cdn.qc.invalid/help/upload-1.png",
+     "kind": "image"
+    }
+   ]
+  }
+ ],
+ "h1RateFlash": "ส่งถี่เกินไป รอสักครู่แล้วลองใหม่",
+ "h1RateUrl": "/secretary/help",
+ "h1RateInput": "ทดสอบ",
+ "h1Empty": "ยังไม่มีเรื่องที่แจ้ง เลือกหัวข้อแล้วพิมพ์ปัญหาที่พบด้านล่างได้เลย",
+ "h2Bubbles": 5,
+ "h2Links": [
+  " | เชื่อม LINE Official",
+  " | เปิดหน้านี้ในแอป"
+ ],
+ "h2Att": "\nรูปแนบ 1 รูป",
+ "h2HeaderDot": [
+  "help-room-dot-run"
+ ],
+ "h2Status": "ทีม SHARK ตอบแล้ว",
+ "h2RoomCard": "เปิดเรื่อง SHARK-00042 · แนบห้องงาน \"ใบเสนอราคา ร้านดอยช้าง\" ให้ทีมดูอัตโนมัติ · 09:58",
+ "h2Get": 1,
+ "h2Reply": [
+  {
+   "body": "ลองเชื่อมแล้วครับ"
+  }
+ ],
+ "h2InputAfter": "",
+ "h2ReloadAfterReply": 2,
+ "h2Link0": "/secretary/settings/customers",
+ "h2Link1": "/secretary/room/r1",
+ "h2RoomCardUrl": "/secretary/room/r1",
+ "h2LinksWithUnsafe": [
+  "เชื่อม LINE Official",
+  "เปิดหน้านี้ในแอป",
+  "เปิดหน้านี้ในแอป"
+ ],
+ "h2WebLinkUrl": "/?open=%2Fapp%2Fsettings%2Fchat&t=1793840007673",
+ "h2Resolve": [
+  {}
+ ],
+ "h2ResolveFlash": "ปิดเรื่องแล้ว ขอบคุณที่แจ้งเข้ามา",
+ "h2CardAfterResolve": 0,
+ "h2Closed": "เรื่องนี้ปิดแล้ว · พิมพ์ต่อเพื่อเปิดเรื่องอีกครั้ง",
+ "h2DotAfterResolve": [
+  "help-room-dot-done"
+ ],
+ "h2No": [
+  {
+   "body": "ยังไม่หาย ปัญหายังอยู่"
+  }
+ ],
+ "h2NoResolve": 0,
+ "h2NoFlash": "แจ้งทีมแล้ว พิมพ์รายละเอียดเพิ่มได้เลย",
+ "h2CardAfterNo": 0,
+ "h2DotAfterNo": [
+  "help-room-dot-wait"
+ ],
+ "h2NoFocused": "help-input-field",
+ "h2Upload": [
+  {
+   "multipart": true,
+   "len": null,
+   "tenant": "t1",
+   "hasFileField": false
+  }
+ ],
+ "h2Attached": 1,
+ "h2AttachReply": [
+  {
+   "body": "ส่งรูปให้ทีมดู",
+   "attachments": [
+    {
+     "name": "qc-photo.png",
+     "url": "https://cdn.qc.invalid/help/upload-1.png",
+     "kind": "image"
+    }
+   ]
+  }
+ ],
+ "h2AttachedAfterSend": 0,
+ "h2BigUploads": 0,
+ "h2BigFlash": "รูปใหญ่เกิน 4 MB — ลองแคปหน้าจอใหม่หรือเลือกรูปที่เล็กลง",
+ "h2SvgUploads": 0,
+ "h2SvgFlash": "แนบได้เฉพาะรูป JPG · PNG · WEBP · HEIC · GIF",
+ "h2Up415": {
+  "posts": 1,
+  "flash": "แนบได้เฉพาะรูป JPG · PNG · WEBP · HEIC · GIF",
+  "attached": 0
+ },
+ "h2UploadWire": [
+  {
+   "contentLength": "352",
+   "transferEncoding": null,
+   "bytes": 352,
+   "ct": "multipart/form-data; boundary=----WebKitFormBoundary2lApqCzq7ATX4dzk",
+   "auth": true,
+   "tenant": "t1",
+   "fileField": true,
+   "partType": "image/png"
+  }
+ ],
+ "h2UploadWireAttached": 1,
+ "h2Menu": {
+  "room": 1,
+  "resolve": 1,
+  "list": 1
+ },
+ "h2Gone": "\nไม่พบเรื่องนี้ หรือคุณไม่มีสิทธิ์ดู\nไปที่เรื่องที่แจ้งไว้",
+ "h2GoneInput": 0
+}

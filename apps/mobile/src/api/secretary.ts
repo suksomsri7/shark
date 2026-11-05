@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { api, ApiError } from "@/src/api/client";
+import { api, ApiError, BASE_URL } from "@/src/api/client";
+import { getTenantId, getToken } from "@/src/lib/session";
 import { useAuth } from "@/src/lib/auth-context";
 import { langFrom, setLang } from "@/src/i18n";
 import { resetInboxState } from "@/src/api/inbox";
@@ -35,6 +36,9 @@ const PATH = {
   "secretary/inbox": "/api/mobile/secretary/inbox",
   "secretary/scheduled": "/api/mobile/secretary/scheduled",
   "secretary/badge": "/api/mobile/secretary/badge",
+  // S2.15 ช่วยเหลือ H1/H2 (S1.14 · R-K12 · R-S1.14c) — เรื่องเป็นของกิจการ (ส่ง x-tenant-id)
+  "secretary/support/cases": "/api/mobile/secretary/support/cases",
+  "secretary/support/upload": "/api/mobile/secretary/support/upload",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -61,6 +65,10 @@ const PATH_ID = {
   "secretary/staff/invites/[id]": "/api/mobile/secretary/staff/invites/[id]",
   "secretary/staff/invites/[id]/resend": "/api/mobile/secretary/staff/invites/[id]/resend",
   "secretary/scheduled/[id]": "/api/mobile/secretary/scheduled/[id]",
+  // S2.15 ห้องแจ้งปัญหา H2
+  "secretary/support/cases/[id]": "/api/mobile/secretary/support/cases/[id]",
+  "secretary/support/cases/[id]/reply": "/api/mobile/secretary/support/cases/[id]/reply",
+  "secretary/support/cases/[id]/resolve": "/api/mobile/secretary/support/cases/[id]/resolve",
 } as const;
 export type SecIdPath = keyof typeof PATH_ID;
 
@@ -136,11 +144,13 @@ type GetMap = {
   "secretary/inbox": { items?: unknown[] };
   "secretary/scheduled": { items?: unknown[]; max?: number };
   "secretary/badge": { badge?: number };
+  "secretary/support/cases": { items?: unknown[]; unread?: number; categories?: string[] };
 };
 type PostMap = {
   // S2.19 K3 "สั่ง Shark เรื่องลูกค้านี้": context = รหัสห้องแชทลูกค้า/ผู้ติดต่อ (ไม่ใส่ชื่อ/เบอร์ลูกค้า · เซิร์ฟเวอร์ resolve เอง)
   "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string } }; res: { roomId: string; conversationId?: string; status?: string } };
   "secretary/scheduled": { body: ScheduleBody; res: { id: string } };
+  "secretary/support/cases": { body: HelpOpenBody; res: { id: string; caseNo: number } };
 };
 type Query = Record<string, string | number | undefined>;
 
@@ -177,6 +187,7 @@ type GetIdMap = {
   "secretary/rooms/[id]/messages": { items?: unknown[]; nextBefore?: string | null };
   "secretary/rooms/[id]/proposals": { items?: unknown[] };
   "secretary/rooms/[id]/members": { items?: unknown[]; max?: number };
+  "secretary/support/cases/[id]": { case?: unknown; messages?: unknown[] };
 };
 type PostIdMap = {
   "secretary/rooms/[id]/send": { body: { text: string; clientMessageId: string }; res: { ok?: boolean; messageId?: string; jobId?: string; duplicate?: boolean } };
@@ -191,6 +202,8 @@ type PostIdMap = {
   "secretary/memories/[id]/confirm": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/rooms/[id]/members": { body: { userId: string; seeHistory: boolean }; res: { ok: boolean; member?: unknown } };
   "secretary/staff/invites/[id]/resend": { body: Record<string, never>; res: { ok: boolean; sms?: string; expiresAt?: string; link?: string | null } };
+  "secretary/support/cases/[id]/reply": { body: { body: string; attachments?: HelpAttachment[] }; res: { ok: boolean } };
+  "secretary/support/cases/[id]/resolve": { body: Record<string, never>; res: { ok: boolean } };
 };
 type DeleteIdMap = { "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean }; "secretary/staff/invites/[id]": { ok: boolean }; "secretary/scheduled/[id]": { ok: boolean } };
 
@@ -981,4 +994,140 @@ export async function fetchAppBadge(): Promise<number | null> {
   } catch {
     return null;
   }
+}
+
+// ───────── S2.15 ช่วยเหลือ (H1 รายการ+เปิดเรื่อง · H2 ห้องแจ้งปัญหา) — รูปตาม route จริง src/app/api/mobile/secretary/support/** ─────────
+/** หมวดของเรื่อง (CASE_CATEGORIES ของ support/service.ts) */
+export type HelpCategory = "secretary_wrong" | "bug" | "question" | "billing" | "feature" | "other";
+/** ไฟล์แนบของ cases/reply (AttachmentsSchema · ≤ 5 ชิ้น) */
+export type HelpAttachment = { name: string; url: string; kind: "image" | "file" };
+export const HELP_MAX_ATTACHMENTS = 5;
+export type HelpOpenBody = { subject: string; body: string; category?: HelpCategory; roomId?: string; attachments?: HelpAttachment[] };
+export type HelpStatus = "OPEN" | "PENDING" | "RESOLVED";
+export type HelpCaseRow = { id: string; caseNo: number; subject: string; status: HelpStatus; updatedAt: string; unread: number };
+export type HelpCase = { id: string; caseNo: number; subject: string; status: HelpStatus; category: string | null; roomId: string | null; createdAt: string; updatedAt: string };
+/** ข้อความในเรื่อง — ไม่มี id/ชื่อของทีมงานแพลตฟอร์ม (route ตัดออก) · `mine` = ผู้ใช้นี้พิมพ์เอง */
+export type HelpMsg = { id: string; side: "SHOP" | "PLATFORM"; mine: boolean; body: string; attachments: { name: string; url: string; kind: string }[]; at: string };
+
+const helpStatusOf = (v: unknown): HelpStatus => (v === "PENDING" || v === "RESOLVED" ? v : "OPEN");
+const intOf = (v: unknown): number => Math.max(0, Math.floor(Number(v) || 0));
+
+export function normalizeHelpCases(v: unknown): HelpCaseRow[] {
+  return listOf(v)
+    .map((x) => {
+      const o = rec(x);
+      return { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status: helpStatusOf(o.status), updatedAt: isoOf(o.updatedAt), unread: intOf(o.unreadCount ?? o.unread) };
+    })
+    .filter((c) => c.id);
+}
+
+export function normalizeHelpDetail(v: unknown): { case: HelpCase | null; messages: HelpMsg[] } {
+  const r = rec(v);
+  const o = rec(r.case);
+  const kase: HelpCase | null = str(o.id)
+    ? { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status: helpStatusOf(o.status), category: str(o.category) || null, roomId: str(o.roomId) || null, createdAt: isoOf(o.createdAt), updatedAt: isoOf(o.updatedAt) }
+    : null;
+  const messages = listOf(r.messages ?? [])
+    .map((x): HelpMsg => {
+      const m = rec(x);
+      const atts = (Array.isArray(m.attachments) ? m.attachments : []).map((a) => rec(a)).filter((a) => typeof a.url === "string" && a.url);
+      return {
+        id: str(m.id),
+        side: m.side === "PLATFORM" ? "PLATFORM" : "SHOP",
+        mine: m.mine === true,
+        body: typeof m.body === "string" ? m.body : "",
+        attachments: atts.map((a) => ({ name: str(a.name), url: a.url as string, kind: a.kind === "image" ? "image" : "file" })),
+        at: isoOf(m.createdAt),
+      };
+    })
+    .filter((m) => m.id && (m.body.trim() || m.attachments.length > 0));
+  return { case: kase, messages };
+}
+
+/** เลขเรื่องที่ผู้ใช้เห็น (แบบ H1/H2: SHARK-00042) */
+export function caseNoText(n: number): string {
+  return `SHARK-${String(Math.max(0, Math.floor(n))).padStart(5, "0")}`;
+}
+
+/** จุดสถานะ H1/H2: ส้ม = รอทีม (OPEN ไม่มีของใหม่) · เขียว = ทีมตอบแล้วรอคุณ (PENDING หรือมีข้อความทีมที่ยังไม่อ่าน) · เทา = ปิด (RESOLVED) */
+export function helpDot(status: HelpStatus, unread: number): "wait" | "run" | "done" {
+  if (status === "RESOLVED") return "done";
+  if (status === "PENDING" || unread > 0) return "run";
+  return "wait";
+}
+
+/** หัวเรื่อง = บรรทัดแรกที่ไม่ว่าง (≤ 120 ตัว) · เนื้อหา = ทั้งข้อความ (≤ 4000) — สัญญา POST support/cases */
+export function helpSubjectBody(text: string): { subject: string; body: string } | null {
+  const body = text.trim().slice(0, 4000);
+  if (!body) return null;
+  const first = body.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? body;
+  const subject = Array.from(first).length > 120 ? `${Array.from(first).slice(0, 119).join("")}…` : first;
+  return { subject, body };
+}
+
+// ลิงก์หน้าในแอปจากทีม (H2 ปุ่ม "เปิดหน้า"): `[ชื่อ](sharkai://…)` · `sharkai://…` · `/app/…` (หน้าเว็บของร้านใน WebView หน้าแรก 1.0) ·
+//   `/secretary/…` `/customers/…` `/business/…` (จอ native) — อย่างอื่น (http ภายนอก ฯลฯ) ไม่ทำเป็นปุ่ม (กันพาออกนอกแอป)
+const LINK_RE = /\[([^\]\n]{1,80})\]\((sharkai:\/\/[^\s)]+|\/[^\s)]+)\)|(sharkai:\/\/[^\s)\]]+)|(^|\s)(\/(?:app|secretary|customers|business)(?:\/[A-Za-z0-9_\-/]*)?(?:\?[A-Za-z0-9_=&\-]*)?)/g;
+const NATIVE_RE = /^\/(?:secretary|customers|business)(?:\/[A-Za-z0-9_\-]+)*\/?(?:\?[A-Za-z0-9_=&\-]*)?$/;
+const WEB_RE = /^\/app\/[A-Za-z0-9_\-/]*(?:\?[A-Za-z0-9_=&\-]*)?$/;
+export type HelpLink = { label: string | null; path: string; route: { pathname: string; params?: Record<string, string> } };
+
+const pathOfTarget = (target: string) => (target.startsWith("sharkai://") ? `/${target.slice("sharkai://".length).replace(/^\/+/, "")}` : target);
+
+/** path ภายในที่ปลอดภัย → เส้นทาง router (ไม่ผ่าน = null) */
+export function helpRouteOf(target: string, nonce: string): HelpLink["route"] | null {
+  const path = pathOfTarget(target);
+  if (WEB_RE.test(path)) return { pathname: "/", params: { open: path, t: nonce } };
+  if (!NATIVE_RE.test(path)) return null;
+  const [pathname, qs] = path.split("?");
+  const params: Record<string, string> = {};
+  for (const kv of (qs ?? "").split("&").filter(Boolean)) {
+    const [k, val] = kv.split("=");
+    if (k) params[k] = val ?? "";
+  }
+  return Object.keys(params).length ? { pathname: pathname!, params } : { pathname: pathname! };
+}
+
+/** แยกข้อความของทีมเป็น ข้อความที่แสดง + ปุ่มลิงก์หน้าในแอป (เครื่องหมายวรรคตอนท้ายลิงก์ไม่นับเป็นส่วนของ path) */
+export function splitHelpLinks(body: string, nonce: string): { text: string; links: HelpLink[] } {
+  const links: HelpLink[] = [];
+  const text = body.replace(LINK_RE, (m: string, label?: string, inner?: string, scheme?: string, pre?: string, bare?: string) => {
+    const raw = inner ?? scheme ?? bare ?? "";
+    const tail = label ? "" : (/[.,!?;:]+$/.exec(raw)?.[0] ?? "");
+    const target = tail ? raw.slice(0, -tail.length) : raw;
+    const route = helpRouteOf(target, nonce);
+    if (!route) return m;
+    links.push({ label: label?.trim() || null, path: pathOfTarget(target), route });
+    // ข้อความลิงก์แบบ [ชื่อ](…) ย้ายไปเป็นชื่อบนปุ่ม (ไม่ซ้ำในฟอง)
+    return label ? "" : `${pre ?? ""}${tail}`;
+  });
+  return { text: text.replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim(), links };
+}
+
+// รูปแนบเรื่องช่วยเหลือ (R-S1.14c): เฉพาะ jpeg/png/webp/heic/heif/gif · ≤ 4 MB · ต้องมี Content-Length (fetch ใส่ให้เองเมื่อ body = FormData ที่รู้ขนาด)
+export const HELP_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
+export const HELP_UPLOAD_TYPES: readonly string[] = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif"];
+export type HelpUpload = { url: string; name: string; kind: "image"; mimeType: string; size: number };
+
+/** POST secretary/support/upload (multipart `file`) — api() ของ client.ts ส่ง JSON เท่านั้น จึงแยกตัวเรียก */
+export async function secUpload(path: "secretary/support/upload", form: FormData): Promise<HelpUpload> {
+  const headers: Record<string, string> = {};
+  const token = await getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  const tid = await getTenantId();
+  if (tid) headers["x-tenant-id"] = tid;
+  const res = await fetch(`${BASE_URL}${PATH[path]}`, { method: "POST", headers, body: form });
+  if (!res.ok) {
+    let code = "error";
+    let detail: string | undefined;
+    try {
+      const b = (await res.json()) as { error?: string; message?: string };
+      code = b.error ?? "error";
+      detail = typeof b.message === "string" ? b.message : undefined;
+    } catch {
+      /* body ไม่ใช่ JSON */
+    }
+    throw new ApiError(res.status, code, detail);
+  }
+  return (await res.json()) as HelpUpload;
 }

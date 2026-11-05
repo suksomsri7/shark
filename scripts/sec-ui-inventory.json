@@ -1253,6 +1253,132 @@
    "screen": "K5 /secretary/settings/customers",
    "action": "SLA อ่านอย่างเดียว",
    "wo": "S2.17"
+  },
+  {
+   "testID": "help-chip",
+   "file": "apps/mobile/src/components/airy/Chip.tsx (ใช้ใน apps/mobile/app/(app)/secretary/help/index.tsx)",
+   "screen": "H1 /secretary/help",
+   "action": "เลือก/ยกเลิกหัวข้อ → category ของ POST support/cases",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-room-detach",
+   "file": "apps/mobile/app/(app)/secretary/help/index.tsx",
+   "screen": "H1 /secretary/help",
+   "action": "ถอดห้องงานที่แนบ (?roomId=) ออกจากเรื่องใหม่",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-case-row",
+   "file": "apps/mobile/src/components/secretary/CaseRow.tsx",
+   "screen": "H1 /secretary/help",
+   "action": "router.push /secretary/help/<id>",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-home-attach",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx (plusTestID ใน apps/mobile/app/(app)/secretary/help/index.tsx)",
+   "screen": "H1 /secretary/help",
+   "action": "แนบรูป → POST support/upload (≤4 MB)",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-send",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx (sendTestID ใน H1/H2)",
+   "screen": "H1 /secretary/help · H2 /secretary/help/[caseId]",
+   "action": "H1: POST support/cases {subject, body, category?, roomId?, attachments?} → /secretary/help/<id> · H2: POST support/cases/[id]/reply",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-attached-remove",
+   "file": "apps/mobile/src/components/secretary/HelpAttach.tsx",
+   "screen": "H1 /secretary/help · H2 /secretary/help/[caseId]",
+   "action": "เอารูปที่แนบรอส่งออก",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-back",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "router.back (ไม่มีหน้าก่อน = /secretary/help)",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "เปิดชีตเมนู ⋯",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "ปิดชีตเมนู",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu-room",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "router.push /secretary/room/<roomId>",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu-resolve",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "POST support/cases/[id]/resolve",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu-list",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "router.navigate /secretary/help",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-room-card",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "การ์ดห้องงานที่แนบ → router.push /secretary/room/<roomId>",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-link",
+   "file": "apps/mobile/src/components/secretary/CaseBubble.tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "ลิงก์หน้าในแอปจากทีม (sharkai:// · /secretary|customers|business · /app/ ใน WebView) → router.push",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-resolve-yes",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "POST support/cases/[id]/resolve {}",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-resolve-no",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "POST support/cases/[id]/reply {body: ยังไม่หาย} + เปิดช่องพิมพ์",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-attach",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx (plusTestID ใน apps/mobile/app/(app)/secretary/help/[caseId].tsx)",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "แนบรูป → POST support/upload (≤4 MB) → attachments ของ reply",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-gone-back",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "404 → router.navigate /secretary/help",
+   "wo": "S2.15"
   }
  ]
 }

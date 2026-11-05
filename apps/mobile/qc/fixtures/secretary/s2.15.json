@@ -1,0 +1,210 @@
+{
+ "_about": "fixture ของใบ S2.15 — H1 ช่วยเหลือ: 3 เรื่อง 3 สถานะ (c1 PENDING มีข้อความทีมยังไม่อ่าน 1 = จุดเขียว · c2 OPEN = ส้ม · c3 RESOLVED = เทา) · H2 ห้อง c1: 5 ข้อความ (ร้าน+รูปแนบ · ทีม · ร้าน · ทีม+ลิงก์ sharkai:// · ทีม+path ภายใน) + ห้องงานที่แนบ r1 + การ์ดแก้แล้วหรือยัง (PENDING) · mock POST cases/reply/resolve/upload · ข้อมูลจำลองล้วน",
+ "noAuth": [
+  "/login"
+ ],
+ "expect": {
+  "/secretary/help": [
+   "help-home",
+   "help-chip",
+   "help-case-row",
+   "help-input",
+   "help-send",
+   "sec-top-help",
+   "sec-top-secretary"
+  ],
+  "/secretary/help/c1": [
+   "help-room",
+   "help-bubble",
+   "help-attach",
+   "help-input",
+   "help-send",
+   "help-resolved-card",
+   "help-resolve-yes",
+   "help-resolve-no",
+   "help-link",
+   "help-room-card",
+   "help-back",
+   "help-menu"
+  ]
+ },
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@qc.invalid",
+    "name": "คุณสุข (QC)"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "MANAGER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 0,
+   "canApprove": 0
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 0
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 0,
+    "approvedClean": 0,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "languages": [
+    "th"
+   ]
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [
+    {
+     "id": "c1",
+     "caseNo": 42,
+     "subject": "ใบเสนอราคาไม่ส่ง LINE",
+     "status": "PENDING",
+     "updatedAt": "2026-11-05T03:12:00.000Z",
+     "unreadCount": 1
+    },
+    {
+     "id": "c2",
+     "caseNo": 41,
+     "subject": "ขอเพิ่มระบบคลังให้เลขาเห็น",
+     "status": "OPEN",
+     "updatedAt": "2026-11-04T08:30:00.000Z",
+     "unreadCount": 0
+    },
+    {
+     "id": "c3",
+     "caseNo": 37,
+     "subject": "ล็อกอิน Apple ไม่ผ่าน",
+     "status": "RESOLVED",
+     "updatedAt": "2026-10-28T06:00:00.000Z",
+     "unreadCount": 0
+    }
+   ],
+   "unread": 1,
+   "categories": [
+    "secretary_wrong",
+    "bug",
+    "question",
+    "billing",
+    "feature",
+    "other"
+   ]
+  },
+  "POST /api/mobile/secretary/support/cases": {
+   "id": "c9",
+   "caseNo": 43
+  },
+  "GET /api/mobile/secretary/support/cases/c1": {
+   "case": {
+    "id": "c1",
+    "caseNo": 42,
+    "subject": "ใบเสนอราคาไม่ส่ง LINE",
+    "status": "PENDING",
+    "category": "secretary_wrong",
+    "roomId": "r1",
+    "createdAt": "2026-11-05T02:58:00.000Z",
+    "updatedAt": "2026-11-05T03:12:00.000Z"
+   },
+   "messages": [
+    {
+     "id": "m1",
+     "side": "SHOP",
+     "mine": true,
+     "body": "กดอนุมัติใบเสนอราคาแล้ว แต่ลูกค้าบอกว่าไม่ได้รับทาง LINE",
+     "attachments": [
+      {
+       "name": "screenshot.png",
+       "url": "https://cdn.qc.invalid/help/shot-1.png",
+       "kind": "image"
+      }
+     ],
+     "createdAt": "2026-11-05T02:58:00.000Z"
+    },
+    {
+     "id": "m2",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "รับเรื่องแล้วครับ กำลังดูห้องงานที่แนบมา",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:02:00.000Z"
+    },
+    {
+     "id": "m3",
+     "side": "SHOP",
+     "mine": true,
+     "body": "เป็นลูกค้าที่ทักมาทาง LINE ครับ",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:04:00.000Z"
+    },
+    {
+     "id": "m4",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "ตรวจแล้วครับ LINE ของร้านยังไม่ได้เชื่อมในระบบแชท เลขาจึงส่งไม่ได้ ผมเปิดหน้าตั้งค่าให้แล้ว กดเชื่อมได้ที่ลิงก์นี้ครับ [เชื่อม LINE Official](sharkai://secretary/settings/customers)",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:10:00.000Z"
+    },
+    {
+     "id": "m5",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "เชื่อมแล้วกดส่งใบเสนอราคาอีกครั้งในห้องงานได้เลยครับ /secretary/room/r1",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:12:00.000Z"
+    }
+   ]
+  },
+  "POST /api/mobile/secretary/support/cases/c1/reply": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/support/cases/c1/resolve": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/support/upload": {
+   "url": "https://cdn.qc.invalid/help/upload-1.png",
+   "name": "qc-photo.png",
+   "kind": "image",
+   "mimeType": "image/png",
+   "size": 120
+  },
+  "GET /api/mobile/secretary/rooms/r1": {
+   "id": "r1",
+   "title": "ใบเสนอราคา ร้านดอยช้าง",
+   "status": "OPEN",
+   "startedById": "u-qc-owner",
+   "createdAt": "2026-11-05T02:40:00.000Z",
+   "updatedAt": "2026-11-05T02:55:00.000Z",
+   "canManage": true,
+   "members": [],
+   "plans": []
+  }
+ }
+}

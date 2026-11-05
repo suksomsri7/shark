@@ -129,18 +129,22 @@
    "sec-onb-save"
   ],
   "/secretary/help": [
-   "sec-secretary-help",
+   "help-home",
+   "help-chip",
+   "help-case-row",
+   "help-input",
+   "help-send",
    "sec-top-secretary",
    "sec-top-customers",
    "sec-top-team",
    "sec-top-help"
   ],
   "/secretary/help/c1": [
-   "sec-secretary-help-case",
-   "sec-top-secretary",
-   "sec-top-customers",
-   "sec-top-team",
-   "sec-top-help"
+   "help-room",
+   "help-back",
+   "help-bubble",
+   "help-input",
+   "help-send"
   ],
   "/customers": [
    "cust-list",
@@ -1295,6 +1299,103 @@
      "phoneMasked": "089-xxx-1122",
      "tier": null,
      "points": 80
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [
+    {
+     "id": "c1",
+     "caseNo": 42,
+     "subject": "ใบเสนอราคาไม่ส่ง LINE",
+     "status": "PENDING",
+     "updatedAt": "2026-11-05T03:12:00.000Z",
+     "unreadCount": 1
+    },
+    {
+     "id": "c2",
+     "caseNo": 41,
+     "subject": "ขอเพิ่มระบบคลังให้เลขาเห็น",
+     "status": "OPEN",
+     "updatedAt": "2026-11-04T08:30:00.000Z",
+     "unreadCount": 0
+    },
+    {
+     "id": "c3",
+     "caseNo": 37,
+     "subject": "ล็อกอิน Apple ไม่ผ่าน",
+     "status": "RESOLVED",
+     "updatedAt": "2026-10-28T06:00:00.000Z",
+     "unreadCount": 0
+    }
+   ],
+   "unread": 1,
+   "categories": [
+    "secretary_wrong",
+    "bug",
+    "question",
+    "billing",
+    "feature",
+    "other"
+   ]
+  },
+  "GET /api/mobile/secretary/support/cases/c1": {
+   "case": {
+    "id": "c1",
+    "caseNo": 42,
+    "subject": "ใบเสนอราคาไม่ส่ง LINE",
+    "status": "PENDING",
+    "category": "secretary_wrong",
+    "roomId": "r1",
+    "createdAt": "2026-11-05T02:58:00.000Z",
+    "updatedAt": "2026-11-05T03:12:00.000Z"
+   },
+   "messages": [
+    {
+     "id": "m1",
+     "side": "SHOP",
+     "mine": true,
+     "body": "กดอนุมัติใบเสนอราคาแล้ว แต่ลูกค้าบอกว่าไม่ได้รับทาง LINE",
+     "attachments": [
+      {
+       "name": "screenshot.png",
+       "url": "https://cdn.qc.invalid/help/shot-1.png",
+       "kind": "image"
+      }
+     ],
+     "createdAt": "2026-11-05T02:58:00.000Z"
+    },
+    {
+     "id": "m2",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "รับเรื่องแล้วครับ กำลังดูห้องงานที่แนบมา",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:02:00.000Z"
+    },
+    {
+     "id": "m3",
+     "side": "SHOP",
+     "mine": true,
+     "body": "เป็นลูกค้าที่ทักมาทาง LINE ครับ",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:04:00.000Z"
+    },
+    {
+     "id": "m4",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "ตรวจแล้วครับ LINE ของร้านยังไม่ได้เชื่อมในระบบแชท เลขาจึงส่งไม่ได้ ผมเปิดหน้าตั้งค่าให้แล้ว กดเชื่อมได้ที่ลิงก์นี้ครับ [เชื่อม LINE Official](sharkai://secretary/settings/customers)",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:10:00.000Z"
+    },
+    {
+     "id": "m5",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "เชื่อมแล้วกดส่งใบเสนอราคาอีกครั้งในห้องงานได้เลยครับ /secretary/room/r1",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:12:00.000Z"
     }
    ]
   }

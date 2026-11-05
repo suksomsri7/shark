@@ -43,6 +43,7 @@ export function SecTopBar({
   center = "tenant",
   testID = "sec-top",
   showPlus = true,
+  helpOn = false,
 }: {
   zone: SecZone;
   /** ใส่มา = ใช้ค่านี้ (ไม่ดึงเอง) */
@@ -52,6 +53,8 @@ export function SecTopBar({
   testID?: string;
   /** false = ซ่อนปุ่ม + ของโซน (เช่น STAFF ในโซนทีม = อ่านอย่างเดียว · S2.10) */
   showPlus?: boolean;
+  /** S2.15 จอช่วยเหลือ (H1): ปุ่ม ? ทึบ · ไม่มีปุ่มโซนใดทึบ (แบบ sec-h.jpg หน้า 1) */
+  helpOn?: boolean;
 }) {
   const { c } = useTheme();
   const t = useT();
@@ -75,7 +78,7 @@ export function SecTopBar({
               testID={`sec-top-${z.zone}`}
               icon={z.icon}
               zone={z.zone}
-              on={z.zone === zone}
+              on={!helpOn && z.zone === zone}
               label={t(z.label)}
               onPress={() => router.navigate(z.path)}
             />
@@ -90,7 +93,7 @@ export function SecTopBar({
       center={center === "tenant" ? <TenantTitle onPress={switcher.open} /> : undefined}
       right={
         <>
-          <IconBtn testID="sec-top-help" icon="help-circle" label={t("sec.top.help")} onPress={() => router.push("/secretary/help")} />
+          <IconBtn testID="sec-top-help" icon="help-circle" on={helpOn} label={t("sec.top.help")} onPress={helpOn ? undefined : () => router.push("/secretary/help")} />
           {plus ? <IconBtn testID="sec-top-new" icon="plus" label={t(plus.label)} onPress={() => router.push(plus.path)} /> : null}
         </>
       }
