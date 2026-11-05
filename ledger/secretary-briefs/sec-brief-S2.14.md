@@ -16,3 +16,4 @@ Read COMMON · ทุก `sec-brief-S2.*.md` + wo-notes · `docs/api/SECRETARY-A
 - F4 แนบภาพ D1/G2 ตอนเลื่อนสุด (ทั้ง 2 ธีม) ใน wo-note
 - ลบตาราง LevelGrid ฝั่งแอปใน G2 เมื่อ S1.14b merge แล้ว (server รับ `levels`+`chat` · ปฏิเสธ `sensitive_key`) — ถ้า S1.14b ยังไม่ merge ตอนเริ่มใบ ให้ทำท้ายสุดหลัง merge tip
 - (จาก S1.14b · §X) `customers/[id]/info.tsx` แสดง `linkedMember.phoneMasked` (server ไม่ส่ง `phone` แล้ว) · K2: การ์ด "Shark ร่างคำตอบ" ใช้ `POST ai-suggest` ใหม่ (`ok:false` ⇒ ซ่อนการ์ด) และส่ง `suggestionId` ไปกับ reply เมื่อผู้ใช้ส่งจากร่าง · K3 ใช้ `conversation.can.*` ซ่อน/ปิดปุ่ม assign/setStatus/linkCustomer (แทนเดา role) · `conversation.tags` แสดงชิปแท็ก
+- (จาก S1.14c · §Y.2) `handleSecretaryPush`: ต่อ `?s=<data.systemId>` ท้าย `/customers/<id>` เมื่อ push มี systemId · แถบบน 3 ไอคอนเปลี่ยนไปใช้ `GET secretary/badges` เส้นเดียว (approvals/customers/team.total) แทนการยิง 3–4 เส้น (R-S2.13b) · badge ทีม = invites+help+support จาก server

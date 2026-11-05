@@ -264,3 +264,6 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S1.14c-b** `badges.approvals` ต้องเป็นของกิจการที่เรียก (x-tenant-id) เท่านั้น: `inboxForUser(userId, { tenantId, take })` แล้วนับ canApprove — ห้ามปนกิจการอื่น (badge เดิม `inbox/count` ข้ามกิจการคงไว้สำหรับหน้าเลขา "ทุกกิจการ")
 - **R-S1.14c-c** push "ลูกค้าทักเข้ามา" ไม่ใส่ `conversationId` (NV-6.5/CP-1.3 · แอป 1.0 อ่านคีย์นี้เปิดห้อง AI) — ยอมรับ · ใช้ `chatConversationId` + `link` แทน · ใบ S2.14/S3a: handler แอปอ่าน `link` เป็นหลัก
 - ORACLE-EDIT: s1.14c L-3 mock `post(payloads)` อาร์กิวเมนต์เดียว · s1.17 N-4 link = `/customers/<id>` (ตาม R-S2.13j)
+### Y.2 รีวิว S1.14c ผู้ตรวจ Z — MERGE (6 พ.ย. ~10:3xZ)
+- MINOR-1 docs "แอปรับ /inbox/" — ถูกต้องหลัง S2.13 merge (push-register ของ S2.13 รับทั้งสองแบบ) · ทรีเลน b ยังไม่มี S2.13 จึงเห็นเป็นไม่ตรง — ไม่แก้
+- **MINOR-2 → S2.14**: `handleSecretaryPush` ต่อ `?s=<data.systemId>` ท้ายลิงก์ห้องลูกค้า (กิจการที่มีหลายระบบแชท) · LOW-3 (ค่าคงที่ AI_SUGGEST ซ้ำ 2 ไฟล์ → `inbox/_shared.ts`) · LOW-1/LOW-2/LOW-4/LOW-5 → S3a (help ตรวจ READ+unit · approvals ตัวนับแยก · routing push `conversationId` → `chatConversationId` · oracle ครอบ approvals ไม่ปนกิจการ/customers 0 เมื่อไม่มี READ/help เฉพาะ OPEN/429)
