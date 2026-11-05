@@ -67,8 +67,12 @@
 | C1 /secretary/onboarding/name | ปุ่มบันทึก | ตัวอย่าง 746 → 758 | 12 / 12 |
 - หมายเหตุ D1: ที่ตำแหน่งเลื่อน 0 (ภาพคู่) ปุ่มยังลอยเหนือแถวท้าย เพราะ 5 คน + คำเชิญยาวกว่าจอ 844 — ปกติของรายการเลื่อน (เหมือน A1 ใน S2.2) · เลื่อนสุดแล้วห่าง 12 = cardGap
 
-## 6. ผลข้อสอบ
-(เติมใน §6.1 หลังรัน — ดูท้ายไฟล์)
+## 6. ผลข้อสอบ (หลังถ่ายใหม่ทั้งชุด · ทิป 1d41d3ddc → merge session/secretary 1dba1d33b ด้วย SHA)
+- spec ทุกใบ forced (QC_SKIP_TSC=1 · fitness ×2 อยู่ในทุกรอบ) ทุกตัว exit 0:
+  s2.2 10/11 · s2.4 6/7 · s2.5 8/9 · s2.7 15/16 · s2.10 9/10 · s2.13 10/11 · s2.15 7/8 · s2.17 11/12 · s2.21 11/12 · oracle s2.1 13/14 · oracle s2.12 12/13 (ข้อที่ขาด = M-1 SKIP ทุกตัว · failed [] ทุกตัว)
+- **s2.13 forced หลัง merge (มี typecheck mobile M-1) ×2**: `{"total":11,"passed":11,"failed":[],"skipped":[],"findings":[]}` exit 0 ทั้งสองรอบ · ไม่ forced: 10/11 (M-1 SKIP) exit 0
+- `pnpm exec node apps/mobile/qc/push-link-test.mjs` 11/11 · `three-chats.mjs` 3/3 ok · padding 18/18 ok · mobile typecheck 0 · pre-commit fitness ผ่าน
+- คำสั่ง: `bash scripts/iso.sh env QC_FORCE=1 [QC_SKIP_TSC=1] SPEC=scripts/qc-sec-specs/<ใบ>.json pnpm exec tsx scripts/qc-sec-screen.mts` · `bash scripts/iso.sh env QC_COPY=/root/qc-shark-mobile-sec-d QC_PORT=4729 node apps/mobile/qc/three-chats.mjs` (ต้องมี dist จาก shoot-sec QC_PREPARE=1 ก่อน)
 
 ## 7. ค้าง / ขอมติผู้คุม
 | เรื่อง | เหตุ | ข้อเสนอ |
