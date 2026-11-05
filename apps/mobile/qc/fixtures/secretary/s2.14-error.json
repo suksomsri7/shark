@@ -434,6 +434,12 @@
     "error": "server_error",
     "message": "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง"
    }
+  },
+  "POST /api/mobile/inbox/conversations/x1/task": {
+   "cardId": "card-qc-128",
+   "cardNo": 128,
+   "cardHref": "/app/kanban/b1?card=card-qc-128",
+   "created": true
   }
  }
 }

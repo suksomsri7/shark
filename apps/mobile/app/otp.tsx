@@ -7,7 +7,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { AiryScreen, Glass, PrimaryButton } from "@/src/components/airy";
 import { GlassButton, Hero, LinkLine, NoteLine, OtpBoxes, StepBar } from "@/src/components/auth/airy";
-import { attemptsLeftOf, authErrorCode, authErrorKey, smsRequest, smsVerify } from "@/src/lib/auth-api";
+import { attemptsLeftOf, authErrorCode, authErrorKey, keepCodeOnError, smsRequest, smsVerify } from "@/src/lib/auth-api";
 import { localThaiMobile, maskPhone } from "@/src/lib/phone";
 import { useAuth } from "@/src/lib/auth-context";
 import { holdCode, takeHeldCode } from "@/src/lib/post-signup";
@@ -90,8 +90,8 @@ export default function OtpScreen() {
         if (why === "invalid" || why === "bad_code") setShakeKey((k) => k + 1);
         // หมดอายุ/ไม่พบรหัส ⇒ เปิดปุ่มส่งใหม่ทันที · ล็อก ⇒ ตัวนับเดินต่อ (กันกดขอรหัสรัว · §R)
         if (why === "expired" || why === "not_found") setLeft(0);
-        // S2.14 (สถานะล้ม): เน็ต/เซิร์ฟเวอร์ขัดข้องชั่วคราว ⇒ คงรหัสไว้ให้กด "ยืนยัน" ซ้ำ · รหัสผิด/หมดอายุ ⇒ ล้างให้พิมพ์ใหม่
-        if (why !== "network" && why !== "server_error") setCode("");
+        // S2.14 (R-S2.14i): ล้มชั่วคราว (เน็ต · ≥500 ยกเว้น 503) ⇒ คงรหัสไว้กด "ยืนยัน" ซ้ำ · รหัสผิด/หมดอายุ ⇒ ล้างให้พิมพ์ใหม่
+        if (!keepCodeOnError(e)) setCode("");
       }
       setBusy(false);
     }

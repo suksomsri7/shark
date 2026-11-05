@@ -434,6 +434,12 @@
     "error": "forbidden",
     "message": "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้"
    }
+  },
+  "POST /api/mobile/inbox/conversations/x1/task": {
+   "cardId": "card-qc-128",
+   "cardNo": 128,
+   "cardHref": "/app/kanban/b1?card=card-qc-128",
+   "created": true
   }
  }
 }

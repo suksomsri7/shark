@@ -12,7 +12,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, BottomDock, Chip, Glass, Icon, IconBtn, Note, PrimaryButton, Segment, Sheet, TopBar } from "@/src/components/airy";
+import { AiryScreen, BottomDock, Chip, Glass, Icon, IconBtn, LoadError, Note, PrimaryButton, Segment, Sheet, TopBar } from "@/src/components/airy";
 import { ChatLevelPicker } from "@/src/components/secretary/ChatLevelPicker";
 import { InviteRow } from "@/src/components/secretary/InviteRow";
 import type { StaffRowIds } from "@/src/components/secretary/StaffRow";
@@ -99,6 +99,9 @@ export default function SecretaryStaffInviteScreen() {
   const [result, setResult] = useState<(InviteRes & { phone: string }) | null>(null);
   const [cancelling, setCancelling] = useState<StaffInvite | null>(null);
   const [denied, setDenied] = useState(false);
+  // R-S2.14h: staff/access ล้ม (ไม่ใช่ 403) = LoadError+ลองใหม่แทนฟอร์ม (ไม่วาดสาขา/ระดับค่าปริยายแทนของจริง) · 403 = inv-denied เดิม
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!owner) setInviteRole("STAFF"); // MANAGER เชิญได้เฉพาะพนักงาน (R-S1.25d)
@@ -117,6 +120,9 @@ export default function SecretaryStaffInviteScreen() {
       let live = true;
       void Promise.allSettled([secGet("secretary/staff"), secGet("secretary/access")]).then(([s, a]) => {
         if (!live) return;
+        const bad = [s, a].filter((x): x is PromiseRejectedResult => x.status === "rejected");
+        if (bad.some((x) => isDenied(x.reason))) setDenied(true);
+        setLoadFailed(bad.some((x) => !isDenied(x.reason)));
         if (s.status === "fulfilled") {
           const opts = normalizeUnits(s.value);
           const mine = normalizeStaff(s.value).people.find((x) => x.me)?.units ?? [];
@@ -130,12 +136,16 @@ export default function SecretaryStaffInviteScreen() {
       return () => {
         live = false;
       };
-    }, [loadInvites, activeTenantId, owner]),
+    }, [loadInvites, activeTenantId, owner, tick]),
   );
+  const retryLoad = useCallback(() => {
+    setLoadFailed(false);
+    setTick((x) => x + 1);
+  }, []);
 
   const e164 = normalizeThaiMobile(phone);
   const nameOk = name.trim().length > 0 && Array.from(name.trim()).length <= NAME_MAX;
-  const ready = manage && !denied && nameOk && !!e164 && units.length > 0 && !busy;
+  const ready = manage && !denied && !loadFailed && nameOk && !!e164 && units.length > 0 && !busy;
   // MANAGER ให้ได้เฉพาะสาขาของตัวเอง (server ตรวจซ้ำ bad_units) · ทุกสาขาเฉพาะเมื่อตัวเองมี "*"
   const canAll = owner || (myUnits ?? []).includes(ALL);
   const shownUnits = owner || canAll ? unitOpts : unitOpts.filter((u) => (myUnits ?? []).includes(u.id));
@@ -225,76 +235,82 @@ export default function SecretaryStaffInviteScreen() {
           </Glass>
         ) : null}
 
-        <Text style={[styles.label, { color: c.textDim }]}>{t("inv.name")}</Text>
-        <TextInput
-          testID="inv-name"
-          value={name}
-          onChangeText={setName}
-          maxLength={NAME_MAX}
-          placeholder={t("inv.namePh")}
-          placeholderTextColor={c.placeholder}
-          style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
-        />
-        <Text style={[styles.label, { color: c.textDim }]}>{t("inv.phone")}</Text>
-        <TextInput
-          testID="inv-phone"
-          value={phone}
-          onChangeText={(v) => setPhone(formatThaiMobileInput(v))}
-          keyboardType="phone-pad"
-          placeholder={t("inv.phonePh")}
-          placeholderTextColor={c.placeholder}
-          style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
-        />
-        {phone.length >= 10 && !e164 ? (
-          <Note warn testID="inv-phone-error">
-            {t("inv.err.bad_phone")}
-          </Note>
-        ) : null}
+        {loadFailed && !denied && manage ? (
+          <LoadError testID="inv-error" onRetry={retryLoad} />
+        ) : (
+          <>
+            <Text style={[styles.label, { color: c.textDim }]}>{t("inv.name")}</Text>
+            <TextInput
+              testID="inv-name"
+              value={name}
+              onChangeText={setName}
+              maxLength={NAME_MAX}
+              placeholder={t("inv.namePh")}
+              placeholderTextColor={c.placeholder}
+              style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+            />
+            <Text style={[styles.label, { color: c.textDim }]}>{t("inv.phone")}</Text>
+            <TextInput
+              testID="inv-phone"
+              value={phone}
+              onChangeText={(v) => setPhone(formatThaiMobileInput(v))}
+              keyboardType="phone-pad"
+              placeholder={t("inv.phonePh")}
+              placeholderTextColor={c.placeholder}
+              style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+            />
+            {phone.length >= 10 && !e164 ? (
+              <Note warn testID="inv-phone-error">
+                {t("inv.err.bad_phone")}
+              </Note>
+            ) : null}
 
-        <Text style={[styles.label, { color: c.textDim }]}>{t("inv.role")}</Text>
-        <Segment
-          testID="inv-role"
-          value={inviteRole}
-          onChange={(k) => setInviteRole(k === "MANAGER" ? "MANAGER" : "STAFF")}
-          options={[
-            { key: "STAFF", label: t("sec.role.STAFF") },
-            ...(owner ? [{ key: "MANAGER", label: t("sec.role.MANAGER") }] : []),
-          ]}
-        />
-        {!owner ? <Text style={[styles.hint, { color: c.textMuted }]}>{t("inv.roleManagerHint")}</Text> : null}
+            <Text style={[styles.label, { color: c.textDim }]}>{t("inv.role")}</Text>
+            <Segment
+              testID="inv-role"
+              value={inviteRole}
+              onChange={(k) => setInviteRole(k === "MANAGER" ? "MANAGER" : "STAFF")}
+              options={[
+                { key: "STAFF", label: t("sec.role.STAFF") },
+                ...(owner ? [{ key: "MANAGER", label: t("sec.role.MANAGER") }] : []),
+              ]}
+            />
+            {!owner ? <Text style={[styles.hint, { color: c.textMuted }]}>{t("inv.roleManagerHint")}</Text> : null}
 
-        <Text style={[styles.label, { color: c.textDim }]}>{t("inv.units")}</Text>
-        <View testID="inv-unit" style={styles.chips}>
-          {canAll ? <Chip testID="inv-unit-all" active={units.includes(ALL)} label={t("perm.unitAll")} onPress={() => toggleUnit(ALL)} /> : null}
-          {shownUnits.map((u) => (
-            <Chip key={u.id} testID={`inv-unit-${u.id}`} active={units.includes(u.id)} label={u.name} onPress={() => toggleUnit(u.id)} />
-          ))}
-        </View>
-
-        {units.length === 0 ? <Text testID="inv-unit-pick" style={[styles.hint, { color: c.warn.fg }]}>{t("inv.unitPick")}</Text> : null}
-
-        <Text style={[styles.label, { color: c.textDim }]}>{t("inv.levels")}</Text>
-        {isManagerInvite ? (
-          <Note testID="inv-manager-full" style={styles.leftNote}>
-            {t("perm.managerFull")}
-          </Note>
-        ) : null}
-        <View style={styles.grid}>
-          <ChatLevelPicker testID="inv-chat" value={isManagerInvite ? "REPLY" : chat} onChange={setChat} disabled={isManagerInvite} hint={t("inv.chatHint")} />
-          <LevelGrid testID="inv-level" modules={modules} levels={isManagerInvite ? {} : levels} disabled={isManagerInvite} onChange={(m, l) => setLevels((x) => ({ ...x, [m]: l }))} />
-        </View>
-
-        <Glass testID="inv-sms-preview" radius={radii.sugg} pad={{ v: 14, h: 16 }} style={styles.sms}>
-          <View style={styles.smsRow}>
-            <View style={[styles.smsIco, { backgroundColor: c.surface }]}>
-              <Icon name="message-square" size={18} />
+            <Text style={[styles.label, { color: c.textDim }]}>{t("inv.units")}</Text>
+            <View testID="inv-unit" style={styles.chips}>
+              {canAll ? <Chip testID="inv-unit-all" active={units.includes(ALL)} label={t("perm.unitAll")} onPress={() => toggleUnit(ALL)} /> : null}
+              {shownUnits.map((u) => (
+                <Chip key={u.id} testID={`inv-unit-${u.id}`} active={units.includes(u.id)} label={u.name} onPress={() => toggleUnit(u.id)} />
+              ))}
             </View>
-            <View style={styles.flex}>
-              <Text style={[styles.smsH, { color: c.text }]}>{t("inv.smsTitle")}</Text>
-              <Text style={[styles.smsT, { color: c.textMuted }]}>{smsText}</Text>
+
+            {units.length === 0 ? <Text testID="inv-unit-pick" style={[styles.hint, { color: c.warn.fg }]}>{t("inv.unitPick")}</Text> : null}
+
+            <Text style={[styles.label, { color: c.textDim }]}>{t("inv.levels")}</Text>
+            {isManagerInvite ? (
+              <Note testID="inv-manager-full" style={styles.leftNote}>
+                {t("perm.managerFull")}
+              </Note>
+            ) : null}
+            <View style={styles.grid}>
+              <ChatLevelPicker testID="inv-chat" value={isManagerInvite ? "REPLY" : chat} onChange={setChat} disabled={isManagerInvite} hint={t("inv.chatHint")} />
+              <LevelGrid testID="inv-level" modules={modules} levels={isManagerInvite ? {} : levels} disabled={isManagerInvite} onChange={(m, l) => setLevels((x) => ({ ...x, [m]: l }))} />
             </View>
-          </View>
-        </Glass>
+
+            <Glass testID="inv-sms-preview" radius={radii.sugg} pad={{ v: 14, h: 16 }} style={styles.sms}>
+              <View style={styles.smsRow}>
+                <View style={[styles.smsIco, { backgroundColor: c.surface }]}>
+                  <Icon name="message-square" size={18} />
+                </View>
+                <View style={styles.flex}>
+                  <Text style={[styles.smsH, { color: c.text }]}>{t("inv.smsTitle")}</Text>
+                  <Text style={[styles.smsT, { color: c.textMuted }]}>{smsText}</Text>
+                </View>
+              </View>
+            </Glass>
+          </>
+        )}
 
         {note ? (
           <Note warn={note.warn} testID="inv-note">

@@ -9,7 +9,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Note, Segment, Sheet } from "@/src/components/airy";
+import { AiryScreen, LoadError, Note, Segment, Sheet } from "@/src/components/airy";
 import { SettingRow, SettingsTop, Toggle } from "@/src/components/secretary/SettingRow";
 import { ReceivedInvites } from "@/src/components/secretary/InviteRow";
 import { Avatar } from "@/src/components/secretary/MemberBubble";
@@ -17,6 +17,7 @@ import { hhmmBkk } from "@/src/components/secretary/bkk";
 import {
   NOTIFY_KINDS,
   NOTIFY_MODES,
+  isDenied,
   normalizeNotify,
   secGet,
   secPost,
@@ -54,6 +55,10 @@ export default function AccountScreen() {
   const [prefs, setPrefs] = useState<NotifyPrefs | null>(null);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [shift, setShift] = useState<{ can: boolean; on: boolean; at: string | null } | null>(null);
+  // R-S2.14h: notify / shift ล้ม (ไม่ใช่ 403) = LoadError acct-error + ลองใหม่ แทนแถวนั้น (แถวจาก /me แสดงตามเดิม)
+  const [notifyFailed, setNotifyFailed] = useState(false);
+  const [shiftFailed, setShiftFailed] = useState(false);
+  const [tick, setTick] = useState(0);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -68,11 +73,22 @@ export default function AccountScreen() {
       let live = true;
       if (activeTenantId) {
         secGet("secretary/notify")
-          .then((v) => live && setPrefs(normalizeNotify(v)))
-          .catch(() => live && setPrefs(null));
+          .then((v) => {
+            if (!live) return;
+            setPrefs(normalizeNotify(v));
+            setNotifyFailed(false);
+          })
+          .catch((e) => {
+            if (!live) return;
+            setPrefs(null);
+            setNotifyFailed(!isDenied(e));
+          });
         // S2.14: ตอบลูกค้าได้ไหม = อยู่ในรายชื่อ inbox/staff (คนที่ตอบได้) · สถานะเวร + เวลาเข้าเวร = GET inbox/shift (S1.14b)
         void Promise.allSettled([secGet("inbox/staff"), secGet("inbox/shift")]).then(([st, sh]) => {
           if (!live) return;
+          const bad = [st, sh].some((x) => x.status === "rejected" && !isDenied(x.reason));
+          setShiftFailed(bad);
+          if (bad) return;
           const me = st.status === "fulfilled" ? (st.value.items ?? []).find((x) => x.userId === user?.id) : undefined;
           const cur = sh.status === "fulfilled" ? sh.value : null;
           setShift({ can: !!me, on: cur ? cur.onDuty : me?.onDuty === true, at: cur?.onDutyAt ?? null });
@@ -81,8 +97,13 @@ export default function AccountScreen() {
       return () => {
         live = false;
       };
-    }, [activeTenantId, user?.id]),
+    }, [activeTenantId, user?.id, tick]),
   );
+  const retryLoad = useCallback(() => {
+    setNotifyFailed(false);
+    setShiftFailed(false);
+    setTick((x) => x + 1);
+  }, []);
 
   const guard = async (fn: () => Promise<void>) => {
     if (busyRef.current) return;
@@ -191,13 +212,14 @@ export default function AccountScreen() {
         <Segment testID="acct-theme" value={themeMode} onChange={(k) => void setThemeMode(k as ThemeMode)} options={THEME_MODES.map((m) => ({ key: m, label: t(THEME_LABEL[m]) }))} />
 
         <View style={styles.gap} />
-        {activeTenantId ? <SettingRow testID="acct-notify" title={t("acct.notify")} value={notifySummary} onPress={() => setNotifyOpen(true)} /> : null}
+        {activeTenantId && !notifyFailed ? <SettingRow testID="acct-notify" title={t("acct.notify")} value={notifySummary} onPress={() => setNotifyOpen(true)} /> : null}
         <SettingRow testID="acct-lang" title={t("acct.lang")} value={lang} onPress={() => router.push("/secretary/settings/secretary")} />
-        {activeTenantId ? (
+        {activeTenantId && !shiftFailed ? (
           <SettingRow testID="acct-shift" title={t("acct.shift")} value={shiftText}>
             <Toggle testID="acct-shift-toggle" value={!!shift?.on} disabled={!shift?.can || busy} label={t("acct.shift")} onChange={toggleShift} />
           </SettingRow>
         ) : null}
+        {activeTenantId && (notifyFailed || shiftFailed) ? <LoadError testID="acct-error" onRetry={retryLoad} /> : null}
 
         {note ? (
           <Note warn={note.warn} testID="acct-note">

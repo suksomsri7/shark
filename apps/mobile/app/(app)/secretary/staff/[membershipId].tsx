@@ -207,10 +207,12 @@ export default function StaffPermissionScreen() {
       <ScrollView contentContainerStyle={[styles.page, { paddingBottom: 40 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         <TopBar testID="perm-top" left={<IconBtn testID="perm-back" icon="chevron-left" label={t("sec.set.back")} onPress={back} />} title={person ? name : t("perm.title")} subtitle={sub} right={<View style={styles.spacer} />} />
 
-        {denied || missing ? (
+        {/* R-S2.14h: 403 = การ์ดล็อกตัวเดียวกับทุกจอ · ไม่อยู่ในกิจการ (404) = การ์ด perm-missing เดิม */}
+        {denied ? <LoadError testID="perm-denied" denied message={t("sec.staff.denied")} /> : null}
+        {missing && !denied ? (
           <Glass testID="perm-missing" style={styles.denied}>
             <Icon name="lock" size={22} color={c.textMuted} />
-            <Text style={[styles.deniedT, { color: c.text }]}>{denied ? t("sec.staff.denied") : t("perm.missing")}</Text>
+            <Text style={[styles.deniedT, { color: c.text }]}>{t("perm.missing")}</Text>
           </Glass>
         ) : null}
         {/* S2.14: ก่อนผลแรก = Loading · ล้ม = LoadError + ลองใหม่ */}

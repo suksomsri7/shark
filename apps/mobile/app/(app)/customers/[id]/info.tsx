@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, IconBtn, Loading, Note, PrimaryButton, SectionLabel, Sheet, TopBar } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, IconBtn, LoadError, Loading, Note, PrimaryButton, SectionLabel, Sheet, TopBar } from "@/src/components/airy";
 import { Avatar, ChannelBadge, ConfirmSheet, StaffSheet, firstName, useChannelLabel } from "@/src/components/customers/parts";
 import { clientMessageId, secPost, setCustomersAccess, startErrorKind, useActiveRole } from "@/src/api/secretary";
 import {
@@ -60,6 +60,7 @@ export default function CustomerInfoScreen() {
 
   const [thread, setThread] = useState<Thread | null>(null);
   const [gone, setGone] = useState<"notFound" | "denied" | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [staff, setStaff] = useState<StaffPick[]>([]);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [pick, setPick] = useState<string | null>(null);
@@ -81,6 +82,7 @@ export default function CustomerInfoScreen() {
       if (tenantRef.current !== tenant) return;
       setThread(th);
       setGone(null);
+      setLoadFailed(false);
       inboxGet("inbox/staff", { systemId, unitId: th.conversation.unitId ?? undefined })
         .then((r) => tenantRef.current === tenant && setStaff(r.items ?? []))
         .catch(() => setStaff([]));
@@ -90,7 +92,11 @@ export default function CustomerInfoScreen() {
       else if (s === 403) {
         setGone("denied");
         setCustomersAccess(false);
-      } else setNote({ text: t("cust.offline"), warn: true });
+      } else {
+        // R-S2.14h: ล้มก่อนได้ห้องครั้งแรก = LoadError+ลองใหม่ (จอเดียวกับทุกจอ) · มีห้องแล้ว = note ออฟไลน์เหนือข้อมูลเดิม
+        setLoadFailed(true);
+        setNote({ text: t("cust.offline"), warn: true });
+      }
     }
     inboxGet("inbox/systems")
       .then((r) => tenantRef.current === tenant && setInboxCanReply(r.canReply !== false))
@@ -106,6 +112,11 @@ export default function CustomerInfoScreen() {
       void load();
     }, [load]),
   );
+  const retryLoad = () => {
+    setLoadFailed(false);
+    setNote(null);
+    void load();
+  };
   // จาก K2 ปุ่ม "เรียกคนช่วย" (?open=helpers) ⇒ เปิดชีตคนช่วยครั้งแรกที่โหลดเสร็จ
   useEffect(() => {
     if (thread && canReply && !opened.current && params.open === "helpers") {
@@ -249,7 +260,7 @@ export default function CustomerInfoScreen() {
           right={<View style={styles.spacer} />}
         />
 
-        {/* S2.14: ก่อนได้ห้อง = Loading (ไม่โชว์แถว "ลูกค้า/ยังไม่ผูก/ไม่มี") · ล้ม = note ออฟไลน์อย่างเดียว */}
+        {/* S2.14: ก่อนได้ห้อง = Loading (ไม่โชว์แถว "ลูกค้า/ยังไม่ผูก/ไม่มี") · ล้ม = LoadError+ลองใหม่ (R-S2.14h) */}
         {thread ? (
           <>
             {/* ติดต่อ */}
@@ -333,7 +344,9 @@ export default function CustomerInfoScreen() {
             <View style={styles.btnRow}>
               {canHandoff ? (
                 <Pressable testID="cust-info-handoff" onPress={() => openSheet("handoff")} accessibilityRole="button" style={[styles.btn, { backgroundColor: c.surface }]}>
-                  <Text style={[styles.btnT, { color: c.text }]}>{t("cust.info.handoff")}</Text>
+                  <Text style={[styles.btnT, { color: c.text }]} numberOfLines={2}>
+                    {t("cust.info.handoff")}
+                  </Text>
                 </Pressable>
               ) : null}
               {replyOk && conv ? (
@@ -346,11 +359,13 @@ export default function CustomerInfoScreen() {
                   accessibilityRole="button"
                   style={[styles.btn, { backgroundColor: c.surface }]}
                 >
-                  <Text style={[styles.btnT, { color: c.text }]}>{t("cust.info.task")}</Text>
+                  <Text style={[styles.btnT, { color: c.text }]} numberOfLines={2}>
+                    {t("cust.info.task")}
+                  </Text>
                 </Pressable>
               ) : null}
               <Pressable testID="cust-info-ask-shark" onPress={() => openSheet("ask")} accessibilityRole="button" style={[styles.btn, styles.btnMain, { backgroundColor: c.accent }]}>
-                <Text style={[styles.btnT, { color: c.onAccent }]} numberOfLines={1}>
+                <Text style={[styles.btnT, { color: c.onAccent }]} numberOfLines={2}>
                   {t("cust.info.askShark")}
                 </Text>
               </Pressable>
@@ -366,7 +381,11 @@ export default function CustomerInfoScreen() {
             )}
           </>
         ) : (
-          (noteEl ?? <Loading testID="cust-info-loading" />)
+          loadFailed ? (
+            <LoadError testID="cust-info-error" onRetry={retryLoad} />
+          ) : (
+            (noteEl ?? <Loading testID="cust-info-loading" />)
+          )
         )}
       </ScrollView>
 
@@ -574,9 +593,10 @@ const styles = StyleSheet.create({
   tagChipT: { fontSize: T.cap, fontWeight: "600" },
   chev: { width: 18 },
   btnRow: { flexDirection: "row", gap: 10, marginTop: F.v(30) },
-  btn: { flex: 1, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
+  // R-S2.14j: ป้ายยาว (EN/ไทย) ขึ้นบรรทัดที่ 2 ได้ที่กว้าง 390 — minHeight แทนสูงตายตัว · ไม่ตัด "…"
+  btn: { flex: 1, minHeight: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, paddingVertical: 5 },
   btnMain: { flex: 2 },
-  btnT: { fontSize: T.sub + 0.5, fontWeight: "700" },
+  btnT: { fontSize: T.sub + 0.5, fontWeight: "700", textAlign: "center", lineHeight: 18 },
   closeBtn: { alignSelf: "center", paddingVertical: 16, paddingHorizontal: 24, marginTop: 6 },
   closeT: { fontSize: T.sub + 0.5, fontWeight: "600" },
   sheetT: { fontSize: T.h, fontWeight: "700", marginBottom: 10 },

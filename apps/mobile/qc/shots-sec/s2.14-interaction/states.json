@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T12:29:32.743Z",
+ "generatedAt": "2026-11-05T15:41:33.529Z",
  "states": [
   {
    "name": "b1-switcher",
@@ -97,6 +97,26 @@
    "route": "/secretary/settings/customers",
    "fixture": "s2.17.json",
    "file": "k5-routing-dark.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "a1-scope-tenant",
+   "dark": false,
+   "route": "/secretary",
+   "fixture": "s2.20.json",
+   "file": "a1-scope-tenant.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "a1-scope-tenant",
+   "dark": true,
+   "route": "/secretary",
+   "fixture": "s2.20.json",
+   "file": "a1-scope-tenant-dark.png",
    "errors": [],
    "unmocked": [],
    "ok": true

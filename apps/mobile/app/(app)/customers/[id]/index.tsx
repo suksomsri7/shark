@@ -499,10 +499,17 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
   const post = async (p: Payload, id: string) => {
     // suggestionId เฉพาะคำตอบจริง (บันทึกภายในไม่แนบ · R-S1.14b-g)
     const { suggestionId, ...rest } = p;
-    const body = { systemId, ...rest, clientMessageId: id, ...(suggestionId && !p.isInternal ? { suggestionId } : {}) };
+    const plain = { systemId, ...rest, clientMessageId: id };
+    const sugg = suggestionId && !p.isInternal ? suggestionId : undefined;
+    const body = sugg ? { ...plain, suggestionId: sugg } : plain;
     try {
       return await inboxPostId("inbox/conversations/[id]/reply", convId, body);
     } catch (e) {
+      // R-S2.14j: ร่างไม่ใช่ของห้องนี้แล้ว (422 bad_suggestion · ส่งก่อนตอบ) ⇒ ทิ้ง suggestionId แล้วส่งคำตอบเดิมครั้งเดียว (ข้อความยังไปถึงลูกค้า · ไม่บันทึกผลร่าง)
+      if (e instanceof InboxError && e.status === 422 && e.code === "bad_suggestion" && sugg) {
+        fromSuggestion.current = null;
+        return await inboxPostId("inbox/conversations/[id]/reply", convId, plain);
+      }
       if (!(e instanceof InboxError) || e.status !== 429) throw e;
       const wait = Math.min(e.retryAfterSec ?? 5, RETRY_CAP_SEC);
       setNote({ text: t("cust.send.rateRetry", { n: wait }), warn: true });
@@ -577,6 +584,8 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
   const applyQuick = async (q: QuickReply) => {
     try {
       const r = await inboxPostId("inbox/quick-replies/[id]/apply", q.id, { systemId, conversationId: convId });
+      // R-S2.14j: ข้อความตอบเร็วแทนที่ช่องพิมพ์ ⇒ ไม่ใช่ร่างของ Shark แล้ว
+      fromSuggestion.current = null;
       setText(r.body);
     } catch (e) {
       setNote({ text: inboxNote(e) ?? t("cust.err"), warn: true });

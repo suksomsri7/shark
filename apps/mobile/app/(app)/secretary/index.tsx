@@ -5,6 +5,8 @@
 //   ไม่มีห้อง ⇒ C3: orb + ข้อเสนองานแรกจาก secretary/suggestions (ไม่มี/พลาด = ข้อเสนอตั้งต้นใน i18n) → /secretary/new พร้อมเติมคำสั่ง
 //   403 ⇒ "บัญชีนี้ยังใช้เลขาไม่ได้" (R-S2.1d · ไม่ใช่ C3)
 //   S2.14: ก่อนผลแรก = Loading (ไม่ใช่ C3) · ล้ม (500/เน็ต) ครั้งแรก = LoadError + ลองใหม่ (ไม่ตก C3)
+//   R-S2.14k: OWNER เห็นปุ่มคู่ขอบเขต "ของฉัน / ทุกคนในกิจการ" ท้ายแถวตัวกรอง → rooms?scope=tenant · การ์ดของคนอื่น = "สั่งโดย <startedByName>"
+//     สลับกิจการ = กลับเป็น "ของฉัน" · ค้นหา/ตัวกรองคงค่าเดิมเมื่อสลับขอบเขต
 // ข้อความทั้งหมดผ่าน i18n · สเกล R-UI1: ระยะแนวตั้ง = แบบ × 0.73 (F.v) · ตัวอักษรตาม tokens.type
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
@@ -14,7 +16,7 @@ import { Text, TextInput } from "@/src/components/ui/text";
 import { AiryScreen, BottomDock, Glass, Icon, InputBar, LoadError, Loading, Orb, SectionLabel, SysBadge } from "@/src/components/airy";
 import { SecTopBar, TenantTitle } from "@/src/components/secretary/SecTopBar";
 import { RoomCard, isTodayBkk, sysName } from "@/src/components/secretary/RoomCard";
-import { RoomFilters, type RoomFilterKey, type RoomFilterOption } from "@/src/components/secretary/RoomFilters";
+import { RoomFilters, type RoomFilterKey, type RoomFilterOption, type RoomScopeKey, type RoomScopeOption } from "@/src/components/secretary/RoomFilters";
 import { sysColor } from "@/src/components/secretary/sys";
 import {
   DEFAULT_SECRETARY_NAME,
@@ -23,6 +25,7 @@ import {
   normalizeSuggestions,
   refreshZoneBadges,
   secGet,
+  useActiveRole,
   useSecretaryMe,
   type RoomCard as Room,
   type RoomStatus,
@@ -58,6 +61,7 @@ export default function SecretaryHome() {
   const { activeTenantId, user } = useAuth();
   const userId = user?.id ?? null;
   const name = useSecretaryMe()?.name ?? DEFAULT_SECRETARY_NAME;
+  const owner = useActiveRole() === "OWNER";
 
   const [rooms, setRooms] = useState<Room[] | null>(null);
   const [denied, setDenied] = useState(false);
@@ -67,6 +71,10 @@ export default function SecretaryHome() {
   const [sugg, setSugg] = useState<C3Item[] | null>(null);
   const [filter, setFilter] = useState<RoomFilterKey>("all");
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<RoomScopeKey>("mine");
+  const reqScope: RoomScopeKey = owner && scope === "tenant" ? "tenant" : "mine";
+  const scopeRef = useRef(reqScope);
+  scopeRef.current = reqScope;
   const [refreshing, setRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const tenantRef = useRef(activeTenantId);
@@ -79,21 +87,23 @@ export default function SecretaryHome() {
     setFailed(false);
     setAccess("unknown");
     setSugg(null);
+    setScope("mine");
   }, [activeTenantId]);
 
   const load = useCallback(async () => {
     const tenant = activeTenantId;
     if (!tenant) return;
+    const sc = reqScope;
     void refreshZoneBadges();
     try {
-      const r = await secGet("secretary/rooms", { scope: "mine", take: 50 });
-      if (tenantRef.current !== tenant) return;
+      const r = await secGet("secretary/rooms", { scope: sc, take: 50 });
+      if (tenantRef.current !== tenant || scopeRef.current !== sc) return;
       setDenied(false);
       setFailed(false);
       setAccess("ok");
       setRooms((r.items ?? []).map((x) => normalizeRoom(x, userId)));
     } catch (e) {
-      if (tenantRef.current !== tenant) return;
+      if (tenantRef.current !== tenant || scopeRef.current !== sc) return;
       if (isDenied(e)) {
         setDenied(true);
         setAccess("denied");
@@ -101,7 +111,7 @@ export default function SecretaryHome() {
       } else setFailed(true); // ออฟไลน์/เส้นยังไม่ขึ้น: คงรายการเดิม (ยังไม่เคยได้ = LoadError)
     }
     setNowMs(Date.now());
-  }, [activeTenantId, userId]);
+  }, [activeTenantId, userId, reqScope]);
 
   useFocusEffect(
     useCallback(() => {
@@ -122,8 +132,9 @@ export default function SecretaryHome() {
     void load();
   }, [load]);
 
-  const hasRooms = !!rooms && rooms.length > 0;
-  const empty = !!rooms && rooms.length === 0 && !denied;
+  // ขอบเขต "ทุกคน" ที่ว่าง = คงหน้ารายการ (ปุ่มคู่ยังอยู่ให้สลับกลับ) ไม่ตก C3
+  const hasRooms = !!rooms && !denied && (rooms.length > 0 || reqScope === "tenant");
+  const empty = !!rooms && rooms.length === 0 && !denied && !hasRooms;
 
   // C3: ข้อเสนองานแรก (โหลดครั้งเดียวต่อกิจการเมื่อว่าง)
   useEffect(() => {
@@ -169,6 +180,10 @@ export default function SecretaryHome() {
     { key: "working", testID: "sec-home-filter-working", label: t("sec.home.filter.working"), count: counts.working, tone: "run" },
     { key: "approval", testID: "sec-home-filter-approval", label: t("sec.home.filter.approval"), count: counts.approval, tone: "wait" },
     { key: "done", testID: "sec-home-filter-done", label: t("sec.home.filter.done") },
+  ];
+  const scopes: RoomScopeOption[] = [
+    { key: "mine", testID: "sec-home-scope-mine", label: t("sec.home.scope.mine") },
+    { key: "tenant", testID: "sec-home-scope-tenant", label: t("sec.home.scope.tenant") },
   ];
 
   const newTask = () => router.push("/secretary/new");
@@ -220,7 +235,7 @@ export default function SecretaryHome() {
                 style={[styles.searchField, { color: c.text }]}
               />
             </View>
-            <RoomFilters options={filters} value={filter} onChange={setFilter} />
+            <RoomFilters options={filters} value={filter} onChange={setFilter} scope={owner ? { options: scopes, value: reqScope, onChange: setScope } : undefined} />
             {visible.map((r) => (
               <RoomCard key={r.id} testID="sec-home-card" room={r} nowMs={nowMs} onPress={() => router.push(`/secretary/room/${r.id}`)} />
             ))}

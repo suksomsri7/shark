@@ -772,7 +772,8 @@
      "setStatus": false,
      "linkCustomer": false,
      "aiSuggest": false
-    }
+    },
+    "replyWindowEndsAt": null
    },
    "messages": [
     {
@@ -958,7 +959,7 @@
    "linkedMember": {
     "id": "mem1",
     "name": "คุณสมชาย",
-    "phone": "0810005678"
+    "phoneMasked": "081-xxx-5678"
    },
    "helpers": [
     {
@@ -1251,6 +1252,12 @@
   "GET /api/mobile/inbox/shift": {
    "onDuty": true,
    "onDutyAt": "2026-11-05T01:30:00.000Z"
+  },
+  "POST /api/mobile/inbox/conversations/x1/task": {
+   "cardId": "card-qc-128",
+   "cardNo": 128,
+   "cardHref": "/app/kanban/b1?card=card-qc-128",
+   "created": true
   }
  }
 }

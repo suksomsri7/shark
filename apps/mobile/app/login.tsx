@@ -15,7 +15,7 @@ import { AiryScreen, Glass, PrimaryButton } from "@/src/components/airy";
 import { AuthField, LinkLine, NoteLine, OtpBoxes } from "@/src/components/auth/airy";
 import { SOCIAL_BRAND } from "@/src/components/auth/social";
 import { AnimatedOrb } from "@/src/components/ui/orb";
-import { authErrorCode, authErrorKey, smsRequest } from "@/src/lib/auth-api";
+import { authErrorCode, authErrorKey, keepCodeOnError, smsRequest } from "@/src/lib/auth-api";
 import { formatThaiMobileInput, localThaiMobile, normalizeThaiMobile } from "@/src/lib/phone";
 import { useT } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
@@ -125,8 +125,8 @@ export default function LoginScreen() {
     } catch (x) {
       if (x instanceof ApiError && x.status === 401) setErr(t("auth.login.codeWrong"));
       else setErr(apiErrorText(x));
-      // S2.14 (สถานะล้ม): เน็ต/เซิร์ฟเวอร์ขัดข้อง ⇒ คงรหัสไว้ให้กด "ยืนยัน" ซ้ำ · รหัสผิด (4xx) ⇒ ล้าง
-      if (x instanceof ApiError && x.status < 500) setCode("");
+      // S2.14 (R-S2.14i): ล้มชั่วคราว (เน็ต · ≥500 ยกเว้น 503) ⇒ คงรหัสไว้กด "ยืนยัน" ซ้ำ · รหัสผิด (4xx) ⇒ ล้าง
+      if (!keepCodeOnError(x)) setCode("");
       setVerifying(false);
     }
   }

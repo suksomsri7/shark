@@ -35,9 +35,9 @@ export type TenantRow = {
     navTone: "LIGHT" | "BRAND" | "DARK";
   } | null;
 };
-// phone: null = บัญชีเดิมยังไม่ผูกเบอร์ → ยามพาไป /phone (R8 · S2.12) · ไม่มีฟิลด์ (server เก่า) = ไม่บังคับ
-// email: null = บัญชีที่สมัครด้วยเบอร์ (อีเมล placeholder · R-S1.19a)
-// appleLinked: เข้าด้วย Apple ผูกแล้วหรือไม่ (G4 · S2.22) — /me ยังไม่ส่ง (DTO-REQ) ⇒ ไม่มีฟิลด์ = ไม่ทราบ
+// phone: null = บัญชีเดิมยังไม่ผูกเบอร์ → ยามพาไป /phone (R8 · S2.12) · ไม่มีฟิลด์ = ไม่บังคับ
+// email: null = บัญชีที่สมัครด้วยเบอร์ (อีเมล placeholder · R-S1.19a) · pendingEmail = อีเมลที่ยังไม่ยืนยัน
+// appleLinked: true = อีเมลซ่อนของ Apple (S1.14b) · null/ไม่มีฟิลด์ = ไม่ทราบ (ไม่ใช่ false)
 type Me = { user: { id: string; email: string | null; name: string | null; phone?: string | null; pendingEmail?: string | null; appleLinked?: boolean | null }; memberships: TenantRow[] };
 
 type AuthState = {

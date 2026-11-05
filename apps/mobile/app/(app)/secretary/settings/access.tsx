@@ -6,12 +6,12 @@ import { useCallback, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Loading, Note, SysBadge } from "@/src/components/airy";
+import { AiryScreen, Glass, LoadError, Loading, Note, SysBadge } from "@/src/components/airy";
 import { OwnerOnlyBadge, SettingsTop } from "@/src/components/secretary/SettingRow";
 import { LevelPicker } from "@/src/components/secretary/LevelPicker";
 import { sysName } from "@/src/components/secretary/RoomCard";
 import { sysColor } from "@/src/components/secretary/sys";
-import { DEFAULT_SECRETARY_NAME, secGet, secPut, serverNote, useActiveRole, useSecretaryMe, type AccessItem, type AccessLevel } from "@/src/api/secretary";
+import { DEFAULT_SECRETARY_NAME, isDenied, secGet, secPut, serverNote, useActiveRole, useSecretaryMe, type AccessItem, type AccessLevel } from "@/src/api/secretary";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import th from "@/src/i18n/th";
@@ -39,6 +39,9 @@ export default function SecretaryAccessScreen() {
   const [items, setItems] = useState<AccessItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // R-S2.14h: โหลดล้ม = การ์ดล้มตัวเดียวกับทุกจอ (403 = การ์ดล็อก) · ลองใหม่ด้วย reloadKey
+  const [loadErr, setLoadErr] = useState<"error" | "denied" | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const tenantRef = useRef(activeTenantId);
   tenantRef.current = activeTenantId;
 
@@ -51,12 +54,17 @@ export default function SecretaryAccessScreen() {
           if (!live) return;
           setItems(r.items ?? []);
           setLoaded(true);
+          setLoadErr(null);
         })
-        .catch(() => live && (setLoaded(true), setNote(t("sec.set.loadFail"))));
+        .catch((e) => {
+          if (!live) return;
+          setLoaded(true);
+          setLoadErr(isDenied(e) ? "denied" : "error");
+        });
       return () => {
         live = false;
       };
-    }, [activeTenantId, t]),
+    }, [activeTenantId, reloadKey]),
   );
 
   const change = async (module: string, level: AccessLevel) => {
@@ -88,7 +96,12 @@ export default function SecretaryAccessScreen() {
         ) : null}
         {/* S2.14: ก่อนผลแรก = Loading */}
         {!loaded ? <Loading testID="sec-access-loading" /> : null}
-        {loaded && items.length === 0 && !note ? <Text style={[styles.empty, { color: c.textMuted }]}>{t("sec.access.empty")}</Text> : null}
+        {loadErr ? <LoadError testID="sec-access-error" denied={loadErr === "denied"} onRetry={() => (setLoaded(false), setReloadKey((k) => k + 1))} /> : null}
+        {loaded && !loadErr && items.length === 0 && !note ? (
+          <Text testID="sec-access-empty" style={[styles.empty, { color: c.textMuted }]}>
+            {t("sec.access.empty")}
+          </Text>
+        ) : null}
         {items.map((x) => {
           const sysLabel = sysName(t, x.module);
           const hint = hintKey(x.module);

@@ -15,6 +15,7 @@
 //
 // ตัวแปร: QC_COPY (ปริยาย /root/qc-shark-mobile-sec-d — ต้องมี dist จาก shoot-sec QC_PREPARE=1) · QC_PORT (4731) · QC_BASE · WORKERS (3) · ONLY=<testID,…> (กดเฉพาะ)
 // รัน (จากรากรีโป): bash scripts/iso.sh env QC_COPY=/root/qc-shark-mobile-sec-d node apps/mobile/qc/click-sec.mjs
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +47,17 @@ function tagAt(src, i) {
     else if (ch === ">" && depth === 0 && src[j - 1] !== "=") break;
   }
   return { name, text: src.slice(lt, j + 1) };
+}
+/** มี prop นี้ที่ระดับบนของแท็ก (ไม่นับ onPress ของ JSX ที่ซ้อนอยู่ใน prop อื่น เช่น TopBar left={<IconBtn onPress/>}) */
+function topProp(tag, prop) {
+  let depth = 0;
+  for (let i = 0; i < tag.length; i++) {
+    const ch = tag[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
+    else if (depth === 0 && tag.startsWith(`${prop}=`, i) && /\s/.test(tag[i - 1] ?? "")) return true;
+  }
+  return false;
 }
 /** นิพจน์ของ prop (onPress={…}) — นับวงเล็บปีกกา */
 function propExpr(tag, prop) {
@@ -90,9 +102,21 @@ function scanRegistry() {
     for (const m of s.matchAll(/testID=["'`]([a-z][a-z0-9-]+)/g)) {
       const id = m[1];
       const { name, text } = tagAt(s, m.index);
-      const kind = name === "TextInput" ? "input" : BUTTON_TAGS.test(name) || /\bonPress=/.test(text) ? "button" : /sendTestID|plusTestID/.test(s.slice(Math.max(0, m.index - 6), m.index)) ? "button" : "view";
+      const kind = name === "TextInput" ? "input" : BUTTON_TAGS.test(name) || topProp(text, "onPress") ? "button" : /sendTestID|plusTestID/.test(s.slice(Math.max(0, m.index - 6), m.index)) ? "button" : "view";
       const handler = propExpr(text, "onPress") ?? propExpr(text, "onChange") ?? propExpr(text, "onChangeText");
       const cur = map.get(id) ?? { testID: id, files: [], kind, tag: name, handler: handler ?? null, action: actionOf(kind, handler, s) };
+      const rel = relative(M, f);
+      if (!cur.files.includes(rel)) cur.files.push(rel);
+      if (cur.kind === "view" && kind !== "view") Object.assign(cur, { kind, tag: name, handler: handler ?? null, action: actionOf(kind, handler, s) });
+      map.set(id, cur);
+    }
+    // R-S2.14f: ชุด template `testID={`prefix-${…}`}` ⇒ แถว "prefix-*" (ต้องกดจริง ≥ 1 ตัวต่อชุด) · regex เดียวกับ oracle B-1
+    for (const m of raw.matchAll(/testID=\{`([a-z][a-z0-9-]*?)-\$\{/g)) {
+      const id = `${m[1]}-*`;
+      const { name, text } = tagAt(raw, m.index);
+      const kind = name === "TextInput" ? "input" : BUTTON_TAGS.test(name) || topProp(text, "onPress") ? "button" : "view";
+      const handler = propExpr(text, "onPress") ?? propExpr(text, "onChange") ?? propExpr(text, "onChangeText");
+      const cur = map.get(id) ?? { testID: id, template: true, files: [], kind, tag: name, handler: handler ?? null, action: actionOf(kind, handler, s) };
       const rel = relative(M, f);
       if (!cur.files.includes(rel)) cur.files.push(rel);
       if (cur.kind === "view" && kind !== "view") Object.assign(cur, { kind, tag: name, handler: handler ?? null, action: actionOf(kind, handler, s) });
@@ -112,7 +136,19 @@ if (process.argv.includes("--registry")) {
 
 // ───────── กดจริง ─────────
 const { serveDist, launch, openPage } = await import("./sec-harness.mjs");
-const REGISTRY = JSON.parse(readFileSync(REG, "utf8"));
+const REG_TEXT = readFileSync(REG, "utf8");
+const REGISTRY = JSON.parse(REG_TEXT);
+const REG_HASH = createHash("sha256").update(REG_TEXT).digest("hex");
+/** hash ของ build เว็บที่กด (index.html + ทุกไฟล์ JS ของ export) — RESUME ข้าม build ไม่ได้ */
+function distHash(dir) {
+  const hh = createHash("sha256");
+  const files = [join(dir, "index.html"), ...walkAll(join(dir, "_expo"))].filter((f) => existsSync(f)).sort();
+  for (const f of files) hh.update(relative(dir, f)).update(readFileSync(f));
+  return hh.digest("hex");
+}
+function walkAll(d) {
+  return existsSync(d) ? readdirSync(d).flatMap((f) => { const q = join(d, f); return statSync(q).isDirectory() ? walkAll(q) : [q]; }) : [];
+}
 const TARGET = new Map(REGISTRY.map((r) => [r.testID, r]));
 const ONLY = new Set((process.env.ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 
@@ -145,8 +181,9 @@ const SCENARIOS = [
 /** กรณีพิเศษ (ทางเดินกำหนดเอง: พิมพ์ค่า/เลือกไฟล์/กดตามลำดับ) — สถานะที่ fixture เปล่า ๆ ไปไม่ถึง (ข้อความผิดพลาด · ผลส่ง · ชีตชั้นลึก) */
 const CASES = existsSync(join(FIX, "s2.14-cases.json")) ? (JSON.parse(readFileSync(join(FIX, "s2.14-cases.json"), "utf8")).cases ?? []) : [];
 // กรณีพิเศษสำรวจก่อน (สถานะที่ต้องเตรียม ไม่ถูกเพดานครั้งของ fixture ทั่วไปกินหมดก่อน)
-for (const c of [...CASES].reverse()) if (!process.env.SCEN || new RegExp(process.env.SCEN).test(c.fixture)) SCENARIOS.unshift({ fixture: c.fixture, route: c.route, path: c.path, depth: 1 });
+for (const c of [...CASES].reverse()) if (!process.env.SCEN || new RegExp(process.env.SCEN).test(c.fixture)) SCENARIOS.unshift({ fixture: c.fixture, route: c.route, path: c.path, depth: 1, isCase: true });
 const COPY = process.env.QC_COPY ?? "/root/qc-shark-mobile-sec-d";
+const DIST_HASH = distHash(join(COPY, "dist"));
 const PORT = Number(process.env.QC_PORT ?? 4731);
 const server = process.env.QC_BASE ? null : await serveDist(join(COPY, "dist"), PORT);
 const BASE = process.env.QC_BASE ?? `http://127.0.0.1:${PORT}`;
@@ -155,14 +192,30 @@ const fxOf = (f) => FXC.get(f) ?? (FXC.set(f, JSON.parse(readFileSync(join(FIX, 
 
 const res = new Map(); // testID → { ok, kind, effect, fixture, route, path }
 const attempts = new Map(); // testID → จำนวนครั้งที่กดแล้วไม่มีผล (เพดาน MAX_TRY ข้ามทุก fixture)
-const MAX_TRY = 3;
+const MAX_TRY = 4;
 // RESUME=1: อ่านผลเดิม — testID ที่ ok แล้วไม่ต้องกดซ้ำ (ใช้รอบแก้เฉพาะตัวแดง · รอบปิดใบรันเต็มโดยไม่ตั้ง)
-if (process.env.RESUME === "1" && existsSync(OUT)) for (const x of JSON.parse(readFileSync(OUT, "utf8"))) if (x.ok) res.set(x.testID, { ok: true, kind: x.kind, effect: x.effect, fixture: x.fixture, route: x.route, path: x.path ?? [] });
+const RESUMED = process.env.RESUME === "1";
+if (RESUMED && existsSync(OUT)) {
+  // R-S2.14f: RESUME ได้เฉพาะทะเบียน + build เดียวกัน (hash ตรง) · ไฟล์ที่ได้ meta.resumed=true (ส่งมอบไม่ได้ — ใช้ไล่แก้เท่านั้น)
+  const prev = JSON.parse(readFileSync(OUT, "utf8"));
+  if (prev?.meta?.registryHash !== REG_HASH || prev?.meta?.distHash !== DIST_HASH) {
+    console.error(`❌ RESUME ปฏิเสธ: hash ไม่ตรง (registry ${prev?.meta?.registryHash?.slice(0, 12)} ≠ ${REG_HASH.slice(0, 12)} หรือ dist ${prev?.meta?.distHash?.slice(0, 12)} ≠ ${DIST_HASH.slice(0, 12)}) — รันเต็มใหม่`);
+    process.exit(2);
+  }
+  for (const x of prev.items ?? []) if (x.ok) res.set(x.testID, { ok: true, kind: x.kind, effect: x.effect, fixture: x.fixture, route: x.route, path: x.path ?? [] });
+}
 const tried = new Set(); // `${route}|${id}` ที่กดแล้ว (ทุก fixture)
+/** ผลของทุก testID ที่กด/เห็น (รวมลูกของคอมโพเนนต์และสมาชิกชุด template) — ใช้ตัดสินแถว template + รากคอมโพเนนต์รวม */
+const allRes = new Map();
+/** testID ลูก (ใน DOM) ของแต่ละ testID — รากคอมโพเนนต์รวมตัดสินจากลูกที่กดแล้วมีผล */
+const kidsOf = new Map();
 const record = (id, r) => {
+  const a = allRes.get(id);
+  const better = !a || (!a.ok && r.ok) || (a.ok && r.ok && /^visible/.test(a.effect ?? "") && !/^visible/.test(r.effect ?? ""));
+  if (better) allRes.set(id, r);
   if (!TARGET.has(id)) return;
   const cur = res.get(id);
-  if (cur?.ok) return;
+  if (cur?.ok && !(/^visible/.test(cur.effect ?? "") && r.ok && !/^visible/.test(r.effect ?? ""))) return;
   if (!cur || r.ok || (cur.effect === "ไม่เคยเห็นบนจอ")) res.set(id, r);
 };
 
@@ -188,7 +241,8 @@ const scan = (page) =>
       const input = tag === "INPUT" || tag === "TEXTAREA";
       const btn = !input && (["button", "switch", "tab", "radio", "checkbox", "link", "imagebutton", "menuitem"].includes(role) || el.hasAttribute("tabindex"));
       // state = aria + ค่า + หน้าตา (class/style ของ RN-web เปลี่ยนเมื่อปุ่มถูกเลือก/สลับ)
-      out[id] = { kind: input ? "input" : btn ? "button" : "view", disabled: el.getAttribute("aria-disabled") === "true" || el.disabled === true || el.readOnly === true, state: [el.getAttribute("aria-checked"), el.getAttribute("aria-selected"), el.getAttribute("aria-pressed"), el.getAttribute("aria-expanded"), input ? el.value : null, el.className, el.getAttribute("style")].join("|") };
+      const kids = [...el.querySelectorAll("[data-testid]")].map((k) => k.getAttribute("data-testid")).filter((k) => k !== id).slice(0, 40);
+      out[id] = { kids, kind: input ? "input" : btn ? "button" : "view", disabled: el.getAttribute("aria-disabled") === "true" || el.disabled === true || el.readOnly === true, state: [el.getAttribute("aria-checked"), el.getAttribute("aria-selected"), el.getAttribute("aria-pressed"), el.getAttribute("aria-expanded"), input ? el.value : null, el.className, el.getAttribute("style")].join("|") };
     }
     return out;
   });
@@ -217,6 +271,19 @@ async function handleOf(page, id) {
     first = first ?? h;
   }
   return enabled ?? first;
+}
+/** ค่าในช่องพิมพ์ทุกช่อง (testID → value) */
+const fieldValues = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll("input[data-testid], textarea[data-testid]")].map((e) => [e.getAttribute("data-testid"), e.value]))).catch(() => ({}));
+/** hit-test: เลื่อนให้อยู่กลางจอแล้วดู document.elementFromPoint ที่จุดกลาง */
+async function hitOk(h) {
+  return h
+    .evaluate((e) => {
+      e.scrollIntoView({ block: "center", inline: "center" });
+      const r = e.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!hit && (hit === e || e.contains(hit));
+    })
+    .catch(() => false);
 }
 /** ขั้นเตรียมก่อนกดบางปุ่ม (ฟอร์มที่ต้องมีการแก้/กรอกก่อนปุ่มบันทึกทำงาน) — testID ที่จะกด/พิมพ์ตามลำดับ */
 const PREP = {
@@ -262,7 +329,7 @@ async function step(page, spec) {
     if (await h.evaluate((e) => e.getAttribute("aria-disabled") === "true")) await fillAll(page);
     await h.click().catch(() => {});
   }
-  await new Promise((r) => setTimeout(r, 700));
+  await new Promise((r) => setTimeout(r, 1000));
   return true;
 }
 /** รอหน้านิ่งแบบเร็ว: load แล้วรอจน request ถึง API เงียบ 450 ms (เพดาน 8 วิ — จอที่ poll ไม่ต้องรอ networkidle) */
@@ -303,6 +370,11 @@ async function act(browser, sc, id) {
   try {
     for (const p of PREP[id] ?? []) await step(page, p);
     let before = await scan(page);
+    if (!before[id]) {
+      // เครื่องหนัก: จอวาดช้ากว่ารอบสำรวจ ⇒ รออีกครั้งก่อนตัดสินว่าไม่เห็น
+      await new Promise((r) => setTimeout(r, 1500));
+      before = await scan(page);
+    }
     const info = before[id];
     if (!info) return { r: { ok: false, effect: "ไม่เคยเห็นบนจอ" }, fresh: [] };
     if (info.kind === "view") return { r: { ok: true, kind: "view", effect: "visible (ไม่ใช่ปุ่ม)" }, fresh: [] };
@@ -339,6 +411,7 @@ async function act(browser, sc, id) {
     const recent = new Set(log.reqs.slice(markPre).map((q) => q.path + q.search));
     const noisy = t0 !== t1;
     const url0 = page.url();
+    const vals0 = await fieldValues(page);
     // GET ที่จอยิงซ้ำเอง (poll ≥ 2 ครั้งก่อนกด) ไม่นับ · GET ซ้ำของเส้นที่ยิงครั้งเดียว (ปุ่มลองใหม่/โหลดใหม่) = มีผล
     const getCount = new Map();
     for (const q of log.reqs) if (q.method === "GET") getCount.set(q.path + q.search, (getCount.get(q.path + q.search) ?? 0) + 1);
@@ -347,6 +420,8 @@ async function act(browser, sc, id) {
     const dlg0 = log.dialogs.length;
     let chooser = false;
     const fc = page.waitForFileChooser({ timeout: 1100 }).then((c) => { chooser = true; return c.cancel(); }).catch(() => {});
+    // R-S2.14e: กดได้จริงไหม — จุดกลางปุ่มต้องเป็นปุ่มนั้นหรือลูกของมัน (ไม่ถูกชีต/แถบ/ฉากบัง)
+    if (!(await hitOk(h))) return { r: { ok: false, kind: "button", effect: "blocked (ถูกบัง)" }, fresh: [] };
     const clickT = Date.now();
     await h.click().catch(() => {});
     await new Promise((r) => setTimeout(r, 1100));
@@ -356,6 +431,7 @@ async function act(browser, sc, id) {
       const now = await scan(page).catch(() => ({}));
       if (Object.keys(now).length !== Object.keys(before).length || (now[id] && now[id].state !== before[id].state)) break;
       if (!(await alt.evaluate((e) => e.getBoundingClientRect().width > 0 && e.getAttribute("aria-disabled") !== "true").catch(() => false))) continue;
+      if (!(await hitOk(alt))) continue;
       await alt.click().catch(() => {});
       await new Promise((r) => setTimeout(r, 1100));
     }
@@ -370,6 +446,10 @@ async function act(browser, sc, id) {
     const removed = Object.keys(before).filter((k) => !after[k]);
     if (added.length || removed.length) eff.push(`ui +${added.slice(0, 3).join(",")} -${removed.slice(0, 3).join(",")}`);
     if (after[id] && after[id].state !== before[id].state) eff.push("state");
+    // ปุ่มที่เติมค่าลงช่องพิมพ์อื่น (ชิปคำสั่งที่ใช้บ่อย · ตอบเร็ว) = ค่าในช่องเปลี่ยน
+    const vals1 = await fieldValues(page);
+    const changed = Object.keys(vals1).filter((k) => k !== id && vals1[k] !== vals0[k]);
+    if (changed.length) eff.push(`field ${changed[0]}`);
     const opened = await page.evaluate(() => window.__opened ?? []).catch(() => []);
     if (opened.length) eff.push(`open ${opened[0].slice(0, 60)}`);
     if (log.external.length > ext0) eff.push("external");
@@ -398,28 +478,45 @@ async function worker() {
     const j = jobs.shift();
     try {
       if (j.kind === "scan") {
+        // R-S2.14e: ทางเดินกรณีพิเศษ ⇒ กด/นับเฉพาะ testID ที่เพิ่งโผล่เทียบหน้าเดิมก่อนเดิน (ปุ่มเดิมของหน้าอาจถูกชีตบัง)
+        if (j.isCase && j.path.length && !j.fresh) {
+          const B0 = await load(browser, { ...j, path: [] });
+          const base = B0 ? await scan(B0.page) : {};
+          if (B0) await B0.page.close().catch(() => {});
+          j.fresh = "__pending";
+          j.base = base;
+        }
         const L = await load(browser, j);
         if (!L) continue;
         const seen = await scan(L.page);
+        // ข้อความผล/ข้อผิดพลาดที่มาช้า (เครื่องหนัก) — สแกนซ้ำหลัง 1.2 วิ รวมกัน
+        await new Promise((r) => setTimeout(r, 1200));
+        for (const [k, v] of Object.entries(await scan(L.page).catch(() => ({})))) if (!(k in seen)) seen[k] = v;
         await L.page.close().catch(() => {});
+        if (j.fresh === "__pending") j.fresh = Object.keys(seen).filter((k) => !(k in j.base) || j.base[k].state !== seen[k].state || j.base[k].disabled !== seen[k].disabled);
         for (const [id, info] of Object.entries(seen)) {
-          // ชั้นลึก (หลังกดเปิดชีต/เมนู) สำรวจเฉพาะ testID ที่เพิ่งโผล่ — ปุ่มเดิมของหน้าสำรวจแล้วที่ชั้นบน
-          if (j.fresh && !j.fresh.includes(id)) continue;
+          for (const k of info.kids ?? []) if (!kidsOf.get(id)?.includes(k)) kidsOf.set(id, [...(kidsOf.get(id) ?? []), k]);
           if (info.kind === "view") {
+            // กล่องแสดงผล = เห็นจริงก็พอ (ไม่ต้องเพิ่งโผล่)
             record(id, { ok: true, kind: "view", effect: "visible (ไม่ใช่ปุ่ม)", fixture: j.fixture, route: j.route, path: j.path });
             continue;
           }
+          // ชั้นลึก/กรณีพิเศษ: กดเฉพาะ testID ที่เพิ่งโผล่หรือสถานะเปลี่ยนเพราะทางเดิน — ปุ่มเดิมของหน้า (อาจถูกชีตบัง) สำรวจที่ชั้นบนแล้ว
+          if (j.fresh && !j.fresh.includes(id)) continue;
           if (ONLY.size && !ONLY.has(id) && j.path.length === 0 && TARGET.has(id)) continue;
           const key = `${j.route}|${[...j.path, id].join(">")}`;
-          const need = (TARGET.has(id) && !res.get(id)?.ok && (attempts.get(id) ?? 0) < MAX_TRY) || (!tried.has(key) && j.path.length < MAX_DEPTH);
+          const okNow = (x) => !!x?.ok && !/^visible/.test(x.effect ?? "");
+          // ทุก testID (รวมลูกคอมโพเนนต์/สมาชิกชุด template) กดซ้ำได้ใน fixture อื่นจนมีผล (เพดาน MAX_TRY ครั้งที่ "กดแล้วนิ่ง")
+          const need = (TARGET.has(id) ? !okNow(res.get(id)) : !okNow(allRes.get(id)) && j.path.length < MAX_DEPTH) && (attempts.get(id) ?? 0) < MAX_TRY;
           if (!need || tried.has(`${j.fixture}|${key}`)) continue;
           tried.add(key);
           tried.add(`${j.fixture}|${key}`);
           jobs.push({ fixture: j.fixture, route: j.route, path: j.path, kind: "act", id });
         }
       } else {
-        if (TARGET.has(j.id) && res.get(j.id)?.ok && j.path.length >= MAX_DEPTH) continue;
-        if (TARGET.has(j.id) && !res.get(j.id)?.ok && (attempts.get(j.id) ?? 0) >= MAX_TRY) continue;
+        const okNow = (x) => !!x?.ok && !/^visible/.test(x.effect ?? "");
+        if ((TARGET.has(j.id) ? okNow(res.get(j.id)) : okNow(allRes.get(j.id))) && j.path.length >= MAX_DEPTH) continue;
+        if (!(TARGET.has(j.id) ? okNow(res.get(j.id)) : okNow(allRes.get(j.id))) && (attempts.get(j.id) ?? 0) >= MAX_TRY) continue;
         const { r, fresh, shown = [] } = await act(browser, j, j.id);
         for (const v of shown) record(v, { ok: true, kind: "view", effect: "visible (ไม่ใช่ปุ่ม) หลังกด " + j.id, fixture: j.fixture, route: j.route, path: [...j.path, ...(PREP[j.id] ?? []), j.id] });
         // ปุ่มปิด/ไม่เห็น ในสถานะนั้น ไม่นับเพดาน (สถานะอื่นอาจเปิดได้) · กดแล้วนิ่งเท่านั้นที่นับ
@@ -445,11 +542,25 @@ try {
 }
 
 function writeOut() {
+const isVisible = (e) => /^visible/.test(String(e ?? ""));
 const out = REGISTRY.map((r) => {
-  const x = res.get(r.testID);
+  let x = res.get(r.testID);
+  if (r.template) {
+    // ชุด template: สมาชิก `prefix-…` (ที่ไม่ใช่ testID ตรงในทะเบียน) ที่กดแล้วมีผล ≥ 1 ตัว (ชุดที่เป็นกล่อง = เห็นจริง)
+    const pre = r.testID.slice(0, -1);
+    const hit = [...allRes.entries()].find(([id, v]) => id.startsWith(pre) && !TARGET.has(id) && v.ok && (r.kind === "view" || !isVisible(v.effect)));
+    x = hit ? { ...hit[1], effect: `member ${hit[0]}: ${hit[1].effect}` } : { ok: false, kind: r.kind, effect: "ไม่มีสมาชิกของชุดที่กดแล้วมีผล" };
+  } else if (r.kind !== "view" && x?.ok && isVisible(x.effect)) {
+    // รากคอมโพเนนต์รวม (Segment/Tabs/LevelGrid/ชีต) DOM เป็นกล่อง ⇒ ต้องมีลูก `${id}-…` ที่กดแล้วมีผล ≥ 1
+    const kids = new Set(kidsOf.get(r.testID) ?? []);
+    const kid = [...allRes.entries()].find(([id, v]) => (id.startsWith(`${r.testID}-`) || kids.has(id)) && v.ok && !isVisible(v.effect));
+    x = kid ? { ...x, kind: "group", effect: `child ${kid[0]}: ${kid[1].effect}` } : { ...x, ok: false, effect: "รากคอมโพเนนต์ไม่มีลูกที่กดแล้วมีผล" };
+  }
   return { testID: r.testID, ok: !!x?.ok, kind: x?.kind ?? r.kind, effect: x?.effect ?? "ไม่เคยเห็นบนจอ", fixture: x?.fixture ?? null, route: x?.route ?? null, path: x?.path ?? [] };
 });
-writeFileSync(OUT, JSON.stringify(out, null, 1) + "\n");
+if (process.env.DUMP_ALL) writeFileSync(process.env.DUMP_ALL, JSON.stringify(Object.fromEntries(allRes), null, 1));
+const meta = { generatedAt: new Date().toISOString(), registryHash: REG_HASH, distHash: DIST_HASH, resumed: RESUMED, workers: Number(process.env.WORKERS ?? 3), clicks: done, seconds: Math.round((Date.now() - started) / 1000), scen: process.env.SCEN ?? null };
+writeFileSync(OUT, JSON.stringify({ meta, items: out }, null, 1) + "\n");
 return out;
 }
 const out = writeOut();

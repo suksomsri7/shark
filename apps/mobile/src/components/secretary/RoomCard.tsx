@@ -1,5 +1,5 @@
 // การ์ดห้องงานของรายการ A1 (sec-a.jpg หน้า 1) — กระจก · จุดสถานะ + ชื่องาน (≤ 2 บรรทัด) · เวลา + badge รออนุมัติทางขวา
-// บรรทัดรอง = สถานะ (+ "สั่งโดย <ชื่อ>" เมื่อไม่ใช่เรา) · แถวล่าง = ป้ายระบบ ≤ 3 + "ร่วมกับ …"
+// บรรทัดรอง = สถานะ (+ "สั่งโดย <ชื่อ>" เมื่อไม่ใช่เรา · testID sec-home-by) · แถวล่าง = ป้ายระบบ ≤ 3 + "ร่วมกับ …"
 // testID: กรอบ = `testID` (ทุกการ์ด) · ปุ่ม = `<testID>-<roomId>` · เวลาเป็นเวลาไทย (Asia/Bangkok · UTC+7 ไม่มี DST)
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
@@ -86,7 +86,9 @@ export function RoomCard({ room, testID, nowMs, onPress }: { room: Room; testID:
           ) : null}
         </View>
         <Text style={[styles.line, { color: c.textDim }]} numberOfLines={1}>
-          {by ? `${line} · ${by}` : line}
+          {line}
+          {/* R-S2.14k: "สั่งโดย <ชื่อ>" ของห้องที่คนอื่นเริ่ม (ขอบเขต "ทุกคนในกิจการ" ของ OWNER / ห้องที่แชร์มา) */}
+          {by ? <Text testID="sec-home-by">{` · ${by}`}</Text> : null}
         </Text>
         {systems.length > 0 || withText ? (
           <View style={styles.tags}>

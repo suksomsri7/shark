@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T12:26:19.122Z",
+ "generatedAt": "2026-11-05T15:38:07.219Z",
  "base": "http://127.0.0.1:4727",
  "view": {
   "tag": "iphone",
@@ -30,7 +30,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings.png",
-   "generatedAt": "2026-11-05T12:25:46.046Z"
+   "generatedAt": "2026-11-05T15:37:34.179Z"
   },
   {
    "name": "secretary-settings-access",
@@ -51,7 +51,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access.png",
-   "generatedAt": "2026-11-05T12:25:48.861Z"
+   "generatedAt": "2026-11-05T15:37:37.169Z"
   },
   {
    "name": "secretary-settings-rules",
@@ -73,7 +73,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules.png",
-   "generatedAt": "2026-11-05T12:25:51.939Z"
+   "generatedAt": "2026-11-05T15:37:40.162Z"
   },
   {
    "name": "secretary-settings-log",
@@ -93,7 +93,7 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log.png",
-   "generatedAt": "2026-11-05T12:25:54.758Z"
+   "generatedAt": "2026-11-05T15:37:42.937Z"
   },
   {
    "name": "secretary-settings-knowledge",
@@ -115,7 +115,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-05T12:25:57.507Z"
+   "generatedAt": "2026-11-05T15:37:45.768Z"
   },
   {
    "name": "secretary-settings-customers",
@@ -136,7 +136,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-customers.png",
-   "generatedAt": "2026-11-05T12:26:00.341Z"
+   "generatedAt": "2026-11-05T15:37:48.607Z"
   },
   {
    "name": "secretary-settings-dark",
@@ -156,7 +156,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-dark.png",
-   "generatedAt": "2026-11-05T12:26:04.209Z"
+   "generatedAt": "2026-11-05T15:37:52.336Z"
   },
   {
    "name": "secretary-settings-access-dark",
@@ -177,7 +177,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access-dark.png",
-   "generatedAt": "2026-11-05T12:26:07.163Z"
+   "generatedAt": "2026-11-05T15:37:55.278Z"
   },
   {
    "name": "secretary-settings-rules-dark",
@@ -199,7 +199,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules-dark.png",
-   "generatedAt": "2026-11-05T12:26:10.415Z"
+   "generatedAt": "2026-11-05T15:37:58.311Z"
   },
   {
    "name": "secretary-settings-log-dark",
@@ -219,7 +219,7 @@
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log-dark.png",
-   "generatedAt": "2026-11-05T12:26:13.268Z"
+   "generatedAt": "2026-11-05T15:38:01.194Z"
   },
   {
    "name": "secretary-settings-knowledge-dark",
@@ -241,7 +241,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge-dark.png",
-   "generatedAt": "2026-11-05T12:26:16.121Z"
+   "generatedAt": "2026-11-05T15:38:04.202Z"
   },
   {
    "name": "secretary-settings-customers-dark",
@@ -262,7 +262,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-customers-dark.png",
-   "generatedAt": "2026-11-05T12:26:18.953Z"
+   "generatedAt": "2026-11-05T15:38:07.088Z"
   }
  ]
 }

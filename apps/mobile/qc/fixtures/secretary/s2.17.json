@@ -432,7 +432,15 @@
     ],
     "tags": [
      "ดีล"
-    ]
+    ],
+    "can": {
+     "reply": true,
+     "assign": true,
+     "setStatus": true,
+     "linkCustomer": true,
+     "aiSuggest": true
+    },
+    "replyWindowEndsAt": null
    },
    "messages": [
     {
@@ -618,7 +626,7 @@
    "linkedMember": {
     "id": "mem1",
     "name": "คุณสมชาย",
-    "phone": "0810005678"
+    "phoneMasked": "081-xxx-5678"
    },
    "helpers": [
     {
@@ -845,6 +853,12 @@
     "support": 0
    },
    "total": 5
+  },
+  "POST /api/mobile/inbox/conversations/x1/task": {
+   "cardId": "card-qc-128",
+   "cardNo": 128,
+   "cardHref": "/app/kanban/b1?card=card-qc-128",
+   "created": true
   }
  }
 }

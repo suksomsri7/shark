@@ -70,6 +70,16 @@
   "action": "route /secretary/help"
  },
  {
+  "testID": "help-case-denied",
+  "files": [
+   "app/(app)/secretary/help/[caseId].tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "help-thread",
   "files": [
    "app/(app)/secretary/help/[caseId].tsx"
@@ -233,6 +243,17 @@
   "action": "route /secretary/help"
  },
  {
+  "testID": "help-room-dot-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/help/[caseId].tsx"
+  ],
+  "kind": "view",
+  "tag": "Dot",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "help-home",
   "files": [
    "app/(app)/secretary/help/index.tsx"
@@ -289,6 +310,26 @@
   ],
   "kind": "view",
   "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "help-denied",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "help-error",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -363,6 +404,16 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-inbox-denied",
+  "files": [
+   "app/(app)/secretary/inbox.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "sec-inbox-tabs",
   "files": [
    "app/(app)/secretary/inbox.tsx"
@@ -393,14 +444,14 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "sec-inbox-retry",
+  "testID": "sec-inbox-error",
   "files": [
    "app/(app)/secretary/inbox.tsx"
   ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "() => void load()",
-  "action": "endpoint secretary/inbox"
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "sec-inbox-flash",
@@ -557,10 +608,10 @@
   "files": [
    "app/(app)/secretary/new.tsx"
   ],
-  "kind": "button",
+  "kind": "view",
   "tag": "TopBar",
   "handler": "close",
-  "action": "route back · route /secretary"
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "sec-new-close",
@@ -579,6 +630,16 @@
   ],
   "kind": "view",
   "tag": "Orb",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-new-denied",
+  "files": [
+   "app/(app)/secretary/new.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -649,8 +710,19 @@
   ],
   "kind": "view",
   "tag": "InputBar",
-  "handler": "(v) => { setText(v); if (err && err !== \"quota\") setErr(null); }",
+  "handler": "(v) => { if (denied) return; setText(v); if (err && err !== \"quota\") setErr(null); }",
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-new-frequent-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/new.tsx"
+  ],
+  "kind": "button",
+  "tag": "Chip",
+  "handler": "() => fill(f.instruction)",
+  "action": "handler ในจอ"
  },
  {
   "testID": "sec-onb-name",
@@ -1093,6 +1165,16 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-sched-denied",
+  "files": [
+   "app/(app)/secretary/scheduled.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "sec-sched-empty",
   "files": [
    "app/(app)/secretary/scheduled.tsx"
@@ -1123,14 +1205,14 @@
   "action": "endpoint secretary/scheduled/[id]"
  },
  {
-  "testID": "sec-sched-retry",
+  "testID": "sec-sched-error",
   "files": [
    "app/(app)/secretary/scheduled.tsx"
   ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "() => void load()",
-  "action": "endpoint secretary/scheduled"
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "sec-access",
@@ -1173,6 +1255,26 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-access-error",
+  "files": [
+   "app/(app)/secretary/settings/access.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-access-empty",
+  "files": [
+   "app/(app)/secretary/settings/access.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "sec-access-row",
   "files": [
    "app/(app)/secretary/settings/access.tsx"
@@ -1181,6 +1283,28 @@
   "tag": "Glass",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-access-row-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/access.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-access-level-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/access.tsx"
+  ],
+  "kind": "button",
+  "tag": "LevelPicker",
+  "handler": "(l) => void change(x.module, l)",
+  "action": "endpoint secretary/access"
  },
  {
   "testID": "acct",
@@ -1293,6 +1417,16 @@
   "action": "endpoint inbox/shift"
  },
  {
+  "testID": "acct-error",
+  "files": [
+   "app/(app)/secretary/settings/account.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "acct-note",
   "files": [
    "app/(app)/secretary/settings/account.tsx"
@@ -1393,6 +1527,17 @@
   "action": "endpoint secretary/account/delete"
  },
  {
+  "testID": "acct-notify-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/account.tsx"
+  ],
+  "kind": "button",
+  "tag": "Segment",
+  "handler": "(m) => setMode(k, m as NotifyMode)",
+  "action": "endpoint secretary/notify"
+ },
+ {
   "testID": "sec-cust",
   "files": [
    "app/(app)/secretary/settings/customers.tsx"
@@ -1429,6 +1574,16 @@
   ],
   "kind": "view",
   "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-cust-error",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -1511,6 +1666,16 @@
   "tag": "SettingRow",
   "handler": "openHours",
   "action": "handler ในจอ"
+ },
+ {
+  "testID": "cust-set-error",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "cust-set-loading",
@@ -1723,6 +1888,17 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-settings-row-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "SettingRow",
+  "handler": "() => (r.path ? router.push(r.path) : switcher.open())",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
   "testID": "sec-know",
   "files": [
    "app/(app)/secretary/settings/knowledge.tsx"
@@ -1823,6 +1999,72 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-know-confirm-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/knowledge.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void act({ kind, id, confirm: true })",
+  "action": "endpoint secretary/memories/[id]/confirm · endpoint secretary/memories/[id] · endpoint secretary/lessons/[id]/confirm · endpoint secretary/lessons/[id]"
+ },
+ {
+  "testID": "sec-know-reject-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/knowledge.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void act({ kind, id, confirm: false })",
+  "action": "endpoint secretary/memories/[id]/confirm · endpoint secretary/memories/[id] · endpoint secretary/lessons/[id]/confirm · endpoint secretary/lessons/[id]"
+ },
+ {
+  "testID": "sec-know-fact-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/knowledge.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-know-lesson-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/knowledge.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-know-room-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/knowledge.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => router.push(`/secretary/room/${l.sourceRoomId}`)",
+  "action": "route /secretary/room/${l.sourceRoomId}"
+ },
+ {
+  "testID": "sec-know-digest-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/knowledge.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "sec-log",
   "files": [
    "app/(app)/secretary/settings/log.tsx"
@@ -1913,6 +2155,17 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-log-filter-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/log.tsx"
+  ],
+  "kind": "button",
+  "tag": "Chip",
+  "handler": "() => pick(x.f)",
+  "action": "handler ในจอ"
+ },
+ {
   "testID": "sec-quota",
   "files": [
    "app/(app)/secretary/settings/quota.tsx"
@@ -1933,6 +2186,16 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-quota-error",
+  "files": [
+   "app/(app)/secretary/settings/quota.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "sec-quota-loading",
   "files": [
    "app/(app)/secretary/settings/quota.tsx"
@@ -1949,16 +2212,6 @@
   ],
   "kind": "view",
   "tag": "QuotaRing",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-quota-error",
-  "files": [
-   "app/(app)/secretary/settings/quota.tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -2033,6 +2286,26 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-rules-loading",
+  "files": [
+   "app/(app)/secretary/settings/rules.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-rules-error",
+  "files": [
+   "app/(app)/secretary/settings/rules.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "sec-rules-row",
   "files": [
    "app/(app)/secretary/settings/rules.tsx"
@@ -2059,6 +2332,17 @@
   ],
   "kind": "view",
   "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-rules-approver-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/rules.tsx"
+  ],
+  "kind": "view",
+  "tag": "Glass",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -2099,6 +2383,26 @@
   ],
   "kind": "view",
   "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-me-loading",
+  "files": [
+   "app/(app)/secretary/settings/secretary.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-me-error",
+  "files": [
+   "app/(app)/secretary/settings/secretary.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -2183,6 +2487,39 @@
   "action": "handler ในจอ"
  },
  {
+  "testID": "sec-me-stat-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/secretary.tsx"
+  ],
+  "kind": "view",
+  "tag": "Glass",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-me-lang-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/secretary.tsx"
+  ],
+  "kind": "button",
+  "tag": "Chip",
+  "handler": "() => toggleLang(l)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "sec-me-link-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/secretary.tsx"
+  ],
+  "kind": "button",
+  "tag": "SettingRow",
+  "handler": "() => router.push(l.path)",
+  "action": "handler ในจอ"
+ },
+ {
   "testID": "perm",
   "files": [
    "app/(app)/secretary/staff/[membershipId].tsx"
@@ -2197,10 +2534,10 @@
   "files": [
    "app/(app)/secretary/staff/[membershipId].tsx"
   ],
-  "kind": "button",
+  "kind": "view",
   "tag": "TopBar",
   "handler": "back",
-  "action": "route back · route /secretary/staff"
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "perm-back",
@@ -2211,6 +2548,16 @@
   "tag": "IconBtn",
   "handler": "back",
   "action": "route back · route /secretary/staff"
+ },
+ {
+  "testID": "perm-denied",
+  "files": [
+   "app/(app)/secretary/staff/[membershipId].tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "perm-missing",
@@ -2383,6 +2730,17 @@
   "action": "endpoint secretary/staff/[id]/suspend · endpoint secretary/staff/[id]/remove"
  },
  {
+  "testID": "perm-unit-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/staff/[membershipId].tsx"
+  ],
+  "kind": "button",
+  "tag": "Chip",
+  "handler": "editable ? () => toggleUnit(u.id) : undefined",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
   "testID": "sec-staff",
   "files": [
    "app/(app)/secretary/staff/index.tsx"
@@ -2507,10 +2865,10 @@
   "files": [
    "app/(app)/secretary/staff/invite.tsx"
   ],
-  "kind": "button",
+  "kind": "view",
   "tag": "TopBar",
   "handler": "close",
-  "action": "route back · route /secretary/staff"
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "inv-close",
@@ -2529,6 +2887,16 @@
   ],
   "kind": "view",
   "tag": "Glass",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "inv-error",
+  "files": [
+   "app/(app)/secretary/staff/invite.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -2711,6 +3079,17 @@
   "tag": "Pressable",
   "handler": "() => void cancel()",
   "action": "endpoint secretary/staff/invites/[id]"
+ },
+ {
+  "testID": "inv-unit-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/staff/invite.tsx"
+  ],
+  "kind": "button",
+  "tag": "Chip",
+  "handler": "() => toggleUnit(u.id)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
   "testID": "cust-room",
@@ -2938,10 +3317,10 @@
   "files": [
    "app/(app)/customers/[id]/index.tsx"
   ],
-  "kind": "button",
+  "kind": "view",
   "tag": "InputBar",
   "handler": "() => setInternal((v) => !v)",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "cust-internal-toggle",
@@ -2998,10 +3377,10 @@
   "files": [
    "app/(app)/customers/[id]/info.tsx"
   ],
-  "kind": "button",
+  "kind": "view",
   "tag": "TopBar",
   "handler": "back",
-  "action": "route back · route /customers/${encodeURIComponent(id)}"
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "cust-info-contact",
@@ -3132,6 +3511,16 @@
   "tag": "Pressable",
   "handler": "() => openSheet(\"close\")",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cust-info-error",
+  "files": [
+   "app/(app)/customers/[id]/info.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "cust-info-loading",
@@ -3458,10 +3847,10 @@
   "files": [
    "app/(app)/business/new.tsx"
   ],
-  "kind": "button",
+  "kind": "view",
   "tag": "TopBar",
   "handler": "close",
-  "action": "route back · route /secretary"
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "biz-new-close",
@@ -3552,6 +3941,28 @@
   "tag": "PrimaryButton",
   "handler": "() => void submit()",
   "action": "route /secretary/onboarding/name · route /secretary/room/${r.room.roomId} · route /secretary · endpoint secretary/tenants/create"
+ },
+ {
+  "testID": "biz-new-type-*",
+  "template": true,
+  "files": [
+   "app/(app)/business/new.tsx"
+  ],
+  "kind": "button",
+  "tag": "Chip",
+  "handler": "() => pickType(k)",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-new-system-*",
+  "template": true,
+  "files": [
+   "app/(app)/business/new.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => toggle(s)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
   "testID": "login",
@@ -3662,6 +4073,17 @@
   "tag": "LinkLine",
   "handler": "() => router.push(\"/signup\")",
   "action": "route /signup"
+ },
+ {
+  "testID": "login-*",
+  "template": true,
+  "files": [
+   "app/login.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => onSocial(x.key, x.label)",
+  "action": "handler ในจอ"
  },
  {
   "testID": "signup",

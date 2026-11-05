@@ -42,11 +42,11 @@ echo "RESHOOT_DONE FAIL=$FAIL"
 # S2.14: ชีต/ส่วนที่ต้องกด-เลื่อน (B1 C4 D3 K4 K5) + เลื่อนสุด/ระยะของลอยล่าง (F1/F4) ทั้ง 2 ธีม
 SP=/tmp/claude-0/-root/454e4bb2-8f6f-50ca-82f8-f98dfaa88abe/scratchpad/s214
 I=$SH/s2.14-interaction
-cp $SH/s2.13-interaction/README-states.mjs.txt $SP/state-shots.mjs; cp $SH/s2.13-interaction/README-padding.mjs.txt $SP/pad-check.mjs; cp $SH/s2.13-interaction/README-serve.mjs.txt $SP/serve.mjs
+cp $SH/s2.14-interaction/README-states.mjs.txt $SP/state-shots.mjs; cp $SH/s2.13-interaction/README-padding.mjs.txt $SP/pad-check.mjs; cp $SH/s2.13-interaction/README-serve.mjs.txt $SP/serve.mjs
 node $SP/serve.mjs /root/qc-shark-mobile-sec-d/dist 4728 & SRV=$!
 sleep 1
 node $SP/state-shots.mjs http://127.0.0.1:4728 $PWD/$I $PWD/$FX > $SP/states-i.log 2>&1 || { echo "!!! states"; FAIL=1; }
-for p in "b1-switcher b 1" "c4-reject-sheet c 4" "d3-add-member d 3" "k4-channels k 4" "k5-routing k 5"; do set -- $p
+for p in "b1-switcher b 1" "c4-reject-sheet c 4" "d3-add-member d 3" "k4-channels k 4" "k5-routing k 5" "a1-scope-tenant a 1"; do set -- $p
   bash scripts/parity-sec.sh $2 $3 $I/$1.png $I/$1-pair.png >/dev/null || { echo "!!! pair $1"; FAIL=1; }
   bash scripts/parity-sec.sh $2 $3 $I/$1-dark.png $I/$1-dark-pair.png --dark >/dev/null || { echo "!!! pair dark $1"; FAIL=1; }
 done
@@ -59,5 +59,8 @@ bash scripts/parity-sec.sh d 1 $I/secretary-staff-scrolled-end.png $I/secretary-
 bash scripts/parity-sec.sh d 1 $I/secretary-staff-dark-scrolled-end.png $I/secretary-staff-dark-scrolled-end-d1-pair.png --dark >/dev/null || FAIL=1
 bash scripts/parity-sec.sh g 2 $I/secretary-staff-invite-scrolled-end.png $I/secretary-staff-invite-scrolled-end-g2-pair.png >/dev/null || FAIL=1
 bash scripts/parity-sec.sh g 2 $I/secretary-staff-invite-dark-scrolled-end.png $I/secretary-staff-invite-dark-scrolled-end-g2-pair.png --dark >/dev/null || FAIL=1
+cp $SH/s2.14-interaction/README-f3.mjs.txt $SP/f3shot.mjs; node $SP/f3shot.mjs > $SP/f3.log 2>&1 || { echo "!!! f3"; FAIL=1; }
+bash scripts/parity-sec.sh k 2 $I/k2-image-placeholder.png $I/k2-image-placeholder-pair.png >/dev/null || FAIL=1
+bash scripts/parity-sec.sh k 2 $I/k2-image-placeholder-dark.png $I/k2-image-placeholder-dark-pair.png --dark >/dev/null || FAIL=1
 kill $SRV
 echo "INTERACTION_DONE FAIL=$FAIL"

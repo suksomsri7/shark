@@ -7,13 +7,14 @@ import { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, Note, Orb, PrimaryButton, Segment } from "@/src/components/airy";
+import { AiryScreen, Chip, Glass, LoadError, Loading, Note, Orb, PrimaryButton, Segment } from "@/src/components/airy";
 import { SettingRow, SettingsTop } from "@/src/components/secretary/SettingRow";
 import {
   DEFAULT_SECRETARY_NAME,
   SEC_LANGUAGES,
   SUFFIXES,
   TONES,
+  isDenied,
   loadSecretaryMe,
   normStatus,
   quotaNumbers,
@@ -60,6 +61,9 @@ export default function SecretaryProfileScreen() {
   const [stats, setStats] = useState<Stats>({ jobs: null, pct: null, waiting: null, done7: null });
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
+  // R-S2.14h: ก่อนได้ตัวตนเลขา = Loading (ไม่วางชื่อ/น้ำเสียงค่าปริยายให้แก้) · ล้ม = LoadError+ลองใหม่ (403 = การ์ดล็อก)
+  const [ident, setIdent] = useState<"loading" | "ok" | "error" | "denied">("loading");
+  const [tick, setTick] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -70,8 +74,12 @@ export default function SecretaryProfileScreen() {
           const f = formOf(s);
           setSaved(f);
           setForm(f);
+          setIdent("ok");
         })
-        .catch(() => undefined);
+        .catch((e) => {
+          if (!live) return;
+          setIdent((cur) => (cur === "ok" ? cur : isDenied(e) ? "denied" : "error"));
+        });
       if (activeTenantId) {
         const now = Date.now();
         void Promise.all([
@@ -88,8 +96,12 @@ export default function SecretaryProfileScreen() {
       return () => {
         live = false;
       };
-    }, [activeTenantId]),
+    }, [activeTenantId, tick]),
   );
+  const retryIdent = useCallback(() => {
+    setIdent("loading");
+    setTick((x) => x + 1);
+  }, []);
 
   const dirty = !same(form, saved);
   const nameOk = form.name.trim().length > 0 && Array.from(form.name.trim()).length <= NAME_MAX;
@@ -142,7 +154,7 @@ export default function SecretaryProfileScreen() {
         <View style={styles.hero}>
           <Orb size={size.orbHero} testID="sec-me-orb" />
           <Text style={[styles.name, { color: c.text }]} numberOfLines={1}>
-            {saved.name}
+            {ident === "ok" ? saved.name : "\u00a0"}
           </Text>
           <Text style={[styles.heroSub, { color: c.textMuted }]}>{first ? t("sec.me.subUser", { user: first }) : t("sec.me.sub")}</Text>
         </View>
@@ -156,55 +168,63 @@ export default function SecretaryProfileScreen() {
           ))}
         </View>
 
-        <Text style={[styles.label, { color: c.textDim }]}>{t("sec.me.name")}</Text>
-        <TextInput
-          testID="sec-me-name"
-          value={form.name}
-          onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
-          maxLength={NAME_MAX + 10}
-          placeholder={DEFAULT_SECRETARY_NAME}
-          placeholderTextColor={c.placeholder}
-          style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
-        />
-        {!nameOk ? <Note warn testID="sec-me-name-error">{t("sec.me.nameRule", { n: NAME_MAX })}</Note> : null}
+        {ident === "loading" ? (
+          <Loading testID="sec-me-loading" />
+        ) : ident !== "ok" ? (
+          <LoadError testID="sec-me-error" denied={ident === "denied"} onRetry={retryIdent} />
+        ) : (
+          <>
+            <Text style={[styles.label, { color: c.textDim }]}>{t("sec.me.name")}</Text>
+            <TextInput
+              testID="sec-me-name"
+              value={form.name}
+              onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
+              maxLength={NAME_MAX + 10}
+              placeholder={DEFAULT_SECRETARY_NAME}
+              placeholderTextColor={c.placeholder}
+              style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+            />
+            {!nameOk ? <Note warn testID="sec-me-name-error">{t("sec.me.nameRule", { n: NAME_MAX })}</Note> : null}
 
-        <Text style={[styles.label, { color: c.textDim }]}>{t("sec.me.tone")}</Text>
-        <Segment
-          testID="sec-me-tone"
-          value={form.tone}
-          onChange={(k) => setForm((f) => ({ ...f, tone: k }))}
-          options={TONES.map((k) => ({ key: k, label: t(k === "friendly" ? "sec.me.tone.friendly" : k === "brief" ? "sec.me.tone.brief" : "sec.me.tone.polite") }))}
-        />
+            <Text style={[styles.label, { color: c.textDim }]}>{t("sec.me.tone")}</Text>
+            <Segment
+              testID="sec-me-tone"
+              value={form.tone}
+              onChange={(k) => setForm((f) => ({ ...f, tone: k }))}
+              options={TONES.map((k) => ({ key: k, label: t(k === "friendly" ? "sec.me.tone.friendly" : k === "brief" ? "sec.me.tone.brief" : "sec.me.tone.polite") }))}
+            />
 
-        <Text style={[styles.label, { color: c.textDim }]}>{t("sec.me.suffix")}</Text>
-        <Segment
-          testID="sec-me-suffix"
-          value={form.suffix}
-          onChange={(k) => setForm((f) => ({ ...f, suffix: k as SuffixKey }))}
-          options={SUFFIXES.map((s) => ({ key: s.key, label: t(s.key === "khrap" ? "sec.me.suffix.khrap" : s.key === "kha" ? "sec.me.suffix.kha" : "sec.me.suffix.none") }))}
-        />
+            <Text style={[styles.label, { color: c.textDim }]}>{t("sec.me.suffix")}</Text>
+            <Segment
+              testID="sec-me-suffix"
+              value={form.suffix}
+              onChange={(k) => setForm((f) => ({ ...f, suffix: k as SuffixKey }))}
+              options={SUFFIXES.map((s) => ({ key: s.key, label: t(s.key === "khrap" ? "sec.me.suffix.khrap" : s.key === "kha" ? "sec.me.suffix.kha" : "sec.me.suffix.none") }))}
+            />
 
-        <Text style={[styles.label, { color: c.textDim }]}>{t("sec.me.lang")}</Text>
-        <View testID="sec-me-lang" style={styles.chips}>
-          {SEC_LANGUAGES.map((l) => (
-            <Chip key={l} testID={`sec-me-lang-${l}`} active={form.languages.includes(l)} label={t(l === "en" ? "sec.me.lang.en" : l === "zh" ? "sec.me.lang.zh" : l === "ja" ? "sec.me.lang.ja" : "sec.me.lang.th")} onPress={() => toggleLang(l)} />
-          ))}
-        </View>
-        <Text style={[styles.hint, { color: c.textMuted }]}>{t("sec.me.langHint")}</Text>
+            <Text style={[styles.label, { color: c.textDim }]}>{t("sec.me.lang")}</Text>
+            <View testID="sec-me-lang" style={styles.chips}>
+              {SEC_LANGUAGES.map((l) => (
+                <Chip key={l} testID={`sec-me-lang-${l}`} active={form.languages.includes(l)} label={t(l === "en" ? "sec.me.lang.en" : l === "zh" ? "sec.me.lang.zh" : l === "ja" ? "sec.me.lang.ja" : "sec.me.lang.th")} onPress={() => toggleLang(l)} />
+              ))}
+            </View>
+            <Text style={[styles.hint, { color: c.textMuted }]}>{t("sec.me.langHint")}</Text>
 
-        <Glass testID="sec-me-sample" radius={radii.sugg} style={styles.sample}>
-          <Text style={[styles.sampleL, { color: c.textMuted }]}>{t("sec.me.sampleLabel")}</Text>
-          <Text style={[styles.sampleT, { color: c.text }]}>{sample}</Text>
-        </Glass>
+            <Glass testID="sec-me-sample" radius={radii.sugg} style={styles.sample}>
+              <Text style={[styles.sampleL, { color: c.textMuted }]}>{t("sec.me.sampleLabel")}</Text>
+              <Text style={[styles.sampleT, { color: c.text }]}>{sample}</Text>
+            </Glass>
 
-        {note ? (
-          <Note warn={note.warn} testID="sec-me-note">
-            {note.text}
-          </Note>
-        ) : null}
-        <View style={styles.save}>
-          <PrimaryButton testID="sec-me-save" label={busy ? t("sec.set.saving") : t("sec.set.save")} disabled={!dirty || !nameOk || busy} onPress={() => void save()} />
-        </View>
+            {note ? (
+              <Note warn={note.warn} testID="sec-me-note">
+                {note.text}
+              </Note>
+            ) : null}
+            <View style={styles.save}>
+              <PrimaryButton testID="sec-me-save" label={busy ? t("sec.set.saving") : t("sec.set.save")} disabled={!dirty || !nameOk || busy} onPress={() => void save()} />
+            </View>
+          </>
+        )}
 
         <View style={styles.links}>
           {LINKS.map((l) => (

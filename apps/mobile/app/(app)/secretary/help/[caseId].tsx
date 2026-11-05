@@ -50,6 +50,8 @@ export default function SecretaryHelpCaseScreen() {
   const [msgs, setMsgs] = useState<HelpMsg[]>([]);
   const [gone, setGone] = useState(false);
   const [offline, setOffline] = useState(false);
+  // R-S2.14h: 403 = การ์ดล็อก (LoadError denied) แทนเธรด · ปิดช่องพิมพ์
+  const [denied, setDenied] = useState(false);
   const [roomTitle, setRoomTitle] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -72,6 +74,7 @@ export default function SecretaryHelpCaseScreen() {
       setMsgs(r.messages);
       setGone(false);
       setOffline(false);
+      setDenied(false);
       const sig = `${r.case.id}|${r.case.status}|${r.messages.length}|${r.messages[r.messages.length - 1]?.id ?? ""}`;
       if (seenSig.current !== sig) {
         seenSig.current = sig;
@@ -79,7 +82,10 @@ export default function SecretaryHelpCaseScreen() {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setGone(true);
-      else setOffline(true);
+      else if (e instanceof ApiError && e.status === 403) {
+        setDenied(true);
+        setOffline(false);
+      } else setOffline(true);
     }
   }, [id]);
 
@@ -207,6 +213,10 @@ export default function SecretaryHelpCaseScreen() {
               <Text style={[styles.goneBtnT, { color: c.onAccent }]}>{t("help.toList")}</Text>
             </Pressable>
           </Glass>
+        ) : denied ? (
+          <View style={[styles.flex, styles.page]}>
+            <LoadError testID="help-case-denied" denied />
+          </View>
         ) : (
           <ScrollView
             ref={scroll}
@@ -283,7 +293,7 @@ export default function SecretaryHelpCaseScreen() {
             {note.text}
           </Text>
         ) : null}
-        {gone ? null : (
+        {gone || denied ? null : (
           <>
             <AttachedRow testID="help-attached" atts={att.atts} uploading={att.uploading} onRemove={att.remove} />
             <InputBar

@@ -70,6 +70,13 @@
   },
   {
    "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/access",
+   "path": [
+    "sec-access-level-pos-READ"
+   ]
+  },
+  {
+   "fixture": "s2.14-cases.json",
    "route": "/secretary/staff/invite",
    "path": [
     "inv-phone=0212345678"
@@ -199,8 +206,7 @@
    "fixture": "s2.14-cases-auth.json",
    "route": "/otp?phone=0812345678&mode=login&resend=1",
    "path": [
-    "wait:1500",
-    "otp-resend"
+    "wait:1500"
    ]
   },
   {
@@ -351,8 +357,48 @@
    "items": []
   },
   "GET /api/mobile/secretary/access": {
-   "items": [],
-   "autoAvailable": false
+   "items": [
+    {
+     "module": "pos",
+     "label": "POS",
+     "level": "DRAFT"
+    },
+    {
+     "module": "crm",
+     "label": "CRM",
+     "level": "DRAFT"
+    },
+    {
+     "module": "booking",
+     "label": "จองคิว",
+     "level": "DRAFT"
+    },
+    {
+     "module": "member",
+     "label": "สมาชิก",
+     "level": "DRAFT"
+    },
+    {
+     "module": "account",
+     "label": "บัญชี",
+     "level": "DRAFT"
+    },
+    {
+     "module": "kanban",
+     "label": "บอร์ดงาน",
+     "level": "DRAFT"
+    },
+    {
+     "module": "chat",
+     "label": "แชท",
+     "level": "READ"
+    }
+   ],
+   "levels": [
+    "OFF",
+    "READ",
+    "DRAFT"
+   ]
   },
   "GET /api/mobile/secretary/rooms/r1": {
    "id": "r1",
@@ -1030,7 +1076,15 @@
     ],
     "tags": [
      "ดีล"
-    ]
+    ],
+    "can": {
+     "reply": true,
+     "assign": true,
+     "setStatus": true,
+     "linkCustomer": true,
+     "aiSuggest": true
+    },
+    "replyWindowEndsAt": null
    },
    "messages": [
     {
@@ -1216,7 +1270,7 @@
    "linkedMember": {
     "id": "mem1",
     "name": "คุณสมชาย",
-    "phone": "0810005678"
+    "phoneMasked": "081-xxx-5678"
    },
    "helpers": [
     {
@@ -1507,6 +1561,13 @@
    "onDuty": true,
    "onDutyAt": "2026-11-05T01:30:00.000Z"
   },
+  "POST /api/mobile/inbox/conversations/x1/task": {
+   "__status": 404,
+   "__body": {
+    "error": "not_configured",
+    "message": "ร้านยังไม่ได้เปิด \"สร้างงานจากแชท\" — เปิดได้ที่ตั้งค่าแชทบนเว็บ"
+   }
+  },
   "GET /api/mobile/secretary/rooms/r9": {
    "id": "r9",
    "conversationId": "c-r9",
@@ -1586,6 +1647,13 @@
      "รอคน",
      "ดีล"
     ],
+    "can": {
+     "reply": true,
+     "assign": true,
+     "setStatus": true,
+     "linkCustomer": true,
+     "aiSuggest": true
+    },
     "replyWindowEndsAt": "2026-11-03T03:00:00.000Z"
    },
    "messages": [
@@ -1681,7 +1749,15 @@
     ],
     "tags": [
      "ดีล"
-    ]
+    ],
+    "can": {
+     "reply": true,
+     "assign": true,
+     "setStatus": true,
+     "linkCustomer": true,
+     "aiSuggest": true
+    },
+    "replyWindowEndsAt": null
    },
    "messages": [
     {
@@ -1867,7 +1943,7 @@
    "linkedMember": {
     "id": "mem1",
     "name": "คุณสมชาย",
-    "phone": "0810005678"
+    "phoneMasked": "081-xxx-5678"
    },
    "helpers": [
     {
@@ -1960,18 +2036,18 @@
     "message": "เบอร์นี้เป็นพนักงานของร้านอยู่แล้ว"
    }
   },
-  "POST /api/mobile/inbox/conversations/x1/task": {
-   "__status": 404,
-   "__body": {
-    "error": "not_configured",
-    "message": "ร้านยังไม่ได้เปิด \"สร้างงานจากแชท\" — เปิดได้ที่ตั้งค่าแชทบนเว็บ"
-   }
-  },
   "POST /api/mobile/inbox/conversations/x9/reply": {
    "__status": 422,
    "__body": {
     "error": "invalid",
     "message": "ช่องทางนี้ตอบได้ภายใน 24 ชม. หลังลูกค้าทักล่าสุด"
+   }
+  },
+  "PUT /api/mobile/secretary/access": {
+   "__status": 422,
+   "__body": {
+    "error": "refused",
+    "message": "ระดับนี้ยังเปิดไม่ได้ในรุ่นนี้"
    }
   }
  }

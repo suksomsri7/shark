@@ -222,13 +222,15 @@ const styles = StyleSheet.create({
 
 /** S2.14 F3: รูปของลูกค้า — พื้นรอ = surface กลาง + ไอคอนรูป (ไม่ใช่สีของพิกเซลรูป) · รูปโหลดได้ทับเต็มกรอบ · โหลดไม่ได้ = คงพื้นรอ
  *  (เดิม: Image เปล่าบนพื้น chip.bg — fixture เป็น PNG 1×1 สีเขียว #00ff00 โปร่ง 50% ถูกยืดเต็มกรอบด้วย resizeMode cover ⇒ กล่องเขียวสด) */
+// R-S2.14l: โหลดรูปจากเครื่องอื่นเฉพาะ url ที่ผ่าน isSafeLink (https) — ไม่ผ่าน (data:/http:/javascript: ฯลฯ) = กรอบไอคอนรูปอย่างเดียว
 function ImageAtt({ url }: { url: string }) {
   const { c } = useTheme();
   const [failed, setFailed] = useState(false);
+  const safe = isSafeLink(url);
   return (
     <View style={[styles.img, { backgroundColor: c.surface, borderColor: c.divider, borderWidth: 1 }]}>
       <Icon name="image" size={26} color={c.iconDim} />
-      {failed ? null : <Image source={{ uri: url }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setFailed(true)} />}
+      {failed || !safe ? null : <Image source={{ uri: url }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setFailed(true)} />}
     </View>
   );
 }

@@ -1,6 +1,7 @@
 // S2.14 สถานะโหลด/ล้มของจอ S2 (ใบ S2.14 งาน 1 · ภาพสถานะ qc/shots-sec/s2.14-states)
 //   <Loading testID> = ตัวหมุน + "กำลังโหลด…" (ก่อนผลแรกมาถึง — ห้ามแสดงข้อความ "ว่าง/ไม่มี" ระหว่างนี้)
 //   <LoadError testID onRetry> = ข้อความล้ม (ไม่โทษผู้ใช้) + ปุ่มลองใหม่ `${testID}-retry` (ไม่ส่ง onRetry = ไม่มีปุ่ม · จอที่ poll เองอยู่แล้ว)
+//   <LoadError testID denied> = การ์ดล็อก 403 (ไอคอนกุญแจ + "บัญชีนี้ยังไม่มีสิทธิ์ส่วนนี้" · ไม่มีปุ่มลองใหม่ — ลองซ้ำก็ได้ 403 เดิม) · ทุกจอใช้ตัวเดียวกัน (R-S2.14 รอบ 2)
 import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { useT } from "@/src/i18n";
@@ -19,14 +20,14 @@ export function Loading({ testID, label, style }: { testID: string; label?: stri
   );
 }
 
-export function LoadError({ testID, onRetry, message, style }: { testID: string; onRetry?: () => void; message?: string | null; style?: StyleProp<ViewStyle> }) {
+export function LoadError({ testID, onRetry, message, denied = false, style }: { testID: string; onRetry?: () => void; message?: string | null; denied?: boolean; style?: StyleProp<ViewStyle> }) {
   const { c } = useTheme();
   const t = useT();
   return (
     <View testID={testID} style={[glassStyle(c, radii.sugg), styles.err, style]}>
-      <Icon name="wifi-off" size={20} color={c.warn.fg} />
-      <Text style={[styles.errT, { color: c.text }]}>{message || t("sec.state.error")}</Text>
-      {onRetry ? (
+      <Icon name={denied ? "lock" : "wifi-off"} size={20} color={denied ? c.textMuted : c.warn.fg} />
+      <Text style={[styles.errT, { color: c.text }]}>{message || t(denied ? "sec.state.denied" : "sec.state.error")}</Text>
+      {onRetry && !denied ? (
         <Pressable testID={`${testID}-retry`} onPress={onRetry} accessibilityRole="button" style={[styles.retry, { backgroundColor: c.accent }]}>
           <Text style={[styles.retryT, { color: c.onAccent }]}>{t("sec.state.retry")}</Text>
         </Pressable>

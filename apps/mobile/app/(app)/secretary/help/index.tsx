@@ -10,13 +10,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, Icon, InputBar, Loading, Note, SectionLabel } from "@/src/components/airy";
+import { AiryScreen, Chip, Glass, Icon, InputBar, LoadError, Loading, Note, SectionLabel } from "@/src/components/airy";
 import { SecTopBar } from "@/src/components/secretary/SecTopBar";
 import { CaseRow } from "@/src/components/secretary/CaseRow";
 import { AttachedRow, useHelpAttach } from "@/src/components/secretary/HelpAttach";
 import { ApiError } from "@/src/api/client";
 import {
   helpSubjectBody,
+  isDenied,
   normalizeHelpCases,
   normalizeRoomDetail,
   secGet,
@@ -54,6 +55,8 @@ export default function SecretaryHelpScreen() {
 
   const [items, setItems] = useState<HelpCaseRow[] | null>(null);
   const [offline, setOffline] = useState(false);
+  // R-S2.14h: 403 ⇒ การ์ดล็อก (รายการเรื่อง) · ช่องเปิดเรื่องใหม่ยังใช้ได้ตามสิทธิ์ของ POST
+  const [denied, setDenied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [category, setCategory] = useState<HelpCategory | null>(fromRoom ? "secretary_wrong" : null);
   const [roomId, setRoomId] = useState<string | null>(fromRoom);
@@ -71,8 +74,10 @@ export default function SecretaryHelpScreen() {
       const r = await secGet("secretary/support/cases");
       setItems(normalizeHelpCases(r));
       setOffline(false);
-    } catch {
-      setOffline(true);
+      setDenied(false);
+    } catch (e) {
+      if (isDenied(e)) setDenied(true);
+      else setOffline(true);
       setItems((cur) => cur ?? []);
     }
     setNowMs(Date.now());
@@ -173,9 +178,11 @@ export default function SecretaryHelpScreen() {
 
           <SectionLabel style={styles.sec}>{t("help.myCases")}</SectionLabel>
           {items === null ? <Loading testID="help-loading" /> : null}
-          {items && list.length === 0 ? (
+          {denied ? <LoadError testID="help-denied" denied /> : null}
+          {offline && list.length === 0 && !denied ? <LoadError testID="help-error" message={t("help.offline")} onRetry={() => void load()} /> : null}
+          {items && list.length === 0 && !offline && !denied ? (
             <Note testID="help-empty" style={styles.empty}>
-              {offline ? t("help.offline") : t("help.empty")}
+              {t("help.empty")}
             </Note>
           ) : null}
           <View style={styles.rows}>

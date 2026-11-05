@@ -40,6 +40,12 @@ export function authErrorCode(e: unknown): string {
   return e.code || "error";
 }
 
+/** S2.14 รอบ 2 (R-S2.14i): ยืนยันรหัสล้มแบบชั่วคราว (เน็ต · เซิร์ฟเวอร์ ≥ 500 ยกเว้น 503 sms_unavailable) ⇒ คงรหัสที่พิมพ์ไว้ให้กด "ยืนยัน" ซ้ำ ·
+ *  รหัสผิด/หมดอายุ/ล็อก (4xx) ⇒ ล้างให้พิมพ์ใหม่ — ใช้ร่วม OTP · ผูกเบอร์ · ยืนยันอีเมล */
+export function keepCodeOnError(e: unknown): boolean {
+  return !(e instanceof ApiError) || (e.status >= 500 && e.status !== 503);
+}
+
 /** รหัสเหตุผล → คีย์ i18n (auth.*) ที่จอแสดง · ไม่รู้จัก ⇒ ข้อความกลาง */
 export function authErrorKey(code: string): I18nKey {
   switch (code) {

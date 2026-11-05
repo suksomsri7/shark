@@ -8,11 +8,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, IconBtn, Loading } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, IconBtn, LoadError, Loading } from "@/src/components/airy";
 import { ScheduleSheet, hh, type ScheduleDraft, type ScheduleIds } from "@/src/components/secretary/ScheduleSheet";
 import { ApiError } from "@/src/api/client";
 import {
   DEFAULT_SECRETARY_NAME,
+  isDenied,
   nextRunOf,
   normalizeTasks,
   secDeleteId,
@@ -70,6 +71,8 @@ export default function SecretaryScheduledScreen() {
   const [items, setItems] = useState<TaskRow[] | null>(null);
   const [max, setMax] = useState(DEFAULT_MAX);
   const [offline, setOffline] = useState(false);
+  // R-S2.14h: 403 = การ์ดล็อก (LoadError denied) แทนรายการ/ข้อความออฟไลน์
+  const [denied, setDenied] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [editor, setEditor] = useState<Editor>(null);
   const [busy, setBusy] = useState(false);
@@ -90,8 +93,15 @@ export default function SecretaryScheduledScreen() {
       const m = Math.floor(Number(r?.max));
       setMax(Number.isFinite(m) && m > 0 ? m : DEFAULT_MAX);
       setOffline(false);
+      setDenied(false);
       setNowMs(Date.now());
-    } catch {
+    } catch (e) {
+      if (isDenied(e)) {
+        setDenied(true);
+        setOffline(false);
+        setItems([]);
+        return;
+      }
       setOffline(true);
       setItems((x) => x ?? []);
     }
@@ -240,7 +250,8 @@ export default function SecretaryScheduledScreen() {
 
         {/* S2.14: ก่อนผลแรก = Loading */}
         {items === null ? <Loading testID="sec-sched-loading" /> : null}
-        {items && list.length === 0 && !offline ? (
+        {denied ? <LoadError testID="sec-sched-denied" denied /> : null}
+        {items && list.length === 0 && !offline && !denied ? (
           <Glass testID="sec-sched-empty" style={styles.empty}>
             <Icon name="clock" size={26} color={c.textMuted} />
             <Text style={[styles.emptyT, { color: c.text }]}>{t("sec.sched.empty")}</Text>
@@ -281,11 +292,8 @@ export default function SecretaryScheduledScreen() {
         </View>
 
         {list.length > 0 ? <Text style={[styles.note, { color: c.textMuted }]}>{t("sec.sched.note")}</Text> : null}
-        {offline ? (
-          <Pressable testID="sec-sched-retry" accessibilityRole="button" onPress={() => void load()} style={styles.retry}>
-            <Text style={[styles.note, { color: c.textMuted }]}>{t("sec.sched.offline")}</Text>
-          </Pressable>
-        ) : null}
+        {/* R-S2.14h: การ์ดล้มตัวเดียวกับทุกจอ (เดิม: ข้อความกดได้ sec-sched-retry) */}
+        {offline ? <LoadError testID="sec-sched-error" message={t("sec.sched.offline")} onRetry={() => void load()} /> : null}
       </ScrollView>
 
       {flash ? (

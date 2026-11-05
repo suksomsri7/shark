@@ -185,7 +185,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | /login | `app/login.tsx` | S1 (เข้าสู่ระบบ) | – | POST auth/sms/request → /otp · POST auth/otp (อีเมล) + ยืนยันรหัส · Apple/Google/LINE เดิม · → /signup | login (ข้อความผิดพลาดในจอ) |
 | /signup | `app/signup.tsx` | S1 (สมัคร) | – | POST auth/sms/request {phone} → /otp?mode=signup · → /login | signup |
 | /otp | `app/otp.tsx` | S2 (OTP) | – | POST auth/sms/verify {phone, code, name?, email?} → signIn · POST auth/sms/request (ส่งใหม่) | otp-sms-unavailable · otp-no-account |
-| /phone | `app/phone.tsx` | ผูกเบอร์ (หลังเข้าระบบด้วยอีเมล/Apple) | – | POST auth/sms/request · POST me/phone (ผูก) · ออกจากระบบ | phone (ข้อความผิดพลาด · ลองใหม่) |
+| /phone | `app/phone.tsx` | ผูกเบอร์ (หลังเข้าระบบด้วยอีเมล/Apple) | – | POST auth/sms/request · POST auth/phone/link {phone, code} (ผูก) → GET /api/mobile/me ใหม่ · ออกจากระบบ | phone (ข้อความผิดพลาด · ลองใหม่) |
 - แถบบน (ทุกหน้ารากโซน · R-S2.13a): `GET secretary/badges` เส้นเดียว (S2.14 · approvals · customers · team.invites+help+support) โหลดตอน focus/foreground + หลัง action (`scheduleZoneBadges`)
 - push (S2.6/S2.20): `data.link` `/customers/<id>` หรือ `/inbox/<id>` ⇒ `/customers/<id>?s=<data.systemId>&e=<เหตุ>` · ลิงก์ห้องงาน/เคส ⇒ path ตรง · `data.tenantId` ต่างร้าน ⇒ switchTenant ก่อน
 

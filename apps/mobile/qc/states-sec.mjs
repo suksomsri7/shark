@@ -89,6 +89,8 @@ function makeCases(base) {
     "POST /api/mobile/secretary/staff/invite": fail(409, "already_member", "เบอร์นี้เป็นพนักงานของร้านอยู่แล้ว"),
     "POST /api/mobile/inbox/conversations/x1/task": fail(404, "not_configured", "ร้านยังไม่ได้เปิด \"สร้างงานจากแชท\" — เปิดได้ที่ตั้งค่าแชทบนเว็บ"),
     "POST /api/mobile/inbox/conversations/x9/reply": fail(422, "invalid", "ช่องทางนี้ตอบได้ภายใน 24 ชม. หลังลูกค้าทักล่าสุด"),
+    "GET /api/mobile/secretary/access": JSON.parse(readFileSync(join(FIX, "s2.7.json"), "utf8")).endpoints["GET /api/mobile/secretary/access"],
+    "PUT /api/mobile/secretary/access": fail(422, "refused", "ระดับนี้ยังเปิดไม่ได้ในรุ่นนี้"),
   };
   const cases = [
     { fixture: "s2.2.json", route: "/secretary", path: ["sec-home-search=zzqqxx"] },
@@ -101,6 +103,8 @@ function makeCases(base) {
     { fixture: "s2.14-cases.json", route: "/secretary/help?roomId=r1", path: [] },
     { fixture: "s2.14-cases.json", route: "/secretary/help", path: ["help-home-attach@file"] },
     { fixture: "s2.14-cases.json", route: "/secretary/settings/account", path: [] },
+    // บันทึกระดับล้ม (422) ⇒ ข้อความ sec-access-note
+    { fixture: "s2.14-cases.json", route: "/secretary/settings/access", path: ["sec-access-level-pos-READ"] },
     { fixture: "s2.14-cases.json", route: "/secretary/staff/invite", path: ["inv-phone=0212345678"] },
     { fixture: "s2.14-cases.json", route: "/customers", path: [] },
     { fixture: "s2.14-cases.json", route: "/customers/x2", path: [] },
@@ -121,7 +125,7 @@ function makeCases(base) {
     { fixture: "s2.14-cases-auth.json", route: "/login", path: ["login-email-toggle", "login-email=qc@example.com", "login-email-request", "wait:61500"] },
     { fixture: "s2.14-cases-auth.json", route: "/otp?phone=0812345678&mode=login", path: ["otp-input=123456"] },
     { fixture: "s2.14-cases-auth.json", route: "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co", path: [] },
-    { fixture: "s2.14-cases-auth.json", route: "/otp?phone=0812345678&mode=login&resend=1", path: ["wait:1500", "otp-resend"] },
+    { fixture: "s2.14-cases-auth.json", route: "/otp?phone=0812345678&mode=login&resend=1", path: ["wait:1500"] },
     { fixture: "s2.14-cases-auth.json", route: "/phone", path: [] },
     { fixture: "s2.14-cases-phone.json", route: "/phone", path: ["phone-input=0812345678", "phone-request"] },
     { fixture: "s2.14-cases-phone.json", route: "/phone", path: ["phone-input=0812345678", "phone-request", "phone-otp=123456", "wait:1500"] },
@@ -196,6 +200,48 @@ const server = await serveDist(join(COPY, "dist"), PORT);
 const BASE = `http://127.0.0.1:${PORT}`;
 const name = (r) => r.replace(/^\/+|\/+$/g, "").replace(/[^A-Za-z0-9_]+/g, "-") || "index";
 const out = [];
+/** testID สถานะที่ต้องเห็นต่อจอต่อสถานะ (regex) · null = ไม่ใช้กับจอนี้ (เหตุผลใน NA) */
+const L = (p) => new RegExp(`^(${p})-loading$`);
+const ER = (p) => new RegExp(`^(${p})-(error|offline)$`);
+const DN = (p) => new RegExp(`^(${p})-(denied|error)$|^(${p})-gone$`);
+const EX = {
+  "/secretary": ["sec-home", /^sec-home-(empty|nomatch)$/],
+  "/secretary/room/r1": ["sec-room", /^sec-room-gone$/],
+  "/secretary/inbox": ["sec-inbox", /^sec-inbox-empty$/],
+  "/secretary/scheduled": ["sec-sched", /^sec-sched-empty$/],
+  "/secretary/staff": ["sec-staff", /^sec-staff-empty$/],
+  "/secretary/staff/m1": ["perm", /^perm-missing$/],
+  "/secretary/settings/access": ["sec-access", /^sec-access-(empty|note)$/],
+  "/secretary/settings/rules": ["sec-rules", null],
+  "/secretary/settings/log": ["sec-log", /^sec-log-empty$/],
+  "/secretary/settings/knowledge": ["sec-know", /^sec-know-(facts|lessons)-empty$/],
+  "/secretary/settings/customers": ["sec-cust|cust-set", null],
+  "/secretary/settings/quota": ["sec-quota", null],
+  "/secretary/settings/secretary": ["sec-me", null],
+  "/secretary/help": ["help", /^help-empty$/],
+  "/secretary/help/c1": ["help-case", /^help-gone$/],
+  "/customers": ["cust", /^cust-empty$/],
+  "/customers/x1": ["cust-room", /^cust-room-gone$/],
+  "/customers/x1/info": ["cust-info", /^cust-info-gone$/],
+};
+const EXPECT = Object.fromEntries(Object.entries(EX).map(([r, [p, empty]]) => [r, { loading: L(p), error: ER(p), denied: DN(p), empty }]));
+const FORM = "ฟอร์มกรอก/จอเมนู — ไม่มีรายการให้โหลด (ค่าที่โหลดได้แสดงเมื่อมา · ล้ม = ฟอร์มเปล่าใช้งานได้)";
+const NA = {
+  "/secretary/new": { loading: FORM, empty: FORM, error: FORM, denied: FORM },
+  "/secretary/settings": { loading: FORM, empty: FORM, error: FORM, denied: FORM },
+  "/secretary/onboarding/name": { loading: FORM, empty: FORM, error: FORM, denied: FORM },
+  "/business/new": { loading: FORM, empty: FORM, error: FORM, denied: FORM },
+  "/secretary/staff/invite": { loading: FORM, empty: FORM },
+  "/secretary/settings/account": { loading: FORM, empty: FORM },
+};
+for (const r of Object.keys(NA)) EXPECT[r] = { loading: null, empty: null, error: null, denied: null, ...(EXPECT[r] ?? {}) };
+for (const [r, v] of Object.entries(EX)) if (v[1] === null) { NA[r] = { ...(NA[r] ?? {}), empty: "ค่าตั้ง (ไม่มีรายการว่าง)" }; EXPECT[r].empty = null; }
+EXPECT["/secretary/staff/invite"].error = /^inv-(error|denied)$/;
+EXPECT["/secretary/staff/invite"].denied = /^inv-(denied|error)$/;
+EXPECT["/secretary/settings/account"].error = /^acct-error$/;
+// G4: 403 ของ notify/inbox ⇒ ไม่มีสิทธิ์แชท = แถวเวรขึ้น "ตอบลูกค้าไม่ได้" (ไม่ใช่ล้ม) · ข้อมูลหลักมาจาก /me
+EXPECT["/secretary/settings/account"].denied = null;
+NA["/secretary/settings/account"].denied = "403 ของ notify/shift = ไม่มีสิทธิ์แชท ⇒ แถวเวร \"ตอบลูกค้าไม่ได้\" · ข้อมูลบัญชีมาจาก /me (โหลดได้)";
 const { browser, close } = await launch("states");
 try {
   for (const st of STATES.filter((s) => !process.env.ONLY_STATE || s === process.env.ONLY_STATE)) {
@@ -207,7 +253,12 @@ try {
       const file = join(OUT, st, `${name(route)}.png`);
       await page.screenshot({ path: file });
       const texts = String(await page.evaluate(() => document.body.innerText).catch(() => "")).replace(/\s+/g, " ").slice(0, 400);
-      out.push({ state: st, route, file: file.slice(M.length + 1), ok: log.errors.length === 0 && log.unmocked.length === 0, errors: log.errors, unmocked: log.unmocked, texts });
+      // R-S2.14h: ok = ไม่มี pageerror/unmocked และ "เห็น testID สถานะของจอนั้นจริง" (ตาราง EXPECT · null = จอไม่มีข้อมูลให้โหลดในสถานะนั้น พร้อมเหตุผล)
+      const ids = await page.evaluate(() => [...document.querySelectorAll("[data-testid]")].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.left >= 0 && r.left < window.innerWidth; }).map((e) => e.getAttribute("data-testid")));
+      const want = EXPECT[route]?.[st];
+      const seenState = want === null || want === undefined ? null : ids.find((x) => want.test(x)) ?? null;
+      const stateOk = want === null ? true : !!seenState;
+      out.push({ state: st, route, file: file.slice(M.length + 1), ok: log.errors.length === 0 && log.unmocked.length === 0 && stateOk, expect: want ? String(want) : (NA[route]?.[st] ?? "n/a"), seen: seenState, errors: log.errors, unmocked: log.unmocked, texts });
       await page.close();
     }
     // แผ่นรวม 6 จอ/แผ่น (ImageMagick montage)
