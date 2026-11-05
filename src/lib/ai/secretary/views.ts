@@ -36,7 +36,7 @@ async function accessOf(tenantId: string): Promise<AccessMap | null> {
  *   ข้อเสนอที่ยังเตรียมเนื้อ (`resultNote` WORKING#) = canApprove false
  */
 export async function pendingItemsFor(v: Viewer, conversationId: string) {
-  const [props, plans, access, pool] = await Promise.all([
+  const [props, plans, access, { hasRoom, pool }] = await Promise.all([
     listPendingProposals(v.conv, conversationId),
     listPendingPlans(v.conv, conversationId),
     accessOf(v.tenantId),
@@ -53,8 +53,10 @@ export async function pendingItemsFor(v: Viewer, conversationId: string) {
     const working = typeof p.resultNote === "string" && p.resultNote.startsWith("WORKING#");
     if (access && !working && kindAllowedByAccess(access, p.kind).ok) {
       const g = await approvalGate(v.tenantId, v.m, { kind: p.kind, conversationId: p.conversationId, payload: p.payload }, v.userId);
-      // ห้องเลขา (ผู้เรียกส่งเฉพาะบทสนทนาที่มี AiRoom) ⇒ approvalGate = OWNER/MANAGER + membershipCan ของ kind (เหมือน inbox.ts)
-      canApprove = g.ok;
+      // ห้องเลขา ⇒ approvalGate = OWNER/MANAGER + membershipCan ของ kind (เหมือน inbox.ts) ·
+      //   N4: บทสนทนาที่ไม่มี AiRoom approvalGate ผ่านเสมอ ⇒ ต้องผ่าน membershipCan ของ kind ด้วย (ความจริงเดียวกับ executeProposal/assertCan)
+      const q = kindAccessOf(p.kind);
+      canApprove = g.ok && (hasRoom || (!!q && membershipCan(v.m, q, v.userId)));
       why = g.ok ? g.why : undefined;
     }
     pItems.push({ ...proposalDto(p, why), canApprove, approvers: approversOf([p.kind]) });
@@ -137,22 +139,23 @@ async function logLinks(tenantId: string, rows: AiActionLog[]): Promise<Map<stri
  * ผู้ที่อนุมัติข้อเสนอในห้องนี้ได้ (R-S1.14j · การ์ด "รอใครอนุมัติ") — OWNER ทุกคน + MANAGER ที่เป็นผู้เปิด/สมาชิกห้อง (R-K4 · มองเห็นห้อง)
  *   Membership ที่รับแล้วของร้าน · ผู้เรียกกรองต่อด้วย `membershipCan` ของ kind + ระดับเลขา (กติกาเดียวกับ approvalGate)
  */
-async function approverPool(tenantId: string, conversationId: string): Promise<{ userId: string; name: string; m: MembershipCtx }[]> {
+async function approverPool(tenantId: string, conversationId: string): Promise<{ hasRoom: boolean; pool: { userId: string; name: string; m: MembershipCtx }[] }> {
   const room = await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId }, select: { startedById: true, members: { select: { userId: true } } } });
-  if (!room) return [];
+  if (!room) return { hasRoom: false, pool: [] };
   const inRoom = new Set([room.startedById, ...room.members.map((x) => x.userId)]);
   const rows = await prisma.membership.findMany({
     where: { tenantId, acceptedAt: { not: null }, role: { in: ["OWNER", "MANAGER"] } },
     select: { userId: true, role: true, unitAccess: true, permissions: true, user: { select: { name: true, email: true } } },
     orderBy: { createdAt: "asc" },
   });
-  return rows
+  const pool = rows
     .filter((r) => r.role === "OWNER" || inRoom.has(r.userId))
     .map((r) => ({
       userId: r.userId,
       name: r.user?.name?.trim() || "สมาชิก",
       m: { role: r.role, unitAccess: Array.isArray(r.unitAccess) ? (r.unitAccess as string[]) : [], permissions: (r.permissions ?? {}) as Record<string, unknown> },
     }));
+  return { hasRoom: true, pool };
 }
 
 /** ผู้เรียกอนุมัติข้อเสนอนี้ได้ไหม (dry-run เดียวกับ pendingItemsFor) — ด่านของเส้นแก้ก่อนอนุมัติ (R-S1.14i) · มองไม่เห็น/ไม่ PENDING = null */

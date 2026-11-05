@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   const items = rows.map((r) =>
     "pending" in r
       ? { pending: true as const, inviteId: r.inviteId, name: r.name, phoneMasked: r.phoneMasked, role: r.role, units: unitsOf(r.unitAccess), expiresAt: r.expiresAt, expired: r.expired }
-      : { pending: false as const, membershipId: r.membershipId, userId: r.userId, name: r.name, active: r.active, joinedAt: r.joinedAt, me: r.userId === a.c.userId, ...staffViewOf(r), units: unitsOf(r.unitAccess), allUnits: r.unitAccess.includes("*") },
+      : { pending: false as const, membershipId: r.membershipId, userId: r.userId, name: r.name, active: r.active, joinedAt: r.joinedAt, me: r.userId === a.c.userId, ...staffViewOf(r), units: unitsOf(r.unitAccess), allUnits: r.unitAccess.includes("*") || r.role === "OWNER" },
   );
   return ok({ items });
 }

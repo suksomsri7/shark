@@ -60,6 +60,11 @@ async function limited(w: Web, route: string, perMinute = 30): Promise<Fail | nu
   return r.ok ? null : { ok: false, error: "rate_limited", message: "ทำรายการถี่เกินไป รอสักครู่แล้วลองใหม่", retryAfterSec: r.retryAfterSec ?? 60 };
 }
 const READ = 60;
+/** เส้นระดับผู้ใช้ (ไม่ผูกร้าน) — คีย์ `sec:<route>:<userId>` เดียวกับ route (secretary · inbox) ⇒ ถังเดียวกัน (N2) */
+async function limitedUser(w: Web, route: string, perMinute = 30): Promise<Fail | null> {
+  const r = await checkRateLimitDb(`sec:${route}:${w.userId}`, { limit: perMinute, windowMs: 60_000 });
+  return r.ok ? null : { ok: false, error: "rate_limited", message: "ทำรายการถี่เกินไป รอสักครู่แล้วลองใหม่", retryAfterSec: r.retryAfterSec ?? 60 };
+}
 function failOf(e: unknown): Fail {
   if (e instanceof ForbiddenError) return { ok: false, error: "forbidden", message: "บัญชีนี้ยังไม่มีสิทธิ์ทำรายการนี้ — ขอสิทธิ์จากเจ้าของกิจการ" };
   if (e instanceof Error && THAI.test(e.message) && !/prisma/i.test(e.message)) return { ok: false, error: "invalid", message: e.message.slice(0, 300) };
@@ -86,7 +91,7 @@ export async function secGetSecretaryAction() {
 }
 export async function secUpdateSecretaryAction(patch: Record<string, unknown>) {
   const w = await web();
-  const lim = await limited(w, "secretary");
+  const lim = await limitedUser(w, "secretary");
   if (lim) return lim;
   try {
     const clean = normalizeIdentityPatch(patch ?? {});
@@ -338,7 +343,7 @@ export async function secListFrequentAction(take = 5) {
 }
 export async function secListInboxAction(opts?: { tenantId?: string; kind?: "proposal" | "plan" }) {
   const w = await web();
-  const lim = await limited(w, "inbox", READ);
+  const lim = await limitedUser(w, "inbox", READ);
   if (lim) return lim;
   return (await inboxForUser(w.userId, opts)).map(dto.inboxItemDto);
 }

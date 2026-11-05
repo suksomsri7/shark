@@ -15,7 +15,7 @@ const PostBody = z
     title: z.string().max(200).optional(),
     systems: z.array(z.string().max(40)).max(20).optional(),
     context: z.object({ chatConversationId: Id.optional(), contactId: Id.optional() }).strict().optional(),
-    clientMessageId: Id.optional(),
+    clientMessageId: Id.refine((v) => !v.includes(":"), "clientMessageId ห้ามมี :").optional(),
   })
   .strict();
 
@@ -55,6 +55,7 @@ export async function POST(req: Request) {
     if (!room) return fail(409, "pending", "กำลังเปิดห้องงานนี้อยู่ ลองใหม่อีกครั้ง");
     return ok({ duplicate: true, roomId: room.id, conversationId: room.conversationId });
   }
+  let created = false; // N1: ห้องเกิดแล้ว ⇒ ห้ามคืน claim (retry ต้องได้ห้องเดิม ไม่ใช่ห้องที่สอง)
   try {
     const r = await startRoom(a.c.conv, input);
     if (!r.ok) {
@@ -63,12 +64,13 @@ export async function POST(req: Request) {
       if (r.error === "actor") return fail(403, "forbidden", r.message);
       return fail(400, r.error === "empty" ? "empty" : "invalid", r.message);
     }
+    created = true;
     await claim?.remember(r.roomId);
     const job = await enqueueRoomJob(a.c.tenantId, r.roomId, r.messageId, a.c.userId);
     await runAfter(() => runRoomJobs());
     return ok({ roomId: r.roomId, conversationId: r.conversationId, messageId: r.messageId, jobId: job.id, jobsUsed: r.jobsUsed, jobsLimit: r.jobsLimit });
   } catch (e) {
-    await claim?.release();
+    if (!created) await claim?.release();
     return thrown(e, "rooms.post");
   }
 }

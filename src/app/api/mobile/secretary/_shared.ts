@@ -179,8 +179,8 @@ export const cursorOf = (at: Date, id: string) => `${at.toISOString()}|${id}`;
 
 /**
  * กันเปิดห้องซ้ำ (R-S1.14a) — `POST rooms` ที่แอป retry ด้วย clientMessageId เดิม
- *   claim `sec:cmid:<ร้าน>:new:<ผู้ใช้>:<id>` (คำสั่งเดียว · 24 ชม.) ก่อน startRoom · สำเร็จแล้วจดห้องไว้ที่ `<claim>:room:<roomId>`
- *   ซ้ำ ⇒ อ่านห้องจากกุญแจที่จดไว้ (ยังสร้างไม่เสร็จ = `pending` ให้แอปลองใหม่) · หนี้ S3: คอลัมน์ clientMessageId (secretary_c)
+ *   claim `sec:cmid:<ร้าน>:new:<ผู้ใช้>:<id>` (คำสั่งเดียว · 24 ชม. · id ห้ามมี ":") ก่อน startRoom · สำเร็จแล้วจดห้องที่แถวกุญแจตรง `<claim>:room`
+ *   (รหัสห้องเก็บในคอลัมน์ id ของแถว = `sr_<roomId>` — ตารางนี้ไม่มีช่องค่า) · ซ้ำ ⇒ อ่านแถวด้วยกุญแจตรง (ยังสร้างไม่เสร็จ = `pending`) · หนี้ S3: คอลัมน์ clientMessageId (secretary_c)
  */
 export async function claimNewRoom(tenantId: string, userId: string, clientMessageId: string) {
   const key = `sec:cmid:${tenantId}:new:${userId}:${clientMessageId}`;
@@ -189,10 +189,10 @@ export async function claimNewRoom(tenantId: string, userId: string, clientMessa
     first: r.ok,
     release: async () => void (await prisma.chatRateBucket.deleteMany({ where: { key } }).catch(() => {})),
     remember: async (roomId: string) =>
-      void (await prisma.chatRateBucket.create({ data: { key: `${key}:room:${roomId}`, count: 1, windowStart: new Date() } }).catch(() => {})),
+      void (await prisma.chatRateBucket.create({ data: { id: `sr_${roomId}`, key: `${key}:room`, count: 1, windowStart: new Date() } }).catch(() => {})),
     existingRoomId: async (): Promise<string | null> => {
-      const row = await prisma.chatRateBucket.findFirst({ where: { key: { startsWith: `${key}:room:` } }, select: { key: true } });
-      return row ? row.key.slice(`${key}:room:`.length) || null : null;
+      const row = await prisma.chatRateBucket.findUnique({ where: { key: `${key}:room` }, select: { id: true } });
+      return row && row.id.startsWith("sr_") ? row.id.slice(3) || null : null;
     },
   };
 }

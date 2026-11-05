@@ -205,7 +205,9 @@ export async function editProposal(
   if (changed.length > 0) {
     const show = (v: unknown) => oneLine(typeof v === "string" ? v : JSON.stringify(v) ?? "", 40);
     const note = ` (แก้แล้ว: ${changed.slice(0, 5).map((k) => `${k}=${show(merged[k])}`).join(" · ")}${changed.length > 5 ? " …" : ""})`;
-    const base = (summary ?? row.summary).replace(/ \(แก้แล้ว: [^()]*\)$/, "");
+    const cur = summary ?? row.summary;
+    const cut = cur.lastIndexOf(" (แก้แล้ว: ");
+    const base = cut >= 0 ? cur.slice(0, cut) : cur; // N3: ตัดวงเล็บของการแก้ครั้งก่อนทิ้งเสมอ (แก้ซ้ำ = ไม่ซ้อน)
     summary = `${base.slice(0, Math.max(0, SUMMARY_MAX - note.length))}${note}`;
   }
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
