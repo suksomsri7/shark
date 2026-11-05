@@ -172,9 +172,9 @@ try {
   console.log("── W7: assist cap · ห้องเลขาผ่าน chat/send · ห้องปิด ──");
   {
     const r = await newRoom("ห้องสำหรับ cap");
-    await prisma.aiCreditTxn.create({ data: { tenantId: tid, kind: "USAGE", source: "CHAT", amountMicro: -600_000, model: "scripted", note: "qc non-worker", conversationId: r.conversationId } as never });
+    await prisma.aiCreditTxn.create({ data: { tenantId: tid, kind: "USAGE", source: "CHAT", balanceAfter: 0, amountMicro: -600_000, model: "scripted", note: "qc non-worker", conversationId: r.conversationId } as never });
     const used1 = await credit.assistUsedMicroOfDay(tid);
-    await prisma.aiCreditTxn.create({ data: { tenantId: tid, kind: "USAGE", source: "CHAT", amountMicro: -700_000, model: "scripted", note: "room-worker:" + r.jobId, conversationId: r.conversationId } as never });
+    await prisma.aiCreditTxn.create({ data: { tenantId: tid, kind: "USAGE", source: "CHAT", balanceAfter: 0, amountMicro: -700_000, model: "scripted", note: "room-worker:" + r.jobId, conversationId: r.conversationId } as never });
     const used2 = await credit.assistUsedMicroOfDay(tid);
     chk("W7-1", "assistUsedMicroOfDay: แถวในห้องเลขาที่ไม่ใช่ worker ถูกนับ (≥600k) · แถว note room-worker: ไม่ถูกนับ (ไม่เพิ่ม)", used1.usedMicro >= 600_000 && used2.usedMicro === used1.usedMicro, JSON.stringify({ used1: used1.usedMicro, used2: used2.usedMicro }));
     const cs = await call("chat/send", "POST", { conversationId: r.conversationId, text: "แอบส่งผ่านทางเดิม" }, H);
@@ -220,7 +220,8 @@ try {
     chk("W10-1", "push ห้อง: กุญแจกันสแปมรวม jobId/messageId · claim ข้ามห้องที่มี RUNNING ที่ lease ยังไม่หมด", /(jobId|messageId)[^\n]{0,80}(dedupe|key|link)|(dedupe|key|link)[^\n]{0,80}(jobId|messageId)/.test(w) && /RUNNING[\s\S]{0,400}(roomId|notIn|NOT)/.test(w), "grep worker.ts");
   }
 } catch (e) {
-  console.log(`  💥 ${errMsg(e)}`); chk("CRASH", "ข้อสอบรันจบ", false, errMsg(e));
+  const detail = (e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : JSON.stringify(e)).slice(0, 400);
+  console.log(`  💥 ${detail}`); chk("CRASH", "ข้อสอบรันจบ", false, detail.slice(0, 200));
 } finally { await cleanup(); }
 
 console.log("── D: fitness ──");
