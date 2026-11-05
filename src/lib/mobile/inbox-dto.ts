@@ -65,16 +65,10 @@ export function conversationDto(
 export type InboxConversationCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean };
 /** ห้องในจอเธรด = รายการ + หน้าต่างตอบกลับ + ปุ่มที่กดได้ (S1.14b) */
 export type InboxConversationDetailDto = InboxConversationDto & {
-  /** ตอบได้ถึงเมื่อไร (ช่องทางที่มีหน้าต่าง เช่น FB/IG/WA = ข้อความลูกค้าล่าสุด + ชั่วโมงของช่องทาง) · LINE/WEBCHAT/ไม่มีข้อความลูกค้า = null */
+  /** ตอบได้ถึงเมื่อไร = `ChatConversation.replyWindowExpiresAt` (FB/IG/WA · R-S1.14b-e) · LINE/WEBCHAT = null */
   replyWindowEndsAt: string | null;
   can: InboxConversationCan;
 };
-
-/** สิ้นสุดหน้าต่างตอบกลับ (pure) — ช่องทางไม่มีหน้าต่าง (hours null) หรือยังไม่มีข้อความลูกค้า ⇒ null */
-export function replyWindowEndsAtOf(hours: number | null | undefined, lastInboundAt: Date | null | undefined): string | null {
-  if (hours == null || !Number.isFinite(hours) || hours <= 0 || !lastInboundAt) return null;
-  return new Date(lastInboundAt.getTime() + hours * 3_600_000).toISOString();
-}
 
 /** สมาชิกที่ผูกกับห้อง — เบอร์ปิดเลขกลางเสมอ (`maskPhone` ของโมดูลสมาชิก · ไม่มีเบอร์เต็มใน DTO · R-S2.17 ตั๋ว) */
 export type InboxLinkedMemberDto = { id: string; name: string | null; phoneMasked: string | null };

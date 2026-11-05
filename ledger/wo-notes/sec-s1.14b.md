@@ -55,3 +55,12 @@
 - oracle หลัง merge: forced #1 07:03Z / forced #2 07:03Z / unforced: `JSON_SUMMARY {"total":22,"passed":22,"failed":[],"skipped":[],"findings":[]}` exit 0 ×3 (cleanup ใน finally ของข้อสอบ)
 - fitness: มี env (qc-sec.sh) 53/53 exit 0 · `env -u DATABASE_URL` 53/53 exit 0
 - trailer commit: `Co-Authored-By: Claude <noreply@anthropic.com>` (ไม่มีชื่อโมเดล · R-S2.13e) — commit แรกแก้ข้อความด้วย amend ก่อน merge (ยังไม่ push)
+
+## 6. รอบ 2 (มติผู้คุม RESOLUTIONS §X · 860b424cb)
+- merge `session/secretary` @ 860b424cb (SHA ตรง · RESOLUTIONS §W.2/§X + ORACLE-EDIT `qc-sec-s1.14b.mts` STAFF ได้ `chat.ai.suggest`) → 190c38106 · ไม่ชน
+- **R-S1.14b-a** `…/[id]/ai-suggest/route.ts`: ด่าน `[AI_SUGGEST]` = `{ module:"chat", action:"chat.ai.suggest" }` (ค่าคงที่ในไฟล์ route — `chat/guard-keys.ts` ไม่มีคีย์นี้และห้ามแตะ chat/**) · S-3 (มีแค่ read) ยัง 403
+- **R-S1.14b-c** `inbox/_shared.ts` `limited()`: body + `retryAfterSec` (1 บรรทัด · header เดิม) · ทำเพิ่มในไฟล์ของใบ: ถัง 429 ของ `reply/route.ts` (ไม่ผ่าน `limited`) ใส่ `retryAfterSec` ด้วย ⇒ inbox/** รูป 429 เดียวกันทุกเส้น
+- **R-S1.14b-e** `[id]/route.ts`: `replyWindowEndsAt = isoOrNull(conversation.replyWindowExpiresAt)` · ลบ query ข้อความ IN + import adapter · ลบ `replyWindowEndsAtOf` ออกจาก inbox-dto.ts
+- docs: SECRETARY-API (ด่าน ai-suggest · replyWindowEndsAt · กติกา 429 ข้อ 3) · 31-secretary §7
+- ผล: `qc-sec-s1.14b` forced #1 `{"total":22,"passed":22,"failed":[],"skipped":[],"findings":[]}` exit 0 · forced #2 เหมือนกัน exit 0 · `qc-sec-s1.21` 19/19 exit 0 · `qc-chat-ai-suggest` 44/44 exit 0 · tsc เว็บ (heap 9000) exit 0 · 0 error · fitness มี env 53/53 · `env -u DATABASE_URL` 53/53
+- ข้อ Q2/Q4/export/PATH_ID/docs/shift/phoneMasked = ผู้คุมรับแล้ว (§X) · ส่งต่อ S2.14 ตาม §X

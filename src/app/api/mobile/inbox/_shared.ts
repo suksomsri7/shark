@@ -137,7 +137,7 @@ export async function limited(c: InboxCtx, name: string, perMinute: number): Pro
   const rl = await checkRateLimitDb(`mobile:inbox:${name}:${c.tenantId}:${c.userId}`, { limit: perMinute, windowMs: 60_000 });
   if (rl.ok) return null;
   return Response.json(
-    { error: "rate_limited", message: "ทำรายการถี่เกินไป รอสักครู่แล้วลองใหม่" },
+    { error: "rate_limited", message: "ทำรายการถี่เกินไป รอสักครู่แล้วลองใหม่", retryAfterSec: rl.retryAfterSec ?? 60 },
     { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
   );
 }

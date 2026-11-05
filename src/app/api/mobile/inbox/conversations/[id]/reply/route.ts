@@ -67,7 +67,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
   const rl = await checkRateLimitDb(`mobile:inbox:reply:${c.tenantId}:${c.userId}`, REPLY_RATE);
   if (!rl.ok) {
     return Response.json(
-      { error: "rate_limited", message: "ส่งถี่เกินไป รอสักครู่แล้วลองใหม่" },
+      { error: "rate_limited", message: "ส่งถี่เกินไป รอสักครู่แล้วลองใหม่", retryAfterSec: rl.retryAfterSec ?? 60 },
       { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
     );
   }

@@ -1,19 +1,12 @@
 // GET /api/mobile/inbox/conversations/[id] — เธรดห้องแชทลูกค้า (ห่อ `getThread` โหมด page · cursor คู่ `before=<iso>|<id>` · หน่วยอื่น = 404 · S1.21)
-//   S1.14b: conversation + `tags` · `replyWindowEndsAt` (ข้อความลูกค้าล่าสุด + ชั่วโมงของช่องทาง · LINE/WEBCHAT = null) · `can{}` ของผู้เรียก
+//   S1.14b: conversation + `tags` · `replyWindowEndsAt` (= คอลัมน์ `replyWindowExpiresAt` ของห้อง · FB/IG/WA · LINE/WEBCHAT = null · R-S1.14b-e) · `can{}` ของผู้เรียก
 //           linkedMember = `{ id, name, phoneMasked }` (maskPhone · ไม่มีเบอร์เต็ม — ตั๋ว R-S2.17)
-import type { ChatChannelType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { getLinkedMember, getThread } from "@/lib/modules/chat/service";
 import { listHelpers } from "@/lib/modules/chat/routing";
-import { getAdapter, isSupported } from "@/lib/modules/chat/adapter";
 import { maskPhone } from "@/lib/modules/member/profile";
-import { contactDto, conversationDto, messageDto, replyWindowEndsAtOf, type InboxConversationDetailDto, type InboxLinkedMemberDto } from "@/lib/mobile/inbox-dto";
+import { contactDto, conversationDto, isoOrNull, messageDto, type InboxConversationDetailDto, type InboxLinkedMemberDto } from "@/lib/mobile/inbox-dto";
 import { ASSIGN, can, convExtras, cursorOf, fail, gate, LINK_CUSTOMER, notFound, parseCursor, READ, REPLY, SET_STATUS, staffNames, systemOf, type RouteCtx } from "../../_shared";
-
-/** ชั่วโมงหน้าต่างตอบกลับของช่องทาง — ช่องทางที่ยังไม่มี adapter ⇒ null (ไม่เดา) */
-function windowHoursOf(channel: ChatChannelType): number | null {
-  return isSupported(channel) ? getAdapter(channel).capabilities.replyWindowHours : null;
-}
 
 const LIMIT_MAX = 100;
 
@@ -40,18 +33,9 @@ export async function GET(req: Request, ctx: RouteCtx) {
     ids.length ? tenantDb({ tenantId: c.tenantId, systemId: sid }).chatAttachment.findMany({ where: { tenantId: c.tenantId, systemId: sid, messageId: { in: ids } }, orderBy: { createdAt: "asc" }, select: { messageId: true, fileName: true, url: true, kind: true, mimeType: true, durationMs: true } }) : [],
     t.conversation.contact.customerId ? getLinkedMember(c.tenantId, t.conversation.contact.customerId) : null,
   ]);
-  const hours = windowHoursOf(t.conversation.channel);
-  // ช่องทางมีหน้าต่าง ⇒ ข้อความลูกค้าล่าสุด (ไม่นับบันทึกภายใน) · ไม่มีหน้าต่าง ⇒ ไม่ query
-  const lastIn = hours
-    ? await tenantDb({ tenantId: c.tenantId, systemId: sid }).chatMessage.findFirst({
-        where: { tenantId: c.tenantId, systemId: sid, conversationId: t.conversation.id, direction: "IN", isInternal: false },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: { createdAt: true },
-      })
-    : null;
   const conversation: InboxConversationDetailDto = {
     ...conversationDto(t.conversation, { now: new Date(), names, aiDraft: x.aiDraft.has(t.conversation.id), helpers: x.helpers.get(t.conversation.id) ?? [] }),
-    replyWindowEndsAt: replyWindowEndsAtOf(hours, lastIn?.createdAt),
+    replyWindowEndsAt: isoOrNull(t.conversation.replyWindowExpiresAt),
     can: { reply: can(c, REPLY), assign: can(c, ASSIGN), setStatus: can(c, SET_STATUS), linkCustomer: can(c, LINK_CUSTOMER) },
   };
   const linkedMember: InboxLinkedMemberDto | null = member
