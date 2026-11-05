@@ -267,3 +267,10 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 ### Y.2 รีวิว S1.14c ผู้ตรวจ Z — MERGE (6 พ.ย. ~10:3xZ)
 - MINOR-1 docs "แอปรับ /inbox/" — ถูกต้องหลัง S2.13 merge (push-register ของ S2.13 รับทั้งสองแบบ) · ทรีเลน b ยังไม่มี S2.13 จึงเห็นเป็นไม่ตรง — ไม่แก้
 - **MINOR-2 → S2.14**: `handleSecretaryPush` ต่อ `?s=<data.systemId>` ท้ายลิงก์ห้องลูกค้า (กิจการที่มีหลายระบบแชท) · LOW-3 (ค่าคงที่ AI_SUGGEST ซ้ำ 2 ไฟล์ → `inbox/_shared.ts`) · LOW-1/LOW-2/LOW-4/LOW-5 → S3a (help ตรวจ READ+unit · approvals ตัวนับแยก · routing push `conversationId` → `chatConversationId` · oracle ครอบ approvals ไม่ปนกิจการ/customers 0 เมื่อไม่มี READ/help เฉพาะ OPEN/429)
+
+## AA. รับ S2.14 (ปิด S2) — มติรอบ 2 (6 พ.ย. ~13:5xZ · ผู้คุมดูภาพคู่ A1/G2/A6/K3 มืด: F1–F3 แก้จริง)
+- **R-S2.14a (Q1 ทะเบียนปุ่ม)** ยืนยันนิยาม: `kind=view` ok = เห็นจริงบนจออย่างน้อย 1 fixture · `kind=button/input` ok = กดแล้วเกิด request/route/state จริง (effect ไม่ใช่ "visible") · ไฟล์ `clicks-sec.json` ต้องมาจากรอบเต็มรอบเดียว (ผู้คุมรันซ้ำเองเพื่อยืนยัน · ห้ามรวม RESUME ข้ามรอบในไฟล์ส่งมอบ)
+- **R-S2.14b (Q2 ไอคอนลูกค้า)** ยอมรับซ่อนเมื่อเจอ 403 ไปก่อน · ตั๋ว S3a: `GET secretary/badges` เพิ่ม `can: { customers: boolean }` (จาก `can(READ)`) → แอปซ่อนไอคอนตั้งแต่โหลด badge
+- **R-S2.14c (Q3 ปุ่มสร้างงานบอร์ด)** ตั๋ว S3a: `conversation.can.task` = `chatTaskButtonConfig(tenantId) !== null && สิทธิ์ kanban.card.create` · ระหว่างนี้แสดงปุ่มแล้วรับ not_configured ได้
+- **R-S2.14d (Q4 แท็ก K3 เป็นชิป)** ยอมรับ (ตาม §X) · ภาพแบบแถวข้อความ = ล้าสมัย · ไม่ต้องแก้แบบ
+- **ตั๋ว server S3a (จาก S2.14 T1–T4)**: badges.can.customers · `levelsAvailable` ใน `GET secretary/staff` (หรือ `/access`) · `cardHref` ของ task เป็น path แอป (`/kanban/<boardId>/<cardId>`? → เจ้าของตัดสินว่าแอป 1.0 มีจอบอร์ด) · เส้นแก้แท็กห้อง `PUT inbox/conversations/[id]/tags`
