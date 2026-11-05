@@ -19,8 +19,12 @@
 ## 2. badges — นิยาม
 `approvals` = `inboxCount(userId).canApprove` (ทุกกิจการ) · `customers` = Σ `unreadFor` ทุก CHAT active (ห้องที่ยังไม่อ่าน · ตัวเดียวกับ `inbox/unread` ที่แอปใช้ตอนนี้) · ไม่มี `chat.conversation.read` = 0 · `team.invites` = `staffInvite.count(acceptedAt null, expiresAt > now)` OWNER/MANAGER · `team.help` = `chatConversationHelper.count(userId=me, conversation.status OPEN)` · `team.support` = `unreadCaseTotalForUser` · `total` = ผลรวม
 
-## 5. ผลรัน
-(ดูรายงานส่งผู้คุม — วางบรรทัด JSON_SUMMARY ด้านล่าง)
+## 5. ผลรัน (หลัง merge da6468f8b · ทิป wip)
+- oracle forced ×2 + unforced: `{"total":12,"passed":10,"failed":["L-3","B-3"]}` ทั้ง 3 รอบ (เหตุ = ข้อสอบ · §7 ข้อ 1–2) · residue: cleanup ของข้อสอบเอง
+- positive control L-3 (สำเนาชั่วคราว แก้แค่ `post = async (body) =>` · ลบแล้ว ไม่ commit): `✅ [L-3]` · `{"total":10,"passed":9,"failed":["B-3"]}`
+- regression: s1.21 19/19 · s1.22 14/14 · s1.14b 24/24 · s1.25 19/19 · s0.3 51/53 (skip D1.7/D4.3 เดิม) · qc-chat-notify-v2 30/30 · qc-chat-notify 23 · qc-chat-push-badge 48/48 · qc-chat-v2-realtime 26/26 · qc-chat-security 38/38 · qc-chat-staff-perms 49/49 (= baseline 049df880b) · **s1.17 9/10 (N-4 = §7 ข้อ 3)**
+- typecheck (`tsc --noEmit` ใน iso) exit 0 · 0 error · fitness มี env (D-1/D-2) + `env -u DATABASE_URL` 53/53
+- คำสั่ง: `bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-sec-s1.14c.mts`
 
 ## 7. ORACLE-EDIT / มติที่ขอ
 1. **qc-sec-s1.14c L-3** — ตัวจับ `post` ในข้อสอบเป็น `async (_url, body) => …` แต่ transport จริงของ `core/push.ts` คือ `post(payloads: unknown[])` อาร์กิวเมนต์เดียว (push.ts:15 `PushDeps`, `deliverBatch` :62 `await post(payloads)`) ⇒ `body` = undefined → `(undefined).to` throw ใน post → `sendPushToUser` ดักแล้ว log ⇒ `pushes=0` ทั้งที่ push ถูกยิงจริง (helperRows=1 · helperErr ว่าง) · เทียบ s1.17:61 / s1.21:117 ใช้ `async (msgs) => { posts.push(...msgs); return { tickets: … } }` · ขอแก้: `const post = async (body: unknown) => { const arr = Array.isArray(body) ? body : [body]; …; return { tickets: arr.map(() => ({ status: "ok" })) }; }`
