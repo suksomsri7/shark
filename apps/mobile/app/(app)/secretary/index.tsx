@@ -75,6 +75,14 @@ export default function SecretaryHome() {
   const reqScope: RoomScopeKey = owner && scope === "tenant" ? "tenant" : "mine";
   const scopeRef = useRef(reqScope);
   scopeRef.current = reqScope;
+  // R-S2.14o: สลับขอบเขต = ล้างรายการของขอบเขตเดิมทันที (ตัวโหลด) — โหลดล้ม ⇒ LoadError ไม่ใช่รายการเก่าของอีกขอบเขต
+  const shownScope = useRef(reqScope);
+  useEffect(() => {
+    if (shownScope.current === reqScope) return;
+    shownScope.current = reqScope;
+    setRooms(null);
+    setFailed(false);
+  }, [reqScope]);
   const [refreshing, setRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const tenantRef = useRef(activeTenantId);

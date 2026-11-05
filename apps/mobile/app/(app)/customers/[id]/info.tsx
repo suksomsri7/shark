@@ -594,9 +594,10 @@ const styles = StyleSheet.create({
   chev: { width: 18 },
   btnRow: { flexDirection: "row", gap: 10, marginTop: F.v(30) },
   // R-S2.14j: ป้ายยาว (EN/ไทย) ขึ้นบรรทัดที่ 2 ได้ที่กว้าง 390 — minHeight แทนสูงตายตัว · ไม่ตัด "…"
-  btn: { flex: 1, minHeight: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, paddingVertical: 5 },
+  // R-S2.14n: ป้าย 2 บรรทัดต้องมีที่ให้สระบน/วรรณยุกต์ไทย — lineHeight ≈ 1.5 × ขนาดตัวอักษร + ระยะบนล่าง (ไม่ตัดยอด "สั่ง/เรื่อง/นี้")
+  btn: { flex: 1, minHeight: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, paddingVertical: 7 },
   btnMain: { flex: 2 },
-  btnT: { fontSize: T.sub + 0.5, fontWeight: "700", textAlign: "center", lineHeight: 18 },
+  btnT: { fontSize: T.sub + 0.5, fontWeight: "700", textAlign: "center", lineHeight: Math.round((T.sub + 0.5) * 1.5) },
   closeBtn: { alignSelf: "center", paddingVertical: 16, paddingHorizontal: 24, marginTop: 6 },
   closeT: { fontSize: T.sub + 0.5, fontWeight: "600" },
   sheetT: { fontSize: T.h, fontWeight: "700", marginBottom: 10 },

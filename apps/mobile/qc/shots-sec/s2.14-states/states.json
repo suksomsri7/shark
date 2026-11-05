@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T15:31:45.524Z",
+ "generatedAt": "2026-11-05T19:42:37.975Z",
  "states": [
   {
    "state": "loading",
@@ -131,7 +131,7 @@
    "seen": "sec-rules-loading",
    "errors": [],
    "unmocked": [],
-   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ  Always ask for approval The Bean Café In this release every write waits for approval · this list stays approval-only even after \"Act alone\" opens Loading… Approvers O Owner Owner · everything M Manager Manager · secretary rooms they can see Approvers still need the right to do that work in their own role"
+   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ  Always ask for approval The Bean Café In this release every write waits for approval · this list stays approval-only even after \"Act alone\" opens Loading… Approvers Loading… Approvers still need the right to do that work in their own role"
   },
   {
    "state": "loading",
@@ -450,7 +450,7 @@
    "seen": null,
    "errors": [],
    "unmocked": [],
-   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ  Free pack คุณสุข · this business's quota · in 2 businesses 62% Used 0/100 jobs · resets 1 Dec (in 26 days) · 0 jobs left  Enough until the next reset at the current pace More-jobs packs Coming soon Classic assistant · today Used today 31% The classic AI chat and AI buttons have a daily allowance in the free pac"
+   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ  Free pack คุณสุข · this business's quota · in 2 businesses 62% Used 0/100 jobs · resets 1 Dec (in 25 days) · 0 jobs left  Enough until the next reset at the current pace More-jobs packs Coming soon Classic assistant · today Used today 31% The classic AI chat and AI buttons have a daily allowance in the free pac"
   },
   {
    "state": "empty",
@@ -813,7 +813,7 @@
    "seen": null,
    "errors": [],
    "unmocked": [],
-   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ  New task The Bean Café Hello คุณสุข! What can Shark do for you today? Just say it in plain words, it works across SHARK for you  This account can't view this yet - ask the owner or a manager to open it  "
+   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ  New task The Bean Café Hello คุณสุข! What can Shark do for you today? Just say it in plain words, it works across SHARK for you  This account can't view this yet - ask the owner or a manager to open it  "
   },
   {
    "state": "denied",
@@ -846,7 +846,7 @@
    "seen": "sec-sched-denied",
    "errors": [],
    "unmocked": [],
-   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ   Scheduled tasks Work Shark starts on its own at set times · results arrive as new tasks on Home  This account can't view this yet - ask the owner or a manager to open it"
+   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ  Scheduled tasks Work Shark starts on its own at set times · results arrive as new tasks on Home  This account can't view this yet - ask the owner or a manager to open it"
   },
   {
    "state": "denied",
@@ -1011,7 +1011,7 @@
    "seen": "help-case-denied",
    "errors": [],
    "unmocked": [],
-   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ    This account can't view this yet - ask the owner or a manager to open it"
+   "texts": "กิจการ The Bean Café ▾ ระบบงาน ผู้ช่วย AI สมาชิก CRM ขาย owner@qc.invalid ออกจากระบบ   This account can't view this yet - ask the owner or a manager to open it"
   },
   {
    "state": "denied",

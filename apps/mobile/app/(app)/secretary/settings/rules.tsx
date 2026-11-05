@@ -40,6 +40,8 @@ export default function SecretaryRulesScreen() {
   const [view, setView] = useState<RulesView>({ rules: DEFAULTS, alwaysApprove: ["destructive", "money", "piiExport"] });
   const [limitText, setLimitText] = useState(String(DEFAULTS["money.limit"].limitSatang! / 100));
   const [approvers, setApprovers] = useState<StaffRow[] | null>(null);
+  // R-S2.14o: รายชื่อผู้อนุมัติ — ระหว่างโหลดไม่วาดแถวสำรอง (เจ้าของ/ผู้จัดการ) · โหลดไม่ได้/อ่านไม่ได้ (พนักงาน) = แถวตามบทบาท
+  const [approversDone, setApproversDone] = useState(false);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   // S2.14 รอบ 2 (R-S2.14): ก่อนได้ค่าจริงจากเซิร์ฟเวอร์ ห้ามแสดง/แก้สวิตช์จากค่าปริยาย ⇒ ตัวโหลด · ล้ม = การ์ดล้ม + ลองใหม่ · 403 = การ์ดล็อก
   const [load, setLoad] = useState<"loading" | "ok" | "error" | "denied">("loading");
@@ -70,9 +72,12 @@ export default function SecretaryRulesScreen() {
         })
         .catch((e) => live && !same && setLoad(isDenied(e) ? "denied" : "error"));
       // ผู้อนุมัติ (แสดงอย่างเดียว) — อ่านรายชื่อได้เฉพาะเจ้าของ/ผู้จัดการ · อ่านไม่ได้ ⇒ แสดงตามบทบาท
+      if (!same) setApproversDone(false);
       if (role === "OWNER" || role === "MANAGER") secGet("secretary/staff")
         .then((r) => live && setApprovers((r.items ?? []).filter((x) => !x.pending && x.active !== false && (x.role === "OWNER" || x.role === "MANAGER"))))
-        .catch(() => live && setApprovers(null));
+        .catch(() => live && setApprovers(null))
+        .finally(() => live && setApproversDone(true));
+      else setApproversDone(true);
       return () => {
         live = false;
       };
@@ -184,7 +189,8 @@ export default function SecretaryRulesScreen() {
 
         <SectionLabel style={styles.label}>{t("sec.rules.approvers")}</SectionLabel>
         <View testID="sec-rules-approver">
-          {approverRows.map((a) => (
+          {!approversDone ? <Loading testID="sec-rules-approver-loading" /> : null}
+          {!approversDone ? null : approverRows.map((a) => (
             <Glass key={a.key} testID={`sec-rules-approver-${a.key}`} radius={radii.sugg} style={styles.appr}>
               <View style={[styles.av, { backgroundColor: c.chip.bg }]}>
                 <Text style={[styles.avT, { color: c.text }]}>{a.initial}</Text>

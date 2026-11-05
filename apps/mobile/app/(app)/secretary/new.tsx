@@ -197,10 +197,9 @@ export default function SecretaryNewScreen() {
         <InputBar
           testID="sec-new-input"
           sendTestID="sec-new-send"
-          placeholder={t("sec.new.input")}
           value={text}
           onChangeText={(v) => {
-            if (denied) return; // R-S2.14h: ล็อกช่องพิมพ์เมื่อไม่มีสิทธิ์ (InputBar ยังไม่มี prop editable)
+            if (denied) return; // R-S2.14h: ล็อกช่องพิมพ์เมื่อไม่มีสิทธิ์ (InputBar locked ด้วย)
             setText(v);
             if (err && err !== "quota") setErr(null);
           }}
@@ -208,6 +207,8 @@ export default function SecretaryNewScreen() {
           onPlus={() => fill("")}
           plusDisabled={denied}
           sendDisabled={!text.trim() || busy || denied}
+          locked={denied}
+          placeholder={denied ? t("sec.new.lockedPh") : t("sec.new.input")}
           style={styles.input}
         />
       </KeyboardAvoidingView>

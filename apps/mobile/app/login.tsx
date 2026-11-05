@@ -1,7 +1,7 @@
 // จอเข้าสู่ระบบ ธีม Airy (ใบ S2.12 · ไม่มีหน้า login ในแบบ — ประกอบจากชิ้นเดียวกับ S1: orb + การ์ดกระจก + ปุ่มหลัก)
 // ทางเข้าหลัก = เบอร์มือถือ → ขอรหัส SMS → /otp?mode=login · ทางเดิมยังอยู่ครบ: อีเมล OTP 2 ขั้น (กด "เข้าด้วยอีเมล") +
 // ปุ่ม social (Apple/Google/LINE/Facebook ใช้จริง · TikTok เปิดใช้เร็ว ๆ นี้) · ทุกทางจบที่ signIn(token) แล้วยามหน้าประตูพาไปต่อเอง
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { FontAwesome6 } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
@@ -50,6 +50,7 @@ export default function LoginScreen() {
   const [code, setCode] = useState("");
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const verifyingRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // ข้อความเทา (social ยังไม่เปิด) — ไม่ใช่ error
   const [socialBusy, setSocialBusy] = useState(false);
@@ -108,11 +109,14 @@ export default function LoginScreen() {
   }
 
   async function verify(value = code) {
+    // R-S2.14o: กันเรียกซ้ำ (กล่องรหัสส่งเองเมื่อครบ + กดปุ่ม "ยืนยัน" พร้อมกัน) — state verifying อัปเดตไม่ทันในรอบเดียวกัน
+    if (verifyingRef.current) return;
     const v = value.trim();
     if (v.length !== 6) {
       setErr(t("auth.login.code6"));
       return;
     }
+    verifyingRef.current = true;
     setErr(null);
     setVerifying(true);
     try {
@@ -127,6 +131,7 @@ export default function LoginScreen() {
       else setErr(apiErrorText(x));
       // S2.14 (R-S2.14i): ล้มชั่วคราว (เน็ต · ≥500 ยกเว้น 503) ⇒ คงรหัสไว้กด "ยืนยัน" ซ้ำ · รหัสผิด (4xx) ⇒ ล้าง
       if (!keepCodeOnError(x)) setCode("");
+      verifyingRef.current = false;
       setVerifying(false);
     }
   }

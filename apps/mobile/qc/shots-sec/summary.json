@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T15:40:44.186Z",
+ "generatedAt": "2026-11-05T19:34:48.230Z",
  "base": "http://127.0.0.1:4727",
  "view": {
   "tag": "iphone",
@@ -72,7 +72,7 @@
    "unmocked": [],
    "url": "/login",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/login.png",
-   "generatedAt": "2026-11-05T15:34:42.516Z"
+   "generatedAt": "2026-11-05T19:28:49.306Z"
   },
   {
    "name": "signup",
@@ -96,7 +96,7 @@
    "unmocked": [],
    "url": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/signup.png",
-   "generatedAt": "2026-11-05T15:34:45.275Z"
+   "generatedAt": "2026-11-05T19:28:51.968Z"
   },
   {
    "name": "otp",
@@ -119,7 +119,7 @@
    "unmocked": [],
    "url": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/otp.png",
-   "generatedAt": "2026-11-05T15:34:48.610Z"
+   "generatedAt": "2026-11-05T19:28:55.153Z"
   },
   {
    "name": "phone",
@@ -141,7 +141,7 @@
    "unmocked": [],
    "url": "/phone",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/phone.png",
-   "generatedAt": "2026-11-05T15:34:51.360Z"
+   "generatedAt": "2026-11-05T19:28:57.786Z"
   },
   {
    "name": "login-dark",
@@ -165,7 +165,7 @@
    "unmocked": [],
    "url": "/login",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/login-dark.png",
-   "generatedAt": "2026-11-05T15:34:54.299Z"
+   "generatedAt": "2026-11-05T19:29:00.691Z"
   },
   {
    "name": "signup-dark",
@@ -189,7 +189,7 @@
    "unmocked": [],
    "url": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/signup-dark.png",
-   "generatedAt": "2026-11-05T15:34:57.169Z"
+   "generatedAt": "2026-11-05T19:29:03.936Z"
   },
   {
    "name": "otp-dark",
@@ -212,7 +212,7 @@
    "unmocked": [],
    "url": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/otp-dark.png",
-   "generatedAt": "2026-11-05T15:35:00.592Z"
+   "generatedAt": "2026-11-05T19:29:06.656Z"
   },
   {
    "name": "phone-dark",
@@ -234,7 +234,7 @@
    "unmocked": [],
    "url": "/phone",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/phone-dark.png",
-   "generatedAt": "2026-11-05T15:35:04.425Z"
+   "generatedAt": "2026-11-05T19:29:09.358Z"
   },
   {
    "name": "secretary-new",
@@ -262,7 +262,7 @@
    "unmocked": [],
    "url": "/secretary/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new.png",
-   "generatedAt": "2026-11-05T15:35:17.884Z"
+   "generatedAt": "2026-11-05T19:29:19.800Z"
   },
   {
    "name": "secretary-new-dark",
@@ -290,7 +290,7 @@
    "unmocked": [],
    "url": "/secretary/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-new-dark.png",
-   "generatedAt": "2026-11-05T15:35:25.024Z"
+   "generatedAt": "2026-11-05T19:29:26.632Z"
   },
   {
    "name": "secretary-room-r1",
@@ -325,11 +325,11 @@
     "sec-room-input",
     "sec-room-send"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 4 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 11 นาที\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
    "unmocked": [],
    "url": "/secretary/room/r1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1.png",
-   "generatedAt": "2026-11-05T15:35:40.670Z"
+   "generatedAt": "2026-11-05T19:29:41.613Z"
   },
   {
    "name": "secretary-room-r1-dark",
@@ -364,11 +364,11 @@
     "sec-room-input",
     "sec-room-send"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 4 ชม.\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nเหลือ 11 นาที\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
    "unmocked": [],
    "url": "/secretary/room/r1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r1-dark.png",
-   "generatedAt": "2026-11-05T15:35:43.847Z"
+   "generatedAt": "2026-11-05T19:29:44.824Z"
   },
   {
    "name": "secretary-inbox",
@@ -393,11 +393,11 @@
     "sec-inbox-open",
     "sec-inbox-why"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nรออนุมัติ\n5 รายการ · ทุกกิจการ · คุณอนุมัติได้ 4\nทั้งหมด 5\nเงิน 2\nส่งลูกค้า 1\nลบ/ยกเลิก 1\nThe Bean Café\nบัญชี\nออกเอกสารบัญชี\nเมื่อวาน\nใบเสนอราคา Q-0012 ฿12,500\nคุณลูกค้า QC · เครื่องชง 2 ชุด ลด 5% · ส่งทาง LINE\nทำไมต้องอนุมัติ: เงิน + ส่งถึงลูกค้า\nดู\nตีกลับ\nอนุมัติ\nแชท\nส่งข้อความถึงลูกค้า\n3/11\nตอบรีวิว 1 ดาวบน Facebook: \"ขออภัยค่ะ กาแฟรอนานเกินไป ครั้งหน้า…\" (ลงชื่อว่าเป็นผู้ช่วย AI)\nทำไมต้องอนุมัติ: ส่งถึงลูกค้าสาธารณะ\nดู\nตีกลับ\nอนุมัติและส่ง\nงาน\nงานใน บอร์ดงาน\n3/11\nลบการ์ดงานซ้ำ 3 ใบ ในบอร์ดหน้าร้าน\nทำไมต้องอนุมัติ: ลบถาวร ย้อนไม่ได้\nดู\nตีกลับ\nอนุมัติ\nบลูเฮาส์ หอพัก\nคิว\nคืนมัดจำ\nเมื่อวาน\nคืนเงินมัดจำห้อง 204 ฿2,400\nยกเลิกก่อน 7 วันตามนโยบาย · โอนเข้าบัญชีเดิม\nทำไมต้องอนุมัติ: คืนเงิน = ต้องอนุมัติเสมอ\nดู\nตีกลับ\nอนุมัติ\nแผนหลายขั้น\n2/11\nเตือนค่าหอค้างชำระ 12 ห้อง + บันทึกยอดค้าง\nต้องให้เจ้าของหรือผู้จัดการที่มีสิทธิ์ในระบบนี้อนุมัติ\nดู\nตีกลับ\nอนุมัติ",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nรออนุมัติ\n5 รายการ · ทุกกิจการ · คุณอนุมัติได้ 4\nทั้งหมด 5\nเงิน 2\nส่งลูกค้า 1\nลบ/ยกเลิก 1\nThe Bean Café\nบัญชี\nออกเอกสารบัญชี\n4/11\nใบเสนอราคา Q-0012 ฿12,500\nคุณลูกค้า QC · เครื่องชง 2 ชุด ลด 5% · ส่งทาง LINE\nทำไมต้องอนุมัติ: เงิน + ส่งถึงลูกค้า\nดู\nตีกลับ\nอนุมัติ\nแชท\nส่งข้อความถึงลูกค้า\n3/11\nตอบรีวิว 1 ดาวบน Facebook: \"ขออภัยค่ะ กาแฟรอนานเกินไป ครั้งหน้า…\" (ลงชื่อว่าเป็นผู้ช่วย AI)\nทำไมต้องอนุมัติ: ส่งถึงลูกค้าสาธารณะ\nดู\nตีกลับ\nอนุมัติและส่ง\nงาน\nงานใน บอร์ดงาน\n3/11\nลบการ์ดงานซ้ำ 3 ใบ ในบอร์ดหน้าร้าน\nทำไมต้องอนุมัติ: ลบถาวร ย้อนไม่ได้\nดู\nตีกลับ\nอนุมัติ\nบลูเฮาส์ หอพัก\nคิว\nคืนมัดจำ\n4/11\nคืนเงินมัดจำห้อง 204 ฿2,400\nยกเลิกก่อน 7 วันตามนโยบาย · โอนเข้าบัญชีเดิม\nทำไมต้องอนุมัติ: คืนเงิน = ต้องอนุมัติเสมอ\nดู\nตีกลับ\nอนุมัติ\nแผนหลายขั้น\n2/11\nเตือนค่าหอค้างชำระ 12 ห้อง + บันทึกยอดค้าง\nต้องให้เจ้าของหรือผู้จัดการที่มีสิทธิ์ในระบบนี้อนุมัติ\nดู\nตีกลับ\nอนุมัติ",
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox.png",
-   "generatedAt": "2026-11-05T15:36:10.030Z"
+   "generatedAt": "2026-11-05T19:30:11.439Z"
   },
   {
    "name": "secretary-scheduled",
@@ -416,11 +416,11 @@
     "sec-sched-item",
     "sec-sched-toggle"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\nงานประจำ\nงานที่ Shark เปิดเองตามเวลา · ผลมาเป็นงานใหม่ในหน้าหลัก\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nทุกวัน 08:00 · ส่งผลทาง แจ้งเตือน + ห้องงาน\nพรุ่งนี้ 08:00\nตามดีลที่เงียบเกิน 14 วัน แล้วร่างข้อความรออนุมัติ\nทุก จ. 09:00 · ส่งผลทาง ห้องงาน\nจ. 09:00\nยืนยันคิวล่วงหน้า 1 วัน\nทุกวัน 18:00 · ส่งผลทาง แจ้งเตือน\nตั้งโดยคนอื่นในทีม\nปิดอยู่\nงานประจำใช้สิทธิ์เดียวกับงานที่สั่งเอง · งานที่อ่านอย่างเดียวจบเองได้ · งานที่เขียน/ส่งลูกค้า รออนุมัติทุกครั้ง",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\nงานประจำ\nงานที่ Shark เปิดเองตามเวลา · ผลมาเป็นงานใหม่ในหน้าหลัก\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nทุกวัน 08:00 · ส่งผลทาง แจ้งเตือน + ห้องงาน\nวันนี้ 08:00\nตามดีลที่เงียบเกิน 14 วัน แล้วร่างข้อความรออนุมัติ\nทุก จ. 09:00 · ส่งผลทาง ห้องงาน\nจ. 09:00\nยืนยันคิวล่วงหน้า 1 วัน\nทุกวัน 18:00 · ส่งผลทาง แจ้งเตือน\nตั้งโดยคนอื่นในทีม\nปิดอยู่\nงานประจำใช้สิทธิ์เดียวกับงานที่สั่งเอง · งานที่อ่านอย่างเดียวจบเองได้ · งานที่เขียน/ส่งลูกค้า รออนุมัติทุกครั้ง",
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled.png",
-   "generatedAt": "2026-11-05T15:36:12.979Z"
+   "generatedAt": "2026-11-05T19:30:14.813Z"
   },
   {
    "name": "secretary-inbox-dark",
@@ -445,11 +445,11 @@
     "sec-inbox-open",
     "sec-inbox-why"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nรออนุมัติ\n5 รายการ · ทุกกิจการ · คุณอนุมัติได้ 4\nทั้งหมด 5\nเงิน 2\nส่งลูกค้า 1\nลบ/ยกเลิก 1\nThe Bean Café\nบัญชี\nออกเอกสารบัญชี\nเมื่อวาน\nใบเสนอราคา Q-0012 ฿12,500\nคุณลูกค้า QC · เครื่องชง 2 ชุด ลด 5% · ส่งทาง LINE\nทำไมต้องอนุมัติ: เงิน + ส่งถึงลูกค้า\nดู\nตีกลับ\nอนุมัติ\nแชท\nส่งข้อความถึงลูกค้า\n3/11\nตอบรีวิว 1 ดาวบน Facebook: \"ขออภัยค่ะ กาแฟรอนานเกินไป ครั้งหน้า…\" (ลงชื่อว่าเป็นผู้ช่วย AI)\nทำไมต้องอนุมัติ: ส่งถึงลูกค้าสาธารณะ\nดู\nตีกลับ\nอนุมัติและส่ง\nงาน\nงานใน บอร์ดงาน\n3/11\nลบการ์ดงานซ้ำ 3 ใบ ในบอร์ดหน้าร้าน\nทำไมต้องอนุมัติ: ลบถาวร ย้อนไม่ได้\nดู\nตีกลับ\nอนุมัติ\nบลูเฮาส์ หอพัก\nคิว\nคืนมัดจำ\nเมื่อวาน\nคืนเงินมัดจำห้อง 204 ฿2,400\nยกเลิกก่อน 7 วันตามนโยบาย · โอนเข้าบัญชีเดิม\nทำไมต้องอนุมัติ: คืนเงิน = ต้องอนุมัติเสมอ\nดู\nตีกลับ\nอนุมัติ\nแผนหลายขั้น\n2/11\nเตือนค่าหอค้างชำระ 12 ห้อง + บันทึกยอดค้าง\nต้องให้เจ้าของหรือผู้จัดการที่มีสิทธิ์ในระบบนี้อนุมัติ\nดู\nตีกลับ\nอนุมัติ",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nรออนุมัติ\n5 รายการ · ทุกกิจการ · คุณอนุมัติได้ 4\nทั้งหมด 5\nเงิน 2\nส่งลูกค้า 1\nลบ/ยกเลิก 1\nThe Bean Café\nบัญชี\nออกเอกสารบัญชี\n4/11\nใบเสนอราคา Q-0012 ฿12,500\nคุณลูกค้า QC · เครื่องชง 2 ชุด ลด 5% · ส่งทาง LINE\nทำไมต้องอนุมัติ: เงิน + ส่งถึงลูกค้า\nดู\nตีกลับ\nอนุมัติ\nแชท\nส่งข้อความถึงลูกค้า\n3/11\nตอบรีวิว 1 ดาวบน Facebook: \"ขออภัยค่ะ กาแฟรอนานเกินไป ครั้งหน้า…\" (ลงชื่อว่าเป็นผู้ช่วย AI)\nทำไมต้องอนุมัติ: ส่งถึงลูกค้าสาธารณะ\nดู\nตีกลับ\nอนุมัติและส่ง\nงาน\nงานใน บอร์ดงาน\n3/11\nลบการ์ดงานซ้ำ 3 ใบ ในบอร์ดหน้าร้าน\nทำไมต้องอนุมัติ: ลบถาวร ย้อนไม่ได้\nดู\nตีกลับ\nอนุมัติ\nบลูเฮาส์ หอพัก\nคิว\nคืนมัดจำ\n4/11\nคืนเงินมัดจำห้อง 204 ฿2,400\nยกเลิกก่อน 7 วันตามนโยบาย · โอนเข้าบัญชีเดิม\nทำไมต้องอนุมัติ: คืนเงิน = ต้องอนุมัติเสมอ\nดู\nตีกลับ\nอนุมัติ\nแผนหลายขั้น\n2/11\nเตือนค่าหอค้างชำระ 12 ห้อง + บันทึกยอดค้าง\nต้องให้เจ้าของหรือผู้จัดการที่มีสิทธิ์ในระบบนี้อนุมัติ\nดู\nตีกลับ\nอนุมัติ",
    "unmocked": [],
    "url": "/secretary/inbox",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-inbox-dark.png",
-   "generatedAt": "2026-11-05T15:36:16.154Z"
+   "generatedAt": "2026-11-05T19:30:18.860Z"
   },
   {
    "name": "secretary-scheduled-dark",
@@ -468,11 +468,11 @@
     "sec-sched-item",
     "sec-sched-toggle"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\nงานประจำ\nงานที่ Shark เปิดเองตามเวลา · ผลมาเป็นงานใหม่ในหน้าหลัก\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nทุกวัน 08:00 · ส่งผลทาง แจ้งเตือน + ห้องงาน\nพรุ่งนี้ 08:00\nตามดีลที่เงียบเกิน 14 วัน แล้วร่างข้อความรออนุมัติ\nทุก จ. 09:00 · ส่งผลทาง ห้องงาน\nจ. 09:00\nยืนยันคิวล่วงหน้า 1 วัน\nทุกวัน 18:00 · ส่งผลทาง แจ้งเตือน\nตั้งโดยคนอื่นในทีม\nปิดอยู่\nงานประจำใช้สิทธิ์เดียวกับงานที่สั่งเอง · งานที่อ่านอย่างเดียวจบเองได้ · งานที่เขียน/ส่งลูกค้า รออนุมัติทุกครั้ง",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\nงานประจำ\nงานที่ Shark เปิดเองตามเวลา · ผลมาเป็นงานใหม่ในหน้าหลัก\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nทุกวัน 08:00 · ส่งผลทาง แจ้งเตือน + ห้องงาน\nวันนี้ 08:00\nตามดีลที่เงียบเกิน 14 วัน แล้วร่างข้อความรออนุมัติ\nทุก จ. 09:00 · ส่งผลทาง ห้องงาน\nจ. 09:00\nยืนยันคิวล่วงหน้า 1 วัน\nทุกวัน 18:00 · ส่งผลทาง แจ้งเตือน\nตั้งโดยคนอื่นในทีม\nปิดอยู่\nงานประจำใช้สิทธิ์เดียวกับงานที่สั่งเอง · งานที่อ่านอย่างเดียวจบเองได้ · งานที่เขียน/ส่งลูกค้า รออนุมัติทุกครั้ง",
    "unmocked": [],
    "url": "/secretary/scheduled",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-scheduled-dark.png",
-   "generatedAt": "2026-11-05T15:36:19.112Z"
+   "generatedAt": "2026-11-05T19:30:22.028Z"
   },
   {
    "name": "secretary-settings",
@@ -497,7 +497,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings.png",
-   "generatedAt": "2026-11-05T15:36:28.411Z"
+   "generatedAt": "2026-11-05T19:30:31.625Z"
   },
   {
    "name": "secretary-settings-secretary",
@@ -524,7 +524,7 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-secretary.png",
-   "generatedAt": "2026-11-05T15:36:31.477Z"
+   "generatedAt": "2026-11-05T19:30:34.678Z"
   },
   {
    "name": "secretary-settings-quota",
@@ -542,11 +542,11 @@
     "sec-quota-assist",
     "sec-quota-packs"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nแพ็กฟรี\nคุณสุข · โควตาของกิจการนี้ · อยู่ใน 3 กิจการ\n62%\nใช้ไปแล้ว 62/100 งาน · รอบใหม่ 1 ธ.ค. (อีก 26 วัน) · เหลือ 38 งาน\n\nพอใช้ถึงรอบใหม่ตามอัตราปัจจุบัน\nแพ็กเพิ่มงาน\nเร็ว ๆ นี้\nผู้ช่วยแบบเดิม · วันนี้\nใช้ไปวันนี้\n31%\nแชท AI เดิมและปุ่ม AI ในแต่ละระบบ ใช้ได้ต่อวันตามแพ็กฟรี · เริ่มใหม่เที่ยงคืน\nถ้าโควตาหมดก่อนรอบใหม่\nงานประจำหยุด · สั่งงานใหม่ไม่ได้ · งานค้างยังอนุมัติได้",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nแพ็กฟรี\nคุณสุข · โควตาของกิจการนี้ · อยู่ใน 3 กิจการ\n62%\nใช้ไปแล้ว 62/100 งาน · รอบใหม่ 1 ธ.ค. (อีก 25 วัน) · เหลือ 38 งาน\n\nพอใช้ถึงรอบใหม่ตามอัตราปัจจุบัน\nแพ็กเพิ่มงาน\nเร็ว ๆ นี้\nผู้ช่วยแบบเดิม · วันนี้\nใช้ไปวันนี้\n31%\nแชท AI เดิมและปุ่ม AI ในแต่ละระบบ ใช้ได้ต่อวันตามแพ็กฟรี · เริ่มใหม่เที่ยงคืน\nถ้าโควตาหมดก่อนรอบใหม่\nงานประจำหยุด · สั่งงานใหม่ไม่ได้ · งานค้างยังอนุมัติได้",
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-quota.png",
-   "generatedAt": "2026-11-05T15:36:34.413Z"
+   "generatedAt": "2026-11-05T19:30:37.604Z"
   },
   {
    "name": "secretary-settings-access",
@@ -569,7 +569,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-access.png",
-   "generatedAt": "2026-11-05T15:36:37.353Z"
+   "generatedAt": "2026-11-05T19:30:40.679Z"
   },
   {
    "name": "secretary-settings-rules",
@@ -594,7 +594,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-rules.png",
-   "generatedAt": "2026-11-05T15:36:40.338Z"
+   "generatedAt": "2026-11-05T19:30:43.784Z"
   },
   {
    "name": "secretary-settings-log",
@@ -614,11 +614,11 @@
     "sec-log-filter-all",
     "sec-log-undo-l2"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 7\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB · สั่งโดย คุณนัท · อนุมัติโดย คุณ\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · สั่งโดย คุณ · อนุมัติโดย คุณ · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี · สั่งโดย คุณนัท · อนุมัติโดย คุณ\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย มิ้นท์\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM · สั่งโดย คุณ\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · สั่งโดย คุณ · อนุมัติโดย คุณ · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS · สั่งโดย คุณ\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 0\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB · สั่งโดย คุณนัท · อนุมัติโดย คุณ\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · สั่งโดย คุณ · อนุมัติโดย คุณ · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี · สั่งโดย คุณนัท · อนุมัติโดย คุณ\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย มิ้นท์\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM · สั่งโดย คุณ\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · สั่งโดย คุณ · อนุมัติโดย คุณ · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS · สั่งโดย คุณ\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-log.png",
-   "generatedAt": "2026-11-05T15:36:43.262Z"
+   "generatedAt": "2026-11-05T19:30:46.960Z"
   },
   {
    "name": "secretary-settings-knowledge",
@@ -645,7 +645,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-05T15:36:46.219Z"
+   "generatedAt": "2026-11-05T19:30:50.162Z"
   },
   {
    "name": "secretary-settings-dark",
@@ -670,7 +670,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-dark.png",
-   "generatedAt": "2026-11-05T15:36:52.923Z"
+   "generatedAt": "2026-11-05T19:30:57.697Z"
   },
   {
    "name": "secretary-settings-secretary-dark",
@@ -697,7 +697,7 @@
    "unmocked": [],
    "url": "/secretary/settings/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-secretary-dark.png",
-   "generatedAt": "2026-11-05T15:36:55.954Z"
+   "generatedAt": "2026-11-05T19:31:00.923Z"
   },
   {
    "name": "secretary-settings-quota-dark",
@@ -715,11 +715,11 @@
     "sec-quota-assist",
     "sec-quota-packs"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nแพ็กฟรี\nคุณสุข · โควตาของกิจการนี้ · อยู่ใน 3 กิจการ\n62%\nใช้ไปแล้ว 62/100 งาน · รอบใหม่ 1 ธ.ค. (อีก 26 วัน) · เหลือ 38 งาน\n\nพอใช้ถึงรอบใหม่ตามอัตราปัจจุบัน\nแพ็กเพิ่มงาน\nเร็ว ๆ นี้\nผู้ช่วยแบบเดิม · วันนี้\nใช้ไปวันนี้\n31%\nแชท AI เดิมและปุ่ม AI ในแต่ละระบบ ใช้ได้ต่อวันตามแพ็กฟรี · เริ่มใหม่เที่ยงคืน\nถ้าโควตาหมดก่อนรอบใหม่\nงานประจำหยุด · สั่งงานใหม่ไม่ได้ · งานค้างยังอนุมัติได้",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nแพ็กฟรี\nคุณสุข · โควตาของกิจการนี้ · อยู่ใน 3 กิจการ\n62%\nใช้ไปแล้ว 62/100 งาน · รอบใหม่ 1 ธ.ค. (อีก 25 วัน) · เหลือ 38 งาน\n\nพอใช้ถึงรอบใหม่ตามอัตราปัจจุบัน\nแพ็กเพิ่มงาน\nเร็ว ๆ นี้\nผู้ช่วยแบบเดิม · วันนี้\nใช้ไปวันนี้\n31%\nแชท AI เดิมและปุ่ม AI ในแต่ละระบบ ใช้ได้ต่อวันตามแพ็กฟรี · เริ่มใหม่เที่ยงคืน\nถ้าโควตาหมดก่อนรอบใหม่\nงานประจำหยุด · สั่งงานใหม่ไม่ได้ · งานค้างยังอนุมัติได้",
    "unmocked": [],
    "url": "/secretary/settings/quota",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-quota-dark.png",
-   "generatedAt": "2026-11-05T15:36:58.814Z"
+   "generatedAt": "2026-11-05T19:31:04.892Z"
   },
   {
    "name": "secretary-settings-access-dark",
@@ -742,7 +742,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-access-dark.png",
-   "generatedAt": "2026-11-05T15:37:02.194Z"
+   "generatedAt": "2026-11-05T19:31:08.210Z"
   },
   {
    "name": "secretary-settings-rules-dark",
@@ -767,7 +767,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-rules-dark.png",
-   "generatedAt": "2026-11-05T15:37:06.052Z"
+   "generatedAt": "2026-11-05T19:31:11.327Z"
   },
   {
    "name": "secretary-settings-log-dark",
@@ -787,11 +787,11 @@
     "sec-log-filter-all",
     "sec-log-undo-l2"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 7\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB · สั่งโดย คุณนัท · อนุมัติโดย คุณ\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · สั่งโดย คุณ · อนุมัติโดย คุณ · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี · สั่งโดย คุณนัท · อนุมัติโดย คุณ\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย มิ้นท์\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM · สั่งโดย คุณ\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · สั่งโดย คุณ · อนุมัติโดย คุณ · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS · สั่งโดย คุณ\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 0\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB · สั่งโดย คุณนัท · อนุมัติโดย คุณ\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · สั่งโดย คุณ · อนุมัติโดย คุณ · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี · สั่งโดย คุณนัท · อนุมัติโดย คุณ\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย มิ้นท์\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM · สั่งโดย คุณ\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · สั่งโดย คุณ · อนุมัติโดย คุณ · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS · สั่งโดย คุณ\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-log-dark.png",
-   "generatedAt": "2026-11-05T15:37:08.979Z"
+   "generatedAt": "2026-11-05T19:31:14.224Z"
   },
   {
    "name": "secretary-settings-knowledge-dark",
@@ -818,7 +818,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-knowledge-dark.png",
-   "generatedAt": "2026-11-05T15:37:11.935Z"
+   "generatedAt": "2026-11-05T19:31:17.436Z"
   },
   {
    "name": "secretary-room-r2",
@@ -849,7 +849,7 @@
    "unmocked": [],
    "url": "/secretary/room/r2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r2.png",
-   "generatedAt": "2026-11-05T15:38:14.189Z"
+   "generatedAt": "2026-11-05T19:32:20.016Z"
   },
   {
    "name": "secretary-onboarding-name",
@@ -875,7 +875,7 @@
    "unmocked": [],
    "url": "/secretary/onboarding/name",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-onboarding-name.png",
-   "generatedAt": "2026-11-05T15:38:17.242Z"
+   "generatedAt": "2026-11-05T19:32:23.200Z"
   },
   {
    "name": "secretary-room-r2-dark",
@@ -906,7 +906,7 @@
    "unmocked": [],
    "url": "/secretary/room/r2",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-room-r2-dark.png",
-   "generatedAt": "2026-11-05T15:38:23.171Z"
+   "generatedAt": "2026-11-05T19:32:29.381Z"
   },
   {
    "name": "secretary-onboarding-name-dark",
@@ -932,7 +932,7 @@
    "unmocked": [],
    "url": "/secretary/onboarding/name",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-onboarding-name-dark.png",
-   "generatedAt": "2026-11-05T15:38:26.262Z"
+   "generatedAt": "2026-11-05T19:32:32.647Z"
   },
   {
    "name": "secretary-help",
@@ -953,11 +953,11 @@
     "sec-top-help",
     "sec-top-secretary"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n1\n\n\nช่วยเหลือ\nแจ้งปัญหาการใช้งาน · ทีม SHARK ตอบในห้องแชท · เจ้าของร้านเห็นทุกเรื่องของร้าน\nแจ้งเรื่องใหม่\nใช้งานไม่ได้\nเลขาทำผิด\nข้อมูลไม่ตรง\nบัญชี/การเงิน\nข้อเสนอแนะ\nเรื่องที่แจ้งไว้\nใบเสนอราคาไม่ส่ง LINE\n10:12\nทีม SHARK ตอบแล้ว · รอคุณยืนยันว่าแก้แล้ว\n1\nSHARK-00042\nขอเพิ่มระบบคลังให้เลขาเห็น\nเมื่อวาน\nส่งแล้ว · รอทีม SHARK\nSHARK-00041\nล็อกอิน Apple ไม่ผ่าน\n28/10\nปิดแล้ว 28 ต.ค. · แก้แล้ว\nSHARK-00037\nเรื่องเร่งด่วนเกี่ยวกับเงินหรือข้อมูลหาย ทีมตอบภายใน 4 ชม.ทำการ · เรื่องทั่วไปภายใน 1 วันทำการ\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n1\n\n\nช่วยเหลือ\nแจ้งปัญหาการใช้งาน · ทีม SHARK ตอบในห้องแชท · เจ้าของร้านเห็นทุกเรื่องของร้าน\nแจ้งเรื่องใหม่\nใช้งานไม่ได้\nเลขาทำผิด\nข้อมูลไม่ตรง\nบัญชี/การเงิน\nข้อเสนอแนะ\nเรื่องที่แจ้งไว้\nใบเสนอราคาไม่ส่ง LINE\nเมื่อวาน\nทีม SHARK ตอบแล้ว · รอคุณยืนยันว่าแก้แล้ว\n1\nSHARK-00042\nขอเพิ่มระบบคลังให้เลขาเห็น\n4/11\nส่งแล้ว · รอทีม SHARK\nSHARK-00041\nล็อกอิน Apple ไม่ผ่าน\n28/10\nปิดแล้ว 28 ต.ค. · แก้แล้ว\nSHARK-00037\nเรื่องเร่งด่วนเกี่ยวกับเงินหรือข้อมูลหาย ทีมตอบภายใน 4 ชม.ทำการ · เรื่องทั่วไปภายใน 1 วันทำการ\n\n",
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help.png",
-   "generatedAt": "2026-11-05T15:38:33.940Z"
+   "generatedAt": "2026-11-05T19:32:40.079Z"
   },
   {
    "name": "secretary-help-c1",
@@ -987,7 +987,7 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1.png",
-   "generatedAt": "2026-11-05T15:38:37.765Z"
+   "generatedAt": "2026-11-05T19:32:43.972Z"
   },
   {
    "name": "secretary-help-dark",
@@ -1008,11 +1008,11 @@
     "sec-top-help",
     "sec-top-secretary"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n1\n\n\nช่วยเหลือ\nแจ้งปัญหาการใช้งาน · ทีม SHARK ตอบในห้องแชท · เจ้าของร้านเห็นทุกเรื่องของร้าน\nแจ้งเรื่องใหม่\nใช้งานไม่ได้\nเลขาทำผิด\nข้อมูลไม่ตรง\nบัญชี/การเงิน\nข้อเสนอแนะ\nเรื่องที่แจ้งไว้\nใบเสนอราคาไม่ส่ง LINE\n10:12\nทีม SHARK ตอบแล้ว · รอคุณยืนยันว่าแก้แล้ว\n1\nSHARK-00042\nขอเพิ่มระบบคลังให้เลขาเห็น\nเมื่อวาน\nส่งแล้ว · รอทีม SHARK\nSHARK-00041\nล็อกอิน Apple ไม่ผ่าน\n28/10\nปิดแล้ว 28 ต.ค. · แก้แล้ว\nSHARK-00037\nเรื่องเร่งด่วนเกี่ยวกับเงินหรือข้อมูลหาย ทีมตอบภายใน 4 ชม.ทำการ · เรื่องทั่วไปภายใน 1 วันทำการ\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n1\n\n\nช่วยเหลือ\nแจ้งปัญหาการใช้งาน · ทีม SHARK ตอบในห้องแชท · เจ้าของร้านเห็นทุกเรื่องของร้าน\nแจ้งเรื่องใหม่\nใช้งานไม่ได้\nเลขาทำผิด\nข้อมูลไม่ตรง\nบัญชี/การเงิน\nข้อเสนอแนะ\nเรื่องที่แจ้งไว้\nใบเสนอราคาไม่ส่ง LINE\nเมื่อวาน\nทีม SHARK ตอบแล้ว · รอคุณยืนยันว่าแก้แล้ว\n1\nSHARK-00042\nขอเพิ่มระบบคลังให้เลขาเห็น\n4/11\nส่งแล้ว · รอทีม SHARK\nSHARK-00041\nล็อกอิน Apple ไม่ผ่าน\n28/10\nปิดแล้ว 28 ต.ค. · แก้แล้ว\nSHARK-00037\nเรื่องเร่งด่วนเกี่ยวกับเงินหรือข้อมูลหาย ทีมตอบภายใน 4 ชม.ทำการ · เรื่องทั่วไปภายใน 1 วันทำการ\n\n",
    "unmocked": [],
    "url": "/secretary/help",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-dark.png",
-   "generatedAt": "2026-11-05T15:38:40.685Z"
+   "generatedAt": "2026-11-05T19:32:46.961Z"
   },
   {
    "name": "secretary-help-c1-dark",
@@ -1042,7 +1042,7 @@
    "unmocked": [],
    "url": "/secretary/help/c1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-help-c1-dark.png",
-   "generatedAt": "2026-11-05T15:38:44.476Z"
+   "generatedAt": "2026-11-05T19:32:50.821Z"
   },
   {
    "name": "customers-x1",
@@ -1075,7 +1075,7 @@
    "unmocked": [],
    "url": "/customers/x1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1.png",
-   "generatedAt": "2026-11-05T15:38:56.736Z"
+   "generatedAt": "2026-11-05T19:33:02.981Z"
   },
   {
    "name": "customers-x1-info",
@@ -1103,7 +1103,7 @@
    "unmocked": [],
    "url": "/customers/x1/info",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-info.png",
-   "generatedAt": "2026-11-05T15:38:59.649Z"
+   "generatedAt": "2026-11-05T19:33:06.783Z"
   },
   {
    "name": "secretary-settings-customers",
@@ -1131,7 +1131,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-customers.png",
-   "generatedAt": "2026-11-05T15:39:03.034Z"
+   "generatedAt": "2026-11-05T19:33:10.216Z"
   },
   {
    "name": "customers-x1-dark",
@@ -1164,7 +1164,7 @@
    "unmocked": [],
    "url": "/customers/x1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-dark.png",
-   "generatedAt": "2026-11-05T15:39:10.727Z"
+   "generatedAt": "2026-11-05T19:33:17.101Z"
   },
   {
    "name": "customers-x1-info-dark",
@@ -1192,7 +1192,7 @@
    "unmocked": [],
    "url": "/customers/x1/info",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x1-info-dark.png",
-   "generatedAt": "2026-11-05T15:39:13.611Z"
+   "generatedAt": "2026-11-05T19:33:19.930Z"
   },
   {
    "name": "secretary-settings-customers-dark",
@@ -1220,7 +1220,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-customers-dark.png",
-   "generatedAt": "2026-11-05T15:39:16.592Z"
+   "generatedAt": "2026-11-05T19:33:22.916Z"
   },
   {
    "name": "business-new",
@@ -1243,7 +1243,7 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new.png",
-   "generatedAt": "2026-11-05T15:39:24.954Z"
+   "generatedAt": "2026-11-05T19:33:31.703Z"
   },
   {
    "name": "secretary-staff-invite",
@@ -1272,7 +1272,7 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite.png",
-   "generatedAt": "2026-11-05T15:39:28.043Z"
+   "generatedAt": "2026-11-05T19:33:34.820Z"
   },
   {
    "name": "secretary-staff-m1",
@@ -1297,7 +1297,7 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1.png",
-   "generatedAt": "2026-11-05T15:39:30.891Z"
+   "generatedAt": "2026-11-05T19:33:37.783Z"
   },
   {
    "name": "secretary-settings-account",
@@ -1323,7 +1323,7 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account.png",
-   "generatedAt": "2026-11-05T15:39:34.624Z"
+   "generatedAt": "2026-11-05T19:33:41.581Z"
   },
   {
    "name": "business-new-dark",
@@ -1346,7 +1346,7 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new-dark.png",
-   "generatedAt": "2026-11-05T15:39:38.268Z"
+   "generatedAt": "2026-11-05T19:33:45.204Z"
   },
   {
    "name": "secretary-staff-invite-dark",
@@ -1375,7 +1375,7 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite-dark.png",
-   "generatedAt": "2026-11-05T15:39:41.433Z"
+   "generatedAt": "2026-11-05T19:33:48.478Z"
   },
   {
    "name": "secretary-staff-m1-dark",
@@ -1400,7 +1400,7 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1-dark.png",
-   "generatedAt": "2026-11-05T15:39:44.396Z"
+   "generatedAt": "2026-11-05T19:33:51.383Z"
   },
   {
    "name": "secretary-settings-account-dark",
@@ -1426,7 +1426,7 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account-dark.png",
-   "generatedAt": "2026-11-05T15:39:48.110Z"
+   "generatedAt": "2026-11-05T19:33:55.150Z"
   },
   {
    "name": "secretary",
@@ -1450,11 +1450,11 @@
     "sec-top-new",
     "sec-home-card"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\n\nThe Bean Café\n\nเลขา Shark · กำลังทำ 2 · รออนุมัติ 2 · เสร็จวันนี้ 0\n\nทั้งหมด\nกำลังทำ 2\nรออนุมัติ 2\nเสร็จ\nของฉัน\nทุกคนในกิจการ\nใบเสนอราคา ร้านดอยช้าง\nเมื่อวาน\n1\nรอคุณอนุมัติ 1 รายการ\nCRM\nบัญชี\nแชท LINE/FB\nร่วมกับ สมใจ\nตามลูกค้าที่เงียบเกิน 14 วัน\nตอนนี้\nกำลังทำงาน\nCRM\nแชท LINE/FB\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nตอนนี้\nกำลังทำงาน\nPOS\nปิดบิลค้างห้อง 204 · คืนมัดจำ\nเมื่อวาน\n1\nรอคุณอนุมัติ 1 รายการ · สั่งโดย สมใจ\nหอพัก\nบัญชี\nเช็กคิวพรุ่งนี้และร่างข้อความยืนยัน\n3/11\nเสร็จแล้ว\nจองคิว\nแชท LINE/FB\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\n\nThe Bean Café\n\nเลขา Shark · กำลังทำ 2 · รออนุมัติ 2 · เสร็จวันนี้ 0\n\nทั้งหมด\nกำลังทำ 2\nรออนุมัติ 2\nเสร็จ\nของฉัน\nทุกคนในกิจการ\nใบเสนอราคา ร้านดอยช้าง\n4/11\n1\nรอคุณอนุมัติ 1 รายการ\nCRM\nบัญชี\nแชท LINE/FB\nร่วมกับ สมใจ\nตามลูกค้าที่เงียบเกิน 14 วัน\nตอนนี้\nกำลังทำงาน\nCRM\nแชท LINE/FB\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nตอนนี้\nกำลังทำงาน\nPOS\nปิดบิลค้างห้อง 204 · คืนมัดจำ\n4/11\n1\nรอคุณอนุมัติ 1 รายการ · สั่งโดย สมใจ\nหอพัก\nบัญชี\nเช็กคิวพรุ่งนี้และร่างข้อความยืนยัน\n3/11\nเสร็จแล้ว\nจองคิว\nแชท LINE/FB\n\n",
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary.png",
-   "generatedAt": "2026-11-05T15:40:28.895Z"
+   "generatedAt": "2026-11-05T19:34:33.619Z"
   },
   {
    "name": "customers",
@@ -1474,11 +1474,11 @@
     "sec-top-help",
     "cust-row"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\nลูกค้า\nLINE 4 · เว็บแชท 2 · ยังไม่ตอบ 2 · ของฉัน 1\nแชทหน้าร้าน · 3\nแชทหอพัก\n\nทั้งหมด\nยังไม่ตอบ 2\nของฉัน 1\nปิดแล้ว\nทุกช่องทาง\nLINE\nเว็บแชท\nส\nL\nคุณสมชาย · ร้านดอยช้าง\nดีล\nได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหม\n✨ Shark ร่างคำตอบไว้แล้ว\n9:58\n2\nน\nม\nW\nคุณมานี\nใหม่\nสนใจคอร์สชงกาแฟวันเสาร์ค่ะ ยังมีที่ไหม\nยังไม่มีคนรับ · รอ 4 นาที\n· กฎ: วนคนเข้าเวร → น้ำ, สมใจ, ก้อง\n9:40\n1\nด\nL\nป้าแดง\n[สติกเกอร์]\n9:12\nก\nก\nL\nคุณเก่ง · บลูเฮาส์\nหอพัก\nคุณ: ส่งสลิปค่าเช่าแล้วนะครับ ขอบคุณครับ\nเมื่อวาน\nส\nผ\nW\nผู้เยี่ยมชม #4821\nรอคน\nร้านเปิดกี่โมงคะ · Shark ตอบแล้วนอกเวลาทำการ\nเมื่อวาน\nส\nว\nL\nคุณวิไล\nได้รับของแล้วค่ะ ขอบคุณมาก\n3/11\nน",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\nลูกค้า\nLINE 4 · เว็บแชท 2 · ยังไม่ตอบ 2 · ของฉัน 1\nแชทหน้าร้าน · 3\nแชทหอพัก\n\nทั้งหมด\nยังไม่ตอบ 2\nของฉัน 1\nปิดแล้ว\nทุกช่องทาง\nLINE\nเว็บแชท\nส\nL\nคุณสมชาย · ร้านดอยช้าง\nดีล\nได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหม\n✨ Shark ร่างคำตอบไว้แล้ว\nเมื่อวาน\n2\nน\nม\nW\nคุณมานี\nใหม่\nสนใจคอร์สชงกาแฟวันเสาร์ค่ะ ยังมีที่ไหม\nยังไม่มีคนรับ · รอ 4 นาที\n· กฎ: วนคนเข้าเวร → น้ำ, สมใจ, ก้อง\nเมื่อวาน\n1\nด\nL\nป้าแดง\n[สติกเกอร์]\nเมื่อวาน\nก\nก\nL\nคุณเก่ง · บลูเฮาส์\nหอพัก\nคุณ: ส่งสลิปค่าเช่าแล้วนะครับ ขอบคุณครับ\n4/11\nส\nผ\nW\nผู้เยี่ยมชม #4821\nรอคน\nร้านเปิดกี่โมงคะ · Shark ตอบแล้วนอกเวลาทำการ\n4/11\nส\nว\nL\nคุณวิไล\nได้รับของแล้วค่ะ ขอบคุณมาก\n3/11\nน",
    "unmocked": [],
    "url": "/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers.png",
-   "generatedAt": "2026-11-05T15:40:31.893Z"
+   "generatedAt": "2026-11-05T19:34:36.528Z"
   },
   {
    "name": "secretary-staff",
@@ -1503,7 +1503,7 @@
    "unmocked": [],
    "url": "/secretary/staff",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff.png",
-   "generatedAt": "2026-11-05T15:40:34.885Z"
+   "generatedAt": "2026-11-05T19:34:39.523Z"
   },
   {
    "name": "secretary-dark",
@@ -1527,11 +1527,11 @@
     "sec-top-new",
     "sec-home-card"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\n\nThe Bean Café\n\nเลขา Shark · กำลังทำ 2 · รออนุมัติ 2 · เสร็จวันนี้ 0\n\nทั้งหมด\nกำลังทำ 2\nรออนุมัติ 2\nเสร็จ\nของฉัน\nทุกคนในกิจการ\nใบเสนอราคา ร้านดอยช้าง\nเมื่อวาน\n1\nรอคุณอนุมัติ 1 รายการ\nCRM\nบัญชี\nแชท LINE/FB\nร่วมกับ สมใจ\nตามลูกค้าที่เงียบเกิน 14 วัน\nตอนนี้\nกำลังทำงาน\nCRM\nแชท LINE/FB\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nตอนนี้\nกำลังทำงาน\nPOS\nปิดบิลค้างห้อง 204 · คืนมัดจำ\nเมื่อวาน\n1\nรอคุณอนุมัติ 1 รายการ · สั่งโดย สมใจ\nหอพัก\nบัญชี\nเช็กคิวพรุ่งนี้และร่างข้อความยืนยัน\n3/11\nเสร็จแล้ว\nจองคิว\nแชท LINE/FB\n\n",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\n\nThe Bean Café\n\nเลขา Shark · กำลังทำ 2 · รออนุมัติ 2 · เสร็จวันนี้ 0\n\nทั้งหมด\nกำลังทำ 2\nรออนุมัติ 2\nเสร็จ\nของฉัน\nทุกคนในกิจการ\nใบเสนอราคา ร้านดอยช้าง\n4/11\n1\nรอคุณอนุมัติ 1 รายการ\nCRM\nบัญชี\nแชท LINE/FB\nร่วมกับ สมใจ\nตามลูกค้าที่เงียบเกิน 14 วัน\nตอนนี้\nกำลังทำงาน\nCRM\nแชท LINE/FB\nสรุปยอดขายเมื่อวาน + ของใกล้หมด\nตอนนี้\nกำลังทำงาน\nPOS\nปิดบิลค้างห้อง 204 · คืนมัดจำ\n4/11\n1\nรอคุณอนุมัติ 1 รายการ · สั่งโดย สมใจ\nหอพัก\nบัญชี\nเช็กคิวพรุ่งนี้และร่างข้อความยืนยัน\n3/11\nเสร็จแล้ว\nจองคิว\nแชท LINE/FB\n\n",
    "unmocked": [],
    "url": "/secretary",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-dark.png",
-   "generatedAt": "2026-11-05T15:40:38.094Z"
+   "generatedAt": "2026-11-05T19:34:42.315Z"
   },
   {
    "name": "customers-dark",
@@ -1551,11 +1551,11 @@
     "sec-top-help",
     "cust-row"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\nลูกค้า\nLINE 4 · เว็บแชท 2 · ยังไม่ตอบ 2 · ของฉัน 1\nแชทหน้าร้าน · 3\nแชทหอพัก\n\nทั้งหมด\nยังไม่ตอบ 2\nของฉัน 1\nปิดแล้ว\nทุกช่องทาง\nLINE\nเว็บแชท\nส\nL\nคุณสมชาย · ร้านดอยช้าง\nดีล\nได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหม\n✨ Shark ร่างคำตอบไว้แล้ว\n9:58\n2\nน\nม\nW\nคุณมานี\nใหม่\nสนใจคอร์สชงกาแฟวันเสาร์ค่ะ ยังมีที่ไหม\nยังไม่มีคนรับ · รอ 4 นาที\n· กฎ: วนคนเข้าเวร → น้ำ, สมใจ, ก้อง\n9:40\n1\nด\nL\nป้าแดง\n[สติกเกอร์]\n9:12\nก\nก\nL\nคุณเก่ง · บลูเฮาส์\nหอพัก\nคุณ: ส่งสลิปค่าเช่าแล้วนะครับ ขอบคุณครับ\nเมื่อวาน\nส\nผ\nW\nผู้เยี่ยมชม #4821\nรอคน\nร้านเปิดกี่โมงคะ · Shark ตอบแล้วนอกเวลาทำการ\nเมื่อวาน\nส\nว\nL\nคุณวิไล\nได้รับของแล้วค่ะ ขอบคุณมาก\n3/11\nน",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\nลูกค้า\nLINE 4 · เว็บแชท 2 · ยังไม่ตอบ 2 · ของฉัน 1\nแชทหน้าร้าน · 3\nแชทหอพัก\n\nทั้งหมด\nยังไม่ตอบ 2\nของฉัน 1\nปิดแล้ว\nทุกช่องทาง\nLINE\nเว็บแชท\nส\nL\nคุณสมชาย · ร้านดอยช้าง\nดีล\nได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหม\n✨ Shark ร่างคำตอบไว้แล้ว\nเมื่อวาน\n2\nน\nม\nW\nคุณมานี\nใหม่\nสนใจคอร์สชงกาแฟวันเสาร์ค่ะ ยังมีที่ไหม\nยังไม่มีคนรับ · รอ 4 นาที\n· กฎ: วนคนเข้าเวร → น้ำ, สมใจ, ก้อง\nเมื่อวาน\n1\nด\nL\nป้าแดง\n[สติกเกอร์]\nเมื่อวาน\nก\nก\nL\nคุณเก่ง · บลูเฮาส์\nหอพัก\nคุณ: ส่งสลิปค่าเช่าแล้วนะครับ ขอบคุณครับ\n4/11\nส\nผ\nW\nผู้เยี่ยมชม #4821\nรอคน\nร้านเปิดกี่โมงคะ · Shark ตอบแล้วนอกเวลาทำการ\n4/11\nส\nว\nL\nคุณวิไล\nได้รับของแล้วค่ะ ขอบคุณมาก\n3/11\nน",
    "unmocked": [],
    "url": "/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-dark.png",
-   "generatedAt": "2026-11-05T15:40:41.049Z"
+   "generatedAt": "2026-11-05T19:34:45.173Z"
   },
   {
    "name": "secretary-staff-dark",
@@ -1580,7 +1580,7 @@
    "unmocked": [],
    "url": "/secretary/staff",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-dark.png",
-   "generatedAt": "2026-11-05T15:40:44.033Z"
+   "generatedAt": "2026-11-05T19:34:48.092Z"
   }
  ]
 }

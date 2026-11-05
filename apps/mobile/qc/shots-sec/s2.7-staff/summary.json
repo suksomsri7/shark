@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-05T15:38:07.219Z",
+ "generatedAt": "2026-11-05T19:32:12.793Z",
  "base": "http://127.0.0.1:4727",
  "view": {
   "tag": "iphone",
@@ -30,7 +30,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings.png",
-   "generatedAt": "2026-11-05T15:37:34.179Z"
+   "generatedAt": "2026-11-05T19:31:39.405Z"
   },
   {
    "name": "secretary-settings-access",
@@ -51,7 +51,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access.png",
-   "generatedAt": "2026-11-05T15:37:37.169Z"
+   "generatedAt": "2026-11-05T19:31:42.321Z"
   },
   {
    "name": "secretary-settings-rules",
@@ -73,7 +73,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules.png",
-   "generatedAt": "2026-11-05T15:37:40.162Z"
+   "generatedAt": "2026-11-05T19:31:45.204Z"
   },
   {
    "name": "secretary-settings-log",
@@ -89,11 +89,11 @@
     "sec-log",
     "sec-log-item"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 7\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย คุณ\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 0\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย คุณ\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log.png",
-   "generatedAt": "2026-11-05T15:37:42.937Z"
+   "generatedAt": "2026-11-05T19:31:48.070Z"
   },
   {
    "name": "secretary-settings-knowledge",
@@ -115,7 +115,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge.png",
-   "generatedAt": "2026-11-05T15:37:45.768Z"
+   "generatedAt": "2026-11-05T19:31:51.045Z"
   },
   {
    "name": "secretary-settings-customers",
@@ -136,7 +136,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-customers.png",
-   "generatedAt": "2026-11-05T15:37:48.607Z"
+   "generatedAt": "2026-11-05T19:31:53.901Z"
   },
   {
    "name": "secretary-settings-dark",
@@ -156,7 +156,7 @@
    "unmocked": [],
    "url": "/secretary/settings",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-dark.png",
-   "generatedAt": "2026-11-05T15:37:52.336Z"
+   "generatedAt": "2026-11-05T19:31:57.663Z"
   },
   {
    "name": "secretary-settings-access-dark",
@@ -177,7 +177,7 @@
    "unmocked": [],
    "url": "/secretary/settings/access",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-access-dark.png",
-   "generatedAt": "2026-11-05T15:37:55.278Z"
+   "generatedAt": "2026-11-05T19:32:00.653Z"
   },
   {
    "name": "secretary-settings-rules-dark",
@@ -199,7 +199,7 @@
    "unmocked": [],
    "url": "/secretary/settings/rules",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-rules-dark.png",
-   "generatedAt": "2026-11-05T15:37:58.311Z"
+   "generatedAt": "2026-11-05T19:32:04.004Z"
   },
   {
    "name": "secretary-settings-log-dark",
@@ -215,11 +215,11 @@
     "sec-log",
     "sec-log-item"
    ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 7\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย คุณ\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nstaff@qc.invalid\nออกจากระบบ\n\nบันทึกการกระทำ\nShark · The Bean Café · วันนี้ 0\nทั้งหมด\nวันนี้\nย้อนได้\nแชท LINE/FB\nCRM\nบัญชี\nPOS\nบอร์ดงาน\n09:44\nส่ง LINE ใบเสนอราคา Q-0012 → ลูกค้า A\nแชท LINE/FB\n09:44\nย้ายดีล \"ร้านกาแฟ B\" → ขั้นเสนอราคา\nCRM · ย้อนได้ถึง 09:44\nย้อนกลับ\n09:43\nสร้างใบเสนอราคา Q-0012 ฿12,500\nบัญชี\n09:40\nอ่านราคา + สต็อก Espresso M2\nPOS · สั่งโดย คุณ\n09:38\nค้นหาลูกค้าที่เงียบเกิน 30 วัน\nCRM\n09:12\nสร้างการ์ดติดตามลูกค้า 6 ใบ\nบอร์ดงาน · ย้อนแล้ว\n08:00\nสรุปยอดขาย 4 พ.ย.\nPOS\nทุกการกระทำระบุ งาน · ผู้สั่ง · ผู้อนุมัติ · ย้อนได้ภายใน 24 ชม. (เฉพาะที่ย้อนได้จริง)",
    "unmocked": [],
    "url": "/secretary/settings/log",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-log-dark.png",
-   "generatedAt": "2026-11-05T15:38:01.194Z"
+   "generatedAt": "2026-11-05T19:32:07.021Z"
   },
   {
    "name": "secretary-settings-knowledge-dark",
@@ -241,7 +241,7 @@
    "unmocked": [],
    "url": "/secretary/settings/knowledge",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-knowledge-dark.png",
-   "generatedAt": "2026-11-05T15:38:04.202Z"
+   "generatedAt": "2026-11-05T19:32:09.818Z"
   },
   {
    "name": "secretary-settings-customers-dark",
@@ -262,7 +262,7 @@
    "unmocked": [],
    "url": "/secretary/settings/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.7-staff/secretary-settings-customers-dark.png",
-   "generatedAt": "2026-11-05T15:38:07.088Z"
+   "generatedAt": "2026-11-05T19:32:12.667Z"
   }
  ]
 }

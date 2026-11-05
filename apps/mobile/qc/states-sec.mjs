@@ -89,6 +89,9 @@ function makeCases(base) {
     "POST /api/mobile/secretary/staff/invite": fail(409, "already_member", "เบอร์นี้เป็นพนักงานของร้านอยู่แล้ว"),
     "POST /api/mobile/inbox/conversations/x1/task": fail(404, "not_configured", "ร้านยังไม่ได้เปิด \"สร้างงานจากแชท\" — เปิดได้ที่ตั้งค่าแชทบนเว็บ"),
     "POST /api/mobile/inbox/conversations/x9/reply": fail(422, "invalid", "ช่องทางนี้ตอบได้ภายใน 24 ชม. หลังลูกค้าทักล่าสุด"),
+    // R-S2.14o: A1 เจ้าของสลับเป็น "ทุกคนในกิจการ" แล้วโหลดล้ม ⇒ LoadError (ไม่ใช่รายการเก่า) · คีย์ระบุ query ตรงตัว (sec-harness)
+    "GET /api/mobile/secretary/rooms": JSON.parse(readFileSync(join(FIX, "s2.2.json"), "utf8")).endpoints["GET /api/mobile/secretary/rooms"],
+    "GET /api/mobile/secretary/rooms?scope=tenant&take=50": fail(500, "server_error", "ระบบขัดข้องชั่วคราว"),
     "GET /api/mobile/secretary/access": JSON.parse(readFileSync(join(FIX, "s2.7.json"), "utf8")).endpoints["GET /api/mobile/secretary/access"],
     "PUT /api/mobile/secretary/access": fail(422, "refused", "ระดับนี้ยังเปิดไม่ได้ในรุ่นนี้"),
   };
@@ -103,6 +106,7 @@ function makeCases(base) {
     { fixture: "s2.14-cases.json", route: "/secretary/help?roomId=r1", path: [] },
     { fixture: "s2.14-cases.json", route: "/secretary/help", path: ["help-home-attach@file"] },
     { fixture: "s2.14-cases.json", route: "/secretary/settings/account", path: [] },
+    { fixture: "s2.14-cases.json", route: "/secretary", path: ["sec-home-scope-tenant"] },
     // บันทึกระดับล้ม (422) ⇒ ข้อความ sec-access-note
     { fixture: "s2.14-cases.json", route: "/secretary/settings/access", path: ["sec-access-level-pos-READ"] },
     { fixture: "s2.14-cases.json", route: "/secretary/staff/invite", path: ["inv-phone=0212345678"] },

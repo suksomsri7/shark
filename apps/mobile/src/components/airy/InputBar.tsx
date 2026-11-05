@@ -2,6 +2,7 @@
 // กระจกสูง size.inputH มนเต็ม · ปุ่มส่งกลม size.send พื้น accent
 // S2.3 (เพิ่ม prop เท่านั้น · ไม่ใส่ = เหมือนเดิม): sendTestID · sendDisabled (พื้น btnOff) · autoFocus
 // S2.18 (เพิ่ม prop เท่านั้น): plusTestID · plusDisabled · left (ปุ่มเสริมหลัง + เช่น สวิตช์บันทึกภายใน) · multiline · maxLength · inputStyle
+// S2.14 รอบ 3 (R-S2.14o): `locked` = ไม่มีสิทธิ์ — แถบจาง · ไอคอนกุญแจแทนปุ่ม + · พิมพ์/ส่งไม่ได้ (ดูออกว่าล็อก ไม่ใช่แค่กดไม่ติด)
 // S2.14 F1 (RESOLUTIONS §W): พื้นทึบ `solidBarStyle` (surface ของแถบ) แทนกระจกโปร่ง — ข้อความการ์ดใต้แถบไม่ทะลุ ทั้ง 2 ธีม
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
@@ -27,6 +28,7 @@ export function InputBar({
   multiline = false,
   maxLength,
   inputStyle,
+  locked = false,
 }: {
   testID: string;
   placeholder: string;
@@ -48,19 +50,28 @@ export function InputBar({
   multiline?: boolean;
   maxLength?: number;
   inputStyle?: StyleProp<TextStyle>;
+  /** ล็อก (ไม่มีสิทธิ์): จาง + กุญแจ + พิมพ์/ส่งไม่ได้ */
+  locked?: boolean;
 }) {
   const { c } = useTheme();
   return (
-    <View testID={testID} style={[solidBarStyle(c, radii.input), styles.bar, style]}>
-      <Pressable testID={plusTestID ?? `${testID}-plus`} onPress={onPlus} disabled={plusDisabled} accessibilityRole="button" accessibilityState={{ disabled: plusDisabled }} style={[styles.plus, plusDisabled && styles.off]}>
-        <Icon name="plus" />
-      </Pressable>
+    <View testID={testID} style={[solidBarStyle(c, radii.input), styles.bar, style, locked && styles.locked]} accessibilityState={{ disabled: locked }}>
+      {locked ? (
+        <View testID={`${testID}-locked`} style={styles.plus}>
+          <Icon name="lock" size={18} color={c.iconDim} />
+        </View>
+      ) : (
+        <Pressable testID={plusTestID ?? `${testID}-plus`} onPress={onPlus} disabled={plusDisabled} accessibilityRole="button" accessibilityState={{ disabled: plusDisabled }} style={[styles.plus, plusDisabled && styles.off]}>
+          <Icon name="plus" />
+        </Pressable>
+      )}
       {left}
       <TextInput
         autoFocus={autoFocus}
         testID={`${testID}-field`}
         value={value}
         onChangeText={onChangeText}
+        editable={!locked}
         placeholder={placeholder}
         placeholderTextColor={c.placeholder}
         style={[styles.field, { color: c.text }, inputStyle]}
@@ -72,12 +83,12 @@ export function InputBar({
       <Pressable
         testID={sendTestID ?? `${testID}-send`}
         onPress={onSend}
-        disabled={sendDisabled}
+        disabled={sendDisabled || locked}
         accessibilityRole="button"
-        accessibilityState={{ disabled: sendDisabled }}
-        style={[styles.send, sendDisabled ? { backgroundColor: c.btnOff.bg } : [{ backgroundColor: c.accent }, shadow(c.accentShadow)]]}
+        accessibilityState={{ disabled: sendDisabled || locked }}
+        style={[styles.send, sendDisabled || locked ? { backgroundColor: c.btnOff.bg } : [{ backgroundColor: c.accent }, shadow(c.accentShadow)]]}
       >
-        <Icon name="arrow-up" color={sendDisabled ? c.btnOff.fg : c.onAccent} />
+        <Icon name="arrow-up" color={sendDisabled || locked ? c.btnOff.fg : c.onAccent} />
       </Pressable>
     </View>
   );
@@ -88,5 +99,6 @@ const styles = StyleSheet.create({
   plus: { width: 36, height: size.send, marginLeft: 6, alignItems: "center", justifyContent: "center" },
   field: { flex: 1, minWidth: 0, fontSize: 15, paddingVertical: 0, outlineWidth: 0 },
   off: { opacity: 0.4 },
+  locked: { opacity: 0.55 },
   send: { width: size.send, height: size.send, borderRadius: size.send / 2, alignItems: "center", justifyContent: "center" },
 });

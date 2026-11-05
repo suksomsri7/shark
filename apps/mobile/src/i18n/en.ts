@@ -1061,6 +1061,7 @@ const en: Record<I18nKey, string> = {
   "sec.state.loading": "Loading…",
   "sec.state.error": "Couldn't load. Check your connection and try again.",
   "sec.state.denied": "This account can't view this yet - ask the owner or a manager to open it",
+  "sec.new.lockedPh": "This account can't give the secretary tasks yet",
   "sec.state.retry": "Try again",
   "cust.task.title": "Create a board task from this chat",
   "cust.task.sub": "The card is linked to this chat and customer, on the board your business has set",

@@ -243,7 +243,8 @@ export default function SecretaryScheduledScreen() {
       <ScrollView testID="sec-sched-list" contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
         <View style={styles.bar}>
           <IconBtn testID="sec-sched-back" icon="chevron-left" label={t("sec.sched.back")} onPress={back} />
-          <IconBtn testID="sec-sched-add" icon="plus" label={t("sec.sched.add")} onPress={add} />
+          {/* R-S2.14o: ไม่มีสิทธิ์ (403) = ไม่มีปุ่มสร้างงานประจำ */}
+          {denied ? <View style={styles.barSpacer} /> : <IconBtn testID="sec-sched-add" icon="plus" label={t("sec.sched.add")} onPress={add} />}
         </View>
         <Text style={[styles.h, { color: c.text }]}>{t("sec.sched.title")}</Text>
         <Text style={[styles.sub, { color: c.textMuted }]}>{t("sec.sched.sub", { name })}</Text>
@@ -323,6 +324,7 @@ export default function SecretaryScheduledScreen() {
 }
 
 const styles = StyleSheet.create({
+  barSpacer: { width: size.iconBtn, height: size.iconBtn },
   page: { paddingHorizontal: spacing.page, paddingTop: 14, paddingBottom: 40 },
   bar: { height: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   h: { fontSize: F.title, fontWeight: "700", letterSpacing: -0.5, marginTop: F.v(40), lineHeight: 38 },

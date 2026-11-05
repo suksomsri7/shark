@@ -99,15 +99,18 @@ function scanRegistry() {
   for (const f of SCREENS) {
     const raw = readFileSync(f, "utf8");
     const s = strip(raw);
-    for (const m of s.matchAll(/testID=["'`]([a-z][a-z0-9-]+)/g)) {
-      const id = m[1];
+    // R-S2.14m: รวม sendTestID/plusTestID ของ InputBar (ปุ่มส่ง/แนบ) — regex เดียวกับ oracle B-1
+    for (const m of s.matchAll(/(testID|sendTestID|plusTestID)=["'`]([a-z][a-z0-9-]+)/g)) {
+      const id = m[2];
       const { name, text } = tagAt(s, m.index);
-      const kind = name === "TextInput" ? "input" : BUTTON_TAGS.test(name) || topProp(text, "onPress") ? "button" : /sendTestID|plusTestID/.test(s.slice(Math.max(0, m.index - 6), m.index)) ? "button" : "view";
-      const handler = propExpr(text, "onPress") ?? propExpr(text, "onChange") ?? propExpr(text, "onChangeText");
+      const sub = m[1] !== "testID";
+      const kind = sub ? "button" : name === "TextInput" ? "input" : BUTTON_TAGS.test(name) || topProp(text, "onPress") ? "button" : "view";
+      const handler = sub ? propExpr(text, m[1] === "sendTestID" ? "onSend" : "onPlus") : (propExpr(text, "onPress") ?? propExpr(text, "onChange") ?? propExpr(text, "onChangeText"));
       const cur = map.get(id) ?? { testID: id, files: [], kind, tag: name, handler: handler ?? null, action: actionOf(kind, handler, s) };
       const rel = relative(M, f);
       if (!cur.files.includes(rel)) cur.files.push(rel);
       if (cur.kind === "view" && kind !== "view") Object.assign(cur, { kind, tag: name, handler: handler ?? null, action: actionOf(kind, handler, s) });
+      if (sub) cur.via = `${name} ${m[1]}`;
       map.set(id, cur);
     }
     // R-S2.14f: ชุด template `testID={`prefix-${…}`}` ⇒ แถว "prefix-*" (ต้องกดจริง ≥ 1 ตัวต่อชุด) · regex เดียวกับ oracle B-1
@@ -440,7 +443,7 @@ async function act(browser, sc, id) {
     const eff = [];
     // GET ซ้ำของเส้นที่จอ poll: นับเฉพาะเกิดทันทีหลังกด (< 500 ms) และไม่อยู่ในช่วงสังเกตก่อนกด (ปุ่มลองใหม่/โหลดใหม่)
     const reqs = log.reqs.slice(mark).filter((q) => q.method !== "GET" || (getCount.get(q.path + q.search) ?? 0) < 2 || (q.t - clickT < 500 && !recent.has(q.path + q.search)));
-    if (reqs.length) eff.push(...[...new Set(reqs.map((q) => `${q.method} ${q.path.replace("/api/mobile/", "")}`))].slice(0, 3));
+    if (reqs.length) eff.push(...[...new Set(reqs.map((q) => `${q.method} ${q.path.replace("/api/mobile/", "")}${q.method === "GET" ? q.search : ""}`))].slice(0, 3));
     if (page.url() !== url0) eff.push(`route ${page.url().replace(BASE, "")}`);
     const added = Object.keys(after).filter((k) => !before[k]);
     const removed = Object.keys(before).filter((k) => !after[k]);

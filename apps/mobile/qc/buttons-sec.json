@@ -203,6 +203,29 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "help-send",
+  "files": [
+   "app/(app)/secretary/help/[caseId].tsx",
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "InputBar",
+  "handler": "() => void send()",
+  "action": "handler ในจอ",
+  "via": "InputBar sendTestID"
+ },
+ {
+  "testID": "help-attach",
+  "files": [
+   "app/(app)/secretary/help/[caseId].tsx"
+  ],
+  "kind": "button",
+  "tag": "InputBar",
+  "handler": "() => void att.attach()",
+  "action": "handler ในจอ",
+  "via": "InputBar plusTestID"
+ },
+ {
   "testID": "help-menu-sheet",
   "files": [
    "app/(app)/secretary/help/[caseId].tsx"
@@ -352,6 +375,17 @@
   "tag": "CaseRow",
   "handler": "() => router.push(`/secretary/help/${encodeURIComponent(x.id)}`)",
   "action": "route /secretary/help/${encodeURIComponent(x.id)}"
+ },
+ {
+  "testID": "help-home-attach",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "InputBar",
+  "handler": "() => void att.attach()",
+  "action": "handler ในจอ",
+  "via": "InputBar plusTestID"
  },
  {
   "testID": "sec-inbox",
@@ -714,6 +748,17 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-new-send",
+  "files": [
+   "app/(app)/secretary/new.tsx"
+  ],
+  "kind": "button",
+  "tag": "InputBar",
+  "handler": "() => void send()",
+  "action": "route /secretary/room/${r.roomId} · endpoint secretary/rooms",
+  "via": "InputBar sendTestID"
+ },
+ {
   "testID": "sec-new-frequent-*",
   "template": true,
   "files": [
@@ -1003,6 +1048,17 @@
   "tag": "InputBar",
   "handler": "(v) => { setDraft(v); if (sendErr) setSendErr(null); }",
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "sec-room-send",
+  "files": [
+   "app/(app)/secretary/room/[id].tsx"
+  ],
+  "kind": "button",
+  "tag": "InputBar",
+  "handler": "() => void send()",
+  "action": "endpoint secretary/rooms/[id]/send",
+  "via": "InputBar sendTestID"
  },
  {
   "testID": "sec-room-menu-sheet",
@@ -2336,6 +2392,16 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "sec-rules-approver-loading",
+  "files": [
+   "app/(app)/secretary/settings/rules.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "sec-rules-approver-*",
   "template": true,
   "files": [
@@ -3321,6 +3387,28 @@
   "tag": "InputBar",
   "handler": "() => setInternal((v) => !v)",
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-send",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "InputBar",
+  "handler": "() => void send()",
+  "action": "handler ในจอ",
+  "via": "InputBar sendTestID"
+ },
+ {
+  "testID": "cust-attach",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "InputBar",
+  "handler": "() => void attach()",
+  "action": "endpoint inbox/attachments",
+  "via": "InputBar plusTestID"
  },
  {
   "testID": "cust-internal-toggle",

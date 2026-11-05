@@ -70,6 +70,13 @@
   },
   {
    "fixture": "s2.14-cases.json",
+   "route": "/secretary",
+   "path": [
+    "sec-home-scope-tenant"
+   ]
+  },
+  {
+   "fixture": "s2.14-cases.json",
    "route": "/secretary/settings/access",
    "path": [
     "sec-access-level-pos-READ"
@@ -292,7 +299,113 @@
    ]
   },
   "GET /api/mobile/secretary/rooms": {
-   "items": [],
+   "items": [
+    {
+     "id": "r1",
+     "title": "ใบเสนอราคา ร้านดอยช้าง",
+     "status": "WAITING",
+     "systems": [
+      "crm",
+      "account",
+      "chat"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "คุณสุข (QC)"
+     },
+     "sharedWith": [
+      {
+       "id": "u-qc-2",
+       "name": "สมใจ"
+      }
+     ],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 1
+     },
+     "updatedAt": "2026-11-04T02:41:00.000Z"
+    },
+    {
+     "id": "r2",
+     "title": "ตามลูกค้าที่เงียบเกิน 14 วัน",
+     "status": "RUNNING",
+     "systems": [
+      "crm",
+      "chat"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "คุณสุข (QC)"
+     },
+     "sharedWith": [],
+     "unread": true,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-04T03:10:00.000Z"
+    },
+    {
+     "id": "r3",
+     "title": "สรุปยอดขายเมื่อวาน + ของใกล้หมด",
+     "status": "RUNNING",
+     "systems": [
+      "pos"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "คุณสุข (QC)"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-04T03:05:00.000Z"
+    },
+    {
+     "id": "r4",
+     "title": "ปิดบิลค้างห้อง 204 · คืนมัดจำ",
+     "status": "WAITING",
+     "systems": [
+      "dorm",
+      "account"
+     ],
+     "startedBy": {
+      "id": "u-qc-2",
+      "name": "สมใจ"
+     },
+     "sharedWith": [
+      {
+       "id": "u-qc-owner",
+       "name": "คุณสุข (QC)"
+      }
+     ],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 1
+     },
+     "updatedAt": "2026-11-04T01:15:00.000Z"
+    },
+    {
+     "id": "r5",
+     "title": "เช็กคิวพรุ่งนี้และร่างข้อความยืนยัน",
+     "status": "DONE",
+     "systems": [
+      "booking",
+      "chat"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "คุณสุข (QC)"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-03T10:20:00.000Z"
+    }
+   ],
    "nextBefore": null
   },
   "GET /api/mobile/secretary/inbox/count": {
@@ -2041,6 +2154,13 @@
    "__body": {
     "error": "invalid",
     "message": "ช่องทางนี้ตอบได้ภายใน 24 ชม. หลังลูกค้าทักล่าสุด"
+   }
+  },
+  "GET /api/mobile/secretary/rooms?scope=tenant&take=50": {
+   "__status": 500,
+   "__body": {
+    "error": "server_error",
+    "message": "ระบบขัดข้องชั่วคราว"
    }
   },
   "PUT /api/mobile/secretary/access": {

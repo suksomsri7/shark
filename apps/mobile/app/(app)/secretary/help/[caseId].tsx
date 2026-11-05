@@ -202,7 +202,8 @@ export default function SecretaryHelpCaseScreen() {
               </View>
             ) : null}
           </View>
-          <IconBtn testID="help-menu" icon="more-horizontal" label={t("help.menu")} onPress={() => setMenu(true)} />
+          {/* R-S2.14o: ไม่มีสิทธิ์ (403) = ไม่มีเมนู ⋯ (ไม่มีอะไรให้ทำกับเรื่องที่เปิดไม่ได้) */}
+          {denied ? <View style={styles.barSpacer} /> : <IconBtn testID="help-menu" icon="more-horizontal" label={t("help.menu")} onPress={() => setMenu(true)} />}
         </View>
 
         {gone ? (
@@ -367,6 +368,7 @@ export default function SecretaryHelpCaseScreen() {
 }
 
 const styles = StyleSheet.create({
+  barSpacer: { width: size.iconBtn, height: size.iconBtn },
   flex: { flex: 1 },
   bar: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: spacing.page, paddingTop: 14, paddingBottom: 6 },
   center: { flex: 1, minWidth: 0, alignItems: "center" },

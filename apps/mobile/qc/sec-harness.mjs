@@ -65,7 +65,8 @@ export async function openPage(browser, { base, route, fx, dark = false, w = 390
       if (req.method() === "OPTIONS") return req.respond({ status: 204, headers: CORS, body: "" });
       log.reqs.push({ method: req.method(), path: u.pathname, search: u.search, body: req.postData() ?? null, t: Date.now() });
       const k1 = `${req.method()} ${u.pathname}`;
-      let body = has(EP, k1) ? EP[k1] : has(EP, u.pathname) ? EP[u.pathname] : undefined;
+      const kq = `${k1}${u.search}`; // คีย์ที่ระบุ query ตรงตัว (เช่น rooms?scope=tenant&take=50) ชนะคีย์ไม่มี query
+      let body = u.search && has(EP, kq) ? EP[kq] : has(EP, k1) ? EP[k1] : has(EP, u.pathname) ? EP[u.pathname] : undefined;
       if (body && typeof body === "object" && has(body, "__afterReq")) body = log.reqs.slice(0, -1).some((q) => `${q.method} ${q.path}` === body.__afterReq) ? body.__then : body.__body;
       if (body === undefined) {
         log.unmocked.push(k1);
