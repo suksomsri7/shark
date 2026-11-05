@@ -1,0 +1,8 @@
+# S3a-1-S1 — S3a.1-S1 แก้ผลนักล่า: worker · คิว · งานประจำ · โควตา (Opus · เลน b · `wip/sec-s3a1-s1` · 7 พ.ย.)
+Read COMMON (A.8 ไม่มี migration · A.11) · **RESOLUTIONS §Z + §Z.1 (R-Z1…R-Z12 = งานทั้งหมดของใบนี้ · ทำทุกข้อ)** · รายงานนักล่า L2/L3 สรุปอยู่ใน §Z · oracle `scripts/qc-sec-s3a1-s1.mts` = สัญญา (เป้าหมายเขียวทั้งหมด)
+## ไฟล์ที่เป็นของใบนี้
+`src/lib/ai/secretary/{worker,rooms,scheduled,room-jobs-job,notify}.ts` · `src/lib/ai/{credit,service}.ts` (เฉพาะ assist cap source + ปฏิเสธห้องเลขา/ห้องปิด) · `src/lib/ai/proposals.ts` (กุญแจกันซ้ำ tool · ห้องปิด) · `src/lib/mobile/tenants.ts` · `src/app/api/mobile/secretary/{rooms,rooms/[id]/send,scheduled}/**` · `src/app/api/mobile/chat/send/route.ts` (ปฏิเสธห้องเลขา + rate-limit) · `src/app/api/cron/hourly/route.ts` (maxDuration · isDue) · `src/lib/platform/minute-jobs.ts` (ลำดับ/งบ roomJobs) · `src/lib/ai/secretary/server-actions.ts` · `src/lib/ai/secretary/_shared` claim helpers · `src/lib/ai/provider.ts` (AbortSignal timeout เท่านั้น) · docs §5.5/§5.4 + `docs/api/SECRETARY-API.md` (409 pending ของ send · duplicate มี messageId) · `ledger/wo-notes/sec-s3a1-s1.md`
+## ห้าม
+แตะ prisma/ · แตะสิทธิ์/PDPA (ของ S3a.1-S2 เลน c: `src/lib/staff/**` · `ai-bridges` · `digest` · `tools.ts` · `after-hours` · `ai-suggest` · `account-deletion` · `_shared.ts` ของ inbox) — ถ้าต้องแตะไฟล์ร่วม (`src/lib/ai/secretary/_shared.ts` ของ route · `service.ts`) ให้แก้เฉพาะบรรทัดของมติตัวเอง และจดไว้ว่าแตะบรรทัดไหน (merge กับเลน c)
+## Acceptance
+`qc-sec-s3a1-s1` เขียวทั้งหมด ×2 · regression: `qc-sec-s1.4` `s1.5` `s1.13` `s1.14` `s1.14b` `s3a.1` ยังเขียว · `qc-ai-*` ที่แตะ (credit/actions) เท่า baseline · typecheck 0 · fitness ×2 · A.11 merge tip
