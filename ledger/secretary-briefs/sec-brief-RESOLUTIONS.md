@@ -215,3 +215,11 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S2.17c (F6/F7/F8/F9/F11)** ล้างข้อความ 429 เมื่อสำเร็จ · id ของ resend แยกจาก id ของข้อความพิมพ์ · บันทึกภายในแสดงไฟล์แนบ · ข้อความระบบตัดสินจาก senderUserId เท่านั้น · เปิดลิงก์เฉพาะ https · 403 จาก K2/K3 ⇒ setCustomersAccess(false) · currentSystemId ล้างตอนสลับร้าน
 - **ตั๋ว server (→ S3a / S1.14 follow-up)**: `linkedMember.phone` ต้องส่ง `phoneMasked` (เต็มเฉพาะมี booking.customer.phoneFull) · DTO ห้องลูกค้า: `canAssign/canSetStatus/canLinkCustomer` · `replyWindowEndsAt` · route ai-suggest แบบ Bearer + `suggestionId` ใน reply · `tags`/deals ใน DTO · task-from-chat route
 - รับ: ไฟล์ใหญ่ไม่มี fileSize บน native ให้ server ปัด (F12)
+
+## V. รีวิว S2.21+S2.22 ผู้ตรวจ W — มติรอบ 2 (5 พ.ย. ~00:5xZ)
+- **R-S2.21a (W-2)** `unitAccess []` = "ยังไม่มีสาขา" · เฉพาะ `["*"]` = ทุกสาขา (ชิป/หัวเรื่อง)
+- **R-S2.21b (W-3)** โมดูล OFF-only ที่ server บอกระดับสูงกว่าที่แอปแสดง ⇒ ป้าย "ให้รายคีย์ไว้" (ไม่โชว์เป็นปิด)
+- **R-S2.21c (W-4/W-5)** PUT ส่ง `unitIds`/`role` เฉพาะเมื่อเปลี่ยน · ลดบทบาท MANAGER→STAFF ⇒ รีเซ็ตกริดเป็นระดับที่เก็บจริง (ไม่ใช่ staffViewOf ของผู้จัดการ) ให้เจ้าของเลือกใหม่
+- **R-S2.21d (W-6/W-7/W-8/W-9/W-10)** ค่าเริ่มต้นสาขาในคำเชิญ: OWNER ที่มี >1 สาขา ต้องเลือก · MANAGER = สาขาตัวเอง · `bad_units` ใส่ใน REASON map · ลิงก์ /i/<code> แสดงเฉพาะ sms ≠ sent · MANAGER ไม่เห็นปุ่ม resend/cancel ของคำเชิญ role ≠ STAFF · `ready` รวม denied · G1 กันกดซ้ำด้วย ref · G1 ครั้งแรก (fresh signup) มีลิงก์ออกจากระบบ
+- **W-11** preview ลบบัญชีแสดง newOwner ของร้านที่โอน
+- **ตั๋ว server (S1.14 follow-up / S3a)**: `staff/invite` รับ `levels` + `chat` (server แปลงเอง) และปฏิเสธคีย์ที่ `isSensitiveKey` ⇒ ลบตาราง LevelGrid ฝั่งแอปใน S2.14 · พิจารณาเพิ่ม SENSITIVE_PARTS: `pos.staff.manage` `pos.device.manage` `booking.service.setDeposit` `account.approve.limit` `account.chart.manage` `crm.quota.manage` `crm.report.all` `booking.job.runAny` (W-12) · fixture เบอร์ใช้รูปแบบปลอมชัด (W-13)

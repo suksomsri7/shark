@@ -70,7 +70,7 @@ _(เติมเมื่อถึงใบ)_
 | S2.18 | 🔨 | | รวมในชุด S2-17 (เลน c) |
 | S2.19 | 🔨 | | รวมในชุด S2-17 (เลน c) |
 | S2.20 | ✍️ | | รวมในชุด S2-13 |
-| S2.21 | 🔍 | | built 99454fbe…84cd4414 (เลน d · มี tip) · spec 12/12 ×3 + ผู้คุม 11/12 · คู่ G1–G4 สว่าง/มืด (ผู้คุมดู G3 ✅) · interaction ครบ · post-signup → /business/new (§R flip) · **รอผู้ตรวจ W (สิทธิ์ UI)** · ตั๋ว server: invites/pending route · staff units ชื่อ · invite รับ levels/chat · /me appleLinked · shift status |
+| S2.21 | 🔍 | | built 99454fbe…84cd4414 (เลน d · มี tip) · spec 12/12 ×3 + ผู้คุม 11/12 · คู่ G1–G4 สว่าง/มืด (ผู้คุมดู G3 ✅) · interaction ครบ · post-signup → /business/new (§R flip) · **ผู้ตรวจ W: MERGE-AFTER-FIX** (unitAccess [] แสดงเป็นทุกสาขา · OFF-only ซ่อนสิทธิ์รายคีย์ · PUT ส่ง unitIds ทุกครั้ง · ลดบทบาทไม่รีเซ็ตกริด) → §V รอบ 2 · ตั๋ว server: invites/pending route · staff units ชื่อ · invite รับ levels/chat · /me appleLinked · shift status |
 | S2.22 | 🔨 | | รวมในชุด S2-21 (เลน d) |
 | S2.23 | ✍️ | | รวมในชุด S2-16 |
 | S2.13 | ✍️ | | ใบ S2-13 (S2.13+S2.20) + spec s2.13.json · หลังทุกจอ S2 |
