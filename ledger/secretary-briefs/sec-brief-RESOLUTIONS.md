@@ -223,3 +223,23 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S2.21d (W-6/W-7/W-8/W-9/W-10)** ค่าเริ่มต้นสาขาในคำเชิญ: OWNER ที่มี >1 สาขา ต้องเลือก · MANAGER = สาขาตัวเอง · `bad_units` ใส่ใน REASON map · ลิงก์ /i/<code> แสดงเฉพาะ sms ≠ sent · MANAGER ไม่เห็นปุ่ม resend/cancel ของคำเชิญ role ≠ STAFF · `ready` รวม denied · G1 กันกดซ้ำด้วย ref · G1 ครั้งแรก (fresh signup) มีลิงก์ออกจากระบบ
 - **W-11** preview ลบบัญชีแสดง newOwner ของร้านที่โอน
 - **ตั๋ว server (S1.14 follow-up / S3a)**: `staff/invite` รับ `levels` + `chat` (server แปลงเอง) และปฏิเสธคีย์ที่ `isSensitiveKey` ⇒ ลบตาราง LevelGrid ฝั่งแอปใน S2.14 · พิจารณาเพิ่ม SENSITIVE_PARTS: `pos.staff.manage` `pos.device.manage` `booking.service.setDeposit` `account.approve.limit` `account.chart.manage` `crm.quota.manage` `crm.report.all` `booking.job.runAny` (W-12) · fixture เบอร์ใช้รูปแบบปลอมชัด (W-13)
+
+## W. รับ S2.13+S2.20 (ผู้คุมดูภาพคู่มืด 35 แผ่น · 6 พ.ย. ~07:3xZ)
+- **R-S2.13a (Q1)** แถบบน 3 โซน + ปุ่ม ? เฉพาะหน้ารากโซน 5 หน้า (A1 · A6 · D1 · H1 · K1) · หน้าย่อยใช้แถบย้อนกลับตามภาพแบบ — ภาพแบบชนะใบงาน (กติกา "UI ต้องตรงแบบ") · ใบ S2.20 ข้อ "ทุกหน้า" ถือว่าแก้แล้ว
+- **R-S2.13b (Q2)** badge ทีม = คำเชิญที่ร้านส่งแล้วรอรับ (OWNER/MANAGER) + `support/cases.unread` ไปก่อน · ตั๋ว server S3a: เส้นนับ "ขอความช่วยเหลือค้าง" (ChatConversationHelper ที่ฉันถูกเรียก + ยังเปิด) → แอปรวมเข้า badge ทีมเมื่อมี
+- **R-S2.13c (Q3)** push deep-link: แอปรับทั้ง `/customers/<id>` และ `/inbox/<id>?e=` ต่อไป · ตั๋ว server S3a: `chat/routing.ts` เปลี่ยน `data.link` เป็น `/customers/<id>?e=…` (ไม่แตะในใบ S1.14b เพราะห้าม builder แตะ chat/**) · `qc/push-link-test.mjs` P-6/P-8/P-10/P-11 ที่ builder แก้ = ยอมรับ (ไม่ใช่ oracle ผู้คุม)
+- **R-S2.13d (Q4)** `userInterfaceStyle: "automatic"` ⇒ คีย์บอร์ด/Alert ของจอ 1.0 ตามเครื่อง — เจ้าของดูในเครื่องจริงที่ CP2 (จดใน RESUME ของเจ้าของ)
+- **R-S2.13e (Q5)** trailer commit ของ builder ไม่มีชื่อโมเดล = ถูกต้องตาม COMMON
+- **fix-forward → ใบ S2.14 (ผู้คุมเห็นจากภาพคู่):**
+  - F1 แถบ/ปุ่มลอยล่าง (ช่องพิมพ์ A1/A2/A4/H1/H2/K2 · ปุ่ม "เพิ่มพนักงาน" D1 · "ส่งคำเชิญทาง SMS" G2 · "สร้างและเริ่มใช้" G1) **พื้นหลังโปร่งจนข้อความการ์ดใต้แถบทะลุขึ้นมา** ทั้ง 2 ธีม (ภาพแบบ = แถบทึบ/เบลอ) → ใช้ surface token ทึบ + blur ใต้แถบ (ไม่แก้ padding ที่ทำไว้แล้ว)
+  - F2 A6 รออนุมัติ: แถวชิป "ทั้งหมด/เงิน/ส่งลูกค้า/ลบ-ยกเลิก" ล้นจอ (ชิปที่ 4 ถูกตัด) → ลด padding/ฟอนต์ให้พอดีจอ 390 หรือแถวเลื่อนได้แบบมีขอบจาง
+  - F3 K2 ห้องลูกค้า: ข้อความรูปของลูกค้าแสดงเป็นกล่องเขียวสว่างเต็ม (fixture ไม่มีรูปจริง) → placeholder ต้องเป็น surface token กลาง + ไอคอนรูป (ห้ามสีสด) · ตรวจแหล่งสีเขียวนั้นว่ามาจากไหน
+  - F4 ยืนยันซ้ำว่า D1/G2 ตอนเลื่อนสุดไม่ถูกปุ่มทับ (padding.json บอก ok แล้ว · แค่ถ่ายภาพคู่ตอนเลื่อนสุดแนบใน wo-note S2.14)
+
+### W.2 รีวิว S2.13+S2.20 ผู้ตรวจ X — มติรอบ 2 (6 พ.ย. ~07:5xZ)
+- **R-S2.13f (M1 · แก้ก่อน merge)** `secretary/support/cases/[id]` ออกจากชุด `BADGE_AFTER` · จอ H2 เรียก `scheduleZoneBadges()` เองเฉพาะโหลดครั้งแรกหรือเมื่อจำนวนข้อความ/สถานะอ่านเปลี่ยน — ห้ามให้ poll 15 วิ ของ H2 ลาก badge 3–4 request ตามทุกรอบ
+- **R-S2.13g (m2)** `CTA_BOTTOM`/`LIST_BOTTOM` ประกาศที่เดียวใน theme tokens/helper · G1 (`business/new.tsx`) ใช้ค่าเดียวกัน (เลิก 120/26 ฝัง) · เพิ่ม G1 ใน padding.json
+- **R-S2.13h (m3/m4/L1/L2/L4)** ชีตสลับกิจการ `setQuota(null)` ต้น effect · note จาก `?e=` แสดงครั้งเดียวต่อ id ด้วย ref (ไม่ผูก `t`) · three-chats ok ต้องรวม `unmocked.length === 0` · เกณฑ์ padding `gap >= cardGap` (ไม่ใช่ ≥0) · ปุ่ม + ใช้สถานะ 3 ค่า (ไม่รู้/อนุญาต/ปฏิเสธ) ซ่อนจนกว่าจะรู้
+- **R-S2.13i (m1 · Android)** `expo-system-ui` ต้องแตะ package.json ⇒ ไม่ทำใน RUN นี้ (ห้ามติดตั้งแพ็กเกจ) · เป้าหมายรุ่นแรก = iOS TestFlight · จด S3a: "Android ต้องเพิ่ม expo-system-ui ก่อน Internal testing" · CP2 เจ้าของดูโหมดมืดบน iOS รวมจอ 1.0 (คีย์บอร์ด/Alert) · ตัวห่อ Text ของ 1.0 ไม่มีสีตั้งต้น — builder ตรวจ `src/components/ui/text.tsx` ใส่สีตั้งต้นตามธีมสว่างของ 1.0 เพื่อกันตัวอักษรเปลี่ยนตามเครื่อง (ใบนี้ · ขอบเขตแคบ 1 ไฟล์)
+- **R-S2.13j (M2 · ตั๋ว server → S3a)** `sendPushToChatStaff` (chat/service.ts) ใส่ `data.tenantId` + `link=/customers/<id>` (รวมกับ R-S2.13c) · ฝั่งแอปไม่แก้ · builder จดใน wo-note ข้อ 7 ว่าพฤติกรรมใหม่ = เปิดห้องในกิจการ active แล้วเจอ "ไม่พบ" (ไม่รั่ว)
+- **m5** = R-S2.13b (ยืนยันนิยาม badge ทีมชั่วคราว + ตั๋ว `secretary/badges` เส้นเดียวใน S3a) · L3/L5 รับทราบ ไม่แก้ในใบนี้

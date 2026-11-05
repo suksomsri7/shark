@@ -8,3 +8,10 @@ Read COMMON · ทุก `sec-brief-S2.*.md` + wo-notes · `docs/api/SECRETARY-A
 ## ด่านเต็ม (ครั้งเดียว): ทุก spec S2 + `qc-sec-s2.1/s2.12` + `three-chats` + `clicks-sec` + ทุกชุด `qc-mobile-*` + `qc-sec-ui` ทุก route + typecheck ทั้ง repo + `next build` (iso) + fitness ×2 · ภาพคู่ทั้งชุด (สว่าง/มืด) ส่ง CP3 ให้เจ้าของดู
 ## Files you own
 จอ S2 ทุกไฟล์ (เฉพาะถอด mock/เพิ่มสถานะ) · `qc/{buttons-sec.json,click-sec.mjs}` · docs §6 · `ledger/wo-notes/sec-s2.14.md`
+
+## fix-forward จาก S2.13 (RESOLUTIONS §W · ผู้คุม 6 พ.ย.) — ทำในใบนี้ก่อนรันด่านเต็ม
+- F1 แถบ/ปุ่มลอยล่างทุกจอ (ช่องพิมพ์ A1/A2/A4/H1/H2/K2 · ปุ่ม D1/G1/G2) พื้นหลังทึบ/เบลอตาม surface token — ข้อความการ์ดห้ามทะลุ (ทั้ง 2 ธีม · ถ่ายคู่ A1+D1+G2 ซ้ำ)
+- F2 A6 แถวชิปตัวกรองพอดีจอ 390 (ชิปที่ 4 ต้องครบ) หรือเลื่อนได้แบบมีขอบจาง
+- F3 K2 placeholder รูปลูกค้า = surface กลาง + ไอคอน (ไม่ใช่กล่องเขียวสด) · ระบุแหล่งที่มาของสีเดิมใน wo-note
+- F4 แนบภาพ D1/G2 ตอนเลื่อนสุด (ทั้ง 2 ธีม) ใน wo-note
+- ลบตาราง LevelGrid ฝั่งแอปใน G2 เมื่อ S1.14b merge แล้ว (server รับ `levels`+`chat` · ปฏิเสธ `sensitive_key`) — ถ้า S1.14b ยังไม่ merge ตอนเริ่มใบ ให้ทำท้ายสุดหลัง merge tip
