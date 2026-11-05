@@ -258,3 +258,9 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-S1.14b-g (LOW-4 + MINOR-3)** `suggestionId` ที่ไม่ใช่ของห้อง/ร้าน/ระบบเดียวกัน ⇒ 422 `bad_suggestion` ก่อนส่ง (ไม่เงียบ) · oracle S-4 ใหม่ · บันทึกภายใน (`isInternal:true`) ห้ามใช้ `suggestionId` แทน `clientMessageId` ⇒ 422 เดิม (คีย์ `sugg:` เฉพาะคำตอบจริง)
 - **R-S1.14b-h (MINOR-4)** `task`: error จาก lib ที่มี `status` 403/404 ให้คืนตามนั้น (`{error:"forbidden"|"not_found", message}`) · อื่น ⇒ 422 `task_failed` · docs ตาม
 - MAJOR-1/MINOR-1/MINOR-2 = รอบ 2 ที่กำลังทำ (commit แล้วรัน oracle) · LOW-1 → S2.14 (ใบมีแล้ว) · LOW-2 รับทราบ (รูปแบบเดียวกับ thrown()) · LOW-3 → S3a: `can.aiSuggest` ใน DTO (จดใน RESUME)
+
+## Y. รับ S1.14c (ตั๋ว server ชุด 2) — มติรอบ 2 (6 พ.ย. ~10:0xZ)
+- **R-S1.14c-a** `badges.customers` = จำนวน**ห้อง**ที่มี unread (ตัวเดียวกับ `inbox/unread` ที่แอปใช้) ไม่ใช่จำนวนข้อความ · ORACLE-EDIT B-3 = 1
+- **R-S1.14c-b** `badges.approvals` ต้องเป็นของกิจการที่เรียก (x-tenant-id) เท่านั้น: `inboxForUser(userId, { tenantId, take })` แล้วนับ canApprove — ห้ามปนกิจการอื่น (badge เดิม `inbox/count` ข้ามกิจการคงไว้สำหรับหน้าเลขา "ทุกกิจการ")
+- **R-S1.14c-c** push "ลูกค้าทักเข้ามา" ไม่ใส่ `conversationId` (NV-6.5/CP-1.3 · แอป 1.0 อ่านคีย์นี้เปิดห้อง AI) — ยอมรับ · ใช้ `chatConversationId` + `link` แทน · ใบ S2.14/S3a: handler แอปอ่าน `link` เป็นหลัก
+- ORACLE-EDIT: s1.14c L-3 mock `post(payloads)` อาร์กิวเมนต์เดียว · s1.17 N-4 link = `/customers/<id>` (ตาม R-S2.13j)

@@ -114,7 +114,7 @@ try {
       posts.length = 0;
       const rsp = await push.sendPushToChatStaff({ tenantId: tid, systemId: chatSys.id, conversationId: conv.id, assigneeUserId: U.staff, title: "ลูกค้าทัก", body: "สวัสดี", data: { conversationId: conv.id } }, { post });
       const tos = posts.map((p) => String(p.to));
-      chk("N-4", "sendPushToChatStaff: owner inbox OFF ⇒ ไม่ได้รับ · s2 ASSIGNED ไม่ใช่ผู้ดูแล ⇒ ไม่ได้รับ · staff (ผู้ดูแล · ALL) ⇒ ได้รับ · data.link /inbox/<id> + conversationId เดิม", rsp.sent === 1 && tos.some((t) => t.includes(U.staff)) && !tos.some((t) => t.includes(U.owner) || t.includes(U.s2)) && posts[0]?.data?.link === `/inbox/${conv.id}` && posts[0]?.data?.conversationId === conv.id, JSON.stringify({ rsp, tos, data: posts[0]?.data }).slice(0, 200));
+      chk("N-4", "sendPushToChatStaff: owner inbox OFF ⇒ ไม่ได้รับ · s2 ASSIGNED ไม่ใช่ผู้ดูแล ⇒ ไม่ได้รับ · staff (ผู้ดูแล · ALL) ⇒ ได้รับ · data.link /customers/<id> (R-S2.13j) + conversationId เดิม", rsp.sent === 1 && tos.some((t) => t.includes(U.staff)) && !tos.some((t) => t.includes(U.owner) || t.includes(U.s2)) && posts[0]?.data?.link === `/customers/${conv.id}` && posts[0]?.data?.conversationId === conv.id, JSON.stringify({ rsp, tos, data: posts[0]?.data }).slice(0, 200));
     }
   }
 } finally { await cleanup(); }
