@@ -1,16 +1,20 @@
 // GET /api/mobile/secretary/badges — ตัวเลข badge ของ 3 โซนแอปในเส้นเดียว (ใบ S1.14c · R-S2.13b/m5 · docs/api/SECRETARY-API.md)
-//   approvals = `inboxCount(userId).canApprove` (กล่องรวมทุกกิจการ · ตัวเดียวกับ secretary/inbox/count)
+//   approvals = รายการรออนุมัติที่ฉันกดได้ **ของกิจการนี้เท่านั้น** (`inboxForUser(userId, { tenantId })` นับ canApprove · R-S1.14c-b)
+//     — `secretary/inbox/count` (ข้ามกิจการ) คงไว้สำหรับหน้าเลขา "ทุกกิจการ"
 //   customers = ผลรวม `unreadFor` ทุกระบบแชทที่เปิดอยู่ของร้าน (ตัวเดียวกับ inbox/unread) · ไม่มีสิทธิ์อ่านแชท = 0
 //   team.invites = คำเชิญที่ยังไม่รับและยังไม่หมดอายุของร้าน — เฉพาะ OWNER/MANAGER (STAFF = 0)
 //   team.help = ห้องแชทลูกค้าสถานะ OPEN ที่ผู้เรียกถูกเรียกมาช่วย (ChatConversationHelper.userId = ฉัน)
 //   team.support = `unreadCaseTotalForUser` (เรื่องที่ทีม SHARK ตอบแล้วยังไม่อ่าน)
 //   total = approvals + customers + invites + help + support
-// ด่าน = สมาชิกร้าน (gate null) · 60/นาที ต่อ Membership · count/aggregate ล้วน ไม่ดึงรายการ (ยกเว้น inboxCount ที่ใช้ชุดเดียวกับกล่องรวม)
+// ด่าน = สมาชิกร้าน (gate null) · 60/นาที ต่อ Membership · count/aggregate ล้วน ไม่ดึงรายการ (ยกเว้น approvals ที่ใช้ชุดเดียวกับกล่องรวม · เพดาน 100)
 import { tenantDb } from "@/lib/core/db";
-import { inboxCount } from "@/lib/ai/secretary/inbox";
+import { inboxForUser } from "@/lib/ai/secretary/inbox";
 import { unreadCaseTotalForUser } from "@/lib/support/service";
 import { READ, can, unreadFor, type InboxCtx } from "../../inbox/_shared";
 import { gate, ok, thrown, withRateLimit } from "../_shared";
+
+/** เพดานเดียวกับกล่องรวม (TAKE_MAX ของ inbox.ts) */
+const INBOX_TAKE = 100;
 
 export async function GET(req: Request) {
   const a = await gate(req, null);
@@ -38,13 +42,13 @@ export async function GET(req: Request) {
       db.chatConversationHelper.count({ where: { tenantId, userId, conversation: { tenantId, status: "OPEN" } } });
 
     const [inbox, cust, inv, hlp, support] = await Promise.all([
-      inboxCount(userId),
+      inboxForUser(userId, { tenantId, take: INBOX_TAKE }),
       customers(),
       invites(),
       help(),
       unreadCaseTotalForUser({ tenantId }, userId, m.role),
     ]);
-    const approvals = inbox.canApprove;
+    const approvals = inbox.filter((i) => i.canApprove).length;
     return ok({
       approvals,
       customers: cust,
