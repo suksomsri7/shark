@@ -106,7 +106,8 @@ try {
   const inv = (await import("@/lib/staff/invite")) as AnyMod;
   const made = await inv.inviteStaff({ tenantId: tid, actorUserId: U.owner }, { name: "ผู้ถูกเชิญ", phone: "081-234-5624", role: "STAFF", unitIds: [unit.id] });
   const pushes: { to: string; msg: Record<string, unknown> }[] = [];
-  const post = async (_url: string, body: unknown) => { const arr = Array.isArray(body) ? body : [body]; for (const m of arr) pushes.push({ to: String((m as AnyMod).to ?? ""), msg: m as Record<string, unknown> }); return { ok: true, status: 200, json: async () => ({ data: arr.map(() => ({ status: "ok" })) }) } as unknown as Response; };
+  // ORACLE-EDIT (ผู้คุม): `post(payloads)` รับอาร์กิวเมนต์เดียว (push.ts deliverBatch) — แบบเดียวกับ s1.17/s1.21
+  const post = async (body: unknown) => { const arr = Array.isArray(body) ? body : [body]; for (const m of arr) pushes.push({ to: String((m as AnyMod).to ?? ""), msg: m as Record<string, unknown> }); return { tickets: arr.map(() => ({ status: "ok" })) } as never; };
   await prisma.pushDevice.create({ data: { userId: U.helper, tenantId: tid, expoToken: `ExponentPushToken[qcs114c-helper]`, platform: "ios" } as never }).catch((e) => console.log("  ⚠️ pushDevice: " + errMsg(e)));
   let helperErr = "";
   try { await routing.callHelper({ tenantId: tid, systemId: sid, conversationId: conv.id, byUserId: U.staff, helperUserId: U.helper, note: "ช่วยดูที", deps: { post } }); } catch (e) { helperErr = errMsg(e); }
@@ -134,7 +135,8 @@ try {
     const tm = (j: Record<string, unknown>) => (j.team ?? {}) as Record<string, number>;
     chk("B-1", "shape {approvals, customers, team{invites,help,support}, total=ผลรวม} ครบทุก role", [bo, bm, bs, bh].every((r) => r.status === 200 && shape(r.json)), JSON.stringify({ bo: [bo.status, bo.json], bs: [bs.status, bs.json] }).slice(0, 300));
     chk("B-2", "team.invites: OWNER=1 · MANAGER=1 · STAFF=0 (ใบเชิญค้าง 1 ใบ)", made?.ok === true && tm(bo.json).invites === 1 && tm(bm.json).invites === 1 && tm(bs.json).invites === 0, JSON.stringify({ made: made?.ok, o: tm(bo.json).invites, m: tm(bm.json).invites, s: tm(bs.json).invites }));
-    chk("B-3", "team.help: helper=1 · owner=0 · customers: owner/staff ≥ 2 (unread 2) · nosug ก็เห็น (มี read)", tm(bh.json).help === 1 && tm(bo.json).help === 0 && (bo.json.customers as number) >= 2 && (bs.json.customers as number) >= 2, JSON.stringify({ hh: tm(bh.json).help, ho: tm(bo.json).help, co: bo.json.customers, cs: bs.json.customers }));
+    // ORACLE-EDIT (ผู้คุม · R-S1.14c-a): customers = จำนวนห้องที่มี unread (ตัวเดียวกับ inbox/unread) ⇒ fixture 1 ห้อง = 1
+    chk("B-3", "team.help: helper=1 · owner=0 · customers: owner/staff = 1 (1 ห้องมี unread)", tm(bh.json).help === 1 && tm(bo.json).help === 0 && (bo.json.customers as number) === 1 && (bs.json.customers as number) === 1, JSON.stringify({ hh: tm(bh.json).help, ho: tm(bo.json).help, co: bo.json.customers, cs: bs.json.customers }));
     const noAuth = await call("secretary/badges", "GET", {});
     chk("B-4", "ไม่มี Bearer ⇒ 401", noAuth.status === 401, String(noAuth.status));
   }
