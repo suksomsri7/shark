@@ -64,3 +64,11 @@
 - docs: SECRETARY-API (ด่าน ai-suggest · replyWindowEndsAt · กติกา 429 ข้อ 3) · 31-secretary §7
 - ผล: `qc-sec-s1.14b` forced #1 `{"total":22,"passed":22,"failed":[],"skipped":[],"findings":[]}` exit 0 · forced #2 เหมือนกัน exit 0 · `qc-sec-s1.21` 19/19 exit 0 · `qc-chat-ai-suggest` 44/44 exit 0 · tsc เว็บ (heap 9000) exit 0 · 0 error · fitness มี env 53/53 · `env -u DATABASE_URL` 53/53
 - ข้อ Q2/Q4/export/PATH_ID/docs/shift/phoneMasked = ผู้คุมรับแล้ว (§X) · ส่งต่อ S2.14 ตาม §X
+
+## 7. รอบ 3 (ผู้ตรวจ Y · มติ RESOLUTIONS §X.2 · d9212c2a9)
+- merge `session/secretary` @ d9212c2a9 (SHA ตรง · ORACLE-EDIT V-5 + S-4) → e90223cb9 · ไม่ชน
+- **R-S1.14b-f (MAJOR-2)** `staff/invite/route.ts` `buildPermissions`: `isWildcardKey` (`*` หรือลงท้าย `.*`) ⇒ นับเป็น `sensitive_key` (422 · ไม่สร้างใบ) · ไม่แตะ `isSensitiveKey`
+- **R-S1.14b-g** `reply/route.ts`: `suggestionId` ต้องเป็นของห้อง+ระบบ+ร้านนี้ (`suggestionInConv`) ⇒ ไม่ใช่ ⇒ 422 `bad_suggestion` ก่อนส่ง (ก่อน rate-limit/sendReply) · `isInternal:true` ไม่ได้คีย์ `sugg:` (ไม่มี clientMessageId ⇒ 422 invalid เดิม) · `outcomeOf` ไม่ตรวจซ้ำแล้ว (ตรวจก่อนส่ง)
+- **R-S1.14b-h** `task/route.ts`: error ที่มี `status` 403/404 (KanbanForbiddenError/KanbanNotFoundError — duck-typed ไม่ import) ⇒ 403 `forbidden` / 404 `not_found` (ข้อความไทยของ lib หรือข้อความปริยายไทย) · ไทยอื่น ⇒ 422 `task_failed` · ระบบ ⇒ 500
+- docs: SECRETARY-API (invite wildcard · reply bad_suggestion/isInternal · task 403/404) · 31-secretary §5.23 (wildcard)
+- ผล: `qc-sec-s1.14b` forced #1 `{"total":24,"passed":24,"failed":[],"skipped":[],"findings":[]}` exit 0 · forced #2 เหมือนกัน exit 0 · `qc-sec-s1.25` 19/19 exit 0 · `qc-chat-ai-suggest` 44/44 exit 0 · tsc เว็บ (heap 9000) exit 0 · 0 error · fitness มี env 53/53 · `env -u DATABASE_URL` 53/53

@@ -2,6 +2,7 @@
 //   ด่าน = ตอบลูกค้าได้ (`chat.message.send`) · ห้องที่มองไม่เห็น = 404 · 30/นาที/ร้าน+ผู้ใช้
 //   บอร์ดปลายทาง = ค่าตั้ง "สร้างงานจากแชท" ของร้าน (`chatTaskButtonConfig`) เท่านั้น — แอปเลือกบอร์ดเองไม่ได้ · ยังไม่ตั้ง ⇒ 404 not_configured
 //   สิทธิ์บอร์ด (EDITOR ของบอร์ดปลายทาง) = ประตูของบอร์ดงานใน lib ด้วยสิทธิ์ของผู้กด · ผูกห้อง+ผู้ติดต่อ · ไม่คัดลอกไฟล์แนบ
+//   error ของ lib: status 403/404 ⇒ 403 forbidden / 404 not_found (R-S1.14b-h) · ข้อความไทยอื่น ⇒ 422 task_failed · ระบบ ⇒ 500
 import { z } from "zod";
 import { logOps } from "@/lib/core/ops";
 import { createTaskFromChat } from "@/lib/modules/chat/task-from-chat";
@@ -51,8 +52,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
     );
     return Response.json({ cardId: r.cardId, cardNo: r.cardNo, cardHref: r.cardHref, created: r.created });
   } catch (e) {
+    // R-S1.14b-h: error ของ lib ที่มี status 403/404 (KanbanForbiddenError/KanbanNotFoundError) ⇒ status นั้น
     // กติกาของ lib (ไทย · บอกทำอะไรต่อ) ⇒ 422 · ข้อผิดพลาดระบบ ⇒ 500 ไม่ส่งรายละเอียดดิบ
-    if (e instanceof Error && THAI.test(e.message) && !/prisma|invalid `|\bat \w+ \(/i.test(e.message)) return fail(422, "task_failed", e.message.slice(0, 300));
+    const thaiMsg = e instanceof Error && THAI.test(e.message) && !/prisma|invalid `|\bat \w+ \(/i.test(e.message) ? e.message.slice(0, 300) : null;
+    const status = e && typeof e === "object" ? (e as { status?: unknown }).status : undefined;
+    if (status === 403) return fail(403, "forbidden", thaiMsg ?? "บัญชีนี้ยังไม่มีสิทธิ์เพิ่มงานในบอร์ดปลายทาง — ขอสิทธิ์จากเจ้าของร้าน");
+    if (status === 404) return fail(404, "not_found", thaiMsg ?? "ไม่พบบอร์ดหรือคอลัมน์ปลายทาง — ให้เจ้าของร้านตรวจค่าตั้ง “สร้างงานจากแชท”");
+    if (thaiMsg) return fail(422, "task_failed", thaiMsg);
     await logOps("WARN", "mobile-inbox", "task: ล้ม", { detail: e instanceof Error ? (e.stack ?? e.message) : String(e), tenantId: c.tenantId }).catch(() => {});
     return fail(500, "server_error", "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง");
   }

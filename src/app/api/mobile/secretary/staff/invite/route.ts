@@ -3,7 +3,8 @@
 //   S1.14b (ตั๋ว R-S2.21 · W-12): server แปลงระดับเอง — เริ่ม `{}` → `permissionsForLevel` ทุกโมดูลใน `levels` → `permissionsForChat(chat)` →
 //     รวม `permissions` (เดิม · backward-compat) + `extraPermissions` → ส่งเข้า `inviteStaff` เป็น `permissions` (ตัวตรวจยกระดับ/RBAC เดิมทำงานต่อที่ lib)
 //   ตรวจก่อนสร้างใบ (ไม่สร้างแถว): โมดูล chat ใน levels / โมดูลไม่รู้จัก ⇒ 422 bad_module · ระดับที่โมดูลไม่มี ⇒ 422 bad_level ·
-//     คีย์ใน extraPermissions/permissions ที่ `isSensitiveKey` ⇒ 422 `{ error:"sensitive_key", keys }` (คีย์อ่อนไหวให้ทีหลังทีละคีย์ผ่านหน้าสิทธิ์)
+//     คีย์ใน extraPermissions/permissions ที่ `isSensitiveKey` หรือเป็น wildcard (`*` / `<module>.*` · R-S1.14b-f) ⇒ 422 `{ error:"sensitive_key", keys }`
+//     (คีย์อ่อนไหวให้ทีหลังทีละคีย์ผ่านหน้าสิทธิ์ · wildcard = ทั้งโมดูลรวมคีย์อ่อนไหว ⇒ เลี่ยงด่านรายคีย์ไม่ได้)
 import { z } from "zod";
 import { PERMISSION_MODULES } from "@/lib/core/permissions";
 import { inviteStaff } from "@/lib/staff/invite";
@@ -32,12 +33,18 @@ const MSG_BAD_LEVEL = "ระดับนี้ไม่มีในระบบ
 const MSG_BAD_CHAT = "ระดับแชทต้องเป็น ไม่เห็น / ดูได้ / ตอบได้";
 const MSG_SENSITIVE = "สิทธิ์บางข้อเป็นสิทธิ์อ่อนไหว (เงิน/ลบ/แอดมิน) ให้ตอนเชิญไม่ได้ — เชิญก่อน แล้วให้ทีละข้อที่หน้าสิทธิ์ของพนักงาน";
 
+/** R-S1.14b-f: `*` หรือ `<module>.*` = ทั้งโมดูล (รวมคีย์อ่อนไหว) — ตัดสินที่ route นี้ ไม่แตะ `isSensitiveKey` (S1.25) */
+function isWildcardKey(key: string): boolean {
+  const k = String(key ?? "").trim();
+  return k === "*" || k.endsWith(".*");
+}
+
 type Built = { ok: true; permissions: Record<string, unknown> | undefined } | { ok: false; res: Response };
 
 /** ระดับ/แชท/คีย์เพิ่ม → PermissionMap (ตรวจทุกข้อก่อนสร้างใบ) · ไม่ส่งอะไรเลย ⇒ undefined (พฤติกรรมเดิมของ inviteStaff) */
 function buildPermissions(v: z.infer<typeof Body>): Built {
   const keys = [...Object.keys(v.permissions ?? {}), ...Object.keys(v.extraPermissions ?? {})];
-  const sensitive = [...new Set(keys.filter((k) => isSensitiveKey(k)))];
+  const sensitive = [...new Set(keys.filter((k) => isWildcardKey(k) || isSensitiveKey(k)))];
   if (sensitive.length) return { ok: false, res: fail(422, "sensitive_key", MSG_SENSITIVE, { keys: sensitive }) };
   let acc: Record<string, unknown> = {};
   for (const [mod, lvl] of Object.entries(v.levels ?? {})) {

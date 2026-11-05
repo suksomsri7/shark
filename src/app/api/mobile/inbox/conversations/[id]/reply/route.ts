@@ -1,6 +1,7 @@
 // POST /api/mobile/inbox/conversations/[id]/reply — ตอบลูกค้า/บันทึกภายใน (ห่อ `sendReply` · กันซ้ำ clientMessageId · 60 ครั้ง/นาที/ผู้ใช้ X7 · S1.21)
 //   S1.14b: `suggestionId?` = ส่งจากร่างของ AI แนะนำคำตอบ ⇒ หลังส่งสำเร็จบันทึกผล `recordSuggestionOutcome` (แบบเดียวกับเว็บ `sendReplyAction`)
 //           ล้ม = ไม่กระทบคำตอบ · คืน `suggestionOutcome` เมื่อบันทึกได้ · ไม่ส่ง clientMessageId แต่มี suggestionId ⇒ กันซ้ำด้วย `sugg:<suggestionId>`
+//           (R-S1.14b-g) suggestionId ที่ไม่ใช่ของห้อง/ระบบ/ร้านนี้ ⇒ 422 bad_suggestion ก่อนส่ง · บันทึกภายในใช้ `sugg:` แทน clientMessageId ไม่ได้
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
@@ -34,15 +35,19 @@ const Body = z
   })
   .strict();
 
-/** บันทึกผลของร่าง AI (best-effort) — ร่างต้องเป็นของห้องนี้ (เดา id ของห้องอื่นไม่ได้) · ล้ม/ไม่พบ = undefined */
-async function outcomeOf(args: { tenantId: string; systemId: string; conversationId: string; suggestionId: string; messageId: string; body: string | undefined; userId: string }): Promise<string | undefined> {
+/** ร่าง AI ต้องเป็นของห้อง+ระบบ+ร้านนี้ (เดา id ของห้องอื่นไม่ได้ · R-S1.14b-g) */
+async function suggestionInConv(tenantId: string, systemId: string, conversationId: string, suggestionId: string): Promise<boolean> {
+  const sug = await tenantDb({ tenantId, systemId }).chatAiSuggestion.findFirst({
+    where: { id: suggestionId, tenantId, systemId, conversationId },
+    select: { id: true },
+  });
+  return !!sug;
+}
+
+/** บันทึกผลของร่าง AI (best-effort · ตรวจเจ้าของร่างแล้วก่อนส่ง) — ล้ม = undefined */
+async function outcomeOf(args: { tenantId: string; systemId: string; suggestionId: string; messageId: string; body: string | undefined; userId: string }): Promise<string | undefined> {
   try {
-    const sug = await tenantDb({ tenantId: args.tenantId, systemId: args.systemId }).chatAiSuggestion.findFirst({
-      where: { id: args.suggestionId, tenantId: args.tenantId, systemId: args.systemId, conversationId: args.conversationId },
-      select: { id: true },
-    });
-    if (!sug) return undefined;
-    const r = await recordSuggestionOutcome({ tenantId: args.tenantId, systemId: args.systemId, suggestionId: sug.id, sentMessageId: args.messageId, sentBody: args.body ?? "", userId: args.userId });
+    const r = await recordSuggestionOutcome({ tenantId: args.tenantId, systemId: args.systemId, suggestionId: args.suggestionId, sentMessageId: args.messageId, sentBody: args.body ?? "", userId: args.userId });
     return r.ok ? r.outcome : undefined;
   } catch (e) {
     await logOps("WARN", "mobile-inbox", "reply: บันทึกผลร่าง AI ล้ม", { detail: e instanceof Error ? e.message : String(e) }).catch(() => {});
@@ -57,11 +62,15 @@ export async function POST(req: Request, ctx: RouteCtx) {
   const { id } = await ctx.params;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;
-  const clientMessageId = b.v.clientMessageId ?? (b.v.suggestionId ? `sugg:${b.v.suggestionId}` : undefined);
+  // คีย์ `sugg:` เฉพาะคำตอบจริง (บันทึกภายในต้องส่ง clientMessageId เอง)
+  const clientMessageId = b.v.clientMessageId ?? (b.v.suggestionId && b.v.isInternal !== true ? `sugg:${b.v.suggestionId}` : undefined);
   if (!clientMessageId) return fail(422, "invalid", "ข้อมูลที่ส่งมาไม่ครบหรือไม่ถูกต้อง");
   const sid = await systemOf(c.tenantId, b.v.systemId);
   if (!sid) return notFound("ไม่พบระบบแชทนี้");
   if (!(await visibleConv(c, sid, id))) return notFound();
+  if (b.v.suggestionId && !(await suggestionInConv(c.tenantId, sid, id, b.v.suggestionId))) {
+    return fail(422, "bad_suggestion", "ร่างคำตอบนี้ไม่ใช่ของบทสนทนานี้ — ขอร่างใหม่แล้วลองอีกครั้ง");
+  }
 
   // ถังต่อ (ร้าน, ผู้ใช้) = ต่อ Membership — ถังของร้านหนึ่งไม่กินโควตาตอบลูกค้าของอีกร้าน ◂
   const rl = await checkRateLimitDb(`mobile:inbox:reply:${c.tenantId}:${c.userId}`, REPLY_RATE);
@@ -88,7 +97,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
     // เว็บบันทึกผลเมื่อมีข้อความ (ส่งออกช่องทางล้มก็ยังนับว่าทีมใช้ร่างนี้) · บันทึกภายในไม่นับ
     const suggestionOutcome =
       b.v.suggestionId && b.v.isInternal !== true
-        ? await outcomeOf({ tenantId: c.tenantId, systemId: sid, conversationId: id, suggestionId: b.v.suggestionId, messageId: r.messageId, body: b.v.body, userId: c.userId })
+        ? await outcomeOf({ tenantId: c.tenantId, systemId: sid, suggestionId: b.v.suggestionId, messageId: r.messageId, body: b.v.body, userId: c.userId })
         : undefined;
     const extra = suggestionOutcome ? { suggestionOutcome } : {};
     // บันทึกแล้วแต่ส่งออกช่องทางไม่ผ่าน = ฟองขึ้น ✗ ในห้อง (ทีมกดส่งใหม่ได้) — ไม่ใช่ข้อผิดพลาดของคำขอ
