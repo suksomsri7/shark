@@ -78,6 +78,7 @@ const cleanup = async () => {
   try { await (prisma as AnyMod).chatRateBucket.deleteMany({ where: { OR: [{ key: { contains: "qcs3s2" } }, { key: { contains: "sms-verify" } }] } }); } catch { /* */ }
 };
 const actorOf = (userId: string, role: "OWNER" | "MANAGER" | "STAFF", permissions: Record<string, unknown> = {}, unitAccess: string[] = ["*"]) => ({ kind: "member" as const, tenantId: tid, userId, membership: { role, unitAccess, permissions } });
+const rd = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const src = (p: string) => rd(join(ROOT, p));
 try {
   await cleanup();
