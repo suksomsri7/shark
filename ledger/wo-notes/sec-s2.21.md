@@ -37,6 +37,7 @@
 - spec s2.21 forced #2: `JSON_SUMMARY {"total":12,"passed":12,"failed":[],"skipped":[],"findings":[]}` exit 0 (M-1 typecheck mobile 0 · D-1/D-2 fitness มี env / ไม่มี env ผ่าน ทั้งสองรอบ)
 - spec forced: s2.2 11/11 · s2.4 7/7 · s2.5 9/9 · s2.7 16/16 · s2.10 10/10 (exit 0 ทั้งหมด) · `qc-sec-s2.1` forced 14/14 · `qc-sec-s2.12` forced 13/13
 - regression unforced (`qc-sec.sh` + gate lock · SHARK_AI_MOCK=1) เทียบ `ledger/qc-baseline/sec-baseline-bfad2f15.txt`: qc-mobile-app 38/38 exit 0 · qc-mobile-auth 31/31 exit 0 · qc-mobile-chat 29/29 exit 0 · qc-mobile-authz-hotfix 12/12 exit 0 (= baseline: exit 0 ทั้ง 4 · authz 12/12)
+- หลัง merge ทิปล่าสุด 77732dc2 (ledger ล้วน · RESOLUTIONS §U ไม่เกี่ยวใบนี้) → spec s2.21 forced อีกรอบ: `{"total":12,"passed":12,"failed":[]}` exit 0
 - รอบแรก forced แดง 1 ข้อ (R-/secretary/staff/invite: testID แถวคำเชิญอยู่ในคอมโพเนนต์) → ย้าย testID มาไว้ในไฟล์จอ (ส่งผ่าน prop) → เขียว · ไม่แก้ spec
 
 ## 4. ภาพ
