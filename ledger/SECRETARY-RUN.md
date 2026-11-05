@@ -77,7 +77,7 @@ _(เติมเมื่อถึงใบ)_
 | S2.23 | ✍️ | | รวมในชุด S2-16 |
 | S2.13 | ✅ | 6 พ.ย. ~11:1xZ | ff 2e21d70d (เลน d · รอบ 1 79815dc4 + รอบ 2) · spec s2.13 11/11 ×3 ผู้คุม (รวม typecheck) · spec s2.2/s2.4/s2.10/s2.15/s2.17/s2.21 + s2.1/s2.12 เขียว · ภาพคู่มืด 35 แผ่นผู้คุมดูเอง (§W fix-forward F1–F4 → S2.14) · ผู้ตรวจ X → §W.2 ปิดครบ (M1 badge poll) · padding 20/20 (gap ≥12 · รวม G1) · จอ 1.0 ก่อน/หลัง text.tsx เท่าเดิม · userInterfaceStyle automatic (Android ต้อง expo-system-ui → S3a) |
 | S2.14 | ✅ | 7 พ.ย. ~01:4xZ | merge 13c74f72 (เลน d · รอบ 1–3) · oracle `qc-sec-s2.14` 10/10 ×3 (builder ×2 + ผู้คุม ×1 · B-1 ฉบับ template+effect+meta) · clicks-sec 439/439 รอบเต็ม resumed:false (2533 การกด) · three-chats 3/3 · states 96/96 · ภาพคู่ทั้งชุดถ่ายใหม่ · ผู้ตรวจ AA (UX) + BB (security/QC) → §AA.2 · re-check CC → §AA.3 ปิดครบ · typecheck repo 0 · fix-forward F1–F4 + hand-off §X/§Y.2 + story 10 (A1 ขอบเขตทุกคนในกิจการ) · ตั๋ว S3a: badges.can.customers · can.task · levelsAvailable · cardHref แอป · tags route · i18n ข้อความ server · ทะเบียน testID ในอาร์เรย์ |
-| S3a.1 | ✍️ | | ใบ `sec-brief-S3a.1.md` + **oracle `qc-sec-s3a.1.mts` 10 user stories ผ่าน route จริง = 16/17 บน tip (SKIP R-1 รอคีย์)** · นักล่า 6 เลนส์หลัง S2.14 · qc:all + build · โมเดลจริงรอคีย์ shark |
+| S3a.1 | 🔨 | | เริ่ม 7 พ.ย. ~01:5xZ บน tip cb1fd5de: นักล่า 6 เลนส์ (L1 สิทธิ์ · L2 โควตา · L3 คิว · L4 API · L5 PDPA/injection · L6 ความลับ) ขนาน + chain: `qc-sec-s3a.1` ×3 → next build รอบ 8 → sec-baseline → qc:all · โมเดลจริง 3 เส้นรอคีย์ shark |
 | S3a.2 | ⬜ | | ขึ้น prod (รอเจ้าของ) |
 | S3a.3 | ⬜ | | 🎯 TestFlight/Internal (รอเจ้าของ) |
 | S3a.4 | ⬜ | | รับผลทดสอบ |
@@ -154,3 +154,4 @@ _(เติมเมื่อถึงใบ)_
 - ต่อ API จริงครบตามสัญญา `docs/api/SECRETARY-API.md` (badges เส้นเดียว · invites/pending · invite levels/chat · can.* · tags · phoneMasked · ai-suggest+suggestionId · task · shift · /me appleLinked) · ไม่มี fixture/console ในจอจริง
 - หนี้ที่จดไว้ S3a: badges.can.customers · can.task · levelsAvailable · cardHref · tags route · i18n ข้อความ server ในโหมด en · expo-system-ui (Android) · ทะเบียน testID ในอาร์เรย์ · hit-test ช่องพิมพ์ · regex denied/error ใน states-sec
 - ของเจ้าของ (CP2 ดูในเครื่องจริงเมื่อมี build): ปุ่มลอย "เลขา AI" หน้าแรก 1.0 · โหมดมืดจอ 1.0 (คีย์บอร์ด/Alert ตามเครื่อง) · ชิปขอบเขต A1 ตกบรรทัด 2 · แท็ก K3 เป็นชิป (ต่างจากแบบ)
+- **7 พ.ย. ~01:5xZ** S3a.1 เริ่ม: นักล่า 6 ตัวขนาน (อ่านอย่างเดียว) + chain หนักเบื้องหลัง (ข้อสอบรวม ×3 · build · baseline · qc:all) · ผลนักล่า → RESOLUTIONS §Z → ใบย่อยแก้ (เลน b server / เลน d แอป)
