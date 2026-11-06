@@ -53,7 +53,7 @@ name `String` · code `String` · includeBreakfast `Boolean @default(false)` · 
 ดัชนี: `@@unique([unitId, code])` · `@@index([tenantId, unitId, status])` · **SQL มือ** partial unique `ON ("unitId") WHERE "isDefault" AND "status" = 'ACTIVE'` (แผนเริ่มต้น 1 แผนต่อหน่วย)
 
 ### 2.5 `HotelSeason` (S:329)
-name `String` · dateStart `DateTime @db.Date` · dateEnd `DateTime @db.Date` (**รวมวันจบ** ตามสเปก) · priority `Int @default(0)` · status `String @default("ACTIVE")` CHECK ACTIVE/ARCHIVED · CHECK `"dateEnd" >= "dateStart"` · `@@index([tenantId, unitId, dateStart, dateEnd])`
+name `String` · dateStart `DateTime @db.Date` · dateEnd `DateTime @db.Date` (**รวมวันจบ** ตามสเปก) · priority `Int @default(0)` · **minNights `Int?`** (ขั้นต่ำคืนของฤดู · ภาพ 15 "ปีใหม่ ขั้นต่ำ 2 คืน" · มติผู้คุม 7 พ.ย. ตามคำถามข้อสอบ h.1 #4 · CHECK `IS NULL OR >= 1`) · status `String @default("ACTIVE")` CHECK ACTIVE/ARCHIVED · CHECK `"dateEnd" >= "dateStart"` · `@@index([tenantId, unitId, dateStart, dateEnd])`
 
 ### 2.6 `HotelHoliday` (S:348)
 date `DateTime @db.Date` · name `String` · `@@unique([unitId, date])`
@@ -164,3 +164,4 @@ hotel actions ทุกตัว + 3 หน้า + storefront `resolveHotelUnit
 
 ## 12. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 153 ข้อ @089670b4c)
 1. scope ข้ามร้าน = `NOT_FOUND` (ไม่มี SCOPE_NOT_FOUND) 2. backfill ข้ามร้านตามใบ · X1 = แถวใหม่ถือ tenant/unit ของตัวเอง + ร้านไม่มี BOOKED ไม่เปลี่ยน (แถว BOOKED กำพร้า 94 แถวบนฐาน l2 = ขยะเก่า ถูกแปลงด้วย ไม่เป็นไร) 3. `migrate diff` ตัดสินเฉพาะ statement ที่แตะ Hotel*/Channel*/enum ของใบ (drift HR เดิมไม่นับ) 4. requires CHANNEL_MANAGER บังคับที่ `ota.enabled` + ห้ามเหลือ "OTA" 5. aiIdReader ยังไม่มี requires 6. NightAudit default 0 เฉพาะ 4 ตัวนับท้าย 7. nights.roomId ดึงจาก occupancy เมื่อ reservation.roomId null (แก้ §3 แล้ว) 8. คีย์ใหม่อยู่หลัง rr3OnScreen พอ 9. ด่าน HOTEL ตรวจสถิต + V-1 บน QC server
+10. (จากข้อสอบ h.1 #4) `HotelSeason.minNights Int?` เพิ่มใน §2.5 — ข้อสอบ h.0 T/C ต้องรวมคอลัมน์นี้

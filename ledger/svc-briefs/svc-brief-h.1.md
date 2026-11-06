@@ -42,7 +42,14 @@
 
 ## 3. `pricing.ts` (pure · ข้อสอบยิงตรง)
 ```ts
-export type PricingContext = { weekendDays: number[]; rounding: RoundingMode; today: string; plans: RatePlanRow[]; seasons: SeasonRow[]; holidays: Set<string>; rates: RateRow[]; overrides: OverrideRow[]; fallback: { baseRateSatang: number | null; dayOfWeekAdjustBp: number[] } };
+export type PricingContext = {
+  weekendDays: number[]; rounding: RoundingMode; today: string;          // วันที่ทุกตัว = "YYYY-MM-DD" ไทย
+  roomTypes: Record<string, { baseOccupancy: number; maxOccupancy: number | null; extraBedAllowed: boolean; extraBedPriceSatang: number }>; // คีย์ roomTypeId (มติ 7 พ.ย. #2)
+  plans: RatePlanRow[]; seasons: SeasonRow[] /* +minNights */; holidays: Set<string>; rates: RateRow[]; overrides: OverrideRow[]; // ชื่อฟิลด์ = คอลัมน์ prisma
+  fallback: Record<string, { baseRateSatang: number | null; dayOfWeekAdjustBp: number[] }>;                  // คีย์ roomTypeId (ค่าตั้ง chain RT_RP แก้ด้วยค่าแผนที่ขอ · มติ #3)
+};
+// limits ของ quoteStay = { minNights: number|null; maxNights: number|null; closedToArrival: boolean; maxAdvanceBookingDays: number } · ขั้นต่ำคืนที่ใช้จริง = max(แผน, ฤดูที่ครอบคืนแรก, limits.minNights) (มติ #4)
+// policy ของ depositFor = รูปค่าตั้ง { kind, percentBp?, amountSatang? } · resolveNightPrice คืน seasonId ของฤดูที่พบ (null เมื่อตกแถวปกติ · ไม่บังคับในข้อสอบ #7)
 export function resolveSeason(seasons, date): SeasonRow | null
 export function resolveNightPrice(ctx, { roomTypeId, ratePlanId, date, extraBeds? }): { priceSatang: number; source: "RATE"|"OVERRIDE"|"FALLBACK"; seasonId: string|null; bucket: "weekday"|"weekend"|"holiday"|null } | null
 export function quoteStay(ctx, { roomTypeId, ratePlanId, checkIn, checkOut, extraBeds?, limits }): QuoteOk | QuoteFail
@@ -50,9 +57,10 @@ export function depositFor(quotes: QuoteOk[], policy: DepositPolicy, rounding): 
 export function refundFor(i: { paidSatang; checkInDate; cancelAt; rules: CancelRule[] }): { refundSatang; ruleUsed: CancelRule|null; daysBefore: number }
 export function taxLines(subtotalSatang, tax: { mode; vatBp; serviceChargeBp }, rounding): { lines: {type:"SERVICE_CHARGE"|"TAX"; amountSatang}[]; totalSatang; vatIncludedSatang }
 ```
-ตัวเลขฉาก (README ข้อสอบ · ฟิกซ์เจอร์ bansuan-hotel): STANDARD · ดีลักซ์ weekday 1,290 / weekend 1,490 · แฟมิลี 1,890 / 2,190 · ซูพีเรีย 990 ทุกวัน · ฤดู "ไฮซีซัน" 1 ธ.ค.–28 ก.พ. +20% ทุกประเภท (priority 10) · "ปีใหม่" 29 ธ.ค.–2 ม.ค. ราคาเฉพาะ (priority 20 · minNights 2) · วันหยุด 5 ธ.ค. · override ดีลักซ์ 14 พ.ย. = 1,690 (ภาพ 15) · แผน "รวมอาหารเช้า" +200/คน/คืน (`includeBreakfast` + ราคาแยก matrix) · แผน "จ่ายก่อนไม่คืนเงิน" −10% refund 0 ทุก tier
+ตัวเลขฉาก (README ข้อสอบ · ฟิกซ์เจอร์ bansuan-hotel · **`expect.superiorHoliday` = สงกรานต์ 13 เม.ย. นอกฤดู 99,000 · ซูพีเรีย 5 ธ.ค. (วันหยุดในไฮซีซัน · holiday null ⇒ ช่องเสาร์อาทิตย์ ×1.2) = 118,800** — มติ #1): STANDARD · ดีลักซ์ weekday 1,290 / weekend 1,490 · แฟมิลี 1,890 / 2,190 · ซูพีเรีย 990 ทุกวัน · ฤดู "ไฮซีซัน" 1 ธ.ค.–28 ก.พ. +20% ทุกประเภท (priority 10) · "ปีใหม่" 29 ธ.ค.–2 ม.ค. ราคาเฉพาะ (priority 20 · minNights 2) · วันหยุด 5 ธ.ค. · override ดีลักซ์ 14 พ.ย. = 1,690 (ภาพ 15) · แผน "รวมอาหารเช้า" +200/คน/คืน (`includeBreakfast` + ราคาแยก matrix) · แผน "จ่ายก่อนไม่คืนเงิน" −10% refund 0 ทุก tier
 
 ## 4. `rates.ts` (server · ทุกฟังก์ชันรับ `(actor, ctx, input)` · ด่าน HOTEL + สิทธิ์ · ข้ามร้าน/หน่วย ⇒ NOT_FOUND)
+- สัญญาร่วม (มติ 7 พ.ย. #6): ทุกฟังก์ชันเขียน `(actor, ctx: {tenantId}, input: {unitId,…})` · ล้มเหลว `{ok:false, code, reason}` (reason ไทย) · ไม่มีสิทธิ์ = code `FORBIDDEN` · `loadPricingContext`/`ratePreview` รับ `(ctx, unitId, …)` ไม่รับ actor (หน้าเรียกหลังตรวจสิทธิ์เอง) · `listRatePlans` คืน `cancelRules[]` ต่อแผน
 - `listRatePlans` · `saveRatePlan` (สร้าง/แก้ · code unique ต่อหน่วย · `setDefault`) · `archiveRatePlan` · `saveCancelRules(ratePlanId, rules[])` (แทนทั้งชุด · ตรวจ daysBefore ไม่ซ้ำ · refundBp 0..10000)
 - `listSeasons` · `saveSeason` · `archiveSeason` · `saveHolidays(dates[], name)` bulk + `removeHoliday`
 - `getRateMatrix(ratePlanId)` → rows ประเภทห้อง × ฤดู(+null) · `saveRates(ratePlanId, rows[])` (มติ 9)
@@ -64,13 +72,14 @@ export function taxLines(subtotalSatang, tax: { mode; vatBp; serviceChargeBp }, 
 
 ## 5. จอ ราคา (ภาพ 15 · `/hotel/rates` · desktop หลัก + มือถือ 390 เลื่อนแนวนอนมีตัวบอก)
 - แท็บย่อย 4: **ปฏิทินราคา** (ประเภท × 14 วัน · ช่อง = ราคา + เหลือขาย · ช่องแก้มือไฮไลต์ · "เต็ม" สีแดง · คลิกช่อง = แก้มือ (ราคา+เหตุผล) / ล้าง) · **แผนราคา** (การ์ดต่อแผน: ชื่อ · สูตรจากมาตรฐาน · มัดจำ · ขั้นบันได · ช่องทาง · ปุ่มเพิ่มแผน) · **ฤดู · วันพิเศษ** (รายการฤดูเรียง priority · วันหยุดนักขัตฤกษ์ไทยปุ่ม "ใช้ปฏิทินวันหยุดไทย" = bulk ปีปัจจุบัน จากรายการคงที่ใน `rates-shared.ts` แก้ได้) · **กติกา** (minNights/closedToArrival/weekendDays/วิธีปัด — ลิงก์ไปตั้งค่า)
+- ตารางเลื่อนแนวนอนบนมือถือต้องมี attribute **`data-scroll-hint`** บนกล่องที่เลื่อน + ข้อความ "เลื่อนดูวันถัดไป →" (หนี้ B.12 · มติ #9 ชื่อตายตัว)
 - ปุ่ม "ปรับราคาหลายวัน" = ตั้ง override ช่วงวัน (loop ใน tx เดียว ≤ 62 วัน)
 - ป้ายโหมดภาษีใต้หัวข้อ (มติ 6) · ไทยทั้งหมด · ตัวเลขมีจุลภาค ไม่มีทศนิยมถ้า .00
 - สิทธิ์ read อย่างเดียว ⇒ ช่องกดไม่ได้ + ไม่มีปุ่มเขียน (ไม่ใช่แค่ 403 ตอนกด)
 
 ## 6. จอ ตั้งค่าโรงแรม (`/hotel/settings` · แบบหอ 17 = การ์ดกริด 3 คอลัมน์ + เมนูซ้าย)
 การ์ด: **เช็กอิน/เอาต์** (เวลา · dailyHousekeeping · inspectionRequired) · **การจอง** (bookingMode · hold 2 ค่า · maxAdvance · codePrefix · noShow) · **มัดจำ & ยกเลิก** (deposit kind/ค่า · cancelPolicy ตาราง · ป้าย "แผนราคาทับค่านี้ได้") · **ภาษี** (tax.mode · vatBp · scBp · invoiceFromPos — เตือนเมื่อสลับโหมด: "การจองเดิมใช้ค่าตอนจอง") · **เงินประกันห้อง** (enabled · จำนวน · appliesTo) · **ผู้เข้าพัก/PDPA** (retainYears · maskIdForStaff · aiIdReader (ปิด+บอกต้องเชื่อมตัวต่อ) · rr3OnScreen · tm30ReminderHours) · **แจ้งแขก** (notify.channel) · **หน้าจอง** (storefront.customDomain + ลิงก์ `/app/settings/domain`) · **แม่บ้าน** (checklist ต่อประเภท · minibar — แสดงเฉย ๆ H.6 เปิดแก้)
-- `loadHotelSettings(actor, ctx, {unitId})` = `loadSettingsForm(domain "rooms", group "hotel"/"ota")` + diff จากแม่แบบ · `saveHotelSettings` = `setSettings` ชั้น UNIT (ROOM_TYPE/RATE_PLAN ผ่านช่อง "ตั้งเฉพาะ…" เหมือนหอ) · ทุกค่ามีปุ่ม "คืนค่าเริ่มต้น" (`resetSetting`) · สิทธิ์ `hotel.settings.edit` · ownerOnly ตาม def
+- `loadHotelSettings(actor, ctx, {unitId})` → `{cards: [{labelTh, fieldKeys}], form, canEdit}` · `saveHotelSettings(actor, ctx, {unitId, changes: SettingChangeInput[]})` (มติ #6) = `loadSettingsForm(domain "rooms", group "hotel"/"ota")` + diff จากแม่แบบ · `saveHotelSettings` = `setSettings` ชั้น UNIT (ROOM_TYPE/RATE_PLAN ผ่านช่อง "ตั้งเฉพาะ…" เหมือนหอ) · ทุกค่ามีปุ่ม "คืนค่าเริ่มต้น" (`resetSetting`) · สิทธิ์ `hotel.settings.edit` · ownerOnly ตาม def
 - ค่า MONEY/LEGAL แสดงป้าย + ประวัติ (`settingHistory`) ตามแบบหอ 17
 
 ## 7. เมนู/แท็บ
@@ -78,7 +87,7 @@ export function taxLines(subtotalSatang, tax: { mode; vatBp; serviceChargeBp }, 
 
 ## 8. ฉากภาพ «scripts/svc-qc-hotel-rates-scene.mts» (builder · แบบ `svc-qc-dorm-home-scene.mts`)
 - `loadSvcQcEnv` · อ่าน `SQC_HOTEL_RATES` เท่านั้น · เขียน: แผน STANDARD(default)/BREAKFAST/NONREF + กฎยกเลิก · ฤดู 2 · วันหยุด · matrix ครบ 3 ประเภท · override 14 พ.ย. (วันที่ของฉาก = เดือนปัจจุบันไทย เหมือนฉากหอ: คำนวณ "14 ของเดือนหน้า" ถ้าวันนี้ > 14) · การจองจำลองเพื่อ "เหลือขาย" ไม่สร้าง (H.3) — ใช้การจองที่มีจากฟิกซ์เจอร์/oracle
-- idempotent `SCENE_SUMMARY` · `--clear` ลบเฉพาะแถวฉาก (mark `createdById "SvcQcScene"` / reason "SvcQcScene")
+- idempotent `SCENE_SUMMARY` · `--clear` ลบเฉพาะแถวฉาก — ตาราง H.0 ไม่มี createdById ⇒ ระบุแถวฉากจาก code/ชื่อ/reason ตามฟิกซ์เจอร์ (`SQC_HOTEL_RATES.mark` ใส่ใน `reason` ของ override · `description` ของแผน · `name` ของฤดู/วันหยุดตรงฟิกซ์เจอร์) (มติ #8)
 - ภาพ: `visual-svc h.1 --user owner` (rates ×4 แท็บย่อย · settings) + `--user frontdesk` (read-only) → PARITY ภาพ 15 ผู้คุมตัดสิน
 
 ## 9. เกณฑ์รับ · regression · X · หนี้
@@ -90,3 +99,6 @@ export function taxLines(subtotalSatang, tax: { mode; vatBp; serviceChargeBp }, 
 
 ## 10. ข้อสอบ (กลุ่ม) — «scripts/qc-svc-h.1.mts» · เป้า ≥ 90 ข้อ
 PC (ฟิกซ์เจอร์ · H.0 ตาราง · ฉาก) · **P (pricing pure) ≥ 30**: resolution 4 กรณี S:1133 + override + fallback + null · dow ไม่ใช้ getDay · ฤดูรวมวันจบ · quote ขอบ (MIN/MAX/CTA/TOO_FAR/NO_RATE) · deposit 5 kind + กลุ่ม FIRST_NIGHT รวมทุกห้อง · refund ขั้นบันได 3 tier + ขอบ · tax 2 โหมด + round-trip 1,234.50 (S:1154) · **R (rates.ts) ≥ 20**: CRUD · default plan auto/ห้าม archive · unique NULLS NOT DISTINCT · saveRates tx ล้มทั้งชุด · override set/clear · N+1 ≤ 8 คิวรี · AuditLog · **B/X ≥ 8**: ด่าน HOTEL · ข้ามร้าน · สิทธิ์ · **S (ค่าตั้ง) ≥ 8**: scope RATE_PLAN ใช้ได้จริง · reset · ownerOnly · history · **U (UI สถิต) ≥ 10**: ไทยทั้งหมด · แท็บตามสิทธิ์ · read-only ไม่มีปุ่มเขียน · มือถือมีตัวบอกเลื่อน (หนี้ B.12 ห้ามซ้ำ) · **V/Z**: ฉาก idempotent · ภาพ 2 บทบาท
+
+## 11. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 120 ข้อ @e3c0c32f9)
+1 superiorHoliday = 13 เม.ย. · 5 ธ.ค. ซูพีเรีย 118,800 (§3) · 2 เตียงเสริมผ่าน `ctx.roomTypes` (§3) · 3 fallback ต่อ roomTypeId (§3) · 4 `HotelSeason.minNights` เพิ่มใน H.0 §2.5 + quote ใช้ max(แผน, ฤดู, limits) · 5–7 รูปข้อมูลตามที่ข้อสอบตั้ง (§3/§4) · 8 mark ฉากจาก code/ชื่อ/reason · 9 `data-scroll-hint` ชื่อตายตัว · 10 แท็บ available ตาม §7 · PC-4 = reseed l1 (ผู้คุมทำ)
