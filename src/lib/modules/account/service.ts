@@ -4176,6 +4176,56 @@ export async function ensurePublicTaxInvoiceLink(
   return { ok: true, token };
 }
 
+// ─────────────────── SEC S3a.5 ▸ ลิงก์สาธารณะของใบเสนอราคา (`/doc/<token>`) ───────────────────
+// มติเจ้าของ 7 พ.ย. 2569 (แทน R-Z48): ลูกค้าเปิดดูใบเสนอราคาทางลิงก์ได้ · token = `publicToken` คอลัมน์เดิม (24 ตัว base64url รูปเดียวกับ /r/)
+//   ไม่แตะ `ensurePublicTaxInvoiceLink` (ชนิดเอกสารคนละชุด — ใบเสร็จ/ใบแจ้งหนี้ยังใช้ /r/ ตามเดิม) ◂
+
+/** ชนิดเอกสารที่เปิดดูผ่าน `/doc/<token>` ได้ (รุ่นนี้ = ใบเสนอราคาเท่านั้น) */
+export const PUBLIC_DOCUMENT_TYPES: readonly AccountDocType[] = ["QUOTATION"];
+/** สถานะที่ "ออกแล้ว" ของใบเสนอราคา (ออก = รอตอบรับ) — DRAFT/ยกเลิก/ปฏิเสธ = ไม่มีลิงก์ */
+const PUBLIC_DOCUMENT_STATUSES: readonly AccountDocStatus[] = ["AWAITING_ACCEPT", "ACCEPTED", "ISSUED"];
+
+/** สร้าง/คืน publicToken ของใบเสนอราคาที่ออกแล้ว (idempotent · ใบเดิมมี token แล้ว = คืนตัวเดิม) */
+export async function ensurePublicDocumentLink(
+  tenantId: string,
+  systemId: string,
+  docId: string,
+): Promise<{ ok: true; token: string } | { ok: false; reason: string }> {
+  const doc = await prisma.accountDocument.findFirst({
+    where: { id: docId, tenantId, systemId },
+    select: { id: true, docType: true, status: true, publicToken: true },
+  });
+  if (!doc) return { ok: false, reason: "ไม่พบเอกสาร" };
+  if (!PUBLIC_DOCUMENT_TYPES.includes(doc.docType)) return { ok: false, reason: "เอกสารชนิดนี้ยังเปิดดูผ่านลิงก์ไม่ได้ (รุ่นนี้เปิดได้เฉพาะใบเสนอราคา)" };
+  if (doc.status === "DRAFT") return { ok: false, reason: "ใบเสนอราคายังเป็นฉบับร่าง — ต้องออกเอกสารก่อนจึงสร้างลิงก์ให้ลูกค้าได้" };
+  if (!PUBLIC_DOCUMENT_STATUSES.includes(doc.status)) return { ok: false, reason: "ใบเสนอราคานี้ถูกยกเลิกหรือปฏิเสธแล้ว — สร้างลิงก์ให้ลูกค้าไม่ได้" };
+  if (doc.publicToken) return { ok: true, token: doc.publicToken };
+  const token = randomBytes(18).toString("base64url");
+  // ยิงพร้อมกัน 2 ทาง: เขียนเฉพาะเมื่อยังว่าง (คำสั่งเดียว) แล้วอ่านค่าที่ชนะกลับ — ไม่มีลิงก์สองตัวต่อใบ
+  await prisma.accountDocument.updateMany({ where: { id: doc.id, publicToken: null }, data: { publicToken: token } });
+  const row = await prisma.accountDocument.findFirst({ where: { id: doc.id }, select: { publicToken: true } });
+  return row?.publicToken ? { ok: true, token: row.publicToken } : { ok: false, reason: "สร้างลิงก์ไม่สำเร็จ ลองอีกครั้ง" };
+}
+
+/**
+ * อ่านใบเสนอราคาจาก token สาธารณะ (ไม่ต้องล็อกอิน — token คือ capability) · ไม่เข้าเงื่อนไขใด ⇒ null (หน้าตอบ 404 เหมือน token ผิด)
+ *   ชนิดต้องอยู่ใน PUBLIC_DOCUMENT_TYPES · สถานะออกแล้ว · ร้านเปิดลิงก์สาธารณะ (§9.2 `publicView.enabled`) · ยังไม่หมดอายุ (`expiryDays`)
+ */
+export async function publicDocumentByToken(token: string): Promise<{ tenantId: string; systemId: string; docId: string } | null> {
+  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(token)) return null;
+  const doc = await prisma.accountDocument.findFirst({
+    where: { publicToken: token },
+    select: { id: true, tenantId: true, systemId: true, docType: true, status: true, issueDate: true },
+  });
+  if (!doc) return null;
+  if (!PUBLIC_DOCUMENT_TYPES.includes(doc.docType) || !PUBLIC_DOCUMENT_STATUSES.includes(doc.status)) return null;
+  const settings = await getSettings(doc.tenantId, doc.systemId);
+  const pub = settings.doc.publicView;
+  if (!pub.enabled) return null;
+  if (pub.expiryDays > 0 && Date.now() - doc.issueDate.getTime() > pub.expiryDays * 86_400_000) return null;
+  return { tenantId: doc.tenantId, systemId: doc.systemId, docId: doc.id };
+}
+
 /** อ่านเอกสารสาธารณะจาก publicToken (ไม่ต้องล็อกอิน — token คือ capability) */
 export async function getPublicTaxContext(token: string): Promise<{
   systemId: string;
