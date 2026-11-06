@@ -58,8 +58,9 @@ const def = (x: RoomDefInput): SettingDef => ({ domain: "rooms", group: x.group 
 /** SVC H.0 ▸ คีย์แก้ค่าตั้งโรงแรม (core/permissions.ts โมดูล hotel) ◂ */
 const HOTEL_EDIT = "hotel.settings.edit";
 /** ค่าโรงแรม/OTA — ซ่อนจนเฟส H */
-// SVC H.0 ▸ editPermission = hotel.settings.edit (คีย์หอคง dorm.settings.edit) · hiddenUntil PHASE_H คงไว้ (มติผู้คุม h.0 §12 ข้อ 11: เปิดคีย์ตามประเภทหน่วยใน H.1) ◂
-const hotel = (x: RoomDefInput): SettingDef => ({ ...def({ group: "hotel", ...x, hiddenUntil: "PHASE_H" }), editPermission: HOTEL_EDIT });
+// SVC H.0 ▸ editPermission = hotel.settings.edit (คีย์หอคง dorm.settings.edit) ◂
+// SVC H.1 ▸ เปิดคีย์ตามประเภทหน่วย: แสดงเฉพาะหน้าตั้งค่าโรงแรม (unitTypes HOTEL · ใบสั่ง h.1 §6.1) แทน hiddenUntil PHASE_H ◂
+const hotel = (x: RoomDefInput): SettingDef => ({ ...def({ group: "hotel", ...x, unitTypes: ["HOTEL"] }), editPermission: HOTEL_EDIT });
 
 const PENDING = "⚠️ รอที่ปรึกษากฎหมายตรวจ — ";
 
@@ -650,11 +651,23 @@ const DEFS: SettingDef[] = [
     key: "rooms.hotel.deposit", type: "table", labelTh: "มัดจำการจอง", // #67
     schema: z.object({ kind: z.enum(["NONE", "FIRST_NIGHT", "FULL", "PERCENT", "FIXED_AMOUNT"]), percentBp: z.number().int().min(0).max(10_000).optional(), amountSatang: MONEY.optional() }).strict(), // SVC H.0 ▸ FIXED_AMOUNT + amountSatang ◂
     defaults: { _fallback: { kind: "FIRST_NIGHT" } }, chain: U_RP, sensitivity: "MONEY",
+    tableTh: { // SVC H.1 ▸ ป้ายไทยของชนิดมัดจำ ◂
+      fields: {
+        kind: { kind: "enum", labelTh: "ชนิดมัดจำ", shortTh: "", options: { NONE: "ไม่เก็บมัดจำ", FIRST_NIGHT: "ราคาคืนแรก", FULL: "เต็มจำนวน", PERCENT: "เปอร์เซ็นต์ของยอด", FIXED_AMOUNT: "จำนวนคงที่" } },
+        percentBp: { kind: "bp", labelTh: "เปอร์เซ็นต์ของยอด", shortTh: "", optional: true },
+        amountSatang: { kind: "int", labelTh: "จำนวนเงิน (สตางค์)", shortTh: "", unitTh: "สตางค์", optional: true },
+      },
+      discriminator: { key: "kind", variants: { NONE: {}, FIRST_NIGHT: {}, FULL: {}, PERCENT: { percentBp: 3000 }, FIXED_AMOUNT: { amountSatang: 50_000 } } },
+    },
   }),
   hotel({
     key: "rooms.hotel.cancelPolicy", type: "table", labelTh: "นโยบายยกเลิก (ขั้นบันได)", // #68
     schema: z.array(z.object({ daysBefore: z.number().int().min(0).max(365), refundBp: z.number().int().min(0).max(10_000) }).strict()).min(1).max(10),
     defaults: { _fallback: [{ daysBefore: 7, refundBp: 10_000 }, { daysBefore: 3, refundBp: 5_000 }, { daysBefore: 0, refundBp: 0 }] }, chain: RP, sensitivity: "MONEY", // SVC H.0 ▸ Q2 ◂
+    tableTh: { // SVC H.1 ▸ ขั้นบันไดยกเลิก ◂
+      item: { kind: "object", labelTh: "ขั้น", fields: { daysBefore: { kind: "days", labelTh: "ยกเลิกก่อนเข้าพัก (วัน)", shortTh: "ก่อน", unitTh: "วัน" }, refundBp: { kind: "bp", labelTh: "คืนเงิน", shortTh: "คืน" } } },
+      emptyTh: "ไม่คืนเงิน",
+    },
   }),
   hotel({
     key: "rooms.hotel.noShow", type: "enum", labelTh: "ไม่มาเข้าพัก", // #69
@@ -946,6 +959,10 @@ const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
   "rooms.hotel.tax.mode": { INCLUSIVE: "ราคารวมภาษีแล้ว", EXCLUSIVE: "แยกภาษีและค่าบริการ" },
   "rooms.hotel.securityDeposit.appliesTo": { ALL: "ผู้เข้าพักทุกคน", WALK_IN: "เฉพาะลูกค้า walk-in" },
   "rooms.hotel.notify.channel": { EMAIL: "อีเมล", LINE: "ไลน์ (LINE)", BOTH: "อีเมลและไลน์" },
+  // SVC H.1 ▸ enum โรงแรมเดิม (หนี้ H.0 · เปิดตามประเภทหน่วย) ◂
+  "rooms.hotel.noShow": { FORFEIT_RELEASE_AFTER_AUDIT: "ริบมัดจำ ปล่อยห้องหลังปิดวัน", FORFEIT_HOLD_STAY: "ริบมัดจำ ถือห้องไว้ทั้งการจอง", REFUND_RELEASE: "คืนมัดจำ ปล่อยห้อง" },
+  "rooms.hotel.ota.roomScope": { ALL_NIGHTLY: "ทุกห้องที่ขายรายคืน", SELECTED: "เฉพาะห้องที่เลือก" },
+  "rooms.hotel.ota.onConflict": { QUEUE_REASSIGN_NOTIFY: "เข้าคิวจัดห้องใหม่และแจ้งร้าน" },
 };
 
 // SVC D.4 ▸ เพดานนำเข้า Excel/CSV (X6) + หน้าต่างย้อนกลับ — ledger/svc-briefs/svc-brief-d.4.md §2.3 (อ่านสดทุกคำขอ · ชั้นหน่วย)

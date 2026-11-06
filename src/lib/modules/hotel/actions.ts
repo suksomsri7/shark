@@ -6,6 +6,9 @@ import { requireUnit } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { HotelRoomStatus } from "@prisma/client";
 import * as hotel from "./service";
+import * as hotelRates from "./rates"; // SVC H.1
+import { resetHotelSetting, saveHotelSettings } from "./hotel-settings"; // SVC H.1
+import type { RemoveResult, SetResult } from "@/lib/core/settings"; // SVC H.1
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -121,11 +124,14 @@ const reservationSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
-export type ReservationFormState = {
+type ReservationFormState = {
   status: "idle" | "ok" | "error";
   message?: string;
   code?: string;
 };
+
+// SVC H.1 · ไฟล์ "use server" ไม่ประกาศ export type (ข้อสอบ h.1 U-13) — ส่งออกชนิดแบบ type-only specifier (ถูกลบตอนคอมไพล์) ให้ reservation-form.tsx ใช้ต่อ
+export { type ReservationFormState };
 
 // ใช้กับ useActionState (client) — คืน state เพื่อโชว์ error/สำเร็จ inline
 export async function createReservationAction(
@@ -212,3 +218,126 @@ export async function refundStayAction(unitSlug: string, formData: FormData) {
   revalidatePath(`/app/u/${unitSlug}/hotel`);
   revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
 }
+
+// SVC H.1 ▸ ราคาโรงแรม + ตั้งค่าโรงแรม (ใบสั่ง h.1 §4.4) — ร้าน/ผู้กระทำ/สิทธิ์จาก session เท่านั้น · ด่าน type HOTEL + assertHotelCan ทุกตัว
+//   คืนผลเป็นข้อมูล ({ ok:false, code, reason }) ไม่ throw ให้หน้าแสดงข้อความ · บันทึกสำเร็จ ⇒ revalidate หน้าราคา/ตั้งค่า
+type RatesActionResult = { ok: boolean; code?: string; reason?: string };
+const NOT_HOTEL = { ok: false, code: "NOT_FOUND", reason: "ราคาห้องพักใช้ได้กับหน่วยโรงแรมเท่านั้น" } as const;
+const NO_RIGHT = { ok: false, code: "FORBIDDEN", reason: "คุณยังไม่มีสิทธิ์ทำรายการนี้ — ขอสิทธิ์จากเจ้าของร้าน" } as const;
+function hotelActorOf(auth: UnitAuth) {
+  return {
+    role: auth.active.role,
+    unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [],
+    permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
+    userId: auth.active.userId,
+  };
+}
+/** ด่านสิทธิ์เดิมของโมดูล (assertHotelCan โยน ForbiddenError) → ผลเป็น boolean ให้ action ตอบเป็นข้อมูล */
+function canHotel(check: () => void): boolean {
+  try {
+    check();
+    return true;
+  } catch {
+    return false;
+  }
+}
+const inputOf = (input: unknown, unitId: string) => ({ ...(input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {}), unitId });
+function revalidateRates(unitSlug: string, r: { ok: boolean }) {
+  if (r.ok) revalidatePath(`/app/u/${unitSlug}/hotel/rates`);
+}
+type RatesFn = (actor: unknown, ctx: unknown, input: unknown) => Promise<RatesActionResult>;
+async function runRates(unitSlug: string, auth: UnitAuth, unitId: string, input: unknown, fn: RatesFn): Promise<RatesActionResult> {
+  const r = await fn(hotelActorOf(auth), { tenantId: auth.active.tenantId }, inputOf(input, unitId));
+  revalidateRates(unitSlug, r);
+  return r;
+}
+
+export async function saveRatePlanAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.saveRatePlan);
+}
+
+export async function archiveRatePlanAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.archiveRatePlan);
+}
+
+export async function saveCancelRulesAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.saveCancelRules);
+}
+
+export async function saveSeasonAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.saveSeason);
+}
+
+export async function archiveSeasonAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.archiveSeason);
+}
+
+export async function saveHolidaysAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.saveHolidays);
+}
+
+export async function removeHolidayAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.removeHoliday);
+}
+
+export async function saveRatesAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.saveRates);
+}
+
+export async function setOverrideAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.setOverride);
+}
+
+export async function clearOverrideAction(unitSlug: string, input: unknown): Promise<RatesActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.rates.write"))) return NO_RIGHT;
+  return runRates(unitSlug, auth, unit.id, input, hotelRates.clearOverride);
+}
+
+export async function saveHotelSettingsAction(unitSlug: string, changes: unknown, opts?: { ackLegalWarn?: boolean }): Promise<SetResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return { ok: false, code: "NOT_FOUND", issues: [{ code: "NOT_FOUND", messageTh: NOT_HOTEL.reason }] };
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.settings.edit"))) return { ok: false, code: "PERMISSION", issues: [{ code: "NO_PERMISSION", messageTh: NO_RIGHT.reason }] };
+  const r = await saveHotelSettings(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { unitId: unit.id, changes, ackLegalWarn: opts?.ackLegalWarn === true });
+  if (r.ok) revalidatePath(`/app/u/${unitSlug}/hotel/settings`);
+  return r;
+}
+
+export async function resetHotelSettingAction(unitSlug: string, target: unknown): Promise<RemoveResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return { ok: false, code: "NOT_FOUND", issues: [{ code: "NOT_FOUND", messageTh: NOT_HOTEL.reason }] };
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.settings.edit"))) return { ok: false, code: "PERMISSION", issues: [{ code: "NO_PERMISSION", messageTh: NO_RIGHT.reason }] };
+  const t = target && typeof target === "object" ? (target as Record<string, unknown>) : {};
+  const r = await resetHotelSetting(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { unitId: unit.id, key: t.key, scope: t.scope, scopeId: t.scopeId });
+  if (r.ok) revalidatePath(`/app/u/${unitSlug}/hotel/settings`);
+  return r;
+}
+// ◂ SVC H.1

@@ -44,6 +44,9 @@ export type SettingValueType =
   | "days"
   | "time";
 
+/** SVC H.1 ▸ ประเภทหน่วยที่ค่าตั้งผูกได้ (SettingDef.unitTypes) ◂ */
+export type SettingUnitType = "HOTEL" | "DORM" | "BOOKING" | "POS";
+
 export type SettingSensitivity = "MONEY" | "LEGAL" | "PRIVACY";
 
 /** ตัวแปลงค่าตั้ง → อินพุตของตัวตรวจกฎหมาย · คืน `null` ให้ rule ใด = "ตรวจตอนบันทึกค่าตั้งไม่ได้" ⇒ ข้าม (ตรวจซ้ำที่จุดต้นทุน · CC §1.7) */
@@ -76,6 +79,8 @@ export type SettingDef = {
   templateVars?: readonly string[];
   /** ซ่อนจากหน้าค่าตั้ง: "PHASE_H" = รอเฟสโรงแรม · "RETIRED" = เลิกใช้แล้ว (คง def ไว้ให้ค่าเริ่ม/ข้อสอบ) */
   hiddenUntil?: "PHASE_H" | "RETIRED";
+  /** SVC H.1 ▸ แสดงในหน้าตั้งค่าเฉพาะหน่วยประเภทเหล่านี้ (ไม่ประกาศ = ทุกประเภท · ประกาศแล้วแต่ฟอร์มไม่ระบุ unitType = ไม่แสดง) ◂ */
+  unitTypes?: readonly SettingUnitType[];
   labelTh: string;
   helpTh?: string;
   /** type=enum: ป้ายไทยของทุกตัวเลือก (หน้าตั้งค่าไม่แสดงค่าดิบ) — R0.4 */
