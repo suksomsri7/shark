@@ -20,6 +20,7 @@
 //   แห้ง  : SEC_REAL_DRY=1 — ทาง provider จริง (AnthropicProvider ผ่าน route/worker จริง) แต่คำตอบของ api.anthropic.com เป็นสคริปต์ในเครื่อง
 //           (ไม่มีการเรียกออกนอก · ไม่มีคีย์) — พิสูจน์ fixture/อนุมัติ/ตรวจผล/ลบข้อมูล · token ขาเข้าเป็นค่าประมาณ (ความยาวคำขอ/4)
 //           + SEC_REAL_DRY_MISS=1 = ครั้งแรกของทุกเส้นโมเดลไม่เรียกเครื่องมือ (ทดสอบทางลองซ้ำ)
+//           + SEC_REAL_DRY_FAIL1=1 = คำขอแรกของทุกเส้นตอบ HTTP 500 (ตัวควบคุมบวกของ opsEvents · งานถูกลองใหม่)
 //   ไม่ตั้งทั้งคู่ / ไม่มีคีย์ ⇒ SKIP exit 0
 // รัน (ผู้คุม): bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 AI_PROVIDER=anthropic SEC_REAL_MODEL=1 SMS_PROVIDER=mock pnpm exec tsx scripts/qc-sec-real.mts
 // แห้ง     : bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SEC_REAL_DRY=1 SMS_PROVIDER=mock pnpm exec tsx scripts/qc-sec-real.mts
@@ -72,6 +73,7 @@ let spentMicroWorst = 0;
 let capHit = false;
 type DryReply = { tools?: { name: string; input: Record<string, unknown> }[]; text?: string };
 let dryScript: ((path: string, i: number) => DryReply) | null = null;
+const dryFailed = new Set<string>(); // SEC_REAL_DRY_FAIL1: เส้นที่ตอบ 500 ไปแล้ว
 const REAL_FETCH = globalThis.fetch;
 globalThis.fetch = (async (input: any, init?: any): Promise<Response> => { // eslint-disable-line @typescript-eslint/no-explicit-any
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : String(input?.url ?? "");
@@ -91,7 +93,11 @@ globalThis.fetch = (async (input: any, init?: any): Promise<Response> => { // es
     return new Response(JSON.stringify({ type: "error", error: { type: "qc_budget_cap", message: `qc-sec-real: เกินเพดาน ฿${MAX_THB}` } }), { status: 429, headers: { "content-type": "application/json" } });
   }
   let res: Response;
-  if (DRY) {
+  if (DRY && process.env.SEC_REAL_DRY_FAIL1 === "1" && CUR && !dryFailed.has(CUR.path)) {
+    // ตัวควบคุมบวกของ OpsEvent: คำขอแรกของแต่ละเส้นตอบ 500 ⇒ provider โยน ⇒ logOps ERROR + งานถูกลองใหม่ (แบบ DONE×n ของรอบจริง #4)
+    dryFailed.add(CUR.path);
+    res = new Response(JSON.stringify({ type: "error", error: { type: "api_error", message: "qc dry: simulated overload" } }), { status: 500, headers: { "content-type": "application/json" } });
+  } else if (DRY) {
     const bodyText = typeof init?.body === "string" ? init.body : "";
     const step = dryScript?.(CUR?.path ?? "", (CUR?.calls.length ?? 1) - 1) ?? { text: "รับทราบครับ" };
     const content: Record<string, unknown>[] = [];
@@ -420,7 +426,24 @@ const ONLY = (process.env.SEC_REAL_ONLY ?? "").split(",").map((s) => s.trim()).f
 const MAX_ATTEMPTS = 3; // ครั้งแรก + ลองซ้ำ ≤ 2 (ใบสั่ง)
 const seenRooms = new Set<string>();
 
-type PathResult = { id: string; title: string; pass: boolean; why: string; attempts: Attempt[]; fixture: string | null; skipped?: string };
+type OpsRow = { at: string; level: string; source: string; message: string; detail: string };
+type PathResult = { id: string; title: string; pass: boolean; why: string; attempts: Attempt[]; fixture: string | null; skipped?: string; opsEvents: OpsRow[] };
+/**
+ * OpsEvent (ตารางที่ `logOps` เขียน) ระดับ WARN/ERROR ของร้านทดสอบ — อ่านก่อนลบร้าน เพื่อเห็นสาเหตุของงานที่ทำซ้ำ (เช่น DONE×3)
+ *   ข้อความ/รายละเอียดย่อ (detail ≤ 160 ตัวอักษร) · ไม่มีค่าลับ (logOps ตัดอาร์กิวเมนต์ของ Prisma ทิ้งแล้ว · ข้อความ error ของผู้ให้บริการไม่มีคีย์)
+ */
+async function opsEventsOf(t: Tenant): Promise<OpsRow[]> {
+  try {
+    const rows = await prisma.opsEvent.findMany({ where: { tenantId: t.tid, level: { in: ["WARN", "ERROR"] } }, orderBy: { createdAt: "asc" }, take: 50, select: { createdAt: true, level: true, source: true, message: true, detail: true } });
+    return rows.map((r) => ({ at: r.createdAt.toISOString(), level: String(r.level), source: r.source, message: short(r.message, 160), detail: short(r.detail ?? "", 160) }));
+  } catch (e) {
+    return [{ at: new Date().toISOString(), level: "QC", source: LABEL, message: `อ่าน OpsEvent ไม่ได้: ${errMsg(e)}`, detail: "" }];
+  }
+}
+function printOps(id: string, rows: OpsRow[]) {
+  console.log(`  OpsEvent WARN/ERROR ของร้าน ${id}: ${rows.length ? rows.length + " รายการ" : "ไม่มี"}`);
+  for (const r of rows) console.log(`     ${r.at} · ${r.level} · ${r.source} · ${r.message}${r.detail ? ` — ${r.detail}` : ""}`);
+}
 const results: PathResult[] = [];
 const wipe: Record<string, unknown> = {};
 let usersLeft = -1;
@@ -433,18 +456,22 @@ dryScript = (_path, i) => (DRY_MISS && CUR?.attempt === 1 ? { text: "ขอร�
 try {
   console.log(`── ${LABEL} · ${DRY ? "แห้ง (คำตอบสคริปต์ในเครื่อง)" : "โมเดลจริง"} · เพดาน ฿${MAX_THB} (${MAX_MICRO} micro @ ${THB} บาท/ดอลลาร์) ──`);
   for (const def of PATHS) {
-    const res: PathResult = { id: def.id, title: def.title, pass: false, why: "", attempts: [], fixture: null };
+    const res: PathResult = { id: def.id, title: def.title, pass: false, why: "", attempts: [], fixture: null, opsEvents: [] };
     results.push(res);
     if (ONLY.length && !ONLY.includes(def.id)) { res.skipped = "SEC_REAL_ONLY"; res.why = "ข้ามตาม SEC_REAL_ONLY"; continue; }
     if (capHit || (REAL && spentMicroProvider >= MAX_MICRO)) { res.skipped = "budget"; res.why = `ไม่รัน — ถึงเพดาน ฿${MAX_THB} แล้ว`; continue; }
     console.log(`\n▶ ${def.id} — ${def.title}\n  คำสั่ง: ${def.instruction}`);
     let t: Tenant;
     let f: Fix;
+    let made: Tenant | null = null;
     try {
-      t = await newTenant(def.id.replace("_", ""), `ร้านทดสอบเลขา (${def.title})`);
+      made = await newTenant(def.id.replace("_", ""), `ร้านทดสอบเลขา (${def.title})`);
+      t = made;
       f = await def.setup(t);
     } catch (e) {
-      res.fixture = errMsg(e); res.why = `fixture ล้ม: ${res.fixture}`; console.log(`  💥 ${res.why}`); continue;
+      res.fixture = errMsg(e); res.why = `fixture ล้ม: ${res.fixture}`; console.log(`  💥 ${res.why}`);
+      if (made) { res.opsEvents = await opsEventsOf(made); printOps(def.id, res.opsEvents); }
+      continue;
     }
     curFix = f; curDef = def;
     for (let n = 1; n <= MAX_ATTEMPTS; n++) {
@@ -532,6 +559,9 @@ try {
     res.pass = !!best?.pass;
     const dups = res.attempts.length - real.length;
     res.why = best ? `${best.why}${real.length > 1 ? ` (ลอง ${real.length} ครั้ง)` : ""}${dups ? ` · ลองไม่ได้ ${dups} ครั้ง (duplicate)` : ""}` : capHit ? `ถึงเพดาน ฿${MAX_THB} ก่อนเริ่ม` : dups ? "ลองไม่ได้ (duplicate ทุกครั้ง)" : "ไม่มีรอบ";
+    // ก่อนลบร้าน (finally): OpsEvent WARN/ERROR ของร้านเส้นนี้ ต่อท้ายผลของเส้น
+    res.opsEvents = await opsEventsOf(t);
+    printOps(def.id, res.opsEvents);
   }
 } catch (e) {
   console.log(`  💥 ${LABEL}: ${errMsg(e)}`);
@@ -572,7 +602,7 @@ console.log(`\n${LABEL}: ${passed.length}/3 ผ่าน · จ่ายผู�
 console.log("JSON_SUMMARY " + JSON.stringify({
   total: 3, passed: passed.length, failed, skipped, mode: DRY ? "dry" : "real",
   costMicro: totalMicro, costThb: totalThb, providerMicro, providerThb, worstCaseMicro, worstCaseThb, spentThb, spentWorstThb, capBasis: "providerThb", thbPerUsd: THB, capThb: MAX_THB, capHit,
-  paths: results.map((r) => ({ id: r.id, pass: r.pass, why: short(r.why, 240), attempts: r.attempts.map((a) => ({ n: a.n, pass: a.pass, dup: a.dup, counted: a.counted, micro: a.micro, microProvider: a.microProvider, microWorst: a.microWorst, callStatus: a.calls.map((c) => c.status), tokensIn: a.tokensIn, tokensOut: a.tokensOut, cacheRead: a.cacheRead, cacheWrite: a.cacheWrite, models: a.models, productModel: a.productModel, ms: a.ms, rounds: a.calls.length, tools: a.toolsCalled, kinds: a.kinds, approvals: a.approvals.map((x) => `${x.kind}:${x.ok ? "ok" : "fail"}`), reply: a.reply.slice(0, 200) })), fixture: r.fixture })),
+  paths: results.map((r) => ({ id: r.id, pass: r.pass, why: short(r.why, 240), attempts: r.attempts.map((a) => ({ n: a.n, pass: a.pass, dup: a.dup, counted: a.counted, micro: a.micro, microProvider: a.microProvider, microWorst: a.microWorst, callStatus: a.calls.map((c) => c.status), tokensIn: a.tokensIn, tokensOut: a.tokensOut, cacheRead: a.cacheRead, cacheWrite: a.cacheWrite, models: a.models, productModel: a.productModel, ms: a.ms, rounds: a.calls.length, tools: a.toolsCalled, kinds: a.kinds, approvals: a.approvals.map((x) => `${x.kind}:${x.ok ? "ok" : "fail"}`), reply: a.reply.slice(0, 200) })), fixture: r.fixture, opsEvents: r.opsEvents })),
   fixtureWarnings: fxErr, blocked: [...new Set(BLOCKED)], residue,
 }));
 await prisma.$disconnect().catch(() => undefined);
