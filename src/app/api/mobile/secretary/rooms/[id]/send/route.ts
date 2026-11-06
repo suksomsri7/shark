@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import { runRoomJobs, sendRoomMessage } from "@/lib/ai/secretary/worker";
-import { claimClientMessageId, claimFailed, fail, gate, ID_MAX, idParam, notFound, ok, readBody, runAfter, thrown, withRateLimit, type RouteCtx } from "../../../_shared";
+import { claimClientMessageId, claimFailed, fail, rememberFailed, gate, ID_MAX, idParam, notFound, ok, readBody, runAfter, thrown, withRateLimit, type RouteCtx } from "../../../_shared";
 
 /** SEC S3a.1-S1 R-Z5: route นี้รัน worker (โมเดล) ใน `after()` — เพดานของแพลตฟอร์ม · worker หยุดหยิบงานที่ 240 วิ */
 export const maxDuration = 300;
@@ -63,8 +63,8 @@ export async function POST(req: Request, ctx: RouteCtx) {
     try {
       await claim?.remember(r.messageId);
     } catch (e) {
-      await runJob(); // ข้อความ+งานเกิดแล้ว — งานยังรันตามปกติ แต่บอกตรง ๆ ว่าจดกุญแจไม่ได้
-      return claimFailed(e, "rooms.send");
+      // §Z.4 Q3 (แบบเดียวกับ POST rooms): ข้อความ+งานเกิดแล้วจริง ⇒ คืน claim + logOps WARN แล้วตอบ 200 ปกติด้านล่าง
+      await rememberFailed(e, claim, "rooms.send");
     }
     await runJob();
     return ok({ ok: true, messageId: r.messageId, jobId: r.jobId });

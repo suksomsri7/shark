@@ -6,7 +6,7 @@ import { listRooms, startRoom, type RoomStatus } from "@/lib/ai/secretary/rooms"
 import { tenantDb } from "@/lib/core/db";
 import { runRoomJobs } from "@/lib/ai/secretary/worker";
 import { roomCardsFor } from "@/lib/ai/secretary/views";
-import { claimFailed, claimNewRoom, cursorOf, fail, gate, ID_MAX, ok, pairCursor, readBody, runAfter, takeOf, thrown, withRateLimit } from "../_shared";
+import { claimFailed, claimNewRoom, rememberFailed, cursorOf, fail, gate, ID_MAX, ok, pairCursor, readBody, runAfter, takeOf, thrown, withRateLimit } from "../_shared";
 
 /** SEC S3a.1-S1 R-Z5: route นี้รัน worker (โมเดล) ใน `after()` — เพดานของแพลตฟอร์ม · worker หยุดหยิบงานที่ 240 วิ */
 export const maxDuration = 300;
@@ -84,9 +84,8 @@ export async function POST(req: Request) {
     try {
       await claim?.remember(r.roomId);
     } catch (e) {
-      // R-Z11: ห้อง+งานเกิดแล้ว (worker ยังรันตามปกติ) แต่จดกุญแจไม่ได้ ⇒ บอกตรง ๆ (500) ไม่เงียบ
-      await runAfter(() => runRoomJobs({ jobIds: [r.jobId], limit: 1, deadline: start + WORKER_DEADLINE_MS }));
-      return claimFailed(e, "rooms.post");
+      // §Z.4 Q3: ห้อง+งานเกิดแล้วจริง แต่จดกุญแจไม่ได้ ⇒ คืน claim (ไม่ค้าง 409 pending 24 ชม.) + logOps WARN แล้วตอบ 200 ปกติด้านล่าง
+      await rememberFailed(e, claim, "rooms.post");
     }
     // R-Z3/R-Z5: job เกิดใน tx ของ startRoom แล้ว ⇒ รันเฉพาะงานนี้หลังตอบ
     await runAfter(() => runRoomJobs({ jobIds: [r.jobId], limit: 1, deadline: start + WORKER_DEADLINE_MS }));

@@ -55,6 +55,7 @@ const MAX_TENANT_TASKS_PER_RUN = 100; // เพดานต่อรอบ cron 
 export async function createTask(
   ctx: Ctx,
   input: TaskInput,
+  now: Date = new Date(), // SEC S3a.1-S1 รอบ 2 (§Z.4 Q1): นาฬิกาฉีดได้ — ตัดสินว่าชั่วโมงที่ตั้งผ่านไปแล้วหรือยังในวันไทยวันนี้
 ): Promise<{ id: string }> {
   const instruction = String(input.instruction ?? "").trim();
   if (!instruction) throw new Error("ต้องระบุสิ่งที่จะให้ผู้ช่วยทำเป็นงานประจำ");
@@ -63,7 +64,7 @@ export async function createTask(
     throw new Error("ชั่วโมงที่ให้ทำต้องอยู่ระหว่าง 0-23 (เวลาไทย)");
   }
   const ownerUserId = typeof input.ownerUserId === "string" ? input.ownerUserId.trim() : "";
-  if (ownerUserId) return createOwnedTask(ctx, { ...input, instruction, hourBkk, ownerUserId });
+  if (ownerUserId) return createOwnedTask(ctx, { ...input, instruction, hourBkk, ownerUserId }, now);
   const count = await tenantDb(ctx).aiScheduledTask.count();
   if (count >= MAX_TASKS_PER_TENANT) {
     throw new Error(`ตั้งงานประจำได้สูงสุด ${MAX_TASKS_PER_TENANT} รายการต่อร้าน — ลบรายการเดิมก่อนถ้าต้องการเพิ่ม`);
@@ -106,6 +107,7 @@ function cleanChannels(raw: unknown): Channel[] {
 async function createOwnedTask(
   ctx: Ctx,
   input: TaskInput & { instruction: string; hourBkk: number; ownerUserId: string },
+  now: Date = new Date(),
 ): Promise<{ id: string }> {
   const freqRaw = input.frequency === undefined || input.frequency === null ? "DAILY" : String(input.frequency).trim().toUpperCase();
   if (!(FREQUENCIES as readonly string[]).includes(freqRaw)) {
@@ -124,8 +126,12 @@ async function createOwnedTask(
   if (count >= max) {
     throw new Error(`ตั้งงานประจำได้สูงสุด ${max} รายการต่อร้าน — ลบหรือปิดรายการเดิมก่อนถ้าต้องการเพิ่ม`);
   }
+  // SEC S3a.1-S1 รอบ 2 ▸ §Z.4 Q1: isDue = ชั่วโมง ≥ hourBkk (ตามหลังได้) ⇒ ตั้งตอนชั่วโมงที่ตั้งมาถึง/ผ่านไปแล้วของวันนี้ = นับว่าวันนี้รันแล้ว
+  //   (เริ่มรอบแรกพรุ่งนี้ — ไม่รันทันทีในชั่วโมงถัดไปของวันตั้ง) · ยังไม่ถึง = รันวันนี้ตามเวลา ◂
+  const at = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+  const passed = new Date(at.getTime() + 7 * 3_600_000).getUTCHours() >= input.hourBkk;
   const row = await tenantDb(ctx).aiScheduledTask.create({
-    data: { tenantId: ctx.tenantId, instruction: input.instruction, hourBkk: input.hourBkk, ownerUserId: input.ownerUserId, frequency, days, channels },
+    data: { tenantId: ctx.tenantId, instruction: input.instruction, hourBkk: input.hourBkk, ownerUserId: input.ownerUserId, frequency, days, channels, ...(passed ? { lastRunDay: dayKeyBangkok(at) } : {}) },
   });
   return { id: row.id };
 }

@@ -180,6 +180,21 @@ export async function claimClientMessageId(tenantId: string, roomId: string, use
   };
 }
 
+/**
+ * §Z.4 Q3 ▸ จดกุญแจล้ม **หลัง** ห้อง/ข้อความเกิดแล้ว — คืน claim (retry ด้วย id เดิมไม่ติด 409 pending 24 ชม.) + logOps WARN ·
+ *   ผู้เรียกตอบ 200 ตามปกติ (ของมีจริง) · คืน claim ก็ล้มอีก = log เพิ่ม (ไม่ throw) ◂
+ */
+export async function rememberFailed(e: unknown, claim: { release: () => Promise<void> } | null, where: string): Promise<void> {
+  let releaseError: unknown = null;
+  try {
+    await claim?.release();
+  } catch (re) {
+    releaseError = re;
+  }
+  const detail = `${e instanceof Error ? (e.stack ?? e.message) : String(e)}${releaseError ? `\nrelease: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}` : ""}`;
+  await logOps("WARN", "secretary-api", `${where}: จดกุญแจกันส่งซ้ำไม่สำเร็จ (ของเกิดแล้ว · คืน claim)`, { detail }).catch(() => undefined);
+}
+
 /** R-Z11 ▸ คืน/จดกุญแจล้ม = จดเหตุ (logOps) แล้วตอบ 500 ไทย — ไม่กลืนเงียบ ◂ */
 export async function claimFailed(e: unknown, where: string): Promise<Response> {
   await logOps("WARN", "secretary-api", `${where}: จัดการกุญแจกันส่งซ้ำไม่สำเร็จ`, { detail: e instanceof Error ? (e.stack ?? e.message) : String(e) }).catch(() => undefined);

@@ -427,6 +427,7 @@ export function registerRoomJobsMinuteJob(): void {
     name: ROOM_JOBS_MINUTE_JOB,
     everyMinutes: 1,
     ownBudgetMs: SECRETARY_ROOM_JOBS_BUDGET_MS,
+    quietCutOff: true, // §Z.4 Q5 — ค่าเดียวกับ minute-jobs.ts
     run: async (now, _budgetMs, ctrl) => {
       await runRoomJobsTick(now, ctrl);
     },

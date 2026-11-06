@@ -44,3 +44,11 @@
 - `secretary.roomJobs` ที่ใช้เกินงบ 8 วิ (โมเดลช้า) = dispatcher บันทึก cut-off WARN ทุกครั้ง (lease ของ minute-job ถือจนงานจบ) — พฤติกรรมเดิมของราง · ถ้ารก ops ค่อยปรับ
 - `chat.sla` ไม่ no-budget เพราะ roomJobs ไม่กินงบรวมแล้ว · ไม่ได้ย้ายตำแหน่ง chat.sla
 - ใครได้/เสียสิทธิ์: ไม่มีการเปลี่ยนสิทธิ์ · ประตูแชทเดิมใช้กับห้องเลขาไม่ได้แล้ว (409) · ทางที่เรียกโมเดลใหม่: ไม่มี (ทุกทางผ่าน `sendMessage` → `chargeUsageSafe` เดิม · worker ติดป้าย note)
+
+## รอบ 2 (RESOLUTIONS §Z.4 · merge ทิปผู้คุม b8b548481 ด้วย SHA ตรง — มี ORACLE-EDIT s1.4 L-3 · s1.14 R-2 · s1.19 · s3a1-s2 BlobPart)
+- **Q1** `ai/scheduled.createTask(ctx, input, now = new Date())` → `createOwnedTask`: ชั่วโมงไทยตอนตั้ง ≥ `hourBkk` ⇒ `lastRunDay = dayKeyBangkok(now)` (รอบแรก = พรุ่งนี้) · ตั้งก่อนถึงชั่วโมง = รันวันนี้ · แถวเดิม (ไม่มีเจ้าของ) ไม่แตะ · `updateTask` ไม่แตะ (มตินับเฉพาะตอนสร้าง)
+- **Q3** `_shared.rememberFailed(e, claim, where)` (คืน claim + logOps WARN · ไม่ throw) · `POST rooms`: remember ล้มหลังห้องเกิด ⇒ คืน claim แล้วตอบ 200 ปกติ · **ทำแบบเดียวกันที่ `rooms/[id]/send` และ `secStartRoomAction`** (เหตุผลเดียวกัน: ของเกิดแล้ว · ไม่ให้ 409 pending ค้าง 24 ชม.) — ถ้าต้องการเฉพาะ rooms บอกได้ · `claimFailed` (500) เหลือเฉพาะคืนกุญแจล้มก่อนของเกิด
+- **Q5** `MinuteJob.quietCutOff` ใหม่ (ตั้งที่ `secretary.roomJobs` ทั้งใน minute-jobs.ts และ worker): ถูกตัดงบ ⇒ ตัวนับต่อโพรเซส + OpsEvent INFO ไม่เกิน 1 แถว/15 นาที (จองหน้าต่างด้วย INSERT … ON CONFLICT แถว `minute-job:cutoff-log:<name>` ใน OpsAlertState) · งานอื่นยัง WARN ทุกครั้ง
+- Q2/Q4/R-Z7/R-Z1 ยอมรับตามมติ — ไม่เปลี่ยน · ไม่ได้ merge เลน c
+- ไฟล์ร่วมที่แตะเพิ่มรอบนี้: `_shared.ts` (เพิ่ม `rememberFailed` ก่อน `claimFailed`) · ไฟล์อื่น = ไฟล์ของใบ (scheduled · minute-jobs · worker · routes rooms/send · server-actions · docs)
+- ผลรอบ 2: ดูรายงานถึงผู้คุม

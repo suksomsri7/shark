@@ -144,11 +144,16 @@ export async function secStartRoomAction(input: { instruction: string; systems?:
     }
     created = true;
     await workAfter(r.jobId);
-    await claim?.remember(r.roomId);
+    try {
+      await claim?.remember(r.roomId);
+    } catch (e) {
+      // §Z.4 Q3: ห้องเกิดแล้วจริง ⇒ คืน claim + logOps WARN แล้วตอบสำเร็จตามปกติ
+      await claim?.release().catch(() => undefined);
+      await logOps("WARN", "secretary-web", "secStartRoomAction: จดกุญแจกันส่งซ้ำไม่สำเร็จ (ห้องเกิดแล้ว · คืน claim)", { detail: e instanceof Error ? e.message : String(e) }).catch(() => undefined);
+    }
     return { ok: true as const, roomId: r.roomId, conversationId: r.conversationId, jobsUsed: r.jobsUsed, jobsLimit: r.jobsLimit };
   } catch (e) {
     if (!created && claim) await claim.release().catch((re: unknown) => logOps("WARN", "secretary-web", "secStartRoomAction: คืนกุญแจกันส่งซ้ำไม่สำเร็จ", { detail: String(re) }).catch(() => undefined));
-    if (created) await logOps("WARN", "secretary-web", "secStartRoomAction: จดกุญแจกันส่งซ้ำไม่สำเร็จ", { detail: e instanceof Error ? e.message : String(e) }).catch(() => undefined);
     return failOf(e);
   }
 }
