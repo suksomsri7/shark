@@ -26,3 +26,24 @@
 - `qc-sec-s3a6-s` **13/13** ×2 (residue 0): N-1 needsTranslation 9 กรณี · N-2 DTO เธรด · T-1 แคช (หัก 1) · T-2 403 สาขาอื่น · T-3 ปิดแปล ⇒ ok:false · D-1 ปริยาย contactLang/en · D-2 ไม่ส่งเอง · G-1/G-2/G-3 gloss (Scripted · เรียกเดียว) · G-4 route · C-1 เครดิตหมด ⇒ ok:false ไทย (แปล · แปลร่าง · ai-suggest)
 - regression: qc-sec-s1.14b 24/24 · s1.14c 12/12 · qc-chat-ai-suggest 44/44 · qc-chat-translate 34/34 · qc-sec-s3a1-s2 28/28 · s1.21 19/19
 - typecheck 0 · fitness pre-commit ✅ · no-DB 53/53
+
+## รอบ 2 (R-Z61 · merge ทิปผู้คุม 35da5c0ac ด้วย SHA ตรง ⇒ 863286843)
+| ไฟล์ | สิ่งที่ทำ |
+|---|---|
+| `src/lib/modules/chat/lang.ts` (ใหม่ · pure) | **M1** `LANG_NAME` (export) · `LANG_ALIAS {zh: "cn"}` · `normalizeLang` จุดเดียว (zh/zh-TW/ZH ⇒ cn) · `isKnownLang` |
+| `src/lib/modules/chat/translate.ts` | ย้าย LANG_NAME/normalizeLang ไป lang.ts แล้ว re-export · แคช: `normalizeLang(msg.translatedLang) === target` (แคชเก่า "zh" ยังใช้ได้) |
+| `src/lib/mobile/inbox-dto.ts` | normalizeLang จาก lang.ts (inbox-dto ยัง pure) · `SCRIPT_OF.cn` = Han · **M2** `needsTranslation` ตัด `/https?:\/\/\S+\|www\.\S+\|\S+@\S+\|[#@]\S+/gu` ก่อนนับ |
+| `src/lib/modules/chat/ai-suggest.ts` | เทียบภาษาหลัง normalize ทั้งสองฝั่ง · **gloss ขอเฉพาะร้านเปิด `translateEnabled`** · `maxTokens` 2000 เมื่อขอ gloss (ไม่ขอ = 1200 เดิม) · ชื่อภาษาใน prompt จาก `LANG_NAME` · `replyLang` คืนค่าที่ normalize แล้วทุกครั้ง |
+| route translate · translate-draft | `targetLang` ต้อง `isKnownLang` ไม่งั้น 422 |
+| docs `31-secretary.md` · `SECRETARY-API.md` | replyLang คืนทุกครั้ง · gloss เฉพาะเปิดแปล · zh ≡ cn · targetLang คีย์ใน LANG_NAME · needsTranslation ตัดลิงก์ |
+| `scripts/qc-sec-s3a6-s.mts` | 13 ⇒ 22 ข้อ (ดูผล) |
+
+ตัดสินเอง:
+1. **"OK ka" (staff th) ⇒ true** — ตัวอักษรละตินจริง 4 ตัว ไม่มีอักษรไทย (คำทับศัพท์ที่พิมพ์เป็นละตินถือว่าต่างสคริปต์ · ปุ่มแปลโผล่ได้ ราคาถูกและกดเองเท่านั้น)
+2. "mail me at abc@example.com" ⇒ true (เหลือ "mail me at") · อีเมล/ลิงก์ล้วน ⇒ false
+3. prompt ยังใช้ `replyLang` ดิบในประโยค "customer's language (…)" เพื่อให้ prompt ไม่ขอ gloss เท่าเดิมทุกไบต์ (normalize ใช้เฉพาะการเทียบ/ค่าที่คืน)
+4. ข้อสอบ prompt: G-6 = prompt ต่างภาษาเท่ากับ prompt ห้องเดียวกันตอนร้านปิดแปล + แทนรูป JSON + ประโยค gloss เท่านั้น (เทียบสตริงตรง) · G-2 = ภาษาเดียวกันเท่ากับ base (ต่างแค่รหัสภาษา) · ไม่มีคำว่า gloss
+
+ข้อสอบใหม่: N-1 (+9 กรณี ลิงก์/www/#@/อีเมล/OK ka/cn/zh/zh-TW) · N-3 normalizeLang/isKnownLang · T-4 PII ปิดก่อนแปล (ไม่มี 0812345678 · มี ••••••••78 · ต้นฉบับยังเต็ม) · T-5 mid ห้องอื่น 403 + translate-draft ห้องที่ไม่เห็น 403 · T-6 ไม่มีคีย์ ⇒ can.translate=false + 200 ok:false · T-7 targetLang xx ⇒ 422 · zh ⇒ lang cn · T-8 ร้านปิด ⇒ can.translate=false · G-5 ร้านปิดแปลไม่ขอ gloss (maxTokens 1200) · G-1 +maxTokens 2000 + prompt Thai · G-6 prompt ต่างภาษา · R-1 ครั้งที่ 31 ⇒ 429 · C-1 + calls 0
+
+ผลรอบ 2: `qc-sec-s3a6-s` **22/22** ×3 (residue 0) · regression: s1.14b 24/24 · s1.14c 12/12 · qc-chat-ai-suggest 44/44 · qc-chat-translate 34/34 (×2) · s3a1-s2 28/28 · s1.21 19/19 · typecheck 0 · fitness no-DB 53/53

@@ -5,6 +5,7 @@
 // 🔴 ช่องทาง: ไม่คืน credentials · webhookKey · tokenPreview · publicKey* (แคบกว่า `maskedConnection` ของเว็บโดยตั้งใจ — แอปไม่ใช่หน้าตั้งค่าช่องทาง)
 // pure (ไม่แตะ DB) — route เป็นคนโหลด แล้วส่งของเข้ามาแปลง
 
+import { normalizeLang } from "@/lib/modules/chat/lang";
 import type { ChatAttachment, ChatChannelConnection, ChatContact, ChatConversation, ChatMessage, ChatRoutingRule } from "@prisma/client";
 import { channelLabel } from "@/lib/modules/chat/channel-icon";
 import { parseTags } from "@/lib/modules/chat/labels";
@@ -117,6 +118,7 @@ const SCRIPT_OF: Record<string, RegExp> = {
   th: /\p{Script=Thai}/u,
   ja: /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u,
   zh: /\p{Script=Han}/u,
+  cn: /\p{Script=Han}/u, // R-Z61 M1: เว็บ/detectLang ใช้ cn
   ko: /\p{Script=Hangul}/u,
   ru: /\p{Script=Cyrillic}/u,
   ar: /\p{Script=Arabic}/u,
@@ -129,10 +131,11 @@ const SCRIPT_OF: Record<string, RegExp> = {
  *   (th: ไม่มีอักษรไทย · ภาษาอื่น: ไม่มีอักษรของภาษานั้น) · อีโมจิ/ตัวเลข/สั้นกว่า 3 ตัวอักษร = false · pure
  */
 export function needsTranslation(body: string | null | undefined, staffLang: string | null | undefined): boolean {
-  const text = String(body ?? "");
+  // R-Z61 M2: ลิงก์ · อีเมล · #แท็ก · @ชื่อ ไม่ใช่ภาษา — ตัดก่อนนับตัวอักษร
+  const text = String(body ?? "").replace(/https?:\/\/\S+|www\.\S+|\S+@\S+|[#@]\S+/gu, " ");
   const letters = text.match(/\p{L}/gu) ?? [];
   if (letters.length < 3) return false;
-  const lang = String(staffLang ?? "th").toLowerCase().split(/[-_]/)[0] || "th";
+  const lang = normalizeLang(staffLang) ?? "th"; // R-Z61 M1: zh ≡ cn
   const script = SCRIPT_OF[lang] ?? /\p{Script=Latin}/u;
   return !letters.some((ch) => script.test(ch));
 }

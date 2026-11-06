@@ -24,7 +24,8 @@ import { canRunAi, chargeUsageSafe, outOfCreditMessage } from "@/lib/ai/credit";
 import { readBusinessHours } from "./business-hours";
 import { searchAnswerExamples, saveAnswerExampleFromSuggestion, searchTerms } from "./learning";
 import { getLinkedMember } from "./service";
-import { maskChatText } from "./pii-mask"; // SEC S3a.1-S2 R-Z24 (ใช้ร่วม translate · S3a.6) ◂
+import { maskChatText } from "./pii-mask";
+import { LANG_NAME, normalizeLang } from "./lang"; // SEC S3a.6 R-Z61 ◂ // SEC S3a.1-S2 R-Z24 (ใช้ร่วม translate · S3a.6) ◂
 
 // ───────────────────────── ค่าคงที่ของรอบนี้ ─────────────────────────
 
@@ -259,16 +260,19 @@ async function buildContext(args: {
  * คำสั่งของโมเดล — **ภาษาอังกฤษล้วน** ([[reference_llm_thai_token_cost]])
  * เนื้อความบริบทเป็นภาษาไทยได้ (นั่นคือข้อมูล) แต่ "กฎ" ที่ซ้ำทุกครั้งต้องถูก เพราะถูก cache ด้วย
  */
-function systemPrompt(replyLang: string, staffLang?: string): string {
-  // SEC S3a.6 ▸ ภาษาลูกค้า ≠ ภาษาทีม ⇒ ขอ gloss (คำแปลสำหรับทีม) ในการเรียกเดียวกัน · เท่ากัน = prompt เดิมทุกไบต์ ◂
-  const glossOn = !!staffLang && replyLang.toLowerCase() !== staffLang.toLowerCase();
-  if (glossOn) {
+/**
+ * SEC S3a.6 ▸ ขอ gloss (คำแปลสำหรับทีม) ในการเรียกเดียวกันเมื่อ `glossLang` ไม่ว่าง (ผู้เรียกตัดสิน: ร้านเปิดแปล ∧ ภาษาลูกค้า ≠ ภาษาทีม
+ *   หลัง normalize · R-Z61) · ไม่ขอ = prompt เดิมทุกไบต์ ◂
+ */
+function systemPrompt(replyLang: string, glossLang?: string | null): string {
+  if (glossLang) {
+    const staffName = LANG_NAME[glossLang] ?? glossLang;
     return systemPromptBase(replyLang)
       .replace(
         '{"options":[{"body":"...","sources":["kb:..."]}]}',
         '{"options":[{"body":"...","sources":["kb:..."],"gloss":"..."}]}',
       )
-      .concat(`\nReply language differs from the staff language (${staffLang}): also give \`gloss\` for every option: the same reply translated into ${staffLang} for the staff.`);
+      .concat(`\nReply language differs from the staff language (${staffName}): also give \`gloss\` for every option: the same reply translated into ${staffName} for the staff.`);
   }
   return systemPromptBase(replyLang);
 }
@@ -398,15 +402,19 @@ export async function suggestReply(args: {
   }
 
   const replyLang = conv.contact.lang?.trim() || setting.staffLang || "th";
+  // SEC S3a.6 ▸ R-Z61: เทียบภาษาหลัง normalize (zh ≡ cn) · ขอ gloss เฉพาะร้านที่เปิดแปล (ร้านปิดแปลไม่จ่าย token เพิ่ม) ◂
+  const replyLangNorm = normalizeLang(replyLang) ?? "th";
+  const staffLangNorm = normalizeLang(setting.staffLang) ?? "th";
+  const glossLang = setting.translateEnabled && replyLangNorm !== staffLangNorm ? staffLangNorm : null;
   let reply;
   try {
     // 🔴 นอกทรานแซกชันเสมอ
     reply = await provider.chat(
       [
-        { role: "system", content: systemPrompt(replyLang, setting.staffLang || "th") },
+        { role: "system", content: systemPrompt(replyLang, glossLang) },
         { role: "user", content: ctx.promptContext },
       ],
-      { maxTokens: 1200 },
+      { maxTokens: glossLang ? 2000 : 1200 }, // R-Z61: ร่าง + คำแปลยาวขึ้น
     );
   } catch {
     return { ok: false, reason: "ขอคำแนะนำจาก AI ไม่สำเร็จ — ระบบ AI ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง" };
@@ -455,11 +463,10 @@ export async function suggestReply(args: {
         createdByUserId: userId,
       },
     });
-    const glossOn = replyLang.toLowerCase() !== (setting.staffLang || "th").toLowerCase();
-    options.push({ id: row.id, body: p.body, sources, warn: sources.length === 0, gloss: glossOn ? p.gloss : null });
+    options.push({ id: row.id, body: p.body, sources, warn: sources.length === 0, gloss: glossLang ? p.gloss : null });
   }
 
-  return { ok: true, options, sourceMessageId: lastIn.id, replyLang };
+  return { ok: true, options, sourceMessageId: lastIn.id, replyLang: replyLangNorm };
 }
 
 // ───────────────────────── บันทึกผลลัพธ์ (§5.4 เส้นทางที่ 1 และ 3) ─────────────────────────

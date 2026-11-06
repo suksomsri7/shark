@@ -3,11 +3,11 @@
 //   ด่าน: Bearer + x-tenant-id + อ่านแชท · ห้องที่มองไม่เห็น ⇒ 403 · เพดาน 30/นาที/ร้าน+ผู้ใช้ · อื่น ๆ 200 fail-soft `{ok:false, reason}`
 import { z } from "zod";
 import type { AccessQuery } from "@/lib/core/rbac";
-import { translateDraft } from "@/lib/modules/chat/translate";
+import { isKnownLang, translateDraft } from "@/lib/modules/chat/translate";
 import { can, fail, gate, limited, notFound, READ, readBody, systemOf, visibleConv, type RouteCtx, withErrors } from "../../../_shared";
 
 const TRANSLATE: AccessQuery = { module: "chat", action: "chat.translate.use" };
-const Body = z.object({ systemId: z.string().max(64).optional(), body: z.string().max(4000), targetLang: z.string().max(16).optional() }).strict();
+const Body = z.object({ systemId: z.string().max(64).optional(), body: z.string().max(4000), targetLang: z.string().max(16).refine(isKnownLang, "ภาษาที่ระบบแปลยังไม่รองรับ").optional() /* R-Z61: เฉพาะคีย์ใน LANG_NAME */ }).strict();
 
 async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [READ]);
