@@ -4,7 +4,7 @@
 //   เข้า/ออกเวร (POST inbox/shift · สถานะ + เวลาเข้าเวรจาก GET inbox/shift · ตอบลูกค้าได้ = อยู่ใน GET inbox/staff · ไม่ได้ = ปิดใช้)
 //   ลบบัญชี 2 ขั้น (R-Z29 · สัญญา server R-Z21): preview (GET account/delete/preview) → พิมพ์คำยืนยัน → requestCode = ขอรหัส 6 หลัก
 //     (มีเบอร์ ⇒ POST auth/sms/request ของเบอร์ตัวเอง · ไม่มีเบอร์ ⇒ POST auth/otp ของอีเมล · ไม่มีทั้งคู่ ⇒ ให้ติดต่อทีมงาน) →
-//     ใส่รหัส → POST account/delete {confirm, code} → signOut · 401 = รหัสผิด/หมดอายุ (ล้างช่อง) · code_required = กลับขั้นใส่รหัส · ออกจากระบบ = แตะ 2 ครั้ง
+//     ใส่รหัส → POST account/delete {confirm, code} → signOut · 401 invalid_code = รหัสผิด/หมดอายุ (ล้างช่อง) · 401 locked = ผิดเกินเพดาน (ปิดช่องจนขอรหัสใหม่) · code_required = กลับขั้นใส่รหัส · ออกจากระบบ = แตะ 2 ครั้ง
 //   คำเชิญที่ส่งถึงเบอร์เรา = การ์ดรับคำเชิญ (R-S1.25b)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -82,6 +82,8 @@ export default function AccountScreen() {
   const [delStep, setDelStep] = useState<"word" | "code">("word");
   const [code, setCode] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  /** 401 locked = ใส่รหัสผิดเกินเพดาน ⇒ ปิดช่องรหัส/ปุ่มลบ จนกว่าจะขอรหัสใหม่ */
+  const [codeLocked, setCodeLocked] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -179,6 +181,7 @@ export default function AccountScreen() {
     setDelStep("word");
     setCode("");
     setCooldown(0);
+    setCodeLocked(false);
     secGet("secretary/account/delete/preview")
       .then(setPreview)
       .catch((e) => setDelNote(serverNote(e) ?? t("acct.delete.previewFail")));
@@ -200,6 +203,7 @@ export default function AccountScreen() {
           setCooldown(RESEND_SEC);
         }
         setCode("");
+        setCodeLocked(false);
         setDelStep("code");
       } catch (e) {
         // 503 = ส่ง SMS ไม่ได้ (ข้อความของจอเข้าสู่ระบบชวนใช้วิธีอื่น — ไม่ตรงกับจอนี้) · อื่น ๆ = เหตุผลกลางของ auth (ถี่เกิน · เน็ต) หรือข้อความไทยของ server
@@ -223,7 +227,11 @@ export default function AccountScreen() {
         if (e instanceof ApiError && e.code === "code_required") {
           setDelStep("code");
           setDelNote(t("acct.delete.codeRequired"));
-        } else if (e instanceof ApiError && e.status === 401 && e.code !== "unauthorized") setDelNote(t("acct.delete.codeWrong"));
+        } else if (e instanceof ApiError && e.status === 401 && e.code === "locked") {
+          // ผิดเกินเพดาน — รหัสนี้ใช้ไม่ได้แล้ว ต้องขอใหม่ (ไม่ใช่ "รหัสผิด")
+          setCodeLocked(true);
+          setDelNote(t("acct.delete.locked"));
+        } else if (e instanceof ApiError && e.status === 401 && e.code !== "unauthorized") setDelNote(t("acct.delete.codeWrong")); // invalid_code = ผิด/หมดอายุ
         else setDelNote(serverNote(e) ?? t("acct.delete.fail"));
       }
     });
@@ -253,7 +261,7 @@ export default function AccountScreen() {
   const typedOk = typed.trim() === CONFIRM_WORD;
   const codeOk = code.replace(/\D/g, "").length === 6;
   const canAsk = typedOk && !!preview && !!channel && !busy;
-  const canDelete = codeOk && !busy;
+  const canDelete = codeOk && !busy && !codeLocked;
   const list = (rows: { name: string }[] | undefined) => (rows ?? []).map((r) => r.name).join(", ");
 
   return (
@@ -354,6 +362,7 @@ export default function AccountScreen() {
               testID="acct-delete-code"
               value={code}
               onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))}
+              editable={!codeLocked}
               keyboardType="number-pad"
               inputMode="numeric"
               autoComplete="one-time-code"
@@ -362,7 +371,7 @@ export default function AccountScreen() {
               placeholder={t("acct.delete.codePh")}
               placeholderTextColor={c.placeholder}
               accessibilityLabel={t("acct.delete.codeLabel")}
-              style={[styles.input, code ? styles.code : styles.codePh, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+              style={[styles.input, code ? styles.code : styles.codePh, codeLocked && styles.off, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
             />
             <Pressable
               testID="acct-delete-resend"
@@ -433,6 +442,7 @@ const styles = StyleSheet.create({
   input: { height: 48, borderRadius: radii.segIn + 4, borderWidth: 1, paddingHorizontal: 14, fontSize: T.body, marginTop: 6 },
   code: { letterSpacing: 6, fontWeight: "700", textAlign: "center" },
   codePh: { textAlign: "center" },
+  off: { opacity: 0.45 },
   hintT: { fontSize: T.cap, lineHeight: 18, marginTop: 8 },
   resend: { alignSelf: "flex-start", paddingVertical: spacing.xs, marginTop: 6 },
   resendT: { fontSize: T.sub, fontWeight: "700", textDecorationLine: "underline" },

@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S3a.1-A (R-Z29 ลบบัญชี 2 ขั้น · บัญชีอีเมลไม่มีเบอร์ · /me ไม่ส่ง phone (phone:null = ยามพาไป /phone ก่อน R8)) — ขอรหัสด้วย POST auth/otp {email} · POST account/delete ตอบ 401 invalid (รหัสผิด/หมดอายุ ⇒ ล้างช่อง + ข้อความ) · จอ/เส้นอื่นเหมือน s2.21.json · ข้อมูลจำลองล้วน",
+ "_about": "fixture ของใบ S3a.1-A (R-Z29 ลบบัญชี 2 ขั้น · บัญชีอีเมลไม่มีเบอร์ · /me ไม่ส่ง phone (phone:null = ยามพาไป /phone ก่อน R8)) — ขอรหัสด้วย POST auth/otp {email} · POST account/delete ตอบ 401 invalid_code (รหัสผิด/หมดอายุ ⇒ ล้างช่อง + ข้อความ) · จอ/เส้นอื่นเหมือน s2.21.json · ข้อมูลจำลองล้วน",
  "noAuth": [
   "/login"
  ],
@@ -362,7 +362,7 @@
   "POST /api/mobile/secretary/account/delete": {
    "__status": 401,
    "__body": {
-    "error": "invalid",
+    "error": "invalid_code",
     "message": "รหัสไม่ถูกต้องหรือหมดอายุ"
    }
   },

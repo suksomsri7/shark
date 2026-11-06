@@ -58,6 +58,20 @@
   "url": "/secretary/settings/account",
   "token": "qc-mock"
  },
+ "locked": {
+  "note": "ใส่รหัสผิดหลายครั้งเกินไป รหัสนี้ใช้ไม่ได้แล้ว — กดส่งรหัสอีกครั้งเพื่อรับรหัสใหม่",
+  "codeCleared": true,
+  "codeReadOnly": true,
+  "finalDisabled": "true",
+  "token": "qc-mock"
+ },
+ "lockedTypeIgnored": true,
+ "lockedAfterResend": {
+  "sms": 2,
+  "codeReadOnly": false,
+  "note": null,
+  "finalDisabled": null
+ },
  "codeRequired": {
   "note": "ต้องใส่รหัสยืนยันก่อนลบบัญชี",
   "step2": true,
@@ -76,8 +90,8 @@
   "posts": 3,
   "sameCmid": true,
   "gapsMs": [
-   1506,
-   1507
+   1530,
+   1518
   ],
   "err": false,
   "url": "/secretary/room/r1"

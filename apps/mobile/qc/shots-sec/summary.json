@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-06T00:28:17.798Z",
+ "generatedAt": "2026-11-06T01:59:22.831Z",
  "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
@@ -1397,7 +1397,7 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new.png",
-   "generatedAt": "2026-11-06T00:27:52.253Z"
+   "generatedAt": "2026-11-06T01:58:57.953Z"
   },
   {
    "name": "secretary-staff-invite",
@@ -1426,7 +1426,7 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite.png",
-   "generatedAt": "2026-11-06T00:27:55.463Z"
+   "generatedAt": "2026-11-06T01:59:01.275Z"
   },
   {
    "name": "secretary-staff-m1",
@@ -1451,7 +1451,7 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1.png",
-   "generatedAt": "2026-11-06T00:27:58.468Z"
+   "generatedAt": "2026-11-06T01:59:05.236Z"
   },
   {
    "name": "secretary-settings-account",
@@ -1477,7 +1477,7 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account.png",
-   "generatedAt": "2026-11-06T00:28:02.506Z"
+   "generatedAt": "2026-11-06T01:59:09.087Z"
   },
   {
    "name": "business-new-dark",
@@ -1500,7 +1500,7 @@
    "unmocked": [],
    "url": "/business/new",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/business-new-dark.png",
-   "generatedAt": "2026-11-06T00:28:06.327Z"
+   "generatedAt": "2026-11-06T01:59:12.777Z"
   },
   {
    "name": "secretary-staff-invite-dark",
@@ -1529,7 +1529,7 @@
    "unmocked": [],
    "url": "/secretary/staff/invite",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-invite-dark.png",
-   "generatedAt": "2026-11-06T00:28:09.722Z"
+   "generatedAt": "2026-11-06T01:59:16.041Z"
   },
   {
    "name": "secretary-staff-m1-dark",
@@ -1554,7 +1554,7 @@
    "unmocked": [],
    "url": "/secretary/staff/m1",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-m1-dark.png",
-   "generatedAt": "2026-11-06T00:28:13.586Z"
+   "generatedAt": "2026-11-06T01:59:18.956Z"
   },
   {
    "name": "secretary-settings-account-dark",
@@ -1580,7 +1580,7 @@
    "unmocked": [],
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account-dark.png",
-   "generatedAt": "2026-11-06T00:28:17.572Z"
+   "generatedAt": "2026-11-06T01:59:22.699Z"
   }
  ]
 }

@@ -85,3 +85,11 @@
 - 401 ของ account/delete แยกจากเซสชันหมดด้วย `error !== "unauthorized"` (สัญญาเลน c: รหัสผิด ⇒ 401) — ถ้าเลน c ใช้ error อื่นสำหรับเซสชันหมด ต้องแก้คู่กัน
 - R-Z30 นอกเหนือใบ: login sendSms/sendOtp/social · scheduled · settings/* · customers claim (รายการ §3) · rules.tsx คงเดิม (PUT idempotent)
 - ไม่แตะ docs/api (เลน c)
+
+## 7. รอบตอบคำถาม (ผู้คุม · สัญญาเลน c: 400 code_required/confirm_required · 401 invalid_code · 401 locked · 401 unauthorized = เซสชัน)
+- 401 `locked` = ข้อความของตัวเอง `acct.delete.locked` ("ใส่รหัสผิดหลายครั้งเกินไป รหัสนี้ใช้ไม่ได้แล้ว — กดส่งรหัสอีกครั้งเพื่อรับรหัสใหม่" / en) · ล้างช่อง + ช่องรหัส `editable=false` (จาง) + ปุ่มลบปิด จนกว่าขอรหัสใหม่สำเร็จ (requestCode ⇒ เปิดคืน) · 401 `invalid_code` (และ 401 อื่นที่ไม่ใช่ `unauthorized`) = "รหัสไม่ถูกต้องหรือหมดอายุ" ตามเดิม
+- fixture ใหม่ `qc/fixtures/secretary/s2.21-delete-locked.json` (account/delete ⇒ 401 locked · sms/request resendAfterSec 0) · `s2.21-delete.json` เปลี่ยน error เป็น `invalid_code` ตามสัญญา
+- ภาพ `apps/mobile/qc/shots-sec/s3a1-a-interaction/z29-7-locked.png` · result.json `locked`: ข้อความ locked · ช่องว่าง+readOnly · ปุ่มลบปิด · พิมพ์ไม่เข้า · กดส่งรหัสอีกครั้ง ⇒ POST sms/request + ช่องเปิดคืน + ปุ่มลบเปิดเมื่อครบ 6 หลัก
+- ไม่มี testID ใหม่ (`--registry` ได้ไฟล์เดิมทุกไบต์ ⇒ registryHash เดิม · ไม่รันคลิกซ้ำ) · ถ่าย s2.21 + ภาพคู่ G4 ใหม่ (dist ใหม่)
+- `qc-sec-s3a1-a` 9/9 · spec s2.21 11/12 (M-1 ข้าม · failed []) · `session/secretary` ยังเป็น f0593441 (merge แล้ว · เลน b+c ยังไม่เข้า)
+- คำถาม 2 (ยาม R8) ไม่ต้องปรับ · 3 docs เลน c แก้แล้ว

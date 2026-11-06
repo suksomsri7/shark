@@ -1069,6 +1069,7 @@ const en: Record<I18nKey, string> = {
   "acct.delete.resend": "Resend code",
   "acct.delete.resendIn": "Resend code in {s}s",
   "acct.delete.codeWrong": "The code is wrong or has expired. Try again or resend the code.",
+  "acct.delete.locked": "Too many wrong attempts, so this code no longer works. Tap resend to get a new code.",
   "acct.delete.codeRequired": "Enter the confirmation code before deleting your account.",
   "acct.delete.noContact": "This account has no verified phone or email, so it can't receive a code. Contact our team to delete the account.",
   "acct.delete.sendFail": "Could not send the code. Please try again.",

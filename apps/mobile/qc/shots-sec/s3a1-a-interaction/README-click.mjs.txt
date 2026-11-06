@@ -32,7 +32,7 @@ const has = async (p, id) => !!(await p.$(`[data-testid="${id}"]`));
 const bodies = (log, k) => log.filter((x) => x.k === k).map((x) => x.body);
 const path = (p) => new URL(p.url()).pathname;
 const step = async (name, fn) => { try { await fn(); } catch (e) { res[name + "_ERROR"] = String(e).slice(0, 300); } };
-const S21 = fx("s2.21.json"), DEL = fx("s2.21-delete.json"), S22 = fx("s2.2.json"), S24 = fx("s2.4.json"), S217 = fx("s2.17.json");
+const S21 = fx("s2.21.json"), DEL = fx("s2.21-delete.json"), LOCK = fx("s2.21-delete-locked.json"), S22 = fx("s2.2.json"), S24 = fx("s2.4.json"), S217 = fx("s2.17.json");
 const toCode = async (p) => { await p.click('[data-testid="acct-delete"]'); await p.waitForSelector('[data-testid="acct-delete-input"]'); await sleep(700); await p.type('[data-testid="acct-delete-input"]', "ลบบัญชี"); await sleep(200); };
 try {
   // ── R-Z29 ขั้น 1 → 2 (SMS เบอร์ตัวเอง) → ลบสำเร็จ ──
@@ -70,6 +70,15 @@ try {
     await p.type('[data-testid="acct-delete-code"]', "000000"); await sleep(200); await p.click('[data-testid="acct-delete-final"]'); await sleep(1200);
     res.wrong = { body: bodies(log, "POST /api/mobile/secretary/account/delete")[0] ?? null, note: await text(p, "acct-delete-note"), codeCleared: (await val(p, "acct-delete-code")) === "", stillOpen: await has(p, "acct-delete-final"), url: path(p), token: await p.evaluate(() => localStorage.getItem("shark_token")) };
     await p.screenshot({ path: `${OUT}/z29-6-wrong-code.png` }); await close(); });
+  // ── 401 locked (ผิดเกินเพดาน) ⇒ ข้อความของมันเอง + ปิดช่องรหัส/ปุ่มลบ · ขอรหัสใหม่ ⇒ เปิดคืน ──
+  await step("locked", async () => { const { p, log, close } = await open("/secretary/settings/account", LOCK); await p.waitForSelector('[data-testid="acct-delete"]'); await toCode(p); await p.click('[data-testid="acct-delete-confirm"]'); await sleep(1000);
+    await p.type('[data-testid="acct-delete-code"]', "999999"); await p.click('[data-testid="acct-delete-final"]'); await sleep(1200);
+    res.locked = { note: await text(p, "acct-delete-note"), codeCleared: (await val(p, "acct-delete-code")) === "", codeReadOnly: await p.$eval('[data-testid="acct-delete-code"]', (e) => e.readOnly).catch(() => null), finalDisabled: await dis(p, "acct-delete-final"), token: await p.evaluate(() => localStorage.getItem("shark_token")) };
+    await p.type('[data-testid="acct-delete-code"]', "123456"); await sleep(200); res.lockedTypeIgnored = (await val(p, "acct-delete-code")) === "";
+    await p.screenshot({ path: `${OUT}/z29-7-locked.png` });
+    await p.click('[data-testid="acct-delete-resend"]'); await sleep(1000);
+    res.lockedAfterResend = { sms: bodies(log, "POST /api/mobile/auth/sms/request").length, codeReadOnly: await p.$eval('[data-testid="acct-delete-code"]', (e) => e.readOnly).catch(() => null), note: await text(p, "acct-delete-note") };
+    await p.type('[data-testid="acct-delete-code"]', "123456"); await sleep(200); res.lockedAfterResend.finalDisabled = await dis(p, "acct-delete-final"); await close(); });
   // ── code_required (server ไม่ได้รับรหัส) ⇒ คงขั้นใส่รหัส + ข้อความ ──
   await step("codeRequired", async () => { const { p, close } = await open("/secretary/settings/account", S21, { "POST /api/mobile/secretary/account/delete": { status: 400, body: { error: "code_required", message: "ต้องยืนยันด้วยรหัส" } } }); await p.waitForSelector('[data-testid="acct-delete"]'); await toCode(p); await p.click('[data-testid="acct-delete-confirm"]'); await sleep(1000); await p.type('[data-testid="acct-delete-code"]', "123456"); await p.click('[data-testid="acct-delete-final"]'); await sleep(1000);
     res.codeRequired = { note: await text(p, "acct-delete-note"), step2: await has(p, "acct-delete-code"), token: await p.evaluate(() => localStorage.getItem("shark_token")) }; await close(); });
