@@ -90,7 +90,7 @@ try {
   console.log("── T: tool ──");
   const r1 = parse(await tools.runTool(toolCtx as never, "send_customer_message", { conversationId: convF.id, body: "สวัสดีครับ" }));
   chk("T-1", "ลูกค้ายังไม่ผูก ⇒ error ไทยมี 'ผูก' · ไม่สร้างข้อเสนอ", typeof r1.error === "string" && thai(r1.error) && /ผูก/.test(r1.error) && (await prisma.aiProposal.count({ where: { tenantId: tid } })) === 0, JSON.stringify(r1).slice(0, 200));
-  const r2 = parse(await tools.runTool(toolCtx as never, "send_customer_message", { conversationId: convL.id, body: "ใบเสนอราคาพร้อมแล้วครับ", kind: "quote" }));
+  const r2 = parse(await tools.runTool(toolCtx as never, "send_customer_message", { conversationId: convL.id, body: "ใบเสนอราคาพร้อมแล้วครับ", kind: "reply" })); // ORACLE-EDIT R-Z45: kind=quote ต้องมีใบ EXECUTED ในห้อง — ข้อนี้ทดสอบทางส่งทั่วไปจึงใช้ reply
   const p1 = await prisma.aiProposal.findFirst({ where: { tenantId: tid, kind: "chat.send" } });
   const pl = (p1?.payload ?? {}) as Record<string, unknown>;
   chk("T-2", "ผูกแล้ว ⇒ ข้อเสนอ kind chat.send PENDING · payload {systemId, conversationId, contactId, body, kind} · summary ไทยมีชื่อลูกค้า · tool ไม่ส่งเอง (ChatMessage 0)", !!p1 && p1.status === "PENDING" && pl.systemId === chatSys.id && pl.conversationId === convL.id && pl.contactId === cLinked.id && pl.body === "ใบเสนอราคาพร้อมแล้วครับ" && pl.kind === "quote" && thai(p1.summary) && /ลูกค้า linked/.test(p1.summary) && p1.summary.includes("ใบเสนอราคาพร้อมแล้วครับ") && (await prisma.chatMessage.count({ where: { tenantId: tid } })) === 0, JSON.stringify({ r2, pl }).slice(0, 240));
