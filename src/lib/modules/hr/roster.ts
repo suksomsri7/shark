@@ -514,9 +514,21 @@ export async function moveEntry(ctx: Ctx, viewer: RosterViewer, entryId: string,
         { employeeId: row.employeeId, date: oldDay },
         { employeeId, date: day },
       ]);
-      const cur = await tx.hrRosterEntry.findFirst({ where: { id: row.id }, select: { employeeId: true, date: true } });
+      const cur = await tx.hrRosterEntry.findFirst({ where: { id: row.id }, select: ENTRY_SELECT });
       if (!cur) throw new RosterRefusal(ROSTER_TEXT.entryNotFound);
-      if (cur.employeeId !== row.employeeId || dayOf(cur.date) !== oldDay) throw new RosterRefusal(ROSTER_TEXT.entryChanged);
+      // HR H2.1 r2 ▸ ใต้ล็อก: แถวต้องยังเหมือนที่อ่านก่อนล็อกทุกช่องที่เราจะเขียนทับ (พนักงาน · วัน · กะ · เวลา · สาขา)
+      //   — ย้ายพร้อมกันที่เปลี่ยนแค่กะ commit ก่อน ⇒ ปฏิเสธ entryChanged ไม่เขียนกะเก่ากลับเงียบ ๆ (review R-2 · hunt F2)
+      //   ไม่เทียบ published: การเผยแพร่ที่ commit ก่อนไม่แตะช่องที่เราเขียน และการย้ายตั้ง published=false อยู่แล้ว (R7 · X6.2 publish ∥ move ต้องผ่านทั้งคู่) ◂
+      const same =
+        cur.employeeId === row.employeeId &&
+        dayOf(cur.date) === oldDay &&
+        cur.shiftId === row.shiftId &&
+        cur.startMin === row.startMin &&
+        cur.endMin === row.endMin &&
+        cur.breakMin === row.breakMin &&
+        cur.crossesMidnight === row.crossesMidnight &&
+        cur.unitId === row.unitId;
+      if (!same) throw new RosterRefusal(ROSTER_TEXT.entryChanged);
       const dup = await tx.hrRosterEntry.findFirst({ where: { employeeId, date: dbDate(day), shiftId: shift.id, id: { not: row.id } }, select: { id: true } });
       if (dup) throw new RosterRefusal(ROSTER_TEXT.duplicate);
       // แก้ในที่ (คง id ไว้ให้ลิงก์ลงเวลา/แลกกะในอนาคต) · ยังไม่ประกาศจนกว่าจะเผยแพร่ครั้งถัดไป (publishedAt คงไว้ — R7)
@@ -566,6 +578,19 @@ export async function removeEntry(ctx: Ctx, viewer: RosterViewer, entryId: strin
 // ═══════════════════════════ คัดลอกสัปดาห์ (R6 · Q6) ═══════════════════════════
 export type CopyResult = { ok: true; created: number; skipped: RosterSkip[]; warnings: RosterWarning[] } | RosterFail;
 
+// HR H2.1 r2 ▸ เวลาของแถวที่คัดลอก (มติผู้คุม hunt F4 · R6 "เวลาที่ระบุเองของต้นทางคงไว้" เมื่อ Q7 อนุญาต) ◂
+type RowTimes = { startMin: number; endMin: number; breakMin: number; crossesMidnight: boolean };
+/**
+ * ต้นทางมีเวลาต่างจากกะ และกะไม่ถูกแก้หลังเขียนแถวนั้น ⇒ ความต่างคือเวลาที่ผู้จัดระบุเอง (Q7) ⇒ ลอกตามต้นทางทุกช่อง
+ * กะถูกแก้หลังเขียนแถว ⇒ แยกไม่ออกว่าเป็นเวลาเองหรือสำเนาเก่าของกะ ⇒ ใช้เวลากะ "ปัจจุบัน" ตาม Q6 (ไม่มีคอลัมน์บอก override — ไม่แก้ schema ใน H2.1)
+ */
+function copyTimesOf(r: RowTimes & { updatedAt: Date }, s: ShiftRow, shiftEditedAt: Date | null): RowTimes {
+  const shiftTimes = { startMin: s.startMin, endMin: s.endMin, breakMin: s.breakMin, crossesMidnight: s.crossesMidnight };
+  const differs = r.startMin !== s.startMin || r.endMin !== s.endMin || r.breakMin !== s.breakMin || r.crossesMidnight !== s.crossesMidnight;
+  if (differs && shiftEditedAt && r.updatedAt >= shiftEditedAt) return { startMin: r.startMin, endMin: r.endMin, breakMin: r.breakMin, crossesMidnight: r.crossesMidnight };
+  return shiftTimes;
+}
+
 export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek: string; toWeek: string; unitId?: string | null }): Promise<CopyResult> {
   if (!canWrite(viewer)) return refuse(ROSTER_TEXT.noPermission);
   try {
@@ -581,7 +606,7 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
     const db = tenantDb(ctx);
     const src = await db.hrRosterEntry.findMany({
       where: { date: { gte: dbDate(fromWeek), lte: dbDate(addDays(fromWeek, 6)) }, ...entryScopeWhere(scope, unitId) },
-      select: ENTRY_SELECT,
+      select: { ...ENTRY_SELECT, updatedAt: true },
       orderBy: [{ employeeId: "asc" }, { date: "asc" }, { startMin: "asc" }, { id: "asc" }],
       take: 5000,
     });
@@ -589,12 +614,13 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
     const empIds = [...new Set(src.map((r) => r.employeeId))];
     const [emps, shifts, holidays, leaves] = await Promise.all([
       db.hrEmployee.findMany({ where: { id: { in: empIds } }, select: EMP_SELECT }) as Promise<EmpRow[]>,
-      db.hrShift.findMany({ where: { id: { in: [...new Set(src.map((r) => r.shiftId))] } }, select: SHIFT_SELECT }),
+      db.hrShift.findMany({ where: { id: { in: [...new Set(src.map((r) => r.shiftId))] } }, select: { ...SHIFT_SELECT, updatedAt: true } }),
       db.hrHoliday.findMany({ where: { date: { gte: dbDate(toWeek), lte: dbDate(toEnd) } }, select: { unitId: true, date: true, shopOpen: true } }),
       db.hrLeave.findMany({ where: { employeeId: { in: empIds }, status: "APPROVED", fromDate: { lte: dbDate(toEnd) }, toDate: { gte: dbDate(toWeek) } }, select: { employeeId: true, fromDate: true, toDate: true } }),
     ]);
     const empOf = new Map(emps.map((e) => [e.id, e]));
     const shiftOf = new Map(shifts.map((s) => [s.id, s as ShiftRow]));
+    const shiftEditedAt = new Map(shifts.map((s) => [s.id, s.updatedAt]));
     const onLeave = (emp: string, day: string) => leaves.some((l) => l.employeeId === emp && dayOf(l.fromDate) <= day && day <= dayOf(l.toDate));
     const skipped: RosterSkip[] = [];
     const warnings: RosterWarning[] = [];
@@ -602,7 +628,7 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
     for (const empId of empIds) {
       const emp = empOf.get(empId);
       const mine = src.filter((r) => r.employeeId === empId);
-      const cands: { row: EntryRow; day: string; unitId: string | null; shift: ShiftRow; openHoliday: boolean }[] = [];
+      const cands: { row: EntryRow; day: string; unitId: string | null; shift: ShiftRow; times: RowTimes; openHoliday: boolean }[] = [];
       for (const r of mine) {
         const day = addDays(dayOf(r.date), delta);
         if (!emp || isEnded(emp)) {
@@ -631,7 +657,7 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
           skipped.push({ reason: "SHIFT_ARCHIVED", employeeId: empId, date: day });
           continue;
         }
-        cands.push({ row: r, day, unitId: u, shift: s, openHoliday: !!h && h.shopOpen });
+        cands.push({ row: r, day, unitId: u, shift: s, times: copyTimesOf(r, s, shiftEditedAt.get(s.id) ?? null), openHoliday: !!h && h.shopOpen });
       }
       if (cands.length === 0) continue;
       const made = await db.$transaction(async (t) => {
@@ -655,11 +681,7 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
               date: dbDate(c.day),
               shiftId: c.shift.id,
               unitId: c.unitId,
-              // Q6: เวลาจากกะ "ปัจจุบัน" (ไม่ลอกเวลาเก่าของต้นทาง)
-              startMin: c.shift.startMin,
-              endMin: c.shift.endMin,
-              breakMin: c.shift.breakMin,
-              crossesMidnight: c.shift.crossesMidnight,
+              ...c.times,
               source: "MANUAL",
               note: c.row.note,
               createdById: viewer.userId ?? null,
@@ -743,21 +765,45 @@ export async function checkRules(ctx: Ctx, viewer: RosterViewer, input: { from: 
 }
 
 // ═══════════════════════════ บอร์ด (R7) ═══════════════════════════
-/** แถวที่ "เคยประกาศ" แล้วถูกลบหลังการเผยแพร่ครั้งล่าสุดของระบบนี้ (นับจาก audit — ไม่มีคอลัมน์ tombstone · Q4) */
+// HR H2.1 r2 ▸ ตัวนับ "ลบแถวที่เคยประกาศ" ล้างตามสาขา + ช่วงวันของการเผยแพร่ (ไม่ใช่ทั้งระบบ — review R-3 · hunt F3) ◂
+/** ชุดสาขาที่การเผยแพร่/มุมมองครอบ: "*" = ทุกแถว (รวมแถวไม่ระบุสาขา) · รายการ = แถวของสาขาเหล่านั้นเท่านั้น */
+type UnitSet = "*" | string[];
+const unitSetOf = (scopeUnits: "*" | string[], unitId: string | null): UnitSet => (unitId ? [unitId] : scopeUnits);
+/** ขอบเขตผู้กดที่จดใน audit เผยแพร่ (null = ทุกสาขา) */
+const scopeUnitsOf = (scope: HrScope): string[] | null => (scope.unitIds === "*" ? null : [...scope.unitIds]);
+type PublishMark = { at: Date; from: string; to: string; units: UnitSet };
+function publishMarkOf(r: { createdAt: Date; after: unknown }): PublishMark | null {
+  const a = (r.after ?? {}) as { from?: unknown; to?: unknown; unitId?: unknown; scopeUnits?: unknown };
+  if (typeof a.from !== "string" || typeof a.to !== "string") return null;
+  // audit ก่อน r2 ไม่มี scopeUnits ⇒ ถือว่าผู้กดเห็นทุกสาขา
+  const scopeUnits = Array.isArray(a.scopeUnits) ? a.scopeUnits.filter((x): x is string => typeof x === "string") : "*";
+  return { at: r.createdAt, from: a.from, to: a.to, units: unitSetOf(scopeUnits, typeof a.unitId === "string" ? a.unitId : null) };
+}
+const markCoversRow = (m: PublishMark, day: string, unit: string | null): boolean => m.from <= day && day <= m.to && (m.units === "*" || (!!unit && m.units.includes(unit)));
+const markCoversView = (m: PublishMark, view: UnitSet, from: string, to: string): boolean =>
+  m.from <= from && to <= m.to && (m.units === "*" || (view !== "*" && view.every((u) => (m.units as string[]).includes(u))));
+/** แถวที่ "เคยประกาศ" แล้วถูกลบ และยังไม่มีการเผยแพร่ภายหลังที่ครอบวัน + สาขาของแถวนั้น (นับจาก audit — ไม่มีคอลัมน์ tombstone · Q4) */
 async function removedSinceLastPublish(ctx: Ctx, scope: HrScope, unitId: string | null, from: string, to: string): Promise<number> {
   const db = tenantDb({ tenantId: ctx.tenantId });
   const sys = { path: ["systemId"], equals: ctx.systemId };
-  const last = await db.auditLog.findFirst({ where: { action: "hr.roster.publish", after: sys }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+  const pubs = (await db.auditLog.findMany({ where: { action: "hr.roster.publish", after: sys }, orderBy: { createdAt: "desc" }, select: { createdAt: true, after: true }, take: 500 }))
+    .map(publishMarkOf)
+    .filter((m): m is PublishMark => m !== null);
+  // พื้น: การเผยแพร่ล่าสุดที่ครอบทั้งมุมมองนี้ (ทุกวัน · ทุกสาขาในมุม) ⇒ การลบก่อนหน้านั้นล้างหมดแล้ว
+  const floor = pubs.find((m) => markCoversView(m, unitSetOf(scope.unitIds, unitId), from, to));
   const rows = await db.auditLog.findMany({
-    where: { action: "hr.roster.entry.remove", after: sys, ...(last ? { createdAt: { gt: last.createdAt } } : {}) },
-    select: { after: true },
+    where: { action: "hr.roster.entry.remove", after: sys, ...(floor ? { createdAt: { gt: floor.at } } : {}) },
+    select: { createdAt: true, after: true },
     take: 5000,
   });
   let n = 0;
   for (const r of rows) {
     const a = (r.after ?? {}) as { wasPublished?: unknown; date?: unknown; unitId?: unknown };
     const d = typeof a.date === "string" ? a.date : "";
-    if (a.wasPublished === true && d >= from && d <= to && entryInScope(scope, unitId, typeof a.unitId === "string" ? a.unitId : null)) n++;
+    const u = typeof a.unitId === "string" ? a.unitId : null;
+    if (a.wasPublished !== true || d < from || d > to || !entryInScope(scope, unitId, u)) continue;
+    if (pubs.some((m) => m.at >= r.createdAt && markCoversRow(m, d, u))) continue; // มีการเผยแพร่ภายหลังที่ครอบแถวนี้แล้ว
+    n++;
   }
   return n;
 }
@@ -800,7 +846,15 @@ export async function publishRoster(ctx: Ctx, viewer: RosterViewer, input: { fro
       orderBy: { id: "asc" },
       take: PUBLISH_MAX_ROWS + 1,
     });
-    if (cand.length === 0) return { ok: true, published: 0, eventId: null }; // ไม่มีอะไรใหม่ ⇒ ไม่มี event ไม่มี audit
+    if (cand.length === 0) {
+      // ไม่มีแถวใหม่ ⇒ ไม่มี event · HR H2.1 r2 ▸ แต่ถ้ามีแถวที่เคยประกาศแล้วถูกลบค้างอยู่ในมุมนี้ ⇒ เขียน audit เผยแพร่ count 0 เป็นหมุด
+      //   ให้ตัวนับ "แก้ N จุด" ล้างได้ (ไม่มีค้าง ⇒ ไม่เขียนอะไรเลยเหมือนเดิม) (review R-3) ◂
+      if ((await removedSinceLastPublish(ctx, scope, unitId, from, to)) > 0) {
+        const publishId = randomUUID();
+        await audit(ctx, viewer, "hr.roster.publish", "HrRosterEntry", publishId, { publishId, count: 0, unitId, from, to, scopeUnits: scopeUnitsOf(scope) });
+      }
+      return { ok: true, published: 0, eventId: null };
+    }
     if (cand.length > PUBLISH_MAX_ROWS) return refuse(ROSTER_TEXT.tooMany);
     const ids = cand.map((c) => c.id);
     const employeeIds = [...new Set(cand.map((c) => c.employeeId))].sort();
@@ -811,9 +865,11 @@ export async function publishRoster(ctx: Ctx, viewer: RosterViewer, input: { fro
       const tx = t as unknown as Tx;
       await lockKeys(tx, ctx.systemId, cand.map((c) => ({ employeeId: c.employeeId, date: dayOf(c.date) })));
       // ใต้ล็อก: ชุดที่ขอต้องยังครบ — แถวหาย/ถูกประกาศไปแล้ว ⇒ ย้อนทั้งหมด (มติธง 4 — ไม่เผยแพร่ n−1 เงียบ ๆ)
-      const still = await tx.hrRosterEntry.count({ where: { id: { in: ids }, published: false } });
+      // HR H2.1 r2 ▸ ตรวจซ้ำด้วยตัวกรองเดียวกับตอนเลือก (ช่วงวัน + ขอบเขตสาขา) — แถวที่ถูกย้ายออกนอกช่วง/สาขาก่อนล็อก ⇒ ไม่ตรง ⇒ ย้อนทั้งหมด (review R-1 · hunt F1) ◂
+      const recheck: Prisma.HrRosterEntryWhereInput = { id: { in: ids }, published: false, date: { gte: dbDate(from), lte: dbDate(to) }, ...entryScopeWhere(scope, unitId) };
+      const still = await tx.hrRosterEntry.count({ where: recheck });
       if (still !== ids.length) throw new RosterRefusal(ROSTER_TEXT.publishRace);
-      const upd = await tx.hrRosterEntry.updateMany({ where: { id: { in: ids }, published: false }, data: { published: true, publishedAt: at } });
+      const upd = await tx.hrRosterEntry.updateMany({ where: recheck, data: { published: true, publishedAt: at } });
       if (upd.count !== ids.length) throw new RosterRefusal(ROSTER_TEXT.publishRace);
       // payload = id/ช่วงวันล้วน (Q13 · COMMON §C.1) — ไม่มีชื่อ/เวลา/เงิน
       await emitOutbox(tx, {
@@ -827,7 +883,7 @@ export async function publishRoster(ctx: Ctx, viewer: RosterViewer, input: { fro
       const ev = await tx.outboxEvent.findFirst({ where: { idempotencyKey }, select: { id: true } });
       return ev?.id ?? publishId;
     });
-    await audit(ctx, viewer, "hr.roster.publish", "HrRosterEntry", publishId, { publishId, count: ids.length, unitId, from, to });
+    await audit(ctx, viewer, "hr.roster.publish", "HrRosterEntry", publishId, { publishId, count: ids.length, unitId, from, to, scopeUnits: scopeUnitsOf(scope) });
     return { ok: true, published: ids.length, eventId };
   } catch (e) {
     return refuse(reasonOf(e));

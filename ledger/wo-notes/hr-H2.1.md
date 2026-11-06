@@ -117,3 +117,35 @@ X1 S1.6/S3.6/S5.8 · X2 X2.1/X2.2/S7.x · X3 S7.4 · X4 N-A (no money) · X5 N-A
 
 ## 11. QC4 / temp data left
 - oracle `finally` sweeps its tenants · `RESIDUE none` on every run · temp data left: none.
+
+## r2 (6 Nov) — ⏸ PAUSED BY OWNER (stop order mid-round · all coded · suites green · typecheck NOT run)
+Branch `wip/pos-hr-h2.1-fix` cut from 7dd696697 (head of `wip/pos-hr-h2.1`) · worktree `/root/projects/shark-hr` · scope = review R-1/R-2/R-3 (`hr-H2.1-review.md`) + hunter F4 (controller ruling) · hunter F1 = R-1, F2 = R-2, F3 = R-3 (`hr-H2.1-hunt.md`).
+
+### Coded (`src/lib/modules/hr/roster.ts`, markers `// HR H2.1 r2 ▸ … ◂`)
+- **R-1 / hunt F1 (:868-872)** publishRoster under-lock re-check `recheck = { id in ids, published:false, date in [from,to], ...entryScopeWhere(scope, unitId) }` used by both `count` and the guarded `updateMany` ⇒ a candidate moved out of range/unit before the lock ⇒ `publishRace`, tx rolls back, not in any payload. Hunt F1 interleaving (side tx holds (emp,D) · manager publish blocks in lockKeys · owner moves B to another branch employee / to D+25) ⇒ **fixed, re-check id H2.1-S9.1**.
+- **R-2 / hunt F2 (:517-532)** moveEntry re-reads `ENTRY_SELECT` under the lock and refuses `ROSTER_TEXT.entryChanged` if employeeId/date/shiftId/startMin/endMin/breakMin/crossesMidnight/unitId differ from the pre-lock read. **Deviation from the controller list: `published` is NOT compared** — comparing it made `H2.1-X6.2` (CRITICAL, publish ∥ moveEntry must both succeed) RED 3/3 in the first green run (`move=✗`); a publish that commits first touches none of the fields the move writes and the move sets `published=false` anyway (R7). Hunt F2 interleaving (M1 shift-only move and M2 date move both blocked on (emp,D+5), M1 commits first) ⇒ M2 refused ⇒ **fixed, re-check id H2.1-S9.2**. Residual: the move audit's `wasPublished` still comes from the pre-lock read (audit only).
+- **R-3 / hunt F3 (:768-808 + :849-857 + :884)** `removedSinceLastPublish` now clears a removal only when a later `hr.roster.publish` audit covers its day (from ≤ d ≤ to) and its unit (publish unit set = `unitId` arg, else the publisher's scope; `*` = all incl. unassigned); floor = latest publish covering the whole view. Publish audit gains `scopeUnits` (null = all branches; pre-r2 audits read as all). **Zero-candidate publish: chosen = minimal marker** — writes the `hr.roster.publish` audit `{count:0,…}` only when the view has pending published removals (no event; nothing written otherwise, so S5.3 "no audit" stays true). Not fixed: hunt F3 side-gap (removal landing between publish commit and its audit write) — would need app-clock vs DB-clock comparison.
+- **hunt F4 (:581-593, copyWeek :606/:617/:628/:657/:681)** controller ruled "copy override verbatim", but verbatim makes existing **H2.1-S3.1 (CRITICAL) RED** (it requires e3's stale snapshot 18:00 → current shift 19:00). Implemented `copyTimesOf`: source times ≠ shift AND shift not edited since the row was written (`row.updatedAt ≥ shift.updatedAt`) ⇒ copy the source times verbatim (override, Q7); shift edited after the row ⇒ current shift times (Q6). No schema column marks an override, so an override whose shift was edited later falls back to shift times. **Controller decision needed** (accept heuristic · or ORACLE-EDIT S3.1 · or override column in H2.2 Mig).
+
+### Oracle (`scripts/qc-hr-h2.1.mts`, pre-approved ORACLE-EDIT, S9.x added only · 84 → 88 checks)
+- S9.1 (R-1 race, advisory-key holder moves row to u2) · S9.2 (R-2 race, holder changes shift+times) · S9.3 (R-3 per unit/range + lone removal cleared by an empty publish) · S9.4 (F4 override 14:00–20:00 on 07:00–15:00 copied as such). Block runs after S7.6/S7.7 on purpose (S9.3's marker audit). Weeks 2030-08-05…09-08 (unused elsewhere).
+- RED on 7dd696697 (old roster.ts): `passed 84/88 · failed S9.1 S9.2 S9.3 S9.4 · exit=1` — S9.1 `ACCEPTED published=2 b.unit=u2 b.published=true events +1` · S9.2 `ACCEPTED shift=m (reverted) 420-900 day=2030-08-14` · S9.3 `u2=0→0 u1=1→1` · S9.4 `target=420-900` · Z1 residue ✅.
+
+### Suites (final code; `iso.sh → qc4.sh → with-gate-lock.sh`, QC_H06_BASE=d350c26c…)
+| suite | forced #1 | forced #2 | unforced |
+|---|---|---|---|
+| qc-hr-h2.1 | 88/88 (exit not captured — orphaned wrapper, see note) | 88/88 exit 0 | 88/88 exit 0 |
+| qc-hr-roster | 24/24 exit 0 | 24/24 exit 0 | 24/24 exit 0 |
+| qc-hr-attendance | 31/31 exit 0 | 31/31 exit 0 | 31/31 exit 0 |
+| qc-hr-leave-booking | 14/14 exit 0 | 14/14 exit 0 | 14/14 exit 0 |
+| qc-booking-hours-hr | 13/13 exit 0 | 13/13 exit 0 | 13/13 exit 0 |
+| qc-hf-hr-privacy | 194/194 exit 0 | 194/194 exit 0 | 194/194 exit 0 |
+| fitness-hr no env / via qc4.sh | 8/8 exit 0 | 8/8 exit 0 | |
+- Note: the first green run on the pre-X6.2-fix code was `87/88 failed X6.2 exit=1` (the `published` comparison above, removed). Z1 residue green on every qc-hr-h2.1 run.
+- **Unverified: `pnpm typecheck` NOT run (owner stop order).** Edited files pass an esbuild syntax transform only. `pnpm fitness` not run. Not re-run by controller/reviewer.
+
+### COMMON §F (session/hr copy)
+1 N/A (no page) · 2 ✓ (only `tx` inside tx bodies; new reads `removedSinceLastPublish` outside the publish tx) · 3 ✓ (scope via `entryScopeWhere`/`entryInScope`; `[]` = all) · 4 ✓ (only existing fixed refusals: publishRace / entryChanged) · 5 unchanged (R-5/R-6 not in scope) · 6 N/A · 7 ✓ · 8 N/A · 9 ✓ (no new event; zero-row publish emits none) · 10 ✓ (roster.ts + oracle + notes only).
+
+### Next on resume
+1. Controller rules on the two deviations (R-2 without `published` · F4 heuristic vs S3.1). 2. Typecheck once (`env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=9800M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`, when no other build/typecheck iso unit and MemAvailable ≥ 10 000 MB). 3. Controller re-run + reviewer of r2 diff. QC4 temp data left: none.

@@ -227,6 +227,11 @@ const CHECKS: readonly Def[] = [
   D("S8.8", "R13", "CRITICAL", "GREEN", "[run] clock() still judges by HrWorkSchedule with published roster rows today: " + FROZEN_CLOCK),
   D("S8.9", "R13", "CRITICAL", "GREEN", "[dto] privacy matrix (owner · payroll · manager-u1 · hr.leave.read · member · self · other tenant) as H1.2 S6.1"),
   D("S8.10", "R13", "MAJOR", "GREEN", "[service] H1.2 settings behaviour: listShifts(manager-u1) = shop-wide + u1 active only · duplicate name ⇒ \"" + T_SETTINGS_DUP + "\""),
+  // S9 review r2 (hr-H2.1-review.md R-1 · R-2 · R-3 + hr-H2.1-hunt.md F4 — ORACLE-EDIT pre-approved: S9.x added only)
+  D("S9.1", "R10", "MAJOR", "RED", "[race] row moved to u2 by a parallel lane while a manager-u1 publish waits on its lock ⇒ \"" + T_PUBLISH_RACE + "\" · moved row not published · 0 events (R-1)"),
+  D("S9.2", "R11", "MAJOR", "RED", "[race] shift-only change committed while moveEntry waits on the lock ⇒ refused · the parallel shift + times kept · date unchanged (no lost update, R-2)"),
+  D("S9.3", "R7", "MAJOR", "RED", "[service] unpublishedCount per unit/range: a u1 publish keeps u2's published removal counted · a publish with no new rows clears a lone removal of its unit only (R-3)"),
+  D("S9.4", "R6", "MAJOR", "RED", "[service] copyWeek keeps the source row's own override times: a 14:00–20:00 override on the 07:00–15:00 shift is copied as 14:00–20:00 (hunter F4, controller ruling)"),
   // X
   D("X6.1", "X6", "CRITICAL", "RED", "[race] addEntry same key 10-way × 3 rounds ⇒ 1 row per round · 9 losers \"" + T_DUP + "\""),
   D("X6.2", "X6", "CRITICAL", "RED", "[race] publish ∥ moveEntry same day × 3 ⇒ both ok · never a published row with a stale snapshot · one event per publish that flipped rows"),
@@ -1662,6 +1667,105 @@ async function runDb(): Promise<void> {
       noNames: !containsAny(js, names) && !js.includes("ธุระส่วนตัวลับ"),
     };
     chk("S7.7", Object.values(r).every(Boolean), "1 audit per op · ids only", `${failedKeys(r)} counts add=${cnt("hr.roster.entry.add")}/${okCounts.addEntry ?? 0} move=${cnt("hr.roster.entry.move")}/${okCounts.moveEntry ?? 0} remove=${cnt("hr.roster.entry.remove")}/${okCounts.removeEntry ?? 0} publish=${cnt("hr.roster.publish")}/${okEffect.publishRoster ?? 0} gen=${cnt("hr.roster.generate")}/${okEffect.generateFromTemplate ?? 0}-${okCounts.generateFromTemplate ?? 0} copy=${cnt("hr.roster.copy")}/${okEffect.copyWeek ?? 0}-${okCounts.copyWeek ?? 0}`);
+  }
+
+  // ═══ S9 review r2 (R-1 · R-2 · R-3 + hunt F4) — runs after S7.6/S7.7 on purpose: S9.3's zero-row publish may write a marker audit
+  //     (count 0) that S7.7's exact "one publish audit per flipping publish" count does not expect · weeks 2030-08-05…08-25 unused elsewhere ═══
+  /** holder lane takes the roster advisory key of (employee, day) · `call` starts and must wait on it · holder runs `during`, commits */
+  const underRosterLock = async (key: { employeeId: string; date: string }, during: (tx: Any) => Promise<unknown>, call: () => Promise<RO>) => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let held: () => void = () => {};
+    const heldP = new Promise<void>((r) => (held = r));
+    let holderErr = "";
+    const holder = P.$transaction(
+      async (tx: Any) => {
+        await tx.$queryRawUnsafe(`SELECT count(pg_advisory_xact_lock(hashtextextended($1::text, 0)))::int AS n`, `hr:roster:${sA.id}:${key.employeeId}:${key.date}`);
+        held();
+        await gate;
+        await during(tx);
+      },
+      { maxWait: 10_000, timeout: 30_000 },
+    ).catch((e: unknown) => {
+      holderErr = errText(e);
+      held();
+    });
+    await heldP;
+    const callP = call();
+    let waited = false;
+    for (let i = 0; i < 80 && !waited; i++) {
+      await sleep(100);
+      const w = await rawRows(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory' AND query ILIKE '%pg_advisory_xact_lock%'`);
+      waited = Number(w?.[0]?.n ?? 0) > 0;
+    }
+    release();
+    await holder;
+    return { res: await callP, waited, holderErr };
+  };
+  {
+    // R-1: candidate selected in u1 · moved to u2 before the lock ⇒ the under-lock re-check (range + scope) must not publish it
+    const a = await rawEntry({ employeeId: E.e1, date: "2030-08-06", shiftId: S.m, unitId: u1 });
+    const b = await rawEntry({ employeeId: E.e6, date: "2030-08-07", shiftId: S.m, unitId: u1 });
+    const e0 = (await eventsOf()).length;
+    const h = typeof rMod?.publishRoster === "function"
+      ? await underRosterLock({ employeeId: E.e6, date: "2030-08-07" }, (tx) => tx.$executeRawUnsafe(`UPDATE "HrRosterEntry" SET "unitId" = $1 WHERE id = $2`, u2, b), () => ro("publishRoster", ctxA, vOf(U.mgrU1), { from: "2030-08-05", to: "2030-08-11" }))
+      : { res: { ok: false, text: "∅publishRoster", value: undefined } as RO, waited: false, holderErr: "" };
+    const ra = await row(a);
+    const rb = await row(b);
+    const evs = await eventsOf();
+    const leaked = evs.slice(e0).some((e) => ((e.payload?.entryIds ?? []) as string[]).includes(b));
+    const r = { waited: h.waited, refused: !h.res.ok && h.res.text === T_PUBLISH_RACE, moved: rb?.unitId === u2 && rb?.published === false && rb?.publishedAt === null, other: ra?.published === false, noEvent: evs.length === e0 && !leaked };
+    chk("S9.1", Object.values(r).every(Boolean), `"${T_PUBLISH_RACE}" · moved row unpublished · 0 events`, `${failedKeys(r)} ${h.res.ok ? `ACCEPTED published=${h.res.value?.published}` : `"${short(h.res.text, 50)}"`} b.unit=${rb?.unitId === u2 ? "u2" : rb?.unitId} b.published=${rb?.published} events +${evs.length - e0}${h.holderErr ? ` holder=${h.holderErr}` : ""}`);
+  }
+  {
+    // R-2: a shift-only change (same employee/day ⇒ same key) commits first ⇒ moveEntry must refuse, not write back its stale shift
+    const T_ENTRY_CHANGED = "กะนี้เพิ่งถูกแก้ไข — กรุณารีเฟรชแล้วลองใหม่"; // ROSTER_TEXT.entryChanged (existing refusal)
+    const x = await rawEntry({ employeeId: E.e1, date: "2030-08-13", shiftId: S.m, unitId: u1 });
+    const sr = SH[S.r]!;
+    const h = typeof rMod?.moveEntry === "function"
+      ? await underRosterLock({ employeeId: E.e1, date: "2030-08-13" }, (tx) => tx.$executeRawUnsafe(`UPDATE "HrRosterEntry" SET "shiftId" = $1, "startMin" = $2, "endMin" = $3, "breakMin" = $4 WHERE id = $5`, S.r, sr.startMin, sr.endMin, sr.breakMin, x), () => ro("moveEntry", ctxA, vOf(U.owner), x, { date: "2030-08-14" }))
+      : { res: { ok: false, text: "∅moveEntry", value: undefined } as RO, waited: false, holderErr: "" };
+    const rx = await row(x);
+    const r = { waited: h.waited, refused: !h.res.ok && h.res.text === T_ENTRY_CHANGED, shiftKept: rx?.shiftId === S.r && snapOk(rx, S.r), dayKept: dk(rx?.date) === "2030-08-13" && rx?.employeeId === E.e1 };
+    chk("S9.2", Object.values(r).every(Boolean), `"${T_ENTRY_CHANGED}" · shift r + times kept · day 08-13`, `${failedKeys(r)} ${h.res.ok ? "ACCEPTED" : `"${short(h.res.text, 50)}"`} shift=${rx?.shiftId === S.r ? "r" : rx?.shiftId === S.m ? "m (reverted)" : rx?.shiftId} ${rx?.startMin}-${rx?.endMin} day=${dk(rx?.date)}${h.holderErr ? ` holder=${h.holderErr}` : ""}`);
+  }
+  {
+    // R-3: the "removed published rows" part resets per unit + range of the publish, and a publish with no new rows still clears it
+    const wk = { from: "2030-08-19", to: "2030-08-25" };
+    const p1 = await rawEntry({ employeeId: E.e1, date: "2030-08-20", shiftId: S.m, unitId: u1, published: true });
+    const p2 = await rawEntry({ employeeId: E.e2, date: "2030-08-21", shiftId: S.u2, unitId: u2, published: true });
+    await rawEntry({ employeeId: E.e6, date: "2030-08-22", shiftId: S.m, unitId: u1 }); // u1 candidate for the u1 publish
+    const cnt = async (unitId: string) => {
+      const l = await ro("listRoster", ctxA, vOf(U.owner), { ...wk, unitId });
+      return l.ok ? Number(l.value?.unpublishedCount) : -1;
+    };
+    const rm2 = await ro("removeEntry", ctxA, vOf(U.owner), p2);
+    const pubU1 = await ro("publishRoster", ctxA, vOf(U.owner), { ...wk, unitId: u1 });
+    const u2a = await cnt(u2);
+    const rm1 = await ro("removeEntry", ctxA, vOf(U.owner), p1);
+    const u1a = await cnt(u1);
+    const e0 = (await eventsOf()).length;
+    const pubEmpty = await ro("publishRoster", ctxA, vOf(U.owner), { ...wk, unitId: u1 });
+    const e1n = (await eventsOf()).length;
+    const u1b = await cnt(u1);
+    const u2b = await cnt(u2);
+    const r = {
+      prep: rm2.ok && rm1.ok && pubU1.ok && Number(pubU1.value?.published) === 1,
+      u2KeptAfterU1Publish: u2a === 1,
+      loneRemovalCounted: u1a === 1,
+      emptyPublish: pubEmpty.ok && Number(pubEmpty.value?.published) === 0 && pubEmpty.value?.eventId === null && e1n === e0,
+      loneRemovalCleared: u1b === 0,
+      u2StillCounted: u2b === 1,
+    };
+    chk("S9.3", Object.values(r).every(Boolean), "u2 1 after u1 publish · u1 1 → 0 after empty publish · u2 still 1 · no event", `${failedKeys(r)} u2=${u2a}→${u2b} u1=${u1a}→${u1b} pubU1=${pubU1.ok ? pubU1.value?.published : short(pubU1.text, 40)} empty=${pubEmpty.ok ? `${pubEmpty.value?.published}/${pubEmpty.value?.eventId}` : short(pubEmpty.text, 40)} events +${e1n - e0}`);
+  }
+  {
+    // hunter F4 (controller ruling): copyWeek keeps the source row's own override times (R6 "source override times are kept" · Q7)
+    const add = await ro("addEntry", ctxA, vOf(U.owner), { employeeId: E.e1, date: "2030-08-27", shiftId: S.m, startMin: 840, endMin: 1200 });
+    const cp = await ro("copyWeek", ctxA, vOf(U.owner), { fromWeek: "2030-08-26", toWeek: "2030-09-02" });
+    const t = (await rowsA("2030-09-03", "2030-09-03")).find((x) => x.employeeId === E.e1);
+    const r = { prep: add.ok, copied: cp.ok && Number(cp.value?.created) === 1, shift: t?.shiftId === S.m, times: t?.startMin === 840 && t?.endMin === 1200 && t?.breakMin === SH[S.m]!.breakMin && t?.crossesMidnight === false };
+    chk("S9.4", Object.values(r).every(Boolean), "09-03 copied on shift m with 14:00–20:00 (840–1200)", `${failedKeys(r)} ${cp.ok ? `created=${cp.value?.created}` : short(cp.text, 50)} add=${add.ok ? "ok" : short(add.text, 40)} target=${t ? `${t.startMin}-${t.endMin}/${t.breakMin}/${t.crossesMidnight}` : "∅"}`);
   }
 
   // ═══ X12 fitness without env ═══
