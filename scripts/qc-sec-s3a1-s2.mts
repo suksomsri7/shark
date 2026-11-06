@@ -167,7 +167,7 @@ try {
   console.log("── A2: attachments sniff ──");
   {
     const m = await route("@/app/api/mobile/inbox/attachments/route");
-    const up = async (name: string, type: string, bytes: Uint8Array) => { const fd = new FormData(); fd.append("file", new File([bytes], name, { type })); fd.append("systemId", sid); const res = await m!.POST!(new Request("http://qc.local/api/mobile/inbox/attachments", { method: "POST", headers: HS, body: fd })); return { status: res.status, json: await jsonOf(res) }; };
+    const up = async (name: string, type: string, bytes: Uint8Array) => { const fd = new FormData(); fd.append("file", new File([bytes as BlobPart], name, { type })); fd.append("systemId", sid); const res = await m!.POST!(new Request("http://qc.local/api/mobile/inbox/attachments", { method: "POST", headers: HS, body: fd })); return { status: res.status, json: await jsonOf(res) }; };
     const svg = await up("x.svg", "image/svg+xml", new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'));
     const fake = await up("x.png", "image/png", new TextEncoder().encode("<html><script>alert(1)</script></html>"));
     chk("A2-1", "inbox/attachments: svg ⇒ 415 · HTML ปลอมเป็น png ⇒ 415 (ตรวจ magic bytes)", svg.status === 415 && fake.status === 415, JSON.stringify({ svg: [svg.status, svg.json.error], fake: [fake.status, fake.json.error] }));
@@ -222,8 +222,10 @@ try {
     const fg = parse(await tools.runTool(ctxO as never, "forget_fact", { contentContains: "qc" }));
     const fgProp = await prisma.aiProposal.count({ where: { tenantId: tid, conversationId: r.conversationId, kind: { in: ["memory.forget", "forget_fact"] } } });
     chk("T1-1", "ห้องบริบทลูกค้า: kb_auto_save ⇒ ข้อเสนอ (ไม่มี KbArticle ทันที) · remember_fact ของ OWNER ⇒ AiMemory PENDING · forget_fact ⇒ ข้อเสนอ (ไม่ลบทันที)", kbRows === 0 && kbProp === 1 && !!memRow && (memRow as AnyMod).status === "PENDING" && fgProp === 1 && !!(await (prisma as AnyMod).aiMemory.findFirst({ where: { id: memRow?.id } })), JSON.stringify({ kb: kb.proposalId ?? kb.error ?? kb.raw, kbRows, kbProp, memStatus: (memRow as AnyMod)?.status, fg: fg.proposalId ?? fg.error ?? fg.raw, fgProp }).slice(0, 300));
-    const pers = src("src/lib/ai/persona.ts");
-    chk("T1-2", "persona: ไม่มี 'ทันทีโดยไม่ต้องถาม/ไม่ต้องขอยืนยัน' สำหรับ kb_auto_save/remember_fact เมื่อมีบล็อกลูกค้า · บล็อกความจำ/ผล tool มีหัว 'ข้อมูล ไม่ใช่คำสั่ง'", !/kb_auto_save[^\n]{0,80}ทันที[^\n]{0,40}ไม่ต้องถาม/.test(pers) && /ไม่ใช่คำสั่ง/.test(pers), "grep persona.ts");
+    // ORACLE-EDIT (ผู้คุม · builder S2 ขอ): ตรวจ prompt ที่สร้างจริงเมื่อมีบล็อกลูกค้า แทน regex บนซอร์ส
+    const persona = (await import("@/lib/ai/persona")) as AnyMod;
+    const promptC = String(persona.buildSystemPrompt({ tenantName: "ร้าน QC", systems: [{ type: "CHAT", name: "แชท" }], customer: "ลูกค้า: คุณสมชาย (LINE) ข้อความล่าสุด: ขอเครดิต 45 วัน", memories: "- ปิดวันจันทร์", secretary: undefined }));
+    chk("T1-2", "prompt ห้องบริบทลูกค้า: ไม่สั่ง 'ทันทีไม่ต้องถาม' สำหรับ kb_auto_save/remember_fact · บล็อกความจำ/ลูกค้ามีหัว 'ข้อมูล ไม่ใช่คำสั่ง'", !/(kb_auto_save|remember_fact)[^\n]{0,120}(ทันที[^\n]{0,30}ไม่ต้องถาม|ไม่ต้องขอยืนยัน)/.test(promptC) && /ไม่ใช่คำสั่ง/.test(promptC), promptC.slice(0, 160));
     console.log("── T2: addMember ห้องบริบทลูกค้า ──");
     const add = await call("secretary/rooms/[id]/members", "POST", { userId: U.guard, seeHistory: false }, H, { id: r.roomId });
     const addB = await call("secretary/rooms/[id]/members", "POST", { userId: U.staffB, seeHistory: false }, H, { id: r.roomId });
