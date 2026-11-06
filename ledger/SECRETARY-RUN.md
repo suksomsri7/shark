@@ -253,3 +253,4 @@ RC2 MINOR-3/6 · RC1 L2/L5/L6/L7/L9/L10 · R-Z47 (sec-real-path.mts เก่า
 1. **สั่ง push main + migration (S3a.2)** · 2. **สั่ง TestFlight/Internal (S3a.3)** — Expo token ใหม่ · SMS provider prod · เบอร์ reviewer · 3. หมุนคีย์ shark หลังจบ · 4. หนี้ 7.5 ทำใน S3b
 ### 7.5 หนี้
 PDF: ตัวละตินพิมพ์ใหญ่ยาว >26 ตัวไม่มีช่องว่างล้นคอลัมน์ · summary ใบอาจไม่ตรงถ้าห้องสร้างใบใหม่ก่อนอนุมัติ · docLoggedInConversation take 500 · แปล: web actions ไม่ตรวจ targetLang (เดิม) · แอป: ป้ายระบบการ์ด support.* · r2 CRASH 2/12 · ต้นทุนต่อห้อง (§6.3)
+- 7 พ.ย. 18:0xZ — เลน d clicks รอบใหม่ 453/453 (resumed:false · 2567 กด · 6050 วิ ขณะ build 11) → **ff session/secretary = 9c55f8a63 (ทิปสุดท้าย S3a.5+S3a.6 · โค้ดเว็บเท่า ee46e2c34 ที่ build 11 ใช้)** · เลน c oracle r2 แข็งแล้ว (e8f39922c merge 73d4d50a4) · ไม่มีเลนทำงาน · รอ build 11 จบ → nft.json ฟอนต์ · r2 ×2 → CP3b
