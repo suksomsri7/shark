@@ -12,7 +12,7 @@
 //   ต้นทุนรวมนับเฉพาะครั้งที่มีรอบโมเดล > 0 (ห้องละครั้ง) · รายงานคู่: ยอดใน AiCreditTxn และยอดตามอัตราแคชจริง
 //   ต้นทุนต่อห้อง = AiCreditTxn (USAGE · conversationId ของห้อง · ไมโครดอลลาร์ + token + ป้ายโมเดลของผลิตภัณฑ์) ·
 //   รอบเครื่องมือ/เวลา/โมเดลจริง/token แคช = ตัวครอบ fetch ที่ api.anthropic.com (อ่านอย่างเดียว ไม่แก้คำขอ)
-//   เพดานรวม ฿30 (SEC_REAL_MAX_THB) — ก่อนยิงทุกครั้งตรวจยอดสะสม · เกิน ⇒ ไม่ยิง (คำขอถูกปฏิเสธในตัวครอบ) แล้วหยุดเส้นที่เหลือ
+//   เพดานรวม ฿30 (SEC_REAL_MAX_THB) — ก่อนยิงทุกครั้งตรวจยอดสะสมตามอัตราแคชจริง (R-Z51 · `costMicroUsd` + {write, read}) · เกิน ⇒ ไม่ยิง (คำขอถูกปฏิเสธในตัวครอบ) แล้วหยุดเส้นที่เหลือ
 //   ออกนอกเครื่องได้เฉพาะ api.anthropic.com (โหมดจริง) + ฐาน QC (*.neon.tech) · LINE = เซิร์ฟเวอร์จำลอง 127.0.0.1 (LINE_API_BASE) · อื่น ๆ ถูกกัน (จด)
 //
 // โหมด:
@@ -54,19 +54,21 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).slic
 const short = (s: unknown, n = 200) => { const t = String(s ?? "").replace(/\s+/g, " ").trim(); return Array.from(t).length > n ? Array.from(t).slice(0, n - 1).join("") + "…" : t; };
 
 // ═════════════ ตัวครอบ fetch (นับรอบ/เวลา/โมเดล/token · กันออกนอกเครื่อง · เพดานเงิน) ═════════════
-type CallRec = { ms: number; status: number; model: string; inTok: number; cacheWrite: number; cacheRead: number; outTok: number; stop: string; tools: string[]; text: string; microEst: number; microProvider: number };
+type CallRec = { ms: number; status: number; model: string; inTok: number; cacheWrite: number; cacheRead: number; outTok: number; stop: string; tools: string[]; text: string; microWorst: number; microProvider: number };
 type Cur = { path: string; attempt: number; calls: CallRec[] } | null;
 let CUR: Cur = null;
 const BLOCKED: string[] = [];
-const { costMicroUsd, priceOf } = await import("@/lib/ai/pricing");
+const { costMicroUsd } = await import("@/lib/ai/pricing");
 const { thbPerUsd } = await import("@/lib/ai/topup");
 const THB = thbPerUsd();
 const MAX_THB = Number(process.env.SEC_REAL_MAX_THB) > 0 ? Math.min(30, Number(process.env.SEC_REAL_MAX_THB)) : 30;
 const MAX_MICRO = Math.floor((MAX_THB / THB) * 1e6);
 // R-Z46: เพดานตรวจจากยอดสะสมจริง — ทุกคำตอบของผู้ให้บริการนับครั้งเดียวที่ตัวครอบ (ไม่ใช่ผลรวมต่อรอบที่อาจนับห้องเดิมซ้ำ)
 //   ใช้ราคาแบบแคชเต็มราคา (สูงกว่าจริง ⇒ เพดานปลอดภัย) · รายงานราคาตามอัตราแคชจริงคู่กัน
-let spentMicroEst = 0;
+// R-Z51(จ): เพดาน = ยอดสะสมตามอัตราแคชจริง (`costMicroUsd(..., {write, read})` ของ R-Z44) จากทุกคำตอบของผู้ให้บริการ (นับครั้งเดียวต่อคำตอบ ·
+//   รวมเทิร์นที่ล้ม/ถูกลองใหม่ซึ่ง AiCreditTxn ไม่บันทึก) · ค่าแคชเต็มราคา = `worstCase` แยกไว้ดู ไม่ใช้ตัดสินเพดาน
 let spentMicroProvider = 0;
+let spentMicroWorst = 0;
 let capHit = false;
 type DryReply = { tools?: { name: string; input: Record<string, unknown> }[]; text?: string };
 let dryScript: ((path: string, i: number) => DryReply) | null = null;
@@ -81,9 +83,9 @@ globalThis.fetch = (async (input: any, init?: any): Promise<Response> => { // es
     return new Response(JSON.stringify({ message: "blocked by qc-sec-real" }), { status: 503, headers: { "content-type": "application/json" } });
   }
   const t0 = Date.now();
-  const rec: CallRec = { ms: 0, status: 0, model: "", inTok: 0, cacheWrite: 0, cacheRead: 0, outTok: 0, stop: "", tools: [], text: "", microEst: 0, microProvider: 0 };
+  const rec: CallRec = { ms: 0, status: 0, model: "", inTok: 0, cacheWrite: 0, cacheRead: 0, outTok: 0, stop: "", tools: [], text: "", microWorst: 0, microProvider: 0 };
   CUR?.calls.push(rec);
-  if (REAL && spentMicroEst >= MAX_MICRO) {
+  if (REAL && spentMicroProvider >= MAX_MICRO) {
     capHit = true;
     rec.status = 599; rec.stop = "budget_cap";
     return new Response(JSON.stringify({ type: "error", error: { type: "qc_budget_cap", message: `qc-sec-real: เกินเพดาน ฿${MAX_THB}` } }), { status: 429, headers: { "content-type": "application/json" } });
@@ -110,11 +112,10 @@ globalThis.fetch = (async (input: any, init?: any): Promise<Response> => { // es
     const blocks = Array.isArray(j.content) ? (j.content as AnyMod[]) : [];
     rec.tools = blocks.filter((b) => b?.type === "tool_use").map((b) => String(b.name));
     rec.text = short(blocks.filter((b) => b?.type === "text").map((b) => String(b.text ?? "")).join(""), 160);
-    // ต้นทุนต่อการเรียก 2 แบบ: ราคาที่บัญชีของผลิตภัณฑ์คิดก่อน R-Z44 (แคชเต็มราคา = สูงสุด · ใช้คุมเพดาน) · ราคาตามอัตราแคชจริง (เขียน ×1.25 · อ่าน ×0.1)
-    rec.microEst = costMicroUsd(rec.model, rec.inTok + rec.cacheWrite + rec.cacheRead, rec.outTok);
-    const p = priceOf(rec.model);
-    rec.microProvider = Math.ceil(((rec.inTok * p.inPerM + rec.cacheWrite * p.inPerM * 1.25 + rec.cacheRead * p.inPerM * 0.1 + rec.outTok * p.outPerM) / 1e6) * 1e6);
-    if (REAL) { spentMicroEst += rec.microEst; spentMicroProvider += rec.microProvider; }
+    // ต้นทุนต่อการเรียก: ตามอัตราแคชจริงของผลิตภัณฑ์ (R-Z44 · input ปกติ + เขียน/อ่านแคชแยกราคา) = ใช้คุมเพดาน · แคชเต็มราคา = worstCase (ดูอย่างเดียว)
+    rec.microProvider = costMicroUsd(rec.model, rec.inTok, rec.outTok, { write: rec.cacheWrite, read: rec.cacheRead });
+    rec.microWorst = costMicroUsd(rec.model, rec.inTok + rec.cacheWrite + rec.cacheRead, rec.outTok);
+    if (REAL) { spentMicroProvider += rec.microProvider; spentMicroWorst += rec.microWorst; }
   } catch { /* ไม่ใช่ JSON */ }
   return res;
 }) as typeof fetch;
@@ -255,7 +256,7 @@ type Fix = Record<string, string>;
 type Approval = { kind: string; summary: string; ok: boolean; note: string };
 type Attempt = {
   n: number; instruction: string; roomId: string | null; post: number; ms: number; jobs: string[]; rounds: number; toolsCalled: string[]; models: string[];
-  micro: number; microProvider: number; tokensIn: number; tokensOut: number; cacheRead: number; cacheWrite: number; productModel: string[]; reply: string;
+  micro: number; microProvider: number; microWorst: number; tokensIn: number; tokensOut: number; cacheRead: number; cacheWrite: number; productModel: string[]; reply: string;
   kinds: string[]; approvals: Approval[]; expectedHit: boolean; verify: Record<string, unknown>; pass: boolean; why: string; calls: CallRec[];
   /** R-Z46: route ตอบ duplicate:true (ห้องเดิม) = ลองไม่ได้ ไม่ใช่ตก · ไม่นับต้นทุน */ dup: boolean;
   /** R-Z46: นับต้นทุนเฉพาะครั้งที่มีรอบโมเดล > 0 และห้องยังไม่ถูกนับ */ counted: boolean;
@@ -435,7 +436,7 @@ try {
     const res: PathResult = { id: def.id, title: def.title, pass: false, why: "", attempts: [], fixture: null };
     results.push(res);
     if (ONLY.length && !ONLY.includes(def.id)) { res.skipped = "SEC_REAL_ONLY"; res.why = "ข้ามตาม SEC_REAL_ONLY"; continue; }
-    if (capHit || (REAL && spentMicroEst >= MAX_MICRO)) { res.skipped = "budget"; res.why = `ไม่รัน — ถึงเพดาน ฿${MAX_THB} แล้ว`; continue; }
+    if (capHit || (REAL && spentMicroProvider >= MAX_MICRO)) { res.skipped = "budget"; res.why = `ไม่รัน — ถึงเพดาน ฿${MAX_THB} แล้ว`; continue; }
     console.log(`\n▶ ${def.id} — ${def.title}\n  คำสั่ง: ${def.instruction}`);
     let t: Tenant;
     let f: Fix;
@@ -447,10 +448,10 @@ try {
     }
     curFix = f; curDef = def;
     for (let n = 1; n <= MAX_ATTEMPTS; n++) {
-      if (REAL && spentMicroEst >= MAX_MICRO) { capHit = true; break; }
+      if (REAL && spentMicroProvider >= MAX_MICRO) { capHit = true; break; }
       // R-Z46: ครั้งที่ n>1 ใช้ข้อความต่างกัน + clientMessageId ใหม่ (ไม่งั้นชน R-Z32 "ห้องเดิมที่คำสั่งแรกเท่ากันภายใน 10 นาที")
       const instruction = n === 1 ? def.instruction : `${def.instruction} (ลองใหม่ครั้งที่ ${n})`;
-      const a: Attempt = { n, instruction, roomId: null, post: 0, ms: 0, jobs: [], rounds: 0, toolsCalled: [], models: [], micro: 0, microProvider: 0, tokensIn: 0, tokensOut: 0, cacheRead: 0, cacheWrite: 0, productModel: [], reply: "", kinds: [], approvals: [], expectedHit: false, verify: {}, pass: false, why: "", calls: [], dup: false, counted: false, lineMark: LINE_REQS.length, startedAt: new Date() };
+      const a: Attempt = { n, instruction, roomId: null, post: 0, ms: 0, jobs: [], rounds: 0, toolsCalled: [], models: [], micro: 0, microProvider: 0, microWorst: 0, tokensIn: 0, tokensOut: 0, cacheRead: 0, cacheWrite: 0, productModel: [], reply: "", kinds: [], approvals: [], expectedHit: false, verify: {}, pass: false, why: "", calls: [], dup: false, counted: false, lineMark: LINE_REQS.length, startedAt: new Date() };
       res.attempts.push(a);
       CUR = { path: def.id, attempt: n, calls: a.calls };
       const t0 = Date.now();
@@ -493,6 +494,7 @@ try {
         const txns = convId ? await prisma.aiCreditTxn.findMany({ where: { tenantId: t.tid, conversationId: convId, kind: "USAGE" }, select: { amountMicro: true, tokensIn: true, tokensOut: true, model: true } }) : [];
         a.micro = txns.reduce((s, x) => s + Math.abs(x.amountMicro), 0);
         a.microProvider = a.calls.reduce((s, c) => s + c.microProvider, 0);
+        a.microWorst = a.calls.reduce((s, c) => s + c.microWorst, 0);
         a.counted = a.calls.length > 0; // R-Z46: นับต้นทุนเฉพาะครั้งที่มีรอบโมเดล (ห้องใหม่จริง)
         a.tokensIn = txns.reduce((s, x) => s + x.tokensIn, 0);
         a.tokensOut = txns.reduce((s, x) => s + x.tokensOut, 0);
@@ -516,7 +518,7 @@ try {
         if (!a.ms) a.ms = Date.now() - t0;
         const thb = Math.round((a.micro / 1e6) * THB * 100) / 100;
         console.log(`  รอบ ${n}: ${a.pass ? "✅" : "❌"} ${a.why}`);
-        console.log(`     ห้อง ${a.roomId ?? "-"} · ${a.ms} ms · รอบโมเดล ${a.calls.length} (${a.toolsCalled.join(", ") || "-"}) · โมเดล ${a.models.join("/") || "-"} · ป้าย ${a.productModel.join("/") || "-"} · ${a.micro} micro ≈ ฿${thb} · in ${a.tokensIn} (cache r${a.cacheRead}/w${a.cacheWrite}) out ${a.tokensOut}`);
+        console.log(`     ห้อง ${a.roomId ?? "-"} · ${a.ms} ms · รอบโมเดล ${a.calls.length} (${a.toolsCalled.join(", ") || "-"}) · โมเดล ${a.models.join("/") || "-"} · ป้าย ${a.productModel.join("/") || "-"} · จ่ายจริง≈฿${Math.round((a.microProvider / 1e6) * THB * 100) / 100} · AiCreditTxn ${a.micro} micro ≈ ฿${thb} · worstCase≈฿${Math.round((a.microWorst / 1e6) * THB * 100) / 100} · สถานะคำขอ ${a.calls.map((c) => c.status).join(",") || "-"} · in ${a.tokensIn} (cache r${a.cacheRead}/w${a.cacheWrite}) out ${a.tokensOut}`);
         console.log(`     ข้อเสนอ: ${a.approvals.map((x) => `${x.kind}${x.ok ? "✓" : "✗"}`).join(", ") || "-"} · งาน: ${a.jobs.join(" | ") || "-"}`);
         console.log(`     ตอบ: ${a.reply || "-"}`);
         console.log(`     ผล: ${JSON.stringify(a.verify).slice(0, 300)}`);
@@ -550,22 +552,27 @@ const totalMicro = counted.reduce((s, a) => s + a.micro, 0);
 const totalThb = Math.round((totalMicro / 1e6) * THB * 100) / 100;
 const providerMicro = counted.reduce((s, a) => s + a.microProvider, 0);
 const providerThb = Math.round((providerMicro / 1e6) * THB * 100) / 100;
+const worstCaseMicro = counted.reduce((s, a) => s + a.microWorst, 0);
+const worstCaseThb = Math.round((worstCaseMicro / 1e6) * THB * 100) / 100;
+// ยอดจริงของทั้งโพรเซส (ทุกคำตอบ รวมครั้งที่ไม่ถูกนับ) — ตัวเลขเดียวกับที่ใช้ตัดสินเพดาน · worstCase ของทั้งโพรเซสไว้ดู
+const spentThb = Math.round((spentMicroProvider / 1e6) * THB * 100) / 100;
+const spentWorstThb = Math.round((spentMicroWorst / 1e6) * THB * 100) / 100;
 console.log(`\n── ตารางต่อเส้น ──`);
 for (const r of results) {
   for (const a of r.attempts) {
     if (a.dup) { console.log(`| ${r.id} #${a.n} | ลองไม่ได้ (duplicate) | - | - | - | - | - | - |`); continue; }
-    console.log(`| ${r.id} #${a.n} | ${a.pass ? "ผ่าน" : "ตก"} | ${a.micro} micro (฿${Math.round((a.micro / 1e6) * THB * 100) / 100}) | in ${a.tokensIn} / out ${a.tokensOut} · cache r${a.cacheRead} w${a.cacheWrite} | ${a.models.join("/") || "-"} [${a.productModel.join("/") || "-"}] | ${a.ms} ms | ${a.calls.length} รอบ: ${a.toolsCalled.join(", ") || "-"} | ${a.reply.slice(0, 120)} |`);
+    console.log(`| ${r.id} #${a.n} | ${a.pass ? "ผ่าน" : "ตก"} | จ่ายจริง≈฿${Math.round((a.microProvider / 1e6) * THB * 100) / 100} · AiCreditTxn ${a.micro} micro (฿${Math.round((a.micro / 1e6) * THB * 100) / 100}) · worst≈฿${Math.round((a.microWorst / 1e6) * THB * 100) / 100} | in ${a.tokensIn} / out ${a.tokensOut} · cache r${a.cacheRead} w${a.cacheWrite} | ${a.models.join("/") || "-"} [${a.productModel.join("/") || "-"}] | ${a.ms} ms | ${a.calls.length} รอบ: ${a.toolsCalled.join(", ") || "-"} | ${a.reply.slice(0, 120)} |`);
   }
   if (!r.attempts.length) console.log(`| ${r.id} | ${r.skipped ? "ข้าม" : "ตก"} | ${r.why} |`);
 }
 const passed = results.filter((r) => r.pass).map((r) => r.id);
 const failed = results.filter((r) => !r.pass && !r.skipped).map((r) => r.id);
 const skipped = results.filter((r) => r.skipped).map((r) => r.id);
-console.log(`\n${LABEL}: ${passed.length}/3 ผ่าน · ต้นทุนรวม (AiCreditTxn) ${totalMicro} micro ≈ ฿${totalThb} · ตามอัตราแคชจริง ≈ ฿${providerThb} (เพดาน ฿${MAX_THB}${capHit ? " · ถึงเพดาน" : ""}) · residue ${residue} · ถูกกันออกนอก ${BLOCKED.length}${BLOCKED.length ? ` (${[...new Set(BLOCKED)].join(",")})` : ""}`);
+console.log(`\n${LABEL}: ${passed.length}/3 ผ่าน · จ่ายผู้ให้บริการตามอัตราแคชจริง ≈ ฿${providerThb} (${providerMicro} micro) · บันทึกใน AiCreditTxn ${totalMicro} micro ≈ ฿${totalThb} · แคชเต็มราคา (worstCase) ≈ ฿${worstCaseThb} · เพดาน ฿${MAX_THB} ตัดสินจากยอดจริง ฿${spentThb}${capHit ? " · ถึงเพดาน" : ""} · residue ${residue} · ถูกกันออกนอก ${BLOCKED.length}${BLOCKED.length ? ` (${[...new Set(BLOCKED)].join(",")})` : ""}`);
 console.log("JSON_SUMMARY " + JSON.stringify({
   total: 3, passed: passed.length, failed, skipped, mode: DRY ? "dry" : "real",
-  costMicro: totalMicro, costThb: totalThb, providerMicro, providerThb, thbPerUsd: THB, capThb: MAX_THB, capHit,
-  paths: results.map((r) => ({ id: r.id, pass: r.pass, why: short(r.why, 240), attempts: r.attempts.map((a) => ({ n: a.n, pass: a.pass, dup: a.dup, counted: a.counted, micro: a.micro, microProvider: a.microProvider, tokensIn: a.tokensIn, tokensOut: a.tokensOut, cacheRead: a.cacheRead, cacheWrite: a.cacheWrite, models: a.models, productModel: a.productModel, ms: a.ms, rounds: a.calls.length, tools: a.toolsCalled, kinds: a.kinds, approvals: a.approvals.map((x) => `${x.kind}:${x.ok ? "ok" : "fail"}`), reply: a.reply.slice(0, 200) })), fixture: r.fixture })),
+  costMicro: totalMicro, costThb: totalThb, providerMicro, providerThb, worstCaseMicro, worstCaseThb, spentThb, spentWorstThb, capBasis: "providerThb", thbPerUsd: THB, capThb: MAX_THB, capHit,
+  paths: results.map((r) => ({ id: r.id, pass: r.pass, why: short(r.why, 240), attempts: r.attempts.map((a) => ({ n: a.n, pass: a.pass, dup: a.dup, counted: a.counted, micro: a.micro, microProvider: a.microProvider, microWorst: a.microWorst, callStatus: a.calls.map((c) => c.status), tokensIn: a.tokensIn, tokensOut: a.tokensOut, cacheRead: a.cacheRead, cacheWrite: a.cacheWrite, models: a.models, productModel: a.productModel, ms: a.ms, rounds: a.calls.length, tools: a.toolsCalled, kinds: a.kinds, approvals: a.approvals.map((x) => `${x.kind}:${x.ok ? "ok" : "fail"}`), reply: a.reply.slice(0, 200) })), fixture: r.fixture })),
   fixtureWarnings: fxErr, blocked: [...new Set(BLOCKED)], residue,
 }));
 await prisma.$disconnect().catch(() => undefined);
