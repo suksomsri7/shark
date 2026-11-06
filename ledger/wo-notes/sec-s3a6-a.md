@@ -39,7 +39,11 @@
 - ขั้นต่าง ๆ: `s3a6-interaction/s3a6-1-translated.png` (คำแปลใต้ต้นฉบับ 2 ภาษา) · `s3a6-2-sheet.png` / `-dark` (แผ่นยืนยัน) · `s3a6-3-failsoft.png`
 
 ## 5. ผลข้อสอบ
-(เติมด้านล่าง)
+- spec s3a6 (QC_FORCE=1 ไม่ข้าม tsc): `JSON_SUMMARY {"total":9,"passed":9,"failed":[],"skipped":[],"findings":[]}` (M-1 mobile tsc 0 · D-1/D-2 fitness ผ่าน) · spec s2.17 (QC_SKIP_TSC=1) 11/12 failed [] · i18n th/en เท่ากัน (1104 หลังเพิ่ม `cn`)
+- click-sec รอบเต็ม (`--registry` 453 testID · +10 ของใบนี้ · SCENARIOS + s3a6.json): **453/453 · แดง 0** · meta `{resumed:false, registryHash:49c8890d…, distHash:ab444bc1…, workers:3, clicks:2567, seconds:6050, generatedAt:2026-11-06T18:02:41Z}`
+  - รอบก่อนหน้า (WORKERS=4 · load ~14) ได้ 451/453: `otp-sms-unavailable` · `otp-other-ways` "ไม่เคยเห็นบนจอ" (กรณี s2.14-cases-auth ทางเดิน wait:1500 → otp-resend · ตัวนับ resend 1 วิ ช้ากว่ากำหนดตอนเครื่องหนัก) — รันแยกบน dist เดียวกัน (รอ 1.5/2.5 วิ) ผ่านทั้งคู่ · รอบเต็มใหม่ (load ~18–21 ระหว่าง build 11) เขียวครบ ⇒ ไม่ใช่โค้ด
+  - ปุ่มใหม่: `cust-bubble-translate` → POST …/messages/m91/translate · `cust-translate-send` → POST …/translate-draft + แผ่น · `cust-tr-send` → POST …/reply · `cust-tr-edit` → ช่องพิมพ์ = คำแปล · `cust-tr-cancel` → ปิดแผ่น · กล่องแสดงผล 5 ตัวเห็นจริง
+  - dist ของรอบคลิก = ก่อนเพิ่ม `cust.lang.cn` (ข้อความเท่านั้น · ไม่มี testID ใหม่)
 
 ## 6. ต่างจากใบ / คำถาม
 1. ใบเขียน "หน้าห้องแชทลูกค้า (`secretary/inbox.tsx` + คอมโพเนนต์ห้อง)" — `secretary/inbox.tsx` คือกล่องรวมรออนุมัติ (A6) · ห้องแชทลูกค้าจริงคือ `app/(app)/customers/[id]/index.tsx` (K2) จึงทำที่นั่น
