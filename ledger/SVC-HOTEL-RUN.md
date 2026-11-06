@@ -1,0 +1,37 @@
+# SVC-HOTEL-RUN — สถานะสด + บันทึกเหตุการณ์ เฟส H (โรงแรม V2) · เริ่ม 7 พ.ย. 2569
+
+> กติกาเหล็ก = `SVC-RUN.md` §1 ทั้งหมด (ห้าม push main/deploy · QC DB ผ่าน `qc-svc.sh` · migration เฉพาะ H.0 · ORACLE-EDIT เฉพาะผู้คุม · ภาพคู่ทุกจอ · ตัวเฝ้าทุกงานยาว) · แผน = `SVC-HOTEL-PLAN.md` ร่าง 2 · ใบสั่ง = `svc-briefs/svc-brief-h.N.md` · ข้อสอบ = `scripts/qc-svc-h.N.mts`
+> เจ้าของสั่ง 7 พ.ย. ~15Z: **"เริ่มได้ ทำขนานกับระบบเลขา"** (เลขา S3a.6 รันอยู่เลน shark-sec-d) ⇒ โรงแรม 2 เลนจน S3a.6 ปิด แล้ว 3 เลน · build/tsc รอ RAM ≥ 10G เสมอ
+> รายงาน Telegram: `tg "📊 HOTEL · NN% (x/11)"` หลังปิดใบเท่านั้น · branch `session/svc` (ต่อจาก SVC · ทรีหลัก commit เอกสาร `--no-verify` จนกว่า Prisma client ร่วมทรีเลขาจะหมดปัญหา)
+
+## 1. เลน (ทรีที่มี node_modules/Prisma client แยกจากทรีเลขาเท่านั้น)
+| เลน | ทรี | ฐาน QC | node_modules | ใช้ทำ |
+|---|---|---|---|---|
+| hA | `/root/projects/shark-svc-l2` | l2 ep-weathered-mode | `shark-svc-nm-l2-store` (แยก) | ข้อสอบ h.0/h.1 → builder H.0 |
+| hB | `/root/projects/shark-svc-l1` | l1 ep-royal-lake | `shark-svc-nm-l1-store` (แยก) | ข้อสอบ h.1 → builder H.1 |
+| hC | (เปิดเมื่อ S3a.6 ปิด) | l3 ep-royal-bar | ต้องตรวจว่าแยกจากทรีหลักก่อน | ผู้ตรวจ/ใบถัดไป |
+| ด่านรวม | `/root/projects/shark-svc` (ทรีหลัก) | ep-mute-scene | **ร่วมทรีเลขา — ห้าม prisma generate/tsc/build ที่นี่จน RUN เลขาจบ** | ledger · merge · push |
+
+## 2. สถานะ (ตัวนับ x/11)
+| ใบ | งาน | ขนาด | ข้อสอบ | ผล | SHA | หมายเหตุ |
+|---|---|---|---|---|---|---|
+| H.0 | migration svc_h + backfill + scope/registry + ด่าน HOTEL | 1 | qc-svc-h.0 | ⬜ | | ขอ exception migration (ผู้คุมอนุมัติ 7 พ.ย.) |
+| H.1 | ราคา/ฤดู/วันหยุด/แผน/ยกเลิก/ภาษี + จอราคา + จอตั้งค่า + แท็บ | 2 | qc-svc-h.1 | ⬜ | | ภาพ 15 |
+| H.3 | จอง V2 (HOLD · กลุ่ม · ยกเลิกตามขั้นบันได · ต่อ/ย่น · no-show) | 1.5 | qc-svc-h.3 | ⬜ | | load test 20 คำขอ |
+| H.2 | tape chart | 2 | qc-svc-h.2 | ⬜ | | ภาพ 08 |
+| H.5 | folio + chargeToRoom + เช็กเอาต์ tenders จริง | 2 | qc-svc-h.5 | ⬜ | | ภาพ 09 ขวา · ORACLE-EDIT oracle P1 |
+| H.4 | เช็กอิน + ทะเบียนแขก + ร.ร.3/4 + ตม.30 | 2 | qc-svc-h.4 | ⬜ | | ภาพ 09 ซ้าย · PDPA |
+| H.6 | แม่บ้านมือถือ | 1.5 | qc-svc-h.6 | ⬜ | | ภาพ 13 |
+| H.7 | night audit + รายงาน | 1.5 | qc-svc-h.7 | ⬜ | | |
+| H.8 | จองออนไลน์ V2 | 1.5 | qc-svc-h.8 | ⬜ | | ภาพ 16 · อีเมล |
+| H.10 | โครง OTA + fake adapter | 2 | qc-svc-h.10 | ⬜ | | ภาพ 11 |
+| H.9 | ปิดเฟส: ด่านเต็ม + ไล่กด + PARITY + แพ็ก UAT | 1 | — | ⬜ | | ผู้คุม |
+
+**0/11 (0%)** · นอกตัวนับ: H2.1–H2.3 ตัวต่อ channel manager เจ้าจริง (รอชื่อจากลูกค้า)
+
+### 2.1 หนี้ (ข้อที่ผ่านไม่ได้ · เหตุผล · ใบที่จะปิด)
+| จาก | หนี้ | ระดับ | ปิดที่ |
+|---|---|---|---|
+
+## 3. บันทึกเหตุการณ์
+- 7 พ.ย. ~15Z · **เริ่ม RUN HOTEL** (เจ้าของสั่งหลังแก้ประเมิน: เลขาไม่มีเลน build ค้าง · S3a.6 เพิ่งเริ่ม) · tg 0% · เลน hA=l2 hB=l1 (Prisma client แยกจากทรีเลขา · ตรวจ inode แล้ว) · ขั้นแรก: ฟิกซ์เจอร์ H (ผู้คุม) → ข้อสอบ h.0 + h.1 ขนาน → builder H.0
