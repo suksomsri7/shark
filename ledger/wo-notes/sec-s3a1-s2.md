@@ -52,3 +52,12 @@
 - **s3a1-s2 L170**: `new File([bytes as BlobPart], …)` (typecheck)
 - **s3a1-s2 T1-2**: ตรวจ prompt ที่ `buildSystemPrompt({…, customer})` สร้างจริง แทน regex บนซอร์ส
 - **s1.14 R-2**: regex `/export async function (POST|…)/` ไม่เจอแล้ว (route เป็น `export const POST = withErrors(…)`) ⇒ ตรวจว่างเปล่า — ควรเป็น `/(export async function|async function) (POST|PUT|DELETE|PATCH)_?\(/`
+
+## 7. รอบ 2 (RESOLUTIONS §Z.4 · 6 พ.ย. UTC)
+- merge SHA ตรง: `b8b548481` → `23e034d63` · `f05934415` → `3960515f0` · เลน b `0ab446850` → `eb0417f44` · เลน b ล่าสุด `5f41ce5e5` → `ce49a8959`
+- §Z.2-docs ปิดทุกแถว (`d7b320150`): กติกา 3 (GET ที่ติดเพดาน) · 4 (inbox 422 ไม่มี field · inbox ไม่ตรวจความยาว id · ภาพช่วยเหลือ 4 MB · Vercel 4.5 MB) · 5 (quota usedMicro/capMicro) · rooms GET (scope เงียบ · มือถือไม่มี RL) · log/inbox 60 · attachments เพดานจริง · ที่เหลือปิดตั้งแต่รอบ 1
+- conflict ที่แก้ (คงทั้งสองมติ):
+  - `src/app/api/mobile/chat/send/route.ts` — import + `sseError` (S2 R-Z26) และ `checkRateLimitDb`/`isSecretaryRoomConversation`/`CHAT_SEND_PER_MINUTE` (S1 R-Z9) · ตัวรับ SSE error ใช้ `sseError`
+  - `docs/api/SECRETARY-API.md` 3 จุด: กติกาข้อ 4 (ของ c + ท้าย clientMessageId ของ b R-Z11) · rooms GET ของ c + rooms POST ของ b · หมายเหตุ 1.0 ของ c + บรรทัดย่อย R-Z9 ของ b
+  - merge อัตโนมัติ (ตรวจแล้ว): `secretary/_shared.ts` (`withErrors` + `rememberFailed`) · `server-actions.ts` (rejectFor/viewerDigest + secStartRoomAction/claimNewRoom) · `proposals.ts` · `service.ts` · `docs/modules/31-secretary.md`
+- ผลบนทรีที่รวมแล้ว: s3a1-s2 28/28 ×2 · s3a1-s1 19/19 · s1.4 28/28 · s1.5 16/16 · s1.14 13/13 · s1.14b 24/24 · s1.19 26/26 · s3a.1 16/17 (R-1 SKIP โมเดลจริง) · typecheck 0 · fitness มี env (D-1/D-2 + pre-commit) · `env -u DATABASE_URL` 53/53
