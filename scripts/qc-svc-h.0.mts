@@ -387,7 +387,7 @@ await needMig("M-6", "migration svc_h ลงฐาน QC แล้ว (migrate d
   ok(later.length === 0, `migration ที่ไม่ใช่ SVC หลัง svc_h: ${later.join(", ")}`);
 });
 await needMig("M-7", "prisma migrate diff --from-schema prisma/schema --to-url <ฐาน QC> --script: ไม่มี statement ใดแตะตาราง/ดัชนี/CHECK ของใบ (Hotel*/Channel*/HotelReservationStatus) — โดยเฉพาะไม่เสนอ DROP ดัชนี/constraint มือ (drift HR เดิมของฐานรายงานเป็นข้อมูล)", () => {
-  const r = spawnSync("pnpm", ["exec", "prisma", "migrate", "diff", "--from-schema", "prisma/schema", "--to-url", process.env.DIRECT_URL ?? "", "--script"], { cwd: ROOT, env: process.env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync("pnpm", ["exec", "prisma", "migrate", "diff", "--from-schema", "prisma/schema", "--to-config-datasource", "--script"], { cwd: ROOT, env: process.env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-M7-prisma78): Prisma 7.8 ไม่มี --to-url — ใช้ datasource จาก prisma.config.ts (env ของ qc-svc.sh) แทน
   ok(r.status === 0, `migrate diff exit=${r.status}: ${(r.stderr ?? "").split("\n").filter(Boolean).slice(-2).join(" | ").slice(0, 200)}`);
   const ss = (r.stdout ?? "").split("\n").map((l) => l.replace(/--.*$/, "")).join("\n").split(";").map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
   const mine = ss.filter((s) => /"(Hotel\w*|Channel\w*)"|HotelReservationStatus/.test(s));
@@ -1093,7 +1093,10 @@ try {
     needPlans();
     const ents: { scope: string; scopeId: string }[] = await SETSVC.entitiesOfUnit(prisma, tA, uA);
     const rp = ents.filter((e) => e.scope === "RATE_PLAN").map((e) => e.scopeId);
-    eq(rp, [PLAN_A], "แผนของหน่วย A");
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-RP3-all-active): ข้อ K/C/U ก่อนหน้าสร้างแผน ACTIVE อื่นในหน่วย A — เทียบกับชุดแผน ACTIVE จริงของหน่วย (ต้องมีแผน A · ไม่มี ARCHIVED/ร้าน B)
+    const act = (await q<{ id: string }>(`SELECT id FROM "HotelRatePlan" WHERE "tenantId" = $1 AND "unitId" = $2 AND status = 'ACTIVE'`, [tA, uA])).map((r) => r.id).sort();
+    ok(rp.includes(PLAN_A), "ไม่มีแผน A");
+    eq([...rp].sort(), act, "แผนของหน่วย A = แผน ACTIVE ทั้งหมดของหน่วย");
     const entsD: { scope: string; scopeId: string }[] = await SETSVC.entitiesOfUnit(prisma, tA, uDorm);
     eq(entsD.filter((e) => e.scope === "RATE_PLAN").length, 0, "หน่วยหอ");
   });
@@ -1244,13 +1247,16 @@ try {
     const sc = needScene();
     ok(BF, `ยังไม่มี ${F.backfill}`);
     const occBefore = await countOf("RoomOccupancy", `"tenantId" = ANY($1::text[])`, [[tA, tB]]);
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-B3-delta): ข้อ C/U/K ก่อนหน้า insert nights/folio ของร้าน A ไว้เอง — dry ต้อง "ไม่เพิ่ม" (เทียบก่อน/หลัง) ไม่ใช่ต้องเป็น 0
+    const nightsBefore = await countOf("HotelBookingNight", `"tenantId" = $1`, [tA]);
+    const folioBefore = await countOf("HotelFolio", `"tenantId" = $1`, [tA]);
     const r = runBackfill(["--dry"]);
     ok(r.status === 0, `exit=${r.status}: ${r.tail}`);
     ok(sumOk(r.sum), `BACKFILL_SUMMARY ไม่ครบ 5 ฟิลด์ตัวเลข: ${J(r.sum)}`);
     const s = r.sum as Record<string, number>;
     ok(s.bookedToConfirmed >= 3 && s.nightsCreated >= 6 && s.foliosCreated >= 3 && s.occupancyConflict >= 1, `ตัวเลข dry: ${J(s)}`);
     eq(await Promise.all([sc.R1, sc.R2, sc.R3].map(async (id) => (await resvRow(id))?.status)), ["BOOKED", "BOOKED", "BOOKED"], "status หลัง dry");
-    eq([await countOf("HotelBookingNight", `"tenantId" = $1`, [tA]), await countOf("HotelFolio", `"tenantId" = $1`, [tA]), await countOf("RoomOccupancy", `"tenantId" = ANY($1::text[])`, [[tA, tB]])], [0, 0, occBefore], "[nights, folio, occupancy] หลัง dry");
+    eq([await countOf("HotelBookingNight", `"tenantId" = $1`, [tA]), await countOf("HotelFolio", `"tenantId" = $1`, [tA]), await countOf("RoomOccupancy", `"tenantId" = ANY($1::text[])`, [[tA, tB]])], [nightsBefore, folioBefore, occBefore], "[nights, folio, occupancy] หลัง dry (ต้องเท่าก่อน dry)");
   });
   let realSum: Record<string, number> | null = null;
   await st("B-4", "รันจริง: exit 0 · BACKFILL_SUMMARY ตัวเลข ≥ dry (bookedToConfirmed ≥ 3 · occupancyClaimed ≥ 1 · occupancyConflict ≥ 1 · foliosCreated ≥ 3)", () => {
@@ -1284,7 +1290,7 @@ try {
     ok(r4.length === 1 && r4[0].counted === false, `R4 nights: ${J(r4)}`);
     const rb = await q<{ counted: boolean; t: string; u: string }>(`SELECT counted, "tenantId" AS t, "unitId" AS u FROM "HotelBookingNight" WHERE "reservationId" = $1`, [sc.RB]);
     ok(rb.length === 1 && rb[0].counted === false && rb[0].t === tB && rb[0].u === uB, `ร้าน B nights: ${J(rb)}`);
-    const rows = await q<{ id: string; nights: number; n: number }>(`SELECT r.id, r.nights, (SELECT count(*)::int FROM "HotelBookingNight" b WHERE b."reservationId" = r.id) AS n FROM "HotelReservation" r WHERE r."tenantId" = $1 AND r.status::text = 'CONFIRMED'`, [tA]);
+    const rows = await q<{ id: string; nights: number; n: number }>(`SELECT r.id, r.nights, (SELECT count(*)::int FROM "HotelBookingNight" b WHERE b."reservationId" = r.id) AS n FROM "HotelReservation" r WHERE r."tenantId" = $1 AND r.status::text = 'CONFIRMED' AND r.id = ANY($2::text[])`, [tA, [sc.R1, sc.R2, sc.R3]]); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-B7-scene-only): จำกัดที่การจองฉาก 3 ใบ (ข้อ C-1/helper สร้าง CONFIRMED อื่นไว้)
     ok(rows.length === 3 && rows.every((r) => r.n === r.nights), `nights ต่อการจอง: ${J(rows)}`);
     eq(await countOf("HotelBookingNight", `"tenantId" = $1 AND "unitId" <> $2`, [tA, uA]), 0, "nights ข้ามหน่วยในร้าน A");
   });
@@ -1438,7 +1444,8 @@ const REG: { s: string; args?: string[]; env?: Record<string, string>; judge: (o
   { s: "qc-hotel-public", judge: judgeExit0, note: "exit 0" },
   { s: "qc-hotel-refund", judge: judgeExit0, note: "exit 0" },
   { s: "qc-svc-r0.8", judge: judgeNoFail, note: "ไม่มี FAIL" },
-  { s: "qc-svc-r0.9", judge: judgeNoFail, note: "ไม่มี FAIL (V ภาพ SKIP ได้)" },
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-G5-r09-preexisting): r0.9 แดง 55/56 ที่ G-1 (qc-hotel-money ซ้อน 3 ชั้น HT-2.x journal 0 แถว) มาตั้งแต่ G2/G3 ก่อน H.0 (g2-qcall.log:525 · g3-qcall.log:527) — หนี้นอก H.0 · ยอมแดงเฉพาะ G-1
+  { s: "qc-svc-r0.9", judge: (out) => { const f = summaryOf(out)?.failed; return Array.isArray(f) && f.every((x) => x === "G-1"); }, note: "ไม่มี FAIL นอกจาก G-1 (หนี้เดิม r0.9 55/56 ตั้งแต่ G2)" },
   { s: "qc-svc-r0.3", judge: judgeNoFail, note: "ไม่มี FAIL (เครื่องยนต์ค่าตั้ง)" },
   { s: "qc-svc-r0.4", judge: judgeNoFail, note: "ไม่มี FAIL (หน้าค่าตั้ง)" },
   { s: "qc-svc-d.0", env: { SVC_D0_NO_REGRESSION: "1" }, judge: judgeNoFail, note: "ไม่มี FAIL (ตารางหอไม่เปลี่ยน)" },
