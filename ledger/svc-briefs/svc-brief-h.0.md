@@ -97,7 +97,7 @@ reservationId `String` FK Cascade · partyId `String?` · fullName `String` · n
 
 ## 3. backfill «scripts/svc-h0-backfill.mts» (รันหลัง migrate deploy · idempotent · ข้ามร้าน · `--dry` ก่อนเสมอ)
 1. `HotelReservation.status = 'BOOKED'` → `CONFIRMED` (UPDATE ชุดเดียว · นับแถว)
-2. ทุกการจอง status ∈ CONFIRMED/CHECKED_IN ที่ยังไม่มี `HotelBookingNight` → สร้างคืน `[checkInDate, checkOutDate)` ราคา = `ratePerNightSatang` · `priceSource='MANUAL'` · `roomId` = reservation.roomId · `counted = true` · CHECKED_OUT/CANCELLED/NO_SHOW/REFUNDED → สร้างด้วย `counted=false` (ประวัติ)
+2. ทุกการจอง status ∈ CONFIRMED/CHECKED_IN ที่ยังไม่มี `HotelBookingNight` → สร้างคืน `[checkInDate, checkOutDate)` ราคา = `ratePerNightSatang` · `priceSource='MANUAL'` · `roomId` = reservation.roomId · `counted = true` · **roomId ของคืน = `reservation.roomId` ถ้ามี ไม่งั้นห้องจาก `RoomOccupancy` STAY active ของการจองนั้น (ถ้ามี) ไม่งั้น null** (มติผู้คุม 7 พ.ย. ตามคำถามข้อสอบ #7) · CHECKED_OUT/CANCELLED/NO_SHOW/REFUNDED → สร้างด้วย `counted=false` (ประวัติ)
 3. การจอง CONFIRMED/CHECKED_IN ที่ไม่มี `RoomOccupancy` active (kind STAY · refType "HotelReservation") และมี `roomId` → `claimRoom` ผ่าน facade rooms (ไม่เขียน occupancy ตรง) · ชน ⇒ รายงาน `CONFLICT` ไม่ทับ (= เส้น legacy ของ `stayLoad` ถอดได้ใน H.3 เมื่อ CONFLICT = 0)
 4. `HotelFolio` OPEN ให้การจอง CONFIRMED/CHECKED_IN ที่ไม่มี folio · ไม่สร้าง item (ค่าห้องจะ post โดย audit H.7 · มัดจำเดิมที่ `depositPaidAt` ≠ null → item `DEPOSIT` ลบ refType "PosSale" refId `depositSaleId`)
 5. `policySnapshot` ว่างคงว่าง (การจองเดิมไม่มีนโยบาย — H.3 อ่าน null = ไม่มีขั้นบันได คืน 0)
@@ -139,7 +139,7 @@ reservationId `String` FK Cascade · partyId `String?` · fullName `String` · n
 ### 6.2 `SNAPSHOTS.reservation` (CC §1.6 · H.3 จดตอนจอง)
 `rooms.hotel.checkInTime` `checkOutTime` `deposit` `cancelPolicy` `noShow` `holdMinutesOnline` `holdMinutesCounter` `minNights` `securityDeposit` `securityDeposit.enabled` `tax.mode` `tax.vatBp` `tax.serviceChargeBp` `rooms.money.rounding` `rooms.locale.docLanguage`
 ### 6.3 scope RATE_PLAN (`service.ts`)
-`SUPPORTED_SCOPES` + RATE_PLAN · `locateMany`: `hotelRatePlan.findMany({where:{tenantId, id in}})` → `known {TENANT, UNIT, RATE_PLAN}` · `entitiesOfUnit` + rate plan ACTIVE ของหน่วย · chain `RP`/`U_RP`/`RT_RP` ที่ประกาศไว้ใช้ได้จริง (ข้อสอบ: ตั้ง `rooms.hotel.cancelPolicy` ที่ชั้น RATE_PLAN แล้ว `resolveSetting` ด้วย `ratePlanId` ได้ค่านั้น · ratePlan ต่างร้าน ⇒ `SCOPE_NOT_FOUND`)
+`SUPPORTED_SCOPES` + RATE_PLAN · `locateMany`: `hotelRatePlan.findMany({where:{tenantId, id in}})` → `known {TENANT, UNIT, RATE_PLAN}` · `entitiesOfUnit` + rate plan ACTIVE ของหน่วย · chain `RP`/`U_RP`/`RT_RP` ที่ประกาศไว้ใช้ได้จริง (ข้อสอบ: ตั้ง `rooms.hotel.cancelPolicy` ที่ชั้น RATE_PLAN แล้ว `resolveSetting` ด้วย `ratePlanId` ได้ค่านั้น · ratePlan ต่างร้าน ⇒ `NOT_FOUND` (code เดิมของชิ้นกลาง · ไม่เพิ่ม code ใหม่ — มติผู้คุม 7 พ.ย.))
 
 ## 7. สิทธิ์ (`permissions.ts` โมดูล hotel · ต่อท้าย · ป้ายไทย)
 `hotel.rates.read` "ดูราคาห้องพัก" · `hotel.rates.write` "ตั้งราคา/ฤดู/แผนราคา" · `hotel.settings.edit` "ตั้งค่าโรงแรม" · `hotel.booking.manage` "จัดการการจอง (ย้าย/ต่อ/ย่น/ไม่มา)" · `hotel.folio.post` "ลงรายการบิลห้อง" · `hotel.folio.void` "ยกเลิกรายการบิลห้อง" · `hotel.guest.register` "ลงทะเบียนผู้เข้าพัก (ร.ร.3/ตม.30)" · `hotel.guest.viewId` "ดูเลขบัตร/พาสปอร์ตเต็ม" · `hotel.housekeeping` "แม่บ้าน" · `hotel.housekeeping.inspect` "ตรวจห้องแม่บ้าน" · `hotel.audit.run` "ปิดวัน (night audit)" · `hotel.reports.read` "รายงานโรงแรม" · `hotel.channel.manage` "ช่องทาง OTA"
@@ -161,3 +161,6 @@ hotel actions ทุกตัว + 3 หน้า + storefront `resolveHotelUnit
 - **H.5**: folio ที่ backfill ไม่มี ROOM item (audit H.7 post ย้อนหลังเฉพาะคืน ≥ วันเปิดใช้)
 - **H.10**: ตาราง 2.14 · `requires.integration` = CHANNEL_MANAGER
 - เช็กลิสต์ deploy: `ALTER TYPE ADD VALUE` 3 ค่าลงก่อน client · รัน backfill `--dry` แล้วจริง · ตรวจ CONFLICT ก่อนปล่อย H.3
+
+## 12. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 153 ข้อ @089670b4c)
+1. scope ข้ามร้าน = `NOT_FOUND` (ไม่มี SCOPE_NOT_FOUND) 2. backfill ข้ามร้านตามใบ · X1 = แถวใหม่ถือ tenant/unit ของตัวเอง + ร้านไม่มี BOOKED ไม่เปลี่ยน (แถว BOOKED กำพร้า 94 แถวบนฐาน l2 = ขยะเก่า ถูกแปลงด้วย ไม่เป็นไร) 3. `migrate diff` ตัดสินเฉพาะ statement ที่แตะ Hotel*/Channel*/enum ของใบ (drift HR เดิมไม่นับ) 4. requires CHANNEL_MANAGER บังคับที่ `ota.enabled` + ห้ามเหลือ "OTA" 5. aiIdReader ยังไม่มี requires 6. NightAudit default 0 เฉพาะ 4 ตัวนับท้าย 7. nights.roomId ดึงจาก occupancy เมื่อ reservation.roomId null (แก้ §3 แล้ว) 8. คีย์ใหม่อยู่หลัง rr3OnScreen พอ 9. ด่าน HOTEL ตรวจสถิต + V-1 บน QC server
