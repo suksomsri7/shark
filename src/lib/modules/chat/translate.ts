@@ -17,6 +17,7 @@
 //     ปนกันเมื่อไหร่เจ้าของแยกบิลไม่ออกว่าเงินหมดไปกับอะไร แล้วจะไปปิดผิดตัว
 
 import { tenantDb } from "@/lib/core/db";
+import { maskChatText } from "./pii-mask"; // SEC S3a.6 ◂
 import { resolveProvider } from "@/lib/ai/provider";
 import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
 
@@ -230,7 +231,8 @@ export async function translateMessage(args: {
   // 🔴 ด่านเงินต้องมาก่อนการยิง LLM เสมอ (TR-8.2)
   if (!(await canSpend(tenantId))) return { ok: false, reason: await spendRefusalMessage(tenantId) }; // R-S1.13e
 
-  const run = await runTranslate(source, target);
+  // SEC S3a.6 ▸ ข้อความลูกค้าก่อนเข้าโมเดล = ปิดข้อมูลติดต่อ (ตัวเดียวกับ R-Z24) · ต้นฉบับยังเห็นในห้อง · ร่างของทีม (translateDraft) ไม่ปิด — เป็นข้อความที่ทีมตั้งใจส่ง ◂
+  const run = await runTranslate(maskChatText(source), target);
   if (!run.ok) return run;
 
   await chargeUsageSafe(

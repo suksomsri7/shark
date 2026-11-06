@@ -29,7 +29,8 @@ async function POST_(req: Request, ctx: RouteCtx) {
     const r = await suggestReply({ tenantId: c.tenantId, systemId: sid, conversationId: id, userId: c.userId, source: "app" });
     if (!r.ok) return Response.json({ ok: false, reason: r.reason });
     // allowlist: id · body · warn (ไม่ส่ง sources — เป็นรหัสภายในของคลังความรู้)
-    return Response.json({ ok: true, options: r.options.map((o) => ({ id: o.id, body: o.body, warn: o.warn })), sourceMessageId: r.sourceMessageId });
+    // SEC S3a.6 ▸ + `gloss` ต่อ option (คำแปลภาษาทีม · null เมื่อภาษาเดียวกัน) + `replyLang` ระดับบน ◂
+    return Response.json({ ok: true, options: r.options.map((o) => ({ id: o.id, body: o.body, warn: o.warn, gloss: o.gloss })), sourceMessageId: r.sourceMessageId, replyLang: r.replyLang });
   } catch (e) {
     await logOps("WARN", "mobile-inbox", "ai-suggest: ล้ม", { detail: errDetail(e), tenantId: c.tenantId }).catch(() => {});
     return fail(500, "server_error", "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง");
