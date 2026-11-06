@@ -38,5 +38,17 @@
 - persona T1-2: ห้องเดิมต้องได้ prompt เดิมทุกไบต์ (C.11 · s1.2 P-1) ⇒ ถ้อยคำเดิมประกอบจากชิ้น (`NOW_NO_ASK`/`NOW_NO_CONFIRM`) · ห้องบริบทลูกค้าใช้ถ้อยคำใหม่ — ข้อสอบตรวจซอร์สด้วย regex จึงผ่าน ขอ ORACLE-EDIT ให้ตรวจ prompt ที่สร้างจริงแทน
 - inbox/attachments ไม่รับ text/plain อีกต่อไป (ไม่มี magic bytes)
 
-## 5. ผลรัน
-(ดูรายงาน)
+## 5. ผลรัน (6 พ.ย. UTC)
+- oracle `qc-sec-s3a1-s2` forced: #1 (ก่อน merge) 28/28 · #2 (หลัง merge tip 1d112c7b2) 28/28 — D-1/D-2 fitness ผ่าน
+- `env -u DATABASE_URL -u DIRECT_URL pnpm fitness` = 53/53 · pre-commit fitness ผ่าน
+- typecheck: 1 error ที่ `scripts/qc-sec-s3a1-s2.mts(170,130)` (Uint8Array → BlobPart ของข้อสอบเอง · มีตั้งแต่ tip) — src 0
+- regression: s1.6 16/16 · s1.7 27/27 · s1.12 15/15 · s1.14 13/13 · s1.14b 24/24 · s1.21 19/19 · s1.22 14/14 · s1.25 19/19 · s3a.1 16/17 (R-1 SKIP โมเดลจริง) · s1.2 28/28 · s1.10 13/13 ·
+  qc-ai-memory 7/7 · ai-proposals 16/16 · ai-tools 18/18 · ai-tools2 8/8 · ai-actions 11/12 CRASH (= baseline 049df880b) · ai-phase-b2 11/11 · ai-plan 7/7 · chat-ai-suggest 44/44 · chat-attachments 37/37 · mobile-auth 31/31 · mobile-chat 29/29 · approval 16/16
+- **s1.19 แดง (Q-1 · V-2 · R-2 crash)** = ข้อสอบเทียบ/แกะ `sha256(phone:code)` ตรง ๆ — ชนกับ R-Z27 HMAC ⇒ ORACLE-EDIT (§6) · สำเนาชั่วคราวที่แก้ `sha` เป็น HMAC (ลบแล้ว) = 25/26 ข้อเดียวที่แดงคือ S-2b (OTP อีเมล ยัง sha256 — สำเนาแก้เกินไปทั้งไฟล์)
+- qc-crm-c3.4 52/53: X2.2 `krabiDeals=0 ownerControl=false` — ฐาน QC เลขาไม่มีทีม krabi ของ seed (อ่านฐานตรง ไม่ผ่านโค้ดที่แก้) · ไม่อยู่ใน baseline 049df880b
+
+## 6. ORACLE-EDIT ที่ขอ
+- **s1.19 L46/L51 + Q-1**: แยก helper ของเบอร์ `const hmacPhone = (v) => (process.env.SESSION_SECRET ? createHmac("sha256", process.env.SESSION_SECRET) : createHash("sha256")).update(v).digest("hex")` · `crack()` + Q-1 (`row.codeHash === …`) ใช้ hmacPhone · `sha` คงไว้ให้ OTP อีเมล (S-2b)
+- **s3a1-s2 L170**: `new File([bytes as BlobPart], …)` (typecheck)
+- **s3a1-s2 T1-2**: ตรวจ prompt ที่ `buildSystemPrompt({…, customer})` สร้างจริง แทน regex บนซอร์ส
+- **s1.14 R-2**: regex `/export async function (POST|…)/` ไม่เจอแล้ว (route เป็น `export const POST = withErrors(…)`) ⇒ ตรวจว่างเปล่า — ควรเป็น `/(export async function|async function) (POST|PUT|DELETE|PATCH)_?\(/`
