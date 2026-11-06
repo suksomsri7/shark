@@ -10,7 +10,7 @@
 //   • ไม่มีข้อมูลผู้เข้าพักในโมเดลราคา (X10) · เหลือขาย = ห้องขายรายคืนได้ − ห้องที่ถูกถือ (occupancy ผ่าน facade rooms) − คืนที่นับ (HotelBookingNight.counted)
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import { tenantDb } from "@/lib/core/db";
+import { tenantDb, type TenantDb } from "@/lib/core/db";
 import { canAccessUnit, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { bkkYmd } from "@/lib/core/quiet-hours";
 import { resolveSettings, resolveSettingsMany } from "@/lib/core/settings";
@@ -104,7 +104,10 @@ const dbDate = (ymd: string): Date => new Date(`${ymd}T00:00:00.000Z`);
 const jsonOf = (v: unknown): Prisma.InputJsonValue | undefined => (v === null || v === undefined ? undefined : (JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue));
 const todayTh = (): string => bkkYmd(new Date());
 const zodReason = (e: z.ZodError): string => e.issues[0]?.message || "ข้อมูลไม่ครบหรือไม่ถูกต้อง";
-const lockKey = (tx: Prisma.TransactionClient, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+/** tx ของ tenantDb(...).$transaction (client ขยาย) — helper รับแค่ส่วนที่ใช้ */
+type LockTx = { $executeRaw: TenantDb["$executeRaw"] };
+type AuditTx = { auditLog: TenantDb["auditLog"] };
+const lockKey = (tx: LockTx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
 const isUniqueErr = (e: unknown): boolean => isRec(e) && (e.code === "P2002" || /23505|unique/i.test(String(e.message ?? "")));
 
 function actorOf(a: unknown): HotelActor | null {
@@ -140,7 +143,7 @@ async function gate(actorIn: unknown, ctx: unknown, input: unknown, need: "read"
 }
 
 type AuditIn = { tenantId: string; unitId: string; actorId: string; action: string; targetType: string; targetId: string; before: unknown; after: unknown };
-async function audit(tx: Prisma.TransactionClient, a: AuditIn): Promise<void> {
+async function audit(tx: AuditTx, a: AuditIn): Promise<void> {
   await tx.auditLog.create({
     data: {
       tenantId: a.tenantId,
