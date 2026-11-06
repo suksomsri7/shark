@@ -307,7 +307,7 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-Z6 (L3 M5)** hourly ไม่เรียกโมเดล inline · `isDue` = `hour ≥ hourBkk ∧ lastRunDay ≠ today` (ตามหลังได้ในวันเดียวกัน) · `export const maxDuration` ของ hourly ตามแพลตฟอร์ม
 - **R-Z7 (L3 M6)** กุญแจกันซ้ำของผลข้างเคียง tool: proposal/support case/memory สร้างด้วย `clientMessageId = "tc:<messageId>:<toolCallIndex>"` (unique ต่อ conversation) · รันซ้ำ ⇒ แถวเดิม
 - **R-Z8 (L3 M7)** `secretary.roomJobs` ลงทะเบียนเป็นงานแรกของราง minute พร้อมงบของตัวเอง 8 วิ (ไม่กินงบรวม) · `chat.sla` ต้องไม่ no-budget
-- **R-Z9 (L2 M-1 · m-7 · L1 m-2 · L3 m3)** เพดาน assist: ตัดเฉพาะแถว AiUsage ที่ `source="ROOM_WORKER"` (worker ส่ง source ใหม่) ไม่ใช่ทุก conversation ที่มี AiRoom · `POST /api/mobile/chat/send` + action เว็บ: ปฏิเสธ conversation ที่มี AiRoom (ห้องเลขาใช้ได้เฉพาะเส้น room) + rate-limit 20/นาที · worker: ห้อง `closedAt` ⇒ FAILED ไม่เรียกโมเดล · `executeProposal`/`executePlan` ห้องปิด ⇒ ปฏิเสธ
+- **R-Z9 (L2 M-1 · m-7 · L1 m-2 · L3 m3)** เพดาน assist: ตัดเฉพาะแถว AiCreditTxn USAGE ที่ `note` ขึ้นต้น `room-worker:` (worker ส่ง note นี้ · ไม่แตะ enum/prisma) ไม่ใช่ทุก conversation ที่มี AiRoom · `POST /api/mobile/chat/send` + action เว็บ: ปฏิเสธ conversation ที่มี AiRoom (ห้องเลขาใช้ได้เฉพาะเส้น room) + rate-limit 20/นาที · worker: ห้อง `closedAt` ⇒ FAILED ไม่เรียกโมเดล · `executeProposal`/`executePlan` ห้องปิด ⇒ ปฏิเสธ
 - **R-Z10 (L2 m-5)** คืนโควตาเมื่อ job แรกของห้อง FAILED ก่อนมี ASSISTANT: `aiRoom.updateMany({id, jobsCounted:1}→0)` + `aiJobCounter.updateMany({jobs>0}, decrement)` ใน tx เดียว (คืนได้ครั้งเดียว) · `startRoom` ปฏิเสธเมื่อ `!aiEnabled()` ด้วยข้อความไทย
 - **R-Z11 (L2 m-6 · L3 m4/L4 m7 · L1 LOW-3)** `secStartRoomAction` รับ `clientMessageId` + `claimNewRoom` · กุญแจ send = `sec:cmid:<tenant>:<room>:<user>:<cmid>` · cmid ห้าม `:` ทั้ง rooms/send · send ตอบ duplicate พร้อม `messageId`/`jobId` และถ้าครั้งแรกยังไม่จบ ⇒ `409 pending` (เหมือน rooms) · `release`/`remember` ไม่กลืน error (logOps + ตอบ 500)
 - **R-Z12 (L3 m1/m2)** กันสแปม push ห้อง: กุญแจรวม jobId (คำตอบที่ 2 ไม่หาย) · จองหลังส่งสำเร็จ · worker claim เฉพาะห้องที่ไม่มี RUNNING ที่ lease ยังไม่หมด (ลำดับต่อห้อง)
@@ -333,3 +333,21 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 - **R-Z28 (L2 M-2)** `new.tsx`/`info.tsx`: `clientMessageId` เก็บใน ref จนส่งสำเร็จหรือข้อความ/บริบทเปลี่ยน (แบบ room/[id].tsx)
 - **R-Z29 (R-Z21)** ลบบัญชี: ขอ OTP (sms/request ของเบอร์ตัวเอง หรือ auth/otp ของอีเมล) แล้วส่ง `code` ไปกับคำขอลบ · UI 2 ขั้น
 - **R-Z30** กัน double-submit ในทุกปุ่มส่งที่ยังไม่มี (login verify ทำแล้ว) · ตรวจ `409 pending` ของ send ⇒ รอ/ลองใหม่ ไม่โชว์ error
+
+### Z.2-docs ตาราง "เอกสาร `docs/api/SECRETARY-API.md` ไม่ตรงโค้ด" (จากนักล่า L4 · S3a.1-S2 ต้องแก้ให้ตรงโค้ดหลังแก้)
+| แถว / กติกา | เอกสาร | โค้ด (หลัง S3a.1-S2) |
+|---|---|---|
+| L28 `GET /me` | RL 120/นาที | ใส่ RL 120 จริง (R-Z20) |
+| L33 `GET rooms` | `scope=tenant` ไม่ใช่ OWNER ⇒ 403 · RL 60 (เว็บ) | ลดเป็น `mine` เงียบ · scope ค่าแปลก = mine · มือถือไม่มี RL → เขียนตามโค้ด |
+| L49 `GET log` · L61 `GET secretary/inbox` | ช่อง RL "–" | 60/นาที |
+| กติกาข้อ 3 (L10) | "GET ไม่ติดเพดาน" | inbox/log/digest/badges/invites-pending ติดเพดาน (R-S1.14b T-8) |
+| กติกาข้อ 4 (L11) | ภาพเรื่องช่วยเหลือ 5 MB · body ผิด = 400 invalid | 4 MB · inbox ตอบ 422 invalid ไม่มี `field` |
+| กติกาข้อ 4 | id ใน path ≤80 ไม่งั้น 404 | inbox ไม่ตรวจความยาว (ยัง 404) |
+| กติกาข้อ 5 กับ L63 quota | ไม่มี micro-dollar | ส่ง `usedMicro`/`capMicro` (R-S1.13i) → แก้กติกา |
+| กติกาข้อ 6 | ทุก error มี `message` | ทำให้จริงแล้ว (R-Z20) — ยืนยันแถว inbox gate · /me · sms |
+| L45 reject | 404 · 409 · 400 | CRM ไม่มีสิทธิ์ ⇒ 403 · ไม่ PENDING ⇒ 409 ทั้งสองทาง · CRM+note ⇒ 200 (R-Z20) |
+| L83/L85 invite/resend | 429 throttled/rate_limited | `{error:"rate_limited", message, retryAfterSec}` + header (R-Z20) |
+| L100/L108/L112 read · apply · routing | RL "–" | 120 · 60 · 30 (R-Z20) |
+| L118 attachments | 10 MB | Vercel 4.5 MB ตัดก่อน (413 ไม่ใช่ JSON) → เขียนเพดานจริง + svg/text ปฏิเสธ (R-Z19) |
+| auth/sms/verify · phone/link | – | RL ip 30/10 นาที · phone 10/10 นาที · เหตุผลยุบเหลือ invalid (R-Z18) |
+| account/delete | `{confirm}` | `{confirm, code}` step-up (R-Z21) · 400 code_required · 401 invalid |
