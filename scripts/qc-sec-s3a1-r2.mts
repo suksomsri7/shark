@@ -6,6 +6,7 @@
 //   T2 pos_create_sale memberId ⇒ บิลผูกสมาชิก ⇒ ระบายคิวของร้านทดสอบ ⇒ แต้ม > 0 ตามอัตราร้าน · ไม่ส่ง = ไม่ผูก · customer_search มี id (R-Z42)
 //   T3 pickModel("ร่างใบเสนอราคาให้…") = smart · "ยอดขายวันนี้" = fast (R-Z43)
 //   T4 costMicroUsd แยกราคาแคช · parseAnthropicReply แยกแคช · chargeUsage หักตามจริง (R-Z44)
+//   T6 documents.create ไม่ระบุ VAT ⇒ ค่าปริยายจากร้าน (จด 700/EXCLUDE · ไม่จด 0/NONE) · ระบุเองชนะ · สรุปยอดรวม VAT ถูก · hint ห้ามถาม VAT (R-Z49)
 //   T5 chat.send kind=quote ไม่มี documentId: ไม่มีใบ ⇒ ล้มไทย+คง PENDING · มีใบ EXECUTED ในห้อง ⇒ ข้อความมีเลขที่+ลิงก์ · ใบของห้องอื่น ⇒ ไม่หยิบ (R-Z45)
 // รัน: bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 SMS_PROVIDER=mock pnpm exec tsx scripts/qc-sec-s3a1-r2.mts
 import { join, dirname } from "node:path";
@@ -253,6 +254,31 @@ try {
     const accTools = (tools.toolRegistry?.() ?? []).filter((x: AnyMod) => /document/.test(String(x.def?.name ?? "")) && /create/.test(String(x.def?.name ?? "")));
     const docDesc = accTools.map((x: AnyMod) => String(x.def?.description ?? "")).join(" | ");
     chk("T5-4", "คำอธิบายเครื่องมือสร้างเอกสารบัญชีบอกให้เรียก send_customer_message kind='quote' ในเทิร์นเดียว (ไม่ต้องใส่ documentId)", /send_customer_message/.test(docDesc) && /quote/.test(docDesc), docDesc.slice(0, 200));
+  }
+
+  // ───────── T6 ─────────
+  console.log("── T6: VAT ปริยายจากค่าตั้งค่าร้าน (R-Z49) ──");
+  {
+    const accSys = await prisma.appSystem.findFirst({ where: { tenantId: tid, type: "ACCOUNT" }, orderBy: { createdAt: "asc" } });
+    const setVat = async (registered: boolean) => (prisma as AnyMod).accountSettings.upsert({ where: { systemId: accSys!.id }, create: { tenantId: tid, systemId: accSys!.id, vatRegistered: registered }, update: { vatRegistered: registered } });
+    const create = async (line: Record<string, unknown>) => {
+      const out = parse(await tools.runTool(ctxOf(conv0.id), "account_create_document", { type: "QUOTATION", lines: [{ description: "เครื่องชงกาแฟ", qty: 2, unitPriceSatang: 450000, ...line }] }));
+      const row = out.proposalId ? await prisma.aiProposal.findUnique({ where: { id: out.proposalId }, select: { summary: true, payload: true } }) : null;
+      const input = ((row?.payload as AnyMod | undefined)?.input ?? {}) as AnyMod;
+      return { out, summary: String(row?.summary ?? ""), input, line0: (input.lines ?? [])[0] as AnyMod | undefined };
+    };
+    await setVat(true);
+    const reg = await create({});
+    chk("T6-1", "ร้านจด VAT · ไม่ระบุ VAT ⇒ บรรทัด vatRateBp 700 · vatMode EXCLUDE · สรุปยอดรวม VAT = 9,630.00 บาท", reg.line0?.vatRateBp === 700 && reg.input.vatMode === "EXCLUDE" && /9,630\.00/.test(reg.summary), JSON.stringify({ out: reg.out.proposalId ? "proposal" : reg.out, line: reg.line0, mode: reg.input.vatMode, summary: reg.summary }).slice(0, 260));
+    await setVat(false);
+    const non = await create({});
+    chk("T6-2", "ร้านไม่จด VAT · ไม่ระบุ ⇒ บรรทัด 0 · vatMode NONE · สรุปยอด 9,000.00 บาท", non.line0?.vatRateBp === 0 && non.input.vatMode === "NONE" && /9,000\.00/.test(non.summary), JSON.stringify({ line: non.line0, mode: non.input.vatMode, summary: non.summary }).slice(0, 260));
+    await setVat(true);
+    const own = await create({ vatRateBp: 0 });
+    chk("T6-3", "ระบุ vatRateBp เองชนะค่าปริยาย (จด VAT แต่ระบุ 0 ⇒ 0 · สรุป 9,000.00)", own.line0?.vatRateBp === 0 && /9,000\.00/.test(own.summary), JSON.stringify({ line: own.line0, summary: own.summary }).slice(0, 200));
+    const docTool = (tools.toolRegistry?.() ?? []).find((x: AnyMod) => x.def?.name === "account_create_document");
+    const hint = String(docTool?.def?.description ?? "");
+    chk("T6-4", "คำอธิบาย account_create_document มีประโยค VAT: ระบบเติมจากค่าตั้งค่าร้าน · อย่าถาม", /VAT/.test(hint) && /Do not ask about VAT/i.test(hint) && /settings/.test(hint), hint.slice(-260));
   }
 } catch (e) {
   const detail = (e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : JSON.stringify(e)).slice(0, 400);
