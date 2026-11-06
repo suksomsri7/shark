@@ -188,7 +188,8 @@ export function customerBlock(c: CustomerContext): string {
   if (c.linked.member) head.push(`สมาชิกระดับ ${c.linked.member.tier ?? "-"}`);
   if (c.linked.deals?.length) head.push(`ดีล ${c.linked.deals.map((d) => `${clip(d.title, 30)} (${clip(d.stage, 20)} · ${baht(d.valueSatang)})`).join(", ")}`);
   if (c.linked.openDocs?.length) head.push(`เอกสารค้าง ${c.linked.openDocs.map((d) => `${d.docNo} ${baht(d.grandTotal)}`).join(", ")}`);
-  let out = clip(head.join(" · "), 500);
+  // SEC S3a.1-R2 ▸ R-Z51 (ค): บอกทางส่งถึงลูกค้าคนนี้ชัด ๆ (โมเดลไม่ต้องค้นห้องแชทเอง) ◂
+  let out = `${clip(head.join(" · "), 500)}\nส่งข้อความถึงลูกค้าคนนี้: send_customer_message conversationId=${c.chatConversationId}`;
   const lines: string[] = [];
   for (let i = c.recent.length - 1; i >= 0; i--) {
     const r = c.recent[i]!;

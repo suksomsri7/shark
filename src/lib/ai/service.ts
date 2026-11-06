@@ -376,19 +376,26 @@ export async function sendMessage(
             ? ((tc.args as { skills: unknown[] }).skills.map(String))
             : [];
           const ok: string[] = [];
+          const again: string[] = []; // SEC S3a.1-R2 ▸ R-Z51 (ง): สกิลที่โหลดแล้วในเทิร์นนี้ — ไม่โหลดซ้ำ · บอกเครื่องมือที่ใช้ได้อยู่แล้ว ◂
           for (const id of want) {
             const sk = skillById(id);
             if (!sk || !visibleSkills.some((v) => v.id === id)) continue;
+            if (loadedSkillIds.has(id)) {
+              again.push(id);
+              continue;
+            }
             loadedSkillIds.add(id);
             ok.push(id);
           }
           for (const n of offeredOf(toolNamesOfSkills(ok))) activeToolNames.add(n);
+          const toolsOf = (ids: string[]) => offeredOf(toolNamesOfSkills(ids)).join(", ");
+          const parts: string[] = [];
+          if (ok.length) parts.push(`Loaded skills: ${ok.join(", ")}. These tools are available from now on: ${toolsOf(ok)} — call them now.`);
+          if (again.length) parts.push(`Already loaded: ${again.join(", ")} (tools ${toolsOf(again)} are available) — do not load again; call the tool you need.`);
           messages.push({
             role: "tool",
             toolCallId: tc.id,
-            content: ok.length
-              ? `Loaded skills: ${ok.join(", ")}. Their tools are now available — call them now.`
-              : "No matching skill. Pick an id from the AVAILABLE SKILLS list.",
+            content: parts.length ? parts.join(" ") : "No matching skill. Pick an id from the AVAILABLE SKILLS list.",
           });
           continue;
         }
