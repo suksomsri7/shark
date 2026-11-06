@@ -253,17 +253,30 @@ export async function runScheduledTasks(
   });
 
   let ran = 0;
-  const ownedJobIds: string[] = []; // SEC S3a.1-S1 R-Z6
+  // SEC S3a.1-S1 ▸ R-Z6: รอบที่ 1 = งานของคนตั้ง (claim + startRoom(+job) เท่านั้น · ไม่เรียกโมเดล) → ส่ง jobId ให้ผู้เรียก (route hourly
+  //   รันใน `after()`) หรือรัน worker ที่นี่ · รอบที่ 2 = แถวเดิม (ownerUserId null) เดินโค้ดเดิมทุกตัวอักษร ◂
+  const ownedJobIds: string[] = [];
   for (const task of tasks) {
-    // S1.9 ▸ งานของคนตั้ง = ห้องงานใหม่ต่อรอบ (ไม่ throw) · แถวเดิม (ownerUserId null) เดินโค้ดเดิมด้านล่าง ◂
-    if (task.ownerUserId) {
-      const jobId = await runOwnedTask(task, now, today); // SEC S3a.1-S1 R-Z6: claim + startRoom(+job) เท่านั้น
-      if (jobId) {
-        ran++;
-        ownedJobIds.push(jobId);
-      }
-      continue;
+    if (!task.ownerUserId) continue;
+    const jobId = await runOwnedTask(task, now, today);
+    if (jobId) {
+      ran++;
+      ownedJobIds.push(jobId);
     }
+  }
+  if (ownedJobIds.length > 0) {
+    if (deps?.deferRoomJobs) deps.deferRoomJobs([...ownedJobIds]);
+    else {
+      try {
+        const { runRoomJobs } = await import("./secretary/worker");
+        await runRoomJobs({ provider, ...(deps?.post ? { post: deps.post } : {}), now, jobIds: ownedJobIds, limit: ownedJobIds.length });
+      } catch (e) {
+        await logOps("WARN", "ai", "scheduled: รันงานของห้องงานประจำไม่สำเร็จ (ตัวเก็บตกรายนาทีหยิบต่อ)", { detail: e instanceof Error ? e.message : String(e) }).catch(() => {});
+      }
+    }
+  }
+  for (const task of tasks) {
+    if (task.ownerUserId) continue; // S1.9 ▸ งานของคนตั้งทำในรอบที่ 1 แล้ว ◂
     try {
       // รัน AI แบบเดียวกับผู้ใช้พิมพ์คำสั่งเอง (มีเครื่องมืออ่านข้อมูลจริงครบ) — ฉีด provider fast
       // CRM C5.5-G1 ▸ ไม่มีคนกด + แถวงานไม่เก็บผู้ตั้ง · ผลส่งเป็นแจ้งเตือนที่ "ทุกคนในร้าน" เห็น (recipientUserId null)
@@ -297,18 +310,6 @@ export async function runScheduledTasks(
     } catch {
       // task ตัวนี้พัง (เช่น provider ล่มชั่วคราว) → ข้ามไปทำตัวถัดไป ไม่ให้ล้มทั้งรอบ
       continue;
-    }
-  }
-  // SEC S3a.1-S1 ▸ R-Z6: โมเดลของงานประจำรันหลัง claim ครบทุกตัว (ไม่ขวางลูป) — ผู้เรียกรับไปรันเอง หรือรันที่นี่ (ไม่ throw) ◂
-  if (ownedJobIds.length > 0) {
-    if (deps?.deferRoomJobs) deps.deferRoomJobs([...ownedJobIds]);
-    else {
-      try {
-        const { runRoomJobs } = await import("./secretary/worker");
-        await runRoomJobs({ provider, ...(deps?.post ? { post: deps.post } : {}), now, jobIds: ownedJobIds, limit: ownedJobIds.length });
-      } catch (e) {
-        await logOps("WARN", "ai", "scheduled: รันงานของห้องงานประจำไม่สำเร็จ (ตัวเก็บตกรายนาทีหยิบต่อ)", { detail: e instanceof Error ? e.message : String(e) }).catch(() => {});
-      }
     }
   }
   return ran;
