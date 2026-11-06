@@ -5,6 +5,7 @@
 // 🔴 ช่องทาง: ไม่คืน credentials · webhookKey · tokenPreview · publicKey* (แคบกว่า `maskedConnection` ของเว็บโดยตั้งใจ — แอปไม่ใช่หน้าตั้งค่าช่องทาง)
 // pure (ไม่แตะ DB) — route เป็นคนโหลด แล้วส่งของเข้ามาแปลง
 
+import { normalizeLang } from "@/lib/modules/chat/lang";
 import type { ChatAttachment, ChatChannelConnection, ChatContact, ChatConversation, ChatMessage, ChatRoutingRule } from "@prisma/client";
 import { channelLabel } from "@/lib/modules/chat/channel-icon";
 import { parseTags } from "@/lib/modules/chat/labels";
@@ -63,12 +64,16 @@ export function conversationDto(
 
 /** ปุ่มที่ผู้เรียกกดได้ในห้อง (S1.14b · ตัดสินจากคีย์ของผู้เรียกฝั่ง server — แอปไม่คำนวณเอง) */
 /** S1.14c: `aiSuggest` = คีย์ `chat.ai.suggest` (ปุ่ม "ให้ AI ร่าง" · ด่านเดียวกับ POST …/ai-suggest) */
-export type InboxConversationCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean; aiSuggest: boolean };
+/** S3a.6: `translate` = ร้านเปิดการแปล ∧ ผู้เรียกเห็นห้อง ∧ มีคีย์ `chat.translate.use` (คีย์เดียวกับปุ่มแปลบนเว็บ) */
+export type InboxConversationCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean; aiSuggest: boolean; translate: boolean };
 /** ห้องในจอเธรด = รายการ + หน้าต่างตอบกลับ + ปุ่มที่กดได้ (S1.14b) */
 export type InboxConversationDetailDto = InboxConversationDto & {
   /** ตอบได้ถึงเมื่อไร = `ChatConversation.replyWindowExpiresAt` (FB/IG/WA · R-S1.14b-e) · LINE/WEBCHAT = null */
   replyWindowEndsAt: string | null;
   can: InboxConversationCan;
+  /** S3a.6: ภาษาของทีม (`ChatSetting.staffLang` · ปริยาย th) · ภาษาลูกค้า (`ChatContact.lang` · ไม่รู้ = null) */
+  staffLang: string;
+  contactLang: string | null;
 };
 
 /** สมาชิกที่ผูกกับห้อง — เบอร์ปิดเลขกลางเสมอ (`maskPhone` ของโมดูลสมาชิก · ไม่มีเบอร์เต็มใน DTO · R-S2.17 ตั๋ว) */
@@ -101,11 +106,45 @@ export type InboxMessageDto = {
   attachments: { name: string; url: string; kind: string; mimeType: string; durationMs: number | null }[];
   meta: { ai: NonNullable<ReturnType<typeof aiMetaOf>> } | null;
   createdAt: string;
+  /** S3a.6: คำแปลที่แคชไว้ (`ChatMessage.translatedBody/translatedLang`) · ไม่มี = null */
+  translatedBody: string | null;
+  translatedLang: string | null;
+  /** S3a.6: ข้อความลูกค้า (IN) ที่ไม่มีตัวอักษรของสคริปต์ภาษาทีมเลยและมีตัวอักษร ≥ 3 ⇒ แอปแสดงปุ่ม "แปล" */
+  needsTranslation: boolean;
 };
+
+/** สคริปต์ของภาษาทีม (ไม่รู้จัก = ละติน) — ใช้ตัดสิน `needsTranslation` */
+const SCRIPT_OF: Record<string, RegExp> = {
+  th: /\p{Script=Thai}/u,
+  ja: /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u,
+  zh: /\p{Script=Han}/u,
+  cn: /\p{Script=Han}/u, // R-Z61 M1: เว็บ/detectLang ใช้ cn
+  ko: /\p{Script=Hangul}/u,
+  ru: /\p{Script=Cyrillic}/u,
+  ar: /\p{Script=Arabic}/u,
+  my: /\p{Script=Myanmar}/u,
+  lo: /\p{Script=Lao}/u,
+  km: /\p{Script=Khmer}/u,
+};
+/**
+ * S3a.6 ▸ ข้อความนี้ต้องแปลให้ทีมไหม — มีตัวอักษร (`\p{L}`) ≥ 3 ตัว และไม่มีตัวอักษรของสคริปต์ภาษาทีมเลย
+ *   (th: ไม่มีอักษรไทย · ภาษาอื่น: ไม่มีอักษรของภาษานั้น) · อีโมจิ/ตัวเลข/สั้นกว่า 3 ตัวอักษร = false · pure
+ */
+export function needsTranslation(body: string | null | undefined, staffLang: string | null | undefined): boolean {
+  // R-Z61 M2: ลิงก์ · อีเมล · #แท็ก · @ชื่อ ไม่ใช่ภาษา — ตัดก่อนนับตัวอักษร
+  const text = String(body ?? "").replace(/https?:\/\/\S+|www\.\S+|\S+@\S+|[#@]\S+/gu, " ");
+  const letters = text.match(/\p{L}/gu) ?? [];
+  if (letters.length < 3) return false;
+  const lang = normalizeLang(staffLang) ?? "th"; // R-Z61 M1: zh ≡ cn
+  const script = SCRIPT_OF[lang] ?? /\p{Script=Latin}/u;
+  return !letters.some((ch) => script.test(ch));
+}
 export function messageDto(
   m: ChatMessage,
   atts: readonly Pick<ChatAttachment, "fileName" | "url" | "kind" | "mimeType" | "durationMs">[],
   names: ReadonlyMap<string, string>,
+  /** S3a.6: ภาษาทีม (ตัดสิน needsTranslation) · ไม่ส่ง = th */
+  staffLang?: string,
 ): InboxMessageDto {
   const ai = aiMetaOf(m.meta);
   return {
@@ -122,6 +161,9 @@ export function messageDto(
     attachments: atts.map((a) => ({ name: a.fileName, url: a.url, kind: a.kind, mimeType: a.mimeType, durationMs: a.durationMs ?? null })),
     meta: ai ? { ai } : null,
     createdAt: m.createdAt.toISOString(),
+    translatedBody: m.translatedBody ?? null,
+    translatedLang: m.translatedLang ?? null,
+    needsTranslation: m.direction === "IN" && !m.isInternal && !m.purgedAt && needsTranslation(m.body, staffLang ?? "th"),
   };
 }
 

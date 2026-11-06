@@ -19,23 +19,13 @@
 
 import type { ChatChannelType, Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
-import { resolveProvider, SMART_MODEL } from "@/lib/ai/provider";
+import { resolveProvider, SMART_MODEL, type AiProvider } from "@/lib/ai/provider";
 import { canRunAi, chargeUsageSafe, outOfCreditMessage } from "@/lib/ai/credit";
 import { readBusinessHours } from "./business-hours";
 import { searchAnswerExamples, saveAnswerExampleFromSuggestion, searchTerms } from "./learning";
 import { getLinkedMember } from "./service";
-import { replaceEmailsInText } from "@/lib/core/linear-text";
-
-// SEC S3a.1-S2 ▸ R-Z24 (L5 M3): ข้อความแชทที่ส่งเข้าโมเดล — ปิดอีเมล · เบอร์ไทย · ตัวเลขยาว ≥ 9 หลัก (บัตร/บัญชี) เหลือ 2 ตัวท้าย ◂
-const TH_PHONE = /(?<![\w+])(?:\+66[\s-]?|0)\d(?:[\s.-]?\d){7,8}(?!\w)/g;
-const LONG_DIGITS = /\d(?:[\s-]?\d){8,}/g;
-const keepTail = (m: string) => {
-  const d = m.replace(/\D/g, "");
-  return `${"•".repeat(Math.max(0, d.length - 2))}${d.slice(-2)}`;
-};
-function maskChatText(text: string): string {
-  return replaceEmailsInText(text, (e) => `•••@${e.split("@")[1] ?? ""}`).replace(TH_PHONE, keepTail).replace(LONG_DIGITS, keepTail);
-}
+import { maskChatText } from "./pii-mask";
+import { LANG_NAME, normalizeLang } from "./lang"; // SEC S3a.6 R-Z61 ◂ // SEC S3a.1-S2 R-Z24 (ใช้ร่วม translate · S3a.6) ◂
 
 // ───────────────────────── ค่าคงที่ของรอบนี้ ─────────────────────────
 
@@ -61,9 +51,10 @@ export function isSuggestionOutcome(v: unknown): v is SuggestionOutcome {
 /** เส้นแบ่ง "ส่งตามที่เสนอ" กับ "แก้แล้วค่อยส่ง" (§5.4) */
 export const SENT_AS_IS_THRESHOLD = 95;
 
-export type SuggestOption = { id: string; body: string; sources: string[]; warn: boolean };
+/** SEC S3a.6 ▸ `gloss` = ร่างเดียวกันแปลเป็นภาษาทีม (มีเมื่อภาษาลูกค้า ≠ ภาษาทีม · ขอจากโมเดลในการเรียกเดียวกัน · ไม่เก็บลงฐาน) ◂ */
+export type SuggestOption = { id: string; body: string; sources: string[]; warn: boolean; gloss: string | null };
 export type SuggestResult =
-  | { ok: true; options: SuggestOption[]; sourceMessageId: string }
+  | { ok: true; options: SuggestOption[]; sourceMessageId: string; replyLang: string }
   | { ok: false; reason: string };
 
 const db = (tenantId: string, systemId: string) => tenantDb({ tenantId, systemId });
@@ -269,7 +260,24 @@ async function buildContext(args: {
  * คำสั่งของโมเดล — **ภาษาอังกฤษล้วน** ([[reference_llm_thai_token_cost]])
  * เนื้อความบริบทเป็นภาษาไทยได้ (นั่นคือข้อมูล) แต่ "กฎ" ที่ซ้ำทุกครั้งต้องถูก เพราะถูก cache ด้วย
  */
-function systemPrompt(replyLang: string): string {
+/**
+ * SEC S3a.6 ▸ ขอ gloss (คำแปลสำหรับทีม) ในการเรียกเดียวกันเมื่อ `glossLang` ไม่ว่าง (ผู้เรียกตัดสิน: ร้านเปิดแปล ∧ ภาษาลูกค้า ≠ ภาษาทีม
+ *   หลัง normalize · R-Z61) · ไม่ขอ = prompt เดิมทุกไบต์ ◂
+ */
+function systemPrompt(replyLang: string, glossLang?: string | null): string {
+  if (glossLang) {
+    const staffName = LANG_NAME[glossLang] ?? glossLang;
+    return systemPromptBase(replyLang)
+      .replace(
+        '{"options":[{"body":"...","sources":["kb:..."]}]}',
+        '{"options":[{"body":"...","sources":["kb:..."],"gloss":"..."}]}',
+      )
+      .concat(`\nReply language differs from the staff language (${staffName}): also give \`gloss\` for every option: the same reply translated into ${staffName} for the staff.`);
+  }
+  return systemPromptBase(replyLang);
+}
+
+function systemPromptBase(replyLang: string): string {
   return [
     "You draft reply options for a human support agent of a small business in Thailand.",
     `Write the replies in the customer's language (${replyLang}).`,
@@ -292,7 +300,7 @@ function systemPrompt(replyLang: string): string {
   ].join("\n");
 }
 
-type ParsedOption = { body: string; sources: string[] };
+type ParsedOption = { body: string; sources: string[]; gloss: string | null };
 
 /** อ่านคำตอบของโมเดล — ตอบไม่เป็น JSON ก็ต้องยังใช้งานได้ (1 ตัวเลือกไม่มีที่มา + ติดธงเตือน) */
 function parseOptions(raw: string): ParsedOption[] {
@@ -307,19 +315,20 @@ function parseOptions(raw: string): ParsedOption[] {
     const out: ParsedOption[] = [];
     for (const it of list) {
       if (!it || typeof it !== "object") continue;
-      const r = it as { body?: unknown; text?: unknown; sources?: unknown };
+      const r = it as { body?: unknown; text?: unknown; sources?: unknown; gloss?: unknown };
       const body = typeof r.body === "string" ? r.body : typeof r.text === "string" ? r.text : "";
       if (!body.trim()) continue;
       const sources = Array.isArray(r.sources)
         ? r.sources.filter((s): s is string => typeof s === "string")
         : [];
-      out.push({ body: body.trim(), sources });
+      const gloss = typeof r.gloss === "string" && r.gloss.trim() ? r.gloss.trim().slice(0, 4000) : null; // S3a.6: ไม่มี/ผิดรูป ⇒ null
+      out.push({ body: body.trim(), sources, gloss });
     }
     if (out.length > 0) return out;
   } catch {
     // ไม่ใช่ JSON — ตกไปใช้ข้อความดิบเป็นตัวเลือกเดียว (ดีกว่าคืน "ไม่มีคำแนะนำ" ทั้งที่จ่ายเงินไปแล้ว)
   }
-  return [{ body: text, sources: [] }];
+  return [{ body: text, sources: [], gloss: null }];
 }
 
 // ───────────────────────── แนะนำคำตอบ ─────────────────────────
@@ -331,6 +340,8 @@ export async function suggestReply(args: {
   userId: string;
   /** SEC S1.22 ▸ ประตูที่กด (web = กล่องแชทบนเว็บ · app = แอปมือถือ) — ปริยาย web · มีผลแค่หมายเหตุต้นทุน ◂ */
   source?: "web" | "app";
+  /** SEC S3a.6 ▸ ฉีดผู้ให้บริการ (ข้อสอบ) — ไม่ส่ง = `resolveProvider("smart")` เดิม ◂ */
+  provider?: AiProvider;
 }): Promise<SuggestResult> {
   const { tenantId, systemId, userId } = args;
   const d = db(tenantId, systemId);
@@ -385,21 +396,25 @@ export async function suggestReply(args: {
   });
 
   // SMART_MODEL: ประกอบคำตอบจากหลายแหล่งพร้อมกัน ไม่ใช่งานเบา
-  const provider = resolveProvider("smart");
+  const provider = args.provider ?? resolveProvider("smart");
   if (!provider) {
     return { ok: false, reason: "ระบบ AI ยังไม่พร้อมใช้งาน — ผู้ดูแลระบบยังไม่ได้ตั้งค่าผู้ให้บริการ AI" };
   }
 
   const replyLang = conv.contact.lang?.trim() || setting.staffLang || "th";
+  // SEC S3a.6 ▸ R-Z61: เทียบภาษาหลัง normalize (zh ≡ cn) · ขอ gloss เฉพาะร้านที่เปิดแปล (ร้านปิดแปลไม่จ่าย token เพิ่ม) ◂
+  const replyLangNorm = normalizeLang(replyLang) ?? "th";
+  const staffLangNorm = normalizeLang(setting.staffLang) ?? "th";
+  const glossLang = setting.translateEnabled && replyLangNorm !== staffLangNorm ? staffLangNorm : null;
   let reply;
   try {
     // 🔴 นอกทรานแซกชันเสมอ
     reply = await provider.chat(
       [
-        { role: "system", content: systemPrompt(replyLang) },
+        { role: "system", content: systemPrompt(replyLang, glossLang) },
         { role: "user", content: ctx.promptContext },
       ],
-      { maxTokens: 1200 },
+      { maxTokens: glossLang ? 2000 : 1200 }, // R-Z61: ร่าง + คำแปลยาวขึ้น
     );
   } catch {
     return { ok: false, reason: "ขอคำแนะนำจาก AI ไม่สำเร็จ — ระบบ AI ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง" };
@@ -448,10 +463,10 @@ export async function suggestReply(args: {
         createdByUserId: userId,
       },
     });
-    options.push({ id: row.id, body: p.body, sources, warn: sources.length === 0 });
+    options.push({ id: row.id, body: p.body, sources, warn: sources.length === 0, gloss: glossLang ? p.gloss : null });
   }
 
-  return { ok: true, options, sourceMessageId: lastIn.id };
+  return { ok: true, options, sourceMessageId: lastIn.id, replyLang: replyLangNorm };
 }
 
 // ───────────────────────── บันทึกผลลัพธ์ (§5.4 เส้นทางที่ 1 และ 3) ─────────────────────────
