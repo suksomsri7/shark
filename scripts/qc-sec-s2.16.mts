@@ -78,7 +78,7 @@ try {
     await ops.cancelJob(support, jQueuedOld.id);
     const jC = await prisma.aiRoomJob.findUnique({ where: { id: jQueuedOld.id } });
     const eRun = await throws(() => ops.cancelJob(finance, jRunning.id));
-    chk("Q-2", "retryJob: FAILED→QUEUED attempts 0 error null · cancelJob: QUEUED→FAILED error มี 'cancelled' · FINANCE cancel ⇒ throw · RUNNING ไม่ถูกแตะ", jR?.status === "QUEUED" && jR?.attempts === 0 && !jR?.error && jC?.status === "FAILED" && /cancel/i.test(jC?.error ?? "") && !!eRun && (await prisma.aiRoomJob.findUnique({ where: { id: jRunning.id } }))?.status === "RUNNING", JSON.stringify({ jR: jR?.status, jC: jC?.status, err: jC?.error }));
+    chk("Q-2", "retryJob: FAILED→QUEUED attempts 100 (รุ่น 1 · ORACLE-EDIT R-Z33) error null · cancelJob: QUEUED→FAILED error มี 'cancelled' · FINANCE cancel ⇒ throw · RUNNING ไม่ถูกแตะ", jR?.status === "QUEUED" && jR?.attempts === 100 && !jR?.error && jC?.status === "FAILED" && /cancel/i.test(jC?.error ?? "") && !!eRun && (await prisma.aiRoomJob.findUnique({ where: { id: jRunning.id } }))?.status === "RUNNING", JSON.stringify({ jR: jR?.status, jC: jC?.status, err: jC?.error }));
     const cost = await ops.costByTenant(support, 7) as { tenantId: string; costMicro: number; tenantName?: string }[];
     const mine = cost.find((r) => r.tenantId === tid);
     chk("Q-3", "costByTenant(7 วัน) มีร้านทดสอบ costMicro 123000 · เรียงมากไปน้อย · ไม่มีเงินติดลบ", !!mine && mine.costMicro === 123_000 && cost.every((r, i) => i === 0 || cost[i - 1]!.costMicro >= r.costMicro) && cost.every((r) => r.costMicro >= 0), JSON.stringify({ mine, n: cost.length }).slice(0, 160));
