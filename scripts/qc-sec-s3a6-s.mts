@@ -103,7 +103,7 @@ try {
   const bad = cases.filter(([t, l, exp]) => nt(t, l) !== exp);
   chk("N-1", "needsTranslation: อังกฤษ/ญี่ปุ่น (staff th) = true · ไทย/อีโมจิล้วน/สั้นกว่า 3/ตัวเลข/ปนไทย/ลิงก์/อีเมล/#@ = false · staff en: ไทย = true · cn/zh = Han", bad.length === 0, JSON.stringify(bad));
   const lang = (await import("@/lib/modules/chat/lang")) as AnyMod;
-  chk("N-3", "normalizeLang: zh/zh-TW/ZH ⇒ cn · cn ⇒ cn · isKnownLang: cn/zh/en = true · xx = false", lang.normalizeLang("zh") === "cn" && lang.normalizeLang("zh-TW") === "cn" && lang.normalizeLang("ZH") === "cn" && lang.normalizeLang("cn") === "cn" && lang.isKnownLang("zh") && lang.isKnownLang("cn") && lang.isKnownLang("en") && !lang.isKnownLang("xx"), "");
+  chk("N-3", "normalizeLang: zh/zh-TW/ZH ⇒ cn · cn ⇒ cn · isKnownLang: cn/zh/en = true · xx = false · isLangCode (R-Z61b): tr/fil/zh-TW = true · xx!/1a = false", lang.normalizeLang("zh") === "cn" && lang.normalizeLang("zh-TW") === "cn" && lang.normalizeLang("ZH") === "cn" && lang.normalizeLang("cn") === "cn" && lang.isKnownLang("zh") && lang.isKnownLang("cn") && lang.isKnownLang("en") && !lang.isKnownLang("xx") && lang.isLangCode("tr") && lang.isLangCode("fil") && lang.isLangCode("zh-TW") && !lang.isLangCode("xx!") && !lang.isLangCode("1a"), "");
 
   // ───────── fixtures ─────────
   const t = await prisma.tenant.create({ data: { name: "QC SEC S3a6", slug: SLUG } }); tid = t.id;
@@ -172,8 +172,11 @@ try {
   const thN = await thread(en.conv.id, HN);
   const tN = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid }, HN);
   chk("T-6", "ไม่มีคีย์ chat.translate.use ⇒ can.translate=false · route 200 ok:false ไทย", thN.status === 200 && thN.json.conversation?.can?.translate === false && tN.status === 200 && tN.json.ok === false && thai(tN.json.reason), JSON.stringify({ can: thN.json.conversation?.can, tN }).slice(0, 220));
-  const badLang = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid, targetLang: "xx" });
-  chk("T-7", "targetLang ที่ไม่อยู่ใน LANG_NAME ⇒ 422 · targetLang zh ⇒ lang cn", badLang.status === 422 && (await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid, targetLang: "zh" })).json.lang === "cn", JSON.stringify({ badLang: badLang.status }));
+  const badLang = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid, targetLang: "xx!" });
+  const trLang = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid, targetLang: "tr" });
+  const trDraft = await call("conversations/[id]/translate-draft", { id: en.conv.id }, { systemId: sid, body: "สวัสดีครับ", targetLang: "tr" });
+  const zhLang = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid, targetLang: "zh" });
+  chk("T-7", "targetLang รูปร่างผิด \"xx!\" ⇒ 422 · ภาษานอก LANG_NAME \"tr\" ⇒ 200 ok:true (แปลข้อความ + แปลร่าง · R-Z61b) · \"zh\" ⇒ lang cn", badLang.status === 422 && trLang.status === 200 && trLang.json.ok === true && trLang.json.lang === "tr" && trDraft.status === 200 && trDraft.json.ok === true && zhLang.json.lang === "cn", JSON.stringify({ badLang: badLang.status, tr: trLang.json, trD: trDraft.json, zh: zhLang.json.lang }).slice(0, 260));
   const tB = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid }, HB);
   chk("T-2", "พนักงานสาขา B (ห้องอยู่สาขา A) ⇒ 403", tB.status === 403, JSON.stringify(tB).slice(0, 160));
   await prisma.chatSetting.updateMany({ where: { tenantId: tid, systemId: sid }, data: { translateEnabled: false } });
@@ -229,8 +232,11 @@ try {
   console.log("── C: เครดิตหมด ──");
   await prisma.aiCreditWallet.upsert({ where: { tenantId: tid }, create: { tenantId: tid, balanceMicro: -1_000_000_000 }, update: { balanceMicro: -1_000_000_000 } } as never);
   await prisma.aiCreditTxn.create({ data: { tenantId: tid, kind: "USAGE", source: "CHAT", amountMicro: -1_000_000_000, balanceAfter: -1_000_000_000, model: "qc", tokensIn: 0, tokensOut: 0, note: "qc-s3a6-exhaust" } as never });
+  const uC0 = await usage();
   const cT = await call(P, { id: ja.conv.id, mid: ja.msg.id }, { systemId: sid });
   const cD = await call("conversations/[id]/translate-draft", { id: en.conv.id }, { systemId: sid, body: "ทดสอบเครดิตหมดครับ" });
+  const uC1 = await usage();
+  chk("C-2", "เครดิตหมด ⇒ ยอด CHAT_TRANSLATE ไม่เพิ่ม (แปลข้อความ + แปลร่าง)", uC1 === uC0, JSON.stringify({ uC0, uC1 }));
   const pC = new Scripted(glossJson);
   const cG = await suggest.suggestReply({ tenantId: tid, systemId: sid, conversationId: ja.conv.id, userId: U.owner, source: "app", provider: pC });
   chk("C-1", "เครดิตหมด ⇒ แปลข้อความ / แปลร่าง / ai-suggest = ok:false + เหตุผลไทย (200) · ไม่เรียกโมเดล (calls 0)", cT.status === 200 && cT.json.ok === false && thai(cT.json.reason) && cD.json.ok === false && thai(cD.json.reason) && cG.ok === false && thai(cG.reason) && pC.calls === 0, JSON.stringify({ cT: cT.json, cD: cD.json, cG, calls: pC.calls }).slice(0, 300));

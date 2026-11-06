@@ -19,7 +19,7 @@
 import { tenantDb } from "@/lib/core/db";
 import { maskChatText } from "./pii-mask"; // SEC S3a.6 ◂
 import { LANG_NAME, normalizeLang } from "./lang"; // SEC S3a.6 R-Z61: รหัสภาษาจุดเดียว (pure) ◂
-export { LANG_NAME, isKnownLang, normalizeLang } from "./lang";
+export { LANG_NAME, isKnownLang, isLangCode, normalizeLang } from "./lang";
 import { resolveProvider } from "@/lib/ai/provider";
 import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
 

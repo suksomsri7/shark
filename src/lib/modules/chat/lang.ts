@@ -40,3 +40,11 @@ export function isKnownLang(value: unknown): boolean {
   return !!v && Object.prototype.hasOwnProperty.call(LANG_NAME, v);
 }
 
+
+/**
+ * SEC S3a.6 ▸ R-Z61b: รูปร่างรหัสภาษาที่ route รับ (a-z 2–3 ตัวหลัง normalize) — ไม่ whitelist กับ LANG_NAME
+ *   ภาษานอก LANG_NAME (tl/tr/hi/pl/sv/fil…) ยังแปลได้ — prompt ใช้รหัสตรง ๆ แทนชื่อ (fallback เดิม)
+ */
+export function isLangCode(value: unknown): boolean {
+  return /^[a-z]{2,3}$/.test(normalizeLang(value) ?? "");
+}

@@ -47,3 +47,9 @@
 ข้อสอบใหม่: N-1 (+9 กรณี ลิงก์/www/#@/อีเมล/OK ka/cn/zh/zh-TW) · N-3 normalizeLang/isKnownLang · T-4 PII ปิดก่อนแปล (ไม่มี 0812345678 · มี ••••••••78 · ต้นฉบับยังเต็ม) · T-5 mid ห้องอื่น 403 + translate-draft ห้องที่ไม่เห็น 403 · T-6 ไม่มีคีย์ ⇒ can.translate=false + 200 ok:false · T-7 targetLang xx ⇒ 422 · zh ⇒ lang cn · T-8 ร้านปิด ⇒ can.translate=false · G-5 ร้านปิดแปลไม่ขอ gloss (maxTokens 1200) · G-1 +maxTokens 2000 + prompt Thai · G-6 prompt ต่างภาษา · R-1 ครั้งที่ 31 ⇒ 429 · C-1 + calls 0
 
 ผลรอบ 2: `qc-sec-s3a6-s` **22/22** ×3 (residue 0) · regression: s1.14b 24/24 · s1.14c 12/12 · qc-chat-ai-suggest 44/44 · qc-chat-translate 34/34 (×2) · s3a1-s2 28/28 · s1.21 19/19 · typecheck 0 · fitness no-DB 53/53
+
+## รอบ 2b (R-Z61b · แก้ regression ที่ผู้ตรวจเสนอผิดเอง)
+- `chat/lang.ts` + `isLangCode` = `/^[a-z]{2,3}$/` หลัง normalize · route translate/translate-draft ใช้ `isLangCode` แทน `isKnownLang` (ไม่ whitelist) ⇒ ภาษานอก LANG_NAME (tl/tr/hi/pl/sv/fil…) แปลได้ · prompt ใช้รหัสตรง ๆ (`LANG_NAME[x] ?? x` ของเดิม) · รูปร่างผิดเท่านั้นที่ได้ 422
+- ข้อสอบ: T-7 = "xx!" 422 · "tr" 200 ok:true (แปลข้อความ + แปลร่าง) · "zh" ⇒ cn · N-3 + isLangCode · **C-2** หลังเครดิตหมด ยอด CHAT_TRANSLATE ไม่เพิ่ม
+- docs ปรับประโยค targetLang (SECRETARY-API 2 แถว · 31-secretary)
+- ผล: `qc-sec-s3a6-s` **23/23** ×2 (residue 0) · qc-chat-translate 34/34 · typecheck 0 · fitness no-DB 53/53

@@ -5,11 +5,11 @@
 import { z } from "zod";
 import type { AccessQuery } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
-import { isKnownLang, normalizeLang, translateMessage } from "@/lib/modules/chat/translate";
+import { isLangCode, normalizeLang, translateMessage } from "@/lib/modules/chat/translate";
 import { can, fail, gate, limited, notFound, READ, readBody, systemOf, visibleConv, withErrors } from "../../../../../_shared";
 
 const TRANSLATE: AccessQuery = { module: "chat", action: "chat.translate.use" };
-const Body = z.object({ systemId: z.string().max(64).optional(), targetLang: z.string().max(16).refine(isKnownLang, "ภาษาที่ระบบแปลยังไม่รองรับ").optional() /* R-Z61: เฉพาะคีย์ใน LANG_NAME */ }).strict();
+const Body = z.object({ systemId: z.string().max(64).optional(), targetLang: z.string().max(16).refine(isLangCode, "รหัสภาษาไม่ถูกต้อง").optional() /* R-Z61b: ตรวจรูปร่างเท่านั้น (ภาษานอก LANG_NAME ใช้รหัสตรง ๆ) */ }).strict();
 type Ctx = { params: Promise<{ id: string; mid: string }> };
 const NOT_VISIBLE = "บัญชีนี้มองไม่เห็นห้องแชทนี้";
 
