@@ -37,6 +37,25 @@
 > อัปเดตล่าสุด: **27 ต.ค. 2569** · ผู้วางแผน RUN · branch ปัจจุบันของเอกสาร `session/svc-design` (worktree `/root/projects/shark-svc`)
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/SVC-RUN.md` §1 (กติกาเหล็ก) + §3 (สถานะ) + ท้าย §4 → `ledger/SVC-CORE-CONTRACT.md` → แถวใบที่จะทำใน `ledger/SVC-MASTER-PLAN.md` §4 → แบบ `ledger/DESIGN-BOOKING-QUEUE.md` / `ledger/DESIGN-DORM-HOTEL.md` (§ ที่ใบอ้าง)
 
+## ⏸ 7 พ.ย. 2569 ~21:2xZ — จุดส่งไม้ก่อนอัปเกรด VPS → KVM8 (เจ้าของสั่ง "บันทึกทั้งหมดเตรียมส่งไม้ต่อ")
+**สถานะ:** SVC 51/52 (C.2 รอ OA LINE+มือถือ) · **HOTEL 1/11 (H.0 ✅) · H.1 โค้ดเสร็จ+ผู้ตรวจผ่าน รอขั้นรับงานท้าย** · ทุกอย่าง push แล้ว ทรีทุกเลนสะอาด (dirty 0)
+- `session/svc` @299f341d8 (H.0 merge · ข้อสอบ h.0/h.1 · ORACLE-EDIT ชุด unitTypes · ใบสั่ง H.0–H.3 + H.2 · แผน/สถานะ)
+- `wip/svc-h1` @62c568cbf (H.1 รอบผู้ตรวจ · **ยังไม่ merge**) — ผู้คุมรันข้อสอบ h.1 เต็มเองแล้ว **120/122 · 0 failed** (F-1/V-1 SKIP) · ผู้ตรวจ 2 รอบ + รอบยืนยัน **ผ่าน** · ค้าง: **tsc ทรีรวม · build QC · ภาพ h.1 owner/frontdesk · PARITY ภาพ 15** (chain `/root/svc-runs/h1/accept.sh` กำลังรันตอนส่งไม้ · ถ้า VPS รีบูตก่อนจบ = รันใหม่ได้ทั้งก้อน ไม่มีอะไรเสีย)
+- `wip/svc-h0` @5b1d69ea6 (merge แล้ว)
+
+**▶️ ขั้นต่อหลังรีบูต (ตามลำดับ)**
+1. ตรวจเครื่อง: `swapon --show` (fstab มี /swapfile–/swapfile5 ควรขึ้นเอง) · `free -g` · ถ้า KVM8 RAM มากขึ้น ค่า ISO_MEM/heap เดิมใช้ได้ ปรับเพิ่มได้ทีหลัง
+2. ตรวจทรี/เลน: `git -C /root/projects/shark-svc status -sb` (session/svc) · l1 `wip/svc-h1` · l2 `wip/svc-h0` · l3 detached · node_modules ของ l1/l2/l3 เป็น store จริง (`shark-svc-nm-l1-store` `-l2-store` `shark-svc-nm-l3`) ไม่ใช่ bind mount — ไม่หายหลังรีบูต · **ทรีหลัก+l4 ยังใช้ Prisma client ร่วมทรีเลขา** (ห้าม generate/tsc/build ที่นั่นจน RUN เลขาจบ · commit เอกสาร `--no-verify`) · ตรวจ `grep -c 'model AiRoom ' node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/schema.prisma` ในทรี l1/l2/l3 ต้องเป็น 0
+3. ฐาน QC: migration svc_h ลงครบ 4 ฐาน (l1 l2 l3 ep-mute-scene) · backfill รันแล้วเฉพาะ l2 (ฐานอื่นรัน `scripts/svc-h0-backfill.mts --dry` แล้วจริง ก่อน H.3) · ฉากหอบน l1 rebuild แล้ว 7 พ.ย.
+4. **ปิด H.1**: ถ้า `/root/svc-runs/h1/accept.txt` ยังไม่มี `######## DONE` ⇒ รัน `systemd-run --unit=svc-h1-accept … /root/svc-runs/h1/accept.sh` ใหม่ (สคริปต์ทำครบ: exam → tsc → build → serve 3242 → ภาพ) → ดูภาพ `.qc-shots/svc/h1/pairs/{owner,frontdesk}` เทียบ `ledger/design-dorm/15-hotel-rates.png` + จอตั้งค่าเทียบโครงหอ 17 → PARITY ผ่าน ⇒ merge `wip/svc-h1` เข้า session/svc (`--no-verify` ในทรีหลัก) → SVC-HOTEL-RUN H.1 ✅ 2/11 → `tg "📊 HOTEL · 18% (2/11)"` · PARITY ตก ⇒ ตีกลับ builder ใหม่บน l1 (ใบสั่ง h.1 §5)
+5. **เปิด H.3 + H.2 ขนาน**: ผู้คุมใส่ฟิกซ์เจอร์บล็อก "SVC H.3" (`SQC_HOTEL_BOOKING_SCENE` · ภาพ h.3 · สิทธิ์ frontdesk) + "SVC H.2" (ภาพ h.2) ใน `scripts/svc-qc-data.mts` → ผู้เขียนข้อสอบ (Fable) h.3 บน l2 · h.2 บน l3 (พรอมป์แบบเดียวกับ h.0/h.1 ในบันทึก 7 พ.ย.) → builder H.3 (ก่อน) → H.2 → H.5 → H.4 → H.6 → H.7 → H.8 → H.10 → H.9
+6. ตัวเฝ้า: ทุกงานยาวต้องมีตัวเฝ้า (Bash until DONE + send_later สำรอง) · เครื่องใช้ร่วมกับ RUN เลขา (S3a.6) จน RUN เลขาจบ ⇒ build/tsc รอ RAM ≥10G
+7. เซิร์ฟเวอร์ QC เก่า `svc-g1-serve` (3241 · build เก่า) ไม่ต้องเปิดคืน · `svc-h1-serve` (3242) เปิดเมื่อ chain H.1 รันถึง
+
+**ของที่รอเจ้าของ:** C.2 (LINE OA ทดสอบ + iPhone/Android) · เลขา: push main S3a.2 / TestFlight S3a.3 (ไม่ใช่ของ RUN นี้) · H2 ชื่อ channel manager (ยังไม่ต้อง)
+**หนี้/บันทึกสำคัญ:** SVC-HOTEL-RUN §2.1 · memory `reference_shark_svc_sec_shared_prisma_client` · ORACLE-EDIT ทั้งหมดมีป้ายในไฟล์ข้อสอบ (grep "ผู้คุม 7 พ.ย.")
+
+
 ## 🟢 2 พ.ย. 2569 ~10Z — 98% (51/52) · เหลือ C.2 เท่านั้น
 - ปิดแล้ว: B.18 + D.20 + G3 (125728d6 บน session/svc) · รายละเอียด SVC-RUN §4 บรรทัดท้าย
 - C.1 ⏸ เลื่อนตามเจ้าของ (ตรวจสลิปเอง) · เฟส H โรงแรม V2 ยังไม่เริ่ม (เจ้าของสั่ง 1 พ.ย.)
