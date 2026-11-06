@@ -1071,9 +1071,9 @@ try {
     const r2 = await SET.resolveSetting(ctxA, CP, { unitId: uA, ratePlanId: PLAN_A2 });
     eq(r2.source, "FALLBACK", "แผนอื่น");
   });
-  await st("RP-2", "X1: แผนของร้าน B (scopeId จริงแต่คนละร้าน) ⇒ ok:false ไม่พบ (NOT_FOUND / SCOPE_NOT_FOUND) · id ที่ไม่มี ⇒ คำตอบเดียวกัน · ไม่มี SettingValue ถูกเขียน · ร้าน B อ่านค่าของร้าน A ไม่ได้", async () => {
+  await st("RP-2", "X1: แผนของร้าน B (scopeId จริงแต่คนละร้าน) ⇒ ok:false code NOT_FOUND (มติ §12 ข้อ 1) · id ที่ไม่มี ⇒ คำตอบเดียวกัน · ไม่มี SettingValue ถูกเขียน · ร้าน B อ่านค่าของร้าน A ไม่ได้", async () => {
     needPlans(); const o = needOwner();
-    const isNF = (r: Any) => r?.ok === false && (r.code === "NOT_FOUND" || r.code === "SCOPE_NOT_FOUND" || (Array.isArray(r.issues) && r.issues.some((i: Any) => i.code === "SCOPE_NOT_FOUND" || i.code === "NOT_FOUND")));
+    const isNF = (r: Any) => r?.ok === false && r.code === "NOT_FOUND"; // มติ §12 ข้อ 1: NOT_FOUND เท่านั้น (ไม่มี SCOPE_NOT_FOUND)
     const r1 = await SET.setSettings(o, ctxA, [{ key: CP, scope: "RATE_PLAN", scopeId: PLAN_B, value: CP_VAL }]);
     const r2 = await SET.setSettings(o, ctxA, [{ key: CP, scope: "RATE_PLAN", scopeId: rid("ghost"), value: CP_VAL }]);
     ok(isNF(r1), `แผนร้าน B: ${J(r1).slice(0, 160)}`);
@@ -1230,7 +1230,9 @@ try {
     await insertRow("RoomOccupancy", { id: rid("blk"), tenantId: tA, unitId: uA, roomId: room3, startDate: in3, endDate: out3, kind: "BLOCK", refType: "QcBlock", refId: rid("qcb"), updatedAt: now() });
     const sts = await Promise.all([R1, R2, R3].map(async (id) => (await resvRow(id))?.status));
     eq(sts, ["BOOKED", "BOOKED", "BOOKED"], "status เริ่ม");
-    scene = { R1, R2, R3, R4, RB, inA, outA, in3, out3, dep: 50_000, rate: 129_000, r1Room: null, r3Room: room3 };
+    const room1 = await heldRoom(R1); // มติ §12 ข้อ 7: R1 ไม่มี roomId แต่ถือห้องใน RoomOccupancy STAY active ⇒ nights.roomId = ห้องนั้น
+    ok(room1, "R1 ไม่มี occupancy STAY active");
+    scene = { R1, R2, R3, R4, RB, inA, outA, in3, out3, dep: 50_000, rate: 129_000, r1Room: room1, r3Room: room3 };
   });
   await st("B-3", "--dry: exit 0 · BACKFILL_SUMMARY 5 ฟิลด์ตัวเลข (bookedToConfirmed ≥ 3 · nightsCreated ≥ 6 · foliosCreated ≥ 3 · occupancyConflict ≥ 1) · ฐานไม่เปลี่ยน (status ยัง BOOKED · ไม่มี nights/folio · occupancy เท่าเดิม)", async () => {
     const sc = needScene();
@@ -1259,7 +1261,7 @@ try {
     eq(await countOf("HotelReservation", `status::text = 'BOOKED'`, []), 0, "BOOKED ค้างทั้งฐาน");
     eq((await resvRow(sc.R1))?.policySnapshot ?? null, null, "policySnapshot R1");
   });
-  await st("B-6", "nights R1: 2 แถว วันที่ [in, in+1] · counted=true · priceSource=MANUAL · priceSatang = ratePerNightSatang (129,000) · roomId = reservation.roomId (R1 null · R2 ห้องที่ตั้งไว้) · roomTypeId/tenantId/unitId ตรง · ratePlanId null", async () => {
+  await st("B-6", "nights R1: 2 แถว วันที่ [in, in+1] · counted=true · priceSource=MANUAL · priceSatang = ratePerNightSatang (129,000) · roomId ตามมติ §12 ข้อ 7 (R1 roomId null ⇒ ห้องจาก RoomOccupancy STAY active · R2 = reservation.roomId · R4 ไม่มี roomId/occupancy active ⇒ null) · roomTypeId/tenantId/unitId ตรง · ratePlanId null", async () => {
     const sc = needScene(); ok(realSum, "ยังไม่ได้รันจริง (B-4)");
     const rows = await q<Record<string, Any>>(`SELECT date, counted, "priceSource", "priceSatang", "roomId", "roomTypeId", "tenantId", "unitId", "ratePlanId" FROM "HotelBookingNight" WHERE "reservationId" = $1 ORDER BY date`, [sc.R1]);
     eq(rows.map((r) => ymdOfDb(r.date)), [sc.inA, addDays(sc.inA, 1)], "วันที่คืน");
@@ -1267,6 +1269,8 @@ try {
     const r2 = await resvRow(sc.R2);
     const n2 = await q<{ roomId: string | null; counted: boolean; priceSource: string }>(`SELECT "roomId", counted, "priceSource" FROM "HotelBookingNight" WHERE "reservationId" = $1`, [sc.R2]);
     eq(n2, [{ roomId: r2?.roomId ?? null, counted: true, priceSource: "MANUAL" }], "คืนของ R2 (roomId = ห้องที่ตั้งไว้)");
+    ok((await resvRow(sc.R4))?.roomId === null, "R4 ควรไม่มี roomId");
+    eq((await q<{ roomId: string | null }>(`SELECT "roomId" FROM "HotelBookingNight" WHERE "reservationId" = $1`, [sc.R4])).map((x) => x.roomId), [null], "คืนของ R4 (legacy ไม่มี roomId/occupancy active ⇒ null)");
   });
   await st("B-7", "nights ของ CANCELLED (R4 ร้าน A · ร้าน B) สร้างเป็นประวัติ counted=false · nights ร้าน B ถือ tenantId/unitId ของร้าน B (X1) · การจอง CONFIRMED ทุกใบของร้าน A มี nights = จำนวนคืน", async () => {
     const sc = needScene(); ok(realSum, "ยังไม่ได้รันจริง (B-4)");
