@@ -28,3 +28,11 @@
   - `qc-sec-s1.20` B-6 (18/19): คาด `tokensIn === 530` (รวมแคช) — R-Z44 สั่ง tokensIn = ไม่ใช่แคช · เสนอ: `tokensIn === 100 && cacheWrite === 30 && cacheRead === 400`
 - `qc-pos-p6.1` P6.1-Z1 (30/31): ด่านขอบเขตของเลน POS (เทียบหมุดเลน c91d8735 — ทรีนี้แตะ src/ ตามธรรมชาติ) ⇒ ใช้กับทรีเลขาไม่ได้ (ไม่เกี่ยวกับใบ) · ข้ออื่นเขียว
 - typecheck 0 · fitness pre-commit ✅ · `env -u DATABASE_URL` 53/53
+
+## 4. รอบ 3 — R-Z49 VAT ปริยายจากค่าตั้งค่าร้าน (รอบจริง #2 บนทิป 39d337292 = 2/3 · ใบเสนอราคาตกเพราะถาม VAT)
+- merge ทิปผู้คุม `cbc960331` (fast-forward — มีงานรอบ R2 ของเลนนี้อยู่แล้ว)
+- `src/lib/ai/account-ops.ts`: `fillDocVatDefaults(opId, tenantId, systemId, input)` — เฉพาะ `documents.create` · บรรทัดที่ไม่ระบุ `vatRateBp` ⇒ 700 (จด VAT) / 0 (ไม่จด) · ไม่ระบุ `vatMode` ⇒ EXCLUDE / NONE · อ่าน `AccountSettings.vatRegistered` (ไม่มีแถว = ค่าปริยาย schema = จด) · ค่าที่ระบุเองชนะ · เรียกทั้งตอนเสนอ (`runAccountTool` หลัง `prepareCall` ⇒ สรุปยอดรวม VAT ถูก) และก่อนลงมือ (`dispatchAccountKind` ก่อน `validateOpInput` — ข้อเสนอรุ่นเก่า)
+- `extraHint` ของ `documents.create` เพิ่มประโยค VAT (อังกฤษ · ASCII ล้วน — ข้อสอบ E1-K1.7 ของ qc-account-api-ai-skill บังคับ ASCII จึงเปลี่ยน "—" ในประโยค R-Z45 เป็น ";" ด้วย)
+- ข้อสอบ `qc-sec-s3a1-r2` T6-1…T6-4 (จด = 700/EXCLUDE/9,630.00 · ไม่จด = 0/NONE/9,000.00 · ระบุ 0 เองชนะ · hint มี "Do not ask about VAT")
+- ผล: r2 **20/20** ×2 (residue 0) · s3a.1 16/17 (R-1 SKIP) · s1.12 15/15 · qc-ai-tools 18/18 · typecheck 0 · fitness pre-commit ✅ · no-DB 53/53
+- `qc-account-api-ai-skill` 28/33: E1-K2.1/2.3/2.5/2.6/2.8 = "ยังไม่ได้เปิดระบบบัญชี" — ข้อสอบนี้ต้องใช้ร้าน seed บัญชี (เฉลย 494300 · ณัฐพล) ซึ่งไม่มีในฐาน QC เลขา · ไม่เกี่ยวกับใบ · E1-K1.7 (ASCII) เขียวหลังแก้
