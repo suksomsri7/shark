@@ -93,3 +93,9 @@
 - ไม่มี testID ใหม่ (`--registry` ได้ไฟล์เดิมทุกไบต์ ⇒ registryHash เดิม · ไม่รันคลิกซ้ำ) · ถ่าย s2.21 + ภาพคู่ G4 ใหม่ (dist ใหม่)
 - `qc-sec-s3a1-a` 9/9 · spec s2.21 11/12 (M-1 ข้าม · failed []) · `session/secretary` ยังเป็น f0593441 (merge แล้ว · เลน b+c ยังไม่เข้า)
 - คำถาม 2 (ยาม R8) ไม่ต้องปรับ · 3 docs เลน c แก้แล้ว
+
+## 8. merge ทิปเซิร์ฟเวอร์สุดท้าย `4929fd15` (เลน b+c รอบ 3) ด้วย SHA ตรง
+- ไม่ชน · ไม่มีไฟล์ใน `apps/mobile` และ `prisma/` เปลี่ยน ⇒ dist เดิม ไม่ถ่ายใหม่
+- สัญญาที่แอปพึ่ง (อ่านจากโค้ดหลัง merge): account/delete 400 `code_required`/`confirm_required` · 401 `invalid_code` · 401 `locked` · เซสชันหมด 401 `unauthorized` (userGate) · `verifyDeletionStepUp` = มีเบอร์ ⇒ OTP เบอร์ · ไม่มี ⇒ OTP อีเมล ✅ · rooms POST + rooms/[id]/send: 409 `pending` · ซ้ำ = 200 `{duplicate:true, roomId…}` / `{duplicate:true, messageId, jobId}` · cmid ห้ามมี `:` (แอปใช้ `m-<36>-<rand>`) ✅ · R-Z32 ข้อความ/คำสั่งเดิมใน 10 นาที = duplicate (แอปจัดการรูปเดียวกันอยู่แล้ว)
+- `qc-sec-s3a1-a` 9/9 (M-1 mobile tsc 0 · D-1/D-2 fitness ผ่าน)
+- ข้อสังเกต: kind ใหม่ `support.open` ยังไม่มีป้ายในแอป ⇒ แสดงแบบ fallback "งานใน <ระบบ>" (ไม่ได้สั่งในรอบนี้)
