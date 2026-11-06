@@ -157,7 +157,8 @@ export const SQC_USERS: SqcUser[] = [
   user("fai", "พี่ฝ้าย (ผู้ดูแลหอ)", "STAFF", [SQC_UNITS.dorm.id], ["hotel.room.setStatus", "dorm.view", "dorm.lease.manage", "dorm.slip.review"]),
   user("meter", "คนจดมิเตอร์ (SVC QC)", "STAFF", [SQC_UNITS.dorm.id], ["dorm.meter.read"]),
   user("accountant", "ฝ่ายบัญชี (SVC QC)", "STAFF", ALL4, ["account.report.view"]),
-  user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn"]),
+  // SVC H.1 ▸ frontdesk + hotel.rates.read (ดูราคาอย่างเดียว · ไม่มี rates.write/settings.edit — ภาพ 15 read-only) ◂
+  user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn", "hotel.rates.read"]),
 ];
 /** acceptedAt ตายตัว (รันซ้ำไม่ขยับ) */
 export const SQC_ACCEPTED_AT = "2026-10-01T00:00:00+07:00";
@@ -1359,3 +1360,52 @@ SQC_VISUAL_SPECS["b.14"] = [
   },
 ];
 // ◂ SVC B.14
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC H.0 / H.1 ▸ บล็อกของเฟส H (โรงแรม V2) — ผู้คุมตั้ง · builder/เลนอื่นห้ามแตะ
+//   แผน ledger/SVC-HOTEL-PLAN.md · ใบสั่ง ledger/svc-briefs/svc-brief-h.0.md (ตาราง) · svc-brief-h.1.md §3 (ตัวเลขฉาก) §8 (ฉาก)
+//   🔴 ค่าคงที่อย่างเดียว — seed ไม่เขียนตาราง Hotel* ใหม่ (ยังไม่มีจน migration svc_h ลง) · ฉาก H.1 (svc-qc-hotel-rates-scene.mts) เป็นผู้เขียน
+//   🔴 วันที่ของฉากสัมพัทธ์กับวันนี้ไทย (ฤดูยึดปีถัดไปถ้าช่วงผ่านไปแล้ว · override = วันที่ 14 ของเดือนนี้ ถ้าวันนี้ > 14 ⇒ เดือนหน้า)
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcRatePlanKey = "standard" | "breakfast" | "nonref";
+export type SqcRatePlan = { key: SqcRatePlanKey; code: string; name: string; isDefault: boolean; includeBreakfast: boolean; depositKind: "NONE" | "FIRST_NIGHT" | "FULL" | "PERCENT" | "FIXED_AMOUNT"; depositValue: number; cancelRules: { daysBefore: number; refundBp: number }[]; visibility: string[]; minNights: number | null };
+export type SqcSeason = { key: string; name: string; start: string; end: string; priority: number; adjustBp: number | null; fixed?: Record<string, { weekday: number; weekend: number; holiday: number | null }>; minNights?: number };
+/** ราคาต่อประเภท (สตางค์) ตามภาพ 15: ซูพีเรีย 990 ทุกวัน · ดีลักซ์ 1,290/1,490 · แฟมิลี 1,890/2,190 (holiday = ราคาเสาร์อาทิตย์) */
+export const SQC_HOTEL_RATES = {
+  mark: "SvcQcScene:h1",
+  unit: "hotel" as SqcUnitKey,
+  weekendDays: [5, 6],
+  plans: [
+    { key: "standard", code: "STANDARD", name: "ราคามาตรฐาน", isDefault: true, includeBreakfast: false, depositKind: "FIRST_NIGHT", depositValue: 0, cancelRules: [{ daysBefore: 3, refundBp: 10_000 }, { daysBefore: 0, refundBp: 0 }], visibility: ["WEB", "LINE", "COUNTER", "OTA"], minNights: null },
+    { key: "breakfast", code: "BREAKFAST", name: "รวมอาหารเช้า", isDefault: false, includeBreakfast: true, depositKind: "FIRST_NIGHT", depositValue: 0, cancelRules: [{ daysBefore: 3, refundBp: 10_000 }, { daysBefore: 0, refundBp: 0 }], visibility: ["WEB", "LINE"], minNights: null },
+    { key: "nonref", code: "NONREF", name: "จ่ายก่อน ไม่คืนเงิน", isDefault: false, includeBreakfast: false, depositKind: "FULL", depositValue: 0, cancelRules: [{ daysBefore: 0, refundBp: 0 }], visibility: ["WEB"], minNights: null },
+  ] as SqcRatePlan[],
+  /** matrix แถว seasonId=null ต่อแผน (ชื่อประเภท → สตางค์) · BREAKFAST = มาตรฐาน + 20,000 × baseOccupancy(2) · NONREF = มาตรฐาน −10% ปัดลงเป็นบาท */
+  base: {
+    "ซูพีเรีย": { weekday: 99_000, weekend: 99_000, holiday: null },
+    "ดีลักซ์": { weekday: 129_000, weekend: 149_000, holiday: 149_000 },
+    "แฟมิลี": { weekday: 189_000, weekend: 219_000, holiday: 219_000 },
+  } as Record<string, { weekday: number; weekend: number; holiday: number | null }>,
+  breakfastPerPersonSatang: 20_000,
+  nonrefDiscountBp: 1_000,
+  seasons: [
+    { key: "high", name: "ไฮซีซัน", start: "12-01", end: "02-28", priority: 10, adjustBp: 2_000 },
+    { key: "newyear", name: "ปีใหม่", start: "12-29", end: "01-02", priority: 20, adjustBp: null, minNights: 2, fixed: { "ซูพีเรีย": { weekday: 149_000, weekend: 149_000, holiday: null }, "ดีลักซ์": { weekday: 199_000, weekend: 199_000, holiday: null }, "แฟมิลี": { weekday: 299_000, weekend: 299_000, holiday: null } } },
+  ] as SqcSeason[],
+  /** วันหยุด (MM-DD · ปีตามฉาก) — 5 ธ.ค. อยู่ในไฮซีซัน (ข้อสอบ S:1133 "วันหยุดในฤดู") · 13 เม.ย. นอกฤดู */
+  holidays: [{ date: "12-05", name: "วันพ่อแห่งชาติ" }, { date: "04-13", name: "สงกรานต์" }],
+  /** แก้มือ (ภาพ 15 ช่อง "1,690 แก้มือ") — ดีลักซ์ ทุกแผน วันที่ 14 ของเดือนฉาก */
+  override: { roomType: "ดีลักซ์", dayOfMonth: 14, priceSatang: 169_000, reason: "งานวิ่งในเมือง" },
+  /** ค่าตั้งที่ฉากคาดบนหน่วย (ค่าเริ่มจาก registry · ฉากไม่เขียนทับ — ข้อสอบ Q เทียบก่อน/หลัง) */
+  expectSettings: { taxMode: "INCLUSIVE", vatBp: 700, serviceChargeBp: 0, holdMinutesOnline: 15, checkInTime: "14:00", checkOutTime: "12:00" },
+  /** ตัวเลขอ้างอิง (README ข้อสอบ): ดีลักซ์ ศ.+ส. 2 คืน มาตรฐาน = 149,000+149,000 = 298,000 · มัดจำคืนแรก 149,000 · ยกเลิกก่อน 3 วัน คืน 100% · NONREF 2 คืนเดียวกัน = 268,200 · ไฮซีซัน ดีลักซ์ธรรมดา = 154,800 · ปีใหม่ 31 ธ.ค. ดีลักซ์ = 199,000 (priority 20 ชนะ) · override 14 = 169,000 ทุกแผน */
+  expect: { deluxeFriSatStandard: 298_000, deluxeFirstNightDeposit: 149_000, deluxeFriSatNonref: 268_200, deluxeHighWeekday: 154_800, deluxeNewYear: 199_000, deluxeOverride: 169_000, superiorHoliday: 99_000 },
+} as const;
+/** ภาพ จอง/โรงแรม 15 (ราคา) + จอตั้งค่าโรงแรม — ก่อนถ่าย: seed → ฉาก H.1 · ถ่าย --user owner และ --user frontdesk (read-only) */
+SQC_VISUAL_SPECS["h.1"] = [
+  { name: "hotel-rates-calendar", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/rates` },
+  { name: "hotel-rates-plans", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/rates?tab=plans` },
+  { name: "hotel-rates-seasons", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/rates?tab=seasons` },
+  { name: "hotel-settings", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/settings` },
+];
+// ◂ SVC H.0 / H.1
