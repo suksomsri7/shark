@@ -14,6 +14,7 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conversation-owner";
 import { balancePeek, LOW_BALANCE_MICRO } from "../credit";
+import { resolveProvider } from "../provider";
 import { countsAsJob, FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage } from "./pack";
 import { NOT_SYSTEM_MESSAGE, roomMemberRows, type RoomMemberRow } from "./members";
 import { visibleCustomerConversation } from "./customer-context";
@@ -42,8 +43,8 @@ export type StartRoomInput = {
 };
 
 export type StartRoomResult =
-  | { ok: true; roomId: string; conversationId: string; messageId: string; jobsUsed: number; jobsLimit: number }
-  | { ok: false; error: "empty" | "actor" | "quota"; message: string; resetAt?: Date; jobsUsed?: number; jobsLimit?: number };
+  | { ok: true; roomId: string; conversationId: string; messageId: string; jobId: string; jobsUsed: number; jobsLimit: number }
+  | { ok: false; error: "empty" | "actor" | "quota" | "ai_disabled"; message: string; resetAt?: Date; jobsUsed?: number; jobsLimit?: number };
 
 const TITLE_MAX = 60;
 const NEW_ROOM_TITLE = "งานใหม่";
@@ -54,6 +55,22 @@ const ACTIVE_JOB_STATUSES = ["QUEUED", "RUNNING"];
 const MSG_EMPTY = "พิมพ์งานที่อยากให้เลขาช่วยก่อนนะ";
 const MSG_BAD_CUSTOMER = "ไม่พบห้องลูกค้าหรือไม่มีสิทธิ์";
 const MSG_ACTOR = "เปิดห้องงานได้เฉพาะคนในกิจการที่เข้าสู่ระบบอยู่ — ลองเข้าสู่ระบบใหม่อีกครั้ง";
+const MSG_AI_DISABLED = "ผู้ช่วย AI ยังไม่เปิดใช้งานในตอนนี้ — ยังเปิดห้องงานใหม่ไม่ได้ ลองใหม่ภายหลัง";
+
+/** มีผู้ให้บริการโมเดลไหม (เหมือน `service.aiEnabled` — ไฟล์นี้ห้าม import service: วงกลม) */
+function aiEnabled(): boolean {
+  return resolveProvider() !== null;
+}
+
+/**
+ * SEC S3a.1-S1 ▸ R-Z9: บทสนทนานี้เป็นห้องเลขาของร้านนี้ไหม — ประตูแชท AI เดิม (`/api/mobile/chat/send` · action เว็บ) ปฏิเสธห้องเลขา
+ *   (ห้องเลขาใช้ได้เฉพาะเส้นห้อง: ตัวนับงาน · คิว · ด่านอนุมัติ) · ไม่ดูการมองเห็น (รหัสห้องเดาไม่ได้ · ตอบเหมือนกันทุกคน) ◂
+ */
+export async function isSecretaryRoomConversation(tenantId: string, conversationId: string | undefined | null): Promise<boolean> {
+  const id = typeof conversationId === "string" ? conversationId.trim() : "";
+  if (!id || !tenantId) return false;
+  return (await tenantDb({ tenantId }).aiRoom.count({ where: { conversationId: id } })) > 0;
+}
 
 /** ชื่อห้องจากคำสั่ง — บรรทัดแรกที่มีตัวอักษร (trim) · ยาวเกิน 60 ตัว = ตัดแล้วเติม "…" · ว่าง = "งานใหม่" (pure) */
 export function roomTitleFrom(instruction: string): string {
@@ -112,6 +129,7 @@ class QuotaExceeded extends Error {
  * เปิดห้องงานใหม่ + นับงาน 1 ครั้ง (R-K6: ตัวนับงานอยู่ที่นี่ ไม่ใช่ sendMessage · สั่งเพิ่มในห้องเดิมไม่นับ)
  *   ใน `prisma.$transaction` เดียว: (1) แถวตัวนับของเดือน (INSERT … ON CONFLICT DO NOTHING) (2) conditional `updateMany` `jobs < limit`
  *   → count 0 = โควตาหมด ⇒ throw ⇒ ย้อนทั้ง tx (3) AiConversation (4) AiRoom (5) ข้อความ USER (`authorUserId` · รหัสคืนใน `messageId`)
+ *   (6) SEC S3a.1-S1 R-Z3: AiRoomJob QUEUED ของข้อความนั้น (`jobId`) · ไม่มีผู้ให้บริการ ⇒ `ai_disabled` (R-Z10) ไม่สร้างอะไร
  *   `now` ฉีดได้ (เดือนไทยของตัวนับ + วันรีเซ็ต)
  */
 export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor }, input: StartRoomInput, now: Date = new Date()): Promise<StartRoomResult> {
@@ -119,6 +137,8 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
   if (!actor) return { ok: false, error: "actor", message: MSG_ACTOR };
   const instruction = typeof input?.instruction === "string" ? input.instruction.trim() : "";
   if (!instruction) return { ok: false, error: "empty", message: MSG_EMPTY };
+  // SEC S3a.1-S1 ▸ R-Z10: ไม่มีผู้ให้บริการ = งานไม่มีใครทำ ⇒ ไม่เปิดห้อง/ไม่นับงาน ◂
+  if (!aiEnabled()) return { ok: false, error: "ai_disabled", message: MSG_AI_DISABLED };
 
   let conversationId: string;
   try {
@@ -167,10 +187,12 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
         data: { tenantId, conversationId, role: "USER", content: instruction, authorUserId: actor.userId },
         select: { id: true },
       });
+      // SEC S3a.1-S1 ▸ R-Z3: job ของข้อความสั่งงานแรกใน tx เดียวกัน (เหมือน sendRoomMessage) — ไม่มีห้องที่ไม่มีงาน · ผู้เรียกไม่ต้อง enqueue แยก ◂
+      const job = await tx.aiRoomJob.create({ data: { tenantId, roomId: room.id, messageId: msg.id, authorUserId: actor.userId }, select: { id: true } });
       const counter = await tx.aiJobCounter.findUnique({ where: { tenantId_month: { tenantId, month } }, select: { jobs: true } });
-      return { roomId: room.id, messageId: msg.id, jobsUsed: counter?.jobs ?? inc };
+      return { roomId: room.id, messageId: msg.id, jobId: job.id, jobsUsed: counter?.jobs ?? inc };
     });
-    return { ok: true, roomId: res.roomId, conversationId, messageId: res.messageId, jobsUsed: res.jobsUsed, jobsLimit: limit };
+    return { ok: true, roomId: res.roomId, conversationId, messageId: res.messageId, jobId: res.jobId, jobsUsed: res.jobsUsed, jobsLimit: limit };
   } catch (e) {
     if (!(e instanceof QuotaExceeded)) throw e;
     const resetAt = nextResetBangkok(now);

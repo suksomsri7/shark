@@ -117,29 +117,28 @@ async function jobsLeftOf(tenantId: string, now: Date): Promise<{ used: number; 
   return { used, left: Math.max(0, FREE_PACK.jobsPerMonth - used) };
 }
 
+/** SEC S3a.1-S1 ▸ R-Z9: ป้าย `AiCreditTxn.note` ของต้นทุนที่ worker ห้องเลขาเป็นคนจ่าย (`room-worker:<jobId>` · แทน enum source ใหม่) ◂ */
+export const ROOM_WORKER_NOTE_PREFIX = "room-worker:";
+
 /**
  * R-S1.13b ▸ ต้นทุน assist ของวันไทยที่ครอบ `now` = Σ|amountMicro| ของแถว USAGE ของร้าน (1 aggregate · index [tenantId, createdAt])
  *   คืนช่วงวันด้วย (resetAt = เที่ยงคืนไทยถัดไป) ◂
+ * SEC S3a.1-S1 ▸ R-Z9: ไม่นับเฉพาะแถวที่ worker ห้องเลขาจ่าย (note ขึ้นต้น `room-worker:` — งานคุมด้วยโควตางานแล้ว) ·
+ *   แถวอื่นในบทสนทนาของห้องเลขา (ประตูเดิมที่ชี้ห้อง) นับตามปกติ — เดิม (R-S1.13f) ตัดทุกแถวของบทสนทนาที่มี AiRoom ◂
  */
 export async function assistUsedMicroOfDay(tenantId: string, now: Date = new Date()): Promise<{ usedMicro: number; capMicro: number; resetAt: Date }> {
   const start = bkkDayStart(now);
   const resetAt = new Date(start.getTime() + 86_400_000);
-  // R-S1.13f ▸ ต้นทุนของห้องเลขา (conversationId มี AiRoom) ไม่นับในเพดานนี้ — ห้องคุมด้วยโควตางานแล้ว
-  //   2 query ที่มีขอบเขต: รวมต่อ conversationId ของวันนี้ (index [tenantId, createdAt]) → หาว่าตัวไหนเป็นห้องเลขา ◂
-  const rows = await prisma.aiCreditTxn.groupBy({
-    by: ["conversationId"],
-    where: { tenantId, kind: "USAGE", createdAt: { gte: start, lt: resetAt } },
+  const agg = await prisma.aiCreditTxn.aggregate({
+    where: {
+      tenantId,
+      kind: "USAGE",
+      createdAt: { gte: start, lt: resetAt },
+      OR: [{ note: null }, { NOT: { note: { startsWith: ROOM_WORKER_NOTE_PREFIX } } }],
+    },
     _sum: { amountMicro: true },
   });
-  const convIds = (rows ?? []).map((r) => r.conversationId).filter((c): c is string => typeof c === "string" && c.length > 0);
-  const roomConv = convIds.length > 0
-    ? new Set((await prisma.aiRoom.findMany({ where: { tenantId, conversationId: { in: convIds } }, select: { conversationId: true } })).map((r) => r.conversationId))
-    : new Set<string>();
-  let used = 0;
-  for (const r of rows ?? []) {
-    if (r.conversationId && roomConv.has(r.conversationId)) continue;
-    used += Math.abs(Number(r._sum?.amountMicro ?? 0) || 0);
-  }
+  const used = Math.abs(Number(agg?._sum?.amountMicro ?? 0) || 0);
   return { usedMicro: used, capMicro: FREE_PACK.assistDailyMicro, resetAt };
 }
 

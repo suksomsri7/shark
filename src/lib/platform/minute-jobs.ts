@@ -49,6 +49,16 @@ export type MinuteJob = {
   cadence?: MinuteJobCadence;
   /** true = รันเฉพาะเมื่อเรียกจากตัวรันบน VPS (`entry: "vps"`) — ใช้กับงานสัญญาณชีพ (ดูท้ายส่วนทะเบียน) เพื่อพิสูจน์ว่า crontab ยังเดิน */
   vpsOnly?: boolean;
+  /**
+   * SEC S3a.1-S1 ▸ R-Z8: งบของตัวเอง (ms) บนราง "minute" — ไม่กินงบรวม 20 วิ ของรอบ (เวลาที่ใช้ไปถูกคืนให้งานถัดไป)
+   *   ใช้กับงานที่ต้องได้รันทุกนาทีแม้งานอื่นในรอบจะช้า (คิวห้องเลขา) · ไม่ตั้ง = งบที่เหลือของรอบเหมือนเดิม ◂
+   */
+  ownBudgetMs?: number;
+  /**
+   * SEC S3a.1-S1 รอบ 2 ▸ §Z.4 Q5: การถูกตัดงบเป็นเรื่องปกติของงานนี้ (เช่นรอโมเดล) ⇒ บันทึก INFO ไม่เกิน 1 แถว/15 นาที
+   *   พร้อมจำนวนครั้งที่ถูกตัด (ตัวนับต่อโพรเซส) แทน WARN ทุกครั้ง · ไม่ตั้ง = WARN ทุกครั้งเหมือนเดิม ◂
+   */
+  quietCutOff?: boolean;
 };
 
 export type MinuteJobControl = { signal: AbortSignal; deadline: number };
@@ -94,6 +104,13 @@ const WINDOW_OFFSET_MS = 7 * 60 * 60_000;
 const ERROR_MAX = 4000;
 
 const leaseKey = (name: string) => `minute-job:lease:${name}`;
+const cutOffLogKey = (name: string) => `minute-job:cutoff-log:${name}`; // SEC S3a.1-S1 รอบ 2 §Z.4 Q5
+const CUT_OFF_LOG_EVERY_MS = 15 * 60_000;
+// ตัวนับครั้งที่ถูกตัดงบต่อโพรเซส (งาน quietCutOff) — รายงานพ่วงแถว INFO ที่ throttle แล้ว
+const CUTOFF_COUNT_KEY = Symbol.for("shark.platform.minute-jobs.cutoff-count");
+const cutHolder = globalThis as unknown as Record<symbol, Map<string, number> | undefined>;
+const cutOffCount: Map<string, number> = cutHolder[CUTOFF_COUNT_KEY] ?? new Map<string, number>();
+cutHolder[CUTOFF_COUNT_KEY] = cutOffCount;
 const runKey = (name: string) => `minute-job:run:${name}`;
 const okKey = (name: string) => `minute-job:ok:${name}`;
 const opsMessage = (name: string, what: string) => `${name} · ${what}`;
@@ -127,6 +144,18 @@ export function registerMinuteJob(job: MinuteJob): void {
 // ── no-op job ให้ข้อสอบ/หน้า integrations มีสัญญาณชีพ (ลงทะเบียนตอน import — ทั้ง route และ crm-cron.mts ผ่านทางนี้) ──
 // vpsOnly: สัญญาณชีพต้องพิสูจน์ว่า "ตัวรันบน VPS" ยังเดิน — ถ้า route (uptime pinger / curl มือ) ต่ออายุได้ด้วย
 //   หน้า integrations จะขึ้นว่าปกติทั้งที่ crontab หายไปแล้ว
+// SEC S3a.1-S1 ▸ R-Z8: คิวห้องเลขา = งานแรกของราง minute พร้อมงบของตัวเอง 8 วิ (ไม่กินงบรวม — `chat.sla` ท้ายรางไม่ตก no-budget)
+//   ตัวงานจริงอยู่ที่ `ai/secretary/worker.ts#runRoomJobsTick` (โหลดตอนรันเท่านั้น — ไฟล์นี้ห้ามลากชั้น AI ตอนโหลด) ·
+//   `room-jobs-job.ts` ลงทะเบียนชื่อเดิมซ้ำด้วยค่าเดียวกัน (แทนที่ในตำแหน่งเดิมของทะเบียน = ยังเป็นงานแรก) ◂
+export const SECRETARY_ROOM_JOBS_BUDGET_MS = 8_000;
+registerMinuteJob({
+  name: "secretary.roomJobs",
+  everyMinutes: 1,
+  ownBudgetMs: SECRETARY_ROOM_JOBS_BUDGET_MS,
+  quietCutOff: true, // §Z.4 Q5: งานรอโมเดลเกิน 8 วิ = ปกติ (worker ทำต่อเบื้องหลัง · lease/heartbeat ของงานคุมอยู่)
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/ai/secretary/worker")).runRoomJobsTick(now, ctrl),
+});
+// ◂ SEC S3a.1-S1
 registerMinuteJob({ name: "crm.heartbeat", everyMinutes: 5, vpsOnly: true, run: async () => {} });
 
 // CRM C2.1 ▸ กฎอัตโนมัติ CRM (ใบ C2.1 · §7.3) — ขั้น "รอ n วัน" ที่ถึงเวลา (รายชั่วโมง) · trigger ตามรอบเวลา (รายวัน 00:00 ไทย)
@@ -802,7 +831,7 @@ export async function runMinuteJobs(
   //   และเรียง "งานที่จบรอบล่าสุดเก่าที่สุดก่อน" (เสมอกัน = ลำดับที่ลงทะเบียน — วันปกติทุกงานจบด้วย `now` เดียวกัน ลำดับจึงเท่าเดิม)
   //   ⇒ งานที่ถูกข้ามเพราะเพดานรวม (ไม่บันทึก = ยังเป็นรอบเก่า) ได้ขึ้นหัวคิวในการเรียกครั้งถัดไป — ไม่มีงานไหนอดตลอดไป ◂
   const perJob = cadence !== "minute";
-  const deadline = Date.now() + (perJob ? WINDOW_CADENCE_WALL_MS : MINUTE_JOB_BUDGET_MS);
+  let deadline = Date.now() + (perJob ? WINDOW_CADENCE_WALL_MS : MINUTE_JOB_BUDGET_MS); // SEC S3a.1-S1 R-Z8: let — งานที่มีงบของตัวเองคืนเวลาให้รอบ
   const registered = [...registry.values()].filter(
     (j) => (j.cadence ?? "minute") === cadence && (!j.vpsOnly || opts?.entry === "vps"),
   );
@@ -828,7 +857,10 @@ export async function runMinuteJobs(
       continue;
     }
     // CRM C5.4-D ▸ L3-M4: งบของงานนี้ = งบของตัวเอง (hourly/daily · ไม่เกินเพดานรวม) หรือ "งบที่เหลือ" ของรอบ (minute) ◂
-    const jobDeadline = perJob ? Math.min(Date.now() + MINUTE_JOB_BUDGET_MS, deadline) : deadline;
+    // SEC S3a.1-S1 ▸ R-Z8: ราง minute + `ownBudgetMs` ⇒ งบของตัวเอง แล้วคืนเวลาที่ใช้ให้งบรวม (ไม่กินงบของงานถัดไป) ◂
+    const own = !perJob && typeof job.ownBudgetMs === "number" && job.ownBudgetMs > 0 ? job.ownBudgetMs : 0;
+    const startedAt = Date.now();
+    const jobDeadline = perJob ? Math.min(Date.now() + MINUTE_JOB_BUDGET_MS, deadline) : own > 0 ? Date.now() + own : deadline;
     if (jobDeadline - Date.now() < MIN_START_BUDGET_MS) {
       summary.results.push({ name: job.name, outcome: "no-budget" });
       continue;
@@ -841,6 +873,7 @@ export async function runMinuteJobs(
       summary.results.push({ name: job.name, outcome: "failed" });
       await logOps("WARN", OPS_SOURCE, opsMessage(job.name, "dispatcher error"), { detail: errorText(e) });
     }
+    if (own > 0) deadline += Date.now() - startedAt; // SEC S3a.1-S1 R-Z8: เวลาของงานงบตัวเองไม่หักจากงบรวม
   }
   return summary;
 }
@@ -880,9 +913,25 @@ async function dispatchOne(job: MinuteJob, now: Date, deadline: number): Promise
   // AUDIT-CLASS X5: ถูกตัดงบ — ไม่นับเป็นสำเร็จ (ไม่มีแถว ok) · บันทึกการตัด · lease ยังถือไว้เพราะงานอาจยังวิ่ง
   //   อยู่เบื้องหลัง (กันสำเนาที่สองระหว่างนั้น) — ปล่อยเมื่องานคืนตัว หรือหมดเองตามเวลา lease
   //   ตัวรันบน VPS รอ settleOutstandingMinuteJobs() ก่อน exit เพื่อไม่ฆ่างานกลางคำสั่งแล้วทิ้ง lease ค้าง 15 นาที
-  await logOps("WARN", OPS_SOURCE, opsMessage(job.name, "cut off"), {
-    detail: `cut off by the dispatcher after ${Date.now() - startedAt} ms (budget ${budgetMs} ms of ${MINUTE_JOB_BUDGET_MS} ms per tick) — not recorded as a success; lease kept until the job settles or ${until.toISOString()}`,
-  });
+  const cutDetail = `cut off by the dispatcher after ${Date.now() - startedAt} ms (budget ${budgetMs} ms of ${MINUTE_JOB_BUDGET_MS} ms per tick) — not recorded as a success; lease kept until the job settles or ${until.toISOString()}`;
+  if (job.quietCutOff) {
+    // SEC S3a.1-S1 รอบ 2 ▸ §Z.4 Q5: นับเป็นตัวเลข + INFO ไม่เกิน 1 แถว/15 นาที (จองหน้าต่างด้วยคำสั่งเดียวแบบ claimLease) ◂
+    const n = (cutOffCount.get(job.name) ?? 0) + 1;
+    cutOffCount.set(job.name, n);
+    const nextAt = new Date(now.getTime() + CUT_OFF_LOG_EVERY_MS);
+    const won = await prisma.$queryRaw<{ lastAlertAt: Date }[]>`
+      INSERT INTO "OpsAlertState" ("id", "source", "lastAlertAt")
+      VALUES (gen_random_uuid()::text, ${cutOffLogKey(job.name)}, (${utc(nextAt)}::timestamptz AT TIME ZONE 'UTC'))
+      ON CONFLICT ("source") DO UPDATE SET "lastAlertAt" = EXCLUDED."lastAlertAt"
+      WHERE "OpsAlertState"."lastAlertAt" <= (${utc(now)}::timestamptz AT TIME ZONE 'UTC')
+      RETURNING "lastAlertAt"`.catch(() => []);
+    if (won.length > 0) {
+      cutOffCount.set(job.name, 0);
+      await logOps("INFO", OPS_SOURCE, opsMessage(job.name, "cut off"), { detail: `${n} cut-off(s) in this process since the last note · latest: ${cutDetail}` });
+    }
+  } else {
+    await logOps("WARN", OPS_SOURCE, opsMessage(job.name, "cut off"), { detail: cutDetail });
+  }
   await recordFinish(job.name, now, false);
   const tail: Promise<void> = late
     .then(() => releaseLease(job.name, until))

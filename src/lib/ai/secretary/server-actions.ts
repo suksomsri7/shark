@@ -19,7 +19,9 @@ import { wakeOutbox } from "@/lib/modules/crm";
 import { identityOf, normalizeIdentityPatch, sampleSpeech, secretaryOf, updateSecretary, SECRETARY_DEFAULT, type SecretaryIdentity } from "./secretary";
 import { getAccess, setAccess } from "./access";
 import { closeRoom, getRoom, listRooms, renameRoom, startRoom, type RoomStatus } from "./rooms";
-import { enqueueRoomJob, runRoomJobs, sendRoomMessage } from "./worker";
+import { runRoomJobs, sendRoomMessage } from "./worker";
+import { logOps } from "@/lib/core/ops";
+import { claimNewRoom } from "@/app/api/mobile/secretary/_shared"; // SEC S3a.1-S1 R-Z11: กุญแจกันเปิดห้องซ้ำตัวเดียวกับ route
 import { addMember, listMembers, removeMember } from "./members";
 import { listRules, setRule } from "./approval-gate";
 import { listLog, undoAction } from "./actions";
@@ -71,14 +73,19 @@ function failOf(e: unknown): Fail {
   return { ok: false, error: "server_error", message: "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง" };
 }
 const nf = (message: string): Fail => ({ ok: false, error: "not_found", message });
-/** worker หลังตอบ — `after()` คืน promise ให้ waitUntil (ห้าม promise ลอย: ถูกแช่แข็งกลางทาง N9) · นอกคำขอ = รอจนจบ · ตัวเก็บตกรายนาทีมีอยู่แล้ว (R-K8b) */
-async function workAfter(): Promise<void> {
+/**
+ * worker หลังตอบ — `after()` คืน promise ให้ waitUntil (ห้าม promise ลอย: ถูกแช่แข็งกลางทาง N9) · นอกคำขอ = รอจนจบ · ตัวเก็บตกรายนาทีมีอยู่แล้ว (R-K8b)
+ *   SEC S3a.1-S1 R-Z5: รันเฉพาะงานของคำขอนี้ (`jobIds`) ภายใน deadline 240 วิ
+ */
+async function workAfter(jobId: string): Promise<void> {
+  const deadline = Date.now() + 240_000;
   try {
-    after(() => runRoomJobs());
+    after(() => runRoomJobs({ jobIds: [jobId], limit: 1, deadline }));
   } catch {
-    await runRoomJobs().catch(() => {});
+    await runRoomJobs({ jobIds: [jobId], limit: 1, deadline }).catch(() => {});
   }
 }
+const CMID_MAX = 80;
 
 // ── ตัวตนเลขา ──
 export async function secGetSecretaryAction() {
@@ -110,15 +117,45 @@ export async function secListRoomsAction(opts?: { status?: RoomStatus; q?: strin
   const rows = await listRooms(w.conv, opts);
   return roomCardsFor(w.tenantId, rows);
 }
-export async function secStartRoomAction(input: { instruction: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string } }) {
+/**
+ * เปิดห้องงาน (เว็บ) — SEC S3a.1-S1 R-Z11: รับ `clientMessageId` (≤ 80 · ห้ามมี ":") กันกดซ้ำด้วยกุญแจเดียวกับ route (`claimNewRoom`)
+ *   ซ้ำ ⇒ `{ ok:true, duplicate:true, roomId }` ห้องเดิม (ไม่นับงานซ้ำ) · ครั้งแรกยังไม่จบ ⇒ `pending` · job เกิดใน tx ของ startRoom (R-Z3)
+ */
+export async function secStartRoomAction(input: { instruction: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string }; clientMessageId?: string }) {
   const w = await webAi();
   const lim = await limited(w, "rooms");
   if (lim) return lim;
-  const r = await startRoom(w.conv, { instruction: String(input?.instruction ?? ""), systems: input?.systems, context: input?.context });
-  if (!r.ok) return { ok: false as const, error: r.error, message: r.message, resetAt: r.resetAt ?? null };
-  await enqueueRoomJob(w.tenantId, r.roomId, r.messageId, w.userId);
-  await workAfter();
-  return { ok: true as const, roomId: r.roomId, conversationId: r.conversationId, jobsUsed: r.jobsUsed, jobsLimit: r.jobsLimit };
+  const cmid = typeof input?.clientMessageId === "string" ? input.clientMessageId.trim() : "";
+  if (cmid && (cmid.length > CMID_MAX || cmid.includes(":"))) return { ok: false as const, error: "invalid", message: "รหัสกันส่งซ้ำไม่ถูกต้อง" };
+  let created = false;
+  let claim: Awaited<ReturnType<typeof claimNewRoom>> | null = null;
+  try {
+    claim = cmid ? await claimNewRoom(w.tenantId, w.userId, cmid) : null;
+    if (claim && !claim.first) {
+      const roomId = await claim.existingRoomId();
+      const room = roomId ? await getRoom(w.conv, roomId) : null;
+      if (!room || room.startedById !== w.userId) return { ok: false as const, error: "pending", message: "กำลังเปิดห้องงานนี้อยู่ ลองใหม่อีกครั้ง" };
+      return { ok: true as const, duplicate: true as const, roomId: room.id, conversationId: room.conversationId };
+    }
+    const r = await startRoom(w.conv, { instruction: String(input?.instruction ?? ""), systems: input?.systems, context: input?.context });
+    if (!r.ok) {
+      await claim?.release();
+      return { ok: false as const, error: r.error, message: r.message, resetAt: r.resetAt ?? null };
+    }
+    created = true;
+    await workAfter(r.jobId);
+    try {
+      await claim?.remember(r.roomId);
+    } catch (e) {
+      // §Z.4 Q3: ห้องเกิดแล้วจริง ⇒ คืน claim + logOps WARN แล้วตอบสำเร็จตามปกติ
+      await claim?.release().catch(() => undefined);
+      await logOps("WARN", "secretary-web", "secStartRoomAction: จดกุญแจกันส่งซ้ำไม่สำเร็จ (ห้องเกิดแล้ว · คืน claim)", { detail: e instanceof Error ? e.message : String(e) }).catch(() => undefined);
+    }
+    return { ok: true as const, roomId: r.roomId, conversationId: r.conversationId, jobsUsed: r.jobsUsed, jobsLimit: r.jobsLimit };
+  } catch (e) {
+    if (!created && claim) await claim.release().catch((re: unknown) => logOps("WARN", "secretary-web", "secStartRoomAction: คืนกุญแจกันส่งซ้ำไม่สำเร็จ", { detail: String(re) }).catch(() => undefined));
+    return failOf(e);
+  }
 }
 export async function secGetRoomAction(roomId: string) {
   const w = await webAi();
@@ -144,8 +181,8 @@ export async function secSendRoomMessageAction(roomId: string, text: string) {
   if (lim) return lim;
   const r = await sendRoomMessage(w.conv, roomId, { text: String(text ?? "") });
   if (!r.ok) return { ok: false as const, error: r.error, message: r.message };
-  await workAfter();
-  return { ok: true as const, messageId: r.messageId };
+  await workAfter(r.jobId);
+  return { ok: true as const, messageId: r.messageId, jobId: r.jobId };
 }
 export async function secCloseRoomAction(roomId: string) {
   const w = await webAi();

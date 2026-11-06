@@ -10,7 +10,7 @@
 import { tenantDb } from "@/lib/core/db";
 import { type MembershipCtx } from "@/lib/core/rbac";
 import type { Prisma } from "@prisma/client";
-import { DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
+import { closedRoomNote, DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
 import type { ConvCtx } from "./conversation-owner";
 import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
 import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/members";
@@ -116,6 +116,9 @@ export async function executePlan(
 
   // ไม่ใช่ PENDING (ทำไปแล้ว/ถูกปิด) → ไม่ทำซ้ำ
   if (row.status !== "PENDING") return { ok: false, results: [], doneCount: 0 };
+  // SEC S3a.1-S1 ▸ R-Z9: แผนในห้องเลขาที่ปิดแล้ว ⇒ ไม่ทำสักขั้น (แผนคง PENDING) ◂
+  const closedNote = await closedRoomNote(ctx.tenantId, row.conversationId);
+  if (closedNote) return { ok: false, results: [], doneCount: 0, note: closedNote };
 
   // หมดอายุ → EXPIRED (กันกดของเก่า)
   if (row.expiresAt.getTime() <= Date.now()) {

@@ -1,11 +1,16 @@
 // GET/POST /api/mobile/secretary/rooms — รายการห้องงาน (cursor คู่ `before=<iso>|<id>` · `pendingProposals` ต่อการ์ด) · เปิดห้องใหม่ (นับงาน 1 · R-K6)
-//   POST = (clientMessageId ⇒ claim กันซ้ำ R-S1.14a) → `startRoom` (ตัวนับงานใน tx เดียว) → `enqueueRoomJob` → worker ใน `after()` (R-K8)
+//   POST = (clientMessageId ⇒ claim กันซ้ำ R-S1.14a) → `startRoom` (ตัวนับงาน + job ใน tx เดียว · S3a.1-S1 R-Z3) → worker ของงานนี้ใน `after()`
+//   (R-K8 · R-Z5: `jobIds:[jobId]` + deadline 240 วิ จากต้นคำขอ · ที่ไม่ทัน = ตัวเก็บตกรายนาที)
 import { z } from "zod";
 import { listRooms, startRoom, type RoomStatus } from "@/lib/ai/secretary/rooms";
 import { tenantDb } from "@/lib/core/db";
-import { enqueueRoomJob, runRoomJobs } from "@/lib/ai/secretary/worker";
+import { runRoomJobs } from "@/lib/ai/secretary/worker";
 import { roomCardsFor } from "@/lib/ai/secretary/views";
-import { claimNewRoom, cursorOf, fail, gate, ID_MAX, ok, pairCursor, readBody, runAfter, takeOf, thrown, withRateLimit } from "../_shared";
+import { claimFailed, claimNewRoom, rememberFailed, cursorOf, fail, gate, ID_MAX, ok, pairCursor, readBody, runAfter, takeOf, thrown, withRateLimit } from "../_shared";
+
+/** SEC S3a.1-S1 R-Z5: route นี้รัน worker (โมเดล) ใน `after()` — เพดานของแพลตฟอร์ม · worker หยุดหยิบงานที่ 240 วิ */
+export const maxDuration = 300;
+const WORKER_DEADLINE_MS = 240_000;
 
 const STATUSES: readonly RoomStatus[] = ["OPEN", "RUNNING", "WAITING", "DONE"];
 const Id = z.string().trim().min(1).max(ID_MAX);
@@ -40,6 +45,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const start = Date.now();
   const a = await gate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "rooms");
@@ -47,7 +53,12 @@ export async function POST(req: Request) {
   const b = await readBody(req, PostBody);
   if (!b.ok) return b.res;
   const { clientMessageId, ...input } = b.v;
-  const claim = clientMessageId ? await claimNewRoom(a.c.tenantId, a.c.userId, clientMessageId) : null;
+  let claim: Awaited<ReturnType<typeof claimNewRoom>> | null;
+  try {
+    claim = clientMessageId ? await claimNewRoom(a.c.tenantId, a.c.userId, clientMessageId) : null;
+  } catch (e) {
+    return thrown(e, "rooms.post.claim");
+  }
   if (claim && !claim.first) {
     // ส่งซ้ำ: คืนห้องเดิม (ไม่นับงานซ้ำ) · ห้องแรกยังสร้างไม่เสร็จ = 409 pending ให้แอปลองใหม่ครู่เดียว
     const roomId = await claim.existingRoomId();
@@ -59,18 +70,34 @@ export async function POST(req: Request) {
   try {
     const r = await startRoom(a.c.conv, input);
     if (!r.ok) {
-      await claim?.release();
+      try {
+        await claim?.release();
+      } catch (e) {
+        return claimFailed(e, "rooms.post"); // R-Z11: ไม่กลืน
+      }
       if (r.error === "quota") return fail(409, "quota", r.message, { resetAt: r.resetAt ?? null, jobsUsed: r.jobsUsed ?? null, jobsLimit: r.jobsLimit ?? null });
       if (r.error === "actor") return fail(403, "forbidden", r.message);
+      if (r.error === "ai_disabled") return fail(503, "ai_disabled", r.message);
       return fail(400, r.error === "empty" ? "empty" : "invalid", r.message);
     }
     created = true;
-    await claim?.remember(r.roomId);
-    const job = await enqueueRoomJob(a.c.tenantId, r.roomId, r.messageId, a.c.userId);
-    await runAfter(() => runRoomJobs());
-    return ok({ roomId: r.roomId, conversationId: r.conversationId, messageId: r.messageId, jobId: job.id, jobsUsed: r.jobsUsed, jobsLimit: r.jobsLimit });
+    try {
+      await claim?.remember(r.roomId);
+    } catch (e) {
+      // §Z.4 Q3: ห้อง+งานเกิดแล้วจริง แต่จดกุญแจไม่ได้ ⇒ คืน claim (ไม่ค้าง 409 pending 24 ชม.) + logOps WARN แล้วตอบ 200 ปกติด้านล่าง
+      await rememberFailed(e, claim, "rooms.post");
+    }
+    // R-Z3/R-Z5: job เกิดใน tx ของ startRoom แล้ว ⇒ รันเฉพาะงานนี้หลังตอบ
+    await runAfter(() => runRoomJobs({ jobIds: [r.jobId], limit: 1, deadline: start + WORKER_DEADLINE_MS }));
+    return ok({ roomId: r.roomId, conversationId: r.conversationId, messageId: r.messageId, jobId: r.jobId, jobsUsed: r.jobsUsed, jobsLimit: r.jobsLimit });
   } catch (e) {
-    if (!created) await claim?.release();
+    if (!created && claim) {
+      try {
+        await claim.release();
+      } catch (re) {
+        await claimFailed(re, "rooms.post");
+      }
+    }
     return thrown(e, "rooms.post");
   }
 }

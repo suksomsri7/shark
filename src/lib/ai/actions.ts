@@ -10,6 +10,8 @@ import { recordFeedback, type FeedbackRating } from "./feedback";
 import { quotaMessage } from "./usage";
 import { ensureWallet } from "./credit";
 import { formatUsd } from "./pricing";
+import { checkRateLimitDb } from "@/lib/core/rate-limit-db"; // SEC S3a.1-S1 R-Z9
+import { isSecretaryRoomConversation } from "./secretary/rooms"; // SEC S3a.1-S1 R-Z9
 // CRM C3.4 ▸ ประตูข้อเสนอของ CRM (ยกเลิกได้เฉพาะคนที่ยืนยันได้) ผ่าน facade ◂
 import { aiBridges, wakeOutbox } from "@/lib/modules/crm";
 
@@ -237,6 +239,12 @@ export async function sendAiMessageAction(input: {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
   try {
+    // SEC S3a.1-S1 ▸ R-Z9: เพดาน 20/นาที (ถังเดียวกับ /api/mobile/chat/send) · ห้องเลขาใช้ได้เฉพาะเส้นห้อง ◂
+    const rl = await checkRateLimitDb(`ai-chat:${auth.active.tenantId}:${auth.user.id}`, { limit: 20, windowMs: 60_000 });
+    if (!rl.ok) return { ok: false, message: "ส่งข้อความถี่เกินไป รอสักครู่แล้วลองใหม่" };
+    if (await isSecretaryRoomConversation(auth.active.tenantId, input.conversationId)) {
+      return { ok: false, message: "ห้องนี้เป็นห้องงานของเลขา — ส่งข้อความจากหน้าห้องงานแทน" };
+    }
     // CRM C5.5-G1 ▸ ผู้กระทำ = คนที่ล็อกอิน (Membership จาก session ของคำขอนี้) — เครื่องมือทุกตัวรันด้วยสิทธิ์ของเขา ◂
     const res = await sendMessage(convCtxOf(auth), input);
     if (res.ok) return res;

@@ -6,6 +6,7 @@
 import { Prisma } from "@prisma/client";
 import type { Role, SupportCase, SupportMessage } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
+import { currentToolCallKey, toolCallRowId } from "@/lib/ai/tool-call-key"; // SEC S3a.1-S1 R-Z7
 
 type Ctx = { tenantId: string };
 
@@ -64,7 +65,7 @@ function cleanAttachments(attachments?: Attachment[]): Attachment[] {
 //   (ไม่ใช้ counter table / upsert — กติกาเดียวกับ createPo ใน procurement.ts)
 export async function createCase(
   ctx: Ctx,
-  input: { userId: string; subject: string; body: string; attachments?: Attachment[] },
+  input: { userId: string; subject: string; body: string; attachments?: Attachment[]; id?: string },
 ): Promise<{ id: string; caseNo: number }> {
   const db = tenantDb(ctx);
   const attachments = cleanAttachments(input.attachments);
@@ -76,6 +77,7 @@ export async function createCase(
       const c = await db.$transaction(async (tx) => {
         const created = await tx.supportCase.create({
           data: {
+            ...(input.id ? { id: input.id } : {}), // SEC S3a.1-S1 R-Z7: รหัสกำหนดได้จากกุญแจ tool call (openCaseFromAi)
             tenantId: ctx.tenantId,
             caseNo,
             openedByUserId: input.userId,
@@ -111,7 +113,20 @@ export async function openCaseFromAi(
   ctx: Ctx,
   input: { userId: string; conversationId: string; subject: string; body: string },
 ): Promise<{ id: string; caseNo: number }> {
-  const c = await createCase(ctx, { userId: input.userId, subject: input.subject, body: input.body });
+  // SEC S3a.1-S1 ▸ R-Z7: เทิร์นห้องเลขาที่รันซ้ำ (กุญแจ tc:<messageId>:<i>) ⇒ เรื่องเดิม ไม่เปิดเรื่องที่สอง ◂
+  const tcKey = currentToolCallKey();
+  const fixedId = tcKey ? toolCallRowId("tcase", [ctx.tenantId, input.conversationId, tcKey]) : undefined;
+  const existingCase = async () => (fixedId ? tenantDb(ctx).supportCase.findFirst({ where: { id: fixedId }, select: { id: true, caseNo: true } }) : null);
+  const had = await existingCase();
+  if (had) return had;
+  let c: { id: string; caseNo: number };
+  try {
+    c = await createCase(ctx, { userId: input.userId, subject: input.subject, body: input.body, ...(fixedId ? { id: fixedId } : {}) });
+  } catch (e) {
+    const raced = await existingCase();
+    if (raced) return raced;
+    throw e;
+  }
   await tenantDb(ctx).supportCase.update({
     where: { id: c.id },
     data: { conversationId: input.conversationId },
