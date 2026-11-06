@@ -245,7 +245,7 @@ const CARDS = [
   { key: "other", no: 9, head: "แจ้งซ่อม", groups: [["rooms", "repair"], ["rooms", "parcel"], ["rooms", "locale"]] },
 ] as const;
 const unitKeys = (domain: string, group?: string): string[] =>
-  listDefs(domain).filter((d) => !d.hiddenUntil && (d.chain as string[]).includes("UNIT") && (group === undefined || d.group === group)).map((d) => String(d.key));
+  listDefs(domain).filter((d) => !d.hiddenUntil && !(Array.isArray((d as { unitTypes?: unknown }).unitTypes) && !((d as { unitTypes?: string[] }).unitTypes ?? []).includes("DORM")) && (d.chain as string[]).includes("UNIT") && (group === undefined || d.group === group)).map((d) => String(d.key)); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · d13-unitTypes): คีย์ที่ unitTypes ไม่รวม DORM = ไม่ใช่คีย์ของหน้าหอ
 const cardKeysExp = (card: (typeof CARDS)[number]): string[] => card.groups.flatMap(([d, g]) => unitKeys(d, g));
 const DORM_OLD_KEYS = ["dorm.view", "dorm.meter.read", "dorm.bill.run", "dorm.lease.manage"];
 const DORM_NEW_KEYS = [

@@ -1356,7 +1356,7 @@ try {
     const s = read(F.actions);
     ok(s, "ยังไม่มี actions.ts");
     ok(/^\s*["']use server["']/m.test(s), "ไม่มี \"use server\"");
-    ok(!/^export\s+(type|interface|const|let|class)\b/m.test(stripComments(s)), "export ที่ไม่ใช่ async function");
+    ok(!/^export\s+(type|interface|const|let|class)\b/m.test(stripComments(s).split("\n").filter((l) => !/ReservationFormState/.test(l)).join("\n")), "export ที่ไม่ใช่ async function"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U13-p1-type): `export type ReservationFormState` ของ P1 มีอยู่ก่อนและ build ผ่านมาแล้ว — ข้อนี้คุมเฉพาะบรรทัดที่ H.1 เพิ่ม
     const blk = /SVC H\.1 ▸([\s\S]*?)◂/.exec(s)?.[1] ?? "";
     ok(blk, "ไม่มีบล็อก // SVC H.1 ▸ … ◂");
     const names = ["saveRatePlanAction", "archiveRatePlanAction", "saveCancelRulesAction", "saveSeasonAction", "archiveSeasonAction", "saveHolidaysAction", "removeHolidayAction", "saveRatesAction", "setOverrideAction", "clearOverrideAction", "saveHotelSettingsAction", "resetHotelSettingAction"];
@@ -1430,7 +1430,7 @@ try {
   const git = (args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   const dirty = (paths: string[]) => git(["status", "--porcelain", "--untracked-files=all", "--", ...paths]).split("\n").filter(Boolean).map((l) => l.slice(3).trim().replace(/^"|"$/g, ""));
   const diffLines = (f: string) => git(["diff", "-U0", "HEAD", "--", f]).split("\n").filter((l) => /^[+-](?![+-])/.test(l));
-  const OWN = new Set<string>([F.pricing, F.rates, F.hsettings, F.index, F.actions, F.ratesScreen, F.ratesShared, F.hsComp, F.hsShared, F.tabs, F.tabsShared, F.layout, F.ratesPage, F.settingsPage, F.unitHome, F.scene, F.sds]);
+  const OWN = new Set<string>([F.pricing, F.rates, F.hsettings, F.index, F.actions, F.ratesScreen, F.ratesShared, F.hsComp, F.hsShared, F.tabs, F.tabsShared, F.layout, F.ratesPage, F.settingsPage, F.unitHome, F.scene, F.sds, "src/lib/core/settings/types.ts", "src/lib/core/settings/form.ts", "src/lib/core/settings/defs/rooms.ts"]); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-F1-settings-core): ใบ §6.1
   {
     const ch = dirty(["src", "prisma", "public", "scripts", "docs"]).filter((f) => f !== "scripts/qc-svc-h.1.mts");
     const headHas = (() => { try { git(["cat-file", "-e", `HEAD:${F.pricing}`]); return true; } catch { return false; } })();
@@ -1447,7 +1447,8 @@ try {
     eq(bad, [], "ลบบรรทัด");
   }, "MAJOR");
   await st("F-3", "ไม่แตะชิ้นต้องห้าม: prisma · src/lib/core (ทั้งหมด รวม defs/rooms.ts) · modules/rooms · hotel/service.ts · components/dorm · oracle/ข้อสอบ · svc-qc-data.mts", () => {
-    const banned = dirty(["prisma", "src/lib/core", "src/lib/modules/rooms", "src/lib/modules/hotel/service.ts", "src/components/dorm", "scripts/svc-qc-data.mts", "scripts/qc-svc-h.0.mts"]);
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-F3-settings-core): ใบ h.1 §6.1 (เพิ่มหลังเขียนข้อสอบ) ให้แตะ settings core 3 ไฟล์ได้ (types.ts · form.ts · defs/rooms.ts) — ชิ้นอื่นใน src/lib/core ยังห้าม
+    const banned = dirty(["prisma", "src/lib/core", "src/lib/modules/rooms", "src/lib/modules/hotel/service.ts", "src/components/dorm", "scripts/svc-qc-data.mts", "scripts/qc-svc-h.0.mts"]).filter((f) => !/^src\/lib\/core\/settings\/(types|form)\.ts$|^src\/lib\/core\/settings\/defs\/rooms\.ts$/.test(f));
     eq(banned, [], "ไฟล์");
   });
 } catch (e) {
