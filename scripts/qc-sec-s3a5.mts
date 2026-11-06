@@ -5,6 +5,8 @@
 //   Q3 GET /doc/<token> (route handler จริง): 200 + เลขที่/ยอด/ชื่อร้าน · token ผิด 404 · ร้านปิดลิงก์ 404 · เกินเพดาน 429 · noindex/no-referrer/no-store
 //   Q4 GET /doc/<token>/pdf (ส่วน B) ⇒ 200 application/pdf · %PDF · attachment <docNo>.pdf (+RFC 5987) · ≤ 300 KB · ข้อความมีเลขที่ (pdftotext ถ้ามี) · token ผิด 404
 //   Q5 หน้าไม่มีเลขผู้เสียภาษี/เบอร์เต็มของลูกค้า (ปิดเหลือ 4 หลัก)
+//   Q6 (รอบ 2 · R-Z62) ใบชนิดอื่น ⇒ ปฏิเสธไม่ออก · documentId ห้องอื่น ⇒ ปฏิเสธ · summary "แนบใบเสนอราคา … ของ …" · ร้านปิดลิงก์ ⇒ ไม่มี "ดูใบ" ·
+//      CANCELLED/REJECTED ⇒ 404 + ปฏิเสธ · ส่งล้มหลังออกใบ ⇒ note + บันทึกการกระทำ · XSS ยิงหน้าจริง · ปิดเบอร์หลายรูปแบบ · (Q4) ยอด PDF = HTML · ตัดบรรทัดไทยไม่มีขีด
 // รัน: bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-sec-s3a5.mts
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -135,6 +137,7 @@ try {
   // ───────── Q1 ─────────
   console.log("── Q1: ensurePublicDocumentLink ──");
   let issuedToken = "";
+  let Q2DOC = "";
   let issuedQuote = "";
   {
     const qDraft = await mkQuote(1);
@@ -189,11 +192,110 @@ try {
     const body2 = String((await outFor(p2.id))?.body ?? "");
     const audit2 = await prisma.auditLog.count({ where: { tenantId: tid, action: "account.doc.issue" } as never });
     chk("Q2-3", "ใบออกแล้ว ⇒ ไม่ออกซ้ำ: docNo/token เดิม · audit ออกเอกสารไม่เพิ่ม · ข้อความยังมีเลขที่+ยอด+ลิงก์เดิม", e2?.ok === true && d2?.docNo === d1?.docNo && d2?.publicToken === d1?.publicToken && audit2 === audit && body2.includes(`เลขที่ ${d1?.docNo}`) && body2.includes(`/doc/${d1?.publicToken}`), JSON.stringify({ e2, no: [d1?.docNo, d2?.docNo], audit: [audit, audit2] }).slice(0, 260));
-    // (ง) documentId ระบุตรง + ใบที่ออกไว้แล้วตั้งแต่ Q1 ⇒ ข้อความใช้ token เดิมของใบนั้น
-    const p3 = await quoteProposal(room.conversationId, issuedQuote);
+    // (ง) R-Z62 M2: documentId ที่มีบันทึกในห้องนี้ ⇒ ok (token เดิม) · documentId ที่ไม่ได้สร้างในห้องนี้ (ใบ Q1) ⇒ ปฏิเสธไทย คง PENDING
+    const p3 = await quoteProposal(room.conversationId, qid);
     const e3 = await proposals.executeProposal(OWNER_M, { tenantId: tid }, p3.id, { userId: U.owner });
     const body3 = String((await outFor(p3.id))?.body ?? "");
-    chk("Q2-4", "ระบุ documentId (ใบที่ออก+มีลิงก์แล้ว) ⇒ ok · ข้อความมีลิงก์ token เดิม", e3?.ok === true && !!issuedToken && body3.includes(`/doc/${issuedToken}`), JSON.stringify({ e3, body: body3.slice(0, 200) }).slice(0, 300));
+    const p3b = await quoteProposal(room.conversationId, issuedQuote);
+    const e3b = await proposals.executeProposal(OWNER_M, { tenantId: tid }, p3b.id, { userId: U.owner });
+    const s3b = await prisma.aiProposal.findUnique({ where: { id: p3b.id }, select: { status: true } });
+    chk("Q2-4", "documentId ที่สร้างในห้องนี้ ⇒ ok + ลิงก์ token เดิม · documentId ที่ไม่ได้สร้างในห้องนี้ ⇒ ok:false ไทย · คง PENDING · ไม่มีข้อความออก (R-Z62 M2)", e3?.ok === true && body3.includes(`/doc/${d1?.publicToken}`) && e3b?.ok === false && thai(e3b?.note) && /งานนี้|ห้อง/.test(String(e3b?.note)) && s3b?.status === "PENDING" && !(await outFor(p3b.id)), JSON.stringify({ e3: e3?.ok, e3b, s3b }).slice(0, 300));
+    Q2DOC = qid;
+  }
+
+  // ───────── Q6 (R-Z62) ─────────
+  console.log("── Q6: R-Z62 — ชนิดเอกสาร · ห้องอื่น · summary · ร้านปิดลิงก์ · ยกเลิก/ปฏิเสธ · ส่งล้มหลังออกใบ ──");
+  {
+    const tools = (await import("@/lib/ai/tools")) as AnyMod;
+    const newRoom = async (n: string, convId = cconv.id) => {
+      const r = await rooms.startRoom({ tenantId: tid, actor: actor() }, { instruction: `ห้อง S3a.5 ${n} ${STAMP}`, context: { chatConversationId: convId } });
+      if (!r?.ok) throw new Error(`startRoom ${n}: ${JSON.stringify(r).slice(0, 160)}`);
+      return r as AnyMod;
+    };
+    // (ก) M1: ใบแจ้งหนี้ร่างที่ห้องอ้าง ⇒ ปฏิเสธ · ใบยัง DRAFT ไม่มีเลข
+    const rInv = await newRoom("invoice");
+    const inv = await acc.createDocument({ tenantId: tid, systemId: A, docType: "INVOICE", contactId: contact.id, lines: [{ description: "ค่าบริการ", qty: 1, unitPrice: 100000 }] });
+    await linkDocToRoom(rInv, String(inv.id));
+    const pInv = await quoteProposal(rInv.conversationId);
+    const eInv = await proposals.executeProposal(OWNER_M, { tenantId: tid }, pInv.id, { userId: U.owner });
+    const sInv = await prisma.aiProposal.findUnique({ where: { id: pInv.id }, select: { status: true } });
+    const dInv = await docRow(String(inv.id));
+    chk("Q6-1", "ห้องอ้างใบแจ้งหนี้ร่าง (INVOICE DRAFT) ⇒ ok:false ไทย 'เฉพาะใบเสนอราคา' · คง PENDING · ใบยัง DRAFT ไม่มีเลข · ไม่มีข้อความออก (M1)", eInv?.ok === false && /ใบเสนอราคา/.test(String(eInv?.note)) && sInv?.status === "PENDING" && dInv?.status === "DRAFT" && !dInv?.docNo && !(await outFor(pInv.id)), JSON.stringify({ eInv, sInv, d: [dInv?.status, dInv?.docNo] }).slice(0, 300));
+    // (ข) M2: ใบเสนอราคาของห้องอื่น (ระบุ documentId) ⇒ ปฏิเสธ · ใบนั้นไม่ถูกออก
+    const rA = await newRoom("A"), rB = await newRoom("B");
+    const qA = await mkQuote(61);
+    await linkDocToRoom(rA, qA);
+    const pB = await quoteProposal(rB.conversationId, qA);
+    const eB = await proposals.executeProposal(OWNER_M, { tenantId: tid }, pB.id, { userId: U.owner });
+    const sB = await prisma.aiProposal.findUnique({ where: { id: pB.id }, select: { status: true } });
+    const dA = await docRow(qA);
+    chk("Q6-2", "documentId ของห้องอื่น ⇒ ok:false ไทย · คง PENDING · ใบนั้นยัง DRAFT (ไม่ถูกออกจากห้องอื่น) (M2)", eB?.ok === false && thai(eB?.note) && sB?.status === "PENDING" && dA?.status === "DRAFT" && !(await outFor(pB.id)), JSON.stringify({ eB, sB, st: dA?.status }).slice(0, 260));
+    // (ค) summary ตอนเสนอ: ห้อง A มีใบร่าง (EXECUTED create) ⇒ "แนบใบเสนอราคา ฉบับร่าง ของ คุณสมชาย" · ห้องที่มีใบออกแล้ว ⇒ "เลขที่ <docNo>" · documentId ห้องอื่น ⇒ error ไม่สร้างข้อเสนอ
+    const tctx = (convId: string) => ({ tenantId: tid, actor: actor(), conversationId: convId });
+    const parse = (x: string) => { try { return JSON.parse(x) as AnyMod; } catch { return { raw: x } as AnyMod; } };
+    const tA = parse(await tools.runTool(tctx(rA.conversationId), "send_customer_message", { conversationId: cconv.id, body: "ส่งใบเสนอราคาครับ", kind: "quote" }));
+    const sumA = String((await prisma.aiProposal.findFirst({ where: { id: String(tA.proposalId ?? "") }, select: { summary: true } }))?.summary ?? "");
+    const roomQ2 = await prisma.aiActionLog.findFirst({ where: { tenantId: tid, entityType: "account.document", entityId: Q2DOC }, select: { roomId: true } });
+    const roomQ2Conv = roomQ2?.roomId ? (await prisma.aiRoom.findFirst({ where: { id: roomQ2.roomId }, select: { conversationId: true } }))?.conversationId ?? "" : "";
+    const tQ = parse(await tools.runTool(tctx(roomQ2Conv), "send_customer_message", { conversationId: cconv.id, body: "ส่งใบเสนอราคาครับ", kind: "quote" }));
+    const sumQ = String((await prisma.aiProposal.findFirst({ where: { id: String(tQ.proposalId ?? "") }, select: { summary: true } }))?.summary ?? "");
+    const q2no = (await docRow(Q2DOC))?.docNo ?? "?";
+    const tX = parse(await tools.runTool(tctx(rB.conversationId), "send_customer_message", { conversationId: cconv.id, body: "x", kind: "quote", documentId: qA }));
+    chk("Q6-3", "summary ของข้อเสนอ chat.send quote บอก 'แนบใบเสนอราคา <ฉบับร่าง|เลขที่ X> ของ <ผู้ซื้อ>' · documentId ห้องอื่น ⇒ error ไม่สร้างข้อเสนอ", /แนบใบเสนอราคา ฉบับร่าง ของ คุณสมชาย/.test(sumA) && sumQ.includes(`แนบใบเสนอราคา เลขที่ ${q2no} ของ คุณสมชาย`) && typeof tX.error === "string" && thai(tX.error) && !tX.proposalId, JSON.stringify({ sumA: sumA.slice(-80), sumQ: sumQ.slice(-80), tX }).slice(0, 360));
+    // (ง) ร้านปิดลิงก์สาธารณะ ⇒ ข้อความมีเลขที่+ยอด แต่ไม่มี "ดูใบ"
+    await docSettings.saveDocSettings({ tenantId: tid, systemId: A }, { publicView: { enabled: false, showOutstanding: true, promptPayButton: true, expiryDays: 0 } });
+    const rOff = await newRoom("off");
+    const qOff = await mkQuote(62);
+    await linkDocToRoom(rOff, qOff);
+    const pOff = await quoteProposal(rOff.conversationId);
+    const eOff = await proposals.executeProposal(OWNER_M, { tenantId: tid }, pOff.id, { userId: U.owner });
+    await docSettings.saveDocSettings({ tenantId: tid, systemId: A }, { publicView: { enabled: true, showOutstanding: true, promptPayButton: true, expiryDays: 0 } });
+    const bOff = String((await outFor(pOff.id))?.body ?? "");
+    const dOff = await docRow(qOff);
+    chk("Q6-4", "ร้านปิดลิงก์สาธารณะ ⇒ อนุมัติ ok · ข้อความมีเลขที่ + ยอด แต่ไม่มี 'ดูใบ' / '/doc/'", eOff?.ok === true && !!dOff?.docNo && bOff.includes(`เลขที่ ${dOff.docNo}`) && /ยอด [\d,]+\.\d{2} บาท/.test(bOff) && !bOff.includes("ดูใบ") && !bOff.includes("/doc/"), JSON.stringify({ eOff: eOff?.ok, body: bOff.slice(0, 200) }).slice(0, 300));
+    // (จ) ใบที่ยกเลิก/ถูกปฏิเสธ ⇒ หน้า 404 + chat.send ปฏิเสธ
+    const out: string[] = [];
+    for (const st of ["CANCELLED", "REJECTED"] as const) {
+      const r = await newRoom(st);
+      const q = await mkQuote(st === "CANCELLED" ? 63 : 64);
+      await acc.issueDocument(tid, A, q);
+      const lk = await acc.ensurePublicDocumentLink(tid, A, q);
+      await prisma.accountDocument.update({ where: { id: q }, data: { status: st } });
+      await linkDocToRoom(r, q);
+      const page = lk?.ok ? await get(docRoute, String(lk.token)) : { status: 0 };
+      const pq = await quoteProposal(r.conversationId);
+      const eq = await proposals.executeProposal(OWNER_M, { tenantId: tid }, pq.id, { userId: U.owner });
+      const sq = await prisma.aiProposal.findUnique({ where: { id: pq.id }, select: { status: true } });
+      out.push(`${st}:${page.status}:${eq?.ok}:${sq?.status}:${thai(eq?.note)}`);
+    }
+    chk("Q6-5", "ใบ CANCELLED / REJECTED ⇒ หน้า /doc 404 · chat.send ok:false ไทย คง PENDING", out.every((x) => /:404:false:PENDING:true$/.test(x)), out.join(" | "));
+    // (ฉ) ส่งล้มหลังออกเอกสาร (ห้อง LINE ที่ไม่มีการเชื่อมต่อ) ⇒ note บอกว่าออกใบแล้ว + บันทึกการกระทำ account.documents.issue
+    const lineContact = await prisma.chatContact.create({ data: { tenantId: tid, systemId: chatSys.id, channel: "LINE", externalUserId: `Uqcs3a5${STAMP}`, displayName: "คุณสมชาย LINE", customerId: cust.id } as never });
+    const lineConv = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: chatSys.id, channel: "LINE", contactId: lineContact.id, status: "OPEN", unitId: unit.id, lastMessageAt: new Date(), firstCustomerMessageAt: new Date() } as never });
+    const rF = await newRoom("fail", lineConv.id);
+    const qF = await mkQuote(65);
+    await linkDocToRoom(rF, qF);
+    const pF = await prisma.aiProposal.create({ data: { tenantId: tid, conversationId: rF.conversationId, kind: "chat.send", risk: "NORMAL", summary: "ส่งใบ", payload: { systemId: chatSys.id, conversationId: lineConv.id, contactId: lineContact.id, body: "ส่งใบเสนอราคาครับ", kind: "quote" }, status: "PENDING", expiresAt: new Date(Date.now() + 3_600_000) } as never });
+    const eF = await proposals.executeProposal(OWNER_M, { tenantId: tid }, pF.id, { userId: U.owner });
+    const dF = await docRow(qF);
+    const sF = await prisma.aiProposal.findUnique({ where: { id: pF.id }, select: { status: true, resultNote: true } as never }) as AnyMod;
+    const logF = await prisma.aiActionLog.count({ where: { tenantId: tid, kind: "account.documents.issue", entityId: qF } });
+    const noteF = `${eF?.note ?? ""} ${sF?.resultNote ?? ""}`;
+    chk("Q6-6", "ส่งล้มหลังออกใบ ⇒ ok:false · note 'ออกใบ <เลขที่> แล้ว แต่ส่งข้อความ…ไม่สำเร็จ' · ใบออกแล้ว (มีเลข) · บันทึกการกระทำ account.documents.issue 1 แถว", eF?.ok === false && !!dF?.docNo && noteF.includes(`ออกใบ ${dF.docNo} แล้ว`) && /ไม่สำเร็จ/.test(noteF) && logF === 1, JSON.stringify({ eF, st: sF?.status, no: dF?.docNo, logF }).slice(0, 320));
+    // (ช) XSS: ค่าจากฐาน (ชื่อลูกค้า/รายการ/หมายเหตุ) มีแท็ก ⇒ หน้า /doc จริง escape ทั้งหมด
+    const evil = await acc.createContact({ tenantId: tid, systemId: A, kind: "CUSTOMER", name: `<script>alert(1)</script>"onerror="x` });
+    const xd = await acc.createDocument({ tenantId: tid, systemId: A, docType: "QUOTATION", contactId: evil.id, note: `"><img src=x onerror=alert(2)>`, lines: [{ description: `<svg onload=alert(3)>เครื่องชง`, qty: 1, unitPrice: 10000 }] });
+    await acc.issueDocument(tid, A, String(xd.id));
+    const xl = await acc.ensurePublicDocumentLink(tid, A, String(xd.id));
+    const xp = xl?.ok ? await get(docRoute, String(xl.token)) : { status: 0, text: "" };
+    const raw = /<script>alert|<img src=x|<svg onload|"onerror="x/i.test(xp.text.replace(/<script nonce="[^"]+">[^<]*<\/script>/g, ""));
+    chk("Q6-7", "XSS: แท็ก/แอตทริบิวต์จากชื่อลูกค้า รายการ หมายเหตุ ถูก escape ในหน้า /doc จริง (มี &lt;script&gt; · ไม่มีแท็กดิบ · สคริปต์มีแค่ตัวที่มี nonce)", xp.status === 200 && !raw && xp.text.includes("&lt;script&gt;alert(1)&lt;/script&gt;") && xp.text.includes("&lt;svg onload=alert(3)&gt;") && (xp.text.match(/<script/g) ?? []).length === 1, JSON.stringify({ s: xp.status, raw }).slice(0, 200));
+    // (ซ) mask เบอร์รูปต่าง ๆ · ไม่รวมเลขคนละก้อน
+    const pd = (await import("@/lib/modules/account/public-doc")) as AnyMod;
+    const mk = (x: string) => String(pd.maskLongNumbers(x));
+    const cases: [string, string][] = [["โทร (081) 234 5678", "โทร xxxxxx5678"], ["081.234.5678", "xxxxxx5678"], ["+66 81 234 5678", "xxxxxxx5678"], ["ถนนสุข 10260 12345", "ถนนสุข 10260 12345"], ["เลข 0105561000013", "เลข xxxxxxxxx0013"]];
+    const bad = cases.filter(([a, b]) => mk(a) !== b).map(([a]) => `${a}→${mk(a)}`);
+    chk("Q6-8", "ปิดเบอร์: (081) 234 5678 · 081.234.5678 · +66 … ⇒ 4 หลักท้าย · '10260 12345' ไม่ถูกรวมเป็นเบอร์ · เลขภาษี 13 หลัก ⇒ 4 หลักท้าย", bad.length === 0, bad.join(" | "));
   }
 
   // ───────── Q3 ─────────
@@ -228,7 +330,7 @@ try {
   console.log("── Q4: /doc/<token>/pdf (ส่วน B) ──");
   {
     // token จากใบที่ออกในข้อ Q2 (ถังต่อ token ของใบ Q1 ถูกยิงจนเต็มในข้อ Q3-5)
-    const q2 = await prisma.accountDocument.findFirst({ where: { tenantId: tid, docType: "QUOTATION", status: "AWAITING_ACCEPT", NOT: { id: issuedQuote } }, select: { publicToken: true, docNo: true } });
+    const q2 = await prisma.accountDocument.findFirst({ where: { tenantId: tid, id: Q2DOC }, select: { publicToken: true, docNo: true, grandTotal: true } });
     const tok = String(q2?.publicToken ?? "");
     tokensMade.push(tok);
     const t0 = Date.now();
@@ -254,12 +356,36 @@ try {
     chk("Q4-1", "200 application/pdf · ขึ้นต้น %PDF · attachment filename=\"<docNo>.pdf\" + filename*=UTF-8'' · ขนาด ≤ 300 KB · no-store/noindex · ข้อความในไฟล์มีเลขที่ + 'ใบเสนอราคา' (ฟอนต์ไทยฝังแล้ว)", res.status === 200 && /application\/pdf/.test(res.headers.get("content-type") ?? "") && buf.subarray(0, 5).toString("latin1") === "%PDF-" && cd.startsWith("attachment;") && cd.includes(`filename="${asciiNo}.pdf"`) && cd.includes("filename*=UTF-8''") && buf.length <= 300 * 1024 && /no-store/.test(res.headers.get("cache-control") ?? "") && /noindex/.test(res.headers.get("x-robots-tag") ?? "") && contentOk, JSON.stringify({ s: res.status, ct: res.headers.get("content-type"), cd, kb: Math.round(buf.length / 1024), ms, extractor, hasNo: text.includes(docNo), thai: /ใบเสนอราคา/.test(text) }).slice(0, 360));
     const bad = await get(pdfRoute, `nosuchpdf${STAMP}xyz`);
     chk("Q4-2", "token ผิด ⇒ 404 ข้อความไทย (ไม่สร้างไฟล์)", bad.status === 404 && thai(bad.text), JSON.stringify({ bad: bad.status }));
+    // R-Z62: ยอดใน PDF = ยอดในหน้า HTML (ใบเดียวกัน)
+    const html = await get(docRoute, tok);
+    const totalStr = q2 ? (q2.grandTotal / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "?";
+    const htmlTotal = (/data-testid="doc-total"><div class="row total"><span>[^<]*<\/span><span>฿([^<]+)<\/span>/.exec(html.text) ?? [])[1] ?? "";
+    chk("Q4-3", "ยอดรวมใน PDF (pdftotext) = ยอดรวมในหน้า HTML = grandTotal ของใบ", extractor !== "pdftotext" || (htmlTotal === totalStr && text.includes(`฿${totalStr}`)), JSON.stringify({ htmlTotal, totalStr, inPdf: text.includes(`฿${totalStr}`) }));
+    // R-Z62: ตัดบรรทัดภาษาไทยใน PDF ไม่ใส่ขีด · ข้อความยาวครบทุกตัว (เทียบหลังตัดช่องว่าง/ขึ้นบรรทัด · สระอำเป็นรูปแยกในไฟล์)
+    const longDesc = "ค่าบริการติดตั้งเครื่องชงกาแฟพร้อมระบบกรองน้ำและการอบรมพนักงานสองวันเต็มที่สาขาลาดพร้าวรวมค่าเดินทางและค่าอุปกรณ์สิ้นเปลืองทั้งหมด";
+    const ld = await acc.createDocument({ tenantId: tid, systemId: A, docType: "QUOTATION", contactId: contact.id, note: longDesc + longDesc, lines: [{ description: longDesc, qty: 1, unitPrice: 123400 }] });
+    await acc.issueDocument(tid, A, String(ld.id));
+    const ll = await acc.ensurePublicDocumentLink(tid, A, String(ld.id));
+    let longText = ""; let longOk = extractor !== "pdftotext";
+    if (ll?.ok && extractor === "pdftotext") {
+      tokensMade.push(String(ll.token));
+      const r2 = await pdfRoute.GET!(new Request(`http://qc.local/doc/${ll.token}/pdf`, { headers: { "x-forwarded-for": `${IP_BASE}.241` } }), { params: Promise.resolve({ token: String(ll.token) }) });
+      const b2 = Buffer.from(await r2.arrayBuffer());
+      if (process.env.QC_S3A5_PDF_OUT) writeFileSync(process.env.QC_S3A5_PDF_OUT.replace(/\.pdf$/, "-long.pdf"), b2);
+      const dir = mkdtempSync(join(tmpdir(), "qcs3a5-"));
+      writeFileSync(join(dir, "l.pdf"), b2);
+      longText = spawnSync("pdftotext", ["-enc", "UTF-8", join(dir, "l.pdf"), "-"], { encoding: "utf8", timeout: 30_000 }).stdout ?? "";
+      rmSync(dir, { recursive: true, force: true });
+      const norm = (x: string) => x.replace(/\u0E4D\u0E32/g, "\u0E33").replace(/\s+/g, "");
+      longOk = r2.status === 200 && !/[\u0E00-\u0E7F]-\s*$/m.test(longText) && norm(longText).includes(norm(longDesc));
+    }
+    chk("Q4-4", "PDF ข้อความไทยยาว: ตัดบรรทัดโดยไม่มีขีดท้ายบรรทัด · ข้อความครบทุกตัว (pdftotext)", longOk, JSON.stringify({ extractor, hyphen: /[\u0E00-\u0E7F]-\s*$/m.test(longText), lines: longText.split("\n").filter(Boolean).length }).slice(0, 200));
   }
 
   // ───────── Q5 ─────────
   console.log("── Q5: ไม่มีเลขผู้เสียภาษี/เบอร์เต็มของลูกค้า ──");
   {
-    const q2 = await prisma.accountDocument.findFirst({ where: { tenantId: tid, docType: "QUOTATION", status: "AWAITING_ACCEPT", NOT: { id: issuedQuote } }, select: { publicToken: true, contactSnapshot: true } });
+    const q2 = await prisma.accountDocument.findFirst({ where: { tenantId: tid, id: Q2DOC }, select: { publicToken: true, contactSnapshot: true } });
     const page = await get(docRoute, String(q2?.publicToken ?? ""));
     const html = page.text;
     const digits = html.replace(/[^0-9x]/g, " ");

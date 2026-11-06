@@ -47,9 +47,14 @@ export function maskTaxIdPublic(raw: string | null | undefined): string {
   return d.length <= 4 ? "x".repeat(d.length) : `${"x".repeat(d.length - 4)}${d.slice(-4)}`;
 }
 
-/** ตัวเลขยาว ≥ 9 หลัก (เบอร์โทร/เลขบัตร/เลขภาษี) ในข้อความของลูกค้า ⇒ เหลือ 4 หลักท้าย · เลขบ้าน/รหัสไปรษณีย์ (สั้น) คงไว้ */
+/**
+ * เบอร์โทร/เลขบัตร/เลขภาษีในข้อความของลูกค้า ⇒ เหลือ 4 หลักท้าย (R-Z62)
+ *   รูปเบอร์: 0x/(0x)/+66 ตามด้วยกลุ่ม 3–4 + 4 หลัก คั่นด้วยเว้นวรรค . - หรือติดกัน ("(081) 234 5678" · "081.234.5678" · "+66 81 234 5678")
+ *   หรือตัวเลขติดกัน 9–13 หลัก · ไม่รวมเลขคนละก้อน (เช่น "10260 12345" = รหัสไปรษณีย์ + เลขอื่น ⇒ คงไว้)
+ */
+const PHONE_LIKE = /(?<![\d])(?:(?:\+66[\s.-]?\(?\d{1,2}\)?|\(?0\d{1,2}\)?)[\s.-]?\d{3,4}[\s.-]?\d{4}|\d{9,13})(?!\d)/g;
 export function maskLongNumbers(text: string | null | undefined): string {
-  return String(text ?? "").replace(/\+?\d[\d\s-]{7,}\d/g, (m) => {
+  return String(text ?? "").replace(PHONE_LIKE, (m) => {
     const d = m.replace(/\D/g, "");
     return d.length >= 9 ? `${"x".repeat(d.length - 4)}${d.slice(-4)}` : m;
   });

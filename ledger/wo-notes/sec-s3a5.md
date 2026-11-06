@@ -58,3 +58,27 @@
 6. ปิดบังตัวเลขยาว ≥ 9 หลักในชื่อ/ที่อยู่/หมายเหตุของลูกค้าด้วย (นอกจากเลขภาษี) — เบอร์ที่ซ่อนในที่อยู่
 7. `proxy.ts` + `next.config.ts` ถูกแก้ (ไม่อยู่ในรายการไฟล์ของใบ) — เพื่อ header ของ `/doc/*` และรวมไฟล์ฟอนต์
 8. ข้อสอบรันแบบ unforced 1 ครั้ง **โดยไม่ผ่าน with-gate-lock** (พลาด) — จบ 17/17 residue 0 · รอบอื่นทั้งหมดผ่าน gate lock
+
+## รอบ 2 — แก้ตามผู้ตรวจ (FIX-FIRST · มติ R-Z62 RESOLUTIONS §Z.7) · ต่อจากทิปผู้คุม 863181df4 (merge SHA ตรง · มี ORACLE-EDIT r2 T5-2 `/doc/`)
+| ข้อ | แก้อย่างไร | ไฟล์ | ข้อสอบ |
+|---|---|---|---|
+| **M1** ออกเอกสารได้เฉพาะใบเสนอราคา | `resolveQuoteDoc` บังคับ `docType === "QUOTATION"` ⇒ ไม่ใช่ ⇒ `ChatSendNotReady(QUOTE_WRONG_TYPE_NOTE)` ก่อน claim (คง PENDING · ไม่ออกเอกสาร) · ใช้ทั้ง gate / ตอนลงมือ / summary | `src/lib/ai/proposals.ts` | Q6-1 (INVOICE ร่าง ⇒ ปฏิเสธ ใบยัง DRAFT) |
+| **M2** `refs.documentId` ต้องเป็นใบของงานนี้ | `docLoggedInConversation`: ต้องมี AiActionLog `entityType=account.document · entityId=<doc>` ที่ `proposalId` เป็นข้อเสนอของบทสนทนาเดียวกัน ไม่งั้น `QUOTE_NOT_IN_ROOM_NOTE` | `proposals.ts` | Q2-4 · Q6-2 |
+| **summary** ตอนเสนอ | `quoteAttachmentSummary` ⇒ บรรทัด "แนบใบเสนอราคา <เลขที่ X / ฉบับร่าง> ของ <ผู้ซื้อ>" (ใบ EXECUTED ⇒ จากใบจริง · ข้อเสนอสร้างใบที่ยัง PENDING ⇒ "ฉบับร่าง (รออนุมัติในงานนี้)" + ชื่อผู้ติดต่อ · ไม่มีใบ ⇒ บอกว่ายังไม่มี) · ระบุ documentId ที่ผิด ⇒ เครื่องมือตอบ error ไม่สร้างข้อเสนอ · ชื่อผ่าน `maskPiiDeep` | `src/lib/ai/tools.ts` (send_customer_message) · `proposals.ts` | Q6-3 |
+| MINOR origin | `customerLinkOrigin(tenantId)`: โดเมนร้านที่ ACTIVE (`Tenant.customDomain` — แอปเสิร์ฟทุกเส้นบนโดเมนร้าน) ⇒ `https://<โดเมน>` · ไม่มี ⇒ `env.APP_URL` (ทางเดียวกับลิงก์ `/r/` ของ op บัญชี `documents-write.ts appOrigin`) · ไม่ใช้ header ของคำขอผู้กดแล้ว | `proposals.ts` | (Q2-2 ตรวจ `/doc/<token>` ในข้อความ) |
+| MINOR mask เบอร์ | `PHONE_LIKE`: 0x/(0x)/+66 + กลุ่ม 3–4 + 4 หลัก คั่นด้วยเว้นวรรค/./- หรือเลขติดกัน 9–13 หลัก · lookbehind/lookahead ตัวเลข ⇒ "10260 12345" ไม่ถูกรวม | `src/lib/modules/account/public-doc.ts` | Q6-8 · Q5-1 |
+| MINOR PDF ตัดคำไม่มีขีด | ปิดการตัดคำของ react-pdf (`registerHyphenationCallback → [word]` — ตัวมันใส่ "-" ที่จุดตัดเสมอ) · `wrapPdf` ตัดบรรทัดเองตามคำ (Intl.Segmenter) ใส่ "\n" ก่อนคำที่จะล้น · ความกว้างประเมินแบบเผื่อจากการวัด Sarabun (อักษรฐาน 0.64 em · ตัวหนา 0.67 · สระบน/ล่าง/วรรณยุกต์ 0 · เว้นวรรค 0.25) · คำเดียวยาวเกินบรรทัด ⇒ ตัดตามกลุ่มอักษร · ใช้กับรายการ/ผู้ซื้อ/ที่อยู่/หมายเหตุ/เงื่อนไข/ช่องทาง/ข้อความกฎหมาย/ชื่อร้าน | `src/lib/modules/account/public-doc-pdf.tsx` | Q4-4 (+ ตรวจภาพ: ตัดตามคำ ไม่มีขีด ข้อความครบ) |
+| MINOR ส่งล้มหลังออกใบ | `quoteLineForSend` คืน `issuedNo` · sendReply ไม่ ok ⇒ throw "ออกใบ <เลขที่> แล้ว แต่ส่งข้อความถึงลูกค้าไม่สำเร็จ… — สั่งเลขาส่งใหม่ได้ (ใบจะไม่ถูกออกซ้ำ)" · ออกใบแล้วบันทึก `recordAction` kind `account.documents.issue` (entity account.document · proposalId ของ chat.send) — บันทึกล้ม = logOps WARN ไม่พาข้อเสนอล้ม | `proposals.ts` | Q6-6 |
+| ข้อสอบเพิ่ม | ร้านปิดลิงก์ ⇒ ข้อความไม่มี "ดูใบ" (Q6-4) · CANCELLED/REJECTED ⇒ หน้า 404 + chat.send ปฏิเสธ (Q6-5) · XSS ค่าจากฐานยิงหน้า `/doc` จริง (Q6-7) · ยอด PDF = HTML (Q4-3) | `scripts/qc-sec-s3a5.mts` | 27 ข้อ |
+
+### ผลรอบ 2
+- `qc-sec-s3a5` (gate lock): `JSON_SUMMARY {"total":27,"passed":27,"failed":[],"skipped":[],"residue":0}`
+- typecheck `tsc --noEmit -p tsconfig.json` ⇒ EXIT 0 (ไฟล์สุดท้าย)
+- ภาพ PDF ข้อความยาว: `/tmp/claude-0/-root/454e4bb2-8f6f-50ca-82f8-f98dfaa88abe/scratchpad/qlong-1.png` (ตัดตามคำ · ไม่มีขีด · "ลาดพร้าว" ครบ)
+- regression (gate lock เดียว): `qc-sec-s3a5` ×2 = 27/27 residue 0 ทั้งสองรอบ · `qc-sec-s3a1-r2` 28/28 (รวม ORACLE-EDIT T5-2 `/doc/`) · `qc-sec-s1.12` 15/15 · `qc-sec-s3a.1` 16/17 + R-1 SKIP (คีย์จริง)
+- fitness มี env 53/53 EXIT 0 · `env -u DATABASE_URL` 53/53 EXIT 0
+
+### ข้อสังเกตรอบ 2
+- ด่าน summary: ถ้าโมเดลเรียก `send_customer_message` (quote) **ก่อน** `account_create_document` ในเทิร์นเดียวกัน summary จะบอก "ยังไม่มีใบในงานนี้" (ข้อเสนอยังสร้างได้ — ตอนอนุมัติจะหยิบใบล่าสุดที่อนุมัติแล้ว) · ไม่ปฏิเสธเพื่อไม่ให้ลำดับการเรียกเครื่องมือทำให้งานล้ม
+- `APP_URL` ของ prod เคยค้างโดเมนเก่า (บันทึกใน `src/lib/core/origin.ts`) — ลิงก์ `/doc/` ใช้ค่าเดียวกับลิงก์ `/r/` ของ op บัญชีตามมติ ⇒ **ผู้คุมตรวจค่า `APP_URL` ของ prod ก่อน deploy**
+- ผู้คุมตรวจ nft.json ของ route `/doc/[token]/pdf` หลัง build ว่ามีไฟล์ฟอนต์ (มติ R-Z62)

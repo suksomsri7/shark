@@ -1519,8 +1519,18 @@ const sendCustomerMessage: AiTool = {
     }
     const who = conv.contact.displayName?.trim() || "ลูกค้า";
     // R-S1.12a (K-1/K-7): ผู้อนุมัติต้องเห็นข้อความเต็มฉบับ · ชื่อผ่าน maskPiiDeep (ชื่อที่เป็นเบอร์/อีเมลถูกปิด) ◂
-    const summary = `ส่งข้อความถึง ${String(crmApi.maskPiiDeep(who))} (${channelSentenceLabel(conv.channel)}):\n${body}`;
     const documentId = typeof a.documentId === "string" && a.documentId.trim() ? a.documentId.trim() : null;
+    // SEC S3a.5 ▸ R-Z62: kind=quote ⇒ ผู้อนุมัติเห็นตั้งแต่ตอนเสนอว่าจะแนบใบไหน ("แนบใบเสนอราคา <เลขที่/ฉบับร่าง> ของ <ผู้ซื้อ>") ·
+    //   documentId ที่ไม่ได้สร้างในงานนี้/ไม่ใช่ใบเสนอราคา ⇒ ไม่สร้างข้อเสนอ (ตอบ error ให้โมเดล) ◂
+    let quoteLine = "";
+    if (kindRaw === "quote") {
+      if (!ctx.conversationId) return JSON.stringify({ error: "ต้องอยู่ในบทสนทนาก่อนจึงจะเสนอการกระทำได้" });
+      const { quoteAttachmentSummary } = await import("./proposals");
+      const q = await quoteAttachmentSummary(ctx.tenantId, ctx.conversationId, documentId);
+      if (!q.ok) return JSON.stringify({ error: q.error, suggestion: "ส่งใบเสนอราคาที่สร้างในงานนี้ (ไม่ต้องใส่ documentId — ระบบหยิบใบล่าสุดของงานนี้ให้เอง)" });
+      quoteLine = `\n${q.line}`;
+    }
+    const summary = `ส่งข้อความถึง ${String(crmApi.maskPiiDeep(who))} (${channelSentenceLabel(conv.channel)}):\n${body}${quoteLine}`;
     const dealId = typeof a.dealId === "string" && a.dealId.trim() ? a.dealId.trim() : null;
     const refs = documentId || dealId ? { refs: { ...(documentId ? { documentId } : {}), ...(dealId ? { dealId } : {}) } } : {};
     return propose(ctx, "chat.send", summary, { systemId: conv.systemId, conversationId: conv.id, contactId: conv.contactId, body, kind: kindRaw, ...refs });
