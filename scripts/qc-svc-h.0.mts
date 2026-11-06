@@ -898,8 +898,10 @@ try {
   const parses = (schema: Any, v: unknown): boolean => { try { return schema.safeParse(v).success === true; } catch { return false; } };
   // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-R1-keep-hidden): ใบสั่ง §12 ข้อ 11 — H.0 **คง** hiddenUntil PHASE_H ทุกคีย์โรงแรม (ถอดแล้ว r0.4 D-1/R-3/D-4/H-5 + d.13 R-7 แดง) · H.1 เปิดตามประเภทหน่วย
   await st("R-1", "H.0 คง hiddenUntil = PHASE_H ทุกคีย์ rooms.hotel.* (รวมคีย์ใหม่ · H.1 เป็นผู้เปิดตามประเภทหน่วย) · คีย์โรงแรมเดิม 24 ตัวยังอยู่", () => {
-    const shown = hotelDefs.filter((d) => d.hiddenUntil !== "PHASE_H").map((d) => d.key);
-    ok(shown.length === 0, `ไม่ซ่อน ${shown.length} คีย์: ${shown.slice(0, 4).join(", ")}…`);
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-R1-unitTypes): หลัง H.1 คีย์โรงแรมซ่อนจากหอด้วย `unitTypes:["HOTEL"]` แทน PHASE_H (ใบ h.1 §6.1) — รับได้ทั้งสองแบบ ห้ามโผล่บนหอเท่านั้น
+    const hiddenFromDorm = (d: Any) => d.hiddenUntil === "PHASE_H" || (Array.isArray(d.unitTypes) && d.unitTypes.includes("HOTEL") && !d.unitTypes.includes("DORM"));
+    const shown = hotelDefs.filter((d) => !hiddenFromDorm(d)).map((d) => d.key);
+    ok(shown.length === 0, `ไม่ซ่อนจากหอ ${shown.length} คีย์: ${shown.slice(0, 4).join(", ")}…`);
     const old = ["checkInTime", "checkOutTime", "holdMinutesOnline", "holdMinutesCounter", "deposit", "cancelPolicy", "noShow", "securityDeposit", "baseRate", "dayOfWeekAdjustBp", "defaultRatePlan", "minNights", "closedToArrival", "housekeepingChecklist", "minibar", "nightAuditTime", "tm30ReminderHours", "rr3OnScreen", "ota.enabled", "ota.roomScope", "ota.buffer", "ota.markupBp", "ota.onConflict"];
     const miss = old.filter((k) => !SET.getDef(`rooms.hotel.${k}`));
     ok(miss.length === 0, `คีย์เดิมหาย: ${miss.join(", ")}`);
@@ -914,7 +916,7 @@ try {
       if (k.money && d.sensitivity !== "MONEY") probs.push(`sensitivity ${d.sensitivity ?? "(ไม่มี)"}`);
       if (!THAI.test(d.labelTh ?? "")) probs.push("labelTh ไม่ใช่ไทย");
       if (d.domain !== "rooms") probs.push(`domain ${d.domain}`);
-      if (d.hiddenUntil !== "PHASE_H") probs.push(`hiddenUntil ${d.hiddenUntil ?? "(ไม่มี)"} — ต้องเป็น PHASE_H`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-R1-keep-hidden)
+      if (!(d.hiddenUntil === "PHASE_H" || (Array.isArray(d.unitTypes) && d.unitTypes.includes("HOTEL") && !d.unitTypes.includes("DORM")))) probs.push(`ไม่ซ่อนจากหอ (hiddenUntil ${d.hiddenUntil ?? "-"} · unitTypes ${J(d.unitTypes)})`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-R1-keep-hidden → h0-R1-unitTypes หลัง H.1)
       if (!parses(d.schema, k.def)) probs.push("schema ไม่รับค่าเริ่มของตัวเอง");
       for (const v of k.okVals) if (!parses(d.schema, v)) probs.push(`schema ปฏิเสธ ${J(v)}`);
       for (const v of k.badVals) if (parses(d.schema, v)) probs.push(`schema รับ ${J(v)}`);
@@ -1022,7 +1024,7 @@ try {
     for (const b of baseHotel) {
       const c = hotelDefs.find((d) => d.key === b.key);
       if (!c) { diffs.push(`${b.key} หาย`); continue; }
-      const drop = ["hiddenUntil", "editPermission", ...(ALLOW_REQ.has(b.key) ? ["requires"] : []), ...(ALLOW_DEFAULT.has(b.key) ? ["defaults"] : [])];
+      const drop = ["hiddenUntil", "editPermission", "unitTypes", "enumLabelsTh", "tableTh", ...(ALLOW_REQ.has(b.key) ? ["requires"] : []), ...(ALLOW_DEFAULT.has(b.key) ? ["defaults"] : [])]; // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-R9-h1-fields): H.1 §6.1 เพิ่ม unitTypes/enumLabelsTh/tableTh ให้คีย์เดิมได้
       const sb = serDef(b, drop); const sc = serDef(c, drop);
       if (ALLOW_SCHEMA.has(b.key)) { delete sb.schema; delete sc.schema; }
       if (!isDeepStrictEqual(sb, sc)) diffs.push(b.key);
@@ -1389,7 +1391,9 @@ try {
   }, "MAJOR");
   await st("D-5", "ไม่มีโค้ดใน src/ (นอกไฟล์ที่ใบเป็นเจ้าของ) ถูกแตะเทียบฐาน a9aad92d8", () => {
     const own = new Set<string>([F.scope, F.rooms, F.settingsService, F.permissions, F.actions, ...F.pages]);
-    const ch = changedFiles(["src"]).filter((f) => !own.has(f));
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-D5-later-wo): หลัง H.0 รับแล้ว ใบโรงแรมถัดไป (H.1+) เป็นเจ้าของเส้นทางเหล่านี้ — ข้อนี้ตัดสินเฉพาะไฟล์นอกทุกใบโรงแรม
+    const LATER_OK = (f: string) => /^src\/(lib\/modules\/hotel\/|components\/hotel\/|app\/app\/u\/\[unitSlug\]\/hotel\/|app\/\(store\)\/s\/\[tenantSlug\]\/\[unitSlug\]\/hotel\/|lib\/core\/settings\/(types|form)\.ts$|lib\/core\/settings\/defs\/rooms\.ts$|app\/app\/u\/\[unitSlug\]\/page\.tsx$)/.test(f);
+    const ch = changedFiles(["src"]).filter((f) => !own.has(f) && !LATER_OK(f));
     ok(ch.length === 0, `แตะนอกใบ: ${ch.slice(0, 6).join(", ")}`);
   }, "MAJOR");
 
