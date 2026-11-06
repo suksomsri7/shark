@@ -6,6 +6,7 @@
 // กลุ่มข้อ:
 //   PC  ตัวควบคุม (เขียวตั้งแต่ก่อนมีงาน): ฐาน QC ต่อได้ · ฟิกซ์เจอร์ H 3 แผน · HotelReservation มีคอลัมน์ P1 ครบ · service/settings เดิมโหลดได้ · enum/scope/สิทธิ์เดิม · storefront ตรวจ HOTEL แล้ว
 //   T   ตารางใหม่ 17 ตัว (§2.4–2.14) + คอลัมน์ใหม่ HotelReservation/HotelRoomType/HotelRoom (§2.1–2.3) ตรงชุด (ชนิด · null · default) จาก information_schema · enum ต่อท้าย · เงิน integer · ไม่มี HotelChannelConnection/HotelRoomBlock
+//   (มติ §12 ข้อ 10: HotelSeason.minNights Int? + CHECK IS NULL OR >= 1 — T-5 · C-3)
 //   K   FK ตรงชุด + onDelete (Restrict/Cascade/SetNull) พิสูจน์จริง · C  CHECK ทุกตัวของ §2 (ค่าผิดถูกปฏิเสธ 23514 · ค่าถูกผ่าน) · U  unique/partial unique/NULLS NOT DISTINCT/ดัชนี (+ ไม่มี partial unique (roomId,date) บน BookingNight)
 //   M   migration `<ts>_svc_h` ตัวเดียว (ts > 20261226000000) · additive · ALTER TYPE ADD VALUE 3 ค่าแยก statement · แตะเฉพาะตารางของใบ · SQL มือครบ · ลงฐานแล้ว · migrate diff ไม่เสนออะไรกับตารางของใบ · schema แตะเฉพาะไฟล์ของใบ
 //   S   scope.ts 17 โมเดล = unit · fitness F1 (2 โหมด) · Prisma client มีโมเดล/ฟิลด์ใหม่ + boot assert
@@ -366,10 +367,10 @@ await needMig("M-4", "SQL แตะเฉพาะตารางของใบ
   }
   ok(bad.length === 0, bad.slice(0, 4).join(" | "));
 });
-await needMig("M-5", "SQL มือครบ: CHECK ≥ 19 จุด · partial unique RatePlan default (WHERE isDefault + status ACTIVE) · unique NULLS NOT DISTINCT ของ HotelRate และ HotelRateOverride · ไม่มี CONCURRENTLY/CREATE EXTENSION · ไม่มี HotelChannelConnection/HotelRoomBlock", () => {
+await needMig("M-5", "SQL มือครบ: CHECK ≥ 20 จุด · partial unique RatePlan default (WHERE isDefault + status ACTIVE) · unique NULLS NOT DISTINCT ของ HotelRate และ HotelRateOverride · ไม่มี CONCURRENTLY/CREATE EXTENSION · ไม่มี HotelChannelConnection/HotelRoomBlock", () => {
   const bad: string[] = [];
   const checks = stmts.reduce((n, s) => n + (s.match(/\bCHECK\s*\(/gi)?.length ?? 0), 0);
-  if (checks < 19) bad.push(`CHECK ${checks} จุด (ต้อง ≥ 19)`);
+  if (checks < 20) bad.push(`CHECK ${checks} จุด (ต้อง ≥ 20)`);
   if (!stmts.some((s) => /^CREATE\s+UNIQUE\s+INDEX[^]*"HotelRatePlan"[^]*WHERE[^]*isDefault[^]*ACTIVE/i.test(s))) bad.push("ไม่มี partial unique แผนเริ่มต้น (HotelRatePlan WHERE isDefault AND status = 'ACTIVE')");
   if (!stmts.some((s) => /^CREATE\s+UNIQUE\s+INDEX[^]*"HotelRate"\s*\([^]*NULLS\s+NOT\s+DISTINCT/i.test(s))) bad.push("ไม่มี unique NULLS NOT DISTINCT ของ HotelRate");
   if (!stmts.some((s) => /^CREATE\s+UNIQUE\s+INDEX[^]*"HotelRateOverride"[^]*NULLS\s+NOT\s+DISTINCT/i.test(s))) bad.push("ไม่มี unique NULLS NOT DISTINCT ของ HotelRateOverride");
@@ -438,7 +439,7 @@ const ROOMTYPE_NEW: Record<string, Col> = { baseOccupancy: I(false, "2"), maxOcc
 const ROOM_NEW: Record<string, Col> = { hkNote: S(true), hkUpdatedAt: D(true) };
 const SPEC: [string, string, Record<string, Col>][] = [
   ["T-4", "HotelRatePlan", { ...base(), name: S(), code: S(), includeBreakfast: B(false, "false"), minNights: I(true), maxNights: I(true), depositKind: S(false, "FIRST_NIGHT"), depositValue: I(false, "0"), isDefault: B(false, "false"), visibility: JB(), status: S(false, "ACTIVE"), sortOrder: I(false, "0"), description: S(true) }],
-  ["T-5", "HotelSeason", { ...base(), name: S(), dateStart: DT(), dateEnd: DT(), priority: I(false, "0"), status: S(false, "ACTIVE") }],
+  ["T-5", "HotelSeason", { ...base(), name: S(), dateStart: DT(), dateEnd: DT(), priority: I(false, "0"), minNights: I(true), status: S(false, "ACTIVE") }], // minNights = มติ §12 ข้อ 10 (h.1 #4)
   ["T-6", "HotelHoliday", { ...base(), date: DT(), name: S() }],
   ["T-7", "HotelRate", { ...base(), ratePlanId: S(), roomTypeId: S(), seasonId: S(true), priceWeekdaySatang: I(), priceWeekendSatang: I(), priceHolidaySatang: I(true) }],
   ["T-8", "HotelRateOverride", { ...base(), roomTypeId: S(), ratePlanId: S(true), date: DT(), priceSatang: I(), ...ns("reason", "setById") }],
@@ -668,12 +669,16 @@ try {
       ["ARCHIVED", () => plan({ status: "ARCHIVED" }), ""],
     ]);
   });
-  await st("C-3", "HotelSeason: status นอกรายการ ⇒ 23514 · dateEnd < dateStart ⇒ 23514 · dateEnd = dateStart ผ่าน (รวมวันจบ)", async () => {
+  await st("C-3", "HotelSeason: status นอกรายการ ⇒ 23514 · dateEnd < dateStart ⇒ 23514 · dateEnd = dateStart ผ่าน (รวมวันจบ) · minNights 0 / ติดลบ ⇒ 23514 · minNights null / 1 / 2 ผ่าน (มติ §12 ข้อ 10)", async () => {
+    ok((await cols("HotelSeason", true)).some((c) => c.column_name === "minNights"), "ยังไม่มีคอลัมน์ HotelSeason.minNights");
     await expectCodes([
       ["status=DRAFT", () => season({ status: "DRAFT" }), "23514"],
       ["dateEnd<dateStart", () => season({ dateStart: dayN(120), dateEnd: dayN(119) }), "23514"],
       ["dateEnd=dateStart", () => season({ dateStart: dayN(120), dateEnd: dayN(120) }), ""],
       ["ARCHIVED", () => season({ status: "ARCHIVED" }), ""],
+      ["minNights=0", () => season({ minNights: 0 }), "23514"],
+      ["minNights=-1", () => season({ minNights: -1 }), "23514"],
+      ["minNights null/1/2", async () => { await season({ minNights: null }); await season({ minNights: 1 }); await season({ minNights: 2 }); }, ""],
     ]);
   });
   await st("C-4", "HotelRate: ราคา 3 ช่องติดลบ ⇒ 23514 · 0 ผ่าน · holiday null ผ่าน", async () => {
