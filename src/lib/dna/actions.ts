@@ -64,7 +64,7 @@ export async function interviewTurnAction(
     {
       source: "DNA_INTERVIEW",
       model: result.usage.model,
-      tokensIn: result.usage.tokensIn,
+      tokensIn: result.usage.tokensIn, cacheWrite: result.usage.cacheWrite, cacheRead: result.usage.cacheRead,
       tokensOut: result.usage.tokensOut,
     },
   );

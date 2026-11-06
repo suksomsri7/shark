@@ -157,7 +157,7 @@ export async function weeklyAnalysis(
   const text = reply.text;
   await chargeUsageSafe(
     { tenantId: ctx.tenantId },
-    { source: "WEEKLY_REPORT", model: reply.model, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut },
+    { source: "WEEKLY_REPORT", model: reply.model, tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead, tokensOut: reply.tokensOut },
   );
 
   // บันทึกเป็นแจ้งเตือนในร้าน — ใส่ tenantId ตรง ๆ

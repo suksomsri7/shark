@@ -60,7 +60,7 @@ export async function defaultColumnGuesser(ctx: { tenantId: string; actorUserId?
         );
         await chargeUsageSafe(
           { tenantId: ctx.tenantId },
-          { source: "CHAT", model: r.model, tokensIn: r.tokensIn, tokensOut: r.tokensOut, ...(ctx.actorUserId ? { userId: ctx.actorUserId } : {}), note: "dorm.import.guessColumns" },
+          { source: "CHAT", model: r.model, tokensIn: r.tokensIn, cacheWrite: r.cacheWrite, cacheRead: r.cacheRead, tokensOut: r.tokensOut, ...(ctx.actorUserId ? { userId: ctx.actorUserId } : {}), note: "dorm.import.guessColumns" },
         );
         return parseReply(r.text);
       } catch {

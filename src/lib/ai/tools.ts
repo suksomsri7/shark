@@ -259,6 +259,7 @@ const customerSearch: AiTool = {
     const rows = await visibleMembers(ctx.actor, ctx.tenantId, await memberListCustomers(ctx.tenantId, query));
     return JSON.stringify({
       ลูกค้า: rows.slice(0, 10).map((c) => ({
+        id: c.id, // SEC S3a.1-R2 ▸ R-Z42: memberId สำหรับ pos_create_sale ◂
         ชื่อ: c.name ?? "ไม่ระบุชื่อ",
         เบอร์: c.phone ?? null,
         ระดับ: c.tier,
@@ -1072,7 +1073,7 @@ const posCreateSale: AiTool = {
   def: {
     name: "pos_create_sale",
     description:
-      "เสนอเปิดบิลขายหน้าร้าน (POS) — ยังไม่ทำทันที สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · ระบุ lines (แต่ละรายการมี name=ชื่อสินค้า, qty=จำนวน, unitPriceSatang=ราคาต่อหน่วยเป็นสตางค์ คือบาท×100) และ payType (CASH=เงินสด / TRANSFER=โอน / PROMPTPAY=พร้อมเพย์) · ระบุ unitName ถ้าร้านมีหลายสาขา",
+      "เสนอเปิดบิลขายหน้าร้าน (POS) — ยังไม่ทำทันที สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · ระบุ lines (แต่ละรายการมี name=ชื่อสินค้า, qty=จำนวน, unitPriceSatang=ราคาต่อหน่วยเป็นสตางค์ คือบาท×100) และ payType (CASH=เงินสด / TRANSFER=โอน / PROMPTPAY=พร้อมเพย์) · ระบุ unitName ถ้าร้านมีหลายสาขา · memberId = id สมาชิกจาก customer_search เพื่อผูกบิลกับสมาชิกและสะสมแต้มตามอัตราของร้าน (ระบบคิดแต้มเอง — ห้ามใช้ point_adjust แทนแต้มจากการซื้อ)",
     parameters: {
       type: "object",
       properties: {
@@ -1092,6 +1093,7 @@ const posCreateSale: AiTool = {
           },
         },
         payType: { type: "string", enum: ["CASH", "TRANSFER", "PROMPTPAY"], description: "วิธีชำระเงิน" },
+        memberId: { type: "string", description: "id สมาชิกจาก customer_search เพื่อสะสมแต้มตามอัตราร้าน (ไม่ระบุ = บิลไม่ผูกสมาชิก)" }, // SEC S3a.1-R2 ▸ R-Z42 ◂
       },
       required: ["lines", "payType"],
       additionalProperties: false,
@@ -1125,10 +1127,20 @@ const posCreateSale: AiTool = {
     const payload: Record<string, unknown> = { lines, payType };
     const unitName = String(a.unitName ?? "").trim();
     if (unitName) payload.unitName = unitName;
+    // SEC S3a.1-R2 ▸ R-Z42 (F2): ผูกสมาชิก — ต้องเป็นสมาชิกของร้านนี้ที่ผู้สั่งมองเห็น (ตัวกรองเดียวกับ customer_search) · แต้มคิดโดยสะพานสมาชิกตอนบิล PAID ◂
+    const memberId = String(a.memberId ?? "").trim();
+    let memberLabel = "";
+    if (memberId) {
+      const cust = await prisma.customer.findFirst({ where: { id: memberId, tenantId: ctx.tenantId }, select: { id: true, name: true, memberSystemId: true } });
+      const seen = cust ? await visibleMembers(ctx.actor, ctx.tenantId, [cust]) : [];
+      if (!cust || seen.length === 0) return JSON.stringify({ error: "ไม่พบสมาชิกคนนี้ในร้าน", suggestion: "ค้นด้วย customer_search แล้วใช้ id ที่ได้" });
+      payload.memberId = cust.id;
+      memberLabel = ` · ผูกสมาชิก ${String(crmApi.maskPiiDeep(cust.name?.trim() || "สมาชิก"))}`;
+    }
     const grand = lines.reduce((s, l) => s + l.unitPriceSatang * l.qty, 0);
     const baht = (grand / 100).toLocaleString("th-TH");
     const payLabel = payType === "TRANSFER" ? "โอน" : payType === "PROMPTPAY" ? "พร้อมเพย์" : "เงินสด";
-    const summary = `เปิดบิลขาย ${baht} บาท (${lines.length} รายการ · ${payLabel})`;
+    const summary = `เปิดบิลขาย ${baht} บาท (${lines.length} รายการ · ${payLabel})${memberLabel}`;
     return propose(ctx, "pos_create_sale", summary, payload);
   },
 };
@@ -1298,14 +1310,37 @@ const shopRefundOrder: AiTool = {
   },
 };
 
+// SEC S3a.1-R2 ▸ R-Z41 (F1): นัดที่ยกเลิก/ไม่มา + สถานะมัดจำ (ตัวเดียวกับ refund_booking_deposit ใช้ตัดสิน) — อ่านอย่างเดียว ◂
+const INCLUDE_CANCELLED_PARAM = {
+  type: "boolean",
+  description: "true = include cancelled / no-show appointments with their deposit status (use before refund_booking_deposit). Default false.",
+} as const;
+const DEPOSIT_STATE_TH: Record<string, string> = {
+  NONE: "ไม่มีมัดจำ", AWAITING: "รอจ่าย", IN_REVIEW: "รอตรวจสลิป", UNDERPAID: "จ่ายไม่ครบ", PAID: "จ่ายแล้ว", USED: "หักเข้าบิลแล้ว",
+  FORFEITED: "ริบแล้ว", REFUND_DUE: "ค้างคืน", REFUNDED: "คืนแล้ว", EXPIRED: "หมดเวลาจ่าย", FORFEIT_PENDING: "รอตัดสินคืน/ริบ", RECORDING: "กำลังบันทึก",
+};
+async function depositOfAppt(tenantId: string, a: { id: string; unitId: string; status: string; depositSatang: number }): Promise<Record<string, unknown> | undefined> {
+  if (a.status !== "CANCELLED" && a.status !== "NO_SHOW") return undefined;
+  if (!(a.depositSatang > 0)) return { สถานะ: DEPOSIT_STATE_TH.NONE, จำนวนบาท: 0, คืนได้: false };
+  const { depositInfo } = await import("@/lib/modules/booking/deposit");
+  const info = await depositInfo({ tenantId, unitId: a.unitId }, a.id).catch(() => null);
+  if (!info) return { สถานะ: DEPOSIT_STATE_TH.NONE, จำนวนบาท: 0, คืนได้: false };
+  const refundable = (info.state === "REFUND_DUE" || info.state === "FORFEIT_PENDING") && info.refundDueSatang > 0;
+  const satang = refundable ? info.refundDueSatang : info.paidSatang;
+  return { สถานะ: DEPOSIT_STATE_TH[info.state] ?? info.state, จำนวนบาท: satang / 100, คืนได้: refundable };
+}
+const APPT_STATUS_TH: Record<string, string> = { CANCELLED: "ยกเลิก", NO_SHOW: "ไม่มา" };
+
 // ── B1-R1) today_appointments — นัดหมายวันนี้ (เวลาไทย) ทุกสาขา ──
 const todayAppointments: AiTool = {
   def: {
     name: "today_appointments",
-    description: "ดูรายการนัดหมายบริการของวันนี้ (ตามเวลาไทย) ทุกสาขา — คืนเวลา ชื่อลูกค้า บริการ และช่าง",
-    parameters: NO_ARGS,
+    description:
+      "ดูรายการนัดหมายบริการของวันนี้ (ตามเวลาไทย) ทุกสาขา — คืน id เวลา ชื่อลูกค้า บริการ และช่าง · includeCancelled=true รวมนัดที่ยกเลิก/ไม่มา พร้อมสถานะมัดจำ (ใช้หา id ก่อน refund_booking_deposit)",
+    parameters: { type: "object", properties: { includeCancelled: INCLUDE_CANCELLED_PARAM }, additionalProperties: false },
   },
-  async execute(ctx) {
+  async execute(ctx, args) {
+    const includeCancelled = asRecord(args).includeCancelled === true; // R-Z41 ◂
     const today = dayKeyBangkok(new Date()); // YYYY-MM-DD (BKK)
     const start = new Date(`${today}T00:00:00+07:00`);
     const end = new Date(`${today}T00:00:00+07:00`);
@@ -1313,22 +1348,27 @@ const todayAppointments: AiTool = {
     const appts = await prisma.appointment.findMany({
       where: {
         tenantId: ctx.tenantId,
-        status: { notIn: ["CANCELLED", "NO_SHOW"] },
+        ...(includeCancelled ? {} : { status: { notIn: ["CANCELLED", "NO_SHOW"] } }),
         startAt: { gte: start, lt: end },
         ...unitWhere(ctx.actor), // CRM C5.5-G1 ▸ สาขาที่ผู้ถามเปิดได้ (หน้านัดหมาย = requireUnit) ◂
       },
       orderBy: { startAt: "asc" },
       include: { service: { select: { name: true } }, staff: { select: { name: true } } },
     });
-    return JSON.stringify({
-      วันที่: today,
-      นัดวันนี้: appts.map((ap) => ({
+    const rows = [];
+    for (const ap of appts) {
+      const deposit = includeCancelled ? await depositOfAppt(ctx.tenantId, ap) : undefined;
+      rows.push({
+        id: ap.id,
         เวลา: ap.startAt.toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" }),
         ลูกค้า: ap.customerName,
         บริการ: ap.service?.name ?? null,
         ช่าง: ap.staff?.name ?? null,
-      })),
-    });
+        ...(APPT_STATUS_TH[ap.status] ? { สถานะ: APPT_STATUS_TH[ap.status] } : {}),
+        ...(deposit ? { มัดจำ: deposit } : {}),
+      });
+    }
+    return JSON.stringify({ วันที่: today, นัดวันนี้: rows });
   },
 };
 
@@ -1495,7 +1535,7 @@ const refundBookingDeposit: AiTool = {
   def: {
     name: "refund_booking_deposit",
     description:
-      "Propose refunding the deposit of an appointment that was cancelled or marked no-show (state: refund due). Nothing is refunded until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์). The amount comes from the system, never from you. appointmentId = the appointment (use today_appointments / upcoming_schedule or ask the user).",
+      "Propose refunding the deposit of an appointment that was cancelled or marked no-show (state: refund due). Nothing is refunded until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์). The amount comes from the system, never from you. appointmentId = the appointment id: call today_appointments or upcoming_schedule with includeCancelled=true and pick the row whose deposit shows คืนได้=true (cancelled/no-show appointments are hidden without that flag); if several match, ask the user.",
     parameters: {
       type: "object",
       properties: { appointmentId: { type: "string", description: "Appointment id" } },
@@ -2123,11 +2163,13 @@ const upcomingSchedule: AiTool = {
       type: "object",
       properties: {
         days: { type: "integer", minimum: 1, maximum: 90, description: "จำนวนวันข้างหน้า (ค่าเริ่มต้น 7)" },
+        includeCancelled: INCLUDE_CANCELLED_PARAM,
       },
       additionalProperties: false,
     },
   },
   async execute(ctx, args) {
+    const includeCancelled = asRecord(args).includeCancelled === true; // SEC S3a.1-R2 ▸ R-Z41 ◂
     const raw = Number(asRecord(args).days);
     const days = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 90) : 7;
     const from = new Date();
@@ -2151,7 +2193,7 @@ const upcomingSchedule: AiTool = {
       offBooking
         ? Promise.resolve([])
         : prisma.appointment.findMany({
-            where: { tenantId: ctx.tenantId, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
+            where: { tenantId: ctx.tenantId, ...(includeCancelled ? {} : { status: { notIn: ["CANCELLED", "NO_SHOW"] } }), startAt: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
             orderBy: { startAt: "asc" },
             take: 50,
             include: { service: { select: { name: true } } },
@@ -2178,9 +2220,14 @@ const upcomingSchedule: AiTool = {
     }
     const timeBkk = (d: Date) =>
       d.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "short", timeStyle: "short" });
+    const apptRows = [];
+    for (const a of appts) {
+      const deposit = includeCancelled ? await depositOfAppt(ctx.tenantId, a) : undefined;
+      apptRows.push({ id: a.id, เมื่อ: timeBkk(a.startAt), บริการ: a.service?.name ?? "นัดหมาย", ลูกค้า: a.customerName, ...(APPT_STATUS_TH[a.status] ? { สถานะ: APPT_STATUS_TH[a.status] } : {}), ...(deposit ? { มัดจำ: deposit } : {}) });
+    }
     return JSON.stringify({
       ช่วงเวลา: `${days} วันข้างหน้า`,
-      นัดหมาย: appts.map((a) => ({ เมื่อ: timeBkk(a.startAt), บริการ: a.service?.name ?? "นัดหมาย", ลูกค้า: a.customerName })),
+      นัดหมาย: apptRows,
       การเข้าพัก: stays.map((r) => ({ เช็คอิน: safeDate(r.checkInDate), ห้อง: r.roomType?.name ?? "ห้องพัก", ผู้เข้าพัก: r.guestName })),
       วันลา: leaves.map((l) => ({ ตั้งแต่: safeDate(l.fromDate), ถึง: safeDate(l.toDate), พนักงาน: l.employee?.name ?? "พนักงาน", ประเภท: l.type })),
       ...skipNote,
@@ -2200,7 +2247,7 @@ const pointAdjust: AiTool = {
   def: {
     name: "point_adjust",
     description:
-      "เสนอแจกหรือหักแต้มสะสมของสมาชิก (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ delta (จำนวนแต้ม: บวก=แจก ลบ=หัก เช่น 50 หรือ -20) และตัวระบุสมาชิก: รหัสสมาชิก (memberCode) หรือเบอร์โทร (customerPhone) หรือชื่อ (customerName) อย่างใดอย่างหนึ่ง · reason (เหตุผล) ถ้ามี",
+      "เสนอแจกหรือหักแต้มสะสมของสมาชิก (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ delta (จำนวนแต้ม: บวก=แจก ลบ=หัก เช่น 50 หรือ -20) และตัวระบุสมาชิก: รหัสสมาชิก (memberCode) หรือเบอร์โทร (customerPhone) หรือชื่อ (customerName) อย่างใดอย่างหนึ่ง · reason (เหตุผล) ถ้ามี · ใช้เฉพาะปรับแต้มพิเศษ (ของขวัญ/ชดเชย/แก้ยอดผิด) — **ห้ามใช้แทนแต้มจากการซื้อ** (บิลขายให้ใส่ memberId ใน pos_create_sale แล้วระบบคิดแต้มตามอัตราร้านเอง)",
     parameters: {
       type: "object",
       properties: {

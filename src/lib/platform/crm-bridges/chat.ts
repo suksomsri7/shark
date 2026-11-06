@@ -237,7 +237,7 @@ export async function onChatConversationStatus(evt: BridgeEvent, deps?: { ai?: A
       {
         source: "CRM_ASSIST",
         model: String(reply?.model ?? "unknown"),
-        tokensIn: Number(reply?.tokensIn ?? 0),
+        tokensIn: Number(reply?.tokensIn ?? 0), cacheWrite: reply?.cacheWrite, cacheRead: reply?.cacheRead,
         tokensOut: Number(reply?.tokensOut ?? 0),
         note: `crm.chat.summary#${conversationId}`,
       },

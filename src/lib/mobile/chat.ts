@@ -82,7 +82,7 @@ async function autoTitle(ctx: SendCtx, conversationId: string, firstText: string
       await chargeUsageSafe(ctx, {
         source: "AUTO_TITLE",
         model: reply.model,
-        tokensIn: reply.tokensIn,
+        tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead,
         tokensOut: reply.tokensOut,
         conversationId,
       });

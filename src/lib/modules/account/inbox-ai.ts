@@ -328,6 +328,8 @@ export async function readBill(
 
   let tokensIn = 0;
   let tokensOut = 0;
+  let cacheWrite = 0; // SEC S3a.1-R2 ▸ R-Z44: ราคาแคชแยก ◂
+  let cacheRead = 0;
   let model = "";
   let parsed: unknown = null;
   let failReason: string | null = null;
@@ -336,6 +338,8 @@ export async function readBill(
     const first = await provider.chat(messages, { maxTokens: 1500 });
     tokensIn += first.tokensIn;
     tokensOut += first.tokensOut;
+    cacheWrite += first.cacheWrite ?? 0;
+    cacheRead += first.cacheRead ?? 0;
     model = first.model;
     parsed = extractJsonBlock(first.text);
 
@@ -356,6 +360,8 @@ export async function readBill(
       );
       tokensIn += repair.tokensIn;
       tokensOut += repair.tokensOut;
+      cacheWrite += repair.cacheWrite ?? 0;
+      cacheRead += repair.cacheRead ?? 0;
       model = repair.model || model;
       parsed = extractJsonBlock(repair.text);
       if (parsed === null) failReason = "AI ตอบกลับมาไม่เป็นข้อมูลที่อ่านได้ — กรอกเอง หรือลองถ่ายรูปให้ชัดขึ้น";
@@ -367,7 +373,7 @@ export async function readBill(
 
   // คิดเงินครั้งเดียวต่อการอ่าน 1 ครั้ง (รวมรอบซ่อม) — คำตอบออกมาแล้วต้องจ่าย แม้ตีความไม่ได้
   let costSatang: number | null = null;
-  if (tokensIn + tokensOut > 0) {
+  if (tokensIn + tokensOut + cacheWrite + cacheRead > 0) {
     const micro = await chargeUsageSafe(
       { tenantId: ctx.tenantId },
       {
@@ -375,6 +381,8 @@ export async function readBill(
         model: model || "unknown",
         tokensIn,
         tokensOut,
+        cacheWrite,
+        cacheRead,
         ...(opts?.userId ? { userId: opts.userId } : {}),
         note: `อ่านบิลจากรูป: ${row.fileName}`.slice(0, 200),
       },

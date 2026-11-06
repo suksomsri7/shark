@@ -332,6 +332,8 @@ export async function sendMessage(
   // การทำจริงเกิดที่ปุ่มยืนยันใน UI + assertCan สิทธิ์คนกด จึงปลอดภัยแม้ LLM เรียกมั่ว
   let tokensIn = 0;
   let tokensOut = 0;
+  let cacheWrite = 0; // SEC S3a.1-R2 ▸ R-Z44: token แคช (ราคาแยก) — AiMessage/AiUsage ยังนับขาเข้ารวม (ความหมายเดิมของเพดานรายวัน) ◂
+  let cacheRead = 0;
   let finalText = "";
   let clarify: Clarify | null = null;
   const usedTools: { name: string; args: unknown }[] = []; // เครื่องมือที่ถูกเรียกจริงในเทิร์นนี้ (dataset)
@@ -351,6 +353,8 @@ export async function sendMessage(
     }
     tokensIn += reply.tokensIn;
     tokensOut += reply.tokensOut;
+    cacheWrite += reply.cacheWrite ?? 0; // SEC S3a.1-R2 ▸ R-Z44 ◂
+    cacheRead += reply.cacheRead ?? 0;
 
     if (reply.toolCalls && reply.toolCalls.length > 0) {
       // ask_clarify — คำสั่งกำกวม: จบเทิร์นด้วยคำถาม + ตัวเลือกให้กด (ไม่วน tool ต่อ ไม่สร้าง proposal)
@@ -432,17 +436,17 @@ export async function sendMessage(
         conversationId: conversation.id,
         role: "ASSISTANT",
         content: finalText,
-        tokensIn,
+        tokensIn: tokensIn + cacheWrite + cacheRead,
         tokensOut,
       },
     }),
     db.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
     db.aiUsage.upsert({
       where: { tenantId_day: { tenantId: ctx.tenantId, day } },
-      create: { tenantId: ctx.tenantId, day, requests: 1, tokensIn, tokensOut },
+      create: { tenantId: ctx.tenantId, day, requests: 1, tokensIn: tokensIn + cacheWrite + cacheRead, tokensOut },
       update: {
         requests: { increment: 1 },
-        tokensIn: { increment: tokensIn },
+        tokensIn: { increment: tokensIn + cacheWrite + cacheRead },
         tokensOut: { increment: tokensOut },
       },
     }),
@@ -464,6 +468,8 @@ export async function sendMessage(
     model: routedModel,
     tokensIn,
     tokensOut,
+    cacheWrite, // SEC S3a.1-R2 ▸ R-Z44: ราคาแคชแยก ◂
+    cacheRead,
     conversationId: conversation.id,
     ...(roomWorker && deps?.usageNote ? { note: deps.usageNote.slice(0, 200) } : {}), // SEC S3a.1-S1 R-Z9
   });

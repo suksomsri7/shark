@@ -93,6 +93,9 @@
 1. **ใบเสนอราคา → ส่ง LINE ลูกค้า** — `account.*` (ร่างใบเสนอราคา) + `chat.send` (ส่งลิงก์ใบให้ลูกค้าที่ผูก `ChatContact.customerId`)
 2. **ขายหน้าร้าน POS v2 + สมาชิกสะสมแต้ม** — `pos.*` (ทะเบียน op ของ POS v2 ผ่าน `src/lib/ai/tools-pos.ts`) + แต้มสมาชิก
 3. **คืนมัดจำนัดหมาย (booking)** — kind ใหม่ `booking.refund_deposit` เขียนมือ → `bookingSvc.refundDeposit` (booking/service.ts:1329 · ข้อสอบ `qc-booking-deposit` รองรับ) · ชนิดเงินออก ⇒ `ALWAYS_APPROVE`
+- S3a.1-R2 (R-Z45) **ส่งใบในเทิร์นเดียว**: เครื่องมือสร้างเอกสารบัญชีบอกให้เสนอ `send_customer_message` kind=`quote` ในเทิร์นเดียวกันโดยไม่ใส่ `documentId` · ตอนอนุมัติ `dispatchChatSend` เติม "ใบเสนอราคา เลขที่ … · ยอด … · ลิงก์ `/r/<token>` (ถ้ามี)" จากใบ `account.documents.create` ล่าสุดที่ EXECUTED ในบทสนทนาเดียวกัน (เอกสารจากบันทึกการกระทำ `account.document`) · ยังไม่มีใบ ⇒ ปฏิเสธไทยก่อน claim (ข้อเสนอคง PENDING · อนุมัติใบก่อนแล้วกดใหม่) · ใบของห้องอื่นไม่ถูกหยิบ
+- S3a.1-R2 (R-Z42) **แต้มจากบิล**: `pos_create_sale.memberId` (id จาก `customer_search`) ⇒ `posSvc.createSale({memberId})` · แต้มคิดโดยสะพานสมาชิก (`onPosSalePaid` ตามอัตราร้าน) — โมเดลไม่กำหนดแต้มเอง · `point_adjust` ใช้เฉพาะแต้มพิเศษ ไม่ใช่แต้มจากการซื้อ
+- S3a.1-R2 (R-Z41) **includeCancelled**: `today_appointments`/`upcoming_schedule` คืน `id` ทุกแถว · `includeCancelled=true` รวมนัดยกเลิก/ไม่มา พร้อม `มัดจำ {สถานะ, จำนวนบาท, คืนได้}` (จาก `depositInfo`) — ใช้หา id ก่อน `refund_booking_deposit` · ปริยาย false = เหมือนเดิม
 
 ---
 

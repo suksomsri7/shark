@@ -85,7 +85,7 @@ async function completionOf(ctx: KanbanCtx, deps?: KanbanAiDeps): Promise<(promp
         //    ("ทีมงานใช้ AI ตอนทำงานกับลูกค้า") · เพิ่มค่า enum = ไมเกรชันของ WO ถัดไป
         source: "CHAT_SUGGEST",
         model: reply.model || SMART_MODEL,
-        tokensIn: reply.tokensIn,
+        tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead,
         tokensOut: reply.tokensOut,
         ...(ctx.actorUserId ? { userId: ctx.actorUserId } : {}),
         note: "ผู้ช่วย AI ในหลังการ์ด (K3.5)",

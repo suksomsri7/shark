@@ -129,7 +129,7 @@ function cleanTranslation(raw: string): string {
 }
 
 type ProviderRun =
-  | { ok: true; text: string; model: string; tokensIn: number; tokensOut: number }
+  | { ok: true; text: string; model: string; tokensIn: number; tokensOut: number; cacheWrite?: number; cacheRead?: number } // SEC S3a.1-R2 R-Z44 ◂
   | { ok: false; reason: string };
 
 /**
@@ -152,7 +152,7 @@ async function runTranslate(text: string, targetLang: string): Promise<ProviderR
     );
     const out = cleanTranslation(reply.text);
     if (!out) return { ok: false, reason: "แปลข้อความไม่สำเร็จ — ผู้ให้บริการ AI ตอบกลับมาว่าง กรุณาลองใหม่" };
-    return { ok: true, text: out, model: reply.model, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut };
+    return { ok: true, text: out, model: reply.model, tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead, tokensOut: reply.tokensOut };
   } catch {
     // 🔴 กลืนไว้ตรงนี้เสมอ — แปลพังต้องไม่ทำให้ทีมตอบลูกค้าไม่ได้ (กฎเหล็กข้อ 4)
     return { ok: false, reason: "แปลข้อความไม่สำเร็จ — ระบบแปลขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง" };
@@ -238,7 +238,7 @@ export async function translateMessage(args: {
     {
       source: "CHAT_TRANSLATE",
       model: run.model,
-      tokensIn: run.tokensIn,
+      tokensIn: run.tokensIn, cacheWrite: run.cacheWrite, cacheRead: run.cacheRead,
       tokensOut: run.tokensOut,
       conversationId: msg.conversationId,
       userId: args.userId,
@@ -310,7 +310,7 @@ export async function translateDraft(args: {
     {
       source: "CHAT_TRANSLATE",
       model: run.model,
-      tokensIn: run.tokensIn,
+      tokensIn: run.tokensIn, cacheWrite: run.cacheWrite, cacheRead: run.cacheRead,
       tokensOut: run.tokensOut,
       conversationId: conv.id,
       userId: args.userId,

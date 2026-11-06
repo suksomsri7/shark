@@ -594,7 +594,7 @@ export async function runAssist(ctx: AiBridgeCtx, actor: Actor, input: RunAssist
     {
       source: "CRM_ASSIST",
       model: String(reply?.model ?? "unknown"),
-      tokensIn: Number(reply?.tokensIn ?? 0),
+      tokensIn: Number(reply?.tokensIn ?? 0), cacheWrite: reply?.cacheWrite, cacheRead: reply?.cacheRead,
       tokensOut: Number(reply?.tokensOut ?? 0),
       userId: requester,
       note: `crm.assist.${kind}#${built?.targetId ?? sys.id}`,

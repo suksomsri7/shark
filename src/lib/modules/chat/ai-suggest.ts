@@ -415,7 +415,7 @@ export async function suggestReply(args: {
     {
       source: "CHAT_SUGGEST",
       model: reply.model,
-      tokensIn: reply.tokensIn,
+      tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead,
       tokensOut: reply.tokensOut,
       conversationId: conv.id,
       userId,

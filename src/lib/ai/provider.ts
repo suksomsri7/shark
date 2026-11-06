@@ -20,9 +20,13 @@ export type AiChatMessage = {
 export type AiReply = {
   text: string;
   toolCalls?: AiToolCall[];
+  /** ขาเข้าที่ไม่ใช่แคช (SEC S3a.1-R2 R-Z44 — เดิม Anthropic รวมแคชไว้ในนี้) */
   tokensIn: number;
   tokensOut: number;
   model: string;
+  /** SEC S3a.1-R2 ▸ R-Z44: token ที่เขียน/อ่านแคช (Anthropic) — OpenRouter/mock ไม่มี = 0 ◂ */
+  cacheWrite?: number;
+  cacheRead?: number;
 };
 
 export interface AiProvider {
@@ -37,6 +41,8 @@ export const SMART_MODEL = "anthropic/claude-sonnet-5";
 const ACTION_WORDS = [
   "สร้าง", "เพิ่ม", "ลบ", "ยกเลิก", "จอง", "ขาย", "อนุมัติ", "บันทึก",
   "ปรับ", "โอน", "รับ", "ชำระ", "เปิดบิล", "สมัคร",
+  // SEC S3a.1-R2 ▸ R-Z43 (F3): งานเขียน/ส่งถึงลูกค้า/คืนเงิน ⇒ smart (false positive = แพงขึ้นแต่ไม่ผิด) ◂
+  "ร่าง", "ส่ง", "คืน", "ออกใบ", "แจ้ง",
 ];
 
 /**
@@ -332,7 +338,8 @@ export function buildAnthropicRequestBody(
 /**
  * อ่านผลของ Messages API → AiReply (pure)
  * - text = text blocks ต่อกัน · tool_use → toolCalls {id, name, args: input} · block อื่น (thinking ฯลฯ) ข้าม
- * - tokensIn = input + cache_creation_input + cache_read_input (คิดเงินครบทุก token ขาเข้า) · tokensOut = output
+ * - SEC S3a.1-R2 R-Z44: tokensIn = input_tokens (ไม่ใช่แคช) · cacheWrite = cache_creation_input · cacheRead = cache_read_input
+ *   (ราคาแยก ⇒ `costMicroUsd(…, {write, read})`) · tokensOut = output
  * - stop_reason "refusal" ⇒ throw ไทย · ไม่มีทั้งข้อความและ tool_use ⇒ throw "ตอบว่าง" (แบบ OpenRouter)
  */
 export function parseAnthropicReply(json: unknown, fallbackModel: string): AiReply {
@@ -362,8 +369,10 @@ export function parseAnthropicReply(json: unknown, fallbackModel: string): AiRep
   return {
     text,
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
-    tokensIn: n(u.input_tokens) + n(u.cache_creation_input_tokens) + n(u.cache_read_input_tokens),
+    tokensIn: n(u.input_tokens),
     tokensOut: n(u.output_tokens),
+    cacheWrite: n(u.cache_creation_input_tokens),
+    cacheRead: n(u.cache_read_input_tokens),
     model: data.model ?? fallbackModel,
   };
 }

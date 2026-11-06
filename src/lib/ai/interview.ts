@@ -12,7 +12,7 @@ import type { AiChatMessage, AiProvider } from "@/lib/ai/provider";
 
 export type InterviewTurn = { role: "user" | "assistant"; content: string };
 /** usage ติดมาทุกผลลัพธ์ — ชั้นบนต้องหักเครดิตได้ทุกเทิร์น (เดิมทางนี้ยิง LLM ฟรีไม่ผ่านมิเตอร์) */
-export type InterviewUsage = { model: string; tokensIn: number; tokensOut: number };
+export type InterviewUsage = { model: string; tokensIn: number; tokensOut: number; cacheWrite?: number; cacheRead?: number }; // SEC S3a.1-R2 R-Z44 ◂
 export type InterviewResult = { usage: InterviewUsage } & (
   | { done: false; question: string }
   | { done: true; facts: DnaFacts }
@@ -92,7 +92,7 @@ export async function nextInterviewTurn(
 
   const reply = await provider.chat(messages);
   const text = reply.text ?? "";
-  const usage = { model: reply.model, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut };
+  const usage = { model: reply.model, tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead, tokensOut: reply.tokensOut };
 
   const markerAt = text.indexOf(MARKER);
   if (markerAt === -1) {

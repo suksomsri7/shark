@@ -1177,7 +1177,7 @@ export async function summarize(
         "Write both values in Thai. Do not invent facts that are not in the reviews.";
       try {
         const res = await provider.chat([{ role: "system", content: system }, { role: "user", content: `Reviews this month (${rows.length}):\n${lines.join("\n")}` }], { maxTokens: 300 });
-        await chargeUsageSafe({ tenantId: ctx.tenantId }, { source: "MEMBER_ASSIST", model: res.model, tokensIn: res.tokensIn, tokensOut: res.tokensOut, userId: actor.userId, note: "AI สรุปรีวิวลูกค้ารายเดือน" });
+        await chargeUsageSafe({ tenantId: ctx.tenantId }, { source: "MEMBER_ASSIST", model: res.model, tokensIn: res.tokensIn, cacheWrite: res.cacheWrite, cacheRead: res.cacheRead, tokensOut: res.tokensOut, userId: actor.userId, note: "AI สรุปรีวิวลูกค้ารายเดือน" });
         const parsed = parseSummaryJson(res.text);
         if (parsed) {
           strengths = parsed.strengths;
@@ -1212,7 +1212,7 @@ export async function draftReply(ctx: MemberCtx, actor: MemberActor, reviewId: s
   const user = [`Shop template: ${settings.replyTemplate}`, `Rating: ${row.rating}/5`, svc?.name ? `Service: ${svc.name}` : null, `Review text: ${scrubDigits(row.body ?? "(no text)")}`].filter(Boolean).join("\n");
   try {
     const res = await provider.chat([{ role: "system", content: system }, { role: "user", content: user }], { maxTokens: 250 });
-    await chargeUsageSafe({ tenantId: ctx.tenantId }, { source: "MEMBER_ASSIST", model: res.model, tokensIn: res.tokensIn, tokensOut: res.tokensOut, userId: actor.userId, note: "AI ร่างคำตอบรีวิว" });
+    await chargeUsageSafe({ tenantId: ctx.tenantId }, { source: "MEMBER_ASSIST", model: res.model, tokensIn: res.tokensIn, cacheWrite: res.cacheWrite, cacheRead: res.cacheRead, tokensOut: res.tokensOut, userId: actor.userId, note: "AI ร่างคำตอบรีวิว" });
     const text = res.text.trim().replace(/^["“]|["”]$/g, "").slice(0, REVIEW_REPLY_MAX);
     return text ? { text, ai: true } : { text: fallback, ai: false };
   } catch {

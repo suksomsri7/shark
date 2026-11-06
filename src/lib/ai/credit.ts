@@ -217,6 +217,9 @@ export type ChargeInput = {
   model: string;
   tokensIn: number;
   tokensOut: number;
+  /** SEC S3a.1-R2 ▸ R-Z44: token แคช (เขียน/อ่าน) จาก AiReply — คิดราคาแคชแยก · ไม่ส่ง = 0 (พฤติกรรมเดิม) ◂ */
+  cacheWrite?: number;
+  cacheRead?: number;
   conversationId?: string;
   userId?: string;
   note?: string;
@@ -236,7 +239,7 @@ export type ChargeInput = {
 
 /** ค่าที่ต้องหักจริงของรายการนี้ = ค่า token ของโมเดล + ค่าที่ผู้เรียกรายงานเพิ่ม (ปัดเป็นจำนวนเต็ม ≥ 0) */
 function totalCostMicro(input: ChargeInput): number {
-  const model = costMicroUsd(input.model, input.tokensIn, input.tokensOut);
+  const model = costMicroUsd(input.model, input.tokensIn, input.tokensOut, { write: input.cacheWrite, read: input.cacheRead });
   const extra = Math.max(0, Math.round(Number(input.extraMicroUsd ?? 0) || 0));
   return model + extra;
 }
@@ -286,7 +289,8 @@ async function chargeTx(ctx: Ctx, input: ChargeInput, cost: number, ref: string 
         amountMicro: -cost,
         balanceAfter: w.balanceMicro,
         model: input.model,
-        tokensIn: Math.max(0, Math.round(input.tokensIn || 0)),
+        // R-Z44: คอลัมน์ tokensIn = ขาเข้าทั้งหมด (ไม่ใช่แคช + เขียนแคช + อ่านแคช — ความหมายเดิมของแถวเก่า) · เงินคิดแยกราคาแคชแล้วด้านบน
+        tokensIn: Math.max(0, Math.round(input.tokensIn || 0)) + Math.max(0, Math.round(Number(input.cacheWrite) || 0)) + Math.max(0, Math.round(Number(input.cacheRead) || 0)),
         tokensOut: Math.max(0, Math.round(input.tokensOut || 0)),
         ...(input.conversationId ? { conversationId: input.conversationId } : {}),
         ...(input.userId ? { userId: input.userId } : {}),

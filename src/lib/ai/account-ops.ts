@@ -205,6 +205,8 @@ type ToolAdapter = {
    * (เช่นเอกสารต้องมีบรรทัด — REST ตรวจในชั้นบริการตามชนิดเอกสาร แต่ผู้ช่วยควรรู้ตั้งแต่ตอนเรียก)
    */
   extraRequired?: string[];
+  /** SEC S3a.1-R2 ▸ R-Z45: ประโยคต่อท้ายคำอธิบายของ op (ไม่แทน summary) ◂ */
+  extraHint?: string;
   /** args (ผ่าน zod แล้ว) → op ที่จะรันจริง + input/params ของมัน */
   toCall?: (args: Record<string, unknown>) => { opId?: string; input: unknown; params?: Record<string, string> };
 };
@@ -212,7 +214,12 @@ type ToolAdapter = {
 const ADAPTERS: Record<string, ToolAdapter> = {
   // สร้างเอกสาร: schema ของ REST ปล่อย `lines` ว่างได้ (ใบรวม/ใบวางบิลใช้ `childIds` แทน)
   // แต่ผู้ช่วยสร้างเอกสารปกติเสมอ ⇒ บอกให้ชัดว่าต้องมีบรรทัด (ไม่งั้นเดาว่า "ไม่ต้องส่งก็ได้")
-  "documents.create": { extraRequired: ["lines"] },
+  "documents.create": {
+    extraRequired: ["lines"],
+    // SEC S3a.1-R2 ▸ R-Z45 (F6): ใบ→ลูกค้าในเทิร์นเดียว — ระบบเติมเลขที่/ลิงก์ให้ตอนส่ง (dispatchChatSend) ◂
+    extraHint:
+      "If the user also asks to send this document to the customer, call send_customer_message in the same turn with kind='quote' and no documentId — the system adds the document number and link when sending, after the document has been approved.",
+  },
   // รายงาน: 7 op ใต้ชื่อเดียว — ผู้ช่วยเลือกด้วย `kind` (ถามว่า "กำไรเดือนนี้เท่าไร" ไม่ต้องรู้ชื่อ endpoint)
   "reports.profit-loss": {
     args: reportArgs,
@@ -355,7 +362,7 @@ export function accountToolInfos(): AccountToolInfo[] {
   toolCache = accountToolOps().map((op) => {
     const tool = op.tool!;
     const adapter = ADAPTERS[op.id];
-    const description = [adapter?.description ?? op.summary, tool.hint ?? ""].filter(Boolean).join(" ");
+    const description = [adapter?.description ?? op.summary, tool.hint ?? "", adapter?.extraHint ?? ""].filter(Boolean).join(" ");
     return {
       name: tool.name,
       opId: op.id,
@@ -849,6 +856,8 @@ export async function dispatchAccountKind(
   kind: string,
   rawPayload: unknown,
   userId?: string | null,
+  /** SEC S3a.1-R2 ▸ R-Z45: รับ id ของเอกสารที่สร้าง (บันทึกการกระทำ + ส่งใบถึงลูกค้าหาใบล่าสุดของห้อง) ◂ */
+  out?: { entity?: { type: string; id: string } | null },
 ): Promise<string> {
   const payload = rec(rawPayload);
   const opId = typeof payload.opId === "string" ? payload.opId : kind.slice(KIND_PREFIX.length);
@@ -876,6 +885,8 @@ export async function dispatchAccountKind(
       reason,
       audit: { proposalId, actor: "ai-assistant" },
     });
+    const created = rec(env.data);
+    if (out && op.id === "documents.create" && typeof created.id === "string" && created.id) out.entity = { type: "account.document", id: created.id }; // R-Z45 ◂
     return noteOf(op, env.data);
   } catch (e) {
     throw new Error(mapError(e).message_th);

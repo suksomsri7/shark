@@ -319,7 +319,7 @@ export async function afterHoursAutoReply(args: {
   }
   await chargeUsageSafe(
     { tenantId },
-    { source: "CHAT_SUGGEST", model: reply.model, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut, conversationId, note: "Shark ตอบลูกค้านอกเวลาทำการ" },
+    { source: "CHAT_SUGGEST", model: reply.model, tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead, tokensOut: reply.tokensOut, conversationId, note: "Shark ตอบลูกค้านอกเวลาทำการ" },
   );
   const answer = (reply.text ?? "").trim();
   if (!answer || answer.toUpperCase().includes(UNKNOWN_TOKEN)) return handoff(at, settings, "unknown");

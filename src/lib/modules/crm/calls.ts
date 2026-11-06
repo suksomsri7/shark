@@ -494,7 +494,7 @@ export async function transcribeCall(ctx: CallsCtx, actor: MemberActor, activity
       {
         source: "CRM_ASSIST",
         model: String(reply?.model ?? "unknown"),
-        tokensIn: Number(reply?.tokensIn ?? 0) + Math.max(0, Math.round(Number(stt?.tokensIn ?? 0))),
+        cacheWrite: reply?.cacheWrite, cacheRead: reply?.cacheRead, tokensIn: Number(reply?.tokensIn ?? 0) + Math.max(0, Math.round(Number(stt?.tokensIn ?? 0))),
         tokensOut: Number(reply?.tokensOut ?? 0) + Math.max(0, Math.round(Number(stt?.tokensOut ?? 0))),
         ...(sttMicro > 0 ? { extraMicroUsd: sttMicro } : {}),
         ...(ctx.actorUserId ? { userId: ctx.actorUserId } : {}),
@@ -662,7 +662,7 @@ export async function scanBusinessCard(
     {
       source: "CRM_ASSIST",
       model: String(reply?.model ?? "unknown"),
-      tokensIn: Number(reply?.tokensIn ?? 0),
+      tokensIn: Number(reply?.tokensIn ?? 0), cacheWrite: reply?.cacheWrite, cacheRead: reply?.cacheRead,
       tokensOut: Number(reply?.tokensOut ?? 0),
       ...(ctx.actorUserId ? { userId: ctx.actorUserId } : {}),
       note: `crm.card.scan#${created.id}`,

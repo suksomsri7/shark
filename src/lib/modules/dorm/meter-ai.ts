@@ -235,7 +235,8 @@ export function defaultMeterReader(ctx: { tenantId: string }): MeterPhotoReader 
         { maxTokens: 200 },
       );
       const p = parseReading(r.text);
-      return { value: p.value, confidence: p.confidence, model: r.model, tokensIn: r.tokensIn, tokensOut: r.tokensOut };
+      // SEC S3a.1-R2 ▸ R-Z44: token แคชรวมเข้าขาเข้า (คิดราคาขาเข้าเต็ม = แบบเดิม) — ยอดของรอบนี้ถูกเก็บลงแถวมิเตอร์แล้วหักทีหลัง ◂
+      return { value: p.value, confidence: p.confidence, model: r.model, tokensIn: r.tokensIn + (r.cacheWrite ?? 0) + (r.cacheRead ?? 0), tokensOut: r.tokensOut };
     },
   };
 }
