@@ -504,6 +504,7 @@ const th = {
   "sec.kind.account.documents.create": "ออกเอกสารบัญชี",
   "sec.kind.kb.save": "บันทึกความรู้",
   "sec.kind.memory.forget": "ลบความจำของร้าน",
+  "sec.kind.support.open": "เปิดเคสถึงทีม SHARK",
   "sec.kind.fallback": "งานใน {sys}",
   "chat.sse.error": "เลขาตอบไม่สำเร็จ ลองส่งใหม่อีกครั้ง",
   "sec.field.title": "ชื่อ",

@@ -505,6 +505,7 @@ const en: Record<I18nKey, string> = {
   "sec.kind.account.documents.create": "Issue an accounting document",
   "sec.kind.kb.save": "Save knowledge",
   "sec.kind.memory.forget": "Forget shop memory",
+  "sec.kind.support.open": "Open a support case",
   "sec.kind.fallback": "{sys} task",
   "chat.sse.error": "The assistant couldn't reply. Please try sending again.",
   "sec.field.title": "Title",

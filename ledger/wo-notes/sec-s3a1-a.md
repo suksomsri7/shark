@@ -99,3 +99,9 @@
 - สัญญาที่แอปพึ่ง (อ่านจากโค้ดหลัง merge): account/delete 400 `code_required`/`confirm_required` · 401 `invalid_code` · 401 `locked` · เซสชันหมด 401 `unauthorized` (userGate) · `verifyDeletionStepUp` = มีเบอร์ ⇒ OTP เบอร์ · ไม่มี ⇒ OTP อีเมล ✅ · rooms POST + rooms/[id]/send: 409 `pending` · ซ้ำ = 200 `{duplicate:true, roomId…}` / `{duplicate:true, messageId, jobId}` · cmid ห้ามมี `:` (แอปใช้ `m-<36>-<rand>`) ✅ · R-Z32 ข้อความ/คำสั่งเดิมใน 10 นาที = duplicate (แอปจัดการรูปเดียวกันอยู่แล้ว)
 - `qc-sec-s3a1-a` 9/9 (M-1 mobile tsc 0 · D-1/D-2 fitness ผ่าน)
 - ข้อสังเกต: kind ใหม่ `support.open` ยังไม่มีป้ายในแอป ⇒ แสดงแบบ fallback "งานใน <ระบบ>" (ไม่ได้สั่งในรอบนี้)
+
+## 9. ป้าย kind `support.open` (R-Z34 · ผู้คุมสั่งเพิ่ม)
+- i18n `sec.kind.support.open` th "เปิดเคสถึงทีม SHARK" · en "Open a support case" ⇒ `kindLabel` แสดงเป็นหัวการ์ดเหมือน kind อื่น (การ์ดในห้อง + กล่องรวมรออนุมัติ) · รายละเอียด = `summary` ของ server ("แจ้งทีมงาน SHARK: <subject>") ซึ่งมี subject อยู่แล้ว (การ์ดไม่อ่าน payload ตรง)
+- fixture ใหม่ `qc/fixtures/secretary/s2.4-support.json` (`routes` อย่างเดียว · ห้อง r1 + ข้อเสนอ support.open 1 ใบ) · ภาพ `apps/mobile/qc/shots-sec/s3a1-a-support/secretary-room-r1{,-dark}.png` (summary ok · unmocked [] · overflow false)
+- ข้อสังเกต: ป้ายระบบบนการ์ด = "งาน" (moduleOfKind("support.open") = support ไม่อยู่ในตารางระบบ · server จัด module = ai) — เหมือน kb.save/memory.forget · ไม่แก้ในรอบนี้
+- dist export ใหม่ (i18n เปลี่ยน · ไม่มี testID ใหม่ · ทะเบียนปุ่มเดิม) · `qc-sec-s3a1-a` 9/9 (mobile tsc 0 · fitness ×2)
