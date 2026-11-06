@@ -896,9 +896,10 @@ try {
   const defOf = (key: string): Any => { const d = SET.getDef(key); if (!d) throw new AssertFail(`ยังไม่มีคีย์ ${key}`); return d; };
   const hotelDefs = defs.filter((d) => d.key.startsWith("rooms.hotel."));
   const parses = (schema: Any, v: unknown): boolean => { try { return schema.safeParse(v).success === true; } catch { return false; } };
-  await st("R-1", "เปิดเฟส H: ไม่มีคีย์ rooms.hotel.* ใดมี hiddenUntil = PHASE_H (helper hotel() ถอดแล้ว) · คีย์โรงแรมเดิม 24 ตัวยังอยู่", () => {
-    const hidden = hotelDefs.filter((d) => d.hiddenUntil === "PHASE_H").map((d) => d.key);
-    ok(hidden.length === 0, `ยังซ่อน ${hidden.length} คีย์: ${hidden.slice(0, 4).join(", ")}…`);
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-R1-keep-hidden): ใบสั่ง §12 ข้อ 11 — H.0 **คง** hiddenUntil PHASE_H ทุกคีย์โรงแรม (ถอดแล้ว r0.4 D-1/R-3/D-4/H-5 + d.13 R-7 แดง) · H.1 เปิดตามประเภทหน่วย
+  await st("R-1", "H.0 คง hiddenUntil = PHASE_H ทุกคีย์ rooms.hotel.* (รวมคีย์ใหม่ · H.1 เป็นผู้เปิดตามประเภทหน่วย) · คีย์โรงแรมเดิม 24 ตัวยังอยู่", () => {
+    const shown = hotelDefs.filter((d) => d.hiddenUntil !== "PHASE_H").map((d) => d.key);
+    ok(shown.length === 0, `ไม่ซ่อน ${shown.length} คีย์: ${shown.slice(0, 4).join(", ")}…`);
     const old = ["checkInTime", "checkOutTime", "holdMinutesOnline", "holdMinutesCounter", "deposit", "cancelPolicy", "noShow", "securityDeposit", "baseRate", "dayOfWeekAdjustBp", "defaultRatePlan", "minNights", "closedToArrival", "housekeepingChecklist", "minibar", "nightAuditTime", "tm30ReminderHours", "rr3OnScreen", "ota.enabled", "ota.roomScope", "ota.buffer", "ota.markupBp", "ota.onConflict"];
     const miss = old.filter((k) => !SET.getDef(`rooms.hotel.${k}`));
     ok(miss.length === 0, `คีย์เดิมหาย: ${miss.join(", ")}`);
@@ -913,7 +914,7 @@ try {
       if (k.money && d.sensitivity !== "MONEY") probs.push(`sensitivity ${d.sensitivity ?? "(ไม่มี)"}`);
       if (!THAI.test(d.labelTh ?? "")) probs.push("labelTh ไม่ใช่ไทย");
       if (d.domain !== "rooms") probs.push(`domain ${d.domain}`);
-      if (d.hiddenUntil) probs.push(`hiddenUntil ${d.hiddenUntil}`);
+      if (d.hiddenUntil !== "PHASE_H") probs.push(`hiddenUntil ${d.hiddenUntil ?? "(ไม่มี)"} — ต้องเป็น PHASE_H`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-R1-keep-hidden)
       if (!parses(d.schema, k.def)) probs.push("schema ไม่รับค่าเริ่มของตัวเอง");
       for (const v of k.okVals) if (!parses(d.schema, v)) probs.push(`schema ปฏิเสธ ${J(v)}`);
       for (const v of k.badVals) if (parses(d.schema, v)) probs.push(`schema รับ ${J(v)}`);

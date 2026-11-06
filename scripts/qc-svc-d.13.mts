@@ -466,8 +466,11 @@ await t("S-15", "(เงื่อนไขก่อน · ผู้คุมต�
 // ═══════════════ R. ทะเบียน ═══════════════
 console.log("\nR. ทะเบียน rooms · writeVia · DORM_POLICY_LAYOUT");
 await t("R-1", "ทุก def rooms ใช้ editPermission \"dorm.settings.edit\" และคีย์อยู่ใน PERMISSION_KEYS (เดิม settings.rooms.edit ไม่เคยลงทะเบียน)", () => {
-  const bad = listDefs("rooms").filter((d) => d.editPermission !== "dorm.settings.edit").map((d) => `${d.key}=${d.editPermission}`);
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · d13-R1-hotel-perm): คีย์โรงแรม rooms.hotel.* (ซ่อน PHASE_H · เฟส H) ใช้ `hotel.settings.edit` ตามใบ h.0 §7 — ขอบเขตข้อนี้ = คีย์หอ (ที่เหลือทั้งหมด) เท่านั้น
+  const bad = listDefs("rooms").filter((d) => !d.key.startsWith("rooms.hotel.") && d.editPermission !== "dorm.settings.edit").map((d) => `${d.key}=${d.editPermission}`);
   ok(bad.length === 0, bad.slice(0, 4).join(" · "));
+  const badHotel = listDefs("rooms").filter((d) => d.key.startsWith("rooms.hotel.") && !["dorm.settings.edit", "hotel.settings.edit"].includes(String(d.editPermission))).map((d) => d.key);
+  ok(badHotel.length === 0, `คีย์โรงแรม editPermission แปลก: ${badHotel.slice(0, 4).join(" · ")}`);
   ok(PERM.mod?.PERMISSION_KEYS?.has("dorm.settings.edit"), "dorm.settings.edit ไม่อยู่ใน PERMISSION_KEYS");
 });
 const LEGAL_KEYS = ["rooms.legal.mode", "rooms.legal.outOfScopeReason", "rooms.legal.outOfScopeEvidence"];

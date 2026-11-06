@@ -147,7 +147,7 @@ try {
   {
     // carry: สคริปต์ล้าง QC ทุกตัวที่ลบ hotelRoom ต้องลบ roomOccupancy ก่อน
     const bad: string[] = [];
-    const files = readdirSync(join(ROOT, "scripts")).filter((f) => /\.(mts|ts|mjs)$/.test(f) && f !== "qc-svc-r0.8.mts" && f !== "qc-svc-r0.1.mts" && f !== "qc-svc-d.0.mts" /* ORACLE-EDIT R0.8-G2: d.0 ลบ HotelRoom โดยตั้งใจให้ล้ม (ทดสอบ RESTRICT) */);
+    const files = readdirSync(join(ROOT, "scripts")).filter((f) => /\.(mts|ts|mjs)$/.test(f) && f !== "qc-svc-r0.8.mts" && f !== "qc-svc-r0.1.mts" && f !== "qc-svc-d.0.mts" /* ORACLE-EDIT R0.8-G2: d.0 ลบ HotelRoom โดยตั้งใจให้ล้ม (ทดสอบ RESTRICT) */ && f !== "qc-svc-h.0.mts" /* ORACLE-EDIT (ผู้คุม 7 พ.ย. · r08-S6-h0): h.0 K-ทดสอบ RESTRICT ของ HotelHousekeepingLog→HotelRoom แบบเดียวกับ d.0 */);
     for (const f of files) {
       const src = read(`scripts/${f}`);
       const m = /["']hotelRoom["']|hotelRoom\.deleteMany|DELETE\s+FROM\s+"HotelRoom"/.exec(src);

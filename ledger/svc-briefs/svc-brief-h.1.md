@@ -16,6 +16,7 @@
 | «src/lib/modules/hotel/pricing.ts» | ใหม่ (pure) | `resolveSeason` `resolveNightPrice` `quoteStay` `depositFor` `refundFor` `taxLines` §3 — import ได้แค่ type + `@/lib/core/settings` (type) · **ไม่มี Date เวลาเครื่อง** (รับ `today` เป็น YYYY-MM-DD) |
 | «src/lib/modules/hotel/rates.ts» | ใหม่ (server) | CRUD แผนราคา/ฤดู/วันหยุด/matrix/override + `loadPricingContext` + `ratePreview` §4 · ด่าน type HOTEL + สิทธิ์ทุกฟังก์ชัน · ผ่าน `tenantDb` |
 | «src/lib/modules/hotel/hotel-settings.ts» | ใหม่ (server) | `loadHotelSettings` `saveHotelSettings` §6 (ครอบ settings core `loadSettingsForm`/`setSettings` ตามแบบ `dorm/policy.ts`) |
+| `src/lib/core/settings/types.ts` · `form.ts` · `defs/rooms.ts` | เพิ่มอย่างเดียว | §6.1 `unitTypes` + `enumLabelsTh` + helper hotel() (ห้ามแตะคีย์หอ) |
 | `src/lib/modules/hotel/index.ts` | ใหม่/เพิ่ม | facade: export ของ 3 ไฟล์ข้างบน (โมดูลอื่น import ผ่านนี่เท่านั้น) |
 | `src/lib/modules/hotel/actions.ts` | เพิ่ม | actions §4.4 ต่อท้าย (บล็อก `// SVC H.1 ▸ … ◂`) · ของเดิมห้ามแตะ |
 | «src/components/hotel/RatesScreen.tsx» + `rates-shared.ts` | ใหม่ (`'use client'`) | จอราคา §5 (ภาพ 15) |
@@ -76,6 +77,13 @@ export function taxLines(subtotalSatang, tax: { mode; vatBp; serviceChargeBp }, 
 - ปุ่ม "ปรับราคาหลายวัน" = ตั้ง override ช่วงวัน (loop ใน tx เดียว ≤ 62 วัน)
 - ป้ายโหมดภาษีใต้หัวข้อ (มติ 6) · ไทยทั้งหมด · ตัวเลขมีจุลภาค ไม่มีทศนิยมถ้า .00
 - สิทธิ์ read อย่างเดียว ⇒ ช่องกดไม่ได้ + ไม่มีปุ่มเขียน (ไม่ใช่แค่ 403 ตอนกด)
+
+## 6.1 เปิดคีย์โรงแรม "ตามประเภทหน่วย" (ย้ายจาก H.0 · มติ 7 พ.ย.)
+- settings core (`src/lib/core/settings/{types.ts,form.ts}` — เพิ่ม**อย่างเดียว**): `SettingDef.unitTypes?: ("HOTEL"|"DORM"|"BOOKING"|"POS")[]` · `loadSettingsForm` รับ `unitType` และข้ามคีย์ที่ `unitTypes` ไม่รวมประเภทหน่วยนั้น · คีย์ที่ไม่ประกาศ unitTypes = ทุกประเภท (พฤติกรรมเดิมคงทุกไบต์)
+- `defs/rooms.ts`: helper `hotel()` เปลี่ยนจาก `hiddenUntil: "PHASE_H"` เป็น `unitTypes: ["HOTEL"]` (คีย์หอไม่ประกาศ = เดิม) · ใส่ `enumLabelsTh` ครบทุกคีย์ enum ของโรงแรม (noShow · ota.roomScope · ota.onConflict · bookingMode · tax.mode · deposit.kind · notify.channel · securityDeposit.appliesTo …)
+- หน้าหอ `/dorm/settings` ส่ง `unitType: "DORM"` ⇒ ไม่เห็นคีย์โรงแรม (r0.4 D-1 คงเขียว) · หน้าโรงแรม `/hotel/settings` ส่ง `"HOTEL"` ⇒ เห็นเฉพาะกลุ่ม hotel/ota + คีย์ร่วม (rooms.money.rounding · rooms.locale.docLanguage · rooms.legal.mode แสดงอ่านอย่างเดียว)
+- ชั้น RATE_PLAN เปิดได้จากจอโรงแรมเท่านั้น (ช่อง "ตั้งเฉพาะแผนราคา" เลือกแผน ACTIVE ของหน่วย)
+- regression ที่ต้องเขียว: qc-svc-r0.3 · r0.4 · d.13 (หน้าหอไม่เปลี่ยน)
 
 ## 6. จอ ตั้งค่าโรงแรม (`/hotel/settings` · แบบหอ 17 = การ์ดกริด 3 คอลัมน์ + เมนูซ้าย)
 การ์ด: **เช็กอิน/เอาต์** (เวลา · dailyHousekeeping · inspectionRequired) · **การจอง** (bookingMode · hold 2 ค่า · maxAdvance · codePrefix · noShow) · **มัดจำ & ยกเลิก** (deposit kind/ค่า · cancelPolicy ตาราง · ป้าย "แผนราคาทับค่านี้ได้") · **ภาษี** (tax.mode · vatBp · scBp · invoiceFromPos — เตือนเมื่อสลับโหมด: "การจองเดิมใช้ค่าตอนจอง") · **เงินประกันห้อง** (enabled · จำนวน · appliesTo) · **ผู้เข้าพัก/PDPA** (retainYears · maskIdForStaff · aiIdReader (ปิด+บอกต้องเชื่อมตัวต่อ) · rr3OnScreen · tm30ReminderHours) · **แจ้งแขก** (notify.channel) · **หน้าจอง** (storefront.customDomain + ลิงก์ `/app/settings/domain`) · **แม่บ้าน** (checklist ต่อประเภท · minibar — แสดงเฉย ๆ H.6 เปิดแก้)
