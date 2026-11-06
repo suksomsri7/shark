@@ -34,7 +34,8 @@ export default async function HotelRatesPage({ params, searchParams }: { params:
   };
   const canWrite = evaluate(actor, { module: "hotel", action: "hotel.rates.write", unitId: unit.id });
   const from = typeof sp.from === "string" ? sp.from : undefined;
-  const model = await loadRatesScreen(actor, { tenantId: auth.active.tenantId }, { unitId: unit.id, ...(from ? { from } : {}) });
+  const plan = typeof sp.plan === "string" ? sp.plan : undefined; // M2 ▸ แผนที่ดู (ตรวจเป็นแผนของหน่วยฝั่งเซิร์ฟเวอร์) ◂
+  const model = await loadRatesScreen(actor, { tenantId: auth.active.tenantId }, { unitId: unit.id, ...(from ? { from } : {}), ...(plan ? { ratePlanId: plan } : {}) });
   if (!model) notFound();
   return (
     <RatesScreen

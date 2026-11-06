@@ -32,7 +32,7 @@ export type HotelSettingsModel = {
   unitName: string;
   scope: HotelSettingsScope;
   scopeId: string;
-  cards: { key: HotelSettingsCardKey; labelTh: string; fieldKeys: string[]; noteTh: string | null }[];
+  cards: { key: HotelSettingsCardKey; labelTh: string; fieldKeys: string[]; noteTh: string | null; planLinkTh: string | null }[];
   form: SettingsFormModel;
   canEdit: boolean;
   ratePlans: { id: string; code: string; name: string }[];
@@ -110,7 +110,7 @@ export async function loadHotelSettings(actorIn: unknown, ctx: unknown, input: u
     unitName: unit.name,
     scope: want.scope as HotelSettingsScope,
     scopeId: want.scopeId,
-    cards: HOTEL_SETTINGS_CARDS.map((c) => ({ key: c.key, labelTh: c.labelTh, fieldKeys: [...c.fieldKeys], noteTh: c.noteTh })),
+    cards: HOTEL_SETTINGS_CARDS.map((c) => ({ key: c.key, labelTh: c.labelTh, fieldKeys: [...c.fieldKeys], noteTh: c.noteTh, planLinkTh: c.planLinkTh ?? null })),
     form,
     canEdit,
     ratePlans: plans,

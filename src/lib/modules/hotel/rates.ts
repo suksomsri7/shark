@@ -35,7 +35,7 @@ import {
 
 export type HotelActor = MembershipCtx & { userId: string };
 export type HotelCtx = { tenantId: string };
-export type RatesFailCode = "NOT_FOUND" | "FORBIDDEN" | "VALIDATION" | "DUPLICATE_CODE" | "DEFAULT_PLAN" | "INVALID_PRICE" | "ARCHIVED" | "CONFLICT" | "RANGE";
+export type RatesFailCode = "NOT_FOUND" | "FORBIDDEN" | "VALIDATION" | "DUPLICATE_CODE" | "DEFAULT_PLAN" | "INVALID_PRICE" | "ARCHIVED" | "PLAN_ARCHIVED" | "CONFLICT" | "RANGE";
 export type RatesFail = { ok: false; code: RatesFailCode; reason: string };
 
 export type RatePlanDto = {
@@ -237,7 +237,8 @@ async function ensureDefaultPlan(g: Gate): Promise<void> {
 export async function listRatePlans(actor: unknown, ctx: unknown, input: unknown): Promise<{ ok: true; plans: RatePlanDto[] } | RatesFail> {
   const g = await gate(actor, ctx, input, "read");
   if (!g.ok) return g;
-  await ensureDefaultPlan(g);
+  // m1 ▸ สร้าง/ปลุกแผนเริ่มต้นเฉพาะผู้มีสิทธิ์เขียน — ผู้อ่านเห็น "ยังไม่มีแผนราคา" จนผู้เขียนเปิดจอ ◂
+  if (evaluate(g.actor, { module: "hotel", action: "hotel.rates.write", unitId: g.unit.id })) await ensureDefaultPlan(g);
   const rows = await tenantDb({ tenantId: g.tenantId, unitId: g.unit.id }).hotelRatePlan.findMany({
     orderBy: [{ status: "asc" }, { isDefault: "desc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
     include: { cancelRules: { orderBy: { daysBefore: "desc" }, select: { daysBefore: true, refundBp: true } } },
@@ -282,7 +283,7 @@ export async function saveRatePlan(actor: unknown, ctx: unknown, input: unknown)
   const kind = d.depositKind ?? existing?.depositKind ?? "FIRST_NIGHT";
   const value = d.depositValue ?? (d.depositKind && d.depositKind !== existing?.depositKind ? 0 : (existing?.depositValue ?? 0));
   if (kind === "PERCENT" && value > 10_000) return fail("VALIDATION", "มัดจำแบบเปอร์เซ็นต์ต้องไม่เกิน 100%");
-  if (d.setDefault && existing && existing.status !== "ACTIVE") return fail("ARCHIVED", "แผนที่เก็บเข้าคลังแล้วตั้งเป็นแผนเริ่มต้นไม่ได้");
+  if (existing && existing.status !== "ACTIVE") return fail("PLAN_ARCHIVED", "แผนนี้เก็บเข้าคลังแล้ว — แก้ไม่ได้ (สร้างแผนใหม่แทน)");
   if (await db.hotelRatePlan.findFirst({ where: { code, ...(existing ? { NOT: { id: existing.id } } : {}) }, select: { id: true } })) {
     return fail("DUPLICATE_CODE", `มีแผนรหัส ${code} ในโรงแรมนี้แล้ว — ใช้รหัสอื่น`);
   }
@@ -333,13 +334,17 @@ export async function archiveRatePlan(actor: unknown, ctx: unknown, input: unkno
   const db = tenantDb(w);
   const plan = await db.hotelRatePlan.findFirst({ where: { id } });
   if (!plan) return fail("NOT_FOUND", R.notFound);
-  if (plan.status === "ARCHIVED") return { ok: true };
-  if (plan.isDefault) return fail("DEFAULT_PLAN", "แผนเริ่มต้นเก็บเข้าคลังไม่ได้ — ตั้งแผนอื่นเป็นแผนเริ่มต้นก่อน");
-  await db.$transaction(async (tx) => {
-    const after = await tx.hotelRatePlan.update({ where: { id: plan.id }, data: { status: "ARCHIVED" } });
-    await audit(tx, { ...w, actorId: g.actor.userId, action: "hotel.ratePlan.archive", targetType: "HotelRatePlan", targetId: plan.id, before: planDto(plan), after: planDto(after) });
+  // m2 ▸ ตรวจ isDefault ใต้ล็อกเดียวกับ saveRatePlan(setDefault) — กันย้าย default พร้อมกับ archive ◂
+  return db.$transaction(async (tx) => {
+    await lockKey(tx, `hotel-plans:${g.unit.id}`);
+    const cur = await tx.hotelRatePlan.findFirst({ where: { ...w, id: plan.id } });
+    if (!cur) return fail("NOT_FOUND", R.notFound);
+    if (cur.status === "ARCHIVED") return { ok: true as const };
+    if (cur.isDefault) return fail("DEFAULT_PLAN", "แผนเริ่มต้นเก็บเข้าคลังไม่ได้ — ตั้งแผนอื่นเป็นแผนเริ่มต้นก่อน");
+    const after = await tx.hotelRatePlan.update({ where: { id: cur.id }, data: { status: "ARCHIVED" } });
+    await audit(tx, { ...w, actorId: g.actor.userId, action: "hotel.ratePlan.archive", targetType: "HotelRatePlan", targetId: cur.id, before: planDto(cur), after: planDto(after) });
+    return { ok: true as const };
   }, TX);
-  return { ok: true };
 }
 
 const rulesSchema = z
@@ -478,7 +483,7 @@ export async function saveHolidays(actor: unknown, ctx: unknown, input: unknown)
         ...w,
         actorId: g.actor.userId,
         action: "hotel.holiday.add",
-        targetType: "HotelHoliday",
+        targetType: "HotelHoliday", // m8 ▸ ปฏิทินวันหยุดของหน่วย (targetId = unitId ทั้งเพิ่ม/ลบ) ◂
         targetId: g.unit.id,
         before: rename.length ? { renamed: rename.map((h) => ({ date: ymdOfDb(h.date), name: h.name })) } : null,
         after: { name, added: add, renamed: rename.map((h) => ymdOfDb(h.date)) },
@@ -499,7 +504,7 @@ export async function removeHoliday(actor: unknown, ctx: unknown, input: unknown
     const rows = await tx.hotelHoliday.findMany({ where: { ...w, date: dbDate(date) }, select: { id: true, name: true } });
     if (!rows.length) return { ok: true as const, removed: 0 };
     await tx.hotelHoliday.deleteMany({ where: { ...w, id: { in: rows.map((r) => r.id) } } });
-    await audit(tx, { ...w, actorId: g.actor.userId, action: "hotel.holiday.remove", targetType: "HotelHoliday", targetId: rows[0].id, before: { date, name: rows[0].name }, after: null });
+    await audit(tx, { ...w, actorId: g.actor.userId, action: "hotel.holiday.remove", targetType: "HotelHoliday", targetId: g.unit.id, before: { date, name: rows[0].name }, after: null });
     return { ok: true as const, removed: rows.length };
   }, TX);
 }
@@ -812,6 +817,7 @@ export async function loadPricingContext(ctx: unknown, unitId: unknown, opts?: u
     rates: rateRows,
     overrides: overrideRows,
     fallback,
+    range, // M1 ▸ ช่วงที่โหลดวันหยุด/แก้มือ — นอกช่วง ⇒ pricing ปฏิเสธ (OUT_OF_RANGE) ◂
     roomTypeList: types.map((t) => ({ id: t.id, name: t.name ?? "" })),
   };
 }
@@ -899,7 +905,10 @@ export async function ratePreview(
 export type RatesScreenModel = {
   unitId: string;
   unitName: string;
+  unitSlug: string;
   canWrite: boolean;
+  /** M2 ▸ แผนที่จอกำลังดู (ปฏิทิน + ตารางราคา) — ไม่ระบุ/ไม่ใช่แผน ACTIVE ของหน่วย ⇒ แผนเริ่มต้น ◂ */
+  selectedPlanId: string | null;
   from: string;
   to: string;
   today: string;
@@ -928,11 +937,12 @@ export async function loadRatesScreen(actor: unknown, ctx: unknown, input: unkno
   const to = addDaysYmd(from, 13);
   const w = { tenantId: g.tenantId, unitId: g.unit.id };
   const db = tenantDb(w);
-  const def = listed.plans.find((p) => p.isDefault && p.status === "ACTIVE") ?? null;
-  const year = from.slice(0, 4);
   const active = listed.plans.filter((p) => p.status === "ACTIVE");
+  const want = isRec(input) && isStr(input.ratePlanId) ? active.find((p) => p.id === input.ratePlanId) : undefined;
+  const def = want ?? active.find((p) => p.isDefault) ?? null;
+  const year = from.slice(0, 4);
   const [preview, seasons, holidays, overrides, matrix, st, planSt] = await Promise.all([
-    ratePreview({ tenantId: g.tenantId }, g.unit.id, { from, to }),
+    ratePreview({ tenantId: g.tenantId }, g.unit.id, { from, to, ...(def ? { ratePlanId: def.id } : {}) }),
     db.hotelSeason.findMany({ orderBy: [{ status: "asc" }, { priority: "desc" }, { dateStart: "asc" }] }),
     db.hotelHoliday.findMany({ where: { date: { gte: dbDate(`${year}-01-01`), lte: dbDate(`${Number(year) + 1}-12-31`) } }, orderBy: { date: "asc" }, select: { date: true, name: true } }),
     db.hotelRateOverride.findMany({ where: { date: { gte: dbDate(from), lte: dbDate(to) } }, select: { roomTypeId: true, ratePlanId: true, date: true, priceSatang: true, reason: true } }),
@@ -944,7 +954,9 @@ export async function loadRatesScreen(actor: unknown, ctx: unknown, input: unkno
   return {
     unitId: g.unit.id,
     unitName: g.unit.name,
+    unitSlug: g.unit.slug,
     canWrite: evaluate(g.actor, { module: "hotel", action: "hotel.rates.write", unitId: g.unit.id }),
+    selectedPlanId: def?.id ?? null,
     from,
     to,
     today: todayTh(),

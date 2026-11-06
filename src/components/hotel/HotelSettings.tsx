@@ -121,6 +121,11 @@ export default function HotelSettings({ model, unitSlug, actions }: Props) {
                 ) : null}
               </div>
               {c.noteTh ? <p className="text-xs text-[color:var(--color-muted)]">{c.noteTh}</p> : null}
+              {model.scope === "UNIT" && c.planLinkTh && model.ratePlans.length ? (
+                <a href={`${base}?scope=RATE_PLAN&id=${model.ratePlans[0].id}`} className="text-xs font-bold text-[color:var(--color-accent)]">
+                  {`${c.planLinkTh} ›`}
+                </a>
+              ) : null}
               {c.fieldKeys
                 .map((k) => fields.get(k))
                 .filter((f): f is SettingsField => !!f)

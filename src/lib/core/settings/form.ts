@@ -30,6 +30,7 @@ import {
   settingHistory,
 } from "./service";
 import type { Resolved, ScopeKind, ScopeRefs, SettingDef, SettingsActor, SettingsCtx } from "./types";
+import type { SettingUnitType } from "./types"; // SVC H.1
 
 // ───────────────────────── อ่านรายละเอียดจาก schema (zod v4) ─────────────────────────
 
@@ -102,7 +103,7 @@ export type SettingsFormQuery = {
   scope?: ScopeKind;
   scopeId?: string;
   /** SVC H.1 ▸ ประเภทหน่วยของหน้า — def ที่ประกาศ unitTypes แสดงเฉพาะเมื่อรวมประเภทนี้ (ไม่ส่ง = ไม่แสดง def เหล่านั้น) ◂ */
-  unitType?: string;
+  unitType?: SettingUnitType;
 };
 
 /** แถวชั้นลึกกว่า scope ที่ฟอร์มเปิดอยู่ (ในสาขาเดียวกัน) — ใช้นับ "ปรับรายคน N" */
@@ -160,7 +161,7 @@ export async function loadSettingsForm(actor: SettingsActor, ctx: SettingsCtx, q
   for (const dm of q.domains) {
     for (const d of listDefs(dm)) {
       if (d.hiddenUntil) continue;
-      if (d.unitTypes && !(q.unitType !== undefined && (d.unitTypes as readonly string[]).includes(q.unitType))) continue; // SVC H.1 ▸ ตามประเภทหน่วย ◂
+      if (d.unitTypes && !(q.unitType !== undefined && d.unitTypes.includes(q.unitType))) continue; // SVC H.1 ▸ ตามประเภทหน่วย ◂
       if (wantGroups && !wantGroups.has(d.group)) continue;
       if (!d.chain.includes(scope)) continue;
       defs.push(d);

@@ -53,6 +53,12 @@ export type PricingContext = {
   overrides: OverrideRow[];
   /** คีย์ = roomTypeId · ค่าตั้ง rooms.hotel.baseRate / dayOfWeekAdjustBp (chain ROOM_TYPE → RATE_PLAN) */
   fallback: Record<string, FallbackRate>;
+  /**
+   * ช่วงวันที่บริบทนี้โหลดวันหยุด/แก้มือมาให้ (รวมทั้งสองวัน) — ไม่ระบุ = ข้อมูลครบทุกวัน
+   * quoteStay: คืนใดนอกช่วง ⇒ OUT_OF_RANGE (กันข้ามแก้มือ/วันหยุดเงียบ ๆ)
+   * resolveNightPrice ไม่ตรวจช่วง (ผู้เรียกรายคืนต้องโหลดบริบทให้ครอบวันเอง · ข้อสอบ h.1 R-17 คิดวันนอกช่วงบนบริบทเดียวกัน)
+   */
+  range?: { from: string; to: string };
 };
 
 export type NightPrice = { priceSatang: number; source: PriceSource; seasonId: string | null; bucket: PriceBucket | null };
@@ -69,7 +75,7 @@ export type QuoteOk = {
   nights: QuoteNight[];
   nightsTotal: number;
 };
-export type QuoteError = "INVALID_RANGE" | "TOO_FAR" | "CLOSED_TO_ARRIVAL" | "MIN_NIGHTS" | "MAX_NIGHTS" | "EXTRA_BED_NOT_ALLOWED" | "OVER_OCCUPANCY" | "NO_RATE";
+export type QuoteError = "INVALID_RANGE" | "OUT_OF_RANGE" | "PAST_DATE" | "TOO_FAR" | "CLOSED_TO_ARRIVAL" | "MIN_NIGHTS" | "MAX_NIGHTS" | "EXTRA_BED_NOT_ALLOWED" | "OVER_OCCUPANCY" | "NO_RATE";
 export type QuoteFail = { ok: false; error: QuoteError; messageTh: string; dates?: string[]; minNights?: number; maxNights?: number };
 
 export type DepositKind = "NONE" | "FIRST_NIGHT" | "FULL" | "PERCENT" | "FIXED_AMOUNT";
@@ -201,6 +207,11 @@ function basePrice(ctx: PricingContext, roomTypeId: string, ratePlanId: string, 
   return { priceSatang: roundFraction(base * (10_000 + bp), 10_000, ctx.rounding), source: "FALLBACK", seasonId: null, bucket: null };
 }
 
+/** วันอยู่ในช่วงที่บริบทโหลดมา (ไม่มี range = ทุกวัน) */
+const inRange = (ctx: PricingContext, d: string): boolean => !ctx.range || (ctx.range.from <= d && d <= ctx.range.to);
+/** เพดานคืนต่อการจองของระบบ (กันช่วงยาวผิดปกติ · ค่าตั้ง/แผนตั้งต่ำกว่านี้ได้) */
+const MAX_NIGHTS_HARD = 365;
+
 /** ราคา 1 คืน (+ เตียงเสริม × ราคาเตียงเสริมของประเภท) — null = ขายไม่ได้ (storefront ซ่อน · จอราคาเตือน) */
 export function resolveNightPrice(
   ctx: PricingContext,
@@ -235,9 +246,14 @@ export function quoteStay(ctx: PricingContext, i: QuoteInput): QuoteOk | QuoteFa
   if (isYmd(ctx.today) && Number.isFinite(limits.maxAdvanceBookingDays) && dayNumber(i.checkIn) - dayNumber(ctx.today) > limits.maxAdvanceBookingDays) {
     return fail("TOO_FAR", `จองล่วงหน้าได้ไม่เกิน ${limits.maxAdvanceBookingDays} วัน`);
   }
+  if (isYmd(ctx.today) && i.checkIn < ctx.today) return fail("PAST_DATE", "วันเช็กอินผ่านไปแล้ว");
   if (limits.closedToArrival) return fail("CLOSED_TO_ARRIVAL", "วันนี้ปิดรับเช็กอินสำหรับแผนราคานี้");
 
   const dates = nightDates(i.checkIn, i.checkOut);
+  if (dates.length > MAX_NIGHTS_HARD) return fail("MAX_NIGHTS", `พักได้ไม่เกิน ${MAX_NIGHTS_HARD} คืนต่อการจอง`, { maxNights: MAX_NIGHTS_HARD });
+  if (ctx.range && (dates[0] < ctx.range.from || dates[dates.length - 1] > ctx.range.to)) {
+    return fail("OUT_OF_RANGE", "ข้อมูลราคาที่โหลดไม่ครอบช่วงเข้าพักนี้ — โหลดราคาใหม่ให้ครอบทุกคืน", { dates: dates.filter((d) => !inRange(ctx, d)) });
+  }
   const plan = (ctx.plans ?? []).find((p) => p.id === i.ratePlanId) ?? null;
   const firstSeason = resolveSeason(ctx.seasons ?? [], i.checkIn);
   const minNights = Math.max(plan?.minNights ?? 0, firstSeason?.minNights ?? 0, limits.minNights ?? 0);
@@ -269,7 +285,7 @@ export function quoteStay(ctx: PricingContext, i: QuoteInput): QuoteOk | QuoteFa
 // ───────────────────────── มัดจำ · คืนเงิน · ภาษี ─────────────────────────
 /**
  * มัดจำของกลุ่มการจอง (มติ 4) — FIRST_NIGHT = ราคาคืนแรกรวมทุกห้อง (S:218) · PERCENT = bp ของยอดรวม ปัดตามโหมด
- * FIXED_AMOUNT = amountSatang (ไม่เกินยอดรวม) · FULL = ยอดรวม · NONE/อื่น = 0
+ * FIXED_AMOUNT = amountSatang (ไม่ผูกกับยอด · ร้านตั้งเอง) · FULL = ยอดรวม · NONE/อื่น = 0
  */
 export function depositFor(quotes: readonly QuoteOk[], policy: DepositPolicy, rounding: RoundingMode | string): number {
   const qs = (quotes ?? []).filter((q) => q && q.ok === true);
@@ -281,10 +297,10 @@ export function depositFor(quotes: readonly QuoteOk[], policy: DepositPolicy, ro
       return total;
     case "PERCENT": {
       const bp = Math.min(10_000, int0(policy.percentBp));
-      return Math.min(total, roundFraction(total * bp, 10_000, rounding));
+      return roundFraction(total * bp, 10_000, rounding);
     }
     case "FIXED_AMOUNT":
-      return Math.min(total, int0(policy.amountSatang));
+      return int0(policy.amountSatang);
     default:
       return 0;
   }
@@ -310,21 +326,20 @@ export function refundFor(i: { paidSatang: number; checkInDate: string; cancelAt
 } {
   if (!i || !isYmd(i.checkInDate) || !isYmd(i.cancelAt)) return { refundSatang: 0, ruleUsed: null, daysBefore: 0 };
   const daysBefore = dayNumber(i.checkInDate) - dayNumber(i.cancelAt);
-  let used: CancelRule | null = null;
-  if (daysBefore >= 0) {
-    for (const r of i.rules ?? []) {
-      if (!r || !Number.isInteger(r.daysBefore) || r.daysBefore > daysBefore) continue;
-      if (!used || r.daysBefore > used.daysBefore) used = r;
-    }
-  }
+  // เรียงก่อนเลือก: daysBefore มากก่อน · daysBefore ซ้ำ ⇒ refundBp สูงสุด (เข้าข้างแขก)
+  const rules = (i.rules ?? [])
+    .filter((r): r is CancelRule => !!r && Number.isInteger(r.daysBefore))
+    .map((r) => ({ daysBefore: r.daysBefore, refundBp: Math.min(10_000, int0(r.refundBp)) }))
+    .sort((a, b) => b.daysBefore - a.daysBefore || b.refundBp - a.refundBp);
+  const used = daysBefore >= 0 ? (rules.find((r) => r.daysBefore <= daysBefore) ?? null) : null;
   if (!used) return { refundSatang: 0, ruleUsed: null, daysBefore };
-  const bp = Math.min(10_000, int0(used.refundBp));
-  return { refundSatang: Math.floor((int0(i.paidSatang) * bp) / 10_000), ruleUsed: { daysBefore: used.daysBefore, refundBp: used.refundBp }, daysBefore };
+  return { refundSatang: Math.floor((int0(i.paidSatang) * used.refundBp) / 10_000), ruleUsed: used, daysBefore };
 }
 
 /**
  * ภาษี (มติ 6 · Q1) — INCLUSIVE: ไม่มีบรรทัดบวก · vatIncludedSatang = subtotal × vat / (10000 + vat) (รายงานเฉย ๆ)
  * EXCLUSIVE: SERVICE_CHARGE = subtotal × sc → TAX = (subtotal + sc) × vat → total · ปัดทุกขั้นตามโหมด · บรรทัด 0 ไม่ออก
+ * vatIncludedSatang (INCLUSIVE) ปัดเป็นสตางค์เสมอ (ตัวเลขรายงาน ไม่ใช่ยอดเก็บ) · subtotal ติดลบ ⇒ 0 (ส่วนลดหักก่อนเรียก — H.5)
  * ค่ามาจาก taxSnapshot ของการจอง (ไม่ใช่ค่าตั้งสด)
  */
 export function taxLines(subtotalSatang: number, tax: TaxPolicy, rounding: RoundingMode | string): { lines: TaxLine[]; totalSatang: number; vatIncludedSatang: number } {
@@ -339,5 +354,5 @@ export function taxLines(subtotalSatang: number, tax: TaxPolicy, rounding: Round
     if (vatAmt > 0) lines.push({ type: "TAX", amountSatang: vatAmt });
     return { lines, totalSatang: sub + scAmt + vatAmt, vatIncludedSatang: 0 };
   }
-  return { lines: [], totalSatang: sub, vatIncludedSatang: roundFraction(sub * vat, 10_000 + vat, rounding) };
+  return { lines: [], totalSatang: sub, vatIncludedSatang: roundFraction(sub * vat, 10_000 + vat, "SATANG") };
 }

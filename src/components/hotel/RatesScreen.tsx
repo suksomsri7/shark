@@ -70,7 +70,7 @@ export default function RatesScreen({ model, unitSlug, tab, canWrite, actions }:
         {RATES_TABS.map((t) => (
           <a
             key={t.key}
-            href={t.key === "calendar" ? `${base}/rates` : `${base}/rates?tab=${t.key}`}
+            href={ratesHref(base, t.key, model.selectedPlanId)}
             data-rates-tab={t.key}
             aria-current={t.key === tab ? "page" : undefined}
             className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm ${t.key === tab ? "bg-[color:var(--color-surface-2)] font-bold text-[color:var(--color-ink)]" : "text-[color:var(--color-ink-soft)]"}`}
@@ -101,9 +101,11 @@ function CalendarTab({ model, canWrite, actions, run, busy }: TabProps) {
   const types = model.preview.roomTypes;
   const planName = model.plans.find((p) => p.id === model.preview.ratePlanId)?.name ?? "ยังไม่มีแผนราคา";
   const weekend = new Set(model.rules.weekendDays);
-  const reasonOf = useMemo(() => new Map(model.overrides.map((o) => [`${o.roomTypeId}|${o.date}`, o.reason ?? ""] as const)), [model]);
-  const open = (roomTypeId: string, date: string, priceSatang: number | null) =>
-    setDraft({ roomTypeId, date, dateTo: date, price: priceSatang === null ? "" : String(priceSatang / 100), reason: reasonOf.get(`${roomTypeId}|${date}`) ?? "", ratePlanId: "" });
+  // m10 ▸ เปิดช่องที่มีแก้มือ ⇒ ไดอะล็อกตั้งแผนตามแถวแก้มือจริง (เฉพาะแผนนี้ก่อน ไม่มีแล้วค่อยทุกแผน) — ล้างได้ตรงแถว ◂
+  const open = (roomTypeId: string, date: string, priceSatang: number | null) => {
+    const ov = overrideAt(model, roomTypeId, date);
+    setDraft({ roomTypeId, date, dateTo: date, price: priceSatang === null ? "" : String(priceSatang / 100), reason: ov?.reason ?? "", ratePlanId: ov?.ratePlanId ?? "" });
+  };
   const save = () => {
     if (!draft) return;
     const price = parseBaht(draft.price);
@@ -124,6 +126,7 @@ function CalendarTab({ model, canWrite, actions, run, busy }: TabProps) {
           <h2 className="text-base font-bold text-[color:var(--color-ink)]">{rangeTh(model.from, model.to)}</h2>
           <p className="text-xs text-[color:var(--color-muted)]">{`ราคาของแผน ${planName} · ช่องกรอบสี = แก้มือ`}</p>
         </div>
+        <PlanPicker model={model} base={`/app/u/${model.unitSlug}/hotel`} tab="calendar" />
         {canWrite ? (
           <button type="button" className={BTN} disabled={busy || !types.length} onClick={() => types.length && setDraft({ roomTypeId: types[0].id, date: model.from, dateTo: model.to, price: "", reason: "", ratePlanId: "" })}>
             ปรับราคาหลายวัน
@@ -275,8 +278,9 @@ function RateRows({
 }
 
 // ───────────────────────── แผนราคา ─────────────────────────
-type PlanDraft = { id: string; code: string; name: string; includeBreakfast: boolean; depositKind: string; depositValue: string; visibility: string[]; minNights: string };
-const emptyPlan = (): PlanDraft => ({ id: "", code: "", name: "", includeBreakfast: false, depositKind: "FIRST_NIGHT", depositValue: "", visibility: ["WEB", "LINE", "COUNTER"], minNights: "" });
+type RuleDraft = { daysBefore: string; refundPct: string };
+type PlanDraft = { id: string; code: string; name: string; includeBreakfast: boolean; depositKind: string; depositValue: string; visibility: string[]; minNights: string; rules: RuleDraft[] };
+const emptyPlan = (): PlanDraft => ({ id: "", code: "", name: "", includeBreakfast: false, depositKind: "FIRST_NIGHT", depositValue: "", visibility: ["WEB", "LINE", "COUNTER"], minNights: "", rules: [] });
 
 function PlansTab({ model, canWrite, actions, run, busy }: TabProps) {
   const [draft, setDraft] = useState(null as PlanDraft | null);
@@ -294,7 +298,16 @@ function PlansTab({ model, canWrite, actions, run, busy }: TabProps) {
       visibility: draft.visibility,
       minNights: draft.minNights ? Number(draft.minNights) : null,
     };
-    void run(() => actions.saveRatePlan(input), "บันทึกแผนราคาแล้ว").then(() => setDraft(null));
+    const rules = draft.rules
+      .filter((r) => r.daysBefore.trim() !== "")
+      .map((r) => ({ daysBefore: Number(r.daysBefore), refundBp: Math.round(Number(r.refundPct || "0") * 100) }));
+    // M3 ▸ บันทึกแผนก่อน แล้วตั้งขั้นบันไดยกเลิกของแผนนั้น (แทนทั้งชุด · ชุดว่าง = ใช้ค่าตั้งโรงแรม) ◂
+    void run(async () => {
+      const r = await actions.saveRatePlan(input);
+      const id = r.plan?.id ?? draft.id;
+      if (!r.ok || !id) return r;
+      return actions.saveCancelRules({ ratePlanId: id, rules });
+    }, "บันทึกแผนราคาแล้ว").then(() => setDraft(null));
   };
   const active = activePlans(model.plans);
   return (
@@ -363,6 +376,27 @@ function PlansTab({ model, canWrite, actions, run, busy }: TabProps) {
               ขั้นต่ำคืน (เว้นว่าง = ไม่กำหนด)
               <input inputMode="numeric" className={INPUT} value={draft.minNights} onChange={(e) => setDraft({ ...draft, minNights: e.target.value })} />
             </label>
+            <fieldset data-cancel-rules="" className="flex flex-col gap-2 text-sm">
+              <legend className="mb-1">ขั้นบันไดยกเลิก (ไม่ตั้ง = ใช้ค่าตั้งโรงแรม)</legend>
+              {draft.rules.map((r, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                  <label className="flex flex-col gap-1">
+                    ยกเลิกก่อน (วัน)
+                    <input inputMode="numeric" className={INPUT} value={r.daysBefore} onChange={(e) => setDraft({ ...draft, rules: setRule(draft.rules, i, { daysBefore: e.target.value }) })} />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    คืนเงิน (%)
+                    <input inputMode="decimal" className={INPUT} value={r.refundPct} onChange={(e) => setDraft({ ...draft, rules: setRule(draft.rules, i, { refundPct: e.target.value }) })} />
+                  </label>
+                  <button type="button" className={BTN} onClick={() => setDraft({ ...draft, rules: draft.rules.filter((_, j) => j !== i) })}>
+                    ลบ
+                  </button>
+                </div>
+              ))}
+              <button type="button" className={BTN} onClick={() => setDraft({ ...draft, rules: [...draft.rules, { daysBefore: "", refundPct: "" }] })}>
+                + เพิ่มขั้น
+              </button>
+            </fieldset>
             <div className="flex justify-end gap-2">
               <button type="button" className={BTN} onClick={() => setDraft(null)}>
                 ปิด
@@ -375,6 +409,44 @@ function PlansTab({ model, canWrite, actions, run, busy }: TabProps) {
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** ลิงก์แท็บย่อย (คงแผนที่เลือก) */
+function ratesHref(base: string, tab: RatesTabKey, planId: string | null): string {
+  const q = [tab === "calendar" ? "" : `tab=${tab}`, planId ? `plan=${planId}` : ""].filter(Boolean).join("&");
+  return q ? `${base}/rates?${q}` : `${base}/rates`;
+}
+/** แก้มือที่ช่อง (ประเภท, วัน) ใช้จริงกับแผนที่ดู: เฉพาะแผนก่อน แล้วทุกแผน */
+function overrideAt(model: RatesScreenModel, roomTypeId: string, date: string): RatesScreenModel["overrides"][number] | undefined {
+  const at = model.overrides.filter((o) => o.roomTypeId === roomTypeId && o.date === date);
+  return at.find((o) => o.ratePlanId === model.selectedPlanId) ?? at.find((o) => o.ratePlanId === null);
+}
+function setRule(rules: RuleDraft[], i: number, patch: Partial<RuleDraft>): RuleDraft[] {
+  return rules.map((r, j) => (j === i ? { ...r, ...patch } : r));
+}
+/** วันหยุดไทยของปี จัดกลุ่มตามชื่อ */
+function holidayGroups(year: string): [string, string[]][] {
+  const m = new Map([] as [string, string[]][]);
+  for (const h of THAI_HOLIDAYS) m.set(h.name, [...(m.get(h.name) ?? []), `${year}-${h.date}`]);
+  return [...m.entries()];
+}
+
+/** เลือกแผนที่ดู (M2) — เปลี่ยนแล้วโหลดหน้าใหม่ด้วย ?plan= */
+function PlanPicker({ model, base, tab }: { model: RatesScreenModel; base: string; tab: RatesTabKey }) {
+  const plans = activePlans(model.plans);
+  if (plans.length === 0) return null;
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      แผนที่ดู
+      <select data-plan-picker="" className={INPUT} value={model.selectedPlanId ?? ""} onChange={(e) => window.location.assign(ratesHref(base, tab, e.target.value))}>
+        {plans.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -391,6 +463,7 @@ const planDraftOf = (p: RatePlanDto): PlanDraft => ({
   depositValue: p.depositKind === "FIXED_AMOUNT" ? String(p.depositValue / 100) : p.depositKind === "PERCENT" ? String(p.depositValue / 100) : "",
   visibility: [...p.visibility],
   minNights: p.minNights ? String(p.minNights) : "",
+  rules: p.cancelRules.map((r) => ({ daysBefore: String(r.daysBefore), refundPct: String(r.refundBp / 100) })),
 });
 
 function PlanCard({ plan, canWrite, busy, onEdit, onArchive }: { plan: RatePlanDto; canWrite: boolean; busy: boolean; onEdit: () => void; onArchive: () => void }) {
@@ -438,7 +511,10 @@ function MatrixEditor({ model, canWrite, actions, run, busy }: TabProps) {
   };
   return (
     <section className={CARD}>
-      <h3 className="text-base font-bold">ตารางราคามาตรฐาน (บาทต่อคืน)</h3>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-bold">{`ตารางราคา · ${model.plans.find((p) => p.id === model.matrix?.ratePlanId)?.name ?? "แผนราคา"} (บาทต่อคืน)`}</h3>
+        <PlanPicker model={model} base={`/app/u/${model.unitSlug}/hotel`} tab="plans" />
+      </div>
       <div data-scroll-hint="" className="min-w-0 overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-sm tabular-nums">
           <thead>
@@ -521,8 +597,9 @@ function SeasonsTab({ model, canWrite, actions, run, busy }: TabProps) {
   };
   const useThai = () =>
     void run(async () => {
-      for (const h of THAI_HOLIDAYS) {
-        const r = await actions.saveHolidays({ dates: [`${year}-${h.date}`], name: h.name });
+      // m9 ▸ จัดกลุ่มตามชื่อก่อน (สงกรานต์ 3 วัน = ครั้งเดียว) ◂
+      for (const [name, dates] of holidayGroups(year)) {
+        const r = await actions.saveHolidays({ dates, name });
         if (!r.ok) return r;
       }
       return { ok: true };

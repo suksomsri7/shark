@@ -12,7 +12,7 @@ export const RATES_TABS: { key: RatesTabKey; labelTh: string }[] = [
 export const ratesTabOf = (v: unknown): RatesTabKey => (v === "plans" || v === "seasons" || v === "rules" ? v : "calendar");
 
 /** ผลของ action ราคา */
-export type RatesActionResult = { ok: boolean; code?: string; reason?: string };
+export type RatesActionResult = { ok: boolean; code?: string; reason?: string; plan?: { id: string } };
 export type RatesAction = (input: unknown) => Promise<RatesActionResult>;
 export type RatesActions = {
   saveRatePlan: RatesAction;

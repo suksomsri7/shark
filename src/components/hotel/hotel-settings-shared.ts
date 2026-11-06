@@ -15,7 +15,8 @@ export type HotelSettingsCardKey =
   | "ota"
   | "planOnly"
   | "general";
-export type HotelSettingsCard = { key: HotelSettingsCardKey; labelTh: string; fieldKeys: string[]; noteTh: string | null };
+/** planLinkTh = การ์ดนี้มีค่าที่ตั้งได้เฉพาะชั้นแผนราคา (เช่น ขั้นบันไดยกเลิก chain RATE_PLAN) ⇒ ชั้นทั้งโรงแรมแสดงลิงก์ไปตั้งต่อแผน */
+export type HotelSettingsCard = { key: HotelSettingsCardKey; labelTh: string; fieldKeys: string[]; noteTh: string | null; planLinkTh?: string };
 
 /** การ์ดตามลำดับในจอ (9 ใบแรกตามใบสั่ง §6 · ต่อด้วย OTA · ค่าเฉพาะแผน · ทั่วไป) — การ์ดที่ไม่มีช่องในชั้นที่เปิดอยู่ไม่แสดง */
 export const HOTEL_SETTINGS_CARDS: HotelSettingsCard[] = [
@@ -26,7 +27,7 @@ export const HOTEL_SETTINGS_CARDS: HotelSettingsCard[] = [
     fieldKeys: ["rooms.hotel.bookingMode", "rooms.hotel.holdMinutesOnline", "rooms.hotel.holdMinutesCounter", "rooms.hotel.maxAdvanceBookingDays", "rooms.hotel.codePrefix", "rooms.hotel.noShow", "rooms.hotel.defaultRatePlan", "rooms.hotel.weekendDays"],
     noteTh: null,
   },
-  { key: "deposit", labelTh: "มัดจำ & ยกเลิก", fieldKeys: ["rooms.hotel.deposit", "rooms.hotel.cancelPolicy"], noteTh: "แผนราคาทับค่านี้ได้ (ตั้งที่แผนราคา หรือเลือก «ตั้งเฉพาะแผนราคา»)" },
+  { key: "deposit", labelTh: "มัดจำ & ยกเลิก", fieldKeys: ["rooms.hotel.deposit", "rooms.hotel.cancelPolicy"], noteTh: "แผนราคาทับค่านี้ได้ (ตั้งที่แผนราคา หรือเลือก «ตั้งเฉพาะแผนราคา»)", planLinkTh: "ขั้นบันไดยกเลิก: ตั้งต่อแผนราคา" },
   { key: "tax", labelTh: "ภาษี", fieldKeys: ["rooms.hotel.tax.mode", "rooms.hotel.tax.vatBp", "rooms.hotel.tax.serviceChargeBp", "rooms.hotel.tax.invoiceFromPos"], noteTh: "เปลี่ยนโหมดภาษีมีผลกับการจองใหม่ — การจองเดิมใช้ค่าตอนจอง" },
   { key: "securityDeposit", labelTh: "เงินประกันห้อง", fieldKeys: ["rooms.hotel.securityDeposit.enabled", "rooms.hotel.securityDeposit", "rooms.hotel.securityDeposit.appliesTo"], noteTh: null },
   {

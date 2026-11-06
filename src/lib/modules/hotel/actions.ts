@@ -124,14 +124,11 @@ const reservationSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
-type ReservationFormState = {
+export type ReservationFormState = {
   status: "idle" | "ok" | "error";
   message?: string;
   code?: string;
 };
-
-// SVC H.1 · ไฟล์ "use server" ไม่ประกาศ export type (ข้อสอบ h.1 U-13) — ส่งออกชนิดแบบ type-only specifier (ถูกลบตอนคอมไพล์) ให้ reservation-form.tsx ใช้ต่อ
-export { type ReservationFormState };
 
 // ใช้กับ useActionState (client) — คืน state เพื่อโชว์ error/สำเร็จ inline
 export async function createReservationAction(
