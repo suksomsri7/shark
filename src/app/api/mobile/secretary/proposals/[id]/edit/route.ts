@@ -3,11 +3,11 @@
 import { z } from "zod";
 import { editProposal } from "@/lib/ai/secretary/teach";
 import { proposalApprovableBy } from "@/lib/ai/secretary/views";
-import { fail, forbidden, gate, idParam, notFound, ok, readBody, withRateLimit, type RouteCtx } from "../../../_shared";
+import { fail, forbidden, gate, idParam, notFound, ok, readBody, withRateLimit, type RouteCtx, withErrors } from "../../../_shared";
 
 const Body = z.object({ patch: z.record(z.string().max(80), z.unknown()) }).strict();
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "edit");
@@ -28,3 +28,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (r.error === "not_pending") return fail(409, "not_pending", r.message);
   return fail(400, r.error, r.message); // not_editable · invalid
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/proposals/[id]/edit POST", POST_);

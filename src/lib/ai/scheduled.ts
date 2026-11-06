@@ -8,7 +8,9 @@
 // - runScheduledTasks เดินข้ามร้าน (cron ระดับแพลตฟอร์ม) → prisma ตรงได้ (นอก modules) · task พังตัวเดียว ไม่ล้มทั้งรอบ
 //
 // เลขา AI S1.9 (R-K5) ▸ งานที่มี `ownerUserId` = "งานของคนตั้ง" — รันด้วยสิทธิ์สดของผู้ตั้ง (Membership acceptedAt ≠ null)
-//   ทุกรอบเปิด "ห้องงานใหม่" ผ่าน `startRoom` (นับงาน 1) → ต่อคิว `enqueueRoomJob` → `runRoomJobs` (worker ส่ง push ถึงผู้ตั้งเอง)
+//   ทุกรอบเปิด "ห้องงานใหม่" ผ่าน `startRoom` (นับงาน 1 + job ใน tx) → worker (`runRoomJobs`) ทำโมเดล + push ถึงผู้ตั้งเอง
+//   SEC S3a.1-S1 ▸ R-Z5/R-Z6: ตัวงานของคนตั้งย้ายไป `./secretary/scheduled.ts` (ไม่เรียกโมเดลในลูป · ถึงเวลา = ชั่วโมง ≥ hourBkk) ·
+//   งานที่ได้รันหลังลูป (ปริยาย) หรือส่งต่อให้ผู้เรียกผ่าน `deps.deferRoomJobs` (route hourly รันใน `after()`) ◂
 //   claim ก่อนรัน (conditional updateMany ตั้ง lastRunDay = วันนี้ · count 0 = อีกรอบได้ไปแล้ว — X5) · ไม่สร้าง AppNotification
 //   ความถี่ DAILY / WEEKLY (วันในสัปดาห์ไทย 0=อา) / MONTHLY (วันที่ไทย) ผ่าน `isDue` (pure) · ไม่มีนาที (R-K8 — รันรอบ hourly ของ hourBkk)
 //   แถว `ownerUserId = null` = ทางเดิมทุกตัวอักษร ◂
@@ -16,13 +18,13 @@
 import type { AiScheduledTask } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
-import { bkkParts } from "@/lib/core/quiet-hours";
 import { sendMessage } from "./service";
-import { aiMemberActor, aiSystemActor } from "./actor";
+import { aiSystemActor } from "./actor";
 import { resolveProvider, type AiProvider } from "./provider";
 import { dayKeyBangkok } from "./rules";
 import { FREE_PACK } from "./secretary/pack";
-import { startRoom } from "./secretary/rooms";
+import { isDue as ownedTaskDue, runOwnedTask } from "./secretary/scheduled";
+import { bkkParts } from "@/lib/core/quiet-hours"; // SEC S3a.1-S2 R-Z31 ◂
 import type { RoomJobDeps } from "./secretary/worker";
 
 type Ctx = { tenantId: string };
@@ -54,6 +56,7 @@ const MAX_TENANT_TASKS_PER_RUN = 100; // เพดานต่อรอบ cron 
 export async function createTask(
   ctx: Ctx,
   input: TaskInput,
+  now: Date = new Date(), // SEC S3a.1-S1 รอบ 2 (§Z.4 Q1): นาฬิกาฉีดได้ — ตัดสินว่าชั่วโมงที่ตั้งผ่านไปแล้วหรือยังในวันไทยวันนี้
 ): Promise<{ id: string }> {
   const instruction = String(input.instruction ?? "").trim();
   if (!instruction) throw new Error("ต้องระบุสิ่งที่จะให้ผู้ช่วยทำเป็นงานประจำ");
@@ -62,7 +65,7 @@ export async function createTask(
     throw new Error("ชั่วโมงที่ให้ทำต้องอยู่ระหว่าง 0-23 (เวลาไทย)");
   }
   const ownerUserId = typeof input.ownerUserId === "string" ? input.ownerUserId.trim() : "";
-  if (ownerUserId) return createOwnedTask(ctx, { ...input, instruction, hourBkk, ownerUserId });
+  if (ownerUserId) return createOwnedTask(ctx, { ...input, instruction, hourBkk, ownerUserId }, now);
   const count = await tenantDb(ctx).aiScheduledTask.count();
   if (count >= MAX_TASKS_PER_TENANT) {
     throw new Error(`ตั้งงานประจำได้สูงสุด ${MAX_TASKS_PER_TENANT} รายการต่อร้าน — ลบรายการเดิมก่อนถ้าต้องการเพิ่ม`);
@@ -105,6 +108,7 @@ function cleanChannels(raw: unknown): Channel[] {
 async function createOwnedTask(
   ctx: Ctx,
   input: TaskInput & { instruction: string; hourBkk: number; ownerUserId: string },
+  now: Date = new Date(),
 ): Promise<{ id: string }> {
   const freqRaw = input.frequency === undefined || input.frequency === null ? "DAILY" : String(input.frequency).trim().toUpperCase();
   if (!(FREQUENCIES as readonly string[]).includes(freqRaw)) {
@@ -123,8 +127,12 @@ async function createOwnedTask(
   if (count >= max) {
     throw new Error(`ตั้งงานประจำได้สูงสุด ${max} รายการต่อร้าน — ลบหรือปิดรายการเดิมก่อนถ้าต้องการเพิ่ม`);
   }
+  // SEC S3a.1-S1 รอบ 2 ▸ §Z.4 Q1: isDue = ชั่วโมง ≥ hourBkk (ตามหลังได้) ⇒ ตั้งตอนชั่วโมงที่ตั้งมาถึง/ผ่านไปแล้วของวันนี้ = นับว่าวันนี้รันแล้ว
+  //   (เริ่มรอบแรกพรุ่งนี้ — ไม่รันทันทีในชั่วโมงถัดไปของวันตั้ง) · ยังไม่ถึง = รันวันนี้ตามเวลา ◂
+  const at = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+  const passed = new Date(at.getTime() + 7 * 3_600_000).getUTCHours() >= input.hourBkk;
   const row = await tenantDb(ctx).aiScheduledTask.create({
-    data: { tenantId: ctx.tenantId, instruction: input.instruction, hourBkk: input.hourBkk, ownerUserId: input.ownerUserId, frequency, days, channels },
+    data: { tenantId: ctx.tenantId, instruction: input.instruction, hourBkk: input.hourBkk, ownerUserId: input.ownerUserId, frequency, days, channels, ...(passed ? { lastRunDay: dayKeyBangkok(at) } : {}) },
   });
   return { id: row.id };
 }
@@ -189,23 +197,14 @@ export function describeFrequency(frequency: string | null | undefined, days: nu
 }
 
 /**
- * ถึงเวลารันงานนี้ไหม ณ `now` (pure · เวลาไทย) — active · hourBkk = ชั่วโมงไทย · lastRunDay ≠ วันไทย
- *   DAILY/null = ทุกวัน · WEEKLY = วันในสัปดาห์ไทย (0=อา) ∈ days · MONTHLY = วันที่ไทย ∈ days · ความถี่แปลก = ไม่รัน
+ * ถึงเวลารันงานนี้ไหม ณ `now` (pure · เวลาไทย) — active · ชั่วโมงไทย ≥ hourBkk · lastRunDay ≠ วันไทย
+ *   SEC S3a.1-S1 R-Z6: ตัวจริงอยู่ที่ `secretary/scheduled.ts#isDue` (ตามหลังได้ในวันเดียวกัน) — ชื่อนี้คงไว้ให้ผู้เรียกเดิม
  */
 export function isDue(
   task: Pick<AiScheduledTask, "active" | "hourBkk" | "frequency" | "days" | "lastRunDay">,
   now: Date,
 ): boolean {
-  if (!task.active) return false;
-  const p = bkkParts(now);
-  if (task.hourBkk !== p.h) return false;
-  if (task.lastRunDay === dayKeyBangkok(now)) return false;
-  const days = Array.isArray(task.days) ? task.days : [];
-  const f = task.frequency ?? "DAILY";
-  if (f === "DAILY") return true;
-  if (f === "WEEKLY") return days.includes(new Date(Date.UTC(p.y, p.mo, p.day)).getUTCDay());
-  if (f === "MONTHLY") return days.includes(p.day);
-  return false;
+  return ownedTaskDue(task, now);
 }
 
 // ── งานประจำทั้งหมดของร้าน (ใหม่→เก่า) ──
@@ -234,7 +233,12 @@ export async function deleteTask(ctx: Ctx, id: string): Promise<boolean> {
  */
 export async function runScheduledTasks(
   now: Date = new Date(),
-  deps?: { provider?: AiProvider; post?: PushPost },
+  deps?: {
+    provider?: AiProvider;
+    post?: PushPost;
+    /** SEC S3a.1-S1 R-Z6: มี = ผู้เรียกรับ jobId ของห้องงานประจำไปรันเอง (route hourly · `after()`) · ไม่มี = รัน worker หลังลูป */
+    deferRoomJobs?: (jobIds: string[]) => void;
+  },
 ): Promise<number> {
   // งานประจำ = สรุป/อ่าน → tier "fast" (haiku) ประหยัด · ไม่มี provider (ยังไม่เปิด AI) = ข้ามเงียบ ๆ
   const provider = deps?.provider ?? resolveProvider("fast");
@@ -244,23 +248,71 @@ export async function runScheduledTasks(
   const hourBkk = new Date(now.getTime() + 7 * 3_600_000).getUTCHours();
   const today = dayKeyBangkok(now);
 
-  const tasks = await prisma.aiScheduledTask.findMany({
-    where: {
-      active: true,
-      hourBkk,
-      OR: [{ lastRunDay: null }, { lastRunDay: { not: today } }],
-    },
-    orderBy: { createdAt: "asc" },
-    take: MAX_TENANT_TASKS_PER_RUN,
-  });
+  // SEC S3a.1-S1 ▸ R-Z6: งานของคนตั้ง = ชั่วโมงไทย ≥ hourBkk (ตามหลังได้) · แถวเดิม (ไม่มีเจ้าของ) = ชั่วโมงตรงตัวเหมือนเดิม ◂
+  // SEC S3a.1-S2 ▸ R-Z31 (RC2 MAJOR-1): สอง query แยกกลุ่ม · take ต่อกลุ่ม · งานของคนตั้งกรอง "วันที่ต้องรัน" ใน SQL ก่อน take
+  //   (DAILY/null ∨ WEEKLY ∧ days มีวันในสัปดาห์ไทย ∨ MONTHLY ∧ days มีวันที่ไทย) — งานที่ไม่ถึงวันไม่กินที่ของงานที่ถึงวัน · เต็ม take = logOps ◂
+  const notToday = { OR: [{ lastRunDay: null }, { lastRunDay: { not: today } }] };
+  const p = bkkParts(now);
+  const dow = new Date(Date.UTC(p.y, p.mo, p.day)).getUTCDay();
+  const [legacy, owned] = await Promise.all([
+    prisma.aiScheduledTask.findMany({
+      where: { active: true, ownerUserId: null, hourBkk, ...notToday },
+      orderBy: { createdAt: "asc" },
+      take: MAX_TENANT_TASKS_PER_RUN,
+    }),
+    prisma.aiScheduledTask.findMany({
+      where: {
+        active: true,
+        ownerUserId: { not: null },
+        hourBkk: { lte: hourBkk },
+        AND: [
+          notToday,
+          {
+            OR: [
+              { frequency: null },
+              { frequency: "DAILY" },
+              { frequency: "WEEKLY", days: { has: dow } },
+              { frequency: "MONTHLY", days: { has: p.day } },
+            ],
+          },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+      take: MAX_TENANT_TASKS_PER_RUN,
+    }),
+  ]);
+  for (const [name, rows] of [["legacy", legacy], ["owned", owned]] as const) {
+    if (rows.length >= MAX_TENANT_TASKS_PER_RUN) {
+      await logOps("WARN", "ai", `scheduled: งานประจำกลุ่ม ${name} ถึงเพดาน ${MAX_TENANT_TASKS_PER_RUN} ต่อรอบ — ส่วนที่เหลือรอรอบถัดไป`, { detail: JSON.stringify({ hourBkk, today }) }).catch(() => {});
+    }
+  }
+  const tasks = [...owned, ...legacy];
 
   let ran = 0;
+  // SEC S3a.1-S1 ▸ R-Z6: รอบที่ 1 = งานของคนตั้ง (claim + startRoom(+job) เท่านั้น · ไม่เรียกโมเดล) → ส่ง jobId ให้ผู้เรียก (route hourly
+  //   รันใน `after()`) หรือรัน worker ที่นี่ · รอบที่ 2 = แถวเดิม (ownerUserId null) เดินโค้ดเดิมทุกตัวอักษร ◂
+  const ownedJobIds: string[] = [];
   for (const task of tasks) {
-    // S1.9 ▸ งานของคนตั้ง = ห้องงานใหม่ต่อรอบ (ไม่ throw) · แถวเดิม (ownerUserId null) เดินโค้ดเดิมด้านล่าง ◂
-    if (task.ownerUserId) {
-      if (await runOwnedTask(task, now, today, provider, deps?.post)) ran++;
-      continue;
+    if (!task.ownerUserId) continue;
+    const jobId = await runOwnedTask(task, now, today);
+    if (jobId) {
+      ran++;
+      ownedJobIds.push(jobId);
     }
+  }
+  if (ownedJobIds.length > 0) {
+    if (deps?.deferRoomJobs) deps.deferRoomJobs([...ownedJobIds]);
+    else {
+      try {
+        const { runRoomJobs } = await import("./secretary/worker");
+        await runRoomJobs({ provider, ...(deps?.post ? { post: deps.post } : {}), now, jobIds: ownedJobIds, limit: ownedJobIds.length });
+      } catch (e) {
+        await logOps("WARN", "ai", "scheduled: รันงานของห้องงานประจำไม่สำเร็จ (ตัวเก็บตกรายนาทีหยิบต่อ)", { detail: e instanceof Error ? e.message : String(e) }).catch(() => {});
+      }
+    }
+  }
+  for (const task of tasks) {
+    if (task.ownerUserId) continue; // S1.9 ▸ งานของคนตั้งทำในรอบที่ 1 แล้ว ◂
     try {
       // รัน AI แบบเดียวกับผู้ใช้พิมพ์คำสั่งเอง (มีเครื่องมืออ่านข้อมูลจริงครบ) — ฉีด provider fast
       // CRM C5.5-G1 ▸ ไม่มีคนกด + แถวงานไม่เก็บผู้ตั้ง · ผลส่งเป็นแจ้งเตือนที่ "ทุกคนในร้าน" เห็น (recipientUserId null)
@@ -297,55 +349,4 @@ export async function runScheduledTasks(
     }
   }
   return ran;
-}
-
-/** จดเหตุที่ข้ามงานของคนตั้ง (ไม่ throw) */
-async function logSkip(task: AiScheduledTask, reason: string, detail?: string): Promise<void> {
-  await logOps("WARN", "ai", `scheduled-skip: งานประจำ ${task.id} ข้าม (${reason})`, {
-    tenantId: task.tenantId,
-    detail: JSON.stringify({ taskId: task.id, ownerUserId: task.ownerUserId, reason, ...(detail ? { detail } : {}) }).slice(0, 2000),
-  }).catch(() => {});
-}
-
-/**
- * งานของคนตั้ง 1 รอบ (S1.9 · R-K5) — คืน true = เปิดห้อง + ต่อคิวสำเร็จ · ไม่ throw เด็ดขาด
- *   (1) isDue (2) claim: conditional updateMany ตั้ง lastRunDay = วันนี้ (count 0 = อีกรอบได้ไป · X5)
- *   (3) Membership สดของผู้ตั้ง (acceptedAt ≠ null) ไม่มี = จด + ข้าม (4) startRoom ด้วยสิทธิ์ผู้ตั้ง (นับงาน 1 · โควตาหมด = จด + ข้าม)
- *   (5) enqueueRoomJob(ข้อความแรกของห้อง) → runRoomJobs limit 1 (worker เรียกโมเดล + push ถึงผู้ตั้ง/สมาชิกห้อง)
- */
-async function runOwnedTask(task: AiScheduledTask, now: Date, today: string, provider: AiProvider, post?: PushPost): Promise<boolean> {
-  try {
-    const ownerUserId = task.ownerUserId;
-    if (!ownerUserId || !isDue(task, now)) return false;
-    const got = await prisma.aiScheduledTask.updateMany({
-      where: { id: task.id, tenantId: task.tenantId, active: true, OR: [{ lastRunDay: null }, { lastRunDay: { not: today } }] },
-      data: { lastRunDay: today },
-    });
-    if (got.count === 0) return false;
-    const membership = await prisma.membership.findFirst({
-      where: { tenantId: task.tenantId, userId: ownerUserId, acceptedAt: { not: null } },
-      select: { role: true, unitAccess: true, permissions: true },
-    });
-    if (!membership) {
-      await logSkip(task, "owner-not-member");
-      return false;
-    }
-    const actor = aiMemberActor(task.tenantId, ownerUserId, membership);
-    const started = await startRoom({ tenantId: task.tenantId, actor }, { instruction: task.instruction, systems: [] }, now);
-    if (!started.ok) {
-      await logSkip(task, started.error, started.message);
-      return false;
-    }
-    // worker นำเข้าแบบ dynamic (worker → service → … → proposals → scheduled — กันวงกลมตอนโหลดโมดูล)
-    const { enqueueRoomJob, runRoomJobs } = await import("./secretary/worker");
-    await enqueueRoomJob(task.tenantId, started.roomId, started.messageId, ownerUserId);
-    await runRoomJobs({ provider, ...(post ? { post } : {}), now, limit: 1 });
-    return true;
-  } catch (e) {
-    await logOps("WARN", "ai", `scheduled: งานประจำ ${task.id} ล้ม`, {
-      tenantId: task.tenantId,
-      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
-    }).catch(() => {});
-    return false;
-  }
 }

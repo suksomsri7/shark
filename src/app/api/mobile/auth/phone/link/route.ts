@@ -1,31 +1,25 @@
 // POST /api/mobile/auth/phone/link + Bearer {phone, code} → 200 {ok:true, phone} (S1.19 · R8 บัญชีเดิมต้องผูกเบอร์ · §H)
-//   ไม่มี Bearer ⇒ 401 · body ผิด ⇒ 400 · รหัสไม่ผ่าน ⇒ 401 {error, message}
+//   ไม่มี Bearer ⇒ 401 · body ผิด ⇒ 400 · รหัสไม่ผ่าน ⇒ 401 {error, message} (error ∈ invalid/bad_phone/locked · R-Z18)
+//   SEC S3a.1-S2 ▸ R-Z18: zod strict ≤ 4 KB · เพดาน sms-verify ต่อ ip/เบอร์ (ตัวเดียวกับ sms/verify) ⇒ 429 มาตรฐาน ◂
 //   เบอร์ของบัญชีอื่น ⇒ 409 phone_taken · บัญชีมีเบอร์อื่นอยู่แล้ว ⇒ 409 phone_change_locked (ติดต่อทีมงาน · R-S1.19e)
 //   ตรวจทุกข้อก่อน consume · consume + ผูกเบอร์ใน $transaction เดียว (linkPhoneToUser opts.otpId)
 import { mobileUser } from "@/lib/mobile/auth";
 import { verifyPhoneOtp, linkPhoneToUser } from "@/lib/core/phone-auth";
+import { z } from "zod";
+import { otpBody, otpFail, otpRateLimited } from "../../_otp";
 
-const REASON_TH: Record<string, string> = {
-  bad_phone: "เบอร์มือถือไม่ถูกต้อง",
-  not_found: "ไม่พบรหัสของเบอร์นี้ กรุณาขอรหัสใหม่",
-  expired: "รหัสหมดอายุแล้ว ขอรหัสใหม่ได้",
-  locked: "ใส่รหัสผิดหลายครั้ง กรุณาขอรหัสใหม่",
-  invalid: "รหัสไม่ถูกต้อง",
-};
-const fail = (reason: string) => Response.json({ error: reason, message: REASON_TH[reason] ?? REASON_TH.invalid }, { status: 401 });
+const Body = z.object({ phone: z.string().min(1).max(40), code: z.string().min(1).max(20) }).strict();
+
+const fail = otpFail;
 
 export async function POST(req: Request): Promise<Response> {
   const user = await mobileUser(req);
   if (!user) return Response.json({ error: "unauthorized", message: "กรุณาเข้าสู่ระบบใหม่" }, { status: 401 });
-  let body: { phone?: unknown; code?: unknown };
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "bad_request" }, { status: 400 });
-  }
-  const phone = typeof body?.phone === "string" ? body.phone : "";
-  const code = typeof body?.code === "string" ? body.code : "";
-  if (!phone || !code) return Response.json({ error: "bad_request" }, { status: 400 });
+  const b = await otpBody(req, Body);
+  if (!b.ok) return b.res;
+  const { phone, code } = b.v;
+  const limited = await otpRateLimited(req, phone);
+  if (limited) return limited;
 
   const v = await verifyPhoneOtp(phone, code);
   if (!v.ok) return fail(v.reason);

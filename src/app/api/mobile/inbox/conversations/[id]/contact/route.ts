@@ -3,11 +3,11 @@
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import { linkCustomer } from "@/lib/modules/chat/service";
-import { fail, gate, limited, LINK_CUSTOMER, notFound, readBody, systemOf, visibleConv, type RouteCtx } from "../../../_shared";
+import { fail, gate, limited, LINK_CUSTOMER, notFound, readBody, systemOf, visibleConv, type RouteCtx, withErrors } from "../../../_shared";
 
 const Body = z.object({ systemId: z.string().max(64).optional(), customerId: z.string().min(1).max(64).nullable() }).strict();
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [LINK_CUSTOMER]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -30,3 +30,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
   const r = await linkCustomer({ tenantId: c.tenantId, systemId: sid, contactId: conv.contactId, actorUserId: c.userId, customerId: b.v.customerId, unitAccess: c.ua });
   return r.ok ? Response.json({ ok: true }) : fail(422, "invalid", r.reason ?? "ผูกสมาชิกไม่สำเร็จ");
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("inbox/conversations/[id]/contact POST", POST_);

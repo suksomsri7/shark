@@ -1,5 +1,6 @@
 // _staff.ts — รูปตอบของเส้นพนักงาน/คำเชิญ (ไม่ใช่ route) · S1.25 lib ตัดสินสิทธิ์จากฐานเอง (OWNER/MANAGER · MANAGER แตะได้เฉพาะ STAFF)
-import type { InviteResult } from "@/lib/staff/invite";
+import { INVITE_RESEND_SEC, type InviteResult } from "@/lib/staff/invite";
+import { bkkAt } from "@/lib/core/quiet-hours";
 import type { StaffResult } from "@/lib/staff/service";
 import { fail, forbidden, notFound, ok } from "../_shared";
 
@@ -18,6 +19,13 @@ const STATUS: Record<string, number> = {
 /** ผลเชิญ/ส่งซ้ำ — ลิงก์ (มีรหัสเชิญ) คืนเฉพาะเมื่อ SMS ไม่ได้ส่งจริง (ให้ผู้เชิญส่งต่อเอง) · รหัสใช้ได้กับเบอร์ในใบเท่านั้น (acceptInviteByCode ตรวจเบอร์) */
 export function inviteResponse(r: InviteResult): Response {
   if (r.ok) return ok({ ok: true, inviteId: r.inviteId, sms: r.sms, expiresAt: r.expiresAt, link: r.sms === "sent" ? null : r.link });
+  // SEC S3a.1-S2 ▸ R-Z20 (L4): 429 รูปมาตรฐานของ _shared — `{error:"rate_limited", message, retryAfterSec}` + หัว Retry-After ·
+  //   ส่งซ้ำเร็วเกิน = รอ INVITE_RESEND_SEC · เพดานรายวัน = ถึงเที่ยงคืนไทย ◂
+  if (r.reason === "throttled" || r.reason === "rate_limited") {
+    const now = new Date();
+    const retryAfterSec = r.reason === "throttled" ? INVITE_RESEND_SEC : Math.max(60, Math.ceil((bkkAt(now, 0, 0, 1).getTime() - now.getTime()) / 1000));
+    return Response.json({ error: "rate_limited", message: r.message, retryAfterSec }, { status: 429, headers: { "Retry-After": String(retryAfterSec) } });
+  }
   return fail(STATUS[r.reason] ?? 400, r.reason, r.message);
 }
 

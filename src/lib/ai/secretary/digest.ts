@@ -16,14 +16,18 @@
 //   pending      ตัวนับเดียวกับ proactive: คำขออนุมัติ PENDING ที่สร้างก่อน now−2 วัน · ใบลา PENDING (ระบบ HR) ก่อน now−2 วัน ·
 //                ออเดอร์ร้านออนไลน์ PENDING_PAYMENT — ส่วนนี้ไม่เป็น null (ล้ม = 0)
 // ผู้ดู (viewer) ของ `digestBlockFor`: ตัดส่วนที่ผู้ดูไม่มีสิทธิ์อ่าน หรือร้านตั้งระดับเลขาของระบบนั้นเป็น OFF (ตารางเดียวกับ suggest.ts)
+// SEC S3a.1-S2 ▸ R-Z14 (L1 M-2): ตัวเลขต่อผู้ดู — ส่วนที่ผูกสาขา (ยอดขาย POS · นัดพรุ่งนี้ · ออเดอร์ออนไลน์) นับเฉพาะสาขาที่
+//   `evaluate(m, {module, action, unitId})` ผ่าน · ลูกค้าเงียบ (count + sample) ผ่าน `crm.contactWhere` ของผู้ดู · cache คีย์ = ร้าน+ผู้ดู+ชุดสาขา
+//   (`viewerScope` → `computeDigest(…, scope)` · `viewerDigest`) · ไม่ส่ง scope = ทั้งร้านแบบเดิม (ข้อสอบ/งานภายใน) ◂
 // 🔴 ข้อความในบล็อกเป็น "ข้อมูล" — ชื่อสินค้าถูกล้างอักขระควบคุม/ขึ้นบรรทัดและตัดความยาวก่อนพิมพ์ (COMMON §C.3)
 
-import type { SystemType } from "@prisma/client";
+import type { Prisma, SystemType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 import { bkkAt, bkkParts } from "@/lib/core/quiet-hours";
 import { canReadInventory, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { needsReorder } from "@/lib/modules/inventory/rules";
+import { contactWhere } from "@/lib/modules/crm";
 import type { AiActor } from "../actor";
 import { membershipCan, actorBranches } from "../tool-access";
 import { levelVerdict, type AccessMap } from "./access-rules";
@@ -48,6 +52,38 @@ export const DIGEST_CACHE_MS = 10 * 60_000;
 const CACHE_MAX = 500;
 const BLOCK_MAX = 1200;
 
+// ─────────────────────────── ขอบเขตของผู้ดู (R-Z14) ───────────────────────────
+
+/** สาขาที่นับได้ต่อส่วน (null = ทุกสาขา · [] = ไม่มีสาขาเลย ⇒ ส่วนนั้น null) · `crmViewer` null = ทั้งร้าน */
+export type DigestScope = {
+  posUnitIds: string[] | null;
+  bookingUnitIds: string[] | null;
+  shopUnitIds: string[] | null;
+  crmViewer: { userId: string; role: MembershipCtx["role"]; unitAccess: string[]; permissions: Record<string, unknown> } | null;
+};
+const WHOLE_SHOP: DigestScope = { posUnitIds: null, bookingUnitIds: null, shopUnitIds: null, crmViewer: null };
+
+/** ขอบเขตของผู้ดู — สาขาที่ `evaluate(m, {module, action, unitId})` ผ่าน (ครบทุกสาขา = null) · OWNER = ทั้งร้าน */
+export async function viewerScope(tenantId: string, m: MembershipCtx, userId: string): Promise<DigestScope> {
+  if (m.role === "OWNER") return WHOLE_SHOP;
+  const units = (await prisma.businessUnit.findMany({ where: { tenantId }, select: { id: true }, orderBy: { id: "asc" } })).map((u) => u.id);
+  const unitsWhere = (module: string, action: string): string[] | null => {
+    const okIds = units.filter((unitId) => evaluate(m, { module, action, unitId }));
+    return units.length > 0 && okIds.length === units.length ? null : okIds;
+  };
+  const branches = m.unitAccess.includes("*") ? null : units.filter((u) => m.unitAccess.includes(u));
+  return {
+    posUnitIds: unitsWhere("pos", "pos.report.view"),
+    bookingUnitIds: branches,
+    shopUnitIds: branches,
+    crmViewer: { userId, role: m.role, unitAccess: [...m.unitAccess], permissions: { ...(m.permissions ?? {}) } },
+  };
+}
+
+const scopeKey = (sc: DigestScope): string =>
+  [sc.posUnitIds, sc.bookingUnitIds, sc.shopUnitIds].map((u) => (u === null ? "*" : u.join(","))).join("|") + `|${sc.crmViewer?.userId ?? "*"}`;
+const unitFilter = (ids: string[] | null) => (ids === null ? {} : { unitId: { in: ids } });
+
 // ─────────────────────────── คำนวณ ───────────────────────────
 
 async function systemIdsOf(tenantId: string, type: SystemType): Promise<string[]> {
@@ -65,15 +101,16 @@ async function part<T>(tenantId: string, name: string, fn: () => Promise<T>): Pr
   }
 }
 
-async function salesPart(tenantId: string, now: Date): Promise<Digest["sales"]> {
+async function salesPart(tenantId: string, now: Date, sc: DigestScope): Promise<Digest["sales"]> {
   const posIds = await systemIdsOf(tenantId, "POS");
-  if (posIds.length === 0) return null;
+  if (posIds.length === 0 || sc.posUnitIds?.length === 0) return null;
   const end = bkkAt(now, 0, 0, 1); // เที่ยงคืนไทยของพรุ่งนี้
   const win = async (dayOffset: number) => {
     const r = await prisma.posSale.aggregate({
       where: {
         tenantId,
         systemId: { in: posIds },
+        ...unitFilter(sc.posUnitIds),
         docType: "SALE",
         status: { in: ["PAID", "REFUNDED"] },
         createdAt: { gte: bkkAt(now, 0, 0, dayOffset), lt: end },
@@ -115,17 +152,23 @@ async function receivablesPart(tenantId: string, now: Date): Promise<Digest["rec
   return { count, totalSatang, overdueCount };
 }
 
-async function quietPart(tenantId: string, now: Date): Promise<Digest["quietCustomers"]> {
+async function quietPart(tenantId: string, now: Date, sc: DigestScope): Promise<Digest["quietCustomers"]> {
   const crmIds = await systemIdsOf(tenantId, "CRM");
   if (crmIds.length === 0) return null;
   const cutoff = new Date(now.getTime() - QUIET_DAYS * DAY_MS);
-  const where = {
+  // R-Z14: ผู้ดู ⇒ นับ/ตัวอย่างเฉพาะผู้ติดต่อที่เขามองเห็น (visibleWhere ของ CRM ต่อระบบ)
+  const viewer = sc.crmViewer;
+  const vis: Prisma.CrmContactWhereInput | null = viewer
+    ? { OR: await Promise.all(crmIds.map((systemId) => contactWhere({ tenantId, systemId }, viewer))) }
+    : null;
+  const base: Prisma.CrmContactWhereInput = {
     tenantId,
     systemId: { in: crmIds },
     archivedAt: null,
     createdAt: { lt: cutoff },
     OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: cutoff } }],
   };
+  const where: Prisma.CrmContactWhereInput = vis ? { AND: [base, vis] } : base;
   const [count, rows] = await Promise.all([
     prisma.crmContact.count({ where }),
     prisma.crmContact.findMany({
@@ -156,14 +199,15 @@ async function lowStockPart(tenantId: string): Promise<Digest["lowStock"]> {
   return { count: low.length, sample: low.slice(0, SAMPLE_MAX).map((i) => cleanText(i.name)) };
 }
 
-async function tomorrowPart(tenantId: string, now: Date): Promise<Digest["tomorrow"]> {
+async function tomorrowPart(tenantId: string, now: Date, sc: DigestScope): Promise<Digest["tomorrow"]> {
   const [units, systems] = await Promise.all([
     prisma.businessUnit.count({ where: { tenantId, type: "BOOKING" } }),
     systemIdsOf(tenantId, "BOOKING"),
   ]);
-  if (units === 0 && systems.length === 0) return null;
+  if ((units === 0 && systems.length === 0) || sc.bookingUnitIds?.length === 0) return null;
   const where = {
     tenantId,
+    ...unitFilter(sc.bookingUnitIds),
     status: { notIn: ["CANCELLED" as const, "NO_SHOW" as const] },
     startAt: { gte: bkkAt(now, 0, 0, 1), lt: bkkAt(now, 0, 0, 2) },
   };
@@ -174,7 +218,7 @@ async function tomorrowPart(tenantId: string, now: Date): Promise<Digest["tomorr
   return { appointments, firstAt: first?.startAt ?? null };
 }
 
-async function pendingPart(tenantId: string, now: Date): Promise<Digest["pending"]> {
+async function pendingPart(tenantId: string, now: Date, sc: DigestScope): Promise<Digest["pending"]> {
   const agedBefore = new Date(now.getTime() - AGED_DAYS * DAY_MS);
   const zero = (name: string) => (e: unknown) => {
     void logOps("WARN", "ai", `digest: ส่วน pending.${name} คำนวณไม่ได้`, { tenantId, detail: e instanceof Error ? e.message : String(e) });
@@ -187,27 +231,27 @@ async function pendingPart(tenantId: string, now: Date): Promise<Digest["pending
         hrIds.length === 0 ? 0 : prisma.hrLeave.count({ where: { tenantId, systemId: { in: hrIds }, status: "PENDING", createdAt: { lt: agedBefore } } }),
       )
       .catch(zero("leaves")),
-    prisma.shopOrder.count({ where: { tenantId, status: "PENDING_PAYMENT" } }).catch(zero("shopOrders")),
+    (sc.shopUnitIds?.length === 0 ? Promise.resolve(0) : prisma.shopOrder.count({ where: { tenantId, ...unitFilter(sc.shopUnitIds), status: "PENDING_PAYMENT" } })).catch(zero("shopOrders")),
   ]);
   return { approvalsAged, leavesAged, shopOrders };
 }
 
 /**
  * ข้อมูลกิจการสดของร้าน ณ `now` — ระบบไม่เปิด = null ของส่วนนั้น · ส่วนล้ม = null (+logOps) · ไม่โยนเสมอ
- * ไม่ผ่าน cache (ผู้เรียกที่ต้องการ cache ใช้ `digestBlockFor`)
+ * ไม่ผ่าน cache (ผู้เรียกที่ต้องการ cache ใช้ `digestBlockFor`) · `scope` (R-Z14) = ขอบเขตของผู้ดู (`viewerScope`) · ไม่ส่ง = ทั้งร้าน
  */
-export async function computeDigest(tenantId: string, now: Date = new Date()): Promise<Digest> {
+export async function computeDigest(tenantId: string, now: Date = new Date(), scope: DigestScope = WHOLE_SHOP): Promise<Digest> {
   const [activeSystems, sales, quietCustomers, lowStock, receivables, tomorrow, pending] = await Promise.all([
     part(tenantId, "activeSystems", async () => {
       const rows = await prisma.appSystem.findMany({ where: { tenantId, active: true }, select: { type: true }, orderBy: { createdAt: "asc" } });
       return [...new Set(rows.map((r) => r.type as string))];
     }),
-    part(tenantId, "sales", () => salesPart(tenantId, now)),
-    part(tenantId, "quietCustomers", () => quietPart(tenantId, now)),
+    part(tenantId, "sales", () => salesPart(tenantId, now, scope)),
+    part(tenantId, "quietCustomers", () => quietPart(tenantId, now, scope)),
     part(tenantId, "lowStock", () => lowStockPart(tenantId)),
     part(tenantId, "receivables", () => receivablesPart(tenantId, now)),
-    part(tenantId, "tomorrow", () => tomorrowPart(tenantId, now)),
-    part(tenantId, "pending", () => pendingPart(tenantId, now)),
+    part(tenantId, "tomorrow", () => tomorrowPart(tenantId, now, scope)),
+    part(tenantId, "pending", () => pendingPart(tenantId, now, scope)),
   ]);
   return {
     at: now,
@@ -343,12 +387,13 @@ export function digestBlock(d: Digest): string {
 
 const cache = new Map<string, { exp: number; d: Digest }>();
 
-/** digest ของร้านผ่าน cache 10 นาที (ต่อร้าน · ในหน่วยความจำของ process) */
-export async function cachedDigest(tenantId: string): Promise<Digest> {
+/** digest ของร้านผ่าน cache 10 นาที (ต่อร้าน+ขอบเขตผู้ดู · ในหน่วยความจำของ process) — R-Z14: คีย์รวม userId + ชุดสาขา */
+export async function cachedDigest(tenantId: string, scope: DigestScope = WHOLE_SHOP): Promise<Digest> {
   const nowMs = Date.now();
-  const hit = cache.get(tenantId);
+  const key = `${tenantId}|${scopeKey(scope)}`;
+  const hit = cache.get(key);
   if (hit && hit.exp > nowMs) return hit.d;
-  const d = await computeDigest(tenantId, new Date(nowMs));
+  const d = await computeDigest(tenantId, new Date(nowMs), scope);
   if (cache.size >= CACHE_MAX) {
     for (const [k, v] of cache) if (v.exp <= nowMs) cache.delete(k);
     if (cache.size >= CACHE_MAX) {
@@ -356,8 +401,18 @@ export async function cachedDigest(tenantId: string): Promise<Digest> {
       if (oldest !== undefined) cache.delete(oldest);
     }
   }
-  cache.set(tenantId, { exp: nowMs + DIGEST_CACHE_MS, d });
+  cache.set(key, { exp: nowMs + DIGEST_CACHE_MS, d });
   return d;
+}
+
+/**
+ * digest ของผู้ดู (R-Z14) — นับตามสาขา/การมองเห็นของเขา แล้วตัดส่วนที่อ่านไม่ได้/ระดับเลขา OFF (`digestForViewer`)
+ *   `now` ส่งมา = คำนวณสด (ข้อสอบ) · ไม่ส่ง = cache 10 นาทีของผู้ดูคนนี้
+ */
+export async function viewerDigest(tenantId: string, m: MembershipCtx, userId: string, access?: AccessMap, now?: Date): Promise<Digest> {
+  const scope = await viewerScope(tenantId, m, userId);
+  const d = now ? await computeDigest(tenantId, now, scope) : await cachedDigest(tenantId, scope);
+  return digestForViewer(d, m, userId, access);
 }
 
 /**
@@ -366,9 +421,8 @@ export async function cachedDigest(tenantId: string): Promise<Digest> {
  */
 export async function digestBlockFor(tenantId: string, viewer?: { actor: AiActor; access?: AccessMap }): Promise<string> {
   if (viewer && viewer.actor.kind !== "member") return "";
-  const d = await cachedDigest(tenantId);
-  if (!viewer || viewer.actor.kind !== "member") return digestBlock(d);
-  return digestBlock(digestForViewer(d, viewer.actor.membership, viewer.actor.userId, viewer.access));
+  if (!viewer || viewer.actor.kind !== "member") return digestBlock(await cachedDigest(tenantId));
+  return digestBlock(await viewerDigest(tenantId, viewer.actor.membership, viewer.actor.userId, viewer.access));
 }
 
 /** ข้อสอบเท่านั้น — ล้าง cache */

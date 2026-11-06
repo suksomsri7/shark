@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { CHANNELS, deleteTask, describeFrequency, FREQUENCIES, listTasks, updateTask } from "@/lib/ai/scheduled";
 import { taskDto } from "@/lib/ai/secretary/dto";
-import { fail, gate, idParam, notFound, ok, readBody, thrown, withRateLimit, type RouteCtx, type SecCtx } from "../../_shared";
+import { fail, gate, idParam, notFound, ok, readBody, thrown, withRateLimit, type RouteCtx, type SecCtx, withErrors } from "../../_shared";
 
 const Body = z
   .object({
@@ -23,7 +23,7 @@ async function ownTask(c: SecCtx, id: string) {
   return c.m.role === "OWNER" || (t.ownerUserId !== null && t.ownerUserId === c.userId) ? t : null;
 }
 
-export async function PUT(req: Request, ctx: RouteCtx) {
+async function PUT_(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "scheduled");
@@ -42,7 +42,7 @@ export async function PUT(req: Request, ctx: RouteCtx) {
   }
 }
 
-export async function DELETE(req: Request, ctx: RouteCtx) {
+async function DELETE_(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "scheduled");
@@ -53,3 +53,7 @@ export async function DELETE(req: Request, ctx: RouteCtx) {
   if (!(await deleteTask({ tenantId: a.c.tenantId }, t.id))) return notFound("ไม่พบงานประจำนี้");
   return ok({ ok: true });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const PUT = withErrors("secretary/scheduled/[id] PUT", PUT_);
+export const DELETE = withErrors("secretary/scheduled/[id] DELETE", DELETE_);

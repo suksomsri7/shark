@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { runScheduledTasks } from "@/lib/ai/scheduled";
+import { resolveProvider } from "@/lib/ai/provider"; // SEC S3a.1-S1 R-Z6
 import { campaignsDue, journeyWaits, memberReportsEmail, notificationsDue, sweepPendingVoiceDelivery } from "@/lib/platform/cron";
 import { sweepScheduledRules } from "@/lib/modules/kanban/automation";
 import { sweepDueSoonReminders } from "@/lib/modules/kanban/reminders";
@@ -23,6 +24,10 @@ import { drainAll } from "@/lib/outbox-consumers";
 //   ⇒ คอมเมนต์ของ kernel (`core/outbox.ts` "cron รายชั่วโมงเก็บตก") เป็นจริง: event ที่ไม่มีใครปลุก drain รอ ≤ 1 ชม. ไม่ใช่ ≤ 24 ชม.
 //   🔴 best-effort: ล้มห้ามทำให้ cron รอบนี้แดง · ไม่เพิ่ม cron ตัวใหม่ใน vercel.json (§7.6)
 export const dynamic = "force-dynamic";
+// SEC S3a.1-S1 ▸ R-Z6: เพดานของแพลตฟอร์ม (Vercel fluid compute 300 วิ ทุกแผน) — งานห้องเลขาของงานประจำรันใน `after()` ภายใต้ deadline
+//   (โมเดลไม่ถูกเรียกในลูปของ runScheduledTasks) · ที่ไม่ทัน = ตัวเก็บตกรายนาทีบน VPS หยิบต่อ ◂
+export const maxDuration = 300;
+const ROOM_JOBS_AFTER_MS = 240_000;
 
 export async function GET(req: Request) {
   if (!isCronAuthorized(req)) {
@@ -30,13 +35,32 @@ export async function GET(req: Request) {
   }
   // runScheduledTasks catch งานย่อยรายตัวเองแล้ว — ห่ออีกชั้นเผื่อพังทั้งรอบ → logOps ERROR
   let ran: number;
+  const started = Date.now();
+  const roomJobIds: string[] = []; // SEC S3a.1-S1 R-Z6
   try {
-    ran = await runScheduledTasks(new Date());
+    ran = await runScheduledTasks(new Date(), { deferRoomJobs: (ids) => void roomJobIds.push(...ids) });
   } catch (e) {
     await logOps("ERROR", "cron", "runScheduledTasks ล้มทั้งรอบ", {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
     return NextResponse.json({ ok: false, error: "cron_failed" }, { status: 500 });
+  }
+  // SEC S3a.1-S1 ▸ R-Z6: ห้องงานประจำที่เพิ่งเปิด → worker หลังตอบ (tier fast เหมือนเดิม · deadline จากต้นคำขอ) — ล้ม = log ไม่ทำให้รอบแดง ◂
+  if (roomJobIds.length > 0) {
+    const runJobs = async () => {
+      try {
+        const { runRoomJobs } = await import("@/lib/ai/secretary/worker");
+        const fast = resolveProvider("fast");
+        await runRoomJobs({ ...(fast ? { provider: fast } : {}), jobIds: roomJobIds, limit: roomJobIds.length, deadline: started + ROOM_JOBS_AFTER_MS });
+      } catch (e) {
+        await logOps("WARN", "cron", "งานห้องเลขาของงานประจำ (after) ล้ม", { detail: e instanceof Error ? e.message : String(e) }).catch(() => {});
+      }
+    };
+    try {
+      after(runJobs);
+    } catch {
+      await runJobs(); // นอกคำขอ (สคริปต์) — รอจนจบ
+    }
   }
   // best-effort — ตัวนี้ล้มห้ามทำให้ cron รอบนี้แดง (งานหลักของ route คือ runScheduledTasks)
   const voiceSent = await sweepPendingVoiceDelivery();

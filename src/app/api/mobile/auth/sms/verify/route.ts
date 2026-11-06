@@ -1,6 +1,8 @@
 // POST /api/mobile/auth/sms/verify {phone, code, signup?:{email,name}} (S1.19 · R-K9 · R8 · §H)
 //   code = สตริงใดก็ได้ ตัดเหลือตัวเลขก่อนเทียบ ("123 456" ใช้ได้)
-//   ไม่ผ่าน ⇒ 401 {error: reason, message}
+//   SEC S3a.1-S2 ▸ R-Z18: body = zod strict (≤ 4 KB) ผิด ⇒ 400 {error:"bad_request", message} · เพดาน `sms-verify:<ip>` 30/10 นาที +
+//     `sms-verify:<เบอร์>` 10/10 นาที ⇒ 429 {error:"rate_limited", message, retryAfterSec} + Retry-After ·
+//     ไม่ผ่าน ⇒ 401 {error, message} โดย error ∈ {invalid, bad_phone, locked} (not_found/expired ยุบเป็น invalid — ไม่บอกว่าเบอร์ไหนเพิ่งขอรหัส) ◂
 //   ผ่าน + เบอร์มีบัญชี ⇒ consume + Bearer ⇒ 200 {token, expiresAt, user, isNew:false} (signup ที่แนบมาถูกเมิน)
 //   ผ่าน + ไม่มีบัญชี + ไม่มี signup ⇒ 200 {needSignup:true} — **ไม่ consume** (แอปขอชื่อ/อีเมลแล้วยิงซ้ำด้วยรหัสเดิม)
 //   ผ่าน + signup ⇒ signupWithPhone (consume + สร้างบัญชีใน $transaction เดียว · ล้ม ⇒ 409 {error, message}) + Bearer ⇒ 200 {…, isNew:true}
@@ -9,27 +11,26 @@ import { prisma } from "@/lib/core/db";
 import { verifyPhoneOtp, consumePhoneOtp, signupWithPhone, publicEmailOf } from "@/lib/core/phone-auth";
 import { issueMobileToken } from "@/lib/mobile/auth";
 import type { User } from "@prisma/client";
+import { z } from "zod";
+import { otpBody, otpFail, otpRateLimited } from "../../_otp";
 
-const REASON_TH: Record<string, string> = {
-  bad_phone: "เบอร์มือถือไม่ถูกต้อง",
-  not_found: "ไม่พบรหัสของเบอร์นี้ กรุณาขอรหัสใหม่",
-  expired: "รหัสหมดอายุแล้ว ขอรหัสใหม่ได้",
-  locked: "ใส่รหัสผิดหลายครั้ง กรุณาขอรหัสใหม่",
-  invalid: "รหัสไม่ถูกต้อง",
-};
-const fail = (reason: string) => Response.json({ error: reason, message: REASON_TH[reason] ?? REASON_TH.invalid }, { status: 401 });
+const Body = z
+  .object({
+    phone: z.string().min(1).max(40),
+    code: z.string().min(1).max(20),
+    signup: z.object({ email: z.string().max(254), name: z.string().max(120) }).strict().optional(),
+  })
+  .strict();
+
+const fail = otpFail;
 const userDto = (u: User, phone: string) => ({ id: u.id, ...publicEmailOf(u), name: u.name, phone });
 
 export async function POST(req: Request): Promise<Response> {
-  let body: { phone?: unknown; code?: unknown; signup?: unknown };
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "bad_request" }, { status: 400 });
-  }
-  const phone = typeof body?.phone === "string" ? body.phone : "";
-  const code = typeof body?.code === "string" ? body.code : "";
-  if (!phone || !code) return Response.json({ error: "bad_request" }, { status: 400 });
+  const b = await otpBody(req, Body);
+  if (!b.ok) return b.res;
+  const { phone, code } = b.v;
+  const limited = await otpRateLimited(req, phone);
+  if (limited) return limited;
 
   const v = await verifyPhoneOtp(phone, code);
   if (!v.ok) return fail(v.reason);
@@ -48,14 +49,14 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ token, expiresAt, user: userDto(user, v.phone), isNew: false }, { status: 200 });
   }
 
-  const signup = body.signup && typeof body.signup === "object" ? (body.signup as { email?: unknown; name?: unknown }) : null;
+  const signup = b.v.signup ?? null;
   if (!signup) return Response.json({ needSignup: true }, { status: 200 });
 
   const s = await signupWithPhone(
     {
       phone: v.phone,
-      email: typeof signup.email === "string" ? signup.email : "",
-      name: typeof signup.name === "string" ? signup.name : "",
+      email: signup.email,
+      name: signup.name,
     },
     { otpId: v.otpId },
   );

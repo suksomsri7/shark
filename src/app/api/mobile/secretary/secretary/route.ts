@@ -3,13 +3,13 @@
 import { z } from "zod";
 import { identityOf, normalizeIdentityPatch, sampleSpeech, secretaryOf, updateSecretary, SECRETARY_DEFAULT, type SecretaryIdentity } from "@/lib/ai/secretary/secretary";
 import { secretaryDto } from "@/lib/ai/secretary/dto";
-import { ok, readBody, thrown, userGate, withRateLimit } from "../_shared";
+import { ok, readBody, thrown, userGate, withRateLimit, withErrors } from "../_shared";
 
 const PutBody = z
   .object({ name: z.string().max(200).optional(), suffix: z.string().max(100).optional(), tone: z.string().max(20).optional(), languages: z.array(z.string().max(10)).max(10).optional() })
   .strict();
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await userGate(req);
   if (!a.ok) return a.res;
   const row = await secretaryOf(a.userId);
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   return ok(secretaryDto(identity, sampleSpeech(identity), !!row));
 }
 
-export async function PUT(req: Request) {
+async function PUT_(req: Request) {
   const a = await userGate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(a.userId, "secretary");
@@ -33,3 +33,7 @@ export async function PUT(req: Request) {
     return thrown(e, "secretary.put");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/secretary GET", GET_);
+export const PUT = withErrors("secretary/secretary PUT", PUT_);

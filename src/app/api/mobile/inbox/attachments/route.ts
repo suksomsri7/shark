@@ -3,11 +3,14 @@
 // ห่อชุดเดียวกับ `api/v1/chat/attachments` (`uploadFile` kind ATTACHMENT · `CHAT_ATTACHMENT_MAX_BYTES` · ชนิดไฟล์ตามทะเบียนของ storage)
 //   ต่างกันแค่ด่าน: v1 = คีย์ API ของร้าน · ที่นี่ = Bearer + x-tenant-id + สิทธิ์ตอบลูกค้า
 // คืน `{ url, name, mimeType, size, width?, height?, durationMs? }` → แอปเอา url ไปแนบใน `…/reply` (ไฟล์กับข้อความแยกคำขอ = retry ข้อความได้ไม่ต้องอัปซ้ำ)
+// SEC S3a.1-S2 ▸ R-Z19 (L4 MAJOR-2): ไม่รับ svg (สคริปต์ในไฟล์) · ตรวจ magic bytes ของไฟล์จริงแบบ support/upload — รูป · PDF · เสียง ·
+//   เอกสาร Office (zip/OLE) · ชนิดที่ประกาศต้องตระกูลเดียวกับที่ตรวจได้ · contentType ที่เก็บ = ชนิดที่ตรวจได้ (ไม่เชื่อหัวของผู้ส่ง) ⇒ ไม่ผ่าน 415 ◂
 import { imageSize } from "@/lib/storage/image-size";
+import { sniffedAttachmentType } from "@/lib/storage/sniff"; // SEC S3a.1-S2 R-Z34: ตัวเดียวกับ api/v1 ◂
 import { CHAT_ATTACHMENT_MAX_BYTES, uploadFile } from "@/lib/storage/service";
-import { fail, gate, limited, REPLY } from "../_shared";
+import { fail, gate, limited, REPLY, withErrors } from "../_shared";
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   const a = await gate(req, [REPLY]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -26,7 +29,12 @@ export async function POST(req: Request) {
   if (!(file instanceof File)) return fail(400, "bad_request", "ไม่พบไฟล์ในช่อง file");
   if (file.size > CHAT_ATTACHMENT_MAX_BYTES) return fail(413, "too_large", `ไฟล์ใหญ่เกิน ${Math.round(CHAT_ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB`);
   const data = new Uint8Array(await file.arrayBuffer());
-  const contentType = (file.type || "application/octet-stream").split(";")[0]!.trim().toLowerCase();
+  const declaredType = (file.type || "application/octet-stream").split(";")[0]!.trim().toLowerCase();
+  const real = sniffedAttachmentType(data, declaredType);
+  if (!real) {
+    return fail(415, "unsupported", "แนบได้เฉพาะรูป (JPG · PNG · WEBP · HEIC · GIF) · PDF · ไฟล์เสียง · เอกสาร Word/Excel — ไฟล์นี้ไม่ตรงกับชนิดที่รองรับ");
+  }
+  const contentType = real;
   const up = await uploadFile(
     { tenantId: c.tenantId },
     { kind: "ATTACHMENT", filename: file.name || "attachment", contentType, data, maxBytes: CHAT_ATTACHMENT_MAX_BYTES },
@@ -46,3 +54,6 @@ export async function POST(req: Request) {
     ...(durationMs ? { durationMs } : {}),
   });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("inbox/attachments POST", POST_);

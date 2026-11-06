@@ -220,6 +220,9 @@ export async function setStaffLevels(
       if (!Object.prototype.hasOwnProperty.call(CHAT_LEVELS, input.chat)) return fail("ระดับแชทต้องเป็น ไม่เห็น / ดูได้ / ตอบได้");
       next = permissionsForChat(input.chat, next);
     }
+    // SEC S3a.1-S2 ▸ R-Z15 (เหมือน R-S1.14b-f): extraPermissions ห้ามคีย์ wildcard (`*` · `<module>.*`) — ให้ได้ทีละคีย์เท่านั้น ◂
+    const wild = Object.keys(input.extraPermissions ?? {}).find((k) => k === "*" || k.endsWith(".*") || k.includes("*"));
+    if (wild) return fail("ให้สิทธิ์แบบทั้งระบบ (*) ผ่านช่องนี้ไม่ได้ — เลือกระดับของระบบนั้น หรือติ๊กสิทธิ์ทีละข้อ");
     permissions = { ...next, ...(input.extraPermissions ?? {}) };
   }
 

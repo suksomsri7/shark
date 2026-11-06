@@ -11,12 +11,12 @@ import { tenantDb } from "@/lib/core/db";
 import { inboxForUser } from "@/lib/ai/secretary/inbox";
 import { unreadCaseTotalForUser } from "@/lib/support/service";
 import { READ, can, unreadFor, type InboxCtx } from "../../inbox/_shared";
-import { gate, ok, thrown, withRateLimit } from "../_shared";
+import { gate, ok, thrown, withRateLimit, withErrors } from "../_shared";
 
 /** เพดานเดียวกับกล่องรวม (TAKE_MAX ของ inbox.ts) */
 const INBOX_TAKE = 100;
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const { userId, tenantId, m } = a.c;
@@ -59,3 +59,6 @@ export async function GET(req: Request) {
     return thrown(e, "badges");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/badges GET", GET_);

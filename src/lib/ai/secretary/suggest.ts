@@ -10,7 +10,7 @@ import { bkkParts } from "@/lib/core/quiet-hours";
 import { actorProblem, type AiMemberActor } from "../actor";
 import type { ConvCtx } from "../conversation-owner";
 import { getAccess } from "./access";
-import { cachedDigest, computeDigest, viewerSees, type Digest, type DigestSystem } from "./digest";
+import { cachedDigest, computeDigest, viewerScope, viewerSees, type Digest, type DigestSystem } from "./digest";
 
 export type Suggestion = { key: string; system: string; title: string; instruction: string; priority: 1 | 2 | 3 };
 
@@ -102,9 +102,10 @@ export function suggestionsFromDigest(d: Digest, now: Date, sees: (s: DigestSyst
 export async function suggestions(ctx: { tenantId: string; actor: AiMemberActor }, now?: Date): Promise<Suggestion[]> {
   if (actorProblem(ctx) || ctx.actor?.kind !== "member") return [];
   const at = now ?? new Date();
-  const [d, access] = await Promise.all([now ? computeDigest(ctx.tenantId, now) : cachedDigest(ctx.tenantId), getAccess(ctx.tenantId).catch(() => null)]);
-  if (!access) return [];
   const m = ctx.actor.membership;
+  const scope = await viewerScope(ctx.tenantId, m, ctx.actor.userId); // SEC S3a.1-S2 ▸ R-Z14: ตัวเลขต่อผู้ดู ◂
+  const [d, access] = await Promise.all([now ? computeDigest(ctx.tenantId, now, scope) : cachedDigest(ctx.tenantId, scope), getAccess(ctx.tenantId).catch(() => null)]);
+  if (!access) return [];
   return suggestionsFromDigest(d, at, (s) => viewerSees(m, ctx.actor.userId, access, s));
 }
 

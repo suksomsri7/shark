@@ -1,10 +1,10 @@
 // POST /api/mobile/secretary/staff/[membershipId]/suspend — ระงับพนักงาน (`suspendStaff` = revokeStaffAccess เดิม · ล้าง PushDevice ของร้าน)
 import { z } from "zod";
 import { suspendStaff } from "@/lib/staff/levels";
-import { gate, idParam, notFound, readBody, thrown, withRateLimit, type RouteCtx } from "../../../_shared";
+import { gate, idParam, notFound, readBody, thrown, withRateLimit, type RouteCtx, withErrors } from "../../../_shared";
 import { staffResponse } from "../../_staff";
 
-export async function POST(req: Request, ctx: RouteCtx<"membershipId">) {
+async function POST_(req: Request, ctx: RouteCtx<"membershipId">) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "staff");
@@ -19,3 +19,6 @@ export async function POST(req: Request, ctx: RouteCtx<"membershipId">) {
     return thrown(e, "staff.suspend");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/staff/[membershipId]/suspend POST", POST_);

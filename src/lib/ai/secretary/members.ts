@@ -15,6 +15,7 @@
 
 import type { Prisma, Role } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
+import { isPhonePlaceholderEmail } from "@/lib/core/phone-auth";
 import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, type ConvCtx } from "../conversation-owner";
 
@@ -33,7 +34,7 @@ export type RoomMemberRow = {
   seeHistory: boolean;
 };
 
-export type AddMemberError = "not_found" | "forbidden" | "not_member_of_tenant" | "self" | "already" | "limit" | "closed";
+export type AddMemberError = "not_found" | "forbidden" | "not_member_of_tenant" | "self" | "already" | "limit" | "closed" | "forbidden_chat";
 export type RemoveMemberError = "not_found" | "forbidden" | "not_a_member";
 
 const MSG: Record<AddMemberError | RemoveMemberError, string> = {
@@ -45,6 +46,7 @@ const MSG: Record<AddMemberError | RemoveMemberError, string> = {
   limit: `ห้องนี้มีสมาชิกครบ ${ROOM_MEMBERS_MAX} คนแล้ว`,
   closed: "ห้องนี้ปิดงานแล้ว — เปิดห้องใหม่เพื่อชวนคนเพิ่ม",
   not_a_member: "คนนี้ไม่ได้อยู่ในห้องนี้",
+  forbidden_chat: "ห้องนี้เป็นเรื่องของลูกค้าในแชท — ชวนได้เฉพาะคนที่มีสิทธิ์ดูแชทของสาขานั้น",
 };
 
 const MSG_OWNER_SELF = "คุณเห็นทุกห้องอยู่แล้วในฐานะเจ้าของร้าน — ไม่ต้องเพิ่มตัวเองเข้าห้อง";
@@ -63,7 +65,7 @@ const cleanId = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 /** ชื่อที่แสดง (เหมือนการ์ดห้อง) — ชื่อ → ส่วนหน้าอีเมล → "สมาชิก" */
 function displayName(u: { name: string | null; email: string } | null | undefined): string {
-  return u?.name?.trim() || u?.email.split("@")[0] || "สมาชิก";
+  return u?.name?.trim() || (isPhonePlaceholderEmail(u?.email) ? "" : u?.email.split("@")[0]) || "สมาชิก"; // R-Z26: placeholder = เบอร์ ⇒ "สมาชิก" ◂
 }
 
 async function namesOf(userIds: string[]): Promise<Map<string, string>> {
@@ -73,7 +75,7 @@ async function namesOf(userIds: string[]): Promise<Map<string, string>> {
   return new Map(users.map((u) => [u.id, displayName(u)]));
 }
 
-type RoomHead = { id: string; conversationId: string; startedById: string; closedAt: Date | null; members: { userId: string }[] };
+type RoomHead = { id: string; conversationId: string; startedById: string; closedAt: Date | null; contextJson?: Prisma.JsonValue | null; members: { userId: string }[] };
 
 /** ห้องของร้านนี้ + ผู้ดูเห็นไหม (R-K1: ผู้เปิด · สมาชิก · OWNER) — ไม่เห็น/ไม่มี/ร้านอื่น = null */
 async function visibleRoom(ctx: ConvCtx, roomId: string): Promise<{ actor: AiMemberActor; room: RoomHead } | null> {
@@ -82,11 +84,18 @@ async function visibleRoom(ctx: ConvCtx, roomId: string): Promise<{ actor: AiMem
   if (!actor || !id) return null;
   const room = await tenantDb({ tenantId: ctx.tenantId }).aiRoom.findFirst({
     where: { id },
-    select: { id: true, conversationId: true, startedById: true, closedAt: true, members: { select: { userId: true } } },
+    select: { id: true, conversationId: true, startedById: true, closedAt: true, contextJson: true, members: { select: { userId: true } } },
   });
   if (!room) return null;
   const sees = actor.membership.role === "OWNER" || room.startedById === actor.userId || room.members.some((m) => m.userId === actor.userId);
   return sees ? { actor, room } : null;
+}
+
+/** รหัสห้องแชทลูกค้าของห้องเลขา (contextJson) — ไม่มี = null */
+function chatContextOf(v: Prisma.JsonValue | null | undefined): string | null {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  const id = typeof o?.chatConversationId === "string" ? o.chatConversationId.trim() : "";
+  return id || null;
 }
 
 const canManage = (actor: AiMemberActor, room: { startedById: string }) => actor.membership.role === "OWNER" || room.startedById === actor.userId;
@@ -177,9 +186,26 @@ export async function addMember(
   const tenantId = ctx.tenantId;
   const membership = await prisma.membership.findUnique({
     where: { userId_tenantId: { userId, tenantId } },
-    select: { role: true, acceptedAt: true, user: { select: { name: true, email: true } } },
+    select: { role: true, acceptedAt: true, unitAccess: true, permissions: true, user: { select: { name: true, email: true } } },
   });
   if (!membership || membership.acceptedAt === null) return fail("not_member_of_tenant");
+  // SEC S3a.1-S2 ▸ R-Z23 (L5 M2): ห้องที่มีบริบทลูกค้า (contextJson.chatConversationId) ⇒ ผู้ถูกเพิ่มต้องเห็นห้องแชทนั้นเอง
+  //   (สิทธิ์อ่านแชท + สาขา · `visibleCustomerConversation` ตัวเดียวกับ startRoom) — ไม่งั้นสมาชิกใหม่ได้อ่านบริบทลูกค้าที่ตัวเองไม่มีสิทธิ์ ◂
+  const chatConvId = chatContextOf(room.contextJson);
+  if (chatConvId) {
+    const { visibleCustomerConversation } = await import("./customer-context");
+    const target: AiMemberActor = {
+      kind: "member",
+      tenantId,
+      userId,
+      membership: {
+        role: membership.role,
+        unitAccess: Array.isArray(membership.unitAccess) ? (membership.unitAccess as unknown[]).filter((u): u is string => typeof u === "string") : [],
+        permissions: (membership.permissions ?? {}) as Record<string, unknown>,
+      },
+    };
+    if (!(await visibleCustomerConversation(tenantId, { chatConversationId: chatConvId }, target))) return fail("forbidden_chat");
+  }
   if (room.members.some((m) => m.userId === userId)) return fail("already");
   const seeHistory = input?.seeHistory === true;
 

@@ -41,12 +41,13 @@ export async function rememberFact(
   ctx: MemoryCtx,
   content: string,
   /** SEC S1.10 (R-K3) ▸ `pending` = เสนอเป็นข้อเท็จจริงของร้านที่รอ OWNER ยืนยัน (ผู้จดเป็น OWNER = ยืนยันทันที ไม่สนธงนี้) ◂ */
-  opts?: { pending?: boolean },
+  //  SEC S3a.1-S2 ▸ R-Z22: `forcePending` = รอยืนยันแม้ผู้จดเป็น OWNER (ห้องเลขาที่มีบริบทลูกค้า — ข้อความลูกค้าอยู่ใน prompt) ◂
+  opts?: { pending?: boolean; forcePending?: boolean },
 ): Promise<{ id: string; shared: boolean; pending?: true }> {
   const text = String(content ?? "").trim();
   if (!text) throw new Error("ต้องระบุเนื้อหาที่จะจำ (ห้ามว่าง)");
   const sight = memorySightOf(ctx);
-  const pending = opts?.pending === true && !sight.owner;
+  const pending = opts?.pending === true && (!sight.owner || opts.forcePending === true);
   // ผู้จดไม่ชัด = throw ก่อนแตะฐานข้อมูล · pending = รหัสของร้าน `o~<ผู้จด>~` (newShopMemoryId throw เมื่อไม่ใช่คนในร้าน)
   const { id, shared } = pending ? { id: newShopMemoryId(ctx), shared: true } : newMemoryId(ctx);
   if (shared) {

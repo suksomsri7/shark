@@ -4,10 +4,10 @@
 //   สิทธิ์บอร์ด (EDITOR ของบอร์ดปลายทาง) = ประตูของบอร์ดงานใน lib ด้วยสิทธิ์ของผู้กด · ผูกห้อง+ผู้ติดต่อ · ไม่คัดลอกไฟล์แนบ
 //   error ของ lib: status 403/404 ⇒ 403 forbidden / 404 not_found (R-S1.14b-h) · ข้อความไทยอื่น ⇒ 422 task_failed · ระบบ ⇒ 500
 import { z } from "zod";
-import { logOps } from "@/lib/core/ops";
+import { errDetail, logOps } from "@/lib/core/ops";
 import { createTaskFromChat } from "@/lib/modules/chat/task-from-chat";
 import { chatTaskButtonConfig } from "@/lib/modules/kanban/integrations";
-import { fail, gate, limited, notFound, readBody, REPLY, systemOf, visibleConv, type RouteCtx } from "../../../_shared";
+import { fail, gate, limited, notFound, readBody, REPLY, systemOf, visibleConv, type RouteCtx, withErrors } from "../../../_shared";
 
 const Body = z
   .object({
@@ -20,7 +20,7 @@ const Body = z
 
 const THAI = /[฀-๿]/;
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [REPLY]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -59,7 +59,10 @@ export async function POST(req: Request, ctx: RouteCtx) {
     if (status === 403) return fail(403, "forbidden", thaiMsg ?? "บัญชีนี้ยังไม่มีสิทธิ์เพิ่มงานในบอร์ดปลายทาง — ขอสิทธิ์จากเจ้าของร้าน");
     if (status === 404) return fail(404, "not_found", thaiMsg ?? "ไม่พบบอร์ดหรือคอลัมน์ปลายทาง — ให้เจ้าของร้านตรวจค่าตั้ง “สร้างงานจากแชท”");
     if (thaiMsg) return fail(422, "task_failed", thaiMsg);
-    await logOps("WARN", "mobile-inbox", "task: ล้ม", { detail: e instanceof Error ? (e.stack ?? e.message) : String(e), tenantId: c.tenantId }).catch(() => {});
+    await logOps("WARN", "mobile-inbox", "task: ล้ม", { detail: errDetail(e), tenantId: c.tenantId }).catch(() => {});
     return fail(500, "server_error", "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("inbox/conversations/[id]/task POST", POST_);

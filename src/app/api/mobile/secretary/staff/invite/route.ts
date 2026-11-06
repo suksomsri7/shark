@@ -9,7 +9,7 @@ import { z } from "zod";
 import { PERMISSION_MODULES } from "@/lib/core/permissions";
 import { inviteStaff } from "@/lib/staff/invite";
 import { CHAT_LEVELS, isSensitiveKey, levelsAvailableFor, permissionsForChat, permissionsForLevel, type ChatLevel, type ModuleLevel } from "@/lib/staff/levels";
-import { fail, gate, ID_MAX, readBody, thrown, withRateLimit } from "../../_shared";
+import { fail, gate, ID_MAX, readBody, thrown, withRateLimit, withErrors } from "../../_shared";
 import { inviteResponse } from "../_staff";
 
 const PermMap = z.record(z.string().max(120), z.unknown());
@@ -61,7 +61,7 @@ function buildPermissions(v: z.infer<typeof Body>): Built {
   return { ok: true, permissions: any ? { ...acc, ...(v.permissions ?? {}), ...(v.extraPermissions ?? {}) } : undefined };
 }
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "staff-invite", 10);
@@ -82,3 +82,6 @@ export async function POST(req: Request) {
     return thrown(e, "staff.invite");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/staff/invite POST", POST_);

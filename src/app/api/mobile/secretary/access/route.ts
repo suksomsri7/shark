@@ -3,18 +3,18 @@
 import { z } from "zod";
 import { ACCESS_LEVELS, getAccess, setAccess } from "@/lib/ai/secretary/access";
 import { accessItemsFor } from "@/lib/ai/secretary/views";
-import { gate, ok, readBody, thrown, withRateLimit } from "../_shared";
+import { gate, ok, readBody, thrown, withRateLimit, withErrors } from "../_shared";
 
 const Body = z.object({ module: z.string().trim().min(1).max(40), level: z.string().trim().min(1).max(10) }).strict();
 const view = async (tenantId: string, levels: Awaited<ReturnType<typeof getAccess>>) => ({ items: await accessItemsFor(tenantId, levels), levels: ACCESS_LEVELS });
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   return ok(await view(a.c.tenantId, await getAccess(a.c.tenantId)));
 }
 
-export async function PUT(req: Request) {
+async function PUT_(req: Request) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "access");
@@ -27,3 +27,7 @@ export async function PUT(req: Request) {
     return thrown(e, "access.put");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/access GET", GET_);
+export const PUT = withErrors("secretary/access PUT", PUT_);

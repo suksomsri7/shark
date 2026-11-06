@@ -10,8 +10,9 @@
 import { tenantDb } from "@/lib/core/db";
 import { type MembershipCtx } from "@/lib/core/rbac";
 import type { Prisma } from "@prisma/client";
-import { DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
+import { closedRoomNote, DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
 import type { ConvCtx } from "./conversation-owner";
+import { currentToolCallKey, toolCallRowId } from "./tool-call-key"; // SEC S3a.1-S2 R-Z34 ◂
 import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
 import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/members";
 
@@ -78,8 +79,16 @@ export async function createPlan(
     payload: (s.payload ?? {}) as Record<string, unknown>,
     status: "PENDING",
   }));
+  // SEC S3a.1-S2 ▸ R-Z34 (RC2 MINOR-4): กุญแจ tool call เดียวกับข้อเสนอ (R-Z7) — เทิร์นห้องเลขาที่รันซ้ำ = แผนเดิม · ไม่มีกุญแจ = cuid เดิม ◂
+  const tcKey = currentToolCallKey();
+  const fixedId = tcKey ? toolCallRowId("tp", [ctx.tenantId, input.conversationId, tcKey, "plan"]) : null;
+  if (fixedId) {
+    const existing = await tenantDb(ctx).aiPlan.findFirst({ where: { id: fixedId }, select: { id: true } });
+    if (existing) return { id: existing.id };
+  }
   const row = await tenantDb(ctx).aiPlan.create({
     data: {
+      ...(fixedId ? { id: fixedId } : {}),
       tenantId: ctx.tenantId,
       conversationId: input.conversationId,
       title: String(input.title ?? "").trim() || "แผนงาน",
@@ -87,6 +96,12 @@ export async function createPlan(
       stepsJson: stepsJson as unknown as Prisma.InputJsonValue,
       expiresAt: new Date(Date.now() + TTL_MS),
     },
+  }).catch(async (e: unknown) => {
+    if (fixedId && (e as { code?: unknown } | null)?.code === "P2002") {
+      const again = await tenantDb(ctx).aiPlan.findFirst({ where: { id: fixedId }, select: { id: true } });
+      if (again) return again;
+    }
+    throw e;
   });
   return { id: row.id };
 }
@@ -116,6 +131,9 @@ export async function executePlan(
 
   // ไม่ใช่ PENDING (ทำไปแล้ว/ถูกปิด) → ไม่ทำซ้ำ
   if (row.status !== "PENDING") return { ok: false, results: [], doneCount: 0 };
+  // SEC S3a.1-S1 ▸ R-Z9: แผนในห้องเลขาที่ปิดแล้ว ⇒ ไม่ทำสักขั้น (แผนคง PENDING) ◂
+  const closedNote = await closedRoomNote(ctx.tenantId, row.conversationId);
+  if (closedNote) return { ok: false, results: [], doneCount: 0, note: closedNote };
 
   // หมดอายุ → EXPIRED (กันกดของเก่า)
   if (row.expiresAt.getTime() <= Date.now()) {

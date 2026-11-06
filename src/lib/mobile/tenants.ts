@@ -47,7 +47,8 @@ const TENANT_TYPE_LABEL: Record<TenantType, string> = {
 export type CreateTenantFromAppResult = {
   tenant: Tenant;
   systems: { type: string; id: string }[];
-  room: { roomId: string; conversationId: string } | null;
+  /** SEC S3a.1-S1 R-Z3: `jobId` = งานของข้อความแรก (เกิดใน tx ของ startRoom) — route รันต่อใน `after()` · ไม่ทันก็ตัวเก็บตกรายนาที */
+  room: { roomId: string; conversationId: string; jobId: string } | null;
 };
 
 /** ข้อผิดพลาดตามกติกา (ข้อความไทยให้ผู้ใช้) — route แยกจาก error ระบบได้ (R-S1.25j) */
@@ -106,7 +107,7 @@ export async function createTenantFromApp(
       { instruction: `ตั้งค่าเริ่มต้นของกิจการ ${orgName} (ประเภท ${TENANT_TYPE_LABEL[type]}) — แนะนำสิ่งที่ควรตั้งค่าก่อนเป็นลำดับ` },
       now,
     );
-    if (r.ok) room = { roomId: r.roomId, conversationId: r.conversationId };
+    if (r.ok) room = { roomId: r.roomId, conversationId: r.conversationId, jobId: r.jobId };
     else await logTenantOps(tenant.id, `ห้องแรกไม่ได้เปิด: ${r.error}`);
   } catch (e) {
     await logTenantOps(tenant.id, `ห้องแรกไม่ได้เปิด: ${e instanceof Error ? e.message.slice(0, 160) : "error"}`);

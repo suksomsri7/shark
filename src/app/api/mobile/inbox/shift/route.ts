@@ -4,9 +4,9 @@
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import { setShift } from "@/lib/modules/chat/routing";
-import { gate, limited, READ, readBody, REPLY } from "../_shared";
+import { gate, limited, READ, readBody, REPLY, withErrors } from "../_shared";
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req, [READ]);
   if (!a.ok) return a.res;
   const { tenantId, userId } = a.c;
@@ -20,7 +20,7 @@ export async function GET(req: Request) {
 
 const Body = z.object({ onDuty: z.boolean() }).strict();
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   const a = await gate(req, [REPLY]);
   if (!a.ok) return a.res;
   const b = await readBody(req, Body);
@@ -30,3 +30,7 @@ export async function POST(req: Request) {
   const r = await setShift(a.c.tenantId, a.c.userId, b.v.onDuty);
   return Response.json({ onDuty: r.onDuty, onDutyAt: r.onDutyAt ? r.onDutyAt.toISOString() : null });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("inbox/shift GET", GET_);
+export const POST = withErrors("inbox/shift POST", POST_);

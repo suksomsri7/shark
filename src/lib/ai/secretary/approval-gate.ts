@@ -55,7 +55,7 @@ export async function setRule(
   const p = patch ?? {};
   if (p.enabled !== undefined && typeof p.enabled !== "boolean") throw new Error("ค่าเปิด/ปิดกฎต้องเป็นใช่หรือไม่ใช่");
   if (p.limitSatang !== undefined && p.limitSatang !== null) {
-    if (typeof p.limitSatang !== "number" || !Number.isInteger(p.limitSatang) || p.limitSatang < 0) {
+    if (typeof p.limitSatang !== "number" || !Number.isInteger(p.limitSatang) || p.limitSatang < 0 || p.limitSatang > 2_147_483_647) { // R-Z20: INT4
       throw new Error("วงเงินต้องเป็นจำนวนเต็ม (สตางค์) ที่ไม่ติดลบ");
     }
     if (key !== "money.limit") throw new Error("ตั้งวงเงินได้เฉพาะกฎ money.limit");
@@ -89,6 +89,10 @@ function approverVerdict(m: MembershipCtx, kind: string, userId: string | null |
   return null;
 }
 
+// SEC S3a.1-S2 ▸ R-Z17 (L1 m-4): kind ใหม่ของเลขา (ส่งถึงลูกค้า · คืนเงิน) ใช้ด่านผู้อนุมัติในทุกบทสนทนา แม้ไม่มี AiRoom ·
+//   kind เดิมนอกห้องเลขา = พฤติกรรมเดิม (R-K4 · R-S1.7b) ◂
+export const SECRETARY_GATED_KINDS: ReadonlySet<string> = new Set(["chat.send", "booking_refund_deposit"]);
+
 async function roomOf(tenantId: string, conversationId: string | null | undefined): Promise<boolean> {
   if (!conversationId) return false;
   return !!(await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId }, select: { id: true } }));
@@ -108,7 +112,7 @@ export async function approvalGate(
   userId?: string | null,
 ): Promise<GateResult> {
   try {
-    if (!(await roomOf(tenantId, row.conversationId))) return { ok: true };
+    if (!SECRETARY_GATED_KINDS.has(row.kind) && !(await roomOf(tenantId, row.conversationId))) return { ok: true };
     const bad = approverVerdict(m, row.kind, userId);
     if (bad) return { ok: false, note: bad };
     return { ok: true, why: whyApproval(row.kind, row.payload, await listRules(tenantId)) };
@@ -129,8 +133,11 @@ export async function planApprovalGate(
   userId?: string | null,
 ): Promise<string | null> {
   try {
-    if (!(await roomOf(tenantId, conversationId))) return null;
+    const gated = steps.some((st) => SECRETARY_GATED_KINDS.has(String(st?.kind ?? "")));
+    if (!gated && !(await roomOf(tenantId, conversationId))) return null;
+    const inRoom = gated ? await roomOf(tenantId, conversationId) : true;
     for (const st of steps) {
+      if (!inRoom && !SECRETARY_GATED_KINDS.has(String(st?.kind ?? ""))) continue; // นอกห้องเลขา: ตรวจเฉพาะ kind ใหม่ (R-Z17)
       const bad = approverVerdict(m, String(st?.kind ?? ""), userId);
       if (bad) return bad;
     }

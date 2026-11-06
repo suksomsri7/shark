@@ -6,7 +6,7 @@
 import { prisma } from "@/lib/core/db";
 import { drainAll } from "@/lib/outbox-consumers";
 import { outboxHealth } from "@/lib/core/outbox";
-import { logOps } from "@/lib/core/ops";
+import { logOps, sweepOpsRetention } from "@/lib/core/ops";
 import { sweepPendingDeletes } from "@/lib/platform/pdpa";
 import { sweepWeeklyAnalysis } from "@/lib/ai/analyst";
 import { sweepExpiringLots } from "@/lib/modules/inventory/service";
@@ -417,6 +417,8 @@ export async function runDailyCron(
   } catch {
     // กวาดถัง rate limit พัง → -1 ไปต่อ
   }
+  // SEC S3a.1-S2 ▸ R-Z26: อายุเก็บของ ops (OpsEvent 90 วัน · sms-mock 1 วัน · PhoneOtp 30 วัน) — ห้ามโยน (ตัวมันกลืนเอง) ◂
+  await sweepOpsRetention(now);
   try {
     // K2.7: การ์ดเกิดซ้ำ — สร้างการ์ดลูกของงานประจำที่ถึงรอบวันนี้ (idempotent ผ่าน recurrenceKey)
     recurringCards = await sweepRecurringCards(now);

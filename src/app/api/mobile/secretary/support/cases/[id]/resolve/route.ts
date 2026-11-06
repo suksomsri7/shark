@@ -1,9 +1,9 @@
 // POST /api/mobile/secretary/support/cases/[id]/resolve — ร้านกด "แก้แล้ว" (`setResolvedByShop` · เฉพาะเรื่องที่ผู้ใช้เห็น)
 import { z } from "zod";
 import { setResolvedByShop } from "@/lib/support/service";
-import { gate, idParam, notFound, ok, readBody, withRateLimit, type RouteCtx } from "../../../../_shared";
+import { gate, idParam, notFound, ok, readBody, withRateLimit, type RouteCtx, withErrors } from "../../../../_shared";
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "support");
@@ -13,3 +13,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
   const id = await idParam(ctx, "id");
   return id && (await setResolvedByShop({ tenantId: a.c.tenantId }, a.c.userId, a.c.m.role, id)) ? ok({ ok: true }) : notFound("ไม่พบเรื่องนี้");
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/support/cases/[id]/resolve POST", POST_);
