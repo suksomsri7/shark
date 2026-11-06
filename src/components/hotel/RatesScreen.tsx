@@ -101,7 +101,7 @@ function CalendarTab({ model, canWrite, actions, run, busy }: TabProps) {
   const types = model.preview.roomTypes;
   const planName = model.plans.find((p) => p.id === model.preview.ratePlanId)?.name ?? "ยังไม่มีแผนราคา";
   const weekend = new Set(model.rules.weekendDays);
-  const reasonOf = useMemo(() => new Map(model.overrides.map((o) => [`${o.roomTypeId}|${o.date}`, o.reason ?? ""])), [model]);
+  const reasonOf = useMemo(() => new Map(model.overrides.map((o) => [`${o.roomTypeId}|${o.date}`, o.reason ?? ""] as const)), [model]);
   const open = (roomTypeId: string, date: string, priceSatang: number | null) =>
     setDraft({ roomTypeId, date, dateTo: date, price: priceSatang === null ? "" : String(priceSatang / 100), reason: reasonOf.get(`${roomTypeId}|${date}`) ?? "", ratePlanId: "" });
   const save = () => {
@@ -265,7 +265,7 @@ function RateRows({
           const full = !c || c.remaining === 0;
           return (
             <td key={d.date} data-remaining={c?.remaining ?? 0} className={`pb-2 ${full ? "font-bold text-[color:var(--color-danger)]" : c && isLow(c.remaining, c.total) ? "font-bold text-[color:var(--color-ink)]" : ""}`}>
-              {full ? "เต็ม" : c.remaining}
+              {c && c.remaining > 0 ? c.remaining : "เต็ม"}
             </td>
           );
         })}
@@ -423,8 +423,8 @@ function PlanCard({ plan, canWrite, busy, onEdit, onArchive }: { plan: RatePlanD
 function MatrixEditor({ model, canWrite, actions, run, busy }: TabProps) {
   const rows = model.matrix?.rows ?? [];
   const [vals, setVals] = useState(() => initialVals(rows));
-  const typeName = new Map(model.preview.roomTypes.map((t) => [t.id, t.name]));
-  const seasonName = new Map(model.seasons.map((s: SeasonDto) => [s.id, s.name]));
+  const typeName = new Map(model.preview.roomTypes.map((t) => [t.id, t.name] as const));
+  const seasonName = new Map(model.seasons.map((s: SeasonDto) => [s.id, s.name] as const));
   const save = () => {
     const out: Record<string, unknown>[] = [];
     for (const r of rows) {
