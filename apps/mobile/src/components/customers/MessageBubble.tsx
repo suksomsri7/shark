@@ -5,7 +5,7 @@
 //   ลิงก์ไฟล์/เสียง/รูปเต็มจอ เปิดเฉพาะ https (isSafeLink · R-S2.17c)
 //   สติกเกอร์ (stickerMeta) = ช่องสติกเกอร์ (ไม่โหลดรูปจากภายนอก) · รูป = ย่อ แตะ = ตัวดูเต็มจอ · ไฟล์ = เปิด · เสียง = เล่น (เปิดลิงก์) + ความยาว
 //   deliveryStatus FAILED = ✗ + ปุ่มส่งใหม่
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Image, Linking, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { Icon } from "@/src/components/airy";
@@ -64,6 +64,7 @@ export function MessageBubble({
   onResend,
   resending,
   ids,
+  inFooter,
 }: {
   msg: MsgItem;
   customerName: string;
@@ -73,6 +74,8 @@ export function MessageBubble({
   onResend?: (m: MsgItem) => void;
   resending?: boolean;
   ids: { in: string; out: string; ai: string; internal: string; system: string };
+  /** S3a.6: ใต้ฟองลูกค้า (IN) — ปุ่ม "แปล" / คำแปล (จอวาดเอง · testID อยู่ในไฟล์จอ) */
+  inFooter?: ReactNode;
 }) {
   const { c } = useTheme();
   const t = useT();
@@ -158,6 +161,7 @@ export function MessageBubble({
             {customerName} · {time}
           </Text>
           <View style={[glassStyle(c, 18), styles.inB]}>{content(true)}</View>
+          {inFooter}
         </View>
       </View>
     );

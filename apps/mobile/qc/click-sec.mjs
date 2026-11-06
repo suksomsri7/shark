@@ -176,6 +176,7 @@ const SCENARIOS = [
   ["s2.17.json", "/customers,/customers/x1,/customers/x1/info,/secretary/settings/customers"],
   ["s2.21.json", "/business/new,/secretary/staff/invite,/secretary/staff/m1,/secretary/settings/account"],
   ["s2.21-mgr.json", "/secretary/staff/invite,/secretary/staff/m1,/secretary/staff/m2,/secretary/settings/account"],
+  ["s3a6.json", "/customers/x9"], // S3a.6-A แปลภาษาห้องแชทลูกค้า (ปุ่มแปล · แปลแล้วส่ง · แผ่นยืนยัน)
   ...["s2.14-cases.json", "s2.14-loading.json", "s2.14-error.json", "s2.14-empty.json", "s2.14-denied.json"].filter((f) => existsSync(join(FIX, f))).map((f) => [f, JSON.parse(readFileSync(join(FIX, f), "utf8")).routes.join(",")]),
 ].flatMap(([f, rs]) => rs.split(",").filter(Boolean).map((route) => ({ fixture: f, route })))
   // SCEN=<regex ของชื่อ fixture> = สำรวจเฉพาะชุดนั้น (รอบแก้ตัวแดง · ใช้คู่ RESUME=1)

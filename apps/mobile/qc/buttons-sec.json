@@ -3318,12 +3318,42 @@
   "action": "endpoint inbox/conversations/[id]"
  },
  {
+  "testID": "cust-bubble-translation",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-bubble-translate",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void translate(m)",
+  "action": "handler ในจอ"
+ },
+ {
   "testID": "cust-draft-card",
   "files": [
    "app/(app)/customers/[id]/index.tsx"
   ],
   "kind": "view",
   "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-draft-gloss",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -3345,6 +3375,66 @@
   "kind": "button",
   "tag": "Pressable",
   "handler": "() => void composer.current?.sendText(draft.body, draft.id).then((ok) => ok && setDraft(null))",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cust-tr-sheet",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-tr-original",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-tr-text",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-tr-send",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "PrimaryButton",
+  "handler": "() => { const text = trSheet?.text ?? \"\"; if (!text || trSending) return; setTrSending(true); void (composer.current?.sendTranslated(text) ?? Promise.resolve(false)) .then((ok) => ok && setTrSheet(null)) .finally(() => setTrSending(false)); }",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cust-tr-edit",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => { composer.current?.fill(trSheet?.text ?? \"\"); setTrSheet(null); }",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cust-tr-cancel",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setTrSheet(null)",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
@@ -3459,6 +3549,16 @@
   "tag": "Pressable",
   "handler": "() => setInternal((v) => !v)",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cust-translate-send",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void translateDraft()",
+  "action": "endpoint inbox/conversations/[id]/translate-draft"
  },
  {
   "testID": "cust-info-note",

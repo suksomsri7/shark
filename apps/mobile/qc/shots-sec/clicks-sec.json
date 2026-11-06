@@ -1,12 +1,12 @@
 {
  "meta": {
-  "generatedAt": "2026-11-06T01:37:52.143Z",
-  "registryHash": "30ad5edc364e9fbd824954d92038960b0e2b0c13a37e475ec2c032b888485307",
-  "distHash": "3729ca93d40ed076c3bbb6ebab8748161882a4b52a9000cf3ec0bd018299ea52",
+  "generatedAt": "2026-11-06T16:19:20.417Z",
+  "registryHash": "49c8890d4f8cf5bc174199ef6cc83147f8601edc834eb15c99e1b5cff085949a",
+  "distHash": "ab444bc13e66eb6e0adce18adc791d6b9f76fbf03a741663196b5947a9238667",
   "resumed": false,
   "workers": 4,
-  "clicks": 2546,
-  "seconds": 4157,
+  "clicks": 2580,
+  "seconds": 6287,
   "scen": null
  },
  "items": [
@@ -305,7 +305,7 @@
    "testID": "help-room-detach",
    "ok": true,
    "kind": "button",
-   "effect": "ui +sec-top-team-badge -help-room-attached,help-room-detach",
+   "effect": "ui + -help-room-attached,help-room-detach",
    "fixture": "s2.14-cases.json",
    "route": "/secretary/help?roomId=r1",
    "path": []
@@ -428,7 +428,7 @@
    "testID": "sec-inbox-tabs",
    "ok": true,
    "kind": "group",
-   "effect": "child sec-inbox-tab-customer: ui + -sec-inbox-cannot · state",
+   "effect": "child sec-inbox-tab-money: ui + -sec-inbox-cannot · state",
    "fixture": "s2.5.json",
    "route": "/secretary/inbox",
    "path": [
@@ -580,7 +580,7 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.20.json",
+   "fixture": "s2.14-loading.json",
    "route": "/secretary",
    "path": []
   },
@@ -780,7 +780,7 @@
    "testID": "sec-onb-skip",
    "ok": true,
    "kind": "button",
-   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-onb-name,sec-onb-back,sec-onb-skip",
+   "effect": "GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-onb-name,sec-onb-back,sec-onb-skip",
    "fixture": "s2.1.json",
    "route": "/secretary/onboarding/name",
    "path": []
@@ -914,7 +914,7 @@
    "testID": "sec-room-back",
    "ok": true,
    "kind": "button",
-   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · route /secretary?id=r9 · ui +sec-secretary,sec-home,sec-top -sec-room,sec-room-back,sec-room-title · field sec-home-search",
+   "effect": "GET secretary/rooms?scope=mine&take=50 · route /secretary?id=r9 · ui +sec-secretary,sec-home,sec-top -sec-room,sec-room-back,sec-room-title · field sec-home-search",
    "fixture": "s2.14-cases.json",
    "route": "/secretary/room/r9",
    "path": []
@@ -996,7 +996,7 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.14-loading.json",
+   "fixture": "s2.4-running.json",
    "route": "/secretary/room/r1",
    "path": []
   },
@@ -1184,7 +1184,7 @@
    "testID": "sec-sched-back",
    "ok": true,
    "kind": "button",
-   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-sched,sec-sched-list,sec-sched-back",
+   "effect": "GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-sched,sec-sched-list,sec-sched-back",
    "fixture": "s2.1.json",
    "route": "/secretary/scheduled",
    "path": []
@@ -1290,7 +1290,7 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.14-loading.json",
+   "fixture": "s2.7.json",
    "route": "/secretary/settings/access",
    "path": []
   },
@@ -1677,7 +1677,7 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.14-loading.json",
+   "fixture": "s2.7.json",
    "route": "/secretary/settings/customers",
    "path": []
   },
@@ -1685,7 +1685,7 @@
    "testID": "sec-cust-afterhours",
    "ok": true,
    "kind": "button",
-   "effect": "state",
+   "effect": "ui +cust-set-channels,cust-set-channels-web,cust-set-quick -cust-set-loading · state",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": []
@@ -1705,7 +1705,7 @@
    "testID": "sec-cust-handoff",
    "ok": true,
    "kind": "button",
-   "effect": "state",
+   "effect": "ui +cust-set-channels,cust-set-channels-web,cust-set-quick -cust-set-loading · state",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": []
@@ -1749,7 +1749,7 @@
    "testID": "sec-cust-hours",
    "ok": true,
    "kind": "button",
-   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793925925535 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
+   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793977019508 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": []
@@ -1768,7 +1768,7 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.1.json",
+   "fixture": "s2.7.json",
    "route": "/secretary/settings/customers",
    "path": []
   },
@@ -1787,7 +1787,7 @@
    "testID": "cust-set-channels-web",
    "ok": true,
    "kind": "button",
-   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793925926076 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
+   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793977019761 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": []
@@ -1807,7 +1807,7 @@
    "testID": "cust-set-quick-web",
    "ok": true,
    "kind": "button",
-   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793925929971 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
+   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793977019828 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": []
@@ -1827,11 +1827,12 @@
    "testID": "cust-set-note",
    "ok": true,
    "kind": "view",
-   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-set-shift-toggle",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-set-routing-save",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": [
-    "cust-set-shift-toggle"
+    "cust-set-rule-add",
+    "cust-set-routing-save"
    ]
   },
   {
@@ -1972,7 +1973,7 @@
    "testID": "sec-settings-row-*",
    "ok": true,
    "kind": "button",
-   "effect": "member sec-settings-row-quota: GET secretary/quota · route /secretary/settings/quota · ui +sec-quota,sec-quota-top,sec-quota-top-back -sec-settings,sec-top,sec-top-secretary",
+   "effect": "member sec-settings-row-secretary: GET secretary/secretary · GET secretary/quota · GET secretary/inbox/count · route /secretary/settings/secretary · ui +sec-me,sec-me-top,sec-me-top-back -sec-settings,sec-top,sec-top-secretary · field sec-me-name",
    "fixture": "s2.1.json",
    "route": "/secretary/settings",
    "path": []
@@ -1999,11 +2000,11 @@
    "testID": "sec-know-note",
    "ok": true,
    "kind": "view",
-   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-know-confirm-mm1",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-know-reject-mm1",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/knowledge",
    "path": [
-    "sec-know-confirm-mm1"
+    "sec-know-reject-mm1"
    ]
   },
   {
@@ -2708,7 +2709,7 @@
    "testID": "perm-save",
    "ok": true,
    "kind": "button",
-   "effect": "PUT secretary/staff/m1 · GET secretary/staff · GET secretary/access · ui +perm-note - · state",
+   "effect": "PUT secretary/staff/m1 · ui +perm-note - · state",
    "fixture": "s2.21.json",
    "route": "/secretary/staff/m1",
    "path": []
@@ -2805,7 +2806,7 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.14-loading.json",
+   "fixture": "s2.20.json",
    "route": "/secretary/staff",
    "path": []
   },
@@ -2987,9 +2988,11 @@
    "ok": true,
    "kind": "button",
    "effect": "ui +inv-unit-pick - · state",
-   "fixture": "s2.1.json",
+   "fixture": "s2.14-cases.json",
    "route": "/secretary/staff/invite",
-   "path": []
+   "path": [
+    "inv-phone=0212345678"
+   ]
   },
   {
    "testID": "inv-unit-pick",
@@ -3015,7 +3018,7 @@
    "testID": "inv-chat",
    "ok": true,
    "kind": "group",
-   "effect": "child inv-chat-VIEW: state",
+   "effect": "child inv-chat-REPLY: state",
    "fixture": "s2.14-cases.json",
    "route": "/secretary/staff/invite",
    "path": [
@@ -3087,7 +3090,7 @@
    "testID": "inv-submit",
    "ok": true,
    "kind": "button",
-   "effect": "POST secretary/staff/invite · GET secretary/staff/invites · GET secretary/badges · ui +inv-result,inv-result-link - · state · field inv-name",
+   "effect": "POST secretary/staff/invite · GET secretary/staff/invites · ui +inv-result,inv-result-link - · state · field inv-name",
    "fixture": "s2.21.json",
    "route": "/secretary/staff/invite",
    "path": []
@@ -3118,7 +3121,7 @@
    "testID": "inv-cancel-sheet-ok",
    "ok": true,
    "kind": "button",
-   "effect": "DELETE secretary/staff/invites/inv1 · GET secretary/staff/invites · GET secretary/badges · ui +inv-note -inv-cancel-sheet,inv-cancel-sheet-dim,inv-cancel-sheet-no",
+   "effect": "DELETE secretary/staff/invites/inv1 · GET secretary/staff/invites · ui +inv-note -inv-cancel-sheet,inv-cancel-sheet-dim,inv-cancel-sheet-no",
    "fixture": "s2.21.json",
    "route": "/secretary/staff/invite",
    "path": [
@@ -3165,7 +3168,7 @@
    "testID": "cust-room-helper",
    "ok": true,
    "kind": "button",
-   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · route /customers/x2/info?s=cs1&open=helpers · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper · field cust-info-helpers-sheet-note",
+   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · GET inbox/systems · route /customers/x2/info?s=cs1&open=helpers · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper · field cust-info-helpers-sheet-note",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x2",
    "path": []
@@ -3174,7 +3177,7 @@
    "testID": "cust-room-info",
    "ok": true,
    "kind": "button",
-   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · route /customers/x2/info?s=cs1 · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper",
+   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · GET inbox/systems · route /customers/x2/info?s=cs1 · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x2",
    "path": []
@@ -3192,7 +3195,7 @@
    "testID": "cust-room-claim",
    "ok": true,
    "kind": "button",
-   "effect": "POST inbox/conversations/x2/assign · GET inbox/conversations/x2?systemId=cs1 · ui +cust-room-note -",
+   "effect": "POST inbox/conversations/x2/assign · GET inbox/conversations/x2?systemId=cs1 · ui +cust-room-note,cust-quick -",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x2",
    "path": []
@@ -3231,8 +3234,8 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.14-loading.json",
-   "route": "/customers/x1",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
    "path": []
   },
   {
@@ -3241,6 +3244,24 @@
    "kind": "button",
    "effect": "GET inbox/conversations/x9?systemId=cs1&before=2026-11-02T03%3A00%3A00.000Z%7Cm90",
    "fixture": "s2.14-cases.json",
+   "route": "/customers/x9",
+   "path": []
+  },
+  {
+   "testID": "cust-bubble-translation",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": []
+  },
+  {
+   "testID": "cust-bubble-translate",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x9/messages/m91/translate · ui + -cust-bubble-translate",
+   "fixture": "s3a6.json",
    "route": "/customers/x9",
    "path": []
   },
@@ -3256,22 +3277,101 @@
    ]
   },
   {
+   "testID": "cust-draft-gloss",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": []
+  },
+  {
    "testID": "cust-draft-edit",
    "ok": true,
    "kind": "button",
-   "effect": "ui + -cust-draft-card,cust-draft-edit,cust-draft-send · field cust-input-field",
-   "fixture": "s2.1.json",
+   "effect": "GET inbox/conversations/x1?systemId=cs1 · ui + -cust-draft-card,cust-draft-edit,cust-draft-send · field cust-input-field",
+   "fixture": "s2.14-cases.json",
    "route": "/customers/x1",
-   "path": []
+   "path": [
+    "cust-attach@file"
+   ]
   },
   {
    "testID": "cust-draft-send",
    "ok": true,
    "kind": "button",
    "effect": "POST inbox/conversations/x1/reply · GET inbox/conversations/x1?systemId=cs1 · ui + -cust-draft-card,cust-draft-edit,cust-draft-send",
-   "fixture": "s2.1.json",
+   "fixture": "s2.14-cases.json",
    "route": "/customers/x1",
-   "path": []
+   "path": [
+    "cust-attach@file"
+   ]
+  },
+  {
+   "testID": "cust-tr-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-translate-send",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-original",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-translate-send",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-text",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-translate-send",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x9/reply · GET inbox/conversations/x9?systemId=cs1 · ui + -cust-tr-sheet,cust-tr-sheet-dim,cust-tr-original · field cust-input-field",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-edit",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/conversations/x9?systemId=cs1 · ui + -cust-tr-sheet,cust-tr-sheet-dim,cust-tr-original · field cust-input-field",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-cancel",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -cust-tr-sheet,cust-tr-sheet-dim,cust-tr-original",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
   },
   {
    "testID": "cust-image-viewer",
@@ -3340,7 +3440,7 @@
    "testID": "cust-attached-remove",
    "ok": true,
    "kind": "button",
-   "effect": "GET inbox/conversations/x1?systemId=cs1 · ui + -cust-attached,cust-attached-remove",
+   "effect": "ui + -cust-attached,cust-attached-remove",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x1",
    "path": [
@@ -3369,7 +3469,7 @@
    "testID": "cust-attach",
    "ok": true,
    "kind": "button",
-   "effect": "ui +cust-quick - · filechooser",
+   "effect": "filechooser",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x2",
    "path": []
@@ -3378,9 +3478,18 @@
    "testID": "cust-internal-toggle",
    "ok": true,
    "kind": "button",
-   "effect": "state",
+   "effect": "GET inbox/conversations/x2?systemId=cs1 · state",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-translate-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x9/translate-draft · ui +cust-tr-sheet,cust-tr-sheet-dim,cust-tr-original -",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
    "path": []
   },
   {
@@ -3414,7 +3523,7 @@
    "testID": "cust-info-back",
    "ok": true,
    "kind": "button",
-   "effect": "GET inbox/systems · GET inbox/conversations?systemId=cs1 · GET inbox/routing?systemId=cs1 · route /customers?id=x1 · ui +cust-list,sec-top,sec-top-secretary -cust-info,cust-info-top,cust-info-back",
+   "effect": "GET inbox/systems · route /customers?id=x1 · ui +cust-list,sec-top,sec-top-secretary -cust-info,cust-info-top,cust-info-back",
    "fixture": "s2.1.json",
    "route": "/customers/x1/info",
    "path": []
@@ -3837,7 +3946,7 @@
    "testID": "cust-system-chip",
    "ok": true,
    "kind": "button",
-   "effect": "ui +cust-counts,cust-row,cust-row-unassigned -cust-loading",
+   "effect": "GET inbox/conversations?systemId=cs2 · GET inbox/routing?systemId=cs2 · state",
    "fixture": "s2.14-cases.json",
    "route": "/customers",
    "path": []
@@ -3864,7 +3973,7 @@
    "testID": "cust-channel-chip",
    "ok": true,
    "kind": "button",
-   "effect": "ui +sec-top-team-badge,cust-counts,cust-system-chip -cust-loading",
+   "effect": "ui +cust-counts,cust-row,cust-row-unassigned -cust-loading",
    "fixture": "s2.14-cases.json",
    "route": "/customers",
    "path": []
@@ -4020,7 +4129,7 @@
    "testID": "biz-new-type-*",
    "ok": true,
    "kind": "button",
-   "effect": "member biz-new-type-service: state",
+   "effect": "member biz-new-type-retail: state",
    "fixture": "s2.14-cases-new.json",
    "route": "/business/new",
    "path": []
@@ -4243,12 +4352,10 @@
    "testID": "otp-resend",
    "ok": true,
    "kind": "button",
-   "effect": "POST auth/sms/request · ui +otp-sms-unavailable,otp-other-ways -",
-   "fixture": "s2.14-cases-auth.json",
+   "effect": "POST auth/sms/request · state",
+   "fixture": "s2.12.json",
    "route": "/otp?phone=0812345678&mode=login&resend=1",
-   "path": [
-    "wait:1500"
-   ]
+   "path": []
   },
   {
    "testID": "otp-edit-email",
@@ -4292,27 +4399,21 @@
   },
   {
    "testID": "otp-sms-unavailable",
-   "ok": true,
+   "ok": false,
    "kind": "view",
-   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด otp-resend",
-   "fixture": "s2.14-cases-auth.json",
-   "route": "/otp?phone=0812345678&mode=login&resend=1",
-   "path": [
-    "wait:1500",
-    "otp-resend"
-   ]
+   "effect": "ไม่เคยเห็นบนจอ",
+   "fixture": null,
+   "route": null,
+   "path": []
   },
   {
    "testID": "otp-other-ways",
-   "ok": true,
+   "ok": false,
    "kind": "button",
-   "effect": "route /login · ui +login,login-phone,login-sms -otp,otp-back,otp-input · field login-phone",
-   "fixture": "s2.14-cases-auth.json",
-   "route": "/otp?phone=0812345678&mode=login&resend=1",
-   "path": [
-    "wait:1500",
-    "otp-resend"
-   ]
+   "effect": "ไม่เคยเห็นบนจอ",
+   "fixture": null,
+   "route": null,
+   "path": []
   },
   {
    "testID": "otp-submit",

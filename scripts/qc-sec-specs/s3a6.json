@@ -1,0 +1,53 @@
+{
+ "wo": "S3a.6-A",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s3a6.json",
+ "routes": [
+  {
+   "route": "/customers/x9",
+   "file": "app/(app)/customers/[id]/index.tsx",
+   "testIds": [
+    "cust-bubble-translate",
+    "cust-bubble-translation",
+    "cust-draft-gloss",
+    "cust-translate-send",
+    "cust-tr-sheet",
+    "cust-tr-original",
+    "cust-tr-text",
+    "cust-tr-send",
+    "cust-tr-edit",
+    "cust-tr-cancel"
+   ],
+   "pair": true
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "แปลข้อความลูกค้า: needsTranslation + can.translate ⇒ ปุ่ม · translatedBody ⇒ แสดงเลย · POST …/messages/[mid]/translate · ok:false ⇒ reason ไทย",
+   "file": "app/(app)/customers/[id]/index.tsx",
+   "must": ["needsTranslation", "translatedBody", "can\\?\\.translate", "inboxTranslateMessage", "reason"],
+   "mustNot": []
+  },
+  {
+   "id": "X-2",
+   "name": "ร่าง Shark มี gloss ⇒ บรรทัดคำแปล · ส่ง = body (ไม่ใช่ gloss)",
+   "file": "app/(app)/customers/[id]/index.tsx",
+   "must": ["gloss", "sendText\\(draft\\.body"],
+   "mustNot": ["sendText\\(draft\\.gloss"]
+  },
+  {
+   "id": "X-3",
+   "name": "แปลแล้วส่ง: contactLang ≠ staffLang ⇒ POST translate-draft {body, targetLang} → แผ่นยืนยัน ส่งคำแปล/แก้/ยกเลิก",
+   "file": "app/(app)/customers/[id]/index.tsx",
+   "must": ["contactLang", "staffLang", "translate-draft", "targetLang", "sendTranslated", "fill\\("],
+   "mustNot": []
+  },
+  {
+   "id": "X-4",
+   "name": "API: เส้นแปลอยู่ใน src/api/inbox.ts (ตารางเดียวของโซนลูกค้า)",
+   "file": "src/api/inbox.ts",
+   "must": ["translate-draft", "messages/\\$\\{", "gloss", "needsTranslation", "contactLang"],
+   "mustNot": []
+  }
+ ]
+}

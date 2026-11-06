@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-06T01:59:22.831Z",
+ "generatedAt": "2026-11-06T14:29:03.243Z",
  "base": "http://127.0.0.1:4724",
  "view": {
   "tag": "iphone",
@@ -8,8 +8,8 @@
   "scale": 2
  },
  "fixture": {
-  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.21.json",
-  "sha256": "7cffede795e7995b73481032fe3562f04e32e27b9a46687634d42d33d750f04c"
+  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s3a6.json",
+  "sha256": "3504ae4abe9a6469d4f84973a94dd9c7563fa801587a99f617ce7353f68450b0"
  },
  "screens": [
   {
@@ -1581,6 +1581,62 @@
    "url": "/secretary/settings/account",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-settings-account-dark.png",
    "generatedAt": "2026-11-06T01:59:22.699Z"
+  },
+  {
+   "name": "customers-x9",
+   "route": "/customers/x9",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "3504ae4abe9a6469d4f84973a94dd9c7563fa801587a99f617ce7353f68450b0",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "cust-room",
+    "cust-bubble-in",
+    "cust-bubble-translate",
+    "cust-bubble-translation",
+    "cust-draft-card",
+    "cust-draft-gloss",
+    "cust-draft-send",
+    "cust-input",
+    "cust-translate-send",
+    "cust-send"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nEmily Carter\nW\nเว็บแชท · ผู้ดูแล คุณสุข\n\n\nลูกค้าเห็นข้อความที่คุณพิมพ์ในห้องนี้ · ไม่ใช่ห้องสั่งงานเลขา\nE\nEmily Carter · 9:58\nHi! Do you have the Espresso M2 machine in stock? I'd like 2 units delivered to Chiang Mai next week.\n\nแปล\nHello Emily, yes we have it in stock. Let me check the delivery date for you.\nคุณสุข · 10:01\nE\nEmily Carter · 10:06\nこんにちは、来週の土曜日に4名で予約できますか？\nคำแปล · ไทย\nสวัสดีค่ะ วันเสาร์หน้าจองโต๊ะสำหรับ 4 คนได้ไหมคะ\n✨ Shark ร่างคำตอบ\nHi Emily, yes — we can deliver 2 units of the Espresso M2 to Chiang Mai next Wednesday. Shall I send you a quotation?\nคำแปล: สวัสดีค่ะคุณเอมิลี่ ส่งเครื่อง Espresso M2 จำนวน 2 เครื่องไปเชียงใหม่ได้วันพุธหน้าค่ะ ให้ส่งใบเสนอราคาไปให้ไหมคะ\nแก้\nส่งข้อความนี้\nขอบคุณค่ะ 🙏\nที่อยู่ร้าน\nเวลาเปิด\nโอนแล้วแจ้งได้เลย\n\n\n\nแปลแล้วส่ง\n",
+   "unmocked": [],
+   "url": "/customers/x9",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x9.png",
+   "generatedAt": "2026-11-06T14:28:56.991Z"
+  },
+  {
+   "name": "customers-x9-dark",
+   "route": "/customers/x9",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "3504ae4abe9a6469d4f84973a94dd9c7563fa801587a99f617ce7353f68450b0",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "cust-room",
+    "cust-bubble-in",
+    "cust-bubble-translate",
+    "cust-bubble-translation",
+    "cust-draft-card",
+    "cust-draft-gloss",
+    "cust-draft-send",
+    "cust-input",
+    "cust-translate-send",
+    "cust-send"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nEmily Carter\nW\nเว็บแชท · ผู้ดูแล คุณสุข\n\n\nลูกค้าเห็นข้อความที่คุณพิมพ์ในห้องนี้ · ไม่ใช่ห้องสั่งงานเลขา\nE\nEmily Carter · 9:58\nHi! Do you have the Espresso M2 machine in stock? I'd like 2 units delivered to Chiang Mai next week.\n\nแปล\nHello Emily, yes we have it in stock. Let me check the delivery date for you.\nคุณสุข · 10:01\nE\nEmily Carter · 10:06\nこんにちは、来週の土曜日に4名で予約できますか？\nคำแปล · ไทย\nสวัสดีค่ะ วันเสาร์หน้าจองโต๊ะสำหรับ 4 คนได้ไหมคะ\n✨ Shark ร่างคำตอบ\nHi Emily, yes — we can deliver 2 units of the Espresso M2 to Chiang Mai next Wednesday. Shall I send you a quotation?\nคำแปล: สวัสดีค่ะคุณเอมิลี่ ส่งเครื่อง Espresso M2 จำนวน 2 เครื่องไปเชียงใหม่ได้วันพุธหน้าค่ะ ให้ส่งใบเสนอราคาไปให้ไหมคะ\nแก้\nส่งข้อความนี้\nขอบคุณค่ะ 🙏\nที่อยู่ร้าน\nเวลาเปิด\nโอนแล้วแจ้งได้เลย\n\n\n\nแปลแล้วส่ง\n",
+   "unmocked": [],
+   "url": "/customers/x9",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x9-dark.png",
+   "generatedAt": "2026-11-06T14:29:02.567Z"
   }
  ]
 }

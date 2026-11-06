@@ -3,6 +3,7 @@
 // S2.3 (เพิ่ม prop เท่านั้น · ไม่ใส่ = เหมือนเดิม): sendTestID · sendDisabled (พื้น btnOff) · autoFocus
 // S2.18 (เพิ่ม prop เท่านั้น): plusTestID · plusDisabled · left (ปุ่มเสริมหลัง + เช่น สวิตช์บันทึกภายใน) · multiline · maxLength · inputStyle
 // S2.14 รอบ 3 (R-S2.14o): `locked` = ไม่มีสิทธิ์ — แถบจาง · ไอคอนกุญแจแทนปุ่ม + · พิมพ์/ส่งไม่ได้ (ดูออกว่าล็อก ไม่ใช่แค่กดไม่ติด)
+// S3a.6 (เพิ่ม prop เท่านั้น): right (ปุ่มเสริมหน้าปุ่มส่ง เช่น "แปลแล้วส่ง")
 // S2.14 F1 (RESOLUTIONS §W): พื้นทึบ `solidBarStyle` (surface ของแถบ) แทนกระจกโปร่ง — ข้อความการ์ดใต้แถบไม่ทะลุ ทั้ง 2 ธีม
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
@@ -25,6 +26,7 @@ export function InputBar({
   plusTestID,
   plusDisabled = false,
   left,
+  right,
   multiline = false,
   maxLength,
   inputStyle,
@@ -47,6 +49,8 @@ export function InputBar({
   plusDisabled?: boolean;
   /** ชิ้นส่วนเสริมระหว่างปุ่ม + กับช่องพิมพ์ */
   left?: ReactNode;
+  /** ชิ้นส่วนเสริมระหว่างช่องพิมพ์กับปุ่มส่ง */
+  right?: ReactNode;
   multiline?: boolean;
   maxLength?: number;
   inputStyle?: StyleProp<TextStyle>;
@@ -80,6 +84,7 @@ export function InputBar({
         onSubmitEditing={sendDisabled || multiline ? undefined : onSend}
         returnKeyType="send"
       />
+      {right}
       <Pressable
         testID={sendTestID ?? `${testID}-send`}
         onPress={onSend}

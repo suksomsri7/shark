@@ -8,13 +8,17 @@
 //      ทุกการส่ง (พิมพ์เอง · การ์ดร่าง Shark · ส่งใหม่ฟองที่ล้ม) ผ่าน `Composer.post()` ที่เดียว (clientMessageId · 429 ลองใหม่อัตโนมัติ 1 ครั้งหลัง Retry-After)
 //   ฟอง: ลูกค้า/เรา/บันทึกภายใน/ส่งโดย Shark (meta.ai → ป้ายผู้อนุมัติ · RESOLUTIONS §M)/ข้อความระบบ/สติกเกอร์/รูป/ไฟล์/เสียง/ส่งไม่สำเร็จ ✕
 //   ข้อความทั้งหมดที่โหลดอยู่ใน map เดียว (คีย์ id · R-S2.17b): poll รวมทับตาม id (ไม่ทิ้งหน้าที่โหลดย้อน) · "ก่อนหน้า" ใช้ cursor ของข้อความเก่าสุดที่แสดงจริง
+//   S3a.6 แปลภาษา (สัญญา S3a.6 · ปุ่ม/คำแปลวาดในไฟล์นี้ ⇒ testID อยู่ในทะเบียนปุ่ม): IN ที่ `needsTranslation` ⇒ ปุ่ม "แปล" ใต้ฟอง →
+//     POST …/messages/[mid]/translate → คำแปลใต้ต้นฉบับ (ต้นฉบับเห็นเสมอ · ป้าย "คำแปล · <ภาษา>") · มี translatedBody แล้ว ⇒ แสดงเลย ·
+//     การ์ดร่างมี `gloss` ⇒ บรรทัด "คำแปล: …" (ส่ง = ตัวร่างภาษาลูกค้า) · contactLang ≠ staffLang ∧ can.translate ⇒ ปุ่ม "แปลแล้วส่ง" หน้าปุ่มส่ง →
+//     POST …/translate-draft → แผ่นยืนยัน ต้นฉบับ/คำแปล: ส่งคำแปล · แก้ (ใส่คำแปลลงช่องพิมพ์) · ยกเลิก · ok:false ⇒ reason ไทยเป็นแถบแจ้ง · ไม่มีสิทธิ์/ปิด ⇒ ไม่มีปุ่ม
 //   poll 5 วิ ขณะจออยู่และแอปอยู่หน้า (ออฟไลน์ถอยห่าง) · ไม่มี SSE · 403 ⇒ setCustomersAccess(false) · หน้าต่างตอบ 24 ชม. ของ Facebook/Instagram หมด ⇒ แถบเตือน + ตอบลูกค้าไม่ได้ (บันทึกภายในได้)
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, IconBtn, InputBar, Loading, Note } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, IconBtn, InputBar, Loading, Note, PrimaryButton, Sheet } from "@/src/components/airy";
 import { MessageBubble } from "@/src/components/customers/MessageBubble";
 import { ChannelBadge, firstName, useChannelLabel } from "@/src/components/customers/parts";
 import { scheduleZoneBadges, setCustomersAccess } from "@/src/api/secretary";
@@ -27,6 +31,7 @@ import {
   inboxGetId,
   inboxNote,
   inboxPostId,
+  inboxTranslateMessage,
   inboxUpload,
   replyMessageId,
   replyWindowHours,
@@ -38,7 +43,8 @@ import {
   type Thread,
 } from "@/src/api/inbox";
 import { useAuth } from "@/src/lib/auth-context";
-import { useT } from "@/src/i18n";
+import th from "@/src/i18n/th";
+import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
 import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 
@@ -52,7 +58,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const byTime = (a: MsgItem, b: MsgItem) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.createdAt < b.createdAt ? -1 : 1);
 
 type Gone = "notFound" | "denied" | null;
-type Draft = { id: string | null; body: string };
+type Draft = { id: string | null; body: string; gloss: string | null };
+/** S3a.6 ชื่อภาษา (i18n `cust.lang.<code>` · ไม่รู้จัก = รหัสตัวใหญ่) */
+function langName(t: ReturnType<typeof useT>, code: string | null | undefined): string {
+  const k = `cust.lang.${(code ?? "").toLowerCase().split("-")[0]}`;
+  return k in th ? t(k as I18nKey) : (code ?? "").toUpperCase();
+}
 
 /** ผู้อนุมัติของข้อความที่ Shark ส่ง (meta.ai.approvedBy = userId ผู้อนุมัติ = ผู้ส่งของแถว) */
 function approverOf(m: MsgItem): string | null {
@@ -100,6 +111,12 @@ export default function CustomerRoomScreen() {
   const [claiming, setClaiming] = useState(false);
   const claimRef = useRef(false); // R-Z30: รับเรื่องครั้งเดียวต่อการกด
   const [draft, setDraft] = useState<Draft | null>(null);
+  /** S3a.6 คำแปลที่ขอในจอนี้ (คีย์ message id) · กำลังแปล · แผ่นยืนยัน "แปลแล้วส่ง" */
+  const [trans, setTrans] = useState<Record<string, { text: string; lang: string | null }>>({});
+  const [transBusy, setTransBusy] = useState<string | null>(null);
+  const transRef = useRef(false);
+  const [trSheet, setTrSheet] = useState<{ original: string; text: string } | null>(null);
+  const [trSending, setTrSending] = useState(false);
   const [viewer, setViewer] = useState<string | null>(null);
   const [moreBusy, setMoreBusy] = useState(false);
   const tenantRef = useRef(activeTenantId);
@@ -122,6 +139,8 @@ export default function CustomerRoomScreen() {
     setHasOlder(undefined);
     setGone(null);
     setDraft(null);
+    setTrans({});
+    setTrSheet(null);
     readSent.current = null;
     draftAsked.current = false;
     stickUntil.current = 0;
@@ -179,7 +198,8 @@ export default function CustomerRoomScreen() {
           .then((r) => {
             const opt = r.ok === true ? r.options?.[0] : undefined;
             const body = (opt?.body ?? "").trim();
-            if (tenantRef.current === tenant && opt && body) setDraft({ id: opt.id || null, body });
+            const gloss = typeof opt?.gloss === "string" && opt.gloss.trim() ? opt.gloss.trim() : null;
+            if (tenantRef.current === tenant && opt && body) setDraft({ id: opt.id || null, body, gloss });
           })
           .catch(() => {});
       }
@@ -282,12 +302,35 @@ export default function CustomerRoomScreen() {
     }
   };
 
+  // S3a.6 แปลข้อความลูกค้า — ทีละข้อความ · ok:false/ล้ม ⇒ แถบแจ้งไทย (ต้นฉบับยังอยู่)
+  const translate = async (m: MsgItem) => {
+    if (transRef.current) return;
+    transRef.current = true;
+    setTransBusy(m.id);
+    setNote(null);
+    const tenant = activeTenantId;
+    try {
+      const r = await inboxTranslateMessage(id, m.id, { systemId });
+      if (tenantRef.current !== tenant) return;
+      if (r.ok && r.text.trim()) setTrans((x) => ({ ...x, [m.id]: { text: r.text.trim(), lang: r.lang ?? conv?.staffLang ?? null } }));
+      else setNote({ text: (!r.ok && r.reason?.trim()) || t("cust.tr.fail"), warn: true });
+    } catch (e) {
+      if (tenantRef.current === tenant) setNote({ text: inboxNote(e) ?? t("cust.tr.fail"), warn: true });
+    } finally {
+      transRef.current = false;
+      setTransBusy(null);
+    }
+  };
+
   const back = () => (router.canGoBack() ? router.back() : router.navigate("/customers"));
   const openInfo = (open?: string) => router.push(`/customers/${encodeURIComponent(id)}/info${systemId ? `?s=${encodeURIComponent(systemId)}` : ""}${open ? `${systemId ? "&" : "?"}open=${open}` : ""}`);
 
   const conv = thread?.conversation ?? null;
   // S2.14: server บอกสิทธิ์ตอบของผู้ใช้คนนี้ในห้องนี้ (can.reply) — ไม่มีฟิลด์ = ตาม inbox/systems.canReply
   const canReplyHere = canReply && conv?.can?.reply !== false;
+  // S3a.6: ปุ่มแปลขึ้นเมื่อ server บอกว่าแปลได้ (ไม่มีฟิลด์/false = ไม่มีปุ่ม) · แปลแล้วส่ง = ภาษาลูกค้าต่างจากภาษาพนักงาน
+  const canTranslate = conv?.can?.translate === true;
+  const translateTo = canTranslate && conv?.contactLang && conv?.staffLang && conv.contactLang.toLowerCase() !== conv.staffLang.toLowerCase() ? conv.contactLang : null;
   const name = thread?.contact.displayName ?? t("cust.noName");
   const windowH = conv ? replyWindowHours(conv.channel, msgs, nowMs) : null;
   const unassigned = !!conv && conv.status === "OPEN" && !conv.assigneeUserId;
@@ -394,6 +437,27 @@ export default function CustomerRoomScreen() {
               onImage={setViewer}
               onResend={canReplyHere ? (x) => void composer.current?.resend(x) : undefined}
               ids={BUBBLE_IDS}
+              inFooter={(() => {
+                if (m.direction !== "IN") return null;
+                const tr = trans[m.id] ?? (m.translatedBody?.trim() ? { text: m.translatedBody.trim(), lang: m.translatedLang ?? null } : null);
+                if (tr) {
+                  return (
+                    <View testID="cust-bubble-translation" style={[styles.trBox, { borderLeftColor: c.cust.aiBorder }]}>
+                      <Text style={[styles.trH, { color: c.textMuted }]}>{t("cust.tr.label", { lang: langName(t, tr.lang) })}</Text>
+                      <Text style={[styles.trT, { color: c.textDim }]} selectable>
+                        {tr.text}
+                      </Text>
+                    </View>
+                  );
+                }
+                if (!m.needsTranslation || !canTranslate) return null;
+                return (
+                  <Pressable testID="cust-bubble-translate" onPress={() => void translate(m)} disabled={transBusy !== null} accessibilityRole="button" hitSlop={6} style={styles.trBtn}>
+                    <Icon name="globe" size={13} color={c.textMuted} />
+                    <Text style={[styles.trBtnT, { color: c.textMuted }]}>{transBusy === m.id ? t("cust.tr.busy") : t("cust.tr.btn")}</Text>
+                  </Pressable>
+                );
+              })()}
             />
           ))}
           {draft && canReplyHere ? (
@@ -402,6 +466,11 @@ export default function CustomerRoomScreen() {
               <Text style={[styles.draftB, { color: c.textDim }]} selectable>
                 {draft.body}
               </Text>
+              {draft.gloss ? (
+                <Text testID="cust-draft-gloss" style={[styles.gloss, { color: c.textMuted }]} selectable>
+                  {t("cust.tr.gloss", { text: draft.gloss })}
+                </Text>
+              ) : null}
               <View style={styles.draftRow}>
                 <Pressable
                   testID="cust-draft-edit"
@@ -436,6 +505,9 @@ export default function CustomerRoomScreen() {
             channel={conv?.channel ?? null}
             canReply={canReplyHere && !!thread}
             windowClosed={windowH === 0}
+            translateTo={translateTo}
+            translateLabel={translateTo ? langName(t, translateTo) : ""}
+            onTranslated={(original, text) => setTrSheet({ original, text })}
             onSent={() => {
               atBottom.current = true;
               void load();
@@ -443,6 +515,53 @@ export default function CustomerRoomScreen() {
           />
         ) : null}
       </KeyboardAvoidingView>
+
+      {/* S3a.6 แผ่นยืนยัน "แปลแล้วส่ง": ต้นฉบับ/คำแปล · ส่งคำแปล · แก้ · ยกเลิก */}
+      <Sheet visible={!!trSheet} onClose={() => !trSending && setTrSheet(null)} testID="cust-tr-sheet" top={300}>
+        <Text style={[styles.trSheetT, { color: c.text }]}>{t("cust.tr.sheetTitle", { lang: langName(t, translateTo) })}</Text>
+        <Text style={[styles.trSheetL, { color: c.textMuted }]}>{t("cust.tr.original")}</Text>
+        <Text testID="cust-tr-original" style={[styles.trSheetB, { color: c.textDim }]} selectable>
+          {trSheet?.original ?? ""}
+        </Text>
+        <Text style={[styles.trSheetL, { color: c.textMuted }]}>{t("cust.tr.translated", { lang: langName(t, translateTo) })}</Text>
+        <View style={[styles.trSheetBox, { backgroundColor: c.inputBg, borderColor: c.glass.border }]}>
+          <Text testID="cust-tr-text" style={[styles.trSheetB, { color: c.text }]} selectable>
+            {trSheet?.text ?? ""}
+          </Text>
+        </View>
+        <View style={styles.trSheetBtn}>
+          <PrimaryButton
+            testID="cust-tr-send"
+            label={trSending ? t("cust.busy") : t("cust.tr.send")}
+            disabled={trSending}
+            onPress={() => {
+              const text = trSheet?.text ?? "";
+              if (!text || trSending) return;
+              setTrSending(true);
+              void (composer.current?.sendTranslated(text) ?? Promise.resolve(false))
+                .then((ok) => ok && setTrSheet(null))
+                .finally(() => setTrSending(false));
+            }}
+          />
+        </View>
+        <View style={styles.trSheetRow}>
+          <Pressable
+            testID="cust-tr-edit"
+            onPress={() => {
+              composer.current?.fill(trSheet?.text ?? "");
+              setTrSheet(null);
+            }}
+            disabled={trSending}
+            accessibilityRole="button"
+            style={[styles.draftBtn, { backgroundColor: c.surface }]}
+          >
+            <Text style={[styles.draftBtnT, { color: c.text }]}>{t("cust.tr.edit")}</Text>
+          </Pressable>
+          <Pressable testID="cust-tr-cancel" onPress={() => setTrSheet(null)} disabled={trSending} accessibilityRole="button" style={[styles.draftBtn, { backgroundColor: c.surface }]}>
+            <Text style={[styles.draftBtnT, { color: c.textMuted }]}>{t("cust.cancel")}</Text>
+          </Pressable>
+        </View>
+      </Sheet>
 
       {viewer ? (
         <View testID="cust-image-viewer" style={[StyleSheet.absoluteFill, styles.viewer, { backgroundColor: c.dim }]}>
@@ -464,11 +583,25 @@ type ComposerHandle = {
   sendText: (text: string, suggestionId?: string | null) => Promise<boolean>;
   /** ส่งฟองที่ล้มอีกครั้ง (ข้อความใหม่ · รหัสผูกกับฟองเดิม กดซ้ำไม่ซ้ำ) */
   resend: (m: MsgItem) => Promise<boolean>;
+  /** S3a.6 ส่งคำแปลแทนข้อความที่พิมพ์ (แผ่นยืนยัน "ส่งคำแปล") · สำเร็จ = ล้างช่องพิมพ์ */
+  sendTranslated: (text: string) => Promise<boolean>;
 };
 type Payload = { body?: string; attachments?: ReplyAttachment[]; isInternal: boolean; suggestionId?: string };
 
-const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string; channel: string | null; canReply: boolean; windowClosed: boolean; onSent: () => void }>(function Composer(
-  { convId, systemId, channel, canReply, windowClosed, onSent },
+type ComposerProps = {
+  convId: string;
+  systemId?: string;
+  channel: string | null;
+  canReply: boolean;
+  windowClosed: boolean;
+  onSent: () => void;
+  /** S3a.6 ภาษาลูกค้าที่ต้องแปลไปก่อนส่ง (null = ไม่มีปุ่ม "แปลแล้วส่ง") */
+  translateTo?: string | null;
+  translateLabel?: string;
+  onTranslated?: (original: string, text: string) => void;
+};
+const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
+  { convId, systemId, channel, canReply, windowClosed, onSent, translateTo = null, translateLabel = "", onTranslated },
   ref,
 ) {
   const { c } = useTheme();
@@ -481,6 +614,9 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
   const [uploading, setUploading] = useState(false);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const busyRef = useRef(false);
+  /** S3a.6 กำลังแปลร่าง (กันกดซ้ำ) */
+  const [translating, setTranslating] = useState(false);
+  const translatingRef = useRef(false);
   const cmid = useRef<string | null>(null);
   /** เนื้อหาที่ล้มด้วยรหัสปัจจุบัน — แก้แล้ว = รหัสใหม่ · เหมือนเดิม = รหัสเดิม (เซิร์ฟเวอร์กันซ้ำ) */
   const failedKey = useRef<string | null>(null);
@@ -575,6 +711,14 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
       fromSuggestion.current = sid ?? null;
     },
     sendText: (v, sid) => run({ body: v, isInternal: false, suggestionId: sid ?? undefined }, JSON.stringify([v, false, []])),
+    sendTranslated: async (v) => {
+      const ok = await run({ body: v, isInternal: false }, JSON.stringify([v, false, []]));
+      if (ok) {
+        setText("");
+        fromSuggestion.current = null;
+      }
+      return ok;
+    },
     resend: (m) =>
       run(
         { body: m.body ?? undefined, attachments: m.attachments.length ? m.attachments.map((a) => ({ url: a.url, mimeType: a.mimeType, fileName: a.name, ...(a.durationMs ? { durationMs: a.durationMs } : {}) })) : undefined, isInternal: false },
@@ -582,6 +726,25 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
         `resend:${m.id}`,
       ),
   }));
+
+  // S3a.6 แปลแล้วส่ง: POST …/translate-draft {body, targetLang} → แผ่นยืนยันของจอ · ok:false/ล้ม ⇒ แถบแจ้งไทย (ข้อความที่พิมพ์ยังอยู่)
+  const translateDraft = async () => {
+    const body = text.trim();
+    if (!body || !translateTo || internal || translatingRef.current || busyRef.current) return;
+    translatingRef.current = true;
+    setTranslating(true);
+    setNote(null);
+    try {
+      const r = await inboxPostId("inbox/conversations/[id]/translate-draft", convId, { systemId, body, targetLang: translateTo });
+      if (r.ok && r.text.trim()) onTranslated?.(body, r.text.trim());
+      else setNote({ text: (!r.ok && r.reason?.trim()) || t("cust.tr.fail"), warn: true });
+    } catch (e) {
+      setNote({ text: inboxNote(e) ?? t("cust.tr.fail"), warn: true });
+    } finally {
+      translatingRef.current = false;
+      setTranslating(false);
+    }
+  };
 
   // ตอบเร็ว: แทนตัวแปรที่เซิร์ฟเวอร์ (apply ไม่ส่งข้อความ) → ใส่ช่องพิมพ์
   const applyQuick = async (q: QuickReply) => {
@@ -701,6 +864,24 @@ const Composer = forwardRef<ComposerHandle, { convId: string; systemId?: string;
         maxLength={4000}
         sendDisabled={busy || uploading || (!text.trim() && atts.length === 0)}
         onSend={() => void send()}
+        right={
+          translateTo && !internal ? (
+            <Pressable
+              testID="cust-translate-send"
+              onPress={() => void translateDraft()}
+              disabled={translating || busy || !text.trim()}
+              accessibilityRole="button"
+              accessibilityLabel={t("cust.tr.sendBtnA11y", { lang: translateLabel })}
+              accessibilityState={{ disabled: translating || busy || !text.trim() }}
+              style={[styles.trSend, { backgroundColor: c.chip.bg }, (translating || busy || !text.trim()) && styles.trOff]}
+            >
+              <Icon name="globe" size={14} color={c.textDim} />
+              <Text style={[styles.trSendT, { color: c.textDim }]} numberOfLines={1}>
+                {translating ? t("cust.tr.busy") : t("cust.tr.sendBtn")}
+              </Text>
+            </Pressable>
+          ) : undefined
+        }
         style={internal ? [styles.internalBar, { borderColor: c.cust.noteBorder }] : undefined}
       />
     </View>
@@ -733,6 +914,21 @@ const styles = StyleSheet.create({
   draftBtn: { flex: 1, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
   draftSend: { flex: 1.6 },
   draftBtnT: { fontSize: T.sub + 0.5, fontWeight: "700" },
+  gloss: { fontSize: T.cap, lineHeight: 18, marginTop: 6 },
+  trBox: { marginTop: 6, marginLeft: 2, paddingLeft: 10, borderLeftWidth: 2, maxWidth: "100%" },
+  trH: { fontSize: T.cap - 1.5, lineHeight: 15, fontWeight: "600" },
+  trT: { fontSize: T.sub, lineHeight: 20, marginTop: 2 },
+  trBtn: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4, marginLeft: 4, paddingVertical: 3, alignSelf: "flex-start" },
+  trBtnT: { fontSize: T.cap - 0.5, fontWeight: "600" },
+  trSend: { flexDirection: "row", alignItems: "center", gap: 4, height: 32, borderRadius: 16, paddingHorizontal: 10 },
+  trSendT: { fontSize: T.cap - 0.5, fontWeight: "700" },
+  trOff: { opacity: 0.5 },
+  trSheetT: { fontSize: T.h, fontWeight: "700", marginBottom: 6 },
+  trSheetL: { fontSize: T.cap, fontWeight: "600", marginTop: 10 },
+  trSheetB: { fontSize: T.sub + 0.5, lineHeight: 22, marginTop: 4 },
+  trSheetBox: { borderWidth: 1, borderRadius: radii.segIn + 2, paddingHorizontal: 12, paddingVertical: 8, marginTop: 4 },
+  trSheetBtn: { marginTop: 16 },
+  trSheetRow: { flexDirection: "row", gap: 10, marginTop: 10 },
   composer: { paddingHorizontal: spacing.page - 6, paddingBottom: 14, paddingTop: 6 },
   sendNote: { marginTop: 0, marginBottom: 8 },
   quickRow: { gap: 8, paddingBottom: 10, paddingHorizontal: 2 },

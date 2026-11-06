@@ -1,0 +1,67 @@
+{
+ "before": {
+  "buttons": 1,
+  "translations": 1,
+  "gloss": "คำแปล: สวัสดีค่ะคุณเอมิลี่ ส่งเครื่อง Espresso M2 จำนวน 2 เครื่องไปเชียงใหม่ได้วันพุธหน้าค่ะ ให้ส่งใบเสนอราคาไปให้ไหมคะ"
+ },
+ "translatePost": {
+  "n": 1,
+  "body": "{\"systemId\":\"cs1\"}",
+  "tenant": "t1"
+ },
+ "after": {
+  "buttons": 0,
+  "translations": [
+   "คำแปล · ไทย\nสวัสดีค่ะ มีเครื่อง Espresso M2 ในสต็อกไหมคะ อยากได้ 2 เครื่อง ส่งไปเชียงใหม่สัปดาห์หน้าค่ะ",
+   "คำแปล · ไทย\nสวัสดีค่ะ วันเสาร์หน้าจองโต๊ะสำหรับ 4 คนได้ไหมคะ"
+  ]
+ },
+ "draftSend": {
+  "body": "Hi Emily, yes — we can deliver 2 units of the Espresso M2 to Chiang Mai next Wednesday. Shall I send you a quotation?",
+  "suggestionId": "sg9"
+ },
+ "trBtnDisabledEmpty": "true",
+ "trBtnDisabledTyped": null,
+ "trDraftPost": {
+  "n": 1,
+  "body": "{\"systemId\":\"cs1\",\"body\":\"ส่งได้วันพุธค่ะ เดี๋ยวส่งใบเสนอราคาให้วันนี้\",\"targetLang\":\"en\"}"
+ },
+ "sheet": {
+  "open": true,
+  "original": "ส่งได้วันพุธค่ะ เดี๋ยวส่งใบเสนอราคาให้วันนี้",
+  "text": "Yes, we can deliver on Wednesday. I'll send the quotation today."
+ },
+ "trSend": {
+  "n": 1,
+  "body": "Yes, we can deliver on Wednesday. I'll send the quotation today.",
+  "sheetClosed": true,
+  "fieldCleared": true
+ },
+ "edit": {
+  "field": "Yes, we can deliver on Wednesday. I'll send the quotation today.",
+  "sheetClosed": true,
+  "replies": 0
+ },
+ "cancel": {
+  "sheetClosed": true,
+  "replies": 0
+ },
+ "failMsg": {
+  "note": "เครดิตแปลภาษาของร้านหมดแล้วเดือนนี้",
+  "stillButton": true
+ },
+ "failDraft": {
+  "note": "ร้านปิดการแปลภาษาในแชทอยู่",
+  "sheet": false,
+  "field": "ขอบคุณค่ะ"
+ },
+ "disabledFeature": {
+  "translateBtn": false,
+  "sendBtn": false,
+  "cachedTranslation": true
+ },
+ "sameLang": {
+  "sendBtn": false,
+  "translateBtn": true
+ }
+}

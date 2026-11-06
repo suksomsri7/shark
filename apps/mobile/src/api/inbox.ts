@@ -39,6 +39,8 @@ const PATH_ID = {
   // เปิดการ์ดงานจากห้อง (S1.14b · บอร์ดตามค่าตั้ง "สร้างงานจากแชท" ของร้าน · 404 not_configured = ซ่อนปุ่ม)
   "inbox/conversations/[id]/task": "/api/mobile/inbox/conversations/[id]/task",
   "inbox/quick-replies/[id]/apply": "/api/mobile/inbox/quick-replies/[id]/apply",
+  // S3a.6 แปลร่างคำตอบเป็นภาษาลูกค้า (สัญญา S3a.6 ข้อ 3 · 200 เสมอ fail-soft `{ok:false, reason}`)
+  "inbox/conversations/[id]/translate-draft": "/api/mobile/inbox/conversations/[id]/translate-draft",
 } as const;
 export type InboxIdPath = keyof typeof PATH_ID;
 
@@ -65,12 +67,15 @@ export type ConvItem = {
   tags?: string[];
 };
 /** ปุ่มที่ผู้ใช้คนนี้กดได้ในห้อง (S1.14b · server ตัดสินจากคีย์ของผู้เรียก) · `aiSuggest` = คีย์ chat.ai.suggest (S1.14c · optional ไว้ให้ fixture เดิม) */
-export type ConvCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean; aiSuggest?: boolean };
+export type ConvCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean; aiSuggest?: boolean; /** S3a.6: ร้านเปิดแปลภาษา ∧ ผู้ใช้เห็นห้อง */ translate?: boolean };
 /** ห้องในจอเธรด (GET inbox/conversations/[id]) = ConvItem + หน้าต่างตอบกลับ + ปุ่มที่กดได้ (S1.14b) */
 export type ConvDetail = ConvItem & {
   /** ตอบได้ถึงเมื่อไร (ช่องทางที่มีหน้าต่าง) · LINE/WEBCHAT = null */
   replyWindowEndsAt?: string | null;
   can?: ConvCan;
+  /** S3a.6 ภาษาของพนักงาน (ChatSetting.staffLang) · ภาษาลูกค้า (contact.lang · ไม่รู้ = null) */
+  staffLang?: string | null;
+  contactLang?: string | null;
 };
 /** สมาชิกที่ผูกกับห้อง — เซิร์ฟเวอร์ส่ง `phoneMasked` เท่านั้น (S1.14b · ไม่มีเบอร์เต็ม · จอ K3 แสดงตรงตามนี้ตั้งแต่ S2.14) */
 export type LinkedMember = { id: string; name: string | null; phoneMasked?: string | null };
@@ -89,6 +94,10 @@ export type MsgItem = {
   attachments: MsgAttachment[];
   meta: { ai: AiMeta } | null;
   createdAt: string;
+  /** S3a.6 คำแปลที่แคชไว้ (ChatMessage.translatedBody/translatedLang) · `needsTranslation` = IN ที่ไม่ใช่สคริปต์ของ staffLang */
+  translatedBody?: string | null;
+  translatedLang?: string | null;
+  needsTranslation?: boolean;
 };
 export type Helper = { userId: string; name: string | null; calledById: string | null; note: string | null; createdAt: string };
 export type Thread = {
@@ -114,13 +123,17 @@ export type MemberHit = { id: string; memberCode?: string; name: string; phoneMa
 /** สถานะเวรของตัวเอง (GET/POST inbox/shift) */
 export type ShiftState = { onDuty: boolean; onDutyAt: string | null };
 /** ร่างคำตอบของ Shark (POST …/ai-suggest · S1.14b) — ok:false = ซ่อนการ์ด (reason ไทย) */
-export type SuggestOption = { id: string; body: string; warn: boolean };
+/** S3a.6: `gloss` = ร่างเดียวกันแปลเป็นภาษาพนักงาน (เมื่อ replyLang ≠ staffLang · ไม่มี = null) — ส่งจริงใช้ `body` (ภาษาลูกค้า) เสมอ */
+export type SuggestOption = { id: string; body: string; warn: boolean; gloss?: string | null };
 export type SuggestRes = {
   ok?: boolean;
   options?: SuggestOption[];
+  replyLang?: string | null;
   sourceMessageId?: string;
   reason?: string;
 };
+/** S3a.6 ผลแปล (ข้อความลูกค้า · ร่างคำตอบ) — 200 เสมอ · ok:false = reason ไทย (ปิดฟีเจอร์ · เครดิตหมด · แปลไม่ได้) */
+export type TranslateRes = { ok: true; text: string; cached?: boolean; lang?: string | null } | { ok: false; reason?: string };
 /** ผลเปิดการ์ดงานจากห้อง (POST …/task · S1.14b) */
 export type TaskFromChatRes = { cardId: string; cardNo: number | null; cardHref: string; created: boolean };
 
@@ -160,6 +173,7 @@ type PostIdMap = {
   "inbox/conversations/[id]/ai-suggest": { body: { systemId?: string }; res: SuggestRes };
   "inbox/conversations/[id]/task": { body: { systemId?: string; title: string; description?: string; dueAt?: string }; res: TaskFromChatRes };
   "inbox/quick-replies/[id]/apply": { body: { systemId?: string; conversationId: string }; res: { body: string } };
+  "inbox/conversations/[id]/translate-draft": { body: { systemId?: string; body: string; targetLang?: string }; res: TranslateRes };
 };
 
 type Query = Record<string, string | number | undefined | null>;
@@ -222,6 +236,11 @@ export function inboxGetId<P extends keyof GetIdMap>(path: P, id: string, q?: Qu
 }
 export function inboxPostId<P extends keyof PostIdMap>(path: P, id: string, body: PostIdMap[P]["body"]): Promise<PostIdMap[P]["res"]> {
   return call<PostIdMap[P]["res"]>(idPath(path, id), "POST", body);
+}
+
+/** S3a.6 แปลข้อความลูกค้า: POST inbox/conversations/[id]/messages/[mid]/translate {targetLang?} (2 พารามิเตอร์ จึงแยกจาก PATH_ID) */
+export function inboxTranslateMessage(convId: string, messageId: string, body: { systemId?: string; targetLang?: string }): Promise<TranslateRes> {
+  return call<TranslateRes>(`/api/mobile/inbox/conversations/${encodeURIComponent(convId)}/messages/${encodeURIComponent(messageId)}/translate`, "POST", body);
 }
 
 /** แนบไฟล์ (multipart `file` ≤ 10 MB → POST inbox/attachments) — ผลใส่ใน attachments ของ …/reply */
