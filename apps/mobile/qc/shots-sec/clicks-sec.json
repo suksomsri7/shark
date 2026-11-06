@@ -1,12 +1,12 @@
 {
  "meta": {
-  "generatedAt": "2026-11-05T20:37:44.919Z",
-  "registryHash": "390517abbe9c87fdb59452ffa17e71a0c1d3182e48f0601a984386780c6921a9",
-  "distHash": "2aeb36c61fc91a406f5edfa725330ed9f0bcf52852494097f4ad04554b81bb34",
+  "generatedAt": "2026-11-06T01:37:52.143Z",
+  "registryHash": "30ad5edc364e9fbd824954d92038960b0e2b0c13a37e475ec2c032b888485307",
+  "distHash": "3729ca93d40ed076c3bbb6ebab8748161882a4b52a9000cf3ec0bd018299ea52",
   "resumed": false,
   "workers": 4,
-  "clicks": 2533,
-  "seconds": 3289,
+  "clicks": 2546,
+  "seconds": 4157,
   "scen": null
  },
  "items": [
@@ -169,7 +169,7 @@
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม) หลังกด help-send",
    "fixture": "s2.14-cases.json",
-   "route": "/secretary/help?roomId=r1",
+   "route": "/secretary/help/c2",
    "path": [
     "help-send"
    ]
@@ -191,16 +191,16 @@
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
    "fixture": "s2.14-cases.json",
-   "route": "/secretary/help?roomId=r1",
+   "route": "/secretary/help/c2",
    "path": []
   },
   {
    "testID": "help-send",
    "ok": true,
    "kind": "button",
-   "effect": "POST secretary/support/cases · ui +help-flash -",
+   "effect": "POST secretary/support/cases/c2/reply · ui +help-flash -",
    "fixture": "s2.14-cases.json",
-   "route": "/secretary/help?roomId=r1",
+   "route": "/secretary/help/c2",
    "path": []
   },
   {
@@ -305,7 +305,7 @@
    "testID": "help-room-detach",
    "ok": true,
    "kind": "button",
-   "effect": "ui + -help-room-attached,help-room-detach",
+   "effect": "ui +sec-top-team-badge -help-room-attached,help-room-detach",
    "fixture": "s2.14-cases.json",
    "route": "/secretary/help?roomId=r1",
    "path": []
@@ -359,7 +359,7 @@
    "testID": "help-home-attach",
    "ok": true,
    "kind": "button",
-   "effect": "filechooser",
+   "effect": "ui +sec-top-team-badge - · filechooser",
    "fixture": "s2.14-cases.json",
    "route": "/secretary/help?roomId=r1",
    "path": []
@@ -428,7 +428,7 @@
    "testID": "sec-inbox-tabs",
    "ok": true,
    "kind": "group",
-   "effect": "child sec-inbox-tab-money: ui + -sec-inbox-cannot · state",
+   "effect": "child sec-inbox-tab-customer: ui + -sec-inbox-cannot · state",
    "fixture": "s2.5.json",
    "route": "/secretary/inbox",
    "path": [
@@ -580,7 +580,7 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.14-loading.json",
+   "fixture": "s2.20.json",
    "route": "/secretary",
    "path": []
   },
@@ -968,7 +968,7 @@
    "testID": "sec-room-gone-home",
    "ok": true,
    "kind": "button",
-   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-room,sec-room-back,sec-room-menu",
+   "effect": "GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-room,sec-room-back,sec-room-menu",
    "fixture": "s2.14-empty.json",
    "route": "/secretary/room/r1",
    "path": []
@@ -1525,6 +1525,45 @@
    ]
   },
   {
+   "testID": "acct-delete-sent",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด acct-delete-confirm",
+   "fixture": "s2.21.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete",
+    "acct-delete-input=ลบบัญชี",
+    "acct-delete-confirm"
+   ]
+  },
+  {
+   "testID": "acct-delete-code",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"123456\"",
+   "fixture": "s2.21.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete",
+    "acct-delete-input=ลบบัญชี",
+    "acct-delete-confirm"
+   ]
+  },
+  {
+   "testID": "acct-delete-resend",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/sms/request",
+   "fixture": "s2.21-mgr.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete",
+    "acct-delete-input=ลบบัญชี",
+    "acct-delete-confirm"
+   ]
+  },
+  {
    "testID": "acct-delete-note",
    "ok": true,
    "kind": "view",
@@ -1550,7 +1589,7 @@
    "testID": "acct-delete-confirm",
    "ok": true,
    "kind": "button",
-   "effect": "POST secretary/account/delete · POST auth/logout · route /login · ui +login,login-phone,login-sms -drawer-member,drawer-crm,acct · field login-phone",
+   "effect": "POST auth/sms/request · ui +acct-delete-sent,acct-delete-code,acct-delete-resend -acct-delete-input,acct-delete-confirm · field acct-delete-code",
    "fixture": "s2.21.json",
    "route": "/secretary/settings/account",
    "path": [
@@ -1558,10 +1597,23 @@
    ]
   },
   {
+   "testID": "acct-delete-final",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/account/delete · POST auth/logout · route /login · ui +login,login-phone,login-sms -drawer-member,drawer-crm,acct · field login-phone",
+   "fixture": "s2.21.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete",
+    "acct-delete-input=ลบบัญชี",
+    "acct-delete-confirm"
+   ]
+  },
+  {
    "testID": "acct-notify-*",
    "ok": true,
    "kind": "button",
-   "effect": "member acct-notify-approval-ALL: PUT secretary/notify",
+   "effect": "member acct-notify-approval-ASSIGNED: PUT secretary/notify",
    "fixture": "s2.14-cases.json",
    "route": "/secretary/settings/account",
    "path": [
@@ -1697,7 +1749,7 @@
    "testID": "sec-cust-hours",
    "ok": true,
    "kind": "button",
-   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793908420138 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
+   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793925925535 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": []
@@ -1716,7 +1768,7 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.14-loading.json",
+   "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": []
   },
@@ -1735,7 +1787,7 @@
    "testID": "cust-set-channels-web",
    "ok": true,
    "kind": "button",
-   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793908421028 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
+   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793925926076 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": []
@@ -1755,7 +1807,7 @@
    "testID": "cust-set-quick-web",
    "ok": true,
    "kind": "button",
-   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793908421321 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
+   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793925929971 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
    "fixture": "s2.1.json",
    "route": "/secretary/settings/customers",
    "path": []
@@ -1920,7 +1972,7 @@
    "testID": "sec-settings-row-*",
    "ok": true,
    "kind": "button",
-   "effect": "member sec-settings-row-secretary: GET secretary/secretary · GET secretary/quota · GET secretary/inbox/count · route /secretary/settings/secretary · ui +sec-me,sec-me-top,sec-me-top-back -sec-settings,sec-top,sec-top-secretary · field sec-me-name",
+   "effect": "member sec-settings-row-quota: GET secretary/quota · route /secretary/settings/quota · ui +sec-quota,sec-quota-top,sec-quota-top-back -sec-settings,sec-top,sec-top-secretary",
    "fixture": "s2.1.json",
    "route": "/secretary/settings",
    "path": []
@@ -2435,7 +2487,7 @@
    "testID": "sec-me-suffix",
    "ok": true,
    "kind": "group",
-   "effect": "child sec-me-suffix-none: state",
+   "effect": "child sec-me-suffix-kha: state",
    "fixture": "s2.14-cases.json",
    "route": "/secretary/settings/secretary",
    "path": [
@@ -2656,7 +2708,7 @@
    "testID": "perm-save",
    "ok": true,
    "kind": "button",
-   "effect": "PUT secretary/staff/m1 · ui +perm-note - · state",
+   "effect": "PUT secretary/staff/m1 · GET secretary/staff · GET secretary/access · ui +perm-note - · state",
    "fixture": "s2.21.json",
    "route": "/secretary/staff/m1",
    "path": []
@@ -2705,7 +2757,7 @@
    "testID": "perm-confirm-ok",
    "ok": true,
    "kind": "button",
-   "effect": "POST secretary/staff/m1/suspend · GET secretary/rooms?scope=tenant&take=100 · route /secretary/staff · ui +sec-staff,sec-top,sec-top-secretary -perm,perm-top,perm-back · field sec-staff-search",
+   "effect": "POST secretary/staff/m1/suspend · GET secretary/staff · GET secretary/rooms?scope=tenant&take=100 · route /secretary/staff · ui +sec-staff,sec-top,sec-top-secretary -perm,perm-top,perm-back · field sec-staff-search",
    "fixture": "s2.21.json",
    "route": "/secretary/staff/m1",
    "path": [
@@ -3113,7 +3165,7 @@
    "testID": "cust-room-helper",
    "ok": true,
    "kind": "button",
-   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · GET inbox/systems · route /customers/x2/info?s=cs1&open=helpers · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper · field cust-info-helpers-sheet-note",
+   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · route /customers/x2/info?s=cs1&open=helpers · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper · field cust-info-helpers-sheet-note",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x2",
    "path": []
@@ -3122,7 +3174,7 @@
    "testID": "cust-room-info",
    "ok": true,
    "kind": "button",
-   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · GET inbox/systems · route /customers/x2/info?s=cs1 · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper",
+   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · route /customers/x2/info?s=cs1 · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x2",
    "path": []
@@ -3288,7 +3340,7 @@
    "testID": "cust-attached-remove",
    "ok": true,
    "kind": "button",
-   "effect": "ui + -cust-attached,cust-attached-remove",
+   "effect": "GET inbox/conversations/x1?systemId=cs1 · ui + -cust-attached,cust-attached-remove",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x1",
    "path": [
@@ -3317,7 +3369,7 @@
    "testID": "cust-attach",
    "ok": true,
    "kind": "button",
-   "effect": "filechooser",
+   "effect": "ui +cust-quick - · filechooser",
    "fixture": "s2.14-cases.json",
    "route": "/customers/x2",
    "path": []
@@ -3785,7 +3837,7 @@
    "testID": "cust-system-chip",
    "ok": true,
    "kind": "button",
-   "effect": "GET inbox/conversations?systemId=cs2 · GET inbox/routing?systemId=cs2 · state",
+   "effect": "ui +cust-counts,cust-row,cust-row-unassigned -cust-loading",
    "fixture": "s2.14-cases.json",
    "route": "/customers",
    "path": []
@@ -3803,7 +3855,7 @@
    "testID": "cust-tab",
    "ok": true,
    "kind": "group",
-   "effect": "child cust-tab-unanswered: GET inbox/systems · GET inbox/conversations?systemId=cs1 · GET inbox/routing?systemId=cs1 · ui + -cust-row-waiting · state",
+   "effect": "child cust-tab-all: ui +cust-counts,cust-row,cust-row-unassigned -cust-loading",
    "fixture": "s2.14-cases.json",
    "route": "/customers",
    "path": []
@@ -3812,7 +3864,7 @@
    "testID": "cust-channel-chip",
    "ok": true,
    "kind": "button",
-   "effect": "ui +cust-counts,cust-row,cust-row-unassigned -cust-loading",
+   "effect": "ui +sec-top-team-badge,cust-counts,cust-system-chip -cust-loading",
    "fixture": "s2.14-cases.json",
    "route": "/customers",
    "path": []
@@ -3831,7 +3883,7 @@
    "ok": true,
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
-   "fixture": "s2.14-loading.json",
+   "fixture": "s2.14-cases.json",
    "route": "/customers",
    "path": []
   },
@@ -3968,7 +4020,7 @@
    "testID": "biz-new-type-*",
    "ok": true,
    "kind": "button",
-   "effect": "member biz-new-type-retail: state",
+   "effect": "member biz-new-type-service: state",
    "fixture": "s2.14-cases-new.json",
    "route": "/business/new",
    "path": []
@@ -4173,8 +4225,10 @@
    "kind": "view",
    "effect": "visible (ไม่ใช่ปุ่ม)",
    "fixture": "s2.14-cases-auth.json",
-   "route": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
-   "path": []
+   "route": "/otp?phone=0812345678&mode=login",
+   "path": [
+    "otp-input=123456"
+   ]
   },
   {
    "testID": "otp-input",

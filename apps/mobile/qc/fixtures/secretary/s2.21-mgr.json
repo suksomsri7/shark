@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.21+S2.22 (MANAGER · ภาพเดี่ยว) — ผู้จัดการ: เชิญได้แค่พนักงาน · แก้ก้อง (STAFF) ได้ · น้ำ (m2 ผู้จัดการอีกคน) อ่านอย่างเดียว · ข้อมูลจำลองล้วน · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
+ "_about": "fixture ของใบ S2.21+S2.22 (MANAGER · ภาพเดี่ยว) — ผู้จัดการ: เชิญได้แค่พนักงาน · แก้ก้อง (STAFF) ได้ · น้ำ (m2 ผู้จัดการอีกคน) อ่านอย่างเดียว · ข้อมูลจำลองล้วน · S3a.1-A: ลบบัญชี 2 ขั้น = POST auth/sms/request (resendAfterSec 0) → POST account/delete {confirm, code} 200 · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -412,6 +412,10 @@
   },
   "POST /api/mobile/secretary/account/delete": {
    "ok": true
+  },
+  "POST /api/mobile/auth/sms/request": {
+   "ok": true,
+   "resendAfterSec": 0
   },
   "POST /api/mobile/auth/logout": {
    "ok": true

@@ -98,6 +98,7 @@ export default function CustomerRoomScreen() {
   const [active, setActive] = useState(() => AppState.currentState !== "background");
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const claimRef = useRef(false); // R-Z30: รับเรื่องครั้งเดียวต่อการกด
   const [draft, setDraft] = useState<Draft | null>(null);
   const [viewer, setViewer] = useState<string | null>(null);
   const [moreBusy, setMoreBusy] = useState(false);
@@ -265,7 +266,8 @@ export default function CustomerRoomScreen() {
 
   // รับเรื่อง = มอบห้องที่ยังไม่มีผู้ดูแลให้ตัวเอง (สิทธิ์ตอบพอ · R-S1.21a) · 409 = มีคนรับตัดหน้า ⇒ แจ้ง + โหลดใหม่
   const claim = async () => {
-    if (!myId || claiming) return;
+    if (!myId || claiming || claimRef.current) return;
+    claimRef.current = true;
     setClaiming(true);
     setNote(null);
     try {
@@ -274,6 +276,7 @@ export default function CustomerRoomScreen() {
     } catch (e) {
       setNote({ text: inboxNote(e) ?? t(statusOf(e) === 409 ? "cust.room.claimTaken" : "cust.err"), warn: true });
     } finally {
+      claimRef.current = false;
       setClaiming(false);
       void load();
     }

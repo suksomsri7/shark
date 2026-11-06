@@ -2,6 +2,7 @@
 //   POST /api/mobile/auth/sms/request {phone}                 → 200 {ok, resendAfterSec} เสมอ · 503 sms_unavailable (ยังไม่ตั้งผู้ให้บริการ SMS)
 //   POST /api/mobile/auth/sms/verify  {phone, code, signup?}  → {token,…} | {needSignup:true} · 401 {error: invalid|expired|locked|not_found|bad_phone} · 409 email_taken|phone_taken|bad_input
 //   POST /api/mobile/auth/phone/link  {phone, code} + Bearer  → {ok, phone} · 401 · 409 phone_taken|phone_change_locked
+//   POST /api/mobile/auth/otp         {email}                  → 200 {ok} เสมอ (รหัสอีเมล · ใช้กับลบบัญชีเมื่อไม่มีเบอร์ R-Z21)
 // เบอร์ normalize เป็น +66… ก่อนส่งทุกครั้ง (server ตรวจซ้ำ) · ไม่เก็บรหัสไว้ที่ไหนนอกจาก state ของจอ
 import { api, ApiError } from "@/src/api/client";
 import { normalizeThaiMobile } from "@/src/lib/phone";
@@ -30,6 +31,11 @@ export function smsVerify(phone: string, code: string, signup?: SignupInput): Pr
 
 export function phoneLink(phone: string, code: string): Promise<{ ok: true; phone: string }> {
   return api<{ ok: true; phone: string }>("/api/mobile/auth/phone/link", { body: { phone: wire(phone), code }, tenant: false });
+}
+
+/** POST /api/mobile/auth/otp {email} → 200 {ok:true} เสมอ (กัน enumeration) — ขอรหัสอีเมลสำหรับบัญชีที่ไม่มีเบอร์ (ลบบัญชี step-up · R-Z21) */
+export function emailOtpRequest(email: string): Promise<{ ok: true }> {
+  return api<{ ok: true }>("/api/mobile/auth/otp", { body: { email: email.trim().toLowerCase() }, auth: false, tenant: false });
 }
 
 /** รหัสเหตุผลจาก error ของ 3 route นี้ (ไม่ใช่ ApiError = "network") */

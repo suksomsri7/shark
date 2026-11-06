@@ -39,6 +39,7 @@ export default function SecretaryKnowledgeScreen() {
   const [parts, setParts] = useState<Parts>(LOADING);
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const seq = useRef(0);
+  const busyRef = useRef(false); // R-Z30: ยืนยัน/ลบ ทีละรายการ (state busy อัปเดตไม่ทันเมื่อกดรัว)
 
   const load = useCallback(() => {
     if (!activeTenantId) return;
@@ -68,7 +69,8 @@ export default function SecretaryKnowledgeScreen() {
   );
 
   const act = async (a: Act) => {
-    if (!owner || busy) return;
+    if (!owner || busy || busyRef.current) return;
+    busyRef.current = true;
     setBusy(a.id);
     setNote(null);
     try {
@@ -79,6 +81,7 @@ export default function SecretaryKnowledgeScreen() {
     } catch (e) {
       setNote({ text: serverNote(e) ?? t("sec.set.saveFail"), warn: true });
     } finally {
+      busyRef.current = false;
       setBusy(null);
     }
   };

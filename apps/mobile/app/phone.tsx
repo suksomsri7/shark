@@ -1,7 +1,7 @@
 // R8 · บัญชีเดิมที่ยังไม่มีเบอร์ต้องผูกเบอร์ก่อนใช้งาน (ใบ S2.12) — ยามหน้าประตู (app/_layout.tsx) พามาเมื่อ /me ตอบ user.phone = null
 // ขั้น 1 ใส่เบอร์ → รับรหัส SMS · ขั้น 2 รหัส 6 ช่องในหน้าเดียว → POST /api/mobile/auth/phone/link (Bearer) → refreshMe ⇒ ยามพาไปต่อเอง
 // ทางออกจากจอนี้มีทางเดียวคือออกจากระบบ (มติ R8 — ไม่มีปุ่มให้ผ่านไปโดยไม่ผูกเบอร์)
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { AiryScreen, Orb, PrimaryButton } from "@/src/components/airy";
 import { AuthField, GlassButton, Hero, LinkLine, NoteLine, OtpBoxes } from "@/src/components/auth/airy";
@@ -22,6 +22,8 @@ export default function PhoneLinkScreen() {
   const [code, setCode] = useState("");
   const [left, setLeft] = useState(0);
   const [busy, setBusy] = useState(false);
+  // R-Z30: กล่องรหัสส่งเองเมื่อครบ + กดปุ่มซ้ำในรอบเดียวกัน — state อัปเดตไม่ทัน ⇒ กันด้วย ref
+  const busyRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [shakeKey, setShakeKey] = useState(0);
   const [linked, setLinked] = useState(false); // ผูกสำเร็จแล้วแต่โหลด /me ไม่ได้ ⇒ ปุ่มลองใหม่ (ไม่ผูกซ้ำ · รหัสถูกใช้แล้ว)
@@ -44,10 +46,11 @@ export default function PhoneLinkScreen() {
   }
 
   async function request() {
-    if (!phoneOk || busy) {
+    if (!phoneOk || busy || busyRef.current) {
       if (!phoneOk) setErr(t("auth.common.badPhone"));
       return;
     }
+    busyRef.current = true;
     setErr(null);
     setBusy(true);
     try {
@@ -58,23 +61,28 @@ export default function PhoneLinkScreen() {
     } catch (e) {
       setErr(reason(e));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
 
   // /me ได้เบอร์แล้ว ⇒ ยามหน้าประตูพาไปหน้าถัดไปเอง · โหลดไม่ได้ ⇒ คงจอไว้พร้อมปุ่มลองใหม่
   async function reload() {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setErr(null);
     setBusy(true);
     try {
       if (!(await refreshMe())) setErr(t("auth.phone.reloadFailed"));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
 
   async function link(value = code) {
-    if (value.length !== 6 || busy) return;
+    if (value.length !== 6 || busy || busyRef.current) return;
+    busyRef.current = true;
     setErr(null);
     setBusy(true);
     let ok = false;
@@ -90,6 +98,7 @@ export default function PhoneLinkScreen() {
       // S2.14 (R-S2.14i): ล้มชั่วคราว (เน็ต · ≥500 ยกเว้น 503) ⇒ คงรหัสไว้กด "ยืนยัน" ซ้ำ · รหัสผิด/หมดอายุ ⇒ ล้างให้พิมพ์ใหม่
       if (!keepCodeOnError(e)) setCode("");
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
     if (ok) {

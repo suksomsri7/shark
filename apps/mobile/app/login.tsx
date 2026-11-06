@@ -51,6 +51,9 @@ export default function LoginScreen() {
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const verifyingRef = useRef(false);
+  // R-Z30: ขอรหัส (SMS/อีเมล) และเข้าด้วยบัญชีภายนอก — กดซ้ำในรอบเดียวกัน (state อัปเดตไม่ทัน) = คำขอเดียว · ไม่ push /otp ซ้ำ
+  const sendingRef = useRef(false);
+  const socialRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // ข้อความเทา (social ยังไม่เปิด) — ไม่ใช่ error
   const [socialBusy, setSocialBusy] = useState(false);
@@ -74,6 +77,8 @@ export default function LoginScreen() {
       setErr(t("auth.common.badPhone"));
       return;
     }
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     clearMsg();
     setSending(true);
     try {
@@ -83,6 +88,7 @@ export default function LoginScreen() {
     } catch (x) {
       setErr(t(authErrorKey(authErrorCode(x)))); // 503 sms_unavailable ⇒ บอกให้ใช้ Apple/Google/อีเมล (ปุ่มอยู่บนจอนี้)
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   }
@@ -94,6 +100,8 @@ export default function LoginScreen() {
       setErr(t("auth.login.emailBad"));
       return;
     }
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     clearMsg();
     setSending(true);
     try {
@@ -104,6 +112,7 @@ export default function LoginScreen() {
     } catch (x) {
       setErr(apiErrorText(x));
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   }
@@ -151,6 +160,8 @@ export default function LoginScreen() {
 
   // Apple = ใช้จริง: signInAsync → identityToken → แลก token ฝั่งเรา → signIn
   async function appleSignIn() {
+    if (socialRef.current) return;
+    socialRef.current = true;
     clearMsg();
     setSocialBusy(true);
     try {
@@ -179,11 +190,14 @@ export default function LoginScreen() {
       if ((x as { code?: string }).code === "ERR_REQUEST_CANCELED") return; // ผู้ใช้กดยกเลิก — เงียบ ไม่โชว์ error
       setErr(apiErrorText(x));
     } finally {
+      socialRef.current = false;
       setSocialBusy(false);
     }
   }
 
   async function googleSignIn() {
+    if (socialRef.current) return;
+    socialRef.current = true;
     clearMsg();
     setSocialBusy(true);
     try {
@@ -205,11 +219,14 @@ export default function LoginScreen() {
       if ((x as { code?: string }).code === statusCodes.SIGN_IN_CANCELLED) return;
       setErr(apiErrorText(x));
     } finally {
+      socialRef.current = false;
       setSocialBusy(false);
     }
   }
 
   async function browserSocial(provider: "line" | "facebook") {
+    if (socialRef.current) return;
+    socialRef.current = true;
     clearMsg();
     setSocialBusy(true);
     try {
@@ -230,6 +247,7 @@ export default function LoginScreen() {
     } catch (x) {
       setErr(apiErrorText(x));
     } finally {
+      socialRef.current = false;
       setSocialBusy(false);
     }
   }

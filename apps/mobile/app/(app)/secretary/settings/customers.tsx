@@ -54,6 +54,7 @@ export default function SecretaryCustomersScreen() {
   const [form, setForm] = useState<AfterHours | null>(null);
   const [problem, setProblem] = useState<keyof typeof PROBLEM | null>(null);
   const [busy, setBusy] = useState(false);
+  const saveRef = useRef(false); // R-Z30: กดบันทึกซ้ำในรอบเดียวกัน ⇒ PUT ครั้งเดียว
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   // R-S2.14h: ล้มก่อนได้ after-hours = LoadError (403 = การ์ดล็อก · อื่น ๆ = ลองใหม่)
   const [loadErr, setLoadErr] = useState<"denied" | "error" | null>(null);
@@ -91,13 +92,14 @@ export default function SecretaryCustomersScreen() {
   };
 
   const save = async () => {
-    if (!form || !dirty || busy) return;
+    if (!form || !dirty || busy || saveRef.current) return;
     const p = disclosureProblem(form.disclosure);
     if (p) {
       setProblem(p);
       return;
     }
     const tenant = activeTenantId;
+    saveRef.current = true;
     setBusy(true);
     setNote(null);
     try {
@@ -109,6 +111,7 @@ export default function SecretaryCustomersScreen() {
     } catch (e) {
       setNote({ text: serverNote(e) ?? t("sec.set.saveFail"), warn: true });
     } finally {
+      saveRef.current = false;
       setBusy(false);
     }
   };

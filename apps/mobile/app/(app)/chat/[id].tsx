@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
-import { api, apiErrorText, sendChat } from "@/src/api/client";
+import { ChatStreamError, api, apiErrorText, sendChat } from "@/src/api/client";
+import { useT } from "@/src/i18n";
 import { ChatBubble } from "@/src/components/chat/ChatBubble";
 import { ProposalCard, type ProposalView } from "@/src/components/chat/ProposalCard";
 import { TypingIndicator } from "@/src/components/chat/TypingIndicator";
@@ -28,6 +29,7 @@ type Item =
   | { kind: "error"; key: string; text: string };
 
 export default function ChatScreen() {
+  const tr = useT(); // ข้อความกลางเมื่อ SSE error ไม่มี message (จอ 1.0 ยังฝังไทยส่วนอื่นตามเดิม)
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const brand = useBrand();
@@ -153,7 +155,8 @@ export default function ChatScreen() {
       await loadProposals();
     } catch (e) {
       // ผิดพลาด — โชว์ bubble แดง + ปุ่มส่งใหม่ (เก็บข้อความไว้ retry)
-      setError(apiErrorText(e));
+      // SSE error (§Z.4): ข้อความไทยของ server (`message`) · ไม่มี ⇒ ข้อความกลางของ i18n
+      setError(e instanceof ChatStreamError ? (e.detail ?? tr("chat.sse.error")) : apiErrorText(e));
       setFailed({ text: sendText, images: imgs });
     } finally {
       setSending(false);

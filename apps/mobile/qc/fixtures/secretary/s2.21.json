@@ -1,5 +1,5 @@
 {
- "_about": "fixture ของใบ S2.21+S2.22 (OWNER) — G1 สร้างกิจการ · G2 เชิญพนักงาน (คำเชิญค้าง 1 · สาขา 2 · ระบบของร้าน dorm/booking/account/pos/ai) · G3 สิทธิ์ของก้อง (m1 STAFF · หอพัก · แชทตอบได้ · หอพักใช้งาน · จองคิวดูได้) · G4 บัญชีของฉัน (เจ้าของ 2 · พนักงาน 1 · เบอร์ผูกแล้ว · Apple เชื่อมแล้ว) · ข้อมูลจำลองล้วน · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
+ "_about": "fixture ของใบ S2.21+S2.22 (OWNER) — G1 สร้างกิจการ · G2 เชิญพนักงาน (คำเชิญค้าง 1 · สาขา 2 · ระบบของร้าน dorm/booking/account/pos/ai) · G3 สิทธิ์ของก้อง (m1 STAFF · หอพัก · แชทตอบได้ · หอพักใช้งาน · จองคิวดูได้) · G4 บัญชีของฉัน (เจ้าของ 2 · พนักงาน 1 · เบอร์ผูกแล้ว · Apple เชื่อมแล้ว) · ข้อมูลจำลองล้วน · S3a.1-A: ลบบัญชี 2 ขั้น = POST auth/sms/request (resendAfterSec 60) → POST account/delete {confirm, code} 200 · S2.20: + GET secretary/staff/invites + GET secretary/support/cases (badge ทีมของแถบบนโหลดที่ layout ของโซน)",
  "noAuth": [
   "/login"
  ],
@@ -400,6 +400,10 @@
   },
   "POST /api/mobile/secretary/account/delete": {
    "ok": true
+  },
+  "POST /api/mobile/auth/sms/request": {
+   "ok": true,
+   "resendAfterSec": 60
   },
   "POST /api/mobile/auth/logout": {
    "ok": true

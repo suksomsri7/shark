@@ -37,6 +37,7 @@ export default function SecretaryLogScreen() {
   // S2.14: โหลดล้ม (ยังไม่มีรายการ) ⇒ การ์ดล้ม + ลองใหม่ แทน "ไม่มีรายการในตัวกรองนี้"
   const [failed, setFailed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const undoRef = useRef(false); // R-Z30: ย้อนกลับทีละรายการ · กดรัวในรอบเดียวกัน = POST ครั้งเดียว
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
   const seq = useRef(0);
@@ -105,7 +106,8 @@ export default function SecretaryLogScreen() {
   );
 
   const undo = async (row: LogRow) => {
-    if (busyId) return;
+    if (busyId || undoRef.current) return;
+    undoRef.current = true;
     setBusyId(row.id);
     setNote(null);
     try {
@@ -115,6 +117,7 @@ export default function SecretaryLogScreen() {
     } catch (e) {
       setNote({ text: serverNote(e) ?? t("sec.log.undoFail"), warn: true });
     } finally {
+      undoRef.current = false;
       setBusyId(null);
     }
   };

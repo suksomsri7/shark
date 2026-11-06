@@ -31,6 +31,7 @@ import {
   normalizeLog,
   normalizeMessages,
   normalizeRoomDetail,
+  retryPending,
   secGet,
   secGetId,
   secPostId,
@@ -285,7 +286,9 @@ export default function SecretaryRoomScreen() {
     if (failedText.current !== null && failedText.current !== text) cmid.current = null;
     cmid.current = cmid.current ?? clientMessageId();
     try {
-      const r = await secPostId("secretary/rooms/[id]/send", id, { text, clientMessageId: cmid.current });
+      const cm = cmid.current;
+      // R-Z30: ข้อความเดิมครั้งแรกยังทำไม่เสร็จ (409 pending) ⇒ รอแล้วลองใหม่เงียบ ๆ ด้วยรหัสเดิม ≤ 3 ครั้ง
+      const r = await retryPending(() => secPostId("secretary/rooms/[id]/send", id, { text, clientMessageId: cm }));
       cmid.current = null;
       failedText.current = null;
       setDraft("");

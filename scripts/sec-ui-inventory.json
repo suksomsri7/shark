@@ -1559,8 +1559,29 @@
    "testID": "acct-delete-confirm",
    "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
    "screen": "บัญชีของฉัน (G4)",
-   "action": "POST secretary/account/delete {confirm} → signOut (ต้องพิมพ์คำยืนยัน)",
-   "wo": "S2.22"
+   "action": "ขั้น 1 ลบบัญชี: ขอรหัส 6 หลัก (POST auth/sms/request เบอร์ตัวเอง · ไม่มีเบอร์ = POST auth/otp อีเมล) → ขั้นใส่รหัส (ต้องพิมพ์คำยืนยันก่อน · R-Z29)",
+   "wo": "S2.22 · S3a.1-A"
+  },
+  {
+   "testID": "acct-delete-code",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ช่องรหัส 6 หลัก (ตัวเลขเท่านั้น)",
+   "wo": "S3a.1-A"
+  },
+  {
+   "testID": "acct-delete-resend",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ส่งรหัสอีกครั้ง (รอ resendAfterSec ก่อน)",
+   "wo": "S3a.1-A"
+  },
+  {
+   "testID": "acct-delete-final",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ขั้น 2: POST secretary/account/delete {confirm, code} → signOut · 401 = รหัสผิด (ล้างช่อง) · code_required = คงขั้นใส่รหัส",
+   "wo": "S3a.1-A"
   },
   {
    "testID": "acct-delete-cancel",

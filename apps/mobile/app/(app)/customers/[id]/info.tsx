@@ -4,6 +4,7 @@
 //     …/helpers · …/status · …/contact (ผูก/ถอดสมาชิก · ค้นจาก member/search เดิม)
 //   🔴 3 แชทไม่ปน: "สั่ง Shark เรื่องลูกค้านี้" = POST secretary/rooms {instruction, clientMessageId, context:{chatConversationId, contactId}}
 //      (รหัสเท่านั้น — ไม่ใส่ชื่อ/เบอร์ลูกค้าลงคำสั่ง) → เปิดห้องเลขา /secretary/room/<id> · จอนี้ไม่มีเส้นตอบลูกค้า
+//      R-Z28: clientMessageId อยู่ใน ref จนสำเร็จ (คำสั่ง/ห้องแชทเปลี่ยน = รหัสใหม่) · 409 pending ⇒ retryPending ลองใหม่เงียบ ๆ ≤ 3 ครั้ง
 //   🔴 PII: เบอร์สมาชิก = `linkedMember.phoneMasked` จาก server (S1.14b · ไม่มีเบอร์เต็มในแอป) · ไม่เก็บลงเครื่อง
 //   สิทธิ์ (R-S2.17a): canReply จาก store (`inbox/systems` · โหลดซ้ำตอน focus) — false/ยังไม่รู้ ⇒ ซ่อน ผูก/ถอด · มอบหมาย · คนช่วย · สถานะ · ส่งต่อ · ปิดห้อง
 //     มอบหมายให้คนอื่น/ผูกสมาชิก = OWNER/MANAGER (คีย์ assign/customer.link · R-S1.25a) · พนักงาน = รับห้องที่ยังไม่มีผู้ดูแลให้ตัวเองเท่านั้น ·
@@ -18,7 +19,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
 import { AiryScreen, Glass, Icon, IconBtn, LoadError, Loading, Note, PrimaryButton, SectionLabel, Sheet, TopBar } from "@/src/components/airy";
 import { Avatar, ChannelBadge, ConfirmSheet, StaffSheet, firstName, useChannelLabel } from "@/src/components/customers/parts";
-import { clientMessageId, secPost, setCustomersAccess, startErrorKind, useActiveRole } from "@/src/api/secretary";
+import { clientMessageId, retryPending, secPost, setCustomersAccess, startErrorKind, useActiveRole } from "@/src/api/secretary";
 import {
   WAITING_HUMAN_TAG,
   getCurrentSystem,
@@ -70,6 +71,9 @@ export default function CustomerInfoScreen() {
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const [hits, setHits] = useState<MemberHit[]>([]);
   const busyRef = useRef(false);
+  /** R-Z28: รหัสกันส่งซ้ำของ "สั่ง Shark" ที่ยังไม่สำเร็จ · ผูกกับคำสั่ง+ห้องแชท (เปลี่ยน = รหัสใหม่) */
+  const cmidRef = useRef<string | null>(null);
+  const cmidFor = useRef<string | null>(null);
   const opened = useRef(false);
   const tenantRef = useRef(activeTenantId);
   tenantRef.current = activeTenantId;
@@ -199,8 +203,17 @@ export default function CustomerInfoScreen() {
     busyRef.current = true;
     setBusy(true);
     setSheetErr(null);
+    const contactId = thread.contact.id;
+    const key = `${activeTenantId ?? ""}|${id}|${contactId}|${instruction}`;
+    if (cmidFor.current !== key) cmidRef.current = null;
+    cmidRef.current = cmidRef.current ?? clientMessageId();
+    cmidFor.current = key;
+    const cmid = cmidRef.current;
     try {
-      const r = await secPost("secretary/rooms", { instruction, clientMessageId: clientMessageId(), context: { chatConversationId: id, contactId: thread.contact.id } });
+      // R-Z30: 409 pending (ครั้งแรกยังเปิดห้องไม่เสร็จ) ⇒ รอแล้วลองใหม่เงียบ ๆ ด้วยรหัสเดิม
+      const r = await retryPending(() => secPost("secretary/rooms", { instruction, clientMessageId: cmid, context: { chatConversationId: id, contactId } }));
+      cmidRef.current = null;
+      cmidFor.current = null;
       setSheet(null);
       router.push(`/secretary/room/${encodeURIComponent(r.roomId)}`);
     } catch (e) {

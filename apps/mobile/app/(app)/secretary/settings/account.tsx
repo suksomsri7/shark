@@ -2,9 +2,11 @@
 //   เบอร์ (ยังไม่ผูก ⇒ /phone ของ S2.12 · ผูกแล้ว ⇒ เปลี่ยนต้องติดต่อทีมงาน R-S1.19e) · อีเมล (pendingEmail = ป้าย "ยังไม่ยืนยัน" R-S1.19a) · Apple ผูกแล้ว/ไม่
 //   ธีม ตามระบบ/สว่าง/มืด = theme-store (คีย์ shark_theme · R-UI3) · แจ้งเตือน 4 ชนิด (GET/PUT secretary/notify · ร้านที่เลือกอยู่)
 //   เข้า/ออกเวร (POST inbox/shift · สถานะ + เวลาเข้าเวรจาก GET inbox/shift · ตอบลูกค้าได้ = อยู่ใน GET inbox/staff · ไม่ได้ = ปิดใช้)
-//   ลบบัญชี: preview (GET account/delete/preview) → พิมพ์คำยืนยัน → POST account/delete {confirm} → signOut · ออกจากระบบ = แตะ 2 ครั้ง
+//   ลบบัญชี 2 ขั้น (R-Z29 · สัญญา server R-Z21): preview (GET account/delete/preview) → พิมพ์คำยืนยัน → requestCode = ขอรหัส 6 หลัก
+//     (มีเบอร์ ⇒ POST auth/sms/request ของเบอร์ตัวเอง · ไม่มีเบอร์ ⇒ POST auth/otp ของอีเมล · ไม่มีทั้งคู่ ⇒ ให้ติดต่อทีมงาน) →
+//     ใส่รหัส → POST account/delete {confirm, code} → signOut · 401 = รหัสผิด/หมดอายุ (ล้างช่อง) · code_required = กลับขั้นใส่รหัส · ออกจากระบบ = แตะ 2 ครั้ง
 //   คำเชิญที่ส่งถึงเบอร์เรา = การ์ดรับคำเชิญ (R-S1.25b)
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,8 +31,10 @@ import {
   type NotifyMode,
   type NotifyPrefs,
 } from "@/src/api/secretary";
+import { ApiError } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
-import { localThaiMobile, formatThaiMobileInput } from "@/src/lib/phone";
+import { authErrorCode, authErrorKey, emailOtpRequest, keepCodeOnError, smsRequest } from "@/src/lib/auth-api";
+import { localThaiMobile, formatThaiMobileInput, maskPhone } from "@/src/lib/phone";
 import { THEME_MODES, setThemeMode, useThemeMode, type ThemeMode } from "@/src/lib/theme-store";
 import th from "@/src/i18n/th";
 import { useT, type I18nKey } from "@/src/i18n";
@@ -42,6 +46,13 @@ const CONFIRM_WORD = th["acct.delete.word"];
 const THEME_LABEL: Record<ThemeMode, I18nKey> = { system: "acct.theme.system", light: "acct.theme.light", dark: "acct.theme.dark" };
 const KIND_LABEL: Record<NotifyKind, I18nKey> = { approval: "acct.notify.approval", room: "acct.notify.room", inbox: "acct.notify.inbox", help: "acct.notify.help" };
 const MODE_LABEL: Record<NotifyMode, I18nKey> = { ALL: "acct.notify.ALL", ASSIGNED: "acct.notify.ASSIGNED", OFF: "acct.notify.OFF" };
+/** รอส่งรหัสซ้ำ (วินาที) เมื่อ server ไม่บอก resendAfterSec */
+const RESEND_SEC = 60;
+/** อีเมลแบบปิดกลาง "s•••@shark.in.th" (แสดงว่าส่งรหัสไปที่ไหน) */
+const maskEmail = (e: string) => {
+  const at = e.indexOf("@");
+  return at > 0 ? `${e.slice(0, 1)}•••${e.slice(at)}` : e;
+};
 
 export default function AccountScreen() {
   const { c } = useTheme();
@@ -67,6 +78,10 @@ export default function AccountScreen() {
   const [preview, setPreview] = useState<DeletePreview | null>(null);
   const [typed, setTyped] = useState("");
   const [delNote, setDelNote] = useState<string | null>(null);
+  // R-Z29: ขั้น 1 = คำยืนยัน + ขอรหัส · ขั้น 2 = ใส่รหัส 6 หลัก แล้วลบ
+  const [delStep, setDelStep] = useState<"word" | "code">("word");
+  const [code, setCode] = useState("");
+  const [cooldown, setCooldown] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -146,23 +161,70 @@ export default function AccountScreen() {
     else setNote({ text: t("acct.phone.locked"), warn: false });
   };
 
+  // ช่องทางรับรหัส: เบอร์ของบัญชี (SMS) ก่อน · ไม่มีเบอร์ = อีเมลที่ยืนยันแล้ว · ไม่มีทั้งคู่ = ลบเองไม่ได้
+  const channel: "sms" | "email" | null = user?.phone ? "sms" : user?.email ? "email" : null;
+  const sentTo = channel === "sms" ? maskPhone(user?.phone) || (user?.phone ?? "") : channel === "email" ? maskEmail(user?.email ?? "") : "";
+
+  useEffect(() => {
+    if (!delOpen || cooldown <= 0) return;
+    const h = setTimeout(() => setCooldown((x) => Math.max(0, x - 1)), 1000);
+    return () => clearTimeout(h);
+  }, [delOpen, cooldown]);
+
   const openDelete = () => {
     setDelOpen(true);
     setTyped("");
     setDelNote(null);
     setPreview(null);
+    setDelStep("word");
+    setCode("");
+    setCooldown(0);
     secGet("secretary/account/delete/preview")
       .then(setPreview)
       .catch((e) => setDelNote(serverNote(e) ?? t("acct.delete.previewFail")));
   };
+  /** ขั้น 1 → 2: ขอรหัส (sms/request ของเบอร์ตัวเอง หรือ auth/otp ของอีเมล) · ส่งแล้ว = ไปขั้นใส่รหัส */
+  const requestCode = () =>
+    void guard(async () => {
+      setDelNote(null);
+      if (!channel) {
+        setDelNote(t("acct.delete.noContact"));
+        return;
+      }
+      try {
+        if (channel === "sms") {
+          const r = await smsRequest(user?.phone ?? "");
+          setCooldown(typeof r?.resendAfterSec === "number" && r.resendAfterSec >= 0 ? Math.ceil(r.resendAfterSec) : RESEND_SEC);
+        } else {
+          await emailOtpRequest(user?.email ?? "");
+          setCooldown(RESEND_SEC);
+        }
+        setCode("");
+        setDelStep("code");
+      } catch (e) {
+        // 503 = ส่ง SMS ไม่ได้ (ข้อความของจอเข้าสู่ระบบชวนใช้วิธีอื่น — ไม่ตรงกับจอนี้) · อื่น ๆ = เหตุผลกลางของ auth (ถี่เกิน · เน็ต) หรือข้อความไทยของ server
+        const k = authErrorCode(e);
+        const key = authErrorKey(k);
+        setDelNote(k === "sms_unavailable" ? t("acct.delete.smsDown") : k === "network" ? t(key) : serverNote(e) ?? (key === "auth.common.generic" ? t("acct.delete.sendFail") : t(key)));
+      }
+    });
+  /** ขั้น 2: POST account/delete {confirm, code} */
   const doDelete = () =>
     void guard(async () => {
+      const c6 = code.replace(/\D/g, "");
+      if (c6.length !== 6) return;
+      setDelNote(null);
       try {
-        await secPost("secretary/account/delete", { confirm: CONFIRM_WORD });
+        await secPost("secretary/account/delete", { confirm: CONFIRM_WORD, code: c6 });
         setDelOpen(false);
         await signOut(); // ยามหน้าประตูพาไป /login
       } catch (e) {
-        setDelNote(serverNote(e) ?? t("acct.delete.fail"));
+        if (!keepCodeOnError(e)) setCode("");
+        if (e instanceof ApiError && e.code === "code_required") {
+          setDelStep("code");
+          setDelNote(t("acct.delete.codeRequired"));
+        } else if (e instanceof ApiError && e.status === 401 && e.code !== "unauthorized") setDelNote(t("acct.delete.codeWrong"));
+        else setDelNote(serverNote(e) ?? t("acct.delete.fail"));
       }
     });
 
@@ -189,6 +251,9 @@ export default function AccountScreen() {
   const shiftText = !shift ? "" : !shift.can ? t("acct.shift.cannot") : shift.on ? (shift.at ? t("acct.shift.onAt", { time: hhmmBkk(shift.at) }) : t("acct.shift.on")) : t("acct.shift.off");
   const lang = (sec?.languages?.[0] ?? "th") === "en" ? t("sec.me.lang.en") : t("sec.me.lang.th");
   const typedOk = typed.trim() === CONFIRM_WORD;
+  const codeOk = code.replace(/\D/g, "").length === 6;
+  const canAsk = typedOk && !!preview && !!channel && !busy;
+  const canDelete = codeOk && !busy;
   const list = (rows: { name: string }[] | undefined) => (rows ?? []).map((r) => r.name).join(", ");
 
   return (
@@ -267,15 +332,50 @@ export default function AccountScreen() {
                 .filter(Boolean)
                 .join("\n")}
         </Text>
-        <Text style={[styles.kindT, { color: c.textDim }]}>{t("acct.delete.type", { word: CONFIRM_WORD })}</Text>
-        <TextInput
-          testID="acct-delete-input"
-          value={typed}
-          onChangeText={setTyped}
-          placeholder={CONFIRM_WORD}
-          placeholderTextColor={c.placeholder}
-          style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
-        />
+        {delStep === "word" ? (
+          <>
+            <Text style={[styles.kindT, { color: c.textDim }]}>{t("acct.delete.type", { word: CONFIRM_WORD })}</Text>
+            <TextInput
+              testID="acct-delete-input"
+              value={typed}
+              onChangeText={setTyped}
+              placeholder={CONFIRM_WORD}
+              placeholderTextColor={c.placeholder}
+              style={[styles.input, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+            />
+            <Text style={[styles.hintT, { color: c.textMuted }]}>{channel ? t(channel === "sms" ? "acct.delete.willSms" : "acct.delete.willEmail", { to: sentTo }) : t("acct.delete.noContact")}</Text>
+          </>
+        ) : (
+          <>
+            <Text testID="acct-delete-sent" style={[styles.kindT, { color: c.textDim }]}>
+              {t(channel === "email" ? "acct.delete.sentEmail" : "acct.delete.sentSms", { to: sentTo })}
+            </Text>
+            <TextInput
+              testID="acct-delete-code"
+              value={code}
+              onChangeText={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              textContentType="oneTimeCode"
+              maxLength={6}
+              placeholder={t("acct.delete.codePh")}
+              placeholderTextColor={c.placeholder}
+              accessibilityLabel={t("acct.delete.codeLabel")}
+              style={[styles.input, code ? styles.code : styles.codePh, { color: c.text, backgroundColor: c.inputBg, borderColor: c.glass.border }]}
+            />
+            <Pressable
+              testID="acct-delete-resend"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: cooldown > 0 || busy }}
+              disabled={cooldown > 0 || busy}
+              onPress={requestCode}
+              style={styles.resend}
+            >
+              <Text style={[styles.resendT, { color: cooldown > 0 ? c.textMuted : c.text }]}>{cooldown > 0 ? t("acct.delete.resendIn", { s: cooldown }) : t("acct.delete.resend")}</Text>
+            </Pressable>
+          </>
+        )}
         {delNote ? (
           <Note warn testID="acct-delete-note">
             {delNote}
@@ -285,16 +385,29 @@ export default function AccountScreen() {
           <Pressable testID="acct-delete-cancel" accessibilityRole="button" onPress={() => setDelOpen(false)} style={[glassStyle(c, size.iconBtn / 2), styles.btn]}>
             <Text style={[styles.btnT, { color: c.text }]}>{t("perm.keep")}</Text>
           </Pressable>
-          <Pressable
-            testID="acct-delete-confirm"
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !typedOk || !preview || busy }}
-            disabled={!typedOk || !preview || busy}
-            onPress={doDelete}
-            style={[styles.btn, styles.main, { backgroundColor: typedOk && preview ? c.bad.fg : c.btnOff.bg }]}
-          >
-            <Text style={[styles.btnT, { color: typedOk && preview ? c.onAccent : c.btnOff.fg }]}>{busy ? t("acct.delete.deleting") : t("acct.delete.ok")}</Text>
-          </Pressable>
+          {delStep === "word" ? (
+            <Pressable
+              testID="acct-delete-confirm"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canAsk }}
+              disabled={!canAsk}
+              onPress={requestCode}
+              style={[styles.btn, styles.main, { backgroundColor: canAsk ? c.bad.fg : c.btnOff.bg }]}
+            >
+              <Text style={[styles.btnT, { color: canAsk ? c.onAccent : c.btnOff.fg }]}>{busy ? t("acct.delete.sending") : t("acct.delete.sendCode")}</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              testID="acct-delete-final"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canDelete }}
+              disabled={!canDelete}
+              onPress={doDelete}
+              style={[styles.btn, styles.main, { backgroundColor: canDelete ? c.bad.fg : c.btnOff.bg }]}
+            >
+              <Text style={[styles.btnT, { color: canDelete ? c.onAccent : c.btnOff.fg }]}>{busy ? t("acct.delete.deleting") : t("acct.delete.ok")}</Text>
+            </Pressable>
+          )}
         </View>
       </Sheet>
     </AiryScreen>
@@ -318,4 +431,9 @@ const styles = StyleSheet.create({
   kind: { marginTop: 12, gap: 6 },
   kindT: { fontSize: T.cap, fontWeight: "600", marginTop: 6 },
   input: { height: 48, borderRadius: radii.segIn + 4, borderWidth: 1, paddingHorizontal: 14, fontSize: T.body, marginTop: 6 },
+  code: { letterSpacing: 6, fontWeight: "700", textAlign: "center" },
+  codePh: { textAlign: "center" },
+  hintT: { fontSize: T.cap, lineHeight: 18, marginTop: 8 },
+  resend: { alignSelf: "flex-start", paddingVertical: spacing.xs, marginTop: 6 },
+  resendT: { fontSize: T.sub, fontWeight: "700", textDecorationLine: "underline" },
 });

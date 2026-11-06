@@ -180,7 +180,8 @@ type PostMap = {
   "secretary/tenants/create": { body: { name: string; type: string; systems: string[] }; res: TenantCreateRes };
   "secretary/staff/invite": { body: InviteBody; res: InviteRes };
   "secretary/invites/accept": { body: { inviteId: string } | { code: string }; res: { ok: boolean; tenantId?: string } };
-  "secretary/account/delete": { body: { confirm: string }; res: { ok: boolean } };
+  // R-Z21/R-Z29 step-up: code = OTP 6 หลักที่ขอด้วย auth/sms/request (เบอร์ตัวเอง) หรือ auth/otp (อีเมล · บัญชีไม่มีเบอร์)
+  "secretary/account/delete": { body: { confirm: string; code: string }; res: { ok: boolean } };
   "inbox/shift": { body: { onDuty: boolean }; res: { onDuty: boolean; onDutyAt: string | null } };
 };
 type Query = Record<string, string | number | undefined>;
@@ -329,6 +330,28 @@ export function clientMessageId(): string {
 }
 
 // ───────── สถานะผิดพลาด ─────────
+/** R-Z11/R-Z30: ส่งซ้ำด้วย clientMessageId เดิมขณะครั้งแรกยังทำไม่เสร็จ ⇒ 409 `pending` (rooms · rooms/[id]/send) */
+export function isPending(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 409 && e.code === "pending";
+}
+
+/** เพดานลองใหม่เมื่อเจอ 409 pending (R-Z30) · เว้น PENDING_WAIT_MS ต่อครั้ง */
+export const PENDING_RETRIES = 3;
+export const PENDING_WAIT_MS = 1500;
+
+/** เรียก fn · 409 pending ⇒ รอแล้วลองใหม่เงียบ ๆ (ไม่โยน error ให้จอ) สูงสุด PENDING_RETRIES ครั้ง · ยังค้าง/error อื่น ⇒ โยนตามปกติ
+ *  fn ต้องใช้ clientMessageId เดิมทุกครั้ง (จอเก็บใน ref · R-Z28) เซิร์ฟเวอร์จึงคืนห้อง/ข้อความเดิมเมื่อครั้งแรกเสร็จ */
+export async function retryPending<T>(fn: () => Promise<T>, wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!isPending(e) || i >= PENDING_RETRIES) throw e;
+      await wait(PENDING_WAIT_MS);
+    }
+  }
+}
+
 /** 403 = บัญชีนี้ยังใช้เลขาในกิจการนี้ไม่ได้ (R-S2.1d) */
 export function isDenied(e: unknown): boolean {
   return e instanceof ApiError && e.status === 403;

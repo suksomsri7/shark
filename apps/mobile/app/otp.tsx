@@ -1,7 +1,7 @@
 // S2 · ใส่รหัสจาก SMS (ใบ S2.12 · แบบ sec-c หน้า 2) — query: phone · mode=signup|login · (signup) name, email · resend (วินาที)
 // verify → token ⇒ signIn (ยามหน้าประตูใน app/_layout.tsx พาไปต่อเอง) · ไม่มีบัญชี (needSignup / 404 no_account) ⇒ การ์ดชวนสมัคร
 // 401 รหัสผิด ⇒ สั่นช่อง · หมดอายุ/ไม่พบ ⇒ ส่งรหัสใหม่ได้ทันที · ล็อก ⇒ รอตัวนับเดิม (§R) · 503 sms_unavailable ⇒ ข้อความ + ปุ่มกลับไปเข้าวิธีอื่น (Apple/Google/อีเมล ที่ /login)
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
@@ -38,6 +38,9 @@ export default function OtpScreen() {
   const [shakeKey, setShakeKey] = useState(0);
   const [noAccount, setNoAccount] = useState(false);
   const [smsDown, setSmsDown] = useState(false);
+  // R-Z30: กล่องรหัสส่งเองเมื่อครบ + กด "ยืนยัน"/"ส่งอีกครั้ง" ซ้ำในรอบเดียวกัน — state อัปเดตไม่ทัน ⇒ กันด้วย ref (แบบ login R-S2.14o)
+  const verifyingRef = useRef(false);
+  const resendingRef = useRef(false);
 
   // นับถอยหลังปุ่ม "ส่งรหัสอีกครั้ง" (resendAfterSec จาก sms/request)
   useEffect(() => {
@@ -57,7 +60,8 @@ export default function OtpScreen() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function verify(value = code) {
-    if (value.length !== 6 || busy) return;
+    if (value.length !== 6 || busy || verifyingRef.current) return;
+    verifyingRef.current = true;
     setErr(null);
     setInfo(null);
     setBusy(true);
@@ -66,6 +70,7 @@ export default function OtpScreen() {
       if (r.needSignup) {
         holdCode(phone, value); // รหัสยังไม่ถูกใช้ (server ไม่ consume) ⇒ ถือไว้ให้รอบสมัคร
         setNoAccount(true);
+        verifyingRef.current = false;
         setBusy(false);
         return;
       }
@@ -93,12 +98,14 @@ export default function OtpScreen() {
         // S2.14 (R-S2.14i): ล้มชั่วคราว (เน็ต · ≥500 ยกเว้น 503) ⇒ คงรหัสไว้กด "ยืนยัน" ซ้ำ · รหัสผิด/หมดอายุ ⇒ ล้างให้พิมพ์ใหม่
         if (!keepCodeOnError(e)) setCode("");
       }
+      verifyingRef.current = false;
       setBusy(false);
     }
   }
 
   async function resend() {
-    if (left > 0 || resending) return;
+    if (left > 0 || resending || resendingRef.current) return;
+    resendingRef.current = true;
     setErr(null);
     setInfo(null);
     setResending(true);
@@ -112,6 +119,7 @@ export default function OtpScreen() {
       if (why === "sms_unavailable") setSmsDown(true);
       else setErr(t(authErrorKey(why)));
     } finally {
+      resendingRef.current = false;
       setResending(false);
     }
   }

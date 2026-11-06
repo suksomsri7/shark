@@ -3,7 +3,7 @@
 //   ตัวอย่างการพูดสด = แม่แบบ i18n จากชื่อ/ลงท้าย/น้ำเสียงที่กำลังแก้ (ไม่ยิงเซิร์ฟเวอร์)
 //   สถิติ 4 ช่อง (ไม่มีเส้น stats ใน S1.14): งานเดือนนี้ + % โควตา (secretary/quota) · รออนุมัติ (secretary/inbox/count) · เสร็จ 7 วัน (secretary/rooms)
 //   บันทึกแล้ว ⇒ โหลด secretary/me ใหม่ (ภาษาจอเลขาเปลี่ยนตาม languages[0]) · ท้ายหน้า = แถวไปหน้าตั้งค่าอื่น (ตามแบบ)
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { Text, TextInput } from "@/src/components/ui/text";
@@ -60,6 +60,7 @@ export default function SecretaryProfileScreen() {
   const [form, setForm] = useState<Form>(formOf(null));
   const [stats, setStats] = useState<Stats>({ jobs: null, pct: null, waiting: null, done7: null });
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false); // R-Z30: กดบันทึกซ้ำในรอบเดียวกัน ⇒ PUT ครั้งเดียว
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   // R-S2.14h: ก่อนได้ตัวตนเลขา = Loading (ไม่วางชื่อ/น้ำเสียงค่าปริยายให้แก้) · ล้ม = LoadError+ลองใหม่ (403 = การ์ดล็อก)
   const [ident, setIdent] = useState<"loading" | "ok" | "error" | "denied">("loading");
@@ -119,7 +120,8 @@ export default function SecretaryProfileScreen() {
     });
 
   const save = async () => {
-    if (!dirty || !nameOk || busy) return;
+    if (!dirty || !nameOk || busy || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setNote(null);
     try {
@@ -132,6 +134,7 @@ export default function SecretaryProfileScreen() {
     } catch (e) {
       setNote({ text: serverNote(e) ?? t("sec.set.saveFail"), warn: true });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };

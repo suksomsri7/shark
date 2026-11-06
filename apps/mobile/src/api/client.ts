@@ -68,9 +68,17 @@ export async function api<T>(path: string, opts: ApiOpts = {}): Promise<T> {
 export type ChatEvent =
   | { type: "status"; label: string }
   | { type: "done"; result: { ok: true; conversationId: string; reply?: string; [k: string]: unknown } }
-  | { type: "error"; error: string };
+  // R-Z20/R-Z26 (§Z.4): server ส่ง `{type:"error", error, message}` — message = ข้อความไทยสำหรับผู้ใช้ (ไม่มี e.message ดิบแล้ว)
+  | { type: "error"; error: string; message?: string };
 
-// ยิง chat/send แล้ว parse SSE ทีละ event → onEvent · คืน done result (หรือ throw ApiError)
+/** SSE ส่ง event error แทน done ⇒ sendChat โยนตัวนี้ (detail = message ของ server · ไม่มี = จอใช้ข้อความกลางของ i18n) */
+export class ChatStreamError extends ApiError {
+  constructor(code: string, detail?: string) {
+    super(0, code || "chat_error", detail);
+  }
+}
+
+// ยิง chat/send แล้ว parse SSE ทีละ event → onEvent · คืน done result (หรือ throw ApiError · event error ไม่มี done ⇒ throw ChatStreamError)
 export async function sendChat(
   input: { conversationId?: string; text: string; imageUrls?: string[] },
   onEvent: (ev: ChatEvent) => void,
@@ -92,6 +100,7 @@ export async function sendChat(
   const decoder = new TextDecoder();
   let buf = "";
   let done: Extract<ChatEvent, { type: "done" }>["result"] | null = null;
+  let failed: Extract<ChatEvent, { type: "error" }> | null = null;
   for (;;) {
     const { value, done: end } = await reader.read();
     if (end) break;
@@ -106,8 +115,10 @@ export async function sendChat(
         const ev = JSON.parse(line.slice(6)) as ChatEvent;
         onEvent(ev);
         if (ev.type === "done") done = ev.result;
+        else if (ev.type === "error") failed = ev;
       } catch { /* frame เพี้ยน — ข้าม */ }
     }
   }
+  if (!done && failed) throw new ChatStreamError(String(failed.error ?? ""), typeof failed.message === "string" && failed.message.trim() ? failed.message.trim() : undefined);
   return done;
 }

@@ -4,7 +4,7 @@
 //   ชีตเพิ่ม/แก้ (ScheduleSheet): ทุกวัน/ทุกสัปดาห์ (+วัน) · ชั่วโมง 0–23 · ช่องทาง push/room (ปริยายทั้งคู่) · รายเดือนไม่มีในแอปรุ่นแรก
 //   แก้เวลา/ความถี่: เซิร์ฟเวอร์รุ่นนี้ PUT รับแค่ active ⇒ ตั้งใหม่ (POST) แล้วลบของเดิม (เต็มเพดาน ⇒ ลบก่อนแล้วตั้งใหม่ · ตั้งไม่ผ่าน = ตั้งของเดิมคืน)
 //   เพดาน max ⇒ ข้อความไทย (i18n) ก่อนเปิดชีต · ข้อความผิดของเซิร์ฟเวอร์ (ไทย) แสดงตามที่ส่งมา
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
@@ -76,6 +76,9 @@ export default function SecretaryScheduledScreen() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [editor, setEditor] = useState<Editor>(null);
   const [busy, setBusy] = useState(false);
+  // R-Z30: บันทึก/ลบในชีต = ครั้งเดียวต่อการกด (POST scheduled ซ้ำ = งานประจำ 2 ตัว) · สวิตช์เปิด/ปิด = ทีละตัวต่องาน
+  const busyRef = useRef(false);
+  const toggling = useRef(new Set<string>());
   const [sheetErr, setSheetErr] = useState<string | null>(null);
   const [flash, setFlash] = useState<{ text: string; warn: boolean; cap?: boolean } | null>(null);
 
@@ -138,7 +141,8 @@ export default function SecretaryScheduledScreen() {
 
   // เปิด/ปิด: เปลี่ยนบนจอก่อน (สวิตช์ตอบทันที) · ล้ม = คืนค่าเดิม + ข้อความ
   const toggle = async (x: TaskRow) => {
-    if (!canManage(x)) return;
+    if (!canManage(x) || toggling.current.has(x.id)) return;
+    toggling.current.add(x.id);
     const next = !x.active;
     setItems((l) => (l ?? []).map((y) => (y.id === x.id ? { ...y, active: next } : y)));
     try {
@@ -146,6 +150,8 @@ export default function SecretaryScheduledScreen() {
     } catch (e) {
       setItems((l) => (l ?? []).map((y) => (y.id === x.id ? { ...y, active: x.active } : y)));
       setFlash({ text: errText(e, t("sec.sched.err")), warn: true });
+    } finally {
+      toggling.current.delete(x.id);
     }
   };
 
@@ -155,6 +161,8 @@ export default function SecretaryScheduledScreen() {
       setEditor(null);
       return;
     }
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setSheetErr(null);
     try {
@@ -183,13 +191,15 @@ export default function SecretaryScheduledScreen() {
       setSheetErr(errText(e, t("sec.sched.err")));
       void load();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   const remove = async () => {
     const old = editor?.task;
-    if (!old) return;
+    if (!old || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setSheetErr(null);
     try {
@@ -200,6 +210,7 @@ export default function SecretaryScheduledScreen() {
     } catch (e) {
       setSheetErr(errText(e, t("sec.sched.err")));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };

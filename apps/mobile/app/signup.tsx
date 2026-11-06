@@ -1,7 +1,7 @@
 // S1 · สมัครใช้ SHARK (ใบ S2.12 · แบบ sec-c หน้า 1) — ชื่อ + เบอร์ + อีเมล → ขอรหัส SMS → /otp (mode=signup)
 // อีเมลตอนสมัคร = ยังไม่ยืนยัน (R-S1.19a: server เก็บเป็น pendingEmail) · ป้ายเล็กบอกผู้ใช้
 // ค่าเดิมกลับมาทาง query (?name&phone&email) เมื่อกด "แก้เบอร์หรืออีเมล" จากจอ OTP หรือ "สมัครเลย" จาก login ด้วยเบอร์
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AiryScreen, Orb, PrimaryButton } from "@/src/components/airy";
@@ -25,6 +25,8 @@ export default function SignupScreen() {
   const [email, setEmail] = useState(one(q.email));
   const [touched, setTouched] = useState(false);
   const [sending, setSending] = useState(false);
+  // R-Z30: กดซ้ำในรอบเดียวกัน (state อัปเดตไม่ทัน) ⇒ ขอรหัสครั้งเดียว
+  const sendingRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
 
   const nameOk = name.trim().length >= 2;
@@ -43,7 +45,8 @@ export default function SignupScreen() {
           : null;
 
   async function submit() {
-    if (!ready || sending) return;
+    if (!ready || sending || sendingRef.current) return;
+    sendingRef.current = true;
     setErr(null);
     setSending(true);
     try {
@@ -63,6 +66,7 @@ export default function SignupScreen() {
     } catch (e) {
       setErr(t(authErrorKey(authErrorCode(e))));
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   }

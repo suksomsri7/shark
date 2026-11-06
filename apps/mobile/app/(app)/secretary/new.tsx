@@ -2,6 +2,8 @@
 //   ทักทายด้วยชื่อ/คำลงท้ายของเลขา (secretary/me) · ข้อเสนอจาก secretary/suggestions (แตะ = เติมคำสั่งลงช่อง ไม่ส่งเอง · มติ 9)
 //   "งานที่สั่งบ่อย" จาก secretary/frequent (แตะ = เติม) · "ระบบที่เลขาเข้าถึงได้" จาก secretary/access (ไม่โชว์ระบบที่ปิด)
 //   ส่ง = POST secretary/rooms { instruction, clientMessageId } → แทนที่จอด้วย /secretary/room/<roomId>
+//   R-Z28: clientMessageId เก็บใน ref จนส่งสำเร็จ (กดซ้ำ/ลองใหม่หลังเน็ตหลุด = รหัสเดิม → ห้องเดิม) · คำสั่งหรือกิจการเปลี่ยน = รหัสใหม่
+//   R-Z30: 409 pending (ครั้งแรกยังเปิดห้องไม่เสร็จ) ⇒ retryPending รอ 1.5 วิ แล้วลองใหม่เงียบ ๆ ≤ 3 ครั้ง · กดซ้ำกันด้วย sendingRef
 //   402 / quota ⇒ การ์ด "โควตางานเดือนนี้หมด" + ลิงก์ /secretary/settings/quota · 429 / อื่น ๆ ⇒ ข้อความสั้นใต้ข้อเสนอ
 //   403 (suggestions / access / POST rooms · R-S2.14h) ⇒ การ์ดล็อก `sec-new-denied` + ล็อกช่องพิมพ์ (ปุ่มส่ง/+ ปิด · ไม่รับการพิมพ์)
 //   ช่องพิมพ์ล่างสุด InputBar (ไม่มีปุ่มเสียง · มติ 16) · ปุ่มส่งกดไม่ได้เมื่อว่างหรือกำลังส่ง · ?q= เติมคำสั่งมาจาก C3
@@ -21,6 +23,7 @@ import {
   normalizeFrequent,
   normalizeSuggestions,
   secGet,
+  retryPending,
   secPost,
   startErrorKind,
   useSecretaryMe,
@@ -56,9 +59,14 @@ export default function SecretaryNewScreen() {
   const [err, setErr] = useState<ErrKind | null>(null);
   const [denied, setDenied] = useState(false);
   const tenantRef = useRef(activeTenantId);
+  /** R-Z28: รหัสกันส่งซ้ำของคำสั่งที่ยังส่งไม่สำเร็จ + คำสั่ง/กิจการที่รหัสนี้ผูกอยู่ */
+  const cmidRef = useRef<string | null>(null);
+  const cmidFor = useRef<string | null>(null);
+  const sendingRef = useRef(false);
 
   useEffect(() => {
     tenantRef.current = activeTenantId;
+    cmidRef.current = null;
   }, [activeTenantId]);
 
   useEffect(() => {
@@ -103,17 +111,27 @@ export default function SecretaryNewScreen() {
 
   const send = async () => {
     const instruction = text.trim();
-    if (!instruction || busy || denied) return;
+    if (!instruction || sendingRef.current || denied) return;
+    sendingRef.current = true;
     setBusy(true);
     setErr(null);
+    // คำสั่งเดิม (กดซ้ำ/ลองใหม่) = รหัสเดิม · แก้คำสั่งหรือสลับกิจการ = รหัสใหม่
+    const key = `${activeTenantId ?? ""}|${instruction}`;
+    if (cmidFor.current !== key) cmidRef.current = null;
+    cmidRef.current = cmidRef.current ?? clientMessageId();
+    cmidFor.current = key;
+    const cmid = cmidRef.current;
     try {
-      const r = await secPost("secretary/rooms", { instruction, clientMessageId: clientMessageId() });
+      const r = await retryPending(() => secPost("secretary/rooms", { instruction, clientMessageId: cmid }));
+      cmidRef.current = null;
+      cmidFor.current = null;
       router.replace(`/secretary/room/${r.roomId}`);
     } catch (e) {
       const k = startErrorKind(e);
       if (k === "denied") setDenied(true);
       else setErr(k);
     } finally {
+      sendingRef.current = false;
       setBusy(false);
     }
   };

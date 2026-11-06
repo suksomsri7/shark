@@ -1553,6 +1553,36 @@
   "action": "handler ในจอ"
  },
  {
+  "testID": "acct-delete-sent",
+  "files": [
+   "app/(app)/secretary/settings/account.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "acct-delete-code",
+  "files": [
+   "app/(app)/secretary/settings/account.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "(v) => setCode(v.replace(/\\D/g, \"\").slice(0, 6))",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "acct-delete-resend",
+  "files": [
+   "app/(app)/secretary/settings/account.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "requestCode",
+  "action": "handler ในจอ"
+ },
+ {
   "testID": "acct-delete-note",
   "files": [
    "app/(app)/secretary/settings/account.tsx"
@@ -1574,6 +1604,16 @@
  },
  {
   "testID": "acct-delete-confirm",
+  "files": [
+   "app/(app)/secretary/settings/account.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "requestCode",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "acct-delete-final",
   "files": [
    "app/(app)/secretary/settings/account.tsx"
   ],
