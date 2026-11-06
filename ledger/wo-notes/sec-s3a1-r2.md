@@ -36,3 +36,10 @@
 - ข้อสอบ `qc-sec-s3a1-r2` T6-1…T6-4 (จด = 700/EXCLUDE/9,630.00 · ไม่จด = 0/NONE/9,000.00 · ระบุ 0 เองชนะ · hint มี "Do not ask about VAT")
 - ผล: r2 **20/20** ×2 (residue 0) · s3a.1 16/17 (R-1 SKIP) · s1.12 15/15 · qc-ai-tools 18/18 · typecheck 0 · fitness pre-commit ✅ · no-DB 53/53
 - `qc-account-api-ai-skill` 28/33: E1-K2.1/2.3/2.5/2.6/2.8 = "ยังไม่ได้เปิดระบบบัญชี" — ข้อสอบนี้ต้องใช้ร้าน seed บัญชี (เฉลย 494300 · ณัฐพล) ซึ่งไม่มีในฐาน QC เลขา · ไม่เกี่ยวกับใบ · E1-K1.7 (ASCII) เขียวหลังแก้
+
+## 5. รอบ 4 — R-Z50 กติกาห้ามถามค่าปริยายชั้นแกน (รอบจริง #3 ใบเสนอราคา 0/3 · ถาม VAT ก่อน load_skill)
+- merge ทิปผู้คุม `1b6c59b87` (SHA ตรง)
+- `src/lib/ai/tools.ts` `ask_clarify`: + "Do not ask about VAT/tax, discounts, document numbering or format: the shop's settings decide and the system fills them in. Ask only for what the system cannot know (which customer, which items, quantity, price, which bill/board)." · เปลี่ยน "Never guess — call…" เป็น "Never guess; call…" ให้คำอธิบายทั้งก้อนเป็น ASCII (ข้อความเดิมมีขีดยาว)
+- `src/lib/ai/persona.ts`: `SHOP_DEFAULTS_RULE` "- ค่าปริยายของร้าน เช่น VAT/รูปแบบเอกสาร ระบบเติมให้ — ห้ามถาม · ถามเฉพาะสิ่งที่ระบบรู้เองไม่ได้" ต่อจาก `DATA_NOT_COMMAND_RULE` เฉพาะห้องเลขา (`secRoom` = ตัวตนเลขา/ข้อมูลสด/บล็อกลูกค้า) — ห้อง AI เดิม prompt เดิมทุกไบต์ (s1.2 P-1 เขียว)
+- ข้อสอบ r2 T7-1 (ask_clarify ASCII + 2 ประโยค) · T7-2 (prompt ห้องเลขามีกติกา · ห้องเดิมไม่มี)
+- ผล: r2 **22/22** ×2 (residue 0) · qc-ai-tools 18/18 · s3a.1 16/17 (R-1 SKIP) · qc-sec-s1.2 28/28 · qc-account-api-ai-skill 28/33 (K1.7 เขียว · K2.x = ไม่มีร้าน seed บัญชีในฐาน QC เลขา เหมือนรอบ 3) · ไม่มีข้อสอบชื่อ persona/ai-prompt แยก (grep qc-*persona*/qc-ai-prompt* = ไม่มี) · typecheck 0 · fitness no-DB 53/53

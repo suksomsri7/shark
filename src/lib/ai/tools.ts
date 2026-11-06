@@ -1033,7 +1033,7 @@ const askClarify: AiTool = {
   def: {
     name: "ask_clarify",
     description:
-      "Ask the user back with tappable options when the request is ambiguous or missing something required (no quantity given, unclear which board/product/bill). Never guess — call this instead. Question and options must be written in Thai: question is one short question, options is 2-4 choices, each with label (button text) and value (text sent back when tapped).",
+      "Ask the user back with tappable options when the request is ambiguous or missing something required (no quantity given, unclear which board/product/bill). Never guess; call this instead. Question and options must be written in Thai: question is one short question, options is 2-4 choices, each with label (button text) and value (text sent back when tapped). Do not ask about VAT/tax, discounts, document numbering or format: the shop's settings decide and the system fills them in. Ask only for what the system cannot know (which customer, which items, quantity, price, which bill/board).", // SEC S3a.1-R2 R-Z50 (ASCII)
     parameters: {
       type: "object",
       properties: {
