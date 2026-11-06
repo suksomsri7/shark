@@ -916,6 +916,32 @@ export async function dispatchAccountKind(
   }
 }
 
+// ── SEC S3a.5 ▸ ออกเอกสารตอนส่งใบเสนอราคาถึงลูกค้า (chat.send kind=quote ที่อ้างใบ DRAFT) ──
+//   ทางเดียวกับปุ่ม "ออกเอกสาร" ของบัญชี = op `documents.issue` (ด่าน `account.doc.issue` + audit ใน runOpAsActor) ภายใต้ Membership ของผู้กด ◂
+
+/** ผู้กดออกเอกสารบัญชีในเล่มนี้ได้ไหม (ตัวตัดสินเดียวกับ op `documents.issue`) — ใช้ก่อน claim ข้อเสนอ (ไม่ได้ = คง PENDING) */
+export function approverCanIssueDocument(m: MembershipCtx, tenantId: string, systemId: string, userId?: string | null): boolean {
+  const op = ACCOUNT_OPS.find((o) => o.id === "documents.issue");
+  return !!op && actorCan(userActor(tenantId, systemId, m, userId), op.action);
+}
+
+/** ออกเอกสาร DRAFT ด้วยสิทธิ์ผู้กด (op `documents.issue`) · คีย์กันซ้ำผูกข้อเสนอ · ล้ม = throw ข้อความไทย */
+export async function issueDocumentAsApprover(m: MembershipCtx, tenantId: string, systemId: string, docId: string, proposalId: string, userId?: string | null): Promise<void> {
+  const op = ACCOUNT_OPS.find((o) => o.id === "documents.issue");
+  if (!op) throw new Error("ระบบบัญชีไม่มีคำสั่งออกเอกสาร");
+  try {
+    await runOpAsActor(op, userActor(tenantId, systemId, m, userId), {
+      input: {},
+      params: { id: docId },
+      requestId: `ai-proposal-${proposalId}-issue`,
+      idempotencyKey: `ai-${proposalId}-issue`,
+      audit: { proposalId, actor: "ai-assistant" },
+    });
+  } catch (e) {
+    throw new Error(mapError(e).message_th);
+  }
+}
+
 /** ข้อความผลลัพธ์ภาษาไทยที่แสดงใต้การ์ดยืนยัน — บอกให้ชัดว่าเกิดอะไรขึ้นจริง */
 function noteOf(op: ApiOp, data: unknown): string {
   const d = rec(data);

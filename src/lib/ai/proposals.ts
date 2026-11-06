@@ -46,7 +46,9 @@ import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/m
 import {
   accountDestructiveKinds,
   accountKindAccess,
+  approverCanIssueDocument,
   dispatchAccountKind,
+  issueDocumentAsApprover,
   isAccountKind,
 } from "./account-ops";
 import {
@@ -389,9 +391,10 @@ export async function executeProposal(
     const unitNote = await chatSendUnitGate(ctx.tenantId, m, payloadObj);
     if (unitNote) return { ok: false, note: unitNote };
     // SEC S3a.1-R2 ▸ R-Z45: ส่งใบเสนอราคาที่ยังไม่มีใบอนุมัติในบทสนทนา ⇒ ปฏิเสธไทย **ก่อน claim** (ใบคง PENDING กดใหม่ได้หลังอนุมัติใบ) ◂
-    if (payloadObj.kind === "quote" && !docIdOf(payloadObj)) {
+    // SEC S3a.5 ▸ ใบที่อ้างยังเป็น DRAFT ⇒ ผู้กดต้องออกเอกสารได้ (`account.doc.issue` ของเล่มนั้น) ไม่งั้นปฏิเสธไทย ก่อน claim (คง PENDING) ◂
+    if (payloadObj.kind === "quote") {
       try {
-        await latestQuoteLine(ctx.tenantId, row.conversationId);
+        await quoteSendGate(ctx.tenantId, m, opts?.userId ?? null, row.conversationId, payloadObj);
       } catch (e) {
         if (e instanceof ChatSendNotReady) return { ok: false, note: e.message };
         throw e;
@@ -1533,8 +1536,9 @@ async function dispatchChatSend(
   // ห้องเลขาที่ข้อเสนอเกิด (ถ้ามี) — ห้องเดิม/แผนงาน = ไม่มีคีย์ ai_roomId
   const prop = await tenantDb({ tenantId }).aiProposal.findFirst({ where: { id: proposalId }, select: { conversationId: true } });
   const room = prop ? await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId: prop.conversationId }, select: { id: true } }) : null;
-  // SEC S3a.1-R2 ▸ R-Z45 (F6): ใบเสนอราคาที่ไม่ได้ระบุเอกสาร ⇒ ใบที่อนุมัติแล้วล่าสุดของบทสนทนาเดียวกัน (เลขที่ · ยอด · ลิงก์ถ้ามี) ◂
-  const docLine = payload.kind === "quote" && !docIdOf(payload) && prop ? await latestQuoteLine(tenantId, prop.conversationId) : "";
+  // SEC S3a.1-R2 ▸ R-Z45 (F6): ใบเสนอราคาที่ไม่ได้ระบุเอกสาร ⇒ ใบที่อนุมัติแล้วล่าสุดของบทสนทนาเดียวกัน ◂
+  // SEC S3a.5 ▸ kind=quote ทุกครั้ง: ใบ DRAFT ⇒ ออกเอกสารด้วยสิทธิ์ผู้กด · ต่อท้าย "เลขที่ · ยอด · ดูใบ: <origin>/doc/<token>" (ลิงก์สาธารณะของใบเสนอราคา) ◂
+  const docLine = payload.kind === "quote" && prop ? await quoteLineForSend(tenantId, proposalId, m, userId, prop.conversationId, payload) : "";
   const chatSvc = await import("@/lib/modules/chat/service");
   const res = await chatSvc.sendReply({
     tenantId,
@@ -1564,29 +1568,64 @@ function docIdOf(payload: Record<string, unknown>): string | null {
 
 export const NO_APPROVED_DOC_NOTE = "ยังไม่มีใบที่อนุมัติแล้วในห้องนี้ — อนุมัติใบเสนอราคาก่อน แล้วค่อยอนุมัติข้อความนี้";
 
+type QuoteDoc = { id: string; systemId: string; docNo: string | null; docType: string; status: string; grandTotal: number };
+
 /**
- * SEC S3a.1-R2 ▸ R-Z45: บรรทัดอ้างใบของข้อความถึงลูกค้า — ใบ `account.documents.create` ล่าสุดที่ EXECUTED ในบทสนทนาเดียวกัน
- *   (เอกสารจากบันทึกการกระทำ `account.document`) ⇒ "\n\nใบเสนอราคา เลขที่ … · ยอด … บาท · <ลิงก์>" · ไม่มี ⇒ throw ไทย (ข้อเสนอคง PENDING)
- *   ลิงก์ = ลิงก์สาธารณะของเอกสาร (ถ้าร้านเปิดไว้ · `/r/<token>`) — ใบที่ยังไม่มีลิงก์สาธารณะ ไม่สร้างให้เอง
+ * SEC S3a.1-R2 ▸ R-Z45 + S3a.5: ใบที่ข้อความ chat.send kind=quote อ้าง — `refs.documentId` (ต้องเป็นของร้านนี้) หรือ
+ *   ใบ `account.documents.create` ล่าสุดที่ EXECUTED ในบทสนทนาเดียวกัน (เอกสารจากบันทึกการกระทำ `account.document`) · ไม่มี ⇒ throw ไทย (คง PENDING)
  */
-async function latestQuoteLine(tenantId: string, conversationId: string): Promise<string> {
+async function resolveQuoteDoc(tenantId: string, conversationId: string, payload: Record<string, unknown>): Promise<QuoteDoc> {
+  const select = { id: true, systemId: true, docNo: true, docType: true, status: true, grandTotal: true } as const;
+  const explicit = docIdOf(payload);
+  if (explicit) {
+    const doc = await prisma.accountDocument.findFirst({ where: { id: explicit, tenantId }, select });
+    if (!doc) throw new ChatSendNotReady("ไม่พบเอกสารที่ข้อความนี้อ้างถึง — สั่งเลขาใหม่อีกครั้ง");
+    return doc;
+  }
   const approved = await tenantDb({ tenantId }).aiProposal.findFirst({
     where: { conversationId, kind: "account.documents.create", status: "EXECUTED" },
     orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }],
     select: { id: true },
   });
   const log = approved ? await tenantDb({ tenantId }).aiActionLog.findFirst({ where: { proposalId: approved.id, entityType: "account.document" }, select: { entityId: true } }) : null;
-  const doc = log?.entityId
-    ? await prisma.accountDocument.findFirst({ where: { id: log.entityId, tenantId }, select: { docNo: true, docType: true, grandTotal: true, publicToken: true } })
-    : null;
+  const doc = log?.entityId ? await prisma.accountDocument.findFirst({ where: { id: log.entityId, tenantId }, select }) : null;
   if (!doc) throw new ChatSendNotReady(NO_APPROVED_DOC_NOTE);
+  return doc;
+}
+
+const QUOTE_DEAD_STATUSES = new Set(["CANCELLED", "VOIDED", "REJECTED"]);
+export const QUOTE_ISSUE_DENIED_NOTE = "ใบเสนอราคานี้ยังเป็นฉบับร่าง และคุณยังไม่มีสิทธิ์ออกเอกสารบัญชี — ให้ผู้มีสิทธิ์ออกเอกสารเป็นผู้กดอนุมัติข้อความนี้";
+
+/** SEC S3a.5 ▸ ด่านก่อน claim: ใบต้องมี · ไม่ถูกยกเลิก/ปฏิเสธ · ใบ DRAFT ⇒ ผู้กดออกเอกสารได้ (ไม่ผ่าน = throw ChatSendNotReady → คง PENDING) */
+async function quoteSendGate(tenantId: string, m: MembershipCtx, userId: string | null, conversationId: string, payload: Record<string, unknown>): Promise<void> {
+  const doc = await resolveQuoteDoc(tenantId, conversationId, payload);
+  if (QUOTE_DEAD_STATUSES.has(doc.status)) throw new ChatSendNotReady("ใบเสนอราคานี้ถูกยกเลิกหรือปฏิเสธแล้ว — ส่งให้ลูกค้าไม่ได้");
+  if (doc.status === "DRAFT" && !approverCanIssueDocument(m, tenantId, doc.systemId, userId)) throw new ChatSendNotReady(QUOTE_ISSUE_DENIED_NOTE);
+}
+
+/**
+ * SEC S3a.5 ▸ บรรทัดอ้างใบของข้อความถึงลูกค้า (หลัง claim) — ใบ DRAFT ⇒ ออกเอกสาร (op `documents.issue` ด้วยสิทธิ์ผู้กด · ใบที่ออกแล้วไม่แตะ) →
+ *   ลิงก์สาธารณะ `ensurePublicDocumentLink` ⇒ "\n\nใบเสนอราคา เลขที่ … · ยอด … บาท · ดูใบ: <origin>/doc/<token>"
+ *   ร้านปิดลิงก์สาธารณะ (§9.2 publicView) ⇒ ไม่ใส่ลิงก์ (หน้าจะตอบ 404) · เอกสารชนิดอื่น ⇒ ไม่มีลิงก์ (รุ่นนี้เปิดเฉพาะใบเสนอราคา)
+ */
+async function quoteLineForSend(tenantId: string, proposalId: string, m: MembershipCtx, userId: string, conversationId: string, payload: Record<string, unknown>): Promise<string> {
+  let doc = await resolveQuoteDoc(tenantId, conversationId, payload);
+  if (QUOTE_DEAD_STATUSES.has(doc.status)) throw new Error("ใบเสนอราคานี้ถูกยกเลิกหรือปฏิเสธแล้ว — ส่งให้ลูกค้าไม่ได้");
+  if (doc.status === "DRAFT") {
+    await issueDocumentAsApprover(m, tenantId, doc.systemId, doc.id, proposalId, userId);
+    doc = await resolveQuoteDoc(tenantId, conversationId, { refs: { documentId: doc.id } });
+  }
   const label = doc.docType === "QUOTATION" ? "ใบเสนอราคา" : "เอกสาร";
   const no = doc.docNo ? `เลขที่ ${doc.docNo}` : "ฉบับร่าง";
   const baht = (Number(doc.grandTotal ?? 0) / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   let link = "";
-  if (doc.publicToken) {
-    const { publicOrigin } = await import("@/lib/core/origin");
-    link = ` · ${await publicOrigin()}/r/${doc.publicToken}`;
+  if (doc.docType === "QUOTATION") {
+    const acc = await import("@/lib/modules/account/service");
+    const [pub, settings] = await Promise.all([acc.ensurePublicDocumentLink(tenantId, doc.systemId, doc.id), acc.getSettings(tenantId, doc.systemId)]);
+    if (pub.ok && settings.doc.publicView.enabled) {
+      const { publicOrigin } = await import("@/lib/core/origin");
+      link = ` · ดูใบ: ${await publicOrigin()}/doc/${pub.token}`;
+    }
   }
   return `\n\n${label} ${no} · ยอด ${baht} บาท${link}`;
 }
