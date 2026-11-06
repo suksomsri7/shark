@@ -36,6 +36,7 @@ const roomTypeSchema = z.object({
 
 export async function addRoomTypeAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.roomType.create");
   const p = roomTypeSchema.safeParse({
     name: formData.get("name"),
@@ -58,6 +59,7 @@ export async function addRoomTypeAction(unitSlug: string, formData: FormData) {
 
 export async function removeRoomTypeAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.roomType.delete");
   const id = String(formData.get("id") ?? "");
   await hotel.archiveRoomType(auth.active.tenantId, unit.id, id);
@@ -73,6 +75,7 @@ const roomSchema = z.object({
 
 export async function addRoomAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.room.create");
   const p = roomSchema.safeParse({
     roomTypeId: formData.get("roomTypeId"),
@@ -86,6 +89,7 @@ export async function addRoomAction(unitSlug: string, formData: FormData) {
 
 export async function removeRoomAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.room.delete");
   const id = String(formData.get("id") ?? "");
   await hotel.archiveRoom(auth.active.tenantId, unit.id, id);
@@ -94,6 +98,7 @@ export async function removeRoomAction(unitSlug: string, formData: FormData) {
 
 export async function setRoomStatusAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.room.setStatus");
   const id = String(formData.get("id") ?? "");
   const parsed = z.nativeEnum(HotelRoomStatus).safeParse(formData.get("status"));
@@ -129,6 +134,7 @@ export async function createReservationAction(
 ): Promise<ReservationFormState> {
   const unitSlug = String(formData.get("unitSlug") ?? "");
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") return { status: "error", message: "การจองห้องพักใช้ได้กับหน่วยโรงแรมเท่านั้น" }; // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.reservation.create");
   const p = reservationSchema.safeParse({
     roomTypeId: formData.get("roomTypeId"),
@@ -155,6 +161,7 @@ export async function createReservationAction(
 
 export async function checkInAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.reservation.checkIn");
   const id = String(formData.get("id") ?? "");
   const roomId = String(formData.get("roomId") ?? "");
@@ -165,6 +172,7 @@ export async function checkInAction(unitSlug: string, formData: FormData) {
 
 export async function checkOutAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.reservation.checkOut");
   const id = String(formData.get("id") ?? "");
   await hotel.checkOut(auth.active.tenantId, unit.id, id);
@@ -174,6 +182,7 @@ export async function checkOutAction(unitSlug: string, formData: FormData) {
 
 export async function cancelReservationAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.reservation.cancel");
   const id = String(formData.get("id") ?? "");
   const reason = String(formData.get("reason") ?? "") || undefined;
@@ -185,6 +194,7 @@ export async function cancelReservationAction(unitSlug: string, formData: FormDa
 // ร้านยืนยันรับมัดจำ (เปิดบิล POS DEPOSIT Dr 2110 + ปั๊ม depositPaidAt) — เฉพาะการจองที่มีมัดจำและยังไม่จ่าย
 export async function recordDepositAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.reservation.checkIn"); // สิทธิ์ระดับหน้างาน (รับเงินหน้าเคาน์เตอร์)
   const id = String(formData.get("id") ?? "");
   await hotel.recordDeposit(auth.active.tenantId, unit.id, id);
@@ -195,6 +205,7 @@ export async function recordDepositAction(unitSlug: string, formData: FormData) 
 // คืนเงินหลังเช็คเอาท์ (void POS bill → คืนบัญชี/แต้ม) — เฉพาะการจอง CHECKED_OUT ที่มีบิล
 export async function refundStayAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") throw new Error("NOT_HOTEL_UNIT"); // SVC H.0 ▸ ด่าน type HOTEL ◂
   assertHotelCan(auth, unit.id, "hotel.reservation.refund");
   const id = String(formData.get("id") ?? "");
   await hotel.refundStay(auth.active.tenantId, unit.id, id);

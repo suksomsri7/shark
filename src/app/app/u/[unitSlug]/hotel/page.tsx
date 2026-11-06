@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { dashboardData, assignableRooms } from "@/lib/modules/hotel/service";
 import { checkInAction, checkOutAction } from "@/lib/modules/hotel/actions";
@@ -24,6 +25,7 @@ export default async function HotelPage({
 }) {
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") notFound(); // SVC H.0 ▸ ด่าน type HOTEL ◂
   const data = await dashboardData(auth.active.tenantId, unit.id);
 
   // ห้องที่ assign ได้ต่อการจองที่ถึงวันนี้ (เพื่อ dropdown เช็คอิน)
