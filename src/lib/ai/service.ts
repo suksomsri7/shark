@@ -37,6 +37,15 @@ export type SendCtx = Ctx & { actor: AiActor };
 const HISTORY_MAX_CHARS = 24_000; // งบบริบทต่อ request (ประมาณ ~6k token)
 const HISTORY_TAKE = 40; // ดึงล่าสุดกี่แถวก่อน trim
 const MAX_TOOL_ROUNDS = 5; // เพดานรอบ agent loop (กันวนไม่จบ)
+/** SEC S3a.1-R2 ▸ R-Z52 (ข): ห้องเลขา (worker) ต้องโหลด 2 สกิล + ค้น + สร้าง + ส่ง ⇒ เพดาน 8 รอบ · ห้องเดิมคง 5 ◂ */
+export const ROOM_MAX_TOOL_ROUNDS = 8;
+/** SEC S3a.1-R2 ▸ R-Z52 (ค): ข้อความเมื่อชนเพดานรอบ — บอกสิ่งที่ทำไปแล้ว (ไม่เรียกโมเดลเพิ่ม) */
+export function roundCapReply(toolNames: readonly string[]): string {
+  const names = [...new Set(toolNames.filter((n) => n && n !== "ask_clarify"))];
+  const work = names.filter((n) => n !== "load_skill");
+  const shown = (work.length ? work : names).slice(0, 8);
+  return shown.length ? `ทำไปแล้ว: ${shown.join(", ")} · ยังไม่เสร็จ: ต้องสั่งต่อ` : FALLBACK_REPLY;
+}
 // เครดิตเหลือน้อยกว่า LOW_BALANCE_MICRO ($0.50 · credit.ts) → ลดชั้นเป็น haiku อัตโนมัติ เพื่อยืดเครดิตก้อนสุดท้ายให้คุยได้นานขึ้น
 // ข้อความปิดสุภาพเมื่อวนครบเพดานแต่ยังไม่ได้คำตอบ
 const FALLBACK_REPLY =
@@ -339,7 +348,13 @@ export async function sendMessage(
   const usedTools: { name: string; args: unknown }[] = []; // เครื่องมือที่ถูกเรียกจริงในเทิร์นนี้ (dataset)
   let toolCallIndex = 0; // SEC S3a.1-S1 R-Z7: ลำดับ tool call ในเทิร์น (กุญแจ tc:<messageId>:<i>)
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+  // SEC S3a.1-R2 ▸ R-Z52 (ก): เทิร์นล้มหลังได้คำตอบ ≥1 ⇒ หักยอดสะสมก่อนโยนต่อ (token ที่จ่ายผู้ให้บริการแล้วไม่หาย) ◂
+  let replies = 0;
+  let charged = false;
+  const maxRounds = roomWorker ? ROOM_MAX_TOOL_ROUNDS : MAX_TOOL_ROUNDS;
+  let hitCap = true;
+  try {
+  for (let round = 0; round < maxRounds; round++) {
     let reply;
     try {
       reply = await provider.chat(messages, { tools: currentTools() });
@@ -355,6 +370,7 @@ export async function sendMessage(
     tokensOut += reply.tokensOut;
     cacheWrite += reply.cacheWrite ?? 0; // SEC S3a.1-R2 ▸ R-Z44 ◂
     cacheRead += reply.cacheRead ?? 0;
+    replies += 1;
 
     if (reply.toolCalls && reply.toolCalls.length > 0) {
       // ask_clarify — คำสั่งกำกวม: จบเทิร์นด้วยคำถาม + ตัวเลือกให้กด (ไม่วน tool ต่อ ไม่สร้าง proposal)
@@ -364,6 +380,7 @@ export async function sendMessage(
         if (parsed) {
           clarify = parsed;
           finalText = parsed.question;
+          hitCap = false;
           break;
         }
       }
@@ -421,8 +438,11 @@ export async function sendMessage(
     }
 
     finalText = reply.text;
+    hitCap = false;
     break;
   }
+  // R-Z52 (ค): ชนเพดานรอบ ⇒ สรุปสิ่งที่ทำไปแล้ว (ไม่ใช่ข้อความขอโทษเฉย ๆ) · คำตอบว่างทั่วไป = FALLBACK_REPLY เดิม
+  if (hitCap && !finalText.trim()) finalText = roundCapReply(usedTools.map((t) => t.name));
   if (!finalText.trim()) finalText = FALLBACK_REPLY;
 
   // persist คู่ข้อความ + ยอดใช้ อะตอมมิก (ผ่าน prisma ตรง — ใส่ tenantId เองให้ตรง type)
@@ -466,6 +486,27 @@ export async function sendMessage(
     });
   } else {
     await prisma.$transaction(persistOps(prisma));
+  }
+  } catch (e) {
+    // R-Z52 (ก): provider โยนรอบถัดไป · tool โยน · persistGuard ล้ม · อื่น ๆ — มีคำตอบแล้ว ⇒ หักยอดสะสม (ref กันซ้ำต่อเทิร์น) แล้วโยนต่อ
+    if (replies > 0 && !charged) {
+      charged = true;
+      const reason = (e instanceof Error ? `${e.name}: ${e.message}` : String(e)).replace(/\s+/g, " ").slice(0, 60);
+      const baseNote = roomWorker && deps?.usageNote ? `${deps.usageNote.slice(0, 120)} · ` : "";
+      await chargeUsageSafe({ tenantId: ctx.tenantId }, {
+        source: deps?.source ?? "CHAT",
+        model: routedModel,
+        tokensIn,
+        tokensOut,
+        cacheWrite,
+        cacheRead,
+        conversationId: conversation.id,
+        note: `${baseNote}turn-failed:${reason}`.slice(0, 200),
+        // กุญแจต่อ "ความพยายาม" ของเทิร์น: worker ลองงานเดิมซ้ำ (userMessageId เดิม) ทุกครั้งที่ล้มจ่ายผู้ให้บริการจริง ⇒ ต้องได้แถวของตัวเอง
+        ref: `turnfail:${conversation.id}:${deps?.userMessageId ?? "chat"}:${Date.now().toString(36)}`,
+      }).catch(() => 0);
+    }
+    throw e;
   }
 
   // หักเงินจากกระเป๋าเครดิต (prepaid) — คนละ write กับ tx ข้างบนเพราะต้องอ่านยอดสดก่อนหัก
