@@ -142,6 +142,8 @@ try {
     const lmg = await rooms.listRooms(ctxOf(MGR), { scope: "tenant" });
     chk("L-2", "STAFF ขอ tenant ⇒ ได้แค่ของตัวเอง · staff2 mine = ห้องตัวเอง + ห้องที่เป็นสมาชิก (ของ staff) · MANAGER ขอ tenant ⇒ ของตัวเอง (ว่าง)", ls.length === 1 && ls[0].conversationId === staffConv && ls2.length === 2 && ls2.some((c: AnyMod) => c.conversationId === staffConv) && ls2.some((c: AnyMod) => c.startedById === U.staff2) && lmg.length === 0, `staff=${ls.length} staff2=${ls2.length} mgr=${lmg.length}`);
     // สถานะ
+    // ORACLE-EDIT (ผู้คุม · R-Z3 S3a.1-S1): startRoom สร้าง AiRoomJob ใน tx เดียวกัน ⇒ ห้องสดเป็น RUNNING จนงานแรกจบ — ข้อสอบสถานะเดิมคาดห้องว่าง จึงปิดงานทุกตัวก่อนตรวจ
+    await prisma.aiRoomJob.updateMany({ where: { tenantId: tid }, data: { status: "DONE", finishedAt: new Date() } });
     await prisma.aiProposal.create({ data: { tenantId: tid, conversationId: staffConv, kind: "kanban_create_card", summary: "qc", payload: { title: "x" }, expiresAt: new Date(Date.now() + 3_600_000) } });
     const ownerConv = r2.conversationId as string, ownerRoomId = r2.roomId as string;
     await prisma.aiRoomJob.create({ data: { tenantId: tid, roomId: ownerRoomId, messageId: `qcs14-msg-${Date.now()}`, status: "QUEUED" } }); // ORACLE-EDIT R-S1.1c
