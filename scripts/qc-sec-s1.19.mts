@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LABEL = "qc-sec-s1.19";
@@ -44,11 +44,13 @@ const skip = (id: string, name: string, why: string, sev: Sev = "CRITICAL") => {
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 200);
 const thai = (s: unknown) => typeof s === "string" && /[฀-๿]/.test(s);
 const sha = (v: string) => createHash("sha256").update(v).digest("hex");
+// ORACLE-EDIT (ผู้คุม · R-Z27 S3a.1-S2): OTP เบอร์ใช้ HMAC(SESSION_SECRET) · ไม่มี secret = sha256 เดิม · `sha` คงไว้ให้ OTP อีเมล (S-2b)
+const hmacPhone = (v: string) => (process.env.SESSION_SECRET ? createHmac("sha256", process.env.SESSION_SECRET) : createHash("sha256")).update(v).digest("hex");
 type AnyMod = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const req = (u: string, method: string, body?: unknown, headers: Record<string, string> = {}) => new Request(`http://qc.local${u}`, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
 const json = async (r: Response) => ({ status: r.status, body: (await r.json().catch(() => ({}))) as AnyMod });
 /** หา code จาก hash ในฐาน (6 หลัก) — ข้อสอบเท่านั้น */
-function crack(phone: string, hash: string): string | null { for (let i = 0; i < 1_000_000; i++) { const c = String(i).padStart(6, "0"); if (sha(`${phone}:${c}`) === hash) return c; } return null; }
+function crack(phone: string, hash: string): string | null { for (let i = 0; i < 1_000_000; i++) { const c = String(i).padStart(6, "0"); if (hmacPhone(`${phone}:${c}`) === hash || sha(`${phone}:${c}`) === hash) return c; } return null; }
 
 const { prisma } = await import("@/lib/core/db");
 const sms = (await import("@/lib/core/sms")) as AnyMod;
@@ -86,7 +88,7 @@ try {
     const r1 = await pa.requestPhoneOtp("0800017001", { send, ip: "10.0.0.1" });
     const row = await prisma.phoneOtp.findFirst({ where: { phone: P.a }, orderBy: { createdAt: "desc" } });
     const code1 = sent[0]?.text.match(/\b(\d{6})\b/)?.[1] ?? "";
-    chk("Q-1", "เบอร์ผิด ⇒ bad_phone ไทย · 0800017001 ⇒ ok phone E.164 +66800017001 · แถว PhoneOtp (codeHash = sha256(phone:code) · TTL 10 นาที · ip) · ข้อความ SMS มี code 6 หลัก + 'SHARK' · ผลไม่มี code", bad.ok === false && bad.reason === "bad_phone" && thai(bad.message) && r1.ok === true && r1.phone === P.a && r1.resendAfterSec === 60 && !!row && row.codeHash === sha(`${P.a}:${code1}`) && row.ip === "10.0.0.1" && Math.abs(row.expiresAt.getTime() - row.createdAt.getTime() - 600_000) < 5_000 && /SHARK/.test(sent[0]?.text ?? "") && !JSON.stringify(r1).includes(code1), JSON.stringify({ bad, r1, hash: row?.codeHash?.slice(0, 8), code1 }).slice(0, 200));
+    chk("Q-1", "เบอร์ผิด ⇒ bad_phone ไทย · 0800017001 ⇒ ok phone E.164 +66800017001 · แถว PhoneOtp (codeHash = sha256(phone:code) · TTL 10 นาที · ip) · ข้อความ SMS มี code 6 หลัก + 'SHARK' · ผลไม่มี code", bad.ok === false && bad.reason === "bad_phone" && thai(bad.message) && r1.ok === true && r1.phone === P.a && r1.resendAfterSec === 60 && !!row && row.codeHash === hmacPhone(`${P.a}:${code1}`) && row.ip === "10.0.0.1" && Math.abs(row.expiresAt.getTime() - row.createdAt.getTime() - 600_000) < 5_000 && /SHARK/.test(sent[0]?.text ?? "") && !JSON.stringify(r1).includes(code1), JSON.stringify({ bad, r1, hash: row?.codeHash?.slice(0, 8), code1 }).slice(0, 200));
     // R-S1.19f: ขอซ้ำภายใน 60 วิ ⇒ ok โดยไม่สร้างแถว — ข้อสอบเลื่อน now ทีละ 61 วิ เพื่อทดสอบเพดาน 5/10 นาที
     const rThrottle = await pa.requestPhoneOtp(P.a, { send, ip: "10.0.0.1" });
     const rowsAfterThrottle = await prisma.phoneOtp.count({ where: { phone: P.a } });

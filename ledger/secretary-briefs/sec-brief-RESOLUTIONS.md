@@ -351,3 +351,9 @@ Q1 ใช่ (R-K7) · Q2 ตอบใน request + after() (R-K8) · Q3 เพ�
 | L118 attachments | 10 MB | Vercel 4.5 MB ตัดก่อน (413 ไม่ใช่ JSON) → เขียนเพดานจริง + svg/text ปฏิเสธ (R-Z19) |
 | auth/sms/verify · phone/link | – | RL ip 30/10 นาที · phone 10/10 นาที · เหตุผลยุบเหลือ invalid (R-Z18) |
 | account/delete | `{confirm}` | `{confirm, code}` step-up (R-Z21) · 400 code_required · 401 invalid |
+
+### Z.4 รับ S3a.1-S1 (เลน b 460c9fbd5) + S3a.1-S2 (เลน c 0370b5154) — มติรอบ 2 (7 พ.ย. ~07:3xZ ไทย)
+- ORACLE-EDIT (ผู้คุม): s1.19 `hmacPhone` (dual: HMAC หรือ sha256) · s3a1-s2 L170 `as BlobPart` · T1-2 ตรวจ `buildSystemPrompt({customer})` จริง · s1.14 R-2 regex `export (async function|const)` + `limited(` · s1.4 L-3 ปิด job ก่อนตรวจสถานะ (R-Z3)
+- **เลน b Q1** `isDue` ≥: `createTask` ตั้ง `lastRunDay = วันนี้` เมื่อชั่วโมงที่ตั้งผ่านไปแล้วในวันนั้น (ไม่รันทันทีในวันตั้ง) · **Q2** ยอมรับ (ต้นทุนรอบที่หลุด fence ไม่บันทึก — เกิดเฉพาะรันซ้อน) · **Q3** `remember` ล้มหลังห้องเกิด ⇒ ปล่อย claim (release) แล้วตอบ 200 ปกติ + logOps WARN (ห้องมีจริง · retry ได้ duplicate ของห้องเดิมผ่าน startedById) · **Q4** ยอมรับ · **Q5** WARN "cut off" ของ roomJobs ลดเป็น INFO และนับเป็น metric (ไม่ spam OpsEvent) · R-Z7 ผ่าน AsyncLocalStorage + รหัสแถวกำหนดได้ = ยอมรับ · R-Z1 persistGuard = ยอมรับ
+- **เลน c Q1** ตาราง docs อยู่ §Z.2-docs แล้ว → ปิดทุกแถว · **Q2/Q3 → เลน d (S3a.1-A เพิ่ม)**: แชท AI 1.0 แสดง `message` ของ SSE error · ป้ายไทย/อังกฤษของ kind `kb.save` ("บันทึกความรู้") · `memory.forget` ("ลบความจำของร้าน") ใน kind-labels ของแอป · dual-verify OTP ยอมรับ · sweep ใน daily ยอมรับ · attachments ไม่รับ text/plain ยอมรับ (docs ตาม) · reject เปลี่ยน status ทั้งแอป/เว็บ ยอมรับ (docs ตาม)
+- ลำดับ merge: b → c (c merge b ก่อนส่งรอบ 2 เพื่อแก้ชนไฟล์ร่วม service.ts/proposals.ts/chat-send/_shared) → d

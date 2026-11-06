@@ -81,7 +81,7 @@ chk("R-1", `มีเส้นทางครบ ${ROUTES.length} path ตาม
 const walk = (d: string): string[] => readdirSync(d).flatMap((f) => { const q = join(d, f); return statSync(q).isDirectory() ? walk(q) : q.endsWith("route.ts") ? [q] : []; });
 const files = existsSync(SEC_DIR) ? walk(SEC_DIR) : [];
 const badBody = files.filter((f) => /body\??\.(now|userId|tenantId|actorUserId)\b/.test(readFileSync(f, "utf8")));
-const writeNoRl = files.filter((f) => { const s = readFileSync(f, "utf8"); return /export async function (POST|PUT|DELETE|PATCH)/.test(s) && !/checkRateLimitDb|withRateLimit|rateLimit\(/.test(s); });
+const writeNoRl = files.filter((f) => { const s = readFileSync(f, "utf8"); return /export (async function|const) (POST|PUT|DELETE|PATCH)\b/.test(s) && !/checkRateLimitDb|withRateLimit|rateLimit\(|limited\(/.test(s); // ORACLE-EDIT (R-Z20 withErrors): route เป็น export const X = withErrors(…) });
 chk("R-2", "route ไม่อ่าน body.now/userId/tenantId/actorUserId · ทุกเส้นเขียนมี rate-limit", files.length > 0 && badBody.length === 0 && writeNoRl.length === 0, JSON.stringify({ badBody: badBody.map((f) => f.replace(ROOT, "")).slice(0, 4), noRl: writeNoRl.map((f) => f.replace(ROOT, "")).slice(0, 6) }));
 
 const U = { owner: "qcs114-owner", staff: "qcs114-staff", out: "qcs114-out" };
