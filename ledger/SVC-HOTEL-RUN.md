@@ -36,4 +36,5 @@
 ## 3. บันทึกเหตุการณ์
 - 7 พ.ย. ~15Z · **เริ่ม RUN HOTEL** (เจ้าของสั่งหลังแก้ประเมิน: เลขาไม่มีเลน build ค้าง · S3a.6 เพิ่งเริ่ม) · tg 0% · เลน hA=l2 hB=l1 (Prisma client แยกจากทรีเลขา · ตรวจ inode แล้ว) · ขั้นแรก: ฟิกซ์เจอร์ H (ผู้คุม) → ข้อสอบ h.0 + h.1 ขนาน → builder H.0
 - 7 พ.ย. ~16Z · ฟิกซ์เจอร์ H commit a9aad92d8 (SQC_HOTEL_RATES · ภาพ h.1 · frontdesk +hotel.rates.read) · เลน hA (l2) = ผู้เขียนข้อสอบ h.0 · hB (l1) = ผู้เขียนข้อสอบ h.1 (Fable ทั้งคู่ · branch wip/svc-h0-oracle / wip/svc-h1-oracle) · ทรีหลัก/l4 ห้ามรันของหนัก (Prisma client ร่วมทรีเลขา) · hC = l3 (client แยก · ตรวจแล้ว) เตรียมไว้
+- 7 พ.ย. ~17:4xZ · **ข้อสอบ h.0 (153 ข้อ · c10ff6014) + h.1 (122 ข้อ · 2957b2cd0) รับแล้ว** — ผู้คุมรันซ้ำเองบน l2/l1: h.0 13 เขียว (PC 7 + guard 6) ที่เหลือแดงเหตุผลตรง · h.1 10 เขียว (PC 6 + F/Z) 0 throw ดิบ · มติต่อคำถามผู้เขียน 9+10 ข้อ ลงใบสั่ง §12/§11 (เพิ่ม `HotelSeason.minNights` · ctx.roomTypes · fallback ต่อประเภท · `data-scroll-hint` · NOT_FOUND) · merge f84364e8a + ใบนี้ · reseed l1 · ถัดไป: builder H.0 บน l2 (branch wip/svc-h0)
 
