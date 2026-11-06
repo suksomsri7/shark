@@ -53,3 +53,13 @@
 - (จ) r2 T8-1 (ask_clarify ASCII + ประโยคใหม่) · T8-2 (prompt ห้องเลขามี/ห้องเดิมไม่มี) · T9-1 (บล็อกลูกค้ามี conversationId แม้ข้อความล่าสุดยาว)
 - ผล: r2 **25/25** ×2 (residue 0) · s1.2 28/28 · s1.22 14/14 · qc-ai-tools 18/18 · qc-ai-skills 23/23 · s3a.1 16/17 (R-1 SKIP) · qc-account-api-ai-skill 28/33 (K1.7 เขียว · K2.x = ไม่มีร้าน seed บัญชี) · typecheck 0 · fitness no-DB 53/53
 - ไฟล์ร่วม: `src/lib/ai/service.ts` เฉพาะบล็อก load_skill (ผลข้อความ + กันโหลดซ้ำ)
+
+## 7. รอบ 6 — R6 = R-Z52 (F7 ต้นทุนเทิร์นที่ล้มหาย + เพดานรอบเครื่องมือ) · รอบจริง #5 ใบเสนอราคา ✅ ชนเพดาน 5 รอบพอดี
+- merge ทิปผู้คุม `b295d8de0` (SHA ตรง)
+- `src/lib/ai/service.ts` (เฉพาะ sendMessage — ลูป agent + persist):
+  - (ก) นับคำตอบของ provider (`replies`) · ห่อลูป+persist ใน try · ล้มหลังได้คำตอบ ≥ 1 (provider โยนรอบถัดไป · tool โยน · persistGuard/fence หลุด · อื่น ๆ) ⇒ `chargeUsageSafe` ยอดสะสม (tokensIn/out + cacheWrite/Read) · note `turn-failed:<ชื่อ: ข้อความ ≤60>` (ห้องเลขาขึ้นต้นด้วย usageNote `room-worker:<jobId> · ` ⇒ เพดาน assist ยังไม่นับ) · แล้วโยนต่อ
+  - (ข) `ROOM_MAX_TOOL_ROUNDS = 8` เมื่อ `roomWorker` · ห้องเดิม `MAX_TOOL_ROUNDS = 5`
+  - (ค) ชนเพดานรอบ (ไม่มีคำตอบ/ask_clarify) ⇒ `roundCapReply` "ทำไปแล้ว: <เครื่องมือ ไม่นับ load_skill/ask_clarify · ≤8> · ยังไม่เสร็จ: ต้องสั่งต่อ" (ไม่เรียกโมเดลเพิ่ม) · คำตอบว่างกรณีอื่น = FALLBACK_REPLY เดิม
+- **ต่างจากมติ**: ref = `turnfail:<conversationId>:<userMessageId|chat>:<ts>` (เติมเวลา) — ถ้าใช้ `turnfail:<conv>:<userMessageId>` ตรงตัว การลองซ้ำของ worker (userMessageId เดิม) ทุกครั้งที่ล้มจะชน ref ⇒ แถวที่ 2–3 ถูกตัดทิ้ง = กรณี F7 เดิม (ล้ม 2 ครั้ง จ่ายจริงทั้งสอง) · กันหักซ้ำภายในเทิร์นด้วยธง `charged` แทน
+- ข้อสอบ r2 T10-1 (Scripted โยนรอบ 2 ⇒ แถว USAGE in 1000/out 100 + note turn-failed + ref turnfail:) · T11-1 (ห้องเลขา 6 รอบเครื่องมือแล้วตอบ ⇒ ไม่ชน · 7 ครั้ง) · T11-2 (ห้องเดิม ⇒ ชนที่ 5 · ข้อความสรุป)
+- ผล: r2 **28/28** ×2 (residue 0) · s3a1-s1 19/19 (W7 เพดาน assist) · s1.4 28/28 · s1.13 14/14 · qc-ai-credit 32/32 · s1.2 28/28 · qc-ai-tools 18/18 · typecheck 0 · fitness no-DB 53/53 · pre-commit fitness

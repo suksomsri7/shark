@@ -9,6 +9,7 @@
 //   T6 documents.create ไม่ระบุ VAT ⇒ ค่าปริยายจากร้าน (จด 700/EXCLUDE · ไม่จด 0/NONE) · ระบุเองชนะ · สรุปยอดรวม VAT ถูก · hint ห้ามถาม VAT (R-Z49)
 //   T7 ask_clarify (ASCII) + persona ห้องเลขา ห้ามถามค่าปริยายของร้าน (R-Z50)
 //   T8 ask_clarify + persona ห้ามถามยืนยันก่อนเสนอ · T9 บล็อกลูกค้ามี conversationId (R-Z51)
+//   T10 เทิร์นล้มกลางลูปหักยอดรอบที่ได้คำตอบ · T11 เพดานรอบห้องเลขา 8 / ห้องเดิม 5 + ข้อความสรุป (R-Z52)
 //   T5 chat.send kind=quote ไม่มี documentId: ไม่มีใบ ⇒ ล้มไทย+คง PENDING · มีใบ EXECUTED ในห้อง ⇒ ข้อความมีเลขที่+ลิงก์ · ใบของห้องอื่น ⇒ ไม่หยิบ (R-Z45)
 // รัน: bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 SMS_PROVIDER=mock pnpm exec tsx scripts/qc-sec-s3a1-r2.mts
 import { join, dirname } from "node:path";
@@ -314,6 +315,37 @@ try {
     const cc = (await import("@/lib/ai/secretary/customer-context")) as AnyMod;
     const blk = cc.customerBlock({ contactId: "ct1", chatConversationId: "conv-qc-r2-xyz", displayName: "คุณมานะ", channel: "LINE", tags: [], assignee: null, linked: {}, recent: Array.from({ length: 10 }, (_, i) => ({ direction: "IN", text: "ข้อความยาว ".repeat(20) + i, at: new Date() })) });
     chk("T9-1", "บล็อกลูกค้ามีบรรทัด 'ส่งข้อความถึงลูกค้าคนนี้: send_customer_message conversationId=<id>' (คงอยู่แม้ข้อความล่าสุดยาว)", blk.includes("ส่งข้อความถึงลูกค้าคนนี้: send_customer_message conversationId=conv-qc-r2-xyz"), blk.slice(0, 200));
+  }
+
+  // ───────── T10 · T11 ─────────
+  console.log("── T10: เทิร์นล้มกลางลูปยังหักยอดรอบที่ได้คำตอบ · T11: เพดานรอบห้องเลขา 8 / ห้องเดิม 5 (R-Z52) ──");
+  {
+    const service = (await import("@/lib/ai/service")) as AnyMod;
+    type Reply = { text?: string; toolCalls?: { id: string; name: string; args: unknown }[] };
+    class Scripted {
+      calls = 0;
+      constructor(private queue: Reply[], private throwAt = 0) {}
+      async chat(): Promise<Record<string, unknown>> {
+        this.calls++;
+        if (this.throwAt && this.calls === this.throwAt) throw new Error("provider down (qc-r2)");
+        const r = this.queue.length > 1 ? this.queue.shift()! : (this.queue[0] ?? { text: "รับทราบครับ" });
+        return { text: r.text ?? "", toolCalls: r.toolCalls, tokensIn: 1000, tokensOut: 100, cacheWrite: 0, cacheRead: 0, model: "scripted" };
+      }
+    }
+    const toolTurn = (i: number): Reply => ({ text: "", toolCalls: [{ id: `tc${i}`, name: "list_memories", args: {} }] });
+    // T10
+    const p10 = new Scripted([toolTurn(1), { text: "ไม่ถึง" }], 2);
+    const e10 = await service.sendMessage({ tenantId: tid, actor: actor() }, { text: "ความจำของร้านมีอะไรบ้าง qc-r2-t10" }, { provider: p10 }).then(() => null).catch((e: unknown) => errMsg(e));
+    const txn10 = await prisma.aiCreditTxn.findFirst({ where: { tenantId: tid, kind: "USAGE", note: { startsWith: "turn-failed:" } }, orderBy: { createdAt: "desc" }, select: { tokensIn: true, tokensOut: true, amountMicro: true, note: true, ref: true } });
+    chk("T10-1", "provider โยนรอบ 2 ⇒ sendMessage โยนต่อ · AiCreditTxn มียอดของรอบ 1 (in 1000 · out 100 · amount < 0) + note turn-failed + ref turnfail:", !!e10 && p10.calls === 2 && txn10?.tokensIn === 1000 && txn10?.tokensOut === 100 && Number(txn10?.amountMicro) < 0 && /provider down/.test(String(txn10?.note)) && String(txn10?.ref ?? "").startsWith("turnfail:"), JSON.stringify({ e10, calls: p10.calls, txn10 }).slice(0, 260));
+    // T11 ห้องเลขา: 6 รอบเครื่องมือ แล้วตอบ ⇒ ไม่ชนเพดาน (8)
+    const room = await rooms.startRoom({ tenantId: tid, actor: actor() }, { instruction: "ทดสอบเพดานรอบ qc-r2-t11" });
+    const p11 = new Scripted([toolTurn(1), toolTurn(2), toolTurn(3), toolTurn(4), toolTurn(5), toolTurn(6), { text: "เสร็จแล้วครับ qc-r2" }]);
+    const r11 = await service.sendMessage({ tenantId: tid, actor: actor() }, { conversationId: room.conversationId, text: "ทดสอบเพดานรอบ qc-r2-t11" }, { provider: p11, userMessageId: room.messageId, usageNote: "room-worker:qc-r2" }).catch((e: unknown) => ({ ok: false, error: errMsg(e) }));
+    chk("T11-1", "ห้องเลขา (worker) 6 รอบเครื่องมือ + รอบตอบ ⇒ ไม่ชนเพดาน (คำตอบจริง · เรียก provider 7 ครั้ง)", r11?.ok === true && r11.reply === "เสร็จแล้วครับ qc-r2" && p11.calls === 7, JSON.stringify({ ok: r11?.ok, reply: r11?.reply, err: (r11 as AnyMod)?.error, calls: p11.calls }).slice(0, 220));
+    const pL = new Scripted([toolTurn(1), toolTurn(2), toolTurn(3), toolTurn(4), toolTurn(5), toolTurn(6), { text: "ไม่ควรถึง" }]);
+    const rL = await service.sendMessage({ tenantId: tid, actor: actor() }, { text: "ทดสอบเพดานห้องเดิม qc-r2-t11" }, { provider: pL }).catch((e: unknown) => ({ ok: false, error: errMsg(e) }));
+    chk("T11-2", "ห้อง AI เดิม 6 รอบเครื่องมือ ⇒ ชนเพดาน 5 · ข้อความสรุป 'ทำไปแล้ว: list_memories · ยังไม่เสร็จ: ต้องสั่งต่อ' (ไม่เรียกโมเดลเพิ่ม)", rL?.ok === true && pL.calls === 5 && /^ทำไปแล้ว: list_memories · ยังไม่เสร็จ: ต้องสั่งต่อ$/.test(String(rL.reply)), JSON.stringify({ ok: rL?.ok, reply: rL?.reply, calls: pL.calls, err: (rL as AnyMod)?.error }).slice(0, 220));
   }
 } catch (e) {
   const detail = (e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : JSON.stringify(e)).slice(0, 400);
