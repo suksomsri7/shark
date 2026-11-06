@@ -1,0 +1,4 @@
+# controller re-run of wip/pos-hr-h0.7 @40515732 · 2026-10-22T13:57:52Z · load 19.01 15.25 12.30
+prisma generate exit=0 [13:58Z]
+qc-hr-h0.7 unforced exit=0 ===== qc-hr-h0.7 ===== passed 57/57 JSON_SUMMARY {"suite":"qc-hr-h0.7","total":57,"passed":57,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[]}  · RESIDUE none (tenants=3 users=27) [13:58Z load 19.53]
+STOPPED by controller 2026-10-22T13:58:53Z — privacy hunt F1+F2 folded into H0.7; re-run restarts as control2
