@@ -7,7 +7,8 @@
 // กลุ่มข้อ:
 //   PC ตัวควบคุม (ต้องเขียวตั้งแต่ก่อนมีงาน): ฟิกซ์เจอร์ H สอดคล้องกันเอง (oracle ของ oracle) · ฐาน QC ต่อได้ · หน่วย hotel + frontdesk มี hotel.rates.read · คีย์ค่าตั้งเดิมที่ H.1 พึ่ง · ภาพ --list
 //   P  pricing.ts pure (ไม่ต่อฐาน · ฉีด today · ctx จาก SQC_HOTEL_RATES ในหน่วยความจำ): resolution 4 กรณี S:1133 · override · fallback · null · dow ไม่ใช้ getDay (สลับ TZ) · ฤดูรวมวันจบ
-//      quoteStay ขอบ (MIN/MAX/CTA/TOO_FAR/NO_RATE) · depositFor 5 kind + กลุ่ม FIRST_NIGHT · refundFor 3 tier + ขอบ · taxLines 2 โหมด + ปัดทุกขั้น + 1,234.50 · fuzz 300 เทียบตัวอ้างอิง
+//      quoteStay ขอบ (MIN/MAX/CTA/TOO_FAR/NO_RATE · minNights ฤดู · เตียงเสริม) · depositFor 5 kind + กลุ่ม FIRST_NIGHT · refundFor 3 tier + ขอบ · taxLines 2 โหมด + ปัดทุกขั้น + 1,234.50 · fuzz 300 เทียบตัวอ้างอิง
+//      มติผู้คุม §11 (7 พ.ย.): ctx.roomTypes · ctx.fallback ต่อ roomTypeId · HotelSeason.minNights · data-scroll-hint ตายตัว
 //   R  rates.ts server (ร้านชั่วคราว `svc-h1-*`): CRUD แผน/ฤดู/วันหยุด/matrix/override · default auto · DEFAULT_PLAN · archive ไม่ลบ · tx ล้มทั้งชุด · NULLS NOT DISTINCT · ≤ 8 คิวรี · ratePreview · AuditLog
 //   B  ด่าน/ข้ามร้าน/สิทธิ์ (X1 · X9 · X10) · S ค่าตั้ง (loadHotelSettings/saveHotelSettings · RATE_PLAN · reset · ownerOnly · history · taxSnapshot เดิม)
 //   U  UI สถิต (ไทยทั้งหมด · แท็บ · read-only · ตัวบอกเลื่อน · ป้ายภาษี · 'use client' ไม่ลาก prisma · "use server" ไม่ export type · UNIT_NAV) · F ไฟล์ที่แตะ (git)
@@ -147,10 +148,15 @@ const cellOf = (planKey: string, typeName: string, seasonKey: string | null): Ce
   return planCell(planKey, adj(base, s.adjustBp ?? 0));
 };
 const seasonRange = (s: { start: string; end: string }, y = 2026) => { const dateStart = `${y}-${s.start}`; const dateEnd = s.end < s.start ? `${y + 1}-${s.end}` : `${y}-${s.end}`; return { dateStart, dateEnd }; };
-type Ctx = { weekendDays: number[]; rounding: Rounding; today: string; plans: Any[]; seasons: Any[]; holidays: Set<string>; rates: Any[]; overrides: Any[]; fallback: { baseRateSatang: number | null; dayOfWeekAdjustBp: number[] } };
+type RoomTypeInfo = { baseOccupancy: number; maxOccupancy: number | null; extraBedAllowed: boolean; extraBedPriceSatang: number };
+type Fallback = { baseRateSatang: number | null; dayOfWeekAdjustBp: number[] };
+type Ctx = { weekendDays: number[]; rounding: Rounding; today: string; roomTypes: Record<string, RoomTypeInfo>; plans: Any[]; seasons: Any[]; holidays: Set<string>; rates: Any[]; overrides: Any[]; fallback: Record<string, Fallback> };
+const NO_FALLBACK = (): Record<string, Fallback> => Object.fromEntries([T.sup, T.dlx, T.fam, T.suite].map((id) => [id, { baseRateSatang: null, dayOfWeekAdjustBp: [0, 0, 0, 0, 0, 0, 0] }]));
+/** ประเภทห้อง (มติ #2): ดีลักซ์ เตียงเสริมได้ 30,000 · max 3 · ซูพีเรียไม่ให้เตียงเสริม · แฟมิลี base 4 max 5 */
+const ROOM_TYPES = (): Record<string, RoomTypeInfo> => ({ [T.sup]: { baseOccupancy: 2, maxOccupancy: 2, extraBedAllowed: false, extraBedPriceSatang: 0 }, [T.dlx]: { baseOccupancy: 2, maxOccupancy: 3, extraBedAllowed: true, extraBedPriceSatang: 30_000 }, [T.fam]: { baseOccupancy: 4, maxOccupancy: 5, extraBedAllowed: true, extraBedPriceSatang: 30_000 }, [T.suite]: { baseOccupancy: 2, maxOccupancy: null, extraBedAllowed: true, extraBedPriceSatang: 50_000 } });
 const mkCtx = (o: Partial<Ctx> = {}): Ctx => {
   const plans = FX.plans.map((p) => ({ id: PLAN_ID[p.key], code: p.code, name: p.name, isDefault: p.isDefault, includeBreakfast: p.includeBreakfast, minNights: p.minNights, maxNights: null, depositKind: p.depositKind, depositValue: p.depositValue, status: "ACTIVE", visibility: [...p.visibility] }));
-  const seasons = FX.seasons.map((s) => ({ id: SEASON_ID[s.key], name: s.name, ...seasonRange(s), priority: s.priority, status: "ACTIVE" }));
+  const seasons = FX.seasons.map((s) => ({ id: SEASON_ID[s.key], name: s.name, ...seasonRange(s), priority: s.priority, minNights: s.minNights ?? null, status: "ACTIVE" }));
   const rates: Any[] = [];
   for (const p of FX.plans) for (const typeName of Object.keys(FX.base)) for (const sk of [null, ...FX.seasons.map((s) => s.key)]) {
     const c = cellOf(p.key, typeName, sk);
@@ -158,7 +164,7 @@ const mkCtx = (o: Partial<Ctx> = {}): Ctx => {
   }
   const holidays = new Set<string>(["2026-12-05", "2026-04-13", "2027-04-13"]);
   const overrides = [{ roomTypeId: T.dlx, ratePlanId: null, date: "2026-11-14", priceSatang: FX.override.priceSatang, reason: FX.override.reason, setById: "svcqc-user-owner" }];
-  return { weekendDays: [...FX.weekendDays], rounding: "SATANG", today: TODAY, plans, seasons, holidays, rates, overrides, fallback: { baseRateSatang: null, dayOfWeekAdjustBp: [0, 0, 0, 0, 0, 0, 0] }, ...o };
+  return { weekendDays: [...FX.weekendDays], rounding: "SATANG", today: TODAY, roomTypes: ROOM_TYPES(), plans, seasons, holidays, rates, overrides, fallback: NO_FALLBACK(), ...o };
 };
 /** ตัวอ้างอิง (oracle ของ oracle): คิดราคา 1 คืนตามใบสั่ง §2 ข้อ 1–2 จาก ctx */
 const refNight = (ctx: Ctx, roomTypeId: string, ratePlanId: string, date: string): { priceSatang: number; source: string; seasonId: string | null; bucket: string | null } | null => {
@@ -173,9 +179,10 @@ const refNight = (ctx: Ctx, roomTypeId: string, ratePlanId: string, date: string
     if (ctx.weekendDays.includes(dow)) return { priceSatang: row.priceWeekendSatang, source: "RATE", seasonId: season?.id ?? null, bucket: "weekend" };
     return { priceSatang: row.priceWeekdaySatang, source: "RATE", seasonId: season?.id ?? null, bucket: "weekday" };
   }
-  if (ctx.fallback.baseRateSatang === null) return null;
-  const bp = ctx.fallback.dayOfWeekAdjustBp[dowOf(date)] ?? 0;
-  return { priceSatang: roundBy((ctx.fallback.baseRateSatang * (10_000 + bp)) / 10_000, ctx.rounding), source: "FALLBACK", seasonId: null, bucket: null };
+  const fb = ctx.fallback[roomTypeId];
+  if (!fb || fb.baseRateSatang === null) return null;
+  const bp = fb.dayOfWeekAdjustBp[dowOf(date)] ?? 0;
+  return { priceSatang: roundBy((fb.baseRateSatang * (10_000 + bp)) / 10_000, ctx.rounding), source: "FALLBACK", seasonId: null, bucket: null };
 };
 const nightsOf = (checkIn: string, checkOut: string) => { const out: string[] = []; for (let d = checkIn; d < checkOut; d = addDays(d, 1)) out.push(d); return out; };
 const LIMITS = { minNights: null as number | null, maxNights: null as number | null, closedToArrival: false, maxAdvanceBookingDays: 365 };
@@ -461,13 +468,15 @@ try {
     const r = night(c, T.fam, PLAN_ID.standard, "2026-12-31");
     eq([r?.priceSatang, r?.source], [189_000, "RATE"], "แฟมิลี");
   });
-  await st("P-13", "fallback: ประเภท «สวีท» ไม่มีแถว HotelRate · rooms.hotel.baseRate 250,000 + dayOfWeekAdjustBp [0,0,0,0,0,1000,1000] ⇒ จ. 250,000 · ส. 275,000 · source FALLBACK · seasonId null", () => {
-    const c = mkCtx({ fallback: { baseRateSatang: 250_000, dayOfWeekAdjustBp: [0, 0, 0, 0, 0, 1000, 1000] } });
+  await st("P-13", "fallback ต่อประเภท (มติ #3 · ctx.fallback[roomTypeId]): «สวีท» ไม่มีแถว HotelRate · baseRate 250,000 + dayOfWeekAdjustBp [0,0,0,0,0,1000,1000] ⇒ จ. 250,000 · ส. 275,000 · source FALLBACK · seasonId null · ประเภทอื่นที่ fallback null ไม่ติดไปด้วย", () => {
+    const c = mkCtx({ fallback: { ...NO_FALLBACK(), [T.suite]: { baseRateSatang: 250_000, dayOfWeekAdjustBp: [0, 0, 0, 0, 0, 1000, 1000] } } });
     const mon = night(c, T.suite, PLAN_ID.standard, "2026-11-02"), sat = night(c, T.suite, PLAN_ID.standard, "2026-11-07");
     eq([mon?.priceSatang, mon?.source, mon?.seasonId ?? null], [250_000, "FALLBACK", null], "จันทร์");
     eq([sat?.priceSatang, sat?.source], [275_000, "FALLBACK"], "เสาร์");
     // ประเภทที่มีตารางยังใช้ตาราง ไม่ใช่ fallback
     eq(night(c, T.dlx, PLAN_ID.standard, "2026-11-02")?.source, "RATE", "ดีลักซ์ยัง RATE");
+    const c2 = mkCtx({ fallback: { ...NO_FALLBACK(), [T.dlx]: { baseRateSatang: 250_000, dayOfWeekAdjustBp: [0, 0, 0, 0, 0, 0, 0] } } });
+    eq(night(c2, T.suite, PLAN_ID.standard, "2026-11-02"), null, "fallback ของดีลักซ์ต้องไม่ใช้กับสวีท");
   });
   await st("P-14", "ไม่มีราคาเลย: ไม่มีแถว HotelRate และ baseRate null ⇒ null (ขายไม่ได้) · มี override วันนั้นก็ยังขายได้ (OVERRIDE)", () => {
     eq(night(C0, T.suite, PLAN_ID.standard, "2026-11-02"), null, "null");
@@ -636,7 +645,7 @@ try {
   await st("P-37", "fuzz 300 คืน (วัน × ประเภท × แผน · ปี 2569–2570 · override สุ่ม 20 จุด · fallback สุ่ม) ⇒ resolveNightPrice ตรงตัวอ้างอิง §2 ทุกช่อง (price/source/seasonId/bucket)", () => {
     let seed = 1133;
     const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
-    const ctx = mkCtx({ fallback: { baseRateSatang: 250_000, dayOfWeekAdjustBp: [0, 0, 0, 0, 500, 1000, 1000] } });
+    const ctx = mkCtx({ fallback: { ...NO_FALLBACK(), [T.suite]: { baseRateSatang: 250_000, dayOfWeekAdjustBp: [0, 0, 0, 0, 500, 1000, 1000] }, [T.fam]: { baseRateSatang: 180_000, dayOfWeekAdjustBp: [0, 0, 0, 0, 0, 1500, 1500] } } });
     const types = [T.sup, T.dlx, T.fam, T.suite], plans = Object.values(PLAN_ID);
     for (let i = 0; i < 20; i++) ctx.overrides.push({ roomTypeId: types[rnd(4)], ratePlanId: rnd(3) === 0 ? null : plans[rnd(3)], date: ymdOfDay(dayNo("2026-11-01") + rnd(500)), priceSatang: 100_000 + rnd(300) * 100, reason: "สุ่ม" });
     const diffs: string[] = [];
@@ -667,7 +676,29 @@ try {
     for (const q of qs) { ok(Number.isInteger(q.nightsTotal) && (q.nights as Any[]).every((n) => Number.isInteger(n.priceSatang)), J(q).slice(0, 200)); eq(q.nightsTotal, (q.nights as Any[]).reduce((a, n) => a + n.priceSatang, 0), "Σ"); }
     eq(qs[1].nights.length, nightsOf("2026-11-28", "2027-01-05").length, "จำนวนคืนข้ามปี");
   });
-  skip("P-40", "เตียงเสริม: + extraBedPriceSatang × extraBeds (มติ 1 ข้อ 4)", "PricingContext ใน §3 ไม่มีที่มาของ extraBedPriceSatang ต่อประเภทห้อง — รอผู้คุมเคาะรูป (roomTypes[] ใน ctx หรือรับใน input) ก่อนตั้งข้อสอบ", "MAJOR");
+  await st("P-40", "เตียงเสริม (มติ 1 ข้อ 4 · §11 #2 ctx.roomTypes): ดีลักซ์ extraBeds 1 ⇒ คืน +30,000 (จ. 159,000 · override 14 พ.ย. 199,000) · quote ศ.–อา. +60,000 = 358,000 · extraBeds 0/ไม่ส่ง เท่าเดิม · ซูพีเรีย (extraBedAllowed false) ⇒ EXTRA_BED_NOT_ALLOWED · ดีลักซ์ 2 เตียง (2+2 > max 3) ⇒ OVER_OCCUPANCY · แฟมิลี 1 เตียง (4+1 ≤ 5) ผ่าน", () => {
+    eq(night(C0, T.dlx, PLAN_ID.standard, "2026-11-02", { extraBeds: 1 })?.priceSatang, 159_000, "จันทร์ +1 เตียง");
+    eq(night(C0, T.dlx, PLAN_ID.standard, "2026-11-14", { extraBeds: 1 })?.priceSatang, 199_000, "override +1 เตียง");
+    eq(night(C0, T.dlx, PLAN_ID.standard, "2026-11-02", { extraBeds: 0 })?.priceSatang, 129_000, "0 เตียง");
+    const q = okRes(quote(C0, { roomTypeId: T.dlx, ratePlanId: PLAN_ID.standard, checkIn: "2026-11-06", checkOut: "2026-11-08", extraBeds: 1 }), "quote เตียงเสริม");
+    eq(q.nightsTotal, 358_000, "quote +60,000");
+    const na = quote(C0, { roomTypeId: T.sup, ratePlanId: PLAN_ID.standard, checkIn: "2026-11-06", checkOut: "2026-11-08", extraBeds: 1 });
+    eq([na?.ok, na?.error], [false, "EXTRA_BED_NOT_ALLOWED"], "ซูพีเรีย");
+    const ov = quote(C0, { roomTypeId: T.dlx, ratePlanId: PLAN_ID.standard, checkIn: "2026-11-06", checkOut: "2026-11-08", extraBeds: 2 });
+    eq([ov?.ok, ov?.error], [false, "OVER_OCCUPANCY"], "เกิน max");
+    ok(quote(C0, { roomTypeId: T.fam, ratePlanId: PLAN_ID.standard, checkIn: "2026-11-06", checkOut: "2026-11-08", extraBeds: 1 })?.ok === true, "แฟมิลี 1 เตียงผ่าน");
+  });
+  await st("P-41", "ขั้นต่ำคืนของฤดู (§11 #4 · ปีใหม่ minNights 2 · ขั้นต่ำจริง = max(แผน, ฤดูที่ครอบคืนแรก, limits)): 31 ธ.ค. 1 คืน ⇒ MIN_NIGHTS · 2 คืนผ่าน · 2 ม.ค. (วันจบฤดู) 1 คืน ⇒ MIN_NIGHTS · 3 ม.ค. (ไฮซีซัน ไม่มี minNights) 1 คืนผ่าน · แผน minNights 3 + ฤดู 2 ⇒ 2 คืนไม่ผ่าน 3 คืนผ่าน · limits 4 ⇒ 3 คืนไม่ผ่าน", () => {
+    const one = quote(C0, { roomTypeId: T.dlx, ratePlanId: PLAN_ID.standard, checkIn: "2026-12-31", checkOut: "2027-01-01" });
+    eq([one?.ok, one?.error], [false, "MIN_NIGHTS"], "31 ธ.ค. 1 คืน");
+    ok(quote(C0, { roomTypeId: T.dlx, ratePlanId: PLAN_ID.standard, checkIn: "2026-12-31", checkOut: "2027-01-02" })?.ok === true, "2 คืนผ่าน");
+    eq(quote(C0, { roomTypeId: T.dlx, ratePlanId: PLAN_ID.standard, checkIn: "2027-01-02", checkOut: "2027-01-03" })?.error, "MIN_NIGHTS", "2 ม.ค.");
+    ok(quote(C0, { roomTypeId: T.dlx, ratePlanId: PLAN_ID.standard, checkIn: "2027-01-03", checkOut: "2027-01-04" })?.ok === true, "3 ม.ค. ผ่าน");
+    const c = mkCtx(); c.plans = c.plans.map((p) => (p.id === PLAN_ID.standard ? { ...p, minNights: 3 } : p));
+    eq(quote(c, { roomTypeId: T.dlx, ratePlanId: PLAN_ID.standard, checkIn: "2026-12-31", checkOut: "2027-01-02" })?.error, "MIN_NIGHTS", "แผน 3 ชนะฤดู 2");
+    ok(quote(c, { roomTypeId: T.dlx, ratePlanId: PLAN_ID.standard, checkIn: "2026-12-31", checkOut: "2027-01-03" })?.ok === true, "3 คืนผ่าน");
+    eq(PR.quote()(C0, { roomTypeId: T.dlx, ratePlanId: PLAN_ID.standard, checkIn: "2026-12-31", checkOut: "2027-01-03", limits: { ...LIMITS, minNights: 4 } })?.error, "MIN_NIGHTS", "limits 4");
+  });
 
   // ═══════════════ ร้านชั่วคราว (R/B/S) ═══════════════
   console.log("\n── R rates.ts (server) ──");
@@ -795,7 +826,7 @@ try {
     const y = Number(TODAY_R.slice(0, 4));
     const hi = seasonRange(FX.seasons[0], y), ny = seasonRange(FX.seasons[1], y);
     okRes(await audited("ฤดู", () => RT("saveSeason")(OWNER, ctxA, { unitId: UH, name: "ไฮซีซัน", dateStart: hi.dateStart, dateEnd: hi.dateEnd, priority: 10 })), "ไฮซีซัน");
-    okRes(await RT("saveSeason")(OWNER, ctxA, { unitId: UH, name: "ปีใหม่", dateStart: ny.dateStart, dateEnd: ny.dateEnd, priority: 20 }), "ปีใหม่");
+    okRes(await RT("saveSeason")(OWNER, ctxA, { unitId: UH, name: "ปีใหม่", dateStart: ny.dateStart, dateEnd: ny.dateEnd, priority: 20, minNights: 2 }), "ปีใหม่");
     okRes(await RT("saveSeason")(OWNER, ctxA, { unitId: UH, name: "ชั่วคราว", dateStart: inWin(40), dateEnd: inWin(45), priority: 1 }), "ชั่วคราว");
     const bad = await RT("saveSeason")(OWNER, ctxA, { unitId: UH, name: "กลับหัว", dateStart: "2026-12-10", dateEnd: "2026-12-01", priority: 1 });
     ok(bad?.ok === false, "dateEnd < dateStart");
@@ -809,6 +840,20 @@ try {
     eq((await prisma.hotelSeason.findUnique({ where: { id: ids.tmp } }))?.status, "ARCHIVED", "ARCHIVED");
     const pc = await RT("loadPricingContext")(ctxA, UH, { from: TODAY_R, to: inWin(60) });
     ok((pc.seasons as Any[]).every((s) => s.id !== ids.tmp), "ARCHIVED ยังอยู่ใน ctx");
+  });
+  await st("R-21", "ฤดูมี minNights (§11 #4 · HotelSeason.minNights Int? CHECK ≥ 1): ปีใหม่ที่สร้างมี minNights 2 ในแถวและใน ctx.seasons · แก้เป็น null ได้ · minNights 0 ⇒ ok:false ไม่เขียน · insert ดิบ minNights 0 ⇒ ฐานปฏิเสธ (CHECK)", async () => {
+    needH0();
+    eq((await prisma.hotelSeason.findUnique({ where: { id: ids.ny } }))?.minNights, 2, "แถว");
+    const pc = await RT("loadPricingContext")(ctxA, UH, { from: TODAY_R, to: inWin(60) });
+    eq((pc.seasons as Any[]).find((s) => s.id === ids.ny)?.minNights, 2, "ctx");
+    okRes(await RT("saveSeason")(OWNER, ctxA, { unitId: UH, id: ids.ny, name: "ปีใหม่", dateStart: ymdOfDb((await prisma.hotelSeason.findUnique({ where: { id: ids.ny } })).dateStart), dateEnd: ymdOfDb((await prisma.hotelSeason.findUnique({ where: { id: ids.ny } })).dateEnd), priority: 20, minNights: null }), "แก้เป็น null");
+    eq((await prisma.hotelSeason.findUnique({ where: { id: ids.ny } }))?.minNights ?? null, null, "null");
+    const bad = await RT("saveSeason")(OWNER, ctxA, { unitId: UH, id: ids.ny, name: "ปีใหม่", dateStart: ymdOfDb((await prisma.hotelSeason.findUnique({ where: { id: ids.ny } })).dateStart), dateEnd: ymdOfDb((await prisma.hotelSeason.findUnique({ where: { id: ids.ny } })).dateEnd), priority: 20, minNights: 0 });
+    ok(bad?.ok === false, `minNights 0 ผ่าน ${J(bad)}`);
+    let err = "";
+    try { await prisma.$executeRawUnsafe(`INSERT INTO "HotelSeason" ("id","tenantId","unitId","name","dateStart","dateEnd","priority","minNights","updatedAt") VALUES ($1,$2,$3,'เช็ค',$4::date,$5::date,1,0,now())`, `qc-ss-${RUN}`, tA, UH, inWin(80), inWin(81)); } catch (e) { err = errMsg(e); }
+    ok(/check|23514/i.test(err), `CHECK minNights ≥ 1 ไม่ทำงาน: ${err || "insert ผ่าน!"}`);
+    okRes(await RT("saveSeason")(OWNER, ctxA, { unitId: UH, id: ids.ny, name: "ปีใหม่", dateStart: ymdOfDb((await prisma.hotelSeason.findUnique({ where: { id: ids.ny } })).dateStart), dateEnd: ymdOfDb((await prisma.hotelSeason.findUnique({ where: { id: ids.ny } })).dateEnd), priority: 20, minNights: 2 }), "คืนค่า 2");
   });
   await st("R-8", "วันหยุด: saveHolidays bulk 3 วัน ⇒ 3 แถว · bulk ซ้ำ (idempotent) ไม่เพิ่ม · removeHoliday ⇒ เหลือ 2 · วันที่ผิดรูป ⇒ ok:false · AuditLog", async () => {
     needH0();
@@ -888,7 +933,9 @@ try {
     ok(c.holidays instanceof Set && c.holidays.has(ids.holi), `holidays ${J([...(c.holidays ?? [])])}`);
     eq(c.rates?.length, 12, "rates");
     ok(c.overrides?.length === 1 && c.overrides[0].date === ids.ovDate && c.overrides[0].priceSatang === 169_000, `overrides ${J(c.overrides)}`);
-    eq([c.fallback?.baseRateSatang, c.fallback?.dayOfWeekAdjustBp?.length], [null, 7], "fallback");
+    ok(c.fallback && typeof c.fallback === "object" && Object.keys(RTA).every((k) => c.fallback[RTA[k]] && c.fallback[RTA[k]].baseRateSatang === null && c.fallback[RTA[k]].dayOfWeekAdjustBp?.length === 7), `fallback ต่อประเภท ${J(c.fallback)}`);
+    ok(c.roomTypes && Object.keys(RTA).every((k) => typeof c.roomTypes[RTA[k]]?.baseOccupancy === "number" && typeof c.roomTypes[RTA[k]]?.extraBedAllowed === "boolean" && typeof c.roomTypes[RTA[k]]?.extraBedPriceSatang === "number"), `roomTypes ${J(c.roomTypes)}`);
+    ok(c.seasons.every((s: Any) => "minNights" in s), "seasons ไม่มี minNights");
     ids.ctxJson = J({ ...c, holidays: [...c.holidays] });
   });
   await st("R-14", "N+1: loadPricingContext 14 วัน = คำสั่ง SQL ≤ 8 (นับผ่านตัวดัก $on(\"query\") · ไม่นับ BEGIN/COMMIT) · และไม่โตตามจำนวนวัน (60 วัน ≤ 14 วัน + 1)", async () => {
@@ -946,7 +993,7 @@ try {
     const got = PR.night()(ctx, { roomTypeId: RTA.dlx, ratePlanId: ids.std, date: nyDate });
     const inHigh = ctx.seasons.some((s: Any) => s.id === ids.high && s.dateStart <= nyDate && nyDate <= s.dateEnd);
     eq(got?.seasonId ?? null, inHigh ? ids.high : null, "31 ธ.ค. ตกไปไฮซีซัน/ปกติ");
-    okRes(await RT("saveSeason")(OWNER, ctxA, { unitId: UH, name: "ปีใหม่", dateStart: seasonRange(FX.seasons[1], y).dateStart, dateEnd: seasonRange(FX.seasons[1], y).dateEnd, priority: 20 }), "สร้างใหม่");
+    okRes(await RT("saveSeason")(OWNER, ctxA, { unitId: UH, name: "ปีใหม่", dateStart: seasonRange(FX.seasons[1], y).dateStart, dateEnd: seasonRange(FX.seasons[1], y).dateEnd, priority: 20, minNights: 2 }), "สร้างใหม่");
   }, "MAJOR");
   await st("R-18", "saveRatePlan ตรวจค่า: depositKind นอกชุด ⇒ ok:false · depositValue ลบ ⇒ ok:false · visibility นอก WEB/LINE/COUNTER/OTA ⇒ ok:false · minNights > maxNights ⇒ ok:false · code ว่าง/ยาว 41 ⇒ ok:false · ไม่สร้างแถว", async () => {
     needH0();
@@ -1286,11 +1333,11 @@ try {
     eq(bad, [], "ปุ่มเขียนไม่มีเงื่อนไขสิทธิ์ใกล้เคียง (600 ตัวอักษรก่อนหน้า)");
     ok(/(canEdit|canWrite|readOnly|writable)\s*[?:]|\b(canEdit|canWrite|writable)\s*&&|!readOnly\s*&&|readOnly\s*\?/.test(s), "ไม่มีการใช้ prop เป็นเงื่อนไข render");
   });
-  await st("U-10", "มือถือ 390 เลื่อนแนวนอนมีตัวบอก (หนี้ B.12 ห้ามซ้ำ): ตารางราคาอยู่ในกรอบ overflow-x-auto และมีตัวบอกว่าเลื่อนได้ (data-scroll-hint หรือข้อความ «เลื่อน» · ลูกศร) ใน RatesScreen", () => {
+  await st("U-10", "มือถือ 390 เลื่อนแนวนอนมีตัวบอก (หนี้ B.12 ห้ามซ้ำ · §11 #9): ตารางราคาอยู่ในกรอบ overflow-x-auto และมี attribute ชื่อตายตัว `data-scroll-hint` ใน RatesScreen (ข้อความ «เลื่อนดูวันถัดไป →» เป็นตัวเสริม ไม่บังคับ)", () => {
     const s = read(F.ratesScreen);
     ok(s, "ยังไม่มี RatesScreen.tsx");
     ok(/overflow-x-auto/.test(s), "ไม่มี overflow-x-auto");
-    ok(/data-scroll-hint|เลื่อน(ดู|ซ้าย|ขวา|แนวนอน|ตาราง)|aria-label=["'][^"']*เลื่อน/.test(s), "ไม่มีตัวบอกว่าเลื่อนได้ (data-scroll-hint / ข้อความ «เลื่อน…»)");
+    ok(/data-scroll-hint/.test(s), "ไม่มี attribute data-scroll-hint (ชื่อตายตัวตามมติ §11 #9)");
   });
   await st("U-11", "ป้ายโหมดภาษีใต้หัวข้อ (มติ 6): มีทั้ง «ราคารวมภาษี» และ «ยังไม่รวม VAT» (+ SC) เลือกตามโหมด · ตัวเลขจากค่าตั้ง (vatBp/serviceChargeBp ในสตริงแม่แบบ ไม่ฝัง 7%/10% ตายตัว)", () => {
     const s = read(F.ratesScreen) + read(F.ratesShared);
@@ -1459,7 +1506,7 @@ console.log("\n── Q ฉาก svcqc (svc-qc-hotel-rates-scene) ──");
       const plans = await scenePlans();
       eq(plans.map((p: Any) => [p.code, p.isDefault, p.status]).sort(), [["BREAKFAST", false, "ACTIVE"], ["NONREF", false, "ACTIVE"], ["STANDARD", true, "ACTIVE"]], "แผน");
       const seasons = await prisma.hotelSeason.findMany({ where: { tenantId: SQC_TENANT.id, unitId, status: "ACTIVE" } });
-      eq(seasons.map((s: Any) => [s.name, s.priority]).sort(), [["ปีใหม่", 20], ["ไฮซีซัน", 10]], "ฤดู");
+      eq(seasons.map((s: Any) => [s.name, s.priority, s.minNights ?? null]).sort(), [["ปีใหม่", 20, 2], ["ไฮซีซัน", 10, null]], "ฤดู (+minNights ปีใหม่ 2)");
       ok((await prisma.hotelHoliday.count({ where: { tenantId: SQC_TENANT.id, unitId } })) >= 2, "วันหยุด");
       const tid = await typeIdByName();
       const std = plans.find((p: Any) => p.code === "STANDARD");
@@ -1575,5 +1622,5 @@ console.log(`\n===== QC SVC H.1 · ราคาโรงแรม + นโยบ
 console.log(`กลุ่ม: ${Object.entries(byGroup).map(([g, v]) => `${g} ${v.passed}/${v.total}${v.skipped ? ` (skip ${v.skipped})` : ""}`).join(" · ")}`);
 console.log(`FINDINGS: CRITICAL ${failed.filter((c) => c.sev === "CRITICAL").length} · MAJOR ${failed.filter((c) => c.sev === "MAJOR").length} · MINOR ${failed.filter((c) => c.sev === "MINOR").length}`);
 console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, total: cks.length, passed, failed: failed.map((c) => c.id), skipped: skipped.map((c) => c.id), findings: [...failed, ...skipped].map((c) => c.id), byGroup })}`);
-// รับใบ = ผ่านทุกข้อ (SKIP ที่ยอมได้ระหว่างทำ: G-* เมื่อ --no-regression · V-1 ไม่มี QC_BASE · Q-* svcqc ยังไม่ seed/ยังไม่มีฉาก · F-1 หลัง merge · P-40 รอผู้คุมเคาะ — ผู้คุมรันซ้ำครบก่อนรับ)
+// รับใบ = ผ่านทุกข้อ (SKIP ที่ยอมได้ระหว่างทำ: G-* เมื่อ --no-regression · V-1 ไม่มี QC_BASE · Q-* svcqc ยังไม่ seed/ยังไม่มีฉาก · F-1 หลัง merge — ผู้คุมรันซ้ำครบก่อนรับ)
 process.exit(failed.length > 0 ? 1 : 0);
