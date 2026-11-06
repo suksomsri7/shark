@@ -7,6 +7,7 @@
 //   T3 pickModel("ร่างใบเสนอราคาให้…") = smart · "ยอดขายวันนี้" = fast (R-Z43)
 //   T4 costMicroUsd แยกราคาแคช · parseAnthropicReply แยกแคช · chargeUsage หักตามจริง (R-Z44)
 //   T6 documents.create ไม่ระบุ VAT ⇒ ค่าปริยายจากร้าน (จด 700/EXCLUDE · ไม่จด 0/NONE) · ระบุเองชนะ · สรุปยอดรวม VAT ถูก · hint ห้ามถาม VAT (R-Z49)
+//   T7 ask_clarify (ASCII) + persona ห้องเลขา ห้ามถามค่าปริยายของร้าน (R-Z50)
 //   T5 chat.send kind=quote ไม่มี documentId: ไม่มีใบ ⇒ ล้มไทย+คง PENDING · มีใบ EXECUTED ในห้อง ⇒ ข้อความมีเลขที่+ลิงก์ · ใบของห้องอื่น ⇒ ไม่หยิบ (R-Z45)
 // รัน: bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 SMS_PROVIDER=mock pnpm exec tsx scripts/qc-sec-s3a1-r2.mts
 import { join, dirname } from "node:path";
@@ -279,6 +280,21 @@ try {
     const docTool = (tools.toolRegistry?.() ?? []).find((x: AnyMod) => x.def?.name === "account_create_document");
     const hint = String(docTool?.def?.description ?? "");
     chk("T6-4", "คำอธิบาย account_create_document มีประโยค VAT: ระบบเติมจากค่าตั้งค่าร้าน · อย่าถาม", /VAT/.test(hint) && /Do not ask about VAT/i.test(hint) && /settings/.test(hint), hint.slice(-260));
+  }
+
+  // ───────── T7 ─────────
+  console.log("── T7: ห้ามถามค่าปริยายของร้าน (R-Z50) ──");
+  {
+    const ask = (tools.toolRegistry?.() ?? []).find((x: AnyMod) => x.def?.name === "ask_clarify");
+    const askDesc = String(ask?.def?.description ?? "");
+    chk("T7-1", "คำอธิบาย ask_clarify (ASCII ล้วน) ห้ามถาม VAT/ส่วนลด/เลขเอกสาร/รูปแบบ · ถามเฉพาะสิ่งที่ระบบรู้เองไม่ได้",
+      /^[\x00-\x7F]+$/.test(askDesc) && /Do not ask about VAT\/tax, discounts, document numbering or format/.test(askDesc) && /Ask only for what the system cannot know/.test(askDesc), askDesc.slice(-220));
+    const persona = (await import("@/lib/ai/persona")) as AnyMod;
+    const base = { tenantName: "ร้าน QC", systems: [{ type: "ACCOUNT", name: "บัญชี" }] };
+    const sec = persona.buildSystemPrompt({ ...base, digest: "- ยอดขายวันนี้ 0 บาท" });
+    const legacy = persona.buildSystemPrompt(base);
+    const RULE = "ค่าปริยายของร้าน เช่น VAT/รูปแบบเอกสาร ระบบเติมให้ — ห้ามถาม · ถามเฉพาะสิ่งที่ระบบรู้เองไม่ได้";
+    chk("T7-2", "system prompt ของห้องเลขามีกติกา 'ค่าปริยายของร้าน … ห้ามถาม' · ห้อง AI เดิม (ไม่มีบริบทเลขา) ไม่มี (prompt เดิมทุกไบต์)", sec.includes(RULE) && !legacy.includes(RULE), JSON.stringify({ sec: sec.includes(RULE), legacy: legacy.includes(RULE) }));
   }
 } catch (e) {
   const detail = (e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : JSON.stringify(e)).slice(0, 400);
