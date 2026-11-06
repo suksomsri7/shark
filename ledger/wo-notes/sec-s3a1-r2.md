@@ -43,3 +43,13 @@
 - `src/lib/ai/persona.ts`: `SHOP_DEFAULTS_RULE` "- ค่าปริยายของร้าน เช่น VAT/รูปแบบเอกสาร ระบบเติมให้ — ห้ามถาม · ถามเฉพาะสิ่งที่ระบบรู้เองไม่ได้" ต่อจาก `DATA_NOT_COMMAND_RULE` เฉพาะห้องเลขา (`secRoom` = ตัวตนเลขา/ข้อมูลสด/บล็อกลูกค้า) — ห้อง AI เดิม prompt เดิมทุกไบต์ (s1.2 P-1 เขียว)
 - ข้อสอบ r2 T7-1 (ask_clarify ASCII + 2 ประโยค) · T7-2 (prompt ห้องเลขามีกติกา · ห้องเดิมไม่มี)
 - ผล: r2 **22/22** ×2 (residue 0) · qc-ai-tools 18/18 · s3a.1 16/17 (R-1 SKIP) · qc-sec-s1.2 28/28 · qc-account-api-ai-skill 28/33 (K1.7 เขียว · K2.x = ไม่มีร้าน seed บัญชีในฐาน QC เลขา เหมือนรอบ 3) · ไม่มีข้อสอบชื่อ persona/ai-prompt แยก (grep qc-*persona*/qc-ai-prompt* = ไม่มี) · typecheck 0 · fitness no-DB 53/53
+
+## 6. รอบ 5 — R-Z51 ไม่ถามยืนยันก่อนเสนอ (รอบจริง #4: VAT ไม่ถามแล้ว · จบด้วย ask_clarify "ยืนยันสร้างและส่งไหม" · load_skill ซ้ำ)
+- merge ทิปผู้คุม `65c619b90` (SHA ตรง)
+- (ก) `tools.ts` ask_clarify + "Never ask for confirmation to proceed (e.g. 'shall I create or send it?'): every write is a proposal that a person approves in the app. When the user asks to create and send, propose both now." (ASCII)
+- (ข) `persona.ts` `NO_CONFIRM_RULE` เฉพาะห้องเลขา (ต่อจาก SHOP_DEFAULTS_RULE) · ห้องเดิมไบต์เดิม (s1.2 28/28)
+- (ค) `secretary/customer-context.ts customerBlock`: บรรทัดที่ 2 "ส่งข้อความถึงลูกค้าคนนี้: send_customer_message conversationId=<id>" (ก่อนข้อความล่าสุด ⇒ ไม่ถูกตัดตอนบล็อกยาว) · rooms.ts ไม่ได้ประกอบข้อความบริบทเอง (บล็อกนี้ตัวเดียวที่เข้า prompt) · service ยังเติม conversationId ปริยายให้ send_customer_message เหมือนเดิม
+- (ง) load_skill: enum ตัดสกิลที่โหลดแล้วออกอยู่แล้ว (`currentTools` → `LOAD_SKILL_TOOL(ยังไม่โหลด)`) — ไม่ใช่บั๊กของ enum · แต่ (1) ผลของ load_skill บอกแค่ "tools are now available" ไม่บอกชื่อ (2) ขอสกิลที่โหลดแล้วซ้ำ (โมเดลไม่ได้ถูกบังคับด้วย enum เสมอ) = ตอบ "Loaded" ซ้ำเหมือนโหลดใหม่ ⇒ แก้ใน `service.ts`: ผลบอก "These tools are available from now on: <ชื่อ>" · ซ้ำ = "Already loaded: X (tools …) — do not load again; call the tool you need" · หมายเหตุ: account_search_contacts ซ้ำ 3 รอบ = เรื่องโมเดลค้นซ้ำ (ไม่มีด่านในโค้ด) — จดไว้ดูรอบจริง #5
+- (จ) r2 T8-1 (ask_clarify ASCII + ประโยคใหม่) · T8-2 (prompt ห้องเลขามี/ห้องเดิมไม่มี) · T9-1 (บล็อกลูกค้ามี conversationId แม้ข้อความล่าสุดยาว)
+- ผล: r2 **25/25** ×2 (residue 0) · s1.2 28/28 · s1.22 14/14 · qc-ai-tools 18/18 · qc-ai-skills 23/23 · s3a.1 16/17 (R-1 SKIP) · qc-account-api-ai-skill 28/33 (K1.7 เขียว · K2.x = ไม่มีร้าน seed บัญชี) · typecheck 0 · fitness no-DB 53/53
+- ไฟล์ร่วม: `src/lib/ai/service.ts` เฉพาะบล็อก load_skill (ผลข้อความ + กันโหลดซ้ำ)

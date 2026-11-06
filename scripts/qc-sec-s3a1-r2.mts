@@ -8,6 +8,7 @@
 //   T4 costMicroUsd แยกราคาแคช · parseAnthropicReply แยกแคช · chargeUsage หักตามจริง (R-Z44)
 //   T6 documents.create ไม่ระบุ VAT ⇒ ค่าปริยายจากร้าน (จด 700/EXCLUDE · ไม่จด 0/NONE) · ระบุเองชนะ · สรุปยอดรวม VAT ถูก · hint ห้ามถาม VAT (R-Z49)
 //   T7 ask_clarify (ASCII) + persona ห้องเลขา ห้ามถามค่าปริยายของร้าน (R-Z50)
+//   T8 ask_clarify + persona ห้ามถามยืนยันก่อนเสนอ · T9 บล็อกลูกค้ามี conversationId (R-Z51)
 //   T5 chat.send kind=quote ไม่มี documentId: ไม่มีใบ ⇒ ล้มไทย+คง PENDING · มีใบ EXECUTED ในห้อง ⇒ ข้อความมีเลขที่+ลิงก์ · ใบของห้องอื่น ⇒ ไม่หยิบ (R-Z45)
 // รัน: bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 SMS_PROVIDER=mock pnpm exec tsx scripts/qc-sec-s3a1-r2.mts
 import { join, dirname } from "node:path";
@@ -295,6 +296,24 @@ try {
     const legacy = persona.buildSystemPrompt(base);
     const RULE = "ค่าปริยายของร้าน เช่น VAT/รูปแบบเอกสาร ระบบเติมให้ — ห้ามถาม · ถามเฉพาะสิ่งที่ระบบรู้เองไม่ได้";
     chk("T7-2", "system prompt ของห้องเลขามีกติกา 'ค่าปริยายของร้าน … ห้ามถาม' · ห้อง AI เดิม (ไม่มีบริบทเลขา) ไม่มี (prompt เดิมทุกไบต์)", sec.includes(RULE) && !legacy.includes(RULE), JSON.stringify({ sec: sec.includes(RULE), legacy: legacy.includes(RULE) }));
+  }
+
+  // ───────── T8 · T9 ─────────
+  console.log("── T8: ห้ามถามยืนยันก่อนเสนอ · T9: บริบทลูกค้ามี conversationId (R-Z51) ──");
+  {
+    const ask = (tools.toolRegistry?.() ?? []).find((x: AnyMod) => x.def?.name === "ask_clarify");
+    const askDesc = String(ask?.def?.description ?? "");
+    const persona = (await import("@/lib/ai/persona")) as AnyMod;
+    const base = { tenantName: "ร้าน QC", systems: [{ type: "ACCOUNT", name: "บัญชี" }] };
+    const sec = persona.buildSystemPrompt({ ...base, digest: "- ยอดขายวันนี้ 0 บาท" });
+    const legacy = persona.buildSystemPrompt(base);
+    const RULE = "ไม่ต้องถามยืนยันก่อนเสนอ — ทุกการเขียนเป็นข้อเสนอที่คนอนุมัติในแอป · สั่งสร้างแล้วส่ง = เสนอทั้งสองอย่างในเทิร์นเดียว";
+    chk("T8-1", "ask_clarify (ASCII) ห้ามถามยืนยันก่อนทำ · สั่งสร้างและส่ง = เสนอทั้งคู่ทันที",
+      /^[\x00-\x7F]+$/.test(askDesc) && /Never ask for confirmation to proceed/.test(askDesc) && /When the user asks to create and send, propose both now\./.test(askDesc), askDesc.slice(-240));
+    chk("T8-2", "prompt ห้องเลขามีกติกา 'ไม่ต้องถามยืนยันก่อนเสนอ…' · ห้อง AI เดิมไม่มี", sec.includes(RULE) && !legacy.includes(RULE), JSON.stringify({ sec: sec.includes(RULE), legacy: legacy.includes(RULE) }));
+    const cc = (await import("@/lib/ai/secretary/customer-context")) as AnyMod;
+    const blk = cc.customerBlock({ contactId: "ct1", chatConversationId: "conv-qc-r2-xyz", displayName: "คุณมานะ", channel: "LINE", tags: [], assignee: null, linked: {}, recent: Array.from({ length: 10 }, (_, i) => ({ direction: "IN", text: "ข้อความยาว ".repeat(20) + i, at: new Date() })) });
+    chk("T9-1", "บล็อกลูกค้ามีบรรทัด 'ส่งข้อความถึงลูกค้าคนนี้: send_customer_message conversationId=<id>' (คงอยู่แม้ข้อความล่าสุดยาว)", blk.includes("ส่งข้อความถึงลูกค้าคนนี้: send_customer_message conversationId=conv-qc-r2-xyz"), blk.slice(0, 200));
   }
 } catch (e) {
   const detail = (e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : JSON.stringify(e)).slice(0, 400);
