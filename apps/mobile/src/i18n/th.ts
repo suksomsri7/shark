@@ -741,6 +741,7 @@ const th = {
   "cust.lang.en": "อังกฤษ",
   "cust.lang.ja": "ญี่ปุ่น",
   "cust.lang.zh": "จีน",
+  "cust.lang.cn": "จีน",
   "cust.lang.ko": "เกาหลี",
   "cust.lang.my": "พม่า",
   "cust.lang.lo": "ลาว",

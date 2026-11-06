@@ -742,6 +742,7 @@ const en: Record<I18nKey, string> = {
   "cust.lang.en": "English",
   "cust.lang.ja": "Japanese",
   "cust.lang.zh": "Chinese",
+  "cust.lang.cn": "Chinese",
   "cust.lang.ko": "Korean",
   "cust.lang.my": "Burmese",
   "cust.lang.lo": "Lao",

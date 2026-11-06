@@ -47,3 +47,7 @@
 3. แปลข้อความไม่ส่ง targetLang (ปริยายฝั่ง server = staffLang) · แปลร่างส่ง `targetLang = contactLang` ชัดเจน
 4. ปุ่ม "แปลแล้วส่ง" เป็นชิปเล็กในแถบพิมพ์หน้าปุ่มส่ง (InputBar prop `right`) · ซ่อนในโหมดบันทึกภายใน
 5. spec `s3a6.json` เขียนโดย builder (ไม่มีของผู้คุมในทรี) — ผู้คุมปรับได้
+
+## 7. หลัง merge ทิปผู้คุม f92f57c98 (server S3a.5/S3a.6-S เข้าแล้ว)
+- สัญญาตรงกับแอปทุกฟิลด์ (อ่านจากโค้ด): DTO `translatedBody/translatedLang/needsTranslation` · `staffLang/contactLang` · `can.translate` · ai-suggest `gloss` + `replyLang` · translate/translate-draft รับ `{systemId?, targetLang?}` / `{systemId?, body, targetLang?}` strict ⇒ คำถาม §6 ข้อ 2 ปิด (systemId รับแล้ว)
+- server ใช้รหัส `cn` สำหรับจีน (zh ≡ cn) ⇒ เพิ่ม `cust.lang.cn` th/en (ไม่มี testID ใหม่)
