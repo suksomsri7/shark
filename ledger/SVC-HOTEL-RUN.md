@@ -35,3 +35,5 @@
 
 ## 3. บันทึกเหตุการณ์
 - 7 พ.ย. ~15Z · **เริ่ม RUN HOTEL** (เจ้าของสั่งหลังแก้ประเมิน: เลขาไม่มีเลน build ค้าง · S3a.6 เพิ่งเริ่ม) · tg 0% · เลน hA=l2 hB=l1 (Prisma client แยกจากทรีเลขา · ตรวจ inode แล้ว) · ขั้นแรก: ฟิกซ์เจอร์ H (ผู้คุม) → ข้อสอบ h.0 + h.1 ขนาน → builder H.0
+- 7 พ.ย. ~16Z · ฟิกซ์เจอร์ H commit a9aad92d8 (SQC_HOTEL_RATES · ภาพ h.1 · frontdesk +hotel.rates.read) · เลน hA (l2) = ผู้เขียนข้อสอบ h.0 · hB (l1) = ผู้เขียนข้อสอบ h.1 (Fable ทั้งคู่ · branch wip/svc-h0-oracle / wip/svc-h1-oracle) · ทรีหลัก/l4 ห้ามรันของหนัก (Prisma client ร่วมทรีเลขา) · hC = l3 (client แยก · ตรวจแล้ว) เตรียมไว้
+

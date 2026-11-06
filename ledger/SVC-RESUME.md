@@ -42,7 +42,7 @@
 - C.1 ⏸ เลื่อนตามเจ้าของ (ตรวจสลิปเอง) · เฟส H โรงแรม V2 ยังไม่เริ่ม (เจ้าของสั่ง 1 พ.ย.)
 - **C.2 รอเจ้าของ**: LINE OA ทดสอบที่ต่อแชต SHARK + iPhone 1 + Android 1 มี LINE · ผู้คุมเขียนคู่มือร้านตอนเริ่ม
 - เลน: ไม่มี builder ทำงาน · server QC `svc-g1-serve` ยังเปิดที่ 3241 (หยุดได้) · ล้าง Neon branch เลน l1–l3 ตอนจบ RUN
-- 📝 4 พ.ย. เฟส H โรงแรม: แผนร่าง 1 `ledger/SVC-HOTEL-PLAN.md` · รอเจ้าของตอบ Q1–Q12 + RUN เลขา AI จบ ก่อนเปิดเลน H.0
+- ▶️ **7 พ.ย. RUN HOTEL เริ่ม (0/11)** — เจ้าของสั่ง "เริ่มได้ ทำขนานกับระบบเลขา" · สถานะสด = `ledger/SVC-HOTEL-RUN.md` · แผน = `SVC-HOTEL-PLAN.md` ร่าง 2 · ใบสั่ง h.0/h.1 · เลน hA=l2 hB=l1 hC=l3 (ห้ามใช้ทรีหลัก/l4 รันของหนัก) · tg `📊 HOTEL · NN% (x/11)`
 - ⚠️ 4 พ.ย. Prisma client ใน node_modules ของทรีนี้ถูกทรีเลขา AI generate ทับ (inode ร่วม) ⇒ fitness แดงปลอม (AiRoom…) · commit เอกสารใช้ `--no-verify` · ก่อนเริ่ม H.0 แยก node_modules store ของ svc เอง (ดู memory reference_shark_svc_sec_shared_prisma_client)
 - ⚠️ session/svc ถูก force-with-lease 2 พ.ย. (reword หัว commit 4e51c758→c49caa71 · ต้นไม้เท่าเดิม) — ทรีอื่นที่อยู่บน SHA เก่าให้ checkout ใหม่
 
