@@ -3,7 +3,7 @@
 //
 // เส้น:
 //   1 quote_line  ห้องเลขาที่เปิดจากห้องแชท LINE ของลูกค้าที่ผูกสมาชิก ⇒ คาด `account.*` + `chat.send` → อนุมัติใบเอกสารก่อน แล้ว chat.send →
-//                 ใบเสนอราคา + ข้อความ OUT SENT + ข้อความที่ถึง LINE จำลองมีเลขที่/ลิงก์ใบ (R-Z45 · R-Z46)
+//                 ใบเสนอราคา + ข้อความ OUT SENT + ข้อความที่ถึง LINE จำลองมียอดเงินของใบ และ (เลขที่ หรือ "ฉบับร่าง") · ลิงก์ = โบนัส (R-Z45 · R-Z48)
 //   2 pos_points  "เปิดบิลขาย … ให้สมาชิก … สะสมแต้ม" ⇒ คาด `pos*` → อนุมัติ → บิล PAID ผูก memberId + แต้ม EARN จากสะพานสมาชิกอ้างบิลนั้น
 //                 (ระบายคิวเฉพาะร้านทดสอบ · ข้อเสนอแต้มแยก point_adjust/member.*point* = ไม่กด และนับเป็นตก — R-Z42 · R-Z46)
 //   3 refund      "คืนมัดจำนัดหมายของคุณ…" ⇒ คาด `booking_refund_deposit` (เงินออก · อนุมัติเสมอ) → อนุมัติ → `refundDepositByShop` (PosDeposit REFUNDED)
@@ -310,16 +310,23 @@ const PATHS: PathDef[] = [
       const pushes = LINE_REQS.slice(a.lineMark).filter((r) => r.to === f.lineUser && r.path.endsWith("/push"));
       const sent = out.find((m) => m.deliveryStatus === "SENT");
       const body = String(sent?.body ?? "");
-      // R-Z45/R-Z46: ข้อความที่ถึง LINE จำลองต้องมีเลขที่ใบ (ถ้าใบมีเลขแล้ว) หรือลิงก์ใบ — ตรวจที่ข้อความ LINE จริง ไม่ใช่แถวในฐาน
+      // R-Z48 (แทนเกณฑ์ลิงก์ของ R-Z46): ข้อความที่ถึง LINE จำลองต้องมี **ยอดเงินของใบ** และ (**เลขที่ใบ** หรือคำว่า **"ฉบับร่าง"**) ·
+      //   ลิงก์ = โบนัส (จด ไม่บังคับ — รุ่นนี้ไม่มีหน้าดูใบเสนอราคาสาธารณะ) · ตรวจที่ข้อความ LINE จริง ไม่ใช่แถวในฐาน
       const lineText = pushes.flatMap((r) => r.texts).join("\n");
+      const flat = lineText.replace(/,/g, ""); // "9,630.00" ⇒ "9630.00"
+      const amount = quote ? (Number(quote.grandTotal) / 100).toFixed(2) : ""; // สตางค์ ⇒ บาท 2 ตำแหน่ง
+      const amountAlts = !amount ? [] : amount.endsWith(".00") ? [amount, amount.slice(0, -3)] : [amount];
+      const hasAmount = amountAlts.some((x) => new RegExp(`(^|[^\\d.])${x.replace(".", "\\.")}(?![\\d]|\\.\\d)`).test(flat));
       const hasNo = !!quote?.docNo && lineText.includes(String(quote.docNo));
+      const hasDraft = lineText.includes("ฉบับร่าง");
       const hasLink = /https?:\/\/\S+/.test(lineText);
-      const data = { docs: docs.map((d) => `${d.docType}/${d.status}/${d.docNo ?? "-"}/${d.grandTotal}`), out: out.map((m) => `${m.deliveryStatus}: ${short(m.body, 80)}`), linePush: pushes.length, lineText: short(lineText, 200), docNoInLine: hasNo, linkInLine: hasLink, signed: /Shark|ผู้ช่วย AI/.test(body) };
-      const ok = !!quote && !!sent && pushes.length >= 1 && (hasNo || hasLink);
+      const data = { docs: docs.map((d) => `${d.docType}/${d.status}/${d.docNo ?? "-"}/${d.grandTotal}`), out: out.map((m) => `${m.deliveryStatus}: ${short(m.body, 80)}`), linePush: pushes.length, lineText: short(lineText, 240), amountInLine: hasAmount, docNoInLine: hasNo, draftInLine: hasDraft, linkInLine: hasLink, signed: /Shark|ผู้ช่วย AI/.test(body) };
+      const refOk = hasAmount && (hasNo || hasDraft);
+      const ok = !!quote && !!sent && pushes.length >= 1 && refOk;
       return {
         ok,
-        why: ok ? `ใบเสนอราคาเกิด + ข้อความ OUT SENT + LINE จำลองได้รับ push ที่มี${hasNo ? "เลขที่" : ""}${hasNo && hasLink ? "+" : ""}${hasLink ? "ลิงก์" : ""}ใบ`
-          : `quote=${quote ? `${quote.status}/${quote.docNo ?? "ไม่มีเลข"}` : "ไม่มี"} · OUT SENT=${!!sent} · LINE push=${pushes.length} · เลขที่/ลิงก์ในข้อความ LINE=${hasNo || hasLink ? "มี" : "ไม่มี (R-Z45)"}`,
+        why: ok ? `ใบเสนอราคาเกิด + ข้อความ OUT SENT + LINE จำลองได้รับ push ที่มียอด ${amount} บาท + ${hasNo ? `เลขที่ ${quote?.docNo}` : "\"ฉบับร่าง\""}${hasLink ? " + ลิงก์ (โบนัส)" : " · ไม่มีลิงก์ (ไม่บังคับ)"}`
+          : `quote=${quote ? `${quote.status}/${quote.docNo ?? "ไม่มีเลข"}` : "ไม่มี"} · OUT SENT=${!!sent} · LINE push=${pushes.length} · ในข้อความ LINE: ยอด=${hasAmount ? "มี" : "ไม่มี"} เลขที่=${hasNo ? "มี" : "ไม่มี"} ฉบับร่าง=${hasDraft ? "มี" : "ไม่มี"}${refOk ? "" : " (R-Z45/R-Z48)"}`,
         data,
       };
     },
