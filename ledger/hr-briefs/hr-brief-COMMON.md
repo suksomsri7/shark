@@ -12,13 +12,13 @@ Shared house rules = `ledger/crm-briefs/crm-brief-COMMON.md` (code rules, oracle
 6. **Cloud containers cannot reach QC4** (TCP 5432 blocked). DB work (oracles, seed, migrations, server) runs on the VPS only. In a cloud session do only no-DB work and say so.
 7. **Schema:** only a WO marked "Mig" in the plan may edit `prisma/` — and only its builder. `prisma migrate diff` → read the SQL → apply to QC4 only (`migrate deploy` through `qc4.sh`), after checking `_prisma_migrations` on QC4 for folders your branch lacks (QC4 already has `20261103000000_crm_perf_indexes`). HR migration folder timestamps are **≥ `20261201000000`**. `ALTER TYPE … ADD VALUE` gets its own migration file. Partial unique indexes = raw SQL in the migration. **`prisma generate` / `pnpm install` only if your worktree has its own `node_modules`** — if `node_modules` is a bind mount shared with another lane, stop and ask the controller.
 8. **No build or server** unless the brief says "CONTROLLER-RUN" (then the controller does it on its own port, e.g. 3226; 3215 belongs to CRM, 3225 to POS).
-9. **Heavy commands** (typecheck) queue behind the shared machine lock: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` — foreground, at most twice per WO. Wait in the shell; never kill another process to get the lock.
+9. **Heavy commands** (typecheck) queue behind the shared machine lock: `env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=9800M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` — foreground, **once per WO, at the end** (one more time only after a fix round that touched types). Wait in the shell; never kill another process to get the lock. The controller's run re-checks it; do not repeat it "to be sure".
 10. **Commits:** by explicit path only (`git add <path> …`, never `-A`/`.`), on your own `wip/hr-<wo>` branch, then push that branch. Message ends with the attribution lines the controller gives you. Pre-commit hook runs tsx outside iso.sh: if it OOMs, run `scripts/fitness.mts` + `scripts/fitness-hr.mts` through iso.sh in both modes and commit with `--no-verify`, noting it in your report (HF-HR-0 C4 precedent).
 
 ## B. Order of work (oracle-first, every WO)
 1. **Oracle writer** writes `scripts/qc-hr-<wo>.mts` first, from the brief, and runs it on the base: it must be **RED for the right reason** (or SKIPPED with the right reason when a module is absent) and leave no residue. Save the output to `ledger/wo-notes/hr-<wo>-red.txt`. The oracle writer never edits product code.
 2. **Builder** makes it green without editing the oracle. If a check is wrong, ask for an **ORACLE-EDIT** (check id · exact hunk · reason); the controller rules. Save the green output to `hr-<wo>-green.txt`.
-3. Controller re-runs → **reviewer** (read-only, fresh agent) → **hunter** for money/privacy/PIN WOs → accept → merge into `session/hr`.
+3. Controller runs the **full regression once** per WO head (`ledger/hr-ctl/ctl.sh`, suites picked from the diff) → **reviewer** (read-only, fresh agent, gets the diff + brief rulings, not the whole oracle) → **hunter** only for money/privacy/PIN/race WOs → accept → merge into `session/hr` → lean post-merge (`postmerge.sh`) when the merge is a fast-forward of the controlled head. The builder does **not** run the full regression (see §E).
 4. Checkpoint as you go in `ledger/wo-notes/hr-<wo>.md` (template `ledger/wo-notes/TEMPLATE-hr.md` after H0.4; before it, use the HF-HR-0 notes layout): done / next / commands + final summary lines, so a restart can continue from the files.
 
 ## C. HR code rules (in addition to crm-brief-COMMON "Code rules")
@@ -40,5 +40,22 @@ Shared house rules = `ledger/crm-briefs/crm-brief-COMMON.md` (code rules, oracle
 `src/lib/outbox-consumers.ts` · `src/lib/approval-effects.ts` · `src/lib/modules/approval/service.ts` · `src/lib/ai/tools.ts` · `src/lib/ai/proposals.ts` · `src/lib/ai/plans.ts` · `src/lib/core/permissions.ts` · `src/lib/modules/account/**` · `src/lib/modules/crm/**` · `scripts/fitness.mts` · `scripts/qc-all.mts` · `src/messages/*.json` · `package.json`. Marker: `// HR <WO> ▸ … ◂`.
 
 ## E. Before claiming done (paste the final summary line + exit code of each)
+**Token economy (6 Nov 2026, owner-approved):** the builder runs its own oracle ×3 (unforced + forced ×2, no residue) and only the suites that `bash /root/projects/shark-hr-c/ledger/hr-ctl/pick-suites.sh <tree> <merge-base> HEAD` prints for the files you touched (paste the picker's `# LEAN/FULL` line in the report). The controller runs the complete set once on your final head. The list below is the superset the picker chooses from:
 Your WO oracle ×2 (no residue) · `qc-hf-hr-privacy` · `qc-hr` · `qc-hr-attendance` · `qc-hr-roster` · `qc-hr-leave-booking` · `qc-hr-payadjust` · `qc-payroll` · `qc-payroll-reverse` · `qc-booking-hours-hr` · `qc-crm-c3.3` (payroll WOs) · `qc-approval` + `qc-approval-wiring` (approval WOs) · `qc-ai-tools` + `qc-ai-proposals` (AI files) · `qc-account-cpa` (posting WOs) · `qc-nav-functions` (new pages) · `pnpm fitness` + `scripts/fitness-hr.mts` (after H0.4) with and without env · typecheck (§A.9). Known pre-existing: `qc-ai-actions` 11/12 CRASH on QC4 (identical before/after is fine).
 Report format: crm-brief-COMMON "Reports" — per acceptance item → files:lines → how → result · DEFERRED + reason · ORACLE-EDIT requests · decisions for the controller · who gains/loses access to what · temp data left (should be none).
+
+## F. Builder self-check before reporting (paste the ticked list in the report — these were the fix-round causes of H0.5–H1.2)
+1. New page/route → entry in the HR sidebar list and `qc-nav-functions` green; `?msg=` codes from an allowlist, never free text.
+2. Inside `tenantDb(ctx).$transaction` only the tx client is used — grep your diff for `tenantDb(` / `prisma.` inside tx bodies (H1.2 F2).
+3. Scope: a member with unit list `[]` (default invited STAFF) = ทุกสาขา on reads **and** writes; an explicit list is refused without leaking unit ids or dev text (H1.1 C-1/M-1).
+4. No dev/debug text reaches a user: refusals are Thai, identical bytes for non-viewers; no `@<unitId>`, stack text or English template strings.
+5. Transaction options (`timeout`/`maxWait`) ≤ the calling route's `maxDuration`; audits written per chunk, not after all chunks (H0.6 R3-1/R3-2).
+6. Migration WOs: runbook says **migrate first, then deploy code**; pre-check SQL in notes, not inside the migration (H0.6 R1/R2).
+7. Privileged link/grant paths (owner account, manager self-link, PIN) guarded inside the same tx; no second connection under a lock (H0.7 M1, HF-HR-0 5d).
+8. Rate limits: count first, refund on refusal; no peek-then-consume (H0.5 G1); caller keys validated.
+9. Every new outbox event: consumer + exactly one label + replay-twice check; emitted inside the state-changing tx.
+10. Changed files ⊆ the brief's file list (+ oracle, notes, ledger); shared hot files (§D) only as one marked hunk.
+
+## G. Size limits (token economy)
+- New oracles ≤ 60 KB: put fixture/seed/digest/tx/git-base helpers in `scripts/qc-hr-lib.mts` (create it in the first oracle after 6 Nov 2026 by lifting the shared helpers out of `qc-hr-h2.1.mts`; later oracles import it; `pnpm typecheck` covers it). Addendum checks go into the same oracle file, not a new one.
+- Reports and notes: facts, ids, numbers; no restating the brief. Reviewer reports: findings + verdict only.
