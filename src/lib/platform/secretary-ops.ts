@@ -120,16 +120,20 @@ export async function retryJob(actor: PlatformUser, jobId: string): Promise<OpsR
   return { ok: true, note: "ส่งงานกลับเข้าคิวแล้ว — ตัวรันจะหยิบภายใน 1 นาที" };
 }
 
-/** ยกเลิก: QUEUED → FAILED (error "cancelled by support") · RUNNING/DONE/FAILED ไม่แตะ (กำลังรันอยู่ = รอให้จบหรือ lease หมด) */
+/**
+ * ยกเลิก: QUEUED → FAILED (error "cancelled by support") · DONE/FAILED ไม่แตะ
+ *   SEC S3a.1-S1 R-Z2: RUNNING ที่ lease หมดแล้ว (ตัวรันตาย/ค้าง) ยกเลิกได้ด้วย · RUNNING ที่ lease ยังไม่หมด = กำลังรันจริง ไม่แตะ
+ */
 export async function cancelJob(actor: PlatformUser, jobId: string, now?: Date): Promise<OpsResult> {
   const pu = guard(actor);
   const id = typeof jobId === "string" ? jobId.trim() : "";
   if (!id) return { ok: false, note: "ไม่พบงานนี้" };
+  const at = okDate(now);
   const got = await prisma.aiRoomJob.updateMany({
-    where: { id, status: "QUEUED" },
-    data: { status: "FAILED", error: CANCELLED_BY_SUPPORT, leaseUntil: null, finishedAt: okDate(now) },
+    where: { id, OR: [{ status: "QUEUED" }, { status: "RUNNING", leaseUntil: { lt: at } }] },
+    data: { status: "FAILED", error: CANCELLED_BY_SUPPORT, leaseUntil: null, finishedAt: at },
   });
-  if (got.count !== 1) return { ok: false, note: "ยกเลิกได้เฉพาะงานที่ยังรอคิว" };
+  if (got.count !== 1) return { ok: false, note: "ยกเลิกได้เฉพาะงานที่ยังรอคิว หรือที่ค้างจนหมดเวลาแล้ว" };
   await prisma.platformAuditLog.create({
     data: { platformUserId: pu.id, action: "secretary.job.cancel", targetType: "AiRoomJob", targetId: id },
   });

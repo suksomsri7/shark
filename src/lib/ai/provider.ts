@@ -93,6 +93,9 @@ export function buildRequestBody(
 }
 
 /** Mock — deterministic สำหรับข้อสอบ: ตอบทวนข้อความล่าสุด + นับ token จากความยาว */
+/** SEC S3a.1-S1 ▸ R-Z1: เพดานเวลาต่อคำขอถึงผู้ให้บริการ (90 วิ) — เกิน = abort (throw) ⇒ worker กลับคิว/ลองใหม่ ไม่ค้างจน lease หมด ◂ */
+export const PROVIDER_FETCH_TIMEOUT_MS = 90_000;
+
 export class MockProvider implements AiProvider {
   async chat(messages: AiChatMessage[]): Promise<AiReply> {
     const last = [...messages].reverse().find((m) => m.role === "user");
@@ -164,6 +167,7 @@ export class OpenRouterProvider implements AiProvider {
         "anthropic-beta": "prompt-caching-2024-07-31",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT_MS), // SEC S3a.1-S1 R-Z1
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
@@ -391,6 +395,7 @@ export class AnthropicProvider implements AiProvider {
         "content-type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT_MS), // SEC S3a.1-S1 R-Z1
     });
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
