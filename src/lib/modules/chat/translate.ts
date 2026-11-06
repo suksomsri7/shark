@@ -17,36 +17,15 @@
 //     ปนกันเมื่อไหร่เจ้าของแยกบิลไม่ออกว่าเงินหมดไปกับอะไร แล้วจะไปปิดผิดตัว
 
 import { tenantDb } from "@/lib/core/db";
+import { maskChatText } from "./pii-mask"; // SEC S3a.6 ◂
+import { LANG_NAME, normalizeLang } from "./lang"; // SEC S3a.6 R-Z61: รหัสภาษาจุดเดียว (pure) ◂
+export { LANG_NAME, isKnownLang, isLangCode, normalizeLang } from "./lang";
 import { resolveProvider } from "@/lib/ai/provider";
 import { canSpend, chargeUsageSafe, spendRefusalMessage } from "@/lib/ai/credit";
 
 export type TranslateResult =
   | { ok: true; text: string; cached: boolean; detectedLang?: string }
   | { ok: false; reason: string };
-
-/** ชื่อภาษาเป็นภาษาอังกฤษ — ใช้ในคำสั่งของโมเดล (โมเดลเข้าใจชื่อเต็มดีกว่ารหัส 2 ตัวอักษร) */
-const LANG_NAME: Record<string, string> = {
-  th: "Thai",
-  en: "English",
-  cn: "Simplified Chinese",
-  zh: "Simplified Chinese",
-  ja: "Japanese",
-  ko: "Korean",
-  de: "German",
-  fr: "French",
-  ru: "Russian",
-  es: "Spanish",
-  it: "Italian",
-  vi: "Vietnamese",
-  id: "Indonesian",
-  ms: "Malay",
-  my: "Burmese",
-  km: "Khmer",
-  ar: "Arabic",
-  he: "Hebrew",
-  pt: "Portuguese",
-  nl: "Dutch",
-};
 
 /** ชื่อภาษาไทยไว้ขึ้นข้อความบอกผู้ใช้ (error ต้องเป็นภาษาไทยเสมอ) */
 const LANG_TH: Record<string, string> = {
@@ -63,13 +42,6 @@ const LANG_TH: Record<string, string> = {
 
 /** ความยาวสูงสุดที่ยอมแปลต่อครั้ง — เท่ากับเพดานข้อความของระบบ */
 const MAX_TRANSLATE_CHARS = 4000;
-
-export function normalizeLang(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const v = value.trim().toLowerCase().split(/[-_]/)[0];
-  if (!v || v.length < 2 || v.length > 8) return null;
-  return v;
-}
 
 export function langLabelTh(code: string): string {
   return LANG_TH[code] ?? code.toUpperCase();
@@ -213,7 +185,7 @@ export async function translateMessage(args: {
   }
 
   // แปลซ้ำภาษาเดิม = คืนของเก่า ไม่ยิง LLM ไม่จ่ายซ้ำ
-  if (msg.translatedLang === target && (msg.translatedBody ?? "").trim()) {
+  if (normalizeLang(msg.translatedLang) === target && /* R-Z61: แคชเก่า "zh" ≡ "cn" */ (msg.translatedBody ?? "").trim()) {
     return { ok: true, text: msg.translatedBody!, cached: true, detectedLang: msg.detectedLang ?? undefined };
   }
 
@@ -230,7 +202,8 @@ export async function translateMessage(args: {
   // 🔴 ด่านเงินต้องมาก่อนการยิง LLM เสมอ (TR-8.2)
   if (!(await canSpend(tenantId))) return { ok: false, reason: await spendRefusalMessage(tenantId) }; // R-S1.13e
 
-  const run = await runTranslate(source, target);
+  // SEC S3a.6 ▸ ข้อความลูกค้าก่อนเข้าโมเดล = ปิดข้อมูลติดต่อ (ตัวเดียวกับ R-Z24) · ต้นฉบับยังเห็นในห้อง · ร่างของทีม (translateDraft) ไม่ปิด — เป็นข้อความที่ทีมตั้งใจส่ง ◂
+  const run = await runTranslate(maskChatText(source), target);
   if (!run.ok) return run;
 
   await chargeUsageSafe(

@@ -1,0 +1,253 @@
+// QC — SECRETARY S3a.6-S · แปลภาษาห้องแชทลูกค้า (server) — สัญญา server ↔ แอป ใน ledger/secretary-briefs/sec-brief-S3a.6.md
+// กลุ่มข้อ:
+//   N  needsTranslation (ไทย · อังกฤษ · ญี่ปุ่น · อีโมจิล้วน · สั้นกว่า 3 · staffLang อื่น) + DTO เธรด (translatedBody/Lang · needsTranslation · staffLang · contactLang · can.translate)
+//   T  route แปลข้อความ: แคช (2 ครั้ง = หัก 1) · translateEnabled=false ⇒ 200 ok:false ไทย · ไม่เห็นห้อง ⇒ 403
+//   D  route แปลร่าง: ปลายทางปริยาย = contactLang (ไม่มี ⇒ en)
+//   G  ai-suggest gloss: en/th ⇒ gloss · th/th ⇒ null (Scripted provider · เรียกเดียว) · route คืน gloss + replyLang
+//   C  เครดิตหมด ⇒ ok:false ไทย (แปล · แปลร่าง · ai-suggest)
+// รัน: bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 SMS_PROVIDER=mock pnpm exec tsx scripts/qc-sec-s3a6-s.mts
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const LABEL = "qc-sec-s3a6-s";
+const FORCED = process.env.QC_FORCE === "1";
+const SEC_HOST = "ep-calm-flower-aosbmxhm";
+const STARTED = existsSync(join(ROOT, "src/app/api/mobile/inbox/conversations/[id]/translate-draft/route.ts"));
+if (!FORCED && !STARTED) {
+  console.log(`⏭️  ${LABEL}: ยังไม่เริ่มใบ และไม่ได้ตั้ง QC_FORCE=1 — SKIP`);
+  console.log("JSON_SUMMARY " + JSON.stringify({ total: 0, passed: 0, failed: [], skipped: ["ALL"], reason: "not-started" }));
+  process.exit(0);
+}
+{
+  const hostOf = (u: string) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ""; } };
+  for (const n of ["DATABASE_URL", "DIRECT_URL"] as const) { const u = process.env[n] ?? ""; if (!u || !hostOf(u).startsWith(SEC_HOST)) { console.error(`🔴 ${LABEL}: ${n} ไม่ใช่ฐาน QC เลขา — รันผ่าน scripts/qc-sec.sh`); process.exit(4); } }
+  if (process.env.SEC_QC_HOST !== SEC_HOST || process.env.APP_ENV === "production") { console.error(`🔴 ${LABEL}: SEC_QC_HOST/APP_ENV ไม่ถูก — หยุด`); process.exit(4); }
+}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-sec-s3a6-s");
+process.env.SHARK_AI_MOCK = "1";
+type Res = "PASS" | "FAIL";
+const cks: { id: string; res: Res; why: string }[] = [];
+const chk = (id: string, name: string, ok: boolean, detail = "") => { cks.push({ id, res: ok ? "PASS" : "FAIL", why: detail }); console.log(`  ${ok ? "✅" : "❌"} [${id}] ${name}${!ok && detail ? ` — ${detail}` : ""}`); };
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 200);
+const thai = (s: unknown) => typeof s === "string" && /[฀-๿]/.test(s);
+type AnyMod = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+const { prisma } = await import("@/lib/core/db");
+const auth = (await import("@/lib/mobile/auth")) as AnyMod;
+const dto = (await import("@/lib/mobile/inbox-dto")) as AnyMod;
+const suggest = (await import("@/lib/modules/chat/ai-suggest")) as AnyMod;
+const sys = (await import("@/lib/modules/system/service")) as AnyMod;
+type Handler = (r: Request, c?: { params: Promise<Record<string, string>> }) => Promise<Response>;
+const route = async (p: string) => (await import(`@/app/api/mobile/inbox/${p}/route`)) as unknown as Record<string, Handler>;
+
+const STAMP = Date.now().toString(36);
+const SLUG = `qc-sec-s3a6-${STAMP}`;
+const U = { owner: `qcs3a6-owner-${STAMP}`, staffB: `qcs3a6-staffb-${STAMP}`, staffNoKey: `qcs3a6-nokey-${STAMP}`, staffRl: `qcs3a6-rl-${STAMP}` };
+let tid = "";
+
+async function wipeTenant(): Promise<number> {
+  if (!tid) return 0;
+  const s = (await prisma.$queryRawUnsafe(`SELECT slug FROM "Tenant" WHERE id = $1`, tid)) as AnyMod[];
+  if (s.length && s[0].slug !== SLUG) throw new Error("slug ไม่ตรง — ไม่ลบ");
+  const tables = ((await prisma.$queryRawUnsafe(
+    `SELECT c.table_name AS t FROM information_schema.columns c JOIN information_schema.tables t ON t.table_name = c.table_name AND t.table_schema = c.table_schema
+     WHERE c.table_schema = current_schema() AND c.column_name = 'tenantId' AND t.table_type = 'BASE TABLE' ORDER BY 1`,
+  )) as AnyMod[]).map((r) => String(r.t));
+  let pending = [...tables];
+  for (let pass = 0; pass < 10 && pending.length; pass++) {
+    const next: string[] = [];
+    for (const tb of pending) { try { await prisma.$executeRawUnsafe(`DELETE FROM "${tb}" WHERE "tenantId" = $1`, tid); } catch { next.push(tb); } }
+    pending = next;
+  }
+  await prisma.$executeRawUnsafe(`DELETE FROM "Tenant" WHERE id = $1 AND slug = $2`, tid, SLUG).catch(() => 0);
+  let left = 0;
+  for (const tb of tables) { try { left += Number(((await prisma.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${tb}" WHERE "tenantId" = $1`, tid)) as AnyMod[])[0]?.n ?? 0); } catch { /* */ } }
+  return left;
+}
+async function cleanup(): Promise<number> {
+  let left = 0;
+  try { left = await wipeTenant(); } catch (e) { console.log(`  ⚠️ wipe: ${errMsg(e)}`); left = -1; }
+  for (const m of ["session", "aiSecretary", "pushDevice"]) { try { await (prisma as AnyMod)[m].deleteMany({ where: { userId: { startsWith: "qcs3a6-" } } }); } catch { /* */ } }
+  try { await prisma.user.deleteMany({ where: { id: { startsWith: "qcs3a6-" } } }); } catch { /* */ }
+  try { await prisma.chatRateBucket.deleteMany({ where: { key: { contains: STAMP } } }); } catch { /* */ }
+  try { await prisma.tenant.deleteMany({ where: { slug: { startsWith: "qc-sec-s3a6-" }, createdAt: { lt: new Date(Date.now() - 3_600_000) } } }); } catch { /* */ }
+  return left;
+}
+
+class Scripted {
+  calls = 0;
+  system = "";
+  maxTokens = 0;
+  constructor(private text: string) {}
+  async chat(messages: { role: string; content: string }[], opts?: { maxTokens?: number }): Promise<Record<string, unknown>> {
+    this.calls++;
+    this.system = messages.find((m) => m.role === "system")?.content ?? "";
+    this.maxTokens = opts?.maxTokens ?? 0;
+    return { text: this.text, tokensIn: 500, tokensOut: 80, cacheWrite: 0, cacheRead: 0, model: "scripted" };
+  }
+}
+
+let residue = 0;
+try {
+  // ───────── N (pure) ─────────
+  console.log("── N: needsTranslation ──");
+  const nt = dto.needsTranslation;
+  const cases: [string, string, boolean][] = [["Hello, do you have a table tonight?", "th", true], ["สวัสดีครับ จองโต๊ะได้ไหม", "th", false], ["こんにちは、予約できますか", "th", true], ["😀😀😀👍", "th", false], ["ok", "th", false], ["Hi สวัสดี", "th", false], ["Hello there", "en", false], ["สวัสดีครับ", "en", true], ["12345 678", "th", false],
+    // R-Z61 M2: ลิงก์/อีเมล/#แท็ก/@ชื่อ ไม่นับ · "OK ka" = ตัวอักษรละตินจริง 4 ตัว ⇒ true (ตัดสินแล้ว — คำทับศัพท์ละตินถือว่าต่างสคริปต์)
+    ["https://shark.in.th/menu?x=1", "th", false], ["www.shark.in.th", "th", false], ["#123 @abc", "th", false], ["mail me at abc@example.com", "th", true], ["abc@example.com", "th", false], ["OK ka", "th", true],
+    // R-Z61 M1: zh ≡ cn (Han)
+    ["你好吗朋友", "cn", false], ["你好吗朋友", "zh", false], ["Hello there", "zh-TW", true]];
+  const bad = cases.filter(([t, l, exp]) => nt(t, l) !== exp);
+  chk("N-1", "needsTranslation: อังกฤษ/ญี่ปุ่น (staff th) = true · ไทย/อีโมจิล้วน/สั้นกว่า 3/ตัวเลข/ปนไทย/ลิงก์/อีเมล/#@ = false · staff en: ไทย = true · cn/zh = Han", bad.length === 0, JSON.stringify(bad));
+  const lang = (await import("@/lib/modules/chat/lang")) as AnyMod;
+  chk("N-3", "normalizeLang: zh/zh-TW/ZH ⇒ cn · cn ⇒ cn · isKnownLang: cn/zh/en = true · xx = false · isLangCode (R-Z61b): tr/fil/zh-TW = true · xx!/1a = false", lang.normalizeLang("zh") === "cn" && lang.normalizeLang("zh-TW") === "cn" && lang.normalizeLang("ZH") === "cn" && lang.normalizeLang("cn") === "cn" && lang.isKnownLang("zh") && lang.isKnownLang("cn") && lang.isKnownLang("en") && !lang.isKnownLang("xx") && lang.isLangCode("tr") && lang.isLangCode("fil") && lang.isLangCode("zh-TW") && !lang.isLangCode("xx!") && !lang.isLangCode("1a"), "");
+
+  // ───────── fixtures ─────────
+  const t = await prisma.tenant.create({ data: { name: "QC SEC S3a6", slug: SLUG } }); tid = t.id;
+  for (const [k, id] of Object.entries(U)) await prisma.user.create({ data: { id, email: `${id}@example.com`, name: `คุณ${k}` } });
+  const unitA = await prisma.businessUnit.create({ data: { tenantId: tid, type: "RESTAURANT", name: "สาขา A", slug: `a-${STAMP}` } as never });
+  const unitB = await prisma.businessUnit.create({ data: { tenantId: tid, type: "RESTAURANT", name: "สาขา B", slug: `b-${STAMP}` } as never });
+  await prisma.membership.create({ data: { tenantId: tid, userId: U.owner, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } as never });
+  await prisma.membership.create({ data: { tenantId: tid, userId: U.staffB, role: "STAFF", unitAccess: [unitB.id], permissions: { "chat.conversation.read": true, "chat.translate.use": true, "chat.message.send": true }, acceptedAt: new Date() } as never });
+  await prisma.membership.create({ data: { tenantId: tid, userId: U.staffNoKey, role: "STAFF", unitAccess: [unitA.id], permissions: { "chat.conversation.read": true, "chat.message.send": true }, acceptedAt: new Date() } as never });
+  await prisma.membership.create({ data: { tenantId: tid, userId: U.staffRl, role: "STAFF", unitAccess: [unitA.id], permissions: { "chat.conversation.read": true, "chat.translate.use": true }, acceptedAt: new Date() } as never });
+  const chat = await sys.createSystem(tid, "CHAT", "แชทลูกค้า"); const sid = chat.id;
+  await prisma.chatSetting.create({ data: { tenantId: tid, systemId: sid, translateEnabled: true, aiSuggestEnabled: true, staffLang: "th" } as never });
+  const mkConv = async (tag: string, lang: string | null, body: string) => {
+    const contact = await prisma.chatContact.create({ data: { tenantId: tid, systemId: sid, channel: "WEBCHAT", externalUserId: `qcs3a6-${tag}-${STAMP}`, displayName: `ลูกค้า ${tag}`, lang } as never });
+    const conv = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: sid, channel: "WEBCHAT", contactId: contact.id, status: "OPEN", unitId: unitA.id, lastMessageAt: new Date(), firstCustomerMessageAt: new Date(), staffUnreadCount: 1 } as never });
+    const msg = await prisma.chatMessage.create({ data: { tenantId: tid, systemId: sid, conversationId: conv.id, direction: "IN", type: "TEXT", body } as never });
+    return { contact, conv, msg };
+  };
+  const en = await mkConv("en", "en", "Hello, do you have a table for two tonight? call 0812345678");
+  const ja = await mkConv("ja", "ja", "こんにちは、今夜二人で予約できますか");
+  const th = await mkConv("th", "th", "สวัสดีครับ คืนนี้มีโต๊ะว่างไหม");
+  const nolang = await mkConv("nl", null, "Hello there, any table?");
+  const H = { authorization: `Bearer ${(await auth.issueMobileToken(U.owner)).token}`, "x-tenant-id": tid, "content-type": "application/json" };
+  const HB = { authorization: `Bearer ${(await auth.issueMobileToken(U.staffB)).token}`, "x-tenant-id": tid, "content-type": "application/json" };
+  const HN = { authorization: `Bearer ${(await auth.issueMobileToken(U.staffNoKey)).token}`, "x-tenant-id": tid, "content-type": "application/json" };
+  const HR = { authorization: `Bearer ${(await auth.issueMobileToken(U.staffRl)).token}`, "x-tenant-id": tid, "content-type": "application/json" };
+  const thread = async (convId: string, headers: Record<string, string>) => {
+    const m = await route("conversations/[id]");
+    const res = await m.GET!(new Request(`http://qc.local/api/mobile/inbox/conversations/${convId}?systemId=${sid}`, { method: "GET", headers }), { params: Promise.resolve({ id: convId }) });
+    return { status: res.status, json: (await res.json().catch(() => ({}))) as AnyMod };
+  };
+  const call = async (p: string, params: Record<string, string>, body: unknown, headers = H) => {
+    const m = await route(p);
+    const res = await (m.POST ?? m.GET)!(new Request(`http://qc.local/api/mobile/inbox/${p}`, { method: m.POST ? "POST" : "GET", headers, body: m.POST ? JSON.stringify(body) : undefined }), { params: Promise.resolve(params) });
+    let json: AnyMod = {}; try { json = (await res.json()) as AnyMod; } catch { /* */ }
+    return { status: res.status, json };
+  };
+
+  // ───────── DTO เธรด ─────────
+  {
+    const m = await route("conversations/[id]");
+    const res = await m.GET!(new Request(`http://qc.local/api/mobile/inbox/conversations/${en.conv.id}?systemId=${sid}`, { method: "GET", headers: H }), { params: Promise.resolve({ id: en.conv.id }) });
+    const j = (await res.json()) as AnyMod;
+    const mm = (j.messages ?? []).find((x: AnyMod) => x.id === en.msg.id);
+    chk("N-2", "GET เธรด: conversation.staffLang='th' · contactLang='en' · can.translate=true (OWNER · เปิดแปล) · ข้อความ IN อังกฤษ needsTranslation=true · translatedBody/translatedLang = null",
+      res.status === 200 && j.conversation?.staffLang === "th" && j.conversation?.contactLang === "en" && j.conversation?.can?.translate === true && mm?.needsTranslation === true && mm?.translatedBody === null && mm?.translatedLang === null,
+      JSON.stringify({ s: res.status, conv: { staffLang: j.conversation?.staffLang, contactLang: j.conversation?.contactLang, can: j.conversation?.can }, msg: mm && { n: mm.needsTranslation, tb: mm.translatedBody } }).slice(0, 300));
+  }
+
+  // ───────── T ─────────
+  console.log("── T: แปลข้อความ ──");
+  const P = "conversations/[id]/messages/[mid]/translate";
+  const usage = () => prisma.aiCreditTxn.count({ where: { tenantId: tid, kind: "USAGE", source: "CHAT_TRANSLATE" } });
+  const u0 = await usage();
+  const t1 = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid });
+  const t2 = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid });
+  const u1 = await usage();
+  const row = await prisma.chatMessage.findUnique({ where: { id: en.msg.id }, select: { translatedBody: true, translatedLang: true, body: true } });
+  chk("T-1", "แปลข้อความอังกฤษ 2 ครั้ง ⇒ ครั้งแรก ok cached:false lang th · ครั้งสอง cached:true ข้อความเดิม · หักเครดิต CHAT_TRANSLATE 1 ครั้ง · ต้นฉบับ body ไม่ถูกแตะ",
+    t1.status === 200 && t1.json.ok === true && t1.json.cached === false && t1.json.lang === "th" && typeof t1.json.text === "string" && t2.json.ok === true && t2.json.cached === true && t2.json.text === t1.json.text && u1 - u0 === 1 && row?.translatedLang === "th" && row?.body === en.msg.body,
+    JSON.stringify({ t1, t2: t2.json, charged: u1 - u0, row: { tl: row?.translatedLang } }).slice(0, 300));
+  chk("T-4", "PII ถูกปิดก่อนแปล: translatedBody ไม่มี 0812345678 แต่มี ••••••••78 (ต้นฉบับ body ยังมีเบอร์เต็ม)", !!row?.translatedBody && !String(row.translatedBody).includes("0812345678") && String(row.translatedBody).includes("••••••••78") && String(row?.body).includes("0812345678"), String(row?.translatedBody ?? "").slice(0, 160));
+  const tX = await call(P, { id: en.conv.id, mid: ja.msg.id }, { systemId: sid });
+  const dB = await call("conversations/[id]/translate-draft", { id: en.conv.id }, { systemId: sid, body: "สวัสดีครับ" }, HB);
+  chk("T-5", "mid ของห้องอื่น ⇒ 403 · translate-draft ห้องที่ไม่เห็น ⇒ 403", tX.status === 403 && dB.status === 403, JSON.stringify({ tX: tX.status, dB: dB.status }));
+  const thN = await thread(en.conv.id, HN);
+  const tN = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid }, HN);
+  chk("T-6", "ไม่มีคีย์ chat.translate.use ⇒ can.translate=false · route 200 ok:false ไทย", thN.status === 200 && thN.json.conversation?.can?.translate === false && tN.status === 200 && tN.json.ok === false && thai(tN.json.reason), JSON.stringify({ can: thN.json.conversation?.can, tN }).slice(0, 220));
+  const badLang = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid, targetLang: "xx!" });
+  const trLang = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid, targetLang: "tr" });
+  const trDraft = await call("conversations/[id]/translate-draft", { id: en.conv.id }, { systemId: sid, body: "สวัสดีครับ", targetLang: "tr" });
+  const zhLang = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid, targetLang: "zh" });
+  chk("T-7", "targetLang รูปร่างผิด \"xx!\" ⇒ 422 · ภาษานอก LANG_NAME \"tr\" ⇒ 200 ok:true (แปลข้อความ + แปลร่าง · R-Z61b) · \"zh\" ⇒ lang cn", badLang.status === 422 && trLang.status === 200 && trLang.json.ok === true && trLang.json.lang === "tr" && trDraft.status === 200 && trDraft.json.ok === true && zhLang.json.lang === "cn", JSON.stringify({ badLang: badLang.status, tr: trLang.json, trD: trDraft.json, zh: zhLang.json.lang }).slice(0, 260));
+  const tB = await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid }, HB);
+  chk("T-2", "พนักงานสาขา B (ห้องอยู่สาขา A) ⇒ 403", tB.status === 403, JSON.stringify(tB).slice(0, 160));
+  await prisma.chatSetting.updateMany({ where: { tenantId: tid, systemId: sid }, data: { translateEnabled: false } });
+  const thOff = await thread(en.conv.id, H);
+  chk("T-8", "ร้านปิดแปล ⇒ can.translate=false (OWNER)", thOff.json.conversation?.can?.translate === false, JSON.stringify(thOff.json.conversation?.can));
+  // gloss ไม่ถูกขอเมื่อร้านปิดแปล (ไม่จ่าย token เพิ่ม · R-Z61)
+  const pOff = new Scripted(JSON.stringify({ options: [{ body: "Yes, we do.", sources: [], gloss: "ไม่ควรออก" }] }));
+  const gOff = await suggest.suggestReply({ tenantId: tid, systemId: sid, conversationId: en.conv.id, userId: U.owner, source: "app", provider: pOff });
+  const baseEn = pOff.system;
+  chk("G-5", "translateEnabled=false ⇒ ไม่ขอ gloss (prompt ไม่มีคำว่า gloss · maxTokens 1200) · option.gloss null · replyLang en", gOff.ok === true && !/gloss/.test(baseEn) && pOff.maxTokens === 1200 && gOff.options[0]?.gloss === null && gOff.replyLang === "en", JSON.stringify({ ok: gOff.ok, mt: pOff.maxTokens, g: gOff.options?.[0]?.gloss }).slice(0, 200));
+  const tOff = await call(P, { id: ja.conv.id, mid: ja.msg.id }, { systemId: sid });
+  const dOff = await call("conversations/[id]/translate-draft", { id: ja.conv.id }, { systemId: sid, body: "คืนนี้มีโต๊ะว่างครับ" });
+  chk("T-3", "translateEnabled=false ⇒ 200 {ok:false, reason ไทย} ทั้งแปลข้อความและแปลร่าง", tOff.status === 200 && tOff.json.ok === false && thai(tOff.json.reason) && dOff.status === 200 && dOff.json.ok === false && thai(dOff.json.reason), JSON.stringify({ tOff, dOff }).slice(0, 240));
+  await prisma.chatSetting.updateMany({ where: { tenantId: tid, systemId: sid }, data: { translateEnabled: true } });
+
+  // ───────── D ─────────
+  console.log("── D: แปลร่าง ──");
+  const lastNote = async (conversationId: string) => (await prisma.aiCreditTxn.findFirst({ where: { tenantId: tid, kind: "USAGE", source: "CHAT_TRANSLATE", conversationId }, orderBy: { createdAt: "desc" }, select: { note: true } }))?.note ?? "";
+  const dJa = await call("conversations/[id]/translate-draft", { id: ja.conv.id }, { systemId: sid, body: "คืนนี้มีโต๊ะว่างสำหรับสองท่านครับ" });
+  const dNl = await call("conversations/[id]/translate-draft", { id: nolang.conv.id }, { systemId: sid, body: "คืนนี้มีโต๊ะว่างครับ" });
+  const nJa = await lastNote(ja.conv.id), nNl = await lastNote(nolang.conv.id);
+  chk("D-1", "translate-draft ไม่ระบุ targetLang ⇒ ปลายทาง = contactLang (ja · ญี่ปุ่น) · ไม่มีภาษาลูกค้า ⇒ en (อังกฤษ) · ok:true text", dJa.json.ok === true && typeof dJa.json.text === "string" && /ญี่ปุ่น/.test(nJa) && dNl.json.ok === true && /อังกฤษ/.test(nNl), JSON.stringify({ dJa: dJa.json, nJa, dNl: dNl.json, nNl }).slice(0, 300));
+  const msgs = await prisma.chatMessage.count({ where: { tenantId: tid, conversationId: ja.conv.id, direction: "OUT" } });
+  chk("D-2", "แปลร่างไม่ส่งข้อความเอง (OUT 0)", msgs === 0, String(msgs));
+
+  // ───────── G ─────────
+  console.log("── G: ai-suggest gloss ──");
+  const glossJson = JSON.stringify({ options: [{ body: "Yes, we have a table for two tonight.", sources: [], gloss: "ได้ครับ คืนนี้มีโต๊ะสำหรับสองท่าน" }] });
+  const pEn = new Scripted(glossJson);
+  const gEn = await suggest.suggestReply({ tenantId: tid, systemId: sid, conversationId: en.conv.id, userId: U.owner, source: "app", provider: pEn });
+  chk("G-1", "ลูกค้า en / ทีม th (เปิดแปล) ⇒ option.gloss = คำแปลไทย · replyLang en · เรียกโมเดลครั้งเดียว · maxTokens 2000 · prompt ขอ gloss เป็น Thai", gEn.ok === true && gEn.replyLang === "en" && gEn.options[0]?.gloss === "ได้ครับ คืนนี้มีโต๊ะสำหรับสองท่าน" && pEn.calls === 1 && pEn.maxTokens === 2000 && /gloss/.test(pEn.system) && /translated into Thai/.test(pEn.system), JSON.stringify({ gEn, calls: pEn.calls, mt: pEn.maxTokens }).slice(0, 260));
+  const pTh = new Scripted(JSON.stringify({ options: [{ body: "มีโต๊ะว่างครับ", sources: [], gloss: "ไม่ควรออก" }] }));
+  const gTh = await suggest.suggestReply({ tenantId: tid, systemId: sid, conversationId: th.conv.id, userId: U.owner, source: "app", provider: pTh });
+  chk("G-2", "ลูกค้า th / ทีม th ⇒ gloss = null (แม้โมเดลส่งมา) · replyLang th · prompt = แบบเดิม (เท่าของ en ที่ไม่ขอ gloss เปลี่ยนแค่รหัสภาษา) · ไม่มีคำว่า gloss",
+    gTh.ok === true && gTh.replyLang === "th" && gTh.options[0]?.gloss === null && !/gloss/.test(pTh.system) && pTh.system === baseEn.replace("customer's language (en)", "customer's language (th)") && pTh.maxTokens === 1200, JSON.stringify({ g: gTh.options?.[0]?.gloss, same: pTh.system === baseEn.replace("customer's language (en)", "customer's language (th)") }).slice(0, 200));
+  const shapeOld = '{"options":[{"body":"...","sources":["kb:..."]}]}', shapeNew = '{"options":[{"body":"...","sources":["kb:..."],"gloss":"..."}]}';
+  const expectGloss = baseEn.replace(shapeOld, shapeNew) + "\nReply language differs from the staff language (Thai): also give `gloss` for every option: the same reply translated into Thai for the staff.";
+  chk("G-6", "prompt ต่างภาษา = prompt เดิม (ร้านปิดแปล ห้องเดียวกัน) + รูป JSON มี gloss + ประโยคขอ gloss ภาษา Thai เท่านั้น", baseEn.includes(shapeOld) && pEn.system === expectGloss, pEn.system.slice(-220));
+  const pNo = new Scripted(JSON.stringify({ options: [{ body: "Yes we do.", sources: [] }] }));
+  const gNo = await suggest.suggestReply({ tenantId: tid, systemId: sid, conversationId: nolang.conv.id, userId: U.owner, source: "app", provider: pNo });
+  chk("G-3", "โมเดลไม่ส่ง gloss ⇒ null (parse ปลอดภัย)", gNo.ok === true && gNo.options[0]?.gloss === null, JSON.stringify(gNo).slice(0, 200));
+  const rsrc = (await import("node:fs")).readFileSync(join(ROOT, "src/app/api/mobile/inbox/conversations/[id]/ai-suggest/route.ts"), "utf8");
+  chk("G-4", "route ai-suggest คืน gloss ต่อ option + replyLang ระดับบน", /gloss:\s*o\.gloss/.test(rsrc) && /replyLang:\s*r\.replyLang/.test(rsrc), "grep route");
+
+  // ───────── R (rate limit) ─────────
+  {
+    const st: number[] = [];
+    for (let i = 0; i < 31; i++) st.push((await call(P, { id: en.conv.id, mid: en.msg.id }, { systemId: sid }, HR)).status);
+    chk("R-1", "แปลข้อความเกิน 30/นาที/ร้าน+ผู้ใช้ ⇒ ครั้งที่ 31 = 429 (30 ครั้งแรก 200)", st.slice(0, 30).every((x) => x === 200) && st[30] === 429, JSON.stringify(st.slice(25)));
+  }
+
+  // ───────── C ─────────
+  console.log("── C: เครดิตหมด ──");
+  await prisma.aiCreditWallet.upsert({ where: { tenantId: tid }, create: { tenantId: tid, balanceMicro: -1_000_000_000 }, update: { balanceMicro: -1_000_000_000 } } as never);
+  await prisma.aiCreditTxn.create({ data: { tenantId: tid, kind: "USAGE", source: "CHAT", amountMicro: -1_000_000_000, balanceAfter: -1_000_000_000, model: "qc", tokensIn: 0, tokensOut: 0, note: "qc-s3a6-exhaust" } as never });
+  const uC0 = await usage();
+  const cT = await call(P, { id: ja.conv.id, mid: ja.msg.id }, { systemId: sid });
+  const cD = await call("conversations/[id]/translate-draft", { id: en.conv.id }, { systemId: sid, body: "ทดสอบเครดิตหมดครับ" });
+  const uC1 = await usage();
+  chk("C-2", "เครดิตหมด ⇒ ยอด CHAT_TRANSLATE ไม่เพิ่ม (แปลข้อความ + แปลร่าง)", uC1 === uC0, JSON.stringify({ uC0, uC1 }));
+  const pC = new Scripted(glossJson);
+  const cG = await suggest.suggestReply({ tenantId: tid, systemId: sid, conversationId: ja.conv.id, userId: U.owner, source: "app", provider: pC });
+  chk("C-1", "เครดิตหมด ⇒ แปลข้อความ / แปลร่าง / ai-suggest = ok:false + เหตุผลไทย (200) · ไม่เรียกโมเดล (calls 0)", cT.status === 200 && cT.json.ok === false && thai(cT.json.reason) && cD.json.ok === false && thai(cD.json.reason) && cG.ok === false && thai(cG.reason) && pC.calls === 0, JSON.stringify({ cT: cT.json, cD: cD.json, cG, calls: pC.calls }).slice(0, 300));
+} catch (e) {
+  const detail = (e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : JSON.stringify(e)).slice(0, 400);
+  console.log(`  💥 ${detail}`); chk("CRASH", "ข้อสอบรันจบ", false, detail.slice(0, 200));
+} finally {
+  residue = await cleanup();
+}
+chk("CLEAN", "ลบร้านทดสอบหมด (residue 0)", residue === 0, String(residue));
+const passed = cks.filter((c) => c.res === "PASS").length; const failed = cks.filter((c) => c.res === "FAIL");
+console.log(`\n${LABEL}: ${passed}/${cks.length} ผ่าน · ${failed.length} ไม่ผ่าน`);
+console.log("JSON_SUMMARY " + JSON.stringify({ total: cks.length, passed, failed: failed.map((c) => c.id), skipped: [], residue }));
+process.exit(failed.length ? 1 : 0);
