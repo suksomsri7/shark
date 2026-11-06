@@ -4,16 +4,16 @@
 //   ด่านเงิน (`canRunAi` scope assist) + มิเตอร์อยู่ใน `suggestReply` เดิม — เส้นนี้ไม่เรียกโมเดลเอง
 import { z } from "zod";
 import type { AccessQuery } from "@/lib/core/rbac";
-import { logOps } from "@/lib/core/ops";
+import { errDetail, logOps } from "@/lib/core/ops";
 import { suggestReply } from "@/lib/modules/chat/ai-suggest";
-import { fail, gate, limited, notFound, readBody, systemOf, visibleConv, type RouteCtx } from "../../../_shared";
+import { fail, gate, limited, notFound, readBody, systemOf, visibleConv, type RouteCtx, withErrors } from "../../../_shared";
 
 /** คีย์เดียวกับ `assertChatCan(auth, "chat.ai.suggest")` ของเว็บ (ไม่มีค่าคงที่ใน chat/guard-keys.ts — ห้ามแตะ chat/** ในใบนี้) */
 const AI_SUGGEST: AccessQuery = { module: "chat", action: "chat.ai.suggest" };
 
 const Body = z.object({ systemId: z.string().max(64).optional() }).strict();
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [AI_SUGGEST]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -31,7 +31,10 @@ export async function POST(req: Request, ctx: RouteCtx) {
     // allowlist: id · body · warn (ไม่ส่ง sources — เป็นรหัสภายในของคลังความรู้)
     return Response.json({ ok: true, options: r.options.map((o) => ({ id: o.id, body: o.body, warn: o.warn })), sourceMessageId: r.sourceMessageId });
   } catch (e) {
-    await logOps("WARN", "mobile-inbox", "ai-suggest: ล้ม", { detail: e instanceof Error ? (e.stack ?? e.message) : String(e), tenantId: c.tenantId }).catch(() => {});
+    await logOps("WARN", "mobile-inbox", "ai-suggest: ล้ม", { detail: errDetail(e), tenantId: c.tenantId }).catch(() => {});
     return fail(500, "server_error", "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("inbox/conversations/[id]/ai-suggest POST", POST_);

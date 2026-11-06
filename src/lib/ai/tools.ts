@@ -1409,12 +1409,12 @@ const chatUnreadConversations: AiTool = {
       where: { AND: [{ tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 } }, chatUnitWhere] },
       orderBy: { lastMessageAt: "desc" },
       take: 50,
-      include: { contact: { select: { displayName: true, phone: true } } },
+      include: { contact: { select: { displayName: true } } }, // SEC S3a.1-S2 ▸ R-Z24: ไม่อ่านเบอร์ (ไม่ถอยไปใช้เบอร์เป็นชื่อ) ◂
     });
     return JSON.stringify({
       จำนวนห้องที่ยังไม่อ่าน: convs.length,
       ห้องแชท: convs.map((c) => ({
-        ลูกค้า: c.contact.displayName ?? c.contact.phone ?? "ลูกค้า",
+        ลูกค้า: c.contact.displayName ?? "ลูกค้า",
         ช่องทาง: channelSentenceLabel(c.channel),
         ข้อความค้าง: c.staffUnreadCount,
         ล่าสุด: c.lastMessagePreview ?? "—",
@@ -2338,7 +2338,13 @@ const rememberFactTool: AiTool = {
       const { findVisibleConversation } = await import("./conversations");
       pending = !!(await findVisibleConversation({ tenantId: ctx.tenantId, actor: ctx.actor }, ctx.conversationId))?.room;
     }
-    const saved = await rememberFact({ tenantId: ctx.tenantId, actor: ctx.actor }, content, pending ? { pending: true } : undefined);
+    // SEC S3a.1-S2 ▸ R-Z22 (L5 M1): ห้องที่มีบริบทลูกค้า (ข้อความลูกค้าอยู่ใน prompt) ⇒ รอเจ้าของยืนยันเสมอ แม้ผู้สั่งเป็น OWNER ◂
+    const customerRoom = ctx.actor.kind === "member" && (await secRoomOf(ctx)).customer;
+    const saved = await rememberFact(
+      { tenantId: ctx.tenantId, actor: ctx.actor },
+      content,
+      customerRoom ? { pending: true, forcePending: true } : pending ? { pending: true } : undefined,
+    );
     if (saved.pending) return JSON.stringify({ จดไว้รอเจ้าของยืนยัน: content, id: saved.id, ขอบเขต: "ข้อเท็จจริงของร้าน — ใช้ได้เมื่อเจ้าของร้านยืนยันแล้ว" });
     const { id, shared } = saved;
     return JSON.stringify({ จำแล้ว: content, id, ขอบเขต: shared ? "ความจำของร้าน (ทุกคนในร้านเห็น)" : "ความจำส่วนตัว (เฉพาะคุณ)" });
@@ -2364,6 +2370,15 @@ const forgetFactTool: AiTool = {
     const a = asRecord(args);
     const id = String(a.id ?? "").trim();
     const contentContains = String(a.contentContains ?? "").trim();
+    // SEC S3a.1-S2 ▸ R-Z22 (L5 M1): ในห้องเลขา (AiRoom · ห้องบริบทลูกค้า) การลบความจำ = ข้อเสนอ `memory.forget` (คนอนุมัติ · ไม่ลบทันที) ◂
+    if ((await secRoomOf(ctx)).room) {
+      if (!id && !contentContains) return JSON.stringify({ error: "ต้องระบุ id หรือ contentContains อย่างใดอย่างหนึ่ง" });
+      const rows = await listMemories({ tenantId: ctx.tenantId, actor: ctx.actor }, MAX_MEMORY_TAKE, { includePending: true });
+      const hits = rows.filter((r) => (id ? r.id === id : r.content.includes(contentContains))).slice(0, 20);
+      if (hits.length === 0) return JSON.stringify({ error: id ? `ไม่พบความจำรหัส ${id} ที่คุณลบได้` : `ไม่พบความจำที่ตรงกับ "${contentContains}"` });
+      const summary = `ลบความจำ ${hits.length} เรื่อง: ${hits.map((h) => `"${h.content.slice(0, 60)}"`).join(", ")}`.slice(0, 500);
+      return propose(ctx, "memory.forget", summary, { ids: hits.map((h) => h.id) });
+    }
     if (id) {
       // CRM C5.5-G3 ▸ ลบได้เฉพาะของตัวเอง (OWNER: + ความจำของร้าน/ระบบ) — อื่น ๆ ตอบเหมือนไม่มี ◂
       const ok = await forgetMemory({ tenantId: ctx.tenantId, actor: ctx.actor }, id);
@@ -2471,6 +2486,8 @@ const kbAutoSave: AiTool = {
     const category = String(a.category ?? "").trim() || null;
     const contactKinds = findContactData(`${title}\n${content}\n${category ?? ""}`);
     if (contactKinds.length > 0) return JSON.stringify({ error: contactDataRefusal(contactKinds, "ลงคลังความรู้") });
+    // SEC S3a.1-S2 ▸ R-Z22 (L5 M1): ในห้องเลขา = ข้อเสนอ `kb.save` (คลังความรู้ทุกคนในร้านอ่าน — ข้อความลูกค้าในห้องห้ามเขียนลงเองได้) ◂
+    if ((await secRoomOf(ctx)).room) return propose(ctx, "kb.save", `บันทึกลงคลังความรู้: ${title}`.slice(0, 300), { title, body: content, category });
     // ใช้ service เดิม (ห้าม fork) — content → body ของบทความ
     await kbCreateArticleSvc({ tenantId: ctx.tenantId }, { title, body: content, category });
     return JSON.stringify({ ตอบผู้ใช้: `บันทึกลงคลังความรู้แล้ว: ${title}` });
@@ -2492,6 +2509,58 @@ async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<
   } catch {
     return null;
   }
+}
+
+// ─── SEC S3a.1-S2 ▸ R-Z22/R-Z24/R-Z25 ตัวช่วยของ runTool และเครื่องมือความจำ/คลังความรู้ ───
+
+/** บทสนทนานี้เป็นห้องเลขาไหม (AiRoom) · มีบริบทลูกค้าไหม (contextJson.chatConversationId) — ctx.conversationId มาจากเซิร์ฟเวอร์ */
+async function secRoomOf(ctx: ToolCtx): Promise<{ room: boolean; customer: boolean }> {
+  if (!ctx.conversationId) return { room: false, customer: false };
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiRoom.findFirst({ where: { conversationId: ctx.conversationId }, select: { contextJson: true } });
+  if (!row) return { room: false, customer: false };
+  const cj = row.contextJson && typeof row.contextJson === "object" && !Array.isArray(row.contextJson) ? (row.contextJson as Record<string, unknown>) : {};
+  return { room: true, customer: typeof cj.chatConversationId === "string" && cj.chatConversationId.trim() !== "" };
+}
+
+/** ห้องแชทลูกค้านี้อยู่ในร้าน + สาขาที่ผู้สั่งเห็น (`canAccessConvUnit` ตัวเดียวกับกล่องแชท) — คีย์ API/OWNER = ทั้งร้าน */
+async function chatConvVisible(ctx: ToolCtx, conversationId: unknown): Promise<boolean> {
+  const id = typeof conversationId === "string" ? conversationId.trim() : "";
+  if (!id) return true; // ไม่ระบุ = ให้เครื่องมือตอบเหตุผลของมันเอง
+  const conv = await prisma.chatConversation.findFirst({ where: { id, tenantId: ctx.tenantId }, select: { unitId: true } });
+  if (!conv) return false;
+  const m = aiActorMembership(ctx.actor);
+  if (ctx.actor.kind === "apiKey" || m?.role === "OWNER") return true;
+  if (!m) return false;
+  const { canAccessConvUnit } = await import("@/lib/modules/chat/service");
+  return canAccessConvUnit(m.unitAccess, conv.unitId);
+}
+
+/** คีย์ที่เป็นรหัสอ้างอิง (โมเดลต้องใช้เรียกเครื่องมือต่อ) — ไม่ปิดตัวเลข */
+const ID_KEY = /(^id$|Id$|Ids$|^รหัส|^เลขที่|No$|Code$)/;
+/** ตัวเลขติดกัน ≥ 9 หลัก (มีขีด/เว้นวรรคคั่นได้) ⇒ เหลือ 2 ตัวท้าย (แบบ customer-context · R-S1.8e) */
+const maskLongDigits = (v: string) =>
+  v.replace(/\d(?:[\s-]?\d){8,}/g, (m) => {
+    const d = m.replace(/\D/g, "");
+    return `${"•".repeat(Math.max(0, d.length - 2))}${d.slice(-2)}`;
+  });
+function maskDeep(v: unknown, key = ""): unknown {
+  if (typeof v === "string") return ID_KEY.test(key) ? v : maskLongDigits(v);
+  if (Array.isArray(v)) return v.map((x) => maskDeep(x, key));
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, maskDeep(x, k)]));
+  return v;
+}
+/**
+ * R-Z24 (L5 M3): ผลของเครื่องมือก่อนคืนโมเดล = ปิดเบอร์/อีเมล (`maskPiiDeep` ของ CRM) + ตัวเลขยาว ≥ 9 หลัก ·
+ *   คีย์รหัสอ้างอิง (id/…Id/รหัส…) ไม่ถูกปิด (โมเดลต้องใช้เรียกต่อ) · ผลที่ไม่ใช่ JSON = ปิดทั้งก้อน
+ */
+function maskToolOutput(_name: string, out: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(out);
+  } catch {
+    return maskLongDigits(String(crmApi.maskPiiDeep(out)));
+  }
+  return JSON.stringify(maskDeep(crmApi.maskPiiDeep(parsed)));
 }
 
 // CRM C5.5-G1 r2 (F6) ▸ ทุกเครื่องมือในทะเบียนถูกห่อด้วยด่าน actor: ใครเรียก `execute` ตรง ๆ (ข้าม runTool) โดยไม่มี actor ที่ใช้ได้
@@ -2615,7 +2684,11 @@ export async function runTool(ctx: ToolCtx, name: string, args: unknown): Promis
       actor.kind === "apiKey" && name === crmApi.LEGACY_CRM_LEAD_TOOL_DEF.name ? await crmApi.crmLegacyLeadOpen(ctx.tenantId, ctx.systemId ?? null) : false;
     const verdict = toolVerdict(actor, name, { crmLegacyLead, ...(ctx.access ? { access: ctx.access } : {}) }); // SEC S1.3 ◂
     if (!verdict.ok) return JSON.stringify({ error: verdict.reason });
-    return await tool.execute(ctx, args);
+    // SEC S3a.1-S2 ▸ R-Z25 (L5 M4): kanban_card_from_chat อ่านแชท (สรุป ≤ 12 ข้อความ) — ห้องต้องอยู่ในสาขาที่ผู้สั่งเห็นก่อนอ่าน ◂
+    if (name === "kanban_card_from_chat" && !(await chatConvVisible(ctx, asRecord(args).conversationId))) {
+      return JSON.stringify({ error: "ไม่พบบทสนทนานี้ในร้านนี้" });
+    }
+    return maskToolOutput(name, await tool.execute(ctx, args)); // SEC S3a.1-S2 ▸ R-Z24 ◂
   } catch (e) {
     return JSON.stringify({ error: e instanceof Error ? e.message : "เครื่องมือทำงานผิดพลาด" });
   }

@@ -15,6 +15,7 @@
 //      เป็นร่องรอยตรวจสอบย้อนหลัง ไม่ใช่ข้อมูลระบุตัวตน (ตัวตนจริงคืออีเมล/ชื่อ ซึ่งถูกลบไปแล้ว)
 
 import { prisma } from "@/lib/core/db";
+import { consumePhoneOtp, isPhonePlaceholderEmail, verifyPhoneOtp } from "@/lib/core/phone-auth";
 import { requestTenantDeletion } from "./pdpa";
 
 export type AccountDeletionImpact = {
@@ -26,7 +27,8 @@ export type AccountDeletionImpact = {
   tenantsLeftAlone: { id: string; name: string }[];
 };
 
-const label = (u: { name: string | null; email: string }) => u.name?.trim() || u.email.split("@")[0]!;
+// SEC S3a.1-S2 ▸ R-Z26: บัญชีที่สมัครด้วยเบอร์ (อีเมล placeholder `<เบอร์>@phone.shark.in.th`) ไม่มีชื่อ ⇒ "สมาชิก" (ไม่โชว์เบอร์) ◂
+const label = (u: { name: string | null; email: string }) => u.name?.trim() || (isPhonePlaceholderEmail(u.email) ? "สมาชิก" : u.email.split("@")[0]!);
 
 /**
  * ดูผลกระทบก่อนลบ (ใช้โชว์บนจอยืนยัน — ผู้ใช้ต้องรู้ว่าจะเกิดอะไรกับร้านก่อนกด)
@@ -74,6 +76,45 @@ async function findSuccessor(
 export type DeleteAccountResult = { ok: true; impact: AccountDeletionImpact } | { ok: false; reason: string };
 
 /**
+ * SEC S3a.1-S2 ▸ R-Z21 (L4 m10 · หนี้ S3): ยืนยันตัวตนซ้ำก่อนลบบัญชี — `code` = OTP ที่เพิ่งขอ
+ *   มีเบอร์ผูก (UserPhone) ⇒ รหัส SMS ของเบอร์ตัวเอง (`auth/sms/request`) · ตรวจแล้ว consume ทันที (ใช้ซ้ำไม่ได้)
+ *   ไม่มีเบอร์ (บัญชีอีเมล) ⇒ รหัสอีเมลเดิม (`auth/otp` → `verifyOtp` ซึ่ง consume ในตัว) ของอีเมลบัญชีนี้
+ *   ผิด/หมดอายุ/ไม่มีรหัสค้าง ⇒ `invalid` (ไม่บอกว่าเพราะอะไร) · ผิดเกินเพดาน ⇒ `locked`
+ */
+export async function verifyDeletionStepUp(userId: string, code: string): Promise<{ ok: true } | { ok: false; reason: "invalid" | "locked" }> {
+  const digits = String(code ?? "").replace(/\D/g, "");
+  if (digits.length !== 6) return { ok: false, reason: "invalid" };
+  const phone = await prisma.userPhone.findUnique({ where: { userId }, select: { phone: true } });
+  if (phone) {
+    const v = await verifyPhoneOtp(phone.phone, digits);
+    if (!v.ok) return { ok: false, reason: v.reason === "locked" ? "locked" : "invalid" };
+    if (v.userId !== userId) return { ok: false, reason: "invalid" };
+    return (await consumePhoneOtp(v.otpId)) ? { ok: true } : { ok: false, reason: "invalid" };
+  }
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (!user?.email || isPhonePlaceholderEmail(user.email)) return { ok: false, reason: "invalid" };
+  const { verifyOtp } = await import("@/lib/core/auth"); // lazy — core/auth ลาก email/env มา
+  const r = await verifyOtp(user.email, digits);
+  if (!r.ok) return { ok: false, reason: r.reason === "locked" ? "locked" : "invalid" };
+  return r.user.id === userId ? { ok: true } : { ok: false, reason: "invalid" };
+}
+
+/**
+ * SEC S3a.1-S2 ▸ R-Z26 (L6): ข้อมูลส่วนตัวที่ผูก userId แบบไม่มี FK (ไม่ cascade) — ลบพร้อมบัญชี
+ *   เครื่องรับแจ้งเตือน · ค่าการแจ้งเตือน · เวรแชท · ผู้ช่วยในห้องแชท · สมาชิกห้องเลขา · ความจำส่วนตัว `u~<uid>~`
+ */
+async function deleteUserTraces(userId: string): Promise<void> {
+  await prisma.$transaction([
+    prisma.pushDevice.deleteMany({ where: { userId } }),
+    prisma.aiNotifyPref.deleteMany({ where: { userId } }),
+    prisma.chatShift.deleteMany({ where: { userId } }),
+    prisma.chatConversationHelper.deleteMany({ where: { userId } }),
+    prisma.aiRoomMember.deleteMany({ where: { userId } }),
+    prisma.aiMemory.deleteMany({ where: { id: { startsWith: `u~${userId}~` } } }),
+  ]);
+}
+
+/**
  * ลบบัญชีจริง — เรียกจาก server action หลังผู้ใช้ยืนยันบนจอแล้วเท่านั้น
  * userId ต้องมาจาก session เสมอ ห้ามรับจาก client
  */
@@ -95,7 +136,8 @@ export async function deleteAccount(userId: string): Promise<DeleteAccountResult
     await requestTenantDeletion(t.id);
   }
 
-  // 3) ลบ User จริง — Membership/Session cascade ตาม FK ใน core.prisma
+  // 3) ลบ User จริง — Membership/Session cascade ตาม FK ใน core.prisma · + ร่องรอยที่ไม่มี FK (R-Z26) ก่อนลบ
+  await deleteUserTraces(userId);
   await prisma.user.delete({ where: { id: userId } });
 
   return { ok: true, impact };

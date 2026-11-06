@@ -14,6 +14,7 @@
 
 import type { ApiOp } from "@/lib/api/op";
 import { prisma, tenantDb } from "@/lib/core/db";
+import { isPhonePlaceholderEmail } from "@/lib/core/phone-auth";
 import { logOps } from "@/lib/core/ops";
 import * as crmSvc from "@/lib/modules/crm";
 import { memberToolOps } from "@/lib/modules/member/api/tools";
@@ -37,9 +38,10 @@ const MSG = {
   empty: "บอกเหตุผลที่ตีกลับสั้น ๆ ก่อน เลขาจะได้แก้ให้ถูก",
   not_editable: "แก้ก่อนอนุมัติได้เฉพาะงานของระบบบัญชี บอร์ดงาน สมาชิก CRM และขายหน้าร้าน — งานนี้ให้ตีกลับแล้วสั่งใหม่",
   invalid: "ข้อมูลที่แก้ไม่ถูกต้อง",
+  forbidden: "บัญชีนี้ยกเลิกข้อเสนอนี้ไม่ได้ — ต้องเป็นผู้ที่มีสิทธิ์ยืนยันรายการนี้",
 } as const;
 
-type RejectError = "not_found" | "not_pending" | "empty" | "pii";
+type RejectError = "not_found" | "not_pending" | "empty" | "pii" | "forbidden";
 type EditError = "not_found" | "not_pending" | "not_editable" | "invalid";
 
 const isRec = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -53,7 +55,7 @@ const isOwner = (a: AiMemberActor | null) => a?.membership.role === "OWNER";
 
 async function displayNameOf(userId: string): Promise<string> {
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }).catch(() => null);
-  return u?.name?.trim() || u?.email?.split("@")[0] || "สมาชิก";
+  return u?.name?.trim() || (isPhonePlaceholderEmail(u?.email) ? "" : u?.email?.split("@")[0]) || "สมาชิก"; // R-Z26 ◂
 }
 
 /** ข้อเสนอที่ผู้ดูนี้เห็น (ห้องตัวเอง · ห้องเลขาร่วม · R-S1.6a seeHistory) — ประตู CRM (ยกเลิกได้จากประตูของ CRM เท่านั้น) = มองไม่เห็น */
@@ -65,10 +67,65 @@ async function visibleProposal(ctx: ConvCtx, id: string) {
     select: { id: true, kind: true, summary: true, payload: true, status: true, conversationId: true, createdAt: true },
   });
   if (!row) return null;
-  if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return null; // CRM C3.4 — เหมือน rejectProposal
+  if (await isDoorRow(ctx.tenantId, row)) return null; // CRM C3.4 — เหมือน rejectProposal · SEC S3a.1-S2 R-Z13: ห้องเลขา = ทางทั่วไป ◂
   if (!(await canSeeConversationById(ctx, row.conversationId))) return null; // S1.4 R-K1
   if (!withinSight(await visibleSinceFor(ctx, row.conversationId), row.createdAt)) return null; // S1.6 R-S1.6a
   return row;
+}
+
+// SEC S3a.1-S2 ▸ R-Z13/R-Z20: ข้อเสนอของ "ประตู CRM" = ชนิด CRM ที่ **ไม่ได้** อยู่ในห้องเลขา (ห้องเลขาเดินทางทั่วไป · R-Z13) ◂
+async function isDoorRow(tenantId: string, row: { kind: string; payload: unknown; conversationId: string }): Promise<boolean> {
+  if (!crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false;
+  return !(await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId: row.conversationId }, select: { id: true } }));
+}
+
+/**
+ * SEC S3a.1-S2 ▸ R-Z20: ตีกลับ/ยกเลิกข้อเสนอแบบเดียวทั้งแอปและเว็บ (มีหรือไม่มีเหตุผล) — ข้อผิดพลาดแยกได้:
+ *   ไม่พบ/มองไม่เห็น ⇒ not_found · ไม่ PENDING ⇒ not_pending · ประตู CRM ไม่ให้ยกเลิก (ไม่มีสิทธิ์) ⇒ forbidden
+ *   ข้อเสนอประตู CRM: ยกเลิกผ่าน `cancelProposalById` ด้วยสิทธิ์ของคนกด แล้วจึงบันทึกเหตุผล (ถ้ามี) ลงแถว ◂
+ */
+export async function rejectFor(
+  ctx: ConvCtx,
+  proposalId: string,
+  input?: { note?: string; remember?: "JOB" | "RULE" },
+): Promise<{ ok: true; memoryId?: string } | { ok: false; error: RejectError; message: string }> {
+  const actor = memberActorOf(ctx);
+  const pid = typeof proposalId === "string" ? proposalId.trim() : "";
+  if (!actor || !pid) return { ok: false, error: "not_found", message: MSG.not_found };
+  const raw = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id: pid }, select: { id: true, kind: true, payload: true, conversationId: true, status: true } });
+  if (!raw) return { ok: false, error: "not_found", message: MSG.not_found };
+  const note = oneLine(input?.note ?? "", NOTE_MAX);
+  if (!(await isDoorRow(ctx.tenantId, raw))) {
+    if (note) return rejectWithNote(ctx, pid, { note, remember: input?.remember === "RULE" ? "RULE" : "JOB" });
+    const row = await visibleProposal(ctx, pid);
+    if (!row) return { ok: false, error: "not_found", message: MSG.not_found };
+    if (row.status !== "PENDING") return { ok: false, error: "not_pending", message: MSG.not_pending };
+    const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({ where: { id: row.id, status: "PENDING" }, data: { status: "REJECTED" } });
+    if (res.count !== 1) return { ok: false, error: "not_pending", message: MSG.not_pending };
+    return { ok: true };
+  }
+  // ประตู CRM
+  if (note && input?.remember === "RULE") {
+    const kinds = findContactData(note);
+    if (kinds.length > 0) return { ok: false, error: "pii", message: contactDataRefusal(kinds, "เป็นกติกาของร้าน") };
+  }
+  const m = actor.membership;
+  const r = await crmSvc.aiBridges.cancelProposalById(ctx.tenantId, { userId: actor.userId, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, pid);
+  if (!r.handled) return { ok: false, error: "not_found", message: MSG.not_found };
+  if (!r.ok) {
+    const now = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id: pid }, select: { status: true } });
+    if (now?.status === "PENDING") return { ok: false, error: "forbidden", message: r.note || MSG.forbidden };
+    return { ok: false, error: "not_pending", message: r.note || MSG.not_pending };
+  }
+  if (!note) return { ok: true };
+  await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({ where: { id: pid, status: "REJECTED" }, data: { resultNote: `ตีกลับ: ${note}` } });
+  if (input?.remember !== "RULE") return { ok: true };
+  try {
+    return { ok: true, memoryId: (await rememberFact(ctx, note, { pending: !isOwner(actor) })).id };
+  } catch (e) {
+    await logOps("WARN", "ai", "secretary.teach: จดกติกาจากการตีกลับไม่สำเร็จ", { tenantId: ctx.tenantId, detail: String(e).slice(0, 300) }).catch(() => {});
+    return { ok: true };
+  }
 }
 
 // ─────────────────────────────── ตีกลับพร้อมเหตุผล ───────────────────────────────

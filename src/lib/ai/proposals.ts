@@ -1032,7 +1032,7 @@ async function dispatch(
     return `บันทึกลูกค้ามุ่งหวัง "${name}" เข้าระบบ CRM เรียบร้อยแล้ว`;
   }
 
-  if (kind === "kb_create_article") {
+  if (kind === "kb_create_article" || kind === "kb.save") { // SEC S3a.1-S2 ▸ R-Z22: kb.save (ห้องเลขา) ใช้ทางเดียวกัน ◂
     const p = payload as KbCreateArticlePayload;
     // KB เป็น tenant-scoped ล้วน (ไม่มีระบบย่อย) — service โยน error ไทยถ้า title/body ว่าง
     await kbSvc.createArticle(
@@ -1400,6 +1400,8 @@ async function dispatch(
   // SEC S1.12 ▸ ส่งถึงลูกค้า (R-K15) · คืนมัดจำนัดหมาย (R-K16) ◂
   if (kind === "chat.send") return dispatchChatSend(tenantId, proposalId, payload, m, userId, out);
   if (kind === "booking_refund_deposit") return dispatchBookingRefundDeposit(tenantId, payload, userId, out);
+  // SEC S3a.1-S2 ▸ R-Z22: ลบความจำด้วยสิทธิ์ของผู้อนุมัติ (forgetMemory ตรวจว่าเขาลบแถวนั้นได้) ◂
+  if (kind === "memory.forget") return (await import("./secretary/memory-proposals")).dispatchMemoryForget(tenantId, payload, m, userId);
 
   if (kind === "automation_create_rule") {
     const p = payload as AutomationCreateRulePayload;

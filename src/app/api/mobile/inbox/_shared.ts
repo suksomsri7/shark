@@ -6,9 +6,10 @@
 import type { z } from "zod";
 import type { AccessQuery, MembershipCtx } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
-import { requireMobile, mobileError, type MobileAuth } from "@/lib/mobile/auth";
+import { requireMobile, type MobileAuth } from "@/lib/mobile/auth";
 import { mobileDenied } from "@/lib/mobile/guard";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+import { errDetail, logOps } from "@/lib/core/ops";
 import {
   CHAT_ASSIGN_ACTION,
   CHAT_CUSTOMER_LINK_ACTION,
@@ -33,6 +34,13 @@ const DENY_TH: Record<string, string> = {
 };
 
 export const fail = (status: number, error: string, message: string) => Response.json({ error, message }, { status });
+/** ข้อความไทยของด่าน `requireMobile` ตามรหัส (แบบเดียวกับ secretary/_shared · R-Z20) */
+const GATE_TH: Record<string, string> = {
+  unauthorized: "เข้าสู่ระบบใหม่อีกครั้ง",
+  missing_tenant: "เลือกกิจการก่อนใช้งาน",
+  forbidden: "บัญชีนี้ไม่ได้อยู่ในกิจการนี้ หรือยังไม่ได้รับคำเชิญ",
+  suspended: "กิจการนี้ถูกระงับการใช้งาน — ติดต่อทีมงาน SHARK",
+};
 export const notFound = (message = "ไม่พบบทสนทนานี้") => fail(404, "not_found", message);
 
 export type InboxCtx = { g: MobileAuth; tenantId: string; userId: string; m: MembershipCtx; ua: string[] };
@@ -40,7 +48,7 @@ export type InboxCtx = { g: MobileAuth; tenantId: string; userId: string; m: Mem
 /** ด่านหน้า: ต้องผ่านอย่างน้อยหนึ่งคีย์ใน `any` (ส่วนใหญ่มีตัวเดียว) */
 export async function gate(req: Request, any: AccessQuery[]): Promise<{ ok: true; c: InboxCtx } | { ok: false; res: Response }> {
   const g = await requireMobile(req);
-  if (!g.ok) return { ok: false, res: mobileError(g) };
+  if (!g.ok) return { ok: false, res: fail(g.status, g.error, GATE_TH[g.error] ?? GATE_TH.forbidden!) }; // SEC S3a.1-S2 ▸ R-Z20: + ข้อความไทย ◂
   if (!any.some((q) => mobileDenied(g, q) === null)) {
     return { ok: false, res: fail(403, "forbidden", DENY_TH[any[0]!.action] ?? "บัญชีนี้ยังไม่มีสิทธิ์ทำรายการนี้ — ขอสิทธิ์จากเจ้าของร้าน") };
   }
@@ -140,4 +148,29 @@ export async function limited(c: InboxCtx, name: string, perMinute: number): Pro
     { error: "rate_limited", message: "ทำรายการถี่เกินไป รอสักครู่แล้วลองใหม่", retryAfterSec: rl.retryAfterSec ?? 60 },
     { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
   );
+}
+
+// ─── SEC S3a.1-S2 ▸ R-Z20 / R-Z26 (L4 · L6): ตัวห่อ error ของทุก route ใน inbox/** ───
+const THAI = /[ก-๙]/;
+
+/**
+ * ข้อความที่ส่งให้ผู้ใช้ได้จาก error — ข้อความไทยของ lib (ไม่ใช่ข้อความของ Prisma/stack) ⇒ ใช้ได้ · อย่างอื่น ⇒ `fallback` + logOps (ชื่อ/code/บรรทัดแรก)
+ *   ห้ามส่ง `e.message` ดิบออกไป (มีชื่อตาราง/อาร์กิวเมนต์ของคำสั่ง)
+ */
+export async function safeMessage(e: unknown, where: string, fallback: string): Promise<string> {
+  if (e instanceof Error && THAI.test(e.message) && !/prisma|invocation|invalid `|\bat \w+ \(/i.test(e.message)) return e.message.split("\n")[0]!.slice(0, 300);
+  await logOps("WARN", "mobile-inbox", `${where}: ล้ม`, { detail: errDetail(e) }).catch(() => {});
+  return fallback;
+}
+
+/** ห่อ handler: exception ที่หลุด ⇒ 500 `{error:"server_error", message}` + logOps (ไม่มี e.message ดิบ · ไม่มี stack) */
+export function withErrors<A extends unknown[]>(where: string, h: (...args: A) => Promise<Response>): (...args: A) => Promise<Response> {
+  return async (...args: A) => {
+    try {
+      return await h(...args);
+    } catch (e) {
+      await logOps("ERROR", "mobile-inbox", `${where}: ล้ม`, { detail: errDetail(e) }).catch(() => {});
+      return fail(500, "server_error", "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง");
+    }
+  };
 }

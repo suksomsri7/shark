@@ -2,10 +2,10 @@
 //   ข้อความไม่มี id ของทีมงานแพลตฟอร์ม — มีแค่ฝั่ง (SHOP/PLATFORM) + `mine`
 import { listCaseMessages, markCaseRead } from "@/lib/support/service";
 import { attachmentsDto } from "@/lib/ai/secretary/dto";
-import { gate, idParam, notFound, ok, type RouteCtx } from "../../../_shared";
+import { gate, idParam, notFound, ok, type RouteCtx, withErrors } from "../../../_shared";
 import { visibleCase } from "../../_case";
 
-export async function GET(req: Request, ctx: RouteCtx) {
+async function GET_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const id = await idParam(ctx, "id");
@@ -19,3 +19,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
     messages: msgs.map((m) => ({ id: m.id, side: m.authorSide, mine: m.authorSide === "SHOP" && m.authorId === a.c.userId, body: m.body, attachments: attachmentsDto(m.attachmentsJson), createdAt: m.createdAt })),
   });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/support/cases/[id] GET", GET_);

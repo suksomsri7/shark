@@ -2,7 +2,7 @@
 //   GET `listCasesForUser` (OWNER ทั้งร้าน · คนอื่นของตัวเอง) · POST `openCaseFromApp` (source APP · หมวด · ห้องที่ผู้แจ้งเห็น — ไม่เห็น = ไม่ผูก)
 import { z } from "zod";
 import { CASE_CATEGORIES, listCasesForUser, openCaseFromApp, unreadCaseTotalForUser } from "@/lib/support/service";
-import { gate, ID_MAX, ok, readBody, thrown, withRateLimit } from "../../_shared";
+import { gate, ID_MAX, ok, readBody, thrown, withRateLimit, withErrors } from "../../_shared";
 import { AttachmentsSchema } from "../_case";
 
 const Body = z
@@ -15,7 +15,7 @@ const Body = z
   })
   .strict();
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const ctx = { tenantId: a.c.tenantId };
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   return ok({ items, unread, categories: CASE_CATEGORIES });
 }
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "support");
@@ -37,3 +37,7 @@ export async function POST(req: Request) {
     return thrown(e, "support.open");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/support/cases GET", GET_);
+export const POST = withErrors("secretary/support/cases POST", POST_);

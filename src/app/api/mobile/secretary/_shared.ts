@@ -8,7 +8,7 @@ import { after } from "next/server";
 import type { z } from "zod";
 import { ForbiddenError, type AccessQuery, type MembershipCtx } from "@/lib/core/rbac";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
-import { logOps } from "@/lib/core/ops";
+import { errDetail, logOps } from "@/lib/core/ops";
 import { prisma } from "@/lib/core/db";
 import { requireMobile, mobileUser, type MobileAuth } from "@/lib/mobile/auth";
 import { AI_CHAT, mobileAiCtx, mobileDenied } from "@/lib/mobile/guard";
@@ -141,9 +141,23 @@ const THAI = /[฀-๿]/;
  */
 export async function thrown(e: unknown, where: string): Promise<Response> {
   if (e instanceof ForbiddenError) return forbidden(THAI.test(e.message) && !e.message.startsWith("ไม่มีสิทธิ์:") ? e.message : undefined);
-  if (e instanceof Error && THAI.test(e.message) && !/prisma|invalid `|\bat \w+ \(/i.test(e.message)) return fail(400, "invalid", e.message.slice(0, 300));
-  await logOps("WARN", "secretary-api", `${where}: ล้ม`, { detail: e instanceof Error ? (e.stack ?? e.message) : String(e) }).catch(() => {});
+  if (e instanceof Error && THAI.test(e.message) && !/prisma|invocation|invalid `|\bat \w+ \(/i.test(e.message)) return fail(400, "invalid", e.message.slice(0, 300));
+  await logOps("WARN", "secretary-api", `${where}: ล้ม`, { detail: errDetail(e) }).catch(() => {}); // R-Z26: ชื่อ/code/บรรทัดแรก ◂
   return fail(500, "server_error", "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง");
+}
+
+/**
+ * SEC S3a.1-S2 ▸ R-Z20 (L4): ห่อ handler ทุกเส้นของ secretary/** — exception ที่หลุด ⇒ `thrown()` (ForbiddenError 403 · ข้อความไทยของ lib 400 ·
+ *   อื่น ๆ 500 `{error:"server_error", message}` + logOps) — ไม่มี 500 ที่ไม่ใช่ JSON และไม่มี e.message ดิบ ◂
+ */
+export function withErrors<A extends unknown[]>(where: string, h: (...args: A) => Promise<Response>): (...args: A) => Promise<Response> {
+  return async (...args: A) => {
+    try {
+      return await h(...args);
+    } catch (e) {
+      return thrown(e, where);
+    }
+  };
 }
 
 /** งานหลังตอบ (worker ของห้อง) — ในคำขอ = `after()` (คืน promise ให้ waitUntil) · นอกคำขอ (สคริปต์/ข้อสอบ) `after()` โยน ⇒ รอจนจบ */

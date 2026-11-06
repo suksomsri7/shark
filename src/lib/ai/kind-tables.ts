@@ -57,7 +57,10 @@ export type StaticProposalKind =
   | "restaurant_close_bill"
   // SEC S1.12 ▸ ส่งข้อความถึงลูกค้าผ่านโมดูลแชท (R-K15) · คืนมัดจำนัดหมาย (เส้นสาธิต 3 · R-K16) ◂
   | "chat.send"
-  | "booking_refund_deposit";
+  | "booking_refund_deposit"
+  // SEC S3a.1-S2 ▸ R-Z22: ในห้องเลขา คลังความรู้/ลบความจำ = ข้อเสนอ (ไม่เขียนทันที) ◂
+  | "kb.save"
+  | "memory.forget";
 
 // action string ต่อ kind — ต้องตรงกับ assertCan ของปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
 export const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; action: string }> = {
@@ -108,6 +111,9 @@ export const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; ac
   // SEC S1.12 ▸ R-K14 คีย์ตอบแชทเดิม (ไม่สร้างคีย์ใหม่) · คืนมัดจำ = คีย์ปุ่มคิวมัดจำของร้าน (booking/access.ts refundDueDepositAction) ◂
   "chat.send": { module: "chat", action: "chat.message.send" },
   booking_refund_deposit: { module: "booking", action: "booking.deposit.refund" },
+  // SEC S3a.1-S2 ▸ R-Z22: kb.save = คีย์เดียวกับ kb_create_article (ปุ่มเพิ่มบทความ) · memory.forget = คีย์ใช้เลขา (สิทธิ์ลบจริงตรวจใน forgetMemory ด้วยตัวผู้อนุมัติ) ◂
+  "kb.save": { module: "kb", action: "kb.article.create" },
+  "memory.forget": { module: "ai", action: "ai.chat.send" },
 };
 
 export type KindAccess = { module: string; action: string };

@@ -1,9 +1,9 @@
 // POST /api/mobile/secretary/lessons/[id]/confirm — ยืนยันบทเรียน (OWNER เท่านั้น · `confirmLesson` · คนอื่น = 403)
 import { z } from "zod";
 import { confirmLesson } from "@/lib/ai/secretary/learn";
-import { gate, idParam, notFound, ok, readBody, thrown, withRateLimit, type RouteCtx } from "../../../_shared";
+import { gate, idParam, notFound, ok, readBody, thrown, withRateLimit, type RouteCtx, withErrors } from "../../../_shared";
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "lessons");
@@ -18,3 +18,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
     return thrown(e, "lessons.confirm");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/lessons/[id]/confirm POST", POST_);

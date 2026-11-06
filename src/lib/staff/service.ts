@@ -23,6 +23,7 @@
 
 import type { Membership, Prisma, Role, User } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
+import { isPhonePlaceholderEmail } from "@/lib/core/phone-auth";
 import {
   canAssignRole,
   canGrantPermission,
@@ -96,6 +97,18 @@ async function loadActor(
     return fail("บัญชีของคุณยังไม่ได้รับสิทธิ์ “จัดการผู้ใช้งาน” ให้เจ้าของร้านหรือผู้จัดการเปิดสิทธิ์นี้ให้ก่อน");
   }
   return { ok: true, membership, ctx };
+}
+
+/**
+ * SEC S3a.1-S2 ▸ R-Z15 (L1 M-3 · m-3): ด่านระดับของ "เป้าหมาย" อยู่ใน lib (ทุกทาง — เว็บ · แอป · setStaffLevels):
+ *   OWNER แตะได้ทุกคน · MANAGER และ STAFF ที่มี settings.staff.write แตะได้เฉพาะ STAFF และตั้งบทบาทได้แค่ STAFF ◂
+ */
+const MSG_STAFF_ONLY_TARGET = "ผู้จัดการ (และผู้ดูแลผู้ใช้งาน) แก้ไข ระงับ หรือเปิดคืนได้เฉพาะ “พนักงาน” — ให้เจ้าของกิจการเป็นผู้ทำรายการนี้";
+function targetRoleProblem(actorRole: Role, targetRole: Role, nextRole?: Role): StaffFail | null {
+  if (actorRole === "OWNER") return null;
+  if (targetRole !== "STAFF") return fail(MSG_STAFF_ONLY_TARGET);
+  if (nextRole !== undefined && nextRole !== "STAFF") return fail(MSG_STAFF_ONLY_TARGET);
+  return null;
 }
 
 /** นับ OWNER คนอื่นที่ยังใช้งานอยู่ในร้าน (ไม่รวมคนที่กำลังจะถูกแก้) */
@@ -288,7 +301,8 @@ async function listStaffAccessRows(tenantId: string): Promise<StaffAccessRow[]> 
       membershipId: m.id,
       userId: m.userId,
       email: u?.email ?? "",
-      name: u?.name?.trim() || (u?.email ?? "").split("@")[0] || "ผู้ใช้งาน",
+      // SEC S3a.1-S2 ▸ R-Z26: อีเมล placeholder ของบัญชีเบอร์โทร (local-part = เบอร์) ⇒ "สมาชิก" ไม่โชว์เบอร์ ◂
+      name: u?.name?.trim() || (isPhonePlaceholderEmail(u?.email) ? "สมาชิก" : (u?.email ?? "").split("@")[0]) || "ผู้ใช้งาน",
       role: m.role,
       unitAccess: Array.isArray(m.unitAccess) ? (m.unitAccess as string[]) : [],
       permissions: (m.permissions ?? {}) as PermissionMap,
@@ -439,6 +453,8 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       if (existing) {
         membershipId = existing.id;
         if (existing.acceptedAt == null) {
+          // SEC S3a.1-S2 ▸ R-Z15: เปิดคืนผ่านการให้สิทธิ์ = เปิดคืน (restore) — ผู้ที่ไม่ใช่ OWNER เปิดคืนได้เฉพาะ STAFF ◂
+          if (targetRoleProblem(actor.membership.role, existing.role)) throw new StaffRuleError(MSG_STAFF_ONLY_TARGET);
           // SVC R0.5 ▸ เปิดคืนสมาชิกภาพที่ถือคีย์ owner-only (settings.integrations.manage) = คืนขอบเขตคีย์ผู้ให้บริการภายนอก
           //   ⇒ เฉพาะเจ้าของร้าน (มติผู้ตรวจ R0.5 ข้อ 2 — ทางเดียวกับการขยาย unitAccess ใน updateStaffAccess) ◂
           const prevPerms = (existing.permissions ?? {}) as PermissionMap;
@@ -525,6 +541,8 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   if (target.userId === input.actorUserId && actor.membership.role !== "OWNER") {
     return fail("คุณแก้สิทธิ์ของตัวเองไม่ได้ ให้เจ้าของกิจการเป็นผู้แก้ให้");
   }
+  const tgt = targetRoleProblem(actor.membership.role, target.role, input.role); // R-Z15 ◂
+  if (tgt) return tgt;
 
   // Json columns → ต้องเป็น Prisma.InputJsonValue (Record<string, unknown> ไม่ผ่าน type ของ Prisma 7)
   const data: { role?: Role; unitAccess?: Prisma.InputJsonValue; permissions?: Prisma.InputJsonValue } = {};
@@ -618,6 +636,8 @@ export async function revokeStaffAccess(input: RevokeStaffAccessInput): Promise<
   if (target.userId === input.actorUserId && actor.membership.role !== "OWNER") {
     return fail("คุณถอนสิทธิ์ของตัวเองไม่ได้ ให้เจ้าของกิจการเป็นผู้ทำให้");
   }
+  const tgt = targetRoleProblem(actor.membership.role, target.role); // R-Z15 ◂
+  if (tgt) return tgt;
   if (target.role === "OWNER" && (await countOtherActiveOwners(input.tenantId, target.userId)) === 0) {
     return fail(LAST_OWNER_REASON);
   }
@@ -652,6 +672,8 @@ export async function restoreStaffAccess(input: RevokeStaffAccessInput): Promise
   });
   if (!target) return fail("ไม่พบผู้ใช้งานคนนี้ในกิจการนี้ — กรุณารีเฟรชหน้าแล้วลองใหม่");
   if (target.acceptedAt != null) return { ok: true, membershipId: target.id };
+  const tgt = targetRoleProblem(actor.membership.role, target.role); // R-Z15 ◂
+  if (tgt) return tgt;
 
   // เปิดคืนให้ OWNER ได้เฉพาะคนที่ตั้ง OWNER ได้อยู่แล้ว (ไม่งั้นเป็นช่องยกระดับผ่านคนที่ถูกถอน)
   if (!canAssignRole(actor.membership.role, target.role)) {

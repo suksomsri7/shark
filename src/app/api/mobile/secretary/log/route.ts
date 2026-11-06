@@ -2,9 +2,9 @@
 //   ต่อแถว `canUndo` (สิทธิ์จริงของผู้เรียก) + `link` (พาธ /app สำหรับ WebView `?open=` · ไม่รู้ = null) · OWNER ทุกแถว · คนอื่น = ห้องที่ตัวเองเปิด/เป็นสมาชิก + แถวที่ตัวเองสั่ง/อนุมัติ · day = YYYY-MM-DD เวลาไทย
 import { listLog } from "@/lib/ai/secretary/actions";
 import { logItemsFor } from "@/lib/ai/secretary/views";
-import { fail, gate, ok, optId, takeOf, withRateLimit } from "../_shared";
+import { fail, gate, ok, optId, takeOf, withRateLimit, withErrors } from "../_shared";
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "log", 60); // GET หนัก (R-S1.14b)
@@ -18,3 +18,6 @@ export async function GET(req: Request) {
   const rows = await listLog(a.c.conv, { ...(day ? { day } : {}), ...(module ? { module } : {}), ...(roomId ? { roomId } : {}), take: takeOf(q.get("take"), 50, 200) });
   return ok({ items: await logItemsFor(a.c, rows) }); // + canUndo (dry-run ของ undoAction · นาฬิกาเซิร์ฟเวอร์) + link ทางเปิดของจริง
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/log GET", GET_);

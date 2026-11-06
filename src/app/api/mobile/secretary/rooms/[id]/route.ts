@@ -2,9 +2,9 @@
 import { getRoom } from "@/lib/ai/secretary/rooms";
 import { roomDto } from "@/lib/ai/secretary/dto";
 import { roomPlansFor } from "@/lib/ai/secretary/views";
-import { gate, idParam, notFound, ok, type RouteCtx } from "../../_shared";
+import { gate, idParam, notFound, ok, type RouteCtx, withErrors } from "../../_shared";
 
-export async function GET(req: Request, ctx: RouteCtx) {
+async function GET_(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const id = await idParam(ctx, "id");
@@ -12,3 +12,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
   if (!room) return notFound("ไม่พบห้องงานนี้");
   return ok({ ...roomDto(room, { userId: a.c.userId, role: a.c.m.role }), plans: await roomPlansFor(a.c.conv, room.conversationId) });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/rooms/[id] GET", GET_);

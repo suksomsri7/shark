@@ -13,6 +13,43 @@ const DETAIL_MAX = 4000; // ตัด detail กันแถวบวม
 const THROTTLE_MS = 60 * 60_000; // 60 นาที/source
 
 type LogOpts = { detail?: string; tenantId?: string };
+
+/**
+ * SEC S3a.1-S2 ▸ R-Z26 (L6 M1–M4): รายละเอียดของ error ที่เก็บได้ = ชื่อ · code · บรรทัดแรกของข้อความ — ตัดตั้งแต่ `invocation:`
+ *   (Prisma พิมพ์อาร์กิวเมนต์ของคำสั่งทั้งก้อน = ชื่อ/เบอร์/เนื้อหาของลูกค้า) · ใช้กับ e ใดก็ได้ (ไม่ใช่ Error = String ตัดบรรทัดแรก) ◂
+ */
+export function errDetail(e: unknown): string {
+  if (e instanceof Error) {
+    const code = (e as { code?: unknown }).code;
+    const firstLine = cutInvocation(e.message).split("\n")[0]!.trim().slice(0, 300);
+    return `${e.name}${typeof code === "string" || typeof code === "number" ? ` [${String(code)}]` : ""}: ${firstLine}`;
+  }
+  return cutInvocation(String(e)).split("\n")[0]!.trim().slice(0, 300);
+}
+/** ตัดส่วน "invocation:" ของ Prisma ออก (เหลือหัวข้อความ) — ใช้ใน logOps กับ detail ทุกตัว */
+function cutInvocation(s: string): string {
+  const i = s.indexOf("invocation:");
+  return i < 0 ? s : `${s.slice(0, i)}invocation: (ตัดรายละเอียดคำสั่งออก)`;
+}
+
+/** อายุเก็บของ OpsEvent (R-Z26) — ทั่วไป 90 วัน · ข้อความ SMS จำลอง (`sms-mock` มีรหัส) 1 วัน · PhoneOtp 30 วัน */
+export const OPS_KEEP_DAYS = 90;
+export const SMS_MOCK_KEEP_MS = 86_400_000;
+export const PHONE_OTP_KEEP_DAYS = 30;
+
+/** ล้างข้อมูลเก่าของ ops (งานประจำ · คืนจำนวนแถวที่ลบ) — ล้มห้ามโยน (คืน -1 + log) */
+export async function sweepOpsRetention(now: Date = new Date()): Promise<{ opsEvents: number; smsMock: number; phoneOtps: number }> {
+  const out = { opsEvents: -1, smsMock: -1, phoneOtps: -1 };
+  const day = 86_400_000;
+  try {
+    out.smsMock = (await prisma.opsEvent.deleteMany({ where: { source: "sms-mock", createdAt: { lt: new Date(now.getTime() - SMS_MOCK_KEEP_MS) } } })).count;
+    out.opsEvents = (await prisma.opsEvent.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - OPS_KEEP_DAYS * day) } } })).count;
+    out.phoneOtps = (await prisma.phoneOtp.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - PHONE_OTP_KEEP_DAYS * day) } } })).count;
+  } catch (e) {
+    await logOps("WARN", "ops", "sweepOpsRetention ล้ม", { detail: errDetail(e) });
+  }
+  return out;
+}
 type LogDeps = { sendAlert?: (subject: string, body: string) => Promise<void>; now?: Date };
 
 /**
@@ -27,7 +64,7 @@ export async function logOps(
   deps?: LogDeps,
 ): Promise<void> {
   try {
-    const detail = opts?.detail ? opts.detail.slice(0, DETAIL_MAX) : null;
+    const detail = opts?.detail ? cutInvocation(opts.detail).slice(0, DETAIL_MAX) : null; // R-Z26: ไม่เก็บอาร์กิวเมนต์ของคำสั่ง Prisma ◂
     await prisma.opsEvent.create({
       data: {
         level,

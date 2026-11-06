@@ -3,7 +3,7 @@
 //   jpeg / png / webp / heic / heif / gif — ตรวจทั้งชนิดที่ประกาศ **และ** magic bytes ของไฟล์จริง (ไม่ตรง = 415) · ไม่รับ svg (สคริปต์ในภาพได้)
 //   เก็บด้วย `uploadFile` (ที่เก็บไฟล์กลาง · kind ATTACHMENT) → คืน `{url, name, kind:"image"}` ไปแนบใน cases/reply
 import { uploadFile } from "@/lib/storage/service";
-import { fail, gate, ok, withRateLimit } from "../../_shared";
+import { fail, gate, ok, withRateLimit, withErrors } from "../../_shared";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const MULTIPART_SLACK = 64 * 1024;
@@ -26,7 +26,7 @@ function sniff(b: Uint8Array): Img | null {
   return null;
 }
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "support-upload", 10);
@@ -55,3 +55,6 @@ export async function POST(req: Request) {
   if (!up.ok) return fail(415, "unsupported", up.error);
   return ok({ url: up.cdnUrl, name: file.name || "image", kind: "image", mimeType: real, size: file.size });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/support/upload POST", POST_);

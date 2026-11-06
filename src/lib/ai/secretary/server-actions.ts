@@ -11,11 +11,11 @@ import { requireTenant } from "@/lib/core/context";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { assertCan, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
 import { aiMemberActor } from "../actor";
-import { executeProposal, rejectProposal } from "../proposals";
+import { executeProposal } from "../proposals";
 import { executePlan, rejectPlan } from "../plans";
 import { listMessages } from "../service";
 import { createTask, describeFrequency, listTasks, deleteTask, updateTask, type Channel, type Frequency, type TaskPatch } from "../scheduled";
-import { aiBridges, wakeOutbox } from "@/lib/modules/crm";
+import { wakeOutbox } from "@/lib/modules/crm";
 import { identityOf, normalizeIdentityPatch, sampleSpeech, secretaryOf, updateSecretary, SECRETARY_DEFAULT, type SecretaryIdentity } from "./secretary";
 import { getAccess, setAccess } from "./access";
 import { closeRoom, getRoom, listRooms, renameRoom, startRoom, type RoomStatus } from "./rooms";
@@ -23,12 +23,12 @@ import { enqueueRoomJob, runRoomJobs, sendRoomMessage } from "./worker";
 import { addMember, listMembers, removeMember } from "./members";
 import { listRules, setRule } from "./approval-gate";
 import { listLog, undoAction } from "./actions";
-import { editProposal, pendingMemories, confirmMemory, rejectMemory, rejectWithNote } from "./teach";
+import { editProposal, pendingMemories, confirmMemory, rejectMemory, rejectFor } from "./teach";
 import { confirmLesson, listLessons, rejectLesson } from "./learn";
 import { frequentInstructions, suggestions } from "./suggest";
 import { inboxCount, inboxForUser } from "./inbox";
 import { quotaStatus } from "./quota";
-import { computeDigest, digestForViewer } from "./digest";
+import { viewerDigest } from "./digest";
 import { getNotifyPrefs, setNotifyPref } from "./notify";
 import * as dto from "./dto";
 import { accessItemsFor, logItemsFor, pendingItemsFor, proposalApprovableBy, roomCardsFor, roomPlansFor } from "./views";
@@ -205,11 +205,9 @@ export async function secRejectProposalAction(proposalId: string, input?: { note
   const w = await webAi();
   const lim = await limited(w, "reject");
   if (lim) return lim;
-  const note = String(input?.note ?? "").trim();
-  if (note) return rejectWithNote(w.conv, proposalId, { note, remember: input?.remember === true ? "RULE" : "JOB" });
-  const crm = await aiBridges.cancelProposalById(w.tenantId, { userId: w.userId, ...w.m }, proposalId);
-  if (crm.handled) return crm.ok ? { ok: true as const } : { ok: false as const, error: "not_pending", message: crm.note };
-  return (await rejectProposal(w.conv, proposalId)) ? { ok: true as const } : nf("ไม่พบข้อเสนอนี้ หรือถูกดำเนินการไปแล้ว");
+  // SEC S3a.1-S2 ▸ R-Z20: ทางเดียวกับแอป (rejectFor · ประตู CRM ด้วยสิทธิ์คนกด · ห้องเลขาทางทั่วไป R-Z13) ◂
+  const r = await rejectFor(w.conv, proposalId, { note: String(input?.note ?? "").trim(), remember: input?.remember === true ? "RULE" : "JOB" });
+  return r.ok ? (r.memoryId ? { ok: true as const, memoryId: r.memoryId } : { ok: true as const }) : { ok: false as const, error: r.error, message: r.message };
 }
 export async function secEditProposalAction(proposalId: string, patch: Record<string, unknown>) {
   const w = await webAi();
@@ -363,8 +361,7 @@ export async function secGetDigestAction() {
   const w = await webAi();
   const lim = await limited(w, "digest", READ);
   if (lim) return lim;
-  const [d, access] = await Promise.all([computeDigest(w.tenantId), getAccess(w.tenantId)]);
-  return digestForViewer(d, w.m, w.userId, access);
+  return viewerDigest(w.tenantId, w.m, w.userId, await getAccess(w.tenantId), new Date()); // SEC S3a.1-S2 ▸ R-Z14 ◂
 }
 
 // ── บทเรียน · ความจำ ──

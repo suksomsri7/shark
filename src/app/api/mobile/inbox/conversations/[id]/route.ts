@@ -8,13 +8,13 @@ import { getLinkedMember, getThread } from "@/lib/modules/chat/service";
 import { listHelpers } from "@/lib/modules/chat/routing";
 import { maskPhone } from "@/lib/modules/member/profile";
 import { contactDto, conversationDto, isoOrNull, messageDto, type InboxConversationDetailDto, type InboxLinkedMemberDto } from "@/lib/mobile/inbox-dto";
-import { ASSIGN, can, convExtras, cursorOf, fail, gate, LINK_CUSTOMER, notFound, parseCursor, READ, REPLY, SET_STATUS, staffNames, systemOf, type RouteCtx } from "../../_shared";
+import { ASSIGN, can, convExtras, cursorOf, fail, gate, LINK_CUSTOMER, notFound, parseCursor, READ, REPLY, SET_STATUS, staffNames, systemOf, type RouteCtx, withErrors } from "../../_shared";
 
 const LIMIT_MAX = 100;
 /** คีย์เดียวกับด่านของ POST …/ai-suggest (`assertChatCan(auth, "chat.ai.suggest")` ของเว็บ) */
 const AI_SUGGEST: AccessQuery = { module: "chat", action: "chat.ai.suggest" };
 
-export async function GET(req: Request, ctx: RouteCtx) {
+async function GET_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [READ]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -56,3 +56,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
     nextBefore: t.messages.length === limit && t.messages[0] ? cursorOf(t.messages[0].createdAt, t.messages[0].id) : null,
   });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("inbox/conversations/[id] GET", GET_);
