@@ -328,7 +328,9 @@ const PATHS: PathDef[] = [
       const hasDraft = lineText.includes("ฉบับร่าง");
       const hasLink = /https?:\/\/\S+/.test(lineText);
       const data = { docs: docs.map((d) => `${d.docType}/${d.status}/${d.docNo ?? "-"}/${d.grandTotal}`), out: out.map((m) => `${m.deliveryStatus}: ${short(m.body, 80)}`), linePush: pushes.length, lineText: short(lineText, 240), amountInLine: hasAmount, docNoInLine: hasNo, draftInLine: hasDraft, linkInLine: hasLink, signed: /Shark|ผู้ช่วย AI/.test(body) };
-      const refOk = hasAmount && (hasNo || hasDraft);
+      // S3a.5 (มติเจ้าของ 7 พ.ย.): ต้องมีเลขที่ใบ (ออกเอกสารตอนส่ง) + ยอด + ลิงก์ /doc/<token> ทุกครั้ง
+      const hasDocLink = /https?:\/\/\S+\/doc\/[A-Za-z0-9_-]{16,}/.test(lineText);
+      const refOk = hasAmount && hasNo && hasDocLink;
       const ok = !!quote && !!sent && pushes.length >= 1 && refOk;
       return {
         ok,
