@@ -244,7 +244,7 @@ try {
     const e2 = await proposals.executeProposal(OWNER_M, { tenantId: tid }, p2.id, { userId: U.owner });
     const out2 = await prisma.chatMessage.findFirst({ where: { tenantId: tid, conversationId: cconv.id, direction: "OUT", clientMessageId: { contains: p2.id } } as never, select: { body: true } }) ?? await prisma.chatMessage.findFirst({ where: { tenantId: tid, conversationId: cconv.id, direction: "OUT" }, orderBy: { createdAt: "desc" }, select: { body: true } });
     const body2 = String(out2?.body ?? "");
-    chk("T5-2", "มีใบ EXECUTED ในห้อง ⇒ อนุมัติ ok · ข้อความ OUT มีเลขที่ใบ + ลิงก์ /r/<token>", e2?.ok === true && body2.includes(`QT-R2-${STAMP}`) && body2.includes(`/r/qcr2tok${STAMP}`), JSON.stringify({ e2, body: body2.slice(0, 200) }));
+    chk("T5-2", "มีใบ EXECUTED ในห้อง ⇒ อนุมัติ ok · ข้อความ OUT มีเลขที่ใบ + ลิงก์ /doc/<token> (ORACLE-EDIT S3a.5)", e2?.ok === true && body2.includes(`QT-R2-${STAMP}`) && body2.includes(`/doc/qcr2tok${STAMP}`), JSON.stringify({ e2, body: body2.slice(0, 200) }));
     // (ค) ใบของห้องอื่น ⇒ ไม่หยิบ
     const r3 = await room("ห้องอื่นมีใบ");
     await executedDoc(r3, `QT-R3-${STAMP}`, `qcr3tok${STAMP}`);
