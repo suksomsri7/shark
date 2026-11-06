@@ -60,7 +60,9 @@ export type StaticProposalKind =
   | "booking_refund_deposit"
   // SEC S3a.1-S2 ▸ R-Z22: ในห้องเลขา คลังความรู้/ลบความจำ = ข้อเสนอ (ไม่เขียนทันที) ◂
   | "kb.save"
-  | "memory.forget";
+  | "memory.forget"
+  // SEC S3a.1-S2 ▸ R-Z34: เปิดเคสแจ้งทีมงานจากห้องบริบทลูกค้า = ข้อเสนอ ◂
+  | "support.open";
 
 // action string ต่อ kind — ต้องตรงกับ assertCan ของปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
 export const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; action: string }> = {
@@ -114,6 +116,7 @@ export const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; ac
   // SEC S3a.1-S2 ▸ R-Z22: kb.save = คีย์เดียวกับ kb_create_article (ปุ่มเพิ่มบทความ) · memory.forget = คีย์ใช้เลขา (สิทธิ์ลบจริงตรวจใน forgetMemory ด้วยตัวผู้อนุมัติ) ◂
   "kb.save": { module: "kb", action: "kb.article.create" },
   "memory.forget": { module: "ai", action: "ai.chat.send" },
+  "support.open": { module: "ai", action: "ai.chat.send" },
 };
 
 export type KindAccess = { module: string; action: string };

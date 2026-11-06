@@ -5,7 +5,8 @@
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import { runRoomJobs, sendRoomMessage } from "@/lib/ai/secretary/worker";
-import { claimClientMessageId, claimFailed, fail, rememberFailed, gate, ID_MAX, idParam, notFound, ok, readBody, runAfter, thrown, withRateLimit, type RouteCtx } from "../../../_shared";
+import { recentDuplicateMessage } from "@/lib/ai/secretary/rooms";
+import { claimClientMessageId, claimFailed, fail, rememberFailed, gate, ID_MAX, idParam, notFound, ok, readBody, runAfter, thrown, withRateLimit, type RouteCtx, withErrors } from "../../../_shared";
 
 /** SEC S3a.1-S1 R-Z5: route นี้รัน worker (โมเดล) ใน `after()` — เพดานของแพลตฟอร์ม · worker หยุดหยิบงานที่ 240 วิ */
 export const maxDuration = 300;
@@ -18,7 +19,7 @@ const Body = z
   })
   .strict();
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const start = Date.now();
   const a = await gate(req);
   if (!a.ok) return a.res;
@@ -43,6 +44,19 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return ok({ ok: true, duplicate: true, messageId, jobId: job?.id ?? null });
     } catch (e) {
       return thrown(e, "rooms.send.duplicate");
+    }
+  }
+  // SEC S3a.1-S2 ▸ R-Z32: ข้อความ USER เดียวกันในห้องนี้ภายใน 10 นาที (กุญแจถูกคืนหลังข้อความเกิด) = duplicate ของครั้งแรก ◂
+  if (claim?.first) {
+    try {
+      const dup = await recentDuplicateMessage(a.c.tenantId, id, a.c.userId, b.v.text);
+      if (dup) {
+        await claim.remember(dup.messageId).catch((e: unknown) => rememberFailed(e, claim, "rooms.send.dup"));
+        return ok({ ok: true, duplicate: true, messageId: dup.messageId, jobId: dup.jobId });
+      }
+    } catch (e) {
+      await claim.release().catch(() => undefined);
+      return thrown(e, "rooms.send.dup");
     }
   }
   let created = false;
@@ -79,3 +93,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
     return thrown(e, "rooms.send");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/rooms/[id]/send POST", POST_);

@@ -95,6 +95,17 @@ export function publicEmailOf(user: Pick<User, "email" | "prefs">): { email: str
 }
 
 /**
+ * SEC S3a.1-S2 ▸ R-Z26/R-Z34: ชื่อที่แสดงของผู้ใช้ — ชื่อ → ส่วนหน้าอีเมล (ยกเว้นอีเมล placeholder ของบัญชีเบอร์โทร = เบอร์) → `fallback`
+ */
+export function publicNameOf(u: { name?: string | null; email?: string | null } | null | undefined, fallback = "สมาชิก"): string {
+  const name = u?.name?.trim();
+  if (name) return name;
+  const email = String(u?.email ?? "");
+  if (!email || isPhonePlaceholderEmail(email)) return fallback;
+  return email.split("@")[0] || fallback;
+}
+
+/**
  * SEC S3a.1-S2 ▸ R-Z27 (L6): hash ของรหัส = HMAC-SHA256 ด้วยคีย์เซิร์ฟเวอร์ (SESSION_SECRET — อ่าน env ตรง ไม่ import env กลาง)
  *   ฐานรั่วอย่างเดียวไล่เดารหัส 6 หลักไม่ได้ (sha256 ล้วนเดาได้ 10⁶ ครั้ง) · ไม่มีคีย์ (สคริปต์ที่ env ไม่ครบ) = sha256 แบบเดิม ◂
  */

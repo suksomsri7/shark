@@ -34,10 +34,19 @@ import { quotaMessage } from "../usage";
 import { NOT_SYSTEM_MESSAGE, roomPushRecipients } from "./members";
 import { notifyUser } from "./notify";
 import { monthKeyBangkok } from "./pack";
+import { ROOM_JOB_GEN, ROOM_JOB_MAX_GENS, attemptsInGen } from "./job-gen";
 
 export const ROOM_JOB_LEASE_MS = 120_000; // 2 นาที (ต่ออายุด้วย heartbeat ระหว่างทำงาน)
 export const ROOM_JOB_HEARTBEAT_MS = 30_000;
 export const ROOM_JOB_MAX_ATTEMPTS = 3;
+// SEC S3a.1-S2 ▸ R-Z33 (RC2 MINOR-2): จำนวนครั้งนับ "ต่อรุ่น" (`./job-gen`) — ops ลองใหม่ = ขึ้นรุ่น ไม่รีเซ็ต attempts (fence ไม่ย้อน) ◂
+/** where ของ attempts ที่ยังลองได้ (ทุกรุ่น) / ที่ลองครบแล้วในรุ่นนั้น */
+function attemptsLeftWhere(): Prisma.AiRoomJobWhereInput {
+  return { OR: Array.from({ length: ROOM_JOB_MAX_GENS }, (_, g) => ({ attempts: { gte: g * ROOM_JOB_GEN, lt: g * ROOM_JOB_GEN + ROOM_JOB_MAX_ATTEMPTS } })) };
+}
+function attemptsExhaustedWhere(): Prisma.AiRoomJobWhereInput {
+  return { OR: Array.from({ length: ROOM_JOB_MAX_GENS }, (_, g) => ({ attempts: { gte: g * ROOM_JOB_GEN + ROOM_JOB_MAX_ATTEMPTS, lt: (g + 1) * ROOM_JOB_GEN } })) };
+}
 /** R-Z4: ตัวเก็บตกรายนาทีหยิบ QUEUED ที่อายุ ≥ 45 วิ เท่านั้น (ทางหลักคือ route/after ที่รันทันที — ไม่แย่งกัน) */
 export const ROOM_JOB_MIN_QUEUED_AGE_MS = 45_000;
 export const ROOM_JOBS_MINUTE_JOB = "secretary.roomJobs";
@@ -85,7 +94,7 @@ function claimableWhere(now: Date, minAgeMs?: number): Prisma.AiRoomJobWhereInpu
   const age = typeof minAgeMs === "number" && minAgeMs > 0 ? minAgeMs : 0;
   return {
     OR: [{ status: "QUEUED", ...(age > 0 ? { createdAt: { lt: new Date(now.getTime() - age) } } : {}) }, { status: "RUNNING", leaseUntil: { lt: now } }],
-    attempts: { lt: ROOM_JOB_MAX_ATTEMPTS },
+    AND: [attemptsLeftWhere()], // R-Z33: ต่อรุ่น ◂
   };
 }
 
@@ -265,11 +274,11 @@ async function processJob(job: AiRoomJob, fence: number, deps: RoomJobDeps): Pro
     return { kind: "done", reply: res.reply }; // DONE เขียนแล้วใน persistGuard
   } catch (e) {
     if (e instanceof RoomJobLostError) return { kind: "lost" };
-    await logOps("WARN", "ai", `secretary.roomJobs: งาน ${job.id} ล้ม (ครั้งที่ ${fence})`, {
+    await logOps("WARN", "ai", `secretary.roomJobs: งาน ${job.id} ล้ม (ครั้งที่ ${attemptsInGen(fence)} · fence ${fence})`, {
       tenantId,
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     }).catch(() => {});
-    if (fence < ROOM_JOB_MAX_ATTEMPTS) {
+    if (attemptsInGen(fence) < ROOM_JOB_MAX_ATTEMPTS) { // R-Z33: นับในรุ่น ◂
       return (await finish({ status: "QUEUED", leaseUntil: null, error: ERR_RETRY }).catch(() => false)) ? { kind: "requeued" } : { kind: "lost" };
     }
     return await fail(ERR_GAVE_UP).catch(() => ({ kind: "lost" }) as Outcome);
@@ -315,7 +324,7 @@ async function pushRoom(job: AiRoomJob, text: string, deps: RoomJobDeps): Promis
  */
 async function reapExhausted(now: Date, deps: RoomJobDeps, ids: string[] | null): Promise<number> {
   const dead = await prisma.aiRoomJob.findMany({
-    where: { status: "RUNNING", leaseUntil: { lt: now }, attempts: { gte: ROOM_JOB_MAX_ATTEMPTS }, ...(ids ? { id: { in: ids } } : {}) },
+    where: { status: "RUNNING", leaseUntil: { lt: now }, AND: [attemptsExhaustedWhere()], ...(ids ? { id: { in: ids } } : {}) }, // R-Z33 ◂
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: RUN_LIMIT_MAX,
   });

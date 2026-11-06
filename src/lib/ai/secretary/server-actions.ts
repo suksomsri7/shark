@@ -18,7 +18,7 @@ import { createTask, describeFrequency, listTasks, deleteTask, updateTask, type 
 import { wakeOutbox } from "@/lib/modules/crm";
 import { identityOf, normalizeIdentityPatch, sampleSpeech, secretaryOf, updateSecretary, SECRETARY_DEFAULT, type SecretaryIdentity } from "./secretary";
 import { getAccess, setAccess } from "./access";
-import { closeRoom, getRoom, listRooms, renameRoom, startRoom, type RoomStatus } from "./rooms";
+import { closeRoom, getRoom, listRooms, recentDuplicateRoom, renameRoom, startRoom, type RoomStatus } from "./rooms";
 import { runRoomJobs, sendRoomMessage } from "./worker";
 import { logOps } from "@/lib/core/ops";
 import { claimNewRoom } from "@/app/api/mobile/secretary/_shared"; // SEC S3a.1-S1 R-Z11: กุญแจกันเปิดห้องซ้ำตัวเดียวกับ route
@@ -136,6 +136,14 @@ export async function secStartRoomAction(input: { instruction: string; systems?:
       const room = roomId ? await getRoom(w.conv, roomId) : null;
       if (!room || room.startedById !== w.userId) return { ok: false as const, error: "pending", message: "กำลังเปิดห้องงานนี้อยู่ ลองใหม่อีกครั้ง" };
       return { ok: true as const, duplicate: true as const, roomId: room.id, conversationId: room.conversationId };
+    }
+    // SEC S3a.1-S2 ▸ R-Z32: กุญแจถูกคืนหลังห้องเกิด ⇒ ห้องเดิมที่คำสั่งแรกเท่ากันภายใน 10 นาที = duplicate (ทางเดียวกับ route) ◂
+    if (claim?.first) {
+      const dup = await recentDuplicateRoom(w.tenantId, w.userId, String(input?.instruction ?? ""));
+      if (dup) {
+        await claim.remember(dup.roomId).catch(() => claim?.release().catch(() => undefined));
+        return { ok: true as const, duplicate: true as const, roomId: dup.roomId, conversationId: dup.conversationId };
+      }
     }
     const r = await startRoom(w.conv, { instruction: String(input?.instruction ?? ""), systems: input?.systems, context: input?.context });
     if (!r.ok) {

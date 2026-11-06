@@ -2443,6 +2443,10 @@ const supportOpenCase: AiTool = {
     const detail = String(a.detail ?? "").trim();
     if (!subject) return JSON.stringify({ error: "ต้องระบุหัวข้อปัญหา" });
     if (!detail) return JSON.stringify({ error: "ต้องระบุรายละเอียดปัญหา" });
+    // SEC S3a.1-S2 ▸ R-Z34 (RC1 M1): ห้องที่มีบริบทลูกค้า ⇒ เปิดเคสเป็นข้อเสนอ `support.open` (ข้อความลูกค้าอยู่ใน prompt — ไม่ให้ส่งออกนอกร้านเอง) ◂
+    if ((await secRoomOf(ctx)).customer) {
+      return propose(ctx, "support.open", `แจ้งทีมงาน SHARK: ${subject}`.slice(0, 300), { subject: subject.slice(0, 200), detail: detail.slice(0, 4000) });
+    }
     const { caseNo } = await openCaseFromAi(
       { tenantId: ctx.tenantId },
       { userId: "ai-assistant", conversationId: ctx.conversationId, subject, body: detail },

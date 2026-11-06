@@ -205,13 +205,13 @@ export async function rememberFailed(e: unknown, claim: { release: () => Promise
   } catch (re) {
     releaseError = re;
   }
-  const detail = `${e instanceof Error ? (e.stack ?? e.message) : String(e)}${releaseError ? `\nrelease: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}` : ""}`;
+  const detail = `${errDetail(e)}${releaseError ? ` · release: ${errDetail(releaseError)}` : ""}`; // SEC S3a.1-S2 R-Z34: ไม่เก็บ stack ◂
   await logOps("WARN", "secretary-api", `${where}: จดกุญแจกันส่งซ้ำไม่สำเร็จ (ของเกิดแล้ว · คืน claim)`, { detail }).catch(() => undefined);
 }
 
 /** R-Z11 ▸ คืน/จดกุญแจล้ม = จดเหตุ (logOps) แล้วตอบ 500 ไทย — ไม่กลืนเงียบ ◂ */
 export async function claimFailed(e: unknown, where: string): Promise<Response> {
-  await logOps("WARN", "secretary-api", `${where}: จัดการกุญแจกันส่งซ้ำไม่สำเร็จ`, { detail: e instanceof Error ? (e.stack ?? e.message) : String(e) }).catch(() => undefined);
+  await logOps("WARN", "secretary-api", `${where}: จัดการกุญแจกันส่งซ้ำไม่สำเร็จ`, { detail: errDetail(e) }).catch(() => undefined); // SEC S3a.1-S2 R-Z34 ◂
   return fail(500, "server_error", "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง");
 }
 

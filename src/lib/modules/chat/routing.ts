@@ -12,6 +12,7 @@
 // 🔴 แจ้งเตือนเรียกนอกทรานแซกชันเสมอ (network call) · `now` ฉีดได้ทุกตัวที่ขึ้นกับเวลา
 
 import { ChatChannelType } from "@prisma/client";
+import { publicNameOf } from "@/lib/core/phone-auth";
 // `after()` = ตอบคำขอไปก่อน แล้วค่อยทำงานที่เหลือ (นอกคำขอโยน ⇒ ทำทันที) — แบบเดียวกับ S1.22 after-hours
 import { after } from "next/server";
 import type { ChatRoutingRule, Role } from "@prisma/client";
@@ -64,7 +65,7 @@ function canReply(m: MembershipCtx, unitId: string | null): boolean {
 }
 
 const nameOf = (u: { name: string | null; email: string } | null | undefined): string =>
-  u?.name?.trim() || (u?.email ?? "").split("@")[0] || "ทีมงาน";
+  publicNameOf(u, "ทีมงาน"); // SEC S3a.1-S2 R-Z34: placeholder ⇒ ไม่โชว์เบอร์ ◂
 
 /** คนที่อยู่ในเวรตอนนี้ (แถว ChatShift ที่ยังไม่ปิด) */
 export async function onDutyUsers(tenantId: string): Promise<string[]> {

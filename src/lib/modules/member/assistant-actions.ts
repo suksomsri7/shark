@@ -14,6 +14,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { requireTenant } from "@/lib/core/context";
 import { safeReason } from "@/lib/core/errors";
 import { sendMessage } from "@/lib/ai/service";
+import { isSecretaryRoomConversation } from "@/lib/ai/secretary/rooms"; // SEC S3a.1-S2 R-Z34 ◂
 import { aiMemberActor } from "@/lib/ai/actor";
 import { executeProposal, rejectProposal } from "@/lib/ai/proposals";
 import { prisma } from "./db";
@@ -59,6 +60,10 @@ export async function sendMemberAssistantAction(
     const body = String(text ?? "").trim();
     if (!body) return { ok: false, reason: "พิมพ์คำถามก่อนกดส่ง" };
     if (body.length > TEXT_MAX) return { ok: false, reason: `คำถามยาวได้ไม่เกิน ${TEXT_MAX.toLocaleString("th-TH")} ตัวอักษร` };
+    // SEC S3a.1-S2 ▸ R-Z34 (RC2 MINOR-5): ห้องเลขา (AiRoom) ใช้ได้เฉพาะเส้นห้อง (คิว · ตัวนับงาน · ด่านอนุมัติ) — แบบเดียวกับ chat/send R-Z9 ◂
+    if (conversationId && (await isSecretaryRoomConversation(tenantId, conversationId))) {
+      return { ok: false, reason: "ห้องนี้เป็นห้องงานของเลขา — ส่งข้อความจากหน้าห้องงานแทน" };
+    }
     const current = conversationId ? await assistantState(tenantId, conversationId, aiActor) : null;
     const used: string[] = [];
     const res = await sendMessage(

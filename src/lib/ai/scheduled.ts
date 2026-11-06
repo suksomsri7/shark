@@ -24,6 +24,7 @@ import { resolveProvider, type AiProvider } from "./provider";
 import { dayKeyBangkok } from "./rules";
 import { FREE_PACK } from "./secretary/pack";
 import { isDue as ownedTaskDue, runOwnedTask } from "./secretary/scheduled";
+import { bkkParts } from "@/lib/core/quiet-hours"; // SEC S3a.1-S2 R-Z31 ◂
 import type { RoomJobDeps } from "./secretary/worker";
 
 type Ctx = { tenantId: string };
@@ -247,16 +248,45 @@ export async function runScheduledTasks(
   const hourBkk = new Date(now.getTime() + 7 * 3_600_000).getUTCHours();
   const today = dayKeyBangkok(now);
 
-  const tasks = await prisma.aiScheduledTask.findMany({
-    where: {
-      active: true,
-      // SEC S3a.1-S1 ▸ R-Z6: งานของคนตั้ง = ชั่วโมงไทย ≥ hourBkk (ตามหลังได้) · แถวเดิม (ไม่มีเจ้าของ) = ชั่วโมงตรงตัวเหมือนเดิม ◂
-      AND: [{ OR: [{ ownerUserId: null, hourBkk }, { ownerUserId: { not: null }, hourBkk: { lte: hourBkk } }] }],
-      OR: [{ lastRunDay: null }, { lastRunDay: { not: today } }],
-    },
-    orderBy: { createdAt: "asc" },
-    take: MAX_TENANT_TASKS_PER_RUN,
-  });
+  // SEC S3a.1-S1 ▸ R-Z6: งานของคนตั้ง = ชั่วโมงไทย ≥ hourBkk (ตามหลังได้) · แถวเดิม (ไม่มีเจ้าของ) = ชั่วโมงตรงตัวเหมือนเดิม ◂
+  // SEC S3a.1-S2 ▸ R-Z31 (RC2 MAJOR-1): สอง query แยกกลุ่ม · take ต่อกลุ่ม · งานของคนตั้งกรอง "วันที่ต้องรัน" ใน SQL ก่อน take
+  //   (DAILY/null ∨ WEEKLY ∧ days มีวันในสัปดาห์ไทย ∨ MONTHLY ∧ days มีวันที่ไทย) — งานที่ไม่ถึงวันไม่กินที่ของงานที่ถึงวัน · เต็ม take = logOps ◂
+  const notToday = { OR: [{ lastRunDay: null }, { lastRunDay: { not: today } }] };
+  const p = bkkParts(now);
+  const dow = new Date(Date.UTC(p.y, p.mo, p.day)).getUTCDay();
+  const [legacy, owned] = await Promise.all([
+    prisma.aiScheduledTask.findMany({
+      where: { active: true, ownerUserId: null, hourBkk, ...notToday },
+      orderBy: { createdAt: "asc" },
+      take: MAX_TENANT_TASKS_PER_RUN,
+    }),
+    prisma.aiScheduledTask.findMany({
+      where: {
+        active: true,
+        ownerUserId: { not: null },
+        hourBkk: { lte: hourBkk },
+        AND: [
+          notToday,
+          {
+            OR: [
+              { frequency: null },
+              { frequency: "DAILY" },
+              { frequency: "WEEKLY", days: { has: dow } },
+              { frequency: "MONTHLY", days: { has: p.day } },
+            ],
+          },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+      take: MAX_TENANT_TASKS_PER_RUN,
+    }),
+  ]);
+  for (const [name, rows] of [["legacy", legacy], ["owned", owned]] as const) {
+    if (rows.length >= MAX_TENANT_TASKS_PER_RUN) {
+      await logOps("WARN", "ai", `scheduled: งานประจำกลุ่ม ${name} ถึงเพดาน ${MAX_TENANT_TASKS_PER_RUN} ต่อรอบ — ส่วนที่เหลือรอรอบถัดไป`, { detail: JSON.stringify({ hourBkk, today }) }).catch(() => {});
+    }
+  }
+  const tasks = [...owned, ...legacy];
 
   let ran = 0;
   // SEC S3a.1-S1 ▸ R-Z6: รอบที่ 1 = งานของคนตั้ง (claim + startRoom(+job) เท่านั้น · ไม่เรียกโมเดล) → ส่ง jobId ให้ผู้เรียก (route hourly

@@ -3,6 +3,7 @@
 // ในห้องเลขา (AiRoom) `forget_fact` ไม่ลบทันที — เสนอ `{ ids }` แล้วคนอนุมัติกด · ตอนลงมือลบด้วย "สิทธิ์ของผู้อนุมัติ"
 //   (`forgetMemory` ตัวเดียวกับเครื่องมือเดิม: ของตัวเอง · OWNER ลบความจำของร้านได้) — ลบไม่ได้สักแถว ⇒ throw ไทย (ข้อเสนอ FAILED)
 import type { MembershipCtx } from "@/lib/core/rbac";
+import { tenantDb } from "@/lib/core/db";
 import { forgetMemory } from "../memory";
 
 const IDS_MAX = 20;
@@ -16,4 +17,20 @@ export async function dispatchMemoryForget(tenantId: string, payload: Record<str
   for (const id of ids) if (await forgetMemory(ctx, id)) removed += 1;
   if (removed === 0) throw new Error("ลบความจำไม่ได้ — ความจำถูกลบไปแล้ว หรือเป็นความจำของร้านที่เจ้าของร้านเท่านั้นลบได้");
   return `ลบความจำแล้ว ${removed.toLocaleString("th-TH")} เรื่อง`;
+}
+
+/**
+ * SEC S3a.1-S2 ▸ R-Z34 (RC1 M1): ลงมือข้อเสนอ `support.open` — เปิดเคสแจ้งทีมงานผูกห้องของข้อเสนอ · ผู้เปิด = ผู้อนุมัติ
+ *   (ห้องบริบทลูกค้าไม่ส่งเรื่องออกนอกร้านเองจากข้อความที่ลูกค้าพิมพ์) · ลงมือครั้งเดียว (executeProposal claim แล้ว)
+ */
+export async function dispatchSupportOpen(tenantId: string, proposalId: string, payload: Record<string, unknown>, userId: string | null | undefined): Promise<string> {
+  if (!userId) throw new Error("เปิดเรื่องแจ้งทีมงานต้องให้คนในร้านกดอนุมัติจากแอปหรือเว็บ");
+  const subject = String(payload.subject ?? "").trim().slice(0, 200);
+  const detail = String(payload.detail ?? "").trim().slice(0, 4000);
+  if (!subject || !detail) throw new Error("ข้อเสนอนี้ไม่มีหัวข้อหรือรายละเอียดของเรื่อง");
+  const row = await tenantDb({ tenantId }).aiProposal.findFirst({ where: { id: proposalId }, select: { conversationId: true } });
+  if (!row) throw new Error("ไม่พบข้อเสนอนี้");
+  const { openCaseFromAi } = await import("@/lib/support/service");
+  const { caseNo } = await openCaseFromAi({ tenantId }, { userId, conversationId: row.conversationId, subject, body: detail });
+  return `เปิดเรื่องแจ้งทีมงานแล้ว (เคส #${caseNo}) — ทีมงานจะตอบกลับในห้องนี้`;
 }

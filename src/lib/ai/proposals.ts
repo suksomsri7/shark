@@ -1431,6 +1431,8 @@ async function dispatch(
   if (kind === "booking_refund_deposit") return dispatchBookingRefundDeposit(tenantId, payload, userId, out);
   // SEC S3a.1-S2 ▸ R-Z22: ลบความจำด้วยสิทธิ์ของผู้อนุมัติ (forgetMemory ตรวจว่าเขาลบแถวนั้นได้) ◂
   if (kind === "memory.forget") return (await import("./secretary/memory-proposals")).dispatchMemoryForget(tenantId, payload, m, userId);
+  // SEC S3a.1-S2 ▸ R-Z34: เปิดเคสแจ้งทีมงานหลังคนอนุมัติ (ผู้เปิด = ผู้อนุมัติ · ห้องเดิมของข้อเสนอ) ◂
+  if (kind === "support.open") return (await import("./secretary/memory-proposals")).dispatchSupportOpen(tenantId, proposalId, payload, userId);
 
   if (kind === "automation_create_rule") {
     const p = payload as AutomationCreateRulePayload;

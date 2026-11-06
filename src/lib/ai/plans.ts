@@ -12,6 +12,7 @@ import { type MembershipCtx } from "@/lib/core/rbac";
 import type { Prisma } from "@prisma/client";
 import { closedRoomNote, DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
 import type { ConvCtx } from "./conversation-owner";
+import { currentToolCallKey, toolCallRowId } from "./tool-call-key"; // SEC S3a.1-S2 R-Z34 ◂
 import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
 import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/members";
 
@@ -78,8 +79,16 @@ export async function createPlan(
     payload: (s.payload ?? {}) as Record<string, unknown>,
     status: "PENDING",
   }));
+  // SEC S3a.1-S2 ▸ R-Z34 (RC2 MINOR-4): กุญแจ tool call เดียวกับข้อเสนอ (R-Z7) — เทิร์นห้องเลขาที่รันซ้ำ = แผนเดิม · ไม่มีกุญแจ = cuid เดิม ◂
+  const tcKey = currentToolCallKey();
+  const fixedId = tcKey ? toolCallRowId("tp", [ctx.tenantId, input.conversationId, tcKey, "plan"]) : null;
+  if (fixedId) {
+    const existing = await tenantDb(ctx).aiPlan.findFirst({ where: { id: fixedId }, select: { id: true } });
+    if (existing) return { id: existing.id };
+  }
   const row = await tenantDb(ctx).aiPlan.create({
     data: {
+      ...(fixedId ? { id: fixedId } : {}),
       tenantId: ctx.tenantId,
       conversationId: input.conversationId,
       title: String(input.title ?? "").trim() || "แผนงาน",
@@ -87,6 +96,12 @@ export async function createPlan(
       stepsJson: stepsJson as unknown as Prisma.InputJsonValue,
       expiresAt: new Date(Date.now() + TTL_MS),
     },
+  }).catch(async (e: unknown) => {
+    if (fixedId && (e as { code?: unknown } | null)?.code === "P2002") {
+      const again = await tenantDb(ctx).aiPlan.findFirst({ where: { id: fixedId }, select: { id: true } });
+      if (again) return again;
+    }
+    throw e;
   });
   return { id: row.id };
 }

@@ -10,6 +10,7 @@
 // 🔴 `AiRoom.startedById` = `conversationCreatorOf(conversationId).id` เสมอ (denormalize — ข้อสอบ S1.4 ตรวจ)
 
 import type { AiRoom, Prisma } from "@prisma/client";
+import { publicNameOf } from "@/lib/core/phone-auth";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conversation-owner";
@@ -309,7 +310,7 @@ export async function listRooms(
     prisma.user.findMany({ where: { id: { in: starterIds } }, select: { id: true, name: true, email: true } }),
     db.aiMessage.groupBy({ by: ["conversationId"], where: { conversationId: { in: convIds }, role: "ASSISTANT", ...NOT_SYSTEM_MESSAGE }, _max: { createdAt: true } }), // R-S1.6b: ข้อความระบบไม่นับ unread
   ]);
-  const nameOf = new Map(users.map((u) => [u.id, u.name?.trim() || u.email.split("@")[0] || "สมาชิก"]));
+  const nameOf = new Map(users.map((u) => [u.id, publicNameOf(u)])); // SEC S3a.1-S2 R-Z34: placeholder ⇒ "สมาชิก" ◂
   const lastReplyOf = new Map(lastReplies.map((m) => [m.conversationId, m._max.createdAt]));
 
   return rows.map((r) => {
@@ -374,4 +375,47 @@ export async function renameRoom(ctx: ConvCtx, roomId: string, title: string): P
     prisma.aiConversation.updateMany({ where: { id: row.conversationId, tenantId }, data: { title: clean } }),
   ]);
   return r.count > 0;
+}
+
+// ─── SEC S3a.1-S2 ▸ R-Z32 (RC2 MINOR-1 · Q3): ตาข่ายกันห้อง/ข้อความซ้ำเมื่อกุญแจ cmid ถูกคืนหลังสร้างแล้ว (rememberFailed) ───
+export const DUPLICATE_WINDOW_MS = 10 * 60_000;
+
+/**
+ * ห้องที่ผู้ใช้นี้เพิ่งเปิด (≤ 10 นาที) ที่ข้อความ USER แรกเท่ากับคำสั่งนี้ (trim) — มี = ห้องเดิม (ไม่เปิดห้องที่ 2 · ไม่นับงานซ้ำ) · ไม่มี = null
+ *   ใช้เฉพาะเมื่อมี clientMessageId และ claim ได้ `first:true` (ผู้เรียกตัดสิน)
+ */
+export async function recentDuplicateRoom(tenantId: string, userId: string, instruction: string, now: Date = new Date()): Promise<{ roomId: string; conversationId: string } | null> {
+  const text = typeof instruction === "string" ? instruction.trim() : "";
+  if (!tenantId || !userId || !text) return null;
+  const rooms = await tenantDb({ tenantId }).aiRoom.findMany({
+    where: { startedById: userId, createdAt: { gte: new Date(now.getTime() - DUPLICATE_WINDOW_MS) } },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: { id: true, conversationId: true },
+  });
+  for (const r of rooms) {
+    const first = await tenantDb({ tenantId }).aiMessage.findFirst({
+      where: { conversationId: r.conversationId, role: "USER" },
+      orderBy: { createdAt: "asc" },
+      select: { content: true },
+    });
+    if (first?.content === text) return { roomId: r.id, conversationId: r.conversationId };
+  }
+  return null;
+}
+
+/** ข้อความ USER เดียวกันของผู้ใช้นี้ในห้องเดียวกัน ≤ 10 นาที (ส่งซ้ำหลังกุญแจถูกคืน) — มี = {messageId, jobId} ของครั้งแรก · ไม่มี = null */
+export async function recentDuplicateMessage(tenantId: string, roomId: string, userId: string, text: string, now: Date = new Date()): Promise<{ messageId: string; jobId: string | null } | null> {
+  const body = typeof text === "string" ? text.trim() : "";
+  if (!tenantId || !roomId || !userId || !body) return null;
+  const room = await tenantDb({ tenantId }).aiRoom.findFirst({ where: { id: roomId }, select: { conversationId: true } });
+  if (!room) return null;
+  const msg = await tenantDb({ tenantId }).aiMessage.findFirst({
+    where: { conversationId: room.conversationId, role: "USER", authorUserId: userId, content: body, createdAt: { gte: new Date(now.getTime() - DUPLICATE_WINDOW_MS) } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (!msg) return null;
+  const job = await tenantDb({ tenantId }).aiRoomJob.findFirst({ where: { messageId: msg.id, roomId }, select: { id: true } });
+  return { messageId: msg.id, jobId: job?.id ?? null };
 }

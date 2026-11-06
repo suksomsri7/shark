@@ -3,14 +3,14 @@
 import { z } from "zod";
 import { createTenantFromApp, TenantRuleError } from "@/lib/mobile/tenants";
 import { runRoomJobs } from "@/lib/ai/secretary/worker";
-import { fail, ok, readBody, runAfter, thrown, userGate, withRateLimit } from "../../_shared";
+import { fail, ok, readBody, runAfter, thrown, userGate, withRateLimit, withErrors } from "../../_shared";
 
 /** SEC S3a.1-S1 R-Z3/R-Z5: ห้องแรกของร้านมีงานแล้ว — route รัน worker ของงานนั้นใน `after()` (เพดานแพลตฟอร์ม · deadline 240 วิ) */
 export const maxDuration = 300;
 
 const Body = z.object({ name: z.string().max(200), type: z.string().max(40).optional(), systems: z.array(z.string().max(40)).max(20).optional() }).strict();
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   const a = await userGate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(a.userId, "tenant-create", 5);
@@ -28,3 +28,6 @@ export async function POST(req: Request) {
     return thrown(e, "tenants.create");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/tenants/create POST", POST_);

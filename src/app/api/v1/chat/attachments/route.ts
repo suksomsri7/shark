@@ -6,13 +6,14 @@
 // เพื่อให้ retry ข้อความได้โดยไม่ต้องอัปไฟล์ซ้ำ)
 //
 // ⚠️ เพดาน 10MB (ของเดิมทั้งระบบ 5MB) — SiamDive ใช้ 10MB อยู่แล้ว ลดลง = ผู้ใช้เดิมส่งไม่ผ่าน
-// ⚠️ ชนิดไฟล์ครอบ heic/heif/doc/docx/xlsx/txt เพิ่มจากของเดิม (storage/service.ts)
+// ⚠️ ชนิดไฟล์ครอบ heic/heif/doc/docx/xlsx เพิ่มจากของเดิม · SEC S3a.1-S2 R-Z34: ตรวจ magic bytes (`storage/sniff.ts`) — ไม่รับ svg/txt
 import {
   authenticateChatRequest,
   chatJson,
   chatPreflight,
 } from "@/lib/modules/chat/public-auth";
 import { imageSize } from "@/lib/storage/image-size";
+import { sniffedAttachmentType } from "@/lib/storage/sniff";
 import { CHAT_ATTACHMENT_MAX_BYTES, uploadFile } from "@/lib/storage/service";
 
 export async function OPTIONS(req: Request): Promise<Response> {
@@ -43,7 +44,9 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const data = new Uint8Array(await file.arrayBuffer());
-  const contentType = (file.type || "application/octet-stream").split(";")[0]!.trim().toLowerCase();
+  // SEC S3a.1-S2 ▸ R-Z34 (RC1 M2): ตรวจ magic bytes ตัวเดียวกับแอป — svg/txt/ไฟล์ปลอมชนิด = 415 · เก็บชนิดที่ตรวจได้ ◂
+  const contentType = sniffedAttachmentType(data, file.type || "application/octet-stream");
+  if (!contentType) return chatJson(auth, { error: "แนบได้เฉพาะรูป (JPG · PNG · WEBP · HEIC · GIF) · PDF · ไฟล์เสียง · เอกสาร Word/Excel — ไฟล์นี้ไม่ตรงกับชนิดที่รองรับ" }, 415);
   const up = await uploadFile(
     { tenantId: auth.tenantId },
     {

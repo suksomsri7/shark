@@ -2,11 +2,11 @@
 //   POST = (clientMessageId ⇒ claim กันซ้ำ R-S1.14a) → `startRoom` (ตัวนับงาน + job ใน tx เดียว · S3a.1-S1 R-Z3) → worker ของงานนี้ใน `after()`
 //   (R-K8 · R-Z5: `jobIds:[jobId]` + deadline 240 วิ จากต้นคำขอ · ที่ไม่ทัน = ตัวเก็บตกรายนาที)
 import { z } from "zod";
-import { listRooms, startRoom, type RoomStatus } from "@/lib/ai/secretary/rooms";
+import { listRooms, recentDuplicateRoom, startRoom, type RoomStatus } from "@/lib/ai/secretary/rooms";
 import { tenantDb } from "@/lib/core/db";
 import { runRoomJobs } from "@/lib/ai/secretary/worker";
 import { roomCardsFor } from "@/lib/ai/secretary/views";
-import { claimFailed, claimNewRoom, rememberFailed, cursorOf, fail, gate, ID_MAX, ok, pairCursor, readBody, runAfter, takeOf, thrown, withRateLimit } from "../_shared";
+import { claimFailed, claimNewRoom, rememberFailed, cursorOf, fail, gate, ID_MAX, ok, pairCursor, readBody, runAfter, takeOf, thrown, withRateLimit, withErrors } from "../_shared";
 
 /** SEC S3a.1-S1 R-Z5: route นี้รัน worker (โมเดล) ใน `after()` — เพดานของแพลตฟอร์ม · worker หยุดหยิบงานที่ 240 วิ */
 export const maxDuration = 300;
@@ -24,7 +24,7 @@ const PostBody = z
   })
   .strict();
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const q = new URL(req.url).searchParams;
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
   return ok({ items: await roomCardsFor(a.c.tenantId, rows), nextBefore: rows.length === take && last ? cursorOf(last.updatedAt, last.id) : null });
 }
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   const start = Date.now();
   const a = await gate(req);
   if (!a.ok) return a.res;
@@ -65,6 +65,19 @@ export async function POST(req: Request) {
     const room = roomId ? await tenantDb({ tenantId: a.c.tenantId }).aiRoom.findFirst({ where: { id: roomId, startedById: a.c.userId }, select: { id: true, conversationId: true } }) : null;
     if (!room) return fail(409, "pending", "กำลังเปิดห้องงานนี้อยู่ ลองใหม่อีกครั้ง");
     return ok({ duplicate: true, roomId: room.id, conversationId: room.conversationId });
+  }
+  // SEC S3a.1-S2 ▸ R-Z32: กุญแจถูกคืนหลังห้องเกิด (rememberFailed) ⇒ ครั้งถัดไปได้ first:true — ห้องเดิมที่คำสั่งแรกเท่ากันภายใน 10 นาที = duplicate ◂
+  if (claim?.first) {
+    try {
+      const dup = await recentDuplicateRoom(a.c.tenantId, a.c.userId, input.instruction);
+      if (dup) {
+        await claim.remember(dup.roomId).catch((e: unknown) => rememberFailed(e, claim, "rooms.post.dup"));
+        return ok({ duplicate: true, roomId: dup.roomId, conversationId: dup.conversationId });
+      }
+    } catch (e) {
+      await claim.release().catch(() => undefined);
+      return thrown(e, "rooms.post.dup");
+    }
   }
   let created = false; // N1: ห้องเกิดแล้ว ⇒ ห้ามคืน claim (retry ต้องได้ห้องเดิม ไม่ใช่ห้องที่สอง)
   try {
@@ -101,3 +114,7 @@ export async function POST(req: Request) {
     return thrown(e, "rooms.post");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/rooms GET", GET_);
+export const POST = withErrors("secretary/rooms POST", POST_);

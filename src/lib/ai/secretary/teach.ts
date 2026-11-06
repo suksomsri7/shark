@@ -118,14 +118,31 @@ export async function rejectFor(
     return { ok: false, error: "not_pending", message: r.note || MSG.not_pending };
   }
   if (!note) return { ok: true };
+  // SEC S3a.1-S2 ▸ R-Z34 (RC1 L3): ทาง CRM+note = ผลเดียวกับทางทั่วไป — บันทึกเหตุผล · ข้อความ "🔁 ตีกลับ" ในบทสนทนา (ถ้าเป็นบทสนทนาของผู้ช่วย) ·
+  //   recordOutcome · กติกา (RULE) + noteLesson ◂
+  const name = await displayNameOf(actor.userId);
   await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({ where: { id: pid, status: "REJECTED" }, data: { resultNote: `ตีกลับ: ${note}` } });
+  const conv = await tenantDb({ tenantId: ctx.tenantId }).aiConversation.findFirst({ where: { id: raw.conversationId }, select: { id: true } });
+  if (conv) {
+    await prisma.aiMessage
+      .create({ data: { tenantId: ctx.tenantId, conversationId: conv.id, role: "ASSISTANT", content: `🔁 ${name} ตีกลับ: ${note}`, tokensIn: 0, tokensOut: 0, authorUserId: SYSTEM_AUTHOR } })
+      .catch((e: unknown) => logOps("WARN", "ai", "secretary.teach: เขียนข้อความตีกลับไม่สำเร็จ", { tenantId: ctx.tenantId, detail: String(e).slice(0, 300) }).catch(() => {}));
+  }
+  await recordOutcome(ctx.tenantId, { proposalId: pid, conversationId: raw.conversationId, kind: raw.kind, outcome: "REJECTED", note, before: isRec(raw.payload) ? raw.payload.input : undefined });
   if (input?.remember !== "RULE") return { ok: true };
+  let memoryId: string | undefined;
   try {
-    return { ok: true, memoryId: (await rememberFact(ctx, note, { pending: !isOwner(actor) })).id };
+    memoryId = (await rememberFact(ctx, note, { pending: !isOwner(actor) })).id;
   } catch (e) {
     await logOps("WARN", "ai", "secretary.teach: จดกติกาจากการตีกลับไม่สำเร็จ", { tenantId: ctx.tenantId, detail: String(e).slice(0, 300) }).catch(() => {});
-    return { ok: true };
   }
+  try {
+    const summary = (await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id: pid }, select: { summary: true } }))?.summary ?? "";
+    await noteLesson(ctx.tenantId, { kind: raw.kind, pattern: note, example: summary, sourceRoomId: null, sourceUserId: actor.userId });
+  } catch (e) {
+    await logOps("WARN", "ai", "secretary.teach: บันทึกบทเรียนไม่สำเร็จ", { tenantId: ctx.tenantId, detail: String(e).slice(0, 300) }).catch(() => {});
+  }
+  return memoryId ? { ok: true, memoryId } : { ok: true };
 }
 
 // ─────────────────────────────── ตีกลับพร้อมเหตุผล ───────────────────────────────
