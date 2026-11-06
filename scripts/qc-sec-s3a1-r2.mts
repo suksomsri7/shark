@@ -94,6 +94,53 @@ const actor = () => ({ kind: "member" as const, tenantId: tid, userId: U.owner, 
 const ctxOf = (conversationId?: string) => ({ tenantId: tid, actor: actor(), ...(conversationId ? { conversationId } : {}) });
 
 let residue = 0;
+
+/**
+ * ระบาย event `pos.sale.paid` ของบิลเดียว ด้วย lease แบบ `drainOnce` (เหมือน `drainTenant` ใน qc-sec-real.mts)
+ *   claim = updateMany เงื่อนไข PENDING ∧ availableAt ≤ now · สำเร็จ ⇒ เรียก consumer เดียวกับผลิตภัณฑ์ แล้วปิด DONE แบบมีเงื่อนไข
+ *   claim ไม่ได้ (ตัวระบายในโพรเซสของผลิตภัณฑ์ถือ lease/ทำไปแล้ว) ⇒ รอให้ event พ้น PENDING ≤ 10 วิ
+ *   (เดิมเรียก onPosSalePaid ตรง ⇒ แข่งกับตัวระบายที่ scheduleDrain ปลุกหลัง commit · CRASH เป็นครั้งคราว)
+ */
+async function drainSalePaid(saleId: string): Promise<AnyMod> {
+  const key = `PosSale#${saleId}#PAID`;
+  const evtOf = () => prisma.outboxEvent.findFirst({ where: { tenantId: tid, type: "pos.sale.paid", idempotencyKey: key }, select: { id: true, status: true, availableAt: true, attempts: true, lastError: true, payload: true, systemId: true, unitId: true, tenantId: true, type: true } });
+  const evt = await evtOf();
+  if (!evt) return { path: "no-event" };
+  let path = "already-done";
+  if (evt.status === "PENDING") {
+    const lease = new Date(Date.now() + 60_000);
+    const claim = await prisma.outboxEvent.updateMany({ where: { id: evt.id, status: "PENDING", availableAt: { lte: new Date() } }, data: { availableAt: lease } });
+    if (claim.count === 1) {
+      path = "claimed";
+      const { consumers } = (await import("@/lib/outbox-consumers")) as AnyMod;
+      const handler = consumers["pos.sale.paid"] as (e: Record<string, unknown>) => Promise<void>;
+      try {
+        await handler({ id: evt.id, tenantId: evt.tenantId, type: evt.type, payload: evt.payload, systemId: evt.systemId, unitId: evt.unitId });
+        await prisma.outboxEvent.updateMany({ where: { id: evt.id, status: "PENDING" }, data: { status: "DONE", processedAt: new Date(), lastError: null } });
+      } catch (e) {
+        await prisma.outboxEvent.updateMany({ where: { id: evt.id, status: "PENDING", availableAt: lease }, data: { attempts: { increment: 1 }, lastError: errMsg(e) } });
+        return { path: "claimed-error", error: errMsg(e) };
+      }
+    } else {
+      path = "waited";
+      for (let i = 0; i < 20; i++) { const cur = await evtOf(); if (cur && cur.status !== "PENDING") break; await new Promise((r) => setTimeout(r, 500)); }
+    }
+  }
+  const end = await evtOf();
+  return { path, status: end?.status, attempts: end?.attempts, lastError: end?.lastError ?? null };
+}
+
+/** รายละเอียด error ทั้งก้อนในบรรทัดเดียว (name · message · code · meta · stack) — ให้ chain ที่ grep ทีละบรรทัดจับได้ */
+function errLine(e: unknown): string {
+  if (e instanceof Error) {
+    const x = e as Error & { code?: unknown; meta?: unknown };
+    let meta = ""; try { meta = x.meta === undefined ? "" : JSON.stringify(x.meta); } catch { meta = String(x.meta); }
+    return [`name=${x.name}`, `message=${x.message || "(ว่าง)"}`, x.code !== undefined ? `code=${String(x.code)}` : "", meta ? `meta=${meta}` : "", `stack=${x.stack ?? ""}`].filter(Boolean).join(" · ").replace(/\s*\n\s*/g, " ⏎ ");
+  }
+  let j = ""; try { j = JSON.stringify(e); } catch { j = String(e); }
+  return `non-error typeof=${typeof e} value=${j === undefined ? String(e) : j}`.replace(/\s*\n\s*/g, " ⏎ ");
+}
+
 try {
   const t = await prisma.tenant.create({ data: { name: "QC SEC R2", slug: SLUG } }); tid = t.id;
   await prisma.user.create({ data: { id: U.owner, email: `${U.owner}@example.com`, name: "คุณเจ้าของ" } });
@@ -163,16 +210,16 @@ try {
     };
     const a = await sell(true);
     let points = -1;
+    let drainInfo: AnyMod = {};
     if (a.sale?.id) {
       const hooks = (await import("@/lib/member-hooks")) as AnyMod; hooks.registerMemberHooks?.();
-      const mb = (await import("@/lib/member-bridges")) as AnyMod;
-      await mb.onPosSalePaid(tid, a.sale.id); // ระบายเฉพาะบิลของร้านทดสอบ (ตัวเดียวกับ consumer pos.sale.paid)
+      drainInfo = await drainSalePaid(a.sale.id); // ระบาย event ของบิลนี้ทาง claim เดียวกับ drainOnce (ไม่แข่งตัวระบายในโพรเซส)
       const bal = (await (prisma as AnyMod).pointBalance.findMany({ where: { tenantId: tid, customerId: cust.id } }).catch(() => [])) as AnyMod[];
       points = bal.reduce((s, b) => s + Number(b.balance ?? 0), 0);
     }
     chk("T2-2", "pos_create_sale(memberId) ผ่าน runTool + executeProposal ⇒ บิล PAID ผูก memberId · แต้มจากสะพานสมาชิก = 170/25 = 6 (> 0 ตามอัตราร้าน) · ข้อความผลบอก 'ผูกสมาชิก'",
       a.ex?.ok === true && a.sale?.memberId === cust.id && a.sale?.status === "PAID" && points === 6 && /ผูกสมาชิก/.test(String(a.ex?.note ?? "")),
-      JSON.stringify({ out: a.out.proposalId ? "proposal" : a.out, ex: a.ex, sale: a.sale, points }).slice(0, 300));
+      JSON.stringify({ out: a.out.proposalId ? "proposal" : a.out, ex: a.ex, sale: a.sale, points, drain: drainInfo }).slice(0, 360));
     const b = await sell(false);
     chk("T2-3", "ไม่ส่ง memberId ⇒ บิลเหมือนเดิม (ไม่ผูกสมาชิก)", b.ex?.ok === true && !!b.sale && !b.sale.memberId && b.sale.status === "PAID", JSON.stringify({ ex: b.ex, sale: b.sale }).slice(0, 200));
     const bad = parse(await tools.runTool(ctxOf(conv0.id), "pos_create_sale", { unitName: "สาขาขาย", lines: [{ name: "ลาเต้เย็น", qty: 1, unitPriceSatang: 8500 }], payType: "CASH", memberId: "nosuch-member" }));
@@ -348,8 +395,8 @@ try {
     chk("T11-2", "ห้อง AI เดิม 6 รอบเครื่องมือ ⇒ ชนเพดาน 5 · ข้อความสรุป 'ทำไปแล้ว: list_memories · ยังไม่เสร็จ: ต้องสั่งต่อ' (ไม่เรียกโมเดลเพิ่ม)", rL?.ok === true && pL.calls === 5 && /^ทำไปแล้ว: list_memories · ยังไม่เสร็จ: ต้องสั่งต่อ$/.test(String(rL.reply)), JSON.stringify({ ok: rL?.ok, reply: rL?.reply, calls: pL.calls, err: (rL as AnyMod)?.error }).slice(0, 220));
   }
 } catch (e) {
-  const detail = (e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : JSON.stringify(e)).slice(0, 400);
-  console.log(`  💥 ${detail}`); chk("CRASH", "ข้อสอบรันจบ", false, detail.slice(0, 200));
+  const detail = errLine(e);
+  console.log(`💥 ${detail}`); chk("CRASH", "ข้อสอบรันจบ", false, detail.slice(0, 400));
 } finally {
   residue = await cleanup();
 }
