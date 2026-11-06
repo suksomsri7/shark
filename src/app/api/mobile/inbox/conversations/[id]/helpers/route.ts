@@ -1,11 +1,11 @@
 // POST /api/mobile/inbox/conversations/[id]/helpers — เรียกเพื่อนมาช่วย (ห่อ `callHelper` · 20/นาที · S1.24 · R-K14 · R-S1.21d)
 import { z } from "zod";
 import { callHelper } from "@/lib/modules/chat/routing";
-import { fail, gate, limited, notFound, readBody, REPLY, systemOf, visibleConv, type RouteCtx } from "../../../_shared";
+import { fail, gate, limited, notFound, readBody, REPLY, systemOf, visibleConv, type RouteCtx, withErrors } from "../../../_shared";
 
 const Body = z.object({ systemId: z.string().max(64).optional(), helperUserId: z.string().min(1).max(64), note: z.string().max(500).optional() }).strict();
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [REPLY]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -20,3 +20,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
   const r = await callHelper({ tenantId: c.tenantId, systemId: sid, conversationId: id, byUserId: c.userId, helperUserId: b.v.helperUserId, note: b.v.note, unitAccess: c.ua });
   return r.ok ? Response.json({ ok: true }) : fail(422, "invalid", r.reason);
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("inbox/conversations/[id]/helpers POST", POST_);

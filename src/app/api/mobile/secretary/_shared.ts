@@ -8,7 +8,7 @@ import { after } from "next/server";
 import type { z } from "zod";
 import { ForbiddenError, type AccessQuery, type MembershipCtx } from "@/lib/core/rbac";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
-import { logOps } from "@/lib/core/ops";
+import { errDetail, logOps } from "@/lib/core/ops";
 import { prisma } from "@/lib/core/db";
 import { requireMobile, mobileUser, type MobileAuth } from "@/lib/mobile/auth";
 import { AI_CHAT, mobileAiCtx, mobileDenied } from "@/lib/mobile/guard";
@@ -141,9 +141,23 @@ const THAI = /[฀-๿]/;
  */
 export async function thrown(e: unknown, where: string): Promise<Response> {
   if (e instanceof ForbiddenError) return forbidden(THAI.test(e.message) && !e.message.startsWith("ไม่มีสิทธิ์:") ? e.message : undefined);
-  if (e instanceof Error && THAI.test(e.message) && !/prisma|invalid `|\bat \w+ \(/i.test(e.message)) return fail(400, "invalid", e.message.slice(0, 300));
-  await logOps("WARN", "secretary-api", `${where}: ล้ม`, { detail: e instanceof Error ? (e.stack ?? e.message) : String(e) }).catch(() => {});
+  if (e instanceof Error && THAI.test(e.message) && !/prisma|invocation|invalid `|\bat \w+ \(/i.test(e.message)) return fail(400, "invalid", e.message.slice(0, 300));
+  await logOps("WARN", "secretary-api", `${where}: ล้ม`, { detail: errDetail(e) }).catch(() => {}); // R-Z26: ชื่อ/code/บรรทัดแรก ◂
   return fail(500, "server_error", "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง");
+}
+
+/**
+ * SEC S3a.1-S2 ▸ R-Z20 (L4): ห่อ handler ทุกเส้นของ secretary/** — exception ที่หลุด ⇒ `thrown()` (ForbiddenError 403 · ข้อความไทยของ lib 400 ·
+ *   อื่น ๆ 500 `{error:"server_error", message}` + logOps) — ไม่มี 500 ที่ไม่ใช่ JSON และไม่มี e.message ดิบ ◂
+ */
+export function withErrors<A extends unknown[]>(where: string, h: (...args: A) => Promise<Response>): (...args: A) => Promise<Response> {
+  return async (...args: A) => {
+    try {
+      return await h(...args);
+    } catch (e) {
+      return thrown(e, where);
+    }
+  };
 }
 
 /** งานหลังตอบ (worker ของห้อง) — ในคำขอ = `after()` (คืน promise ให้ waitUntil) · นอกคำขอ (สคริปต์/ข้อสอบ) `after()` โยน ⇒ รอจนจบ */
@@ -156,13 +170,49 @@ export async function runAfter(task: () => Promise<unknown>): Promise<void> {
 }
 
 /**
- * กันส่งซ้ำของ `clientMessageId` (แอป retry หลังเน็ตหลุด) — จองกุญแจ `sec:cmid:<ร้าน>:<ห้อง>:<id>` 24 ชม. ด้วยคำสั่งเดียว (ChatRateBucket · INSERT … ON CONFLICT)
- *   true = ครั้งแรก (ทำต่อ) · false = เคยส่งแล้ว (ตอบ duplicate) · `release` คืนกุญแจเมื่อการส่งครั้งแรกล้มก่อนสร้างข้อความ (retry ได้)
+ * กันส่งซ้ำของ `clientMessageId` (แอป retry หลังเน็ตหลุด) — จองกุญแจ `sec:cmid:<ร้าน>:<ห้อง>:<ผู้ใช้>:<id>` 24 ชม. ด้วยคำสั่งเดียว
+ *   (ChatRateBucket · INSERT … ON CONFLICT · SEC S3a.1-S1 R-Z11: กุญแจรวมผู้ใช้ — คนละคนใช้ id ซ้ำกันไม่ชน · id ห้ามมี ":")
+ *   first = ครั้งแรก (ทำต่อ) · ไม่ใช่ = เคยส่งแล้ว ⇒ `existingMessageId()` (ยังไม่จด = ครั้งแรกยังไม่จบ ⇒ ผู้เรียกตอบ 409 pending)
+ *   `remember(messageId)` จดข้อความของครั้งแรกที่แถว `<กุญแจ>:msg` (id = `sm_<messageId>`) · `release()` คืนกุญแจเมื่อครั้งแรกล้มก่อนมีข้อความ
+ *   🔴 R-Z11: การคืน/จดกุญแจไม่กลืน error — ล้ม = throw ให้ผู้เรียก logOps + ตอบ 500 (ไม่งั้นกุญแจค้าง = retry ได้ pending ตลอด 24 ชม.)
  */
-export async function claimClientMessageId(tenantId: string, roomId: string, clientMessageId: string): Promise<{ first: boolean; release: () => Promise<void> }> {
-  const key = `sec:cmid:${tenantId}:${roomId}:${clientMessageId}`;
+export async function claimClientMessageId(tenantId: string, roomId: string, userId: string, clientMessageId: string) {
+  const key = `sec:cmid:${tenantId}:${roomId}:${userId}:${clientMessageId}`;
   const r = await checkRateLimitDb(key, { limit: 1, windowMs: 24 * 3_600_000 });
-  return { first: r.ok, release: async () => void (await prisma.chatRateBucket.deleteMany({ where: { key } }).catch(() => {})) };
+  return {
+    first: r.ok,
+    release: async (): Promise<void> => {
+      await prisma.chatRateBucket.deleteMany({ where: { key } });
+    },
+    remember: async (messageId: string): Promise<void> => {
+      await prisma.chatRateBucket.create({ data: { id: `sm_${messageId}`, key: `${key}:msg`, count: 1, windowStart: new Date() } });
+    },
+    existingMessageId: async (): Promise<string | null> => {
+      const row = await prisma.chatRateBucket.findUnique({ where: { key: `${key}:msg` }, select: { id: true } });
+      return row && row.id.startsWith("sm_") ? row.id.slice(3) || null : null;
+    },
+  };
+}
+
+/**
+ * §Z.4 Q3 ▸ จดกุญแจล้ม **หลัง** ห้อง/ข้อความเกิดแล้ว — คืน claim (retry ด้วย id เดิมไม่ติด 409 pending 24 ชม.) + logOps WARN ·
+ *   ผู้เรียกตอบ 200 ตามปกติ (ของมีจริง) · คืน claim ก็ล้มอีก = log เพิ่ม (ไม่ throw) ◂
+ */
+export async function rememberFailed(e: unknown, claim: { release: () => Promise<void> } | null, where: string): Promise<void> {
+  let releaseError: unknown = null;
+  try {
+    await claim?.release();
+  } catch (re) {
+    releaseError = re;
+  }
+  const detail = `${errDetail(e)}${releaseError ? ` · release: ${errDetail(releaseError)}` : ""}`; // SEC S3a.1-S2 R-Z34: ไม่เก็บ stack ◂
+  await logOps("WARN", "secretary-api", `${where}: จดกุญแจกันส่งซ้ำไม่สำเร็จ (ของเกิดแล้ว · คืน claim)`, { detail }).catch(() => undefined);
+}
+
+/** R-Z11 ▸ คืน/จดกุญแจล้ม = จดเหตุ (logOps) แล้วตอบ 500 ไทย — ไม่กลืนเงียบ ◂ */
+export async function claimFailed(e: unknown, where: string): Promise<Response> {
+  await logOps("WARN", "secretary-api", `${where}: จัดการกุญแจกันส่งซ้ำไม่สำเร็จ`, { detail: errDetail(e) }).catch(() => undefined); // SEC S3a.1-S2 R-Z34 ◂
+  return fail(500, "server_error", "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง");
 }
 
 /** cursor คู่ `before=<iso>|<id>` (แบบ inbox R-S1.21h) — ไม่ส่ง = undefined · รูปผิด = null (ผู้เรียกตอบ 400) */
@@ -180,6 +230,7 @@ export const cursorOf = (at: Date, id: string) => `${at.toISOString()}|${id}`;
 /**
  * กันเปิดห้องซ้ำ (R-S1.14a) — `POST rooms` ที่แอป retry ด้วย clientMessageId เดิม
  *   claim `sec:cmid:<ร้าน>:new:<ผู้ใช้>:<id>` (คำสั่งเดียว · 24 ชม. · id ห้ามมี ":") ก่อน startRoom · สำเร็จแล้วจดห้องที่แถวกุญแจตรง `<claim>:room`
+ *   (ใช้ทั้ง route `POST rooms` และ action เว็บ `secStartRoomAction` — SEC S3a.1-S1 R-Z11)
  *   (รหัสห้องเก็บในคอลัมน์ id ของแถว = `sr_<roomId>` — ตารางนี้ไม่มีช่องค่า) · ซ้ำ ⇒ อ่านแถวด้วยกุญแจตรง (ยังสร้างไม่เสร็จ = `pending`) · หนี้ S3: คอลัมน์ clientMessageId (secretary_c)
  */
 export async function claimNewRoom(tenantId: string, userId: string, clientMessageId: string) {
@@ -187,9 +238,13 @@ export async function claimNewRoom(tenantId: string, userId: string, clientMessa
   const r = await checkRateLimitDb(key, { limit: 1, windowMs: 24 * 3_600_000 });
   return {
     first: r.ok,
-    release: async () => void (await prisma.chatRateBucket.deleteMany({ where: { key } }).catch(() => {})),
-    remember: async (roomId: string) =>
-      void (await prisma.chatRateBucket.create({ data: { id: `sr_${roomId}`, key: `${key}:room`, count: 1, windowStart: new Date() } }).catch(() => {})),
+    // SEC S3a.1-S1 R-Z11: ไม่กลืน error — ผู้เรียกจับแล้ว logOps + 500 (`claimFailed`)
+    release: async (): Promise<void> => {
+      await prisma.chatRateBucket.deleteMany({ where: { key } });
+    },
+    remember: async (roomId: string): Promise<void> => {
+      await prisma.chatRateBucket.create({ data: { id: `sr_${roomId}`, key: `${key}:room`, count: 1, windowStart: new Date() } });
+    },
     existingRoomId: async (): Promise<string | null> => {
       const row = await prisma.chatRateBucket.findUnique({ where: { key: `${key}:room` }, select: { id: true } });
       return row && row.id.startsWith("sr_") ? row.id.slice(3) || null : null;

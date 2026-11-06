@@ -4,11 +4,11 @@
 //     · มอบให้คนที่ดูแลอยู่แล้ว = ไม่เปลี่ยนอะไร ตอบ ok (ไม่ต้องใช้สิทธิ์)
 import { z } from "zod";
 import { assign } from "@/lib/modules/chat/service";
-import { ASSIGN, can, fail, gate, limited, notFound, readBody, REPLY, systemOf, visibleConv, type RouteCtx } from "../../../_shared";
+import { ASSIGN, can, fail, gate, limited, notFound, readBody, REPLY, systemOf, visibleConv, type RouteCtx, withErrors } from "../../../_shared";
 
 const Body = z.object({ systemId: z.string().max(64).optional(), assigneeUserId: z.string().max(64).nullable() }).strict();
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [REPLY, ASSIGN]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -34,3 +34,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
   const r = await assign(base, { requireReplyPermission: true, onlyIfAssignee: null });
   return r.ok ? Response.json({ ok: true }) : fail(409, "conflict", r.reason ?? "ห้องนี้มีคนรับไปแล้ว");
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("inbox/conversations/[id]/assign POST", POST_);

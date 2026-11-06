@@ -45,3 +45,14 @@ next-env.d.ts
 # ภาพหน้าจอจาก pnpm qc:visual (ของชั่วคราวสำหรับตรวจด้วยตา ไม่ต้องเก็บในรีโป)
 .qc-shots/
 *.orig
+
+# SEC S3a.1-S2 ▸ R-Z27 (L6): ไฟล์ความลับของแอป/ร้านค้าแอป/บริการคลาวด์ — ห้ามเข้ารีโปทุกที่ในทรี
+*.p8
+*.pem
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
+service-account.json
+apps/mobile/credentials*
+credentials*.json

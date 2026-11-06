@@ -3,9 +3,9 @@
 //   การอนุมัติจริงยิง approve พร้อม x-tenant-id ของร้านนั้น (ตรวจซ้ำทั้งหมด)
 import { inboxForUser } from "@/lib/ai/secretary/inbox";
 import { inboxItemDto } from "@/lib/ai/secretary/dto";
-import { fail, ok, optId, takeOf, userGate, withRateLimit } from "../_shared";
+import { fail, ok, optId, takeOf, userGate, withRateLimit, withErrors } from "../_shared";
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await userGate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(a.userId, "inbox", 60); // GET หนัก (ทุกร้าน · R-S1.14b)
@@ -17,3 +17,6 @@ export async function GET(req: Request) {
   const rows = await inboxForUser(a.userId, { ...(tenantId ? { tenantId } : {}), ...(kind ? { kind: kind as "proposal" | "plan" } : {}), take: takeOf(q.get("take"), 50, 100) });
   return ok({ items: rows.map(inboxItemDto) });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/inbox GET", GET_);

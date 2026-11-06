@@ -2,7 +2,7 @@
 //   `code` = จากลิงก์ /i/<code> (`acceptInviteByCode`) · `inviteId` = การ์ดคำเชิญของผู้ใช้เดิม (`acceptInvite`) · เบอร์ที่ยืนยันแล้วต้องตรงใบ (lib ตรวจ)
 import { z } from "zod";
 import { acceptInvite, acceptInviteByCode } from "@/lib/staff/invite";
-import { fail, ID_MAX, ok, readBody, thrown, userGate, withRateLimit } from "../../_shared";
+import { fail, ID_MAX, ok, readBody, thrown, userGate, withRateLimit, withErrors } from "../../_shared";
 
 const Body = z.object({ code: z.string().trim().min(1).max(40).optional(), inviteId: z.string().trim().min(1).max(ID_MAX).optional() }).strict();
 const STATUS = { not_found: 404, expired: 410, accepted: 409, phone_mismatch: 403 } as const;
@@ -13,7 +13,7 @@ const MSG = {
   phone_mismatch: "คำเชิญนี้เป็นของเบอร์อื่น — เข้าด้วยเบอร์ที่ได้รับคำเชิญ",
 } as const;
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   const a = await userGate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(a.userId, "invite-accept", 10);
@@ -29,3 +29,6 @@ export async function POST(req: Request) {
     return thrown(e, "invites.accept");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/invites/accept POST", POST_);

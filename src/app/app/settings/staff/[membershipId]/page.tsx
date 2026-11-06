@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Role } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
+import { publicEmailOf } from "@/lib/core/phone-auth"; // SEC S3a.1-S2 ▸ R-Z26: ไม่โชว์อีเมล placeholder ของบัญชีเบอร์โทร ◂
 import { canAssignRole, evaluate } from "@/lib/core/rbac";
 import { permissionModulesByGroup } from "@/lib/core/permissions";
 import {
@@ -74,7 +75,7 @@ export default async function StaffAccessPage({
       <PageHeader
         title={row.name}
         back={back}
-        desc={`${row.email}${row.employee ? ` · พนักงาน: ${row.employee.name}` : ""}${row.active ? "" : " · ถูกถอนสิทธิ์อยู่"}`}
+        desc={`${publicEmailOf({ email: row.email, prefs: null }).email ?? "บัญชีเบอร์โทร"}${row.employee ? ` · พนักงาน: ${row.employee.name}` : ""}${row.active ? "" : " · ถูกถอนสิทธิ์อยู่"}`}
       />
 
       {selfLocked && (

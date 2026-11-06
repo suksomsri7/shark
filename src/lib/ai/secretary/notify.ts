@@ -25,7 +25,8 @@ export type NotifyPrefs = Record<NotifyKind, NotifyMode>;
 
 type PushPost = NonNullable<NonNullable<Parameters<typeof sendPushToUser>[2]>["post"]>;
 export type NotifyMsg = { title: string; body: string; data: Record<string, unknown> & { link: string } };
-export type NotifyDeps = { post?: PushPost; now?: Date; assigneeUserId?: string | null };
+/** `dedupeKey` (SEC S3a.1-S1 R-Z12) = ส่วนเพิ่มของกุญแจกันสแปม (เช่น `job:<jobId>`) — เรื่องต่างกันใน link เดิมไม่กันกันเอง */
+export type NotifyDeps = { post?: PushPost; now?: Date; assigneeUserId?: string | null; dedupeKey?: string };
 export type NotifyResult = { sent: number; skipped: "pref" | "spam" | "none" | null };
 
 /** หน้าต่างกันสแปม — link เดิมถึงคนเดิมซ้ำภายในเวลานี้ = ไม่ส่ง */
@@ -237,12 +238,20 @@ export async function notifyUser(userId: string, tenantId: string, kind: NotifyK
     if (mode === "ASSIGNED" && kind === "inbox" && (deps?.assigneeUserId ?? null) !== uid) return { sent: 0, skipped: "pref" };
 
     const nowMs = deps?.now instanceof Date && !Number.isNaN(deps.now.getTime()) ? deps.now.getTime() : Date.now();
-    const key = `${uid}:${link}`;
+    // SEC S3a.1-S1 ▸ R-Z12: กุญแจรวม dedupeKey (ห้อง: jobId — คำตอบของงานที่ 2 ใน 60 วิ ไม่หาย) ◂
+    const extra = typeof deps?.dedupeKey === "string" ? deps.dedupeKey.trim().slice(0, 120) : "";
+    const key = extra ? `${uid}:${link}:${extra}` : `${uid}:${link}`;
     const prev = lastSentAt.get(key);
     if (prev !== undefined && Math.abs(nowMs - prev) < NOTIFY_SPAM_WINDOW_MS) return { sent: 0, skipped: "spam" };
     pruneSpamMap(nowMs);
     lastSentAt.delete(key); // ใส่ใหม่ให้อยู่ท้าย (ลำดับใส่ = ลำดับเวลา)
     lastSentAt.set(key, nowMs); // จองก่อนส่ง — สองทางพร้อมกันได้ใบเดียว
+    // R-Z12: การจองนับเฉพาะเมื่อส่งสำเร็จ — ส่งไม่ออก (ไม่มีเครื่อง/Expo ไม่รับ/throw) ⇒ คืนการจอง (ครั้งหน้าในหน้าต่างเดิมยังส่งได้)
+    const unreserve = () => {
+      if (lastSentAt.get(key) !== nowMs) return; // มีใบใหม่กว่าจองทับแล้ว
+      lastSentAt.delete(key);
+      if (prev !== undefined) lastSentAt.set(key, prev);
+    };
 
     let badge: number | undefined;
     try {
@@ -250,13 +259,21 @@ export async function notifyUser(userId: string, tenantId: string, kind: NotifyK
     } catch {
       badge = undefined;
     }
-    const r = await sendPushToUser(
-      uid,
-      // S1.14 R-S1.14j ▸ data.tenantId ทุกใบ — แอปสลับร้านก่อนเปิด deep link (push ห้องเลขาไม่กรองร้าน · R-K20) ◂
-      { title: msg.title, body: msg.body, data: { ...msg.data, tenantId }, ...(typeof badge === "number" ? { badge } : {}) },
-      deps?.post ? { post: deps.post } : undefined,
-    );
-    return r.sent > 0 ? { sent: r.sent, skipped: null } : { sent: 0, skipped: "none" };
+    let r: Awaited<ReturnType<typeof sendPushToUser>>;
+    try {
+      r = await sendPushToUser(
+        uid,
+        // S1.14 R-S1.14j ▸ data.tenantId ทุกใบ — แอปสลับร้านก่อนเปิด deep link (push ห้องเลขาไม่กรองร้าน · R-K20) ◂
+        { title: msg.title, body: msg.body, data: { ...msg.data, tenantId }, ...(typeof badge === "number" ? { badge } : {}) },
+        deps?.post ? { post: deps.post } : undefined,
+      );
+    } catch (e) {
+      unreserve();
+      throw e;
+    }
+    if (r.sent > 0) return { sent: r.sent, skipped: null };
+    unreserve();
+    return { sent: 0, skipped: "none" };
   } catch {
     return { sent: 0, skipped: "none" };
   }

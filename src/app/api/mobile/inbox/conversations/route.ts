@@ -2,13 +2,13 @@
 import { ChatChannelType } from "@prisma/client";
 import { listConversations } from "@/lib/modules/chat/service";
 import { conversationDto } from "@/lib/mobile/inbox-dto";
-import { convExtras, cursorOf, fail, gate, notFound, parseCursor, READ, staffNames, systemOf } from "../_shared";
+import { convExtras, cursorOf, fail, gate, notFound, parseCursor, READ, staffNames, systemOf, withErrors } from "../_shared";
 
 const STATUSES = new Set(["OPEN", "PENDING", "RESOLVED"]);
 const CHANNELS = new Set<string>(Object.values(ChatChannelType));
 const LIMIT_MAX = 50;
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req, [READ]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -41,3 +41,6 @@ export async function GET(req: Request) {
   const last = rows[rows.length - 1];
   return Response.json({ items, nextBefore: rows.length === limit && last ? cursorOf(last.lastMessageAt, last.id) : null });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("inbox/conversations GET", GET_);

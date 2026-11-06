@@ -1,14 +1,12 @@
 // POST /api/mobile/secretary/proposals/[id]/reject {note?, remember?} — ตีกลับ
-//   มี note ⇒ `rejectWithNote` (S1.10 · remember true/"RULE" = จดเป็นกติกา · อื่น = "JOB" ไม่จด) · ไม่มี note ⇒ ทางเดิม (ประตู CRM ก่อน แล้ว `rejectProposal`)
+//   `rejectFor` (S3a.1-S2 R-Z20): มี note = ตีกลับพร้อมเหตุผล (remember true/"RULE" = จดเป็นกติกา) · ประตู CRM ยกเลิกด้วยสิทธิ์คนกดก่อน
 import { z } from "zod";
-import { rejectProposal } from "@/lib/ai/proposals";
-import { rejectWithNote } from "@/lib/ai/secretary/teach";
-import { aiBridges } from "@/lib/modules/crm";
-import { fail, gate, idParam, notFound, ok, readBody, withRateLimit, type RouteCtx } from "../../../_shared";
+import { rejectFor } from "@/lib/ai/secretary/teach";
+import { fail, gate, idParam, notFound, ok, readBody, withRateLimit, type RouteCtx, withErrors } from "../../../_shared";
 
 const Body = z.object({ note: z.string().max(2000).optional(), remember: z.union([z.boolean(), z.enum(["JOB", "RULE"])]).optional() }).strict();
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "reject");
@@ -17,18 +15,16 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (!b.ok) return b.res;
   const id = await idParam(ctx, "id");
   if (!id) return notFound("ไม่พบข้อเสนอนี้");
+  // SEC S3a.1-S2 ▸ R-Z20: ทางเดียว (rejectFor) — ประตู CRM ยกเลิกด้วยสิทธิ์คนกดแล้วบันทึกเหตุผล · ไม่มีสิทธิ์ 403 · ไม่ PENDING 409 ทั้งมี/ไม่มี note ◂
   const note = (b.v.note ?? "").trim();
-  if (note) {
-    const remember = b.v.remember === true || b.v.remember === "RULE" ? "RULE" : "JOB";
-    const r = await rejectWithNote(a.c.conv, id, { note, remember });
-    if (r.ok) return ok({ ok: true, ...(r.memoryId ? { memoryId: r.memoryId } : {}) });
-    if (r.error === "not_found") return notFound(r.message);
-    if (r.error === "not_pending") return fail(409, "not_pending", r.message);
-    return fail(400, r.error, r.message); // empty · pii
-  }
-  // ประตู CRM: ข้อเสนอของ CRM ยกเลิกได้เฉพาะคนที่ยืนยันได้ (ทางเดียวกับ /api/mobile/proposals/reject)
-  const crm = await aiBridges.cancelProposalById(a.c.tenantId, { userId: a.c.userId, role: a.c.m.role, unitAccess: a.c.m.unitAccess, permissions: a.c.m.permissions }, id);
-  if (crm.handled) return crm.ok ? ok({ ok: true }) : fail(409, "not_pending", crm.note);
-  if (await rejectProposal(a.c.conv, id)) return ok({ ok: true });
-  return notFound("ไม่พบข้อเสนอนี้ หรือถูกดำเนินการไปแล้ว");
+  const remember = b.v.remember === true || b.v.remember === "RULE" ? "RULE" : "JOB";
+  const r = await rejectFor(a.c.conv, id, { note, remember });
+  if (r.ok) return ok({ ok: true, ...(r.memoryId ? { memoryId: r.memoryId } : {}) });
+  if (r.error === "not_found") return notFound(r.message);
+  if (r.error === "not_pending") return fail(409, "not_pending", r.message);
+  if (r.error === "forbidden") return fail(403, "forbidden", r.message);
+  return fail(400, r.error, r.message); // empty · pii
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/proposals/[id]/reject POST", POST_);

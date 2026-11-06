@@ -4,6 +4,7 @@ import { prisma } from "@/lib/core/db";
 import { mobileUser } from "@/lib/mobile/auth";
 import { getBrandingTokens } from "@/lib/branding/service";
 import { phoneOfUser, publicEmailOf } from "@/lib/core/phone-auth";
+import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 
 const APPLE_RELAY = "@privaterelay.appleid.com";
 function appleLinkedOf(email: string | null | undefined): true | null {
@@ -12,7 +13,13 @@ function appleLinkedOf(email: string | null | undefined): true | null {
 
 export async function GET(req: Request): Promise<Response> {
   const user = await mobileUser(req);
-  if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
+  if (!user) return Response.json({ error: "unauthorized", message: "เข้าสู่ระบบใหม่อีกครั้ง" }, { status: 401 }); // SEC S3a.1-S2 ▸ R-Z20: 4xx มีข้อความไทย ◂
+  // SEC S3a.1-S2 ▸ R-Z20 (L4): เพดาน 120 ครั้ง/นาที/ผู้ใช้ (เส้นนี้อ่านหลายตาราง · แอปเรียกตอนเปิด/กลับเข้าหน้า) ◂
+  const rl = await checkRateLimitDb(`mobile:me:${user.id}`, { limit: 120, windowMs: 60_000 });
+  if (!rl.ok) {
+    const retryAfterSec = rl.retryAfterSec ?? 60;
+    return Response.json({ error: "rate_limited", message: "ทำรายการถี่เกินไป รอสักครู่แล้วลองใหม่", retryAfterSec }, { status: 429, headers: { "Retry-After": String(retryAfterSec) } });
+  }
   // เฉพาะ membership ที่ acceptedAt แล้ว (คำเชิญที่ตอบรับ) — Membership คือ global axis อ่าน prisma ตรงได้
   const memberships = await prisma.membership.findMany({
     where: { userId: user.id, acceptedAt: { not: null } },

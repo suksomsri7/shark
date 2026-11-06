@@ -4,7 +4,7 @@ import { z } from "zod";
 import { CHANNELS, createTask, describeFrequency, FREQUENCIES, listTasks } from "@/lib/ai/scheduled";
 import { FREE_PACK } from "@/lib/ai/secretary/pack";
 import { taskDto } from "@/lib/ai/secretary/dto";
-import { gate, ok, readBody, thrown, withRateLimit } from "../_shared";
+import { gate, ok, readBody, thrown, withRateLimit, withErrors } from "../_shared";
 
 const Body = z
   .object({
@@ -16,7 +16,7 @@ const Body = z
   })
   .strict();
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const all = await listTasks({ tenantId: a.c.tenantId });
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   return ok({ items: rows.map((t) => taskDto(t, a.c.userId, describeFrequency(t.frequency, t.days))), max: FREE_PACK.scheduledMax });
 }
 
-export async function POST(req: Request) {
+async function POST_(req: Request) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "scheduled");
@@ -38,3 +38,7 @@ export async function POST(req: Request) {
     return thrown(e, "scheduled.post");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/scheduled GET", GET_);
+export const POST = withErrors("secretary/scheduled POST", POST_);

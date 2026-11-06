@@ -1,9 +1,9 @@
 // POST /api/mobile/secretary/rooms/[id]/close — ปิดห้อง (ผู้เปิดห้องหรือ OWNER · `closeRoom`) · มองไม่เห็น 404 · ไม่ใช่ผู้ดูแล 403 · ปิดอยู่แล้ว 409
 import { z } from "zod";
 import { closeRoom, getRoom } from "@/lib/ai/secretary/rooms";
-import { fail, forbidden, gate, idParam, notFound, ok, readBody, withRateLimit, type RouteCtx } from "../../../_shared";
+import { fail, forbidden, gate, idParam, notFound, ok, readBody, withRateLimit, type RouteCtx, withErrors } from "../../../_shared";
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "room-close");
@@ -17,3 +17,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (room.closedAt) return fail(409, "closed", "ห้องนี้ปิดไปแล้ว");
   return forbidden("ปิดห้องได้เฉพาะผู้เปิดห้องหรือเจ้าของกิจการ");
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("secretary/rooms/[id]/close POST", POST_);

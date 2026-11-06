@@ -13,6 +13,7 @@
 import type { AiActionLog, Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { assertCan, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
+import { errDetail, logOps } from "@/lib/core/ops";
 import * as kanbanSvc from "@/lib/modules/kanban/service";
 import { boardRoleOf } from "@/lib/modules/kanban/members";
 import * as bookingSvc from "@/lib/modules/booking/service";
@@ -251,18 +252,27 @@ function viewerOf(ctx: ConvCtx): Viewer | null {
   return { userId: ctx.actor.userId, owner: ctx.actor.membership?.role === "OWNER" };
 }
 
-/** ห้องเลขาที่ผู้ดูเห็น (ผู้เปิด ∪ สมาชิก — ความหมายเดียวกับ roomSightFor) */
-async function visibleRoomIds(tenantId: string, userId: string): Promise<string[]> {
+/**
+ * ห้องเลขาที่ผู้ดูเห็น (ผู้เปิด ∪ สมาชิก — ความหมายเดียวกับ roomSightFor) + ขอบล่างเวลา
+ *   SEC S3a.1-S2 ▸ R-Z16 (L1 m-1): สมาชิกที่ seeHistory=false เห็นบันทึกของห้องตั้งแต่ addedAt เท่านั้น (แบบ listMessages) ◂
+ */
+type RoomSight = { id: string; since: Date | null };
+async function visibleRoomSights(tenantId: string, userId: string): Promise<RoomSight[]> {
   const rows = await tenantDb({ tenantId }).aiRoom.findMany({
     where: { OR: [{ startedById: userId }, { members: { some: { userId, tenantId } } }] },
-    select: { id: true },
+    select: { id: true, startedById: true, members: { where: { userId }, select: { addedAt: true, seeHistory: true }, take: 1 } },
   });
-  return rows.map((r) => r.id);
+  return rows.map((r) => {
+    const mem = r.startedById === userId ? null : r.members[0];
+    return { id: r.id, since: mem && !mem.seeHistory ? mem.addedAt : null };
+  });
 }
 
-function visibleWhere(v: Viewer, roomIds: string[]): Prisma.AiActionLogWhereInput {
+function visibleWhere(v: Viewer, rooms: RoomSight[]): Prisma.AiActionLogWhereInput {
   if (v.owner) return {};
-  return { OR: [{ userId: v.userId }, { approverId: v.userId }, ...(roomIds.length > 0 ? [{ roomId: { in: roomIds } }] : [])] };
+  const full = rooms.filter((r) => r.since === null).map((r) => r.id);
+  const partial = rooms.filter((r): r is { id: string; since: Date } => r.since !== null).map((r) => ({ roomId: r.id, createdAt: { gte: r.since } }));
+  return { OR: [{ userId: v.userId }, { approverId: v.userId }, ...(full.length > 0 ? [{ roomId: { in: full } }] : []), ...partial] };
 }
 
 const NOT_FOUND = { ok: false as const, note: "ไม่พบรายการ" };
@@ -298,8 +308,8 @@ export async function undoAction(ctx: ConvCtx, logId: string, now: Date = new Da
   const row = await db.aiActionLog.findFirst({ where: { id } });
   if (!row) return NOT_FOUND;
   if (!v.owner && row.userId !== v.userId && row.approverId !== v.userId) {
-    const rooms = row.roomId ? await visibleRoomIds(ctx.tenantId, v.userId) : [];
-    if (!row.roomId || !rooms.includes(row.roomId)) return NOT_FOUND;
+    const sight = row.roomId ? (await visibleRoomSights(ctx.tenantId, v.userId)).find((r) => r.id === row.roomId) : undefined;
+    if (!sight || (sight.since && row.createdAt.getTime() < sight.since.getTime())) return NOT_FOUND; // R-Z16 ◂
   }
   if (row.undoneAt) return { ok: false, note: "รายการนี้ย้อนไปแล้ว" };
   const reg = Object.prototype.hasOwnProperty.call(UNDOABLE_KINDS, row.kind) ? UNDOABLE_KINDS[row.kind]! : null;
@@ -329,7 +339,10 @@ export async function undoAction(ctx: ConvCtx, logId: string, now: Date = new Da
     note = await runUndo(ctx.tenantId, m, v.userId, row, now);
   } catch (e) {
     await db.aiActionLog.updateMany({ where: { id, undoneAt: now, undoneById: v.userId }, data: { undoneAt: null, undoneById: null } });
-    return { ok: false, note: e instanceof Error && e.message ? e.message : "ย้อนรายการไม่สำเร็จ" };
+    // SEC S3a.1-S2 ▸ R-Z26: ข้อความไทยของ service เท่านั้น — ข้อความของฐาน/ระบบ (อังกฤษ · Prisma) ไม่ออกไปถึงผู้ใช้ ◂
+    const thai = e instanceof Error && /[ก-๙]/.test(e.message) && !/prisma|invocation|invalid `/i.test(e.message);
+    if (!thai) await logOps("WARN", "ai", `secretary.undo: ย้อนไม่สำเร็จ (${row.kind})`, { tenantId: ctx.tenantId, detail: errDetail(e) }).catch(() => {});
+    return { ok: false, note: thai ? (e as Error).message.split("\n")[0]!.slice(0, 300) : "ย้อนรายการไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
   try {
     await recordAction({
@@ -461,7 +474,7 @@ export async function listLog(
   }
   if (typeof opts?.module === "string" && opts.module) and.push({ module: opts.module });
   if (typeof opts?.roomId === "string" && opts.roomId) and.push({ roomId: opts.roomId });
-  if (!v.owner) and.push(visibleWhere(v, await visibleRoomIds(ctx.tenantId, v.userId)));
+  if (!v.owner) and.push(visibleWhere(v, await visibleRoomSights(ctx.tenantId, v.userId)));
   return tenantDb({ tenantId: ctx.tenantId }).aiActionLog.findMany({
     where: and.length > 0 ? { AND: and } : {},
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],

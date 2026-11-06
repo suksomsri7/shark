@@ -61,7 +61,8 @@ const mockProvider: SmsProvider = {
 function resolveProvider(): SmsProvider | null {
   const kind = (process.env.SMS_PROVIDER ?? "").trim().toLowerCase();
   // ก่อนตรวจคีย์/endpoint (mock ไม่ต้องมี) · production เมิน mock เสมอ (R-S1.19c) ⇒ null = ช่องทาง SMS ปิด
-  if (kind === "mock") return process.env.APP_ENV === "production" ? null : mockProvider;
+  // SEC S3a.1-S2 ▸ R-Z27 (L6): Vercel production (VERCEL_ENV) ก็เมิน mock ด้วย — เผื่อ APP_ENV ไม่ได้ตั้ง ◂
+  if (kind === "mock") return process.env.APP_ENV === "production" || process.env.VERCEL_ENV === "production" ? null : mockProvider;
   const apiKey = (process.env.SMS_API_KEY ?? "").trim();
   const sender = (process.env.SMS_SENDER ?? "SHARK").trim();
   if (!kind || !apiKey) return null;

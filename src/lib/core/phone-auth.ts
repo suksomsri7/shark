@@ -1,7 +1,9 @@
 // phone-auth.ts — เข้าใช้ด้วยเบอร์โทร (SMS OTP) · เบอร์ = ตัวตน (S1.19 · RESOLUTIONS R-K9/K10 + §H R-S1.19a–h · แบบ S1/S2 + R8)
 //
 // กติกาเดียวกับ OTP อีเมลใน core/auth.ts (requestLogin/verifyOtp) แต่เก็บในตาราง PhoneOtp/UserPhone (global axis)
-//   · รหัส 6 หลัก · เก็บแค่ sha256(`${phone}:${code}`) · หมดอายุ 10 นาที · ผิด 5 ครั้ง = ล็อก
+//   · รหัส 6 หลัก · เก็บแค่ HMAC-SHA256(SESSION_SECRET, `${phone}:${code}`) (SEC S3a.1-S2 R-Z27 · เดิม sha256 — ตรวจแบบเดิมได้ชั่วคราว
+//     ช่วงเปลี่ยนผ่าน = รหัสที่ขอก่อน deploy ยังใช้ได้จนหมดอายุ 10 นาที) · หมดอายุ 10 นาที · ผิด 5 ครั้ง = ล็อก
+//   · SEC S3a.1-S2 R-Z18: ตรวจรหัสมีเพดาน `sms-verify:<ip>` 30/10 นาที + `sms-verify:<เบอร์ hash>` 10/10 นาที (`verifyRateLimit`)
 //   · เบอร์ทุกจุดผ่าน `normalizeThaiMobile` (มือถือไทยเท่านั้น · R-S1.19d) — `toE164Thai` เดิมคงไว้ให้แคมเปญ
 //   · ขอซ้ำใน 60 วิ = ok ไม่ส่งใหม่ · กันถล่ม (นับแถว PhoneOtp): ต่อเบอร์ 5/10 นาที + 20/วัน · ต่อ ip 20/10 นาที
 //   · ส่งล้ม = เก็บแถวไว้แบบ consumed (นับใน rate-limit · ใช้ไม่ได้) — R-S1.19f
@@ -14,7 +16,9 @@
 // 🔴 ไม่ import โมดูล env กลางของแอป (แบบเดียวกับ sms.ts: อ่านได้ในสคริปต์ที่ env ไม่ครบ) — ไม่แตะตารางโทเคนอีเมล / core/auth.ts
 import type { Prisma, User } from "@prisma/client";
 import { prisma } from "./db";
+import { createHmac } from "node:crypto";
 import { sha256, otpCode, safeEqualHex } from "./hash";
+import { checkRateLimitDbMany } from "./rate-limit-db";
 import { sendSms } from "./sms";
 
 export const PHONE_OTP_TTL_MS = 600_000;
@@ -90,9 +94,52 @@ export function publicEmailOf(user: Pick<User, "email" | "prefs">): { email: str
   return { email: isPhonePlaceholderEmail(user.email) ? null : user.email, pendingEmail: pending };
 }
 
-function hashCode(phone: string, code: string): string {
-  return sha256(`${phone}:${code}`);
+/**
+ * SEC S3a.1-S2 ▸ R-Z26/R-Z34: ชื่อที่แสดงของผู้ใช้ — ชื่อ → ส่วนหน้าอีเมล (ยกเว้นอีเมล placeholder ของบัญชีเบอร์โทร = เบอร์) → `fallback`
+ */
+export function publicNameOf(u: { name?: string | null; email?: string | null } | null | undefined, fallback = "สมาชิก"): string {
+  const name = u?.name?.trim();
+  if (name) return name;
+  const email = String(u?.email ?? "");
+  if (!email || isPhonePlaceholderEmail(email)) return fallback;
+  return email.split("@")[0] || fallback;
 }
+
+/**
+ * SEC S3a.1-S2 ▸ R-Z27 (L6): hash ของรหัส = HMAC-SHA256 ด้วยคีย์เซิร์ฟเวอร์ (SESSION_SECRET — อ่าน env ตรง ไม่ import env กลาง)
+ *   ฐานรั่วอย่างเดียวไล่เดารหัส 6 หลักไม่ได้ (sha256 ล้วนเดาได้ 10⁶ ครั้ง) · ไม่มีคีย์ (สคริปต์ที่ env ไม่ครบ) = sha256 แบบเดิม ◂
+ */
+function otpKey(): string {
+  return String(process.env.SESSION_SECRET ?? "");
+}
+function hashCode(phone: string, code: string): string {
+  const key = otpKey();
+  return key ? createHmac("sha256", key).update(`${phone}:${code}`).digest("hex") : sha256(`${phone}:${code}`);
+}
+/** ช่วงเปลี่ยนผ่าน (dual-verify): รหัสที่ขอก่อน deploy เก็บแบบ sha256 — ลบได้เมื่อ deploy ผ่านไปเกิน PHONE_OTP_TTL_MS */
+function codeMatches(stored: string, phone: string, code: string): boolean {
+  if (safeEqualHex(stored, hashCode(phone, code))) return true;
+  return otpKey() !== "" && safeEqualHex(stored, sha256(`${phone}:${code}`));
+}
+
+// ── SEC S3a.1-S2 ▸ R-Z18 (L4 MAJOR-1): เพดานการตรวจรหัส (verify · ผูกเบอร์) — กันเดารหัสข้ามเบอร์/ข้ามรอบขอรหัส ◂
+export const PHONE_VERIFY_PER_IP = 30;
+export const PHONE_VERIFY_PER_PHONE = 10;
+export const PHONE_VERIFY_WINDOW_MS = 600_000;
+
+/** นับการตรวจรหัส 1 ครั้ง (ต่อ ip + ต่อเบอร์ · คำสั่งเดียว) — เกินเพดาน ⇒ วินาทีที่ต้องรอ · ผ่าน ⇒ null · เบอร์เก็บเป็น hash ในชื่อถัง */
+export async function verifyRateLimit(ip: string | null | undefined, rawPhone: string, now = Date.now()): Promise<number | null> {
+  const phone = normalizeThaiMobile(rawPhone) ?? String(rawPhone ?? "").slice(0, 40);
+  const entries = [
+    { key: `sms-verify:ip:${String(ip ?? "").trim().slice(0, 64) || "unknown"}`, limit: PHONE_VERIFY_PER_IP, windowMs: PHONE_VERIFY_WINDOW_MS },
+    { key: `sms-verify:ph:${sha256(`sms-verify:${phone}`).slice(0, 24)}`, limit: PHONE_VERIFY_PER_PHONE, windowMs: PHONE_VERIFY_WINDOW_MS },
+  ];
+  const out = await checkRateLimitDbMany(entries, { now });
+  const bad = out.filter((r) => !r.ok);
+  if (bad.length === 0) return null;
+  return Math.max(1, ...bad.map((r) => r.retryAfterSec ?? Math.ceil(PHONE_VERIFY_WINDOW_MS / 1000)));
+}
+
 
 /** Prisma unique violation → ชื่อคอลัมน์ที่ชน (ไว้แยก email/phone ตอนแข่งกันสมัคร) */
 function uniqueTarget(e: unknown): string | null {
@@ -180,7 +227,8 @@ export async function requestPhoneOtp(
   const send: SendFn = opts.send ?? sendSms;
   let sent: { ok: boolean; error?: string };
   try {
-    sent = await send({ to: phone, text: `รหัสเข้าใช้ SHARK: ${code} (หมดอายุใน 10 นาที)` });
+    // R-Z27: คำเตือน "อย่าบอก" + บรรทัดผูกโดเมน (iOS/Android autofill เฉพาะ shark.in.th · กันหน้าเว็บปลอมขอรหัส)
+    sent = await send({ to: phone, text: `รหัสเข้าใช้ SHARK: ${code} (หมดอายุใน 10 นาที) อย่าบอกรหัสนี้กับใคร ทีมงาน SHARK ไม่ขอรหัสนี้\n\n@shark.in.th #${code}` });
   } catch (e) {
     sent = { ok: false, error: String(e).slice(0, 160) };
   }
@@ -210,7 +258,7 @@ export async function verifyPhoneOtp(
   if (row.expiresAt < now) return { ok: false, reason: "expired" };
   // จองก่อนเทียบ (R-S1.19b) — ยิงขนานกี่ทางก็เทียบได้ไม่เกิน 5 ครั้งต่อรหัส
   if (!(await reserveAttempt(row.id))) return { ok: false, reason: "locked" };
-  if (digits.length !== 6 || !safeEqualHex(row.codeHash, hashCode(phone, digits))) return { ok: false, reason: "invalid" };
+  if (digits.length !== 6 || !codeMatches(row.codeHash, phone, digits)) return { ok: false, reason: "invalid" };
   // รหัสถูก ⇒ คืน attempt ที่จองไว้ (ตรวจซ้ำก่อนสมัคร/ผูกเบอร์ไม่กินโควตาเดา)
   await prisma.phoneOtp.updateMany({ where: { id: row.id, attempts: { gt: 0 } }, data: { attempts: { decrement: 1 } } });
   const owner = await prisma.userPhone.findUnique({ where: { phone }, select: { userId: true } });

@@ -11,10 +11,10 @@ export async function POST(req: Request): Promise<Response> {
   try {
     body = await req.json();
   } catch {
-    return Response.json({ error: "bad_request" }, { status: 400 });
+    return Response.json({ error: "bad_request", message: "ข้อมูลที่ส่งมาไม่ครบหรือไม่ถูกต้อง" }, { status: 400 }); // SEC S3a.1-S2 R-Z34 ◂
   }
   const phone = typeof body?.phone === "string" ? body.phone : "";
-  if (!phone) return Response.json({ error: "bad_request" }, { status: 400 });
+  if (!phone) return Response.json({ error: "bad_request", message: "ข้อมูลที่ส่งมาไม่ครบหรือไม่ถูกต้อง" }, { status: 400 }); // SEC S3a.1-S2 R-Z34 ◂
   if (!smsEnabled())
     return Response.json(
       { error: "sms_unavailable", message: "ตอนนี้ยังเข้าด้วยเบอร์โทรไม่ได้ กรุณาเข้าด้วยอีเมลแทน" },

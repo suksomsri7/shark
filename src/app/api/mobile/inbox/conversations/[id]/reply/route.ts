@@ -4,11 +4,11 @@
 //           (R-S1.14b-g) suggestionId ที่ไม่ใช่ของห้อง/ระบบ/ร้านนี้ ⇒ 422 bad_suggestion ก่อนส่ง · บันทึกภายในใช้ `sugg:` แทน clientMessageId ไม่ได้
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
-import { logOps } from "@/lib/core/ops";
+import { errDetail, logOps } from "@/lib/core/ops";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { recordSuggestionOutcome } from "@/lib/modules/chat/ai-suggest";
 import { sendReply } from "@/lib/modules/chat/service";
-import { fail, gate, notFound, readBody, REPLY, systemOf, visibleConv, type RouteCtx } from "../../../_shared";
+import { fail, gate, notFound, readBody, REPLY, systemOf, visibleConv, type RouteCtx, withErrors } from "../../../_shared";
 
 export const REPLY_RATE = { limit: 60, windowMs: 60_000 };
 
@@ -17,10 +17,11 @@ const Attachment = z
     url: z.string().max(2048),
     mimeType: z.string().max(200),
     fileName: z.string().max(255).optional(),
-    sizeBytes: z.number().int().nonnegative().optional(),
-    width: z.number().int().nonnegative().optional(),
-    height: z.number().int().nonnegative().optional(),
-    durationMs: z.number().optional(),
+    // SEC S3a.1-S2 ▸ R-Z20 (L4): ขอบเขตตามคอลัมน์ INT4 + เพดานไฟล์แนบ (ไม่ใช่ 500 จากฐาน) ◂
+    sizeBytes: z.number().int().nonnegative().max(10 * 1024 * 1024).optional(),
+    width: z.number().int().nonnegative().max(20_000).optional(),
+    height: z.number().int().nonnegative().max(20_000).optional(),
+    durationMs: z.number().int().nonnegative().max(3_600_000).optional(),
     storageKey: z.string().max(1024).optional(),
   })
   .strict();
@@ -50,12 +51,12 @@ async function outcomeOf(args: { tenantId: string; systemId: string; suggestionI
     const r = await recordSuggestionOutcome({ tenantId: args.tenantId, systemId: args.systemId, suggestionId: args.suggestionId, sentMessageId: args.messageId, sentBody: args.body ?? "", userId: args.userId });
     return r.ok ? r.outcome : undefined;
   } catch (e) {
-    await logOps("WARN", "mobile-inbox", "reply: บันทึกผลร่าง AI ล้ม", { detail: e instanceof Error ? e.message : String(e) }).catch(() => {});
+    await logOps("WARN", "mobile-inbox", "reply: บันทึกผลร่าง AI ล้ม", { detail: errDetail(e) }).catch(() => {});
     return undefined;
   }
 }
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, [REPLY]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -105,3 +106,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
   return fail(422, "invalid", r.reason ?? "ส่งข้อความไม่สำเร็จ ลองใหม่อีกครั้ง");
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const POST = withErrors("inbox/conversations/[id]/reply POST", POST_);

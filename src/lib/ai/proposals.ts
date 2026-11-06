@@ -10,7 +10,8 @@
 
 import { prisma, tenantDb } from "@/lib/core/db";
 import { assertCan, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
-import type { Prisma, SystemType, UnitType, PosPayType } from "@prisma/client";
+import { Prisma as PrismaNs, type Prisma, type SystemType, type UnitType, type PosPayType } from "@prisma/client";
+import { currentToolCallKey, toolCallRowId } from "./tool-call-key"; // SEC S3a.1-S1 R-Z7
 import * as invSvc from "@/lib/modules/inventory/service";
 import * as hrSvc from "@/lib/modules/hr/service";
 import * as mktSvc from "@/lib/modules/marketing/service";
@@ -220,13 +221,22 @@ type CancelReservationPayload = { reservationId: string; reason?: string };
 type KanbanArchiveCardPayload = { cardId: string };
 
 // ── สร้างข้อเสนอ (PENDING + TTL 24 ชม.) ──
+// SEC S3a.1-S1 ▸ R-Z7: ใน tool call ที่มีกุญแจ (`tc:<messageId>:<i>` — เทิร์นห้องเลขาที่รันซ้ำได้) รหัสข้อเสนอ = hash(ร้าน · บทสนทนา · กุญแจ · kind)
+//   ⇒ รันซ้ำ = ใบเดิม (มีอยู่แล้ว/PK ชนตอนพร้อมกัน = คืนใบเดิม) · ไม่มีกุญแจ = cuid เดิมทุกไบต์ ◂
 export async function createProposal(
   ctx: Ctx,
   input: { conversationId: string; kind: ProposalKind; summary: string; payload: Record<string, unknown> },
 ): Promise<{ id: string }> {
+  const tcKey = currentToolCallKey();
+  const fixedId = tcKey ? toolCallRowId("tc", [ctx.tenantId, input.conversationId, tcKey, input.kind]) : null;
+  if (fixedId) {
+    const existing = await tenantDb(ctx).aiProposal.findFirst({ where: { id: fixedId }, select: { id: true } });
+    if (existing) return { id: existing.id };
+  }
   // tenantId ใส่ตรง ๆ ให้ตรง type (guard inject ค่าเดียวกันซ้ำ — convention repo นี้) · status = PENDING (default schema)
   const row = await tenantDb(ctx).aiProposal.create({
     data: {
+      ...(fixedId ? { id: fixedId } : {}),
       tenantId: ctx.tenantId,
       conversationId: input.conversationId,
       kind: input.kind,
@@ -236,8 +246,24 @@ export async function createProposal(
       risk: DESTRUCTIVE_KINDS.has(input.kind) ? "DESTRUCTIVE" : "NORMAL",
       expiresAt: new Date(Date.now() + TTL_MS),
     },
+  }).catch(async (e: unknown) => {
+    // R-Z7: สองรอบพร้อมกัน — ใบแรกเพิ่งเกิด (PK ชน) ⇒ คืนใบนั้น
+    if (fixedId && e instanceof PrismaNs.PrismaClientKnownRequestError && e.code === "P2002") {
+      const again = await tenantDb(ctx).aiProposal.findFirst({ where: { id: fixedId }, select: { id: true } });
+      if (again) return again;
+    }
+    throw e;
   });
   return { id: row.id };
+}
+
+/**
+ * SEC S3a.1-S1 ▸ R-Z9: ข้อเสนอ/แผนในห้องเลขาที่ปิดแล้วทำต่อไม่ได้ — ข้อความไทย (null = ไม่ใช่ห้องเลขา หรือห้องยังเปิด) ·
+ *   ผู้เรียก: `executeProposal` (หลังด่านการมองเห็น) · `plans.executePlan` ◂
+ */
+export async function closedRoomNote(tenantId: string, conversationId: string): Promise<string | null> {
+  const room = await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId }, select: { closedAt: true } });
+  return room?.closedAt ? "ห้องงานนี้ปิดแล้ว — รายการที่รออยู่ในห้องนี้ทำต่อไม่ได้ เปิดห้องใหม่แล้วสั่งอีกครั้ง" : null;
 }
 
 // ── ข้อเสนอที่ยังรออยู่ของบทสนทนา (PENDING + ยังไม่หมดอายุ) เรียงเก่า→ใหม่ ──
@@ -317,6 +343,9 @@ export async function executeProposal(
   if (typeof row.resultNote === "string" && row.resultNote.startsWith("WORKING#")) {
     return { ok: false, note: "ผู้ช่วย AI กำลังเตรียมข้อเสนอนี้อยู่ — รอสักครู่แล้วลองอีกครั้ง" };
   }
+  // SEC S3a.1-S1 ▸ R-Z9: ห้องเลขาที่ปิดแล้ว ⇒ ปฏิเสธ (ใบคง PENDING จนหมดอายุ) ◂
+  const closedNote = await closedRoomNote(ctx.tenantId, row.conversationId);
+  if (closedNote) return { ok: false, note: closedNote };
 
   // ทำไปแล้ว/ปิดไปแล้ว (ไม่ใช่ PENDING) → ไม่ทำซ้ำ
   if (row.status !== "PENDING") {
@@ -1032,7 +1061,7 @@ async function dispatch(
     return `บันทึกลูกค้ามุ่งหวัง "${name}" เข้าระบบ CRM เรียบร้อยแล้ว`;
   }
 
-  if (kind === "kb_create_article") {
+  if (kind === "kb_create_article" || kind === "kb.save") { // SEC S3a.1-S2 ▸ R-Z22: kb.save (ห้องเลขา) ใช้ทางเดียวกัน ◂
     const p = payload as KbCreateArticlePayload;
     // KB เป็น tenant-scoped ล้วน (ไม่มีระบบย่อย) — service โยน error ไทยถ้า title/body ว่าง
     await kbSvc.createArticle(
@@ -1400,6 +1429,10 @@ async function dispatch(
   // SEC S1.12 ▸ ส่งถึงลูกค้า (R-K15) · คืนมัดจำนัดหมาย (R-K16) ◂
   if (kind === "chat.send") return dispatchChatSend(tenantId, proposalId, payload, m, userId, out);
   if (kind === "booking_refund_deposit") return dispatchBookingRefundDeposit(tenantId, payload, userId, out);
+  // SEC S3a.1-S2 ▸ R-Z22: ลบความจำด้วยสิทธิ์ของผู้อนุมัติ (forgetMemory ตรวจว่าเขาลบแถวนั้นได้) ◂
+  if (kind === "memory.forget") return (await import("./secretary/memory-proposals")).dispatchMemoryForget(tenantId, payload, m, userId);
+  // SEC S3a.1-S2 ▸ R-Z34: เปิดเคสแจ้งทีมงานหลังคนอนุมัติ (ผู้เปิด = ผู้อนุมัติ · ห้องเดิมของข้อเสนอ) ◂
+  if (kind === "support.open") return (await import("./secretary/memory-proposals")).dispatchSupportOpen(tenantId, proposalId, payload, userId);
 
   if (kind === "automation_create_rule") {
     const p = payload as AutomationCreateRulePayload;

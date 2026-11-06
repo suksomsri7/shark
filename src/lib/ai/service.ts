@@ -19,7 +19,8 @@ import {
 } from "./skills";
 import { applyDegrade } from "./usage";
 import { canRunAi, chargeUsageSafe, LOW_BALANCE_MICRO, walletPeek } from "./credit";
-import type { AiCreditSource } from "@prisma/client";
+import type { AiCreditSource, Prisma } from "@prisma/client";
+import { withToolCallKey } from "./tool-call-key"; // SEC S3a.1-S1 R-Z7
 import { identityOf, secretaryOf } from "./secretary/secretary";
 import { getAccess } from "./secretary/access";
 import { NOT_SYSTEM_MESSAGE, visibleMessagesWhere } from "./secretary/members";
@@ -153,6 +154,16 @@ export async function sendMessage(
      *   บทสนทนาที่ผู้กระทำมองไม่เห็น ⇒ throw (ห้ามเปิดห้องใหม่ให้ข้อความที่อยู่ในคิว) · ไม่ส่ง = พฤติกรรมเดิมทุกไบต์ ◂
      */
     userMessageId?: string;
+    /**
+     * SEC S3a.1-S1 ▸ R-Z9: ป้ายต้นทุนของเทิร์นนี้บน `AiCreditTxn.note` (worker ส่ง `room-worker:<jobId>` — เพดาน assist ไม่นับแถวป้ายนี้) ·
+     *   ใช้เฉพาะทาง worker ของห้องเลขาที่ยังเปิด (`roomWorker`) · ไม่ส่ง = แถวเดิมทุกไบต์ ◂
+     */
+    usageNote?: string;
+    /**
+     * SEC S3a.1-S1 ▸ R-Z1: รันใน transaction เดียวกับการบันทึกคำตอบ **ก่อน** เขียน (worker: ตรวจ fence + ตั้ง DONE) — throw ⇒ ทั้ง tx ย้อน
+     *   (ไม่มีคำตอบ/ยอดใช้) แล้ว error เดิมโยนออกจาก sendMessage · ไม่ส่ง = tx แบบเดิมทุกไบต์ ◂
+     */
+    persistGuard?: (tx: Prisma.TransactionClient) => Promise<void>;
   },
 ): Promise<SendResult> {
   const text = input.text.trim();
@@ -324,6 +335,7 @@ export async function sendMessage(
   let finalText = "";
   let clarify: Clarify | null = null;
   const usedTools: { name: string; args: unknown }[] = []; // เครื่องมือที่ถูกเรียกจริงในเทิร์นนี้ (dataset)
+  let toolCallIndex = 0; // SEC S3a.1-S1 R-Z7: ลำดับ tool call ในเทิร์น (กุญแจ tc:<messageId>:<i>)
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let reply;
@@ -385,11 +397,13 @@ export async function sendMessage(
         // CRM C5.5-G1 ▸ ผู้กระทำของเทิร์นนี้ไปกับทุกการเรียก (runTool ตรวจสิทธิ์ซ้ำ — ชื่อที่ไม่ได้ยื่นก็โดนปฏิเสธ) ◂
         // SEC S1.22 ▸ send_customer_message ในห้องที่ผูกห้องลูกค้า: โมเดลไม่ส่ง conversationId ⇒ ใช้ห้องลูกค้าของห้องนี้ (เครื่องมือตรวจสิทธิ์ซ้ำเอง) ◂
         const toolArgs = tc.name === "send_customer_message" && roomCustomerConvId ? withDefaultCustomerConversation(tc.args, roomCustomerConvId) : tc.args;
-        const result = await runTool(
+        // SEC S3a.1-S1 ▸ R-Z7: เทิร์นที่รันซ้ำได้ (มี userMessageId) ⇒ ผลข้างเคียงของ tool ใช้กุญแจ tc:<messageId>:<i> (รันซ้ำ = แถวเดิม) ◂
+        const toolKey = deps?.userMessageId ? `tc:${deps.userMessageId}:${toolCallIndex++}` : null;
+        const result = await withToolCallKey(toolKey, () => runTool(
           { tenantId: ctx.tenantId, actor: ctx.actor, conversationId: conversation.id, access, sight },
           tc.name,
           toolArgs,
-        );
+        ));
         messages.push({ role: "tool", content: result, toolCallId: tc.id });
       }
       continue; // ไปรอบถัดไปให้ LLM เรียบเรียงคำตอบจากผลเครื่องมือ
@@ -402,17 +416,17 @@ export async function sendMessage(
 
   // persist คู่ข้อความ + ยอดใช้ อะตอมมิก (ผ่าน prisma ตรง — ใส่ tenantId เองให้ตรง type)
   // SEC S1.5 ▸ มี userMessageId = แถว USER มีอยู่แล้ว (ไม่สร้างซ้ำ) ◂
-  const userRow = deps?.userMessageId
-    ? []
-    : [
-        prisma.aiMessage.create({
-          // S1.4 (R-K2) ▸ ห้องเลขา: เก็บคนที่พิมพ์ (ห้องร่วมมีหลายคน) · ห้องเดิม (ไม่มี AiRoom) = แถวเดิมทุกตัวอักษร ◂
-          data: { tenantId: ctx.tenantId, conversationId: conversation.id, role: "USER", content: text, ...(conv?.room && ctx.actor.kind === "member" ? { authorUserId: ctx.actor.userId } : {}) },
-        }),
-      ];
-  await prisma.$transaction([
-    ...userRow,
-    prisma.aiMessage.create({
+  // SEC S3a.1-S1 ▸ R-Z1: ชุดเขียนเดียวกันรับ client ได้ (prisma = tx แบบ array เดิม · tx = แบบมี persistGuard) ◂
+  const persistOps = (db: Prisma.TransactionClient) => [
+    ...(deps?.userMessageId
+      ? []
+      : [
+          db.aiMessage.create({
+            // S1.4 (R-K2) ▸ ห้องเลขา: เก็บคนที่พิมพ์ (ห้องร่วมมีหลายคน) · ห้องเดิม (ไม่มี AiRoom) = แถวเดิมทุกตัวอักษร ◂
+            data: { tenantId: ctx.tenantId, conversationId: conversation.id, role: "USER", content: text, ...(conv?.room && ctx.actor.kind === "member" ? { authorUserId: ctx.actor.userId } : {}) },
+          }),
+        ]),
+    db.aiMessage.create({
       data: {
         tenantId: ctx.tenantId,
         conversationId: conversation.id,
@@ -422,8 +436,8 @@ export async function sendMessage(
         tokensOut,
       },
     }),
-    prisma.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
-    prisma.aiUsage.upsert({
+    db.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
+    db.aiUsage.upsert({
       where: { tenantId_day: { tenantId: ctx.tenantId, day } },
       create: { tenantId: ctx.tenantId, day, requests: 1, tokensIn, tokensOut },
       update: {
@@ -432,7 +446,16 @@ export async function sendMessage(
         tokensOut: { increment: tokensOut },
       },
     }),
-  ]);
+  ];
+  const guard = deps?.persistGuard;
+  if (guard) {
+    await prisma.$transaction(async (tx) => {
+      await guard(tx);
+      for (const op of persistOps(tx)) await op;
+    });
+  } else {
+    await prisma.$transaction(persistOps(prisma));
+  }
 
   // หักเงินจากกระเป๋าเครดิต (prepaid) — คนละ write กับ tx ข้างบนเพราะต้องอ่านยอดสดก่อนหัก
   // ล้ม = บันทึก OpsEvent แล้วไปต่อ (ห้ามให้คำตอบที่ผู้ใช้ได้แล้วหายไปเพราะบัญชีเครดิต)
@@ -442,6 +465,7 @@ export async function sendMessage(
     tokensIn,
     tokensOut,
     conversationId: conversation.id,
+    ...(roomWorker && deps?.usageNote ? { note: deps.usageNote.slice(0, 200) } : {}), // SEC S3a.1-S1 R-Z9
   });
 
   // เก็บ dataset (ฐาน self-host) — best-effort เท่านั้น: ห้ามให้พังการตอบ · gate ด้วย env ภายใน

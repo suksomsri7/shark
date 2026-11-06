@@ -10,6 +10,7 @@ import type { PlatformRole, PlatformUser } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { bkkDayStart } from "@/lib/core/quiet-hours";
 import { FREE_PACK } from "@/lib/ai/secretary/pack";
+import { ROOM_JOB_GEN, ROOM_JOB_MAX_GENS, attemptsInGen } from "@/lib/ai/secretary/job-gen"; // SEC S3a.1-S2 R-Z33 ◂
 import { requirePlatformRole } from "./auth";
 
 const OPS_ROLES: PlatformRole[] = ["SUPER_ADMIN", "SUPPORT"];
@@ -93,7 +94,7 @@ export async function listQueue(actor: PlatformUser, now?: Date): Promise<QueueV
     tenantName: names.get(r.tenantId) ?? "—",
     roomId: r.roomId,
     roomTitle: r.room?.title ?? "—",
-    attempts: r.attempts,
+    attempts: attemptsInGen(r.attempts), // R-Z33: ครั้งที่ในรุ่นปัจจุบัน ◂
     error: r.error,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -104,14 +105,21 @@ export async function listQueue(actor: PlatformUser, now?: Date): Promise<QueueV
 
 export type OpsResult = { ok: true; note: string } | { ok: false; note: string };
 
-/** ลองใหม่: FAILED → QUEUED (attempts 0 · error/lease/เวลาเริ่ม-จบ ล้าง) · สถานะอื่น = ไม่แตะ · ตัวรันรายนาทีหยิบเอง */
+/**
+ * ลองใหม่: FAILED → QUEUED (error/lease/เวลาเริ่ม-จบ ล้าง) · สถานะอื่น = ไม่แตะ · ตัวรันรายนาทีหยิบเอง
+ *   SEC S3a.1-S2 ▸ R-Z33: ไม่รีเซ็ต attempts เป็น 0 — ขึ้น "รุ่น" ถัดไป (`attempts` = รุ่น×100 · fence ไม่ย้อน) · ครบ 10 รุ่น = ลองใหม่ไม่ได้ ◂
+ */
 export async function retryJob(actor: PlatformUser, jobId: string): Promise<OpsResult> {
   const pu = guard(actor);
   const id = typeof jobId === "string" ? jobId.trim() : "";
   if (!id) return { ok: false, note: "ไม่พบงานนี้" };
+  const cur = await prisma.aiRoomJob.findFirst({ where: { id, status: "FAILED" }, select: { attempts: true } });
+  if (!cur) return { ok: false, note: "งานนี้ไม่ได้อยู่ในสถานะล้มเหลวแล้ว" };
+  const nextGen = Math.floor(cur.attempts / ROOM_JOB_GEN) + 1;
+  if (nextGen >= ROOM_JOB_MAX_GENS) return { ok: false, note: `งานนี้ถูกสั่งลองใหม่ครบ ${ROOM_JOB_MAX_GENS - 1} รอบแล้ว — ให้ร้านสั่งงานใหม่แทน` };
   const got = await prisma.aiRoomJob.updateMany({
-    where: { id, status: "FAILED" },
-    data: { status: "QUEUED", attempts: 0, error: null, leaseUntil: null, startedAt: null, finishedAt: null },
+    where: { id, status: "FAILED", attempts: cur.attempts },
+    data: { status: "QUEUED", attempts: nextGen * ROOM_JOB_GEN, error: null, leaseUntil: null, startedAt: null, finishedAt: null },
   });
   if (got.count !== 1) return { ok: false, note: "งานนี้ไม่ได้อยู่ในสถานะล้มเหลวแล้ว" };
   await prisma.platformAuditLog.create({
@@ -120,16 +128,20 @@ export async function retryJob(actor: PlatformUser, jobId: string): Promise<OpsR
   return { ok: true, note: "ส่งงานกลับเข้าคิวแล้ว — ตัวรันจะหยิบภายใน 1 นาที" };
 }
 
-/** ยกเลิก: QUEUED → FAILED (error "cancelled by support") · RUNNING/DONE/FAILED ไม่แตะ (กำลังรันอยู่ = รอให้จบหรือ lease หมด) */
+/**
+ * ยกเลิก: QUEUED → FAILED (error "cancelled by support") · DONE/FAILED ไม่แตะ
+ *   SEC S3a.1-S1 R-Z2: RUNNING ที่ lease หมดแล้ว (ตัวรันตาย/ค้าง) ยกเลิกได้ด้วย · RUNNING ที่ lease ยังไม่หมด = กำลังรันจริง ไม่แตะ
+ */
 export async function cancelJob(actor: PlatformUser, jobId: string, now?: Date): Promise<OpsResult> {
   const pu = guard(actor);
   const id = typeof jobId === "string" ? jobId.trim() : "";
   if (!id) return { ok: false, note: "ไม่พบงานนี้" };
+  const at = okDate(now);
   const got = await prisma.aiRoomJob.updateMany({
-    where: { id, status: "QUEUED" },
-    data: { status: "FAILED", error: CANCELLED_BY_SUPPORT, leaseUntil: null, finishedAt: okDate(now) },
+    where: { id, OR: [{ status: "QUEUED" }, { status: "RUNNING", leaseUntil: { lt: at } }] },
+    data: { status: "FAILED", error: CANCELLED_BY_SUPPORT, leaseUntil: null, finishedAt: at },
   });
-  if (got.count !== 1) return { ok: false, note: "ยกเลิกได้เฉพาะงานที่ยังรอคิว" };
+  if (got.count !== 1) return { ok: false, note: "ยกเลิกได้เฉพาะงานที่ยังรอคิว หรือที่ค้างจนหมดเวลาแล้ว" };
   await prisma.platformAuditLog.create({
     data: { platformUserId: pu.id, action: "secretary.job.cancel", targetType: "AiRoomJob", targetId: id },
   });

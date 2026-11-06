@@ -2,9 +2,9 @@
 //   Bearer อย่างเดียว (ยังไม่เป็นสมาชิกร้านนั้น · ไม่ต้องมี x-tenant-id) · เฉพาะเบอร์ที่ยืนยันแล้วของผู้ใช้ (ไม่ verified ⇒ []) · 30/นาที
 //   ไม่มีรหัสเชิญ/codeHash/เบอร์ในผล — รับด้วย `POST invites/accept { inviteId }`
 import { pendingInvitesForUser } from "@/lib/staff/invite";
-import { ok, thrown, userGate, withRateLimit } from "../../_shared";
+import { ok, thrown, userGate, withRateLimit, withErrors } from "../../_shared";
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await userGate(req);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(a.userId, "invites-pending", 30);
@@ -16,3 +16,6 @@ export async function GET(req: Request) {
     return thrown(e, "invites.pending");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/invites/pending GET", GET_);

@@ -3,17 +3,17 @@
 import { z } from "zod";
 import { listRules, setRule } from "@/lib/ai/secretary/approval-gate";
 import { ALWAYS_APPROVE, RULE_KEYS } from "@/lib/ai/secretary/kind-class";
-import { gate, ok, readBody, thrown, withRateLimit } from "../_shared";
+import { gate, ok, readBody, thrown, withRateLimit, withErrors } from "../_shared";
 
-const Body = z.object({ key: z.string().trim().min(1).max(40), enabled: z.boolean().optional(), limitSatang: z.number().int().min(0).max(1e12).nullable().optional() }).strict();
+const Body = z.object({ key: z.string().trim().min(1).max(40), enabled: z.boolean().optional(), limitSatang: z.number().int().min(0).max(2_147_483_647).nullable().optional() }).strict(); // SEC S3a.1-S2 ▸ R-Z20: เพดาน INT4 ของคอลัมน์ (ไม่ใช่ 500) ◂
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   return ok({ rules: await listRules(a.c.tenantId), keys: RULE_KEYS, alwaysApprove: ALWAYS_APPROVE });
 }
 
-export async function PUT(req: Request) {
+async function PUT_(req: Request) {
   const a = await gate(req, null);
   if (!a.ok) return a.res;
   const rl = await withRateLimit(`${a.c.tenantId}:${a.c.userId}`, "rules");
@@ -28,3 +28,7 @@ export async function PUT(req: Request) {
     return thrown(e, "rules.put");
   }
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/rules GET", GET_);
+export const PUT = withErrors("secretary/rules PUT", PUT_);

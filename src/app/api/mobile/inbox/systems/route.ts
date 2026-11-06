@@ -3,9 +3,9 @@ import { tenantDb } from "@/lib/core/db";
 import { mobileDenied } from "@/lib/mobile/guard";
 import { channelLabel } from "@/lib/modules/chat/channel-icon";
 import { listConnections } from "@/lib/modules/chat/service";
-import { gate, READ, REPLY, unreadFor } from "../_shared";
+import { gate, READ, REPLY, unreadFor, withErrors } from "../_shared";
 
-export async function GET(req: Request) {
+async function GET_(req: Request) {
   const a = await gate(req, [READ]);
   if (!a.ok) return a.res;
   const { c } = a;
@@ -21,3 +21,6 @@ export async function GET(req: Request) {
   }
   return Response.json({ items: systems, canReply: mobileDenied(c.g, REPLY) === null }); // COMMON ข้อ 6 · R-S1.21i
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("inbox/systems GET", GET_);

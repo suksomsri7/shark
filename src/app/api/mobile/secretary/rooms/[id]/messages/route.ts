@@ -4,9 +4,9 @@
 import { getRoom } from "@/lib/ai/secretary/rooms";
 import { listMessages } from "@/lib/ai/service";
 import { messageDto } from "@/lib/ai/secretary/dto";
-import { cursorOf, fail, gate, idParam, notFound, ok, pairCursor, takeOf, type RouteCtx } from "../../../_shared";
+import { cursorOf, fail, gate, idParam, notFound, ok, pairCursor, takeOf, type RouteCtx, withErrors } from "../../../_shared";
 
-export async function GET(req: Request, ctx: RouteCtx) {
+async function GET_(req: Request, ctx: RouteCtx) {
   const a = await gate(req);
   if (!a.ok) return a.res;
   const id = await idParam(ctx, "id");
@@ -20,3 +20,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const first = page[0];
   return ok({ items: page.map(messageDto), nextBefore: page.length === take && first ? cursorOf(first.createdAt, first.id) : null });
 }
+
+// SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂
+export const GET = withErrors("secretary/rooms/[id]/messages GET", GET_);
