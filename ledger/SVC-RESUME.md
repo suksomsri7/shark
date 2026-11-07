@@ -135,7 +135,7 @@
 **สถานะใบ**: H.0 ✅ · H.1 ✅ · H.3 ✅ · H.2 ✅ · H.5 ✅ · ข้อสอบครบทุกใบแล้ว (h.7 75 · h.8 84 · h.10 89 ข้อ อยู่บน session/svc)
 **ทรี/เลน (สะอาดทุกทรี · push แล้ว)**:
 - l3 `wip/svc-h4` @3f4c93abc — **H.4 พร้อมรับ**: ctrl-run h.4 98/109 0 แดง · chain รอบ 2 regression 19 ชุดเขียวครบ (h.4 เต็ม+G · probe-h4-review-b/c · probe-h5 · h.5/h.3/h.2/h.1/h.0/r0.4/r0.8/d.13/smoke/b.0/money/public/refund/p5.1) · **ค้าง tsc → fitness → build → serve 3246 → ภาพ 09**
-- l2 `wip/svc-h6` @92d40c230 — **H.6 พร้อมรับ**: chain รอบ 2 h.6 95/97 · probe-h6-review-b 23/23 · h.2/h.3/h.5/h.1/h.0/r0.8/r0.9 เขียว · d.13 รันค้างตอนพัก (ปล่อยจบเอง) · **ค้าง d.16/d.19/smoke/b.0/probe-h5 → tsc → build → serve 3247 → ภาพ 13**
+- l2 `wip/svc-h6` @92d40c230 — **H.6 พร้อมรับ**: chain รอบ 2 h.6 95/97 · probe-h6-review-b 23/23 · h.2/h.3/h.5/h.1/h.0/r0.8/r0.9 เขียว · d.13 96/98 0 แดง (จบ 21:54Z) · **ค้าง d.16/d.19/smoke/b.0/probe-h5 → tsc → build → serve 3247 → ภาพ 13**
 - l1 `wip/svc-h8` @b441ca678 — builder H.8 หยุดก่อนแก้ไฟล์ (ทรีสะอาด) · เริ่มใหม่ได้เลยด้วยพรอมป์เดิม
 **ทำต่อหลัง VPS กลับ (ตามลำดับ)**:
 0. ตรวจเครื่อง: `uptime` · `free -g` · `swapon --show` (5 ไฟล์) · `systemctl list-units 'svc-*' 'iso-*'` ต้องว่าง · node_modules ของ l1/l2/l3 เป็นโฟลเดอร์จริง (ถ้า bind mount หาย = remount ก่อน · memory reference_shark_pos_bind_mounts_lost_on_reboot) · `git status` ทุกทรีว่าง
