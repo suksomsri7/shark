@@ -3,7 +3,7 @@
 //      oracle ของผู้เขียนข้อสอบ — builder ห้ามแก้ไฟล์นี้ (แย้ง = wo-notes → ผู้คุม ORACLE-EDIT)
 // สัญญา: ledger/svc-briefs/svc-brief-h.7.md (§0 หลัก 6 ขั้น · §1 ไฟล์ · §2 มติ 8 ข้อ · §3 สัญญาโค้ด · §4 จอ · §5 event · §6 ฉาก · §7 เกณฑ์รับ/regression/X)
 //        ยืนบน H.3 booking.ts (createBooking · takeBookingDeposit · markNoShow) · H.5 folio.ts (postRoomNights(auditId)) · H.1 pricing/rates · H.2 block.ts (BLOCK ⇒ OOO) · rooms/occupancy (toYmd/ymdToDb) ·
-//        platform/minute-jobs.ts (registerMinuteJob/runMinuteJobs) · prisma HotelNightAudit (unique unitId+businessDate) · defs rooms.ts (noShow · dailyHousekeeping · auditAutoTime)
+//        platform/minute-jobs.ts (registerMinuteJob/runMinuteJobs) · prisma HotelNightAudit (unique unitId+businessDate) · defs rooms.ts (noShow · dailyHousekeeping · nightAuditTime #76 · มติ §9.7)
 //        ฟิกซ์เจอร์ scripts/svc-qc-data.mts บล็อก "SVC H.7" (SQC_HOTEL_AUDIT_SCENE · SQC_VISUAL_SPECS["h.7"] · manager +hotel.audit.run/reports.read) + "SVC H.3" (SQC_HOTEL_BOOKING_SCENE) + SQC_HOTEL_RATES
 //
 // 🔴 ORACLE-EDIT ที่ใบนี้คาด (จดตามพรอมป์ผู้คุม): hotel-tabs-shared.ts แท็บ reports `available: true` — ข้อสอบ h.1 U-3/U-4 (แท็บเดิม) ต้องแก้ตามตอนรับใบ
@@ -11,8 +11,8 @@
 //
 // กลุ่มข้อ:
 //   PC ตัวควบคุม (เขียวก่อนมีงาน): ฐาน QC ต่อได้ทุกเลน · ตัวดักคิวรี · ตาราง HotelNightAudit · ฟิกซ์เจอร์ h.7 สอดคล้องฉาก h.3 (occupied 2 · available 13 · noShows 1) · manager สิทธิ์ · ของที่ยืนบนโหลดได้ · oracle ของ oracle (ปัด/VAT/tz/ราคา)
-//   BD business-date.ts (pure): Bangkok = bkkYmd · Tokyo/New_York ผ่าน Intl (รวม DST) · nextBusinessDate · isAuditDue ก่อน/หลัง auditAutoTime · ไม่ import prisma
-//   NA ปิดวัน 6 ขั้น (ร้านชั่วคราว svc-h7-*): preview · close (no-show ริบผ่าน POS + PENALTY + SETTLED · post ROOM เฉพาะ CHECKED_IN คืน D · ไม่โพสต์ซ้ำ/คืนที่ void · KPI ทุกตัวคำนวณมือ · AuditLog · event) · GL เข้ม · ALREADY_CLOSED · TOO_EARLY · PREVIOUS_OPEN · timezone ≠ Bangkok · reopen (MANAGER · เหตุผล · วันล่าสุด) → ปิดใหม่ไม่ซ้ำ · tx ล้มกลางคัน (trigger จำลอง) = rollback ขั้น 2–5 · stayover DIRTY (SKIP H.6)
+//   BD business-date.ts (pure): Bangkok = bkkYmd · Tokyo/New_York ผ่าน Intl (รวม DST) · nextBusinessDate · isAuditDue ก่อน/หลัง nightAuditTime · ไม่ import prisma
+//   NA ปิดวัน 6 ขั้น (ร้านชั่วคราว svc-h7-*): preview · close (no-show ริบผ่าน POS · folio VOID ตาม H.3 · มติ §9.1 · post ROOM เฉพาะ CHECKED_IN คืน D · ไม่โพสต์ซ้ำ/คืนที่ void · KPI ทุกตัวคำนวณมือ · AuditLog · event) · GL เข้ม · ALREADY_CLOSED · TOO_EARLY · PREVIOUS_OPEN · timezone ≠ Bangkok · reopen (MANAGER · เหตุผล · วันล่าสุด) → ปิดใหม่ไม่ซ้ำ · tx ล้มกลางคัน (trigger จำลอง) = rollback ขั้น 2–5 · stayover DIRTY (SKIP H.6)
 //   CR cron: ทะเบียน hotel-night-audit 15 นาที · runDueAudits ปิดเฉพาะหน่วยที่ถึงเวลา/autoClose · 2 รอบซ้อน = ครั้งเดียว · budget 0 = ไม่ปิด · หน่วย timezone ต่างกัน · หน่วยล้ม = errors ไม่บล็อกหน่วยอื่น
 //   RP รายงาน: occupancyReport day/month (วันปิดแล้วอ่าน audit · วันยังไม่ปิดคำนวณสด) · revenueReport source/ratePlan/roomType net void · bookingFunnel · forecast30 (= hotelAvailability) · housekeepingReport · depositsReport · exportCsv (BOM · csvRow) · ≤ 8 คิวรี · INVALID_RANGE > 366 · getUnitKpi
 //   X ด่าน (X1 ข้ามร้าน/หน่วย NOT_FOUND · X3 ปิดซ้ำ · X9 สิทธิ์ 4 ระดับ · X10 DTO/payload/AuditLog ไม่มี PII) · N event 3 ทะเบียน + consumer อีเมล idempotencyKey hotel-audit-<auditId>
@@ -376,14 +376,14 @@ try {
     eq([AS.expect.roomsTotal, AS.expect.roomsOOO, AS.expect.roomsAvailable], [total, 0, total], "ห้อง");
     eq(AS.expect.occupancyBps, bpsRef(AS.expect.roomsOccupied, AS.expect.roomsAvailable), "bps");
     eq([AS.expect.closeTwice, AS.expect.closeToday, AS.expect.reopenThenClose.auditStatus, AS.expect.reopenThenClose.roomNightsPostedAfter, AS.expect.history], ["ALREADY_CLOSED", "TOO_EARLY", "CLOSED", 2, 1], "ค่าคงที่");
-    eq(Object.keys(AS.settings).sort(), ["rooms.hotel.audit.autoClose", "rooms.hotel.auditAutoTime", "rooms.hotel.dailyHousekeeping", "rooms.hotel.noShow"], "settings");
-    eq([AS.settings["rooms.hotel.noShow"], AS.settings["rooms.hotel.auditAutoTime"], AS.settings["rooms.hotel.audit.autoClose"]], ["FORFEIT_RELEASE_AFTER_AUDIT", "03:00", true], "ค่าตั้ง");
+    eq(Object.keys(AS.settings).sort(), ["rooms.hotel.audit.autoClose", "rooms.hotel.dailyHousekeeping", "rooms.hotel.nightAuditTime", "rooms.hotel.noShow"], "settings");
+    eq([AS.settings["rooms.hotel.noShow"], AS.settings["rooms.hotel.nightAuditTime"], AS.settings["rooms.hotel.audit.autoClose"]], ["FORFEIT_RELEASE_AFTER_AUDIT", "03:00", true], "ค่าตั้ง");
     const sup = SQC_HOTEL_ROOMS.filter((r) => r.typeId.endsWith("superior")).length;
     const supOnD = BS.bookings.filter((b) => b.roomType === "ซูพีเรีย" && b.status !== "CANCELLED" && b.status !== "NO_SHOW" && b.checkInOffset <= -1 && b.checkInOffset + b.nights > -1).reduce((a, b) => a + b.rooms, 0) + ex.length;
     ok(supOnD <= sup, `ซูพีเรียคืน −1 ใช้ ${supOnD} > ${sup}`);
     eq([AS.mark, AS.unit], ["SvcQcScene:h7", "hotel"], "mark");
     const inPlan = SQC_HOTEL_RATES.plans.find((p) => p.key === "standard");
-    ok(inPlan?.depositKind === "FIRST_NIGHT", "แผน standard ไม่ใช่ FIRST_NIGHT (PENALTY = มัดจำคืนแรก)");
+    ok(inPlan?.depositKind === "FIRST_NIGHT", "แผน standard ไม่ใช่ FIRST_NIGHT (บิลริบ = มัดจำคืนแรก)");
   });
   await st("PC-3", "ฟิกซ์เจอร์ผู้ใช้: manager MANAGER หน่วย hotel มี hotel.audit.run + hotel.reports.read + hotel.booking.manage · frontdesk/maid ไม่มี audit.run/reports.read · บนฐาน (seed แล้ว): membership manager ตรง · หน่วย hotel svcqc ผูก POS", async () => {
     const mg = SQC_USERS.find((u) => u.key === "manager")!, fd = SQC_USERS.find((u) => u.key === "frontdesk")!, md = SQC_USERS.find((u) => u.key === "maid")!;
@@ -645,8 +645,8 @@ try {
     S.FL1 = await inhouse({ checkIn: D, nights: 1, unitId: UFL });
     const fl2 = await bookAt({ checkIn: D, checkOut: W(0) }, UFL); S.FL2 = { id: fl2.reservations[0].id, code: fl2.reservations[0].code, roomId: "" }; await deposit(S.FL2.id, UFL);
     // ค่าตั้งหน่วย cron (ไม่มี def = ข้าม — U-9 จับ)
-    await trySet("rooms.hotel.auditAutoTime", "03:00", UCR1); await trySet("rooms.hotel.audit.autoClose", true, UCR1);
-    await trySet("rooms.hotel.auditAutoTime", "23:00", UCR2); await trySet("rooms.hotel.audit.autoClose", true, UCR2);
+    await trySet("rooms.hotel.nightAuditTime", "03:00", UCR1); await trySet("rooms.hotel.audit.autoClose", true, UCR1);
+    await trySet("rooms.hotel.nightAuditTime", "23:00", UCR2); await trySet("rooms.hotel.audit.autoClose", true, UCR2);
     await trySet("rooms.hotel.audit.autoClose", false, UH); await trySet("rooms.hotel.audit.autoClose", false, UNY); await trySet("rooms.hotel.audit.autoClose", false, UC); await trySet("rooms.hotel.audit.autoClose", false, UFL);
     // log แม่บ้าน (รายงาน): D 2 ห้องโดย MAID · D−1 1 ห้องโดย OWNER
     for (const [room, by, day] of [[ROOM.DLX01, MAID.userId, D], [ROOM.DLX02, MAID.userId, D], [ROOM.DLX03, OWNER.userId, W(-2)]] as [string, string, string][]) await prisma.hotelHousekeepingLog.create({ data: { tenantId: tA, unitId: UH, roomId: room, fromStatus: "DIRTY", toStatus: "CLEAN", byUserId: by, createdAt: new Date(`${day}T04:00:00.000Z`) } });
@@ -748,7 +748,7 @@ try {
     ok(Array.isArray(r.warnings), "warnings");
     eq(kpiCore(r.kpi), kpiOfRow(row), "kpi ที่คืน");
   });
-  await st("NA-3", "ขั้น 1 no-show (H.3 markNoShow + เงินผ่าน POS): C ⇒ NO_SHOW noShowAt · nights counted false · occupancy inactive · บิลริบ dep-forfeit: PAID = มัดจำ (1 ใบ) · folio C มี PENALTY 1 แถว amount = มัดจำ (refType PosSale → บิลริบ) · DEPOSIT −มัดจำ · balance 0 · folio SETTLED (ไม่ VOID) · E (ไม่มีมัดจำ) ⇒ NO_SHOW ไม่มีบิลริบ ไม่มี PENALTY · G HOLD คง HOLD · F คง CONFIRMED · AuditLog hotel.booking.no_show 2 แถว", async () => {
+  await st("NA-3", "ขั้น 1 no-show (H.3 markNoShow + เงินผ่าน POS): C ⇒ NO_SHOW noShowAt · nights counted false · occupancy inactive · บิลริบ dep-forfeit: PAID = มัดจำ (1 ใบ · sourceModule HOTEL) · folio C = VOID ตาม H.3 releaseStayTx (มติ §9.1 · ไม่แทรก PENALTY · ไม่ SETTLED) · DEPOSIT −มัดจำ คงอยู่ · ไม่มี PENALTY/ROOM บน folio C · E (ไม่มีมัดจำ) ⇒ NO_SHOW ไม่มีบิลริบ · folio E ไม่บังคับสถานะ · G HOLD คง HOLD · F คง CONFIRMED · AuditLog hotel.booking.no_show 2 แถว", async () => {
     needNa(); needScene(); ok(CLOSED.auditId, "ไม่มี NA-2");
     const c = await rvOf(S.C.id), e = await rvOf(S.E.id);
     eq([c.status, !!c.noShowAt, e.status, !!e.noShowAt], ["NO_SHOW", true, "NO_SHOW", true], "สถานะ");
@@ -758,12 +758,11 @@ try {
     eq(ff.map((s) => s.grandTotalSatang), [dep], "บิลริบ");
     const items = await itemsOf(S.C.id);
     const live = liveItems(items);
-    const pen = live.filter((i) => i.type === "PENALTY");
-    eq(pen.map((i) => i.amountSatang), [dep], "PENALTY");
-    ok(pen[0].refType === "PosSale" && pen[0].refId === ff[0].id, `PENALTY ไม่อ้างบิลริบ ${J([pen[0].refType, pen[0].refId])}`);
+    eq([ff[0].sourceModule, ff[0].sourceId], ["HOTEL", S.C.id], "บิลริบ source");
+    eq(live.map((i) => i.type), ["DEPOSIT"], "folio C มีรายการนอก DEPOSIT (ห้ามแทรก PENALTY/ROOM)");
     eq(live.filter((i) => i.type === "DEPOSIT").map((i) => i.amountSatang), [-dep], "DEPOSIT");
     const f = await folioOf(S.C.id);
-    eq([f.status, f.balanceSatang, sum(live.map((i) => i.amountSatang))], ["SETTLED", 0, 0], "folio C");
+    eq(f.status, "VOID", "folio C ต้อง VOID ตาม H.3");
     eq([(await forfeitSalesOf(e)).length, (await itemsOf(S.E.id, "PENALTY")).length], [0, 0], "E ไม่มีเงิน");
     eq([(await rvOf(S.G.id)).status, (await rvOf(S.F.id)).status, (await rvOf(S.I.id)).status], ["HOLD", "CONFIRMED", "CONFIRMED"], "G/F/I");
     const a = (await auditsOf(/^hotel\.booking\.no_show$/)).filter((x: Any) => [S.C.id, S.E.id].includes(x.targetId));
@@ -818,9 +817,9 @@ try {
     eq(Object.keys(p).filter((k) => !["unitId", "auditId", "businessDate", "kpi", "tenantId"].includes(k)), [], "คีย์นอกสัญญา");
     ok(!PII_TEXT.test(J(p)) && ![...walkKeys(p)].some((k) => PII_KEY.test(k)) && ev[0].unitId === UH, "PII/unitId");
   });
-  await st("NA-7", "ปิดซ้ำ/ปิดวันนี้ (X3 · §0): closeNightAudit(UH, D) อีกครั้ง ⇒ ALREADY_CLOSED · ไม่มีแถว/ROOM/บิลริบ/PENALTY เพิ่ม · (UH, วันนี้) ⇒ TOO_EARLY · (UH, พรุ่งนี้) ⇒ TOO_EARLY · businessDate ผิดรูป ⇒ ok:false ไม่ throw · unitId มั่ว ⇒ NOT_FOUND · preview หลังปิด ⇒ businessDate = วันนี้ (วันถัดไป)", async () => {
+  await st("NA-7", "ปิดซ้ำ/ปิดวันนี้ (X3 · §0): closeNightAudit(UH, D) อีกครั้ง ⇒ ALREADY_CLOSED · ไม่มีแถว/ROOM/บิลริบ/รายการ folio เพิ่ม · (UH, วันนี้) ⇒ TOO_EARLY · (UH, พรุ่งนี้) ⇒ TOO_EARLY · businessDate ผิดรูป ⇒ ok:false ไม่ throw · unitId มั่ว ⇒ NOT_FOUND · preview หลังปิด ⇒ businessDate = วันนี้ (วันถัดไป)", async () => {
     needNa(); needScene(); ok(CLOSED.auditId, "ไม่มี NA-2");
-    const sig = async () => J([await prisma.hotelNightAudit.count({ where: { unitId: UH } }), (await roomItemsOn(UH, D)).length, (await forfeitSalesOf(await rvOf(S.C.id))).length, (await itemsOf(S.C.id, "PENALTY")).length]);
+    const sig = async () => J([await prisma.hotelNightAudit.count({ where: { unitId: UH } }), (await roomItemsOn(UH, D)).length, (await forfeitSalesOf(await rvOf(S.C.id))).length, (await itemsOf(S.C.id)).length]);
     const s0 = await sig();
     eq(failCode(await close(MGR, {})), "ALREADY_CLOSED", "ปิดซ้ำ");
     eq(failCode(await close(MGR, { businessDate: T0 })), "TOO_EARLY", "วันนี้");
@@ -830,7 +829,7 @@ try {
     eq(await sig(), s0, "มีแถวเพิ่ม");
     eq((await preview(MGR, {}))?.businessDate, T0, "preview หลังปิด");
   });
-  await st("NA-8", "reopen (§0 · MANAGER · เหตุผล · วันล่าสุด): frontdesk ⇒ FORBIDDEN · manager ไม่มีเหตุผล ⇒ ok:false · auditId มั่ว ⇒ NOT_FOUND · manager + เหตุผล ⇒ ok · แถว REOPENED reopenedById/reopenedAt · ROOM A/B ยังอยู่ (ไม่ถอน) · AuditLog ~reopen · outbox hotel.audit.reopened {auditId, byUserId} · ปิดใหม่ ⇒ ok auditId เดิม · status CLOSED · KPI เท่าเดิมทุกตัว · ROOM live วัน D ยัง 2 · บิลริบ/PENALTY ยัง 1 (ไม่ริบซ้ำ) · no-show ไม่ซ้ำ · event closed 2 แถว (key ต่างกัน) · ประวัติ 1 แถว", async () => {
+  await st("NA-8", "reopen (§0 · MANAGER · เหตุผล · วันล่าสุด): frontdesk ⇒ FORBIDDEN · manager ไม่มีเหตุผล ⇒ ok:false · auditId มั่ว ⇒ NOT_FOUND · manager + เหตุผล ⇒ ok · แถว REOPENED reopenedById/reopenedAt · ROOM A/B ยังอยู่ (ไม่ถอน) · AuditLog ~reopen · outbox hotel.audit.reopened {auditId, byUserId} · ปิดใหม่ ⇒ ok auditId เดิม · status CLOSED · KPI เท่าเดิมทุกตัว · ROOM live วัน D ยัง 2 · บิลริบยัง 1 (ไม่ริบซ้ำ) · folio C ยัง VOID · no-show ไม่ซ้ำ · event closed 2 แถว (key ต่างกัน) · ประวัติ 1 แถว", async () => {
     needNa(); needScene(); ok(CLOSED.auditId, "ไม่มี NA-2");
     const before = kpiOfRow(await auditRow(UH, D));
     ok(isDenied(await reopen(FRONT, { auditId: CLOSED.auditId })), "frontdesk reopen ได้");
@@ -848,7 +847,7 @@ try {
     const rc = await auditRow(UH, D);
     eq([rc.status, kpiOfRow(rc)], ["CLOSED", before], "KPI หลังปิดใหม่");
     eq([liveItems(await roomItemsOn(UH, D)).length, (await roomItemsOn(UH, D)).length], [2, 3], "ROOM ซ้ำ");
-    eq([(await forfeitSalesOf(await rvOf(S.C.id))).length, liveItems(await itemsOf(S.C.id, "PENALTY")).length, (await auditsOf(/^hotel\.booking\.no_show$/)).filter((x: Any) => x.targetId === S.C.id).length], [1, 1, 1], "ริบซ้ำ");
+    eq([(await forfeitSalesOf(await rvOf(S.C.id))).length, (await folioOf(S.C.id)).status, (await auditsOf(/^hotel\.booking\.no_show$/)).filter((x: Any) => x.targetId === S.C.id).length], [1, "VOID", 1], "ริบซ้ำ");
     eq((await eventsOf("hotel.audit.closed", (p) => p.auditId === CLOSED.auditId)).length, 2, "event closed 2");
     const h = okRes(await history({}), "auditHistory");
     const hr = rowsOf(h);
@@ -883,11 +882,11 @@ try {
     okRes(await reopen(OWNER, { auditId: row.id, reason: "ทดสอบเจ้าของ" }), "reopen owner");
     okRes(await close(OWNER, { unitId: UNY, businessDate: nyD }), "ปิดคืน");
   });
-  await st("NA-11", "ลำดับวัน (§0 ขั้น 6 · UC ไม่เคยปิด): auditor (STAFF hotel.audit.run) ปิด D−2 (วันเริ่มใช้) ⇒ ok · CA (CONFIRMED เข้า D−2 มัดจำจ่าย) ⇒ NO_SHOW + บิลริบ + PENALTY · ปิด D (ข้าม D−1) ⇒ PREVIOUS_OPEN · frontdesk ปิด D−1 ⇒ FORBIDDEN · owner ปิด D−1 ⇒ ok (ว่าง: occupied 0 revenue 0 ADR 0 RevPAR 0 bps 0) · manager ปิด D ⇒ ok · auditHistory(UC, D−3..วันนี้) 3 แถวเรียงวัน · reopen D−1 (ไม่ใช่วันล่าสุด) ⇒ ok:false · reopen D ⇒ ok", async () => {
+  await st("NA-11", "ลำดับวัน (§0 ขั้น 6 · UC ไม่เคยปิด): auditor (STAFF hotel.audit.run) ปิด D−2 (วันเริ่มใช้) ⇒ ok · CA (CONFIRMED เข้า D−2 มัดจำจ่าย) ⇒ NO_SHOW + บิลริบ (folio VOID) · ปิด D (ข้าม D−1) ⇒ PREVIOUS_OPEN · frontdesk ปิด D−1 ⇒ FORBIDDEN · owner ปิด D−1 ⇒ ok (ว่าง: occupied 0 revenue 0 ADR 0 RevPAR 0 bps 0) · manager ปิด D ⇒ ok · auditHistory(UC, D−3..วันนี้) 3 แถวเรียงวัน · reopen D−1 (ไม่ใช่วันล่าสุด) ⇒ ok:false · reopen D ⇒ ok", async () => {
     needNa(); needScene();
     okRes(await close(AUDITOR, { unitId: UC, businessDate: W(-3) }), "auditor ปิด D−2");
     const ca = await rvOf(S.CA.id);
-    eq([ca.status, (await forfeitSalesOf(ca)).length, liveItems(await itemsOf(S.CA.id, "PENALTY")).length], ["NO_SHOW", 1, 1], "CA");
+    eq([ca.status, (await forfeitSalesOf(ca)).length, (await folioOf(S.CA.id)).status], ["NO_SHOW", 1, "VOID"], "CA");
     eq(failCode(await close(MGR, { unitId: UC, businessDate: D })), "PREVIOUS_OPEN", "ข้ามวัน");
     ok(isDenied(await close(FRONT, { unitId: UC, businessDate: W(-2) })), "frontdesk ปิดได้");
     okRes(await close(OWNER, { unitId: UC, businessDate: W(-2) }), "owner ปิด D−1");
@@ -901,7 +900,7 @@ try {
     okRes(await reopen(MGR, { auditId: last.id }), "reopen วันล่าสุด");
     okRes(await close(MGR, { unitId: UC, businessDate: D }), "ปิดคืน");
   });
-  await st("NA-12", "tx ล้มกลางคัน (§2.6 · trigger จำลองบน HotelNightAudit ของ UFL): closeNightAudit(UFL, D) ⇒ ok:false (ไม่ throw ดิบ) · rollback ขั้น 2–5: ไม่มีแถว audit · ROOM คืน D ของ FL1 = 0 · night.postedAuditId null · ไม่มี event hotel.audit.closed · ขั้น 1 (เงินนอก tx) ทำแล้ว: FL2 NO_SHOW + บิลริบ 1 · ถอด trigger แล้วปิดใหม่ ⇒ ok · บิลริบ/PENALTY FL2 ยัง 1 (idempotent) · ROOM FL1 1 · KPI occupied 1 revenue = ราคาคืน D", async () => {
+  await st("NA-12", "tx ล้มกลางคัน (§2.6 · trigger จำลองบน HotelNightAudit ของ UFL): closeNightAudit(UFL, D) ⇒ ok:false (ไม่ throw ดิบ) · rollback ขั้น 2–5: ไม่มีแถว audit · ROOM คืน D ของ FL1 = 0 · night.postedAuditId null · ไม่มี event hotel.audit.closed · ขั้น 1 (เงินนอก tx) ทำแล้ว: FL2 NO_SHOW + บิลริบ 1 · ถอด trigger แล้วปิดใหม่ ⇒ ok · บิลริบ FL2 ยัง 1 (idempotent · folio VOID) · ROOM FL1 1 · KPI occupied 1 revenue = ราคาคืน D", async () => {
     needNa(); needScene();
     await installFailTrigger(UFL);
     let r: Any;
@@ -914,7 +913,7 @@ try {
     eq([fl2.status, (await forfeitSalesOf(fl2)).length], ["NO_SHOW", 1], "ขั้น 1 นอก tx");
     okRes(await close(MGR, { unitId: UFL, businessDate: D }), "ปิดใหม่");
     const row = await auditRow(UFL, D);
-    eq([(await forfeitSalesOf(await rvOf(S.FL2.id))).length, liveItems(await itemsOf(S.FL2.id, "PENALTY")).length, liveItems(await roomItemsOn(UFL, D)).length, row.roomsOccupied, row.roomRevenueSatang], [1, 1, 1, 1, PRICE.dlx(D)], "หลังปิดใหม่");
+    eq([(await forfeitSalesOf(await rvOf(S.FL2.id))).length, (await folioOf(S.FL2.id)).status, liveItems(await roomItemsOn(UFL, D)).length, row.roomsOccupied, row.roomRevenueSatang], [1, "VOID", 1, 1, PRICE.dlx(D)], "หลังปิดใหม่");
   });
 
   // ═══════════════ CR cron hotel-night-audit ═══════════════
@@ -936,7 +935,7 @@ try {
     ok(/import\(\s*["']@\/lib\/modules\/hotel["']\s*\)/.test(src) || /import\(\s*["']@\/lib\/modules\/hotel\/night-audit["']\s*\)/.test(src), "ไม่ lazy import hotel");
     ok(!/hotel|audit/i.test(read(F.vercel)), "vercel.json มี cron ของโรงแรม");
   });
-  await st("CR-2", "runDueAudits(now = วันนี้ 03:30 ไทย, 20s) ⇒ {closed, skipped, errors} · ปิด UCR1 (กรุงเทพ · auditAutoTime 03:00 · autoClose) วัน D: แถว CLOSED closedById null (cron) · ROOM CR1 1 · occupied 1 · ไม่ปิด UCR2 (นิวยอร์ก 23:00 ยังไม่ถึง) · ไม่ปิด UH/UNY/UC/UFL (autoClose false หรือปิดแล้ว) · ไม่แตะหน่วยนอกร้านทดสอบ (svcqc autoClose ปิดไว้) · errors 0 · รันซ้ำ now เดิม ⇒ closed 0", async () => {
+  await st("CR-2", "runDueAudits(now = วันนี้ 03:30 ไทย, 20s) ⇒ {closed, skipped, errors} · ปิด UCR1 (กรุงเทพ · nightAuditTime 03:00 · autoClose) วัน D: แถว CLOSED closedById null (cron) · ROOM CR1 1 · occupied 1 · ไม่ปิด UCR2 (นิวยอร์ก 23:00 ยังไม่ถึง) · ไม่ปิด UH/UNY/UC/UFL (autoClose false หรือปิดแล้ว) · ไม่แตะหน่วยนอกร้านทดสอบ (svcqc autoClose ปิดไว้) · errors 0 · รันซ้ำ now เดิม ⇒ closed 0", async () => {
     needNa(); needScene();
     const o0 = await otherAuditCount();
     const r = okRes(await runDue(NOW1), "runDueAudits");
@@ -995,7 +994,7 @@ try {
   console.log("\n── RP รายงาน (reports.ts · UH · D ปิดแล้ว · D−1/วันนี้ สด) ──");
   const occRow = (r: Any, period: string) => rowsOf(r).find((x: Any) => x.period === period || x.date === period);
   const refLive = async (ymd: string) => { const k = await refKpi(UH, ymd); const nightsSum = sum(((await prisma.hotelBookingNight.findMany({ where: { tenantId: tA, unitId: UH, date: dbDate(ymd), counted: true }, include: { reservation: { select: { status: true } } } })) as Any[]).filter((n) => ["CHECKED_IN", "CHECKED_OUT"].includes(n.reservation.status)).map((n) => n.priceSatang)); return { ...k, nightsSum }; };
-  await st("RP-1", "occupancyReport(ctx{tenantId, actorUserId reader}, {UH, from D−1, to วันนี้, groupBy day}) ⇒ rows 3 แถว period = วัน · วัน D (ปิดแล้ว) = แถว audit ทุกช่อง (occupancyBps/adrSatang/revparSatang/occupied/available/revenueSatang) · วัน D−1 และวันนี้ (ยังไม่ปิด) คำนวณสด: occupied/available ตรงคำนวณมือ (D−1: A H = 2/8 · วันนี้: A B I? ตาม CHECKED_IN = 2/7) · revenue สด = Σ ROOM live หรือ Σ nights.priceSatang ของ CHECKED_IN (ยอมทั้งสอง · คำถามผู้คุม) · เงิน Int สตางค์ · % bp", async () => {
+  await st("RP-1", "occupancyReport(ctx{tenantId, actorUserId reader}, {UH, from D−1, to วันนี้, groupBy day}) ⇒ rows 3 แถว period = วัน · วัน D (ปิดแล้ว) = แถว audit ทุกช่อง (occupancyBps/adrSatang/revparSatang/occupied/available/revenueSatang) · วัน D−1 และวันนี้ (ยังไม่ปิด) คำนวณสด: occupied/available ตรงคำนวณมือ (D−1: A H = 2/8 · วันนี้: A B I? ตาม CHECKED_IN = 2/7) · revenue สด = Σ nights.priceSatang (counted) ของ CHECKED_IN/CHECKED_OUT (มติ §9.4) · เงิน Int สตางค์ · % bp", async () => {
     needRp(); needScene(); ok(CLOSED.auditId, "ไม่มี NA-2");
     const r = okRes(await report("occupancyReport", READER, { groupBy: "day" }), "occupancyReport");
     const rows = rowsOf(r);
@@ -1007,9 +1006,7 @@ try {
       const ref = await refLive(ymd);
       const row = occRow(r, ymd);
       eq([row.occupied, row.available, row.occupancyBps], [ref.roomsOccupied, ref.roomsAvailable, ref.occupancyBps], `สด ${ymd}`);
-      ok([ref.roomRevenueSatang, ref.nightsSum].includes(row.revenueSatang), `revenue สด ${ymd}: ได้ ${row.revenueSatang} (ROOM live ${ref.roomRevenueSatang} · nights ${ref.nightsSum})`);
-      ok([roundRef(ref.roomRevenueSatang, ref.roomsOccupied), roundRef(ref.nightsSum, ref.roomsOccupied)].includes(row.adrSatang), `ADR สด ${ymd}`);
-      ok([roundRef(ref.roomRevenueSatang, ref.roomsAvailable), roundRef(ref.nightsSum, ref.roomsAvailable)].includes(row.revparSatang), `RevPAR สด ${ymd}`);
+      eq([row.revenueSatang, row.adrSatang, row.revparSatang], [ref.nightsSum, roundRef(ref.nightsSum, ref.roomsOccupied), roundRef(ref.nightsSum, ref.roomsAvailable)], `revenue/ADR/RevPAR สด ${ymd} (Σ nights.priceSatang)`);
     }
     eq([occRow(r, W(-2)).occupied, occRow(r, W(-2)).available], [2, TOTAL_UH], "D−1 = A H · ไม่มี BLOCK");
     ok(rows.every((x: Any) => [x.occupancyBps, x.adrSatang, x.revparSatang, x.occupied, x.available, x.revenueSatang].every((v) => Number.isInteger(v))), "ไม่ใช่ Int");
@@ -1027,9 +1024,9 @@ try {
     ok(isFail(await report("occupancyReport", READER, { groupBy: "week" })), "groupBy ผิด");
     eq(failCode(await report("occupancyReport", READER, { unitId: "ไม่มี-unit", groupBy: "day" })), "NOT_FOUND", "unit มั่ว");
   });
-  const revField = (row: Any) => num(pick(row, "roomRevenueSatang", "revenueSatang", "amountSatang", "totalSatang"));
-  const keyField = (row: Any) => String(pick(row, "key", "source", "ratePlanCode", "ratePlan", "roomTypeName", "roomType", "code", "label", "name", "id") ?? "");
-  await st("RP-3", "revenueReport groupBy source/ratePlan/roomType (รายได้ห้อง = Σ ROOM live ตาม businessDate ในช่วง D−1..วันนี้ · net void): Σ ทุกแถว = Σ ROOM live ของหน่วยในช่วง (ไม่นับคืน D ของ H ที่ void) · source: PHONE = A(D) · WALK_IN = B(D) · OTA = H(D−1) · roomType: ดีลักซ์ = A(D)+H(D−1) · ซูพีเรีย = B(D) · ratePlan: STANDARD = A+B · BIGDEP = H(D−1) · ไม่มี PII", async () => {
+  const revField = (row: Any) => num(pick(row, "roomRevenueSatang"));
+  const keyField = (row: Any) => String(pick(row, "key") ?? "");
+  await st("RP-3", "revenueReport groupBy source/ratePlan/roomType (รายได้ห้อง = Σ ROOM live ตาม businessDate ในช่วง D−1..วันนี้ · net void): Σ ทุกแถว = Σ ROOM live ของหน่วยในช่วง (ไม่นับคืน D ของ H ที่ void) · source: PHONE = A(D) · WALK_IN = B(D) · OTA = H(D−1) · roomType: ดีลักซ์ = A(D)+H(D−1) · ซูพีเรีย = B(D) · ratePlan: STANDARD = A+B · BIGDEP = H(D−1) · แถว {key, label, roomRevenueSatang, otherRevenueSatang, totalSatang} (§9.3) · otherRevenue = Σ SERVICE+POS_CHARGE+MINIBAR (ฉากนี้ 0) · total = room + other · ไม่มี PII", async () => {
     needRp(); needScene(); ok(CLOSED.auditId, "ไม่มี NA-2");
     const live = liveItems((await prisma.hotelFolioItem.findMany({ where: { tenantId: tA, unitId: UH, type: "ROOM", businessDate: { gte: dbDate(W(-2)), lte: dbDate(T0) } } })) as Any[]);
     const total = sum(live.map((i) => i.amountSatang));
@@ -1047,28 +1044,30 @@ try {
       for (const x of rows) { const k = keyField(x); got[k] = (got[k] ?? 0) + (revField(x) ?? 0); }
       const want = exp[g];
       for (const [k, v] of Object.entries(want)) { const hit = Object.entries(got).find(([kk]) => kk === k || kk.includes(k) || k.includes(kk)); ok(hit && hit[1] === v, `${g} ${k}: ได้ ${J(got)} ต้อง ${v}`); }
+      for (const x of rows) { for (const kk of ["key", "label", "roomRevenueSatang", "otherRevenueSatang", "totalSatang"]) ok(kk in x, `${g} แถวไม่มี ${kk}`); eq(x.totalSatang, x.roomRevenueSatang + x.otherRevenueSatang, `${g} total`); eq(x.otherRevenueSatang, 0, `${g} otherRevenue`); }
       ok(!PII_TEXT.test(J(r)), `PII ${g}`);
     }
   });
-  await st("RP-4", "bookingFunnel(UH, D−1..วันนี้) ต่อ source: Σ จอง = จำนวนแถว HotelReservation ที่ createdAt ในช่วง (ทุกสถานะ) · no-show รวม 2 (C E · PHONE) · ยกเลิก 1 (F2 · WEB? = source ของ F2) พร้อมเหตุผล \"ลูกค้าขอยกเลิก\" · rate เป็น bp (0..10000) · leadTime/ALOS เป็นตัวเลข ≥ 0 · ไม่มี PII", async () => {
+  await st("RP-4", "bookingFunnel(UH, D−1..วันนี้) ต่อ source: Σ จอง = จำนวนแถว HotelReservation ที่ createdAt ในช่วง (ทุกสถานะ) · no-show รวม 2 (C E · PHONE) · ยกเลิก 1 (F2 · WEB? = source ของ F2) พร้อมเหตุผล \"ลูกค้าขอยกเลิก\" · confirmRateBps/cancelRateBps เป็น bp (0..10000) · leadTimeDaysAvg ≥ 0 · alosNights > 0 (ชื่อช่องล็อก §9.3) · ไม่มี PII", async () => {
     needRp(); needScene(); ok(CLOSED.auditId, "ไม่มี NA-2");
     const r = okRes(await report("bookingFunnel", READER, {}), "bookingFunnel");
     const rows = rowsOf(r).length ? rowsOf(r) : Array.isArray(r.bySource) ? r.bySource : Object.entries(r.bySource ?? {}).map(([k, v]: [string, Any]) => ({ source: k, ...v }));
     ok(rows.length >= 1, `ไม่มีแถว funnel ${J(r).slice(0, 200)}`);
     const rvs = (await prisma.hotelReservation.findMany({ where: { tenantId: tA, unitId: UH } })) as Any[];
-    const booked = sum(rows.map((x: Any) => num(pick(x, "booked", "created", "total", "bookings", "count")) ?? 0));
+    for (const x of rows) for (const kk of ["created", "confirmed", "cancelled", "noShow", "confirmRateBps", "cancelRateBps"]) ok(kk in x, `แถว funnel ไม่มี ${kk}`);
+    const booked = sum(rows.map((x: Any) => num(x.created) ?? 0));
     eq(booked, rvs.length, "Σ จอง");
-    eq(sum(rows.map((x: Any) => num(pick(x, "noShow", "noShows", "no_show", "noShowCount")) ?? 0)), rvs.filter((x) => x.status === "NO_SHOW").length, "no-show");
-    eq(sum(rows.map((x: Any) => num(pick(x, "cancelled", "canceled", "cancelledCount")) ?? 0)), rvs.filter((x) => x.status === "CANCELLED").length, "ยกเลิก");
+    eq(sum(rows.map((x: Any) => num(x.noShow) ?? 0)), rvs.filter((x) => x.status === "NO_SHOW").length, "no-show");
+    eq(sum(rows.map((x: Any) => num(x.cancelled) ?? 0)), rvs.filter((x) => x.status === "CANCELLED").length, "ยกเลิก");
     ok(J(r).includes("ลูกค้าขอยกเลิก"), "ไม่มีเหตุผลยกเลิก");
-    const bps = rows.flatMap((x: Any) => [num(pick(x, "noShowRateBps", "noShowBps", "noShowRate")), num(pick(x, "cancelRateBps", "cancellationRateBps", "cancelBps", "cancelRate"))]).filter((v: Any): v is number => v !== null);
+    const bps = rows.flatMap((x: Any) => [num(x.confirmRateBps), num(x.cancelRateBps)]).filter((v: Any): v is number => v !== null);
     ok(bps.length >= 1 && bps.every((v: number) => Number.isInteger(v) && v >= 0 && v <= 10_000), `rate bp ${J(bps)}`);
-    const lead = num(pick(r, "leadTimeDays", "leadTimeAvgDays", "leadTime", "avgLeadTimeDays")) ?? num(pick(rows[0], "leadTimeDays", "leadTimeAvgDays", "leadTime", "avgLeadTimeDays"));
-    const alos = num(pick(r, "alos", "alosNights", "avgLengthOfStay", "ALOS")) ?? num(pick(rows[0], "alos", "alosNights", "avgLengthOfStay"));
-    ok(lead !== null && lead >= 0 && alos !== null && alos > 0, `leadTime/ALOS ${J([lead, alos])}`);
+    const lead = num(r.leadTimeDaysAvg) ?? num(rows[0]?.leadTimeDaysAvg);
+    const alos = num(r.alosNights) ?? num(rows[0]?.alosNights);
+    ok(lead !== null && lead >= 0 && alos !== null && alos > 0, `leadTimeDaysAvg/alosNights ${J([lead, alos])}`);
     ok(!PII_TEXT.test(J(r)) && ![...walkKeys(r)].some((k) => PII_KEY.test(k)), "PII");
   }, "MAJOR");
-  await st("RP-5", "forecast30(UH) on-the-books 30 วันจากวันนี้ (ใช้ hotelAvailability H.3): 30 แถว date เรียงจากวันนี้ · ต่อวัน occupancyBps = Σcounted×10000 ÷ (Σtotal − Σblocked − Σleased) จาก hotelAvailability.get · วันนี้: counted รวม I/A/B · วัน +5 นับ F (CONFIRMED) · DLX06 BLOCK ลด available วันนี้/พรุ่งนี้", async () => {
+  await st("RP-5", "forecast30(UH) on-the-books 30 วันจากวันนี้ (ใช้ hotelAvailability H.3): 30 แถว {date, onBooks, available, occupancyBps} (§9.3) เรียงจากวันนี้ · ต่อวัน onBooks = Σcounted · available = Σtotal−blocked−leased · occupancyBps = Σcounted×10000 ÷ (Σtotal − Σblocked − Σleased) จาก hotelAvailability.get · วันนี้: counted รวม I/A/B · วัน +5 นับ F (CONFIRMED) · DLX06 BLOCK ลด available วันนี้/พรุ่งนี้", async () => {
     needRp(); needScene();
     const r = okRes(await report("forecast30", READER, {}), "forecast30");
     const rows = rowsOf(r);
@@ -1081,35 +1080,37 @@ try {
       const d = String(x.date ?? x.period);
       const cells = Object.values(av.byDate[d] ?? {}) as Any[];
       const counted = sum(cells.map((c) => c.counted)), sell = sum(cells.map((c) => c.total - c.blocked - c.leased));
-      const bps = num(pick(x, "occupancyBps", "onTheBooksBps", "bps")) ?? -1;
+      const bps = num(x.occupancyBps) ?? -1;
+      if (!("onBooks" in x && "available" in x) || x.onBooks !== counted || x.available !== sell) bad.push(`${d}: onBooks/available ${J([x.onBooks, x.available])} ≠ ${J([counted, sell])}`);
       if (bps !== bpsRef(counted, sell)) bad.push(`${d}: ${bps} ≠ ${bpsRef(counted, sell)} (${counted}/${sell})`);
     }
     eq(bad.slice(0, 5), [], "bps");
     const today = Object.values(av.byDate[T0] ?? {}) as Any[];
     ok(sum(today.map((c) => c.counted)) >= 3 && sum(today.map((c) => c.blocked)) === 1, `ตัวควบคุม availability วันนี้ ${J(today)}`);
   });
-  await st("RP-6", "housekeepingReport(UH, D−1..วันนี้) จาก HotelHousekeepingLog DIRTY→CLEAN: ต่อวัน D = 2 · D−1 = 1 · ต่อคน MAID 2 · OWNER 1 · OOO ค้าง ≥ 1 (DLX06 BLOCK ครอบวันนี้) · ไม่มี PII (ชื่อผู้ใช้ไม่ใช่ PII แขก)", async () => {
+  await st("RP-6", "housekeepingReport(UH, D−1..วันนี้) จาก HotelHousekeepingLog DIRTY→CLEAN · DTO {byDay:[{date, cleaned}], byUser:[{userId, cleaned}], oooOutstanding} (§9.3): ต่อวัน D = 2 · D−1 = 1 · ต่อคน MAID 2 · OWNER 1 · OOO ค้าง ≥ 1 (DLX06 BLOCK ครอบวันนี้) · ไม่มี PII (ชื่อผู้ใช้ไม่ใช่ PII แขก)", async () => {
     needRp(); needScene();
     const r = okRes(await report("housekeepingReport", READER, {}), "housekeepingReport");
-    const byDay = rowsOf(pick(r, "byDay", "days", "rows", "perDay")).length ? rowsOf(pick(r, "byDay", "days", "rows", "perDay")) : rowsOf(r);
-    const dayVal = (ymd: string) => num(pick(byDay.find((x: Any) => (x.date ?? x.period) === ymd) ?? {}, "cleaned", "rooms", "count", "done", "roomsCleaned"));
+    const byDay = rowsOf(r.byDay);
+    const dayVal = (ymd: string) => num((byDay.find((x: Any) => x.date === ymd) ?? {}).cleaned);
     eq([dayVal(D), dayVal(W(-2))], [2, 1], "ต่อวัน");
-    const byUser = rowsOf(pick(r, "byUser", "byStaff", "perUser", "staff", "users"));
-    const userVal = (uid2: string) => num(pick(byUser.find((x: Any) => (x.userId ?? x.byUserId ?? x.id) === uid2) ?? {}, "cleaned", "rooms", "count", "done", "roomsCleaned"));
+    const byUser = rowsOf(r.byUser);
+    const userVal = (uid2: string) => num((byUser.find((x: Any) => x.userId === uid2) ?? {}).cleaned);
     eq([userVal(MAID.userId), userVal(OWNER.userId)], [2, 1], "ต่อคน");
-    const ooo = num(pick(r, "oooOutstanding", "oooRooms", "ooo", "outOfOrder")) ?? rowsOf(pick(r, "ooo", "oooRooms", "outOfOrder")).length;
+    const ooo = num(r.oooOutstanding) ?? -1;
     ok(ooo >= 1, `OOO ค้าง ${J(ooo)}`);
     ok(!PII_TEXT.test(J(r)), "PII");
   }, "MAJOR");
-  await st("RP-7", "depositsReport(UH, D−1..วันนี้): HOLD active 1 (G) · มัดจำค้าง ≥ 1 (F CONFIRMED ยังไม่จ่าย) · ริบ (PENALTY) Σ = มัดจำ C (ราคาคืน D ดีลักซ์) · เป็นสตางค์ Int · ไม่มี PII", async () => {
+  await st("RP-7", "depositsReport(UH, D−1..วันนี้): DTO {holdActive, depositPendingSatang, forfeitedSatang, refundedSatang} (§9.3): holdActive 1 (G) · depositPendingSatang = มัดจำ F ที่ยังไม่จ่าย (CONFIRMED · depositSatang > 0 · depositPaidAt null) · forfeitedSatang = บิลริบ C (ราคาคืน D ดีลักซ์) · refundedSatang = 0 (F2 ยกเลิกไม่มีมัดจำ) · Int สตางค์ · ไม่มี PII", async () => {
     needRp(); needScene(); ok(CLOSED.auditId, "ไม่มี NA-2");
     const r = okRes(await report("depositsReport", READER, {}), "depositsReport");
-    const holds = num(pick(r, "holdActive", "holdsActive", "activeHolds", "holdCount")) ?? rowsOf(pick(r, "holds", "holdActive", "activeHolds")).length;
-    eq(holds, 1, "HOLD active");
-    const pending = num(pick(r, "depositPending", "depositsPending", "pendingDeposits", "unpaidDeposits", "pendingCount")) ?? rowsOf(pick(r, "pending", "depositPending", "unpaid")).length;
-    ok(pending >= 1, `มัดจำค้าง ${J(pending)}`);
-    const forfeited = num(pick(r, "forfeitedSatang", "penaltySatang", "forfeitSatang", "forfeitedTotalSatang"));
-    eq(forfeited, PRICE.dlx(D), "ริบ");
+    for (const kk of ["holdActive", "depositPendingSatang", "forfeitedSatang", "refundedSatang"]) ok(kk in r, `DTO ไม่มี ${kk}`);
+    eq(r.holdActive, 1, "HOLD active");
+    const pendingRef = sum(((await prisma.hotelReservation.findMany({ where: { tenantId: tA, unitId: UH, status: "CONFIRMED", depositPaidAt: null, depositSatang: { gt: 0 } } })) as Any[]).map((x) => x.depositSatang));
+    ok(pendingRef > 0, "ตัวควบคุม: ไม่มีมัดจำค้างในฉาก");
+    eq(r.depositPendingSatang, pendingRef, "มัดจำค้าง");
+    eq([r.forfeitedSatang, r.refundedSatang], [PRICE.dlx(D), 0], "ริบ/คืน");
+    ok([r.holdActive, r.depositPendingSatang, r.forfeitedSatang, r.refundedSatang].every((v) => Number.isInteger(v)), "ไม่ใช่ Int");
     ok(!PII_TEXT.test(J(r)), "PII");
   }, "MAJOR");
   await st("RP-8", "exportCsv(kind, rows) → string (§0 CSV ทุกตาราง · X6): ขึ้นต้น BOM \\uFEFF · บรรทัดแรก = หัวตารางไทย · จำนวนบรรทัดข้อมูล = rows · ค่าอันตราย (=HYPERLINK · +66 · @SUM · -2+3) ถูก csvRow ทำให้เป็นข้อความ (ขึ้นต้น ') · reports.ts import csvRow จาก @/lib/core/csv · kind ไม่รู้จัก ⇒ ไม่ throw (ว่าง/ok:false)", async () => {
@@ -1142,13 +1143,13 @@ try {
     await probe("deposits", () => report("depositsReport", READER, { from: W(-30), to: W(0) }));
     eq(bad, [], "เกินงบ/ล้ม");
   });
-  await st("RP-10", "getUnitKpi(unitId) (§0 · Overview): UH ⇒ {occupancyTodayBps, arrivalsToday 1 (I เข้าวันนี้), roomRevenueYesterdaySatang = audit D} · occupancyTodayBps = CHECKED_IN คืนนี้ (A B = 2/7 = 2857) หรือ on-the-books รวม CONFIRMED (A B I = 3/7 = 4285) [คำถามผู้คุม] · UNY (เมื่อวานปิดแล้ว/ยังไม่ปิดตาม tz) ⇒ ตัวเลข Int · unitId มั่ว ⇒ null · หน่วยหอ/ไม่ใช่โรงแรม ⇒ null · facade hotel/index.ts export getUnitKpi · ไม่มี PII", async () => {
+  await st("RP-10", "getUnitKpi(unitId) (§0 · Overview): UH ⇒ {occupancyTodayBps, arrivalsToday 1 (I เข้าวันนี้), roomRevenueYesterdaySatang = audit D} · occupancyTodayBps = on-the-books (CHECKED_IN คืนนี้ A B + CONFIRMED เข้าวันนี้ I = 3/7 = 4285 · มติ §9.6) · UNY (เมื่อวานปิดแล้ว/ยังไม่ปิดตาม tz) ⇒ ตัวเลข Int · unitId มั่ว ⇒ null · หน่วยหอ/ไม่ใช่โรงแรม ⇒ null · facade hotel/index.ts export getUnitKpi · ไม่มี PII", async () => {
     needRp(); needScene(); ok(CLOSED.auditId, "ไม่มี NA-2");
     const k = await call(() => RP("getUnitKpi")(UH));
     ok(k && k.ok !== false, `getUnitKpi ${J(k)}`);
     eq(Object.keys(k).sort(), ["arrivalsToday", "occupancyTodayBps", "roomRevenueYesterdaySatang"], "คีย์");
     eq([k.arrivalsToday, k.roomRevenueYesterdaySatang], [1, (await auditRow(UH, D)).roomRevenueSatang], "arrivals/เมื่อวาน");
-    ok([bpsRef(2, EXP.availD), bpsRef(3, EXP.availD)].includes(k.occupancyTodayBps), `occupancyTodayBps ${k.occupancyTodayBps}`);
+    eq(k.occupancyTodayBps, bpsRef(3, EXP.availD), "occupancyTodayBps (on-the-books)");
     const ny = await call(() => RP("getUnitKpi")(UNY));
     ok(ny && Number.isInteger(ny.roomRevenueYesterdaySatang) && Number.isInteger(ny.occupancyTodayBps), `UNY ${J(ny)}`);
     eq(await call(() => RP("getUnitKpi")("ไม่มี-unit")), null, "unit มั่ว");
@@ -1335,14 +1336,15 @@ try {
     ok(/SVC H\.7 ▸[\s\S]*◂/.test(read(F.index)), "ไม่มีบล็อก // SVC H.7 ▸ … ◂");
     ok(typeof naL.mod?.computeKpi === "function", "night-audit.ts ไม่ export computeKpi");
   });
-  await st("U-9", "ค่าตั้งใหม่ (§1 defs/rooms.ts เพิ่มคีย์อย่างเดียว): rooms.hotel.auditAutoTime time ค่าเริ่ม \"03:00\" chain U · rooms.hotel.audit.autoClose bool true · rooms.hotel.audit.notifyRoles enum[] ค่าเริ่ม [OWNER, MANAGER] (รับ OWNER/MANAGER/STAFF? อย่างน้อย OWNER,MANAGER) · ป้ายไทย · def โรงแรม (hotel(...)) · def เดิมไม่หาย (noShow · dailyHousekeeping · nightAuditTime) · permissions.ts: hotel.audit.run/hotel.reports.read ออกจาก planned", () => {
+  await st("U-9", "ค่าตั้งใหม่ (§1 defs/rooms.ts เพิ่มคีย์อย่างเดียว): ใช้ rooms.hotel.nightAuditTime (#76 เดิม · 03:00) ไม่เพิ่ม rooms.hotel.auditAutoTime (มติ §9.7) · rooms.hotel.audit.autoClose bool true · rooms.hotel.audit.notifyRoles enum[] ค่าเริ่ม [OWNER, MANAGER] (รับ OWNER/MANAGER/STAFF? อย่างน้อย OWNER,MANAGER) · ป้ายไทย · def โรงแรม (hotel(...)) · def เดิมไม่หาย (noShow · dailyHousekeeping · nightAuditTime) · permissions.ts: hotel.audit.run/hotel.reports.read ออกจาก planned", () => {
     const d = (k: string) => { const x = SET?.getDef?.(k); ok(x, `ไม่มี def ${k} (ยังไม่มีงาน H.7)`); return x; };
-    const t = d("rooms.hotel.auditAutoTime"), c = d("rooms.hotel.audit.autoClose"), n = d("rooms.hotel.audit.notifyRoles");
+    const t = d("rooms.hotel.nightAuditTime"), c = d("rooms.hotel.audit.autoClose"), n = d("rooms.hotel.audit.notifyRoles");
+    ok(!SET.getDef("rooms.hotel.auditAutoTime"), "เพิ่ม rooms.hotel.auditAutoTime ทั้งที่มติ §9.7 ให้ใช้ nightAuditTime");
     eq([t.defaults._fallback, c.defaults._fallback, n.defaults._fallback], ["03:00", true, ["OWNER", "MANAGER"]], "ค่าเริ่ม");
     ok(t.schema.safeParse("23:30").success && !t.schema.safeParse("25:00").success && c.schema.safeParse(false).success && n.schema.safeParse(["OWNER"]).success && !n.schema.safeParse(["ALIEN"]).success, "schema");
     ok([t, c, n].every((x) => THAI.test(x.labelTh ?? "")), "ป้ายไทย");
     const src = stripComments(read(F.roomsDefs)).replace(/\n/g, " ");
-    for (const k of ["rooms.hotel.auditAutoTime", "rooms.hotel.audit.autoClose", "rooms.hotel.audit.notifyRoles"]) ok(new RegExp(`hotel\\(\\s*\\{[^}]*key:\\s*"${k.replace(/\./g, "\\.")}"`).test(src), `${k} ไม่ใช่ def โรงแรม (hotel(...))`);
+    for (const k of ["rooms.hotel.nightAuditTime", "rooms.hotel.audit.autoClose", "rooms.hotel.audit.notifyRoles"]) ok(new RegExp(`hotel\\(\\s*\\{[^}]*key:\\s*"${k.replace(/\./g, "\\.")}"`).test(src), `${k} ไม่ใช่ def โรงแรม (hotel(...))`);
     ok(SET.getDef("rooms.hotel.noShow") && SET.getDef("rooms.hotel.dailyHousekeeping") && SET.getDef("rooms.hotel.nightAuditTime"), "def เดิมหาย");
     const planned = /planned:\s*\[([\s\S]*?)\]/.exec(read(F.perms).split('module: "hotel"')[1] ?? "")?.[1] ?? "";
     ok(!/hotel\.audit\.run|hotel\.reports\.read/.test(planned), "hotel.audit.run/hotel.reports.read ยังอยู่ใน planned");
@@ -1448,7 +1450,7 @@ console.log("\n── Q ฉาก svcqc (svc-qc-hotel-audit-scene · ยืน�
   const SD = sqcAddDays(SQC_TODAY_BKK, AS.businessDateOffset);
   const REV = refScenePrice("ดีลักซ์", SD) + refScenePrice("ซูพีเรีย", SD);
   const n1 = `ฉาก ${F.scene}: (h.1 → --clear h.2/h.5/h.6 ถ้ามี → h.3 --clear → h.3 → h.7) exit 0 · SCENE_SUMMARY {created,updated,removed} · audit-noshow CONFIRMED มัดจำจ่าย ไม่เช็กอิน (note มี mark) · ค่าตั้ง UNIT ตาม AS.settings · ยังไม่ปิดวัน (HotelNightAudit 0 · ให้หน้า audit แสดง preview) · ร้านอื่นไม่เปลี่ยน`;
-  const n2 = `closeNightAudit(owner svcqc, D = ${SD}) ⇒ แถว audit: roomsTotal 13 · OOO 0 · available 13 · occupied 2 · bps 1538 · revenue = ราคาคืน D ดีลักซ์ + ซูพีเรีย (pricing ref) · ADR = revenue÷2 · RevPAR = revenue÷13 · audit-noshow ⇒ NO_SHOW + บิลริบ + PENALTY + folio SETTLED · ROOM วัน D 2 แถว (inhouse-web · inhouse-ota) postedAuditId = auditId · event closed kpi.noShows ≥ 1 · stayovers DIRTY 2 (${HK_SKIP ? "ข้าม — H.6" : "ตรวจ"})`;
+  const n2 = `closeNightAudit(owner svcqc, D = ${SD}) ⇒ แถว audit: roomsTotal 13 · OOO 0 · available 13 · occupied 2 · bps 1538 · revenue = ราคาคืน D ดีลักซ์ + ซูพีเรีย (pricing ref) · ADR = revenue÷2 · RevPAR = revenue÷13 · audit-noshow ⇒ NO_SHOW + บิลริบ PAID + folio VOID (มติ §9.1) · ROOM วัน D 2 แถว (inhouse-web · inhouse-ota) postedAuditId = auditId · event closed kpi.noShows ≥ 1 · stayovers DIRTY 2 (${HK_SKIP ? "ข้าม — H.6" : "ตรวจ"})`;
   const n3 = "ปิดซ้ำ ⇒ ALREADY_CLOSED · ปิดวันนี้ ⇒ TOO_EARLY · reopen (manager svcqc · เหตุผล) → ปิดใหม่ ⇒ CLOSED · ROOM วัน D ยัง 2 (ไม่โพสต์ซ้ำ) · KPI เท่าเดิม · บิลริบ 1 · history 1";
   const n4 = "--clear ⇒ audit-noshow หาย · HotelNightAudit ของหน่วย 0 · ROOM วัน D ที่ audit โพสต์หาย + nights.postedAuditId/folioItemId คืน null (ฉาก h.5 ยังคาด ROOM 1/inhouse-ota DEPOSIT อย่างเดียว) · ค่าตั้ง UNIT ของฉากถูกถอด · แถวนอก mark คงเดิม · รันคืน ⇒ สถานะก่อนปิดวัน";
   if (why) { for (const [id, n] of [["Q-1", n1], ["Q-2", n2], ["Q-3", n3], ["Q-4", n4]]) skip(id, n, why, "MAJOR"); }
@@ -1488,9 +1490,9 @@ console.log("\n── Q ฉาก svcqc (svc-qc-hotel-audit-scene · ยืน�
       ok(dep && (await prisma.posSale.count({ where: { tenantId: SQC_TENANT.id, idempotencyKey: { startsWith: `dep-forfeit:${dep.id}` }, status: "PAID" } })) === 1, "ไม่มีบิลริบ");
       const items = (await prisma.hotelFolioItem.findMany({ where: { folio: { reservationId: ns.id } } })) as Any[];
       const live = items.filter((i) => !i.voidedAt);
-      eq(live.filter((i) => i.type === "PENALTY").map((i) => i.amountSatang), [refScenePrice("ซูพีเรีย", SD)], "PENALTY");
+      eq(live.map((i) => i.type), ["DEPOSIT"], "folio audit-noshow มีรายการนอก DEPOSIT");
       const f = await prisma.hotelFolio.findUnique({ where: { reservationId: ns.id } });
-      eq([f.status, f.balanceSatang], ["SETTLED", 0], "folio audit-noshow");
+      eq(f.status, "VOID", "folio audit-noshow ต้อง VOID ตาม H.3");
       const ri = await sRoomItems(SD);
       eq(ri.filter((i) => !i.voidedAt).length, AS.expect.roomNightsPosted, "ROOM วัน D");
       for (const rv of [web, ota]) { const n = (await sNightsOn(rv.id, SD))[0]; ok(n && n.postedAuditId === AUD.id && n.folioItemId, `night ${rv.code}`); }
