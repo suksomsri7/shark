@@ -1868,6 +1868,7 @@ const REG: { s: string; args?: string[]; judge?: (out: string, code: number | nu
   // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-review-probe): probe ผู้ตรวจเงินรอบ 1 (Fable) เข้าทรีเป็น regression ถาวร — C1 บิลผสม CASH+ROOM_CHARGE · C2 EXCLUSIVE+POS_CHARGE · M1 settle ล้ม→ย่น→settle · M2 มัดจำกลุ่มทางรายห้อง · m1 folio SETTLED
   { s: "probe-h5-review-a", judge: judgeNoFail, note: "probe ผู้ตรวจเงิน A (27 ข้อ: บิลผสม · settle ล้มแล้วย่น · มัดจำกลุ่มรายห้อง · settle ซ้อน · void บิลร้าน · PII)" },
   { s: "probe-h5-review-a2", judge: judgeNoFail, note: "probe ผู้ตรวจเงิน A2 (4 ข้อ: EXCLUSIVE + POS_CHARGE ไม่บวก VAT ซ้ำ)" },
+  { s: "probe-h5-review-b", judge: judgeNoFail, note: "probe ผู้ตรวจเงินรอบ 2 B (33 ข้อ: มัดจำเกิน · มัดจำกลุ่ม 2 บิล · บิลค้างหลัง tx B ล้ม · void บิลร้านหลังปิด · attach ก่อน JV · บิลผสม+refundStay · ประกันริบ+PENALTY · EXCLUSIVE+SC+DISCOUNT · Σdr=Σcr)" }, // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-review-probe-b)
   { s: "qc-svc-r0.4", judge: judgeNoFail, note: "หน้าค่าตั้ง (def ใหม่) ไม่มี FAIL" },
   { s: "qc-svc-d.13", args: ["--no-regression"], judge: judgeNoFail, note: "ไม่มี FAIL" },
   { s: "qc-svc-smoke" },
