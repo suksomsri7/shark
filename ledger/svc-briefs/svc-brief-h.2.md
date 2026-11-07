@@ -71,3 +71,8 @@
 11. สัญญา H.3 ที่ข้อสอบยึด: ทุกฟังก์ชัน `(actor, ctx, input)` · `unitId`/`at` อยู่ใน input · `takeBookingDeposit({unitId, reservationId, payType})` · `cancelBooking({unitId, reservationId, reason})` · `extendBooking/shortenBooking({unitId, id, newCheckOut})` · `hotelAvailability.get` คืน `byDate[ymd][roomTypeId].{total, blocked, counted, available}` — ส่งให้ผู้เขียนข้อสอบ h.3 ยึดเหมือนกัน (ถ้า h.3 ต่าง ผู้คุม ORACLE-EDIT ฝั่ง h.2 ตอน H.3 merge)
 12. ข้อสอบตั้ง `SVC_QC_CLOCK=1` เองได้ · G-2 ยอม h.1 U-4 แดงตาม §6
 
+## 8. มติผู้คุมหลัง builder รอบ 1 (7 พ.ย. · 96e846560 · ข้อแย้ง D1–D10 ใน wo-notes §7)
+1. D1 แผน default ของฉากร้านชั่วคราวต้องเป็น `depositKind: "FIRST_NIGHT"` (H.3 ถือห้อง HOLD เฉพาะเมื่อต้องมีมัดจำ) · D2 ฉาก perf ใส่ `channelRef` เมื่อ OTA · D3 C1 (ออก = วันแรกของกริด) ยังแสดงตาม §7 ข้อ 5 · D4 เข้าวันนี้ = 4 · D5 ยอมทั้ง [3,1,2,0] และ [2,0,2,0] (สาระ = total−blocked 2 · counted 2 · available 0) · D6 รับ `ROOM_BUSY` ของ H.3 เท่ากับ `ROOM_TAKEN` ในผล assignRoom/reschedule · D7 นับ occupancy เฉพาะของ C3 · D8 เทียบเฉพาะ nights.counted · D9 ตรวจ package.json ด้วย diff เทียบฐาน e02e7e5a2 · D10 h.1 U-3/U-4 คาดแท็บปฏิทินห้อง (ORACLE-EDIT 8bc3cbd3c)
+2. **การลากต้องไม่ย้ายการจองอื่นเงียบ ๆ**: H.3 `rescheduleBooking` (และ assignRoom) เพิ่ม `repack?: boolean` ค่าเริ่ม true (พฤติกรรม H.3 เดิม) · action ของ H.2 ส่ง `repack: false` ⇒ ชน = ROOM_TAKEN/ROOM_BUSY เด้งกลับ — ข้อยกเว้น §1 "ห้ามแตะ booking.ts" เฉพาะจุดนี้
+3. ADR ปัดลงสตางค์ตามข้อสอบ (ไม่ใช้ rooms.money.rounding — หนี้ H.7) · ป้ายช่องทางในแถบเป็นไทย (ภาพ 08 "walk-in" เป็นภาพร่าง)
+
