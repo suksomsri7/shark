@@ -425,7 +425,8 @@ export async function settleAndCheckOut(actorIn: unknown, ctx: unknown, input: u
   }
 
   // (5) หลัง tx B: คืนมัดจำส่วนเกิน · กันรายได้ซ้ำของบิลร้านที่ลงห้อง
-  if (sale && t.head?.depositSaleId) await refundExcessDeposit(c, t, sale, warnings);
+  // ทางเดิม P1 (legacyCash): มัดจำคงเหลือค้าง OPEN แบบเดิม (คืนที่หน้าขาย/refundStay คืนทั้งก้อน — สัญญา P5.1 MA2b) · ทางใหม่: คืนส่วนเกินทันที (ใบ §2.5)
+  if (sale && t.head?.depositSaleId && !legacy) await refundExcessDeposit(c, t, sale, warnings);
   if (sale) await reverseRoomCharges(c, b.posChargeSaleIds, sale.id, warnings);
   return { ok: true, saleId: sale?.id ?? null, receiptNo: sale?.receiptNo ?? null, changeSatang, folios: b.folios, warnings };
 }

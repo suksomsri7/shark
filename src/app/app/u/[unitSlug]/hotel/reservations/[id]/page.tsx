@@ -26,7 +26,7 @@ import FolioPanel from "@/components/hotel/FolioPanel"; // SVC H.5 ◂
 
 // SVC H.3 ▸ รายละเอียดการจอง (ใบสั่ง h.3 §4) — หน่วย HOTEL เท่านั้น · getBooking (ข้ามร้าน/หน่วย ⇒ notFound) · ปุ่มตามสิทธิ์จาก session
 //   canManage ⇔ hotel.booking.manage · canCancel ⇔ hotel.reservation.cancel · ย้อน «ไม่มา» ⇔ ผู้จัดการ/เจ้าของ
-// SVC H.5 ▸ แท็บ "เงิน" = บิลระหว่างพัก (FolioPanel · ภาพ 09 ขวา) แทนปุ่มเช็กเอาต์ P1 · ?tab=money เลื่อนบิลขึ้นก่อน · ?checkout=1 เปิดไดอะล็อกเช็กเอาต์ (ภาพ h.5) ◂
+// SVC H.5 ▸ แท็บ "เงิน" = บิลระหว่างพัก (FolioPanel ฝังใน BookingDetail · ภาพ 09 ขวา) แทนปุ่มเช็กเอาต์ P1 · ?tab=money เปิดแท็บเงิน · ?checkout=1 เปิดไดอะล็อกเช็กเอาต์ (ภาพ h.5) ◂
 type SearchP = Promise<{ [k: string]: string | string[] | undefined }>;
 export default async function HotelReservationDetailPage({ params, searchParams }: { params: Promise<{ unitSlug: string; id: string }>; searchParams?: SearchP }) {
   const { unitSlug, id } = await params;
@@ -71,9 +71,9 @@ export default async function HotelReservationDetailPage({ params, searchParams 
     );
   };
   return (
-    <div className="flex min-w-0 flex-col gap-5">
-      {tab === "money" ? renderFolio() : null}
       <BookingDetail
+      moneyPanel={renderFolio()}
+      initialTab={tab === "money" || wantCheckout ? "money" : undefined}
       booking={r.booking}
       unitSlug={unitSlug}
       perms={{ canManage, canCancel: can("hotel.reservation.cancel"), isManager: actor.role === "OWNER" || actor.role === "MANAGER" }}
@@ -91,7 +91,5 @@ export default async function HotelReservationDetailPage({ params, searchParams 
         takeDeposit: takeBookingDepositAction.bind(null, unitSlug),
       }}
     />
-      {tab === "money" ? null : renderFolio()}
-    </div>
   );
 }

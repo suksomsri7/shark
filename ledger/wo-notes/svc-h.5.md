@@ -42,6 +42,12 @@
 | qc-hotel-money · qc-hotel-refund · qc-pos-p5.1 · qc-pos-p2.9b · qc-svc-b.0(G-8 qc-pos-p2.4) | แดงตามที่ใบคาด (§2.11): ทางเดิม `checkOut` ได้ `PAY_METHODS_REQUIRED` + ทะเบียนผู้เรียก createSale/หมุดฟังก์ชันเปลี่ยน — รอ ORACLE-EDIT (§7 ข้อ 8) |
 | tsc เฉพาะไฟล์ (tsconfig นอกทรี `/root/svc-runs/h5/builder/tsconfig.h5.json` · ทุกไฟล์ของใบ + ฉาก) | 0 error |
 
+### รอบ 2 (ฐาน 4f29ad15a · ORACLE-EDIT D1–D5 ของผู้คุม · ฐาน reseed)
+- แก้: FolioPanel ฝังในแท็บ "เงิน" ของ BookingDetail (prop `moneyPanel` + `initialTab` · `?tab=money`/`?checkout=1` เปิดแท็บเงิน) · คีย์ใหม่ 2 ตัวเข้าการ์ด «เช็กอิน/เอาต์» ใน `hotel-settings-shared.ts` (เพิ่มรายการคีย์อย่างเดียว · ผู้คุมสั่ง) · ทางเดิม P1 (`legacyCash`) ไม่คืนมัดจำส่วนเกินตอนเช็กเอาต์ (คงค้าง OPEN แบบ P1 ⇒ refundStay void บิล + CN ทั้งก้อน · p5.1 MA2b)
+- `qc-svc-h.5 --no-regression` ก่อน commit (`/root/svc-runs/h5/builder/r2-run1.txt`): 75/92 · แดง ST-13 · F-1 · F-3 — ST-13 = ORACLE-EDIT D5 ไม่ครบ (`payable = grand - r.rv.depositSatang` แต่ `depositSatang` = ยอดมัดจำตามแผนแม้ไม่ได้รับ ⇒ ต้อง `payable = grand`) · F-1 = BookingDetail.tsx + hotel-settings-shared.ts นอก §1 (ผู้คุมสั่ง) · F-3 = account/index.ts commit ไปแล้วรอบ 1 (diff กับ HEAD ว่าง)
+- `qc-svc-h.3 --no-regression`: 98/109 แดง F-1 เฉพาะตอนทรีสกปรก (ไฟล์ H.5) · `qc-pos-p5.1`: 28/28
+- ผลหลัง commit ดู builder-progress
+
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | check ids / เหตุผล |
 |---|---|---|
@@ -72,21 +78,25 @@
 7. **คำขอแก้ชิ้นกลาง (fitness)** — `scripts/fitness.mts` ALLOWED_EDGES ต้องเพิ่ม `"hotel→account"` (ใบ §0/§1 สั่งให้ checkout.ts/room-charge.ts/service เรียก `reverseRoomChargePosting/restoreRoomChargePosting` + `posAccountSystemId/vatConfigOf` ผ่าน facade `@/lib/modules/account`) · fitness ไม่มี env = 52/53 แดงเฉพาะเส้นนี้
 8. **ORACLE-EDIT ที่ใบคาด (§2.11) + ทะเบียน POS** — qc-hotel-money HT-1.2/2.x · qc-hotel-refund RF-* · qc-pos-p5.1 MA2/MA2b/MA5/MA12b/MA13 เรียก `checkOut` เดิมไม่ส่งวิธีจ่าย ⇒ `PAY_METHODS_REQUIRED` (เปิด `rooms.hotel.checkout.allowLegacyCash` ในร้านทดสอบ) · ทะเบียนผู้เรียก `createSale(` (qc-pos-p2.4 L2 · qc-pos-p2.9b L2): `hotel/service.ts 2→1` · `hotel/checkout.ts 0→3` (บิลเช็กเอาต์ · ใบรับประกัน · บิลริบประกัน — ทุกจุดผ่าน `callerTx` ตามแบบ HT6.1 เว้นบิลเช็กเอาต์ที่เป็นเจ้าของ tx เอง) · qc-pos-p2.9b L3 หมุด `hotel/service.ts#checkOut` เปลี่ยน (ตั้งใจ · ใบ §1)
 
-## มติทางเทคนิคที่ builder ตัดสิน (ย้อนได้)
+## มติทางเทคนิคที่ builder ตัดสิน (ผู้คุมรับแล้ว รอบ 2 — จดใบ §9 ตอนรับงาน)
 - **มัดจำที่ใช้ชำระ** = แถว `DEPOSIT` **บวก** (อ้างบิล settle) บน folio หัวกลุ่ม ⇒ PAYMENT = −ยอดค่าใช้จ่ายของ folio ตามข้อสอบ + balance 0 · มัดจำเกิน ⇒ คืนผ่าน POS หลัง tx B + แถว `REFUND` (บวก) · กลุ่มที่ยังมีห้องถือมัดจำ ⇒ ไม่คืน (หัวกลุ่มเหลือเครดิต)
 - **ออกก่อนกำหนด**: tx B ตั้ง `HotelBookingNight.counted = false` คืนที่ ≥ วันนี้ (ค่าห้องเก็บตามที่ post ครบถึงวันออกเดิม) — เดิม availability นับคืนของการจองที่ออกแล้ว ⇒ ห้องเต็มทั้งที่ว่าง (run2 SD-3/SD-4/B-2 จองไม่ได้)
-- **ทางเดิม P1** (`allowLegacyCash`): แถวเงินสดเสมอ (0 เมื่อมัดจำพอดี — ST-4 คาด) · ไม่ผูก POS = เช็กเอาต์ไม่มีบิล (standalone แบบเดิม) · ทางใหม่ไม่ผูก POS = `POS_UNLINKED`
+- **ทางเดิม P1** (`allowLegacyCash`): ไม่คืนมัดจำส่วนเกินตอนเช็กเอาต์ (P5.1 MA2b) · แถวเงินสดเสมอ (0 เมื่อมัดจำพอดี — ST-4 คาด) · ไม่ผูก POS = เช็กเอาต์ไม่มีบิล (standalone แบบเดิม) · ทางใหม่ไม่ผูก POS = `POS_UNLINKED`
 - **ภาษี**: ตรวจ `TAX_CONFIG_MISMATCH` เทียบอัตราของสมุดที่ POS ผูก (สูตรเดียวกับ `posVatRateBp`) · POS ไม่เชื่อมบัญชี = ผ่าน + คำเตือน (GL-4) · ค่าตั้งภาษีอ่าน ณ เวลาเช็กเอาต์ (ST-2 ตั้งหลังจอง) ไม่ใช่ `taxSnapshot`
 - **ลงห้อง**: reference ลองเลขห้อง (เฉพาะห้องที่มีแขก CHECKED_IN) ก่อน แล้วรหัสจอง · ห้องว่าง = `ROOM_NOT_FOUND` · บิลมีส่วนลดท้ายบิล/ลงห้องบางส่วน ⇒ บรรทัดเดียวเท่ายอดที่ลงห้อง · `chargeToRoom` facade รับ `folioRef.reference` (ภายใน) เพิ่มจาก S §8.3
 - **taxInvoice** `kind: "COMPANY"` ⇒ JURISTIC · `"INDIVIDUAL"` ⇒ PERSON ก่อนส่ง `parseTaxInvoiceBuyer`
 - แถวจ่ายยอด 0 รับได้ (ข้อสอบส่ง CASH 0 เมื่อ payable 0) แต่ไม่ส่งเข้า POS
 
+## 7b. ไฟล์นอก §1 ที่แตะตามคำสั่งผู้คุม (รอบ 2)
+- `src/components/hotel/BookingDetail.tsx` — prop `moneyPanel` (ReactNode) + `initialTab` · แท็บเงินแสดง FolioPanel ก่อนข้อมูลมัดจำ/นโยบายเดิม
+- `src/components/hotel/hotel-settings-shared.ts` — เพิ่ม 2 คีย์ในการ์ด checkin (เพิ่มรายการอย่างเดียว)
+- ห้ามแก้ `service.ts#checkOut` อีก (p2.9b หมุดที่ 55fc7458d) — รอบ 2 ไม่แตะ
+
 ## 8. หนี้
 | เรื่อง | เหตุผล | ใบที่จะปิด |
 |---|---|---|
-| ปุ่มเช็กเอาต์ P1 บนหน้าเคาน์เตอร์ (`hotel/page.tsx` · `checkOutAction`) ยังอยู่ ⇒ ได้ PAY_METHODS_REQUIRED เงียบ · badge จำนวน unmatched บนหน้าเคาน์เตอร์ | ไฟล์นอก §1 | H.4/H.2 (หน้าเคาน์เตอร์) — ลิงก์ไป `?tab=money&checkout=1` + `countUnmatchedRoomCharges` |
-| คีย์ใหม่ 2 ตัวยังไม่อยู่ในการ์ดตั้งค่าโรงแรม (`hotel-settings-shared.ts`) | ไฟล์นอก §1 | ผู้คุม/H.1 ต่อ |
-| แท็บ "เงิน" ใน BookingDetail ไม่ได้รวม FolioPanel (หน้าแสดง FolioPanel แยกบล็อก · `?tab=money` เลื่อนขึ้นก่อน) | BookingDetail.tsx นอก §1 | ผู้คุม |
+| ปุ่มเช็กเอาต์ P1 บนหน้าเคาน์เตอร์ (`hotel/page.tsx` · `checkOutAction`) ยังอยู่ ⇒ ได้ PAY_METHODS_REQUIRED เงียบ · badge จำนวน unmatched บนหน้าเคาน์เตอร์ | ผู้คุมสั่งห้ามแตะ `hotel/page.tsx` (H.2 แก้อยู่อีกเลน) | **H.4** — เปลี่ยนปุ่มเป็นลิงก์ `/hotel/reservations/<id>?tab=money&checkout=1` + badge `countUnmatchedRoomCharges(actor, ctx, {unitId})` ลิงก์ `/hotel/folio/unmatched` |
+| refundStay หลังเช็กเอาต์ทางใหม่ที่คืนมัดจำส่วนเกินไปแล้ว: คีย์คืนมัดจำของโมดูล (`moduleRefundDeposit` · คีย์ต่อใบรับ) ถูกใช้แล้ว ⇒ ส่วนที่บิลใช้ (คืนสภาพหลัง void) ค้าง OPEN ต้องคืนที่หน้าขาย | POS มีคีย์คืนต่อใบรับเดียว (แก้ POS ไม่ได้) | ผู้คุม/POS — API คืนรอบที่ 2 |
 | ลิงก์ใบเสร็จออนไลน์ของ POS หลังเช็กเอาต์ | settle คืน saleId/receiptNo (ไม่มี token) | H.7/POS |
 | refundStay ของบิลกลุ่ม (`hotel-sale-<groupId>`) | refundStay P1 รู้จักแค่คีย์ต่อการจอง | H.7 |
 | บิลร้านที่ลงห้องถูก void หลังบิลห้องปิด | folio ปิดแล้ว ⇒ log เตือน ให้ผู้จัดการจัดการ | H.7 |
