@@ -489,7 +489,7 @@ try {
   const RTA: Record<string, string> = {};
   for (const [k, s] of Object.entries(SPEC)) RTA[k] = await mkType(tA, UH, s);
   const ROOM: Record<string, string> = {};
-  const roomPlan: [string, string, string?][] = [["DLX1", "dlx"], ["DLX2", "dlx"], ["DLX3", "dlx"], ["DLX4", "dlx"], ["DLX5", "dlx"], ["DLX6", "dlx"], ["DLX7", "dlx"], ["DLX8", "dlx"], ["DIRTY1", "dlx", "DIRTY"], ["INSP1", "dlx", "INSPECTED"], ["OOO1", "dlx", "OUT_OF_ORDER"], ["SUP1", "sup"], ["SUP2", "sup"], ["SUP3", "sup"], ["SUP4", "sup"], ["FAM1", "fam"], ["FAM2", "fam"]];
+  const roomPlan: [string, string, string?][] = [["DLX1", "dlx"], ["DLX2", "dlx"], ["DLX3", "dlx"], ["DLX4", "dlx"], ["DLX5", "dlx"], ["DLX6", "dlx"], ["DLX7", "dlx"], ["DLX8", "dlx"], ["DLX9", "dlx"], ["DLX10", "dlx"], ["DLX11", "dlx"], ["DLX12", "dlx"], ["DLX13", "dlx"], ["DLX14", "dlx"], ["DLX15", "dlx"], ["DLX16", "dlx"], ["DLX17", "dlx"], ["DLX18", "dlx"], ["DLX19", "dlx"], ["DLX20", "dlx"], ["DLX21", "dlx"], ["DLX22", "dlx"], ["DLX23", "dlx"], ["DLX24", "dlx"], ["DLX25", "dlx"], ["DLX26", "dlx"], ["DLX27", "dlx"], ["DLX28", "dlx"], ["DLX29", "dlx"], ["DLX30", "dlx"] /* ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-D1): CI-1..14 ถือดีลักซ์ครบ 8 ห้อง ⇒ ข้อหลังไม่มีห้อง — เพิ่ม DLX9..DLX30 */, ["DIRTY1", "dlx", "DIRTY"], ["INSP1", "dlx", "INSPECTED"], ["OOO1", "dlx", "OUT_OF_ORDER"], ["SUP1", "sup"], ["SUP2", "sup"], ["SUP3", "sup"], ["SUP4", "sup"], ["FAM1", "fam"], ["FAM2", "fam"]];
   for (const [n, k, hk] of roomPlan) ROOM[n] = await mkRoom(tA, UH, n, RTA[k], hk ?? "CLEAN");
   const RT_U2 = await mkType(tA, UH2, SPEC.dlx);
   const ROOM_U2 = await mkRoom(tA, UH2, "U2-1", RT_U2);
@@ -1383,7 +1383,7 @@ try {
     const headLabels = (cols ?? []).map((c: Any) => (typeof c === "string" ? c : c.label ?? c.labelTh ?? c.header ?? c.key));
     ok(headLabels.length === 12 && headLabels.every((h: string, i: number) => lines[0].split(",")[i]?.replace(/^"|"$/g, "") === h), `หัวตาราง ${lines[0].slice(0, 160)}`);
     for (const g of pick) ok(text.includes(rawOfEnc(g)!), `ไม่มีเลขเต็มของ ${g.fullName}`);
-    for (const g of rest) ok(!text.includes(rawOfEnc(g)!), `มีเลขของคนที่ไม่เลือก ${g.fullName}`);
+    for (const g of rest) { const raw = rawOfEnc(g)!; if (pick.some((p) => rawOfEnc(p) === raw)) continue; ok(!text.includes(raw), `มีเลขของคนที่ไม่เลือก ${g.fullName}`); } // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-D2): G.deu ใช้ใน CI-3 และ CI-12 ⇒ แถวที่ไม่เลือกอาจมีเลขเดียวกับแถวที่เลือก
     ok(/DLX|FAM|SUP/.test(text), "ไม่มีเลขห้อง");
     const au = await auditsLike(/tm30.*(export|file)|export.*tm30/i);
     ok(au.length >= 1 && hasRaw(J(au), RAWS).length === 0, `AuditLog export ${au.length}`);

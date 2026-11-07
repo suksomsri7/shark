@@ -198,6 +198,8 @@ try {
   const HA = (await prisma.businessUnit.create({ data: { tenantId: A, type: "HOTEL", name: "โรงแรม A", slug: `r08ha-${stamp}` } })).id;
   const DA = (await prisma.businessUnit.create({ data: { tenantId: A, type: "DORM", name: "หอ A", slug: `r08da-${stamp}` } })).id;
   const HB = (await prisma.businessUnit.create({ data: { tenantId: B, type: "HOTEL", name: "โรงแรม B", slug: `r08hb-${stamp}` } })).id;
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-legacy-checkin): H.4 ทำให้ checkIn เดิมต้องมีผู้พัก (GUEST_REQUIRED) เมื่อ rooms.hotel.guest.requireRegistration เปิด (ค่าเริ่ม) — ข้อสอบแกนห้องนี้ไม่เกี่ยวกับทะเบียนแขก ⇒ ปิดที่หน่วยทดสอบ
+  for (const [t, u] of [[A, HA], [B, HB]] as const) await prisma.settingValue.create({ data: { tenantId: t, key: "rooms.hotel.guest.requireRegistration", scope: "UNIT", scopeId: u, value: false } });
   const ctxA = { tenantId: A }, ctxB = { tenantId: B };
 
   const mkType = async (tenantId: string, unitId: string, name: string, rentMode = "NIGHTLY") =>
