@@ -1072,6 +1072,7 @@ try {
     ok(before.idImageFileId && before.signatureFileId, "ไม่มีไฟล์ให้ purge");
     const past = dbDate(W(-1));
     await prisma.hotelGuestRecord.updateMany({ where: { id: { in: [g1, g2, g3] } }, data: { retainUntil: past } });
+    await prisma.hotelReservation.update({ where: { id: r.id }, data: { checkInDate: dbDate(W(-800)), checkOutDate: dbDate(W(-798)) } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h.4 §11.4): purge ดูวันออกจริง+retainYears ด้วย ⇒ ย้ายการจองไปอดีต > 2 ปี
     const keep = (await inhouse({ guests: [G.fra] })).guestIds[0];
     const keepBefore = await guestRow(keep);
     const p1 = okRes(await purge({ limit: 2 }), "purge 1");
@@ -1097,6 +1098,7 @@ try {
     needGuest();
     const r = await inhouse({ type: "fam", guests: [G.deu, G.deu2, G.jpn, G.fra] });
     await prisma.hotelGuestRecord.updateMany({ where: { id: { in: r.guestIds } }, data: { retainUntil: dbDate(W(-2)) } });
+    await prisma.hotelReservation.update({ where: { id: r.id }, data: { checkInDate: dbDate(W(-800)), checkOutDate: dbDate(W(-799)) } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h.4 §11.4)
     const [a, b] = await Promise.all([purge({ limit: 10 }), purge({ limit: 10 })]);
     eq((a?.purged ?? -99) + (b?.purged ?? -99), 4, `รวม ${J([a, b])}`);
     const m = stripComments(read(F.minute));
