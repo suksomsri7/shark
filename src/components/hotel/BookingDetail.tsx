@@ -3,7 +3,7 @@
 //   • ปุ่มเขียนทุกปุ่มอยู่ใต้เงื่อนไขสิทธิ์จากเซิร์ฟเวอร์ (canManage · canCancel · isManager) — อ่านอย่างเดียวไม่เห็นปุ่ม
 //   • ต่อคืนแสดงราคาใหม่ก่อนยืนยัน · ยกเลิกแสดงยอดคืนตามขั้นบันได (snapshot) ก่อนยืนยัน · กลุ่ม = รายการห้องในกลุ่ม + ยกเลิกทั้งกลุ่ม
 //   • มือถือ 390: ตารางคืนอยู่ในกรอบเลื่อนแนวนอน + data-scroll-hint
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import BookingDepositDialog from "./BookingDepositDialog";
 import {
@@ -30,7 +30,7 @@ import {
   type DetailTab,
 } from "./booking-shared";
 
-type Props = { booking: Detail; unitSlug: string; perms: DetailPerms; rooms: AssignableRoom[]; actions: DetailActions; nowMs: number };
+type Props = { booking: Detail; unitSlug: string; perms: DetailPerms; rooms: AssignableRoom[]; actions: DetailActions; nowMs: number; moneyPanel?: ReactNode; initialTab?: DetailTab }; // SVC H.5 ▸ moneyPanel = บิลระหว่างพัก (FolioPanel) ในแท็บ "เงิน" · initialTab จาก ?tab= ◂
 type Pending = "" | "confirm" | "cancel" | "cancelGroup" | "extend" | "shorten" | "assign" | "noShow" | "undo" | "deposit";
 type Notice = { tone: "ok" | "err"; text: string } | null;
 type Quote = { nights: { date: string; priceSatang: number; source: string }[]; addedSatang: number } | null;
@@ -41,10 +41,10 @@ const BTN_PRIMARY = "inline-flex min-h-11 items-center justify-center rounded-lg
 const INPUT = "min-h-11 rounded-lg border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-3 py-2 text-sm";
 const CARD = "flex min-w-0 flex-col gap-2 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4";
 
-export default function BookingDetail({ booking: b, unitSlug, perms, rooms, actions, nowMs }: Props) {
+export default function BookingDetail({ booking: b, unitSlug, perms, rooms, actions, nowMs, moneyPanel, initialTab }: Props) {
   const { canManage, canCancel, isManager } = perms;
   const router = useRouter();
-  const [tab, setTab] = useState("guest" as DetailTab);
+  const [tab, setTab] = useState((initialTab ?? "guest") as DetailTab); // SVC H.5 ◂
   const [pending, setPending] = useState("" as Pending);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null as Notice);
@@ -259,6 +259,7 @@ export default function BookingDetail({ booking: b, unitSlug, perms, rooms, acti
         </section>
       ) : null}
 
+      {tab === "money" && moneyPanel ? <div data-detail-money-folio="">{moneyPanel}</div> : null}
       {tab === "money" ? (
         <section className={CARD}>
           <dl className="grid grid-cols-[10rem_1fr] gap-y-1 text-sm">

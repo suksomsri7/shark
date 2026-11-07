@@ -356,6 +356,17 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "hotel.tm30.filed", label: "เมื่อบันทึกว่าแจ้ง ตม.30 แล้ว (มีเลขรับแจ้ง)" },
   { value: "hotel.guest.purged", label: "เมื่อระบบลบข้อมูลอ่อนไหวของผู้เข้าพักที่พ้นระยะเวลาเก็บ" },
   // ◂ SVC H.4
+  // SVC H.5 ▸ บิลระหว่างพัก (folio) · เช็กเอาต์ POS ใบเดียว · เงินประกันห้อง — ตัวยิง hotel/folio.ts · checkout.ts · room-charge.ts (ใน tx เดียวกับการเขียน)
+  //   payload { tenantId, unitId, reservationId, groupId?, folioId, saleId?, itemId?, amountSatang, type?, reason? } id + สตางค์ล้วน (X8) · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks)
+  { value: "hotel.folio.posted", label: "เมื่อลงรายการในบิลห้องพัก (ค่าห้อง · มินิบาร์ · บริการ · ลงห้องจาก POS)" },
+  { value: "hotel.folio.voided", label: "เมื่อยกเลิกรายการในบิลห้องพัก" },
+  { value: "hotel.folio.settled", label: "เมื่อปิดบิลห้องพักตอนเช็กเอาต์ (บิล POS ใบเดียว)" },
+  { value: "hotel.folio.charge_unmatched", label: "เมื่อบิลร้านค้าที่จ่ายแบบลงห้องหาห้องไม่เจอ (รอพนักงานผูกห้อง)" },
+  { value: "hotel.folio.posting_warn", label: "เมื่อปรับบัญชีบิลร้านที่ลงห้องไม่สำเร็จ (ให้ฝ่ายบัญชีตรวจ)" },
+  { value: "hotel.security_deposit.taken", label: "เมื่อรับเงินประกันห้อง" },
+  { value: "hotel.security_deposit.refunded", label: "เมื่อคืนเงินประกันห้อง" },
+  { value: "hotel.security_deposit.forfeited", label: "เมื่อริบเงินประกันห้อง (ค่าเสียหาย)" },
+  // ◂ SVC H.5
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

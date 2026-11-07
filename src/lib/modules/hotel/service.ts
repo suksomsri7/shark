@@ -15,6 +15,7 @@ import { resolvePublicUnit } from "@/lib/core/storefront";
 import { cancelBooking, createBooking } from "./booking";
 import { hotelAvailability } from "./availability";
 import { checkInV2Legacy } from "./checkin"; // SVC H.4 ▸ checkIn เดิมห่อเช็กอิน V2 ◂
+import { afterRefundStay, settleAndCheckOut } from "./checkout"; // SVC H.5 ◂
 
 // ลงทะเบียน scope ของ Hotel models (unit-scoped) — ให้ tenantDb() inject tenantId+unitId อัตโนมัติ
 // (ตามกลไก modules ใน src/lib/core/scope.ts — idempotent-safe ถ้า core ประกาศซ้ำด้วย scope เดียวกัน)
@@ -350,101 +351,13 @@ export async function checkOut(
   tenantId: string,
   unitId: string,
   reservationId: string,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  try {
-    // ดึงค่าห้อง (totalSatang/nights/customerId) ออกจาก tx ไว้เก็บเงินหลัง commit —
-    // createSale เปิด tx + drain outbox ของตัวเอง จึงต้องอยู่นอก tx นี้ (กัน nested tx)
-    const billing = await prisma.$transaction(async (tx) => {
-      const rv = await tx.hotelReservation.findFirst({
-        where: { id: reservationId, tenantId, unitId },
-      });
-      if (!rv) throw new Error("NOT_FOUND");
-      if (rv.status !== "CHECKED_IN") throw new Error("BAD_STATUS");
-      await tx.hotelReservation.update({
-        where: { id: reservationId },
-        data: { status: "CHECKED_OUT", checkedOutAt: new Date() },
-      });
-      if (rv.roomId) {
-        // ห้องต้องทำความสะอาดก่อนขายใหม่ (SVC R0.8 ▸ hkStatus DIRTY = แหล่งความจริง · status CLEANING เดิมคงไว้ให้จอ P1 ◂)
-        await tx.hotelRoom.update({ where: { id: rv.roomId }, data: { status: "CLEANING", hkStatus: "DIRTY" } });
-      }
-      // SVC R0.8 ▸ (ผู้ตรวจ R0.8 ข้อ 3) ยังไม่ปล่อยห้องจริงที่นี่ — ปล่อยใน tx เล็กหลังเก็บเงินสำเร็จ (หรือทางไม่ผูก POS)
-      //   ⇒ ทาง rollback (POS ล้ม → CHECKED_IN) ไม่ต้องจองห้องคืน (occupancy ยัง active ตลอด · ห้องไม่หลุดให้คนอื่น) ◂
-      // CRM C2.9 ▸ (มติ C11 · ใบ C2.9) "เช็คเอาท์แล้ว" ยิงใน tx เดียวกับการเปลี่ยนสถานะที่มีอยู่แล้วของฟังก์ชันนี้ ⇒
-      //   เช็คเอาท์สำเร็จ = มี event เสมอ · event เขียนไม่ได้ = เช็คเอาท์ถูกยกเลิกทั้งก้อน (ยัง CHECKED_IN · ห้องไม่ถูกสั่งทำความสะอาด)
-      //   `pos.createSale` ยังอยู่นอก tx นี้เหมือนเดิม · payload = id ล้วน + จำนวนคืน/ยอดสตางค์ (X8: ไม่มีชื่อ/เบอร์ผู้เข้าพัก)
-      await emitOutbox(tx, {
-        tenantId,
-        unitId,
-        type: "hotel.checked_out",
-        idempotencyKey: `hotel.checked_out#${reservationId}`,
-        payload: { reservationId, unitId, partyId: rv.partyId, nights: rv.nights, totalSatang: rv.totalSatang },
-      });
-      // ◂ CRM C2.9
-      return { totalSatang: rv.totalSatang, nights: rv.nights, customerId: rv.customerId, depositSaleId: rv.depositSaleId, roomId: rv.roomId }; // POS P5.1 ▸ MA2 MA5: + ใบรับมัดจำ · ห้อง (คืน claim) ◂
-    }, HOTEL_TX);
-    // SVC R0.8 ▸ ปล่อยห้องจริงหลังเช็คเอาท์ "ลงตัว" (tx เล็ก · ปล่อยไม่ได้ = WARN ไม่ทำให้เช็คเอาท์ล้ม — id ล้วน ไม่มี PII) ◂
-    const releaseAfterCheckout = async () => {
-      try {
-        await prisma.$transaction((tx) => releaseStay(tx, tenantId, unitId, reservationId, "เช็คเอาท์"), HOTEL_TX);
-      } catch {
-        console.warn(`[hotel] เช็คเอาท์ tenant=${tenantId} reservation=${reservationId}: ปล่อยการครองห้องไม่สำเร็จ — ให้พนักงานปล่อยเอง`);
-      }
-    };
-
-    // เช็คเอาท์แล้ว → เก็บค่าห้องเข้าบัญชีผ่าน POS (idempotent ด้วย reservationId)
-    // ไม่ผูก POS = ร้านแบบ standalone → เช็คเอาท์ได้ตามปกติ ข้ามการตัดเงิน
-    if (billing.totalSatang > 0) {
-      const [posSystemId, pointSystemId] = await Promise.all([
-        systemForUnit(tenantId, unitId, "POS"),
-        systemForUnit(tenantId, unitId, "POINT"),
-      ]);
-      if (posSystemId) {
-        // POS P5.1 ▸ MA2 (F2): มัดจำที่รับเป็นใบรับ (POS_DEPOSIT) จ่ายเป็นแถว DEPOSIT อ้างใบรับ + ส่วนที่เหลือเงินสด ⇒ Σ รายได้ = ค่าห้อง · VAT ครั้งเดียว ·
-        //   มัดจำแบบเดิม (ก่อน P5.1 · ไม่มี PosDeposit) = คิดเต็มเงินสดแบบเดิม ◂
-        const dep = await (await import("@/lib/modules/pos/deposit")).moduleDepositForBill(tenantId, unitId, billing.depositSaleId, billing.totalSatang);
-        try {
-          await pos.createSale({
-            tenantId,
-            unitId,
-            systemId: posSystemId,
-            pointSystemId: pointSystemId ?? undefined,
-            memberId: billing.customerId ?? undefined,
-            sourceModule: "HOTEL",
-            sourceId: reservationId,
-            idempotencyKey: `hotel-sale-${reservationId}`,
-            lines: [
-              { name: `ค่าห้อง ${billing.nights} คืน`, qty: 1, unitPriceSatang: billing.totalSatang },
-            ],
-            payMethods: dep
-              ? [{ type: "DEPOSIT", amountSatang: dep.satang, refSaleId: dep.refSaleId }, ...(billing.totalSatang > dep.satang ? [{ type: "CASH" as const, amountSatang: billing.totalSatang - dep.satang }] : [])]
-              : [{ type: "CASH", amountSatang: billing.totalSatang }],
-          });
-        } catch (e) {
-          // POS P5.1 ▸ MA5 (F5): createSale ล้ม (เช่น SHIFT_REQUIRED) และไม่มีบิลของคีย์นี้จริง ⇒ คืนเช็คเอาท์ (CHECKED_OUT → CHECKED_IN · ห้องกลับ OCCUPIED)
-          //   แบบคลินิก/เช่า ให้ลองซ้ำได้ · event hotel.checked_out ที่ยิงแล้วคงอยู่ (คีย์เดิม · ลองซ้ำไม่ยิงซ้ำ) ◂
-          if ((await pos.saleStatusByKey(tenantId, `hotel-sale-${reservationId}`)) === null) {
-            await prisma.$transaction(async (tx) => {
-              const back = await tx.hotelReservation.updateMany({ where: { id: reservationId, tenantId, unitId, status: "CHECKED_OUT" }, data: { status: "CHECKED_IN", checkedOutAt: null } });
-              if (back.count > 0 && billing.roomId) await tx.hotelRoom.updateMany({ where: { id: billing.roomId, tenantId, unitId, status: "CLEANING" }, data: { status: "OCCUPIED" } });
-              // SVC R0.8 ▸ occupancy ยังไม่ถูกปล่อย (ปล่อยหลังเก็บเงินสำเร็จเท่านั้น) ⇒ แขกกลับเป็น CHECKED_IN พร้อมห้องเดิม ไม่ต้องจองคืน ◂
-            }, HOTEL_TX);
-          } else {
-            await releaseAfterCheckout(); // บิลของคีย์นี้มีแล้ว (ล้มหลังสร้างบิล) ⇒ เช็คเอาท์ลงตัว
-          }
-          throw e;
-        }
-      }
-    }
-    await releaseAfterCheckout();
-    return { ok: true };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    if (msg === "NOT_FOUND") return { ok: false, reason: "ไม่พบการจอง" };
-    if (msg === "BAD_STATUS") return { ok: false, reason: "ต้องเช็คอินก่อนจึงเช็คเอาท์ได้" };
-    if (isTxTimeout(e)) return { ok: false, reason: BUSY_REASON };
-    throw e;
-  }
+): Promise<{ ok: true } | { ok: false; reason: string; code?: string }> {
+  // SVC H.5 ▸ เส้น P1 (signature เดิม) → settleAndCheckOut เส้นเดียว (บิล POS ใบเดียว HOTEL · มัดจำเป็นแถว DEPOSIT อ้างใบรับ · folio SETTLED ·
+  //   CHECKED_OUT + ห้อง DIRTY + ปล่อยห้องจริง + event "hotel.checked_out" ใน tx เดียวหลังบิลสำเร็จ — ใบสั่ง h.5 §1 §2.4)
+  //   ผู้เรียก P1 ไม่ส่งวิธีจ่าย ⇒ มัดจำ + เงินสดส่วนที่เหลือ **เฉพาะเมื่อเปิด rooms.hotel.checkout.allowLegacyCash** (ค่าเริ่มปิด ⇒ PAY_METHODS_REQUIRED · สถานะไม่เปลี่ยน) ◂
+  const r = await settleAndCheckOut(P1_ACTOR, { tenantId }, { unitId, reservationId }, { legacyCash: true });
+  if (r.ok) return { ok: true };
+  return { ok: false, code: r.code, reason: r.code === "PAY_METHODS_REQUIRED" ? `PAY_METHODS_REQUIRED: ${r.reason}` : r.reason };
 }
 
 // SVC H.3 ▸ เส้น P1 (signature เดิม) → cancelBooking (HOLD/CONFIRMED · nights/ห้องปล่อยใน tx เดียว · มัดจำคืน/ริบตามขั้นบันไดของ snapshot ผ่าน POS) ◂
@@ -480,10 +393,10 @@ export async function refundStay(
     return { ok: false, reason: "คืนเงินได้เฉพาะการจองที่เช็คเอาท์แล้ว" };
 
   // ต้องมีบิลที่เก็บเงินผ่าน POS แล้ว (idempotencyKey = hotel-sale-<id>) และยัง PAID
-  const sale = await prisma.posSale.findUnique({
-    where: {
-      tenantId_idempotencyKey: { tenantId, idempotencyKey: `hotel-sale-${reservationId}` },
-    },
+  // SVC H.5 ▸ (ผู้ตรวจรอบ 1 m4) บิลเช็กเอาต์ล่าสุดที่ยัง PAID ของการจองนี้ — รวมคีย์ hotel-sale-<id>-r<n> (บิลเดิมถูก void แล้วเช็กเอาต์ใหม่) ◂
+  const sale = await prisma.posSale.findFirst({
+    where: { tenantId, docType: "SALE", status: "PAID", OR: [{ idempotencyKey: `hotel-sale-${reservationId}` }, { idempotencyKey: { startsWith: `hotel-sale-${reservationId}-r` } }] },
+    orderBy: { createdAt: "desc" },
   });
   if (!sale || sale.status !== "PAID")
     return { ok: false, reason: "การจองนี้ไม่มีบิลที่ต้องคืนเงิน" };
@@ -497,6 +410,8 @@ export async function refundStay(
 
   // 2) กลับเส้นเงิน — void posSale (คืนบัญชี+แต้ม) นอก tx (voidSale เปิด tx เอง, idempotent)
   await pos.voidSale(tenantId, unitId, sale.id);
+  // SVC H.5 ▸ folio → VOID (+ REFUND เท่ายอดที่ชำระ) · บิลร้านที่ลงห้องคืนสภาพลูกหนี้ (restoreRoomChargePosting ผ่าน checkout.afterRefundStay) ◂
+  await afterRefundStay(tenantId, unitId, reservationId, sale.id);
   // POS P5.1 ▸ MA2b (R1 F2 · CD-P51-O7): มัดจำที่เป็นใบรับ POS_DEPOSIT — คืนสภาพส่วนที่บิลนี้ใช้ แล้วคืนเงินมัดจำคงเหลือทั้งหมด (ใบคืน CN ของใบรับ)
   //   ⇒ "คืนเงินแล้ว" = ลูกค้าได้มัดจำคืนด้วย (เดิม: มัดจำกลับเป็น OPEN ค้างไว้ที่หน้าขาย) · มัดจำแบบเดิม/ไม่มีใบรับ = ไม่ทำอะไร ◂
   const dep = await (await import("@/lib/modules/pos/deposit")).moduleRefundDepositAfterVoid({ tenantId, unitId, receiptSaleId: rv.depositSaleId, voidedSaleId: sale.id, reason: "คืนเงินการจองห้องพัก", actorId: "module:hotel" });

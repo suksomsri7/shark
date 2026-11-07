@@ -52,3 +52,9 @@
 ## HOTEL (7 พ.ย. 07:5xZ) เครื่องถูกแย่ง CPU (steal ~60%) — build H.1 ใช้เวลา 3 ชม. ยังไม่จบ
 - `top` แสดง CPU steal 61% (hypervisor ของ Hostinger แย่ง CPU เหมือนเหตุ 8–9 ต.ค. ที่เคยสูง 89% และแก้ที่ฝั่ง Hostinger) · build H.1 บน l1 รัน 2 ชม. 50 นาที (ปกติ ~78 นาที) · ไม่ใช่ swap thrash (page fault 0 · RSS 8.4G + swap ในโปรเซส 7.5G)
 - **ขอเจ้าของ**: แจ้ง Hostinger เรื่อง CPU steal อีกครั้ง (หรืออัปเกรด KVM8 ตามแผน) · ระหว่างนี้ผมปล่อย build ให้จบ ไม่ฆ่า (ฆ่า = เสีย 3 ชม. และต้องเริ่มใหม่ภายใต้ steal เท่าเดิม) · งานเบา (ข้อสอบ/ตรวจ/ใบสั่ง) เดินต่อตามปกติ
+
+### Q-H4-3 · ไฟล์ส่วนตัว (รูปบัตร/ลายเซ็น/PDF ตม.30) บน Bunny CDN โหลดได้ตรง ๆ ถ้ารู้ path (7 พ.ย. · ผู้ตรวจ PDPA H.4)
+- พบ: `GET https://shark-in-th.b-cdn.net/t/<tenant>/private/<40hex>.png` ตอบ **200 โดยไม่มีลายเซ็น/token** — pull zone เสิร์ฟทั้ง zone · เป็นหนี้ storage เดิม C0.4 (`src/lib/storage/service.ts:123-126` ต้องมี `BUNNY_ACCOUNT_KEY` ตั้ง token auth/zone rule) ไม่ใช่โค้ด H.4 (path 160 บิตไม่เคยออกนอกเซิร์ฟเวอร์ · DTO/log ไม่มี · privateFileUrl มีอายุ/ผูกผู้ดูถูกต้อง)
+- ค่าปลอดภัยที่ใช้ไปก่อน: ไม่มีอะไรเปลี่ยนในโค้ด · จดเป็น **เงื่อนไขก่อนขึ้นจริง (go-live blocker)** ของหอ/โรงแรม: ตั้ง Bunny token authentication หรือ edge rule บล็อก `/t/*/private/*` ที่ pull zone (หรือแยก storage zone ส่วนตัวไม่ผูก pull zone)
+- **ต้องการจากเจ้าของ**: อนุมัติให้ผู้คุมตั้ง edge rule/token auth ที่ Bunny (ต้องใช้ Bunny account API key — อยู่ใน memory reference_bunny_credentials · ใบ H.9/UAT) หรือจะทำเองใน dashboard · ไม่บล็อก RUN
+

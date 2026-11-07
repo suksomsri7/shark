@@ -20,7 +20,7 @@ export type HotelSettingsCard = { key: HotelSettingsCardKey; labelTh: string; fi
 
 /** การ์ดตามลำดับในจอ (9 ใบแรกตามใบสั่ง §6 · ต่อด้วย OTA · ค่าเฉพาะแผน · ทั่วไป) — การ์ดที่ไม่มีช่องในชั้นที่เปิดอยู่ไม่แสดง */
 export const HOTEL_SETTINGS_CARDS: HotelSettingsCard[] = [
-  { key: "checkin", labelTh: "เช็กอิน/เอาต์", fieldKeys: ["rooms.hotel.checkInTime", "rooms.hotel.checkOutTime", "rooms.hotel.dailyHousekeeping", "rooms.hotel.inspectionRequired", "rooms.hotel.nightAuditTime"], noteTh: null },
+  { key: "checkin", labelTh: "เช็กอิน/เอาต์", fieldKeys: ["rooms.hotel.checkInTime", "rooms.hotel.checkOutTime", "rooms.hotel.dailyHousekeeping", "rooms.hotel.inspectionRequired", "rooms.hotel.nightAuditTime", "rooms.hotel.checkout.allowLegacyCash", "rooms.hotel.folio.manualItemMaxSatang"], noteTh: null }, // SVC H.5 ▸ + คีย์เช็กเอาต์/บิลระหว่างพัก 2 ตัว ◂
   {
     key: "booking",
     labelTh: "การจอง",

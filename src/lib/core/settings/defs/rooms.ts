@@ -794,6 +794,18 @@ const DEFS: SettingDef[] = [
     },
   }),
   // ◂ SVC H.4
+  // SVC H.5 ▸ บิลระหว่างพัก/เช็กเอาต์ (ใบสั่ง h.5 §1 · เพิ่มคีย์อย่างเดียว)
+  hotel({
+    key: "rooms.hotel.checkout.allowLegacyCash", type: "bool", labelTh: "ให้เช็กเอาต์ทางเดิมรับเงินสดอัตโนมัติ (ระบบเดิม)",
+    helpTh: "ปิด = ต้องเลือกวิธีรับเงินที่หน้าบิลระหว่างพักทุกครั้ง · เปิด = ปุ่มเช็กเอาต์เดิมหักมัดจำแล้วรับส่วนที่เหลือเป็นเงินสด",
+    schema: z.boolean(), defaults: { _fallback: false }, chain: U, sensitivity: "MONEY",
+  }),
+  hotel({
+    key: "rooms.hotel.folio.manualItemMaxSatang", type: "money", labelTh: "เพดานยอดต่อรายการที่ลงบิลห้องเอง",
+    helpTh: "รายการบริการ/มินิบาร์/ค่าปรับ/ส่วนลดที่ลงเองต่อบรรทัดเกินยอดนี้ ระบบไม่รับ (ให้ผู้จัดการตรวจ)",
+    schema: MONEY, defaults: { _fallback: 5_000_000 }, chain: U, sensitivity: "MONEY",
+  }),
+  // ◂ SVC H.5
 
   // ══ ช่องทาง OTA (#79–82) — ซ่อนจนเฟส H (H.1 เปิดตามประเภทหน่วย) ══
   hotel({ key: "rooms.hotel.ota.enabled", group: "ota", type: "bool", labelTh: "เปิดตัวต่อช่องทาง OTA", schema: z.boolean(), defaults: { _fallback: false }, chain: U_RT, requires: { integration: "CHANNEL_MANAGER" } }), // #79 · SVC H.0 ▸ ศูนย์เชื่อมต่อ kind CHANNEL_MANAGER ◂
