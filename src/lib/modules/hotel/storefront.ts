@@ -356,10 +356,11 @@ export async function guestMailFacts(reservationId: string): Promise<GuestMailFa
   };
 }
 
-/** การจอง CONFIRMED ที่เข้าพักวันที่ ymd และมีอีเมล (ทุกร้าน · งานเตือนก่อนเข้า 1 วัน) — id ล้วน */
+/** การจอง CONFIRMED ที่เข้าพักวันที่ ymd และมีอีเมล (ทุกร้าน · งานเตือนก่อนเข้า 1 วัน · กลุ่มหลายห้อง = หัวกลุ่มแถวเดียว) — id ล้วน */
 export async function arrivalsWithEmailOn(ymd: string, limit = 500): Promise<{ id: string; tenantId: string; unitId: string }[]> {
   return raw().$queryRaw<{ id: string; tenantId: string; unitId: string }[]>`
-    SELECT "id", "tenantId", "unitId" FROM "HotelReservation"
-     WHERE "status"::text = 'CONFIRMED' AND "checkInDate" = ${dbDate(ymd)} AND "guestEmail" IS NOT NULL AND "guestEmail" <> ''
-     ORDER BY "id" ASC LIMIT ${limit}`;
+    SELECT r."id", r."tenantId", r."unitId" FROM "HotelReservation" r
+     WHERE r."status"::text = 'CONFIRMED' AND r."checkInDate" = ${dbDate(ymd)} AND r."guestEmail" IS NOT NULL AND r."guestEmail" <> ''
+       AND (r."groupId" IS NULL OR r."id" = (SELECT g."id" FROM "HotelReservation" g WHERE g."groupId" = r."groupId" AND g."tenantId" = r."tenantId" ORDER BY g."createdAt" ASC, g."code" ASC LIMIT 1))
+     ORDER BY r."id" ASC LIMIT ${limit}`;
 }
