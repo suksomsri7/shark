@@ -167,7 +167,7 @@ export const SQC_USERS: SqcUser[] = [
   // SVC H.1 ▸ frontdesk + hotel.rates.read (ดูราคาอย่างเดียว · ไม่มี rates.write/settings.edit — ภาพ 15 read-only) ◂
   // SVC H.3 ▸ frontdesk + hotel.booking.manage · hotel.reservation.create/cancel (จอง/ยกเลิก/ย้าย/ต่อ/ไม่มา จากหน้าเคาน์เตอร์ · ยังไม่มี rates.write/settings.edit) ◂
   // SVC H.5 ▸ frontdesk + hotel.folio.post · hotel.reservation.checkOut (ลงรายการ/ปิดบิล · **ไม่มี** hotel.folio.void — S §12 "Front desk void folio ไม่ได้") ◂
-  user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn", "hotel.rates.read", "hotel.booking.manage", "hotel.reservation.create", "hotel.reservation.cancel", "hotel.folio.post", "hotel.reservation.checkOut"]),
+  user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn", "hotel.rates.read", "hotel.booking.manage", "hotel.reservation.create", "hotel.reservation.cancel", "hotel.folio.post", "hotel.reservation.checkOut", "hotel.guest.register"]), // SVC H.4 ▸ +guest.register (ไม่มี guest.viewId ⇒ เห็นเลขปิดบางส่วน) ◂
   // SVC H.2 ▸ maid = แม่บ้าน (hotel.housekeeping อย่างเดียว) — เห็นปฏิทินห้องแบบอ่านอย่างเดียว ไม่มี handle ลาก (ใบ h.2 §2 ข้อ 7) · H.6 ใช้ต่อ ◂
   user("maid", "ป้าแจ๋ว (แม่บ้าน)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.housekeeping"]),
 ];
@@ -1621,3 +1621,52 @@ SQC_VISUAL_SPECS["h.5"] = [
   { name: "hotel-folio-unmatched", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/folio/unmatched` },
 ];
 // ◂ SVC H.5
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC H.4 ▸ บล็อกเช็กอิน V2 / ทะเบียนแขก / ตม.30 — ผู้คุมตั้ง 7 พ.ย. 2569 · ใบสั่ง svc-brief-h.4.md §6 · builder/เลนอื่นห้ามแตะ
+//   🔴 ฉาก h.4 ต่อยอดฉาก h.3 (รัน svc-qc-hotel-booking-scene.mts ก่อน) · เขียนผ่าน API ของ H.4 เท่านั้น (upsertGuestRecord · signRr3 · markTm30Filed · checkInV2 · takeSecurityDeposit ของ H.5 · tm30Sweep)
+//   🔴 เลขเอกสารในฉากเป็นเลขปลอมที่รูปแบบถูก (บัตรไทย checksum ผ่าน · พาสปอร์ตรูปแบบ) · ห้ามเก็บดิบ — ข้อสอบตรวจว่าในฐานมีแต่ idNumberEnc + last4
+//   🔴 ตม.30: inhouse-ota เข้าพัก −2 วัน ยังไม่แจ้ง ⇒ หลัง tm30Sweep ต้องเป็น LATE · inhouse-web แจ้งแล้ว (FILED + เลขรับแจ้ง) · คนไทย NOT_REQUIRED
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcGuest = { reservationKey: string; fullName: string; nationality: string; idType: "PASSPORT" | "THAI_ID"; idNumber: string; dob: string; sex?: "M" | "F"; occupation?: string; arrivedFrom?: string; nextDestination?: string; primary: boolean; signed: boolean };
+export const SQC_HOTEL_GUEST_SCENE = {
+  mark: "SvcQcScene:h4",
+  unit: "hotel" as SqcUnitKey,
+  /** ค่าตั้งที่ฉากเปิดบนหน่วย svcqc ก่อนเช็กอิน (ชั้น UNIT · ผ่านเครื่องยนต์ค่าตั้ง · --clear คืนค่า) */
+  settings: { "rooms.hotel.securityDeposit.enabled": true, "rooms.hotel.securityDeposit": 100_000, "rooms.hotel.securityDeposit.appliesTo": "ALL", "rooms.hotel.guest.aiIdReader": false },
+  guests: [
+    { reservationKey: "inhouse-web", fullName: "WEBER, DANIEL", nationality: "DEU", idType: "PASSPORT", idNumber: "C01X4KJ77", dob: "1986-03-12", sex: "M", occupation: "Engineer", arrivedFrom: "เชียงใหม่", nextDestination: "หลวงพระบาง", primary: true, signed: true },
+    { reservationKey: "inhouse-web", fullName: "WEBER, ANNA", nationality: "DEU", idType: "PASSPORT", idNumber: "C02Y5LM88", dob: "1988-07-30", sex: "F", primary: false, signed: false },
+    { reservationKey: "inhouse-ota", fullName: "TANAKA, YUKI", nationality: "JPN", idType: "PASSPORT", idNumber: "TK9876543", dob: "1992-11-02", sex: "F", occupation: "Designer", arrivedFrom: "โตเกียว", nextDestination: "ภูเก็ต", primary: true, signed: true },
+    { reservationKey: "today-walkin", fullName: "สมชาย ใจดี", nationality: "THA", idType: "THAI_ID", idNumber: "1101700000010", dob: "1979-05-20", sex: "M", occupation: "ค้าขาย", arrivedFrom: "กรุงเทพฯ", nextDestination: "กรุงเทพฯ", primary: true, signed: true },
+  ] as SqcGuest[],
+  /** today-walkin เช็กอินในฉากด้วย checkInV2 (ห้องว่าง CLEAN ของดีลักซ์ · ไม่ force) + เงินประกัน 1,000 เงินสด */
+  checkInV2: { reservationKey: "today-walkin", securityDeposit: { amountSatang: 100_000, payType: "CASH" } },
+  /** ตม.30 ของ inhouse-web แจ้งแล้ว (2 คน · เลขรับแจ้งเดียว) · inhouse-ota ยังไม่แจ้ง (เกิน 24 ชม. ⇒ LATE หลัง sweep) */
+  tm30: { filed: { reservationKey: "inhouse-web", ref: "TM30-2569-001234" }, lateAfterSweep: ["inhouse-ota"] },
+  /** เลขบัตรไทยปลอมสำรองสำหรับข้อสอบ (checksum ถูก) */
+  spareThaiId: "3509900000021",
+  expect: {
+    guestRows: 4,
+    byTm30: { FILED: 2, LATE: 1, NOT_REQUIRED: 1 } as Record<string, number>,
+    foreigners: 3,
+    signedRr3: 3,
+    walkinStatus: "CHECKED_IN",
+    securityHeldSatang: 100_000,
+    /** ทุกแถว: idNumberEnc ไม่ว่าง · ไม่มีเลขเต็มดิบในคอลัมน์ใด · idNumberLast4 = 4 ตัวท้าย */
+    last4: ["KJ77", "LM88", "6543", "0010"],
+  },
+} as const;
+/**
+ * ภาพ h.4 (ภาพ 09 ครึ่งซ้าย · PARITY ผู้คุม): แท็บแขก/เช็กอินของการจอง · ทะเบียนผู้พัก · ร.ร.3 พิมพ์ · ร.ร.4 พิมพ์ · คิว ตม.30
+ * ก่อนถ่าย: seed → ฉาก h.1 → h.3 → h.4 · env SVC_VIS_H4_RES_ID=<id inhouse-web> · SVC_VIS_H4_GUEST_ID=<guestId WEBER, DANIEL> (ฉากพิมพ์ใน SCENE_SUMMARY) · ถ่าย --user owner · frontdesk (guest.register · ไม่มี viewId ⇒ เลขปิดบางส่วน)
+ * query ที่หน้า H.4 ต้องรับ: `?tab=guests` (เปิดแท็บแขก/เช็กอิน)
+ */
+SQC_VISUAL_SPECS["h.4"] = [
+  ...(process.env.SVC_VIS_H4_RES_ID ? [{ name: "hotel-checkin", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/${process.env.SVC_VIS_H4_RES_ID}?tab=guests` }] : []),
+  ...(process.env.SVC_VIS_H4_GUEST_ID ? [{ name: "hotel-rr3-print", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/guests/${process.env.SVC_VIS_H4_GUEST_ID}/rr3/print` }] : []),
+  { name: "hotel-guests", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/guests` },
+  { name: "hotel-rr4-print", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/guests/rr4/print?from=${sqcAddDays(SQC_TODAY_BKK, -3)}&to=${SQC_TODAY_BKK}` },
+  { name: "hotel-tm30", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/tm30` },
+];
+// ◂ SVC H.4
