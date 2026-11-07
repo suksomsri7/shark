@@ -961,6 +961,28 @@ try {
     const b = await logs({ roomId: ROOM.W2 }, ctxB);
     ok(b?.ok === false || rowsOf(b).length === 0, "ร้าน B เห็น log");
   });
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-ST8-pool · ผู้ตรวจ M1) — หลายห้องคนละห้องพร้อมกัน ≥ pool pg (10) ต้องไม่หลุด log/สัญญาณ และห้ามชนเพดาน tx
+  await st("ST-8", "X4 แม่บ้าน 2 คนกด DIRTY→CLEAN คนละห้องพร้อมกัน 12 ห้อง (ห้องใหม่ชั่วคราว P01–P12 · pool pg ค่าเริ่ม 10): ok ครบ 12 · ไม่มี throw ดิบ · log DIRTY→CLEAN 12 แถว (ห้องละ 1) · event hotel.hk.changed 12 · hkStatus CLEAN ทั้ง 12 · รวม < 10 วิ (ไม่ชนเพดาน tx 30 วิ) · ลบห้องชั่วคราวท้ายข้อ", async () => {
+    needSetup(); needHk();
+    const rooms: string[] = [];
+    for (let i = 1; i <= 12; i++) rooms.push(await mkRoom(tA, UH, `P${String(i).padStart(2, "0")}`, RTA.dlx, "DIRTY"));
+    try {
+      const since = new Date(); const t0 = Date.now();
+      const rs = await Promise.all(rooms.map((roomId, i) => setStatus(i % 2 ? MAID : MAID2, { roomId, to: "CLEAN" })));
+      const took = Date.now() - t0;
+      eq(rs.filter((r) => failCode(r) === "THROW").map((r) => r.reason), [], "throw ดิบ");
+      eq(rs.map(codeOf), rooms.map(() => "ok"), `ผล ${J(rs.map(codeOf))}`);
+      ok(took < 10_000, `ใช้เวลา ${took} ms`);
+      const logs = (await prisma.hotelHousekeepingLog.findMany({ where: { roomId: { in: rooms }, toStatus: "CLEAN", createdAt: { gte: since } }, select: { roomId: true } })) as Any[];
+      eq(logs.length, 12, `log ${logs.length} (ห้องเปลี่ยนสถานะโดยไม่มี log)`);
+      eq(new Set(logs.map((l) => l.roomId)).size, 12, "log ไม่ครบทุกห้อง");
+      eq((await eventsOf("hotel.hk.changed", (p) => rooms.includes(String(p.roomId)))).length, 12, "event");
+      for (const r of rooms) eq(await hkOf(r), "CLEAN", `hkStatus ${r}`);
+    } finally {
+      await prisma.hotelHousekeepingLog.deleteMany({ where: { roomId: { in: rooms } } });
+      await prisma.hotelRoom.deleteMany({ where: { id: { in: rooms } } });
+    }
+  });
 
   // ═══════════════ WK hkStart / hkFinish ═══════════════
   console.log("\n── WK เริ่มทำ / เสร็จ ──");
@@ -1187,6 +1209,24 @@ try {
     eq((await folioOf(RV.MB1)).items.length, n0, "เพิ่มจากที่ปฏิเสธ");
     okRes(await minibar(LEAD, { roomId: ROOM.MB1, items: [{ key: "water", qty: 4 }] }), "lead");
     okRes(await minibar(OWNER, { roomId: ROOM.MB1, items: [{ key: "water", qty: 5 }] }), "owner");
+  });
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-MB8-atomic · ผู้ตรวจ M2) — ชุดที่มีรายการไม่ผ่าน ต้องไม่โพสต์ครึ่งชุด · ของฟรี (0) ไม่ลง folio
+  await st("MB-8", "ชุดมินิบาร์ทั้งชุดหรือไม่เลย (มติ h.6 §10.2): ค่าตั้ง #75 เพิ่ม cola 3,000 · nuts 3,000 · gift 0 (ของฟรี) · wine 6,000,000 (> manualItemMaxSatang 5,000,000) · [{cola,1},{wine,1}] ⇒ INVALID_INPUT และ FolioItem ของ MB1 ไม่เพิ่มเลย · ส่ง [{cola,1}] ⇒ ok ลง 1 (ไม่ถูกกันซ้ำเพราะชุดก่อนไม่ได้โพสต์) · [{nuts,1},{gift,2}] ⇒ ok · nuts ลง 1 · gift ไม่ลง folio (ไม่มี FolioItem ราคา 0) · คืนค่าตั้งท้ายข้อ", async () => {
+    needSetup(); needHk(); needFolio();
+    const items = [...HS.minibar.items, { key: "cola", name: "โคล่า", priceSatang: 3_000 }, { key: "nuts", name: "ถั่ว", priceSatang: 3_000 }, { key: "gift", name: "ของฝากฟรี", priceSatang: 0 }, { key: "wine", name: "ไวน์", priceSatang: 6_000_000 }];
+    await setUnit("rooms.hotel.minibar", items);
+    try {
+      const n0 = (await folioOf(RV.MB1)).items.length;
+      const bad = await minibar(MAID, { roomId: ROOM.MB1, items: [{ key: "cola", qty: 1 }, { key: "wine", qty: 1 }] });
+      ok(isFail(bad, "INVALID_INPUT"), `เกินเพดาน ⇒ ${codeOf(bad)}`);
+      eq((await folioOf(RV.MB1)).items.length, n0, "โพสต์ครึ่งชุด (cola ลงทั้งที่ wine ไม่ผ่าน)");
+      okRes(await minibar(MAID, { roomId: ROOM.MB1, items: [{ key: "cola", qty: 1 }] }), "cola หลังชุดล้ม");
+      eq((await folioOf(RV.MB1)).items.length, n0 + 1, "cola หลังชุดล้มไม่ลง/ลงซ้ำ");
+      okRes(await minibar(MAID, { roomId: ROOM.MB1, items: [{ key: "nuts", qty: 1 }, { key: "gift", qty: 2 }] }), "ของฟรี");
+      const f = await folioOf(RV.MB1);
+      eq(f.items.length, n0 + 2, "nuts+gift");
+      ok(!f.items.some((i: Any) => i.type === "MINIBAR" && Number(i.unitAmountSatang) === 0), "มี FolioItem ราคา 0");
+    } finally { await setUnit("rooms.hotel.minibar", [...HS.minibar.items]); }
   });
 
   // ═══════════════ DF แจ้งของเสีย ═══════════════
