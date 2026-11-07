@@ -3,7 +3,7 @@
 > worktree `/root/projects/shark-svc-l3` · branch `wip/svc-h2` (ฐาน e02e7e5a2 = session/svc + H.1 + H.3) · 7 พ.ย. 2569 · ผู้คุม: Fable · builder: Opus 5.5
 > สัญญา: ใบสั่ง `ledger/svc-briefs/svc-brief-h.2.md` (§0–§7 · §7 มติผู้คุม 12 ข้อ) · สเปก `docs/modules/01-hotel.md` §5.3 §7.5 §11 · ภาพ `ledger/design-dorm/08-hotel-tape.png`
 > ข้อสอบใบ: `scripts/qc-svc-h.2.mts` (84 ข้อ · builder ไม่แก้) · ระดับตรวจ: **เข้ม** (กันจองซ้อน) · ฐาน qc-svc เลน l3 `ep-royal-bar`
-> commit: `96e846560` (งานหลัก) · `1c67964d5` (wo-notes รอบ 1) · `4e0f13218` (รอบ 2 · repack) · commit นี้ (wo-notes รอบ 2) · pre-commit ข้ามด้วย `--no-verify` (ผู้คุมรัน fitness/Prisma ตอนรับ · builder รัน fitness เองแล้ว 53/53 ทั้ง 2 โหมด)
+> commit: `96e846560` (งานหลัก) · `1c67964d5` (wo-notes รอบ 1) · `4e0f13218` (รอบ 2 · repack) · `d5c4d324c` (wo-notes รอบ 2) · `f68ac154f` (รอบ 3 · ผู้ตรวจ) · commit นี้ (wo-notes รอบ 3) · pre-commit ข้ามด้วย `--no-verify` (ผู้คุมรัน fitness/Prisma ตอนรับ · builder รัน fitness เองแล้ว 53/53 ทั้ง 2 โหมด)
 
 ## 1. ไฟล์ที่แตะ (ทั้งหมดอยู่ใน §1 ของใบ)
 | ไฟล์ | ใหม่/แก้ | ทำอะไร |
@@ -47,6 +47,15 @@
 | tsc เฉพาะไฟล์ (เพิ่ม booking.ts) · fitness | 0 error · 53/53 |
 - ⚠️ F-1/F-2/F-3 ของ h.2 ตรวจ "git status ของทรี" — ระหว่างที่ booking.ts ยังไม่ commit F-3 แดง (booking.ts ต้องห้ามตาม §1) · หลัง commit ทรีสะอาด ⇒ ผ่าน/SKIP · การแตะ booking.ts = มติผู้คุมข้อ 2 (ดู §7 D8)
 
+### รอบ 3 (ผู้ตรวจ Fable · ฐาน 5afde3422 · commit f68ac154f)
+| ชุด | ผล |
+|---|---|
+| qc-svc-h.2 --no-regression (ไฟล์จริง · ฉาก h.3 --clear → h.2) | `JSON_SUMMARY {"suite":"qc-svc-h.2","total":84,"passed":75,"failed":[],"skipped":["F-1","V-1","G-1".."G-7"]}` (`/root/svc-runs/h2/builder/r3-h2.txt`) |
+| qc-svc-h.3 --no-regression (booking.ts ถูกแตะ) | `JSON_SUMMARY {"suite":"qc-svc-h.3","total":109,"passed":98,"failed":[],"skipped":["F-1","V-1","G-1".."G-9"]}` (`r3-h3.txt`) · ฐาน svcqc หลังรัน: ฉาก h.3 --clear · ฉาก h.2 สร้างไว้ |
+| probe-h2-b (ของผู้ตรวจ · ไม่แก้) | `{"total":31,"passed":29,"failed":["C6.3","C9.1"]}` — C10.2 ✅ · C9.1 แดงเพราะ probe เรียก previewMove แบบเดิม (ไม่ส่ง roomId) · C6.3 = หนี้ m2 (`r3-probe.txt`) |
+| probe-h2-b สำเนาที่ส่ง `roomId: RM.D2` ใน previewMove ของ C9.1 เท่านั้น (`/root/svc-runs/h2/builder/probe-h2-b-roomid.mts` · นอกทรี) | `{"total":31,"passed":30,"failed":["C6.3"]}` — C9.1 ✅ preview 300,000 = จริง 300,000 (`r3-probe-roomid.txt`) |
+| tsc เฉพาะไฟล์ (รวม booking.ts) | 0 error |
+
 ## 4. กลุ่ม X
 | กลุ่ม | | check ids |
 |---|---|---|
@@ -67,6 +76,9 @@
 - **D7 · MV-2 นับ occupancy ทั้งห้อง**: `:986` นับ occupancy active ทั้งหมดบน DLX3 (ไม่กรอง refId/ช่วง) แต่ BL-9 (`:958`) สร้าง P1 ดีลักซ์ +10 ที่ระบบเลือกห้องให้ลง DLX3 และไม่ลบ — วินิจฉัยในสำเนา: `DIAG DLX3 [{"refId":"<P1>","startDate":"+10","endDate":"+11"}]` ⇒ ย้าย C3 สำเร็จจริง (roomId/nights/occupancy ของ C3 ผ่าน) · ขอ ORACLE-EDIT กรอง `refId: RV.C3.id` หรือยกเลิก P1 ใน finally ของ BL-9
 - **D8 · MV-3 แถวคืนที่เลิกนับ**: `:995` คาด nights ของ C3 หลังเลื่อน = แถว counted 2 แถว แต่ H.3 `rescheduleBooking` เก็บแถวคืนเดิมไว้เป็น `counted=false, roomId=null` (`booking.ts` "แถวคงอยู่" แบบเดียวกับ shortenBooking · MV-4 กรอง counted แล้วผ่าน) ⇒ ได้ `[[+3,null,false],[+4,DLX3,true],[+5,DLX3,true]]` · ขอ ORACLE-EDIT กรอง counted · ⚠️ ส่วน "เด้งกลับ" ของ MV-3 (C3 → DLX2 +1..+3 ชน C2) ยังไม่ถูกรัน — H.3 `repackRoom` อาจย้าย C2 (CONFIRMED ประเภทเดียวกัน) ไปห้องว่างแล้วให้การย้ายสำเร็จ ⇒ อาจแดงต่อหลัง ORACLE-EDIT (ตัดสินที่มติ H.3 D7 "จัดห้องให้รายการที่ขวาง")
   - **มติผู้คุม 7 พ.ย. (รอบ 2): การลากบน tape chart ต้องไม่ย้ายการจองคนอื่นเงียบ ๆ** ⇒ แตะ H.3 `booking.ts` จุดเดียวตามที่อนุญาต: `ReschedInput` เพิ่ม `repack?: boolean` (ไม่ส่ง = true = พฤติกรรมเดิม · oracle h.3 98/98 ไม่เปลี่ยน) · `repackRoom` ทำเมื่อ `repack !== false` · เพิ่ม `moveBooking(actor, ctx, input)` = `rescheduleBooking(…, {...input, repack:false})` · facade `moveBooking` ชี้ฟังก์ชันนี้แทน alias เดิม (ข้อสอบ h.2 MOVE() ใช้ facade moveBooking) · `moveBookingAction` เรียก `hotelBooking.moveBooking` · `assignRoom` ไม่มี repack (ห้องไม่ว่าง ⇒ ROOM_BUSY อยู่แล้ว) · `resizeBookingAction` ใช้ extend/shorten ซึ่งไม่ repack · ฉาก h.2 ใช้ `rescheduleBooking` (repack เดิม) เป็นทางสำรองตอนปักห้อง · ผล: MV-3 ส่วนเด้งกลับ (C3 → DLX2 ชน C2) = ROOM_BUSY ไม่มีอะไรเปลี่ยน · sds อัปเดตแล้ว
+- **รอบ 3 · ผู้ตรวจ MAJOR 1 (มติผู้คุม: แตะ booking.ts จุดเดียว)**: `rescheduleBooking` เมื่อสถานะ CHECKED_IN และห้องเปลี่ยน ⇒ ใน tx เดียวกับการย้าย occupancy: ห้องเดิม `status CLEANING + hkStatus DIRTY` (แบบ service.checkOut) + HotelHousekeepingLog (from เดิม → DIRTY · reservationId · "ย้ายแขกที่พักอยู่ไปห้องอื่น") · ห้องใหม่ `status OCCUPIED` (แบบ service.checkIn) · พฤติกรรมอื่นไม่เปลี่ยน (probe C10.2 ✅ · h.3 ดู §3)
+- **รอบ 3 · ผู้ตรวจ MAJOR 2**: `previewMove(ctx, {unitId, id, roomId?, checkIn?, checkOut?})` — roomId ⇒ ประเภทห้องปลายทาง (ห้องไม่อยู่ในหน่วย ⇒ NOT_FOUND) · คืนใหม่ quote บนประเภทนั้น · คืนเดิมคงราคา (สูตร targetType เดียวกับ rescheduleBooking) · คืน `{ok, nights, addedNights[{date,priceSatang}], addedSatang, keptSatang, totalSatang}` · `previewMoveAction(unitSlug, {id, roomId?, checkIn?, checkOut?})` · MoveConfirmDialog ส่ง roomId เมื่อห้องเปลี่ยน · ⚠️ probe-h2-b C9.1 ต้องส่ง roomId (ผู้คุมปรับ probe/ข้อสอบ)
+- **รอบ 3 · minor**: m1 การจองที่ถือห้องซึ่งหลุดแถว (active=false/MONTHLY) ⇒ แถว «ยังไม่กำหนดห้อง» + `roomNote "ห้องปิดใช้งาน"` (ต่อท้าย label) · occupied นับเหมือนเดิม · m3 TapeBar/ป็อป: HOLD ที่ `holdExpiresAt ≤ nowMs` (หน้าส่ง `nowMs={Date.now()}`) แสดง «หมดเวลา» · m5 ปุ่ม «ปล่อยห้อง» ยืนยันด้วย `window.confirm` ก่อนเรียก releaseBlockAction · m6 ดู §8
 - **D9 · U-4 package.json**: `:1189` ตรวจว่า package.json "มี" @dnd-kit — แต่ `@dnd-kit/core|sortable|utilities` อยู่ใน package.json มาก่อน (ใช้โดยโมดูลอื่น · commit e094f8fce ก่อน RUN) · ใบนี้ไม่แตะ package.json (F-3 ผ่าน) · ขอ ORACLE-EDIT เทียบ diff กับฐาน (`git diff e02e7e5a2 -- package.json`)
 - **D10 · regression h.1 ที่ตั้งใจแดง (ใบ §6)**: แท็บ calendar เปิด ⇒ `qc-svc-h.1` **U-3** (คาด calendar available false) และ **U-4** (frontdesk ไม่มี «ปฏิทินห้อง») แดงทั้งคู่ — ใบ §6/G-2 (`qc-svc-h.2.mts:1475 judgeAllow(["U-4"])`) ยอมแค่ U-4 ⇒ G-2 จะแดงเพราะ U-3 · ขอ ORACLE-EDIT h.1 U-3+U-4 และ/หรือ G-2 allow ["U-3","U-4"]
 
@@ -80,7 +92,10 @@
 | "ออกวันนี้ ก่อน checkOutTime" ในการ์ดไม่แสดงเวลา | ตัวอ้างอิงไม่ใช้เวลา | H.4 |
 | ศ.–ส. % ใช้ศุกร์/เสาร์ตายตัว (ไม่อ่าน weekendDays) เพื่อคง ≤ 4 คำสั่งของ hotelToday | ป้ายเขียน "ศ.–ส." | H.7 |
 | ป้าย source ในแถบเป็นไทย ("เดินเข้า/โทรจอง/หน้าเว็บ") | มติผู้คุม 7 พ.ย. รอบ 2: ถูกต้อง (ใบ §4 ไทยทั้งหมด · ภาพ 08 เป็นภาพร่าง) — ไม่ใช่หนี้ | — |
-| ภาพ/PARITY · probe-h2-b · tsc ทั้งโปรเจกต์ · G ทั้งชุด | กติกาเลน | ผู้คุม |
+| m6 `setHkStatus(OUT_OF_ORDER)` ของ blockRoom (และ DIRTY ของ releaseBlock) อยู่หลัง commit ของ tx | `rooms.setHkStatus(ctx, input)` ไม่รับ tx (เปิด tenantDb เอง) และห้ามแตะ rooms/** · HousekeepingLog อยู่ใน tx แล้ว · ช่องว่าง = ถ้า setHkStatus ล้มหลัง commit ห้องมี BLOCK แต่ hkStatus ไม่ OOO (สูตรเหลือขายนับ BLOCK อยู่แล้ว ไม่ขายซ้อน) | แกนห้อง (เพิ่ม tx ให้ setHkStatus) |
+| m2 H.3 availability ตัดห้อง OUT_OF_ORDER ออกจาก total ทุกวัน (ไม่ใช่เฉพาะช่วง BLOCK) ⇒ วันนอกช่วงปิด tape sellable ≠ availability total (probe C6.3) | สูตร H.3 · มติผู้คุมให้เป็นหนี้ | H.3/H.6 |
+| m4 CAS ของ rescheduleBooking/assignRoom ไม่เทียบ roomId | มติผู้คุมให้เป็นหนี้ | H.3 |
+| ภาพ/PARITY · tsc ทั้งโปรเจกต์ · G ทั้งชุด | กติกาเลน | ผู้คุม |
 
 ## 9. สิ่งที่ H.4 / H.5 / H.6 ต้องรู้
 - facade: `tapeChart` · `hotelToday` (DTO `HotelTodayOk`: arrivals/departures/inHouse/sellable/blocked/leased/hkDirty/weekOccBps/weekendOccBps/adrSatang + ชื่อ/เลขห้อง) · `previewMove` · `blockRoom/releaseBlock/listBlocks` · `BLOCK_REF = "HotelRoomBlock"`
