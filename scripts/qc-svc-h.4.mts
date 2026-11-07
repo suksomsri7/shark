@@ -1133,6 +1133,24 @@ try {
     const pub = await prisma.fileAsset.count({ where: { id: { in: fids }, cdnUrl: { startsWith: "http" } } });
     eq(pub, 0, "ไฟล์แขกมี cdnUrl สาธารณะ");
   });
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h.4 §11.4) — purge ต้องดูวันออกจริง + retainYears ด้วย ไม่ใช่ retainUntil อย่างเดียว
+  await st("PD-11", "purge ตามมติ §11.4: แถว retainUntil ผ่านแล้ว แต่การจองออกไม่ถึง retainYears (checkOutDate = +2 วัน) ⇒ purge ไม่แตะ (idNumberEnc คง) · ย้ายวันเข้า/ออกของการจองไป −3 ปี ⇒ purge ล้าง idNumberEnc · แถวคงชื่อ/last4", async () => {
+    needGuest();
+    const r = await inhouse({ guests: [G.jpn] });
+    const gid = r.guestIds[0];
+    ok(gid, "ไม่มี guestId");
+    await prisma.hotelGuestRecord.update({ where: { id: gid }, data: { retainUntil: dbDate(W(-30)) } });
+    okRes(await purge({ limit: 10 }), "purge 1");
+    const g1 = await guestRow(gid);
+    ok(g1?.idNumberEnc, "purge ล้างทั้งที่วันออก+retainYears ยังไม่ถึง (ดูแค่ retainUntil)");
+    const ci = `${Number(W(0).slice(0, 4)) - 3}${W(0).slice(4)}`;
+    await prisma.hotelReservation.update({ where: { id: r.id }, data: { checkInDate: dbDate(ci), checkOutDate: dbDate(addDays(ci, 2)) } });
+    const p2 = okRes(await purge({ limit: 10 }), "purge 2");
+    ok((p2.purged ?? 0) >= 1, `purged ${p2.purged}`);
+    const g2 = await guestRow(gid);
+    ok(g2 && g2.idNumberEnc == null, "ยังไม่ล้างหลังวันออกจริง+retainYears พ้นแล้ว");
+    ok(g2?.fullName === G.jpn.fullName && g2?.idNumberLast4, "คงชื่อ/last4");
+  });
 
   // ═══════════════ AI อ่านเอกสาร (เสนอ-คนยืนยัน) ═══════════════
   console.log("\n── AI readIdDocument ──");
@@ -1304,7 +1322,7 @@ try {
     eq(seqs, [...seqs].sort((a, b) => a - b), "ไม่เรียง");
     eq(new Set(seqs).size, seqs.length, "เลขซ้ำ");
     ok(seqs[0] === 1 && seqs[seqs.length - 1] - seqs[0] + 1 >= seqs.length, `ไม่ต่อเนื่องจาก 1 ${J(seqs.slice(0, 5))}`);
-    const dbRows = await prisma.hotelGuestRecord.findMany({ where: { tenantId: tA, unitId: UH, reservation: { checkInDate: { gte: dbDate(W(-3)), lte: dbDate(W(3)) } } }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const dbRows = await prisma.hotelGuestRecord.findMany({ where: { tenantId: tA, unitId: UH, reservation: { status: { in: ["CHECKED_IN", "CHECKED_OUT", "REFUNDED"] }, checkInDate: { gte: dbDate(W(-3)), lte: dbDate(W(3)) } } }, orderBy: { createdAt: "asc" }, select: { id: true } });  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h.4 §11.2)
     const idOf = (x: Any) => x.guestId ?? x.id;
     eq(rows.map(idOf), dbRows.map((x: Any) => x.id), "ลำดับ/ครบตาม createdAt");
     eq(hasRaw(J(rows), RAWS), [], "เลขเต็มใน ร.ร.4");
@@ -1334,11 +1352,37 @@ try {
     ok(r4?.ok === false || (Array.isArray(r4) ? r4.length === 0 : (r4?.rows ?? r4?.items ?? []).length === 0), "rr4 ร้าน B");
     eq(await fileCount(), f0, "FileAsset จากใบที่ล้ม");
   });
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h.4 §11.2) — ทะเบียนกฎหมาย (ร.ร.4 · คิว/ไฟล์ ตม.30 · ลำดับเลขบัตร) นับเฉพาะผู้พักจริง
+  await st("RR-7", "ทะเบียนกฎหมายเฉพาะผู้พักจริง (§11.2): ลงทะเบียนล่วงหน้าบนการจอง CONFIRMED (ยังไม่เช็กอิน · ไม่ถือห้อง) ⇒ แถว HotelGuestRecord มี แต่ rr4Register ไม่มี guestId นี้ · ทุกแถว reservationStatus ∈ CHECKED_IN/CHECKED_OUT/REFUNDED · เลขบัตรผู้พักจริงไม่ขยับ · tm30Queue ไม่มี · tm30Export เฉพาะคนนี้ ⇒ INVALID_INPUT · ตั้งการจองเป็น CANCELLED ⇒ เหมือนเดิมทุกข้อ · แถวยังอยู่ (รอ purge)", async () => {
+    needGuest(); needTm30();
+    const noOf = (x: Any) => String(x.cardNo ?? x.rr3No ?? x.seqNo ?? x.no ?? "");
+    const rowsOf = (r: Any) => (Array.isArray(r) ? r : r.rows ?? r.items ?? []) as Any[];
+    const rowsB = rowsOf(okRes(await rr4(), "rr4 ก่อน"));
+    ok(rowsB.length >= 1, "ไม่มีแถว ร.ร.4 ตั้งต้น");
+    const id = await mkRes({ type: "dlx", ci: W(0), co: W(2), claim: false });
+    const u = okRes(await upsert(REG, { reservationId: id, guest: G.fra }), "ลงทะเบียนล่วงหน้า");
+    const gid = String(u.guestId ?? u.id ?? (await guestsOf(id))[0]?.id ?? "");
+    ok(gid, "ไม่มี guestId ของแถวล่วงหน้า");
+    const check = async (tag: string) => {
+      const rows = rowsOf(okRes(await rr4(), `rr4 ${tag}`));
+      ok(!rows.some((x) => (x.guestId ?? x.id) === gid), `${tag}: ร.ร.4 มีแถวที่ยังไม่เข้าพัก`);
+      eq(rows.filter((x) => !["CHECKED_IN", "CHECKED_OUT", "REFUNDED"].includes(String(x.reservationStatus))).map((x) => x.reservationStatus ?? "(ไม่มี reservationStatus)"), [], `${tag}: reservationStatus`);
+      eq(rows.map(noOf), rowsB.map(noOf), `${tag}: เลขบัตรผู้พักจริงขยับ`);
+      const q = okRes(await queue(), `queue ${tag}`);
+      ok(!(q.items ?? []).some((x: Any) => x.guestId === gid), `${tag}: คิว ตม.30 มีคนยังไม่เข้าพัก`);
+      const ex = await tmExport(FRONT, { guestIds: [gid] });
+      ok(isFail(ex, "INVALID_INPUT"), `${tag}: export คนยังไม่เข้าพัก ⇒ ${codeOf(ex)}`);
+    };
+    await check("CONFIRMED");
+    await prisma.hotelReservation.update({ where: { id }, data: { status: "CANCELLED" } });
+    await check("CANCELLED");
+    ok(await guestRow(gid), "แถวลงทะเบียนล่วงหน้าถูกลบ (ต้องคงไว้รอ purge)");
+  });
 
   // ═══════════════ TM ตม.30 ═══════════════
   console.log("\n── TM ตม.30 ──");
   const TM30_LABELS = ["ชื่อ", "เพศ", "สัญชาติ", "หนังสือเดินทาง", "วันเกิด", "ตรวจลงตรา", "เดินทางเข้า", "ด่าน", "ตม.6", "วันเข้าพัก", "วันออก", "ห้อง"];
-  const pendingForeigners = () => prisma.hotelGuestRecord.findMany({ where: { tenantId: tA, unitId: UH, isForeigner: true, tm30Status: { in: ["PENDING", "LATE"] } }, orderBy: { createdAt: "asc" } }) as Promise<Any[]>;
+  const pendingForeigners = () => prisma.hotelGuestRecord.findMany({ where: { tenantId: tA, unitId: UH, isForeigner: true, tm30Status: { in: ["PENDING", "LATE"] }, reservation: { status: { in: ["CHECKED_IN", "CHECKED_OUT", "REFUNDED"] } } }, orderBy: { createdAt: "asc" } }) as Promise<Any[]>;  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h.4 §11.2 เฉพาะผู้พักจริง)
   await st("TM-1", "tm30Queue(ctx,{unitId}) ⇒ {pending, late, items[]} · ตัวเลขตรงนับจากฐาน (PENDING/LATE ของหน่วย) · items มี guestId/fullName/nationality/idNumberLast4/dueAt/status/roomNumber ไม่มีเลขเต็ม · UH2 (แขกไทย) ⇒ 0/0 · ร้าน B ⇒ NOT_FOUND/0", async () => {
     needTm30();
     const q = okRes(await queue(), "queue");
@@ -1508,6 +1552,27 @@ try {
     const s = read(F.shared);
     eq(importSpecs(s).filter((i) => !i.typeOnly).map((i) => i.spec), [], "import ค่า");
     ok(!/["']use (client|server)["']/.test(stripComments(s)), "มี directive");
+  });
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h.4 §11.1) — วันเข้าพักในไฟล์ ตม.30 ต้องเป็นวันไทย (timezone ร้าน) ไม่ใช่วัน UTC
+  await st("TM-10", "วันเข้าพักในไฟล์ ตม.30 = วันไทย (§11.1): เช็กอินแขก JPN แล้วตั้ง checkedInAt = 19:30Z ของวันนี้ (= 02:30 วันถัดไปเวลาไทย) · exportColumns = [วันเข้าพัก, ห้อง] ⇒ ช่องวันเข้าพัก = dd/mm/yyyy ของวันถัดไป (ไม่ใช่วัน UTC)", async () => {
+    needTm30();
+    const r = await inhouse({ guests: [G.jpn] });
+    const gid = r.guestIds[0];
+    const base = W(0);
+    await prisma.hotelReservation.update({ where: { id: r.id }, data: { checkedInAt: new Date(`${base}T19:30:00.000Z`) } });
+    const cols = (await settingOf("rooms.hotel.tm30.exportColumns")) as Any[];
+    const find = (re: RegExp) => cols.find((c: Any) => re.test(J(c)));
+    const pick = [find(/checkInDate|วันเข้าพัก/), find(/roomNumber|room|ห้อง/i)].filter(Boolean);
+    eq(pick.length, 2, `หาคอลัมน์ไม่ครบ ${J(cols).slice(0, 200)}`);
+    await setUnit("rooms.hotel.tm30.exportColumns", pick);
+    try {
+      const x = okRes(await tmExport(FRONT, { guestIds: [gid] }), "export");
+      const lines = Buffer.from(x.file.bytes).subarray(3).toString("utf8").split(/\r?\n/).filter((l: string) => l.trim());
+      eq(lines.length, 2, `บรรทัด ${lines.length}`);
+      const cell = lines[1].split(",")[0].replace(/^"|"$/g, "");
+      const th = (ymd: string) => { const [y, m, d] = ymd.split("-"); return `${d}/${m}/${y}`; };
+      eq(cell, th(addDays(base, 1)), `วันเข้าพักควรเป็นวันไทย (วัน UTC = ${th(base)})`);
+    } finally { await resetUnit("rooms.hotel.tm30.exportColumns"); }
   });
 
   // ═══════════════ SD เงินประกันห้อง (ขั้นแยกหลัง CHECKED_IN · H.5) ═══════════════
