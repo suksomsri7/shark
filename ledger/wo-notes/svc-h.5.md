@@ -48,6 +48,20 @@
 - `qc-svc-h.3 --no-regression`: 98/109 แดง F-1 เฉพาะตอนทรีสกปรก (ไฟล์ H.5) · `qc-pos-p5.1`: 28/28
 - ผลหลัง commit ดู builder-progress
 
+### รอบ 3 (ผู้ตรวจเงินรอบ 1 ตีกลับ · ฐาน 823e13324 · H.2 merge แล้ว)
+| ข้อ | แก้ |
+|---|---|
+| C1 บิลผสม | `account/index.ts` (บล็อก H.5): `roomChargeSatang < grossSatang` ⇒ JV ปรับเฉพาะส่วนลงห้อง (Cr 1100 = ยอดลงห้อง · Dr รายได้/2200 ตามสัดส่วนขาเครดิต · `postManualJV` แล้วผูก refType PosSale · คีย์ `PosSale#<sale>#RCADJ#<n>`) · restore = `reverseEntry` ของ JV ปรับ · บิลลงห้องเต็มใบ = กลับทั้งใบเหมือนเดิม · ผู้เรียก (checkout · consumer) ส่งยอด ROOM_CHARGE/ยอดบิล |
+| C2 แยกภาษี + POS_CHARGE | `folio.taxBaseSubtotal` (ไม่รวม POS_CHARGE) ใช้กับ TAX/SC บน folio · `buildPlan` ไม่ gross บรรทัด POS_CHARGE · ยอด folio = taxLines(ฐานโรงแรม).total + POS_CHARGE |
+| M1 POS ล้มหลัง tx A | คืนค้าง post ใน tx B เท่านั้น · tx A/tx B void ROOM ของคืนที่ `counted=false` และ `postedAuditId` null · prepare ไม่นับ ROOM ของคืนที่เลิกนับ (ไม่แตะ booking.ts) |
+| M2 มัดจำกลุ่มรายห้อง | `targetsOf` รายห้องในกลุ่ม ⇒ head = แถวในกลุ่มที่ถือใบรับ · ผู้ถือออกขณะห้องอื่น active ⇒ DEPOSIT บวก "ย้ายมัดจำคงเหลือ" · ห้องที่ใช้ภายหลัง = คู่รับโอน/ใช้ บน folio ตัวเอง · คืนส่วนเกินเมื่อกลุ่มไม่เหลือห้อง active ไม่ว่าใคร settle |
+| m1 | ไม่เขียน folio ที่ SETTLED แล้ว (คู่แถวลงที่ folio ห้องที่กำลังออก) |
+| m2 | settle({groupId}) คืนเงินประกันที่ถือของทุกห้อง · FORFEIT ทั้งกลุ่ม ⇒ warning รายห้อง |
+| m3 | `onPosSalePaidRoomCharge` BUSY ⇒ โยน `RoomChargeRetry` · consumer เปลี่ยนเป็น bothMain + log แล้วโยนต่อ (event retry) |
+| m4 | `refundStay` หาบิล PAID ล่าสุดของการจอง (`hotel-sale-<id>` หรือ `-r<n>`) |
+| m5 | จดสัญญาผู้เรียก `chargeToRoom` ใน sds (facade ไม่ตรวจวิธีจ่ายต้นทาง) |
+| m6 | หนี้ (§8) |
+
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | check ids / เหตุผล |
 |---|---|---|
@@ -103,6 +117,9 @@
 | บิลร้านที่ถูกกลับรายการ (reverse) แล้วถูก void ภายหลัง | `reverseExternalSale` ไม่กลับ "ตัวคืน" ของสาย | H.7/บัญชี |
 | ชั้นเอกสารรายงาน (ABB) ของบิลร้านที่ลงห้องยังอยู่ ⇒ รายงานขายรายสินค้าเห็นอาหาร 2 ที่ | ใบสั่งให้แตะเฉพาะ GL | บัญชี |
 | ริบประกันบางส่วน | ใบ §0 v1 | ใบย่อย |
+| (m5) `chargeToRoom` facade รับบิลที่ร้านเก็บเงินแล้วได้ — ผู้เรียกต้องส่งเฉพาะยอดที่ลงห้องจริง | สัญญาผู้เรียก (sds) | — |
+| (m6) ตามผู้ตรวจรอบ 1 | จดตามคำสั่ง | ผู้คุม |
+| บิลร้านผสมที่ถูก void หลังปรับบัญชีส่วนลงห้อง: `reverseExternalSale` กลับทั้ง JV เดิม + JV ปรับ (สุทธิ 0 ทั้งบิล) แต่ folio ที่ปิดแล้วยังเก็บเงินแขกส่วนนั้น | folio ปิดแล้ว | H.7 |
 | folio EXCLUSIVE ของกลุ่ม = ภาษีต่อ folio รวมกัน (ปัดเศษต่อ folio) | ให้ PAYMENT ต่อ folio ตรงยอดของตัวเอง | — |
 
 ## สิ่งที่ H.4 / H.6 / H.7 ต้องรู้

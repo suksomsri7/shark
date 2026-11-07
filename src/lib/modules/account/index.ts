@@ -2458,7 +2458,9 @@ export async function voidDormReceiptDoc(input: { tenantId: string; unitId: stri
 //   ⇒ reverseRoomChargePosting = กลับรายการ JV ของบิลร้าน (ผ่าน reverseFor เดิม) · restoreRoomChargePosting = กลับ "ตัวกลับรายการ" (คืนสภาพลูกหนี้ เมื่อคืนเงินการเข้าพัก)
 //   ทั้งสองตัว idempotent ตามสถานะสายรายการ (ต้นฉบับ → กลับ → คืน → กลับ …): สถานะเดิมแล้ว = ไม่เขียนเพิ่ม · ร้านไม่เชื่อมบัญชี/ไม่มี JV ของบิล = {posted:false} ไม่ throw
 //   สต็อกของร้านไม่แตะ (ตัดครั้งเดียวที่บิลร้าน) · เอกสารรายงานของบิลร้านไม่แตะ (ชั้นรายงาน)
-type RoomChargePostingInput = { tenantId: string; posSystemId: string; saleId: string; settleSaleId?: string | null; reason: string };
+//   บิลผสม (ผู้ตรวจรอบ 1 C1 · มติ): ส่ง roomChargeSatang < grossSatang ⇒ ไม่กลับทั้งใบ (เงินสดที่ร้านรับจริงต้องคง) — โพสต์ JV ปรับเฉพาะส่วนลงห้อง
+//     (Cr ลูกหนี้ของบิล = ยอดลงห้อง · Dr รายได้/ภาษีขายตามสัดส่วนขาเครดิตของ JV บิลร้าน) refType PosSale refId บิลร้าน · คืนสภาพ = กลับ JV ปรับนั้น
+type RoomChargePostingInput = { tenantId: string; posSystemId: string; saleId: string; settleSaleId?: string | null; reason: string; roomChargeSatang?: number; grossSatang?: number };
 type ChainEntry = { id: string; status: string; reversalOfId: string | null; depth: number };
 async function roomChargeChain(ctx: GlCtx, saleId: string): Promise<ChainEntry[]> {
   const rows = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountJournalEntry.findMany({
@@ -2474,6 +2476,52 @@ async function roomChargeChain(ctx: GlCtx, saleId: string): Promise<ChainEntry[]
   };
   return rows.map((r) => ({ id: r.id, status: String(r.status), reversalOfId: r.reversalOfId, depth: depthOf(r.id) }));
 }
+const RC_ADJ = "#RCADJ#";
+/** บิลผสม: JV ปรับเฉพาะส่วนลงห้อง (สถานะ = มี JV ปรับที่ยัง POSTED หรือไม่) */
+async function shiftPartialRoomCharge(ctx: GlCtx, input: RoomChargePostingInput, want: "REVERSED" | "RESTORED", memo: string): Promise<{ posted: boolean; changed: number }> {
+  const db = crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId });
+  const keyBase = `PosSale#${input.saleId}${RC_ADJ}`;
+  const adjs = await db.accountJournalEntry.findMany({ where: { refType: "PosSale", refId: input.saleId, idempotencyKey: { startsWith: keyBase } }, select: { id: true, status: true } });
+  const live = adjs.filter((a) => String(a.status) === "POSTED");
+  const gl = await import("./gl");
+  if (want === "RESTORED") {
+    let changed = 0;
+    for (const a of live) {
+      const r = await gl.reverseEntry(ctx, a.id, memo);
+      if (!("skipped" in r)) changed++;
+    }
+    return { posted: true, changed };
+  }
+  if (live.length) return { posted: true, changed: 0 };
+  const orig = await db.accountJournalEntry.findFirst({
+    where: { refType: "PosSale", refId: input.saleId, status: "POSTED", reversalOfId: null, NOT: { idempotencyKey: { startsWith: keyBase } } },
+    include: { lines: { include: { account: { select: { code: true } } } } },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!orig) return { posted: false, changed: 0 };
+  const rc = input.roomChargeSatang ?? 0;
+  const ar = orig.lines.find((l) => l.debit > 0 && l.account.code === "1100" && l.debit >= rc) ?? orig.lines.find((l) => l.debit > 0 && l.account.code.startsWith("11") && l.debit >= rc);
+  if (!ar) throw new Error("ไม่พบขาลูกหนี้ของบิลร้านที่ลงห้อง — ปรับบัญชีบิลผสมไม่ได้");
+  const credits = orig.lines.filter((l) => l.credit > 0);
+  const totalCr = credits.reduce((t, l) => t + l.credit, 0);
+  if (!(totalCr > 0) || rc <= 0 || rc > totalCr) throw new Error("ยอดลงห้องของบิลผสมไม่ถูกต้อง");
+  const parts = credits.map((l) => ({ accountId: l.accountId, contactId: l.contactId ?? undefined, amt: Math.floor((l.credit * rc) / totalCr) }));
+  const rest = rc - parts.reduce((t, x) => t + x.amt, 0);
+  const big = parts.reduce((m, x, i) => (x.amt > parts[m]!.amt ? i : m), 0);
+  parts[big]!.amt += rest;
+  const out = await gl.postManualJV(ctx, {
+    date: new Date(),
+    memo: `ปรับส่วนลงห้องของบิลร้าน: ${memo}`,
+    book: orig.book,
+    lines: [
+      { accountId: ar.accountId, debit: 0, credit: rc, ...(ar.contactId ? { contactId: ar.contactId } : {}) },
+      ...parts.filter((x) => x.amt > 0).map((x) => ({ accountId: x.accountId, debit: x.amt, credit: 0, ...(x.contactId ? { contactId: x.contactId } : {}) })),
+    ],
+  });
+  // ผูก JV ปรับกับบิลร้าน (refType PosSale · คีย์ #RCADJ#<n>) ⇒ งบของบิลรวมทุกขา · ตัวกลับ/คืนสภาพหาได้จากบิล
+  await db.accountJournalEntry.updateMany({ where: { id: out.entryId }, data: { refType: "PosSale", refId: input.saleId, idempotencyKey: `${keyBase}${adjs.length + 1}` } });
+  return { posted: true, changed: 1 };
+}
 async function shiftRoomChargePosting(input: RoomChargePostingInput, want: "REVERSED" | "RESTORED"): Promise<{ posted: boolean; changed: number }> {
   const link = await findAccountLinkForPos(input.tenantId, input.posSystemId);
   if (!link) return { posted: false, changed: 0 };
@@ -2481,6 +2529,7 @@ async function shiftRoomChargePosting(input: RoomChargePostingInput, want: "REVE
   const chain = await roomChargeChain(ctx, input.saleId);
   if (!chain.length) return { posted: false, changed: 0 };
   const memo = `${input.reason}${input.settleSaleId ? ` (บิลเช็กเอาต์ ${input.settleSaleId})` : ""}`.slice(0, 200);
+  if (input.roomChargeSatang !== undefined && input.grossSatang !== undefined && input.roomChargeSatang < input.grossSatang) return shiftPartialRoomCharge(ctx, input, want, memo);
   // ใบที่ยังมีผล (POSTED) — ความลึกคู่ = ผลแบบต้นฉบับ · คี่ = ผลแบบกลับรายการ
   const live = chain.filter((e) => e.status === "POSTED");
   const target = live.filter((e) => (want === "REVERSED" ? e.depth % 2 === 0 : e.depth % 2 === 1));

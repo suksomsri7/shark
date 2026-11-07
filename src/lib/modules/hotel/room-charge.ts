@@ -167,6 +167,13 @@ async function emitUnmatched(tenantId: string, s: RcSale, code: string): Promise
   await emitOutboxOutsideTx({ tenantId, unitId: s.unitId, systemId: s.systemId, type: "hotel.folio.charge_unmatched", idempotencyKey: `hotel.folio.charge_unmatched#${s.id}`, payload: { tenantId, unitId: s.unitId, saleId: s.id, reason: code } });
 }
 
+/** ข้อผิดพลาดชั่วคราวของชั้นลงห้อง — outbox ลองใหม่ */
+export class RoomChargeRetry extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RoomChargeRetry";
+  }
+}
 /** consumer ชั้นโรงแรมของ "pos.sale.paid" (ต่อท้าย chain · ล้มไม่ล้ม consumer อื่น — outbox-consumers ห่อ try/catch) */
 export async function onPosSalePaidRoomCharge(evt: { tenantId: string; payload: unknown }): Promise<void> {
   const saleId = isRec(evt.payload) && isStr(evt.payload.saleId) ? evt.payload.saleId : null;
@@ -181,9 +188,11 @@ export async function onPosSalePaidRoomCharge(evt: { tenantId: string; payload: 
       SELECT f."settledSaleId" FROM "HotelFolioItem" i JOIN "HotelFolio" f ON f.id = i."folioId"
       WHERE i."tenantId" = ${evt.tenantId} AND i.type = 'POS_CHARGE' AND i."refType" = 'PosSale' AND i."refId" = ${s.id} AND i."voidedAt" IS NULL AND f.status = 'SETTLED' LIMIT 1`;
     const settleSaleId = settled[0]?.settledSaleId;
-    if (settleSaleId) await reverseRoomChargePosting({ tenantId: evt.tenantId, posSystemId: s.systemId, saleId: s.id, settleSaleId, reason: "รวมเข้าบิลเช็กเอาต์ของโรงแรมแล้ว" });
+    if (settleSaleId) await reverseRoomChargePosting({ tenantId: evt.tenantId, posSystemId: s.systemId, saleId: s.id, settleSaleId, roomChargeSatang: s.roomCharge, grossSatang: s.grand, reason: "รวมเข้าบิลเช็กเอาต์ของโรงแรมแล้ว" });
     return;
   }
+  // ระบบไม่ว่าง ⇒ โยนให้คิวลองใหม่ (ไม่ลงคิว unmatched ถาวร · ผู้ตรวจรอบ 1 m3)
+  if (r.code === "BUSY") throw new RoomChargeRetry(`ลงห้องบิล ${s.id} ไม่สำเร็จ (ระบบไม่ว่าง) — ลองใหม่`);
   await emitUnmatched(evt.tenantId, s, r.code === "NOT_FOUND" ? "ROOM_NOT_FOUND" : r.code);
 }
 

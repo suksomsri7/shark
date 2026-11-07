@@ -447,10 +447,10 @@ export async function refundStay(
     return { ok: false, reason: "คืนเงินได้เฉพาะการจองที่เช็คเอาท์แล้ว" };
 
   // ต้องมีบิลที่เก็บเงินผ่าน POS แล้ว (idempotencyKey = hotel-sale-<id>) และยัง PAID
-  const sale = await prisma.posSale.findUnique({
-    where: {
-      tenantId_idempotencyKey: { tenantId, idempotencyKey: `hotel-sale-${reservationId}` },
-    },
+  // SVC H.5 ▸ (ผู้ตรวจรอบ 1 m4) บิลเช็กเอาต์ล่าสุดที่ยัง PAID ของการจองนี้ — รวมคีย์ hotel-sale-<id>-r<n> (บิลเดิมถูก void แล้วเช็กเอาต์ใหม่) ◂
+  const sale = await prisma.posSale.findFirst({
+    where: { tenantId, docType: "SALE", status: "PAID", OR: [{ idempotencyKey: `hotel-sale-${reservationId}` }, { idempotencyKey: { startsWith: `hotel-sale-${reservationId}-r` } }] },
+    orderBy: { createdAt: "desc" },
   });
   if (!sale || sale.status !== "PAID")
     return { ok: false, reason: "การจองนี้ไม่มีบิลที่ต้องคืนเงิน" };

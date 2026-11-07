@@ -20,6 +20,7 @@ import { posAccountSystemId, vatConfigOf, reverseRoomChargePosting, restoreRoomC
 import { roundFraction, taxLines } from "./pricing";
 import {
   CHARGE_TYPES,
+  taxBaseSubtotal,
   FolioAbort,
   R,
   auditTx,
@@ -37,6 +38,7 @@ import {
   isStr,
   lockFolio,
   postRoomNightsTx,
+  voidItemTx,
   recomputeTx,
   reservationGate,
   securityStateOf,
@@ -103,12 +105,18 @@ async function targetsOf(actorIn: unknown, ctx: unknown, input: unknown, need: r
   const g = await reservationGate(actorIn, ctx, input, need);
   if (isFolioFail(g)) return asCheckout(g);
   if (g.rv.status !== "CHECKED_IN") return cfail("NOT_CHECKED_IN", "การจองนี้ยังไม่ได้เช็กอิน (หรือเช็กเอาต์ไปแล้ว) — เช็กเอาต์ได้เฉพาะห้องที่เข้าพักอยู่");
-  return { g, rows: [g.rv], head: g.rv.depositPaidAt && g.rv.depositSaleId ? g.rv : null, keyBase: `hotel-sale-${g.rv.id}`, sourceId: g.rv.id, groupId: g.rv.groupId ?? null };
+  // ห้องในกลุ่ม settle รายห้อง ⇒ มัดจำของกลุ่มอยู่ที่แถวที่ถือใบรับ (ผู้ตรวจรอบ 1 M2) — ใช้มัดจำคงเหลือกับทุกห้องที่ settle
+  const head = g.rv.depositPaidAt && g.rv.depositSaleId
+    ? g.rv
+    : g.rv.groupId
+      ? await tenantDb({ tenantId: g.tenantId, unitId: g.unitId }).hotelReservation.findFirst({ where: { groupId: g.rv.groupId, depositPaidAt: { not: null }, depositSaleId: { not: null } }, orderBy: [{ createdAt: "asc" }, { code: "asc" }] })
+      : null;
+  return { g, rows: [g.rv], head: head ?? null, keyBase: `hotel-sale-${g.rv.id}`, sourceId: g.rv.id, groupId: g.rv.groupId ?? null };
 }
 
 // ───────────────────────── แผนบิล (pure จากรายการ folio) ─────────────────────────
 export type PosLine = { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; kind: string };
-type PlanItem = { type: string; description: string; qty: number; unitAmountSatang: number; amountSatang: number; voidedAt: Date | null };
+type PlanItem = { type: string; description: string; qty: number; unitAmountSatang: number; amountSatang: number; voidedAt: Date | null; refType?: string | null; refId?: string | null };
 type FolioPlanIn = { folioId: string; reservationId: string; roomTypeName: string; items: PlanItem[] };
 export type CheckoutPlan = { lines: PosLine[]; billDiscountSatang: number; serviceChargeSatang: number; grandTotalSatang: number; perFolio: { folioId: string; reservationId: string; totalSatang: number }[] };
 
@@ -124,9 +132,12 @@ function buildPlan(folios: FolioPlanIn[], st: FolioSettings): CheckoutPlan | Che
   for (const f of folios) {
     const eff = effective(f.items);
     const sub = chargeSubtotal(f.items);
-    const tl = taxLines(Math.max(0, sub), { mode: st.mode, vatBp: st.vatBp, serviceChargeBp: st.scBp }, st.rounding);
-    if (sub < 0) return cfail("INVALID_INPUT", "ส่วนลดมากกว่ายอดค่าใช้จ่ายของห้อง — ตรวจรายการส่วนลดก่อนเช็กเอาต์");
-    perFolio.push({ folioId: f.folioId, reservationId: f.reservationId, totalSatang: exclusive ? tl.totalSatang : sub });
+    // บิลร้านที่ลงห้อง (POS_CHARGE) รวม VAT แล้วเสมอ ⇒ ไม่อยู่ในฐานภาษีของโรงแรม · ไม่บวก VAT ซ้ำ (ผู้ตรวจรอบ 1 C2)
+    const base = taxBaseSubtotal(f.items);
+    const posPart = sub - base;
+    const tl = taxLines(Math.max(0, base), { mode: st.mode, vatBp: st.vatBp, serviceChargeBp: st.scBp }, st.rounding);
+    if (base < 0 || sub < 0) return cfail("INVALID_INPUT", "ส่วนลดมากกว่ายอดค่าใช้จ่ายของห้อง — ตรวจรายการส่วนลดก่อนเช็กเอาต์");
+    perFolio.push({ folioId: f.folioId, reservationId: f.reservationId, totalSatang: exclusive ? tl.totalSatang + posPart : sub });
     for (const l of tl.lines) if (l.type === "SERVICE_CHARGE") scEx += l.amountSatang;
     for (const i of eff) {
       if (i.type === "ROOM") {
@@ -137,7 +148,8 @@ function buildPlan(folios: FolioPlanIn[], st: FolioSettings): CheckoutPlan | Che
       } else if (i.type === "DISCOUNT") discount += -i.amountSatang;
       else if (ITEMIZED.includes(i.type) && (i.amountSatang !== 0 || i.unitAmountSatang !== 0)) {
         const lineDisc = i.qty * i.unitAmountSatang - i.amountSatang;
-        lines.push({ name: i.description.slice(0, 200), qty: i.qty, unitPriceSatang: gross(i.unitAmountSatang), ...(lineDisc > 0 ? { discountSatang: gross(lineDisc) } : {}), kind: i.type });
+        const g2 = i.type === "POS_CHARGE" ? (x: number) => x : gross; // ยอดรวม VAT แล้ว
+        lines.push({ name: i.description.slice(0, 200), qty: i.qty, unitPriceSatang: g2(i.unitAmountSatang), ...(lineDisc > 0 ? { discountSatang: g2(lineDisc) } : {}), kind: i.type });
       }
     }
   }
@@ -173,7 +185,10 @@ async function planInputs(c: UnitCtx, rows: ResvRow[], withUnposted: boolean): P
   const out: FolioPlanIn[] = [];
   for (const rv of rows) {
     const f = await db.hotelFolio.findFirst({ where: { reservationId: rv.id } });
-    const items: PlanItem[] = f ? await db.hotelFolioItem.findMany({ where: { folioId: f.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }) : [];
+    const all: PlanItem[] = f ? await db.hotelFolioItem.findMany({ where: { folioId: f.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }) : [];
+    // ROOM ที่อ้างคืนที่เลิกนับแล้ว (ย่นวันออก) และยังไม่ปิดวัน = ไม่เก็บ (ผู้ตรวจรอบ 1 M1 · settle void ให้ใน tx A)
+    const released = new Set((await db.hotelBookingNight.findMany({ where: { reservationId: rv.id, counted: false, postedAuditId: null }, select: { id: true } })).map((n) => n.id));
+    const items = all.filter((i) => !(i.type === "ROOM" && i.refType === "HotelBookingNight" && i.refId && released.has(i.refId) && !i.voidedAt));
     if (withUnposted) {
       const nights = await db.hotelBookingNight.findMany({ where: { reservationId: rv.id, counted: true, folioItemId: null, date: { lt: rv.checkOutDate } }, orderBy: { date: "asc" } });
       for (const n of nights) items.push({ type: "ROOM", description: "ค่าห้อง", qty: 1, unitAmountSatang: n.priceSatang, amountSatang: n.priceSatang, voidedAt: null });
@@ -181,6 +196,15 @@ async function planInputs(c: UnitCtx, rows: ResvRow[], withUnposted: boolean): P
     out.push({ folioId: f?.id ?? `new:${rv.id}`, reservationId: rv.id, roomTypeName: nameOf.get(rv.roomTypeId) ?? "ห้องพัก", items });
   }
   return out;
+}
+
+/** void ROOM ที่อ้างคืนที่เลิกนับแล้วและยังไม่ปิดวัน (ย่นวันออกหลังค่าห้องถูก post) — ผู้เรียกล็อก folio แล้ว */
+async function voidReleasedNightsTx(tx: Tx, c: UnitCtx, folioId: string, reservationId: string, byUserId: string): Promise<number> {
+  const released = await tx.hotelBookingNight.findMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId, counted: false, postedAuditId: null }, select: { id: true } });
+  if (!released.length) return 0;
+  const items = await tx.hotelFolioItem.findMany({ where: { folioId, type: "ROOM", refType: "HotelBookingNight", refId: { in: released.map((n) => n.id) }, voidedAt: null } });
+  for (const it of items) await voidItemTx(tx, c, it, "คืนนี้ถูกปล่อยแล้ว (ย่นวันออก) — ไม่เก็บค่าห้อง", byUserId);
+  return items.length;
 }
 
 // ───────────────────────── ภาษี · กะ · POS ─────────────────────────
@@ -333,20 +357,20 @@ export async function settleAndCheckOut(actorIn: unknown, ctx: unknown, input: u
     if (!tc.ok) return cfail("TAX_CONFIG_MISMATCH", tc.warnings[0]?.message ?? "อัตราภาษีของโรงแรมไม่ตรงกับระบบขาย — ตั้งค่าให้ตรงกันก่อนเช็กเอาต์");
   }
 
-  // (1) tx A: ล็อก folio · post คืนค้างถึงวันออก · คำนวณใหม่
+  // (1) tx A: ล็อก folio · ยืนยันสถานะ · void ค่าห้องของคืนที่เลิกนับแล้ว (ย่นวันออก · ยังไม่ปิดวัน) · คำนวณใหม่
+  //   คืนค้างไม่ post ที่นี่ — post ใน tx B หลังบิล POS สำเร็จ (POS ล้ม = folio ไม่เปลี่ยน · ผู้ตรวจรอบ 1 M1)
   const a = await unitTx(c, async (tx) => {
     for (const rv of [...t.rows].sort((x, y) => x.id.localeCompare(y.id))) {
-      const cur = await tx.hotelReservation.findFirst({ where: { id: rv.id, tenantId: c.tenantId, unitId: c.unitId }, select: { id: true, status: true, roomTypeId: true, checkOutDate: true } });
+      const cur = await tx.hotelReservation.findFirst({ where: { id: rv.id, tenantId: c.tenantId, unitId: c.unitId }, select: { id: true, status: true } });
       if (!cur || cur.status !== "CHECKED_IN") throw new FolioAbort(fail("NOT_CHECKED_IN", "การจองนี้เช็กเอาต์ไปแล้วหรือสถานะเปลี่ยน — โหลดใหม่"));
       const f = await lockFolio(tx, c, rv.id);
       if (!isOpen(f)) throw new FolioAbort(fail("FOLIO_CLOSED", R.closed));
-      await postRoomNightsTx(tx, c, f.id, cur, ymdOf(cur.checkOutDate), null);
-      await recomputeTx(tx, c, f.id, st);
+      if ((await voidReleasedNightsTx(tx, c, f.id, rv.id, g.actor.userId)) > 0) await recomputeTx(tx, c, f.id, st);
     }
     return true;
   });
   if (isFolioFail(a)) return asCheckout(a);
-  const plan = buildPlan(await planInputs(c, t.rows, false), st);
+  const plan = buildPlan(await planInputs(c, t.rows, true), st);
   if ("ok" in plan) return plan;
 
   // (2)+(3) บิล POS ใบเดียว (นอก tx)
@@ -404,16 +428,30 @@ export async function settleAndCheckOut(actorIn: unknown, ctx: unknown, input: u
   }
 
   // ประกัน (นอก tx · ก่อน tx B)
-  let secOut: { kind: "REFUND" | "FORFEIT"; saleId: string; amountSatang: number; reason: string } | null = null;
+  const secOut: SecOut[] = [];
   if (secRv && sec.state === "HELD" && sec.saleId) {
     if (secMode === "FORFEIT") {
       const r = await forfeitMoney(c, secRv, sec.saleId, d.forfeitReason ?? "", g.actor.userId);
-      if (r.ok) secOut = { kind: "FORFEIT", saleId: r.saleId, amountSatang: r.satang, reason: d.forfeitReason ?? "" };
+      if (r.ok) secOut.push({ reservationId: secRv.id, kind: "FORFEIT", saleId: r.saleId, amountSatang: r.satang, reason: d.forfeitReason ?? "" });
       else warnings.push(`ริบเงินประกันไม่สำเร็จ (${r.message}) — ทำที่การ์ดเงินประกันอีกครั้ง`);
     } else {
       const r = await moduleRefundDeposit({ tenantId: c.tenantId, unitId: c.unitId, receiptSaleId: sec.saleId, reason: `คืนเงินประกันห้อง ${secRv.code}`, actorId: g.actor.userId });
-      if (r.ok && r.refundSaleId) secOut = { kind: "REFUND", saleId: r.refundSaleId, amountSatang: sec.heldSatang, reason: "" };
+      if (r.ok && r.refundSaleId) secOut.push({ reservationId: secRv.id, kind: "REFUND", saleId: r.refundSaleId, amountSatang: sec.heldSatang, reason: "" });
       else warnings.push(`คืนเงินประกันไม่สำเร็จ (${r.ok ? "ไม่พบใบรับ" : r.message}) — คืนที่การ์ดเงินประกันอีกครั้ง`);
+    }
+  }
+  // กลุ่ม (ผู้ตรวจรอบ 1 m2): คืนเงินประกันที่ถือของทุกห้องที่ออก · ริบทั้งกลุ่มไม่รองรับ ⇒ เตือนรายห้อง (ไม่เงียบ)
+  if (!secRv) {
+    for (const rv of t.rows) {
+      const st2 = await securityStateOf(c.tenantId, rv);
+      if (st2.state !== "HELD" || !st2.saleId) continue;
+      if (secMode === "FORFEIT") {
+        warnings.push(`ห้อง ${rv.code} ยังถือเงินประกัน ฿${baht(st2.heldSatang)} — ริบได้ทีละห้องที่การ์ดเงินประกัน`);
+        continue;
+      }
+      const r = await moduleRefundDeposit({ tenantId: c.tenantId, unitId: c.unitId, receiptSaleId: st2.saleId, reason: `คืนเงินประกันห้อง ${rv.code}`, actorId: g.actor.userId });
+      if (r.ok && r.refundSaleId) secOut.push({ reservationId: rv.id, kind: "REFUND", saleId: r.refundSaleId, amountSatang: st2.heldSatang, reason: "" });
+      else warnings.push(`ห้อง ${rv.code}: คืนเงินประกัน ฿${baht(st2.heldSatang)} ไม่สำเร็จ (${r.ok ? "ไม่พบใบรับ" : r.message}) — คืนที่การ์ดเงินประกัน`);
     }
   }
 
@@ -432,18 +470,29 @@ export async function settleAndCheckOut(actorIn: unknown, ctx: unknown, input: u
 }
 
 type FinalOut = { folios: { id: string; status: string; reservationId: string }[]; posChargeSaleIds: string[] };
-async function finalizeTx(c: UnitCtx, actor: FolioActor, t: Targets, sale: SaleRow | null, secOut: { kind: "REFUND" | "FORFEIT"; saleId: string; amountSatang: number; reason: string } | null, st: FolioSettings): Promise<FinalOut | FolioFail> {
+type SecOut = { reservationId: string; kind: "REFUND" | "FORFEIT"; saleId: string; amountSatang: number; reason: string };
+const ACTIVE_RV = ["HOLD", "CONFIRMED", "CHECKED_IN", "BOOKED"] as const;
+async function finalizeTx(c: UnitCtx, actor: FolioActor, t: Targets, sale: SaleRow | null, secOut: SecOut[], st: FolioSettings): Promise<FinalOut | FolioFail> {
   const actorId = actor.userId;
   return unitTx(c, async (tx) => {
     for (const typeId of [...new Set(t.rows.map((r) => r.roomTypeId))].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${c.unitId}::text || ':' || ${typeId}::text))`;
     const ordered = [...t.rows].sort((x, y) => x.id.localeCompare(y.id));
     const folios = new Map<string, Awaited<ReturnType<typeof lockFolio>>>();
     for (const rv of ordered) folios.set(rv.id, await lockFolio(tx, c, rv.id));
-    const headFolio = t.head && !folios.has(t.head.id) ? await lockFolio(tx, c, t.head.id) : t.head ? folios.get(t.head.id)! : null;
+    const holder = t.head;
+    const holderInTargets = !!holder && folios.has(holder.id);
+    const holderFolio = holder ? (holderInTargets ? folios.get(holder.id)! : await lockFolio(tx, c, holder.id)) : null;
+    const today = todayYmd();
     for (const rv of ordered) {
+      const f = folios.get(rv.id)!;
+      if (!isOpen(f)) throw new FolioAbort(fail("FOLIO_CLOSED", R.closed));
+      const cur = await tx.hotelReservation.findFirst({ where: { id: rv.id, tenantId: c.tenantId, unitId: c.unitId }, select: { id: true, roomTypeId: true, checkOutDate: true } });
       const cas = await tx.hotelReservation.updateMany({ where: { id: rv.id, tenantId: c.tenantId, unitId: c.unitId, status: "CHECKED_IN" }, data: { status: "CHECKED_OUT", checkedOutAt: new Date() } });
-      if (cas.count === 0) throw new FolioAbort(fail("NOT_CHECKED_IN", "การจองนี้เช็กเอาต์ไปแล้ว (บิลเดียวกัน) — โหลดใหม่"));
-      if (!isOpen(folios.get(rv.id)!)) throw new FolioAbort(fail("FOLIO_CLOSED", R.closed));
+      if (cas.count === 0 || !cur) throw new FolioAbort(fail("NOT_CHECKED_IN", "การจองนี้เช็กเอาต์ไปแล้ว (บิลเดียวกัน) — โหลดใหม่"));
+      // ค่าห้องคืนค้างถึงวันออก (post หลังบิล POS สำเร็จเท่านั้น · ผู้ตรวจรอบ 1 M1) · คืนที่เลิกนับแล้วไม่เก็บ
+      await voidReleasedNightsTx(tx, c, f.id, rv.id, actorId);
+      await postRoomNightsTx(tx, c, f.id, cur, ymdOf(cur.checkOutDate), null);
+      await recomputeTx(tx, c, f.id, st);
     }
     const receipt = sale?.receiptNo ? ` ${sale.receiptNo}` : "";
     const totals: { rv: ResvRow; folioId: string; total: number }[] = [];
@@ -456,29 +505,44 @@ async function finalizeTx(c: UnitCtx, actor: FolioActor, t: Targets, sale: SaleR
       totals.push({ rv, folioId: f.id, total });
     }
     const sum = totals.reduce((s, x) => s + x.total, 0);
-    if (sale && sum !== sale.grandTotalSatang) throw new FolioAbort(fail("PAY_MISMATCH", `ยอดบิลห้อง (฿${baht(sum)}) ไม่ตรงกับบิล POS${receipt} (฿${baht(sale.grandTotalSatang)}) — มีรายการเพิ่มระหว่างเช็กเอาต์ ให้ผู้จัดการยกเลิกบิล POS แล้วเช็กเอาต์ใหม่`));
+    if (sale && sum !== sale.grandTotalSatang) throw new FolioAbort(fail("PAY_MISMATCH", `ยอดบิลห้อง (฿${baht(sum)}) ไม่ตรงกับบิล POS${receipt} (฿${baht(sale.grandTotalSatang)}) — มีรายการเปลี่ยนระหว่างเช็กเอาต์ ให้ผู้จัดการยกเลิกบิล POS แล้วเช็กเอาต์ใหม่`));
     if (!sale && sum !== 0 && !st.allowLegacyCash) throw new FolioAbort(fail("PAY_MISMATCH", "ยังไม่มีบิลรับเงิน"));
-    // ใช้มัดจำ (DEPOSIT บวก = มัดจำที่ถูกใช้ชำระบิลนี้ · อ่านจากแถวชำระจริงของบิล)
-    if (sale && headFolio && t.head?.depositSaleId) {
-      const usedRows = await tx.posPayment.findMany({ where: { saleId: sale.id, type: "DEPOSIT", refSaleId: t.head.depositSaleId }, select: { amountSatang: true } });
+    // มัดจำที่บิลนี้ใช้ (อ่านจากแถวชำระจริงของบิล): DEPOSIT บวกบน folio ที่ถือมัดจำ (ยังเปิด/กำลังปิด) ·
+    //   folio ผู้ถือปิดไปแล้ว (หัวกลุ่มออกก่อน) ⇒ ห้ามเขียน folio ที่ปิด (ผู้ตรวจรอบ 1 m1) — ลงคู่ "รับโอนมัดจำ (ลบ) + ใช้มัดจำ (บวก)" ที่ folio ห้องที่กำลังออก
+    if (sale && holder?.depositSaleId && holderFolio) {
+      const usedRows = await tx.posPayment.findMany({ where: { saleId: sale.id, type: "DEPOSIT", refSaleId: holder.depositSaleId }, select: { amountSatang: true } });
       const used = usedRows.reduce((s, x) => s + x.amountSatang, 0);
-      const dup = await tx.hotelFolioItem.findFirst({ where: { folioId: headFolio.id, type: "DEPOSIT", refType: "PosSale", refId: sale.id }, select: { id: true } });
-      if (used > 0 && !dup) await insertItemTx(tx, c, headFolio.id, { type: "DEPOSIT", description: `ใช้มัดจำชำระบิลเช็กเอาต์${receipt}`, qty: 1, unitAmountSatang: used, refType: "PosSale", refId: sale.id }, actorId);
+      const target = holderInTargets || isOpen(holderFolio) ? holderFolio.id : totals[0]!.folioId;
+      const dup = await tx.hotelFolioItem.findFirst({ where: { folioId: target, type: "DEPOSIT", refType: "PosSale", refId: sale.id }, select: { id: true } });
+      if (used > 0 && !dup) {
+        if (target !== holderFolio.id) await insertItemTx(tx, c, target, { type: "DEPOSIT", description: `รับโอนมัดจำของกลุ่ม (การจอง ${holder.code})`, qty: 1, unitAmountSatang: -used, refType: "PosSale", refId: holder.depositSaleId }, actorId);
+        await insertItemTx(tx, c, target, { type: "DEPOSIT", description: `ใช้มัดจำชำระบิลเช็กเอาต์${receipt}`, qty: 1, unitAmountSatang: used, refType: "PosSale", refId: sale.id }, actorId);
+      }
     }
     const outFolios: FinalOut["folios"] = [];
     for (const x of totals) {
       if (x.total !== 0 || sale) await insertItemTx(tx, c, x.folioId, { type: "PAYMENT", description: `ชำระบิลเช็กเอาต์${receipt}`, qty: 1, unitAmountSatang: -x.total, refType: sale ? "PosSale" : null, refId: sale?.id ?? null }, actorId);
-      if (secOut && t.rows.length === 1) {
-        const type = secOut.kind === "REFUND" ? "SECURITY_REFUND" : "PENALTY";
-        const dupSec = await tx.hotelFolioItem.findFirst({ where: { folioId: x.folioId, type, refType: "PosSale", refId: secOut.saleId }, select: { id: true } });
-        if (!dupSec) {
-          const description = secOut.kind === "REFUND" ? `คืนเงินประกันห้อง ฿${baht(secOut.amountSatang)}` : `ริบเงินประกันห้อง ฿${baht(secOut.amountSatang)} — ${secOut.reason}`;
-          await insertItemTx(tx, c, x.folioId, { type, description, qty: 1, unitAmountSatang: 0, amountSatang: 0, refType: "PosSale", refId: secOut.saleId }, actorId);
-          const event = secOut.kind === "REFUND" ? "hotel.security_deposit.refunded" : "hotel.security_deposit.forfeited";
-          await auditTx(tx, c, actorId, event, "HotelReservation", x.rv.id, { securitySaleId: x.rv.securityDepositSaleId }, { saleId: secOut.saleId, amountSatang: secOut.amountSatang, type, via: "checkout" });
-          await emitFolioTx(tx, c, event, secOut.saleId, { reservationId: x.rv.id, folioId: x.folioId, saleId: secOut.saleId, amountSatang: secOut.amountSatang });
-        }
+      for (const so of secOut.filter((y) => y.reservationId === x.rv.id)) {
+        const type = so.kind === "REFUND" ? "SECURITY_REFUND" : "PENALTY";
+        const dupSec = await tx.hotelFolioItem.findFirst({ where: { folioId: x.folioId, type, refType: "PosSale", refId: so.saleId }, select: { id: true } });
+        if (dupSec) continue;
+        const description = so.kind === "REFUND" ? `คืนเงินประกันห้อง ฿${baht(so.amountSatang)}` : `ริบเงินประกันห้อง ฿${baht(so.amountSatang)} — ${so.reason}`;
+        await insertItemTx(tx, c, x.folioId, { type, description, qty: 1, unitAmountSatang: 0, amountSatang: 0, refType: "PosSale", refId: so.saleId }, actorId);
+        const event = so.kind === "REFUND" ? "hotel.security_deposit.refunded" : "hotel.security_deposit.forfeited";
+        await auditTx(tx, c, actorId, event, "HotelReservation", x.rv.id, { securitySaleId: x.rv.securityDepositSaleId }, { saleId: so.saleId, amountSatang: so.amountSatang, type, via: "checkout" });
+        await emitFolioTx(tx, c, event, so.saleId, { reservationId: x.rv.id, folioId: x.folioId, saleId: so.saleId, amountSatang: so.amountSatang });
       }
+    }
+    // หัวกลุ่มออกแต่ห้องอื่นในกลุ่มยังใช้มัดจำต่อ ⇒ ย้ายเครดิตมัดจำคงเหลือออกจาก folio หัว (folio หัวปิดที่ 0 · ห้องที่ใช้ภายหลังลงคู่รับโอน)
+    if (holderInTargets && holder && t.groupId && holderFolio) {
+      const others = await tx.hotelReservation.count({ where: { tenantId: c.tenantId, unitId: c.unitId, groupId: t.groupId, status: { in: [...ACTIVE_RV] } } });
+      if (others > 0) {
+        const dep = await tx.hotelFolioItem.aggregate({ where: { folioId: holderFolio.id, type: { in: ["DEPOSIT", "REFUND"] } }, _sum: { amountSatang: true } });
+        const credit = -(dep._sum.amountSatang ?? 0);
+        if (credit > 0) await insertItemTx(tx, c, holderFolio.id, { type: "DEPOSIT", description: "ย้ายมัดจำคงเหลือไปใช้กับห้องอื่นในกลุ่ม", qty: 1, unitAmountSatang: credit, refType: "PosSale", refId: holder.depositSaleId }, actorId);
+      }
+    }
+    for (const x of totals) {
       const balance = await recomputeTx(tx, c, x.folioId, st);
       const deps = await tx.hotelFolioItem.aggregate({ where: { folioId: x.folioId, type: { in: ["DEPOSIT", "REFUND"] } }, _sum: { amountSatang: true } });
       if (balance - (deps._sum.amountSatang ?? 0) !== 0) {
@@ -488,7 +552,7 @@ async function finalizeTx(c: UnitCtx, actor: FolioActor, t: Targets, sale: SaleR
       await tx.hotelFolio.updateMany({ where: { id: x.folioId, tenantId: c.tenantId, unitId: c.unitId }, data: { status: "SETTLED", settledSaleId: sale?.id ?? null, settledAt: new Date() } });
       outFolios.push({ id: x.folioId, status: "SETTLED", reservationId: x.rv.id });
     }
-    if (headFolio && t.head && !folios.has(t.head.id)) await recomputeTx(tx, c, headFolio.id, st);
+    if (holderFolio && !holderInTargets && isOpen(holderFolio)) await recomputeTx(tx, c, holderFolio.id, st);
     for (const x of totals) {
       const rv = x.rv;
       if (rv.roomId) {
@@ -497,7 +561,7 @@ async function finalizeTx(c: UnitCtx, actor: FolioActor, t: Targets, sale: SaleR
         await tx.hotelHousekeepingLog.create({ data: { tenantId: c.tenantId, unitId: c.unitId, roomId: rv.roomId, fromStatus: room?.hkStatus ?? "CLEAN", toStatus: "DIRTY", byUserId: actorId.startsWith("module:") ? null : actorId, reservationId: rv.id, note: "เช็กเอาต์" } });
       }
       // ออกก่อนกำหนด: คืนตั้งแต่คืนนี้เป็นต้นไปไม่ถือห้องแล้ว (ค่าห้องเก็บตามที่ post · ห้องว่างขายต่อได้ — เทียบ P1 ที่ CHECKED_OUT ไม่กินห้อง)
-      await tx.hotelBookingNight.updateMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId: rv.id, counted: true, date: { gte: dbDate(todayYmd()) } }, data: { counted: false } });
+      await tx.hotelBookingNight.updateMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId: rv.id, counted: true, date: { gte: dbDate(today) } }, data: { counted: false } });
       const occ = await tx.roomOccupancy.findMany({ where: { tenantId: c.tenantId, unitId: c.unitId, refType: "HotelReservation", refId: rv.id, active: true }, select: { id: true } });
       for (const o of occ) await releaseOccupancy(tx, { tenantId: c.tenantId, unitId: c.unitId, occupancyId: o.id, reason: "เช็กเอาต์" });
       await auditTx(tx, c, actorId, "hotel.folio.settled", "HotelReservation", rv.id, { status: "CHECKED_IN", folioStatus: "OPEN" }, { status: "CHECKED_OUT", folioStatus: "SETTLED", folioId: x.folioId, saleId: sale?.id ?? null, receiptNo: sale?.receiptNo ?? null, amountSatang: x.total, groupId: t.groupId });
@@ -528,10 +592,14 @@ async function refundExcessDeposit(c: UnitCtx, t: Targets, sale: SaleRow, warnin
     const refundId = r.refundSaleId;
     const amt = await tenantDb({ tenantId: c.tenantId }).$queryRaw<{ g: number }[]>`SELECT "grandTotalSatang" AS g FROM "PosSale" WHERE id = ${refundId} AND "tenantId" = ${c.tenantId} LIMIT 1`;
     const amount = Math.abs(amt[0]?.g ?? left.satang);
+    // ผู้ถือมัดจำออกในบิลนี้ ⇒ REFUND ที่ folio ผู้ถือ · ผู้ถือออกไปก่อนแล้ว (เครดิตถูกย้ายออก) ⇒ คู่ "รับโอน + คืน" ที่ folio ห้องที่เพิ่งออก (ไม่เขียน folio ที่ปิดก่อนหน้า)
+    const holderHere = t.rows.some((r) => r.id === head.id);
+    const rid = holderHere ? head.id : t.rows[0]!.id;
     await unitTx(c, async (tx) => {
-      const f = await lockFolio(tx, c, head.id);
+      const f = await lockFolio(tx, c, rid);
       const dup = await tx.hotelFolioItem.findFirst({ where: { folioId: f.id, type: "REFUND", refType: "PosSale", refId: refundId }, select: { id: true } });
       if (dup) return null;
+      if (!holderHere) await insertItemTx(tx, c, f.id, { type: "DEPOSIT", description: `รับโอนมัดจำคงเหลือของกลุ่ม (การจอง ${head.code})`, qty: 1, unitAmountSatang: -amount, refType: "PosSale", refId: head.depositSaleId }, SYSTEM_ID);
       await insertItemTx(tx, c, f.id, { type: "REFUND", description: `คืนมัดจำส่วนเกิน (ใบคืนอ้างใบรับมัดจำ · บิล${sale.receiptNo ? ` ${sale.receiptNo}` : ""})`, qty: 1, unitAmountSatang: amount, refType: "PosSale", refId: refundId }, SYSTEM_ID);
       await recomputeTx(tx, c, f.id);
       return null;
@@ -544,12 +612,13 @@ async function refundExcessDeposit(c: UnitCtx, t: Targets, sale: SaleRow, warnin
 /** บิลร้านที่จ่ายแบบลงห้อง (ROOM_CHARGE) ซึ่งรวมเข้าบิลเช็กเอาต์แล้ว ⇒ กลับรายการบัญชีของบิลร้าน (รายได้รับรู้ครั้งเดียวที่บิลโรงแรม · ลูกหนี้ 1100 ล้าง) */
 export async function reverseRoomCharges(c: UnitCtx, saleIds: string[], settleSaleId: string, warnings: string[], restore = false): Promise<void> {
   if (!saleIds.length) return;
-  const rows = await tenantDb({ tenantId: c.tenantId }).$queryRaw<{ id: string; systemId: string }[]>`
-    SELECT DISTINCT s.id, s."systemId" FROM "PosSale" s JOIN "PosPayment" p ON p."saleId" = s.id
-    WHERE s."tenantId" = ${c.tenantId} AND p.type = 'ROOM_CHARGE' AND s.id = ANY(${saleIds}::text[])`;
+  // ยอดลงห้อง (Σ ROOM_CHARGE) กับยอดบิลร้าน — บิลผสม (เงินสดที่ร้าน + ลงห้อง) ปรับบัญชีเฉพาะส่วนลงห้อง (ผู้ตรวจรอบ 1 C1)
+  const rows = await tenantDb({ tenantId: c.tenantId }).$queryRaw<{ id: string; systemId: string; rc: bigint | number; gross: number }[]>`
+    SELECT s.id, s."systemId", sum(p."amountSatang") AS rc, s."grandTotalSatang" AS gross FROM "PosSale" s JOIN "PosPayment" p ON p."saleId" = s.id
+    WHERE s."tenantId" = ${c.tenantId} AND p.type = 'ROOM_CHARGE' AND s.id = ANY(${saleIds}::text[]) GROUP BY s.id, s."systemId", s."grandTotalSatang"`;
   for (const s of rows) {
     try {
-      const input = { tenantId: c.tenantId, posSystemId: s.systemId, saleId: s.id, settleSaleId, reason: restore ? "คืนเงินการเข้าพัก — บิลร้านกลับเป็นลูกหนี้" : "รวมเข้าบิลเช็กเอาต์ของโรงแรมแล้ว" };
+      const input = { tenantId: c.tenantId, posSystemId: s.systemId, saleId: s.id, settleSaleId, roomChargeSatang: Number(s.rc), grossSatang: s.gross, reason: restore ? "คืนเงินการเข้าพัก — บิลร้านกลับเป็นลูกหนี้" : "รวมเข้าบิลเช็กเอาต์ของโรงแรมแล้ว" };
       if (restore) await restoreRoomChargePosting(input);
       else await reverseRoomChargePosting(input);
     } catch (e) {

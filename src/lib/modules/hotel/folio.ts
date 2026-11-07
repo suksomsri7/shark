@@ -173,6 +173,10 @@ export const effective = <T extends { voidedAt: Date | null; type: string }>(ite
 export const chargeSubtotal = (items: { voidedAt: Date | null; type: string; amountSatang: number }[]): number =>
   effective(items).filter((i) => CHARGE_TYPES.includes(i.type)).reduce((s, i) => s + i.amountSatang, 0);
 
+/** ฐานภาษีของโรงแรม (แยกภาษี) = ค่าใช้จ่ายที่มีผล **ไม่รวม POS_CHARGE** — บิลร้านรวม VAT แล้วเสมอ (ผู้ตรวจรอบ 1 C2 · ห้ามคิดภาษีซ้ำ) */
+export const taxBaseSubtotal = (items: { voidedAt: Date | null; type: string; amountSatang: number }[]): number =>
+  effective(items).filter((i) => CHARGE_TYPES.includes(i.type) && i.type !== "POS_CHARGE").reduce((s, i) => s + i.amountSatang, 0);
+
 /**
  * คำนวณใหม่ใน tx (ผู้เรียกล็อก folio แล้ว): EXCLUSIVE ⇒ TAX/SERVICE_CHARGE 1 แถวต่อชนิดตาม taxLines(Σ ค่าใช้จ่าย) (ปรับยอดในที่ · 0 = ลบแถว) ·
  * INCLUSIVE ⇒ ไม่มีแถวภาษี (แถวค้างจากการเปลี่ยนโหมด = ลบ) · แล้ว balanceSatang = Σ amount ทุกแถว
@@ -180,7 +184,7 @@ export const chargeSubtotal = (items: { voidedAt: Date | null; type: string; amo
 export async function recomputeTx(tx: Tx, c: UnitCtx, folioId: string, st?: FolioSettings): Promise<number> {
   const s = st ?? (await folioSettings(c.tenantId, c.unitId));
   const items = await tx.hotelFolioItem.findMany({ where: { tenantId: c.tenantId, unitId: c.unitId, folioId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
-  const sub = chargeSubtotal(items);
+  const sub = taxBaseSubtotal(items);
   const want = new Map<string, number>();
   if (s.mode === "EXCLUSIVE") for (const l of taxLines(Math.max(0, sub), { mode: "EXCLUSIVE", vatBp: s.vatBp, serviceChargeBp: s.scBp }, s.rounding).lines) want.set(l.type, l.amountSatang);
   for (const type of ["SERVICE_CHARGE", "TAX"] as const) {

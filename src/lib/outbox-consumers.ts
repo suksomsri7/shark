@@ -1493,11 +1493,13 @@ baseConsumers["pos.sale.refunded"] = bothMain(baseConsumers["pos.sale.refunded"]
 //                       ห่อ try/catch + log — ล้มไม่ทำให้บัญชี/สมาชิก/CRM ของบิลล้ม (compose วิ่งงานเดิมก่อนเสมอ) · idempotent ต่อ saleId
 //   "pos.sale.voided" + onPosSaleVoidedRoomCharge : บิลร้านที่ลงห้องถูก void ⇒ กลับรายการ POS_CHARGE (งานหลักคู่ · ล้ม = event retry · idempotent)
 //   hotel → POS โหลดแบบ lazy import (กันวงโหลด hotel → pos/service → scheduleDrain → ไฟล์นี้)
-baseConsumers["pos.sale.paid"] = compose(baseConsumers["pos.sale.paid"]!, async (evt) => {
+//   (ผู้ตรวจรอบ 1 m3) ล้ม = log แล้วโยนต่อ ⇒ event retry (bothMain: งานเดิมวิ่งครบก่อน · ทุกขั้น idempotent) — ไม่ทิ้งบิลค้างนอกคิว
+baseConsumers["pos.sale.paid"] = bothMain(baseConsumers["pos.sale.paid"]!, async (evt) => {
   try {
     await (await import("@/lib/modules/hotel")).onPosSalePaidRoomCharge(evt);
   } catch (e) {
-    await logOps("WARN", "hotel", `ลงห้องจากบิล POS ไม่สำเร็จ (บิล ${saleIdOf(evt.payload) ?? "-"}) — บิลและบัญชีไม่กระทบ · ผูกมือที่คิวบิลลงห้อง`, { tenantId: evt.tenantId, detail: errDetail(e) });
+    await logOps("WARN", "hotel", `ลงห้องจากบิล POS ไม่สำเร็จ (บิล ${saleIdOf(evt.payload) ?? "-"}) — บิลและบัญชีไม่กระทบ · คิวจะลองใหม่`, { tenantId: evt.tenantId, detail: errDetail(e) });
+    throw e;
   }
 });
 baseConsumers["pos.sale.voided"] = bothMain(baseConsumers["pos.sale.voided"]!, async (evt) => (await import("@/lib/modules/hotel")).onPosSaleVoidedRoomCharge(evt));
