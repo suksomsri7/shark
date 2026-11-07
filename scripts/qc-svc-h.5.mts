@@ -1865,6 +1865,9 @@ const REG: { s: string; args?: string[]; judge?: (out: string, code: number | nu
   { s: "qc-pos-p5.1", judge: (out) => { const s = summaryOf(out); return !!s && Array.isArray(s.failed) && s.failed.length === 0; }, note: "มัดจำโมดูล/บิลโรงแรม ไม่มี FAIL" },
   // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-G9-baseline): qc-acc-v2-pos-lines = 65/79 ตั้งแต่ POS P2 (ฐาน QC ไม่มีชุดข้อมูล acc-v2 · เจ้าของ = โมดูลบัญชี · POS-OWNER-PENDING 16 ต.ค.) — รันบนฐานก่อน H.5 (bb4b78f89 · l1) ได้ชุดแดงเดียวกันทุกข้อ ⇒ ยอมเมื่อผลไม่แย่กว่าฐาน (passed ≥ 65 และไม่มี finding นอกชุด PL1.x–PL6.x เดิม)
   { s: "qc-acc-v2-pos-lines", note: "applyExternalSale เส้น POS (ยอม baseline 65/79 — ฐาน QC ไม่มี acc-v2 seed)", judge: (out: string) => { const r = summaryOf(out); return !!r && Number(r.passed) >= 65 && (!Array.isArray(r.failed) || r.failed.length === 0 || Number(r.passed) >= 65); } },
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-review-probe): probe ผู้ตรวจเงินรอบ 1 (Fable) เข้าทรีเป็น regression ถาวร — C1 บิลผสม CASH+ROOM_CHARGE · C2 EXCLUSIVE+POS_CHARGE · M1 settle ล้ม→ย่น→settle · M2 มัดจำกลุ่มทางรายห้อง · m1 folio SETTLED
+  { s: "probe-h5-review-a", judge: judgeNoFail, note: "probe ผู้ตรวจเงิน A (27 ข้อ: บิลผสม · settle ล้มแล้วย่น · มัดจำกลุ่มรายห้อง · settle ซ้อน · void บิลร้าน · PII)" },
+  { s: "probe-h5-review-a2", judge: judgeNoFail, note: "probe ผู้ตรวจเงิน A2 (4 ข้อ: EXCLUSIVE + POS_CHARGE ไม่บวก VAT ซ้ำ)" },
   { s: "qc-svc-r0.4", judge: judgeNoFail, note: "หน้าค่าตั้ง (def ใหม่) ไม่มี FAIL" },
   { s: "qc-svc-d.13", args: ["--no-regression"], judge: judgeNoFail, note: "ไม่มี FAIL" },
   { s: "qc-svc-smoke" },
