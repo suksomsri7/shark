@@ -123,3 +123,4 @@ probe `scripts/probe-h10-review-a.mts` (regression ถาวร) ก่อนแ
 - ลำดับฉาก: ข้อสอบ h.10 ทิ้งฉาก OTA ⇒ ก่อน h.1/h.2/h.3/h.5 ต้อง `svc-qc-hotel-ota-scene.mts --clear` (ผู้คุมจัดใน chain) — ยืนยันผลด้านล่าง
 - ไฟล์ที่แตะรอบนี้: `src/lib/modules/hotel/channel/inbound.ts` · `channel/ari.ts` · `hotel/rates.ts` (1 บรรทัดตัวห่อ) · `hotel/block.ts` (1 บรรทัดตัวห่อ) · booking.ts ไม่แตะ
 - ผลรอบ 2 (รันจริง · ทรี l4): probe-h10-review-a 15/15 · qc-svc-h.10 --no-regression 73/89 แดง 0 (skip MN-4 · V-1/2 · G-1–13) · หลัง `svc-qc-hotel-ota-scene.mts --clear` (removed 18): h.3 98/109 แดง 0 · h.2 78/87 แดง 0 (Q-3 เขียวเมื่อเคลียร์ h.10 ก่อน) · h.5 77/95 แดง 0 · h.1 ดูบรรทัดถัดไป · tsc ไฟล์ของใบ 0
+- h.1 รันซ้ำบนทรีสะอาด (หลัง commit · F-1 ข้ามตามข้อสอบ "หลัง merge"): 112/122 แดง 0 · รอบแรก F-1 แดงเพราะรันตอนไฟล์ยังไม่ commit (ข้อตรวจ git status) ไม่ใช่โค้ด · probe-h10-review-a รันซ้ำรอบ 2 = 15/15 (race คงที่)
