@@ -279,6 +279,7 @@ const ALLOWED_EDGES = new Set([
   "inventory→account",
   "ticket→system",  // resolve POS/POINT ที่ผูก unit (เหมือน restaurant→system, booking→system)
   "hotel→pos",
+  "hotel→member", // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-edge): H.4 ผูกสมาชิกแบบยินยอม (member.findOrCreate ผ่าน facade · ใบ h.4 §0)
   "hotel→system",
   // SVC R0.8 (ใบ svc-brief-r0.8 §1 · §4): โรงแรมถือห้องจริง (RoomOccupancy) ใน tx เดียวกับการจอง ผ่าน facade `@/lib/modules/rooms` เท่านั้น ·
   //   ทิศทางเดียว (rooms ไม่ import โมดูลใด — ใช้ได้แค่ @/lib/core/*)
