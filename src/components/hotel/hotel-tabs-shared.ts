@@ -12,7 +12,7 @@ export const HOTEL_TABS: HotelTab[] = [
   { key: "frontdesk", labelTh: "หน้าเคาน์เตอร์", path: "/hotel", available: true },
   { key: "housekeeping", labelTh: "แม่บ้าน", path: "/hotel/housekeeping", available: true }, // H.6
   { key: "rates", labelTh: "ราคา", path: "/hotel/rates", available: true },
-  { key: "reports", labelTh: "รายงาน", path: "/hotel/reports", available: false }, // H.7
+  { key: "reports", labelTh: "รายงาน", path: "/hotel/reports", available: true }, // H.7
   { key: "settings", labelTh: "ตั้งค่า", path: "/hotel/settings", available: true },
 ];
 
