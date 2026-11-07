@@ -206,7 +206,8 @@ const refTier = (r: { context: string; hkStatus: string; arrivalTime?: string | 
   return 5;
 };
 /** งานวันนี้ (สมมติฐานของข้อสอบ — ตรงฟิกซ์เจอร์ 5/6/1): total = ห้องที่มีบริบท (ไม่ VACANT) หรือ VACANT+DIRTY · ไม่รวม OOO · done = ใน total ที่ CLEAN/INSPECTED และไม่มีคำขอแขกค้าง · mine = assignedTo = ฉัน */
-const refInWork = (r: { context: string; hkStatus: string }) => r.context !== "OOO" && (r.context !== "VACANT" || r.hkStatus === "DIRTY");
+// ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-upcoming): มติใบ h.6 §9 ข้อ 4 — ห้องว่างที่มีจองเข้าภายใน 7 วัน (`upcoming`) นับใน total (ภาพ 13 "B202 ✓ พร้อมรับ") · แถวไม่มีฟิลด์ = false
+const refInWork = (r: { context: string; hkStatus: string; upcoming?: boolean | null }) => r.context !== "OOO" && (r.context !== "VACANT" || r.hkStatus === "DIRTY" || r.upcoming === true);
 const refDone = (r: { context: string; hkStatus: string; guestRequest?: string | null }) => refInWork(r) && (r.hkStatus === "CLEAN" || r.hkStatus === "INSPECTED") && !r.guestRequest;
 const refCounts = (rows: { context: string; hkStatus: string; guestRequest?: string | null; assignedTo?: string | null }[], me: string | null) => ({ mine: rows.filter((r) => me && r.assignedTo === me).length, total: rows.filter(refInWork).length, done: rows.filter(refDone).length });
 /** บริบทจากฉาก h.2 (SQC_HOTEL_TAPE_SCENE) ต่อห้อง — CHECKED_IN ออกวันนี้ที่ถูกเช็กเอาต์ในฉาก h.6 = DEPARTED */
@@ -447,7 +448,7 @@ try {
     ok(refCan("DIRTY", "INSPECTED", "INSPECTOR", true) === false && refCan("CLEAN", "CLEAN", "MAID", true) === false && refCan("INSPECTED", "DIRTY", "MAID", true) === true && refCan("BROKEN", "CLEAN", "MAID", true) === false, "edge อื่น");
     ok(refCan("CLEAN", "INSPECTED", "INSPECTOR", false) === null && refCan("DIRTY", "CLEAN", "SYSTEM", true) === null, "ช่องที่ใบไม่ตัดสิน = null");
     eq([refTier({ context: "DEPARTED", hkStatus: "DIRTY", arrivalTime: "14:00" }), refTier({ context: "ARRIVING", hkStatus: "INSPECTED" }), refTier({ context: "DEPARTED", hkStatus: "DIRTY" }), refTier({ context: "DEPARTING", hkStatus: "CLEAN" }), refTier({ context: "STAYOVER", hkStatus: "DIRTY" }), refTier({ context: "VACANT", hkStatus: "DIRTY" }), refTier({ context: "VACANT", hkStatus: "CLEAN" }), refTier({ context: "OOO", hkStatus: "OUT_OF_ORDER" })], [0, 1, 2, 2, 3, 4, 5, 5], "refTier");
-    const rows = (HS.rooms as readonly Any[]).map((r) => ({ context: r.context, hkStatus: r.hkStatus, guestRequest: r.guestRequest ?? null, assignedTo: r.mine ? MAID_FX.userId : null }));
+    const rows = (HS.rooms as readonly Any[]).map((r) => ({ context: r.context, hkStatus: r.hkStatus, guestRequest: r.guestRequest ?? null, assignedTo: r.mine ? MAID_FX.userId : null, upcoming: r.upcoming ?? false })); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-upcoming)
     eq(refCounts(rows, MAID_FX.userId), { ...HS.expect.counts }, "refCounts บนฟิกซ์เจอร์");
     const p = Buffer.from(makePng());
     ok(p[0] === 0x89 && p.subarray(1, 4).toString("ascii") === "PNG" && p.subarray(p.length - 8, p.length - 4).toString("ascii") === "IEND", "PNG");
