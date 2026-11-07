@@ -145,3 +145,4 @@
 4. เปิด builder: H.8 บน l1 (`/root/svc-runs/h8/builder-prompt.md`) · H.7 บน l2 หลัง H.6 merge (`/root/svc-runs/h7/builder-prompt.md` แทน __LANE_DIR__=/root/projects/shark-svc-l2 · __LANE_DB__=ep-weathered-mode · chain `/root/svc-runs/h7/accept.sh.tpl` แทน __LN__/__DBHOST__) · H.10 บน l3 หลัง H.4 merge (เขียนพรอมป์ builder จาก h7/h8)
 5. ผู้ตรวจ: H.7 เงิน 2 รอบ · H.8 สาธารณะ/เงิน · H.10 กันจองซ้อน 2 รอบ (Opus จนกว่า Fable กลับ)
 **รอเจ้าของ (ไม่บล็อก)**: Q-H4-1/3/4 · Q-H5-1 · Q-H3-1 · Turnstile key (หนี้ H.8) · C.2 LINE OA
+- ▶️ 7 พ.ย. ~22:0xZ ทำต่อแล้ว (KVM8) · ขั้น 0 ผ่าน (กู้ git object ว่าง + remount node_modules) · chain H.4/H.6 accept3 + builder H.8 รันอยู่ — ดู SVC-HOTEL-RUN §3 ล่าสุด
