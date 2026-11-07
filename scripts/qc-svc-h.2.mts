@@ -427,7 +427,7 @@ try {
   await st("PC-5", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l3 ep-royal-bar) · ตัวดักคิวรีติดตั้งก่อน db · ตาราง H.0 ครบ (HotelBookingNight · HotelHousekeepingLog · RoomOccupancy)", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok((process.env.SVC_QC_HOST ?? "").startsWith("ep-royal-bar"), `host ${process.env.SVC_QC_HOST} ไม่ใช่เลน l3`);
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-PC3-anylane): regression/H.9 รันทุกเลน
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (TC/P นับคิวรีไม่ได้)");
     ok(H0_OK, H0_WHY);
   });
@@ -1027,6 +1027,39 @@ try {
     ok(r2?.ok === false || r2?.ok === true, `shorten ถึงวันนี้ ${J(r2).slice(0, 100)}`);
     if (r2?.ok === true) okRes(await BK("extendBooking")(OWNER, ctxA, { unitId: UH, id: RV.S1.id, newCheckOut: D(1) }), "ยืดคืน");
     eq((await rvState(RV.S1.id)).co, D(1), "S1 กลับสภาพเดิม");
+  });
+
+  // ═══════════════ R ข้อเพิ่มจากผู้ตรวจ H.2 (ORACLE-EDIT ผู้คุม 7 พ.ย. · h2-R-reviewer · ขยายเท่านั้น) ═══════════════
+  console.log("\n── R ข้อเพิ่มจากผู้ตรวจ (MAJOR 1–2 · block พร้อมกัน) ──");
+  await st("MV-6", "ย้ายแขกที่พักอยู่ (S1 CHECKED_IN · SUP1) ไปห้อง DLX4 ⇒ ok · rv.roomId=DLX4 · nights ที่นับทุกคืน=DLX4 · occupancy active 1 แถวที่ DLX4 · ห้องเดิม SUP1 status CLEANING + hkStatus DIRTY · ห้องใหม่ DLX4 status OCCUPIED (ผู้ตรวจ MAJOR 1 · probe C10)", async () => {
+    needMove(); needFx();
+    okRes(await MOVE()(OWNER, ctxA, { unitId: UH, id: RV.S1.id, roomId: R.DLX4 }), "move S1");
+    const s = await rvState(RV.S1.id);
+    ok(s.roomId === R.DLX4 && s.nights.every((n: Any) => n[1] === R.DLX4) && s.occ.length === 1 && s.occ[0][0] === R.DLX4, `หลังย้าย ${J(s).slice(0, 200)}`);
+    const rooms = await prisma.hotelRoom.findMany({ where: { id: { in: [R.SUP1, R.DLX4] } }, select: { id: true, status: true, hkStatus: true } });
+    const oldR = rooms.find((r: Any) => r.id === R.SUP1), newR = rooms.find((r: Any) => r.id === R.DLX4);
+    eq([oldR?.status, oldR?.hkStatus, newR?.status], ["CLEANING", "DIRTY", "OCCUPIED"], "สถานะห้องเดิม/ใหม่");
+  });
+  await st("MV-7", "previewMove ข้ามประเภท + เพิ่มคืน (ผู้ตรวจ MAJOR 2 · probe C9.1): จอง PV ซูพีเรีย +20 1 คืน → preview {roomId: DLX4, checkOut: +22} ⇒ ok · addedNights 1 · keptSatang+addedSatang=totalSatang · แล้ว moveBooking เดียวกัน ⇒ Σ priceSatang ของคืนที่นับ (2 คืน) = totalSatang ของ preview ทุกสตางค์", async () => {
+    needMove(); needFx();
+    const PREV = tapeL.mod?.previewMove ?? hotelL.mod?.previewMove;
+    ok(typeof PREV === "function", "ไม่มี previewMove ใน tape.ts/facade");
+    const pv = await mkBooking("PV", { type: RTA.sup, checkIn: D(20), nights: 1, source: "PHONE", guest: "ทดสอบ preview", want: "CONFIRMED" });
+    const p = okRes(await PREV(ctxA, { unitId: UH, id: pv.id, roomId: R.DLX4, checkIn: D(20), checkOut: D(22) }), "previewMove");
+    ok(Array.isArray(p.addedNights) && p.addedNights.length === 1 && Number.isInteger(p.totalSatang) && Number.isInteger(p.addedSatang) && Number.isInteger(p.keptSatang) && p.keptSatang + p.addedSatang === p.totalSatang && p.addedSatang > 0, `รูป preview ${J(p).slice(0, 200)}`);
+    okRes(await MOVE()(OWNER, ctxA, { unitId: UH, id: pv.id, roomId: R.DLX4, checkIn: D(20), checkOut: D(22) }), "move PV");
+    const nights = await prisma.hotelBookingNight.findMany({ where: { reservationId: pv.id, counted: true }, select: { priceSatang: true, roomId: true } });
+    eq([nights.length, nights.reduce((a: number, n: Any) => a + n.priceSatang, 0), nights.every((n: Any) => n.roomId === R.DLX4)], [2, p.totalSatang, true], "preview ≠ ที่บันทึกจริง");
+  });
+  await st("X-6", "X4 ปิดห้องพร้อมกัน 4 คน ห้อง FAM1 ช่วง +30..+32 ⇒ สำเร็จ 1 · ที่เหลือ ROOM_TAKEN · ไม่มี throw · BLOCK active ช่วงนั้น 1 แถว (ผู้ตรวจ C1)", async () => {
+    needBlock(); needFx();
+    const rs = await Promise.all(Array.from({ length: 4 }, (_, i) => BLK("blockRoom")(OWNER, ctxA, { unitId: UH, roomId: R.FAM1, from: D(30), to: D(32), reason: `แข่ง ${i}` }).catch((e: unknown) => ({ ok: false, code: "THROW", reason: errMsg(e) }))));
+    const oks = rs.filter((r: Any) => r?.ok === true);
+    try {
+      eq(oks.length, 1, `สำเร็จ ${oks.length} (${J(rs.map(codeOf))})`);
+      ok(rs.every((r: Any) => r?.ok === true || ["ROOM_TAKEN", "ROOM_BUSY", "BUSY"].includes(String(r?.code))), `โค้ดแปลก ${J(rs.map(codeOf))}`);
+      eq(await prisma.roomOccupancy.count({ where: { tenantId: tA, roomId: R.FAM1, kind: "BLOCK", active: true, startDate: { lt: new Date(`${D(32)}T00:00:00.000Z`) }, endDate: { gt: new Date(`${D(30)}T00:00:00.000Z`) } } }), 1, "BLOCK active");
+    } finally { for (const o of oks) await BLK("releaseBlock")(OWNER, ctxA, { unitId: UH, blockId: o.blockId }); }
   });
 
   // ═══════════════ X ขอบเขต · พร้อมกัน · สิทธิ์ · PII ═══════════════
