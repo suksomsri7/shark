@@ -101,3 +101,9 @@ export type { BookingActor, BookingSource, BookingFail, BookingFailCode, Booking
 export { TRANSITIONS, canTransition, nightsOf, holdDeadline } from "./booking-state";
 export type { BookingStatus, TransitionOpts, TransitionRole } from "./booking-state";
 // ◂ SVC H.3
+// SVC H.2 ▸ ปฏิทินห้อง (tape chart · อ่านอย่างเดียว) + KPI หน้าเคาน์เตอร์ + ปิดห้อง (BLOCK) — ใบสั่ง h.2 §3 · การลาก = rescheduleBooking/moveBooking ของ H.3
+export { tapeChart, hotelToday, previewMove, TAPE_MAX_DAYS } from "./tape";
+export type { TapeBar, TapeBarKind, TapeRoom, TapeGroup, TapeOccupancyDay, TapeLegendItem, TapeChartOk, TapeFail, HotelTodayOk, MovePreview } from "./tape";
+export { blockRoom, releaseBlock, listBlocks, BLOCK_REF } from "./block";
+export type { BlockActor, BlockFail, BlockFailCode, BlockOk, BlockRow } from "./block";
+// ◂ SVC H.2
