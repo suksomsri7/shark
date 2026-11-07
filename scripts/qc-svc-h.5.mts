@@ -341,7 +341,7 @@ try {
   await st("PC-3", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l3 ep-royal-bar) · ตาราง H.0 (HotelFolio/HotelFolioItem/HousekeepingLog) + คอลัมน์ securityDeposit* บนฐาน · Prisma client มี hotelFolioItem", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok((process.env.SVC_QC_HOST ?? "").startsWith("ep-royal-bar"), `host ${process.env.SVC_QC_HOST} ไม่ใช่เลน l3`);
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลัก (builder อาจอยู่เลนอื่น · regression/H.9)
     ok(H0_OK, H0_WHY);
   });
   await st("PC-4", "def ค่าตั้งที่ H.5 พึ่ง: rooms.hotel.tax.mode INCLUSIVE/EXCLUSIVE ค่าเริ่ม INCLUSIVE · tax.vatBp 700 · tax.serviceChargeBp 0 · tax.invoiceFromPos true · securityDeposit 100,000 · securityDeposit.enabled false · rooms.money.rounding SATANG · ทะเบียนสิทธิ์มี hotel.folio.post/void · hotel.reservation.checkOut · hotel.booking.manage ป้ายไทย", () => {
