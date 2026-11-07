@@ -366,7 +366,7 @@ try {
   await st("PC-3", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l1 ep-royal-lake) · ตัวดักคิวรีติดตั้งก่อน db (globalThis.prisma)", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok((process.env.SVC_QC_HOST ?? "").startsWith("ep-royal-lake"), `host ${process.env.SVC_QC_HOST} ไม่ใช่เลน l1`);
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-PC3-anylane): regression ของ H.3+ รันบนเลนอื่น/ฐานหลัก
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (R-14 นับไม่ได้)");
   });
   await st("PC-4", "ฟิกซ์เจอร์: หน่วย hotel (bansuan-hotel · HOTEL) + ผู้ใช้ frontdesk มี hotel.rates.read ไม่มี rates.write/settings.edit · บนฐาน (ถ้า seed แล้ว) membership ตรงฟิกซ์เจอร์", async () => {

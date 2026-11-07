@@ -1211,7 +1211,12 @@ try {
   let scene: Scene | null = null;
   const needScene = (): Scene => { if (!scene) throw new AssertFail("ไม่มีฉากการจอง (B-2 ไม่ผ่าน)"); return scene; };
   const resvRow = (id: string) => prisma.hotelReservation.findUnique({ where: { id } });
-  await st("B-2", "ฉาก: ร้าน A จอง BOOKED 4 ใบผ่าน hotel.createReservation (R1 2 คืน+มัดจำจ่ายแล้ว standalone · roomId null · R2/R3 = การจองก่อน R0.8: roomId ตั้งไว้แต่ไม่มี occupancy · R3 ห้องถูก BLOCK ทับช่วง = ชน · R4 ยกเลิก) · ร้าน B จอง 1 ใบแล้วยกเลิก · ทุกใบ status เริ่ม BOOKED", async () => {
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-B-after-h3): หลัง H.3 merge เส้น createReservation/recordDeposit ของ P1 ถูกแทน (สถานะเริ่ม CONFIRMED/HOLD · มัดจำผ่าน POS · nights ทันที) ⇒ ฉากจำลองแถว BOOKED เก่าสร้างผ่าน API ไม่ได้อีก
+  // backfill (scripts/svc-h0-backfill.mts ไม่เปลี่ยนตั้งแต่ H.0) ผ่าน B-2..B-11 ที่ H.0 (152/153) และรันจริงครบ 4 ฐาน QC · ก่อน deploy prod ต้องรัน --dry บนสำเนา prod (หนี้ SVC-HOTEL-RUN §2.1)
+  const H3_MERGED = (await tryImport("@/lib/modules/hotel/booking")).mod !== null;
+  const stB = H3_MERGED ? (id: string, name: string, _fn: () => unknown | Promise<unknown>, sev: Sev = "CRITICAL") => skip(id, name, "H.3 merge แล้ว — ฉาก BOOKED เก่าสร้างผ่าน API ไม่ได้ (ORACLE-EDIT h0-B-after-h3 · backfill ตรวจแล้วที่ H.0)", sev) : st;
+  const stD = H3_MERGED ? (id: string, name: string, _fn: () => unknown | Promise<unknown>, sev: Sev = "CRITICAL") => skip(id, name, "ด่านไฟล์ของใบ H.0 ใช้ตอนรับ H.0 เท่านั้น (ORACLE-EDIT h0-D45-after-h3 · ใบถัดไปมีด่านไฟล์ของตัวเอง)", sev) : st;
+  await stB("B-2", "ฉาก: ร้าน A จอง BOOKED 4 ใบผ่าน hotel.createReservation (R1 2 คืน+มัดจำจ่ายแล้ว standalone · roomId null · R2/R3 = การจองก่อน R0.8: roomId ตั้งไว้แต่ไม่มี occupancy · R3 ห้องถูก BLOCK ทับช่วง = ชน · R4 ยกเลิก) · ร้าน B จอง 1 ใบแล้วยกเลิก · ทุกใบ status เริ่ม BOOKED", async () => {
     const inA = addDays(TODAY, 20); const outA = addDays(TODAY, 22);
     const mk = async (tenantId: string, unitId: string, roomTypeId: string, ci: string, co: string, name: string) => {
       const r = await HOTEL.createReservation({ tenantId, unitId, roomTypeId, checkInDate: ci, checkOutDate: co, guestName: name });
@@ -1245,7 +1250,7 @@ try {
     ok(room1, "R1 ไม่มี occupancy STAY active");
     scene = { R1, R2, R3, R4, RB, inA, outA, in3, out3, dep: 50_000, rate: 129_000, r1Room: room1, r3Room: room3 };
   });
-  await st("B-3", "--dry: exit 0 · BACKFILL_SUMMARY 5 ฟิลด์ตัวเลข (bookedToConfirmed ≥ 3 · nightsCreated ≥ 6 · foliosCreated ≥ 3 · occupancyConflict ≥ 1) · ฐานไม่เปลี่ยน (status ยัง BOOKED · ไม่มี nights/folio · occupancy เท่าเดิม)", async () => {
+  await stB("B-3", "--dry: exit 0 · BACKFILL_SUMMARY 5 ฟิลด์ตัวเลข (bookedToConfirmed ≥ 3 · nightsCreated ≥ 6 · foliosCreated ≥ 3 · occupancyConflict ≥ 1) · ฐานไม่เปลี่ยน (status ยัง BOOKED · ไม่มี nights/folio · occupancy เท่าเดิม)", async () => {
     const sc = needScene();
     ok(BF, `ยังไม่มี ${F.backfill}`);
     const occBefore = await countOf("RoomOccupancy", `"tenantId" = ANY($1::text[])`, [[tA, tB]]);
@@ -1261,7 +1266,7 @@ try {
     eq([await countOf("HotelBookingNight", `"tenantId" = $1`, [tA]), await countOf("HotelFolio", `"tenantId" = $1`, [tA]), await countOf("RoomOccupancy", `"tenantId" = ANY($1::text[])`, [[tA, tB]])], [nightsBefore, folioBefore, occBefore], "[nights, folio, occupancy] หลัง dry (ต้องเท่าก่อน dry)");
   });
   let realSum: Record<string, number> | null = null;
-  await st("B-4", "รันจริง: exit 0 · BACKFILL_SUMMARY ตัวเลข ≥ dry (bookedToConfirmed ≥ 3 · occupancyClaimed ≥ 1 · occupancyConflict ≥ 1 · foliosCreated ≥ 3)", () => {
+  await stB("B-4", "รันจริง: exit 0 · BACKFILL_SUMMARY ตัวเลข ≥ dry (bookedToConfirmed ≥ 3 · occupancyClaimed ≥ 1 · occupancyConflict ≥ 1 · foliosCreated ≥ 3)", () => {
     needScene();
     const r = runBackfill([]);
     ok(r.status === 0, `exit=${r.status}: ${r.tail}`);
@@ -1269,13 +1274,13 @@ try {
     realSum = r.sum as Record<string, number>;
     ok(realSum.bookedToConfirmed >= 3 && realSum.occupancyClaimed >= 1 && realSum.occupancyConflict >= 1 && realSum.foliosCreated >= 3 && realSum.nightsCreated >= 6, `ตัวเลข: ${J(realSum)}`);
   });
-  await st("B-5", "สถานะ: R1/R2/R3 BOOKED → CONFIRMED · R4 คง CANCELLED · ร้าน B คง CANCELLED · ไม่มีแถว BOOKED เหลือในฐาน (ข้ามร้าน §3 ข้อ 1) · policySnapshot ว่างคงว่าง", async () => {
+  await stB("B-5", "สถานะ: R1/R2/R3 BOOKED → CONFIRMED · R4 คง CANCELLED · ร้าน B คง CANCELLED · ไม่มีแถว BOOKED เหลือในฐาน (ข้ามร้าน §3 ข้อ 1) · policySnapshot ว่างคงว่าง", async () => {
     const sc = needScene(); ok(realSum, "ยังไม่ได้รันจริง (B-4)");
     eq(await Promise.all([sc.R1, sc.R2, sc.R3, sc.R4, sc.RB].map(async (id) => (await resvRow(id))?.status)), ["CONFIRMED", "CONFIRMED", "CONFIRMED", "CANCELLED", "CANCELLED"], "status");
     eq(await countOf("HotelReservation", `status::text = 'BOOKED'`, []), 0, "BOOKED ค้างทั้งฐาน");
     eq((await resvRow(sc.R1))?.policySnapshot ?? null, null, "policySnapshot R1");
   });
-  await st("B-6", "nights R1: 2 แถว วันที่ [in, in+1] · counted=true · priceSource=MANUAL · priceSatang = ratePerNightSatang (129,000) · roomId ตามมติ §12 ข้อ 7 (R1 roomId null ⇒ ห้องจาก RoomOccupancy STAY active · R2 = reservation.roomId · R4 ไม่มี roomId/occupancy active ⇒ null) · roomTypeId/tenantId/unitId ตรง · ratePlanId null", async () => {
+  await stB("B-6", "nights R1: 2 แถว วันที่ [in, in+1] · counted=true · priceSource=MANUAL · priceSatang = ratePerNightSatang (129,000) · roomId ตามมติ §12 ข้อ 7 (R1 roomId null ⇒ ห้องจาก RoomOccupancy STAY active · R2 = reservation.roomId · R4 ไม่มี roomId/occupancy active ⇒ null) · roomTypeId/tenantId/unitId ตรง · ratePlanId null", async () => {
     const sc = needScene(); ok(realSum, "ยังไม่ได้รันจริง (B-4)");
     const rows = await q<Record<string, Any>>(`SELECT date, counted, "priceSource", "priceSatang", "roomId", "roomTypeId", "tenantId", "unitId", "ratePlanId" FROM "HotelBookingNight" WHERE "reservationId" = $1 ORDER BY date`, [sc.R1]);
     eq(rows.map((r) => ymdOfDb(r.date)), [sc.inA, addDays(sc.inA, 1)], "วันที่คืน");
@@ -1286,7 +1291,7 @@ try {
     ok((await resvRow(sc.R4))?.roomId === null, "R4 ควรไม่มี roomId");
     eq((await q<{ roomId: string | null }>(`SELECT "roomId" FROM "HotelBookingNight" WHERE "reservationId" = $1`, [sc.R4])).map((x) => x.roomId), [null], "คืนของ R4 (legacy ไม่มี roomId/occupancy active ⇒ null)");
   });
-  await st("B-7", "nights ของ CANCELLED (R4 ร้าน A · ร้าน B) สร้างเป็นประวัติ counted=false · nights ร้าน B ถือ tenantId/unitId ของร้าน B (X1) · การจอง CONFIRMED ทุกใบของร้าน A มี nights = จำนวนคืน", async () => {
+  await stB("B-7", "nights ของ CANCELLED (R4 ร้าน A · ร้าน B) สร้างเป็นประวัติ counted=false · nights ร้าน B ถือ tenantId/unitId ของร้าน B (X1) · การจอง CONFIRMED ทุกใบของร้าน A มี nights = จำนวนคืน", async () => {
     const sc = needScene(); ok(realSum, "ยังไม่ได้รันจริง (B-4)");
     const r4 = await q<{ counted: boolean }>(`SELECT counted FROM "HotelBookingNight" WHERE "reservationId" = $1`, [sc.R4]);
     ok(r4.length === 1 && r4[0].counted === false, `R4 nights: ${J(r4)}`);
@@ -1296,7 +1301,7 @@ try {
     ok(rows.length === 3 && rows.every((r) => r.n === r.nights), `nights ต่อการจอง: ${J(rows)}`);
     eq(await countOf("HotelBookingNight", `"tenantId" = $1 AND "unitId" <> $2`, [tA, uA]), 0, "nights ข้ามหน่วยในร้าน A");
   });
-  await st("B-8", "occupancy: R1 ยังมี STAY active 1 แถว (ไม่สร้างซ้ำ) · R2 ได้ STAY active ใหม่ผ่าน facade (ช่วงตรงการจอง · ห้องเดิม) · R3 ชน BLOCK ⇒ ไม่มี STAY · BLOCK ยังอยู่ (ไม่ทับ) · CANCELLED ไม่ได้ occupancy", async () => {
+  await stB("B-8", "occupancy: R1 ยังมี STAY active 1 แถว (ไม่สร้างซ้ำ) · R2 ได้ STAY active ใหม่ผ่าน facade (ช่วงตรงการจอง · ห้องเดิม) · R3 ชน BLOCK ⇒ ไม่มี STAY · BLOCK ยังอยู่ (ไม่ทับ) · CANCELLED ไม่ได้ occupancy", async () => {
     const sc = needScene(); ok(realSum, "ยังไม่ได้รันจริง (B-4)");
     const occ = (id: string) => q<{ roomId: string; s: Date; e: Date; kind: string }>(`SELECT "roomId", "startDate" AS s, "endDate" AS e, kind FROM "RoomOccupancy" WHERE "refType" = 'HotelReservation' AND "refId" = $1 AND active`, [id]);
     const o1 = await occ(sc.R1); eq(o1.length, 1, "R1 STAY active");
@@ -1306,7 +1311,7 @@ try {
     eq(await countOf("RoomOccupancy", `"roomId" = $1 AND kind = 'BLOCK' AND active`, [sc.r3Room]), 1, "BLOCK ของ R3 ถูกแตะ");
     eq([(await occ(sc.R4)).length, (await occ(sc.RB)).length], [0, 0], "CANCELLED ได้ occupancy");
   });
-  await st("B-9", "folio: R1/R2/R3 มี HotelFolio OPEN 1 ใบ · R1 (มัดจำจ่ายแล้ว) มี item DEPOSIT 1 แถว amount = −50,000 refType PosSale refId = depositSaleId (null) · R2/R3 ไม่มี item · R4/ร้าน B ไม่มี folio · folio ร้าน A อยู่หน่วย A", async () => {
+  await stB("B-9", "folio: R1/R2/R3 มี HotelFolio OPEN 1 ใบ · R1 (มัดจำจ่ายแล้ว) มี item DEPOSIT 1 แถว amount = −50,000 refType PosSale refId = depositSaleId (null) · R2/R3 ไม่มี item · R4/ร้าน B ไม่มี folio · folio ร้าน A อยู่หน่วย A", async () => {
     const sc = needScene(); ok(realSum, "ยังไม่ได้รันจริง (B-4)");
     for (const id of [sc.R1, sc.R2, sc.R3]) {
       const f = await q<{ id: string; status: string; unitId: string }>(`SELECT id, status, "unitId" FROM "HotelFolio" WHERE "reservationId" = $1`, [id]);
@@ -1317,7 +1322,7 @@ try {
     }
     eq([await countOf("HotelFolio", `"reservationId" = $1`, [sc.R4]), await countOf("HotelFolio", `"reservationId" = $1`, [sc.RB])], [0, 0], "folio ของ CANCELLED");
   });
-  await st("B-10", "รันซ้ำ (idempotent): exit 0 · BACKFILL_SUMMARY ทุกตัว = 0 · จำนวนแถว nights/folio/items/occupancy เท่าเดิม", async () => {
+  await stB("B-10", "รันซ้ำ (idempotent): exit 0 · BACKFILL_SUMMARY ทุกตัว = 0 · จำนวนแถว nights/folio/items/occupancy เท่าเดิม", async () => {
     needScene(); ok(realSum, "ยังไม่ได้รันจริง (B-4)");
     const before = [await countOf("HotelBookingNight", "true", []), await countOf("HotelFolio", "true", []), await countOf("HotelFolioItem", "true", []), await countOf("RoomOccupancy", "active", [])];
     const r = runBackfill([]);
@@ -1325,7 +1330,7 @@ try {
     eq(r.sum, { bookedToConfirmed: 0, nightsCreated: 0, occupancyClaimed: 0, occupancyConflict: 0, foliosCreated: 0 }, "summary รอบ 2");
     eq([await countOf("HotelBookingNight", "true", []), await countOf("HotelFolio", "true", []), await countOf("HotelFolioItem", "true", []), await countOf("RoomOccupancy", "active", [])], before, "จำนวนแถว");
   });
-  await st("B-11", "X1: backfill ไม่เขียนข้ามร้าน — ทุกแถวใหม่ (nights/folio/items) ของการจองร้าน B มี tenantId/unitId ร้าน B · ไม่มีแถวใดอ้างการจองของร้านอื่น · ร้านหอ (หน่วย DORM) ไม่มีแถวใหม่", async () => {
+  await stB("B-11", "X1: backfill ไม่เขียนข้ามร้าน — ทุกแถวใหม่ (nights/folio/items) ของการจองร้าน B มี tenantId/unitId ร้าน B · ไม่มีแถวใดอ้างการจองของร้านอื่น · ร้านหอ (หน่วย DORM) ไม่มีแถวใหม่", async () => {
     needScene(); ok(realSum, "ยังไม่ได้รันจริง (B-4)");
     const bad = await q<{ n: number }>(`SELECT count(*)::int AS n FROM "HotelBookingNight" b JOIN "HotelReservation" r ON r.id = b."reservationId" WHERE b."tenantId" <> r."tenantId" OR b."unitId" <> r."unitId"`);
     eq(bad[0].n, 0, "nights ที่ tenant/unit ไม่ตรงการจอง");
@@ -1380,7 +1385,7 @@ try {
     }
     ok(bad.length === 0, bad.join(" · "));
   });
-  await st("D-4", "ด่านเพิ่ม \"บรรทัดเดียวต่อจุด\": actions.ts + หน้า 3 ไฟล์เปลี่ยนจากฐาน แต่ไม่ลบบรรทัดเดิม · hotel/service.ts ไม่ถูกแตะ (เส้นเงิน/จอง = H.3/H.5) · modules/rooms ไม่ถูกแตะ", () => {
+  await stD("D-4", "ด่านเพิ่ม \"บรรทัดเดียวต่อจุด\": actions.ts + หน้า 3 ไฟล์เปลี่ยนจากฐาน แต่ไม่ลบบรรทัดเดิม · hotel/service.ts ไม่ถูกแตะ (เส้นเงิน/จอง = H.3/H.5) · modules/rooms ไม่ถูกแตะ", () => {
     const bad: string[] = [];
     const untouched = [F.actions, ...F.pages].filter((f) => changedFiles([f]).length === 0);
     if (untouched.length) bad.push(`ยังไม่เปลี่ยน: ${untouched.map((f) => f.split("/").slice(-2).join("/")).join(", ")}`);
@@ -1389,7 +1394,7 @@ try {
     if (touched.length) bad.push(`แตะ: ${touched.join(", ")}`);
     ok(bad.length === 0, bad.join(" · "));
   }, "MAJOR");
-  await st("D-5", "ไม่มีโค้ดใน src/ (นอกไฟล์ที่ใบเป็นเจ้าของ) ถูกแตะเทียบฐาน a9aad92d8", () => {
+  await stD("D-5", "ไม่มีโค้ดใน src/ (นอกไฟล์ที่ใบเป็นเจ้าของ) ถูกแตะเทียบฐาน a9aad92d8", () => {
     const own = new Set<string>([F.scope, F.rooms, F.settingsService, F.permissions, F.actions, ...F.pages]);
     // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-D5-later-wo): หลัง H.0 รับแล้ว ใบโรงแรมถัดไป (H.1+) เป็นเจ้าของเส้นทางเหล่านี้ — ข้อนี้ตัดสินเฉพาะไฟล์นอกทุกใบโรงแรม
     const LATER_OK = (f: string) => /^src\/(lib\/modules\/hotel\/|components\/hotel\/|app\/app\/u\/\[unitSlug\]\/hotel\/|app\/\(store\)\/s\/\[tenantSlug\]\/\[unitSlug\]\/hotel\/|lib\/core\/settings\/(types|form)\.ts$|lib\/core\/settings\/defs\/rooms\.ts$|app\/app\/u\/\[unitSlug\]\/page\.tsx$)/.test(f);

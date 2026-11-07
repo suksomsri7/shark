@@ -735,7 +735,7 @@ try {
     const ci = await hotel.checkIn(A, HA, p5, p5Other);
     const rv = await prisma.hotelReservation.findUnique({ where: { id: p5 } });
     const o1 = await activeOcc(p5);
-    return [ci?.ok === false && rv?.status === "BOOKED" && o1.length === 1 && o1[0].roomId === p5Room, `${J(ci)} status=${rv?.status} occ=${o1.map((o: any) => o.roomId === p5Room)}`];
+    return [ci?.ok === false && (rv?.status === "BOOKED" || rv?.status === "CONFIRMED") && o1.length === 1 && o1[0].roomId === p5Room, `${J(ci)} status=${rv?.status} occ=${o1.map((o: any) => o.roomId === p5Room)}`]; // ORACLE-EDIT (ผู้คุม 7 พ.ย. · r08-P5-h3): H.3 การจองใหม่เริ่ม CONFIRMED (ไม่มีมัดจำค้าง) — พฤติกรรมที่ตรวจ (ok:false · occupancy ไม่ขยับ) คงเดิม
   });
   await T("P-6", "checkIn ห้องเดิมของ occupancy ⇒ CHECKED_IN · roomId = ห้องนั้น · occupancy active 1", [], async () => {
     if (!p5) return [false, "P-5 ไม่มีการจอง"];
@@ -863,7 +863,7 @@ try {
       await setBad(x);
       const free = await pubFree(t, D(740), D(742));
       const b = await book(t, D(740), D(742), `Z1${label}B`);
-      const n = await prisma.hotelReservation.count({ where: { tenantId: A, roomTypeId: t, status: { in: ["BOOKED", "CHECKED_IN"] } } });
+      const n = await prisma.hotelReservation.count({ where: { tenantId: A, roomTypeId: t, status: { in: ["BOOKED", "CONFIRMED", "HOLD", "CHECKED_IN"] } } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · r08-Z1-h3): สถานะ active ของ V2 รวม CONFIRMED/HOLD
       return [free === 0 && b?.ok === false && n === 1, `free=${free} B=${J(b)?.slice(0, 120)} การจอง active=${n}`];
     });
   await z1("a", (x) => hotel.setRoomStatus(A, HA, x, "OOO"), []);
@@ -881,7 +881,8 @@ try {
     const f1 = await pubFree(t, D(745), D(747));
     const b = await book(t, D(745), D(747), "Z1dB");
     const aRoom = a?.ok ? (await activeOcc(a.id))[0]?.roomId : undefined;
-    return [f0 === 1 && a?.ok === true && aRoom === r[3] && f1 === 0 && b?.ok === false, `ว่างก่อน=${f0} A=${a?.ok}(${aRoom === r[3] ? "ห้องว่าง" : aRoom ?? "—"}) ว่างหลัง=${f1} B=${J(b)?.slice(0, 120)}`];
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · r08-Z1d-h3): H.3 ชั้นประเภท = total − BLOCK − LEASE − nights.counted (availability.ts) — occupancy HOLD ดิบที่ไม่มีการจอง/nights ไม่มีใน V2 (HOLD = การจองสถานะ HOLD + nights counted) จึงไม่หักชั้นประเภท · ชั้นห้องยังกัน (A ได้ห้องที่ 4) · B จองได้แบบยังไม่กำหนดห้อง
+    return [f0 === 2 && a?.ok === true && aRoom === r[3] && f1 === 1 && b?.ok === true, `ว่างก่อน=${f0} A=${a?.ok}(${aRoom === r[3] ? "ห้องว่าง" : aRoom ?? "—"}) ว่างหลัง=${f1} B=${J(b)?.slice(0, 120)}`];
   });
   // Z-1e: การจองเก่าที่ยังไม่มีห้อง (ไม่มี occupancy) ยังหักจากตัวนับช่วงวัน
   await T("Z-1e", "ประเภท 2 ห้อง + การจอง BOOKED เก่าไม่มีห้อง/ไม่มี occupancy ซ้อนช่วง ⇒ ว่าง 1 · จอง 1 ได้ · จองที่ 2 ล้ม", [], async () => {
@@ -891,7 +892,8 @@ try {
     const f0 = await pubFree(t, D(746), D(748));
     const a = await book(t, D(746), D(748), "Z1eA");
     const b = await book(t, D(747), D(749), "Z1eB");
-    return [f0 === 1 && a?.ok === true && b?.ok === false, `ว่าง=${f0} A=${a?.ok} B=${J(b)?.slice(0, 120)}`];
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · r08-Z1e-h3): หลัง backfill svc_h ไม่มีแถว BOOKED เก่าที่ไม่มี nights (รันครบ 4 ฐาน QC · prod ตอน deploy) — แถวที่ insert ดิบไม่มี nights จึงไม่หักชั้นประเภท (ตามสูตร H.3)
+    return [f0 === 2 && a?.ok === true && b?.ok === true, `ว่าง=${f0} A=${a?.ok} B=${J(b)?.slice(0, 120)}`];
   });
 
   // Z-2: ตั้งปิดซ่อม/เปลี่ยนโหมดบนห้องที่มี STAY/LEASE อนาคต ⇒ ok + affected (ไม่บล็อก · occupancy ยัง active)
@@ -933,7 +935,8 @@ try {
     const res = await book(tFrag, D(770), D(773), "แตกช่วง");
     const n = await prisma.hotelReservation.count({ where: { tenantId: A, roomTypeId: tFrag } });
     const one = await book(tFrag, D(770), D(771), "คืนเดียว");
-    return [free === 0 && res?.ok === false && res?.reason === FRAG_MSG && n === 0 && one?.ok === true, `free=${free} ${J(res)} การจองค้าง=${n} 1คืน=${one?.ok}`];
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · r08-Z4-h3): V2 จองที่ชั้นประเภท (PLAN §2 มติ D4) — แต่ละคืนมีห้องว่าง 2/3 ⇒ free=2 · จองได้โดยยังไม่กำหนดห้อง (assignRoom ค่อยจัด/ย้ายห้องกลางช่วง) · ข้อความ FRAG_MSG เลิกใช้
+    return [free === 2 && res?.ok === true && n === 1 && one?.ok === true, `free=${free} ${J(res)} การจองค้าง=${n} 1คืน=${one?.ok}`];
   });
 
   // Z-5: best-fit
@@ -1019,7 +1022,7 @@ try {
     const ok = res.filter((r) => r.status === "fulfilled" && (r.value as any)?.ok === true).length;
     const lose = res.filter((r) => r.status === "fulfilled" && (r.value as any)?.ok === false).length;
     const thrown = res.filter((r) => r.status === "rejected").map((r) => errMsg((r as PromiseRejectedResult).reason));
-    const rv = await prisma.hotelReservation.count({ where: { tenantId: A, roomTypeId: t, status: { in: ["BOOKED", "CHECKED_IN"] } } });
+    const rv = await prisma.hotelReservation.count({ where: { tenantId: A, roomTypeId: t, status: { in: ["BOOKED", "CONFIRMED", "HOLD", "CHECKED_IN"] } } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · r08-Z9-h3)
     const rooms3 = (await prisma.hotelRoom.findMany({ where: { roomTypeId: t }, select: { id: true } })).map((x: any) => x.id);
     const occ = await prisma.roomOccupancy.count({ where: { roomId: { in: rooms3 }, active: true } });
     return [thrown.length === 0 && ok >= 1 && ok <= 3 && ok + lose === 30 && rv === ok && occ === ok, `ok=${ok} แพ้=${lose} throw=${thrown.length} ${thrown[0] ?? ""} การจอง=${rv} occ=${occ}`];

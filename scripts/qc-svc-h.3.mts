@@ -131,7 +131,7 @@ const groupOf = (id: string) => id.split("-")[0];
 const near = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
 const msOf = (d: unknown) => (d instanceof Date ? d.getTime() : typeof d === "string" ? Date.parse(d) : Number.NaN);
 /** ตั้ง/ถอดนาฬิกาฉากรอบคำสั่งเดียว (ข้อ C · ฉาก) */
-const withClock = async <T>(on: boolean, fn: () => Promise<T>): Promise<T> => {
+const withClock = async <T,>(on: boolean, fn: () => Promise<T>): Promise<T> => { // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-tsc-7060): .mts ต้องมี trailing comma ใน generic arrow (tsc) · tsx รันผ่านอยู่แล้ว
   const prev = process.env.SVC_QC_CLOCK;
   if (on) process.env.SVC_QC_CLOCK = "1"; else delete process.env.SVC_QC_CLOCK;
   try { return await fn(); } finally { if (prev === undefined) delete process.env.SVC_QC_CLOCK; else process.env.SVC_QC_CLOCK = prev; }
@@ -415,7 +415,7 @@ try {
   await st("PC-3", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l2 ep-weathered-mode) · ตัวดักคิวรีติดตั้งก่อน db · ตาราง H.0 + คอลัมน์ H.0 ของ HotelReservation มีบนฐาน", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok((process.env.SVC_QC_HOST ?? "").startsWith("ep-weathered-mode"), `host ${process.env.SVC_QC_HOST} ไม่ใช่เลน l2`);
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลักตอน regression+H.9
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (A-5 นับไม่ได้)");
     ok(H0_OK, H0_WHY);
   });
