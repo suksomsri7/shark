@@ -15,6 +15,8 @@ const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
   HOTEL: [
     { href: "/hotel", label: "เปิดระบบโรงแรม →" },
     { href: "/hotel/setup", label: "ตั้งค่าห้องพัก" },
+    { href: "/hotel/rates", label: "ราคาห้องพัก" }, // SVC H.1
+    { href: "/hotel/settings", label: "ตั้งค่าโรงแรม" }, // SVC H.1
   ],
   QUEUE: [
     { href: "/queue", label: "เปิดระบบบัตรคิว →" },
