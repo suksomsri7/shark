@@ -332,7 +332,7 @@ export async function checkIn(
   roomId: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   // SVC H.4 ▸ ทางเดิมของ P1 ห่อเช็กอิน V2 (checkin.ts · ธุรกรรมเดียว · ลำดับล็อก ประเภท → แถว → occupancy · event hotel.checked_in)
-  //   คง signature/รูปผลเดิม · ทะเบียนผู้พัก: ดู LEGACY_REQUIRES_GUEST ใน checkin.ts (ข้อแย้ง oracle — ผู้คุมตัดสิน) ◂
+  //   คง signature/รูปผลเดิม · ไม่มีผู้พักในทะเบียน + requireRegistration เปิด ⇒ ok:false เหตุผลไทย (GUEST_REQUIRED · มติ H.4 รอบ 2) ◂
   const r = await checkInV2Legacy(tenantId, unitId, reservationId, roomId);
   if (r.ok) return { ok: true };
   const map: Record<string, string> = {

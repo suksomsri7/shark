@@ -124,7 +124,8 @@ try {
     }
   } else {
     // ค่าตั้งฉาก (ชั้น UNIT)
-    const want = Object.entries(GS.settings);
+    // มติผู้คุม H.4 รอบ 2: ฉาก h.2/h.3 ปิด requireRegistration (เช็กอินเดิมไม่มีทะเบียน) ⇒ ฉากนี้เปิดกลับตอนเริ่ม (สถานะสุดท้ายของลำดับถ่ายภาพ = เปิด)
+    const want: [string, unknown][] = [...Object.entries(GS.settings), ["rooms.hotel.guest.requireRegistration", true]];
     const cur = await settings.resolveSettings(ctx, want.map(([k]) => k), { unitId });
     const changes = want.filter(([k, v]) => JSON.stringify(cur[k]?.value) !== JSON.stringify(v)).map(([key, value]) => ({ key, scope: "UNIT", scopeId: unitId, value }));
     if (changes.length) {

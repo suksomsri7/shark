@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { hotelToday } from "@/lib/modules/hotel"; // SVC H.2 ▸ KPI หน้าเคาน์เตอร์ (ภาพ 08 แถบบน) ◂
 import HotelToday from "@/components/hotel/HotelToday";
-import { tm30Queue } from "@/lib/modules/hotel"; // SVC H.4 ▸ การ์ด "ตม.30 ค้าง N" ◂
+import { guestRegistrationRequired, tm30Queue } from "@/lib/modules/hotel"; // SVC H.4 ▸ การ์ด "ตม.30 ค้าง N" · เช็กอินต้องลงทะเบียนผู้พัก ◂
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("th-TH", {
@@ -29,6 +29,8 @@ export default async function HotelPage({
   if (unit.type !== "HOTEL") notFound(); // SVC H.0 ▸ ด่าน type HOTEL ◂
   const [data, kpi] = await Promise.all([dashboardData(auth.active.tenantId, unit.id), hotelToday({ tenantId: auth.active.tenantId }, { unitId: unit.id })]);
   const tq = await tm30Queue({ tenantId: auth.active.tenantId }, { unitId: unit.id }); // SVC H.4 ▸ คิวแจ้ง ตม.30 (ภายใน 24 ชม.) ◂
+  // SVC H.4 ▸ มติรอบ 2: เปิด requireRegistration (ค่าเริ่ม) ⇒ เช็กอินด่วนเดิมถูกแทนด้วยลิงก์แผงเช็กอิน (?tab=guests · ลงทะเบียน ร.ร.3) — ไม่เช็กอินเงียบ ◂
+  const needRegistration = await guestRegistrationRequired({ tenantId: auth.active.tenantId }, { unitId: unit.id });
 
   // ห้องที่ assign ได้ต่อการจองที่ถึงวันนี้ (เพื่อ dropdown เช็คอิน)
   const arrivalRooms = await Promise.all(
@@ -90,7 +92,15 @@ export default async function HotelPage({
                     </div>
                   </div>
                 </div>
-                {rooms.length === 0 ? (
+                {needRegistration ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-[color:var(--color-muted)]">ต้องลงทะเบียนผู้พัก (ร.ร.3) ก่อนเช็กอิน</span>
+                    <a href={`/app/u/${unitSlug}/hotel/reservations/${a.id}?tab=guests`} className="btn btn-ghost text-sm">
+                      เช็กอิน + ลงทะเบียนผู้พัก →
+                    </a>
+                  </div>
+                ) : null}
+                {needRegistration ? null : rooms.length === 0 ? (
                   <p className="mt-2 text-xs text-[color:var(--color-danger)]">
                     ไม่มีห้องว่างให้เช็คอิน — ตรวจสถานะห้องที่ «ตั้งค่า»
                   </p>

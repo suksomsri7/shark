@@ -47,11 +47,8 @@ import {
 type Tx = Prisma.TransactionClient;
 const HOTEL_REF = "HotelReservation";
 const TM30_WINDOW_MS = 24 * 3_600_000;
-/**
- * 🔴 ข้อแย้ง oracle (wo-notes svc-h.4 §3 · ผู้คุมตัดสิน): `service.checkIn` เดิม (ไม่มีผู้กระทำ/ไม่มีผู้พัก) ถูกเรียกโดยฉาก h.2/h.3 · qc-svc-r0.8 · qc-svc-h.5
- * ซึ่งคาดว่าเช็กอินสำเร็จโดยไม่มีทะเบียน ⇒ ทางเดิมคงพฤติกรรมเดิม (ไม่บังคับทะเบียน · ไม่ตรวจวันเข้า/แม่บ้าน) · เปลี่ยนเป็น true = บังคับ GUEST_REQUIRED ตามใบ §1
- */
-const LEGACY_REQUIRES_GUEST = false;
+// ทางเดิม `service.checkIn` (มติผู้คุม H.4 รอบ 2 ทาง ข): บังคับทะเบียนผู้พักตามค่าตั้ง requireRegistration เหมือน V2 (ไม่มีผู้พักที่ลงทะเบียนไว้ ⇒ GUEST_REQUIRED)
+//   ยังคงพฤติกรรม P1 อื่น (ไม่ตรวจวันเข้า/แม่บ้าน · รับ BOOKED) · ผู้เรียกใน QC ที่ไม่มีผู้พักปิดค่าตั้งที่หน่วยทดสอบ/ฉาก
 
 export type CheckInCode = "NOT_CONFIRMED" | "TOO_EARLY" | "ROOM_TAKEN" | "ROOM_DIRTY" | "ROOM_INACTIVE" | "GUEST_REQUIRED" | "OVER_OCCUPANCY" | "INVALID_ID" | "NOT_FOUND" | "FORBIDDEN";
 export type CheckInOk = { ok: true; checkedInAt: string; guestIds: string[]; needsDeposit: boolean; needsSecurityDeposit: boolean; tm30DueAt: string | null; roomId: string; customerId: string | null };
@@ -150,7 +147,7 @@ async function checkInCore(g: GuestGate | { tenantId: string; unitId: string; un
   // ── ทะเบียนผู้พัก (ร.ร.3) ──
   const rawGuests = d.guests ?? [];
   const existing = await db.hotelGuestRecord.count({ where: { reservationId: rv.id } });
-  const needGuest = st.requireRegistration && (!o.legacy || LEGACY_REQUIRES_GUEST);
+  const needGuest = st.requireRegistration;
   if (needGuest && rawGuests.length === 0 && existing === 0) return gfail("GUEST_REQUIRED", "ลงทะเบียนผู้เข้าพักหลักก่อนเช็กอิน (ชื่อ · สัญชาติ · ชนิดและเลขเอกสาร) — พ.ร.บ.โรงแรม ม.35");
   if (rawGuests.length && !hasRequiredGuestFields(rawGuests[0]) && existing === 0) return gfail("GUEST_REQUIRED", "ผู้เข้าพักหลักต้องกรอกชื่อ · สัญชาติ · ชนิดและเลขเอกสารให้ครบ");
   const prepared: PreparedGuest[] = [];
@@ -317,7 +314,7 @@ export async function checkInV2(actorIn: unknown, ctx: unknown, input: unknown):
   return checkInCore(g, input, { legacy: false });
 }
 
-/** ทางเดิมของ P1 (`service.checkIn`) — ไม่มีผู้กระทำ · ดู LEGACY_REQUIRES_GUEST */
+/** ทางเดิมของ P1 (`service.checkIn`) — ไม่มีผู้กระทำ · บังคับทะเบียนผู้พักตามค่าตั้ง (มติ H.4 รอบ 2) */
 export async function checkInV2Legacy(tenantId: string, unitId: string, reservationId: string, roomId: string): Promise<CheckInOk | GuestFail> {
   if (!isStr(tenantId) || !isStr(unitId)) return gfail("NOT_FOUND", R.notFound);
   const unit = await tenantDb({ tenantId }).businessUnit.findFirst({ where: { id: unitId, type: "HOTEL" }, select: { id: true, name: true } });
@@ -407,4 +404,13 @@ export async function checkinView(ctx: unknown, input: unknown): Promise<Checkin
     securityDepositSatang: rv.securityDepositSaleId ? rv.securityDepositSatang : 0,
     settings: { aiIdReader: st.aiIdReader, rr3OnScreen: st.rr3OnScreen, keepIdImageDefault: st.keepIdImageDefault, tm30Enabled: st.tm30Enabled, securityDeposit: { required, amountSatang: st.secDepAmount } },
   };
+}
+
+/** หน้า /hotel: ต้องลงทะเบียนผู้พักก่อนเช็กอินไหม (ปุ่มเช็กอินด่วนเดิมใช้ได้เฉพาะเมื่อปิด) · ไม่ใช่โรงแรมของร้าน ⇒ true (ปลอดภัยไว้ก่อน) */
+export async function guestRegistrationRequired(ctx: unknown, input: unknown): Promise<boolean> {
+  const tenantId = tenantOf(ctx);
+  if (!tenantId || !isRec(input) || !isStr(input.unitId)) return true;
+  const unit = await tenantDb({ tenantId }).businessUnit.findFirst({ where: { id: input.unitId, type: "HOTEL" }, select: { id: true } });
+  if (!unit) return true;
+  return (await guestSettings(tenantId, unit.id)).requireRegistration;
 }
