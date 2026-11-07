@@ -13,7 +13,7 @@
 ## 1. ไฟล์ที่ใบนี้เป็นเจ้าของ
 | ไฟล์ | | เนื้อหา |
 |---|---|---|
-| «src/lib/modules/hotel/tape.ts» | ใหม่ (server · อ่าน) | `tapeChart(ctx, {unitId, from, to, view})` §3.1 · `hotelToday(ctx, {unitId})` §3.3 |
+| «src/lib/modules/hotel/tape.ts» | ใหม่ (server · อ่าน) | `tapeChart(ctx, {unitId, from, days})` §3.1 (มติ 7 พ.ย. ข้อ 2) · `hotelToday(ctx, {unitId})` §3.3 |
 | «src/lib/modules/hotel/block.ts» | ใหม่ (server) | `blockRoom` `releaseBlock` `listBlocks` §3.2 |
 | `src/lib/modules/hotel/index.ts` · `actions.ts` | เพิ่ม | facade + actions (บล็อก `// SVC H.2 ▸ … ◂`): `moveBookingAction` (= assignRoom + เลื่อนวัน) · `resizeBookingAction` (extend/shorten) · `blockRoomAction` · `releaseBlockAction` |
 | «src/components/hotel/{TapeChart,TapeBar,TapeKpis,BlockDialog,MoveConfirmDialog}.tsx» + `tape-shared.ts` | ใหม่ (`'use client'`) | จอ §4 · ลากด้วย pointer events (ไม่ใช้ไลบรารี) |
@@ -38,7 +38,7 @@
 
 ## 3. สัญญาโค้ด (ย่อ)
 3.1 `tapeChart(ctx, {unitId, from, days}) → { days: ymd[]; groups: [{roomTypeId, name, rateTodaySatang, rateWeekendSatang, rooms: [{roomId, number, hkStatus, bars: Bar[]}], unassigned: Bar[]}]; occupancy: [{date, occupied, sellable}]; legend }` · `Bar = {kind: "STAY"|"CONFIRMED"|"HOLD"|"OTA"|"BLOCK"|"LEASE"; refId; label; from; to; holdExpiresAt?; guestName?; source?; groupId?; href?}`
-3.2 `blockRoom(actor, ctx, {unitId, roomId, from, to, reason}) → {ok, blockId} | {ok:false, code: "ROOM_TAKEN"|"INVALID_RANGE"|"NOT_FOUND"|"FORBIDDEN", conflicts?: [{code, guestName}]}` · `releaseBlock` · `listBlocks`
+3.2 `blockRoom(actor, ctx, {unitId, roomId, from, to, reason}) → {ok, blockId, warning?: {overbookedNights: number, message: "เกินจอง N คืน"}} | {ok:false, code: "ROOM_TAKEN"|"INVALID_RANGE"|"NOT_FOUND"|"FORBIDDEN", conflicts?: [{code, guestName}]}` · `releaseBlock` · `listBlocks(ctx,{unitId, from?, to?}) → [{blockId, roomId, from, to, reason}]` (reason อ่านจาก AuditLog ของ blockId · มติ 7 พ.ย. ข้อ 9)
 3.3 `hotelToday(ctx, {unitId, now?}) → {arrivals, departures, inHouse, sellable, blocked, leased, hkDirty, weekOccBps, adrSatang, names…}`
 3.4 actions: `moveBookingAction({id, roomId?, checkIn?, checkOut?})` → เรียก H.3 `assignRoom` และ/หรือ `extendBooking/shortenBooking` ใน **tx เดียว** (ถ้า H.3 ไม่มีฟังก์ชันรวม ⇒ ขอผู้คุมเพิ่ม `rescheduleBooking` ใน booking.ts — จดก่อนเริ่ม) · `resizeBookingAction` · `blockRoomAction` · `releaseBlockAction`
 
@@ -56,3 +56,18 @@
 - X1 ข้ามร้าน · X4 ลากพร้อมกันสองคนห้องเดียวกัน = สำเร็จ 1 · X9 สิทธิ์ 3 ระดับ · X10
 - หนี้ที่รู้: ย้ายข้ามประเภทไม่คิดส่วนต่าง (S:911 🔜) · ลากบนมือถือไม่มี
 - ⚠️ regression ที่จะแดงโดยตั้งใจเมื่อเปิดแท็บ calendar: `qc-svc-h.1` U-4 คาด frontdesk เห็นแท็บ ["การจอง","หน้าเคาน์เตอร์","ราคา"] (ไม่มี "ปฏิทินห้อง") ⇒ builder เขียนแย้งใน wo-notes · ผู้คุม ORACLE-EDIT h.1 U-4 ตอนรับใบ (ไม่ใช่บั๊ก) · ผู้ใช้ภาพ: owner · frontdesk (booking.manage) · **maid** (hotel.housekeeping · read-only — เพิ่มในฟิกซ์เจอร์แล้ว · ต้อง reseed)
+
+## 7. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 84 ข้อ @82afb159e)
+1. **ลาก = ฟังก์ชัน server จริง**: H.3 เพิ่ม `rescheduleBooking(actor, ctx, {unitId, id, roomId?, checkIn?, checkOut?})` ใน `booking.ts` (guard tx เดียว: assign + เลื่อนวัน + ต่อ/ย่น · ราคาคืนใหม่ตาม quote ปัจจุบัน) — ใบ h.3 §3.3 เพิ่มแล้ว · H.2 `moveBookingAction` เรียกตัวนี้ · ข้อสอบ MV-1 รับทั้ง `rescheduleBooking` และ `moveBooking` (facade) — builder H.2 ห้ามเขียนเส้นย้ายเอง
+2. ลายเซ็น `tapeChart(ctx, {unitId, from, days})` (§3.1 ชนะ · days = 7/14/จำนวนวันของเดือน · แก้ §1 แล้ว)
+3. CHECKED_IN + source OTA ⇒ แถบ kind STAY (สถานะชนะ · `source` ยังอยู่ในแถบ)
+4. **แถวห้อง = ห้อง active ที่ขายรายคืนได้ (NIGHTLY/BOTH) เท่านั้น** ตามมติ 1 — B205 (MONTHLY) **ไม่มีแถว** (ต่างจากภาพ 08 โดยตั้งใจ: ห้องรายเดือนล้วนเป็นของหอ · ถ้าเจ้าของอยากเห็นในปฏิทินโรงแรม = ตั้ง rentMode BOTH) · ฟิกซ์เจอร์ `SQC_HOTEL_TAPE_SCENE.lease` ปรับคำอธิบายแล้ว · ห้อง BOTH ที่มีสัญญาหอ = แถบ LEASE เทา
+5. ขอบแถบ: `from/to` = วันเข้า/ออกจริง (ไม่ตัดตามกริด) · แถบที่ checkOut = วันแรกของกริดยังแสดง (ครึ่งวันออก)
+6. "สัปดาห์นี้ %" = 7 วันนับจากวันนี้ · ADR = Σ priceSatang ของ nights.counted ที่มีการจอง active ÷ จำนวนคืน ปัด `rooms.money.rounding`
+7. ราคาหัวกลุ่ม: วันนี้ = resolve วันนี้ · เสาร์อาทิตย์ = วันสุดสัปดาห์ถัดไปที่ resolve ผ่าน H.1 (รวมฤดู/override)
+8. เตือนเกินจอง: ฟิลด์ `warning: {overbookedNights, message}` ใน §3.2 (เพิ่มแล้ว)
+9. reason ของ BLOCK อนาคต: AuditLog ของ blockId เป็นแหล่ง (HousekeepingLog เขียนเฉพาะเมื่อ OOO) · `listBlocks` และแถบ BLOCK ต้องคืน reason
+10. attribute ตายตัว: `data-drag-handle` · `data-resize-handle` (handle) · `data-tape-bar` (แถบ) · read-only ไม่ render ทั้งสาม · เพิ่มใน §4
+11. สัญญา H.3 ที่ข้อสอบยึด: ทุกฟังก์ชัน `(actor, ctx, input)` · `unitId`/`at` อยู่ใน input · `takeBookingDeposit({unitId, reservationId, payType})` · `cancelBooking({unitId, reservationId, reason})` · `extendBooking/shortenBooking({unitId, id, newCheckOut})` · `hotelAvailability.get` คืน `byDate[ymd][roomTypeId].{total, blocked, counted, available}` — ส่งให้ผู้เขียนข้อสอบ h.3 ยึดเหมือนกัน (ถ้า h.3 ต่าง ผู้คุม ORACLE-EDIT ฝั่ง h.2 ตอน H.3 merge)
+12. ข้อสอบตั้ง `SVC_QC_CLOCK=1` เองได้ · G-2 ยอม h.1 U-4 แดงตาม §6
+
