@@ -86,3 +86,21 @@
 - H.5: folio เปิด OPEN ตอน CONFIRMED · VOID ตอนยกเลิก/หมดเวลา/ไม่มา(ปล่อย) · ไม่มี item · มัดจำอยู่ที่แถวหัวกลุ่ม (`depositSaleId` = ใบรับ POS_DEPOSIT) — checkOut เดิมหักด้วย moduleDepositForBill ได้ต่อ
 - H.4: checkIn เดิมรับ CONFIRMED/BOOKED · เขียน nights.roomId ทุกคืนที่นับ
 - H.8: `createBooking(null, ctx, {source:"WEB"|"LINE", hold:"ONLINE"})` · takeBookingDeposit ต้องมี actor (ทางสาธารณะยังไม่มี)
+
+## 10. รอบ 2 (ผู้ตรวจ 1 guard/race · ผู้ตรวจ 2 เงิน) — 7 พ.ย. · ฐาน 7b3f11826 (ORACLE-EDIT eba36cb3f + rooms.sweepStaleOccupancy ของผู้คุม)
+### แก้ (commit c04a1c823)
+- C-1/M1 `takeBookingDeposit`: อ่าน `cur` สดหลังล็อก · re-book ทุกแถว `CANCELLED/HOLD_EXPIRED` ที่เห็นตอนนี้ (วันเข้ายังไม่ผ่าน — m6) · ปั๊ม depositPaidAt เฉพาะหัวกลุ่มที่ `status ∈ {HOLD,CONFIRMED,CHECKED_IN}` · count 0 / วันเข้าผ่าน / เต็ม ⇒ `refundAll` + event `deposit_after_expiry` (ใน tx) · หัวกลุ่มมีมัดจำใบอื่นแล้ว ⇒ คืนใบใหม่
+- M-1: `isTxTimeout` จับ pg 40P01 (code/originalCode/meta/driverAdapterError/ข้อความ) ⇒ BUSY · `lockTypes` คำสั่งแรกของ cancel/markNoShow/confirm/sweeper(expireOne)/shorten (+ เดิม create/deposit/extend/assign/reschedule/undo) ⇒ ลำดับเดียว ประเภท → แถว → occupancy · `holdToStay` ไม่มีห้องถืออยู่ ⇒ ถือห้องใหม่ best-fit
+- M-2: `casUpdateRv` (updateMany ตามสถานะ+วันที่ที่อ่าน · 0 ⇒ `STATE_CHANGED`) ใน extend/shorten/assign/reschedule · assign อ่าน `cur` หลังล็อก
+- m-1 เอกสาร sds + คอมเมนต์ booking-state: ข้อยกเว้น `CANCELLED(HOLD_EXPIRED)→CONFIRMED` (ไม่แก้ TRANSITIONS) · m-3 `createReservation({source})` storefront WEB · AI PHONE · หน้าสถานะสาธารณะถือ CONFIRMED = BOOKED (`(store)/…/hotel/actions.ts` · `ai/proposals.ts` · `r/[publicToken]/page.tsx` — ผู้คุมสั่ง) · m-4 ป้าย HOLD รออนุมัติ "รอโรงแรมยืนยัน · ถือห้องถึง …" (`holdKind` ใน DTO · snapshot จด bookingMode) · m-5 VIEW_KEYS ถอด hotel.housekeeping
+- ผู้ตรวจ 2: m1 `getBooking.deposit {paidSatang, remainingSatang, forfeitedSatang, refundedSatang, saleId, inPos}` · refundPreview/จอใช้คงเหลือ · m2 audit เงิน 2 จังหวะ (`moneyPlan` ใน tx · `hotel.booking.money` หลัง settle — cancel + no-show) · m3 คืนปัดลงตาม `rooms.money.rounding` (`roundRefundDown`) · m4 ยกเลิก 0% = บิลค่าธรรมเนียมยกเลิกทั้งก้อน (คีย์ dep-forfeit: เดิม) · m5 มัดจำนอก POS ⇒ ต้อง manage + `moneyWarning: "มัดจำนอก POS ให้จัดการมือ"`
+- มติ §11.4 ปรับ: MANUAL_APPROVE `holdExpiresAt = max(วันเข้า เวลาเช็กอิน, now + holdMinutesCounter)`
+### ผลรอบ 2 (builder รัน)
+| ชุด | ผล |
+|---|---|
+| qc-svc-h.3 --no-regression | `JSON_SUMMARY {"suite":"qc-svc-h.3","total":109,"passed":98,"failed":[],"skipped":["F-1","V-1","G-1".."G-9"]}` (`/root/svc-runs/h3/builder/run4-r2.txt`) |
+| probe-h3-load × 3 | passed:true ทุกรอบ (ok 1 · changed 19 · nights 1 · occ 1 · deadlock false) |
+| probe-h3-a (ผู้ตรวจ 1) | PA ✅ · PB 4/4 รอบ CONFIRMED + paidAt + PosDeposit OPEN (ไม่มี CANCELLED ที่จ่ายแล้ว) · PC 6 รอบ ไม่มี throw/40P01 · ชนกัน ⇒ STATE_CHANGED · ไม่มี occupancy/nights ผีของแถว CANCELLED · PD จองวันนี้ ⇒ 1440 นาที (ข้อความ probe ยังอ้าง 15 นาทีแบบเดิม) |
+| probe-h3-b (ผู้ตรวจ 2) | 31/32 — T4.2 แดงตามมติ m3: คืน 50% = 20,500 (ปัดลงเต็มบาทจาก 20,550) · fee 20,600 · probe ยึด 20,550 ⇒ ผู้คุมแก้ probe |
+| qc-hotel-money / public / refund | 5/5 · 15/15 · 15/15 |
+| tsc | ไม่ได้รันรอบนี้ (chain H.1 บน l1 ยังไม่ DONE · ผู้คุมสั่งห้าม) — ตรวจชนิดด้วยการอ่าน · log `/root/svc-runs/h3/builder/reg2.txt` |
