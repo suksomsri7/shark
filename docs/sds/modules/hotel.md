@@ -83,3 +83,58 @@ STANDARD: ซูพีเรีย 990 ทุกวัน · ดีลักซ�
 - แผนเริ่มต้น 1 แผนต่อหน่วย (partial unique) · ไม่มี ⇒ สร้างจาก `rooms.hotel.defaultRatePlan` ตอนเปิดจอ · เก็บแผนเริ่มต้นเข้าคลัง ⇒ `DEFAULT_PLAN` · เก็บเข้าคลังเท่านั้น ไม่ลบ
 - unique NULLS NOT DISTINCT (`HotelRate.seasonId` · `HotelRateOverride.ratePlanId`) ⇒ ล็อก advisory + อ่านแถวเดิมใน tx แล้ว create/update (ไม่ใช้ upsert) · `saveRates` ตรวจทุกแถวก่อน (ราคาติดลบ ⇒ `INVALID_PRICE` ไม่เขียนสักแถว)
 - เหลือขาย = ห้องขายรายคืนได้ − ห้องที่สัญญา/กันห้องถือ − max(คืนที่นับ `HotelBookingNight.counted`, ห้องที่การจองถือ)
+  - SVC H.3 ▸ เปลี่ยนเป็นสูตรเดียวของ `hotelAvailability` (ด้านล่าง) — เหลือขาย = `available` · การจองที่ไม่มี nights ไม่นับอีก ◂
+
+## การจอง (SVC H.3 · จอง V2)
+
+### ไฟล์
+`availability.ts` (สูตรห้องว่างเดียว) · `booking.ts` (server · การจองทั้งวงจร) · `booking-state.ts` (pure · state machine) · `service.ts` (เส้น P1 `createReservation`/`cancelReservation` เรียก `createBooking`/`cancelBooking` · `checkIn` เดิมใช้ occupancy + nights.roomId) · จอ `/hotel/reservations` (รายการ · `[id]` รายละเอียด · `new` วิซาร์ด 3 ขั้น)
+
+### สูตรห้องว่าง (`hotelAvailability.get(ctx, {unitId, roomTypeId?, from, to})` · S §4.2)
+`available(ประเภท, คืน) = ห้องขายรายคืนได้ − ห้องที่ถูก BLOCK − ห้องที่เป็นสัญญา LEASE − HotelBookingNight.counted` ปัดล่าง 0
+- ห้องขายรายคืนได้ = active · ไม่ OOO/`OUT_OF_ORDER` · rentMode จริง (ห้อง ?? ประเภท) ∈ NIGHTLY|BOTH
+- BLOCK/LEASE = occupancy active ครอบคืน นับห้องไม่ซ้ำ · HOLD/STAY ของการจองไม่นับซ้ำ (การจองนับผ่าน nights)
+- คืนของ HOLD นับจนกว่า sweeper เก็บ · CANCELLED/NO_SHOW(ปล่อย)/ย่นคืน ⇒ `counted=false`
+- ≤ 4 คำสั่งต่อการเรียก · ใช้ที่เดียวกันทุกที่: ปฏิทินราคา H.1 (`ratePreview.remaining`) · `service.availability`/`listPublicAvailability` (P1) · วิซาร์ด · guard tx (`availabilityInTx`)
+
+### State machine (`booking-state.ts` · S §7.8)
+`HOLD → CONFIRMED → CHECKED_IN → CHECKED_OUT` · `HOLD/CONFIRMED → CANCELLED` · `CONFIRMED → NO_SHOW` · `NO_SHOW → CONFIRMED` (MANAGER/OWNER ภายในวันเดียวกันไทย · ผ่าน guard tx) · `BOOKED` (P1) ไม่เขียนอีก · `REFUNDED` = ปลายเส้น P1 `refundStay`
+
+### Guard tx (กันจองซ้อน · S §7.2 §11 ข้อ 1)
+1. ตรวจ input นอก tx (วัน · `PAST_DATE` · `TOO_FAR` · ความจุ `OVER_OCCUPANCY` · เตียงเสริม · แผนของหน่วย) + `quoteStay` ต่อห้อง + snapshot
+2. ใน tx: `pg_advisory_xact_lock(hashtext(unitId||':'||roomTypeId))` **เรียง roomTypeId** (ทุกเส้นทางที่กินห้องล็อกลำดับเดียวกัน ⇒ ไม่มี 40P01) → นับ `availabilityInTx` ทุกคืน → ไม่พอ ⇒ `AVAILABILITY_CHANGED {dates}` (เฉพาะคืนที่เต็ม)
+3. รหัส `<rooms.hotel.codePrefix>-<YYMM>-<NNNN>` running ต่อหน่วย (ล็อกหน่วยหลังล็อกประเภท · ชน unique ⇒ ลองใหม่ 3)
+4. `HotelReservation` ต่อห้อง (`groupId` เมื่อ > 1 ห้อง) + `HotelBookingNight` ทุกคืน `counted=true` + `policySnapshot` (`snapshotPolicy("reservation")` + กฎยกเลิกของแผน) + `taxSnapshot`
+5. ห้องจริง: `claimRoom` best-fit (HOLD ⇒ kind HOLD + holdExpiresAt · อื่น STAY) · ไม่ได้ห้อง = ไม่ล้ม (nights พอ · กำหนดห้องภายหลัง/ตอนเช็กอิน)
+6. CONFIRMED ⇒ `HotelFolio` OPEN · AuditLog + outbox `hotel.booking.created` ใน tx เดียวกัน
+- ต่อคืน/ย้ายห้องต่างประเภท/เลื่อนวัน/ย้อนไม่มา/จ่ายหลังหมดเวลา ใช้ล็อก + นับสูตรเดียวกัน · ย่นคืน/ยกเลิก (ปล่อยห้อง) ไม่ต้องล็อก
+
+### สถานะเริ่มต้น (`rooms.hotel.bookingMode`)
+- `AUTO_CONFIRM` ⇒ CONFIRMED ทุกช่องทาง
+- `MANUAL_APPROVE` ⇒ HOLD ถึงเวลาเช็กอิน (`rooms.hotel.checkInTime`) ของวันเข้า (มติผู้คุม §11 ข้อ 4 · ผ่านไปแล้ว ⇒ อย่างน้อย holdMinutesOnline) → `confirmBooking`
+- `DEPOSIT_REQUIRED` (ค่าเริ่ม): มัดจำ 0 ⇒ CONFIRMED · WEB/LINE/ทางสาธารณะ/`hold:"ONLINE"` ⇒ HOLD `holdMinutesOnline` · `hold:"COUNTER"` («รอโอน») ⇒ HOLD `holdMinutesCounter` · อื่น ⇒ CONFIRMED
+- actor null (ทางสาธารณะ H.8) ได้เฉพาะ WEB/LINE · OTA ต้องมี `channelRef`
+
+### มัดจำ / คืนเงิน (เงินทุกบาทผ่าน POS)
+- มัดจำของกลุ่ม = `depositFor(quotes ทั้งกลุ่ม, depositPolicyOf(แผน, ค่าตั้ง))` เก็บบนแถวหัวกลุ่ม · `takeBookingDeposit` ⇒ `moduleTakeDeposit` keyBase `hotel-deposit-<groupId|id>` (ใบรับ POS_DEPOSIT · payType จาก UI) ⇒ HOLD ทั้งกลุ่ม → CONFIRMED (HOLD → STAY ห้องเดิม · folio OPEN)
+- จ่ายหลังหมดเวลา (`HOLD_EXPIRED` หรือ HOLD เลยเวลาที่ sweeper ยังไม่เก็บ): รับเงินก่อน (ใบรับเสมอ) → guard tx: ว่าง ⇒ CONFIRMED (nights นับใหม่ · ถือห้องใหม่) · เต็ม ⇒ คง CANCELLED + `moduleRefundDeposit` คืนเต็มอัตโนมัติ + event `hotel.booking.deposit_after_expiry`
+- ยกเลิก (`cancelBooking`): คืน = `refundFor({paid: มัดจำคงเหลือ, checkInDate, cancelAt: วันนี้ไทย, rules: กฎยกเลิกใน snapshot})` · 100% ⇒ `moduleRefundDeposit` · 0% ⇒ `moduleForfeitDeposit` · ระหว่างนั้น ⇒ บิลค่าธรรมเนียมยกเลิก (แถวจ่าย DEPOSIT อ้างใบรับ · คีย์ริบ `dep-forfeit:<มัดจำ>`) แล้ว `moduleRefundDeposit` คงเหลือ (มติผู้คุม §11 ข้อ 1)
+  - ยกเลิกรายห้องที่ถือมัดจำหัวกลุ่มขณะห้องอื่นยัง active ⇒ ย้ายหัวกลุ่มไปห้องถัดไป ไม่คืนเงิน · ห้องสุดท้าย/ทั้งกลุ่ม ⇒ คืนตามขั้นบันได
+  - มีคืน/ริบเงิน ⇒ ต้องมี `hotel.booking.manage` · ไม่มีมัดจำ ⇒ `hotel.reservation.cancel` พอ
+- ไม่มา (`markNoShow` · CONFIRMED + วันเข้า ≤ วันนี้): นโยบายจาก snapshot `rooms.hotel.noShow` — `FORFEIT_RELEASE_AFTER_AUDIT` ริบ + ปล่อย · `FORFEIT_HOLD_STAY` ริบ + ถือห้องต่อ · `REFUND_RELEASE` คืนเต็ม + ปล่อย · `undoNoShow` ไม่คืนเงินที่ริบอัตโนมัติ (หนี้ `moduleUnforfeitDeposit` รับเฉพาะ BOOKING)
+- ไม่มีการเขียนบัญชีตรงจากโมดูลโรงแรม
+
+### ต่อ / ย่น / ย้าย / เลื่อน
+- `extendBooking`: guard tx เฉพาะคืนใหม่ · ราคา = quote ณ ปัจจุบัน (จอแสดงก่อนยืนยันผ่าน `quoteExtension`) · ห้องเดิมไม่ว่าง ⇒ `ROOM_BUSY` + ห้องที่ย้ายได้ (ไม่ย้ายเอง)
+- `shortenBooking`: คืนอนาคต `counted=false` (แถวคงอยู่) · ทับคืนที่ `postedAuditId` ⇒ `SHORTEN_POSTED` · ไม่คืนเงินอัตโนมัติ
+- `assignRoom`: HOLD/CONFIRMED · `moveOccupancy` (id เดิม) หรือ `claimRoom` · ต่างประเภท = ไม่คิดส่วนต่าง แต่นับชั้นประเภทของประเภทใหม่ (nights.roomTypeId ย้ายตาม) · ปิดซ่อม ⇒ `ROOM_INACTIVE`
+- `rescheduleBooking` (ฐานการลาก H.2): ย้ายห้อง + เลื่อนวันเข้า/ออกใน guard tx เดียว · CHECKED_IN เลื่อนได้เฉพาะวันออก · คืนเดิมคงราคา คืนใหม่ quote ปัจจุบัน · ห้องปลายทางถูกการจองที่ยังไม่เข้าพักถือ ⇒ จัดห้องให้รายการนั้นใหม่ในประเภทเดียวกัน (ไม่ได้ ⇒ `ROOM_BUSY`) · ล้ม = ไม่เปลี่ยนอะไร
+
+### Sweeper (`sweepExpiredHolds({now?, limit?})` · minute-job `hotel.sweepExpiredHolds` ต่อจาก `rooms.expireHolds`)
+HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_EXPIRED` · nights `counted=false` · ปล่อยห้อง · folio VOID · event `hotel.booking.hold_expired` · ก้อนละ ≤ 200 · CAS ต่อใบ (ซ้อนกัน/ซ้ำ = ครั้งเดียว · X5)
+
+### นาฬิกาฉาก
+ทุกฟังก์ชันใน `booking.ts` รับ `at` (ISO) เป็นเวลาปัจจุบันเฉพาะเมื่อ `SVC_QC_CLOCK=1` (อ่าน env ตอนเรียก) · action ไม่ส่งต่อ (รับเฉพาะคีย์ที่รู้จัก) · ค่าตั้งยังอ่าน ณ เวลาจริง
+
+### Event (outbox · 3 ทะเบียน)
+`hotel.booking.created` · `confirmed` · `cancelled` · `hold_expired` · `no_show` · `changed` (ต่อ/ย่น/ย้าย/เลื่อน) · `deposit_after_expiry` — ใน tx เดียวกับสถานะ · payload `{tenantId, unitId, reservationId, groupId, code, status, source}` ไม่มี PII

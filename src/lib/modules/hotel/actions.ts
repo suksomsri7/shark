@@ -9,6 +9,7 @@ import * as hotel from "./service";
 import * as hotelRates from "./rates"; // SVC H.1
 import { resetHotelSetting, saveHotelSettings } from "./hotel-settings"; // SVC H.1
 import type { RemoveResult, SetResult } from "@/lib/core/settings"; // SVC H.1
+import * as hotelBooking from "./booking"; // SVC H.3
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -338,3 +339,104 @@ export async function resetHotelSettingAction(unitSlug: string, target: unknown)
   return r;
 }
 // ◂ SVC H.1
+
+// SVC H.3 ▸ จอง V2 (ใบสั่ง h.3 §3.5) — ร้าน/ผู้กระทำ/สิทธิ์จาก session เท่านั้น · ด่าน type HOTEL + assertHotelCan ทุกตัว · ผลเป็นข้อมูล ไม่ throw
+//   สิทธิ์: สร้าง = hotel.reservation.create · ยกเลิก = hotel.reservation.cancel (+ hotel.booking.manage เมื่อมีคืน/ริบเงิน — ตรวจใน booking.ts)
+//   อื่น = hotel.booking.manage (ย้อน «ไม่มา» ต้องเป็นผู้จัดการ/เจ้าของ — ตรวจใน booking.ts) · input รับเฉพาะคีย์ที่รู้จัก (นาฬิกาฉากไม่ผ่านทางนี้)
+type BookingActionResult = { ok: boolean; code?: string; reason?: string };
+const NOT_HOTEL_BOOKING = { ok: false, code: "NOT_FOUND", reason: "การจองห้องพักใช้ได้กับหน่วยโรงแรมเท่านั้น" } as const;
+const BOOKING_INPUT_KEYS = new Set([
+  "reservationId", "id", "groupId", "rooms", "checkIn", "checkOut", "ratePlanId", "source", "guest", "note", "couponCode", "hold", "channelRef",
+  "payType", "amountSatang", "reference", "reason", "newCheckOut", "roomId",
+]);
+function bookingInputOf(input: unknown, unitId: string): Record<string, unknown> {
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  return { ...Object.fromEntries(Object.entries(src).filter(([k]) => BOOKING_INPUT_KEYS.has(k))), unitId };
+}
+type BookingFn = (actor: unknown, ctx: unknown, input: unknown) => Promise<BookingActionResult>;
+async function runBooking(unitSlug: string, auth: UnitAuth, unitId: string, input: unknown, fn: BookingFn): Promise<BookingActionResult> {
+  const r = await fn(hotelActorOf(auth), { tenantId: auth.active.tenantId }, bookingInputOf(input, unitId));
+  if (r.ok) {
+    revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
+    revalidatePath(`/app/u/${unitSlug}/hotel`);
+  }
+  return r;
+}
+
+export async function createBookingAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.reservation.create"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, (a, c, i) => hotelBooking.createBooking(a, c, i));
+}
+
+export async function takeBookingDepositAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, hotelBooking.takeBookingDeposit);
+}
+
+export async function confirmBookingAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, hotelBooking.confirmBooking);
+}
+
+export async function cancelBookingAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.reservation.cancel"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, hotelBooking.cancelBooking);
+}
+
+export async function extendBookingAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, hotelBooking.extendBooking);
+}
+
+export async function shortenBookingAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, hotelBooking.shortenBooking);
+}
+
+export async function assignRoomAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, hotelBooking.assignRoom);
+}
+
+export async function rescheduleBookingAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, hotelBooking.rescheduleBooking);
+}
+
+export async function markNoShowAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, hotelBooking.markNoShow);
+}
+
+export async function undoNoShowAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runBooking(unitSlug, auth, unit.id, input, hotelBooking.undoNoShow);
+}
+
+export async function quoteExtendBookingAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return hotelBooking.quoteExtension(hotelActorOf(auth), { tenantId: auth.active.tenantId }, bookingInputOf(input, unit.id));
+}
+// ◂ SVC H.3

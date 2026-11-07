@@ -7,7 +7,6 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTabs } from "@/components/module-tabs";
 import { HOTEL_ROOM_STATUS_LABEL } from "@/lib/ui/status-labels";
 
 function fmtDate(d: Date) {
@@ -49,13 +48,7 @@ export default async function HotelPage({
           </>
         }
       />
-      <ModuleTabs
-        items={[
-          { href: `/app/u/${unitSlug}/hotel`, label: "ภาพรวม" },
-          { href: `/app/u/${unitSlug}/hotel/reservations`, label: "การจอง" },
-          { href: `/app/u/${unitSlug}/hotel/setup`, label: "ตั้งค่าห้อง" },
-        ]}
-      />
+      {/* SVC H.3 ▸ ถอดแท็บโมดูลซ้อน (แท็บโรงแรมอยู่ที่ layout · หนี้ H.1 · มติผู้คุม §11 ข้อ 6) ◂ */}
 
       {/* สรุปสถานะห้อง */}
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-5">

@@ -337,6 +337,16 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "booking.deposit_forfeited", label: "เมื่อร้านเก็บมัดจำนัดจองคิว (ไม่มาหรือยกเลิกช้า)" },
   { value: "booking.deposit_refunded", label: "เมื่อคืนมัดจำนัดจองคิว" },
   // ◂ SVC B.8
+  // SVC H.3 ▸ จองโรงแรม V2 — ตัวยิง `hotel/booking.ts` (ใน tx เดียวกับสถานะ) · payload { tenantId, unitId, reservationId, groupId, code, status, source }
+  //   id ล้วน (X8) · consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "hotel.booking.created", label: "เมื่อมีการจองห้องพักใหม่ (โรงแรม)" },
+  { value: "hotel.booking.confirmed", label: "เมื่อยืนยันการจองห้องพัก (รับมัดจำแล้วหรือผู้จัดการอนุมัติ)" },
+  { value: "hotel.booking.cancelled", label: "เมื่อยกเลิกการจองห้องพัก" },
+  { value: "hotel.booking.hold_expired", label: "เมื่อหมดเวลาถือห้องรอมัดจำ (ยกเลิกอัตโนมัติ)" },
+  { value: "hotel.booking.no_show", label: "เมื่อผู้เข้าพักไม่มาตามการจอง" },
+  { value: "hotel.booking.changed", label: "เมื่อการจองห้องพักเปลี่ยน (ต่อคืน · ย่นคืน · ย้ายห้อง · เลื่อนวัน)" },
+  { value: "hotel.booking.deposit_after_expiry", label: "เมื่อรับมัดจำหลังหมดเวลาถือห้องแต่ห้องเต็มแล้ว (คืนเงินอัตโนมัติ — พนักงานติดต่อลูกค้า)" },
+  // ◂ SVC H.3
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม
