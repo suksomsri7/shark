@@ -39,7 +39,8 @@ export default async function HotelReservationsPage({ params, searchParams }: { 
   // SVC H.8 ▸ แถบ «สลิปรอตรวจ N» — อ่านจากคิวสลิปกลาง (slipQueue · domain HOTEL · ไม่สร้างคิวใหม่) · ไม่มีสิทธิ์ payments.slip.review ⇒ ไม่แสดง ◂
   const sq = await slipQueue({ userId: auth.active.userId }, { tenantId: auth.active.tenantId }, { unitId: unit.id, domain: "HOTEL" });
   const pending = sq.ok ? sq.items : [];
-  const codeOf = new Map((r.ok ? r.rows : []).map((x) => [x.id, x.code]));
+  const rowsNow = r.ok ? r.rows : [];
+  const codeOf = (id: string) => rowsNow.find((x) => x.id === id)?.code ?? null;
   const slipMsg = one(sp.slip);
   const slipsBar = pending.length || slipMsg ? (
     <section className="mx-auto mb-3 w-full max-w-5xl rounded-2xl border border-[color:var(--color-line)] px-4 py-3" data-hotel-slips="">
@@ -53,7 +54,7 @@ export default async function HotelReservationsPage({ params, searchParams }: { 
             <form key={s.id} action={decideHotelSlipAction} className="flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--color-line)] px-3 py-2 text-sm">
               <input type="hidden" name="unitSlug" value={unitSlug} />
               <input type="hidden" name="slipId" value={s.id} />
-              <span className="font-semibold">{codeOf.get(s.refId) ?? "การจอง"}</span>
+              <span className="font-semibold">{codeOf(s.refId) ?? "การจอง"}</span>
               <span className="tabular-nums">฿{(s.expectedSatang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
               <span className="text-xs text-[color:var(--color-muted)]">{new Date(s.createdAt).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
               <span className="flex-1" />
