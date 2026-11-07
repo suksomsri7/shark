@@ -885,7 +885,7 @@ export type Rr3View = {
   purged: boolean;
 };
 /**
- * บัตร ร.ร.3 ของผู้พัก 1 คน (แบบพิมพ์/จอ) — ไม่มีเลขเต็ม (4 ตัวท้าย) · ลิงก์รูป/ลายเซ็น = /api/files ผูกผู้ดู (ctx.userId · ไม่ส่ง = ผู้บันทึก) อายุ ≤ 15 นาที
+ * บัตร ร.ร.3 ของผู้พัก 1 คน (แบบพิมพ์/จอ) — ไม่มีเลขเต็ม (4 ตัวท้าย) · ลิงก์รูป/ลายเซ็น = /api/files ผูกผู้ดู (ctx.userId · ไม่ส่ง = ไม่มีลิงก์) อายุ ≤ 15 นาที
  * 🔴 ผู้เรียก (หน้า) ตรวจสิทธิ์ทะเบียนก่อนเรียก (ลิงก์ = ใบผ่าน)
  */
 export async function rr3Card(ctx: unknown, input: unknown): Promise<Rr3View | GuestFail> {
@@ -910,7 +910,7 @@ export async function rr3Card(ctx: unknown, input: unknown): Promise<Rr3View | G
   const reg = await tenantDb({ tenantId }).auditLog.findFirst({ where: { action: "hotel.guest.registered", targetType: "HotelGuestRecord", targetId: row.id }, orderBy: { createdAt: "asc" }, select: { actorId: true, actorType: true } });
   const recorderId = reg && reg.actorType === "USER" ? reg.actorId : null;
   const recorder = recorderId ? await tenantDb({ tenantId }).user.findFirst({ where: { id: recorderId }, select: { name: true } }) : null;
-  const viewer = isRec(ctx) && isStr(ctx.userId) ? ctx.userId : recorderId;
+  const viewer = isRec(ctx) && isStr(ctx.userId) ? ctx.userId : null; // ผู้ตรวจ PDPA m4: ไม่รู้ผู้ดู ⇒ ไม่ออกลิงก์ไฟล์
   const nos = await cardNosOf(c, [row]);
   return {
     ok: true,
