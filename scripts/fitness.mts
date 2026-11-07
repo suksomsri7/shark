@@ -906,6 +906,9 @@ console.log("\n── F15: equals แบบ insensitive ต้องผ่าน
     // เครื่องหมายกันซ้ำที่ระบบประกอบเอง (id ของระบบ + งวด/ชนิดรายงาน)
     { file: "src/lib/modules/account/period-sweep.ts", snippet: "body: { contains: `[${sys.id}] ${periodKey}` },", count: 1 },
     { file: "src/lib/modules/account/service.ts", snippet: "where: { tenantId: row.tenantId, title: REPORT_MARKER_TITLE, body: { contains: key } },", count: 1 },
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-rcadj-key): SVC H.5 คีย์ JV ปรับบิลร้านลงห้อง `PosSale#<sale>#RCADJ#` ประกอบในเซิร์ฟเวอร์ (keyBase จาก saleId ของระบบ) — ผู้ใช้ส่งค่าเข้ามาไม่ได้
+    { file: "src/lib/modules/account/index.ts", snippet: 'const adjs = await db.accountJournalEntry.findMany({ where: { refType: "PosSale", refId: input.saleId, idempotencyKey: { startsWith: keyBase } }, select: { id: true, status: true } });', count: 1 },
+    { file: "src/lib/modules/account/index.ts", snippet: 'where: { refType: "PosSale", refId: input.saleId, status: "POSTED", reversalOfId: null, NOT: { idempotencyKey: { startsWith: keyBase } } },', count: 1 },
   ];
   const sMiss = Object.entries(F15_SEARCH_SELF_TEST.mustHit).filter(([, src]) => findRawSearch(src).length !== 1).map(([k]) => k);
   const sFalse = Object.entries(F15_SEARCH_SELF_TEST.mustNotHit).filter(([, src]) => findRawSearch(src).length !== 0).map(([k]) => k);
