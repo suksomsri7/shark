@@ -103,3 +103,8 @@ H.6: แม่บ้านเห็น "แขกเข้าแล้ว/ออ
 4. purge ลบเฉพาะเมื่อ `retainUntil ≤ now` และ `checkOutDate + retainYears ≤ now` (ไม่แตะ booking/checkout ของใบอื่น)
 5. minor: เช็กอินอ่าน rv หลัง lock + CAS ตรวจวัน · upsert เกิน maxOccupancy ⇒ OVER_OCCUPANCY เว้น MANAGER override+log · ต่างด้าวเพิ่มหลังเช็กเอาต์ใช้ checkedInAt · cardNo ลง AuditLog registered · คอลัมน์ cardNo ถาวร = หนี้ H.9 · ทางเดิม actor SYSTEM = จด
 
+
+## 12. มติผู้คุมหลัง builder รอบ 5 (7 พ.ย. · 391bb8c69)
+1. ORACLE-EDIT: PD-7/PD-8 ย้ายการจองไปอดีต > 2 ปี (purge ดูวันออกจริง+retainYears ตาม §11.4) · RR-5 กรองผู้พักจริง (2ac36cd06) · ข้อใหม่ PD-11/RR-7/TM-10
+2. **§11.5 "upsert เกิน maxOccupancy ⇒ OVER_OCCUPANCY" ยกเลิกสำหรับ v1** — ด่านเข้าพักเกินมีที่ checkInV2 (CI-12) แล้ว · การเพิ่มผู้พักระหว่างพักเป็นงานพนักงาน (GR-5/7/8 ตั้งใจเพิ่มเกิน) ⇒ หนี้ H.9: ป้ายเตือน "เกินจำนวนผู้เข้าพักที่กำหนด" บนแผงแขก (ไม่บล็อก)
+3. probe ผู้ตรวจรอบ 2 (`/root/svc-runs/h4/review/probe-h4-b.mts`, `-c.mts`) ย้ายเข้าทรีตอนรับงานโดยผู้คุม: ตัด/แก้ข้อล้าสมัย (b: E3.3 CDN = Q-H4-3 นอกใบ · E3.6 · E5.3/E5.5/E5.7 ตั้งวันออกอดีต · c: L3.1 = หนี้ H.9 เลขบัตรถาวร · L5.1 retainUntil ไม่ขยับ = ถูกต้องตาม §11.4 · L6.2 dueAt ต้องมี · R3.2 CAS ผูกวัน · R5.1 ยกเลิกตามข้อ 2 · R7.2 คิวตัดแขกย้อนเช็กอิน)
