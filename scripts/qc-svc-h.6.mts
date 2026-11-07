@@ -980,6 +980,7 @@ try {
       for (const r of rooms) eq(await hkOf(r), "CLEAN", `hkStatus ${r}`);
     } finally {
       await prisma.hotelHousekeepingLog.deleteMany({ where: { roomId: { in: rooms } } });
+      await prisma.roomOccupancy.deleteMany({ where: { roomId: { in: rooms } } }); // r0.8 S-6: ลบ occupancy ก่อนห้องเสมอ
       await prisma.hotelRoom.deleteMany({ where: { id: { in: rooms } } });
     }
   });
