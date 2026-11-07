@@ -68,3 +68,17 @@
 
 ## 8. ส่งต่อ
 H.8: หน้าสถานะแขกไม่เกี่ยว · H.10: `channel.*` ใน funnel ต่อ source OTA · H.9: ด่านเต็ม + ไล่กด · deploy: crontab VPS เรียก `crm-cron.mts minute` อยู่แล้ว (ไม่ต้องเพิ่ม)
+
+## 9. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 75 ข้อ @3526d8f6c บน wip/svc-h7-oracle)
+1. **no-show**: ขั้น 1 เรียก `markNoShow` ของ H.3 ตามเดิม — มัดจำริบผ่าน POS (บิลริบ PAID · GL) · **folio ของการจอง no-show = VOID ตาม H.3 `releaseStayTx`** (ไม่แทรก PENALTY · ไม่แตะ booking.ts/folio.ts) · แก้ §0 ขั้น 1 ให้ตรงนี้ · no-show ไม่มีมัดจำ ไม่บังคับสถานะ folio
+2. รายงานรับ `ctx = {tenantId, actorUserId}` แบบ dormReportModel (D.19) · ไม่มีสิทธิ์ `hotel.reports.read` ⇒ FORBIDDEN (หรือ NOT_FOUND) · ปิดวัน/reopen = `(actor, ctx, input)` + FORBIDDEN
+3. ชื่อช่อง DTO (ล็อก): revenueReport rows `{key, label, roomRevenueSatang, otherRevenueSatang, totalSatang}` · bookingFunnel `{created, confirmed, cancelled, noShow, confirmRateBps, cancelRateBps, leadTimeDaysAvg, alosNights}` · forecast30 `{date, onBooks, available, occupancyBps}` · housekeepingReport `{byDay:[{date, cleaned}], byUser:[{userId, cleaned}], oooOutstanding}` · depositsReport `{holdActive, depositPendingSatang, forfeitedSatang, refundedSatang}` · occupancyReport ตาม §3.3
+4. วันที่ยังไม่ปิด: รายได้ห้องสด = Σ nights.priceSatang (counted) ของ CHECKED_IN/CHECKED_OUT ในวันนั้น (ROOM ยังไม่โพสต์) · occupied/available สูตรเดียวกับ KPI
+5. arrivals = checkInDate = D และสถานะ CHECKED_IN/CHECKED_OUT (เข้าจริง) · departures = checkOutDate = D และ CHECKED_OUT · cancelledCount = cancelledAt ในวัน D · noShowCount = checkInDate = D และ NO_SHOW
+6. `getUnitKpi.occupancyTodayBps` = on-the-books (CHECKED_IN คืนนี้ + CONFIRMED เข้าวันนี้) ÷ available
+7. **ค่าตั้ง**: ใช้ `rooms.hotel.nightAuditTime` (#76 มีแล้ว) — **ไม่เพิ่ม** `rooms.hotel.auditAutoTime` · เพิ่มเฉพาะ `rooms.hotel.audit.autoClose` (bool เริ่ม true) · `rooms.hotel.audit.notifyRoles` · ฟิกซ์เจอร์แก้แล้ว
+8. แท็บรายงาน: hotel-tabs-shared available:true (เห็นทุกคน · เหมือนแม่บ้าน) · หน้า reports/audit ตรวจ `hotel.reports.read`/`hotel.audit.run` เอง ⇒ notFound (ทาง ข) · ORACLE-EDIT h.1 U-3/U-4 + h.2 U-7 ตอนรับใบ
+9. cron: `runDueAudits(now, …)` ตัดสิน isAuditDue/TOO_EARLY จาก `now` ที่ส่งเข้า (ไม่ใช่นาฬิกาเครื่อง) · หน่วย timezone อื่นปิด businessDate ตามเวลาร้าน
+10. `rooms.hotel.audit.autoClose=false` ต้องเคารพ (cron ข้ามหน่วย) · ฉาก h.7 `--clear` ถอดแถว HotelNightAudit + ROOM ที่ audit โพสต์ + คืน nights.postedAuditId/folioItemId + การจอง audit-noshow (ให้ฉาก h.5 รันต่อบนฐานเดียวกันได้)
+11. G ตาม §7 ครบ 11 ชุด (h.5/h.6 --no-regression) ✓
+
