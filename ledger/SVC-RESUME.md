@@ -37,9 +37,9 @@
 > อัปเดตล่าสุด: **27 ต.ค. 2569** · ผู้วางแผน RUN · branch ปัจจุบันของเอกสาร `session/svc-design` (worktree `/root/projects/shark-svc`)
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/SVC-RUN.md` §1 (กติกาเหล็ก) + §3 (สถานะ) + ท้าย §4 → `ledger/SVC-CORE-CONTRACT.md` → แถวใบที่จะทำใน `ledger/SVC-MASTER-PLAN.md` §4 → แบบ `ledger/DESIGN-BOOKING-QUEUE.md` / `ledger/DESIGN-DORM-HOTEL.md` (§ ที่ใบอ้าง)
 
-## ▶️ RUNNING 7 พ.ย. 2569 ~09:4xZ — RUN HOTEL **2/11 (18%)** · H.1 ✅ merge 50a35c946 · chain รับงาน H.3 กำลังรันบน l2
+## ▶️ RUNNING 7 พ.ย. 2569 ~11:3xZ — RUN HOTEL **3/11 (27%)** · H.1 ✅ 50a35c946 · H.3 ✅ e02e7e5a2 · builder H.2 บน l3
 - สถานะสด = `ledger/SVC-HOTEL-RUN.md` §2–§3 · คำถามเจ้าของ = `SVC-OWNER-QUESTIONS.md` บล็อก HOTEL 7 พ.ย.
-- เลน: **l1** ว่าง (wip/svc-h1 merge แล้ว · server 3242 หยุด) · **l2** `wip/svc-h3` @7e13a76e2 unit `svc-h3-accept` (log `/root/svc-runs/h3/accept.txt` · ข้อสอบเต็ม+G → regression 9 ชุด → tsc → fitness → build → serve 3243 → ภาพ h.3 · ตัวเฝ้า until DONE + send_later 12:13Z) → ORACLE-EDIT ถ้า h.1 G-x แดงจากสูตรเหลือขาย → PARITY ภาพ h.3 (ไม่มีแบบ · ตรวจโครง) → merge → tg 27% · **l3** ว่าง @2910198e5 (node_modules ยัง symlink — bind mount ก่อน build) → builder H.2 (Opus · `wip/svc-h2` · พรอมป์ `/root/svc-runs/h2/builder-prompt.md`) หลัง H.3 merge
+- เลน: **l1** ว่าง · **l2** ว่าง (wip/svc-h3 merge แล้ว · server 3243 หยุด · node_modules bind mount) · **l3** `wip/svc-h2` (ฐาน e02e7e5a2) builder H.2 (Opus · พรอมป์ `/root/svc-runs/h2/builder-prompt.md` · log /root/svc-runs/h2/) → ผู้ตรวจ 1 รอบ (กันจองซ้อน) → ORACLE-EDIT h.1 U-4 (แท็บปฏิทิน) → chain รับงาน (แบบ /root/svc-runs/h3/accept2.sh · host ep-royal-bar) → PARITY ภาพ 08 → merge → tg 36% · ถัดไป H.5 (l1 หรือ l2)
 - ข้อสอบพร้อมใน session/svc: h.2 (84) · h.3 (109+probe) · h.5 (92) · h.4 (106) · h.6 (95) · ฟิกซ์เจอร์ H.2–H.6 ครบ · **มติประหยัด**: ไม่เปิดผู้เขียนข้อสอบล่วงหน้า (h.7/h.8/h.10 เขียนเมื่อถึงคิว) · builder ทีละใบเมื่อ chain ใบก่อนจบ
 - ฐาน QC: backfill svc_h ครบ 4 ฐาน (ฐานหลัก 94 · l3 96 · l1 0 · l2 94) · build/serve บนเลนต้องใช้ inner script (`/root/svc-runs/h{1,3}/{build,serve}-inner.sh` · KICKOFF §3.1)
 - เครื่อง: 4 vCPU/15 GB (ไม่ KVM8) · steal เหลือ 2–16% หลังเจ้าของแก้ Hostinger · metabot หยุดไว้ (ต้อง start ก่อนใช้) · RAM ว่าง ~11G
