@@ -81,3 +81,18 @@ H2.1–H2.3: ตัวต่อเจ้าจริง implement `ChannelManage
 10. ARI-dirty hook: อนุมัติข้อยกเว้นไฟล์ H.1 ตาม §0 — `rates.ts` (saveRates/setOverride/clearOverride/saveRatePlan/archiveRatePlan/saveSeason/archiveSeason/saveHolidays/removeHoliday) + `block.ts` (blockRoom/releaseBlock) เรียก `emitAriDirty` 1 บรรทัดต่อฟังก์ชัน **หลัง commit** (lazy import facade channel · ไม่ throw) · event H.3 `hotel.booking.*` ฟังจาก consumer ไม่ต้องแก้ booking.ts
 11. registry: เพิ่ม `readyFor(kind, provider)` (เพิ่มอย่างเดียว) ⇒ CHANNEL_MANAGER ready เฉพาะ FAKE · การตั้ง `ota.enabled` ต้องมีตัวต่อ CONNECTED (settings/service.ts:722 มีแล้ว)
 12. เงิน: ตาม `pos/channel-shared.ts` `channelCommission/channelNet` เป็นแบบคิด · PLATFORM ตอน settle = ใบย่อย **H.5b** (checkout.ts `COUNTER_PAY_TYPES` ยังไม่มี PLATFORM) — ข้อสอบ H.10 ตรวจแค่คอลัมน์บนการจอง + รายงานไม่พัง
+
+## 10. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 89 ข้อ @dd0c74bc9 บน wip/svc-h10-oracle · เขียนด้วย Opus เพราะ Fable ติดโควตา) — builder ยึดตามนี้
+1. รูปการเรียก: ฟังก์ชันที่มีผู้ใช้ = `(actor, ctx, input)` แบบ hotel/* (เช่น `saveRoomMap(actor, ctx, {unitId, connectionId, roomTypeId, externalRoomId})` · `retryInbound/rejectInbound/listNeedsRoom` input `{unitId, inboxId[, reason]}`) · ตัวภายในรับ id ตรง: `buildAri(connectionId, from, to)` · `applyInbound(inboxId)` · `ingestInbound(connectionId, rows)` · `fakeEnqueueInbound(connectionId, rows)` (ในโมดูล fake/ทดสอบ)
+2. ช่วงวัน ARI = **รวมทั้งสองปลาย** (วันนี้ถึง +6 = 7 วัน) · ChannelAriJob dateFrom/dateTo กติกาเดียวกัน
+3. `pullAll(now?)` ทำครบในตัว: ดึง → ingest → apply แถว RECEIVED ตามลำดับ version (= เส้น retry แถวที่ล้มกลางทาง)
+4. ตรวจ push จาก `ChannelAriJob.payloadHash === ariHash(buildAri(...))` + `IntegrationCallLog` (op ชื่อมี push/pull/ack) — fake ไม่ต้องเก็บ fakeLastAri (ไม่มีคอลัมน์ settings · §9.2)
+5. ราคาคืนของการจอง OTA = `quoteStay` ของโรงแรม (ไม่บวก markup) · NO_RATE ⇒ gross/คืน ของช่องทาง (§9.6) · gross/commission/net เก็บตามที่ช่องทางส่งตรงตัว · ไม่ prepaid ⇒ มัดจำตามแผน (FIRST_NIGHT) แต่สถานะ CONFIRMED
+6. `ackReservation` ล้มหลัง commit ไม่ย้อนการจอง · inbox คง APPLIED (ack ซ้ำรอบหน้า · IntegrationCallLog บันทึก)
+7. ลำดับ version: แก้ไขที่ชนห้อง ⇒ version ใหม่ NEEDS_ROOM · การจองเดิมคง · retry version ต่ำกว่าที่ APPLIED แล้ว ⇒ STALE (ตรวจ STALE ก่อนดูห้องว่าง)
+8. รวมชุด ARI: PENDING 1 แถวต่อตัวต่อ ครอบช่วงรวมของ dirty ที่ทับกัน · ตัดหัวที่วันนี้ร้าน ตัดท้ายที่ ariHorizonDays
+9. `pushAriJobs(now?)` รับ now ฉีดได้ (backoff ทดสอบด้วย now+1..4 ชม.)
+10. เพดานคิวรี buildAri: **CRITICAL = ไม่มี N+1** (60 วัน ≤ 7 วัน + 1 และ ≤ 20) · ≤ 6 = เป้าหมาย MINOR (แก้ §1)
+11. ฉาก h.10 `--clear` ลบตัวต่อ `svcqc-int-ota-fake` + Channel* ของหน่วย · serve ภาพต้องมี `INTEGRATIONS_FAKE=1` (chain ผู้คุมตั้ง) · กุญแจกล่องจาก `.env.qc-svc` `INTEGRATIONS_CREDENTIALS_KEY`
+12. ไฟล์ที่แตะได้เพิ่ม: `core/permissions.ts` (ย้าย `hotel.channel.manage` ออกจาก planned) · หน้า `settings/integrations/*` เฉพาะลิงก์ไปหน้าแม็ป · rates.ts `emitAriDirty` ≥ 9 จุด · block.ts ≥ 2 จุด · บรรทัดเพิ่มเกี่ยวกับ hook เท่านั้น
+13. event `channel.reservation.*` payload มี `inboxId` (+ reservationId เมื่อมี) ไม่มี PII · DTO `listNeedsRoom` มีชื่อแขกได้ ห้ามอีเมล/เบอร์/raw
