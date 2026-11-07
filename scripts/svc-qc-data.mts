@@ -28,6 +28,8 @@ export const SQC_SYSTEMS = {
   POS: { id: "svcqc-sys-pos", type: "POS", name: "ขายหน้าร้าน (SVC QC)" },
 } as const;
 export const SQC_SYSTEM_UNITS: SqcUnitKey[] = ["barber", "massage"];
+/** SVC H.3 ▸ หน่วยที่ผูก "เฉพาะระบบ POS" เพิ่ม (มัดจำ/บิลโรงแรมผ่าน POS · ไม่ผูก INVENTORY) ◂ */
+export const SQC_POS_EXTRA_UNITS: SqcUnitKey[] = ["hotel"];
 
 // ═══════════════ บาร์เบอร์ ═══════════════
 /** เวลาทำการร้าน: จ. (1) ปิด · วันอื่น 10:00–20:00 */
@@ -84,6 +86,11 @@ export type SqcRoomType = {
   baseRateSatang: number;
   monthlyRateSatang: number | null;
   areaSqm: number | null;
+  /** SVC H.3 ▸ ความจุ (มติ 7 พ.ย. ข้อ 3 · ไม่ใส่ = ค่าเริ่มของตาราง capacity 2 · baseOccupancy 2 · maxOccupancy null · extraBed false) ◂ */
+  capacity?: number;
+  baseOccupancy?: number;
+  maxOccupancy?: number | null;
+  extraBedAllowed?: boolean;
 };
 export const SQC_DORM_BUILDING = { id: "svcqc-bld-a", name: "อาคาร A", floors: 3, sortOrder: 1 } as const;
 export const SQC_DORM_TYPES = {
@@ -109,9 +116,9 @@ export const SQC_DORM_ROOMS: SqcRoom[] = [1, 2, 3].flatMap((floorNo) =>
 // ═══════════════ โรงแรม (บ้านสวน โฮเทล · อาคาร B) ═══════════════
 export const SQC_HOTEL_BUILDING = { id: "svcqc-bld-b", name: "อาคาร B", floors: 2, sortOrder: 1 } as const;
 export const SQC_HOTEL_TYPES = {
-  superior: { id: "svcqc-rt-hotel-superior", name: "ซูพีเรีย", rentMode: "NIGHTLY", baseRateSatang: 99000, monthlyRateSatang: null, areaSqm: null },
-  deluxe: { id: "svcqc-rt-hotel-deluxe", name: "ดีลักซ์", rentMode: "NIGHTLY", baseRateSatang: 129000, monthlyRateSatang: null, areaSqm: null },
-  family: { id: "svcqc-rt-hotel-family", name: "แฟมิลี", rentMode: "NIGHTLY", baseRateSatang: 189000, monthlyRateSatang: null, areaSqm: null },
+  superior: { id: "svcqc-rt-hotel-superior", name: "ซูพีเรีย", rentMode: "NIGHTLY", baseRateSatang: 99000, monthlyRateSatang: null, areaSqm: null, capacity: 2, baseOccupancy: 2, maxOccupancy: 2, extraBedAllowed: false },
+  deluxe: { id: "svcqc-rt-hotel-deluxe", name: "ดีลักซ์", rentMode: "NIGHTLY", baseRateSatang: 129000, monthlyRateSatang: null, areaSqm: null, capacity: 2, baseOccupancy: 2, maxOccupancy: 3, extraBedAllowed: false },
+  family: { id: "svcqc-rt-hotel-family", name: "แฟมิลี", rentMode: "NIGHTLY", baseRateSatang: 189000, monthlyRateSatang: null, areaSqm: null, capacity: 4, baseOccupancy: 2, maxOccupancy: 5, extraBedAllowed: true },
 } as const satisfies Record<string, SqcRoomType>;
 const hotelRoom = (number: string, typeId: string, rentMode: "MONTHLY" | null = null): SqcRoom => ({ number, floorNo: Number(number[1]), typeId, rentMode });
 /** 14 ห้อง · B205 = เช่ารายเดือนผ่านหอ (HotelRoom.rentMode MONTHLY) · ห้องอื่น null = ตามประเภท */
@@ -176,7 +183,7 @@ export const SQC_OTHER = {
   staff: { id: "svcqc-other-staff-ek", name: "ช่างเอก", sortOrder: 1 },
   /** legacy (itemId null) — ร้าน B ไม่มีระบบสินค้า/บริการ */
   service: { id: "svcqc-other-svc-haircut", name: "ตัดผมชาย", durationMin: 45, priceSatang: 25000, depositSatang: 0, bufferMin: 0 },
-  roomType: { id: "svcqc-other-rt-deluxe", name: "ดีลักซ์", rentMode: "NIGHTLY", baseRateSatang: 129000, monthlyRateSatang: null, areaSqm: null } as SqcRoomType,
+  roomType: { id: "svcqc-other-rt-deluxe", name: "ดีลักซ์", rentMode: "NIGHTLY", baseRateSatang: 129000, monthlyRateSatang: null, areaSqm: null, capacity: 2, baseOccupancy: 2, maxOccupancy: 3, extraBedAllowed: false } as SqcRoomType,
   room: { number: "B205", floorNo: 2, typeId: "svcqc-other-rt-deluxe", rentMode: null } as SqcRoom,
   owner: {
     key: "other-owner",
@@ -437,6 +444,7 @@ export const SQC = {
   units: SQC_UNITS,
   systems: SQC_SYSTEMS,
   systemUnits: SQC_SYSTEM_UNITS,
+  posExtraUnits: SQC_POS_EXTRA_UNITS,
   barber: { hours: SQC_BARBER_HOURS, staff: SQC_BARBER_STAFF, services: SQC_BARBER_SERVICES },
   massage: { staff: SQC_MASSAGE_STAFF, services: SQC_MASSAGE_SERVICES },
   dorm: { building: SQC_DORM_BUILDING, types: SQC_DORM_TYPES, rooms: SQC_DORM_ROOMS },
