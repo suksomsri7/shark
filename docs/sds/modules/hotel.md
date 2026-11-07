@@ -249,7 +249,7 @@ HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_E
   ยกเลิกเอง (`storefront.selfCancel`) แสดงยอดคืนตาม policySnapshot ก่อน → ยอดต้องตรง (`REFUND_CHANGED`) → `cancelBookingAsGuest` (AuditLog SYSTEM + by GUEST · เงินผ่าน POS)
 - **อีเมล** `platform/hotel-mail.ts` 5 แบบ (hold · confirmed+.ics · reminder · cancelled · expired) TH/EN ตาม policySnapshot.locale · consumer ของ hotel.booking.* (หัวกลุ่มเท่านั้น · ของแถม ไม่ throw) ·
   งาน `hotel-guest-reminder` รายชั่วโมง (ส่งเมื่อถึง `storefront.reminderHour` · ครั้งเดียวต่อการจอง)
-- **กันสแปม/X7**: `checkRateLimitDb` ต่อ IP(hash)+หน่วย — ค้นหา 60/นาที · HOLD 5/10 นาที · lookup 10/10 นาที · ยกเลิก 3/ชม. · สลิป 10/10 นาที · ดูสถานะ 120/10 นาที · ไม่มี Turnstile (หนี้ · ต้องการคีย์)
+- **กันสแปม/X7**: `checkRateLimitDb` ต่อ IP(hash)+หน่วย — ค้นหา 60/นาที · HOLD 5/10 นาที · lookup 10/10 นาที · ยกเลิก 3/ชม. · สลิป 10/10 นาที · ดูสถานะ 190/10 นาที · ไม่มี Turnstile (หนี้ · ต้องการคีย์)
 - **event** (3 ทะเบียน): hotel.web.hold_created · deposit_paid · slip_attached · cancelled_by_guest · lookup_failed — payload id + สตางค์ล้วน
 - **โดเมนร้าน**: หน้าอ่าน `headers().get("host")` → `resolveTenantByHost` — โดเมนของร้านอื่นเปิดหน้าโรงแรมนี้ไม่ได้ · การพา `/` ของโดเมนร้านมาหน้าโรงแรม (`storefront.customDomainUnitId`) = หนี้ (ต้องแตะ proxy)
 - **i18n**: คีย์ `hotel.web.*` คู่ th/en · `?lang=en|th` ชนะ cookie `lang`

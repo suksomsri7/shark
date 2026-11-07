@@ -1,0 +1,70 @@
+# WO H.8 — จองออนไลน์ V2 (storefront โรงแรม · ภาพ 16 ก/ข/ค) (RUN SVC)
+
+> RUN "SVC" · worktree `/root/projects/shark-svc-l1` · branch `wip/svc-h8` (ฐาน b441ca678) · 7 พ.ย. 2569 · ผู้คุม: Opus (Fable ติดโควตา) · builder: Opus
+> สัญญา: ใบสั่ง `ledger/svc-briefs/svc-brief-h.8.md` (§9 + §10 ชนะ §0–§8) · ภาพ `ledger/design-dorm/16-hotel-online-booking.png`
+> ข้อสอบใบ: `scripts/qc-svc-h.8.mts` (84 ข้อ · **builder ไม่แก้** — ข้อแย้ง §7)
+> ระดับตรวจ: **เข้ม** (สาธารณะ X7 + เงิน/มัดจำ) — ผู้ตรวจ 2 รอบ (ยังไม่ได้ทำ · ผู้คุมปล่อย)
+> ฐาน: qc-svc เลน l1 (`ep-royal-lake`) ผ่าน `scripts/qc-svc.sh`
+
+## 1. ไฟล์ที่แตะ
+| ไฟล์ | ใหม่/แก้ | ทำอะไร |
+|---|---|---|
+| `src/lib/platform/hotel-web.ts` | ใหม่ | public API `(input, opts{clientKey,now?,deps?})`: publicInfo · publicSearch · publicQuote · publicCreateHold · publicPayDeposit · publicAttachSlip · publicStatus · publicLookup · publicCancel · holdFormStart · hotelWebClientKey · hotelHostAllowed · consumer `onHotelSlipApproved` · rate limit (checkRateLimitDb · คีย์ `hw:<op>:<hash หน่วย>:<hash IP>`) · event hotel.web.* 5 |
+| `src/lib/platform/hotel-mail.ts` | ใหม่ | `notifyGuest(kind, id, locale?, deps?)` · `GUEST_MAIL_KINDS` 5 แบบ TH/EN · .ics · `onHotelBookingEvent` (consumer · หัวกลุ่มเท่านั้น · ไม่ throw) · `runGuestReminders` |
+| `src/lib/modules/hotel/storefront.ts` | ใหม่ (ชื่อใน §1 · ใช้เป็นชั้นข้อมูลอ่านอย่างเดียว ไม่ใช่ API สาธารณะ — §10.12) | webUnitBySlugs · webSearchBundle (หน่วย+ประเภท+กฎยกเลิก+ห้องว่าง buildAvailability = 1 คิวรี) · webPlansOf · webBookingFacts · webBookingByCode · webBookingByIdem · planCancelRules · hotelDepositSlipFacts (+settled) · slipByIdemKey · lineOaBasicId · guestMailFacts · arrivalsWithEmailOn — ไม่ import prisma ดิบ (SQL ดิบผ่าน client ขยายแบบ sweepExpiredHolds) |
+| `src/lib/modules/hotel/booking.ts` | แก้ **เพิ่มอย่างเดียว** (diff ไม่มีบรรทัดลบ) | input `locale` · `coupon` (snapshot) · `idempotencyKey` → policySnapshot.{locale, coupon, webIdem} · ล็อกกุญแจใน guard tx ⇒ `DUPLICATE_REQUEST` · `cancelBookingAsGuest(ctx, input)` (AsyncLocalStorage ⇒ ด่าน actor null เฉพาะยกเลิก · AuditLog after.by "GUEST") |
+| `src/lib/modules/hotel/index.ts` · `actions.ts` | เพิ่ม | export ของ H.8 · `decideHotelSlipAction` (decideSlip ของสลิปกลาง) |
+| `src/app/(store)/s/[tenantSlug]/[unitSlug]/hotel/{page, book/page, pay/[publicToken]/page, r/[publicToken]/page, my/page}.tsx` · `_web.tsx` · `actions.ts` · `slip/[publicToken]/route.ts` | แก้/ใหม่ | S1–S6 มือถือ 390 · TH/EN (`?lang=` ชนะ cookie) · โดเมนร้าน guard (`headers().get("host")` → `resolveTenantByHost`) · actions 4 ตัว (เดิม createPublicReservationAction ถูกแทน · URL คง) |
+| `src/components/store/hotel/*` | ใหม่ | SearchBar · RoomTypeCard · BookingForm (client) · DepositPay (client) · HoldCountdown (client) · StatusCard · LookupForm · CancelDialog (client) · format.ts |
+| `src/app/app/u/[unitSlug]/hotel/reservations/page.tsx` | แก้ | แถบ «สลิปรอตรวจ N» จาก `slipQueue` (domain HOTEL) + อนุมัติ/ปฏิเสธผ่าน `decideSlip` (ไม่สร้างคิวใหม่) |
+| `src/lib/i18n/dict.ts` | เพิ่ม | คีย์ `hotel.web.*` 91 คู่ th/en |
+| `src/lib/core/settings/defs/rooms.ts` | เพิ่มคีย์อย่างเดียว | `rooms.hotel.storefront.{enabled, maxRooms, selfCancel, badgeTh, badgeEn, customDomainUnitId, heroImages, description.th, description.en, reminderHour}` (unitTypes HOTEL · group hotel) |
+| `src/lib/outbox-consumers.ts` · `src/lib/automation/labels.ts` · `src/lib/platform/minute-jobs.ts` | เพิ่ม | สาขา HOTEL ของ `payment.slip.approved` (bothMain) · อีเมลต่อ hotel.booking.created/confirmed/cancelled/hold_expired (compose) · consumer hotel.web.* 5 · ป้ายไทย 5 · `hotel-guest-reminder` |
+| `scripts/svc-qc-hotel-web-scene.mts` · `docs/sds/modules/hotel.md` §storefront | ใหม่/เพิ่ม | ฉาก §6 · เอกสาร |
+
+ไม่แตะ: prisma/** · pos/** · coupon/** · domain/** · email.ts · proxy.ts · payment/** · spam-guard · rates/pricing/availability.ts · service.ts · svc-qc-data · oracle
+
+## 3. ผลข้อสอบ (รันโดย builder — ผู้คุมรันซ้ำ)
+(ดูรายงาน builder · JSON_SUMMARY จริงอยู่ใน /root/svc-runs/h8/builder/*.log)
+
+## 4. กลุ่ม X
+| กลุ่ม | เกี่ยว? | check ids |
+|---|---|---|
+| X1 ข้ามร้าน/หน่วย | ใช้ | SR-5 · ST-5 · PY-4 (payload ร้าน B) · token ร้านอื่น = คำตอบเดียวกับ token มั่ว |
+| X3 ยิงพร้อมกัน | ใช้ | HD-8 (double submit = 1 แถว · ล็อก webIdem ใน guard tx) · X-1 (20 ทางห้องสุดท้าย = 1) · PY-4 |
+| X4 ส่งซ้ำ | ใช้ | PY-4 (consumer ซ้ำ/พร้อมกัน = ใบรับ 1 · สลิปที่ลงเงินแล้วข้าม) · PY-7 (ส่งซ้ำหลังคืนอัตโนมัติไม่สร้างใบรับ/ใบคืนเบิ้ล) · NT-4 |
+| X5 งานตามเวลา | ใช้ | NT-5 (run ซ้ำ = 0 · จองสิทธิ์ส่งคำสั่ง SQL เดียว) |
+| X6 ไฟล์ | ใช้ | PY-2 (> 5 MB · gif · ไบต์ไม่ใช่รูป · ว่าง) — ตรวจที่ slip-verify |
+| X7 สาธารณะ | ใช้ | SR-7 · HD-12 · PY-2 · ST-9 · X-4 · ST-3/ST-4 (lookup คำตอบเดียว · เวลาเท่ากัน) · X-2 · HD-9 honeypot/ตั๋ว |
+| X8 PDPA | ใช้ | HD-1 · HD-12 · PY-1 · PY-3 · ST-3 · ST-6 · X-3 (event/audit/ถัง rate ไม่มี PII) |
+| X9 | N-A | ไม่มีการกระทำอันตรายของพนักงานใหม่ (ตัดสินสลิปใช้ decideSlip เดิม: เหตุผลบังคับ + audit) |
+| X10 | ใช้ | ST-1 (DTO ไม่มีโทเคน/เบอร์ · อีเมล mask) · PY-1 (ผลสลิปไม่มี URL/path) · ไฟล์สลิป private ผ่าน slip-verify |
+
+## 7. ข้อแย้ง oracle (ผู้คุมตัดสิน)
+1. **PY-4 "decideSlip ซ้ำ ⇒ INVALID_STATE"** — ข้อสอบบรรทัด 1053–1054 ส่ง `transRef` ใหม่ (`H8${uid()}`) ให้สลิปที่อนุมัติไปแล้ว (มี transRef ของรอบแรก) ⇒ `payment/slip-verify.ts` decideSlip ตรวจ "เลขอ้างอิงที่กรอกไม่ตรงกับเลขในสลิป" (fix 4/5 · บรรทัด 666) **ก่อน** ตรวจสถานะ (บรรทัด 670) ⇒ ได้ `VALIDATION` ไม่ใช่ `INVALID_STATE` — พฤติกรรมของชิ้นกลาง R0.6 (ใบนี้ห้ามแตะ payment/**) · ส่วนอื่นของ PY-4 (ใบรับ 1 · depositSaleId เดิม · payload ปลอมไม่ทำอะไร) ผ่าน · เสนอ ORACLE-EDIT: รับ `/INVALID_STATE|VALIDATION/` หรือส่ง transRef เดิม/ไม่ส่ง
+2. **Q-1 "override ทุกแถว = 169,000"** ขัดกับ **Q-2 "BREAKFAST 398,000 · NONREF 286,200"** — เครื่องคิดราคา H.1 ใช้ override ต่อแผน (แผนตรงก่อน · null = ทุกแผน) ไม่ได้ "ต่อยอด" อาหารเช้า/ส่วนลดจาก override ⇒ ถ้ามีแต่ override 169,000 คืนเสาร์ของ BREAKFAST/NONREF = 169,000 (รวม 358,000/303,100 ≠ ฟิกซ์เจอร์) · ฉากจึงตั้ง override ต่อแผน STANDARD 169,000 · BREAKFAST 209,000 · NONREF 152,100 (reason มี mark h8) ⇒ Q-2 ผ่าน · Q-1 ข้อ `ov.every(price === 169000)` แดง (ข้อสอบบรรทัด 1685) · เสนอ ORACLE-EDIT: ตรวจเฉพาะแถว mark h8 ต่อแผน `{STANDARD:169000, BREAKFAST:169000+20000×2, NONREF:floor90(169000)}`
+3. **Q-4 "override ฉากหาย ⇒ 0 แถว"** — ข้อสอบนับ override ดีลักซ์ "ทุกแถว" ของวันเสาร์ฉาก (บรรทัด 1658 · 1717) · สัปดาห์นี้วันเสาร์ฉาก (2026-11-14) = วันแก้มือของฉาก h.1 (วันที่ 14 ของเดือน · reason "งานวิ่งในเมือง" · ratePlanId null) ⇒ หลัง `--clear` ยังเหลือแถวของ h.1 1 แถว (ได้ [0,0,1]) · `--clear` ลบเฉพาะของฉาก h.8 ถูกต้องตามใบ · เสนอ ORACLE-EDIT: นับเฉพาะแถว reason มี mark h8 (Q-1 `overrideRows` ก็ควรกรองแบบเดียวกัน)
+4. **SR-10 (MINOR) SQL ≤ 6** — ทำได้ 11 คำสั่ง (หน่วย+ประเภท+กฎยกเลิก+ห้องว่าง 1 · ค่าตั้ง 2 · loadPricingContext 8 ของ H.1 ที่ห้ามแตะ) · < 400 ms ผ่าน (~45 ms) · ธง lowStock ผ่าน — ≤ 6 ต้องแก้ rates.ts (ต้องห้าม) · §10.6 ระบุเป็นเป้าหมาย MINOR
+
+## 7.1 มติทางเทคนิคของ builder (ต่างจากใบ — ผู้คุมตรวจ)
+- **cancel by GUEST**: booking.ts ห้ามลบบรรทัด ⇒ แก้ลายเซ็น `cancelBooking` ไม่ได้ ⇒ เพิ่ม `cancelBookingAsGuest(ctx, input)` ที่เรียก `cancelBooking(null, …)` ใต้ AsyncLocalStorage `{by:"GUEST"}` (ด่าน gate เปิด actor null เฉพาะ need `hotel.reservation.cancel` + store GUEST · audit ใส่ `by: "GUEST"`) · event payload เดิม (§10.11)
+- **double submit**: ไม่มีคอลัมน์ idempotency ⇒ hash(unitId:key) เก็บ `policySnapshot.webIdem` · ใน guard tx (หลังล็อกประเภท) ล็อก advisory ต่อกุญแจแล้วหาใบเดิม ⇒ `DUPLICATE_REQUEST` (รหัสใหม่ต่อท้าย union) ⇒ hotel-web คืนใบเดิม
+- **ค้นหา ≤ 14 คิวรี**: ใช้ `buildAvailability` (สูตรเดียวกับ hotelAvailability/availabilityInTx) กับข้อมูลห้อง/BLOCK-LEASE/คืนที่นับที่ดึงในคิวรีเดียวกับหน่วย — `hotelAvailability.get` ใช้ 4 คิวรี (occupancyRange include room = 2) ทำให้เกิน
+- **สลิปซ้ำ**: replay ด้วยกุญแจเดิมคืนสลิปเดิมก่อนเรียก submitSlip (ไฟล์ใหม่ไม่ถูกเทียบ) · consumer ข้ามสลิปที่มีแถวรับเงิน `slip:<id>` แล้ว (กันใบรับ/ใบคืนเบิ้ลเมื่อ event ส่งซ้ำหลังคืนอัตโนมัติ — PY-7 เดิมได้ deposit_after_expiry 2)
+- **งานเตือน**: ลงทะเบียน `cadence: "hourly"` · everyMinutes 60 (ไม่ใช่ daily ตาม §10.5) — ตัวรัน daily รัน 03:40 ไทย จะไม่ถึง reminderHour 10:00 · ส่งเมื่อชั่วโมงไทย ≥ reminderHour ของสาขา · จองสิทธิ์ส่งด้วยถัง `hw:mail:reminder:<id>` (limit 1 · 3 วัน)
+- **ค่าตั้งใหม่อยู่ group hotel** แต่การ์ด «หน้าจอง» ของหน้าตั้งค่าโรงแรม (`src/components/hotel/hotel-settings-shared.ts` · นอกไฟล์ใบ) ยังมีแค่ customDomain ⇒ ร้านยังแก้ค่าใหม่จากหน้าตั้งค่าไม่ได้ (หนี้)
+- **SCENE_SUMMARY**: มีการเปลี่ยน ⇒ `{created,updated,removed,checkIn,checkOut,holdToken,confirmedToken,qs}` · ไม่เปลี่ยน ⇒ `{0,0,0}` เป๊ะ (Q-3) · token+qs อยู่บรรทัด `SCENE_IDS` ทุกรอบ (chain อ่านได้เสมอ)
+- **x-shark-host**: ไม่ได้ทดสอบว่า header จาก proxy ถึงหน้า — หน้าอ่าน `host` ตรง (§9.5)
+
+## 8. หนี้
+| เรื่อง | เหตุผล | ใบที่จะปิด |
+|---|---|---|
+| ส่วนลดคูปองหักตอน settle (createSale couponSystemId/couponCode) | H.5 checkout ยังไม่ส่ง · v1 จด snapshot + แสดง "หักตอนเช็กเอาต์" | H.5b |
+| Turnstile / captcha | ไม่มีคีย์ (Q-H8-1) · v1 = rate limit + honeypot + ตั๋วเริ่มฟอร์ม | เมื่อเจ้าของให้คีย์ |
+| โดเมนร้าน `/` → หน้าโรงแรม (`storefront.customDomainUnitId`) | ต้องแตะ proxy/หน้า root (นอกใบ) · v1 = กันโดเมนร้านอื่นเปิดหน้าโรงแรม | ใบโดเมน |
+| การ์ดตั้งค่า «หน้าจอง» ยังไม่มีคีย์ storefront.* ใหม่ | ไฟล์ hotel-settings-shared.ts นอกใบ | H.x ตั้งค่า |
+| Beam/QR ไดนามิก (PaymentIntent) | v1 = QR สถิต + สลิปกลาง (§9.3) | C.1 / ใบเกตเวย์ |
+| ข้อความ LINE จริงถึงแขก · ฝากชื่อรอห้อง · self-reschedule · prefill สมาชิก · รีวิว/gallery | นอกขอบเขต v1 | H2/C.2 · ใบหลัง |
+
+## 9. คืนสภาพ qc-svc
+- ข้อสอบ h.8 ลบร้าน `svc-h8-*` + ถัง rate ใน finally (Z-1 ผ่าน) · ฉาก h8 ค้างบน svcqc ได้ (ภาพใช้) — `--clear` ลบเฉพาะของฉาก

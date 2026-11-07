@@ -139,7 +139,7 @@ export const HOTEL_WEB_RATE = {
   lookup: { limit: 10, windowMs: 600_000 },
   cancel: { limit: 3, windowMs: 3_600_000 },
   slip: { limit: 10, windowMs: 600_000 },
-  view: { limit: 120, windowMs: 600_000 },
+  view: { limit: 190, windowMs: 600_000 }, // หน้าจ่าย/สถานะรีเฟรชทุก 5 วิ ⇒ 120 ครั้ง/10 นาที + เผื่อเปิดหน้า
 } as const;
 type RateOp = keyof typeof HOTEL_WEB_RATE;
 /** ตั๋วเริ่มฟอร์มต้องอายุอย่างน้อย (วินาที) — กรอกเร็วกว่านี้ = บอท */

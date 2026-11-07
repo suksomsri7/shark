@@ -40,11 +40,37 @@ export default async function HotelReservationsPage({ params, searchParams }: { 
   const sq = await slipQueue({ userId: auth.active.userId }, { tenantId: auth.active.tenantId }, { unitId: unit.id, domain: "HOTEL" });
   const pending = sq.ok ? sq.items : [];
   const rowsNow = r.ok ? r.rows : [];
-  const codeOf = (id: string) => rowsNow.find((x) => x.id === id)?.code ?? null;
   const slipMsg = one(sp.slip);
-  const slipsBar = pending.length || slipMsg ? (
+  function codeOf(id: string): string | null {
+    for (const row of rowsNow) if (row.id === id) return row.code;
+    return null;
+  }
+  const slipsBar = SlipsBar({ unitSlug, pending, slipMsg, codeOf });
+  return (
+    <>
+    {slipsBar}
+    <BookingList
+      unitSlug={unitSlug}
+      rows={r.ok ? r.rows : []}
+      total={r.ok ? r.total : 0}
+      page={r.ok ? r.page : 1}
+      pageSize={r.ok ? r.pageSize : 50}
+      filters={filters}
+      canCreate={canCreate}
+      nowMs={Date.now()}
+    />
+    </>
+  );
+}
+
+// SVC H.8 ▸ แถบ «สลิปรอตรวจ N» (คิวสลิปกลาง domain HOTEL) — อนุมัติ/ปฏิเสธผ่าน decideHotelSlipAction ◂
+type PendingSlip = { id: string; refId: string; expectedSatang: number; createdAt: string };
+function SlipsBar({ unitSlug, pending, slipMsg, codeOf }: { unitSlug: string; pending: PendingSlip[]; slipMsg: string; codeOf: (id: string) => string | null }) {
+  if (!pending.length && !slipMsg) return null;
+  const openAll = Boolean(pending.length) && pending.length < 4;
+  return (
     <section className="mx-auto mb-3 w-full max-w-5xl rounded-2xl border border-[color:var(--color-line)] px-4 py-3" data-hotel-slips="">
-      <details open={pending.length > 0 && pending.length <= 3}>
+      <details open={openAll}>
         <summary className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm font-semibold">
           <span>สลิปรอตรวจ {pending.length}</span>
           {slipMsg ? <span className="text-xs font-normal text-[color:var(--color-muted)]">{slipMsg === "ok" ? "บันทึกผลตรวจแล้ว" : "บันทึกผลไม่สำเร็จ — ตรวจเลขอ้างอิงและเหตุผลแล้วลองอีกครั้ง"}</span> : null}
@@ -67,20 +93,5 @@ export default async function HotelReservationsPage({ params, searchParams }: { 
         </div>
       </details>
     </section>
-  ) : null;
-  return (
-    <>
-    {slipsBar}
-    <BookingList
-      unitSlug={unitSlug}
-      rows={r.ok ? r.rows : []}
-      total={r.ok ? r.total : 0}
-      page={r.ok ? r.page : 1}
-      pageSize={r.ok ? r.pageSize : 50}
-      filters={filters}
-      canCreate={canCreate}
-      nowMs={Date.now()}
-    />
-    </>
-  );
+    );
 }
