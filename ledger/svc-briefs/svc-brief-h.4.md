@@ -96,3 +96,10 @@ H.6: แม่บ้านเห็น "แขกเข้าแล้ว/ออ
 4. รับมติ builder: ลงชื่อแทนห้องครอบเฉพาะผู้พักที่มีอยู่ตอนลงชื่อ · undoCheckIn = OWNER/MANAGER + hotel.booking.manage · ข้อมูลอ่อนไหวไม่มีคอลัมน์ (เพศ·อาชีพ·ที่อยู่·ตรวจลงตรา·ตม.6) เก็บในกล่องลับเดียวกับเลขเอกสาร
 5. SD-1/Q-* รอ H.5 merge · ผู้คุม merge H.5 เข้า wip/svc-h4 ก่อน chain · conflict `[id]/page.tsx` ผู้คุมแก้
 
+## 11. มติผู้คุมหลังผู้ตรวจรอบ 2 กฎหมาย (7 พ.ย. · 09d7ae597)
+1. วันเข้าพักในไฟล์ ตม.30 = วันไทย/timezone ร้าน (ไม่ใช่ UTC)
+2. ทะเบียน ร.ร.4 · คิว/ไฟล์ ตม.30 · ลำดับเลขบัตร ร.ร.3 นับเฉพาะผู้พักจริง (การจอง CHECKED_IN/CHECKED_OUT) · แถวลงทะเบียนล่วงหน้าที่การจอง CANCELLED/NO_SHOW เก็บไว้ (purge ตาม PDPA) แต่ไม่อยู่ในทะเบียนกฎหมาย · `Rr4Row.reservationStatus`
+3. ร.ร.4 เพิ่ม อายุ/วันเกิด · อาชีพ · ที่อยู่ · เลขเอกสาร: ค่าเริ่ม last4 · โหมด "สำเนานายทะเบียน" (`?registrar=1`) เฉพาะ `hotel.guest.viewId` ⇒ เลขเต็ม + AuditLog revealed ต่อแขก — **ค่าปลอดภัยระหว่างรอ J3** (Q-H4-4)
+4. purge ลบเฉพาะเมื่อ `retainUntil ≤ now` และ `checkOutDate + retainYears ≤ now` (ไม่แตะ booking/checkout ของใบอื่น)
+5. minor: เช็กอินอ่าน rv หลัง lock + CAS ตรวจวัน · upsert เกิน maxOccupancy ⇒ OVER_OCCUPANCY เว้น MANAGER override+log · ต่างด้าวเพิ่มหลังเช็กเอาต์ใช้ checkedInAt · cardNo ลง AuditLog registered · คอลัมน์ cardNo ถาวร = หนี้ H.9 · ทางเดิม actor SYSTEM = จด
+
