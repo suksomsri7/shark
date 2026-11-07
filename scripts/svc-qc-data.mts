@@ -1678,7 +1678,7 @@ SQC_VISUAL_SPECS["h.4"] = [
 //   🔴 ฉาก h.6 ต่อยอดฉาก h.2 (ห้องชุดเดียวกับภาพ 08 · ต้อง --clear ฉาก h.3 แล้วรันฉาก h.2 ก่อน) · เขียนผ่าน API ของ H.6/H.5 เท่านั้น (hkSetStatus · hkStart · postMinibar · settleAndCheckOut สำหรับ B203-out · hkNote ผ่าน hkStart/คำขอแขก)
 //   🔴 "วันนี้" ของฉาก = วันนี้ไทย ณ เวลารัน · เวลาเริ่มทำ B203 = now − 18 นาที (startedAt ผ่าน `at` ใต้ SVC_QC_CLOCK=1)
 // ═════════════════════════════════════════════════════════════════════════════
-export type SqcHkRoom = { room: string; hkStatus: "DIRTY" | "CLEAN" | "INSPECTED" | "OUT_OF_ORDER"; context: "DEPARTED" | "DEPARTING" | "ARRIVING" | "STAYOVER" | "VACANT" | "OOO"; mine?: boolean; guestRequest?: string; note?: string; startedMinutesAgo?: number; done?: boolean };
+export type SqcHkRoom = { room: string; hkStatus: "DIRTY" | "CLEAN" | "INSPECTED" | "OUT_OF_ORDER"; context: "DEPARTED" | "DEPARTING" | "ARRIVING" | "STAYOVER" | "VACANT" | "OOO"; mine?: boolean; guestRequest?: string; note?: string; startedMinutesAgo?: number; done?: boolean; /** มีจอง CONFIRMED เข้าภายใน 7 วัน (มติ h.6 ข้อ 4 · นับใน total · hkBoard ส่ง `upcoming`) */ upcoming?: boolean };
 export const SQC_HOTEL_HK_SCENE = {
   mark: "SvcQcScene:h6",
   unit: "hotel" as SqcUnitKey,
@@ -1692,7 +1692,7 @@ export const SQC_HOTEL_HK_SCENE = {
     { room: "B204", hkStatus: "INSPECTED", context: "ARRIVING", mine: true, guestRequest: "ขอหมอนเพิ่ม 1" },
     { room: "B101", hkStatus: "DIRTY", context: "STAYOVER", mine: true, guestRequest: "แขกขอทำหลัง 13:00" },
     { room: "B105", hkStatus: "DIRTY", context: "STAYOVER", mine: true, note: "เปลี่ยนผ้าเช็ดตัว · ป้าย 'ไม่ต้องทำ' เมื่อวาน" },
-    { room: "B202", hkStatus: "INSPECTED", context: "VACANT", done: true }, // ✓ พร้อมรับ (Booking.com เข้า +2 ⇒ บริบทวันนี้ = VACANT · ป้าย "พร้อมรับ <ชื่อ>" เมื่อ INSPECTED และมีจองใน 7 วัน — มติ h.6 ข้อ 3)
+    { room: "B202", hkStatus: "INSPECTED", context: "VACANT", done: true, upcoming: true }, // ✓ พร้อมรับ (Booking.com เข้า +2 ⇒ บริบทวันนี้ = VACANT · ป้าย "พร้อมรับ <ชื่อ>" เมื่อ INSPECTED และมีจองใน 7 วัน — มติ h.6 ข้อ 3)
     { room: "B103", hkStatus: "OUT_OF_ORDER", context: "OOO" }, // BLOCK ของฉาก h.2
   ] as SqcHkRoom[],
   /** ค่าตั้งที่ฉากเปิดบนหน่วย svcqc (คืนค่าตอน --clear) */
