@@ -1469,6 +1469,18 @@ const baseConsumers: Record<string, OutboxHandler> = {
     await crm.privacy.onContactErased({ tenantId: evt.tenantId, payload: evt.payload });
   }, withAutomation(async () => {})),
   // ◂ CRM C3.9
+  // SVC H.3 ▸ จองโรงแรม V2 (ใบสั่ง h.3 §5 · CC §7) — ยิงจาก `hotel/booking.ts` ใน tx เดียวกับการเปลี่ยนสถานะ ·
+  //   payload { tenantId, unitId, reservationId, groupId, code, status, source } id ล้วน (X8/X10 · ไม่มีชื่อ/เบอร์/อีเมลผู้เข้าพัก) ·
+  //   งานหลัก = no-op (สถานะ/คืน/ห้อง/เงินเขียนครบใน booking.ts แล้ว) — บรรทัดเหล่านี้ปิด event เป็น DONE (ไม่มี consumer = คิวตัน)
+  //   + ทริกเกอร์กฎอัตโนมัติ/เว็บฮุคของร้าน · แจ้งผู้เข้าพัก (Q9) = ใบหลัง
+  "hotel.booking.created": withAutomation(async () => {}),
+  "hotel.booking.confirmed": withAutomation(async () => {}),
+  "hotel.booking.cancelled": withAutomation(async () => {}),
+  "hotel.booking.hold_expired": withAutomation(async () => {}),
+  "hotel.booking.no_show": withAutomation(async () => {}),
+  "hotel.booking.changed": withAutomation(async () => {}),
+  "hotel.booking.deposit_after_expiry": withAutomation(async () => {}),
+  // ◂ SVC H.3
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —

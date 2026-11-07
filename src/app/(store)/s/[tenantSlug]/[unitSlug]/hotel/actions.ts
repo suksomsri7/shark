@@ -52,6 +52,7 @@ export async function createPublicReservationAction(formData: FormData) {
     checkOutDate: to,
     guestName,
     guestPhone: guestPhoneRaw,
+    source: "WEB", // SVC H.3 ▸ แหล่งที่มาของการจองหน้าเว็บ ◂
   });
   if (!res.ok) backErr("failed"); // เหตุผลจริง (ห้องเต็มพอดี ฯลฯ) อยู่ใน service — ผู้ใช้เห็นข้อความเดียวที่แปลได้
 

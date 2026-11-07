@@ -288,10 +288,10 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "hotel.channel.manage": "ช่องทาง OTA",
     },
     // SVC H.0 ▸ คีย์ที่ยังไม่มีหน้า/โค้ดเรียก (H.1–H.10 เปิดใช้จริง · hotel.settings.edit ใช้แล้วที่ค่าตั้ง rooms.hotel.*) ◂
+    // SVC H.3 ▸ hotel.booking.manage ใช้จริงแล้ว (hotel/booking.ts + actions จอง V2) ⇒ ออกจาก planned ◂
     planned: [
       "hotel.rates.read",
       "hotel.rates.write",
-      "hotel.booking.manage",
       "hotel.folio.post",
       "hotel.folio.void",
       "hotel.guest.register",

@@ -409,6 +409,7 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/school/service.ts": 1, // markPaid · POS ตัวแรกของร้าน (O21)
   "src/lib/modules/shop/service.ts": 1, // confirmOrderPaid · POS ตัวแรกของร้าน (O21)
   "src/lib/modules/ticket/service.ts": 1, // markPaid · systemForUnit
+  "src/lib/modules/hotel/booking.ts": 3, // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-createSale): SVC H.3 จอง V2 — มัดจำ (DEPOSIT tender) · ริบ · บิลค่าธรรมเนียมยกเลิก ผ่าน POS
   "src/lib/modules/pos/service-bill.ts": 1, // ORACLE-EDIT (ผู้คุม 31 ต.ค. · G1-D) SVC B.10 จุด 1 บิลจากคิว: payServiceBill → createSale จุดเดิม (ใบสั่ง svc-brief-b.10 §1 · เจ้าของอนุญาต) — 19 จุด/16 ไฟล์
 };
 

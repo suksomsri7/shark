@@ -521,6 +521,15 @@ registerMinuteJob({
   run: async (now) => (await import("@/lib/modules/rooms")).expireHolds(now),
 });
 // ◂ SVC R0.8
+// SVC H.3 ▸ โรงแรม: HOLD ที่หมดเวลา ⇒ CANCELLED HOLD_EXPIRED (nights ไม่นับ · ปล่อยห้อง · folio VOID · event hold_expired) — ทุกนาที · ข้ามร้าน ·
+//   ต่อจาก rooms.expireHolds (ห้องจริง) · โหลด facade โรงแรมตอนรันเท่านั้น · idempotent: CAS สถานะต่อใบ ⇒ route + crontab ซ้อนกัน แต่ละใบครั้งเดียว (X5)
+registerMinuteJob({
+  name: "hotel.sweepExpiredHolds",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async () => (await import("@/lib/modules/hotel")).sweepExpiredHolds({}),
+});
+// ◂ SVC H.3
 // SVC B.3 ▸ ระบบจอง: ปล่อยช่องที่ลูกค้าจองเองแล้วไม่จ่ายมัดจำในเวลา (ทุกนาที · ข้ามร้าน · ใบสั่ง svc-brief-b.3 §3.3) — โหลดตอนรันเท่านั้น ·
 //   idempotent: UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED ⇒ route + crontab ยิงซ้อนกัน แต่ละแถวปล่อยครั้งเดียว (X5)
 registerMinuteJob({

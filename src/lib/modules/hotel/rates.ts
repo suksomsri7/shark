@@ -14,7 +14,7 @@ import { tenantDb, type TenantDb } from "@/lib/core/db";
 import { canAccessUnit, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { bkkYmd } from "@/lib/core/quiet-hours";
 import { resolveSettings, resolveSettingsMany } from "@/lib/core/settings";
-import { occupancyRange } from "@/lib/modules/rooms";
+import { hotelAvailability } from "./availability"; // SVC H.3 ▸ เหลือขาย = สูตรเดียว ◂
 import {
   addDaysYmd,
   dayNumber,
@@ -73,8 +73,6 @@ const MONEY_MAX = 1_000_000_000; // เพดานเดียวกับ MONE
 const PREVIEW_MAX_DAYS = 62;
 const CONTEXT_MAX_DAYS = 400;
 const OVERRIDE_MAX_DAYS = 62;
-const ACTIVE_RV = ["BOOKED", "CHECKED_IN", "HOLD", "CONFIRMED"] as const;
-const HOTEL_REF = "HotelReservation";
 const KEY = {
   weekendDays: "rooms.hotel.weekendDays",
   rounding: "rooms.money.rounding",
@@ -826,42 +824,18 @@ export async function loadPricingContext(ctx: unknown, unitId: unknown, opts?: u
 }
 
 // ───────────────────────── ปฏิทินราคา + เหลือขาย ─────────────────────────
-/** ห้องเหลือขายต่อ (ประเภท, วัน) — ห้องขายรายคืนได้ − ห้องถูกถือโดยสัญญา/กันห้อง − max(คืนที่นับ, ห้องที่การจองถือ) */
+/** ห้องเหลือขายต่อ (ประเภท, วัน) — SVC H.3 ▸ สูตรเดียวของโรงแรม (hotelAvailability · ใบ h.3 §0): เหลือ = available · ขายได้ = total ◂ */
 async function remainingOf(tenantId: string, unitId: string, from: string, to: string): Promise<{ sellable: Map<string, number>; used: Map<string, number> }> {
-  const db = tenantDb({ tenantId, unitId });
-  const [rooms, occ, nightsCount] = await Promise.all([
-    db.hotelRoom.findMany({ where: { active: true }, select: { id: true, roomTypeId: true, rentMode: true, status: true, hkStatus: true, roomType: { select: { rentMode: true } } } }),
-    occupancyRange({ tenantId }, { unitId, start: from, end: addDaysYmd(to, 1) }),
-    db.hotelBookingNight.groupBy({
-      by: ["roomTypeId", "date"],
-      where: { counted: true, date: { gte: dbDate(from), lte: dbDate(to) }, reservation: { status: { in: [...ACTIVE_RV] } } },
-      _count: { _all: true },
-    }),
-  ]);
-  const sellableRooms = rooms.filter((r) => {
-    const mode = r.rentMode ?? r.roomType.rentMode ?? "NIGHTLY";
-    return (mode === "NIGHTLY" || mode === "BOTH") && r.status !== "OOO" && r.hkStatus !== "OUT_OF_ORDER";
-  });
-  const typeOfRoom = new Map(rooms.map((r) => [r.id, r.roomTypeId]));
+  const av = await hotelAvailability.get({ tenantId }, { unitId, from, to: addDaysYmd(to, 1) });
   const sellable = new Map<string, number>();
-  for (const r of sellableRooms) sellable.set(r.roomTypeId, (sellable.get(r.roomTypeId) ?? 0) + 1);
-  const other = new Map<string, Set<string>>();
-  const hotel = new Map<string, Set<string>>();
-  for (const o of occ) {
-    const t = typeOfRoom.get(o.roomId);
-    if (!t) continue;
-    for (const d of nightDates(o.startDate < from ? from : o.startDate, o.endDate)) {
-      if (d > to) break;
-      const k = `${t}|${d}`;
-      const bucket = o.refType === HOTEL_REF ? hotel : other;
-      if (!bucket.has(k)) bucket.set(k, new Set());
-      bucket.get(k)?.add(o.roomId);
-    }
-  }
-  const counted = new Map(nightsCount.map((n) => [`${n.roomTypeId}|${ymdOfDb(n.date)}`, n._count._all]));
   const used = new Map<string, number>();
-  for (const k of new Set([...other.keys(), ...hotel.keys(), ...counted.keys()])) {
-    used.set(k, (other.get(k)?.size ?? 0) + Math.max(counted.get(k) ?? 0, hotel.get(k)?.size ?? 0));
+  if (av.ok) {
+    for (const [date, cells] of Object.entries(av.byDate)) {
+      for (const [typeId, cell] of Object.entries(cells)) {
+        sellable.set(typeId, cell.total);
+        used.set(`${typeId}|${date}`, cell.total - cell.available);
+      }
+    }
   }
   return { sellable, used };
 }
