@@ -33,7 +33,7 @@ export default function MoveConfirmDialog({ unitSlug, req, rooms, onClose, onDon
   useEffect(() => {
     let live = true;
     if (!validDates) return;
-    previewMoveAction(unitSlug, { id: bar.refId, checkIn, checkOut })
+    previewMoveAction(unitSlug, { id: bar.refId, ...(roomId && roomId !== bar.roomId ? { roomId } : {}), checkIn, checkOut })
       .then((r) => {
         if (!live) return;
         if (r.ok) setPrice({ loading: false, total: r.totalSatang, added: r.addedSatang, nights: r.nights, ok: true });
@@ -43,7 +43,7 @@ export default function MoveConfirmDialog({ unitSlug, req, rooms, onClose, onDon
     return () => {
       live = false;
     };
-  }, [unitSlug, bar.refId, checkIn, checkOut, validDates]);
+  }, [unitSlug, bar.refId, bar.roomId, roomId, checkIn, checkOut, validDates]);
 
   const submit = async () => {
     if (busy || !validDates) return;

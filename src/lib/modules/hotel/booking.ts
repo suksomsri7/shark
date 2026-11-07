@@ -1374,6 +1374,17 @@ export async function rescheduleBooking(actorIn: unknown, ctx: unknown, input: u
       if (!r.ok && r.code === "ROOM_TAKEN" && p.data.repack !== false && (await repackRoom(tx, c, { roomId, from: newCi, to: newCo, exceptRvId: rv.id, lockedTypes, now }))) r = await claim();
       if (!r.ok) throw new Abort(r.code === "ROOM_TAKEN" ? fail("ROOM_BUSY", "ห้องนี้ไม่ว่างในช่วงใหม่ — เลือกห้องอื่น") : fail("ROOM_INACTIVE", "ห้องนี้รับการจองช่วงนี้ไม่ได้"));
     }
+    // SVC H.2 ▸ มติผู้คุม 7 พ.ย. (ผู้ตรวจ H.2 MAJOR 1): ย้ายแขกที่พักอยู่ไปห้องอื่น ⇒ ห้องเดิมต้องทำความสะอาด (CLEANING + DIRTY · แบบ checkOut) · ห้องใหม่ OCCUPIED (แบบ checkIn) — tx เดียว
+    const fromRoomId = occ[0]?.roomId ?? rv.roomId;
+    if (rv.status === "CHECKED_IN" && roomId && fromRoomId && fromRoomId !== roomId) {
+      const old = await tx.hotelRoom.findFirst({ where: { tenantId: c.tenantId, unitId: c.unitId, id: fromRoomId }, select: { id: true, hkStatus: true } });
+      if (old) {
+        await tx.hotelRoom.update({ where: { id: old.id }, data: { status: "CLEANING", hkStatus: "DIRTY" } });
+        await tx.hotelHousekeepingLog.create({ data: { tenantId: c.tenantId, unitId: c.unitId, roomId: old.id, fromStatus: old.hkStatus, toStatus: "DIRTY", byUserId: g.actor?.userId ?? null, reservationId: rv.id, note: "ย้ายแขกที่พักอยู่ไปห้องอื่น" } });
+      }
+      await tx.hotelRoom.update({ where: { id: roomId }, data: { status: "OCCUPIED" } });
+    }
+    // ◂ SVC H.2
     for (const n of all) if (n.counted && !keep.has(ymdOfDb(n.date))) await tx.hotelBookingNight.update({ where: { id: n.id }, data: { counted: false, roomId: null } });
     for (const d of newDates) {
       const ex = byDate.get(d);

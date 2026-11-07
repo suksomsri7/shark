@@ -487,7 +487,7 @@ export async function previewMoveAction(unitSlug: string, input: unknown): Promi
   const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
   if (unit.type !== "HOTEL") return { ok: false, code: "NOT_FOUND", reason: NOT_HOTEL_BOOKING.reason };
   if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return { ok: false, code: "NOT_FOUND", reason: NO_RIGHT.reason };
-  return hotelTape.previewMove({ tenantId: auth.active.tenantId }, pickKeys(input, ["id", "checkIn", "checkOut"], unit.id));
+  return hotelTape.previewMove({ tenantId: auth.active.tenantId }, pickKeys(input, ["id", "roomId", "checkIn", "checkOut"], unit.id));
 }
 
 /** ปิดห้อง (BLOCK) ช่วง [from, to) พร้อมเหตุผล · ชนการจอง ⇒ ROOM_TAKEN + รายชื่อ · เกินจอง ⇒ ok + warning */

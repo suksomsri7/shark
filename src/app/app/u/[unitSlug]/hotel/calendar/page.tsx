@@ -59,7 +59,7 @@ export default async function HotelCalendarPage({ params, searchParams }: { para
     })),
   };
   return (
-    <TapeChart model={model} view={view} canEdit={canEdit} canCreate={canCreate}>
+    <TapeChart model={model} view={view} canEdit={canEdit} canCreate={canCreate} nowMs={Date.now()}>
       {k.ok ? <HotelToday kpi={k} /> : null}
     </TapeChart>
   );

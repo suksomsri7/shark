@@ -20,6 +20,7 @@ export type TapeBarDto = {
   roomId: string | null;
   reason: string | null;
   leaseUnitId: string | null;
+  roomNote: string | null;
 };
 export type TapeRoomDto = { roomId: string; number: string; floorNo: number | null; hkStatus: string; bars: TapeBarDto[] };
 export type TapeGroupDto = { roomTypeId: string; name: string; rateTodaySatang: number; rateWeekendSatang: number; rooms: TapeRoomDto[]; unassigned: TapeBarDto[] };
@@ -131,6 +132,8 @@ export const baht = (satang: number): string => comma(Math.round((Number.isFinit
 export const pctOfBps = (bps: number): string => `${Math.round(bps / 100)}%`;
 export const pct = (a: number, b: number): string => (b > 0 ? `${Math.round((a * 100) / b)}%` : "0%");
 /** "14:30" ไทยจาก ISO */
+/** HOLD ที่เลยเวลาแล้วแต่ยังไม่ถูกกวาด (ผู้ตรวจ m3) — เทียบเวลาเป็นเลข ไม่ใช้วันในสัปดาห์ */
+export const holdExpired = (iso: string | null, nowMs: number): boolean => !!iso && Date.parse(iso) <= nowMs;
 export function timeTh(iso: string | null): string {
   if (!iso) return "";
   const t = new Date(Date.parse(iso) + 7 * 3_600_000);

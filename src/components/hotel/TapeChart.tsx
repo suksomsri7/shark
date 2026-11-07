@@ -32,6 +32,7 @@ import {
   shiftFrom,
   timeTh,
   firstOfMonth,
+  holdExpired,
   type TapeBarDto,
   type TapeModel,
   type TapeView,
@@ -43,6 +44,8 @@ type Props = {
   /** สิทธิ์ hotel.booking.manage (ลาก/ยืด/ปิดห้อง) — จากเซสชันฝั่งเซิร์ฟเวอร์ */
   canEdit: boolean;
   canCreate: boolean;
+  /** เวลาที่หน้าโหลด (เซิร์ฟเวอร์) — ป้าย HOLD หมดเวลา */
+  nowMs: number;
   /** แถบ KPI (เซิร์ฟเวอร์ประกอบ) */
   children?: ReactNode;
 };
@@ -52,7 +55,7 @@ const SEG = "rounded-lg px-3 py-1.5 text-sm";
 const BTN = "inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-[color:var(--color-line)] px-3 py-2 text-sm";
 const BTN_PRIMARY = "inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-[color:var(--color-ink)] px-3 py-2 text-sm font-bold text-white";
 
-export default function TapeChart({ model, view, canEdit, canCreate, children }: Props) {
+export default function TapeChart({ model, view, canEdit, canCreate, nowMs, children }: Props) {
   const router = useRouter();
   const base = `/app/u/${model.unitSlug}/hotel`;
   const n = model.days.length;
@@ -119,6 +122,10 @@ export default function TapeChart({ model, view, canEdit, canCreate, children }:
     setNotice({ ok: true, text });
     router.refresh();
   };
+  const confirmRelease = (blockId: string) => {
+    if (!window.confirm("ปล่อยห้องที่ปิดไว้? ห้องจะกลับมาขายได้หลังแม่บ้านตรวจ")) return;
+    void release(blockId);
+  };
   const release = async (blockId: string) => {
     const r = await releaseBlockAction(model.unitSlug, { blockId });
     setSelected(null);
@@ -140,6 +147,7 @@ export default function TapeChart({ model, view, canEdit, canCreate, children }:
           offsetY={o.y}
           resizeDays={resizeOf(b)}
           active={drag?.bar.refId === b.refId}
+          nowMs={nowMs}
           onGrab={onGrab}
           onOpen={setSelected}
         />
@@ -342,11 +350,12 @@ export default function TapeChart({ model, view, canEdit, canCreate, children }:
               {LEGEND_TH[selected.kind]} · {dayMonthTh(selected.from)} – {dayMonthTh(selected.to)} ({diffDays(selected.from, selected.to)} คืน)
               {selected.code ? ` · ${selected.code}` : ""}
             </span>
-            {selected.kind === "HOLD" && selected.holdExpiresAt ? <span>ถือห้องถึง {timeTh(selected.holdExpiresAt)} — รอมัดจำ</span> : null}
+            {selected.kind === "HOLD" && selected.holdExpiresAt ? <span>{holdExpired(selected.holdExpiresAt, nowMs) ? "หมดเวลาถือห้องแล้ว — รอระบบปล่อยห้อง" : `ถือห้องถึง ${timeTh(selected.holdExpiresAt)} — รอมัดจำ`}</span> : null}
+            {selected.roomNote ? <span>{selected.roomNote} — ย้ายไปห้องที่ขายได้</span> : null}
             {selected.kind === "BLOCK" && selected.reason ? <span>เหตุผล: {selected.reason}</span> : null}
             <div className="mt-2 flex flex-wrap justify-end gap-2">
               {selected.kind === "BLOCK" && canEdit ? (
-                <button type="button" className={BTN} onClick={() => release(selected.refId)}>
+                <button type="button" className={BTN} onClick={() => confirmRelease(selected.refId)} data-release-block="">
                   ปล่อยห้อง
                 </button>
               ) : null}

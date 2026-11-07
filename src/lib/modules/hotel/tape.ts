@@ -35,6 +35,8 @@ export type TapeBar = {
   reason: string | null;
   /** หน่วยหอของสัญญา (LEASE) — หน้าใช้ตัดสินลิงก์ด้วยสิทธิ์ dorm.view */
   leaseUnitId: string | null;
+  /** ป้ายเมื่อการจองถือห้องที่ไม่อยู่ในแถว (ปิดใช้งาน/รายเดือน) ⇒ แสดงในแถว «ยังไม่กำหนดห้อง» */
+  roomNote: string | null;
 };
 export type TapeRoom = { roomId: string; number: string; floorNo: number | null; hkStatus: string; bars: TapeBar[] };
 export type TapeGroup = { roomTypeId: string; name: string; rateTodaySatang: number; rateWeekendSatang: number; rooms: TapeRoom[]; unassigned: TapeBar[] };
@@ -303,12 +305,19 @@ export async function tapeChart(ctx: unknown, input: unknown): Promise<TapeChart
       roomId: rv.roomId,
       reason: null,
       leaseUnitId: null,
+      roomNote: null,
     };
-    if (rv.roomId === null) {
+    if (rv.roomId !== null && roomIds.has(rv.roomId)) barsOf.get(rv.roomId)?.push(bar);
+    else {
+      // ไม่มีห้อง · หรือห้องหลุดจากแถว (ปิดใช้งาน/เปลี่ยนเป็นรายเดือน · ผู้ตรวจ m1) ⇒ แถว «ยังไม่กำหนดห้อง» ไม่ให้หายจากกริด (occupied ยังนับตามคืน)
+      if (rv.roomId !== null) {
+        bar.roomNote = "ห้องปิดใช้งาน";
+        bar.label = `${bar.label} · ห้องปิดใช้งาน`;
+      }
       const list = unassignedOf.get(rv.roomTypeId) ?? [];
       list.push(bar);
       unassignedOf.set(rv.roomTypeId, list);
-    } else if (roomIds.has(rv.roomId)) barsOf.get(rv.roomId)?.push(bar);
+    }
   }
   for (const o of held) {
     if (!roomIds.has(o.roomId)) continue;
@@ -335,6 +344,7 @@ export async function tapeChart(ctx: unknown, input: unknown): Promise<TapeChart
       roomId: o.roomId,
       reason: isBlock ? o.reason : null,
       leaseUnitId: isBlock ? null : o.leaseUnitId,
+      roomNote: null,
     });
   }
   const groups: TapeGroup[] = [];
@@ -448,8 +458,9 @@ export async function hotelToday(ctx: unknown, input: unknown): Promise<HotelTod
 // ───────────────────────── ราคาก่อนยืนยันการลาก (ไดอะล็อก · อ่านอย่างเดียว) ─────────────────────────
 export type MovePreview = { ok: true; nights: number; addedNights: { date: string; priceSatang: number }[]; addedSatang: number; keptSatang: number; totalSatang: number } | TapeFail;
 /**
- * ราคาโดยประมาณเมื่อเลื่อน/ยืดการจอง: คืนที่ยังนับอยู่คงราคาเดิม · คืนใหม่ = quote ปัจจุบันของแผนการจอง (เหมือน rescheduleBooking ของ H.3)
- * ย้ายข้ามประเภทไม่คิดส่วนต่าง (S:911) ⇒ คืนเดิมไม่เปลี่ยนราคา · ไม่มีแผน/ราคา ⇒ ใช้ราคาต่อคืนเดิมของการจอง
+ * ราคาโดยประมาณเมื่อย้าย/เลื่อน/ยืดการจอง — input {unitId, id, roomId?, checkIn?, checkOut?}
+ * สูตรเดียวกับ rescheduleBooking ของ H.3: คืนที่ยังนับอยู่คงราคาเดิม (ย้ายข้ามประเภทไม่คิดส่วนต่าง S:911) · คืนใหม่ = quote ปัจจุบันของแผนการจอง
+ * บน **ประเภทของห้องปลายทาง** (roomId ⇒ targetType · ไม่ส่ง = ประเภทเดิม) · ไม่มีแผน/ราคา ⇒ ราคาต่อคืนเดิมของการจอง · ห้องไม่อยู่ในหน่วย ⇒ NOT_FOUND
  */
 export async function previewMove(ctx: unknown, input: unknown): Promise<MovePreview> {
   const tenantId = isRec(ctx) ? ctx.tenantId : null;
@@ -459,6 +470,10 @@ export async function previewMove(ctx: unknown, input: unknown): Promise<MovePre
   const db = tenantDb({ tenantId, unitId });
   const rv = await db.hotelReservation.findFirst({ where: { id }, select: { id: true, roomTypeId: true, ratePlanId: true, ratePerNightSatang: true, checkInDate: true, checkOutDate: true } });
   if (!rv) return notFound();
+  const roomIn = isRec(input) && isStr(input.roomId) ? input.roomId : null;
+  const target = roomIn ? await db.hotelRoom.findFirst({ where: { id: roomIn }, select: { roomTypeId: true } }) : null;
+  if (roomIn && !target) return notFound();
+  const targetType = target ? target.roomTypeId : rv.roomTypeId;
   const ci = isRec(input) && isYmd(input.checkIn) ? input.checkIn : ymdOf(rv.checkInDate);
   const co = isRec(input) && isYmd(input.checkOut) ? input.checkOut : ymdOf(rv.checkOutDate);
   if (!(dayNumber(co) > dayNumber(ci))) return { ok: false, code: "INVALID_RANGE", reason: R.range };
@@ -472,7 +487,7 @@ export async function previewMove(ctx: unknown, input: unknown): Promise<MovePre
     const plan = pc ? (pc.plans.find((p) => p.id === rv.ratePlanId) ?? pc.plans.find((p) => p.isDefault) ?? null) : null;
     if (pc && plan) {
       addedNights = fresh.map((date) => {
-        const q = quoteStay({ ...pc, today: date < pc.today ? date : pc.today }, { roomTypeId: rv.roomTypeId, ratePlanId: plan.id, checkIn: date, checkOut: addDaysYmd(date, 1), limits: { minNights: null, maxNights: null, closedToArrival: false, maxAdvanceBookingDays: 100_000 } });
+        const q = quoteStay({ ...pc, today: date < pc.today ? date : pc.today }, { roomTypeId: targetType, ratePlanId: plan.id, checkIn: date, checkOut: addDaysYmd(date, 1), limits: { minNights: null, maxNights: null, closedToArrival: false, maxAdvanceBookingDays: 100_000 } });
         return { date, priceSatang: q.ok ? q.nightsTotal : rv.ratePerNightSatang };
       });
     }

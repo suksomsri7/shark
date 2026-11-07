@@ -3,7 +3,7 @@
 //   ลากด้วย pointer events (ไม่ใช้ไลบรารี): ตัวแถบ = data-drag-handle (ย้ายห้อง/เลื่อนวัน) · ขอบขวา = data-resize-handle (ยืด/ย่นคืน)
 //   ผู้ดูอย่างเดียว (canEdit = false) ⇒ ไม่ render data-tape-bar / data-drag-handle / data-resize-handle (มติ 7 · §7 ข้อ 10) — กดดูสรุปได้อย่างเดียว
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { BAR_CLASS, barSpan, isDraggable, timeTh, type TapeBarDto } from "./tape-shared";
+import { BAR_CLASS, barSpan, holdExpired, isDraggable, timeTh, type TapeBarDto } from "./tape-shared";
 
 export type GrabEvent = ReactPointerEvent<HTMLElement>;
 
@@ -17,14 +17,16 @@ type Props = {
   offsetY: number;
   resizeDays: number;
   active: boolean;
+  /** เวลาที่หน้าโหลด (เซิร์ฟเวอร์ส่งมา) — ใช้ตัดสิน HOLD หมดเวลา */
+  nowMs: number;
   onGrab: (e: GrabEvent, bar: TapeBarDto, mode: "move" | "resize") => void;
   onOpen: (bar: TapeBarDto) => void;
 };
 
-export default function TapeBar({ bar, gridFrom, nDays, canEdit, offsetX, offsetY, resizeDays, active, onGrab, onOpen }: Props) {
+export default function TapeBar({ bar, gridFrom, nDays, canEdit, offsetX, offsetY, resizeDays, active, nowMs, onGrab, onOpen }: Props) {
   const span = barSpan({ from: bar.from, to: resizeDays ? shiftTo(bar.to, resizeDays) : bar.to }, gridFrom, nDays);
   const canDrag = canEdit && isDraggable(bar.kind);
-  const hold = bar.kind === "HOLD" && bar.holdExpiresAt ? ` · ถึง ${timeTh(bar.holdExpiresAt)}` : "";
+  const hold = bar.kind === "HOLD" && bar.holdExpiresAt ? (holdExpired(bar.holdExpiresAt, nowMs) ? " · หมดเวลา" : ` · ถึง ${timeTh(bar.holdExpiresAt)}`) : "";
   const style = {
     left: `calc(${span.left * 100}% + 2px)`,
     width: `calc(${span.width * 100}% - 4px)`,
