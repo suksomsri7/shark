@@ -28,6 +28,9 @@
 - ใบ H.5/H.4/H.6/H.7/H.8/H.10/H.9 ยังไม่มีใบสั่ง — ผู้คุมเขียนตามแบบ h.3/h.2 (อ้าง SVC-HOTEL-PLAN §3 + สเปก `docs/modules/01-hotel.md` + DH §7) ก่อนเปิดเลนทุกครั้ง
 - 3 เลนเต็มได้เมื่อ RUN เลขาไม่ build · ทุกงานยาวมีตัวเฝ้าจนจบ (Bash until DONE + send_later สำรอง) · รายงาน Telegram **เฉพาะ %** `tg "📊 HOTEL · NN% (x/11)"` หลังปิดใบ
 
+## 3.1 build/serve QC บนเลน (บทเรียน 7 พ.ย.)
+- `next build`/`next start` ต้องรันผ่าน **inner script** ที่ readarray `.env.qc-svc` ทั้งไฟล์แล้ว `exec env "${ENVARR[@]}" …` (ต้นแบบ `/root/svc-runs/h1/build-inner.sh` `serve-inner.sh` · ตรวจ host ของเลน) — `qc-svc.sh` ส่งแค่ DATABASE_URL/DIRECT_URL ⇒ build ล้ม ZodError SESSION_SECRET หลัง compile 3 ชม. · node_modules ของเลนต้องเป็น **bind mount** ไม่ใช่ symlink (Turbopack ปฏิเสธ) · ก่อนรันเช็ก CPU steal (`vmstat 5 2` คอลัมน์ st) — steal >50% ⇒ build ใช้ 3 ชม.+
+
 ## 4. กติกาเหล็กย่อ (เต็ม = SVC-RUN §1)
 ห้าม push main · ห้าม deploy · ห้ามแตะ `.env` prod/credential ข้ามโปรเจกต์ · migration ใหม่ = ขอ exception (H.0 ใช้ไปแล้ว · ใบอื่นไม่มี) · ทุก tsx/tsc/build ผ่าน `bash scripts/iso.sh` · ห้าม `timeout` ครอบ iso.sh · ห้าม kill ข้อสอบที่กำลังรัน · ห้าม export CI · ห้ามแก้สคริปต์ที่ unit กำลังรัน · ห้าม `pgrep -f` วนรอ · ห้ามกวาด /tmp · tsc ทีละตัว · ledger ภาษาไทย · ผู้คุมดูภาพคู่เองก่อน merge · ผลลบต้องมี positive control · ไล่ให้ครบเส้นก่อนบอกเสร็จ
 
