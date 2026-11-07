@@ -507,13 +507,15 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
   const plan = inp.ratePlanId ? (pc.plans.find((x) => x.id === inp.ratePlanId) ?? null) : (pc.plans.find((x) => x.isDefault) ?? null);
   if (inp.ratePlanId && !plan) return fail("NOT_FOUND", "ไม่พบแผนราคานี้ในโรงแรมนี้");
   const pol = await unitPolicy(c.tenantId, c.unitId, plan?.id ?? null);
-  if (dayNumber(inp.checkIn) - dayNumber(today) > pol.maxAdvance) return fail("TOO_FAR", `จองล่วงหน้าได้ไม่เกิน ${pol.maxAdvance} วัน`);
+  // เส้น P1 (legacy) ไม่มีเพดานจองล่วงหน้า (คงพฤติกรรมเดิมของ createReservation · qc-hotel-public จองปี 2031) — V2 ใช้ rooms.hotel.maxAdvanceBookingDays
+  const maxAdvance = opts.legacy ? 100_000 : pol.maxAdvance;
+  if (dayNumber(inp.checkIn) - dayNumber(today) > maxAdvance) return fail("TOO_FAR", `จองล่วงหน้าได้ไม่เกิน ${pol.maxAdvance} วัน`);
 
   // ราคา · มัดจำ
   let quotes: QuoteOk[] = [];
   let legacyPrices = false;
   if (plan) {
-    const limits = { minNights: pol.minNights, maxNights: null, closedToArrival: pol.closedToArrival, maxAdvanceBookingDays: pol.maxAdvance };
+    const limits = { minNights: pol.minNights, maxNights: null, closedToArrival: pol.closedToArrival, maxAdvanceBookingDays: maxAdvance };
     for (const r of inp.rooms) {
       const q = quoteStay(pc, { roomTypeId: r.roomTypeId, ratePlanId: plan.id, checkIn: inp.checkIn, checkOut: inp.checkOut, extraBeds: r.extraBeds ?? 0, limits });
       if (!q.ok) {
