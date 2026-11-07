@@ -1282,13 +1282,13 @@ try {
     const f = fnOf(tabsSharedL, "hotelTabsFor", F.tabsShared);
     const base = "/app/u/bansuan-hotel";
     const fd = f({ ratesRead: true, settingsEdit: false }, base) as Any[];
-    eq(fd.map((t) => t.labelTh), ["ปฏิทินห้อง", "การจอง", "หน้าเคาน์เตอร์", "แม่บ้าน", "ราคา", "รายงาน"], "frontdesk"); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-tabs) แท็บรายงานเห็นทุกคน หน้าเองตรวจสิทธิ์ // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-hk): แท็บแม่บ้านเห็นทุกคน หน้าเองตรวจสิทธิ์ (h.6 U-5) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar): H.2
+    eq(fd.map((t) => t.labelTh), ["ปฏิทินห้อง", "การจอง", "หน้าเคาน์เตอร์", "แม่บ้าน", "ราคา"], "frontdesk"); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-tabs) ใบ h.7 §7: frontdesk ไม่มีสิทธิ์รายงาน ⇒ ไม่เห็นแท็บ (reportsRead ไม่ส่ง = false) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-hk): แท็บแม่บ้านเห็นทุกคน หน้าเองตรวจสิทธิ์ (h.6 U-5) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar): H.2
     ok(fd.every((t) => t.href.startsWith(base) && typeof t.key === "string"), "href/key");
-    const own = f({ ratesRead: true, settingsEdit: true }, base) as Any[];
+    const own = f({ ratesRead: true, settingsEdit: true, reportsRead: true }, base) as Any[]; // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-tabs) แท็บรายงาน ⇔ reportsRead
     eq(own.map((t) => t.labelTh), ["ปฏิทินห้อง", "การจอง", "หน้าเคาน์เตอร์", "แม่บ้าน", "ราคา", "รายงาน", "ตั้งค่า"], "เจ้าของ"); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-tabs) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-hk) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar)
     const none = f({ ratesRead: false, settingsEdit: false }, base) as Any[];
     ok(!none.some((t) => t.labelTh === "ราคา" || t.labelTh === "ตั้งค่า"), "ไม่มีสิทธิ์เห็นราคา/ตั้งค่า");
-    ok(own.some((t) => t.labelTh === "รายงาน"), "แท็บรายงาน (H.7) ต้องมี"); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-tabs) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-hk): เหลือรายงาน (H.7) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar): ปฏิทินห้องมีหน้าแล้ว (H.2)
+    ok(own.some((t) => t.labelTh === "รายงาน") && !fd.some((t) => t.labelTh === "รายงาน"), "แท็บรายงาน ⇔ reportsRead (H.7)"); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-tabs) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-hk): เหลือรายงาน (H.7) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar): ปฏิทินห้องมีหน้าแล้ว (H.2)
   });
   await st("U-5", "HotelTabs.tsx แบบ DormTabs ทุกประการ: 'use client' · <nav data-hotel-tabs aria-label ไทย> · print:hidden · useSyncExternalStore (location หลัง mount) · ไม่ใช้ next/navigation · <a data-tab aria-current> · ว่าง ⇒ null", () => {
     const s = read(F.tabs);
