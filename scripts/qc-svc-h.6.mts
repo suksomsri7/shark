@@ -167,12 +167,12 @@ const near = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
 const uid = () => `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 const RUN = uid();
 const groupOf = (id: string) => id.split("-")[0];
-const withClock = async <T>(on: boolean, fn: () => Promise<T>): Promise<T> => {
+const withClock = async <T,>(on: boolean, fn: () => Promise<T>): Promise<T> => { // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-tsc-7060)
   const prev = process.env.SVC_QC_CLOCK;
   if (on) process.env.SVC_QC_CLOCK = "1"; else delete process.env.SVC_QC_CLOCK;
   try { return await fn(); } finally { if (prev === undefined) delete process.env.SVC_QC_CLOCK; else process.env.SVC_QC_CLOCK = prev; }
 };
-const withAbly = async <T>(mode: "ok" | "throw" | "500", fn: () => Promise<T>): Promise<T> => {
+const withAbly = async <T,>(mode: "ok" | "throw" | "500", fn: () => Promise<T>): Promise<T> => { // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-tsc-7060)
   process.env.ABLY_API_KEY = "qcapp.qckey:qcsecret-h6";
   ABLY_MODE = mode;
   try { return await fn(); } finally { delete process.env.ABLY_API_KEY; ABLY_MODE = "ok"; }

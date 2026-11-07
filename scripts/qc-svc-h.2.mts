@@ -380,7 +380,7 @@ try {
     eq(SCENE.bookings.reduce((n, b) => n + b.rooms, 0), 13, "แถว");
     eq(SCENE.blocks.map((b) => [b.room, b.fromOffset, b.nights]), [["B103", 0, 3]], "BLOCK");
     eq(SCENE.mark, "SvcQcScene:h2", "mark");
-    ok(SCENE.mark !== SQC_HOTEL_BOOKING_SCENE.mark, "mark ต้องต่างจากฉาก h.3");
+    ok((SCENE.mark as string) !== (SQC_HOTEL_BOOKING_SCENE.mark as string), "mark ต้องต่างจากฉาก h.3"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-tsc): ชนิด literal ไม่ซ้อนกัน
     eq(refSceneBars7d(TODAY), { ...SCENE.expectBars7d }, "expectBars7d");
     eq(refSceneToday(TODAY), { ...SCENE.expectToday, arrivalNames: [...SCENE.expectToday.arrivalNames], departureNames: [...SCENE.expectToday.departureNames] }, "expectToday");
     for (let i = 1; i <= 14; i++) { eq(refSceneBars7d(D(i)), { ...SCENE.expectBars7d }, `bars วัน +${i}`); eq(refSceneToday(D(i)).inHouseTonight, SCENE.expectToday.inHouseTonight, `inHouse วัน +${i}`); }
@@ -982,7 +982,7 @@ try {
     const s = await rvState(RV.C3.id);
     eq([s.roomId, s.ci, s.co], [R.DLX4, D(3), D(5)], "reservation");
     eq(s.nights, [[D(3), R.DLX4, true], [D(4), R.DLX4, true]], "nights");
-    eq(s.occ.map((o) => [o[0], o[1], o[2]]), [[R.DLX4, D(3), D(5)]], "occupancy");
+    eq(s.occ.map((o: Any) => [o[0], o[1], o[2]]), [[R.DLX4, D(3), D(5)]], "occupancy"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-tsc)
     eq(await prisma.roomOccupancy.count({ where: { tenantId: tA, roomId: R.DLX3, active: true, refType: "HotelReservation", refId: RV.C3.id } }), 0, "DLX3 ยังถูกถือ"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D7): นับเฉพาะของ C3 (P1 จาก BL-9 อาจได้ DLX3 จากระบบ)
     const t = await tape(UH, D(0), 7);
     ok(roomOf(t, R.DLX4)?.bars.some((b: Any) => b.refId === RV.C3.id) && !roomOf(t, R.DLX3)?.bars.some((b: Any) => b.refId === RV.C3.id), "แถบไม่ย้าย");
@@ -992,7 +992,7 @@ try {
     needMove(); needFx();
     okRes(await MOVE()(OWNER, ctxA, { unitId: UH, id: RV.C3.id, roomId: R.DLX3, checkIn: D(4), checkOut: D(6) }), "move+shift");
     const s = await rvState(RV.C3.id);
-    eq([s.roomId, s.ci, s.co, s.nights, s.occ.map((o) => [o[0], o[1], o[2]])], [R.DLX3, D(4), D(6), [[D(4), R.DLX3, true], [D(5), R.DLX3, true]], [[R.DLX3, D(4), D(6)]]], "หลังย้าย+เลื่อน");
+    eq([s.roomId, s.ci, s.co, s.nights, s.occ.map((o: Any) => [o[0], o[1], o[2]])], [R.DLX3, D(4), D(6), [[D(4), R.DLX3, true], [D(5), R.DLX3, true]], [[R.DLX3, D(4), D(6)]]], "หลังย้าย+เลื่อน");
     const before = await rvState(RV.C3.id);
     const r = await MOVE()(OWNER, ctxA, { unitId: UH, id: RV.C3.id, roomId: R.DLX2, checkIn: D(1), checkOut: D(3) });
     ok(r?.ok === false && ["ROOM_TAKEN", "AVAILABILITY_CHANGED", "ROOM_BUSY"].includes(String(r.code)), `ชน ${J(r).slice(0, 120)}`);
@@ -1007,10 +1007,10 @@ try {
     eq(await rvState(RV.S1.id), before, "มีผลข้างเคียง");
     okRes(await BK("extendBooking")(OWNER, ctxA, { unitId: UH, id: RV.S1.id, newCheckOut: D(2) }), "extend");
     const e = await rvState(RV.S1.id);
-    eq([e.co, e.nights.length, e.occ.map((o) => o[2])], [D(2), 3, [D(2)]], "หลังยืด");
+    eq([e.co, e.nights.length, e.occ.map((o: Any) => o[2])], [D(2), 3, [D(2)]], "หลังยืด"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-tsc)
     okRes(await BK("shortenBooking")(OWNER, ctxA, { unitId: UH, id: RV.S1.id, newCheckOut: D(1) }), "shorten กลับ");
     const sh = await rvState(RV.S1.id);
-    eq([sh.co, sh.nights.filter((n) => n[2]).length, sh.occ.map((o) => o[2])], [D(1), 2, [D(1)]], "หลังย่น (คืนตัด counted=false)");
+    eq([sh.co, sh.nights.filter((n: Any) => n[2]).length, sh.occ.map((o: Any) => o[2])], [D(1), 2, [D(1)]], "หลังย่น (คืนตัด counted=false)");
   });
   await st("MV-5", "ย่นต่ำกว่าคืนที่ post แล้วไม่ได้ (มติ 2 · S:923): ตั้ง postedAuditId บนคืน +0 ของ S1 แล้ว shorten ให้ checkOut = +0 (ตัดคืนที่ post) ⇒ ok:false · nights/วันคงเดิม · ล้าง postedAuditId ⇒ ย่นเดิมได้ (ok) แล้วยืดคืน", async () => {
     needFx(); needH3();

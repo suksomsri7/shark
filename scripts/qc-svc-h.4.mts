@@ -175,7 +175,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const uid = () => `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 const RUN = uid();
 const groupOf = (id: string) => id.split("-")[0];
-const withClock = async <T>(on: boolean, fn: () => Promise<T>): Promise<T> => {
+const withClock = async <T,>(on: boolean, fn: () => Promise<T>): Promise<T> => { // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-tsc-7060)
   const prev = process.env.SVC_QC_CLOCK;
   if (on) process.env.SVC_QC_CLOCK = "1"; else delete process.env.SVC_QC_CLOCK;
   try { return await fn(); } finally { if (prev === undefined) delete process.env.SVC_QC_CLOCK; else process.env.SVC_QC_CLOCK = prev; }
@@ -1875,6 +1875,9 @@ console.log("\n── Q ฉาก svcqc (svc-qc-hotel-guest-scene) ──");
   const n2 = "รันฉากซ้ำ ⇒ SCENE_SUMMARY 0/0/0 · แถว/สถานะ/ไฟล์เท่าเดิม";
   const n3 = `tm30Sweep บนฉาก ⇒ inhouse-ota LATE (byTm30 = ${J(GS.expect.byTm30)}) · sweep ซ้ำไม่เปลี่ยน`;
   const n4 = "--clear ลบเฉพาะแขกของฉาก (HotelGuestRecord 0 · FileAsset ของมันหาย · การจอง h.3 คง · today-walkin คืนสถานะ/ค่าตั้งคืน) · ร้านอื่นคงเดิม · รันคืน";
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-tsc-scope): rawOfEnc/sweep ของบล็อกร้านชั่วคราวมองไม่เห็นจากบล็อก Q (tsc TS2304/TS2552) — นิยามซ้ำจากของเดิมบรรทัด 583/597
+  const rawOfEnc = (row: Any) => { const o = SB.openIntegrationSecret(row?.idNumberEnc, row?.id); return o ? String(o.id ?? o.idNumber ?? "") : null; };
+  const sweep = (over: Record<string, unknown> = {}) => call(() => TM("tm30Sweep")(over));
   if (why) { for (const [id, n] of [["Q-1", n1], ["Q-2", n2], ["Q-3", n3], ["Q-4", n4]]) skip(id, n, why, "MAJOR"); }
   else {
     const byTm30 = async () => { const by: Record<string, number> = {}; for (const r of await guestRows()) by[r.tm30Status] = (by[r.tm30Status] ?? 0) + 1; return by; };
