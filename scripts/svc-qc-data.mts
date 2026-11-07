@@ -1600,6 +1600,9 @@ export const SQC_HOTEL_FOLIO_SCENE = {
     securityHeldSatang: 100_000,
     unmatched: 1,
     folioStatus: "OPEN",
+    /** มติ 7 พ.ย. (ข้อเสนอผู้เขียนข้อสอบ): POS_CHARGE รวม 64,000 · reversal คู่กับ SERVICE ที่ void */
+    posChargeTotalSatang: 64_000,
+    voidReversalOf: "SERVICE",
   },
 } as const;
 /**
