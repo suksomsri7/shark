@@ -969,13 +969,17 @@ try {
     ok(row, "ไม่มี NA-12");
     okRes(await reopen(MGR, { auditId: row.id, reason: "ทดสอบ cron ล้ม" }), "reopen UFL");
     await setUnit("rooms.hotel.audit.autoClose", true, UFL);
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-cr4) มติ: cron ปิดวัน REOPENED ซ้ำได้เมื่อเปิดไว้ ≥ 2 ชม. (ให้ผู้จัดการแก้ทัน) ⇒ เวลา cron = max(NOW2, ตอนนี้ + 2 ชม. 1 นาที) (ยังวันเดียวกันไทยเสมอ: ≤ 02:00 ของวันถัดไป < 03:00)
+    const NOWR = new Date(Math.max(NOW2.getTime(), Date.now() + 2 * 3_600_000 + 60_000));
+    const early = okRes(await runDue(new Date(Date.now() + 60_000)), "cron ทันทีหลัง reopen");
+    eq((await auditRow(UFL, D)).status, "REOPENED", "cron ปิด REOPENED ก่อนครบ 2 ชม."); void early;
     await installFailTrigger(UFL);
     let r: Any;
-    try { r = await runDue(NOW2); } finally { await dropFailTrigger(); }
+    try { r = await runDue(NOWR); } finally { await dropFailTrigger(); }
     ok(r?.ok !== false, `runDueAudits throw ${J(r)}`);
     eq(r.errors, 1, "errors");
     eq((await auditRow(UFL, D)).status, "REOPENED", "UFL เปลี่ยนสถานะทั้งที่ล้ม");
-    const r2 = okRes(await runDue(NOW2), "รอบถัดไป");
+    const r2 = okRes(await runDue(NOWR), "รอบถัดไป");
     eq([r2.closed, r2.errors, (await auditRow(UFL, D)).status], [1, 0, "CLOSED"], "ปิดได้หลังถอด trigger");
   });
   await st("CR-5", "runMinuteJobs จริง (platform): runMinuteJobs(NOW2 + 20 นาที, {cadence:\"minute\"}) ⇒ results มี hotel-night-audit outcome ok (ไม่ failed/busy) · ไม่สร้างแถวเพิ่มในร้านทดสอบ (ทุกวันปิดแล้ว) · ไม่แตะหน่วยนอก", async () => {
