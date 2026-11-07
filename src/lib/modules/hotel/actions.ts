@@ -460,7 +460,8 @@ export async function moveBookingAction(unitSlug: string, input: unknown): Promi
   const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
   if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
   if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
-  const r = await runBooking(unitSlug, auth, unit.id, pickKeys(input, ["id", "roomId", "checkIn", "checkOut"], unit.id), (a, c, i) => hotelBooking.rescheduleBooking(a, c, i));
+  // มติผู้คุม 7 พ.ย.: การลากต้องไม่ย้ายการจองคนอื่นเงียบ ๆ ⇒ moveBooking = rescheduleBooking ของ H.3 แบบ repack: false (ห้องปลายทางไม่ว่าง = ROOM_BUSY แถบเด้งกลับ)
+  const r = await runBooking(unitSlug, auth, unit.id, pickKeys(input, ["id", "roomId", "checkIn", "checkOut"], unit.id), (a, c, i) => hotelBooking.moveBooking(a, c, i));
   revalidateCalendar(unitSlug, r.ok);
   return r;
 }

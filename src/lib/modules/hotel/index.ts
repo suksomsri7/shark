@@ -85,7 +85,7 @@ export {
   shortenBooking,
   assignRoom,
   rescheduleBooking,
-  rescheduleBooking as moveBooking,
+  moveBooking, // SVC H.2: เดิม alias rescheduleBooking · มติผู้คุม 7 พ.ย. = ไม่จัดห้องให้การจองอื่น (repack false)
   markNoShow,
   undoNoShow,
   takeBookingDeposit,

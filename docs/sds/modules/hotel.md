@@ -132,7 +132,7 @@ STANDARD: ซูพีเรีย 990 ทุกวัน · ดีลักซ�
 - `extendBooking`: guard tx เฉพาะคืนใหม่ · ราคา = quote ณ ปัจจุบัน (จอแสดงก่อนยืนยันผ่าน `quoteExtension`) · ห้องเดิมไม่ว่าง ⇒ `ROOM_BUSY` + ห้องที่ย้ายได้ (ไม่ย้ายเอง)
 - `shortenBooking`: คืนอนาคต `counted=false` (แถวคงอยู่) · ทับคืนที่ `postedAuditId` ⇒ `SHORTEN_POSTED` · ไม่คืนเงินอัตโนมัติ
 - `assignRoom`: HOLD/CONFIRMED · `moveOccupancy` (id เดิม) หรือ `claimRoom` · ต่างประเภท = ไม่คิดส่วนต่าง แต่นับชั้นประเภทของประเภทใหม่ (nights.roomTypeId ย้ายตาม) · ปิดซ่อม ⇒ `ROOM_INACTIVE`
-- `rescheduleBooking` (ฐานการลาก H.2): ย้ายห้อง + เลื่อนวันเข้า/ออกใน guard tx เดียว · CHECKED_IN เลื่อนได้เฉพาะวันออก · คืนเดิมคงราคา คืนใหม่ quote ปัจจุบัน · ห้องปลายทางถูกการจองที่ยังไม่เข้าพักถือ ⇒ จัดห้องให้รายการนั้นใหม่ในประเภทเดียวกัน (ไม่ได้ ⇒ `ROOM_BUSY`) · ล้ม = ไม่เปลี่ยนอะไร
+- `rescheduleBooking` (ฐานการลาก H.2): ย้ายห้อง + เลื่อนวันเข้า/ออกใน guard tx เดียว · CHECKED_IN เลื่อนได้เฉพาะวันออก · คืนเดิมคงราคา คืนใหม่ quote ปัจจุบัน · ห้องปลายทางถูกการจองที่ยังไม่เข้าพักถือ ⇒ จัดห้องให้รายการนั้นใหม่ในประเภทเดียวกัน (ไม่ได้ ⇒ `ROOM_BUSY`) · ล้ม = ไม่เปลี่ยนอะไร · `repack: false` (= `moveBooking` ของ facade · การลากบนปฏิทินห้อง · มติผู้คุม 7 พ.ย.) ⇒ ไม่จัดห้องให้การจองอื่น ห้องปลายทางไม่ว่าง = `ROOM_BUSY` ทันที
 
 ### Sweeper (`sweepExpiredHolds({now?, limit?})` · minute-job `hotel.sweepExpiredHolds` ต่อจาก `rooms.expireHolds`)
 HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_EXPIRED` · nights `counted=false` · ปล่อยห้อง · folio VOID · event `hotel.booking.hold_expired` · ก้อนละ ≤ 200 · CAS ต่อใบ (ซ้อนกัน/ซ้ำ = ครั้งเดียว · X5)
@@ -149,7 +149,7 @@ HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_E
 - `src/lib/modules/hotel/tape.ts` — `tapeChart(ctx, {unitId, from, days})` · `hotelToday(ctx, {unitId, now?})` · `previewMove` (อ่านอย่างเดียว · ไม่มีคิวรีเขียน)
 - `src/lib/modules/hotel/block.ts` — `blockRoom` · `releaseBlock` · `listBlocks` (ปิดห้อง)
 - จอ `src/components/hotel/{TapeChart,TapeBar,TapeKpis,BlockDialog,MoveConfirmDialog,HotelToday}.tsx` + `tape-shared.ts` (pure) · หน้า `/app/u/<slug>/hotel/calendar?view=week|2w|month&from=` · หน้าเคาน์เตอร์ `/hotel` ใช้ `hotelToday`
-- actions (`actions.ts` บล็อก SVC H.2): `moveBookingAction` (= `rescheduleBooking` ของ H.3 · tx เดียว) · `resizeBookingAction` (`extendBooking`/`shortenBooking`) · `blockRoomAction` · `releaseBlockAction` · `previewMoveAction`
+- actions (`actions.ts` บล็อก SVC H.2): `moveBookingAction` (= `moveBooking` = `rescheduleBooking` ของ H.3 แบบ `repack: false` · tx เดียว · ไม่ย้ายการจองคนอื่นเงียบ ๆ) · `resizeBookingAction` (`extendBooking`/`shortenBooking`) · `blockRoomAction` · `releaseBlockAction` · `previewMoveAction`
 
 ### แถว · กลุ่ม
 - แถวห้อง = ห้อง active ที่ขายรายคืนได้ (`rentMode` จริง NIGHTLY/BOTH) · ห้อง MONTHLY ล้วนไม่มีแถว (ของหอ) · เรียง อาคาร (`sortOrder`) → ชั้น → เลขห้อง

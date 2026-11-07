@@ -8,7 +8,7 @@
 // ฉาก = SQC_HOTEL_TAPE_SCENE เท่านั้น (ไม่มีตัวเลข/ชื่อในสคริปต์ · วันสัมพัทธ์ SQC_TODAY_BKK + offset):
 //   • ปิดห้องก่อน (blockRoom ของ H.2 · เหตุผลจากฟิกซ์เจอร์) ⇒ การจองที่ระบบเลือกห้องให้จะไม่ลงห้องที่ปิด
 //   • การจองผ่าน createBooking (ผู้กระทำ = เจ้าของ svcqc) · note = "<mark> #<key>#" → ห้องตาม pinRooms ด้วย assignRoom
-//     (ห้องถูกการจองอื่นของฉากถือไว้ ⇒ moveBooking/rescheduleBooking ของ H.3 จัดห้องให้รายการที่ขวางใหม่) → มัดจำ PAID = takeBookingDeposit → CHECKED_IN = checkIn เดิม
+//     (ห้องถูกการจองอื่นของฉากถือไว้ ⇒ rescheduleBooking ของ H.3 (repack ค่าเริ่ม) จัดห้องให้รายการที่ขวางใหม่) → มัดจำ PAID = takeBookingDeposit → CHECKED_IN = checkIn เดิม
 //   • การจองอดีต (offset < 0) = ส่ง `at` ภายใต้ SVC_QC_CLOCK=1 (ฉากตั้งเอง) — ไม่แก้แถวตรง
 // idempotent: key ที่มีแถวแล้ว = ข้าม · การปิดห้องที่มีอยู่แล้ว (ห้อง+ช่วงเดียวกัน) = ข้าม
 // --clear: releaseBlock การปิดห้องของฉาก (ห้อง + เหตุผลตามฟิกซ์เจอร์) → cancelBooking แถว HOLD/CONFIRMED → ปล่อยห้องจริงที่ยัง active → ลบแถวที่ note มี mark
@@ -159,7 +159,7 @@ try {
         const cur = await prisma.hotelReservation.findFirst({ where: { tenantId, unitId, id: r.id }, select: { roomId: true } });
         if (cur?.roomId === target) continue;
         const a = await hotel.assignRoom(OWNER, ctx, { unitId, id: r.id, roomId: target, ...atIn });
-        if (!a.ok) must(await hotel.moveBooking(OWNER, ctx, { unitId, id: r.id, roomId: target, ...atIn }), `ห้อง ${b.key} → ${pin}`);
+        if (!a.ok) must(await hotel.rescheduleBooking(OWNER, ctx, { unitId, id: r.id, roomId: target, ...atIn }), `ห้อง ${b.key} → ${pin}`);
       }
       const first = created.reservations[0];
       if (b.deposit === "PAID") {
