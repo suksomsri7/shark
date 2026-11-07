@@ -23,7 +23,9 @@
 | «src/lib/modules/hotel/hk-state.ts» | ใหม่ (pure) | `HK_TRANSITIONS` · `canHkTransition` · `hkPriority(room)` · `parseHkNote/serializeHkNote` |
 | `src/lib/modules/hotel/index.ts` · `actions.ts` | เพิ่ม | facade + actions (`// SVC H.6 ▸ … ◂`) |
 | `src/lib/modules/dorm/portal.ts` | **เพิ่มพารามิเตอร์อย่างเดียว** | `dormStaffGate(ctx, unitId, action, opts?: {allowTypes?: ("DORM"\|"HOTEL")[]})` ค่าเริ่ม `["DORM"]` (พฤติกรรมเดิมทุกไบต์) |
-| `src/lib/modules/dorm/repair.ts` | **แก้เฉพาะ** จุดเรียก gate ของเส้น staff ที่แม่บ้านใช้ (`listDormRepairs`/`dormRepairJob`/สร้างใบซ่อมโดยพนักงาน) ส่ง `allowTypes ["DORM","HOTEL"]` · ป้าย/ข้อความไม่เปลี่ยน · ถ้าไม่มีเส้น "พนักงานแจ้งซ่อมเอง" ⇒ **ขอผู้คุม** |
+| `src/lib/modules/dorm/repair.ts` | **เพิ่มฟังก์ชันเดียว + แก้จุดเรียก gate** (มติ 7 พ.ย. ข้อ 6): `createStaffRepair(actor, ctx, {unitId, roomId, category, text, photos?, allowEntry: true})` (พนักงานแจ้งเอง · leaseId/partyId null · หมวดจาก `rooms.repair.categories` resolve บนหน่วย (fallback) · ไฟล์ private · event `dorm.repair.created` เดิม · ส่งออกผ่าน dorm facade) · `listDormRepairs`/`dormRepairJob`/`completeDormRepair` ส่ง `allowTypes ["DORM","HOTEL"]` · ป้าย/ข้อความหอไม่เปลี่ยน |
+| `src/lib/core/settings/defs/rooms.ts` | **เพิ่มอย่างเดียว** | `rooms.hotel.minibar` (#75) schema เป็น union `{productId, priceSatang?} \| {key, name, priceSatang}` (มติ ข้อ 5 · ค่าเดิมยังผ่าน) · คีย์ใหม่ `rooms.hotel.hk.canBlock` (bool เริ่ม true · unitTypes HOTEL) · enumLabelsTh/tableTh ครบ |
+| `src/lib/modules/rooms/index.ts` (ชิ้นกลาง) | **ผู้คุมอนุญาต 1 บรรทัด** | re-export `HK_STATUSES` type/const จาก service.ts (มติ ข้อ 11) |
 | `src/lib/realtime/events.ts` · `index.ts` | เพิ่ม | `EV_HOTEL_HK` · `hotelHkChannel(unitId)` · ใน SAFE_KEYS เฉพาะ {roomId, hkStatus, at} |
 | «src/app/api/realtime/hotel-hk-token/route.ts» | ใหม่ | แบบ `kanban-token` (ตรวจสิทธิ์ housekeeping ของหน่วย) |
 | «src/components/hotel/hk/{HkBoard,HkRoomCard,HkRoomSheet,HkChecklist,HkMinibar,HkDefectDialog,HkOfflineQueue}.tsx» + `hk-shared.ts` | ใหม่ (`'use client'`) | จอ §4 มือถือ-first |
@@ -65,3 +67,17 @@
 
 ## 8. ส่งต่อ
 H.7: `markStayoversDirty` + รายงานแม่บ้านจาก log · H.9: ไล่กดบทบาทแม่บ้าน (เมนูซ่อน · 403)
+
+## 9. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 95 ข้อ @8044dec38)
+1. `hkBoard(ctx, {unitId, mine?})` และ `hkLogs(ctx, {unitId|roomId, from, to})` ไม่มี actor (อ่านอย่างเดียว · สิทธิ์ตรวจที่ page/action) · ตัวอื่น `(actor, ctx, input)` · input ไม่มี unitId (roomId ชี้หน่วย)
+2. hkNote JSON `{assignedTo, startedAt, guestRequest}` · hkFinish ล้าง assignedTo/startedAt **คง guestRequest** · hkNote ข้อความเดิม (ไม่ใช่ JSON) ต้องไม่ทำบอร์ดพัง · เพิ่ม `setGuestRequest(actor, ctx, {roomId, text|null})` (สิทธิ์ `hotel.housekeeping` หรือ `hotel.reservation.create`) — ฉาก h.6 ใช้ตัวนี้ ห้ามเขียนคอลัมน์ตรง
+3. B202 = `VACANT` + INSPECTED + ป้าย "พร้อมรับ <แขก>" เมื่อมีจองใน 7 วัน (ฟิกซ์เจอร์แก้แล้ว)
+4. counts: total = ห้องมีบริบท (ไม่ VACANT) + ว่าง DIRTY (+ VACANT ที่มีจองใน 7 วัน) · ไม่รวม OOO · done = CLEAN/INSPECTED และไม่มี guestRequest ค้าง · mine = assignedTo = ฉัน (คอมเมนต์ในฟิกซ์เจอร์)
+5. def #75 ขยาย union รับ `{key, name, priceSatang}` (§1) · ฟิกซ์เจอร์คง
+6. เส้น staff แจ้งซ่อม: `createStaffRepair` ใน dorm/repair.ts (§1) · หมวด fallback จาก registry
+7. ช่อง realtime `hotel:hk:<tenantId>:<unitId>` · route `/api/realtime/hotel-hk-token?unitId=` (requireTenant/Unit · HOTEL · housekeeping · no-store) · client `subscribeHotelHk` · polling 15 วิ
+8. `hkStart({roomId, override?: true, at?})` (override = `hotel.housekeeping.inspect`) · checklist `[{key, done}]` · `canHkTransition(from, to, {role: "MAID"|"INSPECTOR"|"SYSTEM", inspectionRequired})` export `HK_ROLES`
+9. BLOCK จาก reportDefect: `hotel.booking.manage` ได้แม้ไม่มี housekeeping (frontdesk) · REPAIR ต้อง housekeeping — ตามข้อสอบ DF-7
+10. `hkStart`/`hkSetStatus` รับ `at` เฉพาะใต้ `SVC_QC_CLOCK=1` (แบบ h.3 ข้อ 13)
+11. `HK_STATUSES` re-export ใน rooms/index.ts (ผู้คุมอนุญาต · §1)
+

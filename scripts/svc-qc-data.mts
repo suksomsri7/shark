@@ -1692,7 +1692,7 @@ export const SQC_HOTEL_HK_SCENE = {
     { room: "B204", hkStatus: "INSPECTED", context: "ARRIVING", mine: true, guestRequest: "ขอหมอนเพิ่ม 1" },
     { room: "B101", hkStatus: "DIRTY", context: "STAYOVER", mine: true, guestRequest: "แขกขอทำหลัง 13:00" },
     { room: "B105", hkStatus: "DIRTY", context: "STAYOVER", mine: true, note: "เปลี่ยนผ้าเช็ดตัว · ป้าย 'ไม่ต้องทำ' เมื่อวาน" },
-    { room: "B202", hkStatus: "INSPECTED", context: "ARRIVING", done: true }, // ✓ พร้อมรับ (Booking.com · B202 ของฉาก h.2 เข้า +2 ⇒ ฉากไม่ขยับวัน — ป้าย "พร้อมรับ")
+    { room: "B202", hkStatus: "INSPECTED", context: "VACANT", done: true }, // ✓ พร้อมรับ (Booking.com เข้า +2 ⇒ บริบทวันนี้ = VACANT · ป้าย "พร้อมรับ <ชื่อ>" เมื่อ INSPECTED และมีจองใน 7 วัน — มติ h.6 ข้อ 3)
     { room: "B103", hkStatus: "OUT_OF_ORDER", context: "OOO" }, // BLOCK ของฉาก h.2
   ] as SqcHkRoom[],
   /** ค่าตั้งที่ฉากเปิดบนหน่วย svcqc (คืนค่าตอน --clear) */
@@ -1701,6 +1701,7 @@ export const SQC_HOTEL_HK_SCENE = {
   checklistDeluxe: ["เปลี่ยนผ้าปู · ปลอกหมอน", "ห้องน้ำ · ผ้าเช็ดตัว 2 ชุด", "เติมน้ำดื่ม · กาแฟ · สบู่", "ดูดฝุ่น · ถูพื้น", "ตรวจแอร์ · รีโมต · ทีวี"],
   /** มินิบาร์ (ค่าตั้ง rooms.hotel.minibar) + รายการที่โพสต์แล้วบน B105 (folio OPEN ของ B105 แขกพักอยู่) */
   minibar: { items: [{ key: "soda", name: "น้ำอัดลม", priceSatang: 4_000 }, { key: "chips", name: "มันฝรั่ง", priceSatang: 4_000 }, { key: "water", name: "น้ำดื่ม", priceSatang: 2_000 }], posted: { room: "B105", lines: [{ key: "soda", qty: 2 }] } },
+  /** นิยาม counts (มติ h.6 ข้อ 4): total = ห้องที่มีบริบท (ไม่ VACANT) + ห้องว่าง DIRTY · ไม่รวม OOO · done = ใน total ที่ CLEAN/INSPECTED และไม่มี guestRequest ค้าง (B204 มีคำขอ ⇒ ไม่ done) · mine = assignedTo = ฉัน · B202 VACANT+INSPECTED นับ done ผ่านป้าย "พร้อมรับ" (อยู่ใน total เพราะมีจองใน 7 วัน) */
   expect: {
     counts: { mine: 5, total: 6, done: 1 },
     /** ลำดับการ์ดด่วน (hkPriority): ออกแล้ว+มีแขกเข้า → แขกเข้าวันนี้ → ออกแล้ว → ค้างต่อ → ... */
