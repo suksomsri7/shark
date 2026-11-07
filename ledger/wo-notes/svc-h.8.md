@@ -24,8 +24,19 @@
 
 ไม่แตะ: prisma/** · pos/** · coupon/** · domain/** · email.ts · proxy.ts · payment/** · spam-guard · rates/pricing/availability.ts · service.ts · svc-qc-data · oracle
 
-## 3. ผลข้อสอบ (รันโดย builder — ผู้คุมรันซ้ำ)
-(ดูรายงาน builder · JSON_SUMMARY จริงอยู่ใน /root/svc-runs/h8/builder/*.log)
+## 3. ผลข้อสอบ (รันโดย builder @c7c2e41d0 — ผู้คุมรันซ้ำ · log `/root/svc-runs/h8/builder/final*.log`)
+| ชุด | ผล |
+|---|---|
+| qc-svc-h.8 --no-regression | 68/84 · failed [SR-10 (MINOR), PY-4, Q-1, Q-4] = ข้อแย้ง §7 ทั้งหมด · skipped [F-1 (commit แล้ว), V-1 (ไม่มี QC_BASE), G-1..10] |
+| qc-svc-h.3 --no-regression | 98/109 · failed [] |
+| qc-svc-h.5 --no-regression | 77/95 · failed [] |
+| qc-svc-h.2 --no-regression | 78/87 · failed [] |
+| qc-hotel-public | 15/15 (findings []) |
+| qc-svc-b.8 --no-regression | 81/94 · failed [] (สาขา HOTEL ของ payment.slip.approved ไม่กระทบนัด/หอ) |
+| qc-svc-b.0 | 167/172 · failed [] |
+| tsc (เฉพาะไฟล์ของใบ 31 ไฟล์ · tsconfig นอกทรี) | 0 error (positive control ผ่าน) |
+| pre-commit fitness | ผ่านทุก commit (ไม่ใช้ --no-verify) |
+- ไม่ได้รัน: build/next · tsc ทั้งโปรเจกต์ · smoke · h.1/r0.8/b.7 · ภาพ (ผู้คุม)
 
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | check ids |
