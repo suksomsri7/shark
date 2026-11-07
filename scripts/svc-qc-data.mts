@@ -155,7 +155,8 @@ const user = (key: SqcUserKey, name: string, role: SqcUser["role"], unitAccess: 
 /** สิทธิ์ = ขั้นต่ำตามใบสั่ง §3.2 (ใบหลังเติมเอง เช่น dorm.meter.read ใน D.6) */
 export const SQC_USERS: SqcUser[] = [
   user("owner", "เจ้าของ (SVC QC)", "OWNER", ["*"]),
-  user("manager", "ผู้จัดการร้าน (SVC QC)", "MANAGER", [SQC_UNITS.barber.id, SQC_UNITS.massage.id]),
+  // SVC H.7 ▸ manager + หน่วยโรงแรม + hotel.audit.run · hotel.reports.read (ปิดวัน/รายงาน · ใบสั่ง h.7) ◂
+  user("manager", "ผู้จัดการร้าน (SVC QC)", "MANAGER", [SQC_UNITS.barber.id, SQC_UNITS.massage.id, SQC_UNITS.hotel.id], ["hotel.audit.run", "hotel.reports.read", "hotel.booking.manage"]),
   // SVC B.5 ▸ ek = ช่าง (เรียก/เริ่ม/เสร็จงานของตัวเอง · booking.job.run = PROVIDER ของ B.11) · cashier = หน้าเคาน์เตอร์ (เช็กอิน · รับ walk-in = แถว counter ของ B.11 · ไม่มีเรียก/เริ่ม/เสร็จ) ◂
   user("ek", "ช่างเอก", "STAFF", [SQC_UNITS.barber.id], ["booking.appointment.setStatus", "booking.job.run"]),
   user("cashier", "แคชเชียร์ (SVC QC)", "STAFF", [SQC_UNITS.barber.id, SQC_UNITS.massage.id], ["pos.sale.create", "booking.checkin", "booking.walkin.create"]),
@@ -1719,3 +1720,48 @@ SQC_VISUAL_SPECS["h.6"] = [
   { name: "hotel-hk-logs", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/housekeeping/logs` },
 ];
 // ◂ SVC H.6
+
+// ══════════════════════════════════════════════════════════════════════
+// SVC H.7 ▸ บล็อก night audit + รายงาน — ผู้คุมตั้ง 7 พ.ย. 2569 · builder/เลนอื่นห้ามแตะ · ใบสั่ง svc-brief-h.7.md §6
+//   🔴 ฉาก h.7 ยืนบนฉาก h.3 เท่านั้น (ไม่รันฉาก h.2/h.5/h.6 ก่อน) ⇒ ไม่มี BLOCK · available = ห้อง NIGHTLY/BOTH active = 13 (B205 MONTHLY ไม่นับ)
+//   🔴 ฉาก h.3 ทำ noshow ไปแล้ว (status NO_SHOW) ⇒ ฉาก h.7 เพิ่มการจอง `audit-noshow` (CONFIRMED · เข้าเมื่อวาน · มัดจำจ่ายแล้ว · ไม่เช็กอิน) ให้ขั้น 1 ของ audit จัดการ
+//   🔴 ราคาคืนไม่ใส่ตัวเลขตาย (ขึ้นกับวันในสัปดาห์) — ข้อสอบคำนวณ revenue/ADR/RevPAR จาก SQC_HOTEL_RATES ด้วย pricing ของ H.1
+// ══════════════════════════════════════════════════════════════════════
+export const SQC_HOTEL_AUDIT_SCENE = {
+  mark: "SvcQcScene:h7",
+  unit: "hotel" as SqcUnitKey,
+  /** businessDate ที่ปิด = วันนี้ไทย − 1 (ฉาก h.3: inhouse-web คืน −1..+1 · inhouse-ota คืน −2..0 · noshow เมื่อวาน = NO_SHOW แล้ว) */
+  businessDateOffset: -1,
+  /** การจองเพิ่มของฉากนี้ (สร้างผ่าน createBooking + takeBookingDeposit ด้วย `at` ใต้ SVC_QC_CLOCK=1 · ไม่เช็กอิน) ⇒ audit ขั้น 1 ต้อง markNoShow + ริบมัดจำผ่าน POS + PENALTY */
+  extraBookings: [
+    { key: "audit-noshow", status: "CONFIRMED", source: "PHONE", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: -1, nights: 1, plan: "standard", guest: "คุณกิตติ (ไม่มา·รอปิดวัน)", adults: 1, deposit: "PAID" },
+  ] as SqcSceneBooking[],
+  /** ค่าตั้งที่ฉากตั้งให้หน่วย svcqc (ชั้น UNIT · ตั้งก่อนปิดวัน) */
+  settings: { "rooms.hotel.noShow": "FORFEIT_RELEASE_AFTER_AUDIT", "rooms.hotel.dailyHousekeeping": true, "rooms.hotel.auditAutoTime": "03:00", "rooms.hotel.audit.autoClose": true } as Record<string, unknown>,
+  /** ผลที่ต้องได้หลัง closeNightAudit(businessDate = −1) · ข้อสอบ Q เทียบจาก HotelNightAudit + FolioItem + nights */
+  expect: {
+    noShows: 1,                 // audit-noshow ⇒ NO_SHOW · มัดจำริบ (PENALTY = มัดจำคืนแรก) · folio SETTLED
+    roomNightsPosted: 2,        // inhouse-web คืน −1 · inhouse-ota คืน −1 (ROOM item businessDate −1 · ไม่โพสต์ซ้ำเมื่อปิดใหม่)
+    roomsTotal: 13,             // ห้อง NIGHTLY/BOTH active (B205 MONTHLY ไม่นับ)
+    roomsOOO: 0,                // ไม่มี BLOCK ในฉาก h.3
+    roomsAvailable: 13,
+    roomsOccupied: 2,           // CHECKED_IN ที่มีคืน −1 นับ: inhouse-web · inhouse-ota (noshow/audit-noshow ไม่นับ)
+    occupancyBps: 1538,         // 2 × 10000 ÷ 13 (ปัดลง)
+    /** revenue = ราคาคืน −1 ของดีลักซ์ (inhouse-web · standard) + ราคาคืน −1 ของซูพีเรีย (inhouse-ota · standard) ตาม SQC_HOTEL_RATES/pricing · ADR = revenue ÷ 2 · RevPAR = revenue ÷ 13 (ปัดตาม rooms.money.rounding) */
+    stayoversDirty: 2,          // H.6 markStayoversDirty: inhouse-web · inhouse-ota ยังพักต่อข้ามคืน −1 ⇒ DIRTY (ถ้า H.6 ยังไม่ merge ⇒ ข้อสอบ SKIP)
+    closeTwice: "ALREADY_CLOSED",
+    closeToday: "TOO_EARLY",
+    reopenThenClose: { auditStatus: "CLOSED", roomNightsPostedAfter: 2 }, // ปิดใหม่ไม่โพสต์ซ้ำ
+    history: 1,
+  },
+} as const;
+/**
+ * ภาพ h.7 (ไม่มีภาพแบบเฉพาะ · PARITY โครงกับหน้ารายงานหอ): หน้ารายงาน + หน้าปิดวัน · ถ่าย --user owner · manager (hotel.audit.run+reports.read) · frontdesk (ไม่มีสิทธิ์ ⇒ ไม่เห็นแท็บ/404)
+ * ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.3 → ฉาก h.7 (ยังไม่ปิดวัน ⇒ หน้า audit แสดง preview เมื่อวาน · หน้า reports คำนวณสด)
+ */
+SQC_VISUAL_SPECS["h.7"] = [
+  { name: "hotel-reports", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reports` },
+  { name: "hotel-reports-revenue", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reports?tab=revenue&groupBy=source` },
+  { name: "hotel-audit", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reports/audit` },
+];
+// ◂ SVC H.7
