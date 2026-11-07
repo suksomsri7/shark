@@ -22,9 +22,12 @@
 | `src/lib/modules/hotel/service.ts` | **แก้เฉพาะ**: `createReservation` → เรียก `createBooking` (คง signature เดิมให้ P1 callers) · `checkIn` ใช้ nights.roomId/occupancy ใหม่ (ลบ legacy branch) · `cancelReservation` → `cancelBooking` · ลบ `stayLoad` legacy (หลัง CONFLICT=0) · อื่นห้ามแตะ (checkOut/refundStay = H.5) |
 | `src/lib/modules/hotel/index.ts` · `actions.ts` | เพิ่ม | facade + actions §3.5 (บล็อก `// SVC H.3 ▸ … ◂`) |
 | `src/lib/modules/hotel/pricing.ts` | เพิ่มอย่างเดียว | `depositPolicyOf(plan, setting)` ใช้จริง · ไม่แก้สูตรเดิม |
+| `src/lib/modules/hotel/rates.ts` (H.1) | **แก้จุดเดียว** (มติ 7 พ.ย. · ข้อสอบ A-5 ตาม §0 "สูตรเดียวทุกที่") | `remainingOf`/"เหลือขาย" ของ ratePreview เรียก `hotelAvailability.get` แทนสูตรเดิม · อื่นห้ามแตะ |
+| `src/lib/modules/rooms/occupancy.ts` (ชิ้นกลาง R0) | **ผู้คุมแก้เอง** (ใบแก้ชิ้นกลางในใบนี้) | `sweepStaleOccupancy` สถานะที่ยังถือห้อง = BOOKED/HOLD/CONFIRMED/CHECKED_IN/NO_SHOW (เดิมมีแค่ BOOKED/CHECKED_IN — บั๊กที่ builder พบ · cron 5 นาทีจะปล่อยห้องของ V2) |
 | «src/components/hotel/{BookingList,BookingDetail,BookingWizard,BookingDepositDialog}.tsx» + `booking-shared.ts` | ใหม่ | จอ §4 |
 | `src/app/app/u/[unitSlug]/hotel/reservations/page.tsx` · «…/reservations/[id]/page.tsx» · «…/reservations/new/page.tsx» | แก้/ใหม่ | หน้า §4 · ด่าน HOTEL · ถอด `ModuleTabs` ซ้อน (หนี้ H.1) |
-| `src/lib/platform/cron.ts` | เพิ่ม | เรียก `sweepExpiredHolds` ทุกนาที (ต่อจาก `expireHolds` ของแกนห้อง · idempotent) |
+| `src/lib/platform/minute-jobs.ts` (ที่ `expireHolds` ลงทะเบียน · ไม่ใช่ cron.ts) | เพิ่ม | เรียก `sweepExpiredHolds` ทุกนาที (ต่อจาก `expireHolds` ของแกนห้อง · idempotent) |
+| `src/app/app/u/[unitSlug]/hotel/page.tsx` | แก้เฉพาะ | ถอด `ModuleTabs` ซ้อน HotelTabs (หนี้ H.1 · มติ 7 พ.ย. ข้อ 6) |
 | `src/lib/outbox-consumers.ts` · `src/lib/automation/labels.ts` · `src/lib/webhooks/labels.ts` | เพิ่ม | event §5 ลง 3 ทะเบียน (CC §7) |
 | `src/lib/core/permissions.ts` | ย้าย `hotel.booking.manage` จาก planned → ใช้จริง |
 | «scripts/svc-qc-hotel-booking-scene.mts» | ใหม่ | ฉาก §6 |
@@ -78,3 +81,24 @@
 
 ## 8. ส่งต่อ
 H.2: `assignRoom`/`extendBooking` เป็นฐานของการลาก · H.4: `checkIn` V2 ใช้ nights.roomId · H.5: folio item · เช็กเอาต์ · H.7: no-show อัตโนมัติ = `markNoShow` ชุด · H.8: `createBooking(null, …, {source:"WEB", hold:"ONLINE"})` + `takeBookingDeposit` ผ่าน PaymentIntent · H.10: `source:"OTA"` + `channelRef` + คิว NEEDS_ROOM เมื่อ `AVAILABILITY_CHANGED`
+
+## 11. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 109 ข้อ @6fc5df987)
+1. **คืนเงินขั้นบันไดบางส่วน (เช่น 50%) โดยไม่แก้ POS**: ยอดที่ริบ = `pos.createSale` บิล "ค่าธรรมเนียมยกเลิก <code>" 1 บรรทัด (sourceModule HOTEL · key `hotel-cancelfee-<reservationId>`) **จ่ายด้วย payMethod `DEPOSIT {refSaleId: ใบรับมัดจำ}`** (POS หักจากมัดจำที่ถืออยู่ · รายได้ค่าปรับรับรู้ที่นี่) → แล้ว `moduleRefundDeposit` คืน "คงเหลือ" (= ส่วนที่ต้องคืนจริง) · 100% = refund อย่างเดียว · 0% = `moduleForfeitDeposit` อย่างเดียว (เหมือนเดิม) · ข้อสอบ D-7 ถ้าคาดการริบผ่าน forfeit ⇒ ผู้คุม ORACLE-EDIT ตอนรับใบให้ยอมบิลค่าธรรมเนียม · **ไม่ขอ exception POS**
+2. **หน่วย hotel svcqc ผูก POS**: ฟิกซ์เจอร์เพิ่ม `SQC_POS_EXTRA_UNITS = ["hotel"]` (ผูกเฉพาะระบบ POS · ไม่ผูก INVENTORY) + seed ลิงก์ · reseed l1/l2/l3 ก่อนรันฉาก
+3. **ความจุประเภทห้อง**: `SqcRoomType` เพิ่ม `capacity/baseOccupancy/maxOccupancy/extraBedAllowed` (ซูพีเรีย 2/2/2 · ดีลักซ์ 2/2/3 · แฟมิลี 4/2/5 เตียงเสริมได้ · ร้าน B ดีลักซ์ 2/2/3) + seed เขียน · ฉาก adults 4/3 ผ่าน
+4. **MANUAL_APPROVE**: HOLD **มี** `holdExpiresAt` = วันเข้า เวลา `checkInTime` ของหน่วย (ไม่ใช่ null — แก้ §2 ข้อ 1/3: ถ้าไม่มีใครกดยืนยันถึงเวลาเช็กอิน sweeper ยกเลิก HOLD_EXPIRED) · occupancy kind HOLD ตามปกติ
+5. actor null ⇒ source WEB/LINE เท่านั้น (อื่น ⇒ FORBIDDEN)
+6. `hotel/page.tsx` เข้า §1 (ถอด ModuleTabs ที่หน้าเคาน์เตอร์) · reservations/** ไม่มี ModuleTabs ซ้อนอยู่แล้ว
+7. sweeper ลงทะเบียนใน `minute-jobs.ts` (แก้ §1 แล้ว)
+8. ย่อย: shorten ทับคืนที่ `postedAuditId` ⇒ `SHORTEN_POSTED` ปฏิเสธ (ไม่ตัดบางส่วน) · folio หลัง cancel ⇒ VOID · `available` clamp ≥ 0 · แผน deposit NONE + DEPOSIT_REQUIRED ⇒ มัดจำ 0 ⇒ CONFIRMED ทันที (ไม่ HOLD) · OTA ไม่มี channelRef ⇒ INVALID_INPUT · `undoNoShow` ไม่คืนเงินที่ริบอัตโนมัติ (MANAGER จัดการเงินแยก · จดเป็นหนี้ `moduleUnforfeitDeposit` รับเฉพาะ BOOKING)
+9. L-2 (ทั้งฐานเลนไม่มีการจอง active ไร้ nights · MAJOR) คง — ฐาน l1/l2/l3 backfill แล้ว · ถ้าแดงจากแถวเก่าที่ไม่ใช่ H.3 ผู้คุมตัดสินตอนรับ
+
+## 12. มติผู้คุมหลังรับงาน builder (7 พ.ย. · c5db1f78f · 93/109)
+- ORACLE-EDIT 4 จุด: K-6/W-1 (`h3-K6-manual-expiry`/`h3-W1-manual-expiry` — MANUAL_APPROVE หมดอายุ = วันเข้า 14:00 ไทย ตาม §11.4 · เดิมคาด null) · K-13 (`h3-K13-isolation` เทียบ nights ก่อน/หลัง) · C-4 (`h3-C4-fresh-hold`) · qc-hotel-public HP-5.1 นับ BOOKED|CONFIRMED (`hp51-confirmed`)
+- ยอมรับ: rates.ts แก้ `remainingOf` (ตาม §0) · `dashboardData` นับ CONFIRMED · `createReservation` P1 ไม่มีเพดานล่วงหน้า · คีย์บิลค่าธรรมเนียม `dep-forfeit:<depositId>` (กันริบซ้ำที่ POS — ดีกว่ามติเดิม) · `rescheduleBooking` ย้ายการจองที่ยังไม่เข้าพักให้พ้นทางได้ (ผู้ตรวจรอบ 1 ตรวจ atomic/ล็อก)
+- ผู้คุมแก้ชิ้นกลาง `rooms/occupancy.ts` sweepStaleOccupancy (ดู §1)
+- หนี้ที่รับ: couponCode ยังไม่คิดส่วนลด (H.8 ใช้ coupon.validate) · มัดจำกลุ่มเมื่อยกเลิก/ไม่มารายห้อง (ไม่คืน/ริบตามสัดส่วน) · undoNoShow ไม่คืนเงินริบ · แถวอื่นในกลุ่มหักมัดจำตอน checkOut ไม่ได้ (H.5 §2.6 ต้องจัดการ) · ลบ `reservation-form.tsx` P1
+- **ผู้ตรวจรอบ 1 (7 พ.ย. 05:4xZ · ตีกลับมีเงื่อนไข)**: C-1 มัดจำบนแถว HOLD_EXPIRED ระหว่าง POS (หน้าต่าง 300–700 ms · probe PB) · M-1 deadlock 40P01 หลุด throw ดิบ + ลำดับล็อกไม่เท่ากัน (cancel/noShow/confirm ไม่ล็อกประเภท) · M-2 ปลาย tx ไม่ CAS สถานะ · minor 7 (m-1 ข้อยกเว้น re-book ใน TRANSITIONS จดเอกสาร · m-3 source จากผู้เรียก + หน้าสถานะ P1 เทียบ BOOKED · m-4 ป้าย MANUAL · m-5 แม่บ้านไม่เห็น PII ในรายการจอง · m-6 backfill ACTIVE_RV = หนี้ · m-7 ไม่มีผล) · **มติ §11.4 ปรับ**: MANUAL_APPROVE holdExpiresAt = max(วันเข้า checkInTime, now + holdMinutesCounter) · สั่ง builder รอบ 2 แล้ว (05:4xZ)
+- **ผู้ตรวจรอบ 2 เงิน (7 พ.ย. 05:5xZ · ผ่านมีเงื่อนไข · probe 32/32)**: M1 race รับมัดจำ↔ยกเลิก (ตระกูล C-1) · minor 6 (m1 DTO remaining/forfeited · m2 audit เงิน 2 จังหวะ · m3 ปัดคืนเงินตาม rounding · m4 0% ใช้บิลค่าธรรมเนียม · m5 มัดจำ legacy warning+manage · m6 re-book เฉพาะวันเข้า ≥ วันนี้) — รวมในรอบ 2 ของ builder แล้ว · มติ: D6 คีย์ `dep-forfeit:` รับ · ยกให้เจ้าของ: บัญชีรายได้ค่าปรับ/ริบ = 4000 (ตาม POS เดิม) — Q-H3-1 · VAT มัดจำ = อัตรา POS (H.5 reconcile)
+- **ผู้ตรวจรอบยืนยัน (7 พ.ย. 07:2xZ · ตีกลับมีเงื่อนไข)**: รอบ 2 แก้ครบตรงมติ · probe a/b ผ่าน (T4.2 = 20,500) · พบใหม่ MAJOR-1 cancel/noShow ย้ายหัวกลุ่มคำนวณนอก tx ไม่ CAS (ยกเลิกหัว+ห้องพร้อมกัน ⇒ มัดจำค้าง POS 4/4 รอบ · probe-c) · MAJOR-2 `service.checkIn` ไม่ล็อก/ไม่ CAS (ยกเลิกชนเช็กอิน) · minor a/b/c · สั่ง builder รอบ 3 (07:2xZ) · เกณฑ์รับเพิ่ม: probe-c T6.1 ผ่าน
+

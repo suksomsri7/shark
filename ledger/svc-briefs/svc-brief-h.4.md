@@ -1,6 +1,6 @@
 # ใบสั่ง H.4 — เช็กอิน V2 · ทะเบียนแขก (`HotelGuestRecord`) · สแกนบัตร/พาสปอร์ต (AI เสนอ คนยืนยัน · สวิตช์ปิดเป็นค่าเริ่ม) · ร.ร.3 ลงชื่อบนจอ → ร.ร.4 PDF · คิว ตม.30 (24 ชม. · ไฟล์อัปโหลด · เลขรับแจ้ง) · เงินประกันห้อง · ผูกสมาชิก opt-in · จอหน้าเคาน์เตอร์ (ภาพ 09 ซ้าย) · ตรวจ **เข้ม (กฎหมาย · PDPA)** · ผู้ตรวจ 2 รอบ + ที่ปรึกษากฎหมายดูแบบฟอร์ม (J3)
 
-> ร่างโดยผู้คุม 7 พ.ย. 2569 — **เปิดเลนได้เมื่อ H.5 merge** (ใช้ `takeSecurityDeposit` · folio เปิดอยู่) และผู้คุมใส่ฟิกซ์เจอร์บล็อก "SVC H.4" (`SQC_HOTEL_GUEST_SCENE` · `SQC_VISUAL_SPECS["h.4"]` · frontdesk +`hotel.guest.register` · manager +`hotel.guest.viewId`) ก่อน
+> ร่างโดยผู้คุม 7 พ.ย. 2569 — **เปิดเลนได้เมื่อ H.5 merge** (ใช้ `takeSecurityDeposit` · folio เปิดอยู่) และผู้คุมใส่ฟิกซ์เจอร์บล็อก "SVC H.4" (`SQC_HOTEL_GUEST_SCENE` · `SQC_VISUAL_SPECS["h.4"]` · frontdesk +`hotel.guest.register` · ผู้มี `hotel.guest.viewId` ในฉาก = owner เท่านั้น (manager ไม่มีสิทธิ์หน่วย hotel)) ก่อน
 > แหล่งความจริง: `SVC-HOTEL-PLAN.md` §2 ข้อ 13 · §5.1 Q3–Q6 (ประกัน · ตม.30 ไฟล์+PDF ร.ร.3/4 · AI ปิดเป็นค่าเริ่ม · PDPA 2 ปี + masking + ที่ปรึกษากฎหมาย) · สเปก S §3.5 (S:128–137) §7.4 (S:883–899) §8.6 member (S:1024–1026) §9 สิทธิ์ (S:1053–1083) §11 ข้อ 15 PDPA · ใบ H.0 §2.12 (`HotelGuestRecord` คอลัมน์ · `idNumberEnc` ต้องเข้ารหัส · `retainUntil`) · ใบ H.1 §6.1 คีย์ `rooms.hotel.guest.*`/`securityDeposit.*` (ตั้งไว้แล้วใน registry) · ใบ H.3 (`assignRoom` · `checkIn` เดิมที่ H.3 คงไว้ · nights.roomId) · ใบ H.5 (`takeSecurityDeposit` · folio) · DH §7 "เช็กอิน" (DH:264) · ภาพ `ledger/design-dorm/09-hotel-checkin-folio.png` **ครึ่งซ้าย** (+ `.body.html`) · กฎหมาย: พ.ร.บ.โรงแรม 2547 ม.35 (ร.ร.3 ทันทีที่เข้าพัก · เก็บ ร.ร.3/ร.ร.4 ≥ 1 ปี) + ประกาศกระทรวงมหาดไทยเรื่องแบบ ร.ร.3/ร.ร.4 ฉบับปัจจุบัน (ทำแบบอิเล็กทรอนิกส์ได้) · พ.ร.บ.คนเข้าเมือง 2522 ม.38 (ตม.30 ภายใน 24 ชม.)
 > ของกลางที่ต้องใช้ (ห้ามสร้างซ้ำ): เข้ารหัส `sealIntegrationSecret/openIntegrationSecret` (`src/lib/core/integrations/secret-box.ts` · AAD = guestRecordId) · ไฟล์ส่วนตัว `uploadFile({visibility:"private"})` + `privateFileUrl` (`src/lib/storage/service.ts` · แบบ `dorm/lease.ts` ลายเซ็น/ไฟล์สัญญา) · AI `resolveProvider("smart")` + `canSpend/chargeUsage` (`src/lib/ai/*` · แบบ `dorm/meter-ai.ts` — รูปไม่ออกนอกระบบนอกจาก provider ของระบบ) · สมาชิก `member.findOrCreate` (source STAFF · consents) · วันไทย `bkkYmd/bkkParts` · PDF/พิมพ์ = หน้า print HTML แบบ `dorm/tenants/[leaseId]/print` (ไม่เพิ่มไลบรารี PDF)
 > ข้อสอบ (ห้ามแก้): «scripts/qc-svc-h.4.mts» · probe ผู้ตรวจ `probe-h4-b.mts` · ภาพ `SQC_VISUAL_SPECS["h.4"]`
@@ -50,7 +50,7 @@
 9. **มือถือ 390**: GuestForm/SignaturePad ใช้ได้ (แท็บเล็ตหน้าเคาน์เตอร์ตามภาพ) · `data-scroll-hint` ตารางทะเบียน
 
 ## 3. สัญญาโค้ด (ย่อ)
-3.1 `assignableRooms(ctx, {reservationId}) → [{roomId, number, hkStatus, sellable: boolean, reason?}]` · `checkInV2(actor, ctx, {reservationId, roomId, force?: {reason}, earlyOverride?: {reason}, guests: GuestInput[], memberOptIn?: {phone?, email?, consents: string[]}, at?}) → {ok, checkedInAt, guestIds, needsDeposit: boolean, needsSecurityDeposit: boolean, tm30DueAt?} | {ok:false, code: "NOT_CONFIRMED"|"TOO_EARLY"|"ROOM_TAKEN"|"ROOM_DIRTY"|"ROOM_INACTIVE"|"GUEST_REQUIRED"|"OVER_OCCUPANCY"|"INVALID_ID"|"NOT_FOUND"|"FORBIDDEN"}` (`at` ตามมติ h.3 ข้อ 13)
+3.1 `assignableRooms(ctx, {reservationId}) → [{roomId, number, hkStatus, sellable: boolean, reason?}]` · `checkInV2(actor, ctx, {reservationId, roomId, force?: {reason}, earlyOverride?: {reason}, occupancyOverride?: {reason} (MANAGER · มติ 7 พ.ย. ข้อ 11), guests: GuestInput[], memberOptIn?: {phone?, email?, consents: string[]}, at?}) → {ok, checkedInAt, guestIds, needsDeposit: boolean, needsSecurityDeposit: boolean, tm30DueAt?} | {ok:false, code: "NOT_CONFIRMED"|"TOO_EARLY"|"ROOM_TAKEN"|"ROOM_DIRTY"|"ROOM_INACTIVE"|"GUEST_REQUIRED"|"OVER_OCCUPANCY"|"INVALID_ID"|"NOT_FOUND"|"FORBIDDEN"}` (`at` ตามมติ h.3 ข้อ 13)
 3.2 `GuestInput = {fullName, nationality (ISO-3), idType, idNumber (ดิบเฉพาะขาเข้า · ไม่คืนกลับ), dob?, sex?, occupation?, address?, arrivedFrom?, nextDestination?, idImage?: {data, contentType}, keepIdImage?: boolean, aiProposed?: boolean}` · `upsertGuestRecord` · `listGuests(actor, ctx, {unitId, from, to, q?, tm30?}) → GuestDto[]` (idNumberLast4 · ไม่มีเลขเต็ม) · `revealGuestId(actor, ctx, {guestId}) → {idNumber}` (viewId · AuditLog) · `signRr3` · `rr3Card(ctx,{guestId}) → Rr3View` · `rr4Register(ctx,{unitId, from, to}) → Rr4Row[]` · `purgeExpiredGuestRecords({now?, limit?}) → {purged}`
 3.3 `readIdDocument(actor, ctx, {unitId, image}) → {ok, proposal: {...}, confidence, creditCharged} | {ok:false, code: "AI_DISABLED"|"NO_PROVIDER"|"NO_CREDIT"|"UNREADABLE"}`
 3.4 `tm30Queue(ctx,{unitId}) → {pending, late, items}` · `tm30Export(actor, ctx, {unitId, guestIds, format: "csv"|"xlsx"}) → {ok, file: {name, contentType, bytes}}` · `markTm30Filed(actor, ctx, {guestIds, tm30Ref, filedAt?, evidence?})` · `tm30Sweep({now?})`
@@ -74,3 +74,18 @@
 
 ## 8. ส่งต่อ
 H.6: แม่บ้านเห็น "แขกเข้าแล้ว/ออกวันนี้" จาก checkedInAt · H.7: no-show อัตโนมัติ (คนที่ไม่เช็กอินถึง audit) · รายงาน ตม.30/ร.ร.4 ย้อนหลัง · H.8: แขกจองเว็บกรอกข้อมูลล่วงหน้า (pre-check-in) = หนี้ 🔜
+
+## 9. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 106 ข้อ @05e472cce)
+1. `INTEGRATIONS_CREDENTIALS_KEY` เพิ่มใน `.env.qc-svc` ทุกทรี (ทรีหลัก l1 l2 l3 · คีย์สุ่ม ≥32 · gitignored) แล้ว · prod มีอยู่แล้ว (R0.6) · ลบบรรทัด `STORAGE_PROVIDER=` ซ้ำ
+2. เลขบัตร ร.ร.3 = `RR3-<พ.ศ.>-NNNNNN` derive จาก createdAt ต่อหน่วย/ปี เริ่ม 000001 · โผล่ใน rr3Card/rr4Register คีย์ `cardNo`
+3. `RR3_FIELDS` ≥ 16 กลุ่มตาม §0 + คอมเมนต์อ้างประกาศ · แบบจริง = ที่ปรึกษากฎหมาย J3 ตรวจก่อนรับใบ (ส่งภาพ TG)
+4. `tm30Export` สิทธิ์ `hotel.guest.register` + AuditLog `hotel.tm30.exported` {guestIds, byUserId} (ไฟล์มีเลขพาสปอร์ตเต็มตามแบบ ตม. · ไม่เก็บไฟล์) · xlsx ไม่มีใน deps ⇒ CSV UTF-8 BOM เสมอ (ป้าย "เปิดด้วย Excel ได้") · คอลัมน์ค่าเริ่ม 12 ตาม §0 (`TM30_DEFAULT_COLUMNS`)
+5. มัดจำค้าง: เช็กอินผ่าน + `needsDeposit:true` (จอบังคับรับ · ไม่บล็อก)
+6. ลงชื่อแทนห้อง: ไม่มีคอลัมน์ ⇒ rr3Card ผู้พักร่วมอ้าง `signatureFileId` ของผู้พักหลัก · `rr3SignedAt` ตั้งทุกคน
+7. mask บนจอ = เห็น **4 ตัวท้ายเท่านั้น** (ภาพ 09 "C01X··· 4KJ" ไม่ยึด) · `maskIdForStaff=false` ⇒ STAFF ที่มี `guest.register` เห็นเต็มโดยไม่ต้อง viewId (ค่าเริ่ม true)
+8. ลบภายใน 10 นาที = `deleteGuestRecord({guestId})` (คนเดิม · ยังไม่ลงชื่อ/ยังไม่แจ้ง ตม.)
+9. `signRr3({guestId, signaturePng?} | {guestId, method:"PAPER", note})`
+10. `tm30.enabled` ปิด ⇒ ทุกคน `NOT_REQUIRED` (isForeigner ยังจริง)
+11. `occupancyOverride?: {reason}` (MANAGER) เพิ่มใน §3.1
+12. แม่แบบ Excel ตม. จริง รอเจ้าของ (Q-H4-1) · ฟิกซ์เจอร์: ผู้มี viewId ในฉาก = owner เท่านั้น (ไม่เพิ่ม manager เข้าหน่วย hotel)
+

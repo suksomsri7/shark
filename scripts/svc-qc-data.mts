@@ -130,7 +130,7 @@ export const SQC_HOTEL_ROOMS: SqcRoom[] = [
 ];
 
 // ═══════════════ ผู้ใช้ร้าน A ═══════════════
-export type SqcUserKey = "owner" | "manager" | "ek" | "cashier" | "fai" | "meter" | "accountant" | "frontdesk" | "maid";
+export type SqcUserKey = "owner" | "manager" | "ek" | "cashier" | "fai" | "meter" | "accountant" | "frontdesk" | "maid" | "hk-lead";
 export type SqcUser = {
   key: SqcUserKey;
   userId: string;
@@ -170,6 +170,8 @@ export const SQC_USERS: SqcUser[] = [
   user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn", "hotel.rates.read", "hotel.booking.manage", "hotel.reservation.create", "hotel.reservation.cancel", "hotel.folio.post", "hotel.reservation.checkOut", "hotel.guest.register"]), // SVC H.4 ▸ +guest.register (ไม่มี guest.viewId ⇒ เห็นเลขปิดบางส่วน) ◂
   // SVC H.2 ▸ maid = แม่บ้าน (hotel.housekeeping อย่างเดียว) — เห็นปฏิทินห้องแบบอ่านอย่างเดียว ไม่มี handle ลาก (ใบ h.2 §2 ข้อ 7) · H.6 ใช้ต่อ ◂
   user("maid", "ป้าแจ๋ว (แม่บ้าน)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.housekeeping"]),
+  // SVC H.6 ▸ hk-lead = หัวหน้าแม่บ้าน (housekeeping + inspect) — ตรวจห้อง CLEAN→INSPECTED เมื่อ inspectionRequired ◂
+  user("hk-lead", "พี่นิด (หัวหน้าแม่บ้าน)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.housekeeping", "hotel.housekeeping.inspect"]),
 ];
 /** acceptedAt ตายตัว (รันซ้ำไม่ขยับ) */
 export const SQC_ACCEPTED_AT = "2026-10-01T00:00:00+07:00";
@@ -1670,3 +1672,49 @@ SQC_VISUAL_SPECS["h.4"] = [
   { name: "hotel-tm30", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/tm30` },
 ];
 // ◂ SVC H.4
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC H.6 ▸ บล็อกแม่บ้านมือถือ — ผู้คุมตั้ง 7 พ.ย. 2569 · ใบสั่ง svc-brief-h.6.md §6 · ภาพ 13 ก/ข · builder/เลนอื่นห้ามแตะ
+//   🔴 ฉาก h.6 ต่อยอดฉาก h.2 (ห้องชุดเดียวกับภาพ 08 · ต้อง --clear ฉาก h.3 แล้วรันฉาก h.2 ก่อน) · เขียนผ่าน API ของ H.6/H.5 เท่านั้น (hkSetStatus · hkStart · postMinibar · settleAndCheckOut สำหรับ B203-out · hkNote ผ่าน hkStart/คำขอแขก)
+//   🔴 "วันนี้" ของฉาก = วันนี้ไทย ณ เวลารัน · เวลาเริ่มทำ B203 = now − 18 นาที (startedAt ผ่าน `at` ใต้ SVC_QC_CLOCK=1)
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcHkRoom = { room: string; hkStatus: "DIRTY" | "CLEAN" | "INSPECTED" | "OUT_OF_ORDER"; context: "DEPARTED" | "DEPARTING" | "ARRIVING" | "STAYOVER" | "VACANT" | "OOO"; mine?: boolean; guestRequest?: string; note?: string; startedMinutesAgo?: number; done?: boolean };
+export const SQC_HOTEL_HK_SCENE = {
+  mark: "SvcQcScene:h6",
+  unit: "hotel" as SqcUnitKey,
+  maidKey: "maid" as SqcUserKey,
+  leadKey: "hk-lead" as SqcUserKey,
+  /** เช็กเอาต์ B203-out ด้วย H.5 (จ่าย CASH · ประกันไม่มี) ⇒ B203 DIRTY "ออกแล้ว" */
+  checkoutKeys: ["B203-out"],
+  rooms: [
+    { room: "B203", hkStatus: "DIRTY", context: "DEPARTED", mine: true, startedMinutesAgo: 18 }, // ภาพ ข: กำลังทำ 18 นาที · ขายได้หลังตรวจ (inspectionRequired เปิดในฉาก)
+    { room: "B102", hkStatus: "DIRTY", context: "ARRIVING", mine: true, note: "walk-in · ตรวจห้อง" },
+    { room: "B204", hkStatus: "INSPECTED", context: "ARRIVING", mine: true, guestRequest: "ขอหมอนเพิ่ม 1" },
+    { room: "B101", hkStatus: "DIRTY", context: "STAYOVER", mine: true, guestRequest: "แขกขอทำหลัง 13:00" },
+    { room: "B105", hkStatus: "DIRTY", context: "STAYOVER", mine: true, note: "เปลี่ยนผ้าเช็ดตัว · ป้าย 'ไม่ต้องทำ' เมื่อวาน" },
+    { room: "B202", hkStatus: "INSPECTED", context: "ARRIVING", done: true }, // ✓ พร้อมรับ (Booking.com · B202 ของฉาก h.2 เข้า +2 ⇒ ฉากไม่ขยับวัน — ป้าย "พร้อมรับ")
+    { room: "B103", hkStatus: "OUT_OF_ORDER", context: "OOO" }, // BLOCK ของฉาก h.2
+  ] as SqcHkRoom[],
+  /** ค่าตั้งที่ฉากเปิดบนหน่วย svcqc (คืนค่าตอน --clear) */
+  settings: { "rooms.hotel.inspectionRequired": true, "rooms.hotel.dailyHousekeeping": true, "rooms.hotel.hk.canBlock": true },
+  /** เช็กลิสต์ดีลักซ์ (ค่าตั้ง rooms.hotel.housekeepingChecklist ชั้น ROOM_TYPE) ตามภาพ ข */
+  checklistDeluxe: ["เปลี่ยนผ้าปู · ปลอกหมอน", "ห้องน้ำ · ผ้าเช็ดตัว 2 ชุด", "เติมน้ำดื่ม · กาแฟ · สบู่", "ดูดฝุ่น · ถูพื้น", "ตรวจแอร์ · รีโมต · ทีวี"],
+  /** มินิบาร์ (ค่าตั้ง rooms.hotel.minibar) + รายการที่โพสต์แล้วบน B105 (folio OPEN ของ B105 แขกพักอยู่) */
+  minibar: { items: [{ key: "soda", name: "น้ำอัดลม", priceSatang: 4_000 }, { key: "chips", name: "มันฝรั่ง", priceSatang: 4_000 }, { key: "water", name: "น้ำดื่ม", priceSatang: 2_000 }], posted: { room: "B105", lines: [{ key: "soda", qty: 2 }] } },
+  expect: {
+    counts: { mine: 5, total: 6, done: 1 },
+    /** ลำดับการ์ดด่วน (hkPriority): ออกแล้ว+มีแขกเข้า → แขกเข้าวันนี้ → ออกแล้ว → ค้างต่อ → ... */
+    orderFirst3: ["B203", "B102", "B204"],
+    byStatus: { DIRTY: ["B101", "B102", "B105", "B203"], INSPECTED: ["B202", "B204"], OUT_OF_ORDER: ["B103"] } as Record<string, string[]>,
+    minibarFolioItems: 1,
+    minibarAmountSatang: 8_000,
+    startedRoom: "B203",
+  },
+} as const;
+/** ภาพ 13 ก/ข (มือถือ 390 หลัก) — ก่อนถ่าย: seed → h.1 → h.3 --clear → h.2 → h.6 · ถ่าย --user maid (ของฉัน · ทำห้อง) · hk-lead (ตรวจ) · owner · env SVC_VIS_H6_ROOM_ID=<roomId B203> */
+SQC_VISUAL_SPECS["h.6"] = [
+  { name: "hotel-hk-board", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/housekeeping` },
+  ...(process.env.SVC_VIS_H6_ROOM_ID ? [{ name: "hotel-hk-room", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/housekeeping/${process.env.SVC_VIS_H6_ROOM_ID}` }] : []),
+  { name: "hotel-hk-logs", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/housekeeping/logs` },
+];
+// ◂ SVC H.6
