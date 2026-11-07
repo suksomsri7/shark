@@ -672,7 +672,7 @@ try {
     eq([s2?.from, s2?.to], [D(-1), D(0)], "S2 ออกวันนี้ยังแสดง");
     const t1 = await tape(UH, D(1), 7);
     const ids1 = allBars(t1).map((b) => b.refId);
-    ok(!ids1.includes(RV.S2.id) && ids1.includes(RV.C1.id) && ids1.includes(RV.C2.id) && ids1.includes(RV.S1.id), // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D3): C1 ออก D1 = วันแรกของกริด ⇒ ยังแสดงครึ่งวัน (มติ §7 ข้อ 5 · กติกาเดียวกับ S2 ในกริด D0) `กริดพรุ่งนี้ ${J(ids1.map((i) => Object.entries(RV).find(([, v]) => v.id === i)?.[0] ?? i))}`);
+    ok(!ids1.includes(RV.S2.id) && ids1.includes(RV.C1.id) && ids1.includes(RV.C2.id) && ids1.includes(RV.S1.id), `กริดพรุ่งนี้ ${J(ids1.map((i) => Object.entries(RV).find(([, v]) => v.id === i)?.[0] ?? i))}`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D3): C1 ออก D1 = วันแรกของกริด ⇒ ยังแสดงครึ่งวัน (มติ §7 ข้อ 5 · กติกาเดียวกับ S2 ในกริด D0)
     const t2 = await tape(UH, D(0), 3);
     ok(!allBars(t2).map((b) => b.refId).includes(RV.C3.id), "C3 (เข้า +3) โผล่ในกริด 3 วัน");
   });
@@ -952,7 +952,7 @@ try {
   await st("BL-9", "ห้องที่ปิดซ่อม (OUT_OF_ORDER จาก BLOCK วันนี้) ⇒ assignRoom การจองไปห้องนั้นไม่ได้ (ROOM_INACTIVE/ROOM_TAKEN) · ห้อง BLOCK อนาคต (DLX4 +10..+12) ⇒ assignRoom ช่วงอื่นได้ปกติ แต่ช่วงทับ BLOCK ⇒ ROOM_TAKEN", async () => {
     needBlock(); needFx(); needBlock0();
     const a = await BK("assignRoom")(OWNER, ctxA, { unitId: UH, id: RV.C1.id, roomId: R.SUP3 });
-    ok(a?.ok === false && ["ROOM_INACTIVE", "ROOM_TAKEN", "ROOM_BUSY"].includes(String(a.code)), // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D6): assignRoom ของ H.3 แปลง ROOM_TAKEN ของแกนห้องเป็น ROOM_BUSY `assign ไปห้อง OOO ${J(a).slice(0, 120)}`);
+    ok(a?.ok === false && ["ROOM_INACTIVE", "ROOM_TAKEN", "ROOM_BUSY"].includes(String(a.code)), `assign ไปห้อง OOO ${J(a).slice(0, 120)}`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D6): assignRoom ของ H.3 แปลง ROOM_TAKEN ของแกนห้องเป็น ROOM_BUSY
     const b = okRes(await BLK("blockRoom")(OWNER, ctxA, { unitId: UH, roomId: R.DLX4, from: D(10), to: D(12), reason: "ปิดซ่อมท่อ" }), "block DLX4");
     try {
       const p = await mkBooking("P1", { type: RTA.dlx, checkIn: D(10), nights: 1, source: "PHONE", guest: "ทดสอบทับ BLOCK", want: "CONFIRMED" });
