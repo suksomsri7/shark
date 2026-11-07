@@ -81,3 +81,9 @@ H.7: `markStayoversDirty` + รายงานแม่บ้านจาก log
 10. `hkStart`/`hkSetStatus` รับ `at` เฉพาะใต้ `SVC_QC_CLOCK=1` (แบบ h.3 ข้อ 13)
 11. `HK_STATUSES` re-export ใน rooms/index.ts (ผู้คุมอนุญาต · §1)
 
+## 10. มติผู้คุมหลัง builder รอบ 1 (7 พ.ย. · 25477c06b)
+1. ข้อสอบ: BD-4 total = 11 (ตาม refInWork · W1/W4 ว่าง DIRTY) · U-4 ตรวจ import เฉพาะบล็อก H.6 · h.2 U-7 + h.1 U-3/U-4 แท็บแม่บ้าน available:true เห็นทุกคน (หน้าตรวจสิทธิ์เอง) — ORACLE-EDIT 9bf9eddae
+2. fitness ALLOWED_EDGES +`hotel→dorm` (reportDefect แบบ REPAIR → dorm facade createStaffRepair · ทางเดียว)
+3. ไฟล์นอก §1 ที่รับ: `dorm/index.ts` +2 export (facade ตาม §1) · `defs/rooms.ts` #75 schema union แทนที่ 1 บรรทัด · `realtime/events.ts` SAFE_KEYS +roomId/hkStatus
+4. รับมติ builder: upcoming = ห้องว่าง INSPECTED ที่มีจองใน 7 วัน · idempotencyKey ซ้ำคนละห้อง ⇒ INVALID_INPUT · `at` ของ hkStart เฉพาะใต้ SVC_QC_CLOCK · ล็อกต่อห้อง try-lock+retry (10 ทางพร้อมกัน log 1) · syncBlockedRooms พลิก BLOCK ตามวัน (ปิดหนี้ H.2)
+
