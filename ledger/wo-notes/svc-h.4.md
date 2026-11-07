@@ -162,3 +162,20 @@
 | คอลัมน์เลขบัตร ร.ร.3 ถาวร (เลขแสดงยังเลื่อนเมื่อลบแถว) | H.9 |
 | แบบ ร.ร.4 จริง (ช่อง/สำเนานายทะเบียน) | J3 ชี้ขาด |
 | ข้อ 6 cap ผู้พักระหว่างพัก | รอ ORACLE-EDIT GR-5/7/8 |
+
+## 15. รอบ 6 (PARITY · ผู้คุมตีกลับจากภาพ accept3 · ฐาน 3f4c93abc) — commit 04f740726
+### ที่ทำ (จอเท่านั้น · ไม่แตะ server/prisma/oracle)
+1. **บั๊กขั้น ร.ร.3 ค้าง** — `CheckinPanel.tsx`: เป้าของแผงลงชื่อ/ปุ่ม "ลงชื่อบนกระดาษแล้ว" = `guests.find(g => !g.signed)` (เดิมส่ง `primary.id` เสมอ ⇒ `alreadySigned` ⇒ ผู้พักร่วมที่เพิ่มหลังลงชื่อแทนห้องลงชื่อไม่ได้) · ป้าย "<ชื่อ> ลงชื่อบนแท็บเล็ต" (เป้า = หลักและยังไม่มีใครลง ⇒ ป้ายเดิม "(ลงแทนห้องได้)") · บรรทัดย่อย "ลงชื่อแล้ว x/y คน" เมื่อยังไม่ครบ · ลิงก์ "พิมพ์บัตร ร.ร.3" ชี้คนที่ยังไม่ลง · SignaturePad `key=` เป้า (ล้างช่องเมื่อเปลี่ยนคน) · "เสร็จ N นาที" ใช้เวลาลงชื่อล่าสุดของทุกคน
+   - ยืนยันฝั่ง server (สคริปต์ทดลองนอกทรี `/root/svc-runs/h4/builder/exp-r6-sign.mts` · ผล `r6-exp-sign.txt` 7/7): WEBER, DANIEL ลงชื่อ → เพิ่ม WEBER, ANNA → sign id หลักซ้ำ ⇒ `alreadySigned` ANNA ยังไม่ลง (บั๊กเดิม) → เป้าจอ = ANNA → `signRr3` ANNA ⇒ ok → `listGuests` ทั้งคู่ signed
+2. **ลำดับจอ** — `BookingDetail.tsx` prop เสริม `belowHeader?: ReactNode` (undefined = เดิม) เรนเดอร์ต่อจากหัว+แถวปุ่ม (`data-booking-actions`) ก่อนกลุ่ม/แถบแท็บ (`data-detail-below-header`) · `[id]/page.tsx` ส่ง guestsTab + ลิงก์ `showGuestsLink` เข้า slot แทนการวางบนสุด · ไม่จัดรูปแบบส่วนอื่น · มือถือเรียงเดียวกัน (คอลัมน์เดียว)
+3. **ตม.30 เลยกำหนดบนจอ** — helper ใน `checkin-shared.ts`: `tm30Overdue` (LATE หรือ PENDING ที่ `dueAt < now`) · `tm30Badge` (ป้ายแดง "เลยกำหนด ตม.30" + "(เลยมา N ชม.)") · `tm30OverdueCount` — ใช้ที่ Tm30Queue (ป้าย+ช่องครบกำหนดแดง · `data-tm30-overdue`) · หน้า tm30 (หัว "รอแจ้ง X · เกินกำหนด Y" นับตาม helper) · หน้า guests (`Tm30Cell`) · CheckinPanel (ป้ายรายคนในขั้น ตม.30) · การ์ด "ตม.30 ค้าง" บน hotel/page (แดง + "เลยกำหนด N คน") · ไม่เปลี่ยนสถานะในฐาน (sweep ยังเป็นเจ้าของ LATE)
+
+### ผล (`/root/svc-runs/h4/builder/r6-*.txt` · chain6.log)
+- qc-svc-h.4 --no-regression **98/109 failed []** (SKIP F-1/V-1/G-1..9 ตามมติ)
+- qc-svc-h.3 --no-regression **98/109 failed []**
+- probe-h4-review-b **52/52** (skip E3.3) · probe-h4-review-c **39/39** (skip L3.1/R5.1)
+- tsc เฉพาะไฟล์ที่แตะ (`/root/svc-runs/h4/builder/tsconfig.h4r6.json` ผ่าน iso.sh) 0 error
+
+### ไฟล์ที่แตะ
+`src/components/hotel/{CheckinPanel,Tm30Queue,BookingDetail}.tsx` · `src/components/hotel/checkin-shared.ts` · `src/app/app/u/[unitSlug]/hotel/{page,guests/page,tm30/page,reservations/[id]/page}.tsx`
+- `BookingDetail.tsx` (ของ H.3) แตะเฉพาะ prop `belowHeader` + 1 บรรทัดเรนเดอร์ ตามคำสั่งรอบ 6 ข้อ 2
