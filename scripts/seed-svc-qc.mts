@@ -223,7 +223,11 @@ async function ensureBuilding(tenantId: string, unitId: string, b: { id: string;
 async function ensureRoomType(tenantId: string, unitId: string, t: SqcRoomType) {
   const row = (await prisma.hotelRoomType.findUnique({ where: { id: t.id } })) ?? (await prisma.hotelRoomType.findUnique({ where: { unitId_name: { unitId, name: t.name } } }));
   if (row && row.tenantId !== tenantId) throw new Error(`ประเภทห้อง ${t.id} เป็นของร้านอื่น — หยุด`);
-  const want = { unitId, name: t.name, rentMode: t.rentMode, baseRateSatang: t.baseRateSatang, monthlyRateSatang: t.monthlyRateSatang, active: true };
+  const want = {
+    unitId, name: t.name, rentMode: t.rentMode, baseRateSatang: t.baseRateSatang, monthlyRateSatang: t.monthlyRateSatang, active: true,
+    // SVC H.3 ▸ ความจุ (ฟิกซ์เจอร์ไม่ใส่ = ค่าเริ่มของตาราง) ◂
+    capacity: t.capacity ?? 2, baseOccupancy: t.baseOccupancy ?? 2, maxOccupancy: t.maxOccupancy ?? null, extraBedAllowed: t.extraBedAllowed ?? false,
+  };
   if (!row) {
     bump(created, "hotelRoomType");
     await prisma.hotelRoomType.create({ data: { id: t.id, tenantId, ...want, areaSqm: t.areaSqm } });
@@ -311,6 +315,8 @@ for (const u of Object.values(U)) await ensureUnit(T, u);
 for (const s of Object.values(SQC.systems)) {
   await ensureSystem(T, s);
   for (const k of SQC.systemUnits) await ensureLink(T, s.id, U[k].id, s.type);
+  // SVC H.3 ▸ หน่วยที่ผูกเฉพาะ POS (โรงแรม: มัดจำ/บิลผ่าน POS) ◂
+  if (s.type === "POS") for (const k of SQC.posExtraUnits ?? []) await ensureLink(T, s.id, U[k].id, s.type);
 }
 
 // 2. บาร์เบอร์
