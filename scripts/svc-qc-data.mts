@@ -1737,10 +1737,10 @@ export const SQC_HOTEL_AUDIT_SCENE = {
     { key: "audit-noshow", status: "CONFIRMED", source: "PHONE", roomType: "ซูพีเรีย", rooms: 1, checkInOffset: -1, nights: 1, plan: "standard", guest: "คุณกิตติ (ไม่มา·รอปิดวัน)", adults: 1, deposit: "PAID" },
   ] as SqcSceneBooking[],
   /** ค่าตั้งที่ฉากตั้งให้หน่วย svcqc (ชั้น UNIT · ตั้งก่อนปิดวัน) */
-  settings: { "rooms.hotel.noShow": "FORFEIT_RELEASE_AFTER_AUDIT", "rooms.hotel.dailyHousekeeping": true, "rooms.hotel.auditAutoTime": "03:00", "rooms.hotel.audit.autoClose": true } as Record<string, unknown>,
+  settings: { "rooms.hotel.noShow": "FORFEIT_RELEASE_AFTER_AUDIT", "rooms.hotel.dailyHousekeeping": true, "rooms.hotel.nightAuditTime": "03:00", "rooms.hotel.audit.autoClose": true } as Record<string, unknown>, // มติ 7 พ.ย. (คำถาม oracle ข้อ 7): ใช้คีย์เดิม rooms.hotel.nightAuditTime (#76) ไม่เพิ่ม auditAutoTime
   /** ผลที่ต้องได้หลัง closeNightAudit(businessDate = −1) · ข้อสอบ Q เทียบจาก HotelNightAudit + FolioItem + nights */
   expect: {
-    noShows: 1,                 // audit-noshow ⇒ NO_SHOW · มัดจำริบ (PENALTY = มัดจำคืนแรก) · folio SETTLED
+    noShows: 1,                 // audit-noshow ⇒ NO_SHOW · มัดจำริบผ่าน POS (บิลริบ PAID · GL) · folio VOID ตาม H.3 releaseStayTx (มติ 7 พ.ย. คำถาม oracle ข้อ 1 — ไม่แทรก PENALTY/ไม่แตะ booking.ts)
     roomNightsPosted: 2,        // inhouse-web คืน −1 · inhouse-ota คืน −1 (ROOM item businessDate −1 · ไม่โพสต์ซ้ำเมื่อปิดใหม่)
     roomsTotal: 13,             // ห้อง NIGHTLY/BOTH active (B205 MONTHLY ไม่นับ)
     roomsOOO: 0,                // ไม่มี BLOCK ในฉาก h.3
