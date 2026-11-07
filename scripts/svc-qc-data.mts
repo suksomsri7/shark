@@ -1765,3 +1765,113 @@ SQC_VISUAL_SPECS["h.7"] = [
   { name: "hotel-audit", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reports/audit` },
 ];
 // ◂ SVC H.7
+
+// ══════════════════════════════════════════════════════════════════════
+// SVC H.8 ▸ บล็อกจองออนไลน์ V2 — ผู้คุมตั้ง 7 พ.ย. 2569 · builder/เลนอื่นห้ามแตะ · ใบสั่ง svc-brief-h.8.md §6 + §9
+//   🔴 ฉาก h.8 ยืนบนฉาก h.1 เท่านั้น (ไม่รันฉาก h.3) ⇒ ห้องว่างเริ่ม: ซูพีเรีย 4 · ดีลักซ์ nightly 7 · แฟมิลี 2
+//   🔴 วันฉาก = ศุกร์ถัดไป (ไทย · ถ้าวันนี้ศุกร์ = ศุกร์หน้า) + 2 คืน (ศ.+ส.) — ฉาก/ข้อสอบคำนวณจาก "วันนี้ไทย" · ห้ามใส่วันตาย
+//   🔴 ราคาอ้าง SQC_HOTEL_RATES: ดีลักซ์ ศ. (weekend) 149,000 · ส. override ฉาก 169,000 (mark h8 · เฉพาะวันฉาก) ⇒ ภาพ 16 ก "ศ. ฿1,490 + ส. ฿1,690 = ฿3,180" · ซูพีเรีย 99,000×2 = 198,000 · BREAKFAST = +20,000×2 คน×2 คืน = 398,000 · NONREF = 318,000×0.9 = 286,200
+//   🔴 ห้องที่เหลือตอนค้นหา (หลังฉาก): ดีลักซ์ 7 − เคาน์เตอร์ 3 − HOLD เว็บ 1 − CONFIRMED เว็บ 1 = 2 · ซูพีเรีย 4 − 3 = 1 · แฟมิลี: ศ. 2 ว่าง · ส. เต็ม (เคาน์เตอร์ 2 ห้องคืนเสาร์)
+// ══════════════════════════════════════════════════════════════════════
+export const SQC_HOTEL_WEB_SCENE = {
+  mark: "SvcQcScene:h8",
+  unit: "hotel" as SqcUnitKey,
+  /** ที่อยู่สาธารณะ (Q11: ลิงก์ SHARK ก่อน) */
+  publicBase: `/s/${SQC_TENANT.slug}/${SQC_UNITS.hotel.slug}/hotel`,
+  /** วันฉาก: anchor = ศุกร์ถัดไปเวลาไทย · nights 2 (ศ.→อา.) */
+  anchor: "NEXT_FRIDAY" as const,
+  nights: 2,
+  /** override ราคาเฉพาะวันฉาก (วันเสาร์ของ anchor) · mark h8 · --clear ลบ */
+  override: { roomType: "ดีลักซ์", anchorDayOffset: 1, priceSatang: 169_000, reason: "ฉาก h.8 (งานในเมือง)" },
+  /** การจองผ่านเคาน์เตอร์เพื่อทำให้เหลือน้อย (createBooking source WALK_IN · CONFIRMED · มัดจำจ่ายแล้ว) · anchorDayOffset = วันเข้าเทียบ anchor */
+  counterBookings: [
+    { key: "cnt-dlx", roomType: "ดีลักซ์", rooms: 3, anchorDayOffset: 0, nights: 2, plan: "standard" as SqcRatePlanKey, guest: "กรุ๊ปสัมมนา (เคาน์เตอร์)", adults: 2 },
+    { key: "cnt-sup", roomType: "ซูพีเรีย", rooms: 3, anchorDayOffset: 0, nights: 2, plan: "standard" as SqcRatePlanKey, guest: "คุณบุญมี (โทร)", adults: 2 },
+    { key: "cnt-fam-sat", roomType: "แฟมิลี", rooms: 2, anchorDayOffset: 1, nights: 1, plan: "standard" as SqcRatePlanKey, guest: "ครอบครัวสุขใจ (เสาร์)", adults: 4 },
+  ],
+  /** การจองจากเว็บ (ผ่าน publicCreateHold ของ H.8 · locale th) */
+  webBookings: [
+    { key: "web-hold", status: "HOLD", roomType: "ดีลักซ์", rooms: 1, anchorDayOffset: 0, nights: 2, plan: "standard" as SqcRatePlanKey, guest: { name: "ภัทรา สายใจ", phone: "0891111180", email: "patra.h8@example.com" }, adults: 2, deposit: "PENDING", slip: null },
+    { key: "web-confirmed", status: "CONFIRMED", roomType: "ดีลักซ์", rooms: 1, anchorDayOffset: 0, nights: 2, plan: "standard" as SqcRatePlanKey, guest: { name: "สมชาย ออนไลน์", phone: "0892222180", email: "somchai.h8@example.com" }, adults: 2, deposit: "PAID", slip: "APPROVED" },
+  ],
+  /** ค่าตั้งที่ฉากคาด (ค่าเริ่มจาก registry · ฉากไม่เขียนทับ ยกเว้น badge) */
+  settings: { "rooms.hotel.storefront.badgeTh": "จองตรงถูกกว่า", "rooms.hotel.storefront.badgeEn": "Best rate direct" } as Record<string, unknown>,
+  expectSettings: { bookingMode: "DEPOSIT_REQUIRED", holdMinutesOnline: 15, maxAdvanceBookingDays: 365, storefrontEnabled: true, selfCancel: true, maxRooms: 5 },
+  /** ผลที่ข้อสอบตรวจบน publicSearch(anchor, +2 คืน, 2 ผู้ใหญ่, 1 ห้อง) หลังฉาก */
+  expect: {
+    deluxe: { remaining: 2, standardTotal: 318_000, nightPrices: [149_000, 169_000], breakfastTotal: 398_000, nonrefTotal: 286_200, depositStandard: 149_000, payAtHotelStandard: 169_000 },
+    superior: { remaining: 1, standardTotal: 198_000 },
+    family: { remaining: 0, soldOutAnchorDayOffsets: [1] },
+    holdDepositSatang: 149_000,
+    confirmedDepositSatang: 149_000,
+    webHoldCountActive: 1,
+    webConfirmedCount: 1,
+  },
+} as const;
+/**
+ * ภาพ h.8 (ภาพ 16 ก/ข/ค · มือถือ 390 · TH/EN) — หน้าสาธารณะ ไม่ต้องล็อกอิน (visual-svc --user none หรือ owner ก็ได้ · cookie lang)
+ * ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.8 · chain ตั้ง env จาก SCENE_SUMMARY: SVC_VIS_H8_QS (checkIn=&checkOut=&adults=2&rooms=1) · SVC_VIS_H8_HOLD_TOKEN · SVC_VIS_H8_CONF_TOKEN
+ */
+{
+  const base = SQC_HOTEL_WEB_SCENE.publicBase;
+  const qs = process.env.SVC_VIS_H8_QS ? `?${process.env.SVC_VIS_H8_QS}` : "";
+  const hold = process.env.SVC_VIS_H8_HOLD_TOKEN ?? "TOKEN";
+  const conf = process.env.SVC_VIS_H8_CONF_TOKEN ?? "TOKEN";
+  SQC_VISUAL_SPECS["h.8"] = [
+    { name: "hotel-web-search", path: `${base}${qs}` },
+    { name: "hotel-web-search-en", path: `${base}${qs}${qs ? "&" : "?"}lang=en` },
+    { name: "hotel-web-pay", path: `${base}/pay/${hold}` },
+    { name: "hotel-web-status", path: `${base}/r/${conf}` },
+    { name: "hotel-web-status-en", path: `${base}/r/${conf}?lang=en` },
+    { name: "hotel-web-my", path: `${base}/my` },
+  ];
+}
+// ◂ SVC H.8
+
+// ══════════════════════════════════════════════════════════════════════
+// SVC H.10 ▸ บล็อกโครง OTA (channel manager · ตัวต่อ FAKE) — ผู้คุมตั้ง 7 พ.ย. 2569 · builder/เลนอื่นห้ามแตะ · ใบสั่ง svc-brief-h.10.md §6 + §9
+//   🔴 ฉาก h.10 ยืนบนฉาก h.1 (ราคา/แผน) เท่านั้น · ตัวต่อ = TenantIntegration kind CHANNEL_MANAGER provider FAKE (ต้อง INTEGRATIONS_FAKE=1 ใต้ qc-svc.sh)
+//   🔴 ราคาส่งช่องทาง = ราคาแผน STANDARD × (1 + markupBp/10000) ปัดตาม rooms.money.rounding · available ส่งช่องทาง = available จริง − buffer (ไม่ต่ำกว่า 0)
+//   🔴 NEEDS_ROOM: ซูพีเรียเต็มวัน +5 (เคาน์เตอร์จอง 4 ห้อง 1 คืน) ⇒ inbound ซูพีเรียวันนั้นเข้าคิวต้องจัดห้อง (ไม่สร้างการจอง · ไม่ทับใคร)
+//   🔴 MODIFIED v2 ของ OTA-1001: เลื่อนเข้า +1 วัน (คืน +4..+5) ⇒ การจองเดิม CANCELLED (ไม่ refund · prepaid) + การจองใหม่ CONFIRMED ใน tx เดียว · channelRef เดิม
+// ══════════════════════════════════════════════════════════════════════
+export const SQC_HOTEL_OTA_SCENE = {
+  mark: "SvcQcScene:h10",
+  unit: "hotel" as SqcUnitKey,
+  connector: { id: "svcqc-int-ota-fake", kind: "CHANNEL_MANAGER", provider: "FAKE", label: "OTA ทดสอบ (FAKE)", fields: { accountId: "svcqc-ota", mode: "OK", quotaLimit: "1000", quotaRemaining: "1000" } },
+  roomMaps: [
+    { roomType: "ดีลักซ์", externalRoomId: "DLX" },
+    { roomType: "ซูพีเรีย", externalRoomId: "SUP" },
+    // แฟมิลี ไม่แม็ป ⇒ inbound "FAM" = REJECTED UNMAPPED_ROOM
+  ],
+  rateMaps: [{ plan: "standard" as SqcRatePlanKey, externalRateId: "STD", markupBp: 1_500 }],
+  buffers: [{ roomType: "ดีลักซ์", rooms: 1 }],
+  /** การจองเคาน์เตอร์เพื่อทำให้ซูพีเรียเต็มวัน +5 (4 ห้อง · 1 คืน · CONFIRMED · มัดจำจ่ายแล้ว) */
+  counterBookings: [{ key: "ota-cnt-sup-full", roomType: "ซูพีเรีย", rooms: 4, checkInOffset: 5, nights: 1, plan: "standard" as SqcRatePlanKey, guest: "ทัวร์เต็มซูพีเรีย", adults: 2 }],
+  /** แถว inbound ที่ป้อนผ่านคิวทดสอบของ FAKE (ลำดับตามนี้ · pull รอบเดียวได้ทั้ง 4) · gross = ราคาช่องทางรวมทุกคืน · commission 15% ของ gross · net = gross − commission */
+  inbound: [
+    { externalId: "OTA-1001", version: 1, status: "NEW", externalRoomId: "DLX", externalRateId: "STD", checkInOffset: 3, nights: 2, guest: { name: "SMITH, JOHN", email: "john.h10@example.com", phone: null }, adults: 2, prepaid: true, commissionBp: 1_500, expect: "APPLIED" },
+    { externalId: "OTA-1002", version: 1, status: "NEW", externalRoomId: "FAM", externalRateId: "STD", checkInOffset: 3, nights: 1, guest: { name: "LEE, MINA", email: "mina.h10@example.com", phone: null }, adults: 3, prepaid: true, commissionBp: 1_500, expect: "REJECTED", reject: "UNMAPPED_ROOM" },
+    { externalId: "OTA-1003", version: 1, status: "NEW", externalRoomId: "SUP", externalRateId: "STD", checkInOffset: 5, nights: 1, guest: { name: "TANAKA, YUI", email: "yui.h10@example.com", phone: null }, adults: 2, prepaid: false, commissionBp: 1_500, expect: "NEEDS_ROOM" },
+    { externalId: "OTA-1001", version: 2, status: "MODIFIED", externalRoomId: "DLX", externalRateId: "STD", checkInOffset: 4, nights: 2, guest: { name: "SMITH, JOHN", email: "john.h10@example.com", phone: null }, adults: 2, prepaid: true, commissionBp: 1_500, expect: "APPLIED" },
+  ],
+  /** ARI ชุดแรก: วันนี้ → +6 (7 วัน) · ข้อสอบตรวจ payload ต่อวัน/ประเภทที่แม็ป */
+  ari: { days: 7, expectJobs: 1, mappedTypes: ["DLX", "SUP"] },
+  settings: { "rooms.hotel.ota.enabled": true, "rooms.hotel.ota.roomScope": "SELECTED", "rooms.hotel.ota.ariHorizonDays": 365 } as Record<string, unknown>,
+  expect: {
+    inboxApplied: 2, inboxRejected: 1, inboxNeedsRoom: 1,
+    reservationsFromOta: 2,          // OTA-1001 v1 (CANCELLED หลัง v2) + v2 (CONFIRMED)
+    activeOtaReservations: 1,        // v2 CONFIRMED · channelRef OTA-1001 · prepaidByChannel true · gross/commission/net ครบ
+    superiorFullOffset: 5,
+    deluxeAriAvailableOffset0: 7 - 1, // ดีลักซ์ nightly 7 − buffer 1 (ไม่มีการจองวัน 0)
+  },
+} as const;
+/**
+ * ภาพ h.10 (ภาพ 11 การ์ด OTA + หน้าแม็ป/คิวใหม่ · ไทย) — ถ่าย --user owner · manager · ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.10
+ */
+SQC_VISUAL_SPECS["h.10"] = [
+  { name: "hotel-channels", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/channels` },
+  { name: "hotel-channels-inbox", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/channels/inbox` },
+  { name: "integrations-ota", path: "/app/settings/integrations" },
+];
+// ◂ SVC H.10
