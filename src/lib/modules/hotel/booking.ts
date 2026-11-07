@@ -121,6 +121,12 @@ class Abort extends Error {
     super(result.code);
   }
 }
+/** ย้อน tx ทั้งก้อน (รวม re-book ที่เขียนไปแล้ว) แล้วให้ผู้เรียกคืนเงินมัดจำที่เพิ่งรับ (minor a ผู้ตรวจรอบ 3) */
+class RefundAbort extends Error {
+  constructor(readonly why: string) {
+    super(why);
+  }
+}
 /** ธุรกรรมชน/หมดเวลา/deadlock (P2028 · P2034 · pg 40P01 — เดินสาย cause/meta แบบ pgCodeOf ของ rooms) ⇒ ตอบ BUSY ไม่โยนดิบ */
 function isTxTimeout(e: unknown): boolean {
   let cur: unknown = e;
@@ -932,7 +938,7 @@ export async function takeBookingDeposit(actorIn: unknown, ctx: unknown, input: 
     }
     // ปั๊มมัดจำบนหัวกลุ่มเฉพาะเมื่อยังถือห้องอยู่ (M1) — count 0 ⇒ หัวกลุ่มยกเลิก/ไม่มา/ออกแล้ว ⇒ คืนเงิน + event
     const claimed = await tx.hotelReservation.updateMany({ where: { id: headId, depositPaidAt: null, status: { in: [...ACTIVE] } }, data: { depositPaidAt: now, depositSaleId: sale.saleId, depositSatang: amount } });
-    if (claimed.count === 0) return toRefund(curHead ? [curHead] : [], "NOT_ACTIVE");
+    if (claimed.count === 0) throw new RefundAbort("NOT_ACTIVE"); // ย้อน re-book ที่อาจเขียนไปแล้ว · event/คืนเงินทำนอก tx นี้
     for (const r of cur.filter((x) => x.status === "HOLD")) {
       const upd = await tx.hotelReservation.updateMany({ where: { id: r.id, status: "HOLD" }, data: { status: "CONFIRMED", holdExpiresAt: null } });
       if (upd.count === 0) continue;
@@ -943,9 +949,22 @@ export async function takeBookingDeposit(actorIn: unknown, ctx: unknown, input: 
     }
     await audit(tx, c, g.actor, "hotel.booking.deposit", headId, { depositPaidAt: null }, { saleId: sale.saleId, amountSatang: amount, payType });
     return { kind: "ok" as const };
+  }).catch((e: unknown) => {
+    if (e instanceof RefundAbort) return { kind: "refund" as const, why: e.why };
+    throw e;
   });
   if (isFail(out)) return out;
   if (out.kind === "dup") return { ok: true as const, duplicated: true, saleId: sale.saleId, status: rv.status };
+  if (out.kind === "refund" && out.why === "NOT_ACTIVE") {
+    // หัวกลุ่มไม่ถือห้องแล้ว ⇒ บันทึก event + audit ใน tx เล็ก (อ่านสถานะสดอีกครั้ง) ก่อนคืนเงิน
+    await inTx(c, async (tx) => {
+      const h = await tx.hotelReservation.findFirst({ where: { id: headId }, select: { id: true, code: true, groupId: true, source: true, status: true } });
+      if (!h) return null;
+      await emitEv(tx, c, "deposit_after_expiry", h, h.status, sale.saleId);
+      await audit(tx, c, g.actor, "hotel.booking.deposit_after_expiry", headId, { status: h.status }, { status: h.status, saleId: sale.saleId, amountSatang: amount, refund: true, why: "NOT_ACTIVE" });
+      return null;
+    });
+  }
   if (out.kind === "refund") {
     const r = await refundAll(c, sale.saleId, `การจอง ${head.code} ไม่ได้ถือห้องแล้ว (หมดเวลา/ยกเลิก/ห้องเต็ม) — คืนมัดจำอัตโนมัติ`, actorId);
     return fail("AVAILABILITY_CHANGED", r.error ? `การจองนี้ไม่ได้ถือห้องแล้ว (หมดเวลาถือห้องหรือห้องเต็ม) — คืนมัดจำอัตโนมัติไม่สำเร็จ (${r.error}) ให้คืนที่หน้าขาย` : "การจองนี้ไม่ได้ถือห้องแล้ว (หมดเวลาถือห้องหรือห้องเต็ม) — ระบบคืนเงินมัดจำให้อัตโนมัติแล้ว");
@@ -983,6 +1002,27 @@ export async function confirmBooking(actorIn: unknown, ctx: unknown, input: unkn
   return out;
 }
 
+// ───────────────────────── แผนมัดจำของกลุ่ม (ใช้ทั้งนอก tx และอ่านซ้ำใน tx — MAJOR-1 ผู้ตรวจรอบ 3) ─────────────────────────
+type GroupPlanRow = { id: string; status: string; depositPaidAt: Date | null; depositSatang: number; depositSaleId: string | null };
+/** หัวกลุ่ม · แถวที่ยังถือห้องหลังรายการนี้ · ย้ายหัวไปไหน · ต้องจัดการเงินไหม — ลายเซ็น (sig) ใช้เทียบว่าโลกเปลี่ยนระหว่างอ่านนอก tx กับใน tx หรือไม่ */
+function groupPlan<T extends GroupPlanRow>(all: T[], targetIds: Set<string>, opts: { paidOnly?: boolean } = {}) {
+  const remaining = all.filter((r) => !targetIds.has(r.id) && (ACTIVE as readonly string[]).includes(r.status));
+  const head = all.find((r) => r.depositPaidAt) ?? (opts.paidOnly ? undefined : all.find((r) => r.depositSatang > 0)) ?? null;
+  const headTargeted = !!head && targetIds.has(head.id);
+  const moveHeadTo = headTargeted && remaining.length ? remaining[0] : null;
+  const settles = headTargeted && !moveHeadTo && !!head?.depositPaidAt;
+  const sig = JSON.stringify([head?.id ?? null, head?.depositPaidAt ? head.depositSaleId : null, head?.depositSatang ?? 0, moveHeadTo?.id ?? null, settles, all.map((r) => `${r.id}:${r.status}`).sort()]);
+  return { remaining, head, moveHeadTo, settles, sig };
+}
+const STATE_CHANGED_REASON = "การจองในกลุ่มนี้เพิ่งถูกเปลี่ยน (ยกเลิก/ย้ายมัดจำพร้อมกัน) — โหลดใหม่แล้วกดอีกครั้ง";
+/** ย้ายมัดจำหัวกลุ่มไปแถวถัดไปแบบ CAS (แถวปลายทางต้องยังถือห้อง · หัวเดิมต้องยังถือมัดจำนี้) — ไม่ตรง ⇒ Abort STATE_CHANGED */
+async function moveHeadTx(tx: Tx, c: Ctx, head: GroupPlanRow, to: { id: string }): Promise<void> {
+  const dst = await tx.hotelReservation.updateMany({ where: { id: to.id, tenantId: c.tenantId, unitId: c.unitId, status: { in: [...ACTIVE] } }, data: { depositSatang: head.depositSatang, depositPaidAt: head.depositPaidAt, depositSaleId: head.depositSaleId } });
+  if (dst.count === 0) throw new Abort(fail("STATE_CHANGED", STATE_CHANGED_REASON));
+  const src = await tx.hotelReservation.updateMany({ where: { id: head.id, tenantId: c.tenantId, unitId: c.unitId, depositSaleId: head.depositSaleId }, data: { depositSatang: 0, depositPaidAt: null, depositSaleId: null } });
+  if (src.count === 0) throw new Abort(fail("STATE_CHANGED", STATE_CHANGED_REASON));
+}
+
 // ───────────────────────── cancelBooking ─────────────────────────
 const CancelInput = z.object({
   reservationId: z.string().min(1).optional(),
@@ -1018,11 +1058,9 @@ export async function cancelBooking(actorIn: unknown, ctx: unknown, input: unkno
   }
   if (!targets.length) return fail("INVALID_STATUS", "การจองนี้ยกเลิกไม่ได้ (ยกเลิกแล้ว · เข้าพักแล้ว · หรือไม่มาแล้ว)");
   const targetIds = new Set(targets.map((r) => r.id));
-  const remaining = all.filter((r) => !targetIds.has(r.id) && (ACTIVE as readonly string[]).includes(r.status));
-  const head = all.find((r) => r.depositPaidAt) ?? all.find((r) => r.depositSatang > 0) ?? null;
-  const headCancelled = !!head && targetIds.has(head.id);
-  const moveHeadTo = headCancelled && remaining.length ? remaining[0] : null;
-  const settles = headCancelled && !moveHeadTo && !!head?.depositPaidAt;
+  const plan0 = groupPlan(all, targetIds);
+  const { head, moveHeadTo, settles } = plan0;
+  const groupId = all.find((r) => r.groupId)?.groupId ?? null;
   const st = settles && head ? await depositState(c, head.depositSaleId) : null;
   const paid = st?.remaining ?? 0;
   // m5 (ผู้ตรวจรอบ 2): มัดจำนอก POS (จ่ายแล้วแต่ไม่มี PosDeposit — แบบเดิม/ไม่ผูก POS) ⇒ ต้องสิทธิ์เงินเหมือนมีเงิน + เตือนให้จัดการมือ
@@ -1033,6 +1071,9 @@ export async function cancelBooking(actorIn: unknown, ctx: unknown, input: unkno
   const reason = p.data.reason;
   const out = await inTx(c, async (tx) => {
     await lockTypes(tx, c.unitId, targets.map((r) => r.roomTypeId)); // ลำดับเดียว: ประเภท → แถว → occupancy (ผู้ตรวจรอบ 1 M-1)
+    // MAJOR-1 (ผู้ตรวจรอบ 3): อ่านกลุ่มซ้ำหลังล็อก — หัว/แถวที่เหลือ/ต้องจัดการเงิน ต่างจากที่อ่านนอก tx ⇒ STATE_CHANGED (กดซ้ำจะเข้าเส้นที่ถูก)
+    const fresh = await tx.hotelReservation.findMany({ where: groupId ? { groupId } : { id: { in: [...targetIds] } } });
+    if (groupPlan(fresh, targetIds).sig !== plan0.sig) throw new Abort(fail("STATE_CHANGED", STATE_CHANGED_REASON));
     for (const r of targets) {
       const upd = await tx.hotelReservation.updateMany({ where: { id: r.id, status: { in: ["HOLD", "CONFIRMED"] } }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: reason } });
       if (upd.count === 0) throw new Abort(fail("INVALID_STATUS", "การจองนี้ถูกยกเลิกหรือเปลี่ยนสถานะไปแล้ว"));
@@ -1046,17 +1087,17 @@ export async function cancelBooking(actorIn: unknown, ctx: unknown, input: unkno
         ...(isHead && moveHeadTo ? { depositMovedTo: moveHeadTo.id } : {}),
       });
     }
-    if (head && moveHeadTo) {
-      await tx.hotelReservation.update({ where: { id: moveHeadTo.id }, data: { depositSatang: head.depositSatang, depositPaidAt: head.depositPaidAt, depositSaleId: head.depositSaleId } });
-      await tx.hotelReservation.update({ where: { id: head.id }, data: { depositSatang: 0, depositPaidAt: null, depositSaleId: null } });
-    }
+    if (head && moveHeadTo) await moveHeadTx(tx, c, head, moveHeadTo);
     return { ok: true as const };
   });
   if (isFail(out)) return out;
   let money: MoneyOut = { refundSatang: 0, forfeitSatang: 0, error: null };
   if (st && head && paid > 0) {
-    money = await settleCancelMoney(c, st, head, refund, g.actor?.userId ?? SYSTEM_ACTOR_ID);
-    await moneyAudit(c, g.actor, head.id, "cancel", { planRefundSatang: refund, planForfeitSatang: paid - refund }, money);
+    // minor c: ยอดจริงหลัง commit (มีคนใช้/คืนมัดจำระหว่างทางได้) ⇒ คิดคืนจากคงเหลือล่าสุด
+    const st2 = (await depositState(c, head.depositSaleId)) ?? st;
+    const refund2 = st2.remaining === paid ? refund : roundRefundDown(refundFor({ paidSatang: st2.remaining, checkInDate: ymdOfDb(head.checkInDate), cancelAt: today, rules }).refundSatang, roundingOfSnapshot(head.policySnapshot));
+    money = await settleCancelMoney(c, st2, head, refund2, g.actor?.userId ?? SYSTEM_ACTOR_ID);
+    await moneyAudit(c, g.actor, head.id, "cancel", { planRefundSatang: refund, planForfeitSatang: paid - refund, settledFromSatang: st2.remaining }, money);
   }
   const warning = money.error ? `ยกเลิกแล้ว แต่จัดการเงินมัดจำไม่สำเร็จ (${money.error}) — คืน/ริบที่หน้าขาย` : legacyMoney ? LEGACY_MONEY_WARNING : null;
   return { ok: true as const, cancelled: targets.map((r) => r.id), refundSatang: money.refundSatang, forfeitSatang: money.forfeitSatang, ...(warning ? { moneyWarning: warning } : {}) };
@@ -1375,24 +1416,23 @@ export async function markNoShow(actorIn: unknown, ctx: unknown, input: unknown)
   const policy = noShowPolicyOf(rv.policySnapshot);
   const release = policy !== "FORFEIT_HOLD_STAY";
   const all = await groupRows(c, rv);
-  const head = all.find((r) => r.depositPaidAt) ?? null;
-  const others = all.filter((r) => r.id !== rv.id && (ACTIVE as readonly string[]).includes(r.status));
-  const isHead = head?.id === rv.id;
-  const moveHeadTo = isHead && others.length ? others[0] : null;
-  const settle = isHead && !moveHeadTo;
+  const targetIds = new Set([rv.id]);
+  const plan0 = groupPlan(all, targetIds, { paidOnly: true });
+  const { head, moveHeadTo } = plan0;
+  const settle = plan0.settles;
   const st = settle && head?.depositSaleId ? await depositState(c, head.depositSaleId) : null;
   const legacyMoney = settle && !!head && !st;
   const planRefund = st && policy === "REFUND_RELEASE" ? st.remaining : 0;
   const planForfeit = st && policy !== "REFUND_RELEASE" ? st.remaining : 0;
   const out = await inTx(c, async (tx) => {
     await lockTypes(tx, c.unitId, [rv.roomTypeId]); // ลำดับเดียว: ประเภท → แถว → occupancy
+    // MAJOR-1 (ผู้ตรวจรอบ 3): อ่านกลุ่มซ้ำหลังล็อก — ต่างจากที่อ่านนอก tx ⇒ STATE_CHANGED
+    const fresh = await tx.hotelReservation.findMany({ where: rv.groupId ? { groupId: rv.groupId } : { id: rv.id } });
+    if (groupPlan(fresh, targetIds, { paidOnly: true }).sig !== plan0.sig) throw new Abort(fail("STATE_CHANGED", STATE_CHANGED_REASON));
     const upd = await tx.hotelReservation.updateMany({ where: { id: rv.id, status: "CONFIRMED" }, data: { status: "NO_SHOW", noShowAt: now } });
     if (upd.count === 0) throw new Abort(fail("INVALID_STATUS", "การจองนี้เปลี่ยนสถานะไปแล้ว"));
     if (release) await releaseStayTx(tx, c, rv.id, "ไม่มาเข้าพัก");
-    if (head && moveHeadTo) {
-      await tx.hotelReservation.update({ where: { id: moveHeadTo.id }, data: { depositSatang: head.depositSatang, depositPaidAt: head.depositPaidAt, depositSaleId: head.depositSaleId } });
-      await tx.hotelReservation.update({ where: { id: head.id }, data: { depositSatang: 0, depositPaidAt: null, depositSaleId: null } });
-    }
+    if (head && moveHeadTo) await moveHeadTx(tx, c, head, moveHeadTo);
     await emitEv(tx, c, "no_show", rv, "NO_SHOW", randomUUID());
     await audit(tx, c, g.actor, "hotel.booking.no_show", rv.id, { status: "CONFIRMED" }, {
       status: "NO_SHOW",
@@ -1405,12 +1445,13 @@ export async function markNoShow(actorIn: unknown, ctx: unknown, input: unknown)
   });
   if (isFail(out)) return out;
   let money: MoneyOut = { refundSatang: 0, forfeitSatang: 0, error: null };
-  if (st && st.remaining > 0) {
+  const stNow = st && head ? ((await depositState(c, head.depositSaleId)) ?? st) : null; // minor c: คงเหลือล่าสุดหลัง commit
+  if (stNow && stNow.remaining > 0) {
     const actorId = g.actor?.userId ?? SYSTEM_ACTOR_ID;
     if (policy === "REFUND_RELEASE") {
-      const r = await refundAll(c, st.receiptSaleId, `ไม่มาเข้าพัก ${rv.code} — คืนมัดจำตามนโยบาย`, actorId);
-      money = { ...r, refundSatang: r.error ? 0 : st.remaining };
-    } else money = await forfeitAll(c, st, rv.id, `ไม่มาเข้าพัก ${rv.code}`, actorId);
+      const r = await refundAll(c, stNow.receiptSaleId, `ไม่มาเข้าพัก ${rv.code} — คืนมัดจำตามนโยบาย`, actorId);
+      money = { ...r, refundSatang: r.error ? 0 : stNow.remaining };
+    } else money = await forfeitAll(c, stNow, rv.id, `ไม่มาเข้าพัก ${rv.code}`, actorId);
     await moneyAudit(c, g.actor, rv.id, "no_show", { policy, planRefundSatang: planRefund, planForfeitSatang: planForfeit }, money);
   }
   const warning = money.error ? `ตั้งไม่มาแล้ว แต่จัดการมัดจำไม่สำเร็จ (${money.error}) — คืน/ริบที่หน้าขาย` : legacyMoney ? LEGACY_MONEY_WARNING : null;
@@ -1464,6 +1505,9 @@ async function expireOne(row: { tenantId: string; unitId: string; id: string }, 
     const rv = await tx.hotelReservation.findFirst({ where: { id: row.id }, select: { id: true, code: true, groupId: true, source: true, holdExpiresAt: true, roomTypeId: true } });
     if (!rv) return false;
     await lockTypes(tx, c.unitId, [rv.roomTypeId]); // ลำดับเดียว: ประเภท → แถว → occupancy (อ่านแถวก่อนเพื่อรู้ประเภท — ยังไม่ล็อกแถว)
+    // minor b (ผู้ตรวจรอบ 3): ประเภทเปลี่ยนระหว่างอ่านกับล็อก (ย้ายห้องต่างประเภท) ⇒ ข้ามใบนี้ รอบหน้าอ่านใหม่
+    const again = await tx.hotelReservation.findFirst({ where: { id: row.id }, select: { roomTypeId: true } });
+    if (!again || again.roomTypeId !== rv.roomTypeId) return false;
     const upd = await tx.hotelReservation.updateMany({ where: { id: row.id, status: "HOLD", holdExpiresAt: { lt: now } }, data: { status: "CANCELLED", cancelReason: "HOLD_EXPIRED", cancelledAt: now } });
     if (upd.count === 0) return false;
     await releaseStayTx(tx, c, row.id, "HOLD_EXPIRED");

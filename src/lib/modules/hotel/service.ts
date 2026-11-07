@@ -337,6 +337,9 @@ export async function checkIn(
       });
       if (!rv) throw new Error("NOT_FOUND");
       if (rv.status !== "CONFIRMED" && rv.status !== "BOOKED") throw new Error("BAD_STATUS"); // SVC H.3 ▸ V2 = CONFIRMED (BOOKED = แถวเก่า) ◂
+      // SVC H.3 ▸ (ผู้ตรวจรอบ 3 MAJOR-2) ลำดับล็อกเดียวกับ booking.ts: ประเภท (advisory) → แถว reservation (CAS) → occupancy
+      //   ยกเลิก/ไม่มาชนเช็กอิน ⇒ ผู้มาทีหลังเห็นสถานะใหม่ (ไม่มี CHECKED_IN บนแถว CANCELLED) ◂
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${unitId}::text || ':' || ${rv.roomTypeId}::text))`;
       const room = await tx.hotelRoom.findFirst({
         where: { id: roomId, tenantId, unitId, active: true, roomTypeId: rv.roomTypeId },
       });
@@ -344,6 +347,12 @@ export async function checkIn(
       if (room.status === "OOO" || room.hkStatus === "OUT_OF_ORDER") throw new Error("ROOM_OOO");
       if (!sellsNightly(room.rentMode, (await tx.hotelRoomType.findFirst({ where: { id: room.roomTypeId, tenantId, unitId }, select: { rentMode: true } }))?.rentMode ?? "NIGHTLY"))
         throw new Error("BAD_ROOM"); // SVC R0.8 ▸ ห้องรายเดือนไม่ขายรายคืน ◂
+      // SVC H.3 ▸ CAS สถานะหลังล็อก — เปลี่ยนไปแล้ว (ยกเลิก/ไม่มา/เช็กอินซ้ำ) ⇒ ไม่เขียนอะไร ◂
+      const cas = await tx.hotelReservation.updateMany({
+        where: { id: reservationId, tenantId, unitId, status: { in: ["CONFIRMED", "BOOKED"] } },
+        data: { status: "CHECKED_IN", roomId, checkedInAt: new Date() },
+      });
+      if (cas.count === 0) throw new Error("STATE_CHANGED");
       // SVC H.3 ▸ ห้องจริงชนกันตัดสินที่ EXCLUDE ของ occupancy เท่านั้น (เลิกเทียบ reservation.roomId แบบเดิม) ◂
       // SVC R0.8 ▸ ห้องจริงของ occupancy: ห้องที่เลือก ≠ ห้องที่ถืออยู่ ⇒ ย้าย · การจองเดิมไม่มี occupancy ⇒ claim ห้องที่เลือก
       //   ชน ⇒ throw (tx ย้อน · สถานะคง BOOKED · occupancy เดิมไม่ขยับ) ◂
@@ -372,10 +381,6 @@ export async function checkIn(
       }
       // SVC H.3 ▸ ห้องจริงของทุกคืนที่นับ = ห้องที่เข้าพัก (nights.roomId) ◂
       await tx.hotelBookingNight.updateMany({ where: { tenantId, unitId, reservationId, counted: true }, data: { roomId } });
-      await tx.hotelReservation.update({
-        where: { id: reservationId },
-        data: { status: "CHECKED_IN", roomId, checkedInAt: new Date() },
-      });
       await tx.hotelRoom.update({ where: { id: roomId }, data: { status: "OCCUPIED" } });
     }, HOTEL_TX);
     return { ok: true };
@@ -387,6 +392,7 @@ export async function checkIn(
       BAD_ROOM: "ห้องไม่ตรงประเภทหรือไม่พบห้อง",
       ROOM_OOO: "ห้องนี้ปิดใช้งานอยู่",
       ROOM_TAKEN: "ห้องนี้ถูกใช้ในช่วงเวลานี้แล้ว",
+      STATE_CHANGED: "สถานะการจองเปลี่ยนแล้ว (ถูกยกเลิก/ตั้งไม่มา/เช็กอินไปแล้ว) — โหลดใหม่", // SVC H.3 ◂
     };
     if (map[msg]) return { ok: false, reason: map[msg] };
     if (isTxTimeout(e)) return { ok: false, reason: BUSY_REASON };
