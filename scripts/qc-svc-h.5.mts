@@ -1170,7 +1170,7 @@ try {
     const r = await inhouse({ checkOut: W(1), deposit: false }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D5): POS P2.9b R5 vatSatang ของบิล = VAT(ยอด) − VAT ที่ออกตอนรับมัดจำ — ไม่มีมัดจำ ⇒ vatSatang = refVat(grand).vat ตามข้อ
     const items = await itemsOf(r.id);
     const grand = expectedCharges(items) + sum((await nightsOfRv(r.id)).filter((n) => !n.folioItemId).map((n) => n.priceSatang));
-    const payable = grand - r.rv.depositSatang;
+    const payable = grand; // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D5b): ไม่มีมัดจำรับจริง (deposit:false) — rv.depositSatang เป็นยอดตามแผน ไม่ใช่ที่รับ
     okRes(await settle(FRONT, { reservationId: r.id, payMethods: [{ type: "CASH", amountSatang: payable }], taxInvoice: { kind: "COMPANY", name: "บริษัท ทดสอบ H5 จำกัด", taxId: "0105561177639", branchCode: "00000", address: "123 ถนนทดสอบ กรุงเทพฯ 10110" } }), "settle");
     const s = await saleByKey(`hotel-sale-${r.id}`);
     const ti = J(s.taxInvoice ?? null);
@@ -1708,15 +1708,17 @@ try {
   });
   await st("F-3", "account/index.ts เพิ่ม 2 ฟังก์ชันท้ายไฟล์เท่านั้น (§1): diff เทียบ HEAD ไม่มีบรรทัดถูกลบ · บรรทัดเพิ่มทั้งหมดอยู่หลังบรรทัดสุดท้ายเดิม (ยกเว้น import/export ของ gl ที่เพิ่มในบล็อก import เดิม ≤ 3 บรรทัด) · defs/rooms.ts/ทะเบียน event/index/actions ไม่ลบบรรทัดเดิม · service.ts ลบได้เฉพาะในฟังก์ชัน checkOut/refundStay", () => {
     ok(has(F.folio), `ยังไม่มี ${F.folio} — ตรวจตอนรับใบ`);
-    if (!dirty([F.account]).length) throw new AssertFail("account/index.ts ไม่มีการเปลี่ยน (ยังไม่มี reverseRoomChargePosting)");
-    const head = git(["show", `HEAD:${F.account}`]).split("\n");
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-F3-base): ตรวจตอนรับใบหลัง builder commit แล้ว ⇒ เทียบฐานใบ H5_BASE (6715ea241) แทน HEAD/working tree
+    const H5_BASE = "6715ea241";
+    if (!git(["diff", "--name-only", H5_BASE, "--", F.account]).trim().length) throw new AssertFail("account/index.ts ไม่มีการเปลี่ยนเทียบฐาน (ยังไม่มี reverseRoomChargePosting)");
+    const head = git(["show", `${H5_BASE}:${F.account}`]).split("\n");
     const cur = read(F.account).split("\n");
-    const removed = diffLines(F.account).filter((l) => l.startsWith("-") && l.slice(1).trim());
+    const removed = git(["diff", "-U0", H5_BASE, "--", F.account]).split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---") && l.slice(1).trim());
     eq(removed.slice(0, 5), [], "ลบบรรทัดใน account/index.ts");
     const headLast = head.filter((l) => l.trim()).at(-1) ?? "";
     const idx = cur.findIndex((l) => l === headLast);
     ok(idx >= 0, "หาบรรทัดสุดท้ายเดิมไม่พบ");
-    const hunks = git(["diff", "-U0", "HEAD", "--", F.account]).split("\n").filter((l) => l.startsWith("@@"));
+    const hunks = git(["diff", "-U0", H5_BASE, "--", F.account]).split("\n").filter((l) => l.startsWith("@@"));
     const addedBefore = hunks.map((h) => { const m = /\+(\d+)(?:,(\d+))?/.exec(h); return m ? { start: Number(m[1]), n: Number(m[2] ?? 1) } : null; }).filter((h): h is { start: number; n: number } => !!h && h.start <= idx + 1);
     ok(sum(addedBefore.map((h) => h.n)) <= 3, `บรรทัดเพิ่มก่อนท้ายไฟล์ ${J(addedBefore)} (> 3)`);
     const rm = (f: string) => diffLines(f).filter((l) => l.startsWith("-") && l.slice(1).trim()).length;
