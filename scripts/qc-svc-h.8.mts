@@ -1601,7 +1601,9 @@ try {
   });
   await st("F-3", "เพิ่มอย่างเดียว (เทียบฐาน 16dbc492e): booking.ts (U-9) · index.ts/actions.ts ของ hotel · defs/rooms.ts · 3 ทะเบียน event · service.ts ฟังก์ชันเดิม createReservation/recordDeposit/getPublicReservation เนื้อเท่าฐาน (ห่อได้เฉพาะ listPublicAvailability/promptpayForDeposit ตามใบ §1) · dict.ts ไม่ลบคีย์เดิม", () => {
     ok(has(F.web), `ยังไม่มี ${F.web} — ตรวจตอนรับใบ`);
-    const rm = (f: string) => git(["diff", "-U0", BASE_SHA, "--", f]).split("\n").filter((l) => /^-(?!-)/.test(l) && l.slice(1).trim() !== "").length;
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-f3) เลนนี้ merge session/svc (H.6 ฯลฯ) เข้ามา ⇒ เทียบจาก merge-base กับ session/svc (ตัดการลบของใบอื่น) · ไม่มี session/svc ⇒ BASE_SHA
+    const DIFF_BASE = (() => { try { const mb = git(["merge-base", "HEAD", "session/svc"]).trim(); return mb && git(["merge-base", "--is-ancestor", BASE_SHA, mb]) !== null ? mb : BASE_SHA; } catch { return BASE_SHA; } })();
+    const rm = (f: string) => git(["diff", "-U0", DIFF_BASE, "--", f]).split("\n").filter((l) => /^-(?!-)/.test(l) && l.slice(1).trim() !== "").length;
     const bad: string[] = [];
     for (const f of [F.booking, F.index, F.hotelActions, F.defs, F.consumers, F.autoLabels, F.whLabels, F.minute]) if (rm(f) > 0) bad.push(`${f} ลบ ${rm(f)}`);
     eq(bad, [], "ลบบรรทัด");
@@ -1753,6 +1755,8 @@ console.log("\n── V ภาพ ──");
 
 // ═══════════════ G regression ═══════════════
 console.log("\n── G: regression ──");
+// ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-g-scene) ฉาก h.8 (override วัน 14 · แถวเคาน์เตอร์/เว็บ) ทำให้ Q ของ h.1/h.2/h.3/h.5 แดง ⇒ เคลียร์ก่อน G (chain รันฉากใหม่ก่อนถ่ายภาพ)
+if (has(F.scene)) spawnSync("pnpm", ["exec", "tsx", F.scene, "--clear"], { cwd: ROOT, env: process.env, encoding: "utf8" });
 const summaryOf = (out: string): { failed: string[] } | null => {
   const line = out.split("\n").reverse().find((l) => l.startsWith("JSON_SUMMARY "));
   if (!line) return null;
