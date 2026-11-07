@@ -104,3 +104,20 @@
 | probe-h3-b (ผู้ตรวจ 2) | 31/32 — T4.2 แดงตามมติ m3: คืน 50% = 20,500 (ปัดลงเต็มบาทจาก 20,550) · fee 20,600 · probe ยึด 20,550 ⇒ ผู้คุมแก้ probe |
 | qc-hotel-money / public / refund | 5/5 · 15/15 · 15/15 |
 | tsc | ไม่ได้รันรอบนี้ (chain H.1 บน l1 ยังไม่ DONE · ผู้คุมสั่งห้าม) — ตรวจชนิดด้วยการอ่าน · log `/root/svc-runs/h3/builder/reg2.txt` |
+
+## 11. รอบ 3 (ผู้ตรวจรอบ 3 · บั๊กเงินยกเลิกหัวกลุ่มพร้อมห้องอื่น) — commit 9ea17343a
+### แก้
+- MAJOR-1 `cancelBooking` / `markNoShow`: แผนมัดจำของกลุ่ม (`groupPlan` — หัว · แถวที่ยังถือห้อง · ย้ายหัวไปไหน · ต้องจัดการเงิน) คำนวณนอก tx แล้ว**อ่านกลุ่มซ้ำหลังล็อกประเภท** — ลายเซ็นต่าง ⇒ `STATE_CHANGED` (กดซ้ำเข้าเส้นที่ถูก เช่น "ห้องสุดท้าย ⇒ คืนตามขั้นบันได") · ย้ายมัดจำหัวกลุ่มแบบ CAS (`moveHeadTx`: ปลายทางต้อง ACTIVE · ต้นทางต้องยังถือใบรับนี้ · 0 ⇒ Abort) · minor c: เงินหลัง commit คิดจากคงเหลือ POS ล่าสุด (audit `settledFromSatang`)
+- MAJOR-2 `service.checkIn`: `pg_advisory_xact_lock` ประเภทต้น tx + CAS `updateMany status in [CONFIRMED, BOOKED] ⇒ CHECKED_IN` ก่อนแตะ occupancy (ลำดับ ประเภท → แถว → occupancy) · 0 ⇒ ok:false "สถานะการจองเปลี่ยนแล้ว"
+- minor a `takeBookingDeposit` NOT_ACTIVE ⇒ `RefundAbort` ย้อน tx ทั้งก้อน (re-book ไม่ commit) แล้ว event + audit ใน tx เล็ก + `refundAll` · minor b `expireOne` อ่านประเภทซ้ำหลังล็อก (เปลี่ยน ⇒ ข้ามรอบนี้)
+- จุดเสี่ยงชนิดที่ผู้ตรวจชี้ (อ่านแล้ว): `casUpdateRv` data = `Prisma.HotelReservationUncheckedUpdateManyInput` (checkOutDate/nights/totalSatang/roomId/roomTypeId/checkInDate) · union ผล tx `{kind:"dup"} | {kind:"refund", why} | {kind:"ok"}` + `.catch(RefundAbort)` คืน `{kind:"refund"}` · `BookingDetail.deposit/holdKind` + `BookingListRow.holdKind` ถึงจอ · `createReservation.source` = union literal
+### ผลรอบ 3 (`/root/svc-runs/h3/builder/reg3.txt`)
+| ชุด | ผล |
+|---|---|
+| qc-svc-h.3 --no-regression | `JSON_SUMMARY {"suite":"qc-svc-h.3","total":109,"passed":98,"failed":[],"skipped":["F-1","V-1","G-1".."G-9"]}` |
+| probe-h3-load × 3 | passed:true ทุกรอบ |
+| probe-h3-c (ผู้ตรวจ 3) | 2/2 · T6.1 4 รอบ: ฝ่ายหนึ่งสำเร็จ อีกฝ่าย `STATE_CHANGED` · มัดจำคงอยู่บนแถวที่ยัง CONFIRMED (ไม่มีมัดจำค้างบนแถว CANCELLED) · T6.2 GL สมดุล |
+| probe-h3-a | PA ✅ · PC 6 รอบ ไม่มี throw ดิบ/occupancy ผี (ชน ⇒ STATE_CHANGED) · PB ไม่เกิดรอบนี้ |
+| probe-h3-b | 31/32 — T4.2 = 20,500 ตามมติ m3 (probe ยึด 20,550) |
+| qc-hotel-money / public / refund | 5/5 · 15/15 · 15/15 |
+| tsc | ไม่ได้รัน (accept4 ยังไม่ DONE) |
