@@ -303,7 +303,7 @@ const L3_PIN_SVC = "1908de61";
 const L3_PIN_BY: Record<string, string> = {
   "src/lib/modules/booking/service.ts#recordDeposit": L3_PIN_SVC,
   "src/lib/modules/hotel/service.ts#checkOut": "55fc7458d", // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-pin): H.5 checkOut → settleAndCheckOut (ใบ h.5 §1 แก้เฉพาะ checkOut) — re-pin ที่ commit builder H.5
-  "scripts/qc-hotel-public.mts": L3_PIN_SVC,
+  "scripts/qc-hotel-public.mts": "e02e7e5a2", // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-pin): ORACLE-EDIT hp51-confirmed ของ H.3 (สถานะ CONFIRMED) — re-pin ที่ merge H.3
 };
 const l3PinOf = (k: string) => (process.env.P29B_L3_PIN ? L3_PIN : (L3_PIN_BY[k] ?? L3_PIN));
 const srcOf = (f: string) => stripComments(rd(f));
