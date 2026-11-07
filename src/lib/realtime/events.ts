@@ -42,6 +42,15 @@ export const EV_CHAT_READ = "chat.read";
  */
 export const EV_KANBAN_BOARD = "kanban.board";
 
+// SVC H.6 ▸ บอร์ดแม่บ้านโรงแรม — "ห้องนี้เปลี่ยนสถานะแม่บ้าน" · ช่องผูกร้าน+หน่วย (มติ h.6 §9 ข้อ 7) ·
+//   payload ออกนอกบ้านได้เฉพาะ {roomId, hkStatus, at} (id/enum ล้วน · ไม่มีชื่อแขก/โน้ต) — จอได้สัญญาณแล้วไป refresh เอง
+export const EV_HOTEL_HK = "hotel.hk.changed";
+/** ช่องของบอร์ดแม่บ้าน "หน่วยโรงแรมเดียว" — คนละร้าน/คนละหน่วยต้องคนละช่องเสมอ */
+export function hotelHkChannel(tenantId: string, unitId: string): string {
+  return `hotel:hk:${tenantId}:${unitId}`;
+}
+// ◂ SVC H.6
+
 /**
  * คีย์ที่อนุญาตให้ออกไปนอกบ้านได้เท่านั้น (PDPA · WO-CV9 ข้อ 4)
  *
@@ -52,7 +61,7 @@ export const EV_KANBAN_BOARD = "kanban.board";
 // K1.14 (บอร์ดงาน) — เพิ่ม "ตัวชี้" ของบอร์ดงานเข้าบัญชีขาว: ชนิดสัญญาณ + id ของบอร์ด/คอลัมน์/การ์ด
 // ทั้งหมดเป็น id/enum ล้วน ๆ (ไม่มีชื่อการ์ด ไม่มีรายละเอียด ไม่มีชื่อคน) — จอที่ได้รับสัญญาณ
 // ไป `router.refresh()` แล้วดึงเนื้อหาจากเซิร์ฟเวอร์เราเองเหมือนเดิม
-export const SAFE_KEYS = ["conversationId", "userId", "kind", "until", "at", "type", "boardId", "columnId", "cardId"] as const;
+export const SAFE_KEYS = ["conversationId", "userId", "kind", "until", "at", "type", "boardId", "columnId", "cardId", "roomId", "hkStatus"] as const; // SVC H.6: + roomId · hkStatus (บอร์ดแม่บ้าน)
 
 /** ค่าที่เป็น "ตัวชี้" (id/ชนิด) ต้องหน้าตาแบบนี้เท่านั้น — กันคนแอบยัดประโยคมาในช่อง id */
 const ID_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
@@ -68,6 +77,9 @@ export type Signal = {
   boardId?: string;
   columnId?: string;
   cardId?: string;
+  /** SVC H.6 ▸ บอร์ดแม่บ้าน — ห้องที่เปลี่ยน + สถานะแม่บ้านใหม่ (enum) ◂ */
+  roomId?: string;
+  hkStatus?: string;
 };
 
 /**

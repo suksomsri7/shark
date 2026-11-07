@@ -436,7 +436,7 @@ try {
   await st("PC-3", "ฐาน QC ต่อได้ (SELECT 1 · host = ฐาน QC ของ SVC: ep-mute-scene/ep-royal-lake/ep-weathered-mode/ep-royal-bar) · ตัวดักคิวรีติดตั้งก่อน db · ตาราง H.0/PaymentSlip/ChatRateBucket + คอลัมน์ publicToken/guestEmail/policySnapshot ของ HotelReservation · SESSION_SECRET มี (spam-guard)", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`);
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar|ep-square-heart|ep-late-union)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · lanes-l5-l6): ฐานเลน l5/l6 ใหม่ (แตกจาก wo-svc-qc)
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (SR นับคิวรีไม่ได้)");
     ok(H0_OK, H0_WHY);
     ok((process.env.SESSION_SECRET ?? "").length >= 32, "ไม่มี SESSION_SECRET ≥ 32 ตัวใน env QC (ตั๋วเริ่มฟอร์มออกไม่ได้)");

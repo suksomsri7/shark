@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { canAccessUnit, evaluate, type MembershipCtx } from "@/lib/core/rbac"; // SVC H.6 (createStaffRepair)
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import { bkkYmd, inQuietWindow } from "@/lib/core/quiet-hours";
@@ -33,6 +34,7 @@ export type RepairFile = { data?: Uint8Array; read?: () => Promise<Uint8Array>; 
 export type RepairFileDeps = { put?: (path: string, data: Uint8Array, contentType: string) => Promise<void>; del?: (path: string) => Promise<number> };
 /** BUSY = ฐานข้อมูลชนกัน (40P01) ซ้ำหลังลองใหม่ 1 ครั้ง / ระบบขัดข้อง — ไม่มีอะไรเปลี่ยน ลองใหม่ได้ */
 export type RepairFailCode =
+  | "FORBIDDEN" // SVC H.6 (createStaffRepair · พนักงานไม่มีสิทธิ์แจ้งซ่อม)
   | "NOT_FOUND"
   | "RATE_LIMITED"
   | "INVALID_INPUT"
@@ -634,8 +636,9 @@ type Gate = { tenantId: string; unitId: string; unitName: string; actorUserId: s
 
 async function staffGate(ctx: unknown, unitId: unknown): Promise<Gate | null> {
   if (!isRec(ctx) || !isStr(ctx.tenantId) || !isStr(ctx.actorUserId) || !isStr(unitId)) return null;
-  const g = await dormStaffGate(ctx, unitId, PERM);
+  const g = await dormStaffGate(ctx, unitId, PERM, { allowTypes: ["DORM", "HOTEL"] }); // SVC H.6 ▸ ด่าน DORM|HOTEL (ใบซ่อมจากแม่บ้านโรงแรม) ◂
   if (!g) return null;
+  if (g.unitType === "HOTEL") return { ...g, actorUserId: ctx.actorUserId, visible: null }; // SVC H.6 ▸ HOTEL: ไม่มีขอบเขตอาคารของหอ ⇒ ทั้งหน่วย ◂
   const visible = await dormVisibleRoomsFor({ tenantId: g.tenantId }, { unitId: g.unitId, userId: ctx.actorUserId });
   return { ...g, actorUserId: ctx.actorUserId, visible };
 }
@@ -818,6 +821,93 @@ export async function completeDormRepair(
     return busy();
   }
 }
+
+// ═════════════════════════ SVC H.6 ▸ พนักงานแจ้งซ่อมเอง (แม่บ้านโรงแรม · ใบ h.6 §1 มติ 7 พ.ย. ข้อ 6) ═════════════════════════
+//   ใบซ่อมของหน่วย DORM|HOTEL ที่พนักงานเปิดเอง (leaseId/partyId null · allowEntry true) — ตาราง/การ์ด/event `dorm.repair.created` เดิมทุกอย่าง
+//   ด่าน: หน่วย ACTIVE ของร้าน (DORM|HOTEL) → เข้าหน่วยได้ (ไม่ได้ ⇒ NOT_FOUND) → สิทธิ์ (โรงแรม = hotel.housekeeping หรือ dorm.repair.manage · หอ = dorm.repair.manage) ⇒ FORBIDDEN
+//   หมวด: rooms.repair.categories ของหน่วย (ไม่ส่ง/ไม่รู้จัก ⇒ OTHER หรือหมวดแรก) · รูปเก็บไฟล์ส่วนตัว (บทบาท TENANT = รูปก่อนซ่อม) · คีย์ส่งซ้ำ ⇒ ผลเดิม
+export type StaffRepairActor = { role: string; unitAccess?: unknown; permissions?: unknown; userId: string };
+export type StaffRepairInput = { unitId: string; roomId: string; category?: string | null; text: string; photos?: RepairFile[]; allowEntry?: boolean; idempotencyKey?: string | null };
+
+export async function createStaffRepair(
+  actorIn: StaffRepairActor,
+  ctx: { tenantId: string },
+  i: StaffRepairInput,
+  opts?: { now?: Date; deps?: RepairFileDeps },
+): Promise<{ ok: true; repairId: string; replayed: boolean } | RepairFail> {
+  const tenantId = isRec(ctx) && isStr(ctx.tenantId) ? ctx.tenantId : "";
+  const deps = opts?.deps;
+  const now = nowOf(opts?.now);
+  let uploaded: string[] = [];
+  try {
+    if (!tenantId || !isRec(actorIn) || !isStr(actorIn.userId) || !isStr(actorIn.role) || !isRec(i) || !isStr(i.unitId) || !isStr(i.roomId)) return notFound();
+    const m: MembershipCtx = {
+      role: actorIn.role as MembershipCtx["role"],
+      unitAccess: Array.isArray(actorIn.unitAccess) ? actorIn.unitAccess.filter(isStr) : [],
+      permissions: isRec(actorIn.permissions) ? actorIn.permissions : {},
+    };
+    const unit = await tenantDb({ tenantId }).businessUnit.findFirst({ where: { id: i.unitId, type: { in: ["DORM", "HOTEL"] }, status: "ACTIVE" }, select: { id: true, type: true } });
+    if (!unit || !canAccessUnit(m, unit.id)) return notFound();
+    const room = await tenantDb({ tenantId, unitId: unit.id }).hotelRoom.findFirst({ where: { id: i.roomId }, select: { id: true } });
+    if (!room) return notFound();
+    const allowed =
+      evaluate(m, { module: "dorm", action: PERM, unitId: unit.id }) || (unit.type === "HOTEL" && evaluate(m, { module: "hotel", action: "hotel.housekeeping", unitId: unit.id }));
+    if (!allowed) return fail("FORBIDDEN", "คุณยังไม่มีสิทธิ์แจ้งซ่อม — ขอสิทธิ์จากเจ้าของร้าน");
+    const text = typeof i.text === "string" ? i.text.trim() : "";
+    if (!text || chars(text) > MAX_TEXT) return fail("INVALID_INPUT", `เล่าอาการที่ต้องซ่อม 1–${MAX_TEXT} ตัวอักษร`);
+    const key = i.idempotencyKey === undefined || i.idempotencyKey === null ? null : i.idempotencyKey;
+    if (key !== null && (typeof key !== "string" || !KEY_RE.test(key))) return fail("INVALID_INPUT", "รหัสกันส่งซ้ำไม่ถูกต้อง");
+    const photosIn = i.photos === undefined || i.photos === null ? [] : i.photos;
+    if (!Array.isArray(photosIn) || photosIn.length > MAX_PHOTOS) return fail("INVALID_INPUT", `แนบรูปได้ไม่เกิน ${MAX_PHOTOS} รูป`);
+    const cats = await categoriesOf(tenantId, unit.id);
+    const cat = cats.find((c) => c.code === i.category) ?? cats.find((c) => c.code === "OTHER") ?? cats[0];
+    if (!cat) return fail("INVALID_INPUT", "ยังไม่มีหมวดงานซ่อม — ตั้งหมวดแจ้งซ่อมก่อน");
+    const repairId = repairIdOf(tenantId, `staff:${actorIn.userId}`, key ?? `${now.getTime().toString(36)}${Math.random().toString(36).slice(2)}`);
+    if (key !== null) {
+      const prev = await repairOfTenant(tenantId, repairId);
+      if (prev) return prev.unitId === unit.id && prev.roomId === room.id ? { ok: true, repairId, replayed: true } : notFound();
+    }
+    const badFile = fail("INVALID_FILE", "แนบได้เฉพาะรูป JPEG, PNG, WebP หรือ HEIC รวมกันไม่เกิน 10 MB");
+    const declared = declaredFiles(photosIn);
+    if (!declared) return badFile;
+    const files = await readFiles(declared);
+    if (!files) return badFile;
+    const ids = await uploadAll(tenantId, files, "repair-photo", deps);
+    if (!ids) return fail("UPLOAD_FAILED", "อัปโหลดรูปไม่สำเร็จ — ลองใหม่อีกครั้ง");
+    uploaded = ids;
+    const filesJson = ids.length ? JSON.stringify(ids.map((fileId) => ({ fileId, role: "TENANT" }))) : null;
+    const allowEntry = i.allowEntry !== false;
+    const out = await runTx(tenantId, unit.id, async (tx) => {
+      const n = await tx.$executeRaw`
+        INSERT INTO "DormRepair" ("id", "tenantId", "unitId", "roomId", "leaseId", "partyId", "category", "text", "files", "preferredTime", "allowEntry", "status", "createdAt", "updatedAt")
+        VALUES (${repairId}, ${tenantId}, ${unit.id}, ${room.id}, NULL, NULL, ${cat.code}, ${text}, ${filesJson}::jsonb, NULL, ${allowEntry}, 'OPEN', ${now}, now())
+        ON CONFLICT ("id") DO NOTHING`;
+      if (n !== 1) throw new Abort({ replay: true });
+      await emitOutbox(tx, {
+        tenantId,
+        unitId: unit.id,
+        type: EVT_CREATED,
+        idempotencyKey: `${EVT_CREATED}:${repairId}`,
+        payload: { unitId: unit.id, repairId, roomId: room.id, category: cat.code },
+      });
+      await auditOf(tx, { tenantId, unitId: unit.id, actorUserId: actorIn.userId, action: EVT_CREATED, repairId, after: { roomId: room.id, category: cat.code, photos: ids.length, source: "STAFF" } });
+      return { done: true as const };
+    });
+    if ("done" in out) {
+      uploaded = [];
+      return { ok: true, repairId, replayed: false };
+    }
+    await dropFiles(tenantId, ids, deps);
+    uploaded = [];
+    if ("replay" in out) return { ok: true, repairId, replayed: true };
+    return out;
+  } catch (e) {
+    if (uploaded.length) await dropUnreferenced(tenantId, uploaded, deps);
+    await logFail("staff", tenantId, e);
+    return busy();
+  }
+}
+// ◂ SVC H.6
 
 // ═════════════════════════ §3.3 สถานะจากการ์ด (สะพานเรียก) ═════════════════════════
 /** ผูกการ์ดกับคำแจ้ง (ครั้งแรกเท่านั้น · CAS kanbanCardId IS NULL) */

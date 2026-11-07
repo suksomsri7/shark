@@ -15,6 +15,7 @@ import * as hotelCheckout from "./checkout"; // SVC H.5
 import * as hotelRoomCharge from "./room-charge"; // SVC H.5
 import * as hotelTape from "./tape"; // SVC H.2
 import * as hotelBlock from "./block"; // SVC H.2
+import * as hotelHk from "./housekeeping"; // SVC H.6
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -617,3 +618,108 @@ export async function decideHotelSlipAction(formData: FormData): Promise<void> {
   redirect(`/app/u/${encodeURIComponent(unitSlug)}/hotel/reservations?slip=${r.ok ? "ok" : encodeURIComponent(r.code)}`);
 }
 // ◂ SVC H.8
+// SVC H.6 ▸ แม่บ้านมือถือ (ใบสั่ง h.6 §3) — ร้าน/ผู้กระทำ/สิทธิ์จาก session เท่านั้น · ด่าน type HOTEL + assertHotelCan ทุกตัว · ผลเป็นข้อมูล ไม่ throw
+//   สิทธิ์: เปลี่ยนสถานะ/เริ่ม/เสร็จ/มินิบาร์ = hotel.housekeeping · ตรวจห้อง = hotel.housekeeping.inspect ·
+//   แจ้งของเสีย = hotel.housekeeping (แจ้งช่าง/ปิดห้องเมื่อ hk.canBlock) หรือ hotel.booking.manage (ปิดห้อง) — ฟังก์ชันตรวจละเอียดซ้ำ
+//   input รับเฉพาะคีย์ที่รู้จัก (เวลาจำลองของฉากไม่ผ่านทางนี้) · idempotencyKey มาจากคิวออฟไลน์ของมือถือ
+const NOT_HOTEL_HK = { ok: false, code: "NOT_FOUND", reason: "งานแม่บ้านใช้ได้กับหน่วยโรงแรมเท่านั้น" } as const;
+function revalidateHk(unitSlug: string, ok: boolean, roomId?: unknown) {
+  if (!ok) return;
+  revalidatePath(`/app/u/${unitSlug}/hotel/housekeeping`);
+  if (typeof roomId === "string" && roomId) revalidatePath(`/app/u/${unitSlug}/hotel/housekeeping/${roomId}`);
+}
+function hkInput(input: unknown, keys: string[]): Record<string, unknown> {
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  return Object.fromEntries(Object.entries(src).filter(([k]) => keys.includes(k)));
+}
+
+export async function hkSetStatusAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_HK;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.housekeeping"))) return NO_RIGHT;
+  const i = hkInput(input, ["roomId", "to", "note", "idempotencyKey"]);
+  const r = await hotelHk.hkSetStatus(hotelActorOf(auth), { tenantId: auth.active.tenantId }, i);
+  revalidateHk(unitSlug, r.ok, i.roomId);
+  return r;
+}
+
+export async function hkStartAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_HK;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.housekeeping"))) return NO_RIGHT;
+  const i = hkInput(input, ["roomId", "override"]);
+  const r = await hotelHk.hkStart(hotelActorOf(auth), { tenantId: auth.active.tenantId }, i);
+  revalidateHk(unitSlug, r.ok, i.roomId);
+  return r;
+}
+
+export async function hkReleaseAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_HK;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.housekeeping"))) return NO_RIGHT;
+  const i = hkInput(input, ["roomId"]);
+  const r = await hotelHk.hkRelease(hotelActorOf(auth), { tenantId: auth.active.tenantId }, i);
+  revalidateHk(unitSlug, r.ok, i.roomId);
+  return r;
+}
+
+export async function hkFinishAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_HK;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.housekeeping"))) return NO_RIGHT;
+  const i = hkInput(input, ["roomId", "checklist", "minibar", "note", "idempotencyKey"]);
+  const r = await hotelHk.hkFinish(hotelActorOf(auth), { tenantId: auth.active.tenantId }, i);
+  revalidateHk(unitSlug, r.ok, i.roomId);
+  return r;
+}
+
+export async function hkInspectAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_HK;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.housekeeping.inspect"))) return NO_RIGHT;
+  const i = hkInput(input, ["roomId", "pass", "note", "idempotencyKey"]);
+  const r = await hotelHk.hkInspect(hotelActorOf(auth), { tenantId: auth.active.tenantId }, i);
+  revalidateHk(unitSlug, r.ok, i.roomId);
+  return r;
+}
+
+export async function postMinibarAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_HK;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.housekeeping"))) return NO_RIGHT;
+  const i = hkInput(input, ["roomId", "items", "idempotencyKey"]);
+  const r = await hotelHk.postMinibar(hotelActorOf(auth), { tenantId: auth.active.tenantId }, i);
+  revalidateHk(unitSlug, r.ok, i.roomId);
+  return r;
+}
+
+/** แจ้งของเสีย/ของหาย — FormData (รูป ≤ 3) หรือ object · BLOCK ปิดห้องซ่อม · REPAIR แจ้งช่าง */
+export async function reportDefectAction(unitSlug: string, form: FormData) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_HK;
+  const action = String(form.get("action") ?? "");
+  const allowed = canHotel(() => assertHotelCan(auth, unit.id, "hotel.housekeeping")) || (action === "BLOCK" && canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage")));
+  if (!allowed) return NO_RIGHT;
+  const photos: { data: Uint8Array; contentType: string }[] = [];
+  for (const f of form.getAll("photos")) {
+    if (typeof f === "string" || f.size === 0) continue;
+    if (photos.length >= 3) return { ok: false, code: "INVALID_INPUT", reason: "แนบรูปได้ไม่เกิน 3 รูป" } as const; // ด่านเดียวกับ reportDefect (≤ 3)
+    if (f.size > 8 * 1024 * 1024) return { ok: false, code: "INVALID_FILE", reason: "แนบได้เฉพาะรูป JPEG, PNG หรือ WebP รูปละไม่เกิน 8 MB" } as const;
+    photos.push({ data: new Uint8Array(await f.arrayBuffer()), contentType: f.type });
+  }
+  const days = Number(form.get("blockDays") ?? "");
+  const roomId = String(form.get("roomId") ?? "");
+  const r = await hotelHk.reportDefect(hotelActorOf(auth), { tenantId: auth.active.tenantId }, {
+    roomId,
+    text: String(form.get("text") ?? ""),
+    action,
+    ...(action === "BLOCK" ? { blockDays: Number.isFinite(days) ? days : undefined } : {}),
+    category: form.get("category") ? String(form.get("category")) : null,
+    idempotencyKey: form.get("idempotencyKey") ? String(form.get("idempotencyKey")) : null,
+    photos,
+  });
+  revalidateHk(unitSlug, r.ok, roomId);
+  if (r.ok && action === "BLOCK") revalidatePath(`/app/u/${unitSlug}/hotel/calendar`);
+  return r;
+}
+// ◂ SVC H.6

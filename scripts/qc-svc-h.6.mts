@@ -457,7 +457,7 @@ try {
   await st("PC-4", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l3 ep-royal-bar) · ตาราง H.0/หอ ครบ (HotelHousekeepingLog · HotelFolio/Item · HotelBookingNight · RoomOccupancy · DormRepair · FileAsset · OutboxEvent) · HotelRoom มี hkStatus/hkNote/hkUpdatedAt · ตัวดักคิวรีติด · ร้าน svcqc seed แล้ว: membership maid = hotel.housekeeping เท่านั้น · hk-lead = housekeeping + inspect · frontdesk ไม่มี housekeeping · หน่วย hotel 14 ห้อง · ห้องในฟิกซ์เจอร์มีจริง", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลัก (builder อาจอยู่เลนอื่น · regression/H.9)
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar|ep-square-heart|ep-late-union)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลัก (builder อาจอยู่เลนอื่น · regression/H.9)
     ok(H0_OK, H0_WHY);
     ok(spyInstalled, "ตัวดักคิวรีไม่ติด (BD-7 นับคิวรีไม่ได้)");
     const t = await prisma.tenant.findUnique({ where: { id: SQC_TENANT.id }, select: { id: true } });
@@ -775,8 +775,9 @@ try {
     needSetup(); needHk(); ok(BOARD0?.ok, "ไม่มี BD-1");
     const rows = rowsOf(BOARD0);
     const exp = refCounts(rows, null);
-    eq([exp.total, exp.done], [9, 3], "ตัวอ้างอิงเอง (ฉากไม่ตรงที่ออกแบบ)");
-    eq(BOARD0.counts, { mine: 0, total: 9, done: 3 }, "counts");
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-BD4): roomPlan มี W1/W4 ว่าง DIRTY (ST-2/ST-3 ใช้) ⇒ ตามนิยาม refInWork ของข้อสอบเอง total = 11 ไม่ใช่ 9
+    eq([exp.total, exp.done], [11, 3], "ตัวอ้างอิงเอง (ฉากไม่ตรงที่ออกแบบ)");
+    eq(BOARD0.counts, { mine: 0, total: 11, done: 3 }, "counts");
     const b2 = okRes(await board({ mine: MAID.userId }), "hkBoard mine");
     eq(b2.counts.mine, 0, "mine");
   });
@@ -959,6 +960,29 @@ try {
     eq(rowsOf(await logs({ roomId: ROOM.W2, from: W(-30), to: W(-29) })).length, 0, "ช่วงอดีต");
     const b = await logs({ roomId: ROOM.W2 }, ctxB);
     ok(b?.ok === false || rowsOf(b).length === 0, "ร้าน B เห็น log");
+  });
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-ST8-pool · ผู้ตรวจ M1) — หลายห้องคนละห้องพร้อมกัน ≥ pool pg (10) ต้องไม่หลุด log/สัญญาณ และห้ามชนเพดาน tx
+  await st("ST-8", "X4 แม่บ้าน 2 คนกด DIRTY→CLEAN คนละห้องพร้อมกัน 12 ห้อง (ห้องใหม่ชั่วคราว P01–P12 · pool pg ค่าเริ่ม 10): ok ครบ 12 · ไม่มี throw ดิบ · log DIRTY→CLEAN 12 แถว (ห้องละ 1) · event hotel.hk.changed 12 · hkStatus CLEAN ทั้ง 12 · รวม < 10 วิ (ไม่ชนเพดาน tx 30 วิ) · ลบห้องชั่วคราวท้ายข้อ", async () => {
+    needSetup(); needHk();
+    const rooms: string[] = [];
+    for (let i = 1; i <= 12; i++) rooms.push(await mkRoom(tA, UH, `P${String(i).padStart(2, "0")}`, RTA.dlx, "DIRTY"));
+    try {
+      const since = new Date(); const t0 = Date.now();
+      const rs = await Promise.all(rooms.map((roomId, i) => setStatus(i % 2 ? MAID : MAID2, { roomId, to: "CLEAN" })));
+      const took = Date.now() - t0;
+      eq(rs.filter((r) => failCode(r) === "THROW").map((r) => r.reason), [], "throw ดิบ");
+      eq(rs.map(codeOf), rooms.map(() => "ok"), `ผล ${J(rs.map(codeOf))}`);
+      ok(took < 10_000, `ใช้เวลา ${took} ms`);
+      const logs = (await prisma.hotelHousekeepingLog.findMany({ where: { roomId: { in: rooms }, toStatus: "CLEAN", createdAt: { gte: since } }, select: { roomId: true } })) as Any[];
+      eq(logs.length, 12, `log ${logs.length} (ห้องเปลี่ยนสถานะโดยไม่มี log)`);
+      eq(new Set(logs.map((l) => l.roomId)).size, 12, "log ไม่ครบทุกห้อง");
+      eq((await eventsOf("hotel.hk.changed", (p) => rooms.includes(String(p.roomId)))).length, 12, "event");
+      for (const r of rooms) eq(await hkOf(r), "CLEAN", `hkStatus ${r}`);
+    } finally {
+      await prisma.hotelHousekeepingLog.deleteMany({ where: { roomId: { in: rooms } } });
+      await prisma.roomOccupancy.deleteMany({ where: { roomId: { in: rooms } } }); // r0.8 S-6: ลบ occupancy ก่อนห้องเสมอ
+      await prisma.hotelRoom.deleteMany({ where: { id: { in: rooms } } });
+    }
   });
 
   // ═══════════════ WK hkStart / hkFinish ═══════════════
@@ -1186,6 +1210,24 @@ try {
     eq((await folioOf(RV.MB1)).items.length, n0, "เพิ่มจากที่ปฏิเสธ");
     okRes(await minibar(LEAD, { roomId: ROOM.MB1, items: [{ key: "water", qty: 4 }] }), "lead");
     okRes(await minibar(OWNER, { roomId: ROOM.MB1, items: [{ key: "water", qty: 5 }] }), "owner");
+  });
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-MB8-atomic · ผู้ตรวจ M2) — ชุดที่มีรายการไม่ผ่าน ต้องไม่โพสต์ครึ่งชุด · ของฟรี (0) ไม่ลง folio
+  await st("MB-8", "ชุดมินิบาร์ทั้งชุดหรือไม่เลย (มติ h.6 §10.2): ค่าตั้ง #75 เพิ่ม cola 3,000 · nuts 3,000 · gift 0 (ของฟรี) · wine 6,000,000 (> manualItemMaxSatang 5,000,000) · [{cola,1},{wine,1}] ⇒ INVALID_INPUT และ FolioItem ของ MB1 ไม่เพิ่มเลย · ส่ง [{cola,1}] ⇒ ok ลง 1 (ไม่ถูกกันซ้ำเพราะชุดก่อนไม่ได้โพสต์) · [{nuts,1},{gift,2}] ⇒ ok · nuts ลง 1 · gift ไม่ลง folio (ไม่มี FolioItem ราคา 0) · คืนค่าตั้งท้ายข้อ", async () => {
+    needSetup(); needHk(); needFolio();
+    const items = [...HS.minibar.items, { key: "cola", name: "โคล่า", priceSatang: 3_000 }, { key: "nuts", name: "ถั่ว", priceSatang: 3_000 }, { key: "gift", name: "ของฝากฟรี", priceSatang: 0 }, { key: "wine", name: "ไวน์", priceSatang: 6_000_000 }];
+    await setUnit("rooms.hotel.minibar", items);
+    try {
+      const n0 = (await folioOf(RV.MB1)).items.length;
+      const bad = await minibar(MAID, { roomId: ROOM.MB1, items: [{ key: "cola", qty: 1 }, { key: "wine", qty: 1 }] });
+      ok(isFail(bad, "INVALID_INPUT"), `เกินเพดาน ⇒ ${codeOf(bad)}`);
+      eq((await folioOf(RV.MB1)).items.length, n0, "โพสต์ครึ่งชุด (cola ลงทั้งที่ wine ไม่ผ่าน)");
+      okRes(await minibar(MAID, { roomId: ROOM.MB1, items: [{ key: "cola", qty: 1 }] }), "cola หลังชุดล้ม");
+      eq((await folioOf(RV.MB1)).items.length, n0 + 1, "cola หลังชุดล้มไม่ลง/ลงซ้ำ");
+      okRes(await minibar(MAID, { roomId: ROOM.MB1, items: [{ key: "nuts", qty: 1 }, { key: "gift", qty: 2 }] }), "ของฟรี");
+      const f = await folioOf(RV.MB1);
+      eq(f.items.length, n0 + 2, "nuts+gift");
+      ok(!f.items.some((i: Any) => i.type === "MINIBAR" && Number(i.unitAmountSatang) === 0), "มี FolioItem ราคา 0");
+    } finally { await setUnit("rooms.hotel.minibar", [...HS.minibar.items]); }
   });
 
   // ═══════════════ DF แจ้งของเสีย ═══════════════
@@ -1567,7 +1609,7 @@ try {
     ok(/SVC H\.6 ▸[\s\S]*◂/.test(s), "actions.ts ยังไม่มีบล็อก // SVC H.6 ▸ … ◂ (ยังไม่มีงาน H.6)");
     ok(/^\s*["']use server["']/m.test(s), "ไม่มี \"use server\"");
     ok(!/^export\s+(type|interface|const|let|class)\b/m.test(stripComments(s).split("\n").filter((l) => !/ReservationFormState/.test(l)).join("\n")), "export ที่ไม่ใช่ async function");
-    ok(!/from\s*["']@\/lib\/modules\/dorm|from\s*["']\.\/(block|folio|tape)["']/.test(stripComments(s)), "actions.ts import dorm/block/folio ตรง");
+    ok(!/from\s*["']@\/lib\/modules\/dorm|from\s*["']\.\/(block|folio|tape)["']/.test(stripComments((/SVC H\.6 ▸[\s\S]*?◂/.exec(s) ?? [""])[0])), "บล็อก H.6 ของ actions.ts import dorm/block/folio ตรง"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-U4): ตรวจเฉพาะบล็อก H.6 (import ./block ./folio ./tape ของ H.2/H.5 อยู่นอกบล็อก)
   });
   await st("U-5", "หน้า (§1/§4): 3 หน้าใหม่ requireUnit + \"HOTEL\" + notFound · ตรวจ hotel.housekeeping (ไม่มี ⇒ notFound/forbidden — read-only ไม่เห็นหน้า) · import ผ่าน facade @/lib/modules/hotel (ไม่ชี้ housekeeping.ts ตรง) · บอร์ดใช้ hkBoard + ส่ง mine = userId · [roomId] ใช้ hkBoard/ห้องเดียว + ค่าตั้ง checklist/minibar (loadHotelSettings/resolveSetting ผ่าน facade) · logs ใช้ hkLogs + รับ from/to/roomId · ไม่อ่านสิทธิ์จาก URL", () => {
     const bad: string[] = [];

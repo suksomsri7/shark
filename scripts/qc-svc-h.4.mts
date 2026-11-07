@@ -390,7 +390,7 @@ try {
   await st("PC-3", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l3 ep-royal-bar) · ตาราง H.0 (HotelGuestRecord · HousekeepingLog · Folio · FileAsset · RoomOccupancy) + คอลัมน์ HotelGuestRecord ครบตามใบ h.0 §2.12 · CHECK tm30Status 4 ค่า · ดัชนี retainUntil · Prisma client มี hotelGuestRecord", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลัก (builder อาจอยู่เลนอื่น · regression/H.9)
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar|ep-square-heart|ep-late-union)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลัก (builder อาจอยู่เลนอื่น · regression/H.9)
     ok(H0_OK, H0_WHY);
     const chk: { d: string }[] = await prisma.$queryRawUnsafe(`SELECT pg_get_constraintdef(c.oid) AS d FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid WHERE t.relname = 'HotelGuestRecord' AND c.contype = 'c'`);
     const tm = chk.map((x) => x.d).find((d) => /tm30Status/.test(d)) ?? "";

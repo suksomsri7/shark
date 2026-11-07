@@ -415,7 +415,7 @@ try {
   await st("PC-3", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l2 ep-weathered-mode) · ตัวดักคิวรีติดตั้งก่อน db · ตาราง H.0 + คอลัมน์ H.0 ของ HotelReservation มีบนฐาน", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลักตอน regression+H.9
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar|ep-square-heart|ep-late-union)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลักตอน regression+H.9
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (A-5 นับไม่ได้)");
     ok(H0_OK, H0_WHY);
   });

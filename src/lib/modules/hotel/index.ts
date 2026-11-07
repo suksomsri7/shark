@@ -133,3 +133,26 @@ export {
 } from "./storefront";
 export type { WebUnit, WebRoomTypeInfo, WebCancelRuleRow, WebSearchBundle, WebPlanRow, WebSlipState, WebDepositMoney, WebBookingFacts, GuestMailFacts } from "./storefront";
 // ◂ SVC H.8
+// SVC H.6 ▸ แม่บ้าน (ใบสั่ง h.6 §3) — บอร์ดงานห้องวันนี้ · state machine hk · เริ่มทำ/เสร็จ/ตรวจ · มินิบาร์ → folio · แจ้งของเสีย · night audit (H.7 เรียก)
+export {
+  hkBoard,
+  hkRoom,
+  hkSetStatus,
+  hkStart,
+  hkRelease,
+  hkFinish,
+  hkInspect,
+  hkLogs,
+  postMinibar,
+  reportDefect,
+  setGuestRequest,
+  markStayoversDirty,
+  syncBlockedRooms,
+  minibarItemsOf,
+  inWork,
+  HK_EVENTS,
+} from "./housekeeping";
+export type { HkActor, HkFail, HkFailCode, HkBoard, HkBoardRow, HkRoomView, HkLogRow, MinibarItem } from "./housekeeping";
+export { HK_TRANSITIONS, HK_ROLES, HK_CONTEXTS, HK_STATUS_LIST, canHkTransition, hkPriority, parseHkNote, serializeHkNote } from "./hk-state";
+export type { HkState, HkRole, HkContext, HkNote, HkTransition, HkTransitionOpts } from "./hk-state";
+// ◂ SVC H.6

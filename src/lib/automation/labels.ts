@@ -366,6 +366,12 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "hotel.security_deposit.refunded", label: "เมื่อคืนเงินประกันห้อง" },
   { value: "hotel.security_deposit.forfeited", label: "เมื่อริบเงินประกันห้อง (ค่าเสียหาย)" },
   // ◂ SVC H.5
+  // SVC H.6 ▸ แม่บ้าน — ตัวยิง hotel/housekeeping.ts (ใน tx เดียวกับ HotelHousekeepingLog) · payload { tenantId, unitId, roomId, from?, to?, byUserId?, reservationId?, items?, amountSatang?, action?, repairId?, blockId? } (X8)
+  { value: "hotel.hk.changed", label: "เมื่อสถานะแม่บ้านของห้องเปลี่ยน (สกปรก · สะอาด · ตรวจแล้ว · ปิดซ่อม)" },
+  { value: "hotel.hk.minibar_posted", label: "เมื่อแม่บ้านลงมินิบาร์เข้าบิลห้องแขก" },
+  { value: "hotel.hk.minibar_unbilled", label: "เมื่อมีมินิบาร์ค้างเก็บ (แขกออกไปแล้ว — หน้าเคาน์เตอร์เลือกเรียกเก็บหรือยกให้)" },
+  { value: "hotel.hk.defect", label: "เมื่อแม่บ้านแจ้งของเสีย/ของหาย (ปิดห้องซ่อม หรือ แจ้งช่าง)" },
+  // ◂ SVC H.6
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

@@ -697,9 +697,11 @@ const DEFS: SettingDef[] = [
   }),
   hotel({
     key: "rooms.hotel.minibar", type: "table", labelTh: "รายการมินิบาร์ (สินค้า POS)", // #75
-    schema: z.array(z.object({ productId: z.string().min(1).max(64), priceSatang: MONEY.optional() }).strict()).max(100),
+    schema: z.array(z.union([z.object({ productId: z.string().min(1).max(64), priceSatang: MONEY.optional() }).strict(), z.object({ key: z.string().regex(/^[a-z0-9_-]{1,32}$/), name: z.string().trim().min(1).max(60), priceSatang: MONEY }).strict()])).max(100), // SVC H.6 ▸ + {key,name,priceSatang} (มติ h.6 ข้อ 5 · แม่บ้านลง folio ราคา/ชื่อจากค่าตั้ง) ◂
     defaults: { _fallback: [] }, chain: U, sensitivity: "MONEY",
   }),
+  // SVC H.6 ▸ แม่บ้านปิดห้องซ่อมเองได้ (มติ h.6 ข้อ 1 · ปิด = ต้องผู้มีสิทธิ์จัดการการจอง) ◂
+  hotel({ key: "rooms.hotel.hk.canBlock", type: "bool", labelTh: "แม่บ้านปิดห้องซ่อมได้เอง", helpTh: "ปิด = แม่บ้านแจ้งช่างได้อย่างเดียว การปิดห้องต้องให้หน้าเคาน์เตอร์/ผู้จัดการ", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
   hotel({ key: "rooms.hotel.nightAuditTime", type: "time", labelTh: "เวลา night audit", schema: HHMM, defaults: { _fallback: "03:00" }, chain: U }), // #76
   hotel({
     key: "rooms.hotel.tm30ReminderHours", type: "int", labelTh: "เตือนแจ้ง ตม.30 ก่อนครบ 24 ชม. (ชม.)", // #77
