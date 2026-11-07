@@ -1,0 +1,69 @@
+# ใบสั่ง H.10 — โครงช่องทาง OTA (channel manager): แม็ปห้อง/แผนราคา (+สูตร markup) · ARI ขาออก (outbox → รวมชุด → `pushAri` · `ChannelAriJob`) · ขาเข้า idempotent (`ChannelReservationInbox` · ตัวต่อ+externalId+version) → การจอง+ห้องใน tx เดียว · คิว "ต้องจัดห้อง" · gross/commission/net · prepaid · buffer · fake adapter + ข้อสอบ · จอศูนย์เชื่อมต่อ (ภาพ 11 การ์ด OTA) · ตรวจ **เข้ม (กันจองซ้อน)** · ผู้ตรวจ 2 รอบ
+
+> ร่างโดยผู้คุม 7 พ.ย. 2569 — **เปิดเลนได้เมื่อ H.3 + H.1 merge** (H.2 ไม่บังคับ) · ผู้คุมใส่ฟิกซ์เจอร์ "SVC H.10" (`SQC_HOTEL_OTA_SCENE` · `SQC_VISUAL_SPECS["h.10"]` · owner ใช้ `canManageIntegrations`) ก่อน · **H2.1–H2.3 ตัวต่อเจ้าจริงอยู่นอกตัวนับ** (รอชื่อจากลูกค้าโรงแรมรายแรก · Q10)
+> แหล่งความจริง: `SVC-HOTEL-PLAN.md` §2 ข้อ 3, 9 (TenantIntegration kind CHANNEL_MANAGER · ไม่สร้าง HotelChannelConnection) §3 แถว H.10 · §5.1 Q10 · เคาะแล้ว "buffer OTA 0" · DH §7 "ราคาสุทธิ/ค่าคอมฯ ช่องทาง" (DH:276) §10 ตาราง OTA · ภาพ `ledger/design-dorm/11-integrations.png` การ์ด "ช่องทางขายห้อง (OTA)" (+ `.body.html`) · สเปก S §3.10 §4.2 (availability สูตรเดียว) §7.2 (guard tx) §11 ข้อ 1 2 16 (crossUnit) · ใบ H.0 §2.14 (ตาราง `ChannelRoomMap` `ChannelRateMap` `ChannelAriJob` `ChannelReservationInbox` `ChannelInventoryBuffer` · `HotelReservation.channelRef/channelConnectionId/gross/commission/net/prepaidByChannel`) · ใบ H.3 (`createBooking(source:"OTA", channelRef, …)` · `AVAILABILITY_CHANGED` · `cancelBooking` · `extendBooking/shortenBooking`) · ใบ H.1 (`loadPricingContext` · `quoteStay` · `ChannelRateMap.formula {markupBp}`) · ศูนย์เชื่อมต่อ `src/lib/core/integrations/*` (`getIntegration` `callIntegration` `saveIntegration` `testIntegration` `listIntegrations` · `ChannelManagerAdapter {test, pushAri, pullReservations, ackReservation}` ชนิด `unknown` · `providers/fake.ts` CHANNEL_MANAGER · registry `ready:false` · `TenantIntegration.onFailure` · `IntegrationCallLog`) · outbox `src/lib/core/outbox.ts` · minute-jobs
+> ข้อสอบ (ห้ามแก้): «scripts/qc-svc-h.10.mts» · probe ผู้ตรวจ `probe-h10-b.mts` · ภาพ `SQC_VISUAL_SPECS["h.10"]`
+> builder: **ห้าม build/next · ห้าม commit/push session/svc · ห้าม pnpm install · ห้าม prisma/** · ห้ามเรียกเน็ตจริง (fake เท่านั้น) · แก้ `core/integrations/**` ได้เฉพาะ §1** · temp `svc-h10-`
+
+## 0. หลักของใบ
+- **ตัวต่อ = `TenantIntegration kind CHANNEL_MANAGER`** (ศูนย์เชื่อมต่อ R0.6) · ใบนี้ **นิยามชนิดจริง** ให้ `ChannelManagerAdapter` (แทน `unknown` · เพิ่มอย่างเดียว · fake ยังคอมไพล์) + ทำ **fake adapter มีพฤติกรรม** (ใน `providers/fake.ts` โหมด OK/FAIL/QUOTA/SLOW/HANG เดิม + สคริปต์ป้อนการจองเข้า `fakeInbound` สำหรับข้อสอบ) · เปิด registry `ready:true` **เฉพาะ FAKE** (เจ้าจริง H2) · ประเภทห้อง/แผนราคาแม็ปต่อตัวต่อ (`ChannelRoomMap`/`ChannelRateMap` · unitIds ของตัวต่อ)
+- **ARI ขาออก (availability/rates/restrictions)**: ทุกเหตุที่กระทบห้องว่าง/ราคา (event H.3 `hotel.booking.*` · H.1 `hotel.rates.changed` (ถ้าไม่มี = เพิ่มใน H.1? **ไม่แตะ H.1** ⇒ ใบนี้ฟัง AuditLog ไม่ได้ ⇒ **มติ: ใบนี้เพิ่ม hook เบาใน `rates.ts` 1 บรรทัดต่อฟังก์ชันเขียน `emitAriDirty(unitId, roomTypeIds, dateRange)` — ขอผู้คุมอนุมัติเป็นข้อยกเว้นไฟล์ H.1 (จดใน wo-notes) · ค่าปลอดภัยถ้าไม่อนุมัติ: ARI รายวันเต็มช่วง 365 วันทุก 15 นาที)** · BLOCK (H.2) · วันปิด (H.7)) ⇒ outbox `channel.ari.dirty {unitId, roomTypeIds, from, to}` → consumer **รวมชุด** ต่อ (connectionId, ช่วงวัน) เป็น `ChannelAriJob PENDING` (payloadHash = hash ของ ARI ที่คำนวณ · ซ้ำ hash เดิม = SUPERSEDED/ข้าม) → งานรายนาที `channel-ari-push` ส่ง `pushAri(map, dates, ari)` ผ่าน `callIntegration` (retry ตาม attempts ≤ 5 · backoff · FAILED + แจ้ง `onFailure`) · ARI ต่อวัน/ประเภท/แผน = {available: max(0, availability − buffer), price: markup(quote ราคาปกติ), minNights, closedToArrival, stopSell: available=0}
+- **ขาเข้า**: งานรายนาที `channel-pull` (ทุก 5 นาที · ตัวต่อ ACTIVE) `pullReservations(since = lastPulledAt)` → แถว `ChannelReservationInbox` **unique (connectionId, externalId, version)** (ซ้ำ = ข้าม · idempotent) → `applyInbound(inboxId)`: แปล externalRoomId→roomTypeId · externalRateId→ratePlanId (ไม่แม็ป ⇒ REJECTED + แจ้ง) · **สร้างการจองผ่าน `createBooking(null, ctx, {source:"OTA", channelRef: externalId, channelConnectionId, hold: null (CONFIRMED ทันที · OTA เก็บเงิน/ยืนยันแล้ว), gross/commission/net, prepaidByChannel, guest})` ใน guard tx เดียวกับ nights/occupancy** (H.3 ข้อ 1 · ไม่มีเส้นเขียนเอง) → APPLIED + `ackReservation` → `AVAILABILITY_CHANGED` ⇒ **คิว "ต้องจัดห้อง" (NEEDS_ROOM)**: บันทึก inbox NEEDS_ROOM + สร้างการจองแบบ **overbooked** ไม่ได้ ⇒ มติ: สร้าง `HotelReservation` ไม่ได้เพราะ guard · ⇒ คิวแสดงรายการให้พนักงานเลือก: (ก) ย้ายแขกอื่น/เปิดห้อง แล้วกด "ลองอีกครั้ง" (apply ซ้ำ) · (ข) ปฏิเสธ (REJECTED · แจ้งเจ้าของ · ตัวต่อจริงค่อยส่งปฏิเสธกลับ H2) · ยกเลิกจาก OTA (version ใหม่ status CANCELLED) ⇒ `cancelBooking(by:"CHANNEL")` ไม่คืนเงินผ่าน POS (prepaid · เงินอยู่ที่ OTA) · แก้ไขจาก OTA (version ใหม่ วัน/ห้องเปลี่ยน) ⇒ ยกเลิก+สร้างใหม่ใน tx เดียว (ล้ม = NEEDS_ROOM ทั้งคู่ · การจองเดิมคง)
+- **เงิน OTA**: `prepaidByChannel` ⇒ บิล settle (H.5) ค่าห้อง = บรรทัดราคาเต็ม + payMethod `PLATFORM` ยอดเท่ากัน (POS P2.1 · ลูกหนี้แพลตฟอร์ม) · commission = ข้อมูล (รายงาน H.7 ต่อ source) · จ่ายที่โรงแรม (prepaid false) = ปกติ · **H.5 ต้องรองรับ PLATFORM เมื่อ prepaidByChannel** (ส่งต่อให้ H.5 ถ้า H.5 เสร็จก่อน = ใบย่อย H.5b)
+- **buffer** (`ChannelInventoryBuffer.rooms` · ค่าเริ่ม 0 ตามมติ): ARI available ลบ buffer · ไม่กระทบ availability จริง
+- **ปิดช่อง/ชน**: ค่าตั้ง `rooms.hotel.ota.roomScope` (ขายทุกห้อง/เฉพาะที่แม็ป) และ `ota.onConflict` (NEEDS_ROOM|REJECT) มีแล้ว (H.0/H.1) ⇒ ใช้จริง
+- ไม่ทำ: ตัวต่อเจ้าจริง (Agoda/Booking/SiteMinder ฯลฯ = H2) · iCal · ส่งปฏิเสธกลับ OTA (H2) · เรตหลายสกุล · ภาษี OTA แยก
+
+## 1. ไฟล์ที่ใบนี้เป็นเจ้าของ
+| ไฟล์ | | เนื้อหา |
+|---|---|---|
+| «src/lib/modules/hotel/channel/types.ts» | ใหม่ (pure) | `AriDay` `AriPayload` `InboundReservation` (ชนิดจริงของ adapter) · `markupPrice(priceSatang, formula)` · `ariHash(payload)` |
+| «src/lib/modules/hotel/channel/mapping.ts» | ใหม่ (server) | `listChannelConnections` `saveRoomMap` `saveRateMap` `saveBuffer` `channelMappingFor(connectionId)` |
+| «src/lib/modules/hotel/channel/ari.ts» | ใหม่ (server) | `emitAriDirty` · `onAriDirty(evt)` (รวมชุด → ChannelAriJob) · `buildAri(connectionId, from, to)` (≤ 6 คิวรี · ใช้ `hotelAvailability` + `loadPricingContext/quoteStay`) · `pushAriJobs(now, budget)` (minute job) |
+| «src/lib/modules/hotel/channel/inbound.ts» | ใหม่ (server) | `pullAll(now, budget)` (minute job) · `ingestInbound(connectionId, rows)` · `applyInbound(inboxId)` · `retryInbound` · `rejectInbound` · `listNeedsRoom` |
+| «src/lib/modules/hotel/channel/index.ts» | ใหม่ | facade ของโฟลเดอร์ (ส่งออกผ่าน `hotel/index.ts`) |
+| `src/lib/core/integrations/types.ts` | **แก้เฉพาะ** `ChannelManagerAdapter` ชนิด `unknown` → ชนิดจริงจาก `channel/types.ts` (import type เท่านั้น · ไม่ลาก prisma) |
+| `src/lib/core/integrations/providers/fake.ts` | **แก้เฉพาะ** บล็อก CHANNEL_MANAGER: `pullReservations` คืนแถวจากคิวทดสอบ `fakeInboundQueue` (ในหน่วยความจำ + ไฟล์ชั่วคราว `/tmp/svc-h10-fake-inbound-<tenantId>.json` **ไม่ได้ — ห้ามใช้ /tmp** ⇒ เก็บใน `TenantIntegration.settings.fakeInbound` JSON ผ่าน API ทดสอบ `fakeEnqueueInbound`) · `pushAri` บันทึก payload ล่าสุดใน settings.fakeLastAri (ข้อสอบอ่าน) |
+| `src/lib/core/integrations/registry.ts` | **แก้ค่าเดียว** | CHANNEL_MANAGER `ready: true` เมื่อ provider = FAKE เท่านั้น (ฟังก์ชัน `readyFor(provider)` ถ้ายังไม่มี = เพิ่มอย่างเดียว) |
+| `src/lib/modules/hotel/rates.ts` | **1 บรรทัดต่อฟังก์ชันเขียน** `emitAriDirty(...)` (ข้อยกเว้นผู้คุม §0 · ใน tx เดียวกัน) |
+| `src/lib/modules/hotel/index.ts` · `actions.ts` | เพิ่ม | facade + actions (`// SVC H.10 ▸ … ◂`) · สิทธิ์ `hotel.channel.manage` (ย้ายจาก planned) |
+| `src/lib/outbox-consumers.ts` · labels ×2 | เพิ่ม | `channel.ari.dirty` (consumer onAriDirty) · `channel.ari.pushed/failed` · `channel.reservation.received/applied/needs_room/rejected/cancelled` (CC §7) |
+| `src/lib/platform/minute-jobs.ts` (หรือที่ลงทะเบียนโดเมน) | เพิ่ม | `channel-ari-push` ทุก 1 นาที · `channel-pull` ทุก 5 นาที |
+| «src/components/hotel/channel/{ChannelCard,RoomMapEditor,RateMapEditor,BufferEditor,AriPreview,InboxList,NeedsRoomQueue}.tsx» | ใหม่ | จอ §4 |
+| «src/app/app/u/[unitSlug]/hotel/channels/page.tsx» · «…/channels/[connectionId]/page.tsx» · «…/channels/inbox/page.tsx» | ใหม่ | ด่าน HOTEL · `hotel.channel.manage` |
+| `src/app/app/settings/integrations/*` (การ์ด OTA) | **เพิ่มลิงก์เดียว** "ตั้งค่าแม็ปห้อง/ราคา →" ไปหน้าโรงแรม (ไม่เปลี่ยนโครงหน้าเชื่อมต่อ · r0.5 เขียว) |
+| «scripts/svc-qc-hotel-ota-scene.mts» | ใหม่ | ฉาก §6 |
+| `docs/sds/modules/hotel.md` | เพิ่ม §OTA | ARI pipeline · inbound state machine · เงิน prepaid |
+
+ห้ามแตะ: `prisma/**` · `booking.ts`/`availability.ts` (ใช้ API) · `pos/**` · ส่วนอื่นของ `core/integrations` · oracle
+
+## 2. มติของใบนี้
+1. inbox state: `RECEIVED → APPLIED | NEEDS_ROOM | REJECTED` · NEEDS_ROOM → (retry) APPLIED | REJECTED · version ใหม่ของ externalId เดิม = แถวใหม่ (เก่าคงสถานะ) · apply ตามลำดับ version · version ต่ำกว่าที่ APPLIED แล้ว = REJECTED "STALE"
+2. `applyInbound` idempotent: APPLIED แล้ว ⇒ no-op คืน reservationId เดิม · ล้มกลางทาง ⇒ ยัง RECEIVED (retry รอบหน้า) · การจองที่สร้างต้องมี `channelRef` = externalId และ `channelConnectionId` (ข้อสอบตรวจ 1:1)
+3. ARI: ช่วงเริ่ม = วันนี้ร้าน → +`rooms.hotel.ota.ariHorizonDays` (คีย์ใหม่ int เริ่ม 365) · job รวมช่วงทับซ้อนของตัวต่อเดียวใน 60 วิ เป็น 1 job · ราคา = `quoteStay` 1 คืนต่อวัน/ประเภท/แผนที่แม็ป × markup (`formula.markupBp` bp · ปัด `rooms.money.rounding`) · วันที่ไม่มีราคา (NO_RATE) ⇒ stopSell
+4. `pushAri` ล้ม: attempts+1 · backoff 1,2,4,8,16 นาที · ≥ 5 ⇒ FAILED + event `channel.ari.failed` + `onFailure` ของตัวต่อ (แจ้ง/คิวมือ) · job ใหม่ของช่วงเดิมที่ยัง PENDING ⇒ ตัวเก่า SUPERSEDED
+5. ตัวต่อ DISABLED/ลบ ⇒ หยุด pull/push · แม็ปคงไว้ · การจองเดิมคง
+6. ข้ามร้าน/หน่วย: ตัวต่อของร้านอื่น/หน่วยที่ไม่อยู่ใน unitIds ⇒ NOT_FOUND · inbound อ้าง roomTypeId หน่วยอื่น ⇒ REJECTED
+7. จอแม็ป: ประเภทห้องทุกตัว active × externalRoomId (ว่าง = ไม่ขายผ่านช่องนี้ ตาม `ota.roomScope`) · แผนราคา × externalRateId + markup % · buffer ต่อประเภท · ปุ่ม "ทดสอบส่ง ARI 7 วัน" (dry-run แสดง payload) · "ดึงการจองตอนนี้"
+8. ไม่มี PII ใน `raw` ของ inbox? — **raw ต้องเก็บ** (หลักฐานจากช่องทาง) ⇒ `raw` เก็บได้แต่ DTO/log/event ไม่ส่งต่อ · `retainUntil` ของ inbox = 2 ปี (ลบใน purge ของ H.4 ถ้ามี · ไม่งั้นหนี้)
+
+## 3. สัญญาโค้ด (ย่อ)
+`ChannelManagerAdapter { test; pushAri(map: ChannelMapping, dates: string[], ari: AriPayload, opts?): Promise<void>; pullReservations(since: Date, opts?): Promise<InboundReservation[]>; ackReservation(externalId: string, opts?): Promise<void> }` · `InboundReservation = {externalId, version, status: "NEW"|"MODIFIED"|"CANCELLED", externalRoomId, externalRateId?, checkIn, checkOut, rooms: n, adults, children, guest: {name, phone?, email?}, grossSatang, commissionSatang, netSatang, prepaid: boolean, raw}` · `AriPayload = {byDate: Record<ymd, Record<externalRoomId, {available, rates: Record<externalRateId, {priceSatang, minNights, closedToArrival}>, stopSell}>>}` · facade: `listChannelConnections(actor, ctx, {unitId})` · `saveRoomMap/saveRateMap/saveBuffer` · `buildAri` · `pushAriJobs` · `pullAll` · `ingestInbound` · `applyInbound` · `retryInbound` · `rejectInbound` · `listNeedsRoom` · `fakeEnqueueInbound(connectionId, rows)` (ทดสอบ · เฉพาะ provider FAKE) · actions: `saveRoomMapAction` `saveRateMapAction` `saveBufferAction` `previewAriAction` `pullNowAction` `retryInboundAction` `rejectInboundAction`
+
+## 4. จอ (ภาพ 11 การ์ด OTA + หน้าใหม่ · ไทย)
+ศูนย์เชื่อมต่อ (เดิม): การ์ด "ช่องทางขายห้อง (OTA) · Agoda · Booking.com ผ่าน channel manager · ส่งราคา/ห้องว่าง · รับการจองเข้า tape chart อัตโนมัติ · กันขายซ้อนที่แกนห้อง · ยังไม่เชื่อม · ตัวต่อเจ้าแรก เฟส H2" + ลิงก์ตั้งค่า · `/hotel/channels`: รายการตัวต่อ (FAKE ทดสอบ) สถานะ · ARI ล่าสุด · การจองเข้า 7 วัน · คิวต้องจัดห้อง N · `/hotel/channels/[id]`: แม็ปห้อง/ราคา/buffer/markup · ปุ่มทดสอบ · ประวัติ job · `/hotel/channels/inbox`: inbox ทุกสถานะ + NEEDS_ROOM แถวบน (ปุ่ม ลองอีกครั้ง/ปฏิเสธ · ลิงก์ tape chart H.2) · read-only ไม่มีปุ่ม · `data-scroll-hint`
+
+## 5. event (CC §7 · 3 ทะเบียน)
+`channel.ari.dirty` · `channel.ari.pushed` {connectionId, jobId, days} · `channel.ari.failed` · `channel.reservation.received` · `.applied` {reservationId} · `.needs_room` · `.rejected` {reason} · `.cancelled` — ไม่มี PII
+
+## 6. ฉาก «svc-qc-hotel-ota-scene.mts»
+แหล่งความจริง = `SQC_HOTEL_OTA_SCENE` (ผู้คุมใส่): ตัวต่อ FAKE 1 ตัว (unit hotel) · แม็ป 3 ประเภท (ดีลักซ์ `DLX`, ซูพีเรีย `SUP`, แฟมิลี ไม่แม็ป) · แผน STANDARD `STD` markup 15% · buffer ดีลักซ์ 1 · inbound 4 แถว: NEW ดีลักซ์ 2 คืน prepaid (APPLIED) · NEW แฟมิลี (REJECTED ไม่แม็ป) · NEW ซูพีเรีย 1 คืนในวันที่ซูพีเรียเต็ม (NEEDS_ROOM) · MODIFIED version 2 ของแถวแรก (เลื่อน 1 วัน · APPLIED) · ARI job 1 ชุด 7 วัน (payload ตรวจราคา ×1.15 + available − buffer)
+
+## 7. เกณฑ์รับ · regression · X · ผู้ตรวจ
+- «qc-svc-h.10.mts» ผ่าน · probe-h10-b breach 0 · tsc 0 · fitness 2 โหมด · ภาพ h.10 (channels · mapping · inbox) owner/frontdesk(ไม่มีสิทธิ์ ⇒ ไม่เห็น) · PARITY การ์ด OTA ภาพ 11
+- G: qc-svc-h.3 · h.1 · h.0 · **qc-svc-r0.5/r0.6** (ศูนย์เชื่อมต่อ · fake ยังผ่าน) · r0.4 · smoke · b.0 · d.13
+- X1 · X3 inbound ซ้ำ (externalId,version) = 1 การจอง · pushAri ซ้ำ hash = ข้าม · X4 inbound 10 แถวพร้อมกันห้องเหลือ 1 = APPLIED 1 + NEEDS_ROOM 9 · X5 pull/push 2 รอบซ้อน = ครั้งเดียว · X9 `hotel.channel.manage` · X10 raw ไม่รั่วใน DTO/log
+- ผู้ตรวจ 2 รอบ (กันจองซ้อน): รอบ 1 = guard tx ผ่าน createBooking · version/stale · modify = cancel+create atomic · รอบ 2 = ARI ถูกต้อง (availability สูตรเดียว S §4.2 · markup · buffer · stopSell) + เงิน prepaid/PLATFORM ส่งต่อ H.5
+
+## 8. ส่งต่อ
+H2.1–H2.3: ตัวต่อเจ้าจริง implement `ChannelManagerAdapter` ชนิดจริง + ส่งปฏิเสธกลับ · H.5b: PLATFORM tender เมื่อ prepaid · H.7: รายงาน source OTA/commission · H.9: ไล่กด channels
