@@ -228,3 +228,53 @@ HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_E
 - **มัดจำกลุ่ม**: settle รายห้องใช้มัดจำของแถวที่ถือใบรับในกลุ่ม · ผู้ถือออกขณะห้องอื่นยัง active ⇒ แถว DEPOSIT บวก "ย้ายมัดจำคงเหลือ" ปิด folio ผู้ถือที่ 0 · ห้องที่ใช้ภายหลังลงคู่ "รับโอนมัดจำ (ลบ) + ใช้มัดจำ (บวก)" ที่ folio ของตัวเอง · คืนส่วนเกินเมื่อกลุ่มไม่เหลือห้อง active (ห้องสุดท้ายลงคู่ "รับโอน + REFUND") — ไม่เขียน folio ที่ SETTLED แล้ว
 - settle({groupId}) คืนเงินประกันที่ถือของทุกห้อง (FORFEIT ทั้งกลุ่ม = เตือนรายห้อง) · consumer ลงห้องได้ BUSY ⇒ โยนให้คิวลองใหม่ · refundStay หาบิลเช็กเอาต์ล่าสุดที่ PAID (รวม `-r<n>`)
 - **สัญญาผู้เรียก `chargeToRoom` (facade · m5)**: facade ไม่ตรวจวิธีจ่ายของบิลต้นทาง — ผู้เรียกต้องส่งเฉพาะยอดที่ "ลงห้อง" จริง (บิลที่ร้านเก็บเงินสดแล้วห้ามส่งซ้ำ ไม่งั้นแขกจ่ายสองครั้ง) · consumer ของ POS ส่งเฉพาะบิลที่มีแถว ROOM_CHARGE และยอดเท่า ROOM_CHARGE · กันรายได้ซ้ำทำเฉพาะบิลที่มี ROOM_CHARGE
+
+## แม่บ้าน (SVC H.6 · ภาพ 13 ก/ข · มือถือ 390)
+
+### ไฟล์
+- `hotel/hk-state.ts` (pure) — `HK_TRANSITIONS` · `canHkTransition(from, to, {role, inspectionRequired})` · `HK_ROLES` (MAID · INSPECTOR · SYSTEM) · `hkPriority(row)` · `parseHkNote/serializeHkNote`
+- `hotel/housekeeping.ts` (server) — `hkBoard` `hkRoom` `hkSetStatus` `hkStart` `hkRelease` `hkFinish` `hkInspect` `hkLogs` `postMinibar` `reportDefect` `setGuestRequest` `markStayoversDirty` `syncBlockedRooms`
+- จอ `components/hotel/hk/*` (`'use client'` · ไม่ลากถึง prisma) · หน้า `/hotel/housekeeping` · `/hotel/housekeeping/[roomId]` · `/hotel/housekeeping/logs`
+- realtime: `EV_HOTEL_HK` · ช่อง `hotel:hk:<tenantId>:<unitId>` · token `/api/realtime/hotel-hk-token?unitId=` · จอ `subscribeHotelHk` + poll 15 วิ
+
+### state machine (S §7.6)
+| จาก → ไป | แม่บ้าน (hotel.housekeeping) | หัวหน้า (hotel.housekeeping.inspect) | ระบบ |
+|---|---|---|---|
+| DIRTY → CLEAN | ✓ | ✓ | — |
+| CLEAN → INSPECTED | ✗ (FORBIDDEN) | ✓ (ปิด inspectionRequired ก็ตรวจได้ · CLEAN ขายได้อยู่แล้ว) | — |
+| CLEAN/INSPECTED → DIRTY | ✓ (สั่งทำใหม่) | ✓ (ตรวจไม่ผ่าน + เหตุผล) | ✓ night audit |
+| * → OUT_OF_ORDER | ✗ `USE_BLOCK` | ✗ `USE_BLOCK` | ✓ BLOCK ของ H.2 / ถึงวันปิดห้อง |
+| OUT_OF_ORDER → DIRTY | ✗ `USE_BLOCK` | ✗ | ✓ ปล่อยห้อง/หมดช่วงปิด |
+| DIRTY → INSPECTED · INSPECTED → CLEAN · เท่าเดิม | ✗ | ✗ | ✗ |
+
+- แหล่งความจริง = `HotelRoom.hkStatus` เขียนผ่าน `rooms.setHkStatus` เท่านั้น · ทุก transition = `HotelHousekeepingLog` 1 แถว (note JSON) + event `hotel.hk.changed` ใน tx เดียว · publish หลัง commit (ไม่ throw)
+- ความพร้อมกัน: ล็อกต่อห้อง `pg_try_advisory_xact_lock(hashtextextended('hotel.hk:<tenant>:room:<id>'))` + ลองซ้ำ (ผู้รอไม่ถือ connection — `setHkStatus` เปิด connection ของตัวเอง) ⇒ 10 ทางพร้อมกัน = log 1
+- `idempotencyKey` (คิวออฟไลน์ของมือถือ) อยู่ใน `note.key` ของ log · ห้องเดิม = คืนผลเดิม (ไม่ log ซ้ำ) · ห้องอื่น = INVALID_INPUT (ชนคีย์) · ค้น 30 วันล่าสุดของหน่วย
+
+### hkNote JSON (มติ §9 ข้อ 2 · ไม่เพิ่มคอลัมน์)
+`HotelRoom.hkNote = {"assignedTo","startedAt","guestRequest"}` (3 คีย์เท่านั้น) · `hkStart` เขียน assignedTo/startedAt (คนอื่นทำอยู่ ⇒ `TAKEN` · หัวหน้า `override`) · `hkFinish` ล้าง assignedTo/startedAt คง guestRequest · ข้อความเดิมก่อน H.6 (ไม่ใช่ JSON) อ่านเป็นคำขอแขก · `setGuestRequest` (แม่บ้าน/หน้าเคาน์เตอร์) · `at` ของ hkStart รับเฉพาะใต้ `SVC_QC_CLOCK=1`
+
+### งานห้องวันนี้ (`hkBoard` · มุมมองคำนวณสด · ≤ 4 คำสั่ง SQL)
+- บริบท: OOO (hkStatus OUT_OF_ORDER หรือ BLOCK ครอบวันนี้) → STAYOVER (CHECKED_IN ออกหลังวันนี้) → DEPARTING (CHECKED_IN ออกวันนี้) → DEPARTED (CHECKED_OUT/REFUNDED วันนี้) → ARRIVING (CONFIRMED/HOLD เข้าวันนี้ · arrivalTime = checkInTime ของประเภทห้อง) → VACANT · ห้องรายเดือน (MONTHLY) ไม่อยู่บนบอร์ด
+- `upcoming` (มีเฉพาะเมื่อจริง): ห้องว่างที่ **ตรวจแล้ว** และมีจองเข้าใน 7 วัน (ป้าย "พร้อมรับ <ชื่อ> <วัน>")
+- ลำดับด่วน `hkPriority`: 0 ออกแล้ว+แขกเข้า · 1 แขกเข้า · 2 ออกแล้ว/ออกวันนี้ · 3 ค้างต่อ · 4 ว่างไม่สะอาด · 5 อื่น (แล้วเรียงเวลาเข้า · เลขห้อง)
+- counts: total = ไม่ OOO และ (ไม่ VACANT หรือ DIRTY หรือ upcoming) · done = ใน total ที่ CLEAN/INSPECTED และไม่มีคำขอแขก · mine = assignedTo = ผู้ดู
+
+### มินิบาร์ (§2 ข้อ 4 · Q7)
+- รายการ = ค่าตั้ง `rooms.hotel.minibar` (#75 union: `{key,name,priceSatang}` ใช้บนมือถือ · `{productId,priceSatang?}` เดิมยังผ่าน schema แต่จอแม่บ้านยังไม่แสดง)
+- แขก CHECKED_IN พักอยู่ ⇒ `postFolioItem(MINIBAR)` ต่อรายการ (ราคา/ชื่อ snapshot ณ เวลาโพสต์ · `refType "HotelHousekeeping"` · `refId svc-h6-minibar-<roomId>-<ymd>-<key>[-<clientKey>]` กันซ้ำ) + `hotel.hk.minibar_posted` · ไม่ตัดสต็อก/ไม่ผ่าน POS
+- ไม่มีแขกพัก/บิลปิด ⇒ ไม่โพสต์ · `hotel.hk.minibar_unbilled` (ครั้งเดียวต่อชุด/วัน) + log note `{minibar:{unbilled:true,status:"PENDING",items}}` ให้หน้าเคาน์เตอร์เลือกเรียกเก็บ/ยกให้ (คิวหน้าเคาน์เตอร์ = H.7/H.4)
+- แม่บ้านโพสต์ได้เฉพาะ MINIBAR ราคาจากค่าตั้ง (ไม่ต้องมี hotel.folio.post — housekeeping.ts ให้สิทธิ์เฉพาะเส้นนี้)
+
+### แจ้งของเสีย (`reportDefect`) · ด่าน DORM|HOTEL
+- รูป ≤ 3 · jpeg/png/webp · ≤ 8 MB · ไบต์หัวตรงชนิด (X6) · ไฟล์ส่วนตัว
+- `REPAIR` (hotel.housekeeping) ⇒ `dorm.createStaffRepair` (ใบซ่อมพนักงาน · leaseId/partyId null · หมวด `rooms.repair.categories` ของหน่วย → OTHER) · event `dorm.repair.created` เดิม · ไม่เปลี่ยน hkStatus
+- `BLOCK` (hotel.booking.manage หรือ hotel.housekeeping + `rooms.hotel.hk.canBlock`) ⇒ `blockRoom` ของ H.2 วันนี้..+N (1–30) ⇒ OUT_OF_ORDER · ชนแขก ⇒ `ROOM_TAKEN` + suggest REPAIR
+- `dorm/portal.dormStaffGate(ctx, unitId, action, opts?: {allowTypes})` ค่าเริ่ม `["DORM"]` = ทางเดิมทุกไบต์ · `dorm/repair` เส้นพนักงาน (list/job/complete) ส่ง `["DORM","HOTEL"]` · หน่วย HOTEL ไม่มีขอบเขตอาคารของหอ (เห็นทั้งหน่วย)
+
+### night audit (H.7 เรียก)
+- `markStayoversDirty(ctx, {unitId, businessDate})`: CHECKED_IN ที่ checkIn ≤ วันนั้น < checkOut + `dailyHousekeeping` (ชั้นประเภทห้อง) ⇒ DIRTY (by null · note "night audit") · idempotent ตามสถานะ
+- `syncBlockedRooms` (เรียกในตัวด้วย): BLOCK ที่ถึงวัน ⇒ OUT_OF_ORDER (ปิดหนี้ H.2) · BLOCK หมดช่วงภายใน 7 วันและไม่มีปิดอื่นครอบ ⇒ DIRTY
+
+### Event (3 ทะเบียน · payload ไม่มี PII)
+`hotel.hk.changed {roomId, from, to, byUserId}` · `hotel.hk.minibar_posted {reservationId, roomId, items, amountSatang}` · `hotel.hk.minibar_unbilled {roomId, items, amountSatang}` · `hotel.hk.defect {roomId, action, repairId|blockId}`

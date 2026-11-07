@@ -1508,6 +1508,12 @@ for (const t of ["hotel.folio.posted", "hotel.folio.voided", "hotel.folio.settle
   baseConsumers[t] = withAutomation(async () => {});
 }
 // ◂ SVC H.5
+// SVC H.6 ▸ แม่บ้าน — hotel.hk.changed · minibar_posted · minibar_unbilled · defect (payload id/enum/สตางค์ล้วน · ไม่มีชื่อ/ข้อความแจ้ง) ·
+//   งานหลัก no-op (เขียนครบใน hotel/housekeeping.ts ใน tx เดียวกับ log แล้ว) + กฎอัตโนมัติ/เว็บฮุค
+for (const t of ["hotel.hk.changed", "hotel.hk.minibar_posted", "hotel.hk.minibar_unbilled", "hotel.hk.defect"]) {
+  baseConsumers[t] = withAutomation(async () => {});
+}
+// ◂ SVC H.6
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
 export const consumers: Record<string, OutboxHandler> = Object.fromEntries(
