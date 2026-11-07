@@ -587,7 +587,7 @@ try {
   const listG = (actor: Actor, over: Over = {}, ctx: Record<string, unknown> = ctxA) => call(() => GU("listGuests")(actor, ctx, { unitId: UH, from: W(-3), to: W(3), ...over }));
   const reveal = (actor: Actor, guestId: string, ctx: Record<string, unknown> = ctxA) => call(() => GU("revealGuestId")(actor, ctx, { guestId }));
   const sign = (actor: Actor, over: Over, ctx: Record<string, unknown> = ctxA) => call(() => GU("signRr3")(actor, ctx, { signaturePng: PNG, ...over }));
-  const rr3 = (guestId: string, ctx: Record<string, unknown> = ctxA) => call(() => GU("rr3Card")(ctx, { guestId }));
+  const rr3 = (guestId: string, ctx: Record<string, unknown> = { ...ctxA, userId: REG.userId }) => call(() => GU("rr3Card")(ctx, { guestId })); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-PD6-userId): ลิงก์ไฟล์ของ rr3Card ผูกผู้ดูจาก ctx.userId — ไม่มี userId ⇒ ไม่ออกลิงก์ (ผู้ตรวจ PDPA m4) · ข้อสอบส่ง userId ของผู้ลงทะเบียน
   const rr4 = (over: Over = {}, ctx: Record<string, unknown> = ctxA) => call(() => GU("rr4Register")(ctx, { unitId: UH, from: W(-3), to: W(3), ...over }));
   const purge = (over: Over = {}) => call(() => GU("purgeExpiredGuestRecords")(over));
   const readId = (actor: Actor, over: Over = {}, ctx: Record<string, unknown> = ctxA) => call(() => AI("readIdDocument")(actor, ctx, { unitId: UH, image: PNG, ...over }));
