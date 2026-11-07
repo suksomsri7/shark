@@ -85,7 +85,7 @@ export {
   shortenBooking,
   assignRoom,
   rescheduleBooking,
-  rescheduleBooking as moveBooking,
+  moveBooking, // SVC H.2: เดิม alias rescheduleBooking · มติผู้คุม 7 พ.ย. = ไม่จัดห้องให้การจองอื่น (repack false)
   markNoShow,
   undoNoShow,
   takeBookingDeposit,
@@ -109,3 +109,9 @@ export type { PrepareOk, SettleOk, CheckoutFail, CheckoutFailCode, PosLine } fro
 export { chargeToRoom, onPosSalePaidRoomCharge, onPosSaleVoidedRoomCharge, listUnmatchedRoomCharges, countUnmatchedRoomCharges, attachRoomCharge, roomChargeReasonTh } from "./room-charge";
 export type { ChargeToRoomInput, RoomChargeFail, RoomChargeFailCode, UnmatchedRow } from "./room-charge";
 // ◂ SVC H.5
+// SVC H.2 ▸ ปฏิทินห้อง (tape chart · อ่านอย่างเดียว) + KPI หน้าเคาน์เตอร์ + ปิดห้อง (BLOCK) — ใบสั่ง h.2 §3 · การลาก = rescheduleBooking/moveBooking ของ H.3
+export { tapeChart, hotelToday, previewMove, TAPE_MAX_DAYS } from "./tape";
+export type { TapeBar, TapeBarKind, TapeRoom, TapeGroup, TapeOccupancyDay, TapeLegendItem, TapeChartOk, TapeFail, HotelTodayOk, MovePreview } from "./tape";
+export { blockRoom, releaseBlock, listBlocks, BLOCK_REF } from "./block";
+export type { BlockActor, BlockFail, BlockFailCode, BlockOk, BlockRow } from "./block";
+// ◂ SVC H.2

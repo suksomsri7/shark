@@ -13,6 +13,8 @@ import * as hotelBooking from "./booking"; // SVC H.3
 import * as hotelFolio from "./folio"; // SVC H.5
 import * as hotelCheckout from "./checkout"; // SVC H.5
 import * as hotelRoomCharge from "./room-charge"; // SVC H.5
+import * as hotelTape from "./tape"; // SVC H.2
+import * as hotelBlock from "./block"; // SVC H.2
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -526,3 +528,70 @@ export async function attachRoomChargeAction(unitSlug: string, input: unknown) {
   return runFolio(unitSlug, auth, unit.id, input, hotelRoomCharge.attachRoomCharge);
 }
 // ◂ SVC H.5
+// SVC H.2 ▸ ปฏิทินห้อง (ใบสั่ง h.2 §3.4) — ลาก/ยืด/ปิดห้อง เรียก H.3 (rescheduleBooking · extendBooking/shortenBooking) และ block.ts เท่านั้น ไม่มีเส้นเขียนใหม่
+//   ด่าน type HOTEL + assertHotelCan(hotel.booking.manage) ทุกตัว · ร้าน/ผู้กระทำจาก session · input รับเฉพาะคีย์ที่รู้จัก (นาฬิกาฉากไม่ผ่านทางนี้)
+function revalidateCalendar(unitSlug: string, ok: boolean) {
+  if (!ok) return;
+  revalidatePath(`/app/u/${unitSlug}/hotel/calendar`);
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+}
+function pickKeys(input: unknown, keys: string[], unitId: string): Record<string, unknown> {
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  return { ...Object.fromEntries(Object.entries(src).filter(([k]) => keys.includes(k))), unitId };
+}
+
+/** ลากแถบ = ย้ายห้อง และ/หรือเลื่อนวัน ใน tx เดียว (rescheduleBooking ของ H.3) · ล้ม ⇒ ไม่เปลี่ยนอะไร (แถบเด้งกลับ) */
+export async function moveBookingAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  // มติผู้คุม 7 พ.ย.: การลากต้องไม่ย้ายการจองคนอื่นเงียบ ๆ ⇒ moveBooking = rescheduleBooking ของ H.3 แบบ repack: false (ห้องปลายทางไม่ว่าง = ROOM_BUSY แถบเด้งกลับ)
+  const r = await runBooking(unitSlug, auth, unit.id, pickKeys(input, ["id", "roomId", "checkIn", "checkOut"], unit.id), (a, c, i) => hotelBooking.moveBooking(a, c, i));
+  revalidateCalendar(unitSlug, r.ok);
+  return r;
+}
+
+/** ลากขอบขวา = ยืด/ย่นคืน (extendBooking · ย่นใช้ shortenBooking ซึ่งปฏิเสธคืนที่ปิดวันแล้ว) */
+export async function resizeBookingAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  const clean = pickKeys(input, ["id", "newCheckOut"], unit.id);
+  const actor = hotelActorOf(auth);
+  const ctx = { tenantId: auth.active.tenantId };
+  const cur = await hotelBooking.getBooking(actor, ctx, { unitId: unit.id, id: clean.id });
+  const curOut = cur.ok ? cur.booking.checkOut : "";
+  const longer = typeof clean.newCheckOut === "string" && curOut !== "" && clean.newCheckOut > curOut;
+  const r = longer ? await hotelBooking.extendBooking(actor, ctx, clean) : await hotelBooking.shortenBooking(actor, ctx, clean);
+  revalidateCalendar(unitSlug, r.ok);
+  return r;
+}
+
+/** ราคาก่อนยืนยันการลาก (อ่านอย่างเดียว · ไดอะล็อกยืนยัน) */
+export async function previewMoveAction(unitSlug: string, input: unknown): Promise<hotelTape.MovePreview> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return { ok: false, code: "NOT_FOUND", reason: NOT_HOTEL_BOOKING.reason };
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return { ok: false, code: "NOT_FOUND", reason: NO_RIGHT.reason };
+  return hotelTape.previewMove({ tenantId: auth.active.tenantId }, pickKeys(input, ["id", "roomId", "checkIn", "checkOut"], unit.id));
+}
+
+/** ปิดห้อง (BLOCK) ช่วง [from, to) พร้อมเหตุผล · ชนการจอง ⇒ ROOM_TAKEN + รายชื่อ · เกินจอง ⇒ ok + warning */
+export async function blockRoomAction(unitSlug: string, input: unknown): Promise<hotelBlock.BlockOk | hotelBlock.BlockFail | BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  const r = await hotelBlock.blockRoom(hotelActorOf(auth), { tenantId: auth.active.tenantId }, pickKeys(input, ["roomId", "from", "to", "reason"], unit.id));
+  revalidateCalendar(unitSlug, r.ok);
+  return r;
+}
+
+/** ปล่อยห้องที่ปิดไว้ (ห้องกลับเป็น DIRTY ให้แม่บ้านตรวจ) */
+export async function releaseBlockAction(unitSlug: string, input: unknown): Promise<BookingActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  const r = await hotelBlock.releaseBlock(hotelActorOf(auth), { tenantId: auth.active.tenantId }, pickKeys(input, ["blockId"], unit.id));
+  revalidateCalendar(unitSlug, r.ok);
+  return r;
+}
+// ◂ SVC H.2

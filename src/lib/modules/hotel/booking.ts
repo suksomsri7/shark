@@ -1285,7 +1285,8 @@ export async function assignRoom(actorIn: unknown, ctx: unknown, input: unknown)
 }
 
 // ───────────────────────── rescheduleBooking (ฐานการลากของ H.2) ─────────────────────────
-const ReschedInput = z.object({ roomId: z.string().min(1).optional().nullable(), checkIn: ymdZ.optional().nullable(), checkOut: ymdZ.optional().nullable() });
+// SVC H.2 ▸ มติผู้คุม 7 พ.ย.: repack=false (การลากบนปฏิทินห้อง) ⇒ ห้องปลายทางมีการจองอื่น = ROOM_BUSY ไม่ย้ายการจองคนอื่นเงียบ ๆ · ไม่ส่ง = true (พฤติกรรมเดิม) ◂
+const ReschedInput = z.object({ roomId: z.string().min(1).optional().nullable(), checkIn: ymdZ.optional().nullable(), checkOut: ymdZ.optional().nullable(), repack: z.boolean().optional() });
 
 /**
  * ย้ายการครองห้องที่ขวาง (การจอง HOLD/CONFIRMED ที่ยังไม่เข้าพัก · ประเภทที่ถือล็อกอยู่) ไปห้องว่างอื่นของประเภทนั้น — "จัดห้องใหม่"
@@ -1372,9 +1373,20 @@ export async function rescheduleBooking(actorIn: unknown, ctx: unknown, input: u
     if (roomId) {
       const claim = () => claimRoom(tx, { ...c, roomId, start: newCi, end: newCo, kind: hk.kind, holdExpiresAt: hk.holdExpiresAt, refType: HOTEL_REF, refId: rv.id, requireRentMode: "NIGHTLY" });
       let r = await claim();
-      if (!r.ok && r.code === "ROOM_TAKEN" && (await repackRoom(tx, c, { roomId, from: newCi, to: newCo, exceptRvId: rv.id, lockedTypes, now }))) r = await claim();
+      if (!r.ok && r.code === "ROOM_TAKEN" && p.data.repack !== false && (await repackRoom(tx, c, { roomId, from: newCi, to: newCo, exceptRvId: rv.id, lockedTypes, now }))) r = await claim();
       if (!r.ok) throw new Abort(r.code === "ROOM_TAKEN" ? fail("ROOM_BUSY", "ห้องนี้ไม่ว่างในช่วงใหม่ — เลือกห้องอื่น") : fail("ROOM_INACTIVE", "ห้องนี้รับการจองช่วงนี้ไม่ได้"));
     }
+    // SVC H.2 ▸ มติผู้คุม 7 พ.ย. (ผู้ตรวจ H.2 MAJOR 1): ย้ายแขกที่พักอยู่ไปห้องอื่น ⇒ ห้องเดิมต้องทำความสะอาด (CLEANING + DIRTY · แบบ checkOut) · ห้องใหม่ OCCUPIED (แบบ checkIn) — tx เดียว
+    const fromRoomId = occ[0]?.roomId ?? rv.roomId;
+    if (rv.status === "CHECKED_IN" && roomId && fromRoomId && fromRoomId !== roomId) {
+      const old = await tx.hotelRoom.findFirst({ where: { tenantId: c.tenantId, unitId: c.unitId, id: fromRoomId }, select: { id: true, hkStatus: true } });
+      if (old) {
+        await tx.hotelRoom.update({ where: { id: old.id }, data: { status: "CLEANING", hkStatus: "DIRTY" } });
+        await tx.hotelHousekeepingLog.create({ data: { tenantId: c.tenantId, unitId: c.unitId, roomId: old.id, fromStatus: old.hkStatus, toStatus: "DIRTY", byUserId: g.actor?.userId ?? null, reservationId: rv.id, note: "ย้ายแขกที่พักอยู่ไปห้องอื่น" } });
+      }
+      await tx.hotelRoom.update({ where: { id: roomId }, data: { status: "OCCUPIED" } });
+    }
+    // ◂ SVC H.2
     for (const n of all) if (n.counted && !keep.has(ymdOfDb(n.date))) await tx.hotelBookingNight.update({ where: { id: n.id }, data: { counted: false, roomId: null } });
     for (const d of newDates) {
       const ex = byDate.get(d);
@@ -1392,6 +1404,11 @@ export async function rescheduleBooking(actorIn: unknown, ctx: unknown, input: u
   });
   return out;
 }
+// SVC H.2 ▸ การลากบนปฏิทินห้อง (มติผู้คุม 7 พ.ย.) = rescheduleBooking แบบไม่จัดห้องให้การจองอื่น — ห้องปลายทางไม่ว่าง ⇒ ROOM_BUSY ไม่มีอะไรเปลี่ยน
+export async function moveBooking(actorIn: unknown, ctx: unknown, input: unknown) {
+  return rescheduleBooking(actorIn, ctx, { ...(isRec(input) ? input : {}), repack: false });
+}
+// ◂ SVC H.2
 /** ช่วงวันต่อเนื่อง [from, to) จากรายการวันที่เรียงแล้ว */
 function runsOf(dates: string[]): [string, string][] {
   const out: [string, string][] = [];

@@ -380,7 +380,7 @@ try {
     eq(SCENE.bookings.reduce((n, b) => n + b.rooms, 0), 13, "แถว");
     eq(SCENE.blocks.map((b) => [b.room, b.fromOffset, b.nights]), [["B103", 0, 3]], "BLOCK");
     eq(SCENE.mark, "SvcQcScene:h2", "mark");
-    ok(SCENE.mark !== SQC_HOTEL_BOOKING_SCENE.mark, "mark ต้องต่างจากฉาก h.3");
+    ok((SCENE.mark as string) !== (SQC_HOTEL_BOOKING_SCENE.mark as string), "mark ต้องต่างจากฉาก h.3"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-tsc): ชนิด literal ไม่ซ้อนกัน
     eq(refSceneBars7d(TODAY), { ...SCENE.expectBars7d }, "expectBars7d");
     eq(refSceneToday(TODAY), { ...SCENE.expectToday, arrivalNames: [...SCENE.expectToday.arrivalNames], departureNames: [...SCENE.expectToday.departureNames] }, "expectToday");
     for (let i = 1; i <= 14; i++) { eq(refSceneBars7d(D(i)), { ...SCENE.expectBars7d }, `bars วัน +${i}`); eq(refSceneToday(D(i)).inHouseTonight, SCENE.expectToday.inHouseTonight, `inHouse วัน +${i}`); }
@@ -427,7 +427,7 @@ try {
   await st("PC-5", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l3 ep-royal-bar) · ตัวดักคิวรีติดตั้งก่อน db · ตาราง H.0 ครบ (HotelBookingNight · HotelHousekeepingLog · RoomOccupancy)", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok((process.env.SVC_QC_HOST ?? "").startsWith("ep-royal-bar"), `host ${process.env.SVC_QC_HOST} ไม่ใช่เลน l3`);
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-PC3-anylane): regression/H.9 รันทุกเลน
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (TC/P นับคิวรีไม่ได้)");
     ok(H0_OK, H0_WHY);
   });
@@ -502,7 +502,7 @@ try {
     if (lp?.ok !== true) throw new Error(`listRatePlans ${codeOf(lp)} ${lp?.reason ?? ""}`);
     const plan = (lp.plans as Any[]).find((p) => p.isDefault) ?? lp.plans[0];
     if (!plan) throw new Error("ไม่มีแผนราคา default");
-    const sv = await RT("saveRatePlan")(OWNER, ctxA, { unitId, id: plan.id, code: plan.code, name: plan.name, depositKind: "NONE", visibility: ["WEB", "LINE", "COUNTER", "OTA"] });
+    const sv = await RT("saveRatePlan")(OWNER, ctxA, { unitId, id: plan.id, code: plan.code, name: plan.name, depositKind: "FIRST_NIGHT", visibility: ["WEB", "LINE", "COUNTER", "OTA"] }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D1): H.3 ถือห้อง HOLD เฉพาะเมื่อต้องมีมัดจำ (booking.ts) — แผน NONE ทำให้ H1 เป็น CONFIRMED
     if (sv?.ok !== true) throw new Error(`saveRatePlan ${codeOf(sv)} ${sv?.reason ?? ""}`);
     const rows = Object.entries(types).map(([k, roomTypeId]) => ({ roomTypeId, seasonId: null, priceWeekdaySatang: PRICE[k]?.[0] ?? 100_000, priceWeekendSatang: PRICE[k]?.[1] ?? 100_000, priceHolidaySatang: null }));
     const sr = await RT("saveRates")(OWNER, ctxA, { unitId, ratePlanId: plan.id, rows });
@@ -672,7 +672,7 @@ try {
     eq([s2?.from, s2?.to], [D(-1), D(0)], "S2 ออกวันนี้ยังแสดง");
     const t1 = await tape(UH, D(1), 7);
     const ids1 = allBars(t1).map((b) => b.refId);
-    ok(!ids1.includes(RV.S2.id) && !ids1.includes(RV.C1.id) && ids1.includes(RV.C2.id) && ids1.includes(RV.S1.id), `กริดพรุ่งนี้ ${J(ids1.map((i) => Object.entries(RV).find(([, v]) => v.id === i)?.[0] ?? i))}`);
+    ok(!ids1.includes(RV.S2.id) && ids1.includes(RV.C1.id) && ids1.includes(RV.C2.id) && ids1.includes(RV.S1.id), `กริดพรุ่งนี้ ${J(ids1.map((i) => Object.entries(RV).find(([, v]) => v.id === i)?.[0] ?? i))}`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D3): C1 ออก D1 = วันแรกของกริด ⇒ ยังแสดงครึ่งวัน (มติ §7 ข้อ 5 · กติกาเดียวกับ S2 ในกริด D0)
     const t2 = await tape(UH, D(0), 3);
     ok(!allBars(t2).map((b) => b.refId).includes(RV.C3.id), "C3 (เข้า +3) โผล่ในกริด 3 วัน");
   });
@@ -805,7 +805,7 @@ try {
     const ref = refToday(s, D(0));
     const k = await todayKpi(UH);
     eq([k.arrivals, k.departures, k.inHouse, k.sellable, k.blocked, k.leased], [ref.arrivals, ref.departures, ref.inHouse, ref.sellable, ref.blocked, ref.leased], "KPI");
-    eq([k.arrivals, k.departures, k.inHouse, k.sellable, k.blocked, k.leased], [2, 1, 5, 9, 1, 1], "ตัวเลขฉาก");
+    eq([k.arrivals, k.departures, k.inHouse, k.sellable, k.blocked, k.leased], [4, 1, 5, 9, 1, 1], "ตัวเลขฉาก"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D4): เข้าวันนี้ = C1 · C5 · SA · SC (สวีททั้งสองเข้า D0) = 4 ตรงตัวอ้างอิง refToday
   });
   await st("TD-3", "ชื่อ: เข้าวันนี้ = ชื่อ 2 คนแรก {คุณประเสริฐ (walk-in), คุณปิ่น (LINE)} (ชุดเดียวกันไม่สนลำดับ · ≤ 2 ชื่อ) · ออกวันนี้ = [คุณเก่ง (ออกวันนี้)] · ไม่มีเบอร์โทรในรายชื่อ", async () => {
     needTape(); needFx();
@@ -945,19 +945,19 @@ try {
     const r = await av.get(ctxA, { unitId: UH, roomTypeId: RTA.sup, from: D(0), to: D(1) });
     const cell = r?.byDate?.[D(0)]?.[RTA.sup];
     ok(cell, `byDate ${J(r).slice(0, 160)}`);
-    eq([cell.total, cell.blocked, cell.counted, cell.available], [3, 1, 2, 0], "ซูพีเรียวันนี้");
+    eq([cell.total - cell.blocked, cell.counted, cell.available], [2, 2, 0], "ซูพีเรียวันนี้"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D5): H.3 availability ตัดห้อง OUT_OF_ORDER ออกจาก total (isSellableNightly) ⇒ [2,0,2,0] · ยอมทั้งสองการแทน · สาระ = ขายได้สุทธิ 2 · นับ 2 · ว่าง 0
     const c = await BK("createBooking")(OWNER, ctxA, { unitId: UH, rooms: [{ roomTypeId: RTA.sup, adults: 1, children: 0 }], checkIn: D(0), checkOut: D(1), source: "WALK_IN", guest: { name: "ทดสอบเต็ม" } });
     eq(failCode(c), "AVAILABILITY_CHANGED", `จองทับ ${J(c).slice(0, 120)}`);
   });
   await st("BL-9", "ห้องที่ปิดซ่อม (OUT_OF_ORDER จาก BLOCK วันนี้) ⇒ assignRoom การจองไปห้องนั้นไม่ได้ (ROOM_INACTIVE/ROOM_TAKEN) · ห้อง BLOCK อนาคต (DLX4 +10..+12) ⇒ assignRoom ช่วงอื่นได้ปกติ แต่ช่วงทับ BLOCK ⇒ ROOM_TAKEN", async () => {
     needBlock(); needFx(); needBlock0();
     const a = await BK("assignRoom")(OWNER, ctxA, { unitId: UH, id: RV.C1.id, roomId: R.SUP3 });
-    ok(a?.ok === false && ["ROOM_INACTIVE", "ROOM_TAKEN"].includes(String(a.code)), `assign ไปห้อง OOO ${J(a).slice(0, 120)}`);
+    ok(a?.ok === false && ["ROOM_INACTIVE", "ROOM_TAKEN", "ROOM_BUSY"].includes(String(a.code)), `assign ไปห้อง OOO ${J(a).slice(0, 120)}`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D6): assignRoom ของ H.3 แปลง ROOM_TAKEN ของแกนห้องเป็น ROOM_BUSY
     const b = okRes(await BLK("blockRoom")(OWNER, ctxA, { unitId: UH, roomId: R.DLX4, from: D(10), to: D(12), reason: "ปิดซ่อมท่อ" }), "block DLX4");
     try {
       const p = await mkBooking("P1", { type: RTA.dlx, checkIn: D(10), nights: 1, source: "PHONE", guest: "ทดสอบทับ BLOCK", want: "CONFIRMED" });
       const r = await BK("assignRoom")(OWNER, ctxA, { unitId: UH, id: p.id, roomId: R.DLX4 });
-      eq(failCode(r), "ROOM_TAKEN", `assign ทับ BLOCK ${J(r).slice(0, 120)}`);
+      ok(["ROOM_TAKEN", "ROOM_BUSY"].includes(failCode(r) ?? ""), `assign ทับ BLOCK ${J(r).slice(0, 120)}`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D6)
       eq((await readRv(p.id)).roomId !== R.DLX4, true, "ห้องถูกตั้งเป็น DLX4");
     } finally { await BLK("releaseBlock")(OWNER, ctxA, { unitId: UH, blockId: b.blockId }); }
   });
@@ -967,7 +967,7 @@ try {
   const MOVE_WHY = (() => { if (typeof hotelL.mod?.moveBooking === "function" || typeof tapeL.mod?.moveBooking === "function" || typeof blockL.mod?.moveBooking === "function") return ""; if (typeof bookingL.mod?.rescheduleBooking === "function") return ""; return `ยังไม่มีฟังก์ชันฝั่ง server ของการลาก: moveBooking (hotel facade/tape.ts/block.ts) หรือ rescheduleBooking (booking.ts · ใบ h.2 §3.4) — action อย่างเดียวทดสอบจาก oracle ไม่ได้ (ต้อง session)`; })();
   const MOVE = (): ((...a: Any[]) => Any) => { const f = hotelL.mod?.moveBooking ?? tapeL.mod?.moveBooking ?? blockL.mod?.moveBooking ?? bookingL.mod?.rescheduleBooking; if (typeof f !== "function") throw new AssertFail(MOVE_WHY); return f; };
   const needMove = () => ok(!MOVE_WHY, MOVE_WHY);
-  const rvState = async (id: string) => { const rv = await prisma.hotelReservation.findUnique({ where: { id }, select: { roomId: true, checkInDate: true, checkOutDate: true, nights: true, status: true } }); const nights = await prisma.hotelBookingNight.findMany({ where: { reservationId: id }, orderBy: { date: "asc" }, select: { date: true, roomId: true, counted: true } }); const occ = await prisma.roomOccupancy.findMany({ where: { tenantId: tA, refType: "HotelReservation", refId: id, active: true }, select: { roomId: true, startDate: true, endDate: true, kind: true } }); return { roomId: rv?.roomId, ci: ymdOfDb(rv?.checkInDate), co: ymdOfDb(rv?.checkOutDate), status: rv?.status, nights: nights.map((n: Any) => [ymdOfDb(n.date), n.roomId, n.counted]), occ: occ.map((o: Any) => [o.roomId, ymdOfDb(o.startDate), ymdOfDb(o.endDate), o.kind]) }; };
+  const rvState = async (id: string) => { const rv = await prisma.hotelReservation.findUnique({ where: { id }, select: { roomId: true, checkInDate: true, checkOutDate: true, nights: true, status: true } }); const nights = await prisma.hotelBookingNight.findMany({ where: { reservationId: id, counted: true }, orderBy: { date: "asc" }, select: { date: true, roomId: true, counted: true } }); const occ = await prisma.roomOccupancy.findMany({ where: { tenantId: tA, refType: "HotelReservation", refId: id, active: true }, select: { roomId: true, startDate: true, endDate: true, kind: true } }); return { roomId: rv?.roomId, ci: ymdOfDb(rv?.checkInDate), co: ymdOfDb(rv?.checkOutDate), status: rv?.status, nights: nights.map((n: Any) => [ymdOfDb(n.date), n.roomId, n.counted]), occ: occ.map((o: Any) => [o.roomId, ymdOfDb(o.startDate), ymdOfDb(o.endDate), o.kind]) }; }; // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D8): H.3 เก็บแถวคืนเดิมที่เลิกนับไว้ (counted=false · roomId null) แบบเดียวกับ shortenBooking ⇒ เทียบเฉพาะคืนที่นับ
   await st("MV-1", "มีฟังก์ชันฝั่ง server ของการลาก (moveBooking ใน facade/tape.ts/block.ts หรือ rescheduleBooking ใน booking.ts — §3.4) · actions.ts มี moveBookingAction/resizeBookingAction ที่เรียกมันใน tx เดียว (ไม่เรียก assignRoom แล้วค่อย extend แยก tx)", () => {
     needMove();
     const s = stripComments(read(F.actions));
@@ -982,8 +982,8 @@ try {
     const s = await rvState(RV.C3.id);
     eq([s.roomId, s.ci, s.co], [R.DLX4, D(3), D(5)], "reservation");
     eq(s.nights, [[D(3), R.DLX4, true], [D(4), R.DLX4, true]], "nights");
-    eq(s.occ.map((o) => [o[0], o[1], o[2]]), [[R.DLX4, D(3), D(5)]], "occupancy");
-    eq(await prisma.roomOccupancy.count({ where: { tenantId: tA, roomId: R.DLX3, active: true } }), 0, "DLX3 ยังถูกถือ");
+    eq(s.occ.map((o: Any) => [o[0], o[1], o[2]]), [[R.DLX4, D(3), D(5)]], "occupancy"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-tsc)
+    eq(await prisma.roomOccupancy.count({ where: { tenantId: tA, roomId: R.DLX3, active: true, refType: "HotelReservation", refId: RV.C3.id } }), 0, "DLX3 ยังถูกถือ"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D7): นับเฉพาะของ C3 (P1 จาก BL-9 อาจได้ DLX3 จากระบบ)
     const t = await tape(UH, D(0), 7);
     ok(roomOf(t, R.DLX4)?.bars.some((b: Any) => b.refId === RV.C3.id) && !roomOf(t, R.DLX3)?.bars.some((b: Any) => b.refId === RV.C3.id), "แถบไม่ย้าย");
     ok((await auditCount(tA)) > a0, "ไม่มี AuditLog");
@@ -992,7 +992,7 @@ try {
     needMove(); needFx();
     okRes(await MOVE()(OWNER, ctxA, { unitId: UH, id: RV.C3.id, roomId: R.DLX3, checkIn: D(4), checkOut: D(6) }), "move+shift");
     const s = await rvState(RV.C3.id);
-    eq([s.roomId, s.ci, s.co, s.nights, s.occ.map((o) => [o[0], o[1], o[2]])], [R.DLX3, D(4), D(6), [[D(4), R.DLX3, true], [D(5), R.DLX3, true]], [[R.DLX3, D(4), D(6)]]], "หลังย้าย+เลื่อน");
+    eq([s.roomId, s.ci, s.co, s.nights, s.occ.map((o: Any) => [o[0], o[1], o[2]])], [R.DLX3, D(4), D(6), [[D(4), R.DLX3, true], [D(5), R.DLX3, true]], [[R.DLX3, D(4), D(6)]]], "หลังย้าย+เลื่อน");
     const before = await rvState(RV.C3.id);
     const r = await MOVE()(OWNER, ctxA, { unitId: UH, id: RV.C3.id, roomId: R.DLX2, checkIn: D(1), checkOut: D(3) });
     ok(r?.ok === false && ["ROOM_TAKEN", "AVAILABILITY_CHANGED", "ROOM_BUSY"].includes(String(r.code)), `ชน ${J(r).slice(0, 120)}`);
@@ -1007,10 +1007,10 @@ try {
     eq(await rvState(RV.S1.id), before, "มีผลข้างเคียง");
     okRes(await BK("extendBooking")(OWNER, ctxA, { unitId: UH, id: RV.S1.id, newCheckOut: D(2) }), "extend");
     const e = await rvState(RV.S1.id);
-    eq([e.co, e.nights.length, e.occ.map((o) => o[2])], [D(2), 3, [D(2)]], "หลังยืด");
+    eq([e.co, e.nights.length, e.occ.map((o: Any) => o[2])], [D(2), 3, [D(2)]], "หลังยืด"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-tsc)
     okRes(await BK("shortenBooking")(OWNER, ctxA, { unitId: UH, id: RV.S1.id, newCheckOut: D(1) }), "shorten กลับ");
     const sh = await rvState(RV.S1.id);
-    eq([sh.co, sh.nights.filter((n) => n[2]).length, sh.occ.map((o) => o[2])], [D(1), 2, [D(1)]], "หลังย่น (คืนตัด counted=false)");
+    eq([sh.co, sh.nights.filter((n: Any) => n[2]).length, sh.occ.map((o: Any) => o[2])], [D(1), 2, [D(1)]], "หลังย่น (คืนตัด counted=false)");
   });
   await st("MV-5", "ย่นต่ำกว่าคืนที่ post แล้วไม่ได้ (มติ 2 · S:923): ตั้ง postedAuditId บนคืน +0 ของ S1 แล้ว shorten ให้ checkOut = +0 (ตัดคืนที่ post) ⇒ ok:false · nights/วันคงเดิม · ล้าง postedAuditId ⇒ ย่นเดิมได้ (ok) แล้วยืดคืน", async () => {
     needFx(); needH3();
@@ -1027,6 +1027,39 @@ try {
     ok(r2?.ok === false || r2?.ok === true, `shorten ถึงวันนี้ ${J(r2).slice(0, 100)}`);
     if (r2?.ok === true) okRes(await BK("extendBooking")(OWNER, ctxA, { unitId: UH, id: RV.S1.id, newCheckOut: D(1) }), "ยืดคืน");
     eq((await rvState(RV.S1.id)).co, D(1), "S1 กลับสภาพเดิม");
+  });
+
+  // ═══════════════ R ข้อเพิ่มจากผู้ตรวจ H.2 (ORACLE-EDIT ผู้คุม 7 พ.ย. · h2-R-reviewer · ขยายเท่านั้น) ═══════════════
+  console.log("\n── R ข้อเพิ่มจากผู้ตรวจ (MAJOR 1–2 · block พร้อมกัน) ──");
+  await st("MV-6", "ย้ายแขกที่พักอยู่ (S1 CHECKED_IN · SUP1) ไปห้อง DLX4 ⇒ ok · rv.roomId=DLX4 · nights ที่นับทุกคืน=DLX4 · occupancy active 1 แถวที่ DLX4 · ห้องเดิม SUP1 status CLEANING + hkStatus DIRTY · ห้องใหม่ DLX4 status OCCUPIED (ผู้ตรวจ MAJOR 1 · probe C10)", async () => {
+    needMove(); needFx();
+    okRes(await MOVE()(OWNER, ctxA, { unitId: UH, id: RV.S1.id, roomId: R.DLX4 }), "move S1");
+    const s = await rvState(RV.S1.id);
+    ok(s.roomId === R.DLX4 && s.nights.every((n: Any) => n[1] === R.DLX4) && s.occ.length === 1 && s.occ[0][0] === R.DLX4, `หลังย้าย ${J(s).slice(0, 200)}`);
+    const rooms = await prisma.hotelRoom.findMany({ where: { id: { in: [R.SUP1, R.DLX4] } }, select: { id: true, status: true, hkStatus: true } });
+    const oldR = rooms.find((r: Any) => r.id === R.SUP1), newR = rooms.find((r: Any) => r.id === R.DLX4);
+    eq([oldR?.status, oldR?.hkStatus, newR?.status], ["CLEANING", "DIRTY", "OCCUPIED"], "สถานะห้องเดิม/ใหม่");
+  });
+  await st("MV-7", "previewMove ข้ามประเภท + เพิ่มคืน (ผู้ตรวจ MAJOR 2 · probe C9.1): จอง PV ซูพีเรีย +40 1 คืน → preview {roomId: DLX4, checkOut: +42} (ช่วงไม่ชน X-3 ที่ใช้ DLX4 +20..+21) ⇒ ok · addedNights 1 · keptSatang+addedSatang=totalSatang · แล้ว moveBooking เดียวกัน ⇒ Σ priceSatang ของคืนที่นับ (2 คืน) = totalSatang ของ preview ทุกสตางค์", async () => {
+    needMove(); needFx();
+    const PREV = tapeL.mod?.previewMove ?? hotelL.mod?.previewMove;
+    ok(typeof PREV === "function", "ไม่มี previewMove ใน tape.ts/facade");
+    const pv = await mkBooking("PV", { type: RTA.sup, checkIn: D(40), nights: 1, source: "PHONE", guest: "ทดสอบ preview", want: "CONFIRMED" });
+    const p = okRes(await PREV(ctxA, { unitId: UH, id: pv.id, roomId: R.DLX4, checkIn: D(40), checkOut: D(42) }), "previewMove");
+    ok(Array.isArray(p.addedNights) && p.addedNights.length === 1 && Number.isInteger(p.totalSatang) && Number.isInteger(p.addedSatang) && Number.isInteger(p.keptSatang) && p.keptSatang + p.addedSatang === p.totalSatang && p.addedSatang > 0, `รูป preview ${J(p).slice(0, 200)}`);
+    okRes(await MOVE()(OWNER, ctxA, { unitId: UH, id: pv.id, roomId: R.DLX4, checkIn: D(40), checkOut: D(42) }), "move PV");
+    const nights = await prisma.hotelBookingNight.findMany({ where: { reservationId: pv.id, counted: true }, select: { priceSatang: true, roomId: true } });
+    eq([nights.length, nights.reduce((a: number, n: Any) => a + n.priceSatang, 0), nights.every((n: Any) => n.roomId === R.DLX4)], [2, p.totalSatang, true], "preview ≠ ที่บันทึกจริง");
+  });
+  await st("X-6", "X4 ปิดห้องพร้อมกัน 4 คน ห้อง FAM1 ช่วง +30..+32 ⇒ สำเร็จ 1 · ที่เหลือ ROOM_TAKEN · ไม่มี throw · BLOCK active ช่วงนั้น 1 แถว (ผู้ตรวจ C1)", async () => {
+    needBlock(); needFx();
+    const rs = await Promise.all(Array.from({ length: 4 }, (_, i) => BLK("blockRoom")(OWNER, ctxA, { unitId: UH, roomId: R.FAM1, from: D(30), to: D(32), reason: `แข่ง ${i}` }).catch((e: unknown) => ({ ok: false, code: "THROW", reason: errMsg(e) }))));
+    const oks = rs.filter((r: Any) => r?.ok === true);
+    try {
+      eq(oks.length, 1, `สำเร็จ ${oks.length} (${J(rs.map(codeOf))})`);
+      ok(rs.every((r: Any) => r?.ok === true || ["ROOM_TAKEN", "ROOM_BUSY", "BUSY"].includes(String(r?.code))), `โค้ดแปลก ${J(rs.map(codeOf))}`);
+      eq(await prisma.roomOccupancy.count({ where: { tenantId: tA, roomId: R.FAM1, kind: "BLOCK", active: true, startDate: { lt: new Date(`${D(32)}T00:00:00.000Z`) }, endDate: { gt: new Date(`${D(30)}T00:00:00.000Z`) } } }), 1, "BLOCK active");
+    } finally { for (const o of oks) await BLK("releaseBlock")(OWNER, ctxA, { unitId: UH, blockId: o.blockId }); }
   });
 
   // ═══════════════ X ขอบเขต · พร้อมกัน · สิทธิ์ · PII ═══════════════
@@ -1058,7 +1091,7 @@ try {
     const rs = await Promise.all([p, q].map((x) => BK("assignRoom")(FRONT, ctxA, { unitId: UH, id: x.id, roomId: R.DLX4 }).catch((e: unknown) => ({ ok: false, code: "THROW", reason: errMsg(e) }))));
     const oks = rs.filter((r) => r?.ok === true).length;
     eq(oks, 1, `สำเร็จ ${oks} (${J(rs.map(codeOf))})`);
-    ok(rs.every((r) => r?.ok === true || ["ROOM_TAKEN", "AVAILABILITY_CHANGED"].includes(String(r?.code))), `โค้ดแปลก ${J(rs.map(codeOf))}`);
+    ok(rs.every((r) => r?.ok === true || ["ROOM_TAKEN", "ROOM_BUSY", "AVAILABILITY_CHANGED"].includes(String(r?.code))), `โค้ดแปลก ${J(rs.map(codeOf))}`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D6)
     eq(await prisma.roomOccupancy.count({ where: { tenantId: tA, roomId: R.DLX4, active: true, startDate: { lte: new Date(`${D(8)}T00:00:00.000Z`) }, endDate: { gt: new Date(`${D(8)}T00:00:00.000Z`) } } }), 1, "occupancy DLX4 คืน +8");
   });
   await st("X-3", "X9 สิทธิ์ 3 ระดับ: owner/frontdesk (hotel.booking.manage) ปิดห้อง/ปล่อยได้ · maid (hotel.housekeeping) ⇒ FORBIDDEN ทั้ง blockRoom/releaseBlock (ไม่มีแถว) · STAFF ไม่มีสิทธิ์โรงแรม ⇒ FORBIDDEN · STAFF ของหน่วยอื่น (unitAccess UP เท่านั้น) ⇒ NOT_FOUND/ปฏิเสธ", async () => {
@@ -1113,7 +1146,7 @@ try {
     const rnd = (n: number) => { seed = (seed * 48271) % 2147483647; return seed % n; };
     for (let i = 0; i < 100; i++) {
       const ci = D(rnd(27)), nights = 1 + rnd(3);
-      const r = await BK("createBooking")(OWNER, ctxA, { unitId: UP, rooms: [{ roomTypeId: typeIds[rnd(4)], adults: 2, children: 0 }], checkIn: ci, checkOut: addDays(ci, nights), source: ["WALK_IN", "PHONE", "OTA"][rnd(3)], guest: { name: `แขก perf ${i + 1}` }, note: "qc-h2:perf" });
+      const r = await BK("createBooking")(OWNER, ctxA, { unitId: UP, rooms: [{ roomTypeId: typeIds[rnd(4)], adults: 2, children: 0 }], checkIn: ci, checkOut: addDays(ci, nights), source: ["WALK_IN", "PHONE", "OTA"][(seed % 3)], ...((seed % 3) === 2 ? { channelRef: `OTA-PERF-${i + 1}` } : {}), guest: { name: `แขก perf ${i + 1}` }, note: "qc-h2:perf" }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D2): OTA ต้องมี channelRef (H.3 booking.ts INVALID_INPUT) · ใช้ค่า rnd เดิม (seed หลังเรียก rnd(3)) ไม่เปลี่ยนลำดับสุ่ม
       if (r?.ok === true) PERF_BOOKINGS++;
       else if (failCode(r) !== "AVAILABILITY_CHANGED") throw new Error(`createBooking perf #${i}: ${codeOf(r)} ${r?.reason ?? ""}`);
     }
@@ -1185,8 +1218,9 @@ try {
     ok(!/onMouseDown|onTouchStart|draggable=\{?true|onDragStart/.test(stripComments(s)), "ใช้ mouse/touch/HTML5 drag แทน pointer events");
     const srcAll = [...UI_FILES, F.tapeShared].map(read).join("\n");
     ok(!DRAG_LIBS.test(srcAll), "import ไลบรารีลาก");
-    const pkg = read("package.json");
-    ok(!/"(react-dnd|@dnd-kit\/[a-z-]+|react-beautiful-dnd|@hello-pangea\/dnd|interactjs|react-draggable|sortablejs)"/.test(pkg), "package.json มีไลบรารีลาก");
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D9): @dnd-kit/* อยู่ใน package.json ก่อน RUN (โมดูลอื่นใช้) — ตรวจเฉพาะบรรทัดที่ "เพิ่ม" เทียบฐานใบ e02e7e5a2 (H.3 merge)
+    const pkgDiff = execFileSync("git", ["diff", "e02e7e5a2", "--", "package.json"], { encoding: "utf8" });
+    ok(!/^\+.*"(react-dnd|@dnd-kit\/[a-z-]+|react-beautiful-dnd|@hello-pangea\/dnd|interactjs|react-draggable|sortablejs)"/m.test(pkgDiff), "package.json เพิ่มไลบรารีลาก");
   });
   await st("U-5", "read-only ไม่ render handle (มติ 7): TapeChart/TapeBar มี prop สิทธิ์ (canEdit|canDrag|readOnly|canManage) · handle ลาก/ยืดใช้ attribute ชื่อตายตัว data-drag-handle และ data-resize-handle และอยู่ใต้เงื่อนไข prop นั้น (600 ตัวอักษรก่อนหน้า) · onPointerDown ก็อยู่ใต้เงื่อนไขหรือ return เมื่อ read-only", () => {
     const s = stripComments(read(F.tapeChart) + "\n" + read(F.tapeBar));

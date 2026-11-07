@@ -132,7 +132,7 @@ STANDARD: ซูพีเรีย 990 ทุกวัน · ดีลักซ�
 - `extendBooking`: guard tx เฉพาะคืนใหม่ · ราคา = quote ณ ปัจจุบัน (จอแสดงก่อนยืนยันผ่าน `quoteExtension`) · ห้องเดิมไม่ว่าง ⇒ `ROOM_BUSY` + ห้องที่ย้ายได้ (ไม่ย้ายเอง)
 - `shortenBooking`: คืนอนาคต `counted=false` (แถวคงอยู่) · ทับคืนที่ `postedAuditId` ⇒ `SHORTEN_POSTED` · ไม่คืนเงินอัตโนมัติ
 - `assignRoom`: HOLD/CONFIRMED · `moveOccupancy` (id เดิม) หรือ `claimRoom` · ต่างประเภท = ไม่คิดส่วนต่าง แต่นับชั้นประเภทของประเภทใหม่ (nights.roomTypeId ย้ายตาม) · ปิดซ่อม ⇒ `ROOM_INACTIVE`
-- `rescheduleBooking` (ฐานการลาก H.2): ย้ายห้อง + เลื่อนวันเข้า/ออกใน guard tx เดียว · CHECKED_IN เลื่อนได้เฉพาะวันออก · คืนเดิมคงราคา คืนใหม่ quote ปัจจุบัน · ห้องปลายทางถูกการจองที่ยังไม่เข้าพักถือ ⇒ จัดห้องให้รายการนั้นใหม่ในประเภทเดียวกัน (ไม่ได้ ⇒ `ROOM_BUSY`) · ล้ม = ไม่เปลี่ยนอะไร
+- `rescheduleBooking` (ฐานการลาก H.2): ย้ายห้อง + เลื่อนวันเข้า/ออกใน guard tx เดียว · CHECKED_IN เลื่อนได้เฉพาะวันออก · คืนเดิมคงราคา คืนใหม่ quote ปัจจุบัน · ห้องปลายทางถูกการจองที่ยังไม่เข้าพักถือ ⇒ จัดห้องให้รายการนั้นใหม่ในประเภทเดียวกัน (ไม่ได้ ⇒ `ROOM_BUSY`) · ล้ม = ไม่เปลี่ยนอะไร · `repack: false` (= `moveBooking` ของ facade · การลากบนปฏิทินห้อง · มติผู้คุม 7 พ.ย.) ⇒ ไม่จัดห้องให้การจองอื่น ห้องปลายทางไม่ว่าง = `ROOM_BUSY` ทันที
 
 ### Sweeper (`sweepExpiredHolds({now?, limit?})` · minute-job `hotel.sweepExpiredHolds` ต่อจาก `rooms.expireHolds`)
 HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_EXPIRED` · nights `counted=false` · ปล่อยห้อง · folio VOID · event `hotel.booking.hold_expired` · ก้อนละ ≤ 200 · CAS ต่อใบ (ซ้อนกัน/ซ้ำ = ครั้งเดียว · X5)
@@ -177,3 +177,46 @@ HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_E
 ### เงินประกันห้อง (Q3)
 - เปิดด้วย `rooms.hotel.securityDeposit.enabled` (ค่าเริ่มปิด) · ยอด `rooms.hotel.securityDeposit` (ต่อประเภทห้อง) · ใบรับ POS_DEPOSIT คีย์ `hotel-secdep-<id>` (Cr 2110 · ไม่ใช่รายได้)
 - คืนเต็ม = ใบคืนอ้างใบรับ (วิธีเดียวกับตอนรับ) · ริบเต็ม = บิลริบ `dep-forfeit:<depositId>` (รายได้ครั้งเดียว) · ริบบางส่วน = หนี้ v1
+## ปฏิทินห้อง (SVC H.2 · tape chart · ภาพ 08)
+
+### ไฟล์
+- `src/lib/modules/hotel/tape.ts` — `tapeChart(ctx, {unitId, from, days})` · `hotelToday(ctx, {unitId, now?})` · `previewMove` (อ่านอย่างเดียว · ไม่มีคิวรีเขียน)
+- `src/lib/modules/hotel/block.ts` — `blockRoom` · `releaseBlock` · `listBlocks` (ปิดห้อง)
+- จอ `src/components/hotel/{TapeChart,TapeBar,TapeKpis,BlockDialog,MoveConfirmDialog,HotelToday}.tsx` + `tape-shared.ts` (pure) · หน้า `/app/u/<slug>/hotel/calendar?view=week|2w|month&from=` · หน้าเคาน์เตอร์ `/hotel` ใช้ `hotelToday`
+- actions (`actions.ts` บล็อก SVC H.2): `moveBookingAction` (= `moveBooking` = `rescheduleBooking` ของ H.3 แบบ `repack: false` · tx เดียว · ไม่ย้ายการจองคนอื่นเงียบ ๆ) · `resizeBookingAction` (`extendBooking`/`shortenBooking`) · `blockRoomAction` · `releaseBlockAction` · `previewMoveAction`
+
+### แถว · กลุ่ม
+- แถวห้อง = ห้อง active ที่ขายรายคืนได้ (`rentMode` จริง NIGHTLY/BOTH) · ห้อง MONTHLY ล้วนไม่มีแถว (ของหอ) · เรียง อาคาร (`sortOrder`) → ชั้น → เลขห้อง
+- กลุ่ม = ประเภทห้อง (`sortOrder`) · หัวกลุ่ม `rateTodaySatang` = ราคาแผนเริ่มต้นวันนี้ · `rateWeekendSatang` = วันสุดสัปดาห์ถัดไป (`rooms.hotel.weekendDays`) ผ่าน `resolveNightPrice` ของ H.1 (ฤดู/แก้มือ/วันหยุดรวม)
+- การจองที่ยังไม่มีห้อง (`roomId` null) = แถว «ยังไม่กำหนดห้อง» ใต้กลุ่ม (`unassigned`) · ลากลงห้อง = กำหนดห้อง
+
+### นิยามแถบ 6 แบบ (`Bar.kind`)
+| kind | ที่มา | แสดง |
+|---|---|---|
+| STAY | HotelReservation CHECKED_IN (สถานะชนะ source · OTA ที่เข้าพักแล้ว = STAY) | ทึบ «พักอยู่» |
+| CONFIRMED | CONFIRMED (source ≠ OTA) | ขอบ «จองแล้ว» |
+| OTA | CONFIRMED + source OTA | เส้นประ «มาจาก OTA» |
+| HOLD | HOLD (+ `holdExpiresAt`) | ฟ้า «ถือไว้ รอมัดจำ» |
+| BLOCK | RoomOccupancy kind BLOCK · refType `HotelRoomBlock` · refId = blockId · label มีเหตุผล | ลาย «ปิดซ่อม» |
+| LEASE | RoomOccupancy kind LEASE (สัญญาหอบนห้อง BOTH) | เทา «ปล่อยรายเดือน (ระบบหอ)» · ลิงก์หน้าหอเฉพาะผู้มี `dorm.view` ของหน่วยหอ |
+- การจองแสดงเมื่อ `checkIn < ปลายกริด` และ `checkOut ≥ ต้นกริด` (ครึ่งวันเช็กเอาต์) · BLOCK/LEASE เมื่อ `start < ปลาย` และ `end > ต้น` · `from/to` = วันจริงไม่ตัดตามกริด · แถบเริ่มกลางวันเข้า จบกลางวันออก
+
+### อัตราเข้าพักรายคืน
+- `sellable` = แถวห้อง − ห้องที่มี BLOCK − ห้องที่มี LEASE ครอบคืนนั้น · `occupied` = HotelBookingNight `counted` ของการจอง HOLD/CONFIRMED/CHECKED_IN (มีห้องหรือไม่ก็นับ · HOLD counted นับ) · ไม่นับรายเดือน/ซ่อม
+
+### กติกาลาก (pointer events · ไม่มีไลบรารี)
+- ตัวแถบ (`data-drag-handle`) = ย้ายห้อง (แนวตั้ง) และ/หรือเลื่อนวัน (แนวนอน · CONFIRMED/HOLD/OTA) · **CHECKED_IN เลื่อนวันเข้าไม่ได้** (ย้ายห้อง/ยืดคืนได้) · ขอบขวา (`data-resize-handle`) = ยืด/ย่นคืน (ย่นทับคืนที่ปิดวันแล้วไม่ได้ · `SHORTEN_POSTED`)
+- ปล่อยแล้วเปิด `MoveConfirmDialog` เสมอ (ห้องเดิม→ใหม่ · วันเดิม→ใหม่ · ราคาใหม่จาก `previewMove` · ไม่คิดส่วนต่างเมื่อย้ายประเภท) · ล้ม (`ROOM_BUSY`/`AVAILABILITY_CHANGED`/`ROOM_INACTIVE`/`STATE_CHANGED`) = ไม่มีอะไรเปลี่ยน แถบกลับที่เดิม + ข้อความ
+- ผู้ดูอย่างเดียว (แม่บ้าน `hotel.housekeeping` · ไม่มี `hotel.booking.manage`) ไม่ render `data-tape-bar`/`data-drag-handle`/`data-resize-handle` · มือถือ 390 = รายการรายวัน + แถบเล็กสัปดาห์ ไม่ลาก (ปุ่ม «ย้ายห้อง/เลื่อน» เปิดไดอะล็อกแบบเลือกเอง)
+
+### ปิดห้อง (BLOCK)
+- `blockRoom(actor, ctx, {unitId, roomId, from, to, reason})` — ล็อกประเภทห้อง (advisory เดียวกับ booking.ts) → `claimRoom(kind BLOCK, refType HotelRoomBlock)` (EXCLUDE ของฐาน) → ชนการจอง ⇒ `ROOM_TAKEN` + `conflicts [{code, guestName}]` (ไม่ทับ) · เกินจอง (ห้องขาย − ปิด − รายเดือน − คืนที่นับ < 0) ⇒ ok + `warning {overbookedNights, message "เกินจอง N คืน"}` ไม่ยกเลิกการจองให้
+- เหตุผลลง AuditLog `hotel.room.blocked` (targetId = blockId · แหล่งของ `listBlocks`/แถบ) · BLOCK ครอบวันนี้ ⇒ HotelHousekeepingLog → `OUT_OF_ORDER` + `setHkStatus(OUT_OF_ORDER)` (คำเตือน `affectedByOutOfOrder`)
+- `releaseBlock` ⇒ occupancy inactive · AuditLog `hotel.room.unblocked` · ถ้าห้อง OUT_OF_ORDER จากการปิดที่ครอบวันนี้และไม่มี BLOCK อื่น ⇒ HousekeepingLog OUT_OF_ORDER→`DIRTY` + `setHkStatus(DIRTY)` (แม่บ้านตรวจก่อนขาย) · ปล่อยซ้ำ = ok noop
+- สิทธิ์: ปิด/ปล่อย = `hotel.booking.manage` · ดูรายการ = `hotel.reservation.create` | `hotel.booking.manage` | `hotel.housekeeping` · ข้ามร้าน/หน่วย ⇒ NOT_FOUND
+
+### KPI หน้าเคาน์เตอร์ (`hotelToday`)
+- เข้าวันนี้ = CONFIRMED เข้าวันนี้ (ชื่อ 2 คนแรก) · ออกวันนี้ = CHECKED_IN ออกวันนี้ · พักอยู่คืนนี้ = CHECKED_IN/CONFIRMED ครอบคืนนี้ (ไม่รวม HOLD) / ขายได้ · แม่บ้านรอทำ = แถวห้อง DIRTY · สัปดาห์นี้ = Σoccupied/Σsellable 7 วันนับจากวันนี้ (bp) · ADR = Σ ราคาคืน counted ÷ จำนวนคืน (ปัดลง) · ศ.–ส. % แยก
+
+### ประสิทธิภาพ
+- `tapeChart` = 6 คำสั่งคงที่: กรอบ (หน่วย+ประเภท+ห้อง+อาคาร+ราคาแผนเริ่มต้น · JSON ใน SQL เดียว) · ค่าตั้ง 2 (`resolveSettingsMany`) · occupancy BLOCK/LEASE + สัญญาหอ + เหตุผลปิดห้อง 1 · การจอง 1 · คืน counted ต่อวัน 1 · `hotelToday` = 4 คำสั่ง
