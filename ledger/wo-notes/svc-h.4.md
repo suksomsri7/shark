@@ -134,3 +134,31 @@
   - qc-svc-h.3 98/109 failed [] · qc-svc-h.2 78/87 failed [] · qc-svc-h.1 112/122 failed []
   - 🔴 qc-svc-h.5 --no-regression 75/95 · failed [ST-14 · GL-4] — ข้อสอบ h.5 เช็กอินด้วย checkIn เดิมบนหน่วยที่ไม่ได้ปิด requireRegistration (UH3 ร้าน A · UHB ร้าน B) ⇒ GUEST_REQUIRED ตามมติทาง (ข) · ขอ ORACLE-EDIT ปิดค่าตั้งที่ UH3/UHB แบบเดียวกับ UH
   - probe-h4-b 50/53 · failed [E3.3 (CDN private นอกใบ · Q-H4-3) · E3.6 · E5.6] — **E3.6/E5.6 เป็น "ข้อสังเกต" ที่เขียนให้ผ่านเมื่อพฤติกรรมเก่ายังอยู่** (E3.6 ผ่านเมื่อมี fallback ลิงก์ผู้บันทึก · E5.6 ผ่านเมื่อ dob ยังค้างหลัง purge) ⇒ แดงเพราะแก้ m4/m1 แล้ว = probe oracle ล้าสมัย (ควรกลับเงื่อนไข)
+
+## 14. รอบ 5 (ผู้ตรวจรอบ 2 กฎหมาย/race · ฐาน a011317ee) — commit 391bb8c69
+### ที่ทำ
+1. ตม.30 ไฟล์: "วันเข้าพัก" = `bkkYmd(checkedInAt)` (วันไทย) · ไม่มี checkedInAt ⇒ วันเข้าตามการจอง
+2. ผู้พักจริง = การจอง CHECKED_IN/CHECKED_OUT/REFUNDED (`STAYED_RV` ใน guest.ts) ⇒ `rr4Register` · `tm30Queue` · `tm30Export` · ลำดับเลขบัตร ร.ร.3 (`cardNosOf`) นับเฉพาะชุดนี้ · แถวลงทะเบียนล่วงหน้าที่ยกเลิก/ไม่มา/ยังไม่เข้า (รวมการจองที่ย้อนเช็กอิน) คงเก็บ + purge ปกติ แต่ไม่อยู่ในทะเบียน/คิว/ลำดับ · `Rr4Row.reservationStatus`
+3. ร.ร.4 (ค่าปลอดภัยระหว่างรอ J3 ชี้ขาดแบบ): `Rr4Row` + หน้าพิมพ์ เพิ่ม วันเกิด/อายุ (ณ วันเข้าพัก) · อาชีพ · ที่อยู่ ทุกคน · เลขเอกสารค่าเริ่ม 4 ตัวท้าย · `?registrar=1` + `hotel.guest.viewId` ⇒ `rr4RegistrarCopy` พิมพ์เลขเต็ม + AuditLog `hotel.guest.revealed` ต่อแขก (batch เดียวต่อการพิมพ์) · ไม่มีสิทธิ์ = 4 ตัวท้าย
+4. purge: ลบเฉพาะ `retainUntil < วันนี้` **และ** `checkOutDate(จริง ณ purge) + retainYears(ค่าตั้ง ณ purge) < วันนี้` (ไม่แตะ booking/checkout)
+5. race: `checkInCore` อ่านแถวซ้ำหลังล็อกประเภท · claim/retainUntil ใช้วันของแถวนี้ · CAS ผูก `checkInDate/checkOutDate` (probe R3.1 เขียว)
+6. **ไม่ได้ทำ** (ข้อแย้ง oracle): upsert ระหว่างพักเกิน maxOccupancy ⇒ OVER_OCCUPANCY — ขัด qc-svc-h.4 GR-5 (REG เพิ่มคนที่ 4 ใน ci3 ดีลักซ์ max 3 แล้วต้อง ok) · GR-7/GR-8 (เพิ่มต่อเป็นคนที่ 5–6) และข้อที่ใช้ gr7 (PD-6) ⇒ ทำแล้ว h.4 แดงหลายข้อ · พร้อมเปิดทันทีเมื่อผู้คุม ORACLE-EDIT GR-5/7/8 (เช่นใช้ห้องแฟมิลี max 5 หรือผู้จัดการ + occupancyOverride)
+7. tm30Export ตัดผู้พักที่ยังไม่เข้าพัก (ตามข้อ 2 · probe L7.1 เขียว)
+8. เพิ่มต่างด้าวหลังเช็กเอาต์ (ผู้จัดการ) ⇒ เวลาเข้าพัก = `checkedInAt` ของการจอง ⇒ มีกำหนด/LATE ตามจริง (probe L6.1 เขียว)
+9. เลขบัตร ร.ร.3 ณ ตอนเป็นผู้พักจริง จดใน AuditLog (`hotel.guest.registered.after.cardNo` · ลงทะเบียนล่วงหน้า ⇒ `hotel.guest.rr3_card` ตอนเช็กอิน) · คอลัมน์ถาวร = หนี้ H.9 (เลขที่แสดงยังคำนวณจากลำดับ ⇒ ลบแถวภายใน 10 นาทียังเลื่อนเลขหลังจากนั้น — probe L3.1 แดงตามหนี้)
+10. ทางเดิม `service.checkIn`: AuditLog `actorType SYSTEM` · `after.via = "LEGACY_CHECKIN"` (ไม่รู้ผู้กระทำ — ร.ร.3 ผู้บันทึกว่าง) · ใช้เฉพาะฉาก/ข้อสอบเดิม + ฟอร์มด่วน /hotel เมื่อปิด requireRegistration
+
+### ผล (`/root/svc-runs/h4/builder/r5-*.txt` · chain5.log)
+- probe-h4-c **34/40** · failed: L3.1 (หนี้ข้อ 9) · L5.1 (ตรวจ "คอลัมน์ retainUntil ขยับเมื่อต่อคืน" — มติข้อ 4 ให้ตรวจตอน purge แทน ⇒ คอลัมน์ไม่ขยับ = probe ล้าสมัย) · L6.2 (ข้อสังเกตที่ผ่านเมื่อ dueAt ว่าง — แก้ข้อ 8 แล้ว ⇒ ล้าสมัย) · R3.2 (ข้อสังเกตที่ผ่านเมื่อ CAS ไม่ผูกวัน — แก้ข้อ 5 แล้ว ⇒ ล้าสมัย) · R5.1 (ข้อ 6 ไม่ได้ทำ) · R7.2 (คาดว่าคิว ตม.30 ยังแสดงแขกของการจองที่ย้อนเช็กอิน — ข้อ 2 ตัดออก ⇒ ล้าสมัย) · เขียว: L1.1–L1.3 · L2.0–L2.5 · L4.x · L6.1 · L7.1 · L8.x · R1/R2/R3.1/R4/R6/R7.1/R7.3–4/R8
+- probe-h4-b 48/53 · failed: E3.3 (CDN นอกใบ) · E3.6 (ล้าสมัยตั้งแต่ m4) · **E5.3/E5.5/E5.7** (ตั้ง retainUntil ย้อนบนการจองที่วันออกยังอนาคต ⇒ มติข้อ 4 ไม่ purge)
+- qc-svc-h.4 --no-regression **89/106** · failed:
+  - PD-7 · PD-8 (+ B-5 "purge SYSTEM" · N-2/N-3 "hotel.guest.purged 0 แถว" ต่อเนื่อง) — ข้อสอบตั้ง retainUntil อดีตบนการจองที่ checkOutDate = W(2) ⇒ มติข้อ 4 ไม่ purge · ต้อง ORACLE-EDIT ให้ checkOutDate อดีต (เช่น W(-800)) หรือ retainYears/วันที่ตามจริง
+  - RR-5 — dbRows เทียบทุกแขกในช่วง (รวมแขกของ ci13 ที่ย้อนเช็กอินเป็น CONFIRMED) ⇒ มติข้อ 2 ตัดออก · ต้อง ORACLE-EDIT กรอง dbRows `reservation.status in CHECKED_IN/CHECKED_OUT/REFUNDED`
+- qc-svc-h.5 77/95 failed [] · qc-svc-h.3 98/109 failed [] · qc-svc-h.2 78/87 failed []
+
+### หนี้เพิ่ม
+| เรื่อง | ใบ |
+|---|---|
+| คอลัมน์เลขบัตร ร.ร.3 ถาวร (เลขแสดงยังเลื่อนเมื่อลบแถว) | H.9 |
+| แบบ ร.ร.4 จริง (ช่อง/สำเนานายทะเบียน) | J3 ชี้ขาด |
+| ข้อ 6 cap ผู้พักระหว่างพัก | รอ ORACLE-EDIT GR-5/7/8 |
