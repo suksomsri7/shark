@@ -16,7 +16,7 @@
 | ใบ | งาน | ขนาด | ข้อสอบ | ผล | SHA | หมายเหตุ |
 |---|---|---|---|---|---|---|
 | H.0 | migration svc_h + backfill + scope/registry + ด่าน HOTEL | 1 | qc-svc-h.0 | ✅ | 5b1d69ea6 | 152/153 (V-1 SKIP รอ QC server) · ผู้ตรวจผ่าน 0 CRITICAL/MAJOR · ORACLE-EDIT 8 จุด |
-| H.1 | ราคา/ฤดู/วันหยุด/แผน/ยกเลิก/ภาษี + จอราคา + จอตั้งค่า + แท็บ | 2 | qc-svc-h.1 | ⬜ | | ภาพ 15 |
+| H.1 | ราคา/ฤดู/วันหยุด/แผน/ยกเลิก/ภาษี + จอราคา + จอตั้งค่า + แท็บ | 2 | qc-svc-h.1 | ✅ | 50a35c946 | 120/122 (F-1/V-1 SKIP) · tsc 0 · build ✅ รอบ 5 · ภาพ 8+8 · PARITY ผ่าน · ผู้ตรวจ 2 รอบ+ยืนยัน |
 | H.3 | จอง V2 (HOLD · กลุ่ม · ยกเลิกตามขั้นบันได · ต่อ/ย่น · no-show) | 1.5 | qc-svc-h.3 | ⬜ | | load test 20 คำขอ |
 | H.2 | tape chart | 2 | qc-svc-h.2 | ⬜ | | ภาพ 08 |
 | H.5 | folio + chargeToRoom + เช็กเอาต์ tenders จริง | 2 | qc-svc-h.5 | ⬜ | | ภาพ 09 ขวา · ORACLE-EDIT oracle P1 |
@@ -27,7 +27,7 @@
 | H.10 | โครง OTA + fake adapter | 2 | qc-svc-h.10 | ⬜ | | ภาพ 11 |
 | H.9 | ปิดเฟส: ด่านเต็ม + ไล่กด + PARITY + แพ็ก UAT | 1 | — | ⬜ | | ผู้คุม |
 
-**1/11 (9%)** · นอกตัวนับ: H2.1–H2.3 ตัวต่อ channel manager เจ้าจริง (รอชื่อจากลูกค้า)
+**2/11 (18%)** · นอกตัวนับ: H2.1–H2.3 ตัวต่อ channel manager เจ้าจริง (รอชื่อจากลูกค้า)
 
 ### 2.1 หนี้ (ข้อที่ผ่านไม่ได้ · เหตุผล · ใบที่จะปิด)
 | จาก | หนี้ | ระดับ | ปิดที่ |
@@ -35,6 +35,8 @@
 | H.0 | (ผู้ตรวจ m) `@@unique` ที่มี nullable (HotelRate.seasonId · RateOverride.ratePlanId) ใช้ findUnique/upsert ไม่ได้ ⇒ findFirst+create/update ใน tx · คอมเมนต์เตือน DROP ทิศ DB→schema ของ index มือ 3 ตัว · `service.ts:83` คอมเมนต์ RATE_PLAN ล้าสมัย · weekendDays ไม่กันซ้ำ · codePrefix ไม่มี regex | m | H.1 |
 | H.0 | (ผู้ตรวจ m) backfill: import static ต้องรันผ่าน qc-svc.sh/มี env · tx เดียว ≤10 นาที ล็อกแถว BOOKED (รัน prod ช่วงเงียบ) · `loadSvcQcEnv` ปฏิเสธ prod ⇒ ต้องมีขั้นตอนเปิดทาง prod ก่อน deploy · claim ไม่กรองวัน (การจองอดีตได้ STAY/folio OPEN ย้อนหลัง) · CONFLICT พิมพ์รอบแรกเท่านั้น (คิวรีสำรอง: มีคืนแต่ไม่มี STAY active) · แถวเดิม source=WALK_IN ทุกแถว · nights จาก ratePerNight อาจ ≠ totalSatang ถ้ามีส่วนลด | m | H.3 / H.7 / H.5 / deploy |
 | H.0 | enum โรงแรมเดิม 3 คีย์ (noShow · ota.roomScope · ota.onConflict) ยังไม่มี enumLabelsTh (R-9 ห้ามแก้คีย์เดิมใน H.0) · คีย์ chain RATE_PLAN อย่างเดียวต้องเปิดชั้นจากจอโรงแรม ไม่งั้น r0.4 D-2 แดงเมื่อเปิดคีย์ | m | H.1 §6.1 |
+| H.1 | (ผู้คุม PARITY) มือถือปฏิทินราคาเห็นแค่ 2 คอลัมน์ + ลิงก์ "เลื่อนดูวันถัดไป" (ตารางตัดขอบขวา · ควร scroll แนวนอน) · frontdesk เปิด URL ตั้งค่าได้แบบอ่านอย่างเดียว แต่แท็บบนไฮไลต์ "หน้าเคาน์เตอร์" ผิด (ไม่มีแท็บตั้งค่าให้สิทธิ์นี้) · แผนราคา OTA (+15%) ยังไม่มีการ์ดตามภาพ 15 (เฟส H2) · ยังไม่มีภาพแท็บ "กติกา" ในชุด visual | m | H.2 (ตาราง scroll) · H.9 (แท็บ) · H2 (OTA) |
+| H.1 | (ผู้ตรวจ m ค้าง) ดู `ledger/wo-notes/svc-h.1.md` ถ้ามี · ข้อสอบ F-1/V-1 SKIP (merged/QC server) — ปิดด้วย chain H.9 | m | H.9 |
 | นอก H | r0.9 G-1 แดง 55/56 (qc-hotel-money ซ้อน 3 ชั้น HT-2.x journal 0 แถว) ตั้งแต่ G2/G3 — ORACLE-EDIT h0-G5 ยอมเฉพาะ G-1 | m | หลัง RUN |
 
 ## 3. บันทึกเหตุการณ์
@@ -69,4 +71,4 @@
 - 7 พ.ย. ~09:0xZ · เจ้าของถาม % และ token ⇒ tg "📊 HOTEL · 9% (1/11) …" (สถานะกลางทาง) · **มติประหยัด**: หยุดเปิดผู้เขียนข้อสอบล่วงหน้าหลัง h.6 · builder ใบถัดไปเปิดเมื่อ chain รับงานใบก่อนเสร็จ · โฟกัส H.1 → H.3 · memory feedback_hotel_no_oracle_ahead_when_machine_blocked
 - 7 พ.ย. ~09:1xZ · **ข้อสอบ h.6 รับแล้ว** (Fable · 95 ข้อ · 8044dec38) — มติ 11 ข้อลงใบ h.6 §9 (setGuestRequest · createStaffRepair ใน dorm/repair · def #75 union · ช่อง hotel:hk:<tenant>:<unit> · HK_STATUSES re-export) · ฟิกซ์เจอร์ B202 VACANT+upcoming · ORACLE-EDIT h6-upcoming · ผู้คุมรันซ้ำ run2: PC 8 + Z เขียว · 72 แดงเหตุผลตรง · 14 SKIP · 0 throw · cherry-pick เข้า session/svc · **เลน l3 ว่าง — ไม่เปิดตัวแทนใหม่ตามมติประหยัด** · ข้อสอบพร้อมแล้ว: h.2 h.3 h.4 h.5 h.6 · CPU steal แก้แล้ว (เจ้าของ 09:0xZ · เหลือ 2–16%)
 - 7 พ.ย. ~09:1xZ · เจ้าของสั่ง "ทำตามที่แนะนำ" ⇒ หยุด metabot (chrome/vnc/xvfb + runner 6 ซีรีส์ · systemctl stop · ไม่ disable) · ฆ่า Claude session ค้าง ≥2 วัน 10 ตัว · next-server เก่า 3 ตัว = Docker container เว็บ production (cwd /app · 40–55 MB) **ไม่แตะ** · RAM ว่าง 1G → 3G ระหว่าง build
-
+- 7 พ.ย. 09:39Z · chain H.1 **รอบ 5 ผ่าน**: build exit 0 (73 นาที · steal ลงเหลือ 2–16% หลังเจ้าของแก้ Hostinger + เคลียร์ RAM) · serve 3242 · ฉาก h.1 · ภาพ owner 8/8 · frontdesk 8/8 · **PARITY: ผ่าน** — ปฏิทิน 14 วัน × 3 ประเภท + ราคา/เหลือขาย + ช่องแก้มือ 1,690 กรอบสี + สุดสัปดาห์แพงกว่า ตรงภาพ 15 · แผนราคา 3 การ์ด (มาตรฐาน/รวมอาหารเช้า/จ่ายก่อนไม่คืน) + ตารางราคาแก้ได้ · ฤดู (ปีใหม่ ลำดับ 20 ขั้นต่ำ 2 คืน · ไฮซีซัน) + วันหยุดนักขัตฤกษ์ + ปุ่มใช้ปฏิทินไทย · จอตั้งค่าเป็นการ์ด 11 ใบ + "แก้" ต่อการ์ด + ป้ายค่าเริ่มต้นของระบบ + เมนูซ้ายทั้งโรงแรม/ต่อแผน/ต่อประเภทห้อง ตามโครงภาพ 17 · frontdesk ทุกหน้าไม่มีปุ่มเขียน (ไม่มี +เพิ่มแผน/แก้/เก็บเข้าคลัง/เพิ่มวัน · ตารางราคาเป็นตัวหนังสือ · จอตั้งค่ามีแถบ "ดูได้อย่างเดียว") · หนี้เล็ก 4 ข้อลง §2.1 · merge `50a35c946` (no-ff · ไม่มี conflict) ⇒ **H.1 ✅ 2/11 (18%)** · ถัดไป: l2 node_modules → bind mount แล้วรัน chain รับงาน H.3 (`/root/svc-runs/h3/accept.sh`)
