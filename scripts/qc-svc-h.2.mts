@@ -1241,9 +1241,9 @@ try {
   });
   await st("U-7", "แท็บ: hotel-tabs-shared calendar available:true (แก้ค่าเดียว) · แท็บอื่นเท่าเดิม (การจอง/หน้าเคาน์เตอร์/ราคา/ตั้งค่า true · แม่บ้าน/รายงาน false) · hotelTabsFor frontdesk ⇒ [ปฏิทินห้อง · การจอง · หน้าเคาน์เตอร์ · ราคา] · ยัง pure", () => {
     const tabs = valOf(tabsSharedL, "HOTEL_TABS", F.tabsShared) as Any[];
-    eq(tabs.map((t) => [t.key, t.available]), [["calendar", true], ["reservations", true], ["frontdesk", true], ["housekeeping", false], ["rates", true], ["reports", false], ["settings", true]], "available");
+    eq(tabs.map((t) => [t.key, t.available]), [["calendar", true], ["reservations", true], ["frontdesk", true], ["housekeeping", true], ["rates", true], ["reports", false], ["settings", true]], "available"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-U7-hk): H.6 เปิดแท็บแม่บ้าน
     const f = fnOf(tabsSharedL, "hotelTabsFor", F.tabsShared);
-    eq((f({ ratesRead: true, settingsEdit: false }, "/app/u/x") as Any[]).map((t) => t.labelTh), ["ปฏิทินห้อง", "การจอง", "หน้าเคาน์เตอร์", "ราคา"], "frontdesk");
+    eq((f({ ratesRead: true, settingsEdit: false }, "/app/u/x") as Any[]).map((t) => t.labelTh), ["ปฏิทินห้อง", "การจอง", "หน้าเคาน์เตอร์", "แม่บ้าน", "ราคา"], "frontdesk"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-U7-hk)
     eq((f({ ratesRead: true, settingsEdit: false }, "/app/u/x") as Any[])[0].href, "/app/u/x/hotel/calendar", "href");
     const s = stripComments(read(F.tabsShared));
     ok(!/["']use (client|server)["']/.test(s) && !/^\s*import\s/m.test(s), "shared ต้อง pure");

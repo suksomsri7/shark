@@ -775,8 +775,9 @@ try {
     needSetup(); needHk(); ok(BOARD0?.ok, "ไม่มี BD-1");
     const rows = rowsOf(BOARD0);
     const exp = refCounts(rows, null);
-    eq([exp.total, exp.done], [9, 3], "ตัวอ้างอิงเอง (ฉากไม่ตรงที่ออกแบบ)");
-    eq(BOARD0.counts, { mine: 0, total: 9, done: 3 }, "counts");
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-BD4): roomPlan มี W1/W4 ว่าง DIRTY (ST-2/ST-3 ใช้) ⇒ ตามนิยาม refInWork ของข้อสอบเอง total = 11 ไม่ใช่ 9
+    eq([exp.total, exp.done], [11, 3], "ตัวอ้างอิงเอง (ฉากไม่ตรงที่ออกแบบ)");
+    eq(BOARD0.counts, { mine: 0, total: 11, done: 3 }, "counts");
     const b2 = okRes(await board({ mine: MAID.userId }), "hkBoard mine");
     eq(b2.counts.mine, 0, "mine");
   });
@@ -1567,7 +1568,7 @@ try {
     ok(/SVC H\.6 ▸[\s\S]*◂/.test(s), "actions.ts ยังไม่มีบล็อก // SVC H.6 ▸ … ◂ (ยังไม่มีงาน H.6)");
     ok(/^\s*["']use server["']/m.test(s), "ไม่มี \"use server\"");
     ok(!/^export\s+(type|interface|const|let|class)\b/m.test(stripComments(s).split("\n").filter((l) => !/ReservationFormState/.test(l)).join("\n")), "export ที่ไม่ใช่ async function");
-    ok(!/from\s*["']@\/lib\/modules\/dorm|from\s*["']\.\/(block|folio|tape)["']/.test(stripComments(s)), "actions.ts import dorm/block/folio ตรง");
+    ok(!/from\s*["']@\/lib\/modules\/dorm|from\s*["']\.\/(block|folio|tape)["']/.test(stripComments((/SVC H\.6 ▸[\s\S]*?◂/.exec(s) ?? [""])[0])), "บล็อก H.6 ของ actions.ts import dorm/block/folio ตรง"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-U4): ตรวจเฉพาะบล็อก H.6 (import ./block ./folio ./tape ของ H.2/H.5 อยู่นอกบล็อก)
   });
   await st("U-5", "หน้า (§1/§4): 3 หน้าใหม่ requireUnit + \"HOTEL\" + notFound · ตรวจ hotel.housekeeping (ไม่มี ⇒ notFound/forbidden — read-only ไม่เห็นหน้า) · import ผ่าน facade @/lib/modules/hotel (ไม่ชี้ housekeeping.ts ตรง) · บอร์ดใช้ hkBoard + ส่ง mine = userId · [roomId] ใช้ hkBoard/ห้องเดียว + ค่าตั้ง checklist/minibar (loadHotelSettings/resolveSetting ผ่าน facade) · logs ใช้ hkLogs + รับ from/to/roomId · ไม่อ่านสิทธิ์จาก URL", () => {
     const bad: string[] = [];
