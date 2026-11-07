@@ -41,32 +41,34 @@ const num = (v: unknown): number | null => (typeof v === "number" && Number.isFi
 export type AriDirtyInput = { unitId: string; roomTypeIds?: string[]; from?: string | null; to?: string | null };
 
 /**
- * ยิง channel.ari.dirty (ตัวยิงจาก rates.ts/block.ts/แม็ป — §9.10) · ไม่ throw
- * tx ส่งมา ⇒ เขียน outbox ใน tx เดียวกับงาน (atomic: งานย้อน = ไม่มี dirty) · ไม่ส่ง ⇒ นอก tx
+ * ยิง channel.ari.dirty (ตัวยิงจาก rates.ts/block.ts/แม็ป — §9.10)
+ * • tx ส่งมา ⇒ transactional outbox: เขียนใน tx เดียวกับงาน (งานย้อน = ไม่มี dirty) และ **ไม่กลืนข้อผิดพลาด** — คิวรีที่ล้มใน tx ของ Postgres
+ *   ทำให้ทั้ง tx abort อยู่แล้ว (คิวรีถัดไป/commit ล้มต่อ) ⇒ ปล่อย throw ให้งานล้มตรง ๆ ที่ต้นเหตุ ดีกว่ากลืนแล้วไปล้มเงียบที่ commit (มติรอบ 2 · ผู้ตรวจ A)
+ * • ไม่ส่ง tx ⇒ นอก tx: ล้ม = เตือนใน log ไม่ throw (ARI ตามรอบถัดไป · ไม่มี tx ให้เสีย)
  * ร้านที่ไม่มีตัวต่อ CHANNEL_MANAGER (ที่ไม่ถอด) ⇒ ไม่ยิง · from/to ไม่ส่ง ⇒ วันนี้ → +400 (ผู้รวมชุดตัดตาม ariHorizonDays)
  */
 export async function emitAriDirty(ctx: { tenantId: string }, input: AriDirtyInput, tx?: object): Promise<void> {
+  if (!isRec(ctx) || !isStr(ctx.tenantId) || !isRec(input) || !isStr(input.unitId)) return;
+  const today = bkkYmd(new Date());
+  const from = isYmd(input.from) ? input.from : today;
+  const to = isYmd(input.to) ? input.to : ymdAdd(today, ARI_MAX_HORIZON);
+  const ev = {
+    tenantId: ctx.tenantId,
+    unitId: input.unitId,
+    type: "channel.ari.dirty",
+    idempotencyKey: `channel.ari.dirty#${randomUUID()}`,
+    payload: { unitId: input.unitId, roomTypeIds: (input.roomTypeIds ?? []).filter(isStr), from: from <= to ? from : to, to: from <= to ? to : from },
+  };
+  const where = { tenantId: ctx.tenantId, kind: CHANNEL_KIND, status: { not: "DISABLED" } };
+  if (tx) {
+    const t = tx as Tx;
+    if ((await t.tenantIntegration.count({ where })) === 0) return;
+    await emitOutbox(t, ev);
+    return;
+  }
   try {
-    if (!isRec(ctx) || !isStr(ctx.tenantId) || !isRec(input) || !isStr(input.unitId)) return;
-    const today = bkkYmd(new Date());
-    const from = isYmd(input.from) ? input.from : today;
-    const to = isYmd(input.to) ? input.to : ymdAdd(today, ARI_MAX_HORIZON);
-    const ev = {
-      tenantId: ctx.tenantId,
-      unitId: input.unitId,
-      type: "channel.ari.dirty",
-      idempotencyKey: `channel.ari.dirty#${randomUUID()}`,
-      payload: { unitId: input.unitId, roomTypeIds: (input.roomTypeIds ?? []).filter(isStr), from: from <= to ? from : to, to: from <= to ? to : from },
-    };
-    const where = { tenantId: ctx.tenantId, kind: CHANNEL_KIND, status: { not: "DISABLED" } };
-    if (tx) {
-      const t = tx as Tx;
-      if ((await t.tenantIntegration.count({ where })) === 0) return;
-      await emitOutbox(t, ev);
-    } else {
-      if ((await tenantDb({ tenantId: ctx.tenantId }).tenantIntegration.count({ where })) === 0) return;
-      await emitOutboxOutsideTx(ev);
-    }
+    if ((await tenantDb({ tenantId: ctx.tenantId }).tenantIntegration.count({ where })) === 0) return;
+    await emitOutboxOutsideTx(ev);
   } catch {
     console.warn("[hotel.channel] ยิง channel.ari.dirty ไม่สำเร็จ — ARI จะตามรอบถัดไป");
   }

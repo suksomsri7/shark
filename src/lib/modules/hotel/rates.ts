@@ -69,8 +69,8 @@ export type PreviewRoomType = { id: string; name: string; sellable: number };
 
 // ───────────────────────── ค่าคงที่ของกลไก (ไม่ใช่นโยบายร้าน) ─────────────────────────
 const TX = { maxWait: 5_000, timeout: 15_000 } as const;
-// SVC H.10 ▸ hook ARI (ใบสั่ง h.10 §0 · §9.10 · ยกเว้นไฟล์ H.1 — บรรทัด hook ล้วน): ราคาเปลี่ยน ⇒ channel.ari.dirty ใน tx เดียวกับการเขียน (atomic · lazy import facade ช่องทาง · ไม่ throw · ร้านไม่มีตัวต่อ = ไม่ยิง) ◂
-const emitAriDirty = (tx: object, w: { tenantId: string; unitId: string }, roomTypeIds: string[], from: string | null = null, to: string | null = null): Promise<void> => import("./channel").then((m) => m.emitAriDirty({ tenantId: w.tenantId }, { unitId: w.unitId, roomTypeIds, from, to }, tx)).catch(() => undefined);
+// SVC H.10 ▸ hook ARI (ใบสั่ง h.10 §0 · §9.10 · ยกเว้นไฟล์ H.1 — บรรทัด hook ล้วน): ราคาเปลี่ยน ⇒ channel.ari.dirty ใน tx เดียวกับการเขียน (transactional outbox: atomic · ล้ม = tx ของงานล้มตรง ๆ ไม่กลืน — มติ h.10 รอบ 2 · lazy import facade ช่องทาง · ร้านไม่มีตัวต่อ = ไม่ยิง) ◂
+const emitAriDirty = (tx: object, w: { tenantId: string; unitId: string }, roomTypeIds: string[], from: string | null = null, to: string | null = null): Promise<void> => import("./channel").then((m) => m.emitAriDirty({ tenantId: w.tenantId }, { unitId: w.unitId, roomTypeIds, from, to }, tx));
 const MONEY_MAX = 1_000_000_000; // เพดานเดียวกับ MONEY ของทะเบียนค่าตั้ง (≤ ฿10,000,000)
 const PREVIEW_MAX_DAYS = 62;
 const CONTEXT_MAX_DAYS = 400;

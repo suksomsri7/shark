@@ -26,8 +26,8 @@ const ACT_BLOCK = "hotel.room.blocked";
 const ACT_RELEASE = "hotel.room.unblocked";
 const TX_OPTS = { maxWait: 20_000, timeout: 30_000 } as const;
 const MAX_BLOCK_DAYS = 366;
-// SVC H.10 ▸ hook ARI (ใบสั่ง h.10 §9.10 · บรรทัด hook ล้วน): ปิด/ปล่อยห้อง ⇒ channel.ari.dirty ใน tx เดียวกับ occupancy (lazy import facade ช่องทาง · ไม่ throw) ◂
-const emitAriDirty = (tx: object, g: { tenantId: string; unitId: string }, roomTypeId: string, from: string, toExcl: string): Promise<void> => import("./channel").then((m) => m.emitAriDirty({ tenantId: g.tenantId }, { unitId: g.unitId, roomTypeIds: [roomTypeId], from, to: nightDates(from, toExcl).at(-1) ?? from }, tx)).catch(() => undefined);
+// SVC H.10 ▸ hook ARI (ใบสั่ง h.10 §9.10 · บรรทัด hook ล้วน): ปิด/ปล่อยห้อง ⇒ channel.ari.dirty ใน tx เดียวกับ occupancy (transactional outbox: ล้ม = tx ของงานล้มตรง ๆ ไม่กลืน — มติ h.10 รอบ 2 · lazy import facade ช่องทาง) ◂
+const emitAriDirty = (tx: object, g: { tenantId: string; unitId: string }, roomTypeId: string, from: string, toExcl: string): Promise<void> => import("./channel").then((m) => m.emitAriDirty({ tenantId: g.tenantId }, { unitId: g.unitId, roomTypeIds: [roomTypeId], from, to: nightDates(from, toExcl).at(-1) ?? from }, tx));
 const VIEW_KEYS = ["hotel.reservation.create", "hotel.booking.manage", "hotel.housekeeping"];
 const R = {
   notFound: "ไม่พบห้องหรือโรงแรมนี้ (หรืออยู่นอกสาขาที่คุณดูแล)",

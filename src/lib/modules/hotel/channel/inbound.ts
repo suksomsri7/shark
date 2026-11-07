@@ -18,10 +18,9 @@ import { INBOX_REASON_TH, type InboundReservation, type InboxReason } from "./ty
 import { CHANNEL_KIND, R, channelGate, connectionById, covers, fail, isFail, isRec, isStr, scanDb, type ChannelFail, type ConnectionRow } from "./mapping";
 
 type Tx = Prisma.TransactionClient;
-type InboxRow = { id: string; tenantId: string; unitId: string; connectionId: string; externalId: string; version: number; status: string; reservationId: string | null; raw: unknown };
+type InboxRow = { id: string; tenantId: string; unitId: string; connectionId: string; externalId: string; version: number; status: string; reservationId: string | null; raw: unknown; error?: string | null };
 export type ApplyResult = { ok: true; inboxId: string; status: "APPLIED" | "NEEDS_ROOM" | "REJECTED" | "RECEIVED"; reservationId: string | null; reason: InboxReason | null } | ChannelFail;
 const ACTIVE_CONN = ["CONNECTED", "ERROR"];
-const ACTIVE_RV = ["HOLD", "CONFIRMED", "CHECKED_IN"] as const;
 const APPLY_TRIES = 3;
 const PULL_APPLY_MAX = 200;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -52,7 +51,7 @@ const KeySchema = z.object({ externalId: z.string().trim().min(1).max(64), versi
 async function inboxById(inboxId: unknown): Promise<InboxRow | null> {
   if (!isStr(inboxId)) return null;
   const rows = await scanDb().$queryRaw<InboxRow[]>`
-    SELECT "id", "tenantId", "unitId", "connectionId", "externalId", "version", "status", "reservationId", "raw" FROM "ChannelReservationInbox" WHERE "id" = ${inboxId} LIMIT 1`;
+    SELECT "id", "tenantId", "unitId", "connectionId", "externalId", "version", "status", "reservationId", "raw", "error" FROM "ChannelReservationInbox" WHERE "id" = ${inboxId} LIMIT 1`;
   return rows[0] ?? null;
 }
 const evPayload = (row: InboxRow, extra: Record<string, unknown> = {}) => ({ inboxId: row.id, connectionId: row.connectionId, unitId: row.unitId, version: row.version, ...extra });
@@ -82,30 +81,73 @@ async function moveInbox(row: InboxRow, from: string[], to: "APPLIED" | "NEEDS_R
     return true;
   });
 }
+/** สถานะจริงของแถวตอนนี้ (ทางอื่นเปลี่ยนไปก่อน CAS ของเรา · ผู้ตรวจ A R-2) — ผลที่คืนต้องตรงแถว ไม่ใช่สิ่งที่ทางนี้ตั้งใจ */
+async function actual(row: InboxRow): Promise<ApplyResult> {
+  const cur = await inboxById(row.id);
+  if (!cur) return fail("NOT_FOUND", R.notFound);
+  const st = cur.status === "APPLIED" || cur.status === "NEEDS_ROOM" || cur.status === "REJECTED" ? cur.status : "RECEIVED";
+  const reason = isStr(cur.error) && cur.error in INBOX_REASON_TH ? (cur.error as InboxReason) : null;
+  return { ok: true, inboxId: cur.id, status: st, reservationId: cur.reservationId, reason: st === "APPLIED" ? null : reason };
+}
 async function reject(row: InboxRow, reason: InboxReason): Promise<ApplyResult> {
   const moved = await moveInbox(row, ["RECEIVED", "NEEDS_ROOM"], "REJECTED", { error: reason }, { type: "channel.reservation.rejected", extra: { reason } });
-  if (moved) await ack(row);
+  if (!moved) return actual(row);
+  await ack(row);
   return { ok: true, inboxId: row.id, status: "REJECTED", reservationId: null, reason };
 }
 async function needsRoom(row: InboxRow, reason: InboxReason): Promise<ApplyResult> {
   const moved = await moveInbox(row, ["RECEIVED"], "NEEDS_ROOM", { error: reason }, { type: "channel.reservation.needs_room", extra: { reason } });
-  if (!moved) await tenantDb({ tenantId: row.tenantId, unitId: row.unitId }).channelReservationInbox.updateMany({ where: { id: row.id, status: "NEEDS_ROOM" }, data: { error: reason } });
-  return { ok: true, inboxId: row.id, status: "NEEDS_ROOM", reservationId: null, reason };
+  if (moved) return { ok: true, inboxId: row.id, status: "NEEDS_ROOM", reservationId: null, reason };
+  // ไม่ได้เปลี่ยน: แถวเป็น NEEDS_ROOM อยู่แล้ว (ลองอีกครั้ง) ⇒ ปรับเหตุผลล่าสุด · ทางอื่น APPLIED/REJECTED ไปแล้ว ⇒ คืนสถานะจริง
+  const u = await tenantDb({ tenantId: row.tenantId, unitId: row.unitId }).channelReservationInbox.updateMany({ where: { id: row.id, status: "NEEDS_ROOM" }, data: { error: reason } });
+  if (u.count > 0) return { ok: true, inboxId: row.id, status: "NEEDS_ROOM", reservationId: null, reason };
+  return actual(row);
 }
-/** ตัวบันทึก APPLIED ใน tx ของการจอง/ยกเลิก: ล็อกต่อ externalId → การจองที่ active ของเลขนี้ต้องเป็นของรายการนี้เท่านั้น → ไม่มีฉบับใหม่กว่าที่ APPLIED → CAS */
+/** การจอง active ของเลขนี้ทั้งร้าน (ทุกหน่วยของตัวต่อ · ผู้ตรวจ A R-10) — ไม่ผูกหน่วยของ inbox */
+async function activeOfExt(db: { $queryRaw: Tx["$queryRaw"] }, row: InboxRow): Promise<{ id: string; unitId: string }[]> {
+  return db.$queryRaw<{ id: string; unitId: string }[]>`
+    SELECT "id", "unitId" FROM "HotelReservation"
+     WHERE "tenantId" = ${row.tenantId} AND "channelConnectionId" = ${row.connectionId} AND "channelRef" = ${row.externalId} AND "status"::text IN ('HOLD', 'CONFIRMED', 'CHECKED_IN')
+     ORDER BY "createdAt" ASC, "id" ASC`;
+}
+/** มีฉบับใหม่กว่าที่ APPLIED แล้วไหม (ระดับร้าน+ตัวต่อ+externalId · ไม่ผูกหน่วย) */
+async function newerApplied(db: { $queryRaw: Tx["$queryRaw"] }, row: InboxRow): Promise<boolean> {
+  const r = await db.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS "n" FROM "ChannelReservationInbox"
+     WHERE "tenantId" = ${row.tenantId} AND "connectionId" = ${row.connectionId} AND "externalId" = ${row.externalId} AND "status" = 'APPLIED' AND "version" > ${row.version}`;
+  return (r[0]?.n ?? 0) > 0;
+}
+/**
+ * ตัวบันทึก APPLIED ใน tx ของการจอง/ยกเลิก (หลังล็อกประเภท+เขียนการจอง) — ลำดับ:
+ *   1) advisory lock ต่อ (ตัวต่อ, externalId) — ทุกทางที่ลง/ยกเลิกเลขนี้ผ่านจุดนี้ ⇒ อนุกรม (pullAll ซ้อน · retry พนักงาน · ปุ่มดึงตอนนี้ — ไม่พึ่ง lease)
+ *   2) การจอง active ของเลขนี้ "ทั้งร้าน" ที่ไม่ใช่ของรายการนี้ (ids = ที่เพิ่งสร้าง · ทางยกเลิก ids = ที่เพิ่งยกเลิกซึ่งไม่ active แล้ว) > 0
+ *      ⇒ "DUPLICATE" = ทางอื่นลง/แก้เลขนี้หลังจากเราอ่านรายการ ⇒ ย้อน tx · applyOnce อ่านรายการใหม่ (ผู้ตรวจ A R-6: ยกเลิกไม่หายเมื่อชน MODIFIED · R-10: ไม่ผูกหน่วย)
+ *   3) ฉบับใหม่กว่าที่ APPLIED (ทั้งร้าน) ⇒ "STALE"
+ *   4) CAS แถวนี้ ⇒ APPLIED + event · 5) ฉบับเก่ากว่าที่ยังค้าง RECEIVED/NEEDS_ROOM ⇒ REJECTED STALE ใน tx เดียวกัน (R-11 · ไม่ค้างคิวต้องจัดห้อง)
+ */
 function appliedHook(row: InboxRow, evType: "channel.reservation.applied" | "channel.reservation.cancelled") {
   return async (tx: Tx, ids: string[]): Promise<string | null> => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`channel-ext:${row.connectionId}:${row.externalId}`}::text))`;
-    if (evType === "channel.reservation.applied") {
-      const other = await tx.hotelReservation.count({ where: { tenantId: row.tenantId, unitId: row.unitId, channelConnectionId: row.connectionId, channelRef: row.externalId, status: { in: [...ACTIVE_RV] }, id: { notIn: ids } } });
-      if (other > 0) return "DUPLICATE";
-    }
-    const newer = await tx.channelReservationInbox.count({ where: { tenantId: row.tenantId, unitId: row.unitId, connectionId: row.connectionId, externalId: row.externalId, status: "APPLIED", version: { gt: row.version } } });
-    if (newer > 0) return "STALE";
+    const other = (await activeOfExt(tx, row)).filter((x) => !ids.includes(x.id));
+    if (other.length > 0) return "DUPLICATE";
+    if (await newerApplied(tx, row)) return "STALE";
     const reservationId = ids[0] ?? null;
     const u = await tx.channelReservationInbox.updateMany({ where: { id: row.id, tenantId: row.tenantId, unitId: row.unitId, status: { in: ["RECEIVED", "NEEDS_ROOM"] } }, data: { status: "APPLIED", error: null, reservationId } });
     if (u.count === 0) return "ALREADY";
     await emitOutbox(tx, { tenantId: row.tenantId, unitId: row.unitId, type: evType, idempotencyKey: `${evType}#${row.id}`, payload: evPayload(row, { reservationId, reservationIds: ids }) });
+    const old = await tx.$queryRaw<{ id: string; unitId: string; version: number }[]>`
+      UPDATE "ChannelReservationInbox" SET "status" = 'REJECTED', "error" = 'STALE', "updatedAt" = now()
+       WHERE "tenantId" = ${row.tenantId} AND "connectionId" = ${row.connectionId} AND "externalId" = ${row.externalId} AND "version" < ${row.version} AND "status" IN ('RECEIVED', 'NEEDS_ROOM')
+       RETURNING "id", "unitId", "version"`;
+    for (const o of old) {
+      await emitOutbox(tx, {
+        tenantId: row.tenantId,
+        unitId: o.unitId,
+        type: "channel.reservation.rejected",
+        idempotencyKey: `channel.reservation.rejected#${o.id}`,
+        payload: { inboxId: o.id, connectionId: row.connectionId, unitId: o.unitId, version: o.version, reason: "STALE" },
+      });
+    }
     return null;
   };
 }
@@ -225,17 +267,15 @@ async function applyOnce(inboxId: unknown): Promise<ApplyResult> {
   if (!conn || conn.tenantId !== row.tenantId) return fail("NOT_FOUND", R.notFound);
   if (!ACTIVE_CONN.includes(conn.status)) return fail("INVALID_STATUS", "ตัวต่อช่องทางนี้ถูกถอดหรือยังไม่เชื่อม — การจองคงไว้ในคิว");
   const db = tenantDb({ tenantId: row.tenantId, unitId: row.unitId });
-  // ฉบับต่ำกว่าที่ APPLIED แล้ว ⇒ STALE (ตรวจก่อนดูห้อง · §10.7)
-  const newer = await db.channelReservationInbox.count({ where: { connectionId: row.connectionId, externalId: row.externalId, status: "APPLIED", version: { gt: row.version } } });
-  if (newer > 0) return reject(row, "STALE");
+  // ฉบับต่ำกว่าที่ APPLIED แล้ว (ทั้งร้าน · ไม่ผูกหน่วย) ⇒ STALE (ตรวจก่อนดูห้อง · §10.7 · ผู้ตรวจ A R-10)
+  if (await newerApplied(scanDb(), row)) return reject(row, "STALE");
   const p = InboundSchema.safeParse(row.raw);
   if (!p.success || p.data.externalId !== row.externalId || p.data.version !== row.version || !(p.data.checkOut > p.data.checkIn)) return reject(row, "INVALID");
   const inb: Parsed = p.data;
-  const active = await tenantDb({ tenantId: row.tenantId, unitId: row.unitId }).hotelReservation.findMany({
-    where: { channelConnectionId: row.connectionId, channelRef: row.externalId, status: { in: [...ACTIVE_RV] } },
-    orderBy: { createdAt: "asc" },
-    select: { id: true },
-  });
+  // การจอง active ของเลขนี้ทั้งร้าน — อ่านนอก lock ได้: appliedHook ตรวจซ้ำหลัง lock (ไม่ตรง ⇒ DUPLICATE ⇒ อ่านใหม่)
+  const active = await activeOfExt(scanDb(), row);
+  // มติรอบ 2 (R-10): การจองเดิมอยู่คนละหน่วยกับฉบับนี้ ⇒ ไม่ย้าย/ยกเลิกข้ามหน่วยเอง ⇒ คิวต้องจัดห้อง MANUAL_REQUIRED
+  if (active.some((x) => x.unitId !== row.unitId)) return needsRoom(row, "MANUAL_REQUIRED");
   const ctx = { tenantId: row.tenantId };
 
   if (inb.status === "CANCELLED") {
