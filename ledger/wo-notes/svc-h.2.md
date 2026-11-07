@@ -3,7 +3,7 @@
 > worktree `/root/projects/shark-svc-l3` · branch `wip/svc-h2` (ฐาน e02e7e5a2 = session/svc + H.1 + H.3) · 7 พ.ย. 2569 · ผู้คุม: Fable · builder: Opus 5.5
 > สัญญา: ใบสั่ง `ledger/svc-briefs/svc-brief-h.2.md` (§0–§7 · §7 มติผู้คุม 12 ข้อ) · สเปก `docs/modules/01-hotel.md` §5.3 §7.5 §11 · ภาพ `ledger/design-dorm/08-hotel-tape.png`
 > ข้อสอบใบ: `scripts/qc-svc-h.2.mts` (84 ข้อ · builder ไม่แก้) · ระดับตรวจ: **เข้ม** (กันจองซ้อน) · ฐาน qc-svc เลน l3 `ep-royal-bar`
-> commit: `96e846560` (งานหลัก) · commit นี้ (wo-notes) · pre-commit ข้ามด้วย `--no-verify` (ผู้คุมรัน fitness/Prisma ตอนรับ · builder รัน fitness เองแล้ว 53/53 ทั้ง 2 โหมด)
+> commit: `96e846560` (งานหลัก) · `1c67964d5` (wo-notes รอบ 1) · `4e0f13218` (รอบ 2 · repack) · commit นี้ (wo-notes รอบ 2) · pre-commit ข้ามด้วย `--no-verify` (ผู้คุมรัน fitness/Prisma ตอนรับ · builder รัน fitness เองแล้ว 53/53 ทั้ง 2 โหมด)
 
 ## 1. ไฟล์ที่แตะ (ทั้งหมดอยู่ใน §1 ของใบ)
 | ไฟล์ | ใหม่/แก้ | ทำอะไร |
@@ -37,6 +37,16 @@
 | fitness มี env / `env -u DATABASE_URL` | 53/53 · 53/53 |
 | h.0 · r0.8 · r0.9 · d.13 · smoke · ภาพ · probe-h2-b | ไม่ได้รัน (เลน builder) |
 
+### รอบ 2 (ฐาน 8bc3cbd3c = ORACLE-EDIT ผู้คุม D1–D9 + h.1 U-3/U-4)
+| ชุด | ผล |
+|---|---|
+| qc-svc-h.2.mts (ไฟล์จริง @8bc3cbd3c) | **รันไม่ได้ — syntax error** `Transform failed: scripts/qc-svc-h.2.ts:676:4 Unexpected "const"` · เหตุ: ORACLE-EDIT แทรก `// ORACLE-EDIT …` กลางบรรทัด **:675 (h2-D3)** และ **:955 (h2-D6)** ก่อนอาร์กิวเมนต์ข้อความ (template string) ⇒ ส่วนท้ายบรรทัดกลายเป็นคอมเมนต์ วงเล็บไม่ปิด · builder ไม่แก้ไฟล์ข้อสอบ — ขอผู้คุมย้ายคอมเมนต์ไปท้ายบรรทัด (log `/root/svc-runs/h2/builder/r2-h2.txt`) |
+| สำเนาชั่วคราวที่ย้ายคอมเมนต์ 2 บรรทัดนั้นไปท้ายบรรทัดเท่านั้น (`mkpatch2.py` · ไม่เปลี่ยนเงื่อนไข · สร้าง-รัน-ลบ) @4e0f13218 | `JSON_SUMMARY {"suite":"qc-svc-h.2","total":84,"passed":75,"failed":["F-1"],"skipped":["V-1","G-1".."G-7"]}` — F-1 แดงเพราะไฟล์สำเนาชั่วคราวเองอยู่ในทรี (ทรีสะอาด ⇒ SKIP) · TC 12/12 · OC 4/4 · TD 6/6 · BL 9/9 · MV 5/5 · X 5/5 · P 3/3 · U 16/16 · Q 5/5 · tapeChart 100×31 ≈ 26 ms · 6 คิวรี (log `r2c-h2-tmp.txt`) |
+| qc-svc-h.3 --no-regression @4e0f13218 | `{"suite":"qc-svc-h.3","total":109,"passed":98,"failed":[],"skipped":["F-1","V-1","G-1".."G-9"]}` (`r2c-qc-svc-h.3.txt`) |
+| qc-svc-h.1 --no-regression @4e0f13218 | `{"suite":"qc-svc-h.1","total":122,"passed":112,"failed":[],"skipped":["F-1","V-1","G-1".."G-8"]}` (`r2c-qc-svc-h.1.txt`) |
+| tsc เฉพาะไฟล์ (เพิ่ม booking.ts) · fitness | 0 error · 53/53 |
+- ⚠️ F-1/F-2/F-3 ของ h.2 ตรวจ "git status ของทรี" — ระหว่างที่ booking.ts ยังไม่ commit F-3 แดง (booking.ts ต้องห้ามตาม §1) · หลัง commit ทรีสะอาด ⇒ ผ่าน/SKIP · การแตะ booking.ts = มติผู้คุมข้อ 2 (ดู §7 D8)
+
 ## 4. กลุ่ม X
 | กลุ่ม | | check ids |
 |---|---|---|
@@ -56,6 +66,7 @@
 - **D6 · BL-9 / X-2 ชื่อโค้ด H.3**: ข้อสอบคาด `ROOM_TAKEN` (`:960` · `:1061`) แต่ H.3 `assignRoom` แปลง ROOM_TAKEN ของแกนห้องเป็น `ROOM_BUSY` (`booking.ts:1266/1271` · รวม `:1374` reschedule) ⇒ พฤติกรรมถูก (ไม่ทับ · ห้องสำเร็จ 1) แต่โค้ดต่าง · ลายเซ็นฟังก์ชันอื่นที่ข้อสอบเรียกตรงกับ H.3 จริงทั้งหมด (createBooking · takeBookingDeposit{unitId,reservationId,payType} · cancelBooking{unitId,reservationId,reason} · assignRoom/rescheduleBooking/moveBooking{unitId,id,…} · extend/shortenBooking{unitId,id,newCheckOut} · hotelAvailability.get · service.checkIn(tenantId,unitId,id,roomId)) · ขอ ORACLE-EDIT รับ `ROOM_BUSY` (MV-3 รับแล้ว)
 - **D7 · MV-2 นับ occupancy ทั้งห้อง**: `:986` นับ occupancy active ทั้งหมดบน DLX3 (ไม่กรอง refId/ช่วง) แต่ BL-9 (`:958`) สร้าง P1 ดีลักซ์ +10 ที่ระบบเลือกห้องให้ลง DLX3 และไม่ลบ — วินิจฉัยในสำเนา: `DIAG DLX3 [{"refId":"<P1>","startDate":"+10","endDate":"+11"}]` ⇒ ย้าย C3 สำเร็จจริง (roomId/nights/occupancy ของ C3 ผ่าน) · ขอ ORACLE-EDIT กรอง `refId: RV.C3.id` หรือยกเลิก P1 ใน finally ของ BL-9
 - **D8 · MV-3 แถวคืนที่เลิกนับ**: `:995` คาด nights ของ C3 หลังเลื่อน = แถว counted 2 แถว แต่ H.3 `rescheduleBooking` เก็บแถวคืนเดิมไว้เป็น `counted=false, roomId=null` (`booking.ts` "แถวคงอยู่" แบบเดียวกับ shortenBooking · MV-4 กรอง counted แล้วผ่าน) ⇒ ได้ `[[+3,null,false],[+4,DLX3,true],[+5,DLX3,true]]` · ขอ ORACLE-EDIT กรอง counted · ⚠️ ส่วน "เด้งกลับ" ของ MV-3 (C3 → DLX2 +1..+3 ชน C2) ยังไม่ถูกรัน — H.3 `repackRoom` อาจย้าย C2 (CONFIRMED ประเภทเดียวกัน) ไปห้องว่างแล้วให้การย้ายสำเร็จ ⇒ อาจแดงต่อหลัง ORACLE-EDIT (ตัดสินที่มติ H.3 D7 "จัดห้องให้รายการที่ขวาง")
+  - **มติผู้คุม 7 พ.ย. (รอบ 2): การลากบน tape chart ต้องไม่ย้ายการจองคนอื่นเงียบ ๆ** ⇒ แตะ H.3 `booking.ts` จุดเดียวตามที่อนุญาต: `ReschedInput` เพิ่ม `repack?: boolean` (ไม่ส่ง = true = พฤติกรรมเดิม · oracle h.3 98/98 ไม่เปลี่ยน) · `repackRoom` ทำเมื่อ `repack !== false` · เพิ่ม `moveBooking(actor, ctx, input)` = `rescheduleBooking(…, {...input, repack:false})` · facade `moveBooking` ชี้ฟังก์ชันนี้แทน alias เดิม (ข้อสอบ h.2 MOVE() ใช้ facade moveBooking) · `moveBookingAction` เรียก `hotelBooking.moveBooking` · `assignRoom` ไม่มี repack (ห้องไม่ว่าง ⇒ ROOM_BUSY อยู่แล้ว) · `resizeBookingAction` ใช้ extend/shorten ซึ่งไม่ repack · ฉาก h.2 ใช้ `rescheduleBooking` (repack เดิม) เป็นทางสำรองตอนปักห้อง · ผล: MV-3 ส่วนเด้งกลับ (C3 → DLX2 ชน C2) = ROOM_BUSY ไม่มีอะไรเปลี่ยน · sds อัปเดตแล้ว
 - **D9 · U-4 package.json**: `:1189` ตรวจว่า package.json "มี" @dnd-kit — แต่ `@dnd-kit/core|sortable|utilities` อยู่ใน package.json มาก่อน (ใช้โดยโมดูลอื่น · commit e094f8fce ก่อน RUN) · ใบนี้ไม่แตะ package.json (F-3 ผ่าน) · ขอ ORACLE-EDIT เทียบ diff กับฐาน (`git diff e02e7e5a2 -- package.json`)
 - **D10 · regression h.1 ที่ตั้งใจแดง (ใบ §6)**: แท็บ calendar เปิด ⇒ `qc-svc-h.1` **U-3** (คาด calendar available false) และ **U-4** (frontdesk ไม่มี «ปฏิทินห้อง») แดงทั้งคู่ — ใบ §6/G-2 (`qc-svc-h.2.mts:1475 judgeAllow(["U-4"])`) ยอมแค่ U-4 ⇒ G-2 จะแดงเพราะ U-3 · ขอ ORACLE-EDIT h.1 U-3+U-4 และ/หรือ G-2 allow ["U-3","U-4"]
 
@@ -65,10 +76,10 @@
 | BLOCK อนาคตไม่เปลี่ยน hkStatus เป็น OUT_OF_ORDER เมื่อถึงวัน (ไม่มีงานตามเวลา) | ใบไม่มีงานตามเวลา · สูตรเหลือขายนับ BLOCK อยู่แล้ว | H.6 (แม่บ้าน) |
 | ย้ายข้ามประเภทไม่คิดส่วนต่าง | S:911 🔜 | — |
 | ลากบนมือถือไม่มี (ไดอะล็อกเลือกเอง) | มติ 9 | — |
-| ADR ปัดลง (ตามตัวอ้างอิงข้อสอบ) ไม่ใช้ `rooms.money.rounding` | ใบ §7 ข้อ 6 vs ข้อสอบ — ทำตามข้อสอบ | ผู้คุม |
+| ADR ปัดลง (floor สตางค์ ตามข้อสอบ) ไม่ใช้ `rooms.money.rounding` | มติผู้คุม 7 พ.ย. รอบ 2: คงตามข้อสอบ | ภายหลัง |
 | "ออกวันนี้ ก่อน checkOutTime" ในการ์ดไม่แสดงเวลา | ตัวอ้างอิงไม่ใช้เวลา | H.4 |
 | ศ.–ส. % ใช้ศุกร์/เสาร์ตายตัว (ไม่อ่าน weekendDays) เพื่อคง ≤ 4 คำสั่งของ hotelToday | ป้ายเขียน "ศ.–ส." | H.7 |
-| ป้าย source ในแถบเป็นไทย ("เดินเข้า/โทรจอง/หน้าเว็บ") ต่างจากภาพ ("walk-in") | กติกาไทยทั้งหมด | PARITY ผู้คุม |
+| ป้าย source ในแถบเป็นไทย ("เดินเข้า/โทรจอง/หน้าเว็บ") | มติผู้คุม 7 พ.ย. รอบ 2: ถูกต้อง (ใบ §4 ไทยทั้งหมด · ภาพ 08 เป็นภาพร่าง) — ไม่ใช่หนี้ | — |
 | ภาพ/PARITY · probe-h2-b · tsc ทั้งโปรเจกต์ · G ทั้งชุด | กติกาเลน | ผู้คุม |
 
 ## 9. สิ่งที่ H.4 / H.5 / H.6 ต้องรู้
