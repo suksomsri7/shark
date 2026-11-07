@@ -79,3 +79,17 @@ H.10: OTA ใช้ `createBooking(source OTA)` เส้นเดียวก�
 7. **กันสแปม**: ไม่มี Turnstile widget/site key ในระบบ ⇒ v1 = `checkRateLimitDb` + honeypot `_sd_hp` + ตั๋วเวลาเริ่ม (`forms/spam-guard.ts` `issueFormStartToken/readFormStartToken`) ตามใบ · Turnstile = หนี้ (ต้องการคีย์จากเจ้าของ · Q-H8-1)
 8. **ทางเดิม P1**: `service.ts createReservation/recordDeposit/getPublicReservation` และ `scripts/qc-hotel-public.mts` ต้องผ่านเท่าเดิม (regression) · หน้า `/hotel` และ `/hotel/r/[publicToken]` เดิมถูกแทนด้วย V2 แต่ URL คง · `listPublicAvailability` แทนด้วย `publicSearch` (ราคาจากเครื่องคิดราคา H.1 ไม่ใช่ baseRateSatang)
 9. **ภาพ/สิ่งอำนวยความสะดวก**: จากคอลัมน์ `HotelRoomType.images/amenities/bedType` (H.0) · ไม่มีรูป = กล่องเทา "รูปห้อง…" ตามภาพ 16 ก
+
+## 10. มติผู้คุมต่อคำถามผู้เขียนข้อสอบ (7 พ.ย. · ข้อสอบ 84 ข้อ @6b9107b0a บน wip/svc-h8-oracle) — builder ยึดตามนี้
+1. **ลายเซ็น public**: ทุกฟังก์ชันใน `platform/hotel-web.ts` รับ `(input, opts)` · `opts = { clientKey, now?, deps? }` แบบ `dorm-portal.ts` · input ทุกตัวมี `tenantSlug + unitSlug` (รวม publicStatus/publicLookup/publicCancel/publicAttachSlip/publicPayDeposit — ด่าน X1 token ร้าน B) · เกินเพดาน rate = code `RATE_LIMITED`
+2. **ตั๋วเริ่มฟอร์ม**: export `holdFormStart(unitId, now?)` จาก hotel-web.ts (ห่อ `issueFormStartToken` formId ของใบ) · `publicCreateHold` รับ `spam: {hp, st}` + `idempotencyKey` + `rooms[{roomTypeId, qty, ratePlanId, adults?, children?}]` (adults/children ต่อห้อง · ระดับบนเป็นค่าเริ่ม)
+3. `publicAttachSlip(input, opts)` รับ `opts.deps {put, del}` ส่งต่อ `submitSlip` (QC ไม่ยิง Bunny จริง)
+4. `platform/hotel-mail.ts`: `notifyGuest(kind, reservationId, locale?, deps?: {fetch})` · export `GUEST_MAIL_KINDS = ["hold","confirmed","reminder","cancelled","expired"]` · idempotencyKey `hotel-mail-<kind>-<reservationId>` · consumer H.3 events เรียก notifyGuest · dev (ไม่มี RESEND_API_KEY) = log "[email:dev] rich" (ข้อสอบจับ)
+5. งานเตือน: `registerMinuteJob({ name: "hotel-guest-reminder", everyMinutes: 60, cadence: "daily" … })` run(now) ส่งเฉพาะ CONFIRMED ที่ checkIn = พรุ่งนี้ร้าน · ซ้ำไม่ส่ง (idempotencyKey)
+6. **§2.1 แก้**: publicSearch ≤ **14** คิวรี (CRITICAL · กัน N+1) · ≤ 6/< 400 ms = เป้าหมาย (MINOR) · ธง "เหลือ N ≤ 3" ใช้คีย์ `lowStock: true` (ข้อสอบรับ /low|few|last|urgent|scarce/)
+7. จ่ายช้า (PY-6/7): ข้อสอบใช้ `holdMinutesOnline=1` บนหน่วยทดสอบ + `sweepExpiredHolds({now})` ใต้ SVC_QC_CLOCK — builder ไม่ต้องเพิ่ม `opts.now` ให้ publicCreateHold (ถ้ามีก็ส่งต่อเป็น `at`)
+8. seed svcqc ต้องมี `PaymentProfile.promptpayId` (มีแล้ว) — ฉาก h.8 ต้องตรวจก่อนสร้าง QR และบอกเหตุชัดถ้าไม่มี
+9. **ฉาก h.8 (builder)**: ล้างฉาก h.5/h.3/h.2 ก่อน (ยืนบน h.1) · แถวเว็บระบุด้วย guestEmail ของฟิกซ์เจอร์ · แถวเคาน์เตอร์ `note` มี mark `SvcQcScene:h8` · **SCENE_SUMMARY ต้องมี** `{ checkIn, checkOut, holdToken, confirmedToken, qs: "checkIn=…&checkOut=…&adults=2&rooms=1" }` (chain ตั้ง SVC_VIS_H8_QS/HOLD_TOKEN/CONF_TOKEN จากนี้) · `--clear`
+10. ภาพ V ใช้ `--user owner` (visual-svc ไม่มี user none · หน้าสาธารณะไม่สนใจ cookie)
+11. `cancelBooking … by GUEST`: AuditLog actorType SYSTEM + after มี `by: "GUEST"` · event `hotel.booking.cancelled` payload เดิมของ H.3 (ไม่เพิ่ม `by` — ชน ALLOWED_PAYLOAD h.3 N-2) · `reason: "GUEST_CANCELLED"`
+12. ไฟล์ของใบ = §1 + §9 (platform/hotel-web.ts · hotel-mail.ts) — ชื่อ §1 `modules/hotel/{storefront,guest-notify,deposit-intent}.ts` **ไม่ใช้** (ข้อสอบโหลดจาก platform เท่านั้น)
