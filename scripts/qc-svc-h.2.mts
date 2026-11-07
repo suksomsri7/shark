@@ -1040,14 +1040,14 @@ try {
     const oldR = rooms.find((r: Any) => r.id === R.SUP1), newR = rooms.find((r: Any) => r.id === R.DLX4);
     eq([oldR?.status, oldR?.hkStatus, newR?.status], ["CLEANING", "DIRTY", "OCCUPIED"], "สถานะห้องเดิม/ใหม่");
   });
-  await st("MV-7", "previewMove ข้ามประเภท + เพิ่มคืน (ผู้ตรวจ MAJOR 2 · probe C9.1): จอง PV ซูพีเรีย +20 1 คืน → preview {roomId: DLX4, checkOut: +22} ⇒ ok · addedNights 1 · keptSatang+addedSatang=totalSatang · แล้ว moveBooking เดียวกัน ⇒ Σ priceSatang ของคืนที่นับ (2 คืน) = totalSatang ของ preview ทุกสตางค์", async () => {
+  await st("MV-7", "previewMove ข้ามประเภท + เพิ่มคืน (ผู้ตรวจ MAJOR 2 · probe C9.1): จอง PV ซูพีเรีย +40 1 คืน → preview {roomId: DLX4, checkOut: +42} (ช่วงไม่ชน X-3 ที่ใช้ DLX4 +20..+21) ⇒ ok · addedNights 1 · keptSatang+addedSatang=totalSatang · แล้ว moveBooking เดียวกัน ⇒ Σ priceSatang ของคืนที่นับ (2 คืน) = totalSatang ของ preview ทุกสตางค์", async () => {
     needMove(); needFx();
     const PREV = tapeL.mod?.previewMove ?? hotelL.mod?.previewMove;
     ok(typeof PREV === "function", "ไม่มี previewMove ใน tape.ts/facade");
-    const pv = await mkBooking("PV", { type: RTA.sup, checkIn: D(20), nights: 1, source: "PHONE", guest: "ทดสอบ preview", want: "CONFIRMED" });
-    const p = okRes(await PREV(ctxA, { unitId: UH, id: pv.id, roomId: R.DLX4, checkIn: D(20), checkOut: D(22) }), "previewMove");
+    const pv = await mkBooking("PV", { type: RTA.sup, checkIn: D(40), nights: 1, source: "PHONE", guest: "ทดสอบ preview", want: "CONFIRMED" });
+    const p = okRes(await PREV(ctxA, { unitId: UH, id: pv.id, roomId: R.DLX4, checkIn: D(40), checkOut: D(42) }), "previewMove");
     ok(Array.isArray(p.addedNights) && p.addedNights.length === 1 && Number.isInteger(p.totalSatang) && Number.isInteger(p.addedSatang) && Number.isInteger(p.keptSatang) && p.keptSatang + p.addedSatang === p.totalSatang && p.addedSatang > 0, `รูป preview ${J(p).slice(0, 200)}`);
-    okRes(await MOVE()(OWNER, ctxA, { unitId: UH, id: pv.id, roomId: R.DLX4, checkIn: D(20), checkOut: D(22) }), "move PV");
+    okRes(await MOVE()(OWNER, ctxA, { unitId: UH, id: pv.id, roomId: R.DLX4, checkIn: D(40), checkOut: D(42) }), "move PV");
     const nights = await prisma.hotelBookingNight.findMany({ where: { reservationId: pv.id, counted: true }, select: { priceSatang: true, roomId: true } });
     eq([nights.length, nights.reduce((a: number, n: Any) => a + n.priceSatang, 0), nights.every((n: Any) => n.roomId === R.DLX4)], [2, p.totalSatang, true], "preview ≠ ที่บันทึกจริง");
   });
