@@ -123,3 +123,14 @@
 | m5 แก้ทะเบียนแถวเดิมต้องกรอกเลขเอกสารใหม่ · CheckinPanel ไม่มีปุ่มแก้แถวเดิม (มีแต่เพิ่มผู้พักร่วม) | ฟอร์มไม่เติมเลขเต็มจาก DTO (PDPA) — ต้องออกแบบ "คงเลขเดิม" ฝั่งเซิร์ฟเวอร์ | ใบเก็บกวาด H.x |
 | m4 rr3Card ไม่มี userId ⇒ ลิงก์ของผู้บันทึก | PD-6 บังคับลิงก์ (ข้อแย้งด้านบน) | ORACLE-EDIT |
 | E3.3 CDN เสิร์ฟ path private | storage C0.4 นอกใบ | คำถามเจ้าของ |
+
+## 13. รอบ 4 (ฐาน 36bf52198 = merge H.5 · ORACLE-EDIT PD-6 4c768a695)
+- ตรวจผล merge ในไฟล์ของใบ ([id]/page.tsx · service.ts · บล็อก H.4 ของ actions/index): import/ชนิดถูก · tsc เฉพาะไฟล์ 0 error
+- m4: `rr3Card` ไม่มี `ctx.userId` ⇒ ไม่ออกลิงก์ไฟล์ (signatureUrl/idImageUrl = null) — ถอด fallback ผู้บันทึกแล้ว
+- เงินประกัน: ฉาก h.4 เรียก `takeSecurityDeposit` (H.5 · facade) ผ่าน · การ์ดเช็กอิน `SecurityDepositStep` ลิงก์ `?tab=money` → FolioPanel ของ H.5 (ปุ่มรับเงินประกัน takeSecurityDepositAction) — ไม่เรียกซ้ำจากการ์ด (เลือกวิธีจ่ายที่แท็บเงินที่เดียว)
+- ฉาก: tape --clear → h4 --clear → booking (12) → folio (8/2) → guest h4 (4 แขก · 8 อัปเดต) → guest h4 ซ้ำ 0/0/0 · ทุกขั้น exit 0
+- ผล (`/root/svc-runs/h4/builder/r4-*.txt` · chain4.log):
+  - **qc-svc-h.4 --no-regression 95/106 · failed []** · skip F-1 V-1 G-*
+  - qc-svc-h.3 98/109 failed [] · qc-svc-h.2 78/87 failed [] · qc-svc-h.1 112/122 failed []
+  - 🔴 qc-svc-h.5 --no-regression 75/95 · failed [ST-14 · GL-4] — ข้อสอบ h.5 เช็กอินด้วย checkIn เดิมบนหน่วยที่ไม่ได้ปิด requireRegistration (UH3 ร้าน A · UHB ร้าน B) ⇒ GUEST_REQUIRED ตามมติทาง (ข) · ขอ ORACLE-EDIT ปิดค่าตั้งที่ UH3/UHB แบบเดียวกับ UH
+  - probe-h4-b 50/53 · failed [E3.3 (CDN private นอกใบ · Q-H4-3) · E3.6 · E5.6] — **E3.6/E5.6 เป็น "ข้อสังเกต" ที่เขียนให้ผ่านเมื่อพฤติกรรมเก่ายังอยู่** (E3.6 ผ่านเมื่อมี fallback ลิงก์ผู้บันทึก · E5.6 ผ่านเมื่อ dob ยังค้างหลัง purge) ⇒ แดงเพราะแก้ m4/m1 แล้ว = probe oracle ล้าสมัย (ควรกลับเงื่อนไข)
