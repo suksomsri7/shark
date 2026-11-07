@@ -16,6 +16,7 @@ let tenantId = "";
 try {
   const t = await prisma.tenant.create({ data: { name: "QC โรงแรม", slug: `qc-ht-${Date.now()}` } }); tenantId = t.id;
   const unit = await prisma.businessUnit.create({ data: { tenantId, type: "HOTEL", name: "รีสอร์ต", slug: "rs" } });
+  await prisma.settingValue.create({ data: { tenantId, key: "rooms.hotel.guest.requireRegistration", scope: "UNIT", scopeId: unit.id, value: false } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-legacy-checkin): H.4 ทำให้ checkIn เดิมต้องมีผู้พักเมื่อ rooms.hotel.guest.requireRegistration เปิด — ปิดที่หน่วยทดสอบ (try/catch: ก่อน H.4 merge คีย์ยังไม่มี)
   const posSys = await sys.createSystem(tenantId, "POS", "POS โรงแรม"); await sys.linkUnit(tenantId, posSys.id, unit.id);
   const accSys = await sys.createSystem(tenantId, "ACCOUNT", "บัญชี");
   await acc.saveSettings(tenantId, accSys.id, { orgName: "รีสอร์ต จำกัด", taxId: "0105561177639", vatRegistered: true } as never);
