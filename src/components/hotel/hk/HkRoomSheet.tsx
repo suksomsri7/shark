@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import HkChecklist, { loadChecks, type HkChecks } from "./HkChecklist";
 import HkMinibar, { type HkQty } from "./HkMinibar";
 import HkDefectDialog from "./HkDefectDialog";
-import HkOfflineQueue, { sendOrQueue } from "./HkOfflineQueue";
+import HkOfflineQueue, { isNetworkError, sendOrQueue } from "./HkOfflineQueue";
 import { contextTh, minutesSince, newIdempotencyKey, statusTh, thTime, type HkDefectSend, type HkMinibarItem, type HkRow, type HkSend } from "./hk-shared";
 
 const NO_CHECKS: HkChecks = {};
@@ -61,7 +61,7 @@ export default function HkRoomSheet(p: HkRoomSheetProps) {
   const run = (kind: "setStatus" | "start" | "release" | "finish" | "inspect", input: Record<string, unknown>, okText: string, after?: () => void) => {
     const send = p.senders[kind];
     start(async () => {
-      const res = kind === "start" || kind === "release" ? await send(input).catch(() => ({ ok: false, reason: "ไม่มีสัญญาณ — ลองใหม่เมื่อมีเน็ต" })) : await sendOrQueue(kind, input, send);
+      const res = kind === "start" || kind === "release" ? await send(input).catch((e: unknown) => ({ ok: false, reason: isNetworkError(e) ? "ไม่มีสัญญาณ — ลองใหม่เมื่อมีเน็ต" : "ระบบขัดข้อง ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง" })) : await sendOrQueue(kind, input, send);
       if (res.ok) {
         setMsg({ ok: true, text: okText });
         after?.();

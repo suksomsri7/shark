@@ -681,7 +681,8 @@ export async function reportDefectAction(unitSlug: string, form: FormData) {
   const photos: { data: Uint8Array; contentType: string }[] = [];
   for (const f of form.getAll("photos")) {
     if (typeof f === "string" || f.size === 0) continue;
-    if (photos.length >= 4 || f.size > 9 * 1024 * 1024) return { ok: false, code: "INVALID_FILE", reason: "แนบได้เฉพาะรูป JPEG, PNG หรือ WebP ไม่เกิน 3 รูป รูปละไม่เกิน 8 MB" } as const;
+    if (photos.length >= 3) return { ok: false, code: "INVALID_INPUT", reason: "แนบรูปได้ไม่เกิน 3 รูป" } as const; // ด่านเดียวกับ reportDefect (≤ 3)
+    if (f.size > 8 * 1024 * 1024) return { ok: false, code: "INVALID_FILE", reason: "แนบได้เฉพาะรูป JPEG, PNG หรือ WebP รูปละไม่เกิน 8 MB" } as const;
     photos.push({ data: new Uint8Array(await f.arrayBuffer()), contentType: f.type });
   }
   const days = Number(form.get("blockDays") ?? "");

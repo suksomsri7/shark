@@ -28,13 +28,22 @@ function writeQueue(q: HkQueued[]): void {
   window.dispatchEvent(new Event(HK_QUEUE_EVENT));
 }
 
-/** ส่งเลย · ส่งไม่ถึง (โยน = เน็ต) ⇒ เข้าคิว (idempotencyKey ต้องอยู่ใน input แล้ว) */
+/** error เครือข่าย (ส่งไม่ถึงเซิร์ฟเวอร์) เท่านั้นที่เข้าคิว — error ฝั่งเซิร์ฟเวอร์แสดงผลทันที ไม่ส่งซ้ำ (มติ §10 ข้อ 3) */
+export function isNetworkError(e: unknown): boolean {
+  if (e instanceof TypeError) return true;
+  const name = e instanceof Error ? e.name : "";
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  return name === "AbortError" || /Failed to fetch|NetworkError|Load failed/i.test(msg);
+}
+
+/** ส่งเลย · ส่งไม่ถึง (error เครือข่าย) ⇒ เข้าคิว (idempotencyKey ต้องอยู่ใน input แล้ว) · error อื่น ⇒ ตอบล้มทันที */
 type Sent = HkResult & { queued?: boolean };
 type Input = { [key: string]: unknown };
 export async function sendOrQueue(kind: HkQueueKind, input: Input, send: HkSend): Promise<Sent> {
   try {
     return await send(input);
-  } catch {
+  } catch (e) {
+    if (!isNetworkError(e)) return { ok: false, code: "SERVER_ERROR", reason: "ระบบขัดข้อง ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง" };
     const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey : `${kind}-${Date.now().toString(36)}`;
     const q = readQueue().filter((x) => x.id !== key);
     q.push({ id: key, kind, input: { ...input, idempotencyKey: key }, at: Date.now(), tries: 0 });
@@ -63,7 +72,13 @@ export default function HkOfflineQueue({ senders, onFlushed }: HkOfflineQueuePro
           writeQueue(readQueue().filter((x) => x.id !== item.id));
           sent++;
           if (!r.ok && r.reason) setNote(`ส่งรายการที่ค้างไม่สำเร็จ: ${r.reason}`);
-        } catch {
+        } catch (e) {
+          if (!isNetworkError(e)) {
+            // เซิร์ฟเวอร์ตอบผิดพลาด (ไม่ใช่เน็ต) ⇒ ทิ้งรายการ แจ้งผู้ใช้ ไม่ส่งซ้ำ
+            writeQueue(readQueue().filter((x) => x.id !== item.id));
+            setNote("รายการที่ค้างส่งไม่สำเร็จ (ระบบขัดข้อง) — ทำรายการนั้นใหม่อีกครั้ง");
+            continue;
+          }
           const left = readQueue().map((x) => (x.id === item.id ? { ...x, tries: x.tries + 1 } : x)).filter((x) => MAX_TRIES > x.tries);
           writeQueue(left);
           break; // เน็ตยังไม่มา — รอรอบหน้า

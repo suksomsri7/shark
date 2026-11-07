@@ -92,7 +92,8 @@ JSON_SUMMARY h.6: `{"suite":"qc-svc-h.6","total":95,"passed":81,"failed":["BD-4"
 | มินิบาร์รูป `{productId}` (สินค้า POS) ยังไม่แสดงบนมือถือ | ต้องอ่านชื่อ/ราคาจาก POS (Q7 ใบหลัง) | ใบมินิบาร์ POS |
 | ใบซ่อมของโรงแรม: ลิงก์ในการ์ดบอร์ดงานชี้ `/dorm/repairs/<id>` บน slug โรงแรม · ซ่อมเสร็จ ⇒ `onRepairDone` ส่ง LINE ผู้เช่า (ไม่มีสัญญา = ไม่ส่ง) | ใช้ระบบซ่อมของหอตามใบ (ห้ามเขียนใหม่) | ใบหน้าช่างโรงแรม |
 | ทะเบียนค่าตั้ง #75 ไม่มี `tableTh` (ตัวแก้ตารางใช้แบบดิบ) | ไม่อยู่ในขอบเขตจอ | H.7/ตั้งค่าโรงแรม |
-| commit ล้มหลัง setHkStatus ⇒ สถานะเปลี่ยนไม่มี log | setHkStatus ไม่รับ tx | แกนห้อง (R0.x) |
+| ~~commit ล้มหลัง setHkStatus~~ ปิดแล้วรอบ 2 (setHkStatus รับ tx) | — | — |
+| race blockRoom ↔ transition ห้องเดียวกัน (m2) | blockRoom ไม่ถือล็อกห้องของแม่บ้าน | H.9 |
 | ฉาก h.6 เช็กเอาต์ B203-out ย้อนไม่ได้ (บิล POS จริง) | --clear ฉาก h.2 ลบแถวการจองเอง (cascade folio) | — |
 | มอบหมายรายคนโดยหัวหน้า · รายงานเวลาเฉลี่ย | ใบ §0 "ไม่ทำ" | H.7 |
 
@@ -103,3 +104,10 @@ JSON_SUMMARY h.6: `{"suite":"qc-svc-h.6","total":95,"passed":81,"failed":["BD-4"
 
 ## 10. คืนสภาพ qc-svc
 - ข้อสอบล้างร้าน `svc-h6-*` เอง (Z-1) · ฉาก h.6 `--clear` คืน hkNote/คำขอแขก/ค่าตั้ง/มินิบาร์ (void)/สถานะห้องฉาก · การเช็กเอาต์ B203-out ไม่ย้อน
+
+## 11. รอบ 2 (หลังผู้ตรวจรอบ 1 · มติผู้คุม §10 ใบ h.6)
+- **M1 pool หมด** — `rooms/service.ts` `setHkStatus(ctx, input, opts?: { tx })` (ยกเว้น §1 แคบ ๆ · diff **เพิ่มอย่างเดียว** +32/−0: overload + `setHkStatusInTx` · ไม่ส่ง tx = ทางเดิมทุกไบต์) · `housekeeping.transition` ส่ง tx ของ withLock ⇒ log + outbox + สถานะห้อง + hkNote อยู่ใน tx เดียว 1 connection ต่อ op (ข้อสอบ ST-8 12 ห้องพร้อมกัน) · ไม่ใช้ semaphore
+- **M2 มินิบาร์ทั้งชุด** — ตรวจทั้งชุดก่อนโพสต์: คีย์ในค่าตั้ง · qty 1–20 · ราคาต่อหน่วยและ qty×ราคา ≤ `rooms.hotel.folio.manualItemMaxSatang` · folio ของแขกที่พักอยู่ต้อง OPEN (ไม่ OPEN ⇒ ค้างเก็บ) ⇒ ไม่ผ่านรายการเดียว = INVALID_INPUT ทั้งชุด · ของฟรี (ราคา 0) ไม่ลง folio/ไม่นับ posted แต่อยู่ใน `items` ของสรุปและ log ของ hkFinish · ค้างเก็บไม่รวมของฟรี · postFolioItem ยังเปิด tx ของตัวเอง (folio.ts ห้ามแตะ) — กันเงินซ้ำด้วย dup-check ต่อห้อง/วัน/คีย์ใต้ล็อก `minibar:<room>`
+- m1 conflicts ส่งชื่อแรกเท่านั้น · m3 action ตัดที่รูปที่ 4 ("แนบรูปได้ไม่เกิน 3 รูป" INVALID_INPUT) และขนาด > 8 MB = INVALID_FILE ตรงด่าน · m4 คิวออฟไลน์เข้าคิวเฉพาะ error เครือข่าย (`isNetworkError`: TypeError · AbortError · Failed to fetch/NetworkError/Load failed) — error อื่นแสดงทันที · รายการค้างที่เซิร์ฟเวอร์ตอบผิดพลาดถูกทิ้งพร้อมแจ้ง
+- **หนี้ H.9 (m2)**: race `blockRoom` (H.2) ↔ transition ห้องเดียวกัน — blockRoom ไม่ถือล็อก `hotel.hk:room` ⇒ ช่องแคบที่ hkStatus/log สลับลำดับได้ · syncBlockedRooms ตอน night audit แก้สถานะให้
+- m5 หัวหน้ากด INSPECTED บนห้องมีแขก = รับได้ (ตรวจหลังทำห้องระหว่างพัก) ไม่แก้

@@ -3,7 +3,7 @@
 //   • state machine = hk-state.ts (pure) · OUT_OF_ORDER เข้า/ออกเฉพาะระบบ (BLOCK ของ H.2 · night audit) — คนกด ⇒ USE_BLOCK
 //   • งานห้องวันนี้ = มุมมองคำนวณสด (ไม่มีตารางงาน) · ≤ 4 คำสั่ง SQL ต่อบอร์ด (ห้อง+หน่วย 1 · การจอง+BLOCK 1 · ค่าตั้ง 2)
 //   • hkNote = JSON {assignedTo, startedAt, guestRequest} (ไม่ขอคอลัมน์ใหม่) · ข้อความเดิมที่ไม่ใช่ JSON อ่านเป็นคำขอแขก
-//   • ความพร้อมกัน: ล็อกต่อห้อง pg_try_advisory_xact_lock + ลองซ้ำ (ผู้รอไม่ถือ connection ค้าง — setHkStatus ของแกนห้องเปิด connection ของตัวเอง)
+//   • ความพร้อมกัน: ล็อกต่อห้อง pg_try_advisory_xact_lock + ลองซ้ำ (ผู้รอไม่ถือ connection ค้าง) · setHkStatus ใน tx เดียวกับ log (1 connection ต่อ op)
 //     ⇒ กดพร้อมกันหลายทาง = log 1 · idempotencyKey ซ้ำ = คืนผลเดิม (ค้นจาก note.key ของ log ห้องนั้น)
 //   • มินิบาร์ → folio ผ่าน postFolioItem(MINIBAR) ของ H.5 (ราคา/ชื่อจากค่าตั้ง #75 ณ เวลาโพสต์ · ไม่ตัดสต็อก) · ไม่มีแขกพักอยู่ ⇒ minibar_unbilled
 //   • แจ้งของเสีย: BLOCK = blockRoom ของ H.2 · REPAIR = ใบซ่อมของหอ (dorm facade createStaffRepair · ด่าน DORM|HOTEL)
@@ -103,8 +103,8 @@ function isTxBusy(e: unknown): boolean {
 const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
 
 /**
- * ธุรกรรมที่ถือล็อกของ "ชื่อ" หนึ่ง (ต่อห้อง) — pg_try_advisory_xact_lock ไม่สำเร็จ ⇒ ปล่อย connection แล้วลองใหม่
- *   (ผู้ถือล็อกต้องใช้ connection ที่สองให้ setHkStatus/postFolioItem — ผู้รอจึงห้ามจอด connection ค้าง)
+ * ธุรกรรมที่ถือล็อกของ "ชื่อ" หนึ่ง (ต่อห้อง) — pg_try_advisory_xact_lock ไม่สำเร็จ ⇒ ปล่อย connection แล้วลองใหม่ (ผู้รอไม่จอด connection ค้าง)
+ *   transition ทำทุกอย่างใน tx นี้ (setHkStatus รับ tx · มติ §10 ข้อ 1) ⇒ 1 connection ต่อ op · ยกเว้นมินิบาร์ (postFolioItem ของ H.5 เปิด tx เอง)
  */
 async function withLock<T>(c: UnitCtx, name: string, fn: (tx: Tx) => Promise<T>): Promise<T | HkFail> {
   for (let attempt = 0; attempt < LOCK_TRIES; attempt++) {
@@ -233,8 +233,8 @@ async function transition(t: TransitionIn): Promise<TransitionOk | HkFail> {
       select: { id: true },
     });
     await emitOutbox(tx, { tenantId: c.tenantId, unitId: c.unitId, type: HK_EVENTS.changed, idempotencyKey: `${HK_EVENTS.changed}:${log.id}`, payload: { roomId, from, to, byUserId: t.byUserId } });
-    // แหล่งความจริงเดียว: แกนห้อง (connection ของตัวเอง · ล้ม ⇒ ย้อน log ทั้งก้อน)
-    const hk = await setHkStatus({ tenantId: c.tenantId }, { unitId: c.unitId, roomId, hkStatus: to });
+    // แหล่งความจริงเดียว: แกนห้อง ใน tx เดียวกับ log/outbox (มติ §10 ข้อ 1 · 1 connection ต่อ op · ล้ม ⇒ ย้อนทั้งก้อน)
+    const hk = await setHkStatus({ tenantId: c.tenantId }, { unitId: c.unitId, roomId, hkStatus: to }, { tx });
     if (!hk.ok) throw new HkAbort(fail(hk.code === "NOT_FOUND" ? "NOT_FOUND" : "BUSY", hk.code === "NOT_FOUND" ? R.notFound : R.busy));
     const next = t.patch ? serializeHkNote(t.patch(cur.note)) : room.hkNote;
     await writeRoomNote(tx, c, roomId, next, true);
@@ -384,24 +384,35 @@ async function minibarCore(g: RoomGate, lines: { key: string; qty: number }[], o
   if (!lines.length) return { posted: 0, unbilled: 0, amountSatang: 0, reservationId: null, items: [] };
   const keys = lines.map((l) => l.key);
   if (new Set(keys).size !== keys.length) return fail("INVALID_INPUT", "รายการมินิบาร์ซ้ำกัน — รวมจำนวนเป็นบรรทัดเดียว");
-  const catalog = await minibarItemsOf(g.tenantId, g.unitId);
+  // ตรวจทั้งชุดก่อนแตะเงิน (มติ §10 ข้อ 2): คีย์ในค่าตั้ง · ราคา/ยอดต่อรายการ ≤ เพดานรายการบิลห้อง — ไม่ผ่านรายการเดียว = ไม่โพสต์ทั้งชุด
+  const [catalog, maxRaw] = await Promise.all([
+    minibarItemsOf(g.tenantId, g.unitId),
+    resolveSettings({ tenantId: g.tenantId }, ["rooms.hotel.folio.manualItemMaxSatang"], { unitId: g.unitId }).then((r) => r["rooms.hotel.folio.manualItemMaxSatang"]?.value),
+  ]);
+  const manualMax = typeof maxRaw === "number" && Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : Number.MAX_SAFE_INTEGER;
   const items: MinibarSummary["items"] = [];
   for (const l of lines) {
     const it = catalog.find((x) => x.key === l.key);
     if (!it) return fail("INVALID_INPUT", "มีรายการมินิบาร์ที่ไม่อยู่ในค่าตั้งของโรงแรม — ดึงหน้าใหม่");
+    if (it.priceSatang > manualMax || it.priceSatang * l.qty > manualMax) return fail("INVALID_INPUT", `ยอดมินิบาร์ "${it.name}" เกินเพดานต่อรายการของบิลห้อง — ให้หน้าเคาน์เตอร์ลงบิลเอง`);
     items.push({ key: it.key, name: it.name, qty: l.qty, priceSatang: it.priceSatang });
   }
+  // ของฟรี (ราคา 0 ตามค่าตั้ง) ไม่ลง folio — อยู่ใน items ของสรุป/log เท่านั้น · posted = ที่ลง folio จริง
+  const priced = items.filter((i) => i.priceSatang > 0);
   const ymd = today();
   const suffix = opts.clientKey ? `-${opts.clientKey}` : "";
   const refOf = (k: string) => `svc-h6-minibar-${g.room.id}-${ymd}-${k}${suffix}`.slice(0, 200);
   const rv = await inHouseOf(g, g.room.id);
-  if (rv) {
+  const folio = rv ? await tenantDb(g).hotelFolio.findFirst({ where: { reservationId: rv.id }, select: { status: true } }) : null;
+  const folioOpen = !!rv && (!folio || folio.status === "OPEN"); // ยังไม่มีแถว folio = postFolioItem สร้าง OPEN ให้
+  if (rv && folioOpen) {
+    if (!priced.length) return { posted: 0, unbilled: 0, amountSatang: 0, reservationId: rv.id, items };
     const folioActor = elevate(g.actor, "hotel.folio.post");
     const res = await withLock(g, `minibar:${g.room.id}`, async (tx) => {
       let posted = 0;
       let amount = 0;
       const left: MinibarSummary["items"] = [];
-      for (const it of items) {
+      for (const it of priced) {
         const dup = await tx.hotelFolioItem.findFirst({ where: { tenantId: g.tenantId, unitId: g.unitId, type: "MINIBAR", refType: MB_REF, refId: refOf(it.key), voidedAt: null }, select: { id: true } });
         if (dup) continue;
         const r = await postFolioItem(folioActor, { tenantId: g.tenantId }, { reservationId: rv.id, type: "MINIBAR", description: `มินิบาร์ · ${it.name}`, qty: it.qty, unitAmountSatang: it.priceSatang, refType: MB_REF, refId: refOf(it.key) });
@@ -428,9 +439,10 @@ async function minibarCore(g: RoomGate, lines: { key: string; qty: number }[], o
     if (isHkFail(u)) return u;
     return { posted: res.posted, unbilled: res.left.length, amountSatang: res.amount, reservationId: rv.id, items };
   }
-  const u = await unbilled(g, items, ymd, suffix, opts.log);
+  if (!priced.length) return { posted: 0, unbilled: 0, amountSatang: 0, reservationId: rv?.id ?? null, items };
+  const u = await unbilled(g, priced, ymd, suffix, opts.log);
   if (isHkFail(u)) return u;
-  return { posted: 0, unbilled: items.length, amountSatang: 0, reservationId: null, items };
+  return { posted: 0, unbilled: priced.length, amountSatang: 0, reservationId: rv?.id ?? null, items };
 }
 
 /** มินิบาร์ค้างเก็บ (แขกออกไปแล้ว/บิลปิด) — event ครั้งเดียวต่อชุด + log หมายเหตุ (หน้าเคาน์เตอร์เลือก เรียกเก็บ/ยกให้) */
@@ -659,7 +671,7 @@ export async function reportDefect(
   const to = addDaysYmd(from, d.blockDays ?? 1);
   const b = await blockRoom(byBooking ? g.actor : elevate(g.actor, K_BOOKING), { tenantId: g.tenantId }, { unitId: g.unitId, roomId: g.room.id, from, to, reason: d.text });
   if (!b.ok) {
-    if (b.code === "ROOM_TAKEN") return fail("ROOM_TAKEN", "ห้องนี้มีแขกพัก/จองอยู่ในช่วงที่จะปิด — เลือก \"แจ้งช่าง\" แทน", { conflicts: b.conflicts, suggest: "REPAIR" });
+    if (b.code === "ROOM_TAKEN") return fail("ROOM_TAKEN", "ห้องนี้มีแขกพัก/จองอยู่ในช่วงที่จะปิด — เลือก \"แจ้งช่าง\" แทน", { conflicts: (b.conflicts ?? []).map((x) => ({ code: x.code, guestName: firstName(x.guestName) ?? "" })), suggest: "REPAIR" });
     const code: HkFailCode = b.code === "NOT_FOUND" || b.code === "FORBIDDEN" || b.code === "BUSY" ? b.code : "INVALID_INPUT";
     return fail(code, b.reason);
   }

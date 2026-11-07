@@ -5,6 +5,7 @@
 //   • ต้องออนไลน์ (รูปไม่เข้าคิวออฟไลน์)
 import { useState, useTransition, type FormEvent } from "react";
 import { newIdempotencyKey, type HkDefectSend } from "./hk-shared";
+import { isNetworkError } from "./HkOfflineQueue";
 
 const MAX_PHOTOS = 3;
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -55,8 +56,8 @@ export default function HkDefectDialog({ rooms, roomId, roomNumber, canBlock, ac
           return;
         }
         setMsg({ ok: false, text: r.reason ?? "ส่งไม่สำเร็จ — ลองใหม่อีกครั้ง" });
-      } catch {
-        setMsg({ ok: false, text: "ไม่มีสัญญาณ — การแจ้งพร้อมรูปต้องออนไลน์ ลองใหม่เมื่อมีเน็ต" });
+      } catch (e) {
+        setMsg({ ok: false, text: isNetworkError(e) ? "ไม่มีสัญญาณ — การแจ้งพร้อมรูปต้องออนไลน์ ลองใหม่เมื่อมีเน็ต" : "ระบบขัดข้อง ส่งไม่สำเร็จ — ลองใหม่อีกครั้ง" });
       }
     });
   };
