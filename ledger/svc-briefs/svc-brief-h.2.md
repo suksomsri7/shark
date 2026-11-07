@@ -45,11 +45,14 @@
 ## 4. จอ (ภาพ 08 · PARITY ผู้คุม)
 หัว: "ปฏิทินห้อง" + สลับ สัปดาห์/2 สัปดาห์/เดือน + ช่วงวัน ‹ › + ปุ่ม "ปิดห้อง" + "จองใหม่" (→ วิซาร์ด H.3) · KPI 5 การ์ด · กริด: คอลัมน์ห้อง (เลข + ป้าย hk) + 7/14/30 คอลัมน์วัน (วันนี้ไฮไลต์) · หัวกลุ่มประเภทพร้อมราคา · แถบตามมติ 1 · แถวอัตราเข้าพักท้ายกริด · คำอธิบายแถบ 6 แบบ + หมายเหตุ OTA (ภาพ 08 ล่างขวา) · คลิกแถบ = ป็อปสรุป + ลิงก์รายละเอียด (H.3) · ไทยทั้งหมด · ตัวเลขจุลภาค
 
-## 5. ฉาก «svc-qc-hotel-tape-scene.mts»
-ต่อยอดฉาก H.3 ให้ตรงภาพ 08 ในสัปดาห์ปัจจุบัน: B101 พักอยู่ออกพรุ่งนี้ · B102 walk-in วันนี้ · B103 ปิดซ่อม 3 วัน · B104 Agoda 3 คืน (source OTA) · B105 พักอยู่ · B106–B201 กลุ่มงานแต่ง 3 ห้อง ศ.–ส. · B202 Booking.com 3 คืน · B203 ออกวันนี้ + HOLD รอมัดจำถึง 18:00 · B204 LINE มาถึงวันนี้ · B205 รายเดือน (มีอยู่จากฉากหอ) · B206 ครอบครัว ศ. · B207 หน้าเว็บ พ.–ศ. · ทั้งหมดผ่าน `createBooking`/`blockRoom` เท่านั้น · idempotent · `--clear`
+## 5. ฉาก «svc-qc-hotel-tape-scene.mts» (builder)
+**แหล่งความจริง = `scripts/svc-qc-data.mts` `SQC_HOTEL_TAPE_SCENE`** (ผู้คุมตั้ง 7 พ.ย. · 11 การจอง + 1 BLOCK · mark `SvcQcScene:h2`) — ฉากเดี่ยว ไม่ต่อยอดฉาก h.3 (ใช้ห้องชุดเดียวกัน ⇒ ก่อนรันให้ `svc-qc-hotel-booking-scene.mts --clear`) · สร้างผ่าน `createBooking` → `takeBookingDeposit` → `assignRoom(pinRooms)` → `checkIn` เดิม (CHECKED_IN · ใช้ `at` มติ h.3 ข้อ 13) → `blockRoom` (B103) · วันยึด offset จากวันนี้ (ตั้งใจไม่ยึด ศ./ส. ให้ตัวเลขคาดคงที่) · B203 HOLD = รอโอนหน้าเคาน์เตอร์ (COUNTER) · B205 รายเดือนมาจากฉากหอ (ไม่สร้าง)
+- idempotent + `--clear` (เหมือนฉาก h.3) · SCENE_SUMMARY พิมพ์ id ต่อ key + blockId
+- ตัวเลขคาด = `SQC_HOTEL_TAPE_SCENE.expectToday` (เข้า 2 · ออก 1 · พักอยู่คืนนี้ 4 · แถบอัตราเข้าพักคืนนี้ 5/12 รวม HOLD counted · ปิดซ่อม 1 · ขายได้ 12) + `expectBars7d` (STAY 3 · CONFIRMED 7 · OTA 2 · HOLD 1 · BLOCK 1)
 
 ## 6. เกณฑ์รับ · regression · X
 - «qc-svc-h.2.mts» ผ่านทุกข้อ · probe-h2-b breach 0 · tsc 0 · fitness 2 โหมด · perf ตามมติ 6 (ข้อสอบวัดจริงบนฉาก 100 ห้องชั่วคราว) · ภาพ h.2 (calendar week/month desktop · mobile · hotel-today) owner/frontdesk/แม่บ้าน(read-only) · PARITY ภาพ 08
 - G: qc-svc-h.3 · h.1 · h.0 · r0.8 · r0.9 (ยอม G-1) · d.13 (หอไม่เปลี่ยน) · smoke
 - X1 ข้ามร้าน · X4 ลากพร้อมกันสองคนห้องเดียวกัน = สำเร็จ 1 · X9 สิทธิ์ 3 ระดับ · X10
 - หนี้ที่รู้: ย้ายข้ามประเภทไม่คิดส่วนต่าง (S:911 🔜) · ลากบนมือถือไม่มี
+- ⚠️ regression ที่จะแดงโดยตั้งใจเมื่อเปิดแท็บ calendar: `qc-svc-h.1` U-4 คาด frontdesk เห็นแท็บ ["การจอง","หน้าเคาน์เตอร์","ราคา"] (ไม่มี "ปฏิทินห้อง") ⇒ builder เขียนแย้งใน wo-notes · ผู้คุม ORACLE-EDIT h.1 U-4 ตอนรับใบ (ไม่ใช่บั๊ก) · ผู้ใช้ภาพ: owner · frontdesk (booking.manage) · **maid** (hotel.housekeeping · read-only — เพิ่มในฟิกซ์เจอร์แล้ว · ต้อง reseed)

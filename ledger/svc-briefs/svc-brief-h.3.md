@@ -45,6 +45,7 @@
 10. **ด่านพร้อมกัน (load)**: 20 คำขอ `createBooking` พร้อมกันบนประเภทห้องที่เหลือ 1 ⇒ สำเร็จ 1 · ที่เหลือ `AVAILABILITY_CHANGED` · ไม่มีแถว nights/occupancy ส่วนเกิน · ไม่มี 40P01 ดิบ (ล็อกเรียงลำดับ)
 11. **legacy**: หลังใบนี้ `stayLoad` ไม่นับการจองที่ไม่มี occupancy อีก · ทุกการจอง active ต้องมี nights · ข้อสอบตรวจว่าไม่มี path ใดสร้าง reservation โดยไม่มี nights
 12. **โทรศัพท์/walk-in หน้าเคาน์เตอร์**: วิซาร์ด 3 ขั้น (เลือกวัน/ประเภท/จำนวนห้อง → ผู้เข้าพัก/แผน/แหล่ง → ยืนยัน+มัดจำ) · มัดจำรับได้ทันที (เงินสด/QR/โอน/บัตร) หรือ "รอโอน" = HOLD ตาม `holdMinutesCounter`
+13. **นาฬิกาฉาก (ผู้คุมเพิ่ม 7 พ.ย. ตามฟิกซ์เจอร์)**: ทุกฟังก์ชันใน `booking.ts` รับ `at?: string` (ISO) เป็น "เวลาปัจจุบัน" **เฉพาะเมื่อ `process.env.SVC_QC_CLOCK === "1"`** (ด่านเดียวกับ `?at=` ของจอคิว B.5) · ไม่ตั้ง = ใช้เวลาเครื่องและเพิกเฉย `at` · ใช้โดยฉาก `svc-qc-hotel-booking-scene.mts` สร้างการจองอดีต/HOLD หมดอายุ โดยไม่แก้แถวตรง · ข้อสอบตรวจว่าไม่มี SVC_QC_CLOCK ⇒ `at` ถูกเพิกเฉย (PAST_DATE ตามปกติ) · ห้ามใช้ `at` ใน action (server action ไม่รับพารามิเตอร์นี้)
 
 ## 3. สัญญาโค้ด (ย่อ · ข้อสอบผูกชื่อ/รูป)
 3.1 `hotelAvailability.get(ctx, {unitId, roomTypeId?, from, to}) → { byDate: Record<ymd, Record<roomTypeId, {total, blocked, leased, counted, available}>> }` (อ่านอย่างเดียว · ≤ 4 คิวรี)
@@ -56,14 +57,18 @@
 ## 4. จอ (desktop หลัก · มือถือ 390 ใช้ได้ · ไทยทั้งหมด)
 - **รายการการจอง** `/hotel/reservations`: ตัวกรอง สถานะ/แหล่ง/ช่วงวัน/ค้นหา (ชื่อ/เบอร์/รหัส) · แถว = รหัส · แขก · ประเภท/ห้อง · วันเข้า–ออก (คืน) · แหล่ง · สถานะ (ป้ายไทย: ถือไว้รอมัดจำ นับถอยหลัง / ยืนยัน / เข้าพัก / ออกแล้ว / ไม่มา / ยกเลิก) · ยอด/มัดจำ · กลุ่ม N ห้อง · ปุ่ม "จองใหม่"
 - **รายละเอียด** `/hotel/reservations/[id]`: แท็บ แขก · ห้อง&คืน (ตารางคืน ราคา/source/ห้อง) · เงิน (ยอด · มัดจำ · นโยบาย snapshot · ปุ่มรับมัดจำ/คืน) · ประวัติ · ปุ่มตามสถานะ: ยืนยัน(MANUAL) · รับมัดจำ · กำหนดห้อง · ต่อคืน/ย่นคืน (แสดงราคาใหม่ก่อนยืนยัน) · ไม่มา · ยกเลิก (แสดงยอดคืนตามขั้นบันไดก่อนยืนยัน) · กลุ่ม: รายการห้องในกลุ่ม + "ยกเลิกทั้งกลุ่ม"
-- **วิซาร์ด** `/hotel/reservations/new` 3 ขั้น (มติ 12) · ขั้น 1 แสดงห้องเหลือต่อประเภท (availability) + ราคารวมจาก quote · ขั้น 3 เลือกวิธีรับมัดจำ/รอโอน
+- **วิซาร์ด** `/hotel/reservations/new` 3 ขั้น (มติ 12) · ขั้น 1 แสดงห้องเหลือต่อประเภท (availability) + ราคารวมจาก quote · ขั้น 3 เลือกวิธีรับมัดจำ/รอโอน · **query prefill** (ภาพ h.3 ขั้น 3): `?checkIn=YYYY-MM-DD&checkOut=YYYY-MM-DD&roomTypeId=&rooms=&step=1|2|3` — อ่านเพื่อเติมฟอร์ม/เปิดขั้นเท่านั้น · ขั้น 3 ต้องมีผู้เข้าพักเริ่มว่าง ⇒ ปุ่มยืนยัน disabled จนกรอก · server ตรวจทุกอย่างซ้ำใน `createBooking`
 - read-only (ไม่มีสิทธิ์เขียน) ไม่ render ปุ่ม · `data-scroll-hint` บนตารางเลื่อน · ไม่มี ModuleTabs ซ้อน HotelTabs (ถอดของเดิม)
 
 ## 5. event (CC §7 · 3 ทะเบียน · ป้ายไทย)
 `hotel.booking.created` · `hotel.booking.confirmed` · `hotel.booking.cancelled` · `hotel.booking.hold_expired` · `hotel.booking.no_show` · `hotel.booking.changed` (ต่อ/ย่น/ย้ายห้อง) · `hotel.booking.deposit_after_expiry` — ทุกตัว emit ใน tx เดียวกับสถานะ · payload {tenantId, unitId, reservationId, groupId, code, status, source} ไม่มี PII
 
-## 6. ฉาก «svc-qc-hotel-booking-scene.mts» (builder · บนฟิกซ์เจอร์ H.1)
-สร้างบน bansuan-hotel สัมพัทธ์วันนี้ไทย: HOLD ออนไลน์ 1 (หมดอายุอีก 10 นาที) · HOLD หมดอายุแล้ว 1 (ให้ sweep เก็บ) · CONFIRMED 4 (วันนี้ 2 · พรุ่งนี้ 1 · กลุ่ม 3 ห้อง สัปดาห์หน้า) · CHECKED_IN 2 · NO_SHOW 1 (เมื่อวาน) · CANCELLED 1 (คืนเงิน 50%) · แหล่งคละ WEB/WALK_IN/PHONE/LINE/OTA(channelRef) · ผ่าน `createBooking` เท่านั้น (ห้าม insert ตรง) · มัดจำผ่าน `takeBookingDeposit` payType PROMPTPAY · idempotent + `--clear` (ลบผ่าน cancel + ลบแถวฉาก mark `note` "SvcQcScene:h3")
+## 6. ฉาก «svc-qc-hotel-booking-scene.mts» (builder · บนฟิกซ์เจอร์ H.1 — ฉาก h.1 ต้องรันก่อน)
+**แหล่งความจริง = `scripts/svc-qc-data.mts` `SQC_HOTEL_BOOKING_SCENE`** (ผู้คุมตั้ง 7 พ.ย. · 10 รายการ · mark `SvcQcScene:h3` ใน `note`) — ฉากอ่านค่าจากฟิกซ์เจอร์เท่านั้น ไม่มีตัวเลขในสคริปต์ · วันสัมพัทธ์ `SQC_TODAY_BKK` + `checkInOffset`
+- ทุกแถวผ่าน `createBooking` (actor = เจ้าของ svcqc · `source`/`hold`/`channelRef` ตามรายการ) → `deposit: "PAID"` ⇒ `takeBookingDeposit(payType PROMPTPAY)` → สถานะปลาย: `CHECKED_IN` = `checkIn` เดิม · `NO_SHOW` = `markNoShow` · `CANCELLED` = `cancelBooking(reason = cancelReason)` · การจองอดีต/HOLD หมดอายุ ใช้ `at` (มติ 13 · ฉากตั้ง `SVC_QC_CLOCK=1` เอง · `holdAgeMinutes`)
+- idempotent (รันซ้ำ = SCENE_SUMMARY เท่าเดิม · ไม่สร้างซ้ำ — ระบุแถวเดิมจาก mark+key ใน note) · `--clear` = cancelBooking แถว active ของฉาก (เหตุผล "SvcQcScene:clear") แล้วลบแถว HotelReservation ที่ note มี mark (Cascade ลบ nights/folio · ปล่อย occupancy ผ่าน release ก่อนลบ) · ห้ามแตะแถวที่ไม่มี mark
+- SCENE_SUMMARY พิมพ์ id/code ต่อ key + `groupId` ของ group-wedding (ผู้คุมใช้ `SVC_VIS_H3_GROUP_ID` ถ่ายภาพรายละเอียดกลุ่ม)
+- ตัวเลขคาด = `SQC_HOTEL_BOOKING_SCENE.expect` (แถวต่อสถานะ · กลุ่ม 1/3 แถว · counted nights 21→20 หลัง sweep · noShow FORFEIT_RELEASE_AFTER_AUDIT · cancelled คืน 100% เพราะ STANDARD ยกเลิกก่อน 3 วัน — กฎ 50%/0% ข้อสอบทดสอบบนร้านชั่วคราวของตัวเอง)
 
 ## 7. เกณฑ์รับ · regression · X
 - «qc-svc-h.3.mts» ผ่านทุกข้อ · `probe-h3-load.mts` 20 คำขอ สำเร็จ 1 (รัน 3 รอบ) · probe-h3-b breach 0 · tsc 0 · fitness 2 โหมด · ภาพ h.3 (รายการ · รายละเอียดกลุ่ม · วิซาร์ดขั้น 1/3) owner/frontdesk · ไล่กดโรงแรม (walker H ต่อจาก g2) 0 error
