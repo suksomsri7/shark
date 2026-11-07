@@ -16,6 +16,7 @@ let tenantId = "";
 try {
   const t = await prisma.tenant.create({ data: { name: "QC โรงแรม", slug: `qc-ht-${Date.now()}` } }); tenantId = t.id;
   const unit = await prisma.businessUnit.create({ data: { tenantId, type: "HOTEL", name: "รีสอร์ต", slug: "rs" } });
+  await prisma.settingValue.create({ data: { tenantId, key: "rooms.hotel.checkout.allowLegacyCash", scope: "UNIT", scopeId: unit.id, value: true } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-legacy): ใบ h.5 §2.11 — checkOut เดิมไม่ส่งวิธีจ่าย ต้องเปิดทางเดิม (ค่าเริ่ม false)
   const posSys = await sys.createSystem(tenantId, "POS", "POS โรงแรม"); await sys.linkUnit(tenantId, posSys.id, unit.id);
   const accSys = await sys.createSystem(tenantId, "ACCOUNT", "บัญชี");
   await acc.saveSettings(tenantId, accSys.id, { orgName: "รีสอร์ต จำกัด", taxId: "0105561177639", vatRegistered: true } as never);

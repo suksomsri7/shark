@@ -25,6 +25,7 @@ import { loadPricingContext } from "./rates";
 import { addDaysYmd, dayNumber, depositFor, depositPolicyOf, isYmd, nightDates, quoteStay, refundFor, type CancelRule, type DepositPolicy, type PricingContext, type QuoteOk } from "./pricing";
 import { availabilityInTx, isSellableNightly, shortDates } from "./availability";
 import { canTransition, holdDeadline, nightsOf } from "./booking-state";
+import { postDeposit } from "./folio"; // SVC H.5 ◂
 
 // ───────────────────────── ชนิด ─────────────────────────
 export type BookingActor = MembershipCtx & { userId: string };
@@ -969,6 +970,7 @@ export async function takeBookingDeposit(actorIn: unknown, ctx: unknown, input: 
     const r = await refundAll(c, sale.saleId, `การจอง ${head.code} ไม่ได้ถือห้องแล้ว (หมดเวลา/ยกเลิก/ห้องเต็ม) — คืนมัดจำอัตโนมัติ`, actorId);
     return fail("AVAILABILITY_CHANGED", r.error ? `การจองนี้ไม่ได้ถือห้องแล้ว (หมดเวลาถือห้องหรือห้องเต็ม) — คืนมัดจำอัตโนมัติไม่สำเร็จ (${r.error}) ให้คืนที่หน้าขาย` : "การจองนี้ไม่ได้ถือห้องแล้ว (หมดเวลาถือห้องหรือห้องเต็ม) — ระบบคืนเงินมัดจำให้อัตโนมัติแล้ว");
   }
+  await postDeposit(c, { reservationId: headId, saleId: sale.saleId, amountSatang: amount, byUserId: g.actor?.userId ?? null }); // SVC H.5 ▸ DEPOSIT (ลบ) บน folio หัวกลุ่ม · idempotent · ไม่ throw ◂
   const after = await loadRv(c, rv.id);
   return { ok: true as const, duplicated: sale.duplicated, saleId: sale.saleId, status: after?.status ?? rv.status };
 }

@@ -168,9 +168,10 @@ const V = {
   },
   /** R1 F3 (O8b) — ตัวควบคุมบวก: ยกเลิกแล้วมัดจำยัง OPEN เต็ม · ไม่มีบิลริบ */
   MA12b(x: { cases: { name: string; cancelOk: boolean; depStatus: string | null; left: number; forfeitBills: number; deposit: number }[] }): Verdict {
-    const good = (c: { cancelOk: boolean; depStatus: string | null; left: number; forfeitBills: number; deposit: number }) => c.cancelOk && c.depStatus === "OPEN" && c.left === c.deposit && c.forfeitBills === 0;
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-cancel-ladder): โรงแรม V2 (SVC H.3) ยกเลิก = เดินขั้นบันไดทันที (คืนตามกฎ + บิลริบส่วนที่เหลือผ่าน POS · ค่าตั้ง rooms.hotel.cancelPolicy 7/3/0 วัน) ⇒ มัดจำไม่ค้าง OPEN · จองคิว/เช่ายังเป็น P1 (OPEN เต็ม)
+    const good = (c: { name: string; cancelOk: boolean; depStatus: string | null; left: number; forfeitBills: number; deposit: number }) => c.name === "โรงแรม" ? c.cancelOk && c.depStatus !== "OPEN" && c.left === 0 && c.forfeitBills <= 1 : c.cancelOk && c.depStatus === "OPEN" && c.left === c.deposit && c.forfeitBills === 0;
     const ok = x.cases.length === 3 && x.cases.every(good);
-    return { ok, expected: "3 กรณี: ยกเลิก ok · มัดจำ OPEN เต็มยอด · ไม่มีบิลริบ", actual: joinP(x.cases.map((c) => `${c.name}: ยกเลิก ${c.cancelOk ? "ok" : "ไม่สำเร็จ"} · มัดจำ ${c.depStatus ?? "-"} ${c.left}/${c.deposit} · บิลริบ ${c.forfeitBills}${good(c) ? " ✓" : " ✗"}`), "ไม่มีกรณี") };
+    return { ok, expected: "3 กรณี: ยกเลิก ok · จองคิว/เช่า มัดจำ OPEN เต็มยอด ไม่มีบิลริบ · โรงแรม (V2 H.3) มัดจำปิดตามขั้นบันได คงเหลือ 0 บิลริบ ≤1", actual: joinP(x.cases.map((c) => `${c.name}: ยกเลิก ${c.cancelOk ? "ok" : "ไม่สำเร็จ"} · มัดจำ ${c.depStatus ?? "-"} ${c.left}/${c.deposit} · บิลริบ ${c.forfeitBills}${good(c) ? " ✓" : " ✗"}`), "ไม่มีกรณี") };
   },
   /** R1 F3 (O8c) — หน้าขาย ริบมัดจำ: สิทธิ์ · เหตุผลบังคับ · ผล · audit · ซ้ำ */
   // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10 · RC F6 F9): + ผู้จัดการสาขาอื่นถูกปฏิเสธ · ค่าคอมฯ ACCRUE ของบิลริบ = 0 (ไม่ส่ง = ไม่ตัดสิน · self-test เดิม) ◂
@@ -735,6 +736,7 @@ async function runDb(): Promise<void> {
     S.ACC = (await sysSvc.createSystem(T, "ACCOUNT", `บัญชี P5.1 ${RAND}`)).id;
     S.MEM = (await sysSvc.createSystem(T, "MEMBER", `สมาชิก P5.1 ${RAND}`)).id;
     for (const k of Object.keys(U)) await sysSvc.linkUnit(T, S.POS, U[k]);
+    for (const k of ["H", "H5"]) await P.settingValue.create({ data: { tenantId: T, key: "rooms.hotel.checkout.allowLegacyCash", scope: "UNIT", scopeId: U[k], value: true } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-legacy): ใบ h.5 §2.11 — MA2/MA2b/MA5/MA12b/MA13 เรียก checkOut เดิมไม่ส่งวิธีจ่าย
     await sysSvc.linkUnit(T, S.MEM, U.A);
     // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10): สาขาจองคิว BM ผูกสมาชิก + แต้ม (มัดจำของสมาชิก · ผลข้างเคียงของบิลริบ) ◂
     S.PNT = (await sysSvc.createSystem(T, "POINT", `แต้ม P5.1 ${RAND}`)).id;
@@ -1155,14 +1157,19 @@ async function runDb(): Promise<void> {
   // ════════ MA13 (R1 F3 · ชุด C · CD-P51-O8c) หน้าขาย "ริบมัดจำ" ของมัดจำโมดูลที่ OPEN ════════
   await blk("MA13", async () => {
     if (fx) return void chk("MA13", false, "fixture", FXB(""));
-    const x = await hotelDeposit("MA13", "213", 8);
-    must("cancelReservation", await call(hotelMod, "cancelReservation", T, U.H, x.rvId, `ลูกค้ายกเลิก MA13 ${RAND}`));
-    const R = x.receiptId;
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-cancel-ladder): โรงแรม V2 ยกเลิกแล้วมัดจำไม่ค้าง OPEN (เดินขั้นบันไดทันที) ⇒ ใช้มัดจำเช่า (cancelBooking คง OPEN · P1) เป็นแหล่งมัดจำ OPEN ของข้อนี้ · หน่วย U.R
+    const ctxR13 = { tenantId: T, unitId: U.R };
+    const as13 = await rentalMod.createAsset(ctxR13, { name: `ของเช่า MA13 ${RAND}`, dailyRateSatang: 100_000, depositSatang: 50_000 });
+    const st13 = new Date(Date.now() + 8 * 86_400_000);
+    const bk13 = await rentalMod.createBooking(ctxR13, { assetId: as13.id, customerName: `ผู้เช่า MA13 ${RAND}`, customerPhone: `0833${rnd(6)}`, startDate: st13, endDate: new Date(st13.getTime() + 2 * 86_400_000) });
+    const d13 = must("recordRentalDeposit", await call(rentalMod, "recordRentalDeposit", ctxR13, bk13.id));
+    if ((await call(rentalMod, "cancelBooking", ctxR13, bk13.id)) !== true) throw new Error("cancelBooking เช่า MA13 ล้ม");
+    const R = String(d13.saleId ?? "");
     const dep0 = await depOf(R);
     const depositId = String(dep0?.id ?? "none");
-    const ctxH = { tenantId: T, systemId: S.POS, unitId: U.H };
-    const cashier = { userId: uid("CASH"), role: "STAFF", unitAccess: [U.H], permissions: { "pos.sale.create": true } };
-    const mgr = { userId: uid("MGR"), role: "MANAGER", unitAccess: [U.H], permissions: {} };
+    const ctxH = { tenantId: T, systemId: S.POS, unitId: U.R }; // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-cancel-ladder): หน่วยเช่า
+    const cashier = { userId: uid("CASH"), role: "STAFF", unitAccess: [U.R], permissions: { "pos.sale.create": true } };
+    const mgr = { userId: uid("MGR"), role: "MANAGER", unitAccess: [U.R], permissions: {} };
     const reason = `ลูกค้ายกเลิกกระชั้นชิด MA13 ${RAND}`;
     const nb = async () => (await forfeitBillsOf(R)).length;
     // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10 · RC F6 F9): ผู้จัดการสาขาอื่น (สาขา A) ขอสาขา H = ถูกปฏิเสธ · เปิดค่าคอมฯ พนักงานระหว่างข้อนี้ ⇒ บิลริบไม่ลง ACCRUE ◂

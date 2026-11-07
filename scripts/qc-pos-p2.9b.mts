@@ -302,8 +302,8 @@ const L3_PIN_SUITES = ["scripts/qc-booking-deposit.mts", "scripts/qc-hotel-publi
 const L3_PIN_SVC = "1908de61";
 const L3_PIN_BY: Record<string, string> = {
   "src/lib/modules/booking/service.ts#recordDeposit": L3_PIN_SVC,
-  "src/lib/modules/hotel/service.ts#checkOut": L3_PIN_SVC,
-  "scripts/qc-hotel-public.mts": L3_PIN_SVC,
+  "src/lib/modules/hotel/service.ts#checkOut": "55fc7458d", // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-pin): H.5 checkOut → settleAndCheckOut (ใบ h.5 §1 แก้เฉพาะ checkOut) — re-pin ที่ commit builder H.5
+  "scripts/qc-hotel-public.mts": "e02e7e5a2", // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-pin): ORACLE-EDIT hp51-confirmed ของ H.3 (สถานะ CONFIRMED) — re-pin ที่ merge H.3
 };
 const l3PinOf = (k: string) => (process.env.P29B_L3_PIN ? L3_PIN : (L3_PIN_BY[k] ?? L3_PIN));
 const srcOf = (f: string) => stripComments(rd(f));
@@ -499,6 +499,10 @@ function runStatic(): void {
     delete base["src/lib/modules/pos/api/ops/sales.ts"];
     // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): RUN SVC B.10 มติ Q2 — บิลจากคิว (pos/service-bill.ts ไฟล์ใหม่ · จุด 1 บิลพักผูกงานบริการ) จ่ายผ่าน createSale( 1 จุด ⇒ ยอม 0→1 เฉพาะไฟล์นี้ · ไฟล์อื่นยังเทียบฐานเดิม
     base["src/lib/modules/pos/service-bill.ts"] = 1;
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3/h5-createSale): RUN HOTEL — booking.ts 3 (H.3 มัดจำ/ริบ/ค่าธรรมเนียม) · checkout.ts 3 (H.5 บิลเช็กเอาต์/ใบรับประกัน/ริบประกัน) · hotel/service.ts 2→1 (checkOut ย้ายไป checkout.ts)
+    base["src/lib/modules/hotel/booking.ts"] = 3;
+    base["src/lib/modules/hotel/checkout.ts"] = 3;
+    base["src/lib/modules/hotel/service.ts"] = 1;
     const diff = [...new Set([...Object.keys(now), ...Object.keys(base)])].filter((f) => now[f] !== base[f]).map((f) => `${f.replace("src/lib/", "")}:${base[f] ?? 0}→${now[f] ?? 0}`);
     if (diff.length) p.push(`ต่าง ${diff.join(", ")}`);
     chk("L2", p.length === 0, `= ฐาน (${sum(Object.values(base))} จุด/${Object.keys(base).length} ไฟล์)`, joinP(p, `${sum(Object.values(now))} จุด/${Object.keys(now).length} ไฟล์`));
