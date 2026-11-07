@@ -26,7 +26,7 @@ export default async function HotelPayPage({ params, searchParams }: { params: P
   const statusHref = withLang(`${base}/r/${encodeURIComponent(publicToken)}`, lang);
   if (!st.pay && !(st.state === "HOLD" && st.deposit.slip)) redirect(statusHref);
   const slip = one(sp.slip);
-  const slipState: "none" | "sent" | "bad" = slip === "ok" || st.deposit.slip?.status === "NEEDS_REVIEW" || st.deposit.slip?.status === "PENDING" ? "sent" : slip === "bad" || slip === "rate" ? "bad" : "none";
+  const slipState: "none" | "sent" | "bad" = slip === "ok" || slip === "pending" || st.deposit.slip?.status === "NEEDS_REVIEW" || st.deposit.slip?.status === "PENDING" ? "sent" : slip === "bad" || slip === "rate" ? "bad" : "none";
   const policy = st.cancelRules;
   const policyText = (() => {
     const free = policy.find((r) => r.refundBp >= 10_000 && r.daysBefore > 0);

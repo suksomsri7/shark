@@ -8,6 +8,7 @@
 //   expired   หมดเวลาถือห้อง (+ ลิงก์จองใหม่)
 // 🔴 ส่งผ่าน core/email.sendEmailRich (fromName = ชื่อโรงแรม · Idempotency-Key hotel-mail-<kind>-<reservationId>) · ไม่มีกุญแจผู้ให้บริการ = log "[email:dev] rich"
 // 🔴 ไม่มี guestEmail ⇒ ไม่ส่ง · notify.channel = LINE อย่างเดียว ⇒ ไม่ส่งอีเมล · ส่งล้ม = ok:false ไม่ throw ไม่กระทบสถานะการจอง
+// 🔴 SVC H.8 r2 (ผู้ตรวจ A-14): การจองจาก OTA ไม่ส่งเลย (OTA ส่งเอง) · ช่องทางอื่นที่ไม่ใช่เว็บ/LINE (โทร/walk-in) ส่งได้แต่บอก «ติดต่อโรงแรมเพื่อยกเลิก/แก้ไข» (ไม่มีลิงก์ยกเลิกเอง)
 // 🔴 ไม่มีเลขบัตร/เอกสารเดินทางในอีเมล · หัวเรื่องไม่มีชื่อ/เบอร์แขก · ภาษา = locale ที่ส่ง → policySnapshot.locale ตอนจอง → ไทย
 // ─────────────────────────────────────────────────────────────
 import { bkkParts, bkkYmd, parseHM } from "@/lib/core/quiet-hours";
@@ -21,7 +22,7 @@ export type GuestMailKind = (typeof GUEST_MAIL_KINDS)[number];
 export type GuestMailDeps = { fetch?: typeof fetch };
 export type NotifyGuestResult =
   | { ok: true; sent: true; providerId?: string }
-  | { ok: false; sent: false; code: "BAD_KIND" | "NOT_FOUND" | "NO_EMAIL" | "CHANNEL_OFF" | "SEND_FAILED"; reason: string };
+  | { ok: false; sent: false; code: "BAD_KIND" | "NOT_FOUND" | "NO_EMAIL" | "CHANNEL_OFF" | "SEND_FAILED" | "OTA_SOURCE"; reason: string };
 
 type L = "th" | "en";
 const THAI = /[\u0E00-\u0E7F]/;
@@ -155,6 +156,7 @@ export async function notifyGuest(kind: string, reservationId: string, locale?: 
     if (!isKind(kind)) return no("BAD_KIND", "ไม่รู้จักชนิดอีเมลนี้");
     const f = await hotel.guestMailFacts(reservationId);
     if (!f) return no("NOT_FOUND", "ไม่พบการจองนี้");
+    if (f.source === "OTA") return no("OTA_SOURCE", "การจองจาก OTA — ช่องทางที่จองเป็นผู้แจ้งผู้เข้าพัก");
     const to = (f.guestEmail ?? "").trim();
     if (!to) return no("NO_EMAIL", "การจองนี้ไม่มีอีเมลผู้เข้าพัก");
     const st = await resolveSettings({ tenantId: f.tenantId }, ["rooms.hotel.notify.channel", "rooms.hotel.checkInTime", "rooms.hotel.checkOutTime"], { unitId: f.unitId });
@@ -162,7 +164,10 @@ export async function notifyGuest(kind: string, reservationId: string, locale?: 
     const l: L = locale === "en" || locale === "th" ? locale : f.locale === "en" ? "en" : "th";
     const s = (k: string, d: string) => (typeof st[k]?.value === "string" ? (st[k]?.value as string) : d);
     const c: Ctx = { f, l, checkInTime: s("rooms.hotel.checkInTime", "14:00"), checkOutTime: s("rooms.hotel.checkOutTime", "12:00"), base: `${appOrigin()}/s/${encodeURIComponent(f.tenantSlug)}/${encodeURIComponent(f.unitSlug)}/hotel` };
-    const x = content(kind, c);
+    const x0 = content(kind, c);
+    // ช่องทางที่ไม่ใช่เว็บ/LINE: ยกเลิกเองทางเว็บไม่ได้ ⇒ บอกให้ติดต่อโรงแรม (ไม่มีลิงก์/ปุ่มยกเลิก)
+    const selfService = f.source === "WEB" || f.source === "LINE";
+    const x = selfService || kind === "cancelled" || kind === "expired" ? x0 : { ...x0, extra: [...x0.extra, l === "en" ? "To cancel or change this booking, please contact the hotel." : "ต้องการยกเลิกหรือแก้ไขการจอง กรุณาติดต่อโรงแรม"] };
     const r = await sendEmailRich(
       {
         fromName: f.unitName.replace(/[\r\n"<>]/g, " ").slice(0, 80),
@@ -202,7 +207,7 @@ export async function onHotelBookingEvent(evt: { tenantId: string; type?: string
     const kind = pick ? pick(p?.status) : null;
     if (!id || !kind || p?.tenantId !== undefined && p.tenantId !== evt.tenantId) return;
     const f = await hotel.guestMailFacts(id);
-    if (!f || f.tenantId !== evt.tenantId || !f.isGroupHead || !f.guestEmail) return;
+    if (!f || f.tenantId !== evt.tenantId || !f.isGroupHead || !f.guestEmail || f.source === "OTA") return;
     await notifyGuest(kind, id);
   } catch (e) {
     console.warn(`[hotel.mail] consumer (${e instanceof Error ? e.name : "Error"})`);

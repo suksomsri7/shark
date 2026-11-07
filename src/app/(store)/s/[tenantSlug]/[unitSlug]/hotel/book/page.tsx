@@ -17,6 +17,8 @@ const ERR: Record<string, string> = {
   TOO_MANY_ROOMS: "hotel.web.err.tooMany",
   PLAN_NOT_PUBLIC: "hotel.web.err.plan",
   INVALID_INPUT: "hotel.web.err.input",
+  CONTACT_REQUIRED: "hotel.web.err.contact", // SVC H.8 r2 ◂
+  TOO_MANY_HOLDS: "hotel.web.err.holds", // SVC H.8 r2 ◂
 };
 
 // SVC H.8 ▸ S3 ยืนยันการจอง (ภาพ 16 ข ส่วนบน) — สรุปราคา (ค่าห้อง · มัดจำตอนนี้ · จ่ายที่โรงแรม) · คูปอง (หักตอนเช็กเอาต์) · เงื่อนไขยกเลิกเต็ม · ฟอร์มผู้เข้าพัก

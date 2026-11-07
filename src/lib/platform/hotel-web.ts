@@ -27,7 +27,9 @@ import { submitSlip } from "@/lib/payment/slip-verify";
 import type { UploadDeps, DeleteDeps } from "@/lib/storage/service";
 
 // ═══════════════ ชนิด ═══════════════
-export type HotelWebOpts = { clientKey: string; now?: Date; deps?: { put?: UploadDeps["put"]; del?: DeleteDeps["del"] } };
+/** ตั๋วผ่านด่าน rate ของสลิป (publicSlipGate) — สร้างได้ในไฟล์นี้เท่านั้น · ใช้ได้ครั้งเดียว (route นับ rate ก่อนอ่าน body · r2 ข้อ 7) */
+export type HotelSlipPass = { readonly slipPass: true };
+export type HotelWebOpts = { clientKey: string; now?: Date; deps?: { put?: UploadDeps["put"]; del?: DeleteDeps["del"] }; slipPass?: HotelSlipPass };
 export type HotelWebFailCode =
   | "NOT_FOUND"
   | "RATE_LIMITED"
@@ -46,6 +48,8 @@ export type HotelWebFailCode =
   | "REFUND_CHANGED"
   | "BUSY"
   | "FAILED"
+  | "CONTACT_REQUIRED" // SVC H.8 r2 ▸ โหมดมัดจำ/รออนุมัติ ต้องมีอีเมลหรือเบอร์ (ผู้ตรวจ A-6 ก) ◂
+  | "TOO_MANY_HOLDS" // SVC H.8 r2 ▸ เพดานห้อง HOLD ต่อ client / ต่อประเภทต่อคืน (ผู้ตรวจ A-6 ข ค) ◂
   | string;
 export type HotelWebFail = { ok: false; code: HotelWebFailCode; reason: string; dates?: string[]; refundSatang?: number };
 export type WebIntent = { kind: "PROMPTPAY_STATIC"; qrPayload: string; qrSvgDataUrl: string; amountSatang: number; expiresAt: string | null; receiverName: string };
@@ -124,6 +128,8 @@ export type WebStatusDto = {
   refund: { refundSatang: number; forfeitSatang: number; paidSatang: number } | null;
   refundedSatang: number;
   canCancel: boolean;
+  /** SVC H.8 r2 (A-14) ยกเลิกได้ที่ไหน: SELF = ปุ่มในหน้านี้ (เว็บ/LINE) · CHANNEL = ช่องทางที่จอง (OTA) · HOTEL = ติดต่อโรงแรม */
+  cancelVia: "SELF" | "CHANNEL" | "HOTEL";
   cancelledAt: string | null;
   lineAddFriendUrl: string | null;
   cancelRules: { daysBefore: number; refundBp: number }[];
@@ -142,6 +148,14 @@ export const HOTEL_WEB_RATE = {
   view: { limit: 190, windowMs: 600_000 }, // หน้าจ่าย/สถานะรีเฟรชทุก 5 วิ ⇒ 120 ครั้ง/10 นาที + เผื่อเปิดหน้า
 } as const;
 type RateOp = keyof typeof HOTEL_WEB_RATE;
+/**
+ * SVC H.8 r2 ▸ ด่านกันยึดห้อง (ผู้ตรวจ A-6 · มติผู้คุม) — ใช้กับโหมดที่สร้าง HOLD (DEPOSIT_REQUIRED · MANUAL_APPROVE)
+ *   perClient: ห้อง HOLD ที่ยังไม่จ่าย (ยังไม่หมดอายุ) ต่อ client (IPv6 รวม /64) ≤ storefront.maxRooms
+ *   perTypeNightBp: ห้อง HOLD เว็บ/LINE ที่ยังไม่จ่ายต่อประเภทต่อคืน ≤ ceil(ห้องขายได้ × 50%) (อย่างน้อย minPerTypeNight)
+ *   คืนที่ห้องไม่พออยู่แล้ว ⇒ ไม่ใช้เพดานนี้ (ให้ createBooking ตอบ AVAILABILITY_CHANGED + dates ตามเดิม)
+ *   🔴 ตรวจก่อนเข้า tx ของ createBooking (booking.ts ยกเว้นแคบ) ⇒ คำขอที่ยิงพร้อมกันหลุดเพดานได้ไม่เกินเพดาน rate hold (5/10 นาที/IP)
+ */
+export const HOTEL_WEB_HOLD_CAP = { perTypeNightBp: 5_000, minPerTypeNight: 1 } as const;
 /** ตั๋วเริ่มฟอร์มต้องอายุอย่างน้อย (วินาที) — กรอกเร็วกว่านี้ = บอท */
 export const HOTEL_WEB_MIN_FORM_SEC = 3;
 export const HOTEL_WEB_EVENTS = {
@@ -167,6 +181,11 @@ const R = {
   badFile: "แนบได้เฉพาะรูปสลิป JPG / PNG / WEBP ขนาดไม่เกิน 5 MB",
   notPayable: "การจองนี้ไม่มียอดมัดจำค้างชำระ",
   forbidden: "ที่พักนี้ยังไม่เปิดให้ยกเลิกเองทางเว็บ — ติดต่อที่พักโดยตรง",
+  atChannel: "การจองนี้มาจากช่องทางจองอื่น — ยกเลิกหรือแก้ไขที่ช่องทางที่จองไว้",
+  atHotel: "การจองนี้ทำกับโรงแรมโดยตรง — ติดต่อโรงแรมเพื่อยกเลิกหรือแก้ไข",
+  contact: "กรอกอีเมลหรือเบอร์โทรอย่างน้อย 1 ช่อง เพื่อให้โรงแรมติดต่อกลับได้",
+  tooManyHolds: "ตอนนี้มีห้องรอชำระมัดจำอยู่มาก — ชำระการจองที่ค้างอยู่ก่อน หรือลองใหม่ในอีกสักครู่",
+  slipPending: "มีสลิปรอตรวจอยู่แล้ว — รอโรงแรมตรวจสักครู่",
   status: "การจองนี้ยกเลิกทางเว็บไม่ได้แล้ว — ติดต่อที่พักโดยตรง",
   refundChanged: "ยอดเงินคืนเปลี่ยนไปแล้ว — ตรวจยอดใหม่ก่อนยืนยัน",
   busy: "ระบบไม่ว่าง ลองใหม่อีกครั้ง",
@@ -193,9 +212,32 @@ export function hotelWebClientKey(h: Headers): string {
   return "unknown";
 }
 
-/** ถัง rate ต่อ (การกระทำ, หน่วยจาก slug, IP) — คีย์มีแต่ hash (ไม่มี IP/อีเมลดิบ) */
-async function limited(op: RateOp, tenantSlug: string, unitSlug: string, opts: HotelWebOpts | undefined): Promise<boolean> {
-  const key = `hw:${op}:${sha(`${tenantSlug}/${unitSlug}`).slice(0, 12)}:${sha(String(opts?.clientKey ?? "unknown")).slice(0, 32)}`;
+/**
+ * client ของถัง/เพดาน: IPv6 รวมเป็น /64 (เครื่องเดียวสุ่มที่อยู่ท้าย /64 ได้ไม่จำกัด) · อื่น ๆ ตามเดิม (SVC H.8 r2 ผู้ตรวจ A-6 ข)
+ */
+export function hotelWebClientId(clientKey: unknown): string {
+  const k = String(clientKey ?? "unknown").trim().toLowerCase().replace(/^\[|\](:\d+)?$/g, "");
+  if (!k.includes(":") || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(k)) return k || "unknown";
+  const body = k.split("%")[0] ?? "";
+  if (!/^[0-9a-f:]+$/.test(body) || (body.match(/::/g) ?? []).length > 1) return k; // IPv4-mapped (มีจุด) = ที่อยู่เดียว ไม่รวม /64
+  const [l, r] = body.includes("::") ? body.split("::") : [body, null];
+  const left = l ? l.split(":") : [];
+  const right = r ? r.split(":") : [];
+  const groups = r === null ? left : [...left, ...Array.from({ length: Math.max(0, 8 - left.length - right.length) }, () => "0"), ...right];
+  if (groups.length < 4) return k;
+  return `${groups.slice(0, 4).map((x) => (x || "0").replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+const clientHash = (opts: HotelWebOpts | undefined) => sha(hotelWebClientId(opts?.clientKey)).slice(0, 32);
+const unitHash = (u: { tenantSlug: string; unitSlug: string }) => sha(`${u.tenantSlug}/${u.unitSlug}`).slice(0, 12);
+
+/**
+ * ถัง rate ต่อ (การกระทำ, หน่วยที่มีจริง, client) — คีย์มีแต่ hash (ไม่มี IP/อีเมลดิบ)
+ * SVC H.8 r2 (ผู้ตรวจ A-12): เรียกหลัง resolve หน่วย — slug ที่ไม่มีจริง/คำขอผิดรูป ⇒ ถังรวมต่อ client ถังเดียว (`none`) ไม่สร้างแถวใหม่ต่อ slug
+ * tokenPart (หน้าจ่าย/สถานะ): ถังแยกต่อการจอง (เปิดหลายแท็บ/หลายการจองไม่ติดเพดานรวม) · token ที่ไม่มีจริง ⇒ ถัง `none` ร่วม
+ */
+async function limited(op: RateOp, unit: { tenantSlug: string; unitSlug: string } | null, opts: HotelWebOpts | undefined, tokenPart?: string | null): Promise<boolean> {
+  const tok = tokenPart === undefined ? "" : `:${tokenPart ? sha(tokenPart).slice(0, 16) : "none"}`;
+  const key = `hw:${op}:${unit ? unitHash(unit) : "none"}:${clientHash(opts)}${tok}`;
   const v = await checkRateLimitDb(key, HOTEL_WEB_RATE[op]);
   return !v.ok;
 }
@@ -208,7 +250,9 @@ export function holdFormStart(unitId: string, now: Date = new Date()): string {
 
 /** โดเมนของร้าน (§9.5): โฮสต์ที่เป็นโดเมนของร้านอื่น ⇒ ไม่เสิร์ฟหน้าโรงแรมของร้านนี้ · โฮสต์ SHARK/ไม่รู้จัก ⇒ ผ่าน */
 export async function hotelHostAllowed(host: string | null | undefined, tenantSlug: string): Promise<boolean> {
-  const h = (host ?? "").trim();
+  // SVC H.8 r2 (ผู้ตรวจ A-15b): ตัดพอร์ตก่อนเทียบโดเมน (domain.normalizeHost ไม่ตัด · ห้ามแตะ domain/**) · [IPv6]:port ⇒ ตัวในวงเล็บ
+  const raw = (host ?? "").trim();
+  const h = raw.startsWith("[") ? raw.slice(1, Math.max(1, raw.indexOf("]"))) : raw.replace(/:\d*$/, "");
   if (!h) return true;
   try {
     const t = await resolveTenantByHost(h);
@@ -350,8 +394,8 @@ export async function publicInfo(input: unknown, opts: HotelWebOpts): Promise<We
   try {
     const s = slugsOf(input);
     if (!s) return NF();
-    if (await limited("info", s.tenantSlug, s.unitSlug, opts)) return fail("RATE_LIMITED", R.rate);
     const u = await hotel.webUnitBySlugs(s.tenantSlug, s.unitSlug);
+    if (await limited("info", u, opts)) return fail("RATE_LIMITED", R.rate);
     if (!u) return NF();
     const K = SettingsKeys;
     const get = await settingsOf(u.tenantId, u.unitId, [K.enabled, K.maxRooms, K.selfCancel, K.badgeTh, K.badgeEn, K.descTh, K.descEn, K.hero, K.maxAdvance, K.checkInTime, K.checkOutTime]);
@@ -388,15 +432,16 @@ export async function publicSearch(input: unknown, opts: HotelWebOpts): Promise<
   try {
     const s0 = slugsOf(input);
     if (!s0) return NF();
-    if (await limited("search", s0.tenantSlug, s0.unitSlug, opts)) return fail("RATE_LIMITED", R.rate);
     const p = SearchIn.safeParse(input);
-    if (!p.success) return fail("INVALID_INPUT", R.input);
     const now = nowOf(opts);
     const today = bkkYmd(now);
+    // คำขอผิดรูป = ถังรวมต่อ client (ไม่แตะฐานนอกจากถัง)
+    if (!p.success) return (await limited("search", null, opts)) ? fail("RATE_LIMITED", R.rate) : fail("INVALID_INPUT", R.input);
     const stay = checkStay(p.data.checkIn, p.data.checkOut, today);
-    if (isWebFail(stay)) return stay;
-    // หน่วย + ประเภท + กฎยกเลิก + ข้อมูลห้องว่าง (สูตรเดียว buildAvailability) = 1 คิวรี
+    if (isWebFail(stay)) return (await limited("search", null, opts)) ? fail("RATE_LIMITED", R.rate) : stay;
+    // หน่วย + ประเภท + กฎยกเลิก + ข้อมูลห้องว่าง (สูตรเดียว buildAvailability) = 1 คิวรี → แล้วนับถังของหน่วยที่มีจริง (r2 A-12)
     const b = await hotel.webSearchBundle(p.data.tenantSlug, p.data.unitSlug, stay.checkIn, stay.checkOut);
+    if (await limited("search", b, opts)) return fail("RATE_LIMITED", R.rate);
     if (!b) return NF();
     const K = SettingsKeys;
     const lastNight = hotel.addDaysYmd(stay.checkOut, -1);
@@ -522,14 +567,14 @@ export async function publicQuote(input: unknown, opts: HotelWebOpts) {
   try {
     const s0 = slugsOf(input);
     if (!s0) return NF();
-    if (await limited("quote", s0.tenantSlug, s0.unitSlug, opts)) return fail("RATE_LIMITED", R.rate);
+    const unit = await hotel.webUnitBySlugs(s0.tenantSlug, s0.unitSlug);
+    if (await limited("quote", unit, opts)) return fail("RATE_LIMITED", R.rate);
+    if (!unit) return NF();
     const p = QuoteIn.safeParse(input);
     if (!p.success) return fail("INVALID_INPUT", R.input);
     const today = bkkYmd(nowOf(opts));
     const stay = checkStay(p.data.checkIn, p.data.checkOut, today);
     if (isWebFail(stay)) return stay;
-    const unit = await hotel.webUnitBySlugs(p.data.tenantSlug, p.data.unitSlug);
-    if (!unit) return NF();
     const q = await quoteCore(unit, stay, p.data.rooms, p.data.couponCode, today);
     if (isWebFail(q)) return q;
     const discount = q.coupon?.ok ? q.coupon.discountSatang : 0;
@@ -588,7 +633,9 @@ export async function publicCreateHold(input: unknown, opts: HotelWebOpts) {
   try {
     const s0 = slugsOf(input);
     if (!s0) return NF();
-    if (await limited("hold", s0.tenantSlug, s0.unitSlug, opts)) return fail("RATE_LIMITED", R.rate);
+    const known = await hotel.webUnitBySlugs(s0.tenantSlug, s0.unitSlug);
+    if (await limited("hold", known, opts)) return fail("RATE_LIMITED", R.rate);
+    if (!known) return NF();
     const p = HoldIn.safeParse(input);
     if (!p.success) return fail("INVALID_INPUT", R.input);
     const inp = p.data;
@@ -602,7 +649,7 @@ export async function publicCreateHold(input: unknown, opts: HotelWebOpts) {
     if (inp.guest.phone && (phoneDigits.length < 9 || phoneDigits.length > 15)) return fail("INVALID_INPUT", "เบอร์โทรไม่ถูกต้อง");
 
     const pub = await resolvePublicUnit(inp.tenantSlug, inp.unitSlug, "HOTEL");
-    if (!pub) return (await hotel.webUnitBySlugs(inp.tenantSlug, inp.unitSlug)) ? fail("CLOSED", R.closed) : NF();
+    if (!pub) return fail("CLOSED", R.closed);
     const unit: hotel.WebUnit = { tenantId: pub.tenant.id, tenantSlug: pub.tenant.slug, tenantName: pub.tenant.name, unitId: pub.unit.id, unitSlug: pub.unit.slug, unitName: pub.unit.name, unitStatus: String(pub.unit.status) };
 
     // กันสแปม (ปฏิเสธเงียบ · ไม่บอกเหตุผลจริง): honeypot (_sd_hp) · ตั๋วเริ่มฟอร์มของหน่วยนี้ อายุ ≥ 3 วิ
@@ -617,11 +664,23 @@ export async function publicCreateHold(input: unknown, opts: HotelWebOpts) {
     const maxRooms = numV(get(K.maxRooms), 5);
     const qty = inp.rooms.reduce((a, r) => a + r.qty, 0);
     if (qty > maxRooms) return fail("TOO_MANY_ROOMS", R.tooMany.replace("{n}", String(maxRooms)));
+    // SVC H.8 r2 ▸ (ผู้ตรวจ A-6 ก) โหมดที่ถือห้อง (มัดจำ/รออนุมัติ) ต้องติดต่อแขกได้ — อีเมลหรือเบอร์ (รูปแบบตรวจแล้วด้านบน) อย่างน้อย 1 ◂
+    const holdMode = String(get(K.bookingMode) ?? "DEPOSIT_REQUIRED") !== "AUTO_CONFIRM";
+    if (holdMode && !email && !(inp.guest.phone && phoneDigits)) return fail("CONTACT_REQUIRED", R.contact);
 
-    // คำขอซ้ำ (กดซ้ำ/รีเฟรช) ⇒ ใบเดิม — ก่อนใช้ตั๋ว (ตั๋วใบใหม่ของคำขอซ้ำไม่ถูกเผา)
+    // คำขอซ้ำ (กดซ้ำ/รีเฟรช) ⇒ ใบเดิม — ก่อนใช้ตั๋ว (ตั๋วใบใหม่ของคำขอซ้ำไม่ถูกเผา) · ข้อมูลต่างจากใบเดิม ⇒ ใบเดิม + mismatch:true (r2 A-11)
     const idem = sha(`${unit.unitId}:${inp.idempotencyKey}`).slice(0, 40);
+    const reqFp = { checkIn: stay.checkIn, checkOut: stay.checkOut, name: inp.guest.name, email: normEmail(email), phone: phoneDigits, plan: inp.rooms.find((r) => r.ratePlanId)?.ratePlanId ?? null, types: inp.rooms.flatMap((r) => Array.from({ length: r.qty }, () => r.roomTypeId)).sort() };
+    const differs = (fp: PriorRow["fingerprint"]): boolean =>
+      fp.checkIn !== reqFp.checkIn ||
+      fp.checkOut !== reqFp.checkOut ||
+      fp.guestName.trim() !== reqFp.name ||
+      normEmail(fp.guestEmail) !== reqFp.email ||
+      (fp.guestPhone ?? "").replace(/\D/g, "") !== reqFp.phone ||
+      (reqFp.plan !== null && reqFp.plan !== fp.ratePlanId) ||
+      fp.roomTypeIds.join("|") !== reqFp.types.join("|");
     const prior = await hotel.webBookingByIdem(unit.tenantId, unit.unitId, idem);
-    if (prior) return replayHold(unit, prior);
+    if (prior) return replayHold(unit, prior, differs(prior.fingerprint));
 
     const plans = await hotel.webPlansOf(unit.tenantId, unit.unitId);
     const plan = pickPlan(plans, inp.rooms);
@@ -632,6 +691,28 @@ export async function publicCreateHold(input: unknown, opts: HotelWebOpts) {
       const q = await quoteCore(unit, stay, inp.rooms, inp.couponCode, today);
       if (isWebFail(q)) return q;
       coupon = q.coupon;
+    }
+    // SVC H.8 r2 ▸ ด่านกันยึดห้อง (ผู้ตรวจ A-6 ข ค · HOTEL_WEB_HOLD_CAP) — ห้องว่าง + ห้องที่ถืออยู่จาก snapshot เดียว ◂
+    const markPrefix = `hw:hk:${unitHash(unit)}:${clientHash(opts)}:`;
+    if (holdMode) {
+      const gb = await hotel.webSearchBundle(unit.tenantSlug, unit.unitSlug, stay.checkIn, stay.checkOut, { now, markPrefix });
+      if (gb) {
+        if (gb.clientHeld + qty > maxRooms) return fail("TOO_MANY_HOLDS", R.tooManyHolds);
+        const need = new Map<string, number>();
+        for (const r of inp.rooms) need.set(r.roomTypeId, (need.get(r.roomTypeId) ?? 0) + r.qty);
+        const days = Object.keys(gb.byDate).sort();
+        const short = [...need].some(([t, n]) => !days.length || days.some((d) => (gb.byDate[d]?.[t]?.available ?? 0) < n));
+        if (!short) {
+          const held = new Map(gb.webHeld.map((h) => [`${h.roomTypeId}|${h.date}`, h.n]));
+          for (const [t, n] of need) {
+            for (const d of days) {
+              const total = gb.byDate[d]?.[t]?.total ?? 0;
+              const cap = Math.max(HOTEL_WEB_HOLD_CAP.minPerTypeNight, Math.ceil((total * HOTEL_WEB_HOLD_CAP.perTypeNightBp) / 10_000));
+              if ((held.get(`${t}|${d}`) ?? 0) + n > cap) return fail("TOO_MANY_HOLDS", R.tooManyHolds);
+            }
+          }
+        }
+      }
     }
     if (!(await consumeFormStartToken(ticket.nonce))) return fail("REJECTED", R.rejected);
 
@@ -654,11 +735,12 @@ export async function publicCreateHold(input: unknown, opts: HotelWebOpts) {
     if (!created.ok) {
       if (created.code === "DUPLICATE_REQUEST") {
         const again = await hotel.webBookingByIdem(unit.tenantId, unit.unitId, idem);
-        return again ? replayHold(unit, again) : fail("BUSY", R.busy);
+        return again ? replayHold(unit, again, differs(again.fingerprint)) : fail("BUSY", R.busy);
       }
       return fail(created.code, created.reason, created.dates ? { dates: created.dates } : {});
     }
     const head = created.reservations[0];
+    if (head.status === "HOLD") await hotel.webHoldMark(markPrefix, created.reservations.map((r) => r.id)); // r2 A-6 ข
     const holdExpiresAt = head.holdExpiresAt ? new Date(head.holdExpiresAt) : null;
     const awaitingDeposit = head.status === "HOLD" && get(K.bookingMode) !== "MANUAL_APPROVE";
     const intent = awaitingDeposit ? await intentFor(unit.tenantId, unit.unitId, created.depositRequiredSatang, head.code, holdExpiresAt) : null;
@@ -691,7 +773,7 @@ export async function publicCreateHold(input: unknown, opts: HotelWebOpts) {
 }
 
 type PriorRow = NonNullable<Awaited<ReturnType<typeof hotel.webBookingByIdem>>>;
-async function replayHold(unit: hotel.WebUnit, r: PriorRow) {
+async function replayHold(unit: hotel.WebUnit, r: PriorRow, mismatch = false) {
   const intent = r.status === "HOLD" && r.holdExpiresAt && r.depositRequiredSatang > 0 ? await intentFor(unit.tenantId, unit.unitId, r.depositRequiredSatang, r.code, r.holdExpiresAt) : null;
   return {
     ok: true as const,
@@ -703,19 +785,28 @@ async function replayHold(unit: hotel.WebUnit, r: PriorRow) {
     depositRequiredSatang: r.depositRequiredSatang,
     groupId: r.groupId,
     intent,
+    ...(mismatch ? { mismatch: true } : {}),
   };
 }
 
 // ═══════════════ ตัวช่วยการจองจาก token ═══════════════
 const TokenIn = SlugsIn.and(z.object({ publicToken: z.string().trim().min(1).max(64) }));
-async function factsOf(input: unknown): Promise<{ unit: hotel.WebUnit; f: hotel.WebBookingFacts } | null> {
+/**
+ * หน่วย + การจองจาก token แล้วนับถัง rate ของหน่วยที่มีจริง (r2 A-12) — op "view" แยกถังต่อการจอง (r2 ข้อ 7) · token ผิด/ร้านอื่น ⇒ ถัง none ร่วม
+ * skipRate = ผ่านด่านมาแล้ว (ตั๋ว publicSlipGate) · ไม่พบ = NF ตัวเดียว (X1)
+ */
+async function viewOf(op: RateOp, input: unknown, opts: HotelWebOpts | undefined, skipRate = false): Promise<{ unit: hotel.WebUnit; f: hotel.WebBookingFacts } | HotelWebFail> {
+  const s0 = slugsOf(input);
+  if (!s0) return NF();
   const p = TokenIn.safeParse(input);
-  if (!p.success) return null;
-  const unit = await hotel.webUnitBySlugs(p.data.tenantSlug, p.data.unitSlug);
-  if (!unit) return null;
-  const f = await hotel.webBookingFacts(unit.tenantId, unit.unitId, p.data.publicToken);
-  return f ? { unit, f } : null;
+  const unit = await hotel.webUnitBySlugs(s0.tenantSlug, s0.unitSlug);
+  const f = unit && p.success ? await hotel.webBookingFacts(unit.tenantId, unit.unitId, p.data.publicToken) : null;
+  if (!skipRate && (await limited(op, unit, opts, op === "view" ? (f && p.success ? `${f.id}` : null) : undefined))) return fail("RATE_LIMITED", R.rate);
+  if (!unit || !f) return NF();
+  return { unit, f };
 }
+/** OTA = ยกเลิก/แก้ไขที่ช่องทาง · เว็บ/LINE = ยกเลิกเองได้ · อื่น (โทร/walk-in/เคาน์เตอร์) = ติดต่อโรงแรม (r2 A-14) */
+const cancelViaOf = (source: string): WebStatusDto["cancelVia"] => (source === "WEB" || source === "LINE" ? "SELF" : source === "OTA" ? "CHANNEL" : "HOTEL");
 const holdKindOf = (snapshot: unknown): "DEPOSIT" | "APPROVAL" => (isRec(snapshot) && snapshot.bookingMode === "MANUAL_APPROVE" ? "APPROVAL" : "DEPOSIT");
 /** ยอดมัดจำที่ยังรับได้ตอนนี้ (หัวกลุ่ม) + เส้นตาย — ไม่มี = null */
 function payableOf(f: hotel.WebBookingFacts, now: Date): { amount: number; expiresAt: Date | null } | null {
@@ -735,11 +826,8 @@ function payableOf(f: hotel.WebBookingFacts, now: Date): { amount: number; expir
 // ═══════════════ publicPayDeposit ═══════════════
 export async function publicPayDeposit(input: unknown, opts: HotelWebOpts) {
   try {
-    const s0 = slugsOf(input);
-    if (!s0) return NF();
-    if (await limited("view", s0.tenantSlug, s0.unitSlug, opts)) return fail("RATE_LIMITED", R.rate);
-    const x = await factsOf(input);
-    if (!x) return NF();
+    const x = await viewOf("view", input, opts);
+    if (isWebFail(x)) return x;
     const now = nowOf(opts);
     if (x.f.head.depositPaidAt) return { ok: true as const, paid: true, intent: null };
     const pay = payableOf(x.f, now);
@@ -754,17 +842,40 @@ export async function publicPayDeposit(input: unknown, opts: HotelWebOpts) {
 
 // ═══════════════ publicAttachSlip ═══════════════
 const SlipIn = TokenIn.and(z.object({ idempotencyKey: z.string().trim().min(8).max(128) }));
+const slipPasses = new WeakSet<object>();
+/**
+ * ด่าน rate ของสลิปก่อนอ่าน body (route/แอ็กชันเรียกก่อน formData · r2 ข้อ 7) — ผ่าน = ตั๋วใช้ครั้งเดียวส่งต่อให้ publicAttachSlip (ไม่นับซ้ำ)
+ */
+export async function publicSlipGate(input: unknown, opts: HotelWebOpts): Promise<{ ok: true; pass: HotelSlipPass } | HotelWebFail> {
+  try {
+    const s0 = slugsOf(input);
+    if (!s0) return NF();
+    const unit = await hotel.webUnitBySlugs(s0.tenantSlug, s0.unitSlug);
+    if (await limited("slip", unit, opts)) return fail("RATE_LIMITED", R.rate);
+    if (!unit) return NF();
+    const pass: HotelSlipPass = Object.freeze({ slipPass: true as const });
+    slipPasses.add(pass);
+    return { ok: true, pass };
+  } catch (e) {
+    console.error("[hotel.web] slip-gate", e instanceof Error ? e.name : "Error");
+    return fail("FAILED", R.failed);
+  }
+}
 export async function publicAttachSlip(input: unknown, opts: HotelWebOpts) {
   try {
     const s0 = slugsOf(input);
     if (!s0) return NF();
-    if (await limited("slip", s0.tenantSlug, s0.unitSlug, opts)) return fail("RATE_LIMITED", R.rate);
+    const passed = !!opts?.slipPass && slipPasses.delete(opts.slipPass);
+    if (!passed) {
+      const unit0 = await hotel.webUnitBySlugs(s0.tenantSlug, s0.unitSlug);
+      if (await limited("slip", unit0, opts)) return fail("RATE_LIMITED", R.rate);
+    }
     const p = SlipIn.safeParse(input);
     if (!p.success) return fail("INVALID_INPUT", R.input);
     const file = isRec(input) && isRec(input.file) ? input.file : null;
     if (!file || !(file.data instanceof Uint8Array) || typeof file.contentType !== "string") return fail("BAD_FILE", R.badFile);
-    const x = await factsOf(input);
-    if (!x) return NF();
+    const x = await viewOf("slip", input, opts, true);
+    if (isWebFail(x)) return x;
     const { unit, f } = x;
     const late = f.status === "CANCELLED" && f.cancelReason === "HOLD_EXPIRED";
     if (f.head.depositPaidAt || f.head.depositSatang <= 0 || !(f.status === "HOLD" || f.status === "CONFIRMED" || late)) return fail("NOT_PAYABLE", R.notPayable);
@@ -772,6 +883,8 @@ export async function publicAttachSlip(input: unknown, opts: HotelWebOpts) {
     const slipKey = `hw-slip:${sha(`${unit.unitId}:${p.data.idempotencyKey}`).slice(0, 48)}`;
     const prior = await hotel.slipByIdemKey(unit.tenantId, unit.unitId, slipKey);
     if (prior) return { ok: true as const, slipId: prior.id, status: prior.status, replayed: true };
+    // SVC H.8 r2 (ผู้ตรวจ A-13) สลิปรอตรวจได้ใบเดียวต่อการจอง — มีอยู่แล้ว ⇒ คืนใบเดิม + แจ้ง (ใบเดิมถูกปฏิเสธ ⇒ แนบใหม่ได้)
+    if (f.pendingSlip) return { ok: true as const, slipId: f.pendingSlip.id, status: f.pendingSlip.status, replayed: true, alreadyPending: true, reason: R.slipPending };
     const deps = opts?.deps ?? {};
     const r = await submitSlip(
       { tenantId: unit.tenantId },
@@ -819,11 +932,8 @@ const stateOf = (f: hotel.WebBookingFacts): WebStatusDto["state"] => {
 
 export async function publicStatus(input: unknown, opts: HotelWebOpts): Promise<WebStatusDto | HotelWebFail> {
   try {
-    const s0 = slugsOf(input);
-    if (!s0) return NF();
-    if (await limited("view", s0.tenantSlug, s0.unitSlug, opts)) return fail("RATE_LIMITED", R.rate);
-    const x = await factsOf(input);
-    if (!x) return NF();
+    const x = await viewOf("view", input, opts);
+    if (isWebFail(x)) return x;
     const { unit, f } = x;
     const now = nowOf(opts);
     const today = bkkYmd(now);
@@ -863,7 +973,8 @@ export async function publicStatus(input: unknown, opts: HotelWebOpts): Promise<
       pay: intent,
       refund: active ? (refundOf(f, today) ?? { refundSatang: 0, forfeitSatang: 0, paidSatang: 0 }) : null,
       refundedSatang: f.money?.refundedSatang ?? 0,
-      canCancel: active && get(K.selfCancel) !== false && !!f.guestEmail,
+      canCancel: active && get(K.selfCancel) !== false && !!f.guestEmail && cancelViaOf(f.source) === "SELF",
+      cancelVia: cancelViaOf(f.source),
       cancelledAt: f.cancelledAt ? f.cancelledAt.toISOString() : null,
       lineAddFriendUrl: basicId ? `https://line.me/R/ti/p/${basicId}` : null,
       cancelRules: hotel.cancelRulesOfSnapshot(f.head.policySnapshot),
@@ -879,10 +990,10 @@ export async function publicLookup(input: unknown, opts: HotelWebOpts): Promise<
   try {
     const s0 = slugsOf(input);
     if (!s0) return NF();
-    if (await limited("lookup", s0.tenantSlug, s0.unitSlug, opts)) return fail("RATE_LIMITED", R.rate);
+    const unit = await hotel.webUnitBySlugs(s0.tenantSlug, s0.unitSlug);
+    if (await limited("lookup", unit, opts)) return fail("RATE_LIMITED", R.rate);
     const code = isRec(input) ? str(input.code, 40).toUpperCase() : "";
     const email = isRec(input) ? normEmail(input.email) : "";
-    const unit = await hotel.webUnitBySlugs(s0.tenantSlug, s0.unitSlug);
     if (!unit) return NF();
     // คิวรีเดียวทุกกรณี (รหัสว่าง/ผิด ⇒ ค้นด้วยค่าที่ไม่มีวันตรง) — เวลาตอบ "รหัสผิด" ≈ "อีเมลผิด"
     const row = await hotel.webBookingByCode(unit.tenantId, unit.unitId, code || "-");
@@ -906,18 +1017,18 @@ export async function publicLookup(input: unknown, opts: HotelWebOpts): Promise<
 const CancelIn = TokenIn.and(z.object({ email: z.string().max(200).optional().nullable(), confirmRefundSatang: z.coerce.number().int().min(0).max(1_000_000_000) }));
 export async function publicCancel(input: unknown, opts: HotelWebOpts) {
   try {
-    const s0 = slugsOf(input);
-    if (!s0) return NF();
-    if (await limited("cancel", s0.tenantSlug, s0.unitSlug, opts)) return fail("RATE_LIMITED", R.rate);
+    const x = await viewOf("cancel", input, opts);
+    if (isWebFail(x)) return x;
     const p = CancelIn.safeParse(input);
     if (!p.success) return fail("INVALID_INPUT", R.input);
-    const x = await factsOf(input);
-    if (!x) return NF();
     const { unit, f } = x;
     const K = SettingsKeys;
     const get = await settingsOf(unit.tenantId, unit.unitId, [K.selfCancel]);
     if (get(K.selfCancel) === false) return fail("FORBIDDEN", R.forbidden);
     if (!(f.status === "HOLD" || f.status === "CONFIRMED")) return fail("INVALID_STATUS", R.status);
+    // SVC H.8 r2 (ผู้ตรวจ A-14) ยกเลิกเองได้เฉพาะการจองเว็บ/LINE — OTA ยกเลิกที่ช่องทาง (กันห้องคืนขณะ OTA ยังถือ) · อื่น = ติดต่อโรงแรม
+    const via = cancelViaOf(f.source);
+    if (via !== "SELF") return fail("FORBIDDEN", via === "CHANNEL" ? R.atChannel : R.atHotel);
     const email = normEmail(p.data.email);
     if (!email || !f.guestEmail || normEmail(f.guestEmail) !== email) return NF();
     const today = bkkYmd(nowOf(opts));

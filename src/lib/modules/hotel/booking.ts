@@ -8,6 +8,7 @@
 //   • นโยบายหลังจอง (คืนเงิน · ไม่มา) อ่านจาก policySnapshot ของการจองเท่านั้น
 //   • นาฬิกาฉาก (§2 ข้อ 13): input.at ใช้เป็น "เวลาปัจจุบัน" เฉพาะเมื่อ process.env.SVC_QC_CLOCK === "1" (อ่านตอนเรียกทุกครั้ง) · ค่าตั้งยังอ่าน ณ เวลาจริง
 import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto"; // SVC H.8 r2 ▸ publicToken 144 บิต (ผู้ตรวจ A-5 · cuid v1 สุ่มจริงแค่ ~41 บิต) ◂
 import { AsyncLocalStorage } from "node:async_hooks"; // SVC H.8 ▸ ยกเลิกโดยแขก (by GUEST) ◂
 import { z } from "zod";
 import type { Prisma, PosPayType } from "@prisma/client";
@@ -682,6 +683,7 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
               holdExpiresAt: holdUntil,
               policySnapshot,
               taxSnapshot,
+              publicToken: randomBytes(18).toString("base64url"), // SVC H.8 r2 ▸ ทุกการจองใหม่ทุก source · คนละ token ต่อห้องในกลุ่ม · default cuid ของ prisma คงเป็นทางสำรอง ◂
             },
             select: { id: true, code: true, publicToken: true },
           });

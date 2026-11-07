@@ -4,6 +4,14 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 
+/** กุญแจคำขอ (สุ่มครั้งเดียวต่อฟอร์ม) — randomUUID หรือ getRandomValues 128 บิต (SVC H.8 r2 · ไม่ใช้ Math.random) */
+function newIdemKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+
 export type BookingFormLabels = { guestName: string; phone: string; email: string; policyAccept: string; submit: string; submitting: string };
 
 function Submit({ label, pending }: { label: string; pending: string }) {
@@ -16,7 +24,7 @@ function Submit({ label, pending }: { label: string; pending: string }) {
 }
 
 export function BookingForm(props: { action: (fd: FormData) => Promise<void>; hidden: Record<string, string>; formToken: string; labels: BookingFormLabels }) {
-  const [idem] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`));
+  const [idem] = useState(newIdemKey);
   const L = props.labels;
   const field = "flex flex-col gap-0.5 rounded-2xl border border-[color:var(--color-line)] px-3 py-2";
   const cap = "text-xs text-[color:var(--color-muted)]";

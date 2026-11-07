@@ -3,6 +3,8 @@
 //   • ทุกคิวรีผูก tenantId (+ unitId) ตรง · ทางที่ยังไม่รู้ร้าน (slug · id การจองจากอีเมล/งานเตือน) = $queryRaw ของ client ขยาย
 //     แบบ sweepExpiredHolds (SQL ดิบไม่ผ่านตัวกรอง scope · ไม่ import prisma ดิบ — fitness F5) แล้วผูก tenantId ในเงื่อนไขเอง
 //   • ผลไม่มีโทเคน/อีเมล/เบอร์เกินที่ผู้เรียกต้องใช้ — DTO สาธารณะประกอบที่ platform (ตัด/mask ที่นั่น)
+//   • ข้อยกเว้นการเขียน (r2 ผู้ตรวจ A-6): webHoldMark จดแถวเครื่องหมาย «HOLD ของ client นี้» ใน ChatRateBucket (อายุตามรอบกวาดถัง 24 ชม.) — ไม่แตะการจอง
+import { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { buildAvailability, type AvailabilityByDate } from "./availability";
@@ -27,12 +29,23 @@ export type WebRoomTypeInfo = {
   amenities: string[];
 };
 export type WebCancelRuleRow = { ratePlanId: string; daysBefore: number; refundBp: number };
-export type WebSearchBundle = WebUnit & { roomTypes: WebRoomTypeInfo[]; cancelRules: WebCancelRuleRow[]; byDate: AvailabilityByDate };
+export type WebSearchBundle = WebUnit & {
+  roomTypes: WebRoomTypeInfo[];
+  cancelRules: WebCancelRuleRow[];
+  byDate: AvailabilityByDate;
+  /** SVC H.8 r2 (ด่านกันยึดห้อง · มีเมื่อส่ง guard): ห้อง HOLD เว็บ/LINE ที่ยังไม่จ่ายและยังไม่หมดอายุ ต่อ (ประเภท, คืน) — snapshot เดียวกับ byDate */
+  webHeld: { roomTypeId: string; date: string; n: number }[];
+  /** ห้อง HOLD ที่ยังไม่จ่าย/ยังไม่หมดอายุ ที่ client นี้ถืออยู่ในหน่วยนี้ (นับจากแถวเครื่องหมาย webHoldMark) */
+  clientHeld: number;
+};
+/** ด่านกันยึดห้อง: เวลาอ้างอิง + คำนำหน้ากุญแจเครื่องหมายของ client (`hw:hk:<หน่วย>:<client>:`) */
+export type WebHoldGuardIn = { now: Date; markPrefix: string };
+const MARK_PREFIX_RE = /^hw:hk:[0-9a-f]{12}:[0-9a-f]{32}:$/;
 
 const strArr = (v: unknown, max = 20): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 500).slice(0, max) : []);
 const numOr = (v: unknown, d: number): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
-type UnitRaw = { tenantId: string; tenantSlug: string; tenantName: string; unitId: string; unitSlug: string; unitName: string; unitStatus: string; types?: unknown; rules?: unknown; rooms?: unknown; occ?: unknown; nights?: unknown };
+type UnitRaw = { tenantId: string; tenantSlug: string; tenantName: string; unitId: string; unitSlug: string; unitName: string; unitStatus: string; types?: unknown; rules?: unknown; rooms?: unknown; occ?: unknown; nights?: unknown; held?: unknown; clientHeld?: unknown };
 
 /** หน่วยโรงแรมจาก slug (ร้าน ACTIVE · หน่วย HOTEL สถานะ ACTIVE/PAUSED — PAUSED ยังดู/ยกเลิกการจองเดิมได้) · ไม่พบ = null (คิวรีเดียว) */
 export async function webUnitBySlugs(tenantSlug: string, unitSlug: string): Promise<WebUnit | null> {
@@ -52,12 +65,24 @@ export async function webUnitBySlugs(tenantSlug: string, unitSlug: string): Prom
  * หน้าค้นหา: หน่วย + ประเภทห้อง (รูป/สิ่งอำนวยความสะดวก/เตียง) + กฎยกเลิกของทุกแผน + ห้องว่างช่วง [from, to) — คิวรีเดียว (กัน N+1 · ข้อสอบ SR-9 ≤ 14)
  * ห้องว่าง = buildAvailability (สูตรเดียวกับ hotelAvailability.get / availabilityInTx): ห้องขายรายคืนได้ − BLOCK − LEASE − คืนที่นับ
  */
-export async function webSearchBundle(tenantSlug: string, unitSlug: string, from: string, to: string): Promise<WebSearchBundle | null> {
+export async function webSearchBundle(tenantSlug: string, unitSlug: string, from: string, to: string, guard?: WebHoldGuardIn): Promise<WebSearchBundle | null> {
   const t = (tenantSlug ?? "").trim();
   const u = (unitSlug ?? "").trim();
   if (!t || !u || t.length > 100 || u.length > 100 || !(to > from)) return null;
   const f = dbDate(from);
   const e = dbDate(to);
+  // SVC H.8 r2 ▸ ด่านกันยึดห้อง (ผู้ตรวจ A-6): นับในคำสั่งเดียวกับห้องว่าง (snapshot เดียว — ยิงพร้อมกันไม่ได้ «ว่าง» กับ «ถือ» จากคนละเวลา) ◂
+  const g = guard && guard.now instanceof Date && Number.isFinite(guard.now.getTime()) && MARK_PREFIX_RE.test(guard.markPrefix) ? guard : null;
+  const guardSql = g
+    ? Prisma.sql`COALESCE((SELECT json_agg(json_build_object('roomTypeId', h."roomTypeId", 'date', h."date", 'n', h."c"))
+                   FROM (SELECT bn."roomTypeId", bn."date", count(*)::int AS "c" FROM "HotelBookingNight" bn JOIN "HotelReservation" hr ON hr."id" = bn."reservationId" AND hr."tenantId" = bn."tenantId"
+                          WHERE bn."unitId" = u."id" AND bn."tenantId" = u."tenantId" AND bn."counted" = true AND bn."date" >= ${f} AND bn."date" < ${e}
+                            AND hr."status"::text = 'HOLD' AND hr."source"::text IN ('WEB', 'LINE') AND hr."depositPaidAt" IS NULL AND hr."holdExpiresAt" > ${g.now}
+                          GROUP BY bn."roomTypeId", bn."date") h), '[]'::json) AS "held",
+           (SELECT count(*)::int FROM "HotelReservation" hr
+             WHERE hr."unitId" = u."id" AND hr."tenantId" = u."tenantId" AND hr."status"::text = 'HOLD' AND hr."depositPaidAt" IS NULL AND hr."holdExpiresAt" > ${g.now}
+               AND hr."id" IN (SELECT split_part(b."key", ':', 5) FROM "ChatRateBucket" b WHERE b."key" LIKE ${`${g.markPrefix}%`})) AS "clientHeld"`
+    : Prisma.sql`'[]'::json AS "held", 0 AS "clientHeld"`;
   const rows = await raw().$queryRaw<UnitRaw[]>`
     SELECT t."id" AS "tenantId", t."slug" AS "tenantSlug", t."name" AS "tenantName", u."id" AS "unitId", u."slug" AS "unitSlug", u."name" AS "unitName", u."status"::text AS "unitStatus",
            COALESCE((SELECT json_agg(json_build_object('id', rt."id", 'name', rt."name", 'capacity', rt."capacity", 'baseOccupancy', rt."baseOccupancy", 'maxOccupancy', rt."maxOccupancy",
@@ -73,7 +98,8 @@ export async function webSearchBundle(tenantSlug: string, unitSlug: string, from
            COALESCE((SELECT json_agg(json_build_object('roomTypeId', n."roomTypeId", 'date', n."date", 'n', n."c"))
                        FROM (SELECT bn."roomTypeId", bn."date", count(*)::int AS "c" FROM "HotelBookingNight" bn
                               WHERE bn."unitId" = u."id" AND bn."tenantId" = u."tenantId" AND bn."counted" = true AND bn."date" >= ${f} AND bn."date" < ${e}
-                              GROUP BY bn."roomTypeId", bn."date") n), '[]'::json) AS "nights"
+                              GROUP BY bn."roomTypeId", bn."date") n), '[]'::json) AS "nights",
+           ${guardSql}
       FROM "BusinessUnit" u JOIN "Tenant" t ON t."id" = u."tenantId"
      WHERE t."slug" = ${t} AND u."slug" = ${u} AND u."type"::text = 'HOTEL' AND t."status"::text = 'ACTIVE' AND u."status"::text IN ('ACTIVE', 'PAUSED')
      LIMIT 1`;
@@ -114,7 +140,25 @@ export async function webSearchBundle(tenantSlug: string, unitSlug: string, from
     from,
     to,
   );
-  return { tenantId: r.tenantId, tenantSlug: r.tenantSlug, tenantName: r.tenantName, unitId: r.unitId, unitSlug: r.unitSlug, unitName: r.unitName, unitStatus: r.unitStatus, roomTypes: types, cancelRules: rules, byDate };
+  const webHeld = (Array.isArray(r.held) ? r.held : []).filter(isRec).map((x) => ({ roomTypeId: String(x.roomTypeId), date: ymd(x.date), n: numOr(x.n, 0) }));
+  return { tenantId: r.tenantId, tenantSlug: r.tenantSlug, tenantName: r.tenantName, unitId: r.unitId, unitSlug: r.unitSlug, unitName: r.unitName, unitStatus: r.unitStatus, roomTypes: types, cancelRules: rules, byDate, webHeld, clientHeld: numOr(r.clientHeld, 0) };
+}
+
+/**
+ * SVC H.8 r2 ▸ จดเครื่องหมาย «การจองเหล่านี้ถือโดย client นี้» (ผู้ตรวจ A-6 ข) — แถว ChatRateBucket กุญแจ `<markPrefix><reservationId>` (count 1)
+ * ใช้นับใน webSearchBundle(guard) เท่านั้น · แถวถูกกวาดตามรอบถัง rate (24 ชม.) · ล้ม = log ไม่ throw (ด่านเป็น «ของเสริม» ไม่ขวางการจองที่สร้างแล้ว)
+ */
+export async function webHoldMark(markPrefix: string, reservationIds: string[], now: Date = new Date()): Promise<void> {
+  const ids = reservationIds.filter((x) => isStr(x) && x.length <= 64 && !x.includes(":"));
+  if (!MARK_PREFIX_RE.test(markPrefix) || !ids.length) return;
+  try {
+    await raw().$executeRaw`
+      INSERT INTO "ChatRateBucket" ("id", "key", "count", "windowStart", "createdAt", "updatedAt")
+      SELECT gen_random_uuid()::text, ${markPrefix} || x.rid, 1, ${now}, NOW(), NOW() FROM unnest(${ids}::text[]) AS x(rid)
+      ON CONFLICT ("key") DO NOTHING`;
+  } catch (e) {
+    console.warn(`[hotel.web] จดเครื่องหมาย HOLD ไม่สำเร็จ (${e instanceof Error ? e.name : "Error"})`);
+  }
 }
 
 export type WebPlanRow = { id: string; code: string; name: string; isDefault: boolean; visibility: string[] };
@@ -168,6 +212,8 @@ export type WebBookingFacts = {
   cancelReason: string | null;
   policySnapshot: unknown;
   slip: WebSlipState;
+  /** SVC H.8 r2 (A-13) สลิปที่ยังรอตรวจ (PENDING/NEEDS_REVIEW) ของกลุ่มนี้ — มีได้ใบเดียว */
+  pendingSlip: WebSlipState;
   money: WebDepositMoney;
 };
 
@@ -191,8 +237,9 @@ export async function webBookingFacts(tenantId: string, unitId: string, publicTo
     ? await db.hotelReservation.findMany({ where: { groupId: rv.groupId }, orderBy: [{ createdAt: "asc" }, { code: "asc" }], include: { roomType: { select: { name: true } } } })
     : [rv];
   const head = group.find((r) => r.depositPaidAt) ?? group.find((r) => r.depositSatang > 0) ?? group[0] ?? rv;
-  const slips = await db.paymentSlip.findMany({ where: { domain: "HOTEL", refType: "HOTEL_DEPOSIT", refId: { in: group.map((r) => r.id) } }, orderBy: { createdAt: "desc" }, take: 1, select: { id: true, status: true, createdAt: true } });
+  const slips = await db.paymentSlip.findMany({ where: { domain: "HOTEL", refType: "HOTEL_DEPOSIT", refId: { in: group.map((r) => r.id) } }, orderBy: { createdAt: "desc" }, take: 5, select: { id: true, status: true, createdAt: true } });
   const s = slips[0];
+  const pend = slips.find((x) => x.status === "PENDING" || x.status === "NEEDS_REVIEW");
   return {
     id: rv.id,
     code: rv.code,
@@ -216,6 +263,7 @@ export async function webBookingFacts(tenantId: string, unitId: string, publicTo
     cancelReason: rv.cancelReason,
     policySnapshot: rv.policySnapshot,
     slip: s ? { id: s.id, status: s.status, createdAt: s.createdAt.toISOString() } : null,
+    pendingSlip: pend ? { id: pend.id, status: pend.status, createdAt: pend.createdAt.toISOString() } : null,
     money: head.depositPaidAt ? await depositMoney(tenantId, unitId, head.depositSaleId) : null,
   };
 }
@@ -236,12 +284,15 @@ export async function webBookingByIdem(tenantId: string, unitId: string, idem: s
   const rv = await tenantDb({ tenantId, unitId }).hotelReservation.findFirst({
     where: { source: { in: ["WEB", "LINE"] }, policySnapshot: { path: ["webIdem"], equals: idem } },
     orderBy: [{ createdAt: "asc" }, { code: "asc" }],
-    select: { id: true, code: true, status: true, publicToken: true, groupId: true, holdExpiresAt: true, depositSatang: true },
+    select: { id: true, code: true, status: true, publicToken: true, groupId: true, holdExpiresAt: true, depositSatang: true, checkInDate: true, checkOutDate: true, guestName: true, guestEmail: true, guestPhone: true, roomTypeId: true, ratePlanId: true },
   });
   if (!rv) return null;
-  if (!rv.groupId) return { ...rv, depositRequiredSatang: rv.depositSatang };
-  const all = await tenantDb({ tenantId, unitId }).hotelReservation.findMany({ where: { groupId: rv.groupId }, select: { depositSatang: true } });
-  return { ...rv, depositRequiredSatang: all.reduce((a, r) => a + r.depositSatang, 0) };
+  const { checkInDate, checkOutDate, guestName, guestEmail, guestPhone, roomTypeId, ratePlanId, ...head } = rv;
+  // SVC H.8 r2 ▸ ลายนิ้วมือคำขอเดิม (ผู้เรียกเทียบกับคำขอซ้ำ ⇒ ธง mismatch · ไม่ส่งออกสาธารณะ) ◂
+  const fp = (types: string[]) => ({ checkIn: ymdOfDb(checkInDate), checkOut: ymdOfDb(checkOutDate), guestName, guestEmail, guestPhone, ratePlanId, roomTypeIds: [...types].sort() });
+  if (!rv.groupId) return { ...head, depositRequiredSatang: rv.depositSatang, fingerprint: fp([roomTypeId]) };
+  const all = await tenantDb({ tenantId, unitId }).hotelReservation.findMany({ where: { groupId: rv.groupId }, select: { depositSatang: true, roomTypeId: true } });
+  return { ...head, depositRequiredSatang: all.reduce((a, r) => a + r.depositSatang, 0), fingerprint: fp(all.map((r) => r.roomTypeId)) };
 }
 
 /** สลิปมัดจำโรงแรม (สถานะอนุมัติแล้ว) + การจองหัวที่อ้าง — ข้อมูลของ consumer `payment.slip.approved` สาขา HOTEL · ไม่ใช่ของร้านนี้/ไม่ใช่ HOTEL = null */

@@ -115,6 +115,11 @@ export default async function HotelStatusPage({ params, searchParams }: { params
               </div>
             </div>
           ) : null}
+          {!st.canCancel && st.cancelVia !== "SELF" && (st.state === "HOLD" || st.state === "AWAITING_APPROVAL" || st.state === "CONFIRMED") ? (
+            <p className="text-center text-sm text-[color:var(--color-muted)]" data-cancel-via={st.cancelVia}>
+              {t(st.cancelVia === "CHANNEL" ? "hotel.web.cancelAtChannel" : "hotel.web.cancelAtHotel")}
+            </p>
+          ) : null}
           {st.canCancel ? (
             <CancelDialog
               action={publicCancelAction}
