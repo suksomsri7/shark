@@ -477,6 +477,7 @@ try {
   const setUnit = async (key: string, value: unknown, unitId = UH, actor: Actor = OWNER, ctx: Record<string, unknown> = ctxA) => okRes(await SET.setSettings(actor, ctx, [{ key, scope: "UNIT", scopeId: unitId, value }]), `ตั้ง ${key}`);
   // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-legacy-checkin): H.4 ทำให้ checkIn เดิมต้องมีผู้พักเมื่อ rooms.hotel.guest.requireRegistration เปิด — ข้อสอบเงินนี้ใช้ checkIn เดิมโดยไม่มีผู้พัก ⇒ ปิดที่หน่วยทดสอบ UH/UH2 (คีย์ยังไม่มีก่อน H.4 merge ⇒ ข้าม)
   for (const u of [UH, UH2]) { try { await setUnit("rooms.hotel.guest.requireRegistration", false, u); } catch { /* ยังไม่มีคีย์ */ } }
+  await prisma.settingValue.create({ data: { tenantId: tB, key: "rooms.hotel.guest.requireRegistration", scope: "UNIT", scopeId: UHB, value: false } }).catch(() => null); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-legacy-checkin-b): ร้าน B (GL-4) ไม่มี actor เจ้าของ ⇒ เขียนแถวตรง
   const resetUnit = async (key: string, unitId = UH) => { try { await SET.resetSetting(OWNER, ctxA, { key, scope: "UNIT", scopeId: unitId }); } catch { /* ไม่มีค่า */ } };
   const GUEST = { name: "ผู้เข้าพักทดสอบ h5", phone: "0897654321", email: "svc-h5-guest@qc.invalid" };
   const PII_TEXT = /ผู้เข้าพักทดสอบ|0897654321|svc-h5-guest/;
@@ -1185,6 +1186,7 @@ try {
   await st("ST-14", "ไม่ผูก POS ⇒ POS_UNLINKED (ใบ §3.4): หน่วยโรงแรม UH3 ใหม่ในร้าน A ไม่มี AppSystemUnit POS · จอง (ไม่มัดจำ) → เช็กอิน → settle ⇒ ok:false POS_UNLINKED reason ไทย · สถานะคง CHECKED_IN · ไม่มีบิล", async () => {
     needCheckout(); needBooking();
     const UH3 = await mkUnit(tA, "HOTEL", "โรงแรมไม่ผูก POS H5");
+    try { await setUnit("rooms.hotel.guest.requireRegistration", false, UH3); } catch { /* ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-legacy-checkin-b): UH3 ใช้ checkIn เดิม (ST-14) */ }
     const rt = await mkType(tA, UH3, SPEC.dlx);
     await mkRoom(tA, UH3, "X01", rt);
     okRes(await RT("listRatePlans")(OWNER, ctxA, { unitId: UH3 }), "list UH3");
