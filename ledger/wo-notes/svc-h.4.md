@@ -90,3 +90,17 @@
 - สำเนาข้อสอบแก้ §7 ข้อ 1+2 (ไม่ commit): 81/106 ก่อนมีจอ — แดงเหลือ CI-17 · SD-1 · U-* (จอผ่าน 10/10 แล้วในรอบจริง)
 - qc-svc-h.3 --no-regression 98/109 failed [] · qc-svc-h.2 --no-regression 78/87 failed [] · qc-svc-r0.8 95/95 · qc-svc-h.1 112/122 failed [] · qc-svc-r0.4 45/46 (VIS-2 allowed) · smoke 6/6 · b.0 167/172 failed [] · d.13 87/98 failed []
 - qc-svc-h.0 failed [S-3] = fitness F2.1 hotel→member (§7 ข้อ 7) · tsc เฉพาะไฟล์ของใบ (tsconfig ชั่วคราว) 0 error
+
+## 11. รอบ 2 (มติผู้คุม 7 พ.ย. · ฐาน f4784df8b ORACLE-EDIT D1/D2/r0.8/fitness)
+- §7 ข้อ 3 → **ทาง (ข)**: ถอด `LEGACY_REQUIRES_GUEST` · `service.checkIn` เดิมอ่าน `rooms.hotel.guest.requireRegistration` เหมือน V2 (ไม่มีผู้พักในทะเบียน ⇒ ok:false เหตุผลไทย GUEST_REQUIRED) · ยังไม่ตรวจวันเข้า/แม่บ้าน · รับ BOOKED
+- หน้า `/hotel` รายการ "ถึงวันนี้": เปิด requireRegistration ⇒ แสดง "ต้องลงทะเบียนผู้พัก (ร.ร.3) ก่อนเช็กอิน" + ลิงก์ `?tab=guests` แทนฟอร์มเช็กอินด่วน (ฟอร์ม checkInAction คงไว้เมื่อปิดค่าตั้ง · h.2 U-10) · facade `guestRegistrationRequired`
+- ฉาก h.3 (`svc-qc-hotel-booking-scene.mts`) และ h.2 (`svc-qc-hotel-tape-scene.mts`) แก้จุดเดียวตามมติ: ก่อนลูปการจอง ปิด requireRegistration ชั้น UNIT ผ่าน `setSettings` · ฉาก h.4 เปิดกลับ (true) ตอนเริ่ม ⇒ ลำดับ seed → h.1 → h.3 → h.4 จบที่ "เปิด"
+- ผลรอบ 2 (`/root/svc-runs/h4/builder/r2-*.txt` · chain2.log):
+  - ฉาก: tape --clear · h4 --clear · h3 --clear · h3 (12) · h3 --clear · h2 tape (ok) · tape --clear · h3 (12) · h4 = หยุดที่ takeSecurityDeposit (รอ H.5) — ทุกขั้นก่อนหน้า exit 0
+  - qc-svc-h.4 --no-regression **90/106 · failed [SD-1]** (รอ H.5) · skip F-1 Q-1..4 (รอ H.5 checkout.ts) V-1 G-*
+  - qc-svc-h.1 --no-regression 112/122 failed []
+  - 🔴 ยังแดงจากทาง (ข) — ข้อสอบ/ไฟล์ที่ builder แก้ไม่ได้ เรียก checkIn เดิมบนหน่วยทดสอบของตัวเองที่ไม่ได้ปิดค่าตั้ง:
+    - qc-svc-h.3: D-10 (บรรทัด 1090 `checkIn เดิม` บน ids.k12a) → E-11 ต่อเนื่อง (ใช้ CHECKED_IN ของ D-10) · 96/109
+    - qc-svc-h.2: ตัวสร้างฉากในข้อสอบ (บรรทัด 542 `svc.checkIn` บน tA) ⇒ TC-2…/OC/TD/MV ล้มต่อเนื่อง · 37/87
+    - qc-svc-r0.8: G-1 `scripts/qc-hotel-money.mts:38` · G-3 `scripts/qc-hotel-refund.mts:42,89` (checkIn เดิมบนร้านของตัวเอง) · 93/95
+  - ⇒ ขอ ORACLE-EDIT แบบเดียวกับ r0.8: ปิด `rooms.hotel.guest.requireRegistration` ที่หน่วยทดสอบของ qc-svc-h.3 · qc-svc-h.2 · qc-hotel-money · qc-hotel-refund (หรือส่งผู้พักผ่าน checkInV2)
