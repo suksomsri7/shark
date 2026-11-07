@@ -7,7 +7,7 @@ export type HotelTabLink = { key: HotelTabKey; labelTh: string; href: string };
 
 /** ลำดับตามภาพ — path ต่อท้าย /app/u/<slug> */
 export const HOTEL_TABS: HotelTab[] = [
-  { key: "calendar", labelTh: "ปฏิทินห้อง", path: "/hotel/calendar", available: false }, // H.2
+  { key: "calendar", labelTh: "ปฏิทินห้อง", path: "/hotel/calendar", available: true }, // H.2
   { key: "reservations", labelTh: "การจอง", path: "/hotel/reservations", available: true },
   { key: "frontdesk", labelTh: "หน้าเคาน์เตอร์", path: "/hotel", available: true },
   { key: "housekeeping", labelTh: "แม่บ้าน", path: "/hotel/housekeeping", available: false }, // H.6

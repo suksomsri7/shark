@@ -1579,7 +1579,7 @@ try {
 
   // ═══════════════ U UI สถิต ═══════════════
   console.log("\n── U UI สถิต ──");
-  const COMPS = [F.panel, F.itemRow, F.postDlg, F.voidDlg, F.checkoutDlg, F.splitPay, F.secCard, F.unmatchedList];
+  const COMPS: string[] = [F.panel, F.itemRow, F.postDlg, F.voidDlg, F.checkoutDlg, F.splitPay, F.secCard, F.unmatchedList]; // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-tsc-2769): F เป็น as const ⇒ concat([F.shared]) ชนิด literal ไม่เข้ากัน
   const PAGES = [F.detailPage, F.unmatchedPage, F.printPage];
   await st("U-1", "ไฟล์ของใบครบ (§1): folio.ts · checkout.ts · room-charge.ts · 8 คอมโพเนนต์ + folio-shared.ts · หน้า unmatched · หน้า print · ฉาก svc-qc-hotel-folio-scene.mts · docs/sds/modules/hotel.md §folio", () => {
     eq([F.folio, F.checkout, F.roomCharge, ...COMPS, F.shared, ...PAGES, F.scene].filter((f) => !has(f)), [], "ขาด");
@@ -1593,7 +1593,7 @@ try {
     eq(["บิลระหว่างพัก", "ค่าห้อง", "ลงห้องจาก POS", "ยอดชำระ", "เงินประกันห้อง", "ลงรายการ", "แยกจ่าย", "ขอใบกำกับภาษีเต็มรูป", "เช็กเอาต์", "รอทำความสะอาด", "ยังไม่ผูกห้อง"].filter((w) => !all.includes(w)), [], "ป้ายขาด");
   });
   await st("U-3", "ตัวเลขทศนิยม 2 + จุลภาค (§4): folio-shared/คอมโพเนนต์ จัดรูปเงินด้วย minimumFractionDigits: 2 / toFixed(2) / toLocaleString(\"th-TH\") จากสตางค์ ÷ 100 · ไม่มี Math.round(x/100) โชว์เป็นบาทไม่มีทศนิยม", () => {
-    ok(has(F.shared) && COMPS.every(has), "ยังไม่มีคอมโพเนนต์/folio-shared.ts");
+    ok(has(F.shared) && COMPS.every((f) => has(String(f))), "ยังไม่มีคอมโพเนนต์/folio-shared.ts"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-tsc-2769)
     const all = COMPS.concat([F.shared]).map((f) => stripComments(read(f))).join("\n");
     ok(/minimumFractionDigits:\s*2|toFixed\(2\)|maximumFractionDigits:\s*2/.test(all), "ไม่มีการจัดรูปทศนิยม 2");
     ok(/\/\s*100/.test(all), "ไม่มีการแปลงสตางค์→บาท");

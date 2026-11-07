@@ -7,7 +7,8 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { HOTEL_ROOM_STATUS_LABEL } from "@/lib/ui/status-labels";
+import { hotelToday } from "@/lib/modules/hotel"; // SVC H.2 ▸ KPI หน้าเคาน์เตอร์ (ภาพ 08 แถบบน) ◂
+import HotelToday from "@/components/hotel/HotelToday";
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("th-TH", {
@@ -25,15 +26,17 @@ export default async function HotelPage({
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
   if (unit.type !== "HOTEL") notFound(); // SVC H.0 ▸ ด่าน type HOTEL ◂
-  const data = await dashboardData(auth.active.tenantId, unit.id);
+  const [data, kpi] = await Promise.all([dashboardData(auth.active.tenantId, unit.id), hotelToday({ tenantId: auth.active.tenantId }, { unitId: unit.id })]);
 
   // ห้องที่ assign ได้ต่อการจองที่ถึงวันนี้ (เพื่อ dropdown เช็คอิน)
   const arrivalRooms = await Promise.all(
-    data.arrivals.map((a) => assignableRooms(auth.active.tenantId, unit.id, a.id)),
+    data.arrivals.map((a) => {
+      return assignableRooms(auth.active.tenantId, unit.id, a.id);
+    }),
   );
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
+    <div className="flex max-w-5xl flex-col gap-6">
       <PageHeader
         title="โรงแรม · วันนี้"
         back={{ href: `/app/u/${unitSlug}`, label: unit.name }}
@@ -50,19 +53,8 @@ export default async function HotelPage({
       />
       {/* SVC H.3 ▸ ถอดแท็บโมดูลซ้อน (แท็บโรงแรมอยู่ที่ layout · หนี้ H.1 · มติผู้คุม §11 ข้อ 6) ◂ */}
 
-      {/* สรุปสถานะห้อง */}
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <div className="card text-center">
-          <div className="text-xl font-semibold">{data.roomTotal}</div>
-          <div className="text-xs text-[color:var(--color-muted)]">ห้องทั้งหมด</div>
-        </div>
-        {(["AVAILABLE", "OCCUPIED", "CLEANING", "OOO"] as const).map((s) => (
-          <div key={s} className="card text-center">
-            <div className="text-xl font-semibold">{data.roomStatus[s]}</div>
-            <div className="text-xs text-[color:var(--color-muted)]">{HOTEL_ROOM_STATUS_LABEL[s]}</div>
-          </div>
-        ))}
-      </section>
+      {/* SVC H.2 ▸ KPI 5 การ์ด (เข้าวันนี้ · ออกวันนี้ · พักอยู่คืนนี้ · แม่บ้าน · สัปดาห์นี้ + ADR) แทนสรุปสถานะห้องเดิม ◂ */}
+      {kpi.ok ? <HotelToday kpi={kpi} /> : null}
 
       {/* ถึงวันนี้ — เช็คอิน */}
       <section className="flex flex-col gap-2">
@@ -86,7 +78,7 @@ export default async function HotelPage({
                 </div>
                 {rooms.length === 0 ? (
                   <p className="mt-2 text-xs text-[color:var(--color-danger)]">
-                    ไม่มีห้องว่างสำหรับ assign — ตรวจสถานะห้องที่ &quot;ตั้งค่า&quot;
+                    ไม่มีห้องว่างให้เช็คอิน — ตรวจสถานะห้องที่ «ตั้งค่า»
                   </p>
                 ) : (
                   <form
@@ -118,7 +110,9 @@ export default async function HotelPage({
           <EmptyState text="ยังไม่มีแขกเช็คอิน" />
         ) : (
           data.inHouse.map((a) => {
-            const leavingToday = data.departures.some((d) => d.id === a.id);
+            const leavingToday = data.departures.some((d) => {
+              return d.id === a.id;
+            });
             return (
               <div key={a.id} className="rounded-xl border p-3">
                 <div className="flex items-start justify-between gap-2">
