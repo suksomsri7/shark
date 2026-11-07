@@ -166,7 +166,8 @@ export const SQC_USERS: SqcUser[] = [
   user("accountant", "ฝ่ายบัญชี (SVC QC)", "STAFF", ALL4, ["account.report.view"]),
   // SVC H.1 ▸ frontdesk + hotel.rates.read (ดูราคาอย่างเดียว · ไม่มี rates.write/settings.edit — ภาพ 15 read-only) ◂
   // SVC H.3 ▸ frontdesk + hotel.booking.manage · hotel.reservation.create/cancel (จอง/ยกเลิก/ย้าย/ต่อ/ไม่มา จากหน้าเคาน์เตอร์ · ยังไม่มี rates.write/settings.edit) ◂
-  user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn", "hotel.rates.read", "hotel.booking.manage", "hotel.reservation.create", "hotel.reservation.cancel"]),
+  // SVC H.5 ▸ frontdesk + hotel.folio.post · hotel.reservation.checkOut (ลงรายการ/ปิดบิล · **ไม่มี** hotel.folio.void — S §12 "Front desk void folio ไม่ได้") ◂
+  user("frontdesk", "ต้อม (หน้าเคาน์เตอร์)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.reservation.checkIn", "hotel.rates.read", "hotel.booking.manage", "hotel.reservation.create", "hotel.reservation.cancel", "hotel.folio.post", "hotel.reservation.checkOut"]),
   // SVC H.2 ▸ maid = แม่บ้าน (hotel.housekeeping อย่างเดียว) — เห็นปฏิทินห้องแบบอ่านอย่างเดียว ไม่มี handle ลาก (ใบ h.2 §2 ข้อ 7) · H.6 ใช้ต่อ ◂
   user("maid", "ป้าแจ๋ว (แม่บ้าน)", "STAFF", [SQC_UNITS.hotel.id], ["hotel.housekeeping"]),
 ];
@@ -1561,3 +1562,59 @@ SQC_VISUAL_SPECS["h.2"] = [
   { name: "hotel-today", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel` },
 ];
 // ◂ SVC H.3 / H.2
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SVC H.5 ▸ บล็อก folio/เช็กเอาต์ — ผู้คุมตั้ง 7 พ.ย. 2569 · builder/เลนอื่นห้ามแตะ · ใบสั่ง svc-brief-h.5.md §6
+//   🔴 ฉาก h.5 ต่อยอดฉาก h.3 (ต้องรัน svc-qc-hotel-booking-scene.mts ก่อน) · เขียนผ่าน API ของ H.5 เท่านั้น (postFolioItem · voidFolioItem · postRoomNights · takeSecurityDeposit · chargeToRoom ผ่านบิล POS จริง)
+//   🔴 ราคาคืนไม่ใส่ตัวเลขตาย (ขึ้นกับวันในสัปดาห์) — ข้อสอบคำนวณจาก SQC_HOTEL_RATES ด้วย pricing ref
+// ═════════════════════════════════════════════════════════════════════════════
+export type SqcFolioLine = { type: "SERVICE" | "MINIBAR" | "DISCOUNT" | "PENALTY"; description: string; qty: number; unitAmountSatang: number; voidReason?: string };
+export const SQC_HOTEL_FOLIO_SCENE = {
+  mark: "SvcQcScene:h5",
+  unit: "hotel" as SqcUnitKey,
+  /** การจองจากฉาก h.3 ที่ใช้ (key ของ SQC_HOTEL_BOOKING_SCENE) */
+  target: { key: "inhouse-web", guest: "Mr. John Carter" },
+  /** ค่าห้องที่ post แล้ว = คืนที่ผ่านไป (checkInOffset −1 ⇒ คืน −1 และคืน 0 หลัง audit ของคืนนี้ยังไม่มา ⇒ ฉาก post เฉพาะคืน −1 · postRoomNights(upToDate = วันนี้)) */
+  roomNightsPosted: 1,
+  /**
+   * บิลร้านอาหารจ่ายแบบ ROOM_CHARGE บน POS ของร้าน svcqc (ระบบ POS ผูกหน่วย hotel แล้ว · SQC_POS_EXTRA_UNITS) · reference = เลขห้องของ inhouse-web ณ เวลารันฉาก
+   * ⇒ consumer pos.sale.paid โพสต์ POS_CHARGE itemized 2 บรรทัด (ต้มยำกุ้ง 320 + ข้าวผัดปู 320 = 640.00 ตามภาพ 09)
+   */
+  roomChargeSale: { lines: [{ name: "ต้มยำกุ้ง", qty: 1, unitPriceSatang: 32_000 }, { name: "ข้าวผัดปู", qty: 1, unitPriceSatang: 32_000 }], note: "ห้องอาหาร · โต๊ะ 4" },
+  /** รายการ manual (ตามภาพ 09: มินิบาร์ 120 · ซักรีด 180) + ส่วนลด 100 + ซักรีดซ้ำ 1 แถวแล้ว void (reversal) */
+  manual: [
+    { type: "MINIBAR", description: "มินิบาร์ · น้ำอัดลม 2 · มันฝรั่ง 1", qty: 1, unitAmountSatang: 12_000 },
+    { type: "SERVICE", description: "ซักรีด", qty: 1, unitAmountSatang: 18_000 },
+    { type: "SERVICE", description: "ซักรีด (บันทึกซ้ำ)", qty: 1, unitAmountSatang: 18_000, voidReason: "บันทึกซ้ำ" },
+    { type: "DISCOUNT", description: "ส่วนลดแขกประจำ", qty: 1, unitAmountSatang: -10_000 },
+  ] as SqcFolioLine[],
+  /** เงินประกันห้อง ฿1,000 เงินสด (เปิดค่าตั้ง securityDeposit.enabled ในฉากเฉพาะหน่วย svcqc · appliesTo ALL · คืนตอนเช็กเอาต์) */
+  securityDeposit: { amountSatang: 100_000, payType: "CASH" },
+  /** บิลลงห้องที่ reference ผิด ⇒ อยู่คิว unmatched (ไม่โพสต์) */
+  unmatchedSale: { reference: "B999", lines: [{ name: "กาแฟ", qty: 2, unitPriceSatang: 8_000 }] },
+  /** ผลที่ต้องได้บน folio ของ inhouse-web (ข้อสอบ Q · นับแถว HotelFolioItem ตาม type · ยอด = Σ amount) */
+  expect: {
+    itemsByType: { ROOM: 1, POS_CHARGE: 2, MINIBAR: 1, SERVICE: 2, VOID_REVERSAL: 1, DISCOUNT: 1, DEPOSIT: 1, SECURITY_DEPOSIT: 1 } as Record<string, number>,
+    /** balance = ราคาคืน −1 (จาก pricing ref) + 64_000 + 12_000 + 18_000 − 10_000 − มัดจำคืนแรก (ราคาคืน −1 เท่ากัน) ⇒ = 84_000 สตางค์ เสมอ (ค่าห้องหักล้างกับมัดจำ FIRST_NIGHT) */
+    balanceSatang: 84_000,
+    securityHeldSatang: 100_000,
+    unmatched: 1,
+    folioStatus: "OPEN",
+  },
+} as const;
+/**
+ * ภาพ h.5 (ภาพ 09 ครึ่งขวา · PARITY ผู้คุม): folio ในแท็บเงิน · ไดอะล็อกเช็กเอาต์ · คิว unmatched · หน้า print
+ * ก่อนถ่าย: seed → ฉาก h.1 → ฉาก h.3 → ฉาก h.5 · ส่ง env SVC_VIS_H5_RES_ID=<id ของ inhouse-web> (ฉากพิมพ์ใน SCENE_SUMMARY) · ถ่าย --user owner และ --user frontdesk (มี folio.post + checkOut · ไม่มี folio.void ⇒ ไม่เห็นปุ่ม void)
+ * query ที่หน้า H.5 ต้องรับ: `?tab=money` (เปิดแท็บเงิน) · `&checkout=1` (เปิดไดอะล็อกเช็กเอาต์)
+ */
+SQC_VISUAL_SPECS["h.5"] = [
+  ...(process.env.SVC_VIS_H5_RES_ID
+    ? [
+        { name: "hotel-folio", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/${process.env.SVC_VIS_H5_RES_ID}?tab=money` },
+        { name: "hotel-checkout", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/${process.env.SVC_VIS_H5_RES_ID}?tab=money&checkout=1` },
+        { name: "hotel-folio-print", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/reservations/${process.env.SVC_VIS_H5_RES_ID}/folio/print` },
+      ]
+    : []),
+  { name: "hotel-folio-unmatched", path: `/app/u/${SQC_UNITS.hotel.slug}/hotel/folio/unmatched` },
+];
+// ◂ SVC H.5
