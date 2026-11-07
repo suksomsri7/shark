@@ -1412,12 +1412,13 @@ try {
     eq(await prisma.hotelReservation.count({ where: { tenantId: tA, roomTypeId: RTA.one, checkInDate: dbDate(W(54)), status: { in: ["HOLD", "CONFIRMED"] } } }), 1, "แถว active");
     eq(await prisma.hotelBookingNight.count({ where: { tenantId: tA, roomTypeId: RTA.one, date: dbDate(W(54)), counted: true } }), 1, "nights");
   });
-  await st("X-2", "X7 token: publicToken ≥ 128 บิต (cuid ≥ 24 ตัว · ไม่ซ้ำ · ไม่เรียงต่อกัน) ทุกการจองเว็บของร้าน A · token ผิด/ร้านอื่น/ไม่มี = คำตอบเดียวกัน (ST-5) · DTO สถานะไม่มี publicToken ของใบอื่น", async () => {
+  await st("X-2", "X7 token: publicToken ≥ 128 บิต (สุ่มจริง ≥ 22 ตัว base64url ไม่ใช่ cuid · ไม่ซ้ำ · ไม่เรียงต่อกัน) ทุกการจองเว็บของร้าน A · token ผิด/ร้านอื่น/ไม่มี = คำตอบเดียวกัน (ST-5) · DTO สถานะไม่มี publicToken ของใบอื่น", async () => {
     needSetup(); needWeb();
-    const rows = (await prisma.hotelReservation.findMany({ where: { tenantId: tA, source: "WEB" }, select: { publicToken: true } })) as Any[];
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-x2) ผู้ตรวจ A-5: cuid v1 สุ่มจริง ~41 บิต ⇒ นับเฉพาะแถวที่สร้างในรอบนี้ (แถวเก่าในฐานเป็น cuid) · ต้องไม่ใช่รูป cuid v1 และ ≥ 22 ตัว base64url (≥128 บิต)
+    const rows = (await prisma.hotelReservation.findMany({ where: { tenantId: tA, source: "WEB", createdAt: { gte: RUN_START } }, select: { publicToken: true } })) as Any[];
     ok(rows.length >= 10, `แถวเว็บ ${rows.length}`);
     const toks = rows.map((r) => String(r.publicToken ?? ""));
-    ok(toks.every((t) => t.length >= 24 && /^[a-z0-9_-]+$/i.test(t)), `token สั้น ${J(toks.filter((t) => t.length < 24).slice(0, 3))}`);
+    ok(toks.every((t) => t.length >= 22 && /^[A-Za-z0-9_-]+$/.test(t) && !/^c[a-z0-9]{24}$/.test(t)), `token สั้น/รูป cuid ${J(toks.filter((t) => t.length < 22 || /^c[a-z0-9]{24}$/.test(t)).slice(0, 3))}`); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-x2)
     eq(new Set(toks).size, toks.length, "token ซ้ำ");
     const sorted = [...toks].sort();
     ok(!sorted.every((t, i) => i === 0 || t.slice(0, -4) === sorted[i - 1].slice(0, -4)), "token เรียงต่อกัน (เดาได้)");
