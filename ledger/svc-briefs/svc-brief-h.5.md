@@ -96,3 +96,11 @@ H.4: เช็กอินเรียก `takeSecurityDeposit` + folio เป�
 3. มติทางเทคนิคของ builder ที่รับ: มัดจำที่ใช้ชำระ = แถว DEPOSIT บวก (อ้างบิล settle) · มัดจำเกินคืนผ่าน POS + แถว REFUND · กลุ่มที่ยังมีห้องถือมัดจำไม่คืน (หัวกลุ่มเหลือเครดิต) · ออกก่อนกำหนด = คืน ≥ วันนี้ counted=false (ค่าห้องเก็บตามที่ post) · ภาษีอ่าน ณ เวลาเช็กเอาต์ (ไม่ใช่ taxSnapshot) · POS ไม่เชื่อมบัญชี = ผ่าน+คำเตือน · lookup ลงห้อง: เลขห้อง (CHECKED_IN) ก่อน แล้วรหัสจอง · กำกวม = คิว unmatched
 4. FolioPanel ฝังในแท็บ "เงิน" ของ BookingDetail (ตาม §4 · PARITY ภาพ 09 ขวา) · คีย์ตั้งค่าใหม่ลงการ์ดหน้าตั้งค่า · **ห้ามแตะ hotel/page.tsx** (H.2 แก้อยู่) — ปุ่มเช็กเอาต์ P1 หน้าเคาน์เตอร์ + badge unmatched = หนี้ H.4
 
+## 11. มติผู้คุมหลังผู้ตรวจเงินรอบ 1 (7 พ.ย. · tip 617c9977c)
+1. **ROOM_CHARGE กันรายได้ซ้ำ**: reverse JV ของบิลร้านทั้งใบเฉพาะเมื่อ Σ ROOM_CHARGE = grandTotal · บิลจ่ายผสม ⇒ JV ปรับเฉพาะส่วนลงห้อง (Cr 1100 = ยอด ROOM_CHARGE · Dr รายได้+2200 ตามสัดส่วน) · restore ทางกลับเช่นกัน · GL 1000 สุทธิ = เงินรับจริงทุกช่องทางเสมอ
+2. **POS_CHARGE = ยอดรวม VAT เสมอ** (บิลร้านปิดที่ POS แล้ว): โหมด EXCLUSIVE ไม่ gross ซ้ำ · ไม่นับเป็นฐาน taxLines ของโรงแรม · VAT บิลเช็กเอาต์คิดเฉพาะบรรทัดโรงแรม
+3. planInputs ตัด ROOM item ที่อ้างคืน counted=false เสมอ · การย่น/ออกก่อนกำหนด void ROOM item ของคืนที่เลิกนับซึ่งยังไม่ post (postedAuditId null)
+4. กลุ่ม: settle รายห้องของห้องลูก ⇒ head = การจองในกลุ่มที่ถือ depositSaleId · มัดจำคงเหลือใช้กับทุกห้องที่ settle · คืนส่วนเกินเมื่อไม่มีห้อง active ไม่ว่าใคร settle · ห้ามเขียนแถวลง folio ที่ SETTLED (ลงที่ folio ห้องที่กำลัง settle) · settle ทั้งกลุ่มต้องคืน warning ประกัน HELD ที่เหลือ
+5. consumer `onPosSalePaidRoomCharge` ได้ BUSY ⇒ คืน error ให้ outbox retry (ไม่ลงคิว unmatched ถาวร) · `refundStay` P1 หาบิล PAID ล่าสุดของการจอง (รวม -r1)
+6. chargeToRoom facade รับบิลเงินสดลงห้องได้ = สัญญาผู้เรียก (จด sds) · ย่นหลัง settle เก็บเต็ม = หนี้ H.7
+
