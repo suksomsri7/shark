@@ -16,6 +16,7 @@ import * as hotelRoomCharge from "./room-charge"; // SVC H.5
 import * as hotelTape from "./tape"; // SVC H.2
 import * as hotelBlock from "./block"; // SVC H.2
 import * as hotelHk from "./housekeeping"; // SVC H.6
+import * as hotelAudit from "./night-audit"; // SVC H.7
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -701,3 +702,32 @@ export async function reportDefectAction(unitSlug: string, form: FormData) {
   return r;
 }
 // ◂ SVC H.6
+// SVC H.7 ▸ ปิดวัน (night audit) — ใบสั่ง h.7 §3.4 · ร้าน/ผู้กระทำ/สิทธิ์จาก session เท่านั้น · requireUnit + ด่าน "HOTEL" + hotel.audit.run ทุกตัว · ผลเป็นข้อมูล ไม่ throw
+//   reopen ต้องเป็นผู้จัดการ/เจ้าของ (ตรวจซ้ำใน night-audit.ts) + เหตุผล · รายงานเป็น RSC อ่านตรง (ไม่มี action) · ไม่รับเวลาจำลองของฉาก
+const NOT_HOTEL_AUDIT = { ok: false, code: "NOT_FOUND", reason: "การปิดวันใช้ได้กับหน่วยโรงแรมเท่านั้น" } as const;
+function revalidateAudit(unitSlug: string) {
+  revalidatePath(`/app/u/${unitSlug}/hotel/reports/audit`);
+  revalidatePath(`/app/u/${unitSlug}/hotel/reports`);
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+}
+
+export async function closeNightAuditAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_AUDIT;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.audit.run"))) return NO_RIGHT;
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  const r = await hotelAudit.closeNightAudit(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { unitId: unit.id, businessDate: src.businessDate });
+  if (r.ok) revalidateAudit(unitSlug);
+  return r;
+}
+
+export async function reopenNightAuditAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_AUDIT;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.audit.run"))) return NO_RIGHT;
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  const r = await hotelAudit.reopenNightAudit(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { unitId: unit.id, auditId: src.auditId, reason: src.reason });
+  if (r.ok) revalidateAudit(unitSlug);
+  return r;
+}
+// ◂ SVC H.7

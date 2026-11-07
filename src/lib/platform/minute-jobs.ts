@@ -530,6 +530,16 @@ registerMinuteJob({
   run: async () => (await import("@/lib/modules/hotel")).sweepExpiredHolds({}),
 });
 // ◂ SVC H.3
+// SVC H.7 ▸ โรงแรม: ปิดวัน (night audit) อัตโนมัติ — ทุก 15 นาที · ข้ามร้าน · หน่วยที่ autoClose เปิดและถึง rooms.hotel.nightAuditTime ตามเวลาร้าน (timezone ต่อหน่วย)
+//   ปิดวันที่ค้างทีละวัน (≤ 7 วัน/หน่วย/รอบ) · โหลด facade โรงแรมตอนรันเท่านั้น · idempotent: advisory lock ต่อหน่วย + unique(unitId, businessDate) ⇒ route + crontab ซ้อนกัน = ปิดครั้งเดียว (X5)
+//   เคารพงบ/สัญญาณยกเลิก (หยุดก่อนเริ่มหน่วยถัดไป) · ไม่เพิ่ม vercel.json (crontab VPS เรียก crm-cron.mts minute อยู่แล้ว)
+registerMinuteJob({
+  name: "hotel-night-audit",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/hotel")).runDueAudits(now, Math.max(1_000, budgetMs - 2_000), { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+// ◂ SVC H.7
 // SVC B.3 ▸ ระบบจอง: ปล่อยช่องที่ลูกค้าจองเองแล้วไม่จ่ายมัดจำในเวลา (ทุกนาที · ข้ามร้าน · ใบสั่ง svc-brief-b.3 §3.3) — โหลดตอนรันเท่านั้น ·
 //   idempotent: UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED ⇒ route + crontab ยิงซ้อนกัน แต่ละแถวปล่อยครั้งเดียว (X5)
 registerMinuteJob({

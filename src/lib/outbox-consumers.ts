@@ -17,6 +17,7 @@ import { logOps as logOpsRaw } from "@/lib/core/ops";
 import { replaceEmailsInText } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ◂
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { formatThaiDate } from "@/lib/ui/date";
+import { sendEmailRich } from "@/lib/core/email"; // SVC H.7 ▸ อีเมลสรุปปิดวัน ◂
 import { runForEvent as runJourneysForEvent } from "@/lib/modules/member";
 // M3.5 — ตาข่ายเก็บตกของแนะนำเพื่อนตอน `member.created` (facade ล้วน)
 import { referralOnMemberCreated } from "@/lib/modules/member";
@@ -1514,6 +1515,18 @@ for (const t of ["hotel.hk.changed", "hotel.hk.minibar_posted", "hotel.hk.miniba
   baseConsumers[t] = withAutomation(async () => {});
 }
 // ◂ SVC H.6
+// SVC H.7 ▸ ปิดวันโรงแรม (night audit) — ตัวยิง hotel/night-audit.ts ใน tx เดียวกับแถว HotelNightAudit · payload id/วันที่/ตัวเลขล้วน (X8)
+//   "hotel.audit.closed"   งานหลัก = อีเมลสรุปถึงบทบาทตาม rooms.hotel.audit.notifyRoles (sendEmailRich · กุญแจกันซ้ำ hotel-audit-<auditId> ⇒ ส่งซ้ำ/ปิดใหม่ = ฉบับเดียวต่อวันปิด)
+//                          ส่งไม่สำเร็จ = log WARN ไม่โยน (สรุปเป็นของแถม · ตัวเลขอยู่ในฐานแล้ว) + กฎอัตโนมัติ/เว็บฮุค
+//   "hotel.audit.reopened" งานหลัก no-op (เขียนครบใน night-audit.ts) + กฎอัตโนมัติ/เว็บฮุค
+baseConsumers["hotel.audit.closed"] = withAutomation(async (evt) => {
+  const mail = await (await import("@/lib/modules/hotel")).auditSummaryEmail(evt);
+  if (!mail) return;
+  const r = await sendEmailRich({ to: mail.to, subject: mail.subject, html: mail.html, text: mail.text, idempotencyKey: `hotel-audit-${mail.auditId}` });
+  if (!r.ok) await logOps("WARN", "hotel", `ส่งอีเมลสรุปปิดวันไม่สำเร็จ (audit ${mail.auditId})`, { tenantId: evt.tenantId, detail: r.error ?? "" });
+});
+baseConsumers["hotel.audit.reopened"] = withAutomation(async () => {});
+// ◂ SVC H.7
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
 export const consumers: Record<string, OutboxHandler> = Object.fromEntries(
