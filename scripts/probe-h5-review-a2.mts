@@ -2,7 +2,7 @@
 // รัน: cd <ทรี> && bash scripts/iso.sh bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-h5-review-a2.mts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { randomBytes } from "node:crypto";
-import { loadSvcQcEnv } from "./svc-qc-env.mts";
+import { loadSvcQcEnv } from "./svc-qc-env.mjs";
 type Any = any;
 const LABEL = "probe-h5-a2";
 const SLUG = "h5rv-x-";

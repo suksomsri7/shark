@@ -6,7 +6,7 @@
 //   G ประกันริบ + PENALTY ส่วนเกิน + มัดจำเกิน ในการเช็กเอาต์เดียว (invariant แขกจ่าย = ค่าใช้จ่าย + ประกันที่ริบ) · H EXCLUSIVE+SC+DISCOUNT+POS_CHARGE · I บิลร้านมีส่วนลดท้ายบิล · Z Σdr=Σcr ทั้งสมุด
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { randomBytes } from "node:crypto";
-import { loadSvcQcEnv } from "./svc-qc-env.mts";
+import { loadSvcQcEnv } from "./svc-qc-env.mjs";
 type Any = any;
 const LABEL = "probe-h5-b";
 const SLUG = "h5rv-b-";
