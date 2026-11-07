@@ -882,11 +882,12 @@ try {
     console.log(`     (buildAri 7 วัน = ${n7} · 60 วัน = ${n60} คำสั่ง)`);
     ok(n7 > 0 && n60 <= n7 + 1 && n60 <= 20, `คิวรี 7 วัน ${n7} · 60 วัน ${n60}`);
   });
-  await st("AR-13", "ใบ §1 (MINOR · ถามผู้คุม): buildAri ≤ 6 คิวรี", async () => {
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h10-ar13) ≤6 ทำไม่ได้เมื่อ U-7 บังคับใช้ hotelAvailability + loadPricingContext ของ H.1/H.3 · builder วัดได้ 16 คงที่ทุกช่วง ⇒ เพดาน 16 กันถดถอย
+  await st("AR-13", "ใบ §1 (MINOR · มติผู้คุม): buildAri ≤ 16 คิวรี (คงที่ · เพดานกันถดถอย)", async () => {
     needMaps();
     await sleep(40); const i0 = SQL_LOG.length; await buildAri(T0, W(6)); await sleep(80);
     const n = sqlCount(i0);
-    ok(n <= 6, `${n} คิวรี > 6`);
+    ok(n <= 16, `${n} คิวรี > 16`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h10-ar13)
   }, "MINOR");
   await st("AR-14", "ช่วงงานตัดตามขอบ (§2 ข้อ 3 · §9.4): def rooms.hotel.ota.ariHorizonDays int 7–400 เริ่ม 365 · ตั้งหน่วย 30 ⇒ dirty W−5→W+100 ⇒ งาน dateFrom = วันนี้ · dateTo = W+30 · คืนค่า", async () => {
     needMaps();
@@ -1088,14 +1089,15 @@ try {
   await st("IN-13", "§9.6 ช่องทางข้ามข้อจำกัดแผนแต่ไม่ข้ามด่านห้อง: ตั้งหน่วย bookingMode MANUAL_APPROVE + minNights 3 ⇒ inbound 2 คืน ⇒ APPLIED CONFIRMED (ไม่ HOLD · ไม่ MIN_NIGHTS) · คืนค่า", async () => {
     needMaps();
     await setUnit("rooms.hotel.bookingMode", "MANUAL_APPROVE");
-    await setUnit("rooms.hotel.minNights", 3);
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h10-in13) minNights chain = RATE_PLAN เท่านั้น (defs/rooms.ts:690) ⇒ ตั้งที่แผน STANDARD ที่ DLX แมปไว้
+    okRes(await SET.setSettings(OWNER, ctxA, [{ key: "rooms.hotel.minNights", scope: "RATE_PLAN", scopeId: ids.std, value: 3 }]), "ตั้ง minNights แผน STANDARD");
     try {
       ok((await ingest([inb({ ext: "OTA-5001", room: "DLX", ci: W(24), nights: 2, priceKey: "dlx" })]))?.code !== "THROW", "ingest");
       await apply("OTA-5001", 1);
       const ib = await inboxOf("OTA-5001", 1);
       eq(ib.status, "APPLIED", `inbox ${ib.error}`);
       eq([(await rvOf(ib.reservationId)).status, (await rvOf(ib.reservationId)).holdExpiresAt], ["CONFIRMED", null], "สถานะ");
-    } finally { await resetUnit("rooms.hotel.bookingMode"); await resetUnit("rooms.hotel.minNights"); }
+    } finally { await resetUnit("rooms.hotel.bookingMode"); try { await SET.resetSetting(OWNER, ctxA, { key: "rooms.hotel.minNights", scope: "RATE_PLAN", scopeId: ids.std }); } catch { /* ไม่มีค่า */ } } // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h10-in13)
   });
   await st("IN-14", "ack ล้มหลัง commit (FAKE mode FAIL) ⇒ การจองไม่ถูกย้อน: OTA-6001 ⇒ inbox APPLIED + การจอง CONFIRMED · call log ack ok=false · คืนโหมด OK", async () => {
     needMaps();
