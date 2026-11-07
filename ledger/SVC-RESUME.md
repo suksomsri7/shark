@@ -129,3 +129,19 @@
 ## 📌 ข้อเคาะที่ค้าง (ทำตามค่าปลอดภัยไปก่อน · ดู CC §10)
 - รหัสผังบัญชีเงินประกันผู้เช่า (D.2) · ค่าคอมฯ เมื่อผู้ให้บริการไม่มีบัญชีผู้ใช้ (B.0/B.10 — แจ้งผู้คุม POS) · btree_gist (R0.0) · ลิงก์เปิดแชท OA พร้อมรหัส (C.2) · ข้อความบริการ vs การตลาด (J5)
 - ฐาน branch (R0.0) · ลำดับความสำคัญเลนถ้าเจ้าของอยากให้ "หอนำ" (MASTER-PLAN §8 คันโยก ก)
+
+---
+## ⏸ 7 พ.ย. 2569 ~21:5xZ — พักงาน (เจ้าของอัปเดต VPS) · RUN HOTEL 5/11 (45%) · บัญชี B · โมเดล Opus 5.5 (Fable ติดโควตา)
+**สถานะใบ**: H.0 ✅ · H.1 ✅ · H.3 ✅ · H.2 ✅ · H.5 ✅ · ข้อสอบครบทุกใบแล้ว (h.7 75 · h.8 84 · h.10 89 ข้อ อยู่บน session/svc)
+**ทรี/เลน (สะอาดทุกทรี · push แล้ว)**:
+- l3 `wip/svc-h4` @3f4c93abc — **H.4 พร้อมรับ**: ctrl-run h.4 98/109 0 แดง · chain รอบ 2 regression 19 ชุดเขียวครบ (h.4 เต็ม+G · probe-h4-review-b/c · probe-h5 · h.5/h.3/h.2/h.1/h.0/r0.4/r0.8/d.13/smoke/b.0/money/public/refund/p5.1) · **ค้าง tsc → fitness → build → serve 3246 → ภาพ 09**
+- l2 `wip/svc-h6` @92d40c230 — **H.6 พร้อมรับ**: chain รอบ 2 h.6 95/97 · probe-h6-review-b 23/23 · h.2/h.3/h.5/h.1/h.0/r0.8/r0.9 เขียว · d.13 รันค้างตอนพัก (ปล่อยจบเอง) · **ค้าง d.16/d.19/smoke/b.0/probe-h5 → tsc → build → serve 3247 → ภาพ 13**
+- l1 `wip/svc-h8` @b441ca678 — builder H.8 หยุดก่อนแก้ไฟล์ (ทรีสะอาด) · เริ่มใหม่ได้เลยด้วยพรอมป์เดิม
+**ทำต่อหลัง VPS กลับ (ตามลำดับ)**:
+0. ตรวจเครื่อง: `uptime` · `free -g` · `swapon --show` (5 ไฟล์) · `systemctl list-units 'svc-*' 'iso-*'` ต้องว่าง · node_modules ของ l1/l2/l3 เป็นโฟลเดอร์จริง (ถ้า bind mount หาย = remount ก่อน · memory reference_shark_pos_bind_mounts_lost_on_reboot) · `git status` ทุกทรีว่าง
+1. H.4: สคริปต์ย่อจาก tsc `/root/svc-runs/h4/accept2.sh` (copy เป็น accept3.sh แล้วตัดบรรทัดข้อสอบ/regression ออก เหลือ tsc→build→serve→ฉาก→ภาพ) · unit `svc-h4-accept3` + ตัวเฝ้า until DONE + send_later
+2. H.6: เช่นเดียวกัน `/root/svc-runs/h6/accept2.sh` → accept3.sh (เริ่มจาก reg d.16 ต่อ) · unit `svc-h6-accept3`
+3. ภาพผ่าน ⇒ ผู้คุมดูเอง (H.4 ภาพ 09 ครึ่งซ้าย + ร.ร.3/ร.ร.4 · H.6 ภาพ 13 ก/ข มือถือ) → PARITY ลง SVC-HOTEL-RUN → `git merge --no-ff --no-verify` เข้า session/svc (H.4 ก่อน · H.6 ตาม — conflict คาด: hotel/index.ts actions.ts permissions.ts defs/rooms.ts 3 ทะเบียน = เพิ่มทั้งสองฝั่ง keep-both) → tg 55% / 64%
+4. เปิด builder: H.8 บน l1 (`/root/svc-runs/h8/builder-prompt.md`) · H.7 บน l2 หลัง H.6 merge (`/root/svc-runs/h7/builder-prompt.md` แทน __LANE_DIR__=/root/projects/shark-svc-l2 · __LANE_DB__=ep-weathered-mode · chain `/root/svc-runs/h7/accept.sh.tpl` แทน __LN__/__DBHOST__) · H.10 บน l3 หลัง H.4 merge (เขียนพรอมป์ builder จาก h7/h8)
+5. ผู้ตรวจ: H.7 เงิน 2 รอบ · H.8 สาธารณะ/เงิน · H.10 กันจองซ้อน 2 รอบ (Opus จนกว่า Fable กลับ)
+**รอเจ้าของ (ไม่บล็อก)**: Q-H4-1/3/4 · Q-H5-1 · Q-H3-1 · Turnstile key (หนี้ H.8) · C.2 LINE OA
