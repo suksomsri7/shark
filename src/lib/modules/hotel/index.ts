@@ -108,8 +108,8 @@ export { blockRoom, releaseBlock, listBlocks, BLOCK_REF } from "./block";
 export type { BlockActor, BlockFail, BlockFailCode, BlockOk, BlockRow } from "./block";
 // ◂ SVC H.2
 // SVC H.4 ▸ เช็กอิน V2 · ทะเบียนผู้พัก (ร.ร.3/ร.ร.4) · AI อ่านเอกสาร · ตม.30 · PDPA (ใบสั่ง h.4 §3)
-export { assignableRooms, checkInV2, undoCheckIn } from "./checkin";
-export type { AssignableRoom, CheckInOk, CheckInCode } from "./checkin";
+export { assignableRooms, checkInV2, undoCheckIn, checkinView } from "./checkin";
+export type { AssignableRoom, CheckInOk, CheckInCode, CheckinView } from "./checkin";
 export { upsertGuestRecord, deleteGuestRecord, listGuests, revealGuestId, signRr3, rr3Card, rr4Register, purgeExpiredGuestRecords, RR3_FIELDS } from "./guest";
 export type { GuestDto, GuestInput, Rr3View, Rr4Row, GuestFail } from "./guest";
 export { readIdDocument } from "./guest-id-ai";

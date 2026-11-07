@@ -486,7 +486,7 @@ export function tm30Initial(nationality: string, enabled: boolean, arrivedAt: Da
 
 /**
  * เขียนแถวผู้พักใหม่ใน tx ของผู้เรียก (กล่องลับ AAD = id ของแถว · AuditLog แบบ mask · outbox hotel.guest.registered ไม่มี PII)
- * signedBy = ผู้พักอีกคนของห้องลงชื่อไว้แล้ว ⇒ ถือว่าลงชื่อแทนห้อง (มติ 2) — rr3SignedAt ตั้ง · ไม่มีไฟล์ของตัวเอง
+ * signedAt = เวลาลงชื่อ (ปกติ null — ลงชื่อผ่าน signRr3)
  */
 export async function insertGuestTx(
   tx: Tx,
@@ -568,15 +568,15 @@ export async function upsertGuestRecord(actorIn: unknown, ctx: unknown, input: u
     const out = await db.$transaction(async (t) => {
       const tx = t as unknown as Tx;
       if (!existing) {
-        const others = await tx.hotelGuestRecord.findMany({ where: { reservationId: rv.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { rr3SignedAt: true, signatureFileId: true } });
-        const roomSigned = others.find((x) => x.rr3SignedAt && x.signatureFileId);
-        const arrivedAt = rv.status === "CHECKED_IN" ? now : null;
+        // ผู้พักที่เพิ่มระหว่างพัก: ตม.30 ครบกำหนด = เวลาลงทะเบียน (= เวลาที่แจ้งว่าเข้าพัก) + 24 ชม. · นาฬิกาฉาก input.at ใต้ SVC_QC_CLOCK เท่านั้น
+        //   ลงชื่อแทนห้อง (มติ 2) ครอบคลุมผู้พักที่มีอยู่ตอนลงชื่อ — คนที่เพิ่มทีหลังลงชื่อเองหรือให้ผู้พักหลักลงใหม่
+        const arrivedAt = rv.status === "CHECKED_IN" ? guestClock(input, "at") : null;
         const id = await insertGuestTx(tx, c, rv, prep, {
           actorId: g.actor.userId,
           imageFileId: newFile,
           tm30: tm30Initial(prep.nationality, st.tm30Enabled, arrivedAt),
           retainYears: st.retainYears,
-          signedAt: roomSigned ? roomSigned.rr3SignedAt : null,
+          signedAt: null,
           via: rv.status === "CHECKED_IN" ? "IN_STAY" : rv.status === "CHECKED_OUT" ? "AFTER_CHECKOUT" : "PRE_ARRIVAL",
         });
         return { guestId: id, created: true, oldFile: null as string | null };

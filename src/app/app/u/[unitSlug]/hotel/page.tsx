@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { hotelToday } from "@/lib/modules/hotel"; // SVC H.2 ▸ KPI หน้าเคาน์เตอร์ (ภาพ 08 แถบบน) ◂
 import HotelToday from "@/components/hotel/HotelToday";
+import { tm30Queue } from "@/lib/modules/hotel"; // SVC H.4 ▸ การ์ด "ตม.30 ค้าง N" ◂
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("th-TH", {
@@ -27,6 +28,7 @@ export default async function HotelPage({
   const { auth, unit } = await requireUnit(unitSlug);
   if (unit.type !== "HOTEL") notFound(); // SVC H.0 ▸ ด่าน type HOTEL ◂
   const [data, kpi] = await Promise.all([dashboardData(auth.active.tenantId, unit.id), hotelToday({ tenantId: auth.active.tenantId }, { unitId: unit.id })]);
+  const tq = await tm30Queue({ tenantId: auth.active.tenantId }, { unitId: unit.id }); // SVC H.4 ▸ คิวแจ้ง ตม.30 (ภายใน 24 ชม.) ◂
 
   // ห้องที่ assign ได้ต่อการจองที่ถึงวันนี้ (เพื่อ dropdown เช็คอิน)
   const arrivalRooms = await Promise.all(
@@ -55,6 +57,18 @@ export default async function HotelPage({
 
       {/* SVC H.2 ▸ KPI 5 การ์ด (เข้าวันนี้ · ออกวันนี้ · พักอยู่คืนนี้ · แม่บ้าน · สัปดาห์นี้ + ADR) แทนสรุปสถานะห้องเดิม ◂ */}
       {kpi.ok ? <HotelToday kpi={kpi} /> : null}
+
+      {/* SVC H.4 ▸ การ์ด "ตม.30 ค้าง N" ต่อจาก HotelToday (ภาพ 08/09) — ลิงก์คิวแจ้งที่พักคนต่างด้าว ◂ */}
+      {tq.ok ? (
+        <a
+          href={`/app/u/${unitSlug}/hotel/tm30`}
+          data-tm30-card={tq.pending + tq.late}
+          className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm ${tq.late ? "border-rose-300 bg-rose-50 text-rose-800" : tq.pending ? "border-amber-300 bg-amber-50 text-amber-800" : "border-[color:var(--color-line)]"}`}
+        >
+          <span className="font-bold">ตม.30 ค้าง {(tq.pending + tq.late).toLocaleString("th-TH")} คน</span>
+          <span className="text-xs">{tq.late ? `เกิน 24 ชม. ${tq.late.toLocaleString("th-TH")} คน · ` : ""}แจ้งที่พักคนต่างด้าว →</span>
+        </a>
+      ) : null}
 
       {/* ถึงวันนี้ — เช็คอิน */}
       <section className="flex flex-col gap-2">

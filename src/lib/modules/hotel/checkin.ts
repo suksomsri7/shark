@@ -218,7 +218,6 @@ async function checkInCore(g: GuestGate | { tenantId: string; unitId: string; un
       }
       // ทะเบียน: แถวใหม่ + แถวที่ลงทะเบียนล่วงหน้า (ตม.30 ครบกำหนดนับจากเวลาเข้าพัก)
       const ids: string[] = [];
-      const signedOther = await tx.hotelGuestRecord.findFirst({ where: { reservationId: rv.id, signatureFileId: { not: null } }, select: { rr3SignedAt: true } });
       for (let i = 0; i < prepared.length; i++) {
         const pg = prepared[i]!;
         ids.push(
@@ -227,7 +226,7 @@ async function checkInCore(g: GuestGate | { tenantId: string; unitId: string; un
             imageFileId: files[i] ?? null,
             tm30: tm30Initial(pg.nationality, st.tm30Enabled, now),
             retainYears: st.retainYears,
-            signedAt: signedOther?.rr3SignedAt ?? null,
+            signedAt: null,
             via: "CHECK_IN",
           }),
         );
@@ -384,3 +383,28 @@ export async function undoCheckIn(actorIn: unknown, ctx: unknown, input: unknown
   }
 }
 
+
+// ───────────────────────── ข้อมูลจอเช็กอิน (หน้า [id]?tab=guests) ─────────────────────────
+export type CheckinView = {
+  ok: true;
+  checkedInAt: string | null;
+  securityDepositSatang: number;
+  settings: { aiIdReader: boolean; rr3OnScreen: boolean; keepIdImageDefault: boolean; tm30Enabled: boolean; securityDeposit: { required: boolean; amountSatang: number } };
+};
+/** ค่าตั้ง + สถานะเช็กอิน/ประกันของการจองสำหรับจอ (ผู้เรียก = หน้าที่ตรวจสิทธิ์แล้ว) · ข้ามร้าน/หน่วย ⇒ NOT_FOUND */
+export async function checkinView(ctx: unknown, input: unknown): Promise<CheckinView | GuestFail> {
+  const tenantId = tenantOf(ctx);
+  if (!tenantId || !isRec(input) || !isStr(input.unitId)) return gfail("NOT_FOUND", R.notFound);
+  const unit = await tenantDb({ tenantId }).businessUnit.findFirst({ where: { id: input.unitId, type: "HOTEL" }, select: { id: true } });
+  if (!unit) return gfail("NOT_FOUND", R.notFound);
+  const rv = await tenantDb({ tenantId, unitId: unit.id }).hotelReservation.findFirst({ where: { id: String(input.reservationId ?? "") }, select: { checkedInAt: true, securityDepositSatang: true, securityDepositSaleId: true, source: true } });
+  if (!rv) return gfail("NOT_FOUND", R.notFound);
+  const st = await guestSettings(tenantId, unit.id);
+  const required = st.secDepEnabled && st.secDepAmount > 0 && (st.secDepAppliesTo !== "WALK_IN" || rv.source === "WALK_IN");
+  return {
+    ok: true,
+    checkedInAt: rv.checkedInAt?.toISOString() ?? null,
+    securityDepositSatang: rv.securityDepositSaleId ? rv.securityDepositSatang : 0,
+    settings: { aiIdReader: st.aiIdReader, rr3OnScreen: st.rr3OnScreen, keepIdImageDefault: st.keepIdImageDefault, tm30Enabled: st.tm30Enabled, securityDeposit: { required, amountSatang: st.secDepAmount } },
+  };
+}
