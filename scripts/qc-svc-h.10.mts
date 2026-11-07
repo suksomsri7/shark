@@ -1543,6 +1543,8 @@ console.log("\n── V ภาพ ──");
 
 // ═══════════════ G regression ═══════════════
 console.log("\n── G: regression ──");
+// ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-g-scene) ฉากของใบนี้ค้างหลังกลุ่ม Q ⇒ Q ของ h.1/h.2/h.3/h.5 แดง ⇒ เคลียร์ก่อน G (chain รันฉากใหม่ก่อนถ่ายภาพ)
+if (has(F.scene)) spawnSync("pnpm", ["exec", "tsx", F.scene, "--clear"], { cwd: ROOT, env: process.env, encoding: "utf8" });
 const summaryOf = (out: string): { failed: string[] } | null => {
   const line = out.split("\n").reverse().find((l) => l.startsWith("JSON_SUMMARY "));
   if (!line) return null;
