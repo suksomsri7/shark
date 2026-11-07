@@ -17,7 +17,6 @@ import { logOps as logOpsRaw } from "@/lib/core/ops";
 import { replaceEmailsInText } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ◂
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { formatThaiDate } from "@/lib/ui/date";
-import { sendEmailRich } from "@/lib/core/email"; // SVC H.7 ▸ อีเมลสรุปปิดวัน ◂
 import { runForEvent as runJourneysForEvent } from "@/lib/modules/member";
 // M3.5 — ตาข่ายเก็บตกของแนะนำเพื่อนตอน `member.created` (facade ล้วน)
 import { referralOnMemberCreated } from "@/lib/modules/member";
@@ -1522,6 +1521,8 @@ for (const t of ["hotel.hk.changed", "hotel.hk.minibar_posted", "hotel.hk.miniba
 baseConsumers["hotel.audit.closed"] = withAutomation(async (evt) => {
   const mail = await (await import("@/lib/modules/hotel")).auditSummaryEmail(evt);
   if (!mail) return;
+  // 🔴 โหลดตอนใช้ (ไม่ static) — core/email ดึง @/lib/env ที่ parse ตอนโหลด ⇒ fitness F10.1 ไร้ env พัง (H.7 r2)
+  const { sendEmailRich } = await import("@/lib/core/email");
   const r = await sendEmailRich({ to: mail.to, subject: mail.subject, html: mail.html, text: mail.text, idempotencyKey: `hotel-audit-${mail.auditId}` });
   if (!r.ok) await logOps("WARN", "hotel", `ส่งอีเมลสรุปปิดวันไม่สำเร็จ (audit ${mail.auditId})`, { tenantId: evt.tenantId, detail: r.error ?? "" });
 });

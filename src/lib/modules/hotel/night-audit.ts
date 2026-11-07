@@ -82,6 +82,8 @@ const KEY_AUTO = "rooms.hotel.audit.autoClose";
 const NO_SHOW_POLICIES = ["FORFEIT_RELEASE_AFTER_AUDIT", "FORFEIT_HOLD_STAY", "REFUND_RELEASE"] as const;
 const TX_OPTS = { maxWait: 15_000, timeout: 60_000 } as const;
 const MAX_DAYS_PER_RUN = 7;
+/** cron ปิดวัน REOPENED ซ้ำได้เมื่อเปิดไว้ ≥ 2 ชม. (ให้ผู้จัดการแก้ทัน · มติผู้คุม r2) · ปิดมือได้ทันที */
+const REOPEN_CRON_GRACE_MS = 2 * 3_600_000;
 const HISTORY_MAX_DAYS = 400;
 const R = {
   notFound: "ไม่พบโรงแรมนี้ หรือบัญชีนี้เข้าถึงหน่วยนี้ไม่ได้",
@@ -103,7 +105,7 @@ type Tx = Prisma.TransactionClient;
 type UnitCtx = { tenantId: string; unitId: string };
 type UnitInfo = UnitCtx & { tz: string };
 type Gate = UnitInfo & { actor: AuditActor | null };
-type AuditRowLite = { id: string; ymd: string; status: string };
+type AuditRowLite = { id: string; ymd: string; status: string; reopenedAt: Date | null };
 
 const fail = (code: AuditFailCode, reason: string): AuditFail => ({ ok: false, code, reason });
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -167,10 +169,11 @@ const noShowActor = (actor: AuditActor | null): AuditActor => ({ role: "OWNER", 
 // ───────────────────────── สถานะวันปิด ─────────────────────────
 async function auditRowsOf(db: Tx, c: UnitCtx): Promise<{ last: AuditRowLite | null; first: AuditRowLite | null }> {
   const [last, first] = await Promise.all([
-    db.hotelNightAudit.findFirst({ where: { tenantId: c.tenantId, unitId: c.unitId }, orderBy: { businessDate: "desc" }, select: { id: true, businessDate: true, status: true } }),
-    db.hotelNightAudit.findFirst({ where: { tenantId: c.tenantId, unitId: c.unitId }, orderBy: { businessDate: "asc" }, select: { id: true, businessDate: true, status: true } }),
+    db.hotelNightAudit.findFirst({ where: { tenantId: c.tenantId, unitId: c.unitId }, orderBy: { businessDate: "desc" }, select: { id: true, businessDate: true, status: true, reopenedAt: true } }),
+    db.hotelNightAudit.findFirst({ where: { tenantId: c.tenantId, unitId: c.unitId }, orderBy: { businessDate: "asc" }, select: { id: true, businessDate: true, status: true, reopenedAt: true } }),
   ]);
-  const lite = (r: { id: string; businessDate: Date; status: string } | null): AuditRowLite | null => (r ? { id: r.id, ymd: ymdOfDate(r.businessDate), status: r.status } : null);
+  const lite = (r: { id: string; businessDate: Date; status: string; reopenedAt: Date | null } | null): AuditRowLite | null =>
+    r ? { id: r.id, ymd: ymdOfDate(r.businessDate), status: r.status, reopenedAt: r.reopenedAt } : null;
   return { last: lite(last), first: lite(first) };
 }
 
@@ -281,7 +284,7 @@ async function dayFacts(db: Tx, u: UnitInfo, bd: string, rounding: string, extra
 }
 
 /** snapshot ของแถว audit: รายได้/คืนตามแหล่งจองและประเภทห้อง (ไม่มี PII) */
-async function snapshotOf(db: Tx, u: UnitCtx, f: DayFacts, warnings: string[]): Promise<Prisma.InputJsonValue> {
+async function snapshotOf(db: Tx, u: UnitCtx, f: DayFacts, warnings: string[], notes: string[] = []): Promise<Prisma.InputJsonValue> {
   const nightById = new Map(f.occNights.map((n) => [n.id, n]));
   const typeIds = [...new Set(f.occNights.map((n) => n.roomTypeId))];
   const types = typeIds.length ? await db.hotelRoomType.findMany({ where: { tenantId: u.tenantId, unitId: u.unitId, id: { in: typeIds } }, select: { id: true, name: true } }) : [];
@@ -298,7 +301,7 @@ async function snapshotOf(db: Tx, u: UnitCtx, f: DayFacts, warnings: string[]): 
     (bySource[n.source] ??= { roomNights: 0, revenueSatang: 0 }).revenueSatang += it.amountSatang;
     (byRoomType[n.roomTypeId] ??= { name: typeName.get(n.roomTypeId) ?? "", roomNights: 0, revenueSatang: 0 }).revenueSatang += it.amountSatang;
   }
-  return jsonOf({ bySource, byRoomType, warnings, version: 1 });
+  return jsonOf({ bySource, byRoomType, warnings, ...(notes.length ? { notes } : {}), version: 1 });
 }
 
 /** คืนที่ต้อง post ของวัน bd: CHECKED_IN · counted · ยังไม่ post */
@@ -385,16 +388,29 @@ async function closeCore(g: Gate, bd: string, now: Date): Promise<CloseAuditOk |
   const bad0 = orderCheck(bd, today, cur0, pre.last);
   if (bad0) return bad0;
   const warnings: string[] = [];
+  const notes: string[] = [];
 
   // ขั้น 1 — no-show (นอก tx · ทีละแถว · เงินผ่าน POS ใน markNoShow)
+  //   H.7 r2 (มติผู้คุม ข้อ 1ก): ปิดใหม่ของวันที่ REOPENED ไม่ทำขั้น 1 ซ้ำ — ทำไปแล้วตอนปิดครั้งแรก ·
+  //   ใบที่ยัง CONFIRMED ตอนนี้ = ผู้จัดการย้อน «ไม่มา» เอง ⇒ ข้าม (จดใน snapshot.notes)
   const confirmed = await tenantDb(c).hotelReservation.findMany({ where: { status: "CONFIRMED", checkInDate: day }, orderBy: { code: "asc" }, select: { id: true, code: true } });
-  for (const rv of confirmed) {
-    try {
-      const r = await markNoShow(noShowActor(g.actor), { tenantId: c.tenantId }, { unitId: c.unitId, reservationId: rv.id });
-      if (!r.ok) warnings.push(`ตั้งไม่มา ${rv.code} ไม่สำเร็จ: ${r.reason}`);
-      else if ("moneyWarning" in r && typeof r.moneyWarning === "string") warnings.push(`${rv.code}: ${r.moneyWarning}`);
-    } catch {
-      warnings.push(`ตั้งไม่มา ${rv.code} ไม่สำเร็จ — ตรวจที่หน้าการจอง`);
+  let noShowsMarked = 0;
+  if (cur0?.status === "REOPENED") {
+    if (confirmed.length > 0) notes.push(`เปิดซ้ำ — ไม่ตั้งไม่มาซ้ำ ${confirmed.length} ใบ`);
+  } else {
+    // แถวที่อีกทางตั้งไม่มาไปแล้ว (ชนะ CAS) ⇒ ข้ามเงียบ ไม่เตือน (C-6) · นับเฉพาะที่ตั้งสำเร็จจริง
+    const nowNoShow = async (id: string): Promise<boolean> =>
+      (await tenantDb(c).hotelReservation.findFirst({ where: { id, status: "NO_SHOW" }, select: { id: true } })) !== null;
+    for (const rv of confirmed) {
+      try {
+        const r = await markNoShow(noShowActor(g.actor), { tenantId: c.tenantId }, { unitId: c.unitId, reservationId: rv.id });
+        if (r.ok) {
+          noShowsMarked++;
+          if ("moneyWarning" in r && typeof r.moneyWarning === "string") warnings.push(`${rv.code}: ${r.moneyWarning}`);
+        } else if (!(await nowNoShow(rv.id))) warnings.push(`ตั้งไม่มา ${rv.code} ไม่สำเร็จ: ${r.reason}`);
+      } catch {
+        if (!(await nowNoShow(rv.id).catch(() => false))) warnings.push(`ตั้งไม่มา ${rv.code} ไม่สำเร็จ — ตรวจที่หน้าการจอง`);
+      }
     }
   }
 
@@ -413,7 +429,8 @@ async function closeCore(g: Gate, bd: string, now: Date): Promise<CloseAuditOk |
       const start = rows.first && rows.first.ymd < bd ? rows.first.ymd : bd;
 
       // ขั้น 2 — ค่าห้องคืน bd ของแขกที่เข้าพัก
-      const nights = await tx.hotelBookingNight.findMany({ where: toPostWhere(c, bd), select: { reservationId: true, roomTypeId: true, roomId: true } });
+      // ล็อก folio เรียงตาม reservationId (ลำดับเดียวกับเช็กเอาต์กลุ่ม · กัน deadlock)
+      const nights = await tx.hotelBookingNight.findMany({ where: toPostWhere(c, bd), orderBy: [{ reservationId: "asc" }, { date: "asc" }], select: { reservationId: true, roomTypeId: true, roomId: true } });
       let posted = 0;
       const seen = new Set<string>();
       for (const n of nights) {
@@ -433,7 +450,7 @@ async function closeCore(g: Gate, bd: string, now: Date): Promise<CloseAuditOk |
 
       // ขั้น 4 — freeze KPI
       const facts = await dayFacts(tx, g, bd, st.rounding);
-      const snapshot = await snapshotOf(tx, c, facts, warnings);
+      const snapshot = await snapshotOf(tx, c, facts, warnings, notes);
       const data = { ...facts.kpi, status: "CLOSED", snapshot, closedById: g.actor?.userId ?? null };
       if (cur) await tx.hotelNightAudit.updateMany({ where: { id: cur.id, ...c }, data });
       else await tx.hotelNightAudit.create({ data: { id: auditId, ...c, businessDate: day, ...data } });
@@ -443,7 +460,7 @@ async function closeCore(g: Gate, bd: string, now: Date): Promise<CloseAuditOk |
         businessDate: bd,
         kpi: facts.kpi,
         roomNightsPosted: posted,
-        noShowsMarked: confirmed.length,
+        noShowsMarked,
         warnings: warnings.length,
         byCron: g.actor === null,
       });
@@ -621,7 +638,12 @@ export async function runDueAudits(now: Date, budgetMs: number, control?: { sign
         res.skipped++;
         continue;
       }
-      const due = rows.last?.status === "REOPENED" ? localMinutesOf(u.tz, now) >= auditTimeMinutes(time) && rows.last.ymd < today : isAuditDue(u.tz, time, now, rows.last?.ymd ?? null);
+      // วัน REOPENED: cron ปิดซ้ำได้เมื่อเปิดไว้ ≥ 2 ชม. ตาม now ที่ส่งเข้ามา (มติผู้คุม ข้อ 1ข · ปิดมือได้ทันที)
+      const reopenAged = (last: AuditRowLite) => last.reopenedAt === null || now.getTime() - last.reopenedAt.getTime() >= REOPEN_CRON_GRACE_MS;
+      const due =
+        rows.last?.status === "REOPENED"
+          ? localMinutesOf(u.tz, now) >= auditTimeMinutes(time) && rows.last.ymd < today && reopenAged(rows.last)
+          : isAuditDue(u.tz, time, now, rows.last?.ymd ?? null);
       if (!due) {
         res.skipped++;
         continue;
