@@ -1019,7 +1019,7 @@ export async function rr4Register(ctx: unknown, input: unknown): Promise<{ ok: t
 // ───────────────────────── purgeExpiredGuestRecords (Q6 · X5) ─────────────────────────
 /**
  * ล้างข้อมูลอ่อนไหวของแถวที่พ้น retainUntil (ข้ามร้าน · งานรายวัน): กล่องลับ (เลขเต็ม/ที่อยู่/ตรวจลงตรา) · รูปเอกสาร · ลายเซ็น
- * คงชื่อ · 4 ตัวท้าย · สัญชาติ · วันเข้าออก (ร.ร.4 ย้อนหลังที่ไม่มีข้อมูลอ่อนไหว) · AuditLog SYSTEM ต่อแถว + outbox hotel.guest.purged {count} ต่อหน่วย
+ * + วันเกิด · มาจาก · ไปต่อ · คงชื่อ · 4 ตัวท้าย · สัญชาติ · วันเข้าออก (ร.ร.4 ย้อนหลังที่ไม่มีข้อมูลอ่อนไหว) · AuditLog SYSTEM ต่อแถว + outbox hotel.guest.purged {count} ต่อหน่วย
  * idempotent + ซ้อนกันได้: UPDATE มีเงื่อนไขค่าเดิม ⇒ แต่ละแถวถูกนับ/ลบไฟล์ครั้งเดียว
  */
 export async function purgeExpiredGuestRecords(input?: unknown): Promise<{ ok: true; purged: number }> {
@@ -1040,7 +1040,7 @@ export async function purgeExpiredGuestRecords(input?: unknown): Promise<{ ok: t
       const tx = t as unknown as Tx;
       const upd = await tx.hotelGuestRecord.updateMany({
         where: { id: r.id, idNumberEnc: r.idNumberEnc, idImageFileId: r.idImageFileId, signatureFileId: r.signatureFileId },
-        data: { idNumberEnc: null, idImageFileId: null, signatureFileId: null },
+        data: { idNumberEnc: null, idImageFileId: null, signatureFileId: null, dob: null, arrivedFrom: null, nextDestination: null }, // ผู้ตรวจ PDPA m1: คงชื่อ + last4 + สัญชาติ + วันเข้าออก เท่านั้น
       });
       if (upd.count !== 1) return false;
       await guestAudit(tx, c, null, "hotel.guest.purged", r.id, { hadSecret: !!r.idNumberEnc, hadIdImage: !!r.idImageFileId, hadSignature: !!r.signatureFileId }, { purged: true, reason: "พ้นระยะเวลาเก็บ (rooms.hotel.guest.retainYears)" });

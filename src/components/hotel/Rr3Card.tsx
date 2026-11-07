@@ -4,6 +4,8 @@ import { ID_TYPE_LABEL, SEX_LABEL, dateLongTh, dateTimeTh, nationalityText, type
 
 type Props = { card: Rr3View; showImage?: boolean };
 
+/** ผู้ตรวจ PDPA m3: ที่อยู่/อาชีพ/รูปบัตร เฉพาะผู้มีสิทธิ์ลงทะเบียนผู้พัก (showImage) */
+const HIDDEN = "ซ่อน (ต้องมีสิทธิ์ลงทะเบียนผู้พัก)";
 const ROW = "grid grid-cols-[10rem_1fr] gap-2 border-b border-[color:var(--color-line)] py-1.5 text-sm print:text-[12px]";
 
 export default function Rr3Card({ card: c, showImage = false }: Props) {
@@ -46,7 +48,7 @@ export default function Rr3Card({ card: c, showImage = false }: Props) {
         <div className={ROW}>
           <dt className="text-[color:var(--color-muted)]">เพศ · อาชีพ</dt>
           <dd>
-            {c.sex ? (SEX_LABEL[c.sex] ?? c.sex) : "—"} · {c.occupation ?? "—"}
+            {c.sex ? (SEX_LABEL[c.sex] ?? c.sex) : "—"} · {showImage ? (c.occupation ?? "—") : HIDDEN}
           </dd>
         </div>
         <div className={ROW}>
@@ -58,7 +60,7 @@ export default function Rr3Card({ card: c, showImage = false }: Props) {
         </div>
         <div className={ROW}>
           <dt className="text-[color:var(--color-muted)]">ที่อยู่ปัจจุบัน</dt>
-          <dd>{c.address ?? "—"}</dd>
+          <dd>{showImage ? (c.address ?? "—") : HIDDEN}</dd>
         </div>
         <div className={ROW}>
           <dt className="text-[color:var(--color-muted)]">มาจาก → จะไปที่</dt>

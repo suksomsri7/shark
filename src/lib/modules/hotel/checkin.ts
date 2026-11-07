@@ -15,6 +15,7 @@ import { bkkYmd } from "@/lib/core/quiet-hours";
 import { claimRoom, moveOccupancy, releaseOccupancy } from "@/lib/modules/rooms";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { isSellableNightly } from "./availability";
+import { integrationSecretKeyConfigured } from "@/lib/core/integrations/secret-box";
 import {
   GUEST_TX,
   GuestAbort,
@@ -150,6 +151,8 @@ async function checkInCore(g: GuestGate | { tenantId: string; unitId: string; un
   const needGuest = st.requireRegistration;
   if (needGuest && rawGuests.length === 0 && existing === 0) return gfail("GUEST_REQUIRED", "ลงทะเบียนผู้เข้าพักหลักก่อนเช็กอิน (ชื่อ · สัญชาติ · ชนิดและเลขเอกสาร) — พ.ร.บ.โรงแรม ม.35");
   if (rawGuests.length && !hasRequiredGuestFields(rawGuests[0]) && existing === 0) return gfail("GUEST_REQUIRED", "ผู้เข้าพักหลักต้องกรอกชื่อ · สัญชาติ · ชนิดและเลขเอกสารให้ครบ");
+  // ผู้ตรวจ PDPA m2: ลงทะเบียนต้องเข้ารหัสเลขเอกสาร — ไม่มีกุญแจ ⇒ ปฏิเสธก่อนอัปไฟล์/เขียนอะไร (ไม่ throw ทะลุ action)
+  if (rawGuests.length && !integrationSecretKeyConfigured()) return gfail("NOT_CONFIGURED", R.noKey);
   const prepared: PreparedGuest[] = [];
   for (const raw of rawGuests) {
     const pg = prepareGuest(raw, st.keepIdImageDefault, today);

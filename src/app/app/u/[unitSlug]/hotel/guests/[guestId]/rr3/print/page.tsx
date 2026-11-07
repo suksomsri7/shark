@@ -5,7 +5,7 @@ import { rr3Card } from "@/lib/modules/hotel";
 import Rr3Card from "@/components/hotel/Rr3Card";
 
 // SVC H.4 ▸ บัตรทะเบียนผู้พัก (ร.ร.3) แบบพิมพ์ — rr3Card (ผ่าน facade) · หน่วย "HOTEL" + สิทธิ์ทะเบียนจาก session ไม่ผ่าน ⇒ notFound
-//   ลิงก์ลายเซ็น/รูปเอกสาร = /api/files ผูกผู้ดูคนนี้ (userId ใน ctx) อายุ ≤ 15 นาที · เลขเอกสาร 4 ตัวท้าย · พิมพ์ด้วยคำสั่งพิมพ์ของเบราว์เซอร์
+//   ที่อยู่/อาชีพ/รูปบัตร เฉพาะผู้มี hotel.guest.register (ผู้ตรวจ PDPA m3) · ลิงก์ลายเซ็น/รูปเอกสาร = /api/files ผูกผู้ดูคนนี้ (userId ใน ctx) อายุ ≤ 15 นาที · เลขเอกสาร 4 ตัวท้าย · พิมพ์ด้วยคำสั่งพิมพ์ของเบราว์เซอร์
 export default async function HotelRr3PrintPage({ params }: { params: Promise<{ unitSlug: string; guestId: string }> }) {
   const { unitSlug, guestId } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
@@ -27,7 +27,7 @@ export default async function HotelRr3PrintPage({ params }: { params: Promise<{ 
         </a>
         <p className="text-xs text-[color:var(--color-muted)]">สั่งพิมพ์จากเบราว์เซอร์ หรือเลือก “บันทึกเป็น PDF”</p>
       </header>
-      <Rr3Card card={card} showImage />
+      <Rr3Card card={card} showImage={can("hotel.guest.register")} />
     </div>
   );
 }

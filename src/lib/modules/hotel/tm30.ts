@@ -28,6 +28,7 @@ import {
   isStr,
   isTxBusy,
   openGuestSecret,
+  type GuestSecret,
   tenantOf,
   uploadGuestFile,
   ymdOfDb,
@@ -36,6 +37,7 @@ import {
   type ValidFile,
 } from "./guest";
 import { nationalityTh } from "./guest-shared";
+import { integrationSecretKeyConfigured } from "@/lib/core/integrations/secret-box";
 
 type Tx = Prisma.TransactionClient;
 export type Tm30Column = { key: HotelTm30ColumnKey; label: string };
@@ -120,11 +122,21 @@ export async function tm30Export(actorIn: unknown, ctx: unknown, input: unknown)
     include: { reservation: { select: { checkInDate: true, checkOutDate: true, checkedInAt: true, room: { select: { number: true } } } } },
   });
   if (!rows.length) return gfail("INVALID_INPUT", "ไม่มีผู้เข้าพักต่างด้าวที่ยังไม่แจ้งในรายการที่เลือก");
+  // ผู้ตรวจ PDPA รอบ 1 MAJOR-1: ไฟล์ ตม. ต้องมีเลขหนังสือเดินทางเต็ม — เปิดกล่องลับไม่ได้ ⇒ ไม่ส่งออก (ไม่สร้างไฟล์ · ไม่เขียน AuditLog exported)
+  if (!integrationSecretKeyConfigured()) return gfail("NOT_CONFIGURED", R.noKey);
+  const secrets = new Map<string, GuestSecret>();
+  let unreadable = 0;
+  for (const r of rows) {
+    const sec = openGuestSecret(r);
+    if (sec) secrets.set(r.id, sec);
+    else unreadable++;
+  }
+  if (unreadable) return gfail("NO_DATA", `เปิดข้อมูลเลขหนังสือเดินทางไม่ได้ ${unreadable} คน (ถูกลบตามระยะเวลาเก็บ หรือกุญแจเข้ารหัสไม่ตรง) — ยังไม่สร้างไฟล์ · แจ้งผู้ดูแลระบบ หรือกรอกเอกสารใหม่ที่ทะเบียนผู้พัก`);
   const st = await guestSettings(g.tenantId, g.unitId);
   const cols = tm30ColumnsOf(st.tm30Columns);
   const lines: string[] = [csvRow(cols.map((x) => x.label))];
   for (const r of rows) {
-    const sec = openGuestSecret(r);
+    const sec = secrets.get(r.id) ?? null;
     const val = (k: HotelTm30ColumnKey): string => {
       switch (k) {
         case "fullName": return r.fullName;
