@@ -62,6 +62,8 @@
 | m5 | จดสัญญาผู้เรียก `chargeToRoom` ใน sds (facade ไม่ตรวจวิธีจ่ายต้นทาง) |
 | m6 | หนี้ (§8) |
 
+ผลรอบ 3: probe-h5-a 27/27 · probe-h5-a2 4/4 · หลัง commit 160ef8b18: qc-svc-h.5 `{"total":92,"passed":77,"failed":[]}` (skip F-1/V-1/G) · qc-svc-h.3 `{"total":109,"passed":98,"failed":[]}` · qc-pos-p5.1 28/28 · qc-hotel-money 5/5 · qc-hotel-refund 15/15 · ก่อน commit h.5 แดง F-3 เพราะ outbox-consumers เทียบ HEAD (แก้บล็อก H.5 ของรอบ 1 เอง: compose→bothMain)
+
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | check ids / เหตุผล |
 |---|---|---|
