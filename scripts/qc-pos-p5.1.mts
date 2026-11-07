@@ -735,6 +735,7 @@ async function runDb(): Promise<void> {
     S.ACC = (await sysSvc.createSystem(T, "ACCOUNT", `บัญชี P5.1 ${RAND}`)).id;
     S.MEM = (await sysSvc.createSystem(T, "MEMBER", `สมาชิก P5.1 ${RAND}`)).id;
     for (const k of Object.keys(U)) await sysSvc.linkUnit(T, S.POS, U[k]);
+    for (const k of ["H", "H5"]) await P.settingValue.create({ data: { tenantId: T, key: "rooms.hotel.checkout.allowLegacyCash", scope: "UNIT", scopeId: U[k], value: true } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-legacy): ใบ h.5 §2.11 — MA2/MA2b/MA5/MA12b/MA13 เรียก checkOut เดิมไม่ส่งวิธีจ่าย
     await sysSvc.linkUnit(T, S.MEM, U.A);
     // ORACLE-EDIT ผู้คุม 23.10 (CD-P51-O10): สาขาจองคิว BM ผูกสมาชิก + แต้ม (มัดจำของสมาชิก · ผลข้างเคียงของบิลริบ) ◂
     S.PNT = (await sysSvc.createSystem(T, "POINT", `แต้ม P5.1 ${RAND}`)).id;

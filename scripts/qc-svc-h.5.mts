@@ -417,7 +417,7 @@ try {
   for (let i = 1; i <= 14; i++) { const n = `DLX${String(i).padStart(2, "0")}`; ROOM[n] = await mkRoom(tA, UH, n, RTA.dlx); }
   for (const n of ["SUP01", "SUP02"]) ROOM[n] = await mkRoom(tA, UH, n, RTA.sup);
   const RT_U2 = await mkType(tA, UH2, SPEC.dlx);
-  const ROOM_U2 = await mkRoom(tA, UH2, "DLX01", RT_U2); // เลขห้องซ้ำ UH โดยตั้งใจ (AMBIGUOUS_ROOM)
+  const ROOM_U2 = await mkRoom(tA, UH2, "E01", RT_U2); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D2): เดิม DLX01 ซ้ำกับ UH ทำ RC-1/RC-2 กำกวมตั้งแต่ FO-7 — ห้องซ้ำสร้างเฉพาะใน RC-6
   const RT_B = await mkType(tB, UHB, SPEC.dlx);
   const ROOM_B = await mkRoom(tB, UHB, "DLX01", RT_B);
   // POS ระบบเดียวของร้าน A ผูก UH + UH2 + UR (ลงห้องข้ามหน่วยในร้าน) · บัญชีผูก POS (จด VAT 7%) — แบบ qc-hotel-money
@@ -540,7 +540,7 @@ try {
   const unmatched = (actor: Actor, unitId = UH, ctx: Record<string, unknown> = ctxA) => call(() => RC("listUnmatchedRoomCharges")(actor, ctx, { unitId }));
   const attach = (actor: Actor, saleId: string, reservationId: string, ctx: Record<string, unknown> = ctxA) => call(() => RC("attachRoomCharge")(actor, ctx, { saleId, reservationId }));
   const unmatchedRows = (r: Any): Any[] => (Array.isArray(r) ? r : Array.isArray(r?.rows) ? r.rows : Array.isArray(r?.items) ? r.items : []);
-  const expectedCharges = (items: Any[]) => sum(liveItems(items).filter((i) => !["PAYMENT", "DEPOSIT", "REFUND", "SECURITY_DEPOSIT", "SECURITY_REFUND", "TAX", "SERVICE_CHARGE"].includes(i.type)).map((i) => i.amountSatang));
+  const expectedCharges = (items: Any[]) => sum(liveItems(items).filter((i) => !["PAYMENT", "DEPOSIT", "REFUND", "SECURITY_DEPOSIT", "SECURITY_REFUND", "TAX", "SERVICE_CHARGE", "VOID_REVERSAL"].includes(i.type)).map((i) => i.amountSatang)); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D1): liveItems ตัดแถวที่ void แล้ว ⇒ ต้องไม่นับแถว VOID_REVERSAL ซ้ำ (หักสองครั้ง)
   const depositOf = (items: Any[]) => -sum(liveItems(items).filter((i) => i.type === "DEPOSIT").map((i) => i.amountSatang));
 
   // ═══════════════ FO folio ═══════════════
@@ -645,6 +645,7 @@ try {
   await st("FO-7", "EXCLUSIVE (ใบ §2.1 · บนหน่วย UH2): ตั้ง tax.mode EXCLUSIVE + serviceChargeBp 1000 · โพสต์ SERVICE 10,000 ⇒ folio มี TAX + SERVICE_CHARGE ตาม taxLines(Σ charge) · โพสต์เพิ่ม 10,000 ⇒ แถว TAX/SERVICE_CHARGE คำนวณใหม่ (ค่าเก่าไม่ซ้อน · live 1 แถวต่อชนิด) · getFolio.tax.lines = 2 แถวตรงฐาน · balance cache = Σ รวม TAX/SERVICE_CHARGE · INCLUSIVE (UH) ไม่มีแถว TAX/SERVICE_CHARGE", async () => {
     needFolio();
     await setUnit("rooms.hotel.tax.mode", "EXCLUSIVE", UH2);
+    await setUnit("rooms.hotel.codePrefix", "HB", UH2); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D2): รหัสจองรันต่อหน่วย — prefix ต่างกันไม่ให้ MAIN/u2 ได้ HR-2611-0001 ซ้ำ (RC-2 อ้างด้วย code)
     await setUnit("rooms.hotel.tax.serviceChargeBp", 1000, UH2);
     const r = await inhouse({ unitId: UH2, roomTypeId: RT_U2, ratePlanId: ids.stdU2, deposit: false, checkOut: W(1) });
     ids.u2 = r.id; ids.u2Room = r.roomId;
@@ -868,7 +869,12 @@ try {
       const occ = await prisma.roomOccupancy.findFirst({ where: { tenantId: tA, unitId: UH, roomId: ROOM.DLX01, active: true } });
       if (!occ) { const extra = okRes(await book(FRONT, { checkOut: W(1) }), "จองเสริม"); okRes(await checkInSvc(tA, UH, extra.reservations[0].id, ROOM.DLX01), "เช็กอิน DLX01"); ids.dlx01 = extra.reservations[0].id; }
     }
-    ok(await prisma.roomOccupancy.findFirst({ where: { tenantId: tA, unitId: UH2, roomId: ROOM_U2, active: true } }), "UH2 DLX01 ไม่มีแขก (FO-7)");
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D2): ห้องซ้ำ DLX01 ของ UH2 + แขก CHECKED_IN สร้างเฉพาะในข้อนี้ (ไม่ให้ RC-1/RC-2/GL-5 กำกวม) · ล้างท้ายข้อ
+    const ROOM_U2_DUP = await mkRoom(tA, UH2, "DLX01", RT_U2);
+    const dup = okRes(await book(FRONT, { checkOut: W(1), ratePlanId: ids.stdU2, rooms: [{ roomTypeId: RT_U2, adults: 2, children: 0 }] }, UH2), "จอง UH2 DLX01");
+    okRes(await checkInSvc(tA, UH2, dup.reservations[0].id, ROOM_U2_DUP), "เช็กอิน UH2 DLX01");
+    try {
+    ok(await prisma.roomOccupancy.findFirst({ where: { tenantId: tA, unitId: UH2, roomId: ROOM_U2_DUP, active: true } }), "UH2 DLX01 ไม่มีแขก");
     const sB1 = await posSale({});
     eq(failCode(await chargeToRoom({ tenantId: tA, folioRef: { roomNumber: "DLX01" }, lines: line, sourceSaleId: sB1.saleId })), "AMBIGUOUS_ROOM", "กำกวม");
     okRes(await chargeToRoom({ tenantId: tA, hotelUnitId: UH, folioRef: { roomNumber: "DLX01" }, lines: line, sourceSaleId: sB1.saleId }), "ระบุหน่วย");
@@ -885,6 +891,11 @@ try {
     const ev = await eventsOf("hotel.folio.charge_unmatched", (p) => p.saleId === amb.saleId);
     ok(ev.length === 1 && /AMBIGUOUS_ROOM/.test(String(ev[0].payload.reason)), `unmatched กำกวม ${J(ev.map((e) => e.payload))}`);
     RCS.amb = amb.saleId;
+    } finally { // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D2): ล้างแขก DLX01 ของ UH2 (ปล่อยห้อง + ปิดการจอง) ให้ข้อหลังไม่กำกวม
+      await prisma.roomOccupancy.updateMany({ where: { tenantId: tA, unitId: UH2, roomId: ROOM_U2_DUP, active: true }, data: { active: false } });
+      await prisma.hotelReservation.update({ where: { id: dup.reservations[0].id }, data: { status: "CHECKED_OUT" } });
+      await prisma.hotelRoom.update({ where: { id: ROOM_U2_DUP }, data: { active: false } });
+    }
   });
   await st("RC-7", "pos.sale.voided ⇒ reversal อัตโนมัติ (ใบ §2.2): การจองใบใหม่ (CHECKED_IN) รับบิลร้าน ROOM_CHARGE 640 → POS_CHARGE 2 แถว → pos.voidSale บิลร้าน → drain ⇒ VOID_REVERSAL 2 แถว reversalOfId อ้างแถว POS_CHARGE amount −320 · แถวเดิม voidedAt ตั้ง · balance กลับเท่าก่อนบิล · drain ซ้ำไม่สร้างซ้ำ · บัญชี: JV บิลร้านถูกกลับ (1100 สุทธิ 0)", async () => {
     needRc();
@@ -1050,7 +1061,7 @@ try {
   });
   await st("ST-8", "แยกจ่าย + กะ (ใบ §2.4 §2.7): การจองใบใหม่ (มัดจำ CASH) · settle shiftId = กะเปิด · payMethods CASH + PROMPTPAY (2 แถว Σ = payable) ⇒ PosSale.shiftId = กะ · PosPayment 3 แถว (DEPOSIT + CASH + PROMPTPAY) ยอดตรง · กะปิด ⇒ SHIFT_CLOSED ไม่สร้างบิล · กะมั่ว ⇒ SHIFT_REQUIRED · กะของหน่วยอื่น (UH2) ⇒ SHIFT_REQUIRED", async () => {
     needCheckout();
-    const r = await inhouse({ checkOut: W(1), payType: "CASH" });
+    const r = await inhouse({ checkOut: W(2), payType: "CASH" }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D3): 1 คืน มัดจำคืนแรกครอบทั้งยอด ⇒ payable 0 แยกจ่ายไม่ได้ — ใช้ 2 คืน
     ids.split = r.id;
     const items = await itemsOf(r.id);
     const grand = expectedCharges(items) + sum((await nightsOfRv(r.id)).filter((n) => !n.folioItemId).map((n) => n.priceSatang));
@@ -1114,7 +1125,7 @@ try {
     eq(depAll, 3 * refNightPrice(CELL.dlx, W(0)), "มัดจำ ×3");
     const inIds: string[] = [];
     for (const x of r.reservations.slice(0, 2)) { const rv = await rvOf(x.id); const occ = (await occOfRv(x.id, true))[0]; okRes(await checkInSvc(tA, UH, x.id, rv.roomId ?? occ.roomId), "เช็กอินกลุ่ม"); inIds.push(x.id); }
-    okRes(await post(POSTER, inIds[0], { description: "ซักรีดกลุ่ม", unitAmountSatang: 5_000 }), "post");
+    okRes(await post(POSTER, inIds[0], { description: "ซักรีดกลุ่ม", unitAmountSatang: 500_000 }), "post"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D4): มัดจำหัวกลุ่ม 3 คืน > 2 ห้อง 1 คืน ⇒ payable ติดลบ — ค่าบริการก้อนใหญ่ให้มัดจำถูกใช้หมดและ payable > 0
     const third = r.reservations[2].id;
     const perFolio = async (id: string) => expectedCharges(await itemsOf(id)) + sum((await nightsOfRv(id)).filter((n) => !n.folioItemId).map((n) => n.priceSatang));
     const totals = [await perFolio(inIds[0]), await perFolio(inIds[1])];
@@ -1156,7 +1167,7 @@ try {
   });
   await st("ST-13", "taxInvoice ส่งผ่าน (ใบ §0): settle ส่ง taxInvoice {kind:\"COMPANY\", name, taxId 0105561177639, branchCode \"00000\", address} ⇒ PosSale.taxInvoice บันทึก (name/taxId) · ไม่มีบรรทัด TAX/SERVICE_CHARGE ส่งเป็น line (INCLUSIVE · lines ไม่มีชื่อ \"ภาษี\"/\"VAT\") · PosSale.vatSatang = VAT ในราคา (POS คิด) = refVat(grandTotal).vat", async () => {
     needCheckout();
-    const r = await inhouse({ checkOut: W(1) });
+    const r = await inhouse({ checkOut: W(1), deposit: false }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-D5): POS P2.9b R5 vatSatang ของบิล = VAT(ยอด) − VAT ที่ออกตอนรับมัดจำ — ไม่มีมัดจำ ⇒ vatSatang = refVat(grand).vat ตามข้อ
     const items = await itemsOf(r.id);
     const grand = expectedCharges(items) + sum((await nightsOfRv(r.id)).filter((n) => !n.folioItemId).map((n) => n.priceSatang));
     const payable = grand - r.rv.depositSatang;
