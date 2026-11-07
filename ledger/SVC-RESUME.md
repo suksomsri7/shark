@@ -37,6 +37,12 @@
 > อัปเดตล่าสุด: **27 ต.ค. 2569** · ผู้วางแผน RUN · branch ปัจจุบันของเอกสาร `session/svc-design` (worktree `/root/projects/shark-svc`)
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/SVC-RUN.md` §1 (กติกาเหล็ก) + §3 (สถานะ) + ท้าย §4 → `ledger/SVC-CORE-CONTRACT.md` → แถวใบที่จะทำใน `ledger/SVC-MASTER-PLAN.md` §4 → แบบ `ledger/DESIGN-BOOKING-QUEUE.md` / `ledger/DESIGN-DORM-HOTEL.md` (§ ที่ใบอ้าง)
 
+## ▶️ RUNNING 7 พ.ย. 2569 ~03:0xZ — RUN HOTEL 1/11 · session ผู้คุมใหม่ (บัญชี B) · เครื่อง **ยังไม่อัปเกรด KVM8** (4 vCPU/15 GB)
+- สถานะสด = `ledger/SVC-HOTEL-RUN.md` §2–§3 · คำถามเจ้าของ = `SVC-OWNER-QUESTIONS.md` บล็อก HOTEL 7 พ.ย. (RAM ไม่พอ tsc/build — เสนอ 3 ทาง)
+- เลน: **l1** `wip/svc-h1` @0941d0911 chain `svc-h1-accept2` (log `/root/svc-runs/h1/accept2.txt` · รอ RAM ≥9G · ตัวเฝ้า until DONE + send_later 04:43Z) → PARITY ภาพ 15 → merge · **l2** `wip/svc-h3-oracle` @afcd4ea75 ผู้เขียนข้อสอบ h.3 (Fable) · **l3** `wip/svc-h2-oracle` @25d9f4f67 ผู้เขียนข้อสอบ h.2 (Fable) · ทั้งสองยืนบน session/svc 2c31c5dd7 + H.1
+- unit `svc-h-seed-lanes` (log `/root/svc-runs/h3/seed-lanes.txt`): reseed l2/l3 (frontdesk สิทธิ์ใหม่ + maid) → backfill svc_h บน l3 แล้ว l1 (--dry → จริง) · ฐานหลัก ep-mute-scene ยังไม่ backfill (ทำหลัง H.1 merge จากทรีที่ไม่ใช่ทรีหลัก)
+- ถ้า session หลุด: อ่าน `SVC-HOTEL-KICKOFF-PROMPT.md` §0–§4 · ดู 3 log ข้างบน · ผลข้อสอบของผู้เขียนอยู่บน branch oracle (push แล้วถ้าเสร็จ) · ห้ามเปิดเลนที่ 4
+
 ## ⏸ 7 พ.ย. 2569 ~21:2xZ — จุดส่งไม้ก่อนอัปเกรด VPS → KVM8 · **พรอมป์เริ่ม session ใหม่ = `ledger/SVC-HOTEL-KICKOFF-PROMPT.md`** (เจ้าของสั่ง "บันทึกทั้งหมดเตรียมส่งไม้ต่อ")
 **สถานะ:** SVC 51/52 (C.2 รอ OA LINE+มือถือ) · **HOTEL 1/11 (H.0 ✅) · H.1 โค้ดเสร็จ+ผู้ตรวจผ่าน รอขั้นรับงานท้าย** · ทุกอย่าง push แล้ว ทรีทุกเลนสะอาด (dirty 0)
 - `session/svc` @299f341d8 (H.0 merge · ข้อสอบ h.0/h.1 · ORACLE-EDIT ชุด unitTypes · ใบสั่ง H.0–H.3 + H.2 · แผน/สถานะ)
