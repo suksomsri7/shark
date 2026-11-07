@@ -2,60 +2,91 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { checkRateLimit } from "@/lib/core/rate-limit";
-import { resolveHotelUnit, createReservation } from "@/lib/modules/hotel/service";
+import { hotelWebClientKey, publicAttachSlip, publicCancel, publicCreateHold, publicLookup } from "@/lib/platform/hotel-web";
 
-// ลูกค้าจองห้องออนไลน์ (public · ไม่ต้องล็อกอิน) — กรอกจากมือถือ
-// resolve unit จาก slug → กันถล่มต่อ IP → createReservation (availability guard อะตอมมิกในตัว)
-//   → gen publicToken → เด้งไปหน้าสถานะ/จ่ายมัดจำ
-// error ทุกกรณี = เด้งกลับหน้าจองพร้อม ?err=<รหัส> (inline) — คงช่วงวันที่ + ประเภทห้องที่เลือกไว้
-// ⚠️ ส่ง "รหัส" ไม่ใช่ข้อความไทย เพราะหน้าจองรองรับ 2 ภาษา (หน้าเป็นคนแปลผ่าน dict hotel.err.*)
-export async function createPublicReservationAction(formData: FormData) {
-  const tenantSlug = String(formData.get("tenantSlug") ?? "").trim();
-  const unitSlug = String(formData.get("unitSlug") ?? "").trim();
-  const roomTypeId = String(formData.get("roomTypeId") ?? "").trim();
-  const from = String(formData.get("from") ?? "").trim();
-  const to = String(formData.get("to") ?? "").trim();
-  const guestName = String(formData.get("guestName") ?? "").trim();
-  const guestPhoneRaw = String(formData.get("guestPhone") ?? "").trim();
+// SVC H.8 ▸ server actions ของหน้าจองโรงแรมสาธารณะ (ใบสั่ง h.8 §3) — ทุกตัวผ่าน platform/hotel-web เท่านั้น
+//   (rate limit ต่อ IP+หน่วยบนฐาน · กันสแปม honeypot + ตั๋วเริ่มฟอร์ม · ยอดเงินคิดฝั่งเซิร์ฟเวอร์) · clientKey = IP จาก headers (x-real-ip → x-forwarded-for)
+//   ผลทุกแบบ = redirect พร้อม "รหัส" (หน้าเป็นคนแปล TH/EN) — ไม่ส่งข้อความ/ข้อมูลส่วนตัวผ่าน URL (มีแค่ publicToken ของการจองเอง)
+//   ทางเดิม P1 (createPublicReservationAction) ถูกแทนด้วย publicCreateHoldAction — URL หน้าเดิมคงอยู่
 
-  const base = `/s/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(unitSlug)}/hotel`;
-  const keep = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-  const backErr = (code: "rate" | "shop" | "dates" | "roomType" | "name" | "phone" | "failed"): never =>
-    redirect(`${base}?err=${code}&${keep}`);
+function s(fd: FormData, k: string, max = 200): string {
+  return String(fd.get(k) ?? "").trim().slice(0, max);
+}
+function baseOf(fd: FormData): { tenantSlug: string; unitSlug: string; base: string; lang: string } {
+  const tenantSlug = s(fd, "tenantSlug", 100);
+  const unitSlug = s(fd, "unitSlug", 100);
+  const l = s(fd, "lang", 4);
+  return { tenantSlug, unitSlug, base: `/s/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(unitSlug)}/hotel`, lang: l === "en" || l === "th" ? l : "" };
+}
+const withLang = (href: string, lang: string) => (lang ? `${href}${href.includes("?") ? "&" : "?"}lang=${lang}` : href);
 
-  // กันยิงถล่ม — 5 ครั้ง/นาที/IP ต่อ unit (in-memory ต่อ instance ตามสัญญา core)
-  const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const rl = checkRateLimit(`hotel-book:${tenantSlug}:${unitSlug}:${ip}`, {
-    limit: 5,
-    windowMs: 60_000,
-  });
-  if (!rl.ok) backErr("rate");
+/** S3 → HOLD (หรือ CONFIRMED ตามโหมด) → หน้าจ่ายมัดจำ / หน้าสถานะ */
+export async function publicCreateHoldAction(formData: FormData) {
+  const b = baseOf(formData);
+  const clientKey = hotelWebClientKey(await headers());
+  const checkIn = s(formData, "checkIn", 10);
+  const checkOut = s(formData, "checkOut", 10);
+  const roomTypeId = s(formData, "roomTypeId", 64);
+  const ratePlanId = s(formData, "ratePlanId", 64);
+  const adults = Number(s(formData, "adults", 3)) || 2;
+  const rooms = Number(s(formData, "rooms", 3)) || 1;
+  const r = await publicCreateHold(
+    {
+      tenantSlug: b.tenantSlug,
+      unitSlug: b.unitSlug,
+      checkIn,
+      checkOut,
+      adults,
+      children: 0,
+      rooms: [{ roomTypeId, qty: rooms, ...(ratePlanId ? { ratePlanId } : {}), adults }],
+      guest: { name: s(formData, "guestName", 120), phone: s(formData, "guestPhone", 32) || null, email: s(formData, "guestEmail", 120) || null },
+      couponCode: s(formData, "couponCode", 40) || null,
+      locale: s(formData, "locale", 4) === "en" ? "en" : "th",
+      spam: { hp: s(formData, "_sd_hp", 500), st: s(formData, "_sd_st", 300) },
+      idempotencyKey: s(formData, "idempotencyKey", 128),
+    },
+    { clientKey },
+  );
+  if (!r.ok || !r.publicToken) {
+    const code = !r.ok ? String(r.code) : "FAILED";
+    redirect(withLang(`${b.base}/book?checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}&rooms=${rooms}&roomTypeId=${encodeURIComponent(roomTypeId)}&ratePlanId=${encodeURIComponent(ratePlanId)}&err=${encodeURIComponent(code)}`, b.lang));
+  }
+  const token = r.ok ? (r.publicToken ?? "") : "";
+  redirect(withLang(r.ok && r.status === "HOLD" && r.intent ? `${b.base}/pay/${token}` : `${b.base}/r/${token}`, b.lang));
+}
 
-  const resolved = await resolveHotelUnit(tenantSlug, unitSlug);
-  if (!resolved) backErr("shop");
-  const ctx = { tenantId: resolved!.tenant.id, unitId: resolved!.unit.id };
+/** แนบสลิปจากฟอร์ม (ทางสำรองของ route สลิป) */
+export async function publicAttachSlipAction(formData: FormData) {
+  const b = baseOf(formData);
+  const clientKey = hotelWebClientKey(await headers());
+  const token = s(formData, "publicToken", 64);
+  const f = formData.get("file");
+  let state = "bad";
+  if (f && typeof f !== "string") {
+    const data = new Uint8Array(await f.arrayBuffer());
+    const r = await publicAttachSlip({ tenantSlug: b.tenantSlug, unitSlug: b.unitSlug, publicToken: token, file: { data, contentType: f.type }, idempotencyKey: s(formData, "idempotencyKey", 128) }, { clientKey });
+    state = r.ok ? "ok" : r.code === "RATE_LIMITED" ? "rate" : "bad";
+  }
+  redirect(withLang(`${b.base}/pay/${encodeURIComponent(token)}?slip=${state}`, b.lang));
+}
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to))
-    backErr("dates");
-  if (!roomTypeId) backErr("roomType");
-  if (guestName.length < 1) backErr("name");
-  const phoneDigits = guestPhoneRaw.replace(/\D/g, "");
-  if (phoneDigits.length < 9 || phoneDigits.length > 15)
-    backErr("phone");
+/** ยกเลิกเองจากหน้าสถานะ — ยอดคืนต้องตรงที่แสดง */
+export async function publicCancelAction(formData: FormData) {
+  const b = baseOf(formData);
+  const clientKey = hotelWebClientKey(await headers());
+  const token = s(formData, "publicToken", 64);
+  const r = await publicCancel(
+    { tenantSlug: b.tenantSlug, unitSlug: b.unitSlug, publicToken: token, email: s(formData, "email", 200), confirmRefundSatang: Number(s(formData, "confirmRefundSatang", 12)) || 0 },
+    { clientKey },
+  );
+  redirect(withLang(`${b.base}/r/${encodeURIComponent(token)}?cancel=${r.ok ? "ok" : encodeURIComponent(String(r.code))}`, b.lang));
+}
 
-  const res = await createReservation({
-    ...ctx,
-    roomTypeId,
-    checkInDate: from,
-    checkOutDate: to,
-    guestName,
-    guestPhone: guestPhoneRaw,
-    source: "WEB", // SVC H.3 ▸ แหล่งที่มาของการจองหน้าเว็บ ◂
-  });
-  if (!res.ok) backErr("failed"); // เหตุผลจริง (ห้องเต็มพอดี ฯลฯ) อยู่ใน service — ผู้ใช้เห็นข้อความเดียวที่แปลได้
-
-  // สำเร็จ → หน้าสถานะ/จ่ายมัดจำ (publicToken)
-  redirect(`${base}/r/${res.ok ? res.publicToken ?? "" : ""}`);
+/** หาการจองของฉัน (รหัส + อีเมล) — ไม่พบ = ข้อความเดียว */
+export async function publicLookupAction(formData: FormData) {
+  const b = baseOf(formData);
+  const clientKey = hotelWebClientKey(await headers());
+  const r = await publicLookup({ tenantSlug: b.tenantSlug, unitSlug: b.unitSlug, code: s(formData, "code", 40), email: s(formData, "email", 200) }, { clientKey });
+  if (r.ok) redirect(withLang(`${b.base}/r/${r.publicToken}`, b.lang));
+  redirect(withLang(`${b.base}/my?err=${!r.ok && r.code === "RATE_LIMITED" ? "rate" : "nf"}`, b.lang));
 }

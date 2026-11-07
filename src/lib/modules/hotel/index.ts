@@ -115,3 +115,21 @@ export type { TapeBar, TapeBarKind, TapeRoom, TapeGroup, TapeOccupancyDay, TapeL
 export { blockRoom, releaseBlock, listBlocks, BLOCK_REF } from "./block";
 export type { BlockActor, BlockFail, BlockFailCode, BlockOk, BlockRow } from "./block";
 // ◂ SVC H.2
+// SVC H.8 ▸ จองออนไลน์ V2 (ใบสั่ง h.8 §1 §9) — ยกเลิกโดยแขก (booking.ts เพิ่มอย่างเดียว) + ชั้นข้อมูลหน้าจองสาธารณะ (ผู้เรียก = platform/hotel-web · hotel-mail)
+export { cancelBookingAsGuest } from "./booking";
+export {
+  webUnitBySlugs,
+  webSearchBundle,
+  webPlansOf,
+  webBookingFacts,
+  webBookingByCode,
+  webBookingByIdem,
+  hotelDepositSlipFacts,
+  slipByIdemKey,
+  planCancelRules,
+  lineOaBasicId,
+  guestMailFacts,
+  arrivalsWithEmailOn,
+} from "./storefront";
+export type { WebUnit, WebRoomTypeInfo, WebCancelRuleRow, WebSearchBundle, WebPlanRow, WebSlipState, WebDepositMoney, WebBookingFacts, GuestMailFacts } from "./storefront";
+// ◂ SVC H.8

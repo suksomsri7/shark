@@ -347,6 +347,14 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "hotel.booking.changed", label: "เมื่อการจองห้องพักเปลี่ยน (ต่อคืน · ย่นคืน · ย้ายห้อง · เลื่อนวัน)" },
   { value: "hotel.booking.deposit_after_expiry", label: "เมื่อรับมัดจำหลังหมดเวลาถือห้องแต่ห้องเต็มแล้ว (คืนเงินอัตโนมัติ — พนักงานติดต่อลูกค้า)" },
   // ◂ SVC H.3
+  // SVC H.8 ▸ หน้าจองเว็บโรงแรม — ตัวยิง `platform/hotel-web.ts` · payload id + สตางค์ล้วน (ไม่มีชื่อ/เบอร์/อีเมล/รหัสที่แขกกรอก · X8)
+  //   consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "hotel.web.hold_created", label: "เมื่อลูกค้าจองห้องพักผ่านหน้าเว็บ (ถือห้องรอมัดจำ)" },
+  { value: "hotel.web.deposit_paid", label: "เมื่อรับมัดจำการจองห้องพักจากหน้าเว็บ (สลิปอนุมัติแล้ว)" },
+  { value: "hotel.web.slip_attached", label: "เมื่อลูกค้าแนบสลิปมัดจำห้องพักจากหน้าเว็บ (รอตรวจ)" },
+  { value: "hotel.web.cancelled_by_guest", label: "เมื่อลูกค้ายกเลิกการจองห้องพักเองจากลิงก์การจอง" },
+  { value: "hotel.web.lookup_failed", label: "เมื่อมีการค้นหาการจองห้องพักด้วยรหัสและอีเมลที่ไม่ตรง (หน้าเว็บ)" },
+  // ◂ SVC H.8
   // SVC H.5 ▸ บิลระหว่างพัก (folio) · เช็กเอาต์ POS ใบเดียว · เงินประกันห้อง — ตัวยิง hotel/folio.ts · checkout.ts · room-charge.ts (ใน tx เดียวกับการเขียน)
   //   payload { tenantId, unitId, reservationId, groupId?, folioId, saleId?, itemId?, amountSatang, type?, reason? } id + สตางค์ล้วน (X8) · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks)
   { value: "hotel.folio.posted", label: "เมื่อลงรายการในบิลห้องพัก (ค่าห้อง · มินิบาร์ · บริการ · ลงห้องจาก POS)" },

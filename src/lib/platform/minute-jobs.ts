@@ -530,6 +530,15 @@ registerMinuteJob({
   run: async () => (await import("@/lib/modules/hotel")).sweepExpiredHolds({}),
 });
 // ◂ SVC H.3
+// SVC H.8 ▸ โรงแรม: อีเมลเตือนผู้เข้าพักก่อนเข้า 1 วัน (ใบสั่ง h.8 §2.6 · §10.5) — รายชั่วโมง (ส่งเมื่อถึง rooms.hotel.storefront.reminderHour ของสาขา · ค่าเริ่ม 10:00 ไทย)
+//   ข้ามร้าน · โหลด platform/hotel-mail ตอนรันเท่านั้น · idempotent: จองสิทธิ์ส่งต่อการจองด้วยคำสั่ง SQL เดียว ⇒ route + crontab ซ้อนกัน ส่งครั้งเดียว (X5)
+registerMinuteJob({
+  name: "hotel-guest-reminder",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now) => (await import("@/lib/platform/hotel-mail")).runGuestReminders(now),
+});
+// ◂ SVC H.8
 // SVC B.3 ▸ ระบบจอง: ปล่อยช่องที่ลูกค้าจองเองแล้วไม่จ่ายมัดจำในเวลา (ทุกนาที · ข้ามร้าน · ใบสั่ง svc-brief-b.3 §3.3) — โหลดตอนรันเท่านั้น ·
 //   idempotent: UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED ⇒ route + crontab ยิงซ้อนกัน แต่ละแถวปล่อยครั้งเดียว (X5)
 registerMinuteJob({
