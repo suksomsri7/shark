@@ -436,7 +436,7 @@ try {
   await st("PC-3", "ฐาน QC ต่อได้ (SELECT 1 · host = ฐาน QC ของ SVC: ep-mute-scene/ep-royal-lake/ep-weathered-mode/ep-royal-bar) · ตัวดักคิวรีติดตั้งก่อน db · ตาราง H.0/PaymentSlip/ChatRateBucket + คอลัมน์ publicToken/guestEmail/policySnapshot ของ HotelReservation · SESSION_SECRET มี (spam-guard)", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`);
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar|ep-square-heart|ep-late-union)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · lanes-l5-l6): ฐานเลน l5/l6 ใหม่ (แตกจาก wo-svc-qc)
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (SR นับคิวรีไม่ได้)");
     ok(H0_OK, H0_WHY);
     ok((process.env.SESSION_SECRET ?? "").length >= 32, "ไม่มี SESSION_SECRET ≥ 32 ตัวใน env QC (ตั๋วเริ่มฟอร์มออกไม่ได้)");
@@ -779,7 +779,8 @@ try {
     console.log(`     (publicSearch = ${n} คำสั่ง)`);
     ok(n > 0 && n <= 14, `SQL ${n} คำสั่ง (ต้อง ≤ 14)`);
   });
-  await st("SR-10", "ใบ §2.1 (MINOR · ถามผู้คุม): SQL ≤ 6 คำสั่ง · < 400 ms (ดีที่สุดใน 3 รอบ) · ธง «เหลือ N» เมื่อ remaining ≤ 3 (ซูพีเรีย 2 ⇒ true · ดีลักซ์ 4 ⇒ ไม่ติด)", async () => {
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h8-sr10) loadPricingContext ของ H.1 ใช้ 8 คำสั่ง (ห้ามแก้) ⇒ เพดาน 11 กันถดถอย
+  await st("SR-10", "ใบ §2.1 (MINOR · มติผู้คุม): SQL ≤ 11 คำสั่ง · < 400 ms (ดีที่สุดใน 3 รอบ) · ธง «เหลือ N» เมื่อ remaining ≤ 3 (ซูพีเรีย 2 ⇒ true · ดีลักซ์ 4 ⇒ ไม่ติด)", async () => {
     needSetup(); needWeb();
     let best = Number.POSITIVE_INFINITY, n = 0;
     for (let i = 0; i < 3; i++) { await sleep(40); const i0 = SQL_LOG.length; const t = Date.now(); await search(); best = Math.min(best, Date.now() - t); await sleep(60); n = sqlCount(i0); }
@@ -788,7 +789,7 @@ try {
     const lowSup = findVal(typeOf(r, RTA.sup), /low|few|last|urgent|scarce/i, (x) => typeof x === "boolean");
     const lowDlx = findVal(typeOf(r, RTA.dlx), /low|few|last|urgent|scarce/i, (x) => typeof x === "boolean");
     ok(lowSup === true && lowDlx !== true, `ธงเหลือน้อย sup=${String(lowSup)} dlx=${String(lowDlx)}`);
-    ok(n <= 6, `SQL ${n} > 6`);
+    ok(n <= 11, `SQL ${n} > 11`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h8-sr10)
     ok(best < 400, `${best} ms ≥ 400`);
   }, "MINOR");
 
@@ -1050,7 +1051,8 @@ try {
     await h(evt);
     const rv = await rvOf(ids.hd1);
     eq([(await depositSalesOf(ids.hd1)).length, rv.depositSaleId], [1, (await depositSalesOf(ids.hd1))[0].id], "ใบรับซ้ำ");
-    const again = await SV("decideSlip")({ userId: OWNER.userId }, ctxA, ids.hd1slip, { decision: "APPROVE", reason: "ซ้ำ", transRef: `H8${uid()}`.toUpperCase() });
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h8-py4) ไม่ส่ง transRef ใหม่ (R0.6 ตรวจเลขอ้างอิงไม่ตรงก่อนสถานะ ⇒ VALIDATION) ⇒ ให้ถึงด่านสถานะ
+    const again = await SV("decideSlip")({ userId: OWNER.userId }, ctxA, ids.hd1slip, { decision: "APPROVE", reason: "ซ้ำ" });
     eq(failCode(again), "INVALID_STATE", "decide ซ้ำ");
     await h({ ...evt, payload: { ...ev.payload, slipId: `svc-h8-fake-${RUN}` } });
     await h({ ...evt, tenantId: tB, payload: { ...ev.payload, refId: ids.hd1 } });
@@ -1655,7 +1657,8 @@ console.log("\n── Q ฉาก svcqc (svc-qc-hotel-web-scene) ──");
   const webMails = WS.webBookings.map((b) => b.guest.email);
   const counterRows = () => prisma.hotelReservation.findMany({ where: { tenantId: SQC_TENANT.id, unitId, note: { contains: MARK } } }) as Promise<Any[]>;
   const webRows = () => prisma.hotelReservation.findMany({ where: { tenantId: SQC_TENANT.id, unitId, source: "WEB", guestEmail: { in: webMails } } }) as Promise<Any[]>;
-  const overrideRows = () => prisma.hotelRateOverride.findMany({ where: { tenantId: SQC_TENANT.id, unitId, roomTypeId: SQC_HOTEL_TYPES.deluxe.id, date: dbDate(addDays(ANCHOR, WS.override.anchorDayOffset)) } }) as Promise<Any[]>;
+  // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h8-q14) วันแก้มือของฉาก h.1 (ratePlanId null) ชนวันเสาร์ของฉากบางสัปดาห์ ⇒ นับเฉพาะแถวที่ reason มี mark h8
+  const overrideRows = async () => ((await prisma.hotelRateOverride.findMany({ where: { tenantId: SQC_TENANT.id, unitId, roomTypeId: SQC_HOTEL_TYPES.deluxe.id, date: dbDate(addDays(ANCHOR, WS.override.anchorDayOffset)) } })) as Any[]).filter((o) => /h8/i.test(String(o.reason ?? "")));
   const otherSig = async () => J([await prisma.hotelReservation.count({ where: { NOT: { tenantId: SQC_TENANT.id } } }), await prisma.hotelReservation.count({ where: { tenantId: SQC_TENANT.id, NOT: { OR: [{ note: { contains: MARK } }, { guestEmail: { in: webMails } }] } } }), await prisma.hotelRoom.count({ where: { tenantId: SQC_TENANT.id, unitId } }), await prisma.hotelRatePlan.count({ where: { tenantId: SQC_TENANT.id, unitId } })]);
   const sceneBase = { tenantSlug: SQC_TENANT.slug, unitSlug: SQC_UNITS.hotel.slug };
   const n1 = `ฉาก ${F.scene}: (ฉาก h.1 ก่อน · --clear h.5/h.3/h.2 ถ้ามี · h.8 --clear) รัน exit 0 · SCENE_SUMMARY {created,updated,removed} + holdToken/confToken/qs (ภาพ) · เคาน์เตอร์ 8 แถว CONFIRMED WALK_IN mark ${MARK} จ่ายมัดจำแล้ว · เว็บ 2 แถว (HOLD มัดจำ 149,000 ยังไม่จ่าย + สลิป? · CONFIRMED มัดจำจ่าย + PaymentSlip HOTEL APPROVED) · override ดีลักซ์วันเสาร์ 169,000 mark h8 · ร้านอื่น/แถวนอก mark ไม่เปลี่ยน`;
@@ -1682,7 +1685,8 @@ console.log("\n── Q ฉาก svcqc (svc-qc-hotel-web-scene) ──");
       const slips = (await prisma.paymentSlip.findMany({ where: { tenantId: SQC_TENANT.id, refId: conf.id } })) as Any[];
       ok(slips.length >= 1 && slips.some((s) => s.domain === "HOTEL" && s.refType === "HOTEL_DEPOSIT" && /APPROVED/.test(s.status)), `สลิป CONFIRMED ${J(slips.map((s) => [s.domain, s.status]))}`);
       const ov = await overrideRows();
-      ok(ov.length >= 1 && ov.every((o) => o.priceSatang === WS.override.priceSatang) && ov.some((o) => /h8/i.test(String(o.reason ?? ""))), `override ${J(ov.map((o) => [o.priceSatang, o.reason]))}`);
+      // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h8-q14) เครื่องคิดราคา H.1 ไม่ต่อยอด override ไปแผนลูก ⇒ ฉากตั้ง override ต่อแผน (ราคาปลายทางตรวจที่ Q-2) · ที่นี่ต้องมีแถวราคาฉาก 169,000 อย่างน้อย 1
+      ok(ov.length >= 1 && ov.some((o) => o.priceSatang === WS.override.priceSatang), `override ${J(ov.map((o) => [o.priceSatang, o.reason]))}`);
       ok(J(sum).includes(hold.publicToken) && J(sum).includes(conf.publicToken) && /checkIn=/.test(J(sum)), "SCENE_SUMMARY ไม่มี token/qs สำหรับภาพ");
       eq(await otherSig(), o0, "ร้านอื่น/แถวนอก mark เปลี่ยน");
     }, "MAJOR");

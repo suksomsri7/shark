@@ -457,7 +457,7 @@ try {
   await st("PC-4", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l3 ep-royal-bar) · ตาราง H.0/หอ ครบ (HotelHousekeepingLog · HotelFolio/Item · HotelBookingNight · RoomOccupancy · DormRepair · FileAsset · OutboxEvent) · HotelRoom มี hkStatus/hkNote/hkUpdatedAt · ตัวดักคิวรีติด · ร้าน svcqc seed แล้ว: membership maid = hotel.housekeeping เท่านั้น · hk-lead = housekeeping + inspect · frontdesk ไม่มี housekeeping · หน่วย hotel 14 ห้อง · ห้องในฟิกซ์เจอร์มีจริง", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลัก (builder อาจอยู่เลนอื่น · regression/H.9)
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar|ep-square-heart|ep-late-union)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-PC3-anylane): ข้อสอบต้องรันได้ทุกเลน/ฐานหลัก (builder อาจอยู่เลนอื่น · regression/H.9)
     ok(H0_OK, H0_WHY);
     ok(spyInstalled, "ตัวดักคิวรีไม่ติด (BD-7 นับคิวรีไม่ได้)");
     const t = await prisma.tenant.findUnique({ where: { id: SQC_TENANT.id }, select: { id: true } });
