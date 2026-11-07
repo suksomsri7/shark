@@ -608,7 +608,8 @@ try {
   const reopen = (actor: Actor | null, over: Over, ctx: Record<string, unknown> = ctxA) => call(() => NA("reopenNightAudit")(actor, ctx, { reason: "ตรวจพบรายการค้าง", ...over }));
   const history = (over: Over, ctx: Record<string, unknown> = ctxA) => call(() => NA("auditHistory")(ctx, { unitId: UH, from: W(-10), to: W(1), ...over }));
   const rctx = (a: Actor, tid = tA) => ({ tenantId: tid, actorUserId: a.userId });
-  const report = (name: string, actor: Actor, over: Over, tid = tA) => call(() => RP(name)(rctx(actor, tid), { unitId: UH, from: W(-1), to: W(0), ...over }));
+  // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-rp-from) คำอธิบาย RP-1/3/6 = from D−1 (= W(-2)) · ค่าคาด/ตัวควบคุมรวม W(-2)
+  const report = (name: string, actor: Actor, over: Over, tid = tA) => call(() => RP(name)(rctx(actor, tid), { unitId: UH, from: W(-2), to: W(0), ...over }));
   const PRICE = { dlx: (d: string) => refNightPrice(CELL.dlx, d), sup: (d: string) => refNightPrice(CELL.sup, d) };
 
   // ═══════════════ ฉากร้านชั่วคราว (UH · D = เมื่อวาน) ═══════════════
@@ -687,7 +688,7 @@ try {
     needBd();
     const f = BD("isAuditDue");
     const at = (ymd: string, hm: string, offsetH = 7) => { const [h, m] = hm.split(":").map(Number); return new Date(Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)), h - offsetH, m)); };
-    eq([f("Asia/Bangkok", "03:00", at(T0, "02:59"), W(-2)), f("Asia/Bangkok", "03:00", at(T0, "03:00"), W(-2)), f("Asia/Bangkok", "03:00", at(D, "03:00"), W(-2))], [false, true, true], "D−2");
+    eq([f("Asia/Bangkok", "03:00", at(T0, "02:59"), W(-2)), f("Asia/Bangkok", "03:00", at(T0, "03:00"), W(-2)), f("Asia/Bangkok", "03:00", at(D, "03:00"), W(-3))], [false, true, true], "D−2"); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-bd4) กรณี 3 ตามคำอธิบาย lastClosed D−2 = W(-3) (W(-2) = D−1 ⇒ วันถัดไป D = วันนี้ของเวลานั้น ปิดไม่ได้)
     eq([f("Asia/Bangkok", "03:00", at(T0, "03:30"), D), f("Asia/Bangkok", "03:00", at(T0, "23:59"), D)], [false, false], "ปิดแล้วถึงเมื่อวาน");
     eq([f("Asia/Bangkok", "03:00", at(T0, "03:00"), null), f("Asia/Bangkok", "03:00", at(T0, "02:59"), null)], [true, false], "ไม่เคยปิด");
     eq([f("Asia/Bangkok", "23:30", at(T0, "23:29"), W(-2)), f("Asia/Bangkok", "23:30", at(T0, "23:30"), W(-2))], [false, true], "23:30");
@@ -981,7 +982,7 @@ try {
     needNa(); needScene();
     const o0 = await otherAuditCount();
     const n0 = await prisma.hotelNightAudit.count({ where: { tenantId: tA } });
-    const now = new Date(Math.max(NOW2.getTime() + 20 * 60_000, Date.now() - 60_000));
+    const now = new Date(Math.min(Math.max(NOW2.getTime() + 20 * 60_000, Date.now() - 60_000), Date.now())); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-cr5) runMinuteJobs ปฏิเสธ now ในอนาคต (รัน 00:00–11:50 ไทย)
     const s0 = await mjL.mod.runMinuteJobs(now, { cadence: "minute", entry: "vps" });
     const me = (s0.results as Any[]).find((x) => x.name === "hotel-night-audit");
     ok(me, `ไม่มี hotel-night-audit ใน results (${J(s0.results?.map((x: Any) => x.name))})`);
@@ -1086,7 +1087,7 @@ try {
     }
     eq(bad.slice(0, 5), [], "bps");
     const today = Object.values(av.byDate[T0] ?? {}) as Any[];
-    ok(sum(today.map((c) => c.counted)) >= 3 && sum(today.map((c) => c.blocked)) === 1, `ตัวควบคุม availability วันนี้ ${J(today)}`);
+    ok(sum(today.map((c) => c.counted)) >= 3 && (sum(today.map((c) => c.blocked)) === 1 || sum(today.map((c) => c.total)) === TOTAL_UH - 1), `ตัวควบคุม availability วันนี้ ${J(today)}`); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-rp5) H.6 ตั้ง DLX06 OUT_OF_ORDER ⇒ availability ตัดออกจาก total แทน blocked
   });
   await st("RP-6", "housekeepingReport(UH, D−1..วันนี้) จาก HotelHousekeepingLog DIRTY→CLEAN · DTO {byDay:[{date, cleaned}], byUser:[{userId, cleaned}], oooOutstanding} (§9.3): ต่อวัน D = 2 · D−1 = 1 · ต่อคน MAID 2 · OWNER 1 · OOO ค้าง ≥ 1 (DLX06 BLOCK ครอบวันนี้) · ไม่มี PII (ชื่อผู้ใช้ไม่ใช่ PII แขก)", async () => {
     needRp(); needScene();
