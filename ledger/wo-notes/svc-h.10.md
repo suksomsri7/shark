@@ -108,3 +108,18 @@
 
 ## 10. คืนสภาพ qc-svc
 - ข้อสอบ h.10 ลบร้าน `svc-h10-*` ใน finally (Z-1 เขียว) · ฉาก h.10 ล้างแล้ว (`--clear` removed 18) หลังรันรอบสุดท้าย · probe ชั่วคราวลบไฟล์ + แถวแล้ว
+
+## รอบ 2 (ผู้ตรวจ A)
+probe `scripts/probe-h10-review-a.mts` (regression ถาวร) ก่อนแก้ 11/15 (แดง R-2 · R-6 · R-10 · R-11) ⇒ หลังแก้ **15/15**
+
+| ข้อ | ต้นเหตุ | แก้ |
+|---|---|---|
+| R-6 MAJOR ยกเลิกหายเมื่อชน MODIFIED | hook ทางยกเลิกไม่ตรวจการจอง active ที่เหลือ · รายการ active อ่านก่อน lock | `appliedHook` (ทั้งทางลงและทางยกเลิก) หลัง advisory lock ต่อ (ตัวต่อ, externalId): นับการจอง active ของเลขนี้**ทั้งร้าน**ที่ไม่ใช่ ids ของรายการนี้ > 0 ⇒ `DUPLICATE` ⇒ ย้อน tx ⇒ CHANNEL_CONFLICT ⇒ RETRY ⇒ applyOnce อ่านรายการใหม่ (APPLY_TRIES 3 · หมดรอบ = คง RECEIVED ให้ pullAll) · ทางยกเลิก "เปล่า" (INVALID_INPUT) ใช้ hook เดียวกัน · ปิดทุกลำดับไม่พึ่ง lease (pullNowAction/retryInbound/pullAll ซ้อน ผ่าน lock เดียวกันหมด) |
+| R-10 MAJOR ตัวต่อ 2 หน่วย MODIFIED ย้ายหน่วย ⇒ active 2 | STALE/active/hook ผูก unitId ของ inbox | ตรวจ active/STALE/DUPLICATE ระดับ (tenant, ตัวต่อ, externalId) ด้วย raw SQL (ไม่ผ่านตัวกรองหน่วยของ tenantDb) · **มติ: การจองเดิมอยู่คนละหน่วยกับฉบับใหม่ (ทั้ง MODIFIED และ CANCELLED) ⇒ NEEDS_ROOM `MANUAL_REQUIRED` — ไม่ย้าย/ยกเลิกข้ามหน่วยเอง** (ข้ามหน่วย = คนละโรงแรม/คนละ folio/คนละสิทธิ์พนักงาน ให้คนตัดสิน) · ลำดับกลับ (ฉบับใหม่ลงหน่วย 2 ขณะเดิมกำลังลงหน่วย 1) ปิดด้วย hook ข้อ R-6 (DUPLICATE ⇒ อ่านใหม่ ⇒ เห็นข้ามหน่วย ⇒ MANUAL_REQUIRED) |
+| R-2 minor ผลที่คืนไม่ตรงแถว | `needsRoom()`/`reject()` คืนค่าที่ตั้งใจแม้ CAS ไม่เปลี่ยนแถว | CAS ไม่เปลี่ยน ⇒ NEEDS_ROOM อยู่แล้ว = ปรับเหตุผล · นอกนั้นอ่านสถานะจริง (`actual()`) แล้วคืนค่านั้น (APPLIED + reservationId) |
+| R-11 minor NEEDS_ROOM ฉบับเก่าค้างคิว | ไม่มีการปิดฉบับเก่าตอนฉบับใหม่ APPLIED | ใน hook (tx เดียวกับ APPLIED): ฉบับ version ต่ำกว่าของ externalId เดียวกัน (ทั้งร้าน) ที่ RECEIVED/NEEDS_ROOM ⇒ REJECTED `STALE` + event `channel.reservation.rejected` ต่อแถว (idempotencyKey เดิม `…rejected#<inboxId>`) |
+| ARI hook minor `emitAriDirty` กลืนข้อผิดพลาดใน tx | คิวรีล้มใน tx ของ Postgres = tx abort อยู่แล้ว | **มติ: มี tx ⇒ ไม่กลืน (transactional outbox) — ปล่อย throw ให้งานล้มที่ต้นเหตุ** แทนกลืนแล้วไปล้มที่คิวรีถัดไป/commit แบบเงียบ · savepoint ไม่เลือก: outbox ใน tx ที่เขียนไม่ได้แปลว่าฐานมีปัญหาจริง และ "งานสำเร็จแต่ ARI หาย" แย่กว่าให้ผู้ใช้ลองใหม่ · ไม่มี tx ⇒ ยังกลืน+เตือน (ไม่มี tx ให้เสีย) · ตัวห่อใน rates.ts/block.ts ถอด `.catch(() => undefined)` + คอมเมนต์ตรงพฤติกรรม (เป็นบรรทัดที่ใบนี้เพิ่มเอง ⇒ diff เทียบฐานยังเพิ่มอย่างเดียว) |
+
+- ลำดับฉาก: ข้อสอบ h.10 ทิ้งฉาก OTA ⇒ ก่อน h.1/h.2/h.3/h.5 ต้อง `svc-qc-hotel-ota-scene.mts --clear` (ผู้คุมจัดใน chain) — ยืนยันผลด้านล่าง
+- ไฟล์ที่แตะรอบนี้: `src/lib/modules/hotel/channel/inbound.ts` · `channel/ari.ts` · `hotel/rates.ts` (1 บรรทัดตัวห่อ) · `hotel/block.ts` (1 บรรทัดตัวห่อ) · booking.ts ไม่แตะ
+- ผลรอบ 2 (รันจริง · ทรี l4): probe-h10-review-a 15/15 · qc-svc-h.10 --no-regression 73/89 แดง 0 (skip MN-4 · V-1/2 · G-1–13) · หลัง `svc-qc-hotel-ota-scene.mts --clear` (removed 18): h.3 98/109 แดง 0 · h.2 78/87 แดง 0 (Q-3 เขียวเมื่อเคลียร์ h.10 ก่อน) · h.5 77/95 แดง 0 · h.1 ดูบรรทัดถัดไป · tsc ไฟล์ของใบ 0
