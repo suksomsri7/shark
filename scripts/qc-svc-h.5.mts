@@ -1579,7 +1579,7 @@ try {
 
   // ═══════════════ U UI สถิต ═══════════════
   console.log("\n── U UI สถิต ──");
-  const COMPS = [F.panel, F.itemRow, F.postDlg, F.voidDlg, F.checkoutDlg, F.splitPay, F.secCard, F.unmatchedList];
+  const COMPS: string[] = [F.panel, F.itemRow, F.postDlg, F.voidDlg, F.checkoutDlg, F.splitPay, F.secCard, F.unmatchedList]; // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-tsc-2769): F เป็น as const ⇒ concat([F.shared]) ชนิด literal ไม่เข้ากัน
   const PAGES = [F.detailPage, F.unmatchedPage, F.printPage];
   await st("U-1", "ไฟล์ของใบครบ (§1): folio.ts · checkout.ts · room-charge.ts · 8 คอมโพเนนต์ + folio-shared.ts · หน้า unmatched · หน้า print · ฉาก svc-qc-hotel-folio-scene.mts · docs/sds/modules/hotel.md §folio", () => {
     eq([F.folio, F.checkout, F.roomCharge, ...COMPS, F.shared, ...PAGES, F.scene].filter((f) => !has(f)), [], "ขาด");
