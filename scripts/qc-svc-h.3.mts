@@ -737,7 +737,7 @@ try {
       ok(near(msOf(r2.reservations[0].holdExpiresAt), Date.now() + 60 * 60_000, 120_000), `60: ${r2.reservations[0].holdExpiresAt}`);
     } finally { await resetUnit("rooms.hotel.holdMinutesCounter"); }
   });
-  await st("K-6", "bookingMode: AUTO_CONFIRM ⇒ WEB ONLINE เป็น CONFIRMED (holdExpiresAt null · folio OPEN) · MANUAL_APPROVE ⇒ HOLD holdExpiresAt null (ไม่หมดอายุ) ทั้ง WEB และ PHONE · occupancy ถืออยู่ · confirmBooking (manage) ⇒ CONFIRMED + folio + outbox hotel.booking.confirmed · confirm ซ้ำ ⇒ ok:false ไม่ throw · คืนค่า", async () => {
+  await st("K-6", "bookingMode: AUTO_CONFIRM ⇒ WEB ONLINE เป็น CONFIRMED (holdExpiresAt null · folio OPEN) · MANUAL_APPROVE ⇒ HOLD holdExpiresAt = วันเข้า 14:00 ไทย (มติ §11 ข้อ 4 · ORACLE-EDIT ผู้คุม 7 พ.ย. h3-K6-manual-expiry) ทั้ง WEB และ PHONE · occupancy ถืออยู่ · confirmBooking (manage) ⇒ CONFIRMED + folio + outbox hotel.booking.confirmed · confirm ซ้ำ ⇒ ok:false ไม่ throw · คืนค่า", async () => {
     needSetup(); needBooking();
     await setUnit("rooms.hotel.bookingMode", "AUTO_CONFIRM");
     try {
@@ -750,7 +750,8 @@ try {
       const m = await bookOk(FRONT, { rooms: [{ roomTypeId: RTA.sup, adults: 2, children: 0 }], checkIn: W(14), checkOut: W(15) });
       const w = await bookOk(FRONT, { source: "WEB", hold: "ONLINE", checkIn: W(15), checkOut: W(16) });
       ids.k6m = m.reservations[0].id; ids.k6w = w.reservations[0].id;
-      eq([m.reservations[0].status, m.reservations[0].holdExpiresAt ?? null, w.reservations[0].status, w.reservations[0].holdExpiresAt ?? null], ["HOLD", null, "HOLD", null], "MANUAL_APPROVE");
+      // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-K6-manual-expiry): เดิมคาด null · มติ §11 ข้อ 4 = วันเข้า เวลา checkInTime (14:00 ไทย)
+      eq([m.reservations[0].status, msOf(m.reservations[0].holdExpiresAt), w.reservations[0].status, msOf(w.reservations[0].holdExpiresAt)], ["HOLD", Date.parse(`${W(14)}T14:00:00+07:00`), "HOLD", Date.parse(`${W(15)}T14:00:00+07:00`)], "MANUAL_APPROVE");
       ok((await occOfRv(ids.k6m, true)).length === 1, "occupancy ถืออยู่");
       eq(await folioOf(ids.k6m), null, "folio ก่อน confirm");
       okRes(await BK("confirmBooking")(FRONT, ctxA, { unitId: UH, id: ids.k6m, reservationId: ids.k6m }), "confirm");
@@ -858,10 +859,11 @@ try {
   await st("K-13", "tx ล้มทั้งชุด: rooms [ดีลักซ์ (ถูก), ประเภทร้าน B] ⇒ NOT_FOUND · ไม่มีแถว/nights/occupancy ของดีลักซ์คืน 24 · ไม่รั่ว id ร้าน B ในคำตอบ", async () => {
     needSetup(); needBooking();
     const n0 = await rvCount();
+    const nn0 = await prisma.hotelBookingNight.count({ where: { tenantId: tA, roomTypeId: RTA.dlx, date: dbDate(W(24)) } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-K13-isolation): K-9 จองคืนนี้ไว้ก่อน ⇒ เทียบก่อน/หลังแทนคาด 0
     const r = await book(FRONT, { rooms: [{ roomTypeId: RTA.dlx, adults: 2, children: 0 }, { roomTypeId: RT_B, adults: 2, children: 0 }], checkIn: W(24), checkOut: W(25) });
     eq(failCode(r), "NOT_FOUND", `ได้ ${codeOf(r)}`);
     eq(await rvCount(), n0, "แถวเพิ่ม");
-    eq(await prisma.hotelBookingNight.count({ where: { tenantId: tA, roomTypeId: RTA.dlx, date: dbDate(W(24)) } }), 0, "nights ค้าง");
+    eq(await prisma.hotelBookingNight.count({ where: { tenantId: tA, roomTypeId: RTA.dlx, date: dbDate(W(24)) } }), nn0, "nights ค้าง");
     ok(!J(r).includes(RT_B), "รั่ว id ร้าน B");
   });
   await st("K-14", "load ในตัว (X3/X4 · ใบ §2 ข้อ 10): 20 createBooking พร้อมกันบน «ห้องเดียว» คืน 30 ⇒ สำเร็จ 1 · AVAILABILITY_CHANGED 19 · ไม่มี throw/40P01/deadlock · nights คืนนั้น 1 แถว · occupancy 1 · แล้วลำดับล็อกสลับ: 10 คำขอ [ดีลักซ์,แฟมิลี] + 10 [แฟมิลี,ดีลักซ์] คืน 32 (แฟมิลี 1 ห้อง) ⇒ สำเร็จ 1 · ไม่มี 40P01", async () => {
@@ -1357,7 +1359,7 @@ try {
     const fresh = (await bookOk(FRONT, { source: "WEB", hold: "ONLINE", checkIn: W(84), checkOut: W(85) })).reservations[0].id; ids.wFresh = fresh;
     const bRes = await withClock(true, async () => okRes(await BK("createBooking")(OWNER_B, ctxB, { unitId: UHB, rooms: [{ roomTypeId: RT_B, adults: 1, children: 0 }], ratePlanId: ids.stdB, source: "WEB", hold: "ONLINE", guest: GUEST, checkIn: W(80), checkOut: W(81), at }), "ร้าน B"));
     const bId = bRes.reservations[0].id;
-    ok(ids.k6w && (await rvOf(ids.k6w)).status === "HOLD" && (await rvOf(ids.k6w)).holdExpiresAt === null, "ไม่มี HOLD MANUAL (K-6)");
+    ok(ids.k6w && (await rvOf(ids.k6w)).status === "HOLD" && msOf((await rvOf(ids.k6w)).holdExpiresAt) > Date.now(), "ไม่มี HOLD MANUAL (K-6) · ต้องยังไม่หมดอายุ"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-W1-manual-expiry): เดิมคาด null
     const s1 = await BK("sweepExpiredHolds")({ limit: 2 });
     eq(s1?.expired, 2, `limit 2 ⇒ ${J(s1)}`);
     const s2 = await BK("sweepExpiredHolds")({});
@@ -1561,8 +1563,10 @@ try {
     eq((await rvOf(ids.wFresh)).status, "HOLD", "ก่อน");
     const s = await withClock(true, async () => BK("sweepExpiredHolds")({ now: new Date(Date.now() + 3_600_000) }));
     ok(s?.expired >= 1 && (await rvOf(ids.wFresh)).status === "CANCELLED", `now ใต้นาฬิกาฉากไม่ทำงาน ${J(s)}`);
+    // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3-C4-fresh-hold): c2 หมดอายุใน 15 นาทีเช่นกัน จึงถูกเก็บในรอบนาฬิกาฉากข้างบน ⇒ ใช้ HOLD ใบใหม่พิสูจน์ว่า now อนาคตถูกเพิกเฉยเมื่อไม่มีนาฬิกาฉาก
+    const c4b = (await bookOk(FRONT, { source: "WEB", hold: "ONLINE", rooms: [{ roomTypeId: RTA.sup, adults: 1, children: 0 }], checkIn: W(140), checkOut: W(141) })).reservations[0].id;
     await withClock(false, async () => BK("sweepExpiredHolds")({ now: new Date(Date.now() + 3_600_000) }));
-    eq((await rvOf(ids.c2)).status, "HOLD", "ไม่มีนาฬิกาฉาก now ต้องถูกเพิกเฉย");
+    eq((await rvOf(c4b)).status, "HOLD", "ไม่มีนาฬิกาฉาก now ต้องถูกเพิกเฉย");
   });
   await st("C-5", "สถิต: booking.ts อ่าน process.env.SVC_QC_CLOCK === \"1\" ภายในฟังก์ชัน (ไม่ใช่ค่าคงที่ตอน import) · actions.ts ไม่มีคำว่า SVC_QC_CLOCK และไม่ส่ง at · ฉาก (ถ้ามี) ตั้ง SVC_QC_CLOCK=1 เอง", () => {
     const b = stripComments(read(F.booking));
