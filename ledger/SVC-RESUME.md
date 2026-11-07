@@ -37,11 +37,13 @@
 > อัปเดตล่าสุด: **27 ต.ค. 2569** · ผู้วางแผน RUN · branch ปัจจุบันของเอกสาร `session/svc-design` (worktree `/root/projects/shark-svc`)
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/SVC-RUN.md` §1 (กติกาเหล็ก) + §3 (สถานะ) + ท้าย §4 → `ledger/SVC-CORE-CONTRACT.md` → แถวใบที่จะทำใน `ledger/SVC-MASTER-PLAN.md` §4 → แบบ `ledger/DESIGN-BOOKING-QUEUE.md` / `ledger/DESIGN-DORM-HOTEL.md` (§ ที่ใบอ้าง)
 
-## ▶️ RUNNING 7 พ.ย. 2569 ~03:0xZ — RUN HOTEL 1/11 · session ผู้คุมใหม่ (บัญชี B) · เครื่อง **ยังไม่อัปเกรด KVM8** (4 vCPU/15 GB)
-- สถานะสด = `ledger/SVC-HOTEL-RUN.md` §2–§3 · คำถามเจ้าของ = `SVC-OWNER-QUESTIONS.md` บล็อก HOTEL 7 พ.ย. (RAM ไม่พอ tsc/build — เสนอ 3 ทาง)
-- เลน: **l1** `wip/svc-h1` @0941d0911 chain `svc-h1-accept2` (log `/root/svc-runs/h1/accept2.txt` · รอ RAM ≥9G · ตัวเฝ้า until DONE + send_later 04:43Z) → PARITY ภาพ 15 → merge · **l2** `wip/svc-h3-oracle` @afcd4ea75 ผู้เขียนข้อสอบ h.3 (Fable) · **l3** `wip/svc-h2-oracle` @25d9f4f67 ผู้เขียนข้อสอบ h.2 (Fable) · ทั้งสองยืนบน session/svc 2c31c5dd7 + H.1
-- unit `svc-h-seed-lanes` (log `/root/svc-runs/h3/seed-lanes.txt`): reseed l2/l3 (frontdesk สิทธิ์ใหม่ + maid) → backfill svc_h บน l3 แล้ว l1 (--dry → จริง) · ฐานหลัก ep-mute-scene ยังไม่ backfill (ทำหลัง H.1 merge จากทรีที่ไม่ใช่ทรีหลัก)
-- ถ้า session หลุด: อ่าน `SVC-HOTEL-KICKOFF-PROMPT.md` §0–§4 · ดู 3 log ข้างบน · ผลข้อสอบของผู้เขียนอยู่บน branch oracle (push แล้วถ้าเสร็จ) · ห้ามเปิดเลนที่ 4
+## ▶️ RUNNING 7 พ.ย. 2569 ~09:4xZ — RUN HOTEL **2/11 (18%)** · H.1 ✅ merge 50a35c946 · chain รับงาน H.3 กำลังรันบน l2
+- สถานะสด = `ledger/SVC-HOTEL-RUN.md` §2–§3 · คำถามเจ้าของ = `SVC-OWNER-QUESTIONS.md` บล็อก HOTEL 7 พ.ย.
+- เลน: **l1** ว่าง (wip/svc-h1 merge แล้ว · server 3242 หยุด) · **l2** `wip/svc-h3` @7e13a76e2 unit `svc-h3-accept` (log `/root/svc-runs/h3/accept.txt` · ข้อสอบเต็ม+G → regression 9 ชุด → tsc → fitness → build → serve 3243 → ภาพ h.3 · ตัวเฝ้า until DONE + send_later 12:13Z) → ORACLE-EDIT ถ้า h.1 G-x แดงจากสูตรเหลือขาย → PARITY ภาพ h.3 (ไม่มีแบบ · ตรวจโครง) → merge → tg 27% · **l3** ว่าง @2910198e5 (node_modules ยัง symlink — bind mount ก่อน build) → builder H.2 (Opus · `wip/svc-h2` · พรอมป์ `/root/svc-runs/h2/builder-prompt.md`) หลัง H.3 merge
+- ข้อสอบพร้อมใน session/svc: h.2 (84) · h.3 (109+probe) · h.5 (92) · h.4 (106) · h.6 (95) · ฟิกซ์เจอร์ H.2–H.6 ครบ · **มติประหยัด**: ไม่เปิดผู้เขียนข้อสอบล่วงหน้า (h.7/h.8/h.10 เขียนเมื่อถึงคิว) · builder ทีละใบเมื่อ chain ใบก่อนจบ
+- ฐาน QC: backfill svc_h ครบ 4 ฐาน (ฐานหลัก 94 · l3 96 · l1 0 · l2 94) · build/serve บนเลนต้องใช้ inner script (`/root/svc-runs/h{1,3}/{build,serve}-inner.sh` · KICKOFF §3.1)
+- เครื่อง: 4 vCPU/15 GB (ไม่ KVM8) · steal เหลือ 2–16% หลังเจ้าของแก้ Hostinger · metabot หยุดไว้ (ต้อง start ก่อนใช้) · RAM ว่าง ~11G
+- ถ้า session หลุด: อ่าน `SVC-HOTEL-KICKOFF-PROMPT.md` §0–§4 (§2 ข้าม — H.1 ปิดแล้ว) · ดู log ข้างบน · ห้ามเปิดเลนที่ 4
 
 ## ⏸ 7 พ.ย. 2569 ~21:2xZ — จุดส่งไม้ก่อนอัปเกรด VPS → KVM8 · **พรอมป์เริ่ม session ใหม่ = `ledger/SVC-HOTEL-KICKOFF-PROMPT.md`** (เจ้าของสั่ง "บันทึกทั้งหมดเตรียมส่งไม้ต่อ")
 **สถานะ:** SVC 51/52 (C.2 รอ OA LINE+มือถือ) · **HOTEL 1/11 (H.0 ✅) · H.1 โค้ดเสร็จ+ผู้ตรวจผ่าน รอขั้นรับงานท้าย** · ทุกอย่าง push แล้ว ทรีทุกเลนสะอาด (dirty 0)
