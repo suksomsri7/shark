@@ -90,3 +90,9 @@ H.4: เช็กอินเรียก `takeSecurityDeposit` + folio เป�
 8. สัญญาที่ข้อสอบยึด (ใบรับ): ctx `{tenantId}` · input ใช้ `reservationId` (ไม่มี unitId) · `chargeToRoom.lines[] = {name, qty, unitAmountSatang}` · อินพุตผิด = `INVALID_INPUT` · กะ = รหัส POS ตรงตัว · `postRoomNights(upToDate)` = คืนที่ date < upToDate · attach ซ้ำ = `DUPLICATE` หรือ ok ไม่สร้างซ้ำ
 9. ทรีเลน l3 ตอนเขียนไม่มีใบ h.5/ข้อสอบ h.3 (ฐานเก่า) — ผู้คุม merge session/svc เข้าเลนก่อนรันซ้ำ · G-1 ต้องเห็นชุด h.3
 
+## 10. มติผู้คุมหลัง builder รอบ 1 (7 พ.ย. · 55fc7458d · ข้อแย้ง wo-notes §7)
+1. ข้อสอบ: D1 `expectedCharges` ไม่นับ VOID_REVERSAL · D2 ห้อง UH2 ของ FO-7 = E01 + `rooms.hotel.codePrefix` UH2 = HB · RC-6 สร้าง DLX01/แขกของ UH2 เองแล้วล้างท้ายข้อ · D3 ST-8 2 คืน · D4 ST-11 ค่าบริการ 500,000 · D5 ST-13 ไม่มีมัดจำ (ORACLE-EDIT 4f29ad15a)
+2. ตามใบ §2.11: fitness ALLOWED_EDGES +`hotel→account` · ทะเบียน createSale (p2.4/p2.9b): hotel/service.ts 1 · hotel/checkout.ts 3 · p2.9b pin `service.ts#checkOut` = 55fc7458d (ห้ามแก้ checkOut อีกโดยไม่บอกผู้คุม) · qc-hotel-money/refund/p5.1 เปิด `rooms.hotel.checkout.allowLegacyCash` ในร้านทดสอบ
+3. มติทางเทคนิคของ builder ที่รับ: มัดจำที่ใช้ชำระ = แถว DEPOSIT บวก (อ้างบิล settle) · มัดจำเกินคืนผ่าน POS + แถว REFUND · กลุ่มที่ยังมีห้องถือมัดจำไม่คืน (หัวกลุ่มเหลือเครดิต) · ออกก่อนกำหนด = คืน ≥ วันนี้ counted=false (ค่าห้องเก็บตามที่ post) · ภาษีอ่าน ณ เวลาเช็กเอาต์ (ไม่ใช่ taxSnapshot) · POS ไม่เชื่อมบัญชี = ผ่าน+คำเตือน · lookup ลงห้อง: เลขห้อง (CHECKED_IN) ก่อน แล้วรหัสจอง · กำกวม = คิว unmatched
+4. FolioPanel ฝังในแท็บ "เงิน" ของ BookingDetail (ตาม §4 · PARITY ภาพ 09 ขวา) · คีย์ตั้งค่าใหม่ลงการ์ดหน้าตั้งค่า · **ห้ามแตะ hotel/page.tsx** (H.2 แก้อยู่) — ปุ่มเช็กเอาต์ P1 หน้าเคาน์เตอร์ + badge unmatched = หนี้ H.4
+
