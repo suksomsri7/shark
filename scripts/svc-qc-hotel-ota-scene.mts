@@ -62,6 +62,7 @@ const must = <T extends R>(r: T, what: string): T => {
   return r;
 };
 const OTA_KEYS = Object.keys(FX.settings);
+// เทียบ JSON แบบไม่ขึ้นกับลำดับคีย์ (jsonb เรียงคีย์ใหม่) — ใช้ ariHash (stableJson) ของโมดูลช่องทาง
 
 const unit = await prisma.businessUnit.findFirst({ where: { id: unitId, tenantId, type: "HOTEL" }, select: { id: true } });
 if (!unit) {
@@ -131,7 +132,7 @@ async function buildScene(): Promise<void> {
       },
     });
     sum.created++;
-  } else if (conn.status !== "CONNECTED" || JSON.stringify(conn.unitIds) !== JSON.stringify([unitId]) || JSON.stringify(conn.publicFields) !== JSON.stringify(fields) || conn.label !== want.label) {
+  } else if (conn.status !== "CONNECTED" || JSON.stringify(conn.unitIds) !== JSON.stringify([unitId]) || channel.ariHash(conn.publicFields) !== channel.ariHash(fields) || conn.label !== want.label) {
     await prisma.tenantIntegration.update({ where: { id: CID }, data: { ...want, publicFields: fields, consecutiveFailures: 0, updatedById: ownerU.userId } });
     sum.updated++;
   }
