@@ -1509,6 +1509,19 @@ for (const t of ["hotel.folio.posted", "hotel.folio.voided", "hotel.folio.settle
 }
 // ◂ SVC H.5
 
+// SVC H.10 ▸ ช่องทาง OTA (ใบสั่ง h.10 §5 · CC §7 · 3 ทะเบียน · payload id/วัน/รหัสเหตุผลล้วน ไม่มี PII)
+//   "channel.ari.dirty" = งานหลัก: รวมชุดเป็น ChannelAriJob (hotel facade · lazy import กันวงโหลด · ล้ม = event retry · idempotent: ครอบแล้วไม่สร้างซ้ำ)
+baseConsumers["channel.ari.dirty"] = withAutomation(async (evt) => (await import("@/lib/modules/hotel")).onAriDirty(evt));
+//   hotel.booking.* (สร้าง/ยกเลิก/หมดเวลาถือ/ไม่มา/เปลี่ยน) ⇒ ARI ของคืนที่กระทบ — "ของแถม" ต่อท้าย chain เดิม (compose: ล้ม = WARN ไม่พาการจอง retry · ไม่แก้บรรทัดเดิม)
+for (const t of ["hotel.booking.created", "hotel.booking.cancelled", "hotel.booking.hold_expired", "hotel.booking.no_show", "hotel.booking.changed"]) {
+  baseConsumers[t] = compose(baseConsumers[t]!, async (evt) => (await import("@/lib/modules/hotel")).ariDirtyFromBooking(evt));
+}
+//   event แจ้งผล (งานหลัก no-op · เขียนครบใน hotel/channel/* แล้ว) + กฎอัตโนมัติ/เว็บฮุค
+for (const t of ["channel.ari.pushed", "channel.ari.failed", "channel.reservation.received", "channel.reservation.applied", "channel.reservation.needs_room", "channel.reservation.rejected", "channel.reservation.cancelled"]) {
+  baseConsumers[t] = withAutomation(async () => {});
+}
+// ◂ SVC H.10
+
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
 export const consumers: Record<string, OutboxHandler> = Object.fromEntries(
   Object.entries(baseConsumers).map(([type, handler]) => [type, withWebhooks(handler)]),

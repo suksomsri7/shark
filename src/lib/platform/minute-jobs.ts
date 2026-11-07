@@ -673,6 +673,22 @@ registerMinuteJob({
 });
 // ◂ SVC D.12
 
+// SVC H.10 ▸ ช่องทาง OTA (ใบสั่ง h.10 §1 · §9): ส่ง ARI ที่ค้าง (ทุก 1 นาที · CAS ต่องาน = ซ้อนแล้วส่งครั้งเดียว) · ดึงการจองจากตัวต่อ (ทุก 5 นาที · inbox idempotent)
+//   ทั้งคู่ไม่ throw · เคารพงบเวลา · ตัวต่อถอด (DISABLED) ⇒ ข้าม
+registerMinuteJob({
+  name: "channel-ari-push",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/hotel")).pushAriJobs(now, Math.max(5_000, budgetMs - 3_000)),
+});
+registerMinuteJob({
+  name: "channel-pull",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/hotel")).pullAll(now, Math.max(5_000, budgetMs - 3_000)),
+});
+// ◂ SVC H.10
+
 function errorText(e: unknown): string {
   let s: string;
   if (e instanceof Error) s = e.stack && e.stack.includes(e.message) ? e.stack : `${e.name}: ${e.message}`;

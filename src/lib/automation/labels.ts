@@ -358,6 +358,16 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "hotel.security_deposit.refunded", label: "เมื่อคืนเงินประกันห้อง" },
   { value: "hotel.security_deposit.forfeited", label: "เมื่อริบเงินประกันห้อง (ค่าเสียหาย)" },
   // ◂ SVC H.5
+  // SVC H.10 ▸ ช่องทาง OTA (channel manager) — ตัวยิง hotel/channel/* · payload id/วัน/รหัสเหตุผลล้วน (ไม่มีชื่อ/เบอร์/อีเมลแขก)
+  { value: "channel.ari.dirty", label: "เมื่อห้องว่าง/ราคาที่ต้องส่งช่องทาง OTA เปลี่ยน" },
+  { value: "channel.ari.pushed", label: "เมื่อส่งราคา/ห้องว่างให้ช่องทาง OTA สำเร็จ" },
+  { value: "channel.ari.failed", label: "เมื่อส่งราคา/ห้องว่างให้ช่องทาง OTA ไม่สำเร็จครบ 5 ครั้ง" },
+  { value: "channel.reservation.received", label: "เมื่อได้รับการจองจากช่องทาง OTA" },
+  { value: "channel.reservation.applied", label: "เมื่อการจองจากช่องทาง OTA ลงปฏิทินห้องแล้ว" },
+  { value: "channel.reservation.needs_room", label: "เมื่อการจองจากช่องทาง OTA ต้องจัดห้อง (ห้องเต็ม)" },
+  { value: "channel.reservation.rejected", label: "เมื่อปฏิเสธการจองจากช่องทาง OTA" },
+  { value: "channel.reservation.cancelled", label: "เมื่อช่องทาง OTA แจ้งยกเลิกการจอง" },
+  // ◂ SVC H.10
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

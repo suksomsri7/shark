@@ -26,6 +26,8 @@ const ACT_BLOCK = "hotel.room.blocked";
 const ACT_RELEASE = "hotel.room.unblocked";
 const TX_OPTS = { maxWait: 20_000, timeout: 30_000 } as const;
 const MAX_BLOCK_DAYS = 366;
+// SVC H.10 ▸ hook ARI (ใบสั่ง h.10 §9.10 · บรรทัด hook ล้วน): ปิด/ปล่อยห้อง ⇒ channel.ari.dirty ใน tx เดียวกับ occupancy (lazy import facade ช่องทาง · ไม่ throw) ◂
+const emitAriDirty = (tx: object, g: { tenantId: string; unitId: string }, roomTypeId: string, from: string, toExcl: string): Promise<void> => import("./channel").then((m) => m.emitAriDirty({ tenantId: g.tenantId }, { unitId: g.unitId, roomTypeIds: [roomTypeId], from, to: nightDates(from, toExcl).at(-1) ?? from }, tx)).catch(() => undefined);
 const VIEW_KEYS = ["hotel.reservation.create", "hotel.booking.manage", "hotel.housekeeping"];
 const R = {
   notFound: "ไม่พบห้องหรือโรงแรมนี้ (หรืออยู่นอกสาขาที่คุณดูแล)",
@@ -163,6 +165,7 @@ export async function blockRoom(actorIn: unknown, ctx: unknown, input: unknown):
         after: { roomId: room.id, roomNumber: room.number, from, to, reason, overbookedNights: over },
       },
     });
+    await emitAriDirty(tx, g, room.roomTypeId, from, to); // SVC H.10 ◂
     return { over, occupancyId: c.occupancyId };
   });
   if (isFail(out)) return out;
@@ -229,6 +232,7 @@ export async function releaseBlock(actorIn: unknown, ctx: unknown, input: unknow
         after: { released: true, hkStatus: toDirty ? "DIRTY" : room.hkStatus },
       },
     });
+    await emitAriDirty(tx, g, room.roomTypeId, from, to); // SVC H.10 ◂
     return { noop: false, toDirty };
   });
   if (isFail(out)) return out;

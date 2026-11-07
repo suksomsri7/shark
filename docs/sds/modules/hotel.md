@@ -228,3 +228,60 @@ HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_E
 - **มัดจำกลุ่ม**: settle รายห้องใช้มัดจำของแถวที่ถือใบรับในกลุ่ม · ผู้ถือออกขณะห้องอื่นยัง active ⇒ แถว DEPOSIT บวก "ย้ายมัดจำคงเหลือ" ปิด folio ผู้ถือที่ 0 · ห้องที่ใช้ภายหลังลงคู่ "รับโอนมัดจำ (ลบ) + ใช้มัดจำ (บวก)" ที่ folio ของตัวเอง · คืนส่วนเกินเมื่อกลุ่มไม่เหลือห้อง active (ห้องสุดท้ายลงคู่ "รับโอน + REFUND") — ไม่เขียน folio ที่ SETTLED แล้ว
 - settle({groupId}) คืนเงินประกันที่ถือของทุกห้อง (FORFEIT ทั้งกลุ่ม = เตือนรายห้อง) · consumer ลงห้องได้ BUSY ⇒ โยนให้คิวลองใหม่ · refundStay หาบิลเช็กเอาต์ล่าสุดที่ PAID (รวม `-r<n>`)
 - **สัญญาผู้เรียก `chargeToRoom` (facade · m5)**: facade ไม่ตรวจวิธีจ่ายของบิลต้นทาง — ผู้เรียกต้องส่งเฉพาะยอดที่ "ลงห้อง" จริง (บิลที่ร้านเก็บเงินสดแล้วห้ามส่งซ้ำ ไม่งั้นแขกจ่ายสองครั้ง) · consumer ของ POS ส่งเฉพาะบิลที่มีแถว ROOM_CHARGE และยอดเท่า ROOM_CHARGE · กันรายได้ซ้ำทำเฉพาะบิลที่มี ROOM_CHARGE
+
+## ช่องทางขายห้อง OTA · channel manager (SVC H.10)
+
+> ใบสั่ง `ledger/svc-briefs/svc-brief-h.10.md` (§9 ตรวจทานกับโค้ด · §10 มติผู้คุม) · ข้อสอบ `scripts/qc-svc-h.10.mts` · ฉาก `scripts/svc-qc-hotel-ota-scene.mts`
+
+### ไฟล์
+- `hotel/channel/types.ts` (pure) — ชนิดจริงของ adapter (`AriPayload` · `InboundReservation` · `ChannelMapping` · `ChannelCallOpts`) · `markupPrice` · `ariHash` (เรียงคีย์ · ไม่ใช่การเข้ารหัส) · รหัสเหตุผลของ inbox
+- `hotel/channel/mapping.ts` — ด่าน `hotel.channel.manage` · ตัวต่อของหน่วย · แม็ปห้อง/แผน (+markup)/buffer · `channelMappingFor` · `channelDetail`
+- `hotel/channel/ari.ts` — `emitAriDirty` · `onAriDirty` · `ariDirtyFromBooking` · `enqueueAri` (รวมชุด) · `buildAri` · `pushAriJobs`
+- `hotel/channel/inbound.ts` — `ingestInbound` · `applyInbound` · `pullAll` · `retryInbound` · `rejectInbound` · `listNeedsRoom` · `listInbox` · `fakeEnqueueInbound` (ทดสอบ)
+- ตัวต่อ = `TenantIntegration` kind `CHANNEL_MANAGER` (ศูนย์เชื่อมต่อ) · ส่ง/ดึง/ตอบรับผ่าน `callIntegration` เสมอ (op `channel.pushAri` · `channel.pullReservations` · `channel.ackReservation`) · `registry.readyFor(kind, provider)` = CHANNEL_MANAGER พร้อมเฉพาะ FAKE (เจ้าจริง = H2)
+
+### ARI pipeline (ขาออก)
+1. เหตุที่กระทบห้องว่าง/ราคา ⇒ outbox `channel.ari.dirty {unitId, roomTypeIds, from, to}` (วันไทย · รวมสองปลาย)
+   - `rates.ts` (แผน · ฤดู · วันหยุด · ตารางราคา · แก้มือ) และ `block.ts` (ปิด/ปล่อยห้อง) ยิงใน tx เดียวกับการเขียน (hook บรรทัดเดียว · lazy import · ร้านไม่มีตัวต่อ = ไม่ยิง)
+   - แม็ป/buffer เปลี่ยน ⇒ ยิงทั้งช่วงเพดาน · `hotel.booking.*` (สร้าง/ยกเลิก/หมดเวลาถือ/ไม่มา/เปลี่ยน) ⇒ consumer รวมชุดตรง (ไม่ยิงซ้ำ · changed = ทั้งช่วง)
+2. consumer `onAriDirty` → `enqueueAri`: ต่อ (ตัวต่อ, หน่วย) ที่ CONNECTED/ERROR และมีแม็ปห้อง · ตัดหัววันนี้ ตัดท้าย `rooms.hotel.ota.ariHorizonDays` (7–400 · เริ่ม 365)
+   · PENDING ที่ทับ/ติดกัน ⇒ แถวใหม่ครอบช่วงรวม (เก่า SUPERSEDED) · ครอบอยู่แล้ว = ไม่ทำอะไร (ส่งซ้ำ = ผลเดียว) · ล็อก advisory ต่อ (ตัวต่อ, หน่วย)
+3. งานรายนาที `channel-ari-push` (ทุก 1 นาที) → `pushAriJobs(now)`: จองงานด้วย CAS `attempts` (ซ้อน = ส่งครั้งเดียว) → ARI ใหม่จากข้อมูลสด
+   → hash เท่างาน SENT ล่าสุดช่วงเดียวกัน ⇒ SUPERSEDED (ไม่เรียกตัวต่อ) · ส่งสำเร็จ ⇒ SENT + `channel.ari.pushed {connectionId, jobId, days}`
+   · ล้ม ⇒ lastError (รหัสเท่านั้น ไม่มีข้อความดิบ) · backoff `updatedAt + 2^(attempts−1)` นาที · ครบ 5 ⇒ FAILED + `channel.ari.failed` (กฎอัตโนมัติ/แจ้งเจ้าของ)
+4. ARI ต่อวัน/ห้องที่แม็ป = `{available: max(0, hotelAvailability − buffer), rates: {ext: {priceSatang, minNights, closedToArrival}}, stopSell}`
+   - ห้องว่าง = สูตรเดียว (`hotelAvailability`) · ราคา = `loadPricingContext` + `resolveNightPrice` × (1 + markupBp) ปัด `rooms.money.rounding`
+   - buffer: `ChannelInventoryBuffer` ชนะ · ไม่มีแถว ⇒ `rooms.hotel.ota.buffer` · markup: `ChannelRateMap.formula.markupBp` ชนะ · null ⇒ `rooms.hotel.ota.markupBp`
+   - ไม่มีราคาของแผน ⇒ ไม่ส่งแผนนั้น · ไม่มีแผนเลย/ว่าง 0 ⇒ stopSell · ประเภทที่ไม่แม็ป = ไม่ส่ง (ทั้ง ALL_NIGHTLY/SELECTED — ต้องมีรหัสของช่องทาง)
+   - คิวรีคงที่ไม่ขึ้นกับจำนวนวัน (~16 คำสั่ง · ช่วง > 366 วันแบ่งก้อน)
+
+### inbound state machine (ขาเข้า)
+```
+RECEIVED ──apply──▶ APPLIED (การจองสร้าง/ยกเลิกแล้ว · ack)
+    │                ▲
+    ├──ห้องไม่พอ────▶ NEEDS_ROOM ──ลองอีกครั้ง──┘ ──ปฏิเสธ──▶ REJECTED
+    └──แม็ปไม่ได้/ฉบับเก่า (STALE)/ข้อมูลผิด──▶ REJECTED (ack)
+```
+- กุญแจ idempotent = unique ฐาน `(connectionId, externalId, version)` · ingest ซ้ำ = ข้าม · ฉบับใหม่ = แถวใหม่ (แถวเก่าคงสถานะ)
+- `applyInbound(inboxId)`: APPLIED แล้ว = no-op คืน reservationId เดิม · ฉบับต่ำกว่าที่ APPLIED ⇒ REJECTED `STALE` (ตรวจก่อนดูห้อง)
+- NEW/MODIFIED ⇒ `createBooking(null, ctx, {source:"OTA", channelRef: externalId, …}, {channel})` — **เส้นเดียวกับการจองทุกทาง** (lockTypes + availabilityInTx + claimRoom ใน tx เดียว)
+  - `internal.channel` (booking.ts เพิ่มอย่างเดียว): ระบบ (AuditLog SYSTEM) · CONFIRMED เสมอ · ข้ามข้อจำกัดแผน/ฤดู/ค่าตั้ง แต่ไม่ข้ามด่านห้อง · NO_RATE ⇒ gross ÷ คืน · คอลัมน์ OTA ในแถวเดียวกัน
+  - มีการจองเดิมของ externalId ⇒ `replaceReservationIds`: ยกเลิกเดิม (`CHANNEL_MODIFIED`) + สร้างใหม่ใน tx เดียว — ห้องไม่พอ ⇒ ย้อนทั้งคู่ (การจองเดิมคง · NEEDS_ROOM)
+  - `onCreated` (ใน tx เดียวกัน): ล็อกต่อ externalId → การจอง active ของเลขนี้ต้องเป็นของรายการนี้ → ไม่มีฉบับใหม่กว่าที่ APPLIED → inbox APPLIED + `channel.reservation.applied` (ยิงซ้อน 5 ทาง = การจองเดียว)
+- CANCELLED ⇒ `cancelBooking(null, ctx, channelCancelInput(...))` (internal.by `CHANNEL` · ธงอยู่ใน WeakMap ปลอมจากคำขอไม่ได้) — reason `CHANNEL_CANCELLED` · **ไม่คืนเงินผ่าน POS** (prepaid = ช่องทางคืนเอง) · มีมัดจำที่รับไว้/เข้าพักแล้ว ⇒ NEEDS_ROOM `MANUAL_REQUIRED`
+- ack (`ackReservation`) เมื่อ APPLIED/REJECTED เท่านั้น · ack ล้ม = ไม่ย้อนการจอง (บันทึกใน IntegrationCallLog)
+- งานรายนาที `channel-pull` (ทุก 5 นาที) → `pullAll`: ดึงตั้งแต่ `max(createdAt)` ของ inbox (ไม่มี = now − 24 ชม.) → ingest → apply แถว RECEIVED ตามลำดับ externalId/version · ตัวต่อ DISABLED = ไม่ดึง/ไม่ส่ง (แม็ปคงไว้)
+- event `channel.reservation.received/applied/needs_room/rejected/cancelled` payload `{inboxId, connectionId, unitId, version, …}` — ไม่มี PII · `raw` เก็บใน inbox เท่านั้น (DTO/log/event ไม่ส่งต่อ)
+
+### เงิน OTA (prepaid)
+- `grossSatang/commissionSatang/netSatang` เก็บตามที่ช่องทางส่งตรงตัว (แบ่งต่อห้องเมื่อหลายห้อง) · ราคาคืนของการจอง = ราคาโรงแรม (`quoteStay` ไม่บวก markup)
+- `prepaidByChannel` ⇒ มัดจำ 0 · ไม่ prepaid ⇒ มัดจำตามแผน (เช่น FIRST_NIGHT) แต่ยัง CONFIRMED
+- **ส่งต่อ H.5b**: settle เช็กเอาต์ของการจอง prepaid ต้องจ่ายด้วย payMethod `PLATFORM` (ลูกหนี้แพลตฟอร์ม · POS P2.1) ยอดเท่าค่าห้อง — `COUNTER_PAY_TYPES` ยังไม่มี PLATFORM · commission = ข้อมูลรายงาน (H.7)
+
+### จอ
+- `/hotel/channels` (การ์ดตัวต่อ · ARI ล่าสุด · การจองเข้า 7 วัน · ต้องจัดห้อง N · ดึงการจองตอนนี้) · `/hotel/channels/[connectionId]` (แม็ปห้อง · แผน+markup · กันห้อง · ทดสอบส่ง ARI 7 วัน · ประวัติงาน) · `/hotel/channels/inbox` (คิวต้องจัดห้อง: ลองอีกครั้ง/ปฏิเสธ · inbox ทุกสถานะ)
+- ด่าน: หน่วย HOTEL + `hotel.channel.manage` (หน้า + action + ฟังก์ชันโดเมน) · การ์ด OTA ในศูนย์เชื่อมต่อมีลิงก์ "ตั้งค่าแม็ปห้อง/ราคา →"
+
+### หนี้
+- inbox `retainUntil` (ลบเมื่อ createdAt + 2 ปี) ไม่มีคอลัมน์ ⇒ purge ใบหลัง (H.9) · unique `(channelConnectionId, channelRef)` บน HotelReservation ไม่มี ⇒ กันซ้ำด้วย inbox unique + ตัวตรวจใน tx (onCreated)
+- ตัวต่อเจ้าจริง + ส่งปฏิเสธกลับช่องทาง = H2.1–H2.3 · PLATFORM tender = H.5b

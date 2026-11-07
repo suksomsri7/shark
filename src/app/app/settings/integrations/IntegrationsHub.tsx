@@ -20,6 +20,8 @@ type Props = {
   defaultUnitIds: string[];
   posLinks: { id: string; name: string; href: string }[];
   bankLinks: { id: string; name: string; href: string }[];
+  /** SVC H.10 ▸ ลิงก์ "ตั้งค่าแม็ปห้อง/ราคา →" ของการ์ด OTA (ต่อหน่วยโรงแรม · /app/u/<slug>/hotel/channels) ◂ */
+  hotelChannelLinks?: { id: string; name: string; href: string }[];
   testTimes: Record<string, string>;
   /** SVC C.3 ▸ สุขภาพของแถวเก็บ (ไม่มีค่าลับ) + เกณฑ์เตือนโควตา #83 ของร้าน ◂ */
   health?: IntegrationHealthView[];
@@ -120,7 +122,7 @@ function Card({
   );
 }
 
-export function IntegrationsHub({ items, catalog, keyConfigured, canManage, units, defaultUnitIds, posLinks, bankLinks, testTimes, health = [], thresholdPercent = 10 }: Props) {
+export function IntegrationsHub({ items, catalog, keyConfigured, canManage, units, defaultUnitIds, posLinks, bankLinks, hotelChannelLinks = [], testTimes, health = [], thresholdPercent = 10 }: Props) {
   const healthById = useMemo(() => new Map(health.map((h) => [h.id, h])), [health]); // SVC C.3
   const [tab, setTab] = useState<Tab>("ALL");
   const [sel, setSel] = useState<Selection>(null);
@@ -260,6 +262,19 @@ export function IntegrationsHub({ items, catalog, keyConfigured, canManage, unit
                     href={b.href}
                     right={<Badge muted>ใช้งาน</Badge>}
                     footer={<span>ไปหน้ากระทบยอด ›</span>}
+                  />
+                ))}
+              {/* SVC H.10 ▸ การ์ด OTA ของโรงแรม: ลิงก์ไปหน้าแม็ปห้อง/ราคาของหน่วย ◂ */}
+              {g.group === "CHANNELS" &&
+                hotelChannelLinks.map((h) => (
+                  <Card
+                    key={`ota-${h.id}`}
+                    short="OTA"
+                    title={`ช่องทางขายห้อง (OTA) · ${h.name}`}
+                    sub="ส่งราคา/ห้องว่าง · รับการจองเข้าปฏิทินห้องอัตโนมัติ · กันขายซ้อนที่แกนห้อง"
+                    href={h.href}
+                    right={<Badge muted>โรงแรม</Badge>}
+                    footer={<span>ตั้งค่าแม็ปห้อง/ราคา →</span>}
                   />
                 ))}
               {g.group === "CHANNELS" &&
