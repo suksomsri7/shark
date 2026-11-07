@@ -278,3 +278,36 @@ HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_E
 
 ### Event (3 ทะเบียน · payload ไม่มี PII)
 `hotel.hk.changed {roomId, from, to, byUserId}` · `hotel.hk.minibar_posted {reservationId, roomId, items, amountSatang}` · `hotel.hk.minibar_unbilled {roomId, items, amountSatang}` · `hotel.hk.defect {roomId, action, repairId|blockId}`
+
+## ปิดวัน (night audit) · รายงาน (SVC H.7)
+
+### ไฟล์
+`hotel/business-date.ts` (pure · timezone) · `hotel/night-audit.ts` (ปิดวัน/reopen/ประวัติ/cron/อีเมลสรุป) · `hotel/reports.ts` (รายงาน + CSV + getUnitKpi) · จอ `/hotel/reports` · `/hotel/reports/audit` · `/hotel/reports/export` (CSV) · minute job `hotel-night-audit` (15 นาที)
+
+### business date
+- วันทางธุรกิจของร้าน = วันที่ตาม timezone ของหน่วย (`unit.settings.timezone` · ค่าเริ่ม Asia/Bangkok ⇒ `bkkYmd` · timezone อื่นผ่าน `Intl` รองรับ DST · ผิด ⇒ ถอยเป็น Bangkok)
+- ปิดได้เฉพาะวันที่ `< วันนี้ของร้าน` (`TOO_EARLY`) · วันที่จะปิดถัดไป: ไม่เคยปิด = เมื่อวาน (หรือวันเริ่มใช้ที่เลือก ≤ เมื่อวาน) · วันล่าสุดถูก reopen = วันนั้น · อื่น = วันปิดล่าสุด + 1
+- ข้ามวัน = `PREVIOUS_OPEN` · ปิดย้อนก่อนวันปิดล่าสุด = `INVALID_INPUT` · คืนก่อนวันเริ่มใช้ไม่ post ย้อน (ค่าห้อง P1 อยู่ใน totalSatang แล้ว)
+- `isAuditDue(tz, nightAuditTime, now, lastClosed)` = เวลาร้าน ≥ nightAuditTime และ (ไม่เคยปิด หรือ lastClosed + 1 < วันนี้ของร้าน) · cron ตัดสินจาก `now` ที่ส่งเข้าเท่านั้น
+
+### 6 ขั้น (idempotent)
+1. no-show: CONFIRMED ที่ checkInDate = วันปิด ⇒ `markNoShow` (H.3) **นอก tx** ทีละแถว — มัดจำริบ/คืนผ่าน POS · folio VOID ตาม `releaseStayTx` (มติ §9.1) · CAS สถานะ ⇒ รันซ้ำ = ข้าม · ล้ม = warning
+2. post ค่าห้อง: คืน counted ของวันปิด · การจอง CHECKED_IN · `folioItemId` ว่าง ⇒ `postRoomNightsTx` (H.5 · ตั้ง `postedAuditId`) · คืนที่ post แล้ว/void แล้วไม่ post ซ้ำ
+3. ห้องค้างต่อ ⇒ DIRTY: `markStayoversDirty` (H.6) หลัง commit · เฉพาะครั้งแรกที่ปิด "เมื่อวาน" (ปิดใหม่หลัง reopen ไม่ทำซ้ำ)
+4. freeze KPI ลง `HotelNightAudit` (unique unitId+businessDate) · 5. AuditLog `hotel.audit.closed` + outbox `hotel.audit.closed` (consumer ส่งอีเมลสรุป `sendEmailRich` กุญแจ `hotel-audit-<auditId>`)
+6. ลำดับวัน (ข้างบน) · cron ไล่ปิดทีละวัน ≤ 7 วัน/หน่วย/รอบ
+- ขั้น 2+4+5 อยู่ใน tx เดียว + `pg_advisory_xact_lock(hotel-night-audit:<unitId>)` + ตรวจแถวซ้ำใน tx ⇒ ล้ม = ย้อนทั้งก้อน · ปิดพร้อมกัน/cron ซ้อน = ปิดครั้งเดียว (`ALREADY_CLOSED`)
+- reopen: OWNER/MANAGER + `hotel.audit.run` · เฉพาะวันล่าสุด · ต้องมีเหตุผล · ไม่ถอนรายการ folio · ปิดใหม่ = KPI คำนวณทับ (auditId เดิม)
+
+### สูตร KPI (ใบ §2.1)
+- roomsTotal = ห้อง active ที่ rentMode (ห้อง ?? ประเภท) ∈ NIGHTLY/BOTH · roomsOOO = ห้องขายได้ที่มี BLOCK ครอบคืน · roomsAvailable = total − OOO
+- roomsOccupied = จำนวนห้อง (ไม่ซ้ำ) ที่มีคืน counted ของการจอง CHECKED_IN/CHECKED_OUT · occupancyBps = ⌊occupied × 10000 ÷ available⌋
+- roomRevenueSatang = Σ FolioItem ROOM ที่ไม่ void ของ businessDate · ADR = revenue ÷ occupied · RevPAR = revenue ÷ available (ปัดตาม `rooms.money.rounding`)
+- arrivals = เข้าวันนั้นและเข้าพักจริง · departures = ออกวันนั้นและ CHECKED_OUT · noShowCount = เข้าวันนั้นและ NO_SHOW · cancelledCount = cancelledAt ตกวันนั้น (เวลาร้าน)
+
+### รายงาน
+- วันที่ปิดแล้ว (CLOSED) = ค่าที่ freeze · วันยังไม่ปิด = คำนวณสดสูตรเดียวกัน โดยรายได้ห้อง = Σ nights.priceSatang (counted · CHECKED_IN/CHECKED_OUT · มติ §9.4)
+- รายเดือน = รวมวัน (occupied/available/revenue รวม แล้วคิด bps/ADR/RevPAR จากผลรวม) · ช่วง ≤ 366 วัน (`INVALID_RANGE`) · ≤ 8 คำสั่ง SQL ต่อรายงาน
+- รายได้ตามแหล่ง/แผน/ประเภท = Σ ROOM (ห้อง) + SERVICE/POS_CHARGE/MINIBAR (อื่น) ที่ไม่ void ตาม businessDate · ฟันเนล = การจองที่สร้างในช่วง · forecast30 = `hotelAvailability` (H.3)
+- `getUnitKpi(unitId)` = {occupancyTodayBps (on-the-books: CHECKED_IN คืนนี้ + CONFIRMED เข้าวันนี้), arrivalsToday, roomRevenueYesterdaySatang (ปิดแล้ว = audit · ไม่งั้นสด)}
+- CSV: UTF-8 BOM · หัวตารางไทย · ทุกช่องผ่าน `csvRow` (X6) · ชื่อไฟล์ใช้ id หน่วย ไม่มีชื่อร้าน
