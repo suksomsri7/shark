@@ -3,7 +3,7 @@ import { requireUnit } from "@/lib/core/context";
 import { evaluate } from "@/lib/core/rbac";
 import { bkkYmd } from "@/lib/core/quiet-hours";
 import { addDaysYmd, isYmd, listGuests } from "@/lib/modules/hotel";
-import { TM30_LABEL, TM30_TONE, dateShortTh, maskLast4, nationalityText } from "@/components/hotel/checkin-shared";
+import { TM30_LABEL, dateShortTh, maskLast4, nationalityText, tm30Badge } from "@/components/hotel/checkin-shared";
 
 // SVC H.4 ▸ ทะเบียนผู้พัก (ร.ร.4 บนจอ · ใบสั่ง h.4 §4) — หน่วย "HOTEL" เท่านั้น · สิทธิ์จาก session (ทะเบียน/เลขเต็ม/เช็กอิน/เช็กเอาต์) ไม่ผ่าน ⇒ notFound
 //   กรองช่วงวันเข้า (from/to · ค่าเริ่ม 7 วันล่าสุด) · ค้นชื่อหรือ 4 ตัวท้าย (q) · สถานะ ตม.30 · เลขเอกสาร = 4 ตัวท้ายเท่านั้น (เลขเต็มไม่เข้าการค้นหา)
@@ -36,6 +36,7 @@ export default async function HotelGuestsPage({ params, searchParams }: { params
   if (!r.ok) notFound();
   const base = `/app/u/${unitSlug}/hotel`;
   const rows = r.rows;
+  const nowMs = Date.now(); // รอบ 6 ▸ ป้าย ตม.30 เลยกำหนดบนจอ ◂
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
       <header className="flex flex-wrap items-end justify-between gap-2">
@@ -116,7 +117,7 @@ export default async function HotelGuestsPage({ params, searchParams }: { params
                   </td>
                   <td className="py-2">{g.signed ? "ลงชื่อแล้ว" : "ยังไม่ลงชื่อ"}</td>
                   <td className="py-2">
-                    <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${TM30_TONE[g.tm30Status] ?? ""}`}>{TM30_LABEL[g.tm30Status] ?? g.tm30Status}</span>
+                    <Tm30Cell status={g.tm30Status} dueAt={g.tm30DueAt} nowMs={nowMs} />
                   </td>
                 </tr>
               ))}
@@ -125,5 +126,16 @@ export default async function HotelGuestsPage({ params, searchParams }: { params
         </div>
       )}
     </div>
+  );
+}
+
+// รอบ 6 ▸ ป้าย ตม.30 ใช้ helper เดียวกับคิว/แผงเช็กอิน (PENDING ที่ครบกำหนดแล้ว = "เลยกำหนด ตม.30" + เลยมา N ชม.) ◂
+function Tm30Cell({ status, dueAt, nowMs }: { status: string; dueAt: string | null; nowMs: number }) {
+  const b = tm30Badge(status, dueAt, nowMs);
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className={`inline-block self-start rounded-full border px-2 py-0.5 text-xs ${b.tone}`}>{b.label}</span>
+      {b.overdue && b.note ? <span className="text-xs text-rose-700">{b.note}</span> : null}
+    </span>
   );
 }

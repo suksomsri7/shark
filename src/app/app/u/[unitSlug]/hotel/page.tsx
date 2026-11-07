@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { hotelToday } from "@/lib/modules/hotel"; // SVC H.2 ▸ KPI หน้าเคาน์เตอร์ (ภาพ 08 แถบบน) ◂
 import HotelToday from "@/components/hotel/HotelToday";
 import { guestRegistrationRequired, tm30Queue } from "@/lib/modules/hotel"; // SVC H.4 ▸ การ์ด "ตม.30 ค้าง N" · เช็กอินต้องลงทะเบียนผู้พัก ◂
+import { tm30OverdueCount } from "@/components/hotel/checkin-shared"; // SVC H.4 รอบ 6 ◂
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("th-TH", {
@@ -29,6 +30,7 @@ export default async function HotelPage({
   if (unit.type !== "HOTEL") notFound(); // SVC H.0 ▸ ด่าน type HOTEL ◂
   const [data, kpi] = await Promise.all([dashboardData(auth.active.tenantId, unit.id), hotelToday({ tenantId: auth.active.tenantId }, { unitId: unit.id })]);
   const tq = await tm30Queue({ tenantId: auth.active.tenantId }, { unitId: unit.id }); // SVC H.4 ▸ คิวแจ้ง ตม.30 (ภายใน 24 ชม.) ◂
+  const tm30Over = tq.ok ? tm30OverdueCount(tq.items, Date.now()) : 0; // SVC H.4 รอบ 6 ▸ เลยกำหนด ตม.30 = LATE + PENDING ที่ครบกำหนดแล้ว (helper เดียวกับคิว) ◂
   // SVC H.4 ▸ มติรอบ 2: เปิด requireRegistration (ค่าเริ่ม) ⇒ เช็กอินด่วนเดิมถูกแทนด้วยลิงก์แผงเช็กอิน (?tab=guests · ลงทะเบียน ร.ร.3) — ไม่เช็กอินเงียบ ◂
   const needRegistration = await guestRegistrationRequired({ tenantId: auth.active.tenantId }, { unitId: unit.id });
 
@@ -65,10 +67,10 @@ export default async function HotelPage({
         <a
           href={`/app/u/${unitSlug}/hotel/tm30`}
           data-tm30-card={tq.pending + tq.late}
-          className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm ${tq.late ? "border-rose-300 bg-rose-50 text-rose-800" : tq.pending ? "border-amber-300 bg-amber-50 text-amber-800" : "border-[color:var(--color-line)]"}`}
+          className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 text-sm ${tm30Over ? "border-rose-300 bg-rose-50 text-rose-800" : tq.pending ? "border-amber-300 bg-amber-50 text-amber-800" : "border-[color:var(--color-line)]"}`}
         >
           <span className="font-bold">ตม.30 ค้าง {(tq.pending + tq.late).toLocaleString("th-TH")} คน</span>
-          <span className="text-xs">{tq.late ? `เกิน 24 ชม. ${tq.late.toLocaleString("th-TH")} คน · ` : ""}แจ้งที่พักคนต่างด้าว →</span>
+          <span className="text-xs">{tm30Over ? `เลยกำหนด ${tm30Over.toLocaleString("th-TH")} คน · ` : ""}แจ้งที่พักคนต่างด้าว →</span>
         </a>
       ) : null}
 

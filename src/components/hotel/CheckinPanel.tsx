@@ -19,6 +19,7 @@ import {
   nationalityText,
   dateTimeTh,
   dateShortTh,
+  tm30Badge,
   type ActionRunner,
   type AfterAction,
   type AssignableRoom,
@@ -97,11 +98,17 @@ export default function CheckinPanel({ unitSlug, reservation: rv, rooms, guests,
   const early = rv.checkIn.localeCompare(rv.today) === 1;
   const totalGuests = guests.length + forms.length;
   const signedAll = guests.length !== 0 && guests.every((g) => g.signed);
+  // รอบ 6 ▸ เป้าลงชื่อ = ผู้พักคนแรกที่ยังไม่ลงชื่อ (ลงแทนห้องครอบเฉพาะคนที่มีอยู่ตอนลงชื่อ · มติ §9 ข้อ 4) — ผู้พักร่วมที่เพิ่มทีหลังลงชื่อเองได้ ◂
+  const signTarget = guests.find((g) => !g.signed) ?? null;
+  const signedCount = guests.filter((g) => g.signed).length;
+  const printTarget = signTarget ?? primary;
+  const signLabel = signTarget && primary && signTarget.id === primary.id && signedCount === 0 ? "แขกลงชื่อบนแท็บเล็ต (ลงแทนห้องได้)" : `${signTarget?.fullName ?? ""} ลงชื่อบนแท็บเล็ต`;
   const foreign = guests.filter((g) => g.isForeigner);
   const tm30Open = foreign.filter((g) => g.tm30Status === "PENDING" || g.tm30Status === "LATE");
   const tm30Filed = foreign.filter((g) => g.tm30Status === "FILED");
+  const tm30Late = tm30Open.map((g) => ({ g, b: tm30Badge(g.tm30Status, g.tm30DueAt, nowMs) })).filter((x) => x.b.overdue); // รอบ 6 ▸ helper เดียวกับคิว ตม.30 ◂
   const roomHk = rooms.find((r) => r.roomId === rv.roomId)?.hkStatus ?? null;
-  const lastStep = [primary?.rr3SignedAt, ...tm30Filed.map((g) => g.tm30FiledAt)].filter((x): x is string => typeof x === "string").sort().pop() ?? null;
+  const lastStep = [...guests.map((g) => g.rr3SignedAt), ...tm30Filed.map((g) => g.tm30FiledAt)].filter((x): x is string => typeof x === "string").sort().pop() ?? null;
   const minutes = rv.checkedInAt && lastStep ? Math.max(1, Math.round((Date.parse(lastStep) - Date.parse(rv.checkedInAt)) / 60_000)) : null;
   const done = inHouse && signedAll && tm30Open.length === 0;
 
@@ -284,19 +291,22 @@ export default function CheckinPanel({ unitSlug, reservation: rv, rooms, guests,
             <Check done={signedAll} />
             <div className="flex min-w-0 flex-1 flex-col gap-2">
               <span className="text-sm font-bold">{CHECKIN_STEPS.rr3}</span>
-              <span className="text-xs text-[color:var(--color-muted)]">{CHECKIN_STEPS.rr3Help}</span>
-              {!signedAll && primary && perms.register && inHouse ? (
+              <span className="text-xs text-[color:var(--color-muted)]">
+                {CHECKIN_STEPS.rr3Help}
+                {!signedAll ? ` · ลงชื่อแล้ว ${signedCount}/${guests.length} คน` : ""}
+              </span>
+              {signTarget && perms.register && inHouse ? (
                 settings.rr3OnScreen ? (
-                  <SignaturePad busy={busy} onSave={(png) => sign(primary.id, png)} label="แขกลงชื่อบนแท็บเล็ต (ลงแทนห้องได้)" />
+                  <SignaturePad key={signTarget.id} busy={busy} onSave={(png) => sign(signTarget.id, png)} label={signLabel} />
                 ) : (
-                  <button type="button" className={`${BTN} self-start`} disabled={busy} onClick={() => signPaper(primary.id)}>
-                    พิมพ์ ร.ร.3 ให้ลงชื่อแล้ว — ติ๊กว่าลงชื่อบนกระดาษแล้ว
+                  <button type="button" className={`${BTN} self-start`} disabled={busy} onClick={() => signPaper(signTarget.id)}>
+                    พิมพ์ ร.ร.3 ให้ {signTarget.fullName} ลงชื่อแล้ว — ติ๊กว่าลงชื่อบนกระดาษแล้ว
                   </button>
                 )
               ) : null}
-              {primary ? (
-                <a className="text-xs font-bold text-[color:var(--color-accent)]" href={`/app/u/${unitSlug}/hotel/guests/${primary.id}/rr3/print`}>
-                  พิมพ์บัตร ร.ร.3 →
+              {printTarget ? (
+                <a className="text-xs font-bold text-[color:var(--color-accent)]" href={`/app/u/${unitSlug}/hotel/guests/${printTarget.id}/rr3/print`}>
+                  พิมพ์บัตร ร.ร.3{signTarget && signTarget.id !== primary?.id ? ` · ${signTarget.fullName}` : ""} →
                 </a>
               ) : null}
             </div>
@@ -311,6 +321,15 @@ export default function CheckinPanel({ unitSlug, reservation: rv, rooms, guests,
                   {tm30Filed.length !== 0 ? ` · ส่งเข้าเว็บ ตม. เมื่อ ${dateTimeTh(tm30Filed[0]?.tm30FiledAt)} · เลขรับแจ้งแนบแล้ว (${tm30Filed[0]?.tm30Ref ?? ""})` : ""}
                   {tm30Open.length !== 0 ? ` · ยังไม่แจ้ง ${tm30Open.length} คน (ภายใน 24 ชม.)` : ""}
                 </span>
+                {tm30Late.length !== 0 ? (
+                  <span data-tm30-overdue="" className="flex flex-wrap gap-2 text-xs">
+                    {tm30Late.map(({ g, b }) => (
+                      <span key={g.id} className={`inline-block rounded-full border px-2 py-0.5 font-bold ${b.tone}`}>
+                        {b.label} · {g.fullName} {b.note}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
                 {tm30Open.length !== 0 && perms.register ? <Tm30FileDialog unitSlug={unitSlug} guestIds={tm30Open.map((g) => g.id)} canFile compact /> : null}
               </div>
             </li>

@@ -81,13 +81,19 @@ export default async function HotelReservationDetailPage({ params, searchParams 
   };
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
-    {guestsTab}
-    {showGuestsLink ? (
-      <a href={`/app/u/${unitSlug}/hotel/reservations/${id}?tab=guests`} data-guests-tab-link="" className="self-start rounded-xl border border-[color:var(--color-line)] px-4 py-2 text-sm font-bold">
-        {r.booking.status === "CONFIRMED" ? "เช็กอิน · ลงทะเบียนผู้พัก (ร.ร.3) →" : "แขก · ทะเบียนผู้พัก (ร.ร.3) · ตม.30 →"}
-      </a>
-    ) : null}
     <BookingDetail
+      belowHeader={
+        guestsTab || showGuestsLink ? (
+          <>
+            {guestsTab}
+            {showGuestsLink ? (
+              <a href={`/app/u/${unitSlug}/hotel/reservations/${id}?tab=guests`} data-guests-tab-link="" className="self-start rounded-xl border border-[color:var(--color-line)] px-4 py-2 text-sm font-bold">
+                {r.booking.status === "CONFIRMED" ? "เช็กอิน · ลงทะเบียนผู้พัก (ร.ร.3) →" : "แขก · ทะเบียนผู้พัก (ร.ร.3) · ตม.30 →"}
+              </a>
+            ) : null}
+          </>
+        ) : undefined
+      }
       moneyPanel={renderFolio()}
       initialTab={tab === "money" || wantCheckout ? "money" : undefined}
       booking={r.booking}

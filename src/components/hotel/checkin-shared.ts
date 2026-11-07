@@ -176,6 +176,27 @@ export function hoursLeft(dueIso: string | null | undefined, nowMs: number): num
   const t = Date.parse(dueIso);
   return Number.isNaN(t) ? null : Math.floor((t - nowMs) / 3_600_000);
 }
+/** ตม.30 เลยกำหนดบนจอ (รอบ 6 PARITY) — LATE หรือ PENDING ที่ครบกำหนดแล้วแต่ sweep (ทุก 15 นาที) ยังไม่วิ่ง · จอเท่านั้น ไม่เปลี่ยนสถานะในฐาน */
+export function tm30Overdue(status: string, dueIso: string | null | undefined, nowMs: number): boolean {
+  if (status === "LATE") return true;
+  if (status !== "PENDING" || !dueIso) return false;
+  const t = Date.parse(dueIso);
+  return !Number.isNaN(t) && t < nowMs;
+}
+/** ป้าย ตม.30 ที่ใช้ทุกจอ (CheckinPanel · ทะเบียนผู้พัก · คิว ตม.30) — เลยกำหนด ⇒ แดง "เลยกำหนด ตม.30" + "(เลยมา N ชม.)" */
+export function tm30Badge(status: string, dueIso: string | null | undefined, nowMs: number): { overdue: boolean; label: string; tone: string; note: string } {
+  if (tm30Overdue(status, dueIso, nowMs)) {
+    const t = dueIso ? Date.parse(dueIso) : Number.NaN;
+    const h = Number.isNaN(t) ? null : Math.floor((nowMs - t) / 3_600_000);
+    const note = h === null ? "" : h < 1 ? "(เลยมาไม่ถึง 1 ชม.)" : `(เลยมา ${h.toLocaleString("th-TH")} ชม.)`;
+    return { overdue: true, label: "เลยกำหนด ตม.30", tone: TM30_TONE.LATE ?? "", note };
+  }
+  return { overdue: false, label: TM30_LABEL[status] ?? status, tone: TM30_TONE[status] ?? "", note: "" };
+}
+/** นับคนที่เลยกำหนด ตม.30 (หัวคิว/การ์ด "ตม.30 ค้าง") */
+export function tm30OverdueCount(items: readonly { status: string; dueAt: string | null }[], nowMs: number): number {
+  return items.filter((i) => tm30Overdue(i.status, i.dueAt, nowMs)).length;
+}
 export const moneyTh = (satang: number): string => `฿${(satang / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
 
 /** ขั้นของการ์ดเช็กอิน (ภาพ 09 ซ้าย) */

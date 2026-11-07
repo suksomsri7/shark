@@ -3,7 +3,7 @@
 //   เลือกหลายคน → ไฟล์สำหรับอัปโหลด + เลขรับแจ้ง (Tm30FileDialog) · ไม่มีสิทธิ์ทะเบียน = ดูอย่างเดียว · มือถือ 390: ตารางเลื่อนแนวนอน (data-scroll-hint)
 import { useState } from "react";
 import Tm30FileDialog from "./Tm30FileDialog";
-import { TM30_LABEL, TM30_TONE, dateShortTh, dateTimeTh, hoursLeft, maskLast4, nationalityText, type Tm30Item } from "./checkin-shared";
+import { dateShortTh, dateTimeTh, hoursLeft, maskLast4, nationalityText, tm30Badge, type Tm30Item } from "./checkin-shared";
 
 type Props = { unitSlug: string; items: Tm30Item[]; canFile: boolean; nowMs: number };
 
@@ -42,8 +42,9 @@ export default function Tm30Queue({ unitSlug, items, canFile, nowMs }: Props) {
             <tbody>
               {items.map((i) => {
                 const h = hoursLeft(i.dueAt, nowMs);
+                const badge = tm30Badge(i.status, i.dueAt, nowMs); // รอบ 6 ▸ PENDING ที่ครบกำหนดแล้ว (sweep ยังไม่วิ่ง) = เลยกำหนดบนจอ ◂
                 return (
-                  <tr key={i.guestId} data-tm30-row={i.status} className="border-t border-[color:var(--color-line)]">
+                  <tr key={i.guestId} data-tm30-row={i.status} data-tm30-overdue={badge.overdue ? "" : undefined} className="border-t border-[color:var(--color-line)]">
                     {canFile ? (
                       <td className="py-2">
                         <input type="checkbox" aria-label="เลือกผู้เข้าพัก" checked={picked.includes(i.guestId)} onChange={() => toggle(i.guestId)} />
@@ -55,9 +56,11 @@ export default function Tm30Queue({ unitSlug, items, canFile, nowMs }: Props) {
                     <td className="py-2">
                       {i.roomNumber ?? "—"} · {dateShortTh(i.checkIn)} – {dateShortTh(i.checkOut)}
                     </td>
-                    <td className="py-2">{i.dueAt ? `${dateTimeTh(i.dueAt)}${h !== null && h >= 0 ? ` (อีก ${h} ชม.)` : ""}` : "ยังไม่เช็กอิน"}</td>
+                    <td className={`py-2 ${badge.overdue ? "font-bold text-rose-700" : ""}`}>
+                      {i.dueAt ? `${dateTimeTh(i.dueAt)}${badge.overdue ? ` ${badge.note}` : h !== null && h >= 0 ? ` (อีก ${h} ชม.)` : ""}` : "ยังไม่เช็กอิน"}
+                    </td>
                     <td className="py-2">
-                      <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${TM30_TONE[i.status] ?? ""}`}>{TM30_LABEL[i.status] ?? i.status}</span>
+                      <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${badge.tone}`}>{badge.label}</span>
                     </td>
                   </tr>
                 );
