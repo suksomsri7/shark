@@ -99,6 +99,8 @@ STANDARD: ซูพีเรีย 990 ทุกวัน · ดีลักซ�
 
 ### State machine (`booking-state.ts` · S §7.8)
 `HOLD → CONFIRMED → CHECKED_IN → CHECKED_OUT` · `HOLD/CONFIRMED → CANCELLED` · `CONFIRMED → NO_SHOW` · `NO_SHOW → CONFIRMED` (MANAGER/OWNER ภายในวันเดียวกันไทย · ผ่าน guard tx) · `BOOKED` (P1) ไม่เขียนอีก · `REFUNDED` = ปลายเส้น P1 `refundStay`
+- ข้อยกเว้นนอกตาราง `TRANSITIONS` (ตั้งใจ): `CANCELLED(HOLD_EXPIRED) → CONFIRMED` = re-book เมื่อมัดจำเข้าหลังหมดเวลาถือห้อง (เฉพาะวันเข้ายังไม่ผ่าน + ผ่าน guard tx ว่าง · ไม่งั้นคงยกเลิก + คืนเงินอัตโนมัติ + event `deposit_after_expiry`)
+- ลำดับล็อกเดียวทุกเส้นที่เขียน: **ประเภท (advisory) → แถว reservation (CAS ตามสถานะ/วันที่ที่อ่าน — ไม่ตรง ⇒ `STATE_CHANGED`) → occupancy** · deadlock/หมดเวลาที่ยังหลุด ⇒ `BUSY`
 
 ### Guard tx (กันจองซ้อน · S §7.2 §11 ข้อ 1)
 1. ตรวจ input นอก tx (วัน · `PAST_DATE` · `TOO_FAR` · ความจุ `OVER_OCCUPANCY` · เตียงเสริม · แผนของหน่วย) + `quoteStay` ต่อห้อง + snapshot
@@ -111,14 +113,16 @@ STANDARD: ซูพีเรีย 990 ทุกวัน · ดีลักซ�
 
 ### สถานะเริ่มต้น (`rooms.hotel.bookingMode`)
 - `AUTO_CONFIRM` ⇒ CONFIRMED ทุกช่องทาง
-- `MANUAL_APPROVE` ⇒ HOLD ถึงเวลาเช็กอิน (`rooms.hotel.checkInTime`) ของวันเข้า (มติผู้คุม §11 ข้อ 4 · ผ่านไปแล้ว ⇒ อย่างน้อย holdMinutesOnline) → `confirmBooking`
+- `MANUAL_APPROVE` ⇒ HOLD ถึง max(วันเข้า เวลาเช็กอิน `rooms.hotel.checkInTime`, now + `holdMinutesCounter`) (มติผู้คุม §11 ข้อ 4 ปรับ 7 พ.ย.) → `confirmBooking` · จอแสดง "รอโรงแรมยืนยัน · ถือห้องถึง …"
 - `DEPOSIT_REQUIRED` (ค่าเริ่ม): มัดจำ 0 ⇒ CONFIRMED · WEB/LINE/ทางสาธารณะ/`hold:"ONLINE"` ⇒ HOLD `holdMinutesOnline` · `hold:"COUNTER"` («รอโอน») ⇒ HOLD `holdMinutesCounter` · อื่น ⇒ CONFIRMED
 - actor null (ทางสาธารณะ H.8) ได้เฉพาะ WEB/LINE · OTA ต้องมี `channelRef`
 
 ### มัดจำ / คืนเงิน (เงินทุกบาทผ่าน POS)
 - มัดจำของกลุ่ม = `depositFor(quotes ทั้งกลุ่ม, depositPolicyOf(แผน, ค่าตั้ง))` เก็บบนแถวหัวกลุ่ม · `takeBookingDeposit` ⇒ `moduleTakeDeposit` keyBase `hotel-deposit-<groupId|id>` (ใบรับ POS_DEPOSIT · payType จาก UI) ⇒ HOLD ทั้งกลุ่ม → CONFIRMED (HOLD → STAY ห้องเดิม · folio OPEN)
 - จ่ายหลังหมดเวลา (`HOLD_EXPIRED` หรือ HOLD เลยเวลาที่ sweeper ยังไม่เก็บ): รับเงินก่อน (ใบรับเสมอ) → guard tx: ว่าง ⇒ CONFIRMED (nights นับใหม่ · ถือห้องใหม่) · เต็ม ⇒ คง CANCELLED + `moduleRefundDeposit` คืนเต็มอัตโนมัติ + event `hotel.booking.deposit_after_expiry`
-- ยกเลิก (`cancelBooking`): คืน = `refundFor({paid: มัดจำคงเหลือ, checkInDate, cancelAt: วันนี้ไทย, rules: กฎยกเลิกใน snapshot})` · 100% ⇒ `moduleRefundDeposit` · 0% ⇒ `moduleForfeitDeposit` · ระหว่างนั้น ⇒ บิลค่าธรรมเนียมยกเลิก (แถวจ่าย DEPOSIT อ้างใบรับ · คีย์ริบ `dep-forfeit:<มัดจำ>`) แล้ว `moduleRefundDeposit` คงเหลือ (มติผู้คุม §11 ข้อ 1)
+- ยกเลิก (`cancelBooking`): คืน = `refundFor({paid: มัดจำคงเหลือใน POS, checkInDate, cancelAt: วันนี้ไทย, rules: กฎยกเลิกใน snapshot})` ปัด**ลง**ตาม `rooms.money.rounding` (BAHT_* ⇒ เต็มบาท) · ค่าธรรมเนียม = จ่าย − คืน · 100% ⇒ `moduleRefundDeposit` · ค่าธรรมเนียม > 0 (รวม 0% = ทั้งก้อน) ⇒ บิล "ค่าธรรมเนียมยกเลิก <รหัส>" (แถวจ่าย DEPOSIT อ้างใบรับ · คีย์ริบ `dep-forfeit:<มัดจำ>`) แล้ว `moduleRefundDeposit` คงเหลือ (มติผู้คุม §11 ข้อ 1 · m3 m4)
+  - AuditLog เงิน 2 จังหวะ: แผน (`moneyPlan`) ใน tx ของสถานะ · ผลจริง `hotel.booking.money` หลัง settle (ยกเลิก + ไม่มา) · มัดจำนอก POS ⇒ ต้อง `hotel.booking.manage` + `moneyWarning` "มัดจำนอก POS ให้จัดการมือ"
+  - รับมัดจำ: ปั๊ม depositPaidAt เฉพาะหัวกลุ่มที่ยังถือห้อง (HOLD/CONFIRMED/CHECKED_IN) · อ่านสดหลังล็อก — ไม่ถือห้องแล้ว/วันเข้าผ่าน/เต็ม ⇒ คืนเงิน + event `deposit_after_expiry`
   - ยกเลิกรายห้องที่ถือมัดจำหัวกลุ่มขณะห้องอื่นยัง active ⇒ ย้ายหัวกลุ่มไปห้องถัดไป ไม่คืนเงิน · ห้องสุดท้าย/ทั้งกลุ่ม ⇒ คืนตามขั้นบันได
   - มีคืน/ริบเงิน ⇒ ต้องมี `hotel.booking.manage` · ไม่มีมัดจำ ⇒ `hotel.reservation.cancel` พอ
 - ไม่มา (`markNoShow` · CONFIRMED + วันเข้า ≤ วันนี้): นโยบายจาก snapshot `rooms.hotel.noShow` — `FORFEIT_RELEASE_AFTER_AUDIT` ริบ + ปล่อย · `FORFEIT_HOLD_STAY` ริบ + ถือห้องต่อ · `REFUND_RELEASE` คืนเต็ม + ปล่อย · `undoNoShow` ไม่คืนเงินที่ริบอัตโนมัติ (หนี้ `moduleUnforfeitDeposit` รับเฉพาะ BOOKING)

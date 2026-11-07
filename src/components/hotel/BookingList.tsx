@@ -118,7 +118,7 @@ export default function BookingList({ unitSlug, rows, total, page, pageSize, fil
                     <span className={`inline-block rounded-full border px-2 py-0.5 text-xs ${statusToneClass(r.status)}`}>{STATUS_TH[r.status] ?? r.status}</span>
                     {r.status === "HOLD" ? (
                       <div data-hold-countdown="" className="mt-1 text-xs text-amber-700">
-                        {countdownTh(r.holdExpiresAt, now)}
+                        {countdownTh(r.holdExpiresAt, now, r.holdKind)}
                       </div>
                     ) : null}
                   </td>

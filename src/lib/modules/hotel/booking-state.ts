@@ -3,6 +3,8 @@
 //   • ทางเดียว: HOLD → CONFIRMED → CHECKED_IN → CHECKED_OUT · HOLD/CONFIRMED → CANCELLED · CONFIRMED → NO_SHOW
 //     NO_SHOW → CONFIRMED เฉพาะ MANAGER/OWNER ภายในวันเดียวกัน (ไทย) — ผู้เรียกต้องผ่าน guard tx (ห้องต้องยังว่าง)
 //   • BOOKED (P1) = สถานะเก่าที่ backfill แล้ว · REFUNDED = ปลายทางของเส้น P1 refundStay — ไม่อยู่ในตาราง V2 (ไม่ใช่ต้นทาง/ปลายทาง)
+//   • ข้อยกเว้นนอกตาราง (ไม่แก้ TRANSITIONS โดยตั้งใจ): CANCELLED(cancelReason HOLD_EXPIRED) → CONFIRMED = "re-book" เมื่อเงินมัดจำเข้าหลังหมดเวลาถือห้อง
+//     (booking.ts takeBookingDeposit · ผ่าน guard tx · เฉพาะวันเข้ายังไม่ผ่านและห้องยังว่าง — ไม่งั้นคงยกเลิก + คืนเงินอัตโนมัติ) · CANCELLED ด้วยเหตุอื่นเป็นปลายทางเสมอ
 
 export type BookingStatus = "HOLD" | "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED" | "NO_SHOW";
 export type TransitionRole = "OWNER" | "MANAGER" | "STAFF";

@@ -123,8 +123,12 @@ export function addDaysStr(ymd: string, n: number): string {
 }
 export const stayTh = (checkIn: string, checkOut: string): string => `${dateTh(checkIn)} – ${dateTh(checkOut)} (${daysBetween(checkIn, checkOut)} คืน)`;
 
-/** นับถอยหลังของ HOLD — holdExpiresAt (ISO) เทียบ nowMs */
-export function countdownTh(holdExpiresAt: string | null, nowMs: number): string {
+/**
+ * ป้าย HOLD — รอมัดจำ = นับถอยหลัง · รออนุมัติ (MANUAL_APPROVE · m-4 ผู้ตรวจรอบ 1) = "รอโรงแรมยืนยัน · ถือห้องถึง <เวลา>"
+ * holdExpiresAt (ISO) เทียบ nowMs
+ */
+export function countdownTh(holdExpiresAt: string | null, nowMs: number, holdKind: "DEPOSIT" | "APPROVAL" | null = "DEPOSIT"): string {
+  if (holdKind === "APPROVAL") return holdExpiresAt ? `รอโรงแรมยืนยัน · ถือห้องถึง ${dateTimeTh(holdExpiresAt)}` : "รอโรงแรมยืนยัน";
   if (!holdExpiresAt) return "รอผู้จัดการยืนยัน";
   const left = Date.parse(holdExpiresAt) - nowMs;
   if (!Number.isFinite(left)) return "";

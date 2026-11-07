@@ -74,7 +74,7 @@ export default async function PublicReservationStatusPage({
   const depositRequired = rv.depositSatang > 0;
   const depositPaid = !!rv.depositPaidAt;
   const meta = statusMeta(rv.status, depositRequired, depositPaid);
-  const awaitingDeposit = rv.status === "BOOKED" && depositRequired && !depositPaid;
+  const awaitingDeposit = (rv.status === "BOOKED" || rv.status === "CONFIRMED") && depositRequired && !depositPaid;
   const pp = awaitingDeposit ? await promptpayForDeposit(tenant.id, unit.id, rv.id) : null;
 
   return (
@@ -141,12 +141,12 @@ export default async function PublicReservationStatusPage({
         </section>
       )}
 
-      {rv.status === "BOOKED" && depositRequired && depositPaid && (
+      {(rv.status === "BOOKED" || rv.status === "CONFIRMED") && depositRequired && depositPaid && (
         <p className="text-center text-sm text-green-700">
           {t("hotel.rv.depositPaid")}
         </p>
       )}
-      {rv.status === "BOOKED" && !depositRequired && (
+      {(rv.status === "BOOKED" || rv.status === "CONFIRMED") && !depositRequired && (
         <p className="text-center text-sm text-[color:var(--color-muted)]">
           {t("hotel.rv.confirmed")}
         </p>

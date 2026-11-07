@@ -111,7 +111,7 @@ export default function BookingDetail({ booking: b, unitSlug, perms, rooms, acti
           <span className={`inline-block rounded-full border px-3 py-1 text-sm ${statusToneClass(b.status)}`}>{STATUS_TH[b.status] ?? b.status}</span>
           {b.status === "HOLD" ? (
             <span data-hold-countdown="" className="text-xs text-amber-700">
-              {countdownTh(b.holdExpiresAt, nowMs)}
+              {countdownTh(b.holdExpiresAt, nowMs, b.holdKind)}
             </span>
           ) : null}
         </div>
@@ -266,7 +266,11 @@ export default function BookingDetail({ booking: b, unitSlug, perms, rooms, acti
             <dd>฿{moneyTh(b.totalSatang)}</dd>
             <dt className="text-[color:var(--color-muted)]">มัดจำ</dt>
             <dd>
-              {b.depositSatang > 0 ? `฿${moneyTh(b.depositSatang)} · ${b.depositPaidAt ? `รับแล้ว ${dateTimeTh(b.depositPaidAt)}` : "ยังไม่รับ"}` : "ไม่มีมัดจำที่แถวนี้"}
+              {b.deposit
+                ? `รับ ฿${moneyTh(b.deposit.paidSatang)} ${dateTimeTh(b.depositPaidAt)} · คงเหลือ ฿${moneyTh(b.deposit.remainingSatang)}${b.deposit.forfeitedSatang ? ` · ใช้/ริบแล้ว ฿${moneyTh(b.deposit.forfeitedSatang)}` : ""}${b.deposit.refundedSatang ? ` · คืนแล้ว ฿${moneyTh(b.deposit.refundedSatang)}` : ""}${b.deposit.inPos ? "" : " · มัดจำนอก POS ให้จัดการมือ"}`
+                : b.depositSatang > 0
+                  ? `฿${moneyTh(b.depositSatang)} · ยังไม่รับ`
+                  : "ไม่มีมัดจำที่แถวนี้"}
             </dd>
             <dt className="text-[color:var(--color-muted)]">แผนราคา</dt>
             <dd>{b.ratePlanName ?? "—"}</dd>
@@ -316,7 +320,7 @@ export default function BookingDetail({ booking: b, unitSlug, perms, rooms, acti
                 <h2 className="text-lg font-bold">{pending === "cancelGroup" ? "ยกเลิกทุกห้องในกลุ่มนี้?" : "ยกเลิกการจองนี้?"}</h2>
                 {b.refund ? (
                   <p className="text-sm">
-                    มัดจำที่รับไว้ ฿{moneyTh(b.refund.paidSatang)} · คืนตามขั้นบันได ฿{moneyTh(b.refund.refundSatang)} · เก็บเป็นค่าธรรมเนียม ฿{moneyTh(b.refund.forfeitSatang)}
+                    มัดจำคงเหลือ ฿{moneyTh(b.refund.paidSatang)} · คืนตามขั้นบันได ฿{moneyTh(b.refund.refundSatang)} · เก็บเป็นค่าธรรมเนียม ฿{moneyTh(b.refund.forfeitSatang)}
                   </p>
                 ) : (
                   <p className="text-sm text-[color:var(--color-muted)]">ไม่มีการคืนเงิน (ยังไม่ได้รับมัดจำ หรือมัดจำอยู่กับห้องอื่นในกลุ่ม)</p>

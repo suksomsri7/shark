@@ -49,7 +49,8 @@ export type BookingFailCode =
   | "SHORTEN_POSTED"
   | "NOT_SAME_DAY"
   | "NO_POS"
-  | "BUSY";
+  | "BUSY"
+  | "STATE_CHANGED";
 export type BookingFail = { ok: false; code: BookingFailCode; reason: string; dates?: string[]; suggest?: { action: "MOVE_ROOM"; rooms: { id: string; number: string }[] } };
 export type BookingRowOut = { id: string; code: string; roomTypeId: string; status: string; holdExpiresAt: string | null; nights: number; totalSatang: number };
 export type CreateBookingOk = {
@@ -120,12 +121,16 @@ class Abort extends Error {
     super(result.code);
   }
 }
+/** ธุรกรรมชน/หมดเวลา/deadlock (P2028 · P2034 · pg 40P01 — เดินสาย cause/meta แบบ pgCodeOf ของ rooms) ⇒ ตอบ BUSY ไม่โยนดิบ */
 function isTxTimeout(e: unknown): boolean {
   let cur: unknown = e;
-  for (let d = 0; d < 5 && cur && typeof cur === "object"; d++) {
-    const o = cur as { code?: unknown; cause?: unknown };
-    if (o.code === "P2028" || o.code === "P2034") return true;
-    cur = o.cause;
+  for (let d = 0; d < 6 && cur && typeof cur === "object"; d++) {
+    const o = cur as { code?: unknown; originalCode?: unknown; message?: unknown; cause?: unknown; meta?: unknown };
+    for (const c of [o.code, o.originalCode]) if (c === "P2028" || c === "P2034" || c === "40P01") return true;
+    const meta = o.meta && typeof o.meta === "object" ? (o.meta as { code?: unknown; driverAdapterError?: unknown }) : null;
+    if (meta?.code === "40P01") return true;
+    if (typeof o.message === "string" && /deadlock detected|40P01/i.test(o.message)) return true;
+    cur = o.cause ?? meta?.driverAdapterError;
   }
   return false;
 }
@@ -186,7 +191,11 @@ async function inTx<T>(c: Ctx, fn: (tx: Tx) => Promise<T>): Promise<T | BookingF
   }
 }
 
-/** ล็อกชั้นประเภทห้อง — เรียง roomTypeId เสมอ (ทุกเส้นทางที่กินห้องล็อกลำดับเดียวกัน ⇒ ไม่มี 40P01) */
+/**
+ * ล็อกชั้นประเภทห้อง — เรียง roomTypeId เสมอ · **คำสั่งแรกของทุก tx ที่เขียนสถานะ/คืน/ห้องของการจอง**
+ * (สร้าง · มัดจำ · ยืนยัน · ยกเลิก · ต่อ/ย่น/ย้าย/เลื่อน · ไม่มา/ย้อน · sweeper) ⇒ ลำดับล็อกเดียวทุกเส้น "ประเภท → แถว reservation → occupancy"
+ * (ตรงหมายเหตุ rooms/occupancy.ts) ⇒ ไม่มี 40P01 · ถ้ายังหลุด isTxTimeout แปลงเป็น BUSY
+ */
 async function lockTypes(tx: Tx, unitId: string, typeIds: string[]): Promise<void> {
   for (const t of [...new Set(typeIds)].sort()) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${unitId}::text || ':' || ${t}::text))`;
@@ -205,6 +214,11 @@ export function cancelRulesOfSnapshot(snapshot: unknown): CancelRule[] {
   const s = snapOf(snapshot);
   const plan = rulesFrom(s?.plan?.cancelRules);
   return plan.length ? plan : rulesFrom(s?.values?.[KEY.cancelPolicy]);
+}
+/** HOLD นี้รออนุมัติ (MANUAL_APPROVE ที่จดตอนจอง) หรือรอมัดจำ */
+function holdKindOf(snapshot: unknown): "DEPOSIT" | "APPROVAL" {
+  const s = isRec(snapshot) ? snapshot : null;
+  return s?.bookingMode === "MANUAL_APPROVE" ? "APPROVAL" : "DEPOSIT";
 }
 function noShowPolicyOf(snapshot: unknown): NoShowPolicy {
   const v = snapOf(snapshot)?.values?.[KEY.noShow];
@@ -280,9 +294,21 @@ async function releaseStayTx(tx: Tx, c: Ctx, reservationId: string, reason: stri
   await tx.hotelFolio.updateMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId, status: "OPEN" }, data: { status: "VOID" } });
 }
 
-/** HOLD ⇒ STAY ของห้องที่ถืออยู่ (ปล่อยแล้วถือใหม่ห้องเดิมช่วงเดิม · ผ่าน facade) */
-async function holdToStay(tx: Tx, c: Ctx, reservationId: string): Promise<void> {
-  for (const o of await activeOcc(tx, c, reservationId)) {
+/**
+ * HOLD ⇒ STAY ของห้องที่ถืออยู่ (ปล่อยแล้วถือใหม่ห้องเดิมช่วงเดิม · ผ่าน facade) — ผู้เรียกถือล็อกประเภทแล้ว
+ * ไม่มีห้องถืออยู่เลย (เช่น rooms.expireHolds ปิด HOLD ที่เลยเวลาไปก่อน) ⇒ ถือห้องว่างที่ดีที่สุดใหม่ (ไม่ได้ = ไม่มีห้อง · nights ยังนับ)
+ */
+async function holdToStay(tx: Tx, c: Ctx, reservationId: string, now: Date = new Date()): Promise<void> {
+  const occ = await activeOcc(tx, c, reservationId);
+  if (!occ.length) {
+    const rv = await tx.hotelReservation.findFirst({ where: { id: reservationId, tenantId: c.tenantId, unitId: c.unitId }, select: { roomTypeId: true, checkInDate: true, checkOutDate: true } });
+    if (!rv) return;
+    const roomId = await holdBestRoom(tx, c, { reservationId, roomTypeId: rv.roomTypeId, from: ymdOfDb(rv.checkInDate), to: ymdOfDb(rv.checkOutDate), hk: { kind: "STAY", holdExpiresAt: null }, now });
+    await tx.hotelBookingNight.updateMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId, counted: true }, data: { roomId } });
+    await tx.hotelReservation.updateMany({ where: { id: reservationId, tenantId: c.tenantId, unitId: c.unitId }, data: { roomId } });
+    return;
+  }
+  for (const o of occ) {
     if (o.kind !== "HOLD") continue;
     await releaseOccupancy(tx, { ...c, occupancyId: o.id, reason: "ยืนยันการจอง" });
     const r = await claimRoom(tx, { ...c, roomId: o.roomId, start: ymdOfDb(o.startDate), end: ymdOfDb(o.endDate), kind: "STAY", refType: HOTEL_REF, refId: reservationId, requireRentMode: "NIGHTLY" });
@@ -291,6 +317,28 @@ async function holdToStay(tx: Tx, c: Ctx, reservationId: string): Promise<void> 
       await tx.hotelReservation.updateMany({ where: { id: reservationId, tenantId: c.tenantId, unitId: c.unitId }, data: { roomId: null } });
     }
   }
+}
+
+/**
+ * เขียนแถวการจองแบบ CAS (ผู้ตรวจรอบ 1 M-2): ต้องยังเป็นสถานะ/วันที่อ่านไว้ — ไม่ตรง (มีคนเปลี่ยนระหว่างทาง) ⇒ Abort STATE_CHANGED ย้อนทั้ง tx
+ * คืนแถวหลังเขียน (ให้ audit)
+ */
+async function casUpdateRv(tx: Tx, c: Ctx, expect: { id: string; status: string; checkInDate?: Date; checkOutDate?: Date }, data: Prisma.HotelReservationUncheckedUpdateManyInput): Promise<RvRow> {
+  const upd = await tx.hotelReservation.updateMany({
+    where: {
+      id: expect.id,
+      tenantId: c.tenantId,
+      unitId: c.unitId,
+      status: expect.status as RvRow["status"],
+      ...(expect.checkInDate ? { checkInDate: expect.checkInDate } : {}),
+      ...(expect.checkOutDate ? { checkOutDate: expect.checkOutDate } : {}),
+    },
+    data,
+  });
+  if (upd.count === 0) throw new Abort(fail("STATE_CHANGED", "การจองนี้เพิ่งถูกเปลี่ยนสถานะหรือวันที่ — โหลดใหม่แล้วลองอีกครั้ง"));
+  const after = await tx.hotelReservation.findFirst({ where: { id: expect.id } });
+  if (!after) throw new Abort(fail("STATE_CHANGED", "การจองนี้เพิ่งถูกเปลี่ยน — โหลดใหม่แล้วลองอีกครั้ง"));
+  return after;
 }
 
 async function openFolio(tx: Tx, c: Ctx, reservationId: string): Promise<void> {
@@ -544,8 +592,9 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
   if (!opts.legacy) {
     if (pol.bookingMode === "MANUAL_APPROVE") {
       status = "HOLD";
+      // มติผู้คุม §11.4 (ปรับ 7 พ.ย.): max(วันเข้า เวลาเช็กอิน, now + holdMinutesCounter) — จองวันนี้หลังเวลาเช็กอิน พนักงานยังมีเวลาอนุมัติ
       const atCheckIn = bkkDateTime(inp.checkIn, pol.checkInTime);
-      const floor = holdDeadline(now, pol.holdOnline) ?? now;
+      const floor = holdDeadline(now, pol.holdCounter) ?? now;
       holdUntil = atCheckIn > floor ? atCheckIn : floor;
     } else if (pol.bookingMode !== "AUTO_CONFIRM" && depositRequired > 0) {
       const online = inp.hold === "ONLINE" || !g.actor || (inp.hold === undefined && (inp.source === "WEB" || inp.source === "LINE"));
@@ -562,7 +611,7 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
   // snapshot ตอนจอง (ค่าตั้ง ณ เวลาจริง + กฎยกเลิกของแผน)
   const planRules = plan ? await db.hotelCancelRule.findMany({ where: { ratePlanId: plan.id }, orderBy: { daysBefore: "desc" }, select: { daysBefore: true, refundBp: true } }) : [];
   const snap = await snapshotPolicy({ tenantId: c.tenantId }, "reservation", { unitId: c.unitId, roomTypeId: inp.rooms[0].roomTypeId, ...(plan ? { ratePlanId: plan.id } : {}) });
-  const policySnapshot = jsonOf({ ...snap, plan: plan ? { id: plan.id, code: plan.code, depositKind: plan.depositKind, depositValue: plan.depositValue, cancelRules: planRules } : null });
+  const policySnapshot = jsonOf({ ...snap, bookingMode: opts.legacy ? "LEGACY" : pol.bookingMode, plan: plan ? { id: plan.id, code: plan.code, depositKind: plan.depositKind, depositValue: plan.depositValue, cancelRules: planRules } : null });
   const taxSnapshot = jsonOf(pol.tax);
   const groupId = inp.rooms.length > 1 ? `grp${randomUUID().replace(/-/g, "")}` : null;
   const actor = g.actor;
@@ -687,7 +736,7 @@ async function groupRows(c: Ctx, rv: RvRow): Promise<RvRow[]> {
 const headOf = (rows: RvRow[]): RvRow => rows.find((r) => r.depositPaidAt) ?? rows.find((r) => r.depositSatang > 0) ?? rows[0];
 
 // ───────────────────────── เงิน (ผ่าน POS เท่านั้น) ─────────────────────────
-type DepositState = { systemId: string; depositId: string; receiptSaleId: string; remaining: number; customerId: string | null } | null;
+type DepositState = { systemId: string; depositId: string; receiptSaleId: string; amount: number; used: number; refunded: number; remaining: number; customerId: string | null } | null;
 async function depositState(c: Ctx, receiptSaleId: string | null): Promise<DepositState> {
   if (!receiptSaleId) return null;
   const systemId = await systemForUnit(c.tenantId, c.unitId, "POS");
@@ -698,7 +747,7 @@ async function depositState(c: Ctx, receiptSaleId: string | null): Promise<Depos
   });
   if (!d || d.unitId !== c.unitId) return null;
   const remaining = String(d.status) === "OPEN" ? Math.max(0, d.amountSatang - d.usedSatang - d.refundedSatang) : 0;
-  return { systemId, depositId: d.id, receiptSaleId, remaining, customerId: d.customerId };
+  return { systemId, depositId: d.id, receiptSaleId, amount: d.amountSatang, used: d.usedSatang, refunded: d.refundedSatang, remaining, customerId: d.customerId };
 }
 type MoneyOut = { refundSatang: number; forfeitSatang: number; error: string | null };
 const sellFor = (c: Ctx, systemId: string, reservationId: string) =>
@@ -742,7 +791,38 @@ async function cancelFeeBill(c: Ctx, st: NonNullable<DepositState>, rv: { id: st
     return e instanceof Error ? e.message.slice(0, 160) : "ออกบิลค่าธรรมเนียมยกเลิกไม่สำเร็จ";
   }
 }
-/** เงินตอนยกเลิกตามขั้นบันได (ยอดคืน = refundFor ของคงเหลือ · 100% ⇒ คืน · 0% ⇒ ริบ · ระหว่างนั้น ⇒ บิลค่าธรรมเนียม + คืนคงเหลือ) */
+const LEGACY_MONEY_WARNING = "มัดจำนอก POS ให้จัดการมือ";
+/** m2 (ผู้ตรวจรอบ 2): AuditLog จังหวะที่ 2 = ผลเงินจริงหลัง settle (จังหวะที่ 1 = แผนใน tx ของสถานะ) · ไม่ throw */
+async function moneyAudit(c: Ctx, actor: BookingActor | null, reservationId: string, via: string, plan: Record<string, unknown>, money: MoneyOut): Promise<void> {
+  try {
+    await tenantDb({ tenantId: c.tenantId }).auditLog.create({
+      data: {
+        tenantId: c.tenantId,
+        unitId: c.unitId,
+        actorType: actor ? "USER" : "SYSTEM",
+        actorId: actor?.userId ?? SYSTEM_ACTOR_ID,
+        action: "hotel.booking.money",
+        targetType: "HotelReservation",
+        targetId: reservationId,
+        after: jsonOf({ via, ...plan, refundSatang: money.refundSatang, forfeitSatang: money.forfeitSatang, error: money.error }),
+      },
+    });
+  } catch {
+    console.warn(`[hotel.booking] บันทึก audit เงินไม่สำเร็จ tenant=${c.tenantId} reservation=${reservationId}`);
+  }
+}
+
+/** ยอดคืนปัด**ลง**ตาม rooms.money.rounding (มติผู้คุม m3): BAHT_* ⇒ เต็มบาท · SATANG ⇒ สตางค์ — ค่าธรรมเนียม = จ่าย − คืน */
+export function roundRefundDown(refundSatang: number, rounding: unknown): number {
+  const r = Math.max(0, Math.trunc(refundSatang));
+  return rounding === "BAHT_HALF_UP" || rounding === "BAHT_DOWN" ? Math.floor(r / 100) * 100 : r;
+}
+const roundingOfSnapshot = (snapshot: unknown): unknown => snapOf(snapshot)?.values?.["rooms.money.rounding"];
+
+/**
+ * เงินตอนยกเลิกตามขั้นบันได — refund (ปัดแล้ว) ของคงเหลือ · 100% ⇒ moduleRefundDeposit · ค่าธรรมเนียม > 0 ⇒ บิลค่าธรรมเนียมยกเลิก
+ * (แถวจ่าย DEPOSIT · 0% ก็ใช้บิลนี้ทั้งก้อน — มติผู้คุม m4 บรรทัดบนใบ = "ค่าธรรมเนียมยกเลิก …" ไม่ใช่ "มัดจำริบ — ไม่มาตามนัด") แล้วคืนคงเหลือ (ถ้ามี)
+ */
 async function settleCancelMoney(c: Ctx, st: NonNullable<DepositState>, rv: { id: string; code: string }, refund: number, actorId: string): Promise<MoneyOut> {
   const paid = st.remaining;
   if (paid <= 0) return { refundSatang: 0, forfeitSatang: 0, error: null };
@@ -751,8 +831,8 @@ async function settleCancelMoney(c: Ctx, st: NonNullable<DepositState>, rv: { id
     const r = await refundAll(c, st.receiptSaleId, `ยกเลิกการจอง ${rv.code}`, actorId);
     return { ...r, refundSatang: r.error ? 0 : paid };
   }
-  if (fee >= paid) return forfeitAll(c, st, rv.id, `ยกเลิกการจอง ${rv.code}`, actorId);
   const err = await cancelFeeBill(c, st, rv, fee);
+  if (!err && fee >= paid) return { refundSatang: 0, forfeitSatang: fee, error: null };
   if (err) return { refundSatang: 0, forfeitSatang: 0, error: err };
   const r = await refundAll(c, st.receiptSaleId, `ยกเลิกการจอง ${rv.code} (คืนตามขั้นบันได)`, actorId);
   return { refundSatang: r.error ? 0 : paid - fee, forfeitSatang: fee, error: r.error };
@@ -812,42 +892,51 @@ export async function takeBookingDeposit(actorIn: unknown, ctx: unknown, input: 
         callerTx(tx),
       ),
   );
-  const expiredRows = rows.filter((r) => r.status === "CANCELLED" && r.cancelReason === "HOLD_EXPIRED");
   const headId = head.id;
+  const today = bkkYmd(now);
   const out = await inTx(c, async (tx) => {
     await lockTypes(tx, c.unitId, rows.map((r) => r.roomTypeId));
-    const claimed = await tx.hotelReservation.updateMany({ where: { id: headId, depositPaidAt: null }, data: { depositPaidAt: now, depositSaleId: sale.saleId, depositSatang: amount } });
-    if (claimed.count === 0) return { kind: "dup" as const };
+    // อ่านสดหลังล็อก (C-1 · M1): sweeper/ยกเลิก/ไม่มา อาจเกิดระหว่าง POS ออกใบรับ
     const cur = await tx.hotelReservation.findMany({ where: { id: { in: rows.map((r) => r.id) } } });
-    const reBook = cur.filter((r) => r.status === "CANCELLED" && r.cancelReason === "HOLD_EXPIRED" && expiredRows.some((x) => x.id === r.id));
+    const curHead = cur.find((r) => r.id === headId);
+    if (curHead?.depositPaidAt) return curHead.depositSaleId === sale.saleId ? { kind: "dup" as const } : { kind: "refund" as const, why: "PAID_ELSEWHERE" };
+    const toRefund = async (rowsForEvent: { id: string; code: string; groupId: string | null; source: string; status: string }[], why: string, extra: Record<string, unknown> = {}) => {
+      for (const r of rowsForEvent) await emitEv(tx, c, "deposit_after_expiry", r, r.status, sale.saleId);
+      await audit(tx, c, g.actor, "hotel.booking.deposit_after_expiry", headId, { status: curHead?.status ?? null }, { status: curHead?.status ?? null, saleId: sale.saleId, amountSatang: amount, refund: true, why, ...extra });
+      return { kind: "refund" as const, why };
+    };
+    // re-book ทุกแถว HOLD_EXPIRED ที่เห็นตอนนี้ — เฉพาะวันเข้ายังไม่ผ่าน (m6) · เต็ม/ผ่านวันแล้ว ⇒ คืนเงิน + event
+    const reBook = cur.filter((r) => r.status === "CANCELLED" && r.cancelReason === "HOLD_EXPIRED");
     if (reBook.length) {
+      if (reBook.some((r) => ymdOfDb(r.checkInDate) < today)) return toRefund(reBook, "CHECKIN_PASSED");
       const need = new Map<string, number>();
       for (const r of reBook) for (const d of nightDates(ymdOfDb(r.checkInDate), ymdOfDb(r.checkOutDate))) need.set(`${r.roomTypeId}|${d}`, (need.get(`${r.roomTypeId}|${d}`) ?? 0) + 1);
       const from = reBook.map((r) => ymdOfDb(r.checkInDate)).sort()[0];
       const to = reBook.map((r) => ymdOfDb(r.checkOutDate)).sort().reverse()[0];
       const av = await availabilityInTx(tx, { ...c, roomTypeIds: [...new Set(reBook.map((r) => r.roomTypeId))], from, to, excludeReservationIds: reBook.map((r) => r.id) });
       const short = shortDates(av, need);
-      if (short.length) {
-        for (const r of reBook) await emitEv(tx, c, "deposit_after_expiry", r, "CANCELLED", sale.saleId);
-        await audit(tx, c, g.actor, "hotel.booking.deposit_after_expiry", headId, { status: "CANCELLED" }, { status: "CANCELLED", saleId: sale.saleId, amountSatang: amount, refund: true, dates: short });
-        return { kind: "refund" as const };
-      }
+      if (short.length) return toRefund(reBook, "FULL", { dates: short });
       for (const r of reBook) {
         const ci = ymdOfDb(r.checkInDate);
         const co = ymdOfDb(r.checkOutDate);
+        const upd = await tx.hotelReservation.updateMany({ where: { id: r.id, status: "CANCELLED", cancelReason: "HOLD_EXPIRED" }, data: { status: "CONFIRMED", holdExpiresAt: null, cancelledAt: null, cancelReason: null } });
+        if (upd.count === 0) throw new Abort(fail("STATE_CHANGED", "การจองนี้เพิ่งถูกเปลี่ยน — ลองอีกครั้ง"));
         await tx.hotelBookingNight.updateMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId: r.id, date: { gte: dbDate(ci), lt: dbDate(co) } }, data: { counted: true } });
         const roomId = await holdBestRoom(tx, c, { reservationId: r.id, roomTypeId: r.roomTypeId, from: ci, to: co, hk: { kind: "STAY", holdExpiresAt: null }, now });
         await tx.hotelBookingNight.updateMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId: r.id, counted: true }, data: { roomId } });
-        await tx.hotelReservation.update({ where: { id: r.id }, data: { status: "CONFIRMED", holdExpiresAt: null, cancelledAt: null, cancelReason: null, roomId } });
+        await tx.hotelReservation.updateMany({ where: { id: r.id, tenantId: c.tenantId, unitId: c.unitId }, data: { roomId } });
         await openFolio(tx, c, r.id);
         await emitEv(tx, c, "confirmed", r, "CONFIRMED", `rebook-${sale.saleId}`);
         await audit(tx, c, g.actor, "hotel.booking.confirmed", r.id, { status: "CANCELLED", cancelReason: "HOLD_EXPIRED" }, { status: "CONFIRMED", via: "deposit_after_expiry" });
       }
     }
+    // ปั๊มมัดจำบนหัวกลุ่มเฉพาะเมื่อยังถือห้องอยู่ (M1) — count 0 ⇒ หัวกลุ่มยกเลิก/ไม่มา/ออกแล้ว ⇒ คืนเงิน + event
+    const claimed = await tx.hotelReservation.updateMany({ where: { id: headId, depositPaidAt: null, status: { in: [...ACTIVE] } }, data: { depositPaidAt: now, depositSaleId: sale.saleId, depositSatang: amount } });
+    if (claimed.count === 0) return toRefund(curHead ? [curHead] : [], "NOT_ACTIVE");
     for (const r of cur.filter((x) => x.status === "HOLD")) {
       const upd = await tx.hotelReservation.updateMany({ where: { id: r.id, status: "HOLD" }, data: { status: "CONFIRMED", holdExpiresAt: null } });
       if (upd.count === 0) continue;
-      await holdToStay(tx, c, r.id);
+      await holdToStay(tx, c, r.id, now);
       await openFolio(tx, c, r.id);
       await emitEv(tx, c, "confirmed", r, "CONFIRMED");
       await audit(tx, c, g.actor, "hotel.booking.confirmed", r.id, { status: "HOLD" }, { status: "CONFIRMED", via: "deposit" });
@@ -858,8 +947,8 @@ export async function takeBookingDeposit(actorIn: unknown, ctx: unknown, input: 
   if (isFail(out)) return out;
   if (out.kind === "dup") return { ok: true as const, duplicated: true, saleId: sale.saleId, status: rv.status };
   if (out.kind === "refund") {
-    const r = await refundAll(c, sale.saleId, `ห้องเต็มหลังถือห้องหมดเวลา — คืนมัดจำการจอง ${head.code}`, actorId);
-    return fail("AVAILABILITY_CHANGED", r.error ? `ห้องเต็มแล้วหลังหมดเวลาถือห้อง — คืนมัดจำอัตโนมัติไม่สำเร็จ (${r.error}) ให้คืนที่หน้าขาย` : "ห้องเต็มแล้วหลังหมดเวลาถือห้อง — ระบบคืนเงินมัดจำให้อัตโนมัติแล้ว");
+    const r = await refundAll(c, sale.saleId, `การจอง ${head.code} ไม่ได้ถือห้องแล้ว (หมดเวลา/ยกเลิก/ห้องเต็ม) — คืนมัดจำอัตโนมัติ`, actorId);
+    return fail("AVAILABILITY_CHANGED", r.error ? `การจองนี้ไม่ได้ถือห้องแล้ว (หมดเวลาถือห้องหรือห้องเต็ม) — คืนมัดจำอัตโนมัติไม่สำเร็จ (${r.error}) ให้คืนที่หน้าขาย` : "การจองนี้ไม่ได้ถือห้องแล้ว (หมดเวลาถือห้องหรือห้องเต็ม) — ระบบคืนเงินมัดจำให้อัตโนมัติแล้ว");
   }
   const after = await loadRv(c, rv.id);
   return { ok: true as const, duplicated: sale.duplicated, saleId: sale.saleId, status: after?.status ?? rv.status };
@@ -877,12 +966,13 @@ export async function confirmBooking(actorIn: unknown, ctx: unknown, input: unkn
   if (rv.holdExpiresAt && rv.holdExpiresAt <= now) return fail("HOLD_EXPIRED", "หมดเวลาถือห้องแล้ว — สร้างการจองใหม่");
   const rows = (await groupRows(c, rv)).filter((r) => r.status === "HOLD");
   const out = await inTx(c, async (tx) => {
+    await lockTypes(tx, c.unitId, rows.map((r) => r.roomTypeId)); // ลำดับเดียว: ประเภท → แถว → occupancy
     let n = 0;
     for (const r of rows) {
       const upd = await tx.hotelReservation.updateMany({ where: { id: r.id, status: "HOLD" }, data: { status: "CONFIRMED", holdExpiresAt: null } });
       if (upd.count === 0) continue;
       n++;
-      await holdToStay(tx, c, r.id);
+      await holdToStay(tx, c, r.id, now);
       await openFolio(tx, c, r.id);
       await emitEv(tx, c, "confirmed", r, "CONFIRMED");
       await audit(tx, c, g.actor, "hotel.booking.confirmed", r.id, { status: "HOLD" }, { status: "CONFIRMED", via: "manual" });
@@ -935,11 +1025,14 @@ export async function cancelBooking(actorIn: unknown, ctx: unknown, input: unkno
   const settles = headCancelled && !moveHeadTo && !!head?.depositPaidAt;
   const st = settles && head ? await depositState(c, head.depositSaleId) : null;
   const paid = st?.remaining ?? 0;
-  if (paid > 0 && !can(g, "hotel.booking.manage")) return fail("FORBIDDEN", R.money);
+  // m5 (ผู้ตรวจรอบ 2): มัดจำนอก POS (จ่ายแล้วแต่ไม่มี PosDeposit — แบบเดิม/ไม่ผูก POS) ⇒ ต้องสิทธิ์เงินเหมือนมีเงิน + เตือนให้จัดการมือ
+  const legacyMoney = settles && !!head && !st && head.depositSatang > 0;
+  if ((paid > 0 || legacyMoney) && !can(g, "hotel.booking.manage")) return fail("FORBIDDEN", R.money);
   const rules = head ? cancelRulesOfSnapshot(head.policySnapshot) : [];
-  const refund = head && paid > 0 ? refundFor({ paidSatang: paid, checkInDate: ymdOfDb(head.checkInDate), cancelAt: today, rules }).refundSatang : 0;
+  const refund = head && paid > 0 ? roundRefundDown(refundFor({ paidSatang: paid, checkInDate: ymdOfDb(head.checkInDate), cancelAt: today, rules }).refundSatang, roundingOfSnapshot(head.policySnapshot)) : 0;
   const reason = p.data.reason;
   const out = await inTx(c, async (tx) => {
+    await lockTypes(tx, c.unitId, targets.map((r) => r.roomTypeId)); // ลำดับเดียว: ประเภท → แถว → occupancy (ผู้ตรวจรอบ 1 M-1)
     for (const r of targets) {
       const upd = await tx.hotelReservation.updateMany({ where: { id: r.id, status: { in: ["HOLD", "CONFIRMED"] } }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: reason } });
       if (upd.count === 0) throw new Abort(fail("INVALID_STATUS", "การจองนี้ถูกยกเลิกหรือเปลี่ยนสถานะไปแล้ว"));
@@ -949,7 +1042,7 @@ export async function cancelBooking(actorIn: unknown, ctx: unknown, input: unkno
       await audit(tx, c, g.actor, "hotel.booking.cancelled", r.id, { status: r.status }, {
         status: "CANCELLED",
         reason,
-        ...(isHead && settles ? { paidSatang: paid, refundSatang: refund, forfeitSatang: paid - refund, cancelAt: today } : {}),
+        ...(isHead && settles ? { moneyPlan: { paidSatang: paid, refundSatang: refund, forfeitSatang: paid - refund, cancelAt: today, legacy: legacyMoney } } : {}),
         ...(isHead && moveHeadTo ? { depositMovedTo: moveHeadTo.id } : {}),
       });
     }
@@ -961,15 +1054,23 @@ export async function cancelBooking(actorIn: unknown, ctx: unknown, input: unkno
   });
   if (isFail(out)) return out;
   let money: MoneyOut = { refundSatang: 0, forfeitSatang: 0, error: null };
-  if (st && head && paid > 0) money = await settleCancelMoney(c, st, head, refund, g.actor?.userId ?? SYSTEM_ACTOR_ID);
-  return { ok: true as const, cancelled: targets.map((r) => r.id), refundSatang: money.refundSatang, forfeitSatang: money.forfeitSatang, ...(money.error ? { moneyWarning: `ยกเลิกแล้ว แต่จัดการเงินมัดจำไม่สำเร็จ (${money.error}) — คืน/ริบที่หน้าขาย` } : {}) };
+  if (st && head && paid > 0) {
+    money = await settleCancelMoney(c, st, head, refund, g.actor?.userId ?? SYSTEM_ACTOR_ID);
+    await moneyAudit(c, g.actor, head.id, "cancel", { planRefundSatang: refund, planForfeitSatang: paid - refund }, money);
+  }
+  const warning = money.error ? `ยกเลิกแล้ว แต่จัดการเงินมัดจำไม่สำเร็จ (${money.error}) — คืน/ริบที่หน้าขาย` : legacyMoney ? LEGACY_MONEY_WARNING : null;
+  return { ok: true as const, cancelled: targets.map((r) => r.id), refundSatang: money.refundSatang, forfeitSatang: money.forfeitSatang, ...(warning ? { moneyWarning: warning } : {}) };
 }
 
-/** ตัวช่วยจอ: ยอดคืนตามขั้นบันได ถ้ายกเลิกตอนนี้ (อ่านอย่างเดียว) */
-export function refundPreview(rv: { policySnapshot: unknown; checkInDate: Date; depositSatang: number; depositPaidAt: Date | null }, today: string) {
-  const paid = rv.depositPaidAt ? rv.depositSatang : 0;
+/**
+ * ตัวช่วยจอ: ยอดคืนตามขั้นบันได ถ้ายกเลิกตอนนี้ (อ่านอย่างเดียว) — ฐาน = มัดจำ**คงเหลือ**ใน POS (m1 ผู้ตรวจรอบ 2 · หลังริบ/ใช้ไปแล้วไม่ใช่ยอดเต็ม)
+ * remainingSatang ไม่ส่ง ⇒ ยอดมัดจำที่จดบนแถว (มัดจำนอก POS) · ปัดลงตาม rooms.money.rounding ของ snapshot เหมือนตอนยกเลิกจริง
+ */
+export function refundPreview(rv: { policySnapshot: unknown; checkInDate: Date; depositSatang: number; depositPaidAt: Date | null }, today: string, remainingSatang?: number) {
+  const paid = rv.depositPaidAt ? (remainingSatang ?? rv.depositSatang) : 0;
   const r = refundFor({ paidSatang: paid, checkInDate: ymdOfDb(rv.checkInDate), cancelAt: today, rules: cancelRulesOfSnapshot(rv.policySnapshot) });
-  return { paidSatang: paid, refundSatang: r.refundSatang, forfeitSatang: paid - r.refundSatang, daysBefore: r.daysBefore, rule: r.ruleUsed };
+  const refund = roundRefundDown(r.refundSatang, roundingOfSnapshot(rv.policySnapshot));
+  return { paidSatang: paid, refundSatang: refund, forfeitSatang: paid - refund, daysBefore: r.daysBefore, rule: r.ruleUsed };
 }
 
 // ───────────────────────── extendBooking / shortenBooking ─────────────────────────
@@ -995,7 +1096,7 @@ export async function extendBooking(actorIn: unknown, ctx: unknown, input: unkno
   const out = await inTx(c, async (tx) => {
     await lockTypes(tx, c.unitId, [rv.roomTypeId]);
     const cur = await tx.hotelReservation.findFirst({ where: { id: rv.id } });
-    if (!cur || cur.status !== rv.status || ymdOfDb(cur.checkOutDate) !== co) throw new Abort(fail("INVALID_STATUS", "การจองนี้เพิ่งถูกแก้ — โหลดใหม่แล้วลองอีกครั้ง"));
+    if (!cur || cur.status !== rv.status || ymdOfDb(cur.checkOutDate) !== co) throw new Abort(fail("STATE_CHANGED", "การจองนี้เพิ่งถูกแก้ — โหลดใหม่แล้วลองอีกครั้ง"));
     const av = await availabilityInTx(tx, { ...c, roomTypeIds: [rv.roomTypeId], from: co, to: newCo, excludeReservationIds: [rv.id] });
     const need = new Map(nightDates(co, newCo).map((d) => [`${rv.roomTypeId}|${d}`, 1]));
     const short = shortDates(av, need);
@@ -1016,7 +1117,7 @@ export async function extendBooking(actorIn: unknown, ctx: unknown, input: unkno
     }
     const ns = await countedNights(tx, c, rv.id);
     const total = ns.reduce((a, n) => a + n.priceSatang, 0);
-    const after = await tx.hotelReservation.update({ where: { id: rv.id }, data: { checkOutDate: dbDate(newCo), nights: ns.length, totalSatang: total } });
+    const after = await casUpdateRv(tx, c, { id: rv.id, status: rv.status, checkOutDate: rv.checkOutDate }, { checkOutDate: dbDate(newCo), nights: ns.length, totalSatang: total });
     await emitEv(tx, c, "changed", rv, rv.status, randomUUID());
     await audit(tx, c, g.actor, "hotel.booking.extended", rv.id, auditView(rv), { ...auditView(after), addedNights: q.nights.map((n) => ({ date: n.date, priceSatang: n.priceSatang, source: n.source })) });
     return { ok: true as const, checkOut: newCo, nights: ns.length, totalSatang: total, addedSatang: q.nights.reduce((a, n) => a + n.priceSatang, 0) };
@@ -1055,8 +1156,9 @@ export async function shortenBooking(actorIn: unknown, ctx: unknown, input: unkn
   const newCo = p.data.newCheckOut;
   if (!(newCo > ci) || !(newCo < co)) return fail("INVALID_INPUT", "วันออกใหม่ต้องอยู่หลังวันเข้าและก่อนวันออกเดิม");
   const out = await inTx(c, async (tx) => {
+    await lockTypes(tx, c.unitId, [rv.roomTypeId]); // ลำดับเดียว: ประเภท → แถว → occupancy
     const cur = await tx.hotelReservation.findFirst({ where: { id: rv.id } });
-    if (!cur || cur.status !== rv.status || ymdOfDb(cur.checkOutDate) !== co) throw new Abort(fail("INVALID_STATUS", "การจองนี้เพิ่งถูกแก้ — โหลดใหม่แล้วลองอีกครั้ง"));
+    if (!cur || cur.status !== rv.status || ymdOfDb(cur.checkOutDate) !== co) throw new Abort(fail("STATE_CHANGED", "การจองนี้เพิ่งถูกแก้ — โหลดใหม่แล้วลองอีกครั้ง"));
     const drop = await tx.hotelBookingNight.findMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId: rv.id, counted: true, date: { gte: dbDate(newCo) } }, select: { id: true, postedAuditId: true, date: true } });
     const posted = drop.filter((n) => n.postedAuditId);
     if (posted.length) throw new Abort(fail("SHORTEN_POSTED", "มีคืนที่ปิดวันแล้วในช่วงที่จะย่น — ย่นทับคืนที่ลงบัญชีแล้วไม่ได้", { dates: posted.map((n) => ymdOfDb(n.date)) }));
@@ -1067,7 +1169,7 @@ export async function shortenBooking(actorIn: unknown, ctx: unknown, input: unkn
     }
     const ns = await countedNights(tx, c, rv.id);
     const total = ns.reduce((a, n) => a + n.priceSatang, 0);
-    const after = await tx.hotelReservation.update({ where: { id: rv.id }, data: { checkOutDate: dbDate(newCo), nights: ns.length, totalSatang: total } });
+    const after = await casUpdateRv(tx, c, { id: rv.id, status: rv.status, checkOutDate: rv.checkOutDate }, { checkOutDate: dbDate(newCo), nights: ns.length, totalSatang: total });
     await emitEv(tx, c, "changed", rv, rv.status, randomUUID());
     await audit(tx, c, g.actor, "hotel.booking.shortened", rv.id, auditView(rv), { ...auditView(after), droppedNights: drop.map((n) => ymdOfDb(n.date)) });
     return { ok: true as const, checkOut: newCo, nights: ns.length, totalSatang: total };
@@ -1105,6 +1207,9 @@ export async function assignRoom(actorIn: unknown, ctx: unknown, input: unknown)
   const typeChange = room.roomTypeId !== rv.roomTypeId;
   const out = await inTx(c, async (tx) => {
     await lockTypes(tx, c.unitId, [rv.roomTypeId, room.roomTypeId]);
+    const cur = await tx.hotelReservation.findFirst({ where: { id: rv.id }, select: { status: true, roomTypeId: true, checkInDate: true, checkOutDate: true } });
+    if (!cur || cur.status !== rv.status || cur.roomTypeId !== rv.roomTypeId || cur.checkInDate.getTime() !== rv.checkInDate.getTime() || cur.checkOutDate.getTime() !== rv.checkOutDate.getTime())
+      throw new Abort(fail("STATE_CHANGED", "การจองนี้เพิ่งถูกเปลี่ยนสถานะหรือวันที่ — โหลดใหม่แล้วลองอีกครั้ง"));
     const ns = await countedNights(tx, c, rv.id);
     if (typeChange && ns.length) {
       const need = new Map(ns.map((n) => [`${room.roomTypeId}|${ymdOfDb(n.date)}`, 1]));
@@ -1125,7 +1230,7 @@ export async function assignRoom(actorIn: unknown, ctx: unknown, input: unknown)
       if (!r.ok) throw new Abort(r.code === "ROOM_TAKEN" ? fail("ROOM_BUSY", `ห้อง ${room.number} ถูกใช้ในช่วงนี้แล้ว`) : fail("ROOM_INACTIVE", `ห้อง ${room.number} รับการจองนี้ไม่ได้`));
     }
     await tx.hotelBookingNight.updateMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId: rv.id, counted: true }, data: { roomId: room.id, ...(typeChange ? { roomTypeId: room.roomTypeId } : {}) } });
-    const after = await tx.hotelReservation.update({ where: { id: rv.id }, data: { roomId: room.id, ...(typeChange ? { roomTypeId: room.roomTypeId } : {}) } });
+    const after = await casUpdateRv(tx, c, { id: rv.id, status: rv.status }, { roomId: room.id, ...(typeChange ? { roomTypeId: room.roomTypeId } : {}) });
     if (rv.roomId !== room.id || typeChange) {
       await emitEv(tx, c, "changed", rv, rv.status, randomUUID());
       await audit(tx, c, g.actor, "hotel.booking.room_assigned", rv.id, auditView(rv), { ...auditView(after), noPriceDiff: typeChange });
@@ -1197,7 +1302,7 @@ export async function rescheduleBooking(actorIn: unknown, ctx: unknown, input: u
     const lockedTypes = [...new Set([rv.roomTypeId, targetType])];
     await lockTypes(tx, c.unitId, lockedTypes);
     const cur = await tx.hotelReservation.findFirst({ where: { id: rv.id } });
-    if (!cur || cur.status !== rv.status || ymdOfDb(cur.checkInDate) !== ci || ymdOfDb(cur.checkOutDate) !== co) throw new Abort(fail("INVALID_STATUS", "การจองนี้เพิ่งถูกแก้ — โหลดใหม่แล้วลองอีกครั้ง"));
+    if (!cur || cur.status !== rv.status || ymdOfDb(cur.checkInDate) !== ci || ymdOfDb(cur.checkOutDate) !== co) throw new Abort(fail("STATE_CHANGED", "การจองนี้เพิ่งถูกแก้ — โหลดใหม่แล้วลองอีกครั้ง"));
     const all = await tx.hotelBookingNight.findMany({ where: { tenantId: c.tenantId, unitId: c.unitId, reservationId: rv.id }, select: { id: true, date: true, counted: true, priceSatang: true, postedAuditId: true } });
     const byDate = new Map(all.map((n) => [ymdOfDb(n.date), n]));
     const keep = new Set(newDates);
@@ -1237,7 +1342,7 @@ export async function rescheduleBooking(actorIn: unknown, ctx: unknown, input: u
     }
     const ns = await countedNights(tx, c, rv.id);
     const total = ns.reduce((a, n) => a + n.priceSatang, 0);
-    const after = await tx.hotelReservation.update({ where: { id: rv.id }, data: { checkInDate: dbDate(newCi), checkOutDate: dbDate(newCo), nights: ns.length, totalSatang: total, roomId, ...(typeChange ? { roomTypeId: targetType } : {}) } });
+    const after = await casUpdateRv(tx, c, { id: rv.id, status: rv.status, checkInDate: rv.checkInDate, checkOutDate: rv.checkOutDate }, { checkInDate: dbDate(newCi), checkOutDate: dbDate(newCo), nights: ns.length, totalSatang: total, roomId, ...(typeChange ? { roomTypeId: targetType } : {}) });
     await emitEv(tx, c, "changed", rv, rv.status, randomUUID());
     await audit(tx, c, g.actor, "hotel.booking.rescheduled", rv.id, auditView(rv), auditView(after));
     return { ok: true as const, checkIn: newCi, checkOut: newCo, roomId, nights: ns.length, totalSatang: total };
@@ -1275,7 +1380,12 @@ export async function markNoShow(actorIn: unknown, ctx: unknown, input: unknown)
   const isHead = head?.id === rv.id;
   const moveHeadTo = isHead && others.length ? others[0] : null;
   const settle = isHead && !moveHeadTo;
+  const st = settle && head?.depositSaleId ? await depositState(c, head.depositSaleId) : null;
+  const legacyMoney = settle && !!head && !st;
+  const planRefund = st && policy === "REFUND_RELEASE" ? st.remaining : 0;
+  const planForfeit = st && policy !== "REFUND_RELEASE" ? st.remaining : 0;
   const out = await inTx(c, async (tx) => {
+    await lockTypes(tx, c.unitId, [rv.roomTypeId]); // ลำดับเดียว: ประเภท → แถว → occupancy
     const upd = await tx.hotelReservation.updateMany({ where: { id: rv.id, status: "CONFIRMED" }, data: { status: "NO_SHOW", noShowAt: now } });
     if (upd.count === 0) throw new Abort(fail("INVALID_STATUS", "การจองนี้เปลี่ยนสถานะไปแล้ว"));
     if (release) await releaseStayTx(tx, c, rv.id, "ไม่มาเข้าพัก");
@@ -1284,22 +1394,27 @@ export async function markNoShow(actorIn: unknown, ctx: unknown, input: unknown)
       await tx.hotelReservation.update({ where: { id: head.id }, data: { depositSatang: 0, depositPaidAt: null, depositSaleId: null } });
     }
     await emitEv(tx, c, "no_show", rv, "NO_SHOW", randomUUID());
-    await audit(tx, c, g.actor, "hotel.booking.no_show", rv.id, { status: "CONFIRMED" }, { status: "NO_SHOW", policy, released: release, ...(moveHeadTo ? { depositMovedTo: moveHeadTo.id } : {}) });
+    await audit(tx, c, g.actor, "hotel.booking.no_show", rv.id, { status: "CONFIRMED" }, {
+      status: "NO_SHOW",
+      policy,
+      released: release,
+      ...(moveHeadTo ? { depositMovedTo: moveHeadTo.id } : {}),
+      ...(settle ? { moneyPlan: { refundSatang: planRefund, forfeitSatang: planForfeit, legacy: legacyMoney } } : {}),
+    });
     return { ok: true as const };
   });
   if (isFail(out)) return out;
   let money: MoneyOut = { refundSatang: 0, forfeitSatang: 0, error: null };
-  if (settle && head?.depositSaleId) {
-    const st = await depositState(c, head.depositSaleId);
-    if (st && st.remaining > 0) {
-      const actorId = g.actor?.userId ?? SYSTEM_ACTOR_ID;
-      if (policy === "REFUND_RELEASE") {
-        const r = await refundAll(c, st.receiptSaleId, `ไม่มาเข้าพัก ${rv.code} — คืนมัดจำตามนโยบาย`, actorId);
-        money = { ...r, refundSatang: r.error ? 0 : st.remaining };
-      } else money = await forfeitAll(c, st, rv.id, `ไม่มาเข้าพัก ${rv.code}`, actorId);
-    }
+  if (st && st.remaining > 0) {
+    const actorId = g.actor?.userId ?? SYSTEM_ACTOR_ID;
+    if (policy === "REFUND_RELEASE") {
+      const r = await refundAll(c, st.receiptSaleId, `ไม่มาเข้าพัก ${rv.code} — คืนมัดจำตามนโยบาย`, actorId);
+      money = { ...r, refundSatang: r.error ? 0 : st.remaining };
+    } else money = await forfeitAll(c, st, rv.id, `ไม่มาเข้าพัก ${rv.code}`, actorId);
+    await moneyAudit(c, g.actor, rv.id, "no_show", { policy, planRefundSatang: planRefund, planForfeitSatang: planForfeit }, money);
   }
-  return { ok: true as const, policy, refundSatang: money.refundSatang, forfeitSatang: money.forfeitSatang, ...(money.error ? { moneyWarning: `ตั้งไม่มาแล้ว แต่จัดการมัดจำไม่สำเร็จ (${money.error}) — คืน/ริบที่หน้าขาย` } : {}) };
+  const warning = money.error ? `ตั้งไม่มาแล้ว แต่จัดการมัดจำไม่สำเร็จ (${money.error}) — คืน/ริบที่หน้าขาย` : legacyMoney ? LEGACY_MONEY_WARNING : null;
+  return { ok: true as const, policy, refundSatang: money.refundSatang, forfeitSatang: money.forfeitSatang, ...(warning ? { moneyWarning: warning } : {}) };
 }
 
 /** ย้อน «ไม่มา» → ยืนยัน: MANAGER/OWNER ภายในวันเดียวกัน (ไทย) · ผ่าน guard tx (ห้องต้องยังว่าง) · ไม่คืนเงินที่ริบไปแล้วอัตโนมัติ (มติ §11 ข้อ 8) */
@@ -1346,8 +1461,9 @@ export async function undoNoShow(actorIn: unknown, ctx: unknown, input: unknown)
 async function expireOne(row: { tenantId: string; unitId: string; id: string }, now: Date): Promise<boolean> {
   const c: Ctx = { tenantId: row.tenantId, unitId: row.unitId };
   const out = await inTx(c, async (tx) => {
-    const rv = await tx.hotelReservation.findFirst({ where: { id: row.id }, select: { id: true, code: true, groupId: true, source: true, holdExpiresAt: true } });
+    const rv = await tx.hotelReservation.findFirst({ where: { id: row.id }, select: { id: true, code: true, groupId: true, source: true, holdExpiresAt: true, roomTypeId: true } });
     if (!rv) return false;
+    await lockTypes(tx, c.unitId, [rv.roomTypeId]); // ลำดับเดียว: ประเภท → แถว → occupancy (อ่านแถวก่อนเพื่อรู้ประเภท — ยังไม่ล็อกแถว)
     const upd = await tx.hotelReservation.updateMany({ where: { id: row.id, status: "HOLD", holdExpiresAt: { lt: now } }, data: { status: "CANCELLED", cancelReason: "HOLD_EXPIRED", cancelledAt: now } });
     if (upd.count === 0) return false;
     await releaseStayTx(tx, c, row.id, "HOLD_EXPIRED");
@@ -1387,7 +1503,8 @@ export async function sweepExpiredHolds(input?: unknown): Promise<{ expired: num
 }
 
 // ───────────────────────── listBookings / getBooking ─────────────────────────
-const VIEW_KEYS = ["hotel.reservation.create", "hotel.reservation.cancel", "hotel.reservation.checkIn", "hotel.reservation.checkOut", "hotel.booking.manage", "hotel.rates.read", "hotel.housekeeping"];
+// m-5 (ผู้ตรวจรอบ 1): แม่บ้าน (hotel.housekeeping) ไม่เห็นชื่อ/เบอร์ผู้เข้าพัก — H.6 มีบอร์ดของตัวเอง
+const VIEW_KEYS = ["hotel.reservation.create", "hotel.reservation.cancel", "hotel.reservation.checkIn", "hotel.reservation.checkOut", "hotel.booking.manage", "hotel.rates.read"];
 const canView = (g: Gate) => VIEW_KEYS.some((k) => can(g, k));
 const STATUS_FILTER = ["HOLD", "CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED", "NO_SHOW", "REFUNDED"] as const;
 const ListInput = z.object({
@@ -1418,6 +1535,7 @@ export type BookingListRow = {
   depositSatang: number;
   depositPaid: boolean;
   holdExpiresAt: string | null;
+  holdKind: "DEPOSIT" | "APPROVAL" | null;
   groupId: string | null;
   groupSize: number;
   createdAt: string;
@@ -1452,7 +1570,7 @@ export async function listBookings(actorIn: unknown, ctx: unknown, input: unknow
       take: pageSize,
       select: {
         id: true, code: true, guestName: true, guestPhone: true, status: true, source: true, channelRef: true, checkInDate: true, checkOutDate: true, nights: true,
-        roomTypeId: true, roomId: true, totalSatang: true, depositSatang: true, depositPaidAt: true, holdExpiresAt: true, groupId: true, createdAt: true,
+        roomTypeId: true, roomId: true, totalSatang: true, depositSatang: true, depositPaidAt: true, holdExpiresAt: true, groupId: true, createdAt: true, policySnapshot: true,
         roomType: { select: { name: true } }, room: { select: { number: true } },
       },
     }),
@@ -1479,6 +1597,7 @@ export async function listBookings(actorIn: unknown, ctx: unknown, input: unknow
     depositSatang: r.depositSatang,
     depositPaid: !!r.depositPaidAt,
     holdExpiresAt: r.holdExpiresAt?.toISOString() ?? null,
+    holdKind: r.status === "HOLD" ? holdKindOf(r.policySnapshot) : null,
     groupId: r.groupId,
     groupSize: r.groupId ? (sizeOf.get(r.groupId) ?? 1) : 1,
     createdAt: r.createdAt.toISOString(),
@@ -1524,6 +1643,10 @@ export type BookingDetail = {
   policySnapshot: unknown;
   taxSnapshot: unknown;
   refund: { paidSatang: number; refundSatang: number; forfeitSatang: number; daysBefore: number } | null;
+  /** มัดจำตามจริงใน POS (หัวกลุ่ม) — null = ยังไม่จ่าย · inPos=false = มัดจำนอก POS (ให้จัดการมือ) */
+  deposit: { paidSatang: number; remainingSatang: number; forfeitedSatang: number; refundedSatang: number; saleId: string | null; inPos: boolean } | null;
+  /** HOLD นี้รออนุมัติ (MANUAL_APPROVE) ไม่ใช่รอมัดจำ */
+  holdKind: "DEPOSIT" | "APPROVAL" | null;
   cancelRules: CancelRule[];
   noShowPolicy: string;
   history: { action: string; at: string; actorType: string; before: unknown; after: unknown }[];
@@ -1554,7 +1677,13 @@ export async function getBooking(actorIn: unknown, ctx: unknown, input: unknown)
   const numOf = new Map(rooms.map((r) => [r.id, r.number]));
   const head = grp.find((r) => r.depositPaidAt) ?? grp.find((r) => r.depositSatang > 0) ?? null;
   const headRow = rv.groupId ? (head ? await db.hotelReservation.findFirst({ where: { id: head.id } }) : null) : rv;
-  const preview = headRow && headRow.depositPaidAt ? refundPreview(headRow, today) : null;
+  const st = headRow?.depositPaidAt ? await depositState(c, headRow.depositSaleId) : null;
+  const preview = headRow && headRow.depositPaidAt ? refundPreview(headRow, today, st ? st.remaining : undefined) : null;
+  const deposit = headRow?.depositPaidAt
+    ? st
+      ? { paidSatang: st.amount, remainingSatang: st.remaining, forfeitedSatang: st.used, refundedSatang: st.refunded, saleId: headRow.depositSaleId, inPos: true }
+      : { paidSatang: headRow.depositSatang, remainingSatang: headRow.depositSatang, forfeitedSatang: 0, refundedSatang: 0, saleId: headRow.depositSaleId, inPos: false }
+    : null;
   const detail: BookingDetail = {
     id: rv.id,
     code: rv.code,
@@ -1593,6 +1722,8 @@ export async function getBooking(actorIn: unknown, ctx: unknown, input: unknown)
     policySnapshot: rv.policySnapshot,
     taxSnapshot: rv.taxSnapshot,
     refund: preview ? { paidSatang: preview.paidSatang, refundSatang: preview.refundSatang, forfeitSatang: preview.forfeitSatang, daysBefore: preview.daysBefore } : null,
+    deposit,
+    holdKind: rv.status === "HOLD" ? holdKindOf(rv.policySnapshot) : null,
     cancelRules: cancelRulesOfSnapshot((headRow ?? rv).policySnapshot),
     noShowPolicy: noShowPolicyOf(rv.policySnapshot),
     history: hist.map((h) => ({ action: h.action, at: h.createdAt.toISOString(), actorType: String(h.actorType), before: h.before, after: h.after })),

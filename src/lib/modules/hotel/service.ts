@@ -289,6 +289,8 @@ export async function createReservation(input: {
   children?: number;
   note?: string;
   createdById?: string;
+  /** SVC H.3 ▸ แหล่งที่มา (storefront = WEB · ผู้ช่วย AI = PHONE · ไม่ส่ง = WALK_IN เดิม) — สถานะเส้นนี้ยัง CONFIRMED เสมอ ◂ */
+  source?: "WEB" | "WALK_IN" | "PHONE" | "LINE" | "OTA";
 }): Promise<{ ok: true; id: string; code: string; publicToken: string | null } | { ok: false; reason: string }> {
   const r = await createBooking(
     P1_ACTOR,
@@ -298,7 +300,7 @@ export async function createReservation(input: {
       rooms: [{ roomTypeId: input.roomTypeId, adults: input.adults ?? 2, children: input.children ?? 0 }],
       checkIn: input.checkInDate,
       checkOut: input.checkOutDate,
-      source: "WALK_IN",
+      source: input.source ?? "WALK_IN",
       guest: { name: input.guestName, phone: input.guestPhone || null, email: input.guestEmail || null },
       note: input.note || null,
     },
