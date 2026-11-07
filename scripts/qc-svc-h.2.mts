@@ -427,7 +427,7 @@ try {
   await st("PC-5", "ฐาน QC ต่อได้ (SELECT 1 · host = เลน l3 ep-royal-bar) · ตัวดักคิวรีติดตั้งก่อน db · ตาราง H.0 ครบ (HotelBookingNight · HotelHousekeepingLog · RoomOccupancy)", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-PC3-anylane): regression/H.9 รันทุกเลน
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar|ep-square-heart|ep-late-union)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-PC3-anylane): regression/H.9 รันทุกเลน
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (TC/P นับคิวรีไม่ได้)");
     ok(H0_OK, H0_WHY);
   });

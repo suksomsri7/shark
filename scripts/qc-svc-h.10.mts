@@ -392,7 +392,7 @@ try {
   await st("PC-3", "ฐาน QC (SELECT 1 · host SVC) · ตัวดักคิวรีก่อน db · ตาราง Channel* 5 + TenantIntegration/IntegrationCallLog · คอลัมน์ OTA 6 ตัวบน HotelReservation · unique inbox (connectionId, externalId, version) · unique map (connectionId, roomTypeId)/(connectionId, externalRoomId)/(connectionId, ratePlanId) · CHECK สถานะ job/inbox + buffer ≥ 0", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`);
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar|ep-square-heart|ep-late-union)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · lanes-l5-l6): ฐานเลน l5/l6 ใหม่ (แตกจาก wo-svc-qc)
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (AR นับคิวรีไม่ได้)");
     ok(H0_OK, H0_WHY);
     const idx: { t: string; def: string }[] = await prisma.$queryRawUnsafe(`SELECT tablename AS t, indexdef AS def FROM pg_indexes WHERE schemaname = current_schema() AND tablename LIKE 'Channel%'`);

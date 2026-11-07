@@ -359,7 +359,7 @@ try {
   await st("PC-1", "ฐาน QC ต่อได้ (SELECT 1 · host = ฐาน SVC เลนใดก็ได้ ep-mute-scene/ep-royal-lake/ep-weathered-mode/ep-royal-bar) · ตัวดักคิวรีติดตั้งก่อน db · ตาราง HotelNightAudit ครบคอลัมน์ H.0 §2.13 + unique(unitId, businessDate) · ตาราง H.0 อื่น · Prisma client มี hotelNightAudit", async () => {
     const r: { one: number }[] = await prisma.$queryRawUnsafe("SELECT 1::int AS one");
     eq(r[0]?.one, 1, "SELECT 1");
-    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`);
+    ok(/^(ep-mute-scene|ep-royal-lake|ep-weathered-mode|ep-royal-bar|ep-square-heart|ep-late-union)/.test(process.env.SVC_QC_HOST ?? ""), `host ${process.env.SVC_QC_HOST} ไม่ใช่ฐาน QC ของ SVC`); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · lanes-l5-l6): ฐานเลน l5/l6 ใหม่ (แตกจาก wo-svc-qc)
     ok(spyInstalled, "ตัวดักคิวรีไม่ได้ติดตั้ง (RP นับคิวรีไม่ได้)");
     ok(H0_OK, H0_WHY);
   });
