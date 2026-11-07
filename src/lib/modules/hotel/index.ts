@@ -101,3 +101,11 @@ export type { BookingActor, BookingSource, BookingFail, BookingFailCode, Booking
 export { TRANSITIONS, canTransition, nightsOf, holdDeadline } from "./booking-state";
 export type { BookingStatus, TransitionOpts, TransitionRole } from "./booking-state";
 // ◂ SVC H.3
+// SVC H.5 ▸ บิลระหว่างพัก (folio) · เช็กเอาต์ปิดบิล POS ใบเดียว · เงินประกันห้อง · ลงห้องจาก POS (ใบสั่ง h.5 §3) — โมดูลอื่น/หน้าใหม่ import ผ่านทางนี้
+export { getFolio, postFolioItem, voidFolioItem, postRoomNights, folioForGroup, postDeposit, FOLIO_ITEM_TYPES } from "./folio";
+export type { FolioDto, FolioItemDto, FolioFail, FolioFailCode } from "./folio";
+export { prepareCheckout, settleAndCheckOut, takeSecurityDeposit, refundSecurityDeposit, forfeitSecurityDeposit, COUNTER_PAY_TYPES } from "./checkout";
+export type { PrepareOk, SettleOk, CheckoutFail, CheckoutFailCode, PosLine } from "./checkout";
+export { chargeToRoom, onPosSalePaidRoomCharge, onPosSaleVoidedRoomCharge, listUnmatchedRoomCharges, countUnmatchedRoomCharges, attachRoomCharge, roomChargeReasonTh } from "./room-charge";
+export type { ChargeToRoomInput, RoomChargeFail, RoomChargeFailCode, UnmatchedRow } from "./room-charge";
+// ◂ SVC H.5

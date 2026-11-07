@@ -10,6 +10,9 @@ import * as hotelRates from "./rates"; // SVC H.1
 import { resetHotelSetting, saveHotelSettings } from "./hotel-settings"; // SVC H.1
 import type { RemoveResult, SetResult } from "@/lib/core/settings"; // SVC H.1
 import * as hotelBooking from "./booking"; // SVC H.3
+import * as hotelFolio from "./folio"; // SVC H.5
+import * as hotelCheckout from "./checkout"; // SVC H.5
+import * as hotelRoomCharge from "./room-charge"; // SVC H.5
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -440,3 +443,86 @@ export async function quoteExtendBookingAction(unitSlug: string, input: unknown)
   return hotelBooking.quoteExtension(hotelActorOf(auth), { tenantId: auth.active.tenantId }, bookingInputOf(input, unit.id));
 }
 // ◂ SVC H.3
+
+// SVC H.5 ▸ บิลระหว่างพัก (folio) · เช็กเอาต์ POS ใบเดียว · เงินประกัน · ผูกบิลลงห้อง (ใบสั่ง h.5 §3.7) — ร้าน/ผู้กระทำ/สิทธิ์จาก session เท่านั้น ·
+//   ด่าน type HOTEL + assertHotelCan ทุกตัว · ผลเป็นข้อมูล ไม่ throw · input รับเฉพาะคีย์ที่รู้จัก + unitId ของหน่วยจาก slug (ฟังก์ชันตรวจว่าการจองอยู่หน่วยนี้)
+//   สิทธิ์: ลงรายการ/ผูกบิล = hotel.folio.post · ยกเลิกรายการ = hotel.folio.void · เช็กเอาต์ = hotel.reservation.checkOut ·
+//   รับประกัน = hotel.reservation.checkIn หรือ hotel.folio.post · คืนประกัน = hotel.reservation.checkOut หรือ hotel.booking.manage · ริบ = hotel.booking.manage
+const FOLIO_INPUT_KEYS = new Set([
+  "reservationId", "groupId", "type", "description", "qty", "unitAmountSatang", "itemId", "reason", "payMethods", "shiftId", "taxInvoice",
+  "securityDeposit", "forfeitReason", "note", "amountSatang", "payType", "reference", "saleId",
+]);
+function folioInputOf(input: unknown, unitId: string): Record<string, unknown> {
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  return { ...Object.fromEntries(Object.entries(src).filter(([k]) => FOLIO_INPUT_KEYS.has(k))), unitId };
+}
+type FolioFn = (actor: unknown, ctx: unknown, input: unknown) => Promise<{ ok: boolean }>;
+async function runFolio(unitSlug: string, auth: UnitAuth, unitId: string, input: unknown, fn: FolioFn, revalidate = true) {
+  const i = folioInputOf(input, unitId);
+  const r = await fn(hotelActorOf(auth), { tenantId: auth.active.tenantId }, i);
+  if (r.ok && revalidate) {
+    if (typeof i.reservationId === "string") revalidatePath(`/app/u/${unitSlug}/hotel/reservations/${i.reservationId}`);
+    revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
+    revalidatePath(`/app/u/${unitSlug}/hotel/folio/unmatched`);
+    revalidatePath(`/app/u/${unitSlug}/hotel`);
+  }
+  return r;
+}
+
+export async function postFolioItemAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.folio.post"))) return NO_RIGHT;
+  return runFolio(unitSlug, auth, unit.id, input, hotelFolio.postFolioItem);
+}
+
+export async function voidFolioItemAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.folio.void"))) return NO_RIGHT;
+  return runFolio(unitSlug, auth, unit.id, input, hotelFolio.voidFolioItem);
+}
+
+export async function prepareCheckoutAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.reservation.checkOut"))) return NO_RIGHT;
+  return runFolio(unitSlug, auth, unit.id, input, hotelCheckout.prepareCheckout, false);
+}
+
+export async function settleAndCheckOutAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.reservation.checkOut"))) return NO_RIGHT;
+  // ริบเงินประกัน (securityDeposit FORFEIT) ต้อง hotel.booking.manage — ตรวจใน checkout.settleAndCheckOut
+  return runFolio(unitSlug, auth, unit.id, input, (a, c, i) => hotelCheckout.settleAndCheckOut(a, c, i));
+}
+
+export async function takeSecurityDepositAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.reservation.checkIn")) && !canHotel(() => assertHotelCan(auth, unit.id, "hotel.folio.post"))) return NO_RIGHT;
+  return runFolio(unitSlug, auth, unit.id, input, hotelCheckout.takeSecurityDeposit);
+}
+
+export async function refundSecurityDepositAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.reservation.checkOut")) && !canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runFolio(unitSlug, auth, unit.id, input, hotelCheckout.refundSecurityDeposit);
+}
+
+export async function forfeitSecurityDepositAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  return runFolio(unitSlug, auth, unit.id, input, hotelCheckout.forfeitSecurityDeposit);
+}
+
+export async function attachRoomChargeAction(unitSlug: string, input: unknown) {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_BOOKING;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.folio.post"))) return NO_RIGHT;
+  return runFolio(unitSlug, auth, unit.id, input, hotelRoomCharge.attachRoomCharge);
+}
+// ◂ SVC H.5

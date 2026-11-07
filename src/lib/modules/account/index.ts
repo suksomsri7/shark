@@ -2452,3 +2452,52 @@ export async function voidDormReceiptDoc(input: { tenantId: string; unitId: stri
   }
 }
 // ◂ SVC D.10
+
+// ── SVC H.5 ▸ กันรายได้ซ้ำของบิลร้านที่ "ลงห้อง" (ROOM_CHARGE) แล้วรวมเข้าบิลเช็กเอาต์ของโรงแรม (ใบสั่ง h.5 §0 §1 · มติผู้คุม Q-H5-1) ──
+//   บิลร้าน: Dr 1100 ลูกหนี้ / Cr รายได้ + ภาษีขาย (ลงตอนบิลร้าน) · บิลเช็กเอาต์รับเงินจริงรวมบรรทัดอาหารแล้ว (รายได้ + VAT ครั้งเดียวที่บิลโรงแรม)
+//   ⇒ reverseRoomChargePosting = กลับรายการ JV ของบิลร้าน (ผ่าน reverseFor เดิม) · restoreRoomChargePosting = กลับ "ตัวกลับรายการ" (คืนสภาพลูกหนี้ เมื่อคืนเงินการเข้าพัก)
+//   ทั้งสองตัว idempotent ตามสถานะสายรายการ (ต้นฉบับ → กลับ → คืน → กลับ …): สถานะเดิมแล้ว = ไม่เขียนเพิ่ม · ร้านไม่เชื่อมบัญชี/ไม่มี JV ของบิล = {posted:false} ไม่ throw
+//   สต็อกของร้านไม่แตะ (ตัดครั้งเดียวที่บิลร้าน) · เอกสารรายงานของบิลร้านไม่แตะ (ชั้นรายงาน)
+type RoomChargePostingInput = { tenantId: string; posSystemId: string; saleId: string; settleSaleId?: string | null; reason: string };
+type ChainEntry = { id: string; status: string; reversalOfId: string | null; depth: number };
+async function roomChargeChain(ctx: GlCtx, saleId: string): Promise<ChainEntry[]> {
+  const rows = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountJournalEntry.findMany({
+    where: { refType: "PosSale", refId: saleId },
+    select: { id: true, status: true, reversalOfId: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const depthOf = (id: string, seen = 0): number => {
+    const r = byId.get(id);
+    if (!r || !r.reversalOfId || seen > 50) return r?.reversalOfId ? 1 : 0;
+    return depthOf(r.reversalOfId, seen + 1) + 1;
+  };
+  return rows.map((r) => ({ id: r.id, status: String(r.status), reversalOfId: r.reversalOfId, depth: depthOf(r.id) }));
+}
+async function shiftRoomChargePosting(input: RoomChargePostingInput, want: "REVERSED" | "RESTORED"): Promise<{ posted: boolean; changed: number }> {
+  const link = await findAccountLinkForPos(input.tenantId, input.posSystemId);
+  if (!link) return { posted: false, changed: 0 };
+  const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+  const chain = await roomChargeChain(ctx, input.saleId);
+  if (!chain.length) return { posted: false, changed: 0 };
+  const memo = `${input.reason}${input.settleSaleId ? ` (บิลเช็กเอาต์ ${input.settleSaleId})` : ""}`.slice(0, 200);
+  // ใบที่ยังมีผล (POSTED) — ความลึกคู่ = ผลแบบต้นฉบับ · คี่ = ผลแบบกลับรายการ
+  const live = chain.filter((e) => e.status === "POSTED");
+  const target = live.filter((e) => (want === "REVERSED" ? e.depth % 2 === 0 : e.depth % 2 === 1));
+  if (!target.length) return { posted: true, changed: 0 };
+  let changed = 0;
+  if (want === "REVERSED" && target.some((e) => e.depth === 0)) changed += (await reverseFor(ctx, "PosSale", input.saleId, memo)).length;
+  const gl = await import("./gl");
+  for (const e of target.filter((x) => x.depth > 0)) {
+    const r = await gl.reverseEntry(ctx, e.id, memo);
+    if (!("skipped" in r)) changed++;
+  }
+  return { posted: true, changed };
+}
+export async function reverseRoomChargePosting(input: RoomChargePostingInput): Promise<{ posted: boolean; changed: number }> {
+  return shiftRoomChargePosting(input, "REVERSED");
+}
+export async function restoreRoomChargePosting(input: RoomChargePostingInput): Promise<{ posted: boolean; changed: number }> {
+  return shiftRoomChargePosting(input, "RESTORED");
+}
+// ◂ SVC H.5

@@ -142,3 +142,38 @@ HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_E
 
 ### Event (outbox · 3 ทะเบียน)
 `hotel.booking.created` · `confirmed` · `cancelled` · `hold_expired` · `no_show` · `changed` (ต่อ/ย่น/ย้าย/เลื่อน) · `deposit_after_expiry` — ใน tx เดียวกับสถานะ · payload `{tenantId, unitId, reservationId, groupId, code, status, source}` ไม่มี PII
+
+## บิลระหว่างพัก (folio) · เช็กเอาต์ (SVC H.5)
+
+### ไฟล์
+- `src/lib/modules/hotel/folio.ts` — `getFolio` · `postFolioItem` · `voidFolioItem` · `postRoomNights` (H.7 เรียก) · `folioForGroup` · `postDeposit` (H.3 `takeBookingDeposit` เรียก 1 จุด)
+- `src/lib/modules/hotel/checkout.ts` — `prepareCheckout` · `settleAndCheckOut` · `takeSecurityDeposit` / `refundSecurityDeposit` / `forfeitSecurityDeposit` · `afterRefundStay` (service.refundStay เรียก)
+- `src/lib/modules/hotel/room-charge.ts` — `chargeToRoom` (S §8.3) · consumer `onPosSalePaidRoomCharge` / `onPosSaleVoidedRoomCharge` · `listUnmatchedRoomCharges` · `attachRoomCharge`
+- `account/index.ts` ท้ายไฟล์: `reverseRoomChargePosting` · `restoreRoomChargePosting` (ห่อ `reverseFor` / `reverseEntry`)
+
+### เครื่องหมาย (sign convention)
+- `balanceSatang` = Σ amount ทุกแถว (cache · คำนวณใหม่ใน tx เดียวกับการเขียน) · ค่าใช้จ่าย (ROOM · SERVICE · MINIBAR · PENALTY · POS_CHARGE · TAX · SERVICE_CHARGE) บวก · DISCOUNT ลบ
+- DEPOSIT ลบ = รับมัดจำ · DEPOSIT บวก = มัดจำที่ถูกใช้ชำระบิลเช็กเอาต์ (อ่านจากแถวชำระ DEPOSIT ของบิลจริง) · PAYMENT ลบ = −ยอดค่าใช้จ่ายของ folio (อ้างบิล POS) · REFUND บวก = คืนมัดจำส่วนเกิน / คืนเงินการเข้าพัก
+- SECURITY_DEPOSIT / SECURITY_REFUND / PENALTY ของประกัน = amount 0 (ข้อมูล · ยอดอยู่ใน description · refId = ใบรับ/ใบคืน/บิลริบ) — เงินประกันไม่เข้า balance
+- void = แถวเดิมติด `voidedAt/voidReason` (ไม่ลบ) + แถว `VOID_REVERSAL` ตรงข้ามเครื่องหมาย อ้าง `reversalOfId` · ห้าม void PAYMENT/DEPOSIT/VOID_REVERSAL/POS_CHARGE (บิลร้าน void ที่ POS ⇒ consumer `pos.sale.voided` กลับรายการให้)
+- TAX/SERVICE_CHARGE (แยกภาษี) = 1 แถวต่อชนิด ปรับยอดในที่ตาม `taxLines(Σ ค่าใช้จ่ายที่มีผล)` — แถวแสดงผล ไม่ส่งเป็นบรรทัด POS
+
+### เส้นเงิน (เช็กเอาต์ · S §7.7)
+1. tx A: ล็อก folio · `postRoomNights(upTo = วันออก)` · คำนวณใหม่
+2. ตรวจ: `TAX_CONFIG_MISMATCH` (vatBp ของโรงแรม ≠ อัตราของสมุดที่ POS ผูก · POS ไม่เชื่อมบัญชี = เตือนเฉย ๆ) · Σ วิธีจ่าย + มัดจำที่ใช้ = ยอดบิล (`PAY_MISMATCH`)
+3. `pos.createSale` ใบเดียวนอก tx · คีย์ `hotel-sale-<reservationId|groupId>` (บิลของคีย์ถูก void ⇒ `-r<n>`) · บรรทัด: ค่าห้องสรุปต่อประเภท×ราคา · รายการอื่น itemized · ส่วนลด = `billDiscountSatang` (ไม่มีบรรทัดติดลบ) · แยกภาษี = บรรทัดรวม VAT แล้ว + `serviceChargeSatang` (เศษปัดลงค่าบริการ/ส่วนลด · เกินเศษ = `TAX_ROUNDING_MISMATCH`) · วิธีจ่าย = `DEPOSIT{refSaleId}` + วิธีจริง (≤ 6 แถว) · `shiftId` จาก UI
+4. ประกัน (นอก tx): คืน `moduleRefundDeposit` · ริบ `moduleForfeitDeposit` (บิลริบ = รายได้ค่าเสียหายครั้งเดียว · ต้อง `hotel.booking.manage`)
+5. tx B: CAS CHECKED_IN → CHECKED_OUT · PAYMENT ต่อ folio · DEPOSIT (+ที่ใช้) · SETTLED · ห้อง DIRTY + HousekeepingLog · ปล่อย occupancy · audit `hotel.folio.settled` · outbox `hotel.checked_out` (+saleId) / `hotel.folio.settled` · Σ PAYMENT ≠ ยอดบิล หรือคงค้าง ≠ มัดจำคงเหลือ ⇒ ย้อน tx B (บิลค้างให้ผู้จัดการ void)
+6. หลัง tx B: คืนมัดจำส่วนเกิน (ไม่มีห้องอื่นในกลุ่มใช้ต่อ) + แถว REFUND · กันรายได้ซ้ำของบิลร้านที่ลงห้อง
+- ซ้ำ/พร้อมกัน: บิลเดิมของคีย์ = ใช้ต่อ (resume tx B) · CAS ⇒ สถานะ/PAYMENT/event ครั้งเดียว
+- P1 `checkOut(tenantId, unitId, id)` = settle ทางเดิม (มัดจำ + เงินสดส่วนที่เหลือ) **เฉพาะ** `rooms.hotel.checkout.allowLegacyCash` (ค่าเริ่มปิด ⇒ `PAY_METHODS_REQUIRED`)
+
+### ลงห้องจาก POS · กันรายได้ซ้ำ (Q-H5-1)
+- บิลร้าน ROOM_CHARGE: POS ลง Dr 1100 / Cr รายได้+ภาษีขาย ตอนบิลร้าน · consumer โรงแรมหาแขกจาก `reference` (เลขห้องที่มีแขกพัก หรือรหัสจอง · ทุกหน่วย HOTEL ของร้าน · ซ้ำหลายหน่วย ⇒ `AMBIGUOUS_ROOM`) ⇒ POS_CHARGE itemized · หาไม่ได้ ⇒ คิว unmatched + `hotel.folio.charge_unmatched`
+- เช็กเอาต์รวมบรรทัดอาหารในบิลโรงแรม (รับเงินจริง · VAT ครั้งเดียว) ⇒ `reverseRoomChargePosting` กลับ JV ของบิลร้าน ⇒ รายได้อาหารรับรู้ครั้งเดียวที่บิลโรงแรม · 1100 ล้าง · สต็อกร้านไม่แตะ
+- `refundStay` หลังเช็กเอาต์: void บิลโรงแรม (POS กลับบัญชี) + folio VOID + `restoreRoomChargePosting` (บิลร้านกลับเป็นลูกหนี้ 1100 ค้าง)
+- สายรายการต่อบิลร้าน: ต้นฉบับ → กลับ → คืน → กลับ … · ทั้งสองฟังก์ชัน idempotent ตามสถานะสาย · ร้านไม่เชื่อมบัญชี ⇒ `{posted:false}`
+
+### เงินประกันห้อง (Q3)
+- เปิดด้วย `rooms.hotel.securityDeposit.enabled` (ค่าเริ่มปิด) · ยอด `rooms.hotel.securityDeposit` (ต่อประเภทห้อง) · ใบรับ POS_DEPOSIT คีย์ `hotel-secdep-<id>` (Cr 2110 · ไม่ใช่รายได้)
+- คืนเต็ม = ใบคืนอ้างใบรับ (วิธีเดียวกับตอนรับ) · ริบเต็ม = บิลริบ `dep-forfeit:<depositId>` (รายได้ครั้งเดียว) · ริบบางส่วน = หนี้ v1

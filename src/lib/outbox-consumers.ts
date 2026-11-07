@@ -1488,6 +1488,25 @@ const baseConsumers: Record<string, OutboxHandler> = {
 baseConsumers["pos.sale.refunded"] = bothMain(baseConsumers["pos.sale.refunded"]!, async (evt) => (await import("@/lib/modules/pos/crm-link")).dealOnSaleRefunded(evt));
 // ◂ POS P3.6
 
+// SVC H.5 ▸ ลงห้องจาก POS (ใบสั่ง h.5 §0 §1) — ต่อ "ชั้นนอกสุด" ของ chain เดิม (ไม่แก้บรรทัดเดิม):
+//   "pos.sale.paid"   + onPosSalePaidRoomCharge : บิลที่จ่าย ROOM_CHARGE ⇒ POS_CHARGE บน folio ของแขกที่เข้าพัก (หาไม่ได้ ⇒ คิว unmatched + event)
+//                       ห่อ try/catch + log — ล้มไม่ทำให้บัญชี/สมาชิก/CRM ของบิลล้ม (compose วิ่งงานเดิมก่อนเสมอ) · idempotent ต่อ saleId
+//   "pos.sale.voided" + onPosSaleVoidedRoomCharge : บิลร้านที่ลงห้องถูก void ⇒ กลับรายการ POS_CHARGE (งานหลักคู่ · ล้ม = event retry · idempotent)
+//   hotel → POS โหลดแบบ lazy import (กันวงโหลด hotel → pos/service → scheduleDrain → ไฟล์นี้)
+baseConsumers["pos.sale.paid"] = compose(baseConsumers["pos.sale.paid"]!, async (evt) => {
+  try {
+    await (await import("@/lib/modules/hotel")).onPosSalePaidRoomCharge(evt);
+  } catch (e) {
+    await logOps("WARN", "hotel", `ลงห้องจากบิล POS ไม่สำเร็จ (บิล ${saleIdOf(evt.payload) ?? "-"}) — บิลและบัญชีไม่กระทบ · ผูกมือที่คิวบิลลงห้อง`, { tenantId: evt.tenantId, detail: errDetail(e) });
+  }
+});
+baseConsumers["pos.sale.voided"] = bothMain(baseConsumers["pos.sale.voided"]!, async (evt) => (await import("@/lib/modules/hotel")).onPosSaleVoidedRoomCharge(evt));
+//   event ใหม่ของ folio/ประกัน (3 ทะเบียน · payload id + สตางค์ล้วน) — งานหลัก no-op (เขียนครบใน hotel/folio.ts · checkout.ts · room-charge.ts แล้ว) + กฎอัตโนมัติ/เว็บฮุค
+for (const t of ["hotel.folio.posted", "hotel.folio.voided", "hotel.folio.settled", "hotel.folio.charge_unmatched", "hotel.folio.posting_warn", "hotel.security_deposit.taken", "hotel.security_deposit.refunded", "hotel.security_deposit.forfeited"]) {
+  baseConsumers[t] = withAutomation(async () => {});
+}
+// ◂ SVC H.5
+
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
 export const consumers: Record<string, OutboxHandler> = Object.fromEntries(
   Object.entries(baseConsumers).map(([type, handler]) => [type, withWebhooks(handler)]),

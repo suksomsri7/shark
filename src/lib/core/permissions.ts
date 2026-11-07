@@ -289,11 +289,10 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     },
     // SVC H.0 ▸ คีย์ที่ยังไม่มีหน้า/โค้ดเรียก (H.1–H.10 เปิดใช้จริง · hotel.settings.edit ใช้แล้วที่ค่าตั้ง rooms.hotel.*) ◂
     // SVC H.3 ▸ hotel.booking.manage ใช้จริงแล้ว (hotel/booking.ts + actions จอง V2) ⇒ ออกจาก planned ◂
+    // SVC H.5 ▸ hotel.folio.post / hotel.folio.void ใช้จริงแล้ว (hotel/folio.ts + actions บิลระหว่างพัก) ⇒ ออกจาก planned ◂
     planned: [
       "hotel.rates.read",
       "hotel.rates.write",
-      "hotel.folio.post",
-      "hotel.folio.void",
       "hotel.guest.register",
       "hotel.guest.viewId",
       "hotel.housekeeping",
