@@ -35,13 +35,13 @@ export default async function HotelFolioPrintPage({ params }: { params: Promise<
             <tbody>
               {g.items.map((i) => (
                 <tr key={i.id} className={i.voidedAt ? "line-through opacity-60" : ""}>
-                  <td className="w-24 py-1 pr-2 align-top">{dayTh(i.businessDate)}</td>
+                  <td className="w-20 py-1 pr-2 align-top text-xs sm:w-24 sm:text-sm">{dayTh(i.businessDate)}</td>
                   <td className="py-1 pr-2 align-top">
                     {i.description}
                     {i.qty > 1 ? ` × ${i.qty}` : ""}
                     {i.type === "VOID_REVERSAL" ? ` (${ITEM_TYPE_TH.VOID_REVERSAL})` : ""}
                   </td>
-                  <td className="w-28 py-1 text-right align-top tabular-nums">{bahtTh(i.amountSatang)}</td>
+                  <td className="w-24 whitespace-nowrap py-1 text-right align-top tabular-nums sm:w-28">{bahtTh(i.amountSatang)}</td>
                 </tr>
               ))}
             </tbody>

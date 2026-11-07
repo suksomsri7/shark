@@ -53,7 +53,7 @@ export default function FolioPanel({ folio, printHref, actions, openCheckout = f
         </p>
       ) : null}
       <div className="overflow-x-auto" data-scroll-hint="">
-        <table className="w-full min-w-[520px] text-sm">
+        <table className="w-full text-sm sm:min-w-[520px]">
           {groups.map((g) => (
             <tbody key={g.key} data-folio-group={g.key}>
               <tr>
