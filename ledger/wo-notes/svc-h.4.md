@@ -104,3 +104,22 @@
     - qc-svc-h.2: ตัวสร้างฉากในข้อสอบ (บรรทัด 542 `svc.checkIn` บน tA) ⇒ TC-2…/OC/TD/MV ล้มต่อเนื่อง · 37/87
     - qc-svc-r0.8: G-1 `scripts/qc-hotel-money.mts:38` · G-3 `scripts/qc-hotel-refund.mts:42,89` (checkIn เดิมบนร้านของตัวเอง) · 93/95
   - ⇒ ขอ ORACLE-EDIT แบบเดียวกับ r0.8: ปิด `rooms.hotel.guest.requireRegistration` ที่หน่วยทดสอบของ qc-svc-h.3 · qc-svc-h.2 · qc-hotel-money · qc-hotel-refund (หรือส่งผู้พักผ่าน checkInV2)
+
+## 12. รอบ 3 (ผู้ตรวจ PDPA รอบ 1 · ฐาน 756c05252)
+- **MAJOR-1** `tm30Export`: ไม่มีกุญแจ ⇒ `NOT_CONFIGURED` · มีแถวที่เปิดกล่องลับไม่ได้ ⇒ `NO_DATA` (บอกจำนวนคน ไม่บอกชื่อ/เลข) · ทั้งสองกรณีไม่สร้างไฟล์ ไม่เขียน AuditLog `hotel.tm30.exported`
+- m1 purge ล้าง `dob` · `arrivedFrom` · `nextDestination` ด้วย (คงชื่อ + last4 + สัญชาติ + วันเข้าออก)
+- m2 `checkInV2` มีผู้พักแต่ไม่มีกุญแจ ⇒ `NOT_CONFIGURED` ก่อนอัปไฟล์ (การจองคง CONFIRMED)
+- m3 หน้า ร.ร.3 พิมพ์: ที่อยู่/อาชีพ/รูปบัตร แสดงเฉพาะผู้มี `hotel.guest.register` (`showImage`) · อื่นแสดง "ซ่อน" (Rr3Card เป็นคอมโพเนนต์เซิร์ฟเวอร์ ⇒ ค่าที่ซ่อนไม่ออกไป HTML)
+- **m4 ไม่ได้ทำ — ข้อแย้ง oracle:** ข้อสอบ PD-6 (`qc-svc-h.4` ~บรรทัด 1049) เรียก `rr3Card(ctxA, {guestId})` โดย ctx ไม่มี userId และ **บังคับให้มีลิงก์ /api/files ≥ 1** ⇒ ถ้าไม่มี userId แล้วไม่ออกลิงก์ PD-6 แดง (CRITICAL) · ตอนนี้ fallback = ผู้บันทึก (ลิงก์ใช้ได้เฉพาะผู้บันทึก · หน้าในระบบส่ง userId เสมอ) · ผู้คุมเลือก: ORACLE-EDIT PD-6 ให้ส่ง `{...ctxA, userId: REG.userId}` แล้วผมถอด fallback ได้ทันที
+- m5 → หนี้ (§8 ต่อท้ายข้างล่าง)
+- ผลรอบ 3 (`/root/svc-runs/h4/builder/r3-*.txt`):
+  - probe-h4-b **51/53** · failed [E3.3 (CDN path private ตอบ 200 = storage C0.4 นอกใบ · ผู้คุมจดเป็นคำถามเจ้าของ) · E5.6 (ข้อสังเกตที่ผ่านเมื่อ dob ยังค้าง — แดงเพราะแก้ m1 แล้ว: dob=null หลัง purge)] · E1.4 · E7.1 · E7.3 เขียว
+  - qc-svc-h.4 --no-regression **90/106 · failed [SD-1]** (รอ H.5) · skip F-1 Q-1..4 V-1 G-*
+  - qc-svc-h.3 --no-regression 98/109 failed [] · qc-svc-h.2 --no-regression 78/87 failed []
+
+### หนี้เพิ่ม (รอบ 3)
+| เรื่อง | เหตุผล | ใบ |
+|---|---|---|
+| m5 แก้ทะเบียนแถวเดิมต้องกรอกเลขเอกสารใหม่ · CheckinPanel ไม่มีปุ่มแก้แถวเดิม (มีแต่เพิ่มผู้พักร่วม) | ฟอร์มไม่เติมเลขเต็มจาก DTO (PDPA) — ต้องออกแบบ "คงเลขเดิม" ฝั่งเซิร์ฟเวอร์ | ใบเก็บกวาด H.x |
+| m4 rr3Card ไม่มี userId ⇒ ลิงก์ของผู้บันทึก | PD-6 บังคับลิงก์ (ข้อแย้งด้านบน) | ORACLE-EDIT |
+| E3.3 CDN เสิร์ฟ path private | storage C0.4 นอกใบ | คำถามเจ้าของ |
