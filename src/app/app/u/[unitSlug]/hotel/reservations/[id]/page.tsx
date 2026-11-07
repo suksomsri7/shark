@@ -21,7 +21,10 @@ import type { BookingDetail as BookingDetailDto } from "@/lib/modules/hotel"; //
 
 // SVC H.3 ▸ รายละเอียดการจอง (ใบสั่ง h.3 §4) — หน่วย HOTEL เท่านั้น · getBooking (ข้ามร้าน/หน่วย ⇒ notFound) · ปุ่มตามสิทธิ์จาก session
 //   canManage ⇔ hotel.booking.manage · canCancel ⇔ hotel.reservation.cancel · ย้อน «ไม่มา» ⇔ ผู้จัดการ/เจ้าของ
-export default async function HotelReservationDetailPage({ params, searchParams }: { params: Promise<{ unitSlug: string; id: string }>; searchParams?: Promise<{ tab?: string | string[] }> }) {
+type DetailParams = Promise<{ unitSlug: string; id: string }>;
+type DetailTabQuery = { tab?: string | string[] }; // SVC H.4
+type DetailSearch = Promise<DetailTabQuery>; // SVC H.4
+export default async function HotelReservationDetailPage({ params, searchParams }: { params: DetailParams; searchParams?: DetailSearch }) {
   const { unitSlug, id } = await params;
   const tab = (await searchParams)?.tab; // SVC H.4 ▸ ?tab=guests = แท็บแขก/เช็กอิน (ร.ร.3 · ตม.30) ◂
   const { auth, unit } = await requireUnit(unitSlug);
@@ -41,17 +44,16 @@ export default async function HotelReservationDetailPage({ params, searchParams 
   // SVC H.4 ▸ แท็บ "แขก" → ทะเบียนผู้พัก/เช็กอิน V2 (CheckinPanel · ภาพ 09 ซ้าย) · ปุ่ม "เช็กอิน" = แผงนี้ (สิทธิ์จาก session · ไม่อ่านสิทธิ์จาก URL)
   const canGuests = can("hotel.reservation.checkIn") || can("hotel.guest.register") || can("hotel.guest.viewId");
   const guestsTab = tab === "guests" && canGuests ? await checkinTab(actor, ctx, unit.id, unitSlug, r.booking, can) : null;
-  const guestsLink =
-    !guestsTab && canGuests && ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(r.booking.status) ? (
-      <a href={`/app/u/${unitSlug}/hotel/reservations/${id}?tab=guests`} data-guests-tab-link="" className="self-start rounded-xl border border-[color:var(--color-line)] px-4 py-2 text-sm font-bold">
-        {r.booking.status === "CONFIRMED" ? "เช็กอิน · ลงทะเบียนผู้พัก (ร.ร.3) →" : "แขก · ทะเบียนผู้พัก (ร.ร.3) · ตม.30 →"}
-      </a>
-    ) : null;
+  const showGuestsLink = !guestsTab && canGuests && ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(r.booking.status);
   // ◂ SVC H.4
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
     {guestsTab}
-    {guestsLink}
+    {showGuestsLink ? (
+      <a href={`/app/u/${unitSlug}/hotel/reservations/${id}?tab=guests`} data-guests-tab-link="" className="self-start rounded-xl border border-[color:var(--color-line)] px-4 py-2 text-sm font-bold">
+        {r.booking.status === "CONFIRMED" ? "เช็กอิน · ลงทะเบียนผู้พัก (ร.ร.3) →" : "แขก · ทะเบียนผู้พัก (ร.ร.3) · ตม.30 →"}
+      </a>
+    ) : null}
     <BookingDetail
       booking={r.booking}
       unitSlug={unitSlug}
