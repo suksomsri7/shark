@@ -25,6 +25,8 @@ import {
   guestGate,
   guestSettings,
   hasRequiredGuestFields,
+  cardNoInTx,
+  guestAudit,
   insertGuestTx,
   isGuestFail,
   isManagerRole,
@@ -185,18 +187,25 @@ async function checkInCore(g: GuestGate | { tenantId: string; unitId: string; un
   }
   const actorId = actor?.userId ?? null;
   const ci = ymdOfDb(rv.checkInDate);
-  const co = ymdOfDb(rv.checkOutDate);
   try {
     const out = await db.$transaction(async (t) => {
       const tx = t as unknown as Tx;
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${c.unitId}::text || ':' || ${rv.roomTypeId}::text))`;
-      const cas = await tx.hotelReservation.updateMany({ where: { id: rv.id, tenantId: c.tenantId, unitId: c.unitId, status: { in: ["CONFIRMED", "BOOKED"] } }, data: { status: "CHECKED_IN", roomId: room.id, checkedInAt: now } });
-      if (cas.count === 0) throw new GuestAbort(gfail("NOT_CONFIRMED", "สถานะการจองเปลี่ยนแล้ว (ถูกยกเลิก/เช็กอินไปแล้ว) — โหลดใหม่"));
+      // ผู้ตรวจรอบ 2 ข้อ 5 (race เช็กอิน ↔ ย่น/ต่อ/ย้ายวัน): อ่านแถวซ้ำหลังล็อกประเภท · วันเข้า/ออกของ occupancy/retainUntil มาจากแถวนี้ · CAS ผูกวันด้วย
+      const cur = await tx.hotelReservation.findFirst({ where: { id: rv.id, tenantId: c.tenantId, unitId: c.unitId }, select: { status: true, checkInDate: true, checkOutDate: true } });
+      if (!cur || (cur.status !== "CONFIRMED" && cur.status !== "BOOKED")) throw new GuestAbort(gfail("NOT_CONFIRMED", "สถานะการจองเปลี่ยนแล้ว (ถูกยกเลิก/เช็กอินไปแล้ว) — โหลดใหม่"));
+      const ciT = ymdOfDb(cur.checkInDate);
+      const coT = ymdOfDb(cur.checkOutDate);
+      const cas = await tx.hotelReservation.updateMany({
+        where: { id: rv.id, tenantId: c.tenantId, unitId: c.unitId, status: { in: ["CONFIRMED", "BOOKED"] }, checkInDate: cur.checkInDate, checkOutDate: cur.checkOutDate },
+        data: { status: "CHECKED_IN", roomId: room.id, checkedInAt: now },
+      });
+      if (cas.count === 0) throw new GuestAbort(gfail("NOT_CONFIRMED", "สถานะหรือวันของการจองเปลี่ยนแล้ว (ถูกยกเลิก/เช็กอิน/ย่นคืนไปแล้ว) — โหลดใหม่"));
       const occ = await tx.roomOccupancy.findMany({ where: { tenantId: c.tenantId, unitId: c.unitId, refType: HOTEL_REF, refId: rv.id, active: true }, select: { id: true, roomId: true, kind: true, startDate: true, endDate: true } });
       const taken = () => new GuestAbort(gfail("ROOM_TAKEN", `ห้อง ${room.number} มีผู้เข้าพักหรือถูกจองในช่วงนี้แล้ว — เลือกห้องอื่น`));
       const inactive = () => new GuestAbort(gfail("ROOM_INACTIVE", `ห้อง ${room.number} รับการเข้าพักนี้ไม่ได้`));
       if (!occ.length) {
-        const r = await claimRoom(tx, { ...c, roomId: room.id, start: ci, end: co, kind: "STAY", refType: HOTEL_REF, refId: rv.id, requireRentMode: "NIGHTLY" });
+        const r = await claimRoom(tx, { ...c, roomId: room.id, start: ciT, end: coT, kind: "STAY", refType: HOTEL_REF, refId: rv.id, requireRentMode: "NIGHTLY" });
         if (!r.ok) throw r.code === "ROOM_TAKEN" ? taken() : inactive();
       } else {
         for (const x of occ) {
@@ -221,16 +230,20 @@ async function checkInCore(g: GuestGate | { tenantId: string; unitId: string; un
       for (let i = 0; i < prepared.length; i++) {
         const pg = prepared[i]!;
         ids.push(
-          await insertGuestTx(tx, c, rv, pg, {
+          await insertGuestTx(tx, c, { id: rv.id, checkOutDate: cur.checkOutDate }, pg, {
             actorId: actorId ?? "module:hotel",
             imageFileId: files[i] ?? null,
             tm30: tm30Initial(pg.nationality, st.tm30Enabled, now),
             retainYears: st.retainYears,
             signedAt: null,
             via: "CHECK_IN",
+            stayed: true,
           }),
         );
       }
+      // ผู้ตรวจรอบ 2 ข้อ 9: ผู้พักที่ลงทะเบียนล่วงหน้า ได้เลขบัตร ร.ร.3 ตอนเข้าพักจริง ⇒ จดใน AuditLog
+      for (const pre of await tx.hotelGuestRecord.findMany({ where: { reservationId: rv.id, id: { notIn: ids } }, select: { id: true, createdAt: true } }))
+        await guestAudit(tx, c, actorId, "hotel.guest.rr3_card", pre.id, null, { cardNo: await cardNoInTx(tx, c, pre.id, pre.createdAt), reservationId: rv.id, via: "CHECK_IN" });
       if (st.tm30Enabled) await tx.hotelGuestRecord.updateMany({ where: { reservationId: rv.id, isForeigner: true, tm30Status: "PENDING", tm30DueAt: null }, data: { tm30DueAt: new Date(now.getTime() + TM30_WINDOW_MS) } });
       const all = await tx.hotelGuestRecord.findMany({ where: { reservationId: rv.id }, select: { isForeigner: true, tm30Status: true, tm30DueAt: true } });
       const foreigners = all.filter((x) => x.isForeigner).length;

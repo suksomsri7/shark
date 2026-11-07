@@ -295,6 +295,13 @@ export async function guestSettings(tenantId: string, unitId: string): Promise<G
     secDepAmount: Math.max(0, Math.round(n(GUEST_KEY.secDepAmount, 0))),
   };
 }
+/**
+ * การจองที่ "เข้าพักจริง" (ผู้ตรวจรอบ 2 มติข้อ 2): ทะเบียนกฎหมาย ร.ร.4 · คิว/ไฟล์ ตม.30 · ลำดับเลขบัตร ร.ร.3 นับเฉพาะชุดนี้
+ * แถวที่ลงทะเบียนล่วงหน้าแล้วการจองยกเลิก/ไม่มา/ยังไม่เข้า = ยังเก็บ (purge ตามปกติ) แต่ไม่อยู่ในทะเบียน/คิว/ลำดับ
+ */
+export const STAYED_STATUSES = ["CHECKED_IN", "CHECKED_OUT", "REFUNDED"] as const;
+export const STAYED_RV: Prisma.HotelReservationWhereInput = { status: { in: [...STAYED_STATUSES] } };
+export const isStayed = (status: string): boolean => (STAYED_STATUSES as readonly string[]).includes(status);
 /** วันเก็บถึง = วันออก + N ปี (ปฏิทิน UTC ของวันที่ @db.Date) */
 export function retainUntilOf(checkOut: Date, years: number): Date {
   return new Date(Date.UTC(checkOut.getUTCFullYear() + years, checkOut.getUTCMonth(), checkOut.getUTCDate()));
@@ -493,7 +500,7 @@ export async function insertGuestTx(
   c: { tenantId: string; unitId: string },
   rv: { id: string; checkOutDate: Date },
   g: PreparedGuest,
-  o: { actorId: string; imageFileId: string | null; tm30: { status: Tm30Status; dueAt: Date | null }; retainYears: number; signedAt: Date | null; via: string },
+  o: { actorId: string; imageFileId: string | null; tm30: { status: Tm30Status; dueAt: Date | null }; retainYears: number; signedAt: Date | null; via: string; stayed: boolean },
 ): Promise<string> {
   const row = await tx.hotelGuestRecord.create({
     data: {
@@ -518,7 +525,9 @@ export async function insertGuestTx(
   });
   const enc = sealIntegrationSecret({ ...g.secret }, row.id);
   const after = await tx.hotelGuestRecord.update({ where: { id: row.id }, data: { idNumberEnc: enc } });
-  await guestAudit(tx, c, o.actorId, "hotel.guest.registered", row.id, {}, { ...guestAuditView(after), reservationId: rv.id, via: o.via });
+  // ผู้ตรวจรอบ 2 ข้อ 9: เลขบัตร ร.ร.3 ณ ตอนลงทะเบียน (ผู้พักจริง) เก็บใน AuditLog เป็นหลักฐาน · คอลัมน์ถาวร = หนี้ H.9
+  const cardNo = o.stayed ? await cardNoInTx(tx, c, row.id, row.createdAt) : null;
+  await guestAudit(tx, c, o.actorId, "hotel.guest.registered", row.id, {}, { ...guestAuditView(after), reservationId: rv.id, via: o.via, ...(cardNo ? { cardNo } : {}) });
   await emitOutbox(tx, {
     tenantId: c.tenantId,
     unitId: c.unitId,
@@ -570,7 +579,8 @@ export async function upsertGuestRecord(actorIn: unknown, ctx: unknown, input: u
       if (!existing) {
         // ผู้พักที่เพิ่มระหว่างพัก: ตม.30 ครบกำหนด = เวลาลงทะเบียน (= เวลาที่แจ้งว่าเข้าพัก) + 24 ชม. · นาฬิกาฉาก input.at ใต้ SVC_QC_CLOCK เท่านั้น
         //   ลงชื่อแทนห้อง (มติ 2) ครอบคลุมผู้พักที่มีอยู่ตอนลงชื่อ — คนที่เพิ่มทีหลังลงชื่อเองหรือให้ผู้พักหลักลงใหม่
-        const arrivedAt = rv.status === "CHECKED_IN" ? guestClock(input, "at") : null;
+        //   ผู้ตรวจรอบ 2 ข้อ 8: เพิ่มหลังเช็กเอาต์ (ผู้จัดการ) ⇒ เวลาเข้าพัก = checkedInAt ของการจอง (กำหนด ตม.30 ย้อนตามจริง)
+        const arrivedAt = rv.status === "CHECKED_IN" ? guestClock(input, "at") : rv.status === "CHECKED_OUT" ? (rv.checkedInAt ?? guestClock(input, "at")) : null;
         const id = await insertGuestTx(tx, c, rv, prep, {
           actorId: g.actor.userId,
           imageFileId: newFile,
@@ -578,6 +588,7 @@ export async function upsertGuestRecord(actorIn: unknown, ctx: unknown, input: u
           retainYears: st.retainYears,
           signedAt: null,
           via: rv.status === "CHECKED_IN" ? "IN_STAY" : rv.status === "CHECKED_OUT" ? "AFTER_CHECKOUT" : "PRE_ARRIVAL",
+          stayed: isStayed(rv.status),
         });
         return { guestId: id, created: true, oldFile: null as string | null };
       }
@@ -839,10 +850,25 @@ async function cardNosOf(c: { tenantId: string; unitId: string }, rows: { id: st
   const db = tenantDb(c);
   for (const be of years) {
     const ce = be - 543;
-    const all = await db.hotelGuestRecord.findMany({ where: { createdAt: { gte: yearStart(ce), lt: yearStart(ce + 1) } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+    const all = await db.hotelGuestRecord.findMany({ where: { createdAt: { gte: yearStart(ce), lt: yearStart(ce + 1) }, reservation: STAYED_RV }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
     all.forEach((r, i) => out.set(r.id, rr3CardNo(be, i + 1)));
   }
   return out;
+}
+
+/** เลขบัตรของแถวนี้ภายใน tx (การจองของแถวต้องเป็นผู้พักจริงแล้ว) — ลำดับ (createdAt, id) ของผู้พักจริงของหน่วยในปี พ.ศ. เดียวกัน */
+export async function cardNoInTx(tx: Tx, c: { tenantId: string; unitId: string }, guestId: string, createdAt: Date): Promise<string> {
+  const be = beYearOf(createdAt);
+  const ce = be - 543;
+  const n = await tx.hotelGuestRecord.count({
+    where: {
+      tenantId: c.tenantId,
+      unitId: c.unitId,
+      reservation: STAYED_RV,
+      OR: [{ createdAt: { gte: yearStart(ce), lt: createdAt } }, { createdAt, id: { lte: guestId } }],
+    },
+  });
+  return rr3CardNo(be, Math.max(1, n));
 }
 
 // ───────────────────────── rr3Card / rr4Register ─────────────────────────
@@ -957,11 +983,18 @@ export type Rr4Row = {
   fullName: string;
   nationality: string | null;
   nationalityTh: string | null;
+  dob: string | null;
+  age: number | null;
+  occupation: string | null;
+  address: string | null;
   idType: string | null;
   idNumberLast4: string | null;
   idMasked: string;
+  /** เฉพาะสำเนานายทะเบียน (rr4RegistrarCopy · สิทธิ์ viewId · AuditLog ต่อแขก) — ทะเบียนปกติไม่มีคีย์นี้ */
+  idNumberFull?: string | null;
   roomNumber: string | null;
   reservationCode: string;
+  reservationStatus: string;
   checkIn: string;
   checkOut: string;
   checkedInAt: string | null;
@@ -971,39 +1004,47 @@ export type Rr4Row = {
   rr3SignedAt: string | null;
   purged: boolean;
 };
+type Rr4Out = { ok: true; rows: Rr4Row[]; registrar: boolean; hotel: { name: string; licenseName: string | null; licenseNo: string | null; registrarOffice: string | null } };
 const Rr4Z = z.object({ unitId: z.string().min(1), from: ymdZ, to: ymdZ });
-/** ทะเบียนผู้พัก (ร.ร.4) = แถว ร.ร.3 ของหน่วยที่วันเข้าอยู่ในช่วง เรียงตามเลขบัตร · ไม่มีเลขเต็ม · รวมแถวที่ล้างข้อมูลอ่อนไหวแล้ว */
-export async function rr4Register(ctx: unknown, input: unknown): Promise<{ ok: true; rows: Rr4Row[]; hotel: { name: string; licenseName: string | null; licenseNo: string | null; registrarOffice: string | null } } | GuestFail> {
-  const tenantId = tenantOf(ctx);
-  if (!tenantId || !isRec(input)) return gfail("NOT_FOUND", R.notFound);
-  const unit = await hotelUnitOf(tenantId, input.unitId);
-  if (!unit) return gfail("NOT_FOUND", R.notFound);
+/** อายุเต็มปี ณ วันเข้าพัก */
+function ageAt(dob: Date | null, at: Date): number | null {
+  if (!dob) return null;
+  let y = at.getUTCFullYear() - dob.getUTCFullYear();
+  if (at.getUTCMonth() < dob.getUTCMonth() || (at.getUTCMonth() === dob.getUTCMonth() && at.getUTCDate() < dob.getUTCDate())) y--;
+  return y >= 0 && y < 150 ? y : null;
+}
+async function rr4Core(tenantId: string, unit: { id: string; name: string }, input: unknown, registrarActor: string | null): Promise<Rr4Out | GuestFail> {
   const p = Rr4Z.safeParse(input);
   if (!p.success) return gfail("INVALID_INPUT", zodReason(p.error));
   if (p.data.to < p.data.from) return gfail("INVALID_INPUT", "วันสิ้นสุดต้องไม่ก่อนวันเริ่ม");
   const c = { tenantId, unitId: unit.id };
   const rows = await tenantDb(c).hotelGuestRecord.findMany({
-    where: { reservation: { checkInDate: { gte: dbDate(p.data.from), lte: dbDate(p.data.to) } } },
+    where: { reservation: { checkInDate: { gte: dbDate(p.data.from), lte: dbDate(p.data.to) }, ...STAYED_RV } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: 5000,
-    include: { reservation: { select: { code: true, checkInDate: true, checkOutDate: true, checkedInAt: true, room: { select: { number: true } } } } },
+    include: { reservation: { select: { code: true, status: true, checkInDate: true, checkOutDate: true, checkedInAt: true, room: { select: { number: true } } } } },
   });
   const nos = await cardNosOf(c, rows);
   const st = await guestSettings(tenantId, unit.id);
-  return {
-    ok: true,
-    hotel: { name: unit.name, licenseName: st.licenseName, licenseNo: st.licenseNo, registrarOffice: st.registrarOffice },
-    rows: rows.map((r) => ({
+  const out: Rr4Row[] = rows.map((r) => {
+    const sec = openGuestSecret(r);
+    return {
       guestId: r.id,
       cardNo: nos.get(r.id) ?? "",
       fullName: r.fullName,
       nationality: r.nationality,
       nationalityTh: nationalityTh(r.nationality),
+      dob: r.dob ? ymdOfDb(r.dob) : null,
+      age: ageAt(r.dob, r.reservation.checkedInAt ?? r.reservation.checkInDate),
+      occupation: sec?.occupation ?? null,
+      address: sec?.address ?? null,
       idType: r.idType,
       idNumberLast4: r.idNumberLast4,
       idMasked: maskFromLast4(r.idNumberLast4),
+      ...(registrarActor ? { idNumberFull: sec?.id ?? null } : {}),
       roomNumber: r.reservation.room?.number ?? null,
       reservationCode: r.reservation.code,
+      reservationStatus: r.reservation.status,
       checkIn: ymdOfDb(r.reservation.checkInDate),
       checkOut: ymdOfDb(r.reservation.checkOutDate),
       checkedInAt: r.reservation.checkedInAt?.toISOString() ?? null,
@@ -1012,8 +1053,37 @@ export async function rr4Register(ctx: unknown, input: unknown): Promise<{ ok: t
       signed: !!r.rr3SignedAt,
       rr3SignedAt: r.rr3SignedAt?.toISOString() ?? null,
       purged: !r.idNumberEnc && !!r.idType,
-    })),
-  };
+    };
+  });
+  if (registrarActor) {
+    const shown = out.filter((x) => x.idNumberFull);
+    if (shown.length) {
+      await tenantDb(c).$transaction(async (t) => {
+        const tx = t as unknown as Tx;
+        const batch = randomUUID();
+        for (const x of shown) await guestAudit(tx, c, registrarActor, "hotel.guest.revealed", x.guestId, null, { purpose: "RR4_REGISTRAR_COPY", from: p.data.from, to: p.data.to, idNumberLast4: x.idNumberLast4, cardNo: x.cardNo, batch });
+      }, GUEST_TX);
+    }
+  }
+  return { ok: true, rows: out, registrar: !!registrarActor, hotel: { name: unit.name, licenseName: st.licenseName, licenseNo: st.licenseNo, registrarOffice: st.registrarOffice } };
+}
+/**
+ * ทะเบียนผู้พัก (ร.ร.4) = แถว ร.ร.3 ของผู้พักจริง (CHECKED_IN/CHECKED_OUT/REFUNDED) ที่วันเข้าอยู่ในช่วง เรียงตามเลขบัตร
+ * ช่อง: ชื่อ · สัญชาติ · วันเกิด/อายุ · อาชีพ · ที่อยู่ · เอกสาร (4 ตัวท้าย) · ห้อง · เข้า/ออก · มาจาก/ไปต่อ · ลงชื่อ — ค่าปลอดภัยระหว่างรอ J3 ชี้ขาดแบบ
+ * ผู้เรียก (หน้า) ตรวจสิทธิ์ทะเบียนก่อน (ที่อยู่/อาชีพมาจากกล่องลับ)
+ */
+export async function rr4Register(ctx: unknown, input: unknown): Promise<Rr4Out | GuestFail> {
+  const tenantId = tenantOf(ctx);
+  if (!tenantId || !isRec(input)) return gfail("NOT_FOUND", R.notFound);
+  const unit = await hotelUnitOf(tenantId, input.unitId);
+  if (!unit) return gfail("NOT_FOUND", R.notFound);
+  return rr4Core(tenantId, unit, input, null);
+}
+/** สำเนาทะเบียนผู้พักสำหรับนายทะเบียน (?registrar=1): เลขเอกสารเต็ม — สิทธิ์ hotel.guest.viewId · AuditLog hotel.guest.revealed ต่อแขกที่พิมพ์ (1 ครั้งต่อการพิมพ์) */
+export async function rr4RegistrarCopy(actorIn: unknown, ctx: unknown, input: unknown): Promise<Rr4Out | GuestFail> {
+  const g = await guestGate(actorIn, ctx, isRec(input) ? input.unitId : null, ["hotel.guest.viewId"]);
+  if (isGuestFail(g)) return g;
+  return rr4Core(g.tenantId, { id: g.unitId, name: g.unitName }, input, g.actor.userId);
 }
 
 // ───────────────────────── purgeExpiredGuestRecords (Q6 · X5) ─────────────────────────
@@ -1027,14 +1097,21 @@ export async function purgeExpiredGuestRecords(input?: unknown): Promise<{ ok: t
   const cap = isRec(input) && typeof input.limit === "number" && Number.isInteger(input.limit) && input.limit > 0 ? Math.min(input.limit, PURGE_BATCH) : PURGE_BATCH;
   const today = dbDate(bkkYmd(now));
   const scan = tenantDb({ tenantId: "hotel-guest-purge" });
-  const rows = await scan.$queryRaw<{ id: string; tenantId: string; unitId: string; idNumberEnc: string | null; idImageFileId: string | null; signatureFileId: string | null }[]>`
-    SELECT "id", "tenantId", "unitId", "idNumberEnc", "idImageFileId", "signatureFileId" FROM "HotelGuestRecord"
-     WHERE "retainUntil" IS NOT NULL AND "retainUntil" < ${today}
-       AND ("idNumberEnc" IS NOT NULL OR "idImageFileId" IS NOT NULL OR "signatureFileId" IS NOT NULL)
-     ORDER BY "retainUntil" ASC, "id" ASC LIMIT ${cap}`;
+  // ผู้ตรวจรอบ 2 ข้อ 4: retainUntil คำนวณตอนบันทึก (ต่อคืนแล้วไม่ขยับ) ⇒ ลบเฉพาะเมื่อ "วันออกจริง + retainYears (ค่าตั้ง ณ ตอน purge)" พ้นแล้วด้วย
+  const rows = await scan.$queryRaw<{ id: string; tenantId: string; unitId: string; idNumberEnc: string | null; idImageFileId: string | null; signatureFileId: string | null; checkOutDate: Date }[]>`
+    SELECT g."id", g."tenantId", g."unitId", g."idNumberEnc", g."idImageFileId", g."signatureFileId", r."checkOutDate" FROM "HotelGuestRecord" g
+      JOIN "HotelReservation" r ON r."id" = g."reservationId"
+     WHERE g."retainUntil" IS NOT NULL AND g."retainUntil" < ${today}
+       AND (g."idNumberEnc" IS NOT NULL OR g."idImageFileId" IS NOT NULL OR g."signatureFileId" IS NOT NULL)
+     ORDER BY g."retainUntil" ASC, g."id" ASC LIMIT ${PURGE_BATCH * 5}`;
   let purged = 0;
   const perUnit = new Map<string, { tenantId: string; unitId: string; n: number }>();
+  const yearsOf = new Map<string, number>();
   for (const r of rows) {
+    if (purged >= cap) break;
+    const uk = `${r.tenantId}|${r.unitId}`;
+    if (!yearsOf.has(uk)) yearsOf.set(uk, (await guestSettings(r.tenantId, r.unitId)).retainYears);
+    if (retainUntilOf(r.checkOutDate, yearsOf.get(uk) ?? 2).getTime() >= today.getTime()) continue;
     const c = { tenantId: r.tenantId, unitId: r.unitId };
     const won = await tenantDb(c).$transaction(async (t) => {
       const tx = t as unknown as Tx;

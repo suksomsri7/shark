@@ -10,6 +10,7 @@ import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
 import { csvRow } from "@/lib/core/csv";
+import { bkkYmd } from "@/lib/core/quiet-hours";
 import { HOTEL_TM30_COLUMN_KEYS, HOTEL_TM30_COLUMN_TH, HOTEL_TM30_DEFAULT_COLUMNS, type HotelTm30ColumnKey } from "@/lib/core/settings/defs/rooms";
 import {
   EVIDENCE_KINDS,
@@ -28,6 +29,7 @@ import {
   isStr,
   isTxBusy,
   openGuestSecret,
+  STAYED_RV,
   type GuestSecret,
   tenantOf,
   uploadGuestFile,
@@ -70,7 +72,7 @@ export async function tm30Queue(ctx: unknown, input: unknown): Promise<{ ok: tru
   const unit = await hotelUnitOf(tenantId, input.unitId);
   if (!unit) return gfail("NOT_FOUND", R.notFound);
   const rows = await tenantDb({ tenantId, unitId: unit.id }).hotelGuestRecord.findMany({
-    where: { isForeigner: true, tm30Status: { in: ["PENDING", "LATE"] } },
+    where: { isForeigner: true, tm30Status: { in: ["PENDING", "LATE"] }, reservation: STAYED_RV }, // ผู้ตรวจรอบ 2 ข้อ 2: เฉพาะผู้พักจริง
     orderBy: [{ tm30DueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
     take: 1000,
     include: { reservation: { select: { code: true, status: true, checkInDate: true, checkOutDate: true, room: { select: { number: true } } } } },
@@ -117,11 +119,11 @@ export async function tm30Export(actorIn: unknown, ctx: unknown, input: unknown)
   const db = tenantDb(c);
   const ids = [...new Set(p.data.guestIds)];
   const rows = await db.hotelGuestRecord.findMany({
-    where: { id: { in: ids }, isForeigner: true, tm30Status: { in: ["PENDING", "LATE"] } },
+    where: { id: { in: ids }, isForeigner: true, tm30Status: { in: ["PENDING", "LATE"] }, reservation: STAYED_RV }, // ข้อ 2/7: ยังไม่เข้าพัก/ยกเลิก/ไม่มา = ไม่ส่งออก
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: { reservation: { select: { checkInDate: true, checkOutDate: true, checkedInAt: true, room: { select: { number: true } } } } },
   });
-  if (!rows.length) return gfail("INVALID_INPUT", "ไม่มีผู้เข้าพักต่างด้าวที่ยังไม่แจ้งในรายการที่เลือก");
+  if (!rows.length) return gfail("INVALID_INPUT", "ไม่มีผู้เข้าพักต่างด้าวที่เข้าพักแล้วและยังไม่แจ้งในรายการที่เลือก (ผู้พักที่ยังไม่เช็กอิน/ยกเลิก/ไม่มา ส่งออกไม่ได้)");
   // ผู้ตรวจ PDPA รอบ 1 MAJOR-1: ไฟล์ ตม. ต้องมีเลขหนังสือเดินทางเต็ม — เปิดกล่องลับไม่ได้ ⇒ ไม่ส่งออก (ไม่สร้างไฟล์ · ไม่เขียน AuditLog exported)
   if (!integrationSecretKeyConfigured()) return gfail("NOT_CONFIGURED", R.noKey);
   const secrets = new Map<string, GuestSecret>();
@@ -148,7 +150,7 @@ export async function tm30Export(actorIn: unknown, ctx: unknown, input: unknown)
         case "arrivalDate": return thDate(sec?.arrivalDate ?? null);
         case "portOfEntry": return sec?.portOfEntry ?? "";
         case "tm6No": return sec?.tm6No ?? "";
-        case "checkInDate": return thDate(ymdOfDb(r.reservation.checkedInAt ?? r.reservation.checkInDate));
+        case "checkInDate": return thDate(r.reservation.checkedInAt ? bkkYmd(r.reservation.checkedInAt) : ymdOfDb(r.reservation.checkInDate)); // ผู้ตรวจรอบ 2 ข้อ 1: วันไทย (เช็กอินตี 3 = วันนั้น ไม่ใช่วัน UTC)
         case "expectedCheckOut": return thDate(ymdOfDb(r.reservation.checkOutDate));
         case "roomNumber": return r.reservation.room?.number ?? "";
         default: return "";

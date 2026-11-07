@@ -2,14 +2,16 @@ import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { evaluate } from "@/lib/core/rbac";
 import { bkkYmd } from "@/lib/core/quiet-hours";
-import { addDaysYmd, isYmd, rr4Register } from "@/lib/modules/hotel";
+import { addDaysYmd, isYmd, rr4Register, rr4RegistrarCopy } from "@/lib/modules/hotel";
 import { ID_TYPE_LABEL, dateLongTh, dateTimeTh } from "@/components/hotel/checkin-shared";
 
 // SVC H.4 ▸ ทะเบียนผู้พัก (ร.ร.4) แบบพิมพ์ — แถว ร.ร.3 ของหน่วยที่วันเข้าอยู่ในช่วง from–to เรียงตามเลขบัตร (rr4Register)
 //   พ.ร.บ.โรงแรม 2547 ม.35 · เก็บไม่น้อยกว่า 1 ปี · ส่งสำเนาให้นายทะเบียนตามรอบที่กฎหมายกำหนด (ระบบเตือน ไม่ส่งเอง)
 //   "PDF" = คำสั่งพิมพ์ของเบราว์เซอร์ (ไม่มีไลบรารี PDF) · เลขเอกสาร = 4 ตัวท้าย · หน่วย "HOTEL" + สิทธิ์จาก session ไม่ผ่าน ⇒ notFound
+//   ผู้ตรวจรอบ 2 ข้อ 3 (ค่าปลอดภัยระหว่างรอ J3 ชี้ขาดแบบ): ช่อง วันเกิด/อายุ · อาชีพ · ที่อยู่ ทุกคน · โหมด "สำเนานายทะเบียน" (?registrar=1)
+//   พิมพ์เลขเอกสารเต็มเฉพาะผู้มี hotel.guest.viewId (ตรวจจาก session) + AuditLog hotel.guest.revealed ต่อแขกที่พิมพ์ · ไม่มีสิทธิ์ = 4 ตัวท้ายเหมือนเดิม
 type PageParams = Promise<{ unitSlug: string }>;
-type Search = { from?: string | string[]; to?: string | string[] };
+type Search = { from?: string | string[]; to?: string | string[]; registrar?: string | string[] };
 type PageSearch = Promise<Search>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
@@ -28,7 +30,10 @@ export default async function HotelRr4PrintPage({ params, searchParams }: { para
   const today = bkkYmd(new Date());
   const to = isYmd(one(sp.to)) ? one(sp.to) : today;
   const from = isYmd(one(sp.from)) ? one(sp.from) : addDaysYmd(to, -7);
-  const r = await rr4Register({ tenantId: auth.active.tenantId }, { unitId: unit.id, from, to });
+  const wantRegistrar = one(sp.registrar) === "1";
+  const canFull = can("hotel.guest.viewId");
+  const actor = { ...m, userId: auth.active.userId };
+  const r = wantRegistrar && canFull ? await rr4RegistrarCopy(actor, { tenantId: auth.active.tenantId }, { unitId: unit.id, from, to }) : await rr4Register({ tenantId: auth.active.tenantId }, { unitId: unit.id, from, to });
   if (!r.ok) notFound();
   return (
     <article data-rr4-print="" className="mx-auto flex w-full min-w-0 max-w-[297mm] flex-col gap-3 bg-[color:var(--color-surface)] p-6 print:p-0">
@@ -37,6 +42,11 @@ export default async function HotelRr4PrintPage({ params, searchParams }: { para
           ← ทะเบียนผู้พัก
         </a>
         <p className="text-xs text-[color:var(--color-muted)]">สั่งพิมพ์จากเบราว์เซอร์ แล้วเลือก “บันทึกเป็น PDF” เพื่อเก็บเป็นไฟล์</p>
+        {canFull && !r.registrar ? (
+          <a href={`/app/u/${unitSlug}/hotel/guests/rr4/print?from=${from}&to=${to}&registrar=1`} className="text-xs font-bold text-[color:var(--color-accent)]">
+            พิมพ์สำเนานายทะเบียน (เลขเอกสารเต็ม · บันทึกการเปิดดูทุกคน)
+          </a>
+        ) : null}
       </header>
       <div className="flex flex-col items-center gap-1 text-center">
         <h1 className="text-lg font-bold">ทะเบียนผู้พัก (ร.ร.4)</h1>
@@ -49,13 +59,16 @@ export default async function HotelRr4PrintPage({ params, searchParams }: { para
         </p>
       </div>
       <div data-scroll-hint="" className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-[12px]">
+        <table className="w-full min-w-[1200px] border-collapse text-[12px]">
           <thead>
             <tr className="border-b border-[color:var(--color-ink)] text-left">
               <th className="py-1 pr-2">เลขที่บัตร</th>
               <th className="py-1 pr-2">ชื่อตัว ชื่อสกุล</th>
               <th className="py-1 pr-2">สัญชาติ</th>
-              <th className="py-1 pr-2">เอกสาร</th>
+              <th className="py-1 pr-2">วันเกิด (อายุ)</th>
+              <th className="py-1 pr-2">อาชีพ</th>
+              <th className="py-1 pr-2">ที่อยู่</th>
+              <th className="py-1 pr-2">{r.registrar ? "เอกสาร (เลขเต็ม · สำเนานายทะเบียน)" : "เอกสาร"}</th>
               <th className="py-1 pr-2">ห้อง</th>
               <th className="py-1 pr-2">วันเวลาเข้าพัก</th>
               <th className="py-1 pr-2">วันออก</th>
@@ -70,7 +83,13 @@ export default async function HotelRr4PrintPage({ params, searchParams }: { para
                 <td className="py-1 pr-2">{x.fullName}</td>
                 <td className="py-1 pr-2">{x.nationalityTh ?? x.nationality ?? "—"}</td>
                 <td className="py-1 pr-2 whitespace-nowrap">
-                  {x.idType ? (ID_TYPE_LABEL[x.idType] ?? x.idType) : "—"} {x.idMasked}
+                  {x.dob ? dateLongTh(x.dob) : "—"}
+                  {x.age !== null ? ` (${x.age} ปี)` : ""}
+                </td>
+                <td className="py-1 pr-2">{x.occupation ?? "—"}</td>
+                <td className="py-1 pr-2">{x.address ?? "—"}</td>
+                <td className="py-1 pr-2 whitespace-nowrap">
+                  {x.idType ? (ID_TYPE_LABEL[x.idType] ?? x.idType) : "—"} {r.registrar && x.idNumberFull ? x.idNumberFull : x.idMasked}
                 </td>
                 <td className="py-1 pr-2">{x.roomNumber ?? "—"}</td>
                 <td className="py-1 pr-2 whitespace-nowrap">{x.checkedInAt ? dateTimeTh(x.checkedInAt) : dateLongTh(x.checkIn)}</td>
