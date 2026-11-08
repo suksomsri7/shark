@@ -51,6 +51,24 @@ const R_L = ["ROOM", "LEASE"] as const satisfies readonly ScopeKind[]; // LEASE:
 const U_RP = ["UNIT", "RATE_PLAN"] as const satisfies readonly ScopeKind[]; // RATE_PLAN: H.0
 const RT_RP = ["ROOM_TYPE", "RATE_PLAN"] as const satisfies readonly ScopeKind[]; // RATE_PLAN: H.0
 const RP = ["RATE_PLAN"] as const satisfies readonly ScopeKind[]; // RATE_PLAN: H.0
+// SVC H.4 ▸ คอลัมน์ไฟล์อัปโหลด ตม.30 ค่าเริ่ม (12 ช่องตามแบบ ตม.30 กระดาษ · Q-H4-1) — โมดูลโรงแรม (tm30.ts) ใช้ชุดเดียวกันนี้ ◂
+export const HOTEL_TM30_COLUMN_KEYS = ["fullName", "sex", "nationality", "passportNo", "dob", "visa", "arrivalDate", "portOfEntry", "tm6No", "checkInDate", "expectedCheckOut", "roomNumber"] as const;
+export type HotelTm30ColumnKey = (typeof HOTEL_TM30_COLUMN_KEYS)[number];
+export const HOTEL_TM30_COLUMN_TH: Record<HotelTm30ColumnKey, string> = {
+  fullName: "ชื่อ-สกุล",
+  sex: "เพศ",
+  nationality: "สัญชาติ",
+  passportNo: "เลขหนังสือเดินทาง",
+  dob: "วันเกิด",
+  visa: "ประเภท/เลขที่ตรวจลงตรา",
+  arrivalDate: "วันเดินทางเข้า",
+  portOfEntry: "ด่านตรวจคนเข้าเมือง",
+  tm6No: "เลข ตม.6",
+  checkInDate: "วันเข้าพัก",
+  expectedCheckOut: "วันออก (คาด)",
+  roomNumber: "เลขห้อง",
+};
+export const HOTEL_TM30_DEFAULT_COLUMNS: { key: HotelTm30ColumnKey; label: string }[] = HOTEL_TM30_COLUMN_KEYS.map((key) => ({ key, label: HOTEL_TM30_COLUMN_TH[key] }));
 
 // ─────────────────── ตัวช่วยสร้าง def ───────────────────
 type RoomDefInput = Omit<SettingDef, "domain" | "group" | "editPermission"> & { group?: string };
@@ -758,6 +776,26 @@ const DEFS: SettingDef[] = [
     helpTh: "ใช้โดเมนที่ตั้งไว้ใน ตั้งค่า › โดเมน", schema: z.boolean(), defaults: { _fallback: false }, chain: U,
   }),
   // ◂ SVC H.0
+  // SVC H.4 ▸ เช็กอิน V2 · ทะเบียนผู้พัก (ร.ร.3/ร.ร.4) · ตม.30 (ใบสั่ง svc-brief-h.4 §1) — เพิ่มอย่างเดียว
+  hotel({ key: "rooms.hotel.license.no", type: "text", labelTh: "เลขที่ใบอนุญาตประกอบธุรกิจโรงแรม", helpTh: "พิมพ์บนบัตร ร.ร.3 และทะเบียน ร.ร.4", schema: z.string().trim().max(60).nullable(), defaults: { _fallback: null }, chain: U }),
+  hotel({ key: "rooms.hotel.license.name", type: "text", labelTh: "ชื่อโรงแรมตามใบอนุญาต", helpTh: "ไม่กรอก = ใช้ชื่อสาขา", schema: z.string().trim().max(120).nullable(), defaults: { _fallback: null }, chain: U }),
+  hotel({ key: "rooms.hotel.license.registrarOffice", type: "text", labelTh: "นายทะเบียนที่รับสำเนาทะเบียนผู้พัก (ร.ร.4)", helpTh: "เช่น สำนักงานเขต/ที่ว่าการอำเภอ ที่โรงแรมตั้งอยู่", schema: z.string().trim().max(120).nullable(), defaults: { _fallback: null }, chain: U }),
+  hotel({ key: "rooms.hotel.guest.requireRegistration", type: "bool", labelTh: "ต้องลงทะเบียนผู้พักก่อนเช็กอิน", helpTh: "พ.ร.บ.โรงแรม 2547 ม.35 — ผู้พักต้องลงทะเบียน ร.ร.3 ทันทีที่เข้าพัก", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({ key: "rooms.hotel.guest.keepIdImageDefault", type: "bool", labelTh: "เก็บรูปบัตร/พาสปอร์ตไว้เป็นหลักฐาน (ค่าเริ่ม)", helpTh: "พนักงานเปลี่ยนได้ทีละครั้งเมื่อแขกไม่ยินยอม · ไฟล์เป็นแบบส่วนตัว", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({ key: "rooms.hotel.tm30.enabled", type: "bool", labelTh: "ติดตามการแจ้งที่พักคนต่างด้าว (ตม.30)", helpTh: "พ.ร.บ.คนเข้าเมือง 2522 ม.38 — แจ้งภายใน 24 ชม.", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({
+    key: "rooms.hotel.tm30.exportColumns", type: "table", labelTh: "คอลัมน์ไฟล์อัปโหลด ตม.30",
+    // Q-H4-1: แม่แบบ Excel ของระบบแจ้งที่พักออนไลน์ของ ตม. ต้องล็อกอินผู้ประกอบการจึงดาวน์โหลดได้ — ค่าเริ่ม = ช่องของแบบ ตม.30 กระดาษ · ผู้คุมปรับเมื่อเจ้าของส่งแม่แบบ
+    helpTh: "ลำดับ = ลำดับคอลัมน์ในไฟล์ · ปรับให้ตรงแม่แบบของระบบ ตม. ได้",
+    schema: z.array(z.object({ key: z.enum(HOTEL_TM30_COLUMN_KEYS), label: z.string().trim().min(1).max(60) }).strict()).min(1).max(30),
+    defaults: { _fallback: HOTEL_TM30_DEFAULT_COLUMNS }, chain: U,
+    tableTh: {
+      item: { kind: "object", labelTh: "คอลัมน์", fields: { key: { kind: "enum", labelTh: "ข้อมูล", shortTh: "", options: HOTEL_TM30_COLUMN_TH }, label: { kind: "text", labelTh: "หัวคอลัมน์", shortTh: "" } } },
+      ordered: true,
+      emptyTh: "ไม่มีคอลัมน์",
+    },
+  }),
+  // ◂ SVC H.4
   // SVC H.5 ▸ บิลระหว่างพัก/เช็กเอาต์ (ใบสั่ง h.5 §1 · เพิ่มคีย์อย่างเดียว)
   hotel({
     key: "rooms.hotel.checkout.allowLegacyCash", type: "bool", labelTh: "ให้เช็กเอาต์ทางเดิมรับเงินสดอัตโนมัติ (ระบบเดิม)",

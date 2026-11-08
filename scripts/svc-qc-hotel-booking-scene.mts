@@ -34,6 +34,7 @@ const { prisma } = await import("@/lib/core/db");
 const hotel = await import("@/lib/modules/hotel");
 const service = await import("@/lib/modules/hotel/service");
 const rooms = await import("@/lib/modules/rooms");
+const settingsEngine = await import("@/lib/core/settings"); // SVC H.4 ▸ มติรอบ 2 ◂
 
 const MARK = FX.mark;
 const tenantId = SQC.tenant.id;
@@ -83,6 +84,15 @@ try {
       if (!p) throw new Error(`ไม่พบแผน ${key} (${code}) — รันฉาก h.1 ก่อน`);
       return p.id;
     };
+    // SVC H.4 ▸ มติผู้คุมรอบ 2: ฉากนี้เช็กอินด้วย checkIn เดิม (ไม่มีทะเบียนผู้พัก) ⇒ ปิด rooms.hotel.guest.requireRegistration ที่หน่วย svcqc ก่อน
+    //   (ฉาก h.4 เปิดกลับตอนเริ่ม · ลำดับ seed → h.1 → h.3 → h.4 ⇒ สถานะสุดท้าย = เปิด) ◂
+    {
+      const cur = await settingsEngine.resolveSetting(ctx, "rooms.hotel.guest.requireRegistration", { unitId });
+      if (cur?.value !== false) {
+        const set = await settingsEngine.setSettings(OWNER, ctx, [{ key: "rooms.hotel.guest.requireRegistration", scope: "UNIT", scopeId: unitId, value: false }]);
+        if (!set.ok) throw new Error("ปิด requireRegistration ไม่สำเร็จ");
+      }
+    }
     for (const b of FX.bookings) {
       const have = await prisma.hotelReservation.count({ where: { tenantId, unitId, note: noteOf(b.key) } });
       if (have > 0) continue;

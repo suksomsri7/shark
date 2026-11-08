@@ -347,6 +347,15 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "hotel.booking.changed", label: "เมื่อการจองห้องพักเปลี่ยน (ต่อคืน · ย่นคืน · ย้ายห้อง · เลื่อนวัน)" },
   { value: "hotel.booking.deposit_after_expiry", label: "เมื่อรับมัดจำหลังหมดเวลาถือห้องแต่ห้องเต็มแล้ว (คืนเงินอัตโนมัติ — พนักงานติดต่อลูกค้า)" },
   // ◂ SVC H.3
+  // SVC H.4 ▸ เช็กอิน V2/ทะเบียนผู้พัก/ตม.30 — ตัวยิง `hotel/checkin.ts` · `guest.ts` · `tm30.ts` · payload id/จำนวนล้วน (X8) ·
+  //   consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "hotel.checked_in", label: "เมื่อผู้เข้าพักเช็กอิน (โรงแรม)" },
+  { value: "hotel.guest.registered", label: "เมื่อลงทะเบียนผู้เข้าพัก (ร.ร.3)" },
+  { value: "hotel.guest.id_revealed", label: "เมื่อพนักงานเปิดดูเลขบัตร/พาสปอร์ตเต็มของผู้เข้าพัก" },
+  { value: "hotel.tm30.due", label: "เมื่อใกล้ครบหรือเลยกำหนดแจ้งที่พักคนต่างด้าว (ตม.30 ภายใน 24 ชม.)" },
+  { value: "hotel.tm30.filed", label: "เมื่อบันทึกว่าแจ้ง ตม.30 แล้ว (มีเลขรับแจ้ง)" },
+  { value: "hotel.guest.purged", label: "เมื่อระบบลบข้อมูลอ่อนไหวของผู้เข้าพักที่พ้นระยะเวลาเก็บ" },
+  // ◂ SVC H.4
   // SVC H.5 ▸ บิลระหว่างพัก (folio) · เช็กเอาต์ POS ใบเดียว · เงินประกันห้อง — ตัวยิง hotel/folio.ts · checkout.ts · room-charge.ts (ใน tx เดียวกับการเขียน)
   //   payload { tenantId, unitId, reservationId, groupId?, folioId, saleId?, itemId?, amountSatang, type?, reason? } id + สตางค์ล้วน (X8) · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks)
   { value: "hotel.folio.posted", label: "เมื่อลงรายการในบิลห้องพัก (ค่าห้อง · มินิบาร์ · บริการ · ลงห้องจาก POS)" },
