@@ -94,3 +94,19 @@
 - H.8: ไม่เกี่ยว · H.10: funnel ต่อ source = `HotelReservation.source` (OTA รวมเป็นแถวเดียว — แตกตาม `channel.*` ได้ที่ `bookingFunnel`/`revenueReport` groupBy source) · H.9: ด่านเต็ม + ไล่กด /hotel/reports /hotel/reports/audit
 - deploy: crontab VPS เรียก `crm-cron.mts minute` อยู่แล้ว (ไม่เพิ่ม vercel.json)
 - คืนสภาพ qc-svc: ข้อสอบ h.7 ล้างร้าน `svc-h7-*` + trigger ใน finally (Z-1 ✅) · ฉาก h.7 ค้างหลัง Q-4 โดยออกแบบ (ล้างด้วย `--clear`)
+
+## รอบ 2 (8 พ.ย. · ผู้คุมรันซ้ำ + ผู้ตรวจรอบ 1 เงิน)
+แก้ (commit 59f4b7fe0 · ab14b37b9):
+1. **fitness F10.1** — `outbox-consumers.ts` เลิก import `sendEmailRich` แบบ static ⇒ `await import("@/lib/core/email")` ใน consumer `hotel.audit.closed` · fitness ผ่าน 53/53 ทั้งมี env และ `env -u DATABASE_URL` (exit 0)
+2. **แท็บรายงาน ⇔ สิทธิ์** — `hotelTabsFor(acc)` รับ `reportsRead?: boolean` (ไม่ส่ง = false ⇒ ซ่อน) · `hotel/layout.tsx` ส่ง `reportsRead: can("hotel.reports.read")` (layout อยู่นอก §1 แต่ผู้คุมสั่งแก้ในพรอมป์รอบ 2) · h.1 U-4 / h.2 U-7 / h.7 U-3 เขียว
+3. **วัน REOPENED (มติผู้คุม ข้อ 1)** — (ก) ปิดใหม่ของวัน REOPENED ไม่ทำขั้น 1 · ใบที่ยัง CONFIRMED = ผู้จัดการย้อนเอง ⇒ ข้าม · `snapshot.notes` = "เปิดซ้ำ — ไม่ตั้งไม่มาซ้ำ N ใบ" (มีเมื่อ N>0) · (ข) `runDueAudits` ปิดวัน REOPENED ได้เมื่อ `now − reopenedAt ≥ 2 ชม.` (ใช้ now ที่ส่งเข้ามา · ปิดมือได้ทันที) · probe U-2/U-3 · h.7 CR-4 เขียว
+4. **minor** — C-6: markNoShow ไม่สำเร็จแต่แถวเป็น NO_SHOW แล้ว (อีกทางชนะ CAS) ⇒ ข้ามเงียบ · `noShowsMarked` ใน AuditLog นับที่สำเร็จจริง · ขั้น 2 ล็อก folio เรียง reservationId (orderBy reservationId, date)
+5. ไม่แก้ (ผู้คุมลงหนี้ H.9): S-2 actorType cron · ขั้น 3 ล้มไม่ลองใหม่ · facade ไม่ตรวจสิทธิ์ซ้ำ · ขั้น 1 ก่อน tx ลำดับวัน · getUnitKpi ↔ Overview
+
+ผล (tip ab14b37b9 · ฐาน ep-square-heart · log `/root/svc-runs/h7/r2*-*.log`):
+- probe-h7-review-a: 35 · ผ่าน 34 · แดง 0 · SKIP S-2
+- qc-svc-h.7 --no-regression: 75 · ผ่าน 62 · แดง [] (skip F-1 หลัง commit · V/G = ภาพ/ด่านผู้คุม)
+- fitness 2 โหมด: exit 0 ทั้งคู่ (53/53)
+- หลัง `svc-qc-hotel-audit-scene.mts --clear`: h.1 112/122 แดง [] · h.2 78/87 แดง [] · h.6 85/97 แดง [] · h.5 77/95 แดง [] · h.3 98/109 แดง [] (รอบแรก h.3 F-1 แดงเพราะ night-audit.ts ค้างไม่ commit ระหว่างรัน — รันซ้ำหลัง commit เขียว)
+- ตรวจชนิดไฟล์ที่แตะ (tsconfig นอกทรี `/root/svc-runs/h7/tsconfig.h7c.json` = h7b + layout.tsx · heap 6G): 0 error
+- หมายเหตุ: รอบแรก h.7 U-10 แดงเพราะ regex `status: "NO_SHOW"` จับคิวรีอ่าน (`where: {id, status: "NO_SHOW"}`) ⇒ เปลี่ยนเป็นอ่าน status แล้วเทียบ (ab14b37b9)
