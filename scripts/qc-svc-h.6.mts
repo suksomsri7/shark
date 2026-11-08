@@ -1624,7 +1624,7 @@ try {
     const tabs = tabsL.mod.HOTEL_TABS as Any[];
     const hk = tabs.find((t) => t.key === "housekeeping");
     ok(hk?.available === true, "housekeeping ยัง available:false (ยังไม่มีงาน H.6)");
-    eq(tabs.filter((t) => t.key !== "calendar" && t.key !== "housekeeping").map((t) => [t.key, t.available]), [["reservations", true], ["frontdesk", true], ["rates", true], ["reports", false], ["settings", true]], "แท็บอื่น");
+    eq(tabs.filter((t) => t.key !== "calendar" && t.key !== "housekeeping").map((t) => [t.key, t.available]), [["reservations", true], ["frontdesk", true], ["rates", true], ["reports", true], ["settings", true]], "แท็บอื่น"); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-tabs) H.7 เปิดแท็บรายงาน
     const full = tabsL.mod.hotelTabsFor({ ratesRead: true, settingsEdit: true, housekeeping: true }, "/app/u/x") as Any[];
     ok(full.some((t) => t.key === "housekeeping" && t.labelTh === "แม่บ้าน" && t.href === "/app/u/x/hotel/housekeeping"), `ไม่มีแท็บแม่บ้าน ${J(full)}`);
     const only = tabsL.mod.hotelTabsFor({ ratesRead: false, settingsEdit: false, housekeeping: true, housekeepingOnly: true }, "/app/u/x") as Any[];

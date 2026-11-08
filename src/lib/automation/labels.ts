@@ -383,6 +383,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "hotel.hk.minibar_unbilled", label: "เมื่อมีมินิบาร์ค้างเก็บ (แขกออกไปแล้ว — หน้าเคาน์เตอร์เลือกเรียกเก็บหรือยกให้)" },
   { value: "hotel.hk.defect", label: "เมื่อแม่บ้านแจ้งของเสีย/ของหาย (ปิดห้องซ่อม หรือ แจ้งช่าง)" },
   // ◂ SVC H.6
+  // SVC H.7 ▸ ปิดวันโรงแรม — ตัวยิง hotel/night-audit.ts (ใน tx เดียวกับแถว HotelNightAudit) · payload { tenantId, unitId, auditId, businessDate, kpi? , byUserId? } (X8)
+  { value: "hotel.audit.closed", label: "เมื่อปิดวันโรงแรม (night audit) เสร็จ" },
+  { value: "hotel.audit.reopened", label: "เมื่อผู้จัดการเปิดวันที่ปิดแล้วของโรงแรมอีกครั้ง" },
+  // ◂ SVC H.7
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม
