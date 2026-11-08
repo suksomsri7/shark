@@ -1078,6 +1078,16 @@ DEFS.push(
 GROUP_LABELS_TH.report = "รายงานหอ";
 // ◂ SVC D.19
 
+// SVC H.10 ▸ ช่วงส่ง ARI ล่วงหน้าของช่องทาง OTA (ใบสั่ง h.10 §2 ข้อ 3 · §9.4) — งานรวมชุดตัดท้ายที่วันนี้ + ค่านี้
+DEFS.push(
+  hotel({
+    key: "rooms.hotel.ota.ariHorizonDays", group: "ota", type: "days", labelTh: "ส่งราคา/ห้องว่างให้ช่องทางล่วงหน้า (วัน)",
+    helpTh: "ช่วงที่ระบบส่งราคา ห้องว่าง และข้อจำกัดให้ช่องทาง OTA นับจากวันนี้",
+    schema: z.number().int().min(7).max(400), defaults: { _fallback: 365 }, chain: U, requires: { integration: "CHANNEL_MANAGER" },
+  }),
+);
+// ◂ SVC H.10
+
 const withLabels = (defs: SettingDef[]): SettingDef[] => defs.map((d) => (ENUM_LABELS_TH[d.key] ? { ...d, enumLabelsTh: ENUM_LABELS_TH[d.key] } : d));
 
 defineSettings("rooms", withLabels(DEFS), { templates: ROOM_TEMPLATES, snapshots: SNAPSHOTS, groupRules: GROUP_RULES, groupLabelsTh: GROUP_LABELS_TH });

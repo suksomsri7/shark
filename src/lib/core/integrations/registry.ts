@@ -66,3 +66,12 @@ export function integrationCatalog(): CatalogEntry[] {
     };
   });
 }
+
+// SVC H.10 ▸ พร้อมใช้ต่อ (ชนิด, ผู้ให้บริการ) — เพิ่มอย่างเดียว · INTEGRATION_KIND_META.ready (การ์ด) คงเดิม
+//   CHANNEL_MANAGER พร้อมเฉพาะ FAKE (ตัวต่อเจ้าจริง = เฟส H2) · ชนิดอื่น = ค่า ready ของแค็ตตาล็อก
+export function readyFor(kind: unknown, provider: unknown): boolean {
+  if (!isStoredKind(kind) && !isVirtualKind(kind)) return false;
+  if (kind === "CHANNEL_MANAGER") return provider === FAKE_PROVIDER.code;
+  return INTEGRATION_KIND_META[kind].ready;
+}
+// ◂ SVC H.10

@@ -700,6 +700,30 @@ registerMinuteJob({
 });
 // ◂ SVC D.12
 
+// SVC H.10 ▸ ช่องทาง OTA (ใบสั่ง h.10 §1 · §9): ส่ง ARI ที่ค้าง (ทุก 1 นาที · CAS ต่องาน = ซ้อนแล้วส่งครั้งเดียว) · ดึงการจองจากตัวต่อ (ทุก 5 นาที · inbox idempotent)
+//   ทั้งคู่ไม่ throw · เคารพงบเวลา · ตัวต่อถอด (DISABLED) ⇒ ข้าม
+registerMinuteJob({
+  name: "channel-ari-push",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/hotel")).pushAriJobs(now, Math.max(5_000, budgetMs - 3_000)),
+});
+//   full resync ARI (รอบ 3 ผู้ตรวจ B): ทุก 15 นาทีตรวจ · แต่ละ (ตัวต่อ, หน่วย) ได้งานทั้งช่วงเพดาน ariHorizonDays ทุก 6 ชม. (ARI_RESYNC_EVERY_MS ค่าคงที่ใน ari.ts)
+//   lease = แถว lease ของงานนี้ + ตรวจ "งานครอบสร้างในรอบแล้ว" ใต้ advisory lock ต่อคู่ · ข้ามตัวต่อที่ไม่พร้อม · ปิดเส้นที่ไม่มี event + งาน FAILED
+registerMinuteJob({
+  name: "channel-ari-resync",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/hotel")).resyncAriAll(now, Math.max(5_000, budgetMs - 3_000)),
+});
+registerMinuteJob({
+  name: "channel-pull",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/hotel")).pullAll(now, Math.max(5_000, budgetMs - 3_000)),
+});
+// ◂ SVC H.10
+
 function errorText(e: unknown): string {
   let s: string;
   if (e instanceof Error) s = e.stack && e.stack.includes(e.message) ? e.stack : `${e.name}: ${e.message}`;

@@ -115,6 +115,35 @@ export type { TapeBar, TapeBarKind, TapeRoom, TapeGroup, TapeOccupancyDay, TapeL
 export { blockRoom, releaseBlock, listBlocks, BLOCK_REF } from "./block";
 export type { BlockActor, BlockFail, BlockFailCode, BlockOk, BlockRow } from "./block";
 // ◂ SVC H.2
+// SVC H.10 ▸ ช่องทาง OTA (channel manager · ใบสั่ง h.10 §1 · §3) — แม็ป/ARI ขาออก/ขาเข้า idempotent/คิวต้องจัดห้อง · fakeEnqueueInbound อยู่ที่ ./channel (ทดสอบเท่านั้น)
+export {
+  listChannelConnections,
+  saveRoomMap,
+  saveRateMap,
+  saveBuffer,
+  channelMappingFor,
+  channelDetail,
+  emitAriDirty,
+  onAriDirty,
+  ariDirtyFromBooking,
+  ariDirtyFromOccupancy,
+  ariDirtyFromHk,
+  ariResyncOnConnected,
+  resyncAriAll,
+  buildAri,
+  pushAriJobs,
+  pullAll,
+  ingestInbound,
+  applyInbound,
+  retryInbound,
+  rejectInbound,
+  listNeedsRoom,
+  listInbox,
+  markupPrice,
+  ariHash,
+} from "./channel";
+export type { ChannelConnectionDto, ChannelDetailDto, ChannelFail, AriPayload, InboundReservation, ChannelMapping, NeedsRoomItem, InboxItem, ApplyResult } from "./channel";
+// ◂ SVC H.10
 // SVC H.6 ▸ แม่บ้าน (ใบสั่ง h.6 §3) — บอร์ดงานห้องวันนี้ · state machine hk · เริ่มทำ/เสร็จ/ตรวจ · มินิบาร์ → folio · แจ้งของเสีย · night audit (H.7 เรียก)
 export {
   hkBoard,

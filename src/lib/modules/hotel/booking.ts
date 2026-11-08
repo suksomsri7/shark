@@ -51,6 +51,7 @@ export type BookingFailCode =
   | "NOT_SAME_DAY"
   | "NO_POS"
   | "BUSY"
+  | "CHANNEL_CONFLICT" // SVC H.10 ▸ ตัวตรวจของช่องทางใน tx ปฏิเสธ (ซ้ำ/ฉบับเก่า) ◂
   | "STATE_CHANGED";
 export type BookingFail = { ok: false; code: BookingFailCode; reason: string; dates?: string[]; suggest?: { action: "MOVE_ROOM"; rooms: { id: string; number: string }[] } };
 export type BookingRowOut = { id: string; code: string; roomTypeId: string; status: string; holdExpiresAt: string | null; nights: number; totalSatang: number };
@@ -520,6 +521,69 @@ const CreateInput = z.object({
 });
 type CreateIn = z.infer<typeof CreateInput>;
 type CreateOpts = { legacy?: boolean; createdById?: string | null };
+// SVC H.10 ▸ internal.channel (ใบสั่ง h.10 §9.6 · ยกเว้นแคบ เพิ่มอย่างเดียว — ทางเดิมที่ไม่ส่ง channel ทุกไบต์เท่าเดิม) — การจองจากช่องทาง OTA ที่ inbox ตรวจแล้ว:
+//   ผู้กระทำ = ระบบ (actor null · AuditLog SYSTEM · ไม่ต้องมี membership) · source OTA เท่านั้น · CONFIRMED เสมอ (ข้าม bookingMode/HOLD) ·
+//   ข้ามข้อจำกัดของแผน/ฤดู/ค่าตั้ง (minNights · maxNights · ปิดรับเช็กอิน · จองล่วงหน้า) แต่ **ไม่ข้ามด่านห้องว่าง** (lockTypes + availabilityInTx ใน tx เดียว) ·
+//   NO_RATE ⇒ ราคาคืนละ gross ÷ (คืน × ห้อง) ของช่องทาง · prepaidByChannel ⇒ ไม่มีมัดจำ · คอลัมน์ OTA เขียนในแถวเดียวกับการจอง ·
+//   replaceReservationIds = ช่องทางแก้ไขการจอง: ยกเลิกการจองเดิม (CHANNEL_MODIFIED · ไม่คืนเงินผ่าน POS) แล้วสร้างใหม่ใน tx เดียว — ห้องไม่พอ ⇒ ย้อนทั้งคู่ (การจองเดิมคง)
+export type CreateBookingInternal = CreateOpts & {
+  channel?: {
+    connectionId: string;
+    grossSatang: number;
+    commissionSatang: number;
+    /** net ที่ช่องทางส่งมา (เก็บตรงตัว · §10.5) — null/ไม่ส่ง ⇒ gross − commission */
+    netSatang: number | null;
+    prepaidByChannel: boolean;
+    replaceReservationIds?: string[];
+    /** ตัวตรวจ/บันทึกของ inbox ใน tx เดียวกับการจอง (หลังสร้างแถว) — คืนข้อความ = ย้อนทั้ง tx (CHANNEL_CONFLICT) · null = ผ่าน */
+    onCreated?: (tx: Prisma.TransactionClient, reservationIds: string[]) => Promise<string | null>;
+  };
+};
+type ChannelIn = NonNullable<CreateBookingInternal["channel"]>;
+const isMoney = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 10_000_000_000;
+/** internal.channel ที่ใช้ได้ (ชนิด/ค่าเงินถูก) — ไม่มี/ผิด = null (ทางเดิม) */
+function channelOf(opts: CreateOpts): ChannelIn | null {
+  const ch = (opts as CreateBookingInternal).channel;
+  if (!isRec(ch) || !isStr(ch.connectionId) || !isMoney(ch.grossSatang) || !isMoney(ch.commissionSatang) || (ch.netSatang != null && !isMoney(ch.netSatang)) || typeof ch.prepaidByChannel !== "boolean") return null;
+  const replace = Array.isArray(ch.replaceReservationIds) ? ch.replaceReservationIds.filter(isStr) : [];
+  const netSatang = isMoney(ch.netSatang) ? ch.netSatang : null;
+  if (typeof ch.onCreated === "function") return { connectionId: ch.connectionId, grossSatang: ch.grossSatang, commissionSatang: ch.commissionSatang, netSatang, prepaidByChannel: ch.prepaidByChannel, replaceReservationIds: [...new Set(replace)], onCreated: ch.onCreated };
+  return { connectionId: ch.connectionId, grossSatang: ch.grossSatang, commissionSatang: ch.commissionSatang, netSatang, prepaidByChannel: ch.prepaidByChannel, replaceReservationIds: [...new Set(replace)] };
+}
+/** ยอดรวมของช่องทางแบ่งต่อห้อง (เศษลงห้องแรก · ผลรวม = ยอดเดิม) */
+const splitOf = (total: number, n: number, i: number): number => Math.floor(total / n) + (i === 0 ? total - Math.floor(total / n) * n : 0);
+/** NO_RATE ของช่องทาง ⇒ ราคาคืนละ gross ÷ (คืน × ห้อง) (เศษลงคืนสุดท้าย · ผลรวมต่อห้อง = ส่วนของ gross) */
+function channelQuote(ch: ChannelIn, roomTypeId: string, ratePlanId: string, checkIn: string, checkOut: string, rooms: number, i: number): QuoteOk {
+  const dates = nightDates(checkIn, checkOut);
+  const share = splitOf(ch.grossSatang, Math.max(1, rooms), i);
+  const per = Math.floor(share / Math.max(1, dates.length));
+  const nights = dates.map((date, k) => ({ date, priceSatang: k === dates.length - 1 ? share - per * (dates.length - 1) : per, source: "FALLBACK" as const, seasonId: null, bucket: null }));
+  return { ok: true, roomTypeId, ratePlanId, checkIn, checkOut, extraBeds: 0, nights, nightsTotal: share };
+}
+/**
+ * ยกเลิกการจองโดยช่องทาง (ใน tx ของผู้เรียก · หลังล็อกประเภทของแถวเหล่านี้แล้ว) — CAS HOLD/CONFIRMED ⇒ CANCELLED + ปล่อยคืน/ห้อง/folio + event + audit SYSTEM
+ * ไม่แตะเงิน POS (prepaid = เงินอยู่ที่ช่องทาง) · เข้าพักแล้ว/มีมัดจำที่รับไว้ (ไม่ prepaid) ⇒ Abort INVALID_STATUS (ให้คนจัดการ) · ยกเลิกแล้ว = ข้าม
+ */
+async function channelCancelRowsTx(tx: Tx, c: Ctx, ids: string[], lockedTypes: string[], now: Date, reasonCode: "CHANNEL_CANCELLED" | "CHANNEL_MODIFIED"): Promise<string[]> {
+  const done: string[] = [];
+  const reason = reasonCode === "CHANNEL_CANCELLED" ? "CHANNEL_CANCELLED · ช่องทางแจ้งยกเลิกการจอง" : "CHANNEL_MODIFIED · ช่องทางแก้ไขการจอง (ยกเลิกแล้วสร้างใหม่)";
+  for (const id of ids) {
+    const rv = await tx.hotelReservation.findFirst({ where: { id, tenantId: c.tenantId, unitId: c.unitId } });
+    if (!rv) throw new Abort(fail("NOT_FOUND", R.notFound));
+    if (rv.status === "CANCELLED") continue;
+    if (!lockedTypes.includes(rv.roomTypeId)) throw new Abort(fail("STATE_CHANGED", "การจองเดิมเพิ่งถูกย้ายประเภทห้อง — ลองอีกครั้ง"));
+    if (rv.status !== "HOLD" && rv.status !== "CONFIRMED") throw new Abort(fail("INVALID_STATUS", "การจองเดิมเข้าพักแล้วหรือปิดไปแล้ว — จัดการที่หน้าการจอง"));
+    if (rv.depositPaidAt && !rv.prepaidByChannel) throw new Abort(fail("INVALID_STATUS", "การจองเดิมมีมัดจำที่รับไว้ — ยกเลิก/คืนเงินที่หน้าการจองก่อน"));
+    const upd = await tx.hotelReservation.updateMany({ where: { id: rv.id, tenantId: c.tenantId, unitId: c.unitId, status: rv.status }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: reason } });
+    if (upd.count === 0) throw new Abort(fail("STATE_CHANGED", "การจองเดิมเพิ่งถูกเปลี่ยนสถานะ — ลองอีกครั้ง"));
+    await releaseStayTx(tx, c, rv.id, reason);
+    await emitEv(tx, c, "cancelled", rv, "CANCELLED", randomUUID());
+    await audit(tx, c, null, "hotel.booking.cancelled", rv.id, { status: rv.status }, { status: "CANCELLED", reason: reasonCode, by: "CHANNEL", channelConnectionId: rv.channelConnectionId });
+    done.push(rv.id);
+  }
+  return done;
+}
+// ◂ SVC H.10
 
 /**
  * สร้างการจอง (tx เดียว · S §7.2) — actor null = ทางสาธารณะ (เฉพาะ WEB/LINE · มติ §11 ข้อ 5)
@@ -533,11 +597,14 @@ export async function createBooking(actor: unknown, ctx: unknown, input: unknown
 }
 
 async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown, opts: CreateOpts): Promise<CreateBookingOk | BookingFail> {
+  const chIn = channelOf(opts); // SVC H.10 ▸ internal.channel ◂
   const g = await gate(actorIn, ctx, input, "hotel.reservation.create", true);
   if (isFail(g)) return g;
   const p = CreateInput.safeParse(input);
   if (!p.success) return fail("INVALID_INPUT", zodReason(p.error));
   const inp: CreateIn = p.data;
+  if (chIn && (actorIn !== null || inp.source !== "OTA")) return fail("INVALID_INPUT", "การจองจากช่องทางต้องมาจากระบบและแหล่งที่มา OTA"); // SVC H.10
+  if (!chIn) // SVC H.10 ▸ ช่องทาง = ระบบ (actor null) ⇒ ไม่ใช่ทางสาธารณะ — ข้ามด่าน "WEB/LINE เท่านั้น" ◂
   if (!g.actor && inp.source !== "WEB" && inp.source !== "LINE") return fail("FORBIDDEN", "จองผ่านหน้าเว็บ/LINE เท่านั้นสำหรับลูกค้า");
   if (inp.source === "OTA" && !isStr(inp.channelRef ?? "")) return fail("INVALID_INPUT", "การจองจากช่องทาง OTA ต้องมีเลขการจองของช่องทาง");
   const now = clockOf(input);
@@ -559,11 +626,13 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
   const pc0 = await loadPricingContext({ tenantId: c.tenantId }, c.unitId, { from: inp.checkIn, to: addDaysYmd(inp.checkOut, -1), ...(inp.ratePlanId ? { ratePlanId: inp.ratePlanId } : {}) });
   if (!pc0) return fail("INVALID_INPUT", "ช่วงวันที่ยาวเกินไป — จองได้ไม่เกิน 365 คืน");
   const pc: PricingContext = { ...pc0, today };
+  if (chIn) Object.assign(pc, { plans: pc.plans.map((x) => ({ ...x, minNights: null, maxNights: null })), seasons: pc.seasons.map((x) => ({ ...x, minNights: null })) }); // SVC H.10 ▸ ช่องทางข้ามข้อจำกัดแผน/ฤดู ◂
   const plan = inp.ratePlanId ? (pc.plans.find((x) => x.id === inp.ratePlanId) ?? null) : (pc.plans.find((x) => x.isDefault) ?? null);
   if (inp.ratePlanId && !plan) return fail("NOT_FOUND", "ไม่พบแผนราคานี้ในโรงแรมนี้");
   const pol = await unitPolicy(c.tenantId, c.unitId, plan?.id ?? null);
   // เส้น P1 (legacy) ไม่มีเพดานจองล่วงหน้า (คงพฤติกรรมเดิมของ createReservation · qc-hotel-public จองปี 2031) — V2 ใช้ rooms.hotel.maxAdvanceBookingDays
   const maxAdvance = opts.legacy ? 100_000 : pol.maxAdvance;
+  if (!chIn) // SVC H.10 ▸ ช่องทางขายไว้แล้ว ⇒ ไม่ตรวจเพดานจองล่วงหน้า ◂
   if (dayNumber(inp.checkIn) - dayNumber(today) > maxAdvance) return fail("TOO_FAR", `จองล่วงหน้าได้ไม่เกิน ${pol.maxAdvance} วัน`);
 
   // ราคา · มัดจำ
@@ -571,9 +640,14 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
   let legacyPrices = false;
   if (plan) {
     const limits = { minNights: pol.minNights, maxNights: null, closedToArrival: pol.closedToArrival, maxAdvanceBookingDays: maxAdvance };
+    if (chIn) Object.assign(limits, { minNights: null, closedToArrival: false, maxAdvanceBookingDays: 100_000 }); // SVC H.10 ◂
     for (const r of inp.rooms) {
       const q = quoteStay(pc, { roomTypeId: r.roomTypeId, ratePlanId: plan.id, checkIn: inp.checkIn, checkOut: inp.checkOut, extraBeds: r.extraBeds ?? 0, limits });
       if (!q.ok) {
+        if (chIn && q.error === "NO_RATE") {
+          quotes.push(channelQuote(chIn, r.roomTypeId, plan.id, inp.checkIn, inp.checkOut, inp.rooms.length, quotes.length)); // SVC H.10 ▸ ไม่มีราคา ⇒ ราคาของช่องทาง ◂
+          continue;
+        }
         if (opts.legacy && q.error === "NO_RATE") {
           legacyPrices = true;
           break;
@@ -615,6 +689,11 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
     }
   }
 
+  if (chIn) {
+    // SVC H.10 ▸ ช่องทางยืนยัน/เก็บเงินแล้ว ⇒ CONFIRMED เสมอ (ข้าม bookingMode · ไม่ HOLD) ◂
+    status = "CONFIRMED";
+    holdUntil = null;
+  }
   // snapshot ตอนจอง (ค่าตั้ง ณ เวลาจริง + กฎยกเลิกของแผน)
   const planRules = plan ? await db.hotelCancelRule.findMany({ where: { ratePlanId: plan.id }, orderBy: { daysBefore: "desc" }, select: { daysBefore: true, refundBp: true } }) : [];
   const snap = await snapshotPolicy({ tenantId: c.tenantId }, "reservation", { unitId: c.unitId, roomTypeId: inp.rooms[0].roomTypeId, ...(plan ? { ratePlanId: plan.id } : {}) });
@@ -626,10 +705,14 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
   const need = new Map<string, number>();
   for (const r of inp.rooms) for (const d of nightDates(inp.checkIn, inp.checkOut)) need.set(`${r.roomTypeId}|${d}`, (need.get(`${r.roomTypeId}|${d}`) ?? 0) + 1);
 
+  // SVC H.10 ▸ แก้ไขจากช่องทาง: ล็อกประเภทของการจองเดิมด้วย (ลำดับเดียว "ประเภท → แถว → occupancy") ◂
+  const replaceRows = chIn?.replaceReservationIds?.length ? await db.hotelReservation.findMany({ where: { id: { in: chIn.replaceReservationIds } }, select: { id: true, roomTypeId: true } }) : [];
+  for (const x of replaceRows) if (!typeIds.includes(x.roomTypeId)) typeIds.push(x.roomTypeId); // SVC H.10
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const out = await inTx(c, async (tx) => {
         await lockTypes(tx, c.unitId, typeIds);
+        if (chIn?.replaceReservationIds?.length) await channelCancelRowsTx(tx, c, chIn.replaceReservationIds, typeIds, now, "CHANNEL_MODIFIED"); // SVC H.10 ▸ ยกเลิกเดิม+สร้างใหม่ใน tx เดียว ◂
         const av = await availabilityInTx(tx, { ...c, roomTypeIds: typeIds, from: inp.checkIn, to: inp.checkOut });
         const short = shortDates(av, need);
         if (short.length) throw new Abort(fail("AVAILABILITY_CHANGED", R.full, { dates: short }));
@@ -659,6 +742,16 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
               createdById,
               source: inp.source,
               channelRef: inp.channelRef || null,
+              ...(chIn // SVC H.10 ▸ คอลัมน์ OTA ในแถวเดียวกัน (ยอดแบ่งต่อห้อง) · prepaid ⇒ ไม่มีมัดจำ ◂
+                ? {
+                    channelConnectionId: chIn.connectionId,
+                    grossSatang: splitOf(chIn.grossSatang, inp.rooms.length, i),
+                    commissionSatang: splitOf(chIn.commissionSatang, inp.rooms.length, i),
+                    netSatang: chIn.netSatang !== null ? splitOf(chIn.netSatang, inp.rooms.length, i) : splitOf(chIn.grossSatang, inp.rooms.length, i) - splitOf(chIn.commissionSatang, inp.rooms.length, i), // §10.5 net ของช่องทางตรงตัว (รอบ 3 RB-9)
+                    prepaidByChannel: chIn.prepaidByChannel,
+                    ...(chIn.prepaidByChannel ? { depositSatang: 0 } : {}),
+                  }
+                : {}),
               ratePlanId: plan?.id ?? null,
               groupId,
               holdExpiresAt: holdUntil,
@@ -688,12 +781,17 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
             nights: q.nights.length,
             totalSatang: q.nightsTotal,
             depositSatang: i === 0 ? depositRequired : 0,
+            ...(chIn ? { channel: true, depositSatang: chIn.prepaidByChannel || i !== 0 ? 0 : depositRequired } : {}), // SVC H.10 ◂
             groupId,
             ratePlanId: plan?.id ?? null,
             holdExpiresAt: holdUntil?.toISOString() ?? null,
           });
           await emitEv(tx, c, "created", ev, status);
           rows.push({ id: rv.id, code: rv.code, roomTypeId: r.roomTypeId, status, holdExpiresAt: holdUntil?.toISOString() ?? null, nights: q.nights.length, totalSatang: q.nightsTotal, publicToken: rv.publicToken });
+        }
+        if (chIn?.onCreated) {
+          const why = await chIn.onCreated(tx, rows.map((x) => x.id)); // SVC H.10 ▸ inbox APPLIED ใน tx เดียวกับการจอง ◂
+          if (why) throw new Abort(fail("CHANNEL_CONFLICT", why));
         }
         return rows;
       });
@@ -704,6 +802,7 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
         groupId,
         reservations: out.map(({ publicToken: _pt, ...r }) => r),
         depositRequiredSatang: depositRequired,
+        ...(chIn?.prepaidByChannel ? { depositRequiredSatang: 0 } : {}), // SVC H.10 ◂
         quote: { totalSatang: quotes.reduce((a, q) => a + q.nightsTotal, 0), rooms: quotes.map((q) => ({ roomTypeId: q.roomTypeId, nightsTotal: q.nightsTotal, nights: q.nights.map((n) => ({ date: n.date, priceSatang: n.priceSatang, source: n.source })) })) },
         publicToken: out[0]?.publicToken ?? null,
       };
@@ -1025,6 +1124,41 @@ async function moveHeadTx(tx: Tx, c: Ctx, head: GroupPlanRow, to: { id: string }
   if (src.count === 0) throw new Abort(fail("STATE_CHANGED", STATE_CHANGED_REASON));
 }
 
+// SVC H.10 ▸ cancelBooking internal.by "CHANNEL" (ใบสั่ง h.10 §9.6) — ช่องทางแจ้งยกเลิก: ยกเลิกโดยไม่คืนเงินผ่าน POS (prepaid = ช่องทางคืนเงินเอง) · reason CHANNEL_CANCELLED
+//   ทางเข้า = cancelBooking(null, ctx, channelCancelInput({...})) เท่านั้น — ธง by CHANNEL อยู่ใน WeakSet ของโมดูลนี้ (ออบเจ็กต์จากคำขอ/action ปลอมไม่ได้)
+type ChannelCancelHook = (tx: Prisma.TransactionClient, cancelledIds: string[]) => Promise<string | null>;
+const CHANNEL_CANCEL_INPUTS = new WeakMap<object, ChannelCancelHook | null>();
+export type ChannelCancelInput = { unitId: string; reservationIds: string[]; reason: string; by: "CHANNEL" };
+/** onCancelled = ตัวบันทึกของ inbox ใน tx เดียวกับการยกเลิก (คืนข้อความ = ย้อนทั้ง tx) */
+export function channelCancelInput(q: { unitId: string; reservationIds: string[]; onCancelled?: ChannelCancelHook }): ChannelCancelInput {
+  const out: ChannelCancelInput = { unitId: q.unitId, reservationIds: [...new Set(q.reservationIds.filter(isStr))], reason: "CHANNEL_CANCELLED", by: "CHANNEL" };
+  CHANNEL_CANCEL_INPUTS.set(out, q.onCancelled ?? null);
+  return out;
+}
+type CancelOk = { ok: true; cancelled: string[]; refundSatang: number; forfeitSatang: number; moneyWarning?: string };
+async function cancelByChannel(ctx: unknown, input: Record<string, unknown>): Promise<CancelOk | BookingFail> {
+  const g = await gate(null, ctx, input, null, true);
+  if (isFail(g)) return g;
+  const ids = Array.isArray(input.reservationIds) ? input.reservationIds.filter(isStr) : [];
+  if (!ids.length) return fail("INVALID_INPUT", "ระบุการจองที่จะยกเลิก");
+  const hook = CHANNEL_CANCEL_INPUTS.get(input) ?? null;
+  const c: Ctx = { tenantId: g.tenantId, unitId: g.unitId };
+  const rows = await tenantDb(c).hotelReservation.findMany({ where: { id: { in: ids } }, select: { id: true, roomTypeId: true } });
+  if (rows.length !== ids.length) return fail("NOT_FOUND", R.notFound);
+  const types = [...new Set(rows.map((r) => r.roomTypeId))];
+  const now = new Date();
+  const out = await inTx(c, async (tx) => {
+    await lockTypes(tx, c.unitId, types);
+    const done = await channelCancelRowsTx(tx, c, ids, types, now, "CHANNEL_CANCELLED");
+    const why = hook ? await hook(tx, done) : null;
+    if (why) throw new Abort(fail("CHANNEL_CONFLICT", why));
+    return done;
+  });
+  if (isFail(out)) return out;
+  return { ok: true, cancelled: out, refundSatang: 0, forfeitSatang: 0 };
+}
+// ◂ SVC H.10
+
 // ───────────────────────── cancelBooking ─────────────────────────
 const CancelInput = z.object({
   reservationId: z.string().min(1).optional(),
@@ -1037,6 +1171,7 @@ const CancelInput = z.object({
  * ห้องสุดท้ายของกลุ่ม/การจองเดี่ยวที่จ่ายมัดจำแล้ว ⇒ คืนตามขั้นบันไดของ snapshot (ต้องมี hotel.booking.manage)
  */
 export async function cancelBooking(actorIn: unknown, ctx: unknown, input: unknown) {
+  if (actorIn === null && isRec(input) && CHANNEL_CANCEL_INPUTS.has(input)) return cancelByChannel(ctx, input); // SVC H.10 ▸ internal.by "CHANNEL" (ใบ h.10 §9.6) ◂
   const g = await gate(actorIn, ctx, input, "hotel.reservation.cancel");
   if (isFail(g)) return g;
   const p = CancelInput.safeParse(input);
