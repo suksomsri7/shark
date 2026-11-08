@@ -110,3 +110,37 @@
 - หลัง `svc-qc-hotel-audit-scene.mts --clear`: h.1 112/122 แดง [] · h.2 78/87 แดง [] · h.6 85/97 แดง [] · h.5 77/95 แดง [] · h.3 98/109 แดง [] (รอบแรก h.3 F-1 แดงเพราะ night-audit.ts ค้างไม่ commit ระหว่างรัน — รันซ้ำหลัง commit เขียว)
 - ตรวจชนิดไฟล์ที่แตะ (tsconfig นอกทรี `/root/svc-runs/h7/tsconfig.h7c.json` = h7b + layout.tsx · heap 6G): 0 error
 - หมายเหตุ: รอบแรก h.7 U-10 แดงเพราะ regex `status: "NO_SHOW"` จับคิวรีอ่าน (`where: {id, status: "NO_SHOW"}`) ⇒ เปลี่ยนเป็นอ่าน status แล้วเทียบ (ab14b37b9)
+
+## รอบ 3 (ผู้ตรวจ 2) — 8 พ.ย. · ผู้ตรวจรอบ 2 เงิน (probe-h7-review-b) · ทรี shark-svc-l2 · branch wip/svc-h7-r3 · ฐาน ep-weathered-mode
+แก้ (commit d6c16f60b):
+1. **นิยามรายได้สูตรเดียว (มติข้อ 1)** — `night-audit.ts roomRevenueByDay(db, c, from, to)` (SQL เดียว): Σ ROOM ที่ไม่ void ตาม businessDate (ไม่นับ folio VOID / การจอง REFUNDED) + nights.priceSatang ของคืน counted ที่ยังไม่โพสต์ (CHECKED_IN/CHECKED_OUT) + คืนค้างของวันที่ปิดแล้วนับเข้าวันที่รอปิด · ใช้ใน `dayFacts` (preview + freeze) · `occupancyReport` สด · `getUnitKpi` ⇒ V-3/V-4 · R-2
+   - `revenueReport`: ห้อง = ROOM · อื่น = SERVICE/POS_CHARGE/MINIBAR/PENALTY/DISCOUNT/TAX/SERVICE_CHARGE ⇒ รวม = ยอดที่เก็บแขก (= ยอดบิลเช็กเอาต์) · ใหม่ `vatSatang` (แถว + total) ต่อ folio ตามโหมดภาษี (INCLUSIVE `splitIncludedVat(ยอด, vatBp)` · EXCLUSIVE Σ TAX + VAT ใน POS_CHARGE) ⇒ รวม − VAT = GL 4xxx (G-2/G-3) · ไม่นับ folio VOID/REFUNDED
+   - ไม่มีชนิด "ส่วนลดค่าห้อง" แยกใน folio (DISCOUNT เป็นส่วนลดทั้งบิล) ⇒ DISCOUNT อยู่ใน «อื่น»
+2. **คืนค้างของวันที่ปิดแล้ว (มติข้อ 2)** — ขั้น 2 หาคืน CHECKED_IN ที่ยังไม่โพสต์ในช่วง [วันเริ่มใช้, bd] · คืนก่อน bd ⇒ `postRangeTx` โพสต์ businessDate = bd · postedAuditId = วันที่กำลังปิด · คำอธิบาย "… · คืนย้อนหลัง <วัน>" · `snapshot.notes` "คืนย้อนหลัง N คืน (…) ลงเข้าวันนี้" · AuditLog `lateNightsPosted` · preview นับคืนเหล่านี้ใน roomNightsToPost/revenueSatang + warning · แถว freeze วันเก่าไม่ถูกแก้ ⇒ L-3/L-4
+3. **ย้อนไม่มาแล้วเข้าพัก ⇒ ไม่จ่ายซ้ำ (มติข้อ 3) — ทางที่ใช้: hook ในการปิดวัน (ขั้น 1ข) ไม่ใช่ consumer**
+   - `reports.ts restoreForfeitedDepositsOnStay(c, actorUserId)`: บิล PosSale HOTEL `dep-forfeit:<มัดจำ>` (หรือ `-r<n>`) PAID ที่ sourceId = การจองในหน่วยที่ **CHECKED_IN** · มัดจำนั้นเป็นใบรับ `depositSaleId` ของการจอง (ไม่ใช่เงินประกันห้อง) · มี AuditLog `hotel.booking.no_show_undo` ของการจองนั้น ⇒ `pos.voidSale` (ทางเดียวกับ `refundStay` · กลับบัญชี) + `pos/deposit.depositSaleVoided` (มัดจำกลับ OPEN ทันที · คีย์ dep-restore กันซ้ำ) + AuditLog `hotel.booking.deposit_unforfeited` · ล้มต่อใบ = warning
+   - closeCore เรียกผ่าน `await import("./reports")` หลังขั้น 1 (นอก tx) — night-audit.ts ไม่ import `@/lib/modules/pos` (ข้อสอบ U-10) · ไม่แตะ booking.ts/checkout.ts/folio.ts/pos/**
+   - เหตุที่ไม่ใช้ consumer `hotel.booking.confirmed`: (ก) handler ไม่ได้ idempotencyKey (แยก undo ไม่ได้ ต้องอ่าน AuditLog) (ข) probe L ไม่ drain outbox ระหว่าง undo → เช็กเอาต์ (ค) ถ้าคืนตอน undo (ยัง CONFIRMED) จะชน probe-a U-1 (reopen → undo → ปิดใหม่ ต้องยังมีบิลริบ PAID 1) ⇒ เงื่อนไข "เข้าพักจริง (CHECKED_IN)" + จังหวะปิดวัน
+   - ช่องว่าง (หนี้): ถ้าแขกย้อนไม่มา → เช็กอิน → เช็กเอาต์ ก่อนมีการปิดวันคั่น (autoClose ปิด/ปิดวันค้าง หรือย่นวันออกวันเดียวกัน) มัดจำยังริบอยู่ตอนเช็กเอาต์ — ปกติไม่เกิด (no-show อัตโนมัติเกิดตอนปิดวัน checkIn ⇒ ระหว่างเช็กอินกับเช็กเอาต์มีการปิดวันอย่างน้อย 1 ครั้ง) · ทางปิดถาวร = H.5/H.3 เรียก hook นี้ใน prepareCheckout/undoNoShow
+4. **minor (มติข้อ 4)** — `computeKpi` นับผู้พักเฉพาะห้องในชุดขายได้และไม่ BLOCK (occupied ≤ available) · `getUnitKpi` on-the-books นับใบ CONFIRMED ที่ยังไม่จัดห้องด้วย (ไม่เกิน available) · `depositsReport.forfeitedSatang` = บิลริบ PAID ของมัดจำการจอง (ใบรับ = `depositSaleId` ของการจองในหน่วย) ที่การจองยัง NO_SHOW — แยกริบเงินประกันห้อง (ใบรับ security) และค่าธรรมเนียมยกเลิก (CANCELLED) · `revenueReport` groupBy roomType คีย์ = id ประเภท (ชื่อ = label) · CSV: แถวรวมท้ายตาราง (`exportCsv(kind, rows, total?)` · route ส่ง total ของ occupancy/revenue/funnel/แม่บ้าน) · ชนิดใหม่ `housekeepingUsers` (แม่บ้านรายคน + ปุ่ม CSV บนจอ) · ฟันเนลมีคอลัมน์ "เหตุผลยกเลิก" · รายได้มีคอลัมน์ VAT · วันที่คง ISO (ใบไม่กำหนดคอลัมน์วันไทยใน CSV)
+5. **นอกมติแต่จำเป็น** — `hotel/page.tsx` ขาด `) : null}` ปิดป้าย "ยังไม่ปิดวัน" จาก merge 0842b8ef0 (TS1005 · build จะล้ม) ⇒ เติม 1 บรรทัด (ไฟล์อยู่ §1)
+
+### ข้อแย้ง oracle รอบ 3 (ผู้คุมตัดสิน)
+- **h.7 RP-3** (`scripts/qc-svc-h.7.mts:1049`) จับคู่แถว roomType ด้วย `key` = ชื่อ ("ดีลักซ์") แต่มติข้อ 4 ให้ key = id ประเภท ⇒ แดง (`ได้ {"<idดีลักซ์>":298000,"<idซูพีเรีย>":99000}`) · เสนอ ORACLE-EDIT บรรทัด 1049: `const k = g === "roomType" ? String(pick(x, "label") ?? "") : keyField(x);` · หลักฐาน: สำเนาข้อสอบที่แก้บรรทัดนี้ (ไฟล์ชั่วคราว ลบแล้ว) ⇒ 62/75 แดงเฉพาะ F-1 (ไฟล์ชั่วคราวในทรี) · log `/root/svc-runs/h7/r3-qc-h7-rp3-edit.log`
+- **probe-b G-4** (`scripts/probe-h7-review-b.mts:282`) หน่วย UG ไม่ได้เปิด `rooms.hotel.securityDeposit.enabled` ⇒ `takeSecurityDeposit` = DISABLED · ตั้งฉากไม่ได้ · เสนอ ORACLE-EDIT แทรกก่อนบรรทัด 282: `await setUnit("rooms.hotel.securityDeposit.enabled", true, UG); await setUnit("rooms.hotel.securityDeposit", 50_000, UG);` · หลักฐาน: สำเนา probe ที่แทรก 2 คำสั่ง ⇒ 25/25 (G-4 sec=ok forfeitedSatang=0) · log `/root/svc-runs/h7/r3-probe-b-g4-edit.log` (ตัวควบคุม: คิวรีเดิมนับทุก dep-forfeit HOTEL ของหน่วย ⇒ จะได้ 50,000)
+- **revenueReport กับคืนที่ยังไม่โพสต์**: มติข้อ 1 ให้ "+ nights.priceSatang สำหรับคืนที่ยังไม่โพสต์ … ใช้ทุกรายงาน" แต่ RP-3 ล็อก revenueReport = Σ ROOM live (คืนวันนี้ของ A/B ยังไม่โพสต์ ⇒ ถ้าบวกจะไม่ตรง) ⇒ revenueReport ยังนับเฉพาะที่โพสต์แล้ว · occupancyReport/preview/freeze/getUnitKpi ใช้สูตรเต็ม · ช่วงที่ปิดครบ (เช่น L-4) สองรายงานเท่ากัน · ถ้าต้องการให้ revenueReport บวกคืนยังไม่โพสต์ด้วย ต้อง ORACLE-EDIT RP-3
+
+### หนี้เพิ่มรอบ 3
+| เรื่อง | เหตุผล | ใบที่จะปิด |
+|---|---|---|
+| ย้อนไม่มา → เช็กอิน → เช็กเอาต์ โดยไม่มีการปิดวันคั่น ⇒ มัดจำยังริบ | hook อยู่ที่การปิดวัน (ห้ามแตะ booking/checkout) | H.5/H.3 เรียก `restoreForfeitedDepositsOnStay` ใน prepareCheckout หรือ undoNoShow+checkIn |
+| คืนค้างของวันที่ปิดแล้วที่ **เช็กเอาต์** โพสต์ก่อนการปิดวัน ⇒ checkout.ts โพสต์ businessDate = วันคืน (วันที่ปิดแล้ว) | postRoomNightsTx ของ H.5 ใช้วันคืนเป็น businessDate | H.5 (ส่ง businessDate ขั้นต่ำ = วันรอปิด) |
+| VAT ต่อแถว groupBy ปัดต่อ (folio × แถว) — Σ แถวอาจต่าง total.vatSatang ≤ 1 สตางค์/แถว เมื่อ folio เดียวกระจายหลายกลุ่ม (roomType/ratePlan) | total ปัดต่อ folio ให้ตรง GL | — |
+
+ผลรอบ 3 (tip d6c16f60b · ฐาน ep-weathered-mode · log `/root/svc-runs/h7/r3-*.log` · สรุป `r3-run.txt`):
+- probe-h7-review-b: 25 · ผ่าน 24 · แดง [G-4] (ฉาก probe ปิดเงินประกันห้อง — ORACLE-EDIT ข้างบน · สำเนาแก้แล้ว 25/25)
+- probe-h7-review-a: 35 · ผ่าน 34 · แดง 0 · SKIP S-2 (เหมือนเดิม)
+- qc-svc-h.7 --no-regression: 75 · ผ่าน 61 · แดง [RP-3] (key roomType = id ตามมติข้อ 4 — ORACLE-EDIT ข้างบน · สำเนาแก้แล้ว RP-3 เขียว)
+- fitness 2 โหมด: exit 0 ทั้งคู่ (53/53)
+- หลัง `svc-qc-hotel-audit-scene.mts --clear`: h.1 112/122 · h.2 78/87 · h.3 98/109 · h.4 98/109 · h.5 77/95 · h.6 85/97 — แดง [] ทุกชุด
+- ตรวจชนิดไฟล์ที่แตะ (`/root/svc-runs/h7/tsconfig.h7r3.json` = h7c ชี้ทรี l2): 0 error
