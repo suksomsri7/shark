@@ -531,7 +531,8 @@ export type CreateBookingInternal = CreateOpts & {
     connectionId: string;
     grossSatang: number;
     commissionSatang: number;
-    netSatang: number;
+    /** net ที่ช่องทางส่งมา (เก็บตรงตัว · §10.5) — null/ไม่ส่ง ⇒ gross − commission */
+    netSatang: number | null;
     prepaidByChannel: boolean;
     replaceReservationIds?: string[];
     /** ตัวตรวจ/บันทึกของ inbox ใน tx เดียวกับการจอง (หลังสร้างแถว) — คืนข้อความ = ย้อนทั้ง tx (CHANNEL_CONFLICT) · null = ผ่าน */
@@ -543,10 +544,11 @@ const isMoney = (v: unknown): v is number => typeof v === "number" && Number.isI
 /** internal.channel ที่ใช้ได้ (ชนิด/ค่าเงินถูก) — ไม่มี/ผิด = null (ทางเดิม) */
 function channelOf(opts: CreateOpts): ChannelIn | null {
   const ch = (opts as CreateBookingInternal).channel;
-  if (!isRec(ch) || !isStr(ch.connectionId) || !isMoney(ch.grossSatang) || !isMoney(ch.commissionSatang) || !isMoney(ch.netSatang) || typeof ch.prepaidByChannel !== "boolean") return null;
+  if (!isRec(ch) || !isStr(ch.connectionId) || !isMoney(ch.grossSatang) || !isMoney(ch.commissionSatang) || (ch.netSatang != null && !isMoney(ch.netSatang)) || typeof ch.prepaidByChannel !== "boolean") return null;
   const replace = Array.isArray(ch.replaceReservationIds) ? ch.replaceReservationIds.filter(isStr) : [];
-  if (typeof ch.onCreated === "function") return { connectionId: ch.connectionId, grossSatang: ch.grossSatang, commissionSatang: ch.commissionSatang, netSatang: ch.netSatang, prepaidByChannel: ch.prepaidByChannel, replaceReservationIds: [...new Set(replace)], onCreated: ch.onCreated };
-  return { connectionId: ch.connectionId, grossSatang: ch.grossSatang, commissionSatang: ch.commissionSatang, netSatang: ch.netSatang, prepaidByChannel: ch.prepaidByChannel, replaceReservationIds: [...new Set(replace)] };
+  const netSatang = isMoney(ch.netSatang) ? ch.netSatang : null;
+  if (typeof ch.onCreated === "function") return { connectionId: ch.connectionId, grossSatang: ch.grossSatang, commissionSatang: ch.commissionSatang, netSatang, prepaidByChannel: ch.prepaidByChannel, replaceReservationIds: [...new Set(replace)], onCreated: ch.onCreated };
+  return { connectionId: ch.connectionId, grossSatang: ch.grossSatang, commissionSatang: ch.commissionSatang, netSatang, prepaidByChannel: ch.prepaidByChannel, replaceReservationIds: [...new Set(replace)] };
 }
 /** ยอดรวมของช่องทางแบ่งต่อห้อง (เศษลงห้องแรก · ผลรวม = ยอดเดิม) */
 const splitOf = (total: number, n: number, i: number): number => Math.floor(total / n) + (i === 0 ? total - Math.floor(total / n) * n : 0);
@@ -745,7 +747,7 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
                     channelConnectionId: chIn.connectionId,
                     grossSatang: splitOf(chIn.grossSatang, inp.rooms.length, i),
                     commissionSatang: splitOf(chIn.commissionSatang, inp.rooms.length, i),
-                    netSatang: splitOf(chIn.grossSatang, inp.rooms.length, i) - splitOf(chIn.commissionSatang, inp.rooms.length, i),
+                    netSatang: chIn.netSatang !== null ? splitOf(chIn.netSatang, inp.rooms.length, i) : splitOf(chIn.grossSatang, inp.rooms.length, i) - splitOf(chIn.commissionSatang, inp.rooms.length, i), // §10.5 net ของช่องทางตรงตัว (รอบ 3 RB-9)
                     prepaidByChannel: chIn.prepaidByChannel,
                     ...(chIn.prepaidByChannel ? { depositSatang: 0 } : {}),
                   }

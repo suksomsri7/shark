@@ -30,7 +30,8 @@ export type InboundReservation = {
   guest: InboundGuest;
   grossSatang: number;
   commissionSatang: number;
-  netSatang: number;
+  /** net ที่ช่องทางคำนวณ (อาจหักภาษีค่าคอมฯ ⇒ ≠ gross − commission) — ไม่ส่ง ⇒ gross − commission */
+  netSatang?: number | null;
   prepaid: boolean;
   raw: unknown;
 };

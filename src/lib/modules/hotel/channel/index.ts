@@ -2,8 +2,8 @@
 //   ฝั่งเซิร์ฟเวอร์เท่านั้น · ไฟล์ 'use client' ใช้ "./types" (pure) เท่านั้น
 export { listChannelConnections, saveRoomMap, saveRateMap, saveBuffer, channelMappingFor, channelDetail, CHANNEL_MANAGE } from "./mapping";
 export type { ChannelActor, ChannelFail, ChannelFailCode, ChannelConnectionDto, ChannelDetailDto } from "./mapping";
-export { emitAriDirty, onAriDirty, ariDirtyFromBooking, enqueueAri, buildAri, pushAriJobs, ARI_MAX_ATTEMPTS } from "./ari";
-export type { AriDirtyInput } from "./ari";
+export { emitAriDirty, onAriDirty, ariDirtyFromBooking, ariDirtyFromOccupancy, ariDirtyFromHk, ariResyncOnConnected, resyncAriAll, enqueueAri, buildAri, pushAriJobs, ARI_MAX_ATTEMPTS, ARI_RESYNC_EVERY_MS } from "./ari";
+export type { AriDirtyInput, EnqueueOpts } from "./ari";
 export { ingestInbound, applyInbound, pullAll, retryInbound, rejectInbound, listNeedsRoom, listInbox, fakeEnqueueInbound, inboxReasonTh } from "./inbound";
 export type { ApplyResult, NeedsRoomItem, InboxItem } from "./inbound";
 export { markupPrice, ariHash, INBOX_REASON_TH } from "./types";

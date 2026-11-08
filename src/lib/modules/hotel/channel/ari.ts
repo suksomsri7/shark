@@ -35,6 +35,8 @@ const CHUNK_DAYS = 366;
 export const ARI_MAX_ATTEMPTS = 5;
 const PUSH_BATCH = 100;
 const ACTIVE_CONN = ["CONNECTED", "ERROR"];
+/** รอบ full resync ARI ต่อ (ตัวต่อ, หน่วย) — ค่าคงที่ในโค้ด (รอบ 3 ผู้ตรวจ B · RB-6/RB-7) */
+export const ARI_RESYNC_EVERY_MS = 6 * 3_600_000;
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? Math.trunc(v) : null);
 
 // ───────────────────────── dirty ─────────────────────────
@@ -45,7 +47,7 @@ export type AriDirtyInput = { unitId: string; roomTypeIds?: string[]; from?: str
  * • tx ส่งมา ⇒ transactional outbox: เขียนใน tx เดียวกับงาน (งานย้อน = ไม่มี dirty) และ **ไม่กลืนข้อผิดพลาด** — คิวรีที่ล้มใน tx ของ Postgres
  *   ทำให้ทั้ง tx abort อยู่แล้ว (คิวรีถัดไป/commit ล้มต่อ) ⇒ ปล่อย throw ให้งานล้มตรง ๆ ที่ต้นเหตุ ดีกว่ากลืนแล้วไปล้มเงียบที่ commit (มติรอบ 2 · ผู้ตรวจ A)
  * • ไม่ส่ง tx ⇒ นอก tx: ล้ม = เตือนใน log ไม่ throw (ARI ตามรอบถัดไป · ไม่มี tx ให้เสีย)
- * ร้านที่ไม่มีตัวต่อ CHANNEL_MANAGER (ที่ไม่ถอด) ⇒ ไม่ยิง · from/to ไม่ส่ง ⇒ วันนี้ → +400 (ผู้รวมชุดตัดตาม ariHorizonDays)
+ * ร้านที่ไม่มีตัวต่อ CHANNEL_MANAGER ⇒ ไม่ยิง (ตัวที่ถอดอยู่ยังยิง — งานค้างไว้ส่งตอนต่อกลับ · รอบ 3) · from/to ไม่ส่ง ⇒ วันนี้ → +400 (ผู้รวมชุดตัดตาม ariHorizonDays)
  */
 export async function emitAriDirty(ctx: { tenantId: string }, input: AriDirtyInput, tx?: object): Promise<void> {
   if (!isRec(ctx) || !isStr(ctx.tenantId) || !isRec(input) || !isStr(input.unitId)) return;
@@ -59,7 +61,8 @@ export async function emitAriDirty(ctx: { tenantId: string }, input: AriDirtyInp
     idempotencyKey: `channel.ari.dirty#${randomUUID()}`,
     payload: { unitId: input.unitId, roomTypeIds: (input.roomTypeIds ?? []).filter(isStr), from: from <= to ? from : to, to: from <= to ? to : from },
   };
-  const where = { tenantId: ctx.tenantId, kind: CHANNEL_KIND, status: { not: "DISABLED" } };
+  // ทุกสถานะ (รวม DISABLED) — งานที่รวมชุดไว้ระหว่างถอดค้าง PENDING (pushAriJobs ไม่ส่งตัวที่ถอด) ⇒ ต่อกลับแล้วส่งทันที (RB-6)
+  const where = { tenantId: ctx.tenantId, kind: CHANNEL_KIND };
   if (tx) {
     const t = tx as Tx;
     if ((await t.tenantIntegration.count({ where })) === 0) return;
@@ -83,15 +86,23 @@ async function horizonOf(tenantId: string, unitId: string): Promise<number> {
   return v !== null && v >= 1 ? Math.min(v, ARI_MAX_HORIZON) : DEFAULT_HORIZON;
 }
 
+export type EnqueueOpts = {
+  /** เฉพาะตัวต่อเหล่านี้ (full resync ต่อตัวต่อ) */
+  connectionIds?: string[];
+  /** full resync: มีงานของ (ตัวต่อ, หน่วย) ที่ครอบช่วงนี้สร้างภายใน freshMs แล้ว (สถานะใดก็ได้) ⇒ ไม่สร้างซ้ำ (ตรวจใต้ advisory lock = lease ต่อคู่) */
+  freshMs?: number;
+};
+
 /**
- * รวมชุดงาน ARI ของทุกตัวต่อที่ครอบหน่วย (CONNECTED/ERROR · มีแม็ปห้องของหน่วย) — คืนจำนวนตัวต่อที่มีงานใหม่
+ * รวมชุดงาน ARI ของทุกตัวต่อที่ครอบหน่วย (ทุกสถานะ — ตัวที่ถอดอยู่ได้งานค้างไว้ · pushAriJobs ส่งเฉพาะ CONNECTED/ERROR · มีแม็ปห้องของหน่วย) — คืนจำนวนตัวต่อที่มีงานใหม่
  * ตัดช่วงที่ [วันนี้, วันนี้+ariHorizonDays] · PENDING ที่ทับ/ติดกัน ⇒ รวมเป็นแถวใหม่ (เก่า SUPERSEDED) · ครอบอยู่แล้ว ⇒ ไม่ทำอะไร (X4 ส่งซ้ำ)
  */
-export async function enqueueAri(tenantId: string, unitId: string, fromIn: string, toIn: string, now: Date = new Date()): Promise<number> {
+export async function enqueueAri(tenantId: string, unitId: string, fromIn: string, toIn: string, now: Date = new Date(), opts: EnqueueOpts = {}): Promise<number> {
   if (!isStr(tenantId) || !isStr(unitId) || !isYmd(fromIn) || !isYmd(toIn)) return 0;
   const today = bkkYmd(now);
+  const only = Array.isArray(opts.connectionIds) ? opts.connectionIds.filter(isStr) : null;
   const conns = await tenantDb({ tenantId }).tenantIntegration.findMany({
-    where: { kind: CHANNEL_KIND, status: { in: ACTIVE_CONN }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { has: unitId } }] },
+    where: { kind: CHANNEL_KIND, ...(only ? { id: { in: only } } : {}), OR: [{ unitIds: { isEmpty: true } }, { unitIds: { has: unitId } }] },
     select: { id: true },
   });
   if (!conns.length) return 0;
@@ -112,6 +123,13 @@ export async function enqueueAri(tenantId: string, unitId: string, fromIn: strin
       const span = pend.map((j) => ({ id: j.id, f: ymdOfDb(j.dateFrom), t: ymdOfDb(j.dateTo) }));
       const touch = span.filter((j) => ymdDayNo(j.f) <= ymdDayNo(to) + 1 && ymdDayNo(j.t) >= ymdDayNo(from) - 1);
       if (touch.some((j) => j.f <= from && j.t >= to)) return false;
+      if (opts.freshMs && opts.freshMs > 0) {
+        // lease ของ full resync: งานครอบช่วงนี้ (ท้ายเผื่อ 1 วันข้ามเที่ยงคืน) สร้างภายในรอบแล้ว ⇒ ไม่สร้างซ้ำ
+        const recent = await tx.channelAriJob.count({
+          where: { tenantId, unitId, connectionId: c.id, dateFrom: { lte: dbDate(from) }, dateTo: { gte: dbDate(ymdAdd(to, -1)) }, createdAt: { gte: new Date(now.getTime() - opts.freshMs) } },
+        });
+        if (recent > 0) return false;
+      }
       const nf = touch.reduce((a, j) => (j.f < a ? j.f : a), from);
       const nt = touch.reduce((a, j) => (j.t > a ? j.t : a), to);
       if (touch.length) await tx.channelAriJob.updateMany({ where: { tenantId, unitId, id: { in: touch.map((j) => j.id) }, status: "PENDING" }, data: { status: "SUPERSEDED" } });
@@ -147,11 +165,111 @@ export async function ariDirtyFromBooking(evt: EvtLike): Promise<void> {
     await enqueueAri(evt.tenantId, unitId, today, ymdAdd(today, ARI_MAX_HORIZON));
     return;
   }
-  const rv = await tenantDb({ tenantId: evt.tenantId, unitId }).hotelReservation.findFirst({ where: { id: p.reservationId }, select: { checkInDate: true, checkOutDate: true } });
+  const db = tenantDb({ tenantId: evt.tenantId, unitId });
+  const rv = await db.hotelReservation.findFirst({ where: { id: p.reservationId }, select: { checkInDate: true, checkOutDate: true } });
   if (!rv) return;
   const from = ymdOfDb(rv.checkInDate);
-  const lastNight = ymdAdd(ymdOfDb(rv.checkOutDate), -1);
+  let lastNight = ymdAdd(ymdOfDb(rv.checkOutDate), -1);
+  if (evt.type === "hotel.checked_out") {
+    // เช็กเอาต์ก่อนกำหนด: checkOutDate อาจถูกย่นแล้ว ⇒ ครอบถึงคืนสุดท้ายที่เคยมี (นับหรือปล่อยแล้ว) ของการจองนี้ (RB-7)
+    const n = await db.hotelBookingNight.aggregate({ where: { reservationId: p.reservationId }, _max: { date: true } });
+    const maxNight = n._max.date ? ymdOfDb(n._max.date) : null;
+    if (maxNight && maxNight > lastNight) lastNight = maxNight;
+  }
   await enqueueAri(evt.tenantId, unitId, from, lastNight < from ? from : lastNight);
+}
+
+/**
+ * rooms.occupancy.changed (claim/release/move/resize/expire — LEASE หอ · BLOCK · STAY · HOLD) ⇒ ARI ของคืนในช่วง (payload {unitId, roomId, from, to} · to ไม่รวม · resize = ช่วง union เดิม∪ใหม่)
+ * หน่วยไม่มีแม็ปของตัวต่อ (หอล้วน) ⇒ enqueueAri ไม่สร้างงาน
+ */
+export async function ariDirtyFromOccupancy(evt: EvtLike): Promise<void> {
+  const p = isRec(evt?.payload) ? evt.payload : {};
+  const unitId = isStr(p.unitId) ? p.unitId : isStr(evt?.unitId) ? evt.unitId : null;
+  if (!isStr(evt?.tenantId) || !unitId) return;
+  const today = bkkYmd(new Date());
+  const from = isYmd(p.from) ? p.from : today;
+  const to = isYmd(p.to) ? ymdAdd(p.to, -1) : ymdAdd(today, ARI_MAX_HORIZON);
+  await enqueueAri(evt.tenantId, unitId, from, to < from ? from : to);
+}
+
+/**
+ * hotel.hk.changed (H.6 · payload {roomId, from, to} = สถานะแม่บ้าน) — เข้า/ออกจากปิดซ่อม (OUT_OF_ORDER) ⇒ ห้องขายได้เปลี่ยน ⇒ ARI ทั้งช่วงเพดาน
+ * สถานะอื่น (สกปรก/สะอาด/ตรวจ) ไม่กระทบห้องว่าง ⇒ ไม่ทำอะไร
+ */
+export async function ariDirtyFromHk(evt: EvtLike): Promise<void> {
+  const p = isRec(evt?.payload) ? evt.payload : {};
+  const unitId = isStr(p.unitId) ? p.unitId : isStr(evt?.unitId) ? evt.unitId : null;
+  if (!isStr(evt?.tenantId) || !unitId) return;
+  if (p.from !== "OUT_OF_ORDER" && p.to !== "OUT_OF_ORDER") return;
+  const today = bkkYmd(new Date());
+  await enqueueAri(evt.tenantId, unitId, today, ymdAdd(today, ARI_MAX_HORIZON));
+}
+
+type PairRow = { tenantId: string; connectionId: string; unitId: string };
+/** คู่ (ตัวต่อ, หน่วย) ที่มีแม็ปห้อง active และตัวต่อครอบหน่วย — เฉพาะตัวต่อที่พร้อม (CONNECTED/ERROR) */
+async function resyncPairs(only?: { tenantId: string; connectionId: string }): Promise<PairRow[]> {
+  const rows = await scanDb().$queryRaw<(PairRow & { unitIds: string[] })[]>`
+    SELECT DISTINCT m."tenantId", m."connectionId", m."unitId", t."unitIds"
+      FROM "ChannelRoomMap" m JOIN "TenantIntegration" t ON t."id" = m."connectionId" AND t."tenantId" = m."tenantId"
+     WHERE m."active" = true AND t."kind" = ${CHANNEL_KIND} AND t."status" IN ('CONNECTED', 'ERROR')
+       AND (${only?.connectionId ?? null}::text IS NULL OR (m."connectionId" = ${only?.connectionId ?? ""} AND m."tenantId" = ${only?.tenantId ?? ""}))
+     ORDER BY m."tenantId", m."connectionId", m."unitId" LIMIT 2000`;
+  return rows.filter((r) => covers(r.unitIds, r.unitId)).map(({ tenantId, connectionId, unitId }) => ({ tenantId, connectionId, unitId }));
+}
+/** ตัวต่อพร้อมใช้ (ผู้ให้บริการเปิด · มีกุญแจ) — ไม่พร้อม ⇒ ข้าม */
+async function readyConn(tenantId: string, connectionId: string): Promise<boolean> {
+  const row = await tenantDb({ tenantId }).tenantIntegration.findFirst({ where: { id: connectionId, kind: CHANNEL_KIND, status: { in: ACTIVE_CONN } } });
+  return !!row && integrationHandleForRow(row) !== null;
+}
+
+/**
+ * งานรายนาที channel-ari-resync: full resync ARI ทั้งช่วงเพดาน (ariHorizonDays) ต่อ (ตัวต่อ, หน่วย) ทุก ARI_RESYNC_EVERY_MS (6 ชม.)
+ * ปิดเส้นที่ไม่มี event (สัญญาหอ/สร้าง-เก็บห้อง/ปิดซ่อมทางตรง/แก้ค่าตั้ง ota.buffer·markupBp/ตัวต่อเปลี่ยนสถานะตรงฐาน) และงาน FAILED ที่ไม่มีใครส่งซ้ำ
+ * lease: แถว lease ของ minute-job + ตรวจ "งานครอบสร้างภายในรอบ" ใต้ advisory lock ต่อคู่ (ซ้อน 2 รอบ = สร้างครั้งเดียว) · ข้ามตัวต่อที่ไม่พร้อม · ไม่ throw
+ * คำนวณ/ส่งจริงที่ pushAriJobs (buildAri เดิม · คิวรีคงที่) · ค่าเท่างานที่ส่งล่าสุดช่วงเดียวกัน ⇒ ไม่เรียกตัวต่อ
+ */
+export async function resyncAriAll(now: Date = new Date(), budgetMs = 20_000): Promise<{ enqueued: number; skipped: number }> {
+  const out = { enqueued: 0, skipped: 0 };
+  const deadline = Date.now() + Math.max(1_000, Number.isFinite(budgetMs) ? budgetMs : 20_000);
+  let pairs: PairRow[] = [];
+  try {
+    pairs = await resyncPairs();
+  } catch {
+    console.warn("[hotel.channel] อ่านคู่ตัวต่อ/หน่วยสำหรับ resync ไม่สำเร็จ");
+    return out;
+  }
+  const ready = new Map<string, boolean>();
+  const today = bkkYmd(now);
+  for (const pr of pairs) {
+    if (Date.now() > deadline) break;
+    try {
+      if (!ready.has(pr.connectionId)) ready.set(pr.connectionId, await readyConn(pr.tenantId, pr.connectionId));
+      if (!ready.get(pr.connectionId)) {
+        out.skipped++;
+        continue;
+      }
+      const n = await enqueueAri(pr.tenantId, pr.unitId, today, ymdAdd(today, ARI_MAX_HORIZON), now, { connectionIds: [pr.connectionId], freshMs: ARI_RESYNC_EVERY_MS });
+      if (n > 0) out.enqueued++;
+      else out.skipped++;
+    } catch {
+      console.warn(`[hotel.channel] resync ARI ${pr.connectionId}/${pr.unitId} ไม่สำเร็จ — ลองรอบหน้า`);
+    }
+  }
+  return out;
+}
+
+/**
+ * integration.connected (ตัวต่อกลับมาเชื่อมได้ · ERROR/DRAFT → CONNECTED) ⇒ full resync ทันทีทุกหน่วยที่แม็ปของตัวต่อนั้น (ไม่รอรอบ 6 ชม.)
+ * ชนิดอื่น ⇒ ไม่ทำอะไร · โยน = คิว retry (idempotent: งานครอบอยู่แล้ว ⇒ ไม่สร้างซ้ำ)
+ */
+export async function ariResyncOnConnected(evt: EvtLike): Promise<void> {
+  const p = isRec(evt?.payload) ? evt.payload : {};
+  if (!isStr(evt?.tenantId) || p.kind !== CHANNEL_KIND || !isStr(p.integrationId)) return;
+  const today = bkkYmd(new Date());
+  for (const pr of await resyncPairs({ tenantId: evt.tenantId, connectionId: p.integrationId })) {
+    await enqueueAri(pr.tenantId, pr.unitId, today, ymdAdd(today, ARI_MAX_HORIZON), new Date(), { connectionIds: [pr.connectionId] });
+  }
 }
 
 // ───────────────────────── buildAri ─────────────────────────
@@ -281,9 +399,14 @@ export async function pushAriJobs(now: Date = new Date(), budgetMs = 20_000): Pr
       const lastSent = await db.channelAriJob.findFirst({
         where: { connectionId: job.connectionId, status: "SENT", dateFrom: { lte: job.dateTo }, dateTo: { gte: job.dateFrom } },
         orderBy: [{ sentAt: "desc" }, { updatedAt: "desc" }],
-        select: { dateFrom: true, dateTo: true, payloadHash: true },
+        select: { dateFrom: true, dateTo: true, payloadHash: true, sentAt: true },
       });
-      if (lastSent && lastSent.payloadHash === hash && ymdOfDb(lastSent.dateFrom) === from && ymdOfDb(lastSent.dateTo) === to) {
+      // งาน FAILED ที่ทับช่วงหลังส่งล่าสุด ⇒ ช่องทางอาจถือค่าที่ไม่รู้ ⇒ ส่งจริงแม้ค่าเท่า (full resync ปิดงาน FAILED · รอบ 3)
+      const failedSince =
+        lastSent && lastSent.payloadHash === hash
+          ? await db.channelAriJob.count({ where: { connectionId: job.connectionId, status: "FAILED", dateFrom: { lte: job.dateTo }, dateTo: { gte: job.dateFrom }, updatedAt: { gt: lastSent.sentAt ?? new Date(0) } } })
+          : 0;
+      if (lastSent && lastSent.payloadHash === hash && failedSince === 0 && ymdOfDb(lastSent.dateFrom) === from && ymdOfDb(lastSent.dateTo) === to) {
         await settleJob(job, { status: "SUPERSEDED", payloadHash: hash, lastError: null }, null);
         out.skipped++;
         continue;

@@ -41,7 +41,7 @@ const InboundSchema = z.object({
   guest: z.object({ name: z.string().trim().min(1).max(120), phone: z.string().trim().max(32).nullable().optional(), email: z.string().trim().max(120).nullable().optional() }),
   grossSatang: money,
   commissionSatang: money,
-  netSatang: money,
+  netSatang: money.nullable().optional(), // §10.5 ส่งมา ⇒ เก็บตรงตัว · ไม่ส่ง ⇒ gross − commission (รอบ 3)
   prepaid: z.boolean(),
 });
 type Parsed = z.infer<typeof InboundSchema>;
@@ -313,14 +313,16 @@ async function applyOnce(inboxId: unknown): Promise<ApplyResult> {
     ratePlanId = rm.ratePlanId;
   }
   const n = inb.rooms ?? 1;
-  const adultsPer = Math.max(1, Math.ceil(inb.adults / n));
-  const childrenPer = Math.ceil((inb.children ?? 0) / n);
+  // แบ่งผู้ใหญ่/เด็กต่อห้องให้ผลรวมเท่าจริง (ห้องแรก ๆ ได้ +1 จากเศษ · ผู้ใหญ่อย่างน้อย 1 ต่อห้อง) — รอบ 3
+  const per = (total: number, i: number) => Math.floor(total / n) + (i < total % n ? 1 : 0);
+  const adultsOf = (i: number) => Math.max(1, per(inb.adults, i));
+  const childrenOf = (i: number) => per(inb.children ?? 0, i);
   const internal: CreateBookingInternal = {
     channel: {
       connectionId: row.connectionId,
       grossSatang: inb.grossSatang,
       commissionSatang: inb.commissionSatang,
-      netSatang: inb.netSatang,
+      netSatang: inb.netSatang ?? null,
       prepaidByChannel: inb.prepaid,
       replaceReservationIds: active.map((x) => x.id),
       onCreated: appliedHook(row, "channel.reservation.applied"),
@@ -331,7 +333,7 @@ async function applyOnce(inboxId: unknown): Promise<ApplyResult> {
     ctx,
     {
       unitId: row.unitId,
-      rooms: Array.from({ length: n }, () => ({ roomTypeId: type.id, adults: adultsPer, children: childrenPer })),
+      rooms: Array.from({ length: n }, (_, i) => ({ roomTypeId: type.id, adults: adultsOf(i), children: childrenOf(i) })),
       checkIn: inb.checkIn,
       checkOut: inb.checkOut,
       ...(ratePlanId ? { ratePlanId } : {}),
