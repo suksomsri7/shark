@@ -16,6 +16,7 @@ import { cancelBooking, createBooking } from "./booking";
 import { hotelAvailability } from "./availability";
 import { checkInV2Legacy } from "./checkin"; // SVC H.4 ▸ checkIn เดิมห่อเช็กอิน V2 ◂
 import { afterRefundStay, settleAndCheckOut } from "./checkout"; // SVC H.5 ◂
+import { businessDateOf, DEFAULT_TIMEZONE, ymdToDbDate } from "./business-date"; // SVC H.7 ▸ business date สูตรเดียว ◂
 
 // ลงทะเบียน scope ของ Hotel models (unit-scoped) — ให้ tenantDb() inject tenantId+unitId อัตโนมัติ
 // (ตามกลไก modules ใน src/lib/core/scope.ts — idempotent-safe ถ้า core ประกาศซ้ำด้วย scope เดียวกัน)
@@ -28,7 +29,7 @@ registerScopes({
 // ───────────────────────── date helpers ─────────────────────────
 // วัน check-in/out เก็บเป็น @db.Date (เที่ยงคืน UTC) — ใช้ string "YYYY-MM-DD" ใน UI
 export function parseDate(dateStr: string): Date {
-  return new Date(`${dateStr}T00:00:00.000Z`);
+  return ymdToDbDate(dateStr); // SVC H.7 ▸ รวมกับ business-date.ts (พฤติกรรมเดิม) ◂
 }
 export function dateToStr(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -38,8 +39,8 @@ export function nightsBetween(fromStr: string, toStr: string): number {
   return Math.round(ms / 86_400_000);
 }
 export function todayBkk(): string {
-  // เที่ยงคืนตามเวลาไทย = business date ปัจจุบัน
-  return new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+  // เที่ยงคืนตามเวลาไทย = business date ปัจจุบัน · SVC H.7 ▸ ตัวเดียวกับ business-date.ts (Bangkok) ◂
+  return businessDateOf(DEFAULT_TIMEZONE);
 }
 export function addDaysStr(dateStr: string, days: number): string {
   return dateToStr(new Date(parseDate(dateStr).getTime() + days * 86_400_000));

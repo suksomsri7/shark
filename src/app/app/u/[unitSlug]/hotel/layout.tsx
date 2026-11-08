@@ -31,7 +31,11 @@ export default async function HotelLayout({ children, params }: { children: Reac
     permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
   };
   const can = (action: string) => evaluate(m, { module: "hotel", action, unitId: unit.id });
-  const allTabs = hotelTabsFor({ ratesRead: can("hotel.rates.read") || can("hotel.rates.write"), settingsEdit: can("hotel.settings.edit") }, `/app/u/${unitSlug}`);
+  // SVC H.7 r2 ▸ แท็บรายงาน ⇔ hotel.reports.read (หน้า reports ตรวจซ้ำเอง) ◂
+  const allTabs = hotelTabsFor(
+    { ratesRead: can("hotel.rates.read") || can("hotel.rates.write"), settingsEdit: can("hotel.settings.edit"), reportsRead: can("hotel.reports.read") },
+    `/app/u/${unitSlug}`,
+  );
   // SVC H.6 ▸ แท็บแม่บ้าน ⇔ hotel.housekeeping · แม่บ้านล้วน (มีแต่ housekeeping ไม่มีสิทธิ์งานหน้าเคาน์เตอร์/ราคา/ตั้งค่า) เห็นแท็บแม่บ้านแท็บเดียว (S §9) ◂
   const housekeeping = can("hotel.housekeeping");
   const housekeepingOnly = housekeeping && !FRONT_KEYS.some((k) => can(k));
