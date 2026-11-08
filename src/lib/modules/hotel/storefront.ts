@@ -202,6 +202,9 @@ export type WebBookingFacts = {
   adults: number;
   children: number;
   guestEmail: string | null;
+  /** SVC H.8 r4 (ภาพ 16 ข กล่อง «ผู้เข้าพัก») ชื่อ/เบอร์ดิบ — ภายในเท่านั้น · ชั้นสาธารณะ (platform/hotel-web) ปิดบางส่วนก่อนส่ง */
+  guestName: string;
+  guestPhone: string | null;
   totalSatang: number;
   /** หัวกลุ่ม (ผู้ถือมัดจำ) */
   head: { id: string; depositSatang: number; depositPaidAt: Date | null; depositSaleId: string | null; policySnapshot: unknown; checkInDate: Date; status: string };
@@ -255,6 +258,8 @@ export async function webBookingFacts(tenantId: string, unitId: string, publicTo
     adults: rv.adults,
     children: rv.children,
     guestEmail: rv.guestEmail,
+    guestName: rv.guestName,
+    guestPhone: rv.guestPhone,
     totalSatang: rv.totalSatang,
     head: { id: head.id, depositSatang: head.depositSatang, depositPaidAt: head.depositPaidAt, depositSaleId: head.depositSaleId, policySnapshot: head.policySnapshot, checkInDate: head.checkInDate, status: head.status },
     group: group.map((r) => ({ id: r.id, code: r.code, status: r.status, roomTypeName: r.roomType.name, totalSatang: r.totalSatang })),

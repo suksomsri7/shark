@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -138,6 +139,7 @@ export default async function HotelBookPage({ params, searchParams }: { params: 
         <BookingForm
           action={publicCreateHoldAction}
           formToken={info.formToken}
+          idemKey={randomUUID()}
           hidden={{ tenantSlug, unitSlug, checkIn, checkOut, adults: String(adults), rooms: String(rooms), roomTypeId, ratePlanId: q.ratePlan.id, couponCode: q.coupon?.ok ? couponCode : "", locale, lang: lang ?? "" }}
           labels={{ guestName: t("hotel.web.guestName"), phone: t("hotel.web.phone"), email: t("hotel.web.email"), policyAccept: t("hotel.web.policyAccept"), submit: t("hotel.web.submit"), submitting: t("hotel.web.submitting") }}
         />

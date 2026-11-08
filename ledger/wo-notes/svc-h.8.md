@@ -127,3 +127,19 @@ C-1 สลิปรอตรวจ + หน้าสถานะ canCancel false
 - รับมัดจำบางส่วนที่เคาน์เตอร์ (takeBookingDepositAction amountSatang < มัดจำ) ยังเขียนทับ depositSatang โดยไม่จดยอดเดิม — มติรอบนี้ครอบเฉพาะอนุมัติสลิปบางส่วน (ปิดได้โดยเรียก `keepDepositRequired` ที่ action)
 - แท็บเงินในหน้ารายละเอียดการจอง (BookingDetail.tsx · นอกไฟล์ของใบ) ยังแสดงแค่ยอดรับ — ยอดค้างอยู่ที่แถบหน้ารายการ + หน้าสถานะแขก
 - สลิปแถวรุ่นก่อน r3 (กุญแจของผู้เรียก) ยังกันด้วย `pendingSlip` นอกล็อกเหมือนเดิม
+
+## รอบ 4 (PARITY)
+ทรี `/root/projects/shark-svc-l6` · branch `wip/svc-h8-r2` · ฐาน QC ep-late-union · ที่มา: ภาพ chain ของผู้คุม (`.qc-shots/svc/h8/pairs/owner/*.png` เทียบ `ledger/design-dorm/16-hotel-online-booking.png`)
+
+### ผลต่อข้อ
+| ข้อ | ทำอะไร | ไฟล์ |
+|---|---|---|
+| 1 hydration #418 (หน้า pay มือถือ) | ต้นเหตุ: `HoldCountdown.tsx` `useState(() => end - Date.now())` (บรรทัด 17 เดิม) — เซิร์ฟเวอร์เรนเดอร์ "ถือห้องไว้ 14:32" ตามนาฬิกาตอน SSR · ไคลเอนต์ hydrate ช้ากว่าเป็นวินาที ⇒ ข้อความไม่ตรง ⇒ #418 · แก้: state เริ่ม `null` ⇒ เรนเดอร์ป้ายคงที่ที่เซิร์ฟเวอร์คำนวณ `hotel.web.holdUntil` ("ถือห้องไว้ถึง 14:32" · `bkkTime(holdExpiresAt)` ใน server component) · อ่านนาฬิกาเฉพาะใน `useEffect` หลัง mount แล้วเปลี่ยนเป็นนับถอยหลัง · ไม่ใช้ suppressHydrationWarning · ใช้ทั้งหน้า pay และ r | HoldCountdown.tsx · pay/[publicToken]/page.tsx · r/[publicToken]/page.tsx · dict |
+| 1 (ไล่ทุกหน้า) | ค่าที่ต่างกันระหว่าง SSR/ไคลเอนต์ในคอมโพเนนต์ 'use client' อีก 2 จุด: `BookingForm`/`DepositPay` `useState(newIdemKey)` สุ่ม idempotencyKey ตอนเรนเดอร์ ⇒ ค่า hidden input เซิร์ฟเวอร์ ≠ ไคลเอนต์ · แก้: หน้า (server) สุ่ม `randomUUID()` (node:crypto) ส่งเป็น prop `idemKey` · `useState(props.idemKey)` เก็บค่าแรก (router.refresh ทุก 5 วิไม่เปลี่ยนกุญแจ) · ฟอร์มใช้ได้แม้ JS ยังไม่โหลด · คอมโพเนนต์อื่น (SearchBar/RoomTypeCard/StatusCard/LookupForm) เป็น server component · `toLocale*` ทั้งหมดอยู่ใน server component/`format.ts` ที่เรียกจากเซิร์ฟเวอร์ ⇒ ไม่ถูก hydrate ซ้ำ · CancelDialog ไม่มีค่าเวลา/สุ่ม | BookingForm.tsx · DepositPay.tsx · book/page.tsx · pay/[publicToken]/page.tsx |
+| 2 กล่อง «ผู้เข้าพัก» (ภาพ 16 ข) | ระหว่างสรุปยอดกับนโยบายยกเลิก: ชื่อ · เบอร์ (2 ช่องแบบ `.srch` ของภาพ) · DTO สาธารณะ `guestMasked: { name, tel }` เท่านั้น — ชื่อ = คำแรก + พยัญชนะต้นของคำสุดท้าย ("ภัทรา ส." · ข้ามสระหน้า เ แ โ ใ ไ · คำเดียว = ครึ่งแรก + "•••") · เบอร์ = 3 ตัวแรก-xxx-4 ตัวท้าย ("089-xxx-1180" · < 8 หลัก ⇒ "—") · ไม่มีชื่อเต็ม/เบอร์เต็ม/อีเมลเต็ม · คีย์ไม่ชน `PII_KEY` ของข้อสอบ (ไม่ใช้ guestName/guestPhone/phone/email) · `WebBookingFacts` เพิ่ม guestName/guestPhone (ภายในเท่านั้น) | hotel-web.ts · modules/hotel/storefront.ts · pay/[publicToken]/page.tsx · dict |
+
+### ข้อแย้งกับภาพ (บันทึกไว้)
+- ภาพ 16 ข แสดงชื่อเต็ม "ภัทรา สายใจ" — probe A-8 (CRITICAL) ห้ามชื่อเต็มใน DTO สาธารณะ ⇒ เลือกชื่อปิดบางส่วน "ภัทรา ส." (เบอร์ตรงภาพ)
+
+### ไฟล์ที่แตะรอบ 4
+HoldCountdown.tsx · BookingForm.tsx · DepositPay.tsx · hotel/{book/page.tsx, pay/[publicToken]/page.tsx, r/[publicToken]/page.tsx} · platform/hotel-web.ts · modules/hotel/storefront.ts · i18n/dict.ts (+4 คู่: holdUntil · guestBox · nameShort · telShort)

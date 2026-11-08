@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
@@ -5,7 +6,7 @@ import { hotelHostAllowed, hotelWebClientKey, publicStatus } from "@/lib/platfor
 import { makeT } from "@/lib/i18n";
 import { DepositPay } from "@/components/store/hotel/DepositPay";
 import { HoldCountdown } from "@/components/store/hotel/HoldCountdown";
-import { baht, pickLocale, rangeLabel } from "@/components/store/hotel/format";
+import { baht, bkkTime, pickLocale, rangeLabel } from "@/components/store/hotel/format";
 import { WebHeader, WebNotFound, WebShell, one, withLang, type PageSearch } from "../../_web";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ export default async function HotelPayPage({ params, searchParams }: { params: P
           </Link>
           <h1 className="text-xl font-bold">{t("hotel.web.confirmTitle")}</h1>
           <span className="flex-1" />
-          {st.holdExpiresAt ? <HoldCountdown expiresAt={st.holdExpiresAt} template={t("hotel.web.holdFor", { time: "{time}" })} expiredLabel={t("hotel.web.holdExpired")} /> : null}
+          {st.holdExpiresAt ? <HoldCountdown expiresAt={st.holdExpiresAt} untilLabel={t("hotel.web.holdUntil", { time: bkkTime(st.holdExpiresAt, locale) })} template={t("hotel.web.holdFor", { time: "{time}" })} expiredLabel={t("hotel.web.holdExpired")} /> : null}
         </div>
         <div className="flex flex-col gap-2 rounded-[18px] border border-[color:var(--color-line)] px-4 py-3">
           <div className={rowCls}>
@@ -73,6 +74,18 @@ export default async function HotelPayPage({ params, searchParams }: { params: P
             <b className="tabular-nums">{baht(st.payAtHotelSatang, locale, true)}</b>
           </div>
         </div>
+        {/* SVC H.8 r4 (ภาพ 16 ข) กล่อง «ผู้เข้าพัก» — ชื่อ/เบอร์แบบปิดบางส่วนจาก DTO สาธารณะ (ไม่มีชื่อเต็ม/เบอร์เต็ม/อีเมล) */}
+        <div className="text-sm font-semibold" data-guest-box="">{t("hotel.web.guestBox")}</div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex min-w-0 flex-col gap-0.5 rounded-2xl border border-[color:var(--color-line)] px-3 py-2">
+            <span className="text-xs text-[color:var(--color-muted)]">{t("hotel.web.nameShort")}</span>
+            <b className="truncate text-[15px]">{st.guestMasked.name}</b>
+          </div>
+          <div className="flex min-w-0 flex-col gap-0.5 rounded-2xl border border-[color:var(--color-line)] px-3 py-2">
+            <span className="text-xs text-[color:var(--color-muted)]">{t("hotel.web.telShort")}</span>
+            <b className="truncate text-[15px] tabular-nums">{st.guestMasked.tel ?? "—"}</b>
+          </div>
+        </div>
         <div className="flex gap-2.5 rounded-[18px] bg-[color:var(--color-surface-2,#f4f4f5)] px-4 py-3 text-sm">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 flex-none" aria-hidden="true">
             <path d="M7 3h7l4 4v14H7z" />
@@ -87,6 +100,7 @@ export default async function HotelPayPage({ params, searchParams }: { params: P
           qrSvgDataUrl={st.pay?.qrSvgDataUrl ?? null}
           slipUrl={`${base}/slip/${encodeURIComponent(publicToken)}${lang ? `?lang=${lang}` : ""}`}
           slipState={slipState}
+          idemKey={randomUUID()}
           labels={{ amount: `฿${baht(amount, locale, true)}`, note: t("hotel.web.qrNote"), attach: t("hotel.web.attachSlip"), sent: t("hotel.web.slipSent"), bad: slip === "rate" ? t("hotel.web.err.rate") : t("hotel.web.slipBad"), noReceiver: t("hotel.web.noReceiver") }}
         />
       </div>

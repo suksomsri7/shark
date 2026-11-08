@@ -128,6 +128,8 @@ export type WebStatusDto = {
   checkInTime: string;
   checkOutTime: string;
   emailMasked: string | null;
+  /** SVC H.8 r4 (ภาพ 16 ข กล่อง «ผู้เข้าพัก») ชื่อ+เบอร์แบบปิดบางส่วนเท่านั้น ("ภัทรา ส." · "089-xxx-1180") — ไม่มีชื่อเต็ม/เบอร์เต็ม/อีเมลเต็ม */
+  guestMasked: { name: string; tel: string | null };
   pay: WebIntent | null;
   refund: { refundSatang: number; forfeitSatang: number; paidSatang: number } | null;
   refundedSatang: number;
@@ -277,6 +279,25 @@ function maskEmail(e: string | null): string | null {
   if (at < 1) return "***";
   const name = e.slice(0, at);
   return `${name.slice(0, Math.min(2, name.length))}***${e.slice(at)}`;
+}
+
+/** SVC H.8 r4 ▸ ชื่อปิดบางส่วน: หลายคำ = คำแรก + อักษรแรกของคำสุดท้าย ("ภัทรา สายใจ" → "ภัทรา ส.") · คำเดียว = ครึ่งแรก + "•••" (ตัดตามกลุ่มอักษร ไม่ตัดสระ/วรรณยุกต์ไทยกลางตัว) */
+function graphemes(s: string): string[] {
+  return Array.from(new Intl.Segmenter("th", { granularity: "grapheme" }).segment(s), (x) => x.segment);
+}
+function maskName(n: string): string {
+  const w = n.trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return "•••";
+  // อักษรย่อไทย = พยัญชนะต้น (ข้ามสระหน้า เ แ โ ใ ไ: "เจริญ" → "จ.")
+  if (w.length > 1) return `${w[0]} ${graphemes(w[w.length - 1]).find((c) => !/^[เแโใไ]$/.test(c)) ?? ""}.`;
+  const g = graphemes(w[0]);
+  return g.length <= 1 ? "•••" : `${g.slice(0, Math.ceil(g.length / 2)).join("")}•••`;
+}
+/** SVC H.8 r4 ▸ เบอร์ปิดบางส่วน: 3 ตัวแรก + xxx + 4 ตัวท้าย ("0891231180" → "089-xxx-1180") · ตัวเลขน้อยกว่า 8 ตัว ⇒ ไม่แสดง */
+function maskPhone(p: string | null): string | null {
+  const d = (p ?? "").replace(/\D/g, "");
+  if (d.length < 8) return null;
+  return `${d.slice(0, 3)}-xxx-${d.slice(-4)}`;
 }
 
 const SettingsKeys = {
@@ -1009,6 +1030,7 @@ export async function publicStatus(input: unknown, opts: HotelWebOpts): Promise<
       checkInTime: strV(get(K.checkInTime)) ?? "14:00",
       checkOutTime: strV(get(K.checkOutTime)) ?? "12:00",
       emailMasked: maskEmail(f.guestEmail),
+      guestMasked: { name: maskName(f.guestName), tel: maskPhone(f.guestPhone) },
       pay: intent,
       refund: active ? (refundOf(f, today) ?? { refundSatang: 0, forfeitSatang: 0, paidSatang: 0 }) : null,
       refundedSatang: f.money?.refundedSatang ?? 0,
