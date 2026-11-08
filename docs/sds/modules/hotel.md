@@ -334,7 +334,9 @@ CONFIRMED (+BOOKED แถวเก่า) · วันเข้า ≤ วัน
 
 ### 6 ขั้น (idempotent)
 1. no-show: CONFIRMED ที่ checkInDate = วันปิด ⇒ `markNoShow` (H.3) **นอก tx** ทีละแถว — มัดจำริบ/คืนผ่าน POS · folio VOID ตาม `releaseStayTx` (มติ §9.1) · CAS สถานะ ⇒ รันซ้ำ = ข้าม · ล้ม = warning
-2. post ค่าห้อง: คืน counted ของวันปิด · การจอง CHECKED_IN · `folioItemId` ว่าง ⇒ `postRoomNightsTx` (H.5 · ตั้ง `postedAuditId`) · คืนที่ post แล้ว/void แล้วไม่ post ซ้ำ
+1ข. (r3) แขกที่ย้อน «ไม่มา» (AuditLog `hotel.booking.no_show_undo`) แล้วเข้าพัก (CHECKED_IN) แต่บิลริบ **มัดจำการจอง** (`dep-forfeit:<มัดจำ>` · HOTEL) ยัง PAID ⇒ `reports.restoreForfeitedDepositsOnStay`: `pos.voidSale` (ทางเดียวกับ `refundStay` · กลับบัญชี) + `depositSaleVoided` (มัดจำกลับ OPEN) ⇒ ถูกใช้หักบิลเช็กเอาต์ (แขกจ่าย = ค่าห้องที่พักจริง) · นอก tx · idempotent · ล้ม = warning · AuditLog `hotel.booking.deposit_unforfeited`
+2. post ค่าห้อง: คืน counted ของวันปิด · การจอง CHECKED_IN · `folioItemId` ว่าง ⇒ `postRoomNightsTx` (H.5 · ตั้ง `postedAuditId`) · คืนที่ post แล้ว/void แล้วไม่ post ซ้ำ ·
+   (r3) คืนค้างของวันที่ปิดไปแล้ว (≥ วันเริ่มใช้ · เช่นย้อน «ไม่มา» แล้วเช็กอิน) ⇒ โพสต์เข้า **วันที่กำลังปิด** (businessDate/postedAuditId = วันนั้น) คำอธิบาย "คืนย้อนหลัง <วัน>" + snapshot.notes · แถว freeze ของวันที่ปิดแล้วไม่ถูกแก้
 3. ห้องค้างต่อ ⇒ DIRTY: `markStayoversDirty` (H.6) หลัง commit · เฉพาะครั้งแรกที่ปิด "เมื่อวาน" (ปิดใหม่หลัง reopen ไม่ทำซ้ำ)
 4. freeze KPI ลง `HotelNightAudit` (unique unitId+businessDate) · 5. AuditLog `hotel.audit.closed` + outbox `hotel.audit.closed` (consumer ส่งอีเมลสรุป `sendEmailRich` กุญแจ `hotel-audit-<auditId>`)
 6. ลำดับวัน (ข้างบน) · cron ไล่ปิดทีละวัน ≤ 7 วัน/หน่วย/รอบ
@@ -343,13 +345,15 @@ CONFIRMED (+BOOKED แถวเก่า) · วันเข้า ≤ วัน
 
 ### สูตร KPI (ใบ §2.1)
 - roomsTotal = ห้อง active ที่ rentMode (ห้อง ?? ประเภท) ∈ NIGHTLY/BOTH · roomsOOO = ห้องขายได้ที่มี BLOCK ครอบคืน · roomsAvailable = total − OOO
-- roomsOccupied = จำนวนห้อง (ไม่ซ้ำ) ที่มีคืน counted ของการจอง CHECKED_IN/CHECKED_OUT · occupancyBps = ⌊occupied × 10000 ÷ available⌋
-- roomRevenueSatang = Σ FolioItem ROOM ที่ไม่ void ของ businessDate · ADR = revenue ÷ occupied · RevPAR = revenue ÷ available (ปัดตาม `rooms.money.rounding`)
+- roomsOccupied = จำนวนห้อง (ไม่ซ้ำ · เฉพาะห้องในชุดที่ขายได้และไม่ BLOCK คืนนั้น ⇒ ≤ available) ที่มีคืน counted ของการจอง CHECKED_IN/CHECKED_OUT · occupancyBps = ⌊occupied × 10000 ÷ available⌋
+- roomRevenueSatang = `roomRevenueByDay` (สูตรเดียวของ preview · freeze · รายงานสด · getUnitKpi — r3 มติผู้คุม ข้อ 1): Σ ROOM ที่ไม่ void ตาม businessDate (ไม่นับ folio VOID / การจอง REFUNDED) + nights.priceSatang ของคืน counted ที่ยังไม่โพสต์ (CHECKED_IN/CHECKED_OUT) + คืนค้างของวันที่ปิดแล้วนับเข้าวันที่รอปิด · ราคาตามที่ขายแขก (INCLUSIVE = รวม VAT) · ADR = revenue ÷ occupied · RevPAR = revenue ÷ available (ปัดตาม `rooms.money.rounding`)
 - arrivals = เข้าวันนั้นและเข้าพักจริง · departures = ออกวันนั้นและ CHECKED_OUT · noShowCount = เข้าวันนั้นและ NO_SHOW · cancelledCount = cancelledAt ตกวันนั้น (เวลาร้าน)
 
 ### รายงาน
-- วันที่ปิดแล้ว (CLOSED) = ค่าที่ freeze · วันยังไม่ปิด = คำนวณสดสูตรเดียวกัน โดยรายได้ห้อง = Σ nights.priceSatang (counted · CHECKED_IN/CHECKED_OUT · มติ §9.4)
+- วันที่ปิดแล้ว (CLOSED) = ค่าที่ freeze · วันยังไม่ปิด = คำนวณสดสูตรเดียวกัน (`roomRevenueByDay`) ⇒ สดก่อนปิด = preview = freeze หลังปิด
 - รายเดือน = รวมวัน (occupied/available/revenue รวม แล้วคิด bps/ADR/RevPAR จากผลรวม) · ช่วง ≤ 366 วัน (`INVALID_RANGE`) · ≤ 8 คำสั่ง SQL ต่อรายงาน
-- รายได้ตามแหล่ง/แผน/ประเภท = Σ ROOM (ห้อง) + SERVICE/POS_CHARGE/MINIBAR (อื่น) ที่ไม่ void ตาม businessDate · ฟันเนล = การจองที่สร้างในช่วง · forecast30 = `hotelAvailability` (H.3)
+- รายได้ตามแหล่ง/แผน/ประเภท (r3) = แถว folio ที่ไม่ void ตาม businessDate (ไม่นับ folio VOID / การจอง REFUNDED): ห้อง = ROOM · อื่น = SERVICE/POS_CHARGE/MINIBAR/PENALTY/DISCOUNT/TAX/SERVICE_CHARGE ⇒ รวม = ยอดที่เก็บแขก (= ยอดบิลเช็กเอาต์ POS) · `vatSatang` = VAT ในยอดรวมต่อ folio ตามโหมดภาษี (INCLUSIVE `splitIncludedVat` · EXCLUSIVE แถว TAX + VAT ในบิลร้านที่ลงห้อง) ⇒ รวม − VAT = รายได้ GL 4xxx · groupBy roomType คีย์ = id ประเภท (ชื่อ = ป้าย) · ยังนับเฉพาะคืนที่โพสต์แล้ว (ข้อสอบ RP-3)
+- มัดจำ (r3): «ริบ» = บิลริบ PAID ของมัดจำการจอง (ใบรับ = `depositSaleId` ของการจองในหน่วย) ที่การจองยังเป็น NO_SHOW — ไม่รวมริบเงินประกันห้อง/ค่าธรรมเนียมยกเลิก (คีย์ `dep-forfeit:` เดียวกัน)
+- ฟันเนล = การจองที่สร้างในช่วง · forecast30 = `hotelAvailability` (H.3)
 - `getUnitKpi(unitId)` = {occupancyTodayBps (on-the-books: CHECKED_IN คืนนี้ + CONFIRMED เข้าวันนี้), arrivalsToday, roomRevenueYesterdaySatang (ปิดแล้ว = audit · ไม่งั้นสด)}
-- CSV: UTF-8 BOM · หัวตารางไทย · ทุกช่องผ่าน `csvRow` (X6) · ชื่อไฟล์ใช้ id หน่วย ไม่มีชื่อร้าน
+- CSV: UTF-8 BOM · หัวตารางไทย · ทุกช่องผ่าน `csvRow` (X6) · ชื่อไฟล์ใช้ id หน่วย ไม่มีชื่อร้าน · (r3) แถวรวมท้ายตาราง (route ส่ง total) · แม่บ้านรายคน (`housekeepingUsers`) · ฟันเนลมีคอลัมน์เหตุผลยกเลิก · รายได้มีคอลัมน์ VAT · วันที่คงรูป ISO

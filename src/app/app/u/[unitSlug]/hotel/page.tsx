@@ -78,6 +78,7 @@ export default async function HotelPage({
             ไปหน้าปิดวัน
           </Link>
         </div>
+      ) : null}
       {/* SVC H.4 ▸ การ์ด "ตม.30 ค้าง N" ต่อจาก HotelToday (ภาพ 08/09) — ลิงก์คิวแจ้งที่พักคนต่างด้าว ◂ */}
       {tq.ok ? (
         <a

@@ -1,15 +1,22 @@
 // SVC H.7 ▸ รายงานโรงแรม (อ่านอย่างเดียว) — ใบสั่ง ledger/svc-briefs/svc-brief-h.7.md §0 (รายงาน) §2.7–2.8 §3.3 §9.2–9.6 · สเปก S §10
 //   • ctx = {tenantId, actorUserId} แบบรายงานหอ (D.19) — ด่าน: Membership สด + หน่วย HOTEL ของร้าน + เข้าหน่วยได้ (ไม่ผ่าน ⇒ NOT_FOUND) + hotel.reports.read (FORBIDDEN)
-//   • วันที่ปิดแล้ว (HotelNightAudit CLOSED) = ตัวเลขที่ freeze · วันที่ยังไม่ปิด = คำนวณสด สูตรเดียวกับ KPI (computeKpi) · รายได้ห้องสด = Σ nights.priceSatang (counted)
-//     ของการจอง CHECKED_IN/CHECKED_OUT (มติ §9.4)
+//   • วันที่ปิดแล้ว (HotelNightAudit CLOSED) = ตัวเลขที่ freeze · วันที่ยังไม่ปิด = คำนวณสด สูตรเดียวกับ KPI (computeKpi) · รายได้ห้องสด = roomRevenueByDay
+//     (r3 มติผู้คุม ข้อ 1: ROOM ที่โพสต์แล้วและยังไม่ void + nights.priceSatang ของคืนที่ยังไม่โพสต์ · ไม่นับ folio VOID/การจอง REFUNDED ·
+//     คืนค้างของวันที่ปิดแล้วนับเข้าวันที่รอปิด) ⇒ preview = สด = freeze
+//   • revenueReport: ห้อง = ROOM · อื่น = ค่าใช้จ่ายอื่นทุกชนิดในบิล (บริการ · มินิบาร์ · ลงห้อง · ค่าปรับ · ส่วนลด · ภาษี/ค่าบริการแยก) ⇒ รวม = ยอดที่เก็บแขก
+//     (= ยอดบิลเช็กเอาต์ POS) · vatSatang = ส่วน VAT ของยอดรวมตามโหมดภาษีของบิล ⇒ รวม − VAT = รายได้ GL 4xxx
+//   • คืนสภาพมัดจำที่ริบของแขกที่ย้อน «ไม่มา» แล้วเข้าพัก (hook ของการปิดวัน · restoreForfeitedDepositsOnStay — ฟังก์ชันเดียวในไฟล์นี้ที่เขียน)
 //   • เงิน = Int สตางค์ · % = bp · ช่วงวัน ≤ 366 วัน (เกิน ⇒ INVALID_RANGE) · ≤ 8 คำสั่ง SQL ต่อรายงาน (คิวรีชุด · join ด้วย SQL เดียว ไม่ N+1)
 //   • ไม่มีข้อมูลแขก (ชื่อ/เบอร์/อีเมล) ใน DTO (X10) · CSV ผ่าน csvRow (กันสูตร X6) + BOM · ไม่มี "use server"
+import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { csvRow } from "@/lib/core/csv";
 import { canAccessUnit, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { resolveSettings } from "@/lib/core/settings";
 import { hotelAvailability } from "./availability";
-import { computeKpi, type KpiNight, type KpiRoom } from "./night-audit";
+import { computeKpi, roomRevenueByDay, type KpiNight, type KpiRoom } from "./night-audit";
+import { folioSettings } from "./folio";
+import { splitIncludedVat } from "@/lib/money/vat";
 import { addDaysYmd, isYmd, roundFraction } from "./pricing";
 import { businessDateOf, daysInclusive, normalizeTimezone, ymdOfDate, ymdToDbDate, zonedDayStart } from "./business-date";
 
@@ -20,7 +27,7 @@ export type ReportFail = { ok: false; code: ReportFailCode; reason: string };
 export type OccupancyRow = { period: string; occupancyBps: number; adrSatang: number; revparSatang: number; occupied: number; available: number; revenueSatang: number; closed: boolean };
 export type OccupancyReport = { ok: true; unitId: string; from: string; to: string; groupBy: "day" | "month"; rows: OccupancyRow[]; total: Omit<OccupancyRow, "period" | "closed"> };
 export type RevenueGroupBy = "source" | "ratePlan" | "roomType";
-export type RevenueRow = { key: string; label: string; roomRevenueSatang: number; otherRevenueSatang: number; totalSatang: number };
+export type RevenueRow = { key: string; label: string; roomRevenueSatang: number; otherRevenueSatang: number; totalSatang: number; vatSatang: number };
 export type RevenueReport = { ok: true; unitId: string; from: string; to: string; groupBy: RevenueGroupBy; rows: RevenueRow[]; total: Omit<RevenueRow, "key" | "label"> };
 export type FunnelRow = {
   source: string;
@@ -41,7 +48,7 @@ export type ForecastReport = { ok: true; unitId: string; from: string; rows: For
 export type HousekeepingReport = { ok: true; unitId: string; from: string; to: string; byDay: { date: string; cleaned: number }[]; byUser: { userId: string; name: string; cleaned: number }[]; oooOutstanding: number };
 export type DepositsReport = { ok: true; unitId: string; from: string; to: string; holdActive: number; holdExpired: number; depositPendingSatang: number; forfeitedSatang: number; refundedSatang: number };
 export type UnitKpi = { occupancyTodayBps: number; arrivalsToday: number; roomRevenueYesterdaySatang: number };
-export type CsvKind = "occupancy" | "revenue" | "funnel" | "forecast" | "housekeeping" | "deposits" | "history";
+export type CsvKind = "occupancy" | "revenue" | "funnel" | "forecast" | "housekeeping" | "housekeepingUsers" | "deposits" | "history";
 
 export const REPORT_MAX_DAYS = 366;
 export const SOURCE_TH: Record<string, string> = { WEB: "เว็บไซต์", WALK_IN: "วอล์กอิน", PHONE: "โทรศัพท์", LINE: "ไลน์ (LINE)", OTA: "OTA" };
@@ -65,6 +72,9 @@ const n = (v: unknown): number => (typeof v === "number" ? v : typeof v === "big
 // ───────────────────────── ด่าน ─────────────────────────
 /** client ของร้าน (tenantDb · ไม่มี raw prisma ในโมดูล — fitness F5.1 · SQL ดิบใส่ tenantId/unitId เองทุกคำสั่ง) */
 const dbOf = (tenantId: string, unitId?: string) => tenantDb({ tenantId, ...(unitId ? { unitId } : {}) });
+type Tx = Prisma.TransactionClient;
+/** client ของร้านในรูป TransactionClient (สำหรับฟังก์ชันร่วมของ night-audit ที่รับได้ทั้ง tx และ client ปกติ) */
+const txOf = (g: { tenantId: string; unitId: string }): Tx => tenantDb({ tenantId: g.tenantId, unitId: g.unitId }) as unknown as Tx;
 type Gate = { tenantId: string; unitId: string; tz: string; today: string };
 type GateRow = { unitId: string; settings: unknown; role: string | null; unitAccess: unknown; permissions: unknown };
 
@@ -148,7 +158,7 @@ export async function occupancyReport(ctx: unknown, input: unknown): Promise<Occ
   if (groupBy !== "day" && groupBy !== "month") return fail("INVALID_INPUT", R.groupBy);
   const r = rangeOf(g, i);
   if (isReportFail(r)) return r;
-  const [rooms, blocks, audits, nights, rounding] = await Promise.all([
+  const [rooms, blocks, audits, nights, revByDay, rounding] = await Promise.all([
     roomsOf(g),
     blocksOf(g, r.from, r.to),
     dbOf(g.tenantId, g.unitId).hotelNightAudit.findMany({
@@ -156,6 +166,7 @@ export async function occupancyReport(ctx: unknown, input: unknown): Promise<Occ
       select: { businessDate: true, occupancyBps: true, adrSatang: true, revparSatang: true, roomsOccupied: true, roomsAvailable: true, roomRevenueSatang: true },
     }),
     nightsOf(g, r.from, r.to, OCCUPYING),
+    roomRevenueByDay(txOf(g), g, r.from, r.to),
     roundingOf(g),
   ]);
   const auditOf = new Map(audits.map((a) => [ymdOfDate(a.businessDate), a]));
@@ -165,7 +176,7 @@ export async function occupancyReport(ctx: unknown, input: unknown): Promise<Occ
     const a = auditOf.get(d);
     if (a) return { period: d, occupancyBps: a.occupancyBps, adrSatang: a.adrSatang, revparSatang: a.revparSatang, occupied: a.roomsOccupied, available: a.roomsAvailable, revenueSatang: a.roomRevenueSatang, closed: true };
     const ns = nightsByDay.get(d) ?? [];
-    const k = computeKpi({ rooms, blockedRoomIds: blockedOn(blocks, d), nights: ns.map((x): KpiNight => ({ id: x.id, roomId: x.roomId, status: x.status })), roomRevenueSatang: ns.reduce((s, x) => s + x.priceSatang, 0), rounding });
+    const k = computeKpi({ rooms, blockedRoomIds: blockedOn(blocks, d), nights: ns.map((x): KpiNight => ({ id: x.id, roomId: x.roomId, status: x.status })), roomRevenueSatang: revByDay.get(d) ?? 0, rounding });
     return { period: d, occupancyBps: k.occupancyBps, adrSatang: k.adrSatang, revparSatang: k.revparSatang, occupied: k.roomsOccupied, available: k.roomsAvailable, revenueSatang: k.roomRevenueSatang, closed: false };
   });
   const agg = (period: string, xs: OccupancyRow[]): OccupancyRow => {
@@ -185,8 +196,15 @@ export async function occupancyReport(ctx: unknown, input: unknown): Promise<Occ
 }
 
 // ───────────────────────── revenueReport ─────────────────────────
-type ItemRow = { type: string; amountSatang: number; source: string; planCode: string | null; planName: string | null; typeId: string | null; typeName: string | null };
-/** รายได้ตามแหล่งจอง/แผนราคา/ประเภทห้อง · ห้อง = Σ ROOM ที่ยังไม่ void ตาม businessDate · อื่น = Σ SERVICE+POS_CHARGE+MINIBAR (SQL เดียว) */
+type ItemRow = { folioId: string; type: string; amountSatang: unknown; source: string; planCode: string | null; planName: string | null; typeId: string | null; typeName: string | null };
+/** ชนิดแถว folio ที่เป็นยอดที่เก็บแขก (ค่าใช้จ่าย + ภาษี/ค่าบริการแยก) — ไม่ใช่: มัดจำ/รับเงิน/คืนเงิน/เงินประกัน/ตัวกลับรายการ (void ดูจาก voidedAt) */
+const BILLED_TYPES = ["ROOM", "SERVICE", "POS_CHARGE", "MINIBAR", "PENALTY", "DISCOUNT", "TAX", "SERVICE_CHARGE"] as const;
+/**
+ * รายได้ตามแหล่งจอง/แผนราคา/ประเภทห้อง (มติผู้คุม r3 ข้อ 1 · SQL เดียว) — แถวที่ยังไม่ void ตาม businessDate · ไม่นับ folio VOID / การจอง REFUNDED:
+ *   ห้อง = Σ ROOM (ราคาที่ขายแขก) · อื่น = Σ ค่าใช้จ่ายอื่นในบิล (บริการ · มินิบาร์ · ลงห้อง · ค่าปรับ · ส่วนลด · ภาษี/ค่าบริการแยกของโหมด EXCLUSIVE) ⇒ รวม = ยอดที่เก็บแขก (= ยอดบิลเช็กเอาต์ POS)
+ *   vatSatang = ส่วน VAT ของยอดรวมตามโหมดภาษีของบิล ต่อ folio (INCLUSIVE: ถอด VAT จากยอดรวม · EXCLUSIVE: แถว TAX + VAT ในบิลร้านที่ลงห้อง) ⇒ รวม − VAT = รายได้ GL 4xxx
+ *   groupBy roomType ใช้ id ประเภทห้องเป็นคีย์ (ชื่อซ้ำไม่รวมกัน) · ชื่อเป็นป้าย
+ */
 export async function revenueReport(ctx: unknown, input: unknown): Promise<RevenueReport | ReportFail> {
   const g = await gateOf(ctx, input);
   if (isReportFail(g)) return g;
@@ -195,37 +213,57 @@ export async function revenueReport(ctx: unknown, input: unknown): Promise<Reven
   if (groupBy !== "source" && groupBy !== "ratePlan" && groupBy !== "roomType") return fail("INVALID_INPUT", R.groupBy);
   const r = rangeOf(g, i);
   if (isReportFail(r)) return r;
-  const items = await dbOf(g.tenantId).$queryRaw<ItemRow[]>`
-    SELECT i.type, i."amountSatang", rv.source,
-           p.code AS "planCode", p.name AS "planName", t.id AS "typeId", t.name AS "typeName"
-      FROM "HotelFolioItem" i
-      JOIN "HotelFolio" f ON f.id = i."folioId"
-      JOIN "HotelReservation" rv ON rv.id = f."reservationId"
-      LEFT JOIN "HotelBookingNight" bn ON i."refType" = 'HotelBookingNight' AND bn.id = i."refId"
-      LEFT JOIN "HotelRatePlan" p ON p.id = COALESCE(bn."ratePlanId", rv."ratePlanId")
-      LEFT JOIN "HotelRoomType" t ON t.id = COALESCE(bn."roomTypeId", rv."roomTypeId")
-     WHERE i."tenantId" = ${g.tenantId} AND i."unitId" = ${g.unitId} AND i."voidedAt" IS NULL
-       AND i.type IN ('ROOM', 'SERVICE', 'POS_CHARGE', 'MINIBAR')
-       AND i."businessDate" >= ${r.from}::date AND i."businessDate" <= ${r.to}::date`;
+  const types = [...BILLED_TYPES];
+  const [items, st] = await Promise.all([
+    dbOf(g.tenantId).$queryRaw<ItemRow[]>`
+      SELECT i."folioId", i.type, i."amountSatang", rv.source::text AS source,
+             p.code AS "planCode", p.name AS "planName", t.id AS "typeId", t.name AS "typeName"
+        FROM "HotelFolioItem" i
+        JOIN "HotelFolio" f ON f.id = i."folioId"
+        JOIN "HotelReservation" rv ON rv.id = f."reservationId"
+        LEFT JOIN "HotelBookingNight" bn ON i."refType" = 'HotelBookingNight' AND bn.id = i."refId"
+        LEFT JOIN "HotelRatePlan" p ON p.id = COALESCE(bn."ratePlanId", rv."ratePlanId")
+        LEFT JOIN "HotelRoomType" t ON t.id = COALESCE(bn."roomTypeId", rv."roomTypeId")
+       WHERE i."tenantId" = ${g.tenantId} AND i."unitId" = ${g.unitId} AND i."voidedAt" IS NULL
+         AND f.status <> 'VOID' AND rv.status::text <> 'REFUNDED'
+         AND i.type = ANY(${types}::text[])
+         AND i."businessDate" >= ${r.from}::date AND i."businessDate" <= ${r.to}::date`,
+    folioSettings(g.tenantId, g.unitId),
+  ]);
+  const vatOf = (billed: number, tax: number, posPart: number): number => (st.mode === "EXCLUSIVE" ? tax + splitIncludedVat(posPart, st.vatBp).vatSatang : splitIncludedVat(billed, st.vatBp).vatSatang);
+  type Part = { billed: number; tax: number; pos: number };
+  const add = (m: Map<string, Part>, k: string, it: ItemRow, amt: number) => {
+    const p = m.get(k) ?? { billed: 0, tax: 0, pos: 0 };
+    p.billed += amt;
+    if (it.type === "TAX") p.tax += amt;
+    if (it.type === "POS_CHARGE") p.pos += amt;
+    m.set(k, p);
+  };
   const groups = new Map<string, RevenueRow>();
+  const perRowFolio = new Map<string, Map<string, Part>>();
+  const perFolio = new Map<string, Part>();
   for (const it of items) {
     const [key, label] =
       groupBy === "source"
         ? [it.source, SOURCE_TH[it.source] ?? it.source]
         : groupBy === "ratePlan"
           ? [it.planCode ?? "NONE", it.planName ?? "ไม่มีแผนราคา"]
-          : [it.typeName ?? "ไม่ระบุ", it.typeName ?? "ไม่ระบุประเภท"];
-    const row = groups.get(key) ?? { key, label, roomRevenueSatang: 0, otherRevenueSatang: 0, totalSatang: 0 };
+          : [it.typeId ?? "NONE", it.typeName ?? "ไม่ระบุประเภท"];
+    const row = groups.get(key) ?? { key, label, roomRevenueSatang: 0, otherRevenueSatang: 0, totalSatang: 0, vatSatang: 0 };
     const amt = n(it.amountSatang);
     if (it.type === "ROOM") row.roomRevenueSatang += amt;
     else row.otherRevenueSatang += amt;
     row.totalSatang = row.roomRevenueSatang + row.otherRevenueSatang;
     groups.set(key, row);
+    add(perRowFolio.get(key) ?? perRowFolio.set(key, new Map()).get(key) ?? new Map(), it.folioId, it, amt);
+    add(perFolio, it.folioId, it, amt);
   }
+  for (const [key, row] of groups) row.vatSatang = [...(perRowFolio.get(key)?.values() ?? [])].reduce((s, p) => s + vatOf(p.billed, p.tax, p.pos), 0);
   const rows = [...groups.values()].sort((a, b) => b.totalSatang - a.totalSatang || a.key.localeCompare(b.key));
   const room = rows.reduce((s, x) => s + x.roomRevenueSatang, 0);
   const other = rows.reduce((s, x) => s + x.otherRevenueSatang, 0);
-  return { ok: true, unitId: g.unitId, from: r.from, to: r.to, groupBy, rows, total: { roomRevenueSatang: room, otherRevenueSatang: other, totalSatang: room + other } };
+  const vat = [...perFolio.values()].reduce((s, p) => s + vatOf(p.billed, p.tax, p.pos), 0);
+  return { ok: true, unitId: g.unitId, from: r.from, to: r.to, groupBy, rows, total: { roomRevenueSatang: room, otherRevenueSatang: other, totalSatang: room + other, vatSatang: vat } };
 }
 
 // ───────────────────────── bookingFunnel ─────────────────────────
@@ -347,7 +385,11 @@ export async function housekeepingReport(ctx: unknown, input: unknown): Promise<
 }
 
 // ───────────────────────── depositsReport ─────────────────────────
-/** มัดจำ: HOLD ที่ยังถือห้อง · มัดจำค้างรับ (ยืนยันแล้วยังไม่จ่าย) · ริบ (บิลริบผ่าน POS ในช่วง) · คืน (คืนมัดจำการจองในช่วง) */
+/**
+ * มัดจำ: HOLD ที่ยังถือห้อง · มัดจำค้างรับ (ยืนยันแล้วยังไม่จ่าย) · ริบ (บิลริบผ่าน POS ในช่วง) · คืน (คืนมัดจำการจองในช่วง)
+ * r3 (มติผู้คุม ข้อ 4 · G-4): «ริบ» = เฉพาะริบ **มัดจำการจอง** ของการจองที่ยังเป็น «ไม่มา» — แยกจากริบเงินประกันห้อง (ใบรับ securityDepositSaleId)
+ * และค่าธรรมเนียมยกเลิก (การจอง CANCELLED) ที่ใช้คีย์ dep-forfeit: เดียวกัน · บิลริบที่ถูกยกเลิก (แขกย้อน «ไม่มา» แล้วเข้าพัก) ไม่ PAID ⇒ ไม่นับ
+ */
 export async function depositsReport(ctx: unknown, input: unknown): Promise<DepositsReport | ReportFail> {
   const g = await gateOf(ctx, input);
   if (isReportFail(g)) return g;
@@ -362,9 +404,12 @@ export async function depositsReport(ctx: unknown, input: unknown): Promise<Depo
     dbOf(g.tenantId).$queryRaw<{ forfeited: unknown; refunded: unknown }[]>`
       SELECT
         (SELECT COALESCE(SUM(s."grandTotalSatang"), 0) FROM "PosSale" s
+           JOIN "HotelReservation" r ON r.id = s."sourceId" AND r."tenantId" = s."tenantId"
+           JOIN "PosDeposit" d ON d."tenantId" = s."tenantId" AND (s."idempotencyKey" = 'dep-forfeit:' || d.id OR s."idempotencyKey" LIKE 'dep-forfeit:' || d.id || '-r%')
           WHERE s."tenantId" = ${g.tenantId} AND s."sourceModule" = 'HOTEL' AND s.status::text = 'PAID' AND s."idempotencyKey" LIKE 'dep-forfeit:%'
             AND s."createdAt" >= ${start} AND s."createdAt" < ${end}
-            AND s."sourceId" IN (SELECT id FROM "HotelReservation" WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId})) AS forfeited,
+            AND r."unitId" = ${g.unitId} AND r.status::text = 'NO_SHOW'
+            AND EXISTS (SELECT 1 FROM "HotelReservation" h WHERE h."tenantId" = ${g.tenantId} AND h."unitId" = ${g.unitId} AND h."depositSaleId" = d."receiptSaleId")) AS forfeited,
         (SELECT COALESCE(SUM(x.satang), 0) FROM "PosDepositTxn" x JOIN "PosDeposit" d ON d.id = x."depositId"
           WHERE x."tenantId" = ${g.tenantId} AND x.type::text = 'REFUND' AND x."createdAt" >= ${start} AND x."createdAt" < ${end}
             AND d."receiptSaleId" IN (SELECT "depositSaleId" FROM "HotelReservation" WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "depositSaleId" IS NOT NULL)) AS refunded`,
@@ -401,15 +446,67 @@ export async function getUnitKpi(unitId: unknown): Promise<UnitKpi | null> {
     nightsOf(g, today, today, ["CHECKED_IN", "CONFIRMED"]),
     dbOf(g.tenantId, g.unitId).hotelReservation.count({ where: { tenantId: g.tenantId, unitId: g.unitId, checkInDate: ymdToDbDate(today), status: { in: ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"] } } }),
     dbOf(g.tenantId, g.unitId).hotelNightAudit.findFirst({ where: { tenantId: g.tenantId, unitId: g.unitId, businessDate: ymdToDbDate(yesterday), status: "CLOSED" }, select: { roomRevenueSatang: true } }),
-    nightsOf(g, yesterday, yesterday, OCCUPYING),
+    roomRevenueByDay(txOf(g), g, yesterday, yesterday),
   ]);
   const onBooks = tonight.filter((x) => x.status === "CHECKED_IN" || (x.status === "CONFIRMED" && x.checkIn === today));
   const k = computeKpi({ rooms, blockedRoomIds: blockedOn(blocks, today), nights: onBooks.map((x) => ({ id: x.id, roomId: x.roomId, status: "CHECKED_IN" })), roomRevenueSatang: 0 });
+  // on-the-books ที่ยังไม่จัดห้อง (CONFIRMED ไม่มี roomId) ก็นับ — ไม่เกินห้องที่ขายได้คืนนี้
+  const unassigned = onBooks.filter((x) => x.roomId === null).length;
+  const occupied = Math.min(k.roomsAvailable, k.roomsOccupied + unassigned);
   return {
-    occupancyTodayBps: k.occupancyBps,
+    occupancyTodayBps: bps(occupied, k.roomsAvailable),
     arrivalsToday: arrivals,
-    roomRevenueYesterdaySatang: audit ? audit.roomRevenueSatang : liveY.reduce((s, x) => s + x.priceSatang, 0),
+    roomRevenueYesterdaySatang: audit ? audit.roomRevenueSatang : (liveY.get(yesterday) ?? 0),
   };
+}
+
+// ───────────────────────── คืนสภาพมัดจำที่ริบ (hook ของการปิดวัน · มติผู้คุม r3 ข้อ 3) ─────────────────────────
+/**
+ * แขกที่ผู้จัดการย้อน «ไม่มา» (AuditLog hotel.booking.no_show_undo) แล้วเข้าพักจริง (CHECKED_IN) แต่บิลริบ **มัดจำการจอง** (dep-forfeit:<มัดจำ> · HOTEL)
+ * ยัง PAID ⇒ ยกเลิกบิลริบด้วย voidSale ของ POS (ทางเดียวกับ refundStay · กลับบัญชี) แล้วคืนสภาพมัดจำ (depositSaleVoided · คีย์ dep-restore-<apply>)
+ * ⇒ มัดจำกลับเป็น OPEN และถูกใช้หักบิลเช็กเอาต์ (แขกจ่าย = ค่าห้องที่พักจริง · ไม่จ่ายซ้ำ) · depositsReport ไม่นับ (บิลไม่ PAID)
+ * ไม่แตะ booking.ts/checkout.ts/folio.ts · idempotent (บิลที่ VOIDED แล้วไม่ถูกหยิบซ้ำ) · ไม่ throw — ล้มต่อใบ = warning (ให้ยกเลิกบิลที่หน้าขาย)
+ * ไม่รวมริบเงินประกันห้อง (ใบรับ securityDepositSaleId) และค่าธรรมเนียมยกเลิก (การจอง CANCELLED เข้าพักไม่ได้)
+ */
+export async function restoreForfeitedDepositsOnStay(c: { tenantId: string; unitId: string }, actorUserId: string | null): Promise<{ restored: number; warnings: string[] }> {
+  const warnings: string[] = [];
+  const bills = await dbOf(c.tenantId).$queryRaw<{ saleId: string; saleUnitId: string; code: string; receiptNo: string | null; reservationId: string }[]>`
+    SELECT s.id AS "saleId", s."unitId" AS "saleUnitId", r.code, s."receiptNo", r.id AS "reservationId"
+      FROM "PosSale" s
+      JOIN "HotelReservation" r ON r.id = s."sourceId" AND r."tenantId" = s."tenantId"
+      JOIN "PosDeposit" d ON d."tenantId" = s."tenantId" AND (s."idempotencyKey" = 'dep-forfeit:' || d.id OR s."idempotencyKey" LIKE 'dep-forfeit:' || d.id || '-r%')
+     WHERE s."tenantId" = ${c.tenantId} AND s."sourceModule" = 'HOTEL' AND s.status::text = 'PAID' AND s."docType"::text = 'SALE' AND s."idempotencyKey" LIKE 'dep-forfeit:%'
+       AND r."unitId" = ${c.unitId} AND r.status::text = 'CHECKED_IN'
+       AND EXISTS (SELECT 1 FROM "HotelReservation" h WHERE h."tenantId" = ${c.tenantId} AND h."unitId" = ${c.unitId} AND h."depositSaleId" = d."receiptSaleId")
+       AND EXISTS (SELECT 1 FROM "AuditLog" a WHERE a."tenantId" = ${c.tenantId} AND a.action = 'hotel.booking.no_show_undo' AND a."targetType" = 'HotelReservation' AND a."targetId" = r.id)
+     ORDER BY s."createdAt" ASC LIMIT 50`;
+  if (!bills.length) return { restored: 0, warnings };
+  const pos = await import("@/lib/modules/pos/service");
+  const dep = await import("@/lib/modules/pos/deposit");
+  let restored = 0;
+  for (const b of bills) {
+    try {
+      await pos.voidSale(c.tenantId, b.saleUnitId, b.saleId, { actorUserId: actorUserId ?? "module:hotel", reason: `แขกเข้าพักหลังย้อน «ไม่มา» (${b.code}) — คืนมัดจำเป็นเครดิตค่าห้อง` });
+      await dep.depositSaleVoided({ tenantId: c.tenantId, payload: { saleId: b.saleId } });
+      await dbOf(c.tenantId, c.unitId).auditLog.create({
+        data: {
+          tenantId: c.tenantId,
+          unitId: c.unitId,
+          actorType: actorUserId ? "USER" : "SYSTEM",
+          actorId: actorUserId ?? "module:hotel",
+          action: "hotel.booking.deposit_unforfeited",
+          targetType: "HotelReservation",
+          targetId: b.reservationId,
+          before: { forfeitSaleId: b.saleId, status: "PAID" },
+          after: { forfeitSaleId: b.saleId, status: "VOIDED", reason: "เข้าพักหลังย้อนไม่มา" },
+        },
+      });
+      restored++;
+    } catch (e) {
+      warnings.push(`คืนมัดจำที่ริบของ ${b.code} ไม่สำเร็จ (${(e instanceof Error ? e.message : String(e)).slice(0, 100)}) — ยกเลิกบิลริบ #${b.receiptNo ?? b.saleId} ที่หน้าขาย`);
+    }
+  }
+  return { restored, warnings };
 }
 
 // ───────────────────────── CSV ─────────────────────────
@@ -439,6 +536,7 @@ const COLS: Record<CsvKind, Col[]> = {
     { th: "รายได้ห้อง (บาท)", get: (r) => bahtStr(r.roomRevenueSatang) },
     { th: "รายได้อื่น (บาท)", get: (r) => bahtStr(r.otherRevenueSatang) },
     { th: "รวม (บาท)", get: (r) => bahtStr(r.totalSatang) },
+    { th: "ภาษีมูลค่าเพิ่มในยอดรวม (บาท)", get: (r) => bahtStr(r.vatSatang) },
   ],
   funnel: [
     { th: "แหล่งจอง", get: (r) => cell(r.label ?? r.source) },
@@ -450,6 +548,7 @@ const COLS: Record<CsvKind, Col[]> = {
     { th: "อัตรายกเลิก (%)", get: (r) => pctStr(r.cancelRateBps) },
     { th: "จองล่วงหน้าเฉลี่ย (วัน)", get: (r) => cell(r.leadTimeDaysAvg) },
     { th: "พักเฉลี่ย (คืน)", get: (r) => cell(r.alosNights) },
+    { th: "เหตุผลยกเลิก", get: (r) => (Array.isArray(r.cancelReasons) ? r.cancelReasons.filter(isRec).map((x) => `${String(x.reason ?? "")} (${n(x.count)})`).join("; ") : "") },
   ],
   forecast: [
     { th: "วันที่", get: (r) => cell(r.date) },
@@ -459,6 +558,11 @@ const COLS: Record<CsvKind, Col[]> = {
   ],
   housekeeping: [
     { th: "วันที่", get: (r) => cell(r.date) },
+    { th: "ห้องที่ทำเสร็จ", get: (r) => cell(r.cleaned) },
+  ],
+  housekeepingUsers: [
+    { th: "พนักงาน", get: (r) => cell(r.name) },
+    { th: "รหัสผู้ใช้", get: (r) => cell(r.userId) },
     { th: "ห้องที่ทำเสร็จ", get: (r) => cell(r.cleaned) },
   ],
   deposits: [
@@ -480,11 +584,26 @@ const COLS: Record<CsvKind, Col[]> = {
 export const CSV_KINDS = Object.keys(COLS) as CsvKind[];
 export const isCsvKind = (v: unknown): v is CsvKind => typeof v === "string" && (CSV_KINDS as string[]).includes(v);
 
-/** ตาราง ⇒ CSV (UTF-8 BOM · หัวตารางไทย · ทุกช่องผ่าน csvRow กันสูตร X6) · kind ไม่รู้จัก ⇒ "" (ไม่ throw) */
-export function exportCsv(kind: unknown, rows: unknown): string {
+/** ป้ายแถวรวมต่อชนิด (ช่องแรกของตาราง) */
+const TOTAL_LABEL: Partial<Record<CsvKind, Record<string, unknown>>> = {
+  occupancy: { period: "รวม" },
+  revenue: { key: "รวม", label: "รวมทั้งหมด" },
+  funnel: { label: "รวมทุกแหล่ง" },
+  housekeeping: { date: "รวม" },
+  housekeepingUsers: { name: "รวม", userId: "" },
+};
+/**
+ * ตาราง ⇒ CSV (UTF-8 BOM · หัวตารางไทย · ทุกช่องผ่าน csvRow กันสูตร X6) · kind ไม่รู้จัก ⇒ "" (ไม่ throw) ·
+ * total (ไม่บังคับ) = แถวรวมท้ายตาราง (ตัวเลขจาก DTO total ของรายงาน) · วันที่คงรูป ISO ปปปป-ดด-วว (เครื่องอ่านได้)
+ */
+export function exportCsv(kind: unknown, rows: unknown, total?: unknown): string {
   if (!isCsvKind(kind)) return "";
   const cols = COLS[kind];
   const list = Array.isArray(rows) ? rows.filter(isRec) : [];
   const lines = [csvRow(cols.map((c) => c.th)), ...list.map((r) => csvRow(cols.map((c) => c.get(r))))];
+  if (isRec(total)) {
+    const t = { ...total, ...(TOTAL_LABEL[kind] ?? {}) };
+    lines.push(csvRow(cols.map((c) => c.get(t))));
+  }
   return `${BOM}${lines.join("\r\n")}\r\n`;
 }

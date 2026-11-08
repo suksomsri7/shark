@@ -1,7 +1,10 @@
 // SVC H.7 ▸ ปิดวัน (night audit) 6 ขั้น · business date ต่อหน่วย · cron ปิดอัตโนมัติ — ใบสั่ง ledger/svc-briefs/svc-brief-h.7.md §0 §2 §3.1–3.2 §9
 //   ขั้น 1 no-show: CONFIRMED ที่ checkInDate = วันปิด ⇒ markNoShow ของ H.3 (ริบ/คืนมัดจำผ่าน POS · folio VOID ตาม releaseStayTx · มติ §9.1)
 //          ทำ "นอก" tx ปิดวัน ทีละแถว (เงินผ่าน POS · idempotent ด้วย CAS สถานะใน booking.ts) · แถวที่ไม่สำเร็จ = warning ไม่บล็อกการปิดวัน
+//   ขั้น 1ข (r3 มติผู้คุม ข้อ 3) แขกที่ย้อน «ไม่มา» แล้วเข้าพัก (CHECKED_IN) + บิลริบมัดจำการจองยัง PAID ⇒ ยกเลิกบิลริบ + คืนสภาพมัดจำ (reports.restoreForfeitedDepositsOnStay · นอก tx)
 //   ขั้น 2 post ค่าห้อง: CHECKED_IN ที่มีคืน counted ของวันปิดและยังไม่ post ⇒ postRoomNightsTx ของ H.5 (ตั้ง postedAuditId) ใน tx ปิดวัน
+//          คืนค้างของวันที่ปิดไปแล้ว (≥ วันเริ่มใช้ · เช่นย้อน «ไม่มา» แล้วเช็กอิน) ⇒ โพสต์เข้าวันที่กำลังปิด พร้อมหมายเหตุ "คืนย้อนหลัง <วัน>" (r3 ข้อ 2 · แถว freeze เดิมไม่แก้)
+//   รายได้ห้องของวัน = roomRevenueByDay (สูตรเดียวของ preview · freeze · รายงานสด · r3 ข้อ 1)
 //          คืนก่อน "วันเริ่มใช้ night audit" ไม่ post ย้อน (มติ §2.4 · ค่าห้อง P1 อยู่ใน totalSatang แล้ว)
 //   ขั้น 4 freeze KPI ลง HotelNightAudit (unique unitId+businessDate) · ขั้น 5 AuditLog + outbox hotel.audit.closed (อีเมลสรุป = consumer)
 //   ขั้น 2+4+5 อยู่ใน tx เดียว (ล้ม ⇒ ย้อนทั้งก้อน · มติ §2.6) · ขั้น 3 markStayoversDirty ของ H.6 หลัง commit (ฟังก์ชันมี tx ของตัวเอง · idempotent ตามสถานะ)
@@ -215,7 +218,7 @@ const sellsNightly = (r: KpiRoom) => r.active !== false && ["NIGHTLY", "BOTH"].i
 
 /**
  * KPI ของวันจากแถว (ใบ §2.1): total = ห้อง active NIGHTLY/BOTH · OOO = ห้องขายได้ที่มี BLOCK ครอบคืนนั้น · available = total − OOO ·
- * occupied = จำนวนห้องที่มีคืน counted ของการจอง CHECKED_IN/CHECKED_OUT (ไม่นับ HOLD/CONFIRMED) · bps ปัดลง · ADR/RevPAR ปัดตาม rooms.money.rounding
+ * occupied = จำนวนห้อง (ในชุดที่ขายได้ ไม่ BLOCK) ที่มีคืน counted ของการจอง CHECKED_IN/CHECKED_OUT (ไม่นับ HOLD/CONFIRMED) · bps ปัดลง · ADR/RevPAR ปัดตาม rooms.money.rounding
  */
 export function computeKpi(input: KpiInput): NightAuditKpi {
   const sellable = input.rooms.filter(sellsNightly);
@@ -223,7 +226,9 @@ export function computeKpi(input: KpiInput): NightAuditKpi {
   const ooo = new Set(input.blockedRoomIds.filter((id) => ids.has(id))).size;
   const total = sellable.length;
   const available = Math.max(0, total - ooo);
-  const occupied = new Set(input.nights.filter((n) => n.counted !== false && OCCUPYING.has(n.status)).map((n) => n.roomId ?? n.id)).size;
+  // r3 (มติผู้คุม ข้อ 4): นับผู้พักเฉพาะห้องในชุดที่ขายได้คืนนั้น (ขายได้ และไม่ถูก BLOCK) ⇒ occupied ≤ available · อัตราไม่เกิน 100%
+  const blocked = new Set(input.blockedRoomIds);
+  const occupied = new Set(input.nights.filter((n) => n.counted !== false && OCCUPYING.has(n.status) && n.roomId !== null && ids.has(n.roomId) && !blocked.has(n.roomId)).map((n) => n.roomId)).size;
   const revenue = Math.trunc(input.roomRevenueSatang);
   const rounding = input.rounding ?? "SATANG";
   return {
@@ -242,6 +247,48 @@ export function computeKpi(input: KpiInput): NightAuditKpi {
   };
 }
 
+// ───────────────────────── รายได้ห้องต่อวัน (สูตรเดียว · มติผู้คุม r3 ข้อ 1–2) ─────────────────────────
+/**
+ * รายได้ห้องของแต่ละวันในช่วง [from, to] (วันของร้าน · สตางค์) — สูตรเดียวของ preview · ปิดวัน (freeze) · รายงานสด · getUnitKpi:
+ *   (ก) Σ แถว ROOM ที่ยังไม่ void ตาม businessDate (คืนที่โพสต์แล้ว · ราคาที่ขายแขก) — ไม่นับ folio VOID / การจอง REFUNDED (คืนเงินทั้งการเข้าพัก)
+ *   (ข) + Σ nights.priceSatang ของคืน counted ที่ยังไม่โพสต์ ตามวันคืน (การจอง CHECKED_IN/CHECKED_OUT)
+ *   (ค) + คืนค้างของวันที่ปิดไปแล้ว (คืน ≥ วันเริ่มใช้ night audit · ก่อนวันที่รอปิด · CHECKED_IN · ยังไม่โพสต์) ⇒ นับเข้า "วันที่รอปิด"
+ *       (วันถัดจากวันปิดล่าสุด หรือวันที่เปิดอีกครั้ง) — ขั้น 2 ของการปิดวันโพสต์คืนเหล่านี้เข้าวันนั้นพร้อมหมายเหตุ "คืนย้อนหลัง" (L-3/L-4)
+ * SQL เดียว (ใส่ tenantId/unitId เองทุกส่วน · ใช้ได้ทั้งใน tx และนอก tx)
+ */
+export async function roomRevenueByDay(db: Tx, c: UnitCtx, from: string, to: string): Promise<Map<string, number>> {
+  const rows = await db.$queryRaw<{ d: string; amt: unknown }[]>`
+    WITH la AS (
+      SELECT "businessDate" AS bd, status FROM "HotelNightAudit" WHERE "tenantId" = ${c.tenantId} AND "unitId" = ${c.unitId} ORDER BY "businessDate" DESC LIMIT 1
+    ), fa AS (
+      SELECT MIN("businessDate") AS bd FROM "HotelNightAudit" WHERE "tenantId" = ${c.tenantId} AND "unitId" = ${c.unitId}
+    ), p AS (
+      SELECT (CASE WHEN la.status = 'REOPENED' THEN la.bd ELSE la.bd + 1 END)::date AS pd, fa.bd AS sd FROM la, fa
+    )
+    SELECT x.d, SUM(x.amt)::bigint AS amt FROM (
+      SELECT to_char(i."businessDate", 'YYYY-MM-DD') AS d, i."amountSatang"::bigint AS amt
+        FROM "HotelFolioItem" i
+        JOIN "HotelFolio" f ON f.id = i."folioId"
+        JOIN "HotelReservation" r ON r.id = f."reservationId"
+       WHERE i."tenantId" = ${c.tenantId} AND i."unitId" = ${c.unitId} AND i.type = 'ROOM' AND i."voidedAt" IS NULL
+         AND f.status <> 'VOID' AND r.status::text <> 'REFUNDED'
+         AND i."businessDate" >= ${from}::date AND i."businessDate" <= ${to}::date
+      UNION ALL
+      SELECT to_char(n.date, 'YYYY-MM-DD') AS d, n."priceSatang"::bigint AS amt
+        FROM "HotelBookingNight" n JOIN "HotelReservation" r ON r.id = n."reservationId"
+       WHERE n."tenantId" = ${c.tenantId} AND n."unitId" = ${c.unitId} AND n.counted = true AND n."folioItemId" IS NULL
+         AND r.status::text IN ('CHECKED_IN', 'CHECKED_OUT')
+         AND n.date >= ${from}::date AND n.date <= ${to}::date
+      UNION ALL
+      SELECT to_char(p.pd, 'YYYY-MM-DD') AS d, n."priceSatang"::bigint AS amt
+        FROM p, "HotelBookingNight" n JOIN "HotelReservation" r ON r.id = n."reservationId"
+       WHERE n."tenantId" = ${c.tenantId} AND n."unitId" = ${c.unitId} AND n.counted = true AND n."folioItemId" IS NULL
+         AND r.status::text = 'CHECKED_IN' AND n.date >= p.sd AND n.date < p.pd
+         AND p.pd >= ${from}::date AND p.pd <= ${to}::date
+    ) x GROUP BY x.d`;
+  return new Map(rows.map((r) => [r.d, Number(r.amt ?? 0) || 0]));
+}
+
 // ───────────────────────── ข้อเท็จจริงของวัน (อ่านฐาน) ─────────────────────────
 type DayFacts = {
   kpi: NightAuditKpi;
@@ -253,22 +300,23 @@ async function roundingOf(c: UnitCtx): Promise<string> {
   const v = r["rooms.money.rounding"]?.value;
   return typeof v === "string" ? v : "SATANG";
 }
-/** อ่านทุกอย่างที่ KPI ของวัน bd ต้องใช้ (ใน tx หรือ client ปกติ) · extraRevenue = ค่าห้องที่ "จะ" post (preview) */
-async function dayFacts(db: Tx, u: UnitInfo, bd: string, rounding: string, extraRevenue = 0): Promise<DayFacts> {
+/** อ่านทุกอย่างที่ KPI ของวัน bd ต้องใช้ (ใน tx หรือ client ปกติ) · รายได้ห้อง = roomRevenueByDay (สูตรเดียวกับรายงานสด ⇒ preview = สด = freeze) */
+async function dayFacts(db: Tx, u: UnitInfo, bd: string, rounding: string): Promise<DayFacts> {
   const day = ymdToDbDate(bd);
   const c = { tenantId: u.tenantId, unitId: u.unitId };
-  const [rooms, blocks, nights, items, rvs] = await Promise.all([
+  const [rooms, blocks, nights, items, rvs, revByDay] = await Promise.all([
     db.hotelRoom.findMany({ where: { ...c, active: true }, select: { id: true, active: true, rentMode: true, roomType: { select: { rentMode: true } } } }),
     db.roomOccupancy.findMany({ where: { ...c, kind: "BLOCK", active: true, startDate: { lte: day }, endDate: { gt: day } }, select: { roomId: true } }),
     db.hotelBookingNight.findMany({ where: { ...c, date: day, counted: true }, select: { id: true, roomId: true, reservationId: true, roomTypeId: true, reservation: { select: { status: true, source: true } } } }),
-    db.hotelFolioItem.findMany({ where: { ...c, type: "ROOM", businessDate: day, voidedAt: null }, select: { refId: true, amountSatang: true, folio: { select: { reservationId: true } } } }),
+    db.hotelFolioItem.findMany({ where: { ...c, type: "ROOM", businessDate: day, voidedAt: null, folio: { status: { not: "VOID" }, reservation: { status: { not: "REFUNDED" } } } }, select: { refId: true, amountSatang: true, folio: { select: { reservationId: true } } } }),
     db.hotelReservation.findMany({
       where: { ...c, OR: [{ checkInDate: day }, { checkOutDate: day }, { cancelledAt: { gte: ymdToDbDate(addDaysYmd(bd, -1)), lt: ymdToDbDate(addDaysYmd(bd, 2)) } }] },
       select: { status: true, checkInDate: true, checkOutDate: true, cancelledAt: true },
     }),
+    roomRevenueByDay(db, c, bd, bd),
   ]);
   const occNights = nights.map((n) => ({ id: n.id, roomId: n.roomId, reservationId: n.reservationId, roomTypeId: n.roomTypeId, status: n.reservation.status, source: n.reservation.source }));
-  const revenue = items.reduce((s, i) => s + i.amountSatang, 0) + extraRevenue;
+  const revenue = revByDay.get(bd) ?? 0;
   const kpi = computeKpi({
     rooms: rooms.map((r) => ({ id: r.id, active: r.active, rentMode: r.rentMode, typeRentMode: r.roomType.rentMode })),
     blockedRoomIds: blocks.map((b) => b.roomId),
@@ -335,11 +383,18 @@ export async function auditPreview(actorIn: unknown, ctx: unknown, input: unknow
     db.hotelReservation.count({ where: { ...c, status: "CHECKED_IN", roomId: null, checkInDate: { lte: day }, checkOutDate: { gt: day } } }),
     roundingOf(c),
   ]);
-  const toPostSum = toPost.reduce((s, n) => s + n.priceSatang, 0);
-  const facts = await dayFacts(db, g, bd, rounding, toPostSum);
+  // คืนค้างของวันที่ปิดแล้ว (≥ วันเริ่มใช้ · ก่อน bd) ที่ขั้น 2 จะโพสต์เข้าวัน bd (มติผู้คุม r3 ข้อ 2) — เฉพาะเมื่อ bd คือวันที่รอปิด
+  const start = rows.first?.ymd ?? null;
+  const late =
+    start && start < bd && bd === pendingBusinessDate(rows.last, today)
+      ? await db.hotelBookingNight.findMany({ where: { ...c, counted: true, folioItemId: null, reservation: { status: "CHECKED_IN" }, date: { gte: ymdToDbDate(start), lt: day } }, select: { priceSatang: true } })
+      : [];
+  const toPostSum = [...toPost, ...late].reduce((s, n) => s + n.priceSatang, 0);
+  const facts = await dayFacts(db, g, bd, rounding);
   const dirtyRooms = new Set(stays.filter((s) => s.room && (s.room.hkStatus === "CLEAN" || s.room.hkStatus === "INSPECTED")).map((s) => s.roomId));
   const warnings: string[] = [];
   if (noRoom > 0) warnings.push(`มีแขกเช็กอินแล้ว ${noRoom} รายการที่ยังไม่มีห้อง — ค่าห้องจะไม่ถูกลง`);
+  if (late.length > 0) warnings.push(`มีค่าห้องคืนย้อนหลัง ${late.length} คืน (คืนของวันที่ปิดแล้ว) — จะลงเข้าวันที่ ${bd}`);
   return {
     ok: true,
     unitId: g.unitId,
@@ -349,7 +404,7 @@ export async function auditPreview(actorIn: unknown, ctx: unknown, input: unknow
     tooEarly: bd >= today,
     firstAudit: rows.last === null,
     noShows: confirmed.map((r) => ({ reservationId: r.id, code: r.code, depositSatang: r.depositPaidAt ? r.depositSatang : 0, policy: noShowPolicyOf(r.policySnapshot) })),
-    roomNightsToPost: toPost.length,
+    roomNightsToPost: toPost.length + late.length,
     revenueSatang: toPostSum,
     kpi: facts.kpi,
     stayoversToDirty: dirtyRooms.size,
@@ -358,8 +413,11 @@ export async function auditPreview(actorIn: unknown, ctx: unknown, input: unknow
 }
 
 // ───────────────────────── closeNightAudit ─────────────────────────
-/** post คืนในช่วง [start, bd] ทีละคืน (ใช้เมื่อการจองมีคืนก่อนวันเริ่มใช้ที่ห้าม post ย้อน) */
-async function postRangeTx(tx: Tx, c: UnitCtx, folioId: string, reservationId: string, start: string, bd: string, auditId: string): Promise<number> {
+/**
+ * post คืนในช่วง [start, bd] ทีละคืน (ใช้เมื่อการจองมีคืนก่อนวันเริ่มใช้ที่ห้าม post ย้อน หรือมีคืนค้างของวันที่ปิดแล้ว) —
+ * คืนก่อน bd (วันนั้นปิดไปแล้ว) ⇒ businessDate = bd พร้อมหมายเหตุ "คืนย้อนหลัง <วัน>" (มติผู้คุม r3 ข้อ 2 · ไม่แก้ตัวเลขของวันที่ปิดแล้ว)
+ */
+async function postRangeTx(tx: Tx, c: UnitCtx, folioId: string, reservationId: string, start: string, bd: string, auditId: string, lateDates: string[]): Promise<number> {
   const nights = await tx.hotelBookingNight.findMany({
     where: { tenantId: c.tenantId, unitId: c.unitId, reservationId, counted: true, folioItemId: null, date: { gte: ymdToDbDate(start), lte: ymdToDbDate(bd) } },
     orderBy: { date: "asc" },
@@ -370,7 +428,10 @@ async function postRangeTx(tx: Tx, c: UnitCtx, folioId: string, reservationId: s
   let n = 0;
   for (const night of nights) {
     const ymd = ymdOfDate(night.date);
-    const item = await insertItemTx(tx, c, folioId, { type: "ROOM", description: `${nightLabelTh(ymd)} · ${nameOf.get(night.roomTypeId) ?? "ห้องพัก"}`, qty: 1, unitAmountSatang: night.priceSatang, refType: "HotelBookingNight", refId: night.id, businessDate: ymd }, null);
+    const late = ymd < bd;
+    if (late) lateDates.push(ymd);
+    const description = `${nightLabelTh(ymd)} · ${nameOf.get(night.roomTypeId) ?? "ห้องพัก"}${late ? ` · คืนย้อนหลัง ${ymd}` : ""}`;
+    const item = await insertItemTx(tx, c, folioId, { type: "ROOM", description, qty: 1, unitAmountSatang: night.priceSatang, refType: "HotelBookingNight", refId: night.id, businessDate: bd }, null);
     const upd = await tx.hotelBookingNight.updateMany({ where: { id: night.id, tenantId: c.tenantId, unitId: c.unitId, folioItemId: null }, data: { folioItemId: item.id, postedAuditId: auditId } });
     if (upd.count === 0) throw new Abort(fail("BUSY", R.busy));
     n++;
@@ -414,6 +475,16 @@ async function closeCore(g: Gate, bd: string, now: Date): Promise<CloseAuditOk |
     }
   }
 
+  // ขั้น 1ข — แขกที่ผู้จัดการย้อน «ไม่มา» แล้วเข้าพักจริง (CHECKED_IN) แต่บิลริบมัดจำการจองยัง PAID ⇒ ยกเลิกบิลริบผ่าน POS + คืนสภาพมัดจำ
+  //   ให้เป็นเครดิตตอนเช็กเอาต์ (มติผู้คุม r3 ข้อ 3 · แขกจ่าย = ค่าห้องที่พักจริง) · นอก tx · idempotent · ล้ม = warning ไม่บล็อกการปิดวัน
+  try {
+    const rs = await (await import("./reports")).restoreForfeitedDepositsOnStay(c, g.actor?.userId ?? null);
+    warnings.push(...rs.warnings);
+    if (rs.restored > 0) notes.push(`คืนมัดจำที่ริบไว้ ${rs.restored} ใบ (แขกเข้าพักหลังย้อน «ไม่มา»)`);
+  } catch {
+    warnings.push("ตรวจบิลริบมัดจำของแขกที่ย้อน «ไม่มา» ไม่สำเร็จ — ตรวจที่หน้าขาย");
+  }
+
   const st: FolioSettings = await folioSettings(c.tenantId, c.unitId);
   // ขั้น 2 + 4 + 5 — tx เดียว
   let out: { auditId: string; kpi: NightAuditKpi; posted: number; firstClose: boolean } | AuditFail;
@@ -428,10 +499,15 @@ async function closeCore(g: Gate, bd: string, now: Date): Promise<CloseAuditOk |
       const auditId = cur?.id ?? `hna${randomUUID().replace(/-/g, "")}`;
       const start = rows.first && rows.first.ymd < bd ? rows.first.ymd : bd;
 
-      // ขั้น 2 — ค่าห้องคืน bd ของแขกที่เข้าพัก
+      // ขั้น 2 — ค่าห้องคืน bd ของแขกที่เข้าพัก + คืนค้างของวันที่ปิดแล้ว (≥ วันเริ่มใช้ · เช่นย้อน «ไม่มา» แล้วเช็กอิน) ⇒ ลงเข้าวัน bd (มติผู้คุม r3 ข้อ 2)
       // ล็อก folio เรียงตาม reservationId (ลำดับเดียวกับเช็กเอาต์กลุ่ม · กัน deadlock)
-      const nights = await tx.hotelBookingNight.findMany({ where: toPostWhere(c, bd), orderBy: [{ reservationId: "asc" }, { date: "asc" }], select: { reservationId: true, roomTypeId: true, roomId: true } });
+      const nights = await tx.hotelBookingNight.findMany({
+        where: { ...toPostWhere(c, bd), date: { gte: ymdToDbDate(start), lte: day } },
+        orderBy: [{ reservationId: "asc" }, { date: "asc" }],
+        select: { reservationId: true, roomTypeId: true, roomId: true, date: true },
+      });
       let posted = 0;
+      const lateDates: string[] = [];
       const seen = new Set<string>();
       for (const n of nights) {
         if (seen.has(n.reservationId)) continue;
@@ -442,11 +518,13 @@ async function closeCore(g: Gate, bd: string, now: Date): Promise<CloseAuditOk |
           warnings.push("พบบิลห้องที่ปิดแล้วของแขกที่ยังเข้าพัก — ค่าห้องคืนนี้ไม่ถูกลง");
           continue;
         }
-        const before = await tx.hotelBookingNight.count({ where: { ...c, reservationId: n.reservationId, counted: true, folioItemId: null, date: { lt: ymdToDbDate(start) } } });
-        const k = before === 0 ? await postRoomNightsTx(tx, c, f.id, { id: n.reservationId, roomTypeId: n.roomTypeId }, addDaysYmd(bd, 1), auditId) : await postRangeTx(tx, c, f.id, n.reservationId, start, bd, auditId);
+        const hasLate = nights.some((x) => x.reservationId === n.reservationId && ymdOfDate(x.date) < bd);
+        const before = hasLate ? 1 : await tx.hotelBookingNight.count({ where: { ...c, reservationId: n.reservationId, counted: true, folioItemId: null, date: { lt: ymdToDbDate(start) } } });
+        const k = before === 0 ? await postRoomNightsTx(tx, c, f.id, { id: n.reservationId, roomTypeId: n.roomTypeId }, addDaysYmd(bd, 1), auditId) : await postRangeTx(tx, c, f.id, n.reservationId, start, bd, auditId, lateDates);
         if (k > 0) await recomputeTx(tx, c, f.id, st);
         posted += k;
       }
+      if (lateDates.length) notes.push(`คืนย้อนหลัง ${lateDates.length} คืน (${[...new Set(lateDates)].sort().join(", ")}) ลงเข้าวันนี้`);
 
       // ขั้น 4 — freeze KPI
       const facts = await dayFacts(tx, g, bd, st.rounding);
@@ -460,6 +538,7 @@ async function closeCore(g: Gate, bd: string, now: Date): Promise<CloseAuditOk |
         businessDate: bd,
         kpi: facts.kpi,
         roomNightsPosted: posted,
+        lateNightsPosted: lateDates.length,
         noShowsMarked,
         warnings: warnings.length,
         byCron: g.actor === null,

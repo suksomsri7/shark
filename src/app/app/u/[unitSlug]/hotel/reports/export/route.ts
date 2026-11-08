@@ -45,6 +45,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ unitSlug
   const base = { unitId: unit.id, ...range };
 
   let rows: Record<string, unknown>[] = [];
+  let total: Record<string, unknown> | undefined;
   let tag = "";
   if (kind === "history") {
     const h = await auditHistory({ tenantId: auth.active.tenantId }, base);
@@ -60,17 +61,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ unitSlug
             ? await bookingFunnel(ctx, base)
             : kind === "forecast"
               ? await forecast30(ctx, { unitId: unit.id })
-              : kind === "housekeeping"
+              : kind === "housekeeping" || kind === "housekeepingUsers"
                 ? await housekeepingReport(ctx, base)
                 : await depositsReport(ctx, base);
     if (!r.ok) notFound();
+    // r3: แถวรวมท้ายตาราง (occupancy/revenue = total ของรายงาน · funnel = ยอดรวมทุกแหล่ง · แม่บ้าน = Σ ห้องที่ทำเสร็จ)
     if ("rows" in r) rows = r.rows;
-    else if ("byDay" in r) rows = r.byDay;
+    else if ("byDay" in r) rows = kind === "housekeepingUsers" ? r.byUser : r.byDay;
     else rows = [r];
+    if ("total" in r) total = r.total;
+    else if ("confirmRateBps" in r) total = { created: r.created, confirmed: r.confirmed, cancelled: r.cancelled, noShow: r.noShow, confirmRateBps: r.confirmRateBps, cancelRateBps: r.cancelRateBps, leadTimeDaysAvg: r.leadTimeDaysAvg, alosNights: r.alosNights };
+    else if ("byDay" in r) total = { cleaned: rows.reduce((s, x) => s + (typeof x.cleaned === "number" ? x.cleaned : 0), 0) };
     if ("from" in r && "to" in r) tag = `-${r.from}-${r.to}`;
     else if ("from" in r) tag = `-${r.from}`;
   }
-  const csv = exportCsv(kind, rows);
+  const csv = exportCsv(kind, rows, total);
   const safe = (v: string) => v.replace(/[^0-9A-Za-z_-]/g, "").slice(0, 64);
   const filename = `hotel-${kind}-${safe(unit.id)}${safe(tag)}.csv`;
   return new Response(csv, {

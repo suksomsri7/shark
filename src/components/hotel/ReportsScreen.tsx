@@ -43,8 +43,9 @@ const OCC_COLS: ReportColumn[] = [
 const REV_COLS: ReportColumn[] = [
   { key: "label", label: "กลุ่ม", kind: "text" },
   { key: "roomRevenueSatang", label: "รายได้ห้อง", kind: "baht" },
-  { key: "otherRevenueSatang", label: "รายได้อื่น (บริการ · มินิบาร์ · ลงห้อง)", kind: "baht" },
-  { key: "totalSatang", label: "รวม", kind: "baht" },
+  { key: "otherRevenueSatang", label: "รายได้อื่น (บริการ · มินิบาร์ · ลงห้อง · ค่าปรับ · ส่วนลด)", kind: "baht" },
+  { key: "totalSatang", label: "รวม (ยอดที่เก็บแขก)", kind: "baht" },
+  { key: "vatSatang", label: "VAT ในยอดรวม", kind: "baht" },
 ];
 const FUNNEL_COLS: ReportColumn[] = [
   { key: "label", label: "แหล่งจอง", kind: "text" },
@@ -209,7 +210,7 @@ export default function ReportsScreen(p: ReportsScreenProps) {
         <>
           <p className={`text-sm ${SOFT}`}>{`ห้องปิดซ่อมค้างอยู่ตอนนี้ ${fmtInt(p.housekeeping.oooOutstanding)} ห้อง`}</p>
           <ReportTable title="แม่บ้าน · ห้องที่ทำเสร็จรายวัน" columns={HK_DAY_COLS} rowKey="date" rows={p.housekeeping.byDay.map((r) => ({ ...r, label: fmtThaiDate(r.date) }))} csvHref={exportHref(p.base, "housekeeping", q)} />
-          <ReportTable title="แม่บ้าน · ต่อคน" columns={HK_USER_COLS} rowKey="userId" rows={p.housekeeping.byUser} />
+          <ReportTable title="แม่บ้าน · ต่อคน" columns={HK_USER_COLS} rowKey="userId" rows={p.housekeeping.byUser} csvHref={exportHref(p.base, "housekeepingUsers", q)} />
         </>
       ) : null}
 
