@@ -123,6 +123,7 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // ⇒ ระบบที่เป็นคนส่งเข้ามาเอง **ห้ามสมัครรับตัวนี้** ไม่งั้นมันจะได้ยินเสียงตัวเองแล้วแจ้งซ้ำ
   { value: "chat.message.mirrored", label: "เมื่อคัดลอกคำตอบจากระบบอื่นเข้ามา (อย่าเลือกถ้าคุณเป็นระบบนั้น)" },
   // SVC H.3 ▸ เหตุการณ์จองโรงแรม V2 7 ชนิด (hotel.booking.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
+  // SVC H.4 ▸ เช็กอิน/ทะเบียนผู้พัก/ตม.30 6 ชนิด (hotel.checked_in · hotel.guest.* · hotel.tm30.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC H.5 ▸ เหตุการณ์ folio/เงินประกันโรงแรม 8 ชนิด (hotel.folio.* · hotel.security_deposit.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC H.6 ▸ เหตุการณ์แม่บ้าน 4 ชนิด (hotel.hk.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC H.7 ▸ เหตุการณ์ปิดวันโรงแรม 2 ชนิด (hotel.audit.closed · hotel.audit.reopened) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂

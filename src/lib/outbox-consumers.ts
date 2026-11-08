@@ -1481,6 +1481,15 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hotel.booking.changed": withAutomation(async () => {}),
   "hotel.booking.deposit_after_expiry": withAutomation(async () => {}),
   // ◂ SVC H.3
+  // SVC H.4 ▸ เช็กอิน V2 · ทะเบียนผู้พัก · ตม.30 (ใบสั่ง h.4 §5) — ยิงจาก `hotel/checkin.ts` · `guest.ts` · `tm30.ts` ใน tx เดียวกับการเปลี่ยน ·
+  //   payload id/จำนวน/สถานะล้วน (X8 · ไม่มีชื่อ/เลขเอกสาร/เบอร์) · งานหลัก = no-op (ปิด event + ทริกเกอร์กฎอัตโนมัติ/เว็บฮุค) · ระบบไม่ส่ง ตม. เอง
+  "hotel.checked_in": withAutomation(async () => {}),
+  "hotel.guest.registered": withAutomation(async () => {}),
+  "hotel.guest.id_revealed": withAutomation(async () => {}),
+  "hotel.tm30.due": withAutomation(async () => {}),
+  "hotel.tm30.filed": withAutomation(async () => {}),
+  "hotel.guest.purged": withAutomation(async () => {}),
+  // ◂ SVC H.4
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —

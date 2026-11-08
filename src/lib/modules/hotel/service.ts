@@ -8,12 +8,13 @@ import { systemForUnit } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import type { HotelReservationStatus, HotelRoomStatus, PosPayType, Prisma, SystemType } from "@prisma/client";
 // SVC R0.8 ▸ แกนห้อง: การจองถือ "ห้องจริง" (RoomOccupancy) ใน tx เดียวกับการจอง — ผ่าน facade เท่านั้น (ห้ามล้วง subpath) ◂
-import { affectedByOutOfOrder, claimRoom, moveOccupancy, releaseOccupancy } from "@/lib/modules/rooms";
+import { affectedByOutOfOrder, releaseOccupancy } from "@/lib/modules/rooms"; // SVC H.4 ▸ claimRoom/moveOccupancy ย้ายไป checkin.ts ◂
 export type { AffectedOccupancy } from "@/lib/modules/rooms";
 import { resolvePublicUnit } from "@/lib/core/storefront";
 // SVC H.3 ▸ จอง V2: createReservation/cancelReservation เดิมเรียกเส้นเดียวของ booking.ts · ห้องว่างสูตรเดียว (availability.ts) ◂
 import { cancelBooking, createBooking } from "./booking";
 import { hotelAvailability } from "./availability";
+import { checkInV2Legacy } from "./checkin"; // SVC H.4 ▸ checkIn เดิมห่อเช็กอิน V2 ◂
 import { afterRefundStay, settleAndCheckOut } from "./checkout"; // SVC H.5 ◂
 import { businessDateOf, DEFAULT_TIMEZONE, ymdToDbDate } from "./business-date"; // SVC H.7 ▸ business date สูตรเดียว ◂
 
@@ -332,74 +333,19 @@ export async function checkIn(
   reservationId: string,
   roomId: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  try {
-    await prisma.$transaction(async (tx) => {
-      const rv = await tx.hotelReservation.findFirst({
-        where: { id: reservationId, tenantId, unitId },
-      });
-      if (!rv) throw new Error("NOT_FOUND");
-      if (rv.status !== "CONFIRMED" && rv.status !== "BOOKED") throw new Error("BAD_STATUS"); // SVC H.3 ▸ V2 = CONFIRMED (BOOKED = แถวเก่า) ◂
-      // SVC H.3 ▸ (ผู้ตรวจรอบ 3 MAJOR-2) ลำดับล็อกเดียวกับ booking.ts: ประเภท (advisory) → แถว reservation (CAS) → occupancy
-      //   ยกเลิก/ไม่มาชนเช็กอิน ⇒ ผู้มาทีหลังเห็นสถานะใหม่ (ไม่มี CHECKED_IN บนแถว CANCELLED) ◂
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${unitId}::text || ':' || ${rv.roomTypeId}::text))`;
-      const room = await tx.hotelRoom.findFirst({
-        where: { id: roomId, tenantId, unitId, active: true, roomTypeId: rv.roomTypeId },
-      });
-      if (!room) throw new Error("BAD_ROOM");
-      if (room.status === "OOO" || room.hkStatus === "OUT_OF_ORDER") throw new Error("ROOM_OOO");
-      if (!sellsNightly(room.rentMode, (await tx.hotelRoomType.findFirst({ where: { id: room.roomTypeId, tenantId, unitId }, select: { rentMode: true } }))?.rentMode ?? "NIGHTLY"))
-        throw new Error("BAD_ROOM"); // SVC R0.8 ▸ ห้องรายเดือนไม่ขายรายคืน ◂
-      // SVC H.3 ▸ CAS สถานะหลังล็อก — เปลี่ยนไปแล้ว (ยกเลิก/ไม่มา/เช็กอินซ้ำ) ⇒ ไม่เขียนอะไร ◂
-      const cas = await tx.hotelReservation.updateMany({
-        where: { id: reservationId, tenantId, unitId, status: { in: ["CONFIRMED", "BOOKED"] } },
-        data: { status: "CHECKED_IN", roomId, checkedInAt: new Date() },
-      });
-      if (cas.count === 0) throw new Error("STATE_CHANGED");
-      // SVC H.3 ▸ ห้องจริงชนกันตัดสินที่ EXCLUDE ของ occupancy เท่านั้น (เลิกเทียบ reservation.roomId แบบเดิม) ◂
-      // SVC R0.8 ▸ ห้องจริงของ occupancy: ห้องที่เลือก ≠ ห้องที่ถืออยู่ ⇒ ย้าย · การจองเดิมไม่มี occupancy ⇒ claim ห้องที่เลือก
-      //   ชน ⇒ throw (tx ย้อน · สถานะคง BOOKED · occupancy เดิมไม่ขยับ) ◂
-      const occ = await tx.roomOccupancy.findFirst({
-        where: { tenantId, unitId, refType: HOTEL_REF, refId: reservationId, active: true },
-        select: { id: true, roomId: true },
-      });
-      if (occ) {
-        if (occ.roomId !== roomId) {
-          const m = await moveOccupancy(tx, { tenantId, unitId, occupancyId: occ.id, toRoomId: roomId });
-          if (!m.ok) throw new Error(m.code === "ROOM_TAKEN" ? "ROOM_TAKEN" : m.code === "ROOM_INACTIVE" ? "ROOM_OOO" : "BAD_ROOM");
-        }
-      } else {
-        const c = await claimRoom(tx, {
-          tenantId,
-          unitId,
-          roomId,
-          start: dateToStr(rv.checkInDate),
-          end: dateToStr(rv.checkOutDate),
-          kind: "STAY",
-          refType: HOTEL_REF,
-          refId: reservationId,
-          requireRentMode: "NIGHTLY",
-        });
-        if (!c.ok) throw new Error(c.code === "ROOM_TAKEN" ? "ROOM_TAKEN" : c.code === "ROOM_INACTIVE" ? "ROOM_OOO" : "BAD_ROOM");
-      }
-      // SVC H.3 ▸ ห้องจริงของทุกคืนที่นับ = ห้องที่เข้าพัก (nights.roomId) ◂
-      await tx.hotelBookingNight.updateMany({ where: { tenantId, unitId, reservationId, counted: true }, data: { roomId } });
-      await tx.hotelRoom.update({ where: { id: roomId }, data: { status: "OCCUPIED" } });
-    }, HOTEL_TX);
-    return { ok: true };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    const map: Record<string, string> = {
-      NOT_FOUND: "ไม่พบการจอง",
-      BAD_STATUS: "การจองนี้เช็คอินไม่ได้ (สถานะไม่ถูกต้อง)",
-      BAD_ROOM: "ห้องไม่ตรงประเภทหรือไม่พบห้อง",
-      ROOM_OOO: "ห้องนี้ปิดใช้งานอยู่",
-      ROOM_TAKEN: "ห้องนี้ถูกใช้ในช่วงเวลานี้แล้ว",
-      STATE_CHANGED: "สถานะการจองเปลี่ยนแล้ว (ถูกยกเลิก/ตั้งไม่มา/เช็กอินไปแล้ว) — โหลดใหม่", // SVC H.3 ◂
-    };
-    if (map[msg]) return { ok: false, reason: map[msg] };
-    if (isTxTimeout(e)) return { ok: false, reason: BUSY_REASON };
-    throw e;
-  }
+  // SVC H.4 ▸ ทางเดิมของ P1 ห่อเช็กอิน V2 (checkin.ts · ธุรกรรมเดียว · ลำดับล็อก ประเภท → แถว → occupancy · event hotel.checked_in)
+  //   คง signature/รูปผลเดิม · ไม่มีผู้พักในทะเบียน + requireRegistration เปิด ⇒ ok:false เหตุผลไทย (GUEST_REQUIRED · มติ H.4 รอบ 2) ◂
+  const r = await checkInV2Legacy(tenantId, unitId, reservationId, roomId);
+  if (r.ok) return { ok: true };
+  const map: Record<string, string> = {
+    NOT_FOUND: "ไม่พบการจอง",
+    NOT_CONFIRMED: "การจองนี้เช็คอินไม่ได้ (สถานะไม่ถูกต้อง)",
+    INVALID_INPUT: "ห้องไม่ตรงประเภทหรือไม่พบห้อง",
+    ROOM_INACTIVE: "ห้องนี้ปิดใช้งานอยู่",
+    ROOM_TAKEN: "ห้องนี้ถูกใช้ในช่วงเวลานี้แล้ว",
+    BUSY: BUSY_REASON,
+  };
+  return { ok: false, reason: map[r.code] ?? r.reason };
 }
 
 export async function checkOut(
