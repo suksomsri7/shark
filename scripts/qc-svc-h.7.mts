@@ -1046,7 +1046,7 @@ try {
       const rows = rowsOf(r).filter((x: Any) => (revField(x) ?? 0) !== 0);
       eq(sum(rows.map((x: Any) => revField(x) ?? 0)), total, `Σ ${g}`);
       const got: Record<string, number> = {};
-      for (const x of rows) { const k = keyField(x); got[k] = (got[k] ?? 0) + (revField(x) ?? 0); }
+      for (const x of rows) { const k = g === "roomType" ? String(pick(x, "label") ?? "") : keyField(x); got[k] = (got[k] ?? 0) + (revField(x) ?? 0); } // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-rp3) มติผู้ตรวจ 2: groupBy roomType ใช้ id เป็น key ⇒ จับคู่ด้วยชื่อแสดงผล (label)
       const want = exp[g];
       for (const [k, v] of Object.entries(want)) { const hit = Object.entries(got).find(([kk]) => kk === k || kk.includes(k) || k.includes(kk)); ok(hit && hit[1] === v, `${g} ${k}: ได้ ${J(got)} ต้อง ${v}`); }
       for (const x of rows) { for (const kk of ["key", "label", "roomRevenueSatang", "otherRevenueSatang", "totalSatang"]) ok(kk in x, `${g} แถวไม่มี ${kk}`); eq(x.totalSatang, x.roomRevenueSatang + x.otherRevenueSatang, `${g} total`); eq(x.otherRevenueSatang, 0, `${g} otherRevenue`); }

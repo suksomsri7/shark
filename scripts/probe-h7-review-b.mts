@@ -279,6 +279,8 @@ try {
     must(await call(() => FO.postFolioItem(MGR, ctxA, { reservationId: A.id, type: "DISCOUNT", description: "ส่วนลดสมาชิก", qty: 1, unitAmountSatang: -10_000 })), "DISCOUNT");
     must(await call(() => FO.postFolioItem(MGR, ctxA, { reservationId: A.id, type: "PENALTY", description: "เช็กเอาต์ล่าช้า", qty: 1, unitAmountSatang: 5_000 })), "PENALTY");
     must(await call(() => FO.postFolioItem(MGR, ctxA, { reservationId: A.id, type: "SERVICE", description: "ซักรีด", qty: 1, unitAmountSatang: 20_000 })), "SERVICE");
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-g4) เปิดเงินประกันห้องของหน่วย UG ก่อนเก็บ (ฉากเดิมได้ DISABLED)
+    await setUnit("rooms.hotel.securityDeposit.enabled", true, UG); await setUnit("rooms.hotel.securityDeposit", 50_000, UG);
     const sec = await call(() => CO.takeSecurityDeposit(FRONT, ctxA, { reservationId: A.id, amountSatang: 50_000, payType: "CASH" }));
     let co: Any = null;
     try {
