@@ -942,7 +942,8 @@ try {
     const rvEn = await rvByToken(en.publicToken);
     eq([rvEn.policySnapshot?.locale, rvEn.guestEmail, rvEn.note ?? null], ["en", GUEST.email, null], "en");
     ids.hd10tok = en.publicToken;
-    const th = await holdOk({ checkIn: W(30), checkOut: W(31), rooms: [roomSpec(RTA.sup)], locale: undefined });
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-hd10) เพดาน HOLD เว็บต่อประเภทต่อคืน 50% (มติ A-6 ค) · ซูพีเรีย 2 ห้อง ⇒ คืนเดียวกันถือได้ 1 ⇒ ใบ th ไปคืนอื่น
+    const th = await holdOk({ checkIn: W(36), checkOut: W(37), rooms: [roomSpec(RTA.sup)], locale: undefined });
     eq((await rvByToken(th.publicToken)).policySnapshot?.locale, "th", "ค่าเริ่ม th");
     const jp = await hold({ checkIn: W(31), checkOut: W(32), rooms: [roomSpec(RTA.sup)], locale: "jp" });
     ok((okPub(jp) && (await rvByToken(jp.publicToken))?.policySnapshot?.locale === "th") || failCode(jp) === "INVALID_INPUT", `locale แปลก ${codeOf(jp)}`);
