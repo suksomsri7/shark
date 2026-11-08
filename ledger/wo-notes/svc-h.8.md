@@ -79,3 +79,30 @@
 
 ## 9. คืนสภาพ qc-svc
 - ข้อสอบ h.8 ลบร้าน `svc-h8-*` + ถัง rate ใน finally (Z-1 ผ่าน) · ฉาก h8 ค้างบน svcqc ได้ (ภาพใช้) — `--clear` ลบเฉพาะของฉาก
+
+## รอบ 2 (ผู้ตรวจ 1)
+ทรี `/root/projects/shark-svc-l6` · branch `wip/svc-h8-r2` · ฐาน QC ep-late-union · probe `scripts/probe-h8-review-a.mts` = regression ถาวร
+
+### ผลต่อมติผู้คุม
+| ข้อ | ทำอะไร | ไฟล์ |
+|---|---|---|
+| A-5 token | `createBooking` ตั้ง `publicToken = randomBytes(18).toString("base64url")` (24 ตัว · 144 บิต) ทุกการจองใหม่ทุก source · กลุ่มคนละ token · prisma default คงเดิม · เพิ่มบรรทัดอย่างเดียว (import ใหม่ 1 + field 1) | booking.ts |
+| A-6 ก | โหมดที่ไม่ใช่ AUTO_CONFIRM ต้องมีอีเมล (EMAIL_RE) หรือเบอร์ (9–15 หลัก) ⇒ ไม่มี = `CONTACT_REQUIRED` | hotel-web.ts |
+| A-6 ข | ห้อง HOLD ที่ยังไม่จ่าย/ยังไม่หมดอายุต่อ client ≤ `storefront.maxRooms` (ค่าเริ่ม 5) · client = IP (IPv6 รวม /64 · IPv4-mapped ไม่รวม) · นับจากแถวเครื่องหมาย `hw:hk:<หน่วย12>:<client32>:<reservationId>` ใน ChatRateBucket (จดหลัง HOLD สำเร็จ · กวาดตามรอบถัง 24 ชม.) ⇒ `TOO_MANY_HOLDS` | hotel-web.ts · storefront.ts (`webHoldMark`) |
+| A-6 ค | ห้อง HOLD เว็บ/LINE ที่ยังไม่จ่ายต่อประเภทต่อคืน + ห้องที่ขอ ≤ `max(1, ceil(ห้องขายได้ × 50%))` (`HOTEL_WEB_HOLD_CAP`) · คืนที่ห้องไม่พออยู่แล้ว ⇒ ข้ามเพดาน ให้ createBooking ตอบ AVAILABILITY_CHANGED + dates เหมือนเดิม (X-1 แข่งห้องสุดท้ายยังได้รหัสเดิม) · ห้องว่าง/ห้องที่ถือ/ของ client นับใน **คำสั่ง SQL เดียว** (webSearchBundle + guard) | hotel-web.ts · storefront.ts |
+| A-14 | `canCancel` + `publicCancel` เฉพาะ source WEB/LINE · DTO เพิ่ม `cancelVia: SELF/CHANNEL/HOTEL` · หน้าสถานะ OTA = «ยกเลิก/แก้ไขที่ช่องทางที่จอง» ไม่มีปุ่ม · อื่น = «ติดต่อโรงแรม» · `notifyGuest` OTA ⇒ `OTA_SOURCE` ไม่ส่ง (ครอบทั้ง consumer/งานเตือน) · source อื่นที่ไม่ใช่เว็บ/LINE ส่งได้ + บรรทัด «ติดต่อโรงแรมเพื่อยกเลิก» | hotel-web.ts · hotel-mail.ts · r/[publicToken]/page.tsx · dict |
+| A-12 | ถัง rate นับ **หลัง** resolve หน่วย · slug ไม่มีจริง/คำขอผิดรูป ⇒ ถังรวม `hw:<op>:none:<client>` ต่อ client · คีย์ของหน่วยจริงคงรูปเดิม (sha slug คู่) | hotel-web.ts |
+| A-13 | สลิปรอตรวจ (PENDING/NEEDS_REVIEW) ได้ 1 ใบต่อกลุ่ม ⇒ ใบที่ 2 คืนใบเดิม `{ok, slipId, replayed, alreadyPending, reason "มีสลิปรอตรวจอยู่แล้ว"}` · ใบเดิมถูกปฏิเสธ ⇒ แนบใหม่ได้ · ตรวจไฟล์ (ชนิด/ขนาด/ลายเซ็นไบต์ แบบ slip-verify) ก่อนดูสลิปค้าง | hotel-web.ts · storefront.ts (`pendingSlip`) |
+| A-15b | `hotelHostAllowed` ตัดพอร์ต (และ `[IPv6]:port`) ก่อน resolveTenantByHost (domain/** ห้ามแตะ จึงตัดที่ชั้น platform) | hotel-web.ts |
+| ข้อ 7 | route สลิป: ด่านโดเมน → `publicSlipGate` (นับ rate ก่อนอ่าน body · ตั๋วใช้ครั้งเดียว WeakSet) → อ่าน body ทีละก้อนเพดาน 6 MB ตามไบต์จริง · server actions ทุกตัวผ่าน `hotelHostAllowed` (โดเมนร้านอื่น ⇒ notFound) + action สลิปใช้ด่านเดียวกัน · idempotencyKey ฝั่งไคลเอนต์ = randomUUID หรือ getRandomValues 128 บิต · ถัง view แยกต่อการจอง (`hw:view:<หน่วย>:<client>:<sha(id)16|none>`) · idempotencyKey เดิมข้อมูลต่าง (วัน/ประเภท×จำนวน/ชื่อ/อีเมล/เบอร์/แผน) ⇒ ใบเดิม + `mismatch:true` | route.ts · actions.ts · BookingForm/DepositPay · hotel-web.ts · storefront.ts |
+
+### ตรวจเพิ่มเอง (สคริปต์ชั่วคราว ลบแล้ว ไม่ commit) 8/8
+client cap (IP เดียว q5 แล้ว q1 ⇒ TOO_MANY_HOLDS) · type cap (10 ห้อง ถือ 5 ⇒ อีก IP ติด · 3+3 ติด · 3+2 ผ่าน) · IPv6 /64 รวม (อีก /64 ผ่าน) · ห้องเดี่ยวเต็ม ⇒ AVAILABILITY_CHANGED ไม่ใช่ TOO_MANY · mismatch ไม่ส่ง fingerprint/อีเมล · AUTO_CONFIRM ไม่บังคับติดต่อ · ถัง view แยกต่อการจอง + token มั่วเข้าถัง none · token ใหม่ ≥ 22 ตัวไม่ใช่ cuid
+
+### ข้อแย้ง oracle (ผู้คุมตัดสิน)
+5. **HD-10 ชนมติ A-6 ค** — ข้อสอบบรรทัด 941 + 945 สร้าง HOLD «ซูพีเรีย» (ร้านชั่วคราวมี 2 ห้อง: SUP1 SUP2 · บรรทัด 532) คืนเดียวกัน W+30→31 สองใบ (en แล้ว th) · เพดาน 50% ของ 2 ห้อง = ceil(1) = 1 ⇒ ใบที่ 2 ได้ `TOO_MANY_HOLDS` ตามมติ (ผลจริง r2f-h8.log บรรทัด 49) · ไม่ใช่บั๊ก · เสนอ ORACLE-EDIT: ใบ th ใช้คืนอื่น (เช่น W+33→34 · ไม่ชนข้ออื่นที่ใช้ซูพีเรีย W+26/28/31/46/48/56) **หรือ** ผู้คุมปรับเพดาน (`HOTEL_WEB_HOLD_CAP.minPerTypeNight` = 2 ⇒ ประเภท 1–2 ห้องไม่มีผล) — ข้อสังเกต: โรงแรมเล็ก (ประเภทละ 2 ห้อง) จะรับ HOLD เว็บได้ทีละ 1 ห้องต่อคืน แขกคนที่ 2 ต้องรอใบแรกจ่าย/หมดเวลา (≤ 15 นาที)
+
+### หนี้รอบ 2
+- เพดาน A-6 ข/ค ตรวจก่อนเข้า tx ของ createBooking (booking.ts ยกเว้นแคบ) ⇒ คำขอยิงพร้อมกันหลุดเพดานได้ ≤ เพดาน rate hold (5/10 นาที/IP) — ปิดจริงต้องย้ายเข้า tx หลัง lockTypes
+- เครื่องหมาย client อายุตามรอบกวาดถัง (24 ชม.) ⇒ HOLD รออนุมัติที่ค้างเกิน 24 ชม. หลุดจากการนับต่อ client (เพดานต่อประเภทยังนับ)
+- Turnstile ยังเป็นหนี้เดิม
