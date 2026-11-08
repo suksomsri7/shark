@@ -24,6 +24,7 @@ import { systemForUnit } from "@/lib/modules/system/service";
 import * as hotel from "@/lib/modules/hotel";
 import { promptpayQrFor } from "@/lib/payment/receiver";
 import { submitSlip } from "@/lib/payment/slip-verify";
+import { SLIP_ACCEPT_TYPES, SLIP_MAX_BYTES } from "@/lib/payment/slip-shared";
 import type { UploadDeps, DeleteDeps } from "@/lib/storage/service";
 
 // ═══════════════ ชนิด ═══════════════
@@ -698,10 +699,11 @@ export async function publicCreateHold(input: unknown, opts: HotelWebOpts) {
       const gb = await hotel.webSearchBundle(unit.tenantSlug, unit.unitSlug, stay.checkIn, stay.checkOut, { now, markPrefix });
       if (gb) {
         if (gb.clientHeld + qty > maxRooms) return fail("TOO_MANY_HOLDS", R.tooManyHolds);
-        const need = new Map<string, number>();
-        for (const r of inp.rooms) need.set(r.roomTypeId, (need.get(r.roomTypeId) ?? 0) + r.qty);
+        const needOf: Record<string, number> = {};
+        for (const r of inp.rooms) needOf[r.roomTypeId] = (needOf[r.roomTypeId] ?? 0) + r.qty;
+        const need = Object.entries(needOf);
         const days = Object.keys(gb.byDate).sort();
-        const short = [...need].some(([t, n]) => !days.length || days.some((d) => (gb.byDate[d]?.[t]?.available ?? 0) < n));
+        const short = need.some(([t, n]) => !days.length || days.some((d) => (gb.byDate[d]?.[t]?.available ?? 0) < n));
         if (!short) {
           const held = new Map(gb.webHeld.map((h) => [`${h.roomTypeId}|${h.date}`, h.n]));
           for (const [t, n] of need) {
@@ -843,6 +845,15 @@ export async function publicPayDeposit(input: unknown, opts: HotelWebOpts) {
 // ═══════════════ publicAttachSlip ═══════════════
 const SlipIn = TokenIn.and(z.object({ idempotencyKey: z.string().trim().min(8).max(128) }));
 const slipPasses = new WeakSet<object>();
+/** ชนิด/ขนาด/ลายเซ็นไบต์ของรูปสลิป (JPEG · PNG · WEBP ≤ SLIP_MAX_BYTES) */
+function slipFileOk(data: Uint8Array, contentTypeIn: string): boolean {
+  const contentType = (contentTypeIn.split(";")[0] ?? "").trim().toLowerCase();
+  if (data.byteLength === 0 || data.byteLength > SLIP_MAX_BYTES || !SLIP_ACCEPT_TYPES.includes(contentType)) return false;
+  const at = (i: number, bytes: number[]) => bytes.every((b, k) => data[i + k] === b);
+  if (contentType === "image/png") return at(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (contentType === "image/jpeg") return at(0, [0xff, 0xd8, 0xff]);
+  return at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50]);
+}
 /**
  * ด่าน rate ของสลิปก่อนอ่าน body (route/แอ็กชันเรียกก่อน formData · r2 ข้อ 7) — ผ่าน = ตั๋วใช้ครั้งเดียวส่งต่อให้ publicAttachSlip (ไม่นับซ้ำ)
  */
@@ -883,6 +894,8 @@ export async function publicAttachSlip(input: unknown, opts: HotelWebOpts) {
     const slipKey = `hw-slip:${sha(`${unit.unitId}:${p.data.idempotencyKey}`).slice(0, 48)}`;
     const prior = await hotel.slipByIdemKey(unit.tenantId, unit.unitId, slipKey);
     if (prior) return { ok: true as const, slipId: prior.id, status: prior.status, replayed: true };
+    // ไฟล์ผิด (ชนิด/ขนาด/ไบต์ไม่ใช่รูป) ⇒ BAD_FILE ก่อนดูสลิปค้าง (กติกาเดียวกับ slip-verify · ตัวจริงยังตรวจซ้ำใน submitSlip)
+    if (!slipFileOk(file.data, file.contentType)) return fail("BAD_FILE", R.badFile);
     // SVC H.8 r2 (ผู้ตรวจ A-13) สลิปรอตรวจได้ใบเดียวต่อการจอง — มีอยู่แล้ว ⇒ คืนใบเดิม + แจ้ง (ใบเดิมถูกปฏิเสธ ⇒ แนบใหม่ได้)
     if (f.pendingSlip) return { ok: true as const, slipId: f.pendingSlip.id, status: f.pendingSlip.status, replayed: true, alreadyPending: true, reason: R.slipPending };
     const deps = opts?.deps ?? {};
