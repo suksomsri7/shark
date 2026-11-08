@@ -180,7 +180,7 @@ try {
     const [lc, le] = [await logs(/^hotel\.booking\.no_show$/, H_C.id), await logs(/^hotel\.booking\.no_show$/, H_E.id)];
     chk("C-3", "no-show ครั้งเดียวต่อใบ: บิลริบ C 1 · E 1 · AuditLog no_show C 1 · E 1 · สถานะ NO_SHOW", fc.length === 1 && fe.length === 1 && lc.length === 1 && le.length === 1 && (await rvOf(H_C.id)).status === "NO_SHOW" && (await rvOf(H_E.id)).status === "NO_SHOW", `forfeit ${fc.length}/${fe.length} log ${lc.length}/${le.length}`);
     const [ev, al] = [await outbox("hotel.audit.closed", UH), await logs(/^hotel\.audit\.closed$/)];
-    chk("C-4", "outbox hotel.audit.closed 1 · AuditLog hotel.audit.closed 1", ev.length === 1 && al.filter((x) => x.unitId === UH).length === 1, `ev=${ev.length} log=${al.filter((x) => x.unitId === UH).length}`);
+    chk("C-4", "outbox hotel.audit.closed 1 · AuditLog hotel.audit.closed 1", ev.length === 1 && al.filter((x: Any) => x.unitId === UH).length === 1, `ev=${ev.length} log=${al.filter((x: Any) => x.unitId === UH).length}`);
     chk("C-5", "ขั้น 3 ครั้งเดียว: ห้อง A DIRTY · log →DIRTY 1", (await hkOf(H_A.roomId)) === "DIRTY" && (await dirtyLogs(H_A.roomId)) === 1, `hk=${await hkOf(H_A.roomId)} logs=${await dirtyLogs(H_A.roomId)}`);
     const snapW = (rows[0]?.snapshot as Any)?.warnings ?? [];
     chk("C-6", "snapshot.warnings ไม่มีคำเตือนปลอม 'ตั้งไม่มา … ไม่สำเร็จ' (ใบที่ตั้งไม่มาสำเร็จโดยอีกทาง)", !snapW.some((w: string) => /ไม่สำเร็จ/.test(w)), J(snapW).slice(0, 240));
@@ -196,7 +196,7 @@ try {
     const fs = await forfeitSales(CN_C.id);
     chk("S-1", "closeNightAudit(null) ⇒ ok · no-show + บิลริบ PAID 1 (actorId module:hotel ไม่ทำให้ POS ล้ม) · warnings ว่าง", r?.ok === true && rv.status === "NO_SHOW" && fs.length === 1 && (r.warnings ?? []).length === 0, `${code(r)} st=${rv.status} forfeit=${fs.length} w=${J(r?.warnings)}`);
     const l = (await logs(/^hotel\.booking\.no_show$/, CN_C.id))[0];
-    const ac = (await logs(/^hotel\.audit\.closed$/)).find((x) => x.unitId === UCN);
+    const ac = (await logs(/^hotel\.audit\.closed$/)).find((x: Any) => x.unitId === UCN);
     // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-s2) หนี้ H.3 (internal opts ให้ markNoShow รับผู้กระทำ SYSTEM) ⇒ SKIP จนกว่า H.3 เพิ่ม — เปิดกลับเมื่อแก้
     checks.push({ id: "S-2", ok: null as unknown as boolean, note: "SKIP หนี้ H.3" }); console.log("  ⏭️  [S-2] AuditLog ผู้กระทำ cron = SYSTEM — SKIP (หนี้ H.3 internal opts)"); if (false) chk("S-2", "AuditLog ผู้กระทำ cron: hotel.audit.closed actorType SYSTEM · hotel.booking.no_show actorType SYSTEM (ไม่ใช่ USER 'module:hotel')", ac?.actorType === "SYSTEM" && l?.actorType === "SYSTEM", `closed=${ac?.actorType}/${ac?.actorId} no_show=${l?.actorType}/${l?.actorId}`);
     const row = await auditRow(UCN, D);
