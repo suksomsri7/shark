@@ -1,183 +1,110 @@
-import { cookies } from "next/headers";
-import {
-  resolveHotelUnit,
-  listPublicAvailability,
-  todayBkk,
-  addDaysStr,
-  nightsBetween,
-} from "@/lib/modules/hotel/service";
-import { createPublicReservationAction } from "./actions";
-import { getLocaleFromCookie, makeT, type Locale } from "@/lib/i18n";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { cookies, headers } from "next/headers";
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import { hotelHostAllowed, hotelWebClientKey, publicInfo, publicSearch } from "@/lib/platform/hotel-web";
+import { makeT } from "@/lib/i18n";
+import { SearchBar } from "@/components/store/hotel/SearchBar";
+import { RoomTypeCard } from "@/components/store/hotel/RoomTypeCard";
+import { addDays, isYmdStr, pickLocale } from "@/components/store/hotel/format";
+import { WebHeader, WebNotFound, WebShell, one, withLang, type PageSearch } from "./_web";
 
 export const dynamic = "force-dynamic";
 
-// ฿ คงเดิมทั้งสองภาษา · ตัวเลขจัดกลุ่มตาม locale (en ใช้ en-GB)
-const baht = (satang: number, locale: Locale) =>
-  (satang / 100).toLocaleString(locale === "en" ? "en-GB" : "th-TH", { minimumFractionDigits: 0 });
-
-// ?err= จาก action เป็น "รหัส" ไม่ใช่ข้อความ → แปลตาม locale ตรงนี้ (รหัสแปลกปลอม = ข้อความกลาง)
-const ERR_CODES = new Set(["rate", "shop", "dates", "roomType", "name", "phone", "failed"]);
-
-// หน้าจองห้องพักออนไลน์ (public · ไม่ต้องล็อกอิน) — เลือกช่วงวัน → ดูห้องว่าง → จอง → จ่ายมัดจำ
-export default async function PublicHotelBookingPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ tenantSlug: string; unitSlug: string }>;
-  searchParams: Promise<{ from?: string; to?: string; err?: string }>;
-}) {
+// SVC H.8 ▸ S1+S2 หน้าค้นหาห้อง (ภาพ 16 ก · มือถือ 390) — ราคาตามคืนจริง + แผนราคาที่เปิดเว็บ · เหลือ N ห้อง · ห้องเต็มบอกคืนที่เต็ม
+//   ทุกการอ่านผ่าน platform/hotel-web (rate limit ต่อ IP+หน่วย) · โดเมนของร้านอื่นเปิดหน้านี้ไม่ได้ (§9.5)
+export default async function HotelSearchPage({ params, searchParams }: { params: Promise<{ tenantSlug: string; unitSlug: string }>; searchParams: Promise<PageSearch> }) {
   const { tenantSlug, unitSlug } = await params;
   const sp = await searchParams;
-  const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);
+  const h = await headers();
+  if (!(await hotelHostAllowed(h.get("host"), tenantSlug))) notFound();
+  const locale = pickLocale(sp.lang, (await cookies()).get("lang")?.value);
+  const lang = one(sp.lang) === "en" || one(sp.lang) === "th" ? one(sp.lang) : null;
   const t = makeT(locale);
-
-  const resolved = await resolveHotelUnit(tenantSlug, unitSlug);
-  if (!resolved) {
-    return (
-      <main className="mx-auto w-full max-w-md flex-1 px-5 py-16 text-center">
-        <div className="text-lg font-semibold">{t("hotel.notFound.title")}</div>
-        <p className="mt-2 text-sm text-[color:var(--color-muted)]">{t("hotel.notFound.desc")}</p>
-      </main>
-    );
+  const clientKey = hotelWebClientKey(h);
+  const base = `/s/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(unitSlug)}/hotel`;
+  const info = await publicInfo({ tenantSlug, unitSlug }, { clientKey });
+  if (!info.ok) {
+    return info.code === "RATE_LIMITED" ? <WebNotFound title={t("hotel.web.err.rate")} desc="" /> : <WebNotFound title={t("hotel.notFound.title")} desc={t("hotel.notFound.desc")} />;
   }
-  const { tenant, unit } = resolved;
-
-  // ช่วงวันที่: default วันนี้ → พรุ่งนี้ · เข้าพักในอดีต/ช่วงพลิก → ปรับให้ถูกต้อง
-  const today = todayBkk();
-  let from = sp.from && /^\d{4}-\d{2}-\d{2}$/.test(sp.from) ? sp.from : today;
-  if (from < today) from = today;
-  let to = sp.to && /^\d{4}-\d{2}-\d{2}$/.test(sp.to) ? sp.to : addDaysStr(from, 1);
-  if (nightsBetween(from, to) < 1) to = addDaysStr(from, 1);
-  const nights = nightsBetween(from, to);
-
-  const rooms = await listPublicAvailability(tenant.id, unit.id, from, to);
-  const hasRooms = rooms.length > 0;
-
+  const today = info.today;
+  let checkIn = isYmdStr(one(sp.checkIn)) ? one(sp.checkIn) : today;
+  if (checkIn < today) checkIn = today;
+  let checkOut = isYmdStr(one(sp.checkOut)) ? one(sp.checkOut) : addDays(checkIn, 1);
+  if (checkOut <= checkIn) checkOut = addDays(checkIn, 1);
+  const adults = Math.min(20, Math.max(1, Math.trunc(Number(one(sp.adults)) || 2)));
+  const rooms = Math.min(info.maxRooms, Math.max(1, Math.trunc(Number(one(sp.rooms)) || 1)));
+  const r = info.open ? await publicSearch({ tenantSlug, unitSlug, checkIn, checkOut, adults, children: 0, rooms }, { clientKey }) : null;
+  const badge = locale === "en" ? info.badgeEn : info.badgeTh;
+  const desc = locale === "en" ? info.descriptionEn : info.descriptionTh;
+  const qs = `checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}&rooms=${rooms}`;
+  const langHref = (l: string) => `${base}?${qs}&lang=${l}`;
+  const bookHref = (roomTypeId: string) => (planId: string) => withLang(`${base}/book?${qs}&roomTypeId=${encodeURIComponent(roomTypeId)}&ratePlanId=${encodeURIComponent(planId)}`, lang);
+  const nights = r && r.ok ? r.nights : Math.max(1, Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000));
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 px-5 py-8">
-      <header className="flex items-start justify-between gap-3">
-        <div className="flex-1 text-center">
-          <div className="text-xl font-semibold">{unit.name}</div>
-          <div className="text-sm text-[color:var(--color-muted)]">{tenant.name}</div>
-        </div>
-        <LanguageSwitcher locale={locale} />
-      </header>
-
-      {sp.err && (
-        <div className="rounded-xl border border-[color:var(--color-danger)] px-4 py-3 text-center text-sm text-[color:var(--color-danger)]">
-          {ERR_CODES.has(sp.err) ? t(`hotel.err.${sp.err}`) : t("err.general")}
-        </div>
-      )}
-
-      {/* เลือกช่วงวันที่ (GET — โหลดห้องว่างใหม่) */}
-      <form method="get" className="card flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[color:var(--color-muted)]">{t("hotel.checkin")}</span>
-            <input
-              type="date"
-              name="from"
-              defaultValue={from}
-              min={today}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+    <WebShell>
+      <WebHeader unitName={info.unitName} sub={badge} locale={locale} langHref={langHref} />
+      <div className="flex flex-col gap-3 px-4 pt-3">
+        {info.heroImages[0] ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={info.heroImages[0]} alt={info.unitName} className="h-[140px] w-full rounded-[18px] object-cover" />
+        ) : null}
+        {desc ? <p className="text-sm text-[color:var(--color-muted)]">{desc}</p> : null}
+        {!info.open ? (
+          <div className="rounded-2xl border border-[color:var(--color-line)] px-4 py-6 text-center text-sm" data-hotel-closed="">
+            {t("hotel.web.closed")}
+          </div>
+        ) : (
+          <>
+            <SearchBar
+              action={base}
+              checkIn={checkIn}
+              checkOut={checkOut}
+              adults={adults}
+              rooms={rooms}
+              today={today}
+              maxRooms={info.maxRooms}
+              lang={lang}
+              labels={{
+                checkIn: t("hotel.web.checkIn"),
+                checkOut: t("hotel.web.checkOut"),
+                guests: t("hotel.web.guests"),
+                rooms: t("hotel.web.rooms"),
+                search: t("hotel.web.search"),
+                adultsN: (n) => t("hotel.web.adultsN", { n }),
+                roomsN: (n) => t("hotel.web.roomsN", { n }),
+              }}
             />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[color:var(--color-muted)]">{t("hotel.checkout")}</span>
-            <input
-              type="date"
-              name="to"
-              defaultValue={to}
-              min={addDaysStr(from, 1)}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
-            />
-          </label>
-        </div>
-        <button className="btn btn-primary min-h-[44px] text-base">{t("hotel.search")}</button>
-      </form>
-
-      <div className="text-center text-sm text-[color:var(--color-muted)]">
-        {t("hotel.range", { nights, from, to })}
-      </div>
-
-      {/* รายการห้องว่าง */}
-      {!hasRooms ? (
-        <div className="rounded-xl border px-4 py-8 text-center text-sm text-[color:var(--color-muted)]">
-          {t("hotel.noRooms")}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {rooms.map((rt) => {
-            const total = rt.baseRateSatang * nights;
-            const soldOut = rt.free < 1;
-            return (
-              <div key={rt.id} className="card flex flex-col gap-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-medium">{rt.name}</div>
-                    <div className="text-xs text-[color:var(--color-muted)]">
-                      {t("hotel.capacity", { n: rt.capacity })} · ฿{baht(rt.baseRateSatang, locale)}
-                      {t("hotel.perNight")}
-                      {rt.depositSatang > 0
-                        ? ` · ${t("hotel.depositAmount", { amount: baht(rt.depositSatang, locale) })}`
-                        : ""}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-lg font-semibold">฿{baht(total, locale)}</div>
-                    <div className="text-xs text-[color:var(--color-muted)]">{t("hotel.nights", { n: nights })}</div>
-                  </div>
-                </div>
-
-                {soldOut ? (
-                  <div className="rounded-lg bg-[color:var(--color-surface-2,#f5f5f5)] px-3 py-2 text-center text-sm text-[color:var(--color-muted)]">
-                    {t("hotel.soldOut")}
-                  </div>
-                ) : (
-                  <form action={createPublicReservationAction} className="flex flex-col gap-2">
-                    <input type="hidden" name="tenantSlug" value={tenantSlug} />
-                    <input type="hidden" name="unitSlug" value={unitSlug} />
-                    <input type="hidden" name="roomTypeId" value={rt.id} />
-                    <input type="hidden" name="from" value={from} />
-                    <input type="hidden" name="to" value={to} />
-                    <input
-                      name="guestName"
-                      required
-                      maxLength={120}
-                      placeholder={t("hotel.form.name")}
-                      className="w-full rounded-lg border px-3 py-2 text-sm"
-                    />
-                    <input
-                      name="guestPhone"
-                      required
-                      inputMode="tel"
-                      maxLength={32}
-                      placeholder={t("hotel.form.phone")}
-                      className="w-full rounded-lg border px-3 py-2 text-sm"
-                    />
-                    <button className="btn btn-primary min-h-[44px] text-base">
-                      {t("hotel.book")}
-                      {rt.depositSatang > 0
-                        ? ` · ${t("hotel.depositAmount", { amount: baht(rt.depositSatang, locale) })}`
-                        : ""}
-                    </button>
-                    {rt.free <= 3 && (
-                      <div className="text-center text-xs text-[color:var(--color-muted)]">
-                        {t("hotel.left", { n: rt.free })}
-                      </div>
-                    )}
-                  </form>
-                )}
+            <div className="text-center text-xs text-[color:var(--color-muted)]">{t("hotel.web.from", { n: nights })}</div>
+            {r && !r.ok ? (
+              <div className="rounded-2xl border border-[color:var(--color-danger)] px-4 py-3 text-center text-sm text-[color:var(--color-danger)]">
+                {r.code === "RATE_LIMITED" ? t("hotel.web.err.rate") : r.code === "CLOSED" ? t("hotel.web.closed") : r.reason}
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      <p className="text-center text-xs text-[color:var(--color-muted)]">
-        {t("hotel.footer")}
-      </p>
-    </main>
+            ) : null}
+            {r && r.ok && r.roomTypes.length === 0 ? <div className="rounded-2xl border px-4 py-8 text-center text-sm text-[color:var(--color-muted)]">{t("hotel.web.noRooms")}</div> : null}
+            {r && r.ok
+              ? r.roomTypes.map((rt) => (
+                  <RoomTypeCard
+                    key={rt.id}
+                    rt={{ id: rt.id, name: rt.name, images: rt.images, remaining: rt.remaining, lowStock: rt.lowStock, soldOutDates: rt.soldOutDates, plans: rt.plans.map((p) => ({ id: p.id, name: p.name, totalSatang: p.totalSatang, nights: p.nights, cancelSummary: locale === "en" ? p.cancelSummaryEn : p.cancelSummaryTh })) }}
+                    rooms={rooms}
+                    locale={locale}
+                    bookHref={bookHref(rt.id)}
+                    labels={{
+                      photo: t("hotel.web.photo", { name: rt.name }),
+                      left: (n) => t("hotel.web.left", { n }),
+                      soldOutOn: (dates) => t("hotel.web.soldOutOn", { dates }),
+                      tryOtherDates: t("hotel.web.tryOtherDates"),
+                      perNights: (price, n) => t("hotel.web.perNights", { price, n }),
+                    }}
+                  />
+                ))
+              : null}
+          </>
+        )}
+        <Link href={withLang(`${base}/my`, lang)} className="mt-2 text-center text-sm font-semibold underline-offset-2 hover:underline">
+          {t("hotel.web.myBooking")}
+        </Link>
+      </div>
+    </WebShell>
   );
 }

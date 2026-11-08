@@ -211,6 +211,16 @@ const bothMain =
     if (err !== null) throw err;
   };
 // ◂ POS P2.6
+// SVC H.8 ▸ จองออนไลน์โรงแรม (ใบสั่ง h.8 §5 · §9.3 · §9.4) — ต่อ "ชั้นนอก" ของ consumer เดิมท้ายไฟล์ (ไม่แก้บรรทัดเดิม):
+//   • สลิปมัดจำ: HOTEL_SLIP_EVENT = "payment.slip.approved" + สาขา HOTEL → platform/hotel-web.onHotelSlipApproved (takeBookingDeposit · idempotent)
+//     งานหลักคู่ (bothMain) กับนัด/หอเดิม — สลิปโดเมนอื่นแต่ละสาขาข้ามเอง · ล้ม BUSY = event retry
+//   • แจ้งแขก: HOTEL_GUEST_MAIL_EVENTS ("hotel.booking.created" · "hotel.booking.confirmed" · "hotel.booking.cancelled" · "hotel.booking.hold_expired")
+//     → lazy import platform/hotel-mail.onHotelBookingEvent (ของแถม · ไม่ throw) ต่อจากงานเดิม (no-op + กฎอัตโนมัติ)
+const HOTEL_SLIP_EVENT = "payment.slip.approved";
+const hotelSlipApproved: OutboxHandler = async (evt) => (await import("@/lib/platform/hotel-web")).onHotelSlipApproved(evt);
+const HOTEL_GUEST_MAIL_EVENTS = ["hotel.booking.created", "hotel.booking.confirmed", "hotel.booking.cancelled", "hotel.booking.hold_expired"] as const;
+const hotelGuestMail: OutboxHandler = async (evt) => (await import("@/lib/platform/hotel-mail")).onHotelBookingEvent(evt);
+// ◂ SVC H.8
 /** ออเดอร์เว็บร้านถูกปฏิเสธที่จอ 09 → ยกเลิก ShopOrder (รอชำระ) ผ่านประตูของเว็บร้านเอง · ซ้ำ/ชำระแล้ว = cancelOrder คืน false (ไม่ทำอะไร) */
 const posOrderRejected: OutboxHandler = async (evt) => {
   const p = (evt.payload ?? {}) as { shopOrderId?: unknown; unitId?: unknown };
@@ -1480,6 +1490,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hotel.booking.no_show": withAutomation(async () => {}),
   "hotel.booking.changed": withAutomation(async () => {}),
   "hotel.booking.deposit_after_expiry": withAutomation(async () => {}),
+  // SVC H.8 ▸ event ของหน้าจองเว็บ (3 ทะเบียน · payload id + สตางค์ล้วน) — งานหลัก no-op (เขียนครบใน platform/hotel-web.ts แล้ว) + กฎอัตโนมัติ/เว็บฮุค
+  "hotel.web.hold_created": withAutomation(async () => {}),
+  "hotel.web.deposit_paid": withAutomation(async () => {}),
+  "hotel.web.slip_attached": withAutomation(async () => {}),
+  "hotel.web.cancelled_by_guest": withAutomation(async () => {}),
+  "hotel.web.lookup_failed": withAutomation(async () => {}),
+  "hotel.web.slip_unapplied": withAutomation(async () => {}), // SVC H.8 r3 ▸ สลิปอนุมัติแต่ลงมัดจำไม่ได้ (รับ+คืนอัตโนมัติแล้ว · ผู้ตรวจรอบ 2 B-1/B-2) ◂
+  // ◂ SVC H.8
   // ◂ SVC H.3
   // SVC H.4 ▸ เช็กอิน V2 · ทะเบียนผู้พัก · ตม.30 (ใบสั่ง h.4 §5) — ยิงจาก `hotel/checkin.ts` · `guest.ts` · `tm30.ts` ใน tx เดียวกับการเปลี่ยน ·
   //   payload id/จำนวน/สถานะล้วน (X8 · ไม่มีชื่อ/เลขเอกสาร/เบอร์) · งานหลัก = no-op (ปิด event + ทริกเกอร์กฎอัตโนมัติ/เว็บฮุค) · ระบบไม่ส่ง ตม. เอง
@@ -1538,6 +1556,10 @@ baseConsumers["hotel.audit.closed"] = withAutomation(async (evt) => {
 baseConsumers["hotel.audit.reopened"] = withAutomation(async () => {});
 // ◂ SVC H.7
 
+// SVC H.8 ▸ สาขา HOTEL ของสลิปอนุมัติ + อีเมลแจ้งแขก (ดูหัวไฟล์ส่วน SVC H.8) — ห่อจากภายนอก ไม่แก้บรรทัดเดิม
+baseConsumers[HOTEL_SLIP_EVENT] = bothMain(baseConsumers[HOTEL_SLIP_EVENT]!, hotelSlipApproved);
+for (const t of HOTEL_GUEST_MAIL_EVENTS) baseConsumers[t] = compose(baseConsumers[t]!, hotelGuestMail);
+// ◂ SVC H.8
 // SVC H.10 ▸ ช่องทาง OTA (ใบสั่ง h.10 §5 · CC §7 · 3 ทะเบียน · payload id/วัน/รหัสเหตุผลล้วน ไม่มี PII)
 //   "channel.ari.dirty" = งานหลัก: รวมชุดเป็น ChannelAriJob (hotel facade · lazy import กันวงโหลด · ล้ม = event retry · idempotent: ครอบแล้วไม่สร้างซ้ำ)
 baseConsumers["channel.ari.dirty"] = withAutomation(async (evt) => (await import("@/lib/modules/hotel")).onAriDirty(evt));

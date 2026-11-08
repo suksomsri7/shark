@@ -8,6 +8,8 @@
 //   • นโยบายหลังจอง (คืนเงิน · ไม่มา) อ่านจาก policySnapshot ของการจองเท่านั้น
 //   • นาฬิกาฉาก (§2 ข้อ 13): input.at ใช้เป็น "เวลาปัจจุบัน" เฉพาะเมื่อ process.env.SVC_QC_CLOCK === "1" (อ่านตอนเรียกทุกครั้ง) · ค่าตั้งยังอ่าน ณ เวลาจริง
 import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto"; // SVC H.8 r2 ▸ publicToken 144 บิต (ผู้ตรวจ A-5 · cuid v1 สุ่มจริงแค่ ~41 บิต) ◂
+import { AsyncLocalStorage } from "node:async_hooks"; // SVC H.8 ▸ ยกเลิกโดยแขก (by GUEST) ◂
 import { z } from "zod";
 import type { Prisma, PosPayType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
@@ -26,6 +28,8 @@ import { addDaysYmd, dayNumber, depositFor, depositPolicyOf, isYmd, nightDates, 
 import { availabilityInTx, isSellableNightly, shortDates } from "./availability";
 import { canTransition, holdDeadline, nightsOf } from "./booking-state";
 import { postDeposit } from "./folio"; // SVC H.5 ◂
+
+const GUEST_CANCEL = new AsyncLocalStorage<{ by: "GUEST" }>(); // SVC H.8 ◂
 
 // ───────────────────────── ชนิด ─────────────────────────
 export type BookingActor = MembershipCtx & { userId: string };
@@ -51,6 +55,7 @@ export type BookingFailCode =
   | "NOT_SAME_DAY"
   | "NO_POS"
   | "BUSY"
+  | "DUPLICATE_REQUEST" // SVC H.8 ▸ คำขอจองเว็บซ้ำ (idempotencyKey เดิม) — ผู้เรียกอ่านใบเดิม ◂
   | "CHANNEL_CONFLICT" // SVC H.10 ▸ ตัวตรวจของช่องทางใน tx ปฏิเสธ (ซ้ำ/ฉบับเก่า) ◂
   | "STATE_CHANGED";
 export type BookingFail = { ok: false; code: BookingFailCode; reason: string; dates?: string[]; suggest?: { action: "MOVE_ROOM"; rooms: { id: string; number: string }[] } };
@@ -178,6 +183,7 @@ async function gate(actorIn: unknown, ctx: unknown, input: unknown, need: string
   const unitId = isRec(input) ? input.unitId : null;
   if (!isStr(tenantId) || !isStr(unitId)) return fail("NOT_FOUND", R.notFound);
   const actor = actorOf(actorIn);
+  if (actorIn === null && need === "hotel.reservation.cancel" && GUEST_CANCEL.getStore()?.by === "GUEST") allowPublic = true; // SVC H.8 ▸ cancelBookingAsGuest เท่านั้น ◂
   if (!actor && !(allowPublic && actorIn === null)) return fail("NOT_FOUND", R.notFound);
   const unit = await tenantDb({ tenantId }).businessUnit.findFirst({ where: { id: unitId, type: "HOTEL" }, select: { id: true, name: true } });
   if (!unit) return fail("NOT_FOUND", R.notFound);
@@ -373,6 +379,7 @@ async function emitEv(tx: Tx, c: Ctx, type: EvType, rv: { id: string; groupId: s
   });
 }
 async function audit(tx: Tx, c: Ctx, actor: BookingActor | null, action: string, targetId: string, before: unknown, after: unknown): Promise<void> {
+  if (!actor && GUEST_CANCEL.getStore()?.by === "GUEST" && isRec(after)) after = { ...after, by: "GUEST" }; // SVC H.8 ▸ AuditLog ของการยกเลิกโดยแขก ◂
   await tx.auditLog.create({
     data: {
       tenantId: c.tenantId,
@@ -517,6 +524,11 @@ const CreateInput = z.object({
   couponCode: z.string().trim().max(40).optional().nullable(),
   hold: z.enum(["ONLINE", "COUNTER"]).optional().nullable(),
   channelRef: z.string().trim().max(64).optional().nullable(),
+  // SVC H.8 ▸ เพิ่มอย่างเดียว (ใบสั่ง h.8 §9.1): ภาษาที่แขกจอง · คูปองที่ผู้เรียกตรวจแล้ว (snapshot · หักตอน settle) · กุญแจกันจองซ้ำของเว็บ
+  locale: z.enum(["th", "en"]).optional().nullable(),
+  coupon: z.object({ code: z.string().trim().min(1).max(40), systemId: z.string().min(1).max(64), discountSatang: z.number().int().min(0).max(1_000_000_000) }).optional().nullable(),
+  idempotencyKey: z.string().trim().min(8).max(128).optional().nullable(),
+  // ◂ SVC H.8
   at: z.string().optional(),
 });
 type CreateIn = z.infer<typeof CreateInput>;
@@ -698,6 +710,7 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
   const planRules = plan ? await db.hotelCancelRule.findMany({ where: { ratePlanId: plan.id }, orderBy: { daysBefore: "desc" }, select: { daysBefore: true, refundBp: true } }) : [];
   const snap = await snapshotPolicy({ tenantId: c.tenantId }, "reservation", { unitId: c.unitId, roomTypeId: inp.rooms[0].roomTypeId, ...(plan ? { ratePlanId: plan.id } : {}) });
   const policySnapshot = jsonOf({ ...snap, bookingMode: opts.legacy ? "LEGACY" : pol.bookingMode, plan: plan ? { id: plan.id, code: plan.code, depositKind: plan.depositKind, depositValue: plan.depositValue, cancelRules: planRules } : null });
+  if (!opts.legacy && isRec(policySnapshot)) Object.assign(policySnapshot, { locale: inp.locale ?? "th", ...(inp.coupon ? { coupon: inp.coupon } : {}), ...(inp.idempotencyKey ? { webIdem: inp.idempotencyKey } : {}) }); // SVC H.8 ◂
   const taxSnapshot = jsonOf(pol.tax);
   const groupId = inp.rooms.length > 1 ? `grp${randomUUID().replace(/-/g, "")}` : null;
   const actor = g.actor;
@@ -712,6 +725,12 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
     try {
       const out = await inTx(c, async (tx) => {
         await lockTypes(tx, c.unitId, typeIds);
+        // SVC H.8 ▸ คำขอเว็บซ้ำ (double submit · ยิงซ้ำ): ล็อกกุญแจหลังล็อกประเภท (ลำดับเดียว) แล้วหาใบเดิมในหน่วย ⇒ DUPLICATE_REQUEST (ไม่สร้างใบใหม่) ◂
+        if (inp.idempotencyKey) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`hotel-web-idem:${c.unitId}:${inp.idempotencyKey}`}::text))`;
+          const dup = await tx.hotelReservation.findFirst({ where: { tenantId: c.tenantId, unitId: c.unitId, policySnapshot: { path: ["webIdem"], equals: inp.idempotencyKey } }, select: { id: true } });
+          if (dup) throw new Abort(fail("DUPLICATE_REQUEST", "ได้รับคำขอจองนี้แล้ว"));
+        }
         if (chIn?.replaceReservationIds?.length) await channelCancelRowsTx(tx, c, chIn.replaceReservationIds, typeIds, now, "CHANNEL_MODIFIED"); // SVC H.10 ▸ ยกเลิกเดิม+สร้างใหม่ใน tx เดียว ◂
         const av = await availabilityInTx(tx, { ...c, roomTypeIds: typeIds, from: inp.checkIn, to: inp.checkOut });
         const short = shortDates(av, need);
@@ -757,6 +776,7 @@ async function createBookingCore(actorIn: unknown, ctx: unknown, input: unknown,
               holdExpiresAt: holdUntil,
               policySnapshot,
               taxSnapshot,
+              publicToken: randomBytes(18).toString("base64url"), // SVC H.8 r2 ▸ ทุกการจองใหม่ทุก source · คนละ token ต่อห้องในกลุ่ม · default cuid ของ prisma คงเป็นทางสำรอง ◂
             },
             select: { id: true, code: true, publicToken: true },
           });
@@ -1239,6 +1259,14 @@ export async function cancelBooking(actorIn: unknown, ctx: unknown, input: unkno
   const warning = money.error ? `ยกเลิกแล้ว แต่จัดการเงินมัดจำไม่สำเร็จ (${money.error}) — คืน/ริบที่หน้าขาย` : legacyMoney ? LEGACY_MONEY_WARNING : null;
   return { ok: true as const, cancelled: targets.map((r) => r.id), refundSatang: money.refundSatang, forfeitSatang: money.forfeitSatang, ...(warning ? { moneyWarning: warning } : {}) };
 }
+
+// SVC H.8 ▸ ยกเลิกโดยแขก (ใบสั่ง h.8 §9.1 ค · §10.11) — ผู้เรียก (platform/hotel-web) ตรวจ publicToken + อีเมล + selfCancel แล้ว
+//   ทางเดียวกับพนักงานทุกบรรทัด (HOLD/CONFIRMED เท่านั้น · คืนเงินตาม policySnapshot ผ่าน POS) · actor null ⇒ AuditLog actorType SYSTEM + after.by "GUEST"
+//   event hotel.booking.cancelled payload เดิม (ไม่เพิ่ม by) · ไม่แก้ลายเซ็นเดิมของ cancelBooking (เพิ่มอย่างเดียว ⇒ ส่งผ่าน AsyncLocalStorage)
+export async function cancelBookingAsGuest(ctx: unknown, input: unknown) {
+  return GUEST_CANCEL.run({ by: "GUEST" }, () => cancelBooking(null, ctx, input));
+}
+// ◂ SVC H.8
 
 /**
  * ตัวช่วยจอ: ยอดคืนตามขั้นบันได ถ้ายกเลิกตอนนี้ (อ่านอย่างเดียว) — ฐาน = มัดจำ**คงเหลือ**ใน POS (m1 ผู้ตรวจรอบ 2 · หลังริบ/ใช้ไปแล้วไม่ใช่ยอดเต็ม)

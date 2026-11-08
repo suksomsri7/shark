@@ -942,7 +942,8 @@ try {
     const rvEn = await rvByToken(en.publicToken);
     eq([rvEn.policySnapshot?.locale, rvEn.guestEmail, rvEn.note ?? null], ["en", GUEST.email, null], "en");
     ids.hd10tok = en.publicToken;
-    const th = await holdOk({ checkIn: W(30), checkOut: W(31), rooms: [roomSpec(RTA.sup)], locale: undefined });
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-hd10) เพดาน HOLD เว็บต่อประเภทต่อคืน 50% (มติ A-6 ค) · ซูพีเรีย 2 ห้อง ⇒ คืนเดียวกันถือได้ 1 ⇒ ใบ th ไปคืนอื่น
+    const th = await holdOk({ checkIn: W(36), checkOut: W(37), rooms: [roomSpec(RTA.sup)], locale: undefined });
     eq((await rvByToken(th.publicToken)).policySnapshot?.locale, "th", "ค่าเริ่ม th");
     const jp = await hold({ checkIn: W(31), checkOut: W(32), rooms: [roomSpec(RTA.sup)], locale: "jp" });
     ok((okPub(jp) && (await rvByToken(jp.publicToken))?.policySnapshot?.locale === "th") || failCode(jp) === "INVALID_INPUT", `locale แปลก ${codeOf(jp)}`);
@@ -1412,12 +1413,13 @@ try {
     eq(await prisma.hotelReservation.count({ where: { tenantId: tA, roomTypeId: RTA.one, checkInDate: dbDate(W(54)), status: { in: ["HOLD", "CONFIRMED"] } } }), 1, "แถว active");
     eq(await prisma.hotelBookingNight.count({ where: { tenantId: tA, roomTypeId: RTA.one, date: dbDate(W(54)), counted: true } }), 1, "nights");
   });
-  await st("X-2", "X7 token: publicToken ≥ 128 บิต (cuid ≥ 24 ตัว · ไม่ซ้ำ · ไม่เรียงต่อกัน) ทุกการจองเว็บของร้าน A · token ผิด/ร้านอื่น/ไม่มี = คำตอบเดียวกัน (ST-5) · DTO สถานะไม่มี publicToken ของใบอื่น", async () => {
+  await st("X-2", "X7 token: publicToken ≥ 128 บิต (สุ่มจริง ≥ 22 ตัว base64url ไม่ใช่ cuid · ไม่ซ้ำ · ไม่เรียงต่อกัน) ทุกการจองเว็บของร้าน A · token ผิด/ร้านอื่น/ไม่มี = คำตอบเดียวกัน (ST-5) · DTO สถานะไม่มี publicToken ของใบอื่น", async () => {
     needSetup(); needWeb();
-    const rows = (await prisma.hotelReservation.findMany({ where: { tenantId: tA, source: "WEB" }, select: { publicToken: true } })) as Any[];
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-x2) ผู้ตรวจ A-5: cuid v1 สุ่มจริง ~41 บิต ⇒ นับเฉพาะแถวที่สร้างในรอบนี้ (แถวเก่าในฐานเป็น cuid) · ต้องไม่ใช่รูป cuid v1 และ ≥ 22 ตัว base64url (≥128 บิต)
+    const rows = (await prisma.hotelReservation.findMany({ where: { tenantId: tA, source: "WEB", createdAt: { gte: RUN_START } }, select: { publicToken: true } })) as Any[];
     ok(rows.length >= 10, `แถวเว็บ ${rows.length}`);
     const toks = rows.map((r) => String(r.publicToken ?? ""));
-    ok(toks.every((t) => t.length >= 24 && /^[a-z0-9_-]+$/i.test(t)), `token สั้น ${J(toks.filter((t) => t.length < 24).slice(0, 3))}`);
+    ok(toks.every((t) => t.length >= 22 && /^[A-Za-z0-9_-]+$/.test(t) && !/^c[a-z0-9]{24}$/.test(t)), `token สั้น/รูป cuid ${J(toks.filter((t) => t.length < 22 || /^c[a-z0-9]{24}$/.test(t)).slice(0, 3))}`); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-x2)
     eq(new Set(toks).size, toks.length, "token ซ้ำ");
     const sorted = [...toks].sort();
     ok(!sorted.every((t, i) => i === 0 || t.slice(0, -4) === sorted[i - 1].slice(0, -4)), "token เรียงต่อกัน (เดาได้)");
@@ -1600,7 +1602,9 @@ try {
   });
   await st("F-3", "เพิ่มอย่างเดียว (เทียบฐาน 16dbc492e): booking.ts (U-9) · index.ts/actions.ts ของ hotel · defs/rooms.ts · 3 ทะเบียน event · service.ts ฟังก์ชันเดิม createReservation/recordDeposit/getPublicReservation เนื้อเท่าฐาน (ห่อได้เฉพาะ listPublicAvailability/promptpayForDeposit ตามใบ §1) · dict.ts ไม่ลบคีย์เดิม", () => {
     ok(has(F.web), `ยังไม่มี ${F.web} — ตรวจตอนรับใบ`);
-    const rm = (f: string) => git(["diff", "-U0", BASE_SHA, "--", f]).split("\n").filter((l) => /^-(?!-)/.test(l) && l.slice(1).trim() !== "").length;
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-f3) เลนนี้ merge session/svc (H.6 ฯลฯ) เข้ามา ⇒ เทียบจาก merge-base กับ session/svc (ตัดการลบของใบอื่น) · ไม่มี session/svc ⇒ BASE_SHA
+    const DIFF_BASE = (() => { try { const mb = git(["merge-base", "HEAD", "session/svc"]).trim(); return mb && git(["merge-base", "--is-ancestor", BASE_SHA, mb]) !== null ? mb : BASE_SHA; } catch { return BASE_SHA; } })();
+    const rm = (f: string) => git(["diff", "-U0", DIFF_BASE, "--", f]).split("\n").filter((l) => /^-(?!-)/.test(l) && l.slice(1).trim() !== "").length;
     const bad: string[] = [];
     for (const f of [F.booking, F.index, F.hotelActions, F.defs, F.consumers, F.autoLabels, F.whLabels, F.minute]) if (rm(f) > 0) bad.push(`${f} ลบ ${rm(f)}`);
     eq(bad, [], "ลบบรรทัด");
@@ -1752,6 +1756,8 @@ console.log("\n── V ภาพ ──");
 
 // ═══════════════ G regression ═══════════════
 console.log("\n── G: regression ──");
+// ORACLE-EDIT (ผู้คุม 8 พ.ย. · h8-g-scene) ฉาก h.8 (override วัน 14 · แถวเคาน์เตอร์/เว็บ) ทำให้ Q ของ h.1/h.2/h.3/h.5 แดง ⇒ เคลียร์ก่อน G (chain รันฉากใหม่ก่อนถ่ายภาพ)
+if (has(F.scene)) spawnSync("pnpm", ["exec", "tsx", F.scene, "--clear"], { cwd: ROOT, env: process.env, encoding: "utf8" });
 const summaryOf = (out: string): { failed: string[] } | null => {
   const line = out.split("\n").reverse().find((l) => l.startsWith("JSON_SUMMARY "));
   if (!line) return null;

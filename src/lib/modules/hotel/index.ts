@@ -115,6 +115,28 @@ export type { TapeBar, TapeBarKind, TapeRoom, TapeGroup, TapeOccupancyDay, TapeL
 export { blockRoom, releaseBlock, listBlocks, BLOCK_REF } from "./block";
 export type { BlockActor, BlockFail, BlockFailCode, BlockOk, BlockRow } from "./block";
 // ◂ SVC H.2
+// SVC H.8 ▸ จองออนไลน์ V2 (ใบสั่ง h.8 §1 §9) — ยกเลิกโดยแขก (booking.ts เพิ่มอย่างเดียว) + ชั้นข้อมูลหน้าจองสาธารณะ (ผู้เรียก = platform/hotel-web · hotel-mail)
+export { cancelBookingAsGuest } from "./booking";
+export {
+  webUnitBySlugs,
+  webSearchBundle,
+  webPlansOf,
+  webBookingFacts,
+  webBookingByCode,
+  webBookingByIdem,
+  hotelDepositSlipFacts,
+  slipByIdemKey,
+  planCancelRules,
+  lineOaBasicId,
+  guestMailFacts,
+  arrivalsWithEmailOn,
+} from "./storefront";
+export type { WebUnit, WebRoomTypeInfo, WebCancelRuleRow, WebSearchBundle, WebPlanRow, WebSlipState, WebDepositMoney, WebBookingFacts, GuestMailFacts } from "./storefront";
+export { webHoldMark } from "./storefront"; // SVC H.8 r2 ▸ ด่านกันยึดห้อง (ผู้ตรวจ A-6) ◂
+export type { WebHoldGuardIn } from "./storefront";
+export { recordUnappliedSlipMoney, keepDepositRequired, depositRequiredOfSnapshot, webSlipSlot, partialDepositsOf } from "./deposit-intent"; // SVC H.8 r3 ▸ เงินสลิปที่ลงมัดจำไม่ได้ · ยอดมัดจำที่ต้องรับเดิม · ช่องสลิป (ผู้ตรวจรอบ 2 เงิน) ◂
+export type { UnappliedSlipMoney, PartialDepositRow } from "./deposit-intent";
+// ◂ SVC H.8
 // SVC H.10 ▸ ช่องทาง OTA (channel manager · ใบสั่ง h.10 §1 · §3) — แม็ป/ARI ขาออก/ขาเข้า idempotent/คิวต้องจัดห้อง · fakeEnqueueInbound อยู่ที่ ./channel (ทดสอบเท่านั้น)
 export {
   listChannelConnections,

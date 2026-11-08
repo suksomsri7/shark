@@ -605,6 +605,27 @@ export async function releaseBlockAction(unitSlug: string, input: unknown): Prom
 }
 // ◂ SVC H.2
 
+// SVC H.8 ▸ แถบ «สลิปรอตรวจ» บนหน้ารายการการจอง — ตัดสินสลิปมัดจำเว็บผ่านระบบสลิปกลาง (payment/slip-verify.decideSlip · ไม่สร้างคิวใหม่)
+//   สิทธิ์ = payments.slip.review (slip-verify อ่าน Membership สดเอง) · อนุมัติ ⇒ event payment.slip.approved ⇒ consumer สาขา HOTEL ⇒ รับมัดจำ (HOLD→CONFIRMED)
+export async function decideHotelSlipAction(formData: FormData): Promise<void> {
+  const unitSlug = String(formData.get("unitSlug") ?? "").slice(0, 100);
+  const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") return;
+  const slipId = String(formData.get("slipId") ?? "").slice(0, 64);
+  const decision = String(formData.get("decision") ?? "") === "REJECT" ? "REJECT" : "APPROVE";
+  const reason = String(formData.get("reason") ?? "").trim().slice(0, 300) || (decision === "APPROVE" ? "ตรวจยอดกับแอปธนาคารแล้ว" : "ยอดหรือสลิปไม่ถูกต้อง");
+  const transRef = String(formData.get("transRef") ?? "").trim().slice(0, 64);
+  const { decideSlip } = await import("@/lib/payment/slip-verify");
+  const r = await decideSlip({ userId: auth.active.userId }, { tenantId: auth.active.tenantId }, slipId, { decision, reason, ...(transRef ? { transRef } : {}) });
+  if (r.ok) {
+    const { scheduleDrain } = await import("@/lib/outbox-consumers");
+    scheduleDrain();
+  }
+  revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
+  const { redirect } = await import("next/navigation");
+  redirect(`/app/u/${encodeURIComponent(unitSlug)}/hotel/reservations?slip=${r.ok ? "ok" : encodeURIComponent(r.code)}`);
+}
+// ◂ SVC H.8
 // ───────────────────────── SVC H.10 ▸ ช่องทาง OTA (ใบสั่ง h.10 §1 · §3 · §4) ─────────────────────────
 //   ทุก action: หน่วย HOTEL → hotel.channel.manage (จาก session · ไม่มี ⇒ FORBIDDEN) → ฟังก์ชันของ hotel/channel (ตรวจร้าน/หน่วย/ตัวต่อซ้ำอีกชั้น)
 //   ผลเป็นข้อมูลเสมอ (ไม่โยน) · ทดสอบส่ง ARI = dry-run 7 วัน (ไม่เรียกตัวต่อ) · ดึงตอนนี้ = เฉพาะตัวต่อของร้าน/หน่วยนี้

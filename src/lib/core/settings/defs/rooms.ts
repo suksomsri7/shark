@@ -787,6 +787,18 @@ const DEFS: SettingDef[] = [
     helpTh: "ใช้โดเมนที่ตั้งไว้ใน ตั้งค่า › โดเมน", schema: z.boolean(), defaults: { _fallback: false }, chain: U,
   }),
   // ◂ SVC H.0
+  // SVC H.8 ▸ หน้าจองออนไลน์ (ใบสั่ง h.8 §1 · เพิ่มคีย์อย่างเดียว · unitTypes HOTEL)
+  hotel({ key: "rooms.hotel.storefront.enabled", type: "bool", labelTh: "เปิดหน้าจองออนไลน์", helpTh: "ปิด = หน้าเว็บแสดงว่าไม่รับจอง (การจองเดิมยังดูและยกเลิกได้)", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.maxRooms", type: "int", labelTh: "จองได้สูงสุดกี่ห้องต่อครั้ง (หน้าเว็บ)", schema: z.number().int().min(1).max(10), defaults: { _fallback: 5 }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.selfCancel", type: "bool", labelTh: "ให้ผู้เข้าพักยกเลิกเองจากลิงก์การจอง", helpTh: "ยอดคืนเป็นไปตามเงื่อนไขยกเลิกที่จดไว้ตอนจอง", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.badgeTh", type: "text", labelTh: "ป้ายบนหน้าจอง (ไทย)", helpTh: "เช่น จองตรงถูกกว่า · ว่าง = ไม่แสดง", schema: z.string().max(40), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.badgeEn", type: "text", labelTh: "ป้ายบนหน้าจอง (อังกฤษ)", helpTh: "เช่น Best rate direct · ว่าง = ไม่แสดง", schema: z.string().max(40), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.customDomainUnitId", type: "text", labelTh: "สาขาโรงแรมที่เปิดบนโดเมนของร้าน", helpTh: "ใช้คู่กับ เปิดหน้าจองโรงแรมบนโดเมนของร้าน", schema: z.string().max(64), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.heroImages", type: "table", labelTh: "รูปหัวหน้าจอง", schema: z.array(z.string().url().max(500)).max(10), defaults: { _fallback: [] }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.description.th", type: "text", labelTh: "คำแนะนำที่พัก (ไทย)", schema: z.string().max(1000), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.description.en", type: "text", labelTh: "คำแนะนำที่พัก (อังกฤษ)", schema: z.string().max(1000), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.reminderHour", type: "time", labelTh: "เวลาส่งอีเมลเตือนก่อนเข้าพัก 1 วัน", schema: HHMM, defaults: { _fallback: "10:00" }, chain: U }),
+  // ◂ SVC H.8
   // SVC H.4 ▸ เช็กอิน V2 · ทะเบียนผู้พัก (ร.ร.3/ร.ร.4) · ตม.30 (ใบสั่ง svc-brief-h.4 §1) — เพิ่มอย่างเดียว
   hotel({ key: "rooms.hotel.license.no", type: "text", labelTh: "เลขที่ใบอนุญาตประกอบธุรกิจโรงแรม", helpTh: "พิมพ์บนบัตร ร.ร.3 และทะเบียน ร.ร.4", schema: z.string().trim().max(60).nullable(), defaults: { _fallback: null }, chain: U }),
   hotel({ key: "rooms.hotel.license.name", type: "text", labelTh: "ชื่อโรงแรมตามใบอนุญาต", helpTh: "ไม่กรอก = ใช้ชื่อสาขา", schema: z.string().trim().max(120).nullable(), defaults: { _fallback: null }, chain: U }),

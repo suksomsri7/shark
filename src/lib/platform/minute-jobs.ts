@@ -530,6 +530,15 @@ registerMinuteJob({
   run: async () => (await import("@/lib/modules/hotel")).sweepExpiredHolds({}),
 });
 // ◂ SVC H.3
+// SVC H.8 ▸ โรงแรม: อีเมลเตือนผู้เข้าพักก่อนเข้า 1 วัน (ใบสั่ง h.8 §2.6 · §10.5) — รายชั่วโมง (ส่งเมื่อถึง rooms.hotel.storefront.reminderHour ของสาขา · ค่าเริ่ม 10:00 ไทย)
+//   ข้ามร้าน · โหลด platform/hotel-mail ตอนรันเท่านั้น · idempotent: จองสิทธิ์ส่งต่อการจองด้วยคำสั่ง SQL เดียว ⇒ route + crontab ซ้อนกัน ส่งครั้งเดียว (X5)
+registerMinuteJob({
+  name: "hotel-guest-reminder",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now) => (await import("@/lib/platform/hotel-mail")).runGuestReminders(now),
+});
+// ◂ SVC H.8
 // SVC H.7 ▸ โรงแรม: ปิดวัน (night audit) อัตโนมัติ — ทุก 15 นาที · ข้ามร้าน · หน่วยที่ autoClose เปิดและถึง rooms.hotel.nightAuditTime ตามเวลาร้าน (timezone ต่อหน่วย)
 //   ปิดวันที่ค้างทีละวัน (≤ 7 วัน/หน่วย/รอบ) · โหลด facade โรงแรมตอนรันเท่านั้น · idempotent: advisory lock ต่อหน่วย + unique(unitId, businessDate) ⇒ route + crontab ซ้อนกัน = ปิดครั้งเดียว (X5)
 //   เคารพงบ/สัญญาณยกเลิก (หยุดก่อนเริ่มหน่วยถัดไป) · ไม่เพิ่ม vercel.json (crontab VPS เรียก crm-cron.mts minute อยู่แล้ว)

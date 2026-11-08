@@ -271,6 +271,30 @@ CONFIRMED (+BOOKED แถวเก่า) · วันเข้า ≤ วัน
 - settle({groupId}) คืนเงินประกันที่ถือของทุกห้อง (FORFEIT ทั้งกลุ่ม = เตือนรายห้อง) · consumer ลงห้องได้ BUSY ⇒ โยนให้คิวลองใหม่ · refundStay หาบิลเช็กเอาต์ล่าสุดที่ PAID (รวม `-r<n>`)
 - **สัญญาผู้เรียก `chargeToRoom` (facade · m5)**: facade ไม่ตรวจวิธีจ่ายของบิลต้นทาง — ผู้เรียกต้องส่งเฉพาะยอดที่ "ลงห้อง" จริง (บิลที่ร้านเก็บเงินสดแล้วห้ามส่งซ้ำ ไม่งั้นแขกจ่ายสองครั้ง) · consumer ของ POS ส่งเฉพาะบิลที่มีแถว ROOM_CHARGE และยอดเท่า ROOM_CHARGE · กันรายได้ซ้ำทำเฉพาะบิลที่มี ROOM_CHARGE
 
+## §storefront — จองออนไลน์ V2 (SVC H.8)
+
+> ใบสั่ง `ledger/svc-briefs/svc-brief-h.8.md` · ข้อสอบ `scripts/qc-svc-h.8.mts` · ภาพ 16 ก/ข/ค
+
+- **ชั้นโค้ด**: หน้าสาธารณะ `src/app/(store)/s/[tenantSlug]/[unitSlug]/hotel/{page, book, pay/[publicToken], r/[publicToken], my}` + `slip/[publicToken]/route.ts` + `actions.ts`
+  → `src/lib/platform/hotel-web.ts` (ทุกฟังก์ชัน `(input, opts{clientKey, now?, deps?})` · input มี tenantSlug+unitSlug) → facade `@/lib/modules/hotel`
+  (การจอง = `createBooking(actor null · WEB · hold ONLINE)` เส้นเดียวกับเคาน์เตอร์ · ยกเลิกโดยแขก = `cancelBookingAsGuest` · ชั้นข้อมูลอ่านอย่างเดียว = `modules/hotel/storefront.ts`)
+- **ค้นหา** `publicSearch`: หน่วย + ประเภท + กฎยกเลิก + ห้องว่าง (buildAvailability สูตรเดียว) ในคิวรีเดียว · ค่าตั้ง 2 · บริบทราคา (H.1) 8 ⇒ ≤ 14 คำสั่ง ·
+  แผนที่ visibility มี WEB (ว่าง = ทุกช่องทาง) · ราคาต่อคืนจากเครื่องคิดราคา (override/ฤดู/สุดสัปดาห์) · `lowStock` เมื่อเหลือ ≤ 3 · `soldOutDates` = คืนที่ว่างไม่พอ
+- **HOLD** `publicCreateHold`: rate limit → honeypot `_sd_hp` + ตั๋วเริ่มฟอร์ม (`holdFormStart` ผูกหน่วย · อายุ ≥ 3 วิ · ใช้ครั้งเดียว) → เพดานห้อง `storefront.maxRooms` →
+  แผนต้องเปิดเว็บ (`PLAN_NOT_PUBLIC`) → คูปอง (`coupon.validate` · systemForUnit COUPON · snapshot ใน policySnapshot.coupon · **หักตอน settle** = หนี้ H.5b) →
+  `createBooking` (idempotencyKey ของฟอร์ม hash ⇒ policySnapshot.webIdem · ล็อกใน guard tx ⇒ กดซ้ำ/ยิงพร้อมกัน = ใบเดียว) → QR พร้อมเพย์ยอดล็อก (`promptpayQrFor`) เมื่อรอมัดจำ
+  โหมด: DEPOSIT_REQUIRED = HOLD `holdMinutesOnline` · AUTO_CONFIRM = CONFIRMED (QR มัดจำไม่บังคับถึงก่อนวันเข้า 1 วัน) · MANUAL_APPROVE = HOLD รอโรงแรมยืนยัน (ไม่มี QR)
+- **มัดจำ**: แนบสลิป → `submitSlip` (HOTEL/HOTEL_DEPOSIT · ยอดคาด = มัดจำหัวกลุ่ม · ไฟล์ส่วนตัว ≤ 5 MB) → คิวพนักงาน (แถบ «สลิปรอตรวจ» หน้ารายการการจอง = `slipQueue`/`decideSlip`)
+  → `payment.slip.approved` → `onHotelSlipApproved` (สาขา HOTEL · bothMain) → `takeBookingDeposit(SYSTEM · PROMPTPAY · reference slip:<id>)` · สลิปเดิมลงเงินแล้ว (มีแถวรับเงิน slip:<id>) = ข้าม ·
+  จ่ายหลังหมดเวลา = เส้น H.3 (re-book หรือคืนอัตโนมัติ + deposit_after_expiry)
+- **หน้าสถานะ/ค้นหา/ยกเลิก**: เปิดด้วย publicToken ของหน่วยนั้นเท่านั้น (ร้านอื่น = ไม่พบ คำตอบเดียว) · ไม่มีเบอร์ · อีเมล mask · lookup = รหัส + อีเมล ตรงเป๊ะ (ไม่พบ = คำตอบเดียวทุกไบต์ · event lookup_failed ไม่มี PII) ·
+  ยกเลิกเอง (`storefront.selfCancel`) แสดงยอดคืนตาม policySnapshot ก่อน → ยอดต้องตรง (`REFUND_CHANGED`) → `cancelBookingAsGuest` (AuditLog SYSTEM + by GUEST · เงินผ่าน POS)
+- **อีเมล** `platform/hotel-mail.ts` 5 แบบ (hold · confirmed+.ics · reminder · cancelled · expired) TH/EN ตาม policySnapshot.locale · consumer ของ hotel.booking.* (หัวกลุ่มเท่านั้น · ของแถม ไม่ throw) ·
+  งาน `hotel-guest-reminder` รายชั่วโมง (ส่งเมื่อถึง `storefront.reminderHour` · ครั้งเดียวต่อการจอง)
+- **กันสแปม/X7**: `checkRateLimitDb` ต่อ IP(hash)+หน่วย — ค้นหา 60/นาที · HOLD 5/10 นาที · lookup 10/10 นาที · ยกเลิก 3/ชม. · สลิป 10/10 นาที · ดูสถานะ 190/10 นาที · ไม่มี Turnstile (หนี้ · ต้องการคีย์)
+- **event** (3 ทะเบียน): hotel.web.hold_created · deposit_paid · slip_attached · cancelled_by_guest · lookup_failed — payload id + สตางค์ล้วน
+- **โดเมนร้าน**: หน้าอ่าน `headers().get("host")` → `resolveTenantByHost` — โดเมนของร้านอื่นเปิดหน้าโรงแรมนี้ไม่ได้ · การพา `/` ของโดเมนร้านมาหน้าโรงแรม (`storefront.customDomainUnitId`) = หนี้ (ต้องแตะ proxy)
+- **i18n**: คีย์ `hotel.web.*` คู่ th/en · `?lang=en|th` ชนะ cookie `lang`
 ## ช่องทางขายห้อง OTA · channel manager (SVC H.10)
 
 > ใบสั่ง `ledger/svc-briefs/svc-brief-h.10.md` (§9 ตรวจทานกับโค้ด · §10 มติผู้คุม) · ข้อสอบ `scripts/qc-svc-h.10.mts` · ฉาก `scripts/svc-qc-hotel-ota-scene.mts`
