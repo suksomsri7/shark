@@ -329,7 +329,8 @@ try {
     const usersAfter = await userFp(T_START);
     chk("O-2", "ผู้ใช้/เซสชันที่ไม่ใช่ของ SVC เท่าเดิม", usersAfter === usersBefore, `${usersBefore} → ${usersAfter}`);
     const svcUsers = await uSvc();
-    chk("O-3", "ผู้ใช้ SVC = 9 คนพอดี (8 ร้าน A + เจ้าของร้าน B)", svcUsers === 9, `มี ${svcUsers}`, "MAJOR");
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · r02-o3) ฟิกซ์เจอร์เพิ่ม maid (H.2) + hk-lead (H.6) ⇒ 11 คน
+    chk("O-3", "ผู้ใช้ SVC = 11 คนพอดี (8 ร้าน A + maid + hk-lead + เจ้าของร้าน B)", svcUsers === 11, `มี ${svcUsers}`, "MAJOR");
   }
 
   // ─────────── D: ข้อมูลร้านตัวอย่าง ───────────
