@@ -402,7 +402,7 @@ try {
     const fd = SQC_USERS.find((u) => u.key === "frontdesk")!, md = SQC_USERS.find((u) => u.key === "maid")!, mg = SQC_USERS.find((u) => u.key === "manager")!;
     ok(["hotel.guest.register", "hotel.reservation.checkIn", "hotel.booking.manage", "hotel.folio.post"].every((p) => fd.permissions[p] === true) && !fd.permissions["hotel.guest.viewId"] && fd.role === "STAFF" && fd.unitAccess.includes(SQC_UNITS.hotel.id), `frontdesk ${J(fd)}`);
     eq([md.role, Object.keys(md.permissions), md.unitAccess], ["STAFF", ["hotel.housekeeping"], [SQC_UNITS.hotel.id]], "maid");
-    ok(mg.role === "MANAGER" && !mg.unitAccess.includes(SQC_UNITS.hotel.id) && !mg.permissions["hotel.guest.viewId"], "manager ฟิกซ์เจอร์เปลี่ยน (ข้อสอบยึดว่าไม่มี viewId/ไม่คุมหน่วย hotel)");
+    ok(mg.role === "MANAGER" && !mg.permissions["hotel.guest.viewId"], "manager ฟิกซ์เจอร์เปลี่ยน (ข้อสอบยึดว่าไม่มี viewId)"); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h4-pc4) ฟิกซ์เจอร์ H.7 (3015b0534) ให้ manager คุมหน่วย hotel (audit/reports/booking.manage) — ยึดเฉพาะว่าไม่มี viewId
     ok((SQC_POS_EXTRA_UNITS as readonly string[]).includes("hotel"), "hotel ไม่อยู่ใน SQC_POS_EXTRA_UNITS");
     const t = await prisma.tenant.findUnique({ where: { id: SQC_TENANT.id }, select: { id: true } });
     if (!t) throw new AssertFail("ร้าน svcqc ยังไม่ seed บนฐาน l3 — ผู้คุมรัน seed ก่อน (Q/V ต้องใช้)");
