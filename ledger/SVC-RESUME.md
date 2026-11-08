@@ -146,3 +146,10 @@
 5. ผู้ตรวจ: H.7 เงิน 2 รอบ · H.8 สาธารณะ/เงิน · H.10 กันจองซ้อน 2 รอบ (Opus จนกว่า Fable กลับ)
 **รอเจ้าของ (ไม่บล็อก)**: Q-H4-1/3/4 · Q-H5-1 · Q-H3-1 · Turnstile key (หนี้ H.8) · C.2 LINE OA
 - ▶️ 7 พ.ย. ~22:0xZ ทำต่อแล้ว (KVM8) · ขั้น 0 ผ่าน (กู้ git object ว่าง + remount node_modules) · chain H.4/H.6 accept3 + builder H.8 รันอยู่ — ดู SVC-HOTEL-RUN §3 ล่าสุด
+
+## 🏁 8 พ.ย. 2569 ~08:5xZ — RUN HOTEL จบ 11/11 (100%)
+- ทิป `session/svc` = 0df41e36c (push แล้ว · **ไม่ขึ้น main · ไม่ deploy**) · ใบ H.0–H.10 merge ครบ + H.9 ด่านเต็มผ่าน
+- ด่านเต็ม: 76 ชุด (h.0–h.10 · r0.1–r0.9 · b.* · c.3 · d.* · d15-e2e · smoke · hotel-* · probe 13 · e2e 22/22 · iso 129/131) แดง 0 · r0.9 G-1 = หนี้เดิม · tsc 0 · fitness 2 โหมด · build ✅ · ไล่ภาพทุกใบทุกบทบาท
+- แพ็ก UAT: `ledger/UAT-HOTEL-V2.md` (go-live blockers 5 ข้อ · เช็กลิสต์ 4 บทบาท + แขก) · หนี้ทั้งหมด: `ledger/SVC-HOTEL-RUN.md` §2.1 · คำถามเจ้าของ: `ledger/SVC-OWNER-QUESTIONS.md`
+- งานถัดไป (รอเจ้าของสั่ง): H.5b (prepaid OTA · PLATFORM · คูปอง settle · undoNoShow ↔ บิลริบ) · H2 ตัวต่อ OTA เจ้าจริง · Turnstile · Bunny token · ตัดสิน Q-H7-1/Q-H8-1 · push main/deploy
+- เลน: l1–l6 ว่างทั้งหมด · ฐาน QC เลน (ep-royal-lake l1 · ep-weathered-mode l2 · ep-royal-bar l3 · ep-square-heart l5 · ep-late-union l6) รอเจ้าของอนุญาตลบ (การลบถูกด่านความปลอดภัยกันไว้ ต้องสั่งตรง) · ep-mute-scene = ฐาน SVC หลัก (เก็บไว้)
