@@ -400,7 +400,7 @@ async function closeCore(g: Gate, bd: string, now: Date): Promise<CloseAuditOk |
   } else {
     // แถวที่อีกทางตั้งไม่มาไปแล้ว (ชนะ CAS) ⇒ ข้ามเงียบ ไม่เตือน (C-6) · นับเฉพาะที่ตั้งสำเร็จจริง
     const nowNoShow = async (id: string): Promise<boolean> =>
-      (await tenantDb(c).hotelReservation.findFirst({ where: { id, status: "NO_SHOW" }, select: { id: true } })) !== null;
+      (await tenantDb(c).hotelReservation.findFirst({ where: { id }, select: { status: true } }))?.status === "NO_SHOW"; // อ่านอย่างเดียว (ไม่เขียนสถานะตรง)
     for (const rv of confirmed) {
       try {
         const r = await markNoShow(noShowActor(g.actor), { tenantId: c.tenantId }, { unitId: c.unitId, reservationId: rv.id });
