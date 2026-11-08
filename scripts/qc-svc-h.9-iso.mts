@@ -380,7 +380,7 @@ try {
   // ═══ ตัวควบคุมบวก: ผู้กระทำแต่ละรูปแบบทำงานได้บนหน่วยของตัวเอง (ปฏิเสธใน matrix = เพราะข้ามจริง ไม่ใช่ไร้สิทธิ์) ═══
   {
     const pc: string[] = [];
-    const chk = async (n: string, f: () => Promise<Any>) => { const r = await call(f); if (!(r?.ok === true || (Array.isArray(r) && r.length >= 0 && r?.ok === undefined && r !== null && typeof r === "object") || (r && r.ok === undefined && !Array.isArray(r) && typeof r === "object" && !("code" in r)))) pc.push(`${n}=${r?.code ?? J(r).slice(0, 60)}`); };
+    const chk = async (n: string, f: () => Promise<Any>) => { const r = await call(f); if (!(r?.ok === true || (Array.isArray(r) && r.length >= 0 && (r as Any)?.ok === undefined && r !== null && typeof r === "object") || (r && r.ok === undefined && !Array.isArray(r) && typeof r === "object" && !("code" in r)))) pc.push(`${n}=${r?.code ?? J(r).slice(0, 60)}`); };
     await chk("MGR_A2 listRatePlans A2", () => H.listRatePlans(MGR_A2, ctxA, { unitId: A2 }));
     await chk("MGR_A2 listBookings A2", () => H.listBookings(MGR_A2, ctxA, { unitId: A2 }));
     await chk("MGR_A2 listGuests A2", () => H.listGuests(MGR_A2, ctxA, { unitId: A2 }));
