@@ -52,6 +52,8 @@ export default async function IntegrationsSettingsPage() {
   const posLinks = posSystems.map((s) => ({ id: s.id, name: s.name, href: `/app/sys/${s.id}/pos/settings` }));
   // รายการเดินบัญชีธนาคาร — มีแล้วในบัญชี V2 (นำเข้าไฟล์ · จับคู่อัตโนมัติ) ⇒ การ์ดลิงก์ไปหน้ากระทบยอด ไม่เก็บซ้ำ
   const bankLinks = accountSystems.map((s) => ({ id: s.id, name: s.name, href: `/app/sys/${s.id}/account/finance/reconcile` }));
+  // SVC H.10 ▸ การ์ด OTA: ลิงก์ "ตั้งค่าแม็ปห้อง/ราคา →" ไปหน้าช่องทางของโรงแรมแต่ละหน่วย (ไม่เปลี่ยนโครงหน้าเชื่อมต่อ) ◂
+  const hotelChannelLinks = (await prisma.businessUnit.findMany({ where: { tenantId, type: "HOTEL", status: { not: "ARCHIVED" }, ...(limited ? { id: { in: unitAccess } } : {}) }, select: { id: true, name: true, slug: true }, orderBy: { createdAt: "asc" } })).map((u) => ({ id: u.id, name: u.name, href: `/app/u/${u.slug}/hotel/channels` }));
   // SVC C.3 ▸ สุขภาพตัวต่อ (DTO ไม่มีค่าลับ) + ค่าตั้ง #83 ชั้นร้าน ผ่านเครื่องยนต์ค่าตั้ง (กติกาเหล็กข้อ 16 · ผู้ไม่ใช่เจ้าของเห็นอ่านอย่างเดียว) ◂
   const firstUnitId = units[0]?.id ?? null;
   const [healthRes, alertForm] = await Promise.all([
@@ -71,6 +73,7 @@ export default async function IntegrationsSettingsPage() {
         defaultUnitIds={defaultUnitIds}
         posLinks={posLinks}
         bankLinks={bankLinks}
+        hotelChannelLinks={hotelChannelLinks}
         testTimes={testTimes}
         health={healthRes.ok ? healthRes.items : []}
         thresholdPercent={healthRes.ok ? healthRes.thresholdPercent : 10}

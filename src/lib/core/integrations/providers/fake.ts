@@ -46,6 +46,26 @@ function fakeNumber(v: string | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// SVC H.10 ▸ คิวทดสอบการจองขาเข้าของ CHANNEL_MANAGER (ใบสั่ง h.10 §1 · §9.2) — ในหน่วยความจำของโพรเซส (globalThis · ไม่ใช้ settings/คอลัมน์ใหม่)
+//   คีย์ = TenantIntegration.id · ผู้ป้อน = `fakeEnqueueInbound` ของโมดูลโรงแรม (เฉพาะแถว provider FAKE) · ผู้หยิบ = pullReservations ด้านล่าง
+export const FAKE_CHANNEL_INBOUND_KEY = Symbol.for("shark.integrations.fake.channelInbound");
+type FakeInboundRow = Awaited<ReturnType<AdapterMap["CHANNEL_MANAGER"]["pullReservations"]>>[number];
+function fakeChannelQueues(): Map<string, FakeInboundRow[]> {
+  const g = globalThis as unknown as Record<symbol, Map<string, FakeInboundRow[]> | undefined>;
+  const m = g[FAKE_CHANNEL_INBOUND_KEY] ?? new Map<string, FakeInboundRow[]>();
+  g[FAKE_CHANNEL_INBOUND_KEY] = m;
+  return m;
+}
+/** หยิบแถวทั้งหมดของแถวตัวต่อนี้ออกจากคิว (สำเนา JSON — ผู้เรียกแก้ได้ไม่กระทบคิว) */
+function takeFakeChannelInbound(connectionId: string | undefined): FakeInboundRow[] {
+  if (!connectionId) return [];
+  const q = fakeChannelQueues();
+  const rows = q.get(connectionId) ?? [];
+  q.delete(connectionId);
+  return JSON.parse(JSON.stringify(rows)) as FakeInboundRow[];
+}
+// ◂ SVC H.10
+
 /** mode SLOW รอกี่ ms ก่อนผ่าน */
 export const FAKE_SLOW_MS = 1500;
 
@@ -135,7 +155,8 @@ function makeFake<K extends StoredIntegrationKind>(kind: K, creds: ProviderCreds
       },
       pullReservations: async (_since, opts) => {
         await gate(opts);
-        return [];
+        // SVC H.10 ▸ คืนแถวจากคิวทดสอบของแถวที่เรียก (ในหน่วยความจำของโพรเซส · หยิบแล้วออกจากคิว) — ไม่มีคิว = [] ◂
+        return takeFakeChannelInbound(opts?.connectionId);
       },
       ackReservation: async (_id, opts) => {
         await gate(opts);

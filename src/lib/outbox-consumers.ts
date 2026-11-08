@@ -1560,6 +1560,27 @@ baseConsumers["hotel.audit.reopened"] = withAutomation(async () => {});
 baseConsumers[HOTEL_SLIP_EVENT] = bothMain(baseConsumers[HOTEL_SLIP_EVENT]!, hotelSlipApproved);
 for (const t of HOTEL_GUEST_MAIL_EVENTS) baseConsumers[t] = compose(baseConsumers[t]!, hotelGuestMail);
 // ◂ SVC H.8
+// SVC H.10 ▸ ช่องทาง OTA (ใบสั่ง h.10 §5 · CC §7 · 3 ทะเบียน · payload id/วัน/รหัสเหตุผลล้วน ไม่มี PII)
+//   "channel.ari.dirty" = งานหลัก: รวมชุดเป็น ChannelAriJob (hotel facade · lazy import กันวงโหลด · ล้ม = event retry · idempotent: ครอบแล้วไม่สร้างซ้ำ)
+baseConsumers["channel.ari.dirty"] = withAutomation(async (evt) => (await import("@/lib/modules/hotel")).onAriDirty(evt));
+//   ทุกเหตุที่เปลี่ยนคืนที่นับ/การครองห้องของโรงแรม ⇒ ARI ของคืนที่กระทบ — "ของแถม" ต่อท้าย chain เดิม (compose: ล้ม = WARN ไม่พาการจอง retry · ไม่แก้บรรทัดเดิม)
+//   hotel.booking.* สร้าง/ยกเลิก/หมดเวลาถือ/ไม่มา/เปลี่ยน · confirmed (HOLD→ยืนยัน · ย้อน «ไม่มา» · จองคืนหลังมัดจำมาหลังหมดเวลาถือ = นับคืนกลับ) ·
+//   deposit_after_expiry (มัดจำมาหลังหมดเวลาถือ) · hotel.checked_out (เช็กเอาต์ก่อนกำหนดปล่อยคืนอนาคต) — รอบ 3 ผู้ตรวจ B RB-4/RB-7
+for (const t of ["hotel.booking.created", "hotel.booking.cancelled", "hotel.booking.hold_expired", "hotel.booking.no_show", "hotel.booking.changed", "hotel.booking.confirmed", "hotel.booking.deposit_after_expiry", "hotel.checked_out"]) {
+  baseConsumers[t] = compose(baseConsumers[t]!, async (evt) => (await import("@/lib/modules/hotel")).ariDirtyFromBooking(evt));
+}
+//   rooms.occupancy.changed (claim/release/move/resize/expire ทุกชนิด — สัญญาหอ LEASE บนห้องโรงแรม · BLOCK · STAY) ⇒ ARI ของช่วงนั้น (หน่วยไม่มีแม็ป = ไม่มีงาน)
+baseConsumers["rooms.occupancy.changed"] = compose(baseConsumers["rooms.occupancy.changed"]!, async (evt) => (await import("@/lib/modules/hotel")).ariDirtyFromOccupancy(evt));
+//   hotel.hk.changed (H.6 · เข้า/ออกปิดซ่อม OUT_OF_ORDER) ⇒ ARI ทั้งช่วงเพดาน — ต่อเมื่อ H.6 ลงทะเบียน consumer แล้ว (🔴 รวมสาขา: บล็อก H.10 ต้องอยู่หลังบล็อก H.6)
+//   ทางตรง setRoomStatus/setHkStatus ที่ไม่ยิง event ⇒ ปิดด้วย full resync รายรอบ (minute-jobs channel-ari-resync)
+if (baseConsumers["hotel.hk.changed"]) baseConsumers["hotel.hk.changed"] = compose(baseConsumers["hotel.hk.changed"], async (evt) => (await import("@/lib/modules/hotel")).ariDirtyFromHk(evt));
+//   integration.connected (ตัวต่อ CHANNEL_MANAGER กลับมาเชื่อมได้) ⇒ full resync ทั้งช่วงเพดานของทุกแม็ปของตัวต่อนั้นทันที (RB-6)
+baseConsumers["integration.connected"] = compose(baseConsumers["integration.connected"]!, async (evt) => (await import("@/lib/modules/hotel")).ariResyncOnConnected(evt));
+//   event แจ้งผล (งานหลัก no-op · เขียนครบใน hotel/channel/* แล้ว) + กฎอัตโนมัติ/เว็บฮุค
+for (const t of ["channel.ari.pushed", "channel.ari.failed", "channel.reservation.received", "channel.reservation.applied", "channel.reservation.needs_room", "channel.reservation.rejected", "channel.reservation.cancelled"]) {
+  baseConsumers[t] = withAutomation(async () => {});
+}
+// ◂ SVC H.10
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
 export const consumers: Record<string, OutboxHandler> = Object.fromEntries(

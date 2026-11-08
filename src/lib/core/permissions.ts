@@ -291,12 +291,12 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     // SVC H.3 ▸ hotel.booking.manage ใช้จริงแล้ว (hotel/booking.ts + actions จอง V2) ⇒ ออกจาก planned ◂
     // SVC H.4 ▸ hotel.guest.register/viewId ใช้จริงแล้ว (hotel/guest.ts · checkin.ts · tm30.ts + actions ทะเบียนผู้พัก) ⇒ ออกจาก planned ◂
     // SVC H.5 ▸ hotel.folio.post / hotel.folio.void ใช้จริงแล้ว (hotel/folio.ts + actions บิลระหว่างพัก) ⇒ ออกจาก planned ◂
+    // SVC H.10 ▸ hotel.channel.manage ใช้จริงแล้ว (hotel/channel/* + actions/หน้า /hotel/channels) ⇒ ออกจาก planned ◂
     // SVC H.6 ▸ hotel.housekeeping / hotel.housekeeping.inspect ใช้จริงแล้ว (hotel/housekeeping.ts + บอร์ดแม่บ้าน) ⇒ ออกจาก planned ◂
     // SVC H.7 ▸ hotel.audit.run / hotel.reports.read ใช้จริงแล้ว (hotel/night-audit.ts · reports.ts + หน้ารายงาน/ปิดวัน) ⇒ ออกจาก planned ◂
     planned: [
       "hotel.rates.read",
       "hotel.rates.write",
-      "hotel.channel.manage",
     ],
   },
   {

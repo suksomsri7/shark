@@ -26,6 +26,19 @@ registerScopes({
   HotelReservation: "unit",
 });
 
+// SVC H.10 r4 ▸ ARI ขาออก: ห้องขายได้/ราคาสำรองของประเภทเปลี่ยนจากงานตั้งค่าห้อง (สร้าง/เก็บห้อง · เข้า/ออกปิดซ่อม · เก็บประเภท · ราคาฐาน) ⇒
+//   channel.ari.dirty วันนี้..ปลาย (ผู้รวมชุดตัดที่ ariHorizonDays ของหน่วย) · ฟังก์ชันกลุ่มนี้ไม่มี tx ⇒ ยิงนอก tx หลังเขียนสำเร็จ (ล้ม = เตือน · full resync 6 ชม. ตามเก็บ)
+//   ร้านไม่มีตัวต่อช่องทาง ⇒ emitAriDirty ไม่ยิงอะไร · lazy import กันวงโหลด (channel → availability/rates) — ผู้ตรวจ B RB-5/RB-7 · มติผู้คุมรอบ 4
+async function ariDirtyRoomSetup(tenantId: string, unitId: string, roomTypeIds: (string | null | undefined)[]): Promise<void> {
+  try {
+    const { emitAriDirty } = await import("./channel");
+    await emitAriDirty({ tenantId }, { unitId, roomTypeIds: roomTypeIds.filter((x): x is string => typeof x === "string" && x.length > 0) });
+  } catch {
+    console.warn("[hotel] ยิง channel.ari.dirty จากงานตั้งค่าห้องไม่สำเร็จ — ARI จะตามรอบ full resync");
+  }
+}
+// ◂ SVC H.10 r4
+
 // ───────────────────────── date helpers ─────────────────────────
 // วัน check-in/out เก็บเป็น @db.Date (เที่ยงคืน UTC) — ใช้ string "YYYY-MM-DD" ใน UI
 export function parseDate(dateStr: string): Date {
@@ -172,6 +185,12 @@ export async function updateRoomType(
   data: { name?: string; code?: string | null; capacity?: number; baseRateSatang?: number; depositSatang?: number },
 ) {
   const db = tenantDb({ tenantId, unitId });
+  // SVC H.10 r4 ▸ ราคาฐาน (ราคาสำรองของ ARI) / ความจุเปลี่ยน ⇒ ARI ของประเภทนี้ ◂
+  if (data.baseRateSatang !== undefined || data.capacity !== undefined) {
+    const updated = await db.hotelRoomType.update({ where: { id }, data });
+    await ariDirtyRoomSetup(tenantId, unitId, [id]);
+    return updated;
+  }
   return db.hotelRoomType.update({ where: { id }, data });
 }
 
@@ -183,6 +202,7 @@ export async function archiveRoomType(tenantId: string, unitId: string, id: stri
   });
   if (active > 0) return { ok: false as const, reason: "มีการจองค้างอยู่ ยังลบประเภทห้องนี้ไม่ได้" };
   await db.hotelRoomType.update({ where: { id }, data: { active: false } });
+  await ariDirtyRoomSetup(tenantId, unitId, [id]); // SVC H.10 r4 ▸ ประเภทเลิกขาย ⇒ ห้องขายได้ของประเภทเป็น 0 ◂
   return { ok: true as const };
 }
 
@@ -212,6 +232,7 @@ export async function createRoom(input: {
   const room = await db.hotelRoom.create({
     data: { ...ctx, roomTypeId: input.roomTypeId, number: input.number, floor: input.floor || null },
   });
+  await ariDirtyRoomSetup(input.tenantId, input.unitId, [input.roomTypeId]); // SVC H.10 r4 ▸ ห้องขายได้เพิ่ม ◂
   return { ok: true as const, id: room.id };
 }
 
@@ -225,7 +246,10 @@ export async function setRoomStatus(
   // SVC R0.8 ▸ แมปไป hkStatus (แหล่งความจริง): CLEANING→DIRTY · OOO→OUT_OF_ORDER · AVAILABLE→CLEAN · OCCUPIED ไม่แตะ hk ◂
   const hk: Record<HotelRoomStatus, string | null> = { CLEANING: "DIRTY", OOO: "OUT_OF_ORDER", AVAILABLE: "CLEAN", OCCUPIED: null };
   const hkStatus = hk[status];
+  // SVC H.10 r4 ▸ สถานะก่อนเปลี่ยน — เข้า/ออกปิดซ่อม (OOO/OUT_OF_ORDER) = ห้องขายได้เปลี่ยน ⇒ ARI ◂
+  const prevRoom = await db.hotelRoom.findFirst({ where: { id }, select: { status: true, hkStatus: true, roomTypeId: true } });
   await db.hotelRoom.update({ where: { id }, data: { status, ...(hkStatus ? { hkStatus } : {}) } });
+  if (prevRoom && (status === "OOO" || prevRoom.status === "OOO" || prevRoom.hkStatus === "OUT_OF_ORDER")) await ariDirtyRoomSetup(tenantId, unitId, [prevRoom.roomTypeId]);
   // SVC R0.8 ▸ ปิดซ่อม (OOO) ⇒ คืน occupancy ที่ยังไม่จบซึ่งขัด (ทุกชนิดยกเว้น BLOCK · กติกาเดียวกับ rooms.setHkStatus) — เตือน ไม่บล็อก ◂
   return { ok: true as const, affected: status === "OOO" ? await affectedByOutOfOrder({ tenantId }, { unitId, roomId: id }) : [] };
 }
@@ -240,6 +264,9 @@ export async function archiveRoom(tenantId: string, unitId: string, id: string) 
   const held = await db.roomOccupancy.count({ where: { roomId: id, active: true, endDate: { gt: parseDate(todayBkk()) } } });
   if (held > 0) return { ok: false as const, reason: "ห้องนี้ยังถูกใช้งานอยู่ (มีสัญญาหรือการจองที่ยังไม่จบ) ยังลบไม่ได้" };
   await db.hotelRoom.update({ where: { id }, data: { active: false } });
+  // SVC H.10 r4 ▸ ห้องขายได้ลด ⇒ ARI ของประเภทนั้น ◂
+  const archived = await db.hotelRoom.findFirst({ where: { id }, select: { roomTypeId: true } });
+  await ariDirtyRoomSetup(tenantId, unitId, [archived?.roomTypeId]);
   return { ok: true as const };
 }
 

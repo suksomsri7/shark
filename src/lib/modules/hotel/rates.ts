@@ -69,6 +69,8 @@ export type PreviewRoomType = { id: string; name: string; sellable: number };
 
 // ───────────────────────── ค่าคงที่ของกลไก (ไม่ใช่นโยบายร้าน) ─────────────────────────
 const TX = { maxWait: 5_000, timeout: 15_000 } as const;
+// SVC H.10 ▸ hook ARI (ใบสั่ง h.10 §0 · §9.10 · ยกเว้นไฟล์ H.1 — บรรทัด hook ล้วน): ราคาเปลี่ยน ⇒ channel.ari.dirty ใน tx เดียวกับการเขียน (transactional outbox: atomic · ล้ม = tx ของงานล้มตรง ๆ ไม่กลืน — มติ h.10 รอบ 2 · lazy import facade ช่องทาง · ร้านไม่มีตัวต่อ = ไม่ยิง) ◂
+const emitAriDirty = (tx: object, w: { tenantId: string; unitId: string }, roomTypeIds: string[], from: string | null = null, to: string | null = null): Promise<void> => import("./channel").then((m) => m.emitAriDirty({ tenantId: w.tenantId }, { unitId: w.unitId, roomTypeIds, from, to }, tx));
 const MONEY_MAX = 1_000_000_000; // เพดานเดียวกับ MONEY ของทะเบียนค่าตั้ง (≤ ฿10,000,000)
 const PREVIEW_MAX_DAYS = 62;
 const CONTEXT_MAX_DAYS = 400;
@@ -316,6 +318,7 @@ export async function saveRatePlan(actor: unknown, ctx: unknown, input: unknown)
         before: existing ? planDto(existing) : null,
         after: planDto(row),
       });
+      await emitAriDirty(tx, w, []); // SVC H.10 ◂
       return row;
     }, TX);
     return { ok: true, plan: planDto(saved) };
@@ -344,6 +347,7 @@ export async function archiveRatePlan(actor: unknown, ctx: unknown, input: unkno
     if (cur.isDefault) return fail("DEFAULT_PLAN", "แผนเริ่มต้นเก็บเข้าคลังไม่ได้ — ตั้งแผนอื่นเป็นแผนเริ่มต้นก่อน");
     const after = await tx.hotelRatePlan.update({ where: { id: cur.id }, data: { status: "ARCHIVED" } });
     await audit(tx, { ...w, actorId: g.actor.userId, action: "hotel.ratePlan.archive", targetType: "HotelRatePlan", targetId: cur.id, before: planDto(cur), after: planDto(after) });
+    await emitAriDirty(tx, w, []); // SVC H.10 ◂
     return { ok: true as const };
   }, TX);
 }
@@ -434,6 +438,7 @@ export async function saveSeason(actor: unknown, ctx: unknown, input: unknown): 
       before: existing ? seasonDto(existing) : null,
       after: seasonDto(row),
     });
+    await emitAriDirty(tx, w, []); // SVC H.10 ◂
     return row;
   }, TX);
   return { ok: true, season: seasonDto(saved) };
@@ -453,6 +458,7 @@ export async function archiveSeason(actor: unknown, ctx: unknown, input: unknown
   await db.$transaction(async (tx) => {
     const after = await tx.hotelSeason.update({ where: { id: s.id }, data: { status: "ARCHIVED" } });
     await audit(tx, { ...w, actorId: g.actor.userId, action: "hotel.season.archive", targetType: "HotelSeason", targetId: s.id, before: seasonDto(s), after: seasonDto(after) });
+    await emitAriDirty(tx, w, []); // SVC H.10 ◂
   }, TX);
   return { ok: true };
 }
@@ -490,6 +496,7 @@ export async function saveHolidays(actor: unknown, ctx: unknown, input: unknown)
         after: { name, added: add, renamed: rename.map((h) => ymdOfDb(h.date)) },
       });
     }
+    await emitAriDirty(tx, w, [], dates[0], dates[dates.length - 1]); // SVC H.10 ◂
     return { ok: true as const, added: add.length, renamed: rename.length };
   }, TX);
 }
@@ -506,6 +513,7 @@ export async function removeHoliday(actor: unknown, ctx: unknown, input: unknown
     if (!rows.length) return { ok: true as const, removed: 0 };
     await tx.hotelHoliday.deleteMany({ where: { ...w, id: { in: rows.map((r) => r.id) } } });
     await audit(tx, { ...w, actorId: g.actor.userId, action: "hotel.holiday.remove", targetType: "HotelHoliday", targetId: g.unit.id, before: { date, name: rows[0].name }, after: null });
+    await emitAriDirty(tx, w, [], date, date); // SVC H.10 ◂
     return { ok: true as const, removed: rows.length };
   }, TX);
 }
@@ -618,6 +626,7 @@ export async function saveRates(actor: unknown, ctx: unknown, input: unknown): P
         saved++;
       }
       if (saved) await audit(tx, { ...w, actorId: g.actor.userId, action: "hotel.rates.save", targetType: "HotelRatePlan", targetId: plan.id, before: { cells: before }, after: { cells: after } });
+      await emitAriDirty(tx, w, [...new Set(rows.map((r) => r.roomTypeId))]); // SVC H.10 ◂
       return { ok: true as const, saved };
     }, TX);
   } catch (e) {
@@ -683,6 +692,7 @@ export async function setOverride(actor: unknown, ctx: unknown, input: unknown):
           after: { ratePlanId: t.ratePlanId, from: t.dates[0], to: t.dates[t.dates.length - 1], priceSatang, reason: reasonRaw || null },
         });
       }
+      await emitAriDirty(tx, w, [t.roomTypeId], t.dates[0], t.dates[t.dates.length - 1]); // SVC H.10 ◂
       return { ok: true as const, count };
     }, TX);
   } catch (e) {
@@ -711,6 +721,7 @@ export async function clearOverride(actor: unknown, ctx: unknown, input: unknown
       before: { ratePlanId: t.ratePlanId, cells: have.map((h) => ({ date: ymdOfDb(h.date), priceSatang: h.priceSatang, reason: h.reason })) },
       after: null,
     });
+    await emitAriDirty(tx, w, [t.roomTypeId], t.dates[0], t.dates[t.dates.length - 1]); // SVC H.10 ◂
     return { ok: true as const, removed: have.length };
   }, TX);
 }

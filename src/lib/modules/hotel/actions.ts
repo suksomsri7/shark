@@ -15,6 +15,9 @@ import * as hotelCheckout from "./checkout"; // SVC H.5
 import * as hotelRoomCharge from "./room-charge"; // SVC H.5
 import * as hotelTape from "./tape"; // SVC H.2
 import * as hotelBlock from "./block"; // SVC H.2
+import * as hotelChannel from "./channel"; // SVC H.10
+import { bkkYmd as bkkYmdOf } from "@/lib/core/quiet-hours"; // SVC H.10
+import { addDaysYmd as addDaysYmdOf } from "./pricing"; // SVC H.10
 import * as hotelHk from "./housekeeping"; // SVC H.6
 import * as hotelAudit from "./night-audit"; // SVC H.7
 import * as hotelCheckin from "./checkin"; // SVC H.4
@@ -623,6 +626,93 @@ export async function decideHotelSlipAction(formData: FormData): Promise<void> {
   redirect(`/app/u/${encodeURIComponent(unitSlug)}/hotel/reservations?slip=${r.ok ? "ok" : encodeURIComponent(r.code)}`);
 }
 // ◂ SVC H.8
+// ───────────────────────── SVC H.10 ▸ ช่องทาง OTA (ใบสั่ง h.10 §1 · §3 · §4) ─────────────────────────
+//   ทุก action: หน่วย HOTEL → hotel.channel.manage (จาก session · ไม่มี ⇒ FORBIDDEN) → ฟังก์ชันของ hotel/channel (ตรวจร้าน/หน่วย/ตัวต่อซ้ำอีกชั้น)
+//   ผลเป็นข้อมูลเสมอ (ไม่โยน) · ทดสอบส่ง ARI = dry-run 7 วัน (ไม่เรียกตัวต่อ) · ดึงตอนนี้ = เฉพาะตัวต่อของร้าน/หน่วยนี้
+type ChannelActionResult = { ok: boolean; code?: string; reason?: string };
+const NOT_HOTEL_CHANNEL = { ok: false, code: "NOT_FOUND", reason: "ช่องทาง OTA ใช้ได้กับหน่วยโรงแรมเท่านั้น" } as const;
+async function channelAuth(unitSlug: string): Promise<{ ok: true; auth: UnitAuth; unitId: string } | ChannelActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_CHANNEL;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.channel.manage"))) return NO_RIGHT;
+  return { ok: true, auth, unitId: unit.id };
+}
+function revalidateChannels(unitSlug: string, ok: boolean) {
+  if (!ok) return;
+  revalidatePath(`/app/u/${unitSlug}/hotel/channels`, "layout");
+}
+
+/** แม็ปประเภทห้อง ↔ รหัสห้องของช่องทาง (ว่าง = ไม่ขายผ่านช่องนี้) */
+export async function saveRoomMapAction(unitSlug: string, input: unknown): Promise<ChannelActionResult> {
+  const a = await channelAuth(unitSlug);
+  if (!("auth" in a)) return a;
+  const r = await hotelChannel.saveRoomMap(hotelActorOf(a.auth), { tenantId: a.auth.active.tenantId }, pickKeys(input, ["connectionId", "roomTypeId", "externalRoomId"], a.unitId));
+  revalidateChannels(unitSlug, r.ok);
+  return r;
+}
+
+/** แม็ปแผนราคา ↔ รหัสแผนของช่องทาง + markup (bp · ว่าง = ค่าตั้งของร้าน) */
+export async function saveRateMapAction(unitSlug: string, input: unknown): Promise<ChannelActionResult> {
+  const a = await channelAuth(unitSlug);
+  if (!("auth" in a)) return a;
+  const r = await hotelChannel.saveRateMap(hotelActorOf(a.auth), { tenantId: a.auth.active.tenantId }, pickKeys(input, ["connectionId", "ratePlanId", "externalRateId", "markupBp"], a.unitId));
+  revalidateChannels(unitSlug, r.ok);
+  return r;
+}
+
+/** กันห้องไม่ส่งช่องทาง (ต่อประเภท) */
+export async function saveBufferAction(unitSlug: string, input: unknown): Promise<ChannelActionResult> {
+  const a = await channelAuth(unitSlug);
+  if (!("auth" in a)) return a;
+  const r = await hotelChannel.saveBuffer(hotelActorOf(a.auth), { tenantId: a.auth.active.tenantId }, pickKeys(input, ["connectionId", "roomTypeId", "rooms"], a.unitId));
+  revalidateChannels(unitSlug, r.ok);
+  return r;
+}
+
+/** ทดสอบส่ง ARI 7 วัน (dry-run · แสดง payload · ไม่เรียกตัวต่อ) — ตัวต่อต้องครอบหน่วยนี้ */
+export async function previewAriAction(unitSlug: string, input: unknown): Promise<ChannelActionResult & { from?: string; to?: string; payload?: hotelChannel.AriPayload }> {
+  const a = await channelAuth(unitSlug);
+  if (!("auth" in a)) return a;
+  const connectionId = pickKeys(input, ["connectionId"], a.unitId).connectionId;
+  const list = await hotelChannel.listChannelConnections(hotelActorOf(a.auth), { tenantId: a.auth.active.tenantId }, { unitId: a.unitId });
+  if (!list.ok || !list.connections.some((c) => c.id === connectionId)) return { ok: false, code: "NOT_FOUND", reason: "ไม่พบตัวต่อช่องทางนี้ในโรงแรมนี้" };
+  const from = bkkYmdOf(new Date());
+  const to = addDaysYmdOf(from, 6);
+  const r = await hotelChannel.buildAri(connectionId, from, to, a.unitId);
+  if ("ok" in r) return r;
+  return { ok: true, from, to, payload: r };
+}
+
+/** ดึงการจองจากตัวต่อของหน่วยนี้ตอนนี้ (ไม่รอรอบ 5 นาที) */
+export async function pullNowAction(unitSlug: string): Promise<ChannelActionResult & { received?: number; applied?: number }> {
+  const a = await channelAuth(unitSlug);
+  if (!("auth" in a)) return a;
+  const list = await hotelChannel.listChannelConnections(hotelActorOf(a.auth), { tenantId: a.auth.active.tenantId }, { unitId: a.unitId });
+  if (!list.ok) return list;
+  const r = await hotelChannel.pullAll(new Date(), 15_000, { tenantId: a.auth.active.tenantId, connectionIds: list.connections.map((c) => c.id) });
+  revalidateChannels(unitSlug, true);
+  return { ok: true, received: r.received, applied: r.applied };
+}
+
+/** คิวต้องจัดห้อง: ลองอีกครั้ง (หลังย้ายแขก/เปิดห้อง) */
+export async function retryInboundAction(unitSlug: string, input: unknown): Promise<ChannelActionResult & { status?: string }> {
+  const a = await channelAuth(unitSlug);
+  if (!("auth" in a)) return a;
+  const r = await hotelChannel.retryInbound(hotelActorOf(a.auth), { tenantId: a.auth.active.tenantId }, pickKeys(input, ["inboxId"], a.unitId));
+  revalidateChannels(unitSlug, r.ok);
+  if (r.ok) revalidateCalendar(unitSlug, r.status === "APPLIED");
+  return r.ok ? { ok: r.status === "APPLIED", status: r.status, ...(r.status === "APPLIED" ? {} : { code: r.status, reason: r.reason ? hotelChannel.inboxReasonTh(r.reason) ?? "" : "" }) } : r;
+}
+
+/** คิวต้องจัดห้อง: ปฏิเสธ (ต้องมีเหตุผล · แจ้งเจ้าของผ่าน event) */
+export async function rejectInboundAction(unitSlug: string, input: unknown): Promise<ChannelActionResult> {
+  const a = await channelAuth(unitSlug);
+  if (!("auth" in a)) return a;
+  const r = await hotelChannel.rejectInbound(hotelActorOf(a.auth), { tenantId: a.auth.active.tenantId }, pickKeys(input, ["inboxId", "reason"], a.unitId));
+  revalidateChannels(unitSlug, r.ok);
+  return r.ok ? { ok: true } : r;
+}
+// ◂ SVC H.10
 // SVC H.6 ▸ แม่บ้านมือถือ (ใบสั่ง h.6 §3) — ร้าน/ผู้กระทำ/สิทธิ์จาก session เท่านั้น · ด่าน type HOTEL + assertHotelCan ทุกตัว · ผลเป็นข้อมูล ไม่ throw
 //   สิทธิ์: เปลี่ยนสถานะ/เริ่ม/เสร็จ/มินิบาร์ = hotel.housekeeping · ตรวจห้อง = hotel.housekeeping.inspect ·
 //   แจ้งของเสีย = hotel.housekeeping (แจ้งช่าง/ปิดห้องเมื่อ hk.canBlock) หรือ hotel.booking.manage (ปิดห้อง) — ฟังก์ชันตรวจละเอียดซ้ำ
