@@ -608,7 +608,8 @@ try {
   const reopen = (actor: Actor | null, over: Over, ctx: Record<string, unknown> = ctxA) => call(() => NA("reopenNightAudit")(actor, ctx, { reason: "ตรวจพบรายการค้าง", ...over }));
   const history = (over: Over, ctx: Record<string, unknown> = ctxA) => call(() => NA("auditHistory")(ctx, { unitId: UH, from: W(-10), to: W(1), ...over }));
   const rctx = (a: Actor, tid = tA) => ({ tenantId: tid, actorUserId: a.userId });
-  const report = (name: string, actor: Actor, over: Over, tid = tA) => call(() => RP(name)(rctx(actor, tid), { unitId: UH, from: W(-1), to: W(0), ...over }));
+  // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-rp-from) คำอธิบาย RP-1/3/6 = from D−1 (= W(-2)) · ค่าคาด/ตัวควบคุมรวม W(-2)
+  const report = (name: string, actor: Actor, over: Over, tid = tA) => call(() => RP(name)(rctx(actor, tid), { unitId: UH, from: W(-2), to: W(0), ...over }));
   const PRICE = { dlx: (d: string) => refNightPrice(CELL.dlx, d), sup: (d: string) => refNightPrice(CELL.sup, d) };
 
   // ═══════════════ ฉากร้านชั่วคราว (UH · D = เมื่อวาน) ═══════════════
@@ -687,7 +688,7 @@ try {
     needBd();
     const f = BD("isAuditDue");
     const at = (ymd: string, hm: string, offsetH = 7) => { const [h, m] = hm.split(":").map(Number); return new Date(Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)), h - offsetH, m)); };
-    eq([f("Asia/Bangkok", "03:00", at(T0, "02:59"), W(-2)), f("Asia/Bangkok", "03:00", at(T0, "03:00"), W(-2)), f("Asia/Bangkok", "03:00", at(D, "03:00"), W(-2))], [false, true, true], "D−2");
+    eq([f("Asia/Bangkok", "03:00", at(T0, "02:59"), W(-2)), f("Asia/Bangkok", "03:00", at(T0, "03:00"), W(-2)), f("Asia/Bangkok", "03:00", at(D, "03:00"), W(-3))], [false, true, true], "D−2"); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-bd4) กรณี 3 ตามคำอธิบาย lastClosed D−2 = W(-3) (W(-2) = D−1 ⇒ วันถัดไป D = วันนี้ของเวลานั้น ปิดไม่ได้)
     eq([f("Asia/Bangkok", "03:00", at(T0, "03:30"), D), f("Asia/Bangkok", "03:00", at(T0, "23:59"), D)], [false, false], "ปิดแล้วถึงเมื่อวาน");
     eq([f("Asia/Bangkok", "03:00", at(T0, "03:00"), null), f("Asia/Bangkok", "03:00", at(T0, "02:59"), null)], [true, false], "ไม่เคยปิด");
     eq([f("Asia/Bangkok", "23:30", at(T0, "23:29"), W(-2)), f("Asia/Bangkok", "23:30", at(T0, "23:30"), W(-2))], [false, true], "23:30");
@@ -968,20 +969,24 @@ try {
     ok(row, "ไม่มี NA-12");
     okRes(await reopen(MGR, { auditId: row.id, reason: "ทดสอบ cron ล้ม" }), "reopen UFL");
     await setUnit("rooms.hotel.audit.autoClose", true, UFL);
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-cr4) มติ: cron ปิดวัน REOPENED ซ้ำได้เมื่อเปิดไว้ ≥ 2 ชม. (ให้ผู้จัดการแก้ทัน) ⇒ เวลา cron = max(NOW2, ตอนนี้ + 2 ชม. 1 นาที) (ยังวันเดียวกันไทยเสมอ: ≤ 02:00 ของวันถัดไป < 03:00)
+    const NOWR = new Date(Math.max(NOW2.getTime(), Date.now() + 2 * 3_600_000 + 60_000));
+    const early = okRes(await runDue(new Date(Date.now() + 60_000)), "cron ทันทีหลัง reopen");
+    eq((await auditRow(UFL, D)).status, "REOPENED", "cron ปิด REOPENED ก่อนครบ 2 ชม."); void early;
     await installFailTrigger(UFL);
     let r: Any;
-    try { r = await runDue(NOW2); } finally { await dropFailTrigger(); }
+    try { r = await runDue(NOWR); } finally { await dropFailTrigger(); }
     ok(r?.ok !== false, `runDueAudits throw ${J(r)}`);
     eq(r.errors, 1, "errors");
     eq((await auditRow(UFL, D)).status, "REOPENED", "UFL เปลี่ยนสถานะทั้งที่ล้ม");
-    const r2 = okRes(await runDue(NOW2), "รอบถัดไป");
+    const r2 = okRes(await runDue(NOWR), "รอบถัดไป");
     eq([r2.closed, r2.errors, (await auditRow(UFL, D)).status], [1, 0, "CLOSED"], "ปิดได้หลังถอด trigger");
   });
   await st("CR-5", "runMinuteJobs จริง (platform): runMinuteJobs(NOW2 + 20 นาที, {cadence:\"minute\"}) ⇒ results มี hotel-night-audit outcome ok (ไม่ failed/busy) · ไม่สร้างแถวเพิ่มในร้านทดสอบ (ทุกวันปิดแล้ว) · ไม่แตะหน่วยนอก", async () => {
     needNa(); needScene();
     const o0 = await otherAuditCount();
     const n0 = await prisma.hotelNightAudit.count({ where: { tenantId: tA } });
-    const now = new Date(Math.max(NOW2.getTime() + 20 * 60_000, Date.now() - 60_000));
+    const now = new Date(Math.min(Math.max(NOW2.getTime() + 20 * 60_000, Date.now() - 60_000), Date.now())); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-cr5) runMinuteJobs ปฏิเสธ now ในอนาคต (รัน 00:00–11:50 ไทย)
     const s0 = await mjL.mod.runMinuteJobs(now, { cadence: "minute", entry: "vps" });
     const me = (s0.results as Any[]).find((x) => x.name === "hotel-night-audit");
     ok(me, `ไม่มี hotel-night-audit ใน results (${J(s0.results?.map((x: Any) => x.name))})`);
@@ -1041,7 +1046,7 @@ try {
       const rows = rowsOf(r).filter((x: Any) => (revField(x) ?? 0) !== 0);
       eq(sum(rows.map((x: Any) => revField(x) ?? 0)), total, `Σ ${g}`);
       const got: Record<string, number> = {};
-      for (const x of rows) { const k = keyField(x); got[k] = (got[k] ?? 0) + (revField(x) ?? 0); }
+      for (const x of rows) { const k = g === "roomType" ? String(pick(x, "label") ?? "") : keyField(x); got[k] = (got[k] ?? 0) + (revField(x) ?? 0); } // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-rp3) มติผู้ตรวจ 2: groupBy roomType ใช้ id เป็น key ⇒ จับคู่ด้วยชื่อแสดงผล (label)
       const want = exp[g];
       for (const [k, v] of Object.entries(want)) { const hit = Object.entries(got).find(([kk]) => kk === k || kk.includes(k) || k.includes(kk)); ok(hit && hit[1] === v, `${g} ${k}: ได้ ${J(got)} ต้อง ${v}`); }
       for (const x of rows) { for (const kk of ["key", "label", "roomRevenueSatang", "otherRevenueSatang", "totalSatang"]) ok(kk in x, `${g} แถวไม่มี ${kk}`); eq(x.totalSatang, x.roomRevenueSatang + x.otherRevenueSatang, `${g} total`); eq(x.otherRevenueSatang, 0, `${g} otherRevenue`); }
@@ -1086,7 +1091,7 @@ try {
     }
     eq(bad.slice(0, 5), [], "bps");
     const today = Object.values(av.byDate[T0] ?? {}) as Any[];
-    ok(sum(today.map((c) => c.counted)) >= 3 && sum(today.map((c) => c.blocked)) === 1, `ตัวควบคุม availability วันนี้ ${J(today)}`);
+    ok(sum(today.map((c) => c.counted)) >= 3 && (sum(today.map((c) => c.blocked)) === 1 || sum(today.map((c) => c.total)) === TOTAL_UH - 1), `ตัวควบคุม availability วันนี้ ${J(today)}`); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-rp5) H.6 ตั้ง DLX06 OUT_OF_ORDER ⇒ availability ตัดออกจาก total แทน blocked
   });
   await st("RP-6", "housekeepingReport(UH, D−1..วันนี้) จาก HotelHousekeepingLog DIRTY→CLEAN · DTO {byDay:[{date, cleaned}], byUser:[{userId, cleaned}], oooOutstanding} (§9.3): ต่อวัน D = 2 · D−1 = 1 · ต่อคน MAID 2 · OWNER 1 · OOO ค้าง ≥ 1 (DLX06 BLOCK ครอบวันนี้) · ไม่มี PII (ชื่อผู้ใช้ไม่ใช่ PII แขก)", async () => {
     needRp(); needScene();
@@ -1550,6 +1555,8 @@ console.log("\n── V ภาพ ──");
 
 // ═══════════════ G regression (§7) ═══════════════
 console.log("\n── G: regression ──");
+// ORACLE-EDIT (ผู้คุม 8 พ.ย. · h7-g-scene) ฉากของใบนี้ค้างหลังกลุ่ม Q ⇒ Q ของ h.1/h.2/h.3/h.5 แดง ⇒ เคลียร์ก่อน G (chain รันฉากใหม่ก่อนถ่ายภาพ)
+if (has(F.scene)) spawnSync("pnpm", ["exec", "tsx", F.scene, "--clear"], { cwd: ROOT, env: process.env, encoding: "utf8" });
 const summaryOf = (out: string): Any | null => {
   const line = out.split("\n").reverse().find((l) => l.startsWith("JSON_SUMMARY "));
   if (!line) return null;

@@ -721,6 +721,17 @@ const DEFS: SettingDef[] = [
   // SVC H.6 ▸ แม่บ้านปิดห้องซ่อมเองได้ (มติ h.6 ข้อ 1 · ปิด = ต้องผู้มีสิทธิ์จัดการการจอง) ◂
   hotel({ key: "rooms.hotel.hk.canBlock", type: "bool", labelTh: "แม่บ้านปิดห้องซ่อมได้เอง", helpTh: "ปิด = แม่บ้านแจ้งช่างได้อย่างเดียว การปิดห้องต้องให้หน้าเคาน์เตอร์/ผู้จัดการ", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
   hotel({ key: "rooms.hotel.nightAuditTime", type: "time", labelTh: "เวลา night audit", schema: HHMM, defaults: { _fallback: "03:00" }, chain: U }), // #76
+  // SVC H.7 ▸ ปิดวันอัตโนมัติ (ใบสั่ง h.7 §1 · มติ §9.7: เวลาใช้ rooms.hotel.nightAuditTime เดิม — ไม่เพิ่ม auditAutoTime) ◂
+  hotel({
+    key: "rooms.hotel.audit.autoClose", type: "bool", labelTh: "ปิดวัน (night audit) อัตโนมัติทุกวัน",
+    helpTh: "เปิด = ระบบปิดวันให้เองตามเวลา night audit · ปิด = ผู้จัดการต้องกดปิดวันเองที่หน้ารายงาน", schema: z.boolean(), defaults: { _fallback: true }, chain: U,
+  }),
+  hotel({
+    key: "rooms.hotel.audit.notifyRoles", type: "table", labelTh: "ส่งอีเมลสรุปปิดวันถึง (บทบาท)",
+    helpTh: "OWNER = เจ้าของ · MANAGER = ผู้จัดการ · STAFF = พนักงาน · ว่าง = ไม่ส่ง",
+    schema: z.array(z.enum(["OWNER", "MANAGER", "STAFF"])).max(3).refine((a) => new Set(a).size === a.length, { message: "บทบาทซ้ำ" }),
+    defaults: { _fallback: ["OWNER", "MANAGER"] }, chain: U,
+  }),
   hotel({
     key: "rooms.hotel.tm30ReminderHours", type: "int", labelTh: "เตือนแจ้ง ตม.30 ก่อนครบ 24 ชม. (ชม.)", // #77
     helpTh: "พ.ร.บ.คนเข้าเมือง ม.38", schema: z.number().int().min(1).max(23), defaults: { _fallback: 6 }, chain: U,

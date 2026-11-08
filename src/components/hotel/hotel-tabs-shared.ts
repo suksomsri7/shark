@@ -12,12 +12,14 @@ export const HOTEL_TABS: HotelTab[] = [
   { key: "frontdesk", labelTh: "หน้าเคาน์เตอร์", path: "/hotel", available: true },
   { key: "housekeeping", labelTh: "แม่บ้าน", path: "/hotel/housekeeping", available: true }, // H.6
   { key: "rates", labelTh: "ราคา", path: "/hotel/rates", available: true },
-  { key: "reports", labelTh: "รายงาน", path: "/hotel/reports", available: false }, // H.7
+  { key: "reports", labelTh: "รายงาน", path: "/hotel/reports", available: true }, // H.7
   { key: "settings", labelTh: "ตั้งค่า", path: "/hotel/settings", available: true },
 ];
 
-/** แท็บที่ผู้ดูเห็น (ซ่อนแท็บที่ยังไม่มีหน้า · ราคา/ตั้งค่าตามสิทธิ์) · base = /app/u/<slug> */
-export function hotelTabsFor(acc: { ratesRead: boolean; settingsEdit: boolean }, base: string): HotelTabLink[] {
-  const allowed = (k: HotelTabKey): boolean => (k === "rates" ? acc.ratesRead : k === "settings" ? acc.settingsEdit : true);
+/** แท็บที่ผู้ดูเห็น (ซ่อนแท็บที่ยังไม่มีหน้า · ราคา/ตั้งค่า/รายงานตามสิทธิ์) · base = /app/u/<slug>
+ *  SVC H.7 r2 ▸ รายงาน ⇔ reportsRead (hotel.reports.read · ไม่ส่ง = false ⇒ ซ่อน · ใบ h.7 §7 frontdesk ไม่เห็น) ◂ */
+export function hotelTabsFor(acc: { ratesRead: boolean; settingsEdit: boolean; reportsRead?: boolean }, base: string): HotelTabLink[] {
+  const allowed = (k: HotelTabKey): boolean =>
+    k === "rates" ? acc.ratesRead : k === "settings" ? acc.settingsEdit : k === "reports" ? acc.reportsRead === true : true;
   return HOTEL_TABS.filter((t) => t.available && allowed(t.key)).map((t) => ({ key: t.key, labelTh: t.labelTh, href: `${base}${t.path}` }));
 }

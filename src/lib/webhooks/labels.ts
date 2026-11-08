@@ -126,6 +126,7 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // SVC H.4 ▸ เช็กอิน/ทะเบียนผู้พัก/ตม.30 6 ชนิด (hotel.checked_in · hotel.guest.* · hotel.tm30.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC H.5 ▸ เหตุการณ์ folio/เงินประกันโรงแรม 8 ชนิด (hotel.folio.* · hotel.security_deposit.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC H.6 ▸ เหตุการณ์แม่บ้าน 4 ชนิด (hotel.hk.*) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
+  // SVC H.7 ▸ เหตุการณ์ปิดวันโรงแรม 2 ชนิด (hotel.audit.closed · hotel.audit.reopened) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ ◂
   // SVC R0.3 ▸ "settings.changed" (ค่าตั้งแบบชั้นเปลี่ยน) มาจาก spread ข้างบน (ประกาศที่ automation/labels.ts ที่เดียว —
   //   ห้ามประกาศซ้ำที่นี่ · ช่องติ๊ก 2 แถวต่อ event · G1-A1 ผู้คุม 31 ต.ค.) ◂
 ];

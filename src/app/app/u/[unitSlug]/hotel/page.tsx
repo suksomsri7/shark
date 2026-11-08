@@ -8,6 +8,8 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { hotelToday } from "@/lib/modules/hotel"; // SVC H.2 ▸ KPI หน้าเคาน์เตอร์ (ภาพ 08 แถบบน) ◂
+import { pendingAuditDays } from "@/lib/modules/hotel"; // SVC H.7 ▸ ป้ายยังไม่ปิดวัน ◂
+import { fmtThaiDate } from "@/components/hotel/reports-shared"; // SVC H.7 ◂
 import HotelToday from "@/components/hotel/HotelToday";
 import { guestRegistrationRequired, tm30Queue } from "@/lib/modules/hotel"; // SVC H.4 ▸ การ์ด "ตม.30 ค้าง N" · เช็กอินต้องลงทะเบียนผู้พัก ◂
 import { tm30OverdueCount } from "@/components/hotel/checkin-shared"; // SVC H.4 รอบ 6 ◂
@@ -28,7 +30,13 @@ export default async function HotelPage({
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
   if (unit.type !== "HOTEL") notFound(); // SVC H.0 ▸ ด่าน type HOTEL ◂
-  const [data, kpi] = await Promise.all([dashboardData(auth.active.tenantId, unit.id), hotelToday({ tenantId: auth.active.tenantId }, { unitId: unit.id })]);
+  const [data, kpi, audit] = await Promise.all([
+    dashboardData(auth.active.tenantId, unit.id),
+    hotelToday({ tenantId: auth.active.tenantId }, { unitId: unit.id }),
+    pendingAuditDays({ tenantId: auth.active.tenantId }, { unitId: unit.id }), // SVC H.7 ◂
+  ]);
+  // SVC H.7 ▸ ค้างปิดวันเกิน 1 วัน (เริ่มใช้ night audit แล้ว) ⇒ ป้าย + ลิงก์หน้าปิดวัน ◂
+  const auditBehind = audit.ok && audit.started && audit.daysBehind > 1 ? audit.pendingDate : null;
   const tq = await tm30Queue({ tenantId: auth.active.tenantId }, { unitId: unit.id }); // SVC H.4 ▸ คิวแจ้ง ตม.30 (ภายใน 24 ชม.) ◂
   const tm30Over = tq.ok ? tm30OverdueCount(tq.items, Date.now()) : 0; // SVC H.4 รอบ 6 ▸ เลยกำหนด ตม.30 = LATE + PENDING ที่ครบกำหนดแล้ว (helper เดียวกับคิว) ◂
   // SVC H.4 ▸ มติรอบ 2: เปิด requireRegistration (ค่าเริ่ม) ⇒ เช็กอินด่วนเดิมถูกแทนด้วยลิงก์แผงเช็กอิน (?tab=guests · ลงทะเบียน ร.ร.3) — ไม่เช็กอินเงียบ ◂
@@ -62,6 +70,15 @@ export default async function HotelPage({
       {/* SVC H.2 ▸ KPI 5 การ์ด (เข้าวันนี้ · ออกวันนี้ · พักอยู่คืนนี้ · แม่บ้าน · สัปดาห์นี้ + ADR) แทนสรุปสถานะห้องเดิม ◂ */}
       {kpi.ok ? <HotelToday kpi={kpi} /> : null}
 
+      {/* SVC H.7 ▸ ป้ายยังไม่ปิดวัน (ค้าง > 1 วัน) ◂ */}
+      {auditBehind ? (
+        <div data-audit-behind="" className="flex flex-wrap items-center gap-3 rounded-xl border border-[color:var(--color-danger)] p-3 text-sm">
+          <span className="flex-1">{`ยังไม่ปิดวัน ${fmtThaiDate(auditBehind)} — ค้างปิดวันหลายวัน ตัวเลขรายงานยังไม่นิ่ง`}</span>
+          <Link href={`/app/u/${unitSlug}/hotel/reports/audit`} className="btn btn-ghost text-sm">
+            ไปหน้าปิดวัน
+          </Link>
+        </div>
+      ) : null}
       {/* SVC H.4 ▸ การ์ด "ตม.30 ค้าง N" ต่อจาก HotelToday (ภาพ 08/09) — ลิงก์คิวแจ้งที่พักคนต่างด้าว ◂ */}
       {tq.ok ? (
         <a

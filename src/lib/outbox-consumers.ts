@@ -1541,6 +1541,20 @@ for (const t of ["hotel.hk.changed", "hotel.hk.minibar_posted", "hotel.hk.miniba
   baseConsumers[t] = withAutomation(async () => {});
 }
 // ◂ SVC H.6
+// SVC H.7 ▸ ปิดวันโรงแรม (night audit) — ตัวยิง hotel/night-audit.ts ใน tx เดียวกับแถว HotelNightAudit · payload id/วันที่/ตัวเลขล้วน (X8)
+//   "hotel.audit.closed"   งานหลัก = อีเมลสรุปถึงบทบาทตาม rooms.hotel.audit.notifyRoles (sendEmailRich · กุญแจกันซ้ำ hotel-audit-<auditId> ⇒ ส่งซ้ำ/ปิดใหม่ = ฉบับเดียวต่อวันปิด)
+//                          ส่งไม่สำเร็จ = log WARN ไม่โยน (สรุปเป็นของแถม · ตัวเลขอยู่ในฐานแล้ว) + กฎอัตโนมัติ/เว็บฮุค
+//   "hotel.audit.reopened" งานหลัก no-op (เขียนครบใน night-audit.ts) + กฎอัตโนมัติ/เว็บฮุค
+baseConsumers["hotel.audit.closed"] = withAutomation(async (evt) => {
+  const mail = await (await import("@/lib/modules/hotel")).auditSummaryEmail(evt);
+  if (!mail) return;
+  // 🔴 โหลดตอนใช้ (ไม่ static) — core/email ดึง @/lib/env ที่ parse ตอนโหลด ⇒ fitness F10.1 ไร้ env พัง (H.7 r2)
+  const { sendEmailRich } = await import("@/lib/core/email");
+  const r = await sendEmailRich({ to: mail.to, subject: mail.subject, html: mail.html, text: mail.text, idempotencyKey: `hotel-audit-${mail.auditId}` });
+  if (!r.ok) await logOps("WARN", "hotel", `ส่งอีเมลสรุปปิดวันไม่สำเร็จ (audit ${mail.auditId})`, { tenantId: evt.tenantId, detail: r.error ?? "" });
+});
+baseConsumers["hotel.audit.reopened"] = withAutomation(async () => {});
+// ◂ SVC H.7
 
 // SVC H.8 ▸ สาขา HOTEL ของสลิปอนุมัติ + อีเมลแจ้งแขก (ดูหัวไฟล์ส่วน SVC H.8) — ห่อจากภายนอก ไม่แก้บรรทัดเดิม
 baseConsumers[HOTEL_SLIP_EVENT] = bothMain(baseConsumers[HOTEL_SLIP_EVENT]!, hotelSlipApproved);

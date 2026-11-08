@@ -160,6 +160,13 @@ export type { HkActor, HkFail, HkFailCode, HkBoard, HkBoardRow, HkRoomView, HkLo
 export { HK_TRANSITIONS, HK_ROLES, HK_CONTEXTS, HK_STATUS_LIST, canHkTransition, hkPriority, parseHkNote, serializeHkNote } from "./hk-state";
 export type { HkState, HkRole, HkContext, HkNote, HkTransition, HkTransitionOpts } from "./hk-state";
 // ◂ SVC H.6
+// SVC H.7 ▸ ปิดวัน (night audit 6 ขั้น · cron hotel-night-audit) · business date ต่อ timezone (pure) · รายงาน Occ/ADR/RevPAR/รายได้/ฟันเนล/พยากรณ์/แม่บ้าน/มัดจำ + CSV · getUnitKpi (Overview)
+export { businessDateOf, nextBusinessDate, isAuditDue, normalizeTimezone, zonedDayStart, DEFAULT_TIMEZONE } from "./business-date";
+export { auditPreview, closeNightAudit, reopenNightAudit, auditHistory, runDueAudits, computeKpi, pendingAuditDays, pendingBusinessDate, auditSummaryEmail, isAuditFail } from "./night-audit";
+export type { AuditActor, AuditFail, AuditFailCode, NightAuditKpi, AuditNoShowRow, AuditPreviewOk, CloseAuditOk, AuditHistoryRow, RunDueResult, KpiInput, KpiRoom, KpiNight } from "./night-audit";
+export { occupancyReport, revenueReport, bookingFunnel, forecast30, housekeepingReport, depositsReport, exportCsv, getUnitKpi, isReportFail, isCsvKind, CSV_KINDS, REPORT_MAX_DAYS, SOURCE_TH } from "./reports";
+export type { HotelReportCtx, ReportFail, ReportFailCode, OccupancyRow, OccupancyReport, RevenueGroupBy, RevenueRow, RevenueReport, FunnelRow, FunnelReport, ForecastRow, ForecastReport, HousekeepingReport, DepositsReport, UnitKpi, CsvKind } from "./reports";
+// ◂ SVC H.7
 // SVC H.4 ▸ เช็กอิน V2 · ทะเบียนผู้พัก (ร.ร.3/ร.ร.4) · AI อ่านเอกสาร · ตม.30 · PDPA (ใบสั่ง h.4 §3)
 export { assignableRooms, checkInV2, undoCheckIn, checkinView, guestRegistrationRequired } from "./checkin";
 export type { AssignableRoom, CheckInOk, CheckInCode, CheckinView } from "./checkin";
