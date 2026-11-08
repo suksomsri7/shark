@@ -354,6 +354,7 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "hotel.web.slip_attached", label: "เมื่อลูกค้าแนบสลิปมัดจำห้องพักจากหน้าเว็บ (รอตรวจ)" },
   { value: "hotel.web.cancelled_by_guest", label: "เมื่อลูกค้ายกเลิกการจองห้องพักเองจากลิงก์การจอง" },
   { value: "hotel.web.lookup_failed", label: "เมื่อมีการค้นหาการจองห้องพักด้วยรหัสและอีเมลที่ไม่ตรง (หน้าเว็บ)" },
+  { value: "hotel.web.slip_unapplied", label: "เมื่อสลิปมัดจำห้องพักอนุมัติแล้วแต่ลงเป็นมัดจำไม่ได้ (การจองยกเลิก/รับมัดจำทางอื่นแล้ว — คืนเงินอัตโนมัติ พนักงานติดต่อลูกค้า)" }, // SVC H.8 r3 ◂
   // ◂ SVC H.8
   // SVC H.5 ▸ บิลระหว่างพัก (folio) · เช็กเอาต์ POS ใบเดียว · เงินประกันห้อง — ตัวยิง hotel/folio.ts · checkout.ts · room-charge.ts (ใน tx เดียวกับการเขียน)
   //   payload { tenantId, unitId, reservationId, groupId?, folioId, saleId?, itemId?, amountSatang, type?, reason? } id + สตางค์ล้วน (X8) · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks)

@@ -51,6 +51,7 @@ export type HotelWebFailCode =
   | "FAILED"
   | "CONTACT_REQUIRED" // SVC H.8 r2 ▸ โหมดมัดจำ/รออนุมัติ ต้องมีอีเมลหรือเบอร์ (ผู้ตรวจ A-6 ก) ◂
   | "TOO_MANY_HOLDS" // SVC H.8 r2 ▸ เพดานห้อง HOLD ต่อ client / ต่อประเภทต่อคืน (ผู้ตรวจ A-6 ข ค) ◂
+  | "SLIP_PENDING" // SVC H.8 r3 ▸ ยกเลิกเองไม่ได้ระหว่างสลิปรอโรงแรมตรวจ (ผู้ตรวจรอบ 2 B-1 ก) ◂
   | string;
 export type HotelWebFail = { ok: false; code: HotelWebFailCode; reason: string; dates?: string[]; refundSatang?: number };
 export type WebIntent = { kind: "PROMPTPAY_STATIC"; qrPayload: string; qrSvgDataUrl: string; amountSatang: number; expiresAt: string | null; receiverName: string };
@@ -121,6 +122,8 @@ export type WebStatusDto = {
   state: "HOLD" | "AWAITING_APPROVAL" | "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED" | "HOLD_EXPIRED" | "NO_SHOW" | "REFUNDED";
   totalSatang: number;
   deposit: { requiredSatang: number; paid: boolean; paidSatang: number; slip: { status: string; at: string } | null };
+  /** SVC H.8 r3 (B-3) มัดจำที่ยังค้างหลังอนุมัติบางส่วน (requiredSatang − paidSatang · ชำระที่โรงแรม) — ไม่ค้าง = 0 */
+  depositDueSatang: number;
   payAtHotelSatang: number;
   checkInTime: string;
   checkOutTime: string;
@@ -131,6 +134,8 @@ export type WebStatusDto = {
   canCancel: boolean;
   /** SVC H.8 r2 (A-14) ยกเลิกได้ที่ไหน: SELF = ปุ่มในหน้านี้ (เว็บ/LINE) · CHANNEL = ช่องทางที่จอง (OTA) · HOTEL = ติดต่อโรงแรม */
   cancelVia: "SELF" | "CHANNEL" | "HOTEL";
+  /** SVC H.8 r3 (B-1 ก) เหตุที่ยังยกเลิกเองไม่ได้ชั่วคราว — SLIP_PENDING = มีสลิปรอโรงแรมตรวจ */
+  cancelBlockedBy: "SLIP_PENDING" | null;
   cancelledAt: string | null;
   lineAddFriendUrl: string | null;
   cancelRules: { daysBefore: number; refundBp: number }[];
@@ -165,6 +170,8 @@ export const HOTEL_WEB_EVENTS = {
   slipAttached: "hotel.web.slip_attached",
   cancelledByGuest: "hotel.web.cancelled_by_guest",
   lookupFailed: "hotel.web.lookup_failed",
+  /** SVC H.8 r3 (ผู้ตรวจรอบ 2 B-1 ข/B-2/B-9) สลิปอนุมัติแล้วแต่ลงเป็นมัดจำของการจองไม่ได้ ⇒ รับเป็นใบรับ + คืนเต็มอัตโนมัติ · ให้พนักงานเห็น */
+  slipUnapplied: "hotel.web.slip_unapplied",
 } as const;
 const SYSTEM_ACTOR = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: "module:hotel" } as const;
 const MAX_WEB_NIGHTS = 30;
@@ -187,6 +194,7 @@ const R = {
   contact: "กรอกอีเมลหรือเบอร์โทรอย่างน้อย 1 ช่อง เพื่อให้โรงแรมติดต่อกลับได้",
   tooManyHolds: "ตอนนี้มีห้องรอชำระมัดจำอยู่มาก — ชำระการจองที่ค้างอยู่ก่อน หรือลองใหม่ในอีกสักครู่",
   slipPending: "มีสลิปรอตรวจอยู่แล้ว — รอโรงแรมตรวจสักครู่",
+  cancelSlipPending: "มีสลิปรอโรงแรมตรวจ — ยกเลิกได้หลังตรวจเสร็จ",
   status: "การจองนี้ยกเลิกทางเว็บไม่ได้แล้ว — ติดต่อที่พักโดยตรง",
   refundChanged: "ยอดเงินคืนเปลี่ยนไปแล้ว — ตรวจยอดใหม่ก่อนยืนยัน",
   busy: "ระบบไม่ว่าง ลองใหม่อีกครั้ง",
@@ -898,6 +906,17 @@ export async function publicAttachSlip(input: unknown, opts: HotelWebOpts) {
     if (!slipFileOk(file.data, file.contentType)) return fail("BAD_FILE", R.badFile);
     // SVC H.8 r2 (ผู้ตรวจ A-13) สลิปรอตรวจได้ใบเดียวต่อการจอง — มีอยู่แล้ว ⇒ คืนใบเดิม + แจ้ง (ใบเดิมถูกปฏิเสธ ⇒ แนบใหม่ได้)
     if (f.pendingSlip) return { ok: true as const, slipId: f.pendingSlip.id, status: f.pendingSlip.status, replayed: true, alreadyPending: true, reason: R.slipPending };
+    // SVC H.8 r3 (ผู้ตรวจรอบ 2 B-9) ตรวจ+สร้างภายใต้ล็อกต่อการจอง: กุญแจสลิป = ช่องของการจอง (จำนวนสลิปที่ตัดสินแล้ว) ⇒ แนบพร้อมกันกี่ทางก็เข้าคิว
+    //   advisory lock ของกุญแจเดียวกันใน tx เดียวกับการสร้างแถว (submitSlip.persist) — ตัวแรกสร้าง · ตัวหลัง = replay/IDEMPOTENCY_CONFLICT ⇒ คืนใบที่รอตรวจ
+    //   ใบเดิมถูกปฏิเสธ ⇒ ช่องถัดไป (แนบใหม่ได้) · กุญแจของผู้เรียก (กดซ้ำ) ยังเทียบกับสลิปเดิมด้านบน (แถวรุ่นก่อน r3)
+    const slot = await hotel.webSlipSlot(unit.tenantId, unit.unitId, [f.head.id, ...f.group.map((r) => r.id)]);
+    const slotKey = `hw-slip:${sha(`${unit.unitId}:${f.head.id}:slot${slot}`).slice(0, 48)}`;
+    const pendingNow = async () => {
+      const s = await hotel.slipByIdemKey(unit.tenantId, unit.unitId, slotKey);
+      if (!s || s.refId !== f.head.id) return null;
+      const waiting = s.status === "PENDING" || s.status === "NEEDS_REVIEW";
+      return { ok: true as const, slipId: s.id, status: s.status, replayed: true, ...(waiting ? { alreadyPending: true, reason: R.slipPending } : {}) };
+    };
     const deps = opts?.deps ?? {};
     const r = await submitSlip(
       { tenantId: unit.tenantId },
@@ -908,11 +927,12 @@ export async function publicAttachSlip(input: unknown, opts: HotelWebOpts) {
         refId: f.head.id,
         file: { data: file.data, contentType: file.contentType },
         expectedSatang: f.head.depositSatang,
-        idempotencyKey: slipKey,
+        idempotencyKey: slotKey,
       },
       { ...(deps.put ? { put: deps.put } : {}), ...(deps.del ? { del: deps.del } : {}) },
     );
     if (!r.ok) {
+      if (r.code === "IDEMPOTENCY_CONFLICT") return (await pendingNow()) ?? fail("BUSY", R.busy);
       if (r.code === "VALIDATION") return fail("BAD_FILE", r.message || R.badFile);
       if (r.code === "NOT_FOUND") return NF();
       return fail(r.code, r.message || R.failed);
@@ -924,7 +944,8 @@ export async function publicAttachSlip(input: unknown, opts: HotelWebOpts) {
       idempotencyKey: `${HOTEL_WEB_EVENTS.slipAttached}#${r.slipId}`,
       payload: { tenantId: unit.tenantId, unitId: unit.unitId, reservationId: f.head.id, slipId: r.slipId, status: r.status, expectedSatang: f.head.depositSatang },
     });
-    return { ok: true as const, slipId: r.slipId, status: r.status, ...(r.replayed ? { replayed: true } : {}) };
+    if (r.replayed) return (await pendingNow()) ?? { ok: true as const, slipId: r.slipId, status: r.status, replayed: true };
+    return { ok: true as const, slipId: r.slipId, status: r.status };
   } catch (e) {
     console.error("[hotel.web] slip", e instanceof Error ? e.name : "Error");
     return fail("FAILED", R.failed);
@@ -960,6 +981,10 @@ export async function publicStatus(input: unknown, opts: HotelWebOpts): Promise<
     const active = f.status === "HOLD" || f.status === "CONFIRMED";
     const groupTotal = f.group.filter((r) => r.status !== "CANCELLED" || f.status === "CANCELLED").reduce((a, r) => a + r.totalSatang, 0) || f.totalSatang;
     const holdKind = f.status === "HOLD" ? holdKindOf(f.policySnapshot) : null;
+    // SVC H.8 r3 (B-3) อนุมัติบางส่วน: depositSatang = ยอดรับจริง · ยอดที่ต้องรับเดิมอยู่ policySnapshot.depositRequiredSatang (ไม่ถูกเขียนทับ)
+    const paidSatang = f.head.depositPaidAt ? (f.money?.amountSatang ?? f.head.depositSatang) : 0;
+    const requiredSatang = Math.max(f.head.depositSatang, hotel.depositRequiredOfSnapshot(f.head.policySnapshot) ?? 0);
+    const selfCancel = active && get(K.selfCancel) !== false && !!f.guestEmail && cancelViaOf(f.source) === "SELF";
     return {
       ok: true,
       code: f.code,
@@ -978,7 +1003,8 @@ export async function publicStatus(input: unknown, opts: HotelWebOpts): Promise<
       expired: f.status === "CANCELLED" && f.cancelReason === "HOLD_EXPIRED",
       state: stateOf(f),
       totalSatang: groupTotal,
-      deposit: { requiredSatang: f.head.depositSatang, paid: !!f.head.depositPaidAt, paidSatang: f.head.depositPaidAt ? (f.money?.amountSatang ?? f.head.depositSatang) : 0, slip: f.slip ? { status: f.slip.status, at: f.slip.createdAt } : null },
+      deposit: { requiredSatang, paid: !!f.head.depositPaidAt, paidSatang, slip: f.slip ? { status: f.slip.status, at: f.slip.createdAt } : null },
+      depositDueSatang: f.head.depositPaidAt ? Math.max(0, requiredSatang - paidSatang) : 0,
       payAtHotelSatang: Math.max(0, groupTotal - f.head.depositSatang),
       checkInTime: strV(get(K.checkInTime)) ?? "14:00",
       checkOutTime: strV(get(K.checkOutTime)) ?? "12:00",
@@ -986,8 +1012,9 @@ export async function publicStatus(input: unknown, opts: HotelWebOpts): Promise<
       pay: intent,
       refund: active ? (refundOf(f, today) ?? { refundSatang: 0, forfeitSatang: 0, paidSatang: 0 }) : null,
       refundedSatang: f.money?.refundedSatang ?? 0,
-      canCancel: active && get(K.selfCancel) !== false && !!f.guestEmail && cancelViaOf(f.source) === "SELF",
+      canCancel: selfCancel && !f.pendingSlip,
       cancelVia: cancelViaOf(f.source),
+      cancelBlockedBy: selfCancel && f.pendingSlip ? "SLIP_PENDING" : null,
       cancelledAt: f.cancelledAt ? f.cancelledAt.toISOString() : null,
       lineAddFriendUrl: basicId ? `https://line.me/R/ti/p/${basicId}` : null,
       cancelRules: hotel.cancelRulesOfSnapshot(f.head.policySnapshot),
@@ -1044,6 +1071,8 @@ export async function publicCancel(input: unknown, opts: HotelWebOpts) {
     if (via !== "SELF") return fail("FORBIDDEN", via === "CHANNEL" ? R.atChannel : R.atHotel);
     const email = normEmail(p.data.email);
     if (!email || !f.guestEmail || normEmail(f.guestEmail) !== email) return NF();
+    // SVC H.8 r3 (ผู้ตรวจรอบ 2 B-1 ก) สลิปรอโรงแรมตรวจ ⇒ ยังยกเลิกเองไม่ได้ (เงินที่โอนแล้วต้องตรวจก่อน) · สลิปที่แนบแข่งกับการยกเลิก = consumer ลงเส้นเงินที่ลงมัดจำไม่ได้ (ข)
+    if (f.pendingSlip) return fail("SLIP_PENDING", R.cancelSlipPending);
     const today = bkkYmd(nowOf(opts));
     const refund = refundOf(f, today)?.refundSatang ?? 0;
     if (p.data.confirmRefundSatang !== refund) return fail("REFUND_CHANGED", R.refundChanged, { refundSatang: refund });
@@ -1067,7 +1096,10 @@ export async function publicCancel(input: unknown, opts: HotelWebOpts) {
 /**
  * สลิปมัดจำโรงแรมที่อนุมัติแล้ว ⇒ takeBookingDeposit (ผู้กระทำระบบ · PROMPTPAY · reference = สลิป) — HOLD→CONFIRMED · idempotent (ใบรับ keyBase hotel-deposit-<group|id>)
  * จ่ายหลังหมดเวลา = H.3 ข้อ 2 (re-book หรือคืนอัตโนมัติ + event deposit_after_expiry) · สลิปไม่ใช่ HOTEL/ร้านอื่น/ไม่พบ ⇒ ไม่ทำอะไร
- * BUSY/STATE_CHANGED ⇒ โยนให้คิวลองใหม่ · ล้มแบบอื่น = log (ไม่วนซ้ำไม่รู้จบ)
+ * อนุมัติบางส่วน (r3 B-3) ⇒ จดยอดมัดจำที่ต้องรับเดิมใน policySnapshot ก่อน (depositSatang = ยอดรับจริง)
+ * BUSY/STATE_CHANGED ⇒ โยนให้คิวลองใหม่
+ * SVC H.8 r3 (ผู้ตรวจรอบ 2 B-1 ข · B-2 · B-9) ลงเป็นมัดจำของการจองไม่ได้ด้วยเหตุใดก็ตาม (ยกเลิกแล้ว — แขก/พนักงาน · ได้มัดจำจากทางอื่นแล้ว · สลิปใบที่สอง · ไม่มี POS)
+ *   ⇒ เส้นเดียวกับ "จ่ายช้าแต่ห้องเต็ม": รับเงินเป็นใบรับมัดจำ (reference slip:<id>) + คืนเต็มอัตโนมัติ + event hotel.web.slip_unapplied ให้พนักงานเห็น (ไม่มี log เงียบ)
  */
 export async function onHotelSlipApproved(evt: { tenantId: string; unitId?: string | null; payload: unknown }): Promise<void> {
   if (!isRec(evt) || !isStr(evt.tenantId)) return;
@@ -1075,8 +1107,12 @@ export async function onHotelSlipApproved(evt: { tenantId: string; unitId?: stri
   if (!isStr(pl?.slipId) || (pl?.domain !== undefined && pl.domain !== "HOTEL")) return;
   const facts = await hotel.hotelDepositSlipFacts(evt.tenantId, pl.slipId);
   if (!facts || facts.amountSatang <= 0 || facts.settled) return;
+  await hotel.keepDepositRequired(evt.tenantId, facts.unitId, facts.reservationId, facts.amountSatang);
   const r = await hotel.takeBookingDeposit(SYSTEM_ACTOR, { tenantId: evt.tenantId }, { unitId: facts.unitId, reservationId: facts.reservationId, payType: "PROMPTPAY", amountSatang: facts.amountSatang, reference: `slip:${facts.slipId}`.slice(0, 64) });
-  if (r.ok) {
+  if (!r.ok && (r.code === "BUSY" || r.code === "STATE_CHANGED")) throw new Error(`hotel deposit ${r.code}`);
+  // ลงสำเร็จ = เงินของสลิปนี้อยู่ในใบรับมัดจำของการจอง (ใบใหม่ · หรือใบเดิมของสลิปนี้เมื่อ event ถูกส่งซ้ำ)
+  const applied = r.ok && (!r.duplicated || !!(await hotel.hotelDepositSlipFacts(evt.tenantId, facts.slipId))?.settled);
+  if (applied) {
     await emitOutboxOutsideTx({
       tenantId: evt.tenantId,
       unitId: facts.unitId,
@@ -1086,6 +1122,29 @@ export async function onHotelSlipApproved(evt: { tenantId: string; unitId?: stri
     });
     return;
   }
-  if (r.code === "BUSY" || r.code === "STATE_CHANGED") throw new Error(`hotel deposit ${r.code}`);
-  console.warn(`[hotel.web] สลิปมัดจำอนุมัติแล้วแต่ลงมัดจำไม่ได้ (${r.code}) tenant=${evt.tenantId}`);
+  // จ่ายช้า (takeBookingDeposit รับเงิน+คืนเองแล้ว · deposit_after_expiry) ⇒ เงินของสลิปมีใบรับแล้ว ไม่ทำซ้ำ — ยังยิง slip_unapplied ให้พนักงานเห็น
+  const late = !!(await hotel.hotelDepositSlipFacts(evt.tenantId, facts.slipId))?.settled;
+  const reason = r.ok ? "ALREADY_PAID" : String(r.code);
+  const money = late ? null : await hotel.recordUnappliedSlipMoney(evt.tenantId, { unitId: facts.unitId, reservationId: facts.reservationId, slipId: facts.slipId, amountSatang: facts.amountSatang, reason });
+  if (money?.error) console.error(`[hotel.web] เงินสลิปที่ลงมัดจำไม่ได้: ออกใบรับ/คืนไม่สำเร็จ (${reason}) tenant=${evt.tenantId} — event slip_unapplied ให้พนักงานจัดการ`);
+  await emitOutboxOutsideTx({
+    tenantId: evt.tenantId,
+    unitId: facts.unitId,
+    type: HOTEL_WEB_EVENTS.slipUnapplied,
+    idempotencyKey: `${HOTEL_WEB_EVENTS.slipUnapplied}#${facts.slipId}`,
+    payload: {
+      tenantId: evt.tenantId,
+      unitId: facts.unitId,
+      reservationId: facts.reservationId,
+      groupId: facts.groupId,
+      slipId: facts.slipId,
+      reason,
+      amountSatang: facts.amountSatang,
+      saleId: money ? money.saleId : null,
+      refundSaleId: money ? money.refundSaleId : null,
+      refunded: money ? money.refunded : null,
+      via: late ? "deposit_after_expiry" : "slip_refund",
+      ...(money?.error ? { needsStaff: true } : {}),
+    },
+  });
 }

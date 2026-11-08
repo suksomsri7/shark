@@ -1496,6 +1496,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hotel.web.slip_attached": withAutomation(async () => {}),
   "hotel.web.cancelled_by_guest": withAutomation(async () => {}),
   "hotel.web.lookup_failed": withAutomation(async () => {}),
+  "hotel.web.slip_unapplied": withAutomation(async () => {}), // SVC H.8 r3 ▸ สลิปอนุมัติแต่ลงมัดจำไม่ได้ (รับ+คืนอัตโนมัติแล้ว · ผู้ตรวจรอบ 2 B-1/B-2) ◂
   // ◂ SVC H.8
   // ◂ SVC H.3
 };

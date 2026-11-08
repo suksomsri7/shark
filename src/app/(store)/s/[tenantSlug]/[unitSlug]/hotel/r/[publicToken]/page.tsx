@@ -18,6 +18,7 @@ const CANCEL_ERR: Record<string, string> = {
   NOT_FOUND: "hotel.web.err.email",
   FORBIDDEN: "hotel.web.err.cancelOff",
   RATE_LIMITED: "hotel.web.err.rate",
+  SLIP_PENDING: "hotel.web.err.slipPending", // SVC H.8 r3 (B-1 ก) ◂
 };
 
 // SVC H.8 ▸ S5 หน้าสถานะการจอง (ภาพ 16 ค · URL เดิมของ P1) — เปิดด้วย publicToken เท่านั้น · ไม่มีเบอร์ · อีเมล mask
@@ -52,8 +53,11 @@ export default async function HotelStatusPage({ params, searchParams }: { params
                 : `${t(`hotel.st.${st.state}`)} · ${st.code}`;
   const subtitle = `${st.roomTypeName}${st.rooms.length > 1 ? ` × ${st.rooms.length}` : ""} · ${dayLabel(st.checkIn, locale)} – ${dayLabel(st.checkOut, locale)} · ${t("hotel.web.adultsN", { n: st.adults })}`;
   const depositNote = st.deposit.paid ? `${t("hotel.web.deposit")} (${t("hotel.web.depositVerified")})` : st.deposit.slip && st.deposit.slip.status !== "REJECTED" ? `${t("hotel.web.deposit")} (${t("hotel.web.slipReview")})` : `${t("hotel.web.deposit")} (${t("hotel.web.unpaid")})`;
+  const partial = st.deposit.paid && st.depositDueSatang > 0;
   const lines: StatusLine[] = [
-    ...(st.deposit.requiredSatang > 0 ? [{ k: depositNote, v: `${money(st.deposit.requiredSatang)}${st.deposit.paid ? " ✓" : ""}`, strong: true }] : []),
+    ...(st.deposit.requiredSatang > 0 && !partial ? [{ k: depositNote, v: `${money(st.deposit.requiredSatang)}${st.deposit.paid ? " ✓" : ""}`, strong: true }] : []),
+    // SVC H.8 r3 (B-3) อนุมัติบางส่วน: "มัดจำรับแล้ว X จาก Y · ค้าง Z" (ค้างชำระที่โรงแรม)
+    ...(partial ? [{ k: t("hotel.web.depositPartial", { paid: `฿${money(st.deposit.paidSatang)}`, required: `฿${money(st.deposit.requiredSatang)}` }), v: t("hotel.web.depositDue", { amount: `฿${money(st.depositDueSatang)}` }), strong: true }] : []),
     ...(st.state !== "CANCELLED" && st.state !== "HOLD_EXPIRED" ? [{ k: t("hotel.web.payAtHotel"), v: money(st.payAtHotelSatang) }] : []),
     ...(st.refundedSatang > 0 ? [{ k: t("hotel.web.refunded", { amount: baht(st.refundedSatang, locale) }), v: money(st.refundedSatang) }] : []),
     { k: t("hotel.web.checkTimes"), v: `${st.checkInTime} / ${st.checkOutTime}` },
@@ -118,6 +122,11 @@ export default async function HotelStatusPage({ params, searchParams }: { params
           {!st.canCancel && st.cancelVia !== "SELF" && (st.state === "HOLD" || st.state === "AWAITING_APPROVAL" || st.state === "CONFIRMED") ? (
             <p className="text-center text-sm text-[color:var(--color-muted)]" data-cancel-via={st.cancelVia}>
               {t(st.cancelVia === "CHANNEL" ? "hotel.web.cancelAtChannel" : "hotel.web.cancelAtHotel")}
+            </p>
+          ) : null}
+          {st.cancelBlockedBy === "SLIP_PENDING" ? (
+            <p className="text-center text-sm text-[color:var(--color-muted)]" data-cancel-blocked="SLIP_PENDING">
+              {t("hotel.web.cancelAfterSlip")}
             </p>
           ) : null}
           {st.canCancel ? (

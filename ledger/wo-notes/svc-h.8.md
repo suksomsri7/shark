@@ -106,3 +106,24 @@ client cap (IP เดียว q5 แล้ว q1 ⇒ TOO_MANY_HOLDS) · type ca
 - เพดาน A-6 ข/ค ตรวจก่อนเข้า tx ของ createBooking (booking.ts ยกเว้นแคบ) ⇒ คำขอยิงพร้อมกันหลุดเพดานได้ ≤ เพดาน rate hold (5/10 นาที/IP) — ปิดจริงต้องย้ายเข้า tx หลัง lockTypes
 - เครื่องหมาย client อายุตามรอบกวาดถัง (24 ชม.) ⇒ HOLD รออนุมัติที่ค้างเกิน 24 ชม. หลุดจากการนับต่อ client (เพดานต่อประเภทยังนับ)
 - Turnstile ยังเป็นหนี้เดิม
+
+## รอบ 3 (ผู้ตรวจ 2)
+ทรี `/root/projects/shark-svc-l6` · branch `wip/svc-h8-r2` · ฐาน QC ep-late-union · probe `scripts/probe-h8-review-b.mts` = regression ถาวร (+ `probe-h8-review-a` คงเดิม)
+
+### ผลต่อมติผู้คุม
+| ข้อ | ทำอะไร | ไฟล์ |
+|---|---|---|
+| B-1 (ก) | `publicCancel` มีสลิปรอตรวจ (PENDING/NEEDS_REVIEW ของกลุ่ม) ⇒ `SLIP_PENDING` (ต่อท้าย union) «มีสลิปรอโรงแรมตรวจ — ยกเลิกได้หลังตรวจเสร็จ» (th/en ใน dict `hotel.web.err.slipPending`) · ตรวจหลังเทียบอีเมล · DTO `canCancel` = false + `cancelBlockedBy: "SLIP_PENDING"` ⇒ หน้าสถานะซ่อนปุ่มยกเลิก แสดง `hotel.web.cancelAfterSlip` | hotel-web.ts · r/[publicToken]/page.tsx · dict |
+| B-1 (ข) · B-2 | consumer `payment.slip.approved` สาขา HOTEL: ลงเป็นมัดจำไม่ได้ด้วยเหตุใดก็ตาม (takeBookingDeposit ล้มที่ไม่ใช่ BUSY/STATE_CHANGED เช่น INVALID_STATUS ยกเลิกโดยแขก/พนักงาน · NO_POS · หรือ `duplicated` แต่ใบรับไม่ใช่ของสลิปนี้ = ALREADY_PAID) ⇒ **เส้นเดียวกับจ่ายช้าแต่ห้องเต็ม**: `hotel.recordUnappliedSlipMoney` รับเงินเป็นใบรับมัดจำ POS (PROMPTPAY · reference `slip:<id>` · คีย์ `hotel-slip-<slipId>` ไม่ชนคีย์มัดจำการจอง) + `moduleRefundDeposit` คืนเต็มทันที · ไม่แตะสถานะ/มัดจำของการจอง · ยิง `hotel.web.slip_unapplied` {reservationId, groupId, slipId, reason, amountSatang, saleId, refundSaleId, refunded, via, needsStaff?} · จ่ายช้า (takeBookingDeposit รับ+คืนเองแล้ว) ⇒ ไม่ทำซ้ำ ยิง event via `deposit_after_expiry` · ไม่มี console.warn เงียบ (ออกใบ/คืนล้ม = console.error + event `needsStaff:true`) · event ซ้ำ ⇒ สลิปที่มี PosPayment `slip:<id>` แล้ว = settled ไม่ทำซ้ำ | hotel-web.ts · modules/hotel/deposit-intent.ts (ใหม่ · ชื่อไฟล์ในรายการ F-1 ของใบ) · index.ts |
+| event ใหม่ | `hotel.web.slip_unapplied` ลง 3 ทะเบียน: outbox-consumers (no-op + automation) · AUTOMATION_EVENTS ป้ายไทย · WEBHOOK_EVENTS ผ่าน spread | outbox-consumers.ts · automation/labels.ts |
+| B-9 | ตรวจ+สร้างภายใต้ล็อกต่อการจอง: กุญแจสลิปที่ส่ง `submitSlip` = **ช่องของการจอง** `hw-slip:sha(หน่วย:หัวกลุ่ม:slot<n>)` (n = จำนวนสลิปมัดจำของกลุ่มที่ตัดสินแล้ว · `hotel.webSlipSlot`) ⇒ `persist` ของ slip-verify ถือ `pg_advisory_xact_lock(กุญแจ)` ใน tx เดียวกับ `paymentSlip.create` แล้วหาแถวเดิมของกุญแจ ⇒ แนบพร้อมกันกี่ทาง = แถวเดียว · ตัวหลัง (replay/IDEMPOTENCY_CONFLICT) ⇒ คืนใบที่รอตรวจ `alreadyPending` · ใบเดิมถูกปฏิเสธ ⇒ n+1 แนบใหม่ได้ · payment/** ไม่แตะ | hotel-web.ts · deposit-intent.ts |
+| B-3 | consumer จด `policySnapshot.depositRequiredSatang` (ยอดที่ต้องรับเดิม · ทุกแถวในกลุ่ม · ครั้งแรก · เฉพาะยอดรับ < มัดจำ และยังไม่ได้มัดจำ · SQL คำสั่งเดียว) ก่อน takeBookingDeposit (depositSatang = ยอดรับจริงตามเดิม · booking.ts ไม่แตะ) · การจอง CONFIRMED ตามมติ · หน้าสถานะ `deposit.requiredSatang` = ยอดเดิม · `paidSatang` = รับจริง · `depositDueSatang` ใหม่ · บรรทัด «มัดจำรับแล้ว ฿500 จาก ฿1,290 · ค้าง ฿790» · หน้ารายการการจอง (พนักงาน) แถบใหม่ «มัดจำรับไม่ครบ N» (`hotel.partialDepositsOf` · รหัส + «มัดจำรับแล้ว ฿X จาก ฿Y · ค้าง ฿Z» ลิงก์ไปหน้าการจอง) — ไม่แตะ `components/hotel/BookingDetail.tsx` (นอกรายการไฟล์ F-1) | hotel-web.ts · deposit-intent.ts · r/[publicToken]/page.tsx · reservations/page.tsx · dict |
+
+### ตรวจเพิ่มเอง (สคริปต์ชั่วคราวนอกทรี `/root/svc-runs/h8/builder/r3chk/` ไม่ commit) 3/3
+C-1 สลิปรอตรวจ + หน้าสถานะ canCancel false/SLIP_PENDING + publicCancel SLIP_PENDING + **พนักงานยกเลิกเอง** ⇒ อนุมัติ ⇒ ใบรับ slip 1 + ใบคืนเต็ม 1 + event slip_unapplied (INVALID_STATUS · refunded) · consumer ซ้ำ 2 รอบไม่สร้างใหม่ · C-2 B-2 ใบรับ+ใบคืนเต็ม · ไม่มี deposit_paid ของสลิปนี้ · event ALREADY_PAID · มัดจำเงินสดยัง OPEN · C-3 แนบพร้อมกัน 3 ⇒ slipId เดียว ok ทุกทาง · ปฏิเสธแล้วแนบใหม่ได้ใบใหม่
+
+### หนี้รอบ 3
+- คูปองไม่ถูกจองสิทธิ์ตอน HOLD (H.5b · มติผู้คุมข้อ 5)
+- รับมัดจำบางส่วนที่เคาน์เตอร์ (takeBookingDepositAction amountSatang < มัดจำ) ยังเขียนทับ depositSatang โดยไม่จดยอดเดิม — มติรอบนี้ครอบเฉพาะอนุมัติสลิปบางส่วน (ปิดได้โดยเรียก `keepDepositRequired` ที่ action)
+- แท็บเงินในหน้ารายละเอียดการจอง (BookingDetail.tsx · นอกไฟล์ของใบ) ยังแสดงแค่ยอดรับ — ยอดค้างอยู่ที่แถบหน้ารายการ + หน้าสถานะแขก
+- สลิปแถวรุ่นก่อน r3 (กุญแจของผู้เรียก) ยังกันด้วย `pendingSlip` นอกล็อกเหมือนเดิม

@@ -134,6 +134,8 @@ export {
 export type { WebUnit, WebRoomTypeInfo, WebCancelRuleRow, WebSearchBundle, WebPlanRow, WebSlipState, WebDepositMoney, WebBookingFacts, GuestMailFacts } from "./storefront";
 export { webHoldMark } from "./storefront"; // SVC H.8 r2 ▸ ด่านกันยึดห้อง (ผู้ตรวจ A-6) ◂
 export type { WebHoldGuardIn } from "./storefront";
+export { recordUnappliedSlipMoney, keepDepositRequired, depositRequiredOfSnapshot, webSlipSlot, partialDepositsOf } from "./deposit-intent"; // SVC H.8 r3 ▸ เงินสลิปที่ลงมัดจำไม่ได้ · ยอดมัดจำที่ต้องรับเดิม · ช่องสลิป (ผู้ตรวจรอบ 2 เงิน) ◂
+export type { UnappliedSlipMoney, PartialDepositRow } from "./deposit-intent";
 // ◂ SVC H.8
 // SVC H.6 ▸ แม่บ้าน (ใบสั่ง h.6 §3) — บอร์ดงานห้องวันนี้ · state machine hk · เริ่มทำ/เสร็จ/ตรวจ · มินิบาร์ → folio · แจ้งของเสีย · night audit (H.7 เรียก)
 export {

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { evaluate } from "@/lib/core/rbac";
-import { listBookings } from "@/lib/modules/hotel";
+import { listBookings, partialDepositsOf, type PartialDepositRow } from "@/lib/modules/hotel"; // SVC H.8 r3 ▸ แถบมัดจำรับไม่ครบ ◂
 import BookingList from "@/components/hotel/BookingList";
 import { slipQueue } from "@/lib/payment/slip-verify"; // SVC H.8 ▸ คิวสลิปกลาง (HOTEL) ◂
 import { decideHotelSlipAction } from "@/lib/modules/hotel/actions"; // SVC H.8 ◂
@@ -46,9 +46,12 @@ export default async function HotelReservationsPage({ params, searchParams }: { 
     return null;
   }
   const slipsBar = SlipsBar({ unitSlug, pending, slipMsg, codeOf });
+  // SVC H.8 r3 ▸ แถบ «มัดจำรับไม่ครบ N» (อนุมัติสลิปบางส่วน — ผู้ตรวจรอบ 2 B-3) · แสดงเมื่อดูรายการได้ (listBookings ok) ◂
+  const partialBar = r.ok ? PartialDepositBar({ unitSlug, rows: await partialDepositsOf(auth.active.tenantId, unit.id) }) : null;
   return (
     <>
     {slipsBar}
+    {partialBar}
     <BookingList
       unitSlug={unitSlug}
       rows={r.ok ? r.rows : []}
@@ -94,4 +97,23 @@ function SlipsBar({ unitSlug, pending, slipMsg, codeOf }: { unitSlug: string; pe
       </details>
     </section>
     );
+}
+
+// SVC H.8 r3 ▸ แถบ «มัดจำรับไม่ครบ N» — มัดจำรับแล้ว X จาก Y · ค้าง Z (ยอดที่ต้องรับเดิมจด policySnapshot.depositRequiredSatang ตอนอนุมัติบางส่วน) ◂
+function PartialDepositBar({ unitSlug, rows }: { unitSlug: string; rows: PartialDepositRow[] }) {
+  if (!rows.length) return null;
+  const baht = (n: number) => (n / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+  return (
+    <section className="mx-auto mb-3 w-full max-w-5xl rounded-2xl border border-[color:var(--color-line)] px-4 py-3" data-hotel-partial-deposit="">
+      <div className="flex min-h-[44px] items-center text-sm font-semibold">มัดจำรับไม่ครบ {rows.length}</div>
+      <ul className="flex flex-col gap-1 text-sm">
+        {rows.map((x) => (
+          <li key={x.id} className="flex flex-wrap items-center gap-2">
+            <a href={`/app/u/${encodeURIComponent(unitSlug)}/hotel/reservations/${encodeURIComponent(x.id)}`} className="font-semibold underline">{x.code}</a>
+            <span className="tabular-nums">มัดจำรับแล้ว ฿{baht(x.paidSatang)} จาก ฿{baht(x.requiredSatang)} · ค้าง ฿{baht(x.dueSatang)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
