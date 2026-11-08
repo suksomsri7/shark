@@ -78,6 +78,23 @@ export function normalizeThaiMobile(raw: string | null | undefined): string | nu
   return m ? `+66${m[1]}` : null;
 }
 
+/**
+ * เบอร์ทดสอบ (8 พ.ย. 2026 · เจ้าของสั่ง — ช่วงยังไม่มีเกตเวย์ SMS · บัญชีรีวิวของ Apple)
+ * env `SMS_TEST_LOGINS="0812345678:123456,0898765432:654321"` — **เฉพาะเบอร์ในรายชื่อ** ใช้รหัสประจำได้โดยไม่ส่ง SMS
+ * เบอร์อื่นทั้งหมดเป็นไปตามปกติ (ไม่มีเกตเวย์ = 503 sms_unavailable) · รหัสต้อง 6 หลัก · รายการผิดรูป = ข้าม · สูงสุด 5 เบอร์
+ * ด่านเดิมครบ: กันถล่มต่อเบอร์/ip · ผิด 5 ครั้ง = ล็อก · หมดอายุ 10 นาที · consume ครั้งเดียว (รหัสเก็บเป็น HMAC เหมือนรหัสจริง)
+ */
+export function phoneTestCode(rawPhone: string | null | undefined): string | null {
+  const phone = normalizeThaiMobile(rawPhone);
+  if (!phone) return null;
+  const entries = String(process.env.SMS_TEST_LOGINS ?? "").split(",").slice(0, 5);
+  for (const e of entries) {
+    const [p, c] = e.split(":").map((x) => x.trim());
+    if (c && /^\d{6}$/.test(c) && normalizeThaiMobile(p) === phone) return c;
+  }
+  return null;
+}
+
 /** อีเมล placeholder ของบัญชีที่สมัครด้วยเบอร์ (E.164 ไม่มี +) */
 export function phonePlaceholderEmail(phone: string): string {
   return `${phone.replace(/^\+/, "")}@${PHONE_PLACEHOLDER_DOMAIN}`;
@@ -212,7 +229,8 @@ export async function requestPhoneOtp(
     if (perIp >= PHONE_RL_PER_IP) return { ok: false, reason: "rate_limited", message: MSG.rateLimited };
   }
 
-  const code = otpCode();
+  const testCode = phoneTestCode(phone); // เบอร์ทดสอบ ⇒ รหัสประจำ · ไม่ส่ง SMS
+  const code = testCode ?? otpCode();
   const row = await prisma.phoneOtp.create({
     data: {
       phone,
@@ -224,7 +242,7 @@ export async function requestPhoneOtp(
     select: { id: true },
   });
 
-  const send: SendFn = opts.send ?? sendSms;
+  const send: SendFn = testCode ? async () => ({ ok: true }) : (opts.send ?? sendSms);
   let sent: { ok: boolean; error?: string };
   try {
     // R-Z27: คำเตือน "อย่าบอก" + บรรทัดผูกโดเมน (iOS/Android autofill เฉพาะ shark.in.th · กันหน้าเว็บปลอมขอรหัส)
