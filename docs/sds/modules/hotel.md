@@ -243,11 +243,14 @@ HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_E
 ### ARI pipeline (ขาออก)
 1. เหตุที่กระทบห้องว่าง/ราคา ⇒ outbox `channel.ari.dirty {unitId, roomTypeIds, from, to}` (วันไทย · รวมสองปลาย)
    - `rates.ts` (แผน · ฤดู · วันหยุด · ตารางราคา · แก้มือ) และ `block.ts` (ปิด/ปล่อยห้อง) ยิงใน tx เดียวกับการเขียน (hook บรรทัดเดียว · lazy import · ร้านไม่มีตัวต่อ = ไม่ยิง)
-   - แม็ป/buffer เปลี่ยน ⇒ ยิงทั้งช่วงเพดาน · `hotel.booking.*` (สร้าง/ยกเลิก/หมดเวลาถือ/ไม่มา/เปลี่ยน) ⇒ consumer รวมชุดตรง (ไม่ยิงซ้ำ · changed = ทั้งช่วง)
-2. consumer `onAriDirty` → `enqueueAri`: ต่อ (ตัวต่อ, หน่วย) ที่ CONNECTED/ERROR และมีแม็ปห้อง · ตัดหัววันนี้ ตัดท้าย `rooms.hotel.ota.ariHorizonDays` (7–400 · เริ่ม 365)
+   - แม็ป/buffer เปลี่ยน ⇒ ยิงทั้งช่วงเพดาน · `hotel.booking.*` (สร้าง/ยกเลิก/หมดเวลาถือ/ไม่มา/เปลี่ยน/**ยืนยัน** (HOLD→ยืนยัน · ย้อน «ไม่มา» · จองคืนหลังมัดจำมาช้า)/**deposit_after_expiry**) + `hotel.checked_out` (เช็กเอาต์ก่อนกำหนด: ครอบถึงคืนสุดท้ายที่เคยมีของการจอง) ⇒ consumer รวมชุดตรง (ไม่ยิงซ้ำ · changed = ทั้งช่วง)
+   - `rooms.occupancy.changed` (claim/release/move/resize/expire ทุกชนิด — สัญญาหอ LEASE · BLOCK · STAY) ⇒ ช่วง [from, to) ของ event · `hotel.hk.changed` (H.6 · เข้า/ออก OUT_OF_ORDER) ⇒ ทั้งช่วง (ต่อเมื่อบล็อก H.6 ลงทะเบียน consumer ก่อนบล็อก H.10)
+   - `integration.connected` ของตัวต่อ CHANNEL_MANAGER (ERROR/DRAFT → CONNECTED) ⇒ full resync ทั้งช่วงเพดานของทุกหน่วยที่แม็ปทันที
+   - **full resync รายรอบ** งานรายนาที `channel-ari-resync` (ตรวจทุก 15 นาที · `resyncAriAll`) ⇒ แต่ละ (ตัวต่อพร้อม, หน่วยที่แม็ป) ได้งานทั้งช่วงเพดานทุก `ARI_RESYNC_EVERY_MS` = 6 ชม. (ค่าคงที่ในโค้ด) — lease: แถว lease ของ minute-job + ตรวจ "มีงานครอบช่วงนี้สร้างในรอบแล้ว (สถานะใดก็ได้)" ใต้ advisory lock ต่อคู่ · ปิดเส้นที่ไม่มี event (ปิดซ่อมทางตรง `setRoomStatus`/`setHkStatus` · สร้าง/เก็บห้อง · แก้ค่าตั้ง `ota.buffer`/`ota.markupBp` · สถานะตัวต่อเปลี่ยนตรงฐาน) และงาน FAILED ที่ไม่มีใครส่งซ้ำ · คำนวณที่ `pushAriJobs` ด้วย buildAri เดิม (คิวรีคงที่)
+2. consumer `onAriDirty` → `enqueueAri`: ต่อ (ตัวต่อ, หน่วย) ที่มีแม็ปห้อง (**ทุกสถานะ** — ตัวต่อที่ถอดอยู่ได้งานค้าง PENDING ไว้ · `pushAriJobs` ส่งเฉพาะ CONNECTED/ERROR ⇒ ต่อกลับแล้วส่งค่าที่เปลี่ยนระหว่างถอด) · ตัดหัววันนี้ ตัดท้าย `rooms.hotel.ota.ariHorizonDays` (7–400 · เริ่ม 365)
    · PENDING ที่ทับ/ติดกัน ⇒ แถวใหม่ครอบช่วงรวม (เก่า SUPERSEDED) · ครอบอยู่แล้ว = ไม่ทำอะไร (ส่งซ้ำ = ผลเดียว) · ล็อก advisory ต่อ (ตัวต่อ, หน่วย)
 3. งานรายนาที `channel-ari-push` (ทุก 1 นาที) → `pushAriJobs(now)`: จองงานด้วย CAS `attempts` (ซ้อน = ส่งครั้งเดียว) → ARI ใหม่จากข้อมูลสด
-   → hash เท่างาน SENT ล่าสุดช่วงเดียวกัน ⇒ SUPERSEDED (ไม่เรียกตัวต่อ) · ส่งสำเร็จ ⇒ SENT + `channel.ari.pushed {connectionId, jobId, days}`
+   → hash เท่างาน SENT ล่าสุดช่วงเดียวกัน **และไม่มีงาน FAILED ทับช่วงหลังส่งนั้น** ⇒ SUPERSEDED (ไม่เรียกตัวต่อ) · ส่งสำเร็จ ⇒ SENT + `channel.ari.pushed {connectionId, jobId, days}`
    · ล้ม ⇒ lastError (รหัสเท่านั้น ไม่มีข้อความดิบ) · backoff `updatedAt + 2^(attempts−1)` นาที · ครบ 5 ⇒ FAILED + `channel.ari.failed` (กฎอัตโนมัติ/แจ้งเจ้าของ)
 4. ARI ต่อวัน/ห้องที่แม็ป = `{available: max(0, hotelAvailability − buffer), rates: {ext: {priceSatang, minNights, closedToArrival}}, stopSell}`
    - ห้องว่าง = สูตรเดียว (`hotelAvailability`) · ราคา = `loadPricingContext` + `resolveNightPrice` × (1 + markupBp) ปัด `rooms.money.rounding`
@@ -274,7 +277,8 @@ RECEIVED ──apply──▶ APPLIED (การจองสร้าง/ยก�
 - event `channel.reservation.received/applied/needs_room/rejected/cancelled` payload `{inboxId, connectionId, unitId, version, …}` — ไม่มี PII · `raw` เก็บใน inbox เท่านั้น (DTO/log/event ไม่ส่งต่อ)
 
 ### เงิน OTA (prepaid)
-- `grossSatang/commissionSatang/netSatang` เก็บตามที่ช่องทางส่งตรงตัว (แบ่งต่อห้องเมื่อหลายห้อง) · ราคาคืนของการจอง = ราคาโรงแรม (`quoteStay` ไม่บวก markup)
+- `grossSatang/commissionSatang/netSatang` เก็บตามที่ช่องทางส่งตรงตัว (แบ่งต่อห้องเมื่อหลายห้อง · เศษลงห้องแรก · Σ = ยอดช่องทาง) — net ไม่ส่ง ⇒ gross − commission (ช่องทางที่หักภาษีค่าคอมฯ ส่ง net ≠ gross − commission)
+- ผู้ใหญ่/เด็กของฉบับหลายห้องแบ่งให้ผลรวมเท่าจริง (ห้องแรก ๆ ได้ +1 จากเศษ · ผู้ใหญ่อย่างน้อย 1 ต่อห้อง) · ราคาคืนของการจอง = ราคาโรงแรม (`quoteStay` ไม่บวก markup)
 - `prepaidByChannel` ⇒ มัดจำ 0 · ไม่ prepaid ⇒ มัดจำตามแผน (เช่น FIRST_NIGHT) แต่ยัง CONFIRMED
 - **ส่งต่อ H.5b**: settle เช็กเอาต์ของการจอง prepaid ต้องจ่ายด้วย payMethod `PLATFORM` (ลูกหนี้แพลตฟอร์ม · POS P2.1) ยอดเท่าค่าห้อง — `COUNTER_PAY_TYPES` ยังไม่มี PLATFORM · commission = ข้อมูลรายงาน (H.7)
 

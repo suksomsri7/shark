@@ -97,6 +97,7 @@
 | unique (channelConnectionId, channelRef) บน HotelReservation | ไม่มี index ⇒ กันด้วย inbox unique + ตัวตรวจใน tx (onCreated) | H.9 (ถ้าจะเพิ่ม index) |
 | ตัวต่อเจ้าจริง + ส่งปฏิเสธกลับช่องทาง | Q10 รอชื่อลูกค้า | H2.1–H2.3 |
 | ฉาก h.1/h.3 `--clear` ไม่รู้จักฉาก h.10 (FK Restrict ของ ChannelRateMap) | ไม่ใช่ไฟล์ของใบ | ผู้คุม (ลำดับ chain / ORACLE-EDIT h.1 h.3) |
+| **RB-17 prepaid เก็บค่าห้องซ้ำที่ folio** (การจอง OTA prepaid เข้าพัก ⇒ postRoomNights โพสต์ค่าห้อง ⇒ เช็กเอาต์เก็บเงินแขกซ้ำ) | folio/checkout ไม่รู้จัก `prepaidByChannel` · ใบนี้ห้ามแตะ folio/checkout/pos (ผู้คุม 8 พ.ย. ORACLE-EDIT h10-rb17 = SKIP) | **H.5b — ต้องปิดก่อนเปิดตัวต่อเจ้าจริง (H2)** |
 | race ข้ามฉบับต่างประเภทห้องพร้อมกัน (ไม่มีการจองเดิม) | ล็อกต่อประเภทคนละตัว · onCreated จับได้เป็น DUPLICATE ⇒ คง RECEIVED ลองรอบหน้า (ไม่จองซ้อน) | — (บันทึกไว้) |
 
 ## 9. สิ่งที่ H2 (ตัวต่อเจ้าจริง) ต้องรู้
@@ -124,3 +125,28 @@ probe `scripts/probe-h10-review-a.mts` (regression ถาวร) ก่อนแ
 - ไฟล์ที่แตะรอบนี้: `src/lib/modules/hotel/channel/inbound.ts` · `channel/ari.ts` · `hotel/rates.ts` (1 บรรทัดตัวห่อ) · `hotel/block.ts` (1 บรรทัดตัวห่อ) · booking.ts ไม่แตะ
 - ผลรอบ 2 (รันจริง · ทรี l4): probe-h10-review-a 15/15 · qc-svc-h.10 --no-regression 73/89 แดง 0 (skip MN-4 · V-1/2 · G-1–13) · หลัง `svc-qc-hotel-ota-scene.mts --clear` (removed 18): h.3 98/109 แดง 0 · h.2 78/87 แดง 0 (Q-3 เขียวเมื่อเคลียร์ h.10 ก่อน) · h.5 77/95 แดง 0 · h.1 ดูบรรทัดถัดไป · tsc ไฟล์ของใบ 0
 - h.1 รันซ้ำบนทรีสะอาด (หลัง commit · F-1 ข้ามตามข้อสอบ "หลัง merge"): 112/122 แดง 0 · รอบแรก F-1 แดงเพราะรันตอนไฟล์ยังไม่ commit (ข้อตรวจ git status) ไม่ใช่โค้ด · probe-h10-review-a รันซ้ำรอบ 2 = 15/15 (race คงที่)
+
+## รอบ 3 (ผู้ตรวจ B)
+probe `scripts/probe-h10-review-b.mts` (regression ถาวร) ก่อนแก้ 15/21 (แดง RB-4 · RB-5 · RB-6 · RB-7 · RB-9 · SKIP RB-17) ⇒ หลังแก้ **18/21 · แดง RB-5 · RB-7 (ข้อแย้งด้านล่าง) · SKIP RB-17**
+
+| ข้อ | ต้นเหตุ | แก้ |
+|---|---|---|
+| RB-4 MAJOR undoNoShow/rebook ไม่ dirty | loop hook ARI มีแค่ created/cancelled/hold_expired/no_show/changed | เพิ่ม `hotel.booking.confirmed` · `hotel.booking.deposit_after_expiry` · `hotel.checked_out` เข้า loop เดิม (`ariDirtyFromBooking`) · checked_out ครอบถึง max(คืนของการจอง) เพราะ checkOutDate อาจถูกย่นแล้ว |
+| RB-6 MAJOR ถอด/ต่อกลับไม่ resync | `enqueueAri` ข้ามตัวต่อที่ถอด ⇒ เหตุระหว่างถอดหาย | (ก) `enqueueAri`/`emitAriDirty` รับทุกสถานะ — งานค้าง PENDING ระหว่างถอด (pushAriJobs ส่งเฉพาะ CONNECTED/ERROR ⇒ PL-3/RB-15 ยังเขียว) ⇒ ต่อกลับแล้วส่ง · `integration.connected` (CHANNEL_MANAGER) ⇒ `ariResyncOnConnected` full resync ทั้งช่วงเพดานทุกแม็ปของตัวต่อนั้นทันที (ข) งานรายนาที `channel-ari-resync` |
+| RB-7 minor เหตุอื่น/งาน FAILED | ไม่มี hook · ไม่มีรอบ resync | `rooms.occupancy.changed` (LEASE หอบนห้องโรงแรม · BLOCK · STAY · resize = ช่วง union) ⇒ `ariDirtyFromOccupancy` · `hotel.hk.changed` ⇒ `ariDirtyFromHk` (เฉพาะเข้า/ออก OUT_OF_ORDER · ต่อเมื่อ H.6 ลงทะเบียน consumer แล้ว) · **full resync ทุก 6 ชม.** (`ARI_RESYNC_EVERY_MS` · ตรวจทุก 15 นาที · lease = แถว lease ของ minute-job + "งานครอบช่วงสร้างในรอบแล้ว" ใต้ advisory lock ต่อคู่ · ข้ามตัวต่อไม่พร้อม (`integrationHandleForRow` null)) · X3 (ค่าเท่าไม่ส่ง) ไม่ข้ามถ้ามีงาน FAILED ทับช่วงหลังส่งล่าสุด ⇒ resync ปิดงาน FAILED จริง |
+| RB-9 MAJOR net ถูกคำนวณใหม่ | บล็อก H.10 ใน booking.ts ใช้ gross − commission | `netSatang: splitOf(chIn.netSatang, n, i)` เมื่อช่องทางส่ง net · ไม่ส่ง (null) ⇒ gross − commission เดิม · inbound zod `netSatang` nullable/optional · `InboundReservation.netSatang?` (บรรทัดที่ใบนี้เพิ่มเอง ⇒ U-8 เทียบฐานยังเพิ่มอย่างเดียว) |
+| minor inbound.ts:316 ceil | ผู้ใหญ่ต่อห้อง ceil ⇒ ผลรวมเกินจริง | แบ่ง floor + เศษให้ห้องแรก ๆ (ผลรวมเท่าจริง · ผู้ใหญ่ ≥ 1 ต่อห้อง) · เด็กเช่นเดียวกัน |
+| RB-17 | หนี้ H.5b | ไม่แก้ในใบนี้ — §8 "ต้องปิดก่อนเปิดตัวต่อเจ้าจริง (H2)" |
+
+### event ที่เข้า hook ARI ทั้งหมด (หลังรอบ 3)
+- `channel.ari.dirty` (rates.ts ≥9 · block.ts ≥2 · แม็ป/buffer) ⇒ `onAriDirty`
+- `hotel.booking.created` · `cancelled` · `hold_expired` · `no_show` · `changed` · `confirmed` · `deposit_after_expiry` · `hotel.checked_out` ⇒ `ariDirtyFromBooking`
+- `rooms.occupancy.changed` ⇒ `ariDirtyFromOccupancy` · `hotel.hk.changed` (H.6) ⇒ `ariDirtyFromHk` · `integration.connected` ⇒ `ariResyncOnConnected`
+- ไล่ event ของโรงแรมที่เปลี่ยน nights/occupancy (grep `emitEv`/`emitOutbox` ใน hotel/** rooms/**): ครบตามรายการ · `hotel.folio.*` ไม่เปลี่ยนห้องว่าง · ไม่มี `hotel.checked_in` (เช็กอินไม่เปลี่ยนคืนที่นับ)
+
+### ข้อแย้ง oracle (probe-h10-review-b) — ให้ผู้คุมตัดสิน
+- **RB-5 (MAJOR)** โพรบเรียก `SVC.setRoomStatus(tA, UH, D3, "OOO")` และ `ROOMS.setHkStatus(ctx, …OUT_OF_ORDER)` ตรง แล้ว drain outbox ทันที ⇒ ต้องมีงาน PENDING · หลักฐาน: `hotel/service.ts:216-229` และ `rooms/service.ts:180-194` **ไม่ยิง event ใดเลย** (ไม่มี `emitOutbox`) · `hotel.hk.changed` ไม่มีในทรีนี้ (H.6 อยู่ session/svc) และแม้ใน session/svc ก็ยิงเฉพาะทาง `housekeeping.ts:235` (state machine H.6) ไม่ใช่ `setRoomStatus`/`setHkStatus` ทางตรง (ตรวจ `git show session/svc:src/lib/modules/rooms/service.ts`) · มติผู้คุมข้อ 2 ห้ามแตะ service.ts/rooms/ ⇒ ทางตรงนี้ปิดด้วย full resync (≤ 6 ชม. · ข้อ 3) ซึ่งโพรบไม่รอ ⇒ **แดงตามโครง** · ทางเลือก: (ก) ORACLE-EDIT RB-5 ให้ยอมรับ full resync (เช่นเรียก `CH.resyncAriAll` แล้วนับงาน) หรือ SKIP เป็นหนี้ (ข) อนุญาตเพิ่ม 1 บรรทัด `emitAriDirty` (นอก tx · lazy import) ท้าย `setRoomStatus` และ `setHkStatus` เมื่อเข้า/ออก OOO
+- **RB-7 (minor)** ส่วนที่ยังแดงเป็นการตรวจข้อความในไฟล์ `dorm/lease.ts` และ `hotel/service.ts` ต้องมี `emitAriDirty|ari.dirty` — ทั้งสองไฟล์อยู่นอกใบ (ห้ามแตะ) · ผลจริงปิดแล้ว: LEASE ยิง `rooms.occupancy.changed` ทุก claim/release/resize ⇒ hook `ariDirtyFromOccupancy` · สร้าง/เก็บห้อง/ค่าตั้ง ⇒ full resync 6 ชม. · ส่วน hotel.checked_out และ full resync ของ RB-7 เขียวแล้ว ⇒ เสนอ ORACLE-EDIT ให้ยอมรับ `rooms.occupancy.changed` hook + full resync แทนข้อความในสองไฟล์นั้น
+- 🔴 รวมสาขา: บรรทัด `if (baseConsumers["hotel.hk.changed"]) …compose(…ariDirtyFromHk)` ใน outbox-consumers ต้องอยู่**หลัง**บล็อก H.6 (ที่ลงทะเบียน `hotel.hk.changed`) ไม่งั้นเงียบ (ไม่พัง แต่ไม่ dirty)
+
+- ไฟล์ที่แตะรอบนี้: `hotel/channel/ari.ts` · `channel/inbound.ts` · `channel/types.ts` · `channel/index.ts` · `hotel/index.ts` (facade เพิ่ม) · `hotel/booking.ts` (บล็อก H.10 เท่านั้น · netSatang) · `outbox-consumers.ts` (บล็อก H.10) · `platform/minute-jobs.ts` (บล็อก H.10 · channel-ari-resync) · `docs/sds/modules/hotel.md` · ไม่แตะ service.ts/rooms/dorm/prisma/ข้อสอบ/probe
