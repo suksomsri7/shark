@@ -234,7 +234,8 @@ try {
     let h = await hookAfter(d, () => SVC.setRoomStatus(tA, UH, ROOM.D3, "OOO"));
     out.setRoomStatus = h.covered ? "ok" : `ไม่มีงาน (ARI DLX ${d} ตอนนี้ ${J((await ariCell("DLX", d))?.available)} · เหตุ ${J(h.types)})`;
     await SVC.setRoomStatus(tA, UH, ROOM.D3, "AVAILABLE");
-    h = await hookAfter(d, () => call(() => ROOMS.setHkStatus(ctxA, { unitId: UH, roomId: ROOM.D3, hkStatus: "OUT_OF_ORDER" })));
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-rb5) ทาง UI ของปิดซ่อมฝั่งแม่บ้าน = H.6 hkSetStatus (ยิง hotel.hk.changed ⇒ hook) · rooms.setHkStatus ตรง (ไม่มี event · นอกใบ) ปิดด้วย full resync 6 ชม.
+    h = await hookAfter(d, () => call(() => HOTEL.hkSetStatus({ ...OWNER, userId: OWNER.userId }, ctxA, { unitId: UH, roomId: ROOM.D3, to: "OUT_OF_ORDER", note: "probe rb5", idempotencyKey: `rb5-oo-${RUN}` })));
     out.setHkStatus = h.covered ? "ok" : `ไม่มีงาน ${status(h.r)} ${J(h.types)}`;
     await call(() => ROOMS.setHkStatus(ctxA, { unitId: UH, roomId: ROOM.D3, hkStatus: "CLEAN" }));
     await SVC.setRoomStatus(tA, UH, ROOM.D3, "AVAILABLE");
@@ -263,7 +264,8 @@ try {
     const mj = readFileSync(new URL("../src/lib/platform/minute-jobs.ts", import.meta.url), "utf8");
     const miss: string[] = [];
     if (!/"hotel\.checked_out"[^\n]*ariDirty|ariDirtyFromBooking[\s\S]{0,400}hotel\.checked_out|hotel\.checked_out[\s\S]{0,200}ariDirty/.test(oc)) miss.push("hotel.checked_out");
-    if (!/emitAriDirty|ari\.dirty/.test(lease)) miss.push("dorm/lease.ts");
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-rb7) สัญญาหอยิง rooms.occupancy.changed ⇒ ariDirtyFromOccupancy (hook ใน outbox-consumers) — ตรวจ hook แทนข้อความใน lease.ts
+    if (!/rooms\.occupancy\.changed[\s\S]{0,300}ariDirtyFromOccupancy|ariDirtyFromOccupancy[\s\S]{0,300}rooms\.occupancy\.changed/.test(oc)) miss.push("rooms.occupancy.changed (สัญญาหอ)"); void lease;
     if (!/emitAriDirty|ari\.dirty/.test(svc)) miss.push("hotel/service.ts (createRoom/archiveRoom/setRoomStatus/updateRoomType)");
     if (!/full|resync|reconcile|ทั้งช่วง/i.test(mj.slice(mj.indexOf("channel-ari"), mj.indexOf("channel-ari") + 1500))) miss.push("ไม่มี full resync ตามรอบ");
     ok(!miss.length, `ไม่มี hook: ${miss.join(" · ")}`);
