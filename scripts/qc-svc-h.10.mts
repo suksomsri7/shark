@@ -46,6 +46,8 @@ const ROOT = join(dirname(SELF), "..");
 const LABEL = "qc-svc-h.10";
 const SUITE = "qc-svc-h.10";
 const BASE_SHA = "034d4de8a";
+// ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-u10) เลนนี้ merge session/svc (H.4/H.6) ⇒ "เพิ่มอย่างเดียว" เทียบ merge-base กับ session/svc (ตัดการลบของใบอื่น) · ไม่มี session/svc ⇒ BASE_SHA
+const DIFF_BASE = (() => { try { const mb = execFileSync("git", ["-C", ROOT, "merge-base", "HEAD", "session/svc"], { encoding: "utf8" }).trim(); execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", BASE_SHA, mb]); return mb || BASE_SHA; } catch { return BASE_SHA; } })();
 const NO_REG = process.argv.includes("--no-regression") || process.env.SVC_H10_NO_REGRESSION === "1";
 const SLUG = "svc-h10-";
 const MAIL = "svc-h10-";
@@ -326,8 +328,8 @@ const clientReach = (startRel: string): string[] => {
 const compFiles = (): string[] => { try { return readdirSync(join(ROOT, F.compDir)).filter((f) => /\.tsx?$/.test(f)).map((f) => `${F.compDir}/${f}`); } catch { return []; } };
 const intPageFiles = (): string[] => { try { return readdirSync(join(ROOT, F.intPage)).filter((f) => /\.tsx?$/.test(f)).map((f) => `${F.intPage}/${f}`); } catch { return []; } };
 const gitX = (args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-const removedLines = (rel: string): string[] => { try { return gitX(["diff", "-U0", BASE_SHA, "--", rel]).split("\n").filter((l) => /^-(?!--)/.test(l) && l.slice(1).trim() !== ""); } catch { return ["(git diff ล้ม)"]; } };
-const addedLines = (rel: string): string[] => { try { return gitX(["diff", "-U0", BASE_SHA, "--", rel]).split("\n").filter((l) => /^\+(?!\+\+)/.test(l) && l.slice(1).trim() !== "").map((l) => l.slice(1)); } catch { return []; } };
+const removedLines = (rel: string): string[] => { try { return gitX(["diff", "-U0", DIFF_BASE, "--", rel]).split("\n").filter((l) => /^-(?!--)/.test(l) && l.slice(1).trim() !== ""); } catch { return ["(git diff ล้ม)"]; } };
+const addedLines = (rel: string): string[] => { try { return gitX(["diff", "-U0", DIFF_BASE, "--", rel]).split("\n").filter((l) => /^\+(?!\+\+)/.test(l) && l.slice(1).trim() !== "").map((l) => l.slice(1)); } catch { return []; } };
 
 console.log(`\n(ฐาน ${process.env.SVC_QC_HOST ?? "?"} · ตัวดักคิวรี ${spyInstalled ? "ติดตั้งแล้ว" : "ไม่ได้ติดตั้ง"} · ตาราง OTA ${H0_OK ? "ครบ" : `ยังไม่ครบ (${H0_WHY})`} · กุญแจตัวต่อ ${KEY_SOURCE} · hotel/channel ${chL.mod ? "โหลดได้" : "ยังไม่มี"})`);
 
@@ -1397,7 +1399,7 @@ try {
   console.log("\n── F ไฟล์ที่แตะ (git) ──");
   const dirtyFiles = (paths: string[]) => gitX(["status", "--porcelain", "--untracked-files=all", "--", ...paths]).split("\n").filter(Boolean).map((l) => l.slice(3).trim().replace(/^"|"$/g, ""));
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const OWN_RE = new RegExp(`^(${[F.booking, F.index, F.rates, F.block, F.hotelActions, F.intTypes, F.intFake, F.intRegistry, F.intIndex, F.defs, F.perms, F.consumers, F.autoLabels, F.whLabels, F.minute, F.scene, F.probe, F.sds, "scripts/qc-svc-h.10.mts", "ledger/wo-notes/svc-h.10.md"].map(esc).join("|")}|${esc(CH_DIR)}/.+|${esc(F.compDir)}/.+|${esc(PAGES_DIR)}/.+|${esc(F.intPage)}/[^/]+)$`);
+  const OWN_RE = new RegExp(`^(${[F.booking, F.index, F.rates, F.block, F.hotelActions, F.intTypes, F.intFake, F.intRegistry, F.intIndex, F.defs, F.perms, F.consumers, F.autoLabels, F.whLabels, F.minute, F.scene, F.probe, F.sds, "src/lib/modules/hotel/service.ts" /* ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-f1) มติรอบ 4 */, "scripts/qc-svc-h.10.mts", "ledger/wo-notes/svc-h.10.md"].map(esc).join("|")}|${esc(CH_DIR)}/.+|${esc(F.compDir)}/.+|${esc(PAGES_DIR)}/.+|${esc(F.intPage)}/[^/]+)$`);
   {
     const ch = dirtyFiles(["src", "prisma", "public", "scripts", "docs", "vercel.json"]).filter((f) => f !== "scripts/qc-svc-h.10.mts" && f !== F.probe);
     const headHas = (() => { try { gitX(["cat-file", "-e", `HEAD:${F.chIndex}`]); return true; } catch { return false; } })();
@@ -1411,7 +1413,7 @@ try {
     ok(has(F.chIndex), `ยังไม่มี ${F.chIndex} — ตรวจตอนรับใบ`);
     const banned = dirtyFiles(["prisma", "src/lib/modules/pos", F.avail, F.pricing, F.intService, F.intHealth, "src/lib/core/integrations/secret-box.ts", "scripts/svc-qc-data.mts", "scripts/qc-svc-h.3.mts", "scripts/qc-svc-h.1.mts", "scripts/qc-svc-h.8.mts", "scripts/qc-svc-c.3.mts", "scripts/qc-svc-r0.5.mts", "scripts/qc-svc-r0.6.mts"]);
     eq(banned, [], "ไฟล์ต้องห้าม");
-    for (const f of [F.avail, F.pricing, F.intService]) { let d = ""; try { d = gitX(["diff", "--stat", BASE_SHA, "--", f]); } catch { /* */ } ok(!d.trim(), `${f} ต่างจากฐาน`); }
+    for (const f of [F.avail, F.pricing, F.intService]) { let d = ""; try { d = gitX(["diff", "--stat", DIFF_BASE, "--", f]); } catch { /* */ } ok(!d.trim(), `${f} ต่างจากฐาน`); }
   });
 } catch (e) {
   record("CRASH", "จบกลางทาง", "FAIL", errMsg(e), "CRITICAL");

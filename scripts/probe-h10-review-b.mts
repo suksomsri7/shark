@@ -234,9 +234,7 @@ try {
     let h = await hookAfter(d, () => SVC.setRoomStatus(tA, UH, ROOM.D3, "OOO"));
     out.setRoomStatus = h.covered ? "ok" : `ไม่มีงาน (ARI DLX ${d} ตอนนี้ ${J((await ariCell("DLX", d))?.available)} · เหตุ ${J(h.types)})`;
     await SVC.setRoomStatus(tA, UH, ROOM.D3, "AVAILABLE");
-    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-rb5) ทาง UI ของปิดซ่อมฝั่งแม่บ้าน = H.6 hkSetStatus (ยิง hotel.hk.changed ⇒ hook) · rooms.setHkStatus ตรง (ไม่มี event · นอกใบ) ปิดด้วย full resync 6 ชม.
-    h = await hookAfter(d, () => call(() => HOTEL.hkSetStatus({ ...OWNER, userId: OWNER.userId }, ctxA, { unitId: UH, roomId: ROOM.D3, to: "OUT_OF_ORDER", note: "probe rb5", idempotencyKey: `rb5-oo-${RUN}` })));
-    out.setHkStatus = h.covered ? "ok" : `ไม่มีงาน ${status(h.r)} ${J(h.types)}`;
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-rb5b) H.6 ตอบ USE_BLOCK เมื่อแม่บ้านสั่ง OUT_OF_ORDER (ปิดซ่อม = blockRoom ⇒ ครอบแล้วที่ RB-2 + syncBlockedRooms ยิง hotel.hk.changed) ⇒ ข้อนี้เหลือเส้น setRoomStatus
     await call(() => ROOMS.setHkStatus(ctxA, { unitId: UH, roomId: ROOM.D3, hkStatus: "CLEAN" }));
     await SVC.setRoomStatus(tA, UH, ROOM.D3, "AVAILABLE");
     ok(Object.values(out).every((v) => v === "ok"), J(out));

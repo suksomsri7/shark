@@ -91,6 +91,8 @@ try {
     return { role, unitAccess, permissions, userId: id };
   };
   const OWNER = await mkMember("owner", "OWNER", ["*"]);
+  // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-r8) หลังรวม H.4 เช็กอินต้องลงทะเบียนผู้พักก่อน (GUEST_REQUIRED) ⇒ ปิด requireRegistration ของหน่วยทดสอบ (probe นี้ตรวจ race ช่องทาง ไม่ใช่ทะเบียน)
+  { const ST = (await import("@/lib/core/settings/service")) as Any; const r = await ST.setSettings(OWNER, ctxA, [{ key: "rooms.hotel.guest.requireRegistration", scope: "UNIT", scopeId: UH, value: false }]); if (r?.ok === false) throw new Error(`ตั้ง requireRegistration: ${r.code ?? ""} ${r.reason ?? ""}`); }
   const MANAGER = await mkMember("manager", "MANAGER", [UH]);
   const FRONT = await mkMember("front", "STAFF", [UH], { "hotel.booking.manage": true, "hotel.reservation.create": true, "hotel.reservation.cancel": true });
   const MAID = await mkMember("maid", "STAFF", [UH], { "hotel.housekeeping": true });
