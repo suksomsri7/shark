@@ -79,6 +79,37 @@ export async function emitAriDirty(ctx: { tenantId: string }, input: AriDirtyInp
 
 type EvtLike = { tenantId: string; type?: string; payload: unknown; unitId?: string | null };
 
+// ───────────── hook ราคาถูกสำหรับร้านที่ไม่มีตัวต่อ (รอบ 5 · ผู้คุม: qc-hotel-money แดงเฉพาะเลน H.10) ─────────────
+// 🔴 ต้นเหตุ: hook ARI ต่อท้าย consumer ของ hotel.booking.* / rooms.occupancy.changed / hotel.checked_out / hotel.hk.changed
+//    ยิงคิวรีฐาน 1–3 รอบ **ทุก event** แม้ร้านไม่มีตัวต่อ OTA (วัดจริง +13–22 มิลลิวินาที/event ≈ +15–25%) ⇒ เมื่อคิวมี backlog
+//    (เช่น qc-svc-r0.8 ทิ้ง rooms.occupancy.changed ~400 ตัวไม่ระบาย) ตัวระบายที่มีงบเวลา 20 วิ/10 รอบ ไปไม่ถึง pos.sale.paid ของงานอื่น
+//    ⇒ บิล/บัญชีของงานอื่นค้างคิว (ไม่ throw — ช้าเฉย ๆ) · hook ของแถมต้องไม่ทำให้งานหลักของใบอื่นช้าจนหลุดรอบ
+// แก้: จำ "ร้านนี้ไม่มีตัวต่อ CHANNEL_MANAGER" ในโปรเซสสั้น ๆ (NO_CHANNEL_TTL_MS) ⇒ event ที่เหลือของร้านเดียวกัน = 0 คิวรี
+//    · จำเฉพาะผลลบ (มีตัวต่อ = ถามฐานทุกครั้งเหมือนเดิม) · ล้างทันทีเมื่อเห็นกิจกรรมช่องทางในโปรเซส (channel.ari.dirty จากการแม็ป · integration.connected)
+//    · ช่องว่างที่ยอมรับ: ร้านเพิ่งต่อตัวต่อ+แม็ปบนอินสแตนซ์อื่นภายใน TTL ⇒ event จองช่วงนั้นบนอินสแตนซ์นี้ไม่ dirty — การแม็ปยิง dirty ทั้งช่วงเอง
+//      (pushAriJobs คำนวณจากข้อมูลสดตอนส่ง) + integration.connected resync + full resync รายรอบ 6 ชม. ปิดซ้ำ
+const NO_CHANNEL_TTL_MS = 15_000;
+const NO_CHANNEL_MAX = 5_000;
+const noChannelUntil = new Map<string, number>();
+/** ล้างความจำ "ไม่มีตัวต่อ" (ทั้งหมด หรือร้านเดียว) */
+export function forgetNoChannel(tenantId?: string): void {
+  if (tenantId) noChannelUntil.delete(tenantId);
+  else noChannelUntil.clear();
+}
+/** ร้านมีตัวต่อ CHANNEL_MANAGER (ทุกสถานะ) — ผลลบจำ NO_CHANNEL_TTL_MS */
+async function tenantHasChannel(tenantId: string): Promise<boolean> {
+  const until = noChannelUntil.get(tenantId);
+  if (until !== undefined) {
+    if (until > Date.now()) return false;
+    noChannelUntil.delete(tenantId);
+  }
+  const n = await tenantDb({ tenantId }).tenantIntegration.count({ where: { kind: CHANNEL_KIND } });
+  if (n > 0) return true;
+  if (noChannelUntil.size >= NO_CHANNEL_MAX) noChannelUntil.clear();
+  noChannelUntil.set(tenantId, Date.now() + NO_CHANNEL_TTL_MS);
+  return false;
+}
+
 /** ช่วงเพดานของหน่วย (ariHorizonDays · ค่าเริ่ม 365) */
 async function horizonOf(tenantId: string, unitId: string): Promise<number> {
   const st = await resolveSettings({ tenantId }, [KEY.horizon], { unitId });
@@ -106,13 +137,14 @@ export async function enqueueAri(tenantId: string, unitId: string, fromIn: strin
     select: { id: true },
   });
   if (!conns.length) return 0;
+  const db = tenantDb({ tenantId, unitId });
+  const mapped = await db.channelRoomMap.groupBy({ by: ["connectionId"], where: { connectionId: { in: conns.map((c) => c.id) }, active: true }, _count: { _all: true } });
+  if (!mapped.length) return 0; // หน่วยไม่มีแม็ป (หอล้วน) ⇒ ไม่อ่านค่าตั้งเพดาน (รอบ 5 · ลดคิวรีต่อ event)
   const horizon = await horizonOf(tenantId, unitId);
   const from = fromIn < today ? today : fromIn;
   const last = ymdAdd(today, horizon);
   const to = toIn > last ? last : toIn;
   if (from > to) return 0;
-  const db = tenantDb({ tenantId, unitId });
-  const mapped = await db.channelRoomMap.groupBy({ by: ["connectionId"], where: { connectionId: { in: conns.map((c) => c.id) }, active: true }, _count: { _all: true } });
   let n = 0;
   for (const c of conns) {
     if (!mapped.some((m) => m.connectionId === c.id)) continue;
@@ -146,6 +178,7 @@ export async function onAriDirty(evt: EvtLike): Promise<void> {
   const p = isRec(evt?.payload) ? evt.payload : {};
   const unitId = isStr(p.unitId) ? p.unitId : isStr(evt?.unitId) ? evt.unitId : null;
   if (!isStr(evt?.tenantId) || !unitId) return;
+  forgetNoChannel(evt.tenantId); // dirty จากการแม็ป/ราคา = ร้านมีช่องทาง
   const today = bkkYmd(new Date());
   const from = isYmd(p.from) ? p.from : today;
   const to = isYmd(p.to) ? p.to : ymdAdd(today, ARI_MAX_HORIZON);
@@ -160,6 +193,7 @@ export async function ariDirtyFromBooking(evt: EvtLike): Promise<void> {
   const p = isRec(evt?.payload) ? evt.payload : {};
   const unitId = isStr(p.unitId) ? p.unitId : isStr(evt?.unitId) ? evt.unitId : null;
   if (!isStr(evt?.tenantId) || !unitId) return;
+  if (!(await tenantHasChannel(evt.tenantId))) return; // ร้านไม่มีตัวต่อ ⇒ ไม่อ่านการจอง (รอบ 5)
   const today = bkkYmd(new Date());
   if (evt.type === "hotel.booking.changed" || !isStr(p.reservationId)) {
     await enqueueAri(evt.tenantId, unitId, today, ymdAdd(today, ARI_MAX_HORIZON));
@@ -187,6 +221,7 @@ export async function ariDirtyFromOccupancy(evt: EvtLike): Promise<void> {
   const p = isRec(evt?.payload) ? evt.payload : {};
   const unitId = isStr(p.unitId) ? p.unitId : isStr(evt?.unitId) ? evt.unitId : null;
   if (!isStr(evt?.tenantId) || !unitId) return;
+  if (!(await tenantHasChannel(evt.tenantId))) return; // รอบ 5
   const today = bkkYmd(new Date());
   const from = isYmd(p.from) ? p.from : today;
   const to = isYmd(p.to) ? ymdAdd(p.to, -1) : ymdAdd(today, ARI_MAX_HORIZON);
@@ -202,6 +237,7 @@ export async function ariDirtyFromHk(evt: EvtLike): Promise<void> {
   const unitId = isStr(p.unitId) ? p.unitId : isStr(evt?.unitId) ? evt.unitId : null;
   if (!isStr(evt?.tenantId) || !unitId) return;
   if (p.from !== "OUT_OF_ORDER" && p.to !== "OUT_OF_ORDER") return;
+  if (!(await tenantHasChannel(evt.tenantId))) return; // รอบ 5
   const today = bkkYmd(new Date());
   await enqueueAri(evt.tenantId, unitId, today, ymdAdd(today, ARI_MAX_HORIZON));
 }
@@ -266,6 +302,7 @@ export async function resyncAriAll(now: Date = new Date(), budgetMs = 20_000): P
 export async function ariResyncOnConnected(evt: EvtLike): Promise<void> {
   const p = isRec(evt?.payload) ? evt.payload : {};
   if (!isStr(evt?.tenantId) || p.kind !== CHANNEL_KIND || !isStr(p.integrationId)) return;
+  forgetNoChannel(evt.tenantId); // ตัวต่อเพิ่งเชื่อม ⇒ เลิกจำผลลบของร้านนี้ (รอบ 5)
   const today = bkkYmd(new Date());
   for (const pr of await resyncPairs({ tenantId: evt.tenantId, connectionId: p.integrationId })) {
     await enqueueAri(pr.tenantId, pr.unitId, today, ymdAdd(today, ARI_MAX_HORIZON), new Date(), { connectionIds: [pr.connectionId] });
