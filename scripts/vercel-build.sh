@@ -34,4 +34,7 @@ export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=6144}"
 echo "▶ [vercel-build] tsc --noEmit (ขั้นแยก ก่อน next build · ล้ม = build ล้ม)"
 pnpm exec tsc --noEmit -p tsconfig.json
 echo "▶ [vercel-build] tsc ผ่าน → next build (ข้ามตัวตรวจ TypeScript ซ้ำในตัว next build · NODE_OPTIONS=$NODE_OPTIONS)"
-SHARK_TSC_PREBUILD_OK=1 pnpm build
+# 🔴 8 พ.ย. 2026: Turbopack compile เกิน 42 นาที (Vercel ตัดที่ 45) — กราฟ import ฝั่ง server เป็นวงใหญ่ (865 ไฟล์) + dynamic import 527 จุด
+#    ⇒ async chunk แตกต่อ route · .next/server 1.2 GB / 32k ไฟล์ · webpack commit เดียวกัน: compile 6.1 นาที · 0.11 GB · RSS 7.8 GB
+#    ⇒ ใช้ --webpack จนกว่าจะตัดวง import (ตั๋วแยก) · Vercel ต้องเป็น Enhanced (tsc ขั้นแยก RSS 9.7 GB > standard 8 GB)
+SHARK_TSC_PREBUILD_OK=1 pnpm build --webpack
