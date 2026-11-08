@@ -1,10 +1,27 @@
 # โมดูล 31: เลขา AI "Shark" (ห้องงาน · อนุมัติ · ห้องร่วม · แชทลูกค้าในแอป · ช่วยเหลือ · กิจการ/พนักงาน) — สัญญาข้อมูล
 
-> เอกสารสัญญา · 4 พ.ย. 2569 · ใบ S0.3 (+S0.4) ของ RUN "เลขา AI" · ภาษาไทย ชื่อโค้ดอังกฤษ (ตาม `_CONVENTIONS.md`)
+> เอกสารสัญญา · 4 พ.ย. 2569 · ใบ S0.3 (+S0.4) ของ RUN "เลขา AI" · **ปรับให้ตรงโค้ดที่ขึ้น production 8 พ.ย. 2569 (ใบ S3b.1 · ดู §S)** · ภาษาไทย ชื่อโค้ดอังกฤษ (ตาม `_CONVENTIONS.md`)
 > ลำดับความจริง: **โค้ดชนะแบบ** · `ledger/secretary-briefs/sec-brief-RESOLUTIONS.md` (R-K1…R-K20 · §B–§F) ชนะ `ledger/REVIEW-SECRETARY-DESIGN-2026-11-04.md` ซึ่งชนะ `ledger/DESIGN-SECRETARY.md` และ `ledger/SECRETARY-MASTER-PLAN.md` §3
 > ชื่อฟังก์ชัน/บรรทัดของของเดิมอ้างจากรีวิว S0.1 (`file:line` ของทรี session/secretary) · ภาพ: `ledger/design-secretary/sec-{a,b,c,d,g,h,k}.jpg` + `sec-dark-*.jpg`
 > API มือถือ: `docs/api/SECRETARY-API.md` · seed QC: `scripts/seed-secretary-qc.mts` + `scripts/sec-qc-data.mts` · แพ็กฟรี: `src/lib/ai/secretary/pack.ts` (S0.4 · มีแล้ว)
-> ไฟล์ที่ "วางแผน" (ยังไม่มี) เขียนแบบ "ชื่อไฟล์ (แผน · โฟลเดอร์)" ไม่ใส่ path เต็มในเครื่องหมายโค้ด — ตามแบบ `20-crm-v2.md` (fitness F7 ตรวจเฉพาะไฟล์ที่มีจริง)
+> (S3b.1: ทุกไฟล์ที่เคยเขียนว่า "แผน" มีจริงแล้ว — ยกเว้นที่ระบุว่า "ไม่ได้ทำ") ไฟล์ที่ "วางแผน" (ยังไม่มี) เขียนแบบ "ชื่อไฟล์ (แผน · โฟลเดอร์)" ไม่ใส่ path เต็มในเครื่องหมายโค้ด — ตามแบบ `20-crm-v2.md` (fitness F7 ตรวจเฉพาะไฟล์ที่มีจริง)
+
+---
+
+## §S. สถานะ ณ 8 พ.ย. 2026 (ใบ S3b.1)
+
+- **production**: shark.in.th = `main` c82cc727a (Vercel build machine **Enhanced** + `scripts/vercel-build.sh` เรียก `pnpm build --webpack` — Turbopack compile เกิน 45 นาที) · migration 46 ไฟล์ลง prod แล้ว (POS v2 + SVC v2 + เลขา `20261227000000_secretary_a` · `20261227100000_secretary_b` · additive ทั้งหมด) · `AI_PROVIDER=anthropic`
+- **ครบในรุ่นนี้**: S0 · S1 (29 ใบ) · S2 (แอป 35 หน้า + backoffice G5/H3/H4) · S3a.1 (นักล่า 6 เลนส์ + โมเดลจริง 3/3) · S3a.2 (ขึ้น prod) · S3a.5 · S3a.6 — 55/60 ใบ
+- **S3a.5 ลิงก์สาธารณะใบเสนอราคา**: อนุมัติ `chat.send` kind `quote` ⇒ ออกเอกสาร (เฉพาะ QUOTATION · ใบต้องเกิดในห้องนั้น) + token ⇒ หน้า `src/app/(store)/doc/[token]/route.ts` (HTML · rate limit ต่อ IP/ต่อ token · noindex · ปิด PII 4 หลักท้าย) + `src/app/(store)/doc/[token]/pdf/route.ts` (`@react-pdf/renderer` 4.3.0 + ฟอนต์ Sarabun OFL)
+- **S3a.6 แปลภาษาห้องแชทลูกค้า**: `POST /api/mobile/inbox/conversations/[id]/messages/[mid]/translate` · `POST …/conversations/[id]/translate-draft` · ใช้ตัวแปลเดิม (เครดิต `CHAT_TRANSLATE` · แคชต่อข้อความ · สวิตช์ `translateEnabled` · คีย์ `chat.translate.use`) · ร่าง ai-suggest มี `gloss` ภาษาทีม · PII ลูกค้าปิดก่อนเข้าโมเดล — แทนข้อ "แปลภาษาใน K2" ที่ §11 เคยตัด
+- **cron**: worker ห้องเลขาเก็บตก `secretary.roomJobs` + `chat.sla` ลงทะเบียนเป็นงานรายนาทีใน `scripts/crm-cron.mts` (รันบน VPS ไม่ใช่ Vercel) · งานประจำ = route hourly เดิม (`src/app/api/cron/hourly`)
+- **ยังไม่ทำ/ต่างจากสัญญาเดิม** (ตรวจกับโค้ด 8 พ.ย.):
+  - event ใน §9 **ไม่มีสักตัว** ใน `src` (`ai.room.*` · `ai.action.*` · `staff.invite.accepted` · `chat.conversation.auto_assigned`) — push ทำตรงผ่าน `notifyUser` แทน
+  - `notifyUser(…, "approval")` ยังไม่มีผู้เรียก (ค่าตั้ง "รออนุมัติ" มีแต่ยังไม่ใช้)
+  - `AiScheduledTask.channels` บันทึกแล้วแต่ `worker.ts` ยังไม่กรอง (push ทุกครั้ง)
+  - `SECRETARY_LAUNCH_AT` ใน `pack.ts` ยังเป็น `2026-11-04T00:00:00.000Z` (ขั้น (4) ใน §10 ยังไม่ทำ — ร้านที่สร้างบน prod 4–8 พ.ย. จะไม่ได้เครดิตต้อนรับ · ให้เจ้าของตัดสิน)
+  - แอปยังเป็น 1.0.0 (build 24) — บิลด์ 2.0 = ใบ S3a.3 (รอ Expo token + คำสั่งเจ้าของ)
+- หนี้/ตั๋วที่เหลือ: `ledger/HANDOVER-2026-11-SECRETARY.md` · ข้อความเปิดเผย AI/PDPA (ร่าง): `docs/legal/secretary-ai-disclosure.md`
 
 ---
 
@@ -45,7 +62,7 @@
 | R-K6 | โควตา = scope `"jobs"` ที่สาม · นับที่ `startRoom` | §8 |
 | R-K7 | `canRunAi(tenantId, {scope})` ชั้นเดียว · ร้านหลัง `SECRETARY_LAUNCH_AT` ไม่ได้ GRANT | §5.14 §5.18 §8 |
 | R-K8 | ตอบใน request + `after()` · เก็บตกด้วย cron hourly/outbox · **ไม่มี cron รายนาที** | §5.5 §11 |
-| R-K9/K10 | `PhoneOtp` + `UserPhone` (global) · `phone-auth.ts` (แผน · core/) · SMS mock ใน QC | §4 §5.22 |
+| R-K9/K10 | `PhoneOtp` + `UserPhone` (global) · `src/lib/core/phone-auth.ts` (มีแล้ว) · SMS mock ใน QC | §4 §5.22 |
 | R-K11 | `StaffInvite` — ไม่สร้าง Membership จนกว่าจะรับ | §4 §5.25 |
 | R-K12 | `SupportCase.{source, category, roomId}` · `listCasesForUser` · `assignCase` · ระงับเลขา = `setAccess` ทุกโมดูล OFF | §5.20 §5.21 |
 | R-K13 | route มือถือรับ `systemId?` · ด่าน Bearer ใช้ค่าคงที่จาก `guard.ts`/`permissions.ts` · cursor `before?` | `SECRETARY-API.md` |
@@ -118,7 +135,7 @@ A1 ──แตะห้อง──▶ A3 กำลังทำ / A4 รออ�
    ──?──▶ H1 ──▶ H2   ·   push ──▶ data.link (ห้องงาน / ห้องลูกค้า / เคส)  ·  A6 รวมรออนุมัติทุกกิจการ · A7 งานประจำ
 backoffice (เว็บแพลตฟอร์ม): H3 รายการเรื่องแจ้ง → H4 ห้องแชทกับผู้ใช้ · G5 คิวเลขา
 ```
-จอใหม่อยู่ในโฟลเดอร์ `apps/mobile/app/(app)/secretary` · ข้อมูลผ่าน secretary.ts (แผน · apps/mobile/src/api/) ที่ type จากเอกสารนี้ + `docs/api/SECRETARY-API.md` (COMMON §C.12)
+จอใหม่อยู่ในโฟลเดอร์ `apps/mobile/app/(app)/secretary` · ข้อมูลผ่าน `apps/mobile/src/api/secretary.ts` ที่ type จากเอกสารนี้ + `docs/api/SECRETARY-API.md` (COMMON §C.12)
 
 ### 2.3 ตารางเส้นทางแอป (ใบ S2.1 · มีแล้ว · expo-router · deep link `sharkai://<path>` ตาม path โดยไม่แก้ native)
 ทุกจอใหม่ = โครง `SecSkeleton` (พื้น Airy + `SecTopBar` ตามโซน + หัวข้อ i18n + การ์ด "กำลังสร้าง (ใบ S2.x)") จนใบที่วาดจริงแทน · ไม่มีแถบล่าง · Stack ของตัวเองต่อโฟลเดอร์ (`secretary/_layout` · `customers/_layout` · `business/_layout` ครอบด้วย `BusinessSwitcherHost`) · Drawer ของ 1.0 เพิ่ม `Drawer.Screen` index (คงลำดับแรก) + secretary/customers/business
@@ -150,7 +167,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | `/business/new` | `business/new.tsx` | เลขา | `sec-business-new` | G1 | S2.21 |
 - ทางเข้า: หน้าแรก 1.0 `(app)/index.tsx` ปุ่มลอย `home-open-secretary` → `/secretary` (ปุ่มเดียว · สี `C` ของ 1.0)
 - แถบบน `src/components/secretary/SecTopBar.tsx`: ซ้าย เลขา(message-circle→/secretary) · ลูกค้า(inbox→/customers) · ทีม(users→/secretary/staff) · ขวา ?(→/secretary/help) + +(เลขา→/secretary/new · ทีม→/secretary/staff/invite · ลูกค้าไม่มี) · กลาง = ชื่อกิจการ → `BusinessSwitcherSheet` (สลับ = `switchTenant` ของ 1.0 · "เลขาของฉัน" → /secretary/settings/secretary · "+ เพิ่มกิจการใหม่" → /business/new) · badge: `secretary/inbox/count.canApprove` · `inbox/unread.unread` (พลาด = 0)
-- ข้อมูลที่ใบ S2.1 อ่าน (`apps/mobile/src/api/secretary.ts`): `GET secretary/me` (ภาษา i18n = `languages[0]` · ชื่อเลขา) · `GET secretary/rooms?scope=mine` · `GET secretary/inbox/count` (เส้นนี้ยังไม่อยู่ใน SECRETARY-API.md — รอผู้คุมตัดสิน) · `GET inbox/unread`
+- ข้อมูลที่ใบ S2.1 อ่าน (`apps/mobile/src/api/secretary.ts`): `GET secretary/me` (ภาษา i18n = `languages[0]` · ชื่อเลขา) · `GET secretary/rooms?scope=mine` · `GET secretary/inbox/count` (มีแล้ว · S2.14 แถบบนเปลี่ยนไปใช้ `GET secretary/badges` เส้นเดียว) · `GET inbox/unread`
 - i18n: `apps/mobile/src/i18n/{index,th,en}.ts` · `useT()` · คีย์ `sec.*` · ใบถัดไปเพิ่มคีย์ทั้งสองไฟล์ · จอ 1.0 ไม่ใช้
 
 #### 2.3b ตารางจอ ↔ route ↔ endpoint (ใบ S2.14 · ของจริงหลังต่อ API · ทุกเส้นอยู่ใน `apps/mobile/src/api/{secretary,inbox,auth}.ts`)
@@ -169,7 +186,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | /secretary/staff/[membershipId] | `secretary/staff/[membershipId].tsx` | G3 | GET secretary/staff · secretary/access · inbox/staff | PUT secretary/staff/[id] {role?, unitIds?, levels, chat} · POST staff/[id]/suspend · staff/[id]/remove | perm-loading · perm-missing (ไม่อยู่ในกิจการ) · perm-error |
 | /secretary/staff/invite | `secretary/staff/invite.tsx` | G2 | GET secretary/staff (สาขา) · secretary/access (โมดูล) · secretary/staff/invites | POST secretary/staff/invite {name, phone, role, unitIds, levels, chat} (S2.14 · server แปลงคีย์) · resend/DELETE คำเชิญ | inv-denied · inv-note (เหตุผลไทย) |
 | /secretary/settings | `secretary/settings/index.tsx` | B1 (หน้ารวม) | GET secretary/quota | แถวตั้งค่า → B2–B8 · G4 | – |
-| /secretary/settings/secretary | `secretary/settings/secretary.tsx` | B2 | GET secretary (ตัวตน) · secretary/quota · secretary/rooms · secretary/inbox/count | PUT secretary {name, tone, suffix, languages} | sec-me-note (ล้ม) |
+| /secretary/settings/secretary | `secretary/settings/secretary.tsx` | B2 | GET secretary/secretary (ตัวตน) · secretary/quota · secretary/rooms · secretary/inbox/count | PUT secretary/secretary {name, tone, suffix, languages} | sec-me-note (ล้ม) |
 | /secretary/settings/access | `secretary/settings/access.tsx` | B3 | GET secretary/access | PUT secretary/access {module, level} (OWNER) | sec-access-loading · sec-access-note |
 | /secretary/settings/rules | `secretary/settings/rules.tsx` | B4 | GET secretary/rules · secretary/staff (ผู้อนุมัติ) | PUT secretary/rules | sec-rules-note |
 | /secretary/settings/log | `secretary/settings/log.tsx` | B5 | GET secretary/log?filter · secretary/staff | POST secretary/log/[id]/undo | sec-log-loading · sec-log-empty · sec-log-error |
@@ -179,7 +196,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | /secretary/settings/customers (กฎรับเรื่อง/เวร K5) | `secretary/settings/customers.tsx` | K5 | GET inbox/routing | PUT inbox/routing · POST inbox/shift | cust-set-note |
 | /secretary/settings/account | `secretary/settings/account.tsx` | G4 | GET /api/mobile/me (appleLinked · pendingEmail · phone) · secretary/notify · inbox/staff · inbox/shift (S2.14) · secretary/invites/pending | PUT secretary/notify · POST inbox/shift · GET account/delete/preview · POST account/delete · ออกจากระบบ | acct-note |
 | /secretary/settings/quota | `secretary/settings/quota.tsx` | B8 | GET secretary/quota | – | sec-quota-loading · sec-quota-error |
-| /secretary/onboarding/name | `secretary/onboarding/name.tsx` | C1 (ตั้งชื่อ) | GET secretary | PUT secretary → /secretary | sec-onb-err |
+| /secretary/onboarding/name | `secretary/onboarding/name.tsx` | C1 (ตั้งชื่อ) | GET secretary/secretary | PUT secretary/secretary → /secretary | sec-onb-err |
 | /secretary/help | `secretary/help/index.tsx` | H1 | GET secretary/support/cases (+ secretary/rooms/[id] เมื่อแนบห้อง) | POST secretary/support/cases · POST support/upload → /secretary/help/[caseId] | help-loading · help-empty · ข้อความล้ม |
 | /secretary/help/[caseId] | `secretary/help/[caseId].tsx` | H2 | GET secretary/support/cases/[id] (poll 15 วิ) | POST cases/[id]/reply · cases/[id]/resolve · support/upload | help-case-loading · help-case-error · help-gone (404) |
 | /customers | `customers/index.tsx` | K1 | GET inbox/systems · inbox/conversations?status&assignee&channel&q&before · inbox/routing (เวร) | แตะแถว → /customers/[id]?s= | cust-loading · cust-empty · cust-offline · cust-denied |
@@ -204,7 +221,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | **A3** | งานกำลังทำ (sec-a) | การ์ดขั้นตอนทีละระบบ · "ทำงานอยู่เบื้องหลัง" · ปิดแอปได้ | `AiRoomJob` · `enqueueRoomJob` · `runRoomJobs` · `AiPlan.stepsJson` | S1.5 · S2.4 |
 | **A4** | งานรออนุมัติ (sec-a) | การ์ดอนุมัติ · "ทำไมต้องอนุมัติ" · แก้ก่อนอนุมัติ · ตีกลับ | `classOfKind` · `approvalGate` · `executeProposal` · `editProposal` · `rejectWithNote` | S1.7 · S1.10 · S2.4 |
 | **A5** | งานเสร็จ (sec-a) | สรุป · ลิงก์ของจริงที่เปลี่ยน · ย้อนกลับ/สอน/ทำซ้ำ | `AiActionLog` · `undoAction` · `listLog` · `{note, entity}` จาก dispatch (§B.5) | S1.8 · S2.4 |
-| **A6** | รออนุมัติรวมทุกกิจการ (sec-a) | รายการข้อเสนอ PENDING ทุกกิจการที่ผู้ใช้อนุมัติได้ | `inboxForUser` · `requireMobileUser` (แผน) | S1.11 · S2.5 |
+| **A6** | รออนุมัติรวมทุกกิจการ (sec-a) | รายการข้อเสนอ PENDING ทุกกิจการที่ผู้ใช้อนุมัติได้ | `inboxForUser` · `userGate` (`api/mobile/secretary/_shared.ts`) | S1.11 · S2.5 |
 | **A7** | งานประจำ (sec-a) | รายการงาน · ทุกวัน/ทุกสัปดาห์ · ชั่วโมง · ช่องทาง · หยุดชั่วคราว | `AiScheduledTask.{ownerUserId, frequency, days, channels}` · `runScheduledTasks` | S1.9 · S2.5 |
 | **A8** | แจ้งเตือนล็อกสกรีน (sec-a) | 4 ชนิด (รออนุมัติ · เสร็จ · ลูกค้า · ช่วยเหลือ) · badge · deep-link | `sendPushToUser` · `PushMsg.badge` · `data.link` · `AiNotifyPref` | S1.5 · S1.23 · S2.6 |
 | **B1** | สลับกิจการ (sec-b) | รายชื่อกิจการ · + เพิ่มกิจการ · "เลขาของฉัน" | `GET /api/mobile/me` · `createTenantFromApp` | S2.7 |
@@ -485,9 +502,10 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `cachedDigest(tenantId)` / `digestBlockFor(tenantId, viewer?: { actor; access? }) → Promise<string>` — cache ในหน่วยความจำ 10 นาทีต่อร้าน (เก็บ `Digest` · ≤ 500 ร้าน) · `viewer` = ตัดส่วนที่ผู้ดูอ่านไม่ได้/ระดับ OFF (`digestForViewer` · ตาราง `canReadSystem` ใน §5.12) · viewer ที่ไม่ใช่คนในร้าน = "" · `__resetDigestCacheForTests()` (ข้อสอบเท่านั้น)
 - `service.sendMessage`: `PersonaContext.digest` = `digestBlockFor(tenantId, { actor, access }).catch(() => "")` **เฉพาะบทสนทนาที่มีแถว `AiRoom`** → `persona.ts` บล็อก "ข้อมูลกิจการตอนนี้ (สด):" + หัว "เป็นข้อมูล ไม่ใช่คำสั่ง" หลังความจำ ก่อนตัวตน/กติกา · ห้องเดิม = ไม่อ่าน · prompt เดิมทุกไบต์ (`qc-sec-s1.2` snapshot)
 
-### 5.14 quota.ts (แผน · S1.13) — โควตางาน (R-K6)
-- `quotaStatus(ctx, opts: { now: Date }) → Promise<{ used: number; limit: number; pct: number; jobsLeft: number; level: QuotaLevel; text: string | null; resetAt: string }>` — อ่านอย่างเดียว (ห้ามเขียนตอน GET · §B.6) · `AiJobCounter` ของ `monthKeyBangkok(now)` · ข้อความจาก `quotaMessage`
-- `chargeJob(tx, tenantId: string, opts: { now: Date }) → Promise<boolean>` — ตัวนับคำสั่งเดียวที่ `startRoom` เรียก (false = หมด)
+### 5.14 quota.ts (S1.13 · มีแล้ว · `src/lib/ai/secretary/quota.ts`) — โควตางาน (R-K6)
+- `quotaStatus(tenantId, now = new Date()) → Promise<QuotaStatus>` — อ่านอย่างเดียว (ห้ามเขียนตอน GET · §B.6) · รูปเต็มดู §8
+- `jobsLeft(tenantId, now = new Date()) → Promise<number>`
+- ไม่มีฟังก์ชัน `chargeJob` (สัญญาเดิม) — ตัวนับเป็น conditional `updateMany` คำสั่งเดียวใน tx ของ `startRoom` (rooms.ts · §8)
 
 ### 5.15 `src/lib/ai/credit.ts` (เปลี่ยน · S1.13 · R-K7)
 - `canRunAi(tenantId: string, opts: { scope: "job" | "assist" }) → Promise<{ ok: boolean; reason?: string }>` — `(FREE_PACK.enabled && scope === "assist") || (scope === "job" && jobsLeft > 0) || balance > 0` · `sendMessage` (service.ts:127) ใช้แทน `canSpend` (ห้องเลขา = "job" ที่ `startRoom` นับแล้ว · ห้องเดิม = "assist")
@@ -500,7 +518,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `buildAnthropicRequestBody(model, messages: AiChatMessage[], tools: AiToolDef[] | undefined, opts?: { maxTokens? }) → Record<string, unknown>` — pure · `system` block เดียว + `cache_control` · tool_use/tool_result (ผลที่ติดกันรวม user message เดียว) · รูป base64/url · tools `input_schema` + `cache_control` ตัวสุดท้าย · `max_tokens` ปริยาย 1024 · ไม่มีพารามิเตอร์สุ่ม/thinking
 - `parseAnthropicReply(json: unknown, fallbackModel: string) → AiReply` — pure · `tokensIn = input + cache_creation_input + cache_read_input` · `tokensOut = output` · refusal ⇒ throw "AI ปฏิเสธคำขอนี้ (…)" · ว่าง ⇒ throw "AI provider ตอบว่าง"
 - `class AnthropicProvider(key: string, model: string, deps?: { fetchImpl?: typeof fetch; version?: string }) implements AiProvider` — `readonly model` · `chat(messages, opts?: { maxTokens?; tools? }) → Promise<AiReply>` · `POST https://api.anthropic.com/v1/messages` (`x-api-key` · `anthropic-version: 2023-06-01`) · `!res.ok` ⇒ throw `AI provider <status>: …`
-- `resolveProvider(tier = "smart") → AiProvider | null` — `SHARK_AI_MOCK=1` ⇒ Mock · `AI_PROVIDER=anthropic` ⇒ `SHARK_ANTHROPIC_KEY` (ไม่มี ⇒ null) + `toAnthropicModelId(SHARK_AI_MODEL ?? FAST/SMART ตาม tier)` · อื่น ๆ ⇒ OpenRouter ทางเดิม · `pricing.priceOf` จับ id ตรงด้วย substring เดิม (ราคา sonnet ยังเป็นค่าเก่า — หนี้ S3a.2)
+- `resolveProvider(tier = "smart") → AiProvider | null` — `SHARK_AI_MOCK=1` ⇒ Mock · `AI_PROVIDER=anthropic` ⇒ `SHARK_ANTHROPIC_KEY` (ไม่มี ⇒ null) + `toAnthropicModelId(SHARK_AI_MODEL ?? FAST/SMART ตาม tier)` · อื่น ๆ ⇒ OpenRouter ทางเดิม · `pricing.priceOf` จับ id ตรงด้วย substring เดิม (`pricing.ts` คิดแคชเขียน ×1.25 / อ่าน ×0.1 ของราคา input แล้ว · R-Z44)
 
 ### 5.17 `src/lib/ai/scheduled.ts` (เปลี่ยน · S1.9 · มีแล้ว · R-K5 · R-K8b)
 - `FREQUENCIES = ["DAILY","WEEKLY","MONTHLY"]` · `CHANNELS = ["push","room"]` · `TaskInput = { instruction; hourBkk; ownerUserId?; frequency?; days?; channels? }`
@@ -520,11 +538,13 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `visibleConversationWhere(s)` — เดิม + `OR { id: { in: [...memberOf] } }` + (tenantRooms) `OR { room: { isNot: null } }` · sight ไม่มีสองช่อง = รูปเดิม
 - OWNER เห็นห้องของคนอื่น **เฉพาะห้องที่มีแถว `AiRoom`** — ห้อง `u~` เดิมที่ไม่มี AiRoom ยังไม่มีใครเห็น (baseline `qc-ai-*` คงเดิม) · `sightOf`/`sightOfConfirmer` ไม่เปลี่ยน (ตัวอ่าน DB เติมผ่าน `withRoomSight`)
 
-### 5.19 phone-auth.ts (แผน · `src/lib/core` · S1.19 · R-K9/K10) — ไม่ import env กลาง (แบบ `sms.ts`)
-- `requestPhoneOtp(phone: string, ip: string | null, opts?: { now?: Date }) → Promise<{ ok: true; resendAfterSec: number } | { ok: false; reason: string }>` — `toE164Thai` · 6 หลัก · หมดอายุ 10 นาที · ผิดได้ 5 ครั้ง · ขอซ้ำทุก 60 วิ · rate-limit ต่อเบอร์ + ต่อ IP (`checkRateLimitDb` rate-limit-db.ts:38) · เก็บ `codeHash` เท่านั้น · `SMS_PROVIDER=mock` เขียนรหัสลง `logOps` (QC)
-- `verifyPhoneOtp(phone: string, code: string, opts?: { now?: Date }) → Promise<{ ok: true; userId: string | null } | { ok: false; reason: string }>` — `consumedAt` claim คำสั่งเดียว · `userId = null` = เบอร์ใหม่ (แอปไปจอสมัคร)
-- `registerWithPhone(input: { phone; name; email; otpTicket }) → Promise<{ ok: true; userId } | { ok: false; reason }>` — `prisma.user.create({email, name})` + `UserPhone` ใน tx เดียว · อีเมลซ้ำแต่เบอร์ใหม่ ⇒ "อีเมลนี้มีบัญชีแล้ว เข้าด้วยอีเมลแล้วผูกเบอร์" (R8)
-- `bindPhone(userId: string, phone: string, code: string) → Promise<{ ok: boolean; reason? }>` — บัญชีเดิมผูกเบอร์ · `GET /api/mobile/me` เพิ่ม `phone` (nullable)
+### 5.19 phone-auth.ts (S1.19 · มีแล้ว · `src/lib/core/phone-auth.ts` · R-K9/K10) — ไม่ import env กลาง (แบบ `sms.ts`)
+- ค่าคงที่: `PHONE_OTP_TTL_MS` 10 นาที · `PHONE_OTP_MAX_ATTEMPTS` 5 · `PHONE_RESEND_SEC` 60 · rate limit ต่อเบอร์/ต่อ IP/ต่อวัน (`PHONE_RL_*` · `PHONE_VERIFY_*`)
+- `normalizeThaiMobile(raw) → string | null` (E.164) · `requestPhoneOtp(...)` — 6 หลัก · เก็บ `codeHash` เท่านั้น · `SMS_PROVIDER=mock` ใช้ได้เฉพาะนอก `APP_ENV=production`
+- `verifyPhoneOtp(...)` · `consumePhoneOtp(otpId)` (claim คำสั่งเดียว) · `verifyRateLimit(ip, phone)`
+- `signupWithPhone(...)` — สร้าง `User` (อีเมล placeholder `<เบอร์>@phone.shark.in.th` เมื่อไม่ให้อีเมล · `phonePlaceholderEmail`/`isPhonePlaceholderEmail`) + `UserPhone` ใน tx เดียว (แทนชื่อเดิม `registerWithPhone`)
+- `linkPhoneToUser(...)` — บัญชีเดิมผูกเบอร์ (แทนชื่อเดิม `bindPhone`) · `phoneOfUser(userId)` · `GET /api/mobile/me` มี `phone` (nullable)
+- `publicEmailOf` / `publicNameOf` — ไม่โชว์อีเมล placeholder/เบอร์เป็นชื่อ (R-Z26)
 
 ### 5.20 `src/lib/support/service.ts` (เปลี่ยน · ฝั่งร้าน · S1.17 · มีแล้ว · R-K12)
 - `CASE_CATEGORIES = ["secretary_wrong", "bug", "question", "billing", "feature", "other"]` (ชิปหมวดของจอ H1)
@@ -685,7 +705,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
   - handoff (human/money/complaint/unknown) + `afterHoursHandoff` ⇒ ป้าย "รอคน" ใน `ChatConversation.tags` (UPDATE คำสั่งเดียว `NOT tags @> '["รอคน"]'` = ไม่ซ้ำ) ทุกครั้ง + **ครั้งแรกของห้องต่อวันไทยเท่านั้น** (R-S1.22e): `ChatConversationEvent` type `STATUS_CHANGED` meta `{ ai: "handoff", reason }` (`createdAt = now`) + push `notifyUser(kind "inbox")` ถึง OWNER/MANAGER ทุกคน · answered/disabled/no_window/in_hours ไม่มีผลข้างเคียง
 - `setAfterHours`: `by.tenantId` (ชนิดบังคับ) ไม่ตรง ⇒ Forbidden + ตรวจ Membership OWNER ที่รับแล้วของ `by.userId` ในร้านจากฐานเสมอ · disclosure ต้องมี /AI|เอไอ|ผู้ช่วย/ (R-S1.22d) ไม่งั้น throw ไทย · แถวที่ไม่ผ่าน = ข้อความปริยาย
 - hook (`chat/service.ts`): `receiveInbound` + `receiveExternalInbound` หลังบันทึกข้อความลูกค้า + announce + auto-link — เฉพาะ TEXT ที่มีตัวอักษร · ข้อความสด (`sentAt` ไม่ระบุหรือไม่เก่ากว่า 10 นาที — ประวัติที่ย้ายเข้า ไม่ตอบ) · ไม่ใช่ซ้ำ (P2002 คืนก่อน) · ไม่ใช่ `LINK_CODE_MASK` (ข้อความแทนรหัสผูก LINE · ค่าคงที่ย้ายไป `chat/link-code.ts`) · `scheduleAfterHours`: ในคำขอ = `after()` · นอกคำขอ (`after()` โยน) = await · error ⇒ `logOps("WARN","chat",…)` ไม่ทำให้ inbound ล้ม
-- `chat/ai-suggest.suggestReply` (S1.22): ด่าน = `canRunAi(tenantId, { scope: "assist" })` (ชนเพดานวัน ⇒ ข้อความ "วันนี้…" · อื่น ⇒ `outOfCreditMessage()`) · `source?: "web" | "app"` (ปริยาย web · มีผลแค่หมายเหตุต้นทุน) · ไม่แตะ `AiJobCounter` (K4) · `recordSuggestionOutcome` → `learn.recordOutcome` = **ยังไม่ต่อ** (S1.15 ยังไม่มี `learn.ts` — ใบ S1.15 ต่อเอง: SENT_EDITED⇒EDITED · SENT_AS_IS⇒APPROVED · IGNORED⇒REJECTED)
+- `chat/ai-suggest.suggestReply` (S1.22): ด่าน = `canRunAi(tenantId, { scope: "assist" })` (ชนเพดานวัน ⇒ ข้อความ "วันนี้…" · อื่น ⇒ `outOfCreditMessage()`) · `source?: "web" | "app"` (ปริยาย web · มีผลแค่หมายเหตุต้นทุน) · ไม่แตะ `AiJobCounter` (K4) · `recordSuggestionOutcome` → `learnFromSuggestion` → `learn.recordOutcome` = **ต่อแล้ว** (S1.15 · best-effort ไม่ throw)
 
 ---
 
@@ -786,6 +806,8 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 
 ไม่มี event ใหม่ของ support (ใช้ push ตรงใน `addPlatformMessage` เดิม) · ไม่มี event ที่ใบ S0.3/S0.4 emit
 
+> **⚠️ สถานะจริง 8 พ.ย. (S3b.1):** ตารางข้างบนเป็นสัญญา — **ไม่มี event ตัวใดถูก emit ในโค้ดที่ขึ้น prod** (grep `src` ไม่พบ) · push ทั้งหมดผ่าน `notifyUser` ตรง (worker · routing · invite · after-hours · support) · ถ้าจะเปิด automation/webhook ของเลขา = ใบใหม่ (consumer + ป้าย 2 ที่ + replay)
+
 **kind ข้อเสนอที่ใบเลขาเพิ่ม (ไม่มี event ใหม่ · ใช้ event เดิมของโมดูลปลายทาง):**
 
 | kind | สิทธิ์ผู้อนุมัติ (`KIND_ACCESS`) | ปลายทาง | ชั้น (`classOfKind`) | ย้อน | ใบ |
@@ -812,7 +834,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | X11 ต้นทุนและโควตา | ทุกทางที่เรียกโมเดล | ทุกการเรียกคิดเงิน (`chargeUsageSafe`) · หมด = พัก · ผู้ใช้เห็นงาน/% เท่านั้น |
 | X8a บริบทลูกค้า (S1.22) | ห้องเลขาที่ผูกห้องลูกค้า · ตอบนอกเวลา | `customerContextOf` = สายตาของคนที่พิมพ์ (สิทธิ์อ่านแชท + สาขา · ส่วน CRM/บัญชี/สมาชิกตามสิทธิ์โมดูลของเขา) · ไม่มีเบอร์/อีเมล/ที่อยู่/เลขบัตร/โน้ตภายใน · ตอบนอกเวลา: โมเดลเห็นแค่ข้อความลูกค้าข้อนี้ (ปิด PII) + ข้อมูลร้าน · ทุกคำตอบลงท้ายข้อความเปิดเผยว่าเป็น AI (`aiDisclosure`) + senderName "Shark (ผู้ช่วย AI)" · เงิน/ร้องเรียน/ไม่รู้ = ส่งต่อคน ไม่ให้โมเดลตอบ · ตอบเองปิดไว้ก่อน (OWNER เปิด) |
 
-**ลำดับ deploy (RESOLUTIONS §E · บังคับโดย R-K2):** (1) `prisma migrate deploy` (secretary_a) → (2) ตรวจ `_prisma_migrations` → (3) deploy โค้ด → (4) ตั้ง `SECRETARY_LAUNCH_AT` ใน pack.ts = เวลาที่ deploy จริง (แก้ก่อน build prod) → (5) `SMS_PROVIDER` จริง · `AI_PROVIDER=anthropic` เมื่อมีคีย์ · ไม่มี `eas build`/`eas update`/ส่งสโตร์จากเลน (S3a.3 ผู้คุมรันตามคำสั่งเจ้าของ)
+**ลำดับ deploy (RESOLUTIONS §E · บังคับโดย R-K2):** (1) `prisma migrate deploy` (secretary_a) → (2) ตรวจ `_prisma_migrations` → (3) deploy โค้ด → (4) ตั้ง `SECRETARY_LAUNCH_AT` ใน pack.ts = เวลาที่ deploy จริง (แก้ก่อน build prod · **⚠️ 8 พ.ย. ยังเป็น 2026-11-04 — ดู §S**) → (5) `SMS_PROVIDER` จริง · `AI_PROVIDER=anthropic` เมื่อมีคีย์ · ไม่มี `eas build`/`eas update`/ส่งสโตร์จากเลน (S3a.3 ผู้คุมรันตามคำสั่งเจ้าของ)
 
 ข้อกฎหมาย: กิจการ = ผู้ควบคุมข้อมูล (นโยบายความเป็นส่วนตัวต้องระบุการใช้ AI) · SHARK = ผู้ประมวลผล (ต้องมี DPA ในข้อตกลง) · ตรวจสัญญาผู้ให้บริการโมเดลเรื่องไม่เก็บข้อมูลไปเทรน — ให้ที่ปรึกษาตรวจก่อนเปิดจริง (DESIGN §5)
 
@@ -829,7 +851,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | **cron รายนาที** (worker / นาทีของงานประจำ / ยกระดับ SLA) | R-K8 — `vercel.json` มี tick รายวัน + hourly เท่านั้น · ใช้ตอบใน request + `after()` + เก็บตกใน hourly/outbox · งานประจำไม่มีคอลัมน์นาที |
 | **เครื่องมือ SVC v2 ใหม่** (deposit/online/planner/no-show/dorm) | R-K17 — เครื่องมือ POS v2/SVC v2 ที่มีอยู่ใช้ได้แล้ว · ไม่เพิ่มของใหม่ ยกเว้น `booking.refund_deposit` (R-K16) |
 | งานประจำรายเดือน/นาทีที่ตั้ง | มติ 16 — เหลือ ทุกวัน/ทุกสัปดาห์ (คอลัมน์ `frequency` รับ MONTHLY ได้แต่ UI ไม่เปิด) |
-| ไมค์สั่งงาน · กฎ TOPIC ใน K5 · กล่อง "เปิดต่อจากทุกที่" ใน A8 · แปลภาษา/อัดเสียงใน K2 | มติ 16 |
+| ไมค์สั่งงาน · กฎ TOPIC ใน K5 · กล่อง "เปิดต่อจากทุกที่" ใน A8 · อัดเสียงใน K2 | มติ 16 (แปลภาษาใน K2 กลับมาเป็นใบ S3a.6 · เจ้าของสั่ง 7 พ.ย. · ดู §S) |
 | Facebook/IG/WhatsApp ในแชทลูกค้า | มติ 14 (รุ่นถัดไป · โมดูล chat ยังไม่มี adapter) |
 | ตัวส่งออกชุดข้อมูลเทรน + ตัวนับ backoffice | มติ 16 — รุ่นแรกติดป้ายผลอย่างเดียว (S1.15) |
 | ตาราง `AiTenantDigest` + cron | S1.16 คำนวณสด + cache 10 นาที ก่อน |
