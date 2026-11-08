@@ -151,3 +151,27 @@ probe `scripts/probe-h10-review-b.mts` (regression ถาวร) ก่อนแ
 
 - ไฟล์ที่แตะรอบนี้: `hotel/channel/ari.ts` · `channel/inbound.ts` · `channel/types.ts` · `channel/index.ts` · `hotel/index.ts` (facade เพิ่ม) · `hotel/booking.ts` (บล็อก H.10 เท่านั้น · netSatang) · `outbox-consumers.ts` (บล็อก H.10) · `platform/minute-jobs.ts` (บล็อก H.10 · channel-ari-resync) · `docs/sds/modules/hotel.md` · ไม่แตะ service.ts/rooms/dorm/prisma/ข้อสอบ/probe
 - ผลรอบ 3 (รันจริง · ทรี l4 · @fcf5fcc8c): probe-h10-review-b **18/21** (แดง RB-5 · RB-7 = ข้อแย้งข้างบน · SKIP RB-17) · probe-h10-review-a 15/15 · qc-svc-h.10 --no-regression 72/89 แดง 0 (skip MN-4 · F-1 (ทรีสะอาด) · V-1/2 · G-1–13) · `svc-qc-hotel-ota-scene.mts --clear` (removed 0 — ข้อสอบ h.10 ล้างฉากเองแล้ว) ⇒ h.1 112/122 · h.3 98/109 · h.2 78/87 · h.5 77/95 แดง 0 ทั้งหมด · **h.6 9/95 แดง 72** = โค้ด H.6 (`hk-state.ts`/`housekeeping.ts`) ไม่อยู่ในทรีนี้ (H.6 อยู่ session/svc · มีแต่ข้อสอบ) ไม่เกี่ยวกับใบนี้ — ผู้คุมรันซ้ำหลังรวม H.6 · tsc ไฟล์ของใบ 0
+
+## รอบ 4 (มติผู้คุมต่อข้อแย้งรอบ 3 · ทรีมี H.4 + H.6 แล้ว)
+- **RB-5 / RB-7 — `src/lib/modules/hotel/service.ts` (อนุญาตแตะ · เพิ่มอย่างเดียว · diff ลบ 0 บรรทัด)**: ตัวช่วย `ariDirtyRoomSetup` (lazy `await import("./channel")` กันวงโหลด · `emitAriDirty` นอก tx — ฟังก์ชันกลุ่มนี้ไม่มี tx · ยิงหลังเขียนสำเร็จ · ล้ม = เตือน · full resync 6 ชม. ตามเก็บ) เรียกจาก
+  - `setRoomStatus` เมื่อ**เข้า**หรือ**ออก**ปิดซ่อม (status ใหม่ OOO หรือเดิม OOO/hk OUT_OF_ORDER — อ่านสถานะเดิมก่อน update 1 คิวรี) · สถานะอื่น (CLEANING/AVAILABLE↔) ไม่ยิง
+  - `createRoom` · `archiveRoom` (อ่าน roomTypeId หลังเก็บ) · `archiveRoomType` · `updateRoomType` เฉพาะเมื่อแก้ `baseRateSatang` (= ราคาสำรอง FallbackRate ของ ARI) หรือ `capacity` (แก้ชื่อ/รหัสอย่างเดียวไม่ยิง)
+  - ช่วง = วันนี้..ปลาย (ผู้รวมชุด `enqueueAri` ตัดที่ `ariHorizonDays` ของหน่วย) · roomTypeIds ส่งไปเป็นข้อมูล (enqueue ทำทั้งหน่วยอยู่แล้ว) · ไม่แตะ rooms/** dorm/**
+- **ปิดซ่อมฝั่งแม่บ้าน (H.6)**: คนกด `hkSetStatus(to: OUT_OF_ORDER)` ⇒ `USE_BLOCK` เสมอตามสัญญา H.6 (`housekeeping.ts:272` · `hk-state.ts` OUT_OF_ORDER เข้า/ออกเฉพาะ SYSTEM) ⇒ ไม่มี event · ทางจริงของปิดซ่อม = BLOCK (`block.ts` ยิง dirty เอง · RB-3 block ✅) และ night audit `syncBlockedRooms` (SYSTEM ⇒ `hotel.hk.changed` ⇒ `ariDirtyFromHk`)
+- **ตรวจ hook `hotel.hk.changed` จริงหลังรวม H.6** (โพรบชั่วคราวนอกทรี `/root/svc-runs/h10/builder/tmp-h10-r4-evidence.mts` · ร้านชั่วคราว ลบแล้ว · 3/3): E-1 `hkSetStatus(OUT_OF_ORDER)` = USE_BLOCK · E-2 BLOCK อนาคต → `syncBlockedRooms(วันนั้น)` ⇒ hk CLEAN→OUT_OF_ORDER + event `hotel.hk.changed{to:OUT_OF_ORDER}` ⇒ งาน ARI ครอบ (ไม่มี event อื่น — `rooms.setHkStatus` ไม่ยิง) · หมดช่วง ⇒ OUT_OF_ORDER→DIRTY ⇒ งาน ARI ครอบ · E-3 createRoom/archiveRoom/updateRoomType(ราคาฐาน)/archiveRoomType/setRoomStatus ออก OOO ⇒ งาน ARI ครอบ · แก้ชื่ออย่างเดียว/CLEANING ไม่สร้างงาน · บล็อก consumer H.10 อยู่หลัง H.6 (outbox-consumers ~1540) ✅
+
+### ข้อแย้ง oracle รอบ 4 — ให้ผู้คุมตัดสิน
+1. **probe-h10-review-b RB-5 (MAJOR) ส่วน `setHkStatus`** — ORACLE-EDIT เรียก `HOTEL.hkSetStatus(… to: "OUT_OF_ORDER")` แต่สัญญา H.6 ปฏิเสธเสมอ (`USE_BLOCK` · `housekeeping.ts:272`) ⇒ ไม่มีการเปลี่ยนสถานะ = ไม่มีอะไรให้ dirty ⇒ แดงตามโครง (ผล `{"setRoomStatus":"ok","setHkStatus":"ไม่มีงาน USE_BLOCK …"}`) · เสนอ ORACLE-EDIT: ใช้ `HOTEL.blockRoom` ครอบวันนี้ หรือ BLOCK อนาคต + `HOTEL.syncBlockedRooms({unitId, businessDate})` (ทางที่ยิง `hotel.hk.changed` จริง — หลักฐาน E-2)
+2. **probe-h10-review-a R-8 (CRITICAL)** แดงหลังรวม H.4: `SVC.checkIn` เดิมห่อ checkInV2 ซึ่งบังคับทะเบียนผู้พัก (`rooms.hotel.guest.requireRegistration` · GUEST_REQUIRED · มติ H.4 รอบ 2 ทาง ข) ⇒ setup ของโพรบเช็กอินไม่ได้ · ไม่ใช่โค้ด H.10 · หลักฐาน: สำเนาโพรบที่ปิด requireRegistration ของหน่วยทดสอบ (`/root/svc-runs/h10/builder/tmp-h10-r4-probe-a-noreg.mts`) = **15/15** (R-8 ✅ · R-9 ✅ ทดสอบ race จริง — โพรบเดิม R-9 เขียวแบบอ่อนเพราะเช็กอินล้มทุกรอบ) · เสนอ ORACLE-EDIT: ตั้ง requireRegistration=false ที่หน่วยทดสอบ (หรือส่ง guests ให้ checkInV2)
+3. **qc-svc-h.10 U-10** แดงหลังรวม: บรรทัดลบเทียบ BASE_SHA 034d4de8a มาจากสาขาอื่น ไม่ใช่ H.10 — `defs/rooms.ts ลบ 1` = H.6 `ebdb7dfad` · `permissions "hotel.guest.register"` (+ viewId/housekeeping ออกจาก planned) = H.4 `952f2f67d` ⇒ เสนอ ORACLE-EDIT เลื่อน BASE_SHA เป็น merge a3b409599 หรือยกเว้นบรรทัดของ H.4/H.6
+4. **qc-svc-h.10 F-1** (รันตอนยังไม่ commit) รายงาน `hotel/service.ts` นอกใบ — ตามมติผู้คุมรอบ 4 ⇒ เพิ่ม service.ts ในรายการอนุญาตของ F-1 (บนทรีสะอาด F-1 SKIP)
+5. **qc-svc-h.4 PC-4** แดง: ข้อตรวจสถิตฟิกซ์เจอร์ "manager ไม่คุมหน่วย hotel/ไม่มี viewId" — ฟิกซ์เจอร์ manager เปลี่ยนจากคอมมิตฟิกซ์เจอร์ H.7 (`3015b0534` manager +audit.run/reports.read/booking.manage) ไม่เกี่ยวกับใบนี้
+
+### ผลรอบ 4 (รันจริง · ทรี l4 · @cfc2f96b2 / @57e302140)
+- probe-h10-review-b **19/21** แดง RB-5 (ส่วน hkSetStatus = ข้อแย้ง 1 · ส่วน setRoomStatus ✅) · SKIP RB-17 (หนี้ H.5b) · RB-7 ✅
+- probe-h10-review-a 14/15 แดง R-8 (ข้อแย้ง 2) · สำเนาปิด requireRegistration 15/15
+- qc-svc-h.10 --no-regression (ทรีสะอาด) 71/89 แดง U-10 (ข้อแย้ง 3) · skip MN-4 · F-1 · V-1/2 · G-1–13
+- `svc-qc-hotel-ota-scene.mts --clear` (removed 0) ⇒ h.1 112/122 · h.3 98/109 · h.2 78/87 · h.5 77/95 · h.6 85/97 แดง 0 ทั้งหมด · h.4 97/109 แดง PC-4 (ข้อแย้ง 5)
+- probe-h4-review-b 52/52 · probe-h4-review-c 39/39 · probe-h6-review-b 23/23
+- tsc ไฟล์ของใบ + hotel/service.ts 0 error · ไม่ push
+- ไฟล์ที่แตะรอบนี้: `src/lib/modules/hotel/service.ts` (+27 · ลบ 0) · `docs/sds/modules/hotel.md` · wo-notes นี้
