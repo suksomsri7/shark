@@ -30,7 +30,7 @@ import {
   type DetailTab,
 } from "./booking-shared";
 
-type Props = { booking: Detail; unitSlug: string; perms: DetailPerms; rooms: AssignableRoom[]; actions: DetailActions; nowMs: number; moneyPanel?: ReactNode; initialTab?: DetailTab }; // SVC H.5 ▸ moneyPanel = บิลระหว่างพัก (FolioPanel) ในแท็บ "เงิน" · initialTab จาก ?tab= ◂
+type Props = { booking: Detail; unitSlug: string; perms: DetailPerms; rooms: AssignableRoom[]; actions: DetailActions; nowMs: number; moneyPanel?: ReactNode; initialTab?: DetailTab; belowHeader?: ReactNode }; // SVC H.5 ▸ moneyPanel = บิลระหว่างพัก (FolioPanel) ในแท็บ "เงิน" · initialTab จาก ?tab= ◂ · SVC H.4 ▸ belowHeader = แผงเช็กอิน/ลิงก์แขก ใต้หัว+แถวปุ่ม ก่อนแถบแท็บ (ภาพ 09) ◂
 type Pending = "" | "confirm" | "cancel" | "cancelGroup" | "extend" | "shorten" | "assign" | "noShow" | "undo" | "deposit";
 type Notice = { tone: "ok" | "err"; text: string } | null;
 type Quote = { nights: { date: string; priceSatang: number; source: string }[]; addedSatang: number } | null;
@@ -41,7 +41,7 @@ const BTN_PRIMARY = "inline-flex min-h-11 items-center justify-center rounded-lg
 const INPUT = "min-h-11 rounded-lg border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-3 py-2 text-sm";
 const CARD = "flex min-w-0 flex-col gap-2 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4";
 
-export default function BookingDetail({ booking: b, unitSlug, perms, rooms, actions, nowMs, moneyPanel, initialTab }: Props) {
+export default function BookingDetail({ booking: b, unitSlug, perms, rooms, actions, nowMs, moneyPanel, initialTab, belowHeader }: Props) {
   const { canManage, canCancel, isManager } = perms;
   const router = useRouter();
   const [tab, setTab] = useState((initialTab ?? "guest") as DetailTab); // SVC H.5 ◂
@@ -165,6 +165,8 @@ export default function BookingDetail({ booking: b, unitSlug, perms, rooms, acti
           </button>
         ) : null}
       </div>
+
+      {belowHeader ? <div data-detail-below-header="" className="flex min-w-0 flex-col gap-4">{belowHeader}</div> : null}
 
       {b.groupId && b.group.length > 1 ? (
         <section className={CARD} data-booking-group={b.groupId}>

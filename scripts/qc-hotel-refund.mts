@@ -20,6 +20,7 @@ let tenantId = "";
 try {
   const t = await prisma.tenant.create({ data: { name: "QC โรงแรม refund", slug: `qc-htr-${Date.now()}` } }); tenantId = t.id;
   const unit = await prisma.businessUnit.create({ data: { tenantId, type: "HOTEL", name: "รีสอร์ต", slug: "rs" } });
+  await prisma.settingValue.create({ data: { tenantId, key: "rooms.hotel.guest.requireRegistration", scope: "UNIT", scopeId: unit.id, value: false } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-legacy-checkin): H.4 ทำให้ checkIn เดิมต้องมีผู้พักเมื่อ rooms.hotel.guest.requireRegistration เปิด — ปิดที่หน่วยทดสอบ (try/catch: ก่อน H.4 merge คีย์ยังไม่มี)
   await prisma.settingValue.create({ data: { tenantId, key: "rooms.hotel.checkout.allowLegacyCash", scope: "UNIT", scopeId: unit.id, value: true } }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-legacy): ใบ h.5 §2.11 — checkOut เดิมไม่ส่งวิธีจ่าย ต้องเปิดทางเดิม (ค่าเริ่ม false)
   const posSys = await sys.createSystem(tenantId, "POS", "POS โรงแรม"); await sys.linkUnit(tenantId, posSys.id, unit.id);
   const accSys = await sys.createSystem(tenantId, "ACCOUNT", "บัญชี");

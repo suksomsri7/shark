@@ -53,7 +53,11 @@ try {
   tenantIds.push(t.id);
   const tid = t.id as string;
   const ctx = { tenantId: tid };
-  const mkUnit = async (type: string, name: string) => (await prisma.businessUnit.create({ data: { tenantId: tid, type, name, slug: `u-${uid()}` } })).id as string;
+  const mkUnit = async (type: string, name: string) => { // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-legacy-checkin-probe): H.4 ทำให้ checkIn เดิมต้องมีผู้พักเมื่อ rooms.hotel.guest.requireRegistration เปิด — probe เงินใช้ checkIn เดิม ⇒ ปิดที่หน่วยโรงแรมชั่วคราวทุกหน่วย
+    const id = (await prisma.businessUnit.create({ data: { tenantId: tid, type, name, slug: `u-${uid()}` } })).id as string;
+    if (type === "HOTEL") await prisma.settingValue.create({ data: { tenantId: tid, key: "rooms.hotel.guest.requireRegistration", scope: "UNIT", scopeId: id, value: false } }).catch(() => null);
+    return id;
+  };
   const UX = await mkUnit("HOTEL", "โรงแรม EXCLUSIVE rv-a2");
   const UR = await mkUnit("RESTAURANT", "ห้องอาหาร rv-a2");
   const POS_A = (await sys.createSystem(tid, "POS", "POS rv-a2")).id as string;

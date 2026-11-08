@@ -539,6 +539,23 @@ registerMinuteJob({
   run: async (now) => (await import("@/lib/platform/hotel-mail")).runGuestReminders(now),
 });
 // ◂ SVC H.8
+// SVC H.4 ▸ โรงแรม · ตม.30: PENDING เลยกำหนด 24 ชม. ⇒ LATE + เตือนก่อนครบ (outbox hotel.tm30.due · ระบบไม่ส่ง ตม. เอง) — ทุก 15 นาที · ข้ามร้าน ·
+//   idempotent: UPDATE มีเงื่อนไขสถานะ ⇒ route + crontab ซ้อนกัน แต่ละแถว LATE ครั้งเดียว · เตือน 1 ครั้งต่อผู้พัก (กุญแจ outbox) (X5) · โหลด facade ตอนรันเท่านั้น
+registerMinuteJob({
+  name: "hotel.tm30Sweep",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async () => (await import("@/lib/modules/hotel")).tm30Sweep({}),
+});
+// SVC H.4 ▸ โรงแรม · PDPA: ล้างข้อมูลอ่อนไหวของทะเบียนผู้พักที่พ้น retainUntil (กล่องลับ/รูปเอกสาร/ลายเซ็น · คงชื่อ+4 ตัวท้าย) — รายวัน (หน้าต่างนับจากเที่ยงคืนไทย ·
+//   ตัวรันรายวันของ crm-cron รันช่วงเช้ามืด ≈ 04:00 ไทย) · ≤ 200 แถว/รอบ · idempotent: UPDATE มีเงื่อนไขค่าเดิม ⇒ ซ้อนกันแต่ละแถวครั้งเดียว (X5)
+registerMinuteJob({
+  name: "hotel.purgeExpiredGuestRecords",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async () => (await import("@/lib/modules/hotel")).purgeExpiredGuestRecords({ limit: 200 }),
+});
+// ◂ SVC H.4
 // SVC B.3 ▸ ระบบจอง: ปล่อยช่องที่ลูกค้าจองเองแล้วไม่จ่ายมัดจำในเวลา (ทุกนาที · ข้ามร้าน · ใบสั่ง svc-brief-b.3 §3.3) — โหลดตอนรันเท่านั้น ·
 //   idempotent: UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED ⇒ route + crontab ยิงซ้อนกัน แต่ละแถวปล่อยครั้งเดียว (X5)
 registerMinuteJob({

@@ -16,6 +16,10 @@ import * as hotelRoomCharge from "./room-charge"; // SVC H.5
 import * as hotelTape from "./tape"; // SVC H.2
 import * as hotelBlock from "./block"; // SVC H.2
 import * as hotelHk from "./housekeeping"; // SVC H.6
+import * as hotelCheckin from "./checkin"; // SVC H.4
+import * as hotelGuest from "./guest"; // SVC H.4
+import * as hotelTm30 from "./tm30"; // SVC H.4
+import * as hotelIdAi from "./guest-id-ai"; // SVC H.4
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -723,3 +727,136 @@ export async function reportDefectAction(unitSlug: string, form: FormData) {
   return r;
 }
 // ◂ SVC H.6
+
+// SVC H.4 ▸ เช็กอิน V2 · ทะเบียนผู้พัก · ร.ร.3 · AI อ่านเอกสาร · ตม.30 (ใบสั่ง h.4 §3.5) — ร้าน/ผู้กระทำ/สิทธิ์จาก session เท่านั้น · ด่าน type HOTEL + assertHotelCan ทุกตัว
+//   สิทธิ์: เช็กอิน = hotel.reservation.checkIn · ทะเบียน/ลงชื่อ/ตม.30/อ่านเอกสาร = hotel.guest.register · เลขเต็ม = hotel.guest.viewId
+//   (ร้านปิดการซ่อนเลข ⇒ guest.register ก็เปิดได้ — ตัดสินใน guest.ts) · ข้ามเงื่อนไข/ย้อน = hotel.booking.manage (ตรวจซ้ำใน checkin.ts)
+//   input รับเฉพาะคีย์ที่รู้จัก (ไม่มีนาฬิกาฉาก) · รูปจากจอมาเป็น data URL (base64) แล้วแปลงเป็นไบต์ที่นี่ · ผลเป็นข้อมูล ไม่ throw
+type GuestActionResult = { ok: boolean; code?: string; reason?: string; [k: string]: unknown };
+const NOT_HOTEL_GUEST = { ok: false, code: "NOT_FOUND", reason: "ทะเบียนผู้เข้าพักใช้ได้กับหน่วยโรงแรมเท่านั้น" } as const;
+const GUEST_FILE_MAX_CHARS = Math.ceil((8 * 1024 * 1024 + 1) / 3) * 4 + 200;
+/** ไฟล์จากจอ: { dataUrl } | { data (base64), contentType } ⇒ { data: Uint8Array, contentType } · ผิดรูป ⇒ undefined (ด่านไฟล์ในโมดูลปฏิเสธเอง) */
+function fileFromClient(v: unknown): { data: Uint8Array; contentType: string } | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  let ct = typeof o.contentType === "string" ? o.contentType : "";
+  let b64 = "";
+  if (typeof o.dataUrl === "string" && o.dataUrl.length <= GUEST_FILE_MAX_CHARS) {
+    const m = /^data:([a-z0-9.+/-]+);base64,(.*)$/i.exec(o.dataUrl);
+    if (!m) return undefined;
+    ct = m[1] ?? "";
+    b64 = m[2] ?? "";
+  } else if (typeof o.data === "string" && o.data.length <= GUEST_FILE_MAX_CHARS) b64 = o.data;
+  else return undefined;
+  if (!ct || !/^[A-Za-z0-9+/=]*$/.test(b64)) return undefined;
+  return { data: new Uint8Array(Buffer.from(b64, "base64")), contentType: ct };
+}
+const GUEST_FIELDS = ["fullName", "nationality", "idType", "idNumber", "dob", "sex", "occupation", "address", "arrivedFrom", "nextDestination", "visaType", "visaNo", "arrivalDate", "portOfEntry", "tm6No", "docExpiry", "keepIdImage", "aiProposed", "confirmed"];
+function guestFromClient(v: unknown): Record<string, unknown> {
+  const src = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  const out: Record<string, unknown> = Object.fromEntries(Object.entries(src).filter(([k]) => GUEST_FIELDS.includes(k)));
+  const img = fileFromClient(src.idImage);
+  if (img) out.idImage = img;
+  else if (src.idImage) out.idImage = { data: new Uint8Array(0), contentType: "application/octet-stream" };
+  return out;
+}
+function pickGuestKeys(input: unknown, keys: string[]): Record<string, unknown> {
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  return Object.fromEntries(Object.entries(src).filter(([k]) => keys.includes(k)));
+}
+function revalidateGuests(unitSlug: string, r: { ok: boolean }, reservationId?: unknown) {
+  if (!r.ok) return;
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+  revalidatePath(`/app/u/${unitSlug}/hotel/guests`);
+  revalidatePath(`/app/u/${unitSlug}/hotel/tm30`);
+  if (typeof reservationId === "string" && reservationId) revalidatePath(`/app/u/${unitSlug}/hotel/reservations/${reservationId}`);
+}
+
+export async function checkInV2Action(unitSlug: string, input: unknown): Promise<GuestActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_GUEST;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.reservation.checkIn"))) return NO_RIGHT;
+  const x = pickGuestKeys(input, ["reservationId", "roomId", "force", "earlyOverride", "occupancyOverride", "memberOptIn"]);
+  const guests = input && typeof input === "object" && Array.isArray((input as Record<string, unknown>).guests) ? ((input as Record<string, unknown>).guests as unknown[]).slice(0, 20).map(guestFromClient) : [];
+  const r = await hotelCheckin.checkInV2(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { ...x, guests });
+  revalidateGuests(unitSlug, r, x.reservationId);
+  return r;
+}
+
+export async function undoCheckInAction(unitSlug: string, input: unknown): Promise<GuestActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_GUEST;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.booking.manage"))) return NO_RIGHT;
+  const x = pickGuestKeys(input, ["reservationId", "reason"]);
+  const r = await hotelCheckin.undoCheckIn(hotelActorOf(auth), { tenantId: auth.active.tenantId }, x);
+  revalidateGuests(unitSlug, r, x.reservationId);
+  return r;
+}
+
+export async function upsertGuestAction(unitSlug: string, input: unknown): Promise<GuestActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_GUEST;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.guest.register"))) return NO_RIGHT;
+  const x = pickGuestKeys(input, ["reservationId", "guestId"]);
+  const g = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>).guest : undefined;
+  const r = await hotelGuest.upsertGuestRecord(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { ...x, guest: guestFromClient(g) });
+  revalidateGuests(unitSlug, r, x.reservationId);
+  return r;
+}
+
+export async function deleteGuestAction(unitSlug: string, input: unknown): Promise<GuestActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_GUEST;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.guest.register"))) return NO_RIGHT;
+  const r = await hotelGuest.deleteGuestRecord(hotelActorOf(auth), { tenantId: auth.active.tenantId }, pickGuestKeys(input, ["guestId"]));
+  revalidateGuests(unitSlug, r);
+  return r;
+}
+
+export async function revealGuestIdAction(unitSlug: string, input: unknown): Promise<GuestActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_GUEST;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.guest.viewId")) && !canHotel(() => assertHotelCan(auth, unit.id, "hotel.guest.register"))) return NO_RIGHT;
+  return hotelGuest.revealGuestId(hotelActorOf(auth), { tenantId: auth.active.tenantId }, pickGuestKeys(input, ["guestId"]));
+}
+
+export async function signRr3Action(unitSlug: string, input: unknown): Promise<GuestActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_GUEST;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.guest.register"))) return NO_RIGHT;
+  const x = pickGuestKeys(input, ["guestId", "method", "note"]);
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  const png = fileFromClient(src.signaturePng);
+  const r = await hotelGuest.signRr3(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { ...x, ...(png ? { signaturePng: png } : {}) });
+  revalidateGuests(unitSlug, r);
+  return r;
+}
+
+export async function readIdDocumentAction(unitSlug: string, input: unknown): Promise<GuestActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_GUEST;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.guest.register"))) return NO_RIGHT;
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  return hotelIdAi.readIdDocument(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { unitId: unit.id, image: fileFromClient(src.image) ?? null });
+}
+
+export async function tm30ExportAction(unitSlug: string, input: unknown): Promise<GuestActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_GUEST;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.guest.register"))) return NO_RIGHT;
+  const r = await hotelTm30.tm30Export(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { ...pickGuestKeys(input, ["guestIds", "format"]), unitId: unit.id });
+  if (!r.ok) return r;
+  return { ok: true, count: r.count, name: r.file.name, contentType: r.file.contentType, base64: Buffer.from(r.file.bytes).toString("base64") };
+}
+
+export async function markTm30FiledAction(unitSlug: string, input: unknown): Promise<GuestActionResult> {
+  const { auth, unit } = await requireUnit(String(unitSlug ?? ""));
+  if (unit.type !== "HOTEL") return NOT_HOTEL_GUEST;
+  if (!canHotel(() => assertHotelCan(auth, unit.id, "hotel.guest.register"))) return NO_RIGHT;
+  const src = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  const ev = fileFromClient(src.evidence);
+  const r = await hotelTm30.markTm30Filed(hotelActorOf(auth), { tenantId: auth.active.tenantId }, { ...pickGuestKeys(input, ["guestIds", "tm30Ref", "filedAt"]), ...(ev ? { evidence: ev } : {}) });
+  revalidateGuests(unitSlug, r);
+  return r;
+}
+// ◂ SVC H.4

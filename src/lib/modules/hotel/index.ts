@@ -160,3 +160,14 @@ export type { HkActor, HkFail, HkFailCode, HkBoard, HkBoardRow, HkRoomView, HkLo
 export { HK_TRANSITIONS, HK_ROLES, HK_CONTEXTS, HK_STATUS_LIST, canHkTransition, hkPriority, parseHkNote, serializeHkNote } from "./hk-state";
 export type { HkState, HkRole, HkContext, HkNote, HkTransition, HkTransitionOpts } from "./hk-state";
 // ◂ SVC H.6
+// SVC H.4 ▸ เช็กอิน V2 · ทะเบียนผู้พัก (ร.ร.3/ร.ร.4) · AI อ่านเอกสาร · ตม.30 · PDPA (ใบสั่ง h.4 §3)
+export { assignableRooms, checkInV2, undoCheckIn, checkinView, guestRegistrationRequired } from "./checkin";
+export type { AssignableRoom, CheckInOk, CheckInCode, CheckinView } from "./checkin";
+export { upsertGuestRecord, deleteGuestRecord, listGuests, revealGuestId, signRr3, rr3Card, rr4Register, rr4RegistrarCopy, purgeExpiredGuestRecords, RR3_FIELDS } from "./guest";
+export type { GuestDto, GuestInput, Rr3View, Rr4Row, GuestFail } from "./guest";
+export { readIdDocument } from "./guest-id-ai";
+export type { IdProposal, ReadIdOk } from "./guest-id-ai";
+export { tm30Queue, tm30Export, markTm30Filed, tm30Sweep, TM30_DEFAULT_COLUMNS } from "./tm30";
+export type { Tm30Item, Tm30Column } from "./tm30";
+export { maskId, isForeigner, nationalityTh, nationalityLabel, validateIdNumber } from "./guest-shared";
+// ◂ SVC H.4

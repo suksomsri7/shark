@@ -505,6 +505,7 @@ try {
     const sv = await RT("saveRatePlan")(OWNER, ctxA, { unitId, id: plan.id, code: plan.code, name: plan.name, depositKind: "FIRST_NIGHT", visibility: ["WEB", "LINE", "COUNTER", "OTA"] }); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h2-D1): H.3 ถือห้อง HOLD เฉพาะเมื่อต้องมีมัดจำ (booking.ts) — แผน NONE ทำให้ H1 เป็น CONFIRMED
     if (sv?.ok !== true) throw new Error(`saveRatePlan ${codeOf(sv)} ${sv?.reason ?? ""}`);
     const rows = Object.entries(types).map(([k, roomTypeId]) => ({ roomTypeId, seasonId: null, priceWeekdaySatang: PRICE[k]?.[0] ?? 100_000, priceWeekendSatang: PRICE[k]?.[1] ?? 100_000, priceHolidaySatang: null }));
+    try { await SET.setSettings(OWNER, ctxA, [{ key: "rooms.hotel.guest.requireRegistration", scope: "UNIT", scopeId: unitId, value: false }]); } catch { /* ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-legacy-checkin): H.4 ทำให้ checkIn เดิมต้องมีผู้พักเมื่อ rooms.hotel.guest.requireRegistration เปิด — ปิดที่หน่วยทดสอบ (try/catch: ก่อน H.4 merge คีย์ยังไม่มี) */ }
     const sr = await RT("saveRates")(OWNER, ctxA, { unitId, ratePlanId: plan.id, rows });
     if (sr?.ok !== true) throw new Error(`saveRates ${codeOf(sr)} ${sr?.reason ?? ""}`);
     return plan.id as string;
