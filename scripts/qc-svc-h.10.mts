@@ -1399,7 +1399,7 @@ try {
   console.log("\n── F ไฟล์ที่แตะ (git) ──");
   const dirtyFiles = (paths: string[]) => gitX(["status", "--porcelain", "--untracked-files=all", "--", ...paths]).split("\n").filter(Boolean).map((l) => l.slice(3).trim().replace(/^"|"$/g, ""));
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const OWN_RE = new RegExp(`^(${[F.booking, F.index, F.rates, F.block, F.hotelActions, F.intTypes, F.intFake, F.intRegistry, F.intIndex, F.defs, F.perms, F.consumers, F.autoLabels, F.whLabels, F.minute, F.scene, F.probe, F.sds, "src/lib/modules/hotel/service.ts" /* ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-f1) มติรอบ 4 */, "scripts/qc-svc-h.10.mts", "ledger/wo-notes/svc-h.10.md"].map(esc).join("|")}|${esc(CH_DIR)}/.+|${esc(F.compDir)}/.+|${esc(PAGES_DIR)}/.+|${esc(F.intPage)}/[^/]+)$`);
+  const OWN_RE = new RegExp(`^(${[F.booking, F.index, F.rates, F.block, F.hotelActions, F.intTypes, F.intFake, F.intRegistry, F.intIndex, F.defs, F.perms, F.consumers, F.autoLabels, F.whLabels, F.minute, F.scene, F.probe, F.sds, "src/lib/modules/hotel/service.ts" /* ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-f1) มติรอบ 4 */, "src/components/hotel/HotelTabs.tsx" /* ORACLE-EDIT (ผู้คุม 8 พ.ย. · h10-f1b) PARITY รอบ 5: activeKey ไม่ไฮไลต์แท็บบน /hotel/channels */, "scripts/qc-svc-h.10.mts", "ledger/wo-notes/svc-h.10.md"].map(esc).join("|")}|${esc(CH_DIR)}/.+|${esc(F.compDir)}/.+|${esc(PAGES_DIR)}/.+|${esc(F.intPage)}/[^/]+)$`);
   {
     const ch = dirtyFiles(["src", "prisma", "public", "scripts", "docs", "vercel.json"]).filter((f) => f !== "scripts/qc-svc-h.10.mts" && f !== F.probe);
     const headHas = (() => { try { gitX(["cat-file", "-e", `HEAD:${F.chIndex}`]); return true; } catch { return false; } })();
