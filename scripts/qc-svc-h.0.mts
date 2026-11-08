@@ -1352,8 +1352,13 @@ try {
     const fns = actionBodies();
     ok(fns.length >= 11, `พบ action ${fns.length} ตัว (ต้อง ≥ 11)`);
     const helperOk = /function\s+(assertHotelUnit|requireHotelUnit|hotelUnitGate)\s*\([^)]*\)\s*\{[^}]*(type\s*!==\s*["']HOTEL["']|type\s*===\s*["']HOTEL["'])/.test(ACT);
+    const work0 = (b: string) => b.search(/\bhotel\.\w+\s*\(/);
+    const UNIT_HELPERS = [...ACT.matchAll(/async function (\w+)\s*\([^)]*\)[^{]*\{([\s\S]*?)\n\}/g)].filter((m) => /requireUnit\s*\(/.test(m[2]) && /type\s*!==\s*["']HOTEL["']/.test(m[2]) && !/^export/.test(m[0])).map((m) => m[1]); // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h0-d1-helper)
     const bad: string[] = [];
     for (const f of fns) {
+      // ORACLE-EDIT (ผู้คุม 8 พ.ย. · h0-d1-helper) ยอม helper ในไฟล์ที่ทำ requireUnit + ตรวจ type HOTEL เองครบ (เช่น H.10 channelAuth) ถ้าเรียกก่อนงาน
+      const viaHelper = UNIT_HELPERS.find((h) => { const i = f.body.search(new RegExp(`\\b${h}\\s*\\(`)); return i >= 0 && (work0(f.body) < 0 || i < work0(f.body)); });
+      if (viaHelper) continue;
       const ru = f.body.search(/requireUnit\s*\(/);
       const g = f.body.search(GATE);
       const work = f.body.search(/\bhotel\.\w+\s*\(/);
