@@ -175,3 +175,29 @@ probe `scripts/probe-h10-review-b.mts` (regression ถาวร) ก่อนแ
 - probe-h4-review-b 52/52 · probe-h4-review-c 39/39 · probe-h6-review-b 23/23
 - tsc ไฟล์ของใบ + hotel/service.ts 0 error · ไม่ push
 - ไฟล์ที่แตะรอบนี้: `src/lib/modules/hotel/service.ts` (+27 · ลบ 0) · `docs/sds/modules/hotel.md` · wo-notes นี้
+
+## รอบ 5 (ผู้คุม · regression qc-hotel-money ใน chain รับงาน + งานจอ 3 ข้อ · ทรี l3 `wip/svc-h10-r5` · ฐาน ep-royal-bar)
+### ต้นเหตุ G-1 ของ qc-svc-r0.8 (qc-hotel-money HT-2.1–2.3 act 0)
+- **ไม่ใช่ throw และไม่ใช่ tx** — hook ARI ไม่เคยล้ม (opsEvent ไม่มี WARN "ขั้นเสริม" · checkOut ok · journal ของบิลไม่ถูกย้อน) · `service.checkOut` ไม่เรียก emitAriDirty
+- **กลไก = ช้า**: `outbox-consumers.ts` บล็อก H.10 (`for (const t of [...hotel.booking.*, "hotel.checked_out"]) baseConsumers[t] = compose(…ariDirtyFromBooking)` + `baseConsumers["rooms.occupancy.changed"] = compose(…ariDirtyFromOccupancy)`) ⇒ `hotel/channel/ari.ts` `ariDirtyFromBooking` / `ariDirtyFromOccupancy` → `enqueueAri` ยิงคิวรี 1–3 รอบ **ทุก event** แม้ร้านไม่มีตัวต่อ OTA (เดิม `ariDirtyFromBooking` อ่าน `hotelReservation.findFirst` ก่อนแล้วค่อยถามตัวต่อ)
+  - qc-svc-r0.8 ไม่ระบายคิวเอง ⇒ ก่อนกลุ่ม G เหลือ PENDING ~410 ตัว (rooms.occupancy.changed 381 · hotel.booking.created 22 · …) · qc-hotel-money (ลูกโพรเซส) ระบายผ่าน `drainAll` ซึ่งมีงบ 20 วิ/10 รอบ×50 (`core/outbox.ts drainUntilQuiet`) เรียงเก่าสุดก่อน ⇒ ต้องลุย backlog ก่อนถึง `pos.sale.paid` ของตัวเอง
+  - วัดจริง (ระบาย rooms.occupancy.changed 200 ตัว ร้านไม่มีตัวต่อ): มี hook 97.6/106.2 ms/event · ไม่มี hook 85.1/84.2 ms/event (+15–25%) · สำเนา r0.8 ติดเครื่องวัด: มี hook ⇒ ตัวระบายสุดท้ายทำ 200 ตัวแล้ว pos.sale.paid ของ money ยัง PENDING ⇒ HT-2.* แดง (ทำซ้ำได้ · บางรอบผ่านเพราะเครื่องว่าง = ขอบเส้น) · ปิด hook ⇒ ผ่าน
+  - เลน H.7/H.8 ไม่มี hook ⇒ ทันงบ — จึงแดงเฉพาะเลน H.10
+### การแก้ (ไฟล์ของใบเท่านั้น · `hotel/channel/ari.ts`)
+- `tenantHasChannel(tenantId)`: จำผลลบ "ร้านไม่มีตัวต่อ CHANNEL_MANAGER" ในโปรเซส 15 วิ (เพดาน 5,000 ร้าน) · ผลบวกไม่จำ (ถามฐานทุกครั้งเหมือนเดิม) · `ariDirtyFromBooking/Occupancy/Hk` ตรวจก่อนอ่านอะไร ⇒ ร้านไม่มีตัวต่อ = 0 คิวรีต่อ event (หลัง event แรก)
+- ล้างความจำ (`forgetNoChannel`) เมื่อเห็น `channel.ari.dirty` (onAriDirty — การแม็ป/ราคา/ห้อง) และ `integration.connected` (ariResyncOnConnected)
+- `enqueueAri`: ตรวจ "หน่วยมีแม็ป" ก่อนอ่านค่าตั้ง ariHorizonDays (หน่วยหอ/ไม่มีแม็ป ลดคิวรี 1 รอบ)
+- ช่องว่างที่ยอมรับ (จดเป็นมติ): ร้านเพิ่งต่อตัวต่อ+แม็ปบนอินสแตนซ์อื่นภายใน 15 วิ ⇒ event จองช่วงนั้นบนอินสแตนซ์ที่จำผลลบไว้ไม่ dirty — ปิดซ้ำโดย dirty ทั้งช่วงจากการแม็ป (pushAriJobs คำนวณจากข้อมูลสดตอนส่ง) · integration.connected resync · full resync รายรอบ 6 ชม.
+- hook ใน tx: ไม่เปลี่ยน (มติรอบ 2 — emitAriDirty ที่มี tx ไม่กลืน) · ตรวจแล้วไม่มี emitAriDirty ใน tx ของเส้นเงิน/บัญชี (checkOut/folio/POS ไม่เรียก · ใน tx เฉพาะ rates.ts/block.ts/แม็ป)
+- ไม่แตะ outbox-consumers/บัญชี/POS/booking/checkout
+### งานจอ (ผู้คุมเพิ่มกลางรอบ)
+1. ศูนย์เชื่อมต่อ (`IntegrationsHub.tsx` · ไฟล์ที่ใบนี้แตะอยู่แล้ว): ลบการ์ด "ช่องทางขายห้อง (OTA) · <โรงแรม>" ที่ซ้ำ · การ์ดตัวต่อ CHANNEL_MANAGER เดิมแสดงสถานะ + ลิงก์ "ตั้งค่าแม็ปห้อง/ราคา →" (`/app/u/<slug>/hotel/channels` ของหน่วยโรงแรมที่ตัวต่อครอบ · ครอบหลายหน่วย = "ตั้งค่าแม็ป · <ชื่อ> →" ต่อหน่วย) · ลิงก์อยู่นอกปุ่มของการ์ด (Card รับ `links` · หัวการ์ด = ปุ่มเปิดแผงข้าง) · ยังไม่เชื่อม ⇒ "● ยังไม่เชื่อม · ตัวต่อเจ้าแรก เฟส H2" (ทั้งการ์ด "เชื่อม" และ "เร็ว ๆ นี้")
+2. แถบแท็บโรงแรม (`components/hotel/HotelTabs.tsx` ฟังก์ชัน `activeKey` เท่านั้น · ไม่แตะ hotel-tabs-shared): path ใต้ `/hotel/channels` ไม่ไฮไลต์แท็บใด (เดิม prefix `/hotel` ⇒ "หน้าเคาน์เตอร์")
+3. inbox มือถือ (`InboxList.tsx`): < md เป็นการ์ดต่อแถว (เหตุผลตัดบรรทัด `break-words`) · ≥ md ตารางเดิม (data-scroll-hint คงอยู่ · คอลัมน์เหตุผล whitespace-normal min-w 14rem)
+### ผลรอบ 5 (รันจริง · ทรี l3 · ฐาน ep-royal-bar · @b30905df1)
+- ทำซ้ำต้นเหตุก่อนแก้: สำเนา r0.8 ติดเครื่องวัด G-1 แดง 2/5 (backlog 410 · ตัวระบายสุดท้าย 200 ตัว pos.sale.paid ยัง PENDING) · ปิด hook ⇒ 95/95 · หลังแก้ 2 รอบ 95/95 (pos.sale.paid DONE ทั้งสองรอบ)
+- qc-hotel-money 5/5 · qc-hotel-refund 15/15 · qc-hotel-public 15/15 · qc-svc-r0.8 (เต็ม) 95/95
+- probe-h10-review-a 15/15 · probe-h10-review-b 20/21 SKIP RB-17 (หนี้ H.5b) แดง 0
+- qc-svc-h.5 --no-regression 77/95 แดง 0 · qc-svc-h.10 --no-regression 72/89 แดง 0 (skip MN-4 · F-1 ทรีสะอาด · V-1/2 · G-*)
+- ฉาก h.10 --clear (removed 0) · tsc ไฟล์ของใบ + HotelTabs.tsx 0 error · ไม่ push
+- ไฟล์ที่แตะรอบนี้: `hotel/channel/ari.ts` · `settings/integrations/IntegrationsHub.tsx` · `components/hotel/HotelTabs.tsx` (activeKey เท่านั้น · นอกรายการ F-1 เดิม ⇒ ผู้คุมเพิ่มในรายการอนุญาต) · `components/hotel/channel/InboxList.tsx` · wo-notes นี้
