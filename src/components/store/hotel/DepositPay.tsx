@@ -3,22 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-/** กุญแจคำขอ (สุ่มครั้งเดียวต่อฟอร์ม) — randomUUID หรือ getRandomValues 128 บิต (SVC H.8 r2 · ไม่ใช้ Math.random) */
-function newIdemKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  const b = new Uint8Array(16);
-  crypto.getRandomValues(b);
-  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-}
-
+// SVC H.8 r4 (hydration) กุญแจคำขอสุ่มฝั่งเซิร์ฟเวอร์ (node:crypto randomUUID · 122 บิต) ส่งมาเป็น prop ⇒ HTML เซิร์ฟเวอร์ = เรนเดอร์แรกไคลเอนต์ · useState เก็บค่าแรก (router.refresh ไม่เปลี่ยนกุญแจ)
 export type DepositPayLabels = { amount: string; note: string; attach: string; sent: string; bad: string; noReceiver: string };
 
-export function DepositPay(props: { qrSvgDataUrl: string | null; slipUrl: string; slipState: "none" | "sent" | "bad"; labels: DepositPayLabels; pollMs?: number }) {
+export function DepositPay(props: { qrSvgDataUrl: string | null; slipUrl: string; slipState: "none" | "sent" | "bad"; idemKey: string; labels: DepositPayLabels; pollMs?: number }) {
   const router = useRouter();
   const L = props.labels;
   const fileRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const [idem] = useState(newIdemKey);
+  const [idem] = useState(props.idemKey);
   useEffect(() => {
     const t = setInterval(() => router.refresh(), props.pollMs ?? 5000);
     return () => clearInterval(t);

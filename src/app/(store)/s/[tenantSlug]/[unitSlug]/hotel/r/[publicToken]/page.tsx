@@ -7,7 +7,7 @@ import { AutoRefresh } from "@/components/queue-auto-refresh";
 import { StatusCard, type StatusLine } from "@/components/store/hotel/StatusCard";
 import { CancelDialog } from "@/components/store/hotel/CancelDialog";
 import { HoldCountdown } from "@/components/store/hotel/HoldCountdown";
-import { baht, dayLabel, pickLocale } from "@/components/store/hotel/format";
+import { baht, bkkTime, dayLabel, pickLocale } from "@/components/store/hotel/format";
 import { publicCancelAction } from "../../actions";
 import { WebHeader, WebNotFound, WebShell, one, withLang, type PageSearch } from "../../_web";
 
@@ -76,7 +76,7 @@ export default async function HotelStatusPage({ params, searchParams }: { params
         <StatusCard tone={tone} title={title} subtitle={subtitle} lines={lines}>
           {st.state === "HOLD" && st.holdExpiresAt ? (
             <div className="flex flex-col items-center gap-2">
-              <HoldCountdown expiresAt={st.holdExpiresAt} template={t("hotel.web.holdFor", { time: "{time}" })} expiredLabel={t("hotel.web.holdExpired")} />
+              <HoldCountdown expiresAt={st.holdExpiresAt} untilLabel={t("hotel.web.holdUntil", { time: bkkTime(st.holdExpiresAt, locale) })} template={t("hotel.web.holdFor", { time: "{time}" })} expiredLabel={t("hotel.web.holdExpired")} />
               {st.pay ? (
                 <Link href={withLang(`${base}/pay/${encodeURIComponent(publicToken)}`, lang)} className="btn btn-primary flex min-h-[52px] w-full items-center justify-center rounded-2xl text-base font-bold">
                   {t("hotel.web.payNow")}
