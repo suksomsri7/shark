@@ -2,7 +2,7 @@
 // เบอร์ผิด/ขอถี่เกิน/ส่ง SMS ล้ม = ตอบเหมือนกันหมด — ไม่บอกสถานะให้คนสุ่มเบอร์ · ห้ามคืนรหัสใน response เด็ดขาด
 // ยังไม่ตั้งผู้ให้บริการ SMS ⇒ 503 sms_unavailable (สถานะรวมทั้งระบบ ไม่ใช่ต่อเบอร์ · แอปสลับไปทางอีเมล · R-S1.19g)
 // อ่าน ip จาก req โดยตรง (ไม่ใช้ next/headers) เหมือน auth/otp — ด่าน 20 ครั้ง/10 นาที/IP ต้องได้ ip จริง
-import { requestPhoneOtp, PHONE_RESEND_SEC } from "@/lib/core/phone-auth";
+import { requestPhoneOtp, phoneTestCode, PHONE_RESEND_SEC } from "@/lib/core/phone-auth";
 import { smsEnabled } from "@/lib/core/sms";
 import { logOps } from "@/lib/core/ops";
 
@@ -15,7 +15,7 @@ export async function POST(req: Request): Promise<Response> {
   }
   const phone = typeof body?.phone === "string" ? body.phone : "";
   if (!phone) return Response.json({ error: "bad_request", message: "ข้อมูลที่ส่งมาไม่ครบหรือไม่ถูกต้อง" }, { status: 400 }); // SEC S3a.1-S2 R-Z34 ◂
-  if (!smsEnabled())
+  if (!smsEnabled() && !phoneTestCode(phone)) // เบอร์ทดสอบ (SMS_TEST_LOGINS) ใช้ได้แม้ยังไม่มีเกตเวย์
     return Response.json(
       { error: "sms_unavailable", message: "ตอนนี้ยังเข้าด้วยเบอร์โทรไม่ได้ กรุณาเข้าด้วยอีเมลแทน" },
       { status: 503 },
