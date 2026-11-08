@@ -1087,6 +1087,7 @@ try {
     eq([(await refundSalesOf(receipt)).length, (await forfeitSalesOf(receipt)).length], [1, 0], "เงินซ้ำ");
     const occ = await occOfRv(ids.k12a, true);
     ok(occ.length === 1, "K-12a ไม่มี occupancy");
+    try { await setUnit("rooms.hotel.guest.requireRegistration", false); } catch { /* ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-legacy-checkin): H.4 ทำให้ checkIn เดิมต้องมีผู้พักเมื่อ rooms.hotel.guest.requireRegistration เปิด — ปิดที่หน่วยทดสอบ (try/catch: ก่อน H.4 merge คีย์ยังไม่มี) */ }
     okRes(await fnOf(serviceL, "checkIn", F.service)(tA, UH, ids.k12a, occ[0].roomId), "checkIn เดิม");
     eq((await rvOf(ids.k12a)).status, "CHECKED_IN", "เช็กอิน");
     const c = await cancel(FRONT, { reservationId: ids.k12a });

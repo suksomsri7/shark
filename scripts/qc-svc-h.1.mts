@@ -1273,7 +1273,7 @@ try {
   await st("U-3", "hotel-tabs-shared (pure): HOTEL_TABS 7 แท็บเรียงตามภาพ (ปฏิทินห้อง /hotel/calendar · การจอง /hotel/reservations · หน้าเคาน์เตอร์ /hotel · แม่บ้าน /hotel/housekeeping · ราคา /hotel/rates · รายงาน /hotel/reports · ตั้งค่า /hotel/settings) · available: ราคา/ตั้งค่า/การจอง/หน้าเคาน์เตอร์ true · ปฏิทิน/แม่บ้าน/รายงาน false (ใบยังไม่มา)", () => {
     const tabs = valOf(tabsSharedL, "HOTEL_TABS", F.tabsShared) as Any[];
     eq(tabs.map((t) => [t.labelTh, t.path]), [["ปฏิทินห้อง", "/hotel/calendar"], ["การจอง", "/hotel/reservations"], ["หน้าเคาน์เตอร์", "/hotel"], ["แม่บ้าน", "/hotel/housekeeping"], ["ราคา", "/hotel/rates"], ["รายงาน", "/hotel/reports"], ["ตั้งค่า", "/hotel/settings"]], "ลำดับ/ป้าย/path");
-    eq(tabs.map((t) => t.available), [true, true, true, false, true, false, true], "available"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U3-calendar): H.2 เปิดแท็บปฏิทินห้อง (ใบ h.2 §1/§6)
+    eq(tabs.map((t) => t.available), [true, true, true, true, true, false, true], "available"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U3-hk): H.6 เปิดแท็บแม่บ้าน // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U3-calendar): H.2 เปิดแท็บปฏิทินห้อง (ใบ h.2 §1/§6)
     ok(tabs.every((t) => typeof t.key === "string"), "key");
     const s = stripComments(read(F.tabsShared));
     ok(!/["']use (client|server)["']/.test(s) && !/^\s*import\s/m.test(s), "shared ต้อง pure (ไม่มี directive/import)");
@@ -1282,13 +1282,13 @@ try {
     const f = fnOf(tabsSharedL, "hotelTabsFor", F.tabsShared);
     const base = "/app/u/bansuan-hotel";
     const fd = f({ ratesRead: true, settingsEdit: false }, base) as Any[];
-    eq(fd.map((t) => t.labelTh), ["ปฏิทินห้อง", "การจอง", "หน้าเคาน์เตอร์", "ราคา"], "frontdesk"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar): H.2
+    eq(fd.map((t) => t.labelTh), ["ปฏิทินห้อง", "การจอง", "หน้าเคาน์เตอร์", "แม่บ้าน", "ราคา"], "frontdesk"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-hk): แท็บแม่บ้านเห็นทุกคน หน้าเองตรวจสิทธิ์ (h.6 U-5) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar): H.2
     ok(fd.every((t) => t.href.startsWith(base) && typeof t.key === "string"), "href/key");
     const own = f({ ratesRead: true, settingsEdit: true }, base) as Any[];
-    eq(own.map((t) => t.labelTh), ["ปฏิทินห้อง", "การจอง", "หน้าเคาน์เตอร์", "ราคา", "ตั้งค่า"], "เจ้าของ"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar)
+    eq(own.map((t) => t.labelTh), ["ปฏิทินห้อง", "การจอง", "หน้าเคาน์เตอร์", "แม่บ้าน", "ราคา", "ตั้งค่า"], "เจ้าของ"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-hk) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar)
     const none = f({ ratesRead: false, settingsEdit: false }, base) as Any[];
     ok(!none.some((t) => t.labelTh === "ราคา" || t.labelTh === "ตั้งค่า"), "ไม่มีสิทธิ์เห็นราคา/ตั้งค่า");
-    ok(!own.some((t) => ["แม่บ้าน", "รายงาน"].includes(t.labelTh)), "แท็บที่ยังไม่มีหน้าโผล่"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar): ปฏิทินห้องมีหน้าแล้ว (H.2)
+    ok(!own.some((t) => ["รายงาน"].includes(t.labelTh)), "แท็บที่ยังไม่มีหน้าโผล่"); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-hk): เหลือรายงาน (H.7) // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h1-U4-calendar): ปฏิทินห้องมีหน้าแล้ว (H.2)
   });
   await st("U-5", "HotelTabs.tsx แบบ DormTabs ทุกประการ: 'use client' · <nav data-hotel-tabs aria-label ไทย> · print:hidden · useSyncExternalStore (location หลัง mount) · ไม่ใช้ next/navigation · <a data-tab aria-current> · ว่าง ⇒ null", () => {
     const s = read(F.tabs);

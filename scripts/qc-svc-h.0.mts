@@ -1017,7 +1017,7 @@ try {
   await st("R-9", "คีย์โรงแรมเดิม 24 ตัว: เปลี่ยนได้เฉพาะที่ใบสั่งระบุ (ถอด hiddenUntil · editPermission → hotel.settings.edit · deposit schema · cancelPolicy ค่าเริ่ม · ota.* requires) นอกนั้นเท่าฐาน · คีย์ใหม่ต่อท้ายหลังบล็อกโรงแรมเดิม", () => {
     const bm = needBase();
     const baseHotel: Any[] = (bm.BASE_DEFS as Any[]).filter((d) => d.key.startsWith("rooms.hotel."));
-    const ALLOW_SCHEMA = new Set(["rooms.hotel.deposit"]);
+    const ALLOW_SCHEMA = new Set(["rooms.hotel.deposit", "rooms.hotel.minibar"]); // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-R9-h6-minibar): ใบ h.6 §1 ให้ #75 minibar เป็น union {productId}|{key,name,priceSatang} (ค่าเดิมยังผ่าน)
     const ALLOW_DEFAULT = new Set(["rooms.hotel.cancelPolicy"]);
     const ALLOW_REQ = new Set(baseHotel.filter((d) => d.key.startsWith("rooms.hotel.ota.")).map((d) => d.key));
     const diffs: string[] = [];
@@ -1038,7 +1038,7 @@ try {
   await st("R-10", "rooms.ts เทียบฐาน: บรรทัดที่ลบ/แก้ได้เฉพาะ helper hotel() (hiddenUntil) · deposit schema · cancelPolicy ค่าเริ่ม · requires OTA · คอมเมนต์ (ไม่แตะคีย์หอ/ไฟล์ defs อื่น)", () => {
     const minus = diffLines(F.rooms, "-");
     ok(changedFiles([F.rooms]).length === 1, "rooms.ts ยังไม่เปลี่ยน");
-    const allowed = /hiddenUntil|PHASE_H|const hotel\s*=|z\.enum\(\["NONE", "FIRST_NIGHT", "FULL", "PERCENT"\]\)|percentBp|daysBefore: 3, refundBp: 10_000|integration: "OTA"|^const EDIT\b|editPermission/;
+    const allowed = /hiddenUntil|PHASE_H|const hotel\s*=|z\.enum\(\["NONE", "FIRST_NIGHT", "FULL", "PERCENT"\]\)|percentBp|daysBefore: 3, refundBp: 10_000|integration: "OTA"|^const EDIT\b|editPermission|productId: z\.string\(\)\.min\(1\)\.max\(64\)/; // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h0-R10-h6-minibar): บรรทัด schema minibar เดิมถูกแทนด้วย union ตามใบ h.6 §1
     const bad = minus.filter((l) => !allowed.test(l));
     ok(bad.length === 0, `ลบ/แก้บรรทัดนอกใบ: ${bad.slice(0, 3).map((l) => l.slice(0, 70)).join(" | ")}`);
     const others = changedFiles(["src/lib/core/settings/defs"]).filter((f) => f !== F.rooms);

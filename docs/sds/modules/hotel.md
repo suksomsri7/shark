@@ -221,6 +221,48 @@ HOLD ที่ `holdExpiresAt < now` ทุกร้าน ⇒ CANCELLED `HOLD_E
 ### ประสิทธิภาพ
 - `tapeChart` = 6 คำสั่งคงที่: กรอบ (หน่วย+ประเภท+ห้อง+อาคาร+ราคาแผนเริ่มต้น · JSON ใน SQL เดียว) · ค่าตั้ง 2 (`resolveSettingsMany`) · occupancy BLOCK/LEASE + สัญญาหอ + เหตุผลปิดห้อง 1 · การจอง 1 · คืน counted ต่อวัน 1 · `hotelToday` = 4 คำสั่ง
 
+## เช็กอิน V2 · ทะเบียนผู้พัก (ร.ร.3/ร.ร.4) · ตม.30 · PDPA (SVC H.4 · ภาพ 09 ซ้าย)
+
+### ไฟล์
+- `src/lib/modules/hotel/checkin.ts` — `assignableRooms` · `checkInV2` · `undoCheckIn` · `checkinView` · `checkInV2Legacy` (ทางเดิม `service.checkIn`)
+- `src/lib/modules/hotel/guest.ts` — `upsertGuestRecord` · `deleteGuestRecord` · `listGuests` · `revealGuestId` · `signRr3` · `rr3Card` · `rr4Register` · `purgeExpiredGuestRecords` · `RR3_FIELDS`
+- `src/lib/modules/hotel/guest-id-ai.ts` — `readIdDocument` (AI เสนอ · คนยืนยัน) · `src/lib/modules/hotel/tm30.ts` — `tm30Queue` · `tm30Export` · `markTm30Filed` · `tm30Sweep` · `TM30_DEFAULT_COLUMNS`
+- `src/lib/modules/hotel/guest-shared.ts` (pure) — สัญชาติ ISO-3 → ไทย · `isForeigner` · ตรวจเลขบัตรไทย (checksum mod 11) / พาสปอร์ต 6–9 ตัว · `maskId`
+- จอ: `CheckinPanel` · `RoomPicker` · `GuestForm` · `IdScanButton` · `SignaturePad` · `Rr3Card` · `Tm30Queue` · `Tm30FileDialog` · `SecurityDepositStep` (+ `checkin-shared.ts`)
+- หน้า: `/hotel/reservations/[id]?tab=guests` · `/hotel/guests` · `/hotel/guests/rr4/print?from&to` · `/hotel/guests/[guestId]/rr3/print` · `/hotel/tm30`
+
+### เช็กอิน V2 (S §7.4 · ธุรกรรมเดียว)
+CONFIRMED (+BOOKED แถวเก่า) · วันเข้า ≤ วันนี้ไทย (ก่อนวัน = `earlyOverride {reason}` ของผู้มี `hotel.booking.manage`) → ห้องประเภทเดียวกันที่ว่างทั้งช่วง ·
+แม่บ้านพร้อม = CLEAN|INSPECTED (`rooms.hotel.inspectionRequired` ⇒ INSPECTED เท่านั้น) · ไม่พร้อม = `force {reason}` (manage) + AuditLog + `HotelHousekeepingLog` (hkStatus ไม่เปลี่ยน) →
+ทะเบียนผู้พักหลัก ≥ 1 คน (`GUEST_REQUIRED` · ปิดได้ด้วย `rooms.hotel.guest.requireRegistration`) · ผู้พักรวม ≤ `maxOccupancy ?? capacity` (`occupancyOverride`) →
+ล็อกประเภทห้อง (advisory) → CAS แถว CONFIRMED→CHECKED_IN → occupancy (claim/move/HOLD→STAY ผ่าน facade rooms · EXCLUDE ตัดสินห้องชน · X3) → nights.roomId → ห้อง OCCUPIED →
+แถวผู้พัก + outbox `hotel.checked_in {reservationId, roomId, guests, foreigners}`.
+มัดจำค้าง ⇒ เช็กอินผ่าน + `needsDeposit` (จอบังคับรับ) · เงินประกัน (`securityDeposit.enabled/appliesTo`) ⇒ `needsSecurityDeposit` — รับเป็นขั้นแยกหลัง CHECKED_IN ผ่าน `takeSecurityDeposit` (H.5) · สมาชิก opt-in (`member.findOrCreate` source STAFF · ยินยอมเท่านั้น) หลัง commit.
+`undoCheckIn` = ผู้จัดการ/เจ้าของ · วันเดียวกัน · folio ไม่มีรายการนอก ROOM/DEPOSIT/SECURITY_DEPOSIT · ห้องจริงยังถือ · ทะเบียนคงไว้.
+ทางเดิม `service.checkIn(tenantId, unitId, reservationId, roomId)` ห่อแกนเดียวกัน (ไม่มีผู้กระทำ · คงพฤติกรรม P1: ไม่ตรวจวันเข้า/แม่บ้าน · ทะเบียนตาม `LEGACY_REQUIRES_GUEST` — ข้อแย้ง oracle wo-notes svc-h.4).
+
+### ทะเบียนผู้พัก = ร.ร.3 อิเล็กทรอนิกส์ (พ.ร.บ.โรงแรม 2547 ม.35)
+1 แถว `HotelGuestRecord` ต่อผู้พัก 1 คน · ช่องตามแบบ ร.ร.3 ท้ายประกาศกระทรวงมหาดไทย (`RR3_FIELDS` · ที่ปรึกษากฎหมายตรวจก่อนใช้จริง J3 / Q-H4-2) ·
+เลขบัตร `RR3-<พ.ศ.>-NNNNNN` = ลำดับ createdAt ต่อหน่วยต่อปี (ไม่มีคอลัมน์ถาวร) · ร.ร.4 = `rr4Register` แถว ร.ร.3 ของช่วงวันเข้าเรียงเลขบัตร (พิมพ์ด้วยเบราว์เซอร์ · ส่งสำเนานายทะเบียนตามรอบ — ระบบเตือน ไม่ส่งเอง) ·
+ลงชื่อ = `signRr3` ลายเซ็นบนจอ (PNG private) หรือ `method: "PAPER"` เมื่อ `rr3OnScreen` ปิด · คนหนึ่งลงชื่อแทนห้องได้ (ตั้ง `rr3SignedAt` ให้ผู้พักที่มีอยู่ตอนลงชื่อ) ·
+แก้ได้จนเช็กเอาต์ (หลังจากนั้นผู้จัดการ/เจ้าของ) · ลบได้เฉพาะคนที่สร้าง ภายใน 10 นาที ยังไม่ลงชื่อ/ยังไม่แจ้ง ตม.
+
+### PDPA · masking · retention (Q6 · X8/X10)
+- เลขเอกสาร + ข้อมูลอ่อนไหว (เพศ · อาชีพ · ที่อยู่ · ตรวจลงตรา · ตม.6) อยู่ใน `idNumberEnc` = `sealIntegrationSecret(…, AAD = recordId)` เท่านั้น · คอลัมน์อ่านได้ = ชื่อ · สัญชาติ · ชนิดเอกสาร · `idNumberLast4` · วันเกิด · มาจาก/ไปต่อ
+- จอ/DTO/AuditLog/outbox/ชื่อไฟล์ ไม่มีเลขเต็ม (mask = เห็น 4 ตัวท้ายเท่านั้น) · เลขเต็ม = `revealGuestId` (สิทธิ์ `hotel.guest.viewId` · หรือ `guest.register` เมื่อ `maskIdForStaff` ปิด) AuditLog `hotel.guest.id_revealed` + outbox ทุกครั้ง · ไม่ cache
+- รูปเอกสาร/ลายเซ็น/หลักฐาน ตม. = ไฟล์ private (`uploadFile visibility private` · ลิงก์ `privateFileUrl` ผูกผู้ดู ≤ 15 นาที · ลบ `deleteFileAsset`) · ≤ 8 MB · PNG/JPEG(/WebP รูปเอกสาร · PDF หลักฐาน) ไบต์หัวตรงชนิด
+- เก็บถึง `retainUntil` = วันออก + `rooms.hotel.guest.retainYears` (2 ปี ≥ 1 ปีตามกฎหมาย) · งานรายวัน `hotel.purgeExpiredGuestRecords` (≤ 200 แถว/รอบ · idempotent) ล้างกล่องลับ/รูป/ลายเซ็น คงชื่อ + 4 ตัวท้าย + สัญชาติ + วันเข้าออก · AuditLog SYSTEM + outbox `hotel.guest.purged {count}`
+
+### AI อ่านเอกสาร (Q5 · ปิดเป็นค่าเริ่ม)
+`rooms.hotel.guest.aiIdReader` ปิด ⇒ `AI_DISABLED` ไม่ยิง · provider ของระบบ (`resolveProvider("smart")`) ไม่มี ⇒ `NO_PROVIDER` · เครดิตหมด ⇒ `NO_CREDIT` · ผล = ข้อเสนอใส่ฟอร์ม (`aiProposed`) ต้องยืนยัน (`confirmed`) ก่อนบันทึก · หักเครดิต `hotel.guest.idReader` (ref กันซ้ำ) · ไม่เก็บรูป/ไม่ log
+
+### ตม.30 (พ.ร.บ.คนเข้าเมือง 2522 ม.38 · Q4)
+ต่างด้าว (สัญชาติ ≠ THA) + `rooms.hotel.tm30.enabled` ⇒ PENDING · ครบกำหนด = เวลาเข้าพัก + 24 ชม. · `tm30Sweep` ทุก 15 นาที: เลยกำหนด ⇒ LATE (UPDATE มีเงื่อนไข · X5) + เตือนก่อนครบ `tm30ReminderHours` (outbox `hotel.tm30.due` 1 ครั้งต่อผู้พัก) ·
+ไฟล์อัปโหลด = CSV UTF-8 BOM (คอลัมน์ `rooms.hotel.tm30.exportColumns` · ค่าเริ่ม 12 ช่องแบบ ตม.30 กระดาษ · แม่แบบจริงรอเจ้าของ Q-H4-1) มีเลขหนังสือเดินทางเต็มตามแบบ ตม. · AuditLog `hotel.tm30.exported` · ไม่เก็บไฟล์ ·
+`markTm30Filed` เลขรับแจ้ง 1 เลขหลายคน ⇒ FILED (+หลักฐาน private) · คนไทย = NOT_REQUIRED · ระบบไม่ส่ง ตม. เอง.
+
+### Event (outbox · 3 ทะเบียน · payload id/จำนวนล้วน)
+`hotel.checked_in` · `hotel.guest.registered` · `hotel.guest.id_revealed` · `hotel.tm30.due` · `hotel.tm30.filed` · `hotel.guest.purged`
 ### รอบ 3 (ผู้ตรวจเงินรอบ 1)
 - **บิลผสม** (เงินสดที่ร้าน + ลงห้อง): ลงห้องเฉพาะยอด ROOM_CHARGE (บรรทัดเดียว) · ตอนเช็กเอาต์ไม่กลับ JV บิลร้านทั้งใบ — โพสต์ JV ปรับเฉพาะส่วนลงห้อง (Cr ลูกหนี้ = ยอดลงห้อง · Dr รายได้/ภาษีขายตามสัดส่วน · refType PosSale คีย์ `PosSale#<sale>#RCADJ#<n>`) · คืนสภาพ = กลับ JV ปรับ · บิลลงห้องเต็มใบยังกลับทั้งใบ
 - **แยกภาษี + ลงห้องจาก POS**: POS_CHARGE = ยอดรวม VAT แล้วเสมอ — ไม่อยู่ในฐาน `taxLines` ของโรงแรม · ส่งเข้าบิล POS ตามยอดเดิม (ไม่ gross ซ้ำ) · ยอด folio = taxLines(ฐานโรงแรม).total + Σ POS_CHARGE
@@ -289,3 +331,52 @@ RECEIVED ──apply──▶ APPLIED (การจองสร้าง/ยก�
 ### หนี้
 - inbox `retainUntil` (ลบเมื่อ createdAt + 2 ปี) ไม่มีคอลัมน์ ⇒ purge ใบหลัง (H.9) · unique `(channelConnectionId, channelRef)` บน HotelReservation ไม่มี ⇒ กันซ้ำด้วย inbox unique + ตัวตรวจใน tx (onCreated)
 - ตัวต่อเจ้าจริง + ส่งปฏิเสธกลับช่องทาง = H2.1–H2.3 · PLATFORM tender = H.5b
+## แม่บ้าน (SVC H.6 · ภาพ 13 ก/ข · มือถือ 390)
+
+### ไฟล์
+- `hotel/hk-state.ts` (pure) — `HK_TRANSITIONS` · `canHkTransition(from, to, {role, inspectionRequired})` · `HK_ROLES` (MAID · INSPECTOR · SYSTEM) · `hkPriority(row)` · `parseHkNote/serializeHkNote`
+- `hotel/housekeeping.ts` (server) — `hkBoard` `hkRoom` `hkSetStatus` `hkStart` `hkRelease` `hkFinish` `hkInspect` `hkLogs` `postMinibar` `reportDefect` `setGuestRequest` `markStayoversDirty` `syncBlockedRooms`
+- จอ `components/hotel/hk/*` (`'use client'` · ไม่ลากถึง prisma) · หน้า `/hotel/housekeeping` · `/hotel/housekeeping/[roomId]` · `/hotel/housekeeping/logs`
+- realtime: `EV_HOTEL_HK` · ช่อง `hotel:hk:<tenantId>:<unitId>` · token `/api/realtime/hotel-hk-token?unitId=` · จอ `subscribeHotelHk` + poll 15 วิ
+
+### state machine (S §7.6)
+| จาก → ไป | แม่บ้าน (hotel.housekeeping) | หัวหน้า (hotel.housekeeping.inspect) | ระบบ |
+|---|---|---|---|
+| DIRTY → CLEAN | ✓ | ✓ | — |
+| CLEAN → INSPECTED | ✗ (FORBIDDEN) | ✓ (ปิด inspectionRequired ก็ตรวจได้ · CLEAN ขายได้อยู่แล้ว) | — |
+| CLEAN/INSPECTED → DIRTY | ✓ (สั่งทำใหม่) | ✓ (ตรวจไม่ผ่าน + เหตุผล) | ✓ night audit |
+| * → OUT_OF_ORDER | ✗ `USE_BLOCK` | ✗ `USE_BLOCK` | ✓ BLOCK ของ H.2 / ถึงวันปิดห้อง |
+| OUT_OF_ORDER → DIRTY | ✗ `USE_BLOCK` | ✗ | ✓ ปล่อยห้อง/หมดช่วงปิด |
+| DIRTY → INSPECTED · INSPECTED → CLEAN · เท่าเดิม | ✗ | ✗ | ✗ |
+
+- แหล่งความจริง = `HotelRoom.hkStatus` เขียนผ่าน `rooms.setHkStatus` เท่านั้น · ทุก transition = `HotelHousekeepingLog` 1 แถว (note JSON) + event `hotel.hk.changed` ใน tx เดียว · publish หลัง commit (ไม่ throw)
+- ความพร้อมกัน: ล็อกต่อห้อง `pg_try_advisory_xact_lock(hashtextextended('hotel.hk:<tenant>:room:<id>'))` + ลองซ้ำ (ผู้รอไม่ถือ connection — `setHkStatus` เปิด connection ของตัวเอง) ⇒ 10 ทางพร้อมกัน = log 1
+- `idempotencyKey` (คิวออฟไลน์ของมือถือ) อยู่ใน `note.key` ของ log · ห้องเดิม = คืนผลเดิม (ไม่ log ซ้ำ) · ห้องอื่น = INVALID_INPUT (ชนคีย์) · ค้น 30 วันล่าสุดของหน่วย
+
+### hkNote JSON (มติ §9 ข้อ 2 · ไม่เพิ่มคอลัมน์)
+`HotelRoom.hkNote = {"assignedTo","startedAt","guestRequest"}` (3 คีย์เท่านั้น) · `hkStart` เขียน assignedTo/startedAt (คนอื่นทำอยู่ ⇒ `TAKEN` · หัวหน้า `override`) · `hkFinish` ล้าง assignedTo/startedAt คง guestRequest · ข้อความเดิมก่อน H.6 (ไม่ใช่ JSON) อ่านเป็นคำขอแขก · `setGuestRequest` (แม่บ้าน/หน้าเคาน์เตอร์) · `at` ของ hkStart รับเฉพาะใต้ `SVC_QC_CLOCK=1`
+
+### งานห้องวันนี้ (`hkBoard` · มุมมองคำนวณสด · ≤ 4 คำสั่ง SQL)
+- บริบท: OOO (hkStatus OUT_OF_ORDER หรือ BLOCK ครอบวันนี้) → STAYOVER (CHECKED_IN ออกหลังวันนี้) → DEPARTING (CHECKED_IN ออกวันนี้) → DEPARTED (CHECKED_OUT/REFUNDED วันนี้) → ARRIVING (CONFIRMED/HOLD เข้าวันนี้ · arrivalTime = checkInTime ของประเภทห้อง) → VACANT · ห้องรายเดือน (MONTHLY) ไม่อยู่บนบอร์ด
+- `upcoming` (มีเฉพาะเมื่อจริง): ห้องว่างที่ **ตรวจแล้ว** และมีจองเข้าใน 7 วัน (ป้าย "พร้อมรับ <ชื่อ> <วัน>")
+- ลำดับด่วน `hkPriority`: 0 ออกแล้ว+แขกเข้า · 1 แขกเข้า · 2 ออกแล้ว/ออกวันนี้ · 3 ค้างต่อ · 4 ว่างไม่สะอาด · 5 อื่น (แล้วเรียงเวลาเข้า · เลขห้อง)
+- counts: total = ไม่ OOO และ (ไม่ VACANT หรือ DIRTY หรือ upcoming) · done = ใน total ที่ CLEAN/INSPECTED และไม่มีคำขอแขก · mine = assignedTo = ผู้ดู
+
+### มินิบาร์ (§2 ข้อ 4 · Q7)
+- รายการ = ค่าตั้ง `rooms.hotel.minibar` (#75 union: `{key,name,priceSatang}` ใช้บนมือถือ · `{productId,priceSatang?}` เดิมยังผ่าน schema แต่จอแม่บ้านยังไม่แสดง)
+- แขก CHECKED_IN พักอยู่ ⇒ `postFolioItem(MINIBAR)` ต่อรายการ (ราคา/ชื่อ snapshot ณ เวลาโพสต์ · `refType "HotelHousekeeping"` · `refId svc-h6-minibar-<roomId>-<ymd>-<key>[-<clientKey>]` กันซ้ำ) + `hotel.hk.minibar_posted` · ไม่ตัดสต็อก/ไม่ผ่าน POS
+- ไม่มีแขกพัก/บิลปิด ⇒ ไม่โพสต์ · `hotel.hk.minibar_unbilled` (ครั้งเดียวต่อชุด/วัน) + log note `{minibar:{unbilled:true,status:"PENDING",items}}` ให้หน้าเคาน์เตอร์เลือกเรียกเก็บ/ยกให้ (คิวหน้าเคาน์เตอร์ = H.7/H.4)
+- แม่บ้านโพสต์ได้เฉพาะ MINIBAR ราคาจากค่าตั้ง (ไม่ต้องมี hotel.folio.post — housekeeping.ts ให้สิทธิ์เฉพาะเส้นนี้)
+
+### แจ้งของเสีย (`reportDefect`) · ด่าน DORM|HOTEL
+- รูป ≤ 3 · jpeg/png/webp · ≤ 8 MB · ไบต์หัวตรงชนิด (X6) · ไฟล์ส่วนตัว
+- `REPAIR` (hotel.housekeeping) ⇒ `dorm.createStaffRepair` (ใบซ่อมพนักงาน · leaseId/partyId null · หมวด `rooms.repair.categories` ของหน่วย → OTHER) · event `dorm.repair.created` เดิม · ไม่เปลี่ยน hkStatus
+- `BLOCK` (hotel.booking.manage หรือ hotel.housekeeping + `rooms.hotel.hk.canBlock`) ⇒ `blockRoom` ของ H.2 วันนี้..+N (1–30) ⇒ OUT_OF_ORDER · ชนแขก ⇒ `ROOM_TAKEN` + suggest REPAIR
+- `dorm/portal.dormStaffGate(ctx, unitId, action, opts?: {allowTypes})` ค่าเริ่ม `["DORM"]` = ทางเดิมทุกไบต์ · `dorm/repair` เส้นพนักงาน (list/job/complete) ส่ง `["DORM","HOTEL"]` · หน่วย HOTEL ไม่มีขอบเขตอาคารของหอ (เห็นทั้งหน่วย)
+
+### night audit (H.7 เรียก)
+- `markStayoversDirty(ctx, {unitId, businessDate})`: CHECKED_IN ที่ checkIn ≤ วันนั้น < checkOut + `dailyHousekeeping` (ชั้นประเภทห้อง) ⇒ DIRTY (by null · note "night audit") · idempotent ตามสถานะ
+- `syncBlockedRooms` (เรียกในตัวด้วย): BLOCK ที่ถึงวัน ⇒ OUT_OF_ORDER (ปิดหนี้ H.2) · BLOCK หมดช่วงภายใน 7 วันและไม่มีปิดอื่นครอบ ⇒ DIRTY
+
+### Event (3 ทะเบียน · payload ไม่มี PII)
+`hotel.hk.changed {roomId, from, to, byUserId}` · `hotel.hk.minibar_posted {reservationId, roomId, items, amountSatang}` · `hotel.hk.minibar_unbilled {roomId, items, amountSatang}` · `hotel.hk.defect {roomId, action, repairId|blockId}`

@@ -279,6 +279,8 @@ const ALLOWED_EDGES = new Set([
   "inventory→account",
   "ticket→system",  // resolve POS/POINT ที่ผูก unit (เหมือน restaurant→system, booking→system)
   "hotel→pos",
+  "hotel→dorm", // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h6-edge): H.6 reportDefect แบบ REPAIR เรียก dorm facade createStaffRepair (lazy import · ทางเดียว · ใบ h.6 §1)
+  "hotel→member", // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h4-edge): H.4 ผูกสมาชิกแบบยินยอม (member.findOrCreate ผ่าน facade · ใบ h.4 §0)
   "hotel→account", // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h5-edge): H.5 checkout/room-charge เรียก facade บัญชี (reverse/restoreRoomChargePosting · posAccountSystemId · vatConfigOf) ตามใบ h.5 §0/§1
   "hotel→system",
   // SVC R0.8 (ใบ svc-brief-r0.8 §1 · §4): โรงแรมถือห้องจริง (RoomOccupancy) ใน tx เดียวกับการจอง ผ่าน facade `@/lib/modules/rooms` เท่านั้น ·
