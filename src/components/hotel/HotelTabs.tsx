@@ -11,6 +11,9 @@ const subscribe = (cb: () => void) => {
 const currentPath = () => window.location.pathname;
 const serverPath = () => "";
 
+// SVC H.10 r5 ▸ หน้าใต้ /hotel ที่ไม่ใช่ของแท็บใด (ช่องทาง OTA เข้าจากศูนย์เชื่อมต่อ) — ห้ามตกไปไฮไลต์ "หน้าเคาน์เตอร์" (href /hotel) ตาม prefix ◂
+const NO_TAB_SECTIONS = ["/hotel/channels"];
+
 /** href ยาวสุดที่เป็นต้นทางของ path */
 function activeKey(tabs: HotelTabLink[], path: string): string | undefined {
   let best: HotelTabLink | undefined;
@@ -18,6 +21,7 @@ function activeKey(tabs: HotelTabLink[], path: string): string | undefined {
     if (path !== t.href && !path.startsWith(`${t.href}/`)) continue;
     if (!best || t.href.length > best.href.length) best = t;
   }
+  if (NO_TAB_SECTIONS.some((sec) => path.endsWith(sec) || path.includes(`${sec}/`))) return undefined; // SVC H.10 r5
   return best?.key;
 }
 
