@@ -12,6 +12,7 @@
 🔴 App Privacy (แบบสอบถามข้อมูลส่วนบุคคล) Apple ไม่เปิดให้ API ตอบ ต้องกดในเว็บ
 """
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -94,6 +95,13 @@ Delete your account: https://shark.in.th/account-deletion""",
         "promotionalText": "ช่วงนี้ใช้ฟรี — เปิดใช้เฉพาะระบบที่ร้านคุณต้องใช้",
     },
 }
+
+# S3b.2: เวอร์ชันถัดไปเก็บข้อความเป็นไฟล์ข้อมูล — ตั้ง ASC_COPY_FILE=ledger/store-2.0/listing-2.0.json แทน COPY ด้านบน
+# (ไฟล์มี copy{locale:{subtitle,keywords,promotionalText,description,whatsNew}} + targetVersion)
+if os.environ.get("ASC_COPY_FILE"):
+    _data = json.loads((ROOT / os.environ["ASC_COPY_FILE"]).read_text())
+    COPY = _data["copy"]
+    TARGET_VERSION = _data.get("targetVersion", TARGET_VERSION)
 
 URLS = {
     "supportUrl": "https://shark.in.th/support",
@@ -211,6 +219,8 @@ def upsert_version_localization(vid: str, locale: str, copy: dict):
         "keywords": copy["keywords"],
         "promotionalText": copy["promotionalText"],
         **URLS,
+        # What's New — Apple ไม่รับช่องนี้ในเวอร์ชันแรกที่ยังไม่เคยขึ้นสโตร์ (ไฟล์ไม่มี whatsNew = ไม่ส่ง)
+        **({"whatsNew": copy["whatsNew"]} if copy.get("whatsNew") else {}),
     }
     if locale in existing:
         r = api("PATCH", f"appStoreVersionLocalizations/{existing[locale]}",

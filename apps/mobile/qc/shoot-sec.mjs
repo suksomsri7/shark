@@ -129,7 +129,8 @@ const BASE = process.env.QC_BASE ?? `http://127.0.0.1:${PORT}`;
 /** "/secretary/_gallery" → "secretary-_gallery" · "/" → "index" */
 const routeName = (r) => r.replace(/^\/+|\/+$/g, "").replace(/[^A-Za-z0-9_]+/g, "-") || "index";
 
-const VIEW = { tag: "iphone", w: 390, h: 844, scale: 2 };
+// S3b.2: QC_VIEW_W/H/SCALE/TAG = ขนาดภาพสโตร์ (เช่น 430×932@3 = 1290×2796 · iPad 1024×1366@2 = 2048×2732) · ไม่ตั้ง = 390×844@2 เดิม
+const VIEW = { tag: process.env.QC_VIEW_TAG ?? "iphone", w: Number(process.env.QC_VIEW_W ?? 390), h: Number(process.env.QC_VIEW_H ?? 844), scale: Number(process.env.QC_VIEW_SCALE ?? 2) };
 // 🔴 โปรไฟล์ chromium ต้องถูกลบหลังปิด (snap chromium เห็น /tmp ของตัวเอง)
 const UDD = `/tmp/chr-sec-app-${process.pid}`;
 const browser = await puppeteer.launch({ executablePath: "/usr/bin/chromium-browser", headless: true, args: ["--no-sandbox", "--disable-gpu", "--font-render-hinting=none", "--hide-scrollbars", `--user-data-dir=${UDD}`] });

@@ -1,0 +1,685 @@
+{
+ "_about": "S3b.2 store shots 2.0 (English) from s3a6.json — demo data only",
+ "noAuth": [
+  "/login"
+ ],
+ "expect": {
+  "/customers/x9": [
+   "cust-room",
+   "cust-bubble-in",
+   "cust-bubble-translate",
+   "cust-bubble-translation",
+   "cust-draft-card",
+   "cust-draft-gloss",
+   "cust-draft-send",
+   "cust-input",
+   "cust-translate-send",
+   "cust-send"
+  ]
+ },
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@example.com",
+    "name": "Suk"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "Blue House Residence",
+     "role": "MANAGER",
+     "branding": null
+    },
+    {
+     "tenantId": "t3",
+     "name": "Sweet Studio · Booking",
+     "role": "OWNER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 3,
+   "canApprove": 2
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "",
+   "tone": "polite",
+   "languages": [
+    "en"
+   ]
+  },
+  "GET /api/mobile/secretary/secretary": {
+   "name": "Shark",
+   "suffix": "",
+   "tone": "polite",
+   "languages": [
+    "en"
+   ],
+   "sample": "Hi, Shark here and ready to help. What can I take care of today?",
+   "saved": true
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-code-0000"
+  },
+  "GET /api/mobile/usage": {
+   "used": 12,
+   "limit": 100,
+   "pct": 12
+  },
+  "GET /api/mobile/conversations": {
+   "conversations": [
+    {
+     "id": "c-qc-1",
+     "title": "Yesterday's sales summary",
+     "updatedAt": "2026-09-01T03:00:00.000Z",
+     "unread": true
+    },
+    {
+     "id": "c-qc-2",
+     "title": "Quotation for a sample shop",
+     "updatedAt": "2026-08-28T03:00:00.000Z",
+     "unread": false
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/after-hours": {
+   "reply": true,
+   "handoff": true,
+   "disclosure": "This reply is from Shark, the shop's AI assistant. Our team will get back to you during opening hours."
+  },
+  "PUT /api/mobile/secretary/after-hours": {
+   "reply": false,
+   "handoff": true,
+   "disclosure": "Answered by Shark, the shop's AI assistant"
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 3
+  },
+  "GET /api/mobile/inbox/systems": {
+   "items": [
+    {
+     "id": "cs1",
+     "name": "Shop chat",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      },
+      {
+       "type": "WEBCHAT",
+       "label": "Web chat"
+      }
+     ],
+     "unread": 3
+    },
+    {
+     "id": "cs2",
+     "name": "Residence chat",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      }
+     ],
+     "unread": 0
+    }
+   ],
+   "canReply": true
+  },
+  "GET /api/mobile/inbox/conversations": {
+   "items": [
+    {
+     "id": "x1",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct1",
+      "displayName": "Somchai · Doi Chang Coffee",
+      "avatarUrl": null,
+      "customerId": "mem1"
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-nam",
+     "assigneeName": "Nam",
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:58:00.000Z",
+     "lastMessagePreview": "Got the quotation. Could we have 45-day credit?",
+     "staffUnreadCount": 2,
+     "waitingMin": null,
+     "aiDraft": true,
+     "helpers": [
+      "u-qc-kong"
+     ],
+     "tags": [
+      "Deal"
+     ]
+    },
+    {
+     "id": "x2",
+     "channel": "WEBCHAT",
+     "contact": {
+      "id": "ct2",
+      "displayName": "Manee",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": null,
+     "assigneeName": null,
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:40:00.000Z",
+     "lastMessagePreview": "Is there still a seat in Saturday's barista class?",
+     "staffUnreadCount": 1,
+     "waitingMin": 4,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "New"
+     ]
+    },
+    {
+     "id": "x3",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct3",
+      "displayName": "Auntie Daeng",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-kong",
+     "assigneeName": "Kong",
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:12:00.000Z",
+     "lastMessagePreview": "[Sticker]",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": []
+    },
+    {
+     "id": "x4",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct4",
+      "displayName": "Keng · Blue House",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "PENDING",
+     "assigneeUserId": "u-qc-2",
+     "assigneeName": "Somjai",
+     "unitId": null,
+     "lastMessageAt": "2026-11-04T09:30:00.000Z",
+     "lastMessagePreview": "You: Rent slip received, thank you!",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "Residence"
+     ]
+    },
+    {
+     "id": "x5",
+     "channel": "WEBCHAT",
+     "contact": {
+      "id": "ct5",
+      "displayName": "Visitor #4821",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-owner",
+     "assigneeName": "Suk",
+     "unitId": null,
+     "lastMessageAt": "2026-11-04T15:10:00.000Z",
+     "lastMessagePreview": "What time do you open? · Shark replied after hours",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "Needs a person"
+     ]
+    },
+    {
+     "id": "x6",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct6",
+      "displayName": "Wilai",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "RESOLVED",
+     "assigneeUserId": "u-qc-nam",
+     "assigneeName": "Nam",
+     "unitId": null,
+     "lastMessageAt": "2026-11-03T08:00:00.000Z",
+     "lastMessagePreview": "Got my order, thank you!",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": []
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "Nam",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "Somjai",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "Kong",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "PUT /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "Nam",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "Somjai",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "Kong",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "GET /api/mobile/inbox/quick-replies": {
+   "items": [
+    {
+     "id": "q1",
+     "shortcut": "/thx",
+     "title": "Thank you 🙏",
+     "body": "Thank you 🙏",
+     "channelTypes": []
+    },
+    {
+     "id": "q2",
+     "shortcut": "/map",
+     "title": "Address",
+     "body": "We're at {shop.address}.",
+     "channelTypes": []
+    },
+    {
+     "id": "q3",
+     "shortcut": "/open",
+     "title": "Opening hours",
+     "body": "We're open 09:00–18:00 every day.",
+     "channelTypes": []
+    },
+    {
+     "id": "q4",
+     "shortcut": "/paid",
+     "title": "Payment slip",
+     "body": "After transferring, just send the slip in this chat.",
+     "channelTypes": [
+      "LINE",
+      "WEBCHAT"
+     ]
+    },
+    {
+     "id": "q5",
+     "shortcut": "/menu",
+     "title": "Today's menu",
+     "body": "Here's today's menu.",
+     "channelTypes": [
+      "FACEBOOK"
+     ]
+    }
+   ]
+  },
+  "GET /api/mobile/inbox/staff": {
+   "items": [
+    {
+     "userId": "u-qc-nam",
+     "name": "Nam",
+     "role": "MANAGER",
+     "onDuty": true
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "Somjai",
+     "role": "STAFF",
+     "onDuty": true
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "Kong",
+     "role": "STAFF",
+     "onDuty": true
+    },
+    {
+     "userId": "u-qc-owner",
+     "name": "Suk",
+     "role": "OWNER",
+     "onDuty": false
+    }
+   ]
+  },
+  "GET /api/mobile/inbox/connections": {
+   "items": [
+    {
+     "id": "cn1",
+     "type": "LINE",
+     "label": "LINE",
+     "displayName": "@thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:58:00.000Z",
+     "lastErrorAt": null
+    },
+    {
+     "id": "cn2",
+     "type": "WEBCHAT",
+     "label": "Web chat",
+     "displayName": "shark.in.th/c/thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:40:00.000Z",
+     "lastErrorAt": null
+    }
+   ]
+  },
+  "POST /api/mobile/inbox/shift": {
+   "onDuty": true,
+   "onDutyAt": "2026-11-05T03:00:00.000Z"
+  },
+  "POST /api/mobile/inbox/attachments": {
+   "url": "https://cdn.qc.invalid/upload/photo.png",
+   "name": "photo.png",
+   "mimeType": "image/png",
+   "size": 2048,
+   "width": 1,
+   "height": 1
+  },
+  "GET /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ALL",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "kinds": [
+    "inbox",
+    "approval",
+    "room",
+    "help"
+   ],
+   "modes": [
+    "ALL",
+    "ASSIGNED",
+    "OFF"
+   ]
+  },
+  "PUT /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ASSIGNED",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "scope": "tenant"
+  },
+  "GET /api/mobile/member/search": {
+   "items": [
+    {
+     "id": "mem1",
+     "memberCode": "M-0012",
+     "name": "Somchai",
+     "phoneMasked": "081-xxx-5678",
+     "tier": null,
+     "points": 1240
+    },
+    {
+     "id": "mem2",
+     "memberCode": "M-0040",
+     "name": "Somsri",
+     "phoneMasked": "089-xxx-1122",
+     "tier": null,
+     "points": 80
+    }
+   ]
+  },
+  "POST /api/mobile/secretary/rooms": {
+   "roomId": "r-cust1",
+   "conversationId": "c-r-cust1",
+   "status": "RUNNING"
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 2,
+   "customers": 3,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 0
+   },
+   "total": 5
+  },
+  "GET /api/mobile/inbox/conversations/x9": {
+   "conversation": {
+    "id": "x9",
+    "channel": "WEBCHAT",
+    "contact": {
+     "id": "ct9",
+     "displayName": "Emily Carter",
+     "avatarUrl": null,
+     "customerId": null
+    },
+    "status": "OPEN",
+    "assigneeUserId": "u-qc-owner",
+    "assigneeName": "Suk",
+    "unitId": null,
+    "lastMessageAt": "2026-11-05T03:06:00.000Z",
+    "lastMessagePreview": "こんにちは、来週の土曜日に4名で予約できますか？",
+    "staffUnreadCount": 2,
+    "waitingMin": null,
+    "aiDraft": true,
+    "helpers": [],
+    "tags": [],
+    "can": {
+     "reply": true,
+     "assign": true,
+     "setStatus": true,
+     "linkCustomer": true,
+     "aiSuggest": true,
+     "translate": true
+    },
+    "replyWindowEndsAt": null,
+    "staffLang": "en",
+    "contactLang": "ja"
+   },
+   "messages": [
+    {
+     "id": "m91",
+     "direction": "IN",
+     "type": "TEXT",
+     "body": "こんにちは！エスプレッソM2の在庫はありますか？来週チェンマイに2台届けてほしいです。",
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:58:00.000Z",
+     "translatedBody": null,
+     "translatedLang": null,
+     "needsTranslation": true
+    },
+    {
+     "id": "m92",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "こんにちは、在庫あります。配送日を確認しますね。",
+     "senderUserId": "u-qc-owner",
+     "senderName": "Suk",
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T03:01:00.000Z",
+     "translatedBody": null,
+     "translatedLang": null,
+     "needsTranslation": false
+    },
+    {
+     "id": "m93",
+     "direction": "IN",
+     "type": "TEXT",
+     "body": "こんにちは、来週の土曜日に4名で予約できますか？",
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T03:06:00.000Z",
+     "translatedBody": "Hello, can I book a table for 4 next Saturday?",
+     "translatedLang": "en",
+     "needsTranslation": true
+    }
+   ],
+   "contact": {
+    "id": "ct9",
+    "displayName": "Emily Carter",
+    "avatarUrl": null,
+    "customerId": null
+   },
+   "linkedMember": null,
+   "helpers": [],
+   "nextBefore": null
+  },
+  "POST /api/mobile/inbox/conversations/x9/read": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x9/reply": {
+   "messageId": "m-new"
+  },
+  "POST /api/mobile/inbox/conversations/x9/assign": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x9/ai-suggest": {
+   "ok": true,
+   "replyLang": "ja",
+   "options": [
+    {
+     "id": "sg9",
+     "body": "はい、来週の水曜日にエスプレッソM2を2台チェンマイへお届けできます。お見積もりをお送りしましょうか？",
+     "warn": false,
+     "gloss": "Yes, we can deliver 2 Espresso M2 units to Chiang Mai next Wednesday. Shall I send you a quotation?"
+    }
+   ],
+   "sourceMessageId": "m93"
+  },
+  "POST /api/mobile/inbox/conversations/x9/messages/m91/translate": {
+   "ok": true,
+   "text": "Hi! Do you have the Espresso M2 in stock? I'd like 2 units delivered to Chiang Mai next week.",
+   "cached": false,
+   "lang": "en"
+  },
+  "POST /api/mobile/inbox/conversations/x9/translate-draft": {
+   "ok": true,
+   "text": "はい、水曜日にお届けできます。本日お見積もりをお送りします。"
+  },
+  "POST /api/mobile/inbox/quick-replies/q1/apply": {
+   "body": "Thank you 🙏"
+  },
+  "POST /api/mobile/inbox/quick-replies/q2/apply": {
+   "body": "We're at 12 Nimman Road, Chiang Mai."
+  }
+ },
+ "locale": "en-US"
+}

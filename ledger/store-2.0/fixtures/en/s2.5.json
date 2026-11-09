@@ -1,0 +1,243 @@
+{
+ "_about": "S3b.2 store shots 2.0 (English) from s2.5.json — demo data only",
+ "noAuth": [
+  "/login"
+ ],
+ "expect": {
+  "/secretary/inbox": [
+   "sec-inbox",
+   "sec-inbox-back",
+   "sec-inbox-tab-all",
+   "sec-inbox-tab-money",
+   "sec-inbox-tab-customer",
+   "sec-inbox-tab-delete",
+   "sec-inbox-item",
+   "sec-inbox-approve",
+   "sec-inbox-reject",
+   "sec-inbox-open",
+   "sec-inbox-why"
+  ],
+  "/secretary/scheduled": [
+   "sec-sched",
+   "sec-sched-back",
+   "sec-sched-add",
+   "sec-sched-item",
+   "sec-sched-toggle"
+  ]
+ },
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@example.com",
+    "name": "Suk"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "Blue House Residence",
+     "role": "MANAGER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "",
+   "tone": "polite",
+   "languages": [
+    "en"
+   ],
+   "stats": {
+    "jobs": 0,
+    "approvedClean": 0,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 5,
+   "canApprove": 4
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 0
+  },
+  "GET /api/mobile/secretary/inbox": {
+   "items": [
+    {
+     "tenantId": "t1",
+     "tenantName": "The Bean Café",
+     "type": "proposal",
+     "id": "p-quote",
+     "roomId": "r1",
+     "conversationId": "c-qc-r1",
+     "summary": "Quotation Q-0012 ฿12,500 · Somchai, Doi Chang · 2 machines, 5% off · send on LINE",
+     "kind": "account.documents.create",
+     "risk": "WRITE",
+     "canApprove": true,
+     "why": "money + sent to customer",
+     "createdAt": "2026-11-04T02:41:00.000Z",
+     "expiresAt": "2026-11-12T02:41:00.000Z"
+    },
+    {
+     "tenantId": "t2",
+     "tenantName": "Blue House Residence",
+     "type": "proposal",
+     "id": "p-refund",
+     "roomId": "r2",
+     "conversationId": "c-qc-r2",
+     "summary": "Refund room 204 deposit ฿2,400 · cancelled 7+ days ahead per policy · to the original account",
+     "kind": "booking_refund_deposit",
+     "risk": "WRITE",
+     "canApprove": true,
+     "why": "Refunds always need approval",
+     "createdAt": "2026-11-04T01:15:00.000Z",
+     "expiresAt": "2026-11-12T01:15:00.000Z"
+    },
+    {
+     "tenantId": "t1",
+     "tenantName": "The Bean Café",
+     "type": "proposal",
+     "id": "p-review",
+     "roomId": "r3",
+     "conversationId": "c-qc-r3",
+     "summary": "Reply to a 1-star Facebook review: \"We're sorry the wait was so long. Next time…\" (signed as AI assistant)",
+     "kind": "chat.send",
+     "risk": "WRITE",
+     "canApprove": true,
+     "why": "public reply to a customer",
+     "createdAt": "2026-11-03T09:20:00.000Z",
+     "expiresAt": "2026-11-11T09:20:00.000Z"
+    },
+    {
+     "tenantId": "t1",
+     "tenantName": "The Bean Café",
+     "type": "proposal",
+     "id": "p-del",
+     "roomId": "r4",
+     "conversationId": "c-qc-r4",
+     "summary": "Delete 3 duplicate cards on the shop board",
+     "kind": "kanban.cards.delete",
+     "risk": "DESTRUCTIVE",
+     "canApprove": true,
+     "why": "permanent delete, can't be undone",
+     "createdAt": "2026-11-03T07:05:00.000Z",
+     "expiresAt": "2026-11-11T07:05:00.000Z"
+    },
+    {
+     "tenantId": "t2",
+     "tenantName": "Blue House Residence",
+     "type": "plan",
+     "id": "plan-rent",
+     "roomId": "r5",
+     "conversationId": "c-qc-r5",
+     "summary": "Remind 12 rooms about unpaid rent + record balances",
+     "canApprove": false,
+     "createdAt": "2026-11-02T03:00:00.000Z",
+     "expiresAt": "2026-11-11T03:00:00.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/scheduled": {
+   "max": 10,
+   "items": [
+    {
+     "id": "st1",
+     "instruction": "Yesterday's sales + low stock",
+     "hourBkk": 8,
+     "frequency": "DAILY",
+     "days": [],
+     "channels": [
+      "push",
+      "room"
+     ],
+     "describe": "Every day",
+     "active": true,
+     "ownerUserId": "u-qc-owner",
+     "mine": true,
+     "lastRunDay": null,
+     "createdAt": "2026-10-01T01:00:00.000Z",
+     "updatedAt": "2026-10-01T01:00:00.000Z"
+    },
+    {
+     "id": "st2",
+     "instruction": "Follow up deals quiet for 14+ days and draft messages for approval",
+     "hourBkk": 9,
+     "frequency": "WEEKLY",
+     "days": [
+      1
+     ],
+     "channels": [
+      "room"
+     ],
+     "describe": "Weekly (Monday)",
+     "active": true,
+     "ownerUserId": "u-qc-owner",
+     "mine": true,
+     "lastRunDay": null,
+     "createdAt": "2026-10-01T01:00:00.000Z",
+     "updatedAt": "2026-10-01T01:00:00.000Z"
+    },
+    {
+     "id": "st3",
+     "instruction": "Confirm bookings 1 day ahead",
+     "hourBkk": 18,
+     "frequency": "DAILY",
+     "days": [],
+     "channels": [
+      "push"
+     ],
+     "describe": "Every day",
+     "active": false,
+     "ownerUserId": "u-qc-staff",
+     "mine": false,
+     "lastRunDay": null,
+     "createdAt": "2026-10-01T01:00:00.000Z",
+     "updatedAt": "2026-10-01T01:00:00.000Z"
+    }
+   ]
+  },
+  "PUT /api/mobile/secretary/scheduled/st1": {
+   "ok": true,
+   "active": false
+  },
+  "POST /api/mobile/secretary/scheduled": {
+   "id": "st9"
+  },
+  "DELETE /api/mobile/secretary/scheduled/st1": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/proposals/p-quote/approve": {
+   "ok": true,
+   "note": "Quotation issued"
+  },
+  "POST /api/mobile/secretary/proposals/p-quote/reject": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 4,
+   "customers": 0,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 0
+   },
+   "total": 4
+  }
+ },
+ "locale": "en-US"
+}

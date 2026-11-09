@@ -1,0 +1,1568 @@
+{
+ "_about": "S3b.2 store shots 2.0 (English) from s2.20.json — demo data only",
+ "noAuth": [
+  "/login"
+ ],
+ "expect": {
+  "/secretary": [
+   "sec-home",
+   "sec-top-secretary",
+   "sec-top-customers",
+   "sec-top-team",
+   "sec-top-secretary-badge",
+   "sec-top-customers-badge",
+   "sec-top-team-badge",
+   "sec-top-help",
+   "sec-top-new",
+   "sec-home-card"
+  ],
+  "/customers": [
+   "cust-list",
+   "sec-top-secretary-badge",
+   "sec-top-customers-badge",
+   "sec-top-team-badge",
+   "sec-top-help",
+   "cust-row"
+  ],
+  "/secretary/staff": [
+   "sec-staff",
+   "sec-top-team",
+   "sec-top-team-badge",
+   "sec-top-help",
+   "sec-staff-row",
+   "sec-staff-pending",
+   "sec-staff-invite"
+  ],
+  "/customers/x1": [
+   "cust-room",
+   "cust-input",
+   "cust-send"
+  ],
+  "/secretary/room/r1": [
+   "sec-room",
+   "sec-room-input",
+   "sec-room-send"
+  ]
+ },
+ "routes": [
+  "/secretary",
+  "/customers",
+  "/secretary/staff",
+  "/customers/x1",
+  "/secretary/room/r1",
+  "/chat/c1"
+ ],
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@example.com",
+    "name": "Suk"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "Blue House Residence",
+     "role": "MANAGER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 2,
+   "canApprove": 2
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "",
+   "tone": "polite",
+   "languages": [
+    "en"
+   ],
+   "stats": {
+    "jobs": 0,
+    "approvedClean": 0,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary/secretary": {
+   "name": "Shark",
+   "suffix": "",
+   "tone": "polite",
+   "languages": [
+    "en"
+   ],
+   "sample": "",
+   "saved": false
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-code-0000"
+  },
+  "GET /api/mobile/usage": {
+   "used": 12,
+   "limit": 100,
+   "pct": 12
+  },
+  "GET /api/mobile/conversations": {
+   "conversations": [
+    {
+     "id": "c-qc-1",
+     "title": "Yesterday's sales summary",
+     "updatedAt": "2026-09-01T03:00:00.000Z",
+     "unread": true
+    },
+    {
+     "id": "c-qc-2",
+     "title": "Quotation for a sample shop",
+     "updatedAt": "2026-08-28T03:00:00.000Z",
+     "unread": false
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/after-hours": {
+   "reply": true,
+   "handoff": true,
+   "disclosure": "This reply is from Shark, the shop's AI assistant. Our team will get back to you during opening hours."
+  },
+  "PUT /api/mobile/secretary/after-hours": {
+   "reply": false,
+   "handoff": true,
+   "disclosure": "Answered by Shark, the shop's AI assistant"
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 3
+  },
+  "GET /api/mobile/inbox/systems": {
+   "items": [
+    {
+     "id": "cs1",
+     "name": "Shop chat",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      },
+      {
+       "type": "WEBCHAT",
+       "label": "Web chat"
+      }
+     ],
+     "unread": 3
+    },
+    {
+     "id": "cs2",
+     "name": "Residence chat",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      }
+     ],
+     "unread": 0
+    }
+   ],
+   "canReply": true
+  },
+  "GET /api/mobile/inbox/conversations": {
+   "items": [
+    {
+     "id": "x1",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct1",
+      "displayName": "Somchai · Doi Chang Coffee",
+      "avatarUrl": null,
+      "customerId": "mem1"
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-nam",
+     "assigneeName": "Nam",
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:58:00.000Z",
+     "lastMessagePreview": "Got the quotation. Could we have 45-day credit?",
+     "staffUnreadCount": 2,
+     "waitingMin": null,
+     "aiDraft": true,
+     "helpers": [
+      "u-qc-kong"
+     ],
+     "tags": [
+      "Deal"
+     ]
+    },
+    {
+     "id": "x2",
+     "channel": "WEBCHAT",
+     "contact": {
+      "id": "ct2",
+      "displayName": "Manee",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": null,
+     "assigneeName": null,
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:40:00.000Z",
+     "lastMessagePreview": "Is there still a seat in Saturday's barista class?",
+     "staffUnreadCount": 1,
+     "waitingMin": 4,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "New"
+     ]
+    },
+    {
+     "id": "x3",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct3",
+      "displayName": "Auntie Daeng",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-kong",
+     "assigneeName": "Kong",
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:12:00.000Z",
+     "lastMessagePreview": "[Sticker]",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": []
+    },
+    {
+     "id": "x4",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct4",
+      "displayName": "Keng · Blue House",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "PENDING",
+     "assigneeUserId": "u-qc-2",
+     "assigneeName": "Somjai",
+     "unitId": null,
+     "lastMessageAt": "2026-11-04T09:30:00.000Z",
+     "lastMessagePreview": "You: Rent slip received, thank you!",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "Residence"
+     ]
+    },
+    {
+     "id": "x5",
+     "channel": "WEBCHAT",
+     "contact": {
+      "id": "ct5",
+      "displayName": "Visitor #4821",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-owner",
+     "assigneeName": "Suk",
+     "unitId": null,
+     "lastMessageAt": "2026-11-04T15:10:00.000Z",
+     "lastMessagePreview": "What time do you open? · Shark replied after hours",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "Needs a person"
+     ]
+    },
+    {
+     "id": "x6",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct6",
+      "displayName": "Wilai",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "RESOLVED",
+     "assigneeUserId": "u-qc-nam",
+     "assigneeName": "Nam",
+     "unitId": null,
+     "lastMessageAt": "2026-11-03T08:00:00.000Z",
+     "lastMessagePreview": "Got my order, thank you!",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": []
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "Nam",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "Somjai",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "Kong",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "PUT /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "Nam",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "Somjai",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "Kong",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "GET /api/mobile/inbox/conversations/x1": {
+   "conversation": {
+    "id": "x1",
+    "channel": "LINE",
+    "contact": {
+     "id": "ct1",
+     "displayName": "Somchai · Doi Chang Coffee",
+     "avatarUrl": null,
+     "customerId": "mem1"
+    },
+    "status": "OPEN",
+    "assigneeUserId": "u-qc-nam",
+    "assigneeName": "Nam",
+    "unitId": null,
+    "lastMessageAt": "2026-11-05T02:58:00.000Z",
+    "lastMessagePreview": "Got the quotation. Could we have 45-day credit?",
+    "staffUnreadCount": 2,
+    "waitingMin": null,
+    "aiDraft": true,
+    "helpers": [
+     "u-qc-kong"
+    ],
+    "tags": [
+     "Deal"
+    ],
+    "can": {
+     "reply": true,
+     "assign": true,
+     "setStatus": true,
+     "linkCustomer": true,
+     "aiSuggest": true
+    },
+    "replyWindowEndsAt": null
+   },
+   "messages": [
+    {
+     "id": "m1",
+     "direction": "IN",
+     "type": "TEXT",
+     "body": "Hi, I got the quotation. Could we have 45-day credit?",
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:52:00.000Z"
+    },
+    {
+     "id": "m2",
+     "direction": "IN",
+     "type": "STICKER",
+     "body": null,
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": {
+      "packageId": "446",
+      "stickerId": "1988"
+     },
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:52:20.000Z"
+    },
+    {
+     "id": "m3",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "🙋 Nam asked Kong to help: the customer is also asking about rooms",
+     "senderUserId": "u-qc-nam",
+     "senderName": "Nam",
+     "isInternal": true,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:53:00.000Z"
+    },
+    {
+     "id": "m4",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "Long-time customer, always pays on time — OK. @Kong can you check the rooms?",
+     "senderUserId": "u-qc-nam",
+     "senderName": "Nam",
+     "isInternal": true,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:53:30.000Z"
+    },
+    {
+     "id": "m5",
+     "direction": "IN",
+     "type": "IMAGE",
+     "body": null,
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [
+      {
+       "name": "slip.png",
+       "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
+       "kind": "IMAGE",
+       "mimeType": "image/png",
+       "durationMs": null
+      }
+     ],
+     "meta": null,
+     "createdAt": "2026-11-05T02:54:00.000Z"
+    },
+    {
+     "id": "m6",
+     "direction": "IN",
+     "type": "AUDIO",
+     "body": null,
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [
+      {
+       "name": "voice.m4a",
+       "url": "https://cdn.qc.invalid/voice.m4a",
+       "kind": "AUDIO",
+       "mimeType": "audio/mp4",
+       "durationMs": 12000
+      }
+     ],
+     "meta": null,
+     "createdAt": "2026-11-05T02:54:30.000Z"
+    },
+    {
+     "id": "m7",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "Sure, I'll update the quotation.",
+     "senderUserId": "u-qc-nam",
+     "senderName": "Nam",
+     "isInternal": false,
+     "deliveryStatus": "FAILED",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:55:00.000Z"
+    },
+    {
+     "id": "m8",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "⏰ No reply for over 15 minutes — the manager has been notified",
+     "senderUserId": "system:sla",
+     "senderName": "Chat system",
+     "isInternal": true,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:56:00.000Z"
+    },
+    {
+     "id": "m9",
+     "direction": "OUT",
+     "type": "FILE",
+     "body": "Quotation Q-0012 is updated to 45-day credit — new file attached.\n— Sent by Shark, the shop's AI assistant",
+     "senderUserId": "u-qc-owner",
+     "senderName": "Suk",
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [
+      {
+       "name": "Q-0012-v2.pdf",
+       "url": "https://cdn.qc.invalid/Q-0012-v2.pdf",
+       "kind": "FILE",
+       "mimeType": "application/pdf",
+       "durationMs": null
+      }
+     ],
+     "meta": {
+      "ai": {
+       "roomId": "r1",
+       "proposalId": "p-quote",
+       "approvedBy": "u-qc-owner"
+      }
+     },
+     "createdAt": "2026-11-05T02:57:00.000Z"
+    },
+    {
+     "id": "m10",
+     "direction": "IN",
+     "type": "TEXT",
+     "body": "Thanks! Could I also see a room for Saturday?",
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:58:00.000Z"
+    }
+   ],
+   "contact": {
+    "id": "ct1",
+    "displayName": "Somchai · Doi Chang Coffee",
+    "avatarUrl": null,
+    "customerId": "mem1"
+   },
+   "linkedMember": {
+    "id": "mem1",
+    "name": "Somchai",
+    "phoneMasked": "081-xxx-5678"
+   },
+   "helpers": [
+    {
+     "userId": "u-qc-kong",
+     "name": "Kong",
+     "calledById": "u-qc-nam",
+     "note": "Customer is also asking about rooms",
+     "createdAt": "2026-11-05T02:53:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "POST /api/mobile/inbox/conversations/x1/read": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/reply": {
+   "messageId": "m-new"
+  },
+  "POST /api/mobile/inbox/conversations/x1/assign": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/status": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/helpers": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/handoff": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/contact": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/ai-suggest": {
+   "ok": true,
+   "options": [
+    {
+     "id": "sg1",
+     "body": "Hi Somchai, 45-day credit is fine. We'll send the updated quotation today.",
+     "warn": false
+    }
+   ],
+   "sourceMessageId": "m10"
+  },
+  "GET /api/mobile/inbox/quick-replies": {
+   "items": [
+    {
+     "id": "q1",
+     "shortcut": "/thx",
+     "title": "Thank you 🙏",
+     "body": "Thank you 🙏",
+     "channelTypes": []
+    },
+    {
+     "id": "q2",
+     "shortcut": "/map",
+     "title": "Address",
+     "body": "We're at {shop.address}.",
+     "channelTypes": []
+    },
+    {
+     "id": "q3",
+     "shortcut": "/open",
+     "title": "Opening hours",
+     "body": "We're open 09:00–18:00 every day.",
+     "channelTypes": []
+    },
+    {
+     "id": "q4",
+     "shortcut": "/paid",
+     "title": "Payment slip",
+     "body": "After transferring, just send the slip in this chat.",
+     "channelTypes": [
+      "LINE",
+      "WEBCHAT"
+     ]
+    },
+    {
+     "id": "q5",
+     "shortcut": "/menu",
+     "title": "Today's menu",
+     "body": "Here's today's menu.",
+     "channelTypes": [
+      "FACEBOOK"
+     ]
+    }
+   ]
+  },
+  "POST /api/mobile/inbox/quick-replies/q1/apply": {
+   "body": "Thank you 🙏"
+  },
+  "POST /api/mobile/inbox/quick-replies/q2/apply": {
+   "body": "We're at 12 Nimman Road, Chiang Mai."
+  },
+  "GET /api/mobile/inbox/staff": {
+   "items": [
+    {
+     "userId": "u-qc-kong",
+     "name": "Kong",
+     "role": "STAFF",
+     "onDuty": true
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "Somjai",
+     "role": "STAFF",
+     "onDuty": false
+    }
+   ]
+  },
+  "GET /api/mobile/inbox/connections": {
+   "items": [
+    {
+     "id": "cn1",
+     "type": "LINE",
+     "label": "LINE",
+     "displayName": "@thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:58:00.000Z",
+     "lastErrorAt": null
+    },
+    {
+     "id": "cn2",
+     "type": "WEBCHAT",
+     "label": "Web chat",
+     "displayName": "shark.in.th/c/thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:40:00.000Z",
+     "lastErrorAt": null
+    }
+   ]
+  },
+  "POST /api/mobile/inbox/shift": {
+   "onDuty": true,
+   "onDutyAt": "2026-11-05T03:00:00.000Z"
+  },
+  "POST /api/mobile/inbox/attachments": {
+   "url": "https://cdn.qc.invalid/upload/photo.png",
+   "name": "photo.png",
+   "mimeType": "image/png",
+   "size": 2048,
+   "width": 1,
+   "height": 1
+  },
+  "GET /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ALL",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "kinds": [
+    "inbox",
+    "approval",
+    "room",
+    "help"
+   ],
+   "modes": [
+    "ALL",
+    "ASSIGNED",
+    "OFF"
+   ]
+  },
+  "PUT /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ASSIGNED",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "scope": "tenant"
+  },
+  "GET /api/mobile/member/search": {
+   "items": [
+    {
+     "id": "mem1",
+     "memberCode": "M-0012",
+     "name": "Somchai",
+     "phoneMasked": "081-xxx-5678",
+     "tier": null,
+     "points": 1240
+    },
+    {
+     "id": "mem2",
+     "memberCode": "M-0040",
+     "name": "Somsri",
+     "phoneMasked": "089-xxx-1122",
+     "tier": null,
+     "points": 80
+    }
+   ]
+  },
+  "POST /api/mobile/secretary/rooms": {
+   "roomId": "r-new",
+   "conversationId": "c-new",
+   "status": "RUNNING"
+  },
+  "GET /api/mobile/secretary": {
+   "name": "Shark",
+   "suffix": "",
+   "languages": [
+    "th"
+   ]
+  },
+  "GET /api/mobile/secretary/rooms/r1": {
+   "id": "r1",
+   "conversationId": "c-r1",
+   "title": "Quotation · Doi Chang Coffee",
+   "status": "WAITING",
+   "systems": [
+    "crm",
+    "account",
+    "chat",
+    "kanban"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [
+    {
+     "userId": "u-qc-2",
+     "name": "Somjai",
+     "role": "STAFF",
+     "addedById": "u-qc-owner",
+     "addedAt": "2026-11-04T19:39:00.000Z",
+     "seeHistory": true
+    }
+   ],
+   "canManage": true,
+   "createdAt": "2026-11-04T19:38:00.000Z",
+   "updatedAt": "2026-11-04T19:41:00.000Z",
+   "closedAt": null,
+   "plans": [
+    {
+     "id": "pl1",
+     "title": "Preparing quotation Q-0012",
+     "hasDestructive": false,
+     "createdAt": "2026-11-04T19:38:20.000Z",
+     "steps": [
+      {
+       "kind": "crm.contacts.search",
+       "summary": "Looked up customer \"Somchai, Doi Chang\" · 1 found · 30-day credit",
+       "status": "DONE"
+      },
+      {
+       "kind": "account.documents.create",
+       "summary": "Drafted quotation Q-0012 · ฿12,500",
+       "status": "RUNNING"
+      },
+      {
+       "kind": "chat.send",
+       "summary": "LINE message to Somchai — awaiting approval",
+       "status": "PENDING"
+      }
+     ],
+     "status": "RUNNING"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/rooms/r1/messages": {
+   "items": [
+    {
+     "id": "m1",
+     "role": "USER",
+     "content": "Make a quotation for Somchai at Doi Chang Coffee: 2 espresso machines, 5% off, then send it on LINE",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-04T19:38:00.000Z"
+    },
+    {
+     "id": "m2",
+     "role": "ASSISTANT",
+     "content": "Got it. Let me check the details first.",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-04T19:38:10.000Z"
+    },
+    {
+     "id": "m3",
+     "role": "ASSISTANT",
+     "content": "🔔 Suk added Somjai to this task room",
+     "authorUserId": "system",
+     "system": true,
+     "createdAt": "2026-11-04T19:39:00.000Z"
+    },
+    {
+     "id": "m4",
+     "role": "ASSISTANT",
+     "content": "The draft is ready. Please approve before it goes to the customer.",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-04T19:41:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r1/proposals": {
+   "items": [
+    {
+     "id": "p-chat",
+     "type": "proposal",
+     "kind": "chat.send",
+     "risk": "NORMAL",
+     "summary": "Message to Somchai (LINE):\nHello Somchai, The Bean Café is sending quotation Q-0012 for 2 Espresso M2 machines, 5% off, net ฿12,500, 30-day credit. Let us know if you have any questions.",
+     "class": {
+      "destructive": false,
+      "money": false,
+      "customerFacing": true,
+      "piiExport": false
+     },
+     "editable": false,
+     "edited": false,
+     "why": "Messages to customers always need approval",
+     "createdAt": "2026-11-04T19:41:10.000Z",
+     "expiresAt": "2026-11-07T19:41:10.000Z",
+     "classes": {
+      "money": false,
+      "customerFacing": true,
+      "destructive": false
+     },
+     "canApprove": true
+    },
+    {
+     "id": "p-card",
+     "type": "proposal",
+     "kind": "kanban.cards.create",
+     "risk": "NORMAL",
+     "summary": "Create card \"Follow up Doi Chang\" on the sales board · due 8 Nov",
+     "class": {
+      "destructive": false,
+      "money": false,
+      "customerFacing": false,
+      "piiExport": false
+     },
+     "editable": true,
+     "input": {
+      "title": "Follow up Doi Chang",
+      "dueDate": "2026-11-08",
+      "description": "Call about quotation Q-0012"
+     },
+     "edited": false,
+     "why": "Writes to the task board — every write needs approval",
+     "createdAt": "2026-11-04T19:41:20.000Z",
+     "expiresAt": "2026-11-07T19:41:20.000Z",
+     "classes": {
+      "money": false,
+      "customerFacing": false,
+      "destructive": false
+     },
+     "canApprove": true
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/log": {
+   "items": [
+    {
+     "id": "l1",
+     "kind": "crm.deals.move",
+     "module": "crm",
+     "summary": "Move deal \"Doi Chang · 2 machines\" to Quoted",
+     "roomId": "r1",
+     "proposalId": null,
+     "userId": "u-qc-owner",
+     "approverId": "u-qc-owner",
+     "entity": {
+      "type": "crm.deal",
+      "id": "d-qc-1"
+     },
+     "undoableUntil": "2026-11-05T19:40:00.000Z",
+     "undoneAt": null,
+     "canUndo": true,
+     "createdAt": "2026-11-04T19:40:00.000Z",
+     "link": null
+    }
+   ]
+  },
+  "POST /api/mobile/secretary/rooms/r1/send": {
+   "ok": true,
+   "messageId": "m-new",
+   "jobId": "j-qc-1"
+  },
+  "POST /api/mobile/secretary/rooms/r1/close": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/proposals/p-chat/approve": {
+   "ok": true,
+   "note": "Message sent to Somchai"
+  },
+  "POST /api/mobile/secretary/proposals/p-card/approve": {
+   "ok": true,
+   "note": "Card created"
+  },
+  "POST /api/mobile/secretary/proposals/p-chat/reject": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/proposals/p-card/reject": {
+   "ok": true,
+   "memoryId": "mem-qc-1"
+  },
+  "POST /api/mobile/secretary/proposals/p-card/edit": {
+   "ok": true,
+   "input": {
+    "title": "Follow up Doi Chang (call)",
+    "dueDate": "2026-11-08",
+    "description": "Call about quotation Q-0012"
+   }
+  },
+  "POST /api/mobile/secretary/log/l1/undo": {
+   "ok": true,
+   "note": "Undone — the deal is back in its previous stage"
+  },
+  "GET /api/mobile/secretary/staff": {
+   "items": [
+    {
+     "pending": false,
+     "membershipId": "m1",
+     "userId": "u-qc-owner",
+     "name": "Suk",
+     "active": true,
+     "joinedAt": "2026-09-01T03:00:00.000Z",
+     "me": true,
+     "role": "OWNER",
+     "units": [],
+     "levels": {
+      "pos": "USE",
+      "crm": "USE",
+      "account": "USE"
+     },
+     "chat": "REPLY"
+    },
+    {
+     "pending": false,
+     "membershipId": "m2",
+     "userId": "u-qc-nam",
+     "name": "Nam",
+     "active": true,
+     "joinedAt": "2026-09-02T03:00:00.000Z",
+     "me": false,
+     "role": "MANAGER",
+     "units": [],
+     "levels": {
+      "pos": "USE",
+      "crm": "USE",
+      "account": "USE"
+     },
+     "chat": "REPLY"
+    },
+    {
+     "pending": false,
+     "membershipId": "m3",
+     "userId": "u-qc-2",
+     "name": "Somjai",
+     "active": true,
+     "joinedAt": "2026-09-05T03:00:00.000Z",
+     "me": false,
+     "role": "STAFF",
+     "units": [
+      "unit-main"
+     ],
+     "levels": {
+      "pos": "VIEW",
+      "crm": "USE",
+      "account": "OFF"
+     },
+     "chat": "REPLY"
+    },
+    {
+     "pending": false,
+     "membershipId": "m4",
+     "userId": "u-qc-kong",
+     "name": "Kong",
+     "active": true,
+     "joinedAt": "2026-09-10T03:00:00.000Z",
+     "me": false,
+     "role": "STAFF",
+     "units": [
+      "unit-dorm"
+     ],
+     "levels": {
+      "pos": "OFF",
+      "crm": "OFF",
+      "dorm": "USE"
+     },
+     "chat": "VIEW"
+    },
+    {
+     "pending": false,
+     "membershipId": "m5",
+     "userId": "u-qc-ying",
+     "name": "Ying",
+     "active": true,
+     "joinedAt": "2026-10-20T03:00:00.000Z",
+     "me": false,
+     "role": "STAFF",
+     "units": [
+      "unit-main"
+     ],
+     "levels": {
+      "pos": "OFF",
+      "crm": "OFF"
+     },
+     "chat": "NONE"
+    },
+    {
+     "pending": true,
+     "inviteId": "inv1",
+     "name": "Boy",
+     "phoneMasked": "081-xxx-4521",
+     "role": "STAFF",
+     "expiresAt": "2026-11-30T03:00:00.000Z",
+     "expired": false
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/rooms": {
+   "items": [
+    {
+     "id": "r1",
+     "title": "Quotation · Doi Chang Coffee",
+     "status": "WAITING",
+     "systems": [
+      "crm",
+      "account",
+      "chat"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "Suk"
+     },
+     "sharedWith": [
+      {
+       "id": "u-qc-2",
+       "name": "Somjai"
+      }
+     ],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 1
+     },
+     "updatedAt": "2026-11-04T02:41:00.000Z"
+    },
+    {
+     "id": "r2",
+     "title": "Follow up customers quiet for 14+ days",
+     "status": "RUNNING",
+     "systems": [
+      "crm",
+      "chat"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "Suk"
+     },
+     "sharedWith": [],
+     "unread": true,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-04T03:10:00.000Z"
+    },
+    {
+     "id": "r3",
+     "title": "Yesterday's sales + low stock",
+     "status": "RUNNING",
+     "systems": [
+      "pos"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "Suk"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-04T03:05:00.000Z"
+    },
+    {
+     "id": "r4",
+     "title": "Close room 204 bill · refund deposit",
+     "status": "WAITING",
+     "systems": [
+      "dorm",
+      "account"
+     ],
+     "startedBy": {
+      "id": "u-qc-2",
+      "name": "Somjai"
+     },
+     "sharedWith": [
+      {
+       "id": "u-qc-owner",
+       "name": "Suk"
+      }
+     ],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 1
+     },
+     "updatedAt": "2026-11-04T01:15:00.000Z"
+    },
+    {
+     "id": "r5",
+     "title": "Check tomorrow's bookings and draft confirmations",
+     "status": "DONE",
+     "systems": [
+      "booking",
+      "chat"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "Suk"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-03T10:20:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r2": {
+   "id": "r2",
+   "conversationId": "c-r2",
+   "title": "Quotation · Doi Chang Coffee",
+   "status": "WAITING",
+   "systems": [
+    "crm",
+    "account"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [
+    {
+     "userId": "u-qc-2",
+     "name": "Somjai",
+     "role": "STAFF",
+     "addedById": "u-qc-owner",
+     "addedAt": "2026-11-04T19:42:00.000Z",
+     "seeHistory": false
+    },
+    {
+     "userId": "u-qc-nam",
+     "name": "Nam",
+     "role": "MANAGER",
+     "addedById": "u-qc-owner",
+     "addedAt": "2026-11-04T19:42:30.000Z",
+     "seeHistory": true
+    }
+   ],
+   "canManage": true,
+   "createdAt": "2026-11-04T19:38:00.000Z",
+   "updatedAt": "2026-11-04T19:43:30.000Z",
+   "closedAt": null,
+   "plans": []
+  },
+  "GET /api/mobile/secretary/rooms/r2/messages": {
+   "items": [
+    {
+     "id": "m21",
+     "role": "USER",
+     "content": "Quotation for Somchai, Doi Chang: 2 machines, 5% off",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-04T19:38:00.000Z"
+    },
+    {
+     "id": "m22",
+     "role": "ASSISTANT",
+     "content": "🔔 Suk added Somjai (staff) to this task room",
+     "authorUserId": "system",
+     "system": true,
+     "createdAt": "2026-11-04T19:42:00.000Z"
+    },
+    {
+     "id": "m23",
+     "role": "USER",
+     "content": "The customer asked for 45-day credit. Shark, can you update it?",
+     "authorUserId": "u-qc-2",
+     "system": false,
+     "createdAt": "2026-11-04T19:42:40.000Z"
+    },
+    {
+     "id": "m24",
+     "role": "ASSISTANT",
+     "content": "Changed to 45 days. Waiting for Suk to approve, since Somjai can't approve financial documents.",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-04T19:43:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r2/proposals": {
+   "items": [
+    {
+     "id": "p-quote",
+     "type": "proposal",
+     "kind": "account.documents.create",
+     "risk": "NORMAL",
+     "summary": "Quotation Q-0012 · ฿12,500\nSomchai · Doi Chang Coffee · 45-day credit",
+     "why": "Financial document — owner or manager must approve",
+     "classes": {
+      "money": true,
+      "customerFacing": false,
+      "destructive": false
+     },
+     "class": {
+      "money": true,
+      "customerFacing": false,
+      "destructive": false,
+      "piiExport": false
+     },
+     "editable": true,
+     "input": {
+      "title": "Quotation Q-0012",
+      "note": "45-day credit",
+      "contactId": "ct-qc-77",
+      "boardId": "b-qc-1"
+     },
+     "edited": true,
+     "canApprove": true,
+     "createdAt": "2026-11-04T19:43:10.000Z",
+     "expiresAt": "2026-11-07T19:43:10.000Z"
+    }
+   ]
+  },
+  "POST /api/mobile/secretary/proposals/p-quote/approve": {
+   "ok": true,
+   "note": "Quotation Q-0012 issued"
+  },
+  "POST /api/mobile/secretary/proposals/p-quote/reject": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/proposals/p-quote/edit": {
+   "ok": true,
+   "input": {
+    "title": "Quotation Q-0012",
+    "note": "45-day credit (confirm by phone)",
+    "contactId": "ct-qc-77",
+    "boardId": "b-qc-1"
+   }
+  },
+  "POST /api/mobile/secretary/rooms/r2/send": {
+   "ok": true,
+   "messageId": "m-new",
+   "jobId": "j-qc-2"
+  },
+  "POST /api/mobile/secretary/rooms/r2/close": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/rooms/r2/members": {
+   "items": [],
+   "max": 20
+  },
+  "POST /api/mobile/secretary/rooms/r2/members": {
+   "ok": true,
+   "member": {
+    "userId": "u-qc-kong",
+    "name": "Kong",
+    "role": "STAFF",
+    "seeHistory": false
+   }
+  },
+  "DELETE /api/mobile/secretary/rooms/r2/members/u-qc-2": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/staff/invites/inv1/resend": {
+   "ok": true,
+   "sms": "mocked",
+   "expiresAt": "2026-12-01T03:00:00.000Z",
+   "link": null
+  },
+  "DELETE /api/mobile/secretary/staff/invites/inv1": {
+   "ok": true
+  },
+  "PUT /api/mobile/secretary/secretary": {
+   "name": "Shark",
+   "suffix": "",
+   "tone": "polite",
+   "languages": [
+    "en"
+   ],
+   "sample": "",
+   "saved": true
+  },
+  "GET /api/mobile/secretary/suggestions": {
+   "items": [
+    {
+     "key": "follow_quiet",
+     "system": "crm",
+     "title": "3 deals have been quiet for 14+ days",
+     "instruction": "Draft follow-ups for the 3 customers quiet for 14+ days and show me before sending",
+     "priority": 2
+    },
+    {
+     "key": "reorder",
+     "system": "inventory",
+     "title": "Only 2 kg of Ethiopian beans left",
+     "instruction": "Draft a purchase order for beans to our usual supplier for me to check",
+     "priority": 2
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/frequent": {
+   "items": [
+    {
+     "instruction": "Yesterday's sales summary",
+     "count": 9
+    },
+    {
+     "instruction": "Quotation",
+     "count": 7
+    },
+    {
+     "instruction": "Quiet customers",
+     "count": 6
+    },
+    {
+     "instruction": "Tomorrow's bookings",
+     "count": 5
+    },
+    {
+     "instruction": "Unpaid rent",
+     "count": 4
+    },
+    {
+     "instruction": "This month's promo post",
+     "count": 3
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [
+    {
+     "module": "pos",
+     "level": "DRAFT"
+    },
+    {
+     "module": "crm",
+     "level": "DRAFT"
+    },
+    {
+     "module": "booking",
+     "level": "DRAFT"
+    },
+    {
+     "module": "dorm",
+     "level": "DRAFT"
+    },
+    {
+     "module": "member",
+     "level": "DRAFT"
+    },
+    {
+     "module": "account",
+     "level": "DRAFT"
+    },
+    {
+     "module": "kanban",
+     "level": "DRAFT"
+    },
+    {
+     "module": "chat",
+     "level": "DRAFT"
+    },
+    {
+     "module": "hr",
+     "level": "OFF"
+    },
+    {
+     "module": "inventory",
+     "level": "OFF"
+    }
+   ],
+   "autoAvailable": false
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": [
+    {
+     "id": "inv1",
+     "name": "Boy",
+     "phoneMasked": "081-xxx-4521",
+     "role": "STAFF",
+     "unitAccess": [
+      "unit-main"
+     ],
+     "permissions": {},
+     "invitedById": "u-qc-owner",
+     "createdAt": "2026-11-01T03:00:00.000Z",
+     "expiresAt": "2026-11-30T03:00:00.000Z",
+     "expired": false
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 1,
+   "categories": []
+  },
+  "GET /api/mobile/secretary/quota": {
+   "jobs": {
+    "used": 124,
+    "limit": 200,
+    "left": 76,
+    "pct": 62,
+    "level": "ok",
+    "resetAt": "2026-11-30T17:00:00.000Z"
+   }
+  },
+  "GET /api/mobile/conversations/c1/messages": {
+   "messages": [
+    {
+     "id": "cm1",
+     "role": "assistant",
+     "content": "Hi! How can I help?"
+    }
+   ]
+  },
+  "GET /api/mobile/proposals": {
+   "proposals": []
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 2,
+   "customers": 3,
+   "team": {
+    "invites": 1,
+    "help": 0,
+    "support": 1
+   },
+   "total": 7
+  },
+  "POST /api/mobile/inbox/conversations/x1/task": {
+   "cardId": "card-qc-128",
+   "cardNo": 128,
+   "cardHref": "/app/kanban/b1?card=card-qc-128",
+   "created": true
+  }
+ },
+ "locale": "en-US"
+}

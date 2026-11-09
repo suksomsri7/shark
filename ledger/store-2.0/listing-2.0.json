@@ -1,0 +1,30 @@
+{
+ "_about": "S3b.2 ร่างข้อความหน้าร้าน SHARK HUB 2.0 — ยังไม่ส่งเข้า ASC · รอเจ้าของอนุมัติ (S3b.3)",
+ "targetVersion": "2.0.0",
+ "copy": {
+  "en-US": {
+   "subtitle": "AI secretary for your shop",
+   "keywords": "AI assistant,secretary,POS,booking,inventory,staff,accounting,chat,inbox,restaurant,hotel",
+   "promotionalText": "New: Shark, your AI secretary. Give tasks in chat and approve before anything happens. Customer chats in one inbox, with translation.",
+   "description": "SHARK HUB is an all-in-one business system for small businesses in Thailand — now with Shark, your AI secretary.\n\nNEW IN 2.0: SHARK, YOUR AI SECRETARY\n• Give tasks in plain language, e.g. \"Make a quotation for customer A and send it on LINE\". Shark opens a task room, works in the background and lets you know when it's done.\n• Nothing happens without you. Anything that changes data or reaches a customer waits for your approval — edit it first, send it back with a note, or undo within 24 hours.\n• One list of pending approvals across all your businesses.\n• Recurring tasks: a daily sales summary, weekly follow-ups for quiet customers, booking confirmations a day ahead.\n• Add teammates to a task room. Name your secretary, pick its tone and choose which systems it may use.\n\nCUSTOMER CHAT IN ONE INBOX\n• All connected customer chat channels in one place. Pick up, assign, hand over and see customer details on the go.\n• Shark drafts replies for you. Translate messages from customers in other languages, or translate your reply before sending.\n• Optional: let Shark answer general questions after hours — customers are always told it is an AI assistant.\n\nRUN YOUR WHOLE SHOP\nTurn on only the systems you need. Everything shares one customer list, one product catalog and one set of books.\n• Point of sale — bills, cash, transfer or PromptPay, receipts, end-of-day\n• Bookings and appointments — customers book from your shop link\n• Queue tickets with a queue screen\n• Members, points, rewards and coupons\n• Products, services and stock with low-stock alerts\n• Staff — roster, PIN clock-in, leave and payroll\n• Accounting — income and expenses recorded from sales, VAT and reports\n• Hotel, restaurant, rental, school and clinic modules\n\nHOW IT WORKS\nSign in with your email — we send a one-time code, so there is no password to forget. Use the same account on the phone and on the web. Works in light and dark mode.\n\nShark uses an AI model from Anthropic. It never changes anything on its own: it prepares the action and shows you exactly what will happen; nothing is saved or sent until you approve.\n\nSupport: support@shark.in.th\nPrivacy policy: https://shark.in.th/privacy\nDelete your account: https://shark.in.th/account-deletion",
+   "whatsNew": "New: Shark, your AI secretary — give tasks in chat, approve before anything happens. Customer chats in one inbox with translation. Invite your team. Dark mode."
+  },
+  "th": {
+   "subtitle": "เลขา AI + ระบบร้านในแอปเดียว",
+   "keywords": "เลขา AI,ผู้ช่วย AI,ระบบร้าน,POS,จองคิว,สต็อก,บัญชี,พนักงาน,แชทลูกค้า,ร้านอาหาร,โรงแรม",
+   "promotionalText": "ใหม่! เลขา AI \"Shark\" สั่งงานในแชท อนุมัติก่อนทำทุกครั้ง · รวมแชทลูกค้าทุกช่องทางไว้ที่เดียว พร้อมแปลภาษา",
+   "description": "SHARK HUB คือระบบจัดการร้านครบวงจรสำหรับธุรกิจขนาดเล็กในไทย — เวอร์ชันนี้มาพร้อม \"Shark\" เลขา AI ของร้านคุณ\n\nใหม่ในเวอร์ชัน 2.0: เลขา AI \"Shark\"\n• สั่งงานด้วยข้อความธรรมดา เช่น \"ทำใบเสนอราคาให้ลูกค้า A แล้วส่งทาง LINE\" — เลขาเปิดเป็นห้องงาน ทำเบื้องหลัง แล้วแจ้งเมื่อเสร็จ\n• ไม่มีอะไรเกิดขึ้นโดยคุณไม่รู้ งานที่เปลี่ยนข้อมูลหรือส่งถึงลูกค้าต้องรอคุณอนุมัติก่อนเสมอ — แก้ก่อนอนุมัติ ตีกลับพร้อมสอน หรือย้อนกลับได้ภายใน 24 ชม.\n• รวมงานรออนุมัติจากทุกกิจการไว้ที่เดียว\n• งานประจำ: สรุปยอดขายทุกเช้า ตามลูกค้าที่เงียบทุกสัปดาห์ ยืนยันคิวล่วงหน้า 1 วัน\n• ชวนเพื่อนร่วมทีมเข้าห้องงาน · ตั้งชื่อเลขา น้ำเสียง และเลือกว่าเลขาใช้ระบบไหนได้บ้าง\n\nแชทลูกค้าทุกช่องทางในที่เดียว\n• รวมแชทลูกค้าทุกช่องทางที่ร้านเชื่อมไว้ รับเรื่อง มอบหมาย ส่งต่อ และดูข้อมูลลูกค้าได้ในแอป\n• Shark ร่างคำตอบให้ · ปุ่มแปลข้อความลูกค้าต่างภาษา และ \"แปลแล้วส่ง\"\n• (ตัวเลือก) ให้ Shark ตอบคำถามทั่วไปนอกเวลาทำการ โดยบอกลูกค้าชัดเจนว่าเป็นผู้ช่วย AI\n\nระบบร้านครบในแอปเดียว\nเปิดใช้เฉพาะระบบที่ร้านต้องใช้ ทุกระบบใช้ฐานลูกค้า รายการสินค้า และบัญชีชุดเดียวกัน\n• ขายหน้าร้าน — เปิดบิล รับเงินสด โอน หรือพร้อมเพย์ ออกใบเสร็จ ปิดยอดรายวัน\n• จองคิว / นัดหมาย — ลูกค้าจองเองผ่านลิงก์ร้าน\n• บัตรคิวหน้าร้าน พร้อมจอแสดงคิว\n• สมาชิก แต้ม ของรางวัล และคูปอง\n• สินค้า/บริการ และสต็อก แจ้งเตือนของใกล้หมด\n• พนักงาน — ตารางเข้างาน ลงเวลาด้วย PIN ใบลา และเงินเดือน\n• บัญชี — บันทึกรายรับรายจ่ายจากการขาย ภาษีมูลค่าเพิ่ม และรายงานงบ\n• โรงแรม ร้านอาหาร เช่าสินทรัพย์ โรงเรียน และคลินิก\n\nการใช้งาน\nเข้าระบบด้วยอีเมล เราส่งรหัสใช้ครั้งเดียวให้ ไม่ต้องจำรหัสผ่าน ใช้บนมือถือและบนเว็บด้วยบัญชีเดียวกัน · รองรับโหมดมืด\n\nShark ใช้โมเดล AI ของ Anthropic และไม่แก้ข้อมูลเองตามลำพัง — เลขาเตรียมรายการแล้วแสดงให้ดูก่อนว่าจะเกิดอะไรขึ้น ยังไม่บันทึกหรือส่งจนกว่าคุณจะกดอนุมัติ\n\nติดต่อ: support@shark.in.th\nนโยบายความเป็นส่วนตัว: https://shark.in.th/privacy\nลบบัญชี: https://shark.in.th/account-deletion",
+   "whatsNew": "ใหม่! เลขา AI \"Shark\" สั่งงานในแชท อนุมัติก่อนทำทุกครั้ง · รวมแชทลูกค้าทุกช่องทางในแอป พร้อมแปลภาษา · ชวนทีมเข้าห้องงาน · โหมดมืด"
+  }
+ },
+ "optionalSms": {
+  "en-US": {
+   "description_how_it_works": "Sign in with your email or phone number — we send a one-time code, so there is no password to forget.",
+   "whatsNew": "New: Shark, your AI secretary — give tasks in chat, approve before anything happens. Customer chats in one inbox with translation. Invite staff by phone. SMS sign-in."
+  },
+  "th": {
+   "description_how_it_works": "เข้าระบบด้วยอีเมลหรือเบอร์โทร เราส่งรหัสใช้ครั้งเดียวให้ ไม่ต้องจำรหัสผ่าน",
+   "whatsNew": "ใหม่! เลขา AI \"Shark\" สั่งงานในแชท อนุมัติก่อนทำทุกครั้ง · รวมแชทลูกค้าทุกช่องทางในแอป พร้อมแปลภาษา · เชิญทีมด้วยเบอร์โทร · เข้าสู่ระบบด้วย SMS"
+  }
+ }
+}

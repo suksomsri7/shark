@@ -1,0 +1,55 @@
+{
+ "generatedAt": "2026-11-09T07:29:20.848Z",
+ "base": "http://127.0.0.1:4734",
+ "view": {
+  "tag": "iphone69",
+  "w": 430,
+  "h": 932,
+  "scale": 3
+ },
+ "fixture": {
+  "path": "/root/projects/shark-sec-wp/ledger/store-2.0/fixtures/th/s2.4.json",
+  "sha256": "cfcf8ced7c9c0b6efba413ccbf0fab0b1821b3aa8e6a34e32a66e49f548e3d59"
+ },
+ "screens": [
+  {
+   "name": "secretary-room-r1",
+   "route": "/secretary/room/r1",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "cfcf8ced7c9c0b6efba413ccbf0fab0b1821b3aa8e6a34e32a66e49f548e3d59",
+   "viewportH": 932,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-room",
+    "sec-room-back",
+    "sec-room-menu",
+    "sec-room-title",
+    "sec-room-status",
+    "sec-room-bubble",
+    "sec-room-steps",
+    "sec-room-step",
+    "sec-room-approval",
+    "sec-room-approve",
+    "sec-room-reject",
+    "sec-room-edit",
+    "sec-room-why",
+    "sec-room-auto",
+    "sec-room-done",
+    "sec-room-open-link",
+    "sec-room-undo",
+    "sec-room-teach",
+    "sec-room-repeat",
+    "sec-room-input",
+    "sec-room-send"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@example.com\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nรออนุมัติ · 2:41 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · ฿12,500\nแชท\nส่ง LINE ถึงคุณสมชาย — รออนุมัติ\n\n🔔 คุณสุข เพิ่ม สมใจ เข้าห้องงานนี้ · 2:39\nสิ่งที่เปลี่ยนในระบบ\nCRM\nย้ายดีล \"ดอยช้าง · เครื่องชง 2 ชุด\" เข้าขั้นเสนอราคา\nเปิดดู\n\nย้อนกลับ\nสอน Shark\nทำซ้ำ\nบันทึกการกระทำ 1 รายการ\nร่างเสร็จแล้วครับ ขออนุมัติก่อนส่งถึงลูกค้า\nรออนุมัติ · คุณสุข · ส่งถึงลูกค้า\nแชท\nส่งข้อความถึงลูกค้า\nส่งข้อความถึง คุณสมชาย (LINE):\nสวัสดีครับคุณสมชาย ทางร้าน The Bean Café ส่งใบเสนอราคา Q-0012 เครื่องชง Espresso M2 2 ชุด ส่วนลด 5% ยอดสุทธิ ฿12,500 เครดิต 30 วัน สอบถามเพิ่มเติมได้เลยครับ\nบรรทัดลงชื่อที่จะต่อท้ายข้อความ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน\nทำไมต้องอนุมัติ: ส่งข้อความถึงลูกค้า — ต้องมีคนอนุมัติเสมอ\nตีกลับ\nอนุมัติและส่ง\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรออนุมัติ · คุณสุข\nงาน\nสร้างการ์ดงาน\nสร้างการ์ด \"ติดตามดอยช้าง\" บนบอร์ดขาย · ครบกำหนด 8 พ.ย.\nทำไมต้องอนุมัติ: เขียนข้อมูลลงบอร์ดงาน — รุ่นแรกทุกงานที่เขียนข้อมูลต้องมีคนอนุมัติ\nแก้\nตีกลับ\nอนุมัติ\n\nครั้งหน้าไม่ต้องถาม\nยังเปิดไม่ได้ในรุ่นนี้\nรุ่นแรก: ทุกงานที่เขียนข้อมูลลงระบบหรือส่งถึงลูกค้า รอคนอนุมัติทุกครั้ง · Shark อ่านข้อมูลและร่างได้เอง\n\n",
+   "unmocked": [],
+   "url": "/secretary/room/r1",
+   "file": "/root/projects/shark-sec-wp/ledger/store-2.0/raw/th/iphone69/secretary-room-r1.png",
+   "generatedAt": "2026-11-09T07:29:20.640Z"
+  }
+ ]
+}
