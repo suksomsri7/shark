@@ -104,10 +104,12 @@ export function hrTabs(systemId: string): { href: string; label: string }[] {
   return [
     { href: s, label: "ภาพรวม" },
     { href: `${s}/hr/attendance`, label: "ลงเวลา" },
+    { href: `${s}/hr/roster`, label: "ตารางกะ" }, // HR H2.2 ▸ บอร์ดตารางกะ ◂
     { href: `${s}/hr/kiosk`, label: "จอลงเวลา" },
     { href: `${s}/hr/leave`, label: "ใบลา" },
     { href: `${s}/hr/employees`, label: "พนักงาน" },
     { href: `${s}/hr/payroll`, label: "เงินเดือน" },
+    { href: `${s}/hr/settings`, label: "ตั้งค่า" }, // HR H2.2 ▸ หนี้ D9: แท็บตั้งค่าให้ตรง layout.tsx (หน้ากันสิทธิ์เอง) ◂
   ];
 }
 
