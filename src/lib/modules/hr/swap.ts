@@ -24,6 +24,7 @@ import { lockRosterKeysInTx, reassignEntriesInTx, ROSTER_TEXT, unitOfDay } from 
 import { employeeOfUser } from "./service";
 import {
   applyCodeText,
+  type SwapParty,
   cleanSwapReason,
   shapeOf,
   SWAP_OPEN_STATUSES,
@@ -110,7 +111,7 @@ function unitVisible(v: SwapActor, unitId: string | null): boolean {
 }
 
 // ── แถว ──
-const ENTRY_SELECT = { id: true, employeeId: true, date: true, shiftId: true, unitId: true, startMin: true, endMin: true, breakMin: true, crossesMidnight: true, publishedAt: true, updatedAt: true } as const;
+const ENTRY_SELECT = { id: true, employeeId: true, date: true, shiftId: true, unitId: true, startMin: true, endMin: true, breakMin: true, crossesMidnight: true, published: true, publishedAt: true, updatedAt: true } as const;
 type EntryRow = Prisma.HrRosterEntryGetPayload<{ select: typeof ENTRY_SELECT }>;
 const EMP_SELECT = {
   id: true,
@@ -192,7 +193,9 @@ async function checkInTx(
   if (!requester) throw new SwapRefusal(T.shiftNotFound);
   if (p.actorUserId !== undefined && requester.linkedUserId !== p.actorUserId) throw new SwapRefusal(T.notOwn);
   if (p.requesterEmployeeId !== undefined && from.employeeId !== p.requesterEmployeeId) throw new SwapRefusal(T.entryChanged);
-  if (from.publishedAt === null) throw new SwapRefusal(T.unpublished);
+  // r2 F1 (มติผู้คุม): ต้องเป็นแถวที่ "ประกาศอยู่ตอนนี้" — แถวที่ถูกย้ายแล้วยังไม่เผยแพร่ใหม่ (published=false) ขอสลับไม่ได้
+  //   (การเผยแพร่ภายหลังจะขยับ updatedAt จนคำขอที่ถูกต้องถูกยกเลิกเป็น ENTRY_CHANGED)
+  if (from.publishedAt === null || !from.published) throw new SwapRefusal(T.unpublished);
   const fromDay = dayOf(from.date);
   if (fromDay < today) throw new SwapRefusal(T.past);
   if (p.targetEmployeeId === requester.id) throw new SwapRefusal(T.selfTarget);
@@ -203,13 +206,14 @@ async function checkInTx(
   if (p.toEntryId) {
     to = await entryOf(tx, ctx, p.toEntryId);
     if (!to || to.employeeId !== target.id || to.publishedAt === null || dayOf(to.date) < today) throw new SwapRefusal(T.toBad);
+    if (!to.published) throw new SwapRefusal(T.unpublished); // r2 F1
     if (to.id === from.id || (dayOf(to.date) === fromDay && to.shiftId === from.shiftId)) throw new SwapRefusal(T.same);
   }
   const toDay = to ? dayOf(to.date) : null;
   // สาขาเดียวกันในวันนั้น (Q5 · H2.1 R3): คนที่จะมาทำกะต้องอยู่สาขาของแถวในวันนั้น (ยืมตัวก่อนได้) — unitId ของแถวจึงไม่เปลี่ยน
   if (unitOfDay(target, fromDay) !== from.unitId) throw new SwapRefusal(T.branch);
   if (to && toDay && unitOfDay(requester, toDay) !== to.unitId) throw new SwapRefusal(T.branch);
-  if (to && toDay && (isEnded(requester) || !inEmployment(requester, toDay))) throw new SwapRefusal(T.toBad);
+  if (to && toDay && (isEnded(requester) || !inEmployment(requester, toDay))) throw new SwapRefusal(T.endedYou); // r2 F3: บอกฝ่ายผู้ขอ
   // คนที่จะมาทำงานวันนั้นต้องไม่ลาอนุมัติแล้ว (ทั้งวัน) — ข้อความไม่มีชื่อ
   if (await onLeave(tx, ctx, target.id, fromDay)) throw new SwapRefusal(T.leavePeer);
   if (to && toDay && (await onLeave(tx, ctx, requester.id, toDay))) throw new SwapRefusal(T.leaveYou);
@@ -232,7 +236,7 @@ async function checkInTx(
 }
 
 // ═══════════════════════════ ใช้ผล (R8 body) — ผู้เรียกถือ hr-swap:<id> + กุญแจตารางกะแล้ว ═══════════════════════════
-type Applied = { ok: true; entryIds: string[]; employeeIds: string[]; dates: string[] } | { ok: false; code: SwapApplyCode };
+type Applied = { ok: true; entryIds: string[]; employeeIds: string[]; dates: string[] } | { ok: false; code: SwapApplyCode; party?: SwapParty };
 async function applyInTx(tx: Tx, ctx: Ctx, s: SwapRow, today: string): Promise<Applied> {
   const from = await entryOf(tx, ctx, s.fromEntryId);
   const to = s.toEntryId ? await entryOf(tx, ctx, s.toEntryId) : null;
@@ -243,9 +247,10 @@ async function applyInTx(tx: Tx, ctx: Ctx, s: SwapRow, today: string): Promise<A
   if (fromDay < today || (toDay && toDay < today)) return { ok: false, code: "PAST" };
   const [requester, target] = [await empOf(tx, ctx, s.requesterEmployeeId), await empOf(tx, ctx, s.targetEmployeeId)];
   if (!requester || !target || isEnded(target) || !inEmployment(target, fromDay)) return { ok: false, code: "ENDED" };
-  if (to && toDay && (isEnded(requester) || !inEmployment(requester, toDay))) return { ok: false, code: "ENDED" };
+  if (to && toDay && (isEnded(requester) || !inEmployment(requester, toDay))) return { ok: false, code: "ENDED", party: "YOU" };
   if (unitOfDay(target, fromDay) !== from.unitId || (to && toDay && unitOfDay(requester, toDay) !== to.unitId)) return { ok: false, code: "BRANCH" };
-  if ((await onLeave(tx, ctx, target.id, fromDay)) || (to && toDay && (await onLeave(tx, ctx, requester.id, toDay)))) return { ok: false, code: "LEAVE" };
+  if (await onLeave(tx, ctx, target.id, fromDay)) return { ok: false, code: "LEAVE" };
+  if (to && toDay && (await onLeave(tx, ctx, requester.id, toDay))) return { ok: false, code: "LEAVE", party: "YOU" };
   const moves = [{ entryId: from.id, toEmployeeId: target.id }, ...(to ? [{ entryId: to.id, toEmployeeId: requester.id }] : [])];
   const expect = [
     { entryId: from.id, employeeId: requester.id, updatedAtMax: s.createdAt },
@@ -385,7 +390,7 @@ export async function respondSwap(ctx: Ctx, actor: SwapActor, swapId: string, in
       // Q8: เจ้าของร้านเป็นผู้ขอหรือผู้รับ ⇒ ใช้ผลเลย ไม่เข้าสาย (แบบ H0.7 R4)
       if ((await isTenantOwnerTx(tx, ctx.tenantId, c.requester.linkedUserId)) || (await isTenantOwnerTx(tx, ctx.tenantId, c.target.linkedUserId))) {
         const a = await applyInTx(tx, ctx, { ...s, status: "PENDING" }, today);
-        if (!a.ok) throw new SwapRefusal(applyCodeText(a.code, { dup: T.duplicate, changed: T.entryChanged }));
+        if (!a.ok) throw new SwapRefusal(applyCodeText(a.code, { dup: T.duplicate, changed: T.entryChanged }, a.party));
         const u = await tx.hrShiftSwapRequest.updateMany({ where: { id, tenantId: ctx.tenantId, status: "PENDING" }, data: { status: "APPROVED", decidedAt: now, decidedById: null } });
         if (u.count !== 1) throw new SwapRefusal(T.stale);
         await emitApproved(tx, ctx, s, c.from.unitId, a);
@@ -451,13 +456,15 @@ export async function decideSwap(
       const tx = t as unknown as Tx;
       await lockSwapInTx(tx, id);
       const s = await swapOf(tx, ctx, id);
-      if (!s || s.status !== "PENDING") throw new SwapRefusal(T.stale); // ไม่พบแถว = ถูกยกเลิก/ลบไปแล้ว (Q16)
+      if (!s) throw new SwapRefusal(T.stale); // ไม่พบแถว = ถูกยกเลิก/ลบไปแล้ว (Q16)
+      // r2 (review m4): ขอบเขตสาขาก่อนสถานะ — ผู้ตัดสินนอกสาขาได้ข้อความสาขาเสมอ (ไม่บอกว่าคำขอยังรออยู่หรือไม่)
       const [from, to] = [await entryOf(tx, ctx, s.fromEntryId), await entryOf(tx, ctx, s.toEntryId)];
       for (const e of [from, to]) {
         if (!e) continue;
         const r = unitRefusal(viewer, e.unitId);
         if (r) throw new SwapRefusal(r);
       }
+      if (s.status !== "PENDING") throw new SwapRefusal(T.stale);
       const [requester, target] = [await empOf(tx, ctx, s.requesterEmployeeId), await empOf(tx, ctx, s.targetEmployeeId)];
       if ((requester?.linkedUserId && requester.linkedUserId === viewer.userId) || (target?.linkedUserId && target.linkedUserId === viewer.userId)) throw new SwapRefusal(T.self);
       const chain = await tx.approvalRequest.count({ where: { tenantId: ctx.tenantId, entityType: SWAP_ENTITY, entityId: id, status: { not: "CANCELLED" } } });
@@ -480,7 +487,7 @@ export async function decideSwap(
       const a = await applyInTx(tx, ctx, s2, today);
       if (!a.ok) {
         await tx.hrShiftSwapRequest.updateMany({ where: { id, tenantId: ctx.tenantId, status: "PENDING" }, data: { status: "CANCELLED", decidedAt: now } });
-        return { kind: "refused" as const, code: a.code };
+        return { kind: "refused" as const, code: a.code, party: a.party };
       }
       const u = await tx.hrShiftSwapRequest.updateMany({ where: { id, tenantId: ctx.tenantId, status: "PENDING" }, data: { status: "APPROVED", decidedById: viewer.userId, decidedAt: now } });
       if (u.count !== 1) throw new SwapRefusal(T.stale);
@@ -494,7 +501,7 @@ export async function decideSwap(
     if (out.kind === "expired") return refuse(T.expired);
     if (out.kind === "refused") {
       await audit(ctx, viewer.userId, "hr.swap.apply_refused", id, { requestId: null, code: out.code });
-      return refuse(applyCodeText(out.code, { dup: T.duplicate, changed: T.entryChanged }));
+      return refuse(applyCodeText(out.code, { dup: T.duplicate, changed: T.entryChanged }, out.party));
     }
     await audit(ctx, viewer.userId, "hr.swap.apply", id, { requestId: null, entryIds: out.a.entryIds, decidedById: viewer.userId });
     return { ok: true, status: "APPROVED", warnings: await swapWarnings(ctx, out.s, false) };
@@ -622,14 +629,16 @@ export type SwapItem = {
 };
 export type SwapListResult = { ok: true; items: SwapItem[] } | SwapFail;
 
+/** สาขาของกะฝั่งหนึ่ง (exists=false = แถวไม่มีแล้ว) */
+type SideUnit = { exists: boolean; unitId: string | null };
 /** แถว → DTO · ฝั่งกะ = เฉพาะสองกะของคำขอ (ไม่มีแถวอื่นของใคร) · reason เฉพาะเมื่อผู้เรียกบอกว่าเห็นได้ */
-async function toItems(ctx: Ctx, rows: SwapRow[], o: { me: string | null; showReason: (s: SwapRow) => boolean }): Promise<SwapItem[]> {
+async function toItems(ctx: Ctx, rows: SwapRow[], o: { me: string | null; showReason: (s: SwapRow, units: { from: SideUnit; to: SideUnit | null }) => boolean }): Promise<SwapItem[]> {
   if (rows.length === 0) return [];
   const db = tenantDb(ctx);
   const entryIds = [...new Set(rows.flatMap((r) => [r.fromEntryId, ...(r.toEntryId ? [r.toEntryId] : [])]))];
   const empIds = [...new Set(rows.flatMap((r) => [r.requesterEmployeeId, ...(r.targetEmployeeId ? [r.targetEmployeeId] : [])]))];
   const [entries, emps, reqs] = await Promise.all([
-    db.hrRosterEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, date: true, startMin: true, endMin: true, crossesMidnight: true, shiftId: true } }),
+    db.hrRosterEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, date: true, startMin: true, endMin: true, crossesMidnight: true, shiftId: true, unitId: true } }),
     db.hrEmployee.findMany({ where: { id: { in: empIds } }, select: { id: true, name: true } }),
     db.approvalRequest.findMany({ where: { entityType: SWAP_ENTITY, entityId: { in: rows.map((r) => r.id) } }, select: { entityId: true, status: true } }),
   ]);
@@ -657,7 +666,11 @@ async function toItems(ctx: Ctx, rows: SwapRow[], o: { me: string | null; showRe
       canRespond: !!o.me && r.targetEmployeeId === o.me && r.status === "AWAITING_PEER",
       canCancel: !!o.me && r.requesterEmployeeId === o.me && (r.status === "AWAITING_PEER" || r.status === "PENDING"),
     };
-    if (o.showReason(r)) item.reason = r.reason;
+    const unitOfSide = (id: string): SideUnit => {
+      const e = eOf.get(id);
+      return { exists: !!e, unitId: e?.unitId ?? null };
+    };
+    if (o.showReason(r, { from: unitOfSide(r.fromEntryId), to: r.toEntryId ? unitOfSide(r.toEntryId) : null })) item.reason = r.reason;
     if (r.status === "CANCELLED" && reqApproved) item.outcome = T.outcomeStale;
     return item;
   });
@@ -681,29 +694,38 @@ export async function listMySwaps(ctx: Ctx, actor: SwapActor): Promise<SwapListR
   }
 }
 
-/** รายการของผู้จัดการ: ผู้ตัดสิน + บทบาท MANAGER · ขอบเขต = สาขาของกะต้นทาง (มติ H2.1 ข้อ 5) · reason เฉพาะผู้ตัดสิน (Q18) · ไม่มีเงิน */
+/**
+ * รายการของผู้จัดการ: ผู้ตัดสิน + บทบาท MANAGER · ขอบเขต = สาขาของกะต้นทาง (มติ H2.1 ข้อ 5) กรองใน query (r2 F2b — ไม่ใช่หลัง take) ·
+ * คำขอที่ยังเปิดก่อน แล้วจึงใหม่สุด · ไม่เกิน MANAGER_LIST_MAX แถว · reason เฉพาะผู้ตัดสินที่ทั้งสองกะอยู่ในขอบเขต (Q18 · r2 F2) · ไม่มีเงิน
+ */
+const MANAGER_LIST_MAX = 500;
 export async function listSwapsForManager(ctx: Ctx, viewer: SwapActor, input: { status?: string | null; unitId?: string | null } = {}): Promise<SwapListResult> {
   if (!isManagerReader(viewer)) return refuse(T.noPermission);
   try {
     const status = typeof input?.status === "string" && ["AWAITING_PEER", "PENDING", "APPROVED", "REJECTED", "CANCELLED"].includes(input.status) ? (input.status as SwapStatus) : null;
     const unitId = str(input?.unitId) || null;
     if (unitId && !unitVisible(viewer, unitId)) return refuse(T.otherBranch);
-    const rows = await tenantDb(ctx).hrShiftSwapRequest.findMany({
-      where: status ? { status } : {},
-      select: { ...SWAP_SELECT, fromEntry: { select: { unitId: true } } },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 500,
-    });
-    const visible = rows.filter((r) => unitVisible(viewer, r.fromEntry.unitId) && (!unitId || r.fromEntry.unitId === unitId));
+    const scope = hrScopeOf({ role: viewer.role as MembershipCtx["role"], unitAccess: viewer.unitAccess });
+    const unitWhere: Prisma.HrShiftSwapRequestWhereInput[] = [];
+    if (scope.unitIds !== "*") unitWhere.push({ fromEntry: { unitId: { in: scope.unitIds } } });
+    if (unitId) unitWhere.push({ fromEntry: { unitId } });
+    const base: Prisma.HrShiftSwapRequestWhereInput = unitWhere.length ? { AND: unitWhere } : {};
+    const db = tenantDb(ctx);
+    const order: Prisma.HrShiftSwapRequestOrderByWithRelationInput[] = [{ createdAt: "desc" }, { id: "desc" }];
+    const openStatuses = (status ? [status] : [...SWAP_OPEN_STATUSES]).filter((x) => SWAP_OPEN_STATUSES.includes(x));
+    const closedStatuses = (status ? [status] : ["APPROVED", "REJECTED", "CANCELLED"]).filter((x) => !SWAP_OPEN_STATUSES.includes(x as SwapStatus)) as SwapStatus[];
+    const open = openStatuses.length ? await db.hrShiftSwapRequest.findMany({ where: { ...base, status: { in: openStatuses } }, select: SWAP_SELECT, orderBy: order, take: MANAGER_LIST_MAX }) : [];
+    const rest = MANAGER_LIST_MAX - open.length;
+    const closed = closedStatuses.length && rest > 0 ? await db.hrShiftSwapRequest.findMany({ where: { ...base, status: { in: closedStatuses } }, select: SWAP_SELECT, orderBy: order, take: rest }) : [];
     const decider = isDecider(viewer);
+    const sideOk = (u: SideUnit | null) => u === null || (u.exists && unitVisible(viewer, u.unitId));
     const me = await employeeOfUser(ctx.tenantId, viewer.userId).catch(() => null);
     return {
       ok: true,
-      items: await toItems(
-        ctx,
-        visible.map(({ fromEntry: _u, ...r }) => r),
-        { me: me && me.systemId === ctx.systemId ? me.employeeId : null, showReason: () => decider },
-      ),
+      items: await toItems(ctx, [...open, ...closed], {
+        me: me && me.systemId === ctx.systemId ? me.employeeId : null,
+        showReason: (_r, u) => decider && sideOk(u.from) && sideOk(u.to),
+      }),
     };
   } catch (e) {
     return refuse(reasonOf(e, T.stale));

@@ -45,6 +45,8 @@ export const SWAP_TEXT = {
   same: "สองกะนี้เหมือนกัน — ไม่ต้องสลับ",
   leavePeer: "เพื่อนร่วมงาน ลาอนุมัติแล้วในวันนั้น — สลับไม่ได้",
   leaveYou: "คุณ ลาอนุมัติแล้วในวันนั้น — สลับไม่ได้",
+  /** r2 F3: ผู้ขอพ้นสภาพ/อยู่นอกช่วงการจ้างในวันของกะที่จะได้รับ (SWAP) */
+  endedYou: "คุณ อยู่นอกช่วงการจ้างในวันนั้น — สลับไม่ได้",
   open: "กะนี้มีคำขอสลับค้างอยู่แล้ว — ยกเลิกคำขอเดิมก่อน",
   notYours: "คำขอนี้ไม่ได้ส่งถึงคุณ",
   stale: "สถานะคำขอเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่",
@@ -68,12 +70,14 @@ export function cleanSwapReason(v: unknown): string | null | undefined {
 /** รหัสที่ใช้ผลไม่ได้ (brief R8) — ไม่ throw · คำขอ → CANCELLED + audit รหัส */
 export type SwapApplyCode = "ENTRY_GONE" | "ENTRY_CHANGED" | "PAST" | "NOT_PUBLISHED" | "DUP" | "LEAVE" | "ENDED" | "BRANCH";
 
-/** ข้อความของทางตัดสินตรง (decideSwap) เมื่อใช้ผลไม่ได้ — `dup`/`changed` = ข้อความของตารางกะ H2.1 (ส่งเข้ามา) */
-export function applyCodeText(code: SwapApplyCode, t: { dup: string; changed: string }): string {
+/** ฝ่ายที่ทำให้ใช้ผลไม่ได้ (r2 F3): PEER = เพื่อนผู้รับกะ · YOU = ผู้ขอ (ในวันของกะที่ผู้ขอจะได้รับ) */
+export type SwapParty = "PEER" | "YOU";
+/** ข้อความของทางตัดสินตรง (decideSwap) เมื่อใช้ผลไม่ได้ — `dup`/`changed` = ข้อความของตารางกะ H2.1 (ส่งเข้ามา) · ข้อความบอกฝ่ายให้ถูกคน (r2 F3) */
+export function applyCodeText(code: SwapApplyCode, t: { dup: string; changed: string }, party: SwapParty = "PEER"): string {
   if (code === "DUP") return t.dup;
   if (code === "PAST") return SWAP_TEXT.expired;
-  if (code === "LEAVE") return SWAP_TEXT.leavePeer;
-  if (code === "ENDED") return SWAP_TEXT.targetNotFound;
+  if (code === "LEAVE") return party === "YOU" ? SWAP_TEXT.leaveYou : SWAP_TEXT.leavePeer;
+  if (code === "ENDED") return party === "YOU" ? SWAP_TEXT.endedYou : SWAP_TEXT.targetNotFound;
   if (code === "BRANCH") return SWAP_TEXT.branch;
   return t.changed; // ENTRY_GONE · ENTRY_CHANGED · NOT_PUBLISHED
 }
