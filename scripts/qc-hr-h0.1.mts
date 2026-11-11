@@ -41,7 +41,8 @@ const ARGV = process.argv.slice(2);
 const LIST = ARGV.includes("--list");
 const WORKER_AT = ARGV.indexOf("--h01-worker");
 const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
-const QC4_HOST_MARK = "ep-frosty-lab";
+import { hrQcHostMark } from "./hr-qc-hosts.mjs"; // ORACLE-EDIT (controller 11 Nov): ฐาน QC ต่อเลนใน allowlist
+const QC4_HOST_MARK = hrQcHostMark();
 
 const PAY_FILE = "src/lib/modules/hr/payroll.ts";
 const ACT_FILE = "src/lib/modules/hr/payroll-actions.ts";

@@ -47,7 +47,8 @@ const ARGV = process.argv.slice(2);
 const LIST = ARGV.includes("--list");
 const WORKER_AT = ARGV.indexOf("--h06-worker");
 const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
-const QC4_HOST_MARK = "ep-frosty-lab";
+import { hrQcHostMark } from "./hr-qc-hosts.mjs"; // ORACLE-EDIT (controller 11 Nov): ฐาน QC ต่อเลนใน allowlist
+const QC4_HOST_MARK = hrQcHostMark();
 /** base of the marked-hunk diff (S8.5) — the oracle's base on session/hr; H0.5 (PIN) does not touch the four files */
 const BASE_REF = process.env.QC_H06_BASE || "103fde95";
 
