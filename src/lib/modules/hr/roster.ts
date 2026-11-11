@@ -780,46 +780,42 @@ export async function checkRules(ctx: Ctx, viewer: RosterViewer, input: { from: 
 
 // ═══════════════════════════ บอร์ด (R7) ═══════════════════════════
 // HR H2.1 r2 ▸ ตัวนับ "ลบแถวที่เคยประกาศ" ล้างตามสาขา + ช่วงวันของการเผยแพร่ (ไม่ใช่ทั้งระบบ — review R-3 · hunt F3) ◂
-/** ชุดสาขาที่การเผยแพร่/มุมมองครอบ: "*" = ทุกแถว (รวมแถวไม่ระบุสาขา) · รายการ = แถวของสาขาเหล่านั้นเท่านั้น */
-type UnitSet = "*" | string[];
-const unitSetOf = (scopeUnits: "*" | string[], unitId: string | null): UnitSet => (unitId ? [unitId] : scopeUnits);
+// HR H2.2 ▸ (D-R3c) ชุดสาขาของหมุดเผยแพร่ย้ายไปตัดสินใน SQL ของ removedSinceLastPublish ข้างล่าง (unitId ของหมุด ไม่งั้น scopeUnits ไม่งั้นทุกสาขา) ◂
 /** ขอบเขตผู้กดที่จดใน audit เผยแพร่ (null = ทุกสาขา) */
 const scopeUnitsOf = (scope: HrScope): string[] | null => (scope.unitIds === "*" ? null : [...scope.unitIds]);
-type PublishMark = { at: Date; from: string; to: string; units: UnitSet };
-function publishMarkOf(r: { createdAt: Date; after: unknown }): PublishMark | null {
-  const a = (r.after ?? {}) as { from?: unknown; to?: unknown; unitId?: unknown; scopeUnits?: unknown };
-  if (typeof a.from !== "string" || typeof a.to !== "string") return null;
-  // audit ก่อน r2 ไม่มี scopeUnits ⇒ ถือว่าผู้กดเห็นทุกสาขา
-  const scopeUnits = Array.isArray(a.scopeUnits) ? a.scopeUnits.filter((x): x is string => typeof x === "string") : "*";
-  return { at: r.createdAt, from: a.from, to: a.to, units: unitSetOf(scopeUnits, typeof a.unitId === "string" ? a.unitId : null) };
-}
-const markCoversRow = (m: PublishMark, day: string, unit: string | null): boolean => m.from <= day && day <= m.to && (m.units === "*" || (!!unit && m.units.includes(unit)));
-const markCoversView = (m: PublishMark, view: UnitSet, from: string, to: string): boolean =>
-  m.from <= from && to <= m.to && (m.units === "*" || (view !== "*" && view.every((u) => (m.units as string[]).includes(u))));
-/** แถวที่ "เคยประกาศ" แล้วถูกลบ และยังไม่มีการเผยแพร่ภายหลังที่ครอบวัน + สาขาของแถวนั้น (นับจาก audit — ไม่มีคอลัมน์ tombstone · Q4) */
+// HR H2.2 ▸ หนี้ H2.1 ที่ H2.2 รับ (มติผู้คุม 11 พ.ย. · wo-notes/hr-H2.1.md §r3):
+//   D-R3w — เวลาของหมุดเผยแพร่ = after.anchorAt (จับ "ก่อน" อ่านชุดแถวที่จะประกาศ) · audit เก่าที่ไม่มี anchorAt ใช้ createdAt
+//           ⇒ การลบที่เกิดหลังการอ่านชุดแถว (แม้เกิดก่อนหมุดถูกเขียน) ไม่ถูกล้าง เพราะการเผยแพร่นั้นไม่เคยเห็นมัน (oracle S4.9)
+//   D-R3c — ถามฐานต่อแถวที่ถูกลบว่า "มีหมุดที่ครอบวัน + สาขาของแถวนี้ และเวลาหมุด ≥ เวลาลบ" ไหม (NOT EXISTS) ·
+//           ไม่มีเพดาน "หมุด 500 ตัวล่าสุด" อีกแล้ว — หมุดใหม่ ๆ ของช่วงวันอื่นมากเท่าไรก็ไม่ดันหมุดที่ครอบแถวนี้หลุด (oracle S4.10)
+//   ผลลัพธ์ = แถวที่ "เคยประกาศ" แล้วถูกลบ และยังไม่มีการเผยแพร่ภายหลังที่ครอบวัน + สาขาของแถวนั้น (นับจาก audit — ไม่มีคอลัมน์ tombstone · Q4)
+//   สาขาของหมุด: unitId (สตริง) ⇒ เฉพาะสาขานั้น · scopeUnits (อาร์เรย์) ⇒ เฉพาะสาขาในรายการ (แถวไม่ระบุสาขาไม่ถูกครอบ) · ไม่มีทั้งคู่ ⇒ ทุกสาขา (audit ก่อน r2) ◂
 async function removedSinceLastPublish(ctx: Ctx, scope: HrScope, unitId: string | null, from: string, to: string): Promise<number> {
-  const db = tenantDb({ tenantId: ctx.tenantId });
-  const sys = { path: ["systemId"], equals: ctx.systemId };
-  const pubs = (await db.auditLog.findMany({ where: { action: "hr.roster.publish", after: sys }, orderBy: { createdAt: "desc" }, select: { createdAt: true, after: true }, take: 500 }))
-    .map(publishMarkOf)
-    .filter((m): m is PublishMark => m !== null);
-  // พื้น: การเผยแพร่ล่าสุดที่ครอบทั้งมุมมองนี้ (ทุกวัน · ทุกสาขาในมุม) ⇒ การลบก่อนหน้านั้นล้างหมดแล้ว
-  const floor = pubs.find((m) => markCoversView(m, unitSetOf(scope.unitIds, unitId), from, to));
-  const rows = await db.auditLog.findMany({
-    where: { action: "hr.roster.entry.remove", after: sys, ...(floor ? { createdAt: { gt: floor.at } } : {}) },
-    select: { createdAt: true, after: true },
-    take: 5000,
-  });
-  let n = 0;
-  for (const r of rows) {
-    const a = (r.after ?? {}) as { wasPublished?: unknown; date?: unknown; unitId?: unknown };
-    const d = typeof a.date === "string" ? a.date : "";
-    const u = typeof a.unitId === "string" ? a.unitId : null;
-    if (a.wasPublished !== true || d < from || d > to || !entryInScope(scope, unitId, u)) continue;
-    if (pubs.some((m) => m.at >= r.createdAt && markCoversRow(m, d, u))) continue; // มีการเผยแพร่ภายหลังที่ครอบแถวนี้แล้ว
-    n++;
-  }
-  return n;
+  const rows = await tenantDb({ tenantId: ctx.tenantId }).$queryRaw<{ unitId: string | null }[]>`
+    SELECT r."after"->>'unitId' AS "unitId"
+    FROM "AuditLog" r
+    WHERE r."tenantId" = ${ctx.tenantId}
+      AND r."action" = 'hr.roster.entry.remove'
+      AND r."after"->>'systemId' = ${ctx.systemId}
+      AND r."after"->>'wasPublished' = 'true'
+      AND (r."after"->>'date') COLLATE "C" >= ${from}
+      AND (r."after"->>'date') COLLATE "C" <= ${to}
+      AND NOT EXISTS (
+        SELECT 1 FROM "AuditLog" m
+        WHERE m."tenantId" = r."tenantId"
+          AND m."action" = 'hr.roster.publish'
+          AND m."after"->>'systemId' = ${ctx.systemId}
+          AND (CASE WHEN (m."after"->>'anchorAt') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'
+                    THEN ((m."after"->>'anchorAt')::timestamptz AT TIME ZONE 'UTC')
+                    ELSE m."createdAt" END) >= r."createdAt"
+          AND (m."after"->>'from') COLLATE "C" <= (r."after"->>'date') COLLATE "C"
+          AND (r."after"->>'date') COLLATE "C" <= (m."after"->>'to') COLLATE "C"
+          AND COALESCE(CASE WHEN jsonb_typeof(m."after"->'unitId') = 'string' THEN m."after"->>'unitId' = r."after"->>'unitId'
+                            WHEN jsonb_typeof(m."after"->'scopeUnits') = 'array' THEN m."after"->'scopeUnits' @> jsonb_build_array(r."after"->>'unitId')
+                            ELSE true END, false)
+      )`;
+  // HR H2.2 ▸ ขอบเขตผู้ดู + สาขาที่เลือก ตัดสินที่นี่ (เหมือนเดิม — แกน = สาขาของแถวที่ถูกลบ) ◂
+  return rows.filter((r) => entryInScope(scope, unitId, typeof r.unitId === "string" ? r.unitId : null)).length;
 }
 
 export type ListRosterResult = { ok: true; entries: RosterBoardEntry[]; unpublishedCount: number; warnings: RosterWarning[] } | RosterFail;
@@ -854,6 +850,8 @@ export async function publishRoster(ctx: Ctx, viewer: RosterViewer, input: { fro
     const { from, to } = rangeOf(input);
     const unitId = unitArg(scope, input?.unitId);
     const db = tenantDb(ctx);
+    // HR H2.2 ▸ D-R3w / D-R3m: เวลาหมุด (anchorAt) จับก่อนอ่านชุดแถวที่จะประกาศ — ใช้ทั้งทางปกติ (หมุดใน tx) และหมุด count 0 ◂
+    const anchorAt = new Date();
     const cand = await db.hrRosterEntry.findMany({
       where: { date: { gte: dbDate(from), lte: dbDate(to) }, published: false, ...entryScopeWhere(scope, unitId) },
       select: { id: true, employeeId: true, date: true },
@@ -865,7 +863,7 @@ export async function publishRoster(ctx: Ctx, viewer: RosterViewer, input: { fro
       //   ให้ตัวนับ "แก้ N จุด" ล้างได้ (ไม่มีค้าง ⇒ ไม่เขียนอะไรเลยเหมือนเดิม) (review R-3) ◂
       if ((await removedSinceLastPublish(ctx, scope, unitId, from, to)) > 0) {
         const publishId = randomUUID();
-        await audit(ctx, viewer, "hr.roster.publish", "HrRosterEntry", publishId, { publishId, count: 0, unitId, from, to, scopeUnits: scopeUnitsOf(scope) });
+        await audit(ctx, viewer, "hr.roster.publish", "HrRosterEntry", publishId, { publishId, count: 0, unitId, from, to, scopeUnits: scopeUnitsOf(scope), anchorAt: anchorAt.toISOString() }); // HR H2.2 ▸ D-R3m ◂
       }
       return { ok: true, published: 0, eventId: null };
     }
@@ -898,9 +896,22 @@ export async function publishRoster(ctx: Ctx, viewer: RosterViewer, input: { fro
         payload: { publishId, systemId: ctx.systemId, unitId, from, to, entryIds: ids, employeeIds },
       });
       const ev = await tx.outboxEvent.findFirst({ where: { idempotencyKey }, select: { id: true } });
+      // HR H2.2 ▸ D-R3a: หมุดเผยแพร่ (audit ที่ตัวนับ "แก้ N จุด" อ่าน) เขียนใน tx เดียวกันด้วย client ของ tx —
+      //   เขียนไม่ได้ ⇒ ย้อนการเผยแพร่ทั้งชุด (ไม่มี "ok แต่ตัวนับค้าง") · รูป after เดิม + anchorAt (D-R3w) ◂
+      await tx.auditLog.create({
+        data: {
+          tenantId: ctx.tenantId,
+          actorType: viewer.userId ? "USER" : "SYSTEM",
+          actorId: viewer.userId ?? null,
+          action: "hr.roster.publish",
+          targetType: "HrRosterEntry",
+          targetId: publishId,
+          after: { systemId: ctx.systemId, publishId, count: ids.length, unitId, from, to, scopeUnits: scopeUnitsOf(scope), anchorAt: anchorAt.toISOString() },
+        },
+      });
       return ev?.id ?? publishId;
     });
-    await audit(ctx, viewer, "hr.roster.publish", "HrRosterEntry", publishId, { publishId, count: ids.length, unitId, from, to, scopeUnits: scopeUnitsOf(scope) });
+    // HR H2.2 ▸ D-R3a: audit เผยแพร่ย้ายเข้า tx ข้างบนแล้ว (ไม่เขียนซ้ำหลัง commit) ◂
     return { ok: true, published: ids.length, eventId };
   } catch (e) {
     return refuse(reasonOf(e));
