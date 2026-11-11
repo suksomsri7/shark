@@ -3141,6 +3141,237 @@
    "wo": "H2.7",
    "oracle": "qc-hr-h2.7",
    "note": "วันหยุดตามจันทรคติ/ชดเชยต้องเพิ่มเอง (Q14)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-holiday-preset-form",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าที่ดูแลทุกสาขา",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "form"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "ฟอร์มปุ่มใส่วันหยุดราชการ (ปีที่เลือก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-leave-balance-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "บัญชีผูกกับพนักงานที่มีประเภทการลา",
+   "roles": [
+    "owner",
+    "manager",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "แถวยอดวันลาต่อประเภท (id ประเภทการลา)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-min-service",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "อายุงานขั้นต่ำ (วัน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-carry-max",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "สะสมได้สูงสุด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-carry-expires",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "วันลาสะสมหมดอายุ MM-DD"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-attach-after",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "ต้องมีเอกสารเมื่อลาตั้งแต่ (วัน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-year-start",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "เดือนเริ่มปีการลา"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-half-day",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "ลาครึ่งวันได้ (ค่าเริ่มต้น ติ๊ก) — ไม่มีสวิตช์ลาเป็นชั่วโมง (D-H27-hourly)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-policy-prorata",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "ปีแรกคิดตามสัดส่วน — ไม่มีสวิตช์ลาเป็นชั่วโมง (D-H27-hourly)"
   }
  ]
 }
