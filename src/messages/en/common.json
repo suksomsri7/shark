@@ -78,7 +78,48 @@
         "OTHER": "Other"
       },
       "hubLink": "Settings",
-      "hubDesc": "Shifts · leave types · holidays"
+      "hubDesc": "Shifts · leave types · holidays",
+      "clock": {
+        "title": "Clocking",
+        "desc": "Clocking session rules and phone clock-in points per branch",
+        "earlyInMin": "Clock in before shift start (minutes)",
+        "closeGraceMin": "Auto-close session after shift end (minutes)",
+        "savePolicy": "Save clocking rules",
+        "sitesTitle": "Phone clock-in (GPS)",
+        "mobileEnabled": "Allow phone clock-in",
+        "gpsRequired": "Must be within shop radius (GPS)",
+        "centerLat": "Shop latitude",
+        "centerLng": "Shop longitude",
+        "radiusM": "Radius (metres)",
+        "minAccuracyM": "Minimum accuracy (metres)",
+        "acceptPdpaNotice": "I confirm staff were told their location is recorded (PDPA)",
+        "noticeAccepted": "Staff notified",
+        "saveSite": "Save",
+        "on": "On",
+        "off": "Off"
+      }
+    },
+    "kiosk": {
+      "prompt": "Enter your PIN, then tap Clock or Start break",
+      "clear": "Clear",
+      "back": "Delete",
+      "submit": "Clock",
+      "breakStart": "Start break",
+      "saving": "Saving…",
+      "entered": "PIN digits entered"
+    },
+    "mobileClock": {
+      "title": "Clock with your phone",
+      "in": "Clock in",
+      "out": "Clock out",
+      "breakStart": "Start break",
+      "breakEnd": "End break",
+      "locating": "Reading location…",
+      "saving": "Saving…",
+      "done": "Saved",
+      "notice": "The shop records your location when you clock to check you are within the shop radius, and deletes the coordinates after 30 days",
+      "noGps": "Turn on your phone's location (GPS), then try again",
+      "distance": "distance from shop (m)"
     }
   }
 }
