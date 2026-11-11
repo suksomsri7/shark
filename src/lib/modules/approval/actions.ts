@@ -19,6 +19,7 @@ const APPROVALS_PATH = "/app/approvals";
 const ENTITY_TYPES = new Set([
   "PurchaseOrder",
   "HrLeave",
+  "HrShiftSwapRequest", // HR H2.3 ▸ คำขอสลับกะ — ผลอยู่ที่ approval-effects.ts ◂
   "AccountDocument",
   "member.merge",
   "member.tier.manual",

@@ -261,6 +261,14 @@ async function isOwnHrSubject(ctx: Ctx, req: Pick<ApprovalRequest, "entityType" 
     });
     return !!leave && leave.employee.linkedUserId === userId;
   }
+  // HR H2.3 ▸ คำขอสลับกะ: ผู้ขอและเพื่อนผู้รับกะ (ผ่านพนักงานที่ผูกบัญชี) ตัดสินคำขอนี้ไม่ได้ — อ่านด้วย prisma + tenantId แบบกิ่งใบลา
+  if (req.entityType === "HrShiftSwapRequest") {
+    const swap = await prisma.hrShiftSwapRequest.findFirst({ where: { id: req.entityId, tenantId: ctx.tenantId }, select: { requesterEmployeeId: true, targetEmployeeId: true } });
+    if (!swap) return false;
+    const ids = [swap.requesterEmployeeId, swap.targetEmployeeId].filter((x): x is string => !!x);
+    return (await prisma.hrEmployee.count({ where: { tenantId: ctx.tenantId, id: { in: ids }, linkedUserId: userId } })) > 0;
+  }
+  // ◂ HR H2.3
   return false;
 }
 // ◂ HF-HR-0

@@ -60,6 +60,9 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "hr.leave.submitted", label: "เมื่อพนักงานยื่นใบลา" },
   // HR H2.1 ▸ ยิงจาก `hr/roster.ts#publishRoster` ใน tx เดียวกับการเผยแพร่ · consumer no-op ใน outbox-consumers.ts · spread เข้า WEBHOOK_EVENTS แล้ว ◂
   { value: "hr.roster.published", label: "เมื่อเผยแพร่ตารางกะ (HR)" },
+  // HR H2.3 ▸ ยิงจาก hr/swap.ts (ยื่นคำขอ · ใช้ผลอนุมัติ) · consumer no-op ใน outbox-consumers.ts · spread เข้า WEBHOOK_EVENTS แล้ว ◂
+  { value: "hr.shift.swap_requested", label: "เมื่อพนักงานขอสลับกะ (HR)" },
+  { value: "hr.shift.swap_approved", label: "เมื่ออนุมัติสลับกะ (HR)" },
   // ── ธีมกิจการ (B1 · ledger/BRANDING-RUN.md) ────────────────────────────────
   // ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับการบันทึกแถว
   // 🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ตัวนั้นล้างแคชธีมของอินสแตนซ์ที่ระบายคิว)

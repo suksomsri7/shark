@@ -3,6 +3,7 @@
 export const ENTITY_TYPES = [
   { value: "PurchaseOrder", label: "ใบสั่งซื้อ" },
   { value: "HrLeave", label: "ใบลา" },
+  { value: "HrShiftSwapRequest", label: "คำขอสลับกะ" }, // HR H2.3 ▸ ผลอยู่ที่ approval-effects.ts (hr/swap.ts#applySwapDecision) ◂
   // ระบบสมาชิก v2 (M1.4/M1.7/M1.9): danger op ที่พิมพ์เขียว §6.2 กำหนดให้ MANAGER ต้องขออนุมัติ
   //   ไม่มีนโยบาย = autoApproved (ทำทันที) ⇒ เจ้าของต้องตั้งนโยบายจากหน้า /app/settings/approval ถึงจะบังคับได้
   { value: "member.merge", label: "รวมสมาชิกซ้ำ" },

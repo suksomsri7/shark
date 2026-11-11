@@ -1425,6 +1425,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // HR H2.1 ▸ เผยแพร่ตารางกะ (ยิงใน tx เดียวกับการพลิก published ของ hr/roster.ts#publishRoster · key `hr.roster.published#<publishId>` ·
   //   payload id/ช่วงวันล้วน) — ยังไม่มีผลข้างเคียง (แจ้งพนักงาน = H2.10) ⇒ no-op ปิด event เป็น DONE + จุดให้ automation/เว็บฮุค · ส่งซ้ำได้ ◂
   "hr.roster.published": withAutomation(async () => {}),
+  // HR H2.3 ▸ คำขอสลับกะ (hr/swap.ts — ยิงใน tx เดียวกับการยื่น / การเขียนตารางกะ · key `<type>#<swapId>` · payload id/วันล้วน) —
+  //   ยังไม่มีผลข้างเคียง (แจ้งเพื่อน/พนักงาน = H2.10) ⇒ no-op ปิด event เป็น DONE + จุดให้ automation/เว็บฮุค · ส่งซ้ำได้
+  "hr.shift.swap_requested": withAutomation(async () => {}),
+  "hr.shift.swap_approved": withAutomation(async () => {}),
+  // ◂ HR H2.3
   "crm.commission.created": crmFirst(crmCommissionBridge("onCommissionCreated"), withAutomation(async () => {})),
   "crm.commission.approved": crmFirst(crmCommissionBridge("onCommissionApproved"), withAutomation(async () => {})),
   "crm.commission.reversed": crmFirst(crmCommissionBridge("onCommissionReversed"), withAutomation(async () => {})),

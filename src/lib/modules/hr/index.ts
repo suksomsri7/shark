@@ -69,6 +69,10 @@ export { adjustmentsByIds } from "./payroll";
 export type { RosterDayEntry, RosterDayResult } from "./roster";
 export { rosterOnDay, rosterAt } from "./roster";
 // ◂ HR H2.1
+// HR H2.3 ▸ คำขอสลับกะ — re-export ล้วน (ตรรกะอยู่ที่ `swap.ts`) · ผู้เรียก: approval-effects.ts (ผลของสายอนุมัติชนิด HrShiftSwapRequest)
+export type { SwapItem, SwapSide, SwapShape, SwapStatus } from "./swap";
+export { applySwapDecision } from "./swap";
+// ◂ HR H2.3
 // POS P3.5 ▸ รอยต่อ HR ↔ POS ฉบับ C-8 v2 (มติ 5 · ledger/POS-CONTRACTS.md C-8) — re-export ล้วน (ตัวงานอยู่ที่ pos-seam.ts)
 //   onShiftToday = ใครเป็นพนักงาน · active · ลาวันนี้ · ตารางของวัน (unitId ยังไม่ใช้จนกว่า H1.1) · workedMinutesBetween = นาทีทำงานช่วงหนึ่ง ·
 //   clockSelf = ลงเวลาของตัวเอง (เขียนผ่าน clock() ของ HR เท่านั้น) · adjustmentStatuses = สถานะรายการปรับเงินที่ POS ส่งเข้างวด

@@ -182,6 +182,19 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
   }
   // ◂ SVC D.11
 
+  // HR H2.3 ▸ คำขอสลับกะ (entityId = HrShiftSwapRequest.id) — systemId จากคำขออนุมัติ (แบบกิ่งสมาชิก) · facade hr (dynamic import)
+  //   applySwapDecision: ล็อกต่อคำขอ → ตรวจซ้ำ → เขียนตารางกะทั้งสองแถวหรือไม่เลย · สถานะ ≠ PENDING = เงียบ (ส่งซ้ำปลอดภัย) ·
+  //   ใช้ผลไม่ได้ = คำขอสลับ CANCELLED + audit รหัส (ไม่ throw) · ข้อผิดพลาดฐานข้อมูล = throw ⇒ event retry
+  if (entityType === "HrShiftSwapRequest") {
+    if (!requestId) return;
+    const req = await prisma.approvalRequest.findFirst({ where: { id: requestId, tenantId: evt.tenantId }, select: { systemId: true } });
+    if (!req?.systemId) return;
+    const hr = await import("@/lib/modules/hr");
+    await hr.applySwapDecision({ tenantId: evt.tenantId, systemId: req.systemId, swapId: entityId, requestId, approved });
+    return;
+  }
+  // ◂ HR H2.3
+
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },
