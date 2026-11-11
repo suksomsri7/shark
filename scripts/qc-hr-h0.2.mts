@@ -33,7 +33,8 @@ const SUITE = "qc-hr-h0.2";
 const ROOT = process.cwd();
 const THIS_FILE = fileURLToPath(import.meta.url);
 const FORCE = process.env.QC_FORCE === "1";
-const QC4_HOST_MARK = "ep-frosty-lab";
+import { hrQcHostMark } from "./hr-qc-hosts.mjs"; // ORACLE-EDIT (controller 11 Nov): ฐาน QC ต่อเลนใน allowlist
+const QC4_HOST_MARK = hrQcHostMark();
 const THAI = /[฀-๿]/;
 
 // ═════════════════════════ ทะเบียนข้อสอบ ═════════════════════════

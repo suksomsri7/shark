@@ -61,7 +61,8 @@ const ROOT = process.cwd();
 const ARGV = process.argv.slice(2);
 const LIST = ARGV.includes("--list");
 const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
-const QC4_HOST_MARK = "ep-frosty-lab";
+import { hrQcHostMark } from "./hr-qc-hosts.mjs"; // ORACLE-EDIT (controller 11 Nov): ฐาน QC ต่อเลนใน allowlist
+const QC4_HOST_MARK = hrQcHostMark();
 const SLUG_PREFIX = "qc-hr-h1.1-";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
