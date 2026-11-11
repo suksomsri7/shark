@@ -225,7 +225,7 @@ const CHECKS: readonly Def[] = [
   D("S8.5", "R13", "MAJOR", "GREEN", "[digest] employeesUnavailable ×2 · isOnLeave ×2 · kioskRoster = H1.2 FROZEN 840adc0a…"),
   D("S8.6", "R13", "CRITICAL", "GREEN", "[digest] MONTHLY payroll fixture = H1.1 FROZEN 72166a3e… (totals · flags)"),
   D("S8.7", "R13", "CRITICAL", "GREEN", "[static] payroll-rules.ts sha 75a66c0c… · service / payroll* / privacy-shared / time-rules / settings unchanged vs base"),
-  D("S8.8", "R13", "CRITICAL", "GREEN", "[run] clock() still judges by HrWorkSchedule with published roster rows today: " + FROZEN_CLOCK),
+  D("S8.8", "R13", "CRITICAL", "GREEN", "[run] clock() still judges by HrWorkSchedule with unpublished roster rows today: " + FROZEN_CLOCK),
   D("S8.9", "R13", "CRITICAL", "GREEN", "[dto] privacy matrix (owner · payroll · manager-u1 · hr.leave.read · member · self · other tenant) as H1.2 S6.1"),
   D("S8.10", "R13", "MAJOR", "GREEN", "[service] H1.2 settings behaviour: listShifts(manager-u1) = shop-wide + u1 active only · duplicate name ⇒ \"" + T_SETTINGS_DUP + "\""),
   // S9 review r2 (hr-H2.1-review.md R-1 · R-2 · R-3 + hr-H2.1-hunt.md F4 — ORACLE-EDIT pre-approved: S9.x added only)
@@ -734,7 +734,7 @@ async function runDb(): Promise<void> {
     }
     for (const emp of [K1, K2, K3]) {
       for (const day of [today, addDay(today, -1), addDay(today, 1)]) {
-        await P.hrRosterEntry.create({ data: { tenantId: TD, systemId: sK.id, employeeId: emp, date: dbDate(day), shiftId: shK.id, unitId: du1, startMin: 420, endMin: 900, breakMin: 0, crossesMidnight: false, published: true, publishedAt: FIX_TS, source: "MANUAL" } });
+        await P.hrRosterEntry.create({ data: { tenantId: TD, systemId: sK.id, employeeId: emp, date: dbDate(day), shiftId: shK.id, unitId: du1, startMin: 420, endMin: 900, breakMin: 0, crossesMidnight: false, published: false, source: "MANUAL" } }); // ORACLE-EDIT (controller 11 Nov · H2.4 R4): unpublished rows — published rows now link + judge vs the entry (qc-hr-h2.4 S2/S12.1)
       }
     }
     const out: string[] = [];
