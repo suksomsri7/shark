@@ -1,0 +1,15 @@
+# post-merge sanity session/hr @fb245484 · 2026-10-22T22:08:45Z · load 8.69 4.51 3.87
+prisma generate exit=0 [22:08Z]
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 28/28 JSON_SUMMARY {"suite":"seed-hr-qc","total":28,"passed":28,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":27,"BusinessUnit":2,"HrAttend  [22:09Z]
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.3","total":63,"passed":63,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"groupCrashes":[],"missing":[],"baseRed":41,"baseGreen":22,"offBase":["H1.3-S1.1(RED→pass)","H1.3-S1.2(RED→pass)","H1.3 · RESIDUE none (tenants=2 users=7) [22:10Z]
+qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h1.2","total":73,"passed":73,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":56,"baseGreen":17,"offBase":["H1.2-S1.1(RED→pass)","H1.2-S1.2(RED→pass)","H1.2-S1.3(RED→pass)" · RESIDUE none (tenants=2 users=8) [22:10Z]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]}   [22:13Z]
+qc-payroll exit=0 ===== QC Payroll ไทย ===== JSON_SUMMARY {"total":19,"passed":19,"findings":[]}   [22:13Z]
+qc-crm-c3.3 exit=0 JSON_SUMMARY {"total":90,"passed":90,"findings":[]}   [22:22Z]
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [22:22Z]
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [22:22Z]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":8,"passed":8,"findings":[]}   [22:22Z]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":8,"passed":8,"findings":[]}   [22:22Z]
+typecheck start 22:22Z availMB=9489 busy=0
+typecheck exit=0 errors=0 [22:26Z]
+ALLDONE 2026-10-22T22:26:47Z
