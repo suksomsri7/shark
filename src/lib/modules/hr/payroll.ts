@@ -287,7 +287,7 @@ export async function rehomeStrandedSystemAdjustments(tenantId: string, limit = 
   let moved = 0;
   for (const sys of systems) {
     const db = tenantDb({ tenantId, systemId: sys.id });
-    const runs = new Set((await db.hrPayrollRun.findMany({ where: { systemId: sys.id }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+    const runs = new Set((await db.hrPayrollRun.findMany({ where: { systemId: sys.id, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey)); // HR SYNC ▸ รอบที่กลับรายการแล้ว (REVERSED · H0.6) ไม่นับว่างวดมีรอบ — ไม่งั้นค่าคอมฯ POS ของงวดที่เปิดใหม่ถูกย้ายไปเดือนถัดไป ◂
     if (runs.size === 0) continue;
     const rows = await db.hrPayAdjustment.findMany({
       where: { systemId: sys.id, runId: null, crmCommissionId: null, requestedById: null, kind: { in: ["COMMISSION", "DEDUCTION"] }, note: { startsWith: POS_STAFF_COMMISSION_NOTE_PREFIX } /* POS P3.5 ▸ fix3 N10 ◂ */, status: { in: ["PENDING", "APPROVED"] }, periodKey: { in: [...runs] } },
