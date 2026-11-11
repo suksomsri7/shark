@@ -1,0 +1,82 @@
+[env] qc-hr-h2.2 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.2] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️  QC_FORCE=1 — running although: H2.2 not built: src/lib/modules/hr/roster-board.ts absent (expect RED for the right reason, no crash)
+[qc-hr-h2.2] modules: board=∅ src/lib/modules/hr/roster-board.ts · shared=∅ src/lib/modules/hr/roster-board-shared.ts · roster=loaded
+  ❌ [H2.2-S1.1] [static] page guard (HR system · privacy + scope · notFound) · loader · hrTabs · no rosterOnDay/rosterAt — expected page guard + loader + tabs · no seams | actual exists,hrLookup,privacy,scope,notFound,loader
+  ❌ [H2.2-S1.3] [static] nav: roster after attendance in layout + hrTabs · hrTabs settings (D9) · same sets · page exists — expected roster after attendance in both · settings in hrTabs · same sets · page | actual layout,tabs,settingsTab,sameSets,page layout=[ภาพรวม,ลงเวลา,จอลงเวลา,ใบลา,พนักงาน,เงินเดือน,ตั้งค่า] tabs=[ภาพรวม,ลงเวลา,จอลงเวลา,ใบลา,พนักงาน,เงินเดือน]
+  ❌ [H2.2-S2.8] [static] roster-actions.ts: use server · only exported async fns (6) · each requireTenant + rosterOpCore — expected use server · 6 async fns · requireTenant + rosterOpCore | actual useServer,names,eachDelegates exported=[]
+  ❌ [H2.2-S5.1] [static] shared module: type-only imports · no clock · no Intl/toLocale — expected type-only imports · no clock · no Intl | actual exists
+  ❌ [H2.2-S5.7] [static] roster-ui: use client · imports · no db path · pointer events · actions — expected use client · allowed imports · no db path · pointer · actions | actual useClient,allowedOnly,pointer,actions bad= db=
+  ❌ [H2.2-S6.1] [static] every R14 data-testid / family present — expected 32 ids/families | actual missing hr-roster-page,hr-roster-title,hr-roster-branch-chip-,hr-roster-legend,hr-roster-grid,hr-roster-day-,hr-roster-row-,hr-roster-hours-,hr-roster-total,hr-roster-note,hr-roster-rule-,hr-roster-rules,hr-roster-empty,hr-roster-unpublished,hr-roster-published-state,hr-roster-publish,hr-roster-publish-confirm,hr-roster-copy-prev,hr-roster-generate,hr-roster-week-prev,hr-roster-week-label,hr-roster-week-next,hr-roster-week-today,hr-roster-cell-,hr-roster-picker,hr-roster-picker-shift-,hr-roster-entry-,hr-roster-entry-sheet,hr-roster-entry-remove,hr-roster-drag-ghost,hr-roster-message,hr-roster-daytab-
+  ❌ [H2.2-S6.2] [static] inventory /hr/roster ↔ code ids both ways · wo/oracle · fitness-hr F16.8 — expected inventory ↔ code · wo/oracle · F16.8 | actual rows=0 codeNoRow= rowNoCode= meta=true F16.8=false
+  ❌ [H2.2-S6.3] [static] th hr.roster.* holds the mockup-03 texts — expected 22 texts | actual missing คัดลอกจากสัปดาห์ก่อน | ใช้แม่แบบ | เผยแพร่ให้ทีม | ยังไม่เผยแพร่ (แก้ {n} จุด) | เช้า | บ่าย | ปิดร้าน | ลา | แก้แล้ว ยังไม่เผยแพร่ | พนักงาน | ชม./สัปดาห์ | หยุด | รออนุมัติ | กฎที่ตรวจ | เตือนเท่านั้น ไม่บล็อกการเผยแพร่ | ✓ ผ่าน | วางที่นี่ | ยืมตัว | ทดลอง | เกิน {n} | + ลา {n} วัน | รวม {n} ชม.
+  ❌ [H2.2-S6.6] [static] F16.4 th/en hr.roster.* parity · non-empty · msg.<code> for every code — expected th = en keys · non-empty · codes | actual some,must
+  ❌ [H2.2-S6.7] [static] tokens only in roster files · --color-shift-1…12 — expected tokens only · 12 shift tokens | actual files,shiftTokens
+  ❌ [H2.2-S6.8] [static] roster-ui.tsx min-h-[44px]/min-h-11 ≥ <button> count — expected min-h ≥ <button> count | actual buttons=0 min-h=0
+  ❌ [H2.2-S6.9] [static] visual-hr SPECS 2.2: 4 specs + expect statuses — expected 4 specs + expect | actual keys,expect,type
+  ✅ [H2.2-S7.1] [static] payroll-rules sha · frozen files vs base · roster.ts marked hunks only
+  ❌ [H2.2-S6.5] [pure] weekLabel same / cross month · rosterTitle BE year — expected จ. 4 – อา. 10 มี.ค. · both months · BE title | actual ∅weekLabel | ∅weekLabel | ∅rosterTitle
+(node:2481679) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ❌ [H2.2-S1.2] [loader] owner · mgr-all · mgr-u1 · mgr-[] · writer-staff ⇒ board · payroll-like · staff-u1 · member ⇒ null — expected 5 boards · 3 null | actual owner=∅loadRosterBoard mgrAll=∅loadRosterBoard mgrU1=∅loadRosterBoard mgrEmpty=∅loadRosterBoard writer=∅loadRosterBoard payroll=∅loadRosterBoard staffU1=∅loadRosterBoard member=∅loadRosterBoard
+  ❌ [H2.2-S1.4] [loader] all-branch (owner, mgr-[]) ⇒ unitSel all + u1 + u2 · mgr-u1 ⇒ units [u1], unitSel u1 — expected all + u1 + u2 · manager-u1 [u1] | actual owner,mgrEmpty,mgrU1
+  ❌ [H2.2-S1.5] [loader] mgr-u1 ?unit=u2 ⇒ falls back to u1 · no u2 id · u2 name only as homeUnitName — expected unitSel u1 · no u2 id · u2 name only as homeUnitName | actual u2id=false u2name=false ∅loadRosterBoard
+  ❌ [H2.2-S1.6] [pure+loader] ?week any day ⇒ Monday · invalid ⇒ todayKey week · prev/next ±7 across month + year end — expected Mondays · ±7 · year end | actual pure,any,invalid,yearEnd 2030-03-07→∅mondayOf,2030-03-10→∅mondayOf,2030-03-04→∅mondayOf,2031-01-01→∅mondayOf
+  ❌ [H2.2-S1.7] [loader] 7 day columns · neighbour-week entries hidden — expected 7 days · neighbours hidden | actual days=0 prev=false next=false
+  ❌ [H2.2-S1.8] [loader] canWrite = canManageHrSettings(viewer) for every reader — expected canWrite = canManageHrSettings | actual owner,mgrAll,mgrU1,mgrEmpty,writer
+  ❌ [H2.2-S3.1] [loader] u1 rows e1 e5 e6 e7 then borrowed e4 · e4 out-days · probation · position — expected e1 e5 e6 e7 · e4 borrowed | actual order,e4,e6,e1 order=
+  ❌ [H2.2-S3.2] [loader] ENDED e5 row only via its entry · other cells out — expected ENDED row via entry · other cells out | actual row,entry,out
+  ❌ [H2.2-S3.3] [loader+pure] chip kind / label / snapshot times · shiftKind / shiftLabel / timeRange vectors — expected m/a/c chips · override times · vectors | actual m,a,c,kindFn,labelFn,timeRange mon=undefined
+  ❌ [H2.2-S3.4] [loader] overnight shift-4 chip x · 22:00–06:00 · overnight · start day only — expected x · ดึก · 22:00–06:00 · overnight · Wed only | actual undefined
+  ❌ [H2.2-S3.5] [loader] cell states past · off · out · work — expected past · off · out · work | actual past,off,out,work
+  ❌ [H2.2-S3.6] [loader] weekMin / shiftCount / totalMin = Σ displayed paidMin (e1 1800 / 4) — expected Σ paidMin · e1 1800/4 | actual sums=true total=undefined/0 e1=undefined/undefined
+  ❌ [H2.2-S3.7] [loader] day DTO labels · weekend · past · headcount · holiday — expected labels · weekend · past · headcount 4/3 · holiday | actual labels,weekend,past,headcount,holiday
+  ❌ [H2.2-S3.8] [loader] leave overlay · label by viewer · leaveDays — expected APPROVED/PENDING overlay · labels by viewer · leaveDays | actual e1,e6,writer,days
+  ❌ [H2.2-S3.9] [dto] 5 boards: no forbidden key · no secret value — expected whitelist holds for 5 boards | actual owner:no board ownerAll:no board mgrAll:no board mgrU1:no board writer:no board
+  ❌ [H2.2-S5.2] [pure] applyOp(move) moves + marks changed · rollback exact · input untouched — expected move · changed · exact rollback · input intact | actual moved,rollback,pureIn ∅applyOp
+  ❌ [H2.2-S5.3] [pure] applyOp(copy) temp chip · confirm swaps id · rollback removes — expected temp chip · confirm id · rollback | actual temp,confirm,rollback ∅applyOp
+  ❌ [H2.2-S5.4] [pure] canDrop false: past / same cell / !canWrite · true: other row future cell — expected past/same/!canWrite false · future true | actual past,same,noWrite,ok
+  ❌ [H2.2-S5.5] [pure] keyTarget edges ⇒ null · one step otherwise — expected edges null · one step | actual sunRight,intoPast,left,lastDown,down,firstUp
+  ❌ [H2.2-S5.6] [pure] two queued ops, first rolled back ⇒ only the second applied — expected rows = only op 2 | actual ∅rollback
+  ❌ [H2.2-S4.1] [loader] unpublishedCount = engine (10) · th bar text — expected board = engine = 10 · bar text | actual board=undefined engine=10 bar=false
+  ❌ [H2.2-S4.2] [loader] chip.published = engine row.published — expected chip.published = engine | actual 0 chips · mismatched 0
+  ❌ [H2.2-S4.5] [loader] rule panel: e7 DAY_OFF + MAX_WEEK 56 named · others ok · no OVERLAP · info — expected 4 rows · e7 DAY_OFF + MAX_WEEK 56 · info | actual four,okRows,dayOff,maxWeek,info,warnRow []
+  ❌ [H2.2-S6.4] [loader] rule labels from ROSTER_RULE_DEFAULTS (10 h · 11 h · 1 · 48) — expected ชม. สูงสุด/วัน 10 | พักระหว่างกะ ≥ 11 ชม. | วันหยุด ≥ 1/สัปดาห์ | ชม./สัปดาห์ ≤ 48 | actual  |  |  | 
+  ❌ [H2.2-S4.6] [loader] rule row entryIds = engine warning entryIds ∩ shown chips — expected entryIds = engine ∩ shown | actual DAY_OFF:0/0 MAX_WEEK:0/0
+  ❌ [H2.2-S4.7] [loader] e2 (u2) warning named for owner/all · mgr-u1 board never names e2 — expected owner names e2 · manager-u1 never | actual owner=false mgrU1Clean=true
+  ❌ [H2.2-S4.8] [loader] canPublish true while warnings > 0 — expected canPublish with warnings | actual canPublish=undefined warnings=5
+  ❌ [H2.2-S4.3] [core] publish u1 ⇒ 10 rows flip · u2 untouched · 1 event · engine + board count 0 — expected 10 flipped · u2 7 untouched · 1 event · count 0 | actual code=∅rosterOpCore u1Un=10 u2Un=7 events +0 engine=10 board=undefined
+  ❌ [H2.2-S4.4] [core] publish again ⇒ 0 · no event — expected 0 · no event | actual ∅rosterOpCore events +0
+  ❌ [H2.2-S4.9] [race] removal after publish candidate read stays counted — expected publish 1 · removal after candidate read still counted (1) | actual stillCounted count=0 pub=1
+  ❌ [H2.2-S4.10] [service] > 500 newer publish audits keep a cleared removal cleared — expected 1 → 0 → still 0 after 501 newer audits | actual afterCap counts=1→0→1
+  ❌ [H2.2-S2.1] [core] add / move / remove / generate / copy / publish ⇒ ok + engine rows changed — expected six ops ok + rows changed | actual add,move,remove,generate,copy,publish codes=∅rosterOpCore,∅rosterOpCore,∅rosterOpCore,∅rosterOpCore,∅rosterOpCore,∅rosterOpCore
+  ❌ [H2.2-S2.2] [pure+core] ROSTER_MSG / th msg.<code> = engine text · en present · 8 refusals map to codes — expected table byte-exact · 8 mapped refusals | actual table✗=noPerm,ended,outEmploy,shiftOff,shiftNotFound,shiftOther,dup,past,sameWeek,publishRace,otherBranch,unassigned,otherUnit,shiftEqual mapped✗=dup→∅rosterOpCore shiftOff→∅rosterOpCore shiftOther→∅rosterOpCore sameWeek→∅rosterOpCore ended→∅rosterOpCore shiftNotFound→∅rosterOpCore shiftEqual→∅rosterOpCore otherUnit→∅rosterOpCore
+  ❌ [H2.2-S2.3] [core] reason outside the list (range > 31 d) ⇒ failed · malformed auth ⇒ failed · no raw text — expected failed · failed · clean | actual [{"ok":false,"code":"∅rosterOpCore"},{"ok":false,"code":"∅rosterOpCore"}]
+  ❌ [H2.2-S2.4] [core] 2020 add / move / remove ⇒ past · row unchanged — expected past ×3 · unchanged | actual ∅rosterOpCore,∅rosterOpCore,∅rosterOpCore same=true none=true
+  ❌ [H2.2-S2.5] [core] mgr-u1: e2 (u2) ⇒ otherBranch · e3 (no unit) ⇒ unassigned · e4 borrowed day ⇒ ok — expected otherBranch · unassigned · ok | actual ∅rosterOpCore · ∅rosterOpCore · ∅rosterOpCore
+  ❌ [H2.2-S2.6] [core] staff-u1 / member / payroll-like × 6 ops ⇒ noPerm · 0 writes · 0 events — expected 18 × noPerm · 0 writes | actual ∅rosterOpCore rows 29→29 events 1→1
+  ❌ [H2.2-S2.7] [core] other-tenant / non-HR systemId ⇒ noSystem · 0 writes — expected 12 × noSystem · 0 writes | actual ∅rosterOpCore rows 29→29
+  ❌ [H2.2-S2.9] [core] no result carries a person / unit name, leave reason or entry note — expected no names / reasons / notes | actual 0 results · hits=0
+  ❌ [H2.2-X2.1] [core] other-tenant ids refused · unchanged · sys2 rows hidden — expected 5 refused with codes · unchanged · sys2 hidden | actual ∅rosterOpCore,∅rosterOpCore,∅rosterOpCore,∅rosterOpCore,∅rosterOpCore same=true s2Kept=true noS2=true
+  ℹ listAttendance digest=8436a89981a0146a04c8954c6b0a49752eb7cb9c0661df9927bc356bd8fe46c9
+  ℹ leaves digest=f43008cba9f7bfae26638ae985e4c11565803988943cf3cf2f3921de10b8a62d
+  ℹ leaveItemsForViewer digest=54ef63446a674b6108da0bf977e2b50aab14cfd40252f18c94c0d4eb0f2798b1
+  ℹ monthlyAttendance digest=9a4c6047d670e99934b26da17183246f1c3ce07415ccc1c7f81f66cb09df1fb3
+  ℹ unavailable digest=840adc0a26e7efd47a1e90cc033305236855d619f8b06aaf42dbb91c3b5e9643
+  ✅ [H2.2-S7.2] [digest] board session via cores in system D ⇒ H2.1 S8 digests + MONTHLY frozen
+  ✅ [H2.2-S7.3] [run] clock() control K1=DAY_OFF:-:-|K2=ON_TIME:0:0|K3=NO_SCHEDULE:-:-
+  ✅ [H2.2-S7.4] [dto] privacy matrix 7 viewers as H2.1 S8.9
+  ✅ [H2.2-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+RESIDUE none (tenants=3 users=16)
+  ✅ [H2.2-Z1] residue: qc-hr-h22-* tenants / rows / users / sessions gone
+BASE-EXPECTATION 59/59 as registered (RED-by-design 53 · GREEN controls 6)
+
+===== qc-hr-h2.2 ===== passed 6/59 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.2","total":59,"passed":6,"failed":["H2.2-S1.1","H2.2-S1.3","H2.2-S2.8","H2.2-S5.1","H2.2-S5.7","H2.2-S6.1","H2.2-S6.2","H2.2-S6.3","H2.2-S6.6","H2.2-S6.7","H2.2-S6.8","H2.2-S6.9","H2.2-S6.5","H2.2-S1.2","H2.2-S1.4","H2.2-S1.5","H2.2-S1.6","H2.2-S1.7","H2.2-S1.8","H2.2-S3.1","H2.2-S3.2","H2.2-S3.3","H2.2-S3.4","H2.2-S3.5","H2.2-S3.6","H2.2-S3.7","H2.2-S3.8","H2.2-S3.9","H2.2-S5.2","H2.2-S5.3","H2.2-S5.4","H2.2-S5.5","H2.2-S5.6","H2.2-S4.1","H2.2-S4.2","H2.2-S4.5","H2.2-S6.4","H2.2-S4.6","H2.2-S4.7","H2.2-S4.8","H2.2-S4.3","H2.2-S4.4","H2.2-S4.9","H2.2-S4.10","H2.2-S2.1","H2.2-S2.2","H2.2-S2.3","H2.2-S2.4","H2.2-S2.5","H2.2-S2.6","H2.2-S2.7","H2.2-S2.9","H2.2-X2.1"],"findings":[{"id":"H2.2-S1.1","sev":"CRITICAL"},{"id":"H2.2-S1.3","sev":"MAJOR"},{"id":"H2.2-S2.8","sev":"MAJOR"},{"id":"H2.2-S5.1","sev":"MAJOR"},{"id":"H2.2-S5.7","sev":"CRITICAL"},{"id":"H2.2-S6.1","sev":"MAJOR"},{"id":"H2.2-S6.2","sev":"MAJOR"},{"id":"H2.2-S6.3","sev":"MAJOR"},{"id":"H2.2-S6.6","sev":"MAJOR"},{"id":"H2.2-S6.7","sev":"MAJOR"},{"id":"H2.2-S6.8","sev":"MINOR"},{"id":"H2.2-S6.9","sev":"MAJOR"},{"id":"H2.2-S6.5","sev":"MAJOR"},{"id":"H2.2-S1.2","sev":"CRITICAL"},{"id":"H2.2-S1.4","sev":"MAJOR"},{"id":"H2.2-S1.5","sev":"CRITICAL"},{"id":"H2.2-S1.6","sev":"MAJOR"},{"id":"H2.2-S1.7","sev":"MAJOR"},{"id":"H2.2-S1.8","sev":"MAJOR"},{"id":"H2.2-S3.1","sev":"CRITICAL"},{"id":"H2.2-S3.2","sev":"MAJOR"},{"id":"H2.2-S3.3","sev":"MAJOR"},{"id":"H2.2-S3.4","sev":"MAJOR"},{"id":"H2.2-S3.5","sev":"MAJOR"},{"id":"H2.2-S3.6","sev":"MAJOR"},{"id":"H2.2-S3.7","sev":"MAJOR"},{"id":"H2.2-S3.8","sev":"CRITICAL"},{"id":"H2.2-S3.9","sev":"CRITICAL"},{"id":"H2.2-S5.2","sev":"MAJOR"},{"id":"H2.2-S5.3","sev":"MAJOR"},{"id":"H2.2-S5.4","sev":"MAJOR"},{"id":"H2.2-S5.5","sev":"MAJOR"},{"id":"H2.2-S5.6","sev":"MAJOR"},{"id":"H2.2-S4.1","sev":"MAJOR"},{"id":"H2.2-S4.2","sev":"MAJOR"},{"id":"H2.2-S4.5","sev":"MAJOR"},{"id":"H2.2-S6.4","sev":"MAJOR"},{"id":"H2.2-S4.6","sev":"MAJOR"},{"id":"H2.2-S4.7","sev":"CRITICAL"},{"id":"H2.2-S4.8","sev":"MAJOR"},{"id":"H2.2-S4.3","sev":"CRITICAL"},{"id":"H2.2-S4.4","sev":"MAJOR"},{"id":"H2.2-S4.9","sev":"MAJOR"},{"id":"H2.2-S4.10","sev":"MAJOR"},{"id":"H2.2-S2.1","sev":"CRITICAL"},{"id":"H2.2-S2.2","sev":"CRITICAL"},{"id":"H2.2-S2.3","sev":"MAJOR"},{"id":"H2.2-S2.4","sev":"CRITICAL"},{"id":"H2.2-S2.5","sev":"CRITICAL"},{"id":"H2.2-S2.6","sev":"CRITICAL"},{"id":"H2.2-S2.7","sev":"CRITICAL"},{"id":"H2.2-S2.9","sev":"CRITICAL"},{"id":"H2.2-X2.1","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":["H2.2 not built: src/lib/modules/hr/roster-board.ts absent"],"baseRed":53,"baseGreen":6,"offBase":[]}

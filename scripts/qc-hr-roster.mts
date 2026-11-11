@@ -47,8 +47,13 @@ try {
   chk("NM-2", "แท็บ POS ในเมนูตรงกับ posTabs (คีย์ pos.nav.* ชุดเดียวกันทุกที่)",
     posTabs("X").length === POS_NAV_KEYS.length && posNavMissing.length === 0, "ตรงกันทุกแท็บ",
     JSON.stringify(posNavMissing));
-  chk("NM-3", "แท็บ HR ในเมนูตรงกับ hrTabs", hrTabs("X").every((t) => layoutHas(t.label)), "ตรงกันทุกแท็บ",
-    JSON.stringify(hrTabs("X").filter((t) => !layoutHas(t.label)).map((t) => t.label)));
+  // HR H2.2 ▸ มติผู้คุม (D9): NM-3 สองทาง — ป้ายใน case "HR" ของ layout ต้องอยู่ใน hrTabs ด้วย (เดิมตรวจแค่ hrTabs → layout) ◂
+  const hrCase = layoutSrc.includes('case "HR":') ? layoutSrc.slice(layoutSrc.indexOf('case "HR":'), layoutSrc.indexOf("];", layoutSrc.indexOf('case "HR":'))) : "";
+  const hrLayoutLabels = [...hrCase.matchAll(/label:\s*"([^"]+)"/g)].map((m) => m[1]);
+  const hrTabLabels = hrTabs("X").map((t) => t.label);
+  const nm3Missing = [...hrTabLabels.filter((l) => !layoutHas(l)).map((l) => `layout✗${l}`), ...hrLayoutLabels.filter((l) => !hrTabLabels.includes(l)).map((l) => `hrTabs✗${l}`)];
+  chk("NM-3", "แท็บ HR ในเมนูตรงกับ hrTabs (สองทาง)", hrLayoutLabels.length > 0 && nm3Missing.length === 0, "ตรงกันทุกแท็บ",
+    JSON.stringify(nm3Missing));
   chk("NM-4", "หน้าขาย POS มีจริง + ทุกหน้า POS ใช้แท็บชุดเดียว (posTabs)",
     existsSync("src/app/app/sys/[id]/pos/register/page.tsx") &&
       ["register", "products", "sales", "close"].every((r) =>

@@ -147,6 +147,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         return [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/hr/attendance`, label: "ลงเวลา" },
+          { href: `${s}/hr/roster`, label: "ตารางกะ" }, // HR H2.2 ▸ บอร์ดตารางกะรายสัปดาห์ (หน้ากันสิทธิ์เอง — 404 ถ้าไม่ใช่ OWNER/MANAGER/hr.employee.create) ◂
           { href: `${s}/hr/kiosk`, label: "จอลงเวลา" },
           { href: `${s}/hr/leave`, label: "ใบลา" },
           { href: `${s}/hr/employees`, label: "พนักงาน" },
