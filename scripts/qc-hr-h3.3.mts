@@ -199,8 +199,8 @@ function runStatic(): void {
     const page = rd(F.page);
     const ui = rd(F.ui);
     const both = stripComments(page + "\n" + ui);
-    const th = jsonOf("src/messages/th.json") ?? {};
-    const en = jsonOf("src/messages/en.json") ?? {};
+    const th = jsonOf("src/messages/th/common.json") /* ORACLE-EDIT (controller 12 Nov): real path */ ?? {};
+    const en = jsonOf("src/messages/en/common.json") /* ORACLE-EDIT (controller 12 Nov): real path */ ?? {};
     const tl = flat(th?.hr?.law ?? {});
     const el = flat(en?.hr?.law ?? {});
     const tabSrc = [...walk("src/app/app/sys/[id]/hr"), ...walk("src/lib/modules/hr")].filter((p) => p !== F.page).some((p) => /hr\/settings\/law/.test(rd(p)));
