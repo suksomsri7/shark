@@ -29,6 +29,9 @@
 //   F16.9 (HR H1.3 review F1 · MAJOR) ห้ามเขียน HrLawTable (create/createMany/update/updateMany/upsert/delete/deleteMany ·
 //         $executeRaw ที่อ้าง "HrLawTable" · SQL INSERT/UPDATE/DELETE ของ "HrLawTable") ใต้ src/lib/modules/** · src/app/** · src/lib/ai/**
 //         — ตารางกลาง tenantDb ปล่อยผ่าน ⇒ เขียนได้เฉพาะหลังบ้าน (src/lib/platform/**) หรือ scripts/hr-seed-law-draft.mts จนกว่า H3.3
+//   F16.8 (HR H2.2 ▸ มติ Q15 · หนี้ H0.4 R5 · MAJOR) ทะเบียนปุ่ม scripts/hr-ui-inventory.json ↔ data-testid ในโค้ดของขอบเขต HR สองทาง:
+//         ทุก testid/testId (สตริง · template `${…}` → `*` · ทั้งสองกิ่งของ ?: ) ใต้ src/lib/modules/hr/** · src/app/app/sys/[id]/{hr,payroll}/**
+//         มีแถว (ตรงตัว หรือแถว `<id>-trigger|-sheet` ของ ConfirmDialog) และทุกแถวมีโค้ด — ช่องว่างวันนี้อยู่ใน F168_*_BASELINE (ratchet: ลดได้อย่างเดียว) ◂
 //
 // ratchet (กลไกเดียวกับ F14): ทุก BASELINE ลดได้อย่างเดียว — ปิดหนี้แล้วแต่ไม่ถอดแถว = แดง · หนี้ใหม่ = แดง
 // 🔴 static ล้วน: อ่านไฟล์อย่างเดียว · ไม่แตะ DB/เน็ต · ไม่ import `@/…` · ไม่ import `src/lib/env` หรือ prisma (X12)
@@ -570,6 +573,55 @@ export function scanLawTableWriters(ROOT: string): { file: string; line: number;
 }
 
 // ═══════════════════════════════════════════════════════════════
+// F16.8 — HR H2.2 ▸ ทะเบียนปุ่ม ↔ testid ในโค้ด (สองทาง · มติ Q15 — หนี้ "F16.6" ของ H0.4 R5 ได้เลข F16.8) ◂
+// ═══════════════════════════════════════════════════════════════
+export const INVENTORY_FILE = "scripts/hr-ui-inventory.json";
+export const F168_ROOTS = ["src/lib/modules/hr", "src/app/app/sys/[id]/hr", "src/app/app/sys/[id]/payroll"];
+/** testid ในโค้ดที่ยังไม่มีแถว (ณ H2.2) — ratchet · ลิงก์ "ทีมขาย" ของ CRM C3.6 ในหน้าภาพรวม HR (ไม่เคยลงทะเบียน) */
+export const F168_CODE_BASELINE = new Set<string>(["hr-link-sales-teams"]);
+/** แถวที่ยังหาโค้ดไม่เจอ (ณ H2.2) — ratchet · hr-leave-cancel-* อยู่หน้า /app/approvals (นอกราก F168) ·
+ *  hr-settings-*-unit มาจาก prop ที่ไม่ใช่ testId/data-testid (ตัวสแกนตามไม่ถึง) */
+export const F168_ROW_BASELINE = new Set<string>(["hr-leave-cancel-*", "hr-leave-cancel-*-sheet", "hr-leave-cancel-*-trigger", "hr-settings-holiday-unit", "hr-settings-policy-unit", "hr-settings-shift-unit"]);
+/** รูปเดียวกันของ testid: `${…}` → `*` · `*-*` ติดกัน → `*` (ทะเบียนเขียนครอบครัวเป็น prefix-*) */
+export const canonTestid = (s: string) => s.replace(/\$\{[^}]*\}/g, "*").replace(/\*(?:-\*)+/g, "*");
+const stripCd = (s: string) => s.replace(/-(trigger|sheet)$/, "");
+/** testid ในไฟล์ (ตาม AST: แอตทริบิวต์ data-testid / testId ค่าสตริง · template · ทั้งสองกิ่งของ ?: · || / ??) */
+export function testidsInFile(abs: string): string[] {
+  const sf = parse(abs);
+  const out: string[] = [];
+  const take = (e: ts.Expression | undefined): void => {
+    if (!e) return;
+    if (ts.isParenthesizedExpression(e)) return take(e.expression);
+    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return void out.push(e.text);
+    if (ts.isTemplateExpression(e)) return void out.push(canonTestid(e.head.text + e.templateSpans.map((sp) => `*${sp.literal.text}`).join("")));
+    if (ts.isConditionalExpression(e)) return (take(e.whenTrue), take(e.whenFalse));
+    if (ts.isBinaryExpression(e) && (e.operatorToken.kind === ts.SyntaxKind.BarBarToken || e.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken || e.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)) return (take(e.left), take(e.right));
+  };
+  const visit = (n: ts.Node) => {
+    if (ts.isJsxAttribute(n)) {
+      const name = n.name.getText(sf);
+      if (name === "data-testid" || name === "testId") {
+        const init = n.initializer;
+        if (init && ts.isStringLiteral(init)) out.push(init.text);
+        else if (init && ts.isJsxExpression(init)) take(init.expression);
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out.filter((x) => /^[a-z][a-z0-9*-]*$/.test(x));
+}
+export function checkInventoryParity(ROOT: string): { code: number; rows: number; codeNoRow: string[]; rowNoCode: string[] } {
+  const files = F168_ROOTS.flatMap((r) => walk(join(ROOT, r), (p) => /\.(ts|tsx)$/.test(p)));
+  const code = new Set(files.flatMap((f) => testidsInFile(f)).map(canonTestid));
+  const inv = JSON.parse(readFileSync(join(ROOT, INVENTORY_FILE), "utf8")) as { rows?: { testid?: unknown }[] };
+  const rowIds = (inv.rows ?? []).map((r) => canonTestid(String(r.testid ?? "")));
+  const codeNoRow = [...code].filter((c) => !rowIds.some((t) => t === c || stripCd(t) === c)).sort();
+  const rowNoCode = [...new Set(rowIds)].filter((t) => !code.has(t) && !code.has(stripCd(t))).sort();
+  return { code: code.size, rows: rowIds.length, codeNoRow, rowNoCode };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ตัวรัน
 // ═══════════════════════════════════════════════════════════════
 export function runHrFitness(chk: HrChk, ROOT: string, log: (s: string) => void = console.log) {
@@ -698,6 +750,23 @@ export function runHrFitness(chk: HrChk, ROOT: string, log: (s: string) => void 
   guarded(chk, "F16.9", n169, () => {
     const hits = scanLawTableWriters(ROOT);
     chk("F16.9", n169, hits.length === 0, hits.length ? hits.slice(0, 8).map((h) => `${h.file}:${h.line} ${h.how}`).join(" · ") : "สะอาด", "MAJOR");
+  });
+
+  // ── F16.8 ── HR H2.2 ▸ มติ Q15 ◂
+  log("\n── F16.8: ทะเบียนปุ่ม HR ↔ data-testid ในโค้ด สองทาง (H2.2) ──");
+  const n168 = `${INVENTORY_FILE} ↔ testid ใต้ ${F168_ROOTS.join(" · ")} (ConfirmDialog = แถว -trigger/-sheet · ช่องว่างเดิมใน F168_*_BASELINE)`;
+  guarded(chk, "F16.8", n168, () => {
+    const r = checkInventoryParity(ROOT);
+    const freshCode = r.codeNoRow.filter((x) => !F168_CODE_BASELINE.has(x));
+    const freshRow = r.rowNoCode.filter((x) => !F168_ROW_BASELINE.has(x));
+    const healed = [...[...F168_CODE_BASELINE].filter((x) => !r.codeNoRow.includes(x)), ...[...F168_ROW_BASELINE].filter((x) => !r.rowNoCode.includes(x))];
+    const problems = [
+      !r.code || !r.rows ? `ตัวค้นหาพัง — testid ในโค้ด ${r.code} · แถว ${r.rows}` : "",
+      freshCode.length ? `testid ไม่มีแถวในทะเบียน ${freshCode.length}: ${freshCode.slice(0, 10).join(", ")}` : "",
+      freshRow.length ? `แถวไม่มีโค้ด ${freshRow.length}: ${freshRow.slice(0, 10).join(", ")}` : "",
+      healed.length ? `F168_*_BASELINE มีรายการที่ปิดแล้ว ถอดออก (ratchet): ${healed.join(", ")}` : "",
+    ].filter(Boolean);
+    chk("F16.8", n168, problems.length === 0, problems.length ? problems.join(" · ") : `ครบ (testid ${r.code} · แถว ${r.rows} · หนี้เดิม ${F168_CODE_BASELINE.size}+${F168_ROW_BASELINE.size})`, "MAJOR");
   });
 }
 

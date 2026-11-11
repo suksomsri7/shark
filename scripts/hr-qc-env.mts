@@ -299,6 +299,31 @@ export const HQC = {
     /** ผู้ตัดสิน (ห้ามตัดสินใบของตัวเอง — hotfix) */
     decider: "manager" as HqcUserKey,
   },
+  // HR H2.2 ▸ Q14 สัปดาห์ของภาพ 03 บน "จันทร์ถัดไป" ตามเวลาไทย (rosterWeek — ไม่ใช่วันที่ตายตัว X7) · เขียนผ่านเครื่องยนต์ H2.1 ในนามเจ้าของ
+  //   week = 7 ตัวอักษรต่อคน จันทร์→อาทิตย์: m เช้า · a บ่าย · c ปิดร้าน · - หยุด · override = "<ตัวอักษร>@HH-HH" ต่อวันใน `times`
+  //   ลำดับ: ลงทั้งสัปดาห์ → เผยแพร่ (event 1) → แก้ 3 จุด (edits) ⇒ แถบ "ยังไม่เผยแพร่ (แก้ 3 จุด)" · พี่เก่งได้แถวเช้าแทนกิ๊ฟ (หนี้ D10) ◂
+  roster: {
+    shiftNames: { m: "กะเช้า", a: "กะบ่าย", c: "กะปิดร้าน" },
+    week: {
+      keng: "mmmmm--",
+      namfon: "-mmmm--",
+      prae: "mm-mm--",
+      ton: "mmm-mmm",
+      por: "a-aaaaa",
+      nat: "aaa-aaa",
+      bow: "mmmmm--",
+      mint: "ccccccc",
+      jay: "----aaa",
+    } as Record<string, string>,
+    /** เวลาที่ระบุเอง (Q7) ของเจ: ศ. 14–20 · ส.–อา. 12–18 */
+    times: { jay: { 4: [14 * 60, 20 * 60], 5: [12 * 60, 18 * 60], 6: [12 * 60, 18 * 60] } } as Record<string, Record<number, readonly [number, number]>>,
+    /** หลังเผยแพร่: น้ำฝน ส. เพิ่มเช้า · นัท ส. เปลี่ยนเป็นปิดร้าน · พี่เก่ง อา. เพิ่มเช้า */
+    edits: [
+      { employee: "namfon", dow: 5, op: "add", shift: "m" },
+      { employee: "nat", dow: 5, op: "change", shift: "c" },
+      { employee: "keng", dow: 6, op: "add", shift: "m" },
+    ],
+  },
 } as const;
 
 export type HqcEmployeeKey = (typeof HQC.employees)[number]["key"];

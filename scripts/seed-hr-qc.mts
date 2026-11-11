@@ -403,6 +403,52 @@ try {
     `${run.engineVersion} · ${mlZero} · ${lawV1.length}/${lawV1Draft}`,
   );
 
+  // ═══════════════════ 9d. HR H2.2 ▸ ตารางกะของภาพ 03 (Q14) — ผ่านเครื่องยนต์ H2.1 ในนามเจ้าของ ◂ ═══════════════════
+  // สัปดาห์ = จันทร์ถัดไปตามเวลาไทย (rosterWeek · X7) · ลงทั้งสัปดาห์ → เผยแพร่ (สาขาหัวหิน · event 1) → แก้ 3 จุด (ยังไม่เผยแพร่)
+  const rosterEngine = (await import("@/lib/modules/hr/roster" as string)) as Any;
+  const RS = HQC.roster;
+  const dowToday = new Date(`${D.today}T00:00:00Z`).getUTCDay();
+  const rosterWeek = addDays(D.today, (8 - dowToday) % 7 || 7);
+  const rosterSunday = addDays(rosterWeek, 6);
+  const rShift: Record<string, string> = {};
+  for (const sh of (await P.hrShift.findMany({ where: { tenantId }, select: { id: true, name: true } })) as Any[]) {
+    for (const [k, n] of Object.entries(RS.shiftNames)) if (sh.name === n) rShift[k] = sh.id;
+  }
+  const rOk = (what: string, r: Any) => {
+    if (!r?.ok) throw new Error(`roster ${what}: ${r?.reason}`);
+    return r;
+  };
+  let rCreated = 0;
+  for (const [key, w] of Object.entries(RS.week)) {
+    for (let i = 0; i < 7; i++) {
+      if (w[i] === "-") continue;
+      const tm = RS.times[key]?.[i];
+      const r = await rosterEngine.addEntry(ctx, ownerViewer, { employeeId: emp[key], date: addDays(rosterWeek, i), shiftId: rShift[w[i]!], ...(tm ? { startMin: tm[0], endMin: tm[1] } : {}) });
+      if (!r?.ok && r?.reason === rosterEngine.ROSTER_TEXT.outOfEmployment) continue; // เจ: สัญญาจบสิ้นเดือน — สัปดาห์หน้าอาจเลยวันสิ้นสุดแล้ว
+      rOk(`${key}+${i}`, r);
+      rCreated++;
+    }
+  }
+  const rPub = rOk("publish", await rosterEngine.publishRoster(ctx, ownerViewer, { from: rosterWeek, to: rosterSunday, unitId: units.huahin }));
+  for (const ed of RS.edits) {
+    const day = addDays(rosterWeek, ed.dow);
+    if (ed.op === "add") rOk(`edit ${ed.employee}`, await rosterEngine.addEntry(ctx, ownerViewer, { employeeId: emp[ed.employee], date: day, shiftId: rShift[ed.shift] }));
+    else {
+      const row = (await P.hrRosterEntry.findFirst({ where: { tenantId, employeeId: emp[ed.employee], date: new Date(`${day}T00:00:00Z`) }, select: { id: true } })) as Any;
+      rOk(`edit ${ed.employee}`, await rosterEngine.moveEntry(ctx, ownerViewer, row?.id ?? "", { shiftId: rShift[ed.shift] }));
+    }
+  }
+  const rList = await rosterEngine.listRoster(ctx, ownerViewer, { from: rosterWeek, to: rosterSunday, unitId: units.huahin });
+  const rWant = rCreated + RS.edits.filter((x) => x.op === "add").length;
+  const rEvents = await P.outboxEvent.count({ where: { tenantId, type: "hr.roster.published" } });
+  q.chk(
+    "RS1",
+    `ตารางกะภาพ 03 (H2.2): สัปดาห์ ${rosterWeek} · ${rWant} กะ · เผยแพร่ 1 ครั้ง (event 1) · แก้ ${RS.edits.length} จุดยังไม่เผยแพร่`,
+    rList?.ok === true && rList.entries.length === rWant && rPub.published === rWant - RS.edits.filter((x) => x.op === "add").length && rEvents === 1 && rList.unpublishedCount === RS.edits.length,
+    `${rWant} · 1 · ${RS.edits.length}`,
+    `${rList?.entries?.length ?? rList?.reason} · ${rEvents} · ${rList?.unpublishedCount}`,
+  );
+
   // ═══════════════════ 10. ผลรวม + ร้านอื่นไม่เปลี่ยน + ไฟล์เฉลย ═══════════════════
   const counts = await countsOf(tenantId, tables);
   counts["User(qc emails)"] = await P.user.count({ where: { email: { in: HQC_EMAILS } } });
@@ -445,6 +491,8 @@ try {
     },
     // HR H1.3 ▸ เงินและกฎหมาย — engineVersion ของรอบที่จ่ายแล้ว · จำนวนแถวกฎหมาย v1:* (ตารางกลาง ไม่ใช่ของร้าน) ◂
     moneyLaw: { "HrPayrollRun.engineVersion": run.engineVersion, "HrLawTable.v1": lawV1.length },
+    // HR H2.2 ▸ ตารางกะของภาพ 03 — visual-hr SPECS["2.2"] อ่าน rosterWeek (+ units.huahin) ◂
+    roster: { week: rosterWeek, entries: rWant, published: rPub.published, unpublished: rList?.unpublishedCount ?? null },
     counts,
   };
   writeFileSync(HQC.expectedPath, JSON.stringify(expected, null, 2) + "\n");

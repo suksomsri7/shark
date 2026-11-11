@@ -19,7 +19,7 @@
 // 🔴 โปรไฟล์ chromium `/tmp/chr-hr-<pid>` (+ คู่ใน snap-private-tmp) ลบใน finally เสมอ
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { HQC, type HqcUserKey } from "./hr-qc-env.mjs";
+import { HQC, addDays, type HqcUserKey } from "./hr-qc-env.mjs";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -36,8 +36,9 @@ const USER = (opt("--user") ?? "owner") as HqcUserKey;
 const BASE = (opt("--base") ?? "").replace(/\/$/, "");
 const USERS = Object.keys(HQC.users) as HqcUserKey[];
 
-type Ids = { hr: string; namfon: string; paidRun: string };
-type PageSpec = { key: string; path: (ids: Ids) => string; users: readonly HqcUserKey[] | "all"; why: string };
+// HR H2.2 ▸ Ids + สาขา/สัปดาห์ตารางกะจาก seed (HQC.roster) · expect = HTTP ที่ต้องได้ต่อผู้ใช้ (ไม่ตรง = ❌ — ปิดหนี้ H0.4 "4xx = ⚠️ อย่างเดียว" เฉพาะหน้าที่ระบุ) ◂
+type Ids = { hr: string; namfon: string; paidRun: string; huahin: string; suanphueng: string; rosterWeek: string };
+type PageSpec = { key: string; path: (ids: Ids) => string; users: readonly HqcUserKey[] | "all"; why: string; expect?: Partial<Record<HqcUserKey, number>> };
 /** หน้าที่มีอยู่จริงวันนี้ (7 page.tsx ของ HR) */
 const PAGES: readonly PageSpec[] = [
   { key: "employees", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: "all", why: "ทะเบียนพนักงาน" },
@@ -61,6 +62,13 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   ],
   // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (กะ · ประเภทการลา · วันหยุด) — ไม่อ้างว่าตรงภาพ 08 · เจ้าของ (ทุกสาขา) + ผู้จัดการสาขา (เห็นทั้งร้าน + หัวหิน) ◂
   "1.2": [{ key: "settings-stub", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner", "manager-branch"], why: "หน้าตั้งค่าแบบย่อ: กะ 4 · ประเภทการลา 4 · วันหยุด 2 (H1.2)" }],
+  // HR H2.2 ▸ §4 บอร์ดตารางกะ (mockup 03) — สัปดาห์ของ seed (HQC.roster) · สัปดาห์ว่าง = +28 วัน · ผู้ไม่ใช่ผู้อ่าน = 404 (expect) ◂
+  "2.2": [
+    { key: "roster-huahin", path: (i) => `/app/sys/${i.hr}/hr/roster?week=${i.rosterWeek}&unit=${i.huahin}`, why: "บอร์ดสาขาหัวหิน: ชิป 3 แบบ · แถบแก้ 3 จุด · เจยืมตัว (ทับเวลา 14–20/12–18) · มิ้นท์เกิน 48 · แผงกฎ (H2.2)", expect: { owner: 200, manager: 200, "manager-branch": 200 }, users: ["owner", "manager", "manager-branch"] },
+    { key: "roster-all", path: (i) => `/app/sys/${i.hr}/hr/roster?week=${i.rosterWeek}&unit=all`, why: "บอร์ดทุกสาขา + ชิปสาขา (H2.2)", expect: { owner: 200, manager: 200 }, users: ["owner", "manager"] },
+    { key: "roster-empty", path: (i) => `/app/sys/${i.hr}/hr/roster?week=${addDays(i.rosterWeek, 28)}&unit=${i.huahin}`, why: "สัปดาห์ที่ยังไม่มีกะ: ทุกช่องหยุด / เผยแพร่แล้ว (H2.2)", expect: { owner: 200 }, users: ["owner"] },
+    { key: "roster-refused", path: (i) => `/app/sys/${i.hr}/hr/roster`, why: "ไม่ใช่ผู้อ่านตารางกะ = 404 (H2.2 Q1)", expect: { staff: 404, payroll: 404, payrollSelf: 404, kiosk: 404, member: 404 }, users: ["staff", "payroll", "payrollSelf", "kiosk", "member"] },
+  ],
   // HR H2.3 ▸ R11 หน้า "อนุมัติ": ส่วนคำขอสลับกะ (รับ/ไม่รับ · ยกเลิก) + แถวคำขอสลับกะใน "คำขอของฉัน" — ไม่มีหน้าใหม่ (Q14) · ไม่มี seed (Q15: ว่าง = ไม่มีส่วนนี้) ◂
   "2.3": [{ key: "approvals-swaps", path: () => `/app/approvals`, users: ["owner", "manager", "staff"], why: "คำขอสลับกะถึงคุณ + ยกเลิกคำขอสลับกะ (H2.3)" }],
 };
@@ -83,7 +91,7 @@ const fileOf = (p: PageSpec, v: (typeof VIEWPORTS)[number]) => `${OUT}/${p.key}-
 
 // ═══════════════════ 2. --dry: พิมพ์ตารางแล้วจบ (ไม่มี env · DB · เซิร์ฟเวอร์) ═══════════════════
 if (DRY) {
-  const ph: Ids = { hr: "<hr>", namfon: "<น้ำฝน>", paidRun: "<paidRun>" };
+  const ph: Ids = { hr: "<hr>", namfon: "<น้ำฝน>", paidRun: "<paidRun>", huahin: "<หัวหิน>", suanphueng: "<สวนผึ้ง>", rosterWeek: "2030-01-07" }; // HR H2.2 ▸ ◂
   console.log(`🧪 visual-hr --dry · ใบ ${WO} · ผู้ใช้ ${USER} (${HQC.users[USER].role}) · ${spec.length} หน้า × ${VIEWPORTS.length} ขนาดจอ = ${spec.length * VIEWPORTS.length} ภาพ`);
   for (const p of spec) {
     console.log(`  ${p.key.padEnd(16)} ${p.path(ph)}   — ${p.why}`);
@@ -115,7 +123,7 @@ if (!scope || scope.tenantId !== E.tenant?.id) {
   await prisma.$disconnect?.();
   die(`เฉลย ${HQC.expectedPath} ไม่ตรงกับฐาน (ร้านในฐาน ${scope?.tenantId ?? "ไม่มี"} · เฉลย ${E.tenant?.id}) — รัน seed-hr-qc ใหม่`);
 }
-const IDS: Ids = { hr: E.systems.HR, namfon: E.employees.namfon, paidRun: E.paidRun.id };
+const IDS: Ids = { hr: E.systems.HR, namfon: E.employees.namfon, paidRun: E.paidRun.id, huahin: E.units?.huahin ?? "", suanphueng: E.units?.suanphueng ?? "", rosterWeek: E.roster?.week ?? "" }; // HR H2.2 ▸ ◂
 /** ตรงกับ src/lib/env.ts:32 — เซิร์ฟเวอร์ QC อ่าน env ชุดเดียวกัน (qc4.sh) */
 const SECURE_COOKIES = (process.env.APP_ENV ?? "") !== "development";
 console.log(`🍪 APP_ENV=${process.env.APP_ENV ?? "(ไม่ตั้ง)"} ⇒ คุกกี้ ${SECURE_COOKIES ? "__Host-shark_session (secure)" : "shark_session"}`);
@@ -172,7 +180,8 @@ try {
           const file = fileOf(p, v);
           await page.screenshot({ path: file, fullPage: true });
           const status = resp?.status() ?? 0;
-          const ok = !ov.html && !ov.body && status > 0 && status < 500;
+          const want = p.expect?.[USER]; // HR H2.2 ▸ expect ต่อผู้ใช้ (ไม่ระบุ = กติกาเดิม) ◂
+          const ok = !ov.html && !ov.body && status > 0 && status < 500 && (want === undefined || status === want);
           shots.push({ page: p.key, user: USER, viewport: `${v.w}x${v.h}`, path, file, status, finalUrl: page.url().replace(BASE, ""), consoleErrors: cErr, overflow: ov, ok, ...(status >= 400 && status < 500 ? { note: "4xx — ตรวจว่าตั้งใจกันบทบาทนี้" } : {}) });
           const mark = !ok ? "❌" : cErr.length || status >= 400 ? "⚠️ " : "✅";
           console.log(`  ${mark} ${p.key} [${USER} ${v.w}×${v.h}] HTTP ${status}${ov.html || ov.body ? ` · ล้นแนวนอน ${ov.scrollWidth}>${ov.clientWidth}` : ""}${cErr.length ? ` · console error ${cErr.length}` : ""} → ${file}`);
