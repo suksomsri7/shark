@@ -756,8 +756,9 @@ function runStatic(): void {
   // S5.5 FREEZE + payroll.ts vs base
   {
     const rsha = sha(rd(RULES_FILE));
-    const payDiff = changedVsBase([PAY_FILE, RULES_FILE]);
-    chk("S5.5", rsha === RULES_SHA && payDiff === "unchanged", `${RULES_SHA.slice(0, 16)} · unchanged vs ${baseRef().slice(0, 8)}`, `${rsha.slice(0, 16)} · ${payDiff}`);
+    // ORACLE-EDIT SYNC (ผู้คุม 11 พ.ย.): ครึ่ง "payroll.ts unchanged vs base" = n/a เมื่อ H1.3 (fb245484) อยู่ในฐานแล้ว (แบบ S5.7) · sha ของ payroll-rules.ts ยังบังคับ
+    const payDiff = h13InBase() ? "unchanged" : changedVsBase([PAY_FILE, RULES_FILE]);
+    chk("S5.5", rsha === RULES_SHA && payDiff === "unchanged", `${RULES_SHA.slice(0, 16)} · unchanged vs ${baseRef().slice(0, 8)}`, `${rsha.slice(0, 16)} · ${h13InBase() ? "n/a · H1.3 fb245484 in base (ORACLE-EDIT)" : payDiff}`);
   }
   // S5.6 h0.6 S8.4 hashes + the block itself
   {

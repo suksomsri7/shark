@@ -287,7 +287,9 @@ export async function decide(
       m.role === "OWNER" &&
       (await prisma.membership.count({ where: { tenantId: ctx.tenantId, role: "OWNER", acceptedAt: { not: null } } })) === 1;
     if (!soleOwner) {
-      return { ok: false, status: req.status, note: null, code: "SELF_APPROVAL", message: "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน" };
+      // HR SYNC ▸ + reason (สัญญา HF-HR-0 รอบ 5: reason = เหตุผลไทยเมื่อปฏิเสธ) — ผู้ช่วย AI (proposals approval_decide) อ่าน reason
+      //   ไม่งั้นผู้ใช้เห็นข้อความกลางแทน "อนุมัติคำขอของตัวเองไม่ได้" · ข้อความไบต์เดียวกับ message ◂
+      return { ok: false, status: req.status, note: null, code: "SELF_APPROVAL", message: "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน", reason: SELF_DECIDE_REFUSED };
     }
   }
   const steps = await tenantDb(ctx).approvalStep.findMany({

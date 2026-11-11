@@ -311,6 +311,21 @@ function spawnTsx(args: string[], env: Record<string, string | undefined>, timeo
 }
 
 // ═════════════════════════ statics (no DB) ═════════════════════════
+// ORACLE-EDIT SYNC (ผู้คุม 11 พ.ย. · แบบ qc-hr-h1.3 h13InBase): statics "ไม่แตะไฟล์ X เทียบฐาน" อธิบายชุดแก้ของ H2.1 เท่านั้น —
+//   เมื่อ merge ของ H2.1 (562d06deb) อยู่ในฐาน (merge-base กับ origin/session/hr หรือ QC_H21_BASE) งานหลังจากนั้นแก้ไฟล์เหล่านี้ได้ ⇒ n/a
+let H21_IN_BASE: boolean | null = null;
+function h21InBase(baseArg?: string): boolean {
+  if (H21_IN_BASE === null) {
+    try {
+      const b = baseArg || process.env.QC_H21_BASE || execFileSync("git", ["merge-base", "HEAD", "origin/session/hr"], { cwd: ROOT, encoding: "utf8" }).trim();
+      execFileSync("git", ["merge-base", "--is-ancestor", "562d06deb", b], { cwd: ROOT, stdio: "ignore" });
+      H21_IN_BASE = true;
+    } catch {
+      H21_IN_BASE = false;
+    }
+  }
+  return H21_IN_BASE;
+}
 const staticNotes: Record<string, Any> = {};
 function runStatic(): void {
   console.log("── [S4.12 / S5.6 / S6.10 / S8.7] statics ──");
@@ -344,6 +359,12 @@ function runStatic(): void {
     noLogic: !/\bfunction\b|=>|\bawait\b|\bnew\s+[A-Z]|tenantDb|\bprisma\b|\bconst\b|\blet\b/.test(idxCode),
     noOnShiftToday: !/\bonShiftToday\b/.test(idxCode),
   };
+  // ORACLE-EDIT SYNC (ผู้คุม 11 พ.ย. · แบบ h1.3 h13InBase): เมื่อ H2.1 (562d06deb) อยู่ในฐานแล้ว ครึ่ง "ทั้งไฟล์ไม่มี logic / ไม่มี onShiftToday"
+  //   = n/a (main POS P3.5 ต่อท้าย index.ts ด้วยบล็อก seam ของตัวเอง) · ครึ่งบวก (บล็อก HR H2.1 ส่งออก rosterOnDay + rosterAt จาก ./roster) ยังบังคับ
+  if (h21InBase()) {
+    s610.noLogic = true;
+    s610.noOnShiftToday = true;
+  }
   chk("S6.10", Object.values(s610).every(Boolean), "H2.1 block · rosterOnDay + rosterAt from ./roster · no logic · no onShiftToday", `${failedKeys(s610)}${blk ? "" : " (no `// HR H2.1 ▸` block)"}`);
   // S8.7
   const rsha = sha(rd(RULES_FILE));
@@ -353,10 +374,12 @@ function runStatic(): void {
     if (!base) base = execFileSync("git", ["merge-base", "HEAD", "origin/session/hr"], { cwd: ROOT, encoding: "utf8" }).trim();
     const out = execFileSync("git", ["diff", "--name-only", base, "--", ...FROZEN_FILES], { cwd: ROOT, encoding: "utf8" }).trim();
     diff = out ? `changed: ${out.replace(/\n/g, ",")}` : "unchanged";
+    // ORACLE-EDIT SYNC (ผู้คุม 11 พ.ย.): ครึ่ง "8 ไฟล์ unchanged vs base" = n/a เมื่อ H2.1 อยู่ในฐานแล้ว · sha ของ payroll-rules.ts ยังบังคับ
+    if (h21InBase(base)) diff = "unchanged";
   } catch (e) {
     diff = `git: ${errText(e).slice(0, 60)}`;
   }
-  chk("S8.7", rsha === RULES_SHA && diff === "unchanged", `${RULES_SHA.slice(0, 16)} · ${FROZEN_FILES.length} files unchanged vs ${base.slice(0, 8)}`, `${rsha.slice(0, 16)} · ${diff} (base ${base.slice(0, 8) || "?"})`);
+  chk("S8.7", rsha === RULES_SHA && diff === "unchanged", `${RULES_SHA.slice(0, 16)} · ${FROZEN_FILES.length} files unchanged vs ${base.slice(0, 8)}`, `${rsha.slice(0, 16)} · ${h21InBase(base) ? "n/a · H2.1 562d06deb in base (ORACLE-EDIT)" : diff} (base ${base.slice(0, 8) || "?"})`);
 }
 
 // ═════════════════════════ SKIP guard (static — before any DB connection) ═════════════════════════

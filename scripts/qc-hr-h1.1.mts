@@ -1457,7 +1457,10 @@ async function runS10(fx: Any): Promise<void> {
     const tools = (await import("@/lib/ai/tools")) as Any;
     const mm = await P.membership.findFirst({ where: { tenantId: T, userId: U.mgrU1.id }, select: { role: true, unitAccess: true, permissions: true } });
     const out = String(await tools.runTool({ tenantId: T, actor: aiActor.aiMemberActor(T, U.mgrU1.id, mm) }, "upcoming_schedule", { days: 30 }));
-    const nm = async (id: string) => (await nameOf(id)).name as string;
+    // ORACLE-EDIT SYNC (ผู้คุมอนุมัติล่วงหน้า · main SEC S3a.1 R-Z24): ผลเครื่องมือ AI ปิดตัวเลขติดกัน ≥ 9 หลัก (เหลือ 2 ตัวท้าย) ทุกผู้ดู —
+    //   ชื่อทดสอบมี stamp ⇒ เทียบกับชื่อที่ปิดแบบเดียวกัน (คำนำหน้า พนง-เหนือ/ใต้/ไร้สาขา ยังแยกแถวได้ · ผลไม่มีรหัสใบลา) · ข้อขอบเขตสาขาคงเดิม
+    const maskLike = (v: string) => v.replace(/\d(?:[\s-]?\d){8,}/g, (m) => `${"•".repeat(Math.max(0, m.replace(/\D/g, "").length - 2))}${m.replace(/\D/g, "").slice(-2)}`);
+    const nm = async (id: string) => maskLike((await nameOf(id)).name as string);
     const r = { u1: out.includes(await nm(E.e1)), u2: out.includes(await nm(E.e2)), none: out.includes(await nm(E.e3)) };
     chk("S10.5", r.u1 && !r.u2 && !r.none, "u1 name · no u2 · no null-unit", `${short(r)}${/error/.test(out) ? ` out=${short(out, 80)}` : ""}`);
   }

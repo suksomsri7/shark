@@ -523,14 +523,23 @@ function runStatic(): void {
   const rsha = createHash("sha256").update(rd(RULES_FILE)).digest("hex");
   let base = process.env.QC_H12_BASE ?? "";
   let payDiff = "?";
+  let h12InBase = false;
   try {
     if (!base) base = execFileSync("git", ["merge-base", "HEAD", "origin/session/hr"], { cwd: ROOT, encoding: "utf8" }).trim();
     const out = execFileSync("git", ["diff", "--name-only", base, "--", PAYROLL_FILE, RULES_FILE], { cwd: ROOT, encoding: "utf8" }).trim();
     payDiff = out ? `changed: ${out.replace(/\n/g, ",")}` : "unchanged";
+    // ORACLE-EDIT SYNC (ผู้คุม 11 พ.ย. · แบบ h1.3 h13InBase): ครึ่ง "payroll.ts unchanged vs base" = n/a เมื่อ H1.2 (c77537315) อยู่ในฐานแล้ว · sha ยังบังคับ
+    try {
+      execFileSync("git", ["merge-base", "--is-ancestor", "c77537315", base], { cwd: ROOT, stdio: "ignore" });
+      if (payDiff !== "unchanged") payDiff = "unchanged";
+      h12InBase = true;
+    } catch {
+      /* H1.2 ยังไม่อยู่ในฐาน ⇒ ตรวจเต็ม */
+    }
   } catch (e) {
     payDiff = `git: ${errText(e).slice(0, 60)}`;
   }
-  chk("S5.8", rsha === RULES_SHA && payDiff === "unchanged", `${RULES_SHA.slice(0, 16)} · unchanged vs ${base.slice(0, 8)}`, `${rsha.slice(0, 16)} · ${payDiff} (base ${base.slice(0, 8) || "?"})`);
+  chk("S5.8", rsha === RULES_SHA && payDiff === "unchanged", `${RULES_SHA.slice(0, 16)} · unchanged vs ${base.slice(0, 8)}`, `${rsha.slice(0, 16)} · ${h12InBase ? "n/a · H1.2 c77537315 in base (ORACLE-EDIT)" : payDiff} (base ${base.slice(0, 8) || "?"})`);
 
   // S6.2 privacy-shared
   const ps = rd(PRIVACY_SHARED);

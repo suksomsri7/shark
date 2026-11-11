@@ -440,7 +440,17 @@ function runStatic(): void {
       if (unmarked) why.push(`${f}: ${unmarked}/${hunks.length} hunk(s) without HR H0.6`);
       if (f === CRM_FILE && removed) why.push(`${f}: ${removed} line(s) removed (append-only)`);
     }
-    chk("S8.5", why.length === 0, `4 files changed vs ${BASE_REF}, every hunk marked HR H0.6, commissions.ts append-only`, why.join(" · "));
+    // ORACLE-EDIT SYNC (ผู้คุม 11 พ.ย. · แบบ h1.3 h13InBase): "ทุก hunk มีป้าย HR H0.6 เทียบฐาน" อธิบายชุดแก้ของ H0.6 เท่านั้น —
+    //   เมื่อ H0.6 (57e94fec2) อยู่ใน merge-base กับ origin/session/hr แล้ว งานหลังจากนั้น (รวม merge main) แก้ 4 ไฟล์นี้ได้ ⇒ n/a (ผ่านพร้อมเหตุผล)
+    let h06InBase = false;
+    try {
+      const mb = execFileSync("git", ["merge-base", "HEAD", "origin/session/hr"], { cwd: ROOT, encoding: "utf8" }).trim();
+      execFileSync("git", ["merge-base", "--is-ancestor", "57e94fec2", mb], { cwd: ROOT, stdio: "ignore" });
+      h06InBase = true;
+    } catch {
+      h06InBase = false;
+    }
+    chk("S8.5", h06InBase || why.length === 0, `4 files changed vs ${BASE_REF}, every hunk marked HR H0.6, commissions.ts append-only`, h06InBase ? "n/a · H0.6 57e94fec2 in base (ORACLE-EDIT)" : why.join(" · "));
   }
   // S8.6
   {
