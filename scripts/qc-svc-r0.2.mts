@@ -100,7 +100,7 @@ const HOTEL_RATE: Record<string, number> = {
 const ALL4 = [U.barber, U.massage, U.dorm, U.hotel];
 const USERS: { key: string; role: string; units: string[] | "*"; perm?: string }[] = [
   { key: "owner", role: "OWNER", units: "*" },
-  { key: "manager", role: "MANAGER", units: [U.barber, U.massage] },
+  { key: "manager", role: "MANAGER", units: [U.barber, U.massage, U.hotel] }, // ORACLE-EDIT (ผู้คุม 8 พ.ย. · r02-u1) ฟิกซ์เจอร์ H.7 (3015b0534) ให้ manager คุมหน่วย hotel
   { key: "ek", role: "STAFF", units: [U.barber], perm: "booking.appointment.setStatus" },
   { key: "cashier", role: "STAFF", units: [U.barber, U.massage], perm: "pos.sale.create" },
   { key: "fai", role: "STAFF", units: [U.dorm], perm: "hotel.room.setStatus" },
@@ -110,7 +110,7 @@ const USERS: { key: string; role: string; units: string[] | "*"; perm?: string }
 ];
 const emailOf = (k: string) => `svc-qc-${k}@shark.local`;
 const OTHER_OWNER_EMAIL = "svc-qc-other-owner@shark.local";
-const SVC_EMAILS = [...USERS.map((u) => emailOf(u.key)), OTHER_OWNER_EMAIL];
+const SVC_EMAILS = [...USERS.map((u) => emailOf(u.key)), emailOf("maid"), emailOf("hk-lead"), OTHER_OWNER_EMAIL]; // ORACLE-EDIT (ผู้คุม 8 พ.ย. · r02-u4) ผู้ใช้ฟิกซ์เจอร์ที่เพิ่มภายหลัง (H.2 maid · H.6 hk-lead) อยู่ในชุดร้าน SVC
 
 // ═══════════════ ตัวช่วยโปรเซสลูก ═══════════════
 const TSX = existsSync(join(ROOT, "node_modules/.bin/tsx")) ? join(ROOT, "node_modules/.bin/tsx") : "";
@@ -329,7 +329,8 @@ try {
     const usersAfter = await userFp(T_START);
     chk("O-2", "ผู้ใช้/เซสชันที่ไม่ใช่ของ SVC เท่าเดิม", usersAfter === usersBefore, `${usersBefore} → ${usersAfter}`);
     const svcUsers = await uSvc();
-    chk("O-3", "ผู้ใช้ SVC = 9 คนพอดี (8 ร้าน A + เจ้าของร้าน B)", svcUsers === 9, `มี ${svcUsers}`, "MAJOR");
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · r02-o3) ฟิกซ์เจอร์เพิ่ม maid (H.2) + hk-lead (H.6) ⇒ 11 คน
+    chk("O-3", "ผู้ใช้ SVC = 11 คนพอดี (8 ร้าน A + maid + hk-lead + เจ้าของร้าน B)", svcUsers === 11, `มี ${svcUsers}`, "MAJOR");
   }
 
   // ─────────── D: ข้อมูลร้านตัวอย่าง ───────────
@@ -446,7 +447,8 @@ try {
     //   • นัดคีย์ svcqc-dev-YYYY-MM-DD-… (B.6 svc-qc-device-scene) · svcqc-online-YYYY-MM-DD-… (B.7 svc-qc-online-scene) · svcqc-b10-YYYY-MM-DD-… (B.10 svc-qc-done-pos-scene)
     //     + walk-in ไม่มีคีย์ของหน่วยบาร์เบอร์ในวันฉากเดียวกัน (แบบข้อยกเว้น B.5 ข้างบน)
     //   • RoomOccupancy ของสัญญาหอที่ฉากสร้าง (DormLease.createdById ขึ้นต้น "SvcQcScene" — D.5 "SvcQcScene" · D.12 "SvcQcScene:d12")
-    chk("D-14", "ใบนี้ไม่มีธุรกรรม (RoomOccupancy/HotelReservation/Appointment = 0 · ใบหลังเติม)", tx[0].n === 0, `มี ${tx[0].n} แถว`, "MINOR");
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · r02-d14) ข้อนี้จริงเฉพาะฐานที่ seed ใหม่ยังไม่รันฉาก/ข้อสอบใบหลัง — ฐาน QC ที่ผ่านใบ B/D/H แล้วมีธุรกรรมเสมอ ⇒ ตรวจเฉพาะเมื่อ SVC_R02_FRESH=1
+    chk("D-14", "ใบนี้ไม่มีธุรกรรม (RoomOccupancy/HotelReservation/Appointment = 0 · ใบหลังเติม) — ตรวจเมื่อ SVC_R02_FRESH=1", process.env.SVC_R02_FRESH !== "1" || tx[0].n === 0, `มี ${tx[0].n} แถว`, "MINOR");
 
     // ร้าน B
     const ub = await q<{ id: string; type: string; slug: string }>(`SELECT id, type::text, slug FROM "BusinessUnit" WHERE "tenantId" = $1`, [TB]);

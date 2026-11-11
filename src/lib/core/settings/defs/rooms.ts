@@ -6,7 +6,7 @@
 // ▸ ชั้น (chain) ตามภาคผนวก ก: ก=TENANT ห=UNIT อ=BUILDING ท=ROOM_TYPE ร=ROOM ส=LEASE ผ=RATE_PLAN
 //   ⚠️ LEASE ยังไม่มีตาราง ⇒ service ปฏิเสธการตั้งค่าที่ชั้นนี้ (SUPPORTED_SCOPES) จนใบ D.0 (DormLease) ลงทะเบียน scope
 //      และใบ D.5 (สัญญา) ใช้จริง · RATE_PLAN เปิดเมื่อ H.0 (HotelRatePlan) · ระหว่างนี้ค่าในชั้นนั้นได้จากชั้นบน/แม่แบบ
-// ▸ ค่าโรงแรม/ช่องทาง OTA ทั้งหมดอยู่ใต้ `rooms.hotel.*` + hiddenUntil "PHASE_H" (มติเจ้าของรอบ 2 ข้อ 5: โรงแรมรอ V2)
+// ▸ ค่าโรงแรม/ช่องทาง OTA ทั้งหมดอยู่ใต้ `rooms.hotel.*` + hiddenUntil "PHASE_H" (H.1 เปิดตามประเภทหน่วย) · แก้ด้วย hotel.settings.edit (SVC H.0)
 // ▸ ค่าที่รอที่ปรึกษากฎหมาย = อยู่ใน PENDING_LEGAL_REVIEW_KEYS + helpTh ขึ้นต้น "⚠️ รอที่ปรึกษากฎหมายตรวจ"
 //   — เป็นป้ายบน UI เท่านั้น ห้ามใช้ตัดสินในตรรกะ (ตัวเลขกฎหมายจริงอยู่ที่ TH_RENTAL_2568_PARAMS)
 // ▸ ภาคผนวก ก ที่ไม่ได้นิยามที่นี่ (ดู SKIPPED_ANNEX_ROWS): #30 #39 #53–#57 #63 #83 — เป็นของชิ้นกลางอื่น
@@ -51,12 +51,34 @@ const R_L = ["ROOM", "LEASE"] as const satisfies readonly ScopeKind[]; // LEASE:
 const U_RP = ["UNIT", "RATE_PLAN"] as const satisfies readonly ScopeKind[]; // RATE_PLAN: H.0
 const RT_RP = ["ROOM_TYPE", "RATE_PLAN"] as const satisfies readonly ScopeKind[]; // RATE_PLAN: H.0
 const RP = ["RATE_PLAN"] as const satisfies readonly ScopeKind[]; // RATE_PLAN: H.0
+// SVC H.4 ▸ คอลัมน์ไฟล์อัปโหลด ตม.30 ค่าเริ่ม (12 ช่องตามแบบ ตม.30 กระดาษ · Q-H4-1) — โมดูลโรงแรม (tm30.ts) ใช้ชุดเดียวกันนี้ ◂
+export const HOTEL_TM30_COLUMN_KEYS = ["fullName", "sex", "nationality", "passportNo", "dob", "visa", "arrivalDate", "portOfEntry", "tm6No", "checkInDate", "expectedCheckOut", "roomNumber"] as const;
+export type HotelTm30ColumnKey = (typeof HOTEL_TM30_COLUMN_KEYS)[number];
+export const HOTEL_TM30_COLUMN_TH: Record<HotelTm30ColumnKey, string> = {
+  fullName: "ชื่อ-สกุล",
+  sex: "เพศ",
+  nationality: "สัญชาติ",
+  passportNo: "เลขหนังสือเดินทาง",
+  dob: "วันเกิด",
+  visa: "ประเภท/เลขที่ตรวจลงตรา",
+  arrivalDate: "วันเดินทางเข้า",
+  portOfEntry: "ด่านตรวจคนเข้าเมือง",
+  tm6No: "เลข ตม.6",
+  checkInDate: "วันเข้าพัก",
+  expectedCheckOut: "วันออก (คาด)",
+  roomNumber: "เลขห้อง",
+};
+export const HOTEL_TM30_DEFAULT_COLUMNS: { key: HotelTm30ColumnKey; label: string }[] = HOTEL_TM30_COLUMN_KEYS.map((key) => ({ key, label: HOTEL_TM30_COLUMN_TH[key] }));
 
 // ─────────────────── ตัวช่วยสร้าง def ───────────────────
 type RoomDefInput = Omit<SettingDef, "domain" | "group" | "editPermission"> & { group?: string };
 const def = (x: RoomDefInput): SettingDef => ({ domain: "rooms", group: x.group ?? x.key.split(".")[1], editPermission: EDIT, ...x });
+/** SVC H.0 ▸ คีย์แก้ค่าตั้งโรงแรม (core/permissions.ts โมดูล hotel) ◂ */
+const HOTEL_EDIT = "hotel.settings.edit";
 /** ค่าโรงแรม/OTA — ซ่อนจนเฟส H */
-const hotel = (x: RoomDefInput): SettingDef => def({ group: "hotel", ...x, hiddenUntil: "PHASE_H" });
+// SVC H.0 ▸ editPermission = hotel.settings.edit (คีย์หอคง dorm.settings.edit) ◂
+// SVC H.1 ▸ เปิดคีย์ตามประเภทหน่วย: แสดงเฉพาะหน้าตั้งค่าโรงแรม (unitTypes HOTEL · ใบสั่ง h.1 §6.1) แทน hiddenUntil PHASE_H ◂
+const hotel = (x: RoomDefInput): SettingDef => ({ ...def({ group: "hotel", ...x, unitTypes: ["HOTEL"] }), editPermission: HOTEL_EDIT });
 
 const PENDING = "⚠️ รอที่ปรึกษากฎหมายตรวจ — ";
 
@@ -638,20 +660,32 @@ const DEFS: SettingDef[] = [
     defaults: { _fallback: {} }, chain: U, ownerOnly: true,
   }),
 
-  // ══ โรงแรม (#65–78) — ซ่อนจนเฟส H ══
+  // ══ โรงแรม (#65–78) — ซ่อนจนเฟส H (H.1 เปิดตามประเภทหน่วย) ══
   hotel({ key: "rooms.hotel.checkInTime", type: "time", labelTh: "เวลาเช็กอิน", schema: HHMM, defaults: { _fallback: "14:00" }, chain: U_RT }), // #65
   hotel({ key: "rooms.hotel.checkOutTime", type: "time", labelTh: "เวลาเช็กเอาต์", schema: HHMM, defaults: { _fallback: "12:00" }, chain: U_RT }), // #65
   hotel({ key: "rooms.hotel.holdMinutesOnline", type: "minutes", labelTh: "ถือห้องรอมัดจำ (จองออนไลน์)", schema: z.number().int().min(1).max(10_080), defaults: { _fallback: 15 }, chain: U }), // #66
   hotel({ key: "rooms.hotel.holdMinutesCounter", type: "minutes", labelTh: "ถือห้องรอมัดจำ (หน้าเคาน์เตอร์)", schema: z.number().int().min(1).max(10_080), defaults: { _fallback: 1440 }, chain: U }), // #66
   hotel({
     key: "rooms.hotel.deposit", type: "table", labelTh: "มัดจำการจอง", // #67
-    schema: z.object({ kind: z.enum(["NONE", "FIRST_NIGHT", "FULL", "PERCENT"]), percentBp: z.number().int().min(0).max(10_000).optional() }).strict(),
+    schema: z.object({ kind: z.enum(["NONE", "FIRST_NIGHT", "FULL", "PERCENT", "FIXED_AMOUNT"]), percentBp: z.number().int().min(0).max(10_000).optional(), amountSatang: MONEY.optional() }).strict(), // SVC H.0 ▸ FIXED_AMOUNT + amountSatang ◂
     defaults: { _fallback: { kind: "FIRST_NIGHT" } }, chain: U_RP, sensitivity: "MONEY",
+    tableTh: { // SVC H.1 ▸ ป้ายไทยของชนิดมัดจำ ◂
+      fields: {
+        kind: { kind: "enum", labelTh: "ชนิดมัดจำ", shortTh: "", options: { NONE: "ไม่เก็บมัดจำ", FIRST_NIGHT: "ราคาคืนแรก", FULL: "เต็มจำนวน", PERCENT: "เปอร์เซ็นต์ของยอด", FIXED_AMOUNT: "จำนวนคงที่" } },
+        percentBp: { kind: "bp", labelTh: "เปอร์เซ็นต์ของยอด", shortTh: "", optional: true },
+        amountSatang: { kind: "int", labelTh: "จำนวนเงิน (สตางค์)", shortTh: "", unitTh: "สตางค์", optional: true },
+      },
+      discriminator: { key: "kind", variants: { NONE: {}, FIRST_NIGHT: {}, FULL: {}, PERCENT: { percentBp: 3000 }, FIXED_AMOUNT: { amountSatang: 50_000 } } },
+    },
   }),
   hotel({
     key: "rooms.hotel.cancelPolicy", type: "table", labelTh: "นโยบายยกเลิก (ขั้นบันได)", // #68
     schema: z.array(z.object({ daysBefore: z.number().int().min(0).max(365), refundBp: z.number().int().min(0).max(10_000) }).strict()).min(1).max(10),
-    defaults: { _fallback: [{ daysBefore: 3, refundBp: 10_000 }, { daysBefore: 0, refundBp: 0 }] }, chain: RP, sensitivity: "MONEY",
+    defaults: { _fallback: [{ daysBefore: 7, refundBp: 10_000 }, { daysBefore: 3, refundBp: 5_000 }, { daysBefore: 0, refundBp: 0 }] }, chain: RP, sensitivity: "MONEY", // SVC H.0 ▸ Q2 ◂
+    tableTh: { // SVC H.1 ▸ ขั้นบันไดยกเลิก ◂
+      item: { kind: "object", labelTh: "ขั้น", fields: { daysBefore: { kind: "days", labelTh: "ยกเลิกก่อนเข้าพัก (วัน)", shortTh: "ก่อน", unitTh: "วัน" }, refundBp: { kind: "bp", labelTh: "คืนเงิน", shortTh: "คืน" } } },
+      emptyTh: "ไม่คืนเงิน",
+    },
   }),
   hotel({
     key: "rooms.hotel.noShow", type: "enum", labelTh: "ไม่มาเข้าพัก", // #69
@@ -681,18 +715,125 @@ const DEFS: SettingDef[] = [
   }),
   hotel({
     key: "rooms.hotel.minibar", type: "table", labelTh: "รายการมินิบาร์ (สินค้า POS)", // #75
-    schema: z.array(z.object({ productId: z.string().min(1).max(64), priceSatang: MONEY.optional() }).strict()).max(100),
+    schema: z.array(z.union([z.object({ productId: z.string().min(1).max(64), priceSatang: MONEY.optional() }).strict(), z.object({ key: z.string().regex(/^[a-z0-9_-]{1,32}$/), name: z.string().trim().min(1).max(60), priceSatang: MONEY }).strict()])).max(100), // SVC H.6 ▸ + {key,name,priceSatang} (มติ h.6 ข้อ 5 · แม่บ้านลง folio ราคา/ชื่อจากค่าตั้ง) ◂
     defaults: { _fallback: [] }, chain: U, sensitivity: "MONEY",
   }),
+  // SVC H.6 ▸ แม่บ้านปิดห้องซ่อมเองได้ (มติ h.6 ข้อ 1 · ปิด = ต้องผู้มีสิทธิ์จัดการการจอง) ◂
+  hotel({ key: "rooms.hotel.hk.canBlock", type: "bool", labelTh: "แม่บ้านปิดห้องซ่อมได้เอง", helpTh: "ปิด = แม่บ้านแจ้งช่างได้อย่างเดียว การปิดห้องต้องให้หน้าเคาน์เตอร์/ผู้จัดการ", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
   hotel({ key: "rooms.hotel.nightAuditTime", type: "time", labelTh: "เวลา night audit", schema: HHMM, defaults: { _fallback: "03:00" }, chain: U }), // #76
+  // SVC H.7 ▸ ปิดวันอัตโนมัติ (ใบสั่ง h.7 §1 · มติ §9.7: เวลาใช้ rooms.hotel.nightAuditTime เดิม — ไม่เพิ่ม auditAutoTime) ◂
+  hotel({
+    key: "rooms.hotel.audit.autoClose", type: "bool", labelTh: "ปิดวัน (night audit) อัตโนมัติทุกวัน",
+    helpTh: "เปิด = ระบบปิดวันให้เองตามเวลา night audit · ปิด = ผู้จัดการต้องกดปิดวันเองที่หน้ารายงาน", schema: z.boolean(), defaults: { _fallback: true }, chain: U,
+  }),
+  hotel({
+    key: "rooms.hotel.audit.notifyRoles", type: "table", labelTh: "ส่งอีเมลสรุปปิดวันถึง (บทบาท)",
+    helpTh: "OWNER = เจ้าของ · MANAGER = ผู้จัดการ · STAFF = พนักงาน · ว่าง = ไม่ส่ง",
+    schema: z.array(z.enum(["OWNER", "MANAGER", "STAFF"])).max(3).refine((a) => new Set(a).size === a.length, { message: "บทบาทซ้ำ" }),
+    defaults: { _fallback: ["OWNER", "MANAGER"] }, chain: U,
+  }),
   hotel({
     key: "rooms.hotel.tm30ReminderHours", type: "int", labelTh: "เตือนแจ้ง ตม.30 ก่อนครบ 24 ชม. (ชม.)", // #77
     helpTh: "พ.ร.บ.คนเข้าเมือง ม.38", schema: z.number().int().min(1).max(23), defaults: { _fallback: 6 }, chain: U,
   }),
   hotel({ key: "rooms.hotel.rr3OnScreen", type: "bool", labelTh: "ร.ร.3 ลงชื่อบนจอ", helpTh: "พ.ร.บ.โรงแรม 2547", schema: z.boolean(), defaults: { _fallback: true }, chain: U }), // #78
+  // SVC H.0 ▸ คีย์โรงแรม V2 (ใบสั่ง h.0 §6.1 · ร้านแก้/ปิดได้เอง = มติ Q1–Q3/Q5/Q6/Q9/Q11)
+  hotel({
+    key: "rooms.hotel.bookingMode", type: "enum", labelTh: "วิธียืนยันการจอง", // S:657
+    schema: z.enum(["AUTO_CONFIRM", "DEPOSIT_REQUIRED", "MANUAL_APPROVE"]), defaults: { _fallback: "DEPOSIT_REQUIRED" }, chain: U,
+  }),
+  hotel({
+    key: "rooms.hotel.weekendDays", type: "table", labelTh: "วันที่คิดราคาวันหยุดสุดสัปดาห์ (0=อาทิตย์)", // S:655
+    schema: z.array(z.number().int().min(0).max(6)).max(7), defaults: { _fallback: [5, 6] }, chain: U,
+  }),
+  hotel({ key: "rooms.hotel.dailyHousekeeping", type: "bool", labelTh: "ทำความสะอาดห้องทุกวัน", schema: z.boolean(), defaults: { _fallback: true }, chain: U_RT }), // S:660
+  hotel({ key: "rooms.hotel.inspectionRequired", type: "bool", labelTh: "ต้องตรวจห้องหลังแม่บ้านทำเสร็จ", schema: z.boolean(), defaults: { _fallback: false }, chain: U }), // S:661
+  hotel({ key: "rooms.hotel.maxAdvanceBookingDays", type: "int", labelTh: "จองล่วงหน้าได้สูงสุด (วัน)", schema: z.number().int().min(1).max(730), defaults: { _fallback: 365 }, chain: U }), // S:662
+  hotel({
+    key: "rooms.hotel.codePrefix", type: "text", labelTh: "อักษรนำหน้ารหัสการจอง", // S:663 · คง HR- เดิม
+    schema: z.string().min(1).max(6), defaults: { _fallback: "HR" }, chain: U,
+  }),
+  hotel({
+    key: "rooms.hotel.tax.mode", type: "enum", labelTh: "ราคาห้องรวมภาษีหรือไม่", // Q1
+    helpTh: "แยกภาษี = แสดง VAT และค่าบริการเป็นบรรทัดแยกในบิล",
+    schema: z.enum(["INCLUSIVE", "EXCLUSIVE"]), defaults: { _fallback: "INCLUSIVE" }, chain: U,
+  }),
+  hotel({ key: "rooms.hotel.tax.vatBp", type: "percent", labelTh: "อัตราภาษีมูลค่าเพิ่ม (bp)", schema: z.number().int().min(0).max(10_000), defaults: { _fallback: 700 }, chain: U, sensitivity: "MONEY" }),
+  hotel({
+    key: "rooms.hotel.tax.serviceChargeBp", type: "percent", labelTh: "ค่าบริการ (service charge · bp)", helpTh: "1000 = 10%",
+    schema: z.number().int().min(0).max(10_000), defaults: { _fallback: 0 }, chain: U, sensitivity: "MONEY",
+  }),
+  hotel({ key: "rooms.hotel.tax.invoiceFromPos", type: "bool", labelTh: "ออกใบกำกับภาษีจากบิลขายตอนเช็กเอาต์", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({
+    key: "rooms.hotel.securityDeposit.enabled", type: "bool", labelTh: "เก็บเงินประกันห้อง", // Q3 · จำนวนอยู่ที่ rooms.hotel.securityDeposit
+    schema: z.boolean(), defaults: { _fallback: false }, chain: U_RT,
+  }),
+  hotel({
+    key: "rooms.hotel.securityDeposit.appliesTo", type: "enum", labelTh: "เก็บเงินประกันจากใคร",
+    schema: z.enum(["ALL", "WALK_IN"]), defaults: { _fallback: "ALL" }, chain: U,
+  }),
+  hotel({
+    key: "rooms.hotel.guest.retainYears", type: "int", labelTh: "เก็บทะเบียนผู้เข้าพัก (ปี)", helpTh: "พ้นกำหนดแล้วระบบลบข้อมูลผู้เข้าพัก", // Q6
+    schema: z.number().int().min(1).max(10), defaults: { _fallback: 2 }, chain: U,
+  }),
+  hotel({ key: "rooms.hotel.guest.maskIdForStaff", type: "bool", labelTh: "ซ่อนเลขบัตร/พาสปอร์ตจากพนักงาน", schema: z.boolean(), defaults: { _fallback: true }, chain: U }), // Q6
+  hotel({ key: "rooms.hotel.guest.aiIdReader", type: "bool", labelTh: "อ่านบัตร/พาสปอร์ตด้วย AI", schema: z.boolean(), defaults: { _fallback: false }, chain: U }), // Q5 · requires = H.4
+  hotel({
+    key: "rooms.hotel.notify.channel", type: "enum", labelTh: "ช่องทางแจ้งผู้เข้าพัก", // Q9
+    schema: z.enum(["EMAIL", "LINE", "BOTH"]), defaults: { _fallback: "EMAIL" }, chain: U,
+  }),
+  hotel({
+    key: "rooms.hotel.storefront.customDomain", type: "bool", labelTh: "เปิดหน้าจองโรงแรมบนโดเมนของร้าน", // Q11
+    helpTh: "ใช้โดเมนที่ตั้งไว้ใน ตั้งค่า › โดเมน", schema: z.boolean(), defaults: { _fallback: false }, chain: U,
+  }),
+  // ◂ SVC H.0
+  // SVC H.8 ▸ หน้าจองออนไลน์ (ใบสั่ง h.8 §1 · เพิ่มคีย์อย่างเดียว · unitTypes HOTEL)
+  hotel({ key: "rooms.hotel.storefront.enabled", type: "bool", labelTh: "เปิดหน้าจองออนไลน์", helpTh: "ปิด = หน้าเว็บแสดงว่าไม่รับจอง (การจองเดิมยังดูและยกเลิกได้)", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.maxRooms", type: "int", labelTh: "จองได้สูงสุดกี่ห้องต่อครั้ง (หน้าเว็บ)", schema: z.number().int().min(1).max(10), defaults: { _fallback: 5 }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.selfCancel", type: "bool", labelTh: "ให้ผู้เข้าพักยกเลิกเองจากลิงก์การจอง", helpTh: "ยอดคืนเป็นไปตามเงื่อนไขยกเลิกที่จดไว้ตอนจอง", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.badgeTh", type: "text", labelTh: "ป้ายบนหน้าจอง (ไทย)", helpTh: "เช่น จองตรงถูกกว่า · ว่าง = ไม่แสดง", schema: z.string().max(40), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.badgeEn", type: "text", labelTh: "ป้ายบนหน้าจอง (อังกฤษ)", helpTh: "เช่น Best rate direct · ว่าง = ไม่แสดง", schema: z.string().max(40), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.customDomainUnitId", type: "text", labelTh: "สาขาโรงแรมที่เปิดบนโดเมนของร้าน", helpTh: "ใช้คู่กับ เปิดหน้าจองโรงแรมบนโดเมนของร้าน", schema: z.string().max(64), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.heroImages", type: "table", labelTh: "รูปหัวหน้าจอง", schema: z.array(z.string().url().max(500)).max(10), defaults: { _fallback: [] }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.description.th", type: "text", labelTh: "คำแนะนำที่พัก (ไทย)", schema: z.string().max(1000), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.description.en", type: "text", labelTh: "คำแนะนำที่พัก (อังกฤษ)", schema: z.string().max(1000), defaults: { _fallback: "" }, chain: U }),
+  hotel({ key: "rooms.hotel.storefront.reminderHour", type: "time", labelTh: "เวลาส่งอีเมลเตือนก่อนเข้าพัก 1 วัน", schema: HHMM, defaults: { _fallback: "10:00" }, chain: U }),
+  // ◂ SVC H.8
+  // SVC H.4 ▸ เช็กอิน V2 · ทะเบียนผู้พัก (ร.ร.3/ร.ร.4) · ตม.30 (ใบสั่ง svc-brief-h.4 §1) — เพิ่มอย่างเดียว
+  hotel({ key: "rooms.hotel.license.no", type: "text", labelTh: "เลขที่ใบอนุญาตประกอบธุรกิจโรงแรม", helpTh: "พิมพ์บนบัตร ร.ร.3 และทะเบียน ร.ร.4", schema: z.string().trim().max(60).nullable(), defaults: { _fallback: null }, chain: U }),
+  hotel({ key: "rooms.hotel.license.name", type: "text", labelTh: "ชื่อโรงแรมตามใบอนุญาต", helpTh: "ไม่กรอก = ใช้ชื่อสาขา", schema: z.string().trim().max(120).nullable(), defaults: { _fallback: null }, chain: U }),
+  hotel({ key: "rooms.hotel.license.registrarOffice", type: "text", labelTh: "นายทะเบียนที่รับสำเนาทะเบียนผู้พัก (ร.ร.4)", helpTh: "เช่น สำนักงานเขต/ที่ว่าการอำเภอ ที่โรงแรมตั้งอยู่", schema: z.string().trim().max(120).nullable(), defaults: { _fallback: null }, chain: U }),
+  hotel({ key: "rooms.hotel.guest.requireRegistration", type: "bool", labelTh: "ต้องลงทะเบียนผู้พักก่อนเช็กอิน", helpTh: "พ.ร.บ.โรงแรม 2547 ม.35 — ผู้พักต้องลงทะเบียน ร.ร.3 ทันทีที่เข้าพัก", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({ key: "rooms.hotel.guest.keepIdImageDefault", type: "bool", labelTh: "เก็บรูปบัตร/พาสปอร์ตไว้เป็นหลักฐาน (ค่าเริ่ม)", helpTh: "พนักงานเปลี่ยนได้ทีละครั้งเมื่อแขกไม่ยินยอม · ไฟล์เป็นแบบส่วนตัว", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({ key: "rooms.hotel.tm30.enabled", type: "bool", labelTh: "ติดตามการแจ้งที่พักคนต่างด้าว (ตม.30)", helpTh: "พ.ร.บ.คนเข้าเมือง 2522 ม.38 — แจ้งภายใน 24 ชม.", schema: z.boolean(), defaults: { _fallback: true }, chain: U }),
+  hotel({
+    key: "rooms.hotel.tm30.exportColumns", type: "table", labelTh: "คอลัมน์ไฟล์อัปโหลด ตม.30",
+    // Q-H4-1: แม่แบบ Excel ของระบบแจ้งที่พักออนไลน์ของ ตม. ต้องล็อกอินผู้ประกอบการจึงดาวน์โหลดได้ — ค่าเริ่ม = ช่องของแบบ ตม.30 กระดาษ · ผู้คุมปรับเมื่อเจ้าของส่งแม่แบบ
+    helpTh: "ลำดับ = ลำดับคอลัมน์ในไฟล์ · ปรับให้ตรงแม่แบบของระบบ ตม. ได้",
+    schema: z.array(z.object({ key: z.enum(HOTEL_TM30_COLUMN_KEYS), label: z.string().trim().min(1).max(60) }).strict()).min(1).max(30),
+    defaults: { _fallback: HOTEL_TM30_DEFAULT_COLUMNS }, chain: U,
+    tableTh: {
+      item: { kind: "object", labelTh: "คอลัมน์", fields: { key: { kind: "enum", labelTh: "ข้อมูล", shortTh: "", options: HOTEL_TM30_COLUMN_TH }, label: { kind: "text", labelTh: "หัวคอลัมน์", shortTh: "" } } },
+      ordered: true,
+      emptyTh: "ไม่มีคอลัมน์",
+    },
+  }),
+  // ◂ SVC H.4
+  // SVC H.5 ▸ บิลระหว่างพัก/เช็กเอาต์ (ใบสั่ง h.5 §1 · เพิ่มคีย์อย่างเดียว)
+  hotel({
+    key: "rooms.hotel.checkout.allowLegacyCash", type: "bool", labelTh: "ให้เช็กเอาต์ทางเดิมรับเงินสดอัตโนมัติ (ระบบเดิม)",
+    helpTh: "ปิด = ต้องเลือกวิธีรับเงินที่หน้าบิลระหว่างพักทุกครั้ง · เปิด = ปุ่มเช็กเอาต์เดิมหักมัดจำแล้วรับส่วนที่เหลือเป็นเงินสด",
+    schema: z.boolean(), defaults: { _fallback: false }, chain: U, sensitivity: "MONEY",
+  }),
+  hotel({
+    key: "rooms.hotel.folio.manualItemMaxSatang", type: "money", labelTh: "เพดานยอดต่อรายการที่ลงบิลห้องเอง",
+    helpTh: "รายการบริการ/มินิบาร์/ค่าปรับ/ส่วนลดที่ลงเองต่อบรรทัดเกินยอดนี้ ระบบไม่รับ (ให้ผู้จัดการตรวจ)",
+    schema: MONEY, defaults: { _fallback: 5_000_000 }, chain: U, sensitivity: "MONEY",
+  }),
+  // ◂ SVC H.5
 
-  // ══ ช่องทาง OTA (#79–82) — ซ่อนจนเฟส H ══
-  hotel({ key: "rooms.hotel.ota.enabled", group: "ota", type: "bool", labelTh: "เปิดตัวต่อช่องทาง OTA", schema: z.boolean(), defaults: { _fallback: false }, chain: U_RT, requires: { integration: "OTA" } }), // #79
+  // ══ ช่องทาง OTA (#79–82) — ซ่อนจนเฟส H (H.1 เปิดตามประเภทหน่วย) ══
+  hotel({ key: "rooms.hotel.ota.enabled", group: "ota", type: "bool", labelTh: "เปิดตัวต่อช่องทาง OTA", schema: z.boolean(), defaults: { _fallback: false }, chain: U_RT, requires: { integration: "CHANNEL_MANAGER" } }), // #79 · SVC H.0 ▸ ศูนย์เชื่อมต่อ kind CHANNEL_MANAGER ◂
   hotel({
     key: "rooms.hotel.ota.roomScope", group: "ota", type: "enum", labelTh: "ห้องที่ส่งขายช่องทาง", // #79
     schema: z.enum(["ALL_NIGHTLY", "SELECTED"]), defaults: { _fallback: "ALL_NIGHTLY" }, chain: U_RT,
@@ -766,6 +907,24 @@ const SNAPSHOTS: Record<string, readonly string[]> = {
     "rooms.billing.prorate",
     "rooms.utility.elec.tariffRef", // SVC D.7
     "rooms.utility.water.tariffRef", // SVC D.7
+  ],
+  /** การจองโรงแรม (SVC H.0 ▸ H.3 จดตอนจอง/ยืนยัน · CC §1.6) — เวลาเข้า/ออก มัดจำ ยกเลิก ไม่มา ถือห้อง ขั้นต่ำคืน ประกัน ภาษี ◂ */
+  reservation: [
+    "rooms.hotel.checkInTime",
+    "rooms.hotel.checkOutTime",
+    "rooms.hotel.deposit",
+    "rooms.hotel.cancelPolicy",
+    "rooms.hotel.noShow",
+    "rooms.hotel.holdMinutesOnline",
+    "rooms.hotel.holdMinutesCounter",
+    "rooms.hotel.minNights",
+    "rooms.hotel.securityDeposit",
+    "rooms.hotel.securityDeposit.enabled",
+    "rooms.hotel.tax.mode",
+    "rooms.hotel.tax.vatBp",
+    "rooms.hotel.tax.serviceChargeBp",
+    "rooms.money.rounding",
+    "rooms.locale.docLanguage",
   ],
 };
 
@@ -870,6 +1029,15 @@ const ENUM_LABELS_TH: Record<string, Record<string, string>> = {
   "rooms.payment.afterPaidSlip": { REVIEW: "พักให้พนักงานตัดสิน", CREDIT: "เก็บเป็นเงินรับล่วงหน้า" }, // SVC D.10 ◂
   "rooms.access.roomEntry": { PERMISSION_EACH_TIME: "ขออนุญาตทุกครั้ง", STANDING_PERMISSION: "ขออนุญาตไว้ล่วงหน้าในสัญญา" },
   "rooms.access.managerScope": { UNIT: "ทั้งหอ", BUILDING: "เฉพาะอาคารที่ดูแล" },
+  // SVC H.0 ▸ คีย์โรงแรมใหม่ (§6.1) ◂
+  "rooms.hotel.bookingMode": { AUTO_CONFIRM: "ยืนยันทันที", DEPOSIT_REQUIRED: "ยืนยันเมื่อจ่ายมัดจำ", MANUAL_APPROVE: "ร้านกดยืนยันเอง" },
+  "rooms.hotel.tax.mode": { INCLUSIVE: "ราคารวมภาษีแล้ว", EXCLUSIVE: "แยกภาษีและค่าบริการ" },
+  "rooms.hotel.securityDeposit.appliesTo": { ALL: "ผู้เข้าพักทุกคน", WALK_IN: "เฉพาะลูกค้า walk-in" },
+  "rooms.hotel.notify.channel": { EMAIL: "อีเมล", LINE: "ไลน์ (LINE)", BOTH: "อีเมลและไลน์" },
+  // SVC H.1 ▸ enum โรงแรมเดิม (หนี้ H.0 · เปิดตามประเภทหน่วย) ◂
+  "rooms.hotel.noShow": { FORFEIT_RELEASE_AFTER_AUDIT: "ริบมัดจำ ปล่อยห้องหลังปิดวัน", FORFEIT_HOLD_STAY: "ริบมัดจำ ถือห้องไว้ทั้งการจอง", REFUND_RELEASE: "คืนมัดจำ ปล่อยห้อง" },
+  "rooms.hotel.ota.roomScope": { ALL_NIGHTLY: "ทุกห้องที่ขายรายคืน", SELECTED: "เฉพาะห้องที่เลือก" },
+  "rooms.hotel.ota.onConflict": { QUEUE_REASSIGN_NOTIFY: "เข้าคิวจัดห้องใหม่และแจ้งร้าน" },
 };
 
 // SVC D.4 ▸ เพดานนำเข้า Excel/CSV (X6) + หน้าต่างย้อนกลับ — ledger/svc-briefs/svc-brief-d.4.md §2.3 (อ่านสดทุกคำขอ · ชั้นหน่วย)
@@ -921,6 +1089,16 @@ DEFS.push(
 );
 GROUP_LABELS_TH.report = "รายงานหอ";
 // ◂ SVC D.19
+
+// SVC H.10 ▸ ช่วงส่ง ARI ล่วงหน้าของช่องทาง OTA (ใบสั่ง h.10 §2 ข้อ 3 · §9.4) — งานรวมชุดตัดท้ายที่วันนี้ + ค่านี้
+DEFS.push(
+  hotel({
+    key: "rooms.hotel.ota.ariHorizonDays", group: "ota", type: "days", labelTh: "ส่งราคา/ห้องว่างให้ช่องทางล่วงหน้า (วัน)",
+    helpTh: "ช่วงที่ระบบส่งราคา ห้องว่าง และข้อจำกัดให้ช่องทาง OTA นับจากวันนี้",
+    schema: z.number().int().min(7).max(400), defaults: { _fallback: 365 }, chain: U, requires: { integration: "CHANNEL_MANAGER" },
+  }),
+);
+// ◂ SVC H.10
 
 const withLabels = (defs: SettingDef[]): SettingDef[] => defs.map((d) => (ENUM_LABELS_TH[d.key] ? { ...d, enumLabelsTh: ENUM_LABELS_TH[d.key] } : d));
 

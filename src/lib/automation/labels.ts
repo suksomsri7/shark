@@ -337,6 +337,65 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "booking.deposit_forfeited", label: "เมื่อร้านเก็บมัดจำนัดจองคิว (ไม่มาหรือยกเลิกช้า)" },
   { value: "booking.deposit_refunded", label: "เมื่อคืนมัดจำนัดจองคิว" },
   // ◂ SVC B.8
+  // SVC H.3 ▸ จองโรงแรม V2 — ตัวยิง `hotel/booking.ts` (ใน tx เดียวกับสถานะ) · payload { tenantId, unitId, reservationId, groupId, code, status, source }
+  //   id ล้วน (X8) · consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "hotel.booking.created", label: "เมื่อมีการจองห้องพักใหม่ (โรงแรม)" },
+  { value: "hotel.booking.confirmed", label: "เมื่อยืนยันการจองห้องพัก (รับมัดจำแล้วหรือผู้จัดการอนุมัติ)" },
+  { value: "hotel.booking.cancelled", label: "เมื่อยกเลิกการจองห้องพัก" },
+  { value: "hotel.booking.hold_expired", label: "เมื่อหมดเวลาถือห้องรอมัดจำ (ยกเลิกอัตโนมัติ)" },
+  { value: "hotel.booking.no_show", label: "เมื่อผู้เข้าพักไม่มาตามการจอง" },
+  { value: "hotel.booking.changed", label: "เมื่อการจองห้องพักเปลี่ยน (ต่อคืน · ย่นคืน · ย้ายห้อง · เลื่อนวัน)" },
+  { value: "hotel.booking.deposit_after_expiry", label: "เมื่อรับมัดจำหลังหมดเวลาถือห้องแต่ห้องเต็มแล้ว (คืนเงินอัตโนมัติ — พนักงานติดต่อลูกค้า)" },
+  // ◂ SVC H.3
+  // SVC H.8 ▸ หน้าจองเว็บโรงแรม — ตัวยิง `platform/hotel-web.ts` · payload id + สตางค์ล้วน (ไม่มีชื่อ/เบอร์/อีเมล/รหัสที่แขกกรอก · X8)
+  //   consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "hotel.web.hold_created", label: "เมื่อลูกค้าจองห้องพักผ่านหน้าเว็บ (ถือห้องรอมัดจำ)" },
+  { value: "hotel.web.deposit_paid", label: "เมื่อรับมัดจำการจองห้องพักจากหน้าเว็บ (สลิปอนุมัติแล้ว)" },
+  { value: "hotel.web.slip_attached", label: "เมื่อลูกค้าแนบสลิปมัดจำห้องพักจากหน้าเว็บ (รอตรวจ)" },
+  { value: "hotel.web.cancelled_by_guest", label: "เมื่อลูกค้ายกเลิกการจองห้องพักเองจากลิงก์การจอง" },
+  { value: "hotel.web.lookup_failed", label: "เมื่อมีการค้นหาการจองห้องพักด้วยรหัสและอีเมลที่ไม่ตรง (หน้าเว็บ)" },
+  { value: "hotel.web.slip_unapplied", label: "เมื่อสลิปมัดจำห้องพักอนุมัติแล้วแต่ลงเป็นมัดจำไม่ได้ (การจองยกเลิก/รับมัดจำทางอื่นแล้ว — คืนเงินอัตโนมัติ พนักงานติดต่อลูกค้า)" }, // SVC H.8 r3 ◂
+  // ◂ SVC H.8
+  // SVC H.4 ▸ เช็กอิน V2/ทะเบียนผู้พัก/ตม.30 — ตัวยิง `hotel/checkin.ts` · `guest.ts` · `tm30.ts` · payload id/จำนวนล้วน (X8) ·
+  //   consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "hotel.checked_in", label: "เมื่อผู้เข้าพักเช็กอิน (โรงแรม)" },
+  { value: "hotel.guest.registered", label: "เมื่อลงทะเบียนผู้เข้าพัก (ร.ร.3)" },
+  { value: "hotel.guest.id_revealed", label: "เมื่อพนักงานเปิดดูเลขบัตร/พาสปอร์ตเต็มของผู้เข้าพัก" },
+  { value: "hotel.tm30.due", label: "เมื่อใกล้ครบหรือเลยกำหนดแจ้งที่พักคนต่างด้าว (ตม.30 ภายใน 24 ชม.)" },
+  { value: "hotel.tm30.filed", label: "เมื่อบันทึกว่าแจ้ง ตม.30 แล้ว (มีเลขรับแจ้ง)" },
+  { value: "hotel.guest.purged", label: "เมื่อระบบลบข้อมูลอ่อนไหวของผู้เข้าพักที่พ้นระยะเวลาเก็บ" },
+  // ◂ SVC H.4
+  // SVC H.5 ▸ บิลระหว่างพัก (folio) · เช็กเอาต์ POS ใบเดียว · เงินประกันห้อง — ตัวยิง hotel/folio.ts · checkout.ts · room-charge.ts (ใน tx เดียวกับการเขียน)
+  //   payload { tenantId, unitId, reservationId, groupId?, folioId, saleId?, itemId?, amountSatang, type?, reason? } id + สตางค์ล้วน (X8) · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks)
+  { value: "hotel.folio.posted", label: "เมื่อลงรายการในบิลห้องพัก (ค่าห้อง · มินิบาร์ · บริการ · ลงห้องจาก POS)" },
+  { value: "hotel.folio.voided", label: "เมื่อยกเลิกรายการในบิลห้องพัก" },
+  { value: "hotel.folio.settled", label: "เมื่อปิดบิลห้องพักตอนเช็กเอาต์ (บิล POS ใบเดียว)" },
+  { value: "hotel.folio.charge_unmatched", label: "เมื่อบิลร้านค้าที่จ่ายแบบลงห้องหาห้องไม่เจอ (รอพนักงานผูกห้อง)" },
+  { value: "hotel.folio.posting_warn", label: "เมื่อปรับบัญชีบิลร้านที่ลงห้องไม่สำเร็จ (ให้ฝ่ายบัญชีตรวจ)" },
+  { value: "hotel.security_deposit.taken", label: "เมื่อรับเงินประกันห้อง" },
+  { value: "hotel.security_deposit.refunded", label: "เมื่อคืนเงินประกันห้อง" },
+  { value: "hotel.security_deposit.forfeited", label: "เมื่อริบเงินประกันห้อง (ค่าเสียหาย)" },
+  // ◂ SVC H.5
+  // SVC H.10 ▸ ช่องทาง OTA (channel manager) — ตัวยิง hotel/channel/* · payload id/วัน/รหัสเหตุผลล้วน (ไม่มีชื่อ/เบอร์/อีเมลแขก)
+  { value: "channel.ari.dirty", label: "เมื่อห้องว่าง/ราคาที่ต้องส่งช่องทาง OTA เปลี่ยน" },
+  { value: "channel.ari.pushed", label: "เมื่อส่งราคา/ห้องว่างให้ช่องทาง OTA สำเร็จ" },
+  { value: "channel.ari.failed", label: "เมื่อส่งราคา/ห้องว่างให้ช่องทาง OTA ไม่สำเร็จครบ 5 ครั้ง" },
+  { value: "channel.reservation.received", label: "เมื่อได้รับการจองจากช่องทาง OTA" },
+  { value: "channel.reservation.applied", label: "เมื่อการจองจากช่องทาง OTA ลงปฏิทินห้องแล้ว" },
+  { value: "channel.reservation.needs_room", label: "เมื่อการจองจากช่องทาง OTA ต้องจัดห้อง (ห้องเต็ม)" },
+  { value: "channel.reservation.rejected", label: "เมื่อปฏิเสธการจองจากช่องทาง OTA" },
+  { value: "channel.reservation.cancelled", label: "เมื่อช่องทาง OTA แจ้งยกเลิกการจอง" },
+  // ◂ SVC H.10
+  // SVC H.6 ▸ แม่บ้าน — ตัวยิง hotel/housekeeping.ts (ใน tx เดียวกับ HotelHousekeepingLog) · payload { tenantId, unitId, roomId, from?, to?, byUserId?, reservationId?, items?, amountSatang?, action?, repairId?, blockId? } (X8)
+  { value: "hotel.hk.changed", label: "เมื่อสถานะแม่บ้านของห้องเปลี่ยน (สกปรก · สะอาด · ตรวจแล้ว · ปิดซ่อม)" },
+  { value: "hotel.hk.minibar_posted", label: "เมื่อแม่บ้านลงมินิบาร์เข้าบิลห้องแขก" },
+  { value: "hotel.hk.minibar_unbilled", label: "เมื่อมีมินิบาร์ค้างเก็บ (แขกออกไปแล้ว — หน้าเคาน์เตอร์เลือกเรียกเก็บหรือยกให้)" },
+  { value: "hotel.hk.defect", label: "เมื่อแม่บ้านแจ้งของเสีย/ของหาย (ปิดห้องซ่อม หรือ แจ้งช่าง)" },
+  // ◂ SVC H.6
+  // SVC H.7 ▸ ปิดวันโรงแรม — ตัวยิง hotel/night-audit.ts (ใน tx เดียวกับแถว HotelNightAudit) · payload { tenantId, unitId, auditId, businessDate, kpi? , byUserId? } (X8)
+  { value: "hotel.audit.closed", label: "เมื่อปิดวันโรงแรม (night audit) เสร็จ" },
+  { value: "hotel.audit.reopened", label: "เมื่อผู้จัดการเปิดวันที่ปิดแล้วของโรงแรมอีกครั้ง" },
+  // ◂ SVC H.7
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

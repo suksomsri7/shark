@@ -37,11 +37,40 @@
 > อัปเดตล่าสุด: **27 ต.ค. 2569** · ผู้วางแผน RUN · branch ปัจจุบันของเอกสาร `session/svc-design` (worktree `/root/projects/shark-svc`)
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/SVC-RUN.md` §1 (กติกาเหล็ก) + §3 (สถานะ) + ท้าย §4 → `ledger/SVC-CORE-CONTRACT.md` → แถวใบที่จะทำใน `ledger/SVC-MASTER-PLAN.md` §4 → แบบ `ledger/DESIGN-BOOKING-QUEUE.md` / `ledger/DESIGN-DORM-HOTEL.md` (§ ที่ใบอ้าง)
 
+## ▶️ RUNNING 7 พ.ย. 2569 ~18:3xZ — RUN HOTEL **5/11 (45%)** · H.1/H.3/H.2/H.5 ✅ (H.5 = 7e544c2e3) · l3 = H.4 รอบ 4 (wip/svc-h4 @36bf52198 มี H.5 แล้ว · ผู้ตรวจ PDPA รอบ 1 ผ่าน · รอบ 2 กฎหมาย/race หลังรอบ 4 · chain /root/svc-runs/h4/accept.sh) · l2 = H.6 builder (wip/svc-h6 @9de38c15b · พรอมป์ /root/svc-runs/h6/builder-prompt.md) · l1 ว่าง
+- สถานะสด = `ledger/SVC-HOTEL-RUN.md` §2–§3 · คำถามเจ้าของ = `SVC-OWNER-QUESTIONS.md` บล็อก HOTEL 7 พ.ย.
+- เลน (7 พ.ย. ~13:2xZ): **l1** ว่าง · **l2** `wip/svc-h5` (ฐาน 6715ea241) builder H.5 (Opus · พรอมป์ `/root/svc-runs/h5/builder-prompt.md` · progress `/root/svc-runs/h5/builder-progress.md`) · **l3** `wip/svc-h2` builder H.2 รอบ 3 (MAJOR 1–2 ผู้ตรวจ · progress `/root/svc-runs/h2/builder-progress.md`) + chain รอบ 1 `svc-h2-accept` (log `/root/svc-runs/h2/accept.txt` · ผลใช้คัดปัญหา · ต้องรัน chain รอบ 2 บน tip รอบ 3) + unit `svc-h2-dorm-rebuild` (d.13 ข้ามเดือน) · ขั้น H.2 ต่อ: builder รอบ 3 commit → ผู้คุม ORACLE-EDIT h.2 (เพิ่ม MV สถานะห้อง CHECKED_IN · preview ข้ามประเภท · X block พร้อมกัน · PC-3 anylane) → chain รอบ 2 (accept.sh) → PARITY ภาพ 08 → merge → tg 36% · H.5 ต่อ: builder → ผู้ตรวจเงิน Fable 2 รอบ → chain (ทำ /root/svc-runs/h5/accept.sh จาก h2/accept.sh · host ep-weathered-mode · port 3245 · ภาพ h.5 ต้อง env SVC_VIS_H5_RES_ID) → PARITY ภาพ 09 ขวา → merge → tg 45%
+- ข้อสอบพร้อมใน session/svc: h.2 (84) · h.3 (109+probe) · h.5 (92) · h.4 (106) · h.6 (95) · ฟิกซ์เจอร์ H.2–H.6 ครบ · **มติประหยัด**: ไม่เปิดผู้เขียนข้อสอบล่วงหน้า (h.7/h.8/h.10 เขียนเมื่อถึงคิว) · builder ทีละใบเมื่อ chain ใบก่อนจบ
+- ฐาน QC: backfill svc_h ครบ 4 ฐาน (ฐานหลัก 94 · l3 96 · l1 0 · l2 94) · build/serve บนเลนต้องใช้ inner script (`/root/svc-runs/h{1,3}/{build,serve}-inner.sh` · KICKOFF §3.1)
+- เครื่อง: 4 vCPU/15 GB (ไม่ KVM8) · steal เหลือ 2–16% หลังเจ้าของแก้ Hostinger · metabot หยุดไว้ (ต้อง start ก่อนใช้) · RAM ว่าง ~11G
+- ถ้า session หลุด: อ่าน `SVC-HOTEL-KICKOFF-PROMPT.md` §0–§4 (§2 ข้าม — H.1 ปิดแล้ว) · ดู log ข้างบน · ห้ามเปิดเลนที่ 4
+
+## ⏸ 7 พ.ย. 2569 ~21:2xZ — จุดส่งไม้ก่อนอัปเกรด VPS → KVM8 · **พรอมป์เริ่ม session ใหม่ = `ledger/SVC-HOTEL-KICKOFF-PROMPT.md`** (เจ้าของสั่ง "บันทึกทั้งหมดเตรียมส่งไม้ต่อ")
+**สถานะ:** SVC 51/52 (C.2 รอ OA LINE+มือถือ) · **HOTEL 1/11 (H.0 ✅) · H.1 โค้ดเสร็จ+ผู้ตรวจผ่าน รอขั้นรับงานท้าย** · ทุกอย่าง push แล้ว ทรีทุกเลนสะอาด (dirty 0)
+- `session/svc` @299f341d8 (H.0 merge · ข้อสอบ h.0/h.1 · ORACLE-EDIT ชุด unitTypes · ใบสั่ง H.0–H.3 + H.2 · แผน/สถานะ)
+- `wip/svc-h1` @62c568cbf (H.1 รอบผู้ตรวจ · **ยังไม่ merge**) · ⚠️ 21:59Z **tsc ทรีรวมแดง 19 จุดใน `rates.ts` (ชนิดพารามิเตอร์ db แคบกว่า tenantDb · ไม่ใช่พฤติกรรม)** — builder แก้แล้ว **`0941d0911`** (LockTx/AuditTx ชนิดแคบจาก TenantDb · ไม่มี any) · chain รับงานรันใหม่ 22:09Z บน l1 @0941d0911 (รอ RAM ≥10G สำหรับ tsc) · หลังรีบูต: ถ้า `/root/svc-runs/h1/accept.txt` ไม่มี DONE ⇒ รัน chain ใหม่ (l1 อยู่บน wip/svc-h1 @0941d0911 แล้ว) — ผู้คุมรันข้อสอบ h.1 เต็มเองแล้ว **120/122 · 0 failed** (F-1/V-1 SKIP) · ผู้ตรวจ 2 รอบ + รอบยืนยัน **ผ่าน** · ค้าง: **tsc ทรีรวม · build QC · ภาพ h.1 owner/frontdesk · PARITY ภาพ 15** (chain `/root/svc-runs/h1/accept.sh` กำลังรันตอนส่งไม้ · ถ้า VPS รีบูตก่อนจบ = รันใหม่ได้ทั้งก้อน ไม่มีอะไรเสีย)
+- `wip/svc-h0` @5b1d69ea6 (merge แล้ว)
+
+**▶️ ขั้นต่อหลังรีบูต (ตามลำดับ)**
+1. ตรวจเครื่อง: `swapon --show` (fstab มี /swapfile–/swapfile5 ควรขึ้นเอง) · `free -g` · ถ้า KVM8 RAM มากขึ้น ค่า ISO_MEM/heap เดิมใช้ได้ ปรับเพิ่มได้ทีหลัง
+2. ตรวจทรี/เลน: `git -C /root/projects/shark-svc status -sb` (session/svc) · l1 `wip/svc-h1` · l2 `wip/svc-h0` · l3 detached · node_modules ของ l1/l2/l3 เป็น store จริง (`shark-svc-nm-l1-store` `-l2-store` `shark-svc-nm-l3`) ไม่ใช่ bind mount — ไม่หายหลังรีบูต · **ทรีหลัก+l4 ยังใช้ Prisma client ร่วมทรีเลขา** (ห้าม generate/tsc/build ที่นั่นจน RUN เลขาจบ · commit เอกสาร `--no-verify`) · ตรวจ `grep -c 'model AiRoom ' node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/schema.prisma` ในทรี l1/l2/l3 ต้องเป็น 0
+3. ฐาน QC: migration svc_h ลงครบ 4 ฐาน (l1 l2 l3 ep-mute-scene) · backfill รันแล้วเฉพาะ l2 (ฐานอื่นรัน `scripts/svc-h0-backfill.mts --dry` แล้วจริง ก่อน H.3) · ฉากหอบน l1 rebuild แล้ว 7 พ.ย.
+4. **ปิด H.1**: ถ้า `/root/svc-runs/h1/accept.txt` ยังไม่มี `######## DONE` ⇒ รัน `systemd-run --unit=svc-h1-accept … /root/svc-runs/h1/accept.sh` ใหม่ (สคริปต์ทำครบ: exam → tsc → build → serve 3242 → ภาพ) → ดูภาพ `.qc-shots/svc/h1/pairs/{owner,frontdesk}` เทียบ `ledger/design-dorm/15-hotel-rates.png` + จอตั้งค่าเทียบโครงหอ 17 → PARITY ผ่าน ⇒ merge `wip/svc-h1` เข้า session/svc (`--no-verify` ในทรีหลัก) → SVC-HOTEL-RUN H.1 ✅ 2/11 → `tg "📊 HOTEL · 18% (2/11)"` · PARITY ตก ⇒ ตีกลับ builder ใหม่บน l1 (ใบสั่ง h.1 §5)
+5. **เปิด H.3 + H.2 ขนาน**: ผู้คุมใส่ฟิกซ์เจอร์บล็อก "SVC H.3" (`SQC_HOTEL_BOOKING_SCENE` · ภาพ h.3 · สิทธิ์ frontdesk) + "SVC H.2" (ภาพ h.2) ใน `scripts/svc-qc-data.mts` → ผู้เขียนข้อสอบ (Fable) h.3 บน l2 · h.2 บน l3 (พรอมป์แบบเดียวกับ h.0/h.1 ในบันทึก 7 พ.ย.) → builder H.3 (ก่อน) → H.2 → H.5 → H.4 → H.6 → H.7 → H.8 → H.10 → H.9
+6. ตัวเฝ้า: ทุกงานยาวต้องมีตัวเฝ้า (Bash until DONE + send_later สำรอง) · เครื่องใช้ร่วมกับ RUN เลขา (S3a.6) จน RUN เลขาจบ ⇒ build/tsc รอ RAM ≥10G
+7. เซิร์ฟเวอร์ QC เก่า `svc-g1-serve` (3241 · build เก่า) ไม่ต้องเปิดคืน · `svc-h1-serve` (3242) เปิดเมื่อ chain H.1 รันถึง
+
+**ของที่รอเจ้าของ:** C.2 (LINE OA ทดสอบ + iPhone/Android) · เลขา: push main S3a.2 / TestFlight S3a.3 (ไม่ใช่ของ RUN นี้) · H2 ชื่อ channel manager (ยังไม่ต้อง)
+**หนี้/บันทึกสำคัญ:** SVC-HOTEL-RUN §2.1 · memory `reference_shark_svc_sec_shared_prisma_client` · ORACLE-EDIT ทั้งหมดมีป้ายในไฟล์ข้อสอบ (grep "ผู้คุม 7 พ.ย.")
+
+
 ## 🟢 2 พ.ย. 2569 ~10Z — 98% (51/52) · เหลือ C.2 เท่านั้น
 - ปิดแล้ว: B.18 + D.20 + G3 (125728d6 บน session/svc) · รายละเอียด SVC-RUN §4 บรรทัดท้าย
 - C.1 ⏸ เลื่อนตามเจ้าของ (ตรวจสลิปเอง) · เฟส H โรงแรม V2 ยังไม่เริ่ม (เจ้าของสั่ง 1 พ.ย.)
 - **C.2 รอเจ้าของ**: LINE OA ทดสอบที่ต่อแชต SHARK + iPhone 1 + Android 1 มี LINE · ผู้คุมเขียนคู่มือร้านตอนเริ่ม
 - เลน: ไม่มี builder ทำงาน · server QC `svc-g1-serve` ยังเปิดที่ 3241 (หยุดได้) · ล้าง Neon branch เลน l1–l3 ตอนจบ RUN
+- ▶️ **7 พ.ย. RUN HOTEL 1/11 (H.0 ✅ 17Z)** — เจ้าของสั่ง "เริ่มได้ ทำขนานกับระบบเลขา" · สถานะสด = `ledger/SVC-HOTEL-RUN.md` · แผน = `SVC-HOTEL-PLAN.md` ร่าง 2 · ใบสั่ง h.0/h.1 · เลน hA=l2 hB=l1 hC=l3 (ห้ามใช้ทรีหลัก/l4 รันของหนัก) · tg `📊 HOTEL · NN% (x/11)`
+- ⚠️ 4 พ.ย. Prisma client ใน node_modules ของทรีนี้ถูกทรีเลขา AI generate ทับ (inode ร่วม) ⇒ fitness แดงปลอม (AiRoom…) · commit เอกสารใช้ `--no-verify` · ก่อนเริ่ม H.0 แยก node_modules store ของ svc เอง (ดู memory reference_shark_svc_sec_shared_prisma_client)
 - ⚠️ session/svc ถูก force-with-lease 2 พ.ย. (reword หัว commit 4e51c758→c49caa71 · ต้นไม้เท่าเดิม) — ทรีอื่นที่อยู่บน SHA เก่าให้ checkout ใหม่
 
 
@@ -100,3 +129,27 @@
 ## 📌 ข้อเคาะที่ค้าง (ทำตามค่าปลอดภัยไปก่อน · ดู CC §10)
 - รหัสผังบัญชีเงินประกันผู้เช่า (D.2) · ค่าคอมฯ เมื่อผู้ให้บริการไม่มีบัญชีผู้ใช้ (B.0/B.10 — แจ้งผู้คุม POS) · btree_gist (R0.0) · ลิงก์เปิดแชท OA พร้อมรหัส (C.2) · ข้อความบริการ vs การตลาด (J5)
 - ฐาน branch (R0.0) · ลำดับความสำคัญเลนถ้าเจ้าของอยากให้ "หอนำ" (MASTER-PLAN §8 คันโยก ก)
+
+---
+## ⏸ 7 พ.ย. 2569 ~21:5xZ — พักงาน (เจ้าของอัปเดต VPS) · RUN HOTEL 5/11 (45%) · บัญชี B · โมเดล Opus 5.5 (Fable ติดโควตา)
+**สถานะใบ**: H.0 ✅ · H.1 ✅ · H.3 ✅ · H.2 ✅ · H.5 ✅ · ข้อสอบครบทุกใบแล้ว (h.7 75 · h.8 84 · h.10 89 ข้อ อยู่บน session/svc)
+**ทรี/เลน (สะอาดทุกทรี · push แล้ว)**:
+- l3 `wip/svc-h4` @3f4c93abc — **H.4 พร้อมรับ**: ctrl-run h.4 98/109 0 แดง · chain รอบ 2 regression 19 ชุดเขียวครบ (h.4 เต็ม+G · probe-h4-review-b/c · probe-h5 · h.5/h.3/h.2/h.1/h.0/r0.4/r0.8/d.13/smoke/b.0/money/public/refund/p5.1) · **ค้าง tsc → fitness → build → serve 3246 → ภาพ 09**
+- l2 `wip/svc-h6` @92d40c230 — **H.6 พร้อมรับ**: chain รอบ 2 h.6 95/97 · probe-h6-review-b 23/23 · h.2/h.3/h.5/h.1/h.0/r0.8/r0.9 เขียว · d.13 96/98 0 แดง (จบ 21:54Z) · **ค้าง d.16/d.19/smoke/b.0/probe-h5 → tsc → build → serve 3247 → ภาพ 13**
+- l1 `wip/svc-h8` @b441ca678 — builder H.8 หยุดก่อนแก้ไฟล์ (ทรีสะอาด) · เริ่มใหม่ได้เลยด้วยพรอมป์เดิม
+**ทำต่อหลัง VPS กลับ (ตามลำดับ)**:
+0. ตรวจเครื่อง: `uptime` · `free -g` · `swapon --show` (5 ไฟล์) · `systemctl list-units 'svc-*' 'iso-*'` ต้องว่าง · node_modules ของ l1/l2/l3 เป็นโฟลเดอร์จริง (ถ้า bind mount หาย = remount ก่อน · memory reference_shark_pos_bind_mounts_lost_on_reboot) · `git status` ทุกทรีว่าง
+1. H.4: สคริปต์ย่อจาก tsc `/root/svc-runs/h4/accept2.sh` (copy เป็น accept3.sh แล้วตัดบรรทัดข้อสอบ/regression ออก เหลือ tsc→build→serve→ฉาก→ภาพ) · unit `svc-h4-accept3` + ตัวเฝ้า until DONE + send_later
+2. H.6: เช่นเดียวกัน `/root/svc-runs/h6/accept2.sh` → accept3.sh (เริ่มจาก reg d.16 ต่อ) · unit `svc-h6-accept3`
+3. ภาพผ่าน ⇒ ผู้คุมดูเอง (H.4 ภาพ 09 ครึ่งซ้าย + ร.ร.3/ร.ร.4 · H.6 ภาพ 13 ก/ข มือถือ) → PARITY ลง SVC-HOTEL-RUN → `git merge --no-ff --no-verify` เข้า session/svc (H.4 ก่อน · H.6 ตาม — conflict คาด: hotel/index.ts actions.ts permissions.ts defs/rooms.ts 3 ทะเบียน = เพิ่มทั้งสองฝั่ง keep-both) → tg 55% / 64%
+4. เปิด builder: H.8 บน l1 (`/root/svc-runs/h8/builder-prompt.md`) · H.7 บน l2 หลัง H.6 merge (`/root/svc-runs/h7/builder-prompt.md` แทน __LANE_DIR__=/root/projects/shark-svc-l2 · __LANE_DB__=ep-weathered-mode · chain `/root/svc-runs/h7/accept.sh.tpl` แทน __LN__/__DBHOST__) · H.10 บน l3 หลัง H.4 merge (เขียนพรอมป์ builder จาก h7/h8)
+5. ผู้ตรวจ: H.7 เงิน 2 รอบ · H.8 สาธารณะ/เงิน · H.10 กันจองซ้อน 2 รอบ (Opus จนกว่า Fable กลับ)
+**รอเจ้าของ (ไม่บล็อก)**: Q-H4-1/3/4 · Q-H5-1 · Q-H3-1 · Turnstile key (หนี้ H.8) · C.2 LINE OA
+- ▶️ 7 พ.ย. ~22:0xZ ทำต่อแล้ว (KVM8) · ขั้น 0 ผ่าน (กู้ git object ว่าง + remount node_modules) · chain H.4/H.6 accept3 + builder H.8 รันอยู่ — ดู SVC-HOTEL-RUN §3 ล่าสุด
+
+## 🏁 8 พ.ย. 2569 ~08:5xZ — RUN HOTEL จบ 11/11 (100%)
+- ทิป `session/svc` = 0df41e36c (push แล้ว · **ไม่ขึ้น main · ไม่ deploy**) · ใบ H.0–H.10 merge ครบ + H.9 ด่านเต็มผ่าน
+- ด่านเต็ม: 76 ชุด (h.0–h.10 · r0.1–r0.9 · b.* · c.3 · d.* · d15-e2e · smoke · hotel-* · probe 13 · e2e 22/22 · iso 129/131) แดง 0 · r0.9 G-1 = หนี้เดิม · tsc 0 · fitness 2 โหมด · build ✅ · ไล่ภาพทุกใบทุกบทบาท
+- แพ็ก UAT: `ledger/UAT-HOTEL-V2.md` (go-live blockers 5 ข้อ · เช็กลิสต์ 4 บทบาท + แขก) · หนี้ทั้งหมด: `ledger/SVC-HOTEL-RUN.md` §2.1 · คำถามเจ้าของ: `ledger/SVC-OWNER-QUESTIONS.md`
+- งานถัดไป (รอเจ้าของสั่ง): H.5b (prepaid OTA · PLATFORM · คูปอง settle · undoNoShow ↔ บิลริบ) · H2 ตัวต่อ OTA เจ้าจริง · Turnstile · Bunny token · ตัดสิน Q-H7-1/Q-H8-1 · push main/deploy
+- เลน: l1–l6 ว่างทั้งหมด · ฐาน QC เลน (ep-royal-lake l1 · ep-weathered-mode l2 · ep-royal-bar l3 · ep-square-heart l5 · ep-late-union l6) รอเจ้าของอนุญาตลบ (การลบถูกด่านความปลอดภัยกันไว้ ต้องสั่งตรง) · ep-mute-scene = ฐาน SVC หลัก (เก็บไว้)

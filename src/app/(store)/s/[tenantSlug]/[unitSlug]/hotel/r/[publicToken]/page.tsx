@@ -1,162 +1,144 @@
+import { cookies, headers } from "next/headers";
+import { notFound } from "next/navigation";
 import Link from "next/link";
-import { cookies } from "next/headers";
-import {
-  resolveHotelUnit,
-  getPublicReservation,
-  promptpayForDeposit,
-} from "@/lib/modules/hotel/service";
+import { hotelHostAllowed, hotelWebClientKey, publicStatus } from "@/lib/platform/hotel-web";
+import { makeT } from "@/lib/i18n";
 import { AutoRefresh } from "@/components/queue-auto-refresh";
-import { PromptPayQr } from "@/components/PromptPayQr";
-import { getLocaleFromCookie, makeT, type Locale } from "@/lib/i18n";
+import { StatusCard, type StatusLine } from "@/components/store/hotel/StatusCard";
+import { CancelDialog } from "@/components/store/hotel/CancelDialog";
+import { HoldCountdown } from "@/components/store/hotel/HoldCountdown";
+import { baht, bkkTime, dayLabel, pickLocale } from "@/components/store/hotel/format";
+import { publicCancelAction } from "../../actions";
+import { WebHeader, WebNotFound, WebShell, one, withLang, type PageSearch } from "../../_web";
 
 export const dynamic = "force-dynamic";
 
-// ฿ คงเดิมทั้งสองภาษา · ตัวเลข/วันที่จัดรูปตาม locale (en ใช้ en-GB)
-const baht = (satang: number, locale: Locale) =>
-  (satang / 100).toLocaleString(locale === "en" ? "en-GB" : "th-TH", { minimumFractionDigits: 0 });
+const CANCEL_ERR: Record<string, string> = {
+  REFUND_CHANGED: "hotel.web.err.refund",
+  NOT_FOUND: "hotel.web.err.email",
+  FORBIDDEN: "hotel.web.err.cancelOff",
+  RATE_LIMITED: "hotel.web.err.rate",
+  SLIP_PENDING: "hotel.web.err.slipPending", // SVC H.8 r3 (B-1 ก) ◂
+};
 
-function fmtDate(d: Date, locale: Locale) {
-  return d.toLocaleDateString(locale === "en" ? "en-GB" : "th-TH", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
-
-// ป้ายสถานะการจอง (ลูกค้าเห็น) — ผูกกับมัดจำ/สถานะห้อง · คืน "คีย์" ให้หน้าเป็นคนแปล
-function statusMeta(status: string, depositRequired: boolean, depositPaid: boolean) {
-  if (status === "CANCELLED") return { key: "hotel.st.CANCELLED", tone: "gone" as const };
-  if (status === "REFUNDED") return { key: "hotel.st.REFUNDED", tone: "gone" as const };
-  if (status === "CHECKED_OUT") return { key: "hotel.st.CHECKED_OUT", tone: "done" as const };
-  if (status === "CHECKED_IN") return { key: "hotel.st.CHECKED_IN", tone: "done" as const };
-  // BOOKED
-  if (depositRequired && !depositPaid) return { key: "hotel.st.awaitDeposit", tone: "wait" as const };
-  if (depositRequired && depositPaid) return { key: "hotel.st.confirmed", tone: "done" as const };
-  return { key: "hotel.st.booked", tone: "done" as const };
-}
-
-// หน้าสถานะการจอง + จ่ายมัดจำ (public จาก publicToken) — auto-refresh ตอนยังรอยืนยัน
-export default async function PublicReservationStatusPage({
-  params,
-}: {
-  params: Promise<{ tenantSlug: string; unitSlug: string; publicToken: string }>;
-}) {
+// SVC H.8 ▸ S5 หน้าสถานะการจอง (ภาพ 16 ค · URL เดิมของ P1) — เปิดด้วย publicToken เท่านั้น · ไม่มีเบอร์ · อีเมล mask
+//   HOLD = นับถอยหลัง + ปุ่มจ่าย · รอโรงแรมยืนยัน · ยืนยันแล้ว (มัดจำ ✓ · จ่ายที่โรงแรม · เช็กอิน/เอาต์) · เพิ่มเพื่อน LINE OA · ตม.30 · ยกเลิกเอง (แสดงยอดคืนก่อนยืนยัน)
+export default async function HotelStatusPage({ params, searchParams }: { params: Promise<{ tenantSlug: string; unitSlug: string; publicToken: string }>; searchParams: Promise<PageSearch> }) {
   const { tenantSlug, unitSlug, publicToken } = await params;
-  const base = `/s/${tenantSlug}/${unitSlug}/hotel`;
-  const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);
+  const sp = await searchParams;
+  const h = await headers();
+  if (!(await hotelHostAllowed(h.get("host"), tenantSlug))) notFound();
+  const locale = pickLocale(sp.lang, (await cookies()).get("lang")?.value);
+  const lang = one(sp.lang) === "en" || one(sp.lang) === "th" ? one(sp.lang) : null;
   const t = makeT(locale);
-
-  const resolved = await resolveHotelUnit(tenantSlug, unitSlug);
-  if (!resolved) {
-    return (
-      <main className="mx-auto w-full max-w-md flex-1 px-5 py-16 text-center">
-        <div className="text-lg font-semibold">{t("hotel.notFound.title")}</div>
-        <p className="mt-2 text-sm text-[color:var(--color-muted)]">{t("hotel.notFound.desc")}</p>
-      </main>
-    );
-  }
-  const { tenant, unit } = resolved;
-
-  // กัน cross-tenant: token ต้องเป็นของ unit นี้ (ไม่งั้น leak PII แขกร้านอื่น)
-  const rv = await getPublicReservation(unit.id, publicToken);
-  if (!rv) {
-    return (
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-4 px-5 py-16 text-center">
-        <div className="text-lg font-semibold">{t("hotel.rv.notFound.title")}</div>
-        <p className="text-sm text-[color:var(--color-muted)]">{t("hotel.rv.notFound.desc")}</p>
-        <Link href={base} className="btn btn-primary min-h-[48px] w-full max-w-xs text-base">
-          {t("hotel.rv.bookCta")}
-        </Link>
-      </main>
-    );
-  }
-
-  const depositRequired = rv.depositSatang > 0;
-  const depositPaid = !!rv.depositPaidAt;
-  const meta = statusMeta(rv.status, depositRequired, depositPaid);
-  const awaitingDeposit = rv.status === "BOOKED" && depositRequired && !depositPaid;
-  const pp = awaitingDeposit ? await promptpayForDeposit(tenant.id, unit.id, rv.id) : null;
-
+  const base = `/s/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(unitSlug)}/hotel`;
+  const st = await publicStatus({ tenantSlug, unitSlug, publicToken }, { clientKey: hotelWebClientKey(h) });
+  if (!st.ok) return <WebNotFound title={st.code === "RATE_LIMITED" ? t("hotel.web.err.rate") : t("hotel.rv.notFound.title")} desc={st.code === "RATE_LIMITED" ? "" : t("hotel.rv.notFound.desc")} href={withLang(base, lang)} cta={t("hotel.rv.bookCta")} />;
+  const cancel = one(sp.cancel);
+  const money = (n: number) => baht(n, locale, true);
+  const tone: "ok" | "wait" | "gone" = st.state === "CANCELLED" || st.state === "HOLD_EXPIRED" || st.state === "NO_SHOW" || st.state === "REFUNDED" ? "gone" : st.state === "HOLD" || st.state === "AWAITING_APPROVAL" ? "wait" : "ok";
+  const title =
+    st.state === "HOLD"
+      ? t("hotel.web.awaitingPay", { code: st.code })
+      : st.state === "AWAITING_APPROVAL"
+        ? t("hotel.web.awaitingApproval", { code: st.code })
+        : st.state === "HOLD_EXPIRED"
+          ? t("hotel.web.expired", { code: st.code })
+          : st.state === "CANCELLED"
+            ? t("hotel.web.cancelled", { code: st.code })
+            : st.state === "CONFIRMED"
+              ? t("hotel.web.booked", { code: st.code })
+              : st.state === "NO_SHOW"
+                ? `${t("hotel.web.noShowState")} · ${st.code}`
+                : `${t(`hotel.st.${st.state}`)} · ${st.code}`;
+  const subtitle = `${st.roomTypeName}${st.rooms.length > 1 ? ` × ${st.rooms.length}` : ""} · ${dayLabel(st.checkIn, locale)} – ${dayLabel(st.checkOut, locale)} · ${t("hotel.web.adultsN", { n: st.adults })}`;
+  const depositNote = st.deposit.paid ? `${t("hotel.web.deposit")} (${t("hotel.web.depositVerified")})` : st.deposit.slip && st.deposit.slip.status !== "REJECTED" ? `${t("hotel.web.deposit")} (${t("hotel.web.slipReview")})` : `${t("hotel.web.deposit")} (${t("hotel.web.unpaid")})`;
+  const partial = st.deposit.paid && st.depositDueSatang > 0;
+  const lines: StatusLine[] = [
+    ...(st.deposit.requiredSatang > 0 && !partial ? [{ k: depositNote, v: `${money(st.deposit.requiredSatang)}${st.deposit.paid ? " ✓" : ""}`, strong: true }] : []),
+    // SVC H.8 r3 (B-3) อนุมัติบางส่วน: "มัดจำรับแล้ว X จาก Y · ค้าง Z" (ค้างชำระที่โรงแรม)
+    ...(partial ? [{ k: t("hotel.web.depositPartial", { paid: `฿${money(st.deposit.paidSatang)}`, required: `฿${money(st.deposit.requiredSatang)}` }), v: t("hotel.web.depositDue", { amount: `฿${money(st.depositDueSatang)}` }), strong: true }] : []),
+    ...(st.state !== "CANCELLED" && st.state !== "HOLD_EXPIRED" ? [{ k: t("hotel.web.payAtHotel"), v: money(st.payAtHotelSatang) }] : []),
+    ...(st.refundedSatang > 0 ? [{ k: t("hotel.web.refunded", { amount: baht(st.refundedSatang, locale) }), v: money(st.refundedSatang) }] : []),
+    { k: t("hotel.web.checkTimes"), v: `${st.checkInTime} / ${st.checkOutTime}` },
+  ];
+  const lineId = st.lineAddFriendUrl ? st.lineAddFriendUrl.slice(st.lineAddFriendUrl.lastIndexOf("/") + 1) : "";
+  const refund = st.refund?.refundSatang ?? 0;
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 px-5 py-8">
-      {awaitingDeposit && <AutoRefresh ms={15000} />}
-
-      <header className="text-center">
-        <div className="text-base font-semibold">{unit.name}</div>
-        <div className="text-xs text-[color:var(--color-muted)]">{tenant.name}</div>
-      </header>
-
-      {/* สรุปการจอง */}
-      <section className="card flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">{t("hotel.rv.title", { code: rv.code })}</span>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
-              meta.tone === "wait"
-                ? "bg-amber-100 text-amber-800"
-                : meta.tone === "done"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-gray-200 text-gray-700"
-            }`}
-          >
-            {t(meta.key)}
-          </span>
-        </div>
-        <div className="text-sm">{rv.guestName}</div>
-        <div className="text-xs text-[color:var(--color-muted)]">
-          {rv.roomType.name} · {fmtDate(rv.checkInDate, locale)}–{fmtDate(rv.checkOutDate, locale)} ·{" "}
-          {t("hotel.nights", { n: rv.nights })}
-        </div>
-        <div className="mt-1 flex items-center justify-between border-t pt-2 text-sm">
-          <span className="text-[color:var(--color-muted)]">{t("hotel.rv.roomTotal")}</span>
-          <span className="font-semibold">฿{baht(rv.totalSatang, locale)}</span>
-        </div>
-        {depositRequired && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-[color:var(--color-muted)]">{t("hotel.deposit")}</span>
-            <span className="font-medium">฿{baht(rv.depositSatang, locale)}</span>
-          </div>
-        )}
-      </section>
-
-      {/* จ่ายมัดจำ (เฉพาะยังไม่จ่าย) */}
-      {awaitingDeposit && (
-        <section className="card flex flex-col items-center gap-3">
-          {pp ? (
-            <>
-              <div className="text-sm font-medium">{t("hotel.rv.scanDeposit")}</div>
-              <PromptPayQr payload={pp.payload} caption={`฿${baht(rv.depositSatang, locale)}`} />
-              {pp.displayName && (
-                <div className="text-xs text-[color:var(--color-muted)]">{pp.displayName}</div>
-              )}
-              <p className="text-center text-sm text-[color:var(--color-muted)]">
-                {t("hotel.rv.afterScan")}
-              </p>
-            </>
-          ) : (
-            <p className="text-center text-sm text-[color:var(--color-muted)]">
-              {t("hotel.rv.noPromptpay")}
+    <WebShell>
+      <WebHeader unitName={st.unitName} sub={t("hotel.web.statusTitle")} locale={locale} langHref={(l) => `${base}/r/${encodeURIComponent(publicToken)}?lang=${l}`} />
+      {st.state === "HOLD" || st.deposit.slip?.status === "NEEDS_REVIEW" || st.state === "AWAITING_APPROVAL" ? <AutoRefresh ms={5000} /> : null}
+      <div className="flex flex-col gap-3 px-4 pt-3">
+        {cancel === "ok" ? <div className="rounded-2xl border border-[color:var(--color-line)] px-4 py-3 text-center text-sm font-semibold">{t("hotel.web.cancelDone")}</div> : null}
+        {cancel && cancel !== "ok" ? (
+          <div className="rounded-2xl border border-[color:var(--color-danger)] px-4 py-3 text-center text-sm text-[color:var(--color-danger)]">{t(CANCEL_ERR[cancel] ?? "hotel.web.err.failed")}</div>
+        ) : null}
+        <StatusCard tone={tone} title={title} subtitle={subtitle} lines={lines}>
+          {st.state === "HOLD" && st.holdExpiresAt ? (
+            <div className="flex flex-col items-center gap-2">
+              <HoldCountdown expiresAt={st.holdExpiresAt} untilLabel={t("hotel.web.holdUntil", { time: bkkTime(st.holdExpiresAt, locale) })} template={t("hotel.web.holdFor", { time: "{time}" })} expiredLabel={t("hotel.web.holdExpired")} />
+              {st.pay ? (
+                <Link href={withLang(`${base}/pay/${encodeURIComponent(publicToken)}`, lang)} className="btn btn-primary flex min-h-[52px] w-full items-center justify-center rounded-2xl text-base font-bold">
+                  {t("hotel.web.payNow")}
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+          {st.state === "CONFIRMED" && st.pay ? (
+            <div className="flex flex-col items-center gap-2 rounded-[18px] border border-[color:var(--color-line)] px-4 py-4">
+              <div className="text-sm">{t("hotel.web.payOptional")}</div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={st.pay.qrSvgDataUrl} alt="PromptPay QR" className="h-[160px] w-[160px]" />
+              <div className="text-lg font-bold tabular-nums">฿{money(st.pay.amountSatang)}</div>
+            </div>
+          ) : null}
+          {st.state === "HOLD_EXPIRED" ? (
+            <Link href={withLang(base, lang)} className="btn btn-primary flex min-h-[52px] w-full items-center justify-center rounded-2xl text-base font-bold">
+              {t("hotel.web.bookAgain")}
+            </Link>
+          ) : null}
+          {st.lineAddFriendUrl ? (
+            <a href={st.lineAddFriendUrl} target="_blank" rel="noopener noreferrer" className="flex min-h-[56px] items-center justify-center gap-2 rounded-[18px] border-2 border-[color:var(--color-ink)] text-base font-bold" data-line-add="">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M3 7l9 6 9-6" />
+              </svg>
+              {t("hotel.web.addLine", { id: lineId })}
+            </a>
+          ) : null}
+          {st.state !== "CANCELLED" && st.state !== "HOLD_EXPIRED" ? <p className="text-center text-xs text-[color:var(--color-muted)]">{st.lineAddFriendUrl ? t("hotel.web.lineNote") : t("hotel.web.reschedule")}</p> : null}
+          {st.state !== "CANCELLED" && st.state !== "HOLD_EXPIRED" ? (
+            <div className="flex gap-2.5 rounded-[18px] bg-[color:var(--color-surface-2,#f4f4f5)] px-4 py-3 text-sm" data-tm30="">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 flex-none" aria-hidden="true">
+                <rect x="4" y="5" width="16" height="15" rx="2" />
+                <path d="M4 10h16M9 3v4M15 3v4" />
+              </svg>
+              <div>
+                <div className="font-semibold">{t("hotel.web.foreigner")}</div>
+                <div className="text-xs text-[color:var(--color-muted)]">{t("hotel.web.tm30")}</div>
+              </div>
+            </div>
+          ) : null}
+          {!st.canCancel && st.cancelVia !== "SELF" && (st.state === "HOLD" || st.state === "AWAITING_APPROVAL" || st.state === "CONFIRMED") ? (
+            <p className="text-center text-sm text-[color:var(--color-muted)]" data-cancel-via={st.cancelVia}>
+              {t(st.cancelVia === "CHANNEL" ? "hotel.web.cancelAtChannel" : "hotel.web.cancelAtHotel")}
             </p>
-          )}
-        </section>
-      )}
-
-      {rv.status === "BOOKED" && depositRequired && depositPaid && (
-        <p className="text-center text-sm text-green-700">
-          {t("hotel.rv.depositPaid")}
-        </p>
-      )}
-      {rv.status === "BOOKED" && !depositRequired && (
-        <p className="text-center text-sm text-[color:var(--color-muted)]">
-          {t("hotel.rv.confirmed")}
-        </p>
-      )}
-
-      <div className="text-center">
-        <Link href={base} className="text-sm underline">
-          {t("hotel.rv.back")}
-        </Link>
+          ) : null}
+          {st.cancelBlockedBy === "SLIP_PENDING" ? (
+            <p className="text-center text-sm text-[color:var(--color-muted)]" data-cancel-blocked="SLIP_PENDING">
+              {t("hotel.web.cancelAfterSlip")}
+            </p>
+          ) : null}
+          {st.canCancel ? (
+            <CancelDialog
+              action={publicCancelAction}
+              hidden={{ tenantSlug, unitSlug, publicToken, lang: lang ?? "" }}
+              confirmRefundSatang={refund}
+              labels={{ open: t("hotel.web.cancel"), refund: refund > 0 ? t("hotel.web.cancelRefund", { amount: baht(refund, locale, true) }) : t("hotel.web.cancelNoRefund"), email: t("hotel.web.cancelEmail"), confirm: t("hotel.web.cancelConfirm"), close: t("hotel.web.cancelClose") }}
+            />
+          ) : null}
+        </StatusCard>
       </div>
-    </main>
+    </WebShell>
   );
 }

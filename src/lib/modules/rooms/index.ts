@@ -16,3 +16,4 @@ export {
   occupancyRange,
 } from "./service";
 export type { RoomBoardCell, AffectedOccupancy, OccupancyRangeRow, RoomUse } from "./service";
+export { HK_STATUSES } from "./service"; // SVC H.6 ▸ ผู้คุมอนุญาต 1 บรรทัด (มติ h.6 ข้อ 11) ◂
