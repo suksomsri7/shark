@@ -66,3 +66,26 @@ No migration, no backfill, no cron, no seed. Deploy code only; the two event typ
 - fitness 53/53 bare + env · fitness-hr 8/8 bare + env (exit 0 ×4) · pre-commit fitness passed on all 3 commits (no --no-verify)
 - typecheck (12288/14000M) exit 0 · 0 errors
 - Not run (controller): qc-hr-h0.1/h0.5/h0.6/h0.7/h1.1/h1.2/h1.3 · visual-hr 2.3 (CONTROLLER-RUN) · qc-hr-h2.2 / qc-kanban-k3.3 / qc-crm-c1.6 (not printed by the picker)
+
+## r2 (11 Nov)
+Controller: ORACLE-EDITs 1+2 applied (9dd5120d9) · decisions D-B1/D-B3/D-B2/D-B9 accepted · fix round = review (`hr-H2.3-review.md`) + hunt (`hr-H2.3-hunt.md`).
+
+Pre-approved ORACLE-EDIT 92297f084: S10.1–S10.5 (one per fix) + `T.endedYou`; F2b rows via one raw `INSERT … SELECT generate_series(1,510)`.
+RED proof on 9dd5120d9 code: `passed 73/78 (QC_FORCE)` — failed exactly S10.1–S10.5 · `RESIDUE none` · exit 1.
+
+Fixes (`swap.ts`, `swap-rules.ts`):
+1. F1 (review M1): `checkInTx` refuses a from/to row with `published === false` (moved, not re-published) with `T.unpublished`; `published` added to ENTRY_SELECT. Nothing written, no event (S10.1).
+2. F2b: `listSwapsForManager` filters branch scope in the query (`fromEntry.unitId IN scope`, + optional unit filter); open statuses first (≤ 500), then closed newest fill up to 500 total (S10.2).
+3. F2 + m3: `reason` only when the viewer is a decider AND both entries' units are in scope (missing TO row ⇒ no reason); listing rule unchanged (FROM unit), TO side still returned (S10.3).
+4. F3 + m5: `applyInTx` reports the party (`party: "YOU"` for requester ENDED/LEAVE on the to-day); `applyCodeText(code, t, party)` ⇒ `คุณ ลา…` / new `SWAP_TEXT.endedYou` "คุณ อยู่นอกช่วงการจ้างในวันนั้น — สลับไม่ได้"; `checkInTx` uses `endedYou` for the requester instead of `toBad`. Audit codes unchanged (ENDED / LEAVE) (S10.4).
+5. m4: `decideSwap` checks branch scope before status (S10.5).
+
+Deviation to rule on: ruling 3 says "reason and the TO side's details … only when BOTH … otherwise omit reason (and nothing else changes)". I applied the parenthetical: only `reason` is withheld; the TO side stays (hunter: R10 scopes by fromEntry). Withholding the TO side too = `to: null` for that viewer — one line, if wanted.
+
+Debts (not fixed, per controller):
+- review m1 (removeEntry after chain APPROVED before the effect: swap row gone, requester sees "อนุมัติแล้ว" without outcome) → H2.10/H2.11 UI
+- review m2 (closed swaps render live entries that moved to another person) → H2.10/H2.11 UI
+- review m6 (marker layout in roster.ts, block inside the H2.1 region) → cosmetic, left as is
+- hunter "leave approval racing a swap apply" (leave effect takes no roster key) → H2.7
+
+r2 verification: oracle unforced / forced / forced `passed 78/78` exit 0 ×3 · `RESIDUE none` ×3 · qc-hr-h2.1 90/90 · qc-hr-roster 24/24 · qc-hf-hr-privacy 194/194 · qc-approval 16/16 · qc-approval-wiring 7/7 (exit 0) · fitness-hr 8/8 bare + env · typecheck (12288/14000M) exit 0, 0 errors. Not re-run in r2: fitness.mts (pre-commit hook passed) and the rest of the r1 picker set.
