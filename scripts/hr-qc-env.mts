@@ -16,7 +16,8 @@ import { thaiDateKey } from "@/lib/ui/date";
 // ═══════════════════ 1. env + ด่านกันฐานผิด ═══════════════════
 
 /** host ของ QC4 (`wo-pos-qc4`) — ฐานเดียวที่ RUN HR เขียนได้ (hr-brief-COMMON §A.4) */
-export const HR_QC_HOST_MARK = "ep-frosty-lab";
+import { hrQcHostMark } from "./hr-qc-hosts.mjs"; // 11 พ.ย.: ฐาน QC ต่อเลนใน allowlist (qc-hr.sh) · ค่าเริ่ม = QC4
+export const HR_QC_HOST_MARK = hrQcHostMark();
 
 function safeHost(url: string): string {
   try {
