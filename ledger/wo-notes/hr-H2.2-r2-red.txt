@@ -1,0 +1,82 @@
+[env] qc-hr-h2.2 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.2] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.2] modules: board=loaded · shared=loaded · roster=loaded
+  ✅ [H2.2-S1.1] [static] page guard (HR system · privacy + scope · notFound) · loader · hrTabs · no rosterOnDay/rosterAt
+  ✅ [H2.2-S1.3] [static] nav: roster after attendance in layout + hrTabs · hrTabs settings (D9) · same sets · page exists
+  ✅ [H2.2-S2.8] [static] roster-actions.ts: use server · only exported async fns (6) · each requireTenant + rosterOpCore
+  ✅ [H2.2-S5.1] [static] shared module: type-only imports · no clock · no Intl/toLocale
+  ✅ [H2.2-S5.7] [static] roster-ui: use client · imports · no db path · pointer events · actions
+  ✅ [H2.2-S6.1] [static] every R14 data-testid / family present
+  ✅ [H2.2-S6.2] [static] inventory /hr/roster ↔ code ids both ways · wo/oracle · fitness-hr F16.8
+  ✅ [H2.2-S6.3] [static] th hr.roster.* holds the mockup-03 texts
+  ❌ [H2.2-S6.6] [static] F16.4 th/en hr.roster.* parity · non-empty · msg.<code> for every code — expected th = en keys · non-empty · codes | actual must
+  ✅ [H2.2-S6.7] [static] tokens only in roster files · --color-shift-1…12
+  ✅ [H2.2-S6.8] [static] roster-ui.tsx min-h-[44px]/min-h-11 ≥ <button> count
+  ❌ [H2.2-S8.1] [static] ORACLE-EDIT r2: run() in-flight guard (ref checked before await · reset in finally) · picker/entry-sheet writes disabled while busy — expected guard · 5+ sheet writes disabled while busy | actual guard,disabled,passedToSheets ref=∅ sites=5 undisabled=5 busyProps=0
+  ✅ [H2.2-S6.9] [static] visual-hr SPECS 2.2: 4 specs + expect statuses
+  ✅ [H2.2-S7.1] [static] payroll-rules sha · frozen files vs base · roster.ts marked hunks only
+  ✅ [H2.2-S6.5] [pure] weekLabel same / cross month · rosterTitle BE year
+(node:2645362) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H2.2-S1.2] [loader] owner · mgr-all · mgr-u1 · mgr-[] · writer-staff ⇒ board · payroll-like · staff-u1 · member ⇒ null
+  ✅ [H2.2-S1.4] [loader] all-branch (owner, mgr-[]) ⇒ unitSel all + u1 + u2 · mgr-u1 ⇒ units [u1], unitSel u1
+  ✅ [H2.2-S1.5] [loader] mgr-u1 ?unit=u2 ⇒ falls back to u1 · no u2 id · u2 name only as homeUnitName
+  ✅ [H2.2-S1.6] [pure+loader] ?week any day ⇒ Monday · invalid ⇒ todayKey week · prev/next ±7 across month + year end
+  ✅ [H2.2-S1.7] [loader] 7 day columns · neighbour-week entries hidden
+  ✅ [H2.2-S1.8] [loader] canWrite = canManageHrSettings(viewer) for every reader
+  ✅ [H2.2-S3.1] [loader] u1 rows e1 e5 e6 e7 then borrowed e4 · e4 out-days · probation · position
+  ✅ [H2.2-S3.2] [loader] ENDED e5 row only via its entry · other cells out
+  ✅ [H2.2-S3.3] [loader+pure] chip kind / label / snapshot times · shiftKind / shiftLabel / timeRange vectors
+  ✅ [H2.2-S3.4] [loader] overnight shift-4 chip x · 22:00–06:00 · overnight · start day only
+  ✅ [H2.2-S3.5] [loader] cell states past · off · out · work
+  ✅ [H2.2-S3.6] [loader] weekMin / shiftCount / totalMin = Σ displayed paidMin (e1 1800 / 4)
+  ✅ [H2.2-S3.7] [loader] day DTO labels · weekend · past · headcount · holiday
+  ✅ [H2.2-S3.8] [loader] leave overlay · label by viewer · leaveDays
+  ✅ [H2.2-S3.9] [dto] 5 boards: no forbidden key · no secret value
+  ✅ [H2.2-S5.2] [pure] applyOp(move) moves + marks changed · rollback exact · input untouched
+  ✅ [H2.2-S5.3] [pure] applyOp(copy) temp chip · confirm swaps id · rollback removes
+  ✅ [H2.2-S5.4] [pure] canDrop false: past / same cell / !canWrite · true: other row future cell
+  ✅ [H2.2-S5.5] [pure] keyTarget edges ⇒ null · one step otherwise
+  ✅ [H2.2-S5.6] [pure] two queued ops, first rolled back ⇒ only the second applied
+  ✅ [H2.2-S4.1] [loader] unpublishedCount = engine (10) · th bar text
+  ✅ [H2.2-S4.2] [loader] chip.published = engine row.published
+  ✅ [H2.2-S4.5] [loader] rule panel: e7 DAY_OFF + MAX_WEEK 56 named · others ok · no OVERLAP · info
+  ✅ [H2.2-S6.4] [loader] rule labels from ROSTER_RULE_DEFAULTS (10 h · 11 h · 1 · 48)
+  ✅ [H2.2-S4.6] [loader] rule row entryIds = engine warning entryIds ∩ shown chips
+  ✅ [H2.2-S4.7] [loader] e2 (u2) warning named for owner/all · mgr-u1 board never names e2
+  ✅ [H2.2-S4.8] [loader] canPublish true while warnings > 0
+  ✅ [H2.2-S4.3] [core] publish u1 ⇒ 10 rows flip · u2 untouched · 1 event · engine + board count 0
+  ✅ [H2.2-S4.4] [core] publish again ⇒ 0 · no event
+  ✅ [H2.2-S4.9] [race] removal after publish candidate read stays counted
+  ✅ [H2.2-S4.10] [service] > 500 newer publish audits keep a cleared removal cleared
+  ✅ [H2.2-S2.1] [core] add / move / remove / generate / copy / publish ⇒ ok + engine rows changed
+  ❌ [H2.2-S2.2] [pure+core] ROSTER_MSG / th msg.<code> = engine text · en present · 8 refusals map to codes — expected table byte-exact · 8 mapped refusals | actual table✗=entryNotFound,entryChanged,employeeNotFound,range,rangeOrder,date,note,tooMany mapped✗=-
+  ❌ [H2.2-S2.3] [core] range > 31 d ⇒ range (ORACLE-EDIT r2 Q-1) · malformed auth ⇒ failed · no raw text — expected range · failed · clean | actual [{"ok":false,"code":"failed"},{"ok":false,"code":"failed"}]
+  ✅ [H2.2-S2.4] [core] 2020 add / move / remove ⇒ past · row unchanged
+  ✅ [H2.2-S2.5] [core] mgr-u1: e2 (u2) ⇒ otherBranch · e3 (no unit) ⇒ unassigned · e4 borrowed day ⇒ ok
+  ✅ [H2.2-S2.6] [core] staff-u1 / member / payroll-like × 6 ops ⇒ noPerm · 0 writes · 0 events
+  ✅ [H2.2-S2.7] [core] other-tenant / non-HR systemId ⇒ noSystem · 0 writes
+  ✅ [H2.2-S2.9] [core] no result carries a person / unit name, leave reason or entry note
+  ✅ [H2.2-X2.1] [core] other-tenant ids refused · unchanged · sys2 rows hidden
+  ℹ listAttendance digest=8436a89981a0146a04c8954c6b0a49752eb7cb9c0661df9927bc356bd8fe46c9
+  ℹ leaves digest=f43008cba9f7bfae26638ae985e4c11565803988943cf3cf2f3921de10b8a62d
+  ℹ leaveItemsForViewer digest=54ef63446a674b6108da0bf977e2b50aab14cfd40252f18c94c0d4eb0f2798b1
+  ℹ monthlyAttendance digest=9a4c6047d670e99934b26da17183246f1c3ce07415ccc1c7f81f66cb09df1fb3
+  ℹ unavailable digest=840adc0a26e7efd47a1e90cc033305236855d619f8b06aaf42dbb91c3b5e9643
+  ✅ [H2.2-S7.2] [digest] board session via cores in system D ⇒ H2.1 S8 digests + MONTHLY frozen
+  ✅ [H2.2-S7.3] [run] clock() control K1=DAY_OFF:-:-|K2=ON_TIME:0:0|K3=NO_SCHEDULE:-:-
+  ✅ [H2.2-S7.4] [dto] privacy matrix 7 viewers as H2.1 S8.9
+  ✅ [H2.2-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+RESIDUE none (tenants=3 users=16)
+  ✅ [H2.2-Z1] residue: qc-hr-h22-* tenants / rows / users / sessions gone
+BASE-EXPECTATION 10/60 as registered (RED-by-design 54 · GREEN controls 6) · off: H2.2-S1.1(RED→pass) H2.2-S1.3(RED→pass) H2.2-S2.8(RED→pass) H2.2-S5.1(RED→pass) H2.2-S5.7(RED→pass) H2.2-S6.1(RED→pass) H2.2-S6.2(RED→pass) H2.2-S6.3(RED→pass) H2.2-S6.7(RED→pass) H2.2-S6.8(RED→pass) H2.2-S6.9(RED→pass) H2.2-S6.5(RED→pass) H2.2-S1.2(RED→pass) H2.2-S1.4(RED→pass) H2.2-S1.5(RED→pass) H2.2-S1.6(RED→pass) H2.2-S1.7(RED→pass) H2.2-S1.8(RED→pass) H2.2-S3.1(RED→pass) H2.2-S3.2(RED→pass) H2.2-S3.3(RED→pass) H2.2-S3.4(RED→pass) H2.2-S3.5(RED→pass) H2.2-S3.6(RED→pass) H2.2-S3.7(RED→pass) H2.2-S3.8(RED→pass) H2.2-S3.9(RED→pass) H2.2-S5.2(RED→pass) H2.2-S5.3(RED→pass) H2.2-S5.4(RED→pass) H2.2-S5.5(RED→pass) H2.2-S5.6(RED→pass) H2.2-S4.1(RED→pass) H2.2-S4.2(RED→pass) H2.2-S4.5(RED→pass) H2.2-S6.4(RED→pass) H2.2-S4.6(RED→pass) H2.2-S4.7(RED→pass) H2.2-S4.8(RED→pass) H2.2-S4.3(RED→pass) H2.2-S4.4(RED→pass) H2.2-S4.9(RED→pass) H2.2-S4.10(RED→pass) H2.2-S2.1(RED→pass) H2.2-S2.4(RED→pass) H2.2-S2.5(RED→pass) H2.2-S2.6(RED→pass) H2.2-S2.7(RED→pass) H2.2-S2.9(RED→pass) H2.2-X2.1(RED→pass)
+
+===== qc-hr-h2.2 ===== passed 56/60 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.2","total":60,"passed":56,"failed":["H2.2-S6.6","H2.2-S8.1","H2.2-S2.2","H2.2-S2.3"],"findings":[{"id":"H2.2-S6.6","sev":"MAJOR"},{"id":"H2.2-S8.1","sev":"MAJOR"},{"id":"H2.2-S2.2","sev":"CRITICAL"},{"id":"H2.2-S2.3","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":54,"baseGreen":6,"offBase":["H2.2-S1.1(RED→pass)","H2.2-S1.3(RED→pass)","H2.2-S2.8(RED→pass)","H2.2-S5.1(RED→pass)","H2.2-S5.7(RED→pass)","H2.2-S6.1(RED→pass)","H2.2-S6.2(RED→pass)","H2.2-S6.3(RED→pass)","H2.2-S6.7(RED→pass)","H2.2-S6.8(RED→pass)","H2.2-S6.9(RED→pass)","H2.2-S6.5(RED→pass)","H2.2-S1.2(RED→pass)","H2.2-S1.4(RED→pass)","H2.2-S1.5(RED→pass)","H2.2-S1.6(RED→pass)","H2.2-S1.7(RED→pass)","H2.2-S1.8(RED→pass)","H2.2-S3.1(RED→pass)","H2.2-S3.2(RED→pass)","H2.2-S3.3(RED→pass)","H2.2-S3.4(RED→pass)","H2.2-S3.5(RED→pass)","H2.2-S3.6(RED→pass)","H2.2-S3.7(RED→pass)","H2.2-S3.8(RED→pass)","H2.2-S3.9(RED→pass)","H2.2-S5.2(RED→pass)","H2.2-S5.3(RED→pass)","H2.2-S5.4(RED→pass)","H2.2-S5.5(RED→pass)","H2.2-S5.6(RED→pass)","H2.2-S4.1(RED→pass)","H2.2-S4.2(RED→pass)","H2.2-S4.5(RED→pass)","H2.2-S6.4(RED→pass)","H2.2-S4.6(RED→pass)","H2.2-S4.7(RED→pass)","H2.2-S4.8(RED→pass)","H2.2-S4.3(RED→pass)","H2.2-S4.4(RED→pass)","H2.2-S4.9(RED→pass)","H2.2-S4.10(RED→pass)","H2.2-S2.1(RED→pass)","H2.2-S2.4(RED→pass)","H2.2-S2.5(RED→pass)","H2.2-S2.6(RED→pass)","H2.2-S2.7(RED→pass)","H2.2-S2.9(RED→pass)","H2.2-X2.1(RED→pass)"]}

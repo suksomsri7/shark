@@ -1970,6 +1970,1007 @@
    "note": "การ์ดลิงก์จากหน้าภาพรวม HR"
   },
   {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-page",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/roster/page.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "กรอบหน้า /hr/roster (404 สำหรับผู้ไม่ใช่ผู้อ่านตารางกะ)"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-title",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "h1 ตารางกะ · ช่วงวัน · สาขา"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-branch-chip-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ร้านที่ผู้ดูเห็น ≥ 2 สาขา (ผู้จัดการสาขาเดียว = ป้ายสาขานิ่ง)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/roster?unit=<unitId|all>"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-copy-prev",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน) · ปิดเมื่อทั้งสัปดาห์ผ่านไปแล้ว",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:copyRosterWeekAction",
+    "resultTarget": "hr-roster-message",
+    "db": "HrRosterEntry ใหม่จากสัปดาห์ก่อน"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2",
+   "note": "ปุ่มปิดใช้งาน (สัปดาห์ผ่านไปแล้ว) ใช้ testid นี้ตรง ๆ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-copy-prev-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน)",
+   "via": "ConfirmDialog testId=\"hr-roster-copy-prev\" → `${testId}-trigger`",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-roster-copy-prev-sheet"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-copy-prev-sheet",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน)",
+   "via": "ConfirmDialog testId=\"hr-roster-copy-prev\" → `${testId}-sheet`",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:copyRosterWeekAction",
+    "resultTarget": "hr-roster-message",
+    "db": "HrRosterEntry ใหม่จากสัปดาห์ก่อน"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-generate",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน) · ปิดเมื่อทั้งสัปดาห์ผ่านไปแล้ว",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:generateRosterAction",
+    "resultTarget": "hr-roster-message",
+    "db": "HrRosterEntry จากตารางทำงานประจำ"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2",
+   "note": "ปุ่มปิดใช้งานใช้ testid นี้ตรง ๆ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-generate-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน)",
+   "via": "ConfirmDialog testId=\"hr-roster-generate\" → `${testId}-trigger`",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-roster-generate-sheet"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-generate-sheet",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน)",
+   "via": "ConfirmDialog testId=\"hr-roster-generate\" → `${testId}-sheet`",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:generateRosterAction",
+    "resultTarget": "hr-roster-message",
+    "db": "HrRosterEntry จากตารางทำงานประจำ"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-publish",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "กล่องปุ่มเผยแพร่ (ปุ่มปิดเมื่อไม่มีจุดแก้)"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-publish-confirm-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน) · มีจุดแก้ ≥ 1",
+   "via": "ConfirmDialog testId=\"hr-roster-publish-confirm\" → `${testId}-trigger`",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-roster-publish-confirm-sheet"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-publish-confirm-sheet",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน) · มีจุดแก้ ≥ 1",
+   "via": "ConfirmDialog testId=\"hr-roster-publish-confirm\" → `${testId}-sheet`",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:publishRosterAction",
+    "resultTarget": "hr-roster-message",
+    "db": "HrRosterEntry.published=true · OutboxEvent hr.roster.published 1 ตัว · AuditLog hr.roster.publish"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-week-prev",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/roster?week=<จันทร์ก่อน>"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-week-label",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "จ. d – อา. d เดือน"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-week-next",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/roster?week=<จันทร์ถัดไป>"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-week-today",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ไม่ใช่สัปดาห์นี้",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/roster?week=<จันทร์ของวันนี้>"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-unpublished",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "จุดแก้ ≥ 1",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "ยังไม่เผยแพร่ (แก้ N จุด) = listRoster.unpublishedCount"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-published-state",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "จุดแก้ = 0",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "เผยแพร่แล้ว"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-legend",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "คำอธิบายชิป เช้า · บ่าย · ปิดร้าน · ลา · แก้แล้ว ยังไม่เผยแพร่"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-message",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "หลังกด",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "ผลการกด (role=alert เมื่อผิด) — ข้อความจากรหัส hr.roster.msg.<code>"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-grid",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "ตาราง role=grid (≥768px สัปดาห์ · <768px รายวัน)"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-day-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "จอ ≥ 768px",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "หัวคอลัมน์วัน + จำนวนคน + วันหยุด"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-daytab-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "จอ < 768px",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "สลับวันในมุมมองรายวัน"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "แถวพนักงาน (data-highlight เมื่อเลือกกฎ)"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-hours-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "ชม./สัปดาห์ + กะ / + ลา n วัน / เกิน n"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-cell-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน) · วันที่ยังไม่ผ่าน · ช่องในสาขา",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-roster-picker"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-entry-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-roster-entry-sheet (แตะ) · ลากวาง = moveRosterEntryAction · Alt = addRosterEntryAction · Shift+ลูกศร = moveRosterEntryAction"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2",
+   "note": "ชิปกะ data-changed=1 เมื่อยังไม่เผยแพร่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-picker",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "รายการกะของช่อง + กำหนดเวลาเอง"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-picker-shift-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:addRosterEntryAction",
+    "resultTarget": "hr-roster-message",
+    "db": "HrRosterEntry ใหม่ (MANUAL · published=false)"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-entry-sheet",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "ย้ายไป… · คัดลอกไป… · เปลี่ยนกะ · ลบกะ"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2",
+   "note": "ผู้อ่านอย่างเดียว/วันที่ผ่านแล้ว = ข้อมูลอย่างเดียว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-entry-remove-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน) · วันที่ยังไม่ผ่าน",
+   "via": "ConfirmDialog testId=\"hr-roster-entry-remove\" → `${testId}-trigger`",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-roster-entry-remove-sheet"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-entry-remove-sheet",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ผู้เขียนตารางกะ (OWNER · hr.employee.create — MANAGER ผ่าน) · วันที่ยังไม่ผ่าน",
+   "via": "ConfirmDialog testId=\"hr-roster-entry-remove\" → `${testId}-sheet`",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:removeRosterEntryAction",
+    "resultTarget": "hr-roster-message",
+    "db": "ลบ HrRosterEntry · AuditLog hr.roster.entry.remove"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-drag-ghost",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ระหว่างลาก · จอ ≥ 768px",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "ชิปเงาระหว่างลาก (หมุน −4° ยกเว้น reduced-motion)"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-total",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "รวม N ชม. (ไม่มีเงิน — H3/H4)"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-note",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "มีวันหยุดในสัปดาห์",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "บรรทัดวันหยุดของสัปดาห์"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-empty",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "conditional": "ไม่มีแถว",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "สัปดาห์/สาขาที่ไม่มีแถวพนักงาน"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-rules",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display",
+    "target": "แผงกฎที่ตรวจ (เตือนเท่านั้น)"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/roster",
+   "testid": "hr-roster-rule-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/roster-ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "data-highlight=1 บนชิป/แถวของคำเตือน"
+   },
+   "wo": "H2.2",
+   "oracle": "qc-hr-h2.2",
+   "note": "* = MAX_DAY|REST|DAY_OFF|MAX_WEEK|OVERLAP · ปิดเมื่อผ่าน"
+  },
+  {
    "page": "/app/sys/[id]/hr/kiosk",
    "testid": "hr-kiosk-pin",
    "kind": "input",

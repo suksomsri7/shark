@@ -52,6 +52,22 @@
   --color-due-late-bg: #fdeeee; /* เลยกำหนด (แดง) */
   --color-due-done-bg: #eef7f0; /* ทำเสร็จแล้ว (เขียว) */
 
+  /* ── HR H2.2 ▸ สีกะ (HrShift.colour รับเฉพาะคีย์ shift-1…shift-12 — settings.ts) · ยกจาก mockup 03 ──
+     🔴 คอมโพเนนต์ห้ามพิมพ์ hex เอง — อ้าง var(--color-shift-N) เท่านั้น · shift-1 = เส้นชิป "เช้า" (หมึก) ·
+        shift-2 = พื้นชิป "บ่าย" (เทาเส้น) · shift-3 = พื้นชิป "ปิดร้าน" (หมึก) · 4–12 = ชิปเส้นประ (ยังไม่มีแบบเฉพาะ — หนี้ D7) ◂ */
+  --color-shift-1: #0a0a0a;
+  --color-shift-2: #e4e4e7;
+  --color-shift-3: #0a0a0a;
+  --color-shift-4: #404040;
+  --color-shift-5: #1d4ed8;
+  --color-shift-6: #15803d;
+  --color-shift-7: #b45309;
+  --color-shift-8: #6d28d9;
+  --color-shift-9: #0e7490;
+  --color-shift-10: #be185d;
+  --color-shift-11: #4d7c0f;
+  --color-shift-12: #737373;
+
   --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
   --radius: 0.5rem;
 }
