@@ -184,6 +184,29 @@ type Checked = { from: EntryRow; to: EntryRow | null; requester: EmpRow; target:
 async function checkInTx(
   tx: Tx,
   ctx: Ctx,
+  p: { fromEntryId: string; targetEmployeeId: string; toEntryId: string | null; actorUserId?: string; requesterEmployeeId?: string; excludeSwapId?: string; viewpoint?: Viewpoint },
+  today: string,
+): Promise<Checked> {
+  try {
+    return await checkCore(tx, ctx, p, today);
+  } catch (e) {
+    // r3 (review r2-M1): ข้อความเขียนจากมุมผู้ขอ — ผู้กดเป็นเพื่อนผู้รับกะ ⇒ สลับ "คุณ" ↔ "เพื่อนร่วมงาน"
+    if (p.viewpoint === "TARGET" && e instanceof SwapRefusal) throw new SwapRefusal(forTarget(e.message));
+    throw e;
+  }
+}
+/** มุมของผู้รับข้อความ: REQUESTER (ยื่น) · TARGET (เพื่อนตอบรับ) */
+type Viewpoint = "REQUESTER" | "TARGET";
+const TARGET_VIEW: Readonly<Record<string, string>> = {
+  [SWAP_TEXT.leaveYou]: SWAP_TEXT.leavePeer,
+  [SWAP_TEXT.leavePeer]: SWAP_TEXT.leaveYou,
+  [SWAP_TEXT.endedYou]: SWAP_TEXT.targetNotFound,
+  [SWAP_TEXT.targetNotFound]: SWAP_TEXT.endedYou,
+};
+const forTarget = (text: string): string => TARGET_VIEW[text] ?? text;
+async function checkCore(
+  tx: Tx,
+  ctx: Ctx,
   p: { fromEntryId: string; targetEmployeeId: string; toEntryId: string | null; actorUserId?: string; requesterEmployeeId?: string; excludeSwapId?: string },
   today: string,
 ): Promise<Checked> {
@@ -382,7 +405,7 @@ export async function respondSwap(ctx: Ctx, actor: SwapActor, swapId: string, in
         return { status: "CANCELLED" as SwapStatus, expired: true, auto: null };
       }
       // ตรวจซ้ำทั้งชุด (ของเปลี่ยนตั้งแต่ยื่น) — ผู้ขอต้องยังถือกะต้นทาง
-      const c = await checkInTx(tx, ctx, { fromEntryId: s.fromEntryId, targetEmployeeId: s.targetEmployeeId ?? "", toEntryId: s.toEntryId, requesterEmployeeId: s.requesterEmployeeId, excludeSwapId: s.id }, today);
+      const c = await checkInTx(tx, ctx, { fromEntryId: s.fromEntryId, targetEmployeeId: s.targetEmployeeId ?? "", toEntryId: s.toEntryId, requesterEmployeeId: s.requesterEmployeeId, excludeSwapId: s.id, viewpoint: "TARGET" }, today);
       if (dayOf(c.from.date) !== d.fromDay || (c.to ? dayOf(c.to.date) : null) !== d.toDay) throw new SwapRefusal(T.entryChanged);
       const now = new Date();
       const r = await tx.hrShiftSwapRequest.updateMany({ where: { id, tenantId: ctx.tenantId, status: "AWAITING_PEER" }, data: { status: "PENDING", peerDecidedAt: now } });
@@ -390,7 +413,8 @@ export async function respondSwap(ctx: Ctx, actor: SwapActor, swapId: string, in
       // Q8: เจ้าของร้านเป็นผู้ขอหรือผู้รับ ⇒ ใช้ผลเลย ไม่เข้าสาย (แบบ H0.7 R4)
       if ((await isTenantOwnerTx(tx, ctx.tenantId, c.requester.linkedUserId)) || (await isTenantOwnerTx(tx, ctx.tenantId, c.target.linkedUserId))) {
         const a = await applyInTx(tx, ctx, { ...s, status: "PENDING" }, today);
-        if (!a.ok) throw new SwapRefusal(applyCodeText(a.code, { dup: T.duplicate, changed: T.entryChanged }, a.party));
+        // ผู้กด = เพื่อนผู้รับกะ ⇒ ข้อความจากมุมของเขา (r3)
+        if (!a.ok) throw new SwapRefusal(forTarget(applyCodeText(a.code, { dup: T.duplicate, changed: T.entryChanged }, a.party)));
         const u = await tx.hrShiftSwapRequest.updateMany({ where: { id, tenantId: ctx.tenantId, status: "PENDING" }, data: { status: "APPROVED", decidedAt: now, decidedById: null } });
         if (u.count !== 1) throw new SwapRefusal(T.stale);
         await emitApproved(tx, ctx, s, c.from.unitId, a);

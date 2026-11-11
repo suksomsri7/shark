@@ -406,7 +406,7 @@ const CHECKS: readonly Def[] = [
   D("S2.5", "R5", M, "RED", "requester cancels AWAITING_PEER ⇒ CANCELLED"),
   D("S2.6", "R5", M, "RED", "swapTransition vectors · respond/cancel on terminal swaps refused"),
   D("S2.7", "R5", M, "RED", "accept after the entry date passed ⇒ expired text · CANCELLED"),
-  D("S2.8", "R7", M, "RED", "accept re-validates (target on APPROVED leave since create) ⇒ leave text · AWAITING_PEER"),
+  D("S2.8", "R7", M, "RED", "accept re-validates (target on APPROVED leave since create) ⇒ leave text (คุณ — r3) · AWAITING_PEER"),
   D("S3.1", "R8", C, "RED", "chain approve + effect by event ⇒ rewritten · APPROVED · decidedById · 1 " + EV_OK + " · 1 apply audit"),
   D("S3.2", "R8", M, "RED", "chain reject + effect ⇒ REJECTED · decidedById · untouched"),
   D("S3.3", "Q1", C, "RED", "no policy ⇒ PENDING w/o request · decideSwap(mgr-u1) ⇒ APPROVED + rewritten + warnings[]"),
@@ -461,6 +461,7 @@ const CHECKS: readonly Def[] = [
   D("S10.3", "r2-F2", M, "RED", "FROM u1 · TO u2 swap: mgr-u1 list item has no reason + to null · mgrAll (both in scope) has reason + both sides"),
   D("S10.4", "r2-F3", M, "RED", "requester on leave / out of employment on to-day ⇒ decideSwap names คุณ (leaveYou · endedYou)"),
   D("S10.5", "r2-m4", M, "RED", "out-of-scope decider on a closed swap ⇒ H1.1 branch text (scope before status)"),
+  D("S10.6", "r3-M1", M, "RED", "peer accept wording: requester on leave ⇒ leavePeer · requester ended ⇒ colleague-ended · peer on leave ⇒ leaveYou"),
   D("X1.1", "X1", C, "RED", "10 lanes × 3 rounds requestSwap same entry ⇒ 1 row"),
   D("X6.1", "X6", C, "RED", "10 lanes accept ⇒ 1 PENDING · 1 request"),
   D("X2.1", "X2", C, "RED", "sys2 / other-tenant target or toEntry ⇒ refused · 0 rows"),
@@ -828,7 +829,7 @@ async function runDb(): Promise<void> {
     const x = await pair({ give: true });
     await leave(E.B, x.d1);
     const r = await acc(U.B, x.id);
-    chk("S2.8", x.r.ok && said(r, T.leavePeer) && (await st(x.id)) === "AWAITING_PEER", T.leavePeer, `${shown(x.r)} ${shown(r)} ${await st(x.id)}`);
+    chk("S2.8", x.r.ok && said(r, T.leaveYou) && (await st(x.id)) === "AWAITING_PEER", T.leaveYou, `${shown(x.r)} ${shown(r)} ${await st(x.id)}`); // r3 ruling: worded for the peer who receives it
   }
 
   // ═══ S3 approval wiring ═══
@@ -1191,6 +1192,22 @@ async function runDb(): Promise<void> {
     // review m4: su2 (u2) is APPROVED (S6.5) — mgr-u1 must get the H1.1 branch text, not the status text
     const r = await dec(U.mgrU1, su2);
     chk("S10.5", said(r, T.otherBranch), T.otherBranch, shown(r));
+  }
+  {
+    // r3 (review r2-M1): refusals at peer accept are worded for the peer (C = requester, B = peer)
+    const d = nd();
+    const d3 = nd(); // own 4-day block (the leave of B must not reach the next scenario's days)
+    const [c1, b1, c2, b2, c3] = await E1([[E.C, S.m, d], [E.B, S.a, addDay(d, 1)], [E.C, S.m, addDay(d, 2)], [E.B, S.a, addDay(d, 3)], [E.C, S.m, d3]]);
+    const [i1, i2, i3] = [idOf(await req(U.C, c1!, E.B, b1!)), idOf(await req(U.C, c2!, E.B, b2!)), idOf(await req(U.C, c3!, E.B))];
+    await leave(E.C, addDay(d, 1));
+    const r1 = await acc(U.B, i1);
+    await P.hrEmployee.update({ where: { id: E.C }, data: { endDate: dbDate(addDay(d, 2)) } });
+    const r2 = await acc(U.B, i2);
+    await P.hrEmployee.update({ where: { id: E.C }, data: { endDate: null } });
+    await leave(E.B, d3);
+    const r3 = await acc(U.B, i3);
+    const sts = [await st(i1), await st(i2), await st(i3)];
+    ck("S10.6", { made: !!i1 && !!i2 && !!i3, reqLeave: said(r1, T.leavePeer), reqEnded: said(r2, T.targetNf), peerLeave: said(r3, T.leaveYou), unchanged: sts.every((x) => x === "AWAITING_PEER") }, "leavePeer · targetNf · leaveYou", `${shown(r1)} · ${shown(r2)} · ${shown(r3)} ${sts}`);
   }
 
   // ═══ X ═══
