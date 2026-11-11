@@ -458,7 +458,7 @@ const CHECKS: readonly Def[] = [
   // r2 fix round (controller rulings 11 Nov · pre-approved ORACLE-EDIT): one check per fix
   D("S10.1", "r2-F1", M, "RED", "moved (published=false, publishedAt kept) row ⇒ request refused unpublished text · 0 rows · 0 events"),
   D("S10.2", "r2-F2b", M, "RED", "510 newer u2 closed rows ⇒ mgr-u1 still lists its open u1 swap · mgrAll lists it (open first)"),
-  D("S10.3", "r2-F2", M, "RED", "FROM u1 · TO u2 swap: mgr-u1 list item has no reason · mgrAll (both in scope) has reason"),
+  D("S10.3", "r2-F2", M, "RED", "FROM u1 · TO u2 swap: mgr-u1 list item has no reason + to null · mgrAll (both in scope) has reason + both sides"),
   D("S10.4", "r2-F3", M, "RED", "requester on leave / out of employment on to-day ⇒ decideSwap names คุณ (leaveYou · endedYou)"),
   D("S10.5", "r2-m4", M, "RED", "out-of-scope decider on a closed swap ⇒ H1.1 branch text (scope before status)"),
   D("X1.1", "X1", C, "RED", "10 lanes × 3 rounds requestSwap same entry ⇒ 1 row"),
@@ -1171,7 +1171,7 @@ async function runDb(): Promise<void> {
     const ac = await sw("respondSwap", ctx, vOf(U.Dd), id, { accept: true });
     const [l1, la] = [await sw("listSwapsForManager", ctx, vOf(U.mgrU1), {}), await sw("listSwapsForManager", ctx, vOf(U.mgrAll), {})];
     const [i1, ia] = [itemOf(l1, id), itemOf(la, id)];
-    ck("S10.3", { made: !!id && ac.ok, listed: !!i1, noReason: !!i1 && !("reason" in i1) && !JSON.stringify(i1).includes(REASON), allReason: ia?.reason === REASON }, "mgr-u1 no reason · mgrAll reason", `accept ${shown(ac)} u1=${i1 ? Object.keys(i1).length : "∅"}`);
+    ck("S10.3", { made: !!id && ac.ok, listed: !!i1, noReason: !!i1 && !("reason" in i1) && !JSON.stringify(i1).includes(REASON), toHidden: !!i1 && i1.to === null && i1.shape === "SWAP", allReason: ia?.reason === REASON, allTo: ia?.to?.entryId === bU2 && ia?.from?.entryId === aU1 }, "mgr-u1 no reason · to null · mgrAll reason + both sides", `accept ${shown(ac)} u1=${i1 ? Object.keys(i1).length : "∅"}`);
   }
   {
     // F3 / review m5: requester-side refusals name คุณ (SWAP C ↔ B, B accepts, then C's to-day changes)

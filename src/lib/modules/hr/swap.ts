@@ -632,7 +632,7 @@ export type SwapListResult = { ok: true; items: SwapItem[] } | SwapFail;
 /** สาขาของกะฝั่งหนึ่ง (exists=false = แถวไม่มีแล้ว) */
 type SideUnit = { exists: boolean; unitId: string | null };
 /** แถว → DTO · ฝั่งกะ = เฉพาะสองกะของคำขอ (ไม่มีแถวอื่นของใคร) · reason เฉพาะเมื่อผู้เรียกบอกว่าเห็นได้ */
-async function toItems(ctx: Ctx, rows: SwapRow[], o: { me: string | null; showReason: (s: SwapRow, units: { from: SideUnit; to: SideUnit | null }) => boolean }): Promise<SwapItem[]> {
+async function toItems(ctx: Ctx, rows: SwapRow[], o: { me: string | null; showReason: (s: SwapRow, units: { from: SideUnit; to: SideUnit | null }) => boolean; showTo?: (units: { from: SideUnit; to: SideUnit | null }) => boolean }): Promise<SwapItem[]> {
   if (rows.length === 0) return [];
   const db = tenantDb(ctx);
   const entryIds = [...new Set(rows.flatMap((r) => [r.fromEntryId, ...(r.toEntryId ? [r.toEntryId] : [])]))];
@@ -650,6 +650,11 @@ async function toItems(ctx: Ctx, rows: SwapRow[], o: { me: string | null; showRe
     const e = id ? eOf.get(id) : undefined;
     return e ? { entryId: e.id, date: dayOf(e.date), startMin: e.startMin, endMin: e.endMin, crossesMidnight: e.crossesMidnight, shiftName: sOf.get(e.shiftId) ?? "" } : null;
   };
+  const unitOfSide = (id: string): SideUnit => {
+    const e = eOf.get(id);
+    return { exists: !!e, unitId: e?.unitId ?? null };
+  };
+  const unitsOf = (r: SwapRow) => ({ from: unitOfSide(r.fromEntryId), to: r.toEntryId ? unitOfSide(r.toEntryId) : null });
   return rows.map((r) => {
     const reqApproved = reqs.some((q) => q.entityId === r.id && q.status === "APPROVED");
     const item: SwapItem = {
@@ -662,15 +667,11 @@ async function toItems(ctx: Ctx, rows: SwapRow[], o: { me: string | null; showRe
       requester: { employeeId: r.requesterEmployeeId, name: nOf.get(r.requesterEmployeeId) ?? "" },
       target: { employeeId: r.targetEmployeeId ?? "", name: r.targetEmployeeId ? (nOf.get(r.targetEmployeeId) ?? "") : "" },
       from: side(r.fromEntryId),
-      to: side(r.toEntryId),
+      to: o.showTo && !o.showTo(unitsOf(r)) ? null : side(r.toEntryId), // r2 ruling F2: กะของสาขานอกขอบเขต ไม่ส่ง (shape ยังบอกว่าเป็น SWAP)
       canRespond: !!o.me && r.targetEmployeeId === o.me && r.status === "AWAITING_PEER",
       canCancel: !!o.me && r.requesterEmployeeId === o.me && (r.status === "AWAITING_PEER" || r.status === "PENDING"),
     };
-    const unitOfSide = (id: string): SideUnit => {
-      const e = eOf.get(id);
-      return { exists: !!e, unitId: e?.unitId ?? null };
-    };
-    if (o.showReason(r, { from: unitOfSide(r.fromEntryId), to: r.toEntryId ? unitOfSide(r.toEntryId) : null })) item.reason = r.reason;
+    if (o.showReason(r, unitsOf(r))) item.reason = r.reason;
     if (r.status === "CANCELLED" && reqApproved) item.outcome = T.outcomeStale;
     return item;
   });
@@ -725,6 +726,8 @@ export async function listSwapsForManager(ctx: Ctx, viewer: SwapActor, input: { 
       items: await toItems(ctx, [...open, ...closed], {
         me: me && me.systemId === ctx.systemId ? me.employeeId : null,
         showReason: (_r, u) => decider && sideOk(u.from) && sideOk(u.to),
+        // r2 ruling F2 (H1.1 สาขา): ผู้ดูที่ขอบเขตไม่ครอบทั้งสองกะ ⇒ to = null (ไม่เห็นกะของอีกสาขา)
+        showTo: (u) => sideOk(u.from) && sideOk(u.to),
       }),
     };
   } catch (e) {

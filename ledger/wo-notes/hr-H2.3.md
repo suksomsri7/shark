@@ -89,3 +89,5 @@ Debts (not fixed, per controller):
 - hunter "leave approval racing a swap apply" (leave effect takes no roster key) → H2.7
 
 r2 verification: oracle unforced / forced / forced `passed 78/78` exit 0 ×3 · `RESIDUE none` ×3 · qc-hr-h2.1 90/90 · qc-hr-roster 24/24 · qc-hf-hr-privacy 194/194 · qc-approval 16/16 · qc-approval-wiring 7/7 (exit 0) · fitness-hr 8/8 bare + env · typecheck (12288/14000M) exit 0, 0 errors. Not re-run in r2: fitness.mts (pre-commit hook passed) and the rest of the r1 picker set.
+
+r2b (controller ruling on fix 3): a viewer whose scope does not cover BOTH entries' units gets `to: null` and no `reason` (`shape` still SWAP) — `toItems` option `showTo` used by `listSwapsForManager`. S10.3 extended (pre-approved): mgr-u1 `to === null`, mgrAll gets reason + both sides. RED before the change: `passed 77/78 (QC_FORCE)` (S10.3 `toHidden`) · RESIDUE none. GREEN after: forced 78/78 exit 0 · unforced 78/78 exit 0 · RESIDUE none ×2 · qc-hf-hr-privacy 194/194 exit 0. DTO type `SwapItem` unchanged (`to: SwapSide | null` already) ⇒ typecheck not re-run (only the internal `toItems` options type gained `showTo?`).
