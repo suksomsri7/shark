@@ -583,11 +583,14 @@ type RowTimes = { startMin: number; endMin: number; breakMin: number; crossesMid
 /**
  * ต้นทางมีเวลาต่างจากกะ และกะไม่ถูกแก้หลังเขียนแถวนั้น ⇒ ความต่างคือเวลาที่ผู้จัดระบุเอง (Q7) ⇒ ลอกตามต้นทางทุกช่อง
  * กะถูกแก้หลังเขียนแถว ⇒ แยกไม่ออกว่าเป็นเวลาเองหรือสำเนาเก่าของกะ ⇒ ใช้เวลากะ "ปัจจุบัน" ตาม Q6 (ไม่มีคอลัมน์บอก override — ไม่แก้ schema ใน H2.1)
+ * HR H2.1 r3 ▸ เทียบกับ createdAt ไม่ใช่ updatedAt — updatedAt ขยับตอนเผยแพร่/ย้ายกะเดิมทั้งที่เวลาในแถวไม่เปลี่ยน ⇒ สำเนาเก่าถูกนับเป็น
+ *   เวลาเอง (review r2 MAJOR-1) · เวลาในแถวเขียนตอนสร้าง (เพิ่ม/คัดลอก) หรือตอนย้ายเปลี่ยนกะ (ได้เวลากะขณะนั้น ⇒ ไม่ differs จนกะถูกแก้)
+ *   ข้อจำกัดที่ยอมรับ (หนี้ D-F4): เวลาเองที่ใส่ให้แถวเก่าหลังกะถูกแก้ จะไม่ถูกคัดลอก — คอลัมน์จริง timesOverridden มาใน migration H2.4 ◂
  */
-function copyTimesOf(r: RowTimes & { updatedAt: Date }, s: ShiftRow, shiftEditedAt: Date | null): RowTimes {
+function copyTimesOf(r: RowTimes & { createdAt: Date }, s: ShiftRow, shiftEditedAt: Date | null): RowTimes {
   const shiftTimes = { startMin: s.startMin, endMin: s.endMin, breakMin: s.breakMin, crossesMidnight: s.crossesMidnight };
   const differs = r.startMin !== s.startMin || r.endMin !== s.endMin || r.breakMin !== s.breakMin || r.crossesMidnight !== s.crossesMidnight;
-  if (differs && shiftEditedAt && r.updatedAt >= shiftEditedAt) return { startMin: r.startMin, endMin: r.endMin, breakMin: r.breakMin, crossesMidnight: r.crossesMidnight };
+  if (differs && shiftEditedAt && r.createdAt >= shiftEditedAt) return { startMin: r.startMin, endMin: r.endMin, breakMin: r.breakMin, crossesMidnight: r.crossesMidnight };
   return shiftTimes;
 }
 
@@ -606,7 +609,7 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
     const db = tenantDb(ctx);
     const src = await db.hrRosterEntry.findMany({
       where: { date: { gte: dbDate(fromWeek), lte: dbDate(addDays(fromWeek, 6)) }, ...entryScopeWhere(scope, unitId) },
-      select: { ...ENTRY_SELECT, updatedAt: true },
+      select: { ...ENTRY_SELECT, createdAt: true }, // HR H2.1 r3 ▸ createdAt แทน updatedAt (copyTimesOf) ◂
       orderBy: [{ employeeId: "asc" }, { date: "asc" }, { startMin: "asc" }, { id: "asc" }],
       take: 5000,
     });
@@ -867,8 +870,11 @@ export async function publishRoster(ctx: Ctx, viewer: RosterViewer, input: { fro
       // ใต้ล็อก: ชุดที่ขอต้องยังครบ — แถวหาย/ถูกประกาศไปแล้ว ⇒ ย้อนทั้งหมด (มติธง 4 — ไม่เผยแพร่ n−1 เงียบ ๆ)
       // HR H2.1 r2 ▸ ตรวจซ้ำด้วยตัวกรองเดียวกับตอนเลือก (ช่วงวัน + ขอบเขตสาขา) — แถวที่ถูกย้ายออกนอกช่วง/สาขาก่อนล็อก ⇒ ไม่ตรง ⇒ ย้อนทั้งหมด (review R-1 · hunt F1) ◂
       const recheck: Prisma.HrRosterEntryWhereInput = { id: { in: ids }, published: false, date: { gte: dbDate(from), lte: dbDate(to) }, ...entryScopeWhere(scope, unitId) };
-      const still = await tx.hrRosterEntry.count({ where: recheck });
-      if (still !== ids.length) throw new RosterRefusal(ROSTER_TEXT.publishRace);
+      // HR H2.1 r3 ▸ อ่าน id/พนักงาน/วัน ใต้ล็อกด้วย tx — แถวที่ถูกย้ายไปคน/วันอื่นในมุมเดียวกันก่อนล็อก ⇒ กุญแจที่ล็อกไว้ไม่ใช่ของมัน
+      //   และ payload employeeIds ผิดคน ⇒ ย้อนทั้งหมด (review r2 MEDIUM-1) ◂
+      const keyOf = new Map(cand.map((c) => [c.id, `${c.employeeId}|${dayOf(c.date)}`]));
+      const still = await tx.hrRosterEntry.findMany({ where: recheck, select: { id: true, employeeId: true, date: true } });
+      if (still.length !== ids.length || still.some((r) => keyOf.get(r.id) !== `${r.employeeId}|${dayOf(r.date)}`)) throw new RosterRefusal(ROSTER_TEXT.publishRace);
       const upd = await tx.hrRosterEntry.updateMany({ where: recheck, data: { published: true, publishedAt: at } });
       if (upd.count !== ids.length) throw new RosterRefusal(ROSTER_TEXT.publishRace);
       // payload = id/ช่วงวันล้วน (Q13 · COMMON §C.1) — ไม่มีชื่อ/เวลา/เงิน

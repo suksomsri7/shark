@@ -232,6 +232,9 @@ const CHECKS: readonly Def[] = [
   D("S9.2", "R11", "MAJOR", "RED", "[race] shift-only change committed while moveEntry waits on the lock ⇒ refused · the parallel shift + times kept · date unchanged (no lost update, R-2)"),
   D("S9.3", "R7", "MAJOR", "RED", "[service] unpublishedCount per unit/range: a u1 publish keeps u2's published removal counted · a publish with no new rows clears a lone removal of its unit only (R-3)"),
   D("S9.4", "R6", "MAJOR", "RED", "[service] copyWeek keeps the source row's own override times: a 14:00–20:00 override on the 07:00–15:00 shift is copied as 14:00–20:00 (hunter F4, controller ruling)"),
+  // S9 r3 (hr-H2.1-review-r2.md MAJOR-1 · MEDIUM-1 — ORACLE-EDIT pre-approved: S9.5 + S9.6 added only)
+  D("S9.5", "R6", "MAJOR", "RED", "[service] S3.1 variant: source row published (case 1) / moved on the same shift (case 2) AFTER the shift edit ⇒ copyWeek still takes the CURRENT shift times (review r2 MAJOR-1)"),
+  D("S9.6", "R10", "MAJOR", "RED", "[race] row moved to another employee + day inside the same view while a manager-u1 publish waits on its lock ⇒ \"" + T_PUBLISH_RACE + "\" · nothing published · 0 events (review r2 MEDIUM-1)"),
   // X
   D("X6.1", "X6", "CRITICAL", "RED", "[race] addEntry same key 10-way × 3 rounds ⇒ 1 row per round · 9 losers \"" + T_DUP + "\""),
   D("X6.2", "X6", "CRITICAL", "RED", "[race] publish ∥ moveEntry same day × 3 ⇒ both ok · never a published row with a stale snapshot · one event per publish that flipped rows"),
@@ -1766,6 +1769,47 @@ async function runDb(): Promise<void> {
     const t = (await rowsA("2030-09-03", "2030-09-03")).find((x) => x.employeeId === E.e1);
     const r = { prep: add.ok, copied: cp.ok && Number(cp.value?.created) === 1, shift: t?.shiftId === S.m, times: t?.startMin === 840 && t?.endMin === 1200 && t?.breakMin === SH[S.m]!.breakMin && t?.crossesMidnight === false };
     chk("S9.4", Object.values(r).every(Boolean), "09-03 copied on shift m with 14:00–20:00 (840–1200)", `${failedKeys(r)} ${cp.ok ? `created=${cp.value?.created}` : short(cp.text, 50)} add=${add.ok ? "ok" : short(add.text, 40)} target=${t ? `${t.startMin}-${t.endMin}/${t.breakMin}/${t.crossesMidnight}` : "∅"}`);
+  }
+  {
+    // r3 MAJOR-1: rows written BEFORE a shift edit, then published (case 1) / moved on the same shift (case 2) after it,
+    // still carry the stale snapshot ⇒ copyWeek must take the current shift times (Q6 · S3.1) · own shift so nothing else moves
+    const f = await mkShift(sA.id, T, "กะทดสอบ r3", null, 420, 900);
+    const c1 = await rawEntry({ employeeId: E.e1, date: "2030-09-10", shiftId: f, unitId: u1 });
+    const c2 = await rawEntry({ employeeId: E.e1, date: "2030-09-24", shiftId: f, unitId: u1 });
+    await sleep(1100);
+    await P.hrShift.update({ where: { id: f }, data: { endMin: 960 } });
+    SH[f] = { ...SH[f]!, endMin: 960 };
+    await sleep(1100);
+    const pub = await ro("publishRoster", ctxA, vOf(U.owner), { from: "2030-09-09", to: "2030-09-15" });
+    const mv = await ro("moveEntry", ctxA, vOf(U.owner), c2, { date: "2030-09-25" });
+    const r1 = await row(c1);
+    const r2 = await row(c2);
+    const cp1 = await ro("copyWeek", ctxA, vOf(U.owner), { fromWeek: "2030-09-09", toWeek: "2030-09-16" });
+    const cp2 = await ro("copyWeek", ctxA, vOf(U.owner), { fromWeek: "2030-09-23", toWeek: "2030-09-30" });
+    const t1 = (await rowsA("2030-09-17", "2030-09-17")).find((x) => x.employeeId === E.e1);
+    const t2 = (await rowsA("2030-10-02", "2030-10-02")).find((x) => x.employeeId === E.e1);
+    const r = {
+      prep: pub.ok && Number(pub.value?.published) === 1 && r1?.published === true && r1?.endMin === 900 && mv.ok && dk(r2?.date) === "2030-09-25" && r2?.shiftId === f && r2?.endMin === 900,
+      copied: cp1.ok && Number(cp1.value?.created) === 1 && cp2.ok && Number(cp2.value?.created) === 1,
+      published: t1?.shiftId === f && snapOk(t1, f),
+      moved: t2?.shiftId === f && snapOk(t2, f),
+    };
+    const tt = (t: Any) => (t ? `${t.startMin}-${t.endMin}` : "∅");
+    chk("S9.5", Object.values(r).every(Boolean), "09-17 + 10-02 copied with current shift 420–960", `${failedKeys(r)} pub=${pub.ok ? pub.value?.published : short(pub.text, 30)} mv=${mv.ok ? "ok" : short(mv.text, 30)} cp=${cp1.ok ? cp1.value?.created : short(cp1.text, 30)}/${cp2.ok ? cp2.value?.created : short(cp2.text, 30)} published→${tt(t1)} moved→${tt(t2)}`);
+  }
+  {
+    // r3 MEDIUM-1: candidate (e6, 10-09) moved to (e1, 10-11) — same unit u1, same week — before the publish's lock ⇒ publishRace
+    const a = await rawEntry({ employeeId: E.e1, date: "2030-10-08", shiftId: S.m, unitId: u1 });
+    const b = await rawEntry({ employeeId: E.e6, date: "2030-10-09", shiftId: S.m, unitId: u1 });
+    const e0 = (await eventsOf()).length;
+    const h = typeof rMod?.publishRoster === "function"
+      ? await underRosterLock({ employeeId: E.e6, date: "2030-10-09" }, (tx) => tx.$executeRawUnsafe(`UPDATE "HrRosterEntry" SET "employeeId" = $1, "date" = $2::date WHERE id = $3`, E.e1, "2030-10-11", b), () => ro("publishRoster", ctxA, vOf(U.mgrU1), { from: "2030-10-07", to: "2030-10-13" }))
+      : { res: { ok: false, text: "∅publishRoster", value: undefined } as RO, waited: false, holderErr: "" };
+    const ra = await row(a);
+    const rb = await row(b);
+    const evs = await eventsOf();
+    const r = { waited: h.waited, refused: !h.res.ok && h.res.text === T_PUBLISH_RACE, moved: rb?.employeeId === E.e1 && dk(rb?.date) === "2030-10-11" && rb?.published === false && rb?.publishedAt === null, other: ra?.published === false, noEvent: evs.length === e0 };
+    chk("S9.6", Object.values(r).every(Boolean), `"${T_PUBLISH_RACE}" · nothing published · 0 events`, `${failedKeys(r)} ${h.res.ok ? `ACCEPTED published=${h.res.value?.published}` : `"${short(h.res.text, 50)}"`} b=${rb?.employeeId === E.e1 ? "e1" : rb?.employeeId}/${dk(rb?.date)}/pub=${rb?.published} a.pub=${ra?.published} events +${evs.length - e0}${h.holderErr ? ` holder=${h.holderErr}` : ""}`);
   }
 
   // ═══ X12 fitness without env ═══

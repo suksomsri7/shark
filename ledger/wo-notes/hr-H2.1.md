@@ -149,3 +149,41 @@ Branch `wip/pos-hr-h2.1-fix` cut from 7dd696697 (head of `wip/pos-hr-h2.1`) · w
 
 ### Next on resume
 1. Controller rules on the two deviations (R-2 without `published` · F4 heuristic vs S3.1). 2. Typecheck once (`env NODE_OPTIONS=--max-old-space-size=8192 ISO_MEM=9800M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`, when no other build/typecheck iso unit and MemAvailable ≥ 10 000 MB). 3. Controller re-run + reviewer of r2 diff. QC4 temp data left: none.
+
+## r3 (11 Nov) — fix round on review r2 (`hr-H2.1-review-r2.md`) · branch `wip/pos-hr-h2.1-fix` · worktree `/root/projects/shark-hr`
+Controller rulings r3: MAJOR-1 → createdAt heuristic + S9.5 · MEDIUM-1 → key re-check under lock + S9.6 · MINOR-1..3 → debts (owner H2.2).
+
+### Coded (`src/lib/modules/hr/roster.ts`, markers `// HR H2.1 r3 ▸ … ◂`)
+- **MAJOR-1 / F4 (:583-594, select :612)** `copyTimesOf` now compares `row.createdAt >= shift.updatedAt` (was `updatedAt`); copyWeek selects `createdAt` instead of `updatedAt`. Publish (`updateMany published:true`) and same-shift moves bump `updatedAt` but not the times, so they no longer turn a stale snapshot into an "override". Times are written only at create (add/copy, maybe override) or by a shift-changing move (copies the then-current shift ⇒ not `differs` until the next shift edit ⇒ then createdAt < edit ⇒ shift times — correct).
+- **MEDIUM-1 / R-1 leftover (:873-877)** under the lock publish re-reads `{id, employeeId, date}` with `tx` (`findMany` on the same `recheck` filter) and throws the existing `ROSTER_TEXT.publishRace` unless the count matches and every row's `employeeId|dayOf(date)` equals its pre-lock candidate key ⇒ whole tx rolls back, no outbox event, no audit. Guarded `updateMany` + count check kept.
+
+### Oracle (`scripts/qc-hr-h2.1.mts`, pre-approved ORACLE-EDIT · S9.5 + S9.6 only · 88 → 90 checks)
+- **S9.5** (registry :236 · body after S9.4): own shift `กะทดสอบ r3` 07:00–15:00 · rows e1 2030-09-10 and 2030-09-24 written · +1.1 s · shift edited to 07:00–16:00 · +1.1 s · case 1 publish week 09-09 · case 2 `moveEntry` 09-24 → 09-25 on the same shift · copyWeek 09-09→09-16 and 09-23→09-30 ⇒ 09-17 and 10-02 must carry 420–960.
+- **S9.6** (registry :237): built like S9.1 — holder lane holds (e6, 2030-10-09) and moves row b to (e1, 2030-10-11) (same unit u1, same week) while a manager-u1 publish of 10-07…10-13 waits ⇒ `publishRace`, a and b unpublished, 0 events.
+- **RED on fe1053198** (oracle edited, roster.ts unfixed, forced): `passed 88/90 · failed H2.1-S9.5 H2.1-S9.6 · exit=1` — S9.5 `actual published,moved … published→420-900 moved→420-900` (stale snapshot copied, the reviewed bug) · S9.6 `actual refused,moved,other,noEvent ACCEPTED published=2 b=e1/2030-10-11/pub=true a.pub=true events +1` · Z1 residue ✅. S3.1/S9.4/X6.2 green in that run.
+
+### Suites (final code · `iso.sh → qc4.sh → with-gate-lock.sh env QC_H06_BASE=d350c26c… [QC_FORCE=1]`)
+| suite | result | exit |
+|---|---|---|
+| qc-hr-h2.1 unforced | 90/90 · RESIDUE none | 0 |
+| qc-hr-h2.1 forced #1 | 90/90 · RESIDUE none | 0 |
+| qc-hr-h2.1 forced #2 | 90/90 · RESIDUE none | 0 |
+| qc-hr-roster forced | 24/24 | 0 |
+| qc-hr-attendance forced | 31/31 | 0 |
+| qc-hr-leave-booking forced | 14/14 | 0 |
+| fitness-hr via qc4.sh / `env -u DATABASE_URL -u DIRECT_URL` | 8/8 · 8/8 | 0 · 0 |
+| typecheck (once, `NODE_OPTIONS=8192 ISO_MEM=9800M`) | 0 errors | 0 |
+Not run (controller's): full regression, `pnpm fitness`.
+
+### Debts added in r3
+| id | item | owner |
+|---|---|---|
+| D-F4 | createdAt heuristic: a manual time override applied to an *older* row after a shift edit is not carried by copyWeek (falls back to current shift times); an override whose shift is edited later also falls back. Real fix = column `HrRosterEntry.timesOverridden` | H2.4 migration |
+| D-R3w | review r2 MINOR-1: R-3 clearing window = candidate read → publish audit write (audit written after commit via `writeAudit`, own connection) — removals of published rows in that window are cleared unannounced; fix = compare against `at` stored in the audit `after`, or write the audit inside the tx | H2.2 (board counter) |
+| D-R3a | review r2 MINOR-1: `writeAudit` swallows errors ⇒ a failed publish audit never clears the counter (stuck high) | H2.2 (board counter) |
+| D-R3c | review r2 MINOR-2: `take: 500` publish audits ⇒ no whole-view floor past 500 publishes ⇒ old removals may count forever | H2.2 (board counter) |
+| D-R3m | review r2 MINOR-3: zero-candidate marker decided outside any lock ⇒ a removal landing between count and marker is cleared silently | H2.2 (board counter) |
+
+### COMMON §F (session/hr copy, same numbering as r2)
+1 N/A · 2 ✓ (new under-lock read uses `tx`) · 3 ✓ (same `entryScopeWhere` recheck) · 4 ✓ (existing `publishRace` only) · 5 unchanged · 6 N/A · 7 ✓ · 8 N/A · 9 ✓ (no new event; refusal emits none) · 10 ✓ (roster.ts + oracle + notes only).
+QC4 temp data left: none.
