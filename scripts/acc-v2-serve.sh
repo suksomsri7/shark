@@ -83,7 +83,7 @@ fi
 
 if [ "$DO_BUILD" = 1 ]; then
   echo "🔨 build (ต่อคิว gate lock — อาจรอถ้ามี session อื่น build อยู่)…"
-  env "${ENVARR[@]}" bash "$ROOT/scripts/with-gate-lock.sh" pnpm exec next build 2>&1 | tail -25
+  env "${ENVARR[@]}" bash "$ROOT/scripts/with-gate-lock.sh" pnpm exec next build ${ACC_V2_BUILD_FLAGS:-} 2>&1 | tail -25  # HR SYNC ▸ ACC_V2_BUILD_FLAGS=--webpack บนฐานที่รวม main แล้ว (Turbopack compile >40 นาที) ◂
 else
   [ -d "$ROOT/.next" ] || { echo "❌ ไม่มี .next อยู่เลย — ต้อง 'bash scripts/acc-v2-serve.sh build' (หรือเปล่า arg) ก่อนอย่างน้อย 1 ครั้ง"; exit 1; }
   echo "⏭️  ข้าม build — ใช้ .next เดิม (โค้ดฝั่ง app ต้องไม่เปลี่ยนตั้งแต่ build ล่าสุด ไม่งั้นภาพ/ผลไม่ตรงโค้ดจริง)"
