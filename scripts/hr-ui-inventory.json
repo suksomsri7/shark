@@ -553,6 +553,219 @@
    "oracle": "qc-hr-h0.7"
   },
   {
+   "page": "/app/approvals",
+   "testid": "hr-swap-respond-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/approvals/page.tsx",
+   "conditional": "เฉพาะคำขอสลับกะที่ส่งถึงผู้ใช้ (ผู้รับกะ) และยัง AWAITING_PEER",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-swap-respond-*",
+    "state": "appears"
+   },
+   "wo": "H2.3",
+   "oracle": "qc-hr-h2.3",
+   "note": "กล่องปุ่มรับ/ไม่รับ (* = id คำขอสลับ) — listMySwaps canRespond"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-swap-respond-*-accept-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/approvals/page.tsx",
+   "via": "ConfirmDialog testId={`hr-swap-respond-${x.id}-accept`} → `${testId}-trigger`",
+   "conditional": "เฉพาะคำขอสลับกะที่ส่งถึงผู้ใช้ (ผู้รับกะ) และยัง AWAITING_PEER",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "modal",
+    "target": "hr-swap-respond-*-accept-sheet"
+   },
+   "wo": "H2.3",
+   "oracle": "qc-hr-h2.3"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-swap-respond-*-accept-sheet",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/approvals/page.tsx",
+   "via": "ConfirmDialog → `${testId}-sheet` (ช่องซ่อน systemId + swapId + accept=1)",
+   "conditional": "เฉพาะคำขอสลับกะที่ส่งถึงผู้ใช้ (ผู้รับกะ) และยัง AWAITING_PEER",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:respondSwapAction",
+    "db": "HrShiftSwapRequest.status → PENDING (+ ApprovalRequest เมื่อมีกติกา · เจ้าของร้าน = APPROVED + ตารางกะ) · AuditLog hr.swap.respond"
+   },
+   "wo": "H2.3",
+   "oracle": "qc-hr-h2.3"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-swap-respond-*-decline-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/approvals/page.tsx",
+   "via": "ConfirmDialog testId={`hr-swap-respond-${x.id}-decline`} → `${testId}-trigger`",
+   "conditional": "เฉพาะคำขอสลับกะที่ส่งถึงผู้ใช้ (ผู้รับกะ) และยัง AWAITING_PEER",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "modal",
+    "target": "hr-swap-respond-*-decline-sheet"
+   },
+   "wo": "H2.3",
+   "oracle": "qc-hr-h2.3"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-swap-respond-*-decline-sheet",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/approvals/page.tsx",
+   "via": "ConfirmDialog → `${testId}-sheet` (ช่องซ่อน systemId + swapId + accept=0)",
+   "conditional": "เฉพาะคำขอสลับกะที่ส่งถึงผู้ใช้ (ผู้รับกะ) และยัง AWAITING_PEER",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:respondSwapAction",
+    "db": "HrShiftSwapRequest.status → REJECTED · AuditLog hr.swap.respond"
+   },
+   "wo": "H2.3",
+   "oracle": "qc-hr-h2.3"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-swap-cancel-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/approvals/page.tsx",
+   "conditional": "คำขอสลับกะของผู้ใช้ (ผู้ขอ) ที่ยังเปิด — ยังไม่เข้าสาย = ส่วน 'คำขอสลับกะ' · อยู่ในสาย (PENDING) = แถว 'คำขอของฉัน'",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-swap-cancel-*",
+    "state": "appears"
+   },
+   "wo": "H2.3",
+   "oracle": "qc-hr-h2.3",
+   "note": "กล่องปุ่มยกเลิกคำขอสลับกะ (* = id คำขอสลับ) — สองที่ไม่ซ้อนกัน (ในสาย/ไม่อยู่ในสาย)"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-swap-cancel-*-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/approvals/page.tsx",
+   "via": "ConfirmDialog testId={`hr-swap-cancel-${id}`} → `${testId}-trigger`",
+   "conditional": "คำขอสลับกะของผู้ใช้ (ผู้ขอ) ที่ยังเปิด — ยังไม่เข้าสาย = ส่วน 'คำขอสลับกะ' · อยู่ในสาย (PENDING) = แถว 'คำขอของฉัน'",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "modal",
+    "target": "hr-swap-cancel-*-sheet"
+   },
+   "wo": "H2.3",
+   "oracle": "qc-hr-h2.3"
+  },
+  {
+   "page": "/app/approvals",
+   "testid": "hr-swap-cancel-*-sheet",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/app/app/approvals/page.tsx",
+   "via": "ConfirmDialog → `${testId}-sheet` (ช่องซ่อน systemId + swapId)",
+   "conditional": "คำขอสลับกะของผู้ใช้ (ผู้ขอ) ที่ยังเปิด — ยังไม่เข้าสาย = ส่วน 'คำขอสลับกะ' · อยู่ในสาย (PENDING) = แถว 'คำขอของฉัน'",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:cancelSwapAction",
+    "db": "HrShiftSwapRequest.status → CANCELLED · ApprovalRequest.status → CANCELLED (ถ้ามี) · AuditLog hr.swap.cancel"
+   },
+   "wo": "H2.3",
+   "oracle": "qc-hr-h2.3"
+  },
+  {
    "page": "/app/sys/[id]/hr/employees",
    "testid": "hr-register-branch-filter",
    "kind": "display",

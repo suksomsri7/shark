@@ -61,6 +61,8 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   ],
   // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (กะ · ประเภทการลา · วันหยุด) — ไม่อ้างว่าตรงภาพ 08 · เจ้าของ (ทุกสาขา) + ผู้จัดการสาขา (เห็นทั้งร้าน + หัวหิน) ◂
   "1.2": [{ key: "settings-stub", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner", "manager-branch"], why: "หน้าตั้งค่าแบบย่อ: กะ 4 · ประเภทการลา 4 · วันหยุด 2 (H1.2)" }],
+  // HR H2.3 ▸ R11 หน้า "อนุมัติ": ส่วนคำขอสลับกะ (รับ/ไม่รับ · ยกเลิก) + แถวคำขอสลับกะใน "คำขอของฉัน" — ไม่มีหน้าใหม่ (Q14) · ไม่มี seed (Q15: ว่าง = ไม่มีส่วนนี้) ◂
+  "2.3": [{ key: "approvals-swaps", path: () => `/app/approvals`, users: ["owner", "manager", "staff"], why: "คำขอสลับกะถึงคุณ + ยกเลิกคำขอสลับกะ (H2.3)" }],
 };
 const VIEWPORTS = [
   { name: "desktop", w: 1440, h: 900, mobile: false, touch: false },
