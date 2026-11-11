@@ -37,3 +37,13 @@ Screenshots 1440/1024/390 × owner/manager/manager-branch + 404 for the five ref
 
 ## Commands
 `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h2.2.mts` (forced, red) · same without `QC_FORCE` (SKIP) · `--list` (no DB).
+
+## Rulings (controller, 11 Nov)
+1. ACCEPTED — `roster.ts` may change only inside hunks marked `// HR H2.2 ▸ … ◂` (D-R3 fixes); S7.1 enforces it. Lane 2 (H2.3) also adds a marked block to roster.ts — whoever merges second rebases.
+2. D-R3a RULED — the publish mark (audit row the counter reads) is written inside the publish tx with the tx client, so a failed mark rolls the publish back. No oracle check (cannot be forced deterministically); the reviewer verifies it.
+3. D-R3m ACCEPTED — marker reuses the pre-count time anchor; reviewer-checked, no oracle check.
+4. CONFIRMED — S4.9 tests the outcome: the anchor must be at or before the candidate read.
+5. CONFIRMED — u2 name only in `homeUnitName`; the u2 id never appears.
+6. ACCEPTED — `noSystem` = another tenant's system or a non-HR system; sys2 isolation in X2.1.
+7. ACCEPTED — names fixed by the oracle (`kind`, `confirmOp`/`confirm`, `keyTarget`, DTO `days`, `canPublish`, `rulePanel{rows,info}`).
+8. H2.3 keeps its LIB-CANDIDATE block for now; swapped for the lib import after both merge (controller debt).
