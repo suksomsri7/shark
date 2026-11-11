@@ -396,6 +396,8 @@ const CHECKS: readonly Def[] = [
   D("S1.8", "R4", M, "RED", "worker on APPROVED leave ⇒ เพื่อนร่วมงาน/คุณ leave texts (no names)"),
   D("S1.9", "R4", M, "RED", "new holder already holds (date, shiftId) ⇒ dup text"),
   D("S1.10", "R4", C, "RED", "2nd open request on fromEntry · toEntry already in an open request ⇒ open text"),
+  D("S1.11", "R4", C, "RED", "FROM entry = another open request's TO entry ⇒ open text · 0 rows · 0 events (ruling 5)"),
+  D("S1.12", "R4", C, "RED", "TO entry = another open request's FROM entry ⇒ open text · 0 rows · 0 events (ruling 5)"),
   D("S2.1", "R7", C, "RED", "accept (policy on) ⇒ PENDING · 1 ApprovalRequest (systemId · unit u1 · requestedById = requester user)"),
   D("S2.2", "R5", M, "RED", "decline ⇒ REJECTED · peerDecidedAt · decidedById null · no request"),
   D("S2.3", "R7", C, "RED", "respond by requester / bystander / manager ⇒ notYours · AWAITING_PEER"),
@@ -442,7 +444,7 @@ const CHECKS: readonly Def[] = [
   D("S7.3", "C.10", C, "RED", "both events ×2 seq + ×2 par ⇒ ok · unchanged"),
   D("S7.4", "C.10", M, "RED", "re-emit same key ⇒ one outbox row"),
   D("S7.5", "R9", M, "RED", "rejected / cancelled swaps emit no " + EV_OK),
-  D("S8.1", "R14", C, "GREEN", "qc-hr-h2.1 S8.1–S8.6 frozen digests pass with swap rows on QC4 (child run)"),
+  D("S8.1", "R14", C, "GREEN", "H2.1 engine on a week with a decided swap: rosterOnDay unique + current holders · publishRoster only unpublished rows · copyWeek 1:1 (ruling 8)"),
   D("S8.2", "R14", C, "GREEN", "R14 files unchanged · roster.ts = base + H2.3 hunks (n/a once H2.3 in base)"),
   D("S8.3", "R12", C, "GREEN", "approval core / effects = base + H2.3 hunks (n/a once in base)"),
   D("S8.4", "R14", C, "GREEN", "HrLeave chain approve/reject + effect unchanged"),
@@ -671,13 +673,14 @@ async function runDb(): Promise<void> {
     const w = await swRow(x.id);
     chk("S1.2", x.r.ok && w?.status === "AWAITING_PEER" && w?.toEntryId === null && w?.targetEmployeeId === E.B, "GIVE AWAITING_PEER · to null", `${shown(x.r)} ${w?.status}`);
   }
-  /** refusal vectors: every call says its text and no swap row appears */
+  /** refusal vectors: every call says its text · no swap row · no swap_requested event appears */
+  const evN = () => P.outboxEvent.count({ where: { tenantId: TT, type: EV_REQ } }) as Promise<number>;
   const vec = async (id: string, calls: (() => Promise<RO>)[], want: string[]) => {
-    const n0 = await swN();
+    const [n0, e0] = [await swN(), await evN()];
     const rs: RO[] = [];
     for (const c of calls) rs.push(await c());
-    const n1 = await swN();
-    chk(id, rs.every((r, i) => said(r, want[i]!)) && n1 === n0, want.join(" | "), `${rs.map(shown).join(" | ")} rows +${n1 - n0}`);
+    const [n1, e1] = [await swN(), await evN()];
+    chk(id, rs.every((r, i) => said(r, want[i]!)) && n1 === n0 && e1 === e0, want.join(" | "), `${rs.map(shown).join(" | ")} rows +${n1 - n0} events +${e1 - e0}`);
   };
   {
     const [a] = await E1([[E.A, S.m, nd()]]);
@@ -721,6 +724,12 @@ async function runDb(): Promise<void> {
   {
     const [c] = await E1([[E.C, S.e, nd()]]);
     await vec("S1.10", [() => req(U.A, a11!, E.C), () => req(U.C, c!, E.B, b11!)], [T.open, T.open]);
+  }
+  {
+    // ruling 5: s11 (A: a11 → B: b11) is open · B offers b11 (its TO) as FROM · C asks for a11 (its FROM) as TO
+    const [c] = await E1([[E.C, S.e, nd()]]);
+    await vec("S1.11", [() => req(U.B, b11!, E.C)], [T.open]);
+    await vec("S1.12", [() => req(U.C, c!, E.A, a11!)], [T.open]);
   }
 
   // ═══ S6 scope + privacy (u1 swap s11 stays AWAITING_PEER · u2 swap su2) ═══
@@ -1164,12 +1173,27 @@ async function runDb(): Promise<void> {
     chk("S8.4", out.join(" ") === "ok:APPROVED ok:REJECTED", "ok:APPROVED ok:REJECTED", out.join(" "));
   }
   {
-    // child run of qc-hr-h2.1 (no nested gate lock — this process already holds it) while our swap rows exist on QC4
-    console.log("  … child run qc-hr-h2.1 (S8 frozen digests)");
-    const c = await spawnTsx(["scripts/qc-hr-h2.1.mts"], { ...process.env, QC_FORCE: "1" }, 1_800_000);
-    const n = [1, 2, 3, 4, 5, 6].filter((i) => c.out.includes(`✅ [H2.1-S8.${i}]`)).length;
-    const js = c.out.split("\n").find((l) => l.startsWith("JSON_SUMMARY ")) ?? "";
-    chk("S8.1", n === 6 && !!js && !js.includes('"crashed":true'), "6/6 ✅", `${n}/6 exit=${c.code} swaps-of-ours=${await swN()} ${short(js.match(/"failed":\[[^\]]*\]/)?.[0] ?? "", 120)}`);
+    // ruling 8: direct H2.1 engine control on the week of s31 (chain-approved SWAP when built) — green on base, must stay green with swaps
+    const wk = addDay(s31.d1, -((new Date(`${s31.d1}T00:00:00Z`).getUTCDay() + 6) % 7)); // Monday
+    const toWk = "2031-11-03"; // Monday, empty (scenarios end before Oct)
+    const inWk = (from: string) => ({ tenantId: TT, systemId: sA.id, date: { gte: dbDate(from), lte: dbDate(addDay(from, 6)) } });
+    const pubAt0 = [(await row(s31.a))?.publishedAt, (await row(s31.b))?.publishedAt];
+    const unpub0 = await P.hrRosterEntry.count({ where: { ...inWk(wk), published: false } });
+    const pub = await ro("publishRoster", ctx, vOf(U.owner), { from: wk, to: addDay(wk, 6) });
+    const ab = [await row(s31.a), await row(s31.b)];
+    const day = await rdrRoster(s31.d1);
+    const holders = await Promise.all(day.map((e) => holder(e.entryId)));
+    const src = (await P.hrRosterEntry.findMany({ where: inWk(wk) })) as Any[];
+    const cp = await ro("copyWeek", ctx, vOf(U.owner), { fromWeek: wk, toWeek: toWk });
+    const dst = (await P.hrRosterEntry.findMany({ where: inWk(toWk) })) as Any[];
+    const off = (d: Any, from: string) => Math.round((Date.parse(`${dk(d)}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 864e5);
+    const srcKeys = src.map((r) => `${r.employeeId}|${off(r.date, wk)}|${r.shiftId}`);
+    const dstKeys = dst.map((r) => `${r.employeeId}|${off(r.date, toWk)}|${r.shiftId}`);
+    ck("S8.1", {
+      publish: pub.ok && pub.value?.published === unpub0 && ab.every((r, i) => r?.published === true && +r.publishedAt === +pubAt0[i]),
+      reader: day.some((e) => e.entryId === s31.a) && new Set(day.map((e) => e.entryId)).size === day.length && day.every((e, i) => e.employeeId === holders[i]),
+      copy: cp.ok && Number(cp.value?.created) === dst.length && dst.length > 0 && new Set(dstKeys).size === dstKeys.length && dstKeys.every((k) => srcKeys.includes(k)) && dst.every((r) => r.published === false) && dst.length + (cp.value?.skipped?.length ?? 0) === src.length,
+    }, "publish = unpublished only · reader unique/current · copy 1:1 unpublished", `publish ${shown(pub)} ${pub.value?.published}/${unpub0} day=${day.length} copy ${shown(cp)} ${dst.length}+${cp.value?.skipped?.length ?? "?"}/${src.length}`);
   }
   {
     const bare = { PATH: process.env.PATH, HOME: process.env.HOME, NODE_OPTIONS: "--max-old-space-size=2048" };
