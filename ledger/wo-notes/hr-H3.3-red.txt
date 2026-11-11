@@ -1,0 +1,62 @@
+# qc-hr-h3.3 on base 1d17382f8 (wip/hr-h3.3) · lane DB l1 via scripts/qc-hr.sh · 2026-11-11T23:09:37Z
+## run 1 — unforced
+⏭️  SKIPPED — qc-hr-h3.3: not built
+   • H3.3 not built: src/lib/modules/hr/payroll-rules-v2.ts absent
+JSON_SUMMARY {"suite":"qc-hr-h3.3","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["H3.3 not built: src/lib/modules/hr/payroll-rules-v2.ts absent"],"registered":46}
+exit=0
+## run 2 — QC_FORCE=1
+[env] qc-hr-h3.3 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.3] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️  QC_FORCE=1 — running although: H3.3 not built: src/lib/modules/hr/payroll-rules-v2.ts absent (expect RED for the right reason, no crash)
+  ✅ [H3.3-S1.1] [static] payroll-rules.ts sha frozen (unconditional) · payroll.ts + payroll-rules.ts unchanged vs base (n/a once H3.3 in base)
+  ❌ [H3.3-S1.2] [static] payroll-rules-v2.ts pure: only `import type` · no prisma/db · no Date.now/new Date(/Math.random/process./fetch/async/await — expected pure | actual exists
+  ❌ [H3.3-S1.3] [static] law.ts = only reader: HrLawTable named under src/** only in scope.ts · db.ts · hr/law.ts · platform/hr-law.ts · law.ts has no write op/SQL · deterministic orderBy — expected law.ts sole reader, read-only | actual exists,reads,ordered
+  ❌ [H3.3-S1.4] [static] law writes only in platform/hr-law.ts: not imported from src/app/app/** · src/lib/modules/** · src/lib/ai/** · exports ⊆ create/activate/retire/list · F16.9 kept — expected platform-only writes | actual exists,has3,reRead,audit · exports ∅
+  ❌ [H3.3-S1.5] [static] law view page read-only: loadLawView · no use server/<form/formAction/action=/onSubmit/@/lib/platform · testids hr-law-table/hr-law-row- + inventory · hr.law th=en keys · 'รอนักบัญชียืนยัน' · tab link — expected read-only law page | actual page,loader,testids,inventory,msgs,pending,tab
+  ✅ [H3.3-S1.6] [run] seed LAW_V1_DIGEST = frozen 0ed9de8c… and fixture law json = LAW_V1_ROWS json (every vector cites seeded values)
+  ❌ [H3.3-S2.1] [pure] ssoV2: 17 literal vectors (v1:SSO@1970-01-01) incl. half-baht edges — expected v2 exports | actual missing ssoV2 (module absent)
+  ❌ [H3.3-S2.2] [pure] ssoV2 = frozen v1 ssoContribution over ≥2,700 wages (1..3,000,000 + edges) — expected ssoV2 | actual ssoV2 missing
+  ❌ [H3.3-S2.3] [pure] ssoV2 refusals: unknown rounding / employer≠employee / float json ⇒ LAW_SHAPE · wage −1 / 1.5 ⇒ BAD_SATANG — expected ssoV2 | actual ssoV2 missing
+  ❌ [H3.3-S3.1] [pure] annualTaxV2: 18 literal vectors (v1:TAX_BRACKET@1970-01-01) incl. band edges + half-satang — expected v2 exports | actual missing annualTaxV2 (module absent)
+  ❌ [H3.3-S3.2] [pure] annualTaxV2 = frozen v1 annualTaxSatang over the seed's grid — expected annualTaxV2 | actual annualTaxV2 missing
+  ❌ [H3.3-S3.3] [pure] annualTaxV2 refusals: bands not ascending / last band not open / float rate ⇒ LAW_SHAPE — expected annualTaxV2 | actual annualTaxV2 missing
+  ❌ [H3.3-S4.1] [pure] whtAnnualisedV2: 24 literal vectors (TAX_BRACKET + DEDUCTION rows) — expected v2 exports | actual missing whtAnnualisedV2 (module absent)
+  ❌ [H3.3-S4.2] [pure] whtAnnualisedV2 = frozen v1 monthlyWhtSatang over 960 inputs — expected whtAnnualisedV2 | actual missing
+  ❌ [H3.3-S5.1] [pure] whtYtdV2: 8 literal vectors (all 4 output fields) — expected v2 exports | actual missing whtYtdV2 (module absent)
+  ❌ [H3.3-S5.4] [pure] YTD month 1 (prior 0, current = regular) = frozen v1 monthlyWhtSatang over 160 inputs — expected whtYtdV2 | actual missing
+  ❌ [H3.3-S5.5] [pure] whtYtdV2 refusals: monthIndex 0/13/1.5 ⇒ BAD_MONTH · negative prior ⇒ BAD_SATANG · over-withheld grid never negative — expected whtYtdV2 | actual missing
+  ❌ [H3.3-S7.1] [pure] classifyIncomeV2: 5 literal vectors (40(1) income · SSO wage · gross clamp) — expected v2 exports | actual missing classifyIncomeV2 (module absent)
+  ❌ [H3.3-S7.2] [pure] classifyIncomeV2 refusals: unknown kind ⇒ BAD_KIND · negative/non-integer ⇒ BAD_SATANG — expected classifyIncomeV2 | actual missing
+  ❌ [H3.3-S7.3] [pure] computeItemV2: 6 literal vectors (every field · lawRowIds · blocked) — expected v2 exports | actual missing computeItemV2 (module absent)
+  ❌ [H3.3-S5.2] [pure] 6 year scenarios chained month by month through computeItemV2: wht + SSO per month = literals — expected computeItemV2 | actual missing
+  ❌ [H3.3-S5.3] [pure] Σ12 months wht = December annualTaxSatang (true-up) for every full-year scenario — expected computeItemV2 | actual missing
+  ❌ [H3.3-S7.4] [pure] identities on every item: net = gross − ssoEmployee − wht · blocked ⇔ net < 0 · totalsV2 = Σ items — expected ≥72 items · identities · totals | actual 0 items · 0 broken · totals ∅
+  ❌ [H3.3-S7.5] [pure] ytdPriorV2: 4 cases (APPROVED/PAID only · same tax year · ≤ pay day · current run excluded) — expected ytdPriorV2 | actual missing (v2 module ∅ src/lib/modules/hr/payroll-rules-v2.ts)
+  ❌ [H3.3-S7.6] [pure] runtime purity: deep-frozen inputs untouched · Date.now/Math.random trapped · repeat call identical · ENGINE_VERSION_V2 = 2 — expected pure at runtime | actual v2 missing
+  ❌ [H3.3-S6.1] [pure] pickLawRow 13 cases: day before/of/after · DRAFT/RETIRED ignored · gap · bad day · same-date tie ⇒ LAW_AMBIGUOUS — expected law exports | actual missing pickLawRow,pickLawSet,lawDayOf (module absent)
+  ❌ [H3.3-S6.2] [pure] pickLawRow independent of input order (120 permutations) · Date effectiveFrom = string — expected law.ts | actual law.ts ∅ src/lib/modules/hr/law.ts
+  ❌ [H3.3-S6.3] [pure] pickLawSet: a missing kind refuses with the kind list (never falls back to constants) · full set ⇒ sorted ids — expected law.ts | actual law.ts ∅ src/lib/modules/hr/law.ts
+  ❌ [H3.3-S6.4] [pure] lawDayOf(payDate) = Bangkok calendar day (16:59:59.999Z / 17:00Z boundaries) — expected law.ts | actual law.ts ∅ src/lib/modules/hr/law.ts
+  ✅ [H3.3-NA.1] [accountant] NA-01 SSO wage ceiling 17,500 (and min base) from 1 Jan 2026? (HQ8 · review D15) — no seeded row
+  ✅ [H3.3-NA.2] [accountant] NA-02 Is ALLOWANCE (เบี้ยเลี้ยง/ค่าเดินทาง) SSO wage? Is it 40(1) taxable or an exempt reimburse
+  ✅ [H3.3-NA.3] [accountant] NA-03 Mid-year one-off bonus: spread over remaining months (Q4 default) or withhold the bonus's 
+  ✅ [H3.3-NA.4] [accountant] NA-04 Joiner with income from a previous employer in the same year (50 ทวิ): include in projecti
+  ✅ [H3.3-NA.5] [accountant] NA-05 Allowances not in the seed (parents, disability, insurance, PVD, RMF/SSF/ThaiESG, mortgage
+  ✅ [H3.3-NA.6] [accountant] NA-06 SSO special cases: employee hired at ≥60, foreign workers, exempt categories, employer rat
+  ✅ [H3.3-NA.7] [accountant] NA-07 Does a late/absent DEDUCTION reduce SSO wage and 40(1) income (unpaid wage), or only net p
+  ✅ [H3.3-NA.8] [accountant] NA-08 A month with zero wage paid (whole month unpaid leave): contribution 0, or min base 1,650 
+  ✅ [H3.3-NA.9] [accountant] NA-09 Over-withheld year (prior WHT > annual tax): 0 this month and refund via ภ.ง.ด.91 (default
+  ✅ [H3.3-NA.10] [accountant] NA-10 Sign-off of every seeded value and rounding token (SSO BAHT_HALF_UP · tax SATANG_HALF_UP_O
+  ℹ️  law rows on this DB: DEDUCTION=DRAFT OT=DRAFT SSO=DRAFT TAX_BRACKET=DRAFT · ACTIVE rows in table: 0 (v2 refuses LAW_MISSING until the platform activates signed-off rows — Q3)
+  ✅ [H3.3-S8.1] [db] the 4 v1 law rows are on this DB with the frozen digest (status reported)
+  ❌ [H3.3-S8.5] [db] loadLawView: v1 rows shown DRAFT/not in force · pendingSignOff · no approvedById/sourceKey/supersedesId keys — expected loadLawView | actual law.ts ∅ src/lib/modules/hr/law.ts
+  ❌ [H3.3-S8.2] [db] loadLawSet(onDay, tx) reads ACTIVE rows by effectiveFrom (rolled-back fixtures 2190): before/of/after · DRAFT-only ⇒ refused — expected loadLawSet | actual law.ts ∅ src/lib/modules/hr/law.ts
+  ❌ [H3.3-S8.3] [db] tenantDb(ctx).hrLawTable: create/createMany/update/updateMany/upsert/delete/deleteMany all throw · count/findMany work — expected 7 writes refused · reads ok · 0 rows | actual create=WROTE createMany=WROTE update=WROTE updateMany=WROTE upsert=WROTE delete=WROTE deleteMany=WROTE · reads ok · rows 0
+  ❌ [H3.3-S8.4] [db] platform writes: forged/SUPPORT actor refused · SUPER_ADMIN draft→activate (approver, audit) · slot taken · no approver · float json · retire — expected platform/hr-law.ts | actual src/lib/platform/hr-law.ts ∅ src/lib/platform/hr-law.ts
+  ✅ [H3.3-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+  ✅ [H3.3-Z1] residue: HrLawTable qc-h33-* · PlatformUser qc-h33-* · their PlatformAuditLog = 0
+NEEDS-ACCOUNTANT 10/10 skipped with reason (ledger/hr-briefs/hr-brief-H3.3.md §FOR THE ACCOUNTANT)
+BASE-EXPECTATION 46/46 as registered (RED-by-design 31 · GREEN controls 15)
+===== qc-hr-h3.3 ===== passed 15/46 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.3","total":46,"passed":15,"failed":["H3.3-S1.2","H3.3-S1.3","H3.3-S1.4","H3.3-S1.5","H3.3-S2.1","H3.3-S2.2","H3.3-S2.3","H3.3-S3.1","H3.3-S3.2","H3.3-S3.3","H3.3-S4.1","H3.3-S4.2","H3.3-S5.1","H3.3-S5.4","H3.3-S5.5","H3.3-S7.1","H3.3-S7.2","H3.3-S7.3","H3.3-S5.2","H3.3-S5.3","H3.3-S7.4","H3.3-S7.5","H3.3-S7.6","H3.3-S6.1","H3.3-S6.2","H3.3-S6.3","H3.3-S6.4","H3.3-S8.5","H3.3-S8.2","H3.3-S8.3","H3.3-S8.4"],"findings":[{"id":"H3.3-S1.2","sev":"CRITICAL"},{"id":"H3.3-S1.3","sev":"CRITICAL"},{"id":"H3.3-S1.4","sev":"CRITICAL"},{"id":"H3.3-S1.5","sev":"MAJOR"},{"id":"H3.3-S2.1","sev":"CRITICAL"},{"id":"H3.3-S2.2","sev":"CRITICAL"},{"id":"H3.3-S2.3","sev":"MAJOR"},{"id":"H3.3-S3.1","sev":"CRITICAL"},{"id":"H3.3-S3.2","sev":"CRITICAL"},{"id":"H3.3-S3.3","sev":"MAJOR"},{"id":"H3.3-S4.1","sev":"CRITICAL"},{"id":"H3.3-S4.2","sev":"CRITICAL"},{"id":"H3.3-S5.1","sev":"CRITICAL"},{"id":"H3.3-S5.4","sev":"CRITICAL"},{"id":"H3.3-S5.5","sev":"MAJOR"},{"id":"H3.3-S7.1","sev":"CRITICAL"},{"id":"H3.3-S7.2","sev":"MAJOR"},{"id":"H3.3-S7.3","sev":"CRITICAL"},{"id":"H3.3-S5.2","sev":"CRITICAL"},{"id":"H3.3-S5.3","sev":"CRITICAL"},{"id":"H3.3-S7.4","sev":"CRITICAL"},{"id":"H3.3-S7.5","sev":"MAJOR"},{"id":"H3.3-S7.6","sev":"MAJOR"},{"id":"H3.3-S6.1","sev":"CRITICAL"},{"id":"H3.3-S6.2","sev":"MAJOR"},{"id":"H3.3-S6.3","sev":"CRITICAL"},{"id":"H3.3-S6.4","sev":"MAJOR"},{"id":"H3.3-S8.5","sev":"MAJOR"},{"id":"H3.3-S8.2","sev":"CRITICAL"},{"id":"H3.3-S8.3","sev":"CRITICAL"},{"id":"H3.3-S8.4","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":["H3.3 not built: src/lib/modules/hr/payroll-rules-v2.ts absent"],"baseRed":31,"baseGreen":15,"offBase":[]}
+exit=1
