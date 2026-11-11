@@ -581,7 +581,12 @@ export const F168_ROOTS = ["src/lib/modules/hr", "src/app/app/sys/[id]/hr", "src
 export const F168_CODE_BASELINE = new Set<string>(["hr-link-sales-teams"]);
 /** แถวที่ยังหาโค้ดไม่เจอ (ณ H2.2) — ratchet · hr-leave-cancel-* อยู่หน้า /app/approvals (นอกราก F168) ·
  *  hr-settings-*-unit มาจาก prop ที่ไม่ใช่ testId/data-testid (ตัวสแกนตามไม่ถึง) */
-export const F168_ROW_BASELINE = new Set<string>(["hr-leave-cancel-*", "hr-leave-cancel-*-sheet", "hr-leave-cancel-*-trigger", "hr-settings-holiday-unit", "hr-settings-policy-unit", "hr-settings-shift-unit"]);
+//  H2.2 r3 (rebase on H2.3): hr-swap-cancel-* / hr-swap-respond-* ก็อยู่หน้า /app/approvals เช่นกัน (แถวของ H2.3) ⇒ นอกราก F168
+export const F168_ROW_BASELINE = new Set<string>([
+  "hr-leave-cancel-*", "hr-leave-cancel-*-sheet", "hr-leave-cancel-*-trigger", "hr-settings-holiday-unit", "hr-settings-policy-unit", "hr-settings-shift-unit",
+  "hr-swap-cancel-*", "hr-swap-cancel-*-sheet", "hr-swap-cancel-*-trigger",
+  "hr-swap-respond-*", "hr-swap-respond-*-accept-sheet", "hr-swap-respond-*-accept-trigger", "hr-swap-respond-*-decline-sheet", "hr-swap-respond-*-decline-trigger",
+]);
 /** รูปเดียวกันของ testid: `${…}` → `*` · `*-*` ติดกัน → `*` (ทะเบียนเขียนครอบครัวเป็น prefix-*) */
 export const canonTestid = (s: string) => s.replace(/\$\{[^}]*\}/g, "*").replace(/\*(?:-\*)+/g, "*");
 const stripCd = (s: string) => s.replace(/-(trigger|sheet)$/, "");

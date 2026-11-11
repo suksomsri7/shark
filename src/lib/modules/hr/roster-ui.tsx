@@ -342,7 +342,7 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
         aria-disabled={temp ? true : undefined}
         data-highlight={hl ? "1" : undefined}
         aria-label={`${e.label} ${chipRange(e)}${e.overnight ? ` ${t("overnight")}` : ""}${e.published ? "" : ` · ${t("legend.changed")}`}`}
-        className={`relative block min-h-[44px] w-full rounded-[10px] px-1 py-1.5 text-center text-[13.5px] font-bold leading-tight outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ink)] ${CHIP[e.kind]} ${hl ? "ring-2 ring-[color:var(--color-danger)]" : ""} ${editable && !narrow ? "cursor-grab touch-none" : ""} ${drag?.active && drag.entry.id === e.id ? "opacity-40" : ""}`}
+        className={`relative z-10 block min-h-[44px] w-full rounded-[10px] px-0.5 py-1.5 text-center text-[13.5px] font-bold leading-tight outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ink)] ${CHIP[e.kind]} ${hl ? "ring-2 ring-[color:var(--color-danger)]" : ""} ${editable && !narrow ? "cursor-grab touch-none" : ""} ${drag?.active && drag.entry.id === e.id ? "opacity-40" : ""}`}
         onPointerDown={editable ? (ev) => onChipPointerDown(ev, row, cell, e) : undefined}
         onKeyDown={editable ? (ev) => onChipKey(ev, row, cell, e) : undefined}
         onClick={(ev) => openEntry(ev, row, cell, e)}
@@ -362,34 +362,54 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
   };
   const leaveChip = (cell: RosterCellDto) =>
     cell.leave ? (
-      <span className="block w-full rounded-[10px] border-[1.5px] border-dashed border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-1 py-1.5 text-center text-[13.5px] font-bold leading-tight text-[color:var(--color-danger)]">
+      <span className="pointer-events-none relative z-10 block w-full rounded-[10px] border-[1.5px] border-dashed border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-0.5 py-1.5 text-center text-[13px] font-bold leading-tight text-[color:var(--color-danger)]">
         {cell.leave.label}
         {cell.leave.status === "PENDING" && <small className="block font-normal">{t("pending")}</small>}
       </span>
     ) : null;
   const cellBody = (row: RosterRowDto, cell: RosterCellDto) => {
     const canAdd = writableDay(cell.day) && !row.ended && (cell.state === "off" || cell.state === "work");
+    const filled = cell.entries.length > 0 || !!cell.leave;
     const isTarget = drag?.active && drag.target?.employeeId === row.employeeId && drag.target.day === cell.day;
     return (
       <>
         {cell.entries.map((e) => chip(row, cell, e))}
         {leaveChip(cell)}
         {cell.entries.length === 0 && !cell.leave && cell.state !== "off" && <span className="text-[13.5px] text-[color:var(--color-muted)]">{t("outMark")}</span>}
-        {/* r2 m2: ลาไม่บล็อกการจัดกะ (R10 · เครื่องยนต์แจ้ง ON_LEAVE เป็นข้อมูล) ⇒ ช่องที่มีลามีปุ่ม + ใต้ชิปลา — แตะ/คีย์บอร์ดถึงได้เหมือนลากวาง */}
-        {canAdd && (
+        {/* r2 m2: ลาไม่บล็อกการจัดกะ (R10 · เครื่องยนต์แจ้ง ON_LEAVE เป็นข้อมูล) ⇒ ช่องที่มีลาเพิ่มกะได้ด้วยแตะ/คีย์บอร์ดเหมือนลากวาง */}
+        {/* r3 V2/V3: ช่องว่าง = ปุ่ม "หยุด" เต็มช่อง (≥44px) · ช่องที่มีชิป/ลา = ปุ่มเพิ่มเป็นชั้นเต็มช่องใต้ชิป (absolute · ไม่ดันแถว ·
+            พื้นที่ว่างรอบชิป = แตะเปิดตัวเลือก) + เครื่องหมาย "+" มุมช่องเมื่อ hover/โฟกัส (จอสัมผัสแสดงจาง ๆ ตลอด) */}
+        {canAdd && !filled && (
           <button
             type="button"
             data-testid={`hr-roster-cell-${row.employeeId}-${cell.day}`}
             aria-label={t("addShift", { name: row.name, day: dayLabel(cell.day, names) })}
-            className={`min-h-[44px] w-full rounded-[10px] text-[13.5px] text-[color:var(--color-muted)] outline-none hover:bg-[color:var(--color-surface-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-ink)] ${cell.entries.length || cell.leave ? "min-h-[28px] text-xs" : ""}`}
+            className="min-h-[44px] w-full rounded-[10px] text-[13.5px] text-[color:var(--color-muted)] outline-none hover:bg-[color:var(--color-surface-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-ink)]"
             onClick={(ev) => openSheet({ kind: "picker", row, cell }, ev.currentTarget)}
           >
-            {cell.entries.length || cell.leave ? "+" : t("off")}
+            {t("off")}
           </button>
+        )}
+        {canAdd && filled && (
+          <>
+            <button
+              type="button"
+              data-testid={`hr-roster-cell-${row.employeeId}-${cell.day}`}
+              aria-label={t("addShift", { name: row.name, day: dayLabel(cell.day, names) })}
+              className="peer absolute inset-0 z-0 min-h-[44px] min-w-[44px] rounded-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--color-ink)]"
+              onClick={(ev) => openSheet({ kind: "picker", row, cell }, ev.currentTarget)}
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-0.5 right-0.5 z-20 hidden h-5 w-5 place-items-center rounded-full border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-xs font-bold leading-none text-[color:var(--color-ink)] group-hover/cell:grid group-focus-within/cell:grid peer-focus-visible:grid pointer-coarse:grid pointer-coarse:opacity-60"
+            >
+              +
+            </span>
+          </>
         )}
         {!canAdd && cell.state === "off" && !cell.leave && <span className="text-[13.5px] text-[color:var(--color-muted)]">{t("off")}</span>}
         {isTarget && (
-          <span aria-hidden="true" className="pointer-events-none absolute inset-1.5 rounded-xl border-2 border-dashed border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)]">
+          <span aria-hidden="true" className="pointer-events-none absolute inset-1.5 z-20 rounded-xl border-2 border-dashed border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)]">
             <span className="absolute left-2 top-1 text-[12.5px] font-bold text-[color:var(--color-accent)]">{t("drop")}</span>
           </span>
         )}
@@ -405,7 +425,7 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
         role="gridcell"
         data-testid={`hr-roster-hours-${row.employeeId}`}
         title={over && row.weekWarnMin !== row.weekMin ? t("allUnitsHours", { n: hrs(row.weekWarnMin ?? 0) }) : undefined}
-        className={`flex flex-col items-center justify-center border-l border-[color:var(--color-line)] px-2 py-2 text-[15px] font-bold tabular-nums ${over ? "text-[color:var(--color-danger)]" : ""}`}
+        className={`flex flex-col items-center justify-center border-l border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-1 py-2 text-center text-[15px] font-bold leading-tight tabular-nums ${over ? "text-[color:var(--color-danger)]" : ""}`}
       >
         {hrs(row.weekMin)}
         <small className={`text-xs font-normal ${over ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-muted)]"}`}>
@@ -414,8 +434,8 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
       </div>
     );
   };
-  const rowHead = (row: RosterRowDto) => (
-    <div role="rowheader" className="flex min-w-0 items-center gap-2 py-2 pl-3 pr-1" title={row.homeUnitName ? t("borrowedFrom", { unit: row.homeUnitName }) : undefined}>
+  const rowHead = (row: RosterRowDto, tinted = false) => (
+    <div role="rowheader" className={`sticky left-0 z-30 flex min-w-0 items-center gap-2 py-2 pl-3 pr-1 ${tinted ? "bg-[color:var(--color-surface-2)]" : "bg-[color:var(--color-surface)]"}`} title={row.homeUnitName ? t("borrowedFrom", { unit: row.homeUnitName }) : undefined}>
       <span aria-hidden="true" className="grid h-8 w-8 flex-none place-items-center rounded-full border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] text-sm">
         {row.initial}
       </span>
@@ -555,16 +575,17 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
     );
 
   // ── ตารางสัปดาห์ (≥ 768px) ──
-  const gridCols = { gridTemplateColumns: "150px repeat(7, minmax(96px, 1fr)) 84px" };
+  // r3 V1: ชื่อ + ชม./สัปดาห์ กว้างคงที่ · 7 วันยืดตามกล่อง (≥64px) ⇒ 1440 พอดีกล่อง · แคบกว่า 668px เลื่อนแนวนอนในการ์ด (คอลัมน์ชื่อตรึง)
+  const gridCols = { gridTemplateColumns: "136px repeat(7, minmax(64px, 1fr)) 76px" };
   const grid = (
     <div className="overflow-x-auto rounded-[18px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
-      <div data-testid="hr-roster-grid" role="grid" aria-label={t("gridLabel")} aria-rowcount={b.rows.length + 1} aria-colcount={9} className="min-w-[906px]">
+      <div data-testid="hr-roster-grid" role="grid" aria-label={t("gridLabel")} aria-rowcount={b.rows.length + 1} aria-colcount={9} className="min-w-[668px]">
         <div role="row" className="grid border-b border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] text-[13px] font-bold text-[color:var(--color-muted)]" style={gridCols}>
-          <div role="columnheader" className="px-3 py-3">
+          <div role="columnheader" className="sticky left-0 z-30 bg-[color:var(--color-surface-2)] px-3 py-3">
             {t("colEmployee")}
           </div>
           {b.days.map((d) => (
-            <div key={d.key} role="columnheader" data-testid={`hr-roster-day-${d.key}`} className={`border-l border-[color:var(--color-line)] px-2 py-3 text-center ${d.weekend ? "bg-[color:var(--color-stage)]" : ""}`}>
+            <div key={d.key} role="columnheader" data-testid={`hr-roster-day-${d.key}`} className={`border-l border-[color:var(--color-line)] px-1 py-3 text-center ${d.weekend ? "bg-[color:var(--color-stage)]" : ""}`}>
               <b className="block text-[14.5px] text-[color:var(--color-ink)]">{dayLabel(d.key, names)}</b>
               <span className="text-xs font-normal">
                 {t("headcount", { n: d.headcount })}
@@ -572,7 +593,7 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
               </span>
             </div>
           ))}
-          <div role="columnheader" className="px-3 py-3 text-right">
+          <div role="columnheader" className="border-l border-[color:var(--color-line)] px-1 py-3 text-center leading-tight">
             {t("colHours")}
           </div>
         </div>
@@ -587,7 +608,7 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
               className={`grid border-b border-[color:var(--color-line)] last:border-b-0 ${row.warn || rowHl ? "bg-[color:var(--color-surface-2)]" : ""}`}
               style={gridCols}
             >
-              {rowHead(row)}
+              {rowHead(row, row.warn || rowHl)}
               {row.cells.map((cell, i) => (
                 <div
                   key={cell.day}
@@ -595,7 +616,7 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
                   data-drop-emp={b.canWrite && cell.state !== "past" && !row.ended ? row.employeeId : undefined}
                   data-drop-day={b.canWrite && cell.state !== "past" && !row.ended ? cell.day : undefined}
                   data-drop={drag?.active && b.canWrite && cell.state !== "past" && !row.ended ? "1" : undefined}
-                  className={`relative flex min-h-16 flex-col items-stretch justify-center gap-1 border-l border-[color:var(--color-line)] px-1.5 py-2 text-center ${b.days[i]?.weekend ? "bg-[color:var(--color-surface-2)]" : ""} ${cell.state === "past" ? "opacity-70" : ""}`}
+                  className={`group/cell relative flex min-h-16 flex-col items-stretch justify-center gap-1 border-l border-[color:var(--color-line)] px-1 py-2.5 text-center ${b.days[i]?.weekend ? "bg-[color:var(--color-surface-2)]" : ""} ${cell.state === "past" ? "opacity-70" : ""}`}
                 >
                   {cellBody(row, cell)}
                 </div>
@@ -636,12 +657,12 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
           return (
             <div key={row.employeeId} role="row" data-testid={`hr-roster-row-${row.employeeId}`} className={`grid grid-cols-[1fr_120px] items-center gap-2 px-2 py-2 ${row.warn ? "bg-[color:var(--color-surface-2)]" : ""}`}>
               <div className="min-w-0">
-                {rowHead(row)}
+                {rowHead(row, row.warn)}
                 <p data-testid={`hr-roster-hours-${row.employeeId}`} className={`pl-13 text-xs tabular-nums ${row.weekWarnMin !== null ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-muted)]"}`}>
                   {t("weekHours", { n: hrs(row.weekMin) })} · {row.weekWarnMin !== null ? t("over", { n: hrs(row.weekLimitMin ?? 0) }) : t("shiftCount", { n: row.shiftCount })}
                 </p>
               </div>
-              <div role="gridcell" className="relative flex flex-col gap-1 text-center">
+              <div role="gridcell" className="group/cell relative flex flex-col justify-center gap-1 self-stretch py-2.5 text-center">
                 {cell ? cellBody(row, cell) : null}
               </div>
             </div>
