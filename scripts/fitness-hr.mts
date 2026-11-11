@@ -285,6 +285,9 @@ export const PAYROLL_RULES_SHA256 = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f4
 export const PAGE_SCAN_ROOT = "src/app";
 export const PAGE_SEGMENTS = new Set(["hr", "payroll", "kiosk"]);
 export const GUARD_MODULES = ["@/lib/modules/hr/privacy", "@/lib/modules/hr/scope"];
+/** HR SYNC ▸ หน้าที่ path มีคำว่า kiosk แต่ไม่ใช่ของ HR (ตู้บัตรคิวของงานจองคิว · มาจาก main) — ไม่อยู่ในขอบเขต F16.3
+ *  ตราบที่ไฟล์นั้นไม่ import อะไรจาก @/lib/modules/hr (ถ้า import เมื่อไร = กลับมาอยู่ในขอบเขตทันที) ◂ */
+export const PAGE_NOT_HR = new Set(["src/app/(store)/bq/kiosk/[token]/page.tsx"]);
 const PRIVACY_FILE = "src/lib/modules/hr/privacy.ts";
 const SCOPE_FILE = "src/lib/modules/hr/scope.ts";
 /**
@@ -610,7 +613,7 @@ export function runHrFitness(chk: HrChk, ROOT: string, log: (s: string) => void 
   log("\n── F16.3: ทุก page.tsx ของ HR/payroll/kiosk มีตัวกันจาก hr/privacy หรือ hr/scope ──");
   const n163 = "page.tsx ใต้ src/app/** ที่มีส่วน hr|payroll|kiosk import+เรียกตัวกันในรายการของ @/lib/modules/hr/privacy|scope (hrViewerOf อย่างเดียวไม่นับ)";
   guarded(chk, "F16.3", n163, () => {
-    const pages = discoverPages(ROOT);
+    const pages = discoverPages(ROOT).filter((p) => !(PAGE_NOT_HR.has(p) && !readFileSync(join(ROOT, p), "utf8").includes("@/lib/modules/hr"))); // HR SYNC ▸ ◂
     const scope = scopeExports(ROOT);
     const res = pages.map((p) => ({ p, ...pageGuard(ROOT, join(ROOT, p), scope) }));
     const missing = res.filter((r) => !r.guarded && !PAGE_GUARD_BASELINE.has(r.p));
