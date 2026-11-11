@@ -9,6 +9,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
 import { hrViewerOf } from "./privacy";
 import { hrScopeOf, isAllBranches } from "./scope";
+import { applyHolidayPreset, type PresetResult } from "./holidays"; // HR H2.8 ▸ ชุดวันหยุดราชการ ◂
 import {
   archiveLeavePolicy,
   archiveShift,
@@ -122,7 +123,8 @@ function policyOfForm(f: FormData, withUnit: boolean): LeavePolicyInput {
   assign(o, "carryMaxDays", str(f, "carryMaxDays"));
   assign(o, "carryExpiresMonthDay", str(f, "carryExpiresMonthDay"));
   assign(o, "allowHalfDay", flag(f, "allowHalfDay"));
-  assign(o, "allowHours", flag(f, "allowHours"));
+  // HR H2.7 ▸ มติผู้คุม (Q1/Q6): สวิตช์ "ลาเป็นชั่วโมง" ไม่เปิดให้ร้านตั้งจากหน้าจอ/action จนกว่าสมุดวันลาจะเก็บเป็นนาที
+  //   (0.1 วันต่อชั่วโมงทำให้วันลาหาย — หนี้ D-H27-hourly) ⇒ ไม่อ่านช่อง allowHours จากฟอร์ม (ค่าเดิมในแถวคงอยู่) ◂
   assign(o, "attachmentAfterDays", str(f, "attachmentAfterDays"));
   assign(o, "yearStartMonth", str(f, "yearStartMonth"));
   return o;
@@ -243,3 +245,17 @@ export async function deleteHolidayAction(formData: FormData): Promise<SettingsR
   if (!("ctx" in g)) return g;
   return done(g.ctx, await deleteHoliday(g.ctx, hrViewerOf(auth), id));
 }
+
+// HR H2.8 ▸ ใส่ชุดวันหยุดราชการของปี (เฉพาะวันที่ยังไม่มีแถวทั้งร้าน · กดซ้ำ = ไม่เพิ่ม) — แถวทั้งร้าน ⇒ ด่านคีย์ระดับร้าน (ทุกสาขา) ·
+//   service ตรวจซ้ำ (ผู้ดูแลทุกสาขา) · ผลลัพธ์ = { ok, added, skipped } | { ok:false, reason ไทยคงที่ } ◂
+export async function applyHolidayPresetAction(formData: FormData): Promise<PresetResult> {
+  const auth = await requireTenant();
+  const ctx = await ctxOf(auth, formData);
+  if (!ctx) return { ok: false, reason: NO_SYSTEM_TEXT };
+  const g = gate(auth, null);
+  if (g) return { ok: false, reason: g };
+  const r = await applyHolidayPreset(ctx, hrViewerOf(auth), { year: (str(formData, "year") ?? "").trim() });
+  if (r.ok) revalidatePath(`/app/sys/${ctx.systemId}/hr/settings`);
+  return r;
+}
+// ◂ HR H2.8

@@ -27,6 +27,7 @@ import {
   type Ctx,
 } from "./service";
 import { employeeProfileInputFromForm, hrViewerOf } from "./privacy";
+import { attachLeaveFile, leaveAttachmentLink } from "./leave"; // HR H2.7 ▸ R10 ไฟล์แนบใบลา ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขาของผู้กด — สาขาของเป้าหมายอ่านจากแถวใน DB เสมอ (ไม่เชื่อฟอร์ม) ◂
 import {
   employeeIdOfDoc,
@@ -420,9 +421,38 @@ export async function requestLeaveAction(formData: FormData) {
     fromDate,
     toDate,
     reason: String(formData.get("reason") ?? "").trim() || null,
+    // HR H2.7 ▸ R3: ประเภทการลา · ครึ่งวัน · ชั่วโมง (เฉพาะประเภทที่เปิด — ร้านยังเปิดเองไม่ได้ D-H27-hourly) · ว่าง = ไม่ส่ง
+    policyId: String(formData.get("policyId") ?? "").trim() || null,
+    halfDay: String(formData.get("halfDay") ?? "").trim() || null,
+    hours: String(formData.get("hours") ?? "").trim() || null,
+    // ◂ HR H2.7
   });
   revalidate(systemId);
 }
+
+// HR H2.7 ▸ R10 (Q10): ไฟล์แนบใบลา — แนบไฟล์ที่อัปโหลดแล้ว (private) ได้เฉพาะตัวพนักงานเอง/ผู้ยื่นแทน (ตรวจใน attachLeaveFile ใต้ล็อกใบลา) ·
+//   ลิงก์เปิดไฟล์ = ผู้เห็นเหตุผลการลาเท่านั้น (ผูกบัญชีผู้กด · ≤ 15 นาที) · ร้าน = ร้านที่ล็อกอินอยู่ · ผลลัพธ์ = ข้อความไทยคงที่ ·
+//   ยังไม่มีช่องอัปโหลดบนหน้าจอในใบนี้ (มติผู้คุม Q10 — หนี้ D-H27-attach) ◂
+export type LeaveFileResult = { ok: true } | { ok: false; reason: string };
+export async function attachLeaveFileAction(formData: FormData): Promise<LeaveFileResult> {
+  const auth = await requireTenant();
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const leaveId = String(formData.get("leaveId") ?? "").trim();
+  const fileId = String(formData.get("fileId") ?? "").trim();
+  if (!systemId || !leaveId) return { ok: false, reason: CANCEL_FORM_INVALID };
+  const r = await attachLeaveFile({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), leaveId, { fileId });
+  if (r.ok) revalidate(systemId);
+  return r;
+}
+export type LeaveLinkResult = { ok: true; url: string } | { ok: false; reason: string };
+export async function leaveAttachmentLinkAction(formData: FormData): Promise<LeaveLinkResult> {
+  const auth = await requireTenant();
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const leaveId = String(formData.get("leaveId") ?? "").trim();
+  if (!systemId || !leaveId) return { ok: false, reason: CANCEL_FORM_INVALID };
+  return leaveAttachmentLink({ tenantId: auth.active.tenantId, systemId }, hrViewerOf(auth), leaveId);
+}
+// ◂ HR H2.7
 
 // HR H0.7 ▸ R5: ผู้ยื่นยกเลิกใบลาของตัวเอง (ปุ่มในหน้า "อนุมัติ" → คำขอของฉัน) — ตัวกันอยู่ใน cancelLeave (ผู้ยื่นเท่านั้น · ยังรอ ·
 //   ใบของเจ้าของร้านที่ยังไม่ถึงวันลา) · ร้าน = ร้านที่ล็อกอินอยู่ · ไม่ผ่าน = โยนข้อความไทยคงที่ (ไม่ส่งข้อความระบบ) ◂

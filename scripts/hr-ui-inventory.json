@@ -1968,6 +1968,178 @@
    "wo": "H1.2",
    "oracle": "qc-hr-h1.2",
    "note": "การ์ดลิงก์จากหน้าภาพรวม HR"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-leave-policy",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "มีประเภทการลาที่เปิดอยู่ + มีพนักงานให้เลือก",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "ประเภทการลา (ว่าง = ตามหมวด)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-leave-halfday",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "มีพนักงานให้เลือก",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "เต็มวัน / ครึ่งเช้า / ครึ่งบ่าย"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-leave-hours",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "มีประเภทการลาที่เปิดลาเป็นชั่วโมง (ร้านยังเปิดเองไม่ได้ — D-H27-hourly ⇒ ปกติไม่แสดง)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "จำนวนชั่วโมง 1–7"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-leave-attach",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "มีประเภทการลาที่ตั้งจำนวนวันต้องแนบเอกสาร",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "ธงเอกสารประกอบ — ยังไม่มีช่องอัปโหลด (D-H27-attach)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-leave-balance",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "บัญชีผูกกับพนักงานที่มีประเภทการลา",
+   "roles": [
+    "owner",
+    "manager",
+    "staff"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "วันลาคงเหลือของฉัน (สิทธิ์ · ใช้ไป · คงเหลือ +n รออนุมัติ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-holiday-preset",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าที่ดูแลทุกสาขา (OWNER · MANAGER ทุกสาขา · hr.employee.create ทุกสาขา)",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/settings"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "ใส่วันหยุดราชการของปีที่เลือก (เฉพาะวันที่ยังไม่มี)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-holiday-preset-note",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H2.7",
+   "oracle": "qc-hr-h2.7",
+   "note": "วันหยุดตามจันทรคติ/ชดเชยต้องเพิ่มเอง (Q14)"
   }
  ]
 }
