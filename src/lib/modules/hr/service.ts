@@ -1,6 +1,9 @@
 import { tenantDb } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัติการตัดสินใบลา ◂
+import { lockRosterKeysInTx } from "./roster"; // HR H2.7 ▸ R8 ลำดับล็อก hr-leave → พนักงาน → ตารางกะ ◂
+// HR H2.7 ▸ เครื่องยนต์การลา (ประเภทการลา · สมุดวันลา · นับวัน · event hr.leave.decided) — ตัวงาน request/decide/cancel ยังอยู่ไฟล์นี้ (Q2) ◂
+import { LEAVE_TEXT, leaveBalanceCoversInTx, leaveDecidedEvent, leaveLedgerInTx, leaveRefusalText, leaveRosterKeys, leaveRowInTx, lockLeaveEmployeeInTx, planLeaveRequest, reserveLeaveInTx, type LeaveRequestFields } from "./leave"; // HR H2.7 ◂
 import type { HrAttendanceJudgement, HrAttendanceKind, HrLeaveType, Prisma } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
@@ -562,6 +565,12 @@ export type RequestLeaveInput = {
   //   ส่งมาแต่ว่าง (null/"") + พนักงานไม่ผูกบัญชี = ไม่มีผู้ยื่น ⇒ ปฏิเสธ · ไม่ส่งช่องนี้เลย (undefined) = งานภายใน/ข้อสอบรุ่นเก่า คงพฤติกรรมเดิม
   //   (แบบเดียวกับ decidedById ของ decideLeave — HF-HR-0 R4.2) · ผู้กดไม่ใช่บัญชีของพนักงาน ⇒ filedById = ผู้กด ("ยื่นโดย") ◂
   actorUserId?: string | null;
+  // HR H2.7 ▸ R3: ประเภทการลา (ไม่ส่ง = หาตามหมวด `type`) · ครึ่งวัน AM/PM · ชั่วโมง 1–7 (เฉพาะประเภทที่เปิด) · ไฟล์แนบที่อัปโหลดแล้ว (private)
+  policyId?: LeaveRequestFields["policyId"];
+  halfDay?: LeaveRequestFields["halfDay"];
+  hours?: LeaveRequestFields["hours"];
+  attachmentFileId?: LeaveRequestFields["attachmentFileId"];
+  // ◂ HR H2.7
 };
 
 // HR H0.7 ▸ ข้อความคงที่ของการยื่น/ยกเลิกใบลา (ไม่มีชื่อคนอื่น · ไม่มีข้อความระบบ) — action โยนต่อได้ตรง ๆ (instanceof) ◂
@@ -605,6 +614,76 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
   const requester = emp.linkedUserId ?? actor;
   if (!requester && !legacyCaller) throw new HrLeaveRequestError(LEAVE_NO_REQUESTER);
   const filedById = actor && actor !== emp.linkedUserId ? actor : null;
+  // HR H2.7 ▸ R3 (brief H2.7): ตรวจทุกใบก่อนธุรกรรม (ช่วงวัน · ประเภทการลา · ครึ่งวัน/ชั่วโมง · ปีการลา · ช่วงการจ้าง · อายุงาน) — ไม่ผ่าน = ข้อความไทยคงที่ ไม่เขียนอะไร ·
+  //   แล้วธุรกรรมเดียวใต้ hr-leave-emp:<sys>:<emp> (R8): ซ้อนใบเดิม → จำนวนวัน → GRANT → คงเหลือ − ใบรออนุมัติ → ไฟล์แนบ → สร้างใบ ·
+  //   ใบของเจ้าของร้าน (H0.7 R4) = APPROVED + USE + hr.leave.decided ใน tx เดียวกัน (Q12) · ใบอื่น = event submitted + สายอนุมัติ ใน tx เดียวกัน (5c เดิม) ·
+  //   ไม่มีประเภทการลาที่ตรงหมวด (ผู้เรียกรุ่นเก่า) = เก็บจำนวนวัน ไม่ลงสมุด (Q18) · โค้ดเดิมสองทาง (เจ้าของร้านสร้างนอก tx · ไม่มีล็อกพนักงาน)
+  //   ถูกแทนด้วยบล็อกนี้ — คงไว้คำต่อคำเป็นคอมเมนต์ข้างล่าง (ด่าน "ไฟล์ร่วม = ฐาน + บล็อกที่ทำเครื่องหมาย" ของ qc-hr-h2.7 S11.3)
+  const ownerAuto = await isTenantOwner(ctx.tenantId, emp.linkedUserId);
+  const chain = ownerAuto ? null : await approval.resolvePolicy({ tenantId: ctx.tenantId }, { entityType: "HrLeave", systemId: ctx.systemId });
+  try {
+    const plan = await planLeaveRequest(ctx, { ...input, employeeId: emp.id });
+    const madeId = await tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await lockLeaveEmployeeInTx(tx, ctx.systemId, emp.id);
+      const r = await reserveLeaveInTx(tx, ctx, plan);
+      const l = await tx.hrLeave.create({
+        data: {
+          tenantId: ctx.tenantId,
+          systemId: ctx.systemId,
+          employeeId: emp.id,
+          type: plan.type,
+          fromDate: toDbDate(plan.from),
+          toDate: toDbDate(plan.to),
+          reason: input.reason?.trim() || null,
+          filedById,
+          ...r.fields, // ประเภทการลา · จำนวนวัน · ครึ่งวัน · ชั่วโมง · ไฟล์แนบ (คอลัมน์ H1.2 — สร้างที่ leave.ts ที่เดียว)
+          ...(ownerAuto ? { status: "APPROVED" as const, decidedById: null } : {}),
+        },
+      });
+      if (ownerAuto) {
+        const row = await leaveRowInTx(tx, l.id);
+        if (row) {
+          await leaveLedgerInTx(tx, ctx, row, "PENDING", "APPROVED");
+          await emitOutbox(tx, leaveDecidedEvent(ctx, row, "APPROVED", null));
+        }
+        return l.id;
+      }
+      await emitOutbox(tx, {
+        tenantId: ctx.tenantId,
+        type: "hr.leave.submitted",
+        idempotencyKey: `hr.leave.submitted#${l.id}`,
+        payload: { leaveId: l.id, employeeId: emp.id, fromDate: toDbDate(plan.from).toISOString(), toDate: toDbDate(plan.to).toISOString(), type: plan.type },
+        systemId: ctx.systemId,
+      });
+      if (chain) {
+        await approval.submitForApproval(
+          { tenantId: ctx.tenantId },
+          { entityType: "HrLeave", entityId: l.id, systemId: ctx.systemId, requestedById: requester ?? input.employeeId },
+          { tx },
+        );
+      }
+      return l.id;
+    }, LEAVE_LOCK_TX_OPTS);
+    if (ownerAuto) {
+      await writeAudit({
+        tenantId: ctx.tenantId,
+        actorType: actor ? "USER" : "SYSTEM",
+        actorId: actor,
+        action: "hr.leave.owner_auto",
+        targetType: "HrLeave",
+        targetId: madeId,
+        after: { leaveId: madeId, employeeId: emp.id, status: "APPROVED", filedById, note: LEAVE_OWNER_AUTO_NOTE },
+      });
+    }
+    return { id: madeId };
+  } catch (err) {
+    const refusal = leaveRefusalText(err);
+    if (refusal) throw new HrLeaveRequestError(refusal);
+    throw err;
+  }
+  // ◂ HR H2.7
+  /* HR H2.7 ▸ โค้ดเดิมของสองทางนี้ (ไม่ถูกเรียกแล้ว — คงไว้คำต่อคำ) ◂
   if (await isTenantOwner(ctx.tenantId, emp.linkedUserId)) {
     // R4 (HQ18/O16-c): ใบลาของเจ้าของร้าน ไม่เข้าสายอนุมัติ · ไม่มีผู้ตัดสิน (decidedById null) · ไม่มี event ใหม่ (Q-E) · audit 1 แถว
     //   availability เหมือนใบที่อนุมัติแล้วทุกประการ (rules นับ APPROVED) · ไม่มีทาง "เจ้าของอนุมัติใบของตัวเอง" (R4.1a คงอยู่ใน decideLeave)
@@ -683,6 +762,7 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
   }
   return { id: l.id };
   });
+  HR H2.7 */
 }
 
 // อนุมัติ/ปฏิเสธการลา — availability เปลี่ยนเฉพาะเมื่อ APPROVED (C-2)
@@ -729,6 +809,12 @@ export async function decideLeave(
     select: { status: true, decidedById: true, employee: { select: { linkedUserId: true } } },
   });
   if (!leave) throw new HrLeaveDecisionError("ไม่พบใบลา หรืออยู่นอกร้านนี้");
+  // HR H2.7 ▸ R6/R8: ลำดับล็อกเดียวกันทุกทาง — hr-leave:<id> (ข้างบน) → hr-leave-emp:<sys>:<emp> → กุญแจตารางกะ (พนักงาน × ทุกวันลา) · tx เท่านั้น
+  const lx = await leaveRowInTx(tx, leaveId);
+  if (!lx) throw new HrLeaveDecisionError("ไม่พบใบลา หรืออยู่นอกร้านนี้");
+  await lockLeaveEmployeeInTx(tx, ctx.systemId, lx.employeeId);
+  await lockRosterKeysInTx(tx, ctx.systemId, leaveRosterKeys(lx));
+  // ◂ HR H2.7
   const from = opts.from ?? (decidedById ? "PENDING" : leave.status);
   // ข้อเสนอ/หน้าจอที่ค้าง (เห็นสถานะหนึ่ง แต่ตอนนี้เป็นอีกสถานะ) ห้ามเปลี่ยนผลแบบเงียบ ๆ
   if (from !== leave.status) throw new HrLeaveDecisionError(LEAVE_STALE);
@@ -756,12 +842,18 @@ export async function decideLeave(
   if (chains.length > 0) {
     throw new HrLeaveDecisionError("ใบลานี้ตัดสินผ่านสายอนุมัติแล้ว — ผลของใบลามาจากหน้า “อนุมัติ” เท่านั้น (ตัดสินซ้ำทางนี้ไม่ได้) หากต้องเปลี่ยนผล กรุณาติดต่อเจ้าของกิจการ");
   }
+  // HR H2.7 ▸ R6: อนุมัติ = GRANT (ถ้ายังไม่มี) แล้ว Σ สมุด ≥ วันลา — ไม่พอ = ข้อความถึงผู้อนุมัติ ธุรกรรมไม่เขียนอะไร ◂
+  if (status === "APPROVED" && !(await leaveBalanceCoversInTx(tx, ctx, lx))) throw new HrLeaveDecisionError(LEAVE_TEXT.balanceDecide); // HR H2.7 ◂
   // เงื่อนไข "สถานะต้นทางที่คาดไว้" ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
   const res = await tx.hrLeave.updateMany({
     where: { id: leaveId, status: from },
     data: { status, decidedById: decidedById ?? null },
   });
   if (res.count === 0) throw new HrLeaveDecisionError(LEAVE_STALE);
+  // HR H2.7 ▸ R5/R6/R12: สมุดวันลา (อนุมัติ = USE · ถอนอนุมัติ = คืนครั้งเดียว · ไม่อนุมัติใบรอ = ไม่เขียน) + hr.leave.decided ใน tx เดียวกับสถานะ
+  await leaveLedgerInTx(tx, ctx, lx, from, status);
+  await emitOutbox(tx, leaveDecidedEvent(ctx, lx, status, from));
+  // ◂ HR H2.7
   return { leave, from };
   }, LEAVE_LOCK_TX_OPTS);
   await writeAudit({
@@ -820,6 +912,7 @@ export async function cancelLeave(ctx: Ctx, leaveId: string, opts: { actorUserId
       select: { id: true, status: true, decidedById: true, filedById: true, fromDate: true, employeeId: true, employee: { select: { linkedUserId: true } } },
     });
     if (!leave) return { ok: false, reason: CANCEL_NOT_FOUND };
+    await lockLeaveEmployeeInTx(tx, ctx.systemId, leave.employeeId); // HR H2.7 ▸ R8 hr-leave:<id> → hr-leave-emp:<sys>:<emp> ◂
     const chains = await tx.approvalRequest.findMany({
       where: { tenantId: ctx.tenantId, entityType: "HrLeave", entityId: leaveId },
       select: { id: true, status: true, requestedById: true },
@@ -851,6 +944,15 @@ export async function cancelLeave(ctx: Ctx, leaveId: string, opts: { actorUserId
     if (requestId && !(await approval.cancelRequest({ tenantId: ctx.tenantId }, requestId, { tx }))) return { ok: false, reason: CANCEL_DECIDED };
     const res = await tx.hrLeave.updateMany({ where: { id: leaveId, status: leave.status }, data: { status: "CANCELLED" } });
     if (res.count === 0) throw new HrLeaveRequestError(LEAVE_STALE); // ย้อนการถอนคำขอด้วย (ไม่ควรเกิดใต้ล็อก)
+    // HR H2.7 ▸ R6/R12: ยกเลิกใบของเจ้าของร้านที่อนุมัติแล้ว = คืนวันลาครั้งเดียว + hr.leave.decided (CANCELLED) ใน tx เดียวกัน · ใบรอ = ไม่เขียนสมุด/ไม่มี event
+    if (leave.status === "APPROVED") {
+      const lx = await leaveRowInTx(tx, leaveId);
+      if (lx) {
+        await leaveLedgerInTx(tx, ctx, lx, "APPROVED", "CANCELLED");
+        await emitOutbox(tx, leaveDecidedEvent(ctx, lx, "CANCELLED", "APPROVED"));
+      }
+    }
+    // ◂ HR H2.7
     return { ok: true, status: leave.status, requestId };
   }, LEAVE_LOCK_TX_OPTS).catch((e: unknown) => {
     if (e instanceof HrLeaveRequestError) return { ok: false as const, reason: e.message };

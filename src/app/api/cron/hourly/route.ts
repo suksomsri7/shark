@@ -173,6 +173,30 @@ export async function GET(req: Request) {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
   }
+  // HR H2.7 ▸ R9 (Q9): งานรายปีของวันลา (GRANT ปีนี้เมื่อถึงวันมีสิทธิ์ · CARRY วันลาสะสม · EXPIRE หลังวันหมดอายุ) ทุกระบบ HR —
+  //   asOf = วันนี้ตามปฏิทินไทย · แถวแรกชนะ (รันซ้ำ = ไม่เปลี่ยน) · งบ 20 วิ (ระบบที่ไม่ทัน = รอบถัดไป) · พังรายระบบ = ops WARN ·
+  //   best-effort: ล้มห้ามทำให้รอบนี้แดง
+  try {
+    const { prisma } = await import("@/lib/core/db");
+    const { thaiDateKey } = await import("@/lib/ui/date");
+    const hrFacade = await import("@/lib/modules/hr");
+    const asOf = thaiDateKey(new Date());
+    const leaveDeadline = Date.now() + 20_000;
+    const hrSystems = await prisma.appSystem.findMany({ where: { type: "HR" }, select: { id: true, tenantId: true }, orderBy: { id: "asc" }, take: 2000 });
+    for (const s of hrSystems) {
+      if (Date.now() > leaveDeadline) break;
+      try {
+        await hrFacade.runLeaveYearJob({ tenantId: s.tenantId, systemId: s.id, asOf });
+      } catch (e) {
+        await logOps("WARN", "cron", "runLeaveYearJob (งานรายปีของวันลา) ล้มในระบบหนึ่ง", { tenantId: s.tenantId, detail: e instanceof Error ? e.message : String(e) });
+      }
+    }
+  } catch (e) {
+    await logOps("WARN", "cron", "runLeaveYearJob (งานรายปีของวันลา) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ HR H2.7
   // ◂ POS P3.6
   // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
   //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
