@@ -374,6 +374,7 @@ const T = {
   unassigned: "พนักงานคนนี้ยังไม่ระบุสาขาประจำ — ผู้ดูแลทุกสาขาเป็นผู้จัดการ",
   entryChanged: "กะนี้เพิ่งถูกแก้ไข — กรุณารีเฟรชแล้วลองใหม่",
   noPerm: "คุณไม่มีสิทธิ์จัดตารางกะ",
+  endedYou: "คุณ อยู่นอกช่วงการจ้างในวันนั้น — สลับไม่ได้", // r2 F3 (ORACLE-EDIT r2 · S10.4)
 } as const;
 const FIXED = new Set<string>(Object.values(T));
 const ITEM_KEYS = ["id", "shape", "status", "createdAt", "peerDecidedAt", "decidedAt", "requester", "target", "from", "to", "canRespond", "canCancel"];
@@ -454,6 +455,12 @@ const CHECKS: readonly Def[] = [
   D("S9.3", "R4", C, "RED", "2 requesters × 5 lanes × 3 rounds on one toEntry ⇒ exactly 1 open"),
   D("S9.4", "R8", C, "RED", "2 approved GIVEs of the same (date,shift) to one colleague ⇒ 1 applied · 1 CANCELLED DUP"),
   D("S9.5", "Q16", C, "RED", "moveEntry (from/to) · removeEntry · AWAITING_PEER ⇒ swap + request CANCELLED"),
+  // r2 fix round (controller rulings 11 Nov · pre-approved ORACLE-EDIT): one check per fix
+  D("S10.1", "r2-F1", M, "RED", "moved (published=false, publishedAt kept) row ⇒ request refused unpublished text · 0 rows · 0 events"),
+  D("S10.2", "r2-F2b", M, "RED", "510 newer u2 closed rows ⇒ mgr-u1 still lists its open u1 swap · mgrAll lists it (open first)"),
+  D("S10.3", "r2-F2", M, "RED", "FROM u1 · TO u2 swap: mgr-u1 list item has no reason · mgrAll (both in scope) has reason"),
+  D("S10.4", "r2-F3", M, "RED", "requester on leave / out of employment on to-day ⇒ decideSwap names คุณ (leaveYou · endedYou)"),
+  D("S10.5", "r2-m4", M, "RED", "out-of-scope decider on a closed swap ⇒ H1.1 branch text (scope before status)"),
   D("X1.1", "X1", C, "RED", "10 lanes × 3 rounds requestSwap same entry ⇒ 1 row"),
   D("X6.1", "X6", C, "RED", "10 lanes accept ⇒ 1 PENDING · 1 request"),
   D("X2.1", "X2", C, "RED", "sys2 / other-tenant target or toEntry ⇒ refused · 0 rows"),
@@ -1126,6 +1133,64 @@ async function runDb(): Promise<void> {
       awaiting: m4.ok && (await st(x4.id)) === "CANCELLED",
       inbox: [x1.id, x2.id, x3.id].every((i) => !!i && !pend.includes(i)),
     }, "swaps + requests CANCELLED · not pending", [m1, m2, m3, m4].map(shown).join(" | "));
+  }
+
+  // ═══ S10 r2 fix round (pre-approved ORACLE-EDIT · hunter snippets F1 / F2 / F2b) ═══
+  console.log("── S10 r2 ──");
+  await chain(false);
+  {
+    // F1: moved row = published false + publishedAt kept ⇒ no swap until re-published
+    const [a] = await E1([[E.A, S.m, nd()]]);
+    const mv = await ro("moveEntry", ctx, vOf(U.owner), a!, { shiftId: S.e });
+    const r = (await row(a!)) ?? {};
+    if (!mv.ok || r.published !== false || !r.publishedAt) chk("S10.1", false, "fixture moved row", `move ${shown(mv)} published=${r.published}`);
+    else await vec("S10.1", [() => req(U.A, a!, E.B)], [T.unpub]);
+  }
+  {
+    // F2b: branch filter in the query, open first — 510 newer closed u2 rows (one raw INSERT … generate_series)
+    const d = nd();
+    const [a] = await E1([[E.A, S.m, d]]);
+    const [x] = await E1([[E.D, S.m, d]]);
+    const id = idOf(await req(U.A, a!, E.B));
+    await P.$executeRawUnsafe(
+      `INSERT INTO "HrShiftSwapRequest" ("id","tenantId","systemId","requesterEmployeeId","fromEntryId","targetEmployeeId","status","createdAt","updatedAt")
+       SELECT concat('qch23r2', $1::text, g), $2, $3, $4, $5, $6, 'REJECTED'::"HrSwapStatus", now() + make_interval(secs => 60 + g), now() FROM generate_series(1, 510) g`,
+      tag, TT, sA.id, E.D, x, E.D2,
+    );
+    const [l1, la] = [await sw("listSwapsForManager", ctx, vOf(U.mgrU1), {}), await sw("listSwapsForManager", ctx, vOf(U.mgrAll), {})];
+    ck("S10.2", { id: !!id, u1: l1.ok && ids(l1).includes(id), noU2: l1.ok && !ids(l1).some((i) => i.startsWith("qch23r2")), all: la.ok && ids(la).includes(id) }, "open u1 swap listed for mgr-u1 + mgrAll", `u1 n=${ids(l1).length} all n=${ids(la).length}`);
+  }
+  {
+    // F2 / review m3: FROM in u1 (D borrowed into u1 on d) · TO in u2 (A borrowed into u2 on d2) ⇒ reason only for viewers with both units in scope
+    const d = nd();
+    const d2 = addDay(d, 1);
+    await P.hrEmployeeUnit.create({ data: { tenantId: TT, systemId: sA.id, employeeId: E.D, unitId: u1, fromDate: dbDate(d), toDate: dbDate(d) } });
+    await P.hrEmployeeUnit.create({ data: { tenantId: TT, systemId: sA.id, employeeId: E.A, unitId: u2, fromDate: dbDate(d2), toDate: dbDate(d2) } });
+    const [aU1, bU2] = await E1([[E.A, S.m, d], [E.D, S.a, d2]]);
+    const id = idOf(await sw("requestSwap", ctx, vOf(U.A), { fromEntryId: aU1, targetEmployeeId: E.D, toEntryId: bU2, reason: REASON }));
+    const ac = await sw("respondSwap", ctx, vOf(U.Dd), id, { accept: true });
+    const [l1, la] = [await sw("listSwapsForManager", ctx, vOf(U.mgrU1), {}), await sw("listSwapsForManager", ctx, vOf(U.mgrAll), {})];
+    const [i1, ia] = [itemOf(l1, id), itemOf(la, id)];
+    ck("S10.3", { made: !!id && ac.ok, listed: !!i1, noReason: !!i1 && !("reason" in i1) && !JSON.stringify(i1).includes(REASON), allReason: ia?.reason === REASON }, "mgr-u1 no reason · mgrAll reason", `accept ${shown(ac)} u1=${i1 ? Object.keys(i1).length : "∅"}`);
+  }
+  {
+    // F3 / review m5: requester-side refusals name คุณ (SWAP C ↔ B, B accepts, then C's to-day changes)
+    const d = nd();
+    const [c1, b1, c2, b2] = await E1([[E.C, S.m, d], [E.B, S.a, addDay(d, 1)], [E.C, S.m, addDay(d, 2)], [E.B, S.a, addDay(d, 3)]]);
+    const i1 = idOf(await req(U.C, c1!, E.B, b1!));
+    const i2 = idOf(await req(U.C, c2!, E.B, b2!));
+    for (const i of [i1, i2]) await acc(U.B, i);
+    await leave(E.C, addDay(d, 1));
+    const r1 = await dec(U.mgrAll, i1);
+    await P.hrEmployee.update({ where: { id: E.C }, data: { endDate: dbDate(addDay(d, 2)) } });
+    const r2 = await dec(U.mgrAll, i2);
+    await P.hrEmployee.update({ where: { id: E.C }, data: { endDate: null } });
+    ck("S10.4", { leave: said(r1, T.leaveYou) && (await codes(i1)) === "LEAVE", ended: said(r2, T.endedYou) && (await codes(i2)) === "ENDED", cancelled: (await st(i1)) === "CANCELLED" && (await st(i2)) === "CANCELLED" }, "leaveYou · endedYou", `${shown(r1)} · ${shown(r2)}`);
+  }
+  {
+    // review m4: su2 (u2) is APPROVED (S6.5) — mgr-u1 must get the H1.1 branch text, not the status text
+    const r = await dec(U.mgrU1, su2);
+    chk("S10.5", said(r, T.otherBranch), T.otherBranch, shown(r));
   }
 
   // ═══ X ═══
