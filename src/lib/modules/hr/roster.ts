@@ -25,6 +25,7 @@ import { HR_OTHER_BRANCH_TEXT, HR_UNASSIGNED_TEXT, hrScopeOf, type HrScope } fro
 import { canManageHrSettings, SETTINGS_TEXT, type SettingsViewer } from "./settings";
 import { addDays, bkkDayKey, paidMinutes, shiftTimesProblem, shiftWindow, TimeRuleError } from "./time-rules";
 import { daysBetween, ROSTER_RULE_DEFAULTS, rosterWarnings, weekdayOfDay, weekStartOf, type RosterWarning } from "./roster-rules";
+import { cancelRequest } from "@/lib/modules/approval/service"; // HR H2.3 ▸ Q16 ยกเลิกคำขอสลับกะที่ค้างบนแถวที่ถูกย้าย/ลบ (คำขออนุมัติผ่านแกน · tx เดียวกัน) ◂
 
 type Ctx = { tenantId: string; systemId: string };
 type Tx = Prisma.TransactionClient;
@@ -508,6 +509,7 @@ export async function moveEntry(ctx: Ctx, viewer: RosterViewer, entryId: string,
     const times = shiftChanged
       ? { startMin: shift.startMin, endMin: shift.endMin, breakMin: shift.breakMin, crossesMidnight: shift.crossesMidnight }
       : { startMin: row.startMin, endMin: row.endMin, breakMin: row.breakMin, crossesMidnight: row.crossesMidnight };
+    let swapsCancelled: string[] = []; // HR H2.3 ▸ Q16 คำขอสลับกะที่ถูกยกเลิกเพราะแถวนี้ถูกย้าย ◂
     await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Tx;
       await lockKeys(tx, ctx.systemId, [
@@ -537,6 +539,9 @@ export async function moveEntry(ctx: Ctx, viewer: RosterViewer, entryId: string,
         data: { employeeId, date: dbDate(day), shiftId: shift.id, unitId, ...times, source: "MANUAL", published: false },
       });
       if (res.count !== 1) throw new RosterRefusal(ROSTER_TEXT.entryNotFound);
+      // HR H2.3 ▸ Q16 (มติผู้คุม 22 ต.ค.): แถวนี้เป็นกะต้นทาง/ปลายทางของคำขอสลับที่ยังเปิด ⇒ ยกเลิกคำขอ + คำขออนุมัติในธุรกรรมนี้ (ใต้ล็อกตารางกะเดิม)
+      swapsCancelled = await cancelOpenSwapsInTx(tx, ctx, row.id);
+      // ◂ HR H2.3
     });
     await audit(ctx, viewer, "hr.roster.entry.move", "HrRosterEntry", row.id, {
       entryId: row.id,
@@ -549,6 +554,7 @@ export async function moveEntry(ctx: Ctx, viewer: RosterViewer, entryId: string,
       fromDate: oldDay,
       fromShiftId: row.shiftId,
     });
+    if (swapsCancelled.length) await audit(ctx, viewer, "hr.swap.cancel_by_roster", "HrRosterEntry", row.id, { entryId: row.id, swapIds: swapsCancelled, op: "move" }); // HR H2.3 ▸ Q16 ◂
     return { ok: true, id: row.id };
   } catch (e) {
     return refuse(reasonOf(e));
@@ -561,14 +567,19 @@ export async function removeEntry(ctx: Ctx, viewer: RosterViewer, entryId: strin
     const scope = scopeOfViewer(viewer);
     const row = await ownEntry(ctx, viewer, scope, entryId);
     const day = dayOf(row.date);
+    let swapsCancelled: string[] = []; // HR H2.3 ▸ Q16 ◂
     await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Tx;
       await lockKeys(tx, ctx.systemId, [{ employeeId: row.employeeId, date: day }]);
+      // HR H2.3 ▸ Q16: ยกเลิกคำขอสลับ + คำขออนุมัติก่อนลบ (FK Cascade ลบคำขอที่แถวนี้เป็นต้นทาง — คำขออนุมัติต้องไม่ค้างในกล่องรออนุมัติ)
+      swapsCancelled = await cancelOpenSwapsInTx(tx, ctx, row.id);
+      // ◂ HR H2.3
       const res = await tx.hrRosterEntry.deleteMany({ where: { id: row.id, employeeId: row.employeeId, date: row.date } });
       if (res.count !== 1) throw new RosterRefusal(ROSTER_TEXT.entryNotFound);
     });
     // wasPublished = โมดูลอื่นเคยเห็นแถวนี้ ⇒ บอร์ดนับเป็น "แก้ N จุด" จนกว่าจะเผยแพร่ครั้งถัดไป (R7)
     await audit(ctx, viewer, "hr.roster.entry.remove", "HrRosterEntry", row.id, { entryId: row.id, employeeId: row.employeeId, date: day, shiftId: row.shiftId, unitId: row.unitId, wasPublished: row.publishedAt !== null });
+    if (swapsCancelled.length) await audit(ctx, viewer, "hr.swap.cancel_by_roster", "HrRosterEntry", row.id, { entryId: row.id, swapIds: swapsCancelled, op: "remove" }); // HR H2.3 ▸ Q16 ◂
     return { ok: true };
   } catch (e) {
     return refuse(reasonOf(e));
@@ -1007,4 +1018,113 @@ export async function rosterAt(input: { tenantId: string; at: Date; unitId?: str
   for (const d of days) all.push(...(await dayEntries(input.tenantId, systems, d, unitId)));
   return { hrLinked: true, entries: all.filter((e) => t >= e.start.getTime() - tol && t < e.end.getTime() + tol) };
 }
+// HR H2.3 ▸ ตัวช่วยในธุรกรรมของผู้เรียก (มติ Q3 · brief R6) — ใช้โดย hr/swap.ts เท่านั้น (คำขอสลับ/ยกกะ) · ไม่แตะตัวงาน H2.1 ข้างบน
+//   ผู้เรียกเปิด tenantDb(ctx).$transaction เอง · ทุกคำสั่งใช้ tx ของผู้เรียก (§C.8) · ลำดับล็อก: hr-swap:<id> ก่อน แล้วจึงกุญแจตารางกะ (R13)
+
+/** ล็อก (ระบบ, พนักงาน, วัน) รูปเดียวกับ H2.1 R11 — ตัดซ้ำ เรียงจากน้อยไปมาก ในคำสั่งเดียว */
+export async function lockRosterKeysInTx(tx: Tx, systemId: string, keys: LockKey[]): Promise<void> {
+  await lockKeys(
+    tx,
+    systemId,
+    keys.filter((k) => !!k && typeof k.employeeId === "string" && !!k.employeeId && typeof k.date === "string" && !!k.date),
+  );
+}
+
+export type ReassignCode = "ENTRY_GONE" | "ENTRY_CHANGED" | "PAST" | "NOT_PUBLISHED" | "DUP";
+export type ReassignResult = { ok: true } | { ok: false; code: ReassignCode };
+
+/**
+ * ย้ายเจ้าของแถว (employeeId) ในที่ — ใต้ล็อกของผู้เรียก: อ่านแถวใหม่ด้วย tx · ตรวจ expect (ยังเป็นของคนเดิม · updatedAt ≤ updatedAtMax =
+ * ไม่ถูกแตะตั้งแต่ยื่นคำขอ · เคยเผยแพร่ · ยังไม่ผ่านไป) · คง id/published/publishedAt/เวลา/กะ/สาขา (กติกาสาขาเดียวกันของคำขอ) · source MANUAL ·
+ * เขียนตามลำดับ entryId จากน้อยไปมาก · ชน unique (พนักงาน, วัน, กะ) = DUP — ตรวจก่อนเขียน และกันอีกชั้นด้วย savepoint
+ * (ทั้งสองแถวหรือไม่เลย — ผลไม่สำเร็จไม่ทิ้งแถวที่เขียนไปครึ่งทาง)
+ */
+export async function reassignEntriesInTx(
+  tx: Tx,
+  ctx: Ctx,
+  moves: { entryId: string; toEmployeeId: string }[],
+  opts: { expect: { entryId: string; employeeId: string; updatedAtMax: Date }[] },
+): Promise<ReassignResult> {
+  const list = [...moves].sort((a, b) => (a.entryId < b.entryId ? -1 : a.entryId > b.entryId ? 1 : 0));
+  const ids = [...new Set([...list.map((m) => m.entryId), ...opts.expect.map((e) => e.entryId)])];
+  if (list.length === 0 || new Set(list.map((m) => m.entryId)).size !== list.length) return { ok: false, code: "ENTRY_CHANGED" };
+  const rows = await tx.hrRosterEntry.findMany({
+    where: { id: { in: ids }, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    select: { id: true, employeeId: true, date: true, shiftId: true, publishedAt: true, updatedAt: true },
+  });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const today = todayKey();
+  for (const id of ids) if (!byId.has(id)) return { ok: false, code: "ENTRY_GONE" };
+  for (const e of opts.expect) {
+    const r = byId.get(e.entryId)!;
+    if (r.employeeId !== e.employeeId || r.updatedAt.getTime() > e.updatedAtMax.getTime()) return { ok: false, code: "ENTRY_CHANGED" };
+  }
+  for (const id of ids) {
+    const r = byId.get(id)!;
+    if (r.publishedAt === null) return { ok: false, code: "NOT_PUBLISHED" };
+    if (dayOf(r.date) < today) return { ok: false, code: "PAST" };
+  }
+  // ผลลัพธ์หลังย้าย: (เจ้าของใหม่, วัน, กะ) ต้องไม่ชนกันเอง และไม่ชนแถวอื่นของเจ้าของใหม่
+  const finals = list.map((m) => ({ id: m.entryId, employeeId: m.toEmployeeId, day: dayOf(byId.get(m.entryId)!.date), shiftId: byId.get(m.entryId)!.shiftId }));
+  const fk = finals.map((f) => `${f.employeeId}|${f.day}|${f.shiftId}`);
+  if (new Set(fk).size !== fk.length) return { ok: false, code: "DUP" };
+  const others = await tx.hrRosterEntry.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      id: { notIn: list.map((m) => m.entryId) },
+      OR: finals.map((f) => ({ employeeId: f.employeeId, date: dbDate(f.day), shiftId: f.shiftId })),
+    },
+    select: { id: true },
+    take: 1,
+  });
+  if (others.length) return { ok: false, code: "DUP" };
+  await tx.$executeRawUnsafe("SAVEPOINT hr_h23_reassign");
+  try {
+    for (const m of list) {
+      const expected = byId.get(m.entryId)!.employeeId;
+      const res = await tx.hrRosterEntry.updateMany({
+        where: { id: m.entryId, tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: expected },
+        data: { employeeId: m.toEmployeeId, source: "MANUAL" },
+      });
+      if (res.count !== 1) {
+        await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT hr_h23_reassign");
+        return { ok: false, code: "ENTRY_CHANGED" };
+      }
+    }
+  } catch (e) {
+    if (!isUniqueViolation(e)) throw e;
+    await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT hr_h23_reassign");
+    return { ok: false, code: "DUP" };
+  }
+  await tx.$executeRawUnsafe("RELEASE SAVEPOINT hr_h23_reassign");
+  return { ok: true };
+}
+
+/**
+ * Q16 (มติผู้คุม 22 ต.ค. แบบเข้ม): แถวที่ถูกย้าย/ลบเป็นกะต้นทางหรือปลายทางของคำขอสลับที่ยังเปิด ⇒ คำขอ → CANCELLED
+ * และคำขออนุมัติที่ยัง PENDING → CANCELLED ผ่านแกน (cancelRequest + tx) — ไม่มีของค้างในกล่องรออนุมัติ ·
+ * ผู้เรียกถือล็อกตารางกะของแถวอยู่แล้ว · แตะแถวคำขออนุมัติก่อนแถวคำขอสลับ (ลำดับเดียวกับ cancelSwap) · คืน id คำขอที่ยกเลิก
+ */
+async function cancelOpenSwapsInTx(tx: Tx, ctx: Ctx, entryId: string): Promise<string[]> {
+  const open = await tx.hrShiftSwapRequest.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: { in: ["AWAITING_PEER", "PENDING"] }, OR: [{ fromEntryId: entryId }, { toEntryId: entryId }] },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  if (open.length === 0) return [];
+  const ids = open.map((s) => s.id);
+  const reqs = await tx.approvalRequest.findMany({
+    where: { tenantId: ctx.tenantId, entityType: "HrShiftSwapRequest", entityId: { in: ids }, status: "PENDING" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  for (const r of reqs) await cancelRequest({ tenantId: ctx.tenantId }, r.id, { tx });
+  await tx.hrShiftSwapRequest.updateMany({
+    where: { tenantId: ctx.tenantId, id: { in: ids }, status: { in: ["AWAITING_PEER", "PENDING"] } },
+    data: { status: "CANCELLED", decidedAt: new Date() },
+  });
+  return ids;
+}
+// ◂ HR H2.3
 // ◂ HR H2.1
