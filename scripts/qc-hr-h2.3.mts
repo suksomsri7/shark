@@ -898,7 +898,7 @@ async function runDb(): Promise<void> {
     tl.cancelledChain = x.id;
   }
   {
-    const baseVals = [...(fileAtBase("src/lib/modules/approval/labels.ts") ?? "").matchAll(/value:\s*["']([^"']+)["']/g)].map((m) => m[1]!);
+    const baseVals = [...(fileAtBase("src/lib/modules/approval/labels.ts") ?? "").split("APPROVER_ROLES")[0]!.matchAll(/value:\s*["']([^"']+)["']/g)].map((m) => m[1]!);
     const now: string[] = (apLabels.ENTITY_TYPES ?? []).map((e: Any) => e.value);
     const act = stripComments(rd("src/lib/modules/approval/actions.ts"));
     const i = act.indexOf("ENTITY_TYPES = new Set(");
@@ -991,6 +991,7 @@ async function runDb(): Promise<void> {
 
   // ═══ S5 warnings (C = third employee with entries on the same days) ═══
   console.log("── S5 warnings ──");
+  await chain(false); // ORACLE-EDIT (controller 11 Nov): S4.8 leaves the policy on — S5 exercises the direct path
   const own = new Set<string>();
   const clean = (ws: Any) => Array.isArray(ws) && ws.every((w: Any) => [E.A, E.B].includes(w?.employeeId) && (w?.entryIds ?? []).every((i: string) => own.has(i)));
   const rules = (ws: Any) => short((ws ?? []).map((w: Any) => `${w.rule}:${w.employeeId === E.B ? "B" : w.employeeId === E.A ? "A" : "?"}`), 80);
