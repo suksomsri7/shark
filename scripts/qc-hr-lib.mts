@@ -11,7 +11,8 @@ import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
 export const ROOT = process.cwd();
-export const QC4_HOST_MARK = "ep-frosty-lab";
+import { hrQcHostMark } from "./hr-qc-hosts.mjs"; // ORACLE-EDIT (controller 11 Nov): ฐาน QC ต่อเลนใน allowlist
+export const QC4_HOST_MARK = hrQcHostMark();
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ═════════════════════════ ตัวช่วยล้วน ═════════════════════════
