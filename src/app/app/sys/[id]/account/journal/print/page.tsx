@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { loadAccountSystem } from "@/lib/modules/account/guard";
+import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
 import { listJournalPaged, journalRangeOf, JOURNAL_TABS } from "@/lib/modules/account/journal-v2";
 import { formatDateTh } from "@/lib/ui/date";
@@ -16,6 +16,7 @@ export default async function JournalPrintPage({
   const { id } = await params;
   const sp = await searchParams;
   const { auth, tenantId, systemId } = await loadAccountSystem(id);
+  accountPageGate(auth, "account.journal.view"); // SVC G2-F F2 ▸ ไม่มีสิทธิ์ ⇒ ไม่พบ (ไม่ใช่ 500) ◂
   assertAccountCan(auth, "account.journal.view");
 
   // ค่าตั้งต้นเดียวกับหน้ารายการเป๊ะ ("เดือนนี้" = ทั้งเดือน) — ปกติหน้ารายการส่ง from/to มาให้อยู่แล้ว

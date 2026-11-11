@@ -17,6 +17,13 @@ export const formatThaiDate = (d: Date | string, opts?: { long?: boolean }) =>
     timeZone: TZ,
   });
 
+/**
+ * วันที่แบบสั้นตามภาษาของจอ — th = formatThaiDate ("5 ก.พ. 69" · พ.ศ.) · en = "5 Feb 2026" (ค.ศ.) · โซนไทยทั้งคู่
+ * (POS P1.12U fix รอบ 1 F6: วันหมดอายุว่อชเชอร์/รางวัลบนจอภาษาอังกฤษ)
+ */
+export const formatShortDate = (d: Date | string, locale: string) =>
+  locale === "en" ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: TZ }) : formatThaiDate(d);
+
 /** วันที่เต็ม "5 กุมภาพันธ์ 2569" — ใช้ในเอกสาร (ใบกำกับ/ใบเสร็จ) */
 export const formatThaiDateLong = (d: Date | string) => formatThaiDate(d, { long: true });
 

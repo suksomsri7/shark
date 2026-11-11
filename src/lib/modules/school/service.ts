@@ -209,9 +209,10 @@ export async function markPaid(
   //   การรับชำระที่ถูกยกเลิกไปแล้วยังทิ้ง event ค้างไว้ (และกิจกรรม VISIT ใน CRM หลังคิวระบาย) = ไทม์ไลน์โกหกว่าจ่ายแล้ว
   //   ย้ายขึ้นมาเป็น pre-check ก่อนเขียนอะไรทั้งสิ้น ⇒ ไม่มี POS = โยนโดยไม่แตะสถานะ ไม่มี event ไม่มีกิจกรรม
   //   ข้อความไทยเดิมทุกตัวอักษร · ลำดับเดิมคงไว้: สถานะไม่ใช่ ENROLLED → ok:false มาก่อนด่าน POS
-  const posSystems = await listSystems(ctx.tenantId, "POS");
-  const posSys = posSystems[0];
-  if (!posSys) throw new Error("เปิดระบบขาย (POS) ก่อนรับชำระค่าเรียน");
+  // POS P1.6 R2 F1 ▸ ตัวตัดสิน O21 เดียวกับ createSale ◂
+  const posGate = await pos.posSystemForSale(ctx.tenantId, ctx.unitId);
+  if (!posGate.ok) throw new Error(posGate.code === "NO_POS" ? "เปิดระบบขาย (POS) ก่อนรับชำระค่าเรียน" : posGate.message);
+  const posSys = { id: posGate.systemId };
 
   // 1) claim อะตอมมิก: ENROLLED → PAID (แพ้แข่ง/จ่ายแล้ว/ยกเลิก → ok:false ไม่ทำเส้นเงินซ้ำ)
   //   (มติ C11 · ใบ C2.9 · R-B: โมดูลเรียนยิงเหตุการณ์เดียว = ตอน "ชำระค่าเรียนแล้ว" ไม่มี `school.completed`)
@@ -239,18 +240,28 @@ export async function markPaid(
   // 2) ด่าน POS ผ่านแล้วตั้งแต่ก่อน claim (บล็อก CRM C2.9 ด้านบน) — ไม่มีการ revert สถานะหลังยิง event อีกต่อไป
 
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `school-<enrollmentId>`)
-  const sale = await pos.createSale({
-    tenantId: ctx.tenantId,
-    unitId: ctx.unitId,
-    systemId: posSys.id,
-    sourceModule: "SCHOOL",
-    sourceId: enrollmentId,
-    idempotencyKey: `school-${enrollmentId}`,
-    lines: [
-      { name: `ค่าเรียน ${en.class.course.name} (${en.class.name})`, qty: 1, unitPriceSatang: en.priceSatang },
-    ],
-    payMethods: [{ type: "CASH", amountSatang: en.priceSatang }],
-  });
+  // POS P1.6 R4 H3: createSale ล้ม (เช่น สาขาถูกย้าย POS ระหว่างด่านกับ claim) และไม่มีบิลของคีย์นี้จริง ⇒ คืนสถานะ claim
+  //   (event ของ claim ที่ยิงไปแล้วคงอยู่ — เหมือนกรณีเดิมก่อน C2.9 · ไม่มีบิล = ไม่มีเงินเข้า)
+  let sale: Awaited<ReturnType<typeof pos.createSale>>;
+  try {
+    sale = await pos.createSale({
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      systemId: posSys.id,
+      sourceModule: "SCHOOL",
+      sourceId: enrollmentId,
+      idempotencyKey: `school-${enrollmentId}`,
+      lines: [
+        { name: `ค่าเรียน ${en.class.course.name} (${en.class.name})`, qty: 1, unitPriceSatang: en.priceSatang },
+      ],
+      payMethods: [{ type: "CASH", amountSatang: en.priceSatang }],
+    });
+  } catch (e) {
+    if ((await pos.saleStatusByKey(ctx.tenantId, `school-${enrollmentId}`)) === null) {
+      await db.schoolEnrollment.updateMany({ where: { id: enrollmentId, status: "PAID", posSaleId: null }, data: { status: "ENROLLED", paidAt: null } });
+    }
+    throw e;
+  }
 
   await db.schoolEnrollment.updateMany({ where: { id: enrollmentId }, data: { posSaleId: sale.saleId } });
 

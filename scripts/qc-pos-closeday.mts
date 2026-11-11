@@ -37,12 +37,15 @@ try {
   const unit = await prisma.businessUnit.create({ data: { tenantId, type: "BOOKING", name: "หน้าร้าน", slug: `front-${Date.now()}` } });
   const posSys = await sys.createSystem(tenantId, "POS", "POS หน้าร้าน");
   const posSys2 = await sys.createSystem(tenantId, "POS", "POS สาขา 2");
+  // POS P1.6 FIXTURE (R7/O21): สาขาหนึ่งผูก POS ได้ตัวเดียว (unique tenant+unit+type — linkUnit ตัวที่สองทับตัวแรก)
+  //   เดิมขาย posSys ผ่านสาขาที่ผูก posSys2 = คู่ผิดที่ createSale ปฏิเสธแล้ว ⇒ สาขา 2 แยกสำหรับ posSys2 · ข้อสอบเดิมไม่เปลี่ยน
   await sys.linkUnit(tenantId, posSys.id, unit.id);
-  await sys.linkUnit(tenantId, posSys2.id, unit.id);
+  const unit2 = await prisma.businessUnit.create({ data: { tenantId, type: "BOOKING", name: "สาขา 2", slug: `front2-${Date.now()}` } });
+  await sys.linkUnit(tenantId, posSys2.id, unit2.id);
 
   const sale = (sysId: string, key: string, type: "CASH" | "PROMPTPAY", amount: number) =>
     pos.createSale({
-      tenantId, unitId: unit.id, systemId: sysId, idempotencyKey: key,
+      tenantId, unitId: sysId === posSys2.id ? unit2.id : unit.id, systemId: sysId, idempotencyKey: key,
       lines: [{ name: "กาแฟ", qty: 1, unitPriceSatang: amount }],
       payMethods: [{ type, amountSatang: amount }],
     });

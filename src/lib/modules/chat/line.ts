@@ -8,7 +8,27 @@ import { ChannelDeliveryError } from "./adapter";
 // - profile: GET /bot/profile/{userId}
 // docs: https://developers.line.biz/en/reference/messaging-api/
 
-const API = "https://api.line.me/v2/bot";
+const LINE_API_ORIGIN = "https://api.line.me";
+
+/**
+ * SVC R0.7 ▸ origin ของ Messaging API — อ่าน env **ตอนเรียก** (ใบสั่ง R0.7 §2)
+ *   นอก prod (`APP_ENV !== "production"`) และ `LINE_API_BASE` ขึ้นต้น `http://127.0.0.1:` / `http://localhost:`
+ *   ⇒ ใช้ตัวจำลองของข้อสอบ · อื่น ๆ ทั้งหมด (prod · ค่าว่าง · host อื่น) ⇒ `https://api.line.me`
+ *   🔴 ห้ามขยายให้รับ host อื่น — ค่า env ที่หลุด/ถูกแก้ต้องไม่พาโทเคนของร้านไปที่อื่นได้ ◂
+ */
+export function lineApiBase(): string {
+  if (process.env.APP_ENV === "production" || process.env.VERCEL_ENV === "production") return LINE_API_ORIGIN;
+  const raw = process.env.LINE_API_BASE;
+  if (typeof raw !== "string" || !(raw.startsWith("http://127.0.0.1:") || raw.startsWith("http://localhost:"))) return LINE_API_ORIGIN;
+  // ตรวจซ้ำด้วยตัวแยก URL จริง — `http://127.0.0.1:@evil.example` ขึ้นต้นถูกแต่ host จริงคือ evil.example
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" || u.username || u.password || (u.hostname !== "127.0.0.1" && u.hostname !== "localhost")) return LINE_API_ORIGIN;
+    return u.origin;
+  } catch {
+    return LINE_API_ORIGIN;
+  }
+}
 
 function authHeader(creds: ChannelCreds): string {
   const token = creds.channelAccessToken;
@@ -127,7 +147,7 @@ export const lineAdapter: ChannelAdapter = {
 
     let res: Response;
     try {
-      res = await fetch(`${API}/message/push`, {
+      res = await fetch(`${lineApiBase()}/v2/bot/message/push`, {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: authHeader(creds) },
         body: JSON.stringify({ to: externalUserId, messages }),
@@ -151,7 +171,7 @@ export const lineAdapter: ChannelAdapter = {
 
   async getProfile(creds, externalUserId) {
     try {
-      const res = await fetch(`${API}/profile/${externalUserId}`, {
+      const res = await fetch(`${lineApiBase()}/v2/bot/profile/${externalUserId}`, {
         headers: { Authorization: authHeader(creds) },
       });
       if (!res.ok) return {};
@@ -167,7 +187,7 @@ export const lineAdapter: ChannelAdapter = {
       return { ok: false, detail: "กรอก Channel access token และ Channel secret ให้ครบ" };
     }
     try {
-      const res = await fetch(`${API}/info`, {
+      const res = await fetch(`${lineApiBase()}/v2/bot/info`, {
         headers: { Authorization: authHeader(creds) },
       });
       if (res.status === 401) return { ok: false, detail: "Channel access token ไม่ถูกต้อง" };

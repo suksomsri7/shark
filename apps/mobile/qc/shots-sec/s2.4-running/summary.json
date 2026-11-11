@@ -1,0 +1,68 @@
+{
+ "generatedAt": "2026-11-05T19:29:53.888Z",
+ "base": "http://127.0.0.1:4727",
+ "view": {
+  "tag": "iphone",
+  "w": 390,
+  "h": 844,
+  "scale": 2
+ },
+ "fixture": {
+  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.4-running.json",
+  "sha256": "10495c956b37e868a27f314adede5af34a8b39fff398cac7d9df69c9aa984673"
+ },
+ "screens": [
+  {
+   "name": "secretary-room-r1",
+   "route": "/secretary/room/r1",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "10495c956b37e868a27f314adede5af34a8b39fff398cac7d9df69c9aa984673",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-room",
+    "sec-room-bubble",
+    "sec-room-steps",
+    "sec-room-step",
+    "sec-room-background",
+    "sec-room-input",
+    "sec-room-send",
+    "sec-room-menu"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nกำลังทำ · เริ่ม 2:38 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nPOS\nดึงราคาสินค้า · เครื่องชง Espresso M2 ฿6,579/ชุด\n\nบัญชี\nตรวจนโยบายส่วนลด · 5% อยู่ในเกณฑ์\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · กำลังสร้างเอกสาร…\nทำงานอยู่เบื้องหลัง — ปิดแอปได้ Shark จะแจ้งเมื่อต้องอนุมัติหรือเสร็จ\n\n",
+   "unmocked": [],
+   "url": "/secretary/room/r1",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.4-running/secretary-room-r1.png",
+   "generatedAt": "2026-11-05T19:29:50.750Z"
+  },
+  {
+   "name": "secretary-room-r1-dark",
+   "route": "/secretary/room/r1",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "10495c956b37e868a27f314adede5af34a8b39fff398cac7d9df69c9aa984673",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-room",
+    "sec-room-bubble",
+    "sec-room-steps",
+    "sec-room-step",
+    "sec-room-background",
+    "sec-room-input",
+    "sec-room-send",
+    "sec-room-menu"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nใบเสนอราคา ร้านดอยช้าง\nกำลังทำ · เริ่ม 2:38 · 2 คนในห้อง\n\n\nทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย\nรับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ\nCRM\nค้นหาลูกค้า \"สมชาย ดอยช้าง\" · พบ 1 ราย · เครดิต 30 วัน\n\nPOS\nดึงราคาสินค้า · เครื่องชง Espresso M2 ฿6,579/ชุด\n\nบัญชี\nตรวจนโยบายส่วนลด · 5% อยู่ในเกณฑ์\n\nบัญชี\nร่างใบเสนอราคา Q-0012 · กำลังสร้างเอกสาร…\nทำงานอยู่เบื้องหลัง — ปิดแอปได้ Shark จะแจ้งเมื่อต้องอนุมัติหรือเสร็จ\n\n",
+   "unmocked": [],
+   "url": "/secretary/room/r1",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.4-running/secretary-room-r1-dark.png",
+   "generatedAt": "2026-11-05T19:29:53.754Z"
+  }
+ ]
+}

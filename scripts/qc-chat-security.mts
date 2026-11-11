@@ -316,5 +316,5 @@ try {
 
 console.log("\n===== QC7 Chat security =====");
 console.log(`ผ่าน ${passed} ข้อ · FINDINGS ${findings.length}`);
-console.log("JSON_SUMMARY " + JSON.stringify({ passed, findings }));
+console.log("JSON_SUMMARY " + JSON.stringify({ total: passed + findings.length, passed, findings })); // ORACLE-EDIT ผู้คุม POS (B) 22.10 (CD-P312-O2): เพิ่ม total ให้ตรงรูปแบบ qc-chat-security-scope/core-v2 — ตัวรัน pos-gates N6 ต้องการ total = passed เป็นจำนวนเต็ม · ความหมายข้อสอบไม่เปลี่ยน
 if (findings.length) process.exit(1);

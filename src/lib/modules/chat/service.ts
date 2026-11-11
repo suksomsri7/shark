@@ -860,7 +860,14 @@ export async function receiveInbound(args: {
     data: { lastInboundAt: new Date() },
   });
 
+  // SEC S1.24 ▸ ห้องที่ยังไม่มีผู้ดูแล → กฎรับเรื่อง (best-effort · ไม่มีกฎ = ไม่ทำอะไร · ล้ม = log ไม่กระทบผลเดิม) ◂
+  if (!conv.assigneeUserId) await autoAssignIncoming(tenantId, systemId, conv.id);
+
   await maybeAutoLinkMember(tenantId, systemId, contact.id);
+  // SEC S1.22 ▸ นอกเวลาทำการ Shark ตอบแทน/ส่งต่อคน — best-effort ไม่ทำให้ inbound ล้ม ◂
+  if (msgType === "TEXT" && (inbound.body ?? "").trim() && isLiveInbound(inbound.sentAt)) {
+    await scheduleAfterHours({ tenantId, systemId, conversationId: conv.id, messageId: msg.id, text: inbound.body ?? "" });
+  }
   return { ok: true, conversationId: conv.id };
 }
 
@@ -1309,8 +1316,65 @@ export async function receiveExternalInbound(args: {
     data: { lastInboundAt: new Date() },
   });
 
+  // SEC S1.24 ▸ ห้องที่ยังไม่มีผู้ดูแล → กฎรับเรื่อง (best-effort · ไม่มีกฎ = ไม่ทำอะไร · ล้ม = log ไม่กระทบผลเดิม) ◂
+  if (!conv.assigneeUserId) await autoAssignIncoming(tenantId, systemId, conv.id);
+
   await maybeAutoLinkMember(tenantId, systemId, contact.id);
+  // SEC S1.22 ▸ นอกเวลาทำการ Shark ตอบแทน/ส่งต่อคน — ข้อความสดเท่านั้น (ประวัติที่ย้ายเข้ามา/sentAt เก่า = ไม่ตอบ) · best-effort ◂
+  if (msgType === "TEXT" && body && isLiveInbound(args.sentAt)) {
+    await scheduleAfterHours({ tenantId, systemId, conversationId: conv.id, messageId: msg.id, text: body });
+  }
   return { ok: true, conversationId: conv.id, messageId: msg.id, createdAt: msg.createdAt.toISOString() };
+}
+
+// SEC S1.24 ▸ ตัวเรียกกฎรับเรื่องของขาเข้า 2 ทาง — ห้าม throw (ข้อความลูกค้าบันทึกครบแล้ว · มอบหมายไม่ได้ = ทีมกดรับเอง) ◂
+async function autoAssignIncoming(tenantId: string, systemId: string, conversationId: string): Promise<void> {
+  try {
+    const { assignIncoming } = await import("./routing");
+    await assignIncoming({ tenantId, systemId, conversationId });
+  } catch (e) {
+    const { logOps } = await import("@/lib/core/ops");
+    await logOps("WARN", "chat", `assignIncoming ล้ม (ห้อง ${conversationId})`, { tenantId, detail: e instanceof Error ? (e.stack ?? e.message) : String(e) }).catch(() => {});
+  }
+}
+
+// ───────────────────────── SEC S1.22 · นอกเวลาทำการ (hook ขาเข้า) ─────────────────────────
+
+/** ข้อความสด = ไม่ระบุเวลา หรือเวลาไม่เก่ากว่า 10 นาที (กันประวัติที่ย้ายเข้ามา/ยิงซ้ำช้า ๆ ถูกตอบย้อนหลัง) */
+const AFTER_HOURS_LIVE_MS = 10 * 60 * 1000;
+function isLiveInbound(sentAt: Date | undefined | null): boolean {
+  if (!(sentAt instanceof Date) || Number.isNaN(sentAt.getTime())) return true;
+  return Date.now() - sentAt.getTime() <= AFTER_HOURS_LIVE_MS;
+}
+
+/**
+ * เรียก `afterHoursAutoReply` หลังบันทึกข้อความลูกค้าแล้ว — ห้ามทำให้ inbound ล้มเด็ดขาด (catch → logOps)
+ * 🔴 ในคำขอ (webhook) = `after()` ตอบช่องทางก่อน แล้วค่อยเรียกโมเดล (LINE timeout แล้วยิงซ้ำ = ตอบซ้ำ/บิลซ้ำ — แบบเดียวกับแปลอัตโนมัติ)
+ *    นอกคำขอ (สคริปต์/cron/ข้อสอบ) `after()` โยน ⇒ รอจนจบก่อนคืนค่า (ผลเห็นได้ทันที · ไม่ทิ้งงานลอย)
+ * กันตอบซ้ำด้วย clientMessageId `ah:<messageId>` ใน after-hours.ts · ร้านที่ไม่เปิด `afterHoursReply` = อ่าน AiSettings 1 แถวแล้วจบ
+ */
+async function scheduleAfterHours(a: { tenantId: string; systemId: string; conversationId: string; messageId: string; text: string }): Promise<void> {
+  const run = async () => {
+    try {
+      // R-S1.22e ▸ รหัสผูกบัญชี LINE ถูกบันทึกเป็นข้อความแทน (ตัวรหัสจริงไม่อยู่ในแถว) — ไม่ใช่คำถามของลูกค้า ⇒ ไม่ตอบ ◂
+      const { LINK_CODE_MASK } = await import("./link-code");
+      if (a.text.trim() === LINK_CODE_MASK) return;
+      const { afterHoursAutoReply } = await import("./after-hours");
+      await afterHoursAutoReply({ tenantId: a.tenantId, systemId: a.systemId, conversationId: a.conversationId, inboundText: a.text, inboundMessageId: a.messageId });
+    } catch (e) {
+      try {
+        const { logOps } = await import("@/lib/core/ops");
+        await logOps("WARN", "chat", "after-hours ตอบนอกเวลาไม่สำเร็จ", { tenantId: a.tenantId, detail: e instanceof Error ? e.message : String(e) });
+      } catch {
+        // log พัง = เงียบ (ข้อความลูกค้าบันทึกครบแล้ว)
+      }
+    }
+  };
+  try {
+    after(() => run());
+  } catch {
+    await run();
+  }
 }
 
 // hook: ถ้าเชื่อมระบบ Member แล้ว → ผูก contact นี้เข้าสมาชิกที่มีอยู่จริงเท่านั้น (M1.12 · D18)
@@ -1479,7 +1543,18 @@ export async function sendReply(args: {
    * ที่ยิงซ้ำแล้วเกิดบันทึกใบที่สอง · ค่าที่ผู้เรียกส่งมาถูกผสมเข้า meta เดิม ไม่ทับคีย์ของระบบแชท
    */
   meta?: Record<string, string>;
-}): Promise<{ ok: boolean; reason?: string; messageId?: string }> {
+  /**
+   * SEC S1.12 ▸ คีย์กันส่งซ้ำของผู้เรียก (เลขาใช้ id ข้อเสนอ) — unique `[conversationId, clientMessageId]` ของ ChatMessage ·
+   *   ซ้ำ = คืน `{ ok: true, messageId: <แถวเดิม>, duplicate: true }` ไม่สร้างแถว/ไม่ส่งออกช่องทาง/ไม่แจ้งเตือนซ้ำ (แบบ webchat ขาเข้า) ·
+   *   ไม่ส่ง = พฤติกรรมเดิมทุกประการ ◂
+   */
+  clientMessageId?: string;
+  /**
+   * SEC S1.22 ▸ R-S1.22a: ข้อความตอบนอกเวลาทำการของ Shark — **ไม่** ล้าง `staffUnreadCount` และไม่ตั้ง `firstResponseAt`
+   *   (ข้อความลูกค้ายังค้างคิวให้คนดูตอนเช้า · SLA ไม่ถูกนับว่าคนตอบแล้ว) · ไม่ส่ง = พฤติกรรมเดิมทุกประการ ◂
+   */
+  aiAfterHours?: true;
+}): Promise<{ ok: boolean; reason?: string; messageId?: string; duplicate?: boolean }> {
   // 🔴 เงื่อนไขเดิมคือ `if (!body) return` ⇒ ทีมส่ง "รูปอย่างเดียว" ไม่ได้เลย (G3)
   //    กติกาใหม่: ต้องมีอย่างน้อย body **หรือ** ไฟล์แนบ (ตรงกับขาเข้า receiveExternalInbound)
   const body = (args.body ?? "").trim();
@@ -1524,6 +1599,13 @@ export async function sendReply(args: {
   });
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
   if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" }; // M11
+
+  // SEC S1.12 ▸ ส่งซ้ำด้วยคีย์เดิม = แถวเดิม (ตรวจก่อน = ทางปกติไม่ต้องพึ่ง P2002 · ชนกันพร้อมกันจับที่ create ข้างล่าง) ◂
+  const clientMessageId = typeof args.clientMessageId === "string" && args.clientMessageId.trim() ? args.clientMessageId.trim() : null;
+  if (clientMessageId) {
+    const prior = await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, clientMessageId, direction: "OUT" }, select: { id: true } }); // R-S1.12e: ขาออกเท่านั้น
+    if (prior) return { ok: true, messageId: prior.id, duplicate: true };
+  }
 
   // 🔴 VO-4 (ข) กันช่องทางที่ส่งเสียงไม่ได้ **ก่อนสร้างแถวข้อความ** ไม่ใช่สร้างแล้วมาร์ก FAILED
   //    เสียงที่อัดแล้วส่งไม่ออกคือ "ของที่หายไปเฉย ๆ" — ทีมเห็นฟองเสียงในห้องแล้วเข้าใจว่าลูกค้าได้ยิน
@@ -1596,6 +1678,7 @@ export async function sendReply(args: {
         senderName: rowSenderName,
         body: body || null,
         isInternal,
+        ...(clientMessageId ? { clientMessageId } : {}), // SEC S1.12 ◂
         ...(originalBody || pendingTranscode || extraMeta
           ? {
               meta: {
@@ -1674,13 +1757,21 @@ export async function sendReply(args: {
           lastMessageAt: created.createdAt,
           lastMessagePreview: previewText,
           lastMessageDirection: "OUT",
-          staffUnreadCount: 0,
-          firstResponseAt: conv.firstResponseAt ?? new Date(),
+          // SEC S1.22 R-S1.22a ▸ Shark ตอบกลางคืน ≠ คนตอบ: unread/firstResponseAt คงเดิม ◂
+          ...(args.aiAfterHours === true ? {} : { staffUnreadCount: 0, firstResponseAt: conv.firstResponseAt ?? new Date() }),
         },
       });
     }
     return created;
+  }).catch((e: unknown) => {
+    // SEC S1.12 ▸ สองรายยิงคีย์เดียวกันพร้อมกัน — ผู้แพ้ได้แถวของผู้ชนะ (ไม่ส่งออกช่องทางซ้ำ · ไม่แจ้งเตือนซ้ำ) ◂
+    if (clientMessageId && e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return null;
+    throw e;
   });
+  if (!msg) {
+    const prior = await prisma.chatMessage.findFirst({ where: { conversationId: conv.id, clientMessageId: clientMessageId ?? "", direction: "OUT" }, select: { id: true } });
+    return prior ? { ok: true, messageId: prior.id, duplicate: true } : { ok: false, reason: "ส่งข้อความไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
 
   let failReason: string | undefined;
   // `pendingTranscode` = ไฟล์ยังเป็น wav → **ไม่แตะ adapter** ปล่อยค้าง PENDING ให้ worker ส่งต่อ
@@ -2019,12 +2110,25 @@ export async function listConversations(args: {
   q?: string;
   limit?: number;
   unitAccess?: string[]; // M11 — จาก auth.active.unitAccess
+  /**
+   * SEC S1.21 ▸ โหมดแบ่งหน้า (แอป · R-K13 · R-S1.21h): ส่ง = เรียง `lastMessageAt desc nulls last, id desc` (ลำดับคงที่)
+   *   + `before` คู่ (เวลา, id) ของแถวสุดท้ายหน้าก่อน (เวลาเท่ากันไม่หาย · lastMessageAt null อยู่ท้ายและไม่ตัดหน้า) · ไม่ส่ง = เดิมทุกประการ ◂
+   */
+  page?: { before?: { at: Date | null; id: string } };
 }) {
   const where: Prisma.ChatConversationWhereInput = {
     tenantId: args.tenantId,
     systemId: args.systemId,
     ...unitAccessWhere(args.unitAccess),
   };
+  const cur = args.page?.before; // SEC S1.21 ▸ ◂
+  if (cur) {
+    where.AND = [
+      cur.at
+        ? { OR: [{ lastMessageAt: { lt: cur.at } }, { lastMessageAt: cur.at, id: { lt: cur.id } }, { lastMessageAt: null }] }
+        : { lastMessageAt: null, id: { lt: cur.id } },
+    ];
+  }
   if (args.status) where.status = args.status;
   if (args.channel) where.channel = args.channel;
   if (args.assignee === "none") where.assigneeUserId = null;
@@ -2043,7 +2147,7 @@ export async function listConversations(args: {
   return prisma.chatConversation.findMany({
     where,
     include: { contact: true },
-    orderBy: { lastMessageAt: "desc" },
+    orderBy: args.page ? [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { id: "desc" }] : { lastMessageAt: "desc" }, // SEC S1.21 ◂
     take: args.limit ?? 50,
   });
 }
@@ -2054,6 +2158,11 @@ export async function getThread(args: {
   conversationId: string;
   limit?: number;
   unitAccess?: string[]; // M11
+  /**
+   * SEC S1.21 ▸ โหมดแบ่งหน้า (แอป · R-K13 · R-S1.21h): ส่ง = หน้า "ใหม่สุด N ข้อความ" (ก่อน `before` คู่ (createdAt, id) ถ้ามี)
+   *   เรียงเก่า→ใหม่เหมือนเดิม · ไม่ส่ง = เดิม (เก่าสุด N ข้อความ) ◂
+   */
+  page?: { before?: { at: Date; id: string } };
 }) {
   const conversation = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
@@ -2061,6 +2170,20 @@ export async function getThread(args: {
   });
   if (!conversation) return null;
   if (!canAccessConvUnit(args.unitAccess, conversation.unitId)) return null; // M11: IDOR ต่าง unit
+  if (args.page) {
+    // SEC S1.21 ▸ หยิบจากใหม่ลงเก่าแล้วกลับลำดับ — ผู้เรียกได้ลำดับเก่า→ใหม่เหมือนทางเดิม ◂
+    const b = args.page.before;
+    const page = await prisma.chatMessage.findMany({
+      where: {
+        systemId: args.systemId,
+        conversationId: conversation.id,
+        ...(b ? { OR: [{ createdAt: { lt: b.at } }, { createdAt: b.at, id: { lt: b.id } }] } : {}),
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: args.limit ?? 100,
+    });
+    return { conversation, messages: page.reverse() };
+  }
   const messages = await prisma.chatMessage.findMany({
     where: { systemId: args.systemId, conversationId: conversation.id },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -2133,14 +2256,19 @@ export async function setStatus(args: {
   return { ok: true };
 }
 
-export async function assign(args: {
-  tenantId: string;
-  systemId: string;
-  conversationId: string;
-  assigneeUserId: string | null;
-  actorUserId: string;
-  unitAccess?: string[]; // M11
-}): Promise<{ ok: boolean; reason?: string }> {
+export async function assign(
+  args: {
+    tenantId: string;
+    systemId: string;
+    conversationId: string;
+    assigneeUserId: string | null;
+    actorUserId: string;
+    unitAccess?: string[]; // M11
+  },
+  // SEC S1.24 ▸ requireReplyPermission: ผู้รับต้องตอบลูกค้าได้ในหน่วยของห้อง (`chat.message.send` + unit · R-K14) — ปริยาย false = เดิม
+  //   onlyIfAssignee (ส่ง = มีคีย์): เขียนเฉพาะเมื่อผู้ดูแลตอนนี้ยังเป็นค่านี้ (`updateMany` มีเงื่อนไข · null = ห้องว่าง) — ไม่ตรง = ไม่เขียน ไม่มี event (R-S1.21c) ◂
+  opts?: { requireReplyPermission?: boolean; onlyIfAssignee?: string | null },
+): Promise<{ ok: boolean; reason?: string }> {
   const conv = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
   });
@@ -2153,17 +2281,33 @@ export async function assign(args: {
     if (!staff.some((s) => s.userId === args.assigneeUserId)) {
       return { ok: false, reason: "ผู้รับมอบหมายไม่ใช่สมาชิกของร้านนี้" };
     }
+    // SEC S1.24 ▸ นำเข้าแบบ dynamic — routing.ts import ไฟล์นี้กลับ (กันวงตอนโหลดโมดูล) ◂
+    if (opts?.requireReplyPermission) {
+      const { canRespond } = await import("./routing");
+      if (!(await canRespond(args.tenantId, args.assigneeUserId, conv.unitId))) {
+        return { ok: false, reason: "คนนี้ยังไม่มีสิทธิ์ตอบลูกค้าในหน่วยนี้" };
+      }
+    }
   }
-  await prisma.chatConversation.update({
-    where: { id: conv.id },
-    data: { assigneeUserId: args.assigneeUserId },
-  });
+  const conditional = opts !== undefined && "onlyIfAssignee" in opts; // SEC S1.24 ◂
+  if (conditional) {
+    const won = await prisma.chatConversation.updateMany({
+      where: { id: conv.id, tenantId: args.tenantId, systemId: args.systemId, assigneeUserId: opts.onlyIfAssignee ?? null },
+      data: { assigneeUserId: args.assigneeUserId },
+    });
+    if (won.count !== 1) return { ok: false, reason: "ห้องนี้มีคนรับหรือย้ายไปแล้ว" };
+  } else {
+    await prisma.chatConversation.update({
+      where: { id: conv.id },
+      data: { assigneeUserId: args.assigneeUserId },
+    });
+  }
   await logEvent(conv.id, {
     tenantId: args.tenantId,
     systemId: args.systemId,
     type: "ASSIGNED",
     actorUserId: args.actorUserId,
-    meta: { fromUserId: conv.assigneeUserId, toUserId: args.assigneeUserId },
+    meta: { fromUserId: conditional ? (opts.onlyIfAssignee ?? null) : conv.assigneeUserId, toUserId: args.assigneeUserId },
   });
   return { ok: true };
 }

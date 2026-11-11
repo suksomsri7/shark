@@ -249,7 +249,7 @@ export async function updateProductAction(formData: FormData) {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.product.manage");
   const id = str(formData, "id");
-  const res = await updateProduct(tenantId, systemId, id, readProductInput(formData));
+  const res = await updateProduct(tenantId, systemId, id, readProductInput(formData), userId);
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -268,7 +268,7 @@ export async function archiveProductAction(formData: FormData) {
   assertAccountCan(auth, "account.product.manage");
   const id = str(formData, "id");
   const archived = str(formData, "archived") !== "0"; // "0" = กู้คืน
-  await archiveProduct(tenantId, systemId, id, archived);
+  await archiveProduct(tenantId, systemId, id, archived, userId);
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -512,7 +512,7 @@ export async function saveProductAction(systemId: string, payload: ProductFormPa
   let id = (payload.id ?? "").trim();
   let code: string | null = null;
   if (id) {
-    const res = await updateProduct(tenantId, systemId, id, input);
+    const res = await updateProduct(tenantId, systemId, id, input, userId);
     if (!res.ok) return { ok: false, error: res.reason };
     code = (payload.code ?? "").trim() || null;
   } else {

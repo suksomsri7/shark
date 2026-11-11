@@ -1,0 +1,44 @@
+# P2.8U fix 1 — review R2 (head da3898a3 / code 60fcb25c) — **MERGEABLE** (2 Low copy findings, 1 info; none block). Scope: `git diff dee9650e..60fcb25c` (11 src/script files) plus the 6 fix commits. Read-only; nothing was run. Gates are the controller's (gates69).
+## Findings
+- **G1 Low (copy, F1)** `InterimPayDialog.tsx:637-640`. When `managerOnly` is on, `OrderPay.tsx:89` passes `promptpayId=null`, so the PromptPay tile is disabled with the sub-text `pay.noPromptPay` ("ร้านยังไม่ตั้ง PromptPay ID"). Example: STAFF, setting on, shop has a valid PromptPay ID. The tile tells them PromptPay is not set up, which is false, and the owner may go "fix" settings that are fine. No money is affected. The register shows `pay.intent.managerOnly` for this gate. Smallest fix: in the tile `sub`, when `!p.intent && p.manualManagerOnly`, show `t("pay.intent.managerOnly")`, marked `// POS P2.8U ▸ … ◂`.
+- **G2 Low (copy, F9)** `OrdersScreen.tsx:297` + `OrdersRail.tsx:159`. With no target, the line renders `rail.appliesTo` with `rail.noTarget` inside it: "ใช้กับ: ช่องทางนี้ตั้งเวลาเตรียม/ปิดรับจากจอนี้ไม่ได้ (…)". With "ทุกช่องทาง" selected and no WEB/CHAT/API channel, the word "ช่องทางนี้" is also wrong. Fix: render `noTarget` as its own line (not inside `appliesTo`) and use neutral wording. This can ride on the V re-shoot.
+- **G3 Info (F5)** `OrderPanel.tsx:59` disables cancel when `saleId && !voidSale` unless `saleVoided` is known locally. That flag is only set by a hand-over refusal (`OrdersScreen.tsx:384-387`). The server asks for `pos.sale.void` only when `sale.status === "PAID"` (`order.ts:1026-1028`). So if the bill was voided on the sales screen and the `pos.sale.voided` consumer has not closed the order yet, a cashier is blocked for a short while. This matches ruling 1 to the letter, so it is a follow-up only.
+## Verified OK
+- **F1:**
+  - `orders/page.tsx:59` = `parsePosIntentSettings(sys.settings).manualConfirmRequiresManager && !can("pos.shift.manage")`. `can` = `evaluate(posMembership, {module:"pos", action, unitId: active.id})` (:55), the same reader and permission as register `page.tsx:89,109-110`.
+  - The flag is threaded through page :78 → `OrdersScreen.tsx:519` → `OrderPay.tsx:27,89,107`.
+  - `InterimPayDialog.tsx:247` `edcManagerOnly` adds `(!p.intent && !!p.manualManagerOnly)`, which blocks CARD confirm and split (:248-249) with hints at :724 and :934.
+  - No leak when a `pi_` intent exists: the new term needs `!p.intent`, and the register never passes the prop.
+  - CASH and TRANSFER are untouched. PromptPay is off via `ppMissing`/`off` (:210, :631).
+  - Refusals go through `submitRefusalMessageKey(r)` (`OrderPay.tsx:64`; `register-shared.ts:919-920`), giving `refusal.manualConfirmManager`. No raw code is shown and the UI computes no money.
+  - Both foreign hunks in `InterimPayDialog.tsx` carry `POS P2.8U ▸ … ◂` (:117-121, :247).
+- **F2+F6:**
+  - `ManualOrderEntry.tsx:32` filter equals the server staff door: `order.ts:647` (`!ch.active || (kind==="BUILTIN" && code!=="CHAT")`) plus the archived exclusion at `order.ts:229`.
+  - Start default `startPick ?? (MANUAL ? ACCEPTED : NEW)` (:139) mirrors `order.ts:548`. `startStatus` is now always sent; the server parses it (`order-shared.ts:351-354`), CD8 allows ACCEPTED for `pos.sale.create` (`order.ts:634`), and an explicit NEW still auto-accepts (:601).
+  - The effect at :142-146 returns early when `channelId` is in the list, so a user's pick is never overwritten. It also resets the start state on a channel change (:265-268).
+  - Spec §8 is updated.
+  - Fixture QCPHONE is created without an adapter, giving CUSTOM/NONE (`channel.ts:271-272`). Resetting an old MANUAL row is safe on QC5: `saveChannel` updates `adapter` on a CUSTOM row without a lock (`channel.ts:236`), NONE is in `CHANNEL_ADAPTERS`, and all phone ingests pass explicit `startStatus: "ACCEPTED"` (vis :4348-4354).
+- **F4:** `use-orders-badge.ts:16-22`. `matchMedia` runs only inside `useEffect` (SSR-safe), the listener is added and removed, the poll is gated by `!md` (:24), and the interval and visibility listener are cleared on unmount (:44-45).
+- **F5:**
+  - `OrderPanel.tsx:59,279-280`: disabled plus the `orders.perm.void` tooltip only when `saleId && !saleVoided && !voidSale`. The reject permission still takes precedence.
+  - `voidSale` = `can("pos.sale.void")` (page :75), threaded at `OrdersScreen.tsx:465`.
+- **F8:**
+  - `visual-pos.mts:4344` `full` excludes register-only runs, so a badge-only run creates only the three NEW orders (LINE MAN, Grab, chat) with no PLATFORM accept or sale.
+  - `orders-new-late` reuse threshold is ≥ 40 s (:4397).
+  - Cleanup keeps and reports orders with a sale (:4433-4437) and deletes only the sale-less ones, with a `saleId: null` guard (:4447).
+  - The `--dry` text keeps its shape.
+  - `register-tab-badge` is still planned for every user (no owner-only filter, :598-602).
+- **F9:**
+  - Targets are `railRows ∩ active ∩ adapter∈{WEB,CHAT,API}`; a rail selection is used only if eligible (`OrdersScreen.tsx:293-296`).
+  - Pause (:438) and prep (:451) pass exactly `settingTargets` to `saveSettings`, which calls `setChannelOrderSettingsAction({channelId})` once per channel (:416).
+  - No target means the select and pause are disabled (`OrdersRail.tsx:142,161`).
+  - The banner's per-channel reopen (:670) still lets a MANUAL channel paused earlier be reopened.
+  - Spec §3 is updated.
+- **Keys:** `orders.perm.void` and `orders.rail.noTarget` exist in th and en (pos.json :3170, :3328). The en values contain no Thai. The new code has Thai only in comments, so ST7 is unaffected. **Hygiene:**
+  - There are no hunks in `order.ts`, `register.ts`, `service.ts`, `outbox-consumers.ts` or `prisma/`.
+  - Each commit touches only the files in the builder's table: F1 adds `OrdersScreen`; F2 adds the fixture and spec; F9 adds spec §3.
+  - The merge dee9650e brought HF-PP unchanged: its +/- hunks are identical to `merge-base..ca5a07b4` for src and scripts. The only differences against ca5a07b4 are P2.8U's own lines.
+## Follow-ups
+- G1/G2 copy tweaks can go with the V-round fixes. Note that the controller's `orders-pay-dialog` shot as owner will not show G1; a cashier shot with the setting on would.
+- HF-PP2 (ruling 2) is still the server backstop. Until it lands, `payOrder` never returns the manager refusal, so the `submitRefusalMessageKey` mapping is ready but cannot be exercised yet.
+- G3 could become exact if `OrderDetail` exposed the sale status (P2.11).

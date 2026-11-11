@@ -1,0 +1,23 @@
+# Prompt — P4.2 WALKER **rules update** (builder · scripts only · `--dry`/`--list` only · no build/serve). Controller (account B, 22 Oct 21:05Z). Tree = **/root/projects/shark-pos-b** (clean, currently on `wip/pos-p4.1`, merged) → `git -C /root/projects/shark-pos-b fetch origin session/pos wip/pos-p4.2-walker && git -C /root/projects/shark-pos-b checkout -B wip/pos-p4.2-walker origin/wip/pos-p4.2-walker && git -C /root/projects/shark-pos-b merge --no-ff bb7b0b2b -m "merge: session/pos bb7b0b2b (P3.12 + P4.1 registry 1,242 rows) into wip/pos-p4.2-walker"` (resolve `scripts/pos-gates.json` by keeping every entry). Same hard rules as `pos-prompt-accountB-P4.2-WALKER.md` (read it first) — scripts/ + ledger/ only · `visual-pos.mts` untouched · node via `scripts/iso.sh` ≤ 3G · DB probes read-only via qc4.sh + gate lock · never a real pass · ≤ 2 sub-agents · `date -u`.
+
+## Why
+P4.1 went through R1 ×3 + R1-lite + fix1–fix3 (`ledger/wo-notes/pos-P4.1-review.md` + `wo-notes/pos-P4.1.md` "## fix1/fix2/fix3") and produced rulings about how the walker must read the registry. The registry is now the single source (1,242 rows); the walker must implement these rules before the controller runs it on tree d (QC5). Also `scripts/qc-pos-p4.1.mts` R11/R12 lists grew (money 44 · external 15) — reuse them.
+
+## Rules to implement (each = a CD-P42-R<n> note in the walker notes with the file:line)
+1. **B2** skip `input[type=hidden]` (reason `hidden-input`).
+2. **B3/F15** press only pressable elements (button · a[href] · input · select · textarea · [role=button|link|switch|checkbox|radio|tab|menuitem] · [tabindex] with click handler); a same-testid static span/chip for a 1-unit user ⇒ record `static` (not dead).
+3. **F13** a persona in `roles` that sees the control disabled/aria-disabled ⇒ `disabled-expected` when the row's needs text cites CD-P41-F13 or the row's expect says disabled; not wrongExpect.
+4. **F16** navigate targets match ignoring query/hash unless the target itself has a query.
+5. **F17/F12** rows whose opener/need cannot be met by the persona (PIN screens · refusal notices unreachable) ⇒ `skippedNeeds` with the reason (allowed list in qc-pos-p4.2 W-checks updated).
+6. **F18** registry fill steps (`<testid>=<value>`, `=*`, `=click`, `=on`) run before any walker prefill; walker prefill (fillValueFor money-word rule) applies only to fields the registry left unfilled, and never above the cashier discount cap (register-shared.ts).
+7. **F22** side-effect presses (list in fix2 notes: 476 506 822 307 537 1161 1183 + any row with `needs` "press last"/"reset") are pressed last in the page pass and the fixtures module resets what it can (settings save/restore `_qcP42Before`).
+8. **F26** honour `anyOf` objects in `expect.target`; `needs` on an enabled one-option select ⇒ `skippedNeeds` not dead; skip already-checked radios (`aria-checked=true`) as `idle-expected`; clipboard reads fall back to DOM text.
+9. **F27** locale/unit switch pressed while already in that state ⇒ `idle-expected`.
+10. **F28** search boxes: a registry fill of a single space means "type one harmless character then clear" — implement as a walker rule (`search-noop`) so the registry can drop the space hack later (keep compatibility now).
+11. **F29** optional opener steps: a step suffixed `?` (e.g. `pos-prod-scope-pick?`) is skipped without error when the element is absent for that persona; document the syntax in `$fields` (registry schema block — the oracle writer's key; add it with an ORACLE-EDIT note citing CD-P42-R11) and in qc-pos-p4.1's reader if it validates openers.
+12. **B6** dead rows flagged in fix1 notes (B6 list) ⇒ `dead-known` (counted, not failing) until P4.3 drops them.
+13. **Money policy** (brief P4 §4 ⚠️6): money/counter rows only on unit `posqc-btn` (fixtures), one press per run, verified by the row's `db`/oracle id; external rows ⇒ `skip:external` before reveal (B3/B5 of the draft) — confirm still true after R12 grew to 15.
+Update `scripts/qc-pos-p4.2.mts` (allowed skip reasons · pass bar unchanged: dead/wrongExpect/hiddenLeak 0 · new reasons counted) with `--self-test` flips; keep `qc-pos-p4.1 --no-db` 16/16 and `fitness-pos` 8/8 green (the `$fields` edit must pass F15.3b).
+
+## Deliver
+Commits per rule group · push `wip/pos-p4.2-walker` · notes `ledger/wo-notes/pos-P4.2-walker.md` "## rules update" (CD-P42-R1…R13 · `--list` counts per cell on the merged registry · `--dry owner desktop all` output head · time estimate per cell · the exact commands the controller runs on tree d: preflight → fixtures → pass per cell → oracle) · `pos-oracle-check … qc-pos-p4.2 --base bb7b0b2b` green · single-file strict tsc of the three scripts. Report ≤ 35 lines.

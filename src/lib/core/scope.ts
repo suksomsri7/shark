@@ -48,6 +48,63 @@ const CORE_SCOPES: Record<string, ScopeDescriptor> = {
 
 // module scopes — Stage B/C
 const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
+  // POS P1.9 — กะ/ลิ้นชัก (ผู้เขียนเดียว = pos/shift.ts · ทุกคำสั่งกรอง tenantId + unitId)
+  //   วางไว้หัวทะเบียน: ตัวตรวจสถิตของ qc-pos-p1.9 ตัดคอมเมนต์ด้วย regex ที่กิน "/m/" + ดาว ในคอมเมนต์ M2.9 ข้างล่างไปถึงท้ายไฟล์
+  PosShift: sys(),
+  PosCashMovement: unit,
+  PosShiftCounter: unit,
+  // POS P1.9b — นับย้อนหลังกะที่บังคับปิด (ผู้เขียนเดียว = pos/shift.ts recountShift · มี systemId ของระบบ POS)
+  PosShiftRecount: sys(),
+  // POS P1.14 — ตรวจนับสต็อกจากหน้าขาย (ผู้เขียนเดียว = pos/stock-count.ts · ทุกคำสั่งกรอง tenantId (+ systemId/unitId ของรอบ))
+  PosStockCount: sys(),
+  PosStockCountLine: tenant,
+  // POS P1.8 — เลขใบคืนเงิน (CN) ต่อสาขา/ชนิด/เดือน (ผู้เขียนเดียว = pos/refund.ts) · วางหัวทะเบียนด้วยเหตุผลเดียวกับ PosShift
+  PosDocCounter: unit,
+  // POS P2.9b ▸ มัดจำเป็นวิธีชำระ (ผู้เขียน = pos/deposit.ts + service.createSale) — รายการไม่มี systemId/unitId ⇒ tenant · วางหัวทะเบียนด้วยเหตุผลเดียวกับ PosShift ◂
+  PosDeposit: sys(),
+  PosDepositTxn: tenant,
+  // POS P2.10 ▸ จอลูกค้า (ผู้เขียนเดียว = pos/display.ts · ทุกคำสั่งกรอง tenantId + systemId + unitId · อ่านไม่มี session ด้วย tokenHash) ◂
+  PosCustomerDisplay: sys(),
+  // POS P3.5 ▸ R7 สมุดค่าคอมฯ พนักงานขาย (ผู้เขียนเดียว = pos/staff-commission.ts · ทุกคำสั่งกรอง tenantId (+ systemId/saleId/userId)) ◂
+  PosStaffCommission: sys(),
+  PosStockCountEntry: tenant,
+  // POS P1.10 — ทะเบียนเครื่องขาย (ผู้เขียนเดียว = pos/device.ts · ทุกคำสั่งกรอง tenantId + unitId (+ systemId ของ POS))
+  PosDevice: sys(),
+  // POS P1.11 — ใบเสร็จออนไลน์: แจ้งปัญหาบิล (ผู้เขียน = pos/receipt-issue.ts + kanbanCardId จาก pos-receipt-bridges.ts) ·
+  //   คำขอใบกำกับเต็มรูป (ผู้เขียน = pos/receipt-tax-request.ts · P1.13 ออกเอกสาร) — ทุกคำสั่งกรอง tenantId + saleId (+ unitId ของบิล)
+  PosReceiptIssue: unit,
+  PosTaxInvoiceRequest: unit,
+  // POS P1.13 — ผู้ซื้อที่จำไว้ต่อสมาชิก (ผู้เขียนเดียว = pos/tax-invoice.ts · กรอง tenantId + customerId · ไม่มีแกนสาขา/ระบบ)
+  PosBuyerProfile: tenant,
+  // POS P1.7 — ใบขอรับเงิน PromptPay/Beam (ผู้เขียนเดียว = pos/payment-intent.ts · ทุกคำสั่งกรอง tenantId + unitId (+ systemId ของ POS))
+  PosPaymentIntent: sys(),
+  // POS P1.15 ▸ PIN พนักงานต่อสาขา (ผู้เขียนเดียว pos/staff-pin.ts) · snapshot คำขออนุมัติ POS (ผู้เขียนเดียว pos/pos-approval.ts) ◂
+  PosStaffPin: unit,
+  PosApprovalPayload: tenant,
+  // POS P2.1 ▸ ช่องทางขายต่อสาขา (ผู้เขียนเดียว = pos/channel.ts · ทุกคำสั่งกรอง tenantId + systemId + unitId) ◂
+  SalesChannel: sys(),
+  // POS P2.2 ▸ ราคาตามช่องทาง/สาขา (ผู้เขียนเดียว pos/catalog.ts) · กติการาคา happy hour/โปร (ผู้เขียนเดียว pos/price-rule.ts) · กรอง tenantId + systemId ◂
+  PosProductChannelPrice: sys(),
+  PosPriceRule: sys(),
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (ผู้เขียนเดียว = pos/order.ts · ทุกคำสั่งกรอง tenantId + systemId (+ unitId ในโค้ด) · บรรทัด/บันทึกมี systemId ของตัวเอง) ◂
+  PosOrder: sys(),
+  PosOrderLine: sys(),
+  PosOrderEvent: sys(),
+  PosOrderLink: sys(), // POS P2.7 ▸ ลิงก์สั่งล่วงหน้าต่อสาขา (/q/<token>) ◂
+  // POS P3.4 ▸ ออฟไลน์: รายการที่เครื่องส่งซิงก์ (มี systemId ของ POS) · snapshot ราคาต่อเครื่อง (tenantId + unitId · CD-2) — ผู้เขียนเดียว pos/offline-sync.ts ◂
+  PosOfflineSale: sys(),
+  PosOfflineSnapshot: unit,
+  // POS P3.6 ▸ บัญชีเครดิตลูกค้าองค์กร (ผู้เขียนเดียว pos/credit.ts · กรอง tenantId + systemId ของ POS) ◂
+  PosCreditAccount: sys(),
+  // POS P3-SKEL ▸ โครงเชื่อมภายนอก (มติ §10): creds แพลตฟอร์ม/ผู้ให้บริการ (ผู้เขียนเดียว pos/integration-creds.ts) · สลิปโอน (pos/payment-slip.ts) ·
+  //   ตัวช่วยพิมพ์ LAN + งานพิมพ์ (pos/print-relay.ts) — ทุกตารางมี tenantId + systemId + unitId · ทุกคำสั่งกรอง tenantId (+ systemId/unitId ในโค้ด)
+  PosIntegrationCredential: sys(),
+  PosPaymentSlip: sys(),
+  PosPrintAgent: sys(),
+  PosPrintJob: sys(),
+  // ◂ POS P3-SKEL
+  // POS P2.6 ▸ 86/ของหมด: ใคร/เมื่อไร/จากไหน ต่อสินค้าต่อสาขา (ผู้เขียน pos/catalog.ts + catalog-legacy.ts · กรอง tenantId + systemId/unitId ในโค้ด) ◂
+  PosAvailabilityMark: sys(),
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
   // Party (WO 3.1) — ตัวตนกลางระดับ tenant ข้ามทุกระบบ (ตรงข้าม AccountContact ที่ scope ต่อ systemId)
@@ -162,6 +219,24 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AiScheduledTask: tenant,
   AiFeedback: tenant,
   AiPromptTweak: { axis: "platform", why: "ปรับ prompt AI ระดับแพลตฟอร์ม (ทุกร้าน) — เข้าผ่าน src/lib/platform เท่านั้น" }, // Phase 3.5 — ข้อเสนอการกระทำ (WO-0020)
+  // เลขา AI (SECRETARY S1.1 · prisma/schema/secretary.prisma · RESOLUTIONS §B.1) — แกน tenant ทุกตัวมี tenantId
+  AiRoom: tenant,
+  AiRoomMember: tenant,
+  AiRoomJob: tenant,
+  AiSystemAccess: tenant,
+  AiApprovalRule: tenant,
+  AiActionLog: tenant,
+  AiJobCounter: tenant,
+  AiLesson: tenant,
+  StaffInvite: tenant, // R-K11 คำเชิญพนักงาน — ยังไม่มี Membership จนกว่าจะรับ
+  ChatRoutingRule: tenant,
+  ChatShift: tenant,
+  ChatConversationHelper: tenant,
+  // เลขา AI แกน global (ผูก user ไม่ผูกร้าน · แบบ PushDevice)
+  AiSecretary: g("บุคลิกเลขาของ \"คน\" (1 แถว/user) ใช้ข้ามทุกร้านที่เป็นสมาชิก — ไม่มี tenantId"),
+  UserPhone: g("เบอร์ของ user (แทน User.phone · core FROZEN) — login ด้วยเบอร์ต้องหาก่อนรู้ร้าน"),
+  PhoneOtp: g("OTP SMS ขั้น login — สร้างก่อนรู้ว่า user/ร้านไหน (แบบ AuthToken)"),
+  AiNotifyPref: g("การตั้งค่าแจ้งเตือนต่อคน — tenantId null = ทุกร้าน · push ห้องเลขาไม่กรองร้าน (R-K20)"),
   // Observability (WO-0041) — logger กลางเขียน · backoffice อ่าน (ข้ามร้านโดยเจตนา)
   OpsEvent: { axis: "platform", why: "ops log ข้ามร้าน — เขียนผ่าน core/ops.ts อ่านทาง backoffice" },
   OpsAlertState: { axis: "platform", why: "สถานะ throttle alert — ไม่ใช่ข้อมูลร้าน" },
@@ -312,12 +387,29 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // POS
   PosSale: sys(),
   PosSaleLine: unit,
+  PosSaleLineOption: tenant, // POS P1.2 — ตัวเลือกบนบรรทัดบิล (สำเนา ณ เวลาขาย)
   PosPayment: unit,
   PosReceiptCounter: unit,
+  // POS P1.1a — แคตตาล็อกเดียว (ผู้เขียนเดียว = pos/catalog.ts) · ลูกของ PosProduct มี tenantId ของตัวเอง
+  PosProduct: sys(),
+  PosCategory: sys(),
+  PosProductOptionGroup: tenant,
+  RecipeLine: tenant,
+  PosRecipeChoiceLine: tenant, // POS P2.3 ▸ ส่วนต่างสูตรต่อตัวเลือก (ลูกของ PosProduct · ผู้เขียนเดียว = pos/catalog.ts) ◂
+  // POS P1.5 — บิลที่พัก (ผู้เขียนเดียว = pos/held-cart.ts · ทุกคำสั่งกรอง tenantId + systemId + unitId)
+  PosHeldCart: sys(),
+  // POS P2.5 ▸ แผนแยกบิลของโต๊ะ (ผู้เขียน = pos/table-split.ts · register.ts จ่ายใบ · table.ts ตัวรับ void) — ใบ/บรรทัดไม่มี systemId/unitId ⇒ tenant (มติ 11.3) ◂
+  PosTableSplit: sys(),
+  PosTableSplitPart: tenant,
+  PosTableSplitLine: tenant,
   // Booking
   BookingService: unit,
   BookingStaff: unit,
   BookingStaffHours: unit,
+  BookingStaffService: unit, // SVC B.0 — ช่าง × บริการ
+  SvcResource: unit, // SVC B.0 — ทรัพยากร (เก้าอี้/เตียง/ห้อง)
+  SvcResourceBlock: unit, // SVC B.13 — ช่วงปิดซ่อมของทรัพยากร (migration svc_b13)
+  BookingWaitlist: unit, // SVC B.17 — waitlist "แจ้งฉันถ้ามีคนยกเลิก" (migration svc_b17 · ไม่มีชื่อ/เบอร์)
   BookingHours: unit,
   BookingClosure: unit,
   Appointment: unit,
@@ -426,6 +518,37 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HotelRoomType: unit,
   HotelRoom: unit,
   HotelReservation: unit,
+  // SVC R0.1 ▸ แกนห้อง (CC §5.2) — tenantId + unitId บังคับ
+  RoomBuilding: unit,
+  RoomOccupancy: unit,
+  // SVC R0.1 ▸ ค่าตั้งแบบชั้น (CC §1.2) — SettingValue/SettingChange มี unitId ไม่บังคับ/ไม่มี ⇒ tenant
+  SettingValue: tenant,
+  SettingProfile: unit,
+  SettingChange: tenant,
+  // SVC R0.1 ▸ ศูนย์เชื่อมต่อ (CC §2.2) — ข้ามหน่วย (unitIds[]) ⇒ tenant
+  TenantIntegration: tenant,
+  IntegrationCallLog: tenant,
+  // SVC R0.1 ▸ สลิปโอนกลาง (CC §3.2) · ผูกรหัส/ข้อความบริการ (CC §4.2)
+  PaymentSlip: unit,
+  ChatLinkCode: tenant,
+  ServiceMessageLog: unit,
+  // ◂ SVC R0.1
+  // SVC D.0 ▸ หอพัก (DH A2–A10) — tenantId + unitId บังคับ · DormAuthorityTariff ไม่มี tenantId (ตารางรัฐใช้ร่วม)
+  DormLease: unit,
+  DormMeter: unit,
+  DormMeterReading: unit,
+  DormUtilityRate: unit,
+  DormBillRun: unit,
+  DormBill: unit,
+  DormMoveOut: unit,
+  DormRepair: unit,
+  DormAnnouncement: unit,
+  DormAnnouncementRead: unit,
+  DormParcel: unit,
+  DormAuthorityTariff: g("ตารางอัตราการไฟฟ้า/ประปาของรัฐ ใช้ร่วมทุกร้าน — เขียนเฉพาะ backoffice/สคริปต์แพลตฟอร์ม"),
+  // ◂ SVC D.0
+  // SVC D.4 ▸ ชุดนำเข้า Excel/CSV ของหอ (migration svc_d4) — tenantId + unitId บังคับ ◂
+  DormImportBatch: unit,
   // Ticket
   TicketEvent: unit,
   TicketType: unit,
@@ -466,6 +589,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   RestaurantOrderItem: unit,
   RestaurantOrderItemOption: unit,
   RestaurantServiceRequest: unit,
+  RestaurantReservation: unit, // POS P2.4 ▸ โต๊ะจองแบบย่อ (มติ Q2 · ผู้เขียนเดียว restaurant/reservation.ts) ◂
   // Queue
   QueueType: unit,
   QueueCounter: unit,

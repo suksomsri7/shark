@@ -252,8 +252,10 @@ export async function billVisit(
   //   ย้ายขึ้นมาเป็น pre-check ก่อนเขียนอะไรทั้งสิ้น ⇒ ไม่มี POS = โยนโดยไม่แตะสถานะ ไม่มี event ไม่มีกิจกรรม
   //   ข้อความไทยเดิมทุกตัวอักษร · เงื่อนไขเดิมคงไว้: ค่าบริการ 0 = BILLED โดยไม่เปิดบิล ⇒ **ไม่ต้องมี POS** (ไม่โยน)
   const feeSatang = visit.feeSatang;
-  const posSys = feeSatang > 0 ? (await listSystems(ctx.tenantId, "POS"))[0] : null;
-  if (feeSatang > 0 && !posSys) throw new Error("เปิดระบบขาย (POS) ก่อนเก็บเงิน");
+  // POS P1.6 R2 F1 ▸ ตัวตัดสิน O21 เดียวกับ createSale (สาขาที่ผูก POS · หรือ POS ตัวเดียวของร้าน · หลาย POS ไม่ผูก = "เลือกจุดขายก่อน") ◂
+  const posGate = feeSatang > 0 ? await pos.posSystemForSale(ctx.tenantId, ctx.unitId) : null;
+  if (posGate && !posGate.ok) throw new Error(posGate.code === "NO_POS" ? "เปิดระบบขาย (POS) ก่อนเก็บเงิน" : posGate.message);
+  const posSys = posGate?.ok ? { id: posGate.systemId } : null;
 
   // 1) claim อะตอมมิก: OPEN → BILLED (แพ้แข่ง/เก็บแล้ว/ยกเลิก → ok:false ไม่ทำเส้นเงินซ้ำ)
   //   ห่อ **เฉพาะ** การ claim + `emitOutbox(tx, …)` ไว้ใน transaction เดียวกัน ⇒
@@ -284,18 +286,40 @@ export async function billVisit(
   if (feeSatang <= 0 || !posSys) return { ok: true };
 
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `clinic-<visitId>`)
-  const sale = await pos.createSale({
-    tenantId: ctx.tenantId,
-    unitId: ctx.unitId,
-    systemId: posSys.id,
-    sourceModule: "CLINIC",
-    sourceId: visitId,
-    idempotencyKey: `clinic-${visitId}`,
-    lines: [{ name: `ค่าบริการคลินิก (${visit.symptom})`, qty: 1, unitPriceSatang: feeSatang }],
-    payMethods: [{ type: "CASH", amountSatang: feeSatang }],
-  });
+  // POS P1.6 R4 H3: createSale ล้ม (เช่น สาขาถูกย้าย POS ระหว่างด่านกับ claim) และไม่มีบิลของคีย์นี้จริง ⇒ คืนสถานะ claim
+  //   (event ของ claim ที่ยิงไปแล้วคงอยู่ — เหมือนกรณีเดิมก่อน C2.9 · ไม่มีบิล = ไม่มีเงินเข้า)
+  let sale: Awaited<ReturnType<typeof pos.createSale>>;
+  try {
+    sale = await pos.createSale({
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      systemId: posSys.id,
+      sourceModule: "CLINIC",
+      sourceId: visitId,
+      idempotencyKey: `clinic-${visitId}`,
+      lines: [{ name: `ค่าบริการคลินิก (${visit.symptom})`, qty: 1, unitPriceSatang: feeSatang }],
+      payMethods: [{ type: "CASH", amountSatang: feeSatang }],
+    });
+  } catch (e) {
+    if ((await pos.saleStatusByKey(ctx.tenantId, `clinic-${visitId}`)) === null) {
+      await db.clinicVisit.updateMany({ where: { id: visitId, status: "BILLED", posSaleId: null }, data: { status: "OPEN", billedAt: null } });
+    }
+    throw e;
+  }
 
-  await db.clinicVisit.updateMany({ where: { id: visitId }, data: { posSaleId: sale.saleId } });
+  // POS P5.1 ▸ MA7 (F7): คืนเงินแทรกระหว่าง claim กับ createSale (refundVisit ยังไม่เห็น posSaleId) ⇒ ผูกบิลเฉพาะ visit ที่ยัง BILLED ·
+  //   ไม่ใช่ BILLED แล้ว = void บิลนี้ ⇒ {ok:false} ◂
+  const bound = await db.clinicVisit.updateMany({ where: { id: visitId, status: "BILLED" }, data: { posSaleId: sale.saleId } });
+  if (bound.count === 0) {
+    if (sale.status !== "VOIDED") {
+      try {
+        await pos.voidSale(ctx.tenantId, ctx.unitId, sale.saleId);
+      } catch (e) {
+        if ((await pos.saleStatusByKey(ctx.tenantId, `clinic-${visitId}`)) !== "VOIDED") throw e;
+      }
+    }
+    return { ok: false };
+  }
 
   return { ok: true, posSaleId: sale.saleId };
 }

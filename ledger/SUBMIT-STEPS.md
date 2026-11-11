@@ -12,7 +12,7 @@
 
 ```bash
 cd /root/projects/shark-in-th/apps/mobile
-EXPO_TOKEN=4CFWhe108LkmMUGZiN6DI6y7068LBZoULoaCNzOL \
+EXPO_TOKEN=<ดู memory reference_expo_token_shark — ห้ามเขียนค่าจริงลงไฟล์> \
   npx eas-cli build -p ios --profile production --non-interactive --no-wait
 ```
 
@@ -21,7 +21,7 @@ EXPO_TOKEN=4CFWhe108LkmMUGZiN6DI6y7068LBZoULoaCNzOL \
 ```bash
 # 1) ส่งขึ้น TestFlight (เข้ากลุ่มทดสอบเดิมอัตโนมัติ)
 cd /root/projects/shark-in-th/apps/mobile
-EXPO_TOKEN=4CFWhe108LkmMUGZiN6DI6y7068LBZoULoaCNzOL \
+EXPO_TOKEN=<ดู memory reference_expo_token_shark — ห้ามเขียนค่าจริงลงไฟล์> \
   npx eas-cli submit -p ios --latest --non-interactive
 
 # 2) เลข build ถูก autoIncrement เขียนกลับลงไฟล์ → ต้อง commit ตาม

@@ -69,3 +69,28 @@ export { adjustmentsByIds } from "./payroll";
 export type { RosterDayEntry, RosterDayResult } from "./roster";
 export { rosterOnDay, rosterAt } from "./roster";
 // ◂ HR H2.1
+// POS P3.5 ▸ รอยต่อ HR ↔ POS ฉบับ C-8 v2 (มติ 5 · ledger/POS-CONTRACTS.md C-8) — re-export ล้วน (ตัวงานอยู่ที่ pos-seam.ts)
+//   onShiftToday = ใครเป็นพนักงาน · active · ลาวันนี้ · ตารางของวัน (unitId ยังไม่ใช้จนกว่า H1.1) · workedMinutesBetween = นาทีทำงานช่วงหนึ่ง ·
+//   clockSelf = ลงเวลาของตัวเอง (เขียนผ่าน clock() ของ HR เท่านั้น) · adjustmentStatuses = สถานะรายการปรับเงินที่ POS ส่งเข้างวด
+//   HR เปลี่ยนตัวในได้เอง (H2.1 · H1.1 · H2.4) — 4 ชื่อนี้แช่แข็ง POS ไม่ต้องแก้
+export type { OnShiftTodayItem, OnShiftTodayResult, PosSeamSchedule, PosSeamClockMarks, ClockSelfResult } from "./pos-seam";
+export { onShiftToday, workedMinutesBetween, clockSelf, adjustmentStatuses } from "./pos-seam";
+// ◂ POS P3.5
+// POS P3.5 ▸ fix2 N1 (มติผู้คุม CD-P35c): ตัวกวาดรายการของระบบ (ค่าคอมฯ POS) ที่ค้างในงวดที่มีรอบแล้ว — re-export ล้วน (ตัวงานอยู่ที่ payroll.ts)
+export { rehomeStrandedSystemAdjustments } from "./payroll";
+// ◂ POS P3.5 fix2 N1
+// POS P4.3 ▸ fix2 (R1 F5): ผู้ใช้ในชุดที่ผูกพนักงาน (ทั้งชุดในคำขอเดียว · ป้าย "จาก HR" ของแท็บพนักงาน POS) — re-export ล้วน ◂
+export { linkedUserIdsOf } from "./service";
+// SVC B.1 ▸ BQ-1: กะรายวัน → หน้าต่างเวลาช่าง (ผู้เรียก: booking/service#staffDayProfiles — เรียกครั้งเดียวต่อคำขอ)
+//   ยังไม่มีกะบน main ⇒ [] เสมอ (ไม่แตะฐาน) · RUN HR เติมของจริงจาก HrRosterEntry ในใบ X-HR.1 — 🔴 ห้ามเปลี่ยนลายเซ็น
+//   นาที = นาทีจากเที่ยงคืนของวันไทย (`date` = "YYYY-MM-DD" ไทย) · breaks = ช่วงพักที่ booking หักออกจาก windows
+export type StaffWindowsInput = { tenantId: string; unitId: string; date: string; employeeIds: string[] };
+export type StaffWindowsRow = {
+  employeeId: string;
+  windows: { startMin: number; endMin: number }[];
+  breaks: { startMin: number; endMin: number }[];
+};
+export async function staffWindows(_i: StaffWindowsInput): Promise<StaffWindowsRow[]> {
+  return [];
+}
+// ◂ SVC B.1

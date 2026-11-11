@@ -361,18 +361,38 @@ export async function markPaid(ctx: Ctx, orderId: string) {
   const posSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POS");
   const pointSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POINT");
   if (posSystemId && order.totalSatang > 0) {
-    await pos.createSale({
-      tenantId: ctx.tenantId,
-      unitId: ctx.unitId,
-      systemId: posSystemId,
-      pointSystemId: pointSystemId ?? undefined,
-      memberId: order.customerId ?? undefined,
-      sourceModule: "TICKET",
-      sourceId: orderId,
-      idempotencyKey: `ticket-sale-${orderId}`,
-      lines: [{ name: `ตั๋ว ${order.event.name}`, qty: 1, unitPriceSatang: order.totalSatang }],
-      payMethods: [{ type: "CASH", amountSatang: order.totalSatang }],
-    });
+    const saleKey = `ticket-sale-${orderId}`;
+    let sale: Awaited<ReturnType<typeof pos.createSale>>;
+    try {
+      sale = await pos.createSale({
+        tenantId: ctx.tenantId,
+        unitId: ctx.unitId,
+        systemId: posSystemId,
+        pointSystemId: pointSystemId ?? undefined,
+        memberId: order.customerId ?? undefined,
+        sourceModule: "TICKET",
+        sourceId: orderId,
+        idempotencyKey: saleKey,
+        lines: [{ name: `ตั๋ว ${order.event.name}`, qty: 1, unitPriceSatang: order.totalSatang }],
+        payMethods: [{ type: "CASH", amountSatang: order.totalSatang }],
+      });
+    } catch (e) {
+      // POS P5.1 ▸ MA5 (F5): createSale ล้ม (เช่น SHIFT_REQUIRED) และไม่มีบิลของคีย์นี้จริง ⇒ คืน claim PAID → PENDING (แบบคลินิก) ให้ลองซ้ำได้ ·
+      //   event ของ claim ที่ยิงไปแล้วคงอยู่ (คีย์เดิม · ลองซ้ำไม่ยิงซ้ำ) ◂
+      if ((await pos.saleStatusByKey(ctx.tenantId, saleKey)) === null) {
+        await prisma.ticketOrder.updateMany({ where: { id: orderId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: "PAID" }, data: { status: "PENDING", paidAt: null } });
+      }
+      throw e;
+    }
+    // POS P5.1 ▸ MA7 (F7): ยกเลิก/คืนเงินแทรกระหว่าง claim กับ createSale (cancelOrder ยังไม่เห็นบิล) ⇒ อ่านสถานะออเดอร์ซ้ำ ไม่ใช่ PAID แล้ว = void บิลนี้ ◂
+    const after = await prisma.ticketOrder.findFirst({ where: { id: orderId, tenantId: ctx.tenantId, unitId: ctx.unitId }, select: { status: true } });
+    if (after?.status !== "PAID" && sale.status !== "VOIDED") {
+      try {
+        await pos.voidSale(ctx.tenantId, ctx.unitId, sale.saleId);
+      } catch (e) {
+        if ((await pos.saleStatusByKey(ctx.tenantId, saleKey)) !== "VOIDED") throw e; // cancelOrder void ไปพร้อมกันแล้ว = จบ
+      }
+    }
   }
 }
 

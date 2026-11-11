@@ -1,0 +1,95 @@
+<style>
+.duo{display:flex;gap:40px;align-items:flex-start}
+.jobh{border-radius:20px;background:var(--ink);color:var(--sf);padding:16px 18px}
+.jobh b{display:block;font-size:20px}
+.jobh small{display:block;color:var(--line2);font-size:13px;margin-top:2px}
+.ln2{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line);font-size:14.5px}
+.ln2:first-child{border-top:0}
+.ln2 .sp{flex:1}
+.ln2 b{font-variant-numeric:tabular-nums}
+.ln2 small{display:block;color:var(--mut);font-size:12.5px}
+.add{border:1.5px dashed var(--line2);border-radius:14px;height:46px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ink2);font-size:14px}
+.rebook{border:1px solid var(--line);border-radius:16px;padding:12px 14px;display:flex;gap:12px;align-items:center}
+.rebook b{display:block;font-size:14.5px}
+.rebook small{display:block;color:var(--mut);font-size:12.5px}
+.pf{width:1010px;flex:none}
+.posb{display:grid;grid-template-columns:290px 1fr 330px;min-height:690px}
+.posb>div{padding:22px;border-left:1px solid var(--line)}
+.posb>div:first-child{border-left:0;background:var(--sf2)}
+.qb{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.qb .c{border:1px solid var(--line);border-radius:14px;background:var(--sf);padding:12px 14px;font-size:13px;color:var(--mut);line-height:1.45}
+.qb .c b{display:flex;justify-content:space-between;color:var(--ink);font-size:14.5px}
+.qb .c.on{border:2px solid var(--ink)}
+.qb .c.dim{opacity:.55}
+.bl .r{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:12px 0;border-top:1px solid var(--line)}
+.bl .r:first-child{border-top:0}
+.bl .r b{font-size:15px}
+.bl .r .p{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.bl .r small{color:var(--mut);font-size:12.5px}
+.bl .r.dep b,.bl .r.dep .p{color:var(--acc)}
+.tot2 .r{display:flex;justify-content:space-between;padding:6px 0;font-size:14.5px;font-variant-numeric:tabular-nums}
+.tot2 .r.g{border-top:1.5px solid var(--ink);margin-top:6px;padding-top:12px;font-size:22px;font-weight:700}
+.pm{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pm div{height:58px;border:1px solid var(--line);border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:15px}
+.pm div.on{border:2px solid var(--ink)}
+.after{font-size:13px;color:var(--ink2);line-height:1.6;border-radius:14px;background:var(--sf2);padding:12px 14px}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">07 · จบบริการ → บิลไปเครื่องคิดเงิน (POS) <span>— ช่างกด “เสร็จ” จากมือถือ เพิ่มของที่ทำเพิ่ม/ขายเพิ่ม → บิลไปรอที่เคาน์เตอร์ (ไม่เปิดบิลเงินสดให้เอง) · หักมัดจำอัตโนมัติ · ผูกช่างทุกบรรทัด (ค่าคอมฯ) · จ่ายแล้วแต้มสมาชิก + ประวัติลูกค้า (CRM) + เสนอนัดครั้งหน้า · คุณธนา P004 · 15:02</span></p>
+<div class="duo">
+
+<div><p class="cap">ก · มือถือช่างเอก · กดเสร็จ</p>
+<div class="mob">
+ <div class="sb"><span>15:01</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><span class="ib"><svg class="i sm"><use href="#i-back"/></svg></span><h1>เสร็จงาน P004</h1><span class="sp"></span></div>
+ <div class="mb">
+  <div class="jobh"><b>คุณธนา · ทำสีผม</b><small>13:30–15:00 · เก้าอี้ 1 · สมาชิก Silver</small></div>
+  <div>
+   <div class="ln2"><div>ทำสีผม<small>จากนัด · มัดจำ ฿200 จ่ายแล้ว</small></div><span class="sp"></span><b>฿900</b></div>
+   <div class="ln2"><div>ทรีตเมนต์บำรุงสี<small>ทำเพิ่มหน้างาน</small></div><span class="sp"></span><b>฿300</b></div>
+   <div class="ln2"><div>แว็กซ์จัดแต่งทรง<small>สินค้า · ตัดสต็อก</small></div><span class="sp"></span><b>฿290</b></div>
+  </div>
+  <div class="add"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มบริการ/สินค้า</div>
+  <div class="rebook"><svg class="i lg"><use href="#i-cal"/></svg><div style="flex:1"><b>ชวนนัดครั้งหน้า</b><small>ทำสีซ้ำราว 6 สัปดาห์ · ส. 12 ธ.ค. 13:30 ช่างเอกว่าง</small></div><span class="btn sm gh">จองให้</span></div>
+ </div>
+ <div class="bb"><div class="cta">ส่งไปจ่ายที่เคาน์เตอร์ · ฿1,290</div></div>
+</div></div>
+
+<div class="pf"><p class="cap">ข · เครื่องคิดเงิน (POS) · บิลจากคิวมารอแล้ว</p>
+<div class="frame" style="width:1010px">
+ <div class="top"><span class="brand">SHARK POS</span><span class="biz">เคาน์เตอร์ 1 · กะบ่าย · คุณต่าย</span><span class="sp"></span><span class="st"><i class="dot"></i>15:02</span></div>
+ <div class="posb">
+  <div>
+   <h3 class="h">บิลจากคิว<span class="sp"></span><span class="tg now">2</span></h3>
+   <div class="qb">
+    <div class="c on"><b><span>P004 · คุณธนา</span><span>฿1,290</span></b>ช่างเอก · ส่งมา 15:01 · หักมัดจำแล้ว</div>
+    <div class="c"><b><span>A008 · walk-in</span><span>฿180</span></b>ช่างแจ๊ค · ตัดเด็ก · ส่งมา 14:41</div>
+    <div class="c dim"><b><span>P005 · คุณมายด์</span><span>…</span></b>ช่างนุ่น · กำลังทำ (ยังไม่ส่ง)</div>
+   </div>
+   <div class="s2" style="margin-top:14px">บิลจากคิว = บิลพักชนิดพิเศษ เรียกขึ้นจอได้ทุกเครื่องของสาขา</div>
+  </div>
+  <div>
+   <h3 class="h">P004 · คุณธนา<span class="sp"></span><span class="tg p">สมาชิก Silver</span></h3>
+   <div class="bl" style="margin-top:8px">
+    <div class="r"><b>ทำสีผม</b><span class="p">฿900</span><small>ผู้ให้บริการ: ช่างเอก</small></div>
+    <div class="r"><b>ทรีตเมนต์บำรุงสี</b><span class="p">฿300</span><small>ผู้ให้บริการ: ช่างเอก</small></div>
+    <div class="r"><b>แว็กซ์จัดแต่งทรง</b><span class="p">฿290</span><small>ผู้ขาย: ช่างเอก · ตัดสต็อก 1 กระปุก</small></div>
+    <div class="r dep"><b>หักมัดจำ</b><span class="p">−฿200</span><small>ใบรับมัดจำ DR-0412 · PromptPay 30 ต.ค. (จองออนไลน์)</small></div>
+   </div>
+   <div class="tot2" style="margin-top:10px">
+    <div class="r"><span>รวมค่าบริการ+สินค้า</span><span>฿1,490</span></div>
+    <div class="r"><span>หักมัดจำ</span><span>−฿200</span></div>
+    <div class="r g"><span>ต้องจ่าย</span><span>฿1,290</span></div>
+   </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:16px">
+   <h3 class="h">รับเงิน</h3>
+   <div class="pm"><div>เงินสด</div><div class="on">PromptPay</div><div>โอน</div><div>บัตร</div></div>
+   <div class="after"><b>จ่ายแล้วระบบทำต่อเอง</b><br>· แต้ม +12 (สมาชิก)<br>· ค่าคอมฯ ช่างเอก ฿134.50 (บริการ 10% · สินค้า 5%) → เงินเดือน<br>· ประวัติลูกค้า (CRM): ทำสีครั้งที่ 3<br>· นัดเสร็จ · ปิดบัตร P004</div>
+   <div class="cta" style="margin-top:auto">รับเงิน ฿1,290</div>
+  </div>
+ </div>
+</div></div>
+
+</div>
+</div>

@@ -5,18 +5,23 @@
 // 🔴 ห้าม import raw prisma ที่นี่ (F5 baseline freeze) — query ผ่าน service.ts / gl.ts เท่านั้น
 
 import type { AccountDocType, Prisma } from "@prisma/client";
-import { handleBeamPaid, handleBeamFailed } from "./payment-request";
+import { handleBeamPaid, handleBeamFailed, cancelPaymentRequest } from "./payment-request";
 import {
   convertDocument,
   createDocument,
+  findExternalSaleDoc,
+  upsertExternalCreditNoteDocument,
   findAccountLinkFor,
   findAccountLinkForPos,
   findDocByRef,
   findOrCreateCustomerContact,
+  ensureNamedCustomerContact, // POS P2.1 ▸ ผู้ติดต่อของช่องทาง = ชื่อเดียวกัน 1 รายต่อสมุด (CD6 · ล็อกต่อสมุด+ชื่อ · รีวิว F2) ◂
   resolveProductIdsForExternalSale,
   setDocExternalRef,
   setQuotationResponse,
   upsertExternalSaleDocument,
+  supersedeExternalSaleAbb,
+  bookTaxIdOf,
   vatConfigOf,
   voidExternalSaleDocument,
   type ExternalSaleDocLine,
@@ -24,8 +29,12 @@ import {
 // CRM v2 · C0.3-A: ชนิด+คณิตศาสตร์บรรทัดเอกสาร (ไฟล์ `totals.ts` บริสุทธิ์ ไม่แตะ prisma) + ตัวจัดรูปเงิน
 import { lineAmount, type LineInput } from "./totals";
 import { baht, familyCreditByInvoice } from "./service";
+// POS P3.6 ▸ วางบิล (เครดิตเทอม): ใบแจ้งหนี้ของบิล + ตัวอ่านภาพหนี้/เทอม/สถานะรับชำระ (service.ts · บล็อก POS P3.6) ◂
+import { upsertPosCreditInvoiceDocument, posCreditTermsOfParty, posCreditOpenDocs, posCreditInvoicePaidInTx, posCreditAgingByParty, posCreditInvoiceState as posCreditInvoiceStateOf, posCreditRefundRoomInTx, ensureAccountContact as ensurePartyContact, normalizeTaxId as normTaxId } from "./service"; // POS P3.6 fix2 F1 ▸ ผู้ติดต่อตาม partyId เท่านั้น ◂
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
+// POS P1.6 ▸ ถอด VAT สูตรเดียวกับบิล POS ◂
+import { splitIncludedVat } from "@/lib/money/vat";
 // CRM C1.3 ▸ `accountSystemForCrm` (ท้ายไฟล์) — tenantDb (ไม่ใช่ prisma ดิบ · F5) + ตาม Party ที่ถูกรวมไปตัวปลายทาง
 import { tenantDb as crmTenantDb } from "@/lib/core/db";
 import * as crmPartyFacade from "@/lib/modules/party";
@@ -36,6 +45,9 @@ export {
   updateAccountProductSalePrice,
   createAccountProductWithSalePrice,
 } from "./service";
+
+// POS P1.10 ▸ ใบเสร็จ/ใบกำกับภาษีอย่างย่อของ POS: config VAT ของสมุดที่ผูก (อ่านล้วน · vatRegistered · vatRateBp · posAbbreviatedInvoice) ◂
+export { vatConfigOf } from "./service";
 
 // M3.7 (ระบบสมาชิก v2 · ไทม์ไลน์ประวัติ) — เอกสารขาออกของ party หนึ่ง (อ่านอย่างเดียว · read-through)
 //   ผู้เรียก: `member/history.ts` (dynamic import — account/index อยู่ในวงจรโหลดไฟล์ของโมดูลบัญชีเอง)
@@ -62,9 +74,22 @@ export async function posAccountSystemId(
 }
 import {
   postExternalSale,
+  postExternalRefund,
+  postExternalChannelCommission, // POS P2.1 ◂
+  posSaleEntryPosted, // POS P2.1 ▸ fix round 1 (F1) ◂
+  posSaleEntryInOtherBook, // POS HF-FU2 ▸ ACC-1 ◂
+  posSalePaidContact, // POS P2.1 ▸ fix round 1 (F3) ◂
+  ensureAccounting, // POS P2.1 ▸ ก่อนโพสต์คีย์ช่องทาง (R7) ◂
+  externalSalePosted,
   postGiftCardSale as postGiftCardSaleGl,
   postGiftCardUse as postGiftCardUseGl,
   postGiftCardExpire as postGiftCardExpireGl,
+  giftCardSaleEntryId as giftCardSaleEntryIdGl, // POS HF-GC ◂
+  liabilityLedgerOf, // POS P2.9 ▸ R9 บัญชีพักทิป ◂
+  postExternalDepositReceipt, // POS P2.9b ▸ R3 ◂
+  postExternalDepositRefund, // POS P2.9b ▸ R8 ◂
+  recordExternalSaleZeroEntry, // POS P2.9b ▸ fix4 มติ 1: เครื่องหมาย zero entry (แถวเดียวต่อบิล · ล้ม = โยน) ◂
+  externalSaleZeroEntryRecorded, // POS P2.9b ▸ fix4 มติ 1: ประตูค่าคอมฯ ◂
   reverseFor,
   type GlCtx,
 } from "./gl";
@@ -92,7 +117,22 @@ export async function applyExternalSale(input: {
   grossSatang: number; // ยอดรวม (ราคารวม VAT ถ้าร้านจด)
   // ส่วนของยอดรวมที่มาจาก "บริการ" — ไม่ระบุ = ถือเป็นขายสินค้าทั้งก้อน (พฤติกรรมเดิม)
   serviceGrossSatang?: number;
-  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE"; amountSatang: number }[];
+  // POS P2.9 ▸ STORED_VALUE = บัตรของขวัญ/เครดิตร้านของ POS (เงินรับล่วงหน้า) → Dr 2110 (มติ 1 · CD1b · เพิ่มล้วน) ◂
+  // POS P3.6 ▸ ON_ACCOUNT = วางบิล (เครดิตเทอม) → Dr 1100 ผู้ติดต่อของบริษัท (onAccount ต้องส่งคู่กัน) ◂
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" | "ON_ACCOUNT"; amountSatang: number }[];
+  /**
+   * POS P3.6 ▸ R7 มติ 3 4 (เพิ่มล้วน · ไม่ส่ง = เดิมทุกไบต์): บิลวางบิลของลูกค้าองค์กร — partyId = Party ของบริษัท (ผู้ติดต่อสมุดหาด้วย partyId ก่อน) ·
+   *   dueDate = วันครบกำหนด "YYYY-MM-DD" (วันไทย) · termDays = เทอมที่ใช้ ⇒ JV Dr 1100 (ผู้ติดต่อบริษัท) / Cr รายได้ + 2200 (postExternalSale เดิม JV เดียว) ·
+   *   เอกสาร = INVOICE AWAITING_PAYMENT + dueDate (ไม่ใช่ ABB/TAX_INVOICE · ไม่ขึ้นกับสวิตช์ใบกำกับอย่างย่อ) ◂
+   */
+  onAccount?: { partyId: string; dueDate: string; termDays: number };
+  /**
+   * POS P2.9 ▸ R9 (มติ 7 · เพิ่มล้วน): ทิปที่อยู่ในเงินที่รับ (Σ payMethods = gross + tip) → Cr บัญชีพักทิป `ledgerId` (LIABILITY ของสมุดที่ผูกเท่านั้น)
+   *   ไม่ส่ง = เดิมทุกไบต์ (ผู้เรียกตัดทิปออกจาก payMethods เอง) · บัญชีไม่ใช่หนี้สินของสมุดนี้/ถูกเก็บ = โยน (คิวลองใหม่ — เงินเกินห้ามหายเงียบ) ◂
+   */
+  tip?: { satang: number; ledgerId: string };
+  /** POS P2.1 (เพิ่มล้วน · มติ 1 / CD6): ชื่อช่องทางขาย — แถว PLATFORM ลงลูกหนี้ 1100 ผูกผู้ติดต่อชื่อนี้ (ไม่ส่ง/ไม่มีแถว PLATFORM = เดิมทุกไบต์) */
+  channelName?: string | null;
   /** WO 4.2 — บรรทัดของบิล (สตางค์ · ราคาต่อหน่วยตามที่ขายจริง = รวม VAT เมื่อร้านจด VAT)
    *  Σ(qty×unitPriceSatang − discountSatang) ต้องเท่ากับ grossSatang เป๊ะ ไม่งั้นไม่บันทึกอะไรเลย */
   lines?: {
@@ -113,7 +153,18 @@ export async function applyExternalSale(input: {
   };
   /** เลขใบเสร็จของ POS — ใช้เป็นเลขที่เอกสารถ้ายังว่างในสมุดเล่มนี้ */
   receiptNo?: string | null;
-}): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  /** POS P1.13 (R2 · CD1 · CD4 · เพิ่มล้วน): ผู้ซื้อขอใบกำกับภาษีเต็มรูปตอนชำระ — สมุดจด VAT ⇒ ชั้นเอกสารเป็น TAX_INVOICE (แทน ABB)
+   *  ผู้ติดต่อ = ผู้ซื้อ (จับด้วยเลขผู้เสียภาษี+สาขาก่อน · ไม่ผูก partyId ของสมาชิก — มติ 1) · GL เหมือนบิลไม่มีผู้ซื้อทุกสตางค์ · ไม่ส่ง = เดิมทุกไบต์ */
+  buyer?: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null };
+  /**
+   * POS P2.9b ▸ R5 มติ 1 15 (เพิ่มล้วน · ไม่ส่ง = JV/เอกสารเดิมทุกไบต์) — บิลที่ใช้มัดจำของ POS (แถว DEPOSIT ที่อ้างใบรับมัดจำ):
+   *   depositVatSatang = Σ VAT ของมัดจำที่ใช้ (VAT ออกไปแล้วตอนรับมัดจำ) ⇒ Dr 2110 = ยอดมัดจำ − depositVat · Cr 2200 = VAT(ยอด) − depositVat (ไม่มี VAT ซ้ำ) ·
+   *   depositGrossSatang = ยอดมัดจำที่หัก (รวม VAT) → เอกสาร depositDeducted + VAT สุทธิ (รูปเดียวกับใบแจ้งหนี้หักมัดจำ gl.ts INVOICE)
+   *   owner line: เจ้าของบัญชียืนยัน VAT ตอนรับมัดจำ (O24 family) ก่อนเปิดใช้จริง ◂
+   */
+  depositVatSatang?: number;
+  depositGrossSatang?: number;
+}): Promise<{ posted: boolean; reason?: string; docId?: string; fullTaxInvoice?: boolean; zeroEntry?: true; creditInvoice?: true /* POS P3.6 ▸ F2 ใบแจ้งหนี้ของบิลวางบิล ◂ */ }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return { posted: false, reason: "unlinked" };
 
@@ -121,8 +172,15 @@ export async function applyExternalSale(input: {
   const { vatRegistered, vatRateBp, posAbbreviatedInvoice } = await vatConfigOf(link.systemId);
 
   const gross = input.grossSatang;
-  const base = vatRegistered ? Math.round(gross / (1 + vatRateBp / 10000)) : gross;
-  const vat = gross - base;
+  // POS P1.6 ▸ สูตรเดียวกับ PosSale.vatSatang (src/lib/money/vat.ts) ◂
+  const { baseSatang: baseFull, vatSatang: vatFull } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
+  // POS P2.9b ▸ R5: VAT ของมัดจำที่ใช้ (สมุดไม่จด VAT = 0 · ไม่เกิน VAT ของบิล/ยอดมัดจำ) — ไม่ส่ง = 0 ⇒ ทุกบรรทัดเดิม ◂
+  const depositRows = input.payMethods.filter((p) => p.channel === "DEPOSIT").reduce((n, p) => n + p.amountSatang, 0);
+  // POS P2.9b ▸ fix1 มติ 3 (hunt D2): หักตามที่บันทึก/ลงไว้ตอนรับมัดจำเสมอ (สมุดเลิกจด VAT ภายหลัง = ไม่คิดใหม่ — ส่วนเกิน VAT ของบิลลดฐานรายได้) ◂
+  const depositVat = Number.isInteger(input.depositVatSatang) && input.depositVatSatang! > 0 ? Math.min(input.depositVatSatang!, depositRows) : 0;
+  // POS P2.9b ▸ fix1 มติ 1 (R1 F2): VAT มัดจำที่ปล่อยเกิน VAT ของบิล (เศษสตางค์ที่ออกกับแถวสุดท้าย) = ส่วนที่ "รวม VAT ไปแล้ว" ⇒ ลดฐานรายได้ของบิล (ไม่ตัดทิ้ง) ⇒ 2110 สุทธิ 0 ◂
+  const vat = Math.max(0, vatFull - depositVat);
+  const base = baseFull - Math.max(0, depositVat - vatFull);
 
   // ── WO 4.2: ตรวจบรรทัดก่อนแตะอะไรทั้งสิ้น — ไม่ตรงยอด = ไม่โพสต์ ไม่สร้างเอกสาร (บิลเพี้ยนห้ามเข้าบัญชี) ──
   const lines = input.lines;
@@ -151,44 +209,94 @@ export async function applyExternalSale(input: {
   // ช่องทางเงิน → บัญชีขา Dr (ขา Cr รายได้/VAT คงเดิม):
   //   CASH → 1000 (CASH) · TRANSFER/PROMPTPAY → 1010 (BANK)
   //   DEPOSIT → 2110 (DEPOSIT_RECEIVED ลดหนี้สินมัดจำรับ) · ROOM_CHARGE → 1100 (AR ลูกหนี้)
+  //   POS P2.1: PLATFORM → ลูกหนี้แพลตฟอร์ม (PLATFORM_RECEIVABLE = 1100 · option A) ผูกผู้ติดต่อของช่องทาง
   const channelToKey = (
-    ch: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE",
+    ch: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" | "ON_ACCOUNT", // POS P3.6 ◂
   ): "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR" => {
     switch (ch) {
+      case "ON_ACCOUNT": // POS P3.6 ▸ วางบิล = ลูกหนี้การค้า 1100 ผูกผู้ติดต่อของบริษัท ◂
+        return "AR";
       case "CASH":
         return "CASH";
       case "DEPOSIT":
         return "DEPOSIT_RECEIVED";
+      case "STORED_VALUE": // POS P2.9 ▸ บัตรของขวัญ/เครดิตร้าน = ลดเงินรับล่วงหน้า 2110 (มติ 1 · มติ 9 บัญชีเดียวกับมัดจำ) ◂
+        return "DEPOSIT_RECEIVED";
       case "ROOM_CHARGE":
         return "AR";
+      case "PLATFORM":
+        return CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"];
       default:
         return "BANK";
     }
   };
-  const drLines = input.payMethods.map((p) => ({
-    key: channelToKey(p.channel),
-    amountSatang: p.amountSatang,
-  }));
+  // POS P2.1 ▸ มีแถว PLATFORM เท่านั้นที่ seed ผัง/หาผู้ติดต่อ (บิลอื่นไม่แตะอะไรเพิ่ม — JV เดิมทุกไบต์) ◂
+  const hasPlatform = input.payMethods.some((p) => p.channel === "PLATFORM");
+  if (hasPlatform) await ensureAccounting(ctx); // R7: คีย์ลูกหนี้แพลตฟอร์มต้องจับคู่ได้ก่อนโพสต์ (ห้ามตก 9999)
+  const platformContactId = hasPlatform ? await platformContact(ctx, input.channelName) : null;
+  // POS P3.6 ▸ R7: ผู้ติดต่อของบริษัท (partyId ก่อน · ผู้ซื้อ/ชื่อ Party เป็นข้อมูลตอนสร้างใหม่) — ก่อนโพสต์ JV (ขา 1100 ผูกผู้ติดต่อนี้) ◂
+  const creditContactId = input.onAccount && input.payMethods.some((p) => p.channel === "ON_ACCOUNT") ? await posCreditContact(ctx, input.onAccount.partyId, input.buyer) : null;
+  // POS P2.9b ▸ R5: ขา Dr 2110 ของแถวมัดจำลดด้วย depositVat (ส่วนที่เป็น VAT จ่ายไปแล้วตอนรับมัดจำ) · depositVat 0 = บรรทัดเดิม ◂
+  let depVatLeft = depositVat;
+  const drLines = input.payMethods.map((p) => {
+    const cut = p.channel === "DEPOSIT" ? Math.min(depVatLeft, p.amountSatang) : 0;
+    depVatLeft -= cut;
+    return {
+      key: channelToKey(p.channel),
+      amountSatang: p.amountSatang - cut,
+      ...(p.channel === "PLATFORM" && platformContactId ? { contactId: platformContactId } : {}),
+      ...(p.channel === "ON_ACCOUNT" && creditContactId ? { contactId: creditContactId } : {}), // POS P3.6 ◂
+    };
+  }).filter((l) => l.amountSatang > 0 || depositVat === 0);
 
   // ถอด VAT จากฝั่งบริการด้วยอัตราส่วนเดียวกับทั้งบิล แล้ว clamp ไม่ให้เกินฐานรวม
   const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
   const svcBase = gross > 0 ? Math.min(base, Math.round((base * svcGross) / gross)) : 0;
 
-  const res = await postExternalSale(ctx, {
-    refId: input.refId,
-    date: input.occurredAt,
-    baseSatang: base,
-    vatSatang: vat,
-    serviceBaseSatang: svcBase,
-    drLines,
-  });
+  // POS P2.9 ▸ R9: ทิป → Cr บัญชีพักทิป (หนี้สินของสมุดนี้) · ตรวจทุกครั้งก่อนลง (บัญชีถูกเก็บ/ผิดชนิด = โยน ⇒ คิวลองใหม่ ไม่ลงผิดที่) ◂
+  let tipCr: { accountId: string; amountSatang: number; note: string }[] | undefined;
+  if (input.tip && input.tip.satang > 0) {
+    const ledger = await liabilityLedgerOf(ctx, input.tip.ledgerId);
+    if (!ledger) throw new Error("บัญชีพักทิปของจุดขายนี้ใช้ไม่ได้ (ไม่ใช่หนี้สินของสมุดที่ผูก หรือถูกเก็บแล้ว) — แก้ที่ตั้งค่าการชำระเงินของ POS");
+    tipCr = [{ accountId: ledger.id, amountSatang: input.tip.satang, note: "ทิปรอจ่ายพนักงาน" }];
+  }
+  // POS P2.9b ▸ fix3 มติ 1 (R3 F1): ทุกบรรทัดบัญชีสุทธิ 0 (เช่น บิลสุดท้ายที่มัดจำปล่อย VAT ครอบทั้งยอดหลังสมุดเลิกจด VAT) — ไม่มี JV ให้ลง ·
+  //   ข้าม JV (ไม่โยน ⇒ คิว pos.sale.paid จบ DONE) · ชั้นเอกสารยังเขียนตามปกติ + เครื่องหมาย zeroEntry (fix4 มติ 1 3) ·
+  //   fix4 มติ 4 (R4 F3 / hunter N3): เข้าเงื่อนไขนี้ด้วย = บิล ฿0 (ส่วนลด 100% · ไม่มีแถวจ่าย) — เดิม commitEntry โยน "ไม่มีบรรทัดบัญชี" ⇒ คิว DEAD ·
+  //   ตอนนี้จบ DONE + เครื่องหมาย ไม่มี JV ไม่มีเอกสาร (บิลส่ง lines เฉพาะยอด > 0) · บิลอื่นทั้งหมด (มีบรรทัดบัญชีไม่ใช่ 0) = ทางเดิมทุกไบต์ ◂
+  const zeroEntry = base === 0 && vat === 0 && !tipCr && drLines.every((l) => l.amountSatang === 0);
+  const res = zeroEntry
+    ? ({ skipped: true } as const)
+    : await postExternalSale(ctx, {
+        refId: input.refId,
+        date: input.occurredAt,
+        baseSatang: base,
+        vatSatang: vat,
+        serviceBaseSatang: svcBase,
+        drLines,
+        ...(tipCr ? { crExtra: tipCr } : {}), // POS P2.9 ◂
+      });
   const posted = "entryId" in res;
+  // POS HF-FU ▸ z fix2 (hunter H2): JV ขายของบิลนี้อยู่ในสมุดอื่นของร้านแล้ว (POS ถูกย้ายไปผูกสมุดนี้ทีหลัง) — จบก่อนชั้นเอกสาร: ไม่มีเอกสารขาย/เลขใบกำกับซ้ำในสมุดใหม่
+  //   (เดิม P2002 โยนก่อนถึงชั้นเอกสาร ⇒ ผลที่เห็นเท่าเดิม ไม่มีข้อผิดพลาด) ◂
+  if ("reason" in res && res.reason === "other-book") return { posted: false, reason: "other-book" };
+  // POS P2.9b ▸ fix4 มติ 1 (R4 F2 / hunter N1): zero entry = เครื่องหมายแถวเดียวต่อบิล (gl.recordExternalSaleZeroEntry · ล้ม = โยน ⇒ คิวลองใหม่) —
+  //   ประตูค่าคอมฯ (applyExternalChannelCommission) นับเครื่องหมายนี้แทน JV PAID ⇒ ค่าคอมฯ ของบิลนี้ลงได้ ◂
+  if (zeroEntry) await recordExternalSaleZeroEntry(ctx, input.refId, { zeroEntry: true, refId: input.refId, grossSatang: gross, depositVatSatang: depositVat, vatFullSatang: vatFull });
+  const zeroMark = zeroEntry ? ({ zeroEntry: true } as const) : {};
 
   // ── WO 4.2: ชั้นเอกสาร (ไม่มี lines = ข้ามทั้งบล็อก → เส้นทางเดิมทุกประการ) ──
   //    WO 8.1: เจ้าของปิด "ใบกำกับอย่างย่อจาก POS" ในหน้าตั้งค่า (§9.2) = ไม่สร้างชั้นเอกสารนี้
-  if (!lines || lines.length === 0 || !posAbbreviatedInvoice) return { posted };
+  //    POS P1.13: ผู้ซื้อขอใบกำกับเต็มรูป + สมุดจด VAT = สร้างใบเต็มรูปเสมอ (ลูกค้าขอเอกสารเอง ไม่ขึ้นกับสวิตช์ใบอย่างย่อ)
+  // follow-up 3 (ป้องกัน): ใบเต็มรูปเฉพาะเมื่อสมุด "ออกใบกำกับได้" ณ ตอนลงบัญชี (จด VAT · เปิดใบอย่างย่อจาก POS · มีเลขผู้เสียภาษี · บิลมี VAT)
+  //   ไม่ครบ = ถอยไปเส้น ABB/ใบเสร็จเดิม (ไม่ล้างสำเนาผู้ซื้อ · ฝั่ง POS เตือน ops) — หน้าขายปฏิเสธ NOT_ELIGIBLE ตั้งแต่ตอนชำระแล้ว
+  // POS P3.6 ▸ R7 มติ 4: บิลวางบิล = ใบแจ้งหนี้ AWAITING_PAYMENT + dueDate เสมอ (ไม่ขึ้นกับสวิตช์ใบกำกับอย่างย่อ · ไม่มี ABB/TAX_INVOICE ของบิลนี้) ◂
+  // POS P3.6 ▸ F2 (CD-P36-F2 · W16/W23): ใบแจ้งหนี้นี้ = "ใบแจ้งหนี้/ใบกำกับภาษี" ของบิลวางบิล (ไม่มี TAX_INVOICE แยก) · creditInvoice ⇒ ฝั่ง POS ไม่เตือน pos.taxInvoice ◂
+  if (creditContactId && input.onAccount) return { posted, ...(await posCreditInvoiceLayer(ctx, input, lines, creditContactId, { vatRegistered, vatRateBp })), creditInvoice: true as const, ...zeroMark };
+  const full = !!input.buyer && vatRegistered && posAbbreviatedInvoice && vat > 0 && (await bookTaxIdOf(link.systemId)) !== "";
+  if (!lines || lines.length === 0 || (!posAbbreviatedInvoice && !full)) return { posted, ...zeroMark };
 
-  const contactId = await resolveExternalSaleContact(ctx, input.customer);
+  const contactId = full ? await resolveBuyerContact(ctx, input.buyer!) : await resolveExternalSaleContact(ctx, input.customer);
   const map = await resolveProductIdsForExternalSale(ctx.systemId, {
     itemIds: lines.map((l) => l.itemId ?? "").filter(Boolean),
     productIds: lines.map((l) => l.accountProductId ?? "").filter(Boolean),
@@ -220,14 +328,209 @@ export async function applyExternalSale(input: {
     grandTotalSatang: gross,
     note: input.receiptNo ? `ขายหน้าร้าน POS · ใบเสร็จ ${input.receiptNo}` : "ขายหน้าร้าน POS",
     lines: docLines,
+    ...(full ? { fullTaxInvoice: true, buyer: input.buyer } : {}), // POS P1.13 ▸ R2 · fix F4 สำเนาผู้ซื้อตามที่กรอก ◂
+    // POS P2.9b ▸ มติ 15: หักมัดจำ (gross) + VAT สุทธิ ◂
+    ...(input.depositGrossSatang && input.depositGrossSatang > 0 ? { depositDeductedSatang: input.depositGrossSatang, depositVatSatang: depositVat } : {}),
   });
-  if (!doc.ok) return { posted, reason: doc.reason };
+  // POS P2.9b ▸ fix4 มติ 3 (R4 F1 / hunter N4): บิล zero entry ไม่มี JV — เอกสารคือร่องรอยเดียวของบิลในบัญชี ⇒ สร้างเอกสารไม่สำเร็จ = โยน (คิวลองใหม่ · upsert idempotent ต่อ refId ·
+  //   เครื่องหมาย zero entry มีแล้วไม่เขียนซ้ำ) แทนการจบ DONE โดยไม่มีเอกสาร · "ไม่โยน" ของ fix3 มติ 1 ใช้กับ JV ว่างเท่านั้น · บิลอื่น = ทางเดิม ◂
+  if (!doc.ok && zeroEntry) throw new Error(`บิล POS ${input.refId} (ไม่มีบรรทัดบัญชี): สร้างเอกสารขายไม่สำเร็จ — ${doc.reason} · ลองใหม่อัตโนมัติ`);
+  if (!doc.ok) return { posted, reason: doc.reason, ...zeroMark };
   // WO 4.3 (§8.2): บิล POS ที่ขาย "รายการจัดชุด" → ตัดสต็อกส่วนประกอบ
   //   ตัดเฉพาะตอนเอกสารถูก "สร้างใหม่" (created) — ยิงซ้ำด้วย refId เดิม upsert คืนใบเดิม ⇒ ไม่ตัดซ้ำ
   //   (ตัวที่ผูกคลังยังมีคีย์ idempotent ต่อบรรทัดซ้อนอีกชั้น)
   if (doc.created) await consumeBundleComponentsForDoc(ctx, doc.docId);
+  return { posted, docId: doc.docId, ...(full ? { fullTaxInvoice: true } : {}), ...zeroMark };
+}
+
+// ─────────────────────────────────────────────────────────────
+// POS P2.9b ▸ มัดจำของ POS — ใบรับเงินมัดจำ (VAT ตอนรับเงิน) + คืนเงินมัดจำคงเหลือ (มติ 1 3 5 · R3 R8) ◂
+// 🔴 owner line (POS-OWNER-PENDING P2.9b): เจ้าของบัญชียืนยันโมเดล VAT ตอนรับมัดจำ (O24 family) + บัญชีเดียว 2110 (CD9) ก่อนเปิดใช้จริง ·
+//    ย้อนได้ตราบที่ยังไม่มีมัดจำจริงใน prod · ไม่ผูกสมุด = {posted:false, reason:"unlinked"} ไม่ throw (มัดจำยังใช้ได้) · GL ล้ม = โยน ⇒ คิวลองใหม่
+// POS ไม่รู้เลขบัญชี — ส่งยอด/VAT/ช่องทาง (CASH | TRANSFER | PROMPTPAY → 1000/1010)
+const depositChannelKey = (ch: string): "CASH" | "BANK" => (ch === "CASH" ? "CASH" : "BANK");
+/**
+ * R3 — ใบรับเงินมัดจำของ POS (PosSale sourceModule POS_DEPOSIT): JV คีย์ PosSale#<ใบรับ>#PAID = Dr เงิน / Cr 2110 ฐาน / Cr 2200 VAT (ไม่มีรายได้) ·
+ * เอกสาร DEPOSIT_RECEIPT (ชื่อ "ใบรับเงินมัดจำ" · + "/ใบกำกับภาษีอย่างย่อ" เมื่อสมุดจด VAT + เปิดใบกำกับอย่างย่อจาก POS — มติ 3) ไม่โพสต์ GL ซ้ำ
+ */
+export async function applyExternalDepositReceipt(input: {
+  tenantId: string;
+  sourceSystemId: string; // POS AppSystem.id
+  refId: string; // PosSale.id ของใบรับมัดจำ
+  occurredAt: Date;
+  grossSatang: number;
+  /** VAT ของมัดจำ (PosDeposit.vatSatang = PosSale.vatSatang ของใบรับ) — สมุดไม่จด VAT = 0 */
+  vatSatang: number;
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY"; amountSatang: number }[];
+  receiptNo?: string | null;
+  lineName?: string;
+  customer?: { memberId?: string | null; partyId?: string | null; name?: string | null; phone?: string | null };
+}): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { posted: false, reason: "unlinked" };
+  const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+  const { vatRegistered, vatRateBp, posAbbreviatedInvoice } = await vatConfigOf(link.systemId);
+  const gross = input.grossSatang;
+  if (!Number.isInteger(gross) || gross <= 0) return { posted: false, reason: "ยอดมัดจำต้องเป็นจำนวนเต็มสตางค์มากกว่า 0 — ไม่บันทึกบัญชี" };
+  const paySum = input.payMethods.reduce((n, p) => n + p.amountSatang, 0);
+  if (paySum !== gross) return { posted: false, reason: `ยอดรับมัดจำแยกตามวิธี (${paySum}) ไม่เท่ากับยอดมัดจำ (${gross}) — ไม่บันทึกบัญชี` };
+  // POS P2.9b ▸ fix1 มติ 3: VAT ของใบรับ = VAT ที่ POS บันทึกตอนรับเงิน (PosDeposit.vatSatang) — ไม่คิดใหม่ตามค่าตั้งสมุด ณ เวลาลงบัญชี (ลงช้า/เลิกจดภายหลัง) ◂
+  const vat = Number.isInteger(input.vatSatang) && input.vatSatang >= 0 && input.vatSatang <= gross ? input.vatSatang : 0;
+  const res = await postExternalDepositReceipt(ctx, {
+    refId: input.refId,
+    date: input.occurredAt,
+    baseSatang: gross - vat,
+    vatSatang: vat,
+    drLines: input.payMethods.map((p) => ({ key: depositChannelKey(p.channel), amountSatang: p.amountSatang })),
+  });
+  const posted = "entryId" in res;
+  // POS HF-FU ▸ z fix2 (hunter H2): JV ของใบรับอยู่ในสมุดอื่นของร้านแล้ว (ย้ายสมุด) — จบก่อนชั้นเอกสาร (ไม่มีใบรับซ้ำในสมุดใหม่ · เดิม P2002 โยนก่อนถึงตรงนี้) ◂
+  if ("reason" in res && res.reason === "other-book") return { posted: false, reason: "other-book" };
+  const title = vatRegistered && posAbbreviatedInvoice && vat > 0 ? "ใบรับเงินมัดจำ/ใบกำกับภาษีอย่างย่อ" : "ใบรับเงินมัดจำ";
+  const contactId = await resolveExternalSaleContact(ctx, input.customer);
+  const doc = await upsertExternalSaleDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    refSystemId: input.sourceSystemId,
+    refId: input.refId,
+    docNo: input.receiptNo ?? null,
+    occurredAt: input.occurredAt,
+    contactId,
+    vatMode: vatRegistered ? "INCLUDE" : "NONE",
+    vatRegistered,
+    vatRateBp,
+    grandTotalSatang: gross,
+    note: input.receiptNo ? `${title} POS · ใบรับ ${input.receiptNo}` : `${title} POS`,
+    lines: [{ description: input.lineName || "มัดจำ", qty: 1, unitPrice: gross, discount: 0, vatRateBp: null, productId: null }],
+    depositReceipt: true,
+    vatSatang: vat,
+  });
+  if (!doc.ok) return { posted, reason: doc.reason };
   return { posted, docId: doc.docId };
 }
+
+/**
+ * R8 — คืนเงินมัดจำคงเหลือ (ใบคืน REFUND ของใบรับมัดจำ): JV คีย์ PosSale#<ใบคืน>#REFUNDED = Dr 2110 ฐาน + Dr 2200 VAT / Cr เงินตามวิธีคืน ·
+ * ใบลดหนี้ (CREDIT_NOTE) อ้างเอกสาร DEPOSIT_RECEIPT ของใบรับ · ไม่แตะรายได้
+ */
+export async function applyExternalDepositRefund(input: {
+  tenantId: string;
+  sourceSystemId: string;
+  refId: string; // PosSale.id ของใบคืน (docType REFUND)
+  receiptRefId: string; // PosSale.id ของใบรับมัดจำ
+  occurredAt: Date;
+  grossSatang: number;
+  /** VAT ของส่วนที่คืน (PosDepositTxn REFUND.vatSatang) */
+  vatSatang: number;
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY"; amountSatang: number }[];
+  docNo?: string | null;
+  reason?: string | null;
+}): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { posted: false, reason: "unlinked" };
+  const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+  const { vatRegistered, vatRateBp } = await vatConfigOf(link.systemId);
+  const gross = input.grossSatang;
+  if (!Number.isInteger(gross) || gross <= 0) return { posted: false, reason: "ยอดคืนมัดจำต้องเป็นจำนวนเต็มสตางค์มากกว่า 0 — ไม่บันทึกบัญชี" };
+  const paySum = input.payMethods.reduce((n, p) => n + p.amountSatang, 0);
+  if (paySum !== gross) return { posted: false, reason: `ยอดคืนมัดจำแยกตามวิธี (${paySum}) ไม่เท่ากับยอดคืน (${gross}) — ไม่บันทึกบัญชี` };
+  // POS P2.9b ▸ fix2 มติ 2 (hunter N1): VAT ของการคืน = VAT ที่มัดจำยังไม่ปล่อย (บันทึกตอนรับ) — ไม่คิดใหม่ตามค่าตั้งสมุด ณ ตอนคืน (เลิกจด VAT ภายหลัง) ⇒ 2110 สุทธิ 0 ◂
+  const vat = Number.isInteger(input.vatSatang) && input.vatSatang >= 0 && input.vatSatang <= gross ? input.vatSatang : 0;
+  const res = await postExternalDepositRefund(ctx, {
+    refId: input.refId,
+    date: input.occurredAt,
+    baseSatang: gross - vat,
+    vatSatang: vat,
+    crLines: input.payMethods.map((p) => ({ key: depositChannelKey(p.channel), amountSatang: p.amountSatang })),
+  });
+  const posted = "entryId" in res;
+  const src = await findDocByRef(link.systemId, "DEPOSIT_RECEIPT", "PosSale", input.receiptRefId);
+  const reason = (input.reason ?? "").trim() || "คืนเงินมัดจำ";
+  const doc = await upsertExternalCreditNoteDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    refSystemId: input.sourceSystemId,
+    refId: input.refId,
+    sourceDocId: src?.id ?? null,
+    docNo: input.docNo ?? null,
+    occurredAt: input.occurredAt,
+    contactId: null, // ใบรับมัดจำ walk-in ไม่มีผู้ติดต่อ · สมาชิก = เอกสารต้นทางถือผู้ติดต่อ (findDocByRef อ่าน id อย่างเดียว)
+    vatMode: vatRegistered ? "INCLUDE" : "NONE",
+    vatRegistered,
+    vatRateBp,
+    grandTotalSatang: gross,
+    vatSatang: vat,
+    reason,
+    note: input.docNo ? `คืนเงินมัดจำ POS · ใบคืน ${input.docNo}` : "คืนเงินมัดจำ POS",
+    lines: [{ description: "คืนเงินมัดจำ", qty: 1, unitPrice: gross, discount: 0, vatRateBp: null, productId: null }],
+  });
+  if (!doc.ok) return { posted, reason: doc.reason };
+  return { posted, docId: doc.docId };
+}
+// ◂ POS P2.9b
+
+/**
+ * POS P1.13 (มติ 1 · CD4) — ผู้ติดต่อของผู้ซื้อใบกำกับเต็มรูป: เลขผู้เสียภาษี + สาขาชนะชื่อ (ใช้ผู้ติดต่อเดิมของร้านที่เลขตรง)
+ * ไม่ส่ง partyId (ไม่งั้นผู้ติดต่อของสมาชิกที่ไม่มีเลขภาษีจะชนะ) · สร้างใหม่ = มีเลข/สาขา/ที่อยู่/อีเมล/ชนิดครบ
+ */
+async function resolveBuyerContact(
+  ctx: GlCtx,
+  buyer: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null },
+): Promise<string> {
+  const contact = await findOrCreateCustomerContact(
+    { tenantId: ctx.tenantId, systemId: ctx.systemId },
+    {
+      name: buyer.name,
+      taxId: buyer.taxId,
+      branchCode: buyer.branchCode || "00000",
+      email: buyer.email ?? null,
+      address: buyer.address,
+      legalType: buyer.kind === "PERSON" ? "PERSON" : "COMPANY",
+    },
+  );
+  return contact.id;
+}
+
+/**
+ * POS P1.13 (R3 · CD1 · CD2 · มติ 4) — ออกใบกำกับภาษีเต็มรูปทีหลังแทนใบกำกับอย่างย่อของบิล POS (ทางเฉพาะของ POS · ไม่แตะ GL)
+ * {ok:true, docId, docNo, created} | {ok:false, code}:
+ *   UNLINKED (POS ไม่ผูกสมุด) · NOT_VAT (สมุดไม่จด VAT) · NO_ABB (ยังไม่มี ABB ของบิล — consumer ยังไม่ทำงาน · ลองใหม่ได้) ·
+ *   NOT_LIVE (ABB ถูกยกเลิก/แทนไปแล้วโดยไม่มีใบเต็มรูป) · INTERNAL
+ * ยิงซ้ำหลังออกแล้ว = ใบเดิม (created:false) · ไม่เคย throw
+ */
+export async function supersedeAbbWithTaxInvoice(input: {
+  tenantId: string;
+  sourceSystemId: string; // POS AppSystem.id
+  refId: string; // PosSale.id
+  buyer: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null };
+}): Promise<{ ok: true; docId: string; docNo: string | null; created: boolean; buyerMatches?: boolean } | { ok: false; code: "UNLINKED" | "NOT_VAT" | "NO_ABB" | "NOT_LIVE" | "INTERNAL"; reason: string }> {
+  try {
+    const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+    if (!link) return { ok: false, code: "UNLINKED", reason: "POS นี้ยังไม่ผูกสมุดบัญชี" };
+    const { vatRegistered } = await vatConfigOf(link.systemId);
+    if (!vatRegistered) return { ok: false, code: "NOT_VAT", reason: "สมุดบัญชีไม่ได้จดภาษีมูลค่าเพิ่ม" };
+    const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+    const abb = await findDocByRef(link.systemId, "TAX_INVOICE_ABB", "PosSale", input.refId);
+    if (!abb) return { ok: false, code: "NO_ABB", reason: "ระบบบัญชียังไม่มีใบกำกับภาษีอย่างย่อของบิลนี้" };
+    const contactId = await resolveBuyerContact(ctx, input.buyer);
+    const res = await supersedeExternalSaleAbb({
+      tenantId: input.tenantId,
+      systemId: link.systemId,
+      abbDocId: abb.id,
+      contactId,
+      buyer: input.buyer, // POS P1.13 fix F1 (ตรวจผู้ซื้อของใบเดิม) + F4 (สำเนาผู้ซื้อตามที่กรอก) ◂
+    });
+    if (!res.ok) return { ok: false, code: res.code === "NOT_FOUND" ? "NO_ABB" : res.code, reason: res.reason };
+    return res;
+  } catch (e) {
+    return { ok: false, code: "INTERNAL", reason: safeReason(e, "ออกใบกำกับภาษีเต็มรูปไม่สำเร็จ") };
+  }
+}
+/** ชื่อตามข้อสอบ P1.13 (ตารางชื่อ #16) — ตัวเดียวกับ supersedeAbbWithTaxInvoice */
+export const convertAbbToTaxInvoice = supersedeAbbWithTaxInvoice;
+
+// POS P1.13 ▸ R5 · CD3: ค้นนิติบุคคลกรมพัฒน์ฯ — POS เรียกผ่าน facade เท่านั้น (กุญแจอยู่ใน env ของ prod · ไม่มีกุญแจ = DBD_REASON.noKey) ◂
+export { lookupJuristic, isDbdConfigured, DBD_REASON, type DbdLookupResult } from "./dbd";
 
 /**
  * ผู้ติดต่อของบิล POS — partyId ก่อน (WO 3.1) แล้วค่อยเบอร์/ชื่อ ตามลำดับของ `findOrCreateCustomerContact`
@@ -274,6 +577,241 @@ export async function reverseExternalSale(input: {
 }
 
 // ─────────────────────────────────────────────────────────────
+// POS P1.8 ▸ คืนเงินหน้าร้าน → ใบลดหนี้ + กลับรายการตามสัดส่วน (REVIEW #6) ◂
+//
+// 🔴 ร้านที่ไม่ผูกบัญชีกับ POS = { posted:false, reason:"unlinked" } **ห้าม throw** (หลัก standalone เดียวกับ applyExternalSale)
+// 🔴 GL: Dr รายได้ (สินค้า/บริการตามสัดส่วนบรรทัดบริการ) + Dr ภาษีขาย · Cr เงินสด/ธนาคารตามวิธีคืน — idempotent ต่อใบคืน
+//    VAT ถอดด้วย splitIncludedVat สูตรเดียวกับ PosSale.vatSatang ของใบคืน · JV/ใบกำกับของบิลเดิมไม่ถูกแตะ (CD6)
+// 🔴 ชั้นเอกสาร: CREDIT_NOTE 1 ใบต่อใบคืน อ้าง ABB ของบิลเดิม (findDocByRef) · เลขที่ = เลขใบคืนของ POS
+//    สร้างเฉพาะเมื่อส่ง lines และร้านเปิด "ใบกำกับอย่างย่อจาก POS" (กติกาเดียวกับชั้นเอกสารของ applyExternalSale)
+//    POS ไม่เห็นเลขบัญชีใด ๆ (D3)
+export async function applyExternalRefund(input: {
+  tenantId: string;
+  sourceSystemId: string; // POS AppSystem.id
+  refId: string; // PosSale.id ของใบคืน (docType REFUND)
+  saleRefId: string; // PosSale.id ของบิลเดิม (หา ABB)
+  occurredAt: Date;
+  grossSatang: number; // ยอดคืน (รวม VAT ถ้าร้านจด)
+  /** ส่วนของยอดคืนที่เป็นบริการ (กลับ 4030) — ไม่ส่ง = สินค้าทั้งก้อน */
+  serviceGrossSatang?: number;
+  // POS P2.9 ▸ STORED_VALUE = คืนเข้าบัตรของขวัญ/เครดิตร้าน → Cr 2110 (R6 R7 · เพิ่มล้วน) ◂
+  // POS P3.6 ▸ ON_ACCOUNT = คืนบนบิลวางบิล → Cr 1100 ผู้ติดต่อของบิล (ลดหนี้) + ใบลดหนี้อ้างใบแจ้งหนี้ ◂
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE" | "ON_ACCOUNT"; amountSatang: number }[];
+  /** POS P2.1 (เพิ่มล้วน): ชื่อช่องทางขาย — แถว PLATFORM (แพลตฟอร์มคืนลูกค้า) ลดลูกหนี้ 1100 ของผู้ติดต่อนี้ */
+  channelName?: string | null;
+  /** บรรทัดของใบคืน (Σ qty×unitPrice − discount = grossSatang เป๊ะ) — ไม่ส่ง/ว่าง = ไม่มีชั้นเอกสาร */
+  lines?: { itemId?: string | null; name: string; qty: number; unitPriceSatang: number; discountSatang?: number }[];
+  docNo?: string | null; // เลขใบคืนของ POS
+  reason?: string | null;
+  // POS P1.16 ▸ R5b(a): VAT ของใบคืน POS (PosSale.vatSatang) — ส่งมา = ใช้ตัวนี้ทั้ง JV และใบลดหนี้ (สมุดจด VAT)
+  //   ⇒ คืนครบหลายใบ Σ VAT = VAT ของบิลเป๊ะ · 2200 ของบิลสุทธิ 0 · ไม่ส่ง/ผิดรูป = ถอดจากยอดแบบเดิม ◂
+  vatSatang?: number;
+  /** POS P2.9b ▸ fix4 มติ 2 (เพิ่มล้วน): บิลเดิมจ่ายด้วยมัดจำ (VAT ส่วนนั้นออกไปแล้วตอนรับมัดจำ) — VAT ของใบคืนใช้ตามที่ส่งมาแม้สมุดเลิกจด VAT ภายหลัง ◂ */
+  depositPaid?: boolean;
+}): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  // ไม่ผูก = จบเงียบ · ความล้มของ GL (งวดปิด/ผังไม่ครบ) โยนต่อแบบ applyExternalSale ⇒ คิวลองใหม่ ไม่ปิดเงียบ ๆ
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { posted: false, reason: "unlinked" };
+  const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+  const { vatRegistered, vatRateBp, posAbbreviatedInvoice } = await vatConfigOf(link.systemId);
+  const gross = input.grossSatang;
+  if (!Number.isInteger(gross) || gross <= 0) return { posted: false, reason: "ยอดคืนต้องเป็นจำนวนเต็มสตางค์มากกว่า 0 — ไม่บันทึกบัญชี" };
+  const paySum = input.payMethods.reduce((n, p) => n + p.amountSatang, 0);
+  if (paySum !== gross) return { posted: false, reason: `ยอดคืนแยกตามวิธี (${paySum}) ไม่เท่ากับยอดใบคืน (${gross}) — ไม่บันทึกบัญชี` };
+  const lines = input.lines ?? [];
+  if (lines.length > 0) {
+    const bad = lines.find((l) => !Number.isInteger(l.qty) || l.qty <= 0 || !Number.isInteger(l.unitPriceSatang) || l.unitPriceSatang < 0 || (l.discountSatang !== undefined && (!Number.isInteger(l.discountSatang) || l.discountSatang < 0)));
+    if (bad) return { posted: false, reason: `บรรทัด "${bad.name}" ของใบคืนมีจำนวน/ราคา/ส่วนลดไม่ถูกต้อง — ไม่บันทึกบัญชี` };
+    const sum = lines.reduce((n, l) => n + l.qty * l.unitPriceSatang - (l.discountSatang ?? 0), 0);
+    if (sum !== gross) return { posted: false, reason: `ยอดรวมของบรรทัดใบคืน (${sum}) ไม่เท่ากับยอดคืน (${gross}) — ไม่บันทึกบัญชี` };
+  }
+  // POS P2.9b ▸ fix4 มติ 2 (hunter N2): บิลที่ใช้มัดจำ + สมุดเลิกจด VAT ภายหลัง — VAT ของใบคืน (> 0) ใช้ตามที่ส่งมา แบบ applyExternalDepositRefund (7d38de9a) ⇒
+  //   Dr 2200 / Cr เงิน ส่วน VAT · รายได้ไม่ถูกแตะส่วนนั้น · ใบลดหนี้แสดง VAT เท่าใบคืน POS · สมุดจด VAT / บิลไม่มีมัดจำ = ทางเดิมทุกไบต์ ◂
+  const keepVat = vatRegistered || (input.depositPaid === true && Number.isInteger(input.vatSatang) && input.vatSatang! > 0);
+  const explicitVat = keepVat && Number.isInteger(input.vatSatang) && input.vatSatang! >= 0 && input.vatSatang! <= gross ? input.vatSatang! : null;
+  const cnVat = vatRegistered || explicitVat !== null; // fix4 มติ 2: ใบลดหนี้แบบรวม VAT เมื่อใบคืนมี VAT ที่ต้องกลับ
+  const { baseSatang: base, vatSatang: vat } =
+    explicitVat !== null ? { baseSatang: gross - explicitVat, vatSatang: explicitVat } : vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
+  const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
+  const svcBase = Math.min(base, Math.round((base * svcGross) / gross));
+  // คืนได้เฉพาะเงินสด/ธนาคาร (มัดจำ/ลงห้อง ถูกปฏิเสธตั้งแต่ POS — R5) · ที่เหลือ = ธนาคาร
+  //   POS P2.1 ▸ PLATFORM = แพลตฟอร์มคืนลูกค้า ⇒ Cr ลูกหนี้แพลตฟอร์ม (1100) ผูกผู้ติดต่อของช่องทาง (R9) ◂
+  //   fix round 1 (F3) ▸ ผู้ติดต่อ = ผู้ติดต่อบนบรรทัด 1100 ของ JV ขาย (PAID) ของบิลเดิม · ไม่มี = ชื่อช่องทางปัจจุบัน ◂
+  const refundPlatformContact = input.payMethods.some((p) => p.channel === "PLATFORM")
+    ? ((await posSalePaidContact(ctx, input.saleRefId, CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"])) ?? (await platformContact(ctx, input.channelName)))
+    : null;
+  // POS P3.6 ▸ R7: คืนบนบิลวางบิล — ผู้ติดต่อ = ผู้ติดต่อบนขา 1100 ของ JV ขาย (PAID) ของบิลเดิม · ไม่มี = ผู้ติดต่อของใบแจ้งหนี้ ◂
+  const refundCreditContact = input.payMethods.some((p) => p.channel === "ON_ACCOUNT")
+    ? ((await posSalePaidContact(ctx, input.saleRefId, "AR")) ?? (await findExternalSaleDoc(link.systemId, input.saleRefId))?.contactId ?? null)
+    : null;
+  const crLines = input.payMethods.map((p) =>
+    p.channel === "ON_ACCOUNT" // POS P3.6 ◂
+      ? { key: "AR" as const, amountSatang: p.amountSatang, ...(refundCreditContact ? { contactId: refundCreditContact } : {}) }
+      : p.channel === "PLATFORM"
+      ? { key: CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"], amountSatang: p.amountSatang, ...(refundPlatformContact ? { contactId: refundPlatformContact } : {}) }
+      : p.channel === "STORED_VALUE" // POS P2.9 ▸ คืนเข้าบัตร/เครดิตร้าน = เพิ่มเงินรับล่วงหน้า 2110 (R6 R7) ◂
+        ? { key: "DEPOSIT_RECEIVED" as const, amountSatang: p.amountSatang }
+        : { key: (p.channel === "CASH" ? "CASH" : "BANK") as "CASH" | "BANK", amountSatang: p.amountSatang },
+  );
+  const res = await postExternalRefund(ctx, { refId: input.refId, date: input.occurredAt, baseSatang: base, vatSatang: vat, serviceBaseSatang: svcBase, crLines });
+  const posted = "entryId" in res;
+  const onAccountRefund = input.payMethods.some((p) => p.channel === "ON_ACCOUNT"); // POS P3.6 ▸ ใบลดหนี้ของบิลวางบิลออกเสมอ (ลดหนี้ของใบแจ้งหนี้) ◂
+  if (lines.length === 0 || (!posAbbreviatedInvoice && !onAccountRefund)) return { posted };
+
+  const abb = await findExternalSaleDoc(link.systemId, input.saleRefId);
+  const map = await resolveProductIdsForExternalSale(ctx.systemId, { itemIds: lines.map((l) => l.itemId ?? "").filter(Boolean), productIds: [] });
+  const docLines: ExternalSaleDocLine[] = lines.map((l) => ({
+    description: l.name,
+    qty: l.qty,
+    unitPrice: l.unitPriceSatang,
+    discount: l.discountSatang ?? 0,
+    vatRateBp: null,
+    productId: (l.itemId ? map.byItemId.get(l.itemId) : undefined) ?? null,
+  }));
+  const reason = (input.reason ?? "").trim() || "คืนสินค้า/คืนเงินหน้าร้าน";
+  const doc = await upsertExternalCreditNoteDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    refSystemId: input.sourceSystemId,
+    refId: input.refId,
+    sourceDocId: abb?.id ?? null,
+    docNo: input.docNo ?? null,
+    occurredAt: input.occurredAt,
+    contactId: abb?.contactId ?? null,
+    vatMode: cnVat ? "INCLUDE" : "NONE",
+    vatRegistered: cnVat,
+    vatRateBp,
+    grandTotalSatang: gross,
+    ...(explicitVat !== null ? { vatSatang: explicitVat } : {}), // POS P1.16 ▸ CD-O8: เอกสาร = ใบคืน POS = JV ◂
+    reason,
+    note: input.docNo ? `คืนเงินหน้าร้าน POS · ใบคืน ${input.docNo}${abb?.docNo ? ` · อ้างใบเสร็จ ${abb.docNo}` : ""}` : "คืนเงินหน้าร้าน POS",
+    lines: docLines,
+  });
+  if (!doc.ok) return { posted, reason: doc.reason };
+  return { posted, docId: doc.docId };
+}
+
+// ─────────────────────────────────────────────────────────────
+// POS P2.1 ▸ ช่องทางขาย: ลูกหนี้แพลตฟอร์ม + ค่าคอมฯ ช่องทาง (R7 R9 · §9 Q1 option A · CD5 CD6) ◂
+//
+// 🔴 คีย์ของช่องทาง (§9 Q1): ตั้งชื่อไว้ตอนนี้ ชี้ไปบัญชีเดิมของผัง (option A — ผังไม่เปลี่ยน) ·
+//    เจ้าของบัญชีเลือก option B ทีหลัง (1120 ลูกหนี้แพลตฟอร์ม / 6520 ค่าคอมมิชชันแพลตฟอร์ม · POS-OWNER-PENDING O25) = แก้ตารางนี้ที่เดียว
+// 🔴 POS ไม่เห็นเลขบัญชี — ส่งแค่ยอด/payout/ชื่อช่องทาง · ไม่ผูกสมุด = {posted:false, reason:"unlinked"} ไม่ throw ·
+//    ความล้มของ GL (งวดปิด ฯลฯ) โยนต่อ ⇒ คิวลองใหม่ (แบบ applyExternalSale)
+const CHANNEL_GL_KEY = {
+  "PLATFORM_RECEIVABLE": "AR", // ลูกหนี้แพลตฟอร์ม (option A = 1100 ลูกหนี้การค้า · แยกรายแพลตฟอร์มด้วยผู้ติดต่อ)
+  "PLATFORM_COMMISSION": "PAYMENT_FEE", // ค่าคอมฯ แพลตฟอร์ม (option A = 6500 ค่าธรรมเนียมชำระเงิน)
+  "CHANNEL_COMMISSION_PAYABLE": "AP", // ค่าคอมฯ ค้างจ่ายของช่องทางที่ร้านเก็บเงินเอง (2100)
+  "CHANNEL_COMMISSION_VAT": "VAT_INPUT_UNDUE", // VAT บนค่าคอมฯ รอใบกำกับจากแพลตฟอร์ม (1155 · Q2/O26)
+} as const;
+
+/**
+ * ผู้ติดต่อของช่องทาง (ชื่อเดียวกัน 1 รายต่อสมุด · CD6) — ชื่อว่าง = null (บรรทัดไม่ผูกผู้ติดต่อ)
+ * fix round 1 (รีวิว F2): หา-แล้ว-สร้างอยู่ใต้ pg_advisory_xact_lock(hashtext(สมุด:ชื่อ)) ใน transaction เดียว
+ *   + หาตัวเก่าสุดก่อน (createdAt asc) — ตัวล็อกอยู่ใน service (facade ห้ามแตะ prisma ดิบ · F5) ⇒ ensureNamedCustomerContact
+ */
+async function platformContact(ctx: GlCtx, channelName: string | null | undefined): Promise<string | null> {
+  const name = (channelName ?? "").trim();
+  if (!name) return null;
+  return (await ensureNamedCustomerContact({ tenantId: ctx.tenantId, systemId: ctx.systemId }, name)).id;
+}
+
+/**
+ * POS P2.1 (R7 R9) — JV ค่าคอมฯ ของช่องทางขาย แยกจาก JV ขาย (PAID) · idempotent ต่อคีย์ของตัวเอง:
+ *   ปกติ: `PosSale#<บิล>#COMMISSION` · reverse (คืนเงินตามสัดส่วน): `PosSale#<ใบคืน>#COMMISSION_REFUNDED`
+ *   PLATFORM: Dr ค่าคอมฯ (6500) + Dr ภาษีซื้อรอใบกำกับ (1155) / Cr ลูกหนี้แพลตฟอร์ม (1100) ⇒ ลูกหนี้เหลือ = ยอดที่แพลตฟอร์มจะโอน
+ *   DIRECT:   Dr ค่าคอมฯ (6500) + Dr 1155 / Cr เจ้าหนี้ (2100) · สมุดไม่จด VAT ⇒ VAT รวมเข้าค่าคอมฯ (ไม่มี 1155)
+ *   ค่าคอมฯ 0 ⇒ {posted:false, reason:"zero"} · ไม่ผูกสมุด ⇒ {posted:false, reason:"unlinked"} · void = reverseFor ของบิลกลับให้เอง
+ */
+export async function applyExternalChannelCommission(input: {
+  tenantId: string;
+  sourceSystemId: string; // POS AppSystem.id
+  refId: string; // PosSale.id ของบิล (ปกติ) หรือของใบคืน (reverse)
+  occurredAt: Date;
+  commissionSatang: number;
+  commissionVatSatang: number;
+  payout: "PLATFORM" | "DIRECT";
+  channelName: string;
+  /** เลขใบเสร็จ/เลขใบคืนของ POS — ใส่ใน memo */
+  receiptNo?: string | null;
+  /** true = กลับรายการตามส่วนแบ่งของใบคืน (refId = ใบคืน) */
+  reverse?: boolean;
+  /** fix round 1 (เพิ่มล้วน): reverse — PosSale.id ของบิลเดิม ⇒ กลับได้เฉพาะเมื่อบิลมี JV COMMISSION แล้ว + ใช้ผู้ติดต่อของ PAID (F1 F3) */
+  saleRefId?: string | null;
+}): Promise<{ posted: boolean; reason?: string; entryId?: string }> {
+  const c = Number.isInteger(input.commissionSatang) && input.commissionSatang > 0 ? input.commissionSatang : 0;
+  const v = Number.isInteger(input.commissionVatSatang) && input.commissionVatSatang > 0 ? input.commissionVatSatang : 0;
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { posted: false, reason: "unlinked" };
+  if (c + v === 0) return { posted: false, reason: "zero" };
+  const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+  // fix round 1 (รีวิว F1) ▸ ลำดับเงิน: ห้ามมี COMMISSION โดยไม่มี PAID · ห้ามกลับ (COMMISSION_REFUNDED) ค่าคอมฯ ที่บิลไม่เคยลง ◂
+  //   คีย์ของตัวเองมีแล้ว = จบก่อนแตะผัง/ผู้ติดต่อ (ผลเดิม "already")
+  const saleId = input.reverse ? (input.saleRefId ?? null) : input.refId;
+  if (await posSaleEntryPosted(ctx, input.refId, input.reverse ? "COMMISSION_REFUNDED" : "COMMISSION")) return { posted: false, reason: "already" };
+  // POS P2.9b ▸ fix4 มติ 1 (R4 F2 / hunter N1): บิล zero entry (ทุกบรรทัดบัญชี 0 · ไม่มี JV PAID ตลอดไป) นับว่า "ลงขายแล้ว" ด้วยเครื่องหมายของบิล ⇒ ค่าคอมฯ ลงครั้งเดียว ·
+  //   ฝั่งคืนเงินกลับค่าคอมฯ ได้ตามปกติ (มี COMMISSION ของบิลแล้ว) ◂
+  if (!input.reverse && !(await posSaleEntryPosted(ctx, input.refId, "PAID")) && !(await externalSaleZeroEntryRecorded(ctx, input.refId))) return { posted: false, reason: "no-paid" };
+  if (input.reverse && saleId && !(await posSaleEntryPosted(ctx, saleId, "COMMISSION"))) {
+    // POS HF-FU2 ▸ ACC-1 (มติ 1): ค่าคอมฯ ของบิลลงไว้ในสมุดอื่น (ย้ายสมุดหลังขาย) ⇒ "other-book" — ไม่โพสต์ข้ามสมุด · ผู้เรียก (POS) เตือน ops ให้ปรับมือในสมุดเดิม (W8) ◂
+    //   ใบคืนนี้กลับค่าคอมฯ ไว้ในสมุดเดิมแล้ว (ลงก่อนย้ายสมุด · เล่นซ้ำหลังย้าย) = "already" — ไม่เตือนซ้ำว่าต้องปรับมือ
+    if (await posSaleEntryInOtherBook(ctx, input.refId, "COMMISSION_REFUNDED")) return { posted: false, reason: "already" };
+    if (await posSaleEntryInOtherBook(ctx, saleId, "COMMISSION")) return { posted: false, reason: "other-book" };
+    return { posted: false, reason: "no-commission" };
+  }
+  await ensureAccounting(ctx); // R7: ผัง/การจับคู่คีย์ครบก่อนโพสต์ — ห้ามตก 9999 SUSPENSE
+  const { vatRegistered } = await vatConfigOf(link.systemId);
+  // fix round 1 (รีวิว F3) ▸ PLATFORM: ผู้ติดต่อ = ผู้ติดต่อบนบรรทัด 1100 ของ PAID ของบิล (ช่องทางเปลี่ยนชื่อทีหลังก็ยังเป็นรายเดิม) · ไม่มี = ชื่อช่องทาง ◂
+  const paidContact = input.payout === "PLATFORM" && saleId ? await posSalePaidContact(ctx, saleId, CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"]) : null;
+  const contactId = paidContact ?? (await platformContact(ctx, input.channelName));
+  const name = (input.channelName ?? "").trim() || "ช่องทางขาย";
+  const no = (input.receiptNo ?? "").trim();
+  const memo = input.reverse ? `คืนค่าคอมฯ ช่องทาง ${name}${no ? ` · ใบคืน ${no}` : ""}` : `ค่าคอมฯ ช่องทาง ${name}${no ? ` · บิล ${no}` : ""}`;
+  const res = await postExternalChannelCommission(ctx, {
+    refId: input.refId,
+    date: input.occurredAt,
+    commissionSatang: c,
+    commissionVatSatang: v,
+    foldVat: !vatRegistered,
+    keys: {
+      expense: CHANNEL_GL_KEY["PLATFORM_COMMISSION"],
+      vatInput: CHANNEL_GL_KEY["CHANNEL_COMMISSION_VAT"],
+      counter: input.payout === "PLATFORM" ? CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"] : CHANNEL_GL_KEY["CHANNEL_COMMISSION_PAYABLE"],
+    },
+    contactId,
+    memo,
+    reverse: !!input.reverse,
+  });
+  return "entryId" in res ? { posted: true, entryId: res.entryId } : { posted: false, reason: "reason" in res && res.reason ? res.reason : "already" }; // POS HF-FU ▸ z fix2 (H2): other-book = คีย์อยู่ในสมุดอื่น ◂
+}
+
+/**
+ * POS P1.8 F8 — บิล POS นี้ลง JV ขายแล้วหรือยัง (คีย์ PosSale#<refId>#PAID ของสมุดที่ผูกกับ POS)
+ * null = ไม่ผูกบัญชี (ไม่มีอะไรให้ลง) · ใช้ตัดสินว่าตัวรับคืนเงินต้องลงบิลเดิมแทน pos.sale.paid ที่ข้ามไปหรือไม่
+ */
+export async function posSalePosted(input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<boolean | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  const ctx = { tenantId: input.tenantId, systemId: link.systemId };
+  if (await externalSalePosted(ctx, input.refId)) return true;
+  // POS HF-FU ▸ z1 (มติ 8): บิล zero entry (ไม่มี JV PAID ตลอดไป) = ลงแล้ว เมื่อมีเครื่องหมายของสมุดนี้ **และ** เอกสารขายของบิล —
+  //   เครื่องหมายที่ไม่มีเอกสาร (เอกสารหายหลังลองซ้ำล้ม · R5 F1) = false ⇒ ตัวรับคืนเงินยังลงบิลเดิมซ่อมเอกสารได้ ◂
+  return (await externalSaleZeroEntryRecorded(ctx, input.refId)) && !!(await findExternalSaleDoc(link.systemId, input.refId));
+}
+
+/** POS P1.8 R9 — เอกสารบัญชี (ใบกำกับอย่างย่อ) ของบิล POS — null = ไม่ผูกบัญชี/ยังไม่มีเอกสาร (อ่านอย่างเดียว · ไม่ throw) */
+export async function posSaleAccountingRef(input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<{ docId: string; docNo: string | null } | null> {
+  try {
+    const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+    if (!link) return null;
+    const doc = await findExternalSaleDoc(link.systemId, input.refId);
+    return doc ? { docId: doc.id, docNo: doc.docNo } : null;
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // บัตรกำนัล (M2.6 · D3 · §9.4) — โมดูล giftcard เรียกผ่าน 4 ฟังก์ชันนี้เท่านั้น
 //
 // 🔴 ผู้เรียกไม่รู้เลขบัญชี: ส่งแค่ "เงินเท่าไหร่ เข้าทางไหน อ้างอิงอะไร" — mapping 2110/4030/4900 อยู่ที่ gl.ts
@@ -314,6 +852,18 @@ export async function postGiftCardSale(input: {
     drLines: input.payMethods.map((p) => ({ key: giftCardChannelKey(p.channel), amountSatang: p.amountSatang })),
   }, tx);
   return "entryId" in res ? { posted: true, entryId: res.entryId } : { posted: false, reason: "posted-before" };
+}
+
+// POS HF-GC ▸ อ่านอย่างเดียว: JV ขายบัตรที่ลงไว้แล้ว — ให้ตาข่ายของ giftcard ผูก accountingDocId คืนได้ เมื่อ postGiftCardSale
+//   ตอบ "posted-before" (ไม่มี entryId) หรือแพ้ unique ตอนลงพร้อมกัน · ไม่เชื่อมบัญชี = null ◂
+export async function giftCardSaleEntryId(input: {
+  tenantId: string;
+  sourceSystemId: string;
+  refType?: "GiftCard" | "GiftCardTxn";
+  refId: string;
+}): Promise<string | null> {
+  const ctx = await giftCardCtx(input.tenantId, input.sourceSystemId);
+  return ctx ? giftCardSaleEntryIdGl(ctx, input.refType ?? "GiftCard", input.refId) : null;
 }
 
 /** ใช้บัตรกำนัลชำระบิล → รับรู้รายได้ (Dr 2110 · Cr 4030) */
@@ -595,7 +1145,13 @@ export async function createExternalInvoice(input: {
   discountAmount?: number | null;
   note?: string | null;
   createdById?: string | null;
-}): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }>;
+// SVC D.2 ▸ overload หอพัก (ใบสั่ง D.2 §3.1) — ทางเดิมของ CRM ข้างบน/ข้างล่างไม่เปลี่ยนแม้แต่ไบต์เดียว · แยกไปที่ `createDormExternalInvoice` ◂
+export async function createExternalInvoice(input: DormExternalInvoiceInput): Promise<DormExternalInvoiceResult | DormFail>;
+export async function createExternalInvoice(input: CrmExternalInvoiceInput | DormExternalInvoiceInput): Promise<
+  { ok: true; docId: string; created: boolean } | { ok: false; reason: string } | DormExternalInvoiceResult | DormFail
+> {
+  if (input.sourceKind === "DORM") return createDormExternalInvoice(input);
   const link = await findAccountLinkFor(input.tenantId, input.sourceKind, input.sourceSystemId);
   if (!link) return { ok: false, reason: "ยังไม่เชื่อมระบบบัญชี" };
   const ctx = { tenantId: input.tenantId, systemId: link.systemId };
@@ -789,6 +1345,11 @@ export {
   type AuditLogPage,
   type ListAuditLogsInput,
 } from "./access";
+
+// POS P4.3 ▸ CD-P43-2 · CD-P43-O10 — ธงสิทธิ์บัญชีสำหรับ "ซ่อน/แสดงลิงก์" ในหน้า POS (บิลวันนี้ → เอกสารบัญชี · ตั้งค่าใบเสร็จ → ตั้งค่าบัญชี)
+//   ผ่าน pos/account-links.ts posAccountLinks เท่านั้น · กติกาเดียวกับด่านของหน้าบัญชี (accountCan ⇒ IMPLIES doc.create/issue/approve → doc.view) ·
+//   ด่านจริงยังอยู่ที่หน้าบัญชีเหมือนเดิม ◂
+export { accountCanMember } from "./access";
 
 // ─────────────────────────────────────────────────────────────
 // บันทึกค่าใช้จ่าย/ใบเสร็จเข้าบัญชี (facade — ผู้ช่วย AI เรียกผ่านที่นี่, feedback เจ้าของ #4)
@@ -988,8 +1549,19 @@ export async function listPortalDocs(
   return out.sort((a, b) => b.issueDate.getTime() - a.issueDate.getTime() || (a.id < b.id ? 1 : -1)).slice(0, take);
 }
 
-export async function firstReceiveFinanceId(ctx: AccountCtx): Promise<string | null> {
+export async function firstReceiveFinanceId(ctx: AccountCtx, opts?: { nonCash?: boolean }): Promise<string | null> {
   if (!ctx.tenantId || !ctx.systemId) return null;
+  // SVC G2-F F3 ▸ nonCash: เงินโอน/พร้อมเพย์ต้องลงบัญชีธนาคาร/e-wallet เท่านั้น (ห้ามเงินสด/เงินสดย่อย) · มีพร้อมเพย์ก่อน · ไม่มี ⇒ null (mapping BANK)
+  //   ไม่ส่ง opts = พฤติกรรมเดิมทุกไบต์ (ลิงก์จ่าย D.8 · พอร์ทัล CRM) ◂
+  if (opts?.nonCash) {
+    const rows = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountFinance.findMany({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, useForReceive: true, archivedAt: null, type: { in: ["BANK", "E_WALLET"] } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, promptpayId: true },
+      take: 50,
+    });
+    return (rows.find((r) => !!r.promptpayId) ?? rows[0])?.id ?? null;
+  }
   const row = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountFinance.findFirst({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, useForReceive: true, archivedAt: null },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -1028,3 +1600,855 @@ export async function attachPrivateFileToDoc(
   return { ok: true, id: row.id };
 }
 // ◂ CRM C3.5
+
+// POS P1.18 ▸ R8 (CD2): สวิตช์ "ลงบัญชีบิลของ POS นี้" จากหน้าตั้งค่า POS — การ์ด ACCOUNT การ์ดเดียวที่ POS สลับได้ ·
+//   ห่อ connect/disconnect ของ ./connections ตรง ๆ (soft: แถว · ตัวเลือก · บัญชีที่ผูกอยู่ครบ — แค่หยุด/เริ่มลงบัญชี) ·
+//   ctx = ระบบบัญชีที่ผูก POS นี้ (ผู้เรียกหาแถว AccountSystemLink เอง) · สิทธิ์/ยืนยัน/audit ตรวจที่ผู้เรียก (composition root src/lib/pos-integrations.ts) ·
+//   แก้รอบ 1 F7: POS ผูกได้หลายระบบบัญชี ⇒ ผู้เรียกวนทุกแถวใน transaction เดียวแล้วส่ง tx มา (connect/disconnect ใส่ขอบเขตร้าน+ระบบเอง)
+import { connect as connectPosLink, disconnect as disconnectPosLink } from "./connections";
+export async function setPosLinkEnabled(
+  ctx: AccountCtx,
+  posSystemId: string,
+  enabled: boolean,
+  actorUserId: string | null,
+  tx?: Prisma.TransactionClient,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return enabled ? connectPosLink(ctx, "POS", posSystemId, actorUserId, tx) : disconnectPosLink(ctx, "POS", posSystemId, actorUserId, tx);
+}
+// ◂ POS P1.18
+
+// ═══════════════════ POS P3.6 ▸ วางบิล (เครดิตเทอม) ของลูกค้าองค์กร — โค้ดเลนบัญชีที่เลน POS เขียน (เพิ่มล้วน · owner line OP §ACCOUNT) ═══════════════════
+// POS ไม่รู้เลขบัญชี/ไม่เขียนแถวบัญชี: ส่ง partyId + วันครบกำหนด · อ่านภาพหนี้/เทอมผ่านที่นี่ (มติ 3 · CD-9)
+
+/**
+ * ผู้ติดต่อสมุดของบริษัท — CD-P36-F1 (R1 F1 High): ตาม **partyId เท่านั้น** (ensureAccountContact: ล็อกต่อ (สมุด, Party) · ไม่มี = สร้าง) ·
+ *   ห้ามถอยไปจับคู่ด้วยเลขภาษีของผู้ซื้อ (findOrCreateCustomerContact ข้อ 1) — ผู้ติดต่อเดิมเลขภาษีเดียวกันของ Party อื่นจะดูดใบแจ้งหนี้ ⇒ วงเงินรั่ว ·
+ *   เลขภาษี/สาขาของผู้ซื้อใช้ตอนสร้างใหม่ (ชนของ Party อื่น = ensureAccountContact สร้างโดยไม่ใส่เลขภาษี) และยังพิมพ์บนเอกสาร (สำเนาผู้ซื้อ)
+ */
+async function posCreditContact(
+  ctx: GlCtx,
+  partyId: string,
+  buyer?: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null },
+): Promise<string> {
+  const name = buyer?.name?.trim() || (await crmPartyFacade.listBriefsByIds(ctx.tenantId, [partyId]))[0]?.name || "ลูกค้าองค์กร POS";
+  const tax = normTaxId(buyer?.taxId ?? null);
+  const c = await ensurePartyContact(
+    { tenantId: ctx.tenantId, systemId: ctx.systemId },
+    { partyId, name, taxId: /^\d{13}$/.test(tax) ? tax : null, branchCode: buyer?.branchCode || "00000", email: buyer?.email ?? null, legalType: "COMPANY" },
+  );
+  return c.id;
+}
+
+/** ชั้นเอกสารของบิลวางบิล: INVOICE AWAITING_PAYMENT · dueDate = เที่ยงคืนไทยของวันครบกำหนด · ไม่มีบรรทัดที่ลงตัว = บรรทัดเดียวยอดเต็ม */
+async function posCreditInvoiceLayer(
+  ctx: GlCtx,
+  input: Parameters<typeof applyExternalSale>[0],
+  lines: Parameters<typeof applyExternalSale>[0]["lines"],
+  contactId: string,
+  vat: { vatRegistered: boolean; vatRateBp: number },
+): Promise<{ docId?: string; reason?: string }> {
+  const src = lines && lines.length > 0 ? lines : [{ name: "ขายหน้าร้าน POS (วางบิล)", qty: 1, unitPriceSatang: input.grossSatang, discountSatang: 0, itemId: null, accountProductId: null }];
+  const map = await resolveProductIdsForExternalSale(ctx.systemId, {
+    itemIds: src.map((l) => l.itemId ?? "").filter(Boolean),
+    productIds: src.map((l) => l.accountProductId ?? "").filter(Boolean),
+  });
+  const docLines: ExternalSaleDocLine[] = src.map((l) => ({
+    description: l.name,
+    qty: l.qty,
+    unitPrice: l.unitPriceSatang,
+    discount: l.discountSatang ?? 0,
+    vatRateBp: l.vatRateBp ?? null,
+    productId: (l.accountProductId ? map.byProductId.get(l.accountProductId) : undefined) ?? (l.itemId ? map.byItemId.get(l.itemId) : undefined) ?? null,
+  }));
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(input.onAccount!.dueDate) ? input.onAccount!.dueDate : new Date(input.occurredAt.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+  const doc = await upsertPosCreditInvoiceDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    refSystemId: input.sourceSystemId,
+    refId: input.refId,
+    occurredAt: input.occurredAt,
+    dueDate: new Date(`${ymd}T00:00:00+07:00`),
+    contactId,
+    vatMode: vat.vatRegistered ? "INCLUDE" : "NONE",
+    vatRegistered: vat.vatRegistered,
+    vatRateBp: vat.vatRateBp,
+    grandTotalSatang: input.grossSatang,
+    note: input.receiptNo ? `ขายหน้าร้าน POS (วางบิล ${input.onAccount!.termDays} วัน) · ใบเสร็จ ${input.receiptNo}` : `ขายหน้าร้าน POS (วางบิล ${input.onAccount!.termDays} วัน)`,
+    lines: docLines,
+    ...(input.buyer ? { buyer: input.buyer } : {}),
+  });
+  if (!doc.ok) throw new Error(`บิล POS ${input.refId} (วางบิล): สร้างใบแจ้งหนี้ไม่สำเร็จ — ${doc.reason} · ลองใหม่อัตโนมัติ`); // ลูกหนี้ต้องมีเอกสาร ⇒ ล้ม = คิวลองใหม่ (upsert idempotent)
+  return { docId: doc.docId };
+}
+
+/** POS P3.6 ▸ R4 Q6: สมุดที่ผูก POS นี้ + เทอมของผู้ติดต่อ (partyId · 0 = ไม่ตั้ง CD-3) + ค่าปริยายของสมุด — ไม่ผูก = { linked:false } */
+export async function posCreditBook(input: { tenantId: string; sourceSystemId: string; partyId: string }): Promise<{ linked: false } | { linked: true; contactTermDays: number | null; defaultDueDays: number }> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { linked: false };
+  const t = await posCreditTermsOfParty(input.tenantId, link.systemId, input.partyId);
+  return { linked: true, ...t };
+}
+
+/**
+ * POS P3.6 ▸ CD-9: ภาพหนี้ของบริษัทในสมุดที่ผูก POS (คำสั่งเดียว · อ่านด้วย client ของผู้เรียกได้ — createSale ถือล็อกวงเงินในธุรกรรม) ·
+ *   open = เอกสารค้างของผู้ติดต่อที่ผูก partyId (หักใบลดหนี้ที่มีผล) · docRefIds = บิลใน saleRefIds ที่มีเอกสารแล้ว · ไม่ผูก = null
+ */
+export async function posCreditExposureParts(
+  input: { tenantId: string; sourceSystemId: string; partyId: string; saleRefIds: readonly string[] },
+  db?: Prisma.TransactionClient,
+): Promise<{ open: { docId: string; refType: string | null; refId: string | null; outstandingSatang: number }[]; docRefIds: string[] } | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return posCreditOpenDocs(link.systemId, input.partyId, input.saleRefIds, db);
+}
+
+/** POS P3.6 ▸ R8: ล็อกใบแจ้งหนี้ของบิลวางบิลใน tx ของ voidSale แล้วตอบว่ามีรับชำระที่ยังมีผลไหม (มี = CREDIT_INVOICE_PAID) · ไม่ผูก/ไม่มีใบ = false */
+export async function posCreditInvoicePaid(tx: Prisma.TransactionClient, input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<boolean> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return false;
+  return posCreditInvoicePaidInTx(tx, input.tenantId, link.systemId, input.refId);
+}
+
+/** POS P3.6 fix2 H2: ที่ว่างให้คืนแบบวางบิลของบิล (ล็อกใบแจ้งหนี้ใน tx ของผู้เรียก) — null = ไม่ผูก/ยังไม่มีใบแจ้งหนี้ */
+export async function posCreditRefundRoom(tx: Prisma.TransactionClient, input: { tenantId: string; sourceSystemId: string; refId: string; refundRefIds: readonly string[] }): Promise<{ remainingSatang: number; docRefundIds: string[] } | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return posCreditRefundRoomInTx(tx, input.tenantId, link.systemId, input.refId, input.refundRefIds);
+}
+
+/** POS P3.6 fix2 H3: ใบแจ้งหนี้ของบิลวางบิลในสมุดที่ผูก POS + สถานะ (null = ไม่ผูก/ไม่มีใบ) — void ใช้ตรวจว่ายกเลิกใบได้จริง */
+export async function posCreditInvoiceState(input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<{ docId: string; status: string } | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  const d = await posCreditInvoiceStateOf(link.systemId, input.refId);
+  return d ? { docId: d.id, status: d.status } : null;
+}
+
+/** POS P3.6 ▸ R9: อายุหนี้ของบริษัท (partyIds) ในสมุดที่ผูก POS — รายงาน "credit" ของ POS (อ่านอย่างเดียว · สูตรเดียวกับ agingReport) · ไม่ผูก = null */
+export async function posCreditAging(input: { tenantId: string; sourceSystemId: string; partyIds: readonly string[]; asOf?: Date }): Promise<Map<string, { outstandingSatang: number; overdueSatang: number; oldestDueDate: string | null; contactName: string | null }> | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return posCreditAgingByParty(link.systemId, input.partyIds, input.asOf ?? new Date());
+}
+// ◂ POS P3.6
+
+// ═══════════════════════════════════════════════════════════════
+// SVC D.2 ▸ facade บัญชีสำหรับหอพัก (ใบสั่ง svc-brief-d.2 §3 · ชื่อ/ชนิดผูกกับข้อสอบ qc-svc-d.2)
+//   · หน่วยหอ (BusinessUnit DORM) ผูกสมุดด้วย AccountSystemLink { linkedKind BUSINESS · linkedId unitId · enabled } — ไม่มี/ปิด/ข้ามร้าน ⇒ NOT_LINKED
+//   · ปฏิเสธ = { ok:false, code, reason ไทย } เสมอ (ไม่ throw) · เงินสตางค์จำนวนเต็ม · วันที่ของหอ = "YYYY-MM-DD" วันไทย
+//   · ตรรกะเงิน/ธุรกรรม/ล็อกอยู่ที่ service.ts + gl.ts บล็อก "SVC D.2" (ไฟล์นี้ห้ามแตะ prisma — F5) · ที่นี่ = ตรวจอินพุต + เลือกสมุด + แปลงผล
+//   · โมดูลอื่นไม่รู้เลขบัญชี — เงินเกินบิล = 2110 · เงินประกัน = บัญชีหนี้สิน TENANT_SECURITY_DEPOSIT (lazy · ⚠️ J4 รอผู้ตรวจบัญชี)
+// ═══════════════════════════════════════════════════════════════
+import {
+  dormUpsertDocument,
+  dormSourceInvoice,
+  dormRecordPayment,
+  dormPostSecurityDeposit,
+  dormSecurityDepositHeld,
+  dormSettleSecurityDeposit,
+  dormReverseSettlement,
+  findAccountLinksFor,
+} from "./service";
+
+export type DormTaxKind = "EXEMPT" | "VAT7" | "NONE";
+export type ExternalDocLine = { description: string; qty: number; unitPriceSatang: number; taxKind: DormTaxKind; meta?: Record<string, string | number> };
+export type DormVat = { registered: boolean; pricesIncludeVat: boolean };
+type DormFail = { ok: false; code: string; reason: string };
+type DormChannel = "CASH" | "TRANSFER" | "PROMPTPAY";
+
+/** ชนิดอินพุตทางเดิมของ CRM (สำเนาของ overload แรก — ใช้เป็นชนิดของตัว implementation เท่านั้น) */
+type CrmExternalInvoiceInput = {
+  tenantId: string;
+  sourceSystemId: string;
+  sourceKind: "CRM";
+  refType: string;
+  refId: string;
+  title: string;
+  valueSatang: number;
+  customer: { name: string; phone?: string | null; email?: string | null; taxId?: string | null; branchCode?: string | null };
+  partyId?: string | null;
+  sourceContactId?: string | null;
+  lines?: LineInput[];
+  discountAmount?: number | null;
+  note?: string | null;
+  createdById?: string | null;
+};
+export type DormExternalInvoiceInput = {
+  tenantId: string; sourceKind: "DORM"; unitId: string; refType: string; refId: string;
+  customer: { name: string; phone?: string | null; email?: string | null; taxId?: string | null; branchCode?: string | null };
+  partyId?: string | null; lines: ExternalDocLine[]; vat: DormVat;
+  issueDate?: string; dueDate?: string | null; draft?: boolean; note?: string | null; createdById?: string | null;
+};
+export type DormExternalInvoiceResult = { ok: true; docId: string; created: boolean; docNo: string | null; status: string; subTotalSatang: number; vatSatang: number; totalSatang: number };
+export type DormExternalNoteInput = {
+  tenantId: string; unitId: string; sourceDocId: string; refType: string; refId: string; reason: string;
+  lines: ExternalDocLine[]; vat: DormVat; issueDate?: string; createdById?: string | null;
+  /** SVC D.3 ▸ หมายเหตุบนเอกสาร (เช่น อ้างอิงใบกำกับภาษีเลขที่ … ลงวันที่ …) — ไม่ส่ง = ไม่มีหมายเหตุ (เดิม) ◂ */
+  note?: string | null;
+};
+export type DormExternalNoteResult = { ok: true; docId: string; created: boolean; docNo: string | null; subTotalSatang: number; vatSatang: number; totalSatang: number };
+
+const dormFail = (code: string, reason: string): DormFail => ({ ok: false, code, reason });
+const DORM_MAX_LINES = 200;
+const DORM_TAX_KINDS: readonly DormTaxKind[] = ["EXEMPT", "VAT7", "NONE"];
+const DORM_CHANNELS: readonly DormChannel[] = ["CASH", "TRANSFER", "PROMPTPAY"];
+const DORM_NOT_LINKED = "หอนี้ยังไม่ได้เชื่อมระบบบัญชี — เชื่อมสมุดบัญชีให้หอก่อน แล้วลองใหม่";
+const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+const DORM_KEY_MAX = 200;
+
+/**
+ * สมุดบัญชีที่ผูกหน่วยหอนี้ (ผูกด้วย tenantId ⇒ หน่วยของร้านอื่น = ไม่พบ) — F4: ผูกหลายสมุดพร้อมกัน ⇒ AMBIGUOUS_LINK (ไม่สุ่มเลือก)
+ */
+async function dormBook(tenantId: string, unitId: string): Promise<{ systemId: string } | DormFail> {
+  if (!nonEmpty(tenantId) || !nonEmpty(unitId)) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+  const ids = await findAccountLinksFor(tenantId, "BUSINESS", unitId);
+  if (ids.length === 0) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+  if (ids.length > 1)
+    return dormFail("AMBIGUOUS_LINK", `หอนี้ผูกสมุดบัญชีไว้ ${ids.length} เล่มพร้อมกัน — ระบบไม่เดาว่าจะลงเล่มไหน ให้ตัดการเชื่อมเล่มที่ไม่ใช้ก่อน`);
+  return { systemId: ids[0] };
+}
+
+/** "YYYY-MM-DD" (วันไทย) → เที่ยงวันเวลาไทย · ผิดรูป/วันไม่มีจริง = null */
+function dormYmd(v: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(`${v}T12:00:00+07:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const back = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  return back === v ? d : null;
+}
+
+/** ตรวจบรรทัดของหอ (§3.1) — คืนข้อความไทย หรือ null */
+function dormLinesProblem(lines: unknown): string | null {
+  if (!Array.isArray(lines) || lines.length === 0) return "ต้องมีรายการอย่างน้อย 1 รายการ";
+  if (lines.length > DORM_MAX_LINES) return `รายการมากเกินไป (สูงสุด ${DORM_MAX_LINES} รายการต่อใบ · ได้รับ ${lines.length}) — แยกออกเป็นหลายใบ`;
+  let sum = 0;
+  for (const [i, raw] of (lines as unknown[]).entries()) {
+    const at = `รายการที่ ${i + 1}`;
+    if (!raw || typeof raw !== "object") return `${at}: รูปแบบรายการไม่ถูกต้อง`;
+    const l = raw as Partial<ExternalDocLine>;
+    if (!nonEmpty(l.description)) return `${at}: ต้องมีคำอธิบายรายการ`;
+    if (typeof l.qty !== "number" || !Number.isInteger(l.qty) || l.qty < 1) return `${at}: จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป`;
+    if (!isSatang(l.unitPriceSatang) || (l.unitPriceSatang as number) < 0) return `${at}: ราคาต่อหน่วยต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 0 ขึ้นไป`;
+    const amount = l.qty * (l.unitPriceSatang as number);
+    if (amount > MAX_SATANG) return `${at}: ยอดของรายการสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)})`;
+    if (!l.taxKind || !DORM_TAX_KINDS.includes(l.taxKind)) return `${at}: ชนิดภาษีต้องเป็น EXEMPT (ยกเว้น) · VAT7 (ภาษี 7%) หรือ NONE (ไม่มีภาษี)`;
+    sum += amount;
+  }
+  if (sum > MAX_SATANG) return `ยอดรวมรายการสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)}) — แยกออกเป็นหลายใบ`;
+  return null;
+}
+
+/** บรรทัดหอ → บรรทัดเอกสาร: VAT7 = 700 · EXEMPT / NONE = −1 (ไม่ใช่ 0 = อัตรา 0% ส่งออก · ⚠️ J4) */
+const dormDocLines = (lines: ExternalDocLine[]): LineInput[] =>
+  lines.map((l) => ({ description: l.description.trim(), qty: l.qty, unitPrice: l.unitPriceSatang, vatRateBp: l.taxKind === "VAT7" ? 700 : -1 }));
+
+const dormVatOk = (v: unknown): v is DormVat =>
+  !!v && typeof v === "object" && typeof (v as DormVat).registered === "boolean" && typeof (v as DormVat).pricesIncludeVat === "boolean";
+const dormVatMode = (v: DormVat): "INCLUDE" | "EXCLUDE" | "NONE" => (v.registered ? (v.pricesIncludeVat ? "INCLUDE" : "EXCLUDE") : "NONE");
+
+/** ค่าตั้ง VAT ของหอต้องตรงสมุด (ทั้งสองทิศ) — ไม่ตรง = ปฏิเสธ ไม่เดา (ใบสั่ง D.2 §3.1 · §5 ข้อ 5) */
+async function dormVatMismatch(systemId: string, vat: DormVat): Promise<DormFail | null> {
+  const cfg = await vatConfigOf(systemId);
+  if (cfg.vatRegistered === vat.registered) return null;
+  return dormFail(
+    "VAT_SETTING_MISMATCH",
+    vat.registered
+      ? "หอตั้งว่าจดทะเบียน VAT แต่สมุดบัญชีที่ผูกไว้ยังไม่จด VAT — แก้ค่าตั้งให้ตรงกันก่อน ยอดใบแจ้งหนี้จะได้ตรงกับบิล"
+      : "หอตั้งว่าไม่จดทะเบียน VAT แต่สมุดบัญชีที่ผูกไว้จด VAT แล้ว — แก้ค่าตั้งให้ตรงกันก่อน ยอดใบแจ้งหนี้จะได้ตรงกับบิล",
+  );
+}
+
+async function createDormExternalInvoice(input: DormExternalInvoiceInput): Promise<DormExternalInvoiceResult | DormFail> {
+  try {
+    if (!nonEmpty(input.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.refType) || !nonEmpty(input.refId))
+      return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงของบิลไม่ครบ (ร้าน · หอ · ชนิด/เลขอ้างอิง)");
+    if (!input.customer || !nonEmpty(input.customer.name)) return dormFail("INVALID_INPUT", "ต้องมีชื่อผู้เช่าสำหรับออกใบแจ้งหนี้");
+    if (!dormVatOk(input.vat)) return dormFail("INVALID_INPUT", "ค่าตั้ง VAT ของหอไม่ครบ (จดทะเบียนหรือไม่ · ราคารวม VAT หรือไม่)");
+    const lp = dormLinesProblem(input.lines);
+    if (lp) return dormFail("INVALID_LINE", lp);
+    const issueDate = input.issueDate === undefined ? new Date() : dormYmd(input.issueDate);
+    if (!issueDate) return dormFail("INVALID_INPUT", "วันที่ออกเอกสารต้องเป็นรูปแบบ ปปปป-ดด-วว");
+    const dueDate = input.dueDate === undefined || input.dueDate === null ? null : dormYmd(input.dueDate);
+    if (input.dueDate !== undefined && input.dueDate !== null && !dueDate) return dormFail("INVALID_INPUT", "วันครบกำหนดต้องเป็นรูปแบบ ปปปป-ดด-วว");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    const mm = await dormVatMismatch(systemId, input.vat);
+    if (mm) return mm;
+    const ctx = { tenantId: input.tenantId, systemId };
+    const r = await dormUpsertDocument({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, docType: "INVOICE", refType: input.refType, refId: input.refId,
+      lines: dormDocLines(input.lines), vatMode: dormVatMode(input.vat), issueDate, dueDate, draft: input.draft === true,
+      note: input.note ?? null, adjustReason: null, sourceDocId: null, createdById: input.createdById ?? null,
+      resolveContactId: async () => (await findOrCreateCustomerContact(ctx, { ...input.customer, partyId: input.partyId ?? null })).id,
+    });
+    if (!r.ok) return r;
+    return { ok: true, docId: r.docId, created: r.created, docNo: r.docNo, status: r.status, subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกใบแจ้งหนี้ของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+async function createDormNote(docType: "CREDIT_NOTE" | "DEBIT_NOTE", input: DormExternalNoteInput): Promise<DormExternalNoteResult | DormFail> {
+  try {
+    if (!nonEmpty(input.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.sourceDocId) || !nonEmpty(input.refType) || !nonEmpty(input.refId))
+      return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงไม่ครบ (ร้าน · หอ · ใบแจ้งหนี้ต้นทาง · ชนิด/เลขอ้างอิง)");
+    if (!nonEmpty(input.reason)) return dormFail("INVALID_INPUT", "ต้องระบุเหตุผลการออกเอกสาร (ตามประกาศสรรพากร)");
+    if (!dormVatOk(input.vat)) return dormFail("INVALID_INPUT", "ค่าตั้ง VAT ของหอไม่ครบ (จดทะเบียนหรือไม่ · ราคารวม VAT หรือไม่)");
+    const lp = dormLinesProblem(input.lines);
+    if (lp) return dormFail("INVALID_LINE", lp);
+    const issueDate = input.issueDate === undefined ? new Date() : dormYmd(input.issueDate);
+    if (!issueDate) return dormFail("INVALID_INPUT", "วันที่ออกเอกสารต้องเป็นรูปแบบ ปปปป-ดด-วว");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    const src = await dormSourceInvoice(input.tenantId, systemId, input.unitId, input.sourceDocId);
+    if (!src) return dormFail("NOT_FOUND", "ไม่พบใบแจ้งหนี้ต้นทางในบัญชีของหอนี้");
+    // F6 ▸ ต้นทางร่าง/ยกเลิก ⇒ NOT_PAYABLE (ตรวจซ้ำใต้ล็อกใน dormUpsertDocument)
+    if (!src.live) return dormFail("NOT_PAYABLE", "ใบแจ้งหนี้ต้นทางยังเป็นร่างหรือถูกยกเลิกแล้ว — ออกใบลด/เพิ่มหนี้ไม่ได้");
+    const mm = await dormVatMismatch(systemId, input.vat);
+    if (mm) return mm;
+    const r = await dormUpsertDocument({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, docType, refType: input.refType, refId: input.refId,
+      lines: dormDocLines(input.lines), vatMode: dormVatMode(input.vat), issueDate, dueDate: null, draft: false,
+      note: typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 500) : null, // SVC D.3 ▸ ◂
+      adjustReason: input.reason.trim(), sourceDocId: src.id, createdById: input.createdById ?? null,
+      resolveContactId: async () => src.contactId,
+    });
+    if (!r.ok) return r;
+    return { ok: true, docId: r.docId, created: r.created, docNo: r.docNo, subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกเอกสารปรับยอดของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** ใบลดหนี้ของใบแจ้งหนี้หอ (ห่อ createDocument CREDIT_NOTE + issueDocument เดิม) — เกินคงค้าง ⇒ EXCEEDS_REMAINING */
+export async function createExternalCreditNote(input: DormExternalNoteInput): Promise<DormExternalNoteResult | DormFail> {
+  return createDormNote("CREDIT_NOTE", input);
+}
+/** ใบเพิ่มหนี้ของใบแจ้งหนี้หอ (ห่อ createDocument DEBIT_NOTE + issueDocument เดิม) */
+export async function createExternalDebitNote(input: DormExternalNoteInput): Promise<DormExternalNoteResult | DormFail> {
+  return createDormNote("DEBIT_NOTE", input);
+}
+
+type DormMoneyCommon = { paidAt?: Date; channel?: DormChannel; financeAccountId?: string | null };
+function dormMoneyProblem(i: DormMoneyCommon): string | null {
+  if (i.channel !== undefined && !DORM_CHANNELS.includes(i.channel)) return "ช่องทางรับเงินต้องเป็น เงินสด · โอน · พร้อมเพย์";
+  if (i.paidAt !== undefined && (!(i.paidAt instanceof Date) || Number.isNaN(i.paidAt.getTime()))) return "วันเวลารับเงินไม่ถูกต้อง";
+  if (i.financeAccountId !== undefined && i.financeAccountId !== null && typeof i.financeAccountId !== "string") return "บัญชีเงินไม่ถูกต้อง";
+  return null;
+}
+const dormAmountOk = (n: unknown): n is number => isSatang(n) && (n as number) > 0 && (n as number) <= MAX_SATANG;
+const dormKeyOk = (k: unknown): k is string => nonEmpty(k) && k.length <= DORM_KEY_MAX;
+
+/**
+ * รับชำระใบแจ้งหนี้ของหอ (ห่อ recordPayment เดิม · R0.6 carry) — applied = min(ยอด, คงค้าง) · ส่วนเกิน = Cr 2110 รายการเดียว (ไม่ปฏิเสธเพราะจ่ายเกิน)
+ *   idempotent ต่อ `idempotencyKey` ภายในร้าน (consumer สลิปส่ง `slip:<slipId>`) · พร้อมกันคีย์เดียว = เงินลงครั้งเดียว
+ */
+export async function recordExternalPayment(input: {
+  tenantId: string; unitId: string; docId: string; amountSatang: number; idempotencyKey: string;
+  paidAt?: Date; channel?: DormChannel; financeAccountId?: string | null; slipId?: string | null; note?: string | null; createdById?: string | null;
+}): Promise<{ ok: true; duplicate: boolean; paymentId: string | null; appliedSatang: number; excessSatang: number; status: string; outstandingSatang: number } | DormFail> {
+  try {
+    if (!dormAmountOk(input.amountSatang)) return dormFail("INVALID_AMOUNT", "ยอดเงินต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0");
+    if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการรับเงิน (ไม่เกิน 200 ตัวอักษร)");
+    if (!nonEmpty(input.docId)) return dormFail("INVALID_INPUT", "ต้องระบุใบแจ้งหนี้ที่รับชำระ");
+    const mp = dormMoneyProblem(input);
+    if (mp) return dormFail("INVALID_INPUT", mp);
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    const note = input.note ?? (input.slipId ? `สลิปโอนเงิน ${input.slipId}` : null);
+    return await dormRecordPayment({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, docId: input.docId, amountSatang: input.amountSatang, key: input.idempotencyKey.trim(),
+      paidAt: input.paidAt ?? new Date(), channel: input.channel ?? "TRANSFER", financeAccountId: input.financeAccountId ?? null,
+      note, createdById: input.createdById ?? null,
+    });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "บันทึกรับชำระของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** รับเงินประกันผู้เช่า = JV เดียว Dr เงิน / Cr บัญชีเงินประกัน (หนี้สิน · lazy) · หลายครั้งต่อสัญญาได้ · idempotent ต่อคีย์ */
+export async function postSecurityDeposit(input: {
+  tenantId: string; unitId: string; leaseId: string; amountSatang: number; idempotencyKey: string;
+  paidAt?: Date; channel?: DormChannel; financeAccountId?: string | null; partyId?: string | null; note?: string | null; createdById?: string | null;
+}): Promise<{ ok: true; duplicate: boolean; entryId: string; entryNo: string; heldSatang: number } | DormFail> {
+  try {
+    if (!dormAmountOk(input.amountSatang)) return dormFail("INVALID_AMOUNT", "ยอดเงินประกันต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0");
+    if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการรับเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+    if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+    // F3 ▸ เงินประกันผูกกับผู้เช่า (Party) — ใช้ตรวจตอนปิดว่าหักได้เฉพาะใบของผู้เช่าคนนี้
+    if (!nonEmpty(input.partyId)) return dormFail("INVALID_INPUT", "ต้องระบุผู้เช่าของสัญญา (partyId) — เงินประกันต้องผูกกับผู้เช่า");
+    const mp = dormMoneyProblem(input);
+    if (mp) return dormFail("INVALID_INPUT", mp);
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    return await dormPostSecurityDeposit({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, leaseId: input.leaseId, amountSatang: input.amountSatang, key: input.idempotencyKey.trim(),
+      paidAt: input.paidAt ?? new Date(), channel: input.channel ?? "TRANSFER", financeAccountId: input.financeAccountId ?? null,
+      partyId: input.partyId.trim(), note: input.note ?? null,
+    });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "บันทึกรับเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/**
+ * ยอดเงินประกันที่ถือของสัญญา — คิดจาก GL ของ **ทุกสมุดของร้าน** (F4: ย้าย/ตัดลิงก์แล้วยอดไม่หาย) ต่อ (หน่วย · สัญญา) · ข้ามหน่วย/ข้ามร้าน = 0
+ *   F8: ฐานข้อมูลล้ม = โยน error (ไม่กลืนเป็น 0 — 0 ต้องแปลว่า "ไม่มีประกันจริง" เท่านั้น)
+ */
+export async function securityDepositHeld(input: { tenantId: string; unitId: string; leaseId: string }): Promise<number> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !nonEmpty(input?.leaseId)) return 0;
+  return dormSecurityDepositHeld(input.tenantId, input.unitId, input.leaseId);
+}
+
+/**
+ * ปิดเงินประกัน = JV เดียว (หัก + คืน รายการเดียว · DH มติข้อ 8): Dr ประกัน = ยอดถือ / Cr 1100 = หัก / Cr เงิน = คืน
+ *   ไล่ `applyToDocIds` ตามลำดับ · docId ใดไม่ใช่ของหน่วยนี้ ⇒ NOT_FOUND ทั้งคำขอ · ยอดถือ 0 ⇒ NO_DEPOSIT_HELD · facade ไม่ตรวจกฎหมาย (ใบย้ายออกทำก่อน)
+ */
+export async function settleSecurityDeposit(input: {
+  tenantId: string; unitId: string; leaseId: string; idempotencyKey: string; date?: Date;
+  applyToDocIds: string[]; refund?: { channel?: DormChannel; financeAccountId?: string | null }; note?: string | null; createdById?: string | null;
+}): Promise<{ ok: true; duplicate: boolean; entryId: string; heldSatang: number; appliedSatang: number; refundSatang: number; tenantOwesSatang: number; applied: { docId: string; amountSatang: number }[] } | DormFail> {
+  try {
+    if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการปิดเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+    if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+    if (!Array.isArray(input.applyToDocIds) || input.applyToDocIds.some((id) => !nonEmpty(id)) || input.applyToDocIds.length > DORM_MAX_LINES)
+      return dormFail("INVALID_INPUT", "รายการใบแจ้งหนี้ที่จะหักไม่ถูกต้อง");
+    const mp = dormMoneyProblem({ paidAt: input.date, channel: input.refund?.channel, financeAccountId: input.refund?.financeAccountId });
+    if (mp) return dormFail("INVALID_INPUT", mp);
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const systemId = book.systemId;
+    return await dormSettleSecurityDeposit({
+      tenantId: input.tenantId, systemId, unitId: input.unitId, leaseId: input.leaseId, key: input.idempotencyKey.trim(), date: input.date ?? new Date(),
+      docIds: [...new Set(input.applyToDocIds)], channel: input.refund?.channel ?? "TRANSFER", financeAccountId: input.refund?.financeAccountId ?? null,
+      note: input.note ?? null, createdById: input.createdById ?? null,
+    });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ปิดเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/**
+ * F2 ▸ ถอยการปิดเงินประกัน 1 ครั้ง (ระบุด้วย settlementEntryId หรือคีย์ที่ใช้ปิด) — ทางเดียวที่ถูกต้องในการแก้การปิดที่ผิด
+ *   ธุรกรรมเดียว: ยกเลิกแถวหักประกัน (DEPOSIT_APPLY) ที่ชี้ JV ปิด (สถานะใบกลับ · ใบกำกับอัตโนมัติถูกยกเลิก) + กลับรายการ JV ปิด
+ *   ⇒ ยอดถือกลับเท่าก่อนปิด แล้วปิดใหม่ด้วยคีย์ใหม่ได้ · ถอยซ้ำ ⇒ ผลเดิม duplicate:true · ไม่พบ ⇒ NOT_FOUND
+ */
+export async function reverseSecurityDepositSettlement(input: {
+  tenantId: string; unitId: string; leaseId: string; settlementEntryId?: string | null; idempotencyKey?: string | null;
+  reason: string; createdById?: string | null;
+}): Promise<{ ok: true; duplicate: boolean; settlementEntryId: string; reversalEntryId: string; voidedPayments: number; heldSatang: number } | DormFail> {
+  try {
+    if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+    if (!nonEmpty(input.settlementEntryId) && !dormKeyOk(input.idempotencyKey))
+      return dormFail("INVALID_INPUT", "ต้องระบุรายการปิดเงินประกันที่จะถอย (เลขใบสำคัญหรือคีย์ที่ใช้ปิด)");
+    if (!nonEmpty(input.reason) || input.reason.trim().length < 3) return dormFail("INVALID_INPUT", "กรุณาระบุเหตุผลในการถอยการปิดเงินประกัน");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    return await dormReverseSettlement({
+      tenantId: input.tenantId, systemId: book.systemId, unitId: input.unitId, leaseId: input.leaseId,
+      entryId: nonEmpty(input.settlementEntryId) ? input.settlementEntryId : null,
+      key: nonEmpty(input.settlementEntryId) ? null : (input.idempotencyKey ?? "").trim(), reason: input.reason,
+    });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ถอยการปิดเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+// ◂ SVC D.2
+
+// ═══════════════════════════════════════════════════════════════
+// SVC D.5 ▸ ใบรับเงินประกันของสัญญา (อ่านอย่างเดียว · additive · ใบสั่ง svc-brief-d.5 §3.9)
+//   JV รับประกัน (refType DormSecurityDeposit · refId <unitId>:<leaseId> · คีย์ JV `…#RECEIVE:<คีย์>`) ที่ยังมีผล
+//   (POSTED · ไม่ใช่ตัวกลับรายการ) · **ทุกสมุดของร้าน** (แบบเดียวกับยอดถือ F4) · เรียงเวลา · ข้ามหน่วย/ข้ามร้าน = []
+//   ยอด = Σ เครดิตของ JV (JV รับ = Dr เงิน / Cr ประกัน ยอดเดียว) · tenantDb ต่อเล่ม (AccountJournalEntry = sys scope · ไม่แตะ prisma ดิบ · ไม่มี raw SQL)
+// ═══════════════════════════════════════════════════════════════
+import { bkkYmd as d5BkkYmd } from "@/lib/core/quiet-hours";
+
+export async function securityDepositReceipts(input: { tenantId: string; unitId: string; leaseId: string }): Promise<
+  { entryId: string; entryNo: string; amountSatang: number; date: string; kind: "RECEIVE" }[]
+> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !nonEmpty(input?.leaseId)) return [];
+  const { tenantId, unitId, leaseId } = input;
+  const refId = `${unitId}:${leaseId}`;
+  const recvPrefix = `DormSecurityDeposit#${refId}#RECEIVE:`;
+  const books = await crmTenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "ACCOUNT" }, select: { id: true }, orderBy: { createdAt: "asc" } });
+  const rows: { entryId: string; entryNo: string; amountSatang: number; at: Date; createdAt: Date }[] = [];
+  for (const b of books) {
+    const es = await crmTenantDb({ tenantId, systemId: b.id }).accountJournalEntry.findMany({
+      where: { tenantId, systemId: b.id, refType: "DormSecurityDeposit", refId, status: "POSTED", reversalOfId: null },
+      select: { id: true, docNo: true, date: true, createdAt: true, idempotencyKey: true, lines: { select: { credit: true } } },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+    // ชนิดรายการดูจากคีย์ JV ตรงตัว (รับ = `#RECEIVE:` · ปิด = `#SETTLE:` ไม่ใช่ใบรับ) — กรองในโค้ด (ไม่ส่งคำค้นแบบ prefix ลงฐาน)
+    for (const e of es.filter((x) => (x.idempotencyKey ?? "").startsWith(recvPrefix))) rows.push({ entryId: e.id, entryNo: e.docNo, amountSatang: e.lines.reduce((s, l) => s + l.credit, 0), at: e.date, createdAt: e.createdAt });
+  }
+  rows.sort((a, b) => a.at.getTime() - b.at.getTime() || a.createdAt.getTime() - b.createdAt.getTime() || (a.entryId < b.entryId ? -1 : 1));
+  return rows.map((r) => ({ entryId: r.entryId, entryNo: r.entryNo, amountSatang: r.amountSatang, date: d5BkkYmd(r.at), kind: "RECEIVE" as const }));
+}
+
+// ── SVC D.5 (ชุดแก้ K1) ▸ รุ่นในธุรกรรมของผู้เรียก — โมดูลหอในโพรเซสเท่านั้น (ไม่เปิดทาง REST) ──
+//   runDormMoneyTx = เปิดธุรกรรมเงินหอ (connection เดียว · maxWait 20 วิ · timeout 30 วิ) · ใน fn ใช้ tx เดียวทั้งของผู้เรียกและของบัญชี
+//   ลำดับล็อก: ผู้เรียกจับล็อกของตัวเอง (advisory ต่อสัญญา) ก่อน → postSecurityDepositInTx จับแถว Tenant → ลิงก์หน่วย → คีย์ → JV
+//   ok:false ⇒ ผู้เรียกต้อง rollback ทั้ง tx (ไม่มีอะไรถูกเขียนก่อนปฏิเสธเชิงตรรกะ) · NEEDS_CONTACT ⇒ เรียก prepareSecurityDepositContact นอก tx แล้วลองใหม่
+import {
+  dormMoneyTx,
+  dormEnsureTenantContact,
+  dormPostSecurityDepositInTx,
+  dormSecurityDepositHeldInTx,
+} from "./service";
+
+export async function runDormMoneyTx<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return dormMoneyTx(fn);
+}
+
+export async function prepareSecurityDepositContact(input: { tenantId: string; unitId: string; partyId: string }): Promise<{ ok: true } | DormFail> {
+  try {
+    if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId)) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+    if (!nonEmpty(input.partyId)) return dormFail("INVALID_INPUT", "ต้องระบุผู้เช่าของสัญญา (partyId) — เงินประกันต้องผูกกับผู้เช่า");
+    const r = await dormEnsureTenantContact(input.tenantId, input.unitId, input.partyId.trim());
+    return r.ok ? { ok: true } : r;
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "เตรียมผู้ติดต่อของผู้เช่าไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+export async function postSecurityDepositInTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string; unitId: string; leaseId: string; amountSatang: number; idempotencyKey: string;
+    paidAt?: Date; channel?: DormChannel; financeAccountId?: string | null; partyId?: string | null; note?: string | null; createdById?: string | null;
+  },
+): Promise<{ ok: true; duplicate: boolean; entryId: string; entryNo: string; heldSatang: number } | DormFail> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId)) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+  if (!dormAmountOk(input.amountSatang)) return dormFail("INVALID_AMOUNT", "ยอดเงินประกันต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0");
+  if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการรับเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+  if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+  if (!nonEmpty(input.partyId)) return dormFail("INVALID_INPUT", "ต้องระบุผู้เช่าของสัญญา (partyId) — เงินประกันต้องผูกกับผู้เช่า");
+  const mp = dormMoneyProblem(input);
+  if (mp) return dormFail("INVALID_INPUT", mp);
+  return dormPostSecurityDepositInTx(tx, {
+    tenantId: input.tenantId, unitId: input.unitId, leaseId: input.leaseId, amountSatang: input.amountSatang, key: input.idempotencyKey.trim(),
+    paidAt: input.paidAt ?? new Date(), channel: input.channel ?? "TRANSFER", financeAccountId: input.financeAccountId ?? null,
+    partyId: input.partyId.trim(), note: input.note ?? null,
+  });
+}
+
+export async function securityDepositHeldInTx(tx: Prisma.TransactionClient, input: { tenantId: string; unitId: string; leaseId: string }): Promise<number> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !nonEmpty(input?.leaseId)) return 0;
+  return dormSecurityDepositHeldInTx(tx, input.tenantId, input.unitId, input.leaseId);
+}
+// ◂ SVC D.5
+
+// ── SVC D.12 ▸ (มติ R1 · เพิ่มอย่างเดียว) ปิดเงินประกันในธุรกรรมของผู้เรียก — ตรรกะเดียวกับ settleSecurityDeposit ทุกบรรทัด (ตัวในร่วม service.dormSettleBodyInTx) ──
+//   ผู้เรียก = โมดูลหอ (dorm/moveout.ts) ใน runDormMoneyTx เท่านั้น · ลำดับล็อก: advisory ของหอ (สัญญาต้นสาย → ค่าปรับ) ก่อน → แถว Tenant → ลิงก์หน่วย → เอกสาร
+//   ไม่เปิด connection ที่สอง (สมุด/ตั้งค่า/เอกสารอ่านผ่าน tx) · ok:false ⇒ ผู้เรียก rollback ทั้ง tx · ฐานล้ม ⇒ โยน
+import { dormSettleSecurityDepositInTx as d12SettleInTx } from "./service";
+
+export async function settleSecurityDepositInTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string; unitId: string; leaseId: string; idempotencyKey: string; date?: Date;
+    applyToDocIds: string[]; refund?: { channel?: DormChannel; financeAccountId?: string | null }; note?: string | null; createdById?: string | null;
+  },
+): Promise<{ ok: true; duplicate: boolean; entryId: string; heldSatang: number; appliedSatang: number; refundSatang: number; tenantOwesSatang: number; applied: { docId: string; amountSatang: number }[] } | DormFail> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId)) return dormFail("NOT_LINKED", DORM_NOT_LINKED);
+  if (!dormKeyOk(input.idempotencyKey)) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการปิดเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+  if (!nonEmpty(input.leaseId)) return dormFail("INVALID_INPUT", "ต้องระบุสัญญาเช่า");
+  if (!Array.isArray(input.applyToDocIds) || input.applyToDocIds.some((id) => !nonEmpty(id)) || input.applyToDocIds.length > DORM_MAX_LINES)
+    return dormFail("INVALID_INPUT", "รายการใบแจ้งหนี้ที่จะหักไม่ถูกต้อง");
+  const mp = dormMoneyProblem({ paidAt: input.date, channel: input.refund?.channel, financeAccountId: input.refund?.financeAccountId });
+  if (mp) return dormFail("INVALID_INPUT", mp);
+  return d12SettleInTx(tx, {
+    tenantId: input.tenantId, unitId: input.unitId, leaseId: input.leaseId, key: input.idempotencyKey.trim(), date: input.date ?? new Date(),
+    docIds: [...new Set(input.applyToDocIds)], channel: input.refund?.channel ?? "TRANSFER", financeAccountId: input.refund?.financeAccountId ?? null,
+    note: input.note ?? null, createdById: input.createdById ?? null,
+  });
+}
+// ◂ SVC D.12
+// ── SVC D.4 ▸ กลับรายการรับเงินประกันของสัญญา (RULING-2 · additive · ใบสั่ง svc-brief-d.4 §3.8) — โมดูลหอในโพรเซสเท่านั้น ──
+//   กลับรายการด้วยกลไก GL เดิม (ไม่ลบแถวใด) · JV รับ = REVERSED + JV กลับรายการ (reversalOfId) · ซ้ำ ⇒ duplicate:true ผลเดิม
+//   ทางทั่วไป (สมุดรายวัน/REST) ยังปฏิเสธ JV หอเหมือนเดิม (F7) — ทางนี้ไม่ผ่าน reverseJournalEntry
+import { dormReverseDepositReceipt, dormReverseDepositReceiptInTx } from "./service";
+
+type ReverseReceiptInput = { tenantId: string; unitId: string; leaseId: string; receiptKey: string; reason: string; createdById?: string | null };
+function reverseReceiptProblem(input: ReverseReceiptInput): DormFail | null {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !nonEmpty(input?.leaseId)) return dormFail("NOT_FOUND", "ไม่พบรายการรับเงินประกันนี้ของสัญญานี้");
+  if (!dormKeyOk(input.receiptKey)) return dormFail("INVALID_INPUT", "ต้องระบุคีย์ที่ใช้รับเงินประกัน (ไม่เกิน 200 ตัวอักษร)");
+  if (!nonEmpty(input.reason) || input.reason.trim().length < 3) return dormFail("INVALID_INPUT", "กรุณาระบุเหตุผลในการกลับรายการรับเงินประกัน");
+  return null;
+}
+
+export async function reverseSecurityDepositReceiptInTx(
+  tx: Prisma.TransactionClient,
+  input: ReverseReceiptInput,
+): Promise<{ ok: true; duplicate: boolean; receiptEntryId: string; reversalEntryId: string; heldSatang: number } | DormFail> {
+  const bad = reverseReceiptProblem(input);
+  if (bad) return bad;
+  return dormReverseDepositReceiptInTx(tx, { tenantId: input.tenantId, unitId: input.unitId, leaseId: input.leaseId, receiptKey: input.receiptKey.trim(), reason: input.reason, createdById: input.createdById ?? null });
+}
+
+/** รุ่นเปิด tx เอง (runDormMoneyTx) — ห้ามเรียกใน tx อื่น */
+export async function reverseSecurityDepositReceipt(
+  input: ReverseReceiptInput,
+): Promise<{ ok: true; duplicate: boolean; receiptEntryId: string; reversalEntryId: string; heldSatang: number } | DormFail> {
+  const bad = reverseReceiptProblem(input);
+  if (bad) return bad;
+  try {
+    return await dormReverseDepositReceipt({ tenantId: input.tenantId, unitId: input.unitId, leaseId: input.leaseId, receiptKey: input.receiptKey.trim(), reason: input.reason, createdById: input.createdById ?? null });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "กลับรายการรับเงินประกันไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+// ◂ SVC D.4
+
+// SVC D.8 ▸ (ชุดแก้ F13) ลิงก์จ่ายของใบแจ้งหนี้หอ: ยกเลิกคำขอที่ยังรอชำระของเอกสารนี้ "ยกเว้นใบที่ระบุ" — กันผู้เช่าเห็นลิงก์ยอดเก่า
+//   (หลังใบลดหนี้/เพิ่มหนี้ ยอดคงค้างเปลี่ยน ⇒ createPaymentRequestForDoc ออกใบยอดใหม่ ⇒ ใบยอดเก่าต้องหมดผล) · ใช้ของเดิม (list + cancel) ล้วน ◂
+export async function cancelOtherPendingPaymentRequests(
+  ctx: AccountCtx,
+  documentId: string,
+  keepRequestId: string | null,
+  userId?: string | null,
+): Promise<number> {
+  if (!ctx?.tenantId || !ctx?.systemId || !documentId) return 0;
+  // อ่านครบทุกใบที่ยังรอชำระ (ไม่จำกัด 20 ใบล่าสุดแบบ listPaymentRequests) · ผูก tenantId + systemId ⇒ ร้าน/สมุดอื่น = 0
+  const rows = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountPaymentRequest.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, documentId, status: "PENDING", ...(keepRequestId ? { NOT: { id: keepRequestId } } : {}) },
+    select: { id: true },
+  });
+  let n = 0;
+  for (const r of rows) {
+    const c = await cancelPaymentRequest(ctx, r.id, userId ?? null);
+    if (c.ok) n++;
+  }
+  return n;
+}
+// ◂ SVC D.8
+// ── SVC D.13 ▸ ยอดเงินประกันถือหลายสัญญา (อ่านอย่างเดียว · คำสั่งเดียว · หนี้ N+1 ของ D.5) — svc-brief-d.13 §7 ──
+import { dormDepositHeldMany as d13DepositHeldMany } from "./gl";
+/** = securityDepositHeld ต่อสัญญาทุกตัว (ทุกสมุดของร้าน) · ต่างหน่วย/ไม่รู้จัก ⇒ 0 · ≤ 2,000 สัญญาต่อครั้ง (เกิน ⇒ โยน) · ฐานล้ม = โยน (F8) */
+export async function securityDepositHeldMany(input: { tenantId: string; unitId: string; leaseIds: string[] }): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  const ids = Array.isArray(input?.leaseIds) ? [...new Set(input.leaseIds.filter((x): x is string => nonEmpty(x)))] : [];
+  if (ids.length > 2000) throw new Error("securityDepositHeldMany: เกิน 2,000 สัญญาต่อครั้ง");
+  for (const id of ids) out[id] = 0;
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input?.unitId) || !ids.length) return out;
+  for (const [id, v] of await d13DepositHeldMany(input.tenantId, input.unitId, ids)) out[id] = v;
+  return out;
+}
+// ◂ SVC D.13
+
+// ═══════════════════════════════════════════════════════════════
+// SVC D.3 ▸ ใบกำกับภาษีเต็มรูปของหอ (ใบสั่ง svc-brief-d.3 §3.1 · ชื่อ/ชนิดผูกกับข้อสอบ qc-svc-d.3)
+//   · ใบกำกับเฉพาะบรรทัด VAT ของใบแจ้งหนี้หอ · ผู้ซื้อ freeze ใน contactSnapshot (จาก Party ที่หอส่งมา — ไม่ใช่ AccountContact)
+//   · ปฏิเสธ = { ok:false, code, reason ไทย } เสมอ (ไม่ throw) · ตรรกะ/ล็อก/เลขที่อยู่ service.ts บล็อก "SVC D.3"
+// ═══════════════════════════════════════════════════════════════
+import {
+  dormIssueTaxInvoice,
+  dormReplaceTaxInvoice,
+  dormTaxInvoicesOf,
+  dormTaxSeller,
+  dormBranchLabel,
+  isValidThaiTaxId as d3IsValidThaiTaxId,
+  type DormTaxBuyerRow,
+} from "./service";
+import { bkkYmd as d3BkkYmd } from "@/lib/core/quiet-hours";
+
+export type DormTaxBuyer = { name: string; address: string; taxId?: string | null; branchCode?: string | null; kind?: "PERSON" | "COMPANY" };
+export type DormTaxInvoiceResult = {
+  ok: true; docId: string; docNo: string | null; created: boolean; issueDate: string;
+  subTotalSatang: number; vatSatang: number; totalSatang: number;
+};
+export type DormTaxInvoiceRow = {
+  docId: string; docNo: string | null; status: string; issueDate: string; subTotalSatang: number; vatSatang: number; totalSatang: number;
+  buyer: { name: string; taxId: string | null; branchCode: string | null; address: string | null; legalType: string | null };
+  /** (T3) ผู้ขายที่ตรึงไว้ตอนออก — null = ใบก่อนตรึง (ผู้เรียกใช้ตั้งค่าปัจจุบันแทน) */
+  seller: { name: string; taxId: string | null; branchCode: string; address: string | null } | null;
+  replacedById: string | null; note: string | null; voidReason: string | null;
+  lines: { description: string; amountSatang: number; vatRateBp: number }[];
+};
+export type DormTaxSeller = { ok: true; vatRegistered: boolean; taxIdValid: boolean; name: string; taxId: string | null; branchCode: string; branchLabel: string; address: string | null };
+
+/** checksum เลขประจำตัวผู้เสียภาษี 13 หลัก (ตัวเดียวกับบัญชี) — หอใช้ตรวจผู้ซื้อก่อนพักบิล/ออกใบ */
+export function isValidThaiTaxId(taxId: string | null | undefined): boolean {
+  return d3IsValidThaiTaxId(taxId);
+}
+
+const D3_KEY_MAX = 100;
+const d3Digits = (v: unknown): string => (typeof v === "string" ? v.replace(/\D/g, "") : "");
+const d3RealLen = (v: string): number => [...v.replace(/\s+/g, "")].length;
+
+/** ตรวจ/จัดรูปผู้ซื้อ (ม.86/4(3)) — เลขผิด checksum ⇒ BUYER_TAX_ID_INVALID · มีเลข ⇒ สาขา 5 หลัก (ว่าง = 00000) · ไม่มีเลข ⇒ สาขา null */
+function d3Buyer(b: unknown): DormTaxBuyerRow | DormFail {
+  if (!b || typeof b !== "object") return dormFail("INVALID_INPUT", "ต้องระบุผู้ซื้อ (ชื่อ · ที่อยู่) สำหรับใบกำกับภาษี");
+  const x = b as Partial<DormTaxBuyer>;
+  const name = typeof x.name === "string" ? x.name.trim() : "";
+  const address = typeof x.address === "string" ? x.address.trim() : "";
+  if (!name || name.length > 300) return dormFail("INVALID_INPUT", "ต้องมีชื่อผู้ซื้อบนใบกำกับภาษี (ไม่เกิน 300 ตัวอักษร)");
+  if (!address || address.length > 500) return dormFail("INVALID_INPUT", "ต้องมีที่อยู่ผู้ซื้อบนใบกำกับภาษี (ไม่เกิน 500 ตัวอักษร)");
+  const rawTax = typeof x.taxId === "string" ? x.taxId.trim() : "";
+  const taxId = d3Digits(rawTax);
+  if (rawTax && !d3IsValidThaiTaxId(taxId))
+    return dormFail("BUYER_TAX_ID_INVALID", "เลขประจำตัวผู้เสียภาษีของผู้ซื้อไม่ถูกต้อง (ต้องเป็นเลข 13 หลักที่ผ่านการตรวจ) — แก้ข้อมูลผู้เช่าก่อน");
+  let branchCode: string | null = null;
+  if (taxId) {
+    const br = typeof x.branchCode === "string" ? x.branchCode.trim() : "";
+    if (br && !/^\d{5}$/.test(br)) return dormFail("INVALID_INPUT", "รหัสสาขาของผู้ซื้อต้องเป็นตัวเลข 5 หลัก (สำนักงานใหญ่ = 00000)");
+    branchCode = br || "00000";
+  }
+  return { name, address, taxId: taxId || null, branchCode, legalType: x.kind === "COMPANY" ? "COMPANY" : "PERSON" };
+}
+
+/**
+ * (T1) ตัวตรวจผู้ซื้อชุดเดียวกับ facade (ล้วน · ไม่แตะฐาน) — หอใช้ตรวจก่อนออกใบใด ๆ / ก่อนพักบิล
+ *   ok ⇒ ผู้ซื้อที่จัดรูปแล้ว (เลขล้วน · สาขา 5 หลัก) · ไม่ผ่าน ⇒ รหัสเดียวกับที่ createExternalTaxInvoice จะตอบ
+ */
+export function checkDormTaxBuyer(b: DormTaxBuyer): { ok: true; buyer: DormTaxBuyer } | DormFail {
+  const r = d3Buyer(b);
+  if ("ok" in r) return r;
+  return { ok: true, buyer: { name: r.name, address: r.address, taxId: r.taxId, branchCode: r.branchCode, kind: r.legalType } };
+}
+export const DORM_TAX_BUYER_NAME_MAX = 300;
+export const DORM_TAX_BUYER_ADDRESS_MAX = 500;
+
+/** ออกใบกำกับภาษีเต็มรูปของใบแจ้งหนี้หอ (เฉพาะส่วน VAT · วันที่ = วันที่ใบแจ้งหนี้) — มีใบที่ยังมีผลแล้ว ⇒ ใบเดิม created:false */
+export async function createExternalTaxInvoice(input: {
+  tenantId: string; unitId: string; sourceDocId: string; buyer: DormTaxBuyer; createdById?: string | null;
+}): Promise<DormTaxInvoiceResult | DormFail> {
+  try {
+    if (!nonEmpty(input?.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.sourceDocId))
+      return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงไม่ครบ (ร้าน · หอ · ใบแจ้งหนี้ต้นทาง)");
+    const buyer = d3Buyer(input.buyer);
+    if ("ok" in buyer) return buyer;
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const r = await dormIssueTaxInvoice({
+      tenantId: input.tenantId, systemId: book.systemId, unitId: input.unitId, sourceDocId: input.sourceDocId, buyer, createdById: input.createdById ?? null,
+    });
+    if (!r.ok) return r;
+    return { ok: true, docId: r.docId, docNo: r.docNo, created: r.created, issueDate: d3BkkYmd(r.issueDate), subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกใบกำกับภาษีของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** ยกเลิกใบกำกับหอแล้วออกฉบับใหม่แทน (ยอดเท่าเดิม · ธุรกรรมเดียว) — idempotent ต่อ idempotencyKey · issueDate ไม่ส่ง = วันที่ฉบับเดิม */
+export async function replaceExternalTaxInvoice(input: {
+  tenantId: string; unitId: string; taxInvoiceDocId: string; reason: string; idempotencyKey: string;
+  buyer?: DormTaxBuyer | null; issueDate?: string; createdById?: string | null;
+}): Promise<(DormTaxInvoiceResult & { replacedDocId: string; replacedDocNo: string | null }) | DormFail> {
+  try {
+    if (!nonEmpty(input?.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.taxInvoiceDocId))
+      return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงไม่ครบ (ร้าน · หอ · ใบกำกับภาษีที่จะออกแทน)");
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (d3RealLen(reason) < 10) return dormFail("REASON_REQUIRED", "กรุณาระบุเหตุผลการยกเลิกและออกใบกำกับภาษีฉบับใหม่อย่างน้อย 10 ตัวอักษร (เก็บเป็นหลักฐาน)");
+    if (reason.length > 500) return dormFail("INVALID_INPUT", "เหตุผลยาวเกินไป (ไม่เกิน 500 ตัวอักษร)");
+    const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
+    if (!key || key.length > D3_KEY_MAX) return dormFail("INVALID_INPUT", "ต้องมีคีย์กันซ้ำของการออกใบแทน (1–100 ตัวอักษร)");
+    let buyer: DormTaxBuyerRow | null = null;
+    if (input.buyer !== undefined && input.buyer !== null) {
+      const b = d3Buyer(input.buyer);
+      if ("ok" in b) return b;
+      buyer = b;
+    }
+    let issueDate: Date | null = null;
+    if (input.issueDate !== undefined) {
+      issueDate = typeof input.issueDate === "string" ? dormYmd(input.issueDate) : null;
+      if (!issueDate) return dormFail("INVALID_INPUT", "วันที่ใบกำกับภาษีฉบับใหม่ต้องเป็นรูปแบบ ปปปป-ดด-วว");
+    }
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    const r = await dormReplaceTaxInvoice({
+      tenantId: input.tenantId, systemId: book.systemId, unitId: input.unitId, taxInvoiceDocId: input.taxInvoiceDocId, reason, key,
+      buyer, issueDate, createdById: input.createdById ?? null,
+    });
+    if (!r.ok) return r;
+    return {
+      ok: true, docId: r.docId, docNo: r.docNo, created: r.created, issueDate: d3BkkYmd(r.issueDate), subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal,
+      replacedDocId: r.replacedDocId ?? input.taxInvoiceDocId, replacedDocNo: r.replacedDocNo ?? null,
+    };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกใบกำกับภาษีฉบับใหม่แทนไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** ใบกำกับทุกใบของใบแจ้งหนี้หอ (เก่า→ใหม่) — ข้ามหน่วย/ข้ามร้าน/ไม่ผูกสมุด = [] */
+export async function externalTaxInvoicesOf(input: { tenantId: string; unitId: string; sourceDocId: string }): Promise<DormTaxInvoiceRow[]> {
+  if (!nonEmpty(input?.tenantId) || !nonEmpty(input.unitId) || !nonEmpty(input.sourceDocId)) return [];
+  const book = await dormBook(input.tenantId, input.unitId);
+  if ("ok" in book) return [];
+  const rows = await dormTaxInvoicesOf(input.tenantId, book.systemId, input.unitId, input.sourceDocId);
+  const str = (o: unknown, k: string): string | null => {
+    if (!o || typeof o !== "object") return null;
+    const v = (o as Record<string, unknown>)[k];
+    return typeof v === "string" && v.trim() ? v : null;
+  };
+  return rows.map((r) => ({
+    docId: r.id, docNo: r.docNo, status: String(r.status), issueDate: d3BkkYmd(r.issueDate),
+    subTotalSatang: r.subTotal, vatSatang: r.vatAmount, totalSatang: r.grandTotal,
+    buyer: { name: str(r.contactSnapshot, "name") ?? "", taxId: str(r.contactSnapshot, "taxId"), branchCode: str(r.contactSnapshot, "branchCode"), address: str(r.contactSnapshot, "address"), legalType: str(r.contactSnapshot, "legalType") },
+    seller: (() => {
+      const sv = r.contactSnapshot && typeof r.contactSnapshot === "object" && !Array.isArray(r.contactSnapshot) ? (r.contactSnapshot as Record<string, unknown>).seller : null;
+      if (!sv || typeof sv !== "object") return null;
+      return { name: str(sv, "name") ?? "", taxId: str(sv, "taxId"), branchCode: str(sv, "branchCode") ?? "00000", address: str(sv, "address") };
+    })(),
+    replacedById: r.replacedById, note: r.note, voidReason: r.voidReason,
+    lines: r.lines.map((l) => ({ description: l.description, amountSatang: l.amount, vatRateBp: l.vatRateBp })),
+  }));
+}
+
+/** ผู้ขายของใบกำกับ (สมุดที่ผูกหอ) — ใช้ตั้งด่านก่อนส่งบิล + หัวใบพิมพ์ */
+export async function externalTaxSeller(input: { tenantId: string; unitId: string }): Promise<DormTaxSeller | DormFail> {
+  try {
+    const book = await dormBook(input?.tenantId, input?.unitId);
+    if ("ok" in book) return book;
+    const s = await dormTaxSeller(input.tenantId, book.systemId);
+    return { ok: true, ...s, branchLabel: dormBranchLabel(s.branchCode) };
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "อ่านข้อมูลผู้ขายไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+// ◂ SVC D.3
+
+// ── SVC D.10 ▸ facade แคบของรับเงินหอ (R2 · เพิ่มอย่างเดียว) — ใบเสร็จ RECEIPT ต่อการรับ · ยกเลิกแบบกลับรายการ · อ่านเอกสารที่จ่ายได้ของบิล · สมุดของหน่วย ──
+export { dormBillDocsMany, dormReceiptRows, DORM_RECEIPT_REF_TYPE, type DormBillDoc, type DormBillDocs, type DormReceiptRow } from "./service";
+import { dormIssueReceipt, dormVoidReceipt } from "./service";
+export { dormPaymentKeysUsed } from "./service";
+export { dormDocsDead } from "./service"; // SVC D.10 SV-1 ▸ อ่านอย่างเดียว: ใบแจ้งหนี้ของบิลถูกยกเลิกแล้วหรือยัง ◂ // SVC D.10 Z15 ▸ อ่านอย่างเดียว: คีย์รับเงินของหอที่ลงเงินแล้ว ◂
+
+/** สมุดบัญชีที่ผูกหน่วยหอนี้ — ไม่ผูก/ผูกหลายเล่ม ⇒ null */
+export async function dormUnitBookId(tenantId: string, unitId: string): Promise<string | null> {
+  const b = await dormBook(tenantId, unitId);
+  return "ok" in b ? null : b.systemId;
+}
+
+/** ออกใบเสร็จของการรับเงิน 1 ครั้ง (GL เป็นกลาง · idempotent ต่อ refId) */
+export async function issueDormReceipt(input: {
+  tenantId: string; unitId: string; refId: string; invoiceDocId: string; amountSatang: number; paidAt: Date; channel: DormChannel; carriedSatang: number;
+  allocations: { docId: string; amountSatang: number; labelTh: string }[]; creditLabelTh: string; note?: string | null; createdById?: string | null;
+}): Promise<{ ok: true; created: boolean; docId: string; docNo: string } | DormFail> {
+  try {
+    if (!dormAmountOk(input.amountSatang)) return dormFail("INVALID_AMOUNT", "ยอดเงินต้องเป็นจำนวนเต็มสตางค์ที่มากกว่า 0");
+    if (!nonEmpty(input.refId) || !nonEmpty(input.invoiceDocId)) return dormFail("INVALID_INPUT", "ข้อมูลอ้างอิงของใบเสร็จไม่ครบ");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    return await dormIssueReceipt({ ...input, systemId: book.systemId, note: input.note ?? null, createdById: input.createdById ?? null });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ออกใบเสร็จของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+
+/** ยกเลิกใบเสร็จ = กลับรายการรับชำระ + JV ส่วนเกิน 2110 (ไม่ลบแถวบัญชี) */
+export async function voidDormReceiptDoc(input: { tenantId: string; unitId: string; receiptId: string; paymentKeys: string[]; reason: string }): Promise<{ ok: true } | DormFail> {
+  try {
+    if (!nonEmpty(input.reason)) return dormFail("INVALID_INPUT", "ต้องระบุเหตุผลการยกเลิก");
+    const book = await dormBook(input.tenantId, input.unitId);
+    if ("ok" in book) return book;
+    return await dormVoidReceipt({ ...input, systemId: book.systemId });
+  } catch (e) {
+    return dormFail("ACCOUNT_REJECTED", safeReason(e, "ยกเลิกใบเสร็จของหอพักไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  }
+}
+// ◂ SVC D.10

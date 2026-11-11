@@ -1,0 +1,271 @@
+"use client";
+
+// shark-ui.tsx — ชิ้นส่วนร่วมของแท็บ "การเชื่อมต่อระบบ SHARK" · "ช่องทางขายภายนอก" · "ออฟไลน์และการซิงก์" (POS P1.18U · ภาพ 10 · มติ 4 7)
+//   ChannelsPanel → ย้ายไป ChannelsPanel.tsx (POS P2.1U ▸ แผงช่องทางขายจริง — ไฟล์นี้แค่ส่งต่อให้แท็บช่องทาง) ·
+//   PaymentsPanel (สรุป settings.pos.payment + พร้อมเพย์แบบปิดบัง · ว่อชเชอร์/เครดิตร้าน PLANNED P2.9 · ไม่มี MDR % / ตรวจสลิป — ไม่มีข้อมูล) ·
+//   OfflineCard (สวิตช์ปิด · 3 บรรทัด P3.4 · รายการรอซิงก์ 0) · OfflineTab = แบนเนอร์ "เปิดใช้ในเฟสถัดไป" + เนื้อหาเดียวกันเต็มความกว้าง ·
+//   ChannelsTab = แผงช่องทางขายจริงเต็มความกว้าง (P2.1U · ไม่มีแบนเนอร์แล้ว)
+//   สวิตช์ทุกตัวในไฟล์นี้ = ตัวแสดงสถานะอ่านอย่างเดียว (aria-disabled) — สวิตช์ช่องทางขายที่สลับได้อยู่ใน ChannelsPanel.tsx
+// 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ · testid ตัวอักษรตรงบนแท็ก · ลิงก์ ≥ 44px
+
+import { useEffect, useState, type ReactNode } from "react"; // POS P3.4U ▸ + useEffect/useState (สวิตช์ออฟไลน์ live) ◂
+import Link from "next/link";
+import { useRouter } from "next/navigation"; // POS P3.4U ◂
+import { useTranslations } from "next-intl";
+import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/RegisterIcon";
+import { posSettingsHref } from "@/components/pos/settings/settings-tabs";
+import { TabHead } from "./settings-ui";
+// POS P2.1U ▸ แผงช่องทางขายจริง (มติ 1) — แทนแถว PLANNED ของ P1.18U ◂
+import { ChannelsPanel, type PlatformInfo, type Storefront } from "./ChannelsPanel"; // POS P3-SKEL U ▸ + PlatformInfo ◂
+// POS P3.4U ▸ มติ 10 · CD-P34U-1: สวิตช์ออฟไลน์ของเจ้าของร้าน + รายการรอซิงก์ (เครื่องนี้ IndexedDB + รอผู้จัดการที่เซิร์ฟเวอร์) ◂
+import { updatePosOfflineEnabledAction, listOfflineRejectedAction } from "@/lib/modules/pos/offline-actions";
+import { countQueuedOnDevice } from "@/components/pos/register/offline-store";
+import { getPosDeviceId } from "@/lib/modules/pos/device-id";
+
+export type { Storefront };
+export type PaySummary = { promptpayMasked: string | null; beamOn: boolean };
+
+// POS P1.18U ▸ แก้รอบ 2 V3/V4: หัวการ์ด (การ์ดระบบ · ใบเสร็จและภาษี · ออฟไลน์) ชิดบน — ไอคอน 26px · ชื่อ pt 3px ให้บรรทัดแรกอยู่กลางไอคอน ·
+//   สวิตช์/ลิงก์ขวาบนคงพื้นที่กด 44px แต่ -my-[9px] ให้จุดกึ่งกลางตรงบรรทัดแรก (ชื่อตัดเป็น 2 บรรทัด สวิตช์ไม่ลงไปกลาง) ◂
+export const CARD_HEAD = "flex items-start gap-[13px] text-[13.5px] font-bold";
+export const HEAD_TITLE = "min-w-0 flex-1 break-words pt-[3px] leading-[20px]";
+export const HEAD_SWITCH = "-my-[9px] grid min-h-11 min-w-11 shrink-0 place-items-center";
+/** แถวชิป "เร็ว ๆ นี้ · <เฟส>" ใต้หัวการ์ด PLANNED — เยื้องตรงกับต้นชื่อ (ไอคอน 26 + ช่อง 13) · กว้างได้ถึงขอบขวาการ์ด (ไม่อยู่ในคอลัมน์ชื่อที่แคบ) */
+export const SOON_ROW = "-mt-1.5 flex pl-[39px]";
+
+/** ชิป "เร็ว ๆ นี้ · <เฟส>" */
+export function SoonChip({ phase }: { phase: string }) {
+  const t = useTranslations("pos.settings.shark");
+  return <span className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-[7px] border px-2 text-[11.5px] text-[color:var(--color-muted)]">{t("soon", { phase })}</span>;
+}
+
+/** สวิตช์แสดงสถานะ 34×19 (ภาพ 10 .sw) — ห่อด้วย span role=switch aria-disabled ที่ผู้เรียก */
+export function MiniKnob({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden className={`relative inline-block h-[19px] w-[34px] shrink-0 rounded-full ${on ? "bg-[color:var(--color-ink)]" : "bg-[color:var(--color-line)]"}`}>
+      <span className={`absolute top-[2.5px] size-[14px] rounded-full bg-[color:var(--color-surface)] shadow ${on ? "right-[2.5px]" : "left-[2.5px]"}`} />
+    </span>
+  );
+}
+
+function Tile({ children, accent = false }: { children: ReactNode; accent?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={`grid size-[30px] shrink-0 place-items-center rounded-[8px] border text-[11px] font-bold ${accent ? "border-transparent bg-[color:var(--color-accent-soft)] text-[color:var(--color-accent)]" : "bg-[color:var(--color-surface-2)] text-[color:var(--color-ink-soft)]"}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function PanelHead({ icon, title, sub, children }: { icon: RegisterIconName; title: string; sub: string; children?: ReactNode }) {
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] font-bold">
+      <RegisterIcon name={icon} size={16} />
+      {title}
+      <span className="min-w-0 text-[12.5px] font-normal text-[color:var(--color-muted)]">{sub}</span>
+      {children && <span className="ml-auto">{children}</span>}
+    </div>
+  );
+}
+
+/** แถวรายการ (ภาพ 10 .lrow) — ส่วนขวา (ชิป/สวิตช์) ส่งเป็น children */
+function LRow({ tile, title, sub, testid, children }: { tile: ReactNode; title: string; sub: string; testid: string; children: ReactNode }) {
+  return (
+    <div data-testid={testid} className="flex min-w-0 items-center gap-4 border-t px-[14px] py-2 text-[13px] first:border-t-0 md:gap-[22px]">
+      {tile}
+      <span className="min-w-0 flex-1">
+        <b className="block truncate font-semibold">{title}</b>
+        <span className="block truncate text-[11.5px] text-[color:var(--color-muted)]">{sub}</span>
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/** วิธีรับเงิน (ภาพ 10 ขวาล่าง) — สรุปอ่านอย่างเดียว · แก้ที่แท็บวิธีรับเงิน */
+export function PaymentsPanel({ systemId, unitId, pay }: { systemId: string; unitId: string; pay: PaySummary }) {
+  const t = useTranslations("pos.settings.payPanel");
+  const rows: { key: string; icon: RegisterIconName; title: string; sub: string; on: boolean; phase: string | null }[] = [
+    { key: "promptpay", icon: "qr", title: pay.promptpayMasked ? t("promptpay", { id: pay.promptpayMasked }) : t("promptpayNone"), sub: pay.beamOn ? t("promptpayBeam") : t("promptpayManual"), on: !!pay.promptpayMasked, phase: null },
+    { key: "card", icon: "card", title: t("card"), sub: pay.beamOn ? t("cardBeam") : t("cardEdc"), on: true, phase: null },
+    { key: "transfer", icon: "bank", title: t("transfer"), sub: t("transferSub"), on: true, phase: null },
+    { key: "voucher", icon: "tag", title: t("voucher"), sub: t("voucherSub"), on: false, phase: "P2.9" },
+    { key: "credit", icon: "cheque", title: t("credit"), sub: t("creditSub"), on: false, phase: "P2.9" },
+  ];
+  return (
+    <div data-testid="pos-settings-pay-panel" className="flex min-w-0 flex-1 flex-col gap-2">
+      <PanelHead icon="wallet" title={t("title")} sub={t("sub")}>
+        <Link data-testid="pos-settings-pay-panel-edit" href={posSettingsHref(systemId, "payments", unitId)} className="inline-flex min-h-11 items-center text-[12.5px] font-bold text-[color:var(--color-accent)]">
+          {t("edit")}
+        </Link>
+      </PanelHead>
+      <div className="overflow-hidden rounded-[12px] border bg-[color:var(--color-surface)]">
+        {rows.map((r) => (
+          <LRow
+            key={r.key}
+            testid={`pos-settings-pay-row-${r.key}`}
+            tile={
+              <Tile>
+                <RegisterIcon name={r.icon} size={14} />
+              </Tile>
+            }
+            title={r.title}
+            sub={r.sub}
+          >
+            {r.phase ? (
+              <SoonChip phase={r.phase} />
+            ) : (
+              <span data-testid={`pos-settings-pay-row-state-${r.key}`} role="switch" aria-checked={r.on} aria-disabled="true" aria-label={r.title} title={t("readOnly")} className="grid min-h-11 place-items-center">
+                <MiniKnob on={r.on} />
+              </span>
+            )}
+          </LRow>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * POS P3.4U ▸ มติ 10 · CD-P34U-1: ค่าจริงของการ์ด — enabled = settings.pos.offline.enabled · isOwner = สลับได้ (ตัวเขียนตรวจ OWNER ซ้ำ) ·
+ * ไม่ส่ง live = การ์ดแบบวันนี้ทุกพิกเซล ◂
+ */
+export type OfflineLive = { systemId: string; unitId: string; enabled: boolean; isOwner: boolean };
+/** การ์ดออฟไลน์ (ภาพ 10 แถวสุดท้าย) — POS P3.4U ▸ CD-P34U-1: ปิดธงเปลี่ยนแค่ 2 จุด (สวิตช์ live ของเจ้าของร้าน · ชิป "เร็ว ๆ นี้") ที่เหลือเหมือนวันนี้ ◂ */
+export function OfflineCard({ wide = false, live = null }: { wide?: boolean; live?: OfflineLive | null }) {
+  const t = useTranslations("pos.settings.offline");
+  const router = useRouter();
+  const [on, setOn] = useState(!!live?.enabled);
+  const [busy, setBusy] = useState(false);
+  const [saveErr, setSaveErr] = useState(false);
+  const [pend, setPend] = useState<{ device: number; server: number }>({ device: 0, server: 0 });
+  useEffect(() => setOn(!!live?.enabled), [live?.enabled]);
+  const liveSys = live?.systemId;
+  const liveUnit = live?.unitId;
+  useEffect(() => {
+    if (!liveSys || !liveUnit) return;
+    let alive = true;
+    void (async () => {
+      // มติ 10: รอซิงก์ = บิลในเครื่องนี้ (IndexedDB · ไม่มีฐาน = 0) + บิลรอผู้จัดการของสาขา (ไม่มีสิทธิ์ pos.shift.manage = 0)
+      const device = await countQueuedOnDevice(liveSys, liveUnit, getPosDeviceId()).catch(() => 0);
+      const r = await listOfflineRejectedAction({ systemId: liveSys, unitId: liveUnit, limit: 200 }).catch(() => null);
+      if (alive) setPend({ device, server: r && r.ok ? r.items.length : 0 });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [liveSys, liveUnit]);
+  const toggle = async () => {
+    if (!live || !live.isOwner || busy) return;
+    setBusy(true);
+    setSaveErr(false);
+    try {
+      const r = await updatePosOfflineEnabledAction({ systemId: live.systemId, enabled: !on }).catch(() => null);
+      if (!r || !r.ok) return setSaveErr(true);
+      setOn(r.enabled);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pendTotal = pend.device + pend.server;
+  return (
+    <div data-testid="pos-settings-card-offline" className={`flex min-w-0 flex-col gap-3 rounded-[12px] border bg-[color:var(--color-surface)] px-[14px] py-3 ${wide ? "md:px-6 md:py-5" : ""}`}>
+      {/* POS P1.18U ▸ แก้รอบ 2 V3/V4: ชิป "เร็ว ๆ นี้ · P3.4" ลงบรรทัดของตัวเองใต้ชื่อ (เดิมเบียดจนชื่อตัดเป็น "ออฟ/ไลน์" และทับ "Offline") ◂ */}
+      <div className={`${CARD_HEAD} text-[color:var(--color-muted)]`}>
+        <Tile>
+          <RegisterIcon name="swap" size={14} />
+        </Tile>
+        <span className={HEAD_TITLE}>{t("cardTitle")}</span>
+        {live ? (
+          /* POS P3.4U ▸ CD-P34U-1 จุดที่ 1: สวิตช์ live — เจ้าของร้านสลับได้ · คนอื่นเห็นสถานะจริง (aria-disabled) ◂ */
+          <button
+            data-testid="pos-settings-offline-switch"
+            type="button"
+            role="switch"
+            aria-checked={on}
+            aria-disabled={!live.isOwner || busy}
+            aria-label={t("cardTitle")}
+            title={live.isOwner ? undefined : t("ownerOnly")}
+            className={`${HEAD_SWITCH} ${live.isOwner ? "" : "cursor-not-allowed"}`}
+            onClick={() => void toggle()}
+          >
+            <MiniKnob on={on} />
+          </button>
+        ) : (
+          <span data-testid="pos-settings-card-state-offline" role="switch" aria-checked="false" aria-disabled="true" aria-label={t("cardTitle")} title={t("planned")} className={HEAD_SWITCH}>
+            <MiniKnob on={false} />
+          </span>
+        )}
+      </div>
+      {live ? (
+        /* POS P3.4U ▸ CD-P34U-1 จุดที่ 2: ชิป "เร็ว ๆ นี้ · P3.4" → สถานะจริง ◂ */
+        <div data-testid="pos-settings-offline-state" data-state={on ? "on" : "off"} className="-mt-1.5 flex flex-col gap-1 pl-[43px] text-[11.5px] text-[color:var(--color-muted)]">
+          <span className="inline-flex h-6 w-fit items-center whitespace-nowrap rounded-[7px] border px-2">{on ? t("liveOn") : live.isOwner ? t("liveOff") : t("ownerOnly")}</span>
+          {saveErr ? (
+            <span role="alert" className="text-[color:var(--color-danger)]">
+              {t("saveFailed")}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div data-testid="pos-settings-card-soon-offline" className="-mt-1.5 flex pl-[43px]">
+          <SoonChip phase="P3.4" />
+        </div>
+      )}
+      <ul className="list-disc pl-4 text-[12px] leading-[1.6] text-[color:var(--color-muted)]">
+        <li>{t("factSell")}</li>
+        <li>{t.rich("factTempNo", { b: (c) => <b className="text-[color:var(--color-ink-soft)]">{c}</b>, no: "OFF-C1-0007" })}</li>
+        <li>{t("factSync")}</li>
+      </ul>
+      <div className="mt-auto flex items-center gap-3 border-t pt-[7px] text-[11.5px] text-[color:var(--color-muted)]">
+        {t("pending")}
+        {live && pendTotal > 0 ? (
+          /* POS P3.4U ▸ มติ 10: เครื่องนี้ + รอผู้จัดการ (0 ทั้งคู่ = ตัวเลข 0 แบบวันนี้) ◂ */
+          <span className="ml-auto text-right">
+            {t("pendingDevice", { count: pend.device })} · {t("pendingServer", { count: pend.server })}
+          </span>
+        ) : null}
+        {/* POS P3.4U ▸ มติ 10: ตัวเลขรอซิงก์จริง (เครื่องนี้ + รอผู้จัดการ) · data-device/data-server · ชิดขวาเมื่อไม่มีรายละเอียด ◂ */}
+        <span data-testid="pos-settings-offline-pending" data-device={pend.device} data-server={pend.server} className={`${live && pendTotal > 0 ? "" : "ml-auto "}text-[17px] font-bold tabular-nums text-[color:var(--color-ink)]`}>
+          {pendTotal /* POS P3.4U ▸ เดิม 0 ตายตัว ◂ */}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PhaseBanner({ text }: { text: string }) {
+  return (
+    <div data-testid="pos-settings-phase-banner" role="status" className="flex items-start gap-3 rounded-[14px] border bg-[color:var(--color-surface-2)] px-4 py-3 text-[14px] text-[color:var(--color-ink-soft)]">
+      <RegisterIcon name="clock" size={16} className="mt-[3px] shrink-0" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+/** ?tab=channels — มติ 7 · POS P2.1U ▸ มติ 1: แผงช่องทางขายจริงเต็มความกว้าง (แบนเนอร์ "เปิดใช้ในเฟสถัดไป" ออกแล้ว — ออฟไลน์ยังมีแบนเนอร์) ◂ */
+export function ChannelsPane({ systemId, unitId, canManage, canAccept, storefront, platform = null /* POS P3-SKEL U ▸ CD-SKELU-4 ◂ */ }: { systemId: string; unitId: string; canManage: boolean; /** POS P2.7U fix1 ▸ F6: pos.order.accept ◂ */ canAccept?: boolean; storefront: Storefront; platform?: PlatformInfo | null }) {
+  const t = useTranslations("pos.settings.channels");
+  return (
+    <div data-testid="pos-settings-channels" className="flex min-w-0 flex-col gap-6 md:gap-8">
+      <TabHead title={t("tabTitle")} desc={t("tabSub")} />
+      <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManage} canAccept={canAccept} /* POS P2.7U fix1 ▸ F6 ◂ */ storefront={storefront} wide platform={platform} /* POS P3-SKEL U ◂ */ />
+    </div>
+  );
+}
+
+/** ?tab=offline — มติ 7 · POS P3.4U ▸ ปิดธง = แบนเนอร์เดิม (ST8-U) · เปิดธง = แบนเนอร์ live ◂ */
+export function OfflinePane({ live = null }: { live?: OfflineLive | null }) {
+  const t = useTranslations("pos.settings.offline");
+  return (
+    <div data-testid="pos-settings-offline" className="flex min-w-0 flex-col gap-6 md:gap-8">
+      <TabHead title={t("tabTitle")} desc={t("tabSub")} />
+      <PhaseBanner text={live?.enabled ? t("liveBanner") : t("banner")} />
+      <OfflineCard wide live={live} />
+    </div>
+  );
+}
+

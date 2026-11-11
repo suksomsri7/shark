@@ -1,0 +1,56 @@
+// Settings core (ค่าตั้งแบบชั้น) — SVC RUN · สัญญา ledger/SVC-CORE-CONTRACT.md §1.2 · migration svc_r0 (ใบ R0.1)
+// เครื่องยนต์ = R0.3 (src/lib/core/settings/*) · หน้าจอ = R0.4
+// อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core)
+// scope = ข้อความ (TENANT · UNIT · BUILDING · ROOM_TYPE · ROOM · LEASE · RATE_PLAN · STAFF · SERVICE · RESOURCE · DEVICE · COURSE)
+//   ตรวจกับ ScopeKind ในทะเบียน — เพิ่มชั้นใหม่ไม่ต้อง migrate · scopeId ของ TENANT = tenantId
+// เก็บเฉพาะค่าที่ต่างจากชั้นบน · คืนค่า = ลบแถว (ลง SettingChange ด้วย after=null)
+
+model SettingValue {
+  id             String   @id @default(cuid())
+  tenantId       String
+  key            String
+  scope          String
+  scopeId        String
+  value          Json
+  effectiveFrom  DateTime @default("1970-01-01T00:00:00Z") // 1970-01-01 = "มีผลตลอด"
+  setById        String?
+  overrideReason String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tenantId, key, scope, scopeId, effectiveFrom])
+  @@index([tenantId, scope, scopeId])
+}
+
+// แม่แบบที่ใช้กับหน่วย (domain = "booking" | "rooms")
+model SettingProfile {
+  id              String   @id @default(cuid())
+  tenantId        String
+  unitId          String
+  domain          String
+  templateKey     String
+  templateVersion Int
+  appliedById     String
+  appliedAt       DateTime @default(now())
+
+  @@unique([unitId, domain])
+}
+
+// ประวัติการเปลี่ยนค่าตั้ง — เขียนต่อท้ายอย่างเดียว (ไม่มี update/delete)
+model SettingChange {
+  id            String   @id @default(cuid())
+  tenantId      String
+  unitId        String?
+  key           String
+  scope         String
+  scopeId       String
+  before        Json?
+  after         Json?
+  effectiveFrom DateTime
+  legalLevel    String // "OK" | "WARN" | "BLOCK"
+  legalCode     String?
+  reason        String?
+  approvalId    String? // ApprovalRequest.id — ข้อความเฉย ๆ ไม่มี FK
+  actorId       String
+  at            DateTime @default(now())
+}

@@ -24,6 +24,7 @@
 import type { Membership, Prisma, Role, User } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit"; // HR H0.7 ▸ audit hr.employee.link ◂
+import { isPhonePlaceholderEmail } from "@/lib/core/phone-auth";
 import {
   canAssignRole,
   canGrantPermission,
@@ -36,6 +37,8 @@ import {
 import {
   // CRM C1.7 ▸ คีย์ CRM ที่ให้ได้เฉพาะเจ้าของร้าน ◂
   CRM_OWNER_ONLY_KEYS,
+  // SVC R0.5 ▸ คีย์ตั้งค่าที่ให้ได้เฉพาะเจ้าของร้าน (settings.integrations.manage) ◂
+  SETTINGS_OWNER_ONLY_KEYS,
   isPermissionKey,
   isPermissionParamKey,
   moduleOfPermissionKey,
@@ -51,7 +54,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_HINTS: Record<Role, string> = {
   OWNER: "ทำได้ทุกอย่างในร้าน รวมถึงตั้งสิทธิ์คนอื่น",
   // CRM C1.7 ▸ ยกเว้น 5 คีย์ตั้งค่าของ CRM ที่เจ้าของร้านต้องให้เอง (§6.1) ◂
-  MANAGER: "ทำได้ทุกอย่างเฉพาะในสาขาที่ดูแล ยกเว้นงานตั้งค่าของระบบ CRM (ตั้งค่า pipeline · คีย์ API · วัตถุกำหนดเอง · การมองเห็น · ทีมขาย) ที่เจ้าของร้านต้องเปิดให้เอง",
+  MANAGER: "ทำได้ทุกอย่างเฉพาะในสาขาที่ดูแล ยกเว้นงานตั้งค่าของระบบ CRM (ตั้งค่า pipeline · คีย์ API · วัตถุกำหนดเอง · การมองเห็น · ทีมขาย) และการจัดการศูนย์เชื่อมต่อ (คีย์ผู้ให้บริการภายนอก) ที่เจ้าของร้านต้องเปิดให้เอง",
   STAFF: "ทำได้เฉพาะข้อที่ติ๊กให้เท่านั้น",
 };
 
@@ -95,6 +98,18 @@ async function loadActor(
     return fail("บัญชีของคุณยังไม่ได้รับสิทธิ์ “จัดการผู้ใช้งาน” ให้เจ้าของร้านหรือผู้จัดการเปิดสิทธิ์นี้ให้ก่อน");
   }
   return { ok: true, membership, ctx };
+}
+
+/**
+ * SEC S3a.1-S2 ▸ R-Z15 (L1 M-3 · m-3): ด่านระดับของ "เป้าหมาย" อยู่ใน lib (ทุกทาง — เว็บ · แอป · setStaffLevels):
+ *   OWNER แตะได้ทุกคน · MANAGER และ STAFF ที่มี settings.staff.write แตะได้เฉพาะ STAFF และตั้งบทบาทได้แค่ STAFF ◂
+ */
+const MSG_STAFF_ONLY_TARGET = "ผู้จัดการ (และผู้ดูแลผู้ใช้งาน) แก้ไข ระงับ หรือเปิดคืนได้เฉพาะ “พนักงาน” — ให้เจ้าของกิจการเป็นผู้ทำรายการนี้";
+function targetRoleProblem(actorRole: Role, targetRole: Role, nextRole?: Role): StaffFail | null {
+  if (actorRole === "OWNER") return null;
+  if (targetRole !== "STAFF") return fail(MSG_STAFF_ONLY_TARGET);
+  if (nextRole !== undefined && nextRole !== "STAFF") return fail(MSG_STAFF_ONLY_TARGET);
+  return null;
 }
 
 /** นับ OWNER คนอื่นที่ยังใช้งานอยู่ในร้าน (ไม่รวมคนที่กำลังจะถูกแก้) */
@@ -188,8 +203,8 @@ function mergePermissions(current: PermissionMap, next: PermissionMap): Permissi
   return { ...legacy, ...next };
 }
 
-/** ตรวจการยกระดับสิทธิ์: ทุกข้อที่ "เพิ่มขึ้นจากของเดิม" ผู้สั่งต้องมีเองก่อน */
-function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: PermissionMap): StaffFail | null {
+/** ตรวจการยกระดับสิทธิ์: ทุกข้อที่ "เพิ่มขึ้นจากของเดิม" ผู้สั่งต้องมีเองก่อน · SEC S1.25 ▸ export ให้คำเชิญ (staff/invite.ts) ใช้ตัวตรวจชุดเดียวกัน ◂ */
+export function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: PermissionMap): StaffFail | null {
   for (const [key, val] of Object.entries(next)) {
     if (val === true) {
       if (current[key] === true) continue; // มีอยู่แล้ว ไม่ใช่การเพิ่ม
@@ -199,6 +214,14 @@ function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: P
       //   แต่ rbac.evaluate ให้ MANAGER ผ่านทุกอย่าง ⇒ ถ้าไม่กันตรงนี้ ผู้จัดการจะแจกคีย์ที่ตัวเองไม่มีได้ (ยกระดับสิทธิ์) ◂
       if ((key === "crm.*" || CRM_OWNER_ONLY_KEYS.includes(key)) && actor.role !== "OWNER") {
         return fail(`สิทธิ์ “${permissionLabel(key)}” ของระบบ CRM ให้ได้เฉพาะเจ้าของร้าน — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`);
+      }
+      // SVC R0.5 ▸ ศูนย์เชื่อมต่อ (คีย์ผู้ให้บริการภายนอก) — ให้ได้เฉพาะเจ้าของร้าน แม้ผู้สั่งจะถือคีย์นี้เองก็ตาม (ใบสั่ง R0.5 §8 ข้อ 10) ◂
+      if (SETTINGS_OWNER_ONLY_KEYS.includes(key) && actor.role !== "OWNER") {
+        return fail(`สิทธิ์ “${permissionLabel(key)}” ให้ได้เฉพาะเจ้าของร้าน — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`);
+      }
+      // SEC S1.25 ▸ R-S1.25e: สิทธิ์เงินเดือน (`hr.payroll.*`) แจกได้เฉพาะคนที่ดูเงินเดือนได้เอง (OWNER / hr.payroll.read) — MANAGER ผ่าน evaluate แต่ไม่เห็นเงินเดือน ◂
+      if (key.startsWith("hr.payroll.") && !canViewPayroll(actor)) {
+        return fail(`สิทธิ์ “${permissionLabel(key)}” ให้ได้เฉพาะเจ้าของกิจการหรือผู้มีสิทธิ์ดูเงินเดือน`);
       }
       if (!canGrantPermission(actor, moduleName, key)) {
         return fail(
@@ -240,8 +263,27 @@ export type StaffAccessRow = {
   employee: { id: string; name: string; position: string | null; systemId: string } | null;
 };
 
-/** ผู้ใช้งานทั้งหมดของร้าน (รวมคนที่ถูกถอนสิทธิ์ เพื่อให้เปิดคืนได้) */
-export async function listStaffAccess(tenantId: string): Promise<StaffAccessRow[]> {
+/**
+ * ผู้ใช้งานทั้งหมดของร้าน (รวมคนที่ถูกถอนสิทธิ์ เพื่อให้เปิดคืนได้)
+ * SEC S1.25 ▸ R-S1.25j: `{ includeInvites: true }` ⇒ ต่อท้ายแถว "รอรับคำเชิญ" (`pending: true` · ไม่มี membershipId · เบอร์ปิดเลขกลาง) —
+ *   ปริยาย (ไม่ส่ง) = ชุดเดิมทุกไบต์ ◂
+ */
+export async function listStaffAccess(tenantId: string): Promise<StaffAccessRow[]>;
+export async function listStaffAccess(
+  tenantId: string,
+  opts: { includeInvites: true },
+): Promise<(StaffAccessRow | import("./invite").PendingInviteRow)[]>;
+export async function listStaffAccess(
+  tenantId: string,
+  opts?: { includeInvites?: boolean },
+): Promise<(StaffAccessRow | import("./invite").PendingInviteRow)[]> {
+  const rows = await listStaffAccessRows(tenantId);
+  if (!opts?.includeInvites) return rows;
+  const { pendingInviteRows } = await import("./invite"); // lazy — invite.ts import service.ts (กันวงตอนโหลด)
+  return [...rows, ...(await pendingInviteRows(tenantId))];
+}
+
+async function listStaffAccessRows(tenantId: string): Promise<StaffAccessRow[]> {
   const memberships = await prisma.membership.findMany({
     where: { tenantId },
     include: { user: true },
@@ -260,7 +302,8 @@ export async function listStaffAccess(tenantId: string): Promise<StaffAccessRow[
       membershipId: m.id,
       userId: m.userId,
       email: u?.email ?? "",
-      name: u?.name?.trim() || (u?.email ?? "").split("@")[0] || "ผู้ใช้งาน",
+      // SEC S3a.1-S2 ▸ R-Z26: อีเมล placeholder ของบัญชีเบอร์โทร (local-part = เบอร์) ⇒ "สมาชิก" ไม่โชว์เบอร์ ◂
+      name: u?.name?.trim() || (isPhonePlaceholderEmail(u?.email) ? "สมาชิก" : (u?.email ?? "").split("@")[0]) || "ผู้ใช้งาน",
       role: m.role,
       unitAccess: Array.isArray(m.unitAccess) ? (m.unitAccess as string[]) : [],
       permissions: (m.permissions ?? {}) as PermissionMap,
@@ -418,6 +461,14 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       if (existing) {
         membershipId = existing.id;
         if (existing.acceptedAt == null) {
+          // SEC S3a.1-S2 ▸ R-Z15: เปิดคืนผ่านการให้สิทธิ์ = เปิดคืน (restore) — ผู้ที่ไม่ใช่ OWNER เปิดคืนได้เฉพาะ STAFF ◂
+          if (targetRoleProblem(actor.membership.role, existing.role)) throw new StaffRuleError(MSG_STAFF_ONLY_TARGET);
+          // SVC R0.5 ▸ เปิดคืนสมาชิกภาพที่ถือคีย์ owner-only (settings.integrations.manage) = คืนขอบเขตคีย์ผู้ให้บริการภายนอก
+          //   ⇒ เฉพาะเจ้าของร้าน (มติผู้ตรวจ R0.5 ข้อ 2 — ทางเดียวกับการขยาย unitAccess ใน updateStaffAccess) ◂
+          const prevPerms = (existing.permissions ?? {}) as PermissionMap;
+          if (actor.membership.role !== "OWNER" && SETTINGS_OWNER_ONLY_KEYS.some((k) => prevPerms[k] === true)) {
+            throw new StaffRuleError(`ผู้ใช้คนนี้ถือสิทธิ์ “${permissionLabel(SETTINGS_OWNER_ONLY_KEYS[0]!)}” — การเปิดสิทธิ์คืนให้คนนี้ทำได้เฉพาะเจ้าของร้าน`);
+          }
           // เคยถูกถอนสิทธิ์ไว้ → เปิดคืน (คงบทบาท/สิทธิ์เดิมไว้ ไม่รีเซ็ตให้เสียของ)
           await tx.membership.updateMany({
             where: { id: existing.id, tenantId: input.tenantId },
@@ -509,6 +560,8 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
   if (target.userId === input.actorUserId && actor.membership.role !== "OWNER") {
     return fail("คุณแก้สิทธิ์ของตัวเองไม่ได้ ให้เจ้าของกิจการเป็นผู้แก้ให้");
   }
+  const tgt = targetRoleProblem(actor.membership.role, target.role, input.role); // R-Z15 ◂
+  if (tgt) return tgt;
 
   // Json columns → ต้องเป็น Prisma.InputJsonValue (Record<string, unknown> ไม่ผ่าน type ของ Prisma 7)
   const data: { role?: Role; unitAccess?: Prisma.InputJsonValue; permissions?: Prisma.InputJsonValue } = {};
@@ -541,6 +594,19 @@ export async function updateStaffAccess(input: UpdateStaffAccessInput): Promise<
     const escalation = checkNoEscalation(actor.ctx, current, parsed.value);
     if (escalation) return escalation;
     data.permissions = mergePermissions(current, parsed.value) as Prisma.InputJsonValue;
+  }
+
+  // SVC R0.5 ▸ ขยายสาขาของคนที่ถือคีย์ owner-only (settings.integrations.manage) = ขยายขอบเขตการแก้คีย์ผู้ให้บริการภายนอก
+  //   ⇒ ทำได้เฉพาะเจ้าของร้าน (มติผู้ตรวจ R0.5 ข้อ 2) · ลด/คงสาขา หรือคนที่ไม่ถือคีย์ = ตามกติกาเดิม ◂
+  if (data.unitAccess !== undefined && actor.membership.role !== "OWNER") {
+    const nextPerms = (data.permissions ?? target.permissions ?? {}) as PermissionMap;
+    const holdsOwnerOnly = SETTINGS_OWNER_ONLY_KEYS.some((k) => nextPerms[k] === true);
+    const before = Array.isArray(target.unitAccess) ? (target.unitAccess as string[]) : [];
+    const after = data.unitAccess as string[];
+    const widened = !before.includes("*") && after.some((u) => !before.includes(u));
+    if (holdsOwnerOnly && widened) {
+      return fail(`ผู้ใช้คนนี้ถือสิทธิ์ “${permissionLabel(SETTINGS_OWNER_ONLY_KEYS[0]!)}” — การเพิ่มสาขาให้คนนี้ทำได้เฉพาะเจ้าของร้าน`);
+    }
   }
 
   if (Object.keys(data).length === 0) return { ok: true, membershipId: target.id };
@@ -589,6 +655,8 @@ export async function revokeStaffAccess(input: RevokeStaffAccessInput): Promise<
   if (target.userId === input.actorUserId && actor.membership.role !== "OWNER") {
     return fail("คุณถอนสิทธิ์ของตัวเองไม่ได้ ให้เจ้าของกิจการเป็นผู้ทำให้");
   }
+  const tgt = targetRoleProblem(actor.membership.role, target.role); // R-Z15 ◂
+  if (tgt) return tgt;
   if (target.role === "OWNER" && (await countOtherActiveOwners(input.tenantId, target.userId)) === 0) {
     return fail(LAST_OWNER_REASON);
   }
@@ -624,6 +692,8 @@ export async function revokeStaffAccess(input: RevokeStaffAccessInput): Promise<
       after: { employeeId, userId: target.userId, approvedById: null, unlinked: true },
     });
   }
+  // SEC S1.25 ▸ R-S1.25j/N5: เครื่องของคนที่ถูกถอน ไม่ผูกร้านนี้อีก (push เรื่องของร้านไม่ไปถึง) — ทุกทาง (เว็บ/แอป) ◂
+  await prisma.pushDevice.updateMany({ where: { userId: target.userId, tenantId: input.tenantId }, data: { tenantId: null } });
   if (target.acceptedAt == null) return { ok: true, membershipId: target.id }; // ถอนไปแล้ว
   // ◂ HR H0.7
 
@@ -649,6 +719,8 @@ export async function restoreStaffAccess(input: RevokeStaffAccessInput): Promise
   });
   if (!target) return fail("ไม่พบผู้ใช้งานคนนี้ในกิจการนี้ — กรุณารีเฟรชหน้าแล้วลองใหม่");
   if (target.acceptedAt != null) return { ok: true, membershipId: target.id };
+  const tgt = targetRoleProblem(actor.membership.role, target.role); // R-Z15 ◂
+  if (tgt) return tgt;
 
   // เปิดคืนให้ OWNER ได้เฉพาะคนที่ตั้ง OWNER ได้อยู่แล้ว (ไม่งั้นเป็นช่องยกระดับผ่านคนที่ถูกถอน)
   if (!canAssignRole(actor.membership.role, target.role)) {

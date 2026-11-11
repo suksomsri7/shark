@@ -9,13 +9,15 @@ import { apiJson, authenticateApiRequest, keyNotGeneralResponse } from "@/lib/ap
 import { runTool, toolRegistry } from "@/lib/ai/tools";
 import { skillOfTool, toolAllowedForApiKey } from "@/lib/ai/skills";
 import { accountToolScope } from "@/lib/ai/account-ops";
+import { posToolScope } from "@/lib/modules/pos/api/tools"; // POS P5.2 ▸ fix C ◂
 import { prisma } from "@/lib/core/db";
 import { crmApi } from "@/lib/modules/crm";
 import { aiApiKeyActor } from "@/lib/ai/actor";
 import { toolVerdict } from "@/lib/ai/tool-access";
+import { getAccess } from "@/lib/ai/secretary/access";
 import { newConversationId } from "@/lib/ai/conversation-owner";
 import { findVisibleConversation } from "@/lib/ai/conversations";
-import { generalToolGate } from "../../general-key-gate";
+import { generalToolGate, posToolNeedsPosKey } from "../../general-key-gate";
 
 const HEADER_SYSTEM = "x-shark-system";
 
@@ -36,6 +38,20 @@ export async function POST(
   // CRM C1.10 ▸ ร้าน CRM รุ่นเดิม: `crm_create_lead` เปิดให้ทุกคีย์เหมือนก่อน C1.10 (ระบบ = ที่คีย์ผูก/ส่วนหัว/ระบบ CRM แรก) ◂
   const crmLegacyLead =
     name === "crm_create_lead" && (await crmApi.crmLegacyLeadOpen(auth.tenantId, auth.systemId ?? req.headers.get(HEADER_SYSTEM)?.trim() ?? null));
+  // POS P2.13 ▸ ด่านคีย์กลาง (HF-APIV1) มาก่อนด่าน scope — เครื่องมือนอก 4 โมดูล (รวมเครื่องมือขายของ POS ที่ผูก scope แล้ว · มติ 7)
+  //   ตอบคีย์ของโมดูลด้วย 403 key_not_general เหมือนเดิม · เครื่องมือของ 4 โมดูลผ่านด่านนี้เสมอ (ลำดับไม่เปลี่ยนผลของโมดูล) ◂
+  // POS P5.2 ▸ fix C (K3 · CD-P52-O2-2): เครื่องมือของ POS + คีย์ที่ไม่มี scope (คีย์กลาง) = 403 — ต้องใช้คีย์ของระบบ POS ที่มีสิทธิ์ของเครื่องมือนั้น ◂
+  if (posToolNeedsPosKey(name, auth)) {
+    return apiJson(
+      {
+        error: "เครื่องมือของระบบขายหน้าร้าน (POS) ใช้กับคีย์กลางไม่ได้ — สร้างคีย์ API ของระบบ POS ที่มีสิทธิ์ของเครื่องมือนี้",
+        hint: `ต้องการสิทธิ์ ${posToolScope(name) ?? "ของระบบ POS"}`,
+        code: "pos_scope_required",
+      },
+      403,
+    );
+  }
+  if (!generalToolGate(name, auth)) return keyNotGeneralResponse();
   if (!toolAllowedForApiKey(name, auth.scopes, { crmLegacyLead })) {
     return apiJson(
       {
@@ -46,8 +62,7 @@ export async function POST(
     );
   }
 
-  // HF-APIV1 ▸ เครื่องมือนอก 4 โมดูล (ขาย POS · การเงิน · ความจำ · คลังความรู้ · แชท …) = คีย์กลางเท่านั้น ◂
-  if (!generalToolGate(name, auth)) return keyNotGeneralResponse();
+  // HF-APIV1 ▸ เครื่องมือนอก 4 โมดูล (ขาย POS · การเงิน · ความจำ · คลังความรู้ · แชท …) = คีย์กลางเท่านั้น ◂ (POS P2.13 ▸ ย้ายขึ้นไปก่อนด่าน scope ◂)
 
   // ── สมุดบัญชีที่จะทำงานด้วย ────────────────────────────────────────────────
   // คีย์ที่ผูกเล่มไว้ = ผูกตายตัว · ส่งหัวมาต่างจากที่ผูก = ปฏิเสธ (กติกาเดียวกับ REST require.ts)
@@ -60,7 +75,9 @@ export async function POST(
   // CRM C5.5-G1 r2 (F4) ▸ ด่านเดียวกับ executor (tool-access) ก่อนแตะอะไร — ไม่ผ่าน = 403 แบบเดียวกับการปฏิเสธอื่นของ route นี้
   //   (เดิม 200 + error ข้างใน · และไม่เปิดห้องแชทเปล่าให้คำขอที่ทำไม่ได้) ◂
   const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId, scopesMalformed: auth.scopesMalformed });
-  const verdict = toolVerdict(actor, name, { crmLegacyLead });
+  // S1.3b ▸ (รีวิว C2) ระดับต่อระบบของร้าน (OFF/READ/DRAFT) ใช้กับคีย์ API ด้วย — ไม่งั้นระบบที่เจ้าของปิดยังเรียกตรงจากภายนอกได้ ◂
+  const access = await getAccess(auth.tenantId);
+  const verdict = toolVerdict(actor, name, { crmLegacyLead, access });
   if (!verdict.ok) return apiJson({ error: verdict.reason }, 403);
 
   let body: { args?: unknown; conversationId?: string };
@@ -90,6 +107,7 @@ export async function POST(
     {
       tenantId: auth.tenantId,
       actor,
+      access, // S1.3b ▸ runTool ตรวจระดับซ้ำ + เครื่องมือที่อ่านข้ามโมดูลตัดส่วนที่ปิด ◂
       ...(conversationId ? { conversationId } : {}),
       ...(systemId ? { systemId } : {}),
     },

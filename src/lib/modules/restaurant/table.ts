@@ -1,6 +1,6 @@
-import { randomUUID } from "crypto";
+import { randomBytes } from "crypto"; // POS P5.2 ▸ CD-P52-F4: เดิม randomUUID (หมุน QR) — ใช้ตัวสร้างโทเคนเดียวด้านล่าง ◂
 import { prisma, tenantDb } from "@/lib/core/db";
-import type { TableShape, TableStatus } from "@prisma/client";
+import type { Prisma, TableShape, TableStatus } from "@prisma/client";
 import "./scope";
 
 // ───────────────────────── Zones ─────────────────────────
@@ -29,6 +29,13 @@ export async function archiveZone(tenantId: string, unitId: string, id: string) 
 }
 
 // ───────────────────────── Tables ─────────────────────────
+// POS P5.2 ▸ CD-P52-F4 (ruling 5): QR โต๊ะใหม่ = qr_ + base64url ของ randomBytes(16) = 128 บิตจาก crypto (25 ตัว · อยู่ในรูป QR_TABLE_TOKEN_RE [A-Za-z0-9_-]{8,64}) —
+//   ตั้งเองตอนสร้างและตอนหมุน ไม่พึ่ง @default(cuid()) ของ schema (ส่วนสุ่มของ cuid ≈ 41 บิต · schema/คอลัมน์ไม่เปลี่ยน) ·
+//   โทเคนเดิมที่พิมพ์ไว้ใช้ต่อได้ (การหมุน QR ที่พิมพ์แล้วเป็นการตัดสินใจของเจ้าของร้าน — W27) ◂
+export const TABLE_QR_TOKEN_BYTES = 16;
+export function newTableQrToken(): string {
+  return `qr_${randomBytes(TABLE_QR_TOKEN_BYTES).toString("base64url")}`;
+}
 export async function createTable(
   tenantId: string,
   unitId: string,
@@ -43,6 +50,7 @@ export async function createTable(
     data: {
       tenantId,
       unitId,
+      qrToken: newTableQrToken(), // POS P5.2 ▸ CD-P52-F4 ◂
       zoneId: input.zoneId,
       name: input.name,
       seats: input.seats ?? 4,
@@ -72,8 +80,8 @@ export async function archiveTable(tenantId: string, unitId: string, id: string)
 
 export async function rotateQr(tenantId: string, unitId: string, id: string) {
   const db = tenantDb({ tenantId, unitId });
-  // qrToken มี default cuid() ตอน create เท่านั้น — rotate ต้องส่งค่าใหม่เอง (เดาไม่ได้)
-  const fresh = `qr_${randomUUID().replace(/-/g, "")}`;
+  // qrToken ตั้งเองทั้งตอนสร้างและหมุน (เดาไม่ได้) — POS P5.2 ▸ CD-P52-F4: ตัวสร้างเดียว newTableQrToken (128 บิต) ◂
+  const fresh = newTableQrToken();
   const t = await db.restaurantTable.update({ where: { id }, data: { qrToken: fresh } });
   return t.qrToken;
 }
@@ -163,6 +171,8 @@ export async function floorPlan(tenantId: string, unitId: string): Promise<Table
 
 // ───────────────────────── Sessions ─────────────────────────
 // เปิดโต๊ะโดย staff (หรือ get-or-create) — กัน 2 session OPEN ต่อโต๊ะ
+// POS P2.4 ▸ มติ Q9: ถือ pg_advisory_xact_lock ต่อโต๊ะก่อนอ่าน/สร้าง (ไม่มี partial unique one_open_session_per_table — P6.1 สร้างแบบ CONCURRENTLY)
+//   ⇒ เปิดพร้อมกันกี่คำขอก็ได้ session OPEN เดียว (ประตูเดิม + registerOpenTable ของ POS ใช้ล็อกเดียวกัน) · เปิดใหม่ = ล้าง dirtySince ◂
 export async function openSession(
   tenantId: string,
   unitId: string,
@@ -171,21 +181,9 @@ export async function openSession(
 ): Promise<{ ok: true; id: string; created: boolean } | { ok: false; reason: string }> {
   try {
     const res = await prisma.$transaction(async (tx) => {
-      const table = await tx.restaurantTable.findFirst({ where: { id: tableId, tenantId, unitId } });
-      if (!table) throw new Error("NO_TABLE");
-      if (table.status !== "ACTIVE") throw new Error("TABLE_INACTIVE");
-      const existing = await tx.tableSession.findFirst({ where: { tenantId, unitId, tableId, status: "OPEN" } });
-      if (existing) return { id: existing.id, created: false };
-      const s = await tx.tableSession.create({
-        data: {
-          tenantId,
-          unitId,
-          tableId,
-          guestCount: opts?.guestCount ?? null,
-          openedByUserId: opts?.openedByUserId ?? null,
-        },
-      });
-      return { id: s.id, created: true };
+      await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`restaurant-table:${tableId}`}::text))) l`;
+      const r = await openSessionCore(tx, { tenantId, unitId, tableId, guestCount: opts?.guestCount ?? null, openedByUserId: opts?.openedByUserId ?? null, memberId: null });
+      return { id: r.id, created: r.created };
     });
     return { ok: true, ...res };
   } catch (e) {
@@ -195,6 +193,52 @@ export async function openSession(
     // partial unique index ชน (2 คนเปิดพร้อมกัน) → อ่านอันเดิม
     const again = await prisma.tableSession.findFirst({ where: { tenantId, unitId, tableId, status: "OPEN" } });
     if (again) return { ok: true, id: again.id, created: false };
+    throw e;
+  }
+}
+
+/** POS P2.4 ▸ แกนของการเปิดโต๊ะ (ผู้เรียกถือล็อกโต๊ะแล้ว) — throw "NO_TABLE"/"TABLE_INACTIVE" · สร้างใหม่ = ล้าง dirtySince ◂ */
+async function openSessionCore(
+  tx: Prisma.TransactionClient,
+  i: { tenantId: string; unitId: string; tableId: string; guestCount: number | null; openedByUserId: string | null; memberId: string | null },
+): Promise<{ id: string; created: boolean; dirtySince: Date | null }> {
+  const table = await tx.restaurantTable.findFirst({ where: { id: i.tableId, tenantId: i.tenantId, unitId: i.unitId } });
+  if (!table) throw new Error("NO_TABLE");
+  if (table.status !== "ACTIVE") throw new Error("TABLE_INACTIVE");
+  const existing = await tx.tableSession.findFirst({ where: { tenantId: i.tenantId, unitId: i.unitId, tableId: i.tableId, status: "OPEN" } });
+  if (existing) return { id: existing.id, created: false, dirtySince: table.dirtySince };
+  const s = await tx.tableSession.create({
+    data: {
+      tenantId: i.tenantId,
+      unitId: i.unitId,
+      tableId: i.tableId,
+      guestCount: i.guestCount,
+      openedByUserId: i.openedByUserId,
+      ...(i.memberId ? { memberId: i.memberId } : {}),
+    },
+  });
+  if (table.dirtySince) await tx.restaurantTable.update({ where: { id: table.id }, data: { dirtySince: null } });
+  return { id: s.id, created: true, dirtySince: table.dirtySince };
+}
+
+/**
+ * POS P2.4 ▸ เปิดโต๊ะในธุรกรรมของผู้เรียก (facade · registerOpenTable / พาลูกค้าที่จองนั่ง) — ล็อกเดียวกับ openSession (Q9) ·
+ * ปฏิเสธเป็นค่า (ไม่ throw): NO_TABLE (ไม่พบ/สาขาอื่น · archived) · TABLE_INACTIVE ◂
+ */
+export async function openTableSessionInTx(
+  tx: Prisma.TransactionClient,
+  i: { tenantId: string; unitId: string; tableId: string; guestCount: number | null; openedByUserId: string; memberId: string | null },
+): Promise<{ ok: true; sessionId: string; created: boolean } | { ok: false; code: "NO_TABLE" | "TABLE_INACTIVE" }> {
+  const t = await tx.restaurantTable.findFirst({ where: { id: i.tableId, tenantId: i.tenantId, unitId: i.unitId, archivedAt: null }, select: { id: true, status: true } });
+  if (!t) return { ok: false, code: "NO_TABLE" };
+  if (t.status !== "ACTIVE") return { ok: false, code: "TABLE_INACTIVE" };
+  await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`restaurant-table:${i.tableId}`}::text))) l`;
+  try {
+    const r = await openSessionCore(tx, i);
+    return { ok: true, sessionId: r.id, created: r.created };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (msg === "NO_TABLE" || msg === "TABLE_INACTIVE") return { ok: false, code: msg };
     throw e;
   }
 }

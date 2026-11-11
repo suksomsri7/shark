@@ -47,6 +47,14 @@ enum TableStatus {
   INACTIVE // ปิดใช้ชั่วคราว (ชำรุด) — ไม่รับ session ใหม่
 }
 
+// POS P2.4 ▸ สถานะโต๊ะจอง (มติ Q2: โต๊ะจองแบบย่อของร้านอาหารเอง · ระบบจอง/คิว = PLANNED) ◂
+enum RestReservationStatus {
+  BOOKED
+  SEATED
+  CANCELLED
+  NO_SHOW
+}
+
 enum ServiceRequestType {
   CALL_STAFF
   REQUEST_BILL
@@ -99,6 +107,9 @@ model RestaurantSetting {
   pickupEnabled  Boolean @default(false)
   pickupSlotMins Int     @default(15)
   pickupLeadMins Int     @default(20)
+
+  // POS P2.6 ▸ พักรับออเดอร์ออนไลน์อัตโนมัติเมื่อครัวค้าง (ต่อสถานี ≥ N ตั๋วที่ยังไม่พร้อม) · null = ปิด (R13 · มติ 10) ◂
+  autoAcceptMaxOpen Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -162,6 +173,8 @@ model MenuItem {
   archivedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+  // P1.1a: PosProduct.id ของเมนูนี้ (kind MENU · id หลวมข้ามไฟล์ schema) · null = ยังไม่ backfill / สาขาไม่มี POS
+  posProductId String?
 
   optionGroups MenuItemOptionGroup[]
   orderItems   RestaurantOrderItem[]
@@ -171,6 +184,8 @@ model MenuItem {
   @@index([unitId, categoryId, sortOrder])
   @@index([unitId, status, isOutOfStock])
   @@index([unitId, invItemId]) // V2 (WO 4.1)
+  @@index([posProductId]) // P6.1 CD-P61-P4 (index มือ §5 · no-op migration p61)
+  // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
 }
 
 model MenuOptionGroup {
@@ -282,6 +297,8 @@ model RestaurantTable {
   qrToken    String         @unique @default(cuid()) // QR ถาวร — rotate ได้
   status     TableStatus    @default(ACTIVE)
   archivedAt DateTime?
+  // POS P2.4 ▸ "ต้องเก็บโต๊ะ": เวลาที่โต๊ะว่างแต่ยังไม่ได้เก็บ (ตั้งตอนชำระครบแล้วปิดโต๊ะ · ล้างตอนกด "เก็บแล้ว"/เปิดโต๊ะใหม่) · null = สะอาด ◂
+  dirtySince DateTime?
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 
@@ -290,6 +307,28 @@ model RestaurantTable {
   @@unique([unitId, name])
   @@index([tenantId])
   @@index([unitId, zoneId])
+}
+
+// POS P2.4 ▸ โต๊ะจองแบบย่อ (มติ Q2 · R10) — ผู้เขียนเดียว = restaurant/reservation.ts (POS เรียกผ่าน facade restaurant/index.ts) ·
+//   RESERVED บนผังเมื่อ at − holdFromMinutes ≤ ตอนนี้ ≤ at + 30 นาที (pos/table-shared reservationHolds) · tableId/sessionId = id หลวม (ไม่มี FK) ◂
+model RestaurantReservation {
+  id              String                @id @default(cuid())
+  tenantId        String
+  unitId          String
+  tableId         String? // RestaurantTable.id (null = ยังไม่ระบุโต๊ะ)
+  name            String
+  phone           String?
+  partySize       Int
+  at              DateTime
+  holdFromMinutes Int                   @default(15) // กันโต๊ะก่อนเวลาจองกี่นาที
+  status          RestReservationStatus @default(BOOKED)
+  sessionId       String? // TableSession.id ที่เปิดตอนพาลูกค้านั่ง (SEATED)
+  createdByUserId String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([tenantId])
+  @@index([unitId, at])
 }
 
 // ─────────────────────── Session โต๊ะ ───────────────────────
@@ -363,6 +402,15 @@ model RestaurantOrder {
 
   placedByUserId String? // staff ที่คีย์ (null = ลูกค้าสั่งเอง)
   cancelReason   String?
+
+  // POS P2.6 ▸ ลิงก์ของรอบครัวกับแหล่งขาย (R1 · มติ 1) — partial unique ของ posSaleId/posOrderId อยู่ใน SQL ของ migration
+  //   20261208100000_pos_p26_kds (WHERE … IS NOT NULL · prisma มองไม่เห็น) ⇒ หนึ่งบิล/ออเดอร์ = หนึ่งรอบ ◂
+  posSaleId     String? // PosSale.id (บิลหน้าร้าน "ซื้อกลับ" · id หลวม)
+  posOrderId    String? // PosOrder.id (ออเดอร์ออนไลน์ · id หลวม)
+  channelCode   String? // SalesChannel.code ณ ตอนรับ
+  channelName   String? // ชื่อช่องทาง ณ ตอนรับ (ป้ายตั๋ว)
+  externalRef   String? // เลขออเดอร์แพลตฟอร์ม (≤ 40)
+  targetMinutes Int? // เป้าเวลาเตรียมของรอบ (ออนไลน์ = PosOrder.prepMinutes) · null = ตามเมนู/kdsCriticalMins
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -405,6 +453,8 @@ model RestaurantOrderItem {
   // ชำระเงิน (แยกบิลรายรายการ)
   saleId    String? // PosSale.id เมื่อรายการนี้ถูกชำระ → lock
   settledAt DateTime?
+  productId String? // P1.1a: PosProduct.id (แคตตาล็อกเดียว · id หลวม) · null = ออเดอร์เดิม
+  stockTaken Int? // POS P2.6 ▸ fix1 H1: จำนวนที่รอบครัวหักตัวนับเมนูได้จริง (void/ยกเลิกคืนเท่านี้ · null = รอบเดิม) ◂
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -417,6 +467,8 @@ model RestaurantOrderItem {
   @@index([orderId])
   @@index([unitId, menuItemId])
   @@index([saleId])
+  @@index([productId]) // P6.1 CD-P61-P4 (index มือ §5 · no-op migration p61)
+  // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
 }
 
 model RestaurantOrderItemOption {

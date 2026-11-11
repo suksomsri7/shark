@@ -1,0 +1,44 @@
+{
+ "_about": "S2.14 กรณีพิเศษของทะเบียนปุ่ม — สร้างโดย qc/states-sec.mjs --make จาก s2.1.json (อย่าแก้มือ) · __status อ่านโดย qc/sec-harness.mjs เท่านั้น",
+ "noAuth": [
+  "/login"
+ ],
+ "routes": [],
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "__afterReq": "POST /api/mobile/auth/phone/link",
+   "__body": {
+    "user": {
+     "id": "u-qc-new",
+     "email": "qc@example.com",
+     "pendingEmail": null,
+     "name": "ทดสอบ QC",
+     "phone": null
+    },
+    "memberships": [
+     {
+      "tenantId": "t1",
+      "name": "ร้านทดสอบ",
+      "role": "OWNER",
+      "branding": null
+     }
+    ]
+   },
+   "__then": {
+    "__status": 500,
+    "__body": {
+     "error": "server_error",
+     "message": "QC"
+    }
+   }
+  },
+  "POST /api/mobile/auth/sms/request": {
+   "ok": true,
+   "resendAfterSec": 1
+  },
+  "POST /api/mobile/auth/phone/link": {
+   "ok": true,
+   "phone": "+66812345678"
+  }
+ }
+}

@@ -14,10 +14,17 @@ import { AiChat } from "./AiChat";
 // ไม่แสดงระหว่าง onboarding (/app/dna) — ยังไม่ถึงเวลาแนะนำผู้ช่วย
 export function AiDock() {
   const [open, setOpen] = useState(false);
+  // POS P3.9U ▸ CD-P39U-2: ข้อความตั้งต้น (ไม่บังคับ) จาก detail.prompt ของ app:ai-open — ไม่มี detail = null (ล้างค่าที่ค้างจากครั้งก่อน) = พฤติกรรมเดิมทุกประการ ◂
+  const [seed, setSeed] = useState<{ text: string; n: number } | null>(null);
   const pathname = usePathname();
 
   useEffect(() => {
-    const onOpen = () => setOpen(true);
+    const onOpen = (e: Event) => {
+      // POS P3.9U ▸ CD-P39U-2: อ่าน detail.prompt (สตริงไม่ว่าง ≤ 4000 ตัว) — n เพิ่มทุกครั้งให้แผงที่เปิดอยู่แล้วรับข้อความใหม่ได้ ◂
+      const p = (e as CustomEvent<{ prompt?: unknown } | null>).detail?.prompt;
+      setSeed((s) => (typeof p === "string" && p.trim() ? { text: p.trim().slice(0, 4000), n: (s?.n ?? 0) + 1 } : null));
+      setOpen(true);
+    };
     window.addEventListener("app:ai-open", onOpen);
     return () => window.removeEventListener("app:ai-open", onOpen);
   }, []);
@@ -43,7 +50,7 @@ export function AiDock() {
             ✕
           </button>
         </div>
-        <AiChat />
+        <AiChat seed={seed} /* POS P3.9U ▸ CD-P39U-2 ◂ */ />
       </div>
     </div>
   );

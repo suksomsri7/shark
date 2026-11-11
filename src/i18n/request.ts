@@ -9,5 +9,7 @@ export default getRequestConfig(async () => {
   const cookieLocale = store.get(LOCALE_COOKIE)?.value;
   const locale = isLocale(cookieLocale) ? cookieLocale : defaultLocale;
   const messages = (await import(`../messages/${locale}/common.json`)).default;
-  return { locale, messages };
+  // POS P1.3 ▸ module messages: messages/<locale>/pos.json under the "pos" namespace ◂
+  const pos = (await import(`../messages/${locale}/pos.json`)).default;
+  return { locale, messages: { ...messages, pos } };
 });

@@ -110,6 +110,7 @@ model InvItem {
   @@unique([systemId, sku])
   @@index([systemId, onHand])
   @@index([tenantId])
+  @@index([tenantId, barcode]) // P6.1 CD-P61-P4 (index มือ §5 · P1.1a byBarcode · P5.3 มติ 9 · no-op migration p61)
 }
 
 // Multi-warehouse (WO-0037) — Location ต่อ system · onHand ต่อ location (cache)

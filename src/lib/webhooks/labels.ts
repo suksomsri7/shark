@@ -4,6 +4,10 @@ import { AUTOMATION_EVENTS, type AutomationEventDef } from "@/lib/automation/lab
 
 export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   ...AUTOMATION_EVENTS,
+  // SVC R0.8 ▸ `rooms.occupancy.changed` มาจาก spread ข้างบน (ประกาศที่ automation/labels.ts ที่เดียว — ห้ามซ้ำที่นี่) ◂
+  // SVC B.4 ▸ booking.created/rescheduled/cancelled/checked_in/late/started + queue.ticket.called/done มาจาก spread ข้างบน
+  //   (ประกาศที่ automation/labels.ts ที่เดียว — ห้ามซ้ำที่นี่) ◂
+  // SVC B.10 ▸ booking.paid มาจาก spread ข้างบน (ห้ามประกาศซ้ำที่นี่) ◂
   // ── บัญชี (WO 8.3 · SPEC §9.5 "แอปภายนอก/API") ────────────────────────────
   // 🔴 ทุกตัวต้องมี consumer ใน outbox-consumers.ts ด้วย ไม่งั้น event ค้าง PENDING + ฮุคไม่เคยยิง
   { value: "account.document.approved", label: "เมื่ออนุมัติเอกสารบัญชี" },
@@ -93,6 +97,10 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   { value: "crm.commission.removed", label: "เมื่อลบคอมมิชชันที่ยังไม่อนุมัติ เพราะเงินถูกยกเลิกหรือดีลถูกเปิดใหม่ (CRM)" },
   // ◂ CRM C3.3
   // CRM C3.2 ▸ `crm.quota.reached` ประกาศที่ `AUTOMATION_EVENTS` (บล็อก C3.2 · spread ข้างบน) — ร้านสมัครเว็บฮุคได้ทันที · ห้ามประกาศซ้ำที่นี่ ◂
+  // SVC R0.5 ▸ "integration.connected" / "integration.failed" (ศูนย์เชื่อมต่อ) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) ·
+  //   ห้ามประกาศซ้ำที่นี่ (ช่องติ๊ก 2 แถวต่อ event) — consumer no-op อยู่ใน outbox-consumers.ts ◂
+  // SVC R0.6 ▸ "payment.slip.submitted" / "payment.slip.approved" / "payment.slip.rejected" (ตรวจสลิปกลาง) ประกาศที่ `AUTOMATION_EVENTS`
+  //   (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ (ช่องติ๊ก 2 แถวต่อ event) — consumer no-op อยู่ใน outbox-consumers.ts ◂
   // CRM C3.9 ▸ PDPA — ประกาศที่นี่ที่เดียว (ไม่ใช่ทริกเกอร์ของตัวสร้างกฎ: `CRM_RULE_TRIGGERS` ผูกกับ AUTOMATION_EVENTS ทั้งก้อน) ·
   //   payload id ล้วน · consumer อยู่ใน outbox-consumers.ts (บล็อก C3.9) — ระบบภายนอกที่ถือสำเนาข้อมูลลูกค้าต้องรู้เพื่อลบตาม
   { value: "crm.contact.erased", label: "เมื่อผู้ติดต่อถูกลบข้อมูลส่วนบุคคลตามคำขอ PDPA (CRM)" },
@@ -115,6 +123,8 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // 🔴 ตัวนี้เกิดตอน "ระบบภายนอกส่งคำตอบของทีมเข้ามาเอง" ผ่าน /api/v1/chat/replies
   // ⇒ ระบบที่เป็นคนส่งเข้ามาเอง **ห้ามสมัครรับตัวนี้** ไม่งั้นมันจะได้ยินเสียงตัวเองแล้วแจ้งซ้ำ
   { value: "chat.message.mirrored", label: "เมื่อคัดลอกคำตอบจากระบบอื่นเข้ามา (อย่าเลือกถ้าคุณเป็นระบบนั้น)" },
+  // SVC R0.3 ▸ "settings.changed" (ค่าตั้งแบบชั้นเปลี่ยน) มาจาก spread ข้างบน (ประกาศที่ automation/labels.ts ที่เดียว —
+  //   ห้ามประกาศซ้ำที่นี่ · ช่องติ๊ก 2 แถวต่อ event · G1-A1 ผู้คุม 31 ต.ค.) ◂
 ];
 
 // event code → ป้ายไทย (สำหรับตารางการส่ง) — ไม่รู้จัก → คืน code เดิม

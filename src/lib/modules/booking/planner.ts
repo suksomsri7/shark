@@ -1,0 +1,1052 @@
+// Day planner — วางคิวทั้งวันของสาขา (pure · ไม่อ่าน DB/นาฬิกา/ค่าตั้งเอง) · ใบ B.2
+// แบบ: ledger/DESIGN-BOOKING-QUEUE.md §4.2 · สัญญา+กติกา: ledger/svc-briefs/svc-brief-b.2.md §3–§4
+// เวลาทั้งหมดเป็น epoch ms · ไม่ปัดเวลา (UI ปัดเอง) · ตัวห่อที่อ่าน DB/เขียนแคช = planner-run.ts (ใบ B.4)
+// SVC B.13 ▸ ทรัพยากร (ห้อง/เตียง/อุปกรณ์) แบบ optional — ไม่ส่ง resources / บริการไม่ประกาศชนิด ⇒ ผลเดิมของ B.2 ทุกไบต์ (FZ-4)
+//   ด่าน "ว่างไหม" = planner-resources.ts (สูตรเดียวกับทางจองในฐาน) ◂
+import { factsByKind, ResBook, uniqKinds, type GateResource } from "./planner-resources";
+import { pickGroupResources } from "./planner-group"; // SVC B.15 ▸ ห้องเดียวของกลุ่ม (สูตรเดียวกับทางจอง · G5) ◂
+
+// ───────────────────────── สัญญา ─────────────────────────
+
+export type PlanJobStatus =
+  | "PENDING" | "CONFIRMED" | "ARRIVED" | "QUEUED" | "IN_SERVICE" | "LATE" | "DONE" | "NO_SHOW" | "CANCELLED";
+
+export type PlanSettings = {
+  queueOrder: "SINGLE_LINE" | "APPOINTMENT_FIRST"; // #38 แถวเดียวตามเวลา | นัดก่อนเสมอ
+  backfill: boolean; // #39 walk-in แทรกช่องเล็ก
+  safetyBeforeBookingMin: number; // #40 เผื่อก่อนนัดถัดไป
+  graceMin: number; // #27
+  noShowAfterMin: number; // #29
+  lateAction: "RELEASE" | "HOLD"; // #28
+  priorityEnabled: boolean; // #45
+  walkInMaxWaitMin: number; // #41 ใช้ใน quoteWalkIn เท่านั้น
+  overrunExtendMin: number; // §4.2 งานเลยเวลา = ยืดถึง now + ค่านี้
+  minBreakMin: number; // #9 ระดับสาขา
+  maxJobsPerDay: number | null; // #8 ระดับสาขา · null = ไม่จำกัด
+};
+
+export type PlanStaff = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  windows: { startAt: number; endAt: number }[]; // หน้าต่างทำงานวันนี้ (หักลา/ปิดแล้ว) · [] = ไม่ทำงาน
+  services: { serviceId: string; durationMin?: number }[] | null; // null = ทำทุกบริการ
+  minBreakMin?: number;
+  maxJobsPerDay?: number | null;
+};
+
+export type PlanService = {
+  id: string;
+  name: string;
+  durationMin: number;
+  bufferAfterMin: number;
+  resourceKinds?: string[]; // SVC B.13 ▸ ชนิดที่ต้องใช้ (ไม่ส่ง/[] = ไม่ใช้ทรัพยากร) ◂
+};
+
+/** SVC B.13 ▸ ทรัพยากรของสาขา (active เท่านั้น · blocks = ช่วงปิดซ่อมที่ตัดเฉพาะวันนั้น) · rank = ลำดับจากฐาน (sortOrder, createdAt, id) ถ้ามี ◂ */
+export type PlanResource = {
+  id: string;
+  kind: string;
+  name: string;
+  sortOrder: number;
+  capacity: number; // ≥ 1
+  cleanupMin: number; // เก็บห้องหลังจบบริการ — กินทรัพยากร ไม่กินหมอ
+  blocks: { startAt: number; endAt: number }[];
+  rank?: number;
+};
+
+export type PlanJob = {
+  id: string;
+  label: string;
+  kind: "BOOKED" | "WALKIN";
+  status: PlanJobStatus;
+  serviceId: string;
+  durationMin?: number; // ระบุ = ชนะทุกชั้น
+  assignMode: "SPECIFIC" | "ANY";
+  staffId: string | null;
+  startAt: number | null; // BOOKED = เวลานัด · WALKIN = null
+  issuedAt: number;
+  checkedInAt: number | null;
+  startedAt: number | null;
+  priority: boolean;
+  policy?: { graceMin?: number; noShowAfterMin?: number; lateAction?: "RELEASE" | "HOLD" }; // snapshot ชนะ settings
+  resourceIds?: string[]; // SVC B.13 ▸ นัด = ที่ถืออยู่ในฐาน (ข้อเท็จจริง) · walk-in = ไม่ผูกมัด ◂
+  /** SVC B.15 ▸ คู่รัก/กลุ่ม: นัดที่ groupId เดียวกัน (ที่ยังถือช่อง) เริ่มพร้อมกัน · ไม่ส่ง/กลุ่มขนาด 1 ⇒ ผลเท่าไม่ส่งทุกไบต์ ◂ */
+  groupId?: string;
+};
+
+export type PlanInput = {
+  now: number; settings: PlanSettings; staff: PlanStaff[]; services: PlanService[]; jobs: PlanJob[];
+  resources?: PlanResource[];
+  /** SVC B.13 ▸ Q12: เลื่อนนัดเพราะห้องได้ไม่เกินกี่นาที (ไม่ส่ง = 60) ◂ */
+  resourceShiftMaxMin?: number;
+};
+
+export type PlanState = "IN_SERVICE" | "SCHEDULED" | "RELEASED_LATE" | "NO_SHOW_DUE" | "UNPLACED";
+export type PlanReason =
+  | "IN_SERVICE" | "IN_SERVICE_OVERRUN"
+  | "BOOKED_ON_TIME" | "BOOKED_DELAYED" | "BOOKED_MOVED_STAFF" | "BOOKED_EARLY" | "STAFF_UNAVAILABLE"
+  | "WALKIN_EARLIEST" | "WALKIN_GAP_BEFORE_BOOKING" | "WALKIN_REQUESTED_STAFF" | "LATE_ARRIVAL_AS_WALKIN"
+  | "LATE_RELEASED" | "NO_SHOW_DUE" | "NO_SLOT_TODAY" | "UNKNOWN_SERVICE"
+  | "NO_RESOURCE"; // SVC B.13 ▸ บริการต้องใช้ชนิดที่สาขาไม่มีชิ้นเลย ◂
+
+export type WhyCandidate = {
+  staffId: string;
+  verdict: "CHOSEN" | "LATER" | "NO_FIT" | "NOT_QUALIFIED" | "NOT_REQUESTED" | "MAX_JOBS";
+  earliestFitAt: number | null;
+  blockedGap: { freeAt: number; nextBookingAt: number } | null;
+};
+export type WhyInfo = { candidates: WhyCandidate[]; text: string };
+
+export type PlannedJob = {
+  jobId: string;
+  kind: "BOOKED" | "WALKIN";
+  staffId: string | null;
+  startAt: number | null;
+  endAt: number | null;
+  state: PlanState;
+  reason: PlanReason;
+  late: boolean;
+  waitMin: number | null;
+  etaPlusMinusMin: number;
+  why: WhyInfo | null;
+  overWindow: boolean; // ไม่อยู่ในหน้าต่างทำงานทั้งช่วง (นัดถูกดันเลยปิด · งานกำลังทำที่ยืด · STAFF_UNAVAILABLE)
+  resourceIds: string[]; // SVC B.13 ▸ ชิ้นที่ถือ ตามลำดับชนิด ([] = ไม่ใช้) ◂
+  resourceShort: boolean; // SVC B.13 ▸ นัดที่ผูกทรัพยากรไม่ได้ (เวลาไม่ขยับ · ร้านเห็นบนจอ B.14) ◂
+};
+export type Plan = { now: number; jobs: PlannedJob[]; line: string[] };
+
+export type WalkInQuote = {
+  staffId: string | null;
+  startAt: number | null;
+  endAt: number | null;
+  waitMin: number | null;
+  closed: boolean;
+  why: WhyInfo | null;
+  resourceIds: string[]; // SVC B.13
+  limitedBy: "NONE" | "STAFF" | "RESOURCE" | "BOTH"; // SVC B.13 ▸ §4.7 ◂
+};
+
+// ───────────────────────── ค่าคงที่ ─────────────────────────
+
+const MIN = 60_000;
+const BKK_OFFSET_MS = 7 * 60 * MIN; // ไทยไม่มี DST
+const GAP_WORTH_MENTION_MS = 10 * MIN; // ช่องสั้นกว่านี้ไม่นับว่า "ว่าง" ในกล่องทำไม (§7 ข้อ 3)
+const QUOTE_JOB_ID = "\u0000quote"; // งานสมมติของ quoteWalkIn — id ชนกับงานจริงไม่ได้
+
+// ───────────────────────── ชนิดภายใน ─────────────────────────
+
+/** ช่วงที่ช่างไม่ว่าง · booking = นับเป็นนัดในกติกาเผื่อ (นัดล็อก/BOOKED_EARLY ใช่ · walk-in/มาสาย/กำลังทำ ไม่ใช่) */
+type Slot = { jobId: string; startAt: number; endAt: number; gapAfter: number; booking: boolean };
+
+type Ctx = {
+  now: number;
+  settings: PlanSettings;
+  staff: PlanStaff[]; // เรียง sortOrder แล้ว id
+  staffById: Map<string, PlanStaff>;
+  svcById: Map<string, PlanService>;
+  timeline: Map<string, Slot[]>; // ต่อช่าง เรียง startAt เสมอ
+  doneCount: Map<string, number>;
+  kindsBy: Map<string, string[]>; // SVC B.13 ▸ ชนิดที่บริการต้องใช้ ◂
+  book: ResBook | null; // SVC B.13 ▸ null = ไม่มีบริการไหนประกาศชนิด (ทาง B.2 เดิมทุกไบต์) ◂
+};
+
+/** SVC B.13 ▸ ข้อมูลประกอบ limitedBy ของงานสมมติ (quoteWalkIn) ◂ */
+type QuoteInfo = { staffNow: boolean; resNow: boolean; missingKind: boolean };
+
+type QueueItem = { job: PlanJob; lateArrival: boolean; requested: string | null; key: [number, number, number, string] };
+
+// ───────────────────────── ตัวช่วย ─────────────────────────
+
+const cmpStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** HH:MM เวลากรุงเทพ จาก epoch ms */
+function hhmm(ms: number): string {
+  const m = (((Math.floor((ms + BKK_OFFSET_MS) / MIN)) % 1440) + 1440) % 1440;
+  return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+}
+
+/** เรียง+รวมหน้าต่างที่ซ้อน/ต่อกันพอดี · ตัดช่วงว่างเปล่า — ผลไม่ขึ้นกับลำดับที่ส่งมา */
+function mergeWindows(windows: PlanStaff["windows"]): PlanStaff["windows"] {
+  const sorted = windows.filter((w) => w.endAt > w.startAt).sort((a, b) => a.startAt - b.startAt || a.endAt - b.endAt);
+  const out: PlanStaff["windows"] = [];
+  for (const w of sorted) {
+    const last = out[out.length - 1];
+    if (last && w.startAt <= last.endAt) last.endAt = Math.max(last.endAt, w.endAt);
+    else out.push({ startAt: w.startAt, endAt: w.endAt });
+  }
+  return out;
+}
+
+function canDo(staff: PlanStaff, serviceId: string): boolean {
+  return staff.services === null || staff.services.some((s) => s.serviceId === serviceId);
+}
+
+/** นาทีบริการ: งานระบุเอง > เวลาเฉพาะช่าง > เวลาบริการ */
+function durMs(ctx: Ctx, job: PlanJob, staff: PlanStaff | undefined): number {
+  const perStaff = staff?.services?.find((s) => s.serviceId === job.serviceId)?.durationMin;
+  return (job.durationMin ?? perStaff ?? ctx.svcById.get(job.serviceId)?.durationMin ?? 0) * MIN;
+}
+
+/** ช่องหลังงาน = max(buffer หลังบริการ, พักขั้นต่ำ) — ไม่บวกกัน (§7 ข้อ 4) */
+function gapMs(ctx: Ctx, job: PlanJob, staff: PlanStaff): number {
+  const buffer = ctx.svcById.get(job.serviceId)?.bufferAfterMin ?? 0;
+  return Math.max(buffer, staff.minBreakMin ?? ctx.settings.minBreakMin) * MIN;
+}
+
+/** ค่าตั้งที่ใช้กับงานนี้ — snapshot ตอนจองชนะค่าตั้งปัจจุบัน */
+function policyOf(settings: PlanSettings, job: PlanJob) {
+  return {
+    graceMs: (job.policy?.graceMin ?? settings.graceMin) * MIN,
+    noShowMs: (job.policy?.noShowAfterMin ?? settings.noShowAfterMin) * MIN,
+    lateAction: job.policy?.lateAction ?? settings.lateAction,
+  };
+}
+
+function inWindow(staff: PlanStaff, start: number, end: number): boolean {
+  return staff.windows.some((w) => start >= w.startAt && end <= w.endAt);
+}
+
+function slotsOf(ctx: Ctx, staffId: string): Slot[] {
+  let xs = ctx.timeline.get(staffId);
+  if (!xs) {
+    xs = [];
+    ctx.timeline.set(staffId, xs);
+  }
+  return xs;
+}
+
+function occupy(ctx: Ctx, staffId: string, slot: Slot): void {
+  const xs = slotsOf(ctx, staffId);
+  let k = xs.length;
+  while (k > 0 && (xs[k - 1].startAt > slot.startAt || (xs[k - 1].startAt === slot.startAt && cmpStr(xs[k - 1].jobId, slot.jobId) > 0))) k--;
+  xs.splice(k, 0, slot);
+}
+
+function release(ctx: Ctx, staffId: string, jobId: string): void {
+  const xs = slotsOf(ctx, staffId);
+  const k = xs.findIndex((x) => x.jobId === jobId);
+  if (k >= 0) xs.splice(k, 1);
+}
+
+function atMaxJobs(ctx: Ctx, staff: PlanStaff): boolean {
+  const max = staff.maxJobsPerDay !== undefined ? staff.maxJobsPerDay : ctx.settings.maxJobsPerDay;
+  if (max === null) return false;
+  return (ctx.doneCount.get(staff.id) ?? 0) + slotsOf(ctx, staff.id).length >= max;
+}
+
+/** ลงงานยาว d (ช่องหลัง g) ที่ t บนช่างนี้ได้ไหม — กติกาเดียวกับ walk-in (ใบสั่ง §4 ข้อ 4) */
+function fitsAt(ctx: Ctx, staff: PlanStaff, slots: Slot[], t: number, d: number, g: number): boolean {
+  if (!inWindow(staff, t, t + d)) return false;
+  const safety = ctx.settings.safetyBeforeBookingMin * MIN;
+  for (const x of slots) {
+    if (x.startAt <= t) {
+      if (x.endAt + x.gapAfter > t) return false; // ยังไม่พ้นงานก่อนหน้า + ช่องหลังงาน
+    } else if (t + d + g > x.startAt - (x.booking ? safety : 0)) return false; // ชนงานถัดไป (นัด = เผื่อเพิ่ม)
+  }
+  return true;
+}
+
+/** เวลาเริ่มจริงของนัดบนช่าง: ≥ from และพ้นงานที่ค้างอยู่ + ช่องหลังงานนั้น · ไม่ทับงานที่เริ่มทีหลัง */
+function startAfterBusy(ctx: Ctx, staff: PlanStaff, from: number, d: number): number {
+  const slots = slotsOf(ctx, staff.id);
+  let start = from;
+  for (let moved = true; moved; ) {
+    moved = false;
+    for (const x of slots) {
+      const blocks = x.startAt <= start ? x.endAt + x.gapAfter > start : start + d > x.startAt;
+      if (blocks) {
+        start = x.endAt + x.gapAfter;
+        moved = true;
+      }
+    }
+  }
+  return start;
+}
+
+/** จุดลงเร็วสุด ≥ lower (ค้นต่อเนื่อง ไม่ปัด 15 นาที) · จุดที่เป็นไปได้มีแค่ lower · ต้นหน้าต่าง · จบงาน+ช่อง */
+function earliestFit(ctx: Ctx, staff: PlanStaff, d: number, g: number, lower: number): number | null {
+  const slots = slotsOf(ctx, staff.id);
+  const points = [lower];
+  for (const w of staff.windows) if (w.startAt > lower) points.push(w.startAt);
+  for (const x of slots) if (x.endAt + x.gapAfter > lower) points.push(x.endAt + x.gapAfter);
+  points.sort((a, b) => a - b);
+  for (const t of points) if (fitsAt(ctx, staff, slots, t, d, g)) return t;
+  return null;
+}
+
+// ───────────────────────── SVC B.13 ▸ ทรัพยากร ─────────────────────────
+
+/** ชนิดที่งานนี้ต้องใช้ (ไม่มีสมุด = ไม่ใช้) */
+function kindsOfJob(ctx: Ctx, job: PlanJob): string[] {
+  return ctx.book ? (ctx.kindsBy.get(job.serviceId) ?? []) : [];
+}
+
+/**
+ * จุดลงเร็วสุด ≥ lower ที่ผ่านทั้งกติกาหมอ (fitsAt) และทรัพยากรครบชนิด (§4 ข้อ 5ค) —
+ * จุดผู้สมัคร = จุดของหมอ (lower · ต้นหน้าต่าง · จบงาน+ช่อง) ∪ จุดที่ทรัพยากรเพิ่งว่าง (resPts ≥ lower)
+ */
+function earliestFitRes(
+  ctx: Ctx, staff: PlanStaff, d: number, g: number, lower: number,
+  kinds: readonly string[], fixed: ReadonlyMap<string, string>, resPts: readonly number[], prefer?: readonly string[],
+): { t: number; ids: string[] } | null {
+  const book = ctx.book!;
+  const slots = slotsOf(ctx, staff.id);
+  const points = [lower];
+  for (const w of staff.windows) if (w.startAt > lower) points.push(w.startAt);
+  for (const x of slots) if (x.endAt + x.gapAfter > lower) points.push(x.endAt + x.gapAfter);
+  for (const t of resPts) if (t > lower) points.push(t);
+  points.sort((a, b) => a - b);
+  let prev = Number.NaN;
+  for (const t of points) {
+    if (t === prev) continue;
+    prev = t;
+    if (!fitsAt(ctx, staff, slots, t, d, g)) continue;
+    const ids = book.pick(kinds, t, t + d, { fixed, prefer });
+    if (ids) return { t, ids };
+  }
+  return null;
+}
+
+/** ช่องแรก (≥ now · ยาว ≥ 10 นาที · ก่อนจุดลงได้) ที่ลงไม่ได้เพราะติดนัดถัดไป — ไว้อธิบายในกล่อง "ทำไม" */
+function blockedGapOf(ctx: Ctx, staff: PlanStaff, d: number, g: number, fitAt: number | null): WhyCandidate["blockedGap"] {
+  const slots = slotsOf(ctx, staff.id);
+  const safety = ctx.settings.safetyBeforeBookingMin * MIN;
+  for (const n of slots) {
+    if (!n.booking || n.startAt <= ctx.now) continue;
+    const win = staff.windows.find((w) => n.startAt >= w.startAt && n.startAt < w.endAt);
+    if (!win) continue;
+    let freeAt = Math.max(ctx.now, win.startAt);
+    for (const x of slots) if (x !== n && x.startAt < n.startAt) freeAt = Math.max(freeAt, x.endAt + x.gapAfter);
+    if (n.startAt - freeAt < GAP_WORTH_MENTION_MS) continue;
+    if (fitAt !== null && freeAt >= fitAt) return null;
+    if (freeAt + d + g > n.startAt - safety) return { freeAt, nextBookingAt: n.startAt };
+  }
+  return null;
+}
+
+/** ช่วงความคลาดเคลื่อน ETA ± นาที = min(30, max(5, ceil(0.15·รอ/5)·5)) · คิดเลขจำนวนเต็มกันทศนิยมเพี้ยน */
+function etaSpread(waitMin: number): number {
+  return Math.min(30, Math.max(5, Math.ceil((3 * waitMin) / 100) * 5));
+}
+
+function waitOf(ctx: Ctx, start: number): number {
+  return Math.max(0, Math.round((start - ctx.now) / MIN));
+}
+
+// ───────────────────────── แกนวางคิว ─────────────────────────
+
+function run(input: PlanInput, quoteJobId: string | null, quoteInfo?: QuoteInfo): Plan {
+  const { now, settings } = input;
+  // SVC B.13 ▸ สมุดทรัพยากรเฉพาะเมื่อมีบริการประกาศชนิด (ไม่มี ⇒ ทาง B.2 เดิมทุกไบต์ · FZ-4) ◂
+  const kindsBy = new Map(input.services.map((s) => [s.id, uniqKinds(s.resourceKinds)]));
+  const useRes = [...kindsBy.values()].some((k) => k.length > 0);
+  const resIn: GateResource[] = useRes ? (input.resources ?? []).map((r) => ({ ...r, blocks: r.blocks })) : [];
+  const staff = input.staff
+    .map((s) => ({ ...s, windows: mergeWindows(s.windows) }))
+    .sort((a, b) => a.sortOrder - b.sortOrder || cmpStr(a.id, b.id));
+  const ctx: Ctx = {
+    now,
+    settings,
+    staff,
+    staffById: new Map(staff.map((s) => [s.id, s])),
+    svcById: new Map(input.services.map((s) => [s.id, s])),
+    timeline: new Map(),
+    doneCount: new Map(),
+    kindsBy,
+    book: useRes ? new ResBook(resIn) : null,
+  };
+  const jobs = [...input.jobs].sort((a, b) => cmpStr(a.id, b.id));
+  const out = new Map<string, PlannedJob>();
+  const base = (job: PlanJob): PlannedJob => ({
+    jobId: job.id, kind: job.kind, staffId: job.staffId, startAt: null, endAt: null,
+    state: "UNPLACED", reason: "NO_SLOT_TODAY", late: false, waitMin: null, etaPlusMinusMin: 0, why: null, overWindow: false,
+    resourceIds: [], resourceShort: false,
+  });
+
+  // 1–3) แยกงาน: จบแล้ว · กำลังทำ · นัดล็อก · คิว walk-in
+  const locked: { job: PlanJob; late: boolean }[] = [];
+  const queue: QueueItem[] = [];
+  const enqueue = (job: PlanJob, lateArrival: boolean) => {
+    const requested = job.assignMode === "SPECIFIC" ? job.staffId : null;
+    const time = job.kind === "BOOKED" ? (job.checkedInAt ?? job.issuedAt) : job.issuedAt;
+    const prio = job.priority && settings.priorityEnabled ? 0 : 1;
+    queue.push({ job, lateArrival, requested, key: [prio, job.id === quoteJobId ? 1 : 0, time, job.id] });
+  };
+
+  for (const job of jobs) {
+    if (job.status === "DONE") {
+      if (job.staffId) ctx.doneCount.set(job.staffId, (ctx.doneCount.get(job.staffId) ?? 0) + 1);
+      continue;
+    }
+    if (job.status === "NO_SHOW" || job.status === "CANCELLED") continue;
+
+    if (job.status === "IN_SERVICE") {
+      // กำลังทำ: จบตามนาทีบริการ · เลยแล้ว ⇒ ยืดถึง now + overrunExtendMin
+      const s = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
+      const startedAt = job.startedAt ?? job.startAt ?? now;
+      let endAt = startedAt + durMs(ctx, job, s);
+      const overrun = endAt <= now;
+      if (overrun) endAt = now + settings.overrunExtendMin * MIN;
+      if (s) occupy(ctx, s.id, { jobId: job.id, startAt: startedAt, endAt, gapAfter: gapMs(ctx, job, s), booking: false });
+      out.set(job.id, { ...base(job), startAt: startedAt, endAt, state: "IN_SERVICE", reason: overrun ? "IN_SERVICE_OVERRUN" : "IN_SERVICE" });
+      continue;
+    }
+
+    if (!ctx.svcById.has(job.serviceId)) {
+      // บริการถูกลบ/ไม่รู้จัก — ไม่รู้เวลา จึงไม่วางและไม่กินเวลาช่าง
+      out.set(job.id, { ...base(job), reason: "UNKNOWN_SERVICE" });
+      continue;
+    }
+
+    if (job.kind === "BOOKED" && job.startAt !== null) {
+      const pol = policyOf(settings, job);
+      const arrived = job.checkedInAt !== null || job.status === "ARRIVED";
+      if (!arrived && now >= job.startAt + pol.noShowMs) {
+        out.set(job.id, { ...base(job), state: "NO_SHOW_DUE", reason: "NO_SHOW_DUE", late: true });
+      } else if (!arrived && (job.status === "LATE" || now >= job.startAt + pol.graceMs)) {
+        if (pol.lateAction === "RELEASE") out.set(job.id, { ...base(job), state: "RELEASED_LATE", reason: "LATE_RELEASED", late: true });
+        else locked.push({ job, late: true }); // HOLD = ถือช่องเดิมต่อ
+      } else if (job.checkedInAt !== null && job.checkedInAt >= job.startAt + pol.graceMs) {
+        if (pol.lateAction === "RELEASE") enqueue(job, true); // มาสายเกินผ่อนผัน ⇒ ต่อคิวแบบ walk-in
+        else locked.push({ job, late: true });
+      } else locked.push({ job, late: false });
+      continue;
+    }
+
+    enqueue(job, false); // walk-in (และนัดที่ไม่มีเวลา)
+  }
+
+  // 3) นัดล็อกเวลา — เรียงตามเวลานัด · walk-in ห้ามทำให้นัดเปลี่ยน จึงวางก่อนทั้งหมด
+  locked.sort((a, b) => a.job.startAt! - b.job.startAt! || cmpStr(a.job.id, b.job.id));
+  const pendingOn = (staffId: string, from: number) =>
+    locked.slice(from).filter((x) => x.job.staffId === staffId);
+
+  // SVC B.13 ▸ สมุดทรัพยากรของงานที่เวลาถูกกำหนด (Q1 · Q10 · ผู้คุม 31 ต.ค.) ◂
+  //   ช่วงถือ = ช่วงตามแผน [เริ่มตามแผน, +นาที) + เวลาเก็บ — นิยามเดียวกับฐาน (readHolds: plannedStartAt ?? startAt · IN_SERVICE = startedAt)
+  //   ฐานของสมุด: กำลังทำ (ข้อเท็จจริง) · นัดที่ตัววางคิวปล่อยช่อง (ฐานยังนับที่เวลานัด) · นัดที่ถูกดึงขึ้นเร็ว (pinned) ·
+  //   "จองอ่อน" ของนัดล็อกที่ถือชิ้นอยู่ (SOFT — กันนัดที่ยังไม่ผูกไปแย่ง แต่ไม่กันนัดที่มาก่อนตามลำดับเวลา)
+  const resOf = new Map<string, string[]>();
+  const shortOf = new Set<string>();
+  const jobById = new Map(jobs.map((j) => [j.id, j]));
+  const SOFT = "\u0001";
+  const isSoft = (id: string) => id.startsWith(SOFT);
+  type Pin = { ids: string[]; s: number; e: number };
+  const resetBook = (pinned: ReadonlyMap<string, Pin>) => {
+    if (!ctx.book) return;
+    const book = new ResBook(resIn);
+    ctx.book = book;
+    resOf.clear();
+    shortOf.clear();
+    for (const pj of out.values()) {
+      const job = jobById.get(pj.jobId);
+      if (!job) continue;
+      if (pj.state === "IN_SERVICE" && pj.startAt !== null && pj.endAt !== null) {
+        const kinds = kindsOfJob(ctx, job);
+        if (!kinds.length) {
+          for (const id of new Set(job.resourceIds ?? [])) if (book.get(id)) book.add(id, job.id, pj.startAt, pj.endAt);
+          continue;
+        }
+        const facts = factsByKind(book, kinds, job.resourceIds);
+        const missing = kinds.filter((k) => !facts.has(k));
+        const got = missing.length ? book.pick(missing, pj.startAt, pj.endAt) : [];
+        if (got) missing.forEach((k, i) => facts.set(k, got[i]));
+        for (const id of facts.values()) book.add(id, job.id, pj.startAt, pj.endAt);
+        if (got) resOf.set(job.id, kinds.map((k) => facts.get(k)!));
+        else shortOf.add(job.id);
+      } else if ((pj.state === "RELEASED_LATE" || pj.state === "NO_SHOW_DUE") && job.startAt !== null && job.resourceIds?.length) {
+        // ยังไม่มา · ตัววางคิวปล่อยช่อง แต่ฐานยังนับว่าถือ [เวลานัด, +นาที) จนกว่าจะ NO_SHOW/ยกเลิก ⇒ ห้ามวางงานอื่นทับเกินความจุ
+        const st = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
+        const e = job.startAt + durMs(ctx, job, st);
+        for (const id of new Set(job.resourceIds)) if (book.get(id)) book.add(id, job.id, job.startAt, e);
+      }
+    }
+    for (const [id, p] of pinned) {
+      for (const rid of p.ids) book.add(rid, id, p.s, p.e);
+      resOf.set(id, [...p.ids]);
+    }
+    for (const { job } of locked) {
+      if (pinned.has(job.id) || !job.resourceIds?.length) continue;
+      const st = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
+      const e = job.startAt! + durMs(ctx, job, st);
+      const kinds = kindsOfJob(ctx, job);
+      if (!kinds.length) {
+        // บริการไม่ประกาศชนิดแต่แถวยังถือชิ้น ⇒ ข้อเท็จจริงที่เวลานัด (ผลยังเป็น [] · §4.8)
+        for (const id of new Set(job.resourceIds)) if (book.get(id)) book.add(id, job.id, job.startAt!, e);
+        continue;
+      }
+      // ช่างไม่อยู่ในรายชื่อวันนี้ = เวลาคงที่ ⇒ แข็งตั้งแต่ต้น · อื่น = จองอ่อน (วางจริงตามลำดับเวลาใน placeLocked)
+      for (const id of factsByKind(book, kinds, job.resourceIds).values()) book.add(id, st ? SOFT + job.id : job.id, job.startAt!, e);
+    }
+  };
+
+  /**
+   * ทรัพยากรของนัดล็อกเมื่อวางที่ start (Q10): ชิ้นที่ถือว่าง ⇒ คง · ไม่ว่าง ⇒ ชิ้นอื่นชนิดเดียวกัน · ไม่มี ⇒ เลื่อนไปจุดที่ห้องว่าง
+   * (ตรวจกับงานที่วางก่อนตามลำดับเวลาเท่านั้น — นัดถัดไปของห้องจะถูกเลื่อนเมื่อถึงคิวของมัน) · เลื่อนไม่ได้ ⇒ ชิ้นเดิม + resourceShort
+   * นัดที่ยังไม่ผูก ⇒ ผูกที่เวลาเดิม (ห้ามแย่งจองอ่อนของนัดอื่น) · ผูกไม่ได้ ⇒ resourceShort เวลาไม่ขยับ (§4.5ก)
+   */
+  /** Q13: สายหมอที่มีงานถูกเลื่อนเพราะห้อง (ส่งต่อเป็นธงให้งานใช้ห้องที่ตามมา) */
+  const roomDelayedStaff = new Set<string>();
+  const roomDelayedJob = new Set<string>();
+  /** Q13: การเลื่อนงานนี้ไป t จะดันนัดถัดไปของหมอคนเดียวกัน (ที่เวลานัดเดิมจบทัน) ให้จบเลยหน้าต่างไหม */
+  const cascadePastWindow = (s: PlanStaff, later: readonly PlanJob[], t: number, d: number, g: number): boolean => {
+    let chainEnd = t + d + g;
+    for (const k of later) {
+      const dk = durMs(ctx, k, s), gk = gapMs(ctx, k, s);
+      const ks = Math.max(k.startAt!, chainEnd);
+      if (!inWindow(s, ks, ks + dk) && inWindow(s, k.startAt!, k.startAt! + dk)) return true;
+      chainEnd = ks + dk + gk;
+    }
+    return false;
+  };
+  const placeRes = (job: PlanJob, s: PlanStaff | undefined, start: number, d: number, later: readonly PlanJob[] = []): number => {
+    const book = ctx.book;
+    const kinds = kindsOfJob(ctx, job);
+    if (!book || !kinds.length) return start;
+    book.remove(SOFT + job.id);
+    book.remove(job.id);
+    const facts = factsByKind(book, kinds, job.resourceIds);
+    if (facts.size === 0) {
+      const got = book.pick(kinds, start, start + d);
+      if (got) {
+        for (const id of got) book.add(id, job.id, start, start + d);
+        resOf.set(job.id, got);
+      } else shortOf.add(job.id);
+      return start;
+    }
+    // Q12: เลื่อนได้ไม่เกินเพดาน และต้องจบในหน้าต่างงานของหมอ (ถ้าเวลาเดิมจบทัน) — ไม่งั้นคงที่เดิม + resourceShort
+    const maxShift = (input.resourceShiftMaxMin ?? 60) * MIN;
+    const okWindow = (x: number) =>
+      !s || ((!inWindow(s, start, start + d) || inWindow(s, x, x + d)) && (x === start || !cascadePastWindow(s, later, x, d, gapMs(ctx, job, s))));
+    let t = start;
+    for (let iter = 0; iter < 64; iter++) {
+      if (t - start > maxShift || !okWindow(t)) break;
+      const ids = book.pick(kinds, t, t + d, { fixed: facts, ignore: isSoft }) ?? book.pick(kinds, t, t + d, { ignore: isSoft, prefer: [...facts.values()] });
+      if (ids) {
+        for (const id of ids) book.add(id, job.id, t, t + d);
+        resOf.set(job.id, ids);
+        if (t > start && s) {
+          roomDelayedJob.add(job.id);
+          roomDelayedStaff.add(s.id);
+        }
+        return t;
+      }
+      if (!s) break;
+      const next = book.releasePoints(kinds, t).find((x) => x > t);
+      if (next === undefined) break;
+      t = startAfterBusy(ctx, s, next, d);
+    }
+    // ข้อเท็จจริงชนะ (ชิ้นเดิม ณ เวลาเดิม) · จอ B.14 เห็น resourceShort
+    for (const id of facts.values()) book.add(id, job.id, start, start + d);
+    shortOf.add(job.id);
+    return start;
+  };
+
+  const placeOne = (job: PlanJob, late: boolean, idx: number): void => {
+    const startAt = job.startAt!;
+    const s0 = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
+    const arrived = job.checkedInAt !== null || job.status === "ARRIVED";
+    const placeOn = (s: PlanStaff, start: number, reason: PlanReason) => {
+      const d = durMs(ctx, job, s);
+      const t = placeRes(job, s, start, d, pendingOn(s.id, idx + 1).map((x) => x.job)); // SVC B.13 ▸ Q10 · Q13 ◂
+      const endAt = t + d;
+      // Q12: งานที่ใช้ทรัพยากรถูกดันจนจบเลยเวลางานของหมอ (ทั้งที่เวลานัดเดิมจบทัน — เช่น งานก่อนหน้าถูกเลื่อนเพราะห้อง) ⇒ แจ้งบนจอ
+      //   Q13: เฉพาะงานที่ใช้ทรัพยากร และการเลื่อนมาจากห้องจริง (ตัวเอง หรืองานก่อนหน้าในสายหมอเดียวกัน) · เลื่อนเพราะหมอล้วน ⇒ ไม่ขึ้นธง
+      if (kindsOfJob(ctx, job).length && (roomDelayedJob.has(job.id) || roomDelayedStaff.has(s.id)) && t > startAt && inWindow(s, startAt, startAt + d) && !inWindow(s, t, endAt)) shortOf.add(job.id);
+      occupy(ctx, s.id, { jobId: job.id, startAt: t, endAt, gapAfter: gapMs(ctx, job, s), booking: true });
+      out.set(job.id, { ...base(job), staffId: s.id, startAt: t, endAt, state: "SCHEDULED", reason: t > start ? "BOOKED_DELAYED" : reason, late });
+    };
+
+    // เริ่มจริงบนช่างเดิม = max(เวลานัด, now, จบงานก่อนหน้า + ช่องหลังงาน) · ช่างเดิมไม่มีหน้าต่าง/ทำไม่ได้ = คงเวลานัด
+    const d0 = durMs(ctx, job, s0);
+    const available = !!s0 && canDo(s0, job.serviceId) && inWindow(s0, startAt, startAt + d0);
+    const start = s0 && available ? startAfterBusy(ctx, s0, Math.max(startAt, now), d0) : startAt;
+    const onTime = available && start === startAt;
+
+    // กติกา 1: ใครก็ได้ที่ยังไม่เช็กอิน + ช่างเดิมทำตรงเวลาไม่ได้ ⇒ ย้ายช่างที่รับได้ตรงเวลา · เวลาไม่เปลี่ยน
+    // ช่างใหม่ต้องผ่านกติกาเดียวกับ walk-in (หน้าต่าง · ช่องหลังงานก่อน/หลัง · เผื่อก่อนนัด · โควตา/วัน) รวมนัดของเขาที่ยังไม่วาง
+    if (!onTime && job.assignMode === "ANY" && !arrived && startAt >= now) {
+      const safety = settings.safetyBeforeBookingMin * MIN;
+      for (const s of ctx.staff) {
+        if (s === s0 || !canDo(s, job.serviceId) || atMaxJobs(ctx, s)) continue;
+        const d = durMs(ctx, job, s), g = gapMs(ctx, job, s);
+        if (!fitsAt(ctx, s, slotsOf(ctx, s.id), startAt, d, g)) continue;
+        if (pendingOn(s.id, idx + 1).some((x) => startAt + d + g > x.job.startAt! - safety)) continue;
+        placeOn(s, startAt, "BOOKED_MOVED_STAFF");
+        return;
+      }
+    }
+
+    if (!s0) {
+      // ช่างไม่อยู่ในรายชื่อวันนี้ — คงเวลานัดไว้ ไม่กินเวลาใคร
+      placeRes(job, undefined, startAt, d0);
+      out.set(job.id, { ...base(job), startAt, endAt: startAt + d0, state: "SCHEDULED", reason: "STAFF_UNAVAILABLE", late });
+      return;
+    }
+    placeOn(s0, start, !available ? "STAFF_UNAVAILABLE" : start > startAt ? "BOOKED_DELAYED" : "BOOKED_ON_TIME");
+  };
+
+  // SVC B.15 ▸ คู่รัก/กลุ่ม (§3.6): นัดล็อกที่ groupId เดียวกัน ≥ 2 แถว ⇒ เริ่มพร้อมกันที่เวลาช้าสุดที่ทุกคนลงได้ (หมอ + ห้อง) ·
+  //   กลุ่มขนาด 1 / ไม่มี groupId ⇒ ทาง B.13 เดิมทุกไบต์ (FZ-G0) · สมาชิกที่ถูกปล่อย/ไม่มา/มาสายเข้าแถว/กำลังทำ ไม่อยู่ใน locked ⇒ ไม่ถ่วง (PL-G4) ◂
+  const lockedGroups = new Map<string, number[]>();
+  locked.forEach(({ job }, idx) => {
+    if (!job.groupId) return;
+    const xs = lockedGroups.get(job.groupId);
+    if (xs) xs.push(idx);
+    else lockedGroups.set(job.groupId, [idx]);
+  });
+  for (const [g, xs] of [...lockedGroups]) if (xs.length < 2) lockedGroups.delete(g);
+
+  type GEntry = { job: PlanJob; late: boolean; idx: number; s: PlanStaff; d: number; mover: boolean };
+  /** วางสมาชิกกลุ่มทุกคนที่ T เดียวกัน (ลองใหม่เมื่อหมอ/ห้องดันเวลา) · คืน T ที่ลงตัว · ย้อนได้ด้วย undoGroupRes */
+  const undoGroupRes = (es: readonly GEntry[]) => {
+    for (const e of es) {
+      ctx.book?.remove(e.job.id);
+      shortOf.delete(e.job.id);
+      resOf.delete(e.job.id);
+    }
+  };
+  /** ขยับ T จนทุกสมาชิกว่างฝั่งหมอพร้อมกัน (เพิ่มอย่างเดียว · จุดผู้สมัคร = จบงาน+ช่อง ⇒ จบเสมอ) — G6: ไม่มีแผนซ้อนบนหมอ */
+  const staffSync = (es: readonly GEntry[], T0: number): number => {
+    let T = T0;
+    for (let moved = true; moved; ) {
+      moved = false;
+      for (const e of es) {
+        const st = startAfterBusy(ctx, e.s, T, e.d);
+        if (st > T) {
+          T = st;
+          moved = true;
+        }
+      }
+    }
+    return T;
+  };
+  /**
+   * T ร่วมของกลุ่ม (§3.6 + ruling R3 ใช้ในตัววางคิวด้วย · G5): หมอว่างพร้อมกัน → ห้อง "ชิ้นเดียวต่อชนิดทั้งกลุ่ม" (pickGroupResources ·
+   * ชิ้นที่จองไว้ก่อน) · ห้องไม่ว่าง ⇒ เลื่อนไปจุดที่ห้องเพิ่งว่าง (เพดาน resourceShiftMaxMin · ไม่ทำให้ล้นหน้าต่างหมอที่เดิมจบทัน) ·
+   * เลื่อนไม่ได้ ⇒ คงชิ้นเดิมที่จองไว้ที่ T ของหมอ + resourceShort (ห้ามแยกห้อง) · ไม่แก้ timeline (ผู้เรียก occupy)
+   */
+  const trialGroup = (es: readonly GEntry[]): number => {
+    const staffT = staffSync(es, Math.max(...es.map((e) => startAfterBusy(ctx, e.s, Math.max(e.job.startAt!, now), e.d))));
+    const book = ctx.book;
+    const rooms = es.filter((e) => kindsOfJob(ctx, e.job).length > 0);
+    if (!book || !rooms.length) return staffT;
+    for (const e of rooms) {
+      book.remove(SOFT + e.job.id);
+      book.remove(e.job.id);
+    }
+    const kinds: string[] = [];
+    for (const e of rooms) for (const k of kindsOfJob(ctx, e.job)) if (!kinds.includes(k)) kinds.push(k);
+    const maxShift = (input.resourceShiftMaxMin ?? 60) * MIN;
+    let T = staffT;
+    for (let iter = 0; iter < 64; iter++) {
+      const got = pickGroupResources(book, rooms.map((e) => ({ kinds: kindsOfJob(ctx, e.job), start: T, endService: T + e.d, prefer: e.job.resourceIds ?? [] })), isSoft);
+      if (got) {
+        rooms.forEach((e, k) => {
+          for (const id of got[k]) book.add(id, e.job.id, T, T + e.d);
+          resOf.set(e.job.id, got[k]);
+          if (T > staffT) {
+            roomDelayedJob.add(e.job.id);
+            roomDelayedStaff.add(e.s.id);
+          }
+        });
+        return T;
+      }
+      const next = book.releasePoints(kinds, T).find((x) => x > T);
+      if (next === undefined) break;
+      const T2 = staffSync(es, next);
+      // H5 (เทียบ Q12 ของ placeRes): ไม่ล้นหน้าต่างหมอที่เดิมจบทัน · ไม่ดันงานถัดไปของหมอให้จบเลยหน้าต่าง
+      if (T2 - staffT > maxShift || es.some((e) => (inWindow(e.s, staffT, staffT + e.d) && !inWindow(e.s, T2, T2 + e.d))
+        || cascadePastWindow(e.s, pendingOn(e.s.id, e.idx + 1).map((x) => x.job), T2, e.d, gapMs(ctx, e.job, e.s)))) break;
+      T = T2;
+    }
+    for (const e of rooms) {
+      for (const id of factsByKind(book, kindsOfJob(ctx, e.job), e.job.resourceIds).values()) book.add(id, e.job.id, staffT, staffT + e.d);
+      shortOf.add(e.job.id);
+    }
+    return staffT;
+  };
+  const placeGroup = (idxs: readonly number[], fixed: Set<string>): void => {
+    const members = idxs.filter((i) => !fixed.has(locked[i].job.id));
+    const solo = (xs: readonly number[]) => { for (const i of xs) placeOne(locked[i].job, locked[i].late, i); };
+    const sync: GEntry[] = [];
+    const rest: number[] = [];
+    for (const i of members) {
+      const { job, late } = locked[i];
+      const s = job.staffId ? ctx.staffById.get(job.staffId) : undefined;
+      const d = durMs(ctx, job, s);
+      if (s && canDo(s, job.serviceId) && inWindow(s, job.startAt!, job.startAt! + d)) sync.push({ job, late, idx: i, s, d, mover: false });
+      else rest.push(i);
+    }
+    if (sync.length < 2 || new Set(sync.map((e) => e.s.id)).size !== sync.length) {
+      solo(members);
+      return;
+    }
+    solo(rest);
+    const target = Math.max(...sync.map((e) => e.job.startAt!));
+    const flags = () => ({ s: new Set(roomDelayedStaff), j: new Set(roomDelayedJob) });
+    const restoreFlags = (f: { s: Set<string>; j: Set<string> }) => {
+      roomDelayedStaff.clear();
+      for (const x of f.s) roomDelayedStaff.add(x);
+      roomDelayedJob.clear();
+      for (const x of f.j) roomDelayedJob.add(x);
+    };
+    const f0 = flags();
+    let es = sync;
+    let T = trialGroup(es);
+    // กติกา 1 แบบกลุ่ม: สมาชิก "ใครก็ได้" ที่ยังไม่เช็กอินและเป็นตัวที่ทำให้ช้า ⇒ ย้ายหมอที่รับได้ตรงเวลา (ไม่ซ้ำกับสมาชิกอื่น) ถ้าทั้งกลุ่มได้ตรงเวลา
+    if (T > target && target >= now) {
+      const used = new Set(sync.map((e) => e.s.id));
+      const safety = settings.safetyBeforeBookingMin * MIN;
+      const alt: GEntry[] = [];
+      let all = true;
+      for (const e of sync) {
+        if (startAfterBusy(ctx, e.s, Math.max(e.job.startAt!, now), e.d) <= target) { alt.push(e); continue; }
+        const arrived = e.job.checkedInAt !== null || e.job.status === "ARRIVED";
+        let pick: PlanStaff | null = null;
+        if (e.job.assignMode === "ANY" && !arrived) {
+          for (const s of ctx.staff) {
+            if (used.has(s.id) || !canDo(s, e.job.serviceId) || atMaxJobs(ctx, s)) continue;
+            const d = durMs(ctx, e.job, s), g = gapMs(ctx, e.job, s);
+            if (!fitsAt(ctx, s, slotsOf(ctx, s.id), target, d, g)) continue;
+            if (pendingOn(s.id, e.idx + 1).some((x) => target + d + g > x.job.startAt! - safety)) continue;
+            pick = s;
+            break;
+          }
+        }
+        if (!pick) { all = false; break; }
+        used.add(pick.id);
+        alt.push({ ...e, s: pick, d: durMs(ctx, e.job, pick), mover: true });
+      }
+      if (all) {
+        undoGroupRes(es);
+        const f1 = flags();
+        restoreFlags(f0);
+        const T2 = trialGroup(alt);
+        if (T2 === target) {
+          es = alt;
+          T = T2;
+        } else {
+          undoGroupRes(alt);
+          restoreFlags(f1);
+          T = trialGroup(es);
+        }
+      }
+    }
+    for (const e of es) {
+      const startAt = e.job.startAt!;
+      const endAt = T + e.d;
+      if (kindsOfJob(ctx, e.job).length && (roomDelayedJob.has(e.job.id) || roomDelayedStaff.has(e.s.id)) && T > startAt && inWindow(e.s, startAt, startAt + e.d) && !inWindow(e.s, T, endAt)) shortOf.add(e.job.id);
+      // G14: ถูกดันตามกลุ่มจนจบเลยเวลางานหมอ (ทั้งที่ลำพังตัวเองจบทัน) ⇒ ขึ้นธงให้จอ B.14 เห็น (แผนไม่แยกเวลาของกลุ่ม)
+      const nat = startAfterBusy(ctx, e.s, Math.max(startAt, now), e.d);
+      if (T > Math.min(nat, Math.max(startAt, now)) && (inWindow(e.s, nat, nat + e.d) || inWindow(e.s, startAt, startAt + e.d)) && !inWindow(e.s, T, endAt)) shortOf.add(e.job.id);
+      occupy(ctx, e.s.id, { jobId: e.job.id, startAt: T, endAt, gapAfter: gapMs(ctx, e.job, e.s), booking: true });
+      const reason: PlanReason = T > startAt ? "BOOKED_DELAYED" : e.mover ? "BOOKED_MOVED_STAFF" : "BOOKED_ON_TIME";
+      out.set(e.job.id, { ...base(e.job), staffId: e.s.id, startAt: T, endAt, state: "SCHEDULED", reason, late: e.late });
+    }
+  };
+
+  const placeLocked = (fixed: Set<string>) => {
+    const doneGroups = new Set<string>();
+    locked.forEach(({ job, late }, idx) => {
+      if (fixed.has(job.id)) return;
+      const g = job.groupId ? lockedGroups.get(job.groupId) : undefined;
+      if (g) {
+        if (!doneGroups.has(job.groupId!)) {
+          doneGroups.add(job.groupId!);
+          placeGroup(g, fixed);
+        }
+        return;
+      }
+      placeOne(job, late, idx);
+    });
+  };
+  resetBook(new Map());
+  placeLocked(new Set());
+
+  /** SVC B.15 ▸ APPOINTMENT_FIRST ของกลุ่ม: มาครบ ⇒ หา T ร่วมเร็วสุด (≥ now · ก่อนเวลาเดิม) ที่ทุกคนลงได้ทั้งหมอและห้อง · ไม่ครบ/ไม่ได้ ⇒ คงเดิม ◂ */
+  const pullGroupEarly = (idxs: readonly number[], early: Set<string>): void => {
+    const ms = idxs.map((i) => {
+      const job = locked[i].job;
+      const pj = out.get(job.id);
+      const s = pj?.staffId ? ctx.staffById.get(pj.staffId) : undefined;
+      return { job, pj, s };
+    });
+    const ok = ms.every((m) => (m.job.checkedInAt !== null || m.job.status === "ARRIVED") && m.pj && m.pj.startAt !== null && m.s
+      && m.pj.reason !== "STAFF_UNAVAILABLE" && !shortOf.has(m.job.id));
+    if (!ok || new Set(ms.map((m) => m.s!.id)).size !== ms.length) return;
+    const upper = Math.min(...ms.map((m) => Math.min(m.job.startAt!, m.pj!.startAt!)));
+    if (!(upper > now)) return;
+    const es = ms.map((m) => {
+      const s = m.s!;
+      return { ...m, s, d: durMs(ctx, m.job, s), g: gapMs(ctx, m.job, s), kinds: kindsOfJob(ctx, m.job), pjs: m.pj! };
+    });
+    for (const e of es) {
+      release(ctx, e.s.id, e.job.id);
+      if (e.kinds.length && ctx.book) ctx.book.remove(e.job.id);
+    }
+    const pts = new Set<number>([now]);
+    for (const e of es) {
+      for (const w of e.s.windows) if (w.startAt > now) pts.add(w.startAt);
+      for (const x of slotsOf(ctx, e.s.id)) if (x.endAt + x.gapAfter > now) pts.add(x.endAt + x.gapAfter);
+      if (e.kinds.length && ctx.book) for (const t of ctx.book.releasePoints(e.kinds, now)) pts.add(t);
+    }
+    let chosen: { t: number; ids: Map<string, string[]> } | null = null;
+    for (const t of [...pts].sort((a, b) => a - b)) {
+      if (t >= upper) break;
+      if (!es.every((e) => fitsAt(ctx, e.s, slotsOf(ctx, e.s.id), t, e.d, e.g))) continue;
+      // ห้องเดียวของกลุ่ม (G5) — ชิ้นที่ถืออยู่ก่อน
+      const ids = new Map<string, string[]>();
+      const rm = es.filter((e) => e.kinds.length > 0);
+      if (rm.length && ctx.book) {
+        const got = pickGroupResources(ctx.book, rm.map((e) => ({ kinds: e.kinds, start: t, endService: t + e.d, prefer: resOf.get(e.job.id) ?? [] })));
+        if (!got) continue;
+        rm.forEach((e, k) => ids.set(e.job.id, got[k]));
+      }
+      chosen = { t, ids };
+      break;
+    }
+    for (const e of es) {
+      const start = chosen ? chosen.t : e.pjs.startAt!;
+      occupy(ctx, e.s.id, { jobId: e.job.id, startAt: start, endAt: start + e.d, gapAfter: e.g, booking: true });
+      if (chosen) {
+        early.add(e.job.id);
+        out.set(e.job.id, { ...e.pjs, startAt: start, endAt: start + e.d, reason: "BOOKED_EARLY" });
+        const got = chosen.ids.get(e.job.id);
+        if (got) resOf.set(e.job.id, got);
+      }
+      if (e.kinds.length && ctx.book) for (const id of resOf.get(e.job.id) ?? []) ctx.book.add(id, e.job.id, start, start + e.d);
+    }
+  };
+
+  // 3) นัดก่อนเสมอ: นัดที่มาแล้วดึงขึ้นเร็วได้บนช่างเดิม (ก่อนวาง walk-in ทุกใบ)
+  if (settings.queueOrder === "APPOINTMENT_FIRST") {
+    const early = new Set<string>();
+    const seenGroups = new Set<string>();
+    for (const { job } of locked) {
+      // SVC B.15 ▸ กลุ่ม: ดึงขึ้นเร็วเฉพาะเมื่อทุกสมาชิกที่ยังถือช่องมาถึงแล้ว และดึงพร้อมกัน (PL-G2) ◂
+      const grp = job.groupId ? lockedGroups.get(job.groupId) : undefined;
+      if (grp) {
+        if (!seenGroups.has(job.groupId!)) {
+          seenGroups.add(job.groupId!);
+          pullGroupEarly(grp, early);
+        }
+        continue;
+      }
+      const arrived = job.checkedInAt !== null || job.status === "ARRIVED";
+      const pj = out.get(job.id);
+      if (!arrived || !pj || pj.startAt === null || pj.staffId === null || pj.reason === "STAFF_UNAVAILABLE") continue;
+      const s = ctx.staffById.get(pj.staffId);
+      if (!s) continue;
+      release(ctx, s.id, job.id);
+      const d = durMs(ctx, job, s), g = gapMs(ctx, job, s);
+      // SVC B.13 ▸ ดึงขึ้นเร็วได้เมื่อมีชิ้นว่างที่เวลาใหม่ด้วย (ชิ้นเดิมก่อน) · resourceShort ⇒ ไม่ดึง ◂
+      const kinds = kindsOfJob(ctx, job);
+      let t: number | null;
+      let pulledIds: string[] | null = null;
+      if (kinds.length && ctx.book) {
+        if (shortOf.has(job.id)) t = null;
+        else {
+          ctx.book.remove(job.id);
+          const r = earliestFitRes(ctx, s, d, g, now, kinds, new Map(), ctx.book.releasePoints(kinds, now), resOf.get(job.id));
+          t = r ? r.t : null;
+          pulledIds = r ? r.ids : null;
+        }
+      } else t = earliestFit(ctx, s, d, g, now);
+      const pulled = t !== null && t < Math.min(job.startAt!, pj.startAt);
+      const start = pulled ? t! : pj.startAt;
+      occupy(ctx, s.id, { jobId: job.id, startAt: start, endAt: start + d, gapAfter: g, booking: true });
+      if (pulled) {
+        early.add(job.id);
+        out.set(job.id, { ...pj, startAt: start, endAt: start + d, reason: "BOOKED_EARLY" });
+        if (pulledIds) resOf.set(job.id, pulledIds);
+      }
+      if (kinds.length && ctx.book && !shortOf.has(job.id)) for (const id of resOf.get(job.id) ?? []) ctx.book.add(id, job.id, start, start + d);
+    }
+    // ช่องเดิมของนัดที่ถูกดึงว่างแล้ว ⇒ วางนัดที่เหลือใหม่ (นัดที่ถูกดันเพราะช่องนั้นจะได้กลับมาตรงเวลา)
+    if (early.size > 0) {
+      const pins = new Map<string, Pin>();
+      for (const id of early) {
+        const pj = out.get(id)!;
+        pins.set(id, { ids: resOf.get(id) ?? [], s: pj.startAt!, e: pj.endAt! });
+      }
+      for (const { job } of locked) {
+        if (early.has(job.id)) continue;
+        const sid = out.get(job.id)?.staffId;
+        if (sid) release(ctx, sid, job.id);
+      }
+      resetBook(pins);
+      placeLocked(early);
+    }
+  }
+
+  // 4) walk-in ทีละใบตามลำดับ · ใบก่อนวางก่อนแล้วไม่ถูกขยับ
+  queue.sort((a, b) =>
+    a.key[0] - b.key[0] || a.key[1] - b.key[1] || a.key[2] - b.key[2] || cmpStr(a.key[3], b.key[3]));
+  let boundAny = -Infinity; // backfill ปิด: ห้ามเริ่มก่อนใบก่อนที่เป็น "ใครก็ได้"
+  const boundByStaff = new Map<string, number>(); // …หรือที่ขอช่างคนเดียวกัน
+
+  for (const item of queue) {
+    const { job, lateArrival, requested } = item;
+    const candidates: WhyCandidate[] = [];
+    let chosen: { s: PlanStaff; t: number; d: number; g: number; cand: WhyCandidate; ids: string[] } | null = null;
+    // SVC B.13 ▸ ต้องว่างทั้งหมอและทรัพยากร · นัดที่เข้าแถว (มาสาย) ใช้ชิ้นที่ถืออยู่ (ข้อเท็จจริง) · walk-in เลือกใหม่ได้ ◂
+    const kinds = kindsOfJob(ctx, job);
+    const book = kinds.length ? ctx.book : null;
+    const missingKind = !!book && kinds.some((k) => !book.hasKind(k));
+    // Q1 (ข): แถวที่เข้าแถวใหม่ (มาสาย/ถูกข้าม) ไม่ผูกชิ้นเดิมตายตัว — เลือกชิ้นว่างแบบ walk-in (ชิ้นเดิมก่อนถ้าว่าง)
+    const fixed = new Map<string, string>();
+    const prefer = job.kind === "BOOKED" ? job.resourceIds : undefined;
+    const resPts = book && !missingKind ? book.releasePoints(kinds, now) : [];
+    if (job.id === quoteJobId && quoteInfo) {
+      quoteInfo.missingKind = missingKind;
+      const sd = (ctx.svcById.get(job.serviceId)?.durationMin ?? 0) * MIN;
+      quoteInfo.resNow = !book || (!missingKind && book.pick(kinds, now, now + sd) !== null);
+      quoteInfo.staffNow = !!book && ctx.staff.some((s) =>
+        (requested === null || s.id === requested) && canDo(s, job.serviceId) && !atMaxJobs(ctx, s)
+        && (settings.backfill ? now : Math.max(now, boundAny, boundByStaff.get(s.id) ?? -Infinity)) === now
+        && fitsAt(ctx, s, slotsOf(ctx, s.id), now, durMs(ctx, job, s), gapMs(ctx, job, s)));
+    }
+    if (missingKind) {
+      out.set(job.id, { ...base(job), staffId: requested, late: lateArrival, reason: "NO_RESOURCE" });
+      continue;
+    }
+
+    for (const s of ctx.staff) {
+      const cand: WhyCandidate = { staffId: s.id, verdict: "NO_FIT", earliestFitAt: null, blockedGap: null };
+      candidates.push(cand);
+      if (requested !== null && s.id !== requested) cand.verdict = "NOT_REQUESTED";
+      else if (!canDo(s, job.serviceId)) cand.verdict = "NOT_QUALIFIED";
+      else if (atMaxJobs(ctx, s)) cand.verdict = "MAX_JOBS";
+      else {
+        const d = durMs(ctx, job, s), g = gapMs(ctx, job, s);
+        const lower = settings.backfill ? now : Math.max(now, boundAny, boundByStaff.get(s.id) ?? -Infinity);
+        let t: number | null;
+        let ids: string[] = [];
+        if (book) {
+          const r = earliestFitRes(ctx, s, d, g, lower, kinds, fixed, resPts, prefer);
+          t = r ? r.t : null;
+          ids = r ? r.ids : [];
+        } else t = earliestFit(ctx, s, d, g, lower);
+        cand.earliestFitAt = t;
+        cand.blockedGap = blockedGapOf(ctx, s, d, g, t);
+        if (t !== null) {
+          cand.verdict = "LATER";
+          if (!chosen || t < chosen.t) chosen = { s, t, d, g, cand, ids }; // เท่ากัน = คนแรกตาม sortOrder/id
+        }
+      }
+    }
+
+    if (!chosen) {
+      out.set(job.id, { ...base(job), staffId: requested, late: lateArrival });
+      continue;
+    }
+    chosen.cand.verdict = "CHOSEN";
+    const { s, t, d, g } = chosen;
+    const next = slotsOf(ctx, s.id).find((x) => x.startAt > t);
+    occupy(ctx, s.id, { jobId: job.id, startAt: t, endAt: t + d, gapAfter: g, booking: false });
+    if (book) {
+      for (const id of chosen.ids) book.add(id, job.id, t, t + d);
+      resOf.set(job.id, chosen.ids);
+    }
+    if (requested === null) boundAny = Math.max(boundAny, t);
+    else boundByStaff.set(requested, Math.max(boundByStaff.get(requested) ?? -Infinity, t));
+
+    const reason: PlanReason = lateArrival ? "LATE_ARRIVAL_AS_WALKIN"
+      : requested !== null ? "WALKIN_REQUESTED_STAFF"
+      : next?.booking ? "WALKIN_GAP_BEFORE_BOOKING"
+      : "WALKIN_EARLIEST";
+    out.set(job.id, {
+      ...base(job), staffId: s.id, startAt: t, endAt: t + d, state: "SCHEDULED", reason, late: lateArrival,
+      why: { candidates, text: whyText(ctx, candidates) },
+    });
+  }
+
+  // SVC B.13 ▸ ผลทรัพยากรต่องาน ◂
+  for (const pj of out.values()) {
+    if (pj.state !== "SCHEDULED" && pj.state !== "IN_SERVICE") continue;
+    const ids = resOf.get(pj.jobId);
+    if (ids) pj.resourceIds = [...ids];
+    if (shortOf.has(pj.jobId)) pj.resourceShort = true;
+  }
+
+  // 6) ETA · 7) line
+  for (const pj of out.values()) {
+    const s = pj.staffId ? ctx.staffById.get(pj.staffId) : undefined;
+    if (s && pj.startAt !== null && pj.endAt !== null && (pj.state === "SCHEDULED" || pj.state === "IN_SERVICE")) {
+      pj.overWindow = !inWindow(s, pj.startAt, pj.endAt);
+    }
+    if (pj.state !== "SCHEDULED" || pj.startAt === null) continue;
+    pj.waitMin = waitOf(ctx, pj.startAt);
+    const fuzzy = pj.kind === "WALKIN" || pj.reason === "LATE_ARRIVAL_AS_WALKIN" || pj.reason === "BOOKED_DELAYED";
+    pj.etaPlusMinusMin = fuzzy ? etaSpread(pj.waitMin) : 0;
+  }
+  const issuedOf = new Map(jobs.map((j) => [j.id, j.issuedAt]));
+  const planned = [...out.values()].sort((a, b) => cmpStr(a.jobId, b.jobId));
+  const line = planned
+    .filter((pj) => pj.state === "SCHEDULED")
+    .sort((a, b) =>
+      a.startAt! - b.startAt! ||
+      (a.kind === b.kind ? 0 : a.kind === "BOOKED" ? -1 : 1) ||
+      issuedOf.get(a.jobId)! - issuedOf.get(b.jobId)! ||
+      cmpStr(a.jobId, b.jobId))
+    .map((pj) => pj.jobId);
+
+  return { now, jobs: planned, line };
+}
+
+/** ข้อความกล่อง "ทำไม" — ข้ามช่างที่ไม่เข้าเกณฑ์ (ทำไม่ได้/ไม่ได้ขอ/เต็มโควตา) */
+function whyText(ctx: Ctx, candidates: WhyCandidate[]): string {
+  const parts: string[] = [];
+  for (const c of candidates) {
+    const name = ctx.staffById.get(c.staffId)?.name ?? c.staffId;
+    if (c.verdict === "CHOSEN") parts.push(`${name}เร็วสุด ${hhmm(c.earliestFitAt!)}`);
+    else if (c.verdict === "LATER" || c.verdict === "NO_FIT") {
+      if (c.blockedGap) parts.push(`${name}ว่าง ${hhmm(c.blockedGap.freeAt)} แต่มีนัด ${hhmm(c.blockedGap.nextBookingAt)}`);
+      else if (c.earliestFitAt !== null) parts.push(`${name}ว่าง ${hhmm(c.earliestFitAt)}`);
+      else parts.push(`${name}ไม่ว่างวันนี้`);
+    }
+  }
+  return parts.join(" · ");
+}
+
+// ───────────────────────── ทางเข้า ─────────────────────────
+
+/** วางคิวทั้งวัน: งานกำลังทำ · นัด · walk-in → ช่าง/เวลา/เหตุผล/ETA + แถวรอ */
+export function planDay(input: PlanInput): Plan {
+  return run(input, null);
+}
+
+/** ถามราคาเวลารอ (ตู้/พนักงาน): วาง walk-in สมมติต่อท้ายลำดับ (เว้นแต่สิทธิ์ก่อน) โดยไม่แตะงานอื่น */
+export function quoteWalkIn(
+  input: PlanInput,
+  req: { serviceId: string; staffId?: string | null; priority?: boolean },
+): WalkInQuote {
+  const requested = req.staffId ?? null;
+  const ghost: PlanJob = {
+    id: QUOTE_JOB_ID, label: "", kind: "WALKIN", status: "QUEUED", serviceId: req.serviceId,
+    assignMode: requested ? "SPECIFIC" : "ANY", staffId: requested, startAt: null, issuedAt: input.now,
+    checkedInAt: null, startedAt: null, priority: req.priority ?? false,
+  };
+  const info: QuoteInfo = { staffNow: false, resNow: true, missingKind: false };
+  const pj = run({ ...input, jobs: [...input.jobs, ghost] }, QUOTE_JOB_ID, info).jobs.find((j) => j.jobId === QUOTE_JOB_ID);
+  const startAt = pj?.startAt ?? null;
+  const waitMin = pj?.waitMin ?? null;
+  // SVC B.13 ▸ §4.7: ได้ทันที ⇒ NONE · ชนิดไม่มีชิ้นเลย ⇒ RESOURCE · หมอว่างทันทีแต่ไม่ได้ทันที ⇒ RESOURCE · หมอไม่ว่าง ⇒ STAFF (ห้องว่าง) / BOTH ◂
+  const limitedBy: WalkInQuote["limitedBy"] =
+    startAt !== null && startAt === input.now ? "NONE"
+      : info.missingKind ? "RESOURCE"
+        : info.staffNow ? "RESOURCE"
+          : info.resNow ? "STAFF" : "BOTH";
+  return {
+    staffId: startAt === null ? requested : (pj?.staffId ?? null),
+    startAt,
+    endAt: pj?.endAt ?? null,
+    waitMin,
+    closed: startAt === null || (waitMin !== null && waitMin > input.settings.walkInMaxWaitMin),
+    why: pj?.why ?? null,
+    resourceIds: startAt === null ? [] : [...(pj?.resourceIds ?? [])],
+    limitedBy,
+  };
+}

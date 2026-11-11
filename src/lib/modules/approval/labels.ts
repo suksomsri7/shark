@@ -20,6 +20,16 @@ export const ENTITY_TYPES = [
   { value: "crm.commission", label: "จ่ายคอมมิชชันการขาย (CRM)" },
   { value: "crm.reassign", label: "โอนดีล/ผู้ติดต่อให้ผู้ดูแลคนใหม่ (CRM)" },
   { value: "crm.portal_request", label: "คำขอจากพอร์ทัลลูกค้า (CRM)" },
+  // POS P1.15 ▸ ยกเลิกบิล / คืนเงิน / ส่วนลดเกินสิทธิ์ที่หน้าขาย — ผลอยู่ที่ pos/pos-approval-consumer.ts (มติผู้คุมงาน 8) ◂
+  { value: "POS_VOID", label: "ยกเลิกบิล (POS)" },
+  { value: "POS_REFUND", label: "คืนเงิน (POS)" },
+  { value: "POS_DISCOUNT_OVER", label: "ส่วนลดเกินสิทธิ์ (POS)" },
+  // SVC R0.3 ▸ ข้ามคำเตือนกฎหมายในค่าตั้ง (โหมด WARN) — ผลอยู่ที่ approval-effects.ts (core/settings) ◂
+  { value: "settings.legal_override", label: "ข้ามคำเตือนกฎหมายในค่าตั้ง" },
+  // SVC D.5 ▸ ข้ามคำเตือนกฎหมาย (ประกัน + ล่วงหน้า) ในสัญญาเช่าหอ — ไม่มีผลใน approval-effects (สัญญาอ่านสถานะคำขอสดตอนลงชื่อ/เข้าอยู่) ◂
+  { value: "dorm.lease.legal_override", label: "ข้ามคำเตือนกฎหมายในสัญญาเช่า" },
+  { value: "dorm.latefee.waive", label: "ยกเว้นค่าปรับจ่ายช้า (หอพัก)" }, // SVC D.11 ▸ ผลอยู่ที่ approval-effects.ts → dorm.applyLateFeeWaiverApproval ◂
+  { value: "dorm.moveout.deduction", label: "หักเงินประกันเกินวงเงิน (หอพัก)" }, // SVC D.12 ▸ ไม่มีผล — ปิดประกันอ่านสถานะสด ◂
 ] as const;
 
 export const APPROVER_ROLES = [

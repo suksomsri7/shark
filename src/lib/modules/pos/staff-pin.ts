@@ -1,0 +1,627 @@
+// staff-pin.ts — PIN พนักงานต่อสาขา · โทเคนผู้ขายบนเครื่อง · รายชื่อพนักงานของจอล็อก (POS P1.15 · R1 R2 R8 · CD1 CD2)
+// สัญญา = scripts/qc-pos-p1.15.mts (PN0–PN8 · TK1–TK5) · brief ledger/pos-briefs/pos-brief-P1.15.md · ตารางชื่อ ledger/wo-notes/pos-P1.15-oracle.md
+//
+// 🔴 ผู้เขียนตาราง PosStaffPin ที่เดียว · ไม่ใช่ไฟล์ "use server" (action อยู่ที่ staff-pin-actions.ts)
+// 🔴 ไม่เก็บ PIN ดิบ: pinHash = "<salt 16 ไบต์ hex>:<scrypt(pin, salt) hex>" (พารามิเตอร์ปริยายของ node) · ไม่มีการสุ่มด้วย Math
+//    ทางรับคำขอใช้ scrypt แบบ async เท่านั้น (fix รอบ 1 F6 — ไม่บล็อก event loop) · ตัวแบบ sync มีไว้ให้สคริปต์เท่านั้น
+// 🔴 log ขัดข้องพิมพ์แค่ชื่อ/รหัสของ error (ไม่พิมพ์อาร์กิวเมนต์ที่อาจมี pinHash/salt)
+// 🔴 PIN ซ้ำในสาขาเดียวกันไม่ได้ (PIN_TAKEN) ⇒ ใส่ PIN แบบไม่ระบุคนจับได้ไม่เกิน 1 แถว · คำปฏิเสธไม่บอกว่าเป็นของใคร
+// 🔴 ผิดติดกัน 5 ครั้ง (นับเฉพาะเมื่อระบุ userId — มติผู้คุมงาน 1) ⇒ lockedUntil = ตอนนี้ + 15 นาที · ผู้จัดการปลดได้ (unlockStaffPin)
+//    ไม่ระบุคน = จับทุกแถวของสาขาและไม่นับให้ใคร (ด่านกันเดาแบบต่อเครื่อง = งานตามหลัง)
+// 🔴 โทเคนผู้ขาย = HMAC-SHA256 ไร้สถานะ (CD2): body = base64url({u, e, v}) · ลายเซ็นครอบ (ร้าน · สาขา · เครื่อง · body) ด้วย SESSION_SECRET ·
+//    อายุ 12 ชม. · v = รุ่นของ PIN (แฮชของ pinHash — เปลี่ยนเฉพาะตอนตั้ง PIN ใหม่ ⇒ โทเคนเก่าตาย) ·
+//    คนในโทเคนต้องยังมี pos.sale.create ที่สาขานั้น ณ ตอนใช้ · เครื่องถูกเพิกถอน = โทเคนตาย
+//    (ไม่ใช้ updatedAt ของแถวเป็นรุ่น: ตัวนับผิด/ปลดล็อกก็ขยับ updatedAt ⇒ คนอื่นกด PIN ผิดแล้วพนักงานที่ใช้งานอยู่หลุด)
+// 🔴 คำปฏิเสธ "คืน" {ok:false, code, message ไทย} — ไม่ throw (ขัดข้องที่ไม่คาดคิด = INTERNAL)
+import { createHash, createHmac, randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { writeAudit } from "@/lib/core/audit";
+import { canAccessUnit, canAssignRole, evaluate } from "@/lib/core/rbac";
+import { prisma } from "./db";
+import { isPosDeviceCode, posDeviceRevoked } from "./device";
+import {
+  STAFF_PIN_DEVICE_THROTTLE_AFTER,
+  STAFF_PIN_DEVICE_THROTTLE_MS,
+  STAFF_PIN_UNIT_THROTTLE_AFTER,
+  STAFF_PIN_LOCK_AFTER,
+  STAFF_PIN_LOCK_MS,
+  STAFF_PIN_RE,
+  STAFF_TOKEN_TTL_MS,
+  type ListStaffForDeviceResult,
+  type RegisterActor,
+  type RegisterRefusal,
+  type RegisterRefusalCode,
+  type RegisterRole,
+  type StaffListItem,
+  type StaffPinOk,
+  type VerifyStaffPinOk,
+} from "./register-shared";
+import { posScheduleGate } from "./settings-shared"; // POS P3.5 ▸ R3 ด่านตารางงาน (ตัวอ่านเดียว) ◂
+import type { HrScheduleItem } from "./hr-link"; // POS P3.5 ▸ fix2 F3: ชนิดของตะเข็บทดสอบ opts.hrItem (type-only) ◂
+/** POS P3.5 ▸ fix2 F3: ตัวเลือกฝั่งเซิร์ฟเวอร์ของ verifyStaffPin — now (CD-2) · hrItem = ตัวอ่านสถานะ HR แทนของจริง (ข้อสอบ · คำขอจากเครื่องส่งไม่ได้) ◂ */
+export type VerifyStaffPinOpts = { now?: Date; hrItem?: (tenantId: string, userId: string, at: Date) => Promise<HrScheduleItem | null> };
+
+type Db = PrismaClient;
+/** ขอบเขตของคำขอ (ctx ของหน้าขาย — deviceId ไม่บังคับ) */
+export type StaffPinCtx = { tenantId: string; systemId: string; unitId: string; deviceId?: string };
+type UnitScope = { tenantId: string; systemId: string; unitId: string };
+
+const WEAK_PINS: ReadonlySet<string> = new Set(["0000", "1234", "1111", "123456", "000000"]);
+const HASH_BYTES = 32;
+const TOKEN_MAX = 1_000;
+const STAFF_PERMISSION = "pos.sale.create";
+const MANAGE_PERMISSION = "pos.staff.manage";
+
+const MSG: Partial<Record<RegisterRefusalCode, string>> = {
+  NOT_FOUND: "ไม่พบสาขานี้ หรือพนักงานคนนี้ขายที่สาขานี้ไม่ได้",
+  PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์จัดการ PIN ของพนักงานคนอื่น — ให้ผู้จัดการทำรายการ",
+  VALIDATION: "PIN ต้องเป็นตัวเลข 4–6 หลัก",
+  WEAK_PIN: "PIN นี้เดาง่ายเกินไป — เลือก PIN อื่น",
+  PIN_TAKEN: "PIN นี้มีคนในสาขาใช้อยู่แล้ว — เลือก PIN อื่น",
+  PIN_INVALID: "PIN ไม่ถูกต้อง",
+  PIN_LOCKED: "PIN นี้ถูกล็อกชั่วคราวเพราะใส่ผิดหลายครั้ง — ให้ผู้จัดการปลดล็อก หรือรอ 15 นาที",
+  PIN_THROTTLED: "ลองผิดหลายครั้ง — รอ 15 นาทีแล้วลองใหม่", // POS P1.18 ▸ K1 ◂
+  DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — ใช้งานไม่ได้ ติดต่อผู้จัดการ",
+  INTERNAL: "ระบบ PIN ขัดข้องชั่วคราว — ลองอีกครั้ง",
+};
+const refuse = (code: RegisterRefusalCode, message?: string): RegisterRefusal => ({ ok: false, code, message: message ?? MSG[code] ?? "ทำรายการไม่ได้" });
+const isRefusal = (v: unknown): v is RegisterRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200 && !v.includes("\u0000");
+
+async function guard<T>(name: string, body: () => Promise<T>): Promise<T | RegisterRefusal> {
+  try {
+    return await body();
+  } catch (e) {
+    logSafe(name, e);
+    return refuse("INTERNAL");
+  }
+}
+
+function actorOf(a: unknown): RegisterActor | null {
+  if (!isRecord(a) || !isId(a.userId)) return null;
+  if (a.role !== "OWNER" && a.role !== "MANAGER" && a.role !== "STAFF") return null;
+  if (!Array.isArray(a.unitAccess) || !a.unitAccess.every((x) => typeof x === "string")) return null;
+  if (!isRecord(a.permissions)) return null;
+  return { userId: a.userId, role: a.role, unitAccess: [...(a.unitAccess as string[])], permissions: a.permissions };
+}
+/**
+ * POS P5.2 ▸ fix B (F2 · X5): ลำดับชั้นของ PIN คนอื่น — ตั้ง/ปลดล็อกได้เฉพาะบทบาทที่ไม่สูงกว่าตัวเอง (rbac.canAssignRole) ·
+ * PIN ของ OWNER = OWNER เท่านั้น (MANAGER/หัวหน้ากะ STAFF+pos.staff.manage ยึดตัวตนผู้มีอำนาจกว่าผ่าน PIN ผู้จัดการไม่ได้) ◂
+ */
+const pinRankOk = (a: RegisterActor, target: RegisterActor) =>
+  canAssignRole(a.role, target.role) && (target.role !== "OWNER" || a.role === "OWNER");
+const canSellAt = (a: RegisterActor, unitId: string) => canAccessUnit(a, unitId) && evaluate(a, { module: "pos", action: STAFF_PERMISSION, unitId });
+
+/** ขอบเขต: ระบบ POS ที่เปิดใช้ของร้านนี้ · สาขาผูกระบบนี้ · สาขาไม่เก็บถาวร — อื่น = NOT_FOUND */
+async function unitScope(db: Db, ctx: unknown): Promise<UnitScope | RegisterRefusal> {
+  if (!isRecord(ctx) || !isId(ctx.tenantId) || !isId(ctx.systemId) || !isId(ctx.unitId)) return refuse("NOT_FOUND");
+  const { tenantId, systemId, unitId } = ctx as UnitScope;
+  const [sys, link, unit] = await Promise.all([
+    db.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS", active: true }, select: { id: true } }),
+    db.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId, unitId, type: "POS" } }, select: { systemId: true } }),
+    db.businessUnit.findFirst({ where: { id: unitId, tenantId, status: { not: "ARCHIVED" } }, select: { id: true } }),
+  ]);
+  if (!sys || !link || link.systemId !== systemId || !unit) return refuse("NOT_FOUND");
+  return { tenantId, systemId, unitId };
+}
+
+// ═══════════ สมาชิกของร้าน → ผู้กระทำ (RegisterActor) ═══════════
+type MemberRow = { userId: string; role: string; unitAccess: unknown; permissions: unknown };
+function memberToActor(m: MemberRow): RegisterActor | null {
+  const unitAccess = Array.isArray(m.unitAccess) ? m.unitAccess.filter((x): x is string => typeof x === "string") : [];
+  const permissions = isRecord(m.permissions) ? m.permissions : {};
+  return actorOf({ userId: m.userId, role: m.role, unitAccess, permissions });
+}
+/**
+ * สิทธิ์ปัจจุบันของผู้ใช้ในร้าน (membership ที่ตอบรับแล้วเท่านั้น — แบบ core/context) · ไม่ใช่สมาชิก = null
+ * ใช้กับคนในโทเคน / ผู้จัดการที่ใส่ PIN (สิทธิ์อ่านสดจาก DB ทุกครั้ง ไม่เชื่อค่าจากคำขอ)
+ */
+export async function posMemberActor(tenantId: string, userId: string, client?: Db): Promise<RegisterActor | null> {
+  if (!isId(tenantId) || !isId(userId)) return null;
+  const db = client ?? prisma;
+  const m = await db.membership.findFirst({ where: { tenantId, userId, acceptedAt: { not: null } }, select: { userId: true, role: true, unitAccess: true, permissions: true } });
+  return m ? memberToActor(m) : null;
+}
+
+// ═══════════ hash ═══════════
+const scryptAsync = promisify(scrypt) as (pin: string, salt: Buffer, len: number) => Promise<Buffer>;
+async function hashPin(pin: string): Promise<string> {
+  const salt = randomBytes(16);
+  return `${salt.toString("hex")}:${(await scryptAsync(pin, salt, HASH_BYTES)).toString("hex")}`;
+}
+async function pinMatches(pin: string, stored: string): Promise<boolean> {
+  const m = /^([0-9a-f]{32}):([0-9a-f]{32,256})$/.exec(stored);
+  if (!m || m[2]!.length % 2) return false;
+  const want = Buffer.from(m[2]!, "hex");
+  const got = await scryptAsync(pin, Buffer.from(m[1]!, "hex"), want.length);
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+/**
+ * แบบ sync สำหรับสคริปต์ (seed/ซ่อมข้อมูล) เท่านั้น — ห้ามเรียกจากทางรับคำขอ (fix รอบ 1 F6) · รูปแบบเดียวกับ hashPin
+ */
+export function hashStaffPinForScript(pin: string): string {
+  const salt = randomBytes(16);
+  return `${salt.toString("hex")}:${scryptSync(pin, salt, HASH_BYTES).toString("hex")}`;
+}
+/** log ขัดข้องแบบไม่มีข้อมูลลับ: ชื่อ + รหัสของ error เท่านั้น */
+function logSafe(where: string, e: unknown): void {
+  const o = (e ?? {}) as { name?: unknown; code?: unknown };
+  console.error(`[pos/staff-pin] ${where} INTERNAL ${typeof o.name === "string" ? o.name : "Error"}${typeof o.code === "string" ? ` ${o.code}` : ""}`);
+}
+/** รุ่นของ PIN ในโทเคน — เปลี่ยนทุกครั้งที่ตั้ง PIN ใหม่ (salt ใหม่) · ไม่เปิดเผย hash */
+const pinVersionOf = (pinHash: string) => createHash("sha256").update(`pos-staff-pin-version:${pinHash}`).digest("base64url").slice(0, 16);
+
+// ═══════════ ตั้ง PIN (R1) ═══════════
+/**
+ * ตั้ง/เปลี่ยน PIN — ตัวเอง (ต้องมี pos.sale.create ที่สาขานี้) หรือผู้ที่มี pos.staff.manage (OWNER/MANAGER) ตั้งให้คนในสาขา ·
+ * ผู้ถูกตั้งต้องขายที่สาขานี้ได้ · ตั้งซ้ำ = แทนแถวเดิม (salt ใหม่ · ล้างตัวนับ/ล็อก ⇒ โทเคนเก่าของคนนั้นตาย)
+ */
+export async function setStaffPin(ctx: StaffPinCtx, actor: RegisterActor, input: { userId: string; pin: string }, client?: Db): Promise<StaffPinOk | RegisterRefusal> {
+  return guard("setStaffPin", async (): Promise<StaffPinOk | RegisterRefusal> => {
+    const db = client ?? prisma;
+    const s = await unitScope(db, ctx);
+    if (isRefusal(s)) return s;
+    const a = actorOf(actor);
+    if (!a) return refuse("PERMISSION_DENIED");
+    if (!isRecord(input) || !isId(input.userId)) return refuse("VALIDATION", "ข้อมูลที่ส่งมาไม่ถูกต้อง");
+    const userId = input.userId;
+    const self = userId === a.userId;
+    const allowed = self ? canSellAt(a, s.unitId) : canAccessUnit(a, s.unitId) && evaluate(a, { module: "pos", action: MANAGE_PERMISSION, unitId: s.unitId });
+    if (!allowed) return refuse("PERMISSION_DENIED", self ? "บัญชีนี้ยังขายที่สาขานี้ไม่ได้ — ตั้ง PIN ไม่ได้" : undefined);
+    const pin = input.pin;
+    if (typeof pin !== "string" || !STAFF_PIN_RE.test(pin)) return refuse("VALIDATION");
+    if (WEAK_PINS.has(pin)) return refuse("WEAK_PIN");
+    const target = self ? a : await posMemberActor(s.tenantId, userId, db);
+    if (!target || !canSellAt(target, s.unitId)) return refuse("NOT_FOUND", "พนักงานคนนี้ยังขายที่สาขานี้ไม่ได้ — ให้สิทธิ์ขายก่อนตั้ง PIN");
+    if (!self && !pinRankOk(a, target)) return refuse("PERMISSION_DENIED", "ตั้ง PIN ให้ผู้ที่มีบทบาทสูงกว่าคุณไม่ได้"); // POS P5.2 ▸ fix B ◂
+    // CD1 + R2: PIN ซ้ำในสาขาเดียวกันไม่ได้ (เทียบกับทุกแถวของสาขายกเว้นแถวของคนนี้เอง) — ข้อความไม่บอกว่าเป็นของใคร
+    // POS P1.18 ▸ K2 (มติ 1 · ทางสำรอง): คงความไม่ซ้ำต่อสาขา (จอ PIN แบบไม่ระบุคนต้องจับได้ไม่เกิน 1 แถว) แต่ปฏิเสธด้วย
+    //   {code, message} เดียวกับ PIN อ่อนทุกตัวอักษร ⇒ แยกไม่ออกว่ามีคนใช้ PIN นี้อยู่ (ไม่คืน PIN_TAKEN แล้ว) ◂
+    const others = await db.posStaffPin.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, userId: { not: userId } }, select: { pinHash: true } });
+    for (const r of others) if (await pinMatches(pin, r.pinHash)) return refuse("WEAK_PIN");
+    const pinHash = await hashPin(pin);
+    const row = await db.posStaffPin.upsert({
+      where: { unitId_userId: { unitId: s.unitId, userId } },
+      create: { tenantId: s.tenantId, unitId: s.unitId, userId, pinHash, failedCount: 0, lockedUntil: null, setById: a.userId },
+      update: { pinHash, failedCount: 0, lockedUntil: null, setById: a.userId },
+      select: { id: true, tenantId: true },
+    });
+    if (row.tenantId !== s.tenantId) return refuse("NOT_FOUND"); // สาขาเป็นของร้านนี้แล้วจาก unitScope — กันไว้อีกชั้น
+    await writeAudit({ tenantId: s.tenantId, actorId: a.userId, action: "pos.staff.pin_set", targetType: "PosStaffPin", targetId: row.id, after: { userId, unitId: s.unitId, self } });
+    return { ok: true };
+  });
+}
+
+/**
+ * POS P1.15U ▸ fix รอบ 1 F1: ตั้ง PIN "ของตัวเอง" ครั้งแรกจากจอล็อก — ผู้ถูกตั้ง = actor เสมอ (ไม่รับ userId) ·
+ * มี PIN อยู่แล้ว = ALREADY_SET (เปลี่ยน PIN = ตั้งค่า → พนักงาน) · ที่เหลือกติกาเดียวกับ setStaffPin ◂
+ */
+export async function setOwnStaffPin(ctx: StaffPinCtx, actor: RegisterActor, input: { pin: string }, client?: Db): Promise<StaffPinOk | RegisterRefusal> {
+  return guard("setOwnStaffPin", async (): Promise<StaffPinOk | RegisterRefusal> => {
+    const db = client ?? prisma;
+    const s = await unitScope(db, ctx);
+    if (isRefusal(s)) return s;
+    const a = actorOf(actor);
+    if (!a) return refuse("PERMISSION_DENIED");
+    const has = await db.posStaffPin.findUnique({ where: { unitId_userId: { unitId: s.unitId, userId: a.userId } }, select: { tenantId: true } });
+    if (has && has.tenantId === s.tenantId) return refuse("ALREADY_SET", "ตั้ง PIN ไว้แล้ว — เปลี่ยน PIN ได้ที่ ตั้งค่า → พนักงาน");
+    return setStaffPin(ctx, a, { userId: a.userId, pin: isRecord(input) && typeof input.pin === "string" ? input.pin : "" }, db);
+  });
+}
+
+// ═══════════ จับ PIN (แกนร่วมของ verifyStaffPin · PIN ผู้จัดการ) ═══════════
+type Matched = { ok: true; rowId: string; pinHash: string; actor: RegisterActor };
+
+/** ผิด 1 ครั้งบนแถวนี้ (อะตอมมิกแบบมองโลกในแง่ดี) — ครบ 5 = ล็อก 15 นาที · ล็อกที่หมดเวลาแล้วเริ่มนับใหม่ */
+async function countFailure(db: Db, rowId: string, now: Date): Promise<void> {
+  for (let i = 0; i < 4; i++) {
+    const cur = await db.posStaffPin.findUnique({ where: { id: rowId }, select: { failedCount: true, lockedUntil: true } });
+    if (!cur) return;
+    const expired = !!cur.lockedUntil && cur.lockedUntil.getTime() <= now.getTime();
+    if (cur.lockedUntil && !expired) return; // ล็อกอยู่แล้ว
+    const next = (expired ? 0 : cur.failedCount) + 1;
+    const n = await db.posStaffPin.updateMany({
+      where: { id: rowId, failedCount: cur.failedCount, lockedUntil: cur.lockedUntil },
+      data: { failedCount: next, lockedUntil: next >= STAFF_PIN_LOCK_AFTER ? new Date(now.getTime() + STAFF_PIN_LOCK_MS) : null },
+    });
+    if (n.count === 1) return;
+  }
+}
+async function clearFailures(db: Db, row: { id: string; failedCount: number; lockedUntil: Date | null }): Promise<void> {
+  if (row.failedCount !== 0 || row.lockedUntil !== null) await db.posStaffPin.updateMany({ where: { id: row.id }, data: { failedCount: 0, lockedUntil: null } });
+}
+
+/**
+ * จับ PIN ในสาขา (มติผู้คุมงาน 1): ระบุ userId = ตรวจแถวนั้นแถวเดียว ผิดนับบนแถวนั้น · ไม่ระบุ = จับทุกแถวที่เจ้าของยังขายที่สาขานี้ได้ ไม่นับให้ใคร ·
+ * ล็อกอยู่ = PIN_LOCKED (PIN ถูกก็ไม่ผ่าน) · เจ้าของไม่มีสิทธิ์ขายแล้ว = PIN_INVALID
+ */
+export async function matchStaffPin(scope: { tenantId: string; unitId: string }, pin: unknown, userId?: string | null, client?: Db): Promise<Matched | RegisterRefusal> {
+  const db = client ?? prisma;
+  if (typeof pin !== "string" || !STAFF_PIN_RE.test(pin)) return refuse("PIN_INVALID");
+  const now = new Date();
+  const locked = (r: { lockedUntil: Date | null }) => !!r.lockedUntil && r.lockedUntil.getTime() > now.getTime();
+  if (userId !== undefined && userId !== null) {
+    if (!isId(userId)) return refuse("PIN_INVALID");
+    const row = await db.posStaffPin.findUnique({ where: { unitId_userId: { unitId: scope.unitId, userId } } });
+    if (!row || row.tenantId !== scope.tenantId) return refuse("PIN_INVALID");
+    const actor = await posMemberActor(scope.tenantId, userId, db);
+    if (!actor || !canSellAt(actor, scope.unitId)) return refuse("PIN_INVALID");
+    if (locked(row)) return refuse("PIN_LOCKED");
+    if (!(await pinMatches(pin, row.pinHash))) {
+      await countFailure(db, row.id, now);
+      return refuse("PIN_INVALID");
+    }
+    await clearFailures(db, row);
+    return { ok: true, rowId: row.id, pinHash: row.pinHash, actor };
+  }
+  const rows = await db.posStaffPin.findMany({ where: { tenantId: scope.tenantId, unitId: scope.unitId }, orderBy: { createdAt: "asc" } });
+  for (const row of rows) {
+    if (!(await pinMatches(pin, row.pinHash))) continue;
+    const actor = await posMemberActor(scope.tenantId, row.userId, db);
+    if (!actor || !canSellAt(actor, scope.unitId)) continue;
+    // fix รอบ 1 F3: ไม่ระบุคน + แถวที่ล็อกอยู่ = PIN_INVALID (ไม่บอกว่า PIN นี้มีเจ้าของที่ถูกล็อก)
+    if (locked(row)) return refuse("PIN_INVALID");
+    await clearFailures(db, row);
+    return { ok: true, rowId: row.id, pinHash: row.pinHash, actor };
+  }
+  return refuse("PIN_INVALID");
+}
+
+// ═══════════ โทเคนผู้ขาย (CD2) ═══════════
+function tokenKey(): string | null {
+  const s = process.env.SESSION_SECRET;
+  return s && s.length >= 32 ? `pos-staff-token:v1:${s}` : null;
+}
+function signBody(key: string, tenantId: string, unitId: string, deviceId: string, body: string): string {
+  return createHmac("sha256", key).update(`${tenantId}|${unitId}|${deviceId}|${body}`).digest("base64url");
+}
+function makeToken(key: string, tenantId: string, unitId: string, deviceId: string, userId: string, pinHash: string | null, now: number, ttlMs: number = STAFF_TOKEN_TTL_MS /* POS P3.5 ▸ R4: เพดานกะ/override ◂ */): { staffToken: string; expiresAt: string } {
+  const exp = now + ttlMs;
+  const body = Buffer.from(JSON.stringify({ u: userId, e: exp, v: pinHash ? pinVersionOf(pinHash) : "-" })).toString("base64url");
+  return { staffToken: `${body}.${signBody(key, tenantId, unitId, deviceId, body)}`, expiresAt: new Date(exp).toISOString() };
+}
+
+/**
+ * ออกโทเคนผู้ขาย (ตัวเซ็นตัวเดียวกับ verifyStaffPin) — ใช้ภายในเซิร์ฟเวอร์เท่านั้น (ไม่มี action) · `opts.now` เลื่อนนาฬิกา (ข้อสอบหมดอายุ)
+ * ไม่ตรวจ PIN — ผู้เรียกต้องยืนยันตัวตนมาแล้ว · ไม่มี SESSION_SECRET (≥ 32) = throw
+ */
+export async function issueStaffToken(
+  ctx: StaffPinCtx,
+  input: { unitId: string; deviceId: string; userId: string },
+  opts?: { now?: Date },
+  client?: Db,
+): Promise<{ staffToken: string; expiresAt: string }> {
+  const db = client ?? prisma;
+  const key = tokenKey();
+  if (!key) throw new Error("ยังไม่ได้ตั้งค่า SESSION_SECRET — ออกโทเคนผู้ขายไม่ได้");
+  if (!isRecord(ctx) || !isId(ctx.tenantId) || !isRecord(input) || !isId(input.unitId) || !isId(input.userId) || !isPosDeviceCode(input.deviceId)) throw new Error("ข้อมูลออกโทเคนไม่ถูกต้อง");
+  if ((ctx.unitId !== undefined && ctx.unitId !== input.unitId) || (ctx.deviceId !== undefined && ctx.deviceId !== input.deviceId)) throw new Error("สาขา/เครื่องของโทเคนไม่ตรงกับคำขอ");
+  const row = await db.posStaffPin.findUnique({ where: { unitId_userId: { unitId: input.unitId, userId: input.userId } }, select: { tenantId: true, pinHash: true } });
+  const pinHash = row && row.tenantId === ctx.tenantId ? row.pinHash : null;
+  const now = opts?.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now.getTime() : Date.now();
+  return makeToken(key, ctx.tenantId, input.unitId, input.deviceId, input.userId, pinHash, now);
+}
+
+/**
+ * โทเคน → ผู้กระทำ (สิทธิ์สดจาก membership) · null = ลายเซ็นผิด (ร้าน/สาขา/เครื่องอื่น · ถูกแก้) · หมดอายุ · ตั้ง PIN ใหม่แล้ว ·
+ * ไม่มี pos.sale.create ที่สาขานี้แล้ว · เครื่องถูกเพิกถอน · ไม่มี SESSION_SECRET
+ */
+// POS P3.4 ▸ มติ 12 · CD-12 (R8): `opts.at` = ตัดสินโทเคน "ณ เวลาขาย" ของบิลออฟไลน์ที่ซิงก์ทีหลัง (ผู้เรียก = pos/offline-sync.ts ที่บีบ soldAt แล้ว) —
+//   หมดอายุเทียบ at (และ at ต้องอยู่ในอายุของโทเคน: ออกก่อน at · at ไม่ล้ำนาฬิกาเซิร์ฟเวอร์เกิน 2 นาที) · เครื่องถูกเพิกถอนเทียบ revokedAt ≤ at ·
+//   PIN เวอร์ชัน + สิทธิ์ขายยังตรวจ "ตอนนี้" (เปลี่ยน PIN/ถอดสิทธิ์แล้ว = null) · ไม่ส่ง at = กติกาเดิมทุกไบต์ (staffActorFromTokenNow)
+export async function staffActorFromToken(ctx: unknown, token: unknown, client?: Db, opts?: { at?: Date }): Promise<RegisterActor | null> {
+  if (opts?.at === undefined) return staffActorFromTokenNow(ctx, token, client);
+  try {
+    const db = client ?? prisma;
+    const at = opts.at instanceof Date ? opts.at.getTime() : Number.NaN;
+    if (!Number.isFinite(at) || at > Date.now() + 120_000) return null;
+    if (!isRecord(ctx) || !isId(ctx.tenantId) || !isId(ctx.unitId) || !isPosDeviceCode(ctx.deviceId)) return null;
+    if (typeof token !== "string" || token.length > TOKEN_MAX) return null;
+    const key = tokenKey();
+    if (!key) return null;
+    const parts = token.split(".");
+    if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+    const [body, sig] = parts as [string, string];
+    const want = Buffer.from(signBody(key, ctx.tenantId, ctx.unitId, ctx.deviceId, body));
+    const got = Buffer.from(sig);
+    if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
+    const p: unknown = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    if (!isRecord(p) || !isId(p.u) || typeof p.e !== "number" || typeof p.v !== "string") return null;
+    if (!(p.e > at) || at < p.e - STAFF_TOKEN_TTL_MS) return null;
+    const row = await db.posStaffPin.findUnique({ where: { unitId_userId: { unitId: ctx.unitId, userId: p.u } }, select: { tenantId: true, pinHash: true } });
+    if (!row || row.tenantId !== ctx.tenantId || pinVersionOf(row.pinHash) !== p.v) return null;
+    const actor = await posMemberActor(ctx.tenantId, p.u, db);
+    if (!actor || !canSellAt(actor, ctx.unitId)) return null;
+    const dev = await db.posDevice.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, deviceCode: ctx.deviceId }, select: { status: true, revokedAt: true } });
+    if (dev?.status === "REVOKED" && (!dev.revokedAt || dev.revokedAt.getTime() <= at)) return null;
+    return actor;
+  } catch {
+    return null;
+  }
+}
+async function staffActorFromTokenNow(ctx: unknown, token: unknown, client?: Db): Promise<RegisterActor | null> { // ◂
+  try {
+    const db = client ?? prisma;
+    if (!isRecord(ctx) || !isId(ctx.tenantId) || !isId(ctx.unitId) || !isPosDeviceCode(ctx.deviceId)) return null;
+    if (typeof token !== "string" || token.length > TOKEN_MAX) return null;
+    const key = tokenKey();
+    if (!key) return null;
+    const parts = token.split(".");
+    if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+    const [body, sig] = parts as [string, string];
+    const want = Buffer.from(signBody(key, ctx.tenantId, ctx.unitId, ctx.deviceId, body));
+    const got = Buffer.from(sig);
+    if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
+    const p: unknown = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    if (!isRecord(p) || !isId(p.u) || typeof p.e !== "number" || typeof p.v !== "string") return null;
+    if (!(p.e > Date.now())) return null;
+    const row = await db.posStaffPin.findUnique({ where: { unitId_userId: { unitId: ctx.unitId, userId: p.u } }, select: { tenantId: true, pinHash: true } });
+    if (!row || row.tenantId !== ctx.tenantId || pinVersionOf(row.pinHash) !== p.v) return null;
+    const actor = await posMemberActor(ctx.tenantId, p.u, db);
+    if (!actor || !canSellAt(actor, ctx.unitId)) return null;
+    if (await posDeviceRevoked(db, ctx.tenantId, ctx.unitId, ctx.deviceId)) return null;
+    return actor;
+  } catch {
+    return null;
+  }
+}
+
+/** โทเคน → { userId } | null (ctx = { tenantId, systemId, unitId, deviceId }) — กติกาเดียวกับ staffActorFromToken */
+export async function staffFromToken(ctx: StaffPinCtx, token: string, client?: Db): Promise<{ userId: string } | null> {
+  const a = await staffActorFromToken(ctx, token, client);
+  return a ? { userId: a.userId } : null;
+}
+
+// ═══════════ POS P1.18 ▸ K1 ด่านกันเดา PIN แบบไม่ระบุคน (ต่อเครื่อง + ต่อสาขา · แก้รอบ 1 F2) ◂ ═══════════
+const PIN_FAILED_AUDIT = "pos.staff.pin_failed";
+/** ถังของรหัสเครื่องที่ไม่ได้ลงทะเบียน (ทุกรหัสของสาขารวมเป็นถังเดียว — รหัสมาจาก client · สร้างใหม่ได้ทุกครั้ง) */
+const UNREGISTERED_DEVICE_BUCKET = "unregistered";
+type PinTx = Prisma.TransactionClient;
+/** เครื่องลงทะเบียนของสาขานี้ (ไม่ถูกเพิกถอน) = นับแยกตามรหัส · ไม่ได้ลงทะเบียน = ถังเดียว */
+async function pinDeviceBucket(db: PinTx, s: UnitScope, deviceId: string): Promise<string> {
+  const r = await db.posDevice.findUnique({ where: { unitId_deviceCode: { unitId: s.unitId, deviceCode: deviceId } }, select: { tenantId: true, status: true } });
+  return r && r.tenantId === s.tenantId && r.status !== "REVOKED" ? deviceId : UNREGISTERED_DEVICE_BUCKET;
+}
+/** จำนวนครั้งที่ใส่ PIN แบบไม่ระบุคนผิดในหน้าต่าง STAFF_PIN_DEVICE_THROTTLE_MS: ทั้งสาขา (unit) · ของถังเครื่องนี้ (device) — แถวชุดเดียวกัน */
+async function anonymousPinFailures(tx: PinTx, s: UnitScope, bucket: string): Promise<{ unit: number; device: number }> {
+  const since = new Date(Date.now() - STAFF_PIN_DEVICE_THROTTLE_MS);
+  const rows = await tx.$queryRaw<{ unit: number; device: number }[]>`
+    SELECT count(*)::int AS unit, (count(*) FILTER (WHERE "after"->>'deviceId' = ${bucket}))::int AS device
+    FROM "AuditLog"
+    WHERE "tenantId" = ${s.tenantId} AND action = ${PIN_FAILED_AUDIT} AND "createdAt" >= ${since} AND "after"->>'unitId' = ${s.unitId}`;
+  return { unit: Number(rows[0]?.unit ?? 0), device: Number(rows[0]?.device ?? 0) };
+}
+/**
+ * PIN แบบไม่ระบุคน: นับ → ตรวจ → ลงแถวผิด ใน transaction เดียวใต้ pg_advisory_xact_lock ต่อ (ร้าน · สาขา) ⇒ ยิงพร้อมกันเป็นชุด
+ * อ่านค่าต่ำกว่าเกณฑ์พร้อมกันไม่ได้ · ครบเกณฑ์เครื่อง (N) หรือสาขา (N_U) = PIN_THROTTLED (PIN ถูกก็ไม่ผ่าน · ไม่ลงแถวผิดเพิ่ม ⇒ หน้าต่างหมดเอง)
+ */
+async function matchAnonymousPin(db: Db, s: UnitScope, deviceId: string, pin: unknown): Promise<Matched | RegisterRefusal> {
+  return db.$transaction(
+    async (tx) => {
+      // POS P1.18U ▸ มติ 10e (R2): รอล็อกได้ไม่เกิน 3 วิ — เกินเวลา = error ⇒ guard ตอบ INTERNAL (ปิดทางแบบปลอดภัย · ไม่ตรวจ PIN) ◂
+      await tx.$queryRaw`SELECT set_config('lock_timeout', '3s', true) AS x`;
+      await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${"pos.staff.pin:"}::text || ${s.tenantId}::text || ':' || ${s.unitId}::text))) l`;
+      const bucket = await pinDeviceBucket(tx, s, deviceId);
+      const n = await anonymousPinFailures(tx, s, bucket);
+      if (n.device >= STAFF_PIN_DEVICE_THROTTLE_AFTER || n.unit >= STAFF_PIN_UNIT_THROTTLE_AFTER) return refuse("PIN_THROTTLED");
+      const m = await matchStaffPin(s, pin, null, tx as unknown as Db);
+      if (isRefusal(m) && m.code === "PIN_INVALID") {
+        // แถวผิดลงใน tx เดียวกับการนับ (ตัวถัดไปที่รอล็อกเห็นแถวนี้แน่นอน) · รหัสจริงเก็บใน deviceCode เมื่ออยู่ในถังไม่ลงทะเบียน
+        await tx.auditLog.create({
+          data: {
+            tenantId: s.tenantId,
+            actorType: "USER",
+            actorId: null,
+            action: PIN_FAILED_AUDIT,
+            targetType: "PosDevice",
+            after: bucket === deviceId ? { deviceId, unitId: s.unitId } : { deviceId: bucket, deviceCode: deviceId, unitId: s.unitId },
+          },
+        });
+      }
+      return m;
+    },
+    { maxWait: 10_000, timeout: 20_000 },
+  );
+}
+
+// ═══════════ POS P3.5 ▸ R4 ด่านตารางงาน HR (มติ 3 4 6 · CD-2) ◂ ═══════════
+const SCHEDULE_DENIED_AUDIT = "pos.staff.schedule_denied";
+const SCHEDULE_OVERRIDE_AUDIT = "pos.staff.schedule_override";
+const MIN_TOKEN_MS = 60_000;
+const OFF_SCHEDULE_MSG = "ยังไม่ถึงเวลาเข้างานตามตาราง — ให้ผู้จัดการใส่ PIN เพื่ออนุญาต";
+/**
+ * ด่านเปิดอยู่และร้านมีระบบ HR: OWNER/MANAGER ผ่าน · ไม่ผูกพนักงาน/ไม่มีตารางของวัน = ผ่าน (โทเคน 12 ชม.) · ผ่านตามตาราง = เพดาน end + lateMin ·
+ * ไม่ผ่าน: ไม่ระบุคน = PIN_INVALID ข้อความเดียวกับ PIN ผิด (P1.15 F3 · ไม่ยืนยันว่า PIN นี้ถูก) · ระบุคน = OFF_SCHEDULE {reason, window?} ·
+ * managerUserId + managerPin = override (ผู้จัดการ/เจ้าของของสาขานี้ · PIN ผิดนับบนแถวผู้จัดการ) ⇒ โทเคน overrideTtlMin + audit override ·
+ * ทุกคำปฏิเสธหลัง PIN ถูก = audit schedule_denied {userId, reason, deviceId} (ไม่มี PIN ใน audit)
+ */
+async function scheduleGate(
+  db: Db,
+  s: UnitScope,
+  deviceId: string,
+  m: Matched,
+  input: { managerUserId?: unknown; managerPin?: unknown },
+  anonymous: boolean,
+  nowMs: number,
+  hrItem?: VerifyStaffPinOpts["hrItem"],
+): Promise<{ ttlMs: number } | RegisterRefusal> {
+  const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId, type: "POS" }, select: { settings: true } });
+  const gate = posScheduleGate(sys?.settings);
+  if (!gate.enabled) return { ttlMs: STAFF_TOKEN_TTL_MS };
+  // POS P3.5 ▸ fix2 F3: เจ้าของ/ผู้จัดการยกเว้นตามบทบาท "ก่อน" อ่าน HR — HR ล่ม/ช้าต้องไม่ล็อกหน้าขายของคนที่ไม่ถูกจำกัดอยู่แล้ว ◂
+  if (m.actor.role === "OWNER" || m.actor.role === "MANAGER") return { ttlMs: STAFF_TOKEN_TTL_MS };
+  const link = await import("./hr-link");
+  const now = new Date(nowMs);
+  const item = await (hrItem ?? link.hrScheduleItem)(s.tenantId, m.actor.userId, now);
+  const d = link.scheduleGateDecide(item, m.actor.role, now, gate);
+  if (d.ok) return { ttlMs: d.capAt ? Math.max(MIN_TOKEN_MS, Math.min(STAFF_TOKEN_TTL_MS, d.capAt.getTime() - nowMs)) : STAFF_TOKEN_TTL_MS };
+  const denied = async () =>
+    writeAudit({ tenantId: s.tenantId, actorId: m.actor.userId, action: SCHEDULE_DENIED_AUDIT, targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, reason: d.reason, deviceId } });
+  if (anonymous) {
+    await denied();
+    // POS P3.5 ▸ fix2 N5 = R1-F2: นอกตารางแบบไม่ระบุคน = แถว pin_failed รูปเดียวกับ matchAnonymousPin ⇒ ด่านกันเดานับเหมือน PIN ผิด (แยกไม่ออกจากตัวนับ) ◂
+    const bucket = await pinDeviceBucket(db as unknown as PinTx, s, deviceId);
+    await db.auditLog.create({
+      data: {
+        tenantId: s.tenantId,
+        actorType: "USER",
+        actorId: null,
+        action: PIN_FAILED_AUDIT,
+        targetType: "PosDevice",
+        after: bucket === deviceId ? { deviceId, unitId: s.unitId } : { deviceId: bucket, deviceCode: deviceId, unitId: s.unitId },
+      },
+    });
+    return refuse("PIN_INVALID");
+  }
+  const off: RegisterRefusal = { ...refuse("OFF_SCHEDULE", OFF_SCHEDULE_MSG), reason: d.reason, ...(d.window ? { window: d.window } : {}) };
+  if (input.managerUserId === undefined || input.managerUserId === null) {
+    await denied();
+    return off;
+  }
+  // override: ผู้จัดการ/เจ้าของที่เข้าสาขานี้ได้ (ตรวจบทบาทก่อน PIN — ไม่ใช้เส้นนี้เดา PIN ของพนักงานทั่วไป) · overrideTtlMin 0 = ปิดการอนุญาต
+  const mgr = isId(input.managerUserId) ? await posMemberActor(s.tenantId, input.managerUserId, db) : null;
+  if (!mgr || (mgr.role !== "OWNER" && mgr.role !== "MANAGER") || !canAccessUnit(mgr, s.unitId)) {
+    await denied();
+    return refuse("PERMISSION_DENIED", "ผู้อนุญาตต้องเป็นผู้จัดการหรือเจ้าของร้านของสาขานี้");
+  }
+  if (gate.overrideTtlMin <= 0) {
+    await denied();
+    return off;
+  }
+  const v = await verifyManagerPin({ tenantId: s.tenantId, unitId: s.unitId, deviceId }, { managerPin: input.managerPin, managerUserId: input.managerUserId }, db);
+  if (isRefusal(v)) {
+    await denied();
+    return v;
+  }
+  await writeAudit({ tenantId: s.tenantId, actorId: v.actor.userId, action: SCHEDULE_OVERRIDE_AUDIT, targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, byUserId: v.actor.userId, reason: d.reason, deviceId } });
+  return { ttlMs: gate.overrideTtlMin * 60_000 };
+}
+
+// ═══════════ ยืนยัน PIN บนเครื่อง (R2) ═══════════
+/**
+ * ใส่ PIN ที่เครื่อง (ไม่มี actor — เครื่องคือผู้เรียก · deviceId = รหัสเครื่องของ P1.9/P1.10) → โทเคนผู้ขาย 12 ชม. ·
+ * PIN_INVALID (ไม่บอกว่าของใคร) · PIN_LOCKED · DEVICE_REVOKED · ผ่าน = AuditLog pos.staff.pin_verified (userId เท่านั้น)
+ */
+export async function verifyStaffPin(
+  ctx: StaffPinCtx,
+  input: { unitId: string; deviceId: string; pin: string; userId?: string | null; /** POS P3.5 ▸ R4 override ด้วย PIN ผู้จัดการ ◂ */ managerUserId?: string | null; managerPin?: string | null },
+  client?: Db,
+  opts?: VerifyStaffPinOpts, // POS P3.5 ▸ CD-2: นาฬิกาของด่านตารางงาน (ฝั่งเซิร์ฟเวอร์เท่านั้น · คำขอจากเครื่องไม่มีช่องนี้) · fix2 F3 + hrItem ◂
+): Promise<VerifyStaffPinOk | RegisterRefusal> {
+  return guard("verifyStaffPin", async (): Promise<VerifyStaffPinOk | RegisterRefusal> => {
+    const db = client ?? prisma;
+    const s = await unitScope(db, ctx);
+    if (isRefusal(s)) return s;
+    if (!isRecord(input) || input.unitId !== s.unitId) return refuse("VALIDATION", "ข้อมูลที่ส่งมาไม่ถูกต้อง");
+    const deviceId = input.deviceId;
+    if (!isPosDeviceCode(deviceId) || (ctx.deviceId !== undefined && ctx.deviceId !== deviceId)) return refuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
+    if (await posDeviceRevoked(db, s.tenantId, s.unitId, deviceId)) return refuse("DEVICE_REVOKED");
+    const key = tokenKey();
+    if (!key) return refuse("INTERNAL");
+    // POS P1.18 ▸ K1 (มติ 2 + แก้รอบ 1 F2): ด่านกันเดาของการใส่ PIN แบบไม่ระบุคน — นับแถว AuditLog pos.staff.pin_failed
+    //   "ก่อน" ตรวจ PIN: ต่อเครื่อง (ลงทะเบียน = ต่อรหัส · ไม่ลงทะเบียน = ถังเดียวต่อสาขา) ครบ N หรือทั้งสาขาครบ N_U = PIN_THROTTLED ·
+    //   นับ → ตรวจ → ลงแถวผิด อยู่ใต้ล็อกต่อสาขาใน transaction เดียว (matchAnonymousPin) ·
+    //   ระบุคน (userId) ไม่ผ่านด่านนี้ (ใช้ตัวนับ/ล็อกต่อแถวเดิม) · เก็บใน AuditLog ⇒ ไม่มี migration และถูกต้องข้ามหลายเครื่องเซิร์ฟเวอร์ ◂
+    const anonymous = input.userId === undefined || input.userId === null;
+    const m = anonymous ? await matchAnonymousPin(db, s, deviceId, input.pin) : await matchStaffPin(s, input.pin, input.userId ?? null, db);
+    if (isRefusal(m)) return m;
+    // POS P3.5 ▸ R4 มติ 3 4 6 12: ด่านตารางงาน HR (จุดเดียว · หลัง PIN ถูก) — ปิด (ค่าปริยาย) = ทางเดิมทุกประการ (โทเคน 12 ชม.) ◂
+    const nowMs = opts?.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now.getTime() : Date.now();
+    const gated = await scheduleGate(db, s, deviceId, m, input, anonymous, nowMs, opts?.hrItem);
+    if (isRefusal(gated)) return gated;
+    const t = makeToken(key, s.tenantId, s.unitId, deviceId, m.actor.userId, m.pinHash, nowMs, gated.ttlMs);
+    await writeAudit({ tenantId: s.tenantId, actorId: m.actor.userId, action: "pos.staff.pin_verified", targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, unitId: s.unitId, deviceId } });
+    return { ok: true, userId: m.actor.userId, role: m.actor.role, staffToken: t.staffToken, expiresAt: t.expiresAt };
+  });
+}
+
+/**
+ * PIN ผู้จัดการที่เครื่องนี้ (managerPin + managerUserId บังคับ — มติผู้คุมงาน 1 · fix รอบ 1 F2) → ผู้กระทำของผู้จัดการ (สิทธิ์สด) ·
+ * ไม่มี managerUserId = VALIDATION · ผิด = PIN_INVALID (+1 บนแถวของ managerUserId) · ล็อก = PIN_LOCKED · เครื่องถูกเพิกถอน = DEVICE_REVOKED · ไม่ออกโทเคน ไม่เขียน pin_verified
+ */
+export async function verifyManagerPin(
+  scope: { tenantId: string; unitId: string; deviceId?: string | null },
+  input: { managerPin: unknown; managerUserId?: unknown },
+  client?: Db,
+): Promise<{ ok: true; actor: RegisterActor } | RegisterRefusal> {
+  try {
+    const db = client ?? prisma;
+    // fix รอบ 1 F2: PIN ผู้จัดการต้องระบุผู้จัดการเสมอ (ไม่มีทาง "จับทุกแถว") ⇒ ทุกครั้งที่ผิดนับบนแถวของคนนั้น
+    const uid = input.managerUserId;
+    if (uid === undefined || uid === null || !isId(uid)) return refuse("VALIDATION", "เลือกผู้จัดการก่อนใส่ PIN");
+    if (scope.deviceId && (await posDeviceRevoked(db, scope.tenantId, scope.unitId, scope.deviceId))) return refuse("DEVICE_REVOKED");
+    const m = await matchStaffPin(scope, input.managerPin, uid, db);
+    return isRefusal(m) ? m : { ok: true, actor: m.actor };
+  } catch (e) {
+    logSafe("verifyManagerPin", e);
+    return refuse("INTERNAL");
+  }
+}
+
+// ═══════════ ปลดล็อก (R2) ═══════════
+export async function unlockStaffPin(ctx: StaffPinCtx, actor: RegisterActor, input: { userId: string }, client?: Db): Promise<StaffPinOk | RegisterRefusal> {
+  return guard("unlockStaffPin", async (): Promise<StaffPinOk | RegisterRefusal> => {
+    const db = client ?? prisma;
+    const s = await unitScope(db, ctx);
+    if (isRefusal(s)) return s;
+    const a = actorOf(actor);
+    if (!a || !canAccessUnit(a, s.unitId) || !evaluate(a, { module: "pos", action: MANAGE_PERMISSION, unitId: s.unitId })) return refuse("PERMISSION_DENIED");
+    if (!isRecord(input) || !isId(input.userId)) return refuse("VALIDATION", "ข้อมูลที่ส่งมาไม่ถูกต้อง");
+    const row = await db.posStaffPin.findUnique({ where: { unitId_userId: { unitId: s.unitId, userId: input.userId } }, select: { id: true, tenantId: true, failedCount: true, lockedUntil: true } });
+    if (!row || row.tenantId !== s.tenantId) return refuse("NOT_FOUND", "พนักงานคนนี้ยังไม่ได้ตั้ง PIN ที่สาขานี้");
+    // POS P5.2 ▸ fix B (F2): ปลดล็อกคนอื่น = ลำดับชั้นเดียวกับตั้ง PIN · ไม่ใช่สมาชิกแล้ว = NOT_FOUND (ปิดไว้ก่อน) ◂
+    if (input.userId !== a.userId) {
+      const target = await posMemberActor(s.tenantId, input.userId, db);
+      if (!target) return refuse("NOT_FOUND", "พนักงานคนนี้ยังไม่ได้ตั้ง PIN ที่สาขานี้");
+      if (!pinRankOk(a, target)) return refuse("PERMISSION_DENIED", "ปลดล็อก PIN ของผู้ที่มีบทบาทสูงกว่าคุณไม่ได้");
+    }
+    await db.posStaffPin.updateMany({ where: { id: row.id }, data: { failedCount: 0, lockedUntil: null } });
+    await writeAudit({ tenantId: s.tenantId, actorId: a.userId, action: "pos.staff.pin_unlocked", targetType: "PosStaffPin", targetId: row.id, before: { failedCount: row.failedCount, lockedUntil: row.lockedUntil?.toISOString() ?? null }, after: { userId: input.userId, failedCount: 0 } });
+    return { ok: true };
+  });
+}
+
+// ═══════════ รายชื่อพนักงานของจอล็อก (R8) ═══════════
+/** สมาชิกของสาขาที่มี pos.sale.create (ชื่อแสดงได้ — จอพนักงานบนเครื่องของร้าน) · hasPin · กะ OPEN ของคนนั้นในสาขานี้ */
+export async function listStaffForDevice(ctx: StaffPinCtx, input: { unitId: string }, client?: Db, opts?: { now?: Date; hr?: boolean } /* POS P3.5 ▸ CD-2 · hr:false = ไม่แนบสถานะ HR ◂ */): Promise<ListStaffForDeviceResult> {
+  return guard("listStaffForDevice", async (): Promise<ListStaffForDeviceResult> => {
+    const db = client ?? prisma;
+    const s = await unitScope(db, ctx);
+    if (isRefusal(s)) return s;
+    if (!isRecord(input) || input.unitId !== s.unitId) return refuse("VALIDATION", "ข้อมูลที่ส่งมาไม่ถูกต้อง");
+    if (ctx.deviceId !== undefined && (await posDeviceRevoked(db, s.tenantId, s.unitId, ctx.deviceId))) return refuse("DEVICE_REVOKED");
+    const members = await db.membership.findMany({
+      where: { tenantId: s.tenantId, acceptedAt: { not: null } },
+      select: { userId: true, role: true, unitAccess: true, permissions: true, user: { select: { name: true } } },
+    });
+    const sellers = members.flatMap((m) => {
+      const a = memberToActor(m);
+      return a && canSellAt(a, s.unitId) ? [{ actor: a, name: m.user?.name ?? null }] : [];
+    });
+    const ids = sellers.map((x) => x.actor.userId);
+    const [pins, shifts] = ids.length
+      ? await Promise.all([
+          db.posStaffPin.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, userId: { in: ids } }, select: { userId: true } }),
+          db.posShift.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, status: "OPEN", openedByUserId: { in: ids } }, orderBy: [{ openedAt: "desc" }, { id: "desc" }], select: { id: true, openedAt: true, openedByUserId: true } }),
+        ])
+      : [[], []];
+    const hasPin = new Set(pins.map((p) => p.userId));
+    const shiftOf = new Map<string, { id: string; openedAt: string }>();
+    for (const sh of shifts) if (!shiftOf.has(sh.openedByUserId)) shiftOf.set(sh.openedByUserId, { id: sh.id, openedAt: sh.openedAt.toISOString() });
+    const items: StaffListItem[] = sellers
+      .map(({ actor, name }) => ({ userId: actor.userId, name, role: actor.role as RegisterRole, hasPin: hasPin.has(actor.userId), shift: shiftOf.get(actor.userId) ?? null }))
+      .sort((x, y) => (x.name ?? "").localeCompare(y.name ?? "", "th") || (x.userId < y.userId ? -1 : 1));
+    // POS P4.3 ▸ F-P3-19 · CD-P43-O5: ค่าตั้งด่านตารางงานอ่านครั้งเดียว — overrideTtlMin ไปกับผลทุกครั้ง (จอล็อกเขียน "อนุญาตได้ {minutes} นาที") ◂
+    const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId, type: "POS" }, select: { settings: true } });
+    const gate = posScheduleGate(sys?.settings);
+    // POS P3.5 ▸ R5: สถานะจากระบบพนักงาน — เฉพาะร้านที่มีระบบ HR (ไม่มี = ไม่มีคีย์ hr) · ไม่มีชนิด/เหตุผลการลา ไม่มีเงิน ◂
+    if (items.length && opts?.hr !== false) {
+      const now = opts?.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now : new Date();
+      const states = await (await import("./hr-link")).staffHrStates(s.tenantId, items.map((x) => x.userId), now, gate);
+      if (states) for (const it of items) it.hr = states.get(it.userId) ?? { schedule: null, onLeave: false, inSchedule: null };
+    }
+    return { ok: true, items, overrideTtlMin: gate.overrideTtlMin };
+  });
+}

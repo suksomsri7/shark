@@ -6,15 +6,28 @@ import { ensureJournalSequences } from "./gl";
 
 // โหลดระบบบัญชี (feature) + ตรวจว่าเป็นของ tenant + ชนิด ACCOUNT
 // opts.can = action สิทธิ์ที่ต้องมี "ก่อนโหลดข้อมูลใด ๆ" (WO 0.2 — ด่านระดับ page)
-//   ไม่ผ่าน → โยน ForbiddenError (รูปแบบเดียวกับที่ /journal, /ledger, /accounts, /periods, /reports/* ใช้อยู่เดิม)
+//   ไม่ผ่าน → notFound() (G2-F · เดิมโยน ForbiddenError ⇒ 500) · action/route ไม่ส่ง can แล้วเรียก assertAccountCan เอง (403 เหมือนเดิม)
 export async function loadAccountSystem(systemId: string, opts?: { can?: string }) {
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId } });
   if (!sys || sys.type !== "ACCOUNT") notFound();
-  if (opts?.can) assertAccountCan(auth, opts.can);
+  if (opts?.can) {
+    accountPageGate(auth, opts.can); // SVC G2-F F2 ▸ หน้า: ไม่มีสิทธิ์ ⇒ ไม่พบ (เดิม ForbiddenError ⇒ 500) ◂
+    assertAccountCan(auth, opts.can); // ด่านเดิมคงไว้ (ถึงบรรทัดนี้ = ผ่านแล้วเสมอ)
+  }
   await ensureJournalSequences(systemId); // CRM C5.4-N r2 ▸ sequence เลขที่ใบสำคัญ สร้าง autocommit ก่อนแอ็กชันเงินใด ๆ (จำต่อโปรเซส) ◂
   return { auth, tenantId, systemId, sys, userId: auth.user.id };
+}
+
+/**
+ * SVC G2-F F2 ▸ ด่านสิทธิ์ของ **หน้า** (render) — ไม่ผ่าน ⇒ `notFound()` (หน้า "ไม่พบ" แบบเดียวกับหน่วย/ระบบผิดร้าน และหน้าหอ)
+ *   เดิมหน้าเรียก `assertAccountCan` ตรง ⇒ ForbiddenError ไม่มีใครรับ ⇒ ผู้ใช้เห็น 500 "This page couldn't load"
+ *   กติกาเดียวกับ `assertAccountCan` ทุกประการ (`accountCan` + IMPLIES) — เปลี่ยนแค่ผลที่เห็นเมื่อเข้าไม่ได้ · ไม่เปลี่ยนว่าใครเข้าได้
+ *   🔴 ใช้ในหน้าเท่านั้น — server action / route / REST คงโยน ForbiddenError (403) ผ่าน `assertAccountCan` เหมือนเดิม
+ */
+export function accountPageGate(auth: Parameters<typeof accountCan>[0], action: string): void {
+  if (!accountCan(auth, action)) notFound();
 }
 
 /**

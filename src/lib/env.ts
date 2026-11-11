@@ -23,6 +23,9 @@ const schema = z.object({
   REVIEW_EMAIL: z.string().default(""),
   REVIEW_OTP: z.string().default(""),
   HR_PIN_PEPPER: z.string().min(32).optional(), // HR H0.5 ▸ pepper ของ HMAC PIN พนักงาน · ไม่ตั้ง = hr/pin.ts ปฏิเสธ · optional ให้ fitness/deploy เก่ายังบูตได้ ◂
+  // ── POS P5.2 ▸ CD-P52-O2-3 (D1c): กุญแจคุกกี้เครื่องขาย (จับคู่เครื่องที่ registerDeviceAction · เปิดกะ/รายงาน X อ่านเครื่องจากคุกกี้) ──
+  // 🔴 กุญแจแยก — ห้ามใช้ค่าเดียวกับกุญแจอื่น · ไม่ตั้ง/สั้นกว่า 32 ตัว = จับคู่เครื่องไม่ได้ (การ์ด "ยังไม่ตั้งกุญแจ") · ตัวอ่านจริง = pos/device-cookie.ts ◂
+  POS_DEVICE_KEY: z.string().optional(),
 });
 
 export const env = schema.parse(process.env);

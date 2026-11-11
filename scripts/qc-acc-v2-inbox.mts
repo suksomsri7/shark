@@ -48,6 +48,8 @@ const svc = await import("@/lib/modules/account/service");
 const att = await import("@/lib/modules/account/attachment");
 const inbox = await import("@/lib/modules/account/inbox");
 const inboxAi = await import("@/lib/modules/account/inbox-ai");
+// ORACLE-EDIT S1.13 (R-S1.13a · มติ 7.1/7.3): แพ็กฟรีเปิด ⇒ เครดิต 0 ไม่ข้ามการอ่านบิล (ยังลงแถว USAGE) · ปิด ⇒ คาดเดิม
+const { FREE_PACK } = await import("@/lib/ai/secretary/pack");
 const { assertAccountCan } = await import("@/lib/modules/account/access");
 const { consumers } = await import("@/lib/outbox-consumers");
 type AiChatMessage = import("@/lib/ai/provider").AiChatMessage;
@@ -342,9 +344,15 @@ try {
   const beforeBudget = await usageCount();
   const p5 = new CannedProvider([PTT_JSON]);
   const r6 = await inboxAi.readBill(ctx, f5, { provider: p5 });
-  eq("T11.4 เครดิตหมด = SKIPPED", r6.status, "SKIPPED");
-  assert("T11.5 บอกให้เติมเครดิต", !!r6.reason?.includes("เครดิต"), `ได้ ${r6.reason}`);
-  eq("T11.6 ไม่เรียกโมเดล/ไม่หักเงิน", [p5.calls, (await usageCount()) - beforeBudget], [0, 0]);
+  if (FREE_PACK.enabled) {
+    eq("T11.4 แพ็กฟรีเปิด: เครดิตหมดยังอ่านได้ = DONE", r6.status, "DONE");
+    assert("T11.5 แพ็กฟรีเปิด: ไม่มีข้อความให้เติมเครดิต", !r6.reason?.includes("เติมเครดิต"), `ได้ ${r6.reason}`);
+    eq("T11.6 แพ็กฟรีเปิด: เรียกโมเดล 1 ครั้ง + มีแถว USAGE 1", [p5.calls, (await usageCount()) - beforeBudget], [1, 1]);
+  } else {
+    eq("T11.4 เครดิตหมด = SKIPPED", r6.status, "SKIPPED");
+    assert("T11.5 บอกให้เติมเครดิต", !!r6.reason?.includes("เครดิต"), `ได้ ${r6.reason}`);
+    eq("T11.6 ไม่เรียกโมเดล/ไม่หักเงิน", [p5.calls, (await usageCount()) - beforeBudget], [0, 0]);
+  }
   await prisma.aiCreditWallet.update({ where: { tenantId: tid }, data: { balanceMicro: 10_000_000 } });
 
   // ═════════ T12 — อ่านทีละชุด ═════════

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
+import { publicEmailOf } from "@/lib/core/phone-auth";
 import { evaluate } from "@/lib/core/rbac";
 import { permissionLabel } from "@/lib/core/permissions";
 import { listGrantableEmployees, listStaffAccess, listTenantUnits, ROLE_LABELS } from "@/lib/staff/service";
@@ -91,8 +92,8 @@ export default async function StaffSettingsPage() {
                       {isSelf && <span className="text-xs text-[color:var(--color-muted)]">(คุณ)</span>}
                     </div>
                     <div className="truncate text-xs text-[color:var(--color-muted)]">
-                      {r.email}
-                      {" · "}
+                      {/* SEC S3a.1-S2 ▸ R-Z26: บัญชีที่สมัครด้วยเบอร์ (อีเมล placeholder = เบอร์) ไม่โชว์อีเมล ◂ */}
+                      {publicEmailOf({ email: r.email, prefs: null }).email ? `${publicEmailOf({ email: r.email, prefs: null }).email} · ` : ""}
                       {units_}
                       {r.role === "STAFF" &&
                         ` · ${permCount === 0 ? "ยังไม่มีสิทธิ์ใช้งานข้อไหนเลย" : `${permCount} สิทธิ์: ${perms.join(", ")}${permCount > 3 ? " …" : ""}`}`}

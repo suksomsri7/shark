@@ -503,3 +503,266 @@ export async function sweepUnattendedChats(now: Date): Promise<number> {
   }
   return created;
 }
+
+// ═══════════════════════════ SVC D.16 ▸ แจ้งซ่อมหอ → การ์ดบอร์ดงาน ═══════════════════════════
+// ใบสั่ง ledger/svc-briefs/svc-brief-d.16.md §4 (มติผู้คุม R5 · R6) — บล็อกนี้ของใบ D.16 เท่านั้น
+//  • สวิตช์ = ร้านมีระบบบอร์ดงานที่ active + มีบอร์ดชื่อตรงกับหมวดแจ้งซ่อม (#59 `board`) · ไม่มีบอร์ดชื่อนั้น ⇒ ไม่สร้างการ์ด
+//    (ไม่ตกไปบอร์ดอื่น — ต่างจาก D.6 โดยตั้งใจ · ตัวกวาดเติมให้เมื่อตั้งบอร์ดแล้ว) · ไม่เพิ่มคีย์ใน KanbanIntegrations
+//  • การ์ด 1 ใบต่อคำแจ้ง: sourceKey `dorm.repair#<id>` ผ่านประตู createCardFromExternal (unique ของ DB) + ผูกกลับด้วย CAS ของ facade หอ
+//  • เขียนคำแจ้งผ่าน facade หอเท่านั้น (linkRepairCard · applyRepairCardState) · ไม่แนบไฟล์ (รูปผู้เช่าเป็นไฟล์ส่วนตัว)
+//  • การ์ด: ห้อง · หมวด · ข้อความ (escape) · ป้ายเข้าห้อง · เวลาสะดวก · เลขงาน · ทางเข้าจอช่าง — ไม่มีชื่อ/เบอร์ผู้เช่า
+//  • DONE เป็นสถานะจบ (R6): เปิดการ์ดใหม่/ปิดซ้ำไม่เปลี่ยนคำแจ้ง
+const REPAIR_CARD_PREFIX = "dorm.repair#";
+const REPAIR_CARD_WINDOW_MS = 14 * 86_400_000;
+type RepairCardSrc = {
+  id: string;
+  tenantId: string;
+  unitId: string;
+  roomId: string;
+  category: string;
+  text: string;
+  allowEntry: boolean;
+  preferredTime: string | null;
+  status: string;
+  kanbanCardId: string | null;
+  createdAt: Date;
+};
+type RepairCategory = { code: string; labelTh: string; board: string; assigneeId: string | null };
+type RepairBoard = { boardId: string; systemId: string; columnId: string } | null;
+type RepairCardCache = { cats: Map<string, RepairCategory[]>; boards: Map<string, RepairBoard>; slugs: Map<string, string> };
+const repairCardCache = (): RepairCardCache => ({ cats: new Map(), boards: new Map(), slugs: new Map() });
+const dormRepairFacade = () => import("@/lib/modules/dorm");
+const REPAIR_SRC_SELECT = {
+  id: true,
+  tenantId: true,
+  unitId: true,
+  roomId: true,
+  category: true,
+  text: true,
+  allowEntry: true,
+  preferredTime: true,
+  status: true,
+  kanbanCardId: true,
+  createdAt: true,
+} as const;
+
+/** หมวดแจ้งซ่อมของหน่วย (#59 · ค่าเริ่มจากทะเบียน) — แคชในรอบ */
+async function repairCategories(tenantId: string, unitId: string, cache: RepairCardCache): Promise<RepairCategory[]> {
+  const k = `${tenantId}\u0000${unitId}`;
+  const hit = cache.cats.get(k);
+  if (hit) return hit;
+  const { resolveSettings } = await import("@/lib/core/settings");
+  const v = (await resolveSettings({ tenantId }, ["rooms.repair.categories"], { unitId }))["rooms.repair.categories"]?.value;
+  const out: RepairCategory[] = [];
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      if (!x || typeof x !== "object") continue;
+      const o = x as Record<string, unknown>;
+      if (typeof o.code !== "string" || typeof o.labelTh !== "string" || typeof o.board !== "string" || !o.board) continue;
+      out.push({ code: o.code, labelTh: o.labelTh, board: o.board, assigneeId: typeof o.assigneeId === "string" && o.assigneeId ? o.assigneeId : null });
+    }
+  }
+  cache.cats.set(k, out);
+  return out;
+}
+
+/** บอร์ดของหมวด = บอร์ด ACTIVE ชื่อตรงตัว เก่าสุดในทุกระบบบอร์ดงานที่ active ของร้าน + คอลัมน์แรก · ไม่มี ⇒ null — แคชในรอบ */
+async function repairBoardFor(tenantId: string, name: string, cache: RepairCardCache): Promise<RepairBoard> {
+  const k = `${tenantId}\u0000${name}`;
+  if (cache.boards.has(k)) return cache.boards.get(k) ?? null;
+  let out: RepairBoard = null;
+  const systems = await prisma.appSystem.findMany({ where: { tenantId, type: "KANBAN", active: true }, select: { id: true } });
+  if (systems.length) {
+    const board = await prisma.kanbanBoard.findFirst({
+      where: { tenantId, name, status: "ACTIVE", systemId: { in: systems.map((s) => s.id) } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, systemId: true },
+    });
+    if (board) {
+      const col = await prisma.kanbanColumn.findFirst({
+        where: { boardId: board.id, tenantId, systemId: board.systemId, status: "ACTIVE" },
+        orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+        select: { id: true },
+      });
+      if (col) out = { boardId: board.id, systemId: board.systemId, columnId: col.id };
+    }
+  }
+  cache.boards.set(k, out);
+  return out;
+}
+
+async function repairUnitSlug(tenantId: string, unitId: string, cache: RepairCardCache): Promise<string> {
+  const k = `${tenantId}\u0000${unitId}`;
+  const hit = cache.slugs.get(k);
+  if (hit !== undefined) return hit;
+  const u = await prisma.businessUnit.findFirst({ where: { id: unitId, tenantId }, select: { slug: true } });
+  const slug = u?.slug ?? "";
+  cache.slugs.set(k, slug);
+  return slug;
+}
+
+/** เปิดการ์ดของคำแจ้ง 1 รายการ (ไม่มีบอร์ดตามหมวด ⇒ false) แล้วผูกกลับ · คืน true เมื่อการ์ดเกิดใหม่จริง */
+async function openRepairCard(r: RepairCardSrc, cache: RepairCardCache): Promise<boolean> {
+  if (r.status !== "OPEN" && r.status !== "IN_PROGRESS") return false;
+  const cat = (await repairCategories(r.tenantId, r.unitId, cache)).find((c) => c.code === r.category);
+  if (!cat) return false;
+  const board = await repairBoardFor(r.tenantId, cat.board, cache);
+  if (!board) return false;
+  const room = await prisma.hotelRoom.findFirst({ where: { id: r.roomId, tenantId: r.tenantId }, select: { number: true } });
+  const slug = await repairUnitSlug(r.tenantId, r.unitId, cache);
+  const assignee =
+    cat.assigneeId && (await prisma.membership.findFirst({ where: { tenantId: r.tenantId, userId: cat.assigneeId, acceptedAt: { not: null } }, select: { userId: true } }))
+      ? [cat.assigneeId]
+      : [];
+  const oneLine = r.text.replace(/\s+/g, " ").trim();
+  const short = Array.from(oneLine).length > 60 ? `${Array.from(oneLine).slice(0, 59).join("")}…` : oneLine;
+  const roomNo = room?.number ?? "-";
+  const ticketNo = `R-${r.id.slice(-6).toUpperCase()}`;
+  const jobPath = `/app/u/${slug}/dorm/repairs/${r.id}`;
+  const description = [
+    `<p>${esc(r.text)}</p>`,
+    `<p><strong>${r.allowEntry ? "ผู้เช่าอนุญาตให้เข้าห้องตอนไม่อยู่" : "ห้ามเข้าห้องตอนผู้เช่าไม่อยู่ — นัดเวลาก่อน"}</strong></p>`,
+    r.preferredTime ? `<p>เวลาสะดวก: ${esc(r.preferredTime)}</p>` : "",
+    `<p>เลขงาน ${ticketNo} · ห้อง ${esc(roomNo)} · ${esc(cat.labelTh)}</p>`,
+    `<p>จอช่าง: ${esc(jobPath)}</p>`,
+  ].join("");
+  const res = await createCardFromExternal(systemCtx(r.tenantId, board.systemId), {
+    boardId: board.boardId,
+    columnId: board.columnId,
+    title: `ห้อง ${roomNo} · ${cat.labelTh} · ${short}`,
+    description,
+    assigneeUserIds: assignee,
+    sourceType: "AUTOMATION",
+    sourceKey: `${REPAIR_CARD_PREFIX}${r.id}`,
+  });
+  await (await dormRepairFacade()).linkRepairCard({ tenantId: r.tenantId }, { repairId: r.id, cardId: res.cardId });
+  return res.created;
+}
+
+/** dorm.repair.created → การ์ด (ไม่มีบอร์ดตามหมวด = ไม่มีการ์ด รอตัวกวาด) */
+export async function onDormRepairCreated(evt: BridgeEvent): Promise<void> {
+  if (!(await integrationsFor(evt.tenantId)).length) return;
+  const repairId = str(evt.payload, "repairId");
+  if (!repairId) return;
+  const r = await prisma.dormRepair.findFirst({ where: { id: repairId, tenantId: evt.tenantId }, select: REPAIR_SRC_SELECT });
+  if (!r || r.kanbanCardId) return;
+  await openRepairCard(r, repairCardCache());
+}
+
+/** dorm.repair.done → ย้ายการ์ดเข้าคอลัมน์เสร็จ (ช่างกดเสร็จจากมือถือ) ถ้ายังไม่เสร็จ */
+export async function onDormRepairDone(evt: BridgeEvent): Promise<void> {
+  if (!(await integrationsFor(evt.tenantId)).length) return;
+  const repairId = str(evt.payload, "repairId");
+  if (!repairId) return;
+  const r = await prisma.dormRepair.findFirst({ where: { id: repairId, tenantId: evt.tenantId }, select: { status: true, kanbanCardId: true } });
+  if (!r || r.status !== "DONE") return;
+  const card = await cardBySourceKey(evt.tenantId, `${REPAIR_CARD_PREFIX}${repairId}`);
+  if (!card || card.status !== "ACTIVE" || card.completedAt !== null) return;
+  if (r.kanbanCardId && r.kanbanCardId !== card.id) return;
+  await closeCard(evt.tenantId, card.systemId, card);
+}
+
+/** การ์ดของคำแจ้งในร้านของ event (sourceKey ขึ้นต้น dorm.repair#) · อื่น ⇒ null */
+async function repairCardOf(tenantId: string, cardId: string | null): Promise<{ id: string; repairId: string; columnId: string } | null> {
+  if (!cardId) return null;
+  const card = await prisma.kanbanCard.findFirst({ where: { id: cardId, tenantId }, select: { id: true, sourceKey: true, columnId: true } });
+  if (!card?.sourceKey || !card.sourceKey.startsWith(REPAIR_CARD_PREFIX)) return null;
+  const repairId = card.sourceKey.slice(REPAIR_CARD_PREFIX.length);
+  return repairId ? { id: card.id, repairId, columnId: card.columnId } : null;
+}
+
+/** kanban.card.moved → กำลังซ่อม (คอลัมน์ปลายทางไม่ใช่คอลัมน์เสร็จ · ครั้งเดียว · ถอยไม่ได้) */
+export async function onDormRepairCardMoved(evt: BridgeEvent): Promise<void> {
+  if (!(await integrationsFor(evt.tenantId)).length) return;
+  const card = await repairCardOf(evt.tenantId, str(evt.payload, "cardId"));
+  if (!card) return;
+  const col = await prisma.kanbanColumn.findFirst({ where: { id: str(evt.payload, "toColumnId") ?? card.columnId, tenantId: evt.tenantId }, select: { isDoneColumn: true } });
+  if (!col || col.isDoneColumn) return;
+  await (await dormRepairFacade()).applyRepairCardState({ tenantId: evt.tenantId }, { repairId: card.repairId, cardId: card.id, state: "IN_PROGRESS", actorUserId: null, source: "CARD" });
+}
+
+/** kanban.card.completed → DONE (+ event done ⇒ LINE ครั้งเดียว) */
+export async function onDormRepairCardCompleted(evt: BridgeEvent): Promise<void> {
+  if (!(await integrationsFor(evt.tenantId)).length) return;
+  const card = await repairCardOf(evt.tenantId, str(evt.payload, "cardId"));
+  if (!card) return;
+  await (await dormRepairFacade()).applyRepairCardState(
+    { tenantId: evt.tenantId },
+    { repairId: card.repairId, cardId: card.id, state: "DONE", actorUserId: str(evt.payload, "actorUserId"), source: "CARD" },
+  );
+}
+
+/**
+ * ตัวกวาด (minute-job `dorm.repair.cards`) — ซ้อนกันได้ (unique sourceKey + CAS) · ไม่ throw · opts.tenantId จำกัดร้าน
+ *  (ก) คำแจ้ง OPEN/IN_PROGRESS ไม่มีการ์ด ใน 14 วัน ของร้านที่มีระบบบอร์ดงาน ⇒ เปิดการ์ด (ไม่มีบอร์ดตามหมวด = ข้าม · แคชผลหาบอร์ดในรอบ)
+ *  (ข) การ์ดเสร็จแล้ว (คอลัมน์เสร็จ/completedAt) แต่คำแจ้งยังไม่ DONE (JOIN ใน SQL) ⇒ DONE (source SWEEP)
+ *  keyset (createdAt, id) วนหน้าจนหมดงบ — แถวที่ไม่มีบอร์ดถาวรไม่บังงานปกติ
+ */
+export async function sweepDormRepairCards(now: Date, opts?: { tenantId?: string; budgetMs?: number; signal?: AbortSignal }): Promise<{ created: number; reconciled: number }> {
+  const t0 = Date.now();
+  const out = { created: 0, reconciled: 0 };
+  const budget = typeof opts?.budgetMs === "number" && opts.budgetMs > 0 ? opts.budgetMs : 120_000;
+  const left = () => (opts?.signal?.aborted ? 0 : budget - (Date.now() - t0));
+  const tid = typeof opts?.tenantId === "string" && opts.tenantId ? opts.tenantId : null;
+  const at = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
+  const cache = repairCardCache();
+  try {
+    const since = new Date(at.getTime() - REPAIR_CARD_WINDOW_MS);
+    let cur: { createdAt: Date; id: string } | null = null;
+    pageA: for (;;) {
+      if (left() < 2_000) break;
+      const cAt: Date = cur?.createdAt ?? new Date(0);
+      const cId: string = cur?.id ?? "";
+      const rows = await prisma.$queryRaw<RepairCardSrc[]>`
+        SELECT r."id", r."tenantId", r."unitId", r."roomId", r."category", r."text", r."allowEntry", r."preferredTime", r."status", r."kanbanCardId", r."createdAt"
+        FROM "DormRepair" r
+        WHERE (${tid}::text IS NULL OR r."tenantId" = ${tid}) AND r."status" IN ('OPEN', 'IN_PROGRESS') AND r."kanbanCardId" IS NULL AND r."createdAt" >= ${since}
+          AND EXISTS (SELECT 1 FROM "AppSystem" s WHERE s."tenantId" = r."tenantId" AND s."type"::text = 'KANBAN' AND s."active" = true)
+          AND (r."createdAt" > ${cAt} OR (r."createdAt" = ${cAt} AND r."id" > ${cId}))
+        ORDER BY r."createdAt" ASC, r."id" ASC LIMIT 200`;
+      if (!rows.length) break;
+      for (const r of rows) {
+        cur = { createdAt: r.createdAt, id: r.id };
+        if (left() < 2_000) break pageA;
+        try {
+          if (await openRepairCard(r, cache)) out.created++;
+        } catch {
+          // คำแจ้งเดียวเปิดการ์ดไม่ได้ (บอร์ด/คอลัมน์ถูกเก็บระหว่างทาง) ไม่ใช่เหตุให้ทั้งรอบล้ม
+        }
+      }
+      if (rows.length < 200) break;
+    }
+  } catch (e) {
+    console.error("[dorm.repair] sweep cards", e instanceof Error ? e.name : "error");
+  }
+  try {
+    let cur: { createdAt: Date; id: string } | null = null;
+    pageB: for (;;) {
+      if (left() < 2_000) break;
+      const cAt: Date = cur?.createdAt ?? new Date(0);
+      const cId: string = cur?.id ?? "";
+      const rows = await prisma.$queryRaw<{ id: string; tenantId: string; cardId: string; createdAt: Date }[]>`
+        SELECT r."id", r."tenantId", c."id" AS "cardId", r."createdAt"
+        FROM "DormRepair" r
+        JOIN "KanbanCard" c ON c."id" = r."kanbanCardId" AND c."tenantId" = r."tenantId"
+        LEFT JOIN "KanbanColumn" k ON k."id" = c."columnId" AND k."tenantId" = c."tenantId"
+        WHERE (${tid}::text IS NULL OR r."tenantId" = ${tid}) AND r."status" IN ('OPEN', 'IN_PROGRESS')
+          AND (c."completedAt" IS NOT NULL OR k."isDoneColumn" = true)
+          AND (r."createdAt" > ${cAt} OR (r."createdAt" = ${cAt} AND r."id" > ${cId}))
+        ORDER BY r."createdAt" ASC, r."id" ASC LIMIT 200`;
+      if (!rows.length) break;
+      const facade = await dormRepairFacade();
+      for (const r of rows) {
+        cur = { createdAt: r.createdAt, id: r.id };
+        if (left() < 2_000) break pageB;
+        const s = await facade.applyRepairCardState({ tenantId: r.tenantId }, { repairId: r.id, cardId: r.cardId, state: "DONE", actorUserId: null, source: "SWEEP" }, { now: at });
+        if (s.changed) out.reconciled++;
+      }
+      if (rows.length < 200) break;
+    }
+  } catch (e) {
+    console.error("[dorm.repair] sweep done", e instanceof Error ? e.name : "error");
+  }
+  return out;
+}
+// ◂ SVC D.16

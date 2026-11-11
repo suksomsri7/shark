@@ -4,8 +4,9 @@
 // เคสข้ามร้าน = มองไม่เห็น/แก้ไม่ได้ (findUnique คืน null · list คืน [])
 
 import { Prisma } from "@prisma/client";
-import type { SupportCase, SupportMessage } from "@prisma/client";
-import { tenantDb } from "@/lib/core/db";
+import type { Role, SupportCase, SupportMessage } from "@prisma/client";
+import { prisma, tenantDb } from "@/lib/core/db";
+import { currentToolCallKey, toolCallRowId } from "@/lib/ai/tool-call-key"; // SEC S3a.1-S1 R-Z7
 
 type Ctx = { tenantId: string };
 
@@ -64,7 +65,7 @@ function cleanAttachments(attachments?: Attachment[]): Attachment[] {
 //   (ไม่ใช้ counter table / upsert — กติกาเดียวกับ createPo ใน procurement.ts)
 export async function createCase(
   ctx: Ctx,
-  input: { userId: string; subject: string; body: string; attachments?: Attachment[] },
+  input: { userId: string; subject: string; body: string; attachments?: Attachment[]; id?: string },
 ): Promise<{ id: string; caseNo: number }> {
   const db = tenantDb(ctx);
   const attachments = cleanAttachments(input.attachments);
@@ -76,6 +77,7 @@ export async function createCase(
       const c = await db.$transaction(async (tx) => {
         const created = await tx.supportCase.create({
           data: {
+            ...(input.id ? { id: input.id } : {}), // SEC S3a.1-S1 R-Z7: รหัสกำหนดได้จากกุญแจ tool call (openCaseFromAi)
             tenantId: ctx.tenantId,
             caseNo,
             openedByUserId: input.userId,
@@ -111,12 +113,140 @@ export async function openCaseFromAi(
   ctx: Ctx,
   input: { userId: string; conversationId: string; subject: string; body: string },
 ): Promise<{ id: string; caseNo: number }> {
-  const c = await createCase(ctx, { userId: input.userId, subject: input.subject, body: input.body });
+  // SEC S3a.1-S1 ▸ R-Z7: เทิร์นห้องเลขาที่รันซ้ำ (กุญแจ tc:<messageId>:<i>) ⇒ เรื่องเดิม ไม่เปิดเรื่องที่สอง ◂
+  const tcKey = currentToolCallKey();
+  const fixedId = tcKey ? toolCallRowId("tcase", [ctx.tenantId, input.conversationId, tcKey]) : undefined;
+  const existingCase = async () => (fixedId ? tenantDb(ctx).supportCase.findFirst({ where: { id: fixedId }, select: { id: true, caseNo: true } }) : null);
+  const had = await existingCase();
+  if (had) return had;
+  let c: { id: string; caseNo: number };
+  try {
+    c = await createCase(ctx, { userId: input.userId, subject: input.subject, body: input.body, ...(fixedId ? { id: fixedId } : {}) });
+  } catch (e) {
+    const raced = await existingCase();
+    if (raced) return raced;
+    throw e;
+  }
   await tenantDb(ctx).supportCase.update({
     where: { id: c.id },
     data: { conversationId: input.conversationId },
   });
   return c;
+}
+
+// ── S1.17 (R-K12) ▸ Support Desk ต่อแอป (จอ H1/H2 ของเลขา) ─────────────────────────────────────
+//   หมวดของเรื่องที่แจ้ง (ชิปบนจอ H1) · ค่าที่ไม่รู้จัก ⇒ "other" · source = "APP" · ห้องงานที่แนบ = `roomId` (ไม่ใช่ conversationId)
+//   ⇒ คำตอบทีมงานไม่ถูกแทรกลงห้องเลขา (ดู platform/support.ts addPlatformMessage) แต่ push ถึงผู้แจ้งด้วย link /help/<caseId>
+//   การมองเห็น: ผู้แจ้งเห็นเรื่องของตัวเอง · OWNER เห็นทุกเรื่องของร้าน (รวมเรื่องเดิมที่ผู้ช่วย AI เปิดในนาม "ai-assistant") ◂
+export const CASE_CATEGORIES = ["secretary_wrong", "bug", "question", "billing", "feature", "other"] as const;
+export type CaseCategory = (typeof CASE_CATEGORIES)[number];
+
+const ROOM_ID_MAX = 191;
+
+/** ผู้ใช้นี้มองเห็นห้องงานนี้ไหม (ผู้เปิดห้อง ∪ สมาชิกห้อง ∪ OWNER ที่รับแล้ว) — ไม่เห็น/ไม่มี/ร้านอื่น = null */
+async function visibleRoomFor(ctx: Ctx, userId: string, roomId: unknown): Promise<{ id: string; conversationId: string } | null> {
+  const id = typeof roomId === "string" ? roomId.trim().slice(0, ROOM_ID_MAX) : "";
+  if (!id || !userId) return null;
+  const db = tenantDb(ctx);
+  const room = await db.aiRoom.findFirst({
+    where: { id },
+    select: { id: true, conversationId: true, startedById: true, members: { where: { userId }, select: { id: true }, take: 1 } },
+  });
+  if (!room) return null;
+  if (room.startedById === userId || room.members.length > 0) return { id: room.id, conversationId: room.conversationId };
+  // Membership เป็น axis global (scope.ts) ⇒ ใส่ tenantId เอง
+  const owner = await prisma.membership.count({ where: { tenantId: ctx.tenantId, userId, role: "OWNER", acceptedAt: { not: null } } });
+  return owner > 0 ? { id: room.id, conversationId: room.conversationId } : null;
+}
+
+/**
+ * เปิดเรื่องจากแอป (จอ H1) — `createCase` เดิม (caseNo race-safe + ข้อความแรก + ไฟล์แนบ) แล้วตั้ง `source="APP"` · หมวด · ห้องที่แนบ
+ *   ห้องที่ผู้แจ้งมองไม่เห็น ⇒ ไม่แนบ (roomId null · ไม่บอกว่ามีอยู่) · **ไม่ตั้ง conversationId** (R-K12)
+ *   หมวด "secretary_wrong" + ห้อง ⇒ บันทึก 👎 ของห้องนั้นเข้า AiFeedback (best-effort · anonymize ใน recordFeedback · ล้มไม่ throw)
+ */
+export async function openCaseFromApp(
+  ctx: Ctx,
+  input: { userId: string; subject: string; body: string; attachments?: Attachment[]; category?: string; roomId?: string | null },
+): Promise<{ id: string; caseNo: number }> {
+  const category: CaseCategory = (CASE_CATEGORIES as readonly string[]).includes(String(input.category ?? ""))
+    ? (input.category as CaseCategory)
+    : "other";
+  const room = await visibleRoomFor(ctx, input.userId, input.roomId);
+  const c = await createCase(ctx, { userId: input.userId, subject: input.subject, body: input.body, attachments: input.attachments });
+  await tenantDb(ctx).supportCase.update({
+    where: { id: c.id },
+    data: { source: "APP", category, roomId: room?.id ?? null },
+  });
+  if (category === "secretary_wrong" && room) {
+    try {
+      const { recordFeedback } = await import("@/lib/ai/feedback");
+      await recordFeedback(ctx, {
+        conversationId: room.conversationId,
+        userText: input.subject,
+        replyText: input.body,
+        rating: "DOWN",
+        note: `help:${c.id}`,
+      });
+    } catch {
+      // feedback เป็นของแถม — เรื่องที่แจ้งถูกบันทึกแล้ว
+    }
+  }
+  return c;
+}
+
+/** เงื่อนไขเรื่องที่ผู้ใช้นี้เห็น — OWNER ทั้งร้าน · คนอื่นเฉพาะที่ตัวเองเปิด */
+function caseScope(userId: string, role: Role): Prisma.SupportCaseWhereInput {
+  return role === "OWNER" ? {} : { openedByUserId: userId || "~no-user~" };
+}
+
+/** จำนวนข้อความทีมงานที่ยังไม่อ่านต่อเคส (ข้อความ PLATFORM ใหม่กว่า shopLastReadAt) — 1 query */
+async function unreadByCaseOf(ctx: Ctx, cases: { id: string; shopLastReadAt: Date | null }[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (cases.length === 0) return out;
+  const msgs = await tenantDb(ctx).supportMessage.findMany({
+    where: { caseId: { in: cases.map((c) => c.id) }, authorSide: "PLATFORM" },
+    select: { caseId: true, createdAt: true },
+  });
+  const readAtByCase = new Map(cases.map((c) => [c.id, c.shopLastReadAt] as const));
+  for (const m of msgs) {
+    const readAt = readAtByCase.get(m.caseId);
+    if (!readAt || m.createdAt > readAt) out.set(m.caseId, (out.get(m.caseId) ?? 0) + 1);
+  }
+  return out;
+}
+
+/** เรื่องที่ผู้ใช้นี้เห็น + meta (เลขเคส/สถานะ/ยังไม่อ่าน) — เรียงความเคลื่อนไหวล่าสุดก่อน · 2 query */
+export async function listCasesForUser(ctx: Ctx, userId: string, role: Role, take = 50): Promise<CaseMeta[]> {
+  const n = Math.min(Math.max(Math.floor(Number(take) || 50), 1), 200);
+  const cases = await tenantDb(ctx).supportCase.findMany({ where: caseScope(userId, role), orderBy: { updatedAt: "desc" }, take: n });
+  const unread = await unreadByCaseOf(ctx, cases);
+  return cases.map((c) => ({
+    id: c.id,
+    caseNo: c.caseNo,
+    subject: c.subject,
+    status: c.status,
+    updatedAt: c.updatedAt,
+    unreadCount: unread.get(c.id) ?? 0,
+  }));
+}
+
+/** ข้อความทีมงานที่ยังไม่อ่านรวมของเรื่องที่ผู้ใช้นี้เห็น (badge) — 2 query */
+export async function unreadCaseTotalForUser(ctx: Ctx, userId: string, role: Role): Promise<number> {
+  const cases = await tenantDb(ctx).supportCase.findMany({ where: caseScope(userId, role), select: { id: true, shopLastReadAt: true } });
+  let total = 0;
+  for (const v of (await unreadByCaseOf(ctx, cases)).values()) total += v;
+  return total;
+}
+
+/** ร้านกด "แก้แล้ว" (การ์ดบนจอ H2) — เฉพาะเรื่องที่ผู้ใช้เห็น ⇒ RESOLVED · ไม่เห็น/ไม่มี/ร้านอื่น = false */
+export async function setResolvedByShop(ctx: Ctx, userId: string, role: Role, caseId: string): Promise<boolean> {
+  const db = tenantDb(ctx);
+  const id = typeof caseId === "string" ? caseId.trim() : "";
+  if (!id) return false;
+  const found = await db.supportCase.findFirst({ where: { id, ...caseScope(userId, role) }, select: { id: true } });
+  if (!found) return false;
+  await db.supportCase.update({ where: { id: found.id }, data: { status: "RESOLVED" } });
+  return true;
 }
 
 // เคสของร้านนี้ (มีความเคลื่อนไหวล่าสุดก่อน)

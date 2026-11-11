@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveUnit, resolveTableSession, tableStatusForGuest } from "@/lib/modules/restaurant/storefront";
 import { checkRateLimit } from "@/lib/core/rate-limit";
+import { posLinkedLegacyDoor, posLinkedBody } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-1 มติ 1: สาขาที่ผูก POS = ประตูเดิมปิด (409 + ประตูใหม่) ◂
 
 // GET ?qrToken= — สถานะโต๊ะ + ออเดอร์รวมโต๊ะ (สำหรับ polling ฝั่งลูกค้า)
 export async function GET(req: Request, { params }: { params: Promise<{ tenantSlug: string; unitSlug: string }> }) {
@@ -18,6 +19,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ tenantSl
       { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
     );
 
+  // POS P2.14 ▸ LEG-1 มติ 1: สาขาที่ผูก POS ⇒ ประตูเดิมของแขกปิด (409 POS_LINKED + ประตูใหม่ /q/t/<qrToken>) ก่อนเรียก storefront ·
+  //   ไม่เปิด session/ไม่สร้างรอบ/ไม่สร้างคำขอ · ค้นไม่ได้ = ปิด (fail-closed · ทางนี้เขียนข้อมูล) · สาขาไม่ผูก POS = ทางเดิมทุกบรรทัด
+  if (await posLinkedLegacyDoor(resolved.tenant.id, resolved.unit.id, { write: true })) return NextResponse.json(posLinkedBody(qrToken), { status: 409 });
+  // ◂
   const sess = await resolveTableSession(resolved.tenant.id, resolved.unit.id, qrToken);
   if (!sess.ok) return NextResponse.json({ error: "session", reason: sess.reason }, { status: 410 });
   const status = await tableStatusForGuest(resolved.tenant.id, resolved.unit.id, sess.sessionId);

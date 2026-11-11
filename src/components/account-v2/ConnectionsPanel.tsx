@@ -85,12 +85,13 @@ export function ConnectionsPanel(p: ConnectionsPanelProps) {
   const saveAll = () =>
     start(async () => {
       for (const [k, on] of Object.entries(dirty)) {
-        const [kind, option] = k.split(":");
-        const card = p.cards.find((c) => c.kind === kind);
+        const [cardKey, option] = k.split(":");
+        // SVC D.15-K1 ▸ สถานะสวิตช์ผูกกับกุญแจการ์ด (การ์ดแคตตาล็อก key = kind เดิม) — ส่ง kind จริงของการ์ดไป action ◂
+        const card = p.cards.find((c) => c.key === cardKey);
         if (!card?.linkedId) continue;
         const fd = new FormData();
         fd.set("systemId", p.systemId);
-        fd.set("kind", kind);
+        fd.set("kind", card.kind);
         fd.set("linkedId", card.linkedId);
         fd.set("option", option);
         fd.set("on", on ? "1" : "0");
@@ -218,8 +219,8 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {p.cards.map((c) => (
           <div
-            key={c.kind}
-            data-testid={`conn-card-${c.kind}`}
+            key={c.key}
+            data-testid={`conn-card-${c.key}`}
             className={`flex flex-col gap-3 rounded-xl border p-4 ${c.status === "no-system" ? "opacity-60" : ""}`}
           >
             <div className="flex items-center gap-3">
@@ -231,9 +232,9 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
               {c.status === "linked" && (
                 <RowActions
                   trigger="icon"
-                  testId={`conn-menu-${c.kind}`}
+                  testId={`conn-menu-${c.key}`}
                   items={[
-                    { label: "ดูรายการที่ลง", icon: "list", href: p.recentHrefs[c.kind] ?? `${p.base}/journal` },
+                    { label: "ดูรายการที่ลง", icon: "list", href: p.recentHrefs[c.key] ?? p.recentHrefs[c.kind] ?? `${p.base}/journal` },
                     {
                       label: "ตัดการเชื่อม",
                       icon: "link",
@@ -248,7 +249,7 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
             <div className={helpCls}>
               <div>{c.hint}</div>
               {c.status === "linked" && (
-                <div data-testid={`conn-activity-${c.kind}`}>
+                <div data-testid={`conn-activity-${c.key}`}>
                   {c.lastPostedText
                     ? `ลงบัญชีล่าสุด ${c.lastPostedText} · ${c.monthCount} รายการเดือนนี้`
                     : "ยังไม่มีรายการที่ลงบัญชี"}
@@ -260,7 +261,7 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
               <>
                 <div className="flex flex-col">
                   {c.toggles.map((t) => {
-                    const on = optionOf(c.kind, t.key, t.on);
+                    const on = optionOf(c.key, t.key, t.on);
                     return (
                       <label
                         key={t.key}
@@ -281,8 +282,8 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
                           type="checkbox"
                           checked={on}
                           disabled={pending}
-                          onChange={() => setOption(c.kind, t.key, !on)}
-                          data-testid={`conn-toggle-${c.kind}-${t.key}`}
+                          onChange={() => setOption(c.key, t.key, !on)}
+                          data-testid={`conn-toggle-${c.key}-${t.key}`}
                           className="sr-only"
                         />
                         <span className="text-sm">
@@ -293,6 +294,7 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
                     );
                   })}
                 </div>
+                {c.accountCodes.length > 0 && (
                 <div className="flex items-center justify-between gap-2 border-t pt-3 text-sm">
                   <span>
                     บัญชีที่ใช้ <span className="font-medium">{c.accountCodes.join(" / ")}</span>
@@ -301,6 +303,7 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
                     แก้ไข
                   </Link>
                 </div>
+                )}
               </>
             )}
 
@@ -309,7 +312,7 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
                 <button
                   type="button"
                   disabled={pending}
-                  data-testid={`conn-connect-${c.kind}`}
+                  data-testid={`conn-connect-${c.key}`}
                   onClick={() => run(() => post({ kind: c.kind, linkedId: c.linkedId ?? "" }, p.connect))}
                   className="btn btn-sm inline-flex items-center gap-1.5 bg-[color:var(--color-ink)] text-[color:var(--color-surface)]"
                 >
@@ -399,6 +402,10 @@ const BUNDLE_HELP_TH: Record<ApiScopeBundleId, string> = {
   "crm.readonly": "อ่านผู้ติดต่อ บริษัท ดีล กิจกรรม และรายการวัตถุได้อย่างเดียว · เบอร์และอีเมลถูกปิดบังเสมอ",
   "crm.operate": "ทำได้ทุกอย่างในชุดอ่านอย่างเดียว บวกงานพนักงานขาย: เพิ่ม/แก้ผู้ติดต่อ บริษัท ดีล กิจกรรม และรายการวัตถุ",
   "crm.admin": "ทำได้ทุกอย่างของ CRM รวมตั้งค่า ทีมขาย รวม/เก็บถาวร ลบดีล ส่งออก และโอนดีลข้ามทีม",
+  // POS P2.13 ▸ ชุดของ "ระบบขายหน้าร้าน" — ออกคีย์ที่ "หน้าขาย › ตั้งค่า › การเชื่อมต่อระบบ SHARK" (ไม่โผล่ในหน้านี้ · ทะเบียนเดียวกัน ต้องมีคำแปลครบ) ◂
+  "pos-read": "อ่านบิล ใบเสร็จ สินค้า ช่องทาง ออเดอร์ และรายงานขายได้อย่างเดียว",
+  "pos-operate": "ทำได้ทุกอย่างในชุดอ่านอย่างเดียว บวกงานหน้าเคาน์เตอร์: ขายด้วยราคาแคตตาล็อก รับ/เตรียม/ส่งมอบออเดอร์ แจ้งของหมด ดูกะและเครื่องขาย",
+  "pos-admin": "ทำได้ทุกอย่างในชุดหน้าเคาน์เตอร์ บวกยกเลิกบิล คืนเงิน ราคากำหนดเอง ปฏิเสธ/ยกเลิกออเดอร์ จัดการสินค้า ราคา ช่องทาง ใบกำกับภาษีเต็มรูป และรายงานผิดปกติ",
   // ◂ CRM C1.10
 };
 

@@ -1,0 +1,60 @@
+<style>
+.tv{width:1440px;height:810px;background:var(--ink);color:var(--sf);border-radius:22px;overflow:hidden;display:grid;grid-template-columns:1fr 440px}
+.tv .l{padding:44px 48px;display:flex;flex-direction:column;gap:30px}
+.tv .hd{display:flex;align-items:center;gap:16px;font-size:20px;color:var(--line2)}
+.tv .hd b{color:var(--sf);font-size:24px}
+.tv .hd .sp{flex:1}
+.call{border-radius:28px;background:var(--sf);color:var(--ink);padding:30px 40px;display:flex;align-items:center;gap:40px}
+.call .k{font-size:22px;color:var(--mut);font-weight:700}
+.call .n{font-size:150px;font-weight:700;letter-spacing:-.05em;line-height:.95;font-variant-numeric:tabular-nums}
+.call .to{font-size:44px;font-weight:700;line-height:1.2}
+.call .to small{display:block;font-size:24px;color:var(--mut);font-weight:400;margin-top:6px}
+.chairs{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.chairs div{border:1.5px solid var(--ink2);border-radius:22px;padding:18px 20px;display:flex;flex-direction:column;gap:6px}
+.chairs div span{font-size:18px;color:var(--mut2)}
+.chairs div b{font-size:44px;letter-spacing:-.03em;line-height:1.05;font-variant-numeric:tabular-nums}
+.chairs div small{font-size:17px;color:var(--line2)}
+.chairs div.on{background:var(--acc);border-color:var(--acc)}
+.chairs div.on span,.chairs div.on small{color:var(--sf)}
+.tv .r{background:var(--sf);color:var(--ink);padding:44px 36px;display:flex;flex-direction:column;gap:20px}
+.tv .r h2{font-size:26px}
+.nx .it{display:flex;align-items:center;gap:16px;padding:16px 0;border-top:1px solid var(--line)}
+.nx .it:first-child{border-top:0}
+.nx .it b{font-size:46px;letter-spacing:-.03em;font-variant-numeric:tabular-nums;width:150px}
+.nx .it span{font-size:20px;color:var(--ink2);line-height:1.35}
+.nx .it span small{display:block;font-size:18px;color:var(--mut)}
+.tvq{margin-top:auto;display:flex;gap:16px;align-items:center;border-top:1px solid var(--line);padding-top:20px}
+.tvq div{font-size:18px;line-height:1.45}
+.tvb{margin-top:auto;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.tvb div{border-radius:22px;background:var(--ink2);padding:22px 26px;font-size:20px;line-height:1.45;color:var(--line2)}
+.tvb div b{display:block;color:var(--sf);font-size:34px;letter-spacing:-.02em}
+.tvq div small{display:block;color:var(--mut);font-size:15px}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">05 · จอทีวีเรียกคิว (หน้าร้าน 1920×1080 ย่อ) <span>— โชว์เลขคิวอย่างเดียว ไม่โชว์ชื่อ (ความเป็นส่วนตัว) · เสียงเรียก “เชิญหมายเลข A009 ที่เก้าอี้ 4” · นัดกับ walk-in อยู่ในแถวเดียว · 14:40 (ต่อจากจอ 01)</span></p>
+<div class="tv">
+ <div class="l">
+  <div class="hd"><b>บาร์เบอร์ลุงหนวด</b>อารีย์<span class="sp"></span>ส. 31 ต.ค. · 14:40</div>
+  <div class="call"><div><div class="k">เชิญหมายเลข</div><div class="n">A009</div></div><div class="to">เก้าอี้ 4<small>ช่างแจ๊ค · ตัดผมชาย</small></div></div>
+  <div class="chairs">
+   <div><span>เก้าอี้ 1 · ช่างเอก</span><b>P004</b><small>กำลังทำ</small></div>
+   <div><span>เก้าอี้ 2 · ช่างบอย</span><b>ว่าง</b><small>เตรียมรับ P006</small></div>
+   <div><span>เก้าอี้ 3 · ช่างนุ่น</span><b>P005</b><small>กำลังทำ</small></div>
+   <div class="on"><span>เก้าอี้ 4 · ช่างแจ๊ค</span><b>A009</b><small>กำลังเรียก</small></div>
+  </div>
+  <div class="tvb">
+   <div><b>~50 นาที</b>เวลารอ walk-in ตอนนี้ · ถ้ารับบัตรเดี๋ยวนี้</div>
+   <div><b>จองไว้ = ได้ตามเวลา</b>มีนัดแล้ว สแกน QR จาก LINE ที่ตู้ เพื่อเช็กอิน</div>
+  </div>
+ </div>
+ <div class="r">
+  <h2>คิวถัดไป</h2>
+  <div class="nx">
+   <div class="it"><b>P006</b><span>~14:45<small>เก้าอี้ 2 · นัดไว้</small></span></div>
+   <div class="it"><b>A010</b><span>~15:00<small>เก้าอี้ 3</small></span></div>
+   <div class="it"><b>A011</b><span>~15:25<small>เก้าอี้ 4</small></span></div>
+  </div>
+  <div class="tvq"><span class="qrbox" style="width:120px;height:120px"></span><div><b>รับบัตรคิวจากมือถือ</b><small>สแกนแล้วไปทำธุระได้ · LINE ทักก่อนถึงคิว · มีนัดแล้ว เช็กอินที่ตู้</small></div></div>
+ </div>
+</div>
+</div>

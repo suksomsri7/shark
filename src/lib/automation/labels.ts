@@ -27,6 +27,25 @@ export const KANBAN_AUTOMATION_EVENTS: AutomationEventDef[] = [
 export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "pos.sale.paid", label: "เมื่อขายสำเร็จ (POS)" },
   { value: "pos.sale.voided", label: "เมื่อยกเลิกบิล" },
+  // POS P1.9 ▸ กะ/ลิ้นชัก (consumer = withAutomation เปล่าใน outbox-consumers.ts) ◂
+  { value: "pos.shift.opened", label: "เมื่อเปิดกะ (POS)" },
+  { value: "pos.shift.closed", label: "เมื่อปิดกะ (POS)" },
+  // POS P1.14 ▸ ตรวจนับสต็อก (consumer = withAutomation เปล่า) ◂
+  { value: "pos.stockCount.confirmed", label: "เมื่อยืนยันผลตรวจนับสต็อก (POS)" },
+  // POS P1.8 ▸ คืนเงิน (consumer = refund-consumer.ts ครอบ withAutomation) ◂
+  { value: "pos.sale.refunded", label: "เมื่อคืนเงิน (POS)" },
+  // POS P1.7 ▸ เงินเข้าใบขอรับเงิน PromptPay/Beam (consumer = withAutomation เปล่า) ◂
+  { value: "pos.payment.intent_paid", label: "เมื่อเงินเข้า (PromptPay/บัตร · POS)" },
+  { value: "pos.sale.taxInvoiceIssued", label: "เมื่อออกใบกำกับภาษีเต็มรูปให้บิล (POS)" }, // POS P1.13 ▸ R2 R3 ◂
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (จอ 09 · consumer = withAutomation เปล่า · rejected ของเว็บร้าน = ยกเลิก ShopOrder ที่ composition root) ◂
+  { value: "pos.order.received", label: "เมื่อมีออเดอร์ออนไลน์เข้า (POS)" },
+  { value: "pos.order.accepted", label: "เมื่อรับออเดอร์ออนไลน์ (POS)" },
+  { value: "pos.order.rejected", label: "เมื่อปฏิเสธออเดอร์ออนไลน์ (POS)" },
+  { value: "pos.order.ready", label: "เมื่อออเดอร์ออนไลน์พร้อมส่ง (POS)" },
+  { value: "pos.order.completed", label: "เมื่อส่งมอบออเดอร์ออนไลน์แล้ว (POS)" },
+  { value: "pos.order.cancelled", label: "เมื่อยกเลิกออเดอร์ออนไลน์ (POS)" },
+  // POS P2.6 ▸ ของหมด (86) / กลับมาขาย ต่อสาขา (consumer = กระจายไป adapter ทุกช่องทางของสาขา) ◂
+  { value: "pos.product.availability", label: "เมื่อสินค้าหมด/กลับมาขาย (86 · POS)" },
   { value: "inventory.lot.expiring", label: "เมื่อสินค้าใกล้หมดอายุ" },
   // ── บอร์ดงาน (K1.4 → ครบ 8 ตัวใน K2.9 · พิมพ์เขียว 13-kanban-v2 §7.2) ─────
   // 🔴 ประกาศที่ `KANBAN_AUTOMATION_EVENTS` ข้างบนที่เดียว แล้ว spread เข้ามาที่นี่
@@ -232,6 +251,40 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "clinic.visit.done", label: "เมื่อปิดการเข้ารับบริการของคลินิก (เก็บเงินแล้ว)" },
   { value: "queue.served", label: "เมื่อคิวได้รับบริการเสร็จแล้ว" },
   // ◂ CRM C2.9
+  // SVC R0.8 ▸ แกนห้อง — การครองห้องเปลี่ยน (จอง/ปล่อย/ย้าย/ปรับช่วง/กันห้องหมดเวลา) · ตัวยิง `rooms/occupancy.ts` (ใน tx เดียวกับการเขียน)
+  //   payload { unitId, roomId, from, to } (from/to = "YYYY-MM-DD" · to ไม่รวม) — ไม่มีชื่อ/เบอร์/ref ของสัญญาหรือการจอง (X8)
+  //   🔴 consumer อยู่ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น) ◂
+  { value: "rooms.occupancy.changed", label: "เมื่อการใช้ห้องเปลี่ยน (จอง/ปล่อย/ย้ายห้อง/ปรับช่วงวัน)" },
+  // SVC D.6 ▸ หอพัก — เลขมิเตอร์ผิดปกติ (สูง/ต่ำกว่าปกติ · เลขถอยหลัง · ห้องว่างใช้น้ำไฟ) · ตัวยิง `dorm/meter.ts` ใน tx เดียวกับแถวเลข
+  //   payload { unitId, meterId, roomId, readingId, periodKey, flag } — ไม่มีชื่อ/เบอร์/ค่าเงิน (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.meter.flagged", label: "เมื่อเลขมิเตอร์หอผิดปกติ (สูง/ต่ำกว่าปกติ · เลขถอยหลัง · ห้องว่างใช้น้ำไฟ)" },
+  // SVC D.5 ▸ หอพัก — ลงชื่อสัญญาเช่าแล้ว · ตัวยิง `dorm/lease.ts#signLease` ใน tx เดียวกับ signedAt
+  //   payload { unitId, leaseId, roomId } — ไม่มีชื่อ/เบอร์/เงิน (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.lease.signed", label: "เมื่อผู้เช่าลงชื่อสัญญาเช่าหอแล้ว" },
+  // SVC D.8 ▸ หอพัก — ส่งบิลรายเดือนให้ผู้เช่าแล้ว (ต่อบิล) · ตัวยิง `dorm/billing.ts#sendBillRun` ใน tx เดียวกับการตั้ง SENT
+  //   payload { unitId, runId, billId, leaseId, periodKey, amountSatang } — ไม่มีชื่อ/เบอร์ (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.billrun.sent", label: "เมื่อส่งบิลรายเดือนหอพักให้ผู้เช่าแล้ว" },
+  // SVC D.11 ▸ หอพัก — บิลเลยกำหนดชำระและยังค้าง (ครั้งเดียวต่อบิล) · ตัวยิง `dorm/dunning.ts#runDormDunningJobs`
+  //   payload { unitId, billId, leaseId, periodKey, dueDate, outstandingSatang, daysLate } — ไม่มีชื่อ/เบอร์ (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.bill.overdue", label: "เมื่อบิลหอพักเลยกำหนดชำระและยังค้างอยู่" },
+  // SVC D.18 ▸ หอพัก — พัสดุ · ตัวยิง `dorm/parcel.ts` (รับพัสดุ / ผู้เช่ารับของแล้ว) · payload { unitId, parcelId, roomId } — ไม่มีชื่อ/เบอร์ (X8)
+  //   เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.parcel.received", label: "เมื่อหอรับพัสดุของผู้เช่าไว้แล้ว" },
+  { value: "dorm.parcel.picked_up", label: "เมื่อผู้เช่ารับพัสดุจากหอแล้ว" },
+  // SVC D.17 ▸ หอพัก — เผยแพร่ประกาศถึงผู้เช่าแล้ว · ตัวยิง `dorm/announce.ts#publishDormAnnouncement` ใน tx เดียวกับ publishedAt
+  //   payload { unitId, announcementId, audience } (audience = ALL|BUILDING|FLOOR|ROOM) — ไม่มีหัวเรื่อง/เนื้อหา/ชื่อ/เบอร์ (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.announcement.published", label: "เมื่อหอพักเผยแพร่ประกาศถึงผู้เช่าแล้ว" },
+  { value: "dorm.bill.paid", label: "เมื่อบิลหอพักชำระครบแล้ว" }, // SVC D.10 ◂
+  { value: "dorm.bill.partially_paid", label: "เมื่อบิลหอพักรับชำระบางส่วน" }, // SVC D.10 ◂
+  // SVC D.16 ▸ หอพัก — แจ้งซ่อม · ตัวยิง `dorm/repair.ts` (ผู้เช่าแจ้งซ่อม / งานซ่อมเสร็จ — การ์ดเสร็จ หรือช่างกดเสร็จ)
+  //   payload { unitId, repairId, roomId, category } — ไม่มีชื่อ/เบอร์/ข้อความผู้เช่า (X8) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "dorm.repair.created", label: "เมื่อผู้เช่าหอแจ้งซ่อม" },
+  { value: "dorm.repair.done", label: "เมื่องานซ่อมของหอเสร็จแล้ว" },
+  // SVC D.12 ▸ หอพัก — ย้ายออก/คืนประกัน/ต่อสัญญา · ตัวยิง `dorm/moveout.ts` · `dorm/lease-change.ts` · payload id/ยอด ล้วน (X8) · เว็บฮุคได้จาก spread ◂
+  { value: "dorm.moveout.settled", label: "เมื่อปิดเงินประกันผู้เช่าที่ย้ายออกแล้ว (หอพัก)" },
+  { value: "dorm.deposit.refund_due", label: "เมื่อถึงกำหนดต้องคืนเงินประกันผู้เช่าที่ย้ายออก (เตือนวันละครั้ง)" },
+  { value: "dorm.lease.renewed", label: "เมื่อต่อสัญญาเช่าหอพัก" },
+  { value: "dorm.lease.ended", label: "เมื่อสัญญาเช่าหอพักสิ้นสุด (ย้ายออก · ย้ายห้อง · ต่อสัญญา)" },
   // CRM C3.2 ▸ โควตาถึงเกณฑ์ (80 % / 100 %) — ตัวยิง = `crm/quotas.ts#checkReached` (หลัง tx ของการรับเงิน COUNTED / การเข้า WON commit)
   //   key `crm.quota.reached#<systemId>:<ownerType>:<ownerId>:<periodKey>#<threshold>` (R-C.8 · ครั้งเดียวต่อเจ้าของ+งวด+เกณฑ์ ตลอดไป ·
   //   INSERT … ON CONFLICT DO NOTHING) · payload { quotaId, ownerType, ownerId, periodKey, threshold, pct } = id ล้วน (X8)
@@ -248,6 +301,44 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "crm.portal.quote.responded", label: "เมื่อลูกค้าบริษัทตอบรับหรือปฏิเสธใบเสนอราคาในพอร์ทัล (CRM)" },
   { value: "crm.portal.request.created", label: "เมื่อลูกค้าบริษัทส่งคำขอหรือแจ้งเรื่องผ่านพอร์ทัล (CRM)" },
   // ◂ CRM C3.5
+  // SVC R0.5 ▸ ศูนย์เชื่อมต่อ — ตัวยิง `core/integrations/service.ts` (ใน tx เดียวกับการเปลี่ยนสถานะ · ครั้งเดียวต่อการเปลี่ยน) ·
+  //   payload = { integrationId, kind, provider } พอดี (ไม่มีค่าลับ/ข้อความดิบ) · consumer no-op ใน `outbox-consumers.ts` ·
+  //   เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "integration.connected", label: "เมื่อเชื่อมต่อผู้ให้บริการภายนอกสำเร็จ (ศูนย์เชื่อมต่อ)" },
+  { value: "integration.failed", label: "เมื่อการเชื่อมต่อผู้ให้บริการภายนอกล้มติดกันจนหยุดใช้งาน (ศูนย์เชื่อมต่อ)" },
+  // ◂ SVC R0.5
+  // SVC R0.6 ▸ ตรวจสลิปกลาง — ตัวยิง `payment/slip-verify.ts` (tx เดียวกับการเขียนสลิป · ครั้งเดียวต่อสลิป/การตัดสิน) ·
+  //   payload = { slipId, domain, refType, refId, amountSatang, status } พอดี (ไม่มีชื่อผู้โอน/รูป) · consumer no-op ใน `outbox-consumers.ts` ·
+  //   เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "payment.slip.submitted", label: "เมื่อลูกค้าส่งสลิปโอนเงิน (ตรวจสลิป)" },
+  { value: "payment.slip.approved", label: "เมื่อสลิปโอนเงินได้รับการอนุมัติ (อัตโนมัติหรือโดยพนักงาน)" },
+  { value: "payment.slip.rejected", label: "เมื่อสลิปโอนเงินถูกปฏิเสธ (ซ้ำ หรือพนักงานไม่รับ)" },
+  // ◂ SVC R0.6
+  // SVC R0.3 ▸ ค่าตั้งแบบชั้นเปลี่ยน (payload ไม่มีค่า — มีแค่คีย์/ชั้น) ◂
+  { value: "settings.changed", label: "เมื่อค่าตั้งของร้านหรือสาขาเปลี่ยน" },
+  // SVC B.4 ▸ จองคิวโหมดแถวเดียว (CC §7) — ตัวยิง `booking/queue-line.ts` (walk-in · เช็กอิน · เริ่ม · เรียก/เสร็จของบัตร · ยกเลิก/เลื่อนฝั่งร้าน)
+  //   และ `booking/planner-run.ts` (สาย) · ยิงใน tx เดียวกับ CAS ของงาน · payload ⊇ { appointmentId, unitId, staffId, kind, channel } (+ ticketId
+  //   ของ queue.*) id ล้วน — ไม่มีชื่อ/เบอร์/อีเมล (X8) · consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts`
+  //   (ห้ามประกาศซ้ำที่นั่น) · created/cancelled ของทางออนไลน์ = B.7
+  { value: "booking.created", label: "เมื่อมีงานจองคิวใหม่ (walk-in รับบัตรคิว)" },
+  { value: "booking.rescheduled", label: "เมื่อร้านเลื่อนนัด" },
+  { value: "booking.cancelled", label: "เมื่อร้านยกเลิกนัดหรืองานคิว" },
+  { value: "booking.checked_in", label: "เมื่อลูกค้าเช็กอินตามนัด (ได้บัตรคิว)" },
+  { value: "booking.late", label: "เมื่อลูกค้ามาสายเลยเวลาผ่อนผัน" },
+  { value: "booking.started", label: "เมื่อเริ่มให้บริการตามนัดหรือคิว" },
+  { value: "queue.ticket.called", label: "เมื่อเรียกบัตรคิวของงานจองคิว" },
+  { value: "queue.ticket.done", label: "เมื่อบัตรคิวของงานจองคิวเสร็จแล้ว" },
+  // ◂ SVC B.4
+  // SVC B.10 ▸ งานจองคิวรับเงินแล้ว (บิลจากคิวที่หน้าขาย หรือปุ่ม "รับเงินแล้ว" ของสาขาไม่มี POS) — ครั้งเดียวต่อนัด (คีย์ booking.paid#<นัด>) ·
+  //   ตัวยิง `booking/finish.ts` · payload { appointmentId, unitId, staffId, kind, channel, saleId, amountSatang, via } id+เงินล้วน (X8) ·
+  //   เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` ◂
+  { value: "booking.paid", label: "เมื่องานจองคิวรับเงินแล้ว" },
+  // SVC B.8 ▸ มัดจำจองคิว — ตัวยิง `booking/service.ts` (ผูกใบรับ · ริบ) + `booking/deposit.ts` (คืน) · payload id + ยอดล้วน (X8) ·
+  //   consumer no-op ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "booking.deposit_paid", label: "เมื่อรับมัดจำนัดจองคิว (สลิปอนุมัติหรือร้านยืนยัน)" },
+  { value: "booking.deposit_forfeited", label: "เมื่อร้านเก็บมัดจำนัดจองคิว (ไม่มาหรือยกเลิกช้า)" },
+  { value: "booking.deposit_refunded", label: "เมื่อคืนมัดจำนัดจองคิว" },
+  // ◂ SVC B.8
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

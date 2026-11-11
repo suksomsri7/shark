@@ -58,8 +58,9 @@ export async function gatherBusinessSnapshot(ctx: AnalystCtx): Promise<BusinessS
   // ยอดขาย PAID ในหน้าต่าง 7 วัน — ดึงครั้งเดียวแล้วแยก bucket ตามวันไทย
   const sales = pos
     ? await tenantDb({ tenantId, systemId: pos.id }).posSale.findMany({
-        where: { status: "PAID", createdAt: { gte: windowStart } },
-        select: { grandTotalSatang: true, createdAt: true },
+        // POS P1.8 ▸ R3: บิลขาย PAID + คืนครบ · ยอดสุทธิหลังคืนเงิน (grand − refundedSatang) ◂
+        where: { docType: "SALE", status: { in: ["PAID", "REFUNDED"] }, createdAt: { gte: windowStart } },
+        select: { grandTotalSatang: true, createdAt: true, refundedSatang: true },
       })
     : [];
 
@@ -73,7 +74,7 @@ export async function gatherBusinessSnapshot(ctx: AnalystCtx): Promise<BusinessS
     const key = dayKeyBangkok(s.createdAt);
     const g = bucket.get(key);
     if (!g) continue; // หลุดนอกหน้าต่าง 7 วัน (ขอบเวลา) — ข้าม
-    const amt = s.grandTotalSatang ?? 0;
+    const amt = (s.grandTotalSatang ?? 0) - (s.refundedSatang ?? 0);
     g.totalSatang += amt;
     g.count += 1;
     sales7dSatang += amt;
@@ -156,13 +157,22 @@ export async function weeklyAnalysis(
   const text = reply.text;
   await chargeUsageSafe(
     { tenantId: ctx.tenantId },
-    { source: "WEEKLY_REPORT", model: reply.model, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut },
+    { source: "WEEKLY_REPORT", model: reply.model, tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead, tokensOut: reply.tokensOut },
   );
 
   // บันทึกเป็นแจ้งเตือนในร้าน — ใส่ tenantId ตรง ๆ
-  await prisma.appNotification.create({
-    data: { tenantId: ctx.tenantId, title: "รายงานธุรกิจประจำสัปดาห์", body: text },
+  // POS P5.2 ▸ fix F (F10a): รายงานมียอดขายทุกสาขา (+ คลัง/HR) ⇒ แจ้งเฉพาะเจ้าของร้าน (OWNER ที่ตอบรับแล้ว) รายคน —
+  //   เดิม recipientUserId ว่าง = ทุกคนในร้านเห็น (ผู้จัดการ/พนักงานสาขาเดียวเห็นยอดทุกสาขา) ◂
+  const owners = await prisma.membership.findMany({
+    where: { tenantId: ctx.tenantId, role: "OWNER", acceptedAt: { not: null } },
+    select: { userId: true },
+    take: 50,
   });
+  if (owners.length) {
+    await prisma.appNotification.createMany({
+      data: owners.map((o) => ({ tenantId: ctx.tenantId, recipientUserId: o.userId, title: "รายงานธุรกิจประจำสัปดาห์", body: text })),
+    });
+  }
   return text;
 }
 

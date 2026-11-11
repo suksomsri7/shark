@@ -57,10 +57,11 @@ export async function dashboardSummary(ctx: DashboardCtx): Promise<DashboardSumm
   ]);
 
   // ยอดขายวันนี้ — aggregate รวบยอด (ไม่วนดึงทีละบิล)
+  // POS P1.8 ▸ R3: บิลขาย (docType SALE) PAID + คืนครบ · ยอด = grand − refundedSatang (สุทธิหลังคืนเงิน ตามวันที่ขาย) ◂
   const salesP = pos
     ? tenantDb({ tenantId, systemId: pos.id }).posSale.aggregate({
-        where: { status: "PAID", createdAt: { gte: todayStart, lt: todayEnd } },
-        _sum: { grandTotalSatang: true },
+        where: { docType: "SALE", status: { in: ["PAID", "REFUNDED"] }, createdAt: { gte: todayStart, lt: todayEnd } },
+        _sum: { grandTotalSatang: true, refundedSatang: true },
         _count: true,
       })
     : null;
@@ -94,7 +95,7 @@ export async function dashboardSummary(ctx: DashboardCtx): Promise<DashboardSumm
     await Promise.all([salesP, newCustP, lowStockP, leavesP, notifP]);
 
   return {
-    salesTodaySatang: sales?._sum.grandTotalSatang ?? 0,
+    salesTodaySatang: (sales?._sum.grandTotalSatang ?? 0) - (sales?._sum.refundedSatang ?? 0),
     salesTodayCount: sales?._count ?? 0,
     newCustomers7d: newCustomers7d ?? 0,
     lowStockCount: (lowStockItems ?? []).filter((i) => needsReorder(i.onHand, i.reorderPoint)).length,

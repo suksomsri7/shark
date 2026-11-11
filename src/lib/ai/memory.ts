@@ -11,16 +11,24 @@
 //     ปฏิเสธด้วยข้อความไทยที่ผู้ช่วยส่งต่อได้ · ความจำส่วนตัวเก็บได้ · ความจำรุ่นเดิมที่มีข้อมูลติดต่อ = ไม่ลบ แต่ซ่อนจากคนที่ไม่ใช่ OWNER
 // - จดซ้ำเนื้อหาเดิม (ในชุดที่ผู้จดดูแล) = อัปเดต updatedAt ของแถวเดิม (find→update) ไม่งอกแถวใหม่ · ห้าม upsert
 // - เพดาน 100 เรื่องต่อชุด (ข้อเท็จจริงของร้าน 100 · ส่วนตัวต่อคน 100) — เกินแล้วจดเรื่องใหม่ = throw ไทย
+// - SEC S1.10 (R-K3) ▸ ความจำ "รอเจ้าของยืนยัน" (`status = "PENDING"`): ข้อเท็จจริงของร้านที่คนที่ไม่ใช่ OWNER เสนอ
+//     (กติกาจากการตีกลับ · remember_fact ในห้องเลขา) — รหัส `o~<ผู้จด>~…` · ผ่านด่านข้อมูลติดต่อแบบของร้าน ·
+//     **ไม่เข้า** memoryBlock/listMemories จนกว่า OWNER ยืนยัน (`teach.confirmMemory` → status null) ·
+//     ไม่มีแถว PENDING = ผลเดิมทุกแถว ◂
 
 import { tenantDb } from "@/lib/core/db";
 import type { AiActor } from "./actor";
 import { contactDataRefusal, findContactData } from "./contact-data";
-import { canForgetMemory, canSeeMemory, managedMemoryWhere, memorySightOf, newMemoryId, visibleMemoryWhere } from "./conversation-owner";
+import { canForgetMemory, canSeeMemory, managedMemoryWhere, memorySightOf, newMemoryId, newShopMemoryId, visibleMemoryWhere } from "./conversation-owner";
 
 export type MemoryCtx = { tenantId: string; actor: AiActor };
 
 const MAX_MEMORIES = 100; // เพดานต่อชุด และจำนวนที่ฉีดเข้า prompt
 const READ_WINDOW = 400; // ดึงมาคัดใน JS (แถวรุ่นเดิมที่มีข้อมูลติดต่อถูกตัดหลัง query)
+/** SEC S1.10 ▸ สถานะ "รอเจ้าของยืนยัน" ของ AiMemory (null = ยืนยันแล้วแบบเดิม) ◂ */
+export const MEMORY_PENDING = "PENDING";
+/** where ของความจำที่ยืนยันแล้ว (status null ต้องผ่าน — `not` ของ Prisma ตัด null ทิ้ง) */
+const CONFIRMED_MEMORY = { OR: [{ status: null }, { status: { not: MEMORY_PENDING } }] };
 
 /**
  * จดความจำ — คืน { id, shared }
@@ -29,24 +37,37 @@ const READ_WINDOW = 400; // ดึงมาคัดใน JS (แถวรุ�
  * - ตรงกับที่จดไว้แล้วในชุดเดียวกัน → อัปเดต updatedAt ของแถวเดิม (ไม่งอกแถว)
  * - เป็นเรื่องใหม่และชุดนั้นเต็มเพดาน (100) → throw
  */
-export async function rememberFact(ctx: MemoryCtx, content: string): Promise<{ id: string; shared: boolean }> {
+export async function rememberFact(
+  ctx: MemoryCtx,
+  content: string,
+  /** SEC S1.10 (R-K3) ▸ `pending` = เสนอเป็นข้อเท็จจริงของร้านที่รอ OWNER ยืนยัน (ผู้จดเป็น OWNER = ยืนยันทันที ไม่สนธงนี้) ◂ */
+  //  SEC S3a.1-S2 ▸ R-Z22: `forcePending` = รอยืนยันแม้ผู้จดเป็น OWNER (ห้องเลขาที่มีบริบทลูกค้า — ข้อความลูกค้าอยู่ใน prompt) ◂
+  opts?: { pending?: boolean; forcePending?: boolean },
+): Promise<{ id: string; shared: boolean; pending?: true }> {
   const text = String(content ?? "").trim();
   if (!text) throw new Error("ต้องระบุเนื้อหาที่จะจำ (ห้ามว่าง)");
-  const { id, shared } = newMemoryId(ctx); // ผู้จดไม่ชัด = throw ก่อนแตะฐานข้อมูล
+  const sight = memorySightOf(ctx);
+  const pending = opts?.pending === true && (!sight.owner || opts.forcePending === true);
+  // ผู้จดไม่ชัด = throw ก่อนแตะฐานข้อมูล · pending = รหัสของร้าน `o~<ผู้จด>~` (newShopMemoryId throw เมื่อไม่ใช่คนในร้าน)
+  const { id, shared } = pending ? { id: newShopMemoryId(ctx), shared: true } : newMemoryId(ctx);
   if (shared) {
     const kinds = findContactData(text);
     if (kinds.length > 0) throw new Error(contactDataRefusal(kinds, "เป็นความจำของร้าน"));
   }
-  const sight = memorySightOf(ctx);
   const db = tenantDb({ tenantId: ctx.tenantId });
   const mine = managedMemoryWhere(sight, shared);
 
   // ซ้ำเนื้อหาเดิมในชุดเดียวกัน → เด้ง updatedAt ของแถวเดิม ไม่งอกแถวใหม่ (find→update ไม่ใช่ upsert)
-  const existing = (await db.aiMemory.findMany({ where: { AND: [mine, { content: text }] }, select: { id: true }, take: 5 })).find((r) =>
-    canForgetMemory(sight, r.id),
-  );
+  const dupes = await db.aiMemory.findMany({ where: { AND: [mine, { content: text }] }, select: { id: true, status: true }, take: 5 });
+  if (pending) {
+    // SEC S1.10 ▸ ร้านมีเรื่องนี้แล้ว (ยืนยันแล้ว หรือมีคนเสนอรอไว้) = ไม่งอกแถว · ไม่แตะแถวของคนอื่น ◂
+    const same = dupes.find((r) => r.status !== MEMORY_PENDING) ?? dupes[0];
+    if (same) return same.status === MEMORY_PENDING ? { id: same.id, shared: true, pending: true } : { id: same.id, shared: true };
+  }
+  const existing = dupes.find((r) => canForgetMemory(sight, r.id));
   if (existing) {
-    await db.aiMemory.update({ where: { id: existing.id }, data: { updatedAt: new Date() } });
+    // SEC S1.10 ▸ OWNER จดเรื่องที่มีคนเสนอรอไว้ = ยืนยันแถวนั้น (status null) ◂
+    await db.aiMemory.update({ where: { id: existing.id }, data: { updatedAt: new Date(), ...(existing.status === MEMORY_PENDING && sight.owner ? { status: null } : {}) } });
     return { id: existing.id, shared };
   }
 
@@ -60,15 +81,18 @@ export async function rememberFact(ctx: MemoryCtx, content: string): Promise<{ i
     );
   }
 
-  const created = await db.aiMemory.create({ data: { id, tenantId: ctx.tenantId, content: text }, select: { id: true } });
-  return { id: created.id, shared };
+  const created = await db.aiMemory.create({ data: { id, tenantId: ctx.tenantId, content: text, ...(pending ? { status: MEMORY_PENDING } : {}) }, select: { id: true } });
+  return pending ? { id: created.id, shared, pending: true } : { id: created.id, shared };
 }
 
-/** รายการความจำ **ที่ผู้ดูเห็น** (updatedAt ใหม่→เก่า) */
-export async function listMemories(ctx: MemoryCtx, take = 50) {
+/**
+ * รายการความจำ **ที่ผู้ดูเห็น** (updatedAt ใหม่→เก่า)
+ * SEC S1.10 ▸ ไม่รวม status "PENDING" (รอเจ้าของยืนยัน) เว้นแต่ `opts.includePending` ◂
+ */
+export async function listMemories(ctx: MemoryCtx, take = 50, opts?: { includePending?: boolean }) {
   const sight = memorySightOf(ctx);
   const rows = await tenantDb({ tenantId: ctx.tenantId }).aiMemory.findMany({
-    where: visibleMemoryWhere(sight),
+    where: opts?.includePending === true ? visibleMemoryWhere(sight) : { AND: [visibleMemoryWhere(sight), CONFIRMED_MEMORY] },
     orderBy: { updatedAt: "desc" },
     take: READ_WINDOW,
   });
@@ -87,7 +111,7 @@ export async function forgetMemory(ctx: MemoryCtx, id: string): Promise<boolean>
   return res.count > 0;
 }
 
-/** รวมความจำที่ผู้ดูเห็นเป็น bullet สำหรับฉีดเข้า system prompt ("" ถ้ายังไม่มี) — ตัวกรองเดียวกับ listMemories */
+/** รวมความจำที่ผู้ดูเห็นเป็น bullet สำหรับฉีดเข้า system prompt ("" ถ้ายังไม่มี) — ตัวกรองเดียวกับ listMemories (ไม่มี PENDING) */
 export async function memoryBlock(ctx: MemoryCtx): Promise<string> {
   const rows = await listMemories(ctx, MAX_MEMORIES);
   if (rows.length === 0) return "";

@@ -1,0 +1,123 @@
+// pos-backfill-catalog.mts — POS WO P1.1a · backfill แคตตาล็อกเดียว (PosProduct) จากของเดิม
+//
+// ตรรกะทั้งหมดอยู่ที่ `src/lib/modules/pos/catalog.ts` → `backfillCatalog` (ผู้เขียนเดียวของแคตตาล็อก · F15.1)
+// สคริปต์นี้ = ด่าน env + อ่าน argv + พิมพ์สรุป เท่านั้น
+//   • InvItem → PosProduct ของระบบ POS ที่ขายมันวันนี้ (คลังผูกสาขาเดียวกับ POS · 0 หรือ >1 POS = ข้าม+นับ)
+//   • MenuItem → PosProduct kind MENU ของตัวเอง (+ PosCategory จาก MenuCategory · PosProductOptionGroup · RecipeLine ถ้าผูก InvItem)
+//   • ShopProduct → POS ตัวแรกของร้าน (ทางเดียวกับ shop checkout) · มี invItemId = แถวเดียวกับ InvItem นั้น
+//   • ไม่สร้าง InvItem · ไม่แก้แถวเดิม (นอกจากคอลัมน์เชื่อมใหม่ posProductId — ไม่แตะ updatedAt)
+//   • idempotent (รอบสอง created 0 · updated 0) · 2 โปรเซสพร้อมกันปลอดภัย (ล็อกร้าน)
+//
+// วิธีรัน
+//   QC4  : bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pos-backfill-catalog.mts [--tenant=<id|slug>]… [--dry-run]
+//   PROD : (⛔ เจ้าของ · runbook §8 · จาก worktree สะอาดที่ SHA ของ PR — P6.1 F10) URL ส่งมาเองหลัง iso.sh เท่านั้น — ไม่โหลด .env ใด ๆ (P6.1 F3 · CD-P61-R3)
+//          bash scripts/iso.sh env DATABASE_URL="$PROD_DIRECT_URL" DIRECT_URL="$PROD_DIRECT_URL" ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id> --dry-run   ← ต้องรัน dry-run ก่อนเสมอ
+//          … เดียวกันแต่ไม่มี --dry-run  ← จริง (ต้องมี dry-run ภายใน 24 ชม. ชุดร้านเดียวกัน)
+//          ทุกร้านบน prod ต้องพิมพ์ `--all` เอง (C13: prod ไม่มี --tenant และไม่มี --all = ปฏิเสธ)
+//   ด่าน host = scripts/lib/pos-prod-writer-guard.mts (allowlist prod/QC4 · PGHOST/?host=/DIRECT_URL ผสม = ปฏิเสธ · พิมพ์ `[target] … role=… host=…`)
+//   VERIFY (P1.1b A5 · อ่านล้วน): … pos-backfill-catalog.mts --tenant=<id> --verify  → ขาดแถว + drift ทีละช่อง (ตัวอย่าง ≤50) · exit 1 ถ้ามี
+// บรรทัดท้าย = `JSON_SUMMARY {...}` (มี `counts` ตัวนับ C7/C9/D3 + `samples` ตัวอย่าง ≤20 ต่อร้าน) · ร้านใดล้ม = exit 1 (ร้านอื่นยังเดินต่อ)
+// 🔴 ฐาน QC: ไม่ระบุ --tenant = ทุกร้านในฐานนั้น · รัน backfill นอกเวลาขาย (ล็อกระดับร้านชนกับผู้เขียนแคตตาล็อก — หนี้ P6.1 runbook)
+
+import { dryRunMarkerPath, guardWriterOrExit, hasRecentDryRun, parseWriterArgv, writeDryRunMarker } from "./lib/pos-prod-writer-guard.mjs"; // POS P6.1 CD-P61-R3 ◂
+
+const SCRIPT = "pos-backfill-catalog";
+
+// ── argv ──
+const argv = process.argv.slice(2);
+// POS P1.1b A5: --verify = เทียบของเดิมกับแคตตาล็อกทีละช่อง (อ่านล้วน · ไม่เขียนอะไรเลย · ใช้ก่อน cut-over ใน P6.1) · exit 1 เมื่อมี drift/ขาดแถว
+const wargs = parseWriterArgv(argv);
+const verify = wargs.verify;
+const dryRun = verify || wargs.dryRun;
+const allTenants = wargs.all;
+const tenantArgs: string[] = wargs.tenants;
+
+// ── env: POS P6.1 F3 (CD-P61-R3) — ทางเขียน prod (ALLOW_PROD_BACKFILL=1) ห้ามโหลดไฟล์ env ใด ๆ (เดิมโหลด `.env` ของทรีที่รันแบบเงียบ) ·
+//    QC (ไม่ตั้ง ALLOW) โหลด QC_ENV_FILE (ปริยาย .env.qc · ห้าม .env) แบบเดิม — env ที่ export มาก่อน (qc4.sh) ชนะไฟล์เสมอ ──
+const allowProd = process.env.ALLOW_PROD_BACKFILL === "1";
+if (!allowProd) {
+  const qcFile = process.env.QC_ENV_FILE ?? ".env.qc";
+  if (qcFile !== ".env") {
+    try {
+      process.loadEnvFile(qcFile);
+    } catch {
+      /* ไม่มีไฟล์ — ต้อง export DATABASE_URL มาเอง (ด่านข้างล่างตรวจ) */
+    }
+  }
+}
+// ด่าน host เดียวของสคริปต์เขียน (allowlist · ALLOW_PROD_BACKFILL · --tenant/--all · ห้ามใช้คู่กัน) — ปฏิเสธ = exit 2/4 ก่อนต่อฐาน
+const target = guardWriterOrExit(SCRIPT, wargs);
+const isProd = target.prodLike;
+const host = target.label;
+// C13: บน prod ต้องเลือกร้านชัด ๆ — --tenant=<id> (ซ้ำได้) หรือ --all ที่พิมพ์เอง (ไม่ระบุอะไรเลย = ปฏิเสธ · ตัวด่านตรวจแล้ว — คงไว้เป็นชั้นที่สอง)
+if (isProd && !tenantArgs.length && !allTenants) {
+  console.error(`🔴 หยุด! ${SCRIPT}: production ต้องระบุ --tenant=<id> หรือ --all เอง`);
+  process.exit(4);
+}
+// ด่าน "dry-run ก่อนเสมอ" บน prod: dry-run เขียนบันทึก (ไฟล์ในเครื่อง ไม่ลง git) · รันจริงต้องเจอบันทึกของ host+ชุดร้านเดียวกัน ภายใน 24 ชม.
+const markerPath = dryRunMarkerPath(SCRIPT, host, wargs);
+if (isProd && !dryRun && !hasRecentDryRun(markerPath)) {
+  console.error(`🔴 หยุด! ${SCRIPT}: production ต้องรัน --dry-run ด้วยชุด --tenant เดียวกันก่อน (ภายใน 24 ชม.) — ไม่พบ ${markerPath}`);
+  process.exit(4);
+}
+console.log(`[env] ${SCRIPT} · DB ${host}${dryRun ? " · DRY-RUN (ไม่เขียนอะไรเลย)" : ""}`);
+
+const { prisma } = await import("@/lib/core/db");
+const catalog = await import("@/lib/modules/pos/catalog");
+
+// ── ร้านที่จะทำ: --tenant (id หรือ slug · ไม่พบ = ตายเสียงดัง) · ไม่ระบุ = ทุกร้าน ──
+let tenantIds: string[];
+if (tenantArgs.length) {
+  const rows = await prisma.tenant.findMany({ where: { OR: [{ id: { in: tenantArgs } }, { slug: { in: tenantArgs } }] }, select: { id: true, slug: true } });
+  const missing = tenantArgs.filter((t) => !rows.some((r) => r.id === t || r.slug === t));
+  if (missing.length) {
+    console.error(`🔴 ${SCRIPT}: ไม่พบร้าน ${missing.join(", ")}`);
+    await prisma.$disconnect();
+    process.exit(2);
+  }
+  tenantIds = rows.map((r) => r.id);
+} else {
+  tenantIds = (await prisma.tenant.findMany({ orderBy: { createdAt: "asc" }, select: { id: true } })).map((r) => r.id);
+}
+
+const t0 = Date.now();
+if (verify) {
+  const v = await catalog.verifyCatalog({ tenantIds }, prisma);
+  await prisma.$disconnect();
+  console.log(`[verify] ร้าน ${v.tenants} · ขาดแถว ${JSON.stringify(v.missing)} · drift ${v.driftTotal} ${JSON.stringify(v.drift)} · 0 แต่ขาเดิม null ${v.zeroVsNull} · ไม่ใช่ drift ${JSON.stringify(v.info)} · ${Date.now() - t0} ms`);
+  for (const d of v.samples) console.log(`  ${d.source} ${d.sourceId} → ${d.productId} · ${d.field}: เดิม ${JSON.stringify(d.legacy)} · แคตตาล็อก ${JSON.stringify(d.catalogue)}`);
+  console.log(`JSON_SUMMARY ${JSON.stringify(v)}`);
+  process.exit(v.driftTotal || v.zeroVsNull || v.missing.invItem || v.missing.menuItem || v.missing.shopProduct ? 1 : 0);
+}
+const s = await catalog.backfillCatalog({ tenantIds, dryRun }, prisma);
+await prisma.$disconnect();
+
+const verb = dryRun ? "จะ" : "";
+console.log(`ร้าน ${s.tenants} · แหล่ง InvItem ${s.sources.invItem} · MenuItem ${s.sources.menuItem} · ShopProduct ${s.sources.shopProduct}`);
+for (const [sys, v] of Object.entries(s.perSystem)) console.log(`  ระบบ POS ${sys}: InvItem ${v.invItem} · MenuItem ${v.menuItem} · ShopProduct ${v.shopProduct}`);
+console.log(`ข้าม (หา POS ไม่เจอ): InvItem ${s.skippedNoPosSystem.invItem} · MenuItem ${s.skippedNoPosSystem.menuItem} · ShopProduct ${s.skippedNoPosSystem.shopProduct} · เหตุ ${JSON.stringify(s.skipped)}`);
+console.log(`ตัวนับ (เจ้าของควรดูก่อนเปิดใช้): ${JSON.stringify(s.counts)}`);
+// R5 F7: soldAtCostToday นับเกินได้สำหรับร้านที่มีสินค้า (PRODUCT) เกิน 200 รายการ — หน้าขายวันนี้แสดงแค่ 200 รายการล่าสุด
+//   (`inventory.listItems` take 200) ⇒ ข้อความถึงเจ้าของต้องเป็น "สูงสุด" ไม่ใช่จำนวนแน่นอน
+console.log(`ลิ้นชักวันนี้อาจคิดราคาทุน: สูงสุด ${s.counts.soldAtCostToday} รายการ (ร้านที่มีสินค้าเกิน 200 รายการ หน้าขายแสดงเพียง 200 รายการล่าสุด — จำนวนจริงอาจน้อยกว่านี้)`);
+const SAMPLE_LABEL: Record<string, string> = {
+  soldAtCostToday: "ลิ้นชักวันนี้อาจคิดราคาทุน (นับสูงสุด — หน้าขายแสดง 200 รายการล่าสุด) → แคตตาล็อกใหม่ \"ยังไม่ตั้งราคา\"",
+  apIgnoredButTillPriced: "ลิ้นชักวันนี้คิดราคาจากสินค้าบัญชีที่เก็บถาวร/สมุดอื่น → \"ยังไม่ตั้งราคา\"",
+  invalidLegacyPrice: "ราคาเดิมผิดรูป (ติดลบ ฯลฯ) → \"ยังไม่ตั้งราคา\"",
+  priceNotSetOther: "ไม่มีราคาขายจากแหล่งใดเลย → \"ยังไม่ตั้งราคา\"",
+  servicePriceDiffersFromAccountProduct: "บริการ: ราคาในคลัง ≠ ราคาขายในบัญชี (ใช้ราคาบัญชี)",
+  catalogPriceDiffersFromTill: "ราคาแคตตาล็อก ≠ ราคาที่ลิ้นชักคิดวันนี้ (แคตตาล็อก/ลิ้นชัก สตางค์)",
+};
+// R4/E3: ตัวนับราคา null 4 ตัวแบ่งแถวราคา null ไม่ซ้อนกัน (soldAtCostToday → apIgnoredButTillPriced → invalidLegacyPrice → priceNotSetOther)
+const sampleText = (r: { name: string; catalogPriceSatang?: number; tillPriceSatang?: number }) =>
+  typeof r.catalogPriceSatang === "number" ? `${r.name} (${r.catalogPriceSatang}/${r.tillPriceSatang})` : r.name;
+for (const [k, byTenant] of Object.entries(s.samples))
+  for (const [t, rows] of Object.entries(byTenant)) if (rows.length) console.log(`  ร้าน ${t} ${SAMPLE_LABEL[k] ?? k} (ตัวอย่าง ≤20): ${rows.map(sampleText).join(" · ")}`);
+console.log(`${verb}สร้าง ${JSON.stringify(s.created)} · ${verb}ผูกคอลัมน์เชื่อม ${JSON.stringify(s.updated)} · มีอยู่แล้ว ${JSON.stringify(s.alreadyDone)} · ${Date.now() - t0} ms`);
+for (const f of s.failedTenants) console.error(`🔴 ร้าน ${f.tenantId} ล้ม (ไม่มีอะไรค้างครึ่งทาง): ${f.error}`);
+if (isProd && dryRun && !s.failedTenants.length) {
+  writeDryRunMarker(markerPath, { host, tenants: tenantArgs, all: allTenants, created: s.created });
+  console.log(`บันทึก dry-run ไว้ที่ ${markerPath} (รันจริงได้ภายใน 24 ชม.)`);
+}
+console.log(`JSON_SUMMARY ${JSON.stringify(s)}`);
+process.exit(s.failedTenants.length ? 1 : 0);

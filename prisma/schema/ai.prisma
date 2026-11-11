@@ -15,6 +15,7 @@ model AiConversation {
   updatedAt  DateTime  @updatedAt
 
   messages AiMessage[]
+  room     AiRoom? // S1.1 เลขา AI — ห้องเลขา (null = ห้องแชท AI เดิม)
 
   @@index([tenantId, updatedAt])
 }
@@ -28,6 +29,7 @@ model AiMessage {
   content        String
   tokensIn       Int            @default(0) // นับเฉพาะแถว ASSISTANT (ของ request นั้น)
   tokensOut      Int            @default(0)
+  authorUserId   String? // S1.1 เลขา AI — คนที่พิมพ์ (R-K2 · เขียนเฉพาะ actor.kind = member · ห้องเดิม = null)
   createdAt      DateTime       @default(now())
 
   @@index([tenantId, conversationId, createdAt])
@@ -104,6 +106,11 @@ model AiTrainingSample {
   toolCallsJson Json     @default("[]") // [{name, args(anonymized)}]
   replyText     String // anonymized
   model         String // haiku | sonnet — ครูที่ผลิต sample
+  outcome       String? // S1.1 เลขา AI — ผลของข้อเสนอ (APPROVED/EDITED/REJECTED · §B.4)
+  editedReply   String? // S1.1 เลขา AI
+  stepsJson     Json? // S1.1 เลขา AI
+  roomId        String? // S1.1 เลขา AI
+  proposalId    String? // S1.1 เลขา AI
   createdAt     DateTime @default(now())
 
   @@index([tenantId, createdAt])
@@ -114,6 +121,7 @@ model AiMemory {
   id        String   @id @default(cuid())
   tenantId  String
   content   String // ข้อเท็จจริงสั้น ๆ ("ร้านหยุดวันจันทร์")
+  status    String? // S1.1 เลขา AI — null = ยืนยันแล้วแบบเดิม · "PENDING" = รอเจ้าของ
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -144,6 +152,10 @@ model AiScheduledTask {
   hourBkk     Int // 0-23 ชั่วโมงตามเวลาไทยที่ให้รัน
   active      Boolean  @default(true)
   lastRunDay  String? // "YYYY-MM-DD" (BKK) กันรันซ้ำในวันเดียวกัน
+  ownerUserId String? // S1.1 เลขา AI — เจ้าของงานประจำ (R-K5 · null = ทางเดิม)
+  frequency   String? // S1.1 เลขา AI — DAILY | WEEKLY | MONTHLY (ไม่มี minute · R-K8)
+  days        Int[]    @default([]) // S1.1 เลขา AI — วันในสัปดาห์/เดือน
+  channels    String[] @default([]) // S1.1 เลขา AI — ช่องทางส่งผล
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

@@ -107,6 +107,7 @@ export type {
   WalletDto,
   WalletVoucherDto,
   WalletCouponDto,
+  UnitPointsDto,
   QuoteKind,
   QuoteLine,
   QuoteConflict,
@@ -122,11 +123,36 @@ export {
   quoteApply,
   /** ตัดสิทธิ์จริงใน transaction ของบิล (POS เรียกตอนปิดบิล) */
   applyOnSale,
+  /** POS P1.3 ▸ ส่วนลดอัตโนมัติ (ระดับ) ที่ applyOnSale จะหักให้บิลนี้ — อ่านอย่างเดียว ◂ */
+  automaticDiscountForSale,
+  /** POS P1.12 ▸ ยอดแต้ม + กติกาใช้แต้มของระบบแต้มที่ผูกสาขา (อ่านอย่างเดียว · ใบเสร็จ/แผงสิทธิ์ของหน้าขาย) ◂ */
+  pointBalanceForUnit,
+  /** POS P1.12 ▸ แบบหลายคน (resolve ระบบ + ตั้งค่าแต้มครั้งเดียว · แถวค้นสมาชิกของหน้าขาย · รีวิว F6) ◂ */
+  pointBalancesForUnit,
   /** บิลถูกยกเลิก → คืนสิทธิ์ทุกชนิด (idempotent) */
   releaseOnVoid,
   /** ลำดับการใช้สิทธิ์ที่หน้าจอเอาไปโชว์เป็นชิปได้ตรง ๆ */
   WALLET_ORDER,
 } from "./wallet";
+
+// ── POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระ (R2–R7 · มติ 1 3 5 10) — POS เรียกบัตรผ่านตรงนี้เท่านั้น ◂ ──
+export {
+  tenderErrorCode,
+  giftCardTenderLookup,
+  prepareGiftCardTender,
+  recheckGiftCardTender,
+  prepareStoreCreditTender,
+  lockTenderCards,
+  useGiftCardTender,
+  refundGiftCardTender,
+  giftCardRefundable,
+  refundToGiftCard,
+  issueStoreCredit,
+  storeCreditOf,
+  tenderCardInfo,
+  giftCardTenderEnabled,
+  giftCardNumbersByIds,
+} from "./tender";
 
 /**
  * M2.6 — จุดตัดเงิน POS ที่ผูกสาขาเดียวกับ "ระบบสมาชิก" นี้ (+ ระบบแต้มถ้ามี)
@@ -392,6 +418,9 @@ export type {
   ReviewSubmitResult,
 } from "./reviews-shared";
 export type { RequestReviewInput, RequestReviewResult, EscalateResult, ListReviewsOptions } from "./reviews";
+// POS P1.11 ▸ มติผู้คุมงาน 8: รีวิวจากหน้าใบเสร็จออนไลน์ของ POS (ประกอบจาก requestReview/submitReview เดิม) + สถานะรีวิวของบิล (อ่านอย่างเดียว) ◂
+export type { SubmitReviewForRefInput, SubmitReviewForRefResult } from "./reviews";
+export { submitReviewForRef, reviewStateForRef } from "./reviews";
 export {
   getReviewSettings,
   setReviewSettings,
@@ -417,6 +446,9 @@ export {
 // KPI หน้ารวมสมาชิก (M1.5) — M3.4 เติม `reviewAvg` เป็นค่าจริงแล้ว · `memberKpis` = ชื่อที่สัญญา M3.4 เรียก
 export type { MemberKpis } from "./list";
 export { getMemberKpis, getMemberKpis as memberKpis } from "./list";
+// POS P1.12 ▸ ค้นสมาชิกที่หน้าขาย (R2) ผ่านตัวค้นเดียวกับหน้ารวมสมาชิก (ขอบเขตสาขา · ไม่มี MERGED · เบอร์ปิดบัง) — เพิ่ม export ล้วน ◂
+export type { ListMembersOptions, ListMembersResult, MemberListRow } from "./list";
+export { listMembers } from "./list";
 
 // ── แนะนำเพื่อน (M3.5 · D6 §4.3 §5.10 §7.1 §11.7 · ภาพ 24 · 08 ขวา) ──
 // 🔴 ชื่อที่ export ออกนอกโมดูลมีคำว่า referral กำกับ (ชื่อสั้นในไฟล์ `reject`/`stats`/`attach` ชนง่าย)
@@ -582,3 +614,8 @@ export {
   /** ประทับ 1 ดวง (ใบที่ตั้ง PIN ต้อง PIN ตรง) → ข้อความแบนเนอร์ */
   staffStamp,
 } from "./staff-app";
+
+// ── SVC B.16 ▸ ความชอบ/ข้อห้ามลูกค้าบนการ์ดงาน (จองคิว: จอแถวเดียว + มือถือหมอ) ──
+// ประกอบ engine ฟิลด์เดิม + นโยบายอ่อนไหวเดิม (evaluateSensitiveAccess) + บันทึกการดู (logAccessMany · กันซ้ำรายวัน) ◂
+export type { StaffNoteItem, StaffNotes, StaffNotesInput } from "./staff-notes";
+export { staffNotesFor } from "./staff-notes";

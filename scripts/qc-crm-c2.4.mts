@@ -333,6 +333,8 @@ try {
   // modules (dynamic — they may not exist yet)
   // ═════════════════════════════════════════════════════════════════════════════
   const CL = (await import("@/lib/modules/crm/calls" as string).catch(() => ({}))) as Any;
+  // ORACLE-EDIT S1.13 (R-S1.13a · มติ 7.1/7.3): แพ็กฟรีเปิด ⇒ ร้านที่เครดิต 0 (N) ไม่ถูกปฏิเสธ NO_CREDIT (ยังลงแถว USAGE) · ปิด ⇒ คาดเดิม
+  const FREE_ON = Boolean(((await import("@/lib/ai/secretary/pack" as string).catch(() => ({}))) as Any)?.FREE_PACK?.enabled);
   const CSH = (await import("@/lib/modules/crm/calls-shared" as string).catch(() => ({}))) as Any;
   const TR = (await import("@/lib/modules/crm/transcriber" as string).catch(() => ({}))) as Any;
   const CP = (await import("@/lib/modules/crm/call-provider" as string).catch(() => ({}))) as Any;
@@ -687,14 +689,18 @@ try {
     const tr0 = TR_CALLS.length;
     const ai0 = AI_CALLS.length;
     const nN = await call(CL.transcribeCall, cN, owner, callN.id, trDeps());
+    const trN = TR_CALLS.length, aiN = AI_CALLS.length; // หลัง N (แพ็กฟรีเปิด: N ถูกเรียกจริง)
     const nOff = await call(CL.transcribeCall, cA2, owner, callA2.id, trDeps());
     const nCfg = await call(CL.transcribeCall, cA, owner, callNoTr.id, { ai: fakeAi("transcribe", AI_JSON) });
-    const props = [...(await proposalsOf(tidN, callN.id)), ...(await proposalsOf(tidA, callA2.id)), ...(await proposalsOf(tidA, callNoTr.id))];
-    const charges = [...(await usageFor(tidN, "crm.call")), ...(await usageFor(tidA, `crm.call.transcribe#${callA2.id}`)), ...(await usageFor(tidA, `crm.call.transcribe#${callNoTr.id}`))];
-    chk("C2.4-S2.4", "refusals call NOTHING: tenant without credit ⇒ NO_CREDIT · settings.crm.ai.callTranscribe off ⇒ AI_DISABLED · no transcriber configured ⇒ NOT_CONFIGURED with \"ยังไม่ได้เชื่อมบริการถอดเสียง\" — transcriber and AI never called, no proposal, no charge (positive control = S2.1)",
-      refused(nN, "NO_CREDIT") && refused(nOff, "AI_DISABLED") && refused(nCfg, "NOT_CONFIGURED") && /ยังไม่ได้เชื่อมบริการถอดเสียง/.test(nCfg.msg) &&
-        TR_CALLS.length === tr0 && AI_CALLS.length === ai0 && props.length === 0 && charges.length === 0,
-      "3 refusals · 0 calls", `noCredit=${rd(nN)} | off=${rd(nOff)} | cfg=${rd(nCfg)} | tr+${TR_CALLS.length - tr0} ai+${AI_CALLS.length - ai0} props=${props.length} charges=${charges.length}`);
+    const propsN = await proposalsOf(tidN, callN.id), chargesN = await usageFor(tidN, "crm.call");
+    const props = [...(FREE_ON ? [] : propsN), ...(await proposalsOf(tidA, callA2.id)), ...(await proposalsOf(tidA, callNoTr.id))];
+    const charges = [...(FREE_ON ? [] : chargesN), ...(await usageFor(tidA, `crm.call.transcribe#${callA2.id}`)), ...(await usageFor(tidA, `crm.call.transcribe#${callNoTr.id}`))];
+    // ORACLE-EDIT S1.13: แพ็กฟรีเปิด ⇒ N = ถอดเสียงได้ (ok · ข้อเสนอ 1 · แถว USAGE ≥1) · สองทางที่เหลือยังปฏิเสธโดยไม่เรียกอะไร
+    const nOk = FREE_ON ? nN.ok && propsN.length === 1 && chargesN.length >= 1 : refused(nN, "NO_CREDIT") && trN === tr0 && aiN === ai0;
+    chk("C2.4-S2.4", FREE_ON ? "แพ็กฟรีเปิด: ร้านเครดิต 0 ⇒ ถอดเสียงได้ + มีแถว USAGE · settings.crm.ai.callTranscribe off ⇒ AI_DISABLED · no transcriber configured ⇒ NOT_CONFIGURED with \"ยังไม่ได้เชื่อมบริการถอดเสียง\" — สองทางหลังไม่เรียกอะไร ไม่มีข้อเสนอ ไม่หัก" : "refusals call NOTHING: tenant without credit ⇒ NO_CREDIT · settings.crm.ai.callTranscribe off ⇒ AI_DISABLED · no transcriber configured ⇒ NOT_CONFIGURED with \"ยังไม่ได้เชื่อมบริการถอดเสียง\" — transcriber and AI never called, no proposal, no charge (positive control = S2.1)",
+      nOk && refused(nOff, "AI_DISABLED") && refused(nCfg, "NOT_CONFIGURED") && /ยังไม่ได้เชื่อมบริการถอดเสียง/.test(nCfg.msg) &&
+        TR_CALLS.length === trN && AI_CALLS.length === aiN && props.length === 0 && charges.length === 0,
+      FREE_ON ? "N ok+USAGE · 2 refusals · 0 calls" : "3 refusals · 0 calls", `noCredit=${rd(nN)} | off=${rd(nOff)} | cfg=${rd(nCfg)} | tr+${TR_CALLS.length - tr0} ai+${AI_CALLS.length - ai0} props=${props.length} charges=${charges.length}`);
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
@@ -715,7 +721,7 @@ try {
     const noCred = await call(CL.callAiStatus, cN, owner, { transcriber: fakeTr() });
     const ready = await call(CL.callAiStatus, cA, owner, { transcriber: fakeTr() });
     chk("C2.4-S8.4", "callAiStatus: OFF (setting off) · NO_PROVIDER with the calm Thai \"ยังไม่ได้เชื่อมบริการถอดเสียง\" · NO_CREDIT · READY — each with a Thai message",
-      off.v?.state === "OFF" && noProv.v?.state === "NO_PROVIDER" && /ยังไม่ได้เชื่อมบริการถอดเสียง/.test(String(noProv.v?.message ?? "")) && noCred.v?.state === "NO_CREDIT" &&
+      off.v?.state === "OFF" && noProv.v?.state === "NO_PROVIDER" && /ยังไม่ได้เชื่อมบริการถอดเสียง/.test(String(noProv.v?.message ?? "")) && noCred.v?.state === (FREE_ON ? "READY" : "NO_CREDIT") /* ORACLE-EDIT S1.13: แพ็กฟรีเปิด ⇒ ร้านเครดิต 0 = READY */ &&
         ready.v?.state === "READY" && [off, noProv, noCred, ready].every((r) => thai(r.v?.message)),
       "OFF/NO_PROVIDER/NO_CREDIT/READY", `${off.v?.state ?? rd(off)} ${noProv.v?.state ?? rd(noProv)} ${noCred.v?.state ?? rd(noCred)} ${ready.v?.state ?? rd(ready)}`, "MAJOR");
   }
@@ -838,7 +844,10 @@ try {
     const r6 = await call(BR.onChatConversationStatus, statusEvt(tidA, chatA, conv6.id, "RESOLVED"), { ai: fakeAi("chat", JSON.stringify({ summary: MARK_CS })) });
     const acts6 = await chatActs(conv6.id);
     chk("C2.4-S8.9", "no credit (tenant N, chatSummary on) or chatSummary off (A) ⇒ the CHAT activity is still created, WITHOUT aiSummary · the AI is never called · no charge",
-      r.ok && r6.ok && actsN.length === 1 && !actsN[0].aiSummary && acts6.length === 1 && !acts6[0].aiSummary && AI_CALLS.length === ai0 && (await usageFor(tidN, "crm.chat")).length === 0,
+      // ORACLE-EDIT S1.13: แพ็กฟรีเปิด ⇒ N (เครดิต 0) ได้สรุป + แถว USAGE 1 · A (ปิดสวิตช์) ยังไม่มีสรุป/ไม่เรียก AI
+      FREE_ON
+        ? r.ok && r6.ok && actsN.length === 1 && String(actsN[0]?.aiSummary ?? "").includes(MARK_CS) && acts6.length === 1 && !acts6[0].aiSummary && AI_CALLS.length === ai0 + 1 && (await usageFor(tidN, "crm.chat")).length === 1
+        : r.ok && r6.ok && actsN.length === 1 && !actsN[0].aiSummary && acts6.length === 1 && !acts6[0].aiSummary && AI_CALLS.length === ai0 && (await usageFor(tidN, "crm.chat")).length === 0,
       "activity w/o summary · 0 AI", `N=${rd(r)} acts=${actsN.length}/${actsN[0]?.aiSummary ? "summary!" : "-"} A-off=${rd(r6)} acts=${acts6.length} ai+${AI_CALLS.length - ai0}`, "MAJOR");
   }
 
@@ -872,14 +881,18 @@ try {
       "NF · 1 contact · CONFLICT", `wrongSys=${rd(wrongSys)} acc=${rd(accL)} contacts=${made.length}@${made[0]?.systemId === crmA ? "crmA" : made[0]?.systemId ?? "-"} again=${rd(again)}`, "MAJOR");
   }
   {
-    const ai0 = AI_CALLS.length;
+    const ai00 = AI_CALLS.length;
     const nc = await call(CL.scanBusinessCard, cN, owner, img(), { ai: fakeAi("card", CARD_JSON) });
+    const ai0 = AI_CALLS.length; // ORACLE-EDIT S1.13: นับเฉพาะทางที่ต้องปฏิเสธหลัง N
     const pdf = await call(CL.scanBusinessCard, cA, owner, img(1024, "application/pdf"), { ai: fakeAi("card", CARD_JSON) });
     const big = await call(CL.scanBusinessCard, cA, owner, img(5 * MB + 1, "image/jpeg"), { ai: fakeAi("card", CARD_JSON) });
     const svg = await call(CL.scanBusinessCard, cA, owner, img(512, "image/svg+xml"), { ai: fakeAi("card", CARD_JSON) });
     chk("C2.4-S8.12", "scanBusinessCard refusals call no AI: no credit ⇒ NO_CREDIT · application/pdf / image/svg+xml ⇒ VALIDATION · > 5 MB ⇒ VALIDATION",
-      refused(nc, "NO_CREDIT") && refused(pdf, "VALIDATION") && refused(svg, "VALIDATION") && refused(big, "VALIDATION") && AI_CALLS.length === ai0 &&
-        (await P.aiProposal.count({ where: { tenantId: tidN, kind: "crm_create_lead" } })) === 0,
+      // ORACLE-EDIT S1.13: แพ็กฟรีเปิด ⇒ N (เครดิต 0) อ่านนามบัตรได้ (ข้อเสนอ 1 · แถว USAGE ≥1 note crm.card.scan) · ปิด ⇒ NO_CREDIT ไม่เรียก AI
+      (FREE_ON
+        ? nc.ok && AI_CALLS.length === ai00 + 1 && (await P.aiProposal.count({ where: { tenantId: tidN, kind: "crm_create_lead" } })) === 1 && (await usageFor(tidN, "crm.card.scan")).length >= 1
+        : refused(nc, "NO_CREDIT") && ai0 === ai00 && (await P.aiProposal.count({ where: { tenantId: tidN, kind: "crm_create_lead" } })) === 0) &&
+        refused(pdf, "VALIDATION") && refused(svg, "VALIDATION") && refused(big, "VALIDATION") && AI_CALLS.length === ai0,
       "refused · 0 AI", `${rd(nc)} | ${rd(pdf)} | ${rd(svg)} | ${rd(big)} ai+${AI_CALLS.length - ai0}`, "MAJOR");
   }
   {

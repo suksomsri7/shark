@@ -32,6 +32,8 @@ export { hrScopeOf, scopedLeaveWhere } from "./scope"; // HR H1.1 R12 ▸ ให
 // scope: ทุก query ผ่าน tenantDb({ tenantId, systemId }) — inject tenantId+systemId อัตโนมัติ
 
 export type Ctx = { tenantId: string; systemId: string };
+/** POS P3.5 ▸ fix2 F4: tx ของผู้เรียก (clock/nextClockKind/getSchedule รับเพิ่มได้ · ไม่ส่ง = ทางเดิม) ◂ */
+export type HrTx = Prisma.TransactionClient;
 
 // แปลง "YYYY-MM-DD" → Date เที่ยงคืน UTC (ตรงกับ @db.Date + rules ที่ตัด ISO 10 ตัวแรก)
 //   รับ Date มาแล้วก็ได้ (เช่น จาก server action ที่ parse เอง) → ใช้ตรง ๆ
@@ -429,54 +431,55 @@ export type ClockOutcome = {
 export async function clock(
   ctx: Ctx,
   input: { employeeId: string; kind: HrAttendanceKind | "NEXT"; note?: string | null; requireActive?: boolean },
+  opts: { tx?: HrTx } = {}, // POS P3.5 ▸ fix2 F4: tx ของผู้เรียก (ลงเวลาใต้ล็อกของ POS — ไม่เปิด connection ที่สอง) · ไม่ส่ง = ธุรกรรมของ HR เอง ◂
 ): Promise<ClockOutcome> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  return tenantDb(ctx).$transaction(
-    async (t) => {
-      const tx = t as unknown as Prisma.TransactionClient;
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clock:${input.employeeId}`}, 0))`;
-      const emp = await tx.hrEmployee.findFirst({
-        where: { ...scope, id: input.employeeId, ...(input.requireActive ? { active: true } : {}) },
-        select: { id: true, name: true },
+  // HR SYNC ▸ รวม H0.3 (ล็อกต่อพนักงาน + NEXT + กันแตะซ้ำ) กับ POS P3.5 fix2 F4 (tx ของผู้เรียก): ตัวงานเดียว รันใน tx ที่ได้มา —
+  //   ทุกคำสั่งระบุ tenantId/systemId เอง (tx ของผู้เรียกไม่มีตัวฉีดของ tenantDb) ◂
+  const run = async (tx: Prisma.TransactionClient): Promise<ClockOutcome> => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clock:${input.employeeId}`}, 0))`;
+    const emp = await tx.hrEmployee.findFirst({
+      where: { ...scope, id: input.employeeId, ...(input.requireActive ? { active: true } : {}) },
+      select: { id: true, name: true },
+    });
+    if (!emp) throw new ClockRefusedError("ไม่พบพนักงาน");
+    const at = new Date();
+    const last = await tx.hrAttendance.findFirst({
+      where: { ...scope, employeeId: emp.id },
+      orderBy: { at: "desc" },
+      select: { id: true, kind: true, at: true, judgement: true, lateMin: true },
+    });
+    const fresh = !!last && at.getTime() - last.at.getTime() < CLOCK_DEDUPE_SEC * 1000;
+    if (last && fresh && (input.kind === "NEXT" || input.kind === last.kind)) {
+      return { id: last.id, kind: last.kind, at: last.at, judgement: last.judgement, lateMin: last.lateMin, deduped: true, employeeName: emp.name };
+    }
+    const kind: HrAttendanceKind = input.kind === "NEXT" ? kindAfter(last, at) : input.kind;
+    let detail: ClockInDetail | null = null;
+    if (kind === "IN") {
+      const w = bkkParts(at).weekday;
+      const r = await tx.hrWorkSchedule.findFirst({
+        where: { ...scope, employeeId: emp.id, weekday: w },
+        select: { weekday: true, dayOff: true, startMin: true, endMin: true, graceMin: true },
       });
-      if (!emp) throw new ClockRefusedError("ไม่พบพนักงาน");
-      const at = new Date();
-      const last = await tx.hrAttendance.findFirst({
-        where: { ...scope, employeeId: emp.id },
-        orderBy: { at: "desc" },
-        select: { id: true, kind: true, at: true, judgement: true, lateMin: true },
-      });
-      const fresh = !!last && at.getTime() - last.at.getTime() < CLOCK_DEDUPE_SEC * 1000;
-      if (last && fresh && (input.kind === "NEXT" || input.kind === last.kind)) {
-        return { id: last.id, kind: last.kind, at: last.at, judgement: last.judgement, lateMin: last.lateMin, deduped: true, employeeName: emp.name };
-      }
-      const kind: HrAttendanceKind = input.kind === "NEXT" ? kindAfter(last, at) : input.kind;
-      let detail: ClockInDetail | null = null;
-      if (kind === "IN") {
-        const w = bkkParts(at).weekday;
-        const r = await tx.hrWorkSchedule.findFirst({
-          where: { ...scope, employeeId: emp.id, weekday: w },
-          select: { weekday: true, dayOff: true, startMin: true, endMin: true, graceMin: true },
-        });
-        detail = clockInDetail(at, r ?? null);
-      }
-      const a = await tx.hrAttendance.create({
-        data: {
-          ...scope,
-          employeeId: emp.id,
-          kind,
-          at,
-          note: input.note?.trim() || null,
-          judgement: detail?.judgement ?? null,
-          dueMin: detail?.dueMin ?? null,
-          lateMin: detail?.lateMin ?? null,
-        },
-        select: { id: true },
-      });
-      return { id: a.id, kind, at, judgement: detail?.judgement ?? null, lateMin: detail?.lateMin ?? null, deduped: false, employeeName: emp.name };
-    },
-    { maxWait: 5_000, timeout: 10_000 },
-  );
+      detail = clockInDetail(at, r ?? null);
+    }
+    const a = await tx.hrAttendance.create({
+      data: {
+        ...scope,
+        employeeId: emp.id,
+        kind,
+        at,
+        note: input.note?.trim() || null,
+        judgement: detail?.judgement ?? null,
+        dueMin: detail?.dueMin ?? null,
+        lateMin: detail?.lateMin ?? null,
+      },
+      select: { id: true },
+    });
+    return { id: a.id, kind, at, judgement: detail?.judgement ?? null, lateMin: detail?.lateMin ?? null, deduped: false, employeeName: emp.name };
+  };
+  if (opts.tx) return run(opts.tx);
+  return tenantDb(ctx).$transaction((t) => run(t as unknown as Prisma.TransactionClient), { maxWait: 5_000, timeout: 10_000 });
 }
 
 /** ครั้งถัดไปควรเป็นเข้าหรือออก จากแถวล่าสุด — มีแถว IN ตั้งแต่ 00:00 เวลาไทยของวันนี้ = ออก · นอกนั้น = เข้า */
@@ -495,10 +498,10 @@ function kindAfter(last: { kind: HrAttendanceKind; at: Date } | null, now: Date)
 
 /** ครั้งถัดไปของวันนี้ (เวลาไทย) ควรเป็นเข้าหรือออก — พนักงานไม่ต้องเลือกเอง
  *  HR H0.3 ▸ ใช้แสดงผลเท่านั้น · การลงเวลาจริงตัดสินซ้ำใต้ล็อกใน clock(kind "NEXT") ด้วย kindAfter ตัวเดียวกัน ◂ */
-export async function nextClockKind(ctx: Ctx, employeeId: string): Promise<HrAttendanceKind> {
+export async function nextClockKind(ctx: Ctx, employeeId: string, opts: { tx?: HrTx } = {} /* POS P3.5 ▸ fix2 F4 ◂ */): Promise<HrAttendanceKind> {
   const now = new Date();
-  const last = await tenantDb(ctx).hrAttendance.findFirst({
-    where: { employeeId },
+  const last = await (opts.tx ? opts.tx.hrAttendance : tenantDb(ctx).hrAttendance).findFirst({
+    where: { employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, // POS P3.5 ▸ fix2 F4: ขอบเขตตรง (ทาง tx ไม่มีตัวฉีดของ tenantDb) ◂
     orderBy: { at: "desc" },
     select: { kind: true, at: true },
   });
@@ -1049,8 +1052,9 @@ export type ScheduleRow = {
 };
 
 /** ตารางของพนักงานคนหนึ่ง ครบ 7 วัน — วันที่ยังไม่ตั้งคืน null เพื่อให้ UI รู้ว่า "ยังไม่ได้ตั้ง" */
-export async function getSchedule(ctx: Ctx, employeeId: string): Promise<(ScheduleRow | null)[]> {
-  const rows = await tenantDb(ctx).hrWorkSchedule.findMany({ where: { employeeId } });
+export async function getSchedule(ctx: Ctx, employeeId: string, opts: { tx?: HrTx } = {} /* POS P3.5 ▸ fix2 F4 ◂ */): Promise<(ScheduleRow | null)[]> {
+  const where = { employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const rows = opts.tx ? await opts.tx.hrWorkSchedule.findMany({ where }) : await tenantDb(ctx).hrWorkSchedule.findMany({ where });
   const byDay = new Map(rows.map((r) => [r.weekday, r]));
   return Array.from({ length: 7 }, (_, wd) => {
     const r = byDay.get(wd);
@@ -1237,6 +1241,22 @@ export async function employeeOfUser(
     if (row) return { employeeId: row.id, systemId: row.systemId, name: row.name };
   }
   return null;
+}
+
+/**
+ * POS P4.3 ▸ fix2 (R1 F5): รุ่นทั้งชุดของ `employeeOfUser(...) !== null` — userId ในชุดนี้ที่ผูกพนักงาน (HrEmployee.linkedUserId · active หรือไม่ก็ได้
+ *   = กติกาเดียวกับ employeeOfUser) · query ต่อระบบ HR ครั้งเดียว (แทน 2 query ต่อคน) · เพดาน 500 คน · ไม่มี/ข้ามร้าน = [] ◂
+ */
+export async function linkedUserIdsOf(tenantId: string, userIds: string[]): Promise<string[]> {
+  const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map((u) => (typeof u === "string" ? u.trim() : "")).filter(Boolean))].slice(0, 500);
+  if (!tenantId || ids.length === 0) return [];
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR" }, select: { id: true }, orderBy: { createdAt: "asc" } });
+  const out = new Set<string>();
+  for (const s of systems) {
+    const rows = await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findMany({ where: { linkedUserId: { in: ids } }, select: { linkedUserId: true } });
+    for (const r of rows) if (r.linkedUserId) out.add(r.linkedUserId);
+  }
+  return [...out];
 }
 
 /**

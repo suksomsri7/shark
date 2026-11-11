@@ -1,0 +1,32 @@
+# HF-TX red-before — qc-hf-tx (QC_FORCE=1) on src = session/pos d85ea5c3 (suite fc057096) · QC4 · 2026-10-10T08:27:43Z
+# HT4/HT5 = controls (green expected) · HT6.4 = registry unchanged (green expected) · HT2.4 green = racy (in-tx drainAll can land after commit — investigation §3)
+── qc-hf-tx · [static] ──
+  ❌ [HT6.1] [static] createSale/regCreateSale ที่ส่ง client: prisma/PrismaClient หรือ callerTx(…) เท่านั้น — ส่ง tx ดิบ 5: giftcard/service.ts:403 createSale(…, tx : (none)) · giftcard/service.ts:674 createSale(…, tx : (none)) · pos/order.ts:454 createSale(…, flatTx(tx)) · pos/register.ts:2427 regCreateSale(…, tx : (none)) · pos/register.ts:2530 regCreateSale(…, regCallerTx(tx))
+  ❌ [HT6.2] [static] ไม่มี Proxy ซ่อน $transaction นอก core/caller-tx.ts (regCallerTx/flatTx หาย) — pos/order.ts: 2× regCallerTx/flatTx · pos/order.ts: new Proxy ซ่อน $transaction · pos/register.ts: 2× regCallerTx/flatTx · pos/register.ts: new Proxy ซ่อน $transaction
+  ❌ [HT6.3] [static] core/caller-tx.ts บริสุทธิ์ (ไม่มี import) + export callerTx · service.ts export afterSaleCommitted · facade ส่งออก — ไม่มี core/caller-tx.ts · service.ts ไม่ export afterSaleCommitted · pos/index.ts ไม่ส่งออก afterSaleCommitted
+  ✅ [HT6.4] [static] ทะเบียนผู้เรียก createSale (qc-pos-p1.6 U4) ไม่เปลี่ยน — 19 จุด/16 ไฟล์ ตรงทะเบียน
+  ❌ [HT7] [static] helper `"$transaction" in` นอกขอบเขต ถูกจดใน POS-OWNER-PENDING.md (HF-TX · HT7) ครบ/ตรงจำนวน — ไม่มีบรรทัด HF-TX · HT7 ใน POS-OWNER-PENDING.md (src มี point/internal.ts×1, pos/catalog.ts×2, pos/channel.ts×1, pos/device.ts×1, pos/payment-intent.ts×1, stamp/service.ts×1, ticket/service.ts×2)
+⚠️  QC_FORCE=1 — ยังขาด src/lib/core/caller-tx.ts, pos/service.ts afterSaleCommitted (คาด: แดงตามเหตุผล ไม่ crash)
+
+
+── HT2 บัตรกำนัล sell + reload ──
+  ❌ [HT2.1] บัตรกำนัล sell: PosSale/Line/Payment xmin = GiftCard/GiftCardTxn xmin · giftCardId ตั้งแล้ว — xmin {"PosSale":["5454357"],"PosSaleLine":["5454358"],"PosPayment":["5454358"],"GiftCard":["5454357"],"GiftCardTxn":["5454357"]} · giftCardId ตั้งแล้ว
+  ❌ [HT2.2] บัตรกำนัล sell: pos.sale.paid 1 แถว → DONE (ระบายหลัง commit) — pos.sale.paid 1 แถว · PENDING/0
+  ❌ [HT2.3] บัตรกำนัล reload: PosSale/Line/Payment xmin = GiftCard/GiftCardTxn xmin · giftCardId ตั้งแล้ว — xmin {"PosSale":["5454359"],"PosSaleLine":["5454360"],"PosPayment":["5454360"],"GiftCard":["5454359"],"GiftCardTxn":["5454359"]} · giftCardId ตั้งแล้ว
+  ✅ [HT2.4] บัตรกำนัล reload: pos.sale.paid 1 แถว → DONE (ระบายหลัง commit) — pos.sale.paid 1 แถว · DONE/0
+── HT4 positive control ──
+  ✅ [HT4] positive control: หน้าขายเงินสด xmin เดียว + OUT 1 — xmin 5454367 · OUT -1 · onHand 100→99 · อ่าน cash:found
+── HT1 ทางใบขอรับเงิน (P1.7) ──
+  ❌ [HT1.1] ทางใบขอรับเงิน: PosSale/PosSaleLine/PosPayment/PosPaymentIntent xmin เดียว — xmin {"PosSale":["5454374"],"PosSaleLine":["5454374"],"PosPayment":["5454373"],"PosPaymentIntent":["5454373"]} · intent CONSUMED
+  ✅ [HT1.2] ทางใบขอรับเงิน: OUT 1 แถว (−1) · onHand −1 — OUT -1 · onHand 99→98
+  ✅ [HT1.3] ทางใบขอรับเงิน: pos.sale.paid 1 แถว — pos.sale.paid 1 แถว · DONE/0
+  ❌ [HT1.4] ทางใบขอรับเงิน: ไม่มีการอ่านบิลก่อน commit (ไม่มี found:false) · มีอ่านหลัง commit — อ่าน intent:found:false,intent:found
+── HT3 สัญญา callerTx ──
+  ❌ [HT3.1] callerTx + ผู้เรียก rollback ⇒ บิล 0 แถว · OUT 0 — ยังไม่มี src/lib/core/caller-tx.ts, pos/service.ts afterSaleCommitted
+  ❌ [HT3.2] callerTx + commit + afterSaleCommitted ⇒ xmin = xid ผู้เรียก · ไม่มีการอ่านในธุรกรรม · OUT 1 — ยังไม่มี src/lib/core/caller-tx.ts, pos/service.ts afterSaleCommitted
+── HT5 negative control (tx ดิบ) ──
+  ✅ [HT5] negative control: tx ดิบ ⇒ ตัวตรวจเห็น xmin แยก + found:false ก่อน commit — ตัวตรวจเห็น: xmin บรรทัด 5454381 vs ผู้เรียก 5454380 (แยก) · อ่านในธุรกรรม ht5-in-tx:found:false
+
+===== qc-hf-tx ===== ผ่าน 6/17 (QC_FORCE) · ล้างร้านชั่วคราว: แถวค้าง 0 · ร้าน 0 · ผู้ใช้ 0
+JSON_SUMMARY {"suite":"qc-hf-tx","total":17,"passed":6,"failed":["HT1.1","HT1.4","HT2.1","HT2.2","HT2.3","HT3.1","HT3.2","HT6.1","HT6.2","HT6.3","HT7"],"skipped":false,"forced":true,"missing":["src/lib/core/caller-tx.ts","pos/service.ts afterSaleCommitted"],"residue":0}
+exit=1

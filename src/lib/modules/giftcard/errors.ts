@@ -39,3 +39,16 @@ export class GiftCardStateError extends Error {
     this.name = "GiftCardStateError";
   }
 }
+
+// POS P2.9 ▸ บัตร/เครดิตร้านเป็น "วิธีชำระ" — ข้อผิดพลาดที่มีรหัสคงที่ (หน้าขาย/ใบคืนแปลงเป็นรหัสปฏิเสธของตัวเอง) ◂
+//   ใช้เฉพาะทางวิธีชำระ (prepare*/useTender/refundToCard/issueStoreCredit) — ทางเดิม (use/sell/reload/…) ยังโยนชนิดเดิมทุกตัว
+export type GiftCardTenderCode = "GIFT_CARD_NOT_FOUND" | "GIFT_CARD_PIN" | "GIFT_CARD_LOCKED" | "GIFT_CARD_CHANGED" | "STORE_CREDIT_NOT_OWNER";
+export class GiftCardTenderError extends Error {
+  readonly status = 409;
+  readonly code: GiftCardTenderCode;
+  constructor(code: GiftCardTenderCode, message: string) {
+    super(message);
+    this.name = "GiftCardTenderError";
+    this.code = code;
+  }
+}

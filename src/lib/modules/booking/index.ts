@@ -1,8 +1,57 @@
 // booking/index.ts — facade ของโมดูล "ระบบจองคิว" (สร้างในใบ CRM v2 C2.4 · มติผู้คุมงาน C2.4 ข้อ 8)
 //
-// 🔴 **อ่านอย่างเดียว** — ผิวนี้เปิดเท่าที่ปฏิทิน CRM ต้องใช้จริงวันนี้ ไม่มีทางเขียนอะไรผ่านที่นี่
+// 🔴 ส่วนของ CRM (appointmentsByParty) **อ่านอย่างเดียว** · B.11 เพิ่มงานเขียนของจอตั้งค่า (ด่านสิทธิ์อยู่ในฟังก์ชัน)
 //    (โค้ดในโมดูลนี้และหน้าจอของมันยัง import `./service` ตรงตามเดิม — facade มีไว้ให้ "คนนอกโมดูล" เท่านั้น)
 // 🔴 re-export ล้วน ไม่มีตรรกะ (แบบเดียวกับ `crm/index.ts` · `party/index.ts`) ⇒ ไฟล์นี้ไม่แตะ prisma เอง
 // 🔴 ผู้ใช้วันนี้: `crm/activities.ts#calendar` (เส้น crm→booking ใน `scripts/fitness.mts` ALLOWED_EDGES พร้อมเหตุผล)
 export { appointmentsByParty } from "./service";
 export type { PartyAppointmentRow } from "./service";
+
+// SVC B.11 ▸ จอตั้งค่าจองคิว + สิทธิ์ต่อ action + ความเป็นส่วนตัว (หน้า/action ของโมดูลเองและงานรายชั่วโมงเรียกผ่าน facade) ◂
+export { loadBookingSettingsPage, applyBookingTemplate, setStaffService, setServiceBooking, applyBookingRolePreset } from "./settings-model";
+export { purgeBookingPersonalData } from "./privacy";
+export type { PurgeResult } from "./privacy";
+export { BOOKING_ACTIONS, bookingActionKeys, canBookingAction } from "./access";
+export { maskPhone, canSeeFullPhone, phoneForViewer } from "./privacy-shared";
+
+// SVC B.9 ▸ แจ้งเตือนลูกค้า + ผูก LINE + รับบัตรคิวจากมือถือ (ผู้ใช้ = `platform/booking-{notify,line-link,remote}.ts` — ชั้น platform
+//   เพราะต้องแตะทั้ง booking + chat + notifyCustomer) · re-export ล้วน · ทุกตัวผูก ctx ของร้าน/สาขาเอง ◂
+export { checkIn, createWalkIn, quoteWalkInWait } from "./queue-line";
+export type { CheckInResult, WalkInResult } from "./queue-line";
+export { loadTodayLine } from "./today-line";
+export type { TodayLineView, LineJob } from "./today-line";
+export { ticketTokenFor, deferTicket } from "./public-line";
+export { bookingPhoneKey } from "./service";
+
+// SVC B.7 ▸ ลิงก์จัดการนัด + ลิงก์ตัวตนจาก LINE (B.9 ส่งใบนัด/ตอบเมนู OA ผ่าน facade) ◂
+export { manageLinkFor, bookingIdentityToken } from "./online";
+// SVC B.10 ▸ จบงาน → บิลจากคิว (บิลพัก POS) + ค่าคอมฯ ตามผู้ให้บริการ — action/หน้า/ตัวรับคิว (composition root) เรียกผ่าน facade ◂
+export {
+  previewServiceBill, finishJob, ensureServiceBill, amendServiceBill, cancelServiceBill, markPaidWithoutPos, authorizeServiceBillOp, onPosSalePaid, voidPaidServiceBill, isLegacyBookingUnit,
+} from "./finish";
+export type { ExtraLine, BillLine, ServiceBillPreview, FinishFail, FinishResult, ServiceBillOp } from "./finish";
+
+// SVC B.8 ▸ มัดจำรุ่นแรก (สถานะ · หน้าจ่าย · consumer สลิปอนุมัติ · จอร้าน · ใช้มัดจำในบิลของ B.10) — ด่านสิทธิ์/token อยู่ในฟังก์ชัน ◂
+export { depositInfo, loadDepositPay, submitDepositSlip, onDepositSlipApproved, depositQueue, confirmDepositByShop, refundDepositByShop, forfeitDepositByShop, depositForBill } from "./deposit";
+export type { DepositState, DepositInfo, DepositPay, SlipSubmitFail, ShopCtx, DepositQueueItem } from "./deposit";
+
+// SVC B.17 ▸ ไม่มาซ้ำ (บังคับมัดจำ / ต้องโทรจอง) + ร้านยกเว้นรายนัด — re-export ล้วน ◂
+export { repeatNoShowOf, excuseNoShow, REPEAT_NO_SHOW_REASON } from "./no-show-rule";
+export type { RepeatNoShowAction, RepeatNoShowState } from "./no-show-rule";
+
+// SVC B.13 ▸ ทรัพยากรร้านนวด (ห้อง/เตียง/อุปกรณ์ · CRUD + ปิดซ่อม) + กล่อง "รับ walk-in ตอนนี้ได้ไหม" — ด่านสิทธิ์อยู่ในฟังก์ชัน ◂
+export { listResources, createResource, updateResource, setResourceMaintenance, walkInNowByService } from "./resources";
+export { bookingResourcesModel } from "./settings-model";
+export type { ResourceCtx, ResourceActor, ResourceRow, ResourceResult, ResourceFail, ResourceInput, ResourcePatch, MaintenanceWindow, WalkInNowRow } from "./resources";
+// SVC B.17 ▸ waitlist (เข้า/ออก · กล่องหน้าจอง) + ตัวช่วยที่ platform/booking-waitlist.ts ใช้จับคู่ช่องว่าง (ตัวตัดสินเดียวกับทางจอง) — re-export ล้วน ◂
+export { joinWaitlistOnline, leaveWaitlistOnline, waitlistViewOf, WAITLIST_RATE } from "./waitlist";
+export type { WaitlistJoinFail, WaitlistMode, WaitlistView } from "./waitlist";
+export { findSlots, onlineRulesOf } from "./service";
+export { localToUtc } from "./slots";
+// SVC B.14 ▸ ปฏิทินนัด (วัน/สัปดาห์ · คน/ห้อง · ลากย้าย · จองจากปฏิทิน) ◂
+export { loadCalendar, moveAppointment, bookForCustomer } from "./calendar";
+export type { CalendarActor, CalendarView, CalColumn, CalBlock, CalMode, CalRange, CalMoveTo, CalMoveFail, CalMoveResult } from "./calendar";
+
+// SVC B.15 ▸ คู่รัก/กลุ่ม (1 การจอง = หลายงาน · groupId) — จอปฏิทิน B.14 / ทางอื่นนอกโมดูลเรียกผ่าน facade ◂
+export { bookGroup, findGroupSlots, groupOf, cancelGroup, rescheduleGroup } from "./group";
+export type { GroupBookInput, GroupBookResult, GroupFailCode, GroupMemberInput, GroupOpFail, GroupOpResult, GroupSlot, GroupMember, GroupDeposit, GroupView } from "./group";

@@ -6,6 +6,8 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { formatThaiDate } from "@/lib/ui/date";
 import { isNegative, movingAvgCost, needsReorder } from "./rules";
 import { bridgeInventoryMovement, bridgeItemToAccountProduct, type MovementForGl } from "./account-bridge";
+// POS P1.1b ▸ G2: คำสั่งเขียน InvItem (ข้อมูล/ราคา/เก็บถาวร/ลิงก์บัญชี) ย้ายไป catalog-legacy — InvItem + แคตตาล็อก POS ในธุรกรรมเดียว ◂
+import * as legacy from "@/lib/modules/pos/catalog-legacy";
 
 // Inventory (ระบบ 18) — สต็อกกลาง + movement ledger (contract C-1)
 // ⚠️ กติกาทั้งหมดมาจาก rules.ts (สมอง FREEZE) — ที่นี่แค่เรียกใช้ + ผูก DB
@@ -16,7 +18,8 @@ import { bridgeInventoryMovement, bridgeItemToAccountProduct, type MovementForGl
 //    (อยู่ใน tx เดียวกับการ append ledger เสมอ → balanceAfter = onHand หลังรายการ)
 //    🔴 HF-INV-1: ทุกการเขียนสต็อกล็อกแถว InvItem ก่อนอ่านยอด (lockItemForStock/lockItemsInTx) — ห้ามเพิ่มจุดเขียนใหม่ที่ไม่ล็อก
 
-export type Ctx = { tenantId: string; systemId: string };
+/** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่ใช้ตรวจสิทธิ์) */
+export type Ctx = { tenantId: string; systemId: string; actorUserId?: string };
 
 // ═══════════ Multi-warehouse (WO-0037) — Location + สต็อกต่อคลัง ═══════════
 // InvItem.onHand = ยอดรวมทุกคลัง (ของเดิม ห้ามเพี้ยน) · InvLocationStock = ยอดต่อคลัง (cache)
@@ -154,13 +157,20 @@ async function lockItemForStock(db: Db, ctx: Ctx, itemId: string): Promise<Locke
  * HF-INV-1 — ล็อกสินค้าหลายตัวตามลำดับ id ที่ตายตัว ภายใน tx ของผู้เรียก (กัน deadlock ของ tx ที่แตะหลายสินค้า)
  * เรียกก่อน `consumeInTx`/`receiveInTx` ตัวแรกของ tx นั้น · id ซ้ำ/ว่างตัดทิ้ง · id ที่ไม่มีในระบบนี้ข้ามเงียบ
  * R3.2: รอล็อกได้ไม่เกิน 15 วิ (เอกสารบัญชีไม่มีตัวห่อลองใหม่) · หลังได้ล็อก lock_timeout ของ tx กลับเป็นค่าเดิม
+ * POS P2.3 ▸ fix round 1 (รีวิว F5): อาร์กิวเมนต์ที่ 4 (ไม่บังคับ) = งบรอล็อก — consumeBatch (มีตัวห่อลองใหม่ · รันในจังหวะส่งบิลของแคชเชียร์)
+ *   ส่ง STOCK_LOCK_WAIT_WRAPPER 5 วิ เท่าทางตัดทีละรายการเดิม · ผู้เรียกเดิม (3 อาร์กิวเมนต์) = 15 วิ ไม่เปลี่ยน ◂
  */
-export async function lockItemsInTx(tx: Db, ctx: Ctx, itemIds: readonly string[]): Promise<void> {
+export async function lockItemsInTx(
+  tx: Db,
+  ctx: Ctx,
+  itemIds: readonly string[],
+  wait: typeof STOCK_LOCK_WAIT_WRAPPER | typeof STOCK_LOCK_WAIT_ACCOUNT_DOC = STOCK_LOCK_WAIT_ACCOUNT_DOC,
+): Promise<void> {
   const ids = [...new Set(itemIds.filter((x) => typeof x === "string" && x))].sort();
   if (ids.length === 0) return;
   await tx.$queryRaw`
     WITH prev AS MATERIALIZED (SELECT current_setting('lock_timeout') AS v),
-    lt AS MATERIALIZED (SELECT set_config('lock_timeout', ${STOCK_LOCK_WAIT_ACCOUNT_DOC}, true) AS v FROM prev),
+    lt AS MATERIALIZED (SELECT set_config('lock_timeout', ${wait}, true) AS v FROM prev),
     locked AS MATERIALIZED (
       SELECT i."id" FROM "InvItem" i, lt
       WHERE i."tenantId" = ${ctx.tenantId} AND i."systemId" = ${ctx.systemId} AND i."id" IN (${Prisma.join(ids)})
@@ -327,8 +337,9 @@ export type CreateItemInput = {
 };
 
 export async function createItem(ctx: Ctx, input: CreateItemInput): Promise<{ id: string }> {
-  const it = await tenantDb(ctx).invItem.create({
-    data: {
+  // POS P1.1b: + แถวแคตตาล็อกของ POS ที่ขายคลังนี้ (ensureForInvItem) ในธุรกรรมเดียว — BUSY (backfill ถือล็อกร้าน) = ทั้งก้อนไม่บันทึก แล้ว throw ข้อความไทย
+  const it = await prisma.$transaction((tx) =>
+    legacy.createInvItem(tx, ctx, {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
       sku: input.sku.trim(),
@@ -348,8 +359,8 @@ export async function createItem(ctx: Ctx, input: CreateItemInput): Promise<{ id
       ...(input.bookable !== undefined ? { bookable: input.bookable } : {}),
       description: input.description?.trim() || null,
       // onHand = 0 (default ใน schema)
-    },
-  });
+    }, ctx.actorUserId),
+  );
   return { id: it.id };
 }
 
@@ -486,7 +497,7 @@ export async function updateItem(ctx: Ctx, itemId: string, patch: UpdateItemPatc
   if (Object.keys(data).length === 0) return { id: itemId };
 
   try {
-    await db.invItem.update({ where: { id: item.id }, data });
+    await prisma.$transaction((tx) => legacy.updateInvItem(tx, ctx, item.id, data as Prisma.InvItemUncheckedUpdateInput, ctx.actorUserId));
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
       throw new Error("มีสินค้ารหัส (SKU) นี้อยู่แล้ว");
@@ -504,7 +515,7 @@ export async function archiveItem(ctx: Ctx, itemId: string): Promise<{ id: strin
   const item = await db.invItem.findFirst({ where: { id: itemId } });
   if (!item) throw new Error("ไม่พบสินค้าในคลัง");
   if (!item.archivedAt) {
-    await db.invItem.update({ where: { id: item.id }, data: { archivedAt: new Date() } });
+    await prisma.$transaction((tx) => legacy.setInvItemArchived(tx, ctx, item.id, true, ctx.actorUserId));
   }
   return { id: itemId };
 }
@@ -515,7 +526,8 @@ export async function unarchiveItem(ctx: Ctx, itemId: string): Promise<{ id: str
   const item = await db.invItem.findFirst({ where: { id: itemId } });
   if (!item) throw new Error("ไม่พบสินค้าในคลัง");
   if (item.archivedAt) {
-    await db.invItem.update({ where: { id: item.id }, data: { archivedAt: null } });
+    // G6: แถวแคตตาล็อกกลับมาขาย (catalog.restore — ensureForInvItem ไม่ปลดเก็บถาวรเอง)
+    await prisma.$transaction((tx) => legacy.setInvItemArchived(tx, ctx, item.id, false, ctx.actorUserId));
   }
   return { id: itemId };
 }
@@ -727,6 +739,68 @@ export async function consumeInTx(tx: Db, ctx: Ctx, input: ConsumeInput): Promis
   }
 }
 
+// POS P2.3 ▸ ตัดออกหลายรายการใน tx เดียว (consumeBatch) — ผู้เรียก: POS ตัดสต็อกของบิล (1 ชุดต่อบิล · C-1) · โน้ตเจ้าของโมดูลคลังใน ledger/POS-OWNER-PENDING.md
+//   ทำไม: บิลที่มีสูตร (BOM) ตัดวัตถุดิบหลายตัวต่อบรรทัด — เดิมตัดทีละส่วน (tx ละส่วน) ⇒ ล็อกพลาดกลางทาง = บิลตัดครึ่งเดียว
+//   กติกา: tx เดียว · ล็อกทุกสินค้าตามลำดับ id ตายตัว (lockItemsInTx) ก่อนแตะตัวใด ⇒ ไม่มีวงล็อก · consumeInTx ต่อส่วนด้วยคีย์ของส่วนนั้น
+//     (แถว movement เหมือนตัดทีละส่วนทุกค่า) · ส่วนที่สินค้าไม่มีในระบบคลังนี้ / เป็นบริการ = ข้าม (คืนใน skipped · ไม่ล้มทั้งชุด)
+//     ล็อกชนกัน (งบรอ 5 วิ = ตัวห่อ · fix round 1 F5) = ลองใหม่ทั้งชุด 1 ครั้ง (withStockRetry) · ล้มทั้งชุด = ไม่มีส่วนใดถูกตัด (ผู้เรียกนับเป็น "ค้างตัด" แล้วลองใหม่ได้)
+//     หลัง commit: GL ต่อ movement (รวมคีย์เดิมที่เคยตัดในtx ของบิลแบบ BLOCK — GL idempotent ต่อ movement) + sync สินค้าบัญชีต่อสินค้า
+//   idempotent: เรียกซ้ำด้วยคีย์เดิม = movementIds เดิม ไม่มีแถวเพิ่ม
+export type ConsumeBatchPart = { itemId: string; qty: number; idempotencyKey: string };
+export type ConsumeBatchInput = { sourceModule?: string | null; refType?: string | null; refId?: string | null; parts: ConsumeBatchPart[] };
+export type ConsumeBatchSkip = { itemId: string; key: string; reason: "NOT_FOUND" | "SERVICE" };
+export type ConsumeBatchResult = { movementIds: string[]; skipped: ConsumeBatchSkip[] };
+/** เพดานต่อชุด (กันคำขอใหญ่ผิดปกติ — บิล POS ≤ 200 บรรทัด × ≤ 50 ส่วน) */
+const CONSUME_BATCH_MAX_PARTS = 10_000;
+
+export async function consumeBatch(ctx: Ctx, input: ConsumeBatchInput): Promise<ConsumeBatchResult> {
+  const parts = (input.parts ?? []).filter((p) => p && typeof p.itemId === "string" && p.itemId && typeof p.idempotencyKey === "string" && p.idempotencyKey);
+  if (parts.length === 0) return { movementIds: [], skipped: [] };
+  if (parts.length > CONSUME_BATCH_MAX_PARTS) throw new Error(`ตัดสต็อกชุดเดียวได้ไม่เกิน ${CONSUME_BATCH_MAX_PARTS} รายการ`);
+  const db = tenantDb(ctx);
+  const ids = [...new Set(parts.map((p) => p.itemId))].sort();
+  const run = () =>
+    db.$transaction(
+      async (tx) => {
+        const txc = tx as unknown as Db;
+        // fix round 1 (รีวิว F5): งบรอล็อก 5 วิ (เท่าทางเดิมต่อรายการ) — ชนนาน = ล้มชุด ⇒ ผู้เรียกนับค้างตัด + ลองใหม่ได้ ไม่ให้แคชเชียร์รอ 15 วิ
+        await lockItemsInTx(txc, ctx, ids, STOCK_LOCK_WAIT_WRAPPER);
+        const found = await txc.invItem.findMany({ where: { ...scope(ctx), id: { in: ids } }, select: { id: true, kind: true } });
+        const kindOf = new Map(found.map((i) => [i.id, String(i.kind)]));
+        const rows: MovementRow[] = [];
+        const skipped: ConsumeBatchSkip[] = [];
+        for (const p of parts) {
+          const kind = kindOf.get(p.itemId);
+          if (kind === undefined) {
+            skipped.push({ itemId: p.itemId, key: p.idempotencyKey, reason: "NOT_FOUND" });
+            continue;
+          }
+          if (kind === "SERVICE") {
+            skipped.push({ itemId: p.itemId, key: p.idempotencyKey, reason: "SERVICE" });
+            continue;
+          }
+          rows.push(
+            await consumeInTx(txc, ctx, {
+              itemId: p.itemId,
+              qty: p.qty,
+              sourceModule: input.sourceModule ?? null,
+              refType: input.refType ?? null,
+              refId: input.refId ?? null,
+              idempotencyKey: p.idempotencyKey,
+            }),
+          );
+        }
+        return { rows, skipped };
+      },
+      { timeout: 20_000, maxWait: 10_000 },
+    );
+  const { rows, skipped } = await withStockRetry("consumeBatch", ids[0]!, run);
+  for (const mv of rows) await postMovementGl(ctx, mv);
+  for (const itemId of [...new Set(rows.map((r) => r.itemId))]) await syncLinkedAccountProduct(ctx, itemId);
+  return { movementIds: rows.map((r) => r.id), skipped };
+}
+// ◂ POS P2.3
+
 // ── ปรับสต็อก (ADJUST) — ตั้ง onHand เป็นค่านับจริง (stock take) โดยตรง ──
 // qtyDelta = newQty - onHand เดิม · balanceAfter = newQty · idempotent เหมือน receive
 // ต้นทุนถัวเฉลี่ยไม่กระทบ (แค่ปรับจำนวน) · ปรับจนติดลบ = ตั้งธง needsReview
@@ -736,60 +810,86 @@ export type AdjustInput = {
   idempotencyKey: string;
   note?: string | null;
   locationId?: string | null; // ไม่ส่ง = คลัง default (WO-0037)
+  // POS P1.14 ▸ R8: ที่มาของรายการ (ไม่ส่ง = null เหมือนเดิม) — ตรวจนับจาก POS ส่ง "POS"/"PosStockCount"/countId ◂
+  sourceModule?: string | null;
+  refType?: string | null;
+  refId?: string | null;
 };
 
 export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string }> {
-  const newQty = Math.round(input.newQty);
   const db = tenantDb(ctx);
 
   return withStockRetry("adjust", input.itemId, () => db.$transaction(async (tx) => {
-    const txc = tx as unknown as Db;
-    // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
-    const want = { itemId: input.itemId, type: "ADJUST" as const, balanceAfter: newQty }; // R3.5: คีย์ซ้ำต้องยอดนับเดียวกัน
-    const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
-    if (dup) return { id: sameMovementOrThrow(dup, want).id };
-
-    // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด — qtyDelta ต้องคิดจากยอดล่าสุดจริง ไม่ใช่ยอดที่อ่านก่อนรายการอื่น commit
-    const item = await lockItemForStock(txc, ctx, input.itemId);
-    if (!item) throw new Error("ไม่พบสินค้าในคลัง");
-    const dupAfterLock = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
-    if (dupAfterLock) return { id: sameMovementOrThrow(dupAfterLock, want).id };
-    // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
-    if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
-
-    const locId = await resolveLocationId(txc, ctx, input.locationId);
-    await seedDefaultStockIfNeeded(txc, ctx, item);
-
-    const qtyDelta = newQty - item.onHand;
-
-    await tx.invItem.update({
-      where: { id: item.id },
-      data: { onHand: newQty }, // ตั้งเป็นค่านับจริงโดยตรง (ไม่กระทบต้นทุนถัวเฉลี่ย)
-    });
-    await applyLocationDelta(txc, ctx, item.id, locId, qtyDelta); // คลังที่ระบุขยับตาม delta → invariant คง
-
-    const mv = await tx.invMovement.create({
-      data: {
-        tenantId: ctx.tenantId,
-        systemId: ctx.systemId,
-        itemId: item.id,
-        type: "ADJUST",
-        locationId: locId,
-        qtyDelta,
-        balanceAfter: newQty,
-        costSatang: item.costSatang,
-        idempotencyKey: input.idempotencyKey,
-        note: input.note?.trim() || null,
-        // ปรับจนติดลบ = ตั้งธงให้ร้านมาเคลียร์
-        needsReview: isNegative(newQty),
-      },
-    }).catch(rethrowKeyConflict); // R3.5(d)
+    const mv = await adjustInTx(tx as unknown as Db, ctx, input);
     return { id: mv.id };
   })).then(async (r) => {
     // WO 4.2: นับสต็อก/ปรับยอด ก็ทำให้กระจกฝั่งบัญชีล้าสมัยเหมือนกัน → sync หลัง commit (เงียบถ้าไม่ผูก)
     await syncLinkedAccountProduct(ctx, input.itemId);
     return r;
   });
+}
+
+/**
+ * POS P1.14 ▸ R8 — ปรับสต็อก "ภายใน tx ของผู้เรียก" (ตัวเดียวกับที่ adjust ใช้ · พฤติกรรมเดิมทุกอย่าง)
+ * ⚠️ ไม่ sync AccountProduct ให้ (ต้อง commit ก่อน) — ผู้เรียกเรียก `syncAccountProductAfterTx` เอง · ADJUST ไม่โพสต์ GL อยู่แล้ว
+ * ⚠️ `tx` อาจไม่ได้ผูก scope → ทุก where ในนี้ใส่ tenantId/systemId เอง (ผ่าน tenantDb ก็ได้ตัวกรองซ้ำ = ไม่มีผล)
+ * ผู้เรียกที่ล็อกหลายสินค้าใน tx เดียวต้องเรียก `lockItemsInTx` ก่อน (ล็อกซ้ำตัวที่ถือแล้วไม่มีผล) ◂
+ */
+export async function adjustInTx(tx: Db, ctx: Ctx, input: AdjustInput): Promise<MovementRow> {
+  const newQty = Math.round(input.newQty);
+  // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
+  const want = { itemId: input.itemId, type: "ADJUST" as const, balanceAfter: newQty }; // R3.5: คีย์ซ้ำต้องยอดนับเดียวกัน
+  const dup = await tx.invMovement.findFirst({ where: { ...scope(ctx), idempotencyKey: input.idempotencyKey } });
+  if (dup) return sameMovementOrThrow(dup, want);
+
+  // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด — qtyDelta ต้องคิดจากยอดล่าสุดจริง ไม่ใช่ยอดที่อ่านก่อนรายการอื่น commit
+  const item = await lockItemForStock(tx, ctx, input.itemId);
+  if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+  const dupAfterLock = await tx.invMovement.findFirst({ where: { ...scope(ctx), idempotencyKey: input.idempotencyKey } });
+  if (dupAfterLock) return sameMovementOrThrow(dupAfterLock, want);
+  // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
+  if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
+
+  const locId = await resolveLocationId(tx, ctx, input.locationId);
+  await seedDefaultStockIfNeeded(tx, ctx, item);
+
+  const qtyDelta = newQty - item.onHand;
+
+  await tx.invItem.update({
+    where: { id: item.id },
+    data: { onHand: newQty }, // ตั้งเป็นค่านับจริงโดยตรง (ไม่กระทบต้นทุนถัวเฉลี่ย)
+  });
+  await applyLocationDelta(tx, ctx, item.id, locId, qtyDelta); // คลังที่ระบุขยับตาม delta → invariant คง
+
+  return tx.invMovement.create({
+    data: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      itemId: item.id,
+      type: "ADJUST",
+      locationId: locId,
+      qtyDelta,
+      balanceAfter: newQty,
+      costSatang: item.costSatang,
+      sourceModule: input.sourceModule?.trim() || null,
+      refType: input.refType?.trim() || null,
+      refId: input.refId?.trim() || null,
+      idempotencyKey: input.idempotencyKey,
+      note: input.note?.trim() || null,
+      // ปรับจนติดลบ = ตั้งธงให้ร้านมาเคลียร์
+      needsReview: isNegative(newQty),
+    },
+  }).catch(rethrowKeyConflict); // R3.5(d)
+}
+
+/** POS P1.14 ▸ ให้ผู้เรียก `adjustInTx` ดันยอดไปกระจกสินค้าบัญชี "หลัง commit" (แบบ postMovementGlAfterTx · เงียบถ้าไม่ผูก) ◂ */
+export async function syncAccountProductAfterTx(ctx: Ctx, itemId: string): Promise<void> {
+  await syncLinkedAccountProduct(ctx, itemId);
+}
+
+/** POS P1.14 ▸ ผู้เรียกที่เปิด tx สต็อกเอง (pos/stock-count) แยก "ล็อกชนกัน" ออกจาก error อื่นได้ (รหัส SQLSTATE/Prisma หรือ null) ◂ */
+export function isStockContention(e: unknown): boolean {
+  return stockContentionCode(e) !== null;
 }
 
 // ── นับสต็อกหลายรายการพร้อมกัน (bulk stock take) — วน adjust() ตั้ง onHand = จำนวนนับจริง ทีละตัว ──
@@ -983,10 +1083,22 @@ export async function linkAccountProduct(ctx: Ctx, itemId: string, accountProduc
   const db = tenantDb(ctx);
   const item = await db.invItem.findFirst({ where: { id: itemId } });
   if (!item) throw new Error("ไม่พบสินค้าในคลัง");
-  await db.invItem.update({ where: { id: item.id }, data: { accountProductId } });
+  await prisma.$transaction((tx) => legacy.linkInvItemAccountProduct(tx, ctx, item.id, accountProductId, ctx.actorUserId));
   // WO 4.1: ผูกแล้วดันค่าฝั่งคลัง (sku/หน่วย/ต้นทุน) ไปตั้งต้นให้สินค้าบัญชีทันที — ขากลับ
   //   (AccountProduct.invItemId) ตั้งโดย account.linkProductToItem ซึ่งเรียกฟังก์ชันนี้ต่ออีกที
   await syncLinkedAccountProduct(ctx, itemId);
+}
+
+/**
+ * POS P1.1b ▸ ซิงก์บัญชี → คลัง (ชื่อ/sku/หน่วย/ลิงก์ — ผู้เรียก: account/inventory-link.syncProductToItem) · ธุรกรรมเดียวกับแถวแคตตาล็อก
+ * P2002 (sku ชน) = ทั้งก้อนไม่บันทึก แล้ว throw ต่อให้ผู้เรียกลองใหม่ด้วยธุรกรรมใหม่ (ไม่เขียนต่อในธุรกรรมที่ล้มแล้ว) ◂
+ */
+export async function applyAccountProductSync(
+  ctx: Ctx,
+  itemId: string,
+  data: { accountProductId?: string; name?: string; unitLabel?: string; sku?: string },
+): Promise<void> {
+  await prisma.$transaction((tx) => legacy.writeInvItemFromAccountProduct(tx, ctx, itemId, data, ctx.actorUserId));
 }
 
 // CRM C1.5 ▸ อ่านสินค้าหลายตัวในคำสั่งเดียว (scope tenant+system ผ่าน tenantDb · ของเลิกขาย/ข้ามระบบไม่คืน · ≤ 500 id)

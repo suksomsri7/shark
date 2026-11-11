@@ -10,9 +10,11 @@
 import { tenantDb } from "@/lib/core/db";
 import { type MembershipCtx } from "@/lib/core/rbac";
 import type { Prisma } from "@prisma/client";
-import { DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
-import { canSeeConversationId, sightOf, sightOfConfirmer, type ConvCtx } from "./conversation-owner";
-import { findVisibleConversation } from "./conversations";
+import { closedRoomNote, DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
+import type { ConvCtx } from "./conversation-owner";
+import { currentToolCallKey, toolCallRowId } from "./tool-call-key"; // SEC S3a.1-S2 R-Z34 ◂
+import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
+import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/members";
 
 type Ctx = { tenantId: string };
 
@@ -36,10 +38,25 @@ type StepState = {
 const PLAN_HUMAN_ONLY: Record<string, string> = {
   hr_decide_leave: "ทำรายการนี้ผ่านแผนงานอัตโนมัติไม่ได้ กรุณาอนุมัติใบลาในหน้าระบบพนักงาน",
   approval_decide: "ทำรายการนี้ผ่านแผนงานอัตโนมัติไม่ได้ กรุณาตัดสินคำขอในหน้า “อนุมัติ”",
+  // POS P3.9 ▸ fix1 F2 (=N1 · CD-P39c): ขั้นของหน้าขายต้องให้คนกดยืนยันเองทีละรายการ — payload ของแผนมาจากโมเดล (ร่าง PO เชื่อผู้ขาย/จำนวน/ต้นทุน)
+  //   และการลงมือของ POS ต้องรู้ตัวผู้กด (ไม่ส่ง userId เข้าแผนโดยตั้งใจ) · kind `pos.*` ทุกตัวใช้ข้อความเดียวกัน (humanOnlyNote) ◂
+  void_sale: "ทำรายการขายหน้าร้านผ่านแผนงานอัตโนมัติไม่ได้ — ให้ผู้ช่วยเสนอทีละรายการแล้วกดยืนยันเอง",
+  pos_draft_po: "ทำรายการขายหน้าร้านผ่านแผนงานอัตโนมัติไม่ได้ — ให้ผู้ช่วยเสนอทีละรายการแล้วกดยืนยันเอง",
+  // SEC S1.12 ▸ R-S1.12b (K-2): ส่งถึงลูกค้า + คืนเงินมัดจำ = ผู้อนุมัติต้องเห็นข้อความ/ยอดเต็มทีละใบ (summary ของขั้นแผนมาจากโมเดล) ◂
+  "chat.send": "ส่งข้อความถึงลูกค้าผ่านแผนงานไม่ได้ — ให้เลขาเสนอทีละข้อความแล้วผู้มีสิทธิ์กดอนุมัติเอง",
+  booking_refund_deposit: "คืนมัดจำผ่านแผนงานไม่ได้ — ให้เลขาเสนอทีละรายการแล้วผู้มีสิทธิ์กดอนุมัติเอง",
 };
 const humanOnlyNote = (kind: unknown): string | null =>
-  typeof kind === "string" && Object.prototype.hasOwnProperty.call(PLAN_HUMAN_ONLY, kind) ? PLAN_HUMAN_ONLY[kind]! : null;
+  typeof kind === "string" && Object.prototype.hasOwnProperty.call(PLAN_HUMAN_ONLY, kind)
+    ? PLAN_HUMAN_ONLY[kind]!
+    : typeof kind === "string" && kind.startsWith("pos.") // POS P3.9 ▸ fix1 F2 ◂
+      ? PLAN_HUMAN_ONLY.void_sale!
+      : null;
 // ◂ HF-HR-0
+/** SEC S1.12 ▸ R-S1.12b: kind นี้ต้องให้คนกดยืนยันเองทีละใบ (เสนอเป็นขั้นของแผนไม่ได้) ◂ */
+export function isPlanHumanOnly(kind: string): boolean {
+  return humanOnlyNote(kind) !== null;
+}
 
 // ── สร้างแผน (PENDING + TTL 24 ชม.) — steps ว่าง/เกิน 8 หรือ kind ปลอม → throw ไทย ──
 export async function createPlan(
@@ -62,8 +79,16 @@ export async function createPlan(
     payload: (s.payload ?? {}) as Record<string, unknown>,
     status: "PENDING",
   }));
+  // SEC S3a.1-S2 ▸ R-Z34 (RC2 MINOR-4): กุญแจ tool call เดียวกับข้อเสนอ (R-Z7) — เทิร์นห้องเลขาที่รันซ้ำ = แผนเดิม · ไม่มีกุญแจ = cuid เดิม ◂
+  const tcKey = currentToolCallKey();
+  const fixedId = tcKey ? toolCallRowId("tp", [ctx.tenantId, input.conversationId, tcKey, "plan"]) : null;
+  if (fixedId) {
+    const existing = await tenantDb(ctx).aiPlan.findFirst({ where: { id: fixedId }, select: { id: true } });
+    if (existing) return { id: existing.id };
+  }
   const row = await tenantDb(ctx).aiPlan.create({
     data: {
+      ...(fixedId ? { id: fixedId } : {}),
       tenantId: ctx.tenantId,
       conversationId: input.conversationId,
       title: String(input.title ?? "").trim() || "แผนงาน",
@@ -71,6 +96,12 @@ export async function createPlan(
       stepsJson: stepsJson as unknown as Prisma.InputJsonValue,
       expiresAt: new Date(Date.now() + TTL_MS),
     },
+  }).catch(async (e: unknown) => {
+    if (fixedId && (e as { code?: unknown } | null)?.code === "P2002") {
+      const again = await tenantDb(ctx).aiPlan.findFirst({ where: { id: fixedId }, select: { id: true } });
+      if (again) return again;
+    }
+    throw e;
   });
   return { id: row.id };
 }
@@ -81,6 +112,8 @@ export type PlanExecResult = {
   results: PlanStepResult[];
   doneCount: number;
   needsSecondConfirm?: boolean;
+  /** SEC S1.7 R-S1.7a — เหตุที่ไม่เริ่มแผน (ด่านผู้อนุมัติของห้องเลขา) · ไทย · optional */
+  note?: string;
 };
 
 // ── ลงมือทำแผนจริง — อ่าน step จาก DB, ตรวจสิทธิ์คนกดต่อ step, รันต่อเนื่องผ่าน runKind ──
@@ -93,10 +126,14 @@ export async function executePlan(
 ): Promise<PlanExecResult> {
   const row = await tenantDb(ctx).aiPlan.findFirst({ where: { id: planId } });
   if (!row) return { ok: false, results: [], doneCount: 0 };
-  if (!canSeeConversationId(sightOfConfirmer(m, opts?.userId ?? null), row.conversationId)) return { ok: false, results: [], doneCount: 0 };
+  if (!(await canConfirmerSeeConversation(ctx.tenantId, m, opts?.userId ?? null, row.conversationId))) return { ok: false, results: [], doneCount: 0 }; // S1.4 R-K1
+  if (!withinSight(await visibleSinceForUser(ctx.tenantId, m.role, opts?.userId, row.conversationId), row.createdAt)) return { ok: false, results: [], doneCount: 0 }; // S1.6 R-S1.6a
 
   // ไม่ใช่ PENDING (ทำไปแล้ว/ถูกปิด) → ไม่ทำซ้ำ
   if (row.status !== "PENDING") return { ok: false, results: [], doneCount: 0 };
+  // SEC S3a.1-S1 ▸ R-Z9: แผนในห้องเลขาที่ปิดแล้ว ⇒ ไม่ทำสักขั้น (แผนคง PENDING) ◂
+  const closedNote = await closedRoomNote(ctx.tenantId, row.conversationId);
+  if (closedNote) return { ok: false, results: [], doneCount: 0, note: closedNote };
 
   // หมดอายุ → EXPIRED (กันกดของเก่า)
   if (row.expiresAt.getTime() <= Date.now()) {
@@ -112,6 +149,16 @@ export async function executePlan(
     return { ok: false, results: [{ summary: String(blocked.summary ?? ""), ok: false, note: humanOnlyNote(blocked.kind)! }], doneCount: 0 };
   }
   // ◂ HF-HR-0
+
+  // S1.3b ▸ (รีวิว C6 D3) ระดับต่อระบบของร้าน — อ่านครั้งเดียว · ทุกขั้นต้องผ่าน (DRAFT) **ก่อน claim** ไม่งั้นแผนทำครึ่งเดียวแล้ว FAILED
+  //   ขั้นใดไม่ผ่าน ⇒ ไม่ทำสักขั้น · แผน **คง PENDING** (ต่างจาก HF-HR-0: เจ้าของเปิดระดับแล้วกดใหม่ได้) · runKind ยังตรวจซ้ำรายขั้น ◂
+  const levelBlock = await planLevelBlock(ctx.tenantId, preSteps);
+  if (levelBlock) return { ok: false, results: [levelBlock], doneCount: 0 };
+
+  // SEC S1.7 ▸ R-S1.7a ด่านผู้อนุมัติของห้องเลขา (มีแถว AiRoom) ต่อทุกขั้น **ก่อน claim** — ผู้กดต้องเป็น OWNER/MANAGER ที่เห็นห้อง (R-K4)
+  //   ไม่ผ่าน ⇒ ไม่ทำสักขั้น · แผน **คง PENDING** · ห้องเดิม (ไม่มี AiRoom) = ผ่านเหมือนเดิม · import ตอนเรียก (approval-gate → proposals) ◂
+  const approverNote = await planApproverBlock(ctx.tenantId, m, row.conversationId, preSteps, opts?.userId ?? null);
+  if (approverNote) return { ok: false, results: [], doneCount: 0, note: approverNote };
 
   // ── ยืนยัน 2 ชั้นระดับแผน เมื่อมี step ลบ/ยกเลิกถาวร ──
   // ชั้นแรก (ไม่มี confirm2x) → คง PENDING ไม่ทำจริง แจ้ง UI ให้ถามยืนยันอีกครั้ง
@@ -139,7 +186,7 @@ export async function executePlan(
       const idx = steps.indexOf(st);
       // HR H0.7 ▸ R7: ส่งผู้กดยืนยันแผน (opts.userId) ให้ทุกขั้น — ใช้ช่อง userId ตัวที่ 6 ของ runKind ที่มีอยู่แล้ว (K3.5 · Q-D) ·
       //   hr_decide_leave / approval_decide ยังถูกกันไว้ข้างบน (PLAN_HUMAN_ONLY · R5.4) ◂
-      const note = await runKind(m, ctx.tenantId, st.kind, st.payload, `plan-${planId}-${idx}`, opts?.userId ?? null);
+      const note = await runKind(m, ctx.tenantId, st.kind, st.payload, `plan-${planId}-${idx}`, opts?.userId ?? null, st.summary); // SEC S1.8 §B.3 ผู้กดยืนยันแผน · R-S1.8g สรุปของขั้น ◂
       st.status = "DONE";
       st.note = note;
       results.push({ summary: st.summary, ok: true, note });
@@ -172,11 +219,38 @@ export async function executePlan(
   return { ok: !failed, results, doneCount };
 }
 
+// S1.3b ▸ ขั้นแรกที่ระดับต่อระบบไม่ยอม (null = ผ่านทุกขั้น) · import ตอนเรียก (secretary/access → tool-access → proposals ← ไฟล์นี้)
+//   อ่านฐานไม่ได้ = ปฏิเสธด้วยข้อความไทย (ปิดไว้ก่อน — แบบเดียวกับ accessLevelGate ของ proposals.ts) ◂
+async function planLevelBlock(tenantId: string, steps: readonly StepState[]): Promise<PlanStepResult | null> {
+  try {
+    const { getAccess, kindAllowedByAccess } = await import("./secretary/access");
+    const access = await getAccess(tenantId);
+    for (const st of steps) {
+      const v = kindAllowedByAccess(access, String(st?.kind ?? ""));
+      if (!v.ok) return { summary: String(st?.summary ?? ""), ok: false, note: v.reason };
+    }
+    return null;
+  } catch {
+    return { summary: "", ok: false, note: "ตรวจสิทธิ์ของเลขาไม่ได้ชั่วคราว ลองใหม่อีกครั้ง" };
+  }
+}
+
+// SEC S1.7 ▸ R-S1.7a ด่านผู้อนุมัติของแผน (null = ผ่าน) — โหลดโมดูลไม่ได้ = ปฏิเสธไทย (ปิดไว้ก่อน) ◂
+async function planApproverBlock(tenantId: string, m: MembershipCtx, conversationId: string, steps: readonly StepState[], userId: string | null): Promise<string | null> {
+  try {
+    const { planApprovalGate } = await import("./secretary/approval-gate");
+    return await planApprovalGate(tenantId, m, conversationId, steps, userId);
+  } catch {
+    return "ตรวจกฎอนุมัติไม่ได้ ลองใหม่อีกครั้ง";
+  }
+}
+
 // ── ยกเลิกแผน — PENDING→REJECTED เท่านั้น (สถานะอื่น/ไม่พบ → false) ──
 // CRM C5.5-G2 ▸ เฉพาะแผนในบทสนทนาที่ผู้กดเห็น ◂
 export async function rejectPlan(ctx: ConvCtx, id: string): Promise<boolean> {
-  const row = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.findFirst({ where: { id }, select: { conversationId: true } });
-  if (!row || !canSeeConversationId(sightOf(ctx), row.conversationId)) return false;
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.findFirst({ where: { id }, select: { conversationId: true, createdAt: true } });
+  if (!row || !(await canSeeConversationById(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
+  if (!withinSight(await visibleSinceFor(ctx, row.conversationId), row.createdAt)) return false; // S1.6 R-S1.6a (เหมือน rejectProposal)
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
@@ -188,8 +262,9 @@ export async function rejectPlan(ctx: ConvCtx, id: string): Promise<boolean> {
 export async function listPendingPlans(ctx: ConvCtx, conversationId: string) {
   const conv = await findVisibleConversation(ctx, conversationId);
   if (!conv) return [];
+  const since = conv.room ? await visibleSinceFor(ctx, conv.id) : null; // S1.6 R-S1.6a: สมาชิก seeHistory=false ไม่เห็นแผนก่อน addedAt
   return tenantDb({ tenantId: ctx.tenantId }).aiPlan.findMany({
-    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() } },
+    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() }, ...(since ? { createdAt: since } : {}) },
     orderBy: { createdAt: "asc" },
   });
 }

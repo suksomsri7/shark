@@ -32,6 +32,19 @@ export function posSalesScope(m: MembershipCtx | null): PosUnitScope | null {
   return unitIds.length > 0 ? { allUnits: false, unitIds } : null;
 }
 
+/**
+ * POS P1.18 ▸ มติ Q9 (ประตูหน้า /pos/sales): ดูบิลได้ด้วย pos.sale.read **หรือ** pos.sale.create ต่อสาขา (action ของหน้ารับ pos.sale.read อยู่แล้ว) ·
+ * กติกาเดียวกับ posSalesScope ทุกอย่างนอกจากคีย์ · posSalesScope เดิมไม่เปลี่ยน (ปิดวัน/CSV ยังใช้ pos.sale.create) ◂
+ */
+export function posSalesReadScope(m: MembershipCtx | null): PosUnitScope | null {
+  const can = (unitId?: string) =>
+    !!m && (evaluate(m, { module: "pos", action: "pos.sale.read", unitId }) || evaluate(m, { module: "pos", action: "pos.sale.create", unitId }));
+  if (!m || !can()) return null;
+  if (allBranches(m)) return { allUnits: true };
+  const unitIds = m.unitAccess.filter((u) => can(u));
+  return unitIds.length > 0 ? { allUnits: false, unitIds } : null;
+}
+
 /** ขอบเขต → รายการ unitId สำหรับกรอง (undefined = ไม่กรอง) */
 export function posScopeUnitIds(scope: PosUnitScope): string[] | undefined {
   return scope.allUnits ? undefined : scope.unitIds;
@@ -74,6 +87,44 @@ export function posRegisterView<T extends { id: string }>(
   if (!m || !evaluate(m, { module: "pos", action: "pos.sale.create" })) return { ok: false };
   if (linked.length === 0) return { ok: true, units: [], active: null };
   const units = linked.filter((u) => evaluate(m, { module: "pos", action: "pos.sale.create", unitId: u.id }));
+  if (units.length === 0) return { ok: false };
+  if (unitParam && linked.some((u) => u.id === unitParam) && !units.some((u) => u.id === unitParam)) return { ok: false };
+  return { ok: true, units, active: units.find((u) => u.id === unitParam) ?? units[0] };
+}
+
+// POS P2.8U ▸ หน้าออเดอร์ทุกช่องทาง /pos/orders (มติ 1): ด่านเดียวกับตัวอ่านของ S (listOrders = pos.sale.read หรือ pos.sale.create ที่สาขา) ·
+//   ไม่มีสิทธิ์อ่านที่สาขาใดเลย / ขอสาขาของ POS นี้ที่อ่านไม่ได้ = ok:false (หน้าแสดงการ์ดปฏิเสธ O13 ก่อนอ่านข้อมูลออเดอร์) ·
+//   ?unit= ค่าอื่น/ไม่ระบุ = สาขาแรกที่อ่านได้ · สิทธิ์รับ/ปฏิเสธ (pos.order.accept / pos.order.reject) ตัดสินแยกที่หน้า (ปุ่มปิด + tooltip) ◂
+export function posOrdersView<T extends { id: string }>(
+  m: MembershipCtx | null,
+  linked: T[],
+  unitParam?: string,
+): { ok: false } | { ok: true; units: T[]; active: T | null } {
+  const canRead = (mm: MembershipCtx, unitId?: string) =>
+    evaluate(mm, { module: "pos", action: "pos.sale.read", ...(unitId ? { unitId } : {}) }) || evaluate(mm, { module: "pos", action: "pos.sale.create", ...(unitId ? { unitId } : {}) });
+  if (!m || !canRead(m)) return { ok: false };
+  if (linked.length === 0) return { ok: true, units: [], active: null };
+  const units = linked.filter((u) => canRead(m, u.id));
+  if (units.length === 0) return { ok: false };
+  if (unitParam && linked.some((u) => u.id === unitParam) && !units.some((u) => u.id === unitParam)) return { ok: false };
+  return { ok: true, units, active: units.find((u) => u.id === unitParam) ?? units[0] };
+}
+
+// POS P2.6U ▸ จอครัว /pos/kds (มติ 1 · Q12): ด่านอ่านเดียวกับ kds.ts (NEED.read = restaurant.kds.advance | pos.sale.read | pos.sale.create ที่สาขา ·
+//   kds.ts:92 NEED + kds-actions.ts NEED) · ไม่มีสิทธิ์อ่านที่สาขาใดเลย / ขอสาขาของ POS นี้ที่อ่านไม่ได้ = ok:false (หน้าแสดงการ์ดปฏิเสธ O13 ก่อนอ่านบอร์ด) ·
+//   ?unit= ค่าอื่น/ไม่ระบุ = สาขาแรกที่อ่านได้ · ปุ่มเดิน/ดึงกลับ/เร่ง/พักครัว ตัดสินแยกที่หน้า (ปุ่มปิด + tooltip · เซิร์ฟเวอร์ตรวจซ้ำ) ◂
+export function posKdsView<T extends { id: string }>(
+  m: MembershipCtx | null,
+  linked: T[],
+  unitParam?: string,
+): { ok: false } | { ok: true; units: T[]; active: T | null } {
+  const canRead = (mm: MembershipCtx, unitId?: string) =>
+    evaluate(mm, { module: "restaurant", action: "restaurant.kds.advance", ...(unitId ? { unitId } : {}) }) ||
+    evaluate(mm, { module: "pos", action: "pos.sale.read", ...(unitId ? { unitId } : {}) }) ||
+    evaluate(mm, { module: "pos", action: "pos.sale.create", ...(unitId ? { unitId } : {}) });
+  if (!m || !canRead(m)) return { ok: false };
+  if (linked.length === 0) return { ok: true, units: [], active: null };
+  const units = linked.filter((u) => canRead(m, u.id));
   if (units.length === 0) return { ok: false };
   if (unitParam && linked.some((u) => u.id === unitParam) && !units.some((u) => u.id === unitParam)) return { ok: false };
   return { ok: true, units, active: units.find((u) => u.id === unitParam) ?? units[0] };

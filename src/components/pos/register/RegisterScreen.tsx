@@ -1,0 +1,3556 @@
+"use client";
+
+// RegisterScreen.tsx — หน้าขายใหม่ (POS P1.3) · เจ้าของสถานะทั้งหมดของจอ (สเปก §3.3) + ตัวจับแป้นเดียว (§3.6 · G2) + โฟกัสช่องค้นหา (G5)
+//
+// เลย์เอาต์ (สเปก §2): D ≥1280 = แท็บยาว · กริด 4 · ตะกร้า 480 · แถบสถานะ  ·  T 1024–1279 = แท็บไอคอน · กริด 3 · ตะกร้า 380
+//   M 768–1023 = กริด 2 · ตะกร้า 340 (ไม่มีภาพ)  ·  C <768 = หัวมือถือ · กริด 3 · แถบตะกร้าล่าง + แผ่นตะกร้า · หน้าเลื่อนทั้งหน้า
+//   md+ = ล็อกความสูงจอ (100dvh − แถบบน 56) แล้วให้กริด/บรรทัดตะกร้าเลื่อนในพื้นที่ตัวเอง (มติ Q3) · โหมดรางไอคอน = NavRail.isRailPath
+//
+// เงิน (กติกาที่ต่อรองไม่ได้ของใบสั่ง B2):
+//   1) ยอดบนจอ = priceCart ทันใจ → quote ของเซิร์ฟเวอร์ทับ (หน่วง 250ms · คำตอบเก่าทิ้งด้วยตัวนับ) · ยอดที่จ่าย = quote เสมอ
+//      ชำระได้เมื่อ: มีของ · quote ล่าสุดตรงตะกร้าปัจจุบัน · ออนไลน์ · มีสิทธิ์ขาย · ไม่ได้กำลังส่ง
+//   2) คีย์บิล (สเปก §3.4 + โน้ต B1.1 §6): 1 คีย์ต่อความพยายามขาย 1 บิล · ส่งแล้วเก็บ "ชุดคำขอ" ไว้ ลองซ้ำ = ส่งชุดเดิมทุกไบต์
+//      ok (รวม duplicated) = เสร็จ → บิลถัดไปได้คีย์ใหม่ · UNKNOWN/INTERNAL/BUSY/เครือข่ายล้ม = ไม่แน่ใจ → คีย์เดิม + "ลองอีกครั้ง" เท่านั้น
+//      IDEMPOTENCY_CONFLICT = มีบิลของคีย์นี้แล้ว → แสดงบิลเดิม (เลขใบเสร็จ/สถานะ) ห้ามขายซ้ำด้วยคีย์ใหม่เงียบ ๆ (ผู้ใช้กด "เริ่มบิลใหม่" เอง)
+//      ปฏิเสธอื่น = ชัดว่าไม่มีบิล → คีย์ใหม่สำหรับครั้งหน้า · PRICE_CHANGED = ยอดใหม่จากคำตอบ ต้องกดยืนยันอีกครั้ง
+//      กดซ้ำ/Enter ซ้ำ = ส่งได้ทีละครั้ง (sendingRef)
+//   3) ข้อความผิดพลาดมาจาก refusalMessageKey(code) → pos.register.errors.* เท่านั้น (ไม่โชว์ message ไทยของเซิร์ฟเวอร์)
+//
+// P1.4 (บาร์โค้ด): ตัวจับ keydown ทั้งหน้า (capture) แยกเครื่องสแกนด้วย classifyScanBurst → onScannedCode = ทางสแกนทางเดียว
+//   (ไม่ผ่านหน่วงค้นหา 200ms · Enter ของช่องค้นหาไม่ถึงเมื่อเป็นการสแกน) · สแกนซ้ำ = +1 (cartAddProduct) · choose = ScanChooserDialog ·
+//   none = toast + "เพิ่มเป็นรายการกำหนดเอง?" เฉพาะผู้มีสิทธิ์ราคาเปิด · กล้อง = ScanCameraDialog
+// จุดต่อของใบหลัง (สเปก §1.3): onHold/onOpenHeld (P1.5) · จอชำระ P1.6 U = PayDialog (ไฟล์ InterimPayDialog.tsx) + PayDone
+//   (แยกจ่าย ≤10 · เงินรับ/ทอนบนแถวเงินสด · บัตร/โอนมีเลขอ้างอิง · ทิปนอกยอดบิล) · หมายเหตุบิล (BillNoteDialog) + หมายเหตุรายการ (LineEditor)
+//   memberSlot ของ CartPanel (P1.12) · onNeedsApproval (P1.15 PIN)
+// P1.2 U: pick → OptionsDialog เมื่อ optionGroupCount/variantCount > 0 (cartAddProduct พร้อม choiceId) · สินค้าชั่ง → WeighDialog
+//   (cartAddWeighed น้ำหนักที่กรอก — ต้องมีสิทธิ์ราคาเปิด) · สแกนป้ายเครื่องชั่ง (weighed) → cartAddWeighed ด้วยป้าย · บรรทัดแสดงตัวเลือก/น้ำหนัก
+// 🔴 ไฟล์ "use client": import จากโมดูล POS ได้แค่ register-shared · pricing-shared · scan-shared · register-actions (G9 · S5.17)
+// 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ (S5.3) · testid เขียนตรงบนแท็กเสมอ (G1)
+
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { formatThaiTime } from "@/lib/ui/date";
+import { useInApp } from "@/lib/ui/use-in-app";
+import { priceCart, type PriceCartOk, type PriceDiscount } from "@/lib/modules/pos/pricing-shared"; // POS P3.4U ▸ + PriceCartOk ◂
+import { shownPriceSource } from "@/components/pos/products/price-ui"; // POS P2.2U fix รอบ 1 F7
+import {
+  cartAddProduct,
+  cartAddWeighed,
+  cartToPriceInput,
+  cartToQuoteInput,
+  cartToSubmitInput,
+  displayName,
+  HELD_CART_EXPIRE_DAYS,
+  moneyText,
+  quoteInputToCart,
+  refusalMessageKey,
+  submitRefusalMessageKey, // POS HF-PP ▸ fix 1 ◂
+  stripPayPins, // POS P2.9U ▸ มติ 3 ◂
+  hasPinlessGiftCard, // POS P2.9U ▸ มติ 3 ◂
+  hasLast4lessDeposit, // POS P2.9bU ▸ มติ 3 ◂
+  storeCreditOf, // POS P2.9U ▸ มติ 1/5 ◂
+  submitInputToCart, // POS P2.9U ▸ มติ 3 ◂
+  REGISTER_MAX_LINES,
+  REGISTER_MAX_PAY_METHODS,
+  REGISTER_MAX_QTY,
+  type HeldCartNoticeCode,
+  type PosApprovalView,
+  type PosDiscountCaps,
+  type HeldCartSummary,
+  type RegisterCart,
+  type RegisterCartLine,
+  type RegisterPayMethod,
+  type RegisterCategory,
+  type RegisterMemberBenefits,
+  type RegisterMemberChoices,
+  type RegisterMemberItem,
+  type RegisterProduct,
+  type RegisterQuote,
+  type RegisterQuoteInput,
+  type RegisterSaleStatus,
+  type RegisterScanResult,
+  type RegisterStatus,
+  type RegisterSubmitInput,
+  type RegisterSubmitOk,
+} from "@/lib/modules/pos/register-shared";
+import { classifyScanBurst, scanKeyFromEvent, scanOutcome, SCAN_MAX_GAP_MS, type ScanKey } from "@/lib/modules/pos/scan-shared";
+import {
+  discardHeldCartAction,
+  holdRegisterCartAction,
+  listHeldCartsAction,
+  quoteRegisterCartAction,
+  quoteRegisterCartOverrideAction,
+  recallHeldCartAction,
+  registerCatalogAction,
+  registerMemberBenefitsAction,
+  registerMemberLookupAction,
+  registerScanAction,
+  registerStatusAction,
+  submitRegisterSaleAction,
+} from "@/lib/modules/pos/register-actions";
+import { BillDiscountDialog } from "./BillDiscountDialog";
+import { BillNoteDialog } from "./BillNoteDialog";
+import { CartPanel, type CartTotalsModel } from "./CartPanel";
+import type { CartLineModel } from "./CartLine";
+import { CategoryChips } from "./CategoryChips";
+import { ClearBillDialog } from "./ClearBillDialog";
+import { CouponDialog } from "./CouponDialog";
+import { CustomItemDialog } from "./CustomItemDialog";
+import { HeldBillsDialog } from "./HeldBillsDrawer";
+import { HeldRecallConfirmDialog, HoldLabelDialog } from "./HeldDialogs";
+import { PayDialog, type PayChoice, type PayError, type PayPhase, payErrorPinMeta } from "./InterimPayDialog" /* POS P2.14 ▸ UI-9 ◂ */;
+import { LineEditor, type LineEditResult } from "./LineEditor";
+import { MobileCartBar } from "./MobileCartBar";
+// ชื่อลงท้าย Sheet/Tabs = ตัวสแกนปุ่ม (F15.3) นับเป็น "คอมโพเนนต์กดได้" ⇒ ใช้ชื่อแฝงตอนวาง (ตัวที่กดได้จริงข้างในมี testid ครบแล้ว)
+import { MobileCartSheet as CartSheetFrame } from "./MobileCartSheet";
+import { OpenPriceDialog } from "./OpenPriceDialog";
+// POS P2.3U ▸ มติ 5: ชิปหัวจอ "ตัดสต็อกค้าง N บิล · ลองอีกครั้ง" ◂
+import { retryPendingStockCutsAction } from "@/lib/modules/pos/register-actions";
+import { registerPayTendersAction } from "@/lib/modules/pos/register-actions"; // POS P2.9bU ▸ มติ 5: เมนู "รับมัดจำ" ตามค่าตั้ง ◂
+import { DepositReceiveDialog } from "./DepositReceiveDialog"; // POS P2.9bU ▸ มติ 5 ◂
+import { PendingCutsChip } from "./PendingCutsChip";
+import { OptionsDialog, type OptionsPick } from "./OptionsDialog";
+import { ProductGrid } from "./ProductGrid";
+import type { PickAnchor } from "./ProductCard";
+import { RegisterModeTabs as ModeTabsNav } from "./RegisterModeTabs";
+import { RegisterIcon } from "./RegisterIcon";
+import { RegisterStatusBar } from "./RegisterStatusBar";
+import { RegisterTopContext } from "./RegisterTopContext";
+import { PayDone } from "./PayDone";
+import { ScanCameraDialog } from "./ScanCameraDialog";
+import { ScanChooserDialog } from "./ScanChooserDialog";
+import { SearchRow } from "./SearchRow";
+import { WeighDialog } from "./WeighDialog";
+// POS P1.12U ▸ สมาชิกที่ตะกร้า (01) · แผงสมาชิก 14A · สิทธิ์ที่จอชำระ (02) ◂
+import { MemberChip } from "./MemberChip";
+import { MemberPanel } from "./MemberPanel";
+import { PayBenefits } from "./PayBenefits";
+import { isMemberCardCode, normalizeCouponCode } from "@/lib/modules/pos/register-member-shared";
+// POS P1.13U ▸ กล่องใบกำกับภาษีเต็มรูป (ภาพ 15A) — ผู้ซื้ออยู่ในตะกร้าฝั่ง client เท่านั้น ส่งไปกับ submit ◂
+import { TaxInvoiceDialog } from "./TaxInvoiceDialog";
+import { taxInvoiceRefusalKey, type TaxInvoiceBuyerInput } from "@/lib/modules/pos/tax-invoice-shared";
+// POS P1.9 ▸ รหัสเครื่อง → กะของเครื่อง (ผูกบิล · ล็อกปุ่มชำระเมื่อบังคับเปิดกะ) ◂
+import { getPosDeviceId } from "@/lib/modules/pos/device-id";
+// POS P1.15U ▸ ผู้ขายบนเครื่อง (โทเคน PIN ใน sessionStorage) · จอล็อก 13B · ล็อกเมื่อไม่ใช้งาน ◂
+import { clearStaffSession, readStaffSession, writeStaffSession, type StaffSession } from "@/lib/modules/pos/staff-session";
+import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions";
+import { LockScreen, type LockMode } from "./LockScreen";
+import { ApprovalWaitDialog, type ApprovalPinResult } from "./ApprovalWaitDialog";
+// ชื่อลงท้าย Sheet = ตัวสแกนปุ่ม (F15.3) นับเป็นคอมโพเนนต์กดได้ ⇒ ชื่อแฝงตอนวาง (ปุ่มข้างในมี testid ครบ)
+import { DiscountOverSheet as DiscountOverBox } from "./DiscountOverSheet";
+// POS P3.6U ▸ CD-P36U-1/3/4/6/7: ชิปบริษัท · แผ่นเลือกบริษัท · เลือกดีล · แผ่นเกินวงเงิน (วางบิล) ◂
+import { CompanyChip, type BillCompany } from "./CompanyChip";
+import { CompanyPickerSheet as CompanyPickerBox } from "./CompanyPickerSheet";
+import { DealSelect as DealBox } from "./DealSelect";
+import { CreditOverSheet as CreditOverBox } from "./CreditOverSheet";
+import type { ManagerPinResult } from "./ManagerPinPad";
+import type { RegisterCreditStatus } from "@/lib/modules/pos/credit-shared";
+// POS P3.4U ▸ ขายออฟไลน์ 19ง (มติ 2–7): ชั้น IndexedDB/วงซิงก์ · ชิ้นจอ · ตัวช่วยบริสุทธิ์ (offline-shared = สัญญาใบ S) ◂
+import { useOfflineRegister } from "./use-offline-register";
+import { useBarcodeIndex } from "./use-barcode-index"; // POS P5.3 fix1 ▸ CD-P53-O14 ◂
+import type { OfflineUnlockResult } from "./offline-pin";
+import { OfflineBadge, OfflineBillsDialog, OfflineChips, OfflineDoneDialog, OfflineLiveBanner, OfflinePayDialog, OfflinePayRow, type OfflinePayConfirm } from "./OfflineRegisterParts";
+import { offlineCartTotals, offlineSaleRefusal } from "@/lib/modules/pos/offline-shared";
+import { offlineGateMessageKey, type OfflineQueueRecord, type OfflineSlipLine } from "@/lib/modules/pos/offline-client-shared";
+import { useIdleLock } from "./use-idle-lock";
+// POS P1.10 U ▸ heartbeat ของเครื่องนี้ → ชื่อเครื่อง + printerConfig (พิมพ์ใบเสร็จ · ชิปแถบล่าง) · เครื่องถูกเพิกถอน = แถบแดงค้าง + ล็อกปุ่มชำระ ◂
+import { heartbeatAction } from "@/lib/modules/pos/device-actions";
+import { useDisplayPublish } from "@/components/pos/display/use-display-publish"; // POS P2.10 ▸ จอลูกค้า (มติ 5 · hook เดียว) ◂
+import { POS_PRINTER_DEFAULTS, parsePrinterConfig, type PosDeviceView } from "@/lib/modules/pos/device-shared";
+import { printerPaired } from "@/components/pos/print/printReceipt";
+// POS P2.4U ▸ หน้าขายผูกโต๊ะ ?table= (มติ 4) + ชิปชนิดบิล "ทานที่ร้าน" (มติ 6) ◂
+import { useRouter } from "next/navigation";
+import { holdTableDraftAction, registerOpenTableAction, registerSendTableRoundAction, registerTableDetailAction, registerTableModeAction } from "@/lib/modules/pos/table-actions";
+import { registerProductsByIdsAction } from "@/lib/modules/pos/table-ui-actions";
+import { posBoardCardsAction } from "@/lib/pos-board-ui-actions"; // POS P4.3 ▸ F-P3-21: ชิปการ์ด "สินค้าหมดนาน" ของสินค้า 86 ◂
+import { posBoardKeys } from "@/lib/modules/pos/board-settings-shared"; // POS P4.3 ▸ กุญแจ 86 ค้างอยู่ (soldOutPrefix) ◂
+import type { TableCard } from "@/lib/modules/pos/table-shared";
+import { BillStripDialog, TablePickDialog } from "@/components/pos/tables/TablePickDialog";
+import { cartStripOf, stripCart, stripNeeded } from "@/components/pos/tables/table-ui";
+
+export type RegisterScreenProps = {
+  systemId: string;
+  unitId: string;
+  tenantName: string;
+  /** R4.1 F2: ผู้ใช้ของ session — คำขอค้างใน sessionStorage ผูกผู้ใช้ด้วย (สลับบัญชีในแท็บเดียวกันห้ามลองซ้ำคำขอของคนอื่น) */
+  userId: string;
+  units: { id: string; name: string }[];
+  /** หน้าแรกของกริด (เซิร์ฟเวอร์) · null = โหลดไม่สำเร็จ (จอแจ้ง + ลองใหม่) */
+  initialCatalog: { categories: RegisterCategory[]; products: RegisterProduct[]; nextCursor: string | null; priceValidUntil?: string | null } | null;
+  initialStatus: RegisterStatus | null;
+  vat: { mode: "INCLUDED" | "NONE"; rateBp: number };
+  limits: { canSell: boolean; canOverridePrice: boolean; maxDiscountBp: number | null };
+  /** PromptPay ID ของร้าน (ใช้วาด QR ล็อกยอด) · null = ยังไม่ตั้ง */
+  promptpayId: string | null;
+  /** P1.6 R4/F5: ระบบนี้เปิดรับทิป (parsePosPaymentSettings · วันนี้ false เสมอจนกว่า P1.6b) */
+  tipEnabled?: boolean;
+  /** P1.2 U R2: สาขานี้ตั้งนโยบาย BLOCK (ห้ามขายเกินสต็อก) ⇒ ตัวแปรที่หมดเลือกไม่ได้ · ไม่ตั้ง/ALLOW_NEGATIVE = เลือกได้ */
+  oversellBlock?: boolean;
+  /** POS P1.15U: ล็อกจออัตโนมัติหลังไม่ใช้งาน N นาที (settings.pos.register.autoLockMinutes · 0 = ปิด) */
+  autoLockMinutes?: number;
+  /** POS P1.15U: เพดานส่วนลดตามบทบาทของระบบนี้ (registerDiscountCaps) — ผู้ขายในโทเคนที่ไม่ใช่ผู้ใช้ session ใช้ค่านี้คิดยอดบนจอ */
+  discountCaps?: PosDiscountCaps;
+  /** POS P1.7U ▸ ใบขอรับเงิน (พร้อมเพย์ QR ล็อกยอด · Beam) — ค่าตั้ง + สิทธิ์จากหน้าเพจ · ไม่ส่ง = QR นิ่งแบบ P1.6 ◂ */
+  payIntent?: { beamCard: boolean; manualRequiresManager: boolean; canManageShift: boolean; promptpayLink: string };
+  /** POS P1.18U ▸ มติ 11: ผู้ใช้ session มี pos.product.manage ที่สาขานี้ — สถานะร้านไม่มีสินค้า (19ก) แสดงปุ่ม "เพิ่มสินค้า" · ไม่มี = ข้อความอย่างเดียว ◂ */
+  canManageProducts?: boolean;
+  /** POS P2.3U ▸ มติ 5: ผู้ใช้ session มี pos.settings.manage ที่สาขานี้ — ปุ่ม "ลองอีกครั้ง" ของชิปตัดสต็อกค้าง · ไม่มี = เห็นจำนวนอย่างเดียว ◂ */
+  canRetryStockCuts?: boolean;
+  /** POS P2.4U ▸ มติ 4: ?table=<TableSession.id> = หน้าขายผูกโต๊ะ (สั่งเพิ่ม → ส่งครัว) · ไม่ส่ง = ขายปกติ ◂ */
+  tableSessionId?: string | null;
+  /** POS P2.4U ▸ มติ 1/6 (Q5): registerTableMode ของสาขา (เซิร์ฟเวอร์อ่านตอนโหลดหน้า) — visible = แท็บ "โต๊ะ" เป็นลิงก์ · tableCount > 0 = ชิป "ทานที่ร้าน" ◂ */
+  tableMode?: { visible: boolean; tableCount: number } | null;
+  /** POS P3.4U ▸ มติ 1: settings.pos.offline.enabled (หน้าเพจส่ง posOfflineEnabled) — ปิด/ไม่ส่ง = จอแบบวันนี้ทุกพิกเซล ◂ */
+  offlineEnabled?: boolean;
+  /** POS P3.7U ▸ CD-P37U-7: posChatSettings(sys.settings).receiptAuto — ชิป LINE อัตโนมัติของจอสำเร็จ ◂ */
+  chatReceiptAuto?: boolean;
+  /** POS P3.6U ▸ CD-P36U-2 (b): posCreditSettings ของระบบ + ร้านมีระบบ CRM (ชิปบริษัท/ดีล/ไทล์วางบิล) + ผู้ใช้ถือ pos.credit.manage ที่สาขา — ไม่ส่ง = ไม่มี UI วางบิล ◂ */
+  credit?: { enabled: boolean; requireBuyer: boolean; hasCrm: boolean; canManage: boolean };
+};
+
+/** ns "member" = คีย์ใต้ pos.member (P1.12U) · "recipe" = ใต้ pos.recipe (POS P2.3U) · ไม่ระบุ = ใต้ pos.register */
+type Msg = { key: string; values?: Record<string, string | number>; ns?: "member" | "recipe" | "tables" }; // POS P2.4U ▸ + tables ◂
+/** ข้อความลอย — offerCustom = ปุ่ม "เพิ่มเป็นรายการกำหนดเอง?" (สแกนไม่พบ · เฉพาะผู้มีสิทธิ์ราคาเปิด · P1.4 B4) */
+type ToastMsg = Msg & { offerCustom?: boolean; card?: { href: string; cardNo: number | null; completed: boolean; productId: string } /* POS P4.3 ▸ F-P3-21 ◂ */ };
+/** บรรทัดใหม่ (ยังไม่มี key) — Omit แบบกระจายทีละสมาชิกของ union */
+type NewLine = RegisterCartLine extends infer L ? (L extends unknown ? Omit<L, "key"> : never) : never;
+type Layer =
+  | { kind: "sheet" }
+  | { kind: "line"; key: string; focus: "qty" | "discount" }
+  | { kind: "billDiscount" }
+  | { kind: "coupon" }
+  | { kind: "custom" }
+  | { kind: "openPrice"; productId: string }
+  | { kind: "clear" }
+  // POS P1.12U: focusPoints = เปิดจากปุ่ม "ใช้แต้ม" ของการ์ดสมาชิก (โฟกัสช่องแต้ม)
+  | { kind: "pay"; focusPoints?: boolean }
+  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; tipSatang?: number; memberAttached?: boolean; taxInvoice?: boolean } // POS P2.9U ▸ tipSatang (02b "ทิป ฿x") · payMethods ไม่มี PIN ◂
+  // POS P1.13U: กล่องใบกำกับเต็มรูป (15A) · errorKey = คำปฏิเสธจาก submit (คีย์ใต้ pos) ที่ทำให้เปิดซ้ำ
+  | { kind: "taxInvoice"; errorKey?: string; /** POS P3.6U ▸ CD-P36U-5: ผู้ซื้อตั้งต้นจากบริษัทของบิล (เปิดจากไทล์วางบิล) ◂ */ prefill?: TaxInvoiceBuyerInput }
+  | { kind: "note" }
+  // P1.2 U: กล่องตัวเลือก/ตัวแปร (weighedBarcode = มาจากป้ายเครื่องชั่งที่สแกน) · กล่องน้ำหนัก (options = ที่เลือกมาก่อน)
+  | { kind: "options"; product: RegisterProduct; weighedBarcode?: string; anchor?: PickAnchor }
+  | { kind: "weigh"; product: RegisterProduct; options: string[]; note?: string }
+  | { kind: "scanChoose"; products: RegisterProduct[] }
+  // POS P1.12U: forMember = เปิดจากแผงสมาชิก (รหัสที่อ่านได้ไปทางค้นสมาชิกเสมอ)
+  | { kind: "camera"; forMember?: boolean; forGiftCard?: boolean } // POS P2.9U ▸ forGiftCard = เลขบัตรของขวัญของจอชำระ (เลขเท่านั้น · มติ 2a) ◂
+  // POS P1.12U: แผงสมาชิก 14A (ค้น · สแกนบัตร · สมัครด่วน · รางวัลรอรับเมื่อมีสมาชิกแล้ว)
+  | { kind: "member" }
+  // P1.5: ลิ้นชักบิลที่พัก · กล่องตั้งป้ายก่อนพัก · ถาม "พักตะกร้านี้ก่อน?" เมื่อเรียกคืนทับตะกร้าที่มีของ
+  | { kind: "held" }
+  | { kind: "holdLabel" }
+  | { kind: "heldConfirm"; item: HeldCartSummary }
+  // POS P1.15U: แผ่นส่วนลดเกินสิทธิ์ (next = ตะกร้าที่จะใช้ถ้าได้สิทธิ์) · กล่องรอผู้จัดการอนุมัติ 21B (heldCartId = บิลส่วนลดที่พักรอ)
+  | { kind: "discountOver"; next: RegisterCart; wantBp: number }
+  | { kind: "approval"; requestId: string; heldCartId?: string }
+  // POS P2.4U ▸ มติ 6: ถามก่อนตัดของที่รอบร่างโต๊ะเก็บไม่ได้ · แผ่นเลือกโต๊ะ ◂
+  | { kind: "billStrip" }
+  | { kind: "tablePick" }
+  // POS P2.9bU ▸ มติ 5: แผ่นรับมัดจำ (rcvKey = คีย์กันซ้ำของการเปิดแผ่นครั้งนี้ — ออกที่ openDepositReceive) ◂
+  | { kind: "depositReceive"; rcvKey: string }
+  // POS P3.4U ▸ มติ 3–5: กล่องชำระออฟไลน์ · จอหลังบันทึก (เลข OFF + สลิป · ปิดด้วยปุ่มเท่านั้น) · รายการบิลออฟไลน์ของเครื่อง ◂
+  | { kind: "offlinePay"; tender: "CASH" | "TRANSFER" }
+  | { kind: "offlineDone"; rec: OfflineQueueRecord }
+  | { kind: "offlineBills" }
+  // POS P3.6U ▸ CD-P36U-3/6: แผ่นเลือกบริษัท · แผ่นเกินวงเงินวางบิล (ตัวเลขเฉพาะเมื่อคำปฏิเสธพกมา — CD-4) ◂
+  | { kind: "company" }
+  | { kind: "creditOver"; limitSatang?: number; exposureSatang?: number };
+/**
+ * POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานของบิลนี้: pin = PIN ผู้จัดการที่เครื่อง (ส่งพร้อม submit · heldCartId = บิลส่วนลดที่พักรอ) ·
+ * approved = เรียกคืนบิลพักที่อนุมัติแล้ว (quote ด้วยเพดานที่อนุมัติ · ใช้ได้เฉพาะตะกร้าเดิมทุกไบต์ — inputJson) ◂
+ */
+//   fix รอบ 1 F5: ทุกสิทธิ์จำส่วนลดที่อนุญาต (bp ของยอดก่อนส่วนลด + สตางค์) — ส่วนลดของตะกร้าเกินนี้ = ล้างสิทธิ์แล้วเปิดแผ่นใหม่
+type DiscountAuth =
+  | { kind: "pin"; managerUserId: string; managerName: string; managerPin: string; heldCartId?: string; bp: number; satang: number }
+  | { kind: "approved"; heldCartId: string; inputJson: string; quote: RegisterQuote; bp: number; satang: number };
+
+/** POS P1.12U: สมาชิกที่ผูกอยู่แต่ยังไม่รู้ชื่อ (เช่น เพิ่งเรียกคืนบิลพัก) — การ์ดแสดง "…" จนกว่า benefits จะมา */
+const placeholderMember = (id: string): RegisterMemberItem => ({ id, memberCode: "", name: "\u2026", phoneMasked: "", tier: null, points: 0, lastPurchaseAt: null, purchaseCount: 0, suspended: false });
+
+const newKey = () => {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+  }
+};
+/**
+ * P1.4 R2: คีย์ของเครื่องสแกนตกลงในช่องกรอกอื่น (เช่น "รับเงิน" ของกล่องชำระ) ⇒ คืนค่าก่อนการสแกน
+ *   ใช้ setter ของ prototype + เหตุการณ์ input ⇒ React (controlled input) รับค่าคืนด้วย
+ */
+const restoreFieldValue = (el: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+  if (el.value === value) return;
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+};
+const isFinePointer = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
+
+/** media query หลัง mount (null = ยังไม่รู้ — SSR/เฟรมแรก) */
+function useMedia(q: string): boolean | null {
+  const [v, setV] = useState<boolean | null>(null);
+  useEffect(() => {
+    const m = window.matchMedia(q);
+    const on = () => setV(m.matches);
+    on();
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, [q]);
+  return v;
+}
+
+/** P1.2: บรรทัดที่ราคาคิดได้ที่เซิร์ฟเวอร์เท่านั้น (มีตัวเลือก · ป้ายเครื่องชั่ง · น้ำหนัก) */
+const isPricedByServer = (l: RegisterCartLine) =>
+  l.kind === "product" && ((l.options?.length ?? 0) > 0 || l.weighedBarcode !== undefined || l.weightGrams !== undefined);
+/** R3 F1: ยอดรอ quote */
+const PENDING = "\u2014";
+/** ราคาประมาณของน้ำหนักที่พิมพ์เอง — ปัดครึ่งขึ้นของ กรัม × ราคาต่อกก. / 1000 (สูตรเดียวกับ WeighDialog / weighedPriceSatang) */
+const weighedEstimate = (grams: number, perKg: number) => Math.floor((2 * grams * perKg + 1000) / 2000);
+
+/** PERCENT ของตัวตรวจเพดาน (bp) → "10" สำหรับข้อความ {limit}% */
+const pctText = (bp: number) => String(Number((bp / 100).toFixed(2)));
+
+
+// POS P5.3 fix1d ▸ CD-P53-O16 D5: รหัสปฏิเสธของ quote ที่บอกว่าข้อมูลสินค้าในดัชนีอาจเก่า (register.ts quote line errors) ◂
+const INDEX_STALE_CODES: ReadonlySet<string> = new Set(["PRODUCT_NOT_FOUND", "PRODUCT_UNAVAILABLE", "VARIANT_REQUIRED", "OPTIONS_REQUIRED", "OPTIONS_INVALID", "PRICE_NOT_SET", "CHANNEL_NOT_SOLD", "WEIGHT_REQUIRED"]);
+/** POS P5.3 fix1d ▸ D1: สินค้าจากดัชนี + ฟิลด์สต็อกของตัวที่จอรู้อยู่แล้ว (ใหม่กว่า) — ปิดขาย (UNAVAILABLE) ยึดของดัชนี ◂ */
+function mergeKnownStock(hit: RegisterProduct, prev: RegisterProduct | undefined): RegisterProduct {
+  if (!prev || prev.id !== hit.id) return hit;
+  const soldOutReason = hit.soldOutReason === "UNAVAILABLE" ? hit.soldOutReason : prev.soldOutReason === "UNAVAILABLE" ? hit.soldOutReason : prev.soldOutReason;
+  return { ...hit, stockLeft: prev.stockLeft, trackStock: prev.trackStock, trackStockMode: prev.trackStockMode, soldOutReason, soldOut: soldOutReason !== null };
+}
+export function RegisterScreen(props: RegisterScreenProps) {
+  const { systemId, unitId, userId, limits, vat } = props;
+  const t = useTranslations("pos.register");
+  const ts = useTranslations("pos.shift");
+  const tc = useTranslations("common");
+  const tm = useTranslations("pos.member");
+  const tRecipe = useTranslations("pos.recipe"); // POS P2.3U ▸ ชิป/แจ้งผลตัดสต็อกค้าง ◂
+  // ═══════ POS P2.4U ▸ โหมดโต๊ะ (มติ 4): สถานะ — ตัวโหลด/บันทึก/ส่งครัวอยู่หลัง nextSale ═══════
+  const tTables = useTranslations("pos.tables");
+  const router = useRouter();
+  const tableOn = !!props.tableSessionId;
+  /** loading = กำลังโหลดรอบร่าง · ready = ใช้งานได้ · closed = โต๊ะปิด/ไม่พบ (แถบแจ้ง + ลิงก์กลับ) */
+  const [tbl, setTbl] = useState<{ phase: "loading" | "ready" | "closed"; tableName: string }>({ phase: tableOn ? "loading" : "ready", tableName: "" });
+  /** รอบร่าง HELD ล่าสุดที่จอรู้ (id + version) — null = ยังไม่มีร่าง (บันทึกครั้งแรก = newDraft:true) */
+  const draftRef = useRef<{ id: string; version: number } | null>(null);
+  /** คีย์บรรทัดที่เป็นของรอบร่างที่บันทึก/โหลดล่าสุด — VERSION_CHANGED: บรรทัดที่แคชเชียร์เพิ่มเอง = คีย์ที่ไม่อยู่ในชุดนี้ */
+  const draftKeys = useRef<Set<string>>(new Set());
+  const [tblBusy, setTblBusy] = useState(false);
+  const tblBusyRef = useRef(false);
+  /** ส่งครัวไม่ผ่าน: lineIndex = บรรทัดที่ถูกปฏิเสธ (PRODUCT_UNAVAILABLE/OPTIONS_INVALID · ร่างยังอยู่) · retry = BUSY */
+  const [tblErr, setTblErr] = useState<{ code: string; lineIndex?: number; retry?: boolean } | null>(null);
+  /** แท็บ "โต๊ะ" + ชิปทานที่ร้าน (มติ 1/6) — ค่าจากหน้าเพจ แล้วถามซ้ำหลัง mount (เครื่องอื่นเพิ่มโต๊ะ) */
+  const [tableModeNow, setTableModeNow] = useState(props.tableMode ?? null);
+  const [moving, setMoving] = useState(false);
+  const tPrice = useTranslations("pos.price"); // POS P2.2U ▸ ป้ายบรรทัด "ราคาตามช่องทาง" ◂
+  const locale = useLocale();
+  const wide = useMedia("(min-width: 768px)");
+  const xl = useMedia("(min-width: 1280px)") === true;
+  const inApp = useInApp();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const base = `/app/sys/${systemId}`;
+
+  // ═══════ แคตตาล็อก ═══════
+  const [categories, setCategories] = useState<RegisterCategory[]>(props.initialCatalog?.categories ?? []);
+  const [products, setProducts] = useState<RegisterProduct[]>(props.initialCatalog?.products ?? []);
+  const [nextCursor, setNextCursor] = useState<string | null>(props.initialCatalog?.nextCursor ?? null);
+  const [q, setQ] = useState("");
+  /** q ที่ผลในกริดตอนนี้เป็นของมัน (Enter ตัดสินจากผลของคำค้นเดียวกันเท่านั้น) */
+  const [shownQ, setShownQ] = useState("");
+  // POS P2.2U ▸ มติ 5: ขอบหน้าต่างโปรถัดไป (ISO) ของแคตตาล็อกล่าสุด — ถึงเวลา = โหลดกริดใหม่ (ราคาไทล์/ชิปโปรเปลี่ยน) ◂
+  //   P2.2U fix รอบ 1 F1: เก็บเป็น {iso, seq} — seq ใหม่ทุกครั้งที่โหลดหน้าแรกเสร็จ ⇒ ขอบเดิมซ้ำ (เซิร์ฟเวอร์ตอบ nextPriceEdge เดิม) ก็ตั้งตัวจับเวลาใหม่
+  const [priceEdge, setPriceEdge] = useState<{ iso: string | null; seq: number }>(() => ({ iso: props.initialCatalog?.priceValidUntil ?? null, seq: 0 }));
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [catalogPending, startCatalog] = useTransition();
+  const catalogSeq = useRef(0);
+  /** ทุกสินค้าที่เคยเห็น — บรรทัดตะกร้ายังแสดงได้แม้กริดเปลี่ยนหมวด/คำค้น */
+  const known = useRef(new Map<string, RegisterProduct>((props.initialCatalog?.products ?? []).map((p) => [p.id, p])));
+  const remember = (list: RegisterProduct[]) => list.forEach((p) => known.current.set(p.id, p));
+  /** P1.2 U: choiceId → ชื่อตัวเลือกตามภาษาจอ (จากกล่องตัวเลือก) — บรรทัดตะกร้าวาดได้ก่อน quote มา */
+  const optionNames = useRef(new Map<string, string>());
+  const catalogueEmpty = !!props.initialCatalog && products.length === 0 && !q.trim() && categoryId === null && categories.length === 0 && !catalogPending;
+
+  // ═══════ ตะกร้า + ยอด ═══════
+  const [cart, setCart] = useState<RegisterCart>({ lines: [] });
+  const [cartVer, setCartVer] = useState(0);
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  /** keys = คีย์บรรทัดของตะกร้ารุ่นที่ quote นี้ตอบ (บรรทัดที่ i ของ quote ↔ keys[i]) — R3 F2 จับคู่ราคาบรรทัดตามคีย์ ไม่ใช่ตำแหน่ง */
+  const [quote, setQuote] = useState<{ ver: number; q: RegisterQuote; keys: string[] } | null>(null);
+  const [quoteErr, setQuoteErr] = useState<{ ver: number; code: string; lineIndex?: number } | null>(null); // POS P2.2U ▸ lineIndex = บรรทัดที่ถูกปฏิเสธ (CHANNEL_NOT_SOLD) ◂
+  const [quoteSlow, setQuoteSlow] = useState(false);
+  const quoteSeq = useRef(0);
+  const [warnAck, setWarnAck] = useState<Record<string, number>>({});
+
+  // ═══════ ชั้นกล่อง · ข้อความลอย · การเชื่อมต่อ ═══════
+  const [layers, setLayers] = useState<Layer[]>([]);
+  const top = layers[layers.length - 1] ?? null;
+  /** ชั้นล่าสุดที่วาดแล้ว — ตัวกันเปิดกล่องชำระซ้อน (B2.2 S2) อ่านจากนี่ ไม่ใช่ค่าที่ติดมากับ closure */
+  const layersRef = useRef(layers);
+  layersRef.current = layers;
+  const push = (l: Layer) => setLayers((s) => [...s, l]);
+  const pop = () => setLayers((s) => s.slice(0, -1));
+  // ── POS P2.9bU ▸ มติ 5: "รับมัดจำ" เห็นเมื่อค่าตั้งเปิด (registerPayTendersAction · ตรวจ pos.sale.create ซ้ำ — sessionScope) — หน้าโต๊ะไม่มี ◂
+  const [depositOn, setDepositOn] = useState(false);
+  useEffect(() => {
+    if (tableOn) return;
+    let live = true;
+    registerPayTendersAction({ systemId, unitId })
+      .then((r) => {
+        if (live) setDepositOn(r.ok && r.tenders.deposit.enabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [systemId, unitId, tableOn]);
+  const [toast, setToast] = useState<ToastMsg | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((m: ToastMsg) => {
+    setToast(m);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+  const [online, setOnline] = useState(true);
+  const [offlineSince, setOfflineSince] = useState<Date | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [status, setStatus] = useState<RegisterStatus | null>(props.initialStatus);
+  const synced = () => setLastSyncAt(new Date());
+  const offKickRef = useRef<(() => void) | null>(null); // POS P3.4U ▸ มติ 5: heartbeat/สถานะผ่าน = กระตุ้นวงซิงก์ ◂
+
+  // ═══════ P1.5 บิลที่พักของสาขา (ป้ายจำนวน + ลิ้นชัก) ═══════
+  const [heldItems, setHeldItems] = useState<HeldCartSummary[] | null>(null);
+  const [heldCount, setHeldCount] = useState(0);
+  const [heldExpireDays, setHeldExpireDays] = useState(HELD_CART_EXPIRE_DAYS);
+  const [heldBusy, setHeldBusy] = useState(false);
+  const heldBusyRef = useRef(false);
+  /** ชื่อสินค้าของบรรทัดที่เรียกคืน (รวมที่ขายไม่ได้แล้ว — ไม่อยู่ใน known) */
+  const heldNames = useRef(new Map<string, string>());
+  /** คำเตือนของบิลที่เพิ่งเรียกคืน ผูกกับคีย์บรรทัด — เอาบรรทัดออก/บิลใหม่ = หายเอง */
+  const [heldNotices, setHeldNotices] = useState<{ key: string; code: HeldCartNoticeCode; from?: number; to?: number }[]>([]);
+  const heldSeq = useRef(0);
+  const refreshHeld = useCallback(async () => {
+    // POS P2.14 ▸ U2 H1 (CD-U2b): ออฟไลน์ = ไม่ยิงคำขอเบื้องหลัง (ไม่มีผู้ใช้สั่ง) — กลับมาออนไลน์ = รีเฟรชครั้งเดียว (ตัวฟัง online ด้านล่าง)
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    // ◂
+    const seq = ++heldSeq.current;
+    try {
+      const r = await listHeldCartsAction({ systemId, unitId });
+      if (seq !== heldSeq.current) return;
+      if (r.ok) {
+        setHeldItems(r.items);
+        setHeldCount(r.count);
+        setHeldExpireDays(r.expireDays);
+      } else setHeldItems([]);
+    } catch {
+      if (seq === heldSeq.current) setHeldItems((v) => v ?? []);
+    }
+  }, [systemId, unitId]);
+  useEffect(() => {
+    void refreshHeld();
+    // เครื่องอื่นในสาขาพัก/เรียกคืน ⇒ ป้ายจำนวนตามทันเมื่อกลับมาที่แท็บ
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshHeld();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [refreshHeld]);
+
+  // ═══════ POS P1.12U สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (มติ 1–9) ═══════
+  //   memberEnabled = สาขามีระบบสมาชิก (registerStatus) — false = ไม่มีแถวสมาชิก/ส่วนสิทธิ์บนจอเลย · สแกนบัตรสมาชิก = memberSystemMissing
+  //   memberInfo = แถวของสมาชิกที่ผูก (จากแถวที่แตะใน 14A ทันที แล้ว benefits ทับ) · benefits = สิทธิ์ของสมาชิกคนนี้กับตะกร้า (อ่านอย่างเดียว)
+  //   ขอ benefits เมื่อ: ผูกคนใหม่ · กล่องชำระเปิด/ตะกร้าเปลี่ยนระหว่างเปิด (ว่อชเชอร์ใช้ได้ไหมขึ้นกับตะกร้า) · หลัง MEMBER_RIGHTS_CHANGED / ส่งมอบรางวัล
+  const memberEnabled = status?.memberEnabled === true;
+  const [memberInfo, setMemberInfo] = useState<RegisterMemberItem | null>(null);
+  const [benefits, setBenefits] = useState<RegisterMemberBenefits | null>(null);
+  const benefitsSeq = useRef(0);
+  const payOpen = layers.some((l) => l.kind === "pay");
+  /** ตะกร้าที่ใช้ถามสิทธิ์ (ไม่มีสิทธิ์ที่เลือก) — เปลี่ยน = ถามใหม่เฉพาะตอนกล่องชำระเปิด */
+  const benefitsCartJson = useMemo(() => JSON.stringify(cartToQuoteInput(cart, { choices: false })), [cart]);
+  const refreshBenefits = useCallback(
+    async (memberId: string, cartJson: string) => {
+      // POS P2.14 ▸ U2 H1 (CD-U2b): ออฟไลน์ = ไม่ยิงคำขอเบื้องหลัง (ไม่มีผู้ใช้สั่ง) — กลับมาออนไลน์ = รีเฟรชครั้งเดียว (ตัวฟัง online ด้านล่าง)
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      // ◂
+      const seq = ++benefitsSeq.current;
+      try {
+        const r = await registerMemberBenefitsAction({ systemId, unitId, memberId, cart: JSON.parse(cartJson) as RegisterQuoteInput });
+        if (seq !== benefitsSeq.current || cartRef.current.memberId !== memberId) return;
+        if (r.ok) {
+          setBenefits(r);
+          setMemberInfo(r.member);
+        }
+      } catch {
+        /* เครือข่ายล้ม — การ์ดแสดงชื่ออย่างเดียวต่อไป */
+      }
+    },
+    [systemId, unitId],
+  );
+  const benefitsFor = useRef<{ memberId: string | null; cartJson: string; pay: boolean }>({ memberId: null, cartJson: "", pay: false });
+  useEffect(() => {
+    const memberId = cart.memberId ?? null;
+    const prev = benefitsFor.current;
+    benefitsFor.current = { memberId, cartJson: benefitsCartJson, pay: payOpen };
+    if (!memberId || !memberEnabled) {
+      if (!memberId) {
+        benefitsSeq.current++;
+        setBenefits(null);
+        setMemberInfo(null);
+      }
+      return;
+    }
+    const changedMember = prev.memberId !== memberId;
+    if (changedMember) {
+      setBenefits((b) => (b && b.member.id === memberId ? b : null));
+      setMemberInfo((m) => (m && m.id === memberId ? m : null));
+    }
+    const needed = changedMember || (payOpen && (!prev.pay || prev.cartJson !== benefitsCartJson));
+    if (!needed) return;
+    const id = setTimeout(() => void refreshBenefits(memberId, benefitsCartJson), changedMember ? 0 : 300);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = สมาชิก · ตะกร้า (ไม่รวมสิทธิ์ที่เลือก) · กล่องชำระ
+  }, [cart.memberId, benefitsCartJson, payOpen, memberEnabled]);
+  const memberReady = !!benefits && !!cart.memberId && benefits.member.id === cart.memberId;
+  /** ผูกสมาชิกกับบิล (แตะแถว 14A · สแกนบัตร · สมัครด่วน) — สิทธิ์ที่เลือกของคนก่อนหาย · คูปองคงไว้ */
+  const attachMember = (m: RegisterMemberItem) => {
+    if (frozenRef.current) return;
+    setMemberInfo(m);
+    updateCart((prev) => {
+      const next: RegisterCart = { ...prev, memberId: m.id };
+      delete next.memberChoices;
+      return next;
+    });
+  };
+  /** ถอด (มติ 1): ล้าง memberId + สิทธิ์ที่เลือก · คูปองคงไว้ · quote ใหม่ */
+  const detachMember = () => {
+    if (frozenRef.current) return;
+    updateCart((prev) => {
+      const next: RegisterCart = { ...prev };
+      delete next.memberId;
+      delete next.memberChoices;
+      return next;
+    });
+  };
+  /** สิทธิ์ที่เลือกบนจอชำระ (แต้ม/ว่อชเชอร์) — ทุกครั้ง = quote ใหม่ · ว่างทั้งคู่ = ไม่ส่ง memberChoices */
+  const setChoices = (fn: (c: RegisterMemberChoices) => RegisterMemberChoices) => {
+    if (frozenRef.current) return;
+    updateCart((prev) => {
+      if (!prev.memberId) return prev;
+      const c = fn({ ...(prev.memberChoices ?? {}) });
+      const next: RegisterCart = { ...prev };
+      const clean: RegisterMemberChoices = { ...(c.voucherId ? { voucherId: c.voucherId } : {}), ...((c.points ?? 0) > 0 ? { points: c.points } : {}) };
+      if (clean.voucherId || clean.points) next.memberChoices = clean;
+      else delete next.memberChoices;
+      return next;
+    });
+  };
+  // มติ 1: สิทธิ์ที่เลือกมีเฉพาะตอนกล่องชำระเปิด — ปิดกล่อง (ย้อนกลับ/Esc/ล็อก) = ล้าง แล้ว quote ใหม่
+  useEffect(() => {
+    if (!payOpen && cartRef.current.memberChoices) setChoices(() => ({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = กล่องชำระเปิด/ปิด
+  }, [payOpen]);
+  /** คูปอง (มติ 8): ตั้ง/ลบโค้ด — ทั้งลูกค้าทั่วไปและสมาชิก · quote ใหม่ */
+  const setCoupon = (code: string | null) => {
+    if (frozenRef.current) return;
+    updateCart((prev) => {
+      const next: RegisterCart = { ...prev };
+      if (code) next.couponCode = code;
+      else delete next.couponCode;
+      return next;
+    });
+  };
+
+  /** คีย์กันกดซ้ำของฟอร์มสมัครด่วน — 1 คีย์ต่อการเปิดฟอร์ม (หมุนเมื่อเปิดแผง/สมัครสำเร็จ · สร้างที่นี่เท่านั้น — S5.21) */
+  const [memberFormKey, setMemberFormKey] = useState(newKey);
+  /** เปิดแผงสมาชิก 14A (แถว + เพิ่มสมาชิก · แตะการ์ด) — สาขาไม่มีระบบสมาชิก = ไม่มีทางเข้า */
+  const openMember = () => {
+    if (!memberEnabled || frozenRef.current || layersRef.current.some((l) => l.kind === "member")) return;
+    setMemberFormKey(newKey());
+    push({ kind: "member" });
+  };
+  /**
+   * บัตรสมาชิก (SHARK-MC:…) จากกล้อง/เครื่องสแกน หรือรหัสที่อ่านจากกล้องของแผงสมาชิก → ค้นสมาชิก (มติ 4):
+   *   เจอคนเดียว = ผูก + ปิดแผง + ข้อความชื่อ · ไม่เจอ = "ไม่พบสมาชิก" · ถูกระงับ = ข้อความ · สาขาไม่มีระบบสมาชิก = memberSystemMissing
+   */
+  const memberScan = async (code: string) => {
+    if (tableOn) return showToast({ key: "order.noMember", ns: "tables" }); // POS P2.4U ▸ สมาชิกผูกที่แผงโต๊ะ ◂
+    if (!memberEnabled) return showToast({ key: "errors.memberSystemMissing" });
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
+    const gen = billGen.current;
+    try {
+      const r = await registerMemberLookupAction({ systemId, unitId, q: code.trim().slice(0, 200) });
+      if (gen !== billGen.current || frozenRef.current) return;
+      if (!r.ok) return showToast(errorFor(r.code));
+      const m = r.items.length === 1 ? r.items[0]! : null;
+      if (!m) return showToast({ key: "panel.empty", ns: "member" });
+      if (m.suspended) return showToast({ key: "errors.memberSuspended" });
+      attachMember(m);
+      setLayers((s) => s.filter((l) => l.kind !== "member" && l.kind !== "camera"));
+      showToast({ key: "panel.attachedToast", ns: "member", values: { name: m.name } });
+    } catch {
+      if (gen === billGen.current) showToast({ key: "errors.loadFailed" });
+    }
+  };
+
+  // ═══════ POS P1.13U ใบกำกับภาษีเต็มรูป (มติ 1–3) ═══════
+  //   ผู้ซื้อ + จำไว้กับสมาชิก อยู่ในหน่วยความจำของจอเท่านั้น — บิลใหม่/พักบิล/เรียกคืน (resetBill) = หาย (บิลที่พักไม่เก็บผู้ซื้อ · ไม่มีข้อผิดพลาด)
+  const [taxInv, setTaxInv] = useState<{ buyer: TaxInvoiceBuyerInput; remember: boolean } | null>(null);
+  /** ร้านนี้ไม่มีกุญแจ DBD (รู้จากครั้งแรกที่ค้น) ⇒ ซ่อนปุ่มค้นจนกว่าจะโหลดหน้าใหม่ */
+  const [dbdOff, setDbdOff] = useState(false);
+  /**
+   * merge P1.15U ข้อ 10b: บิลถูกพักรออนุมัติ (21B) ⇒ resetBill ล้างผู้ซื้อ — เก็บไว้ผูกกับ heldCartId แล้วคืนเมื่อเรียกคืนผ่านทางอนุมัติ (21B)
+   *   เรียกคืนบิลนั้นทางอื่น (ลิ้นชักบิลที่พัก) = ไม่คืน + ข้อความ "ใบกำกับเต็มรูปถูกล้าง กรอกใหม่ก่อนชำระ" · สลับพนักงาน = ทิ้ง (มติ 1)
+   */
+  const parkedTaxInv = useRef<{ heldCartId: string; value: { buyer: TaxInvoiceBuyerInput; remember: boolean } } | null>(null);
+  /**
+   * POS P1.12U fix รอบ 1 (F2): แต้ม/ว่อชเชอร์ที่เลือกไว้ตอนบิลถูกพักรออนุมัติ (เซิร์ฟเวอร์ไม่เก็บสิทธิ์ที่เลือกในบิลพัก — มติ 12) — แบบ parkedTaxInv:
+   *   เก็บคู่ heldCartId ตอนส่งต่อไป 21B · เรียกคืนทางอนุมัติ (21B) = เก็บไว้ · เปิดจอชำระของบิลนั้น (สิทธิ์เกินเพดานผูก heldCartId เดียวกัน) = ใส่คืน
+   *   แล้ว quote ใหม่ตรวจซ้ำ (เกินเพดาน/ขั้นต่ำ/ขัดกัน = ตัวจัดการเดิม · ยอดเปลี่ยน = PRICE_CHANGED) · เรียกคืนทางอื่น/บิลอื่น/ทิ้งบิล/ปฏิเสธ/สลับพนักงาน = ทิ้ง
+   */
+  const parkedChoices = useRef<{ heldCartId: string; choices: RegisterMemberChoices } | null>(null);
+  // ═══════ POS P1.15U ▸ ผู้ขายบนเครื่อง + จอล็อก 13B (มติผู้คุมงาน 1 3 8) ═══════
+  //   โทเคนอยู่ใน sessionStorage `pos-staff:<deviceId>` · ล็อกเมื่อ: ไม่มี/หมดอายุ · ไม่ใช้งานครบ N นาที · กดล็อก · คำขอใดตอบ STAFF_TOKEN_INVALID
+  //   ล็อกไม่ทิ้งตะกร้า (อยู่ใน state) · ปลดด้วยคนเดิม = ขายต่อ · คนอื่น = พักตะกร้าของคนก่อน (ป้าย "สลับพนักงาน") แล้วเริ่มบิลใหม่
+  const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
+  /** undefined = ยังไม่ได้อ่าน storage (SSR/เฟรมแรก) · null = ไม่มีโทเคน */
+  const [staff, setStaff] = useState<StaffSession | null | undefined>(undefined);
+  const staffRef = useRef(staff);
+  staffRef.current = staff;
+  /** คนที่ใช้เครื่องล่าสุด (คงไว้แม้โทเคนตาย — ชิป "ใช้งานอยู่" + เจ้าของตะกร้าตอนสลับ) */
+  const lastStaffRef = useRef<StaffSession | null>(null);
+  const [lockFlag, setLockFlag] = useState(false);
+  const [lockedAt, setLockedAt] = useState<Date | null>(null);
+  /** registerStatus ที่ถามพร้อมรหัสเครื่องตอบแล้ว (รู้สถานะทะเบียนเครื่อง) */
+  const [deviceKnown, setDeviceKnown] = useState(false);
+  useEffect(() => {
+    const d = getPosDeviceId();
+    setDeviceId(d);
+    const cur = readStaffSession(d);
+    setStaff(cur);
+    if (cur) lastStaffRef.current = cur;
+  }, []);
+  // ── fix รอบ 1 F2: ร้านที่ยังไม่มีใครตั้ง PIN (ทุกแถวของ listStaffForDevice hasPin:false) = ขายด้วยผู้ใช้ session ได้ + แถบเตือนปิดได้ ·
+  //    มี PIN แม้คนเดียว = กติกาล็อกเต็ม · เครื่องไม่ลงทะเบียน = ข้อความลงทะเบียนเหมือนเดิม · โหมดนี้ไม่ล็อกเมื่อไม่ใช้งาน ──
+  const deviceReady = deviceKnown && !!deviceId && status?.deviceStatus === "ACTIVE";
+  /** null = ยังไม่รู้ · true = มีคนตั้ง PIN แล้วอย่างน้อย 1 คน */
+  const [anyPin, setAnyPin] = useState<boolean | null>(null);
+  const refreshPins = useCallback(async () => {
+    // POS P2.14 ▸ U2 H1 (CD-U2b): ออฟไลน์ = ไม่ยิงคำขอเบื้องหลัง (ไม่มีผู้ใช้สั่ง) — กลับมาออนไลน์ = รีเฟรชครั้งเดียว (ตัวฟัง online ด้านล่าง)
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    // ◂
+    try {
+      const r = await listStaffForDeviceAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}) });
+      const has = r.ok ? r.items.some((x) => x.hasPin) : true; // อ่านไม่ได้ = ถือว่ามี PIN (ล็อกไว้ก่อน — ปลอดภัยกว่า)
+      // fix รอบ 2 N3: จากไม่มี PIN → มี PIN (มีคนตั้งระหว่างเปิดจอ) = ล็อกทันที
+      if (has && anyPinRef.current === false) {
+        setLockFlag(true);
+        setLockedAt(new Date());
+      }
+      anyPinRef.current = has;
+      setAnyPin(has);
+    } catch {
+      anyPinRef.current = true;
+      setAnyPin(true);
+    }
+  }, [systemId, unitId, deviceId]);
+  const anyPinRef = useRef<boolean | null>(null);
+  // fix รอบ 2 N3: ถามใหม่เมื่อกลับมาที่แท็บ และทุกครั้งที่สถานะเครื่องรีเฟรช (รอบ 60 วิ · หลังขาย)
+  useEffect(() => {
+    if (!deviceReady) return;
+    void refreshPins();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshPins();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [deviceReady, refreshPins]);
+  useEffect(() => {
+    if (deviceReady && anyPinRef.current === false) void refreshPins();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือสถานะที่รีเฟรช
+  }, [status]);
+  const noPinMode = deviceReady && anyPin === false;
+  const noPinBannerKey = `pos-nopin-banner:${deviceId ?? "-"}`;
+  const [noPinDismissed, setNoPinDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      setNoPinDismissed(window.sessionStorage.getItem(noPinBannerKey) === "1");
+    } catch {
+      /* ไม่มี storage = แสดงแถบ */
+    }
+  }, [noPinBannerKey]);
+  const dismissNoPin = () => {
+    setNoPinDismissed(true);
+    try {
+      window.sessionStorage.setItem(noPinBannerKey, "1");
+    } catch {
+      /* จำไม่ได้ = ปิดเฉพาะหน้านี้ */
+    }
+  };
+  const locked = lockFlag || (!staff && !noPinMode);
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+  const lockNow = useCallback(() => {
+    setLockFlag(true);
+    setLockedAt(new Date());
+  }, []);
+  // ═══════ POS P3.4U ▸ ชั้นออฟไลน์ (มติ 2 5 7 8): snapshot · คิว · วงซิงก์ · ตัวตรวจ PIN ออฟไลน์ ◂ ═══════
+  const off = useOfflineRegister({ systemId, unitId, userId, enabled: !!props.offlineEnabled, online, deviceId, deviceActive: status?.deviceStatus === "ACTIVE", canSell: limits.canSell });
+  offKickRef.current = off.kick;
+  // POS P5.3 fix1 ▸ CD-P53-O14: ดัชนีบาร์โค้ดทั้งสาขาในหน่วยความจำ (ดึงเบื้องหลังหลังวาดแรก) — สแกนที่ตรงสินค้าเดียวที่ขายได้ ใส่ตะกร้าทันทีไม่รอเซิร์ฟเวอร์ ◂
+  //   POS P5.3 fix1c ▸ CD-P53-O15 F1: ดึงผ่าน GET route (ไม่ใช่ server action) · ไม่เริ่มดึงระหว่างกล่องชำระ/จบการขายเปิด ◂
+  const barcodeIndex = useBarcodeIndex({ systemId, unitId, online, paused: () => layersRef.current.some((l) => l.kind === "pay" || l.kind === "done") });
+  /** POS P5.3 fix1d ▸ D5: (คีย์บรรทัด|รหัส) ที่สั่ง invalidate ไปแล้ว ◂ */
+  const indexInvalidated = useRef(new Set<string>());
+  /** คำขอใดตอบ STAFF_TOKEN_INVALID ⇒ ลบโทเคน + ล็อก (ไม่ถอยไปใช้ผู้ใช้ session) */
+  const staffTokenDead = () => {
+    clearStaffSession(deviceId);
+    void off.wipeSecrets(); // POS P3.4U ▸ มติ 2 7: โทเคนตาย = ล้าง snapshot + ตัวตรวจ PIN ออฟไลน์ (คิวคงไว้) ◂
+    setStaff(null);
+    setLockedAt(new Date());
+    showToast({ key: "errors.staffTokenInvalid" });
+  };
+  /** คำขอที่พกโทเคน: ส่ง deviceId ด้วยเสมอ (ลายเซ็นโทเคนผูกเครื่อง) */
+  const tokenArgs = (): { deviceId?: string; staffToken?: string } => ({
+    ...(deviceId ? { deviceId } : {}),
+    ...(staffRef.current ? { staffToken: staffRef.current.staffToken } : {}),
+  });
+  const onUnlocked = async (next: StaffSession) => {
+    const prev = lastStaffRef.current;
+    // มติ 3: คนอื่นปลดล็อก ⇒ ตะกร้าที่ค้างพักไว้ในชื่อคนก่อน (ด้วยโทเคนของคนก่อน) · ว่าง = ไม่พัก · ระหว่างส่งบิล = ไม่แตะ
+    //   fix รอบ 1 F10: โทเคนคนก่อนตาย ⇒ พักด้วยโทเคนของคนใหม่ ป้าย "สลับพนักงาน · <ชื่อคนก่อน>" · พักไม่ได้ทั้งสองทาง = ไม่สลับ (จอยังล็อก)
+    //   ตะกร้าของคนก่อนไม่ค้างบนจอของคนใหม่เด็ดขาด
+    // POS P2.4U ▸ โหมดโต๊ะ: ตะกร้าเป็นรอบร่างของโต๊ะ (ไม่ใช่ของพนักงาน) ⇒ ไม่พักเข้าลิ้นชักตอนสลับคน ◂
+    if (prev && prev.userId !== next.userId && cartRef.current.lines.length && !frozenRef.current && !tableOn) {
+      const who = prev.name ?? "-";
+      const hold = async (token: string, label: string) => {
+        try {
+          return await holdRegisterCartAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), cart: cartToQuoteInput(cartRef.current, { choices: false }), label, staffToken: token });
+        } catch {
+          return null;
+        }
+      };
+      let r = await hold(prev.staffToken, t("lock.holdLabel"));
+      if (!r?.ok) r = await hold(next.staffToken, `${t("lock.holdLabel")} · ${who}`.slice(0, 60));
+      if (!r?.ok) {
+        showToast({ key: "lock.switchHeldFailed", values: { name: who } });
+        return; // ไม่สลับ — ตะกร้ายังเป็นของคนก่อน จอยังล็อก
+      }
+      resetBill();
+      setLayers([]);
+      showToast({ key: "lock.switchHeld", values: { name: who } });
+      void refreshHeld();
+    }
+    // merge P1.15U ข้อ 10e (มติ 1) · fix F7: สลับพนักงานสำเร็จแล้วเท่านั้น ⇒ ทิ้งผู้ซื้อใบกำกับที่จอเก็บไว้ (ของตะกร้า + ที่ผูกบิลรออนุมัติ)
+    //   พักตะกร้าไม่ได้ (lock.switchHeldFailed → return ข้างบน) = ไม่สลับ ⇒ ผู้ซื้อของคนก่อนยังอยู่กับตะกร้าเดิม
+    if (prev && prev.userId !== next.userId && !frozenRef.current) {
+      setTaxInv(null);
+      parkedTaxInv.current = null;
+      parkedChoices.current = null; // fix รอบ 1 F2
+    }
+    if (deviceId) writeStaffSession(deviceId, next);
+    lastStaffRef.current = next;
+    setStaff(next);
+    setLockFlag(false);
+    setLockedAt(null);
+  };
+  const lockMode: LockMode = !deviceKnown || staff === undefined || (deviceReady && anyPin === null) ? "checking" : !deviceId ? "unregistered" : status?.deviceStatus === "REVOKED" ? "revoked" : status?.deviceStatus === "ACTIVE" ? "ready" : "unregistered";
+  // POS P1.15U ▸ มติ 4: เพดานส่วนลดของผู้ขายในโทเคน (คนเดียวกับ session = limits ของหน้าเพจ · คนอื่น = ค่าตั้งตามบทบาท) + สิทธิ์เกินเพดานของบิลนี้ ◂
+  const sellerCap: number | null =
+    staff && staff.userId !== userId && props.discountCaps ? (props.discountCaps[staff.role] >= 10_000 ? null : props.discountCaps[staff.role]) : limits.maxDiscountBp;
+  const [discAuth, setDiscAuth] = useState<DiscountAuth | null>(null);
+  const [discBusy, setDiscBusy] = useState(false);
+  const [discErr, setDiscErr] = useState<string | null>(null);
+  /** ส่งต่อจาก send/ขออนุมัติ: บิลถูกพักที่เซิร์ฟเวอร์รออนุมัติ ⇒ ล้างจอ (resetBill นอก send) แล้วเปิด 21B */
+  const [approvalHandoff, setApprovalHandoff] = useState<{ requestId: string; heldCartId?: string } | null>(null);
+  /** เพดานที่ใช้คิดยอดบนจอ — มีสิทธิ์เกินเพดานแล้ว = ไม่จำกัด (เซิร์ฟเวอร์ตัดสินจริง) */
+  // fix รอบ 1 F5: มีสิทธิ์เกินเพดาน = เพดานบนจอขยายเท่าที่อนุญาต (ไม่ปลดเพดาน) · เกินกว่านั้น = แผ่นส่วนลดเกินสิทธิ์อีกครั้ง
+  const localCap = discAuth && sellerCap !== null ? Math.max(sellerCap, discAuth.bp) : sellerCap;
+
+  // ═══════ POS P3.6U ▸ CD-P36U-3/4/5/6/7: บริษัทของบิล · ดีล · วางบิล (เครดิตเทอม) ◂ ═══════
+  //   บริษัท/ดีลอยู่ในสถานะของจอเท่านั้น (ไม่ไปกับบิลพัก — held-cart.ts ไม่แตะ · owner-ack) · ล้างเมื่อบิลใหม่/พัก/เรียกคืน (resetBill) และเมื่อล็อกจอ
+  const creditUi = !!props.credit?.hasCrm && !tableOn;
+  const [company, setCompany] = useState<BillCompany | null>(null);
+  const [companyErr, setCompanyErr] = useState<string | null>(null);
+  const [dealId, setDealId] = useState<string | null>(null);
+  const [dealErr, setDealErr] = useState<string | null>(null);
+  /** สถานะวงเงินล่าสุดที่จอชำระอ่าน — วันครบกำหนดของจอสำเร็จ (ผล submit ไม่มี dueDate · เซิร์ฟเวอร์คิดจาก paidAt ด้วยกติกาวันไทยเดียวกัน · owner-ack) */
+  const creditStatusRef = useRef<RegisterCreditStatus | null>(null);
+  const [creditDone, setCreditDone] = useState<{ name: string; dueDate: string | null } | null>(null);
+  const [creditOverBusy, setCreditOverBusy] = useState(false);
+  /** คำขอที่ถูกปฏิเสธ CREDIT_LIMIT_EXCEEDED (ไม่มี PIN) — ส่งซ้ำด้วยคีย์บิลเดิม + creditOverride */
+  const creditOverSale = useRef<RegisterSubmitInput | null>(null);
+  /** รหัสผลของ send ครั้งล่าสุด ("OK" · รหัสปฏิเสธ · "UNKNOWN") — แผ่นเกินวงเงินอ่านต่อหลัง await send() */
+  const lastSendCode = useRef("");
+  const onDealChange = useCallback((id: string | null) => {
+    setDealId(id);
+    setDealErr(null);
+  }, []);
+  useEffect(() => {
+    if (!locked) return;
+    setCompany(null);
+    setCompanyErr(null);
+    setDealId(null);
+    setDealErr(null);
+    creditStatusRef.current = null;
+  }, [locked]);
+  // ◂ POS P3.6U
+
+  // ═══════ การส่งบิล ═══════
+  const [idemKey, setIdemKey] = useState(newKey);
+  const [payPhase, setPayPhase] = useState<PayPhase>("form");
+  const [payError, setPayError] = useState<PayError | null>(null);
+  const [conflict, setConflict] = useState<{ receiptNo: string | null; saleStatus: RegisterSaleStatus | null } | null>(null);
+  const sendingRef = useRef(false);
+  /** ชุดคำขอที่ส่งไปแล้วแต่ยังไม่รู้ผล — ลองซ้ำต้องส่งตัวนี้ (ไม่สร้างใหม่) */
+  const pendingSubmit = useRef<RegisterSubmitInput | null>(null);
+  // POS P2.9U ▸ มติ 2a: เลขบัตรจากกล้อง → จอชำระ · มติ 3: คำขอไม่มี PIN ถูกปฏิเสธ (คีย์ยังไม่มีบิล) → จอชำระขอ PIN ใหม่ ◂
+  const [gcScan, setGcScan] = useState<{ number: string; seq: number } | null>(null);
+  const [pinAgain, setPinAgain] = useState<{ seq: number; payMethods: RegisterPayMethod[]; tipSatang: number; cashReceivedSatang?: number } | null>(null);
+  // R4 K5: คำขอที่ส่งแล้วแต่ยังไม่รู้ผล (คีย์ + payload + phase) อยู่รอด reload/Back ใน sessionStorage ต่อระบบ POS + สาขา
+  //   ทุกการแตะ storage อยู่ใน try (private mode / ถูกบล็อก = ทำงานต่อแบบไม่จำ) · ลบเมื่อรู้ผล (ok · conflict · ปฏิเสธ) หรือ resetBill
+  const pendingStoreKey = `pos-reg-pending:${systemId}:${unitId}:${userId}`;
+  const savePending = (sale: RegisterSubmitInput, phase: "sending" | "unknown") => {
+    try {
+      // POS P1.15U ▸ fix รอบ 1 F3: PIN ผู้จัดการห้ามลง storage (อ่านได้จากเครื่อง) — สำเนาที่เก็บไม่มี managerPin/managerUserId ·
+      //   โหลดกลับแล้วลองซ้ำ = บิลเดิมถ้าบันทึกแล้ว · ไม่งั้นได้ DISCOUNT_EXCEEDS_LIMIT ชัด ๆ (ไม่มีบิล) แล้วใส่ PIN ใหม่ · staffToken อยู่ใน sessionStorage อยู่แล้ว ◂
+      const { managerPin: _pin, managerUserId: _mgr, creditOverride: _co /* POS P3.6U ▸ CD-P36U-6: PIN อนุญาตเกินวงเงินห้ามลง storage ◂ */, ...kept } = sale;
+      void _pin;
+      void _mgr;
+      void _co;
+      // POS P2.9U ▸ มติ 3 (H6): PIN บัตรของขวัญห้ามลง storage — แถว GIFT_CARD เก็บ number อย่างเดียว (โหลดกลับ = บิลเดิม หรือขอ PIN ใหม่) ◂
+      // POS P2.9bU ▸ มติ 3: phoneLast4 ของแถว DEPOSIT ห้ามลง storage เช่นกัน — stripPayPins ตัดทิ้ง (โหลดกลับ = บิลเดิม หรือ DEPOSIT_NOT_OWNER ⇒ ใส่ 4 หลักอีกครั้ง) ◂
+      const stored = { ...kept, payMethods: stripPayPins(kept.payMethods) };
+      window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: stored.idempotencyKey, sale: stored, phase }));
+    } catch {
+      /* เก็บไม่ได้ — ลองซ้ำในหน้านี้ยังได้ */
+    }
+  };
+  const clearPending = () => {
+    try {
+      window.sessionStorage.removeItem(pendingStoreKey);
+    } catch {
+      /* ไม่มีอะไรให้ลบ */
+    }
+  };
+  const frozen = payPhase === "sending" || payPhase === "unknown" || payPhase === "conflict";
+  // POS P2.9bU ▸ มติ 5: เปิดแผ่นรับมัดจำ (คีย์กันซ้ำใหม่ต่อการเปิดแผ่น · ไม่ใช่คีย์บิล) — ค่าตั้งปิด/หน้าโต๊ะ = ไม่มีทางเข้า ◂
+  const openDepositReceive =
+    depositOn && !tableOn
+      ? () => {
+          if (frozen || layersRef.current.length > 0) return;
+          push({ kind: "depositReceive", rcvKey: newKey() });
+        }
+      : null;
+  /** ค่าล่าสุดที่วาดแล้ว — งาน async (ผลสแกน) อ่านจาก ref ไม่ใช่ค่าที่ติดมากับ closure ตอนกด Enter (B2.2 S1) */
+  const frozenRef = useRef(frozen);
+  frozenRef.current = frozen;
+  // POS P1.15U ▸ มติ 8: ไม่ใช้งานครบ N นาที / แท็บถูกซ่อนนานเกิน ⇒ ล็อก (ไม่ล็อกระหว่างส่งบิล/ผลยังไม่แน่ใจ) ◂
+  useIdleLock(props.autoLockMinutes ?? 2, !locked && !frozen && !noPinMode, lockNow);
+  // POS P1.15U ▸ fix รอบ 1 F4: ล็อกตอนกล่องชำระยังอยู่ในขั้นกรอก = ปิดกล่องชำระ (ระหว่างส่ง/ไม่แน่ใจ ห้ามปิด — สเปก §3.4) ◂
+  useEffect(() => {
+    if (locked && payPhase === "form") setLayers((s) => (s.some((l) => l.kind === "pay") ? s.filter((l) => l.kind !== "pay") : s));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือการล็อก
+  }, [locked]);
+  /** รุ่นของบิล — resetBill เพิ่มทุกครั้ง · ผลสแกนที่เริ่มในบิลรุ่นก่อน = ทิ้ง (B2.2 S1) */
+  const billGen = useRef(0);
+
+  // B2.2 N2: ระหว่างส่ง/ผลยังไม่แน่ใจ มี "ชุดคำขอที่ส่งแล้ว" ค้างในหน่วยความจำ — ปิด/รีโหลดแท็บ = เสียชุดนั้น
+  //   (ลองซ้ำด้วยชุดเดิมไม่ได้อีก ⇒ เสี่ยงเก็บเงินซ้ำด้วยบิลใหม่) ⇒ ให้เบราว์เซอร์ถามก่อนออก
+  useEffect(() => {
+    if (payPhase !== "sending" && payPhase !== "unknown") return;
+    const guard = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [payPhase]);
+
+  const focusSearch = useCallback((select = false) => {
+    if (!isFinePointer()) return; // จอสัมผัสล้วน: ไม่เด้งคีย์บอร์ดทับกริด (สเปก §3.6)
+    const el = searchRef.current;
+    if (!el) return;
+    el.focus();
+    if (select) el.select();
+  }, []);
+  useEffect(() => {
+    focusSearch();
+  }, [focusSearch]);
+  // B2.3 R1: ปิดกล่องสุดท้าย ⇒ โฟกัสช่องค้นหา "หลัง commit" — ระหว่างที่ยังมีชั้นกล่อง ของหลังม่าน inert ⇒ focus() ในตัวจับเดียวกับ pop/setLayers ไม่มีผล
+  //   (บาร์โค้ดแรกของบิลถัดไปจะหาย) · focusSearch ข้ามจอสัมผัสล้วนเหมือนเดิม (ไม่เด้งคีย์บอร์ด) · ห้ามเรียก focusSearch ข้าง pop()/setLayers([]) อีก
+  const hadLayers = useRef(false);
+  useEffect(() => {
+    if (layers.length > 0) {
+      hadLayers.current = true;
+      return;
+    }
+    if (hadLayers.current) {
+      hadLayers.current = false;
+      focusSearch();
+    }
+  }, [layers.length, focusSearch]);
+
+  // ── ออนไลน์/ออฟไลน์ (navigator.onLine + เหตุการณ์) ──
+  useEffect(() => {
+    const apply = () => {
+      const on = navigator.onLine;
+      setOnline(on);
+      setOfflineSince((s) => (on ? null : (s ?? new Date())));
+    };
+    apply();
+    window.addEventListener("online", apply);
+    window.addEventListener("offline", apply);
+    return () => {
+      window.removeEventListener("online", apply);
+      window.removeEventListener("offline", apply);
+    };
+  }, []);
+
+  // ── POS P1.10 U ▸ เครื่องนี้ (heartbeat): undefined = ยังไม่รู้ · null = ยังไม่ลงทะเบียน ──
+  const [device, setDevice] = useState<PosDeviceView | null | undefined>(undefined);
+  const refreshDevice = useCallback(async () => {
+    const deviceCode = getPosDeviceId();
+    if (!deviceCode) return setDevice(null);
+    const hb = await heartbeatAction({ systemId, unitId, deviceCode }).catch(() => null);
+    if (hb?.ok) setDevice(hb.device);
+  }, [systemId, unitId]);
+  const printer = useMemo(() => {
+    const parsed = device && device.status === "ACTIVE" ? parsePrinterConfig(device.printerConfig) : null;
+    return { config: parsed?.ok ? parsed.config : { ...POS_PRINTER_DEFAULTS }, deviceCode: device?.deviceCode ?? getPosDeviceId() };
+  }, [device]);
+
+  // ── แถบสถานะ: ทุก 60 วิ ขณะเห็นจอ + หลังขายเสร็จ ──
+  const statusSeq = useRef(0);
+  const refreshStatus = useCallback(async () => {
+    // POS P2.14 ▸ U2 H1 (CD-U2b): ออฟไลน์ = ไม่ยิงคำขอเบื้องหลัง (ไม่มีผู้ใช้สั่ง) — กลับมาออนไลน์ = รีเฟรชครั้งเดียว (ตัวฟัง online ด้านล่าง)
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    // ◂
+    const seq = ++statusSeq.current;
+    try {
+      const r = await registerStatusAction({ systemId, unitId, deviceId: getPosDeviceId() });
+      if (seq !== statusSeq.current) return; // B2.2 N3: คำตอบเก่าที่มาช้ากว่าคำตอบใหม่ = ทิ้ง
+      if (r.ok) {
+        setStatus(r);
+        synced();
+        setDeviceKnown(true); // POS P1.15U ▸ จอล็อกรู้สถานะทะเบียนเครื่องแล้ว ◂
+        offKickRef.current?.(); // POS P3.4U ▸ มติ 5 ◂
+      }
+      void refreshDevice();
+    } catch {
+      /* เครือข่ายล้ม — ค่าเดิมค้างไว้ */
+    }
+  }, [systemId, unitId, refreshDevice]);
+  useEffect(() => {
+    // P1.9: สถานะจากเซิร์ฟเวอร์ตอนโหลดหน้าไม่รู้รหัสเครื่อง (localStorage) ⇒ ถามใหม่ทันทีพร้อม deviceId
+    void refreshStatus();
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") void refreshStatus();
+    }, 60_000);
+    // R3 V3: กลับมาที่แท็บ (เช่น หลังเปิดกะในหน้ากะ) ⇒ ถามสถานะใหม่ทันที — ชิปกะ/แถบเปิดกะ/ปุ่มชำระตามทัน
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshStatus();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [refreshStatus]);
+  // POS P2.14 ▸ U2 H1 (CD-U2b): กลับมาออนไลน์ = ถามสถานะ/เครื่อง · PIN · บิลที่พัก · สิทธิ์สมาชิก ครั้งเดียว (ระหว่างออฟไลน์ตัวถามทั้งสี่ข้ามเอง)
+  useEffect(() => {
+    const resume = () => {
+      void refreshStatus();
+      void refreshPins();
+      void refreshHeld();
+      const mid = cartRef.current.memberId;
+      if (mid) void refreshBenefits(mid, JSON.stringify(cartToQuoteInput(cartRef.current, { choices: false })));
+    };
+    window.addEventListener("online", resume);
+    return () => window.removeEventListener("online", resume);
+  }, [refreshStatus, refreshPins, refreshHeld, refreshBenefits]);
+  // ◂
+
+  // ── โหลดกริด: คำค้น (หน่วง 200ms) · หมวด (ทันที) · หน้าถัดไป ──
+  const loadCatalog = useCallback(
+    (nq: string, cat: string | null, cursor?: string, silent = false) => {
+      // P2.2U fix รอบ 2 N1: silent = โหลดจากตัวจับเวลาราคา — ล้ม/ถูกปฏิเสธไม่ขึ้น toast (ตัวจับเวลาตั้งรอบถัดไปเองอยู่แล้ว)
+      const seq = ++catalogSeq.current;
+      startCatalog(async () => {
+        try {
+          const r = await registerCatalogAction({ systemId, unitId, q: nq.trim() || undefined, categoryId: cat ?? undefined, cursor });
+          if (seq !== catalogSeq.current) return; // คำตอบเก่า
+          if (!r.ok) {
+            if (!silent) showToast({ key: refusalMessageKey(r.code) === "errors.invalidLine" ? "errors.loadFailed" : refusalMessageKey(r.code) });
+            return;
+          }
+          synced();
+          remember(r.products);
+          setCategories(r.categories);
+          setProducts((prev) => (cursor ? [...prev, ...r.products.filter((p) => !prev.some((x) => x.id === p.id))] : r.products));
+          setNextCursor(r.nextCursor);
+          setShownQ(nq);
+          if (!cursor) setPriceEdge((e) => ({ iso: r.priceValidUntil ?? null, seq: e.seq + 1 })); // POS P2.2U (fix F1: วัตถุใหม่ทุกครั้ง) ◂
+        } catch {
+          if (seq === catalogSeq.current && !silent) showToast({ key: "errors.loadFailed" });
+        }
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- remember/synced อ่าน ref/setter เท่านั้น
+    [systemId, unitId, showToast],
+  );
+  // POS P2.2U ▸ มติ 5: โหลดแคตตาล็อกใหม่ที่ priceValidUntil (หน่วงอย่างน้อย 15 วิ · อย่างมาก 1 ชม.) — คำค้น/หมวดที่แสดงอยู่เดิม ◂
+  const catalogArgs = useRef({ q: "", cat: null as string | null });
+  catalogArgs.current = { q: shownQ, cat: categoryId };
+  const onlineNow = useRef(online); // P2.2U fix รอบ 2 N1: ตัวจับเวลาอ่านสถานะออนไลน์ล่าสุด (ไม่ใส่ online ใน deps ⇒ ไม่ตั้งเวลาใหม่ทุกครั้งที่เน็ตกระพริบ)
+  onlineNow.current = online;
+  //   P2.2U fix รอบ 1 F1: คีย์ effect = วัตถุ {iso, seq} · ตัวจับเวลายิงแล้วตั้งรอบถัดไปเองเสมอ (seq+1 จากขอบเดิม) — คำตอบที่มาถึงทับด้วยขอบใหม่ ·
+  //   โหลดล้ม/ถูกคำค้นใหม่แซง = สายไม่ขาด (ยิงซ้ำหลัง 15 วิ เมื่อขอบผ่านแล้ว) · นาฬิกาเครื่องเร็ว = ยิงก่อน ⇒ ได้ขอบเดิม ⇒ ตั้งใหม่ตามขอบ
+  useEffect(() => {
+    const edge = priceEdge;
+    if (!edge.iso) return;
+    const at = Date.parse(edge.iso);
+    if (!Number.isFinite(at)) return;
+    const wait = Math.min(Math.max(at - Date.now(), 15_000), 3_600_000);
+    const h = setTimeout(() => {
+      // P2.2U fix รอบ 2 N1: ออฟไลน์ = ข้ามการโหลด (ยังตั้งรอบถัดไป) · โหลดจากตัวจับเวลาเงียบเสมอ (ไม่ toast ทุก 15 วิ)
+      if (onlineNow.current) loadCatalog(catalogArgs.current.q, catalogArgs.current.cat, undefined, true);
+      setPriceEdge((e) => (e === edge ? { iso: e.iso, seq: e.seq + 1 } : e));
+    }, wait);
+    return () => clearTimeout(h);
+  }, [priceEdge, loadCatalog]);
+  const firstQ = useRef(true);
+  /** P1.4: สแกนจากช่องค้นหาล้างคำค้น (ตัวอักษรของเครื่องสแกน) — กริดยังเป็นของคำค้นว่างอยู่แล้ว ⇒ ไม่ต้องโหลดซ้ำ */
+  const qClearedByScan = useRef(false);
+  useEffect(() => {
+    if (firstQ.current) {
+      firstQ.current = false;
+      return;
+    }
+    if (qClearedByScan.current) {
+      qClearedByScan.current = false;
+      if (q === "" && shownQ === "") return; // ตัวหน่วงที่ค้างถูกยกเลิกโดย cleanup ของ effect รอบก่อนแล้ว
+    }
+    const id = setTimeout(() => loadCatalog(q, categoryId), 200);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- หมวดเปลี่ยนโหลดเองที่ pickCategory
+  }, [q]);
+  const pickCategory = (id: string | null) => {
+    setCategoryId(id);
+    loadCatalog(q, id);
+  };
+  const loadMore = useCallback(() => {
+    if (nextCursor && !catalogPending) loadCatalog(shownQ, categoryId, nextCursor);
+  }, [nextCursor, catalogPending, loadCatalog, shownQ, categoryId]);
+
+  // ═══════ ราคา: ทันใจ (priceCart) แล้ว quote ของเซิร์ฟเวอร์ทับ ═══════
+  const local = useMemo(() => {
+    if (!cart.lines.length) return null;
+    // P1.2: ส่วนต่างของตัวเลือก/ราคาตามน้ำหนักอยู่ที่เซิร์ฟเวอร์เท่านั้น ⇒ ตะกร้าที่มีบรรทัดแบบนั้นใช้ quote (ไม่เดายอด)
+    if (cart.lines.some(isPricedByServer)) return null;
+    // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดมาจากเซิร์ฟเวอร์เท่านั้น (ส่วนลดระดับ · คูปอง · สิทธิ์) — ไม่เดายอดในเครื่อง
+    if (cart.memberId || cart.couponCode) return null;
+    // POS P2.2U fix รอบ 1 F3: ราคาโปร/ช่องทาง ≠ หน้าร้าน = ยอดของเซิร์ฟเวอร์เท่านั้น (ราคาไทล์คือราคาหน้าร้าน — ห้ามเดายอดบิล LINE MAN/โปร) ◂
+    if (cartUsesPriceLayer(cart)) return null;
+    const input = cartToPriceInput(cart, known.current, vat, localCap);
+    if ("ok" in input) return null; // สินค้าไม่รู้จัก/ไม่มีราคา — รอ quote ของเซิร์ฟเวอร์ตัดสิน
+    const r = priceCart(input);
+    return r.ok ? r : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- known เปลี่ยนพร้อม cartVer
+  }, [cart, cartVer, vat, localCap, quote]);
+
+  const changeCart = (next: RegisterCart) => {
+    setCart(next);
+    setCartVer((v) => v + 1);
+    if (tableOn) setTblErr(null); // POS P2.4U ▸ fix 1 F6: ตะกร้าเปลี่ยน = ไฮไลต์บรรทัดที่ส่งครัวไม่ได้หมดความหมาย (ตำแหน่งเลื่อน) ◂
+  };
+  /** แก้ตะกร้าจากค่าล่าสุดเสมอ (setCart แบบฟังก์ชัน) — ใช้กับการเพิ่มสินค้าที่อาจมาจากงาน async (B2.2 S1) */
+  const updateCart = (fn: (prev: RegisterCart) => RegisterCart) => {
+    setCart(fn);
+    setCartVer((v) => v + 1);
+    if (tableOn) setTblErr(null); // POS P2.4U ▸ fix 1 F6 ◂
+  };
+  // ═══════ POS P1.12U fix รอบ 1 (F1 · F9) ▸ ตะกร้าที่มีสมาชิก/คูปอง + สิทธิ์เกินเพดาน (PIN ผู้จัดการที่เตรียมไว้ · บิลพักที่อนุมัติแล้ว) ═══════
+  //   ยอดในเครื่องใช้ไม่ได้ (มติ 1) ⇒ quote ฝั่งเซิร์ฟเวอร์ด้วยสิทธิ์นั้น (quoteRegisterCartOverrideAction · อ่านอย่างเดียว · ทางเดียวกับ quote ปกติ ⇒
+  //   quote/สิทธิ์ที่เลือก/totalsPending/PRICE_CHANGED ทำงานเหมือนเดิม) · ไม่มีสมาชิก/คูปอง = ทาง P1.15U เดิม (localQuote / quote ที่เรียกคืน) ◂
+  //   P1.12U fix รอบ 2 F3: บิลที่อนุมัติแล้ว + ตะกร้าถูกแก้ (inputJson ไม่ตรง) = ไม่ส่ง override quote (quote ปกติ ⇒ การ์ดส่วนลดเกินสิทธิ์) · คง discAuth/heldCartId ไว้ —
+  //   แก้กลับเป็นตะกร้าเดิม = override quote ด้วยเพดานที่อนุมัติอีกครั้ง · ทิ้งสิทธิ์เฉพาะตอน submit ตอบ APPROVAL_MISMATCH (เหมือนตะกร้าไม่มีสมาชิกของ P1.15U)
+  const overrideAuthOf = (c: RegisterCart, a: DiscountAuth | null): { managerPin?: string; managerUserId?: string; heldCartId?: string } | null =>
+    !a || !(c.memberId || c.couponCode)
+      ? null
+      : a.kind === "pin"
+        ? { managerPin: a.managerPin, managerUserId: a.managerUserId, ...(a.heldCartId ? { heldCartId: a.heldCartId } : {}) }
+        : a.inputJson === JSON.stringify(cartToQuoteInput(c, { choices: false }))
+          ? { heldCartId: a.heldCartId }
+          : null;
+  // P1.12U fix รอบ 2 F1: override quote พกโทเคนผู้ขาย ⇒ โทเคนล่าสุดที่ไม่ว่างเป็นส่วนของคีย์ — ปลดล็อกได้โทเคนใหม่ = quote ใหม่ (ไม่ค้าง STAFF_TOKEN_INVALID) ·
+  //   โทเคนตาย/ล็อก (staff = null) ไม่รันซ้ำ (ไม่ quote ด้วยผู้ใช้ session แล้วทิ้งสิทธิ์ระหว่างจอล็อก)
+  const ovTokenRef = useRef("");
+  if (staff) ovTokenRef.current = staff.staffToken;
+  const ovAuthNow = overrideAuthOf(cart, discAuth);
+  const overrideKey = `${JSON.stringify(ovAuthNow)}|${idemKey}|${ovAuthNow ? ovTokenRef.current : ""}`;
+  /** override quote ถูกปฏิเสธ: PIN ผิด/ล็อก = ปลด PIN + ข้อความ · อนุมัติไม่ตรง/ไม่ครอบ/ใช้แล้ว = ทิ้งสิทธิ์ (เหมือนทาง submit) ⇒ quote ปกติตัดสินต่อ ·
+   *  P1.12U fix รอบ 2 F1: โทเคนผู้ขายตาย = ลบโทเคน + ล็อก (เหมือนทุกคำขอที่พกโทเคน) */
+  const onOverrideRefused = (code: string) => {
+    if (code === "STAFF_TOKEN_INVALID") staffTokenDead();
+    else if (code === "PIN_INVALID" || code === "PIN_LOCKED" || code === "PIN_THROTTLED") {
+      // POS P1.18U ▸ มติ 10a: PIN_THROTTLED = ปลด PIN ที่เตรียมไว้ + ข้อความ errors.pinThrottled (รอ 15 นาที) — ไม่ใช่ข้อความทั่วไป ◂
+      setDiscAuth(null);
+      showToast(errorFor(code));
+    } else if (code === "APPROVAL_MISMATCH" || code === "DISCOUNT_EXCEEDS_LIMIT") {
+      setDiscAuth(null);
+      if (code === "APPROVAL_MISMATCH") showToast(errorFor(code));
+    }
+  };
+  useEffect(() => {
+    if (!cart.lines.length) {
+      quoteSeq.current++;
+      setQuote(null);
+      setQuoteErr(null);
+      setQuoteSlow(false);
+      return;
+    }
+    const ver = cartVer;
+    const seq = ++quoteSeq.current;
+    const ov = overrideAuthOf(cart, discAuth);
+    // P1.12U fix รอบ 2 F2: รันซ้ำในรุ่นตะกร้าเดิม = สิทธิ์เกินเพดานเปลี่ยน (ถูกทิ้ง/ถูกปฏิเสธ/เพิ่งเตรียม) ⇒ ยอดเดิมของรุ่นนี้ใช้ไม่ได้แล้ว —
+    //   ล้างทันที (ปุ่มชำระปิดจนกว่า quote ใหม่ตอบ · เหมือน P1.15U) ไม่ค้างยอดราคาผู้จัดการไว้โดยไม่มีสิทธิ์
+    setQuote((q) => (q?.ver === ver ? null : q));
+    setQuoteSlow(false);
+    const slow = setTimeout(() => {
+      if (seq === quoteSeq.current) setQuoteSlow(true);
+    }, 400);
+    const id = setTimeout(async () => {
+      try {
+        const r = ov
+          ? await quoteRegisterCartOverrideAction({ systemId, unitId, deviceId: getPosDeviceId(), ...tokenArgs(), cart: cartToQuoteInput(cart), ...ov, idempotencyKey: idemKey }) // P1.12U fix รอบ 2 F1: + โทเคนผู้ขาย
+          : await quoteRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart) });
+        if (seq !== quoteSeq.current) return;
+        if (r.ok) {
+          setQuote({ ver, q: r, keys: cart.lines.map((l) => l.key) });
+          setQuoteErr(null);
+          synced();
+        } else {
+          setQuoteErr({ ver, code: r.code, ...(typeof r.lineIndex === "number" ? { lineIndex: r.lineIndex } : {}) });
+          // POS P5.3 fix1c ▸ F7 · fix1d ▸ D5 (CD-P53-O16): บรรทัดสินค้าถูกปฏิเสธด้วยรหัสที่ดัชนีอาจเก่า ⇒ invalidate ครั้งเดียวต่อ (บรรทัด, รหัส) ◂
+          const refusedLine = typeof r.lineIndex === "number" ? cart.lines[r.lineIndex] : undefined;
+          if (refusedLine?.kind === "product" && INDEX_STALE_CODES.has(r.code) && !indexInvalidated.current.has(`${refusedLine.key}|${r.code}`)) {
+            indexInvalidated.current.add(`${refusedLine.key}|${r.code}`);
+            barcodeIndex.invalidate();
+          }
+          if (ov) onOverrideRefused(r.code);
+        }
+      } catch {
+        if (seq === quoteSeq.current) setQuoteErr({ ver, code: "UNKNOWN" });
+      } finally {
+        if (seq === quoteSeq.current) setQuoteSlow(false);
+      }
+    }, 250);
+    return () => {
+      clearTimeout(id);
+      clearTimeout(slow);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- เวอร์ชันตะกร้า + สิทธิ์เกินเพดานของตะกร้าสมาชิก/คูปอง (fix รอบ 1 F1) คือตัวกระตุ้น
+  }, [cartVer, overrideKey]);
+
+  const quoteServer = quote && quote.ver === cartVer ? quote.q : null;
+  const quoteErrNow = quoteErr && quoteErr.ver === cartVer ? quoteErr.code : null;
+  // POS P1.15U ▸ ส่วนลดเกินเพดานที่มีสิทธิ์แล้ว: quote ของเซิร์ฟเวอร์ปฏิเสธ (quote ไม่รู้จัก PIN/บิลที่อนุมัติ) ⇒ ยอดสำหรับชำระ =
+  //   อนุมัติแล้ว: quote ที่เรียกคืนด้วยเพดานที่อนุมัติ (ตะกร้าเดิมทุกไบต์) · PIN: priceCart ไม่จำกัดเพดาน (ราคาบรรทัดตัวเลือก/ชั่งจาก quote ล่าสุด) —
+  //   ยอดไม่ตรงเซิร์ฟเวอร์ = PRICE_CHANGED พร้อมยอดจริง (ยืนยันอีกครั้ง) ◂
+  const cartInputJson = useMemo(() => JSON.stringify(cartToQuoteInput(cart, { choices: false })), [cart]);
+  // fix รอบ 1 F1/F9: ตะกร้าสมาชิก/คูปองได้ยอดจาก override quote ของเซิร์ฟเวอร์เท่านั้น (ไม่ใช้ quote ที่เรียกคืนซึ่งไม่มีสิทธิ์ที่เลือก)
+  const overrideQuote: RegisterQuote | null =
+    quoteServer || quoteErrNow !== "DISCOUNT_EXCEEDS_LIMIT" || !discAuth || overrideAuthOf(cart, discAuth)
+      ? null
+      : discAuth.kind === "approved"
+        ? discAuth.inputJson === cartInputJson
+          ? discAuth.quote
+          : null
+        : localQuote(cart);
+  const quoteFresh = quoteServer ?? overrideQuote;
+  const quoteFailed = quoteErrNow && !overrideQuote ? quoteErrNow : null;
+  // ═══════ POS P1.12U ▸ ผลของ quote ต่อสิทธิ์ที่เลือก (มติ 6) + คูปอง (มติ 8) ═══════
+  //   POINTS_CAPPED {allowedPoints} = แก้ที่เลือกเป็น allowedPoints เอง (quote ใหม่ครั้งเดียว · ไม่วน) + บรรทัดบอก ·
+  //   แต้มต่ำกว่าขั้นต่ำ/ไม่พอ/สาขาไม่มีแต้ม = บรรทัดบอก + ล้างแต้มที่เลือก · ว่อชเชอร์ใช้ไม่ได้/ชนคูปอง = บรรทัดใต้แถว + ล้างว่อชเชอร์ที่เลือก
+  const [pointsNote, setPointsNote] = useState<Msg | null>(null);
+  const [voucherNote, setVoucherNote] = useState<{ id: string; msg: Msg } | null>(null);
+  /** บันทึกบิลตอบ MEMBER_RIGHTS_CHANGED ⇒ แบนเนอร์ในจอชำระจนกว่าจะเลือกใหม่/ปิดกล่อง */
+  const [rightsChanged, setRightsChanged] = useState(false);
+  /** คูปองที่เพิ่งใส่: รอ quote ของรุ่นตะกร้านั้น — ไม่มีข้อขัด = ปิดกล่อง · มี = ข้อความในกล่อง + ตะกร้าคืนโค้ดเดิม */
+  const [couponWait, setCouponWait] = useState<{ ver: number; prev: string | null } | null>(null);
+  useEffect(() => {
+    const ch = cart.memberChoices;
+    if (!quoteServer || !ch || !cart.memberId) return;
+    const cf = quoteServer.memberConflicts ?? [];
+    const pc = ch.points ? cf.find((c) => c.kind === "POINTS") : undefined;
+    if (pc) {
+      const allowed = pc.code === "POINTS_CAPPED" ? (pc.allowedPoints ?? 0) : 0;
+      if (allowed > 0 && allowed !== ch.points) {
+        setPointsNote({ key: "pay.capped", ns: "member", values: { points: allowed.toLocaleString("th-TH") } });
+        setChoices((c) => ({ ...c, points: allowed }));
+      } else if (allowed !== ch.points) {
+        // fix รอบ 1 F3 ของ S: เพดานตัดเหลือ > 0 แต่ต่ำกว่าขั้นต่ำ = POINTS_BELOW_MIN (บิลเล็กเกินไป) · ตัดเหลือ 0 = POINTS_CAPPED {allowedPoints: 0}
+        const min = benefits?.points?.burnMinPoints ?? null;
+        setPointsNote(
+          pc.code === "POINTS_BELOW_MIN" && min !== null && (ch.points ?? 0) >= min
+            ? { key: "errors.pointsBelowMinBill", values: { min: min.toLocaleString("th-TH") } }
+            : pc.code === "POINTS_CAPPED"
+              ? { key: "pay.capped", ns: "member", values: { points: 0 } }
+              : errorFor(pc.code),
+        );
+        setChoices((c) => ({ ...c, points: 0 }));
+      }
+    }
+    const vc = ch.voucherId ? cf.find((c) => c.kind === "VOUCHER" || c.code === "VOUCHER_COUPON_CONFLICT") : undefined;
+    // fix รอบ 1 F4: คูปองที่เพิ่งใส่ยังรอผลของรุ่นนี้ ⇒ ไม่ล้างว่อชเชอร์ (ตัวรอคูปองคืนโค้ดเดิมก่อน แล้ว quote ใหม่ตัดสิน — ขัดต่อ = ล้างตอนนั้น)
+    if (vc && ch.voucherId && couponWait?.ver !== cartVer) {
+      setVoucherNote({ id: ch.voucherId, msg: errorFor(vc.code) });
+      setChoices((c) => ({ ...c, voucherId: undefined }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = quote ใหม่ของตะกร้านี้
+  }, [quoteServer]);
+  const [couponErr, setCouponErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!couponWait) return;
+    if (cartVer > couponWait.ver) return setCouponWait(null); // ตะกร้าเปลี่ยนต่อ — ไม่รอแล้ว
+    const qe = quoteErr && quoteErr.ver === couponWait.ver ? quoteErr.code : null;
+    const qs = quote && quote.ver === couponWait.ver ? quote.q : null;
+    if (!qe && !qs) return;
+    const bad = qe ?? qs?.memberConflicts?.find((c) => c.code === "COUPON_INVALID" || c.code === "VOUCHER_COUPON_CONFLICT")?.code ?? null;
+    setCouponWait(null);
+    if (bad) {
+      setCouponErr(refusalMessageKey(bad));
+      setCoupon(couponWait.prev);
+    } else setLayers((ls) => ls.filter((x) => x.kind !== "coupon"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = คำตอบ quote
+  }, [quote, quoteErr, cartVer]);
+  const applyCoupon = (raw: string) => {
+    const code = normalizeCouponCode(raw);
+    if (!code || frozenRef.current) return;
+    setCouponErr(null);
+    if (!cart.lines.length) {
+      setCoupon(code);
+      setLayers((ls) => ls.filter((x) => x.kind !== "coupon"));
+      return;
+    }
+    setCouponWait({ ver: cartVer + 1, prev: cart.couponCode ?? null });
+    setCoupon(code);
+  };
+  const openCoupon = () => {
+    if (frozenRef.current || layersRef.current.some((x) => x.kind === "coupon")) return;
+    setCouponErr(null);
+    setCouponWait(null);
+    push({ kind: "coupon" });
+  };
+  useEffect(() => {
+    if (payOpen) return;
+    setPointsNote(null);
+    setVoucherNote(null);
+    setRightsChanged(false);
+  }, [payOpen]);
+  // fix รอบ 1 F3: quote ตอบ MEMBER_SYSTEM_MISSING ขณะบิลมีสมาชิก (เช่น ระบบสมาชิกของสาขาถูกถอดหลังพักบิล) ⇒ ถอดสมาชิก + บอกเหตุผล ครั้งเดียวต่อรุ่นตะกร้า
+  const memberMissingVer = useRef(-1);
+  useEffect(() => {
+    if (quoteErrNow !== "MEMBER_SYSTEM_MISSING" || !cart.memberId || memberMissingVer.current === cartVer) return;
+    memberMissingVer.current = cartVer;
+    detachMember();
+    showToast({ key: "errors.memberSystemMissing" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = คำตอบ quote ของรุ่นตะกร้านี้
+  }, [quoteErrNow, cartVer]);
+
+  // R3 F1: ตะกร้าที่มีบรรทัดราคาฝั่งเซิร์ฟเวอร์ (ตัวเลือก/ชั่ง) และ quote ยังไม่ตรงรุ่น = ยอดรอ (—) — ห้ามโชว์ยอดของตะกร้าเก่าค้าง
+  // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดของเซิร์ฟเวอร์เท่านั้น ⇒ quote ยังไม่ตรงรุ่น = ยอดรอ (—) เหมือนบรรทัดตัวเลือก
+  // POS P2.2U fix รอบ 1 F3: ตะกร้าที่ใช้ชั้นราคา (โปร/ช่องทาง ≠ หน้าร้าน) = ยอดรอ (—) จน quote ของเซิร์ฟเวอร์ตรงรุ่น · ชำระ/ส่งขายใช้ quote เท่านั้นเหมือนเดิม
+  const priceLayer = cartUsesPriceLayer(cart);
+  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode || priceLayer);
+  const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
+  // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
+  const shiftBlocked = !!status?.shiftRequired && !status?.shift;
+  // POS P1.10 U ▸ เครื่องถูกเพิกถอน (registerStatus.deviceStatus) = ล็อกการขาย (เซิร์ฟเวอร์ปฏิเสธ DEVICE_REVOKED อยู่แล้ว — จอไม่ให้เริ่ม) ◂
+  const deviceRevoked = status?.deviceStatus === "REVOKED";
+  // POS P1.7U ▸ มติ 5: ส่วนลดเกินเพดานของผู้ขาย (เพดานบนหน้า · ตัวตัดสินจริงคือเซิร์ฟเวอร์) ⇒ กล่องชำระไม่สร้าง QR ◂
+  const discountOverCap = useMemo(() => {
+    if (quoteFailed === "DISCOUNT_EXCEEDS_LIMIT") return true;
+    if (limits.maxDiscountBp === null || !cart.lines.length || cart.lines.some(isPricedByServer)) return false;
+    const input = cartToPriceInput(cart, known.current, vat, limits.maxDiscountBp);
+    if ("ok" in input) return false;
+    const r = priceCart(input);
+    return !r.ok && r.code === "DISCOUNT_EXCEEDS_LIMIT";
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- known เปลี่ยนพร้อม cartVer
+  }, [cart, cartVer, vat, limits.maxDiscountBp, quoteFailed]);
+  const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked && !deviceRevoked && !tableOn; // POS P2.4U ▸ โหมดโต๊ะไม่ชำระที่นี่ ◂
+  const lastAmount = quoteFresh?.grandTotalSatang ?? local?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0;
+  const payAmount = quoteSlow && !quoteFresh ? tc("loading") : totalsPending ? PENDING : moneyText(cart.lines.length ? lastAmount : 0);
+
+  // ═══════ POS P3.4U ▸ ขายออฟไลน์ (19ง · มติ 3): เปิดธง + ออฟไลน์ = ยอดจาก snapshot (offlineCartTotals) · เงินสด/โอน · walk-in เท่านั้น ═══════
+  const offMode = !!props.offlineEnabled && !online && !tableOn;
+  const offTotals = useMemo(() => (offMode && off.snapshot && cart.lines.length ? offlineCartTotals(off.snapshot, cartToQuoteInput(cart)) : null), [offMode, off.snapshot, cart]);
+  const offWalkIn = !cart.memberId && !cart.couponCode && !taxInv;
+  const offBlockKey: string | null = !offMode
+    ? null
+    : !off.gate.ok
+      ? offlineGateMessageKey(off.gate.reason)
+      : !offWalkIn
+        ? "offline.walkInOnly"
+        : offTotals && !offTotals.ok
+          ? offTotals.code === "DISCOUNT_EXCEEDS_LIMIT"
+            ? "offline.discountOver"
+            : "offline.cartRefused"
+          : discountOverCap
+            ? "offline.discountOver"
+            : null;
+  const offPayEnabled = offMode && !offBlockKey && !!offTotals?.ok && offTotals.grandTotalSatang > 0 && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked && !deviceRevoked;
+  const offAmount = offTotals?.ok ? moneyText(offTotals.grandTotalSatang) : moneyText(0);
+  // ◂ POS P3.4U
+  // ข้อความใต้ยอด: ออฟไลน์ > ไม่มีสิทธิ์ > quote ล้ม
+  const errorMsg: Msg | null = offMode /* POS P3.4U ▸ เปิดธง: เหตุที่ขายออฟไลน์ไม่ได้แทน "ชำระได้เมื่อออนไลน์" ◂ */
+    ? offBlockKey && cart.lines.length
+      ? { key: offBlockKey }
+      : null
+    : !online
+    ? { key: "errors.offline" }
+    : !limits.canSell
+      ? { key: "errors.permissionDenied" }
+      : quoteFailed && cart.lines.length
+        ? errorFor(quoteFailed)
+        : null;
+
+  function errorFor(code: string): Msg {
+    const key = refusalMessageKey(code);
+    if (key === "errors.discountExceedsLimit") return { key, values: { limit: pctText(sellerCap ?? 0) } };
+    if (key === "errors.tooManyLines") return { key, values: { max: REGISTER_MAX_LINES } };
+    if (key === "errors.stockInsufficient") return { key, values: { count: 0 } };
+    return { key };
+  }
+  const msgNode = (m: Msg) => (m.ns === "member" ? tm : m.ns === "recipe" ? tRecipe : m.ns === "tables" ? tTables : t).rich(m.key, { ...(m.values ?? {}), b: (c) => <b>{c}</b> }); // POS P2.4U ▸ + tables ◂
+
+  // POS P2.3U ▸ มติ 5: ลองตัดสต็อกที่ค้างของวันนี้ (retryPendingStockCutsAction — ขอบเขตเดียวกับตัวนับ) → แจ้ง recipe.retryDone {cut, left} · ปฏิเสธ = errorFor ◂
+  const [retryingCuts, setRetryingCuts] = useState(false);
+  const retryCuts = async () => {
+    if (retryingCuts) return;
+    setRetryingCuts(true);
+    try {
+      const r = await retryPendingStockCutsAction({ systemId, unitId });
+      if (r.ok) showToast({ key: "retryDone", ns: "recipe", values: { cut: r.cut, left: r.stillPending } });
+      else showToast(errorFor(r.code));
+      void refreshStatus();
+    } catch {
+      showToast({ key: "errors.unknown" });
+    } finally {
+      setRetryingCuts(false);
+    }
+  };
+
+  // ── แบบจำลองบรรทัดสำหรับวาด (ราคาเซิร์ฟเวอร์ทับราคากริดเมื่อ quote ตรงตะกร้า — มติ Q22) ──
+  /** P1.2 U: บรรทัดรองของตัวเลือก/น้ำหนัก — ชื่อตามภาษาจอจากกล่องตัวเลือกก่อน แล้วค่อยชื่อจาก quote · น้ำหนักจาก quote (ป้าย) หรือที่กรอก */
+  const lineDetail = (l: RegisterCartLine, ql: RegisterQuote["lines"][number] | undefined): string => {
+    if (l.kind !== "product") return "";
+    const opts = (l.options ?? []).map((id) => optionNames.current.get(id) ?? ql?.options.find((o) => o.choiceId === id)?.name ?? "").filter(Boolean);
+    const grams = ql?.weightGrams ?? l.weightGrams ?? null;
+    const w = grams !== null ? t("line.grams", { grams: grams.toLocaleString("th-TH") }) : l.weighedBarcode !== undefined ? t("line.label") : "";
+    return [...opts, w].filter(Boolean).join(" · ");
+  };
+  const lineModels: CartLineModel[] = cart.lines.map((l, i) => {
+    const ql = quoteFresh?.lines[i];
+    const ll = local?.lines[i];
+    const prod = l.kind === "product" ? known.current.get(l.productId) : undefined;
+    // R3 F1: บรรทัดราคาฝั่งเซิร์ฟเวอร์ที่ยังไม่มี quote สด = รอ (—) · ยกเว้นน้ำหนักที่พิมพ์เองไม่มีตัวเลือก = ประมาณด้วยสูตรเดียวกับ WeighDialog
+    const serverPriced = isPricedByServer(l);
+    const est =
+      serverPriced && !ql && l.kind === "product" && l.weightGrams !== undefined && !(l.options?.length ?? 0) && typeof prod?.priceSatang === "number"
+        ? weighedEstimate(l.weightGrams, prod.priceSatang)
+        : null;
+    const pending = (serverPriced && !ql && est === null) || (priceLayer && !ql); // P2.2U fix F3: ราคาบรรทัดชั้นราคา = ของ quote เท่านั้น
+    const unit = ql?.unitPriceSatang ?? est ?? ll?.unitPriceSatang ?? (l.kind === "custom" ? l.unitPriceSatang : (l.openPriceSatang ?? prod?.priceSatang ?? 0));
+    const stockLeft = prod && prod.trackStock && prod.stockLeft !== null ? prod.stockLeft : null;
+    const over = stockLeft !== null && l.qty > stockLeft;
+    // POS P2.2U ▸ มติ 5: ป้ายบรรทัด — โปร (ชื่อโปร) / ราคาตามช่องทาง (CHANNEL) จาก quote ของเซิร์ฟเวอร์ · ไทล์โปรระหว่างรอ quote · บรรทัดที่ถูกปฏิเสธ CHANNEL_NOT_SOLD ◂
+    const ruleName = ql?.priceRule?.name ?? (!ql && prod?.priceSource === "RULE" ? (prod.priceRule?.name ?? null) : null);
+    // P2.2U fix รอบ 1 F7: แถว (STORE, *) ไม่ใช่ "ราคาตามช่องทาง" — (STORE, สาขา) = "ราคาสาขา" · (STORE, ทุกสาขา) = ไม่มีป้าย (shownPriceSource)
+    const shownSource = ql ? shownPriceSource(ql.priceSource, quoteFresh?.channel?.code ?? null, ql.unitPriceSatang - ql.optionsSatang, ql.listPriceSatang) : null;
+    const badge = ruleName
+      ? { kind: "RULE" as const, text: ruleName }
+      : shownSource === "CHANNEL"
+        ? { kind: "CHANNEL" as const, text: tPrice("badge.channel") }
+        : shownSource === "BRANCH"
+          ? { kind: "BRANCH" as const, text: tPrice("badge.branch") }
+          : null;
+    const lineError =
+      quoteErrNow === "CHANNEL_NOT_SOLD" && quoteErr?.lineIndex === i
+        ? t("errors.channelNotSold")
+        : tableOn && tblErr?.lineIndex === i
+          ? tTables("order.lineRefused") // POS P2.4U ▸ มติ 4: บรรทัดที่ส่งครัวไม่ได้ ◂
+          : null;
+    return {
+      key: l.key,
+      index: i,
+      ...(badge ? { badge } : {}),
+      ...(lineError ? { error: lineError } : {}),
+      name: l.kind === "custom" ? l.name : prod ? displayName(prod, locale) : (heldNames.current.get(l.productId) ?? "-"),
+      qty: l.qty,
+      unitPriceSatang: unit,
+      grossSatang: ql?.grossSatang ?? ll?.grossSatang ?? unit * l.qty,
+      discountSatang: ql?.discountSatang ?? ll?.discountSatang ?? 0,
+      stockLeft,
+      warn: over && warnAck[l.key] !== l.qty,
+      ...(pending ? { pending: true } : {}),
+      ...(l.note ? { note: l.note } : {}),
+      ...(lineDetail(l, ql) ? { detail: lineDetail(l, ql) } : {}),
+    };
+  });
+  // POS P2.10 ▸ จอลูกค้า (มติ 5): ภาพบิลของเครื่องนี้ → จอที่จับคู่ · อ่านอย่างเดียวจากตะกร้า/quote/สมาชิก/ชั้น · ช่องจ่ายมาทาง onDisplayPay
+  const displayOnPay = useDisplayPublish({
+    systemId,
+    unitId,
+    deviceCode: deviceId,
+    lines: lineModels,
+    quote: quoteFresh ?? null,
+    couponCode: cart.couponCode ?? null,
+    member: memberEnabled && cart.memberId && memberInfo && memberInfo.id === cart.memberId ? memberInfo : null,
+    benefits: memberReady ? benefits : null,
+    layers,
+  });
+  // ◂
+  const inCart = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of cart.lines) if (l.kind === "product") m.set(l.productId, (m.get(l.productId) ?? 0) + l.qty);
+    return m;
+  }, [cart]);
+  const peek = cart.lines
+    .slice(0, 6)
+    .map((l) => {
+      const nm = l.kind === "custom" ? l.name : displayName(known.current.get(l.productId) ?? { name: "-" }, locale);
+      return l.qty > 1 ? `${nm} ×${l.qty.toLocaleString("th-TH")}` : nm;
+    })
+    .join(" · ");
+
+  // ═══════ การกระทำบนตะกร้า ═══════
+  const soon = () => showToast({ key: "soon" });
+
+  // ═══════ P1.5 พักบิล / เรียกคืน ═══════
+  // H5: พักสำเร็จ ⇒ resetBill() (ล้างจอ + หมุนคีย์บิล "ที่เดียว" ตาม S5.21) · เรียกคืน ⇒ resetBill() ก่อนวางตะกร้าที่คืน (คีย์ใหม่เสมอ ·
+  //     บิลที่พักไม่เคยพกคีย์ไปด้วย — cartToQuoteInput ไม่มีคีย์) · พักล้ม = ตะกร้าเดิมอยู่ครบ
+  const onHold = async (label?: string): Promise<boolean> => {
+    if (tableOn) return false; // POS P2.4U ▸ โหมดโต๊ะ: พัก = "บันทึกไว้ก่อน" ของรอบร่างโต๊ะ (F8 ไม่ทำงาน) ◂
+    if (frozenRef.current || frozen || !cart.lines.length || heldBusyRef.current) return false;
+    heldBusyRef.current = true;
+    setHeldBusy(true);
+    try {
+      const r = await holdRegisterCartAction({ systemId, unitId, ...tokenArgs(), cart: cartToQuoteInput(cart, { choices: false }), label: label?.trim() || null });
+      if (!r.ok) {
+        if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead();
+        else showToast(errorFor(r.code));
+        return false;
+      }
+      resetBill();
+      setLayers((s) => s.filter((l) => l.kind !== "holdLabel"));
+      showToast({ key: "held.holdDone" });
+      void refreshHeld();
+      return true;
+    } catch {
+      showToast({ key: "errors.loadFailed" });
+      return false;
+    } finally {
+      heldBusyRef.current = false;
+      setHeldBusy(false);
+    }
+  };
+  const onRecallHeld = async (id: string, armPin?: { managerUserId: string; pin: string }, viaApproval = false): Promise<true | string> => {
+    if (frozenRef.current || heldBusyRef.current) return "BUSY";
+    heldBusyRef.current = true;
+    setHeldBusy(true);
+    try {
+      const r = await recallHeldCartAction({ systemId, unitId, ...tokenArgs(), id });
+      if (!r.ok) {
+        if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead();
+        else showToast(errorFor(r.code));
+        void refreshHeld();
+        return r.code;
+      }
+      remember(r.products);
+      r.cart.lines.forEach((l, i) => {
+        const nm = r.lineNames[i];
+        if ("productId" in l && nm) heldNames.current.set(l.productId, nm);
+      });
+      resetBill();
+      // merge P1.15U ข้อ 10b: ผู้ซื้อของบิลที่พักรออนุมัติ — คืนเฉพาะทางอนุมัติ (21B) · ทางอื่น = ล้าง + บอก
+      const parked = parkedTaxInv.current;
+      if (parked && parked.heldCartId === id) {
+        parkedTaxInv.current = null;
+        if (viaApproval) setTaxInv(parked.value);
+        else showToast({ key: "taxInvoice.clearedOnRecall" });
+      }
+      // fix รอบ 1 F2: สิทธิ์ที่เลือกที่พักไว้ — คงไว้เฉพาะบิลเดียวกันที่กลับมาทางอนุมัติ (ใส่คืนตอนเปิดจอชำระ) · อื่น ๆ = ทิ้ง (ไม่มีข้อความ)
+      if (parkedChoices.current && (parkedChoices.current.heldCartId !== id || !viaApproval)) parkedChoices.current = null;
+      const next = quoteInputToCart(r.cart, newKey);
+      // fix รอบ 1 F3: สาขานี้ไม่มีระบบสมาชิกแล้ว (registerStatus รู้แล้วเท่านั้น) ⇒ บิลที่เรียกคืนไม่พาสมาชิกมา + บอกเหตุผล (ไม่งั้นทุก quote ถูกปฏิเสธและไม่มีปุ่มถอด)
+      const memberDropped = !!next.memberId && status?.memberEnabled === false;
+      if (memberDropped) delete next.memberId;
+      changeCart(next);
+      setHeldNotices(r.notices.flatMap((n) => (next.lines[n.lineIndex] ? [{ key: next.lines[n.lineIndex]!.key, code: n.code, from: n.heldUnitPriceSatang, to: n.unitPriceSatang }] : [])));
+      // POS P1.15U ▸ มติ 5: บิลพักที่อนุมัติส่วนลดแล้ว ⇒ ยอดจาก quote ที่เรียกคืน (เพดานที่อนุมัติ) + heldCartId ตอนชำระ ◂
+      if (r.approvedRequestId && r.quote.ok) {
+        const q = r.quote;
+        const satang = q.lineDiscountSatang + q.billDiscountSatang;
+        setDiscAuth({ kind: "approved", heldCartId: r.heldCartId, inputJson: JSON.stringify(cartToQuoteInput(next, { choices: false })), quote: q, satang, bp: q.subtotalSatang > 0 ? Math.ceil((satang * 10_000) / q.subtotalSatang) : 0 });
+      } else if (armPin) {
+        const d = discountOf(next);
+        setDiscAuth({ kind: "pin", managerUserId: armPin.managerUserId, managerName: "", managerPin: armPin.pin, heldCartId: r.heldCartId, ...d });
+      }
+      setLayers([]);
+      showToast(memberDropped ? { key: "errors.memberSystemMissing" } : { key: "held.recalled" });
+      void refreshHeld();
+      return true;
+    } catch {
+      showToast({ key: "errors.loadFailed" });
+      return "UNKNOWN";
+    } finally {
+      heldBusyRef.current = false;
+      setHeldBusy(false);
+    }
+  };
+  /** มติ 4: ตะกร้ามีของ ⇒ ถามก่อน (พักก่อน / ยกเลิก) · ว่าง ⇒ เรียกคืนเลย */
+  const requestRecall = (h: HeldCartSummary) => {
+    if (frozenRef.current) return;
+    if (cart.lines.length) push({ kind: "heldConfirm", item: h });
+    else void onRecallHeld(h.id);
+  };
+  const onDiscardHeld = async (h: HeldCartSummary) => {
+    if (heldBusyRef.current) return;
+    heldBusyRef.current = true;
+    setHeldBusy(true);
+    try {
+      const r = await discardHeldCartAction({ systemId, unitId, id: h.id });
+      if (r.ok && parkedChoices.current?.heldCartId === h.id) parkedChoices.current = null; // fix รอบ 1 F2
+      showToast(r.ok ? { key: "held.discarded" } : errorFor(r.code));
+    } catch {
+      showToast({ key: "errors.loadFailed" });
+    } finally {
+      heldBusyRef.current = false;
+      setHeldBusy(false);
+      void refreshHeld();
+    }
+  };
+  const openHeld = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "held")) return;
+    setHeldItems(null);
+    push({ kind: "held" });
+    void refreshHeld();
+  };
+  /** P1.15: เปิด PIN ผู้จัดการ · วันนี้ = แสดงเหตุผล */
+  const onNeedsApproval = (key: string) => showToast({ key });
+
+  // B2.2 S1: เพิ่มบรรทัด/สินค้า = แก้จากตะกร้าล่าสุด (prev) ไม่ใช่ `cart` ของ render ที่สร้างฟังก์ชันนี้
+  //   — ผลสแกนที่กลับมาหลังผู้ใช้กดเพิ่มสินค้าอื่นไปแล้วจะไม่ทับตะกร้าด้วยสำเนาเก่า · คีย์บรรทัดสร้างนอก updater (StrictMode เรียกซ้ำได้)
+  const appendTo = (prev: RegisterCart, line: NewLine, key: string): RegisterCart =>
+    prev.lines.length >= REGISTER_MAX_LINES ? prev : { ...prev, lines: [...prev.lines, { ...line, key } as RegisterCartLine] };
+  const addLine = (line: NewLine) => {
+    if (frozenRef.current) return;
+    if (cart.lines.length >= REGISTER_MAX_LINES) return showToast({ key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
+    const key = newKey();
+    updateCart((prev) => appendTo(prev, line, key));
+  };
+  const addProduct = (p: RegisterProduct) => {
+    if (frozenRef.current) return;
+    const key = newKey();
+    // R2: เพดานจำนวน/จำนวนบรรทัด = บอกผู้ใช้ (เดิมเงียบ) · ตรวจกับตะกร้าล่าสุดที่วาดแล้ว (cartRef)
+    const cur = cartRef.current;
+    if (cartAddProduct(cur, p.id, key) === cur) {
+      const atMaxQty = cur.lines.some((l) => l.kind === "product" && l.productId === p.id && !l.discount && l.openPriceSatang === undefined);
+      return showToast(atMaxQty ? { key: "errors.qtyInvalid", values: { max: REGISTER_MAX_QTY } } : { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
+    }
+    // P1.4 B2: สแกนซ้ำ/แตะซ้ำ = +1 บรรทัดเดิม (ราคาเดียวกัน) — ตัวลดรูปบริสุทธิ์ใน register-shared (ข้อสอบ R1)
+    updateCart((prev) => cartAddProduct(prev, p.id, key));
+    focusSearch();
+  };
+  /** แตะการ์ด (P1.2 จะเปิดป๊อปโอเวอร์ตัวเลือกตรงนี้เมื่อ optionGroupCount > 0) */
+  const pick = (p: RegisterProduct, anchor?: PickAnchor) => {
+    known.current.set(p.id, p);
+    if (frozenRef.current) return;
+    if (p.soldOutReason === "UNAVAILABLE") {
+      showToast({ key: "errors.productUnavailable" });
+      // POS P4.3 ▸ F-P3-21 · CD-P38U-9: 86 ที่ระบบเปิดการ์ดบอร์ดงานแล้ว ⇒ ปุ่ม "การ์ด #n" ในข้อความลอย (ไม่มีการ์ด/ออฟไลน์ = ข้อความเดิม) ◂
+      if (p.soldOutMark && online) {
+        const prefix = posBoardKeys.soldOutPrefix(unitId, p.id);
+        void posBoardCardsAction({ systemId, keys: [prefix] })
+          .then((r) => {
+            const c = r.ok ? r.cards.find((x) => x.key.startsWith(prefix)) : undefined;
+            if (c) setToast((cur) => (cur && cur.key === "errors.productUnavailable" && !cur.card ? { ...cur, card: { href: c.href, cardNo: c.cardNo, completed: c.completed, productId: p.id } } : cur));
+          })
+          .catch(() => undefined);
+      }
+      return;
+    }
+    // POS P2.2U ▸ มติ 5: ไม่ขายหน้าร้าน = เพิ่มไม่ได้ และไม่เปิดกล่องราคาเปิด (เซิร์ฟเวอร์ปฏิเสธ CHANNEL_NOT_SOLD อยู่แล้ว) ◂
+    if (p.notSold) return showToast({ key: "errors.channelNotSold" });
+    if (tableOn && p.soldByWeight) return showToast({ key: "order.noWeighed", ns: "tables" }); // POS P2.4U ▸ รอบร่างโต๊ะไม่รับสินค้าชั่ง ◂
+    // P1.2 R16: มีกลุ่มตัวเลือก (optionGroupCount) หรือตัวแปร (variantCount) ⇒ กล่องเลือก · สินค้าชั่ง ⇒ กล่องน้ำหนัก
+    if (p.optionGroupCount > 0 || p.variantCount > 0) return push({ kind: "options", product: p, ...(anchor ? { anchor } : {}) });
+    if (p.soldByWeight) return push({ kind: "weigh", product: p, options: [] });
+    if (p.priceSatang === null) {
+      if (!limits.canOverridePrice) return showToast({ key: "errors.priceNotSet" });
+      return push({ kind: "openPrice", productId: p.id });
+    }
+    addProduct(p);
+  };
+
+  /** P1.2 U: ผลของกล่องตัวเลือก — สินค้าชั่ง (ยังไม่มีป้าย) ⇒ ต่อกล่องน้ำหนัก · มีหมายเหตุ ⇒ บรรทัดใหม่เสมอ · อื่น ๆ = cartAddProduct ทีละชิ้น (+1 รวมชุดเดียวกัน) */
+  const addPicked = (o: OptionsPick, weighedBarcode?: string) => {
+    if (frozenRef.current) return;
+    known.current.set(o.product.id, o.product);
+    for (const [id, nm] of Object.entries(o.names)) optionNames.current.set(id, nm);
+    if (weighedBarcode !== undefined) {
+      setLayers((s) => s.filter((l) => l.kind !== "options"));
+      return addWeighed(o.product, { weighedBarcode }, o.options, o.note);
+    }
+    if (o.soldByWeight) {
+      return setLayers((s) => [...s.filter((l) => l.kind !== "options"), { kind: "weigh", product: o.product, options: o.options, ...(o.note ? { note: o.note } : {}) }]);
+    }
+    const key = newKey();
+    // R2 ข้อ 2: คีย์รวม = สินค้า + ชุดตัวเลือก + หมายเหตุ (cartAddProduct) — ชิ้นละครั้งตามจำนวน
+    const addAll = (prev: RegisterCart): { next: RegisterCart; added: number } => {
+      let next = prev;
+      let added = 0;
+      for (let i = 0; i < o.qty; i++) {
+        const n = o.note ? cartAddProduct(next, o.product.id, key, o.options, o.note) : cartAddProduct(next, o.product.id, key, o.options);
+        if (n === next) break;
+        next = n;
+        added++;
+      }
+      return { next, added };
+    };
+    // R3 F4: เทียบก่อน/หลังกับตะกร้าล่าสุดที่วาดแล้ว — เต็ม 200 บรรทัด / ชนเพดานจำนวน = บอกผู้ใช้ (เหมือน addProduct)
+    const cur = cartRef.current;
+    const trial = addAll(cur);
+    if (trial.added < o.qty) {
+      const full = trial.added === 0 && cur.lines.length >= REGISTER_MAX_LINES;
+      const merged = cur.lines.some((l) => l.kind === "product" && l.productId === o.product.id);
+      showToast(full && !merged ? { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } } : { key: "errors.qtyInvalid", values: { max: REGISTER_MAX_QTY } });
+      if (trial.added === 0) return;
+    }
+    updateCart((prev) => addAll(prev).next);
+    setLayers((s) => s.filter((l) => l.kind !== "options"));
+  };
+  /** P1.2 U: บรรทัดชั่ง (ป้ายเครื่องชั่ง หรือน้ำหนักที่กรอก) — qty 1 ไม่รวมกับบรรทัดใด · ราคาจริงจาก quote */
+  const addWeighed = (p: RegisterProduct, weight: { weighedBarcode: string } | { weightGrams: number }, options: string[], note?: string) => {
+    if (frozenRef.current) return;
+    if (tableOn) return showToast({ key: "order.noWeighed", ns: "tables" }); // POS P2.4U ▸ โหมดโต๊ะ ◂
+    if (cartRef.current.lines.length >= REGISTER_MAX_LINES) return showToast({ key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
+    known.current.set(p.id, p);
+    const key = newKey();
+    updateCart((prev) => {
+      const next = cartAddWeighed(prev, p.id, key, weight, options);
+      return note ? { ...next, lines: next.lines.map((l) => (l.key === key ? { ...l, note } : l)) } : next;
+    });
+    focusSearch();
+  };
+
+  // ═══════ บาร์โค้ด (P1.4) ═══════
+  /** เวลา (event.timeStamp) ของการสแกนล่าสุดที่ตัวจับแป้นรับไป — Enter ของช่องค้นหาในช่วงนี้ = ของการสแกน ห้ามเพิ่มซ้ำ (มติผู้คุมงาน 3) */
+  const lastScanAt = useRef(-Infinity);
+  /** ผลของ registerScan → ทำตาม scanOutcome (ทางเดียวทั้งเครื่องสแกน กล้อง และ Enter ในช่องค้นหา) */
+  const applyScan = (r: RegisterScanResult, code: string, from: "scan" | "search") => {
+    // P1.2 R11: ป้ายเครื่องชั่ง (one + weighed) ⇒ บรรทัดชั่งด้วยป้ายนั้น · สินค้ามีตัวเลือก/ตัวแปร ⇒ เลือกก่อนแล้วใช้ป้ายเดิม
+    if (r.ok && r.match === "one" && r.weighed) {
+      const wp = r.product;
+      remember([wp]);
+      if (wp.soldOutReason === "UNAVAILABLE") return showToast({ key: "errors.productUnavailable" });
+      if (wp.optionGroupCount > 0) return push({ kind: "options", product: wp, weighedBarcode: r.weighed.code });
+      return addWeighed(wp, { weighedBarcode: r.weighed.code }, []);
+    }
+    const o = scanOutcome(r, { canOverridePrice: limits.canOverridePrice });
+    if (o.action === "error") return showToast(errorFor(o.code));
+    if (o.action === "add") return pick(o.product);
+    if (o.action === "choose") {
+      // B4: กล่องเลือกจริง (ไม่ยึดกริด) · จำสินค้าไว้ให้บรรทัดตะกร้าวาดชื่อ/ราคาได้
+      remember(o.products);
+      return push({ kind: "scanChoose", products: o.products });
+    }
+    // none: ไม่พบ — ผู้มีสิทธิ์ราคาเปิดได้ปุ่ม "เพิ่มเป็นรายการกำหนดเอง?" (offerCustom) · คนอื่นเห็นแค่ข้อความ
+    showToast(from === "search" ? { key: "search.noResult", values: { q: code }, offerCustom: o.offerCustom } : { key: "scan.notFound", values: { code }, offerCustom: o.offerCustom });
+  };
+
+  /** Enter ในช่องค้นหา (Q24) — คนพิมพ์เท่านั้น: การสแกนรัวถูกตัวจับแป้นรับไปก่อน (capture) และไม่ถึงที่นี่ */
+  const addFromSearchEnter = async () => {
+    const term = q.trim();
+    if (!term || frozen) return;
+    if (performance.now() - lastScanAt.current < 250) return; // P1.4: Enter นี้เป็นของการสแกนที่เพิ่งรับไป — หนึ่งสแกน = หนึ่งครั้ง
+    const lc = term.toLowerCase();
+    if (shownQ.trim() === term && !catalogPending) {
+      const exact = products.filter((p) => (p.sku ?? "").toLowerCase() === lc || (p.barcode ?? "").toLowerCase() === lc);
+      const one = products.length === 1 ? products[0] : exact.length === 1 ? exact[0] : null;
+      if (one) {
+        pick(one);
+        setQ("");
+        return;
+      }
+      if (products.length > 1) return;
+    }
+    const gen = billGen.current;
+    try {
+      const r = await registerScanAction({ systemId, unitId, barcode: term });
+      // B2.2 S1: ระหว่างรอ บิลถูกล้าง/ขายจบ/กำลังส่ง ⇒ ผลนี้ไม่ใช่ของบิลปัจจุบันแล้ว — ทิ้ง
+      if (gen !== billGen.current || frozenRef.current) return;
+      const clearTerm = () => setQ((cur) => (cur.trim() === term ? "" : cur));
+      if (r.ok && (r.match === "one" || r.match === "choose")) clearTerm();
+      applyScan(r, term, "search");
+    } catch {
+      if (gen === billGen.current) showToast({ key: "errors.loadFailed" });
+    }
+  };
+
+  /** ทางสแกนทางเดียว (เครื่องสแกนรัว · กล้อง) — เรียก registerScanAction ตรง: ไม่ผ่านคำค้น/หน่วง 200ms/โหลดกริด (B1 · ข้อสอบ S1) */
+  const onScannedCode = async (code: string) => {
+    // POS P1.12U มติ 4: บัตรสมาชิก (SHARK-MC:…) ไปทางค้นสมาชิก — สินค้าไม่เปลี่ยน
+    if (isMemberCardCode(code)) return void memberScan(code);
+    if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" }); // R2: ระหว่างส่งบิล = บอก ไม่เงียบ
+    // POS P5.3 fix1 ▸ CD-P53-O14: รหัสตรงสินค้าเดียวในดัชนี + ขายได้ตามที่แคชไว้ (ไม่หมด/ไม่ปิดขาย · ขายหน้าร้าน · มีราคาหรือผู้ขายตั้งราคาเปิดได้ — สิ่งที่ scanOutcome/pick ต้องใช้)
+    //   ⇒ ผลเดียวกับ registerScan { match: "one" } ใส่ตะกร้าแบบซิงโครนัส (ไม่มี await ก่อนบรรทัดขึ้น) · นอกนั้น = ทางเซิร์ฟเวอร์เดิมทุกประการ ◂
+    // POS P5.3 fix1c ▸ F8 (ยอมรับ): สแกนที่ไม่เจอ (รอเซิร์ฟเวอร์) แล้วตามด้วยสแกนที่เจอในดัชนี ⇒ บรรทัดของตัวหลังขึ้นก่อน — ลำดับในตะกร้าอาจต่างจากลำดับสแกน (ยอด/จำนวนไม่ต่าง) ◂
+    const gen = billGen.current;
+    let hit = barcodeIndex.lookup(code);
+    // POS P5.3 fix1b ▸ CD-P53-O14b: ดัชนีชุดแรกยังดึงอยู่ ⇒ รอคำขอนั้นจบ (นานสุด = เวลาของคำขอ · server action ส่งทีละคำขอ สแกนทางเซิร์ฟเวอร์ก็ต้องรอคิวนี้อยู่ดี) แล้วตัดสินตามปกติ ·
+    //   ดึงล้ม/truncated = loading() คืน null หรือ lookup คืน null ⇒ ทางเซิร์ฟเวอร์ทันที · หลังรอ ตรวจรุ่นบิล/frozenRef แบบเดียวกับทางเซิร์ฟเวอร์ ◂
+    const indexLoad = hit ? null : barcodeIndex.loading();
+    if (indexLoad) {
+      await indexLoad;
+      if (gen !== billGen.current) return; // บิลเปลี่ยนรุ่นระหว่างรอ = ทิ้ง (B2.2 S1)
+      if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" });
+      hit = barcodeIndex.lookup(code);
+    }
+    // POS P5.3 fix1d ▸ D1 (CD-P53-O16): version ของดัชนีไม่ขยับตามการตัดสต็อก ⇒ ฟิลด์สต็อกในชุดอาจเก่าหลายชั่วโมง — ถ้ามีสินค้าตัวนี้ใน known (กริด/สแกนเซิร์ฟเวอร์)
+    //   ใช้ stockLeft/trackStock/trackStockMode และ "หมดสต็อก" (NO_STOCK ↔ null) ของตัวเดิม · ปิดขาย (UNAVAILABLE) ยึดของชุด (version ขยับตาม 86) · ไม่มีตัวเดิม = ใช้ของชุดตามที่เป็น
+    //   ตัดสินขายได้จากค่าที่รวมแล้ว — known บอก NO_STOCK = ทางเซิร์ฟเวอร์ในสแกนนี้ (ไม่ใช่รหัส "เซิร์ฟเวอร์เท่านั้น" ถาวร) ◂
+    if (hit) hit = mergeKnownStock(hit, known.current.get(hit.id));
+    if (hit && hit.soldOutReason == null && !hit.notSold && (hit.priceSatang !== null || limits.canOverridePrice)) {
+      if (layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
+      return applyScan({ ok: true, match: "one", product: hit }, code, "scan");
+    }
+    try {
+      const r = await registerScanAction({ systemId, unitId, barcode: code });
+      if (r.ok && r.match === "one" && !r.weighed) barcodeIndex.noteServerOne(code, r.product); // POS P5.3 fix1 ▸ ดัชนีไม่มี/ไม่ตรง = ดึงใหม่ครั้งเดียว ◂
+      if (gen !== billGen.current) return; // บิลเปลี่ยนรุ่นระหว่างรอ = ทิ้ง (B2.2 S1)
+      if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" });
+      // B2: ระหว่างรอ ผู้ใช้เปิดกล่องชำระ/จบการขาย ⇒ ไม่แตะตะกร้าใต้กล่องนั้น
+      if (layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
+      applyScan(r, code, "scan");
+    } catch {
+      if (gen === billGen.current) showToast({ key: "errors.loadFailed" });
+    }
+  };
+  /** สแกนจากช่องค้นหา: ตัวอักษรของเครื่องสแกนอยู่ในช่องแล้ว ⇒ ยกเลิกคำค้นที่รอหน่วง + ทิ้งผลกริดที่ค้าง + ล้างช่อง (มติผู้คุมงาน 2) */
+  const clearSearchForScan = () => {
+    catalogSeq.current++;
+    qClearedByScan.current = true;
+    setQ("");
+  };
+  const openCamera = () => {
+    if (frozenRef.current || layersRef.current.length) return;
+    push({ kind: "camera" });
+  };
+
+  const lineIndex = (key: string) => cart.lines.findIndex((l) => l.key === key);
+  /** ทดลองตะกร้าใหม่ด้วย priceCart ก่อนใช้จริง — ไม่ผ่าน = คืนข้อความ (กล่องค้าง ไม่ตัดเลขให้พอดี) */
+  const tryCart = (next: RegisterCart): Msg | null => {
+    const r = priceLocal(next, localCap);
+    if (r && !r.ok) return errorFor(r.code);
+    // fix รอบ 1 F5: เกินส่วนลดที่ผู้จัดการ/สายอนุมัติอนุญาต (bp หรือสตางค์) = เท่ากับเกินเพดาน
+    if (discAuth) {
+      const d = discountOf(next);
+      if (d.bp > discAuth.bp || d.satang > discAuth.satang) return errorFor("DISCOUNT_EXCEEDS_LIMIT");
+    }
+    return null;
+  };
+  /**
+   * priceCart ของตะกร้า (เพดาน cap) — null = ราคายังไม่รู้ (สินค้าใหม่จากเซิร์ฟเวอร์ / บรรทัดตัวเลือกที่ยังไม่มี quote) ให้ quote ตัดสิน
+   * R3 F2: บรรทัดตัวเลือก/ชั่ง = ใช้ราคาต่อหน่วยจาก quote ล่าสุด (จับคู่ด้วยคีย์บรรทัด) แล้วตรวจเพดานส่วนลดทั้งตะกร้าตามเดิม
+   */
+  function priceLocal(next: RegisterCart, cap: number | null) {
+    let priced = next;
+    if (next.lines.some(isPricedByServer)) {
+      const lines: RegisterCartLine[] = [];
+      for (const l of next.lines) {
+        if (!isPricedByServer(l)) {
+          lines.push(l);
+          continue;
+        }
+        const qi = quote ? quote.keys.indexOf(l.key) : -1;
+        const ql = qi >= 0 ? quote?.q.lines[qi] : undefined;
+        if (!ql) return null;
+        lines.push({ key: l.key, kind: "custom", name: "-", unitPriceSatang: ql.unitPriceSatang, qty: l.qty, ...(l.discount ? { discount: l.discount } : {}) });
+      }
+      priced = { ...next, lines };
+    }
+    const input = cartToPriceInput(priced, known.current, vat, cap);
+    if ("ok" in input) return null; // ราคายังไม่รู้ (สินค้าใหม่จากเซิร์ฟเวอร์) — ให้ quote ตัดสิน
+    return priceCart(input);
+  }
+  /** POS P2.2U ▸ มติ 5: ตะกร้านี้มีบรรทัดราคาโปร (ไทล์ priceSource RULE หรือ quote ล่าสุดมี priceRule) หรือช่องทางไม่ใช่หน้าร้าน ◂ */
+  function cartUsesPriceLayer(c: RegisterCart): boolean {
+    if (c.channelId && (!quote || quote.q.channel?.code !== "STORE")) return true;
+    if (quote?.q.channel && quote.q.channel.code !== "STORE") return true;
+    return c.lines.some((l) => {
+      if (l.kind !== "product") return false;
+      if (known.current.get(l.productId)?.priceSource === "RULE") return true;
+      const qi = quote ? quote.keys.indexOf(l.key) : -1;
+      return qi >= 0 && !!quote?.q.lines[qi]?.priceRule;
+    });
+  }
+  /** POS P1.15U ▸ ยอดสำหรับชำระของส่วนลดที่ผู้จัดการอนุญาตด้วย PIN (ไม่จำกัดเพดาน) — รูปเดียวกับ quote ของเซิร์ฟเวอร์ ◂ */
+  function localQuote(c: RegisterCart): RegisterQuote | null {
+    // POS P1.12U มติ 1: ตะกร้าที่มีสมาชิก/คูปอง ยอดต้องมาจากเซิร์ฟเวอร์ (ส่วนลดระดับ/คูปอง/สิทธิ์) — ไม่สร้างยอดแทน
+    if (c.memberId || c.couponCode) return null;
+    // POS P2.2U ▸ มติ 5: ราคาโปร/ช่องทางอื่น = ยอดจากเซิร์ฟเวอร์เท่านั้น (บรรทัดที่ไทล์/quote ล่าสุดบอกว่ามาจากโปร · บิลที่มีช่องทาง ≠ หน้าร้าน) ◂
+    if (cartUsesPriceLayer(c)) return null;
+    const r = priceLocal(c, localCap);
+    if (!r || !r.ok) return null;
+    return {
+      ok: true,
+      subtotalSatang: r.subtotalSatang,
+      lineDiscountSatang: r.lineDiscountSatang,
+      billDiscountSatang: r.billDiscountSatang,
+      couponDiscountSatang: r.couponDiscountSatang,
+      netSatang: r.netSatang,
+      serviceChargeSatang: r.serviceChargeSatang,
+      vatSatang: r.vatSatang,
+      grandTotalSatang: r.grandTotalSatang,
+      vatMode: vat.mode,
+      vatRateBp: vat.rateBp,
+      lines: r.lines.map((pl, i) => {
+        const l = c.lines[i];
+        return { productId: l?.kind === "product" ? l.productId : null, unitPriceSatang: pl.unitPriceSatang, grossSatang: pl.grossSatang, discountSatang: pl.discountSatang, lineTotalSatang: pl.lineTotalSatang, optionsSatang: 0, options: [], weightGrams: null };
+      }),
+    };
+  }
+  /** ส่วนลดรวม (bp ของยอดก่อนส่วนลด) ของตะกร้า — แสดงบนแผ่นส่วนลดเกินสิทธิ์ */
+  const discountBpOf = (c: RegisterCart): number => discountOf(c).bp;
+  /** ส่วนลดรวมของตะกร้า (สตางค์ + bp ปัดขึ้น) — ราคายังไม่รู้ = 0 (quote ของเซิร์ฟเวอร์ตัดสิน) */
+  function discountOf(c: RegisterCart): { bp: number; satang: number } {
+    const r = priceLocal(c, null);
+    if (!r || !r.ok) return { bp: 0, satang: 0 };
+    const satang = r.lineDiscountSatang + r.billDiscountSatang;
+    return { satang, bp: r.subtotalSatang > 0 ? Math.ceil((satang * 10_000) / r.subtotalSatang) : 0 };
+  }
+  /** ส่วนลดเกินเพดานของผู้ขาย (มีโทเคน) ⇒ เปิดแผ่นส่วนลดเกินสิทธิ์แทนข้อความผิด — คืน true เมื่อเปิดแผ่นแล้ว */
+  const openDiscountOver = (next: RegisterCart, err: Msg | null): boolean => {
+    if (err?.key !== "errors.discountExceedsLimit" || !staffRef.current) return false;
+    setDiscErr(null);
+    setDiscAuth(null); // fix รอบ 1 F5: สิทธิ์เดิมไม่ครอบคลุมแล้ว — ขอใหม่
+    setLayers((s) => [...s.filter((l) => l.kind !== "billDiscount" && l.kind !== "line" && l.kind !== "discountOver"), { kind: "discountOver", next, wantBp: discountBpOf(next) }]);
+    return true;
+  };
+  const applyLine = (key: string, r: LineEditResult): Msg | null => {
+    const i = lineIndex(key);
+    if (i < 0) return null;
+    const cur = cart.lines[i]!;
+    if (cur.kind === "product" && (cur.weighedBarcode !== undefined || cur.weightGrams !== undefined) && r.qty !== 1) return { key: "weigh.qtyOne" };
+    const lines = cart.lines.map((l, j) => (j === i ? ({ ...l, qty: r.qty, discount: r.discount, note: r.note } as RegisterCartLine) : l));
+    const next = { ...cart, lines };
+    const err = tryCart(next);
+    if (openDiscountOver(next, err)) return null; // POS P1.15U ▸ มติ 4 ◂
+    if (err) return err;
+    changeCart(next);
+    pop();
+    return null;
+  };
+  const removeLine = (key: string) => {
+    const lines = cart.lines.filter((l) => l.key !== key);
+    // R3 F8: ลบบรรทัดสุดท้าย = บิลใหม่ ⇒ ล้างหมายเหตุบิล + ส่วนลดท้ายบิลด้วย (สมาชิกคงไว้)
+    if (!lines.length) {
+      const next: RegisterCart = { lines: [] };
+      if (cart.memberId) next.memberId = cart.memberId; // P1.12U: สมาชิกคงไว้ · สิทธิ์ที่เลือก/คูปองหายไปกับบิล
+      changeCart(next);
+      pop();
+      return;
+    }
+    changeCart({ ...cart, lines });
+    pop();
+  };
+  const applyBillDiscount = (d: PriceDiscount | undefined): Msg | null => {
+    const next: RegisterCart = { ...cart, billDiscount: d };
+    if (!d) delete next.billDiscount;
+    const err = tryCart(next);
+    if (openDiscountOver(next, err)) return null; // POS P1.15U ▸ มติ 4 ◂
+    if (err) return err;
+    changeCart(next);
+    pop();
+    return null;
+  };
+  const keepSelling = (key: string) => {
+    const l = cart.lines.find((x) => x.key === key);
+    if (l) setWarnAck((s) => ({ ...s, [key]: l.qty }));
+  };
+  const reduceTo = (key: string, n: number) => {
+    if (n < 1) return;
+    changeCart({ ...cart, lines: cart.lines.map((l) => (l.key === key ? { ...l, qty: n } : l)) });
+  };
+  // R4 K3: คีย์ของบิลหมุน "ที่นี่ที่เดียว" (บิลใหม่ · ล้างบิล · พักบิลภายหลัง) — ปฏิเสธใด ๆ ใน send เก็บคีย์เดิม
+  //   (ส่ง payload ที่แก้แล้วด้วยคีย์เดิม = สำเร็จครั้งเดียว หรือ IDEMPOTENCY_CONFLICT ที่กล่องรับมือได้ — ไม่มีบิลที่สองเงียบ ๆ)
+  const resetBill = () => {
+    billGen.current++;
+    changeCart({ lines: [] });
+    setIdemKey(newKey());
+    clearPending();
+    setWarnAck({});
+    setTaxInv(null); // P1.13U: ผู้ซื้อของบิลก่อนไม่ตามไปบิลใหม่
+    pendingSubmit.current = null;
+    setPayPhase("form");
+    setPayError(null);
+    setConflict(null);
+    setDiscAuth(null); // POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานเป็นของบิลนี้เท่านั้น ◂
+    setDiscErr(null);
+    // POS P3.6U ▸ CD-P36U-3: บริษัท/ดีล/สถานะวงเงินเป็นของบิลนี้เท่านั้น (บิลใหม่ · ล้างบิล · พักบิล · เรียกคืน) ◂
+    setCompany(null);
+    setCompanyErr(null);
+    setDealId(null);
+    setDealErr(null);
+    creditStatusRef.current = null;
+    creditOverSale.current = null;
+    setCreditDone(null);
+  };
+
+  // ═══════ POS P3.4U ▸ ชำระออฟไลน์ (มติ 3 4): กล่องเงินสด/โอน → คิวของเครื่อง (เลข OFF ใน transaction เดียว) → จอเลข OFF + สลิป ═══════
+  const [offBusy, setOffBusy] = useState(false);
+  const [offErr, setOffErr] = useState<string | null>(null);
+  const offShop = { name: props.tenantName, branchName: props.units.find((u) => u.id === unitId)?.name ?? "" };
+  const offLocale: "th" | "en" = locale.startsWith("en") ? "en" : "th";
+  /** บรรทัดสลิป (ชื่อตามภาษาจอ · ตัวเลือก · ราคาจาก snapshot) — ไม่มีต้นทุน */
+  const offSlipLines = (lines: RegisterQuoteInput["lines"], totals: PriceCartOk): OfflineSlipLine[] =>
+    lines.map((raw, i) => {
+      const l = raw as { productId?: string; name?: string; qty: number; options?: { choiceId: string }[]; weightGrams?: number };
+      const pl = totals.lines[i];
+      const prod = l.productId ? known.current.get(l.productId) : undefined;
+      const snapProd = l.productId ? off.snapshot?.products.find((x) => x.id === l.productId) : undefined;
+      const name = l.productId ? (prod ? displayName(prod, locale) : snapProd ? displayName(snapProd, locale) : (heldNames.current.get(l.productId) ?? "-")) : (l.name ?? "-");
+      const options = (l.options ?? []).map((o) => optionNames.current.get(o.choiceId) ?? snapProd?.choices.find((c) => c.choiceId === o.choiceId)?.name ?? "").filter(Boolean);
+      return { name, qty: l.qty, unitPriceSatang: (pl?.unitPriceSatang ?? 0) + (pl?.optionDeltaSatang ?? 0), discountSatang: pl?.discountSatang ?? 0, lineTotalSatang: pl?.lineTotalSatang ?? 0, options, ...(l.weightGrams ? { weightGrams: l.weightGrams } : {}) };
+    });
+  /** ระเบียนคิวของบิล (R4) — โทเคนผู้ขายระดับรายการ (ไม่อยู่ใน sale) · ผู้ขายที่อ้าง = คนในโทเคน ไม่งั้นผู้ใช้ session · กะ = กะของเครื่องที่รู้ล่าสุด */
+  const offRecOf =
+    (sale: OfflineQueueRecord["sale"], idempotencyKey: string, totals: PriceCartOk, token: string | undefined) =>
+    (ref: string): OfflineQueueRecord => {
+      const cash = sale.payMethods.find((m) => m.type === "CASH");
+      const received = sale.cashReceivedSatang ?? cash?.amountSatang ?? 0;
+      const change = cash ? Math.max(0, received - cash.amountSatang) : 0;
+      const st = staffRef.current;
+      return {
+        offlineRef: ref,
+        idempotencyKey,
+        soldAt: new Date().toISOString(),
+        ...(status?.shift?.id ? { shiftId: status.shift.id } : {}),
+        ...(token ? { staffToken: token } : {}),
+        sellerUserId: st?.userId ?? userId,
+        snapshotHash: off.snapshot?.hash ?? "",
+        sale,
+        userId,
+        deviceId: deviceId ?? "",
+        status: "queued",
+        totalSatang: totals.grandTotalSatang,
+        tender: cash ? "CASH" : "TRANSFER",
+        changeSatang: change,
+        slipLines: offSlipLines(sale.lines, totals),
+        totals,
+        payments: sale.payMethods.map((m) => ({ type: m.type === "CASH" ? "CASH" : "TRANSFER", amountSatang: m.amountSatang, ...(m.type === "CASH" ? { tenderedSatang: received, changeSatang: change } : {}), ...(m.reference ? { reference: m.reference } : {}) })),
+        ...(st?.name ? { cashierName: st.name } : {}),
+      };
+    };
+  const openOfflinePay = (tender: "CASH" | "TRANSFER") => {
+    if (!offPayEnabled || layersRef.current.some((l) => l.kind === "offlinePay" || l.kind === "pay")) return;
+    setOffErr(null);
+    setLayers((s) => [...s, { kind: "offlinePay", tender }]);
+  };
+  const openOfflineBills = () => {
+    if (!layersRef.current.some((l) => l.kind === "offlineBills")) push({ kind: "offlineBills" });
+  };
+  const confirmOffline = async (c: OfflinePayConfirm) => {
+    if (offBusy || !offPayEnabled || !offTotals?.ok || !off.snapshot) return;
+    if (lockedRef.current) return;
+    if (!staffRef.current && !noPinMode) {
+      lockNow();
+      return;
+    }
+    const total = offTotals.grandTotalSatang;
+    const received = c.tender === "CASH" ? Math.max(c.receivedSatang ?? total, total) : undefined;
+    const full = cartToSubmitInput(cart, {
+      idempotencyKey: idemKey,
+      payMethods: [{ type: c.tender, amountSatang: total, ...(c.reference ? { reference: c.reference } : {}) }],
+      ...(received !== undefined ? { cashReceivedSatang: received } : {}),
+      ...(cart.note ? { note: cart.note } : {}),
+      expectedGrandTotalSatang: total,
+    });
+    const { idempotencyKey, staffToken: _tok, ...sale } = full;
+    void _tok;
+    if (offlineSaleRefusal(sale)) {
+      setOffErr("offline.cartRefused");
+      return;
+    }
+    setOffBusy(true);
+    setOffErr(null);
+    try {
+      const rec = await off.enqueue(offRecOf(sale, idempotencyKey, offTotals, staffRef.current?.staffToken));
+      if (!rec) {
+        setOffErr("offline.sheet.failed");
+        return;
+      }
+      setLayers([{ kind: "offlineDone", rec }]);
+    } finally {
+      setOffBusy(false);
+    }
+  };
+  // กลับมาออนไลน์ระหว่างกล่องชำระออฟไลน์เปิด = ปิดกล่อง (ชำระทางปกติแทน)
+  useEffect(() => {
+    if (!offMode) setLayers((s) => (s.some((l) => l.kind === "offlinePay") ? s.filter((l) => l.kind !== "offlinePay") : s));
+  }, [offMode]);
+  // มติ 3: บิลออนไลน์ที่ผลยังไม่แน่ใจ (unknown) ตอนเน็ตหลุด = ย้ายเข้าคิวออฟไลน์ด้วยคีย์เดิม (ไม่ออกคีย์ใหม่) — เฉพาะบิลที่ขายออฟไลน์ได้ (เงินสด/โอน · walk-in)
+  const movingUnknown = useRef(false);
+  useEffect(() => {
+    const pend = pendingSubmit.current;
+    if (!offMode || payPhase !== "unknown" || !pend || !off.snapshot || !off.gate.ok || movingUnknown.current) return;
+    const { idempotencyKey, staffToken, ...sale } = pend;
+    if (offlineSaleRefusal(sale)) return;
+    const totals = offlineCartTotals(off.snapshot, sale);
+    if (!totals.ok) return;
+    // fix1 F5: ย้ายเฉพาะเมื่อ Σ วิธีชำระของบิลเดิม == ยอดจาก snapshot (ไม่งั้นสลิปชั่วคราวยอดไม่ตรงเงินที่รับ) — ไม่ตรง = คงสถานะไม่แน่ใจไว้
+    if (sale.payMethods.reduce((t, m) => t + m.amountSatang, 0) !== totals.grandTotalSatang) return;
+    movingUnknown.current = true;
+    void (async () => {
+      try {
+        const rec = await off.enqueue(offRecOf(sale, idempotencyKey, totals, staffToken));
+        if (!rec) return;
+        pendingSubmit.current = null;
+        clearPending();
+        setPayPhase("form");
+        setLayers([{ kind: "offlineDone", rec }]);
+        showToast({ key: "offline.unknownMoved", values: { ref: rec.offlineRef } });
+      } finally {
+        movingUnknown.current = false;
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = ออฟไลน์ × ผลไม่แน่ใจ × snapshot/ด่าน
+  }, [offMode, payPhase, off.snapshot, off.gate.ok]);
+  /** มติ 7: ปลดล็อกออฟไลน์ — เฉพาะคนในโทเคนที่ยังไม่หมดอายุ (ไม่สลับคน) · สำเร็จ = จอขายต่อด้วยโทเคนเดิม */
+  const offTryUnlock = async (secret: string): Promise<OfflineUnlockResult> => {
+    const st = staffRef.current;
+    if (!st || !(Date.parse(st.expiresAt) > Date.now())) return { ok: false, code: "OFFLINE_UNLOCK_UNAVAILABLE" };
+    const r = await off.tryUnlock(st.userId, secret);
+    if (r.ok) {
+      setLockFlag(false);
+      setLockedAt(null);
+    }
+    return r;
+  };
+  const offHolder = staff && off.unlockHolder && off.unlockHolder.userId === staff.userId ? { userId: staff.userId, name: staff.name, role: staff.role, locked: off.unlockHolder.locked } : null;
+  // ◂ POS P3.4U
+
+  // ═══════ ชำระเงิน ═══════
+  const openPay = () => {
+    if (offMode) return openOfflinePay("CASH"); // POS P3.4U ▸ มติ 3: ออฟไลน์ (เปิดธง) = กล่องชำระออฟไลน์ (F4 · ปุ่มแถบตะกร้ามือถือ) ◂
+    // B2.2 S2: กล่องชำระเปิดอยู่แล้ว = ไม่ทำอะไร (แตะรัว/F4+คลิก ห้ามซ้อนกล่อง และห้ามล้าง error ของกล่องที่เปิดอยู่)
+    if (!payEnabled || layersRef.current.some((l) => l.kind === "pay")) return;
+    setPayError(null);
+    setPayPhase("form");
+    setLayers((s) => (s.some((l) => l.kind === "pay") ? s : [...s, { kind: "pay" }]));
+    restoreParkedChoices();
+  };
+  /** POS P1.12U มติ 3: "ใช้แต้ม" บนการ์ดสมาชิก = เปิดจอชำระโดยโฟกัสช่องแต้ม (เงื่อนไขเดียวกับปุ่มชำระ) */
+  const openPayPoints = () => {
+    if (!payEnabled || layersRef.current.some((l) => l.kind === "pay")) return;
+    setPayError(null);
+    setPayPhase("form");
+    setLayers((s) => (s.some((l) => l.kind === "pay") ? s : [...s, { kind: "pay", focusPoints: true }]));
+    restoreParkedChoices();
+  };
+  /**
+   * fix รอบ 1 F2: เปิดจอชำระของบิลที่กลับมาจากการอนุมัติ (สิทธิ์เกินเพดานผูก heldCartId เดียวกับที่พักสิทธิ์ไว้) ⇒ ใส่แต้ม/ว่อชเชอร์เดิมคืนครั้งเดียว ·
+   * quote ใหม่ตรวจซ้ำ (POINTS_CAPPED/ต่ำกว่าขั้นต่ำ/ว่อชเชอร์ขัด = ตัวจัดการเดิม) · ไม่มีข้อความใหม่ (การ์ดแต้มขึ้น "✓ ใช้แล้ว" เอง)
+   */
+  function restoreParkedChoices() {
+    const pc = parkedChoices.current;
+    const a = discAuth;
+    if (!pc || !a || a.heldCartId !== pc.heldCartId || !cartRef.current.memberId) return;
+    parkedChoices.current = null;
+    setChoices(() => ({ ...pc.choices }));
+  }
+  const send = async (sale: RegisterSubmitInput, opts?: { restore?: boolean }) => {
+    if (sendingRef.current) return; // กดซ้ำ/Enter ซ้ำ = คำขอเดียวระหว่างทาง
+    // POS P1.15U ▸ fix รอบ 1 F4: จอล็อกทับอยู่ = ไม่ส่ง (ยกเว้นลองซ้ำชุดคำขอที่ค้างจากก่อนโหลดหน้า — ชุดเดิมพกโทเคนของมันเอง) ◂
+    if (lockedRef.current && !opts?.restore) return;
+    sendingRef.current = true;
+    // POS P2.9U ▸ มติ 3: คำขอค้างในหน่วยความจำ (ลองซ้ำ) ก็ไม่เก็บ PIN — ลองซ้ำคีย์ที่บันทึกแล้ว = บิลเดิม · ยังไม่บันทึก = VALIDATION ⇒ ขอ PIN ใหม่ ◂
+    // POS P3.6U ▸ CD-P36U-6: คำขอค้าง (ลองซ้ำ) ไม่เก็บ PIN อนุญาตเกินวงเงิน — ยังไม่บันทึก = CREDIT_LIMIT_EXCEEDED ⇒ แผ่น PIN อีกครั้ง ◂
+    const { creditOverride: _co, ...noOverride } = sale;
+    void _co;
+    lastSendCode.current = "";
+    pendingSubmit.current = { ...noOverride, payMethods: stripPayPins(sale.payMethods) };
+    savePending(sale, "sending");
+    setPayPhase("sending");
+    setPayError(null);
+    try {
+      const r = await submitRegisterSaleAction({ systemId, unitId, sale, deviceId: getPosDeviceId() });
+      synced();
+      lastSendCode.current = r.ok ? "OK" : r.code; // POS P3.6U ◂
+      if (r.ok) {
+        // POS P3.6U ▸ CD-P36U-7: บิลวางบิล ⇒ ชิป "ครบกำหนด" ของจอสำเร็จ (บริษัท + วันครบกำหนดจากสถานะล่าสุด) ◂
+        // POS P4.3 ▸ F-P3-16: วันครบกำหนดจากผลส่งบิล (สำเนาบนบิลจริง) ก่อน · ไม่มี (เซิร์ฟเวอร์เก่า) = สถานะล่าสุดของจอชำระเหมือนเดิม ◂
+        if (sale.payMethods.some((m) => (m.type as string) === "ON_ACCOUNT")) setCreditDone({ name: company?.name ?? "", dueDate: r.creditTerms?.dueDate ?? creditStatusRef.current?.dueDate ?? null });
+        pendingSubmit.current = null;
+        clearPending();
+        setPayPhase("form");
+        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet" && l.kind !== "member" && l.kind !== "coupon" && l.kind !== "creditOver" /* POS P3.6U ◂ */), { kind: "done", result: r, payMethods: stripPayPins(sale.payMethods), tipSatang: sale.tipSatang ?? 0, memberAttached: !!sale.memberId, taxInvoice: !!sale.taxInvoice }]);
+        void refreshStatus();
+        return;
+      }
+      if (r.code === "UNKNOWN" || r.code === "INTERNAL" || r.code === "BUSY") {
+        savePending(sale, "unknown");
+        setPayPhase("unknown"); // ไม่แน่ใจ — คีย์เดิม ชุดคำขอเดิม
+        return;
+      }
+      if (r.code === "IDEMPOTENCY_CONFLICT") {
+        // R4 K2: ไม่มี saleId = CONFLICT เปล่า (บิลนอกสาขา/ระบบนี้) — ยังต้องหยุดขายด้วยคีย์นี้ ผู้ใช้กด "เริ่มบิลใหม่" เอง
+        setConflict("saleId" in r ? { receiptNo: r.receiptNo, saleStatus: r.saleStatus } : { receiptNo: null, saleStatus: null });
+        pendingSubmit.current = null;
+        clearPending();
+        setPayPhase("conflict");
+        return;
+      }
+      // ปฏิเสธที่ชัดว่าไม่มีบิล ⇒ คีย์เดิม (R4 K3 — หมุนเฉพาะ resetBill) · ไม่มีคำขอค้าง
+      pendingSubmit.current = null;
+      clearPending();
+      setPayPhase("form");
+      // POS P2.9U ▸ มติ 3 (H6): คำขอที่ไม่มี PIN (ลองซ้ำ/โหลดกลับ) ได้ VALIDATION = คีย์นี้ยังไม่มีบิล ⇒ จอชำระขอ PIN อีกครั้ง (ไม่ใช่การ์ดผิดพลาด) ·
+      //   โหลดกลับ (ตะกร้าว่าง) = สร้างตะกร้าคืนจากคำขอที่เก็บ แล้วกล่องสร้างแถวคืนเมื่อ quote มา · คีย์เดิม ◂
+      // POS P2.9bU ▸ มติ 3: คำขอที่โหลดกลับ (ถูกตัด 4 หลักท้าย) ได้ DEPOSIT_NOT_OWNER = ยังไม่มีบิล ⇒ สร้างตะกร้า/แถวคืน แล้วจอชำระเปิดแผงมัดจำของแถวนั้น
+      //   "กรุณาใส่ 4 หลักท้ายอีกครั้ง" (ทางเดียวกับ PIN) · ลองซ้ำในหน้าเดิม = การ์ดผิดพลาดตามปกติ (กล่องยังมีแถว — จัดการที่แถว) ◂
+      if ((r.code === "VALIDATION" && hasPinlessGiftCard(sale.payMethods)) || (r.code === "DEPOSIT_NOT_OWNER" && !!opts?.restore && hasLast4lessDeposit(sale.payMethods))) {
+        if (cartRef.current.lines.length === 0) changeCart(submitInputToCart(sale, newKey));
+        setPinAgain((a) => ({ seq: (a?.seq ?? 0) + 1, payMethods: sale.payMethods, tipSatang: sale.tipSatang ?? 0, ...(sale.cashReceivedSatang !== undefined ? { cashReceivedSatang: sale.cashReceivedSatang } : {}) }));
+        return;
+      }
+      if (r.code === "STORE_CREDIT_NOT_OWNER") showToast({ key: "errors.storeCreditNotOwner" }); // POS P2.9U ▸ มติ 4: แถวเครดิตร้านถูกถอดในกล่อง + ข้อความลอย ◂
+      // POS P2.9bU ▸ มติ 4: บิลที่มีแถวมัดจำได้ VALIDATION = ข้อความลอยทั่วไป (กล่องอยู่ขั้นกรอก แถวคงไว้ · คีย์เดิม) ◂
+      if (r.code === "VALIDATION" && sale.payMethods.some((m) => m.type === "DEPOSIT")) {
+        showToast({ key: "pay.depositValidation" });
+        return;
+      }
+      // POS P1.12U มติ 6: แต้มเกินเพดาน = แก้เป็น allowedPoints แล้ว quote ใหม่ (กล่องเปิดอยู่ ไม่มีการ์ดผิดพลาด) ·
+      //   สิทธิ์เปลี่ยนระหว่างบันทึก = แบนเนอร์ + quote ใหม่ + ขอสิทธิ์ใหม่ (ที่เลือกคงไว้ถ้ายังใช้ได้ — quote ตัดสิน)
+      // fix รอบ 1 F8: แก้อัตโนมัติเฉพาะเมื่อตะกร้าบนจอยังเป็นของสมาชิกคนเดียวกับคำขอ (ทางโหลดคำขอค้างกลับ = ตะกร้าว่าง ⇒ การ์ดผิดพลาดปกติ)
+      const sameMember = !!sale.memberId && cartRef.current.memberId === sale.memberId;
+      if (r.code === "POINTS_CAPPED" && "allowedPoints" in r && sameMember) {
+        const allowed = r.allowedPoints;
+        setPointsNote({ key: "pay.capped", ns: "member", values: { points: allowed.toLocaleString("th-TH") } });
+        setChoices((c) => ({ ...c, points: allowed > 0 ? allowed : 0 }));
+        return;
+      }
+      if (r.code === "MEMBER_RIGHTS_CHANGED" && sameMember) {
+        setRightsChanged(true);
+        setCartVer((v) => v + 1);
+        if (sale.memberId) void refreshBenefits(sale.memberId, JSON.stringify(cartToQuoteInput(cartRef.current, { choices: false })));
+        return;
+      }
+      // POS P3.6U ▸ CD-P36U-3/4/6: บริษัทผิด = ถอดชิป + ข้อความ · ดีลผิด = ล้างตัวเลือก + ข้อความ (ไม่มีบิล · คีย์เดิม) ·
+      //   เกินวงเงิน = แผ่น PIN ผู้จัดการ (ไม่มีการ์ดผิดพลาด) · คำตอบของ PIN อนุญาตเกินวงเงิน = ข้อความที่แป้น (ไม่ใช่การ์ด) ◂
+      if (r.code === "CUSTOMER_INVALID" && sale.customerPartyId) {
+        setCompany(null);
+        setCompanyErr("credit.errors.customerInvalid");
+      }
+      if (r.code === "DEAL_INVALID" && sale.crmDealId) {
+        setDealId(null);
+        setDealErr("deal.errors.invalid");
+      }
+      if (r.code === "CREDIT_LIMIT_EXCEEDED") {
+        const fig = r as { limitSatang?: number; exposureSatang?: number };
+        creditOverSale.current = { ...noOverride };
+        setLayers((s) => [...s.filter((l) => l.kind !== "creditOver"), { kind: "creditOver", ...(fig.limitSatang !== undefined ? { limitSatang: fig.limitSatang } : {}), ...(fig.exposureSatang !== undefined ? { exposureSatang: fig.exposureSatang } : {}) }]);
+        return;
+      }
+      if (sale.creditOverride && (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED" || r.code === "PERMISSION_DENIED")) return;
+      // POS HF-PP ▸ fix 1: ด่านผู้จัดการของพร้อมเพย์/บัตรที่ไม่มีใบขอรับเงิน = ข้อความเฉพาะ (refusal.manualConfirmManager) ◂
+      setPayError({ code: r.code, ...(submitRefusalMessageKey(r) === "refusal.manualConfirmManager" ? { key: "refusal.manualConfirmManager" } : errorFor(r.code)), ...payErrorPinMeta(r) }); // POS P2.14 ▸ UI-9 ◂
+      if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead(); // POS P1.15U ▸ โทเคนตาย = ล็อก (ไม่มีบิล · คีย์เดิม) ◂
+      // POS P1.15U ▸ PIN ผู้จัดการผิด/ล็อก = ล้างสิทธิ์ที่เตรียมไว้ (ใส่ใหม่ผ่านแผ่นส่วนลดเกินสิทธิ์) · ต้องรออนุมัติ = บิลถูกพักแล้ว ⇒ 21B (ล้างจอนอก send) ◂
+      if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED" || r.code === "APPROVAL_MISMATCH") setDiscAuth(null); // POS P1.18U ▸ 10a ◂
+      if ((r.code === "APPROVAL_REQUIRED" || r.code === "PENDING_APPROVAL") && "requestId" in r) setApprovalHandoff({ requestId: r.requestId, ...(r.heldCartId ? { heldCartId: r.heldCartId } : {}) });
+      // P1.13U มติ 2: เลขผู้เสียภาษีถูกปฏิเสธตอนบันทึก ⇒ เปิดกล่องใบกำกับซ้ำพร้อมข้อความ (คีย์บิลเดิม · ไม่มีบิล)
+      if (r.code === "TAX_ID_INVALID" && sale.taxInvoice)
+        setLayers((s) => (s.some((l) => l.kind === "taxInvoice") ? s : [...s, { kind: "taxInvoice", errorKey: taxInvoiceRefusalKey("TAX_ID_INVALID") }]));
+      if (r.code === "PRICE_CHANGED" && "grandTotalSatang" in r) {
+        // ยอดสดจากคำตอบ (ไม่ต้อง quote ซ้ำ) — ผู้ใช้ต้องกดยืนยันใหม่กับยอดนี้
+        setQuote({
+          ver: cartVer,
+          keys: cart.lines.map((l) => l.key),
+          q: {
+            ok: true,
+            subtotalSatang: r.subtotalSatang,
+            lineDiscountSatang: r.lineDiscountSatang,
+            billDiscountSatang: r.billDiscountSatang,
+            couponDiscountSatang: r.couponDiscountSatang,
+            netSatang: r.netSatang,
+            serviceChargeSatang: r.serviceChargeSatang, // P1.6: ยอดสดมีค่าบริการด้วย (ส่งต่อเฉย ๆ · การแสดงผลเป็นงานของ builder U)
+            vatSatang: r.vatSatang,
+            grandTotalSatang: r.grandTotalSatang,
+            lines: r.lines,
+            vatMode: r.vatMode,
+            vatRateBp: r.vatRateBp,
+            // POS P1.12U: ยอดสดมีสิทธิ์สมาชิก/คูปองด้วย — จอชำระอ่านจากตรงนี้เหมือน quote ปกติ
+            ...(r.tierDiscountSatang !== undefined ? { tierDiscountSatang: r.tierDiscountSatang } : {}),
+            ...(r.memberDiscountSatang !== undefined ? { memberDiscountSatang: r.memberDiscountSatang } : {}),
+            ...(r.memberLines ? { memberLines: r.memberLines } : {}),
+            ...(r.pointsToEarn !== undefined ? { pointsToEarn: r.pointsToEarn } : {}),
+            ...(r.stampsToAdd ? { stampsToAdd: r.stampsToAdd } : {}),
+            ...(r.memberConflicts ? { memberConflicts: r.memberConflicts } : {}),
+          },
+        });
+      } else if (r.code === "PAYMENT_MISMATCH") {
+        setCartVer((v) => v + 1); // quote ใหม่
+      }
+    } catch {
+      lastSendCode.current = "UNKNOWN"; // POS P3.6U ◂
+      savePending(sale, "unknown");
+      setPayPhase("unknown"); // เครือข่ายล้ม/หมดเวลา — ไม่รู้ว่าบันทึกแล้วหรือยัง
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+  const confirmPay = (c: PayChoice) => {
+    if (!quoteFresh || sendingRef.current || payPhase !== "form") return;
+    // POS P1.15U ▸ fix รอบ 1 F4: ล็อกอยู่ = ไม่ส่ง · เครื่องลงทะเบียนที่มี PIN แล้วแต่ไม่มีโทเคน = ล็อก (ไม่ถอยไปใช้ผู้ใช้ session เงียบ ๆ — มติ 1) ◂
+    if (lockedRef.current) return;
+    if (!staffRef.current && !noPinMode) {
+      lockNow();
+      return;
+    }
+    const due = quoteFresh.grandTotalSatang;
+    // P1.6: Σ วิธีจ่าย = ยอดบิล + ทิป · ทุกแถว ≥ 1 สตางค์ · ≤ 10 แถว · บิล 0 บาท (ไม่มีทิป) = payMethods [] — ตรวจซ้ำก่อนส่ง (กล่องคิดมาแล้ว)
+    const tip = props.tipEnabled ? c.tipSatang : 0;
+    const sum = c.payMethods.reduce((s, m) => s + m.amountSatang, 0);
+    if (sum !== due + tip || c.payMethods.some((m) => m.amountSatang <= 0) || c.payMethods.length > REGISTER_MAX_PAY_METHODS) return;
+    const cash = c.payMethods.find((m) => m.type === "CASH");
+    if (cash && (c.cashReceivedSatang ?? 0) < cash.amountSatang) return;
+    const sale = cartToSubmitInput(cart, {
+      idempotencyKey: idemKey,
+      payMethods: c.payMethods,
+      ...(cash ? { cashReceivedSatang: c.cashReceivedSatang } : {}),
+      ...(tip > 0 ? { tipSatang: tip } : {}),
+      ...(cart.note ? { note: cart.note } : {}),
+      expectedGrandTotalSatang: due,
+    });
+    // P1.13U มติ 1: ผู้ซื้อใบกำกับเต็มรูป (+ จำไว้กับสมาชิก เมื่อบิลมีสมาชิก) ไปกับคำขอเดียวกัน — ก่อน send ⇒ ทาง managerPin และ heldCartId ที่อนุมัติแล้วพกผู้ซื้อด้วย (merge P1.15U ข้อ 10a)
+    if (taxInv) {
+      sale.taxInvoice = taxInv.buyer;
+      if (taxInv.remember && cart.memberId) sale.rememberBuyer = true;
+    }
+    // POS P3.6U ▸ CD-P36U-3/4: บริษัท + ดีลของบิล (ตัวตัดสินจริง = เซิร์ฟเวอร์ · CUSTOMER_INVALID / DEAL_INVALID ไม่มีบิล) ◂
+    if (creditUi && company) sale.customerPartyId = company.partyId;
+    if (creditUi && dealId) sale.crmDealId = dealId;
+    setCompanyErr(null);
+    setDealErr(null);
+    // POS P1.15U ▸ มติ 2: ผู้ขาย = คนในโทเคน (ส่งทุกบิล · ลองซ้ำส่งชุดเดิมทั้งก้อน) ◂
+    const st = staffRef.current;
+    // POS P1.15U ▸ มติ 4–5: ส่วนลดเกินเพดาน — PIN ผู้จัดการ (managerPin + managerUserId · heldCartId ของบิลที่พักรอ) · บิลพักที่อนุมัติแล้ว (heldCartId) ◂
+    const auth = discAuth;
+    const over =
+      auth?.kind === "pin"
+        ? { managerPin: auth.managerPin, managerUserId: auth.managerUserId, ...(auth.heldCartId ? { heldCartId: auth.heldCartId } : {}) }
+        : auth?.kind === "approved" && (auth.inputJson === cartInputJson || !!overrideAuthOf(cart, auth))
+          ? { heldCartId: auth.heldCartId }
+          : {};
+    void send({ ...sale, ...(st ? { staffToken: st.staffToken } : {}), ...over });
+  };
+  const retryPay = () => {
+    if (pendingSubmit.current) void send(pendingSubmit.current); // ชุดเดิมทุกไบต์ · คีย์เดิม
+  };
+  const nextSale = () => {
+    resetBill();
+    setLayers([]);
+  };
+
+  // ═══════ POS P2.4U ▸ โหมดโต๊ะ (มติ 4) + ชิปชนิดบิล (มติ 6) ═══════
+  //   โหลด: registerTableDetailAction → รอบร่าง (detail.draft.cart) เป็นตะกร้า + ชื่อสินค้าที่ไม่อยู่ในกริด (registerProductsByIdsAction)
+  //   บันทึก: holdTableDraftAction — ครั้งแรก newDraft:true · ครั้งถัดไป heldCartId + expectedVersion (สัญญา fix-3: ไม่มีการพักแบบไม่ระบุร่าง)
+  //   ส่งครัว: บันทึกก่อนแล้ว registerSendTableRoundAction → /pos/tables?open=<session>&sent=<เลขออเดอร์> (toast "ส่งครัวแล้ว · ออเดอร์ #N")
+  //   VERSION_CHANGED / ALREADY_RECALLED ⇒ โหลดร่างล่าสุด แล้วต่อท้ายด้วยบรรทัดที่แคชเชียร์เพิ่มเอง (ไม่เขียนทับร่างของอีกเครื่อง) + ข้อความ errors.versionChanged
+  //   PRODUCT_UNAVAILABLE / OPTIONS_INVALID + lineIndex ⇒ ไฮไลต์บรรทัด (ร่างยังอยู่) · BUSY ⇒ ปุ่มลองอีกครั้ง · โต๊ะปิด ⇒ แถบแจ้ง + ลิงก์กลับ
+  const tableSid = props.tableSessionId ?? "";
+  const tablesHref = `${base}/pos/tables?unit=${encodeURIComponent(unitId)}`;
+  const loadTableDraft = async (mine: RegisterCartLine[]): Promise<boolean> => {
+    const r = await registerTableDetailAction({ systemId, unitId, tableSessionId: tableSid });
+    if (!r.ok || r.session.status !== "OPEN") {
+      setTbl({ phase: "closed", tableName: r.ok ? r.session.tableName : "" });
+      return false;
+    }
+    let lines: RegisterCartLine[] = [];
+    if (r.draft) {
+      const stored = r.draft.cart as RegisterQuoteInput;
+      const want = stored.lines.flatMap((l) => ("productId" in l && typeof l.productId === "string" && !known.current.has(l.productId) ? [l.productId] : []));
+      if (want.length) {
+        const pr = await registerProductsByIdsAction({ systemId, unitId, ids: want }).catch(() => null);
+        if (pr && pr.ok) remember(pr.products);
+      }
+      lines = quoteInputToCart({ lines: stored.lines }, newKey).lines;
+      draftRef.current = { id: r.draft.heldCartId, version: r.draft.version };
+    } else draftRef.current = null;
+    draftKeys.current = new Set(lines.map((l) => l.key));
+    changeCart({ lines: [...lines, ...mine].slice(0, REGISTER_MAX_LINES) });
+    setTbl({ phase: "ready", tableName: r.session.tableName });
+    return true;
+  };
+  useEffect(() => {
+    if (!tableOn) return;
+    void loadTableDraft([]).catch(() => setTbl({ phase: "closed", tableName: "" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวตอนเปิดจอ (key ของจอ = สาขา + โต๊ะ)
+  }, []);
+  useEffect(() => {
+    if (tableOn) return;
+    void registerTableModeAction({ systemId, unitId })
+      .then((r) => {
+        if (r.ok) setTableModeNow({ visible: r.visible, tableCount: r.tableCount });
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวตอนเปิดจอ
+  }, []);
+  /** ปฏิเสธจากการบันทึก/ส่งครัว → ทำตามมติ 4 */
+  const tableRefused = async (r: { code: string; lineIndex?: number }) => {
+    if (r.code === "VERSION_CHANGED" || r.code === "ALREADY_RECALLED") {
+      const mine = cartRef.current.lines.filter((l) => !draftKeys.current.has(l.key));
+      await loadTableDraft(mine);
+      showToast({ key: r.code === "VERSION_CHANGED" ? "errors.versionChanged" : "errors.alreadyRecalled" });
+      return;
+    }
+    if (r.code === "TABLE_SESSION_CLOSED" || r.code === "TABLE_NOT_FOUND") {
+      setTbl((v) => ({ ...v, phase: "closed" }));
+      showToast(errorFor(r.code));
+      return;
+    }
+    if (r.code === "STAFF_TOKEN_INVALID") return staffTokenDead();
+    if (r.code === "BUSY") return setTblErr({ code: r.code, retry: true });
+    setTblErr({ code: r.code, ...(typeof r.lineIndex === "number" ? { lineIndex: r.lineIndex } : {}) });
+    showToast(errorFor(r.code));
+  };
+  /** บันทึกตะกร้าปัจจุบันเป็นรอบร่างของโต๊ะ — true = บันทึกแล้ว (draftRef เป็นรุ่นล่าสุด) */
+  const tableSave = async (): Promise<boolean> => {
+    const cur = cartRef.current;
+    if (!cur.lines.length) return false;
+    const d = draftRef.current;
+    const r = await holdTableDraftAction({
+      systemId,
+      unitId,
+      ...tokenArgs(),
+      tableSessionId: tableSid,
+      cart: { lines: cartToQuoteInput({ lines: cur.lines }, { choices: false }).lines },
+      ...(d ? { heldCartId: d.id, expectedVersion: d.version } : { newDraft: true }),
+    });
+    if (!r.ok) {
+      await tableRefused(r);
+      return false;
+    }
+    draftRef.current = { id: r.heldCart.id, version: r.draftVersion ?? (d ? d.version + 1 : 1) };
+    draftKeys.current = new Set(cur.lines.map((l) => l.key));
+    return true;
+  };
+  const tableRun = async (send: boolean) => {
+    if (!tableOn || tbl.phase !== "ready" || tblBusyRef.current || frozenRef.current || !cartRef.current.lines.length) return;
+    tblBusyRef.current = true;
+    setTblBusy(true);
+    setTblErr(null);
+    try {
+      if (!(await tableSave())) return;
+      if (!send) {
+        showToast({ key: "toast.draftSaved", ns: "tables" });
+        return;
+      }
+      const d = draftRef.current!;
+      const r = await registerSendTableRoundAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), tableSessionId: tableSid, heldCartId: d.id });
+      if (!r.ok) return void (await tableRefused(r));
+      resetBill();
+      router.push(`${tablesHref}&open=${encodeURIComponent(tableSid)}&sent=${r.dailyNo}`);
+    } catch {
+      showToast({ key: "errors.unknown" });
+    } finally {
+      tblBusyRef.current = false;
+      setTblBusy(false);
+    }
+  };
+  /** มติ 6: ทานที่ร้าน — ตะกร้ามีของที่รอบร่างเก็บไม่ได้ ⇒ ถามก่อน · แล้วเลือกโต๊ะ */
+  const billTypeOn = !tableOn && !!tableModeNow?.visible && (tableModeNow?.tableCount ?? 0) > 0;
+  const startDineIn = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "billStrip" || l.kind === "tablePick")) return;
+    push(stripNeeded(cartStripOf(cartRef.current)) ? { kind: "billStrip" } : { kind: "tablePick" });
+  };
+  /** ย้ายตะกร้า (ตัดของที่เก็บไม่ได้แล้ว) ไปเป็นรอบร่างของโต๊ะ c แล้วเปิดหน้าขายผูกโต๊ะ */
+  const moveCartToTable = async (c: TableCard) => {
+    if (moving || frozenRef.current) return;
+    setMoving(true);
+    try {
+      let sid = c.sessionId;
+      if (!sid) {
+        const o = await registerOpenTableAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), tableId: c.id });
+        if (!o.ok) return showToast(errorFor(o.code));
+        sid = o.sessionId;
+        if (o.reservationOverridden) showToast({ key: "reservation.overridden", ns: "tables" });
+      }
+      const mine = cartToQuoteInput(stripCart(cartRef.current), { choices: false }).lines;
+      if (mine.length) {
+        let r = await holdTableDraftAction({ systemId, unitId, ...tokenArgs(), tableSessionId: sid, cart: { lines: mine }, newDraft: true });
+        if (!r.ok && r.code === "VERSION_CHANGED") {
+          // โต๊ะนี้มีรอบร่างอยู่แล้ว ⇒ ต่อท้ายร่างล่าสุดแบบมีเงื่อนไขรุ่น (ร่างเดิม + ตะกร้านี้ · ไม่เขียนทับของเครื่องอื่น)
+          const dt = await registerTableDetailAction({ systemId, unitId, tableSessionId: sid });
+          if (dt.ok && dt.draft) {
+            const prev = (dt.draft.cart as RegisterQuoteInput).lines;
+            r = await holdTableDraftAction({ systemId, unitId, ...tokenArgs(), tableSessionId: sid, cart: { lines: [...prev, ...mine] }, heldCartId: dt.draft.heldCartId, expectedVersion: dt.draft.version });
+          }
+        }
+        if (!r.ok) {
+          if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead();
+          else showToast(errorFor(r.code));
+          return;
+        }
+      }
+      resetBill();
+      setLayers([]);
+      router.push(`${base}/pos/register?unit=${encodeURIComponent(unitId)}&table=${encodeURIComponent(sid)}`);
+    } catch {
+      showToast({ key: "errors.unknown" });
+    } finally {
+      setMoving(false);
+    }
+  };
+  /** P1.13U มติ 1–2: เปิดกล่อง 15A (ปุ่มท้ายตะกร้า · สวิตช์/แก้ในจอชำระ) — ร้านออกใบกำกับไม่ได้ = ข้อความแทนการเปิด */
+  const taxEligible = status?.taxInvoiceEligible === true;
+  const openTaxInvoice = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "taxInvoice")) return;
+    if (!taxEligible) {
+      showToast({ key: "errors.taxInvoiceNotEligible" });
+      return;
+    }
+    push({ kind: "taxInvoice" });
+  };
+  // ═══════ POS P3.6U ▸ CD-P36U-3/5/6: เปิดแผ่นเลือกบริษัท · กล่องใบกำกับตั้งต้นจากบริษัท (requireBuyer) · PIN อนุญาตเกินวงเงิน ◂ ═══════
+  const openCompany = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "company")) return;
+    push({ kind: "company" });
+  };
+  const openBuyerFromCompany = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "taxInvoice")) return;
+    if (!taxEligible) {
+      showToast({ key: "errors.taxInvoiceNotEligible" });
+      return;
+    }
+    const c = company;
+    push(c ? { kind: "taxInvoice", prefill: { kind: "JURISTIC", name: c.name, taxId: c.taxId ?? "", branchCode: c.branchCode, address: "", source: "MANUAL" } } : { kind: "taxInvoice" });
+  };
+  /** PIN ผู้จัดการ ⇒ ส่งคำขอเดิม (คีย์บิลเดิมทุกไบต์) + creditOverride · ผลกลับไปที่แป้น (PIN ผิด/ไม่ใช่ผู้อนุญาต) หรือปิดแผ่น (สำเร็จ/ปฏิเสธอื่น/ไม่แน่ใจ) */
+  const creditOverPin = async (managerUserId: string, managerPin: string): Promise<ManagerPinResult> => {
+    const base = creditOverSale.current;
+    if (!base || sendingRef.current) return { ok: false, code: "BUSY" };
+    setCreditOverBusy(true);
+    lastSendCode.current = "";
+    try {
+      await send({ ...base, creditOverride: { managerUserId, managerPin } });
+    } finally {
+      setCreditOverBusy(false);
+    }
+    const c = lastSendCode.current;
+    if (c === "OK") {
+      creditOverSale.current = null;
+      return { ok: true };
+    }
+    if (c === "PIN_INVALID" || c === "PIN_LOCKED" || c === "PIN_THROTTLED" || c === "PERMISSION_DENIED" || c === "CREDIT_LIMIT_EXCEEDED") return { ok: false, code: c };
+    if (c === "") return { ok: false, code: "UNKNOWN" };
+    creditOverSale.current = null;
+    setLayers((s) => s.filter((l) => l.kind !== "creditOver"));
+    return { ok: true };
+  };
+
+  // ═══════ POS P1.15U ▸ ส่วนลดเกินสิทธิ์ (มติ 4) + รอผู้จัดการอนุมัติ 21B (มติ 5) ═══════
+  // บิลถูกพักที่เซิร์ฟเวอร์รออนุมัติ (APPROVAL_REQUIRED / PENDING_APPROVAL) ⇒ ล้างจอ (คีย์ใหม่ · resetBill ที่เดียว) แล้วเปิด 21B
+  useEffect(() => {
+    if (!approvalHandoff) return;
+    // merge P1.15U ข้อ 10b: ผู้ซื้อของบิลนี้ไปกับบิลที่พัก (ฝั่งจอ) ก่อน resetBill ล้าง
+    if (approvalHandoff.heldCartId && taxInv) parkedTaxInv.current = { heldCartId: approvalHandoff.heldCartId, value: taxInv };
+    // POS P1.12U fix รอบ 1 F2: สิทธิ์ที่เลือกในจอชำระไปกับบิลที่พัก (ฝั่งจอ) ก่อน resetBill ล้าง
+    if (approvalHandoff.heldCartId && cart.memberId && cart.memberChoices) parkedChoices.current = { heldCartId: approvalHandoff.heldCartId, choices: { ...cart.memberChoices } };
+    resetBill();
+    setLayers([{ kind: "approval", requestId: approvalHandoff.requestId, ...(approvalHandoff.heldCartId ? { heldCartId: approvalHandoff.heldCartId } : {}) }]);
+    setApprovalHandoff(null);
+    void refreshHeld();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือคำส่งต่อเท่านั้น
+  }, [approvalHandoff]);
+  /** (ข) ส่งขออนุมัติ: submit ตะกร้าที่ขอส่วนลด (ไม่มีวิธีจ่าย · ยอดคาดที่ไม่มีทางตรง ⇒ ไม่มีบิลเกิดแน่นอน) → เซิร์ฟเวอร์พักบิล + ยื่นคำขอ */
+  const requestDiscountApproval = async (next: RegisterCart) => {
+    const st = staffRef.current;
+    if (!st || discBusy || frozenRef.current) return;
+    setDiscBusy(true);
+    setDiscErr(null);
+    try {
+      const grand = priceLocal(next, null);
+      const sale: RegisterSubmitInput = {
+        ...cartToQuoteInput(next, { choices: false }),
+        idempotencyKey: idemKey,
+        payMethods: [],
+        expectedGrandTotalSatang: (grand && grand.ok ? grand.grandTotalSatang : 0) + 1,
+        staffToken: st.staffToken,
+      };
+      const r = await submitRegisterSaleAction({ systemId, unitId, sale, ...(deviceId ? { deviceId } : {}) });
+      if (!r.ok && (r.code === "APPROVAL_REQUIRED" || r.code === "PENDING_APPROVAL") && "requestId" in r) {
+        setApprovalHandoff({ requestId: r.requestId, ...(r.heldCartId ? { heldCartId: r.heldCartId } : {}) });
+        return;
+      }
+      if (!r.ok && r.code === "STAFF_TOKEN_INVALID") {
+        setLayers((s) => s.filter((l) => l.kind !== "discountOver"));
+        return staffTokenDead();
+      }
+      setDiscErr(t(!r.ok && r.code === "DISCOUNT_EXCEEDS_LIMIT" ? "discountOver.noPolicy" : r.ok ? "errors.unknown" : refusalMessageKey(r.code)));
+    } catch {
+      setDiscErr(t("errors.unknown"));
+    } finally {
+      setDiscBusy(false);
+    }
+  };
+  /** (ก) PIN ผู้จัดการ: เก็บไว้กับบิลนี้ (ส่งพร้อม submit) แล้วใช้ส่วนลด */
+  const armManagerPin = (next: RegisterCart, managerUserId: string, managerName: string, pin: string) => {
+    setDiscAuth({ kind: "pin", managerUserId, managerName, managerPin: pin, ...discountOf(next) });
+    changeCart(next);
+    setLayers((s) => s.filter((l) => l.kind !== "discountOver"));
+    showToast({ key: "discountOver.pinArmed", values: { name: managerName } });
+  };
+  /** 21B ของส่วนลด: PIN ผู้จัดการ = เรียกคืนบิลที่พักรอ แล้วเตรียม PIN ไว้กับบิลนั้น (ส่งพร้อม heldCartId ⇒ เซิร์ฟเวอร์ยกเลิกคำขอที่รอ) */
+  const approvalPin = async (heldCartId: string | undefined, managerUserId: string, pin: string): Promise<ApprovalPinResult> => {
+    if (!heldCartId) return { ok: false, code: "NOT_FOUND" };
+    const r = await onRecallHeld(heldCartId, { managerUserId, pin }, true);
+    return r === true ? { ok: true } : { ok: false, code: r };
+  };
+  /** 21B จบ: อนุมัติ = เรียกคืนบิลด้วยเพดานที่อนุมัติ · ปฏิเสธ = แจ้งเหตุผล (เซิร์ฟเวอร์ทิ้งบิลพักแล้ว) · ยกเลิก = แจ้ง */
+  const approvalDone = (view: PosApprovalView, heldCartId: string | undefined) => {
+    setLayers((s) => s.filter((l) => l.kind !== "approval"));
+    // merge P1.15U ข้อ 10b: ปฏิเสธ/ยกเลิก = บิลพักถูกทิ้ง ⇒ ผู้ซื้อที่ผูกไว้หมดความหมาย
+    if (view.status !== "APPROVED" && parkedTaxInv.current?.heldCartId === heldCartId) parkedTaxInv.current = null;
+    if (view.status !== "APPROVED" && parkedChoices.current?.heldCartId === heldCartId) parkedChoices.current = null; // fix รอบ 1 F2
+    if (view.status === "APPROVED") {
+      showToast({ key: "approval.approvedDiscount" });
+      if (heldCartId) void onRecallHeld(heldCartId, undefined, true);
+    } else if (view.status === "REJECTED") {
+      showToast(view.note ? { key: "approval.rejected", values: { reason: view.note } } : { key: "approval.rejectedNoReason" });
+      void refreshHeld();
+    } else showToast({ key: "approval.cancelled" });
+  };
+
+  // R4.1 F1: คำขอที่โหลดกลับแล้วถูกปฏิเสธชัด ⇒ กล่องชำระค้างบนตะกร้าว่าง — ปิดกล่องแล้วแสดงเหตุผลเป็นข้อความลอย
+  //   (ทำนอก send ตามมติ — คีย์คงเดิมเพราะปฏิเสธชัด ไม่มีบิล) · ปกติเปิดกล่องได้เมื่อมีของในตะกร้าเท่านั้น ⇒ เงื่อนไขนี้เกิดแค่ทางโหลดกลับ
+  useEffect(() => {
+    if (payPhase !== "form" || cart.lines.length > 0 || layersRef.current[layersRef.current.length - 1]?.kind !== "pay") return;
+    setLayers((s) => s.filter((l) => l.kind !== "pay"));
+    if (payError) showToast({ key: payError.key, values: payError.values });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือ phase เปลี่ยนเท่านั้น
+  }, [payPhase]);
+
+  // R4 K5: เปิดจอ (reload/Back) แล้วมีคำขอค้างของระบบ+สาขานี้ ⇒ ขึ้นการ์ด "ไม่แน่ใจ" แล้วลองซ้ำด้วยคีย์เดิม ชุดคำขอเดิมทันที
+  //   (ตะกร้าบนจอไม่ถูกสร้างคืน — ยอดในกล่องมาจาก expectedGrandTotalSatang ของคำขอ) · StrictMode เรียกซ้ำ = sendingRef กันไว้
+  useEffect(() => {
+    let saved: { idempotencyKey: string; sale: RegisterSubmitInput } | null = null;
+    try {
+      const raw = window.sessionStorage.getItem(pendingStoreKey);
+      const v: unknown = raw ? JSON.parse(raw) : null;
+      const o = v as { userId?: unknown; idempotencyKey?: unknown; sale?: { idempotencyKey?: unknown } } | null;
+      if (o && o.userId !== userId) {
+        // R4.1 F2: ระเบียนของผู้ใช้อื่น (หรือรูปแบบเก่าที่ไม่มี userId) = ไม่ลองซ้ำ · ลบทิ้ง
+        window.sessionStorage.removeItem(pendingStoreKey);
+      } else if (o && typeof o.idempotencyKey === "string" && o.sale && o.sale.idempotencyKey === o.idempotencyKey) {
+        saved = o as { idempotencyKey: string; sale: RegisterSubmitInput };
+      }
+    } catch {
+      saved = null;
+    }
+    if (!saved) return;
+    pendingSubmit.current = saved.sale;
+    setIdemKey(saved.idempotencyKey);
+    setPayPhase("unknown");
+    setLayers([{ kind: "pay" }]);
+    void send(saved.sale, { restore: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวตอนเปิดจอ (key ของจอ = สาขา)
+  }, []);
+
+  // ═══════ แป้นลัด: ตัวจับเดียวบน window (สเปก §3.6) ═══════
+  const keyState = useRef({ top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen, locked });
+  keyState.current = { top, payEnabled: payEnabled || offPayEnabled /* POS P3.4U ▸ F4 = ชำระออฟไลน์ ◂ */, q, cartLen: cart.lines.length, payPhase, frozen, locked };
+  const handlers = useRef({ openPay, onHold, pop, push, setQ });
+  handlers.current = { openPay, onHold, pop, push, setQ };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const s = keyState.current;
+      const h = handlers.current;
+      if (s.locked) return; // POS P1.15U ▸ จอล็อกทับอยู่ = แป้นลัดทั้งหมดปิด (แป้น PIN อยู่ที่ LockScreen) ◂
+      if (e.key === "F2") {
+        // แป้นพิมพ์จริง ⇒ โฟกัสเสมอ (ไม่เช็ก pointer แบบ focusSearch) แม้กำลังพิมพ์ช่องอื่นอยู่
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+        return;
+      }
+      if (e.key === "F4") {
+        e.preventDefault();
+        if (!e.repeat && !s.top && s.payEnabled) h.openPay();
+        return;
+      }
+      if (e.key === "F8") {
+        e.preventDefault();
+        if (!e.repeat && !s.top) h.onHold();
+        return;
+      }
+      if (e.key === "Escape") {
+        if (e.isComposing) return; // B2.2 N4: Esc ระหว่างพิมพ์ด้วย IME = ยกเลิกคำที่กำลังประกอบ ไม่ใช่ปิดกล่อง/ล้างบิล
+        if (s.top) {
+          // ปิดชั้นบนสุด · ระหว่างส่ง/ไม่แน่ใจ/บิลซ้ำ = ห้ามปิด (สเปก §3.4 ข้อ 3, 6)
+          if (s.top.kind === "pay" && s.payPhase !== "form") return;
+          if (s.top.kind === "done" || s.top.kind === "offlineDone") return; // ปิดด้วย "ขายบิลถัดไป" เท่านั้น // POS P3.4U ▸ + offlineDone ◂
+          e.preventDefault();
+          h.pop();
+          return;
+        }
+        if (s.q) {
+          e.preventDefault();
+          h.setQ("");
+          return;
+        }
+        if (s.cartLen > 0 && !s.frozen) {
+          e.preventDefault();
+          h.push({ kind: "clear" });
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // ═══════ เครื่องสแกนแบบพิมพ์รัว (P1.4 B1): ตัวจับ keydown ทั้งหน้า ช่วง capture ═══════
+  //   capture บน window = เห็นคีย์ก่อนช่องค้นหา/ปุ่มที่โฟกัสอยู่ ⇒ Enter/Tab ที่จบการสแกนถูกกลืน (preventDefault + stopPropagation):
+  //   onKeyDown ของช่องค้นหาไม่ถึง (หนึ่งสแกน = หนึ่งครั้ง) · ปุ่มที่โฟกัสไม่ถูกกด · Tab ไม่ย้ายโฟกัส · Enter ไม่ไปยืนยันกล่องชำระ
+  //   ตัดสินที่ classifyScanBurst เท่านั้น (IME → กล่องเปิด → ช่องกรอกอื่น → จังหวะ) — คนพิมพ์ = ปล่อยผ่านตามเดิมทุกอย่าง
+  const scanBuf = useRef<ScanKey[]>([]);
+  /** ค่าของช่องกรอก (ไม่ใช่ช่องค้นหา) ตอนคีย์แรกของบัฟเฟอร์ — คืนค่านี้ถ้าบัฟเฟอร์กลายเป็นการสแกน (R2) */
+  const scanFieldSnap = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; value: string } | null>(null);
+  const scanHandlers = useRef({ onScannedCode, clearSearchForScan, showToast, memberScan });
+  scanHandlers.current = { onScannedCode, clearSearchForScan, showToast, memberScan };
+  useEffect(() => {
+    const onScanKey = (e: KeyboardEvent) => {
+      const buf = scanBuf.current;
+      if (lockedRef.current) {
+        buf.length = 0; // POS P1.15U ▸ จอล็อก: ตัวเลขคือ PIN ไม่ใช่การสแกน ◂
+        return;
+      }
+      const prev = buf[buf.length - 1];
+      if (prev && e.timeStamp - prev.at > SCAN_MAX_GAP_MS) buf.length = 0; // ห่างเกินจังหวะเครื่องสแกน = เริ่มบัฟเฟอร์ใหม่
+      if (!buf.length) {
+        const t0 = e.target;
+        scanFieldSnap.current = t0 !== searchRef.current && (t0 instanceof HTMLInputElement || t0 instanceof HTMLTextAreaElement) ? { el: t0, value: t0.value } : null;
+      }
+      buf.push({ key: scanKeyFromEvent(e), at: e.timeStamp, isComposing: e.isComposing });
+      if (buf.length > 128) buf.splice(0, buf.length - 128);
+      if (e.key !== "Enter" && e.key !== "Tab") return;
+      const keys = buf.splice(0);
+      const el = e.target;
+      const target: "search" | "input" | "body" =
+        el === searchRef.current
+          ? "search"
+          : el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || (el instanceof HTMLElement && el.isContentEditable)
+            ? "input"
+            : "body";
+      const r = classifyScanBurst(keys, { dialogOpen: layersRef.current.length > 0, target });
+      const h = scanHandlers.current;
+      const snap = scanFieldSnap.current;
+      scanFieldSnap.current = null;
+      const scanTimed = r.kind === "scan" || (r.kind === "ignore" && r.reason !== "ime" && classifyScanBurst(keys, { target: "body" }).kind === "scan");
+      // R2: รหัสที่สแกนตกลงในช่องกรอกอื่น (กล่องชำระ "รับเงิน" 500 → 5008850…) ⇒ คืนค่าเดิมก่อนทำอย่างอื่น
+      if (scanTimed && snap && snap.el === el) restoreFieldValue(snap.el, snap.value);
+      if (r.kind === "scan") {
+        e.preventDefault();
+        e.stopPropagation();
+        lastScanAt.current = e.timeStamp;
+        if (target === "search") h.clearSearchForScan();
+        void h.onScannedCode(r.code);
+        return;
+      }
+      // กล่องเปิดอยู่ (ชำระ · ตัวเลือก · กล้อง …) และจังหวะเป็นเครื่องสแกน ⇒ ไม่ทำอะไร + บอกผู้ใช้ (B2) · กลืนตัวจบไม่ให้ไปกดปุ่มในกล่อง
+      if (r.kind === "ignore" && r.reason === "dialog" && scanTimed) {
+        // POS P1.12U มติ 4: แผงสมาชิกอยู่บนสุด + ยิงบัตรสมาชิก ⇒ ค้น/ผูกสมาชิก (ช่องที่รหัสตกลงไปถูกคืนค่าข้างบนแล้ว)
+        const body = classifyScanBurst(keys, { target: "body" });
+        if (layersRef.current[layersRef.current.length - 1]?.kind === "member" && body.kind === "scan" && isMemberCardCode(body.code)) {
+          e.preventDefault();
+          e.stopPropagation();
+          lastScanAt.current = e.timeStamp;
+          void h.memberScan(body.code);
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        h.showToast({ key: "scan.ignoredWhileDialog" });
+      }
+    };
+    window.addEventListener("keydown", onScanKey, true);
+    return () => window.removeEventListener("keydown", onScanKey, true);
+  }, []);
+
+  // ═══════ วาด ═══════
+  const lineOf = (key: string) => cart.lines.find((l) => l.key === key);
+  // P1.5 H3: คำเตือนของบิลที่เรียกคืน — เฉพาะบรรทัดที่ยังอยู่ (เอาออก = หาย) · ขายไม่ได้แล้ว ⇒ quote ปฏิเสธ = ชำระไม่ได้จนกว่าจะเอาออก
+  const shownNotices = heldNotices.filter((n) => cart.lines.some((l) => l.key === n.key));
+  const noticeName = (key: string) => {
+    const l = lineOf(key);
+    if (!l) return "-";
+    if (l.kind === "custom") return l.name;
+    const prod = known.current.get(l.productId);
+    return prod ? displayName(prod, locale) : (heldNames.current.get(l.productId) ?? "-");
+  };
+  const heldNoticeNode = shownNotices.length ? (
+    <div data-testid="pos-reg-held-notices" role="status" className="flex items-start gap-2.5 rounded-[14px] border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-3.5 py-2.5 text-[13.5px] leading-[1.5]">
+      <RegisterIcon name="warn" size={16} className="mt-0.5 shrink-0 text-[color:var(--color-danger)]" />
+      <ul className="min-w-0 flex-1">
+        {shownNotices.map((n) => (
+          <li key={`${n.key}-${n.code}`}>
+            {n.code === "PRICE_CHANGED"
+              ? t("held.noticePriceChanged", { name: noticeName(n.key), from: moneyText(n.from ?? 0), to: moneyText(n.to ?? 0) })
+              : n.code === "PERMISSION_DENIED"
+                ? t("held.noticeNeedsPermission", { name: noticeName(n.key) })
+                : n.code === "CHANNEL_NOT_SOLD" // POS P2.14 ▸ UI-12 ◂
+                  ? t("held.noticeChannelNotSold", { name: noticeName(n.key) })
+                  : t("held.noticeUnavailable", { name: noticeName(n.key) })}
+          </li>
+        ))}
+      </ul>
+      <button
+        data-testid="pos-reg-held-notices-close"
+        className="-my-1.5 -mr-2 grid size-11 shrink-0 place-items-center rounded-[11px] text-[color:var(--color-muted)]"
+        type="button"
+        aria-label={t("cart.close")}
+        onClick={() => setHeldNotices([])}
+      >
+        <RegisterIcon name="x" size={14} />
+      </button>
+    </div>
+  ) : null;
+  // POS P1.15U ▸ ส่วนลดเกินเพดาน (เช่น บิลที่เรียกคืน) ⇒ ปุ่ม "ขอสิทธิ์ส่วนลด" ใต้ข้อความ → แผ่นส่วนลดเกินสิทธิ์ ◂
+  const errorNode = errorMsg ? (
+    <>
+      {msgNode(errorMsg)}
+      {quoteFailed === "DISCOUNT_EXCEEDS_LIMIT" && staff && !frozen ? (
+        <button
+          data-testid="pos-discount-over-open"
+          className="mt-1 block min-h-[44px] font-semibold underline underline-offset-2"
+          type="button"
+          onClick={() => openDiscountOver(cart, { key: "errors.discountExceedsLimit" })}
+        >
+          {t("discountOver.open")}
+        </button>
+      ) : null}
+    </>
+  ) : null;
+  // POS P2.4U ▸ มติ 4: ส่งครัวได้ BUSY ⇒ ข้อความ + ปุ่มลองอีกครั้ง (โหนดแยก — ปุ่มซ้อนในพร็อพของ CartPanel ทำให้ตัวสแกน F15.3 นับ CartPanel เป็นปุ่มไร้ testid) ◂
+  const tableRetryNode =
+    tableOn && tblErr?.retry ? (
+      <>
+        {t("errors.busy")}
+        <button data-testid="pos-tbl-send-retry" className="ml-2 min-h-[44px] font-semibold underline underline-offset-2" type="button" disabled={tblBusy} onClick={() => void tableRun(true)}>
+          {t("pay.retry")}
+        </button>
+      </>
+    ) : null;
+  // POS P3.4U ▸ มติ 3 (19ง): ชิป + แถวชำระออฟไลน์ (โหนดแยก — ปุ่มซ้อนในพร็อพทำให้ตัวสแกน F15.3 นับ CartPanel เป็นปุ่ม) ◂
+  const offChipsNode = offMode ? <OfflineChips /> : null;
+  const offPayNode = (sheet: boolean) => (offMode ? <OfflinePayRow amount={offAmount} enabled={offPayEnabled} sheet={sheet} onCash={() => openOfflinePay("CASH")} onTransfer={() => openOfflinePay("TRANSFER")} /> : null);
+  const cartPanel = (variant: "inline" | "sheet") => (
+    <CartPanel
+      variant={variant}
+      lines={lineModels}
+      totals={cart.lines.length ? (offMode ? (offTotals?.ok ? offTotals : null) : shownTotals) /* POS P3.4U ◂ */ : null}
+      totalsPending={offMode ? false : totalsPending}
+      offlineChips={offChipsNode}
+      offlinePay={offPayNode(variant === "sheet")}
+      payAmount={payAmount}
+      payEnabled={payEnabled}
+      error={tableRetryNode ?? errorNode} // POS P2.4U ▸ มติ 4: BUSY = ปุ่มลองอีกครั้ง ◂
+      frozen={frozen}
+      onPay={openPay}
+      onSoon={soon}
+      onTaxInvoice={openTaxInvoice}
+      taxInvoiceSet={!!taxInv}
+      taxInvoiceEligible={taxEligible}
+      onNote={() => {
+        if (!frozenRef.current && cart.lines.length) push({ kind: "note" });
+      }}
+      hasNote={!!cart.note}
+      onHold={() => {
+        if (!frozenRef.current && cart.lines.length) push({ kind: "holdLabel" });
+      }}
+      onOpenHeld={openHeld}
+      heldCount={heldCount}
+      notice={heldNoticeNode}
+      onBillDiscount={() => push({ kind: "billDiscount" })}
+      onOpenLine={(key, focus) => push({ kind: "line", key, focus })}
+      onKeep={keepSelling}
+      onReduce={reduceTo}
+      onClose={variant === "sheet" ? pop : undefined}
+      // POS P2.4U ▸ มติ 6: ชิปชนิดบิล (ทานที่ร้าน) · มติ 4: หน้าขายผูกโต๊ะ (ส่งครัว/บันทึกไว้ก่อน) ◂
+      billType={tableOn ? null : billTypeOn ? { onDineIn: startDineIn } : undefined}
+      tableMode={
+        tableOn
+          ? {
+              chip: tTables("order.chip", { name: tbl.tableName || "\u2026" }),
+              backHref: `${tablesHref}&open=${encodeURIComponent(tableSid)}`,
+              backLabel: tTables("order.back"),
+              sendLabel: tTables("order.send", { n: cart.lines.length }),
+              saveLabel: tTables("order.save"),
+              note: tTables("order.priceNote"),
+              canSend: tbl.phase === "ready" && cart.lines.length > 0 && limits.canSell,
+              busy: tblBusy,
+              onSend: () => void tableRun(true),
+              onSave: () => void tableRun(false),
+            }
+          : null
+      }
+      memberSlot={
+        // POS P3.6U ▸ CD-P36U-1/3/4: ชิปบริษัท + เลือกดีล ใต้การ์ดสมาชิก (ร้านที่มี CRM · ไม่ใช่โหมดโต๊ะ) ◂
+        // POS P3.6U fix1 F2 (CD-P36U-3): ชิปบริษัท/ดีล = เงื่อนไขเดียวกับไทล์วางบิล (ออนไลน์ · ไม่ใช่โหมดออฟไลน์) ◂
+        (memberEnabled && !tableOn) || (creditUi && online && !offMode) ? (
+          <div className="flex flex-col gap-2">
+            {memberEnabled && !tableOn ? (
+              <MemberChip
+                member={cart.memberId ? ((memberInfo && memberInfo.id === cart.memberId ? memberInfo : null) ?? placeholderMember(cart.memberId)) : null}
+                ready={memberReady}
+                points={memberReady ? (benefits?.points?.balance ?? null) : null}
+                frozen={frozen}
+                onPick={openMember}
+                onOpen={openMember}
+                onUsePoints={openPayPoints}
+                onDetach={detachMember}
+              />
+            ) : null}
+            {creditUi && online && !offMode && (
+              <>
+                <CompanyChip
+                  company={company}
+                  frozen={frozen}
+                  error={companyErr}
+                  onPick={openCompany}
+                  onClear={() => {
+                    setCompany(null);
+                    setCompanyErr(null);
+                  }}
+                />
+                <DealBox systemId={systemId} unitId={unitId} memberId={cart.memberId ?? null} customerPartyId={company?.partyId ?? null} value={dealId} frozen={frozen} error={dealErr} onDeal={onDealChange} />
+              </>
+            )}
+          </div>
+        ) : null
+      }
+      member={{
+        couponCode: cart.couponCode ?? null,
+        couponInvalid: !!quoteFresh?.memberConflicts?.some((c) => c.code === "COUPON_INVALID"),
+        tierName: memberInfo?.tier?.name ?? null,
+        pointsUsed: cart.memberChoices?.points ?? 0,
+        onRemoveCoupon: () => setCoupon(null),
+      }}
+    />
+  );
+
+  // ── ชั้นกล่องหนึ่งชั้น (โหนดที่วาด) ──
+  const layerNode = (l: Layer, k: string): React.ReactNode => {
+    switch (l.kind) {
+      case "sheet":
+        return wide === true ? null : (
+          <CartSheetFrame key={k} onClose={pop} locked={frozen}>
+            {cartPanel("sheet")}
+          </CartSheetFrame>
+        );
+      case "line": {
+        const line = lineOf(l.key);
+        if (!line) return null;
+        const nm = line.kind === "custom" ? line.name : displayName(known.current.get(line.productId) ?? { name: "-" }, locale);
+        return (
+          <LineEditor
+            key={k}
+            lineKey={l.key}
+            name={nm}
+            qty={line.qty}
+            discount={line.discount}
+            note={line.note}
+            focus={l.focus}
+            noDiscount={tableOn} // POS P2.4U ▸ รอบร่างโต๊ะไม่มีส่วนลดรายการ ◂
+            onApply={(r) => applyLine(l.key, r)}
+            onRemove={() => removeLine(l.key)}
+            onClose={pop}
+          />
+        );
+      }
+      case "billDiscount":
+        return <BillDiscountDialog key={k} current={cart.billDiscount} capBp={staff ? sellerCap : undefined} onApply={applyBillDiscount} onCoupon={openCoupon} onClose={pop} />;
+      case "coupon":
+        return (
+          <CouponDialog
+            key={k}
+            current={cart.couponCode ?? null}
+            pending={!!couponWait}
+            errorKey={couponErr}
+            onApply={applyCoupon}
+            onRemove={() => {
+              setCouponErr(null);
+              setCoupon(null);
+              setLayers((ls) => ls.filter((x) => x.kind !== "coupon"));
+            }}
+            onClose={() => setLayers((ls) => ls.filter((x) => x.kind !== "coupon"))}
+          />
+        );
+      // POS P1.15U ▸ แผ่นส่วนลดเกินสิทธิ์ (มติ 4) · รอผู้จัดการอนุมัติ 21B (มติ 5) ◂
+      case "discountOver":
+        return (
+          <DiscountOverBox
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            deviceId={deviceId}
+            capBp={sellerCap}
+            wantBp={l.wantBp}
+            canRequest={online && !!staff}
+            busy={discBusy}
+            error={discErr}
+            onPin={(id, name, pin) => armManagerPin(l.next, id, name, pin)}
+            onRequest={() => void requestDiscountApproval(l.next)}
+            onClose={() => {
+              if (!discBusy) pop();
+            }}
+          />
+        );
+      case "approval":
+        return (
+          <ApprovalWaitDialog
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            deviceId={deviceId}
+            requestId={l.requestId}
+            onPin={(mgr, pin) => approvalPin(l.heldCartId, mgr, pin)}
+            allowPin={!!l.heldCartId}
+            onDone={(v) => approvalDone(v, l.heldCartId)}
+            onClose={pop}
+          />
+        );
+      // POS P3.6U ▸ CD-P36U-3/6: แผ่นเลือกบริษัท · แผ่นเกินวงเงินวางบิล ◂
+      case "company":
+        return (
+          <CompanyPickerBox
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            memberId={cart.memberId ?? null}
+            selectedPartyId={company?.partyId ?? null}
+            onPick={(c) => {
+              setCompany(c);
+              setCompanyErr(null);
+              setLayers((s) => s.filter((x) => x.kind !== "company"));
+            }}
+            onClose={() => setLayers((s) => s.filter((x) => x.kind !== "company"))}
+          />
+        );
+      case "creditOver":
+        return (
+          <CreditOverBox
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            deviceId={deviceId}
+            limitSatang={l.limitSatang}
+            exposureSatang={l.exposureSatang}
+            busy={creditOverBusy}
+            onPin={creditOverPin}
+            onClose={() => {
+              if (creditOverBusy) return;
+              creditOverSale.current = null;
+              setLayers((s) => s.filter((x) => x.kind !== "creditOver"));
+            }}
+          />
+        );
+      case "custom":
+        return (
+          <CustomItemDialog
+            key={k}
+            onAdd={(name, price) => {
+              if (cart.lines.length >= REGISTER_MAX_LINES) return { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } };
+              addLine({ kind: "custom", name, unitPriceSatang: price, qty: 1 });
+              pop();
+              return null;
+            }}
+            onClose={pop}
+          />
+        );
+      case "openPrice": {
+        const prod = known.current.get(l.productId);
+        return (
+          <OpenPriceDialog
+            key={k}
+            name={prod ? displayName(prod, locale) : "-"}
+            onAdd={(price) => {
+              addLine({ kind: "product", productId: l.productId, qty: 1, openPriceSatang: price });
+              pop();
+            }}
+            onClose={pop}
+          />
+        );
+      }
+      case "clear":
+        return (
+          <ClearBillDialog
+            key={k}
+            onConfirm={() => {
+              resetBill();
+              setLayers([]);
+            }}
+            onClose={pop}
+          />
+        );
+      case "pay":
+        return (
+          <PayDialog
+            key={k}
+            dueSatang={quoteFresh?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? pendingSubmit.current?.expectedGrandTotalSatang ?? 0}
+            breakdown={quoteFresh ?? quote?.q ?? null}
+            platform={(() => {
+              // POS P2.1U ▸ มติ 6: ช่องทาง payout PLATFORM ของ quote (ถึงได้ทางบิลพักที่มี channelId) ⇒ ช่อง "แพลตฟอร์ม" ◂
+              const ch = (quoteFresh ?? quote?.q)?.channel;
+              return ch && ch.payout === "PLATFORM" ? { name: ch.name } : null;
+            })()}
+            tipEnabled={!!props.tipEnabled}
+            billNote={cart.note ?? null}
+            quotePending={!quoteFresh && !quoteFailed}
+            quoteError={quoteFailed ? { code: quoteFailed, ...errorFor(quoteFailed) } : null}
+            itemCount={cart.lines.length || (pendingSubmit.current?.lines.length ?? 0)}
+            promptpayId={props.promptpayId}
+            phase={payPhase}
+            error={payError}
+            conflict={conflict}
+            salesHref={`${base}/pos/sales`}
+            onConfirm={confirmPay}
+            onRetry={retryPay}
+            onClose={() => {
+              if (payPhase === "form") pop();
+            }}
+            onNewBill={nextSale}
+            memberChip={
+              memberEnabled && cart.memberId && memberInfo && memberInfo.id === cart.memberId
+                ? tm("pay.chip", { name: memberInfo.name, tier: memberInfo.tier?.name ?? tm("chip.general") })
+                : null
+            }
+            giftCards={memberReady ? (benefits?.giftCards ?? []) : []}
+            // POS P2.9U ▸ มติ 1–3: ช่องแถว 2 จริง · สมาชิก + เครดิตร้าน · สแกนเลขบัตร · ขอ PIN ใหม่ ◂
+            tenders={tableOn ? null : { systemId, unitId }}
+            member={{ attached: !!cart.memberId, storeCredit: memberReady ? storeCreditOf(benefits?.giftCards) : null }}
+            memberId={cart.memberId ?? null} // POS P2.9bU ▸ มติ 2a: มัดจำของสมาชิกในบิล ◂
+            onDisplayPay={displayOnPay} // POS P2.10 ▸ จอลูกค้า: ยอด/วิธี/ใบขอรับเงินของรอบนี้ ◂
+            onScanGiftCard={() => {
+              if (!layersRef.current.some((x) => x.kind === "camera")) push({ kind: "camera", forGiftCard: true });
+            }}
+            scannedGiftCard={gcScan}
+            pinAgain={pinAgain}
+            memberSection={
+              memberEnabled || cart.couponCode ? (
+                <PayBenefits
+                  memberEnabled={memberEnabled}
+                  member={cart.memberId ? (memberInfo && memberInfo.id === cart.memberId ? memberInfo : null) : null}
+                  benefits={memberReady ? benefits : null}
+                  quote={quoteFresh}
+                  choices={cart.memberChoices ?? {}}
+                  couponCode={cart.couponCode ?? null}
+                  couponInvalid={!!quoteFresh?.memberConflicts?.some((c) => c.code === "COUPON_INVALID")}
+                  pointsNote={pointsNote ? msgNode(pointsNote) : null}
+                  voucherNote={voucherNote ? { id: voucherNote.id, node: msgNode(voucherNote.msg) } : null}
+                  rightsChanged={rightsChanged}
+                  focusPoints={l.focusPoints === true}
+                  busy={payPhase !== "form"}
+                  onPoints={(n) => {
+                    setPointsNote(null);
+                    setRightsChanged(false);
+                    setChoices((c) => ({ ...c, points: n ?? 0 }));
+                  }}
+                  onVoucher={(id) => {
+                    setVoucherNote(null);
+                    setRightsChanged(false);
+                    setChoices((c) => ({ ...c, voucherId: id ?? undefined }));
+                  }}
+                  onEnterCoupon={openCoupon}
+                  onRemoveCoupon={() => {
+                    setCoupon(null);
+                    if (payError?.code === "COUPON_INVALID") setPayError(null);
+                  }}
+                />
+              ) : null
+            }
+            intent={props.payIntent ? { ...props.payIntent, systemId, unitId, cartKey: idemKey, discountOverCap } : null}
+            taxInvoice={{
+              eligible: taxEligible,
+              buyer: taxInv?.buyer ?? null,
+              onOpen: openTaxInvoice,
+              onClear: () => {
+                setTaxInv(null);
+                if (payError?.code === "TAX_ID_INVALID" || payError?.code === "NOT_ELIGIBLE") setPayError(null);
+              },
+            }}
+            // POS P3.6U ▸ CD-P36U-5: ไทล์วางบิล — เปิดเครดิต ∧ ร้านมี CRM ∧ ไม่ใช่โต๊ะ ∧ ออนไลน์ (บิลแพลตฟอร์มจอชำระซ่อนเอง) ◂
+            onAccount={
+              props.credit?.enabled && creditUi && online && !offMode
+                ? {
+                    systemId,
+                    unitId,
+                    company: company ? { partyId: company.partyId, name: company.name, taxId: company.taxId } : null,
+                    requireBuyer: props.credit.requireBuyer,
+                    buyer: taxInv?.buyer ?? null,
+                    onPickCompany: openCompany,
+                    onNeedBuyer: openBuyerFromCompany,
+                    onStatus: (st) => {
+                      creditStatusRef.current = st;
+                    },
+                  }
+                : null
+            }
+          />
+        );
+      case "taxInvoice":
+        return (
+          <TaxInvoiceDialog
+            key={k}
+            mode="sale"
+            systemId={systemId}
+            unitId={unitId}
+            chip={quoteFresh ? moneyText(quoteFresh.grandTotalSatang) : null}
+            initial={taxInv?.buyer ?? l.prefill ?? null /* POS P3.6U ▸ CD-P36U-5 ◂ */}
+            memberId={cart.memberId ?? null}
+            initialRemember={taxInv?.remember ?? false}
+            dbdOff={dbdOff}
+            onDbdOff={() => setDbdOff(true)}
+            externalErrorKey={l.errorKey ?? null}
+            onCancel={() => setLayers((s) => s.filter((x) => x.kind !== "taxInvoice"))}
+            onSave={(buyer, remember) => {
+              setTaxInv({ buyer, remember });
+              if (payError?.code === "TAX_ID_INVALID" || payError?.code === "VALIDATION") setPayError(null);
+              setLayers((s) => s.filter((x) => x.kind !== "taxInvoice"));
+            }}
+          />
+        );
+      case "scanChoose":
+        return (
+          <ScanChooserDialog
+            key={k}
+            products={l.products}
+            locale={locale}
+            onPick={(p) => {
+              pop();
+              pick(p);
+            }}
+            onClose={pop}
+          />
+        );
+      case "held":
+        return (
+          <HeldBillsDialog
+            key={k}
+            items={heldItems}
+            expireDays={heldExpireDays}
+            busy={heldBusy}
+            onRecall={requestRecall}
+            onDiscard={(h) => void onDiscardHeld(h)}
+            onClose={pop}
+          />
+        );
+      case "holdLabel":
+        return <HoldLabelDialog key={k} busy={heldBusy} onHold={(label) => void onHold(label)} onClose={pop} />;
+      case "heldConfirm":
+        return (
+          <HeldRecallConfirmDialog
+            key={k}
+            item={l.item}
+            currentCount={cart.lines.length}
+            currentTotal={quoteFresh ? moneyText(quoteFresh.grandTotalSatang) : null}
+            busy={heldBusy}
+            onHoldFirst={() => {
+              void (async () => {
+                if (await onHold()) await onRecallHeld(l.item.id);
+              })();
+            }}
+            onClose={pop}
+          />
+        );
+      case "camera":
+        return (
+          <ScanCameraDialog
+            key={k}
+            onCode={(code) => {
+              pop();
+              // POS P2.9U ▸ มติ 2a: กล้องของจอชำระ = เลขบัตรของขวัญเท่านั้น (ไม่ไปทางสแกนสินค้า) ◂
+              if (l.forGiftCard) return setGcScan((g) => ({ number: code, seq: (g?.seq ?? 0) + 1 }));
+              void (l.forMember ? memberScan(code) : onScannedCode(code));
+            }}
+            onClose={pop}
+          />
+        );
+      case "member":
+        return (
+          <MemberPanel
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            attached={cart.memberId ? ((memberInfo && memberInfo.id === cart.memberId ? memberInfo : null) ?? placeholderMember(cart.memberId)) : null}
+            benefits={memberReady ? benefits : null}
+            formKey={memberFormKey}
+            frozen={frozen}
+            onAttach={(m, toast) => {
+              attachMember(m);
+              setMemberFormKey(newKey());
+              setLayers((s) => s.filter((x) => x.kind !== "member" && x.kind !== "camera"));
+              showToast({ ...toast, ns: "member" });
+            }}
+            onDetach={() => {
+              detachMember();
+              showToast({ key: "panel.detached", ns: "member" });
+            }}
+            onScan={() => {
+              if (!layersRef.current.some((x) => x.kind === "camera")) push({ kind: "camera", forMember: true });
+            }}
+            onFulfilled={() => {
+              if (cart.memberId) void refreshBenefits(cart.memberId, benefitsCartJson);
+            }}
+            onClose={() => setLayers((s) => s.filter((x) => x.kind !== "member"))}
+            onRekey={() => setMemberFormKey(newKey())}
+          />
+        );
+      // POS P3.4U ▸ มติ 3–5 ◂
+      case "offlinePay":
+        return offTotals?.ok ? <OfflinePayDialog key={k} totalSatang={offTotals.grandTotalSatang} tender={l.tender} busy={offBusy} errorKey={offErr} onConfirm={(c) => void confirmOffline(c)} onClose={pop} /> : null;
+      case "offlineDone":
+        return <OfflineDoneDialog key={k} rec={l.rec} shop={offShop} printer={printer} locale={offLocale} onNext={nextSale} />;
+      case "offlineBills":
+        return <OfflineBillsDialog key={k} systemId={systemId} queue={off.queue} synced={off.synced} online={online} syncing={off.syncing} shop={offShop} printer={printer} locale={offLocale} onSyncNow={off.kick} onClose={pop} />;
+      case "done":
+        return (
+          <PayDone
+            key={k}
+            receiptNo={l.result.receiptNo}
+            totalSatang={l.payMethods.reduce((s, m) => s + m.amountSatang, 0) || l.result.grandTotalSatang}
+            changeSatang={l.result.changeSatang}
+            payMethods={l.payMethods}
+            onNext={nextSale}
+            systemId={systemId}
+            saleId={l.result.saleId}
+            printer={printer}
+            locale={locale.startsWith("en") ? "en" : "th"}
+            memberAttached={!!l.memberAttached}
+            taxInvoicePending={!!l.taxInvoice}
+            member={l.result.member}
+            unitId={unitId} // POS P2.6U ▸ มติ 10: "คิว N" ◂
+            tipSatang={l.tipSatang ?? 0} // POS P2.9U ▸ มติ 7 ◂
+            duplicated={l.result.duplicated} // POS P2.9U ▸ มติ 7: บิลเดิมของคีย์ = 02b ไม่อ่าน payload ใบเสร็จ ◂
+            chatReceiptAuto={!!props.chatReceiptAuto} // POS P3.7U ▸ CD-P37U-7 ◂
+            creditDue={creditDone} // POS P3.6U ▸ CD-P36U-7 ◂
+          />
+        );
+      case "options":
+        return (
+          <OptionsDialog
+            key={k}
+            product={l.product}
+            systemId={systemId}
+            unitId={unitId}
+            locale={locale}
+            weighedLabel={l.weighedBarcode !== undefined}
+            anchor={l.anchor}
+            allowNegative={!props.oversellBlock}
+            onAdd={(o) => addPicked(o, l.weighedBarcode)}
+            onClose={pop}
+          />
+        );
+      case "weigh":
+        return (
+          <WeighDialog
+            key={k}
+            product={l.product}
+            locale={locale}
+            canOverridePrice={limits.canOverridePrice}
+            onAdd={(grams) => {
+              setLayers((s) => s.filter((x) => x.kind !== "weigh"));
+              addWeighed(l.product, { weightGrams: grams }, l.options, l.note);
+            }}
+            onClose={pop}
+          />
+        );
+      // POS P2.4U ▸ มติ 6: ถามก่อนตัด → เลือกโต๊ะ → ย้ายตะกร้าเป็นรอบร่างของโต๊ะ ◂
+      case "billStrip":
+        return <BillStripDialog key={k} strip={cartStripOf(cart)} onContinue={() => setLayers((s) => [...s.filter((x) => x.kind !== "billStrip"), { kind: "tablePick" }])} onClose={pop} />;
+      case "tablePick":
+        return <TablePickDialog key={k} systemId={systemId} unitId={unitId} busy={moving} onPick={(c) => void moveCartToTable(c)} onClose={pop} />;
+      // POS P2.9bU ▸ มติ 5: แผ่นรับมัดจำ (สมาชิกในบิล = ชิป · ใบขอรับเงินพร้อมเพย์แบบจอชำระ) ◂
+      case "depositReceive":
+        return (
+          <DepositReceiveDialog
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            rcvKey={l.rcvKey}
+            member={cart.memberId ? { id: cart.memberId, name: memberInfo && memberInfo.id === cart.memberId ? memberInfo.name : "\u2026" } : null}
+            promptpayId={props.promptpayId}
+            intent={props.payIntent ? { ...props.payIntent, systemId, unitId, cartKey: l.rcvKey, discountOverCap: false } : null}
+            printer={printer}
+            locale={locale.startsWith("en") ? "en" : "th"}
+            onClose={pop}
+            onDone={() => {
+              pop();
+              void refreshStatus();
+            }}
+          />
+        );
+      case "note":
+        return (
+          <BillNoteDialog
+            key={k}
+            current={cart.note}
+            onSave={(note) => {
+              // หมายเหตุไม่กระทบราคา ⇒ ไม่เพิ่มรุ่นตะกร้า (quote ปัจจุบันยังใช้ได้)
+              setCart((c) => {
+                const next = { ...c };
+                if (note) next.note = note;
+                else delete next.note;
+                return next;
+              });
+              pop();
+            }}
+            onClose={pop}
+          />
+        );
+    }
+  };
+
+  return (
+    <div
+      data-testid="pos-reg-root"
+      className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[color:var(--color-surface)] md:h-[calc(100dvh-3.5rem)] md:min-h-0 md:overflow-hidden"
+    >
+      {/* B2.2 S2: มีกล่องเปิด ⇒ ทุกอย่างหลังม่าน inert (คลิก/โฟกัส/โปรแกรมอ่านจอไม่ถึง) · contents = ไม่เปลี่ยนเลย์เอาต์ flex */}
+      {/* POS P1.15U ▸ จอล็อกทับอยู่ ⇒ ทั้งจอขายและชั้นกล่อง inert (จอล็อก/ข้อความลอยอยู่นอกกรอบนี้) ◂ */}
+      <div className="contents" inert={locked}>
+      <div className="contents" inert={layers.length > 0}>
+        <h1 className="sr-only">{t("title")}</h1>
+        <RegisterTopContext
+          wide={wide}
+          inApp={inApp}
+          systemId={systemId}
+          tenantName={props.tenantName}
+          units={props.units}
+          activeUnitId={unitId}
+          online={online}
+          lastSyncAt={lastSyncAt}
+          user={staff ? { name: staff.name ?? "-", role: staff.role } : status ? { name: status.user.name, role: status.user.role } : null}
+          shift={status?.shift ?? null}
+          onCamera={openCamera}
+          onLock={staff || noPinMode ? lockNow : undefined}
+          onDepositReceive={openDepositReceive} // POS P2.9bU ▸ มติ 5: ปุ่มมือถือ ◂
+          ordersHref={`/app/sys/${systemId}/pos/orders?unit=${encodeURIComponent(unitId)}`} // POS P2.14 ▸ UI-13 ◂
+        />
+        {/* POS P2.4U ▸ มติ 1: แท็บ "โต๊ะ" เป็นลิงก์เมื่อสาขามีโหมดโต๊ะ ◂ */}
+        {/* POS P2.8U ▸ มติ 1: unitId = ลิงก์แท็บออเดอร์ของสาขานี้ + ป้ายนับออเดอร์ใหม่ (ดึงทุก 10 วิ ขณะแถบ mount) ◂ */}
+        <ModeTabsNav systemId={systemId} tablesHref={tableModeNow?.visible || tableOn ? tablesHref : null} unitId={unitId} onDepositReceive={openDepositReceive} />
+        {!online && !props.offlineEnabled /* POS P3.4U ▸ มติ 1: ปิดธง = แถบเดิมทุกพิกเซล ◂ */ && (
+          <div data-testid="pos-reg-offline-banner" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-ink)] px-5 py-[13px] text-[14px] leading-[1.5] text-[color:var(--color-surface)]" role="status">
+            <RegisterIcon name="warn" size={18} />
+            <span>{t("status.offlineBanner", { time: formatThaiTime(offlineSince ?? new Date()) })}</span>
+          </div>
+        )}
+        {/* POS P3.4U ▸ มติ 3 5 (19ง): เปิดธง + ออฟไลน์ = แถบขายต่อได้ · กลับมาออนไลน์ระหว่างมีคิว/เพิ่งซิงก์ = แถบซิงก์ + ป้ายรอซิงก์ (คิวในเครื่อง) ◂ */}
+        {!online && props.offlineEnabled && (
+          <OfflineLiveBanner since={offlineSince} pending={off.queued} parked={off.parked} lastRef={off.lastRef} gateKey={off.gate.ok ? null : offlineGateMessageKey(off.gate.reason)} onBadge={openOfflineBills} />
+        )}
+        {online && props.offlineEnabled && (off.queue.length > 0 || off.recentSync) && (
+          <div data-testid="pos-reg-offline-sync-strip" data-state={off.syncing ? "syncing" : off.queued > 0 ? "waiting" : "done"} className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[7px] text-[13.5px] text-[color:var(--color-ink)]" role="status">
+            <RegisterIcon name="swap" size={16} />
+            <span className="min-w-0 flex-1">{t(off.syncing ? "offline.strip.syncing" : off.queued > 0 ? "offline.strip.waiting" : "offline.strip.done")}</span>
+            <OfflineBadge pending={off.queued} parked={off.parked} onOpen={openOfflineBills} />
+          </div>
+        )}
+
+        {deviceRevoked && (
+          <div data-testid="pos-reg-device-revoked" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-danger)] px-5 py-[11px] text-[14px] font-semibold leading-[1.5] text-white" role="alert">
+            <RegisterIcon name="warn" size={18} />
+            <span>{t("status.deviceRevoked")}</span>
+          </div>
+        )}
+        {noPinMode && !noPinDismissed && (
+          <div data-testid="pos-staff-nopin-banner" className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[10px] text-[14px] text-[color:var(--color-ink)]" role="status">
+            <RegisterIcon name="lock" size={16} />
+            <span className="flex-1">{t("staff.noPinBanner")}</span>
+            <button data-testid="pos-staff-nopin-dismiss" type="button" className="grid size-11 place-items-center rounded-[11px] text-[color:var(--color-muted)]" aria-label={t("cart.close")} onClick={dismissNoPin}>
+              <RegisterIcon name="x" size={14} />
+            </button>
+          </div>
+        )}
+        {shiftBlocked && (
+          <div data-testid="pos-reg-shift-required" className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[10px] text-[14px] text-[color:var(--color-ink)]" role="status">
+            <RegisterIcon name="warn" size={18} />
+            <span className="flex-1">{t("errors.shiftRequired")}</span>
+            <a data-testid="pos-reg-shift-open-link" href={`/app/sys/${systemId}/pos/shifts?unit=${encodeURIComponent(unitId)}`} className="btn btn-primary min-h-[44px] text-sm">
+              {ts("open")}
+            </a>
+          </div>
+        )}
+        {/* POS P2.4U ▸ มติ 4: โหลดรอบร่างของโต๊ะ / โต๊ะปิดแล้ว ◂ */}
+        {tableOn && tbl.phase !== "ready" && (
+          <div data-testid="pos-tbl-order-state" data-phase={tbl.phase} className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[10px] text-[14px] text-[color:var(--color-ink)]" role="status">
+            <RegisterIcon name={tbl.phase === "closed" ? "warn" : "grid"} size={16} />
+            <span className="flex-1">{tbl.phase === "closed" ? tTables("order.closed") : tTables("order.loading")}</span>
+            {tbl.phase === "closed" && (
+              <a data-testid="pos-tbl-order-closed-back" href={tablesHref} className="btn btn-ghost min-h-[44px] text-sm">
+                {tTables("order.back")}
+              </a>
+            )}
+          </div>
+        )}
+        {/* POS P2.3U ▸ มติ 5: ตัดสต็อกค้าง N บิล (ปุ่มเฉพาะ pos.settings.manage) ◂ */}
+        {(status?.pendingStockCount ?? 0) > 0 && <PendingCutsChip count={status!.pendingStockCount} canRetry={props.canRetryStockCuts === true} busy={retryingCuts} onRetry={() => void retryCuts()} />}
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <div className="flex min-w-0 flex-1 flex-col px-[22px] md:min-h-0 md:border-r md:px-0">
+            <SearchRow
+              ref={searchRef}
+              q={q}
+              onQ={setQ}
+              onEnter={() => void addFromSearchEnter()}
+              wide={xl}
+              compact={wide === false}
+              canCustom={limits.canOverridePrice}
+              onCustom={() => (limits.canOverridePrice ? push({ kind: "custom" }) : onNeedsApproval("errors.needPriceOverride"))}
+              onCamera={openCamera}
+              disabled={frozen}
+            />
+            <CategoryChips categories={categories} active={categoryId} onPick={pickCategory} />
+            {props.initialCatalog === null && products.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-[15px] text-[color:var(--color-muted)]" role="alert">
+                <p>{t("errors.loadFailed")}</p>
+                <button data-testid="pos-reg-grid-retry" className="btn btn-ghost h-11 rounded-[13px] px-5 text-[15px]" type="button" onClick={() => loadCatalog(q, categoryId)}>
+                  {t("pay.retry")}
+                </button>
+              </div>
+            ) : (
+              <ProductGrid
+                products={products}
+                inCart={inCart}
+                pending={catalogPending}
+                q={shownQ}
+                categoryId={categoryId}
+                catalogueEmpty={catalogueEmpty}
+                canManageProducts={props.canManageProducts ?? true}
+                hasMore={!!nextCursor}
+                productsHref={`${base}/pos/products`}
+                onPick={pick}
+                selectedId={top?.kind === "options" && top.anchor ? top.product.id : null}
+                onMore={loadMore}
+                onClearSearch={() => {
+                  setQ("");
+                  focusSearch();
+                }}
+              />
+            )}
+            {wide !== true && (
+              <MobileCartBar
+                peek={peek}
+                count={cart.lines.length}
+                totalText={offMode ? offAmount : payAmount /* POS P3.4U ◂ */}
+                payEnabled={tableOn ? tbl.phase === "ready" && cart.lines.length > 0 && !tblBusy : offMode ? offPayEnabled /* POS P3.4U ◂ */ : payEnabled}
+                empty={cart.lines.length === 0}
+                onOpen={() => push({ kind: "sheet" })}
+                onPay={tableOn ? () => void tableRun(true) : openPay}
+                {...(tableOn ? { payLabel: tTables("actions.sendRound") } : { onOpenHeld: openHeld, heldCount })} // POS P2.14 ▸ UI-2: ตะกร้าว่าง 390 → บิลที่พัก ◂
+              />
+            )}
+          </div>
+          {wide !== false && <div className="hidden min-h-0 shrink-0 md:flex md:w-[340px] lg:w-[380px] xl:w-[480px]">{cartPanel("inline")}</div>}
+        </div>
+
+        <RegisterStatusBar
+          pendingStock={status?.pendingStockCount ?? 0}
+          pendingSync={props.offlineEnabled ? off.queued : (status?.pendingSyncCount ?? 0) /* POS P3.4U ▸ มติ 5: เปิดธง = คิวในเครื่อง ◂ */}
+          device={
+            device === undefined
+              ? undefined
+              : {
+                  name: device && device.status === "ACTIVE" ? device.name : null,
+                  revoked: device?.status === "REVOKED" || status?.deviceStatus === "REVOKED",
+                  settingsHref: `${base}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}`,
+                  printer: printer.config.mode === "browser" ? "browser" : printerPaired(printer.config.mode, printer.deviceCode) ? "ready" : "none",
+                  paper: printer.config.paper,
+                }
+          }
+        />
+      </div>
+
+      {/* ── ชั้นกล่อง (วาดตามลำดับ — ตัวท้ายอยู่บนสุด) · ชั้นที่ไม่ใช่บนสุด = inert (B2.2 S2) ── */}
+      {layers.map((l, i) => (
+        <div key={`${l.kind}-${i}`} className="contents" inert={i < layers.length - 1}>
+          {layerNode(l, `${l.kind}-${i}`)}
+        </div>
+      ))}
+      </div>
+      {toast && (
+        <div
+          data-testid="pos-reg-toast"
+          className="pointer-events-none fixed inset-x-4 bottom-[max(24px,env(safe-area-inset-bottom))] z-[80] mx-auto flex max-w-[520px] items-center gap-3 rounded-[16px] bg-[color:var(--color-ink)] px-[18px] py-[14px] text-[14px] leading-[1.5] text-[color:var(--color-surface)] shadow-xl max-md:bottom-[150px]"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="min-w-0 flex-1">{msgNode(toast)}</span>
+          {toast.offerCustom && limits.canOverridePrice && !locked && (
+            <button
+              data-testid="pos-reg-scan-add-custom"
+              className="pointer-events-auto h-11 shrink-0 rounded-[11px] border border-[color:var(--color-surface)] px-3 text-[14px] font-semibold"
+              type="button"
+              onClick={() => {
+                setToast(null);
+                if (!frozenRef.current) push({ kind: "custom" });
+              }}
+            >
+              {t("scan.addAsCustom")}
+            </button>
+          )}
+          {/* POS P4.3 ▸ F-P3-21: ลิงก์การ์ด 86 (หน้าบอร์ดตรวจสิทธิ์เอง) · cardNo null = ป้ายไม่มีเลข ◂ */}
+          {toast.card && (
+            <a
+              data-testid={`pos-reg-board-card-${toast.card.productId}`}
+              href={toast.card.href}
+              className="pointer-events-auto inline-flex h-11 shrink-0 items-center rounded-[11px] border border-[color:var(--color-surface)] px-3 text-[14px] font-semibold"
+            >
+              {toast.card.cardNo != null ? (toast.card.completed ? t("board.cardDone", { n: toast.card.cardNo }) : t("board.card", { n: toast.card.cardNo })) : toast.card.completed ? t("board.cardDoneNoNumber") : t("board.cardNoNumber")}
+            </a>
+          )}
+        </div>
+      )}
+      {locked && (
+        <LockScreen
+          mode={lockMode}
+          systemId={systemId}
+          unitId={unitId}
+          deviceId={deviceId}
+          tenantName={props.tenantName}
+          unitName={props.units.find((u) => u.id === unitId)?.name ?? ""}
+          deviceLabel={(device && device.status === "ACTIVE" ? device.name : null) ?? status?.shift?.deviceLabel ?? null}
+          shift={status?.shift ?? null}
+          online={online}
+          current={lastStaffRef.current}
+          lockedAt={lockedAt}
+          heldItems={heldItems}
+          heldCount={heldCount}
+          autoLockMinutes={props.autoLockMinutes ?? 2}
+          settingsHref={`${base}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}`}
+          sessionUserId={userId}
+          onCancel={noPinMode ? () => setLockFlag(false) : undefined}
+          onStaffChanged={() => void refreshPins()}
+          onUnlocked={(n) => void onUnlocked(n)}
+          // POS P3.4U ▸ มติ 7: PIN ออฟไลน์ — เปิดธงเท่านั้น (ปลดได้เฉพาะคนในโทเคน · ตัวตรวจเขียนตอนปลดออนไลน์สำเร็จ) ◂
+          offline={props.offlineEnabled ? { holder: offHolder, tryUnlock: offTryUnlock } : undefined}
+          onPinVerified={props.offlineEnabled ? off.rememberUnlock : undefined}
+        />
+      )}
+    </div>
+  );
+}

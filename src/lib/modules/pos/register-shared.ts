@@ -1,0 +1,1223 @@
+// register-shared.ts — ชนิดข้อมูล ค่าคงที่ และตัวช่วยบริสุทธิ์ของหน้าขายใหม่ (POS P1.3)
+//
+// 🔴 ไฟล์นี้ client component import ได้: import ค่าได้แค่ `./pricing-shared` และ `@/lib/ui/money` (ข้อสอบ S5.14 · สเปก G9)
+//    ห้ามแตะ prisma / register.ts / catalog.ts / service.ts — ฝั่งเซิร์ฟเวอร์อยู่ที่ register.ts + register-actions.ts
+// 🔴 สัญญาข้อมูล = สเปก §3.2 + มติ Q6 Q9 Q21–Q23 Q25 + Addendum 2 (รหัสปฏิเสธ · submit ต้องมี expectedGrandTotalSatang · CASH/PROMPTPAY)
+//    ข้อความ `message` ที่เซิร์ฟเวอร์คืนเป็นภาษาไทยไว้ดูใน log — จอ "ห้าม" แสดง ใช้ `refusalMessageKey(code)` → คีย์ pos.register.errors.*
+
+import { formatBaht } from "@/lib/ui/money";
+import type { PriceDiscount, PriceCartInput, PriceVat } from "./pricing-shared";
+import type { TaxInvoiceBuyerInput } from "./tax-invoice-shared"; // POS P1.13 ◂
+import type { PriceSource } from "./price-shared"; // POS P2.2 ◂
+
+// ═══════════ ค่าคงที่ ═══════════
+export const REGISTER_MAX_LINES = 200;
+export const REGISTER_MAX_QTY = 9999;
+/** "เหลือ N" เมื่อ stockLeft ≤ ค่านี้ (มติ Q10) */
+export const REGISTER_LOW_STOCK = 5;
+/** ขนาดหน้าปริยายของ registerCatalog (สูงสุด REGISTER_PAGE_MAX) */
+export const REGISTER_PAGE_SIZE = 100;
+export const REGISTER_PAGE_MAX = 500;
+/** วิธีจ่ายที่หน้าขายรับ (P1.3 Addendum 2 + P1.6 R2: โอน + บัตรแบบกรอกเลขอ้างอิง EDC · ไม่มีเกตเวย์ = P1.7) */
+// POS P2.9 ▸ R1: + GIFT_CARD (giftCard {number, pin} · ≤ 3 ใบ) + STORE_CREDIT (เครดิตร้านของสมาชิกในบิล · ไม่มี PIN · แถวเดียว) ◂
+// POS P2.9b ▸ R4 มติ 2: + DEPOSIT (= {DEPOSIT, amountSatang, depositId} เท่านั้น · ไม่มี depositId = VALIDATION · ทิปไม่จ่ายจากมัดจำ) — payOrder ยังปฏิเสธ (order.ts) ◂
+// POS P3.6 ▸ R6 มติ 9: + ON_ACCOUNT (วางบิล · เครดิตเทอม) = {ON_ACCOUNT, amountSatang} แถวเดียวเต็มยอด · ต้องมี customerPartyId (บริษัท) — ตัวตัดสินจริง = createSale ◂
+export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM", "GIFT_CARD", "STORE_CREDIT", "DEPOSIT", "ON_ACCOUNT"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
+/** P1.6 R2: แบ่งจ่ายได้ไม่เกินกี่รายการ (ชนิดซ้ำได้ · เงินสดได้รายการเดียว) — เกิน = SPLIT_INVALID */
+export const REGISTER_MAX_PAY_METHODS = 10;
+/** P1.6 R5: หมายเหตุบิล/บรรทัดยาวได้ไม่เกิน (ตัวอักษร) */
+export const REGISTER_NOTE_MAX = 500;
+/** P1.6: เลขอ้างอิงบัตร/โอน ยาวได้ไม่เกิน */
+export const REGISTER_REFERENCE_MAX = 100;
+/** POS P1.2 R1: ตัวเลือกต่อบรรทัดได้ไม่เกิน (เกิน = VALIDATION) */
+export const REGISTER_MAX_OPTIONS_PER_LINE = 20;
+/** POS P1.2 R12: น้ำหนักที่กรอกเอง (กรัม) ได้ 1–ค่านี้ */
+export const REGISTER_MAX_WEIGHT_GRAMS = 99_999;
+/** เพดานส่วนลดปริยายของ STAFF (basis point · docs/modules/14-pos.md §9) — OWNER/MANAGER ไม่จำกัด เว้นตั้ง `pos._maxDiscountBp` */
+export const REGISTER_STAFF_MAX_DISCOUNT_BP = 1000;
+
+// ═══════════ POS P1.15 R4 ▸ เพดานส่วนลดตามบทบาท (AppSystem(POS).settings.pos.discount) ◂ ═══════════
+/** เพดาน (basis point) ต่อบทบาท — STAFF = คีย์หลัก · CASHIER = ชื่อเรียกอีกแบบของ STAFF (CONTROLLER-DECISION 3) */
+export type PosDiscountCaps = { STAFF: number; MANAGER: number; OWNER: number };
+export const POS_DISCOUNT_CAPS_DEFAULT: PosDiscountCaps = { STAFF: REGISTER_STAFF_MAX_DISCOUNT_BP, MANAGER: 10_000, OWNER: 10_000 };
+/**
+ * อ่าน `settings.pos.discount.maxBpByRole` แบบมีค่าปริยาย (บริสุทธิ์) — ไม่ใช่ออบเจกต์/ผิดรูป = ค่าปริยายทั้งหมด ·
+ * ค่าที่ใช้ได้ = จำนวนเต็ม 0–10000 · บทบาทที่ไม่ตั้ง/ผิดรูป = ค่าปริยายของบทบาทนั้น · STAFF ไม่ตั้งแต่มี CASHIER = ใช้ CASHIER
+ * (คีย์ `overrideRequiresPin` เดิมของ brief ถูกยกเลิก — ส่วนลดเกินสิทธิ์ต้องใช้ PIN ผู้จัดการ/สายอนุมัติเสมอ · มติ 3)
+ */
+export function posDiscountCaps(settings: unknown): PosDiscountCaps {
+  const rec = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+  const by = rec(rec(rec(rec(settings)?.pos)?.discount)?.maxBpByRole);
+  const bp = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 10_000 ? v : null);
+  if (!by) return { ...POS_DISCOUNT_CAPS_DEFAULT };
+  return {
+    STAFF: bp(by.STAFF) ?? bp(by.CASHIER) ?? POS_DISCOUNT_CAPS_DEFAULT.STAFF,
+    MANAGER: bp(by.MANAGER) ?? POS_DISCOUNT_CAPS_DEFAULT.MANAGER,
+    OWNER: bp(by.OWNER) ?? POS_DISCOUNT_CAPS_DEFAULT.OWNER,
+  };
+}
+
+// ═══════════ POS P1.15 ▸ PIN พนักงาน · โทเคนผู้ขาย (ชนิดของ staff-pin.ts · client import ได้) ◂ ═══════════
+/** PIN = ตัวเลข 4–6 หลัก (ASCII) · ผิดติดกันกี่ครั้งจึงล็อก · ล็อกนานเท่าไร · อายุโทเคนผู้ขาย */
+export const STAFF_PIN_RE = /^[0-9]{4,6}$/;
+export const STAFF_PIN_LOCK_AFTER = 5;
+export const STAFF_PIN_LOCK_MS = 15 * 60_000;
+export const STAFF_TOKEN_TTL_MS = 12 * 3_600_000;
+/** POS P1.18 ▸ K1 (มติ 2): ใส่ PIN แบบไม่ระบุคนผิดครบ N ครั้งบนเครื่องเดียวภายในหน้าต่าง ⇒ PIN_THROTTLED ทุกครั้งถัดไปของเครื่องนั้นจนพ้นหน้าต่าง ◂ */
+export const STAFF_PIN_DEVICE_THROTTLE_AFTER = 10;
+export const STAFF_PIN_DEVICE_THROTTLE_MS = 15 * 60_000;
+/** POS P1.18 ▸ K1 แก้รอบ 1 F2: ผิดแบบไม่ระบุคนรวมทั้งสาขาครบ N ครั้งในหน้าต่างเดียวกัน ⇒ PIN_THROTTLED ทุกครั้งถัดไปแบบไม่ระบุคนของสาขานั้น
+ *  (รหัสเครื่องมาจาก client — เปลี่ยนรหัสใหม่ทุก 9 ครั้งต้องไม่ช่วยให้เดาได้) · รหัสเครื่องที่ไม่ได้ลงทะเบียนทุกตัวของสาขานับเป็น "เครื่องเดียว" ◂ */
+export const STAFF_PIN_UNIT_THROTTLE_AFTER = 30;
+export type StaffPinOk = { ok: true };
+/** ผล verifyStaffPin: staffToken ส่งต่อใน staffToken ของ submit/พัก/เรียกคืน/เปิดกะ · expiresAt = ISO */
+export type VerifyStaffPinOk = { ok: true; userId: string; role: RegisterRole; staffToken: string; expiresAt: string };
+export type StaffListItem = {
+  userId: string;
+  name: string | null;
+  role: RegisterRole;
+  hasPin: boolean;
+  shift: { id: string; openedAt: string } | null;
+  /** POS P3.5 ▸ R5: สถานะจากระบบพนักงาน (มีคีย์เฉพาะร้านที่มีระบบ HR) — ไม่มีชนิด/เหตุผลการลา ไม่มีเงิน (privacy [L]) ◂ */
+  hr?: StaffHrState;
+};
+/** POS P3.5 ▸ R4: เหตุที่ด่านตารางงานไม่ปลดล็อก (หลัง PIN ถูก · มีเฉพาะทางที่ระบุคน) ◂ */
+export type StaffScheduleReason = "OUTSIDE_HOURS" | "DAY_OFF" | "LEAVE" | "INACTIVE";
+/** POS P3.5 ▸ R5: schedule = เวลาเข้า/เลิกของวันนี้ (นาทีเวลาไทย · null = ไม่มีตาราง/วันหยุด/ไม่ผูก) · inSchedule null = ไม่มีข้อมูลให้ตัดสิน ◂ */
+export type StaffHrState = { schedule: { startMin: number; endMin: number } | null; onLeave: boolean; inSchedule: boolean | null };
+/** POS P4.3 ▸ F-P3-19 · CD-P43-O5: overrideTtlMin = นาทีที่ผู้จัดการอนุญาตนอกตารางได้ (posScheduleGate · ข้อความ lock.schedule.overrideBody {minutes}) ◂ */
+export type ListStaffForDeviceResult = { ok: true; items: StaffListItem[]; overrideTtlMin: number } | RegisterRefusal;
+
+/** POS P1.5: บิลที่พัก (HELD) อายุเกินกี่วันนับจาก createdAt (24 ชม.ต่อวัน แบบเลื่อน) ⇒ ทิ้งเองตอนเปิดรายการ — ตั้งได้ที่
+ *  `AppSystem(POS).settings.pos.heldCart.expireDays` (จำนวนเต็ม 1–365) · ไม่ตั้ง/ผิดรูป = ค่านี้ */
+export const HELD_CART_EXPIRE_DAYS = 2;
+/** POS P1.18 ▸ R3 ตัวอ่านเดียวของ `settings.pos.heldCart.expireDays` (held-cart.ts + ตัวเขียนทั่วไปใช้ตัวนี้ · บริสุทธิ์) —
+ *  จำนวนเต็ม 1–365 · ไม่ตั้ง/ผิดรูป/ไม่ใช่ตัวเลข = HELD_CART_EXPIRE_DAYS (พฤติกรรมเดิมของ expireOf ทุกประการ) ◂ */
+export function posHeldCartExpireDays(settings: unknown): number {
+  const s = (settings ?? {}) as { pos?: { heldCart?: { expireDays?: unknown } | null } | null };
+  const v = typeof s === "object" ? s.pos?.heldCart?.expireDays : undefined;
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 365 ? v : HELD_CART_EXPIRE_DAYS;
+}
+/** ป้ายบิลที่พักยาวได้ไม่เกิน (ตัวอักษร) */
+export const HELD_CART_LABEL_MAX = 60;
+
+// ═══════════ ธงหน้าขายใหม่ (มติ Q4) ═══════════
+/**
+ * ธง `AppSystem(POS).settings.pos.registerV2` — เทียบ === true เคร่ง (สตริง "true" / 1 = จอเดิม)
+ * 🔴 ตัวอ่านเดียวของธงนี้: register/page.tsx (เลือกจอ) + app/layout.tsx (บอก shell ว่าหน้าขายของระบบไหนเป็นโหมดราง — B2.1)
+ *    ทั้งคู่ต้องตัดสินตรงกัน ไม่งั้นจอเดิมได้รางหรือจอใหม่ได้แถบเต็ม ⇒ ห้ามเขียนตัวอ่านซ้ำที่อื่น
+ */
+export function posRegisterV2On(settings: unknown): boolean {
+  const s = (settings ?? {}) as { pos?: { registerV2?: unknown } | null };
+  return typeof s === "object" && s.pos?.registerV2 === true;
+}
+
+/** POS P1.15U ▸ ล็อกจออัตโนมัติหลังไม่ใช้งาน N นาที — `settings.pos.register.autoLockMinutes` (จำนวนเต็ม 0–60 · 0 = ปิด) · ไม่ตั้ง/ผิดรูป = 2 ◂ */
+export const REGISTER_AUTO_LOCK_MINUTES = 2;
+export function posRegisterAutoLockMinutes(settings: unknown): number {
+  const s = (settings ?? {}) as { pos?: { register?: { autoLockMinutes?: unknown } | null } | null };
+  const v = typeof s === "object" ? s.pos?.register?.autoLockMinutes : undefined;
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 60 ? v : REGISTER_AUTO_LOCK_MINUTES;
+}
+
+// ═══════════ ชนิดข้อมูล ═══════════
+export type RegisterRole = "OWNER" | "MANAGER" | "STAFF";
+
+/** ผู้ขาย — ทรงเดียวกับ MemberActor · action สร้างจาก membership ของ SESSION เท่านั้น */
+export type RegisterActor = { userId: string; role: RegisterRole; unitAccess: string[]; permissions: Record<string, unknown> };
+/** ขอบเขตของคำขอ: ร้าน (จาก session) + ระบบ POS + สาขา */
+/** POS P1.9: deviceId = รหัสเครื่อง (client สร้างครั้งเดียวเก็บ localStorage · [A-Za-z0-9_-]{8,64}) — ใช้หากะของเครื่อง · ผิดรูป = VALIDATION */
+export type RegisterCtx = { tenantId: string; systemId: string; unitId: string; deviceId?: string };
+
+/** คำศัพท์รหัสปฏิเสธ (ชุดเดียวกับ catalog + สเปก §4.6 + Addendum) */
+export type RegisterRefusalCode =
+  | "NOT_FOUND"
+  | "PERMISSION_DENIED"
+  | "VALIDATION"
+  | "INVALID_LINE"
+  | "PRODUCT_NOT_FOUND"
+  | "PRODUCT_UNAVAILABLE"
+  | "OPTIONS_REQUIRED"
+  | "MEMBER_NOT_FOUND"
+  | "MEMBER_RIGHTS_UNSUPPORTED"
+  | "PRICE_NOT_SET"
+  | "PRICE_CHANGED"
+  | "PAYMENT_MISMATCH"
+  | "IDEMPOTENCY_CONFLICT"
+  | "LINE_DISCOUNT_EXCEEDS_LINE"
+  | "BILL_DISCOUNT_EXCEEDS_TOTAL"
+  | "DISCOUNT_EXCEEDS_LIMIT"
+  | "TOO_MANY_LINES"
+  | "STOCK_INSUFFICIENT"
+  | "CONFLICT"
+  | "BUSY"
+  | "INTERNAL"
+  | "UNKNOWN"
+  // POS P1.5: เรียกคืนบิลที่พักซึ่งเครื่องอื่นเรียกไปแล้ว (ผู้ชนะคนเดียว · H2)
+  | "ALREADY_RECALLED"
+  // POS P1.6: สาขาไม่ใช่ของจุดขายนี้ / ร้านมีหลายจุดขายแต่สาขาไม่ผูก (O21) · แบ่งจ่ายเกินเพดาน · เปิดทิปโดยไม่มีบัญชีพักทิป
+  | "UNIT_SYSTEM_MISMATCH"
+  | "SPLIT_INVALID"
+  | "TIP_ACCOUNT_REQUIRED"
+  // POS P1.9: กะ/ลิ้นชัก
+  | "SHIFT_REQUIRED"
+  | "SHIFT_ALREADY_OPEN"
+  | "SHIFT_CLOSED"
+  | "REASON_REQUIRED"
+  | "DRAWER_INSUFFICIENT"
+  // POS P1.2: ตัวเลือก (ไม่มีในกลุ่มที่ผูก/เกินจำนวน · หมดชั่วคราว) · ขายแม่ที่มีตัวแปร · สินค้าชั่งไม่มีน้ำหนัก
+  | "OPTIONS_INVALID"
+  | "OPTION_UNAVAILABLE"
+  | "VARIANT_REQUIRED"
+  | "WEIGHT_REQUIRED"
+  // POS P1.10: เครื่องที่ถูกเพิกถอน (ขาย/เปิดกะ/พัก/เรียกคืน) · ลงทะเบียนเกินเพดาน · ไม่พบเครื่องในสาขานี้
+  | "DEVICE_REVOKED"
+  | "DEVICE_LIMIT"
+  | "DEVICE_NOT_FOUND"
+  // POS P1.7: ใบขอรับเงิน (reference "pi_…" ของ PROMPTPAY/CARD) — ไม่พบ/สาขาอื่น · ยังไม่จ่าย · ใช้แล้ว · จ่ายเกิน 24 ชม. · ยอดไม่ตรง
+  | "INTENT_NOT_FOUND"
+  | "INTENT_NOT_PAID"
+  | "INTENT_CONSUMED"
+  | "INTENT_EXPIRED"
+  | "AMOUNT_MISMATCH"
+  // POS P1.15: PIN พนักงาน · โทเคนผู้ขายบนเครื่อง · สายอนุมัติ (R9)
+  | "PIN_INVALID"
+  | "PIN_LOCKED"
+  // POS P1.18 ▸ K1: เครื่องนี้ใส่ PIN แบบไม่ระบุคนผิดเกินกำหนด (รอพ้นหน้าต่าง 15 นาที) ◂
+  | "PIN_THROTTLED"
+  // PIN_TAKEN คงไว้ให้ client เก่า — P1.18 K2: ไม่ถูกคืนแล้ว (PIN ซ้ำ = คำปฏิเสธเดียวกับ PIN อ่อน)
+  | "PIN_TAKEN"
+  | "WEAK_PIN"
+  | "STAFF_TOKEN_INVALID"
+  | "APPROVAL_REQUIRED"
+  | "PENDING_APPROVAL"
+  // fix รอบ 1 F1: บิลที่ส่งพร้อม heldCartId ไม่ตรงกับที่อนุมัติ (ตะกร้า/ยอด/เจ้าของบิลพัก)
+  | "APPROVAL_MISMATCH"
+  // POS P1.15U fix รอบ 1 F1: ตั้ง PIN ของตัวเองซ้ำจากจอล็อก
+  | "ALREADY_SET"
+  // POS P1.13: เลขผู้เสียภาษีของผู้ซื้อ (ใบกำกับเต็มรูปตอนชำระ) ผิด checksum/รูปแบบ
+  | "TAX_ID_INVALID"
+  // POS P1.13 follow-up 3: ขอใบกำกับเต็มรูปตอนชำระแต่ร้านออกใบกำกับไม่ได้ (ไม่ผูกสมุดจด VAT / ไม่มีเลขภาษี / ปิดใบอย่างย่อ / บิลไม่มี VAT)
+  | "NOT_ELIGIBLE"
+  // POS P1.12 ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (R1 R4 R11 R16) — MEMBER_RIGHTS_UNSUPPORTED คงไว้ให้จอเก่า (หน้าขายไม่คืนแล้ว) ◂
+  | "MEMBER_SYSTEM_MISSING"
+  | "MEMBER_SUSPENDED"
+  | "PHONE_INVALID"
+  | "VOUCHER_INVALID"
+  | "VOUCHER_COUPON_CONFLICT"
+  | "COUPON_INVALID"
+  | "POINTS_DISABLED"
+  | "POINTS_BELOW_MIN"
+  | "POINTS_INSUFFICIENT"
+  | "POINTS_CAPPED"
+  | "BENEFITS_EXCEED_TOTAL"
+  | "MEMBER_RIGHTS_CHANGED"
+  // POS P2.1 ▸ ช่องทางขาย (R13) — ช่องทางที่ส่งมาใช้ไม่ได้ · วิธีจ่ายไม่ตรงช่องทาง · ตั้งค่าช่องทาง ◂
+  | "CHANNEL_INVALID"
+  | "CHANNEL_PAY_MISMATCH"
+  | "CHANNEL_NOT_FOUND"
+  | "CHANNEL_CODE_TAKEN"
+  | "CHANNEL_BUILTIN_LOCKED"
+  | "CHANNEL_LIMIT"
+  // POS P2.2 ▸ ราคาตามช่องทาง (R12) — สินค้าไม่ขายในช่องทางนี้ (lineIndex) · โปรราคาไม่พบ · โปรราคาครบเพดาน ◂
+  | "CHANNEL_NOT_SOLD"
+  | "PRICE_RULE_NOT_FOUND"
+  | "PRICE_RULE_LIMIT"
+  // POS P2.5 ▸ แยกบิล/ย้าย/รวมโต๊ะ (R11): มีแผนแยกบิลเปิดอยู่ (จ่ายทั้งโต๊ะ/ยกเลิกรายการ/รวมโต๊ะไม่ได้) · มีแผนอยู่แล้ว (พก splitId/version) ·
+  //   แผนแช่แข็งหลังจ่ายใบแรก · ใบนี้จ่ายแล้ว · ไม่พบแผน/ใบ · โต๊ะปลายทางมีลูกค้า · มีรอบร่างค้างหลายโต๊ะ (รวมโต๊ะ) ◂
+  | "TABLE_SPLIT_OPEN"
+  | "TABLE_SPLIT_EXISTS"
+  | "TABLE_SPLIT_LOCKED"
+  | "TABLE_SPLIT_PART_PAID"
+  | "TABLE_SPLIT_NOT_FOUND"
+  | "TABLE_BUSY"
+  | "TABLE_HAS_DRAFT"
+  // POS P2.4 ▸ โหมดโต๊ะ (R12) — โต๊ะ/session/การจอง/คำขอของสาขาอื่นหรือไม่มีจริง · โต๊ะปิดใช้งาน · session ปิดแล้ว · ไม่มีรายการให้เช็คบิล ·
+  //   รายการของโต๊ะเปลี่ยนระหว่างเช็คบิล · ปิดโต๊ะที่ยังมีรายการค้างจ่าย ◂
+  | "TABLE_NOT_FOUND"
+  | "TABLE_INACTIVE"
+  | "TABLE_SESSION_CLOSED"
+  | "TABLE_EMPTY"
+  | "TABLE_ITEMS_CHANGED"
+  | "TABLE_HAS_UNPAID"
+  // POS P2.4 ▸ fix 2 F1: รอบร่างของโต๊ะถูกแก้/ส่งครัว/ทิ้งโดยอีกเครื่อง (expectedVersion/heldCartId ไม่ตรง · newDraft ขณะมีรอบร่าง) ◂
+  | "VERSION_CHANGED"
+  // POS P2.9 ▸ R11: บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระ — ไม่พบ (รวมร้านอื่น) · PIN ผิด · ล็อก PIN · ยอด/สถานะเปลี่ยน · ไม่ใช่เจ้าของเครดิต ◂
+  | "GIFT_CARD_NOT_FOUND"
+  | "GIFT_CARD_PIN"
+  | "GIFT_CARD_LOCKED"
+  | "GIFT_CARD_CHANGED"
+  | "STORE_CREDIT_NOT_OWNER"
+  // POS P2.9b ▸ R10: มัดจำเป็นวิธีชำระ — ไม่พบ (รวมสาขา/ร้านอื่น · ข้อความเดียว) · เป็นของสมาชิกคนอื่น · เกินคงเหลือ · ใช้หมด/คืนแล้ว ◂
+  | "DEPOSIT_NOT_FOUND"
+  | "DEPOSIT_NOT_OWNER"
+  | "DEPOSIT_EXCEEDS"
+  | "DEPOSIT_CLOSED"
+  // POS P2.9b ▸ fix2 มติ 3: 4 หลักท้ายของเบอร์ผิดครบ 5 ครั้ง — ระงับ 15 นาที ◂
+  | "DEPOSIT_LOCKED"
+  // POS P3.5 ▸ R13: นอกตารางงาน HR (หลัง PIN ถูก · reason/window) · ลงเวลาซ้ำ · ผู้ใช้ไม่ผูกพนักงาน HR ◂
+  | "OFF_SCHEDULE"
+  | "ALREADY_CLOCKED"
+  | "NO_EMPLOYEE"
+  // POS P3.6 ▸ R15: วางบิล (เครดิตเทอม) + ลูกค้าองค์กร + ดีล ◂
+  | "CREDIT_DISABLED"
+  | "CREDIT_NOT_ALLOWED"
+  | "CREDIT_TERM_ZERO"
+  | "CREDIT_LIMIT_EXCEEDED"
+  | "CREDIT_INVOICE_PAID"
+  | "CUSTOMER_INVALID"
+  | "DEAL_INVALID";
+
+/** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
+export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number; /** POS P2.14 ▸ DEP-1: แถวมัดจำของคำปฏิเสธ DEPOSIT_NOT_FOUND / DEPOSIT_NOT_OWNER / DEPOSIT_LOCKED ◂ */ depositId?: string; /** POS P2.14 ▸ UI-9: GIFT_CARD_PIN — ลำดับแถวบัตรของขวัญ (เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ ◂ */ giftCardRow?: number; attemptsLeft?: number; /** POS P3.5 ▸ R4: OFF_SCHEDULE — เหตุ + ช่วงตาราง (OUTSIDE_HOURS) ◂ */ reason?: StaffScheduleReason; window?: { startMin: number; endMin: number }; /** POS P3.6 ▸ CD-4: CREDIT_LIMIT_EXCEEDED — วงเงิน + ภาพหนี้ (สตางค์) เฉพาะผู้ถือ pos.credit.manage ◂ */ limitSatang?: number; exposureSatang?: number };
+
+export type RegisterSoldOutReason = "UNAVAILABLE" | "NO_STOCK";
+export type RegisterProduct = {
+  id: string;
+  invItemId: string | null;
+  name: string;
+  nameEn: string | null;
+  kind: "PRODUCT" | "SERVICE" | "MENU" | "BUNDLE";
+  categoryId: string | null;
+  /** null = ยังไม่ตั้งราคา (ไม่ใช้ต้นทุนแทน · ขายได้เฉพาะราคาเปิดของผู้มี pos.sale.priceOverride) */
+  priceSatang: number | null;
+  sku: string | null;
+  barcode: string | null;
+  imageUrl: string | null;
+  /** P1.2: ตัวแปรใช้กลุ่มของสินค้าแม่ (P6) */
+  optionGroupCount: number;
+  /** กลุ่มตัวเลือกบังคับ (minSelect ≥ 1) — > 0 = ต้องส่ง options ที่เลือกครบ (P1.2 R2 · ไม่ครบ = OPTIONS_REQUIRED) */
+  requiredOptionGroupCount: number;
+  /** P1.2 R6: แม่ของตัวแปร (null = ไม่ใช่ตัวแปร) · ตัวแปรที่ไม่ตั้งราคาใช้ราคาแม่ใน priceSatang แล้ว (P5) */
+  parentId: string | null;
+  /** P1.2 R6: จำนวนตัวแปรที่ขายได้ที่สาขานี้ — > 0 = ต้องเลือกตัวแปร (ขายแม่ตรง = VARIANT_REQUIRED) */
+  variantCount: number;
+  /** P1.2 R9: ขายตามน้ำหนัก — priceSatang = ราคาต่อกิโลกรัม · ต้องส่ง weighedBarcode หรือ weightGrams (ไม่ส่ง = WEIGHT_REQUIRED) */
+  soldByWeight: boolean;
+  soldOut: boolean;
+  /** UNAVAILABLE = ปิดขายที่สาขา (กดขายไม่ได้ · ชนะหมดสต็อก) · NO_STOCK = นับสต็อกและหมด (ยังขายได้ · ติดลบตามนโยบายปริยาย) */
+  soldOutReason: RegisterSoldOutReason | null;
+  /** POS P2.6 ▸ CD 8: 86 ที่แจ้งผ่านจอครัว/ผู้จัดการ (ไทล์ "หมด · ครัวแจ้ง HH:MM") — มีเฉพาะแถว UNAVAILABLE ที่มี mark · at = ISO ◂ */
+  soldOutMark?: { source: "KDS" | "STOCK" | "MANUAL"; at: string } | null;
+  /** คงเหลือเมื่อนับสต็อก · null = ไม่นับ */
+  stockLeft: number | null;
+  trackStock: boolean;
+  trackStockMode: "auto" | "on" | "off";
+  /**
+   * POS P2.2 ▸ R6: priceSatang = ราคาจริงของหน้าร้าน (STORE) ณ เวลาที่อ่าน · listPriceSatang = ราคาปกติ (ฐาน/ฐานของแม่ · ไม่รวมตัวเลือก) ·
+   * priceSource = ชั้นที่ชนะ (สินค้าชั่ง = WEIGHED · ไม่ตั้งราคา = null · ไม่ขายหน้าร้าน = null + priceSatang null + listPriceSatang มีค่า) ·
+   * priceRule = โปรที่ใช้อยู่ {id, name, endsAt = ปลายหน้าต่างปัจจุบัน ISO | null} · ฝั่งจอสร้างเองได้ (ไม่มี = ไม่ทราบ) ⇒ optional ◂
+   */
+  listPriceSatang?: number | null;
+  priceSource?: PriceSource | null;
+  priceRule?: { id: string; name: string; endsAt: string | null } | null;
+  /** รีวิว F6: true = แถว STORE ที่ชนะเป็น "ไม่ขาย" (รวมสินค้าไม่มีราคาฐาน) — จอแสดง "ไม่ขายหน้าร้าน" และไม่เปิดราคาเปิด · เซิร์ฟเวอร์เติมเสมอ ⇒ optional */
+  notSold?: boolean;
+};
+export type RegisterCategory = { id: string; name: string; nameEn: string | null; productCount: number };
+
+export type RegisterCatalogInput = { q?: string; categoryId?: string; cursor?: string; limit?: number };
+/** POS P2.2 ▸ R6: priceValidUntil = ขอบหน้าต่างโปรถัดไปภายใน 24 ชม. (ISO · null = ไม่มี) — จอ refetch แคตตาล็อกตอนนั้น ◂ */
+export type RegisterCatalogResult = { ok: true; categories: RegisterCategory[]; products: RegisterProduct[]; nextCursor: string | null; priceValidUntil: string | null } | RegisterRefusal;
+
+/** P1.2 R11: ผลสแกนป้ายเครื่องชั่ง — code = ป้ายที่ต้องส่งต่อเป็น weighedBarcode · ค่าใดคิดไม่ได้ (ไม่มีราคาต่อกก.) = null */
+export type RegisterWeighedScan = { code: string; grams: number | null; priceSatang: number | null };
+export type RegisterScanResult =
+  | { ok: true; match: "one"; product: RegisterProduct; weighed?: RegisterWeighedScan }
+  | { ok: true; match: "choose"; products: RegisterProduct[] }
+  | { ok: true; match: "none" }
+  | RegisterRefusal;
+
+// ═══════════ POS P5.3 fix1 ▸ CD-P53-O14 ดัชนีบาร์โค้ดของหน้าขาย (ฝั่งจอ · W-next-6 "barcode < 100 ms บนทาง client") ◂ ═══════════
+//   ผู้เขียนเดียว = register.ts registerBarcodeIndex · ผู้อ่านเดียว = components/pos/register/use-barcode-index.ts (หน่วยความจำล้วน ไม่มี IndexedDB/storage)
+//   แถว = สินค้าที่ขายได้ที่สาขานี้ ไม่มีตัวแปร (variantCount 0) ที่มีบาร์โค้ดบนแถวเองหรือบน InvItem ที่ผูก · บาร์โค้ดที่ชี้ > 1 สินค้า = ไม่อยู่ (เซิร์ฟเวอร์ให้ choose) ·
+//   product = RegisterProduct ตัวเดียวกับที่ registerScan คืนเป็น { match: "one" } (regViews) · อย่างอื่นทั้งหมด (ซ้ำ · แม่มีตัวแปร · ป้ายชั่ง · บัตรสมาชิก · ไม่พบ) = ทางเซิร์ฟเวอร์เดิม
+/** เพดานจำนวนบาร์โค้ดในดัชนี — เกิน = truncated: true (items ว่าง) ⇒ จอไม่ใช้ดัชนี สแกนผ่านเซิร์ฟเวอร์ทุกครั้ง */
+export const REGISTER_BARCODE_INDEX_MAX = 20_000;
+/** รอบดึงดัชนีใหม่ขณะออนไลน์ (ส่ง knownVersion — ไม่เปลี่ยน = ไม่มี payload) */
+export const REGISTER_BARCODE_INDEX_TTL_MS = 15 * 60_000;
+export type RegisterBarcodeIndexItem = { barcode: string; product: RegisterProduct };
+/**
+ * unchanged = knownVersion ตรงกับ version ปัจจุบัน (ไม่มี items) · priceValidUntil = ขอบหน้าต่างโปรถัดไปของสินค้าในดัชนี (ISO · null = ไม่มี) —
+ * จอดึงใหม่แบบไม่ส่ง knownVersion ตอนนั้น (version ไม่ขึ้นกับเวลา) และไม่ใช้ดัชนีหลังขอบนั้นจนกว่าจะได้ชุดใหม่
+ */
+export type RegisterBarcodeIndexResult =
+  | { ok: true; unchanged: true; version: string; /** POS P5.3 fix1c ▸ F3 ◂ */ serverNow: string }
+  | {
+      ok: true;
+      unchanged?: false;
+      version: string;
+      items: RegisterBarcodeIndexItem[];
+      /** POS P5.3 fix1c ▸ F2: รหัสที่ตั้งใจไม่ใส่ (ชี้ > 1 สินค้า · แม่มีตัวแปร) — จอไม่สั่งดึงใหม่เพราะรหัสเหล่านี้ ◂ */
+      excluded: string[];
+      truncated: boolean;
+      priceValidUntil: string | null;
+      /** POS P5.3 fix1c ▸ F3: เวลาเซิร์ฟเวอร์ (ISO) — จอเทียบขอบราคาด้วยนาฬิกาเซิร์ฟเวอร์ ◂ */
+      serverNow: string;
+    }
+  | RegisterRefusal;
+/** POS P5.3 fix1c ▸ CD-P53-O15 F1: route GET ของดัชนี (ไม่ใช่ server action — วิ่งขนานกับ quote/submit) · query systemId, unitId, knownVersion · ETag "<version>" · 304 ◂ */
+export const REGISTER_BARCODE_INDEX_PATH = "/api/pos/register/barcode-index";
+// ◂ POS P5.3 fix1
+
+/** บรรทัดของคำขอ quote/submit — สินค้า (productId) หรือรายการกำหนดเอง (name + unitPriceSatang) */
+/**
+ * P1.2: options = ตัวเลือกที่เลือก (≤ REGISTER_MAX_OPTIONS_PER_LINE · ไม่ซ้ำ · ราคา/ชื่อจาก client ถูกเมิน) ·
+ * สินค้าชั่ง = weighedBarcode (ป้ายเครื่องชั่ง) หรือ weightGrams (กรอกเอง · ต้องมี pos.sale.priceOverride) อย่างใดอย่างหนึ่ง · qty 1
+ */
+export type RegisterLineOptionInput = { choiceId: string };
+export type RegisterQuoteLineInput =
+  | {
+      productId: string;
+      qty: number;
+      discount?: PriceDiscount;
+      openPrice?: true;
+      unitPriceSatang?: number;
+      note?: string;
+      options?: RegisterLineOptionInput[];
+      weighedBarcode?: string;
+      weightGrams?: number;
+    }
+  | { name: string; qty: number; unitPriceSatang: number; discount?: PriceDiscount; note?: string };
+/**
+ * POS P1.12 (R6 · CD4): สิทธิ์ที่เลือกบนจอชำระ — คีย์ตรงตัว (giftCard/voucherIds/อื่น = VALIDATION · บัตรของขวัญเป็นวิธีชำระ = P2.9) ·
+ * voucherId = ว่อชเชอร์ 1 ใบ (vouchersPerSale) · points = จำนวนเต็ม ≥ 0 (0 = ไม่ใช้แต้ม) · ไม่ถูกเก็บในบิลพัก
+ */
+export type RegisterMemberChoices = { voucherId?: string; points?: number };
+/**
+ * คูปอง: POS P1.12 ยก Q12 — couponCode (โค้ดที่ลูกค้ายื่น · ตรวจซ้ำทุก quote/submit) · couponDiscountSatang จาก client ยังเป็น VALIDATION เสมอ
+ * memberChoices = สิทธิ์ที่เลือกบนจอชำระ (ไม่มี memberId = VALIDATION เมื่อเลือกอะไรไว้)
+ */
+export type RegisterQuoteInput = {
+  lines: RegisterQuoteLineInput[];
+  billDiscount?: PriceDiscount;
+  memberId?: string;
+  couponCode?: string;
+  memberChoices?: RegisterMemberChoices;
+  /** POS P2.1 ▸ R10: ช่องทางขาย (SalesChannel.id ของสาขานี้) — ไม่ส่ง = หน้าร้าน (STORE) · อื่น/เก็บแล้ว/ปิด = CHANNEL_INVALID · บิลพักเก็บไว้ ◂ */
+  channelId?: string;
+  /**
+   * POS P2.4 ▸ R6: บิลของโต๊ะ (TableSession.id) — lines ต้องเป็น [] (บรรทัด = รายการที่ส่งครัวแล้วและยังไม่จ่าย · ราคาสำเนาตอนส่ง) ·
+   * ห้ามส่ง channelId (ช่องทางมาจากโต๊ะ) · ผล quote มี `table` · ไม่ใช่ของบิลพัก (บิลพักของโต๊ะใช้ holdRegisterCart({cart, tableSessionId})) ◂
+   */
+  tableSessionId?: string;
+  /**
+   * POS P2.5 ▸ R4: ใบหนึ่งของแผนแยกบิล (PosTableSplitPart.id) — lines ต้องเป็น [] · ห้ามคู่ tableSessionId/billDiscount/channelId (ส่วนลดอยู่บนแผน ·
+   * ช่องทางมาจากโต๊ะ) · สมาชิก = ของใบ (memberId ที่ส่งต้องตรง) · คูปอง/สิทธิ์ได้เฉพาะใบที่มีสมาชิก · ผล quote มี `table` + `split` ◂
+   */
+  tableSplitPartId?: string;
+};
+/** POS P2.5 ▸ ใบของแผนใน quote: submit ส่ง version กลับเป็น expectedSplitVersion (แผนถูกแก้ = VERSION_CHANGED) ◂ */
+export type RegisterQuoteSplit = { splitId: string; partId: string; partNo: number; partCount: number; version: number };
+/** POS P2.4 ▸ บิลของโต๊ะใน quote: itemIds = รายการที่จะถูกคิดเงิน (ลำดับ createdAt, id) · itemsHash = tableItemsHash(itemIds) — submit ส่งกลับเป็น expectedTableItemsHash ◂ */
+export type RegisterQuoteTable = { sessionId: string; tableName: string; itemIds: string[]; itemsHash: string };
+
+/** POS P2.1 ▸ R10: ช่องทางของ quote (ปริยาย = STORE ของสาขา) — คีย์ตายตัว 4 ตัว ◂ */
+export type RegisterQuoteChannel = { id: string; code: string; name: string; payout: "PLATFORM" | "DIRECT" };
+
+/** P1.2 R3: ตัวเลือกที่เซิร์ฟเวอร์ใช้คิดราคา (ราคา/ชื่อสดจาก DB) */
+export type RegisterQuoteLineOption = { choiceId: string; groupId: string; name: string; priceDeltaSatang: number };
+export type RegisterQuoteLine = {
+  productId: string | null;
+  /** = ราคาฐาน (หรือราคาของน้ำหนัก) + optionsSatang */
+  unitPriceSatang: number;
+  grossSatang: number;
+  discountSatang: number;
+  lineTotalSatang: number;
+  /** P1.2 R3: Σ priceDelta ต่อหน่วย (0 = ไม่มีตัวเลือก) */
+  optionsSatang: number;
+  options: RegisterQuoteLineOption[];
+  /** P1.2 R12: น้ำหนักของบรรทัดชั่ง (กรัม) · อื่น ๆ = null */
+  weightGrams: number | null;
+  /**
+   * POS P2.2 ▸ R5: ชั้นราคาที่ชนะ (เซิร์ฟเวอร์เติมทุก quote · ยอดที่จอคิดเองไม่มี ⇒ optional) · listPriceSatang = ราคาปกติไม่รวมตัวเลือก
+   * (OPEN/CUSTOM/WEIGHED = null) · priceRule = โปรที่ให้ราคานี้ {id, name} | null ◂
+   */
+  priceSource?: PriceSource;
+  listPriceSatang?: number | null;
+  priceRule?: { id: string; name: string } | null;
+  /** POS P2.4 ▸ fix 2 F6: เฉพาะบรรทัดบิลโต๊ะที่จะไม่ถูกตัดสต็อก (สินค้าขายที่สาขานี้ไม่ได้แล้ว/สูตรกระจายไม่ได้) — จอ P2.4U แสดงป้าย "ไม่ตัดสต็อก" ◂ */
+  stockCut?: false;
+};
+export type RegisterQuoteTotals = {
+  /** Σ gross ก่อนส่วนลดบรรทัด = "รวม" บนจอ (มติ Q7 · ต่างจาก PosSale.subtotalSatang ที่หลังส่วนลดบรรทัด) */
+  subtotalSatang: number;
+  lineDiscountSatang: number;
+  billDiscountSatang: number;
+  couponDiscountSatang: number;
+  netSatang: number;
+  /** P1.6 ค่าบริการ (รวมอยู่ใน grandTotal + ฐาน VAT) · ระบบไม่เปิดค่าบริการ = 0 */
+  serviceChargeSatang: number;
+  vatSatang: number;
+  grandTotalSatang: number;
+  /** ตรงลำดับบรรทัดที่ส่งมา · ราคาต่อหน่วย = ราคาที่เซิร์ฟเวอร์ใช้จริง (มติ Q22) */
+  lines: RegisterQuoteLine[];
+  vatMode: "INCLUDED" | "NONE";
+  vatRateBp: number;
+  /**
+   * POS P1.12 (R6) — สิทธิ์สมาชิก/คูปองบนยอด: เซิร์ฟเวอร์เติมให้ทุก quote (ยอดที่จอคิดเองในเครื่องไม่มีช่องเหล่านี้ ⇒ optional) ·
+   * grandTotal = subtotal − lineDiscount − billDiscount − coupon + serviceCharge − memberDiscount ·
+   * memberLines = สิทธิ์ที่ใช้ตามลำดับกระเป๋า (TIER → VOUCHER → POINTS · ไม่รวมคูปอง — คูปองอยู่ที่ couponDiscountSatang) ·
+   * memberConflicts = สิทธิ์ที่เลือกแต่ใช้ไม่ได้ (quote ไม่ปฏิเสธ · submit ปฏิเสธด้วยรหัสเดียวกัน)
+   */
+  tierDiscountSatang?: number;
+  memberDiscountSatang?: number;
+  memberLines?: RegisterMemberLine[];
+  pointsToEarn?: number;
+  stampsToAdd?: { cardId: string; name: string; count: number }[];
+  memberConflicts?: RegisterMemberConflict[];
+  /** POS P2.1 ▸ R10: ช่องทางของบิล (เซิร์ฟเวอร์เติมทุก quote · ยอดที่จอคิดเองไม่มี ⇒ optional) ◂ */
+  channel?: RegisterQuoteChannel;
+  /** POS P2.4 ▸ R6: มีเฉพาะ quote ของบิลโต๊ะ (tableSessionId) ◂ */
+  table?: RegisterQuoteTable;
+  /** POS P2.5 ▸ R4: มีเฉพาะ quote ของใบแยกบิล (tableSplitPartId) — table.itemIds = รายการที่ใบนี้ถือ ◂ */
+  split?: RegisterQuoteSplit;
+};
+/** POS P1.12: บรรทัดสิทธิ์สมาชิกบนยอด (ลำดับกระเป๋า) · ref = id ว่อชเชอร์ (ระดับ/แต้ม = null) · note = คำอธิบายเมื่อระบบปรับให้ */
+export type RegisterMemberLine = { kind: "TIER" | "VOUCHER" | "POINTS" | "GIFTCARD"; ref: string | null; label: string; discountSatang: number; note: string | null };
+export type RegisterMemberConflictCode =
+  | "VOUCHER_INVALID"
+  | "VOUCHER_COUPON_CONFLICT"
+  | "COUPON_INVALID"
+  | "POINTS_DISABLED"
+  | "POINTS_BELOW_MIN"
+  | "POINTS_INSUFFICIENT"
+  | "POINTS_CAPPED";
+/** POS P1.12: สิทธิ์ที่เลือกแต่ใช้ไม่ได้ — message = เหตุผลภาษาไทย (log · จอใช้ refusalMessageKey(code)) · allowedPoints เฉพาะ POINTS_CAPPED */
+export type RegisterMemberConflict = { kind: "VOUCHER" | "COUPON" | "POINTS"; code: RegisterMemberConflictCode; message: string; allowedPoints?: number };
+export type RegisterQuote = { ok: true } & RegisterQuoteTotals;
+export type RegisterQuoteResult = RegisterQuote | RegisterRefusal;
+/**
+ * POS P1.12U fix รอบ 1 (F1): quote ของตะกร้าที่มีสิทธิ์เกินเพดาน (quoteRegisterCartOverrideAction) — cart = รูปเดียวกับ quote ปกติ ·
+ * managerPin + managerUserId = PIN ผู้จัดการที่เตรียมไว้ (คู่กันเสมอ) · heldCartId = บิลพักที่อนุมัติแล้ว · idempotencyKey = คีย์บิลของจอชำระ (ไม่บังคับ) ·
+ * อ่านอย่างเดียว (ไม่พักบิล ไม่ยื่นคำขอ ไม่ audit) · PIN ผิดนับเหมือน submit ·
+ * fix รอบ 2 (F1): staffToken = โทเคนผู้ขายบนเครื่อง (ผู้กระทำเหมือน submit · ผิด/หมดอายุ = STAFF_TOKEN_INVALID)
+ */
+export type RegisterQuoteOverrideInput = { cart: RegisterQuoteInput; staffToken?: string; managerPin?: string; managerUserId?: string; heldCartId?: string; idempotencyKey?: string };
+
+// POS P3.6 ▸ ชนิดของจอ (PayDone/InterimPayDialog ใช้ Record<RegisterPayType,…>) ยังไม่รวม ON_ACCOUNT จนการ์ด P3.6U — เซิร์ฟเวอร์รับ ON_ACCOUNT ตาม REGISTER_PAY_TYPES ◂
+export type RegisterPayType = Exclude<(typeof REGISTER_PAY_TYPES)[number], "ON_ACCOUNT">;
+/** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
+/** POS P2.9 ▸ giftCard = บัตรของขวัญของแถว GIFT_CARD เท่านั้น (เลขที่สแกน/พิมพ์ + PIN ของลูกค้า · ห้ามเก็บ/บันทึก PIN ที่จอ) ◂ */
+/** POS P2.9b ▸ depositId = มัดจำของแถว DEPOSIT เท่านั้น (PosDeposit.id จาก registerDepositLookup · เซิร์ฟเวอร์แก้เป็นใบรับเอง) ◂ */
+// POS P2.9b fix1 มติ 6 ▸ phoneLast4 = 4 หลักท้ายของเบอร์ผู้ฝาก (มัดจำ walk-in ที่บันทึกเบอร์ไว้ — บังคับ) ◂
+export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string; giftCard?: { number: string; pin: string }; depositId?: string; phoneLast4?: string };
+export type RegisterSubmitInput = RegisterQuoteInput & {
+  /** คีย์เดียวต่อบิล — คงเดิมทุกการลองซ้ำ (สเปก §3.4) */
+  idempotencyKey: string;
+  payMethods: RegisterPayMethod[];
+  /** ต้องมีเมื่อมีส่วนเงินสด และ ≥ ส่วนเงินสด */
+  cashReceivedSatang?: number;
+  /** P1.6 ทิป (สตางค์ · นอกยอดบิล ⇒ Σ วิธีจ่าย = ยอดบิล + ทิป) — ส่งได้เมื่อระบบเปิดรับทิปเท่านั้น */
+  tipSatang?: number;
+  /** P1.6 หมายเหตุบิล (≤ REGISTER_NOTE_MAX) */
+  note?: string;
+  /** ยอดที่แคชเชียร์เห็นจาก quote ล่าสุด (บังคับ · จำนวนเต็ม ≥ 0) — ไม่ตรงยอดเซิร์ฟเวอร์ = PRICE_CHANGED */
+  expectedGrandTotalSatang: number;
+  /** POS P2.1 ▸ R10: เลขออเดอร์แพลตฟอร์ม (ตัดช่องว่าง · ≤ CHANNEL_REF_MAX 40 ไม่งั้น VALIDATION) ◂ */
+  channelRef?: string;
+  /** POS P2.4 ▸ R7: บังคับเมื่อมี tableSessionId — `table.itemsHash` จาก quote ล่าสุด (ชุดรายการเปลี่ยน = TABLE_ITEMS_CHANGED ไม่มีบิล) ◂ */
+  expectedTableItemsHash?: string;
+  /** POS P2.5 ▸ R4: บังคับเมื่อมี tableSplitPartId — `split.version` จาก quote ล่าสุด (แผนถูกแก้ = VERSION_CHANGED ไม่มีบิล) ◂ */
+  expectedSplitVersion?: number;
+  /** POS P1.15 R3: โทเคนผู้ขายจาก verifyStaffPin (ผูกเครื่อง · 12 ชม.) — ผู้ขาย/เพดานส่วนลด = คนในโทเคน · ผิด/หมดอายุ = STAFF_TOKEN_INVALID */
+  staffToken?: string;
+  /** POS P1.15 R4/R5: PIN ผู้จัดการที่เครื่องนี้ (คู่ managerUserId) — อนุญาตส่วนลดเกินสิทธิ์ทันที (audit pos.discount.override) */
+  managerPin?: string;
+  managerUserId?: string;
+  /** POS P1.15 R6: บิลพักที่ได้รับอนุมัติ POS_DISCOUNT_OVER แล้ว — ผ่านเพดานได้ 1 บิล สำหรับส่วนลด ≤ ที่อนุมัติ */
+  heldCartId?: string;
+  /** POS P1.13 R2: ผู้ซื้อขอใบกำกับภาษีเต็มรูป (parseTaxInvoiceBuyer) — ผิด = TAX_ID_INVALID / VALIDATION ไม่มีบิล */
+  taxInvoice?: TaxInvoiceBuyerInput;
+  /** POS P1.13 R6: จำผู้ซื้อไว้กับสมาชิกของบิล (มี memberId เท่านั้น) */
+  rememberBuyer?: boolean;
+  /** POS P3.6 ▸ R5: ลูกค้าองค์กรของบิล (Party.id ของบริษัท จาก registerCompanySearch / registerMemberCompanies) — ผิด = CUSTOMER_INVALID ◂ */
+  customerPartyId?: string;
+  /** POS P3.6 ▸ R10: ดีลที่ผูกบิล (ต้องอยู่ในรายการ registerDealOptions ของผู้ขาย ณ ตอนส่ง ไม่งั้น DEAL_INVALID · ไม่มีบิล) ◂ */
+  crmDealId?: string;
+  /** POS P3.6 ▸ มติ 2 CD-1: PIN ผู้จัดการ (ถือ pos.credit.manage) อนุญาตวางบิลเกินวงเงิน — ผิด = PIN_INVALID (+1 บนแถวผู้จัดการ) · แยกจาก managerPin ของส่วนลด ◂ */
+  creditOverride?: { managerUserId: string; managerPin: string };
+};
+export type RegisterSubmitOk = {
+  ok: true;
+  saleId: string;
+  receiptNo: string | null;
+  grandTotalSatang: number;
+  changeSatang: number;
+  duplicated: boolean;
+  /**
+   * POS P1.12 (R7 · 02b): บิลที่มีสมาชิก (เฉพาะคำขอที่สร้างบิล) — pointsBurned = แต้มที่ตัดในบิล · pointsExpected = แต้มที่จะได้
+   * (quote.pointsToEarn · ค่าจริงเขียนหลังคิวระบาย) · pointsBalanceAfterBurn = ยอดก่อนขาย − pointsBurned (ระบบแต้มของสาขา)
+   */
+  member?: { pointsBurned: number; pointsExpected: number; pointsBalanceAfterBurn: number };
+  /** POS P4.3 ▸ F-P3-16 · CD-P43-O6: บิลวางบิล (ON_ACCOUNT) — วันครบกำหนด (= PosSale.creditTerms.dueDate) · บิลอื่นไม่มีคีย์นี้ ◂ */
+  creditTerms?: { dueDate: string; termDays: number };
+};
+/** POS P1.12: แต้มเกินเพดานต่อบิล — allowedPoints = แต้มที่ใช้ได้จริง (จอแก้ให้อัตโนมัติ · ห้ามตัดแต้มต่างจากที่แคชเชียร์เห็น) */
+export type RegisterPointsCapped = { ok: false; code: "POINTS_CAPPED"; message: string; allowedPoints: number };
+/** PRICE_CHANGED พกยอดสดของเซิร์ฟเวอร์มาด้วย (จอแสดงใหม่ได้ทันทีไม่ต้อง quote ซ้ำ) */
+export type RegisterPriceChanged = { ok: false; code: "PRICE_CHANGED"; message: string } & RegisterQuoteTotals;
+/**
+ * B1.1 (มติ 3.2 ข้อ 1–2): IDEMPOTENCY_CONFLICT = "มีบิลของคีย์นี้อยู่แล้ว" — ไม่ใช่ "ไม่มีบิล"
+ * พก saleId/receiptNo/สถานะของบิลนั้น (รวมบิลที่ VOIDED แล้ว) ⇒ จอแสดงบิลเดิม ห้ามขายซ้ำด้วยคีย์ใหม่เงียบ ๆ
+ * R4 K2: บิลนอกระบบ+สาขาของคำขอ (หรือโมดูลอื่น) = CONFLICT เปล่า → มาในรูป RegisterRefusal code IDEMPOTENCY_CONFLICT (ไม่มีฟิลด์บิล)
+ */
+export type RegisterSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
+export type RegisterIdempotencyConflict = {
+  ok: false;
+  code: "IDEMPOTENCY_CONFLICT";
+  message: string;
+  saleId: string;
+  receiptNo: string | null;
+  saleStatus: RegisterSaleStatus;
+};
+/**
+ * POS P1.15 R5: ต้องผ่านสายอนุมัติ — APPROVAL_REQUIRED (ยื่นคำขอใหม่แล้ว) / PENDING_APPROVAL (มีคำขอรออยู่ · requestId เดิม) ·
+ * ส่วนลดเกินสิทธิ์: heldCartId = บิลที่พักไว้ให้เรียกคืนเมื่ออนุมัติ
+ */
+export type PosApprovalRefusal = { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string; heldCartId?: string };
+export type RegisterSubmitResult = RegisterSubmitOk | RegisterPriceChanged | RegisterIdempotencyConflict | PosApprovalRefusal | RegisterPointsCapped | RegisterRefusal;
+
+// ═══════════ POS P1.15U ▸ จอรออนุมัติ 21B (อ่านสถานะคำขอ · posApprovalStatusAction) ◂ ═══════════
+/** คำขอที่ไม่มีใครตอบภายในเวลานี้ = หมดอายุ (จอแสดง · ผู้ขอยกเลิกได้ · บิลคงเดิม) */
+export const POS_APPROVAL_WAIT_MS = 5 * 60_000;
+/**
+ * สถานะสำหรับจอ: PENDING (รวม APPROVED ที่ตัวรับคิวยังไม่ทำรายการของยกเลิก/คืนเงิน) · APPROVED (ทำรายการแล้ว / ส่วนลดพร้อมเรียกคืน) ·
+ * REJECTED · CANCELLED · EXPIRED (PENDING เกิน 5 นาที) · FAILED (อนุมัติแล้วแต่ทำรายการไม่ได้ / อนุมัติของตัวเอง)
+ */
+export type PosApprovalWaitStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "EXPIRED" | "FAILED";
+export type PosApprovalView = {
+  requestId: string;
+  kind: "POS_VOID" | "POS_REFUND" | "POS_DISCOUNT_OVER";
+  status: PosApprovalWaitStatus;
+  createdAt: string;
+  title: string | null;
+  reason: string | null;
+  amountSatang: number | null;
+  /** ผู้อนุมัติของขั้นปัจจุบัน: ชื่อ (เจาะจงคน) หรือบทบาท */
+  approverName: string | null;
+  approverRole: string | null;
+  deciderName: string | null;
+  /** เหตุผลของผู้ตัดสิน (ปฏิเสธ) */
+  note: string | null;
+  outcome: string | null;
+  heldCartId: string | null;
+  saleId: string | null;
+};
+export type PosApprovalViewResult = { ok: true; request: PosApprovalView | null } | RegisterRefusal;
+
+export type RegisterStatus = {
+  ok: true;
+  unit: { id: string; name: string };
+  /** roleLabel = ภาษาไทยจากเซิร์ฟเวอร์ · จออังกฤษแปลจาก role (มติ Q23) */
+  user: { name: string; roleLabel: string; role: RegisterRole };
+  /** กะ OPEN ของเครื่องนี้ (P1.9 · null = ยังไม่เปิด/ไม่ส่ง deviceId) */
+  shift: RegisterShiftInfo | null;
+  /** P1.9: จุดขายนี้บังคับเปิดกะก่อนขาย (S6) — true + shift null = ปุ่มชำระถูกล็อก "เปิดกะก่อนเริ่มขาย" */
+  shiftRequired?: boolean;
+  /** บิลวันนี้ (เวลาไทย) ที่ยังตัดสต็อกไม่ครบ */
+  pendingStockCount: number;
+  /** บิลออฟไลน์รอซิงก์ = P3 — วันนี้ 0 เสมอ */
+  pendingSyncCount: number;
+  /** POS P1.10 (แก้รอบ 1 F10): สถานะทะเบียนของเครื่องนี้ — null = ไม่ส่ง deviceId / ไม่ได้ลงทะเบียน · REVOKED = จอควรล็อกการขาย */
+  deviceStatus?: "ACTIVE" | "REVOKED" | null;
+  /** POS P1.13U มติ 2: ระบบนี้ออกใบกำกับภาษีเต็มรูปได้ (สมุดผูก · จด VAT · เปิดใบอย่างย่อ · มีเลขภาษี) — false = ปุ่ม/สวิตช์ใบกำกับจางพร้อมเหตุผล */
+  taxInvoiceEligible: boolean;
+  /** POS P1.12U มติ 2: สาขานี้มีระบบสมาชิก (systemForUnit MEMBER) — false = ไม่มีแถวสมาชิก/ส่วนสิทธิ์บนจอ · สแกนบัตรสมาชิก = memberSystemMissing */
+  memberEnabled: boolean;
+};
+export type RegisterStatusResult = RegisterStatus | RegisterRefusal;
+/**
+ * POS P2.3 ▸ §9 Q8 ปุ่ม "ตัดสต็อกค้าง N บิล · ลองอีกครั้ง" (service.retryPendingStockCuts · สิทธิ์ pos.settings.manage) —
+ * scanned = บิลค้างที่ลองรอบนี้ (เก่าสุดก่อน ≤ 200) · cut = บิลที่หายค้าง · stillPending = บิลในรอบนี้ที่ยังค้าง ◂
+ */
+export type RetryPendingStockCutsResult =
+  | { ok: true; scanned: number; cut: number; stillPending: number }
+  | { ok: false; code: "NOT_FOUND" | "PERMISSION_DENIED" | "INTERNAL" | "UNKNOWN"; message: string };
+/** POS P1.9 (S15) — กะของเครื่องบนแถบสถานะ */
+export type RegisterShiftInfo = { id: string; shiftNo: number; openedAt: string; openedByName: string; deviceLabel: string | null };
+
+export type RegisterVatConfig = { ok: true; mode: "INCLUDED" | "NONE"; rateBp: number };
+
+// ═══════════ POS P1.2 R7 — ตัวเลือก/ตัวแปรของสินค้า (ป๊อปโอเวอร์ภาพ 01) ═══════════
+export type RegisterOptionChoice = { choiceId: string; name: string; nameEn: string | null; priceDeltaSatang: number; isDefault: boolean; unavailable: boolean };
+export type RegisterOptionGroup = { groupId: string; name: string; nameEn: string | null; minSelect: number; maxSelect: number; choices: RegisterOptionChoice[] };
+export type RegisterVariant = { id: string; name: string; nameEn: string | null; priceSatang: number | null; barcode: string | null; soldOut: boolean };
+/** กลุ่มตามลำดับผูก (ตัวแปร = กลุ่มของแม่) · ตัวเลือกที่เก็บถาวรไม่อยู่ · 86 = unavailable · isDefault ให้จอเลือกไว้ก่อน (เซิร์ฟเวอร์ไม่ใส่ให้เอง) */
+export type RegisterProductOptionsResult = { ok: true; productId: string; groups: RegisterOptionGroup[]; variants: RegisterVariant[] } | RegisterRefusal;
+export type RegisterVatConfigResult = RegisterVatConfig | RegisterRefusal;
+
+// ═══════════ POS P1.5 — พักบิล / เรียกคืน ═══════════
+/** แถวในลิ้นชักบิลที่พัก · createdAt = ISO · preview = ชื่อรายการย่อ (ตอนพัก) · heldByName = ชื่อผู้พัก (ไม่มี = null) */
+export type HeldCartSummary = {
+  id: string;
+  label: string | null;
+  lineCount: number;
+  approxTotalSatang: number;
+  heldByUserId: string;
+  heldByName: string | null;
+  preview: string;
+  createdAt: string;
+};
+/** P1.2 R2 F5: PERMISSION_DENIED = บรรทัดยังขายได้ แต่ผู้เรียกคืนไม่มีสิทธิ์ที่บรรทัดต้องใช้ (เช่น น้ำหนักที่กรอกเอง = pos.sale.priceOverride) */
+export type HeldCartNoticeCode = "PRICE_CHANGED" | "PRODUCT_NOT_FOUND" | "PRODUCT_UNAVAILABLE" | "PERMISSION_DENIED" | /** POS P2.14 ▸ UI-12: ช่องทางของบิลพักไม่ขายสินค้านี้ ◂ */ "CHANNEL_NOT_SOLD";
+/** คำเตือนต่อบรรทัดตอนเรียกคืน (ลำดับบรรทัดเดียวกับ cart ที่คืน) — PRICE_CHANGED มีราคาตอนพัก/ราคาปัจจุบัน */
+export type HeldCartNotice = { lineIndex: number; code: HeldCartNoticeCode; heldUnitPriceSatang?: number; unitPriceSatang?: number };
+export type HoldRegisterCartInput = { cart: RegisterQuoteInput; label?: string | null };
+/** POS P2.4 ▸ fix 2 F1: draftVersion = เวอร์ชันของรอบร่างโต๊ะหลังพัก (ส่งกลับเป็น expectedVersion ครั้งถัดไป · บิลพักปกติไม่มี) ◂ */
+export type HoldRegisterCartResult = { ok: true; heldCart: HeldCartSummary; draftVersion?: number } | RegisterRefusal;
+/** expireDays = วันหมดอายุที่ระบบนี้ใช้จริง (settings หรือค่าปริยาย) — ลิ้นชักแสดงค่านี้ */
+export type ListHeldCartsResult = { ok: true; items: HeldCartSummary[]; count: number; expireDays: number } | RegisterRefusal;
+/** quote = ราคาปัจจุบัน (ไม่ใช่ราคาตอนพัก) · บรรทัดที่ขายไม่ได้แล้วยังอยู่ใน cart พร้อม notice (quote จึงไม่ ok จนกว่าจะเอาออก) ·
+ *  products = สินค้าของบรรทัดที่ยังขายได้ (จอใช้แสดงชื่อ/ราคา) · lineNames = ชื่อสินค้าต่อบรรทัด (null = รายการกำหนดเอง/ไม่พบ) */
+export type RecallHeldCartResult =
+  | {
+      ok: true;
+      heldCartId: string;
+      cart: RegisterQuoteInput;
+      quote: RegisterQuoteResult;
+      notices: HeldCartNotice[];
+      products: RegisterProduct[];
+      lineNames: (string | null)[];
+      /** POS P1.15U: บิลพักนี้ได้รับอนุมัติส่วนลดเกินสิทธิ์ (ยังไม่ถูกใช้) — quote คิดด้วยเพดานที่อนุมัติ · ชำระด้วย heldCartId */
+      approvedRequestId?: string;
+    }
+  | RegisterRefusal;
+export type DiscardHeldCartResult = { ok: true } | RegisterRefusal;
+
+// ═══════════ สถานะตะกร้าฝั่ง client (สเปก §3.3) ═══════════
+/** P1.2 R13: options = choiceId ที่เลือก (ไม่มี/ว่าง = ไม่มีตัวเลือก) · บรรทัดชั่ง = weighedBarcode หรือ weightGrams (qty 1 · ไม่รวม +1) */
+export type RegisterCartLine =
+  | {
+      key: string;
+      kind: "product";
+      productId: string;
+      qty: number;
+      discount?: PriceDiscount;
+      openPriceSatang?: number;
+      options?: string[];
+      weighedBarcode?: string;
+      weightGrams?: number;
+      /** P1.6 R5: หมายเหตุบรรทัด (≤ REGISTER_NOTE_MAX · ส่งไปกับ quote/submit · บิลที่พักไม่เก็บ) */
+      note?: string;
+    }
+  | { key: string; kind: "custom"; name: string; unitPriceSatang: number; qty: number; discount?: PriceDiscount; note?: string };
+/**
+ * note = หมายเหตุบิล (P1.6 R5 · ส่งตอน submit เท่านั้น) ·
+ * POS P1.12U มติ 1: couponCode = โค้ดที่ลูกค้ายื่น (ส่งทุก quote/submit · ไปกับบิลพัก) · memberChoices = แต้ม/ว่อชเชอร์ที่เลือกบนจอชำระเท่านั้น
+ *   (มีเฉพาะตอนกล่องชำระเปิดและมีสมาชิก · ปิดกล่อง/ถอดสมาชิก = ล้าง · บิลพักไม่เก็บ)
+ */
+export type RegisterCart = {
+  lines: RegisterCartLine[];
+  billDiscount?: PriceDiscount;
+  couponCode?: string;
+  memberId?: string;
+  memberChoices?: RegisterMemberChoices;
+  note?: string;
+  /** POS P2.1U ▸ มติ 6: ช่องทางขายของบิล (มาจากบิลพักที่เก็บ channelId · ไม่มีตัวเลือกบนจอ — Q3) — ส่งต่อใน quote/submit/พักบิล ◂ */
+  channelId?: string;
+};
+
+/** ชุดตัวเลือกแบบไม่ขึ้นกับลำดับ (multiset · undefined ≡ []) */
+const optionSetKey = (o: readonly string[] | undefined): string => [...(o ?? [])].sort().join("\u0000");
+const isWeighedLine = (l: RegisterCartLine): boolean => l.kind === "product" && (l.weighedBarcode !== undefined || l.weightGrams !== undefined);
+
+/**
+ * P1.4 B2: เพิ่มสินค้า 1 ชิ้น (แตะการ์ด · สแกน) — สแกนซ้ำ = +1 ที่บรรทัดแรกของสินค้าเดียวกันที่ไม่มีส่วนลดและไม่ใช่ราคาเปิด (ราคาเดียวกัน)
+ *   ไม่มีบรรทัดแบบนั้น = บรรทัดใหม่ {key:newLineKey, qty 1} · เพดาน REGISTER_MAX_QTY · ตะกร้าเต็ม REGISTER_MAX_LINES = คืนตะกร้าเดิม
+ *   ไม่แก้ตะกร้าที่ส่งเข้า (คง billDiscount/memberId)
+ * P1.2 R13: options = choiceId ที่เลือกจากป๊อปโอเวอร์ — +1 เฉพาะบรรทัดที่ "ชุดตัวเลือกเดียวกัน" (ไม่ขึ้นกับลำดับ · undefined ≡ []) ·
+ *   บรรทัดชั่งไม่เป็นเป้า +1 เสมอ (ใช้ cartAddWeighed)
+ * P1.2 U R2 (มติผู้คุมงาน ข้อ 2): คีย์รวมบรรทัด = สินค้า (ตัวแปร = productId ของลูก) + ชุดตัวเลือก + หมายเหตุ — แตะการ์ดธรรมดา (ไม่มี note)
+ *   รวมได้เฉพาะบรรทัดที่ไม่มีหมายเหตุ · note = หมายเหตุรายการจากป๊อปโอเวอร์ (ว่าง ≡ ไม่มี) · บรรทัดใหม่เก็บ note ด้วย
+ */
+export function cartAddProduct(cart: RegisterCart, productId: string, newLineKey: string, options?: string[], note?: string): RegisterCart {
+  const want = optionSetKey(options);
+  const wantNote = note && note.trim() ? note : "";
+  const same = cart.lines.findIndex(
+    (l) =>
+      l.kind === "product" &&
+      l.productId === productId &&
+      !l.discount &&
+      l.openPriceSatang === undefined &&
+      !isWeighedLine(l) &&
+      optionSetKey(l.options) === want &&
+      (l.note && l.note.trim() ? l.note : "") === wantNote,
+  );
+  if (same >= 0) {
+    if (cart.lines[same]!.qty >= REGISTER_MAX_QTY) return cart;
+    return { ...cart, lines: cart.lines.map((l, i) => (i === same ? { ...l, qty: Math.min(REGISTER_MAX_QTY, l.qty + 1) } : l)) };
+  }
+  if (cart.lines.length >= REGISTER_MAX_LINES) return cart;
+  return {
+    ...cart,
+    lines: [...cart.lines, { key: newLineKey, kind: "product", productId, qty: 1, ...(options && options.length ? { options: [...options] } : {}), ...(wantNote ? { note: wantNote } : {}) }],
+  };
+}
+
+/**
+ * P1.2 R12/R13: เพิ่มบรรทัดชั่ง (qty 1 · ไม่รวมกับบรรทัดใด) — ป้ายเครื่องชั่ง (weighedBarcode จาก registerScan) หรือน้ำหนักที่กรอกเอง (weightGrams)
+ *   ส่งมาทั้งสองหรือไม่ส่งเลย / ตะกร้าเต็ม = คืนตะกร้าเดิม · ราคาจริงมาจาก quote (เซิร์ฟเวอร์ถอดป้ายเอง)
+ */
+export function cartAddWeighed(
+  cart: RegisterCart,
+  productId: string,
+  newLineKey: string,
+  weight: { weighedBarcode: string } | { weightGrams: number },
+  options?: string[],
+): RegisterCart {
+  const wb = "weighedBarcode" in weight ? weight.weighedBarcode : undefined;
+  const wg = "weightGrams" in weight ? weight.weightGrams : undefined;
+  if ((wb === undefined) === (wg === undefined) || cart.lines.length >= REGISTER_MAX_LINES) return cart;
+  const line: RegisterCartLine = {
+    key: newLineKey,
+    kind: "product",
+    productId,
+    qty: 1,
+    ...(options && options.length ? { options: [...options] } : {}),
+    ...(wb !== undefined ? { weighedBarcode: wb } : { weightGrams: wg as number }),
+  };
+  return { ...cart, lines: [...cart.lines, line] };
+}
+
+// ═══════════ ตัวช่วยบริสุทธิ์ ═══════════
+/**
+ * POS P1.5: ตะกร้าที่เรียกคืน (RegisterQuoteInput จากเซิร์ฟเวอร์) → ตะกร้าบนจอ · คีย์บรรทัดใหม่ทุกบรรทัด (newLineKey ต่อบรรทัด) ·
+ * ราคาของสินค้าแคตตาล็อกไม่ถูกนำมา (เว้นราคาเปิด) · ไม่มีคูปอง · ไม่มีคีย์บิล (คีย์ใหม่มาจาก resetBill เท่านั้น)
+ */
+export function quoteInputToCart(input: RegisterQuoteInput, newLineKey: () => string): RegisterCart {
+  const lines: RegisterCartLine[] = input.lines.map((l) => {
+    const discount = l.discount ? { discount: { ...l.discount } } : {};
+    if ("productId" in l && typeof l.productId === "string") {
+      // P1.2 R13: ตัวเลือก + น้ำหนักติดไปกับบรรทัด (บิลพักเรียกคืนแล้วตัวเลือก/ป้ายชั่งเดิมครบ)
+      const opts = Array.isArray(l.options) ? l.options.map((o) => o.choiceId) : [];
+      return {
+        key: newLineKey(),
+        kind: "product",
+        productId: l.productId,
+        qty: l.qty,
+        ...discount,
+        ...(l.openPrice === true && typeof l.unitPriceSatang === "number" ? { openPriceSatang: l.unitPriceSatang } : {}),
+        ...(opts.length ? { options: opts } : {}),
+        ...(typeof l.weighedBarcode === "string" ? { weighedBarcode: l.weighedBarcode } : {}),
+        ...(typeof l.weightGrams === "number" ? { weightGrams: l.weightGrams } : {}),
+      };
+    }
+    const c = l as { name: string; qty: number; unitPriceSatang: number };
+    return { key: newLineKey(), kind: "custom", name: c.name, unitPriceSatang: c.unitPriceSatang, qty: c.qty, ...discount };
+  });
+  return {
+    lines,
+    ...(input.billDiscount ? { billDiscount: { ...input.billDiscount } } : {}),
+    ...(input.memberId ? { memberId: input.memberId } : {}),
+    // POS P1.12U มติ 1: บิลพักเก็บโค้ดคูปองไว้ (เซิร์ฟเวอร์ตรวจซ้ำตอน quote) · สิทธิ์ที่เลือกไม่ถูกเก็บ ⇒ เรียกคืนแล้วไม่มี memberChoices
+    ...(typeof input.couponCode === "string" && input.couponCode ? { couponCode: input.couponCode } : {}),
+    // POS P2.1U ▸ มติ 6: บิลพักเก็บช่องทางขาย (R10) — เรียกคืนแล้ว quote ด้วยช่องทางเดิม (เซิร์ฟเวอร์ตรวจซ้ำ: เก็บแล้ว/ปิด = CHANNEL_INVALID) ◂
+    ...(typeof input.channelId === "string" && input.channelId ? { channelId: input.channelId } : {}),
+  };
+}
+
+
+/**
+ * ตะกร้าบนจอ → คำขอ quote (ชุดเดียวกับที่ submit ส่ง · ไม่ส่งราคาของสินค้าแคตตาล็อก)
+ * POS P1.12U มติ 1: couponCode ส่งเสมอเมื่อมี · memberChoices ส่งเมื่อมีสมาชิก + เลือกไว้ (มีได้เฉพาะตอนกล่องชำระเปิด) ·
+ *   choices:false = ตัดสิทธิ์ที่เลือกออก (พักบิล · ขอสิทธิ์ของสมาชิก · เทียบตะกร้า)
+ */
+export function cartToQuoteInput(cart: RegisterCart, opts?: { choices?: boolean }): RegisterQuoteInput {
+  const lines: RegisterQuoteLineInput[] = cart.lines.map((l) => {
+    // P1.6 R5: หมายเหตุบรรทัดไปกับคำขอ (ว่าง = ไม่ส่ง)
+    const note = l.note && l.note.trim() ? { note: l.note } : {};
+    if (l.kind === "custom") {
+      return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, ...(l.discount ? { discount: { ...l.discount } } : {}), ...note };
+    }
+    return {
+      productId: l.productId,
+      qty: l.qty,
+      ...(l.discount ? { discount: { ...l.discount } } : {}),
+      ...note,
+      ...(l.openPriceSatang !== undefined ? { openPrice: true as const, unitPriceSatang: l.openPriceSatang } : {}),
+      // P1.2 R13: ส่งแค่ choiceId (ราคา/ชื่อคิดที่เซิร์ฟเวอร์) · บรรทัดชั่งส่งป้าย/น้ำหนัก
+      ...(l.options && l.options.length ? { options: l.options.map((choiceId) => ({ choiceId })) } : {}),
+      ...(l.weighedBarcode !== undefined ? { weighedBarcode: l.weighedBarcode } : {}),
+      ...(l.weightGrams !== undefined ? { weightGrams: l.weightGrams } : {}),
+    };
+  });
+  return {
+    lines,
+    ...(cart.billDiscount ? { billDiscount: { ...cart.billDiscount } } : {}),
+    ...(cart.memberId ? { memberId: cart.memberId } : {}),
+    ...(cart.couponCode ? { couponCode: cart.couponCode } : {}),
+    ...(cart.channelId ? { channelId: cart.channelId } : {}), // POS P2.1U ▸ มติ 6 ◂
+    ...(opts?.choices !== false && cart.memberId && cart.memberChoices && (cart.memberChoices.voucherId || (cart.memberChoices.points ?? 0) > 0)
+      ? {
+          memberChoices: {
+            ...(cart.memberChoices.voucherId ? { voucherId: cart.memberChoices.voucherId } : {}),
+            ...((cart.memberChoices.points ?? 0) > 0 ? { points: cart.memberChoices.points } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+/**
+ * ตะกร้า + การจ่าย → คำขอ submit · เก็บผลไว้แล้วส่งตัวเดิมทุกครั้งที่ลองซ้ำ (สเปก §3.4 ข้อ 6 — payload ต้องเหมือนเดิมทุกไบต์
+ * ไม่งั้นได้ IDEMPOTENCY_CONFLICT) · ไม่มีส่วนเงินสด = ไม่ส่ง cashReceivedSatang
+ */
+export function cartToSubmitInput(
+  cart: RegisterCart,
+  pay: { idempotencyKey: string; payMethods: RegisterPayMethod[]; cashReceivedSatang?: number; expectedGrandTotalSatang: number; tipSatang?: number; note?: string },
+): RegisterSubmitInput {
+  const hasCash = pay.payMethods.some((p) => p.type === "CASH" && p.amountSatang > 0);
+  return {
+    ...cartToQuoteInput(cart),
+    idempotencyKey: pay.idempotencyKey,
+    // POS P2.9U ▸ มติ 2: แถว GIFT_CARD พก giftCard {number, pin} ไปกับคำขอ (เดิมทิ้ง) · PIN ที่ถูกตัดแล้ว (คำขอที่โหลดกลับ · H6) = ส่ง number อย่างเดียว ◂
+    payMethods: pay.payMethods.map((p) => ({
+      type: p.type,
+      amountSatang: p.amountSatang,
+      ...(p.reference ? { reference: p.reference } : {}),
+      ...(p.type === "GIFT_CARD" && p.giftCard ? { giftCard: (p.giftCard.pin ? { number: p.giftCard.number, pin: p.giftCard.pin } : { number: p.giftCard.number }) as NonNullable<RegisterPayMethod["giftCard"]> } : {}),
+      // POS P2.9bU ▸ มติ 2–3: แถว DEPOSIT พก depositId (+ phoneLast4 เมื่อมี — มัดจำ walk-in ที่บันทึกเบอร์) · แถวอื่นไม่มีสองคีย์นี้ (เซิร์ฟเวอร์ปฏิเสธคีย์แปลก) ◂
+      ...(p.type === "DEPOSIT" && p.depositId ? { depositId: p.depositId, ...(p.phoneLast4 ? { phoneLast4: p.phoneLast4 } : {}) } : {}),
+    })),
+    ...(hasCash && pay.cashReceivedSatang !== undefined ? { cashReceivedSatang: pay.cashReceivedSatang } : {}),
+    ...(pay.tipSatang ? { tipSatang: pay.tipSatang } : {}),
+    ...(pay.note ? { note: pay.note } : {}),
+    expectedGrandTotalSatang: pay.expectedGrandTotalSatang,
+  };
+}
+
+// ═══════════ POS P2.9U ▸ วิธีชำระบัตรของขวัญ/เครดิตร้าน/ทิป ที่จอชำระ (ตัวช่วยบริสุทธิ์ · ไม่มี PIN ออกนอกหน่วยความจำของจอ) ═══════════
+/** แถวชำระที่เป็น "เงินจริง" (ทิปจ่ายได้จากแถวเหล่านี้เท่านั้น — R3 · มติ 6) */
+export const REGISTER_CASH_LIKE_PAY: ReadonlySet<RegisterPayType> = new Set<RegisterPayType>(["CASH", "PROMPTPAY", "TRANSFER", "CARD"]);
+/** บัตรของขวัญต่อบิลได้ไม่เกิน (CD4) */
+export const REGISTER_MAX_GIFT_CARDS = 3;
+/** PIN บัตรของขวัญ 4–12 หลัก (เท่ากับตัวตรวจของ regParseSubmit) */
+export const GIFT_CARD_PIN_MIN = 4;
+export const GIFT_CARD_PIN_MAX = 12;
+/** หมายเลขบัตรสำหรับเทียบซ้ำในบิล (ตัดช่องว่าง · ตัวใหญ่ — แบบเดียวกับ validateTenderRows) */
+export const giftCardNumberKey = (n: string): string => n.replace(/\s+/g, "").toUpperCase();
+/**
+ * H6 (มติ 3): สำเนาคำขอที่ "เก็บ" (sessionStorage · คำขอค้างในหน่วยความจำ · จอสำเร็จ) — แถว GIFT_CARD เหลือ number อย่างเดียว (ไม่มี PIN) ·
+ * เซิร์ฟเวอร์รับแถวไม่มี PIN เฉพาะคีย์ที่มีบิลแล้ว (คืนบิลเดิม) — คีย์ที่ยังไม่มีบิล = VALIDATION ⇒ จอขอ PIN ใหม่
+ */
+export function stripPayPins(payMethods: readonly RegisterPayMethod[]): RegisterPayMethod[] {
+  // POS P2.9bU ▸ มติ 3: 4 หลักท้ายของเบอร์ผู้ฝาก (แถว DEPOSIT) ตัดทิ้งเหมือน PIN — สำเนาที่เก็บ/ลองซ้ำ/จอสำเร็จไม่มีค่านี้ ◂
+  return payMethods.map((m) => {
+    const { phoneLast4: _l4, ...rest } = m;
+    void _l4;
+    return rest.giftCard ? { ...rest, giftCard: { number: rest.giftCard.number } as NonNullable<RegisterPayMethod["giftCard"]> } : { ...rest };
+  });
+}
+/** คำขอมีแถวบัตรของขวัญที่ไม่มี PIN (คำขอที่ถูกตัด PIN แล้ว) */
+export const hasPinlessGiftCard = (payMethods: readonly RegisterPayMethod[]): boolean => payMethods.some((m) => m.type === "GIFT_CARD" && !!m.giftCard && !m.giftCard.pin);
+// POS P2.9bU ▸ มติ 2–3: มัดจำที่จอชำระ (ตัวช่วยบริสุทธิ์ · ไม่มี 4 หลักท้ายออกนอกหน่วยความจำของจอ) ◂
+/** มัดจำต่อบิลได้ไม่เกิน (CD4 · ตรงกับ MAX_DEPOSIT_ROWS ของ service.ts) */
+export const REGISTER_MAX_DEPOSITS = 3;
+/** คำค้นมัดจำ (เลขใบเสร็จ / ชื่อ) ต้องยาว ≥ 3 ตัวอักษร (registerDepositLookup) */
+export const DEPOSIT_QUERY_MIN = 3;
+/** คำขอมีแถวมัดจำที่ไม่มี 4 หลักท้าย (คำขอที่ถูกตัดแล้ว — ลองซ้ำ/โหลดกลับ) */
+export const hasLast4lessDeposit = (payMethods: readonly RegisterPayMethod[]): boolean => payMethods.some((m) => m.type === "DEPOSIT" && !!m.depositId && !m.phoneLast4);
+/** รหัสปฏิเสธของมัดจำที่จอชำระแสดงที่แถว/แบนเนอร์ (ไม่ใช่การ์ดผิดพลาด · มติ 4) */
+export const DEPOSIT_INLINE_CODES: ReadonlySet<string> = new Set(["DEPOSIT_NOT_FOUND", "DEPOSIT_CLOSED", "DEPOSIT_NOT_OWNER", "DEPOSIT_LOCKED", "DEPOSIT_EXCEEDS"]);
+/** ช่องเบอร์ของใบรับมัดจำ: 9–10 หลัก ขึ้นต้น 0 (ตรงกับตัวตรวจของ registerTakeDeposit) — ช่องว่าง/ขีดตัดก่อนตรวจ */
+export const depositPhoneOk = (raw: string): boolean => /^0\d{8,9}$/.test(raw.replace(/[\s-]/g, ""));
+/**
+ * F4 (fix1 · สัญญา P2.9U): ชนิดของบัตรในกระเป๋าสมาชิก — ใช้ `kind` เมื่อเซิร์ฟเวอร์ส่งมา · ไม่มี = อ่านจากคำนำหน้าเลขปิดบังของโมดูลบัตร
+ * (`SC-••••` = STORE_CREDIT · อื่น = GIFT — giftcard/service.ts maskTenderNumber) — wallet ของสมาชิกยังไม่ส่ง kind ถึงหน้าขาย (โน้ต P2.9U deviation 1)
+ */
+export function giftCardKindOf(c: { numberMasked: string; kind?: string | null }): "GIFT" | "STORE_CREDIT" {
+  if (c.kind === "STORE_CREDIT" || c.kind === "GIFT") return c.kind;
+  return /^SC-/i.test(c.numberMasked) ? "STORE_CREDIT" : "GIFT";
+}
+/** เครดิตร้านของสมาชิกในบิล (ใบแรกที่ยอด > 0) — ไม่มี = null */
+export function storeCreditOf(giftCards: readonly { numberMasked: string; balanceSatang: number; kind?: string | null }[] | null | undefined): { numberMasked: string; balanceSatang: number } | null {
+  const c = (giftCards ?? []).find((g) => giftCardKindOf(g) === "STORE_CREDIT" && g.balanceSatang > 0);
+  return c ? { numberMasked: c.numberMasked, balanceSatang: c.balanceSatang } : null;
+}
+/**
+ * มติ 3 (H6): คำขอที่โหลดกลับหลัง reload แล้วถูกปฏิเสธ "ใส่ PIN" ⇒ สร้างตะกร้าคืนจากคำขอที่เก็บ (บรรทัด · ส่วนลดท้ายบิล · สมาชิก · คูปอง ·
+ * ช่องทาง · หมายเหตุ · สิทธิ์ที่เลือก) เพื่อให้จอชำระเปิดต่อด้วยยอดเดิม (quote ใหม่ตัดสิน) · key ของบรรทัดจาก newKey ของผู้เรียก
+ */
+export function submitInputToCart(sale: RegisterSubmitInput, newKey: () => string): RegisterCart {
+  const base = quoteInputToCart(sale, newKey);
+  // บิลพักไม่เก็บหมายเหตุบรรทัด/สิทธิ์ที่เลือก แต่คำขอ submit เก็บ ⇒ เติมคืน (ลำดับบรรทัดเดียวกับคำขอ)
+  const lines = base.lines.map((l, i): RegisterCartLine => {
+    const note = (sale.lines[i] as { note?: unknown } | undefined)?.note;
+    return typeof note === "string" && note ? { ...l, note } : l;
+  });
+  return {
+    ...base,
+    lines,
+    ...(sale.memberId && sale.memberChoices ? { memberChoices: { ...sale.memberChoices } } : {}),
+    ...(sale.note ? { note: sale.note } : {}),
+  };
+}
+// ◂
+
+/**
+ * ตะกร้า → อินพุตของ priceCart สำหรับคิดยอดทันใจบนจอ (ราคาจากกริด · VAT/เพดานจากหน้าเพจ) — ยอดจริงมาจาก quote เสมอ
+ * สินค้าที่ไม่รู้จัก/ยังไม่ตั้งราคา (และไม่มีราคาเปิด) = คืนคำปฏิเสธ (ไม่เดาราคา)
+ */
+export function cartToPriceInput(
+  cart: RegisterCart,
+  products: ReadonlyMap<string, Pick<RegisterProduct, "priceSatang">> | Readonly<Record<string, Pick<RegisterProduct, "priceSatang">>>,
+  vat: { mode: "INCLUDED" | "NONE" | "EXCLUDED"; rateBp: number },
+  maxDiscountBp: number | null,
+): PriceCartInput | RegisterRefusal {
+  const get = (id: string) => (products instanceof Map ? products.get(id) : (products as Record<string, Pick<RegisterProduct, "priceSatang">>)[id]);
+  const lines: PriceCartInput["lines"] = [];
+  for (let i = 0; i < cart.lines.length; i++) {
+    const l = cart.lines[i]!;
+    if (l.kind === "custom") {
+      lines.push({ qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount: l.discount ?? null });
+      continue;
+    }
+    const price = l.openPriceSatang ?? get(l.productId)?.priceSatang;
+    if (price === undefined) return { ok: false, code: "PRODUCT_NOT_FOUND", message: "ไม่พบสินค้าในตะกร้า", lineIndex: i };
+    if (price === null) return { ok: false, code: "PRICE_NOT_SET", message: "สินค้านี้ยังไม่ตั้งราคา", lineIndex: i };
+    lines.push({ qty: l.qty, unitPriceSatang: price, discount: l.discount ?? null });
+  }
+  const v: PriceVat = { mode: vat.mode, rateBp: vat.rateBp };
+  return { lines, billDiscount: cart.billDiscount ?? null, vat: v, maxDiscountBp };
+}
+
+const REFUSAL_KEY: Readonly<Record<string, string>> = {
+  NOT_FOUND: "errors.notFound",
+  // POS P1.9 ▸ กะ ◂
+  SHIFT_REQUIRED: "errors.shiftRequired",
+  SHIFT_ALREADY_OPEN: "errors.shiftAlreadyOpen",
+  SHIFT_CLOSED: "errors.shiftClosed",
+  REASON_REQUIRED: "errors.reasonRequired",
+  DRAWER_INSUFFICIENT: "errors.drawerInsufficient",
+  // POS P1.2 ▸ ตัวเลือก · ตัวแปร · สินค้าชั่ง ◂
+  OPTIONS_INVALID: "errors.optionsInvalid",
+  OPTION_UNAVAILABLE: "errors.optionUnavailable",
+  VARIANT_REQUIRED: "errors.variantRequired",
+  WEIGHT_REQUIRED: "errors.weightRequired",
+  PERMISSION_DENIED: "errors.permissionDenied",
+  VALIDATION: "errors.invalidLine",
+  INVALID_LINE: "errors.invalidLine",
+  PRODUCT_NOT_FOUND: "errors.productNotFound",
+  PRODUCT_UNAVAILABLE: "errors.productUnavailable",
+  OPTIONS_REQUIRED: "errors.optionsRequired",
+  MEMBER_NOT_FOUND: "errors.memberNotFound",
+  MEMBER_RIGHTS_UNSUPPORTED: "errors.memberRightsUnsupported",
+  PRICE_NOT_SET: "errors.priceNotSet",
+  PRICE_CHANGED: "errors.priceChanged",
+  PAYMENT_MISMATCH: "errors.paymentMismatch",
+  IDEMPOTENCY_CONFLICT: "errors.idempotencyConflict",
+  LINE_DISCOUNT_EXCEEDS_LINE: "errors.lineDiscountExceedsLine",
+  BILL_DISCOUNT_EXCEEDS_TOTAL: "errors.billDiscountExceedsTotal",
+  DISCOUNT_EXCEEDS_LIMIT: "errors.discountExceedsLimit",
+  TOO_MANY_LINES: "errors.tooManyLines",
+  STOCK_INSUFFICIENT: "errors.stockInsufficient",
+  CONFLICT: "errors.conflict",
+  BUSY: "errors.busy",
+  ALREADY_RECALLED: "errors.alreadyRecalled",
+  // POS P1.6
+  UNIT_SYSTEM_MISMATCH: "errors.unitSystemMismatch",
+  SPLIT_INVALID: "errors.splitInvalid",
+  TIP_ACCOUNT_REQUIRED: "errors.tipAccountRequired",
+  TIP_NOT_AVAILABLE: "errors.tipNotAvailable", // R2 F5 (ค่าตั้งการชำระเงิน)
+  // POS P1.9b ▸ นับย้อนหลังกะที่บังคับปิด ◂
+  SHIFT_NOT_FORCED: "errors.shiftNotForced",
+  ALREADY_RECOUNTED: "errors.alreadyRecounted",
+  // POS P1.10 ▸ ทะเบียนเครื่อง ◂
+  DEVICE_REVOKED: "errors.deviceRevoked",
+  DEVICE_LIMIT: "errors.deviceLimit",
+  DEVICE_NOT_FOUND: "errors.deviceNotFound",
+  DEVICE_NOT_PAIRED: "errors.deviceNotPaired", // POS P5.2 ▸ CD-P52-O4 F1 (ทางขายผูกเครื่องจากคุกกี้) ◂
+  // POS P1.7 ▸ ใบขอรับเงินในบิล ◂
+  INTENT_NOT_FOUND: "errors.intentNotFound",
+  INTENT_NOT_PAID: "errors.intentNotPaid",
+  INTENT_CONSUMED: "errors.intentConsumed",
+  INTENT_EXPIRED: "errors.intentExpired",
+  AMOUNT_MISMATCH: "errors.amountMismatch",
+  // POS P1.15 ▸ PIN · โทเคนผู้ขาย · สายอนุมัติ (R9 · คีย์ใต้ pos.register — CONTROLLER-DECISION 12) ◂
+  PIN_INVALID: "errors.pinInvalid",
+  PIN_LOCKED: "errors.pinLocked",
+  PIN_THROTTLED: "errors.pinThrottled", // POS P1.18 ▸ K1 ◂
+  PIN_TAKEN: "errors.pinTaken",
+  WEAK_PIN: "errors.weakPin",
+  STAFF_TOKEN_INVALID: "errors.staffTokenInvalid",
+  APPROVAL_REQUIRED: "errors.approvalRequired",
+  PENDING_APPROVAL: "errors.pendingApproval",
+  APPROVAL_MISMATCH: "errors.approvalMismatch",
+  ALREADY_SET: "errors.alreadySet", // POS P1.15U F1
+  // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูปตอนชำระ — เลขผู้เสียภาษีผิด (ข้อมูลผู้ซื้ออื่นผิด = VALIDATION เดิม) ◂
+  TAX_ID_INVALID: "errors.taxIdInvalid",
+  NOT_ELIGIBLE: "errors.taxInvoiceNotEligible", // POS P1.13 follow-up 3 ◂
+  // POS P1.12 ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (R16) ◂
+  MEMBER_SYSTEM_MISSING: "errors.memberSystemMissing",
+  MEMBER_SUSPENDED: "errors.memberSuspended",
+  PHONE_INVALID: "errors.phoneInvalid",
+  VOUCHER_INVALID: "errors.voucherInvalid",
+  VOUCHER_COUPON_CONFLICT: "errors.voucherCouponConflict",
+  COUPON_INVALID: "errors.couponInvalid",
+  POINTS_DISABLED: "errors.pointsDisabled",
+  POINTS_BELOW_MIN: "errors.pointsBelowMin",
+  POINTS_INSUFFICIENT: "errors.pointsInsufficient",
+  POINTS_CAPPED: "errors.pointsCapped",
+  BENEFITS_EXCEED_TOTAL: "errors.benefitsExceedTotal",
+  MEMBER_RIGHTS_CHANGED: "errors.memberRightsChanged",
+  // POS P2.9 ▸ R11 ◂
+  GIFT_CARD_NOT_FOUND: "errors.giftCardNotFound",
+  GIFT_CARD_PIN: "errors.giftCardPin",
+  GIFT_CARD_LOCKED: "errors.giftCardLocked",
+  GIFT_CARD_CHANGED: "errors.giftCardChanged",
+  STORE_CREDIT_NOT_OWNER: "errors.storeCreditNotOwner",
+  // POS P2.9b ▸ R10 ◂
+  DEPOSIT_NOT_FOUND: "errors.depositNotFound",
+  DEPOSIT_NOT_OWNER: "errors.depositNotOwner",
+  DEPOSIT_EXCEEDS: "errors.depositExceeds",
+  DEPOSIT_CLOSED: "errors.depositClosed",
+  DEPOSIT_LOCKED: "errors.depositLocked", // POS P2.9b ▸ fix2 มติ 3 ◂
+  // POS P2.1 ▸ ช่องทางขาย (R13) ◂
+  CHANNEL_INVALID: "errors.channelInvalid",
+  CHANNEL_PAY_MISMATCH: "errors.channelPayMismatch",
+  CHANNEL_NOT_FOUND: "errors.channelNotFound",
+  CHANNEL_CODE_TAKEN: "errors.channelCodeTaken",
+  CHANNEL_BUILTIN_LOCKED: "errors.channelBuiltinLocked",
+  CHANNEL_LIMIT: "errors.channelLimit",
+  // POS P2.2 ▸ ราคาตามช่องทาง (R12) ◂
+  CHANNEL_NOT_SOLD: "errors.channelNotSold",
+  PRICE_RULE_NOT_FOUND: "errors.priceRuleNotFound",
+  PRICE_RULE_LIMIT: "errors.priceRuleLimit",
+  // POS P2.4 ▸ โหมดโต๊ะ ◂
+  TABLE_NOT_FOUND: "errors.tableNotFound",
+  TABLE_INACTIVE: "errors.tableInactive",
+  TABLE_SESSION_CLOSED: "errors.tableSessionClosed",
+  TABLE_EMPTY: "errors.tableEmpty",
+  TABLE_ITEMS_CHANGED: "errors.tableItemsChanged",
+  TABLE_HAS_UNPAID: "errors.tableHasUnpaid",
+  VERSION_CHANGED: "errors.versionChanged", // POS P2.4 ▸ fix 2 F1 ◂
+  // POS P2.5 ▸ แยกบิล/ย้าย/รวมโต๊ะ (R11) ◂
+  TABLE_SPLIT_OPEN: "errors.tableSplitOpen",
+  TABLE_SPLIT_EXISTS: "errors.tableSplitExists",
+  TABLE_SPLIT_LOCKED: "errors.tableSplitLocked",
+  TABLE_SPLIT_PART_PAID: "errors.tableSplitPartPaid",
+  TABLE_SPLIT_NOT_FOUND: "errors.tableSplitNotFound",
+  TABLE_BUSY: "errors.tableBusy",
+  TABLE_HAS_DRAFT: "errors.tableHasDraft",
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (R11) — รหัสอยู่ใน OrderRefusalCode (order-shared.ts) · คีย์ข้อความชุดเดียวกับหน้าขาย ◂
+  ORDER_NOT_FOUND: "errors.orderNotFound",
+  ORDER_STATE_INVALID: "errors.orderStateInvalid",
+  ORDER_STATE_CHANGED: "errors.orderStateChanged",
+  ORDER_UNPAID: "errors.orderUnpaid",
+  CHANNEL_PAUSED: "errors.channelPaused",
+  // POS P3.5 ▸ R13 ด่านตารางงาน · ลงเวลาจากกะ ◂
+  OFF_SCHEDULE: "lock.schedule.offSchedule",
+  ALREADY_CLOCKED: "errors.alreadyClocked",
+  NO_EMPLOYEE: "errors.noEmployee",
+  // POS P3.6 ▸ R15 วางบิล · ลูกค้าองค์กร · ดีล ◂
+  CREDIT_DISABLED: "credit.errors.disabled",
+  CREDIT_NOT_ALLOWED: "credit.errors.notAllowed",
+  CREDIT_TERM_ZERO: "credit.errors.termZero",
+  CREDIT_LIMIT_EXCEEDED: "credit.errors.limitExceeded",
+  CREDIT_INVOICE_PAID: "credit.errors.invoicePaid",
+  CUSTOMER_INVALID: "credit.errors.customerInvalid",
+  DEAL_INVALID: "deal.errors.invalid",
+};
+
+/**
+ * รหัสปฏิเสธ → คีย์ข้อความใต้ `pos.register` (สเปก §4.6 + Addendum 2) · INTERNAL / UNKNOWN / รหัสที่ไม่รู้จัก = errors.unknown
+ * จอห้ามแสดง `message` ของเซิร์ฟเวอร์ (ภาษาไทย) และห้ามแสดงรหัสดิบ
+ */
+export function refusalMessageKey(code: string): string {
+  return Object.prototype.hasOwnProperty.call(REFUSAL_KEY, code) ? REFUSAL_KEY[code]! : "errors.unknown";
+}
+
+// POS HF-PP ▸ fix 1: ด่านผู้จัดการของ "พร้อมเพย์/บัตรรับแล้ว" ที่ไม่มีใบขอรับเงิน (register.ts submitRegisterSale) — ข้อความเซิร์ฟเวอร์ชุดเดียว
+//   (= payment-intent.ts confirmPaymentIntentManual) · จอแปลงคำปฏิเสธนี้เป็นคีย์ของมันเอง (ไม่แสดง message ของเซิร์ฟเวอร์) ◂
+export const REGISTER_MANUAL_MANAGER_MESSAGE = "ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น";
+// POS HF-PP2 ▸ (มติ §9 ข้อ 2) วิธีจ่ายที่ "รับเงินแล้ว" ได้โดยไม่มีใบขอรับเงิน = ต้องผ่านด่าน manualConfirmRequiresManager — ชุดเดียวของสองประตู
+//   (register.ts submitRegisterSale · order.ts payOrder) · เจ้าของร้านค้านเรื่องบัตร = ถอด "CARD" ออกที่นี่ที่เดียว (POS-OWNER-PENDING · HF-PP2) ◂
+export const REGISTER_MANUAL_METHODS: ReadonlySet<string> = new Set(["PROMPTPAY", "CARD"]);
+/** คีย์ใต้ `pos.register` ของคำปฏิเสธ submit: PERMISSION_DENIED ของด่านผู้จัดการ = refusal.manualConfirmManager · อื่น ๆ = refusalMessageKey(code) */
+export function submitRefusalMessageKey(r: { code: string; message?: string | null }): string {
+  return r.code === "PERMISSION_DENIED" && r.message === REGISTER_MANUAL_MANAGER_MESSAGE ? "refusal.manualConfirmManager" : refusalMessageKey(r.code);
+}
+
+/** เงินบนจอ: ทศนิยมเฉพาะเมื่อมีเศษสตางค์ (8550 → ฿85.50 · 62500 → ฿625 · −1000 → −฿10) */
+export function moneyText(satang: number): string {
+  return formatBaht(satang, { decimals: satang % 100 !== 0 });
+}
+
+/** ชื่อตามภาษาจอ — อังกฤษใช้ nameEn ถ้ามี */
+export function displayName(row: { name: string; nameEn?: string | null }, locale: string): string {
+  return locale.startsWith("en") && row.nameEn ? row.nameEn : row.name;
+}
+
+// ═══════════ POS P1.12 ▸ สมาชิกที่ตะกร้า (ค้น · สมัครด่วน · สิทธิ์ · ส่งมอบรางวัล) — สัญญาของ register-member.ts + actions ◂ ═══════════
+/** ที่มาของลูกค้าที่สมัครหน้าร้าน (ชิป 14A: หน้าร้าน · LINE · บอกต่อ · โฆษณา) */
+export const REGISTER_HEARD_FROM = ["WALK_IN", "LINE", "REFERRAL", "ADS"] as const;
+export type RegisterHeardFrom = (typeof REGISTER_HEARD_FROM)[number];
+/**
+ * แถวสมาชิกบนจอ (R2) — phoneMasked เท่านั้น (ไม่มีเบอร์เต็ม · CD8) · points = ระบบแต้มของสาขา · lastPurchaseAt ISO ·
+ * purchaseCount = บิลขาย POS ที่ไม่ถูกยกเลิก · suspended = แนบบิลไม่ได้ (MEMBER_SUSPENDED)
+ */
+export type RegisterMemberItem = {
+  id: string;
+  memberCode: string;
+  name: string;
+  phoneMasked: string;
+  tier: { key: string; name: string; color: string } | null;
+  points: number;
+  lastPurchaseAt: string | null;
+  purchaseCount: number;
+  suspended: boolean;
+};
+export type RegisterMemberLookupResult = { ok: true; items: RegisterMemberItem[] } | RegisterRefusal;
+export type RegisterQuickMemberInput = {
+  phone: string;
+  name: string;
+  /** YYYY-MM-DD (ไม่บังคับ) */
+  birthDate?: string;
+  marketingConsent: boolean;
+  heardFrom: RegisterHeardFrom;
+  /** คีย์เดียวต่อฟอร์ม [A-Za-z0-9_-]{8,100} — กดซ้ำ = คนเดิม */
+  idempotencyKey: string;
+};
+/** created:false = มีสมาชิกเบอร์นี้แล้ว (หรือยิงซ้ำคีย์เดิม) — ผูกคนเดิมกับบิล */
+export type RegisterQuickMemberResult = { ok: true; created: boolean; member: RegisterMemberItem } | RegisterRefusal;
+export type RegisterMemberBenefits = {
+  ok: true;
+  member: RegisterMemberItem;
+  /** ส่วนลดระดับ (อัตโนมัติ) — null = ไม่มีระดับ */
+  tier: { name: string; discountPct: number; discountFixedSatang: number; discountMaxSatang: number } | null;
+  /** null = สาขานี้ไม่มีระบบแต้ม · burnRateSatang = มูลค่าต่อแต้ม (สตางค์) · balanceValueSatang = balance × burnRateSatang */
+  points: { balance: number; burnRateSatang: number; burnMinPoints: number; burnMaxPct: number; balanceValueSatang: number; expiringSoon: { points: number; expiresAt: string }[] } | null;
+  vouchers: { id: string; name: string; code: string; valueLabel: string; expiresAt: string; applicable: boolean; discountSatang: number; reason: string | null }[];
+  stamps: { cardId: string; name: string; stamps: number; slots: number }[];
+  /** อ่านอย่างเดียว (บัตรของขวัญเป็นวิธีชำระ = P2.9 · CD3) — ไม่มีเลขเต็ม/PIN */
+  giftCards: { numberMasked: string; balanceSatang: number; expiresAt: string | null }[];
+  rewardsPending: { redemptionId: string; rewardName: string; expiresAt: string | null }[];
+};
+export type RegisterMemberBenefitsResult = RegisterMemberBenefits | RegisterRefusal;
+export type RegisterFulfilRewardResult = { ok: true } | RegisterRefusal;
+
+// ═══════════ POS P2.7 ▸ CD4 มติ 9: ตัวตรวจตัวเลือกของบรรทัด (ย้ายจาก register.ts ทุกตัวอักษร · register.ts import กลับ) — ประตูสาธารณะ QR (pos/qr-order.ts) ใช้ตัวเดียวกับหน้าขาย ═══════════
+export type RegOptChoice = { id: string; name: string; nameEn: string | null; priceDelta: number; isDefault: boolean; isOutOfStock: boolean };
+export type RegOptGroup = { id: string; name: string; nameEn: string | null; minSelect: number; maxSelect: number; choices: RegOptChoice[] };
+
+export type RegPickedOption = { choiceId: string; groupId: string; groupName: string; name: string; priceDeltaSatang: number };
+/**
+ * R2 — ตัวเลือกที่ส่งมากับบรรทัด ตรวจตามลำดับ: ไม่ใช่ตัวเลือกที่ใช้งานของกลุ่มที่ผูก = OPTIONS_INVALID → 86 = OPTION_UNAVAILABLE →
+ * กลุ่มใดเลือกน้อยกว่า minSelect = OPTIONS_REQUIRED → เกิน maxSelect = OPTIONS_INVALID · ไม่ใส่ isDefault ให้เอง · ราคา/ชื่อจาก DB เท่านั้น
+ */
+export function regResolveOptions(groups: RegOptGroup[], chosen: string[]): { ok: true; picked: RegPickedOption[]; delta: number } | { ok: false; code: "OPTIONS_INVALID" | "OPTION_UNAVAILABLE" | "OPTIONS_REQUIRED" } {
+  const byChoice = new Map<string, { g: RegOptGroup; c: RegOptChoice }>();
+  for (const g of groups) for (const c of g.choices) byChoice.set(c.id, { g, c });
+  const hits = chosen.map((id) => byChoice.get(id));
+  if (hits.some((h) => !h)) return { ok: false, code: "OPTIONS_INVALID" };
+  const found = hits as { g: RegOptGroup; c: RegOptChoice }[];
+  if (found.some((h) => h.c.isOutOfStock)) return { ok: false, code: "OPTION_UNAVAILABLE" };
+  const count = new Map<string, number>();
+  for (const h of found) count.set(h.g.id, (count.get(h.g.id) ?? 0) + 1);
+  if (groups.some((g) => (count.get(g.id) ?? 0) < g.minSelect)) return { ok: false, code: "OPTIONS_REQUIRED" };
+  if (groups.some((g) => (count.get(g.id) ?? 0) > g.maxSelect)) return { ok: false, code: "OPTIONS_INVALID" };
+  const picked = found.map((h) => ({ choiceId: h.c.id, groupId: h.g.id, groupName: h.g.name, name: h.c.name, priceDeltaSatang: h.c.priceDelta }));
+  return { ok: true, picked, delta: picked.reduce((t, x) => t + x.priceDeltaSatang, 0) };
+}
+// ◂ POS P2.7

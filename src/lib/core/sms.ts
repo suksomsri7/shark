@@ -45,8 +45,24 @@ export function toE164Thai(raw: string | null | undefined): string | null {
 
 // ───────────────────────── ตัวจริง (ยังไม่มีใครเสียบ) ─────────────────────────
 
+// 🔴 โหมด mock (S1.19) — เฉพาะเมื่อตั้ง `SMS_PROVIDER=mock` ตรง ๆ เท่านั้น (dev/QC ที่ยังไม่มีเกตเวย์)
+//    "ส่ง" = เขียนข้อความลง OpsEvent (logOps INFO "sms-mock") แล้วคืน ok — ไม่ออกนอกเครื่อง
+//    ข้อความอาจมีรหัส OTP ⇒ `APP_ENV=production` เมิน mock เสมอ (R-S1.19c) · ฝั่งจริงต้องตั้ง SMS_PROVIDER/SMS_API_KEY/SMS_ENDPOINT
+const mockProvider: SmsProvider = {
+  name: "mock",
+  async send(msg: SmsMessage): Promise<SmsSendResult> {
+    // lazy import — ops.ts ดึง prisma มา · ไฟล์นี้ถูกอ่านโดยสคริปต์ที่ไม่มีฐาน (fitness 2 โหมด) ⇒ โหลดเฉพาะตอนส่ง
+    const { logOps } = await import("./ops");
+    await logOps("INFO", "sms-mock", "SMS (mock)", { detail: JSON.stringify({ to: msg.to, text: msg.text }) });
+    return { ok: true, externalId: `mock-${Date.now()}` };
+  },
+};
+
 function resolveProvider(): SmsProvider | null {
   const kind = (process.env.SMS_PROVIDER ?? "").trim().toLowerCase();
+  // ก่อนตรวจคีย์/endpoint (mock ไม่ต้องมี) · production เมิน mock เสมอ (R-S1.19c) ⇒ null = ช่องทาง SMS ปิด
+  // SEC S3a.1-S2 ▸ R-Z27 (L6): Vercel production (VERCEL_ENV) ก็เมิน mock ด้วย — เผื่อ APP_ENV ไม่ได้ตั้ง ◂
+  if (kind === "mock") return process.env.APP_ENV === "production" || process.env.VERCEL_ENV === "production" ? null : mockProvider;
   const apiKey = (process.env.SMS_API_KEY ?? "").trim();
   const sender = (process.env.SMS_SENDER ?? "SHARK").trim();
   if (!kind || !apiKey) return null;
@@ -89,6 +105,11 @@ let cached: SmsProvider | null | undefined;
 export function getSmsProvider(): SmsProvider | null {
   if (cached === undefined) cached = resolveProvider();
   return cached;
+}
+
+/** ล้างแคชผู้ให้บริการ — ข้อสอบเท่านั้น (ตั้ง env แล้วเรียกเพื่อให้อ่าน env ใหม่) */
+export function __resetSmsProviderCacheForTests(): void {
+  cached = undefined;
 }
 
 /** เปิดใช้ SMS ได้ไหม (หน้าจอเอาไปทำให้แท็บ SMS เป็นสีจาง + บอกเหตุผล) */

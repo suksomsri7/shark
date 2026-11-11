@@ -9,6 +9,10 @@ enum AppointmentStatus {
   DONE
   NO_SHOW
   CANCELLED
+  // SVC B.0 — ต่อท้ายเท่านั้น (ALTER TYPE ADD VALUE) · ตั้งได้ทางเครื่องสถานะ B.4 เท่านั้น (setStatusAction รับ 6 ค่าเดิม)
+  QUEUED // walk-in ต่อคิวแล้ว ยังไม่ได้ช่าง/ยังไม่เริ่ม
+  IN_SERVICE // กำลังให้บริการ
+  LATE // เลยเวลานัด (อยู่ในช่วงผ่อนผัน)
 }
 
 // ⚠️ 13 ส.ค. 2026: บริการ "ต้นฉบับ" ย้ายไปอยู่แคตตาล็อกกลาง (InvItem kind=SERVICE)
@@ -33,6 +37,7 @@ model BookingService {
   updatedAt     DateTime @updatedAt
 
   appointments Appointment[]
+  staffServices BookingStaffService[] // SVC B.0
 
   @@index([tenantId, unitId])
   @@index([unitId, itemId])
@@ -51,6 +56,7 @@ model BookingStaff {
 
   hours        BookingStaffHours[]
   appointments Appointment[]
+  services     BookingStaffService[] // SVC B.0
 
   @@index([tenantId, unitId])
 }
@@ -116,11 +122,86 @@ model Appointment {
   updatedAt      DateTime          @updatedAt
   // CRM v2 (crm_v2_a · C11) — Party กลาง · nullable · ไม่มี FK (แบบ TicketOrder/HotelReservation)
   partyId        String?
+  // ── SVC B.0 (จองคิว V2 · DESIGN-BOOKING-QUEUE §4.4) — id หลวมทั้งหมดไม่มี FK · CHECK อยู่ใน migration svc_b (SQL มือ) ──
+  kind              String    @default("BOOKED") // BOOKED | WALKIN (CHECK)
+  assignMode        String    @default("SPECIFIC") // SPECIFIC | ANY (CHECK)
+  channel           String? // ONLINE | LINE | PHONE | STAFF | KIOSK | REMOTE
+  checkedInAt       DateTime?
+  startedAt         DateTime?
+  doneAt            DateTime?
+  lateAt            DateTime?
+  plannedStartAt    DateTime?
+  plannedStaffId    String?
+  resourceId        String? // SvcResource.id
+  groupId           String? // นัดหลายบริการ/หลายคน
+  queueTicketId     String? // QueueTicket.id
+  manageTokenHash   String? // hash ของ token ลิงก์จัดการนัด (ไม่เก็บ token ดิบ · X7)
+  heldCartId        String? // PosHeldCart.id
+  rescheduledFromId String?
+  rescheduleCount   Int       @default(0) // CHECK >= 0
+  cancelReason      String?
+  policySnapshot    Json? // CC §1.6 — snapshotPolicy("appointment")
 
   @@unique([tenantId, idempotencyKey])
+  @@unique([manageTokenHash])
   @@index([tenantId, unitId, startAt])
   @@index([staffId, startAt])
   @@index([partyId])
+  @@index([groupId])
+  @@index([queueTicketId])
+}
+
+// SVC B.0 — ช่าง × บริการ (ไม่มีแถวของช่าง = ทำทุกบริการ · booking.staff.servicesMode) · CHECK ใน migration svc_b
+model BookingStaffService {
+  id          String         @id @default(cuid())
+  tenantId    String
+  unitId      String
+  staffId     String
+  staff       BookingStaff   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  serviceId   String
+  service     BookingService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  durationMin Int? // null = ตามบริการ · CHECK > 0
+  priceSatang Int? // null = ตามบริการ · CHECK >= 0
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([staffId, serviceId])
+  @@index([tenantId, unitId])
+}
+
+// SVC B.0 — ทรัพยากร (เก้าอี้/เตียง/ห้อง · ใช้จริง B.13) · ไม่มี FK · CHECK ใน migration svc_b
+model SvcResource {
+  id         String   @id @default(cuid())
+  tenantId   String
+  unitId     String
+  kind       String
+  name       String
+  capacity   Int      @default(1) // CHECK >= 1
+  cleanupMin Int      @default(0) // CHECK >= 0
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([unitId, name])
+  @@index([tenantId, unitId])
+}
+
+// SVC B.13 — ช่วงปิดซ่อมของทรัพยากร (มติผู้คุม R1 ทาง A · migration svc_b13) · ไม่มี FK (แบบ B.0)
+//   endAt null = ปิดจนกว่าจะปลด · เขียน/ตรวจ IN_USE ใต้ล็อกแถว SvcResource เดียวกับทางจอง
+model SvcResourceBlock {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String
+  resourceId  String
+  startAt     DateTime
+  endAt       DateTime?
+  reason      String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([tenantId, resourceId, startAt])
 }
 
 // วันหยุด/เวลาพิเศษรายวัน (11 ส.ค. 2026 — เจ้าของทัก: เดิมตั้งได้แค่รายสัปดาห์)
@@ -140,4 +221,28 @@ model BookingClosure {
 
   @@unique([unitId, date])
   @@index([tenantId, unitId])
+}
+
+// SVC B.17 ▸ waitlist "แจ้งฉันถ้ามีคนยกเลิก" (ใบสั่ง §4 · มติผู้คุม R1 ทาง ก) — ตัวตน = Party ที่ยืนยันจากลิงก์ LINE ·
+//   ไม่มีชื่อ/เบอร์ในตารางนี้ (X8 · อ่านจาก Party ตอนส่ง) · CHECK ช่วงนาที/สถานะอยู่ใน migration svc_b17 ◂
+model BookingWaitlist {
+  id        String    @id @default(cuid())
+  tenantId  String
+  unitId    String
+  partyId   String // ตัวตนที่ยืนยันแล้ว (ลิงก์ LINE) — ไม่มีชื่อ/เบอร์ในตารางนี้
+  serviceId String
+  staffId   String? // null = ใครก็ได้
+  dateStr   String // YYYY-MM-DD วันไทย
+  fromMin   Int // CHECK 0 ≤ fromMin < toMin ≤ 1440
+  toMin     Int
+  status    String    @default("ACTIVE") // ACTIVE | BOOKED | CANCELLED | EXPIRED (CHECK)
+  expiresAt DateTime
+  endedAt   DateTime?
+  endReason String? // CUSTOMER | BOOKED | EXPIRED
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId, unitId, dateStr, status, createdAt])
+  @@index([tenantId, partyId, status])
+  @@index([status, expiresAt])
 }

@@ -1,0 +1,125 @@
+{
+ "generatedAt": "2026-11-05T19:35:40.373Z",
+ "states": [
+  {
+   "name": "b1-switcher",
+   "dark": false,
+   "route": "/secretary",
+   "fixture": "s2.20.json",
+   "file": "b1-switcher.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "b1-switcher",
+   "dark": true,
+   "route": "/secretary",
+   "fixture": "s2.20.json",
+   "file": "b1-switcher-dark.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "c4-reject-sheet",
+   "dark": false,
+   "route": "/secretary/room/r1",
+   "fixture": "s2.4.json",
+   "file": "c4-reject-sheet.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "c4-reject-sheet",
+   "dark": true,
+   "route": "/secretary/room/r1",
+   "fixture": "s2.4.json",
+   "file": "c4-reject-sheet-dark.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "d3-add-member",
+   "dark": false,
+   "route": "/secretary/room/r2",
+   "fixture": "s2.10.json",
+   "file": "d3-add-member.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "d3-add-member",
+   "dark": true,
+   "route": "/secretary/room/r2",
+   "fixture": "s2.10.json",
+   "file": "d3-add-member-dark.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "k4-channels",
+   "dark": false,
+   "route": "/secretary/settings/customers",
+   "fixture": "s2.17.json",
+   "file": "k4-channels.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "k4-channels",
+   "dark": true,
+   "route": "/secretary/settings/customers",
+   "fixture": "s2.17.json",
+   "file": "k4-channels-dark.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "k5-routing",
+   "dark": false,
+   "route": "/secretary/settings/customers",
+   "fixture": "s2.17.json",
+   "file": "k5-routing.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "k5-routing",
+   "dark": true,
+   "route": "/secretary/settings/customers",
+   "fixture": "s2.17.json",
+   "file": "k5-routing-dark.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "a1-scope-tenant",
+   "dark": false,
+   "route": "/secretary",
+   "fixture": "s2.20.json",
+   "file": "a1-scope-tenant.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  },
+  {
+   "name": "a1-scope-tenant",
+   "dark": true,
+   "route": "/secretary",
+   "fixture": "s2.20.json",
+   "file": "a1-scope-tenant-dark.png",
+   "errors": [],
+   "unmocked": [],
+   "ok": true
+  }
+ ]
+}

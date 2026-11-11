@@ -12,6 +12,9 @@ import {
   type QuoteState,
   type RegisterSaleState,
 } from "@/lib/actions/pos";
+// SVC B.10 ▸ บิลจากคิว ◂
+import { listServiceBillsAction, payServiceBillAction, serviceBillViewAction } from "@/lib/modules/pos/register-actions";
+import type { ServiceBillListItem, ServiceBillView } from "@/lib/modules/pos/service-bill";
 import type {
   PosDealOption,
   PosServiceItem,
@@ -690,6 +693,9 @@ export function PosRegister({
   ) : null;
 
   return (
+    <>
+    {/* SVC B.10 ▸ แผง "บิลจากคิว" (บิลพักที่ผูกงานจองคิว) — ไม่มีบิล = ไม่แสดงอะไร (หน้าขายเดิมทุกตัวอักษร) ◂ */}
+    <ServiceBillsPanel systemId={systemId} unitId={unitId} />
     <div data-testid="pos-register" className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-5">
       <div className={`flex min-w-0 flex-1 flex-col gap-4 ${panelOpen ? "" : "mx-auto w-full max-w-2xl"}`}>
         {/* เลือกสมาชิกอยู่บนสุด — สิทธิ์ต้องขึ้นก่อนเริ่มหยิบของ ไม่ใช่ตอนจะจ่ายเงินแล้ว */}
@@ -864,7 +870,161 @@ export function PosRegister({
 
       {panel}
     </div>
+    </>
   );
 }
+
+// ═══════════ SVC B.10 ▸ แผง "บิลจากคิว" (ภาพ จอง 07 ข) ═══════════
+// งานจองคิวที่ช่างกด "เสร็จ" แล้วรอรับเงิน — ยอด/บรรทัด/มัดจำมาจากเซิร์ฟเวอร์ทั้งหมด (บรรทัดล็อกราคา · หักมัดจำคงเหลือจริงตอนจ่าย) ·
+// ?serviceBill=<เลขบัตร> = เลือกบิลนั้นตอนเปิดจอ · ไม่มีบิลจากคิว = ไม่แสดงแผง
+type SbPay = "CASH" | "PROMPTPAY" | "TRANSFER" | "CARD";
+const SB_PAY_LABEL: Record<SbPay, string> = { CASH: "เงินสด", PROMPTPAY: "PromptPay", TRANSFER: "โอน", CARD: "บัตร" };
+const sbBaht = (satang: number) => `${satang < 0 ? "−" : ""}฿${formatBaht(Math.abs(satang))}`;
+const sbTime = (d: Date | string) => new Date(new Date(d).getTime() + 7 * 3_600_000).toISOString().slice(11, 16);
+
+function ServiceBillsPanel({ systemId, unitId }: { systemId: string; unitId: string }) {
+  const [items, setItems] = useState<ServiceBillListItem[]>([]);
+  const [sel, setSel] = useState<string | null>(null);
+  const [view, setView] = useState<ServiceBillView | null>(null);
+  const [method, setMethod] = useState<SbPay>("CASH");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const keyRef = useRef<string>(newKey());
+
+  const load = useCallback(async (pick?: string | null) => {
+    const r = await listServiceBillsAction({ systemId, unitId });
+    if (!r.ok) return;
+    setItems(r.items);
+    const want = pick ?? null;
+    const hit = want ? r.items.find((x) => x.heldCartId === want || x.label === want || x.label.startsWith(`${want} `)) : null;
+    if (hit) setSel(hit.heldCartId);
+  }, [systemId, unitId]);
+
+  useEffect(() => {
+    const q = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("serviceBill") : null;
+    void load(q);
+  }, [load]);
+
+  useEffect(() => {
+    setView(null);
+    setMsg("");
+    keyRef.current = newKey();
+    if (!sel) return;
+    let live = true;
+    void serviceBillViewAction({ systemId, unitId, heldCartId: sel }).then((r) => {
+      if (live && r.ok) setView(r);
+      else if (live && !r.ok) setMsg(r.message);
+    });
+    return () => {
+      live = false;
+    };
+  }, [sel, systemId, unitId]);
+
+  async function pay() {
+    if (!view || busy) return;
+    setBusy(true);
+    setMsg("");
+    const r = await payServiceBillAction({ systemId, unitId, heldCartId: view.heldCartId, payMethods: [{ type: method, amountSatang: view.dueSatang }], idempotencyKey: keyRef.current });
+    setBusy(false);
+    if (r.ok) {
+      setMsg(`รับเงินแล้ว ${sbBaht(r.grandTotalSatang)}${r.receiptNo ? ` · ใบเสร็จ ${r.receiptNo}` : ""}`);
+      setSel(null);
+      await load(null);
+      return;
+    }
+    setMsg(r.message ?? "รับเงินไม่สำเร็จ");
+    if (r.code === "SERVICE_BILL_PAID" || r.code === "NOT_FOUND" || r.code === "PAYMENT_MISMATCH") {
+      await load(view.heldCartId);
+      setSel(null);
+    }
+  }
+
+  if (items.length === 0 && !msg) return null;
+  return (
+    <section data-testid="pos-service-bills" className="card grid gap-0 overflow-hidden p-0 lg:grid-cols-[290px_1fr_330px]">
+      <div className="flex flex-col gap-2 bg-[color:var(--color-surface-2)] p-4">
+        <h3 className="flex items-center text-[15px] font-bold">
+          บิลจากคิว<span className="ml-auto rounded-md bg-[color:var(--color-ink)] px-2 text-xs text-[color:var(--color-surface)]">{items.length}</span>
+        </h3>
+        {items.map((it) => (
+          <button
+            key={it.heldCartId}
+            type="button"
+            data-testid="pos-service-bill"
+            data-held-cart={it.heldCartId}
+            onClick={() => setSel(it.heldCartId)}
+            className={`rounded-[14px] border bg-[color:var(--color-surface)] px-3 py-2.5 text-left text-[13px] text-[color:var(--color-muted)] ${sel === it.heldCartId ? "border-2 border-[color:var(--color-ink)]" : ""}`}
+          >
+            <b className="flex justify-between text-[14.5px] text-[color:var(--color-ink)]">
+              <span className="truncate">{it.label || "งานจองคิว"}</span>
+              <span className="tabular-nums">{sbBaht(it.dueSatang)}</span>
+            </b>
+            {[it.staffName, `ส่งมา ${sbTime(it.createdAt)}`, it.depositSatang > 0 ? "หักมัดจำแล้ว" : null].filter(Boolean).join(" · ")}
+          </button>
+        ))}
+        <p className="mt-2 text-xs text-[color:var(--color-muted)]">บิลจากคิว = บิลพักชนิดพิเศษ เรียกขึ้นจอได้ทุกเครื่องของสาขา</p>
+      </div>
+      <div className="border-[color:var(--color-border)] p-4 lg:border-l">
+        {view ? (
+          <>
+            <h3 className="text-[15px] font-bold">{view.label || "งานจองคิว"}</h3>
+            <div className="mt-2 flex flex-col">
+              {view.lines.map((l, i) => (
+                <div key={i} className="grid grid-cols-[1fr_auto] gap-x-3 border-t border-[color:var(--color-border)] py-2.5 first:border-t-0">
+                  <b className="text-[15px]">{l.name}{l.qty > 1 ? ` ×${l.qty}` : ""}</b>
+                  <span className="text-right font-bold tabular-nums">{sbBaht(l.amountSatang)}</span>
+                  <small className="text-[12.5px] text-[color:var(--color-muted)]">
+                    {l.kind === "PRODUCT" ? "ผู้ขาย" : "ผู้ให้บริการ"}: {l.performerName || "—"}
+                  </small>
+                </div>
+              ))}
+              {view.depositSatang > 0 ? (
+                <div className="grid grid-cols-[1fr_auto] gap-x-3 border-t border-[color:var(--color-border)] py-2.5 text-[color:var(--color-accent)]">
+                  <b className="text-[15px]">หักมัดจำ</b>
+                  <span className="text-right font-bold tabular-nums">{sbBaht(-view.depositSatang)}</span>
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-2 flex flex-col text-[14.5px] tabular-nums">
+              <div className="flex justify-between py-1"><span>รวมค่าบริการ+สินค้า</span><span>{sbBaht(view.subtotalSatang)}</span></div>
+              <div className="flex justify-between py-1"><span>หักมัดจำ</span><span>{sbBaht(-view.depositSatang)}</span></div>
+              <div className="mt-1 flex justify-between border-t-[1.5px] border-[color:var(--color-ink)] pt-3 text-[22px] font-bold"><span>ต้องจ่าย</span><span>{sbBaht(view.dueSatang)}</span></div>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-[color:var(--color-muted)]">เลือกบิลจากคิวทางซ้ายเพื่อรับเงิน</p>
+        )}
+      </div>
+      <div className="flex flex-col gap-3 border-[color:var(--color-border)] p-4 lg:border-l">
+        <h3 className="text-[15px] font-bold">รับเงิน</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {(Object.keys(SB_PAY_LABEL) as SbPay[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              data-testid="pos-service-bill-method"
+              data-method={m}
+              onClick={() => setMethod(m)}
+              className={`min-h-[52px] rounded-[14px] border text-[15px] font-bold ${method === m ? "border-2 border-[color:var(--color-ink)]" : ""}`}
+            >
+              {SB_PAY_LABEL[m]}
+            </button>
+          ))}
+        </div>
+        {msg ? <p role="status" className="text-sm text-[color:var(--color-muted)]">{msg}</p> : null}
+        <button
+          type="button"
+          data-testid="pos-service-bill-pay"
+          disabled={!view || busy}
+          onClick={() => void pay()}
+          className="mt-auto min-h-[56px] rounded-2xl bg-[color:var(--color-ink)] text-base font-bold text-[color:var(--color-surface)] disabled:opacity-50"
+        >
+          {view ? `รับเงิน ${sbBaht(view.dueSatang)}` : "รับเงิน"}
+        </button>
+      </div>
+    </section>
+  );
+}
+// ◂ SVC B.10
 
 export default PosRegister;

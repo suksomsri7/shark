@@ -14,6 +14,11 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBaht } from "@/lib/ui/money";
+// POS P2.4U ▸ มติ 10 (F4b): สาขาที่ใช้โหมดโต๊ะของ POS ⇒ ซ่อน "เช็คบิล" + "ยกเลิก" รายการ + โน้ต "จัดการที่ POS › โต๊ะ" ◂
+import { getTranslations } from "next-intl/server";
+import { posTableModeForUnit } from "@/lib/modules/pos/table-legacy";
+import { redirect } from "next/navigation"; // POS P2.14 ▸ LEG-2/4 ◂
+import { posLinkedLegacyPage } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS = หน้าเดิมปิด → หน้า POS ◂
 
 const KDS_LABEL: Record<string, string> = {
   NEW: "รอครัว",
@@ -30,6 +35,11 @@ export default async function SessionPage({
 }) {
   const { unitSlug, sessionId } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
+  // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS ⇒ หน้าเดิมปิด — ไปหน้าโต๊ะของ POS (from=legacy = แถบแจ้งที่หน้า POS) ·
+  //   หน้าขายแบบเดิม (ไม่เปิด registerV2) ยังไม่มีหน้าโต๊ะ/ครัว ⇒ ไปหน้าขาย · ไม่ผูก POS = หน้าเดิมตามเดิม
+  const posDoor = await posLinkedLegacyPage(auth.active.tenantId, unit.id);
+  if (posDoor) redirect(`/app/sys/${posDoor.systemId}/pos/${posDoor.v2 ? "tables" : "register"}?unit=${encodeURIComponent(unit.id)}&from=legacy`);
+  // ◂
   const { tenantId } = auth.active;
   const session = await getSession(tenantId, unit.id, sessionId);
   if (!session) notFound();
@@ -37,6 +47,8 @@ export default async function SessionPage({
   const freeTables = tables.filter((t) => !t.sessionId && t.status === "ACTIVE" && t.id !== session.tableId);
   const otherOpen = tables.filter((t) => t.sessionId && t.sessionId !== sessionId);
   const hasPaidItems = session.orders.some((o) => o.items.some((it) => it.saleId));
+  const posTables = await posTableModeForUnit(auth, unit.id); // POS P2.4U ▸ F4b ◂
+  const tl = await getTranslations("pos.tables"); // POS P2.4U ▸ โหมดโต๊ะ ◂
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -60,13 +72,21 @@ export default async function SessionPage({
           <Link href={`/app/u/${unitSlug}/restaurant/order?sessionId=${sessionId}`} className="btn btn-ghost text-sm">
             + สั่งเพิ่ม
           </Link>
-          {session.unpaidSatang > 0 && (
+          {session.unpaidSatang > 0 && !posTables && (
             <Link href={`/app/u/${unitSlug}/restaurant/checkout/${sessionId}`} className="btn btn-primary text-sm">
               เช็คบิล
             </Link>
           )}
+          {posTables && ( // POS P2.4U ▸ F4b ◂
+            <Link data-testid="rest-pos-tables-link" href={`${posTables.href}&open=${sessionId}`} className="btn btn-primary text-sm">
+              {tl("legacy.manageAtPos")}
+            </Link>
+          )}
         </div>
       </section>
+
+      {/* POS P2.4U ▸ F4b: โน้ตย้ายเช็คบิล/ยกเลิกรายการไป POS ◂ */}
+      {posTables && <p data-testid="rest-pos-tables-note" className="rounded-xl border px-3 py-2 text-sm">{tl("legacy.note")}</p>}
 
       {/* รายการ */}
       <section className="flex flex-col gap-3">
@@ -104,7 +124,7 @@ export default async function SessionPage({
                         {it.note ? ` · ${it.note}` : ""}
                       </div>
                     </div>
-                    {!it.saleId && it.kdsStatus !== "CANCELLED" && it.kdsStatus !== "SERVED" && (
+                    {!posTables && !it.saleId && it.kdsStatus !== "CANCELLED" && it.kdsStatus !== "SERVED" && ( // POS P2.4U ▸ F4b: ยกเลิกรายการที่ POS ◂
                       <ConfirmDialog
                         triggerLabel="ยกเลิก"
                         triggerClassName="btn-sm text-[color:var(--color-danger)]"

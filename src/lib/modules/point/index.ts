@@ -89,6 +89,7 @@ export type {
   BurnFifoResult,
   LotUse,
   ExpiringLot,
+  ReversePartialEarnInput,
 } from "./lots";
 
 export {
@@ -98,6 +99,8 @@ export {
   burnFifo,
   /** กลับรายการแต้มของบิลหนึ่ง โดยคืนเข้าล็อตเดิม (void) */
   reverseWithLots,
+  /** POS P1.8 — คืนเงินบางส่วน: หักแต้มที่บิลให้ตามสัดส่วนยอดคืน (โมดูลแต้มคิดเอง · D5) */
+  reversePartialEarn,
   /** cron รายวัน: ตัดล็อตที่หมดอายุ (ctx = null คือทุกร้าน) */
   expireDue,
   /** ล็อตที่จะหมดอายุภายใน N วัน */

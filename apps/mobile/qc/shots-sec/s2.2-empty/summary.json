@@ -1,0 +1,80 @@
+{
+ "generatedAt": "2026-11-05T19:29:35.608Z",
+ "base": "http://127.0.0.1:4727",
+ "view": {
+  "tag": "iphone",
+  "w": 390,
+  "h": 844,
+  "scale": 2
+ },
+ "fixture": {
+  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s2.2-empty.json",
+  "sha256": "c82bb60fec6f99f5c38f690a12f4ab3c000440500595eac349b77f45ae47a01a"
+ },
+ "screens": [
+  {
+   "name": "secretary",
+   "route": "/secretary",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "c82bb60fec6f99f5c38f690a12f4ab3c000440500595eac349b77f45ae47a01a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-secretary",
+    "sec-home",
+    "sec-top-secretary",
+    "sec-top-customers",
+    "sec-top-team",
+    "sec-top-help",
+    "sec-tenant",
+    "sec-home-empty",
+    "sec-orb",
+    "sec-suggest-s1",
+    "sec-suggest-s2",
+    "sec-suggest-s3",
+    "sec-home-new",
+    "sec-input"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n\n\nThe Bean Café\n\nเลขา Shark · ยังไม่มีงานในกิจการนี้\nสั่งงานแรกได้เลย\nพิมพ์หรือพูดเป็นภาษาปกติ\nผมหาข้อมูลในระบบ ร่างให้ แล้วขออนุมัติก่อนทำจริง\nลองสั่งแบบนี้\nPOS\nวันนี้ยังไม่มียอดขาย\nวันนี้ยังไม่มีบิลขายเลย ช่วยคิดโปรหรือข้อความชวนลูกค้าเข้าร้านช่วงเย็นนี้ให้หน่อย\n\nCRM\nทักลูกค้าที่เงียบไป 12 ราย\nช่วยร่างข้อความทักลูกค้าที่ไม่มีความเคลื่อนไหวเกิน 30 วัน 12 ราย แล้วเสนอให้ผมดูก่อนส่ง\n\nจองคิว\nเตรียมนัดพรุ่งนี้ 4 นัด\nช่วยสรุปนัดหมายพรุ่งนี้ 4 นัด และบอกว่าต้องเตรียมอะไรบ้าง\n\n\n",
+   "unmocked": [],
+   "url": "/secretary",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.2-empty/secretary.png",
+   "generatedAt": "2026-11-05T19:29:32.528Z"
+  },
+  {
+   "name": "secretary-dark",
+   "route": "/secretary",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "c82bb60fec6f99f5c38f690a12f4ab3c000440500595eac349b77f45ae47a01a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "sec-secretary",
+    "sec-home",
+    "sec-top-secretary",
+    "sec-top-customers",
+    "sec-top-team",
+    "sec-top-help",
+    "sec-tenant",
+    "sec-home-empty",
+    "sec-orb",
+    "sec-suggest-s1",
+    "sec-suggest-s2",
+    "sec-suggest-s3",
+    "sec-home-new",
+    "sec-input"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\n\n\n\nThe Bean Café\n\nเลขา Shark · ยังไม่มีงานในกิจการนี้\nสั่งงานแรกได้เลย\nพิมพ์หรือพูดเป็นภาษาปกติ\nผมหาข้อมูลในระบบ ร่างให้ แล้วขออนุมัติก่อนทำจริง\nลองสั่งแบบนี้\nPOS\nวันนี้ยังไม่มียอดขาย\nวันนี้ยังไม่มีบิลขายเลย ช่วยคิดโปรหรือข้อความชวนลูกค้าเข้าร้านช่วงเย็นนี้ให้หน่อย\n\nCRM\nทักลูกค้าที่เงียบไป 12 ราย\nช่วยร่างข้อความทักลูกค้าที่ไม่มีความเคลื่อนไหวเกิน 30 วัน 12 ราย แล้วเสนอให้ผมดูก่อนส่ง\n\nจองคิว\nเตรียมนัดพรุ่งนี้ 4 นัด\nช่วยสรุปนัดหมายพรุ่งนี้ 4 นัด และบอกว่าต้องเตรียมอะไรบ้าง\n\n\n",
+   "unmocked": [],
+   "url": "/secretary",
+   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/s2.2-empty/secretary-dark.png",
+   "generatedAt": "2026-11-05T19:29:35.485Z"
+  }
+ ]
+}

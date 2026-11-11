@@ -1,31 +1,70 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
+import { resetSettingAction, saveSettingsAction } from "@/lib/core/settings/actions";
+import { bookingResourcesModel, listResources, loadBookingSettingsPage } from "@/lib/modules/booking";
+import BookingStaffSettings from "@/components/booking/settings/BookingStaffSettings";
 import { setStaffReceivingAction, linkStaffToHrAction } from "@/lib/actions/booking";
+import { createResourceAction, setResourceMaintenanceAction, updateResourceAction } from "@/lib/actions/booking-settings";
 import { queueRoster } from "@/lib/modules/booking/service";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 
-// ฟังก์ชันย่อย "ใครรับคิว" ของระบบจอง
+// ฟังก์ชันย่อย "<คำเรียกผู้ให้บริการ>" ของระบบจอง = จอง 12 ส่วนคน (SVC B.11 · ภาพ ledger/design-booking/12-staff-resources.png) + ส่วนทรัพยากร (SVC B.13)
 // มติเจ้าของ 13 ส.ค. 2026: เพิ่ม/ลบพนักงานทำที่ระบบ "พนักงาน HR" ที่เดียว (เดิมกรอกคนเดิม 2 ที่)
-// ที่นี่เหลือหน้าที่เดียว = ติ๊กว่าพนักงานคนไหนรับคิวที่สาขานี้
+// ส่วนบน = ตาราง + แผงตั้งค่าการรับงาน (B.11) · ส่วนล่างคงปุ่มเดิม: ติ๊กรับคิวที่สาขานี้ · รวมช่างเข้า HR
+// ?staff= = id หรือชื่อตรงตัวในสาขา (ไม่พบ ⇒ 404) · ผู้กระทำจาก session (auth.active) เท่านั้น
 export default async function BookingStaffPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
+  searchParams: Promise<{ staff?: string | string[] }>;
 }) {
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "BOOKING") notFound();
+  const actor = {
+    role: auth.active.role,
+    unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [],
+    permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
+    userId: auth.active.userId,
+  };
+  const ctx = { tenantId: auth.active.tenantId };
+  const { staff } = await searchParams;
+  const staffId = typeof staff === "string" ? staff : undefined;
+  const model = await loadBookingSettingsPage(actor, ctx, { unitId: unit.id, page: "staff", ...(staffId !== undefined ? { staffId } : {}) });
+  if (!model || model.page !== "staff") notFound();
   const { rows, hrSystemId, unlinked } = await queueRoster({
     tenantId: auth.active.tenantId,
     unitId: unit.id,
   });
   const receivingCount = rows.filter((r) => r.receiving).length;
+  // SVC B.13 ▸ ห้อง · เตียง · อุปกรณ์ (ใต้ตารางคน) — action ผูก unitSlug · ด่านสิทธิ์อยู่ใน action + facade ◂
+  const resourceRows = await listResources({ tenantId: auth.active.tenantId, unitId: unit.id });
+  const resourceModel = await bookingResourcesModel(actor, ctx, unit.id, resourceRows);
   const muted = "text-[color:var(--color-muted)]";
 
   return (
     <div className="flex flex-col gap-5">
+      <BookingStaffSettings
+        model={model}
+        actions={{ save: saveSettingsAction, reset: resetSettingAction }}
+        resources={
+          resourceModel
+            ? {
+                model: resourceModel,
+                actions: {
+                  create: createResourceAction.bind(null, unitSlug),
+                  update: updateResourceAction.bind(null, unitSlug),
+                  maintenance: setResourceMaintenanceAction.bind(null, unitSlug),
+                },
+              }
+            : null
+        }
+      />
       <PageHeader
-        title="ใครรับคิว"
+        title="ใครรับคิวที่สาขานี้"
         desc="ติ๊กพนักงานที่รับนัดของสาขานี้ — ทะเบียนพนักงานอยู่ที่ระบบ “พนักงาน HR” ที่เดียว ไม่ต้องกรอกซ้ำ"
       />
 

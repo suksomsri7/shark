@@ -1,0 +1,767 @@
+{
+  "$schema": "pos-visual-sweep/1",
+  "$note": "P2 phase-close parity sweep (brief P2.14 §1 b · §10 ruling 6). Data only. Shot on QC5, tree d, after ONE build at the P2-close tip; the controller judges money screens 01/02/02b/05/07/12/receipts himself, the rest is harness-judged + 1–2 spot checks per frame. Re-shoot after the U fix round with --states --state <touched> only.",
+  "$command": "bash scripts/iso.sh bash scripts/qc5.sh env CI=1 pnpm exec tsx scripts/visual-pos.mts <wo> --states --user <user> --tenant coffee [--page <page>] --base http://127.0.0.1:<port>  (en: env LOCALE=en inside iso.sh, never before it)",
+  "$sizes": "th = 1440×900 · 1024×768 · 390×844 (display 1280×800 · 1024×768) · en = 1440×900 for every page + 390×844 for EN_MOBILE_PAGES (register · sales · receipt-public · display · qr-public) once the one-line harness change lands (ruling 6)",
+  "$checks": "qc-pos-p2.14 V1 (every POS_PAGES entry has a th and an en run) · V2 (every wo-gated plan constant of visual-pos.mts has a run whose wo matches) · V3 (every page.tsx maps to a POS_PAGES key or an exemption) · V4 (staff pages: ui-inventory rows + authz pin or a refusal testid listed in 'refusals')",
+  "pages": {
+    "register": "src/app/app/sys/[id]/pos/register/page.tsx",
+    "sales": "src/app/app/sys/[id]/pos/sales/page.tsx",
+    "products": "src/app/app/sys/[id]/pos/products/page.tsx",
+    "close": "src/app/app/sys/[id]/pos/close/page.tsx",
+    "reports": "src/app/app/sys/[id]/pos/reports/page.tsx",
+    "stock": "src/app/app/sys/[id]/pos/stock/page.tsx",
+    "shifts": "src/app/app/sys/[id]/pos/shifts/page.tsx",
+    "settings": "src/app/app/sys/[id]/pos/settings/page.tsx",
+    "receipt-public": "src/app/(store)/r/[token]/page.tsx",
+    "tables": "src/app/app/sys/[id]/pos/tables/page.tsx",
+    "orders": "src/app/app/sys/[id]/pos/orders/page.tsx",
+    "kds": "src/app/app/sys/[id]/pos/kds/page.tsx",
+    "display": "src/app/(store)/d/page.tsx",
+    "qr-public": [
+      "src/app/(store)/q/t/[qrToken]/page.tsx",
+      "src/app/(store)/q/[linkToken]/page.tsx",
+      "src/app/(store)/q/o/[orderToken]/page.tsx"
+    ],
+    "help": "src/app/app/sys/[id]/pos/help/page.tsx"
+  },
+  "exempt": [
+    {
+      "file": "src/app/app/sys/[id]/pos/reports/print/page.tsx",
+      "parent": "reports",
+      "why": "print variant of reports — shot by p2.12u print states (report-print-*), not a page of its own"
+    },
+    {
+      "file": "src/app/app/sys/[id]/pos/products/price-rules/page.tsx",
+      "parent": "products",
+      "why": "price-rule editor under products — shot by p2.2u price-rule states"
+    },
+    {
+      "file": "src/app/developers/pos/page.tsx",
+      "parent": "settings",
+      "why": "public developer page — shot by wo p2.13 (state developers-pos) from the settings plan"
+    }
+  ],
+  "refusals": {
+    "/app/sys/[id]/pos/help": "pos-help-refusal"
+  },
+  "runs": [
+    {
+      "id": "pages-th",
+      "wo": "p2close",
+      "pages": [
+        "register",
+        "sales",
+        "products",
+        "close",
+        "reports",
+        "stock",
+        "shifts",
+        "settings",
+        "receipt-public",
+        "tables",
+        "orders",
+        "kds",
+        "display"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": false,
+      "sizes": "1440/1024/390 (display 1280/1024)",
+      "why": "every page, default view, 3 sizes th"
+    },
+    {
+      "id": "pages-en",
+      "wo": "p2close-en",
+      "pages": [
+        "register",
+        "sales",
+        "products",
+        "close",
+        "reports",
+        "stock",
+        "shifts",
+        "settings",
+        "receipt-public",
+        "tables",
+        "orders",
+        "kds",
+        "display"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": false,
+      "sizes": "1440 + 390 for EN_MOBILE_PAGES (ruling 6)",
+      "why": "every page en"
+    },
+    {
+      "id": "p1.3-register",
+      "wo": "p1.3",
+      "pages": [
+        "register"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "STATE_PLAN 24 (+ member 6) register states"
+    },
+    {
+      "id": "p1.9-shifts",
+      "wo": "p1.9",
+      "pages": [
+        "shifts"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "shifts 4 states"
+    },
+    {
+      "id": "p1.10u-settings",
+      "wo": "p1.10u",
+      "pages": [
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "settings device/receipt states"
+    },
+    {
+      "id": "p1.14-stock",
+      "wo": "p1.14",
+      "pages": [
+        "stock"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "stock 5 states"
+    },
+    {
+      "id": "p1.16-sales",
+      "wo": "p1.16",
+      "pages": [
+        "sales"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "bills 10 states (money screen 12 — controller judges himself)"
+    },
+    {
+      "id": "p1.17-reports",
+      "wo": "p1.17",
+      "pages": [
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "reports (REPORT_QUERY)"
+    },
+    {
+      "id": "p1.18u-settings",
+      "wo": "p1.18u",
+      "pages": [
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "P1.18U settings 8 states"
+    },
+    {
+      "id": "rpub",
+      "wo": "p2close-rpub",
+      "pages": [
+        "receipt-public"
+      ],
+      "users": [
+        "owner"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "receipt-public 6 states (/r · money screen — controller)"
+    },
+    {
+      "id": "p2.2u-products",
+      "wo": "p2.2u",
+      "pages": [
+        "products"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "P2.2U products states"
+    },
+    {
+      "id": "p2.3u-products",
+      "wo": "p2.3u",
+      "pages": [
+        "products"
+      ],
+      "users": [
+        "owner"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "P2.3U recipe states"
+    },
+    {
+      "id": "p2.4u-tables",
+      "wo": "p2.4u",
+      "pages": [
+        "tables",
+        "register"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "tables 7 + register 2"
+    },
+    {
+      "id": "p2.5u-tables",
+      "wo": "p2.5u",
+      "pages": [
+        "tables",
+        "register"
+      ],
+      "users": [
+        "owner"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "split bill / pre-bill states (03 · 15B/15C)"
+    },
+    {
+      "id": "p2.6u-kds",
+      "wo": "p2.6u",
+      "pages": [
+        "kds",
+        "settings",
+        "products",
+        "orders",
+        "register"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "KDS + kitchen slip/86 states (04 · 17B)"
+    },
+    {
+      "id": "p2.8u-orders",
+      "wo": "p2.8u",
+      "pages": [
+        "orders",
+        "register"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "orders 9 + register 1 (09)"
+    },
+    {
+      "id": "p2.9u-register",
+      "wo": "p2.9u",
+      "pages": [
+        "register",
+        "sales",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "gift card / store credit / tip (02 · money screens — controller)"
+    },
+    {
+      "id": "p2.9bu-deposit",
+      "wo": "p2.9bu",
+      "pages": [
+        "register",
+        "sales",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "deposit states (02 · 02b · 12)"
+    },
+    {
+      "id": "p2.10-display",
+      "wo": "p2.10",
+      "pages": [
+        "settings",
+        "display"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "customer display 11A + settings display block"
+    },
+    {
+      "id": "p2.11u-branches",
+      "wo": "p2.11u",
+      "pages": [
+        "products",
+        "reports",
+        "settings",
+        "stock"
+      ],
+      "users": [
+        "owner",
+        "manager"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "multi-branch states (manager only here)"
+    },
+    {
+      "id": "p2.12u-reports",
+      "wo": "p2.12u",
+      "pages": [
+        "reports",
+        "sales",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "channel/branch/anomaly reports + print (08)"
+    },
+    {
+      "id": "p2.13-api",
+      "wo": "p2.13",
+      "pages": [
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "manager"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "why": "API key card + /developers/pos (developers-pos state)"
+    },
+    {
+      "id": "p2.7-qr",
+      "wo": "p2.7",
+      "pages": [
+        "qr-public"
+      ],
+      "users": [
+        "owner"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": true,
+      "after": "P2.7U",
+      "why": "public /q/** pages th/en + 09 QR rows + TablePanel QR (P2.7U deliverables)"
+    },
+    {
+      "id": "p3.5u-th",
+      "wo": "p3.5u",
+      "pages": [
+        "register",
+        "shifts",
+        "settings",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.5U",
+      "why": "P3.5U 15 states (13b schedule chip/off-schedule/override · 13a shift list HR · 07 clock ask + hours · 17c HR switch/gate/commission cards · 08 commission report) · th owner 39 + cashier 18 · QC5 build un_z-YV7HefNqH1RNNlhU @b92d5598 · vis-p35u4 + reshoot vis-p35u5 (harness CD-P35U-V1/V2) · 21 Oct 2026"
+    },
+    {
+      "id": "p3.5u-en",
+      "wo": "p3.5u-en",
+      "pages": [
+        "register",
+        "shifts",
+        "settings",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.5U",
+      "why": "same states LOCALE=en · 1440 every page + 390 register (EN_MOBILE_PAGES) · owner 17 + cashier 11 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.4u-th",
+      "wo": "p3.4u",
+      "pages": [
+        "register",
+        "shifts",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.4U",
+      "why": "P3.4U 9 offline states (offline-sale/queue/tenders/sync-back/slip/lock-pin/rejected · shifts offline-close-blocked · settings-offline-live) · th owner 26 + cashier 17 · QC5 build WAUfKtpjNZPuKuO8XpvsP @77d72a69 + harness fix2 2718a0b9 · vis-p34u2-qc5-20261021T162822Z (58/58) · regression p1.3 offline 3/3 · p1.18u settings-offline 3/3 (vis-p34u-qc5-20261021T161045Z) · 21 Oct 2026"
+    },
+    {
+      "id": "p3.4u-en",
+      "wo": "p3.4u-en",
+      "pages": [
+        "register",
+        "shifts",
+        "settings"
+      ],
+      "users": [
+        "owner"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.4U",
+      "why": "same states LOCALE=en · owner 15 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.9u-th",
+      "wo": "p3.9u",
+      "pages": [
+        "reports",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.9U",
+      "why": "P3.9U 10 states (reports-ai-panel brief/empty/off/refused · reports-anomalies-a11 · settings-general-anomaly-a11 · settings-ai-card off/linked · settings-ai-brief-sheet + invalid) · th owner 27 + cashier 3 · QC5 build G4XH7hWJLGATAyOGFtca_ @d040425c · vis-p39u-qc5-20261021T215753Z (40/40) · 21 Oct 2026"
+    },
+    {
+      "id": "p3.9u-en",
+      "wo": "p3.9u-en",
+      "pages": [
+        "reports",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.9U",
+      "why": "same states LOCALE=en · owner 9 + cashier 1 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.7u-th",
+      "wo": "p3.7u",
+      "pages": [
+        "settings",
+        "orders",
+        "register"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.7U",
+      "why": "P3.7U 10 states (settings-chat-card off/on/readonly · settings-chat-sheet + invalid · orders-detail-chat paylink/nolink/sent · orders-chat-card-requested · paydone-line-auto 1440) · th owner 25 + cashier 6 · QC5 build 9mZ5Ha91-Gd8L3TrPS2-Z @86ffc207 · vis-p37u-qc5-20261021T235428Z 42/42 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.7u-en",
+      "wo": "p3.7u-en",
+      "pages": [
+        "settings",
+        "orders",
+        "register"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.7U",
+      "why": "same states LOCALE=en · owner 9 + cashier 2 · 21 Oct 2026"
+    },
+    {
+      "id": "p3.8u-th",
+      "wo": "p3.8u",
+      "pages": [
+        "settings",
+        "reports",
+        "shifts"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.8U",
+      "why": "P3.8U 12 states (settings-board off/on/readonly(cashier)/invalid/room-stale · settings-shark-kanban-link · reports-anomalies-card button/pressed/chip · reports-ai-panel-board · shifts-closed-board-chip · shifts-close-board-hint) · th owner 32 + cashier 3 · QC5 build XlCNo5277bEtWc1ZWQdM- @2676f5f6 (harness fix1 a0c808aa creates the KANBAN/MEETING QC systems) · vis-p38u-qc5-20261022T003509Z 47/47 · 22 Oct 2026"
+    },
+    {
+      "id": "p3.8u-en",
+      "wo": "p3.8u-en",
+      "pages": [
+        "settings",
+        "reports",
+        "shifts"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.8U",
+      "why": "same states LOCALE=en · owner 11 + cashier 1 · 22 Oct 2026"
+    },
+    {
+      "id": "p3.6u-th",
+      "wo": "p3.6u",
+      "pages": [
+        "register",
+        "sales",
+        "reports",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3.6U",
+      "why": "P3.6U 20 states (register-company-chip/picker-search/picker-member/deal-select · paydlg-onaccount owner/cashier/buyer/hidden · paydlg-credit-over-sheet/wrong-pin · paydone-onaccount-due 1440 · bills-drawer/refund-onaccount · reports-credit owner/denied · settings-credit-card off/on/account-invalid/readonly · settings-orders-member-on-bill) · th owner 43 + cashier 18 · QC5 build a1fjVrrXEB6PNtAeIlP8O @46098687 (harness fix2-4 e6969209: tenant guard · CRM fixture source · uiVersion 2 · no handles across awaits) · vis-p36u-qc5-20261022T052845Z 95/95 · 22 Oct 2026"
+    },
+    {
+      "id": "p3.6u-en",
+      "wo": "p3.6u-en",
+      "pages": [
+        "register",
+        "sales",
+        "reports",
+        "settings"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3.6U",
+      "why": "same states LOCALE=en · owner 24 + cashier 10 · 22 Oct 2026"
+    },
+    {
+      "id": "p3-skel-u-th",
+      "wo": "p3-skel-u",
+      "pages": [
+        "settings",
+        "register",
+        "sales",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th"
+      ],
+      "states": true,
+      "after": "P3-SKEL U",
+      "why": "P3-SKEL U 22 states (settings-channel-creds draft/complete/keymissing · settings-channels-platform-chips · settings-slip-card · settings-slip-verify-sheet · settings-etax-sheet · settings-devices-lan none/agents/token · paydlg-intent-slip · paydone-transfer-slip 1440 · taxinv-etax-line · bills-drawer-slips · bills-slip-sheet · bills-slip-reject-invalid · reports-reconcile owner/denied) · th owner 49 + cashier 15 · QC5 build Vu6j07QrT3WCiJnRhoiWh @92e1943a (fix1 attribute-only + harness fix2 60d24d0a reused it) · vis-skelu-qc5-20261022T094757Z 93/93 · slip image 404 on QC5 (no slip storage) whitelisted for the fixture file only · 22 Oct 2026"
+    },
+    {
+      "id": "p3-skel-u-en",
+      "wo": "p3-skel-u-en",
+      "pages": [
+        "settings",
+        "register",
+        "sales",
+        "reports"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "en"
+      ],
+      "states": true,
+      "after": "P3-SKEL U",
+      "why": "same states LOCALE=en · owner 22 + cashier 7 · 22 Oct 2026"
+    },
+    {
+      "id": "p6.2-help",
+      "wo": "p6.2",
+      "pages": [
+        "help"
+      ],
+      "users": [
+        "owner",
+        "cashier"
+      ],
+      "locales": [
+        "th",
+        "en"
+      ],
+      "states": false,
+      "after": "P6.2",
+      "sizes": "1440/1024/390 th and en (--page help keeps all 3 sizes in en)",
+      "why": "P6.2 in-app manual: visual round th/en x 3 sizes (brief P6 §5 · CD-P62-O8)"
+    }
+  ]
+}

@@ -205,6 +205,8 @@ type ToolAdapter = {
    * (เช่นเอกสารต้องมีบรรทัด — REST ตรวจในชั้นบริการตามชนิดเอกสาร แต่ผู้ช่วยควรรู้ตั้งแต่ตอนเรียก)
    */
   extraRequired?: string[];
+  /** SEC S3a.1-R2 ▸ R-Z45: ประโยคต่อท้ายคำอธิบายของ op (ไม่แทน summary) ◂ */
+  extraHint?: string;
   /** args (ผ่าน zod แล้ว) → op ที่จะรันจริง + input/params ของมัน */
   toCall?: (args: Record<string, unknown>) => { opId?: string; input: unknown; params?: Record<string, string> };
 };
@@ -212,7 +214,14 @@ type ToolAdapter = {
 const ADAPTERS: Record<string, ToolAdapter> = {
   // สร้างเอกสาร: schema ของ REST ปล่อย `lines` ว่างได้ (ใบรวม/ใบวางบิลใช้ `childIds` แทน)
   // แต่ผู้ช่วยสร้างเอกสารปกติเสมอ ⇒ บอกให้ชัดว่าต้องมีบรรทัด (ไม่งั้นเดาว่า "ไม่ต้องส่งก็ได้")
-  "documents.create": { extraRequired: ["lines"] },
+  "documents.create": {
+    extraRequired: ["lines"],
+    // SEC S3a.1-R2 ▸ R-Z45 (F6): ใบ→ลูกค้าในเทิร์นเดียว — ระบบเติมเลขที่/ลิงก์ให้ตอนส่ง (dispatchChatSend) ◂
+    extraHint:
+      "If the user also asks to send this document to the customer, call send_customer_message in the same turn with kind='quote' and no documentId; the system adds the document number and link when sending, after the document has been approved. " +
+      // SEC S3a.1-R2 ▸ R-Z49: VAT มาจากค่าตั้งค่าของร้าน (ระบบเติมให้) — ห้ามถาม ◂
+      "VAT: if the user does not mention VAT, leave vatRateBp and vatMode out; the system fills them from the shop's settings (registered: 7% added on top; not registered: no VAT). Do not ask about VAT; ask only for what the system cannot fill in (customer name, items, prices).",
+  },
   // รายงาน: 7 op ใต้ชื่อเดียว — ผู้ช่วยเลือกด้วย `kind` (ถามว่า "กำไรเดือนนี้เท่าไร" ไม่ต้องรู้ชื่อ endpoint)
   "reports.profit-loss": {
     args: reportArgs,
@@ -355,7 +364,7 @@ export function accountToolInfos(): AccountToolInfo[] {
   toolCache = accountToolOps().map((op) => {
     const tool = op.tool!;
     const adapter = ADAPTERS[op.id];
-    const description = [adapter?.description ?? op.summary, tool.hint ?? ""].filter(Boolean).join(" ");
+    const description = [adapter?.description ?? op.summary, tool.hint ?? "", adapter?.extraHint ?? ""].filter(Boolean).join(" ");
     return {
       name: tool.name,
       opId: op.id,
@@ -431,6 +440,26 @@ type PrepareResult = { ok: true; prepared: Prepared } | { ok: false; error: stri
 
 function opOf(opId: string): ApiOp | undefined {
   return ACCOUNT_OPS.find((o) => o.id === opId);
+}
+
+/**
+ * SEC S3a.1-R2 ▸ R-Z49 (รอบจริง #2): ค่าปริยาย VAT ของ `documents.create` จากค่าตั้งค่าเล่ม (`AccountSettings.vatRegistered`) —
+ *   บรรทัดที่ไม่ระบุ `vatRateBp` ⇒ 700 เมื่อจด VAT · 0 เมื่อไม่จด · ไม่ระบุ `vatMode` ⇒ EXCLUDE เมื่อจด · NONE เมื่อไม่จด
+ *   (ค่าที่ผู้ใช้/โมเดลระบุเองชนะเสมอ) · ใช้ทั้งตอนเสนอ (สรุปยอดรวม VAT ถูก) และก่อนลงมือ (ข้อเสนอรุ่นเก่าที่ยังไม่มีค่า)
+ *   ไม่มีแถวตั้งค่า = ค่าปริยายของ schema (จด VAT) · op อื่น = คืน input เดิม
+ */
+export async function fillDocVatDefaults(opId: string, tenantId: string, systemId: string, input: unknown): Promise<unknown> {
+  if (opId !== "documents.create" || !isRecord(input)) return input;
+  const lines = Array.isArray(input.lines) ? input.lines : null;
+  const needLine = !!lines?.some((l) => isRecord(l) && l.vatRateBp === undefined);
+  if (!needLine && input.vatMode !== undefined) return input;
+  const st = await tenantDb({ tenantId, systemId }).accountSettings.findFirst({ where: { systemId }, select: { vatRegistered: true } });
+  const registered = st?.vatRegistered ?? true;
+  return {
+    ...input,
+    ...(input.vatMode === undefined ? { vatMode: registered ? "EXCLUDE" : "NONE" } : {}),
+    ...(lines ? { lines: lines.map((l) => (isRecord(l) && l.vatRateBp === undefined ? { ...l, vatRateBp: registered ? 700 : 0 } : l)) } : {}),
+  };
 }
 
 function prepareCall(op: ApiOp, rawArgs: unknown): PrepareResult {
@@ -803,6 +832,7 @@ export async function runAccountTool(
   const prep = prepareCall(op, rawArgs);
   if (!prep.ok) return { mode: "error", error: prep.error };
   const prepared = prep.prepared;
+  prepared.input = await fillDocVatDefaults(prepared.op.id, tenantId, system.id, prepared.input); // R-Z49 ◂
 
   if (prepared.op.kind !== "read") {
     // 🔴 ผู้ช่วยไม่เคยเขียนเอง — สร้างข้อเสนอให้คนกดยืนยัน (สิทธิ์ตรวจตอนกด ไม่ใช่ตอนนี้)
@@ -849,6 +879,8 @@ export async function dispatchAccountKind(
   kind: string,
   rawPayload: unknown,
   userId?: string | null,
+  /** SEC S3a.1-R2 ▸ R-Z45: รับ id ของเอกสารที่สร้าง (บันทึกการกระทำ + ส่งใบถึงลูกค้าหาใบล่าสุดของห้อง) ◂ */
+  out?: { entity?: { type: string; id: string } | null },
 ): Promise<string> {
   const payload = rec(rawPayload);
   const opId = typeof payload.opId === "string" ? payload.opId : kind.slice(KIND_PREFIX.length);
@@ -859,7 +891,7 @@ export async function dispatchAccountKind(
   const system = await findAccountSystem(tenantId, { systemId: boundSystemId });
   if (!system) throw new Error(boundSystemId ? NO_BOUND_SYSTEM : NO_SYSTEM);
 
-  const parsed = validateOpInput(op, payload.input);
+  const parsed = validateOpInput(op, await fillDocVatDefaults(op.id, tenantId, system.id, payload.input)); // R-Z49: ข้อเสนอรุ่นเก่า ◂
   if (!parsed.ok) throw new Error(detailsMessageTh(parsed.details));
   const params: Record<string, string> = {};
   for (const [k, v] of Object.entries(rec(payload.params))) if (typeof v === "string") params[k] = v;
@@ -876,7 +908,35 @@ export async function dispatchAccountKind(
       reason,
       audit: { proposalId, actor: "ai-assistant" },
     });
+    const created = rec(env.data);
+    if (out && op.id === "documents.create" && typeof created.id === "string" && created.id) out.entity = { type: "account.document", id: created.id }; // R-Z45 ◂
     return noteOf(op, env.data);
+  } catch (e) {
+    throw new Error(mapError(e).message_th);
+  }
+}
+
+// ── SEC S3a.5 ▸ ออกเอกสารตอนส่งใบเสนอราคาถึงลูกค้า (chat.send kind=quote ที่อ้างใบ DRAFT) ──
+//   ทางเดียวกับปุ่ม "ออกเอกสาร" ของบัญชี = op `documents.issue` (ด่าน `account.doc.issue` + audit ใน runOpAsActor) ภายใต้ Membership ของผู้กด ◂
+
+/** ผู้กดออกเอกสารบัญชีในเล่มนี้ได้ไหม (ตัวตัดสินเดียวกับ op `documents.issue`) — ใช้ก่อน claim ข้อเสนอ (ไม่ได้ = คง PENDING) */
+export function approverCanIssueDocument(m: MembershipCtx, tenantId: string, systemId: string, userId?: string | null): boolean {
+  const op = ACCOUNT_OPS.find((o) => o.id === "documents.issue");
+  return !!op && actorCan(userActor(tenantId, systemId, m, userId), op.action);
+}
+
+/** ออกเอกสาร DRAFT ด้วยสิทธิ์ผู้กด (op `documents.issue`) · คีย์กันซ้ำผูกข้อเสนอ · ล้ม = throw ข้อความไทย */
+export async function issueDocumentAsApprover(m: MembershipCtx, tenantId: string, systemId: string, docId: string, proposalId: string, userId?: string | null): Promise<void> {
+  const op = ACCOUNT_OPS.find((o) => o.id === "documents.issue");
+  if (!op) throw new Error("ระบบบัญชีไม่มีคำสั่งออกเอกสาร");
+  try {
+    await runOpAsActor(op, userActor(tenantId, systemId, m, userId), {
+      input: {},
+      params: { id: docId },
+      requestId: `ai-proposal-${proposalId}-issue`,
+      idempotencyKey: `ai-${proposalId}-issue`,
+      audit: { proposalId, actor: "ai-assistant" },
+    });
   } catch (e) {
     throw new Error(mapError(e).message_th);
   }

@@ -839,3 +839,13 @@ export async function resolveRewardCtx(tenantId: string, memberSystemId: string,
   const pointLink = await prisma.appSystemUnit.findFirst({ where: { tenantId, type: "POINT", unitId: { in: unitIds } }, select: { systemId: true } });
   return { tenantId, systemId: rewardLink.systemId, memberSystemId, pointSystemId: pointLink?.systemId ?? "", actorUserId };
 }
+
+// POS P1.12 (รีวิว F4) ▸ ctx รางวัลของ "สาขานี้" — ลิงก์ REWARD/POINT ของสาขาตรงตัว (ระบบเดียวกับที่กระเป๋าสิทธิ์ลิสต์รายการรอรับ ·
+//   member/wallet.ts resolveSystems) แทน findFirst ไม่เรียงข้ามทุกสาขาของระบบสมาชิก · สาขาไม่มีระบบรางวัล = null · อ่านอย่างเดียว ·
+//   ผู้เรียกตรวจเองว่าระบบสมาชิกผูกสาขานี้ (หน้าขาย: ด่าน R1) ◂
+export async function resolveRewardCtxForUnit(tenantId: string, memberSystemId: string, unitId: string, actorUserId: string | null): Promise<RewardCtx | null> {
+  const links = await prisma.appSystemUnit.findMany({ where: { tenantId, unitId, type: { in: ["REWARD", "POINT"] } }, select: { systemId: true, type: true } });
+  const rewardLink = links.find((l) => l.type === "REWARD");
+  if (!rewardLink) return null;
+  return { tenantId, systemId: rewardLink.systemId, memberSystemId, pointSystemId: links.find((l) => l.type === "POINT")?.systemId ?? "", actorUserId };
+}

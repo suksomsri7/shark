@@ -1,0 +1,45 @@
+# POS P2.12U — spec: reports UI (08 print page/PDF · hourly chart + tab · branches tab · anomalies tab · staff flag from A3) · settings thresholds card · bills 12 all branches
+
+Builder U · 15–16 Oct 2026 · base `session/pos` 1c29ca9e (= P2.12 S merged d0561566; branch from 91a28635 = + ledger) · prompt `pos-prompt-accountB-P2.12U.md` rulings 1–10 · S contract `wo-notes/pos-P2.12.md` §"U-card contract" + "Fix round 1" deltas.
+**No server behaviour change.** Readers, print model, thresholds reader/writer and `billsPageData("*")` are the S contract; U adds pages, client UI, messages, one print page and one marked EN-label hunk (F5).
+Numbers are never re-aggregated on screen: every amount/count comes from the DTO; the screen only formats (baht, %), adds/subtracts for display (bills "หน้าร้าน N · ออนไลน์ M" in all-branch mode = `channelCounts.STORE` vs `billCount`).
+
+## 1. Print page / PDF (ruling 1)
+- Route `src/app/app/sys/[id]/pos/reports/print/page.tsx` — server, `export const dynamic = "force-dynamic"`, `robots noindex`. Gate = `/pos/reports`: POS of the tenant (notFound) · no accessible POS unit ⇒ notFound · no `pos.report.view` at any unit ⇒ refusal card `pos-report-print-refusal` **before** any reader call · `?unit=` only within the readable units. Static row `qc-hf-pos-page-authz` **RP-1**.
+- Query `?kind=&from=&to=&unit=&locale=&noprint=` → `posReportPrintAction` (reader re-checks scope/permission/range) · `{ok:false}` ⇒ refusal card with `pos.report.errors.*` by code · unknown kind ⇒ VALIDATION card.
+- `kind=overview` (not a server kind) = one document made of the print bodies of `daily` + `hourly` (single day) + `branches` (all units, ≥ 2 readable) + `channels` + `payments` + `staff`; refused parts are skipped, a refused `daily` = refusal card. Body slicing uses `indexOf` (F16: no tag regex); head/style of the first part; landscape when any part is landscape; title `pos.report.print.overviewTitle`.
+- Rendering = **iframe `srcdoc`** (chosen over a route response: the page keeps the session gate/refusal card of a normal page and the app chrome stays out of the printout). `PrintFrame` (client island): iframe `sandbox="allow-same-origin allow-modals"`, width 210 mm (297 mm landscape), height = document height; on load it copies the app's `@font-face` rules + body font-family into the iframe (IBM Plex Sans Thai of `next/font`), white paper background, waits `document.fonts.ready`, then calls the iframe's `print()` **once** (`?noprint=1` = never; QC shots). Toolbar (print:hidden): `pos-report-print-back` (back to the reports page with the same filters), title, "พิมพ์เมื่อ {time}" (generatedAt of the action, formatted server-side in Asia/Bangkok — HF-418), `pos-report-print-again`.
+- Reports header: link `pos-reports-pdf` "พิมพ์ / PDF" beside CSV on every tab + overview, new tab, current filters + app locale; disabled (aria-disabled) on a range error / hourly > 31 days.
+
+## 2. Hourly (ruling 2)
+- Overview, single-day range: chart card = "ยอดขายรายชั่วโมง" `HourlyBars` (`pos-reports-hourly-chart`): 24 business-day rows (labels from the DTO), grey = actual, ink = peak hour (max net), accent + "฿x · ยังไม่จบชั่วโมง" = current BKK hour (`pos-reports-hourly-now`, only when `to` = business today; hour read after mount, refreshed every minute), dashed boxes = `forecastSatang`. Legend: ยอดจริง · ช่วงขายดี · ชั่วโมงนี้ (today only) · คาดการณ์ (เฉลี่ย 4 สัปดาห์). Footnote `pos-reports-hourly-footnote`: forecast note (fixed ÷ 4 — young shops read low) + folded-hour note only when the cut-off is not on the hour (decision 3; page passes `posDayCutoffMinutes`). Multi-day = daily chart unchanged.
+- The overview always sends `only`: `hourly` only on a single day, `chart` only on multi-day, `branches` only with ≥ 2 readable units (decision 6).
+- Tab `pos-reports-tab-hourly`: table hour/bills/net/forecast + total row + CSV/PDF + the same footnotes; range > `HOURLY_MAX_DAYS` (page prop) ⇒ tab disabled with title `pos.report.hourly.tooLong`; already on the tab ⇒ the message in the card, no call, CSV/PDF disabled.
+
+## 3. Branches tab (ruling 3)
+`pos-reports-tab-branches` (only for actors who read ≥ 2 units): `BranchRow` columns bills · net · avg · refunds · refund total · voids · void total · cash · platform · commission · commission VAT · over/short (negative red) + tfoot total row from `totals` (label `pos.report.branches.total`; bold because it is the total row, never by text) + CSV/PDF. Margin stays in the overview branch card.
+
+## 4. Anomalies tab (ruling 4)
+- Tab `pos-reports-tab-anomalies` only when the page says the actor holds `pos.report.anomaly` at a readable unit (`canAnomaly`); a URL visit without the key ⇒ server PERMISSION_DENIED ⇒ card `pos-reports-anomaly-denied` (`pos.report.anomaly.denied`).
+- Rule groups A1 → A10 (`pos-reports-anomaly-group-<rule>`): rule chip + `pos.report.anomaly.rules.A#` + "{n} รายการ" (`totals.byRule`) + threshold line (≥ count / ≥ ฿ / > % for A3 / ≥ %, joined by `anomaly.or`). Rows `pos-reports-anomaly-row-<n>` (n = row index in the report): branch = `totals.unitNames[unitId] ?? unitId` · date (null = "ทั้งช่วง") · staff name (null user = "—", no name = "ไม่มีชื่อ") · value (baht A1/A2/A8/A9, A8 = "ขาด −฿x"/"เกิน +฿x" from `totals.a8SignedSatang[refId]`, % A3/A4 from bp, counts) · count · `pos-reports-anomaly-bill-<n>` "ดูบิล" for PosSale refs → `/pos/sales?unit=&bill=`.
+- Empty = `pos.report.anomaly.empty` · truncated (`rowCount > rows.length`) = `pos-reports-anomaly-notice` (rowLimit text) · CSV/PDF through the same reader gate.
+- F5: `report-print-shared.ts` one marked hunk — en print of anomalies gets English rule labels (same strings as en `pos.report.anomaly.rules`), "or", "short/over"; th rows = CSV unchanged.
+
+## 5. Overview staff flag (ruling 5)
+`HIGH_DISCOUNT_BP` deleted. The page reads `posAnomalyThresholds(system.settings)` server-side and passes `discountFlagBp` (A3 bp; disabled ⇒ null ⇒ no flag). Flag = A3 comparison `discount × 10000 > net × bp`, net > 0, real users only. Hint shows the shop threshold.
+
+## 6. Settings · ทั่วไป → "รายงาน: จุดสังเกตผิดปกติ" (ruling 6)
+Card `pos-settings-general-anomaly` after the reports card, only for actors who can edit general settings (owner / `pos.settings.manage`). Note `pos-settings-anomaly-note` (names only for `pos.report.anomaly` holders). Switch `pos-settings-anomaly-enabled`. Rows A1–A10 (label `A# · rule label` + hint) with inputs `pos-settings-anomaly-<rule>-<field>`: count (whole, unit word per rule) · satang (baht input, 2 dp) · bp (% input, 2 dp); limits = `POS_ANOMALY_LIMITS` checked on screen; `pos-settings-general-save-anomaly` sends only changed fields via `updatePosGeneralSettingsAction({anomaly:{enabled?, rules:{A#:{field}}}})`; refusal field `anomaly.rules.A#.<field>` ⇒ message under that row (`pos-settings-general-field-error`).
+
+## 7. Bills 12 (ruling 7)
+- `?unit=*` (`BILLS_ALL_UNITS`) when the actor reads > 1 unit: option `pos-sales-unit-all` "ทุกสาขา" in `pos-bills-unit`; list = `billsPageData({unitId:"*"})`; rows show `pos-sales-unitChip-<saleId>` (`-m` on the 390 card) with `unitName`, title `pos.sales.branch.chipLabel`.
+- Drawer/void/refund/reprint/tax-invoice/approval use the opened bill's unit (`rowUnit`); tax-invoice buttons from the page's per-unit list; `?bill=` in all mode resolves the bill's unit inside the page scope.
+- Summary: "หน้าร้าน N · ออนไลน์ M" in all mode from `channelCounts` (single-unit path unchanged) + chips `pos-sales-channelCount-<code>` (all modes; name = day's channel name / builtin / preset brand / code).
+- Drawer channel block: when `refundSatang > 0` (fields present only with `pos.report.view`) ⇒ `pos-bills-drawer-channel-refund`: คืนเงินแล้ว −refund · ค่าคอมฯ หลังหักส่วนที่คืน · VAT ค่าคอมฯ หลังหัก (if > 0) · รับจริงหลังคืนเงิน = `netSatang`.
+- Footnote `pos-bills-day-note`: "วันของบิล = วันปฏิทิน (ไม่ใช้เวลาตัดวันของรายงาน)" (hunter H5).
+
+## 8. Visual states (`visual-pos.mts p2.12u --states`, pages reports + sales + settings, 1440/1024/390, th + LOCALE=en, owner + cashier)
+`reports-hourly` · `reports-branches-tab` · `reports-anomalies` (cashier = page refusal) · `reports-anomalies-empty` · `reports-staff-flag` · `reports-pdf-button` · `reports-print-overview` · `reports-print-channels` (1440 only, print media) · `settings-general-anomaly` (owner) · `bills-all-branches` · `bills-drawer-channel-refund` (cashier: no refund lines). Fixture/cleanup in `ensureP212uFixture` / `cleanupP212u` (see the notes).
+
+## 9. Messages (th + en, en ASCII)
+`pos.report.print.{back,overviewTitle}` · `pos.report.hourly.{peak,inProgress,forecastNote,foldNote,cols.*}` · `pos.report.branches.cols.*` · `pos.report.anomaly.{cols.*,short,over,or,threshold,groupCount,wholeRange,unnamed,viewBill}` · `pos.settings.general.anomaly.{enabledHint,namesNote,or,field.*,countUnit.*,hint.A1..A10,err.*}` · `pos.bills.{unitAll,dayNote,channelCounts}` · `pos.channel.commissionBlock.{refunded,commissionNet,vatNet,netAfterRefund}` · changed values `pos.report.overview.comingSoon` (hourly removed) and `pos.report.overview.highDiscountHint` (`{pct}`).

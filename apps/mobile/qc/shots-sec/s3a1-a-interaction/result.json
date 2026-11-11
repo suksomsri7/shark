@@ -1,0 +1,130 @@
+{
+ "wordStepDisabledEmpty": "true",
+ "wordStepLabel": "ส่งรหัสยืนยัน",
+ "wordStepDisabledTyped": null,
+ "deleteBeforeCode": 0,
+ "smsRequest": {
+  "body": "{\"phone\":\"+66800000101\"}",
+  "tenant": null,
+  "bearer": false
+ },
+ "codeStep": {
+  "sent": "ส่งรหัส 6 หลักทาง SMS ไปที่ 080-•••-0101 แล้ว — ใส่รหัสเพื่อยืนยันการลบบัญชี",
+  "input": true,
+  "wordInputGone": true,
+  "resend": "ส่งรหัสอีกครั้งได้ใน 59 วินาที",
+  "resendDisabled": "true",
+  "finalDisabled": "true",
+  "confirmGone": true
+ },
+ "code5": {
+  "value": "12345",
+  "finalDisabled": "true"
+ },
+ "deleteAt5": 0,
+ "code6": {
+  "value": "123456",
+  "finalDisabled": null
+ },
+ "deletePost": {
+  "n": 1,
+  "body": "{\"confirm\":\"ลบบัญชี\",\"code\":\"123456\"}",
+  "tenant": null
+ },
+ "afterDelete": {
+  "logout": 1,
+  "url": "/login",
+  "token": null
+ },
+ "resend0": {
+  "label": "ส่งรหัสอีกครั้ง",
+  "disabled": null
+ },
+ "resendAfter": {
+  "requests": 2,
+  "codeCleared": true
+ },
+ "emailOtp": {
+  "body": "{\"email\":\"suk@qc.invalid\"}",
+  "tenant": null,
+  "sms": 0
+ },
+ "emailSent": "ส่งรหัส 6 หลักไปที่อีเมล s•••@qc.invalid แล้ว — ใส่รหัสเพื่อยืนยันการลบบัญชี",
+ "wrong": {
+  "body": "{\"confirm\":\"ลบบัญชี\",\"code\":\"000000\"}",
+  "note": "รหัสไม่ถูกต้องหรือหมดอายุแล้ว ลองใหม่ หรือกดส่งรหัสอีกครั้ง",
+  "codeCleared": true,
+  "stillOpen": true,
+  "url": "/secretary/settings/account",
+  "token": "qc-mock"
+ },
+ "locked": {
+  "note": "ใส่รหัสผิดหลายครั้งเกินไป รหัสนี้ใช้ไม่ได้แล้ว — กดส่งรหัสอีกครั้งเพื่อรับรหัสใหม่",
+  "codeCleared": true,
+  "codeReadOnly": true,
+  "finalDisabled": "true",
+  "token": "qc-mock"
+ },
+ "lockedTypeIgnored": true,
+ "lockedAfterResend": {
+  "sms": 2,
+  "codeReadOnly": false,
+  "note": null,
+  "finalDisabled": null
+ },
+ "codeRequired": {
+  "note": "ต้องใส่รหัสยืนยันก่อนลบบัญชี",
+  "step2": true,
+  "token": "qc-mock"
+ },
+ "sms503": {
+  "note": "ระบบส่ง SMS ยังไม่พร้อม ส่งรหัสยืนยันไม่ได้ตอนนี้ — ลองใหม่ภายหลัง หรือติดต่อทีมงาน",
+  "step1": true
+ },
+ "sms429": {
+  "note": "ขอรหัสถี่เกินไป รอสักครู่แล้วลองใหม่",
+  "step1": true
+ },
+ "newPendingErrMid": false,
+ "newPending": {
+  "posts": 3,
+  "sameCmid": true,
+  "gapsMs": [
+   1530,
+   1518
+  ],
+  "err": false,
+  "url": "/secretary/room/r1"
+ },
+ "newExhaust": {
+  "posts": 4,
+  "err": "ส่งไม่สำเร็จ ลองใหม่อีกครั้ง"
+ },
+ "newCmid": {
+  "total": 12,
+  "firstTwoRoundsSame": true,
+  "thirdRoundNew": true,
+  "thirdRoundSelfSame": true
+ },
+ "newDouble": {
+  "posts": 1,
+  "url": "/secretary/room/r1"
+ },
+ "roomInput": "sec-room-input-field",
+ "roomPending": {
+  "posts": 2,
+  "sameCmid": true,
+  "sendErr": false,
+  "draftCleared": true
+ },
+ "infoFirstErr": "เปิดห้องเลขาไม่สำเร็จ ลองใหม่อีกครั้ง",
+ "infoAsk": {
+  "posts": 3,
+  "sameCmid": true,
+  "context": {
+   "chatConversationId": "x1",
+   "contactId": "ct1"
+  },
+  "url": "/secretary/room/r7"
+ }
+}

@@ -1,0 +1,688 @@
+// settings-general.ts — ตัวเขียนค่าตั้ง POS แท็บ "ทั่วไป" + เพดานส่วนลด + สต็อกของสาขา + ประวัติการเปลี่ยน (P1.18 S · R1 R3 R4 R5 R6 R9)
+//
+// ทางเขียนเดียวกับ updatePosReceiptSettings (receipt-settings.ts): สิทธิ์ → ตรวจแพตช์ทั้งก้อน → ธุรกรรม + ล็อกแถว FOR UPDATE →
+//   jsonb_set ของ "เฉพาะคีย์ของตัวเอง" ในคำสั่งเดียว (คีย์อื่นของ settings / settings.pos ไม่ถูกแตะ byte-identical) → AuditLog
+// 🔴 คำปฏิเสธ "คืน" เป็นข้อมูล {ok:false, code, message(ไทย), field?} เสมอ — ไม่โยน
+// 🔴 ตัวเขียนทั่วไปเป็นเจ้าของเฉพาะ settings.pos.{heldCart, register, shift, weighedBarcode, receiptLocale, reports} ·
+//    เพดานส่วนลด = settings.pos.discount · สต็อกสาขา = BusinessUnit.settings.pos.stock
+// 🔴 กฎไป-กลับ (R3): ช่วงที่ตรวจ = ช่วงของตัวอ่านของผู้ใช้แต่ละตัว ⇒ ค่าที่รับเขียนแล้วตัวอ่านคืนค่าเดิมเสมอ
+//    (posHeldCartExpireDays · posRegisterAutoLockMinutes · parseShiftSettings · weighedBarcodeSettings · posReceiptLocale · posDayCutoffMinutes)
+// 🔴 สิทธิ์: pos.settings.manage — ค่าที่ใช้ทั้งระบบต้องมีครบ "ทุกสาขา" ที่ผูก POS นี้ (แบบ canManageAllLinkedUnits) · สต็อกสาขา = ที่สาขานั้น
+// 🔴 แพตช์ที่ไม่เปลี่ยนอะไร (ค่าเดิม) = ok · ไม่เขียน · ไม่มี audit (มติ 11)
+
+import type { Prisma } from "@prisma/client";
+import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; // POS P3.5 ▸ + canViewPayroll (อัตราค่าคอมฯ · มติ 1) ◂
+import { writeAudit } from "@/lib/core/audit";
+import { prisma } from "./db";
+import { posDiscountCaps, posHeldCartExpireDays, posRegisterAutoLockMinutes, type PosDiscountCaps } from "./register-shared";
+import { parseShiftSettings } from "./shift";
+import { weighedBarcodeSettings } from "./scan-shared";
+import { posOfflineEnabled } from "./offline-shared"; // POS P3.4 ▸ ตัวอ่านเดียวของ settings.pos.offline.enabled ◂
+import {
+  maskAuditPhones,
+  POS_ANOMALY_DEFAULTS, // POS P2.12 ▸ AN ◂
+  POS_ANOMALY_LIMITS,
+  POS_ANOMALY_RULES,
+  posAnomalyThresholds,
+  type PosAnomalyField,
+  type PosAnomalyRule,
+  POS_GENERAL_LIMITS,
+  posDayCutoffMinutes,
+  posReceiptLocale,
+  type PosDiscountCapsResult,
+  type PosGeneralSettings,
+  type PosGeneralSettingsResult,
+  type PosOversellPolicy,
+  type PosSettingsHistoryItem,
+  type PosSettingsHistoryResult,
+  type PosSettingsRefusal,
+  type PosSettingsRefusalCode,
+  type PosUnitStockPolicyResult,
+  // POS P3.5 ▸ R3 R6 R12 ◂
+  POS_SCHEDULE_GATE_LIMITS,
+  POS_STAFF_COMMISSION_LIMITS,
+  POS_STAFF_ROLES,
+  posClockOnShift,
+  posScheduleGate,
+  posStaffCommission,
+  type PosClockOnShift,
+  type PosScheduleGate,
+  type PosStaffCommissionConfig,
+} from "./settings-shared";
+
+type Db = typeof prisma | Prisma.TransactionClient;
+type Ctx = { tenantId: string; systemId: string };
+export type PosSettingsWriterActor = { userId: string; role: string; unitAccess?: string[]; permissions?: Record<string, unknown> };
+
+export const POS_SETTINGS_AUDIT = "pos.settings.updated";
+export const PERM_SETTINGS_MANAGE = "pos.settings.manage";
+
+const MSG: Record<PosSettingsRefusalCode, string> = {
+  NOT_FOUND: "ไม่พบจุดขายนี้",
+  PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์ตั้งค่าหน้าขาย — ต้องมีสิทธิ์ตั้งค่าหน้าขายทุกสาขาของจุดขายนี้",
+  VALIDATION: "ค่าที่ตั้งไม่ถูกต้อง",
+  UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
+  SETTINGS_SECTION_LOCKED: "ส่วนนี้เจ้าของร้านเท่านั้นที่แก้ได้",
+  CONFIRM_REQUIRED: "ต้องยืนยันก่อนปิด",
+};
+export function settingsRefuse(code: PosSettingsRefusalCode, message?: string, field?: string): PosSettingsRefusal {
+  return field ? { ok: false, code, message: message ?? MSG[code], field } : { ok: false, code, message: message ?? MSG[code] };
+}
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 64;
+const isInt = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
+export const ctxOk = (ctx: unknown): ctx is Ctx => isRecord(ctx) && isId(ctx.tenantId) && isId(ctx.systemId);
+/** JSON แบบเรียงคีย์ (เทียบว่าเปลี่ยนจริงไหม) */
+function canon(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
+  if (isRecord(v)) return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`;
+  return JSON.stringify(v ?? null);
+}
+
+/** actor → MembershipCtx (บทบาทนอก 3 แบบ = null) */
+export function settingsMembership(a: unknown): (MembershipCtx & { userId: string }) | null {
+  if (!isRecord(a) || !isId(a.userId) || (a.role !== "OWNER" && a.role !== "MANAGER" && a.role !== "STAFF")) return null;
+  return {
+    userId: a.userId,
+    role: a.role,
+    unitAccess: Array.isArray(a.unitAccess) ? a.unitAccess.filter((u): u is string => typeof u === "string") : [],
+    permissions: isRecord(a.permissions) ? a.permissions : {},
+  };
+}
+
+/** สาขา (ไม่เก็บถาวร) ที่ผูก POS นี้ */
+export async function posLinkedUnitIds(db: Db, ctx: Ctx): Promise<string[]> {
+  const links = await db.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
+  if (!links.length) return [];
+  const live = await db.businessUnit.findMany({ where: { tenantId: ctx.tenantId, id: { in: links.map((l) => l.unitId) }, status: { not: "ARCHIVED" } }, select: { id: true } });
+  return live.map((u) => u.id);
+}
+
+/** สิทธิ์ action ครบทุกสาขาที่ผูก POS นี้ (OWNER / "*" ผ่าน · POS ยังไม่ผูกสาขา = เฉพาะ OWNER / "*") — กติกาเดียวกับ canManageAllLinkedUnits */
+export async function canOnAllLinkedUnits(db: Db, ctx: Ctx, m: MembershipCtx, action: string): Promise<boolean> {
+  if (!evaluate(m, { module: "pos", action })) return false;
+  if (m.role === "OWNER" || m.unitAccess.includes("*")) return true;
+  const units = await posLinkedUnitIds(db, ctx);
+  return units.length > 0 && units.every((u) => evaluate(m, { module: "pos", action, unitId: u }));
+}
+
+async function posSystem(db: Db, ctx: Ctx): Promise<{ id: string; settings: unknown } | null> {
+  return db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "POS" }, select: { id: true, settings: true } });
+}
+async function lockPos(tx: Prisma.TransactionClient, ctx: Ctx): Promise<boolean> {
+  const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
+  return locked.length > 0;
+}
+/** รวม sub-tree ใต้ settings.pos ในคำสั่งเดียว (jsonb_set + ||) — คีย์อื่นของ settings/pos ไม่ถูกแตะ */
+async function mergePosKeys(tx: Prisma.TransactionClient, ctx: Ctx, keys: Record<string, unknown>): Promise<void> {
+  const json = JSON.stringify(keys);
+  await tx.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{pos}',
+      (CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END) || ${json}::jsonb,
+      true),
+      "updatedAt" = now()
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS'`;
+}
+const posOf = (settings: unknown): Record<string, unknown> => (isRecord(settings) && isRecord(settings.pos) ? settings.pos : {});
+const recOf = (v: unknown): Record<string, unknown> => (isRecord(v) ? v : {});
+
+// ═══════════ ตัวอ่านรวม (R2 · ทุกค่าจากตัวอ่านเดิมของคีย์นั้น — ไม่มีตัวแกะที่สอง) ═══════════
+export function posGeneralSettingsOf(settings: unknown): PosGeneralSettings {
+  return {
+    heldCartExpireDays: posHeldCartExpireDays(settings),
+    autoLockMinutes: posRegisterAutoLockMinutes(settings),
+    shift: parseShiftSettings(settings),
+    weighedBarcode: weighedBarcodeSettings(settings),
+    receiptLocale: posReceiptLocale(settings),
+    dayCutoffMinutes: posDayCutoffMinutes(settings),
+    anomaly: posAnomalyThresholds(settings), // POS P2.12 ▸ AN ◂
+  };
+}
+
+// ═══════════ R3 ตัวเขียนทั่วไป ═══════════
+const GENERAL_KEYS = new Set(["heldCartExpireDays", "autoLockMinutes", "shift", "weighedBarcode", "receiptLocale", "dayCutoffMinutes", "anomaly"]); // POS P2.12 ▸ + anomaly ◂
+const SHIFT_KEYS = new Set(["requiredRegister", "requiredOtherSources", "blindClose", "overShortReasonSatang", "forceCloseAfterHours"]);
+const WB_KINDS = new Set(["WEIGHT", "PRICE"]);
+type CleanGeneral = {
+  heldCartExpireDays?: number;
+  autoLockMinutes?: number;
+  shift?: Partial<{ requiredRegister: boolean; requiredOtherSources: boolean; blindClose: boolean; overShortReasonSatang: number; forceCloseAfterHours: number }>;
+  weighedBarcode?: { enabled: boolean; rules: { prefix: string; kind: string }[] };
+  receiptLocale?: "th" | "en";
+  dayCutoffMinutes?: number;
+  /** POS P2.12 ▸ แพตช์เกณฑ์ที่ตรวจแล้ว (เฉพาะช่องที่ส่ง) ◂ */
+  anomaly?: { enabled?: boolean; rules: Partial<Record<PosAnomalyRule, Partial<Record<PosAnomalyField, number>>>> };
+};
+
+/** ตรวจแพตช์ทั้งก้อน (บริสุทธิ์) — ผิดที่ใด = VALIDATION + field แบบจุด (คีย์แปลกบนสุด = ชื่อคีย์นั้น) */
+function cleanGeneralPatch(patch: unknown): { ok: true; clean: CleanGeneral } | PosSettingsRefusal {
+  const L = POS_GENERAL_LIMITS;
+  if (!isRecord(patch)) return settingsRefuse("VALIDATION", "แพตช์ต้องเป็นออบเจกต์");
+  const out: CleanGeneral = {};
+  for (const k of Object.keys(patch)) if (!GENERAL_KEYS.has(k)) return settingsRefuse("VALIDATION", `ตั้งค่า ${k} ที่หน้านี้ไม่ได้`, k);
+  if ("heldCartExpireDays" in patch) {
+    if (!isInt(patch.heldCartExpireDays, L.heldCartExpireDays.min, L.heldCartExpireDays.max)) return settingsRefuse("VALIDATION", "อายุบิลพักต้องเป็นจำนวนเต็ม 1–365 วัน", "heldCartExpireDays");
+    out.heldCartExpireDays = patch.heldCartExpireDays;
+  }
+  if ("autoLockMinutes" in patch) {
+    if (!isInt(patch.autoLockMinutes, L.autoLockMinutes.min, L.autoLockMinutes.max)) return settingsRefuse("VALIDATION", "ล็อกจออัตโนมัติต้องเป็นจำนวนเต็ม 0–60 นาที", "autoLockMinutes");
+    out.autoLockMinutes = patch.autoLockMinutes;
+  }
+  if ("shift" in patch) {
+    const sh = patch.shift;
+    if (!isRecord(sh)) return settingsRefuse("VALIDATION", "ค่าตั้งกะไม่ถูกต้อง", "shift");
+    const c: NonNullable<CleanGeneral["shift"]> = {};
+    for (const k of Object.keys(sh)) if (!SHIFT_KEYS.has(k)) return settingsRefuse("VALIDATION", `ไม่รู้จักค่าตั้งกะ ${k}`, `shift.${k}`);
+    for (const k of ["requiredRegister", "requiredOtherSources", "blindClose"] as const) {
+      if (!(k in sh)) continue;
+      if (typeof sh[k] !== "boolean") return settingsRefuse("VALIDATION", "ต้องเป็นเปิด/ปิด", `shift.${k}`);
+      c[k] = sh[k] as boolean;
+    }
+    if ("overShortReasonSatang" in sh) {
+      if (!isInt(sh.overShortReasonSatang, L.overShortReasonSatang.min, L.overShortReasonSatang.max)) return settingsRefuse("VALIDATION", "ผลต่างที่ต้องใส่เหตุผลต้องเป็นสตางค์จำนวนเต็ม ฿0–฿100,000", "shift.overShortReasonSatang");
+      c.overShortReasonSatang = sh.overShortReasonSatang;
+    }
+    if ("forceCloseAfterHours" in sh) {
+      if (!isInt(sh.forceCloseAfterHours, L.forceCloseAfterHours.min, L.forceCloseAfterHours.max)) return settingsRefuse("VALIDATION", "ปิดกะค้างอัตโนมัติต้องเป็นจำนวนเต็ม 1–72 ชั่วโมง", "shift.forceCloseAfterHours");
+      c.forceCloseAfterHours = sh.forceCloseAfterHours;
+    }
+    out.shift = c;
+  }
+  if ("weighedBarcode" in patch) {
+    const wb = patch.weighedBarcode;
+    if (!isRecord(wb)) return settingsRefuse("VALIDATION", "ค่าตั้งบาร์โค้ดสินค้าชั่งไม่ถูกต้อง", "weighedBarcode");
+    for (const k of Object.keys(wb)) if (k !== "enabled" && k !== "rules") return settingsRefuse("VALIDATION", `ไม่รู้จักค่าตั้ง ${k}`, `weighedBarcode.${k}`);
+    if (typeof wb.enabled !== "boolean") return settingsRefuse("VALIDATION", "ต้องเป็นเปิด/ปิด", "weighedBarcode.enabled");
+    if (!Array.isArray(wb.rules) || wb.rules.length > 10) return settingsRefuse("VALIDATION", "กฎบาร์โค้ดไม่ถูกต้อง", "weighedBarcode.rules");
+    const rules: { prefix: string; kind: string }[] = [];
+    for (const r of wb.rules as unknown[]) {
+      if (!isRecord(r) || Object.keys(r).some((k) => k !== "prefix" && k !== "kind")) return settingsRefuse("VALIDATION", "กฎบาร์โค้ดไม่ถูกต้อง", "weighedBarcode.rules");
+      if (typeof r.prefix !== "string" || !/^2\d$/.test(r.prefix)) return settingsRefuse("VALIDATION", "คำนำหน้าต้องเป็น 20–29", "weighedBarcode.rules");
+      if (typeof r.kind !== "string" || !WB_KINDS.has(r.kind)) return settingsRefuse("VALIDATION", "ชนิดต้องเป็นน้ำหนักหรือราคา", "weighedBarcode.rules");
+      if (rules.some((x) => x.prefix === r.prefix)) return settingsRefuse("VALIDATION", "คำนำหน้าซ้ำกัน", "weighedBarcode.rules");
+      rules.push({ prefix: r.prefix, kind: r.kind });
+    }
+    out.weighedBarcode = { enabled: wb.enabled, rules };
+  }
+  if ("receiptLocale" in patch) {
+    if (patch.receiptLocale !== "th" && patch.receiptLocale !== "en") return settingsRefuse("VALIDATION", "ภาษาใบเสร็จต้องเป็นไทยหรืออังกฤษ", "receiptLocale");
+    out.receiptLocale = patch.receiptLocale;
+  }
+  if ("dayCutoffMinutes" in patch) {
+    if (!isInt(patch.dayCutoffMinutes, L.dayCutoffMinutes.min, L.dayCutoffMinutes.max)) return settingsRefuse("VALIDATION", "เวลาตัดวันต้องเป็นจำนวนเต็ม 0–360 นาทีหลังเที่ยงคืน", "dayCutoffMinutes");
+    out.dayCutoffMinutes = patch.dayCutoffMinutes;
+  }
+  // POS P2.12 ▸ AN (CD-6): {enabled?, rules?:{A#:{ช่อง}}} รวมทับบางส่วน · ช่วง = POS_ANOMALY_LIMITS (ตัวอ่านตัดเข้าขอบด้วยช่วงเดียวกัน ⇒ ไป-กลับได้ค่าเดิม) ·
+  //   field ของคำปฏิเสธ = anomaly · anomaly.enabled · anomaly.<คีย์แปลก> · anomaly.rules · anomaly.rules.<กฎแปลก> · anomaly.rules.A#[.<ช่อง>] ◂
+  if ("anomaly" in patch) {
+    const an = patch.anomaly;
+    if (!isRecord(an)) return settingsRefuse("VALIDATION", "ค่าตั้งจุดสังเกตผิดปกติไม่ถูกต้อง", "anomaly");
+    for (const k of Object.keys(an)) if (k !== "enabled" && k !== "rules") return settingsRefuse("VALIDATION", `ไม่รู้จักค่าตั้ง ${k}`, `anomaly.${k}`);
+    const c: NonNullable<CleanGeneral["anomaly"]> = { rules: {} };
+    if ("enabled" in an) {
+      if (typeof an.enabled !== "boolean") return settingsRefuse("VALIDATION", "ต้องเป็นเปิด/ปิด", "anomaly.enabled");
+      c.enabled = an.enabled;
+    }
+    if ("rules" in an) {
+      if (!isRecord(an.rules)) return settingsRefuse("VALIDATION", "เกณฑ์ไม่ถูกต้อง", "anomaly.rules");
+      for (const [id, v] of Object.entries(an.rules)) {
+        if (!(POS_ANOMALY_RULES as readonly string[]).includes(id)) return settingsRefuse("VALIDATION", `ไม่รู้จักกฎ ${id}`, `anomaly.rules.${id}`);
+        const rule = id as PosAnomalyRule;
+        if (!isRecord(v)) return settingsRefuse("VALIDATION", "เกณฑ์ของกฎไม่ถูกต้อง", `anomaly.rules.${rule}`);
+        const fields = Object.keys(POS_ANOMALY_DEFAULTS[rule]) as PosAnomalyField[];
+        const got: Partial<Record<PosAnomalyField, number>> = {};
+        for (const [f, n] of Object.entries(v)) {
+          const lim = POS_ANOMALY_LIMITS[f as PosAnomalyField];
+          if (!(fields as string[]).includes(f) || !lim) return settingsRefuse("VALIDATION", `กฎ ${rule} ไม่มีช่อง ${f}`, `anomaly.rules.${rule}.${f}`);
+          if (!isInt(n, lim.min, lim.max)) return settingsRefuse("VALIDATION", `เกณฑ์ต้องเป็นจำนวนเต็ม ${lim.min}–${lim.max}`, `anomaly.rules.${rule}.${f}`);
+          got[f as PosAnomalyField] = n;
+        }
+        c.rules[rule] = got;
+      }
+    }
+    out.anomaly = c;
+  }
+  return { ok: true, clean: out };
+}
+
+/** sub-tree ใหม่ของคีย์ที่แพตช์แตะ (รวมทับค่าดิบเดิม — คีย์ที่ไม่รู้จักใต้ sub-tree คงไว้) */
+function nextGeneralKeys(pos: Record<string, unknown>, c: CleanGeneral): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (c.heldCartExpireDays !== undefined) out.heldCart = { ...recOf(pos.heldCart), expireDays: c.heldCartExpireDays };
+  if (c.autoLockMinutes !== undefined) out.register = { ...recOf(pos.register), autoLockMinutes: c.autoLockMinutes };
+  if (c.shift !== undefined) {
+    const raw = recOf(pos.shift);
+    const sh: Record<string, unknown> = { ...raw };
+    if (c.shift.requiredRegister !== undefined || c.shift.requiredOtherSources !== undefined) {
+      const req: Record<string, unknown> = { ...recOf(raw.required) };
+      if (c.shift.requiredRegister !== undefined) req.register = c.shift.requiredRegister;
+      if (c.shift.requiredOtherSources !== undefined) req.otherSources = c.shift.requiredOtherSources;
+      sh.required = req;
+    }
+    if (c.shift.blindClose !== undefined) sh.blindClose = c.shift.blindClose;
+    if (c.shift.overShortReasonSatang !== undefined) sh.overShortReasonSatang = c.shift.overShortReasonSatang;
+    if (c.shift.forceCloseAfterHours !== undefined) sh.forceCloseAfterHours = c.shift.forceCloseAfterHours;
+    out.shift = sh;
+  }
+  if (c.weighedBarcode !== undefined) out.weighedBarcode = { ...recOf(pos.weighedBarcode), enabled: c.weighedBarcode.enabled, rules: c.weighedBarcode.rules };
+  if (c.receiptLocale !== undefined) out.receiptLocale = c.receiptLocale;
+  // POS P2.12 ▸ settings.pos.reports ถือทั้ง dayCutoffMinutes และ anomaly — แพตช์เดียวแก้ได้ทั้งคู่โดยไม่ทับกัน ◂
+  const anomalyTouched = c.anomaly !== undefined && (c.anomaly.enabled !== undefined || Object.keys(c.anomaly.rules).length > 0);
+  if (c.dayCutoffMinutes !== undefined || anomalyTouched) {
+    const rep: Record<string, unknown> = { ...recOf(pos.reports) };
+    if (c.dayCutoffMinutes !== undefined) rep.dayCutoffMinutes = c.dayCutoffMinutes;
+    if (c.anomaly !== undefined && anomalyTouched) {
+      const raw = recOf(rep.anomaly);
+      const an: Record<string, unknown> = { ...raw };
+      if (c.anomaly.enabled !== undefined) an.enabled = c.anomaly.enabled;
+      const ids = Object.keys(c.anomaly.rules) as PosAnomalyRule[];
+      if (ids.length) {
+        const rules: Record<string, unknown> = { ...recOf(raw.rules) };
+        for (const id of ids) rules[id] = { ...recOf(rules[id]), ...c.anomaly.rules[id] };
+        an.rules = rules;
+      }
+      rep.anomaly = an;
+    }
+    out.reports = rep;
+  }
+  return out;
+}
+
+/** ค่าที่แพตช์แตะ (ตามตัวอ่าน) — ใช้เป็น before/after ของ audit (ไม่มีค่าลับในส่วนนี้) */
+function generalAuditView(g: PosGeneralSettings, c: CleanGeneral): Record<string, unknown> {
+  const v: Record<string, unknown> = { section: "general" };
+  for (const k of Object.keys(c) as (keyof CleanGeneral)[]) v[k] = g[k];
+  return v;
+}
+
+/** R3 — แก้ค่าตั้งทั่วไปของระบบ POS (สิทธิ์ pos.settings.manage ครบทุกสาขา) → ค่าทั่วไปหลังแก้ (จากตัวอ่านของแต่ละคีย์) */
+export async function updatePosGeneralSettings(ctx: Ctx, actor: PosSettingsWriterActor, patch: unknown): Promise<PosGeneralSettingsResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m || !(await canOnAllLinkedUnits(prisma, ctx, m, PERM_SETTINGS_MANAGE))) return settingsRefuse("PERMISSION_DENIED");
+    const parsed = cleanGeneralPatch(patch);
+    if (!parsed.ok) return parsed;
+    const c = parsed.clean;
+    const done = await prisma.$transaction(async (tx) => {
+      if (!(await lockPos(tx, ctx))) return settingsRefuse("NOT_FOUND");
+      const sys = await posSystem(tx, ctx);
+      if (!sys) return settingsRefuse("NOT_FOUND");
+      const pos = posOf(sys.settings);
+      const keys = nextGeneralKeys(pos, c);
+      const before = posGeneralSettingsOf(sys.settings);
+      const changed = Object.keys(keys).some((k) => canon(pos[k]) !== canon(keys[k]));
+      if (!changed) return { ok: true as const, general: before, audit: null };
+      const afterSettings = { ...(isRecord(sys.settings) ? sys.settings : {}), pos: { ...pos, ...keys } };
+      const after = posGeneralSettingsOf(afterSettings);
+      // POS P2.12 ▸ fix1 F3: ค่าตามตัวอ่านก่อน = หลัง (เช่นเขียนค่าปริยาย · กฎว่าง {}) ⇒ ไม่เขียน ไม่ลง audit ◂
+      if (canon(generalAuditView(before, c)) === canon(generalAuditView(after, c))) return { ok: true as const, general: before, audit: null };
+      await mergePosKeys(tx, ctx, keys);
+      return { ok: true as const, general: after, audit: { before: generalAuditView(before, c), after: generalAuditView(after, c) } };
+    });
+    if (!done.ok) return done;
+    if (done.audit) await writeAudit({ tenantId: ctx.tenantId, actorId: m.userId, action: POS_SETTINGS_AUDIT, targetType: "AppSystem", targetId: ctx.systemId, before: done.audit.before, after: done.audit.after });
+    return { ok: true, general: done.general };
+  } catch (e) {
+    console.error("[pos/settings-general] general", e);
+    return settingsRefuse("UNKNOWN");
+  }
+}
+
+// ═══════════ R4 เพดานส่วนลดตามบทบาท ═══════════
+/** R4 — แก้เพดานส่วนลด STAFF/MANAGER (bp 0–10000) · OWNER แก้ไม่ได้ · MANAGER แก้ได้เฉพาะเจ้าของ · คนอื่นตั้ง STAFF ได้ไม่เกินเพดานบทบาทตัวเอง */
+export async function updatePosDiscountCaps(ctx: Ctx, actor: PosSettingsWriterActor, patch: unknown): Promise<PosDiscountCapsResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m || !(await canOnAllLinkedUnits(prisma, ctx, m, PERM_SETTINGS_MANAGE))) return settingsRefuse("PERMISSION_DENIED");
+    if (!isRecord(patch)) return settingsRefuse("VALIDATION", "แพตช์ต้องเป็นออบเจกต์");
+    const want: { STAFF?: number; MANAGER?: number } = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === "OWNER") return settingsRefuse("VALIDATION", "เพดานของเจ้าของร้านแก้ไม่ได้ (ไม่จำกัดเสมอ)", "OWNER");
+      if (k !== "STAFF" && k !== "MANAGER") return settingsRefuse("VALIDATION", `ไม่รู้จักบทบาท ${k}`, k);
+      if (!isInt(v, 0, 10_000)) return settingsRefuse("VALIDATION", "เพดานต้องเป็นจำนวนเต็ม 0–10000 (0–100%)", k);
+      want[k] = v;
+    }
+    if (want.MANAGER !== undefined && m.role !== "OWNER") return settingsRefuse("PERMISSION_DENIED", "เฉพาะเจ้าของร้านเท่านั้นที่แก้เพดานของผู้จัดการได้");
+    const done = await prisma.$transaction(async (tx) => {
+      if (!(await lockPos(tx, ctx))) return settingsRefuse("NOT_FOUND");
+      const sys = await posSystem(tx, ctx);
+      if (!sys) return settingsRefuse("NOT_FOUND");
+      const cur = posDiscountCaps(sys.settings);
+      if (want.STAFF !== undefined && m.role !== "OWNER" && want.STAFF > cur[m.role]) return settingsRefuse("PERMISSION_DENIED", "ตั้งเพดานพนักงานเกินเพดานของตัวเองไม่ได้");
+      const pos = posOf(sys.settings);
+      const disc = recOf(pos.discount);
+      const by: Record<string, unknown> = { ...recOf(disc.maxBpByRole) };
+      if (want.STAFF !== undefined) by.STAFF = want.STAFF;
+      if (want.MANAGER !== undefined) by.MANAGER = want.MANAGER;
+      const nextDiscount = { ...disc, maxBpByRole: by };
+      if (canon(pos.discount) === canon(nextDiscount)) return { ok: true as const, caps: cur, audit: null };
+      await mergePosKeys(tx, ctx, { discount: nextDiscount });
+      const caps = posDiscountCaps({ pos: { ...pos, discount: nextDiscount } });
+      const view = (c: PosDiscountCaps) => ({ section: "caps", ...(want.STAFF !== undefined ? { STAFF: c.STAFF } : {}), ...(want.MANAGER !== undefined ? { MANAGER: c.MANAGER } : {}) });
+      return { ok: true as const, caps, audit: { before: view(cur), after: view(caps) } };
+    });
+    if (!done.ok) return done;
+    if (done.audit) await writeAudit({ tenantId: ctx.tenantId, actorId: m.userId, action: POS_SETTINGS_AUDIT, targetType: "AppSystem", targetId: ctx.systemId, before: done.audit.before, after: done.audit.after });
+    return { ok: true, caps: done.caps };
+  } catch (e) {
+    console.error("[pos/settings-general] caps", e);
+    return settingsRefuse("UNKNOWN");
+  }
+}
+
+// ═══════════ R5 นโยบายขายเกินสต็อกของสาขา (BusinessUnit.settings.pos.stock) ═══════════
+const OVERSELL = new Set(["ALLOW_NEGATIVE", "BLOCK"]);
+/** สาขานี้ผูก POS นี้ (และเป็นของร้านนี้) ไหม */
+export async function unitLinkedToPos(db: Db, ctx: Ctx, unitId: string): Promise<boolean> {
+  if (!isId(unitId)) return false;
+  const link = await db.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId: ctx.tenantId, unitId, type: "POS" } }, select: { systemId: true } });
+  if (!link || link.systemId !== ctx.systemId) return false;
+  const u = await db.businessUnit.findFirst({ where: { id: unitId, tenantId: ctx.tenantId, status: { not: "ARCHIVED" } }, select: { id: true } });
+  return !!u;
+}
+const policyOf = (settings: unknown): PosOversellPolicy => (recOf(recOf(posOf(settings).stock)).oversellPolicy === "BLOCK" ? "BLOCK" : "ALLOW_NEGATIVE");
+
+/** R5 — ตั้งนโยบายขายเกินสต็อกของสาขา (pos.settings.manage ที่สาขานั้น) · ตัวอ่าน = unitOversellPolicy (service.ts) */
+export async function updatePosUnitStockPolicy(ctx: Ctx, actor: PosSettingsWriterActor, input: unknown): Promise<PosUnitStockPolicyResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m || !evaluate(m, { module: "pos", action: PERM_SETTINGS_MANAGE })) return settingsRefuse("PERMISSION_DENIED");
+    if (!isRecord(input) || !isId(input.unitId)) return settingsRefuse("VALIDATION", "ต้องระบุสาขา", "unitId");
+    if (typeof input.oversellPolicy !== "string" || !OVERSELL.has(input.oversellPolicy)) return settingsRefuse("VALIDATION", "นโยบายต้องเป็นอนุญาตติดลบหรือห้ามขาย", "oversellPolicy");
+    const unitId = input.unitId;
+    const policy = input.oversellPolicy as PosOversellPolicy;
+    if (!(await posSystem(prisma, ctx)) || !(await unitLinkedToPos(prisma, ctx, unitId))) return settingsRefuse("NOT_FOUND", "ไม่พบสาขานี้ในจุดขายนี้");
+    if (!evaluate(m, { module: "pos", action: PERM_SETTINGS_MANAGE, unitId })) return settingsRefuse("PERMISSION_DENIED");
+    const done = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "BusinessUnit" WHERE id = ${unitId} AND "tenantId" = ${ctx.tenantId} FOR UPDATE`;
+      if (!locked.length) return settingsRefuse("NOT_FOUND");
+      const u = await tx.businessUnit.findFirst({ where: { id: unitId, tenantId: ctx.tenantId }, select: { settings: true } });
+      const pos = posOf(u?.settings);
+      const before = policyOf(u?.settings);
+      const stock = recOf(pos.stock);
+      if (stock.oversellPolicy === policy) return { ok: true as const, before, changed: false };
+      const json = JSON.stringify({ stock: { ...stock, oversellPolicy: policy } });
+      await tx.$executeRaw`
+        UPDATE "BusinessUnit"
+        SET "settings" = jsonb_set(
+          CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+          '{pos}',
+          (CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END) || ${json}::jsonb,
+          true),
+          "updatedAt" = now()
+        WHERE "id" = ${unitId} AND "tenantId" = ${ctx.tenantId}`;
+      return { ok: true as const, before, changed: true };
+    });
+    if (!done.ok) return done;
+    if (done.changed)
+      await writeAudit({
+        tenantId: ctx.tenantId,
+        actorId: m.userId,
+        action: POS_SETTINGS_AUDIT,
+        targetType: "BusinessUnit",
+        targetId: unitId,
+        before: { section: "unitStock", systemId: ctx.systemId, oversellPolicy: done.before },
+        after: { section: "unitStock", systemId: ctx.systemId, oversellPolicy: policy },
+      });
+    return { ok: true, unitStock: { unitId, oversellPolicy: policy } };
+  } catch (e) {
+    console.error("[pos/settings-general] unitStock", e);
+    return settingsRefuse("UNKNOWN");
+  }
+}
+
+// ═══════════ R9 ประวัติการเปลี่ยนค่าตั้ง (AuditLog ของ POS นี้ · ใหม่สุดก่อน · หน้าละ 20) ═══════════
+const HISTORY_PAGE = 20;
+const DEVICE_ACTIONS = ["pos.device.register", "pos.device.update", "pos.device.revoke"];
+const PIN_ACTIONS = ["pos.staff.pin_set", "pos.staff.pin_unlocked"];
+/** คีย์ของ summary ที่ส่งได้ (ค่าพื้นฐานเท่านั้น · ไม่มีค่าลับ) — คีย์อื่นถูกตัดทิ้ง */
+const SUMMARY_DROP = new Set(["section", "pinHash", "promptpayId", "deviceCode", "ledgerAccountId"]);
+
+function encodeCursor(at: Date, id: string): string {
+  return Buffer.from(`${at.toISOString()}|${id}`, "utf8").toString("base64url");
+}
+function decodeCursor(v: unknown): { at: Date; id: string } | null {
+  if (typeof v !== "string" || v.length > 200) return null;
+  try {
+    const [iso, id] = Buffer.from(v, "base64url").toString("utf8").split("|");
+    const at = new Date(iso ?? "");
+    return Number.isFinite(at.getTime()) && isId(id) ? { at, id: id! } : null;
+  } catch {
+    return null;
+  }
+}
+/** after/before → พารามิเตอร์ประโยคแบบแบน (ค่าพื้นฐาน · ซ้อนได้ 2 ชั้น "shift.blindClose") */
+function summaryOf(after: unknown, before: unknown, maskPhone: (phone: string) => string): Record<string, string | number | boolean | null> {
+  const out: Record<string, string | number | boolean | null> = {};
+  const prev = recOf(maskAuditPhones(before, maskPhone)); // POS P1.18U ▸ F1: คีย์ชั้นที่ 2 ที่ค่าเท่าเดิม = ไม่ได้แก้ ⇒ ไม่ออกในประโยค (คีย์ชั้นบนคงเดิม) ◂
+  const put = (k: string, v: unknown) => {
+    if (Object.keys(out).length >= 24) return;
+    if (v === null || typeof v === "boolean" || typeof v === "number") out[k] = v as never;
+    else if (typeof v === "string") out[k] = v.slice(0, 120);
+  };
+  // POS P1.18 ▸ F5: แถวเก่าก่อนแก้อาจเก็บ header.phone ดิบ — ปิดบังตอนอ่านด้วย (ไม่คืนเบอร์ดิบไม่ว่าแถวไหน) ◂
+  for (const [k, v] of Object.entries(recOf(maskAuditPhones(after, maskPhone)))) {
+    if (SUMMARY_DROP.has(k)) continue;
+    if (isRecord(v)) {
+      const pv = isRecord(prev[k]) ? (prev[k] as Record<string, unknown>) : null;
+      for (const [k2, v2] of Object.entries(v)) {
+        if (SUMMARY_DROP.has(k2)) continue;
+        if (pv && canon(pv[k2]) === canon(v2)) continue; // POS P1.18U ▸ F1 ◂
+        put(`${k}.${k2}`, isRecord(v2) || Array.isArray(v2) ? null : v2);
+      }
+    } else if (Array.isArray(v)) put(`${k}.count`, v.length);
+    else put(k, v);
+  }
+  return out;
+}
+function sectionOf(action: string, before: unknown, after: unknown): string | null {
+  const s = recOf(after).section ?? recOf(before).section;
+  if (typeof s === "string") return s;
+  if (action.startsWith("pos.integration.")) return "integration";
+  if (action.startsWith("pos.device.")) return "devices";
+  if (action.startsWith("pos.staff.")) return "staff";
+  return null;
+}
+
+/** R9 — ประวัติการเปลี่ยนของ POS นี้ (pos.settings.manage) · cursor = ตำแหน่งแถวสุดท้ายของหน้าก่อน (เวลา+id · เสถียร) */
+export async function posSettingsHistory(ctx: Ctx, actor: PosSettingsWriterActor, input: unknown = {}): Promise<PosSettingsHistoryResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m || !evaluate(m, { module: "pos", action: PERM_SETTINGS_MANAGE })) return settingsRefuse("PERMISSION_DENIED");
+    if (!(await posSystem(prisma, ctx))) return settingsRefuse("NOT_FOUND");
+    const units = await posLinkedUnitIds(prisma, ctx);
+    if (!(m.role === "OWNER" || m.unitAccess.includes("*") || units.some((u) => evaluate(m, { module: "pos", action: PERM_SETTINGS_MANAGE, unitId: u })))) return settingsRefuse("PERMISSION_DENIED");
+    const rawCursor = isRecord(input) ? input.cursor : undefined;
+    const cur = rawCursor === undefined || rawCursor === null ? null : decodeCursor(rawCursor);
+    if (rawCursor !== undefined && rawCursor !== null && !cur) return settingsRefuse("VALIDATION", "cursor ไม่ถูกต้อง", "cursor");
+    // สาขาที่เคยผูก (ยังผูกอยู่) + เครื่อง + แถว PIN ของ POS นี้
+    const allUnits = (await prisma.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } })).map((l) => l.unitId);
+    const [devices, pins] = await Promise.all([
+      prisma.posDevice.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true } }),
+      allUnits.length ? prisma.posStaffPin.findMany({ where: { tenantId: ctx.tenantId, unitId: { in: allUnits } }, select: { id: true } }) : Promise.resolve([] as { id: string }[]),
+    ]);
+    const or: Prisma.AuditLogWhereInput[] = [
+      { action: POS_SETTINGS_AUDIT, targetId: { in: [ctx.systemId, ...allUnits] } },
+      { action: { startsWith: "pos.integration." }, targetId: ctx.systemId },
+    ];
+    if (devices.length) or.push({ action: { in: DEVICE_ACTIONS }, targetId: { in: devices.map((d) => d.id) } });
+    if (pins.length) or.push({ action: { in: PIN_ACTIONS }, targetId: { in: pins.map((p) => p.id) } });
+    const where: Prisma.AuditLogWhereInput = {
+      tenantId: ctx.tenantId,
+      OR: or,
+      ...(cur ? { AND: [{ OR: [{ createdAt: { lt: cur.at } }, { createdAt: cur.at, id: { lt: cur.id } }] }] } : {}),
+    };
+    const rows = await prisma.auditLog.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: HISTORY_PAGE + 1,
+      select: { id: true, createdAt: true, actorId: true, action: true, before: true, after: true },
+    });
+    const page = rows.slice(0, HISTORY_PAGE);
+    const { maskPhone } = await import("@/lib/modules/member"); // POS P1.18 ▸ F5 ◂
+    const actorIds = [...new Set(page.map((r) => r.actorId).filter((x): x is string => !!x))];
+    const users = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } }) : [];
+    const nameOf = new Map(users.map((u) => [u.id, u.name ?? u.email]));
+    const items: PosSettingsHistoryItem[] = page.map((r) => ({
+      id: r.id,
+      at: r.createdAt.toISOString(),
+      actorName: (r.actorId && nameOf.get(r.actorId)) || null,
+      action: r.action,
+      section: sectionOf(r.action, r.before, r.after),
+      summary: summaryOf(r.after, r.before, maskPhone), // POS P1.18U ▸ F1 ◂
+    }));
+    const last = page[page.length - 1];
+    return { ok: true, items, nextCursor: rows.length > HISTORY_PAGE && last ? encodeCursor(last.createdAt, last.id) : null };
+  } catch (e) {
+    console.error("[pos/settings-general] history", e);
+    return settingsRefuse("UNKNOWN");
+  }
+}
+
+// ═══════════ POS P3.5 ▸ R3 R6 R12 ค่าตั้งพนักงาน × HR (ด่านตารางงาน · ลงเวลาจากกะ · อัตราค่าคอมฯ) ◂ ═══════════
+// 🔴 ทางเขียนเดียวกับ updatePosGeneralSettings: สิทธิ์ → ตรวจแพตช์ทั้งก้อน (ช่วงเดียวกับตัวอ่าน settings-shared) → tx + ล็อกแถว FOR UPDATE →
+//    mergePosKeys เฉพาะคีย์ของตัวเอง (pos.staff = รวมทับเฉพาะ scheduleGate/clockOnShift · pos.staffCommission = ทั้งก้อน) → audit pos.settings.updated
+// 🔴 ด่านตารางงาน/ลงเวลา = เจ้าของร้านเท่านั้น (มติ 3 · prompt) · อัตราค่าคอมฯ = เจ้าของ หรือผู้ดูเงินเดือน (canViewPayroll · มติ 1)
+// 🔴 audit ของอัตราค่าคอมฯ = สรุป (เปิด/ปิด · ค่าปริยาย · จำนวนแถว · บทบาท) — ไม่ลงตารางอัตรารายสินค้าในประวัติที่ผู้จัดการเห็น
+export type PosStaffSettingsPatch = { scheduleGate?: Partial<PosScheduleGate>; clockOnShift?: PosClockOnShift };
+export type PosStaffSettingsResult = { ok: true; scheduleGate: PosScheduleGate; clockOnShift: PosClockOnShift } | PosSettingsRefusal;
+export type PosStaffCommissionResult = { ok: true; staffCommission: PosStaffCommissionConfig } | PosSettingsRefusal;
+
+/** R3 R12 — ด่านตารางงาน + ถามลงเวลาหลังเปิด/ปิดกะ (เจ้าของร้านเท่านั้น) */
+export async function updatePosStaffSettings(ctx: Ctx, actor: PosSettingsWriterActor, patch: unknown): Promise<PosStaffSettingsResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m || m.role !== "OWNER") return settingsRefuse("PERMISSION_DENIED", "ด่านตารางงานและการลงเวลาจากกะ เจ้าของร้านเท่านั้นที่ตั้งได้");
+    if (!isRecord(patch)) return settingsRefuse("VALIDATION", "แพตช์ต้องเป็นออบเจกต์");
+    for (const k of Object.keys(patch)) if (k !== "scheduleGate" && k !== "clockOnShift") return settingsRefuse("VALIDATION", `ไม่รู้จักคีย์ ${k}`, k);
+    const g = patch.scheduleGate;
+    if (g !== undefined) {
+      if (!isRecord(g)) return settingsRefuse("VALIDATION", "scheduleGate ต้องเป็นออบเจกต์", "scheduleGate");
+      for (const [k, v] of Object.entries(g)) {
+        if (k === "enabled") {
+          if (typeof v !== "boolean") return settingsRefuse("VALIDATION", "enabled ต้องเป็นจริง/เท็จ", "scheduleGate.enabled");
+        } else if (k === "earlyMin" || k === "lateMin" || k === "overrideTtlMin") {
+          const lim = POS_SCHEDULE_GATE_LIMITS[k];
+          if (!isInt(v, lim.min, lim.max)) return settingsRefuse("VALIDATION", `${k} ต้องเป็นจำนวนเต็ม ${lim.min}–${lim.max} นาที`, `scheduleGate.${k}`);
+        } else return settingsRefuse("VALIDATION", `ไม่รู้จักคีย์ ${k}`, `scheduleGate.${k}`);
+      }
+    }
+    if (patch.clockOnShift !== undefined && patch.clockOnShift !== "OFF" && patch.clockOnShift !== "ASK") return settingsRefuse("VALIDATION", "clockOnShift ต้องเป็น OFF หรือ ASK", "clockOnShift");
+    const hrLinked = (await prisma.appSystem.count({ where: { tenantId: ctx.tenantId, type: "HR" } })) > 0;
+    const done = await prisma.$transaction(async (tx) => {
+      if (!(await lockPos(tx, ctx))) return settingsRefuse("NOT_FOUND");
+      const sys = await posSystem(tx, ctx);
+      if (!sys) return settingsRefuse("NOT_FOUND");
+      const pos = posOf(sys.settings);
+      const staff = recOf(pos.staff);
+      const beforeGate = posScheduleGate(sys.settings);
+      const beforeClock = posClockOnShift(sys.settings, hrLinked);
+      const nextStaff: Record<string, unknown> = { ...staff };
+      if (isRecord(g)) nextStaff.scheduleGate = { ...beforeGate, ...g };
+      if (patch.clockOnShift !== undefined) nextStaff.clockOnShift = patch.clockOnShift;
+      const afterSettings = { pos: { ...pos, staff: nextStaff } };
+      const afterGate = posScheduleGate(afterSettings);
+      const afterClock = posClockOnShift(afterSettings, hrLinked);
+      if (canon(staff) === canon(nextStaff)) return { ok: true as const, scheduleGate: beforeGate, clockOnShift: beforeClock, audit: null };
+      await mergePosKeys(tx, ctx, { staff: nextStaff });
+      const view = (gate: PosScheduleGate, clock: PosClockOnShift) => ({ section: "staff", scheduleGate: gate, clockOnShift: clock });
+      return { ok: true as const, scheduleGate: afterGate, clockOnShift: afterClock, audit: { before: view(beforeGate, beforeClock), after: view(afterGate, afterClock) } };
+    });
+    if (!done.ok) return done;
+    if (done.audit) await writeAudit({ tenantId: ctx.tenantId, actorId: m.userId, action: POS_SETTINGS_AUDIT, targetType: "AppSystem", targetId: ctx.systemId, before: done.audit.before, after: done.audit.after });
+    return { ok: true, scheduleGate: done.scheduleGate, clockOnShift: done.clockOnShift };
+  } catch (e) {
+    console.error("[pos/settings-general] staff", e);
+    return settingsRefuse("UNKNOWN");
+  }
+}
+
+/** R6 — อัตราค่าคอมฯ พนักงานขาย (เจ้าของ หรือผู้มี hr.payroll.read) · แพตช์ = ก้อนใหม่ทั้งก้อน (คีย์ที่ไม่ส่ง = ค่าเดิม) */
+export async function updatePosStaffCommission(ctx: Ctx, actor: PosSettingsWriterActor, patch: unknown): Promise<PosStaffCommissionResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m || !canViewPayroll(m)) return settingsRefuse("PERMISSION_DENIED", "อัตราค่าคอมฯ พนักงาน เจ้าของร้านหรือผู้ดูเงินเดือนเท่านั้นที่ตั้งได้");
+    if (!isRecord(patch)) return settingsRefuse("VALIDATION", "แพตช์ต้องเป็นออบเจกต์");
+    const L = POS_STAFF_COMMISSION_LIMITS;
+    const rateOk = (v: unknown) => isRecord(v) && Object.keys(v).length > 0 && Object.entries(v).every(([k, x]) => (k === "bp" ? isInt(x, L.bp.min, L.bp.max) : k === "fixedSatang" ? isInt(x, L.fixedSatang.min, L.fixedSatang.max) : false));
+    let entries = 0;
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === "enabled") {
+        if (typeof v !== "boolean") return settingsRefuse("VALIDATION", "enabled ต้องเป็นจริง/เท็จ", k);
+      } else if (k === "defaultBp") {
+        if (!isInt(v, L.bp.min, L.bp.max)) return settingsRefuse("VALIDATION", `defaultBp ต้องเป็นจำนวนเต็ม ${L.bp.min}–${L.bp.max}`, k);
+      } else if (k === "byCategory" || k === "byProduct") {
+        if (!isRecord(v)) return settingsRefuse("VALIDATION", `${k} ต้องเป็นออบเจกต์`, k);
+        for (const [id, r] of Object.entries(v)) {
+          if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !rateOk(r)) return settingsRefuse("VALIDATION", `อัตราของ ${id} ไม่ถูกต้อง (bp 0–5000 · fixedSatang 0–100000)`, `${k}.${id}`);
+          entries++;
+        }
+      } else if (k === "sellerRoles") {
+        if (!Array.isArray(v) || !v.every((x) => typeof x === "string" && (POS_STAFF_ROLES as readonly string[]).includes(x))) return settingsRefuse("VALIDATION", "sellerRoles ต้องเป็น OWNER/MANAGER/STAFF", k);
+      } else return settingsRefuse("VALIDATION", `ไม่รู้จักคีย์ ${k}`, k);
+    }
+    const done = await prisma.$transaction(async (tx) => {
+      if (!(await lockPos(tx, ctx))) return settingsRefuse("NOT_FOUND");
+      const sys = await posSystem(tx, ctx);
+      if (!sys) return settingsRefuse("NOT_FOUND");
+      const pos = posOf(sys.settings);
+      const before = posStaffCommission(sys.settings);
+      const merged = { ...before, ...(patch as Record<string, unknown>) } as PosStaffCommissionConfig;
+      const total = Object.keys(merged.byCategory ?? {}).length + Object.keys(merged.byProduct ?? {}).length;
+      if (entries > L.entries || total > L.entries) return settingsRefuse("VALIDATION", `อัตรารายสินค้า/หมวดรวมได้ไม่เกิน ${L.entries} แถว`, "byProduct");
+      const after = posStaffCommission({ pos: { staffCommission: merged } });
+      if (canon(before) === canon(after) && isRecord(pos.staffCommission)) return { ok: true as const, staffCommission: before, audit: null };
+      await mergePosKeys(tx, ctx, { staffCommission: after });
+      const view = (c: PosStaffCommissionConfig) => ({ section: "staffCommission", enabled: c.enabled, defaultBp: c.defaultBp, categoryRates: Object.keys(c.byCategory).length, productRates: Object.keys(c.byProduct).length, sellerRoles: c.sellerRoles.join(",") });
+      return { ok: true as const, staffCommission: after, audit: { before: view(before), after: view(after) } };
+    });
+    if (!done.ok) return done;
+    if (done.audit) await writeAudit({ tenantId: ctx.tenantId, actorId: m.userId, action: POS_SETTINGS_AUDIT, targetType: "AppSystem", targetId: ctx.systemId, before: done.audit.before, after: done.audit.after });
+    return { ok: true, staffCommission: done.staffCommission };
+  } catch (e) {
+    console.error("[pos/settings-general] staffCommission", e);
+    return settingsRefuse("UNKNOWN");
+  }
+}
+// ◂ POS P3.5
+
+// POS P3.4 ▸ R3 (มติ 2 · ST8): ธงขายออฟไลน์ของระบบ POS — settings.pos.offline.enabled (ปริยาย false = จอ 19ง วันนี้ทุกไบต์) ·
+//   ตัวอ่านเดียว posOfflineEnabled (offline-shared.ts) · ตัวเขียน = เจ้าของร้านเท่านั้น (บิลออฟไลน์ = บิลที่เครื่องอ้างเอง · เปิดผิวการโกงเพิ่ม) ·
+//   ล็อกแถว FOR UPDATE + jsonb_set ใต้ settings.pos (คีย์อื่นไม่ถูกแตะ) + audit pos.settings.updated {section: "offline"} · ค่าเดิม = ไม่เขียน ไม่ลง audit ·
+//   จอสวิตช์ (การ์ด 10 / แท็บ offline) = ใบ P3.4U
+export type PosOfflineEnabledResult = { ok: true; enabled: boolean } | PosSettingsRefusal;
+export async function updatePosOfflineEnabled(ctx: Ctx, actor: PosSettingsWriterActor, input: unknown): Promise<PosOfflineEnabledResult> {
+  try {
+    if (!ctxOk(ctx)) return settingsRefuse("NOT_FOUND");
+    const m = settingsMembership(actor);
+    if (!m) return settingsRefuse("PERMISSION_DENIED");
+    if (m.role !== "OWNER") return settingsRefuse("SETTINGS_SECTION_LOCKED");
+    if (!isRecord(input) || Object.keys(input).some((k) => k !== "enabled") || typeof input.enabled !== "boolean") return settingsRefuse("VALIDATION", "ต้องส่ง enabled เป็นจริง/เท็จ", "enabled");
+    const want = input.enabled;
+    const done = await prisma.$transaction(async (tx) => {
+      if (!(await lockPos(tx, ctx))) return settingsRefuse("NOT_FOUND");
+      const sys = await posSystem(tx, ctx);
+      if (!sys) return settingsRefuse("NOT_FOUND");
+      const before = posOfflineEnabled(sys.settings);
+      if (before === want) return { ok: true as const, enabled: before, audit: false };
+      const pos = posOf(sys.settings);
+      await mergePosKeys(tx, ctx, { offline: { ...recOf(pos.offline), enabled: want } });
+      return { ok: true as const, enabled: want, audit: true };
+    });
+    if (!done.ok) return done;
+    if (done.audit) await writeAudit({ tenantId: ctx.tenantId, actorId: m.userId, action: POS_SETTINGS_AUDIT, targetType: "AppSystem", targetId: ctx.systemId, before: { section: "offline", enabled: !want }, after: { section: "offline", enabled: want } });
+    return { ok: true, enabled: done.enabled };
+  } catch (e) {
+    console.error("[pos/settings-general] offline", e);
+    return settingsRefuse("UNKNOWN");
+  }
+} // ◂

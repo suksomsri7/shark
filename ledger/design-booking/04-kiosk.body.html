@@ -1,0 +1,106 @@
+<style>
+.kgrid{display:grid;grid-template-columns:700px 700px;gap:40px}
+.kio{width:700px;height:500px;background:var(--sf);border:1px solid var(--line);border-radius:28px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.kio .kh{display:flex;align-items:center;gap:12px;padding:18px 26px;border-bottom:1px solid var(--line)}
+.kio .kh .lg{width:40px;height:40px;border-radius:12px;background:var(--ink);color:var(--sf);display:grid;place-items:center;font-weight:700}
+.kio .kh b{font-size:17px}
+.kio .kh .sp{flex:1}
+.kio .kh small{font-size:13.5px;color:var(--mut)}
+.kio .kb{flex:1;padding:24px 26px;display:flex;flex-direction:column;gap:18px}
+.big2{display:grid;grid-template-columns:1fr 1fr;gap:18px;flex:1}
+.big2>div{border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:10px;justify-content:flex-end}
+.big2 .a{background:var(--ink);color:var(--sf)}
+.big2 .b{border:2px solid var(--ink)}
+.big2 .ic{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;margin-bottom:auto}
+.big2 .a .ic{background:var(--sf);color:var(--ink)}
+.big2 .b .ic{background:var(--sf2)}
+.big2 b{font-size:26px;letter-spacing:-.02em;line-height:1.2}
+.big2 small{font-size:14.5px;line-height:1.5}
+.big2 .a small{color:var(--line2)}
+.big2 .b small{color:var(--mut)}
+.kfoot{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink2)}
+.kfoot .sp{flex:1}
+.kok{display:flex;gap:22px;align-items:center}
+.kok .n{font-size:84px;font-weight:700;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
+.kok .t b{display:block;font-size:24px;line-height:1.3}
+.kok .t span{display:block;font-size:15px;color:var(--mut);margin-top:4px}
+.svc2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.svc2 div{border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:4px}
+.svc2 div b{font-size:17px}
+.svc2 div small{color:var(--mut);font-size:13.5px}
+.svc2 div.on{border:2px solid var(--ink)}
+.kbtn{height:62px;border-radius:18px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:18px;font-weight:700}
+.kbtn.pri{background:var(--ink);color:var(--sf)}
+.kbtn.gh{border:1px solid var(--line);color:var(--ink)}
+.alt{display:flex;flex-direction:column;gap:10px}
+.alt div{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:16px;padding:12px 16px;font-size:14.5px}
+.alt div .sp{flex:1}
+.alt div b{white-space:nowrap}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">04 · ตู้รับบัตรคิว / เช็กอิน (แท็บเล็ตหน้าร้าน แนวนอน) <span>— ปุ่มใหญ่ 2 ปุ่ม: “มีนัด → เช็กอิน” (สแกน QR จาก LINE หรือพิมพ์เบอร์) · “ไม่ได้จอง → รับบัตรคิว” · เวลารอคิดจากตารางช่างจริง · ทุกบัตรผูก LINE ได้ด้วย QR · ข้อมูลตรงกับจอ 01</span></p>
+<div class="kgrid">
+
+<div><p class="cap">ก · หน้าแรกตู้ · 14:10</p>
+<div class="kio">
+ <div class="kh"><span class="lg">ลน</span><b>บาร์เบอร์ลุงหนวด · อารีย์</b><span class="sp"></span><small>ส. 31 ต.ค. · 14:10</small></div>
+ <div class="kb">
+  <div class="big2">
+   <div class="a"><span class="ic"><svg class="i lg"><use href="#i-qr"/></svg></span><b>มีนัดแล้ว<br>เช็กอินที่นี่</b><small>สแกน QR ในข้อความ LINE<br>หรือพิมพ์เบอร์โทร</small></div>
+   <div class="b"><span class="ic"><svg class="i lg"><use href="#i-plus"/></svg></span><b>ไม่ได้จอง<br>รับบัตรคิว</b><small>ตอนนี้รอประมาณ 1 ชม.<br>(เสาร์บ่าย คนเยอะ)</small></div>
+  </div>
+  <div class="kfoot"><svg class="i sm"><use href="#i-eye"/></svg>ช่างกำลังทำครบ 4 เก้าอี้<span class="sp"></span>รอในร้าน 2 คน · ถัดไป <b>A009</b></div>
+ </div>
+</div></div>
+
+<div><p class="cap">ข · เช็กอินคนที่จองมา (สแกน QR จาก LINE) · 14:12</p>
+<div class="kio">
+ <div class="kh"><span class="lg">ลน</span><b>เช็กอินแล้ว</b><span class="sp"></span><small>ส. 31 ต.ค. · 14:12</small></div>
+ <div class="kb">
+  <div class="kok"><div class="n">P006</div><div class="t"><b>สวัสดีคุณกอล์ฟ</b><span>นัด 14:45 · ตัดผมชาย · ช่างบอย · เก้าอี้ 2</span></div></div>
+  <div class="why gh"><svg class="i sm"><use href="#i-clock"/></svg><div>มาก่อนเวลา 33 นาที — นั่งรอได้เลย ช่างบอยจะเรียกราว <b>14:45</b><br>บัตรนี้ส่งเข้า LINE ของคุณแล้ว ถ้าออกไปข้างนอก เราจะทักก่อนถึงคิว</div></div>
+  <div class="why"><svg class="i sm"><use href="#i-check"/></svg><div>เป็นสมาชิก · แต้มคงเหลือ 340 · ครั้งนี้ใช้คูปองตัดฟรีครั้งที่ 10 ได้ (สะสมครบแล้ว)</div></div>
+  <span style="flex:1"></span>
+  <div class="kbtn pri">เสร็จ</div>
+ </div>
+</div></div>
+
+<div><p class="cap">ค · walk-in เลือกบริการ · 14:18</p>
+<div class="kio">
+ <div class="kh"><span class="lg">ลน</span><b>รับบัตรคิว · เลือกบริการ</b><span class="sp"></span><small>ขั้น 1/2</small></div>
+ <div class="kb">
+  <div class="svc2">
+   <div><b>ตัดผมชาย</b><small>45 นาที · ฿250</small></div>
+   <div class="on"><b>ตัด + สระ</b><small>60 นาที · ฿350</small></div>
+   <div><b>ตัดผมเด็ก</b><small>30 นาที · ฿180</small></div>
+   <div><b>โกน/แต่งหนวด</b><small>20 นาที · ฿120</small></div>
+   <div><b>ทำสีผม</b><small>90 นาที · จองล่วงหน้า</small></div>
+   <div><b>ดัดผม</b><small>2 ชม. · จองล่วงหน้า</small></div>
+  </div>
+  <div><div class="fl">ช่าง</div><div class="chips"><span class="on">ใครก็ได้ · เร็วสุด</span><span>ช่างเอก</span><span>ช่างบอย</span><span>ช่างนุ่น</span><span>ช่างแจ๊ค</span></div></div>
+  <span style="flex:1"></span>
+  <div class="kbtn pri">รับบัตรคิว</div>
+ </div>
+</div></div>
+
+<div><p class="cap">ง · ได้บัตรคิว · 14:18</p>
+<div class="kio">
+ <div class="kh"><span class="lg">ลน</span><b>บัตรคิวของคุณ</b><span class="sp"></span><small>ตัด + สระ</small></div>
+ <div class="kb" style="flex-direction:row;gap:26px">
+  <div style="flex:1;display:flex;flex-direction:column;gap:16px">
+   <div class="kok"><div class="n">A011</div><div class="t"><b>~15:25 · ช่างแจ๊ค</b><span>ข้างหน้า 3 คิว · รอราว 65 นาที</span></div></div>
+   <div class="alt">
+    <div>อยากได้ช่างบอย<span class="sp"></span><b>~15:30</b></div>
+    <div>ขอวันอื่นแทน · จองล่วงหน้า<span class="sp"></span><b>เลือกเวลา ›</b></div>
+   </div>
+   <div style="display:flex;gap:12px;margin-top:auto"><div class="kbtn gh" style="flex:1"><svg class="i sm"><use href="#i-print"/></svg>พิมพ์บัตร</div><div class="kbtn pri" style="flex:1">เสร็จ</div></div>
+  </div>
+  <div style="width:220px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+   <span class="qrbox" style="width:200px;height:200px"></span>
+   <div style="font-size:14px;line-height:1.5"><b>สแกนเพื่อติดตามคิว</b><br><span style="color:var(--mut)">ออกไปทำธุระได้ · LINE ทักเมื่อเหลือ 2 คิว</span></div>
+  </div>
+ </div>
+</div></div>
+
+</div>
+</div>

@@ -14,7 +14,7 @@ import { formatBaht } from "@/lib/ui/money";
 export default async function ApprovalSettingsPage() {
   const auth = await requireTenant();
   const policies = await listPolicies({ tenantId: auth.active.tenantId });
-  // แก้สายอนุมัติ = การกระทำระดับตั้งกฎ → เฉพาะเจ้าของร้าน (สอดคล้อง updatePolicyAction)
+  // สร้าง/เปิดปิด/แก้สายอนุมัติ = การกระทำระดับตั้งกฎ → เฉพาะเจ้าของร้าน (สอดคล้อง actions)
   const canEdit = auth.active.role === "OWNER";
 
   return (
@@ -48,13 +48,15 @@ export default async function ApprovalSettingsPage() {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <form action={togglePolicyAction}>
-                      <input type="hidden" name="id" value={p.id} />
-                      <input type="hidden" name="active" value={p.active ? "false" : "true"} />
-                      <button type="submit" className="btn-sm">
-                        {p.active ? "ปิด" : "เปิด"}
-                      </button>
-                    </form>
+                    {canEdit && (
+                      <form action={togglePolicyAction}>
+                        <input type="hidden" name="id" value={p.id} />
+                        <input type="hidden" name="active" value={p.active ? "false" : "true"} />
+                        <button type="submit" className="btn-sm">
+                          {p.active ? "ปิด" : "เปิด"}
+                        </button>
+                      </form>
+                    )}
                   </div>
                 </div>
                 {canEdit && (
@@ -81,9 +83,12 @@ export default async function ApprovalSettingsPage() {
         )}
       </Section>
 
-      <Section title="สร้างสายอนุมัติใหม่" card>
-        <ApprovalPolicyForm />
-      </Section>
+      {/* SVC R0.3 ▸ สร้าง/เปิดปิด/แก้สายอนุมัติ = เจ้าของร้านเท่านั้น (สอดคล้อง actions) ◂ */}
+      {canEdit && (
+        <Section title="สร้างสายอนุมัติใหม่" card>
+          <ApprovalPolicyForm />
+        </Section>
+      )}
     </div>
   );
 }

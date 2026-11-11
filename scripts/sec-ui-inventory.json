@@ -1,0 +1,1783 @@
+{
+ "_about": "ทะเบียนปุ่ม (Pressable) ของแอปเลขา AI — testID → ไฟล์ → จอ → ทำอะไร (COMMON §C.12) · เริ่มใบ S2.1 · ใบ S2.x เพิ่มแถวของตัวเอง",
+ "items": [
+  {
+   "testID": "sec-top-secretary",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "ทุกจอเลขา/ลูกค้า/ทีม",
+   "action": "router.navigate /secretary",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-customers",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "ทุกจอเลขา/ลูกค้า/ทีม",
+   "action": "router.navigate /customers",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-team",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "ทุกจอเลขา/ลูกค้า/ทีม",
+   "action": "router.navigate /secretary/staff",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-help",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "ทุกจอเลขา/ลูกค้า/ทีม",
+   "action": "router.push /secretary/help",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-new",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "โซนเลขา + โซนทีม",
+   "action": "router.push /secretary/new (เลขา) · /secretary/staff/invite (ทีม) · โซนลูกค้าไม่มีปุ่ม",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-top-tenant",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "จอโครงทุกจอ (กลางแถบบน)",
+   "action": "เปิด BusinessSwitcherSheet",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-tenant",
+   "file": "apps/mobile/src/components/secretary/SecTopBar.tsx",
+   "screen": "/secretary (หัวใหญ่ A1/C3)",
+   "action": "เปิด BusinessSwitcherSheet",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-switcher-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ชีตสลับกิจการ",
+   "action": "ปิดชีต",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-switch-tenant-<tenantId>",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตสลับกิจการ",
+   "action": "switchTenant (auth-context 1.0) แล้วปิดชีต",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-switch-add",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตสลับกิจการ",
+   "action": "router.push /business/new",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-switch-my-secretary",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตสลับกิจการ",
+   "action": "router.push /secretary/settings/secretary",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-suggest-s1|s2|s3",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary (C3)",
+   "action": "router.push /secretary/new",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-room-<id>",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary (A1 โครง)",
+   "action": "router.push /secretary/room/<id>",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-input-plus",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary",
+   "action": "router.push /secretary/new",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-input-send",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary",
+   "action": "router.push /secretary/new",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "home-open-secretary",
+   "file": "apps/mobile/app/(app)/index.tsx",
+   "screen": "/ (หน้าแรก 1.0)",
+   "action": "router.push /secretary",
+   "wo": "S2.1"
+  },
+  {
+   "testID": "sec-home-filter-{all,working,approval,done}",
+   "file": "apps/mobile/src/components/secretary/RoomFilters.tsx (testID จาก index.tsx)",
+   "screen": "/secretary A1",
+   "action": "กรองรายการห้องตามสถานะ (ในแอป)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-home-card-<roomId>",
+   "file": "apps/mobile/src/components/secretary/RoomCard.tsx (กรอบ sec-home-card)",
+   "screen": "/secretary A1",
+   "action": "router.push /secretary/room/<id>",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-home-new",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary A1/C3",
+   "action": "router.push /secretary/new (ช่องสั่งงานล่าง · InputBar sec-input กดไม่ได้ข้างใน)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-suggest-s{1,2,3}",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary C3",
+   "action": "router.push /secretary/new?q=<instruction> (เติมคำสั่ง ไม่ส่งเอง)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-home-denied-back",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "/secretary (403)",
+   "action": "router.navigate / (หน้าแรก 1.0)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-close",
+   "file": "apps/mobile/app/(app)/secretary/new.tsx",
+   "screen": "/secretary/new A2",
+   "action": "router.back (ไม่มีหน้าก่อน = replace /secretary)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-suggestion-<key>",
+   "file": "apps/mobile/src/components/secretary/SuggestionList.tsx",
+   "screen": "/secretary/new A2",
+   "action": "เติม instruction ลงช่องพิมพ์ (ไม่ส่งเอง · มติ 9)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-frequent-<i>",
+   "file": "apps/mobile/app/(app)/secretary/new.tsx",
+   "screen": "/secretary/new A2",
+   "action": "เติมคำสั่งที่สั่งบ่อยลงช่องพิมพ์",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-send",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx (sendTestID จาก new.tsx)",
+   "screen": "/secretary/new A2",
+   "action": "POST secretary/rooms → router.replace /secretary/room/<roomId> · ว่าง/กำลังส่ง = disabled",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-input-plus",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary/new A2",
+   "action": "ล้างช่องพิมพ์ (เริ่มพิมพ์ใหม่)",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-new-quota-link",
+   "file": "apps/mobile/app/(app)/secretary/new.tsx",
+   "screen": "/secretary/new A2 (402)",
+   "action": "router.push /secretary/settings/quota",
+   "wo": "S2.2/S2.3"
+  },
+  {
+   "testID": "sec-room-back",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ย้อนกลับ (router.back · ไม่มี stack ⇒ /secretary)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-menu",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดชีตเมนู ⋯",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-menu-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ปิดชีตเมนู",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-menu-close",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดชีตยืนยันปิดห้อง (S2.10 R-S2.4e)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-menu-members",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "เปิด AddMemberSheet (canManage)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-menu-help",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "router.push /secretary/help?roomId=",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-gone-home",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ห้องหาย/ไม่มีสิทธิ์ ⇒ /secretary",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-input-plus",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ล้างช่องพิมพ์",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-send",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST secretary/rooms/[id]/send {text, clientMessageId}",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-edit",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดชีตแก้ (editable เท่านั้น · chat.send ไม่มีปุ่ม)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-reject",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดชีตตีกลับ C4",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-approve",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST proposals|plans/[id]/approve · needsSecondConfirm ⇒ ชีตยืนยันครั้งที่ 2",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-confirm2x-ok",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST …/approve {confirm2x:true}",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-confirm2x-cancel",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ปิดชีตยืนยันครั้งที่ 2 (ไม่ทำ)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-reject-sheet-job",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST proposals/[id]/reject {note?, remember:\"JOB\"}",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-reject-sheet-rule",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST proposals/[id]/reject {note, remember:\"RULE\"} (ต้องมีหมายเหตุ)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-reject-sheet-plan",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST plans/[id]/reject {}",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-edit-sheet-cancel",
+   "file": "apps/mobile/src/components/secretary/EditSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "ปิดชีตแก้",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-edit-sheet-save",
+   "file": "apps/mobile/src/components/secretary/EditSheet.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "POST proposals/[id]/edit {patch} (เฉพาะช่องที่เปลี่ยน)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-open-link",
+   "file": "apps/mobile/src/components/secretary/DoneCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดของจริง: ดีล → /crm?dealId= · นัด → /?open=/app/calendar · การ์ด → /?open=/app/ · link ของเซิร์ฟเวอร์ชนะ",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-undo",
+   "file": "apps/mobile/src/components/secretary/DoneCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เปิดชีตยืนยันย้อนของแถวนี้ (ปุ่มต่อแถว · canUndo ของเซิร์ฟเวอร์ · S2.10 R-S2.4a)",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-teach",
+   "file": "apps/mobile/src/components/secretary/DoneCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "เติมช่องพิมพ์ \"ครั้งหน้า …\" + โฟกัส",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-room-repeat",
+   "file": "apps/mobile/src/components/secretary/DoneCard.tsx",
+   "screen": "/secretary/room/[id] (A3–A5 · C4)",
+   "action": "router.push /secretary/new?q=<คำสั่งแรกของห้อง>",
+   "wo": "S2.4"
+  },
+  {
+   "testID": "sec-settings-row-<key>",
+   "file": "apps/mobile/app/(app)/secretary/settings/index.tsx",
+   "screen": "/secretary/settings",
+   "action": "router.push หน้าย่อย (secretary/quota/access/rules/log/knowledge/customers/account) · switch = เปิด BusinessSwitcherSheet",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-<screen>-top-back",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "หน้าย่อยตั้งค่าทุกหน้า (SettingsTop)",
+   "action": "router.back · ไม่มี stack = /secretary/settings",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-tone-<polite|friendly|brief>",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "เลือกน้ำเสียง (ฟอร์ม)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-suffix-<khrap|kha|none>",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "เลือกคำลงท้าย (ฟอร์ม)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-lang-<th|en|zh|ja>",
+   "file": "apps/mobile/app/(app)/secretary/settings/secretary.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "เปิด/ปิดภาษา (เหลืออย่างน้อย 1)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-save",
+   "file": "apps/mobile/app/(app)/secretary/settings/secretary.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "PUT secretary {name,suffix,tone,languages} → โหลด secretary/me ใหม่",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-me-link-<access|rules|knowledge|quota>",
+   "file": "apps/mobile/app/(app)/secretary/settings/secretary.tsx",
+   "screen": "/secretary/settings/secretary",
+   "action": "router.push หน้าตั้งค่า",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-access-level-<module>-<OFF|READ|DRAFT>",
+   "file": "apps/mobile/src/components/secretary/LevelPicker.tsx",
+   "screen": "/secretary/settings/access",
+   "action": "PUT secretary/access {module, level} (OWNER · บทบาทอื่นกดไม่ได้)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-rules-row-<id>-toggle",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "/secretary/settings/rules",
+   "action": "PUT secretary/rules {key, enabled} (OWNER · ข้อ always-approve ล็อก)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-log-filter-<all|today|undo|m-module>",
+   "file": "apps/mobile/src/components/airy/Chip.tsx",
+   "screen": "/secretary/settings/log",
+   "action": "GET secretary/log ?day= / ?module= · ย้อนได้ = กรองในแอป",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-log-undo-<id>",
+   "file": "apps/mobile/src/components/secretary/LogItem.tsx",
+   "screen": "/secretary/settings/log",
+   "action": "POST secretary/log/<id>/undo {} → แสดง note ของเซิร์ฟเวอร์ → โหลดใหม่",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-know-confirm-<id>",
+   "file": "apps/mobile/app/(app)/secretary/settings/knowledge.tsx",
+   "screen": "/secretary/settings/knowledge",
+   "action": "POST memories/<id>/confirm หรือ lessons/<id>/confirm (OWNER)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-know-reject-<id>",
+   "file": "apps/mobile/app/(app)/secretary/settings/knowledge.tsx",
+   "screen": "/secretary/settings/knowledge",
+   "action": "DELETE memories/<id> หรือ lessons/<id> (OWNER)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-know-room-<lessonId>",
+   "file": "apps/mobile/app/(app)/secretary/settings/knowledge.tsx",
+   "screen": "/secretary/settings/knowledge",
+   "action": "router.push /secretary/room/<sourceRoomId>",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-cust-afterhours",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "/secretary/settings/customers",
+   "action": "สลับ reply (ฟอร์ม · บันทึกด้วย sec-cust-save)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-cust-handoff",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "/secretary/settings/customers",
+   "action": "สลับ handoff (ฟอร์ม)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-cust-save",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "/secretary/settings/customers",
+   "action": "ตรวจ disclosure (AI/เอไอ/ผู้ช่วย) → PUT secretary/after-hours",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-cust-hours",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "/secretary/settings/customers",
+   "action": "router.push / ?open=/app/ (WebView 1.0)",
+   "wo": "S2.7"
+  },
+  {
+   "testID": "sec-staff-row",
+   "file": "apps/mobile/src/components/secretary/StaffRow.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "router.push /secretary/staff/<membershipId> (OWNER/MANAGER · STAFF = แถวไม่กดได้)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-pending-resend",
+   "file": "apps/mobile/src/components/secretary/StaffRow.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "POST secretary/staff/invites/<id>/resend",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-pending-cancel",
+   "file": "apps/mobile/src/components/secretary/StaffRow.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "เปิดชีตยืนยันยกเลิกคำเชิญ",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-cancel-sheet-ok",
+   "file": "apps/mobile/app/(app)/secretary/staff/index.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "DELETE secretary/staff/invites/<id>",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-cancel-sheet-no",
+   "file": "apps/mobile/app/(app)/secretary/staff/index.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "ปิดชีต (ไม่ยกเลิก)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-cancel-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "ปิดชีต",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-staff-invite",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "/secretary/staff (D1)",
+   "action": "router.push /secretary/staff/invite (OWNER/MANAGER)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-add-member",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "เปิด AddMemberSheet (canManage)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-add-row",
+   "file": "apps/mobile/src/components/secretary/AddMemberSheet.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "ติ๊ก/เอาติ๊กออก คนที่จะเพิ่ม",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-add-history",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "สลับ seeHistory (ปริยายปิด)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-add-confirm",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "POST secretary/rooms/<id>/members {userId, seeHistory} ต่อคน",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-member-remove",
+   "file": "apps/mobile/src/components/secretary/AddMemberSheet.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "เปิดชีตยืนยันถอดสมาชิก",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-remove-confirm-ok",
+   "file": "apps/mobile/src/components/secretary/AddMemberSheet.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "DELETE secretary/rooms/<id>/members/<userId>",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-remove-confirm-cancel",
+   "file": "apps/mobile/src/components/secretary/AddMemberSheet.tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "ปิดชีตยืนยันถอด",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-close-confirm-ok",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "POST secretary/rooms/<id>/close",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-close-confirm-cancel",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "ปิดชีตยืนยันปิดห้อง",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-undo-confirm-ok",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "POST secretary/log/<id>/undo (แถวที่เลือก)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-room-undo-confirm-cancel",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "/secretary/room/[id] (D2 · D3 · §S)",
+   "action": "ปิดชีตยืนยันย้อน",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-back",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "router.back (ไม่มี = /secretary)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-skip",
+   "file": "apps/mobile/app/(app)/secretary/onboarding/name.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "router.replace /secretary (ใช้ค่าปริยาย · ไม่ PUT)",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-suffix",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "เลือกคำลงท้าย",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-tone",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "เลือกน้ำเสียง",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-onb-save",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "/secretary/onboarding/name (C1)",
+   "action": "PUT secretary {name, suffix, tone} → router.replace /secretary",
+   "wo": "S2.10"
+  },
+  {
+   "testID": "sec-inbox-back",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "router.back · ไม่มีก่อนหน้า = /secretary",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-tab-all",
+   "file": "apps/mobile/src/components/airy/Tabs.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "กรองทั้งหมด (ฝั่งแอป)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-tab-money",
+   "file": "apps/mobile/src/components/airy/Tabs.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "กรองชั้นเงิน",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-tab-customer",
+   "file": "apps/mobile/src/components/airy/Tabs.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "กรองส่งถึงลูกค้า",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-tab-delete",
+   "file": "apps/mobile/src/components/airy/Tabs.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "กรองลบ/ยกเลิก (risk DESTRUCTIVE)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-item",
+   "file": "apps/mobile/src/components/secretary/InboxItem.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "switchTenant(row.tenantId) ถ้าต่าง → router.push /secretary/room/[roomId] (ไม่มีห้อง = /chat/[conversationId])",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-open",
+   "file": "apps/mobile/src/components/secretary/InboxItem.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "เหมือน sec-inbox-item (ปุ่ม ดู)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-reject",
+   "file": "apps/mobile/src/components/secretary/InboxItem.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "ชีต C4 (sec-inbox-reject-sheet) → POST proposals|plans/[id]/reject ด้วย x-tenant-id ของรายการ · canApprove=false = ปิด",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-approve",
+   "file": "apps/mobile/src/components/secretary/InboxItem.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "POST proposals|plans/[id]/approve ด้วย x-tenant-id ของรายการ · needsSecondConfirm ⇒ sec-inbox-confirm2x · canApprove=false = ปิด",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-retry",
+   "file": "apps/mobile/app/(app)/secretary/inbox.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "โหลด GET secretary/inbox ใหม่ (ออฟไลน์)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-confirm2x-ok",
+   "file": "apps/mobile/src/components/secretary/ApprovalCard.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "POST …/approve {confirm2x:true} (ชีตยืนยันชุดเดียวกับห้องงาน)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-reject-sheet-job",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "ตีกลับเฉพาะงานนี้ {remember:JOB}",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-inbox-reject-sheet-rule",
+   "file": "apps/mobile/src/components/secretary/RejectSheet.tsx",
+   "screen": "/secretary/inbox (A6)",
+   "action": "ตีกลับ + จดเป็นกฎ {note, remember:RULE}",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-back",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "router.back · ไม่มีก่อนหน้า = /secretary",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-add",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "เปิดชีตงานประจำใหม่ · เต็ม max ⇒ ข้อความ sec-sched-cap",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-item",
+   "file": "apps/mobile/app/(app)/secretary/scheduled.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "เปิดชีตแก้ (ของฉัน DAILY/WEEKLY) · เจ้าของกิจการ+งานคนอื่น/รายเดือน = ชีตล็อก (ลบได้) · คนอื่น = ไม่ทำอะไร",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-toggle",
+   "file": "apps/mobile/app/(app)/secretary/scheduled.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "PUT secretary/scheduled/[id] {active} · ล้ม = คืนค่า",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-retry",
+   "file": "apps/mobile/app/(app)/secretary/scheduled.tsx",
+   "screen": "/secretary/scheduled (A7)",
+   "action": "โหลด GET secretary/scheduled ใหม่",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-freq-daily",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ความถี่ DAILY",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-freq-weekly",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ความถี่ WEEKLY (+วัน)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-day-<0..6>",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "เลือก/เอาออกวันในสัปดาห์ (0=อา.)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-hour-<0..23>",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ตั้ง hourBkk",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-ch-push",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ช่องทาง push",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-ch-room",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ช่องทาง room",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-save",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ใหม่ = POST secretary/scheduled · แก้ = POST ใหม่ + DELETE เดิม (เต็มเพดาน = DELETE ก่อน · ล้ม = ตั้งเดิมคืน)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-delete",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ขอยืนยันลบ (ยังไม่ยิง)",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-delete-confirm",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "DELETE secretary/scheduled/[id]",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-delete-cancel",
+   "file": "apps/mobile/src/components/secretary/ScheduleSheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ยกเลิกการลบ",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "sec-sched-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ชีตงานประจำ (A7)",
+   "action": "ปิดชีต",
+   "wo": "S2.5"
+  },
+  {
+   "testID": "cust-tab-all",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "แท็บทั้งหมด (ไม่กรอง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-tab-unanswered",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "แท็บยังไม่ตอบ (OPEN ไม่มีคนรับ หรือ staffUnreadCount>0 · กรองในแอป)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-tab-mine",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "แท็บของฉัน → GET inbox/conversations?assignee=me",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-tab-closed",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "แท็บปิดแล้ว → ?status=RESOLVED",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-system-chip",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "สลับระบบแชท (systemId)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-channel-chip",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "กรองช่องทาง → ?channel=",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-row",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "เปิดห้อง → /customers/<id>?s=<systemId>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-row-unassigned",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "เปิดห้องที่ยังไม่มีคนรับ → /customers/<id>?s=",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-more",
+   "file": "apps/mobile/app/(app)/customers/index.tsx",
+   "screen": "K1 /customers",
+   "action": "หน้าต่อไป → ?before=<nextBefore>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-back",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ย้อน (ไม่มี stack = /customers)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-helper",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เรียกคนช่วย → /customers/<id>/info?open=helpers",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-info",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ข้อมูลลูกค้า → /customers/<id>/info",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-claim",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "รับเรื่อง → POST …/assign {assigneeUserId: ตัวเอง} (409 = แจ้ง+โหลดใหม่)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-room-more",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ข้อความก่อนหน้า → GET …/[id]?before=",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-draft-edit",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ร่าง Shark → ใส่ช่องพิมพ์",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-draft-send",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ร่าง Shark → ส่งผ่าน Composer (POST …/reply)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-quick",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ตอบเร็ว → POST quick-replies/[id]/apply → ช่องพิมพ์ (ไม่ส่ง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-attach",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "แนบรูป/วิดีโอ → POST inbox/attachments (multipart ≤10MB)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-attached-remove",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เอาไฟล์ที่แนบออก (ยังไม่ส่ง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-internal-toggle",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "สลับบันทึกภายใน (isInternal)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-send",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ส่ง → POST …/reply {body, attachments, isInternal, clientMessageId} · 429 ลองใหม่ 1 ครั้ง",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-image-close",
+   "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ปิดตัวดูรูปเต็มจอ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-att-image",
+   "file": "apps/mobile/src/components/customers/MessageBubble.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เปิดรูปเต็มจอ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-att-audio",
+   "file": "apps/mobile/src/components/customers/MessageBubble.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เล่นข้อความเสียง (เปิดลิงก์)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-att-file",
+   "file": "apps/mobile/src/components/customers/MessageBubble.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "เปิดไฟล์แนบ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-bubble-resend",
+   "file": "apps/mobile/src/components/customers/MessageBubble.tsx",
+   "screen": "K2 /customers/[id]",
+   "action": "ส่งฟองที่ล้มใหม่ → POST …/reply clientMessageId resend:<id>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-back",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ย้อน",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-member",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "เปิดสมาชิก → /member/<id>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-link",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตผูกสมาชิก (GET member/search)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-unlink",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ถอดสมาชิก → POST …/contact {customerId:null}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-link-go",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ค้นสมาชิก",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-link-row",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ผูก → POST …/contact {customerId}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-assign",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตมอบหมาย → POST …/assign",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-helpers",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตคนช่วย → POST …/helpers {helperUserId, note}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-status",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตสถานะ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-status-opt",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "POST …/status {status}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-tags",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "แท็ก (อ่านอย่างเดียว)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-handoff",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตส่งต่อ → POST …/handoff {toUserId, reason}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-task",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "เปิดชีตสร้างงานบอร์ด (POST inbox/conversations/[id]/task · S2.14 ต่อเส้นจริง)",
+   "wo": "S2.17 · S2.14"
+  },
+  {
+   "testID": "cust-info-ask-shark",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ชีตสั่ง Shark",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-ask-send",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "POST secretary/rooms {instruction, clientMessageId, context:{chatConversationId, contactId}} → /secretary/room/<id>",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-close",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 /customers/[id]/info",
+   "action": "ปิดห้อง (ชีตยืนยัน → status RESOLVED) · ห้องปิด = เปิดอีกครั้ง (status OPEN)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-assign-sheet-row",
+   "file": "apps/mobile/src/components/customers/parts.tsx",
+   "screen": "K3 ชีตเลือกพนักงาน",
+   "action": "เลือกคน (มอบหมาย/ส่งต่อ/คนช่วย ใช้ร่วม: -assign-sheet- -handoff-sheet- -helpers-sheet-)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-assign-sheet-ok",
+   "file": "apps/mobile/src/components/customers/parts.tsx",
+   "screen": "K3 ชีตเลือกพนักงาน",
+   "action": "ยืนยัน (ร่วม -handoff-sheet-ok -helpers-sheet-ok)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-close-sheet-ok",
+   "file": "apps/mobile/src/components/customers/parts.tsx",
+   "screen": "K3 ชีตยืนยันปิดห้อง",
+   "action": "POST …/status RESOLVED",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-info-close-sheet-cancel",
+   "file": "apps/mobile/src/components/customers/parts.tsx",
+   "screen": "K3 ชีตยืนยันปิดห้อง",
+   "action": "ยกเลิก",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-channels-web",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K4 /secretary/settings/customers",
+   "action": "เชื่อม/แก้ช่องทางบนเว็บ (หน้าแรก 1.0 ?open=/app/)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-quick-web",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K4 /secretary/settings/customers",
+   "action": "เพิ่มตอบเร็วบนเว็บ",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-notify",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K4 /secretary/settings/customers",
+   "action": "แจ้งเตือนแชท ALL/ASSIGNED/OFF → PUT secretary/notify {kind:inbox, mode}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-channel",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "วนช่องทางของกฎ (ทุกช่องทาง/ช่องทางที่เชื่อม)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-up",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เลื่อนกฎขึ้น",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-down",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เลื่อนกฎลง",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-remove",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "ลบกฎ (ในร่าง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-toggle",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เปิด/ปิดกฎ (ในร่าง)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-rule-add",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เพิ่มกฎโหมด ROUND_ROBIN/LAST_ASSIGNEE/OWNER",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-routing-save",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "PUT inbox/routing {systemId, rules} (OWNER/MANAGER)",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-shift-toggle",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "เข้า/ออกเวร → POST inbox/shift {onDuty}",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-sla-first",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "SLA อ่านอย่างเดียว",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "cust-set-sla-unassigned",
+   "file": "apps/mobile/app/(app)/secretary/settings/customers.tsx",
+   "screen": "K5 /secretary/settings/customers",
+   "action": "SLA อ่านอย่างเดียว",
+   "wo": "S2.17"
+  },
+  {
+   "testID": "biz-new-close",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "สร้างกิจการ (G1)",
+   "action": "ปิด/ย้อน (ไม่แสดงเมื่อยังไม่มีกิจการ)",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "biz-new-type-<restaurant|retail|service|dorm|clinic|education|other>",
+   "file": "apps/mobile/src/components/airy/Chip.tsx",
+   "screen": "สร้างกิจการ (G1)",
+   "action": "เลือกประเภท (ติ๊กระบบตามประเภทให้)",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "biz-new-system-<POS|CRM|MEMBER|ACCOUNT|KANBAN|CHAT|BOOKING|INVENTORY>",
+   "file": "apps/mobile/app/(app)/business/new.tsx",
+   "screen": "สร้างกิจการ (G1)",
+   "action": "ติ๊ก/เลิกระบบที่จะเปิด (≤ 6)",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "biz-new-submit",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "สร้างกิจการ (G1)",
+   "action": "POST secretary/tenants/create → switchTenant → onboarding/name | ห้องแรก",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "biz-new-received-accept",
+   "file": "apps/mobile/src/components/secretary/InviteRow.tsx",
+   "screen": "สร้างกิจการ (G1)",
+   "action": "POST secretary/invites/accept {inviteId} → switchTenant → /secretary",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-close",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "ปิด/ย้อน",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-role-<STAFF|MANAGER>",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "บทบาทของคำเชิญ (MANAGER เห็นแค่ STAFF)",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-unit-all",
+   "file": "apps/mobile/src/components/airy/Chip.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "ทุกสาขา (unitIds [\"*\"])",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-unit-<unitId>",
+   "file": "apps/mobile/src/components/airy/Chip.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "ติ๊กสาขา (unitIds ชัดเจน)",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-chat-<NONE|VIEW|REPLY>",
+   "file": "apps/mobile/src/components/secretary/LevelGrid.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "ระดับแชทลูกค้าเริ่มต้น",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-level-<module>-<OFF|VIEW|USE>",
+   "file": "apps/mobile/src/components/secretary/LevelGrid.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "ระดับต่อระบบเริ่มต้น (เฉพาะระดับที่มี)",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-submit",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "POST secretary/staff/invite {name,phone,role,unitIds,permissions}",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-resend",
+   "file": "apps/mobile/src/components/secretary/StaffRow.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "POST secretary/staff/invites/[id]/resend",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-cancel",
+   "file": "apps/mobile/src/components/secretary/StaffRow.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "เปิดชีตยืนยันยกเลิกคำเชิญ",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-cancel-sheet-ok",
+   "file": "apps/mobile/app/(app)/secretary/staff/invite.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "DELETE secretary/staff/invites/[id]",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-cancel-sheet-no",
+   "file": "apps/mobile/app/(app)/secretary/staff/invite.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "ไม่ยกเลิก",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "inv-cancel-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "เชิญพนักงาน (G2)",
+   "action": "ปิดชีต",
+   "wo": "S2.21"
+  },
+  {
+   "testID": "perm-back",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "ย้อน",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-role-<STAFF|MANAGER>",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "บทบาท (OWNER: พนักงาน/ผู้จัดการ · MANAGER: พนักงาน)",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-unit-all",
+   "file": "apps/mobile/src/components/airy/Chip.tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "ทุกสาขา",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-unit-<unitId>",
+   "file": "apps/mobile/src/components/airy/Chip.tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "ติ๊กสาขา",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-chat-<NONE|VIEW|REPLY>",
+   "file": "apps/mobile/src/components/secretary/LevelGrid.tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "ระดับแชทลูกค้า",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-level-<module>-<OFF|VIEW|USE>",
+   "file": "apps/mobile/src/components/secretary/LevelGrid.tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "ระดับต่อระบบ (เฉพาะที่มี · OFF-only = ล็อก)",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-save",
+   "file": "apps/mobile/src/components/airy/PrimaryButton.tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "PUT secretary/staff/[membershipId] {role,unitIds,levels(แก้),chat(แก้),extraPermissions}",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-suspend",
+   "file": "apps/mobile/app/(app)/secretary/staff/[membershipId].tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "เปิดชีตยืนยันระงับ",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-remove",
+   "file": "apps/mobile/app/(app)/secretary/staff/[membershipId].tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "เปิดชีตยืนยันเอาออก",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-confirm-ok",
+   "file": "apps/mobile/app/(app)/secretary/staff/[membershipId].tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "POST …/suspend | …/remove → รายชื่อ",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-confirm-no",
+   "file": "apps/mobile/app/(app)/secretary/staff/[membershipId].tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "ไม่ทำ",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "perm-confirm-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "สิทธิ์ต่อคน (G3)",
+   "action": "ปิดชีต",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-top-back",
+   "file": "apps/mobile/src/components/airy/IconBtn.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ย้อน",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-received-accept",
+   "file": "apps/mobile/src/components/secretary/InviteRow.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "POST secretary/invites/accept {inviteId}",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-phone",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ยังไม่ผูก → /phone · ผูกแล้ว → ข้อความติดต่อทีมงาน",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-email",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "แสดงอย่างเดียว (pendingEmail = ยังไม่ยืนยัน)",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-apple",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "แสดงอย่างเดียว",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-theme-<system|light|dark>",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "theme-store setThemeMode (shark_theme)",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-notify",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "เปิดชีตแจ้งเตือน",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-notify-<approval|room|inbox|help>-<ALL|ASSIGNED|OFF>",
+   "file": "apps/mobile/src/components/airy/Segment.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "PUT secretary/notify {kind,mode}",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-notify-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ปิดชีต",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-lang",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "→ /secretary/settings/secretary (ภาษาเลขา)",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-shift",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "แถวเข้าเวร (แสดง)",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-shift-toggle",
+   "file": "apps/mobile/src/components/secretary/SettingRow.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "POST inbox/shift {onDuty}",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-logout",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ออกจากระบบ (แตะ 2 ครั้ง)",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-delete",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "เปิดชีตลบบัญชี + GET account/delete/preview",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-delete-confirm",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ขั้น 1 ลบบัญชี: ขอรหัส 6 หลัก (POST auth/sms/request เบอร์ตัวเอง · ไม่มีเบอร์ = POST auth/otp อีเมล) → ขั้นใส่รหัส (ต้องพิมพ์คำยืนยันก่อน · R-Z29)",
+   "wo": "S2.22 · S3a.1-A"
+  },
+  {
+   "testID": "acct-delete-code",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ช่องรหัส 6 หลัก (ตัวเลขเท่านั้น)",
+   "wo": "S3a.1-A"
+  },
+  {
+   "testID": "acct-delete-resend",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ส่งรหัสอีกครั้ง (รอ resendAfterSec ก่อน)",
+   "wo": "S3a.1-A"
+  },
+  {
+   "testID": "acct-delete-final",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ขั้น 2: POST secretary/account/delete {confirm, code} → signOut · 401 = รหัสผิด (ล้างช่อง) · code_required = คงขั้นใส่รหัส",
+   "wo": "S3a.1-A"
+  },
+  {
+   "testID": "acct-delete-cancel",
+   "file": "apps/mobile/app/(app)/secretary/settings/account.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ไม่ลบ",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "acct-delete-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "บัญชีของฉัน (G4)",
+   "action": "ปิดชีต",
+   "wo": "S2.22"
+  },
+  {
+   "testID": "help-chip",
+   "file": "apps/mobile/src/components/airy/Chip.tsx (ใช้ใน apps/mobile/app/(app)/secretary/help/index.tsx)",
+   "screen": "H1 /secretary/help",
+   "action": "เลือก/ยกเลิกหัวข้อ → category ของ POST support/cases",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-room-detach",
+   "file": "apps/mobile/app/(app)/secretary/help/index.tsx",
+   "screen": "H1 /secretary/help",
+   "action": "ถอดห้องงานที่แนบ (?roomId=) ออกจากเรื่องใหม่",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-case-row",
+   "file": "apps/mobile/src/components/secretary/CaseRow.tsx",
+   "screen": "H1 /secretary/help",
+   "action": "router.push /secretary/help/<id>",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-home-attach",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx (plusTestID ใน apps/mobile/app/(app)/secretary/help/index.tsx)",
+   "screen": "H1 /secretary/help",
+   "action": "แนบรูป → POST support/upload (≤4 MB)",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-send",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx (sendTestID ใน H1/H2)",
+   "screen": "H1 /secretary/help · H2 /secretary/help/[caseId]",
+   "action": "H1: POST support/cases {subject, body, category?, roomId?, attachments?} → /secretary/help/<id> · H2: POST support/cases/[id]/reply",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-attached-remove",
+   "file": "apps/mobile/src/components/secretary/HelpAttach.tsx",
+   "screen": "H1 /secretary/help · H2 /secretary/help/[caseId]",
+   "action": "เอารูปที่แนบรอส่งออก",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-back",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "router.back (ไม่มีหน้าก่อน = /secretary/help)",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "เปิดชีตเมนู ⋯",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu-sheet-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "ปิดชีตเมนู",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu-room",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "router.push /secretary/room/<roomId>",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu-resolve",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "POST support/cases/[id]/resolve",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-menu-list",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "router.navigate /secretary/help",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-room-card",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "การ์ดห้องงานที่แนบ → router.push /secretary/room/<roomId>",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-link",
+   "file": "apps/mobile/src/components/secretary/CaseBubble.tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "ลิงก์หน้าในแอปจากทีม (sharkai:// · /secretary|customers|business · /app/ ใน WebView) → router.push",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-resolve-yes",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "POST support/cases/[id]/resolve {}",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-resolve-no",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "POST support/cases/[id]/reply {body: ยังไม่หาย} + เปิดช่องพิมพ์",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-attach",
+   "file": "apps/mobile/src/components/airy/InputBar.tsx (plusTestID ใน apps/mobile/app/(app)/secretary/help/[caseId].tsx)",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "แนบรูป → POST support/upload (≤4 MB) → attachments ของ reply",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "help-gone-back",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "H2 /secretary/help/[caseId]",
+   "action": "404 → router.navigate /secretary/help",
+   "wo": "S2.15"
+  },
+  {
+   "testID": "cust-info-task-send",
+   "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
+   "screen": "K3 ข้อมูลลูกค้า (ชีตสร้างงานบอร์ด)",
+   "action": "POST inbox/conversations/[id]/task {title} → ข้อความ \"สร้างการ์ดงาน #N แล้ว\"",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-home-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/index.tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-staff-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/staff/index.tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "perm-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/staff/[membershipId].tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-room-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/room/[id].tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-know-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/settings/knowledge.tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "sec-log-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/settings/log.tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  },
+  {
+   "testID": "help-case-error-retry",
+   "file": "apps/mobile/app/(app)/secretary/help/[caseId].tsx",
+   "screen": "สถานะโหลดล้ม (S2.14)",
+   "action": "ลองโหลดข้อมูลของจอใหม่ (GET เส้นเดิมของจอ)",
+   "wo": "S2.14"
+  }
+ ]
+}

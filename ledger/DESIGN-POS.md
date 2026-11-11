@@ -11,6 +11,8 @@
 
 ## 1. สรุปสำหรับเจ้าของ (อ่านหน้าเดียวจบ)
 
+> **สถานะ 16 ต.ค. 2569 (P2.14 ruling 7):** เฟส 0–2 สร้างครบและ merge แล้ว (P2.1–P2.13 + P2.9b + ใบ U + HF ของเฟส) — ตาราง §3 "as-built 30 ก.ย." เป็นภาพก่อนเริ่ม · ความจริงปัจจุบันของเฟส 2 = HANDOVER-P2 (`ledger/HANDOVER-2026-10-xx-POS-P2.md`) · API = `docs/api/POS-API.md` · ฉบับ AS-BUILT เต็ม = P6.2
+
 ### สถานะวันนี้ พูดตรง ๆ
 
 POS ของเราวันนี้คือ **"จุดตัดเงินที่แข็งแรง แต่ยังไม่ใช่เครื่องคิดเงินที่ร้านใช้ได้ทั้งวัน"**
@@ -186,7 +188,7 @@ POS ของเราวันนี้คือ **"จุดตัดเงิ
 - ใบกำกับภาษีเต็มรูป: สวิตช์ + ฟอร์ม (จำจากสมาชิก/ค้นเลขผู้เสียภาษีจาก DBD เมื่อมี key) → บัญชีออกเอกสาร [P1]
 - ส่งใบเสร็จ: พิมพ์ · LINE (ผ่านระบบแชทถ้าเชื่อม) · อีเมล · QR บนจอลูกค้า [P1/P3]
 - จอสำเร็จ: เงินทอน · แต้มที่ได้ · เลขใบเสร็จ/ใบกำกับ · ขายต่อใน 5 วิ [P1]
-- รอเงินเข้า (PENDING_PAYMENT — สเปก D1) สำหรับสั่งล่วงหน้า/แชท/เว็บ: QR หมดอายุ · ยืนยัน idempotent · หมดอายุอัตโนมัติ [P2]
+- รอเงินเข้า (PENDING_PAYMENT) สำหรับสั่งล่วงหน้า/แชท/เว็บ: QR หมดอายุ · ยืนยัน idempotent · หมดอายุอัตโนมัติ [P2] — **P2.7 (มติ 8 · CD2): เป็นสถานะชำระของออเดอร์ (`PosOrder.paymentState` PENDING_PAYMENT → PREPAID → PAID) ไม่ใช่สถานะบิล** — บิลเกิดตอนร้านรับออเดอร์ (ใช้ใบขอรับเงินในธุรกรรมรับ) · เลยเวลาจ่าย = ออเดอร์ CANCELLED (event `expired` · เหตุ PAYMENT_EXPIRED) + ใบ EXPIRED · `PosSaleStatus` ไม่มีค่ารอเงิน
 
 ### M3 ใบเสร็จ · ภาษี · เอกสาร 🖼11
 - ใบเสร็จ 58/80 มม.: หัวร้าน · เลขผู้เสียภาษี/สาขา/เลขเครื่อง POS · รายการ+ตัวเลือก · ส่วนลด · VAT · วิธีชำระ · แต้ม · ท้ายบิล · QR ใบเสร็จออนไลน์ · **"ใบกำกับภาษีอย่างย่อ"** เมื่อจด VAT (เลขจากบัญชี `abbInvoiceNo`) [P1]
@@ -350,7 +352,7 @@ POS ของเราวันนี้คือ **"จุดตัดเงิ
 | `PosProduct`/`PosVariant` เป็นตารางสต็อกของ POS เอง (`stockQty`) | `PosProduct` = ชั้น "ขาย" ผูก `InvItem` 1:1 · **สต็อกอยู่คลังที่เดียว** (C-1) · variant = `InvItem` ลูก | คลังกลางเกิดขึ้นหลังสเปกเขียน (WO-0037/38) — ห้ามมีสต็อก 2 ที่ |
 | `MenuItem` (ร้านอาหาร) · `ShopProduct` (เว็บ) แยก | ยุบเข้า `PosProduct` · `MenuOptionGroup/Choice` ใช้ต่อทั้งระบบ · `KdsStation`/`stockQty` รายวัน ย้ายมาเป็นฟิลด์ของ `PosProduct` | ต้นฉบับเดียว |
 | — | **`SalesChannel`** (tenant/unit · type · ค่าคอมฯ % · รับอัตโนมัติ · เวลาเตรียม · adapter config) · `PosSale.channelId` · `PosProductChannelPrice` (channel × สาขา × ช่วงเวลา) | ราคา/รายงาน/ค่าคอมฯ ต่อช่องทาง |
-| — | **`ExternalOrder`** (channel · externalId · payload · status · saleId?) + `ExternalOrderEvent` | ออเดอร์แพลตฟอร์มก่อนกลายเป็นบิล |
+| — | **`PosOrder`** (channel · externalRef · status · paymentState · saleId?) + `PosOrderLine` + `PosOrderEvent` (payload ดิบของ adapter) — P2.8 มติ 1 (เดิมชื่อ `ExternalOrder`/`ExternalOrderEvent`) | ออเดอร์ทุกช่องทาง (แพลตฟอร์ม · เว็บร้าน · แชท) ก่อนกลายเป็นบิล |
 | — | **`RecipeLine`** (productId · invItemId · qty · unit) — ร้านอาหารจองไว้แล้ว §4.9 | BOM |
 | `PosPayMethodType` | เพิ่ม `CARD` (เปิดใช้) · `VOUCHER` · `STORE_CREDIT` · `PLATFORM` · `TIP` เป็นฟิลด์แยกใน PosSale | วิธีชำระใหม่ |
 | — | `PosSale.offlineRef` · `syncedAt` · `PosDevice.offlineSeq` | ออฟไลน์ |

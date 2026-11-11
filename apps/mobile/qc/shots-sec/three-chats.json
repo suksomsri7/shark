@@ -1,0 +1,80 @@
+{
+ "ok": true,
+ "generatedAt": "2026-11-05T19:42:54.964Z",
+ "base": "http://127.0.0.1:4729",
+ "fixture": {
+  "path": "qc/fixtures/secretary/s2.20.json",
+  "sha256": "c44c3c100fa55c0e87954a88304dd3c95548592bcb2bdc65ab05d35a8392e1fd"
+ },
+ "chats": [
+  {
+   "name": "customer",
+   "route": "/customers/x1",
+   "typed": "QC3C-ลูกค้า-เครดิต45วัน",
+   "expected": "POST /api/mobile/inbox/conversations/x1/reply",
+   "sends": [
+    {
+     "method": "POST",
+     "path": "/api/mobile/inbox/conversations/x1/reply",
+     "chat": "customer",
+     "hasTyped": true
+    }
+   ],
+   "carriers": [
+    "POST /api/mobile/inbox/conversations/x1/reply"
+   ],
+   "leaks": [],
+   "unmocked": [],
+   "errors": [],
+   "ok": true,
+   "why": "",
+   "shot": "three-chats-customer.png"
+  },
+  {
+   "name": "secretary",
+   "route": "/secretary/room/r1",
+   "typed": "QC3C-เลขา-สรุปยอดขาย",
+   "expected": "POST /api/mobile/secretary/rooms/r1/send",
+   "sends": [
+    {
+     "method": "POST",
+     "path": "/api/mobile/secretary/rooms/r1/send",
+     "chat": "secretary",
+     "hasTyped": true
+    }
+   ],
+   "carriers": [
+    "POST /api/mobile/secretary/rooms/r1/send"
+   ],
+   "leaks": [],
+   "unmocked": [],
+   "errors": [],
+   "ok": true,
+   "why": "",
+   "shot": "three-chats-secretary.png"
+  },
+  {
+   "name": "ai10",
+   "route": "/chat/c1",
+   "typed": "QC3C-แชท10-ยอดวันนี้",
+   "expected": "POST /api/mobile/chat/send",
+   "sends": [
+    {
+     "method": "POST",
+     "path": "/api/mobile/chat/send",
+     "chat": "ai10",
+     "hasTyped": true
+    }
+   ],
+   "carriers": [
+    "POST /api/mobile/chat/send"
+   ],
+   "leaks": [],
+   "unmocked": [],
+   "errors": [],
+   "ok": true,
+   "why": "",
+   "shot": "three-chats-ai10.png"
+  }
+ ]
+}

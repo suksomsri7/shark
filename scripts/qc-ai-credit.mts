@@ -22,6 +22,8 @@ const pricing = await import("@/lib/ai/pricing");
 const credit = await import("@/lib/ai/credit");
 const topup = await import("@/lib/ai/topup");
 const svc = await import("@/lib/ai/service");
+// ORACLE-EDIT S1.13 (R-S1.13a · มติ 7.1/7.3): แพ็กฟรีเปิด ⇒ assist ไม่ถูกปฏิเสธเพราะเครดิตหมด (ยังหักลง ledger) · ร้านที่สร้างหลัง SECRETARY_LAUNCH_AT ไม่ได้ GRANT
+const { FREE_PACK, SECRETARY_LAUNCH_AT } = await import("@/lib/ai/secretary/pack");
 
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 type Check = { id: string; name: string; ok: boolean; expected: string; actual: string; sev: Sev };
@@ -66,7 +68,8 @@ console.log("── webhook เติมเงิน: ตรวจ reference + �
 let tenantId = "";
 let tenantB = "";
 try {
-  const t = await prisma.tenant.create({ data: { name: "QC เครดิต AI", slug: `qc-credit-${Date.now()}` } });
+  // ORACLE-EDIT S1.13 (R-S1.13a): ร้านเดิม (ก่อนเปิดเลขา 1 วัน) — ข้อ WA-2.x ทดสอบกระเป๋าต้อนรับของร้านเดิม
+  const t = await prisma.tenant.create({ data: { name: "QC เครดิต AI", slug: `qc-credit-${Date.now()}`, createdAt: new Date(Date.parse(SECRETARY_LAUNCH_AT) - 86_400_000) } });
   tenantId = t.id;
   const t2 = await prisma.tenant.create({ data: { name: "QC เครดิต B", slug: `qc-credit-b-${Date.now()}` } });
   tenantB = t2.id;
@@ -122,19 +125,29 @@ try {
   // ─────────── [4] เครดิตหมด = กันตั้งแต่ต้นทาง ───────────
   console.log("── เครดิตหมด: ต้องกันก่อนแตะ provider ──");
   await prisma.aiCreditWallet.update({ where: { tenantId }, data: { balanceMicro: 0 } });
-  chk("BL-4.1", "ยอด 0 → canSpend = false", (await credit.canSpend(tenantId)) === false, "false", "true");
+  // ORACLE-EDIT S1.13 (R-S1.13a): แพ็กฟรีเปิด ⇒ canSpend true (assist ฟรี) · ปิด ⇒ false เหมือนเดิม
+  const cs0 = await credit.canSpend(tenantId);
+  chk("BL-4.1", FREE_PACK.enabled ? "แพ็กฟรีเปิด: ยอด 0 → canSpend = true (assist ฟรี)" : "ยอด 0 → canSpend = false",
+    FREE_PACK.enabled ? cs0 === true : cs0 === false, FREE_PACK.enabled ? "true" : "false", String(cs0));
 
   let providerCalls = 0;
   const spy = { chat: async () => { providerCalls++; return { text: "ไม่ควรถูกเรียก", tokensIn: 1, tokensOut: 1, model: "mock" }; } };
+  const usage0 = await prisma.aiCreditTxn.count({ where: { tenantId, kind: "USAGE" } });
   const blocked = await svc.sendMessage({ tenantId, actor: qcOwner(tenantId) }, { text: "ยอดขายวันนี้เท่าไหร่" }, { provider: spy });
-  chk("BL-4.2", "เครดิตหมด → over_budget scope=credit **โดยไม่เรียก provider เลย**",
-    blocked.ok === false && blocked.error === "over_budget" && blocked.scope === "credit" && providerCalls === 0,
-    "over_budget/credit/0 call", JSON.stringify({ r: blocked, calls: providerCalls }));
+  const usage1 = await prisma.aiCreditTxn.count({ where: { tenantId, kind: "USAGE" } });
+  // ORACLE-EDIT S1.13 (R-S1.13a): แพ็กฟรีเปิด ⇒ ตอบได้ + มีแถว USAGE เพิ่ม (บันทึกต้นทุน) · ปิด ⇒ over_budget โดยไม่เรียก provider (เดิม)
+  const calls42 = providerCalls;
+  chk("BL-4.2", FREE_PACK.enabled ? "แพ็กฟรีเปิด: เครดิตหมด → ยังตอบได้ (เรียก provider 1 ครั้ง) + มีแถว USAGE เพิ่ม" : "เครดิตหมด → over_budget scope=credit **โดยไม่เรียก provider เลย**",
+    FREE_PACK.enabled
+      ? blocked.ok === true && calls42 === 1 && usage1 === usage0 + 1
+      : blocked.ok === false && blocked.error === "over_budget" && blocked.scope === "credit" && providerCalls === 0,
+    FREE_PACK.enabled ? "ok/1 call/+1 USAGE" : "over_budget/credit/0 call", JSON.stringify({ r: blocked, calls: providerCalls, usage: usage1 - usage0 }));
 
   await credit.topUp(tenantId, 2 * M, { ref: "refill-after-block" });
   const okRes = await svc.sendMessage({ tenantId, actor: qcOwner(tenantId) }, { text: "สวัสดี" }, { provider: spy });
-  chk("BL-4.3", "เติมแล้วคุยต่อได้ทันที (ไม่ต้องรอรอบใหม่)", okRes.ok === true && providerCalls === 1,
-    "ok/1 call", JSON.stringify({ ok: okRes.ok, calls: providerCalls }));
+  // ORACLE-EDIT S1.13 (R-S1.13a): provider ถูกเรียกเพิ่ม 1 ครั้งจากตอนนี้ (แพ็กฟรีเปิด = รวมกับ BL-4.2 เป็น 2)
+  chk("BL-4.3", "เติมแล้วคุยต่อได้ทันที (ไม่ต้องรอรอบใหม่)", okRes.ok === true && providerCalls === calls42 + 1,
+    `ok/${calls42 + 1} call`, JSON.stringify({ ok: okRes.ok, calls: providerCalls }));
   const chatTxn = await prisma.aiCreditTxn.findFirst({
     where: { tenantId, kind: "USAGE", source: "CHAT" }, orderBy: { createdAt: "desc" },
   });

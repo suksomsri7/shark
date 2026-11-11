@@ -4,6 +4,8 @@ import { openSessionsList } from "@/lib/modules/restaurant/table";
 import { RestaurantOrderEntry } from "@/components/restaurant-order-entry";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { redirect } from "next/navigation"; // POS P2.14 ▸ LEG-2/4 ◂
+import { posLinkedLegacyPage } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS = หน้าเดิมปิด → หน้า POS ◂
 
 export default async function OrderEntryPage({
   params,
@@ -15,6 +17,11 @@ export default async function OrderEntryPage({
   const { unitSlug } = await params;
   const { sessionId } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
+  // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS ⇒ หน้าเดิมปิด — ไปหน้าโต๊ะของ POS (from=legacy = แถบแจ้งที่หน้า POS) ·
+  //   หน้าขายแบบเดิม (ไม่เปิด registerV2) ยังไม่มีหน้าโต๊ะ/ครัว ⇒ ไปหน้าขาย · ไม่ผูก POS = หน้าเดิมตามเดิม
+  const posDoor = await posLinkedLegacyPage(auth.active.tenantId, unit.id);
+  if (posDoor) redirect(`/app/sys/${posDoor.systemId}/pos/${posDoor.v2 ? "tables" : "register"}?unit=${encodeURIComponent(unit.id)}&from=legacy`);
+  // ◂
   const { tenantId } = auth.active;
   await ensureDefaultStations(tenantId, unit.id);
   const [menu, sessions] = await Promise.all([

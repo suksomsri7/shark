@@ -23,7 +23,29 @@ export {
   GiftCardForbiddenError,
   GiftCardInputError,
   GiftCardStateError,
+  GiftCardTenderError, // POS P2.9 ◂
+  type GiftCardTenderCode,
 } from "./errors";
+
+// POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระ — โมดูลอื่นเรียกผ่าน member facade (member/tender.ts) เท่านั้น ◂
+export {
+  maskTenderNumber,
+  tenderLookup,
+  prepareGiftTender,
+  recheckGiftTender,
+  prepareStoreCreditTender,
+  storeCreditCardOf,
+  lockTenderCards,
+  useTender,
+  refundTenderUse,
+  tenderRefundable,
+  refundToCard,
+  issueStoreCredit,
+  tenderCardInfo,
+  tenderEnabled,
+  tenderCardNumbers,
+  type TenderLookupDto,
+} from "./service";
 
 export {
   /** ตั้งค่าบัตรกำนัลของร้าน (ยังไม่เคยตั้ง = ค่าปริยาย) */
@@ -31,6 +53,8 @@ export {
   setSettings,
   /** ขายบัตรใบใหม่ผ่าน POS (ไม่ให้แต้ม · ลงบัญชีเป็นเงินรับล่วงหน้าเมื่อเปิดสวิตช์ผูกบัญชี) */
   sell,
+  /** POS HF-GC ▸ ตาข่ายลงบัญชีหนี้สิน 2110 ของบัตรที่ขายแล้ว (idempotent · consumer giftcard.sold เรียก) ◂ */
+  ensureGiftCardSalePosted,
   /** ยอดคงเหลือ/สถานะของบัตร — ไม่ต้องใช้ PIN */
   balance,
   /** ตัดยอดจากบัตร (ใส่ `tx` เพื่อให้อยู่ใน transaction ของบิลผู้เรียก) */

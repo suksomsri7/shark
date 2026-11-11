@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { runScheduledTasks } from "@/lib/ai/scheduled";
+import { resolveProvider } from "@/lib/ai/provider"; // SEC S3a.1-S1 R-Z6
 import { campaignsDue, journeyWaits, memberReportsEmail, notificationsDue, sweepPendingVoiceDelivery } from "@/lib/platform/cron";
 import { sweepScheduledRules } from "@/lib/modules/kanban/automation";
 import { sweepDueSoonReminders } from "@/lib/modules/kanban/reminders";
@@ -7,6 +8,11 @@ import { sweepKanbanEmailHourly } from "@/lib/modules/kanban/digest";
 import { sweepUnattendedChats } from "@/lib/platform/kanban-bridges";
 import { logOps } from "@/lib/core/ops";
 import { isCronAuthorized } from "@/lib/core/cron-auth";
+import { forceCloseStaleShifts } from "@/lib/modules/pos/shift";
+import { expirePaymentIntents } from "@/lib/modules/pos/payment-intent"; // POS P1.7 ▸ R5 ◂
+import { expirePreorders } from "@/lib/modules/pos/order"; // POS P2.7 ▸ S2 ◂
+import { sendPosDailyBriefs } from "@/lib/modules/pos/ai-brief"; // POS P3.9 ▸ R9 ◂
+import { listPending as approvalListPending } from "@/lib/modules/approval/service"; // POS P3.9 ▸ R6 (คำขอที่รอผู้รับสรุปเช้า) ◂
 import { drainAll } from "@/lib/outbox-consumers";
 
 // GET /api/cron/hourly — งานประจำของผู้ช่วย AI (Vercel Cron เรียกทุกต้นชั่วโมง)
@@ -18,6 +24,10 @@ import { drainAll } from "@/lib/outbox-consumers";
 //   ⇒ คอมเมนต์ของ kernel (`core/outbox.ts` "cron รายชั่วโมงเก็บตก") เป็นจริง: event ที่ไม่มีใครปลุก drain รอ ≤ 1 ชม. ไม่ใช่ ≤ 24 ชม.
 //   🔴 best-effort: ล้มห้ามทำให้ cron รอบนี้แดง · ไม่เพิ่ม cron ตัวใหม่ใน vercel.json (§7.6)
 export const dynamic = "force-dynamic";
+// SEC S3a.1-S1 ▸ R-Z6: เพดานของแพลตฟอร์ม (Vercel fluid compute 300 วิ ทุกแผน) — งานห้องเลขาของงานประจำรันใน `after()` ภายใต้ deadline
+//   (โมเดลไม่ถูกเรียกในลูปของ runScheduledTasks) · ที่ไม่ทัน = ตัวเก็บตกรายนาทีบน VPS หยิบต่อ ◂
+export const maxDuration = 300;
+const ROOM_JOBS_AFTER_MS = 240_000;
 
 export async function GET(req: Request) {
   if (!isCronAuthorized(req)) {
@@ -25,13 +35,32 @@ export async function GET(req: Request) {
   }
   // runScheduledTasks catch งานย่อยรายตัวเองแล้ว — ห่ออีกชั้นเผื่อพังทั้งรอบ → logOps ERROR
   let ran: number;
+  const started = Date.now();
+  const roomJobIds: string[] = []; // SEC S3a.1-S1 R-Z6
   try {
-    ran = await runScheduledTasks(new Date());
+    ran = await runScheduledTasks(new Date(), { deferRoomJobs: (ids) => void roomJobIds.push(...ids) });
   } catch (e) {
     await logOps("ERROR", "cron", "runScheduledTasks ล้มทั้งรอบ", {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
     return NextResponse.json({ ok: false, error: "cron_failed" }, { status: 500 });
+  }
+  // SEC S3a.1-S1 ▸ R-Z6: ห้องงานประจำที่เพิ่งเปิด → worker หลังตอบ (tier fast เหมือนเดิม · deadline จากต้นคำขอ) — ล้ม = log ไม่ทำให้รอบแดง ◂
+  if (roomJobIds.length > 0) {
+    const runJobs = async () => {
+      try {
+        const { runRoomJobs } = await import("@/lib/ai/secretary/worker");
+        const fast = resolveProvider("fast");
+        await runRoomJobs({ ...(fast ? { provider: fast } : {}), jobIds: roomJobIds, limit: roomJobIds.length, deadline: started + ROOM_JOBS_AFTER_MS });
+      } catch (e) {
+        await logOps("WARN", "cron", "งานห้องเลขาของงานประจำ (after) ล้ม", { detail: e instanceof Error ? e.message : String(e) }).catch(() => {});
+      }
+    };
+    try {
+      after(runJobs);
+    } catch {
+      await runJobs(); // นอกคำขอ (สคริปต์) — รอจนจบ
+    }
   }
   // best-effort — ตัวนี้ล้มห้ามทำให้ cron รอบนี้แดง (งานหลักของ route คือ runScheduledTasks)
   const voiceSent = await sweepPendingVoiceDelivery();
@@ -81,6 +110,70 @@ export async function GET(req: Request) {
   const notificationsSent = await notificationsDue(new Date());
   // M3.8 — อีเมลรายงานสมาชิกตามเวลาที่ร้านตั้ง (ไม่ส่งซ้ำวันเดียวกัน) — ห่อ try/catch เองแล้ว คืน -1 เมื่อพัง
   const memberReportsSent = await memberReportsEmail(new Date());
+  // POS P1.9 ▸ S12: บังคับปิดกะที่เปิดค้างเกิน forceCloseAfterHours (ปริยาย 24 ชม.) — best-effort · ล้มห้ามทำให้รอบนี้แดง ◂
+  let posShiftsForced = -1;
+  try {
+    posShiftsForced = (await forceCloseStaleShifts({ now: new Date() })).closed.length;
+  } catch (e) {
+    await logOps("WARN", "cron", "forceCloseStaleShifts (บังคับปิดกะ POS ที่ค้าง) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // POS P1.7 ▸ R5: ใบขอรับเงิน PENDING ที่หมดเวลา → EXPIRED (จอใช้การอ่านสถานะแบบเขียนทันทีอยู่แล้ว · ตัวนี้เก็บกวาด) — best-effort ◂
+  let posIntentsExpired = -1;
+  try {
+    posIntentsExpired = (await expirePaymentIntents()).expired;
+  } catch (e) {
+    await logOps("WARN", "cron", "expirePaymentIntents (ใบขอรับเงิน POS หมดอายุ) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // POS P2.7 ▸ S2: ออเดอร์สั่งล่วงหน้าที่เลยเวลาจ่าย → ยกเลิก + ใบ EXPIRED (หน้าสถานะ/จอ 09 ปิดแบบขี้เกียจอยู่แล้ว · ตัวนี้เก็บกวาด) — best-effort ◂
+  let posPreordersExpired = -1;
+  try {
+    posPreordersExpired = (await expirePreorders()).expired;
+  } catch (e) {
+    await logOps("WARN", "cron", "expirePreorders (ออเดอร์สั่งล่วงหน้าเลยเวลาจ่าย) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // POS P3.9 ▸ R8 R9 มติ 4 5: สรุปเช้า POS รายผู้รับ (เจ้าของ + ผู้จัดการที่เลือก) เมื่อชั่วโมงไทย ≥ เวลาที่ร้านตั้ง (ปริยาย 06:00 · พลาด = ส่งตามหลังวันเดียวกัน) ·
+  //   กันซ้ำในตัว (advisory lock + หัวเรื่องต่อผู้รับ) · งบ 20 วิ · best-effort: ล้มห้ามทำให้รอบนี้แดง ◂
+  let posBriefsSent = -1;
+  try {
+    posBriefsSent = (
+      await sendPosDailyBriefs({
+        now: new Date(),
+        deadline: new Date(Date.now() + 20_000),
+        pendingApprovals: async (tenantId, r) => (await approvalListPending({ tenantId }, { userId: r.userId, role: r.role, unitAccess: r.unitAccess, permissions: r.permissions })).length,
+      })
+    ).sent;
+  } catch (e) {
+    await logOps("WARN", "cron", "sendPosDailyBriefs (สรุปเช้า POS) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ POS P3.9
+  // POS P3.8 ▸ R5 R6 R8 R10: บอร์ดงาน/ห้องทีม POS — 86 นานเกิน N ชม. → การ์ด · คืนขาย → ปิดการ์ด · refund_needed 7 วัน → การ์ด · สรุปเช้าในห้องทีม (opt-in) ·
+  //   ปริยายปิดทุกร้าน · งบ 20 วิ · พังรายระบบ = ops WARN pos.board · best-effort: ล้มห้ามทำให้รอบนี้แดง
+  try {
+    await (await import("@/lib/pos-board-bridges")).sweepPosBoard({ now: new Date(), deadline: new Date(Date.now() + 20_000) });
+  } catch (e) {
+    await logOps("WARN", "cron", "sweepPosBoard (บอร์ดงาน/ห้องทีม POS) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ POS P3.8
+  // POS P3.6 ▸ R10 มติ 5: บิลที่ตั้งใจผูกดีล CRM (PosSale.crmDealId) แต่สะพาน pos.sale.paid พลาด (ปิดสะพาน/ล้ม = WARN) → ผูก + นับเข้าดีล ·
+  //   หน้าต่าง 7 วัน · ปักธงก่อน (เรียกซ้ำ = ไม่มีแถวเพิ่ม) · งบ 20 วิ · best-effort: ล้มห้ามทำให้รอบนี้แดง
+  try {
+    await (await import("@/lib/modules/pos/crm-link")).sweepDealIntents({ now: new Date(), deadline: new Date(Date.now() + 20_000) });
+  } catch (e) {
+    await logOps("WARN", "cron", "sweepDealIntents (บิลผูกดีล CRM ที่ยังไม่ถูกนับ) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ POS P3.6
   // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
   //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
   let outboxDrained = -1;
@@ -103,6 +196,10 @@ export async function GET(req: Request) {
     journeyWaitsRan,
     notificationsSent,
     memberReportsSent,
+    posShiftsForced,
+    posIntentsExpired,
+    posPreordersExpired, // POS P2.7 ◂
+    posBriefsSent, // POS P3.9 ◂
     outboxDrained,
     at: new Date().toISOString(),
   });

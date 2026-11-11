@@ -475,7 +475,8 @@ async function collectEvidence(customer: CustomerRow, now: Date, windows: number
     //    ตรงข้ามกับ "นัด" ข้างล่างที่ต้องถึงเวลาแล้วจริง ๆ ถึงจะเรียกว่า "มาใช้บริการ"
     prisma.posSale.findMany({
       where: { tenantId: customer.tenantId, memberId: customer.id, status: "PAID", paidAt: { gte: since12 } },
-      select: { paidAt: true, grandTotalSatang: true },
+      // POS P1.8 ▸ ยอดหลังคืนเงินบางส่วน (บิลคืนครบ = REFUNDED ไม่ผ่าน status PAID อยู่แล้ว) · ใบคืนเองมี memberId null จึงไม่เข้ามาที่นี่ ◂
+      select: { paidAt: true, grandTotalSatang: true, refundedSatang: true },
     }),
     prisma.appointment.findMany({
       where: {
@@ -495,7 +496,7 @@ async function collectEvidence(customer: CustomerRow, now: Date, windows: number
   const visitDays = new Set<string>();
   let spent12m = 0;
   for (const s of sales) {
-    spent12m += s.grandTotalSatang;
+    spent12m += s.grandTotalSatang - s.refundedSatang;
     if (s.paidAt) visitDays.add(dayKey(s.paidAt));
   }
   for (const a of appointments) visitDays.add(dayKey(a.startAt));
@@ -508,7 +509,7 @@ async function collectEvidence(customer: CustomerRow, now: Date, windows: number
     const days = new Set<string>();
     for (const s of sales) {
       if (!s.paidAt || s.paidAt < since) continue;
-      sum += s.grandTotalSatang;
+      sum += s.grandTotalSatang - s.refundedSatang;
       days.add(dayKey(s.paidAt));
     }
     for (const a of appointments) if (a.startAt >= since) days.add(dayKey(a.startAt));

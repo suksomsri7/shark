@@ -61,10 +61,11 @@ if (shardArg) {
   shard = { i: i!, n: n! };
 }
 
+const { isQcAllSuite } = await import("./qc-all-discovery.mjs"); // POS P2.14 ▸ G3 (CD-8): ตัวกรองเดียวกับ pos-gates.json ◂
 const all = readdirSync(join(ROOT, "scripts"))
   // qc-member-m1.1 = ตัว reseed ชุดข้อมูลสมาชิก (ลบร้านแล้วสร้างใหม่) — qc-all seed ให้เองผ่าน seed-member-qc.mts อยู่แล้ว
   // รันซ้ำเป็นชุดข้อสอบกลางรอบจะล้างข้อมูลที่ชุดอื่น/builder ใช้อยู่ (พบจริง 11 ก.ย. 2569 ตอนปิดเฟส M2)
-  .filter((f) => /^qc-.*\.mts$/.test(f) && f !== "qc-all.mts" && f !== "qc-member-m1.1.mts")
+  .filter(isQcAllSuite) // POS P2.14 ▸ G3: กติกาเดิม (qc-*.mts ยกเว้น qc-all · qc-member-m1.1) ย้ายไป scripts/qc-all-discovery.mts ◂
   .sort();
 const matched = filters.length ? all.filter((f) => filters.some((q) => f.includes(q))) : all;
 // แบ่งแบบสลับฟันปลา (ไม่ใช่ตัดเป็นก้อน) — ชุดที่ชื่อใกล้กันมักหนักพอ ๆ กัน

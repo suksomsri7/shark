@@ -110,7 +110,7 @@ export const DATASETS: Record<string, DatasetDef> = {
     label: "ยอดขาย (บิลที่ชำระแล้ว)",
     systemType: "POS",
     unitScope: (unitIds) => ({ unitId: { in: [...unitIds] } }),
-    baseWhere: { status: "PAID" },
+    baseWhere: { status: "PAID", docType: "SALE" }, // POS P1.8 ▸ R3: ใบคืนเงิน (docType REFUND · status PAID) ไม่ใช่บิลขาย ◂
     columns: [
       { key: "receiptNo", label: "เลขที่ใบเสร็จ", type: "string" },
       { key: "unitId", label: "สาขา", type: "string" },

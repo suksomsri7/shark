@@ -25,12 +25,15 @@ export function AppMain({
   children,
   chatSystemIds = [],
   navCollapsed = false,
+  posRegisterV2Ids = [],
 }: {
   children: React.ReactNode;
   /** id ของระบบแชทที่ร้านเปิดใช้ (จาก layout) — ใช้ตัดสิน "หน้าแชทเต็มจอ" แบบเดียวกับ AppShell */
   chatSystemIds?: string[];
   /** ค่าที่ผู้ใช้จำไว้ (server) — ย่อแถบเมนูเป็นรางไอคอนอยู่หรือเปล่า */
   navCollapsed?: boolean;
+  /** POS P1.3 B2.1 ▸ id ระบบ POS ที่ธง registerV2 เปิด (layout) — หน้าขายของระบบเหล่านี้เท่านั้นที่บังคับราง ◂ */
+  posRegisterV2Ids?: string[];
 }) {
   const inApp = useInApp();
   const pathname = usePathname();
@@ -45,7 +48,7 @@ export function AppMain({
 
   const chatFullscreen = chatSystemIds.some((id) => pathname === `/app/sys/${id}`);
   // K1.5 — หน้าบอร์ดงาน: เต็มจอจริง (ไม่มีขอบ) + เว้นซ้ายเท่ารางไอคอน 56px (3.5rem) แทนเมนู 288px
-  const boardFullscreen = isRailPath(pathname);
+  const boardFullscreen = isRailPath(pathname, posRegisterV2Ids);
   const railMode = collapsed || boardFullscreen;
   // ระยะเว้นซ้ายบนจอ ≥ lg — ราง 3.5rem / แถบเต็ม 18rem (+1.5rem ระยะขอบเนื้อหา)
   const leftPad = inApp ? "" : railMode ? "lg:pl-[calc(3.5rem+1.5rem)]" : "lg:pl-[calc(18rem+1.5rem)]";

@@ -1415,8 +1415,9 @@ async function memberSystemsForUnit(tenantId: string, unitId: string | null): Pr
 
 /** consumer `pos.sale.paid` → ประทับตราจากบิล (ทุกระบบสมาชิกที่ผูกสาขาของบิลใบนั้น) */
 export async function autoStampFromSaleEvent(tenantId: string, saleId: string): Promise<AutoStampResult> {
-  const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { unitId: true } });
+  const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { unitId: true, idempotencyKey: true } });
   if (!sale) return { events: [] };
+  if (sale.idempotencyKey?.startsWith("dep-forfeit:")) return { events: [] }; // POS P5.1 ▸ RC F2 (CD-P51-O10): บิลริบมัดจำไม่ใช่การซื้อ ⇒ ไม่ประทับตรา ◂
   const events: { cardId: string; eventId: string; stamps: number }[] = [];
   for (const systemId of await memberSystemsForUnit(tenantId, sale.unitId)) {
     const r = await autoStampFromSale({ tenantId, systemId }, { saleId });

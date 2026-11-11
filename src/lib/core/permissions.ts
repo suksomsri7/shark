@@ -132,7 +132,28 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     actions: {
       "pos.sale.create": "บันทึกการขาย / เปิดหน้าขาย / ดึงรายงานขายรายวัน",
       "pos.product.setPrice": "ตั้งราคาขายสินค้า",
+      "pos.product.manage": "เพิ่ม/แก้/เก็บสินค้าและหมวดในแคตตาล็อกขาย", // POS P1.1a ▸ แคตตาล็อกเดียว (pos/catalog.ts) ◂
       "pos.sale.void": "ยกเลิกบิลขาย (ใช้กับข้อเสนอของผู้ช่วย AI)",
+      "pos.sale.refund": "คืนเงินบางส่วน/ทั้งบิล (ออกใบคืนเงิน · ใบลดหนี้)", // POS P1.8 ▸ คืนเงิน (Q2: เจ้าของ/ผู้จัดการได้อยู่แล้ว · พนักงานต้องได้คีย์นี้) ◂
+      "pos.sale.priceOverride": "ขายด้วยราคาที่กำหนดเอง (รายการกำหนดเอง / ราคาเปิด / แก้ราคาในบิล)", // POS P1.3 ▸ หน้าขายใหม่ (register.ts) ◂
+      "pos.shift.operate": "เปิด/ปิดกะของตัวเอง · เงินเข้า-ออกลิ้นชัก · ดูรายงาน X", // POS P1.9 ▸ กะ ◂
+      "pos.shift.manage": "ปิดกะของคนอื่น · ดู Z/ประวัติกะทั้งหมด · เงินสดนอกกะ · เห็นยอดที่ควรมีตอนปิดแบบไม่เห็นยอด", // POS P1.9 ▸ กะ ◂
+      "pos.report.view": "ดูรายงานขาย กำไร พนักงาน ภาษี และส่งออก CSV", // POS P1.17 ▸ รายงาน (Q17.4) ◂
+      "pos.report.anomaly": "ดูรายงานจุดผิดปกติของพนักงาน", // POS P2.12 ▸ มติ 4 (PDPA): ต้องมีคู่กับ pos.report.view · เจ้าของ/ผู้จัดการได้ตามบทบาท ◂
+      "pos.stock.count": "ตรวจนับสต็อกจากหน้าขาย (เปิดรอบ · สแกน/กรอกจำนวน · ยกเลิกรอบที่ตัวเองเปิด)", // POS P1.14 ▸ ตรวจนับ (R12) ◂
+      "pos.device.manage": "ลงทะเบียน/แก้/เพิกถอนเครื่องขาย · ตั้งค่าเครื่องพิมพ์และใบเสร็จ", // POS P1.10 ▸ เครื่อง · ใบเสร็จ (R2 R4) ◂
+      "pos.sale.read": "ดูบิลขาย · พิมพ์ใบเสร็จ/สำเนาใบเสร็จ (ผู้มี pos.sale.create ได้โดยนัย)", // POS P1.10 ▸ มติ CD3 ◂
+      "pos.staff.manage": "ตั้ง/ปลดล็อก PIN ของพนักงานคนอื่นในสาขา (เจ้าของ/ผู้จัดการได้อยู่แล้ว)", // POS P1.15 ▸ R7 ◂
+      "pos.sale.manage": "ใช้บิลพัก/ส่วนลดที่อนุมัติแล้วของพนักงานคนอื่น (เจ้าของ/ผู้จัดการได้อยู่แล้ว)", // POS P1.15 ▸ fix F1 · register.ts regDiscountOver ① ◂
+      "pos.taxinvoice.issue": "ออกใบกำกับภาษีเต็มรูปให้บิลที่ชำระแล้ว · อนุมัติ/ปฏิเสธคำขอจากใบเสร็จออนไลน์ (เจ้าของ/ผู้จัดการได้อยู่แล้ว)", // POS P1.13 ▸ R3 R4 ◂
+      "pos.channel.manage": "ตั้งค่าช่องทางขายและค่าคอมมิชชันแพลตฟอร์ม (เจ้าของ/ผู้จัดการได้อยู่แล้ว)", // POS P2.1 ▸ R3 ◂
+      "pos.price.rule": "ตั้งโปรราคาและ happy hour (เจ้าของ/ผู้จัดการได้อยู่แล้ว)", // POS P2.2 ▸ R3 Q5 ◂
+      "pos.order.accept": "รับ/เตรียม/พร้อม/ส่งมอบ/ตั้งเวลาเตรียมและพักรับออเดอร์ออนไลน์ (เจ้าของ/ผู้จัดการได้อยู่แล้ว)", // POS P2.8 ▸ CD8 จอ 09 ◂
+      "pos.order.reject": "ปฏิเสธ/ยกเลิกออเดอร์ออนไลน์ (ยกเลิกออเดอร์ที่มีบิลแล้วต้องมีสิทธิ์ยกเลิกบิลด้วย · เจ้าของ/ผู้จัดการได้อยู่แล้ว)", // POS P2.8 ▸ CD8 ◂
+      "pos.settings.manage": "ตั้งค่าหน้าขาย (ทั่วไป · พนักงานและสิทธิ์ · การเชื่อมต่อ)", // POS P1.18 ▸ R1 CD4 ◂
+      "pos.settings.payment": "ตั้งค่าวิธีรับเงิน (เจ้าของร้านเท่านั้นโดยปริยาย)", // POS P1.18 ▸ มติ Q2 (ความหมายเดิมของ P1.7U) ◂
+      "pos.offline.sync": "ซิงก์บิลที่ขายตอนออฟไลน์ผ่าน API (คีย์ของแอป/คีออสก์ภายนอก · หน้าขายของร้านไม่ต้องใช้คีย์นี้)", // POS P3.4 ▸ มติ 2 C-13 ◂
+      "pos.credit.manage": "ตั้งวงเงิน/เทอมลูกค้าเครดิต (วางบิล) · อนุญาตวางบิลเกินวงเงิน · เห็นตัวเลขวงเงินที่หน้าขาย (เจ้าของ/ผู้จัดการได้อยู่แล้ว)", // POS P3.6 ▸ มติ 1 2 · CD-4 ◂
     },
   },
   {
@@ -212,7 +233,29 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "booking.staff.create": "เพิ่ม/ตั้งค่าผู้ให้บริการ",
       "booking.staff.delete": "เอาผู้ให้บริการออก",
       "booking.hours.set": "ตั้งเวลาทำการและวันหยุด",
+      "booking.settings.edit": "แก้ค่าตั้งจองคิว", // SVC B.0 (คีย์อื่นใน CC §8 = B.11)
+      "booking.settings.money": "แก้ค่าตั้งจองคิวเรื่องเงิน (มัดจำ · ค่าคอมฯ)", // SVC B.0
+      // SVC B.11 ▸ คีย์ CC §8 + แถวของตารางสิทธิ์จอง 14 (BOOKING_ROLE_ROWS ท้ายไฟล์) ◂
+      "booking.queue.operate": "จัดคิวหน้าร้าน (เรียก/ย้ายคิวของทุกคน)",
+      "booking.checkin": "เช็กอินลูกค้าที่มาถึง",
+      "booking.walkin.create": "ออกบัตรคิว walk-in ให้ลูกค้า",
+      "booking.job.run": "เรียก · เริ่ม · เสร็จ งานของตัวเอง",
+      "booking.job.runAny": "เรียก/ย้าย/จบงานของผู้ให้บริการคนอื่น",
+      "booking.deposit.confirm": "ยืนยันสลิปมัดจำ",
+      "booking.devices.manage": "ตั้งค่าจอทีวี · ตู้รับบัตร · เครื่องพิมพ์บัตร",
+      "booking.appointment.reschedule": "ยกเลิก/เลื่อนนัดแทนลูกค้า",
+      "booking.deposit.waive": "ยกเว้นมัดจำ",
+      "booking.deposit.forfeit": "ยึดมัดจำเมื่อลูกค้าไม่มา",
+      "booking.customer.phoneFull": "เห็นเบอร์โทรลูกค้าเต็ม (ไม่ซ่อนเลขกลาง)",
+      "booking.customer.notes": "เห็นความชอบ/ข้อห้ามของลูกค้าบนการ์ดงาน (ข้อมูลอ่อนไหวตามนโยบายสมาชิก)", // SVC B.16
+      "booking.report.view": "ดูรายงานและยอดเงินของระบบจอง",
     },
+    // SVC B.11 ▸ คีย์ที่ยังไม่มีโค้ดเรียก assertCan/evaluate/canBookingAction (ใช้ผ่านตารางสิทธิ์ · ใบหลังเปิดใช้จริง) ◂
+    // SVC B.5 ▸ booking.queue.operate · booking.walkin.create ใช้จริงแล้ว (booking/line-access.ts · จอคิววันนี้) ⇒ ออกจาก planned ◂
+    // SVC B.17 ▸ booking.deposit.waive ใช้จริงแล้ว (booking/no-show-rule.ts excuseNoShow · "ยกเว้นไม่มาครั้งนี้") ⇒ ออกจาก planned ◂
+    planned: [
+      "booking.report.view",
+    ],
   },
   {
     module: "hotel",
@@ -230,6 +273,37 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "hotel.roomType.create": "เพิ่มประเภทห้องพัก",
       "hotel.roomType.delete": "ลบประเภทห้องพัก",
     },
+  },
+  {
+    module: "dorm",
+    label: "หอพัก",
+    group: "booking",
+    actions: {
+      "dorm.view": "ดูผังห้องและข้อมูลหอ", // SVC D.6 (คีย์หออื่นใน CC §8 = D.13)
+      "dorm.meter.read": "จดเลขมิเตอร์", // SVC D.6
+      "dorm.bill.run": "เตรียมรอบบิล · ใส่บิลค่าน้ำไฟจากการไฟฟ้า/ประปา", // SVC D.7
+      "dorm.lease.manage": "จัดการผู้เช่าและสัญญา", // SVC D.5
+      "dorm.bill.send": "ส่งบิลให้ผู้เช่า · แก้บิลหลังส่ง (ใบลดหนี้/เพิ่มหนี้)", // SVC D.8
+      // SVC D.13 ▸ คีย์หอที่เหลือตาม CC §8 ◂
+      "dorm.import": "นำเข้าข้อมูลห้อง/ผู้เช่าจากไฟล์",
+      "dorm.slip.review": "ตรวจและยืนยันสลิปค่าเช่า",
+      "dorm.payment.manual": "บันทึกรับเงินค่าเช่าด้วยมือ (เงินสด/โอน)",
+      "dorm.latefee.waive": "ยกเว้นค่าปรับจ่ายช้า",
+      "dorm.moveout.manage": "จัดการย้ายออกและคืนห้อง",
+      "dorm.deposit.deduct.approve": "อนุมัติหักเงินประกัน",
+      "dorm.repair.manage": "รับและจัดการงานแจ้งซ่อม",
+      "dorm.announce": "ส่งประกาศถึงผู้เช่า",
+      "dorm.parcel.manage": "รับและแจ้งพัสดุผู้เช่า",
+      "dorm.settings.edit": "แก้ค่าตั้งหอพัก (นโยบาย · ข้อความ · สิทธิ์)",
+      "dorm.settings.legal": "เปลี่ยนโหมดตามกฎหมาย (เจ้าของเท่านั้น)",
+    },
+    // SVC D.13 ▸ คีย์ที่ยังไม่มีหน้า/โค้ดเรียก (ใบหลังเปิดใช้จริง) ◂
+    planned: [
+      // SVC D.12 ▸ dorm.moveout.manage · dorm.deposit.deduct.approve ใช้จริงแล้ว ◂ (D.16/D.17/D.18 ถอดของตัวเองแล้ว)
+      // SVC D.15-K4 ▸ คงไว้โดยตั้งใจ: หน้าโหมดกฎหมาย (/dorm/settings/utility) ใช้งานแล้ว แต่ด่านคือ "เจ้าของสด" (law.ts setDormLegalMode · isLiveOwner)
+      //   ไม่ได้อ่านคีย์นี้ ⇒ ติ๊กให้ STAFF/MANAGER ไม่มีผล — ป้าย "กำลังพัฒนา" กันแอดมินเข้าใจผิด · ถอดเมื่อมติให้ผู้ถือคีย์เปลี่ยนโหมดได้ ◂
+      "dorm.settings.legal",
+    ],
   },
   {
     module: "queue",
@@ -679,6 +753,21 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     actions: {
       "settings.staff.read": "ดูรายชื่อผู้ใช้งานและสิทธิ์",
       "settings.staff.write": "ให้/แก้/ถอนสิทธิ์การเข้าใช้งานของคนอื่น",
+      // SVC R0.5 ▸ ศูนย์เชื่อมต่อ (/app/settings/integrations) — เจ้าของร้านโดยปริยาย · MANAGER ไม่ได้โดยปริยาย · ให้ต่อได้เฉพาะเจ้าของร้าน ◂
+      "settings.integrations.manage": "จัดการศูนย์เชื่อมต่อ (วาง/เปลี่ยนคีย์ผู้ให้บริการ · ทดสอบ · ถอดการเชื่อมต่อ)",
+      // SVC R0.3 ▸ ค่าตั้งร่วมของเครื่องยนต์ค่าตั้ง (core/settings · defs/payments · defs/messaging) ◂
+      "settings.payments.edit": "แก้ค่าตั้งรับเงินและตรวจสลิป",
+      "settings.messaging.edit": "แก้ค่าตั้งการส่งข้อความหาลูกค้า",
+    },
+  },
+  // SVC R0.6 ▸ ตรวจสลิปกลาง (src/lib/payment/slip-verify.ts) — ด่าน decideSlip/slipQueue/slipFileUrl ผ่าน evaluate ต่อสาขาของสลิป ·
+  //   OWNER ได้ทุกสาขา · MANAGER ได้ในสาขาที่คุม · STAFF ต้องได้คีย์นี้ (หรือ payments.*) ◂
+  {
+    module: "payments",
+    label: "รับเงินและตรวจสลิป",
+    group: "sales",
+    actions: {
+      "payments.slip.review": "ตรวจ/อนุมัติสลิปโอนเงิน",
     },
   },
   {
@@ -746,6 +835,10 @@ export const CRM_OWNER_ONLY_KEYS: readonly string[] = [
   "crm.team.manage",
 ];
 // ◂ CRM C1.7
+// SVC R0.5 ▸ คีย์ที่ "ให้ต่อ" ได้เฉพาะเจ้าของร้าน (ใบสั่ง R0.5 §8 ข้อ 10) — ผู้ที่ไม่ใช่ OWNER (รวม MANAGER ที่ถือคีย์เอง) แจกไม่ได้
+//   ผู้อ่าน: staff/service.ts ด่านห้ามยกระดับ · ผู้ตรวจสิทธิ์จริง: core/integrations/service.ts (OWNER หรือคีย์ตรงตัว — `settings.*` ไม่นับ)
+export const SETTINGS_OWNER_ONLY_KEYS: readonly string[] = ["settings.integrations.manage"];
+// ◂ SVC R0.5
 
 /** ค่าตัวเลขของสิทธิ์ — อ่านผ่าน `permissionValue()` ใน core/rbac.ts */
 // วันนี้มีตัวเดียวที่โค้ดจริงอ่าน: account/expense-actions.ts:323
@@ -884,3 +977,62 @@ export function permissionModulesByGroup(): {
     modules: PERMISSION_MODULES.filter((m) => m.group === g.key),
   })).filter((g) => g.modules.length > 0);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SVC B.11 ▸ ตารางสิทธิ์ต่อบทบาทของระบบจอง (ภาพ จอง 14 · ภาคผนวก ก #65 "ค่าเริ่มตามแม่แบบ")
+//   แถว = ป้ายที่เจ้าของเห็น + คีย์จริงในทะเบียนข้างบน · ชุด = แถวที่ติ๊กต่อบทบาท (ระบบมี OWNER/MANAGER/STAFF —
+//   LEAD/PROVIDER/CASHIER/ASSISTANT คือ "ชุดสิทธิ์" ของบทบาท STAFF ที่ใช้ผ่าน updateStaffAccess เดิม)
+//   🔴 PROVIDER/CASHIER ไม่มีคีย์เงิน (settings.money · service.setDeposit · deposit.refund|waive|forfeit) · ช่างไม่ได้รับ/ยืนยันมัดจำโดยปริยาย
+// ─────────────────────────────────────────────────────────────────────────────
+export const BOOKING_ROLE_ROWS: readonly { id: string; labelTh: string; keys: readonly string[] }[] = [
+  { id: "job.own", labelTh: "เรียก · เริ่ม · เสร็จ งานของตัวเอง", keys: ["booking.job.run"] },
+  { id: "job.any", labelTh: "เรียก/ย้ายงานของช่างคนอื่น", keys: ["booking.job.runAny", "booking.queue.operate"] },
+  { id: "counter", labelTh: "จองให้ลูกค้า · เช็กอิน · ออกบัตร", keys: ["booking.appointment.create", "booking.checkin", "booking.walkin.create"] },
+  { id: "deposit.take", labelTh: "รับมัดจำ · ยืนยันสลิปมัดจำ", keys: ["booking.deposit.record", "booking.deposit.confirm"] },
+  { id: "reschedule", labelTh: "ยกเลิกนัด · เลื่อนนัดแทนลูกค้า", keys: ["booking.appointment.reschedule"] },
+  { id: "deposit.waive", labelTh: "ยกเว้นมัดจำ / คืนมัดจำ", keys: ["booking.deposit.waive", "booking.deposit.refund"] },
+  { id: "deposit.forfeit", labelTh: "ยึดมัดจำเมื่อไม่มา (ระบบทำอัตโนมัติ)", keys: ["booking.deposit.forfeit"] },
+  { id: "phone", labelTh: "เห็นเบอร์โทรลูกค้าเต็ม", keys: ["booking.customer.phoneFull"] },
+  {
+    id: "settings",
+    labelTh: "แก้ตั้งค่า · บริการ · ช่าง",
+    keys: [
+      "booking.settings.edit",
+      "booking.settings.money",
+      "booking.service.create",
+      "booking.service.update",
+      "booking.service.setDeposit",
+      "booking.staff.create",
+      "booking.staff.delete",
+      "booking.hours.set",
+      "booking.devices.manage",
+    ],
+  },
+  { id: "report", labelTh: "ดูรายงาน · ยอดเงิน", keys: ["booking.report.view"] },
+  // SVC B.16 ▸ แถวที่ 11 (ต่อท้าย — แถวเดิมไม่เลื่อน) · ฟิลด์อ่อนไหวยังผ่านนโยบายสมาชิกอีกชั้น ◂
+  { id: "notes", labelTh: "เห็นความชอบ/ข้อห้ามลูกค้าบนการ์ดงาน", keys: ["booking.customer.notes"] },
+];
+
+export type BookingRolePreset = "LEAD" | "PROVIDER" | "CASHIER" | "ASSISTANT";
+
+const SHOP_PRESET: Partial<Record<BookingRolePreset, readonly string[]>> = {
+  LEAD: ["job.own", "job.any", "counter", "deposit.take", "reschedule", "deposit.waive", "deposit.forfeit", "phone", "report", "notes"],
+  PROVIDER: ["job.own", "counter", "notes"], // SVC B.16: notes (หมอต้องรู้แรงกด/อาการแพ้ก่อนลงมือ · แคชเชียร์ไม่ได้)
+  CASHIER: ["counter", "deposit.take", "reschedule", "phone"],
+};
+
+/** ชุดสิทธิ์ (id แถว) ต่อแม่แบบ — ตัดผม = นวด (#65 "เหมือนกัน") · คลินิกเพิ่มผู้ช่วย (ซ่อนจนเฟสคลินิก) */
+export const BOOKING_ROLE_PRESETS: Record<"BARBER" | "SPA" | "CLINIC", Partial<Record<BookingRolePreset, readonly string[]>>> = {
+  BARBER: SHOP_PRESET,
+  SPA: SHOP_PRESET,
+  CLINIC: { ...SHOP_PRESET, ASSISTANT: ["counter", "reschedule", "phone"] },
+};
+
+/** สิทธิ์ของชุด (ทุกคีย์ใน BOOKING_ROLE_ROWS: true/false) · แม่แบบไม่รู้จัก = BARBER · บทบาทที่แม่แบบไม่มี = false ทุกคีย์ */
+export function bookingPresetPermissions(templateKey: string, role: BookingRolePreset): Record<string, boolean> {
+  const tpl = templateKey === "SPA" || templateKey === "CLINIC" ? templateKey : "BARBER";
+  const rows = new Set(BOOKING_ROLE_PRESETS[tpl][role] ?? []);
+  const on = new Set(BOOKING_ROLE_ROWS.filter((r) => rows.has(r.id)).flatMap((r) => r.keys));
+  return Object.fromEntries(BOOKING_ROLE_ROWS.flatMap((r) => r.keys).map((k) => [k, on.has(k)]));
+}
+// ◂ SVC B.11

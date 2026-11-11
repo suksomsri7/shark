@@ -1,0 +1,67 @@
+{
+ "wo": "S2.4",
+ "fixture": "apps/mobile/qc/fixtures/secretary/s2.4.json",
+ "routes": [
+  {
+   "route": "/secretary/room/r1",
+   "file": "app/(app)/secretary/room/[id].tsx",
+   "testIds": [
+    "sec-room",
+    "sec-room-input",
+    "sec-room-send",
+    "sec-room-bubble",
+    "sec-room-steps",
+    "sec-room-step",
+    "sec-room-background",
+    "sec-room-approval",
+    "sec-room-approve",
+    "sec-room-reject",
+    "sec-room-edit",
+    "sec-room-why",
+    "sec-room-done",
+    "sec-room-open-link",
+    "sec-room-undo",
+    "sec-room-teach",
+    "sec-room-repeat",
+    "sec-room-menu"
+   ],
+   "pair": true
+  }
+ ],
+ "checks": [
+  {
+   "id": "X-1",
+   "name": "ห้องใช้ messages/send/proposals/approve/reject/edit/undo ของ S1.14 + polling · ไม่มี SSE เดิม",
+   "file": "app/(app)/secretary/room/[id].tsx",
+   "must": [
+    "secretary/rooms/",
+    "/messages",
+    "/send",
+    "/proposals",
+    "/approve",
+    "/reject",
+    "/edit",
+    "/undo",
+    "setInterval|useFocusEffect"
+   ],
+   "mustNot": [
+    "EventSource|sendMobileChat|mobile/chat/send"
+   ]
+  },
+  {
+   "id": "X-2",
+   "name": "การ์ดอนุมัติแสดง why + confirm2x สำหรับ destructive · ตีกลับมี note + remember JOB/RULE (C4)",
+   "file": "src/components/secretary/ApprovalCard.tsx",
+   "must": [
+    "why",
+    "confirm2x",
+    "remember",
+    "JOB",
+    "RULE"
+   ],
+   "mustNot": [
+    "#[0-9a-fA-F]{3,8}\\b|rgba?\\("
+   ]
+  }
+ ]
+}

@@ -10,7 +10,8 @@
 
 import { prisma, tenantDb } from "@/lib/core/db";
 import { assertCan, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
-import type { Prisma, SystemType, UnitType, PosPayType } from "@prisma/client";
+import { Prisma as PrismaNs, type Prisma, type SystemType, type UnitType, type PosPayType } from "@prisma/client";
+import { currentToolCallKey, toolCallRowId } from "./tool-call-key"; // SEC S3a.1-S1 R-Z7
 import * as invSvc from "@/lib/modules/inventory/service";
 import * as hrSvc from "@/lib/modules/hr/service";
 import * as mktSvc from "@/lib/modules/marketing/service";
@@ -36,12 +37,18 @@ import * as accountFacade from "@/lib/modules/account";
 import * as automationSvc from "@/lib/automation/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
-import { canSeeConversationId, sightOf, sightOfConfirmer, type ConvCtx } from "./conversation-owner";
-import { findVisibleConversation } from "./conversations";
+import type { ConvCtx } from "./conversation-owner";
+import { CHAT_SEND_BODY_MAX, CHAT_SEND_SENDER_NAME, CHAT_SEND_SIGNATURE, chatSendClientMessageId } from "./secretary/chat-send"; // SEC S1.12 (pure) ◂
+import type { DispatchOut } from "./secretary/actions"; // SEC S1.8 (type เท่านั้น — ไม่มีวงโหลด) ◂
+import { logOps } from "@/lib/core/ops";
+import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
+import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/members";
 import {
   accountDestructiveKinds,
   accountKindAccess,
+  approverCanIssueDocument,
   dispatchAccountKind,
+  issueDocumentAsApprover,
   isAccountKind,
 } from "./account-ops";
 import {
@@ -59,148 +66,54 @@ import {
   memberKindAccess,
 } from "@/lib/modules/member/api/tools";
 // CRM C1.10 ▸ kind `crm.*` เดินผ่านทะเบียน op ของ REST CRM (สะพานอยู่ในโมดูล `crm/api/tools.ts`) ◂
+// POS P3.9 ▸ R1 R3 R4 R5: kind `pos.*` + void_sale (เดิม) + pos_draft_po เดินผ่านสะพานในโมดูล (`pos/api/tools.ts`) · ด่าน R3 ของ pos_create_sale ◂
+import { assertLegacySaleAllowed, dispatchPosKind, isPosKind, posDestructiveKinds, posKindAccess } from "@/lib/modules/pos/api/tools";
 import * as scheduledSvc from "./scheduled";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
+import { DESTRUCTIVE_KINDS, KIND_ACCESS, isKnownKind as ktIsKnownKind, kindAccessOf as ktKindAccessOf, registerDerivedKinds, type StaticProposalKind } from "./kind-tables"; // SEC S1.7 R-S1.7d ◂
 
-/**
- * ประเภทข้อเสนอที่เขียนไว้ทีละตัว (โมดูลเดิม 63 tool)
- * บัญชี (WO E1) ไม่อยู่ในนี้ — สร้างจากทะเบียน op อัตโนมัติเป็น `account.<op id>` ดู `./account-ops`
- */
-type StaticProposalKind =
-  | "inventory_receive"
-  | "hr_decide_leave"
-  | "marketing_create_campaign"
-  | "member_create"
-  | "open_system"
-  | "inventory_create_item"
-  | "inventory_adjust"
-  | "hr_create_employee"
-  | "coupon_create"
-  | "kanban_create_card"
-  | "kanban_create_board"
-  | "record_expense"
-  // ── Phase B1: ทำแทนโมดูลเงินเดิน (proposal NORMAL ทั้งหมด) ──
-  | "pos_create_sale"
-  | "booking_create_appointment"
-  | "hotel_create_reservation"
-  | "queue_issue_ticket"
-  | "shop_confirm_order"
-  // ── Phase B2 (ชุดปิด): CRM·KB·โรงเรียน·คลินิก·เช่า·สายอนุมัติ·คลังตัดออก (NORMAL ทั้งหมด) ──
-  | "crm_create_lead"
-  | "kb_create_article"
-  | "school_enroll"
-  | "school_mark_paid"
-  | "clinic_create_patient"
-  | "rental_create_booking"
-  | "approval_decide"
-  | "inventory_consume"
-  | "reward_redeem"
-  // ── Wave5-B: สั่งงานแทนโมดูลที่เดิม AI ทำแทนไม่ได้ (แต้ม/ตั๋ว/ร้านอาหาร) ──
-  | "point_adjust"
-  | "ticket_mark_paid"
-  // ── agentic-3: ตั้งงานประจำให้ผู้ช่วย AI (NORMAL — ยืนยันชั้นเดียว) ──
-  | "ai_schedule_task"
-  // ── automation: ตั้งกฎอัตโนมัติแบบแจ้งเตือน (NORMAL — ยืนยันชั้นเดียว) ──
-  | "automation_create_rule"
-  // ── destructive (ลบ/void/ยกเลิก/ปิดบิล — ต้องยืนยัน 2 ชั้น) ──
-  | "void_sale"
-  | "cancel_appointment"
-  | "cancel_reservation"
-  | "kanban_archive_card"
-  | "shop_refund_order"
-  | "restaurant_close_bill";
+// SEC S1.7 ▸ R-S1.7d: ชนิดคงที่ (StaticProposalKind) · ตารางสิทธิ์ · ชุดยืนยัน 2 ชั้น ย้ายไป `./kind-tables` (pure ล้วน) —
+//   ไฟล์นี้เติมส่วนที่ derive จากทะเบียน op ด้วย `registerDerivedKinds` ข้างล่าง แล้ว re-export ชื่อเดิม (ผู้เรียกเดิมไม่แตะ) ◂
 
 /**
  * kind ทั้งหมด — รวมของโมดูลบัญชีที่ derive จากทะเบียน op (`account.documents.create` ฯลฯ)
  * ไม่พิมพ์รายชื่อบัญชีซ้ำที่นี่: op เปลี่ยน/เพิ่มเมื่อไร ข้อเสนอเปลี่ยนตามทันที
  */
-export type ProposalKind = StaticProposalKind | `account.${string}` | `kanban.${string}` | `member.${string}` | `crm.${string}`;
+export type ProposalKind = StaticProposalKind | `account.${string}` | `kanban.${string}` | `member.${string}` | `crm.${string}` | `pos.${string}`; // POS P3.9 ▸ + pos.* ◂
 
 type Ctx = { tenantId: string };
 
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 ชม.
 
-// kind ที่ "ลบข้อมูล/ยกเลิกถาวร" → risk=DESTRUCTIVE (ยืนยัน 2 ชั้นก่อนทำจริง)
-// export เพื่อให้ AI Plan (plans.ts) ใช้คำนวณ hasDestructive ระดับแผน (ใช้ค่าเดียวกัน ไม่ซ้ำ logic)
-export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
-  // บัญชี: ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (ยกเลิกเอกสาร/ยกเลิกการชำระ/เปิดงวด/รวมผู้ติดต่อ)
-  ...(accountDestructiveKinds() as ProposalKind[]),
-  // บอร์ดงาน (K1.15): ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (เก็บการ์ด/บอร์ด/คอลัมน์ · ถอดสมาชิก)
-  ...(kanbanDestructiveKinds() as ProposalKind[]),
-  // ระบบสมาชิก (M1.11): ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (รวมคนซ้ำ · ตั้งระดับด้วยมือ)
-  ...(memberDestructiveKinds() as ProposalKind[]),
-  // CRM C1.10 ▸ ทุก op ชนิด danger ของ CRM ที่เปิดเป็นเครื่องมือ (ชุดแรกยังไม่มี — 14 tool เป็น read/write ล้วน) ◂
-  ...(crmSvc.crmApi.crmDestructiveKinds() as ProposalKind[]),
-  "void_sale",
-  "cancel_appointment",
-  "cancel_reservation",
-  "kanban_archive_card",
-  "shop_refund_order",
-  // ปิดบิลโต๊ะ = สร้างธุรกรรมเงิน + ปิดโต๊ะถาวร → ยืนยัน 2 ชั้น
-  "restaurant_close_bill",
-]);
+// kind ที่ "ลบข้อมูล/ยกเลิกถาวร" → risk=DESTRUCTIVE (ยืนยัน 2 ชั้นก่อนทำจริง) · ตารางสิทธิ์ต่อ kind (ต้องตรงกับ assertCan ของปุ่มจริง)
+// SEC S1.7 ▸ R-S1.7d: ชุดคงที่อยู่ใน `./kind-tables` · ที่นี่เติมส่วนที่ derive จากทะเบียน op (ลำดับเดิม: คงที่ก่อน · ทะเบียนทับเมื่อชื่อชน) ◂
+registerDerivedKinds({
+  access: {
+    ...accountKindAccess(),
+    // บอร์ดงาน (K1.15) — derive จาก `op.action` ของทะเบียน API เหมือนบัญชี
+    ...kanbanKindAccess(),
+    // ระบบสมาชิก (M1.11) — เงื่อนไขเดียวกัน (kind `member.*` → `op.action` ของทะเบียน)
+    ...memberKindAccess(),
+    // CRM C1.10 ▸ kind `crm.*` → `op.action` ของทะเบียน REST CRM (kind เดิม `crm_create_lead` คงอยู่ใน STATIC_KIND_ACCESS) ◂
+    ...crmSvc.crmApi.crmKindAccess(),
+    // POS P3.9 ▸ R1 มติ 7: kind `pos.*` → op.action ของทะเบียน REST POS (setPrice → pos.product.setPrice · 86 → pos.sale.create · void → pos.sale.void) ◂
+    ...posKindAccess(),
+  },
+  destructive: [
+    // บัญชี: ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (ยกเลิกเอกสาร/ยกเลิกการชำระ/เปิดงวด/รวมผู้ติดต่อ)
+    ...accountDestructiveKinds(),
+    // บอร์ดงาน (K1.15): ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (เก็บการ์ด/บอร์ด/คอลัมน์ · ถอดสมาชิก)
+    ...kanbanDestructiveKinds(),
+    // ระบบสมาชิก (M1.11): ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (รวมคนซ้ำ · ตั้งระดับด้วยมือ)
+    ...memberDestructiveKinds(),
+    // CRM C1.10 ▸ ทุก op ชนิด danger ของ CRM ที่เปิดเป็นเครื่องมือ ◂
+    ...crmSvc.crmApi.crmDestructiveKinds(),
+    ...posDestructiveKinds(), // POS P3.9 ▸ R4: pos.sales.void ◂
+  ],
+});
+export { DESTRUCTIVE_KINDS } from "./kind-tables";
 
-// action string ต่อ kind — ต้องตรงกับ assertCan ของปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
-const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; action: string }> = {
-  inventory_receive: { module: "inventory", action: "inventory.movement.receive" },
-  hr_decide_leave: { module: "hr", action: "hr.leave.decide" },
-  marketing_create_campaign: { module: "marketing", action: "marketing.campaign.create" },
-  member_create: { module: "member", action: "member.customer.create" },
-  open_system: { module: "system", action: "system.system.create" },
-  inventory_create_item: { module: "inventory", action: "inventory.item.create" },
-  inventory_adjust: { module: "inventory", action: "inventory.movement.adjust" },
-  hr_create_employee: { module: "hr", action: "hr.employee.create" },
-  coupon_create: { module: "coupon", action: "coupon.coupon.create" },
-  kanban_create_card: { module: "kanban", action: "kanban.card.create" },
-  kanban_create_board: { module: "kanban", action: "kanban.board.create" },
-  // บันทึกค่าใช้จ่ายเข้าบัญชี → ใช้ action จริงของโมดูลบัญชี (สร้างเอกสาร) = account.doc.create
-  record_expense: { module: "account", action: "account.doc.create" },
-  // Phase B1 — action string ตรงกับปุ่มจริง (ดู */actions.ts)
-  pos_create_sale: { module: "pos", action: "pos.sale.create" },
-  booking_create_appointment: { module: "booking", action: "booking.appointment.create" },
-  hotel_create_reservation: { module: "hotel", action: "hotel.reservation.create" },
-  queue_issue_ticket: { module: "queue", action: "queue.ticket.issue" },
-  shop_confirm_order: { module: "shop", action: "shop.order.confirm" },
-  // Phase B2 — action string ตรงกับปุ่มจริง (ดู */actions.ts · kb ที่ src/app/app/kb/actions.ts)
-  crm_create_lead: { module: "crm", action: "crm.contact.create" },
-  kb_create_article: { module: "kb", action: "kb.article.create" },
-  school_enroll: { module: "school", action: "school.enrollment.create" },
-  school_mark_paid: { module: "school", action: "school.enrollment.pay" },
-  clinic_create_patient: { module: "clinic", action: "clinic.patient.create" },
-  rental_create_booking: { module: "rental", action: "rental.booking.create" },
-  approval_decide: { module: "approval", action: "approval.request.decide" },
-  inventory_consume: { module: "inventory", action: "inventory.movement.consume" },
-  reward_redeem: { module: "reward", action: "reward.redemption.create" },
-  // Wave5-B — action string ตรงกับปุ่มจริง (point forms · ticket/restaurant actions.ts)
-  point_adjust: { module: "point", action: "point.adjust.create" },
-  ticket_mark_paid: { module: "ticket", action: "ticket.order.markPaid" },
-  restaurant_close_bill: { module: "restaurant", action: "restaurant.checkout.create" },
-  // agentic-3 — ตั้งงานประจำผู้ช่วย AI (module ai · action เฉพาะ AI schedule)
-  ai_schedule_task: { module: "ai", action: "ai.schedule.create" },
-  // automation — ตั้งกฎอัตโนมัติ (module automation · action สร้างกฎ)
-  automation_create_rule: { module: "automation", action: "automation.rule.create" },
-  // destructive — action string ตรงกับปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
-  void_sale: { module: "pos", action: "pos.sale.void" },
-  cancel_appointment: { module: "booking", action: "booking.appointment.setStatus" },
-  cancel_reservation: { module: "hotel", action: "hotel.reservation.cancel" },
-  kanban_archive_card: { module: "kanban", action: "kanban.card.delete" },
-  shop_refund_order: { module: "shop", action: "shop.order.refund" },
-};
 
-/**
- * ตารางสิทธิ์จริงที่ใช้ตอนกดยืนยัน = ของเดิม + ของบัญชีที่ derive จาก `op.action` ของทะเบียน API
- * (บัญชีมี 30+ คำสั่ง และ action ของมันเปลี่ยนได้ตามสัญญา REST — พิมพ์ซ้ำที่นี่คือแหล่งที่สองที่จะเพี้ยน)
- */
-const KIND_ACCESS: Record<string, { module: string; action: string }> = {
-  ...STATIC_KIND_ACCESS,
-  ...accountKindAccess(),
-  // บอร์ดงาน (K1.15) — derive จาก `op.action` ของทะเบียน API เหมือนบัญชี
-  ...kanbanKindAccess(),
-  // ระบบสมาชิก (M1.11) — เงื่อนไขเดียวกัน (kind `member.*` → `op.action` ของทะเบียน)
-  ...memberKindAccess(),
-  // CRM C1.10 ▸ kind `crm.*` → `op.action` ของทะเบียน REST CRM (kind เดิม `crm_create_lead` คงอยู่ใน STATIC_KIND_ACCESS) ◂
-  ...crmSvc.crmApi.crmKindAccess(),
-};
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
 type ReceivePayload = { sku: string; qty: number; costSatang?: number };
@@ -223,6 +136,7 @@ type KanbanCreateBoardPayload = { name: string; description?: string };
 type RecordExpensePayload = { vendor?: string; note: string; amountSatang: number; date?: string };
 type PosCreateSalePayload = {
   unitName?: string;
+  memberId?: string; // SEC S3a.1-R2 ▸ R-Z42 ◂
   lines: { name: string; qty: number; unitPriceSatang: number }[];
   payType: "CASH" | "TRANSFER" | "PROMPTPAY";
 };
@@ -297,26 +211,35 @@ type RestaurantCloseBillPayload = {
   tableName: string;
   payMethod?: "CASH" | "TRANSFER" | "PROMPTPAY";
 };
-type AiScheduleTaskPayload = { instruction: string; hourBkk: number };
+type AiScheduleTaskPayload = { instruction: string; hourBkk: number; frequency?: string; days?: number[] };
 type AutomationCreateRulePayload = {
   name: string;
   event: string;
   minAmountSatang?: number;
   notifyTitle?: string;
 };
-type VoidSalePayload = { saleId: string };
+// POS P3.9 ▸ R4: VoidSalePayload ย้ายไป pos/api/tools.ts (dispatchPosKind · kind เดิม void_sale) ◂
 type CancelAppointmentPayload = { appointmentId: string };
 type CancelReservationPayload = { reservationId: string; reason?: string };
 type KanbanArchiveCardPayload = { cardId: string };
 
 // ── สร้างข้อเสนอ (PENDING + TTL 24 ชม.) ──
+// SEC S3a.1-S1 ▸ R-Z7: ใน tool call ที่มีกุญแจ (`tc:<messageId>:<i>` — เทิร์นห้องเลขาที่รันซ้ำได้) รหัสข้อเสนอ = hash(ร้าน · บทสนทนา · กุญแจ · kind)
+//   ⇒ รันซ้ำ = ใบเดิม (มีอยู่แล้ว/PK ชนตอนพร้อมกัน = คืนใบเดิม) · ไม่มีกุญแจ = cuid เดิมทุกไบต์ ◂
 export async function createProposal(
   ctx: Ctx,
   input: { conversationId: string; kind: ProposalKind; summary: string; payload: Record<string, unknown> },
 ): Promise<{ id: string }> {
+  const tcKey = currentToolCallKey();
+  const fixedId = tcKey ? toolCallRowId("tc", [ctx.tenantId, input.conversationId, tcKey, input.kind]) : null;
+  if (fixedId) {
+    const existing = await tenantDb(ctx).aiProposal.findFirst({ where: { id: fixedId }, select: { id: true } });
+    if (existing) return { id: existing.id };
+  }
   // tenantId ใส่ตรง ๆ ให้ตรง type (guard inject ค่าเดียวกันซ้ำ — convention repo นี้) · status = PENDING (default schema)
   const row = await tenantDb(ctx).aiProposal.create({
     data: {
+      ...(fixedId ? { id: fixedId } : {}),
       tenantId: ctx.tenantId,
       conversationId: input.conversationId,
       kind: input.kind,
@@ -326,8 +249,24 @@ export async function createProposal(
       risk: DESTRUCTIVE_KINDS.has(input.kind) ? "DESTRUCTIVE" : "NORMAL",
       expiresAt: new Date(Date.now() + TTL_MS),
     },
+  }).catch(async (e: unknown) => {
+    // R-Z7: สองรอบพร้อมกัน — ใบแรกเพิ่งเกิด (PK ชน) ⇒ คืนใบนั้น
+    if (fixedId && e instanceof PrismaNs.PrismaClientKnownRequestError && e.code === "P2002") {
+      const again = await tenantDb(ctx).aiProposal.findFirst({ where: { id: fixedId }, select: { id: true } });
+      if (again) return again;
+    }
+    throw e;
   });
   return { id: row.id };
+}
+
+/**
+ * SEC S3a.1-S1 ▸ R-Z9: ข้อเสนอ/แผนในห้องเลขาที่ปิดแล้วทำต่อไม่ได้ — ข้อความไทย (null = ไม่ใช่ห้องเลขา หรือห้องยังเปิด) ·
+ *   ผู้เรียก: `executeProposal` (หลังด่านการมองเห็น) · `plans.executePlan` ◂
+ */
+export async function closedRoomNote(tenantId: string, conversationId: string): Promise<string | null> {
+  const room = await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId }, select: { closedAt: true } });
+  return room?.closedAt ? "ห้องงานนี้ปิดแล้ว — รายการที่รออยู่ในห้องนี้ทำต่อไม่ได้ เปิดห้องใหม่แล้วสั่งอีกครั้ง" : null;
 }
 
 // ── ข้อเสนอที่ยังรออยู่ของบทสนทนา (PENDING + ยังไม่หมดอายุ) เรียงเก่า→ใหม่ ──
@@ -335,8 +274,9 @@ export async function createProposal(
 export async function listPendingProposals(ctx: ConvCtx, conversationId: string) {
   const conv = await findVisibleConversation(ctx, conversationId);
   if (!conv) return [];
+  const since = conv.room ? await visibleSinceFor(ctx, conv.id) : null; // S1.6 R-S1.6a: สมาชิก seeHistory=false ไม่เห็นข้อเสนอก่อน addedAt
   return tenantDb({ tenantId: ctx.tenantId }).aiProposal.findMany({
-    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() } },
+    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() }, ...(since ? { createdAt: since } : {}) },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -348,10 +288,11 @@ export async function listPendingProposals(ctx: ConvCtx, conversationId: string)
 //   🔴 ช่องโหว่เดียวกันของ kind โมดูลอื่น (ปิดอะไรก็ได้ด้วย id) ยังอยู่ — จดเป็น finding ให้เลน AI/สมาชิก (CRM-RUN §4) ◂
 // CRM C5.5-G2 ▸ ยกเลิกได้เฉพาะข้อเสนอในบทสนทนาที่ผู้กดเห็น (ของคนอื่น = false เหมือนไม่มีอยู่) ◂
 export async function rejectProposal(ctx: ConvCtx, id: string): Promise<boolean> {
-  const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true } });
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true, createdAt: true } });
   if (!row) return false;
   if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false; // CRM C3.4 ◂
-  if (!canSeeConversationId(sightOf(ctx), row.conversationId)) return false;
+  if (!(await canSeeConversationById(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
+  if (!withinSight(await visibleSinceFor(ctx, row.conversationId), row.createdAt)) return false; // S1.6 R-S1.6a
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
@@ -365,7 +306,7 @@ export async function executeProposal(
   ctx: Ctx,
   id: string,
   opts?: { confirm2x?: boolean; userId?: string | null },
-): Promise<{ ok: boolean; note: string; needsSecondConfirm?: boolean }> {
+): Promise<{ ok: boolean; note: string; needsSecondConfirm?: boolean; why?: string }> {
   const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id } });
   if (!row) return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
 
@@ -382,6 +323,10 @@ export async function executeProposal(
     (row.kind === "crm_create_lead" && crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) ||
     (row.kind.startsWith("crm.") && typeof payloadObj.requestedByUserId === "string" && payloadObj.requestedByUserId.length > 0)
   ) {
+    // S1.3b ▸ (รีวิว C7) ด่านระดับต่อระบบมาก่อนประตู CRM — crm OFF/READ ⇒ คง PENDING (เจ้าของเปิดระดับแล้วกดใหม่ได้) ·
+    //   kind ของประตูที่ไม่มีใน KIND_ACCESS (crm.assist.tasks · crm.activity.ai_fill) ตรวจด้วยโมดูล crm ◂
+    const doorLevel = await accessLevelGate(ctx.tenantId, row.kind, "crm");
+    if (!doorLevel.ok) return { ok: false, note: doorLevel.reason };
     if (!opts?.userId) return { ok: false, note: "ต้องรู้ตัวผู้กดยืนยันก่อนจึงจะทำรายการของ CRM ได้ — เปิดจากหน้าแอปแล้วลองอีกครั้ง" };
     const r = await crmSvc.aiBridges.confirmProposalById(ctx.tenantId, { userId: opts.userId, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, id, { confirm2x: opts?.confirm2x === true });
     return { ok: r.ok, note: r.note };
@@ -390,7 +335,10 @@ export async function executeProposal(
   // CRM C5.5-G2 ▸ ข้อเสนอเป็นของบทสนทนาที่มันเกิด: คนกดต้องเห็นบทสนทนานั้น (ผู้สร้าง · เจ้าของร้านสำหรับห้องที่ไม่ได้สร้างโดยคนในร้าน
   //   เช่นห้องของคีย์ API ที่ route เขียนไว้ว่า "เจ้าของต้องกดยืนยันในแอป/เว็บ") — ไม่เห็น = ตอบแบบเดียวกับไม่มีข้อเสนอนี้
   //   (ประตู CRM ข้างบนมีด่านการมองเห็นของตัวเองแล้ว — ข้อเสนอเหล่านั้นไม่ได้อยู่ในห้องแชท) ◂
-  if (!canSeeConversationId(sightOfConfirmer(m, opts?.userId ?? null), row.conversationId)) {
+  if (
+    !(await canConfirmerSeeConversation(ctx.tenantId, m, opts?.userId ?? null, row.conversationId)) || // S1.4 R-K1: + ห้องเลขาร่วม
+    !withinSight(await visibleSinceForUser(ctx.tenantId, m.role, opts?.userId, row.conversationId), row.createdAt) // S1.6 R-S1.6a
+  ) {
     return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
   }
 
@@ -398,6 +346,9 @@ export async function executeProposal(
   if (typeof row.resultNote === "string" && row.resultNote.startsWith("WORKING#")) {
     return { ok: false, note: "ผู้ช่วย AI กำลังเตรียมข้อเสนอนี้อยู่ — รอสักครู่แล้วลองอีกครั้ง" };
   }
+  // SEC S3a.1-S1 ▸ R-Z9: ห้องเลขาที่ปิดแล้ว ⇒ ปฏิเสธ (ใบคง PENDING จนหมดอายุ) ◂
+  const closedNote = await closedRoomNote(ctx.tenantId, row.conversationId);
+  if (closedNote) return { ok: false, note: closedNote };
 
   // ทำไปแล้ว/ปิดไปแล้ว (ไม่ใช่ PENDING) → ไม่ทำซ้ำ
   if (row.status !== "PENDING") {
@@ -424,6 +375,32 @@ export async function executeProposal(
     }
     throw e;
   }
+  // SEC S1.3 ▸ สิทธิ์สุทธิ = สิทธิ์คนกด ∩ ระดับต่อระบบของร้าน (ต้อง DRAFT) — ไม่ผ่าน = คง PENDING (เจ้าของเปิดระดับแล้วกดใหม่ได้) ◂
+  const level = await accessLevelGate(ctx.tenantId, row.kind);
+  if (!level.ok) return { ok: false, note: level.reason };
+
+  // SEC S1.7 ▸ R-K4 ด่านผู้อนุมัติของห้องเลขา (มีแถว AiRoom ⇒ OWNER/MANAGER + ตัวตัดสินของโมดูล) — ไม่ผ่าน = คง PENDING ·
+  //   ห้อง AI เดิม = ผ่านเสมอ ไม่อ่านกฎ (R-S1.7b) · ฐานล้ม = ปฏิเสธไทย ไม่ throw · import ตอนเรียก (secretary/approval-gate → proposals = วงโหลด) ◂
+  const approval = await secApprovalGate(ctx.tenantId, m, row, opts?.userId ?? null);
+  if (!approval.ok) return { ok: false, note: approval.note };
+  const why = approval.why; // R-S1.7b: เหตุผลไทยของห้องเลขา — คืนให้ผู้เรียก (การ์ด/แอป) ไม่ทิ้ง ◂
+  // ◂ SEC S1.7
+
+  // SEC S1.12 ▸ R-S1.12e (K-6): ผู้อนุมัติต้องเห็นห้องแชทลูกค้านั้นตามสาขา **ก่อน claim** — ไม่ผ่าน = คง PENDING (คนที่เห็นห้องมากดทีหลังได้) ◂
+  if (row.kind === "chat.send") {
+    const unitNote = await chatSendUnitGate(ctx.tenantId, m, payloadObj);
+    if (unitNote) return { ok: false, note: unitNote };
+    // SEC S3a.1-R2 ▸ R-Z45: ส่งใบเสนอราคาที่ยังไม่มีใบอนุมัติในบทสนทนา ⇒ ปฏิเสธไทย **ก่อน claim** (ใบคง PENDING กดใหม่ได้หลังอนุมัติใบ) ◂
+    // SEC S3a.5 ▸ ใบที่อ้างยังเป็น DRAFT ⇒ ผู้กดต้องออกเอกสารได้ (`account.doc.issue` ของเล่มนั้น) ไม่งั้นปฏิเสธไทย ก่อน claim (คง PENDING) ◂
+    if (payloadObj.kind === "quote") {
+      try {
+        await quoteSendGate(ctx.tenantId, m, opts?.userId ?? null, row.conversationId, payloadObj);
+      } catch (e) {
+        if (e instanceof ChatSendNotReady) return { ok: false, note: e.message };
+        throw e;
+      }
+    }
+  }
 
   // ── ยืนยัน 2 ชั้น สำหรับรายการลบ/ยกเลิกถาวร (DESTRUCTIVE) ──
   // ชั้นแรก (ไม่มี confirm2x) → คง PENDING ไม่ทำจริง แจ้ง UI ให้ถามยืนยันอีกครั้ง
@@ -444,9 +421,14 @@ export async function executeProposal(
 
   try {
     // ส่ง m (คนกดยืนยัน) ให้ dispatch ด้วย — kind ที่ต้องใช้สิทธิ์ผู้กด (เช่น approval_decide) จะหยิบไปใช้
-    const note = await dispatch(ctx.tenantId, row.id, row.kind as ProposalKind, row.payload, m, opts?.userId ?? null);
+    const out: DispatchOut = {}; // SEC S1.8 ▸ entity ของของที่สร้าง/แตะ (out-param · R-S1.8a) ◂
+    const before = await secSnapshotBefore(ctx.tenantId, row.kind, row.payload); // SEC S1.8 ◂
+    const note = await dispatch(ctx.tenantId, row.id, row.kind as ProposalKind, row.payload, m, opts?.userId ?? null, out);
     await tenantDb(ctx).aiProposal.update({ where: { id }, data: { resultNote: note } });
-    return { ok: true, note };
+    // SEC S1.8 ▸ บันทึกการกระทำ (ล้ม = log เท่านั้น · ผลข้อเสนอยังสำเร็จ) ◂
+    await secRecordAction({ tenantId: ctx.tenantId, conversationId: row.conversationId, kind: row.kind, summary: row.summary, approverId: opts?.userId ?? null, proposalId: row.id, payload: row.payload, out, before });
+    await secRecordOutcome(ctx.tenantId, { id: row.id, conversationId: row.conversationId, kind: row.kind, summary: row.summary, payload: row.payload }); // SEC S1.15 ◂
+    return why ? { ok: true, note, why } : { ok: true, note };
   } catch (e) {
     // service โยน → FAILED + เหตุผลไทย (rollback สถานะจาก EXECUTED)
     const note = e instanceof Error && e.message ? e.message : "ทำรายการไม่สำเร็จ";
@@ -460,13 +442,13 @@ export async function executeProposal(
 
 // ── kind ตรวจว่ารู้จักจริงไหม (มีใน KIND_ACCESS) — ใช้ตอนสร้างแผน (plans.ts) ปฏิเสธ kind ปลอม ──
 export function isKnownKind(kind: string): kind is ProposalKind {
-  return Object.prototype.hasOwnProperty.call(KIND_ACCESS, kind);
+  return ktIsKnownKind(kind); // SEC S1.7 R-S1.7d: ตารางอยู่ใน ./kind-tables ◂
 }
 
 // CRM C5.5-G1 ▸ คีย์สิทธิ์ที่คนกดยืนยันต้องมี (ตารางเดียวกับ executeProposal/runKind) — ด่านของ tool ใช้ตัดสินว่า "ผู้ถามเสนอ kind นี้ได้ไหม"
 //   (ผู้ถามที่ไม่มีคีย์นี้เอง ไม่ได้รับเครื่องมือเสนอของ kind นั้น · ไม่มี kind = null) ◂
 export function kindAccessOf(kind: string): { module: string; action: string } | null {
-  return isKnownKind(kind) ? KIND_ACCESS[kind] : null;
+  return ktKindAccessOf(kind); // SEC S1.7 R-S1.7d ◂
 }
 
 // ── รันงานหนึ่งชิ้น (kind) ด้วยสิทธิ์ของ "คนกด" — ห่อ assertCan (KIND_ACCESS) + dispatch เดิม ──
@@ -480,6 +462,8 @@ export async function runKind(
   refId?: string,
   /** K3.5 — id ของคนที่สั่งแผนนี้ (ประวัติของโมดูลปลายทางต้องชี้ไปที่คนจริง) */
   userId?: string | null,
+  /** SEC S1.8 R-S1.8g — สรุปของขั้นนี้ (ลงบันทึกการกระทำแทนชื่อแผน) */
+  summary?: string | null,
 ): Promise<string> {
   const access = KIND_ACCESS[kind];
   if (!access) throw new Error("ไม่รู้จักประเภทงานนี้");
@@ -489,7 +473,70 @@ export async function runKind(
     if (e instanceof ForbiddenError) throw new Error("คุณยังไม่มีสิทธิ์ทำรายการนี้ ให้ผู้มีสิทธิ์เป็นผู้กดยืนยัน");
     throw e;
   }
-  return dispatch(tenantId, refId ?? `run-${kind}-${Date.now()}`, kind, payload, m, userId ?? null);
+  const level = await accessLevelGate(tenantId, kind); // SEC S1.3 ◂
+  if (!level.ok) throw new Error(level.reason);
+  // SEC S1.8 ▸ out-param + บันทึกการกระทำของขั้นแผน (planId จาก refId `plan-<id>-<i>` · ล้ม = log เท่านั้น) ◂
+  const out: DispatchOut = {};
+  const before = await secSnapshotBefore(tenantId, kind, payload);
+  const note = await dispatch(tenantId, refId ?? `run-${kind}-${Date.now()}`, kind, payload, m, userId ?? null, out);
+  const planId = typeof refId === "string" ? (/^plan-([^-]+)-\d+$/.exec(refId)?.[1] ?? null) : null;
+  if (planId) {
+    const plan = await tenantDb({ tenantId }).aiPlan.findFirst({ where: { id: planId }, select: { conversationId: true, title: true } }).catch(() => null);
+    const stepSummary = typeof summary === "string" && summary.trim() ? summary.trim() : null; // R-S1.8g ◂
+    await secRecordAction({ tenantId, conversationId: plan?.conversationId ?? null, kind, summary: stepSummary ?? plan?.title ?? kind, approverId: userId ?? null, planId, payload, out, before });
+  }
+  return note;
+}
+
+// SEC S1.7/S1.8 ▸ hook ของเลขา — import ตอนเรียก (secretary/* import ไฟล์นี้ = วงโหลดถ้า import บนหัวไฟล์) ◂
+async function secApprovalGate(tenantId: string, m: MembershipCtx, row: { kind: string; conversationId: string; payload: unknown }, userId: string | null): Promise<{ ok: true; why?: string } | { ok: false; note: string }> {
+  try {
+    const { approvalGate } = await import("./secretary/approval-gate");
+    return await approvalGate(tenantId, m, row, userId);
+  } catch {
+    return { ok: false, note: "ตรวจกฎอนุมัติไม่ได้ ลองใหม่อีกครั้ง" }; // R-S1.7b fail-closed (โหลดโมดูลไม่ได้) ◂
+  }
+}
+
+async function secSnapshotBefore(tenantId: string, kind: string, payload: unknown): Promise<unknown | null> {
+  try {
+    const { snapshotBefore } = await import("./secretary/actions");
+    return await snapshotBefore(tenantId, kind, payload);
+  } catch {
+    return null;
+  }
+}
+
+async function secRecordAction(input: { tenantId: string; conversationId: string | null; kind: string; summary: string; approverId: string | null; proposalId?: string | null; planId?: string | null; payload: unknown; out: DispatchOut; before: unknown }): Promise<void> {
+  try {
+    const { recordFromDispatch } = await import("./secretary/actions");
+    await recordFromDispatch({ ...input, executedAt: new Date() });
+  } catch (e) {
+    await logOps("WARN", "ai", `secretary.actionLog: บันทึกการกระทำไม่สำเร็จ (${input.kind})`, { tenantId: input.tenantId, detail: String(e).slice(0, 300) }).catch(() => {});
+  }
+}
+// SEC S1.15 ▸ ผลของข้อเสนอห้องเลขา (APPROVED / EDITED เมื่อ payload._edited) — ห้องเดิมไม่เขียน · ล้ม = log เท่านั้น ◂
+async function secRecordOutcome(tenantId: string, row: { id: string; conversationId: string; kind: string; summary: string; payload: unknown }): Promise<void> {
+  try {
+    const { recordExecutedProposal } = await import("./secretary/learn");
+    await recordExecutedProposal(tenantId, row);
+  } catch { /* best-effort — learn.ts log เองแล้ว */ }
+}
+// ◂ SEC S1.7/S1.8
+
+// SEC S1.3 ▸ ด่านระดับต่อระบบตอนลงมือ (executeProposal · runKind) — import ตอนเรียก: secretary/access → tool-access → ไฟล์นี้
+//   (import บนหัวไฟล์ = วงโหลด) · ไม่มีแถว AiSystemAccess = ทุกโมดูล DRAFT ⇒ ผ่านเสมอ (พฤติกรรมเดิม) ◂
+// S1.3b ▸ (D6) อ่านฐานไม่ได้ ⇒ ปฏิเสธด้วยข้อความไทย (ไม่ปล่อยข้อความของ Prisma ออกไปถึงผู้ใช้ · ไม่ลงมือ = ปิดไว้ก่อน) ·
+//   `fallbackModule` = kind ที่ไม่มีใน KIND_ACCESS แต่รู้ว่าเป็นของโมดูลไหน (ประตู CRM) ◂
+async function accessLevelGate(tenantId: string, kind: string, fallbackModule?: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    const { getAccess, kindAllowedByAccess, levelVerdict } = await import("./secretary/access");
+    const access = await getAccess(tenantId);
+    if (fallbackModule && !kindAccessOf(kind)) return levelVerdict(access, fallbackModule, true);
+    return kindAllowedByAccess(access, kind);
+  } catch {
+    return { ok: false, reason: "ตรวจสิทธิ์ของเลขาไม่ได้ชั่วคราว ลองใหม่อีกครั้ง" };
+  }
 }
 
 // ── dispatch ตาม kind → service เดิม (คืนข้อความผลลัพธ์ภาษาไทย) ──
@@ -501,6 +548,8 @@ async function dispatch(
   m?: MembershipCtx,
   /** K3.5 — id ของคนที่กดยืนยัน (MembershipCtx ไม่มีช่องนี้) · null = ไม่รู้ตัวคน */
   userId?: string | null,
+  /** SEC S1.8 (R-S1.8a) — handler ตั้ง `out.entity` เมื่อรู้ id ของของที่สร้าง/แตะ (ชนิดคืนของ handler คงเดิม) */
+  out?: DispatchOut,
 ): Promise<string> {
   const payload = (rawPayload ?? {}) as Record<string, unknown>;
 
@@ -509,7 +558,7 @@ async function dispatch(
   // (ตรวจ schema ซ้ำ → handler เดิม → audit actorType USER ของคนกด) ดู ./account-ops
   if (isAccountKind(kind)) {
     if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการบัญชีได้");
-    return dispatchAccountKind(m, tenantId, proposalId, kind, payload);
+    return dispatchAccountKind(m, tenantId, proposalId, kind, payload, undefined, out); // SEC S3a.1-R2 R-Z45: entity ของเอกสาร ◂
   }
 
   // ── บอร์ดงาน (K1.15) ──────────────────────────────────────────────────────
@@ -520,7 +569,7 @@ async function dispatch(
     if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการบอร์ดงานได้");
     // 🔴 K3.5: ส่ง userId ของคนกดต่อลงไปด้วย — ประวัติของบอร์ด (`actorUserId`) ต้องชี้ไปที่ "คนกด"
     //    ไม่ใช่ null (= ระบบทำเอง) และบางคำสั่ง (สร้างการ์ดจากแชท) ต้องมีตัวตนของคนจริงถึงจะทำได้
-    return dispatchKanbanKind(m, tenantId, proposalId, kind, payload, userId);
+    return dispatchKanbanKind(m, tenantId, proposalId, kind, payload, userId, out); // SEC S1.8 ▸ out ◂
   }
 
   // ── ระบบสมาชิก (M1.11) ────────────────────────────────────────────────────
@@ -539,6 +588,13 @@ async function dispatch(
     return crmSvc.crmApi.dispatchCrmKind({ tenantId, ...m, userId: userId ?? null, proposalId }, kind, payload);
   }
   // ◂ CRM C1.10
+
+  // POS P3.9 ▸ R1 R4 R5 มติ 2 7 8: kind `pos.*` (ทะเบียน op · คนกด = actor user · idempotencyKey = id ข้อเสนอ) · kind เดิม void_sale
+  //   (re-route → sales.void → voidSaleByActor: เหตุผลปริยาย CD-4 · กติกาอนุมัติ · audit) · pos_draft_po (ร่าง PO ผ่าน facade คลัง) ◂
+  if (isPosKind(kind)) {
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการของระบบขายหน้าร้านได้");
+    return dispatchPosKind({ tenantId, ...m, userId: userId ?? "", proposalId }, kind, payload);
+  }
 
   if (kind === "inventory_receive") {
     const p = payload as ReceivePayload;
@@ -755,6 +811,7 @@ async function dispatch(
       description: p.detail ? String(p.detail).trim() : null,
     });
     if (!card) throw new Error("สร้างการ์ดไม่สำเร็จ");
+    if (out) out.entity = { type: "kanban.card", id: card.id }; // SEC S1.8 ◂
     return `เพิ่มการ์ด "${title}" ลงบอร์ด "${board.name}" เรียบร้อยแล้ว`;
   }
 
@@ -795,10 +852,17 @@ async function dispatch(
       if (!Number.isFinite(l.qty) || l.qty <= 0) throw new Error(`จำนวนของ "${l.name}" ต้องมากกว่า 0`);
       if (!Number.isFinite(l.unitPriceSatang) || l.unitPriceSatang < 0) throw new Error(`ราคาของ "${l.name}" ติดลบไม่ได้`);
     }
+    // POS P3.9 ▸ R3 มติ 9: ผู้กดยืนยันต้องใช้สาขานี้ได้ + สาขาผูกระบบ POS นี้ · บรรทัดที่ไม่ตรงชื่อ+ราคาแคตตาล็อก = ราคาเอง ⇒ ต้องมี pos.sale.priceOverride ◂
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะเปิดบิลได้");
+    await assertLegacySaleAllowed({ tenantId, systemId: system.id, unitId: unit.id }, m, lines);
     const grand = lines.reduce((s, l) => s + l.unitPriceSatang * l.qty, 0);
     let payType: PosPayType = "CASH";
     if (p.payType === "TRANSFER") payType = "TRANSFER";
     else if (p.payType === "PROMPTPAY") payType = "PROMPTPAY";
+    // SEC S3a.1-R2 ▸ R-Z42 (F2): ผูกสมาชิก (ตรวจซ้ำตอนลงมือว่าเป็นสมาชิกของร้านนี้) ⇒ สะพานสมาชิกคิดแต้มตามอัตราร้านเมื่อบิล PAID ◂
+    const wantMember = typeof p.memberId === "string" ? p.memberId.trim() : "";
+    const member = wantMember ? await prisma.customer.findFirst({ where: { id: wantMember, tenantId }, select: { id: true, name: true } }) : null;
+    if (wantMember && !member) throw new Error("ไม่พบสมาชิกที่จะผูกกับบิลนี้ในร้าน — สั่งใหม่โดยค้นสมาชิกอีกครั้ง");
     await posSvc.createSale({
       tenantId,
       unitId: unit.id,
@@ -808,9 +872,10 @@ async function dispatch(
       idempotencyKey: `ai-${proposalId}`, // execute ซ้ำ = กันโดยธรรมชาติ
       lines,
       payMethods: [{ type: payType, amountSatang: grand }],
+      ...(member ? { memberId: member.id } : {}),
     });
     const baht = (grand / 100).toLocaleString("th-TH");
-    return `เปิดบิลขาย ${baht} บาท ที่ "${unit.name}" เรียบร้อยแล้ว`;
+    return `เปิดบิลขาย ${baht} บาท ที่ "${unit.name}" เรียบร้อยแล้ว${member ? ` · ผูกสมาชิก ${member.name?.trim() || "สมาชิก"} (แต้มคิดตามอัตราของร้าน)` : ""}`;
   }
 
   if (kind === "booking_create_appointment") {
@@ -848,6 +913,7 @@ async function dispatch(
       idempotencyKey: `ai-appt-${proposalId}`, // execute ซ้ำ = กันสร้างนัดซ้ำโดยธรรมชาติ
     });
     if (!res.ok) throw new Error(res.reason);
+    if (out) out.entity = { type: "booking.appointment", id: res.id, unitId: unit.id }; // SEC S1.8 ◂
     return `จองนัด "${service.name}" ให้ ${String(p.customerName ?? "").trim() || "ลูกค้า"} กับ ${staff.name} เรียบร้อยแล้ว`;
   }
 
@@ -944,16 +1010,7 @@ async function dispatch(
     return `คืนเงินออเดอร์ ${code} เรียบร้อยแล้ว — กลับรายการขาย คืนแต้ม/คูปอง และคืนสต็อกให้อัตโนมัติ`;
   }
 
-  if (kind === "void_sale") {
-    const p = payload as VoidSalePayload;
-    const saleId = String(p.saleId ?? "").trim();
-    if (!saleId) throw new Error("ต้องระบุรหัสบิลที่จะยกเลิก");
-    // อ่าน unitId ของบิล (mutate จริงผ่าน posSvc.voidSale เท่านั้น) — ไม่พบ = FAILED ไทย
-    const sale = await prisma.posSale.findFirst({ where: { tenantId, id: saleId }, select: { unitId: true } });
-    if (!sale) throw new Error("ไม่พบบิลนี้");
-    await posSvc.voidSale(tenantId, sale.unitId, saleId);
-    return "ยกเลิก (void) บิลเรียบร้อยแล้ว";
-  }
+  // POS P3.9 ▸ R4: kind void_sale เดินผ่านบล็อก pos.* ข้างบน (voidSaleByActor) — ทางเดิม voidSale ไม่มี audit/เหตุผล/สายอนุมัติ ถอดแล้ว ◂
 
   if (kind === "cancel_appointment") {
     const p = payload as CancelAppointmentPayload;
@@ -964,7 +1021,9 @@ async function dispatch(
       select: { unitId: true },
     });
     if (!appt) throw new Error("ไม่พบนัดหมายนี้");
-    await bookingSvc.setAppointmentStatus(tenantId, appt.unitId, appointmentId, "CANCELLED");
+    // POS P5.1 ▸ RC F11 (CD-P51-O10b): ถูกปฏิเสธ (เช่น บิลริบมัดจำยกเลิกไม่ได้) = โยนข้อความของ service — ไม่รายงานว่ายกเลิกแล้ว ◂
+    const st = await bookingSvc.setAppointmentStatus(tenantId, appt.unitId, appointmentId, "CANCELLED", { actorUserId: userId ?? null });
+    if (st.ok === false) throw new Error(st.reason);
     return "ยกเลิกนัดหมายเรียบร้อยแล้ว";
   }
 
@@ -1028,7 +1087,7 @@ async function dispatch(
     return `บันทึกลูกค้ามุ่งหวัง "${name}" เข้าระบบ CRM เรียบร้อยแล้ว`;
   }
 
-  if (kind === "kb_create_article") {
+  if (kind === "kb_create_article" || kind === "kb.save") { // SEC S3a.1-S2 ▸ R-Z22: kb.save (ห้องเลขา) ใช้ทางเดียวกัน ◂
     const p = payload as KbCreateArticlePayload;
     // KB เป็น tenant-scoped ล้วน (ไม่มีระบบย่อย) — service โยน error ไทยถ้า title/body ว่าง
     await kbSvc.createArticle(
@@ -1166,11 +1225,8 @@ async function dispatch(
     if (!requestId) {
       // ค้นจาก summary → เทียบ entityType/entityId ใน PENDING (ไม่มี field summary ในตาราง)
       const summary = String(p.requestSummary ?? "").trim();
-      const pending = await prisma.approvalRequest.findMany({
-        where: { tenantId, status: "PENDING" },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, entityType: true, entityId: true },
-      });
+      // POS P5.2 ▸ fix A (F1): ค้นเฉพาะคำขอที่ "คนกดยืนยัน" ตัดสินได้ (listPending · สาขาของคำขอ) — ข้อความ "มีหลายคำขอ" ไม่เปิดคำขอของสาขาอื่น ◂
+      const pending = await approvalSvc.listPending({ tenantId }, { ...m, userId: uid });
       const matched = summary
         ? pending.filter((r) => r.entityType.includes(summary) || r.entityId.includes(summary))
         : pending;
@@ -1333,6 +1389,11 @@ async function dispatch(
   if (kind === "restaurant_close_bill") {
     const p = payload as RestaurantCloseBillPayload;
     const unit = await resolveUnit(tenantId, { type: "RESTAURANT", unitName: p.unitName, label: "ร้านอาหาร" });
+    // POS P2.14 ▸ LEG-3 มติ 1: สาขาที่ผูก POS ⇒ ผู้ช่วยปิดบิลทางเดิมไม่ได้ (POS_LINKED — ทางเดิมไม่มีล็อกโต๊ะ/แผนแยกบิลของ POS · ปิดบิลที่ POS › โต๊ะ) ·
+    //   ค้นไม่ได้ = ปฏิเสธ (fail-closed · ทางเงิน) · สาขาไม่ผูก POS = ทางเดิม
+    if (await (await import("@/lib/modules/pos/legacy-door")).posLinkedLegacyDoor(tenantId, unit.id, { write: true }))
+      throw new Error("POS_LINKED: สาขานี้ใช้ POS แล้ว — ปิดบิลโต๊ะที่ POS › โต๊ะ (ผู้ช่วยปิดบิลทางหน้าร้านอาหารเดิมไม่ได้)");
+    // ◂
     const wantTable = String(p.tableName ?? "").trim();
     if (!wantTable) throw new Error("ต้องระบุหมายเลข/ชื่อโต๊ะ");
     // resolve โต๊ะจากชื่อ (contains) ในร้าน (active) → หา session ที่ยังเปิดอยู่ของโต๊ะนั้น
@@ -1360,6 +1421,9 @@ async function dispatch(
     let payMethod: "CASH" | "TRANSFER" | "PROMPTPAY" = "CASH";
     if (p.payMethod === "TRANSFER") payMethod = "TRANSFER";
     else if (p.payMethod === "PROMPTPAY") payMethod = "PROMPTPAY";
+    // POS P2.5 ▸ fix2 มติ 1 (F1 = hunter N2): โต๊ะที่แยกบิลอยู่ใน POS (แผน OPEN) ปิดบิลทั้งโต๊ะไม่ได้ — ตัวกันเดียวกับหน้าเดิม (กันเก็บเงินซ้ำกับใบที่จ่ายแล้ว) ◂
+    const splitGuard = await (await import("@/lib/modules/pos/table-split")).legacyCheckoutSplitGuard({ tenantId, unitId: unit.id, sessionId: session.id });
+    if (!splitGuard.ok) throw new Error(splitGuard.reason);
     const res = await restaurantSvc.checkout({ tenantId, unitId: unit.id, sessionId: session.id, payMethod });
     if (!res.ok) throw new Error(res.reason);
     const baht = (res.totalSatang / 100).toLocaleString("th-TH");
@@ -1370,13 +1434,31 @@ async function dispatch(
   if (kind === "ai_schedule_task") {
     const p = payload as AiScheduleTaskPayload;
     // createTask ตรวจ instruction ว่าง / hour นอกช่วง / เกินเพดาน 10 เอง → โยน error ไทย (→ FAILED)
+    // S1.9 (R-K5) ▸ รู้ตัวคนกด = งานของคนตั้ง (ownerUserId · รันด้วยสิทธิ์ของเขา · ห้องใหม่ต่อรอบ) · ไม่รู้ = ทางเดิม ◂
+    const frequency = typeof p.frequency === "string" && p.frequency.trim() ? (p.frequency.trim().toUpperCase() as scheduledSvc.Frequency) : undefined;
+    const days = Array.isArray(p.days) ? p.days.map((x) => Number(x)) : undefined;
     await scheduledSvc.createTask(
       { tenantId },
-      { instruction: String(p.instruction ?? "").trim(), hourBkk: Math.round(Number(p.hourBkk)) },
+      {
+        instruction: String(p.instruction ?? "").trim(),
+        hourBkk: Math.round(Number(p.hourBkk)),
+        ownerUserId: userId ?? undefined,
+        ...(frequency ? { frequency } : {}),
+        ...(days ? { days } : {}),
+      },
     );
     const hh = String(Math.round(Number(p.hourBkk))).padStart(2, "0");
-    return `ตั้งงานประจำให้ผู้ช่วยทำทุกวันเวลา ${hh}:00 น. เรียบร้อยแล้ว — ผลจะส่งเป็นการแจ้งเตือนให้อ่าน`;
+    if (!userId) return `ตั้งงานประจำให้ผู้ช่วยทำทุกวันเวลา ${hh}:00 น. เรียบร้อยแล้ว — ผลจะส่งเป็นการแจ้งเตือนให้อ่าน`;
+    return `ตั้งงานประจำให้เลขาทำ${scheduledSvc.describeFrequency(frequency ?? "DAILY", days)} เวลา ${hh}:00 น. เรียบร้อยแล้ว — ทุกรอบจะเปิดห้องงานใหม่และแจ้งเตือนให้อ่าน`;
   }
+
+  // SEC S1.12 ▸ ส่งถึงลูกค้า (R-K15) · คืนมัดจำนัดหมาย (R-K16) ◂
+  if (kind === "chat.send") return dispatchChatSend(tenantId, proposalId, payload, m, userId, out);
+  if (kind === "booking_refund_deposit") return dispatchBookingRefundDeposit(tenantId, payload, userId, out);
+  // SEC S3a.1-S2 ▸ R-Z22: ลบความจำด้วยสิทธิ์ของผู้อนุมัติ (forgetMemory ตรวจว่าเขาลบแถวนั้นได้) ◂
+  if (kind === "memory.forget") return (await import("./secretary/memory-proposals")).dispatchMemoryForget(tenantId, payload, m, userId);
+  // SEC S3a.1-S2 ▸ R-Z34: เปิดเคสแจ้งทีมงานหลังคนอนุมัติ (ผู้เปิด = ผู้อนุมัติ · ห้องเดิมของข้อเสนอ) ◂
+  if (kind === "support.open") return (await import("./secretary/memory-proposals")).dispatchSupportOpen(tenantId, proposalId, payload, userId);
 
   if (kind === "automation_create_rule") {
     const p = payload as AutomationCreateRulePayload;
@@ -1408,6 +1490,251 @@ async function dispatch(
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");
+}
+
+// ── SEC S1.12 ▸ chat.send — ข้อความถึงลูกค้าที่คนอนุมัติแล้ว ส่งผ่าน `sendReply` ของโมดูลแชท (ทางเดียวกับทีมพิมพ์ตอบ) ──
+// กติกา (R-K15 · แบบ §5 PDPA · §10 จุดเชื่อม 2):
+//   ผู้ส่ง = คนกดอนุมัติ (ไม่ใช่ผู้สั่ง) · ป้ายผู้ส่งที่ลูกค้าเห็น = "Shark (ผู้ช่วย AI)" ทับนามแฝงของร้าน (ลูกค้าต้องรู้ว่า AI เขียน)
+//   เฉพาะผู้ติดต่อที่ผูกสมาชิก/CRM แล้ว (`ChatContact.customerId`) · ห้องต้องยังไม่ปิด · หน้าต่างตอบของช่องทาง (FB/IG/WA) ต้องยังเปิด
+//   ข้อความ ≤ 1,000 ตัวอักษร · ไม่มีไฟล์แนบในรุ่นแรก · `clientMessageId` = id ข้อเสนอ ⇒ ส่งซ้ำ = ไม่ส่งซ้ำ (unique ของแชท)
+//   ป้าย meta คีย์แบน `ai_roomId` `ai_proposalId` `ai_approvedBy` — S1.21 อ่านไปทำป้าย "ส่งโดย Shark · อนุมัติโดย X"
+//   ข้อความที่ส่งแล้วย้อนไม่ได้ (ไม่อยู่ในรายการย้อนของ S1.8)
+export { CHAT_SEND_SENDER_NAME, CHAT_SEND_MAX_CHARS, CHAT_SEND_SIGNATURE, CHAT_SEND_BODY_MAX, chatSendClientMessageId } from "./secretary/chat-send";
+
+/** R-S1.12e (K-6): ผู้อนุมัติเห็นห้องนี้ตามสาขาไหม — null = ผ่าน (ห้องไม่พบ/ข้อมูลอื่นผิด ให้ dispatch ตัดสินเป็น FAILED ตามเดิม) */
+async function chatSendUnitGate(tenantId: string, m: MembershipCtx, payload: Record<string, unknown>): Promise<string | null> {
+  if (m.role === "OWNER") return null;
+  const conversationId = typeof payload.conversationId === "string" ? payload.conversationId.trim() : "";
+  if (!conversationId) return null;
+  const conv = await prisma.chatConversation.findFirst({ where: { id: conversationId, tenantId }, select: { unitId: true } });
+  if (!conv) return null;
+  const { canAccessConvUnit } = await import("@/lib/modules/chat/service");
+  return canAccessConvUnit(m.unitAccess, conv.unitId) ? null : "คุณไม่มีสิทธิ์ตอบแชทลูกค้าของสาขานี้ — ให้ผู้มีสิทธิ์ของสาขานั้นเป็นผู้กดอนุมัติ";
+}
+
+async function dispatchChatSend(
+  tenantId: string,
+  proposalId: string,
+  payload: Record<string, unknown>,
+  m: MembershipCtx | undefined,
+  userId: string | null | undefined,
+  out?: DispatchOut,
+): Promise<string> {
+  if (!m || !userId) throw new Error("ต้องรู้ตัวผู้กดอนุมัติก่อนจึงจะส่งข้อความถึงลูกค้าได้ — เปิดข้อเสนอจากแอปแล้วกดอนุมัติอีกครั้ง");
+  const conversationId = typeof payload.conversationId === "string" ? payload.conversationId.trim() : "";
+  const body = typeof payload.body === "string" ? payload.body.trim() : "";
+  if (!conversationId) throw new Error("ข้อเสนอนี้ไม่ได้ระบุห้องแชทลูกค้า — สั่งเลขาใหม่อีกครั้ง");
+  if (!body) throw new Error("ข้อความถึงลูกค้าว่างอยู่ — สั่งเลขาเขียนข้อความใหม่");
+  if (body.length > CHAT_SEND_BODY_MAX) throw new Error(`ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร — ให้เลขาย่อข้อความแล้วเสนอใหม่`);
+  const conv = await prisma.chatConversation.findFirst({
+    where: { id: conversationId, tenantId },
+    select: { id: true, systemId: true, contactId: true, channel: true, status: true, replyWindowExpiresAt: true, contact: { select: { customerId: true, displayName: true } } },
+  });
+  if (!conv || (typeof payload.systemId === "string" && payload.systemId !== "" && payload.systemId !== conv.systemId)) {
+    throw new Error("ไม่พบห้องแชทลูกค้านี้ (อาจถูกลบไปแล้ว)");
+  }
+  if (typeof payload.contactId === "string" && payload.contactId !== "" && payload.contactId !== conv.contactId) {
+    throw new Error("ลูกค้าในข้อเสนอไม่ตรงกับห้องแชท — สั่งเลขาใหม่อีกครั้ง");
+  }
+  if (!conv.contact.customerId) throw new Error("ส่งได้เฉพาะลูกค้าที่ผูกกับสมาชิก/CRM แล้ว — ผูกลูกค้ารายนี้ในห้องแชทก่อน แล้วค่อยสั่งใหม่");
+  if (conv.status === "RESOLVED") throw new Error("ห้องแชทนี้ปิดไปแล้ว จึงยังส่งข้อความไม่ได้ — เปิดห้องใหม่จากหน้าแชทลูกค้าก่อน");
+  if (conv.replyWindowExpiresAt && conv.replyWindowExpiresAt.getTime() <= Date.now()) {
+    throw new Error("หน้าต่างตอบของช่องทางนี้ปิดแล้ว — รอลูกค้าทักเข้ามาใหม่ก่อนจึงจะส่งได้");
+  }
+  // ห้องเลขาที่ข้อเสนอเกิด (ถ้ามี) — ห้องเดิม/แผนงาน = ไม่มีคีย์ ai_roomId
+  const prop = await tenantDb({ tenantId }).aiProposal.findFirst({ where: { id: proposalId }, select: { conversationId: true } });
+  const room = prop ? await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId: prop.conversationId }, select: { id: true } }) : null;
+  // SEC S3a.1-R2 ▸ R-Z45 (F6): ใบเสนอราคาที่ไม่ได้ระบุเอกสาร ⇒ ใบที่อนุมัติแล้วล่าสุดของบทสนทนาเดียวกัน ◂
+  // SEC S3a.5 ▸ kind=quote ทุกครั้ง: ใบ DRAFT ⇒ ออกเอกสารด้วยสิทธิ์ผู้กด · ต่อท้าย "เลขที่ · ยอด · ดูใบ: <origin>/doc/<token>" (ลิงก์สาธารณะของใบเสนอราคา) ◂
+  const quote = payload.kind === "quote" && prop ? await quoteLineForSend(tenantId, proposalId, m, userId, prop.conversationId, payload) : null;
+  const docLine = quote?.line ?? "";
+  const chatSvc = await import("@/lib/modules/chat/service");
+  const res = await chatSvc.sendReply({
+    tenantId,
+    systemId: conv.systemId,
+    conversationId: conv.id,
+    senderUserId: userId,
+    senderName: CHAT_SEND_SENDER_NAME,
+    body: `${body}${docLine}${CHAT_SEND_SIGNATURE}`, // R-S1.12c ◂
+    unitAccess: m.role === "OWNER" ? ["*"] : m.unitAccess,
+    meta: { ...(room ? { ai_roomId: room.id } : {}), ai_proposalId: proposalId, ai_approvedBy: userId },
+    clientMessageId: chatSendClientMessageId(proposalId), // R-S1.12e ◂
+  });
+  if (!res.ok) {
+    // SEC S3a.5 R-Z62 ▸ ออกใบไปแล้วในการอนุมัตินี้แต่ส่งข้อความล้ม ⇒ บอกให้ชัดว่าใบถูกออกแล้ว (ข้อเสนอใหม่จะไม่ออกซ้ำ) ◂
+    const why = res.reason ? `: ${res.reason}` : "";
+    throw new Error(quote?.issuedNo ? `ออกใบ ${quote.issuedNo} แล้ว แต่ส่งข้อความถึงลูกค้าไม่สำเร็จ${why} — สั่งเลขาส่งใหม่ได้ (ใบจะไม่ถูกออกซ้ำ)` : `ส่งข้อความถึงลูกค้าไม่สำเร็จ${why}`);
+  }
+  // SEC S1.8 (R-S1.8a) ▸ log ชี้แถวข้อความที่ส่งจริง (ซ้ำ = แถวเดิม) · ไม่อยู่ใน UNDOABLE_KINDS ⇒ undoableUntil null ◂
+  if (out && res.messageId) out.entity = { type: "chat.message", id: res.messageId };
+  const { channelSentenceLabel } = await import("@/lib/modules/chat/channel-icon");
+  const who = conv.contact.displayName?.trim() || "ลูกค้า";
+  if (res.duplicate) return `ข้อความนี้ส่งถึง ${who} ไปแล้ว — ไม่ส่งซ้ำ`;
+  return `ส่งถึง ${who} ทาง ${channelSentenceLabel(conv.channel)} แล้ว (ลงชื่อ Shark ผู้ช่วย AI)`;
+}
+
+/** SEC S3a.1-R2 ▸ R-Z45: documentId ที่ข้อเสนอ chat.send อ้าง (`refs.documentId`) — ไม่มี = null */
+function docIdOf(payload: Record<string, unknown>): string | null {
+  const refs = payload.refs && typeof payload.refs === "object" && !Array.isArray(payload.refs) ? (payload.refs as Record<string, unknown>) : {};
+  return typeof refs.documentId === "string" && refs.documentId.trim() ? refs.documentId.trim() : null;
+}
+
+export const NO_APPROVED_DOC_NOTE = "ยังไม่มีใบที่อนุมัติแล้วในห้องนี้ — อนุมัติใบเสนอราคาก่อน แล้วค่อยอนุมัติข้อความนี้";
+
+type QuoteDoc = { id: string; systemId: string; docNo: string | null; docType: string; status: string; grandTotal: number; buyer: string };
+
+/** ชื่อผู้ซื้อของใบ (สำเนาตอนออก → ผู้ติดต่อ) — ปิดเบอร์/อีเมลที่อยู่ในชื่อ (แบบชื่อลูกค้าใน summary · R-S1.12a) */
+function buyerOf(doc: { contactSnapshot: unknown; contact: { name: string } | null }): string {
+  const snap = doc.contactSnapshot && typeof doc.contactSnapshot === "object" ? (doc.contactSnapshot as Record<string, unknown>) : null;
+  const name = (typeof snap?.name === "string" && snap.name.trim()) || doc.contact?.name?.trim() || "ลูกค้า";
+  return String(crmSvc.crmApi.maskPiiDeep(name));
+}
+
+/** ใบ `account.document` ที่บันทึกการกระทำของบทสนทนานี้อ้างถึง (ข้อเสนอของบทสนทนานี้เท่านั้น) — R-Z62 M2 */
+async function docLoggedInConversation(tenantId: string, conversationId: string, docId: string): Promise<boolean> {
+  const db = tenantDb({ tenantId });
+  const props = await db.aiProposal.findMany({ where: { conversationId }, select: { id: true }, take: 500 });
+  if (props.length === 0) return false;
+  return !!(await db.aiActionLog.findFirst({ where: { entityType: "account.document", entityId: docId, proposalId: { in: props.map((x) => x.id) } }, select: { id: true } }));
+}
+
+export const QUOTE_NOT_IN_ROOM_NOTE = "เอกสารที่อ้างไม่ได้สร้างในงานนี้ — ส่งให้ลูกค้าได้เฉพาะใบเสนอราคาที่สร้างในห้องเดียวกัน";
+export const QUOTE_WRONG_TYPE_NOTE = "ข้อความแบบส่งใบเสนอราคาแนบได้เฉพาะใบเสนอราคา — เอกสารนี้เป็นเอกสารชนิดอื่น จึงไม่ส่งและไม่ออกเอกสารให้";
+
+/**
+ * SEC S3a.1-R2 ▸ R-Z45 + S3a.5 + R-Z62: ใบที่ข้อความ chat.send kind=quote อ้าง
+ *   `refs.documentId` ⇒ ต้องมีบันทึก `account.document` ของบทสนทนาเดียวกัน (M2) · ไม่ระบุ ⇒ ใบ `account.documents.create` ล่าสุดที่ EXECUTED ในบทสนทนา ·
+ *   ต้องเป็น QUOTATION เท่านั้น (M1) · ไม่ผ่าน ⇒ ChatSendNotReady ไทย (คง PENDING)
+ */
+async function resolveQuoteDoc(tenantId: string, conversationId: string, payload: Record<string, unknown>): Promise<QuoteDoc> {
+  const select = { id: true, systemId: true, docNo: true, docType: true, status: true, grandTotal: true, contactSnapshot: true, contact: { select: { name: true } } } as const;
+  const explicit = docIdOf(payload);
+  let row;
+  if (explicit) {
+    if (!(await docLoggedInConversation(tenantId, conversationId, explicit))) throw new ChatSendNotReady(QUOTE_NOT_IN_ROOM_NOTE);
+    row = await prisma.accountDocument.findFirst({ where: { id: explicit, tenantId }, select });
+    if (!row) throw new ChatSendNotReady("ไม่พบเอกสารที่ข้อความนี้อ้างถึง — สั่งเลขาใหม่อีกครั้ง");
+  } else {
+    const approved = await tenantDb({ tenantId }).aiProposal.findFirst({
+      where: { conversationId, kind: "account.documents.create", status: "EXECUTED" },
+      orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }],
+      select: { id: true },
+    });
+    const log = approved ? await tenantDb({ tenantId }).aiActionLog.findFirst({ where: { proposalId: approved.id, entityType: "account.document" }, select: { entityId: true } }) : null;
+    row = log?.entityId ? await prisma.accountDocument.findFirst({ where: { id: log.entityId, tenantId }, select }) : null;
+    if (!row) throw new ChatSendNotReady(NO_APPROVED_DOC_NOTE);
+  }
+  if (row.docType !== "QUOTATION") throw new ChatSendNotReady(QUOTE_WRONG_TYPE_NOTE);
+  return { id: row.id, systemId: row.systemId, docNo: row.docNo, docType: row.docType, status: row.status, grandTotal: row.grandTotal, buyer: buyerOf(row) };
+}
+
+/**
+ * SEC S3a.5 ▸ R-Z62: บรรทัด "แนบใบเสนอราคา …" ใน summary ของข้อเสนอ chat.send kind=quote (ตอนเสนอ · ให้ผู้อนุมัติเห็นว่าจะแนบใบไหนของใคร)
+ *   ระบุ documentId ⇒ ตรวจแบบเดียวกับตอนอนุมัติ (ไม่ผ่าน ⇒ ok:false ให้เครื่องมือตอบ error) ·
+ *   ไม่ระบุ ⇒ ข้อเสนอสร้างเอกสารล่าสุดของบทสนทนา (EXECUTED ⇒ ใบจริง · PENDING ⇒ ร่างที่รออนุมัติ + ชื่อผู้ติดต่อ) · ไม่มี ⇒ บอกว่ายังไม่มีใบ
+ */
+export async function quoteAttachmentSummary(tenantId: string, conversationId: string, documentId: string | null): Promise<{ ok: true; line: string } | { ok: false; error: string }> {
+  try {
+    if (documentId) {
+      const doc = await resolveQuoteDoc(tenantId, conversationId, { refs: { documentId } });
+      return { ok: true, line: `แนบใบเสนอราคา ${doc.docNo ? `เลขที่ ${doc.docNo}` : "ฉบับร่าง"} ของ ${doc.buyer}` };
+    }
+    const last = await tenantDb({ tenantId }).aiProposal.findFirst({
+      where: { conversationId, kind: "account.documents.create", status: { in: ["PENDING", "EXECUTED"] } },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, payload: true },
+    });
+    if (!last) return { ok: true, line: "แนบใบเสนอราคา: ยังไม่มีใบในงานนี้ — อนุมัติข้อความนี้ได้หลังอนุมัติใบเสนอราคาแล้ว" };
+    if (last.status === "EXECUTED") {
+      const doc = await resolveQuoteDoc(tenantId, conversationId, {});
+      return { ok: true, line: `แนบใบเสนอราคา ${doc.docNo ? `เลขที่ ${doc.docNo}` : "ฉบับร่าง"} ของ ${doc.buyer}` };
+    }
+    const pl = last.payload && typeof last.payload === "object" ? (last.payload as Record<string, unknown>) : {};
+    const input = pl.input && typeof pl.input === "object" ? (pl.input as Record<string, unknown>) : {};
+    const type = typeof input.type === "string" ? input.type : typeof input.docType === "string" ? input.docType : "";
+    if (type && type !== "QUOTATION") return { ok: false, error: QUOTE_WRONG_TYPE_NOTE };
+    const contactId = typeof input.contactId === "string" ? input.contactId : "";
+    const contact = contactId ? await prisma.accountContact.findFirst({ where: { id: contactId, tenantId }, select: { name: true } }) : null;
+    const buyer = contact?.name ? String(crmSvc.crmApi.maskPiiDeep(contact.name)) : "ลูกค้า (ยังไม่ระบุผู้ติดต่อ)";
+    return { ok: true, line: `แนบใบเสนอราคา ฉบับร่าง (รออนุมัติในงานนี้) ของ ${buyer}` };
+  } catch (e) {
+    if (e instanceof ChatSendNotReady) return documentId ? { ok: false, error: e.message } : { ok: true, line: `แนบใบเสนอราคา: ${e.message}` };
+    throw e;
+  }
+}
+
+const QUOTE_DEAD_STATUSES = new Set(["CANCELLED", "VOIDED", "REJECTED"]);
+export const QUOTE_ISSUE_DENIED_NOTE = "ใบเสนอราคานี้ยังเป็นฉบับร่าง และคุณยังไม่มีสิทธิ์ออกเอกสารบัญชี — ให้ผู้มีสิทธิ์ออกเอกสารเป็นผู้กดอนุมัติข้อความนี้";
+export const QUOTE_DEAD_NOTE = "ใบเสนอราคานี้ถูกยกเลิกหรือปฏิเสธแล้ว — ส่งให้ลูกค้าไม่ได้";
+
+/** SEC S3a.5 ▸ ด่านก่อน claim: ใบต้องมี · เป็นใบเสนอราคาของงานนี้ · ไม่ถูกยกเลิก/ปฏิเสธ · ใบ DRAFT ⇒ ผู้กดออกเอกสารได้ (ไม่ผ่าน = throw ChatSendNotReady → คง PENDING) */
+async function quoteSendGate(tenantId: string, m: MembershipCtx, userId: string | null, conversationId: string, payload: Record<string, unknown>): Promise<void> {
+  const doc = await resolveQuoteDoc(tenantId, conversationId, payload);
+  if (QUOTE_DEAD_STATUSES.has(doc.status)) throw new ChatSendNotReady(QUOTE_DEAD_NOTE);
+  if (doc.status === "DRAFT" && !approverCanIssueDocument(m, tenantId, doc.systemId, userId)) throw new ChatSendNotReady(QUOTE_ISSUE_DENIED_NOTE);
+}
+
+/** SEC S3a.5 ▸ R-Z62 (MINOR): origin ของลิงก์ที่ส่งให้ลูกค้า = โดเมนร้านที่ใช้งานแล้ว (ACTIVE) หรือ origin หลักจาก env — ไม่ใช้ header ของคำขอผู้กด */
+async function customerLinkOrigin(tenantId: string): Promise<string> {
+  const t = await prisma.tenant.findFirst({ where: { id: tenantId }, select: { customDomain: true, domainStatus: true } });
+  if (t?.customDomain && t.domainStatus === "ACTIVE") return `https://${t.customDomain.replace(/\/+$/, "")}`;
+  try {
+    const { env } = await import("@/lib/env");
+    return (env.APP_URL || "https://shark.in.th").replace(/\/+$/, "");
+  } catch {
+    return "https://shark.in.th";
+  }
+}
+
+/**
+ * SEC S3a.5 ▸ บรรทัดอ้างใบของข้อความถึงลูกค้า (หลัง claim) — ใบ DRAFT ⇒ ออกเอกสาร (op `documents.issue` ด้วยสิทธิ์ผู้กด · ใบที่ออกแล้วไม่แตะ) +
+ *   บันทึกการกระทำของเลขา (R-Z62) → ลิงก์ `ensurePublicDocumentLink` ⇒ "\n\nใบเสนอราคา เลขที่ … · ยอด … บาท · ดูใบ: <origin>/doc/<token>"
+ *   ร้านปิดลิงก์สาธารณะ (§9.2 publicView) ⇒ ไม่ใส่ลิงก์ (หน้าจะตอบ 404) · `issuedNo` = เลขที่ใบที่ออกในการอนุมัตินี้ (ไว้บอกเมื่อส่งล้ม)
+ */
+async function quoteLineForSend(tenantId: string, proposalId: string, m: MembershipCtx, userId: string, conversationId: string, payload: Record<string, unknown>): Promise<{ line: string; issuedNo: string | null }> {
+  let doc = await resolveQuoteDoc(tenantId, conversationId, payload);
+  if (QUOTE_DEAD_STATUSES.has(doc.status)) throw new Error(QUOTE_DEAD_NOTE);
+  let issuedNo: string | null = null;
+  if (doc.status === "DRAFT") {
+    await issueDocumentAsApprover(m, tenantId, doc.systemId, doc.id, proposalId, userId);
+    const fresh = await prisma.accountDocument.findFirst({ where: { id: doc.id, tenantId }, select: { docNo: true, status: true, grandTotal: true } });
+    if (!fresh?.docNo) throw new Error("ออกใบเสนอราคาไม่สำเร็จ — ลองอนุมัติอีกครั้ง");
+    doc = { ...doc, docNo: fresh.docNo, status: fresh.status, grandTotal: fresh.grandTotal };
+    issuedNo = fresh.docNo;
+    try {
+      const { recordAction } = await import("./secretary/actions");
+      await recordAction({ tenantId, conversationId, kind: "account.documents.issue", summary: `ออกใบเสนอราคา ${fresh.docNo} ของ ${doc.buyer} (ก่อนส่งให้ลูกค้า)`, approverId: userId, proposalId, entity: { type: "account.document", id: doc.id }, executedAt: new Date() });
+    } catch (e) {
+      await logOps("WARN", "ai", "บันทึกการกระทำ (ออกใบเสนอราคา) ไม่สำเร็จ", { tenantId, detail: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) });
+    }
+  }
+  const no = doc.docNo ? `เลขที่ ${doc.docNo}` : "ฉบับร่าง";
+  const baht = (Number(doc.grandTotal ?? 0) / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const acc = await import("@/lib/modules/account/service");
+  const [pub, settings] = await Promise.all([acc.ensurePublicDocumentLink(tenantId, doc.systemId, doc.id), acc.getSettings(tenantId, doc.systemId)]);
+  const link = pub.ok && settings.doc.publicView.enabled ? ` · ดูใบ: ${await customerLinkOrigin(tenantId)}/doc/${pub.token}` : "";
+  return { line: `\n\nใบเสนอราคา ${no} · ยอด ${baht} บาท${link}`, issuedNo };
+}
+
+/** ส่งใบยังไม่ได้เพราะยังไม่มีใบที่อนุมัติ — executeProposal คืนใบเป็น PENDING (ไม่ใช่ FAILED) ให้กดใหม่ได้ */
+export class ChatSendNotReady extends Error {}
+
+// ── SEC S1.12 ▸ booking_refund_deposit — คืนมัดจำนัดหมายที่ค้างคืน (เส้นสาธิต 3 · R-K16) ──
+//   ทางเดียวกับปุ่ม "คืนมัดจำ" ในคิวมัดจำของร้าน (`refundDepositByShop`: สิทธิ์สดของคนกด + ล็อกแถวนัด + ใบคืนของ POS + audit + event)
+//   เงินออก ⇒ classOfKind = money (ต้องอนุมัติเสมอ) · ไม่ใช่ DESTRUCTIVE (ไม่ลบข้อมูล)
+async function dispatchBookingRefundDeposit(tenantId: string, payload: Record<string, unknown>, userId: string | null | undefined, out?: DispatchOut): Promise<string> {
+  if (!userId) throw new Error("คืนมัดจำผ่านแผนงานอัตโนมัติไม่ได้ — กดอนุมัติข้อเสนอนี้จากแอป");
+  const appointmentId = typeof payload.appointmentId === "string" ? payload.appointmentId.trim() : "";
+  if (!appointmentId) throw new Error("ต้องระบุนัดหมายที่จะคืนมัดจำ");
+  const appt = await prisma.appointment.findFirst({ where: { tenantId, id: appointmentId }, select: { unitId: true } });
+  if (!appt) throw new Error("ไม่พบนัดหมายนี้");
+  const reason = typeof payload.reason === "string" && payload.reason.trim() ? payload.reason.trim() : "คืนมัดจำตามที่อนุมัติผ่านเลขา";
+  const { refundDepositByShop } = await import("@/lib/modules/booking/deposit");
+  const r = await refundDepositByShop({ tenantId, actorUserId: userId }, { unitId: appt.unitId, appointmentId, reason });
+  if (r.ok === false) throw new Error(r.reason);
+  if (out) out.entity = { type: "booking.appointment", id: appointmentId, unitId: appt.unitId }; // SEC S1.8 ◂
+  const baht = (r.info.refundedSatang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return r.duplicated ? "มัดจำของนัดนี้คืนไปแล้ว — ไม่คืนซ้ำ" : `คืนมัดจำ ${baht} บาทเรียบร้อยแล้ว`;
 }
 
 // resolve หน่วยธุรกิจ (BusinessUnit) ที่จะทำรายการ — Phase B1

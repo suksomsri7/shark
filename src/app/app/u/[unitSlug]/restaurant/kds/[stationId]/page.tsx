@@ -4,6 +4,8 @@ import { getSetting, listStations } from "@/lib/modules/restaurant/menu";
 import { stationQueue, expoQueue } from "@/lib/modules/restaurant/kds";
 import { RestaurantKdsBoard, type KdsItemLite } from "@/components/restaurant-kds-board";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { redirect } from "next/navigation"; // POS P2.14 ▸ LEG-2/4 ◂
+import { posLinkedLegacyPage } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS = หน้าเดิมปิด → หน้า POS ◂
 
 type QueueItem = Awaited<ReturnType<typeof stationQueue>>[number];
 
@@ -30,6 +32,11 @@ export default async function KdsStationPage({
 }) {
   const { unitSlug, stationId } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
+  // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS ⇒ หน้าเดิมปิด — ไปหน้าจอครัวของ POS (from=legacy = แถบแจ้งที่หน้า POS) ·
+  //   หน้าขายแบบเดิม (ไม่เปิด registerV2) ยังไม่มีหน้าโต๊ะ/ครัว ⇒ ไปหน้าขาย · ไม่ผูก POS = หน้าเดิมตามเดิม
+  const posDoor = await posLinkedLegacyPage(auth.active.tenantId, unit.id);
+  if (posDoor) redirect(`/app/sys/${posDoor.systemId}/pos/${posDoor.v2 ? "kds" : "register"}?unit=${encodeURIComponent(unit.id)}&from=legacy`);
+  // ◂
   const { tenantId } = auth.active;
   const setting = await getSetting(tenantId, unit.id);
   const isExpo = stationId === "expo";

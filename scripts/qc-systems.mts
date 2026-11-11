@@ -149,6 +149,7 @@ try {
     await del(() => prisma.accountSettings.deleteMany({ where: { tenantId } }));
     await del(() => prisma.couponRedemption.deleteMany({ where: { tenantId } }));
     await del(() => prisma.coupon.deleteMany({ where: { tenantId } }));
+    await del(() => prisma.roomOccupancy.deleteMany({ where: { tenantId } }));
     await del(() => prisma.hotelReservation.deleteMany({ where: { tenantId } }));
     await del(() => prisma.hotelRoom.deleteMany({ where: { tenantId } }));
     await del(() => prisma.hotelRoomType.deleteMany({ where: { tenantId } }));

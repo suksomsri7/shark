@@ -4,6 +4,8 @@ import { trailingAngleAddr } from "./inbound-address"; // CRM C5.5-fix5 ◂
 // ส่งอีเมล — dev fallback: log ออก console (ยังไม่มี Resend key)
 // เมื่อเสียบ RESEND_API_KEY จะส่งจริงผ่าน Resend (verify domain shark.in.th)
 export async function sendEmail(to: string, subject: string, text: string): Promise<void> {
+  // S1.19 (R-S1.19a): บัญชีที่สมัครด้วยเบอร์มีอีเมล placeholder `<เบอร์>@phone.shark.in.th` — ไม่มีกล่องจริง ⇒ ข้ามเงียบ ไม่ยิง Resend
+  if (/@phone\.shark\.in\.th$/i.test(String(to ?? "").trim())) return;
   if (!emailEnabled) {
     console.log(
       `\n┌─ [email:dev] ────────────────────────────────\n│ to:      ${to}\n│ subject: ${subject}\n│ ${text.replace(/\n/g, "\n│ ")}\n└──────────────────────────────────────────────\n`,

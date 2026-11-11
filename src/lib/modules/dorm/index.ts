@@ -1,0 +1,305 @@
+// SVC D.6 ▸ facade โมดูลหอพัก — ชื่อตามสัญญา ledger/svc-briefs/svc-brief-d.6.md §3 §5 §6
+//   (ใบหออื่นเพิ่มบรรทัด export ของตัวเองต่อท้าย — ใบนี้ export เฉพาะของมิเตอร์)
+export {
+  createMeter,
+  listMeters,
+  submitReadings,
+  confirmReading,
+  replaceMeter,
+  meterWalk,
+  meterFlags,
+  heldRooms,
+  periodUsage,
+} from "./meter";
+export type {
+  MeterCtx,
+  MeterFlag,
+  MeterWalk,
+  MeterWalkFloor,
+  MeterWalkRoom,
+  MeterWalkMeter,
+  MeterWalkMain,
+  MeterFlagRow,
+  PeriodUsageRow,
+  SubmitItem,
+  SubmitItemResult,
+  SubmitReadingsResult,
+} from "./meter";
+export { dormAccess } from "./access";
+export { enqueueReading, nextBatch, settleBatch } from "./meter-queue";
+export type { QueuedReading } from "./meter-queue";
+// SVC D.7 ▸ ค่าน้ำไฟทุกโหมด + หน้ากฎหมาย/VAT — สัญญา ledger/svc-briefs/svc-brief-d.7.md §3
+export { recordAuthorityBill, utilityCharges, utilityBillingGate, acceptUtilityLegalWarn, authorityTariffFor, parseBahtToSatang } from "./utility";
+export type {
+  UtilityCtx,
+  UtilityKind,
+  UtilityChargeRow,
+  UtilityGroup,
+  UtilityCharges,
+  UtilityGate,
+  UtilityGateItem,
+  UtilityLegalGroup,
+  UtilityLegalOutcome,
+  RecordAuthorityBillResult,
+  AuthorityTariff,
+} from "./utility";
+export { setDormLegalMode, dormLawModel } from "./law";
+export type { DormLawModel, DormLawBill } from "./law";
+
+// ── SVC D.5 ▸ ผู้เช่า · สัญญา · เงินประกัน — ชื่อตามสัญญา ledger/svc-briefs/svc-brief-d.5.md §3 §5 (บล็อกนี้ของใบ D.5 เท่านั้น) ──
+export {
+  // createLease · moveIn ⇒ รุ่น 2 อาร์กิวเมนต์ในบล็อก SVC D.4 ข้างล่าง (X17: อาร์กิวเมนต์นำเข้าไม่ออกนอกโมดูล)
+  findTenantCandidates,
+  receiveBookingFee,
+  signLease,
+  addLeaseFiles,
+  leaseFileLinks,
+  getLease,
+  listLeases,
+  leaseContract,
+  cancelLease,
+  updateLeaseOccupants,
+} from "./lease";
+export type { LeaseCtx, LeaseDetail, LeaseRow, LeaseTab, LeaseList } from "./lease";
+export { leaseAccess } from "./lease-access";
+// ◂ SVC D.5
+
+// ── SVC D.8 ▸ รอบบิลรายเดือน (ภาพ หอ 04) — ชื่อตามสัญญา ledger/svc-briefs/svc-brief-d.8.md §3 (บล็อกนี้ของใบ D.8 เท่านั้น) ──
+export {
+  prepareBillRun,
+  setBillExtraLines,
+  releaseHeldBill,
+  scheduleBillRun,
+  sendBillRun,
+  adjustSentBill,
+  billRunModel,
+  getBill,
+  billRunCsv,
+  meterEstimates,
+  runDormBillingJobs,
+} from "./billing";
+export type {
+  BillingCtx,
+  BillRunStatus,
+  BillGateItem,
+  BillRunGate,
+  BillRunModel,
+  BillRunRow,
+  BillPreview,
+  MeterEstimate,
+  ExtraLineInput,
+  PrepareBillRunResult,
+  SendBillRunResult,
+} from "./billing";
+// ◂ SVC D.8
+// ── SVC D.13 ▸ หน้าแรกหอ · ตั้งนโยบาย/สิทธิ์ · ขอบเขตอาคาร — สัญญา ledger/svc-briefs/svc-brief-d.13.md §3–§6 (บล็อกนี้ของใบ D.13 เท่านั้น) ──
+export { dormHomeModel } from "./home";
+export type { DormHomeModel, DormHomeFinance, DormHomeTodoKind } from "./home";
+export { dormBuildingScope, dormVisibleRoomsFor } from "./scope";
+export type { DormBuildingScope } from "./scope";
+export { loadDormPolicySettings, applyDormRolePreset, setDormBuildingAssignment } from "./policy";
+export type { DormPolicyModel } from "./policy";
+export { DORM_ROLE_ROWS, DORM_ROLE_COLUMNS, dormPresetPermissions } from "./access";
+export type { DormPresetRole, DormRoleColumn, DormRoleCell, DormRoleRow } from "./access";
+// ◂ SVC D.13
+// ── SVC D.3 ▸ ใบกำกับภาษีเต็มรูปของหอ (ม.86/4) — สัญญา ledger/svc-briefs/svc-brief-d.3.md §3.2–§3.4 (บล็อกนี้ของใบ D.3 เท่านั้น) ──
+export { billTaxInvoice, issueBillTaxInvoice, reissueBillTaxInvoice } from "./tax-invoice";
+export type { TaxInvoiceView } from "./tax-invoice";
+// ◂ SVC D.3
+// ── SVC D.11 ▸ เตือน · ทวง · ค่าปรับ — สัญญา ledger/svc-briefs/svc-brief-d.11.md §3–§9 (บล็อกนี้ของใบ D.11 เท่านั้น) ──
+export { lateFeeLedger, waiveLateFee, applyLateFeeWaiverApproval } from "./latefee";
+export type { LateFeeCtx, LateFeeLedger, LateFeeLedgerItem, WaiverStatus, WaiveResult, ApplyWaiverResult, AutoLateFeeEntry } from "./latefee";
+export { runDormDunningJobs, sendDunningNow, setPaymentPromise, overdueModel, terminationNotice } from "./dunning";
+export type { OverdueModel, OverdueRow, SendDunningResult, TerminationNotice, DunningJobResult } from "./dunning";
+// ◂ SVC D.11
+// ── SVC D.9 ▸ ตัวอ่านฝั่งผู้เช่า (พอร์ทัลลิงก์เซ็น · LINE) — สัญญา ledger/svc-briefs/svc-brief-d.9.md §1 §3.0 (บล็อกนี้ของใบ D.9 เท่านั้น) ──
+export {
+  portalLiveLease,
+  portalLiveLeasesOfParty,
+  portalCanonicalParty,
+  portalLeaseOfUnit,
+  portalBillVisible,
+  portalLeaseBills,
+  portalBillForSend,
+  portalBillLiveState,
+  portalSlipKeyExists,
+  portalPartyName,
+  portalFileAssets,
+  portalActiveUnitIds,
+  dormStaffGate,
+  portalPeriodLabel,
+  portalDateLabel,
+  portalBaht,
+} from "./portal";
+export type { PortalLeaseRow, PortalBillRow, PortalSlipStatus } from "./portal";
+// ◂ SVC D.9
+// SVC D.10 ▸ ยอดค้างนิยามเดียว (A11) ◂
+export { billBalances, billPaidSatang } from "./balance";
+export type { DormBillBalance } from "./balance";
+// ── SVC D.12 ▸ ย้ายออก · ย้ายห้อง · ต่อสัญญา + คืนเงินประกัน — สัญญา ledger/svc-briefs/svc-brief-d.12.md §3–§5 (บล็อกนี้ของใบ D.12 เท่านั้น) ──
+export {
+  giveMoveOutNotice,
+  cancelMoveOut,
+  addMoveOutFiles,
+  recordMoveOutInspection,
+  moveOutSummary,
+  moveOutModel,
+  sendMoveOutSummary,
+  reopenMoveOutSummary,
+  settleMoveOut,
+  runDormMoveOutJobs,
+} from "./moveout";
+export type { MoveOutCtx, SummaryLine, MoveOutSummary, MoveOutModel, MoveOutStatus } from "./moveout";
+export { transferRoom, renewLease, depositLeaseIdOf, leaseChangeModel } from "./lease-change";
+export type { LeaseChangeCtx, LeaseChangeModel } from "./lease-change";
+export { moveOutAccess } from "./moveout-access";
+// ◂ SVC D.12
+// ── SVC D.4 ▸ นำเข้า Excel/CSV (ภาพ หอ 12) — สัญญา ledger/svc-briefs/svc-brief-d.4.md §3 §4 (บล็อกนี้ของใบ D.4 เท่านั้น) ──
+export { uploadImport, guessColumns, previewImport, createImport, undoImport, getImport, listImports, importIssuesCsv } from "./import";
+export type {
+  ImportCtx,
+  ImportOptions,
+  ImportDecision,
+  ImportIssue,
+  ImportPlan,
+  ImportSummary,
+  ImportStatus,
+  ImportView,
+  ImportPreviewResult,
+  ImportPreviewRow,
+  ImportRowAction,
+  ImportUndone,
+} from "./import";
+export { parseImportFile, neutralizeCell, parseThaiDate, parseMoneySatang, headerGuess, importTemplateCsv, IMPORT_FIELDS } from "./import-parse";
+export type { ImportFieldKey, ImportMapping, ParsedImportFile } from "./import-parse";
+export { defaultColumnGuesser } from "./import-ai";
+export type { ImportColumnGuesser } from "./import-ai";
+// X17 ▸ facade ส่งต่อ createLease/moveIn แบบ 2 อาร์กิวเมนต์เท่านั้น — อาร์กิวเมนต์ภายในของงานนำเข้า (ข้ามด่านลงชื่อ/รูป) ใช้ได้เฉพาะ import.ts ในโมดูล
+import { createLease as leaseCreate, moveIn as leaseMoveIn } from "./lease";
+export function createLease(ctx: Parameters<typeof leaseCreate>[0], input: Parameters<typeof leaseCreate>[1]): ReturnType<typeof leaseCreate> {
+  return leaseCreate(ctx, input);
+}
+export function moveIn(ctx: Parameters<typeof leaseMoveIn>[0], input: Parameters<typeof leaseMoveIn>[1]): ReturnType<typeof leaseMoveIn> {
+  return leaseMoveIn(ctx, input);
+}
+// ◂ SVC D.4
+// ── SVC D.18 ▸ พัสดุหอ — สัญญา ledger/svc-briefs/svc-brief-d.18.md §3 (บล็อกนี้ของใบ D.18 เท่านั้น) ──
+export {
+  PARCEL_PICKUP_PURPOSE,
+  PARCEL_RATE,
+  PARCEL_NF_REASON,
+  receiveParcel,
+  listParcels,
+  pickupParcel,
+  returnParcel,
+  parcelPickupUrl,
+  sendParcelNotice,
+  onParcelReceived,
+  runDormParcelJobs,
+  loadParcelPickup,
+  parcelsForLeases,
+  parcelRoomsFor,
+} from "./parcel";
+export type { ParcelCtx, ParcelFile, ParcelFileDeps, ParcelFailCode, ParcelFail, ParcelStatus, ParcelRow, ParcelList, ParcelPickupView } from "./parcel";
+// ◂ SVC D.18
+// ── SVC D.17 ▸ ประกาศถึงผู้เช่า + อ่านแล้ว — สัญญา ledger/svc-briefs/svc-brief-d.17.md §3.1 §3.2 (บล็อกนี้ของใบ D.17 เท่านั้น) ──
+export {
+  createDormAnnouncement,
+  updateDormAnnouncement,
+  previewDormAnnouncement,
+  publishDormAnnouncement,
+  dormAnnouncementStats,
+  dormAnnounceModel,
+  // ตัวอ่านไม่มีผู้กระทำ — platform/dorm-announce ใช้หลังตรวจ token/event/ด่านพนักงานแล้ว
+  announceStaffGate,
+  announceForSend,
+  announceRecipients,
+  announceTemplate,
+  announceSendBlocked,
+  announceStampLogParty,
+  announceVisibleForLease,
+  announceMarkRead,
+  announceDateLabel,
+  announceResendCandidates,
+  announceAuditOnce,
+  ANNOUNCE_BLOCKED_ACTION,
+  ANNOUNCE_IDLE_ACTION,
+} from "./announce";
+export type {
+  AnnounceAudience,
+  AnnounceCtx,
+  AnnounceFail,
+  AnnounceStats,
+  DormAnnouncementRow,
+  DormAnnounceModel,
+  AnnounceForSend,
+  AnnounceRecipient,
+  AnnounceLeaseRef,
+  AnnounceVisibleRow,
+  AnnounceCursor,
+} from "./announce";
+// ◂ SVC D.17
+// ── SVC D.16 ▸ แจ้งซ่อม → บอร์ดงาน → LINE — สัญญา ledger/svc-briefs/svc-brief-d.16.md §3 (บล็อกนี้ของใบ D.16 เท่านั้น) ──
+export {
+  REPAIR_SOURCE_PREFIX,
+  REPAIR_RATE,
+  REPAIR_NF_REASON,
+  repairTicketNo,
+  submitPortalRepair,
+  loadPortalRepairs,
+  ratePortalRepair,
+  repairPortalUrl,
+  listDormRepairs,
+  dormRepairJob,
+  completeDormRepair,
+  linkRepairCard,
+  applyRepairCardState,
+  sendRepairDoneNotice,
+  onRepairDone,
+  runDormRepairJobs,
+} from "./repair";
+export type {
+  RepairStatus,
+  RepairCtx,
+  RepairFile,
+  RepairFileDeps,
+  RepairFailCode,
+  RepairFail,
+  RepairRow,
+  RepairJob,
+  RepairList,
+  PortalRepairItem,
+  PortalRepairView,
+} from "./repair";
+// ◂ SVC D.16
+// ── SVC D.14 ▸ AI อ่านเลขมิเตอร์จากรูป (ระบบเสนอ · คนยืนยัน) — สัญญา ledger/svc-briefs/svc-brief-d.14.md §3 (บล็อกนี้ของใบ D.14 เท่านั้น) ──
+export { proposeMeterReading, meterProposals, meterAiStatus, defaultMeterReader } from "./meter-ai";
+export type { MeterPhotoReader, MeterProposal, MeterAiManualReason } from "./meter-ai";
+export { previewReading } from "./meter";
+// ◂ SVC D.14
+// ── SVC D.19 ▸ รายงานหลักหอ (ลูกหนี้ตามอายุ · อัตราเข้าพัก · รายได้แยกประเภท · CSV) — สัญญา ledger/svc-briefs/svc-brief-d.19.md §3 (บล็อกนี้ของใบ D.19 เท่านั้น) ──
+export { DORM_REPORT_NF_REASON, DORM_REVENUE_TYPES, dormAgingReport, dormOccupancyReport, dormRevenueReport, dormReportModel, dormReportCsv } from "./report";
+export type {
+  DormRevenueType,
+  DormReportCtx,
+  DormReportFailCode,
+  DormReportFail,
+  DormAgingBucket,
+  DormAgingBuckets,
+  DormAgingBill,
+  DormAgingRow,
+  DormAgingReport,
+  DormOccupancyMonth,
+  DormOccupancyReport,
+  DormMoney3,
+  DormRevenueMonth,
+  DormRevenueReport,
+  DormReportRange,
+  DormReportModel,
+  DormReportCsvKind,
+} from "./report";
+// ◂ SVC D.19
+// ── SVC D.15-K2 ▸ ตั้งค่าอาคาร · ชั้น · ห้อง · ประเภทห้อง (จอ /dorm/settings/rooms · บล็อกนี้ของใบ D.15-K เท่านั้น) ──
+export { DORM_SETUP_NF_REASON, dormSetupModel, saveDormBuilding, removeDormBuilding, saveDormRoomType, archiveDormRoomType, saveDormRoom, archiveDormRoom } from "./setup";
+export type { DormSetupCtx, DormSetupModel, DormSetupResult } from "./setup";
+// ◂ SVC D.15-K2

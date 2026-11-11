@@ -1,0 +1,179 @@
+"use server";
+// settings-actions.ts — server actions ของหน้าตั้งค่า POS (P1.18 S) · เปลือกบาง: session → ctx/actor → settings-general / settings-overview / payment-settings
+//
+// 🔴 ไฟล์ "use server" export ได้เฉพาะ async function — ชนิดข้อมูลอยู่ที่ settings-shared.ts / settings-overview.ts
+// 🔴 คำปฏิเสธ "คืน" เสมอ {ok:false, code, message} (Next ปิดข้อความของ error ที่โยนออกจาก action ใน production)
+// 🔴 ร้าน + บทบาท + สิทธิ์มาจาก membership ของ SESSION เท่านั้น · systemId/unitId จากคำขอถูกตรวจซ้ำในตัวเขียน/ตัวอ่าน
+
+import { unstable_rethrow } from "next/navigation";
+import { requireTenant } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
+import { posMembership } from "./access";
+import { posSettingsHistory, updatePosDiscountCaps, updatePosGeneralSettings, updatePosStaffCommission, updatePosStaffSettings, updatePosUnitStockPolicy, type PosStaffCommissionResult, type PosStaffSettingsResult } from "./settings-general"; // POS P3.5U ▸ + ตัวเขียนค่าตั้งพนักงาน × HR ◂
+import { posSettingsOverview, posStaffOverview, type PosSettingsOverviewResult, type PosStaffOverviewResult } from "./settings-overview";
+import { posCommissionCatalog, type PosCommissionCatalogResult } from "./settings-overview"; // POS P4.3 ▸ F-P3-18 ◂
+import { updatePosUnitPromptpay, type PosUnitPromptpayResult } from "./payment-settings";
+import type { PosDiscountCapsResult, PosGeneralSettingsResult, PosSettingsHistoryResult, PosSettingsRefusal, PosUnitStockPolicyResult } from "./settings-shared";
+
+async function session() {
+  const auth = await requireTenant();
+  const m = posMembership(auth.active);
+  return { tenantId: auth.active.tenantId, m, actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } };
+}
+/** ด่านแรกระดับร้าน (F6.1): ผ่านถ้ามีอย่างน้อยหนึ่งคีย์ · ด่านจริงต่อสาขา/ทุกสาขาอยู่ในตัวเขียน/ตัวอ่าน */
+function gate(m: ReturnType<typeof posMembership>, actions: string[]): boolean {
+  for (const action of actions) {
+    try {
+      assertCan(m, { module: "pos", action });
+      return true;
+    } catch {
+      // ลองคีย์ถัดไป
+    }
+  }
+  return false;
+}
+const DENIED: PosSettingsRefusal = { ok: false, code: "PERMISSION_DENIED", message: "บัญชีนี้ยังไม่มีสิทธิ์ตั้งค่าหน้าขาย" };
+const MANAGE = ["pos.settings.manage"];
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+function unexpected(where: string, e: unknown): PosSettingsRefusal {
+  console.error(`[pos/settings-actions] ${where}`, e);
+  return { ok: false, code: "UNKNOWN", message: "เกิดข้อผิดพลาด — ลองอีกครั้ง" };
+}
+
+/** R2 ภาพรวมค่าตั้ง (แท็บทั่วไป) */
+export async function posSettingsOverviewAction(args: { systemId: string; unitId: string }): Promise<PosSettingsOverviewResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, ["pos.sale.create", "pos.settings.manage"])) return DENIED;
+    return await posSettingsOverview({ tenantId: s.tenantId, systemId: str(args?.systemId), unitId: str(args?.unitId) }, s.actor, {});
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("overview", e);
+  }
+}
+
+/** R3 แก้ค่าตั้งทั่วไป */
+export async function updatePosGeneralSettingsAction(args: { systemId: string; patch: unknown }): Promise<PosGeneralSettingsResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, MANAGE)) return DENIED;
+    return await updatePosGeneralSettings({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, args?.patch);
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("general", e);
+  }
+}
+
+/** R4 แก้เพดานส่วนลด */
+export async function updatePosDiscountCapsAction(args: { systemId: string; patch: unknown }): Promise<PosDiscountCapsResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, MANAGE)) return DENIED;
+    return await updatePosDiscountCaps({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, args?.patch);
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("caps", e);
+  }
+}
+
+/** R5 นโยบายขายเกินสต็อกของสาขา */
+export async function updatePosUnitStockPolicyAction(args: { systemId: string; unitId: string; oversellPolicy: string }): Promise<PosUnitStockPolicyResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, MANAGE)) return DENIED;
+    return await updatePosUnitStockPolicy({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, { unitId: args?.unitId, oversellPolicy: args?.oversellPolicy });
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("unitStock", e);
+  }
+}
+
+/** R9 ประวัติการเปลี่ยน (หน้าละ 20 · cursor จากหน้าก่อน) */
+export async function posSettingsHistoryAction(args: { systemId: string; cursor?: string | null }): Promise<PosSettingsHistoryResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, MANAGE)) return DENIED;
+    return await posSettingsHistory({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, { cursor: args?.cursor ?? null });
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("history", e);
+  }
+}
+
+/** มติ Q9 เลขพร้อมเพย์รายสาขา (เจ้าของเท่านั้น · null = ลบ) */
+export async function updatePosUnitPromptpayAction(args: { systemId: string; unitId: string; promptpayId: string | null }): Promise<PosUnitPromptpayResult> {
+  try {
+    const s = await session();
+    // POS P5.2 ▸ CD-P52-F5: ไม่มีคีย์ตั้งค่า = PERMISSION_DENIED (เดิม SETTINGS_SECTION_LOCKED บอกสถานะล็อกแก่คนไม่มีสิทธิ์) · ผู้มีคีย์ที่ไม่ใช่เจ้าของยังได้ SECTION_LOCKED จากตัวเขียน ◂
+    if (!gate(s.m, ["pos.settings.payment", "pos.settings.manage"])) return DENIED;
+    return await updatePosUnitPromptpay({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, {
+      unitId: str(args?.unitId),
+      // F4: ส่งค่าตามที่ได้รับ (ไม่แปลงเป็น null) — ค่าไม่ใช่ string ⇒ ตัวเขียนตอบ VALIDATION · null ที่ส่งมาตรง ๆ เท่านั้นที่ลบเลขของสาขา
+      promptpayId: args?.promptpayId as string | null,
+    });
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("unitPromptpay", e);
+  }
+}
+
+/** R10 แท็บพนักงานและสิทธิ์ของสาขา (pos.settings.manage ที่สาขา) */
+export async function posStaffOverviewAction(args: { systemId: string; unitId: string }): Promise<PosStaffOverviewResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, MANAGE)) return DENIED;
+    return await posStaffOverview({ tenantId: s.tenantId, systemId: str(args?.systemId), unitId: str(args?.unitId) }, s.actor, {});
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("staff", e);
+  }
+}
+
+// POS P3.5U ▸ มติ 6: แท็บพนักงาน (17C) — ด่านตารางงาน + ถามลงเวลา (เจ้าของร้านเท่านั้น · ตัวเขียนตรวจบทบาทซ้ำ) ·
+//   อัตราค่าคอมฯ พนักงานขาย (เจ้าของ หรือผู้ดูเงินเดือน canViewPayroll · ตัวเขียนตัดสิน — ไม่ผูกคีย์ pos.* ที่ action) ·
+//   คำปฏิเสธคืน {ok:false, code, message, field?} เสมอ (จอแสดงตาม field) ◂
+/** R3 R12 ด่านตารางงาน + ถามลงเวลาหลังเปิด/ปิดกะ */
+export async function updatePosStaffSettingsAction(args: { systemId: string; patch: unknown }): Promise<PosStaffSettingsResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, MANAGE)) return DENIED;
+    return await updatePosStaffSettings({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, args?.patch);
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("staffSettings", e);
+  }
+}
+
+/** R6 อัตราค่าคอมฯ พนักงานขาย */
+export async function updatePosStaffCommissionAction(args: { systemId: string; patch: unknown }): Promise<PosStaffCommissionResult> {
+  try {
+    const s = await session();
+    return await updatePosStaffCommission({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, args?.patch);
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("staffCommission", e);
+  }
+}
+// ◂ POS P3.5U
+
+// POS P4.3 ▸ F-P3-18 · CD-P43-O4: แคตตาล็อก (หมวด/สินค้า/ตัวแปร/สินค้าสาขาอื่น) ของการ์ดค่าคอมฯ 17C —
+//   สิทธิ์ = เจ้าของ หรือผู้ดูเงินเดือน canViewPayroll (กติกาเดียวกับ updatePosStaffCommission · ตัวอ่านตัดสิน — ไม่ผูกคีย์ pos.* ที่ action) ·
+//   แทน registerCatalogAction ที่ต้องมีสิทธิ์ขาย · ร้าน/ผู้ใช้จาก SESSION · systemId/unitId ตรวจซ้ำในตัวอ่าน · คำปฏิเสธคืนเป็นข้อมูล ◂
+/** ด่านแรกระดับร้าน (F6.1) ของงานค่าคอมฯ/เงินเดือน: เจ้าของ หรือคีย์ hr.payroll.read ชัดแจ้ง — กติกาเดียวกับ canViewPayroll (core/rbac.ts) · ตัวอ่านตัดสินซ้ำด้วย canViewPayroll */
+const PAYROLL_READ_KEY = "hr.payroll.read";
+function payrollGate(m: ReturnType<typeof posMembership>): boolean {
+  return m.role === "OWNER" || m.permissions[PAYROLL_READ_KEY] === true;
+}
+const PAYROLL_DENIED: PosSettingsRefusal = { ok: false, code: "PERMISSION_DENIED", message: "แคตตาล็อกค่าคอมฯ เจ้าของร้านหรือผู้ดูเงินเดือนเท่านั้นที่เปิดได้" };
+/** F-P3-18 แคตตาล็อกของการ์ดค่าคอมฯ (อ่านอย่างเดียว · ชื่อ + id) */
+export async function posCommissionCatalogAction(args: { systemId: string; unitId: string; q?: string; limit?: number }): Promise<PosCommissionCatalogResult> {
+  try {
+    const s = await session();
+    if (!payrollGate(s.m)) return PAYROLL_DENIED;
+    return await posCommissionCatalog({ tenantId: s.tenantId, systemId: str(args?.systemId), unitId: str(args?.unitId) }, s.actor, { q: args?.q, limit: args?.limit });
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("commissionCatalog", e);
+  }
+}
+// ◂ POS P4.3

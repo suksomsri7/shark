@@ -18,6 +18,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
 import { TESTID_RE, ANY_TESTID_RE, normId, globRe, tagAround, isInteractive, lineOf } from "./lib/crm-testid-scan.mjs";
+import { runPosFitness } from "./fitness-pos.mjs"; // POS P0.1 ▸ ด่าน F15.1–F15.4 ของ RUN POS ◂
 
 const ROOT = resolve(import.meta.dirname, "..");
 
@@ -226,7 +227,11 @@ chk(
 // ═══════════════════════════════════════════════════════════════
 console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet — ห้ามเพิ่ม) ──");
 
-const BASELINE = { f5RawPrisma: 45 }; // 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+// P1.5 held-cart.ts — new POS module (45 → 46)
+// SVC R0.8 rooms/occupancy.ts (46 → 47): `expireHolds` ไล่ hold หมดเวลา "ข้ามร้าน" จาก minute-job ก่อนรู้ tenant (เหมือน inventory sweep ·
+//   UPDATE มีเงื่อนไข active + FOR UPDATE SKIP LOCKED) + `withRoomTx` เปิดธุรกรรมให้ rooms/service.ts — ไฟล์เดียวของโมดูล rooms ที่ import prisma ดิบ
+//   (service.ts/index.ts ใช้ tenantDb) · ทุกคำสั่งเขียนอื่นผูก tenantId+unitId ตรง (X1 · oracle qc-svc-r0.8 C-8/C-9/R-2/R-9)
+const BASELINE = { f5RawPrisma: 50 }; // SVC B.6: booking/devices.ts deviceByToken (resolve token ก่อนรู้ tenant · แบบ forms/getPublicForm) (49→50) · SVC B.4: queue-line.ts + planner-run.ts need FOR UPDATE SKIP LOCKED / advisory locks / cross-tenant tick (47→49) · 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
@@ -250,6 +255,7 @@ const ALLOWED_EDGES = new Set([
   "booking→pos", // chokepoint (WO-Wave3-A): มัดจำ booking ปิดเงินผ่าน pos.createSale DEPOSIT (C-2)
   "pos→member", "pos→point", "pos→system",
   "restaurant→member", "restaurant→pos", "restaurant→system",
+  "pos→restaurant", // POS P2.4 ▸ โหมดโต๊ะ: modules/pos เรียกข้อมูลร้านอาหารผ่าน facade restaurant/index.ts เท่านั้น (import() แบบ lazy · กันวงโหลด restaurant→pos) ◂
   "reward→point",
   // chokepoint ที่อนุมัติ (BLUEPRINT_CONNECTIONS §3.2): เงินทุกบาทผ่าน POS → Account
   // — อนุมัติโดย Fable 2026-07-16 สำหรับ WO-0002 (contract 2.4) · import ได้เฉพาะ account/index
@@ -274,6 +280,19 @@ const ALLOWED_EDGES = new Set([
   "ticket→system",  // resolve POS/POINT ที่ผูก unit (เหมือน restaurant→system, booking→system)
   "hotel→pos",
   "hotel→system",
+  // SVC R0.8 (ใบ svc-brief-r0.8 §1 · §4): โรงแรมถือห้องจริง (RoomOccupancy) ใน tx เดียวกับการจอง ผ่าน facade `@/lib/modules/rooms` เท่านั้น ·
+  //   ทิศทางเดียว (rooms ไม่ import โมดูลใด — ใช้ได้แค่ @/lib/core/*)
+  "hotel→rooms",
+  // SVC D.2 (ใบ svc-brief-d.2 §1): หอพักออกใบแจ้งหนี้/รับชำระ/เงินประกันผ่าน facade `@/lib/modules/account` เท่านั้น (dorm/account-bridge.ts = import type ·
+  //   ผู้เรียกจริงในใบหน้าจอหอภายหลัง) · ทิศทางเดียว (account ไม่ import dorm — ข้อสอบ qc-svc-d.2 F-5)
+  "dorm→account", // SVC D.8: รอบบิลออกใบแจ้งหนี้/ใบลด-เพิ่มหนี้/ลิงก์จ่ายผ่าน facade นี้ (billing.ts) · SVC D.3: ใบกำกับภาษีเต็มรูป (tax-invoice.ts)
+  // SVC D.6: มิเตอร์หอ — ห้องว่างผ่าน facade `@/lib/modules/rooms` (occupancyRange/listBuildings) + การ์ดบอร์ดงานผ่านประตูเดียว `kanban/links.createCardFromExternal`
+  "dorm→rooms",
+  "dorm→kanban",
+  // SVC D.5: ผู้เช่า/สัญญา — ผู้เช่า = Party ผ่าน facade `@/lib/modules/party` (findOrCreate · resolveCanonical) ·
+  //   ข้ามคำเตือนกฎหมายในสัญญาผ่าน facade `@/lib/modules/approval` (resolvePolicy · submitForApproval · requestStatuses) — ทิศทางเดียว
+  "dorm→party",
+  "dorm→approval",
   // chokepoint (2.4 ฝั่งเอกสาร): CRM ออกใบเสนอราคาผ่าน account facade (WO-0010)
   "crm→account",
   // marketing อ่าน segment ลูกค้าจาก member (WO-0013)
@@ -305,6 +324,9 @@ const ALLOWED_EDGES = new Set([
   // chokepoint (WO-0049b): PO/ใบลา เข้าสายอนุมัติผ่าน approval facade
   "inventory→approval",
   "hr→approval",
+  "pos→hr", // POS P3.5 ▸ C-8 v2 (มติ 5 11): ตารางงาน/ลา/ลงเวลา/ส่งค่าคอมฯ เข้างวดเงินเดือน — import ได้เฉพาะ `@/lib/modules/hr` (index) จาก pos/hr-link.ts + hr-link-actions.ts (ข้อสอบ qc-pos-p3.5 ST1) ◂
+  "pos→approval", // POS P1.15 ▸ void/คืนเงิน/ส่วนลดเกินสิทธิ์เข้าสายอนุมัติผ่าน facade `@/lib/modules/approval` เท่านั้น (มติผู้คุมงาน 6) ◂
+  "pos→reward", // POS P1.12 ▸ ส่งมอบของรางวัลที่เคาน์เตอร์ (register-member.ts → facade `@/lib/modules/reward` เท่านั้น: resolveRewardCtxForUnit · fulfilV2 · มติผู้คุมงาน 7 · รีวิว F4) ◂
   // contract C-2 (13 ส.ค. 2026): availability = ของ HR — ระบบจองถาม hr.employeesOnLeave
   // ลาอนุมัติแล้ว → ช่องจองของช่างคนนั้นปิดเอง · ห้าม copy สูตรวันลาไปไว้ในโมดูลจอง
   "booking→hr",
@@ -427,6 +449,7 @@ const ALLOWED_EDGES = new Set([
   // CRM C1.1 ▸ partyId ทุกระบบ (C11 · พิมพ์เขียว 20-crm-v2 §4.1): จุดสร้างแถวธุรกรรม 9 จุดเรียก `party.safeFindOrCreate`
   //   ด้วยชื่อ/เบอร์/อีเมลที่แถวมีอยู่แล้ว (นอก transaction ธุรกิจ · ไม่มีวัน throw) — ทิศเดียว <โมดูล>→party
   "booking→party", // Appointment (ชื่อ+เบอร์ลูกค้า)
+  "booking→chat", // SVC B.6 ▸ public-line เรียก chat.issueLinkCode (QUEUE_TICKET deepLink ตู้/หน้าบัตร) ผ่าน facade · lazy import
   "shop→party", // ShopOrder (ชื่อ+เบอร์ผู้สั่ง)
   "rental→party", // RentalBooking (ชื่อ+เบอร์ผู้เช่า)
   "queue→party", // QueueTicket (ชื่อ/เบอร์/อีเมลที่กรอก — ไม่กรอกเบอร์ = ไม่ผูก)
@@ -442,6 +465,9 @@ const ALLOWED_EDGES = new Set([
   //   🔴 ทิศเดียวและ **อ่านอย่างเดียว**: facade ทั้งสามใบไม่มีคำสั่งเขียนเลย (ข้อสอบ C2.4-S4.3 เทียบแถวก่อน/หลัง) ·
   //      CRM โหลดแบบ lazy import ตอนใช้ (booking/service → pos → account → … → crm facade = วงโหลดถ้า import หัวไฟล์)
   "crm→booking",
+  // SVC B.4 ▸ booking→queue : บัตร P/A ของโหมดแถวเดียวออก/เดินตามงานใน tx เดียวกับสถานะนัด (`queue/service.issueTicketTx` · `moveTicketTx` ·
+  //   `ensureSystemQueueType`) · ทิศเดียว — queue ไม่ import booking (ข้อสอบ qc-svc-b.4 ST-6) ◂
+  "booking→queue",
   "crm→clinic",
   "crm→school",
   // ◂ CRM C2.4
@@ -458,6 +484,11 @@ const ALLOWED_EDGES = new Set([
   "crm→meeting",
   "crm→kb",
   // ◂ CRM C3.4
+  // POS P1.1b ▸ G2 ประตูเดิมของคลัง/บัญชีส่ง tx ให้ `pos/catalog-legacy` (ผู้เขียนแคตตาล็อกคนที่สอง · ตารางเดิม + PosProduct ในธุรกรรมเดียว)
+  //   + server action ของคลังแปลง CatalogError (BUSY ฯลฯ) เป็น ?err= (G11) — ทิศเดียว ไม่มีโค้ด POS เรียกกลับประตูเดิม (G4c · ข้อสอบ S2.33)
+  "inventory→pos",
+  "account→pos",
+  // ◂ POS P1.1b
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
@@ -1139,6 +1170,51 @@ console.log("\n── F13: ทะเบียน API (op ทุกตัวม�
   );
 }
 
+// POS P2.13 ▸ F13 (ต่อ): ทะเบียน API ของระบบขายหน้าร้าน — เงื่อนไขเดียวกับบัญชี/บอร์ดงาน/สมาชิก/CRM
+//   F13.13 ทุก op มี test id ที่อ้างถึงจริงใน scripts/qc-pos-*.mts · F13.14 docs/api/POS-API.md ตรงกับ generator (gen-pos-api-docs · import ฟังก์ชันบริสุทธิ์)
+//   F13.15 op ที่ประกาศ tool = ชื่อในสกิล `sales` (ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 F13.15) — สลับ tool แล้ว: 11 op · เดิม "ไม่มี op ไหนประกาศ tool" มติ 7 P2.13)
+//   🔴 โฟลเดอร์สกิล `.claude/skills/shark-pos-api` อยู่ใน .gitignore — `--check` ของ generator ตรวจเอง · ที่นี่เทียบเฉพาะ docs/api/POS-API.md ◂
+{
+  const { POS_OPS } = await import("@/lib/modules/pos/api/registry");
+  const posQcSrc = walk(join(ROOT, "scripts"), (f) => /qc-pos-.*\.mts$/.test(f))
+    .map((f) => readFileSync(f, "utf8"))
+    .join("\n");
+  const untestedPos = POS_OPS.filter((o) => !o.test || !posQcSrc.includes(`"${o.test}"`));
+  chk(
+    "F13.13",
+    `ทุก op ของระบบขายหน้าร้าน (${POS_OPS.length}) มี test id ที่อ้างถึงจริงใน scripts/qc-pos-*.mts`,
+    untestedPos.length === 0,
+    untestedPos.length ? `${untestedPos.length} op ไม่มีข้อสอบครอบ: ${untestedPos.map((o) => `${o.id}(test=${o.test || "-"})`).join(", ")}` : "ครบ",
+  );
+  let posDocsOk = true;
+  let posDocsDetail = "ตรง";
+  try {
+    const { renderDocs } = await import("./gen-pos-api-docs.mjs");
+    const docPath = join(ROOT, "docs", "api", "POS-API.md");
+    const onDisk = existsSync(docPath) ? readFileSync(docPath, "utf8") : "";
+    posDocsOk = onDisk === renderDocs();
+    if (!posDocsOk) posDocsDetail = "docs/api/POS-API.md ไม่ตรงกับทะเบียน — รัน: pnpm exec tsx scripts/gen-pos-api-docs.mts";
+  } catch (e) {
+    posDocsOk = false;
+    posDocsDetail = e instanceof Error ? e.message.slice(0, 300) : String(e);
+  }
+  chk("F13.14", "docs/api/POS-API.md ตรงกับ generator (ไม่ stale)", posDocsOk, posDocsDetail);
+  // ORACLE-EDIT ผู้คุม POS 17 ต.ค. (P3.9 F13.15) ▸ เดิม: ไม่มี op ประกาศ tool (มติ 7 P2.13) · ใหม่: มี op ประกาศ tool และทุกชื่ออยู่ในสกิล `sales` · ชื่อไม่ซ้ำ (แบบ F13.12) ◂
+  const posWithTool = POS_OPS.filter((o) => o.tool);
+  const skillsSrcPos = readFileSync(join(ROOT, "src", "lib", "ai", "skills.ts"), "utf8");
+  const salesAt = skillsSrcPos.indexOf('id: "sales"');
+  const salesBlock = salesAt < 0 ? "" : skillsSrcPos.slice(salesAt, salesAt + 2500);
+  const posOrphans = posWithTool.filter((o) => !salesBlock.includes(`"${o.tool!.name}"`)).map((o) => `${o.id}:${o.tool!.name}`);
+  const posToolDup = posWithTool.map((o) => o.tool!.name).filter((n, i, a) => a.indexOf(n) !== i);
+  chk(
+    "F13.15",
+    `tool ของ op ระบบขายหน้าร้าน (${posWithTool.length} ตัว) ลงทะเบียนในสกิล sales แล้ว (P3.9)`,
+    posWithTool.length > 0 && posOrphans.length === 0 && posToolDup.length === 0,
+    !posWithTool.length ? "ไม่มี op ประกาศ tool" : posOrphans.length || posToolDup.length ? `ไม่อยู่ในสกิล sales: ${posOrphans.join(", ") || "-"} · ชื่อซ้ำ: ${posToolDup.join(", ") || "-"}` : "ครบ",
+  );
+}
+// ◂ POS P2.13
+
 // ═══════════════════════════════════════════════════════════════
 // F14 — ทะเบียนปุ่ม CRM (CRM-MASTER-PLAN §7 · ด่าน D8 ของทุกใบ UI)
 //   เจตนา: "ทุกปุ่ม/ลิงก์/ฟอร์มของ CRM ถูกกดจริงด้วยข้อสอบ" เริ่มจากการมีทะเบียนที่ตรงกับโค้ดเสมอ
@@ -1355,6 +1431,9 @@ console.log("\n── F14: ทะเบียนปุ่ม CRM (ปุ่ม�
     invErr ? `อ่านทะเบียนไม่ได้ — ${invErr}` : problems.length ? problems.join(" · ") : "ตรง",
   );
 }
+
+// POS P0.1 ▸ F15 — ด่านของ RUN POS (แคตตาล็อกผู้เขียนเดียว · สัญญา createSale · ทะเบียนปุ่ม POS · ข้อความ pos.*) อยู่ใน scripts/fitness-pos.mts ◂
+runPosFitness(chk, ROOT);
 
 // ─────────────────── สรุป ───────────────────
 const failed = checks.filter((c) => !c.ok);

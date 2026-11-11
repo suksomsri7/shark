@@ -3,12 +3,33 @@
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
 import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
 import { sendMobileChat } from "@/lib/mobile/chat";
+import { errDetail, logOps } from "@/lib/core/ops"; // SEC S3a.1-S2 ▸ R-Z26 ◂
+import { checkRateLimitDb } from "@/lib/core/rate-limit-db"; // SEC S3a.1-S1 R-Z9
+import { isSecretaryRoomConversation } from "@/lib/ai/secretary/rooms"; // SEC S3a.1-S1 R-Z9
+
+// SEC S3a.1-S2 ▸ R-Z26 (L6 M1): เหตุการณ์ error ของ SSE — ไม่มี e.message ดิบ (ชื่อตาราง/อาร์กิวเมนต์ของคำสั่ง) ◂
+async function sseError(e: unknown): Promise<{ type: "error"; error: string; message: string }> {
+  if (e instanceof Error && /[ก-๙]/.test(e.message) && !/prisma|invocation|invalid `|\bat \w+ \(/i.test(e.message)) {
+    return { type: "error", error: "failed", message: e.message.split("\n")[0]!.slice(0, 300) };
+  }
+  await logOps("ERROR", "mobile-chat", "chat/send: ล้ม", { detail: errDetail(e) }).catch(() => {});
+  return { type: "error", error: "server_error", message: "ผู้ช่วยตอบไม่สำเร็จชั่วคราว ลองใหม่อีกครั้ง" };
+}
+
+/** SEC S3a.1-S1 ▸ R-Z9: เพดานต่อคนต่อร้าน 20/นาที (ถังเดียวกับ action เว็บ `ai-chat:<ร้าน>:<ผู้ใช้>`) ◂ */
+const CHAT_SEND_PER_MINUTE = 20;
 
 export async function POST(req: Request) {
   const g = await requireMobile(req);
   if (!g.ok) return mobileError(g);
   const denied = mobileDenied(g, AI_CHAT); // HOTFIX 2026-10-01: same key as the web door
   if (denied) return denied;
+  // SEC S3a.1-S1 ▸ R-Z9: เพดานอัตรา (ก่อนอ่าน body · 429 มาตรฐาน + Retry-After) ◂
+  const rl = await checkRateLimitDb(`ai-chat:${g.ctx.tenantId}:${g.user.id}`, { limit: CHAT_SEND_PER_MINUTE, windowMs: 60_000 });
+  if (!rl.ok) {
+    const retryAfterSec = rl.retryAfterSec ?? 60;
+    return Response.json({ error: "rate_limited", message: "ส่งข้อความถี่เกินไป รอสักครู่แล้วลองใหม่", retryAfterSec }, { status: 429, headers: { "Retry-After": String(retryAfterSec) } });
+  }
 
   let body: { conversationId?: string; text?: string; imageUrls?: string[] };
   try {
@@ -23,6 +44,11 @@ export async function POST(req: Request) {
     imageUrls: Array.isArray(body.imageUrls) ? body.imageUrls.map(String) : undefined,
   };
 
+  // SEC S3a.1-S1 ▸ R-Z9: ห้องเลขาใช้ได้เฉพาะเส้นห้อง (`/api/mobile/secretary/rooms/[id]/send` — คิว · ตัวนับงาน · ด่านอนุมัติ) ◂
+  if (await isSecretaryRoomConversation(g.ctx.tenantId, input.conversationId)) {
+    return Response.json({ error: "secretary_room", message: "ห้องนี้เป็นห้องงานของเลขา — ส่งข้อความจากหน้าห้องงานแทน" }, { status: 409 });
+  }
+
   // CRM C5.5-G1 ▸ ผู้กระทำ = เจ้าของโทเค็น + Membership ของร้านที่ X-Tenant-Id (requireMobile ตรวจแล้ว) ◂
   //   CRM C5.5-G2: the same actor is the viewer — sendMessage continues only rooms this user can see ◂
   const ctx = mobileAiCtx(g);
@@ -34,7 +60,8 @@ export async function POST(req: Request) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
         }
       } catch (e) {
-        const ev = { type: "error", error: e instanceof Error ? e.message : "error" };
+        // SEC S3a.1-S2 ▸ R-Z20/R-Z26: ไม่ส่ง e.message ดิบ — รูป {type, error, message} · ข้อความไทยของ lib ผ่าน (ไม่ใช่ข้อความของฐาน) · อื่น ๆ = ทั่วไป + logOps ◂
+        const ev = await sseError(e);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
       } finally {
         controller.close();

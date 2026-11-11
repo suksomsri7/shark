@@ -1,0 +1,79 @@
+<style>
+.mp td .arw{color:var(--mut2)}
+.mp td .sel2{display:inline-flex;align-items:center;gap:8px;height:38px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:13.5px;min-width:190px}
+.mp td .sel2 .cv{margin-left:auto;color:var(--mut2)}
+.mp td .sel2.skip{color:var(--mut2);background:var(--sf2)}
+.mp td code{font-family:'Sarabun',monospace;background:var(--sf2);border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:13px}
+.iss .li{align-items:flex-start}
+.iss .li .pill{margin-top:2px}
+.iss .li small{display:block;color:var(--mut);font-size:12.5px;margin-top:2px}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">12 · นำเข้าข้อมูลหอจาก Excel/Google Sheets <span>— ลูกค้าย้ายมาจากสมุด/Excel ได้ในวันเดียว · ระบบเดาคอลัมน์ให้ (คนยืนยัน) · ตรวจก่อนนำเข้า (รวมกฎ สคบ. ตามโหมดที่ตั้ง) · สร้างห้อง/ผู้เช่า/สัญญา/มิเตอร์เริ่ม/ยอดค้างยกมา/เงินประกันเปิดยอดในบัญชี · ย้อนกลับได้ทั้งชุด</span></p>
+<div class="frame" style="height:900px">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านสวนอพาร์ตเมนต์ · 36 ห้อง<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span><span class="st"><i class="dot"></i>ออนไลน์ · อ. 20 ต.ค. 2569 · 15:40</span>
+  <span class="who"><span class="av">ฝ</span>พี่ฝ้าย · ผู้ดูแลหอ</span></div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail"><div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div><div class="ri on"><svg class="i sm"><use href="#i-asset"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div><div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div><span style="flex:1"></span><div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div></div>
+  <div class="mod">
+   <div class="amenu"><div class="am"><svg class="i sm"><use href="#i-grid"/></svg>ผังห้อง</div><div class="am on"><svg class="i sm"><use href="#i-users"/></svg>ผู้เช่า/สัญญา</div><div class="am"><svg class="i sm"><use href="#i-pct"/></svg>จดมิเตอร์</div><div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิล/รับเงิน<span class="pill">3</span></div><div class="am"><svg class="i sm"><use href="#i-warn"/></svg>แจ้งซ่อม<span class="pill">2</span></div><div class="am"><svg class="i sm"><use href="#i-mail"/></svg>ประกาศ</div><div class="am"><svg class="i sm"><use href="#i-report"/></svg>รายงาน</div><div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div></div>
+   <div class="ph" style="padding-top:22px">
+    <h1>นำเข้าข้อมูลหอ</h1>
+    <div class="fl2"><div class="steps"><span class="done"><i>✓</i>อัปโหลด</span><span class="bar2"></span><span class="cur"><i>2</i>จับคู่คอลัมน์</span><span class="bar2"></span><span><i>3</i>ตรวจ</span><span class="bar2"></span><span><i>4</i>นำเข้า</span></div></div>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-import"/></svg>ดาวน์โหลดแม่แบบ</div>
+   </div>
+   <div class="pg">
+    <div class="info"><svg class="i ic"><use href="#i-file"/></svg><span><b>ทะเบียนหอ ต.ค.69.xlsx</b> · ชีต "ผู้เช่า" · 36 แถว 11 คอลัมน์ · ชีต "มิเตอร์" 36 แถว</span><span class="sp"></span><span class="lnk">เปลี่ยนไฟล์</span></div>
+    <div class="row" style="align-items:flex-start">
+     <div class="card p0" style="flex:1.3">
+      <div class="ch" style="padding:20px 22px 6px;margin:0"><h2>คอลัมน์ในไฟล์ → ช่องในระบบ</h2><span class="sp"></span><span class="aitag" style="margin:0"><svg class="i xs"><use href="#i-spark"/></svg>ระบบเดาให้ 10/11 · ตรวจแล้วกดต่อ</span></div>
+      <table class="tbl mp">
+       <tr><th>คอลัมน์ในไฟล์</th><th>ตัวอย่าง</th><th></th><th>ช่องในระบบ</th></tr>
+       <tr><td><b>ห้อง</b></td><td><code>204</code></td><td class="arw">→</td><td><span class="sel2">เลขห้อง (ชั้นคิดจากเลขแรก)<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+       <tr><td><b>ชื่อผู้เช่า</b></td><td><code>ณัฐชา ใจดี</code></td><td class="arw">→</td><td><span class="sel2">ชื่อผู้เช่า<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+       <tr><td><b>โทร</b></td><td><code>081-xxx-4410</code></td><td class="arw">→</td><td><span class="sel2">เบอร์โทร (หาคนซ้ำ)<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+       <tr><td><b>เข้าอยู่</b></td><td><code>1/5/69</code></td><td class="arw">→</td><td><span class="sel2">วันเริ่มสัญญา · พ.ศ. วัน/เดือน/ปี<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+       <tr><td><b>ค่าเช่า</b></td><td><code>4500</code></td><td class="arw">→</td><td><span class="sel2">ค่าห้อง/เดือน<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+       <tr><td><b>ประกัน</b></td><td><code>9000</code></td><td class="arw">→</td><td><span class="sel2">เงินประกันที่ถือไว้<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+       <tr><td><b>ไฟ ก.ย.</b> · <b>น้ำ ก.ย.</b></td><td><code>1287</code> · <code>312</code></td><td class="arw">→</td><td><span class="sel2">มิเตอร์เริ่ม ไฟ · น้ำ (25 ก.ย.)<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+       <tr><td><b>ค้าง</b></td><td><code>5214</code></td><td class="arw">→</td><td><span class="sel2">ยอดค้างยกมา<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+       <tr><td><b>LINE</b></td><td><code>nat_cha</code></td><td class="arw">→</td><td><span class="sel2 skip">ไม่นำเข้า (ผูกด้วยรหัสผูกห้อง)<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+       <tr><td><b>หมายเหตุ</b></td><td><code>มีแมว 1 ตัว</code></td><td class="arw">→</td><td><span class="sel2">บันทึกของห้อง<svg class="i xs cv"><use href="#i-cv"/></svg></span></td></tr>
+      </table>
+     </div>
+     <div style="flex:1;display:flex;flex-direction:column;gap:22px">
+      <div class="card">
+       <div class="ch"><h2>ผลตรวจก่อนนำเข้า</h2></div>
+       <div class="g3" style="gap:12px">
+        <div class="kpi"><div class="lbl">พร้อม</div><div class="val">32</div></div>
+        <div class="kpi"><div class="lbl">เตือน</div><div class="val">3</div></div>
+        <div class="kpi"><div class="lbl">ต้องแก้</div><div class="val dg">1</div></div>
+       </div>
+       <div class="lst iss" style="margin-top:14px">
+        <div class="li"><span class="pill dg">!</span><span class="sp"><b>แถว 27 · ห้อง 310</b> ประกัน ฿15,000 = 3.3 เดือน<small>เกิน 3 เดือน (โหมดเข้มงวด) → แก้ยอด หรือแยกส่วนเกินเป็น "เงินรับล่วงหน้าคืนผู้เช่า"</small></span></div>
+        <div class="li"><span class="pill gh">?</span><span class="sp"><b>แถว 22 · ห้อง 211</b> เบอร์ซ้ำกับห้อง 105<small>คนเดียวเช่า 2 ห้อง? → รวมเป็นผู้เช่าคนเดียว / แยกคน</small></span></div>
+        <div class="li"><span class="pill gh">?</span><span class="sp"><b>แถว 9 · ห้อง 108</b> ไม่มีชื่อแต่มีค่าเช่า<small>นำเข้าเป็นห้องว่าง (ไม่สร้างสัญญา)</small></span></div>
+        <div class="li"><span class="pill gh">?</span><span class="sp"><b>ห้อง 112</b> มิเตอร์ไฟ 8,904 สูงกว่าห้องอื่นมาก<small>ตรวจว่าเลขถูก — ใช้เป็นเลขเริ่มเลย</small></span></div>
+       </div>
+      </div>
+      <div class="card">
+       <div class="ch"><h2>จะสร้างอะไรบ้าง</h2></div>
+       <div class="ln"><span class="k">อาคาร · ชั้น · ห้อง</span><span class="sp"></span><span class="v">1 · 3 · 36</span></div>
+       <div class="ln"><span class="k">ผู้เช่า + สัญญา</span><span class="sp"></span><span class="v">32</span></div>
+       <div class="ln"><span class="k">มิเตอร์ (ไฟ+น้ำ) + เลขเริ่ม</span><span class="sp"></span><span class="v">72</span></div>
+       <div class="ln"><span class="k">ใบแจ้งหนี้ค้างยกมา</span><span class="sp"></span><span class="v">2 ใบ · ฿10,200.40</span></div>
+       <div class="ln"><span class="k">เงินประกันเปิดยอด (หนี้สิน)</span><span class="sp"></span><span class="v">฿296,400</span></div>
+       <div class="mu2" style="margin-top:8px">นำเข้าทั้งชุดเป็น 1 รายการ · ย้อนกลับได้ภายใน 7 วันถ้ายังไม่ออกบิล</div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

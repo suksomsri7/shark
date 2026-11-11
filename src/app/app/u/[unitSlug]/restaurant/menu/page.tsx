@@ -21,10 +21,13 @@ const TAG_LABEL: Record<string, string> = {
 
 export default async function MenuPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
+  searchParams: Promise<{ err?: string }>;
 }) {
   const { unitSlug } = await params;
+  const { err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
   const { tenantId } = auth.active;
   await ensureDefaultStations(tenantId, unit.id);
@@ -43,6 +46,12 @@ export default async function MenuPage({
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
+      {/* POS P1.1b R2 F1: การปฏิเสธจาก server action (?err= · เช่นแคตตาล็อกไม่ว่างระหว่าง backfill) — แบบเดียวกับ shop/orders */}
+      {err && (
+        <div role="alert" className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </div>
+      )}
       <PageHeader
         title="เมนู"
         back={{ href: `/app/u/${unitSlug}/restaurant`, label: "ร้านอาหาร · หน้างาน" }}

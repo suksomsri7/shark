@@ -308,7 +308,7 @@ async function providerCompletion(
       {
         source: "CHAT_SUGGEST",
         model: reply.model || SMART_MODEL,
-        tokensIn: reply.tokensIn,
+        tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead,
         tokensOut: reply.tokensOut,
         userId,
         note: "ร่างการ์ดจากแชท (K3.2)",

@@ -1,0 +1,4551 @@
+{
+ "meta": {
+  "generatedAt": "2026-11-06T18:02:41.617Z",
+  "registryHash": "49c8890d4f8cf5bc174199ef6cc83147f8601edc834eb15c99e1b5cff085949a",
+  "distHash": "ab444bc13e66eb6e0adce18adc791d6b9f76fbf03a741663196b5947a9238667",
+  "resumed": false,
+  "workers": 3,
+  "clicks": 2567,
+  "seconds": 6050,
+  "scen": null
+ },
+ "items": [
+  {
+   "testID": "help-room",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · route /secretary?caseId=c2 · ui +sec-secretary,sec-home,sec-top -help-room,help-back,help-room-title · field sec-home-search",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-room-title",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-room-status",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-menu",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +help-menu-sheet,help-menu-sheet-dim,help-menu-list -",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-gone",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.15.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-gone-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/support/cases · route /secretary/help · ui +help-home,help-list,sec-top -help-room,help-back,help-menu · field help-input-field",
+   "fixture": "s2.15.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-case-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-denied.json",
+   "route": "/secretary/help/c1",
+   "path": []
+  },
+  {
+   "testID": "help-thread",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-room-card",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/rooms/r1 · GET secretary/rooms/r1/messages?take=100 · GET secretary/rooms/r1/proposals · route /secretary/room/r1 · ui +sec-room,sec-room-back,sec-room-title -help-room,help-back,help-room-title · field sec-room-input-field",
+   "fixture": "s2.1.json",
+   "route": "/secretary/help/c1",
+   "path": []
+  },
+  {
+   "testID": "help-opened",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-resolved-card",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/help/c1",
+   "path": []
+  },
+  {
+   "testID": "help-resolve-no",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/support/cases/c1/reply · ui +help-flash -",
+   "fixture": "s2.1.json",
+   "route": "/secretary/help/c1",
+   "path": []
+  },
+  {
+   "testID": "help-resolve-yes",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/support/cases/c1/resolve · ui +help-flash -",
+   "fixture": "s2.1.json",
+   "route": "/secretary/help/c1",
+   "path": []
+  },
+  {
+   "testID": "help-closed",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-case-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/help/c1",
+   "path": []
+  },
+  {
+   "testID": "help-case-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/help/c1",
+   "path": []
+  },
+  {
+   "testID": "help-flash",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด help-send",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": [
+    "help-send"
+   ]
+  },
+  {
+   "testID": "help-attached",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help",
+   "path": [
+    "help-home-attach@file"
+   ]
+  },
+  {
+   "testID": "help-input",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/support/cases/c2/reply · ui +help-flash -",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-attach",
+   "ok": true,
+   "kind": "button",
+   "effect": "filechooser",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-menu-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด help-menu",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": [
+    "help-menu"
+   ]
+  },
+  {
+   "testID": "help-menu-room",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/rooms/r1 · GET secretary/rooms/r1/messages?take=100 · GET secretary/rooms/r1/proposals · route /secretary/room/r1 · ui +sec-room,sec-room-back,sec-room-title -help-room,help-back,help-room-title · field sec-room-input-field",
+   "fixture": "s2.1.json",
+   "route": "/secretary/help/c1",
+   "path": [
+    "help-menu"
+   ]
+  },
+  {
+   "testID": "help-menu-resolve",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/support/cases/c1/resolve · ui +help-flash -help-menu-sheet,help-menu-sheet-dim,help-menu-room",
+   "fixture": "s2.1.json",
+   "route": "/secretary/help/c1",
+   "path": [
+    "help-menu"
+   ]
+  },
+  {
+   "testID": "help-menu-list",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/support/cases · route /secretary/help · ui +help-home,help-list,sec-top -help-room,help-back,help-room-title",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": [
+    "help-menu"
+   ]
+  },
+  {
+   "testID": "help-room-dot-*",
+   "ok": true,
+   "kind": "view",
+   "effect": "member help-room-dot-done: visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help/c2",
+   "path": []
+  },
+  {
+   "testID": "help-home",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help?roomId=r1",
+   "path": []
+  },
+  {
+   "testID": "help-list",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help?roomId=r1",
+   "path": []
+  },
+  {
+   "testID": "help-chip",
+   "ok": true,
+   "kind": "button",
+   "effect": "state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help?roomId=r1",
+   "path": []
+  },
+  {
+   "testID": "help-room-attached",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help?roomId=r1",
+   "path": []
+  },
+  {
+   "testID": "help-room-detach",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -help-room-attached,help-room-detach",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help?roomId=r1",
+   "path": []
+  },
+  {
+   "testID": "help-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/help",
+   "path": []
+  },
+  {
+   "testID": "help-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-denied.json",
+   "route": "/secretary/help",
+   "path": []
+  },
+  {
+   "testID": "help-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/help",
+   "path": []
+  },
+  {
+   "testID": "help-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-empty.json",
+   "route": "/secretary/help",
+   "path": []
+  },
+  {
+   "testID": "help-case-row",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/support/cases/c1 · GET secretary/rooms/r1 · route /secretary/help/c1 · ui +help-room,help-back,help-room-title -help-home,help-list,sec-top",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help?roomId=r1",
+   "path": []
+  },
+  {
+   "testID": "help-home-attach",
+   "ok": true,
+   "kind": "button",
+   "effect": "filechooser",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/help?roomId=r1",
+   "path": []
+  },
+  {
+   "testID": "sec-inbox",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.5.json",
+   "route": "/secretary/inbox",
+   "path": [
+    "sec-inbox-approve"
+   ]
+  },
+  {
+   "testID": "sec-inbox-list",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.5.json",
+   "route": "/secretary/inbox",
+   "path": [
+    "sec-inbox-approve"
+   ]
+  },
+  {
+   "testID": "sec-inbox-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-inbox,sec-inbox-list,sec-inbox-back",
+   "fixture": "s2.1.json",
+   "route": "/secretary/inbox",
+   "path": []
+  },
+  {
+   "testID": "sec-inbox-sub",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.5.json",
+   "route": "/secretary/inbox",
+   "path": [
+    "sec-inbox-approve"
+   ]
+  },
+  {
+   "testID": "sec-inbox-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/inbox",
+   "path": []
+  },
+  {
+   "testID": "sec-inbox-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-denied.json",
+   "route": "/secretary/inbox",
+   "path": []
+  },
+  {
+   "testID": "sec-inbox-tabs",
+   "ok": true,
+   "kind": "group",
+   "effect": "child sec-inbox-tab-money: ui + -sec-inbox-cannot · state",
+   "fixture": "s2.5.json",
+   "route": "/secretary/inbox",
+   "path": [
+    "sec-inbox-approve"
+   ]
+  },
+  {
+   "testID": "sec-inbox-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-empty.json",
+   "route": "/secretary/inbox",
+   "path": []
+  },
+  {
+   "testID": "sec-inbox-group",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.5.json",
+   "route": "/secretary/inbox",
+   "path": [
+    "sec-inbox-approve"
+   ]
+  },
+  {
+   "testID": "sec-inbox-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/inbox",
+   "path": []
+  },
+  {
+   "testID": "sec-inbox-flash",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.5.json",
+   "route": "/secretary/inbox",
+   "path": [
+    "sec-inbox-approve"
+   ]
+  },
+  {
+   "testID": "sec-secretary",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.2.json",
+   "route": "/secretary",
+   "path": [
+    "sec-home-search=zzqqxx"
+   ]
+  },
+  {
+   "testID": "sec-home",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.2.json",
+   "route": "/secretary",
+   "path": [
+    "sec-home-search=zzqqxx"
+   ]
+  },
+  {
+   "testID": "sec-home-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-denied.json",
+   "route": "/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-home-denied-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST webview-session · route / · ui +home-open-secretary -sec-secretary,sec-home,sec-top",
+   "fixture": "s2.14-denied.json",
+   "route": "/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-home-search",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"สม\"",
+   "fixture": "s2.2.json",
+   "route": "/secretary",
+   "path": [
+    "sec-home-search=zzqqxx"
+   ]
+  },
+  {
+   "testID": "sec-home-card",
+   "ok": true,
+   "kind": "group",
+   "effect": "child sec-home-card-r1: GET secretary/rooms/r1 · GET secretary/rooms/r1/messages?take=100 · GET secretary/rooms/r1/proposals · route /secretary/room/r1 · ui +sec-room,sec-room-back,sec-room-title -sec-secretary,sec-home,sec-top · field sec-room-input-field",
+   "fixture": "s2.20.json",
+   "route": "/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-home-nomatch",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.2.json",
+   "route": "/secretary",
+   "path": [
+    "sec-home-search=zzqqxx"
+   ]
+  },
+  {
+   "testID": "sec-home-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-orb",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-home-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary",
+   "path": [
+    "sec-home-scope-tenant"
+   ]
+  },
+  {
+   "testID": "sec-home-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-home-new",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/suggestions · GET secretary/frequent · GET secretary/access · route /secretary/new · ui +sec-new,sec-new-top,sec-new-close -sec-secretary,sec-home,sec-top · field sec-new-input-field",
+   "fixture": "s2.20.json",
+   "route": "/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-input",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.2.json",
+   "route": "/secretary",
+   "path": [
+    "sec-home-search=zzqqxx"
+   ]
+  },
+  {
+   "testID": "sec-new",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/new",
+   "path": [
+    "sec-new-input-field=สรุปยอดขายเมื่อวาน",
+    "sec-new-send"
+   ]
+  },
+  {
+   "testID": "sec-new-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/new",
+   "path": [
+    "sec-new-input-field=สรุปยอดขายเมื่อวาน",
+    "sec-new-send"
+   ]
+  },
+  {
+   "testID": "sec-new-close",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-new,sec-new-top,sec-new-close",
+   "fixture": "s2.1.json",
+   "route": "/secretary/new",
+   "path": []
+  },
+  {
+   "testID": "sec-new-orb",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/new",
+   "path": [
+    "sec-new-input-field=สรุปยอดขายเมื่อวาน",
+    "sec-new-send"
+   ]
+  },
+  {
+   "testID": "sec-new-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-denied.json",
+   "route": "/secretary/new",
+   "path": []
+  },
+  {
+   "testID": "sec-new-quota",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/new",
+   "path": [
+    "sec-new-input-field=สรุปยอดขายเมื่อวาน",
+    "sec-new-send"
+   ]
+  },
+  {
+   "testID": "sec-new-quota-link",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/quota · route /secretary/settings/quota · ui +sec-quota,sec-quota-top,sec-quota-top-back -sec-new,sec-new-top,sec-new-close",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/new",
+   "path": [
+    "sec-new-input-field=สรุปยอดขายเมื่อวาน",
+    "sec-new-send"
+   ]
+  },
+  {
+   "testID": "sec-new-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-new-send",
+   "fixture": "s2.1.json",
+   "route": "/secretary/new",
+   "path": [
+    "sec-new-send"
+   ]
+  },
+  {
+   "testID": "sec-new-suggestion",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.2.json",
+   "route": "/secretary/new",
+   "path": []
+  },
+  {
+   "testID": "sec-new-frequent",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.2.json",
+   "route": "/secretary/new",
+   "path": []
+  },
+  {
+   "testID": "sec-new-system",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/new",
+   "path": [
+    "sec-new-input-field=สรุปยอดขายเมื่อวาน",
+    "sec-new-send"
+   ]
+  },
+  {
+   "testID": "sec-new-input",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/new",
+   "path": [
+    "sec-new-input-field=สรุปยอดขายเมื่อวาน",
+    "sec-new-send"
+   ]
+  },
+  {
+   "testID": "sec-new-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/rooms",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/new",
+   "path": [
+    "sec-new-input-field=สรุปยอดขายเมื่อวาน",
+    "sec-new-send"
+   ]
+  },
+  {
+   "testID": "sec-new-frequent-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member sec-new-frequent-0: field sec-new-input-field",
+   "fixture": "s2.2.json",
+   "route": "/secretary/new",
+   "path": []
+  },
+  {
+   "testID": "sec-onb-name",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/onboarding/name",
+   "path": [
+    "sec-onb-name-input="
+   ]
+  },
+  {
+   "testID": "sec-onb-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-onb-name,sec-onb-back,sec-onb-skip",
+   "fixture": "s2.1.json",
+   "route": "/secretary/onboarding/name",
+   "path": []
+  },
+  {
+   "testID": "sec-onb-skip",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-onb-name,sec-onb-back,sec-onb-skip",
+   "fixture": "s2.1.json",
+   "route": "/secretary/onboarding/name",
+   "path": []
+  },
+  {
+   "testID": "sec-onb-orb",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/onboarding/name",
+   "path": [
+    "sec-onb-name-input="
+   ]
+  },
+  {
+   "testID": "sec-onb-name-input",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"ทดสอบ QC\"",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/onboarding/name",
+   "path": [
+    "sec-onb-name-input="
+   ]
+  },
+  {
+   "testID": "sec-onb-name-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/onboarding/name",
+   "path": [
+    "sec-onb-name-input="
+   ]
+  },
+  {
+   "testID": "sec-onb-suffix",
+   "ok": true,
+   "kind": "group",
+   "effect": "child sec-onb-suffix-kha: state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/onboarding/name",
+   "path": [
+    "sec-onb-name-input="
+   ]
+  },
+  {
+   "testID": "sec-onb-tone",
+   "ok": true,
+   "kind": "group",
+   "effect": "child sec-onb-tone-friendly: state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/onboarding/name",
+   "path": [
+    "sec-onb-name-input="
+   ]
+  },
+  {
+   "testID": "sec-onb-preview",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/onboarding/name",
+   "path": [
+    "sec-onb-name-input="
+   ]
+  },
+  {
+   "testID": "sec-onb-err",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-onb-save",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/onboarding/name",
+   "path": [
+    "sec-onb-name-input=",
+    "sec-onb-save"
+   ]
+  },
+  {
+   "testID": "sec-onb-save",
+   "ok": true,
+   "kind": "button",
+   "effect": "PUT secretary/secretary · ui +sec-onb-err -",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/onboarding/name",
+   "path": [
+    "sec-onb-name-input="
+   ]
+  },
+  {
+   "testID": "sec-room-bubble",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": []
+  },
+  {
+   "testID": "sec-room-steps",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.4.json",
+   "route": "/secretary/room/r1",
+   "path": []
+  },
+  {
+   "testID": "sec-room-background",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.4-running.json",
+   "route": "/secretary/room/r1",
+   "path": []
+  },
+  {
+   "testID": "sec-room",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": []
+  },
+  {
+   "testID": "sec-room-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · route /secretary?id=r9 · ui +sec-secretary,sec-home,sec-top -sec-room,sec-room-back,sec-room-title · field sec-home-search",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": []
+  },
+  {
+   "testID": "sec-room-title",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": []
+  },
+  {
+   "testID": "sec-room-status",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": []
+  },
+  {
+   "testID": "sec-room-add-member",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/staff · ui +sec-room-add-sheet,sec-room-add-sheet-dim,sec-room-add-row -",
+   "fixture": "s2.1.json",
+   "route": "/secretary/room/r1",
+   "path": []
+  },
+  {
+   "testID": "sec-room-menu",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +sec-room-menu-sheet,sec-room-menu-sheet-dim,sec-room-menu-help -",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": []
+  },
+  {
+   "testID": "sec-room-gone",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-empty.json",
+   "route": "/secretary/room/r1",
+   "path": []
+  },
+  {
+   "testID": "sec-room-gone-home",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-room,sec-room-back,sec-room-menu",
+   "fixture": "s2.14-empty.json",
+   "route": "/secretary/room/r1",
+   "path": []
+  },
+  {
+   "testID": "sec-room-list",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": []
+  },
+  {
+   "testID": "sec-room-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/room/r1",
+   "path": []
+  },
+  {
+   "testID": "sec-room-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/room/r1",
+   "path": []
+  },
+  {
+   "testID": "sec-room-flash",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-room-send",
+   "fixture": "s2.1.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-send"
+   ]
+  },
+  {
+   "testID": "sec-room-closed",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": []
+  },
+  {
+   "testID": "sec-room-input",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/room/r1",
+   "path": []
+  },
+  {
+   "testID": "sec-room-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/rooms/r1/send · ui +sec-room-flash -",
+   "fixture": "s2.1.json",
+   "route": "/secretary/room/r1",
+   "path": []
+  },
+  {
+   "testID": "sec-room-menu-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-room-menu",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": [
+    "sec-room-menu"
+   ]
+  },
+  {
+   "testID": "sec-room-menu-close",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +sec-room-close-confirm,sec-room-close-confirm-dim,sec-room-close-confirm-cancel -sec-room-menu-sheet,sec-room-menu-sheet-dim,sec-room-menu-close",
+   "fixture": "s2.1.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-menu"
+   ]
+  },
+  {
+   "testID": "sec-room-menu-members",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/staff · ui +sec-room-add-sheet,sec-room-add-sheet-dim,sec-room-add-row -sec-room-menu-sheet,sec-room-menu-sheet-dim,sec-room-menu-close",
+   "fixture": "s2.1.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-menu"
+   ]
+  },
+  {
+   "testID": "sec-room-menu-help",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/rooms/r9 · GET secretary/support/cases · route /secretary/help?roomId=r9 · ui +help-home,help-list,sec-top -sec-room,sec-room-back,sec-room-title · field help-input-field",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/room/r9",
+   "path": [
+    "sec-room-menu"
+   ]
+  },
+  {
+   "testID": "sec-room-close-confirm",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-room-menu-close",
+   "fixture": "s2.1.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-menu",
+    "sec-room-menu-close"
+   ]
+  },
+  {
+   "testID": "sec-room-close-confirm-cancel",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -sec-room-close-confirm,sec-room-close-confirm-dim,sec-room-close-confirm-cancel",
+   "fixture": "s2.1.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-menu",
+    "sec-room-menu-close"
+   ]
+  },
+  {
+   "testID": "sec-room-close-confirm-ok",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/rooms/r1/close · ui +sec-room-menu-sheet,sec-room-menu-sheet-dim,sec-room-menu-close -sec-room-close-confirm,sec-room-close-confirm-dim,sec-room-close-confirm-cancel",
+   "fixture": "s2.1.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-menu",
+    "sec-room-menu-close"
+   ]
+  },
+  {
+   "testID": "sec-room-undo-confirm",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-room-undo",
+   "fixture": "s2.4.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-undo"
+   ]
+  },
+  {
+   "testID": "sec-room-undo-confirm-item",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-room-undo",
+   "fixture": "s2.4.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-undo"
+   ]
+  },
+  {
+   "testID": "sec-room-undo-confirm-cancel",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -sec-room-undo-confirm,sec-room-undo-confirm-dim,sec-room-undo-confirm-item",
+   "fixture": "s2.4.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-undo"
+   ]
+  },
+  {
+   "testID": "sec-room-undo-confirm-ok",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/log/l1/undo · GET secretary/rooms/r1 · GET secretary/rooms/r1/messages?take=100 · ui +sec-room-undo-note -sec-room-undo-confirm,sec-room-undo-confirm-dim,sec-room-undo-confirm-item",
+   "fixture": "s2.4.json",
+   "route": "/secretary/room/r1",
+   "path": [
+    "sec-room-undo"
+   ]
+  },
+  {
+   "testID": "sec-sched",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-sched-list",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-sched-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -sec-sched,sec-sched-list,sec-sched-back",
+   "fixture": "s2.1.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-sched-add",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +sec-sched-sheet,sec-sched-sheet-dim,sec-sched-instruction - · field sec-sched-instruction",
+   "fixture": "s2.1.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-sched-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-sched-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-denied.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-sched-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-empty.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-sched-item",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +sec-sched-sheet,sec-sched-sheet-dim,sec-sched-instruction - · field sec-sched-instruction",
+   "fixture": "s2.1.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-sched-toggle",
+   "ok": true,
+   "kind": "button",
+   "effect": "PUT secretary/scheduled/st3 · ui +sec-sched-flash -",
+   "fixture": "s2.1.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-sched-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/scheduled",
+   "path": []
+  },
+  {
+   "testID": "sec-access",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/access",
+   "path": [
+    "sec-access-level-pos-READ"
+   ]
+  },
+  {
+   "testID": "sec-access-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/access",
+   "path": [
+    "sec-access-level-pos-READ"
+   ]
+  },
+  {
+   "testID": "sec-access-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/access",
+   "path": [
+    "sec-access-level-pos-READ"
+   ]
+  },
+  {
+   "testID": "sec-access-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/settings/access",
+   "path": []
+  },
+  {
+   "testID": "sec-access-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/settings/access",
+   "path": []
+  },
+  {
+   "testID": "sec-access-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/access",
+   "path": []
+  },
+  {
+   "testID": "sec-access-row",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/access",
+   "path": [
+    "sec-access-level-pos-READ"
+   ]
+  },
+  {
+   "testID": "sec-access-row-*",
+   "ok": true,
+   "kind": "view",
+   "effect": "member sec-access-row-pos: visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/access",
+   "path": [
+    "sec-access-level-pos-READ"
+   ]
+  },
+  {
+   "testID": "sec-access-level-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member sec-access-level-pos-OFF: PUT secretary/access",
+   "fixture": "s2.7.json",
+   "route": "/secretary/settings/access",
+   "path": []
+  },
+  {
+   "testID": "acct",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-received",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-phone",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST webview-session · route / · ui +home-open-secretary -acct,acct-top,acct-top-back",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-email",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-apple",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-theme",
+   "ok": true,
+   "kind": "group",
+   "effect": "child acct-theme-system: state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-notify",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +acct-notify-sheet,acct-notify-sheet-dim,acct-notify-approval -",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-lang",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/secretary · GET secretary/quota · GET secretary/inbox/count · route /secretary/settings/secretary · ui +sec-me,sec-me-top,sec-me-top-back -acct,acct-top,acct-top-back · field sec-me-name",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-shift",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-shift-toggle",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/shift · state",
+   "fixture": "s2.21.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด acct-phone",
+   "fixture": "s2.21.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-phone"
+   ]
+  },
+  {
+   "testID": "acct-logout",
+   "ok": true,
+   "kind": "button",
+   "effect": "text",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-delete",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/account/delete/preview · ui +acct-delete-sheet,acct-delete-sheet-dim,acct-delete-preview - · field acct-delete-input",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": []
+  },
+  {
+   "testID": "acct-notify-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด acct-notify",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-notify"
+   ]
+  },
+  {
+   "testID": "acct-delete-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด acct-delete",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete"
+   ]
+  },
+  {
+   "testID": "acct-delete-preview",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด acct-delete",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete"
+   ]
+  },
+  {
+   "testID": "acct-delete-input",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"ทดสอบ QC\"",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete"
+   ]
+  },
+  {
+   "testID": "acct-delete-sent",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด acct-delete-confirm",
+   "fixture": "s2.21.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete",
+    "acct-delete-input=ลบบัญชี",
+    "acct-delete-confirm"
+   ]
+  },
+  {
+   "testID": "acct-delete-code",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"123456\"",
+   "fixture": "s2.21.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete",
+    "acct-delete-input=ลบบัญชี",
+    "acct-delete-confirm"
+   ]
+  },
+  {
+   "testID": "acct-delete-resend",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/sms/request",
+   "fixture": "s2.21-mgr.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete",
+    "acct-delete-input=ลบบัญชี",
+    "acct-delete-confirm"
+   ]
+  },
+  {
+   "testID": "acct-delete-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด acct-delete",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete"
+   ]
+  },
+  {
+   "testID": "acct-delete-cancel",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -acct-delete-sheet,acct-delete-sheet-dim,acct-delete-preview",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete"
+   ]
+  },
+  {
+   "testID": "acct-delete-confirm",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/sms/request · ui +acct-delete-sent,acct-delete-code,acct-delete-resend -acct-delete-input,acct-delete-confirm · field acct-delete-code",
+   "fixture": "s2.21.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete"
+   ]
+  },
+  {
+   "testID": "acct-delete-final",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/account/delete · POST auth/logout · route /login · ui +login,login-phone,login-sms -drawer-member,drawer-crm,acct · field login-phone",
+   "fixture": "s2.21.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-delete",
+    "acct-delete-input=ลบบัญชี",
+    "acct-delete-confirm"
+   ]
+  },
+  {
+   "testID": "acct-notify-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member acct-notify-approval-ALL: PUT secretary/notify",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/account",
+   "path": [
+    "acct-notify"
+   ]
+  },
+  {
+   "testID": "sec-cust",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "sec-cust-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "sec-cust-owner",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.7-staff.json",
+   "route": "/secretary/settings/customers",
+   "path": []
+  },
+  {
+   "testID": "sec-cust-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-cust-save",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-afterhours",
+    "sec-cust-save"
+   ]
+  },
+  {
+   "testID": "sec-cust-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/settings/customers",
+   "path": []
+  },
+  {
+   "testID": "sec-cust-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/settings/customers",
+   "path": []
+  },
+  {
+   "testID": "sec-cust-afterhours",
+   "ok": true,
+   "kind": "button",
+   "effect": "state",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/customers",
+   "path": []
+  },
+  {
+   "testID": "sec-cust-sample",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "sec-cust-handoff",
+   "ok": true,
+   "kind": "button",
+   "effect": "state",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/customers",
+   "path": []
+  },
+  {
+   "testID": "sec-cust-disclosure",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"ทดสอบ QC\"",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "sec-cust-disclosure-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-cust-save",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure=",
+    "sec-cust-afterhours",
+    "sec-cust-save"
+   ]
+  },
+  {
+   "testID": "sec-cust-save",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +sec-cust-disclosure-error -",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "sec-cust-hours",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793983287507 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-set-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/settings/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-set-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/settings/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-set-channels",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-channels-web",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793982528043 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-quick",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-quick-web",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST webview-session · route /?open=%2Fapp%2F&t=1793982529494 · ui +home-open-secretary -sec-cust,sec-cust-top,sec-cust-top-back",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-notify",
+   "ok": true,
+   "kind": "group",
+   "effect": "child cust-set-notify-ASSIGNED: PUT secretary/notify · state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-set-shift-toggle",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure=",
+    "cust-set-shift-toggle"
+   ]
+  },
+  {
+   "testID": "cust-set-routing",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-rule-channel",
+   "ok": true,
+   "kind": "button",
+   "effect": "text",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-rule-up",
+   "ok": true,
+   "kind": "button",
+   "effect": "text",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-rule-down",
+   "ok": true,
+   "kind": "button",
+   "effect": "text",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-rule-remove",
+   "ok": true,
+   "kind": "button",
+   "effect": "text",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-rule-toggle",
+   "ok": true,
+   "kind": "button",
+   "effect": "state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-rule-add",
+   "ok": true,
+   "kind": "button",
+   "effect": "text",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-routing-save",
+   "ok": true,
+   "kind": "button",
+   "effect": "PUT inbox/routing · ui +cust-set-note - · state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-sla-first",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-sla-unassigned",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-shift",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "cust-set-shift-toggle",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/shift · GET inbox/routing?systemId=cs1 · ui +cust-set-note -",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/customers",
+   "path": [
+    "sec-cust-disclosure="
+   ]
+  },
+  {
+   "testID": "sec-settings",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings",
+   "path": []
+  },
+  {
+   "testID": "sec-settings-title",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings",
+   "path": []
+  },
+  {
+   "testID": "sec-settings-row-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member sec-settings-row-secretary: GET secretary/secretary · GET secretary/quota · GET secretary/inbox/count · route /secretary/settings/secretary · ui +sec-me,sec-me-top,sec-me-top-back -sec-settings,sec-top,sec-top-secretary · field sec-me-name",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings",
+   "path": []
+  },
+  {
+   "testID": "sec-know",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-know-confirm-mm1",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": [
+    "sec-know-confirm-mm1"
+   ]
+  },
+  {
+   "testID": "sec-know-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-facts-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.7-staff.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-fact",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-lessons-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.7-staff.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-lesson",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-digest",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-confirm-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member sec-know-confirm-mm1: POST secretary/memories/mm1/confirm · ui +sec-know-note -",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-reject-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member sec-know-reject-mm1: DELETE secretary/memories/mm1 · ui +sec-know-note -",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-fact-*",
+   "ok": true,
+   "kind": "view",
+   "effect": "member sec-know-fact-mm1: visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-lesson-*",
+   "ok": true,
+   "kind": "view",
+   "effect": "member sec-know-lesson-ls1: visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-room-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member sec-know-room-ls1: GET secretary/rooms/r1 · GET secretary/rooms/r1/messages?take=100 · GET secretary/rooms/r1/proposals · route /secretary/room/r1 · ui +sec-room,sec-room-back,sec-room-title -sec-know,sec-know-top,sec-know-top-back · field sec-room-input-field",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-know-digest-*",
+   "ok": true,
+   "kind": "view",
+   "effect": "member sec-know-digest-sales: visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/knowledge",
+   "path": []
+  },
+  {
+   "testID": "sec-log",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/log",
+   "path": []
+  },
+  {
+   "testID": "sec-log-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/log",
+   "path": []
+  },
+  {
+   "testID": "sec-log-filter",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/log",
+   "path": []
+  },
+  {
+   "testID": "sec-log-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-log-undo-l2",
+   "fixture": "s2.7.json",
+   "route": "/secretary/settings/log",
+   "path": [
+    "sec-log-undo-l2"
+   ]
+  },
+  {
+   "testID": "sec-log-list",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.7.json",
+   "route": "/secretary/settings/log",
+   "path": []
+  },
+  {
+   "testID": "sec-log-item",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.7.json",
+   "route": "/secretary/settings/log",
+   "path": []
+  },
+  {
+   "testID": "sec-log-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/settings/log",
+   "path": []
+  },
+  {
+   "testID": "sec-log-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/settings/log",
+   "path": []
+  },
+  {
+   "testID": "sec-log-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/log",
+   "path": []
+  },
+  {
+   "testID": "sec-log-filter-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member sec-log-filter-all: GET secretary/log?take=100",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/log",
+   "path": []
+  },
+  {
+   "testID": "sec-quota",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/quota",
+   "path": []
+  },
+  {
+   "testID": "sec-quota-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/quota",
+   "path": []
+  },
+  {
+   "testID": "sec-quota-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/settings/quota",
+   "path": []
+  },
+  {
+   "testID": "sec-quota-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/settings/quota",
+   "path": []
+  },
+  {
+   "testID": "sec-quota-ring",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/quota",
+   "path": []
+  },
+  {
+   "testID": "sec-quota-level",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/quota",
+   "path": []
+  },
+  {
+   "testID": "sec-quota-packs",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/quota",
+   "path": []
+  },
+  {
+   "testID": "sec-quota-assist",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/quota",
+   "path": []
+  },
+  {
+   "testID": "sec-quota-out",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/quota",
+   "path": []
+  },
+  {
+   "testID": "sec-rules",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/rules",
+   "path": []
+  },
+  {
+   "testID": "sec-rules-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/rules",
+   "path": []
+  },
+  {
+   "testID": "sec-rules-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-rules-row-money.limit-toggle",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/rules",
+   "path": [
+    "sec-rules-row-money.limit-toggle"
+   ]
+  },
+  {
+   "testID": "sec-rules-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/settings/rules",
+   "path": []
+  },
+  {
+   "testID": "sec-rules-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/settings/rules",
+   "path": []
+  },
+  {
+   "testID": "sec-rules-row",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/rules",
+   "path": []
+  },
+  {
+   "testID": "sec-rules-limit",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"15\"",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/rules",
+   "path": []
+  },
+  {
+   "testID": "sec-rules-approver",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/rules",
+   "path": []
+  },
+  {
+   "testID": "sec-rules-approver-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/settings/rules",
+   "path": []
+  },
+  {
+   "testID": "sec-rules-approver-*",
+   "ok": true,
+   "kind": "view",
+   "effect": "member sec-rules-approver-u-qc-owner: visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/rules",
+   "path": []
+  },
+  {
+   "testID": "sec-me",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-orb",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-stat",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/settings/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-me-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/settings/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-me-name",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"ทดสอบ QC\"",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-name-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-tone",
+   "ok": true,
+   "kind": "group",
+   "effect": "child sec-me-tone-friendly: state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-suffix",
+   "ok": true,
+   "kind": "group",
+   "effect": "child sec-me-suffix-kha: state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-lang",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-sample",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-me-save",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name",
+    "sec-me-save"
+   ]
+  },
+  {
+   "testID": "sec-me-save",
+   "ok": true,
+   "kind": "button",
+   "effect": "PUT secretary/secretary · ui +sec-me-note -",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-me-stat-*",
+   "ok": true,
+   "kind": "view",
+   "effect": "member sec-me-stat-jobs: visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/settings/secretary",
+   "path": [
+    "sec-me-name="
+   ]
+  },
+  {
+   "testID": "sec-me-lang-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member sec-me-lang-th: state",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/secretary",
+   "path": []
+  },
+  {
+   "testID": "sec-me-link-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member sec-me-link-rules: GET secretary/rules · GET secretary/staff · route /secretary/settings/rules · ui +sec-rules,sec-rules-top,sec-rules-top-back -sec-me,sec-me-top,sec-me-top-back · field sec-rules-limit",
+   "fixture": "s2.1.json",
+   "route": "/secretary/settings/secretary",
+   "path": []
+  },
+  {
+   "testID": "perm",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary?membershipId=m1 · ui +sec-secretary,sec-home,sec-top -perm,perm-top,perm-back",
+   "fixture": "s2.1.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-denied.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-missing",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-empty.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-readonly",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-role",
+   "ok": true,
+   "kind": "group",
+   "effect": "child perm-role-MANAGER: ui +perm-manager-full - · state",
+   "fixture": "s2.1.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-unit",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.1.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-unit-all",
+   "ok": true,
+   "kind": "button",
+   "effect": "state",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-manager-full",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.21-mgr.json",
+   "route": "/secretary/staff/m2",
+   "path": []
+  },
+  {
+   "testID": "perm-chat",
+   "ok": true,
+   "kind": "group",
+   "effect": "child perm-chat-NONE: state",
+   "fixture": "s2.1.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-level",
+   "ok": true,
+   "kind": "group",
+   "effect": "child perm-level-dorm-OFF: state",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด perm-save",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": [
+    "perm-chat-VIEW",
+    "perm-save"
+   ]
+  },
+  {
+   "testID": "perm-save",
+   "ok": true,
+   "kind": "button",
+   "effect": "PUT secretary/staff/m1 · GET secretary/staff · GET secretary/access · ui +perm-note - · state",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-suspend",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +perm-confirm,perm-confirm-dim,perm-confirm-no -",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-remove",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +perm-confirm,perm-confirm-dim,perm-confirm-no -",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "perm-confirm",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด perm-suspend",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": [
+    "perm-suspend"
+   ]
+  },
+  {
+   "testID": "perm-confirm-no",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -perm-confirm,perm-confirm-dim,perm-confirm-no",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": [
+    "perm-suspend"
+   ]
+  },
+  {
+   "testID": "perm-confirm-ok",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/staff/m1/suspend · GET secretary/staff · GET secretary/rooms?scope=tenant&take=100 · route /secretary/staff · ui +sec-staff,sec-top,sec-top-secretary -perm,perm-top,perm-back · field sec-staff-search",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": [
+    "perm-suspend"
+   ]
+  },
+  {
+   "testID": "perm-unit-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member perm-unit-u-main: state",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/m1",
+   "path": []
+  },
+  {
+   "testID": "sec-staff",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.20.json",
+   "route": "/secretary/staff",
+   "path": []
+  },
+  {
+   "testID": "sec-staff-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-denied.json",
+   "route": "/secretary/staff",
+   "path": []
+  },
+  {
+   "testID": "sec-staff-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/staff",
+   "path": []
+  },
+  {
+   "testID": "sec-staff-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/secretary/staff",
+   "path": []
+  },
+  {
+   "testID": "sec-staff-search",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"สม\"",
+   "fixture": "s2.20.json",
+   "route": "/secretary/staff",
+   "path": []
+  },
+  {
+   "testID": "sec-staff-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-staff-pending-resend",
+   "fixture": "s2.20.json",
+   "route": "/secretary/staff",
+   "path": [
+    "sec-staff-pending-resend"
+   ]
+  },
+  {
+   "testID": "sec-staff-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-empty.json",
+   "route": "/secretary/staff",
+   "path": []
+  },
+  {
+   "testID": "sec-staff-invite",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/staff · GET secretary/access · GET secretary/staff/invites · route /secretary/staff/invite · ui +inv,inv-top,inv-close -sec-staff,sec-top,sec-top-secretary · field inv-name",
+   "fixture": "s2.20.json",
+   "route": "/secretary/staff",
+   "path": []
+  },
+  {
+   "testID": "sec-staff-cancel-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด sec-staff-pending-cancel",
+   "fixture": "s2.20.json",
+   "route": "/secretary/staff",
+   "path": [
+    "sec-staff-pending-cancel"
+   ]
+  },
+  {
+   "testID": "sec-staff-cancel-sheet-no",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -sec-staff-cancel-sheet,sec-staff-cancel-sheet-dim,sec-staff-cancel-sheet-no",
+   "fixture": "s2.20.json",
+   "route": "/secretary/staff",
+   "path": [
+    "sec-staff-pending-cancel"
+   ]
+  },
+  {
+   "testID": "sec-staff-cancel-sheet-ok",
+   "ok": true,
+   "kind": "button",
+   "effect": "DELETE secretary/staff/invites/inv1 · GET secretary/staff · GET secretary/rooms?scope=tenant&take=100 · ui +sec-staff-note -sec-staff-cancel-sheet,sec-staff-cancel-sheet-dim,sec-staff-cancel-sheet-no",
+   "fixture": "s2.20.json",
+   "route": "/secretary/staff",
+   "path": [
+    "sec-staff-pending-cancel"
+   ]
+  },
+  {
+   "testID": "inv",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-phone=0212345678"
+   ]
+  },
+  {
+   "testID": "inv-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-phone=0212345678"
+   ]
+  },
+  {
+   "testID": "inv-close",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET secretary/badges · GET secretary/rooms?scope=mine&take=50 · GET secretary/suggestions · route /secretary · ui +sec-secretary,sec-home,sec-top -inv,inv-top,inv-close",
+   "fixture": "s2.14-cases-staff.json",
+   "route": "/secretary/staff/invite",
+   "path": []
+  },
+  {
+   "testID": "inv-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-staff.json",
+   "route": "/secretary/staff/invite",
+   "path": []
+  },
+  {
+   "testID": "inv-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/secretary/staff/invite",
+   "path": []
+  },
+  {
+   "testID": "inv-name",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"ทดสอบ QC\"",
+   "fixture": "s2.14-cases-staff.json",
+   "route": "/secretary/staff/invite",
+   "path": []
+  },
+  {
+   "testID": "inv-phone",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"081-234-5678\"",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-phone=0212345678"
+   ]
+  },
+  {
+   "testID": "inv-phone-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-phone=0212345678"
+   ]
+  },
+  {
+   "testID": "inv-role",
+   "ok": true,
+   "kind": "group",
+   "effect": "child inv-role-MANAGER: ui +inv-manager-full - · state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-phone=0212345678"
+   ]
+  },
+  {
+   "testID": "inv-unit",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-phone=0212345678"
+   ]
+  },
+  {
+   "testID": "inv-unit-all",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +inv-unit-pick - · state",
+   "fixture": "s2.1.json",
+   "route": "/secretary/staff/invite",
+   "path": []
+  },
+  {
+   "testID": "inv-unit-pick",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-staff.json",
+   "route": "/secretary/staff/invite",
+   "path": []
+  },
+  {
+   "testID": "inv-manager-full",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด inv-role-MANAGER",
+   "fixture": "s2.1.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-role-MANAGER"
+   ]
+  },
+  {
+   "testID": "inv-chat",
+   "ok": true,
+   "kind": "group",
+   "effect": "child inv-chat-VIEW: state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-phone=0212345678"
+   ]
+  },
+  {
+   "testID": "inv-level",
+   "ok": true,
+   "kind": "group",
+   "effect": "child inv-level-dorm-VIEW: state",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-phone=0212345678"
+   ]
+  },
+  {
+   "testID": "inv-sms-preview",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-phone=0212345678"
+   ]
+  },
+  {
+   "testID": "inv-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด inv-resend",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-resend"
+   ]
+  },
+  {
+   "testID": "inv-result",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด inv-submit",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-name",
+    "inv-phone",
+    "inv-unit-all",
+    "inv-submit"
+   ]
+  },
+  {
+   "testID": "inv-result-link",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด inv-submit",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-name",
+    "inv-phone",
+    "inv-unit-all",
+    "inv-submit"
+   ]
+  },
+  {
+   "testID": "inv-submit",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/staff/invite · GET secretary/staff/invites · ui +inv-result,inv-result-link - · state · field inv-name",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/invite",
+   "path": []
+  },
+  {
+   "testID": "inv-cancel-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด inv-cancel",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-cancel"
+   ]
+  },
+  {
+   "testID": "inv-cancel-sheet-no",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -inv-cancel-sheet,inv-cancel-sheet-dim,inv-cancel-sheet-no",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-cancel"
+   ]
+  },
+  {
+   "testID": "inv-cancel-sheet-ok",
+   "ok": true,
+   "kind": "button",
+   "effect": "DELETE secretary/staff/invites/inv1 · GET secretary/staff/invites · ui +inv-note -inv-cancel-sheet,inv-cancel-sheet-dim,inv-cancel-sheet-no",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/invite",
+   "path": [
+    "inv-cancel"
+   ]
+  },
+  {
+   "testID": "inv-unit-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member inv-unit-u-main: ui + -inv-unit-pick · state",
+   "fixture": "s2.21.json",
+   "route": "/secretary/staff/invite",
+   "path": []
+  },
+  {
+   "testID": "cust-room",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-room-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/systems · GET inbox/conversations?systemId=cs1 · GET inbox/routing?systemId=cs1 · route /customers?id=x2 · ui +cust-list,sec-top,sec-top-secretary -cust-room,cust-room-back,cust-room-helper",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-room-gone",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-empty.json",
+   "route": "/customers/x1",
+   "path": []
+  },
+  {
+   "testID": "cust-room-helper",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · GET inbox/systems · route /customers/x2/info?s=cs1&open=helpers · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper · field cust-info-helpers-sheet-note",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-room-info",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/conversations/x2?systemId=cs1 · GET inbox/staff?systemId=cs1 · route /customers/x2/info?s=cs1 · ui +cust-info,cust-info-top,cust-info-back -cust-room,cust-room-back,cust-room-helper",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-room-banner",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-room-claim",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x2/assign · GET inbox/conversations/x2?systemId=cs1 · ui +cust-room-note,cust-quick -",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-room-window",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x9",
+   "path": []
+  },
+  {
+   "testID": "cust-room-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-room-claim",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": [
+    "cust-room-claim"
+   ]
+  },
+  {
+   "testID": "cust-room-offline",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/customers/x1",
+   "path": []
+  },
+  {
+   "testID": "cust-room-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/customers/x1",
+   "path": []
+  },
+  {
+   "testID": "cust-room-more",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/conversations/x9?systemId=cs1&before=2026-11-02T03%3A00%3A00.000Z%7Cm90",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x9",
+   "path": []
+  },
+  {
+   "testID": "cust-bubble-translation",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": []
+  },
+  {
+   "testID": "cust-bubble-translate",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x9/messages/m91/translate · ui + -cust-bubble-translate",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": []
+  },
+  {
+   "testID": "cust-draft-card",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1",
+   "path": [
+    "cust-attach@file"
+   ]
+  },
+  {
+   "testID": "cust-draft-gloss",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": []
+  },
+  {
+   "testID": "cust-draft-edit",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/conversations/x1?systemId=cs1 · ui + -cust-draft-card,cust-draft-edit,cust-draft-send · field cust-input-field",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1",
+   "path": []
+  },
+  {
+   "testID": "cust-draft-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x1/reply · GET inbox/conversations/x1?systemId=cs1 · ui + -cust-draft-card,cust-draft-edit,cust-draft-send",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1",
+   "path": []
+  },
+  {
+   "testID": "cust-tr-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-translate-send",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-original",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-translate-send",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-text",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-translate-send",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x9/reply · GET inbox/conversations/x9?systemId=cs1 · ui + -cust-tr-sheet,cust-tr-sheet-dim,cust-tr-original · field cust-input-field",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-edit",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -cust-tr-sheet,cust-tr-sheet-dim,cust-tr-original · field cust-input-field",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-tr-cancel",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -cust-tr-sheet,cust-tr-sheet-dim,cust-tr-original",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-translate-send"
+   ]
+  },
+  {
+   "testID": "cust-image-viewer",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-att-image",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": [
+    "cust-att-image"
+   ]
+  },
+  {
+   "testID": "cust-image-close",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/conversations/x2?systemId=cs1 · ui + -cust-image-viewer,cust-image-close",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": [
+    "cust-att-image"
+   ]
+  },
+  {
+   "testID": "cust-readonly",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-staff.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-send-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x9",
+   "path": [
+    "cust-input-field=สวัสดีค่ะ",
+    "cust-send"
+   ]
+  },
+  {
+   "testID": "cust-quick",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/quick-replies/q1/apply · field cust-input-field",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-attached",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1",
+   "path": [
+    "cust-attach@file"
+   ]
+  },
+  {
+   "testID": "cust-attached-remove",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui + -cust-attached,cust-attached-remove",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1",
+   "path": [
+    "cust-attach@file"
+   ]
+  },
+  {
+   "testID": "cust-input",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x2/reply · ui +cust-send-note -",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-attach",
+   "ok": true,
+   "kind": "button",
+   "effect": "filechooser",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-internal-toggle",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +cust-quick - · state",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x2",
+   "path": []
+  },
+  {
+   "testID": "cust-translate-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x9/translate-draft · ui +cust-tr-sheet,cust-tr-sheet-dim,cust-tr-original -",
+   "fixture": "s3a6.json",
+   "route": "/customers/x9",
+   "path": []
+  },
+  {
+   "testID": "cust-info-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-info-link-row",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go",
+    "cust-info-link-row"
+   ]
+  },
+  {
+   "testID": "cust-info",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go"
+   ]
+  },
+  {
+   "testID": "cust-info-back",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/systems · GET inbox/conversations?systemId=cs1 · GET inbox/routing?systemId=cs1 · route /customers?id=x1 · ui +cust-list,sec-top,sec-top-secretary -cust-info,cust-info-top,cust-info-back",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-gone",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-empty.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go"
+   ]
+  },
+  {
+   "testID": "cust-info-contact",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go"
+   ]
+  },
+  {
+   "testID": "cust-info-shark",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go"
+   ]
+  },
+  {
+   "testID": "cust-info-member",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET member/summary?id=mem1 · route /member/mem1 · ui + -cust-info,cust-info-top,cust-info-back",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-link",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +cust-info-link-sheet,cust-info-link-sheet-dim,cust-info-link-search - · field cust-info-link-search",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-unlink",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x1/contact · GET inbox/conversations/x1?systemId=cs1 · GET inbox/staff?systemId=cs1 · ui +cust-info-note -",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-assign",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +cust-info-assign-sheet,cust-info-assign-sheet-dim,cust-info-assign-sheet-ok -",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-helpers",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +cust-info-helpers-sheet,cust-info-helpers-sheet-dim,cust-info-helpers-sheet-note - · field cust-info-helpers-sheet-note",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-status",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +cust-info-status-sheet,cust-info-status-sheet-dim,cust-info-status-opt -",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-tags",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go"
+   ]
+  },
+  {
+   "testID": "cust-info-handoff",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +cust-info-handoff-sheet,cust-info-handoff-sheet-dim,cust-info-handoff-sheet-note - · field cust-info-handoff-sheet-note",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-task",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +cust-info-task-sheet,cust-info-task-sheet-dim,cust-info-task-input - · field cust-info-task-input",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-ask-shark",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +cust-info-ask-sheet,cust-info-ask-sheet-dim,cust-info-ask-input - · field cust-info-ask-input",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-close",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +cust-info-close-sheet,cust-info-close-sheet-dim,cust-info-close-sheet-ok -",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/customers/x1/info",
+   "path": []
+  },
+  {
+   "testID": "cust-info-assign-sheet",
+   "ok": true,
+   "kind": "group",
+   "effect": "child cust-info-assign-sheet-row: state",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-assign"
+   ]
+  },
+  {
+   "testID": "cust-info-handoff-sheet",
+   "ok": true,
+   "kind": "group",
+   "effect": "child cust-info-handoff-sheet-note: input: \"ทดสอบ QC\"",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-handoff"
+   ]
+  },
+  {
+   "testID": "cust-info-helpers-sheet",
+   "ok": true,
+   "kind": "group",
+   "effect": "child cust-info-helpers-sheet-note: input: \"ทดสอบ QC\"",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-helpers"
+   ]
+  },
+  {
+   "testID": "cust-info-status-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด cust-info-status",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-status"
+   ]
+  },
+  {
+   "testID": "cust-info-status-opt",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x1/status · GET inbox/conversations/x1?systemId=cs1 · GET inbox/staff?systemId=cs1 · ui +cust-info-note -cust-info-status-sheet,cust-info-status-sheet-dim,cust-info-status-opt",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-status"
+   ]
+  },
+  {
+   "testID": "cust-info-close-sheet",
+   "ok": true,
+   "kind": "group",
+   "effect": "child cust-info-close-sheet-dim: ui + -cust-info-close-sheet,cust-info-close-sheet-dim,cust-info-close-sheet-ok",
+   "fixture": "s2.1.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-close"
+   ]
+  },
+  {
+   "testID": "cust-info-link-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go"
+   ]
+  },
+  {
+   "testID": "cust-info-link-search",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"QC อื่น\"",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go"
+   ]
+  },
+  {
+   "testID": "cust-info-link-go",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET member/search?q=%E0%B8%AA%E0%B8%A1",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go"
+   ]
+  },
+  {
+   "testID": "cust-info-link-row",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x1/contact · GET inbox/conversations/x1?systemId=cs1 · GET inbox/staff?systemId=cs1 · ui +cust-info-note -cust-info-link-sheet,cust-info-link-sheet-dim,cust-info-link-search",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-link",
+    "cust-info-link-search=สม",
+    "cust-info-link-go"
+   ]
+  },
+  {
+   "testID": "cust-info-task-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-task",
+    "cust-info-task-send"
+   ]
+  },
+  {
+   "testID": "cust-info-task-input",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"ทดสอบ QC\"",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-task",
+    "cust-info-task-send"
+   ]
+  },
+  {
+   "testID": "cust-info-task-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-task",
+    "cust-info-task-send"
+   ]
+  },
+  {
+   "testID": "cust-info-task-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST inbox/conversations/x1/task",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-task",
+    "cust-info-task-send"
+   ]
+  },
+  {
+   "testID": "cust-info-ask-sheet",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-ask-shark",
+    "cust-info-ask-input=สรุปประวัติลูกค้านี้",
+    "cust-info-ask-send"
+   ]
+  },
+  {
+   "testID": "cust-info-ask-input",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"ทดสอบ QC\"",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-ask-shark",
+    "cust-info-ask-input=สรุปประวัติลูกค้านี้",
+    "cust-info-ask-send"
+   ]
+  },
+  {
+   "testID": "cust-info-ask-error",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-ask-shark",
+    "cust-info-ask-input=สรุปประวัติลูกค้านี้",
+    "cust-info-ask-send"
+   ]
+  },
+  {
+   "testID": "cust-info-ask-send",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/rooms",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers/x1/info",
+   "path": [
+    "cust-info-ask-shark",
+    "cust-info-ask-input=สรุปประวัติลูกค้านี้",
+    "cust-info-ask-send"
+   ]
+  },
+  {
+   "testID": "cust-list",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-denied",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-denied.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-counts",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-system-chip",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/conversations?systemId=cs2 · GET inbox/routing?systemId=cs2 · state",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-search",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"สม\"",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-tab",
+   "ok": true,
+   "kind": "group",
+   "effect": "child cust-tab-unanswered: GET inbox/systems · GET inbox/conversations?systemId=cs1 · GET inbox/routing?systemId=cs1 · ui + -cust-row-waiting · state",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-channel-chip",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/conversations?systemId=cs1&channel=LINE · state",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-offline",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-error.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-loading",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-loading.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-empty",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-empty.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-row-waiting",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "cust-more",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET inbox/conversations?systemId=cs1&before=2026-11-01T00%3A00%3A00.000Z%7Cx0",
+   "fixture": "s2.14-cases.json",
+   "route": "/customers",
+   "path": []
+  },
+  {
+   "testID": "biz-new",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-top",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-close",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST webview-session · route / · ui +home-open-secretary -biz-new,biz-new-top,biz-new-close",
+   "fixture": "s2.1.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-received",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-name",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"ทดสอบ QC\"",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-type",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-system",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-explain",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-logout",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/logout · route /login · ui +login,login-phone,login-sms -drawer-member,drawer-crm,biz-new · field login-phone",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-note",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": [
+    "biz-new-name=ร้านใหม่ QC",
+    "biz-new-submit"
+   ]
+  },
+  {
+   "testID": "biz-new-submit",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST secretary/tenants/create · ui +biz-new-note -",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-type-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member biz-new-type-retail: state",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "biz-new-system-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member biz-new-system-POS: state",
+   "fixture": "s2.14-cases-new.json",
+   "route": "/business/new",
+   "path": []
+  },
+  {
+   "testID": "login",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": []
+  },
+  {
+   "testID": "login-phone",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"081-234-5678\"",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": []
+  },
+  {
+   "testID": "login-sms",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/sms/request",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": []
+  },
+  {
+   "testID": "login-email",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"qc@example.com\"",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": [
+    "login-email-toggle"
+   ]
+  },
+  {
+   "testID": "login-email-request",
+   "ok": true,
+   "kind": "button",
+   "effect": "text",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": [
+    "login-email-toggle"
+   ]
+  },
+  {
+   "testID": "login-code",
+   "ok": true,
+   "kind": "input",
+   "effect": "input → POST auth/verify",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": [
+    "login-email-toggle",
+    "login-email=qc@example.com",
+    "login-email-request"
+   ]
+  },
+  {
+   "testID": "login-verify",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/verify",
+   "fixture": "s2.14-cases-auth2.json",
+   "route": "/login",
+   "path": [
+    "login-email-toggle",
+    "login-email=qc@example.com",
+    "login-email-request",
+    "login-code=123456",
+    "wait:1000"
+   ]
+  },
+  {
+   "testID": "login-email-resend",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/otp · state",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": [
+    "login-email-toggle",
+    "login-email=qc@example.com",
+    "login-email-request",
+    "wait:61500"
+   ]
+  },
+  {
+   "testID": "login-email-edit",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +login-email,login-email-request,login-google -login-code,login-verify,login-email-resend · field login-email",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": [
+    "login-email-toggle",
+    "login-email=qc@example.com",
+    "login-email-request"
+   ]
+  },
+  {
+   "testID": "login-email-toggle",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +login-email,login-email-request -login-phone,login-sms · field login-email",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": []
+  },
+  {
+   "testID": "login-signup",
+   "ok": true,
+   "kind": "button",
+   "effect": "route /signup · ui +signup,signup-name,signup-phone -login,login-phone,login-sms · field signup-name",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": []
+  },
+  {
+   "testID": "login-*",
+   "ok": true,
+   "kind": "button",
+   "effect": "member login-google: text",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/login",
+   "path": []
+  },
+  {
+   "testID": "signup",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.12.json",
+   "route": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
+   "path": []
+  },
+  {
+   "testID": "signup-name",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"ทดสอบ QC\"",
+   "fixture": "s2.12.json",
+   "route": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
+   "path": []
+  },
+  {
+   "testID": "signup-phone",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"089-876-5432\"",
+   "fixture": "s2.12.json",
+   "route": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
+   "path": []
+  },
+  {
+   "testID": "signup-email",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"qc@example.com\"",
+   "fixture": "s2.12.json",
+   "route": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
+   "path": []
+  },
+  {
+   "testID": "signup-submit",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/sms/request · route /otp?phone=0812345678&mode=signup&name=%E0%B8%AA%E0%B8%B8%E0%B8%82&email=suk%40thebean.co&resend=60 · ui +otp,otp-back,otp-input -signup,signup-name,signup-phone · field otp-input",
+   "fixture": "s2.12.json",
+   "route": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
+   "path": []
+  },
+  {
+   "testID": "signup-login",
+   "ok": true,
+   "kind": "button",
+   "effect": "route /login · ui +login,login-phone,login-sms -signup,signup-name,signup-phone · field login-phone",
+   "fixture": "s2.12.json",
+   "route": "/signup?name=%E0%B8%AA%E0%B8%B8%E0%B8%82&phone=0812345678&email=suk%40thebean.co",
+   "path": []
+  },
+  {
+   "testID": "otp",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
+   "path": []
+  },
+  {
+   "testID": "otp-input",
+   "ok": true,
+   "kind": "input",
+   "effect": "input → POST auth/sms/verify",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
+   "path": []
+  },
+  {
+   "testID": "otp-resend",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/sms/request · ui +otp-sms-unavailable,otp-other-ways -",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/otp?phone=0812345678&mode=login&resend=1",
+   "path": [
+    "wait:1500"
+   ]
+  },
+  {
+   "testID": "otp-edit-email",
+   "ok": true,
+   "kind": "button",
+   "effect": "route /signup?name=%E0%B8%81&phone=0812345678&email=a%40b.co · ui +signup,signup-name,signup-phone -otp,otp-back,otp-input · field signup-name",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/otp?phone=0812345678&mode=signup&name=%E0%B8%81&email=a%40b.co",
+   "path": []
+  },
+  {
+   "testID": "otp-edit-phone",
+   "ok": true,
+   "kind": "button",
+   "effect": "route /login · ui +login,login-phone,login-sms -otp,otp-back,otp-input · field login-phone",
+   "fixture": "s2.12.json",
+   "route": "/otp?phone=0812345678&mode=login&resend=1",
+   "path": []
+  },
+  {
+   "testID": "otp-no-account",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/otp?phone=0812345678&mode=login",
+   "path": [
+    "otp-input=123456"
+   ]
+  },
+  {
+   "testID": "otp-signup",
+   "ok": true,
+   "kind": "button",
+   "effect": "route /signup?phone=0812345678&reuse=1 · ui +signup,signup-name,signup-phone -otp,otp-back,otp-input · field signup-name",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/otp?phone=0812345678&mode=login",
+   "path": [
+    "otp-input=123456"
+   ]
+  },
+  {
+   "testID": "otp-sms-unavailable",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม) หลังกด otp-resend",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/otp?phone=0812345678&mode=login&resend=1",
+   "path": [
+    "wait:1500",
+    "otp-resend"
+   ]
+  },
+  {
+   "testID": "otp-other-ways",
+   "ok": true,
+   "kind": "button",
+   "effect": "route /login · ui +login,login-phone,login-sms -otp,otp-back,otp-input · field login-phone",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/otp?phone=0812345678&mode=login&resend=1",
+   "path": [
+    "wait:1500",
+    "otp-resend"
+   ]
+  },
+  {
+   "testID": "otp-submit",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/sms/verify",
+   "fixture": "s2.14-cases-auth2.json",
+   "route": "/otp?phone=0812345678&mode=login",
+   "path": [
+    "otp-input=123456",
+    "wait:1000"
+   ]
+  },
+  {
+   "testID": "phone",
+   "ok": true,
+   "kind": "view",
+   "effect": "visible (ไม่ใช่ปุ่ม)",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/phone",
+   "path": []
+  },
+  {
+   "testID": "phone-input",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"081-234-5678\"",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/phone",
+   "path": []
+  },
+  {
+   "testID": "phone-otp",
+   "ok": true,
+   "kind": "input",
+   "effect": "input: \"081234\"",
+   "fixture": "s2.14-cases-phone.json",
+   "route": "/phone",
+   "path": [
+    "phone-input=0812345678",
+    "phone-request"
+   ]
+  },
+  {
+   "testID": "phone-resend",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/sms/request · field phone-otp",
+   "fixture": "s2.14-cases-phone.json",
+   "route": "/phone",
+   "path": [
+    "phone-input=0812345678",
+    "phone-request"
+   ]
+  },
+  {
+   "testID": "phone-change",
+   "ok": true,
+   "kind": "button",
+   "effect": "ui +phone-input,phone-request -phone-otp,phone-resend,phone-change · field phone-input",
+   "fixture": "s2.14-cases-phone.json",
+   "route": "/phone",
+   "path": [
+    "phone-input=0812345678",
+    "phone-request"
+   ]
+  },
+  {
+   "testID": "phone-retry",
+   "ok": true,
+   "kind": "button",
+   "effect": "GET me",
+   "fixture": "s2.14-cases-phone.json",
+   "route": "/phone",
+   "path": [
+    "phone-input=0812345678",
+    "phone-request",
+    "phone-otp=123456",
+    "wait:1500"
+   ]
+  },
+  {
+   "testID": "phone-request",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/sms/request",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/phone",
+   "path": []
+  },
+  {
+   "testID": "phone-submit",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/phone/link",
+   "fixture": "s2.14-cases-phone2.json",
+   "route": "/phone",
+   "path": [
+    "phone-input=0812345678",
+    "phone-request",
+    "phone-otp=123456",
+    "wait:1000"
+   ]
+  },
+  {
+   "testID": "phone-logout",
+   "ok": true,
+   "kind": "button",
+   "effect": "POST auth/logout · route /login · ui +login,login-phone,login-sms -phone,phone-input,phone-request · field login-phone",
+   "fixture": "s2.14-cases-auth.json",
+   "route": "/phone",
+   "path": []
+  }
+ ]
+}

@@ -15,10 +15,14 @@
 //   ห้าม log ชื่อสินค้า/ข้อมูลลูกค้า (reason เป็นรหัสภาษาอังกฤษล้วน)
 //
 // 🔴 ห้าม import raw `prisma` ที่นี่ (fitness F5 baseline freeze) — ใช้ `tenantDb(ctx)` เท่านั้น
+import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 // chokepoint account→inventory (fitness F2 · อนุมัติตามใบสั่งงาน WO 4.1):
 //   บัญชีอ่าน/ตัดสต็อกผ่านโมดูลคลังเท่านั้น — ห้ามแตะตาราง InvItem/InvMovement ตรงจากที่อื่นในโมดูลบัญชี
 import * as inventory from "@/lib/modules/inventory/service";
+// POS P1.1b ▸ G2 + มติ 2: คำสั่งเขียน AccountProduct ของซิงก์คลัง→บัญชี ย้ายไป catalog-legacy (ผู้เขียนแคตตาล็อก/ราคาที่สองไฟล์ตาม F15.1)
+//   ฝั่งบัญชี→คลัง (InvItem) เขียนผ่านโมดูลคลัง `inventory.applyAccountProductSync` (chokepoint เดิม · ชื่อ InvItem → ชื่อแถวแคตตาล็อก) ◂
+import * as legacy from "@/lib/modules/pos/catalog-legacy";
 
 /** บริบทระบบบัญชี (AppSystem type=ACCOUNT) */
 export type AccCtx = { tenantId: string; systemId: string };
@@ -101,7 +105,7 @@ export async function syncItemToAccountProduct(ctx: InvCtx, itemId: string): Pro
   if (product.invItemId && product.invItemId !== item.id) return { synced: false, reason: "linked-elsewhere" };
 
   const unitId = await unitIdForLabel(accCtx, item.unitLabel);
-  const data: Record<string, unknown> = {};
+  const data: { invItemId?: string; name?: string; unitId?: string; buyPrice?: number; qtyOnHand?: number; sku?: string } = {};
   if (product.invItemId !== item.id) data.invItemId = item.id; // เยียวยาลิงก์ครึ่งใบ
   if (product.name !== item.name) data.name = item.name;
   if (unitId && product.unitId !== unitId) data.unitId = unitId;
@@ -111,15 +115,18 @@ export async function syncItemToAccountProduct(ctx: InvCtx, itemId: string): Pro
   if (skuChanged) data.sku = item.sku;
 
   if (Object.keys(data).length === 0) return { synced: true }; // ตรงกันอยู่แล้ว (เรียกซ้ำ = no-op)
+  // POS P1.1b: ธุรกรรมละครั้ง — sku ชน (P2002) = ธุรกรรมนั้นจบ แล้วลองใหม่ด้วยธุรกรรมใหม่ (ไม่เขียนต่อในธุรกรรมที่ล้ม)
+  //   tx ของ tenantDb (ตัวกรองร้าน+ระบบบัญชียังทำงานใน tx) — ชนิดต่างจาก TransactionClient แค่ $transaction ซ้อน (ไม่ใช้) จึงแปลงชนิด
+  const write = () => db.$transaction((tx) => legacy.writeAccountProductFromItem(tx as unknown as Prisma.TransactionClient, accCtx, product.id, data));
   try {
-    await db.accountProduct.updateMany({ where: { id: product.id }, data });
+    await write();
   } catch {
     // sku ชนกับสินค้าบัญชีตัวอื่น (unique [systemId,sku]) → ยอมทิ้ง sku แล้ว sync ที่เหลือ
     if (!skuChanged) return { synced: false, reason: "write-failed" };
     delete data.sku;
     if (Object.keys(data).length === 0) return { synced: false, reason: "sku-conflict" };
     try {
-      await db.accountProduct.updateMany({ where: { id: product.id }, data });
+      await write();
     } catch {
       return { synced: false, reason: "write-failed" };
     }
@@ -147,22 +154,23 @@ export async function syncProductToItem(ctx: AccCtx, productId: string): Promise
   if (!item) return { synced: false, reason: "item-not-found" };
 
   const label = await unitLabelOf(ctx, product.unitId);
-  const data: Record<string, unknown> = {};
+  const data: { accountProductId?: string; name?: string; unitLabel?: string; sku?: string } = {};
   if (item.accountProductId !== product.id) data.accountProductId = product.id; // เยียวยาลิงก์ครึ่งใบ
   if (product.name && item.name !== product.name) data.name = product.name;
   if (label && item.unitLabel !== label) data.unitLabel = label;
   const skuChanged = Boolean(product.sku) && item.sku !== product.sku;
-  if (skuChanged) data.sku = product.sku;
+  if (skuChanged && product.sku) data.sku = product.sku;
 
   if (Object.keys(data).length === 0) return { synced: true };
+  const invCtx: InvCtx = { tenantId: ctx.tenantId, systemId: invSystemId };
   try {
-    await invDb.invItem.updateMany({ where: { id: item.id }, data });
+    await inventory.applyAccountProductSync(invCtx, item.id, data);
   } catch {
     if (!skuChanged) return { synced: false, reason: "write-failed" };
     delete data.sku; // sku ชนใน @@unique([systemId,sku]) ของคลัง → คงของเดิม
     if (Object.keys(data).length === 0) return { synced: false, reason: "sku-conflict" };
     try {
-      await invDb.invItem.updateMany({ where: { id: item.id }, data });
+      await inventory.applyAccountProductSync(invCtx, item.id, data);
     } catch {
       return { synced: false, reason: "write-failed" };
     }
@@ -228,7 +236,9 @@ export async function linkProductToItem(ctx: AccCtx, productId: string, opts: Li
         reorderPoint: opts.createItem.reorderPoint ?? 0,
       });
       itemId = created.id;
-    } catch {
+    } catch (e) {
+      // POS P1.1b G7/G11: แคตตาล็อกปฏิเสธ (เช่น BUSY ระหว่าง backfill) = ไม่มีอะไรถูกบันทึก — บอกเหตุจริงเป็นข้อความไทย (ไม่ใช่ "SKU ซ้ำ")
+      if (e instanceof Error && e.name === "CatalogError") return { ok: false, reason: e.message };
       return { ok: false, reason: `สร้างสินค้าในคลังไม่สำเร็จ — รหัส (SKU) "${sku}" อาจซ้ำกับของที่มีอยู่ในคลัง` };
     }
   }

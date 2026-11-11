@@ -1,0 +1,77 @@
+tree=/root/projects/shark-pos-p11 head=72669941 dirty=2 (untracked: scripts/qc-pos-p3.8.mts = the suite itself · ledger notes)
+# P3.8 S oracle red-before · forced QC4 run 16 Oct 2026 ~21:3xZ (Bangkok business date 2026-10-17)
+# cmd: bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p3.8.mts → exit 1 · 5/34 green (ST3 SD3 X1 Z1 Z2) · residue 0 · fetch-guard hits 0 · fixture notes 0
+# --no-db → exit 1 (ST1 ST2 red · ST3 green) · --list → exit 0 (34 ids) · typecheck (iso 10500M · heap 8192 · /tmp/pos-gate.lock) → exit 0
+
+[env] qc-pos-p3.8 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+⚠️  QC_FORCE=1 — ข้ามด่าน SKIP ทั้งที่ยังขาด 2 อย่าง (คาด: แดงตามเหตุผล ไม่ crash · Z เขียว)
+(node:3475201) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB · ฐาน 72669941547c) ──
+  ❌ [P3.8-ST1] [R1 มติ 9] ขอบเขต: modules/pos/** ไม่ import kanban/meeting · fitness ไม่มีเส้น pos→kanban/pos→meeting · pos-board-bridges export ครบ + import kanban เฉพาะ links/moves/integrations/members/templates/notify/types/access + meeting (index) เท่านั้น · ไม่เขียน prisma.kanban*/meeting* ตรง · actions "use server" async ล้วน · board-settings-shared บริสุทธิ์ · board-settings.ts มี — expected ตามตารางชื่อ | actual ไม่มี src/lib/pos-board-bridges.ts · ไม่มี src/lib/pos-board-actions.ts · ไม่มี src/lib/modules/pos/board-settings-shared.ts · ไม่มี src/lib/modules/pos/board-settings.ts
+  ❌ [P3.8-ST2] [R10 มติ 7] outbox-consumers.ts: บรรทัด "pos.shift.closed" เดียว มีเครื่องหมาย P3.8 → withAutomation + pos-board-bridges + onShiftClosed · diff เทียบฐาน = +1/−1 บรรทัดนั้นเท่านั้น · "pos.shift.opened" เท่าฐาน · cron hourly มีบล็อก `POS P3.8 ▸ … ◂` เรียก sweepPosBoard (เพิ่มอย่างเดียว) — expected ตามตารางชื่อ | actual pos.shift.closed ไม่เรียก pos-board-bridges.onShiftClosed · pos.shift.closed ไม่มีเครื่องหมาย P3.8 ในบรรทัด · outbox-consumers อ้าง pos-board-bridges 0 บรรทัด (คาด 1) · diff outbox-consumers = +0/−0 (คาด +1/−1 บรรทัด pos.shift.closed) · cron hourly ไม่มีบล็อก POS P3.8 ▸ · cron hourly ไม่เรียก sweepPosBoard
+  ✅ [P3.8-ST3] [§3 Hard rules] ไม่มี diff เทียบฐาน: prisma/ (+ ไม่มีไฟล์ใหม่) · pos/register*.ts service.ts shift.ts order.ts catalog.ts receipt*.ts · modules/kanban/** · modules/meeting/** · lib/automation/** · platform/kanban-bridges.ts · pos-receipt-bridges.ts
+
+── ร้านชั่วคราว posqc-p38-pwu66l (+ posqc-p38-pwu66l-t2) · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech · วันนี้ 2026-10-17 ──
+
+── CF ค่าตั้ง ──
+  ❌ [P3.8-CF2] [R2] posBoardSettings/posTeamRoomSettings: ค่าปริยายตรงตาราง (ทุกกฎปิด) · คีย์แปลกถูกทิ้ง · ตัดขอบ minAbsSatang 0–10,000,000 · hours 1–168 · briefHourBkk 0–23 · ไม่ใช่จำนวนเต็ม = ปริยาย · boardByUnit ≤ 200 · enabled ต้องเป็น true จริง — expected ตารางค่าปริยาย + ตัดขอบ | actual board ปริยาย({}) = {"ok":false,"code":"MISSING:posBoardSettings","missing":true} · teamRoom ปริยาย({}) = {"ok":false,"code":"MISSING:posTeamRoomSettings","missing":true} · board ปริยาย(null) = {"ok":false,"code":"MISSING:posBoardSettings","missing":true} · teamRoom ปริยาย(null) = {"ok":false,"code":"MISSING:posTeamRoomSettings","missing":true} · board ปริยาย({"pos":{}}) = {"ok":false,"code":"MISSING:posBoardSettings","missing":true} · teamRoom ปริยาย({"pos":{}}) = {"ok":false,"code":"MISSING:posTeamRoomSettings","missing":true} · board ปริยาย({"pos":{"board":"x","teamRoom") = {"ok":false,"code":"MISSING:posBoardSettings","missing":true} · teamRoom ปริยาย({"pos":{"board":"x","teamRoom") = {"ok":false,"code":"MISSING:posTeamRoomSettings","missing":true} …(+11)
+  ❌ [P3.8-CF1] [R2 มติ 3] ค่าปริยาย (ปิดหมด): ปิดกะขาด ฿500 (consumer ×2) + 86 นาน 10 ชม. + refund_needed + sweep ×2 ⇒ การ์ด 0 · MeetingMessage 0 · ธง pos.teamroom.posted 0 · ops pos.board 0 · consumer/sweep ไม่ throw — expected ปิดหมด = 0 ผล · ไม่ throw | actual sweep MISSING:sweepPosBoard ยังไม่มีโมดูล/ฟังก์ชัน — sweepPosBoard · sweep MISSING:sweepPosBoard ยังไม่มีโมดูล/ฟังก์ชัน — sweepPosBoard
+  ❌ [P3.8-CF3] [R2 มติ 2] savePosBoardSettings: MANAGER ⇒ PERMISSION_DENIED · OWNER ✓ + audit pos.settings.updated + อ่านกลับตรง (enabledByUserId = เจ้าของ) · VALIDATION: บอร์ดร้าน T2 · บอร์ดถูกเก็บ · ห้อง PRIVATE ที่เจ้าของไม่อยู่ · สาขาร้านอื่นใน boardByUnit · คีย์แปลก — ปฏิเสธแล้วค่าเดิมไม่เปลี่ยน — expected OWNER เท่านั้น · ตรวจ id · audit | actual MANAGER → MISSING:savePosBoardSettings · บอร์ด T2 → MISSING:savePosBoardSettings · บอร์ดถูกเก็บ → MISSING:savePosBoardSettings · ห้อง PRIVATE → MISSING:savePosBoardSettings · สาขาร้านอื่น → MISSING:savePosBoardSettings · คีย์แปลก → MISSING:savePosBoardSettings · OWNER → MISSING:savePosBoardSettings ยังไม่มีโมดูล/ฟังก์ชัน — savePosBoardSettings · audit pos.settings.updated 0→0 …(+2)
+
+── SD ปิดกะ ──
+  ❌ [P3.8-SD1] [R3 R4 มติ 5] ขาด ฿150 ⇒ การ์ด 1 ใบบนบอร์ดปริยาย A: ชื่อตรงตัว · sourceKey pos-shift:<id> · AUTOMATION · createdById null · คอลัมน์แรก · ผู้รับ = ผู้จัดการสาขา A · ลิงก์ URL กะ · dueAt 12:00 วันไทยถัดไป · รายละเอียดมียอดคาด/นับ/ขาด/บิล/ยอดขาย — expected การ์ดตรวจเงิน 1 ใบตามสัญญา | actual การ์ด 0 ใบ
+  ❌ [P3.8-SD2] [R10 COMMON-4] เล่น consumer ซ้ำ ×2 + พร้อมกัน ×2 + เล่นผ่านคิวจริง (PENDING → drainAll → DONE) ⇒ ยัง 1 ใบ (CARD_CREATED 1 · ผู้รับ 1 · ลิงก์ 1) — expected ยิงซ้ำ/พร้อมกัน = 1 ใบ | actual การ์ด 0 ใบ
+  ✅ [P3.8-SD3] [R4] ขาด ฿50 (< minAbsSatang ฿100) ⇒ ไม่มีการ์ด
+  ❌ [P3.8-SD4] [R4] everyClose ⇒ กะตรงยอด (฿0) มีการ์ด ชื่อ `… · ตรงยอด ฿0` — expected everyClose = การ์ดตรงยอด | actual การ์ด 0 ใบ
+  ❌ [P3.8-SD5] [R4] บังคับปิดโดย cron (forceCloseStaleShifts · counted null · forced) ⇒ การ์ด `กะถูกบังคับปิด Z#n … ยังไม่ได้นับเงิน` — expected บังคับปิด = การ์ดยังไม่ได้นับเงิน | actual การ์ด 0 ใบ
+  ❌ [P3.8-SD6] [R3] สาขา B ผูกบอร์ด B ⇒ การ์ดบนบอร์ด B ผู้รับ = ผู้จัดการสาขา B · สาขา A (ไม่ผูก) ⇒ บอร์ดปริยาย A — expected boardByUnit ก่อน · ไม่ผูก = ปริยาย | actual การ์ดสาขา B 0 ใบ · สาขา A ไม่ลงบอร์ดปริยาย
+  ❌ [P3.8-SD7] [R2 R10] บอร์ดปลายทางถูกเก็บ ⇒ consumer ไม่ throw + เล่นผ่านคิวจริงจบ DONE (ไม่ retry) · ไม่มีการ์ด · ops WARN pos.board +1 ครั้งเดียว — expected เงียบ + WARN ครั้งเดียว | actual ops WARN pos.board +0 (คาด +1)
+
+── SO 86 ──
+  ❌ [P3.8-SO1] [R5] 86 (MANUAL) นาน 5 ชม. ⇒ sweep ×2 = การ์ด 1 ใบ กุญแจ pos-86:<unit>:<product>:<markId> · ชื่อตรงตัว · บอร์ด A — expected 86 ≥ 4 ชม. = 1 ใบ | actual sweep MISSING:sweepPosBoard ยังไม่มีโมดูล/ฟังก์ชัน — sweepPosBoard · sweep MISSING:sweepPosBoard ยังไม่มีโมดูล/ฟังก์ชัน — sweepPosBoard · การ์ด 0 ใบ
+  ❌ [P3.8-SO2] [R5] 86 นาน 1 ชม. (< 4) ⇒ ไม่มีการ์ด — expected 86 1 ชม. = ไม่มีการ์ด | actual sweep MISSING:sweepPosBoard
+  ❌ [P3.8-SO3] [R5] คืนขาย ⇒ sweep ย้ายการ์ดเข้าคอลัมน์เสร็จ (completedAt · กิจกรรม actorUserId null) · บอร์ด C ไม่มีคอลัมน์เสร็จ ⇒ ความเห็น "กลับมาขายแล้ว" ครั้งเดียว (sweep ×2) การ์ดอยู่ที่เดิม — expected คืนขาย = ปิดการ์ด / ความเห็นครั้งเดียว | actual sweep MISSING:sweepPosBoard · การ์ด P1 หาย · sweep C MISSING:sweepPosBoard · ไม่มีการ์ด 86 สาขา C
+  ❌ [P3.8-SO4] [R5] 86 ซ้ำ (mark ใหม่) ⇒ การ์ดใบใหม่ (markId ใหม่) · ใบเดิมยังอยู่คอลัมน์เสร็จ — expected 86 ซ้ำ = ใบใหม่ | actual sweep MISSING:sweepPosBoard · การ์ด P1 0 ใบ (คาด 2) · ไม่มีการ์ดใบใหม่ · ใบเดิมไม่อยู่คอลัมน์เสร็จ
+
+── RF คืนเงิน ──
+  ❌ [P3.8-RF1] [R6 ⚠️3] refund_needed 3 สาเหตุ (rejected_prepaid · expired_paid · late_payment ไม่มี outbox) ⇒ การ์ดละ 1 ใบ ชื่อ/สาเหตุ/ลิงก์ตรง · ออเดอร์สาขา B ⇒ บอร์ด B · แถวเก่า 8 วัน ⇒ ไม่มีการ์ด — expected 3 สาเหตุ = 3 ใบ · 8 วัน = 0 | actual sweep MISSING:sweepPosBoard ยังไม่มีโมดูล/ฟังก์ชัน — sweepPosBoard · O1 การ์ด 0 · O2 การ์ด 0 · O3 การ์ด 0
+  ❌ [P3.8-RF2] [R6] sweep ซ้ำ ×2 ⇒ การ์ดชุดเดิม (ไม่เพิ่ม) — expected sweep ซ้ำ = ไม่เพิ่ม | actual sweep MISSING:sweepPosBoard · sweep MISSING:sweepPosBoard · การ์ด 0 (คาด 3)
+  ❌ [P3.8-RF3] [R6 มติ 10] การ์ดคืนเงิน: ไม่มีชื่อ/เบอร์ลูกค้าของฟิกซ์เจอร์ ในชื่อ · รายละเอียด · ป้าย/ปลายลิงก์ — expected ไม่มีชื่อ/เบอร์ลูกค้า | actual ไม่มีการ์ดให้ตรวจ
+
+── RM ห้องทีม ──
+  ❌ [P3.8-RM1] [R7 มติ 6] โพสต์ Z ครั้งเดียวในห้องปริยาย: ผู้เขียน system:pos · ข้อความตรงตัว (ยอดขาย/บิลจาก Z) · ธง AuditLog pos.teamroom.posted (PosTeamRoomPost · pos-room:z:<id> · SYSTEM) 1 · การ์ดกะยังเกิด — expected โพสต์ Z 1 ข้อความ + ธง | actual ข้อความ 0 · ธง 0 · การ์ดกะไม่เกิด
+  ❌ [P3.8-RM2] [R7] consumer ซ้ำ ×2 + พร้อมกัน ×2 ⇒ ข้อความ 1 · ธง 1 — expected ซ้ำ/พร้อมกัน = 1 | actual ข้อความ 0 · ธง 0
+  ❌ [P3.8-RM3] [R7 มติ 6] showOverShort false ⇒ ข้อความไม่มี "เงินสด"/ขาด/เกิน/ยอดขาด — expected ซ่อนยอดขาด/เกิน | actual ข้อความ +0
+  ❌ [P3.8-RM4] [R7] ห้องถูกเก็บถาวร ⇒ ไม่มีข้อความ · ไม่มีธง (rollback) · consumer ไม่ throw ×2 · ops WARN pos.board +1 — expected ห้องเก็บ = rollback + WARN | actual ops WARN pos.board +0 (คาด +1) · การ์ดกะไม่เกิด (ห้องพังต้องไม่พาการ์ดพัง)
+
+── AN จุดผิดปกติ ──
+  ❌ [P3.8-AN1] [R9 มติ 5] OWNER: แถว A8 ของกะ (จาก reportAnomalies) ⇒ การ์ด createdById = เจ้าของ · กุญแจ pos-anomaly:A8:<unit>:<date>:<shiftId> · ชื่อขึ้นต้นตรง · กดซ้ำ {ok, created:false, cardNo เดิม} · refId ที่ไม่มีในรายงาน ⇒ ปฏิเสธ ไม่มีการ์ด — expected เจ้าของเปิดการ์ด · กดซ้ำได้ใบเดิม | actual ครั้งแรก MISSING:createAnomalyCard created undefined ยังไม่มีโมดูล/ฟังก์ชัน — createAnomalyCard · การ์ด 0 (กุญแจ pos-anomaly:A8:cmvbhe9u60002hdkzywejefsn:2026-10-17:cmvbhebr8002ehdkzjcrox2ai) · กดซ้ำ MISSING:createAnomalyCard created undefined cardNo undefined · กดซ้ำได้การ์ดเพิ่ม
+  ❌ [P3.8-AN2] [R9] แคชเชียร์ (pos.report.view ไม่มี pos.report.anomaly) ⇒ PERMISSION_DENIED ไม่มีการ์ด — expected PERMISSION_DENIED | actual แคชเชียร์ → MISSING:createAnomalyCard
+  ❌ [P3.8-AN3] [R9] ผู้ดูบอร์ด A แบบ VIEWER ⇒ PERMISSION_DENIED · ตัวควบคุมบวก: EDITOR บอร์ด B ⇒ การ์ดสาขา B · ชื่อ/รายละเอียดไม่มีชื่อพนักงาน · posCardsForKeys คืน cardNo/href(cardLink)/completed · กุญแจที่ไม่มี = ไม่อยู่ในผล — expected VIEWER ปฏิเสธ · EDITOR ได้ · posCardsForKeys | actual VIEWER บอร์ด A → MISSING:createAnomalyCard · EDITOR บอร์ด B → MISSING:createAnomalyCard ยังไม่มีโมดูล/ฟังก์ชัน — createAnomalyCard · การ์ดสาขา B ไม่มี · posCardsForKeys → MISSING:posCardsForKeys · ไม่มีแถว pos-anomaly:A8:cmvbhe9u60002hdkzywejefsn · ไม่มีแถว pos-anomaly:A8:cmvbhe9ug0003hdkz3e0g1388
+
+── X ข้ามร้าน ──
+  ✅ [P3.8-X1] [R3] ฉีด id บอร์ดร้าน T2 ดิบ ๆ ลงค่าตั้ง T1 ⇒ ปิดกะ T1 ไม่เกิดการ์ดใด ๆ (บอร์ด T2 จำนวนการ์ดเท่าเดิม)
+  ❌ [P3.8-X2] [R1 R3] ร้าน T2 เปิดของตัวเอง: กะ T2 ⇒ การ์ดบอร์ด T2 + ข้อความห้อง T2 · การ์ด/ข้อความ/ธงของ T1 เท่าเดิม · sweep(T2) ไม่แตะ T1 · sweep(T1) ไม่แตะ T2 — expected ร้านละบอร์ด/ห้องของตัวเอง | actual การ์ด T2 0 · ข้อความห้อง T2 ไม่ใช่ 1 · sweep T2 MISSING:sweepPosBoard · sweep T1 MISSING:sweepPosBoard
+
+── FC facts ──
+  ❌ [P3.8-FC1] [R11 มติ 9] posIntegrationCards: KANBAN facts stockOutShiftDiffCard/shiftCloseCashCheck live true phase null · LINKED เพราะ settings.pos.board (ไม่มีบอร์ดใบเสร็จ/กฎ void) · ปิด board.enabled ⇒ OFF (ทาง OFF ของ p1.18 I7 เดิม) — expected facts true · LINKED/OFF | actual stockOutShiftDiffCard {"live":false,"phase":"P3.8"} · shiftCloseCashCheck {"live":false,"phase":"P3.8"} · state OFF (คาด LINKED จาก settings.pos.board)
+  ⏭️  R8 สรุปเช้าในห้อง: SKIP — src/lib/modules/pos/ai-brief-shared.ts (P3.9 S) ยังไม่มี (มติ 4: ถ้า P3.8 S merge ก่อน ⇒ P3.8b)
+  ❌ [P3.8-RM5] [R7 R8 มติ 4] posts.shiftClose ปิด ⇒ การ์ดอย่างเดียว ไม่มีข้อความ · R8 สรุปเช้า (เมื่อ P3.9 มี ai-brief-shared): ก่อนเวลา 0 · catch-up 10:00 = 1 · ซ้ำ = 1 · ไม่มีบรรทัดจุดผิดปกติ/ขาดเกิน/อนุมัติ · ผู้เปิดไม่ใช่ OWNER แล้ว ⇒ ข้าม (ยังไม่มี = SKIP-with-reason) — expected shiftClose ปิด = การ์ดอย่างเดียว (R8 SKIP) | actual การ์ดกะไม่เกิด
+  ❌ [P3.8-PV1] [มติ 10 PDPA] ทุกชื่อ/รายละเอียดการ์ด · ป้ายลิงก์ · ความเห็น · ข้อความห้องของร้านในรอบนี้: ไม่มีรูปเบอร์โทร · ชื่อพนักงาน/ลูกค้าของฟิกซ์เจอร์ · tip/ทิป/commission/ค่าคอม/payroll/salary/เงินเดือน (ตัวตรวจจับของปลอมได้ — ตัวควบคุมบวก) — expected ไม่มีชื่อ/เบอร์/ทิป/ค่าคอม/เงินเดือน | actual ไม่มีการ์ดให้ตรวจ (ตัวตรวจไม่ได้พิสูจน์อะไร) · ตรวจ 0 ข้อความ
+  ลบร้านชั่วคราว cmvbhe9tf0000hdkzbszkfd7m: 337 ตาราง · แถวค้าง 0 {} · Tenant 0
+  ลบร้านชั่วคราว cmvbhe9ts0001hdkzlhd8rqkd: 337 ตาราง · แถวค้าง 0 {} · Tenant 0
+  ✅ [P3.8-Z1] QC4 คืนสภาพ: ร้านชั่วคราว 2 ร้าน 0 แถวทุกตารางที่มี tenantId (การ์ด/กิจกรรม/ความเห็น/ลิงก์/ผู้รับ · MeetingMessage · AuditLog · OutboxEvent · OpsEvent · PosShift/Mark/Order*) · Tenant ถูกลบ · User 0
+  ✅ [P3.8-Z2] QC4 ลายนิ้วมือ: แถวของร้านที่ไม่ใช่ชั่วคราว (KanbanCard · KanbanComment · MeetingMessage · PosShift · PosAvailabilityMark · PosOrderEvent) ก่อน = หลัง
+  ⏭️  R8 สรุปเช้าในห้อง: SKIP — src/lib/modules/pos/ai-brief-shared.ts (P3.9 S) ยังไม่มี (มติ 4: ถ้า P3.8 S merge ก่อน ⇒ P3.8b)
+
+===== qc-pos-p3.8 ===== ผ่าน 5/34 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-pos-p3.8","total":34,"passed":5,"failed":["P3.8-ST1","P3.8-ST2","P3.8-CF2","P3.8-CF1","P3.8-CF3","P3.8-SD1","P3.8-SD2","P3.8-SD4","P3.8-SD5","P3.8-SD6","P3.8-SD7","P3.8-SO1","P3.8-SO2","P3.8-SO3","P3.8-SO4","P3.8-RF1","P3.8-RF2","P3.8-RF3","P3.8-RM1","P3.8-RM2","P3.8-RM3","P3.8-RM4","P3.8-AN1","P3.8-AN2","P3.8-AN3","P3.8-X2","P3.8-FC1","P3.8-RM5","P3.8-PV1"],"skipped":false,"skippedParts":["R8 สรุปเช้าในห้อง: SKIP — src/lib/modules/pos/ai-brief-shared.ts (P3.9 S) ยังไม่มี (มติ 4: ถ้า P3.8 S merge ก่อน ⇒ P3.8b)"],"forced":true,"missing":["src/lib/pos-board-bridges.ts ยังไม่มี","src/lib/modules/pos/board-settings-shared.ts ยังไม่มี"],"base":"72669941547c","guardHits":0,"residue":0}

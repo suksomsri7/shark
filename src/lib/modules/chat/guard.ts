@@ -17,8 +17,17 @@
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 
-/** action ในทะเบียนกลาง `src/lib/core/permissions.ts` — ห้ามพิมพ์สตริงนี้ซ้ำที่อื่น */
-export const CHAT_READ_ACTION = "chat.conversation.read";
+/** action ในทะเบียนกลาง `src/lib/core/permissions.ts` — ห้ามพิมพ์สตริงนี้ซ้ำที่อื่น
+ *  SEC S1.21 ▸ ตัวค่าอยู่ใน `guard-keys.ts` (pure · ใช้นอก Next ได้) — re-export ที่นี่ชื่อเดิม (R-S1.21i) ◂ */
+import { CHAT_READ_ACTION } from "./guard-keys";
+export {
+  CHAT_READ_ACTION,
+  CHAT_REPLY_ACTION,
+  CHAT_ASSIGN_ACTION,
+  CHAT_SET_STATUS_ACTION,
+  CHAT_MARK_READ_ACTION,
+  CHAT_CUSTOMER_LINK_ACTION,
+} from "./guard-keys";
 
 type Auth = Awaited<ReturnType<typeof requireTenant>>;
 

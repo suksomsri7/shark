@@ -14,6 +14,7 @@ import { CORE_TOOLS, skillToolsForApiKey, skillsForTenant } from "@/lib/ai/skill
 import { crmApi } from "@/lib/modules/crm";
 import { aiApiKeyActor } from "@/lib/ai/actor";
 import { toolVerdict } from "@/lib/ai/tool-access";
+import { getAccess } from "@/lib/ai/secretary/access";
 import { generalToolGate } from "../general-key-gate";
 
 export async function GET(req: Request): Promise<Response> {
@@ -32,7 +33,9 @@ export async function GET(req: Request): Promise<Response> {
   // HF-APIV1 ▸ เครื่องมือนอก 4 โมดูล = คีย์กลางเท่านั้น (กรองทิ้งจากสารบัญเหมือน "ไม่มีสิทธิ์") ◂
   // C6.0 merge ▸ ต้องผ่านทั้งสองด่าน (generalToolGate ของ hotfix และ toolVerdict ของ CRM G1) ◂
   const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId, scopesMalformed: auth.scopesMalformed });
-  const usable = (names: readonly string[]) => names.filter((n) => generalToolGate(n, auth) && toolVerdict(actor, n, opts).ok);
+  // S1.3b ▸ (รีวิว C2) + ระดับต่อระบบของร้าน — สารบัญไม่โฆษณาเครื่องมือของระบบที่เจ้าของปิด/ดูอย่างเดียว ◂
+  const access = await getAccess(auth.tenantId);
+  const usable = (names: readonly string[]) => names.filter((n) => generalToolGate(n, auth) && toolVerdict(actor, n, { ...opts, access }).ok);
   const skills = skillsForTenant(systems.map((s) => s.type)).filter(
     (s) => usable(skillToolsForApiKey(s, auth.scopes, opts)).length > 0,
   );

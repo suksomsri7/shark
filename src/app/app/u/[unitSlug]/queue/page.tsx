@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { publicOrigin } from "@/lib/core/origin";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { getBoard, listTypes, listCounters } from "@/lib/modules/queue/service";
+import { lineSettingsOf } from "@/lib/modules/booking/planner-run"; // SVC B.5 ▸ (ง) ◂
 import {
   issueTicketAction,
   callNextAction,
@@ -36,6 +37,9 @@ export default async function QueueBoardPage({
 }) {
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
+  // SVC B.5 ▸ (ง) หน่วย BOOKING ที่เปิดคิวแถวเดียว: จอคิวของหน่วยนี้คือจอแถวเดียว (/booking) — ไม่วาดกระดานคิวเดิม
+  //   (action คิวเดิมจะข้ามเครื่องสถานะงาน) · BOOKING ที่ไม่เปิดโหมด/ชนิดอื่น ⇒ notFound เหมือนเดิม ◂
+  if (unit.type === "BOOKING" && (await lineSettingsOf(auth.active.tenantId, unit.id))) redirect(`/app/u/${unitSlug}/booking`);
   if (unit.type !== "QUEUE") notFound();
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
 

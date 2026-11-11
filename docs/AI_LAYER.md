@@ -35,6 +35,15 @@
 | `SHARK_AI_MOCK` | `1` = MockProvider | ใช้ใน oracle/dev |
 | `SHARK_AI_DAILY_REQ` | default 300 | เพดาน request/tenant/วัน |
 | `SHARK_AI_DAILY_TOKENS` | default 400000 | เพดาน tokens in+out/tenant/วัน |
+| `AI_PROVIDER` | ว่าง/`openrouter` (ปริยาย) · `anthropic` | S1.20 · เลือกผู้ให้บริการโมเดล |
+| `SHARK_ANTHROPIC_KEY` | Anthropic key ชื่อ "shark" (console.anthropic.com) | ใช้เมื่อ `AI_PROVIDER=anthropic` เท่านั้น · ไม่มี = ปิดชั้น AI สุภาพ (ไม่ตกไป OpenRouter) |
+
+**ผู้ให้บริการตรง Anthropic (S1.20 · R-K18b)** — `src/lib/ai/provider.ts`
+- `resolveProvider(tier)`: `SHARK_AI_MOCK=1` ⇒ Mock → `AI_PROVIDER=anthropic` ⇒ `AnthropicProvider` (ต้องมี `SHARK_ANTHROPIC_KEY`) → อื่น ๆ ⇒ OpenRouter ทางเดิม
+- `FAST_MODEL`/`SMART_MODEL` คงเป็น slug OpenRouter · `toAnthropicModelId` แม็ปเป็น id ตรงตอน resolve (`ANTHROPIC_MODEL_IDS`) · `SHARK_AI_MODEL` รับได้ทั้ง slug และ id ตรง
+- Messages API ด้วย fetch ล้วน (ไม่มี SDK): `system` + tools ตัวสุดท้ายมี `cache_control` · tool result ที่ติดกันรวมเป็น user message เดียว · รูป data URL ⇒ base64 · http ⇒ url
+- `tokensIn` = input + cache_creation + cache_read (คิดเงินครบ) · refusal ⇒ throw ไทย · ไม่ส่งพารามิเตอร์สุ่ม/thinking/tool_choice
+- ข้อสอบ `scripts/qc-sec-s1.20.mts` ใช้ fetch ปลอม — ไม่เรียก API จริง
 
 ## เฟส
 

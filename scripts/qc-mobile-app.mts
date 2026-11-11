@@ -87,7 +87,8 @@ chk(
 );
 
 // ── 3.5 feedback เจ้าของ 23 ก.ค.: light mode + ฟอนต์ไทยตามเว็บ ──
-const themeSrc = read("src/theme.ts");
+// ORACLE-EDIT (SECRETARY S0.2 · 4 พ.ย. 2026): theme.ts กลายเป็น shim · ค่าสี light อยู่ใน src/theme/light.ts (legacyLight) — ตรวจรวมทั้งสองไฟล์
+const themeSrc = read("src/theme.ts") + "\n" + read("src/theme/light.ts");
 chk("APP-6.1", "ธีม light mode (bg ขาว ไม่ใช่ดำ — feedback เจ้าของ)", /bg:\s*"#(fff|ffffff|f\w{5})"/i.test(themeSrc) && !/bg:\s*"#000/.test(themeSrc), "ขาว", themeSrc.match(/bg:[^,]+/)?.[0] ?? "?");
 const rootLayout = read("app/_layout.tsx");
 chk("APP-6.2", "โหลดฟอนต์ IBM Plex Sans Thai (ฟอนต์เดียวกับเว็บ)", /IBMPlexSansThai/.test(rootLayout) || /IBMPlexSansThai/.test(read("src/lib/fonts.ts")), "มี", "ไม่พบ");

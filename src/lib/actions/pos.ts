@@ -5,11 +5,14 @@ import { redirect } from "next/navigation";
 import type { PosPayType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { requireTenant, type Auth } from "@/lib/core/context";
-import { assertCan, ForbiddenError } from "@/lib/core/rbac";
+import { assertCan, evaluate, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
 import { posMembership, posSalesScope, posScopeUnitIds, posCanSetTenantPrice } from "@/lib/modules/pos/access";
 import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
 import { isPosClientKey, lookupPosKey, posStoredKey } from "@/lib/modules/pos/legacy-key";
-import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal, posPriceUnitIds } from "@/lib/modules/pos/register";
+import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal, posPriceUnitIds, posCatalog, posServices, registerDiscountCaps, registerSellerLimits } from "@/lib/modules/pos/register";
+import { assertLegacySaleAllowed } from "@/lib/modules/pos/api/tools"; // POS P5.1 ▸ MA3 ◂
+import { posRegisterV2On, REGISTER_MANUAL_MANAGER_MESSAGE, REGISTER_MANUAL_METHODS } from "@/lib/modules/pos/register-shared"; // POS P5.1 ▸ MA3 ◂
+import { parsePosIntentSettings } from "@/lib/modules/pos/payment-intent-shared"; // POS P5.1 ▸ MA3 ◂
 import type {
   PosDealOption,
   PosMemberChoicesInput,
@@ -64,6 +67,26 @@ export type RegisterSaleState =
   | { status: "idle" }
   | { status: "ok"; receiptNo: string | null; grandTotalSatang: number; pointEarned: number; changeSatang: number }
   | { status: "error"; message: string };
+
+/** POS P5.1 ▸ MA3: สิทธิ์ของผู้ใช้ session ในรูป MembershipCtx (ชุดเดียวกับ assertPosCan) ◂ */
+function membershipOf(auth: Auth & { active: NonNullable<Auth["active"]> }): MembershipCtx {
+  return { role: auth.active.role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> };
+}
+
+/**
+ * POS P5.1 ▸ MA3 (F3 · CD-P51-O4): บรรทัดที่ "ราคาไม่ได้มาจากแคตตาล็อกของจอเดิม" — สินค้าคลัง (itemId) ราคาเท่า posCatalog · บริการ (serviceId) ราคาเท่า posServices ·
+ *   ที่เหลือ (รายการพิมพ์เอง / ราคาที่แก้ในตะกร้า) ส่งต่อให้ assertLegacySaleAllowed (แคตตาล็อกหน้าขายใหม่ หรือสิทธิ์ pos.sale.priceOverride) ◂
+ */
+async function legacyUncataloguedLines(tenantId: string, unitId: string, inventorySystemId: string | null, lines: CartLine[]): Promise<CartLine[]> {
+  if (!inventorySystemId && !lines.some((l) => l.serviceId)) return lines;
+  const items = inventorySystemId && lines.some((l) => l.itemId) ? await posCatalog(tenantId, inventorySystemId) : [];
+  const services = lines.some((l) => l.serviceId) ? await posServices(tenantId, inventorySystemId, unitId) : [];
+  const itemPrice = new Map(items.map((i) => [i.id, i.priceSatang]));
+  const servicePrice = new Map(services.map((x) => [x.id, x.priceSatang]));
+  return lines.filter(
+    (l) => !((l.itemId && itemPrice.get(l.itemId) === l.unitPriceSatang) || (l.serviceId && servicePrice.get(l.serviceId) === l.unitPriceSatang)),
+  );
+}
 
 function assertPosCan(auth: Auth & { active: NonNullable<Auth["active"]> }, unitId: string) {
   assertCan(
@@ -378,6 +401,10 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
   }
   if (prior.kind === "taken") return { status: "error", message: "ข้อมูลบิลไม่ครบ ลองใหม่อีกครั้ง" };
 
+  // POS P5.1 ▸ MA3 (F3 · CD-P51-O4): จุดขายที่เปิดหน้าขายใหม่ (registerV2) — จอเดิมขายไม่ได้ (ด่านราคา/ส่วนลด/ผู้จัดการอยู่ที่หน้าขายใหม่) ◂
+  const posSys = await prisma.appSystem.findFirst({ where: { id: input.systemId, tenantId, type: "POS" }, select: { settings: true } });
+  if (posRegisterV2On(posSys?.settings)) return { status: "error", message: "จุดขายนี้ใช้หน้าขายใหม่แล้ว — รีเฟรชหน้าเพื่อขายผ่านหน้าขายใหม่" };
+
   const norm = normalizeLines(input.lines);
   if (!norm.ok) return { status: "error", message: norm.message };
   const mem = await safeMemberId(tenantId, input.memberId);
@@ -386,9 +413,34 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
   const totals = await computeTotals(tenantId, input.unitId, norm.lines, norm.subtotal, input.billDiscountSatang, mem.memberId, input.couponCode);
   if (!totals.ok) return { status: "error", message: totals.message };
 
+  // POS P5.1 ▸ MA3 (R1 F1 · CD-P51-O4b): เพดานส่วนลดของผู้ขาย (สูตรเดียวกับหน้าขายใหม่ pricing-shared: Σ ส่วนลด ×10000 ≤ เพดาน × subtotal + ½ สตางค์ต่อส่วนลดแบบยอด) ·
+  //   คูปองไม่นับ (เหมือนหน้าขายใหม่) · ไม่มีเพดาน (null) = ไม่จำกัด ◂
+  const lim = registerSellerLimits({ userId: auth.user.id, ...posMembership(auth.active) }, input.unitId, await registerDiscountCaps({ tenantId, systemId: input.systemId }));
+  if (lim.maxDiscountBp !== null && totals.billDiscount > 0 && totals.billDiscount * 10_000 > lim.maxDiscountBp * norm.subtotal + 5_000) {
+    return { status: "error", message: "ส่วนลดเกินสิทธิ์ของบัญชีนี้" };
+  }
+
   const payType: PosPayType = input.payType === "PROMPTPAY" ? "PROMPTPAY" : input.payType === "TRANSFER" ? "TRANSFER" : "CASH";
 
   const links = await resolvePosLinks(tenantId, input.unitId);
+  // POS P5.1 ▸ MA3: ราคาที่ไม่ได้มาจากแคตตาล็อก = ต้องมี pos.sale.priceOverride (ด่านเดียวกับ pos_create_sale รุ่นเดิม) ·
+  //   พร้อมเพย์ไม่อ้างใบขอรับเงิน = ยืนยันเงินเข้าเอง ⇒ ร้านตั้ง manualConfirmRequiresManager ต้องมี pos.shift.manage (กติกาเดียวกับหน้าขายใหม่) ◂
+  const m = membershipOf(auth);
+  try {
+    const custom = evaluate(m, { module: "pos", action: "pos.sale.priceOverride", unitId: input.unitId })
+      ? []
+      : await legacyUncataloguedLines(tenantId, input.unitId, links.inventorySystemId ?? null, norm.lines);
+    await assertLegacySaleAllowed({ tenantId, systemId: input.systemId, unitId: input.unitId }, m, custom);
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "ขายรายการนี้ไม่ได้" };
+  }
+  if (
+    REGISTER_MANUAL_METHODS.has(payType) &&
+    !evaluate(m, { module: "pos", action: "pos.shift.manage", unitId: input.unitId }) &&
+    parsePosIntentSettings(posSys?.settings).manualConfirmRequiresManager
+  ) {
+    return { status: "error", message: REGISTER_MANUAL_MANAGER_MESSAGE };
+  }
   // ── สิทธิ์สมาชิก (M2.8): คิดยอดที่ต้องเก็บด้วยเส้นเดียวกับที่ `createSale` จะตัดจริง ──
   // (ยอดต่าง = `createSale` โยน PAYMENT_MISMATCH — ตั้งใจให้ล้มเสียงดัง ไม่ใช่ขายเงียบด้วยยอดผิด)
   const memberQuote =

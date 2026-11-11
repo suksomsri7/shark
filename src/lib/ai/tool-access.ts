@@ -26,17 +26,19 @@ import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { crmCan, crmApi } from "@/lib/modules/crm";
 import { canReadMember, hasMemberPerm, isUnitScoped, toMemberActor } from "@/lib/modules/member/access";
 import { membershipCanAccount } from "@/lib/modules/account/api/actor";
-import { memberToolScope } from "@/lib/modules/member/api/tools";
-import { accountToolScope } from "./account-ops";
-import { kanbanMembershipCan, kanbanToolScope } from "./kanban-ops";
+import { memberToolInfos, memberToolScope } from "@/lib/modules/member/api/tools";
+import { posToolInfos, posToolScope } from "@/lib/modules/pos/api/tools"; // POS P3.9 ▸ R1 ◂
+import { accountToolInfos, accountToolScope } from "./account-ops";
+import { kanbanMembershipCan, kanbanToolInfos, kanbanToolScope } from "./kanban-ops";
 import { aiActorMembership, isGeneralKeyActor, type AiActor, type AiApiKeyActor } from "./actor";
 import { kindAccessOf } from "./proposals";
 import { toolAllowedForApiKey } from "./skills";
+import { levelVerdict, type AccessMap } from "./secretary/access-rules"; // SEC S1.3 ▸ ระดับต่อระบบ (ไฟล์ pure ไม่ import อะไร) ◂
 
 export type AccessQuery = { module: string; action: string };
 
 /** โมดูลที่มีทะเบียน scope ของคีย์ API เป็นของตัวเอง */
-const SCOPED_MODULES = new Set(["crm", "member", "account", "kanban"]);
+const SCOPED_MODULES = new Set(["crm", "member", "account", "kanban", "pos"]); // POS P3.9 ▸ R1: + pos (ทะเบียน op ของ REST POS) ◂
 
 type HandRule = {
   /** คีย์สิทธิ์ที่ต้องมี **ทุกตัว** (ว่าง = ใครก็ตามที่เข้าผู้ช่วยได้แล้ว — ประตูเว็บไม่มีคีย์อ่าน) */
@@ -75,8 +77,7 @@ export const HAND_TOOL_ACCESS: Readonly<Record<string, HandRule>> = {
   forget_fact: { needs: [], writesNow: true },
   list_memories: OPEN,
   // ── อ่าน · ประตูเว็บไม่มีคีย์อ่าน ──
-  sales_summary: OPEN, // /app/sys/[id] (POS) · pos/sales
-  sales_by_day: OPEN,
+  // POS P3.9 ▸ R1 มติ 1: sales_summary / sales_by_day ย้ายเป็นเครื่องมือของทะเบียน POS (pos.report.view + สาขา — moduleToolQuery) ◂
   low_stock: OPEN, // inventory hub / items
   pending_leaves: OPEN, // hr/leave
   kb_search: OPEN, // /app/kb
@@ -118,7 +119,8 @@ export const HAND_ACTION_KIND: Readonly<Record<string, string>> = {
   record_expense: "record_expense",
   schedule_task: "ai_schedule_task",
   automation_create_rule: "automation_create_rule",
-  void_sale: "void_sale",
+  // POS P3.9 ▸ R4 มติ 2: void_sale = เครื่องมือของทะเบียน POS (kind pos.sales.void · pos.sale.void) — kind เดิม void_sale ยังกดยืนยันได้ (proposals.ts) ◂
+  pos_draft_po: "pos_draft_po", // POS P3.9 ▸ R5 มติ 8 (inventory.po.create) ◂
   pos_create_sale: "pos_create_sale",
   booking_create_appointment: "booking_create_appointment",
   hotel_create_reservation: "hotel_create_reservation",
@@ -135,7 +137,49 @@ export const HAND_ACTION_KIND: Readonly<Record<string, string>> = {
   point_adjust: "point_adjust",
   ticket_mark_paid: "ticket_mark_paid",
   restaurant_close_bill: "restaurant_close_bill",
+  refund_booking_deposit: "booking_refund_deposit", // SEC S1.12 ▸ R-S1.12b booking.deposit.refund ของคนกด ◂
+  send_customer_message: "chat.send", // SEC S1.12 ▸ R-K14 chat.message.send ของคนกดอนุมัติ · ระดับ chat ต้อง DRAFT (ค่าเริ่มต้น READ ⇒ ไม่ยื่น) ◂
 };
+
+/**
+ * SEC S1.3 ▸ เครื่องมือเขียนมือที่ไม่มีคีย์สิทธิ์ (needs ว่าง) แต่อ่านข้อมูลของโมดูลหนึ่ง → โมดูลนั้น (ใช้กับระดับต่อระบบเท่านั้น
+ *   ไม่เปลี่ยนด่าน membership) · ไม่อยู่ที่นี่และ needs ว่าง = แกนกลาง (list_systems · ask_clarify · ความจำ · เปิดเคส · คำแนะนำการเติบโต) ◂
+ */
+export const HAND_TOOL_MODULE: Readonly<Record<string, string>> = {
+  low_stock: "inventory",
+  pending_leaves: "hr",
+  kb_search: "kb",
+  reward_list_redemptions: "reward",
+  today_appointments: "booking",
+  queue_waiting: "queue",
+  shop_pending_orders: "shop",
+  rental_active: "rental",
+  restaurant_today: "restaurant",
+  ticket_event_sales: "ticket",
+  approvals_pending: "approval",
+  recent_leads: "crm",
+};
+
+/**
+ * S1.3b ▸ (รีวิว C3) เครื่องมือแกนกลางที่ประกาศชัด — ไม่แตะข้อมูลของโมดูลใด ⇒ ระดับต่อระบบไม่ตัด (`toolModuleOf` = null)
+ *   เครื่องมือเขียนมือที่ `needs` ว่างต้องอยู่ที่นี่ หรือใน HAND_TOOL_MODULE — ไม่อยู่ทั้งคู่ = "__unmapped__" ⇒ `accessVerdict` ปฏิเสธ (ปิดไว้ก่อน)
+ *   growth_recommendations: ส่วนที่อ่านลูกค้า/บิลตัดในตัวเครื่องมือตาม TOOL_EXTRA_MODULES (access-rules.ts)
+ *   propose_plan / load_skill อยู่ในรายการเพื่อให้ทะเบียนครบ (propose_plan ตรวจระดับรายขั้น · load_skill เป็นของชั้น service) ◂
+ */
+export const HAND_TOOL_CORE: ReadonlySet<string> = new Set([
+  "ask_clarify",
+  "list_systems",
+  "propose_plan",
+  "load_skill",
+  "remember_fact",
+  "forget_fact",
+  "list_memories",
+  "support_open_case",
+  "growth_recommendations",
+]);
+
+/** S1.3b ▸ โมดูลของเครื่องมือที่ไม่มีใครประกาศ — ไม่อยู่ใน AI_MODULES/ALWAYS_ON ⇒ `levelVerdict` ปฏิเสธเสมอ ◂ */
+export const UNMAPPED_TOOL_MODULE = "__unmapped__";
 
 /** `propose_plan` — ยื่นให้ทุกคน · แต่ละขั้นตรวจด้วย kind ของขั้นนั้นใน tools.ts (`actorCanConfirmKind`) */
 export const PLAN_TOOL = "propose_plan";
@@ -150,6 +194,9 @@ function moduleToolQuery(name: string): AccessQuery | null {
   if (member) return { module: "member", action: member };
   const crm = crmApi.crmToolScope(name);
   if (crm) return { module: "crm", action: crm };
+  // POS P3.9 ▸ R1: tool ของทะเบียน POS → op.action (อ่าน = คีย์อ่าน · เขียน = คีย์ของคนกดยืนยัน = posKindAccess) ◂
+  const pos = posToolScope(name);
+  if (pos) return { module: "pos", action: pos };
   return null;
 }
 
@@ -213,7 +260,14 @@ export function toolIsMapped(name: string): boolean {
  * ผู้กระทำนี้ใช้เครื่องมือนี้ได้ไหม (ด่านคีย์สิทธิ์ — การมองเห็นรายแถวตรวจในเครื่องมือ)
  * `opts.crmLegacyLead` = ร้าน CRM รุ่นเดิม (ผู้เรียกคำนวณ) — `crm_create_lead` เปิดให้คีย์ทุกใบเหมือนก่อน C1.10 (กติกาเดิมของ route)
  */
-export function toolVerdict(actor: AiActor, name: string, opts: { crmLegacyLead?: boolean } = {}): ToolVerdict {
+export function toolVerdict(actor: AiActor, name: string, opts: { crmLegacyLead?: boolean; access?: AccessMap } = {}): ToolVerdict {
+  const base = membershipToolVerdict(actor, name, opts);
+  // SEC S1.3 ▸ สิทธิ์สุทธิ = membership ∩ ระดับต่อระบบของร้าน — ตรวจ membership ก่อน (เหตุผลเดิม) แล้วค่อยระดับ · ไม่ส่ง access = เดิมทุกไบต์ ◂
+  if (!base.ok || !opts.access) return base;
+  return accessVerdict(opts.access, name);
+}
+
+function membershipToolVerdict(actor: AiActor, name: string, opts: { crmLegacyLead?: boolean }): ToolVerdict {
   const hand = Object.prototype.hasOwnProperty.call(HAND_TOOL_ACCESS, name) ? HAND_TOOL_ACCESS[name] : null;
   const kind = Object.prototype.hasOwnProperty.call(HAND_ACTION_KIND, name) ? HAND_ACTION_KIND[name] : null;
   const mod = hand || kind || name === PLAN_TOOL ? null : moduleToolQuery(name);
@@ -281,7 +335,70 @@ export function actorBranches(actor: AiActor): string[] | null {
   return [...m.unitAccess];
 }
 
-/** ชื่อเครื่องมือที่ผู้กระทำนี้ใช้ได้ (ตัวกรองของการยื่นเครื่องมือ) */
-export function toolsOfferedTo(actor: AiActor, names: readonly string[]): string[] {
-  return names.filter((n) => toolVerdict(actor, n).ok);
+/** ชื่อเครื่องมือที่ผู้กระทำนี้ใช้ได้ (ตัวกรองของการยื่นเครื่องมือ) · SEC S1.3 ▸ `access` = ระดับต่อระบบของร้าน (ไม่ส่ง = เดิม) ◂ */
+export function toolsOfferedTo(actor: AiActor, names: readonly string[], access?: AccessMap): string[] {
+  return names.filter((n) => toolVerdict(actor, n, access ? { access } : {}).ok);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEC S1.3 ▸ ระดับต่อระบบ (OFF/READ/DRAFT) ของเครื่องมือ — ชื่อเครื่องมือ → โมดูล + เขียนหรือไม่ (ตารางชุดเดียวกับด่าน membership ข้างบน)
+//   กติการะดับเอง (`levelVerdict`) อยู่ที่ secretary/access-rules.ts · ผู้ใช้ภายนอก import ผ่าน secretary/access.ts ◂
+// ─────────────────────────────────────────────────────────────────────────────
+
+const has = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
+/**
+ * โมดูลที่เครื่องมือนี้แตะ · null = แกนกลาง (ไม่ถูกตัดด้วยระดับ)
+ * S1.3b ▸ ชื่อที่ไม่ได้ประกาศที่ใดเลย (hand tool needs ว่างที่ไม่อยู่ใน CORE/MODULE · kind ไม่รู้จัก · ชื่อแปลก) = "__unmapped__" (ปิดไว้ก่อน) ◂
+ */
+export function toolModuleOf(name: string): string | null {
+  if (has(HAND_TOOL_ACCESS, name)) {
+    if (has(HAND_TOOL_MODULE, name)) return HAND_TOOL_MODULE[name];
+    const first = HAND_TOOL_ACCESS[name].needs[0]?.module;
+    if (first) return first;
+    return HAND_TOOL_CORE.has(name) ? null : UNMAPPED_TOOL_MODULE;
+  }
+  if (has(HAND_ACTION_KIND, name)) return kindAccessOf(HAND_ACTION_KIND[name])?.module ?? UNMAPPED_TOOL_MODULE;
+  if (name === PLAN_TOOL) return null; // แต่ละขั้นตรวจระดับตอนเสนอ (tools.ts propose_plan) + ก่อน claim (plans.ts) + ตอนรัน (runKind)
+  if (HAND_TOOL_CORE.has(name)) return null; // load_skill (ชั้น service)
+  return moduleToolQuery(name)?.module ?? UNMAPPED_TOOL_MODULE;
+}
+
+/** เครื่องมือของทะเบียน op ที่เป็นการเขียน (op.kind ≠ read) · null = ไม่ใช่เครื่องมือของทะเบียน */
+function registryToolWrite(name: string): boolean | null {
+  for (const infos of [accountToolInfos(), kanbanToolInfos(), memberToolInfos(), crmApi.crmToolInfos(), posToolInfos()]) {
+    const t = infos.find((i) => i.name === name);
+    if (t) return t.write;
+  }
+  return null;
+}
+
+/** เครื่องมือนี้เขียน/เสนอการเขียนไหม (= `AiTool.action` · เขียนทันที · op เขียนของทะเบียน) — ชื่อที่ไม่รู้จัก = true (ปิดไว้ก่อน) */
+export function toolIsWrite(name: string): boolean {
+  if (has(HAND_ACTION_KIND, name) || name === PLAN_TOOL) return true;
+  if (has(HAND_TOOL_ACCESS, name)) return HAND_TOOL_ACCESS[name].writesNow === true;
+  return registryToolWrite(name) ?? true;
+}
+
+/** ระดับของร้านยอมให้ใช้เครื่องมือนี้ไหม (OFF = ปฏิเสธ · READ + เขียน = ปฏิเสธ) · โมดูลที่สองที่เครื่องมืออ่านมาประกอบ (แชท) ต้องไม่ OFF */
+export function accessVerdict(access: AccessMap, name: string): ToolVerdict {
+  const module = toolModuleOf(name);
+  if (module === UNMAPPED_TOOL_MODULE) {
+    // S1.3b ▸ (C3) ไม่รู้ว่าเครื่องมือนี้แตะระบบไหน ⇒ ไม่ให้ใช้เมื่อร้านตั้งระดับต่อระบบ (ปิดไว้ก่อน) ◂
+    return { ok: false, reason: `เครื่องมือ "${name}" ยังไม่ได้ระบุว่าแตะระบบใดของร้าน จึงยังให้เลขาใช้ไม่ได้ — แจ้งทีมงาน SHARK ได้ที่เมนูช่วยเหลือ` };
+  }
+  const main = levelVerdict(access, module, toolIsWrite(name));
+  if (!main.ok) return main;
+  for (const q of EXTRA_MODULE_TOOL_NEEDS[name] ?? []) {
+    const extra = levelVerdict(access, q.module, false);
+    if (!extra.ok) return extra;
+  }
+  return OK;
+}
+
+/** ระดับของร้านยอมให้ลงมือ kind นี้ไหม (ต้อง DRAFT · โมดูลแกนกลาง = ผ่าน) · kind ที่ไม่รู้จัก = ปฏิเสธ */
+export function kindAllowedByAccess(access: AccessMap, kind: string): ToolVerdict {
+  const q = kindAccessOf(kind);
+  if (!q) return { ok: false, reason: "ไม่รู้จักประเภทข้อเสนอนี้" };
+  return levelVerdict(access, q.module, true);
 }

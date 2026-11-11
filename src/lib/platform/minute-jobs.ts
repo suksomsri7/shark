@@ -49,6 +49,16 @@ export type MinuteJob = {
   cadence?: MinuteJobCadence;
   /** true = รันเฉพาะเมื่อเรียกจากตัวรันบน VPS (`entry: "vps"`) — ใช้กับงานสัญญาณชีพ (ดูท้ายส่วนทะเบียน) เพื่อพิสูจน์ว่า crontab ยังเดิน */
   vpsOnly?: boolean;
+  /**
+   * SEC S3a.1-S1 ▸ R-Z8: งบของตัวเอง (ms) บนราง "minute" — ไม่กินงบรวม 20 วิ ของรอบ (เวลาที่ใช้ไปถูกคืนให้งานถัดไป)
+   *   ใช้กับงานที่ต้องได้รันทุกนาทีแม้งานอื่นในรอบจะช้า (คิวห้องเลขา) · ไม่ตั้ง = งบที่เหลือของรอบเหมือนเดิม ◂
+   */
+  ownBudgetMs?: number;
+  /**
+   * SEC S3a.1-S1 รอบ 2 ▸ §Z.4 Q5: การถูกตัดงบเป็นเรื่องปกติของงานนี้ (เช่นรอโมเดล) ⇒ บันทึก INFO ไม่เกิน 1 แถว/15 นาที
+   *   พร้อมจำนวนครั้งที่ถูกตัด (ตัวนับต่อโพรเซส) แทน WARN ทุกครั้ง · ไม่ตั้ง = WARN ทุกครั้งเหมือนเดิม ◂
+   */
+  quietCutOff?: boolean;
 };
 
 export type MinuteJobControl = { signal: AbortSignal; deadline: number };
@@ -94,6 +104,13 @@ const WINDOW_OFFSET_MS = 7 * 60 * 60_000;
 const ERROR_MAX = 4000;
 
 const leaseKey = (name: string) => `minute-job:lease:${name}`;
+const cutOffLogKey = (name: string) => `minute-job:cutoff-log:${name}`; // SEC S3a.1-S1 รอบ 2 §Z.4 Q5
+const CUT_OFF_LOG_EVERY_MS = 15 * 60_000;
+// ตัวนับครั้งที่ถูกตัดงบต่อโพรเซส (งาน quietCutOff) — รายงานพ่วงแถว INFO ที่ throttle แล้ว
+const CUTOFF_COUNT_KEY = Symbol.for("shark.platform.minute-jobs.cutoff-count");
+const cutHolder = globalThis as unknown as Record<symbol, Map<string, number> | undefined>;
+const cutOffCount: Map<string, number> = cutHolder[CUTOFF_COUNT_KEY] ?? new Map<string, number>();
+cutHolder[CUTOFF_COUNT_KEY] = cutOffCount;
 const runKey = (name: string) => `minute-job:run:${name}`;
 const okKey = (name: string) => `minute-job:ok:${name}`;
 const opsMessage = (name: string, what: string) => `${name} · ${what}`;
@@ -127,6 +144,18 @@ export function registerMinuteJob(job: MinuteJob): void {
 // ── no-op job ให้ข้อสอบ/หน้า integrations มีสัญญาณชีพ (ลงทะเบียนตอน import — ทั้ง route และ crm-cron.mts ผ่านทางนี้) ──
 // vpsOnly: สัญญาณชีพต้องพิสูจน์ว่า "ตัวรันบน VPS" ยังเดิน — ถ้า route (uptime pinger / curl มือ) ต่ออายุได้ด้วย
 //   หน้า integrations จะขึ้นว่าปกติทั้งที่ crontab หายไปแล้ว
+// SEC S3a.1-S1 ▸ R-Z8: คิวห้องเลขา = งานแรกของราง minute พร้อมงบของตัวเอง 8 วิ (ไม่กินงบรวม — `chat.sla` ท้ายรางไม่ตก no-budget)
+//   ตัวงานจริงอยู่ที่ `ai/secretary/worker.ts#runRoomJobsTick` (โหลดตอนรันเท่านั้น — ไฟล์นี้ห้ามลากชั้น AI ตอนโหลด) ·
+//   `room-jobs-job.ts` ลงทะเบียนชื่อเดิมซ้ำด้วยค่าเดียวกัน (แทนที่ในตำแหน่งเดิมของทะเบียน = ยังเป็นงานแรก) ◂
+export const SECRETARY_ROOM_JOBS_BUDGET_MS = 8_000;
+registerMinuteJob({
+  name: "secretary.roomJobs",
+  everyMinutes: 1,
+  ownBudgetMs: SECRETARY_ROOM_JOBS_BUDGET_MS,
+  quietCutOff: true, // §Z.4 Q5: งานรอโมเดลเกิน 8 วิ = ปกติ (worker ทำต่อเบื้องหลัง · lease/heartbeat ของงานคุมอยู่)
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/ai/secretary/worker")).runRoomJobsTick(now, ctrl),
+});
+// ◂ SEC S3a.1-S1
 registerMinuteJob({ name: "crm.heartbeat", everyMinutes: 5, vpsOnly: true, run: async () => {} });
 
 // CRM C2.1 ▸ กฎอัตโนมัติ CRM (ใบ C2.1 · §7.3) — ขั้น "รอ n วัน" ที่ถึงเวลา (รายชั่วโมง) · trigger ตามรอบเวลา (รายวัน 00:00 ไทย)
@@ -456,6 +485,213 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C3.9
+// POS P3.5 ▸ R9 มติ 8: ค่าคอมฯ พนักงานขายหน้าร้าน → งวดเงินเดือน HR — รายชั่วโมง (แบบ crm.commissions.payroll) · ส่งเฉพาะเดือนไทยที่จบแล้ว
+//   AUDIT-CLASS X5: ล็อกต่อ (ร้าน · ผู้ใช้) + แถว FOR UPDATE + สถานะ OPEN ⇒ route + crontab ยิงซ้อนได้ผลเดียว · เคารพ ctrl.deadline (รอบหลังทำต่อ)
+//   โหลด POS ตอนรันเท่านั้น (ไฟล์นี้ถูก import จาก route — ห้ามลากกราฟ POS/HR ตอนโหลด) · ไม่มีงาน = จบทันที (คิวรีเดียว)
+registerMinuteJob({
+  name: "pos.staffCommission.payroll",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => {
+    const { syncStaffCommissionToPayroll } = await import("@/lib/modules/pos/staff-commission");
+    await syncStaffCommissionToPayroll({ now, deadline: ctrl.deadline });
+  },
+});
+// ◂ POS P3.5
+// POS P3-SKEL ▸ R10 มติ §10-2 (W19): ลบไฟล์สลิปโอนที่ถึงอายุเก็บ (purgeAfter) — รายชั่วโมง · ไฟล์ก่อน แล้ว fileId = null (แถวคงไว้) · รันซ้ำ = 0 ·
+//   R13: งานพิมพ์ LAN ที่ค้างเกิน 10 นาที → EXPIRED (ล้างไบต์) · โหลด POS ตอนรันเท่านั้น (ไฟล์นี้ถูก import จาก route — ห้ามลากกราฟ POS ตอนโหลด)
+registerMinuteJob({
+  name: "pos.slip.purge",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => {
+    // fix1 F6: งานพิมพ์หมดอายุก่อน (updateMany เดียว · ถูก) แล้วค่อยลบไฟล์สลิป (ทีละไฟล์ · หยุดที่ ctrl.deadline · รอบหน้าทำต่อ)
+    const { expirePrintJobs } = await import("@/lib/modules/pos/print-relay");
+    await expirePrintJobs({ now });
+    const { purgeExpiredSlips } = await import("@/lib/modules/pos/payment-slip");
+    await purgeExpiredSlips({ now, deadline: ctrl.deadline });
+  },
+});
+// ◂ POS P3-SKEL
+// SVC R0.5 ▸ ลบ call log ของศูนย์เชื่อมต่อที่เกิน 30 วัน (CC §2.2 · ใบสั่ง R0.5 §5) — รายวัน · ทุกร้าน · เป็นก้อน · รันซ้ำ = 0 ·
+//   idempotent (deleteMany ตามเวลา) ⇒ route + crontab ยิงซ้อนได้ · เคารพ ctrl.signal/deadline · โหลดศูนย์ฯ ตอนรันเท่านั้น (ไฟล์นี้ถูก import จาก route)
+//   หนี้: IntegrationCallLog ยังไม่มี index เดี่ยวที่ `at` (มีแค่ tenantId,integrationId,at) — เพิ่มในใบ schema ถัดไป
+registerMinuteJob({
+  name: "integrations.calllog.purge",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { purgeIntegrationCallLogs } = await import("@/lib/core/integrations");
+    await purgeIntegrationCallLogs(now, { signal: ctrl.signal, deadline: ctrl.deadline });
+  },
+});
+// ◂ SVC R0.5
+
+// SVC C.3 ▸ สุขภาพตัวต่อ: อ่านโควตาแถว CONNECTED (ชนิดที่มี quota()) ทุก 60 นาที/แถว · เรียงตรวจนานสุดก่อน · ตั้ง checkedAt แม้ล้ม (กันอดอยาก) ·
+//   โควตาเหลือ ≤ ค่าตั้ง #83 ⇒ แจ้งเจ้าของครั้งเดียวต่อเหตุ (ล็อกแถว) · route + crontab ซ้อนกันได้ · โหลด facade ตอนรันเท่านั้น
+registerMinuteJob({
+  name: "integrations.health",
+  everyMinutes: 60,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => {
+    const { runIntegrationHealthJob } = await import("@/lib/core/integrations");
+    await runIntegrationHealthJob(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ SVC C.3
+
+// SVC R0.8 ▸ แกนห้อง: ปิด HOLD/CHANNEL_HOLD ที่หมดเวลา (ทุกนาที · ข้ามร้าน) — โหลด facade rooms ตอนรันเท่านั้น (แบบงาน CRM ·
+//   ไฟล์นี้ถูก import จาก route/crm-cron.mts — ห้ามลากกราฟโมดูลตอนโหลด) · idempotent: UPDATE มีเงื่อนไข active + FOR UPDATE SKIP LOCKED ⇒
+//   route + crontab ยิงซ้อนกัน แต่ละแถวปิดครั้งเดียว event ครั้งเดียว (X5) · claimRoom ปิด hold หมดเวลาที่ขวางเองอยู่แล้ว (ไม่ต้องรองานนี้)
+registerMinuteJob({
+  name: "rooms.expireHolds",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/rooms")).expireHolds(now),
+});
+// ◂ SVC R0.8
+// SVC B.3 ▸ ระบบจอง: ปล่อยช่องที่ลูกค้าจองเองแล้วไม่จ่ายมัดจำในเวลา (ทุกนาที · ข้ามร้าน · ใบสั่ง svc-brief-b.3 §3.3) — โหลดตอนรันเท่านั้น ·
+//   idempotent: UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED ⇒ route + crontab ยิงซ้อนกัน แต่ละแถวปล่อยครั้งเดียว (X5)
+registerMinuteJob({
+  name: "booking.depositHolds.expire",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/booking/service")).expireDepositHolds(now),
+});
+// ◂ SVC B.3
+// SVC B.4 ▸ จองคิวโหมดแถวเดียว: สาย → ไม่มา → สิ้นวันของ walk-in → วางคิวใหม่ (ทุกนาที · ข้ามร้าน · ใบสั่ง svc-brief-b.4 §3.3 §3.6) —
+//   โหลดตอนรันเท่านั้น · idempotent: UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED + event ใน tx เดียวกับแถว ⇒ route + crontab ยิงซ้อน
+//   แต่ละนัดเปลี่ยนครั้งเดียว event ครั้งเดียว (X5) · เฉพาะหน่วย BOOKING ที่ booking.queue.singleLine = true (ร้านเดิมไม่ถูกแตะ)
+registerMinuteJob({
+  name: "booking.line.tick",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/booking/planner-run")).runLineTick(now),
+});
+// ◂ SVC B.4
+// SVC B.9 ▸ แจ้งเตือนลูกค้าตามเวลา (เตือนก่อนนัด · ใกล้ถึงคิว · คิวล่าช้า · ชวนกลับ) — ข้ามร้าน · ทุก 1 นาที ·
+//   idempotent ด้วย dedupeKey ของ notifyCustomer (ยิงซ้อน/หลายโพรเซส = ข้อความเดียว) · โหลดตอนรัน ◂
+// SVC B.17 ▸ waitlist: หมดอายุทีละหน้า (keyset) + จับคู่ช่องว่างของทุก (หน่วย, วัน) ที่มีคนรอ (ครอบยกเลิกทางเดิมที่ไม่ยิง event · ส่งหลังเวลาเงียบ) ·
+//   ทุก 1 นาที · ข้ามร้าน · ส่งครั้งเดียวด้วย dedupeKey ของ notifyCustomer · โหลดตอนรัน ◂
+registerMinuteJob({
+  name: "booking.waitlist.tick",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/platform/booking-waitlist")).runWaitlistTick(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+registerMinuteJob({
+  name: "booking.notify.tick",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/platform/booking-notify")).runBookingNotifyTick(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+// SVC B.4 ▸ บัตรคิว: สิ้นวัน (resetDaily) + ข้ามเกินเวลา → ไม่มา (expireSkipped) ทุกหน่วยที่มีบัตรค้าง · ข้ามบัตรของจองคิว (refType APPOINTMENT) ·
+//   ทุก 5 นาที · ข้ามร้าน · updateMany มีเงื่อนไขสถานะ ⇒ ยิงซ้อนกันได้
+registerMinuteJob({
+  name: "queue.housekeeping",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/queue/service")).runQueueHousekeeping(now),
+});
+// ◂ SVC B.4
+
+// SVC B.11 ▸ ระบบจอง: ลบข้อมูลส่วนตัวลูกค้า walk-in ตามอายุที่ร้านตั้ง (booking.privacy.walkInRetentionDays · ชั่วโมงละครั้ง · ข้ามร้าน) —
+//   โหลดตอนรันเท่านั้น (facade) · idempotent + ล็อก advisory ต่อร้าน ⇒ ยิงซ้อนกันได้ผลรวมเท่ารอบเดียว (X5)
+registerMinuteJob({
+  name: "booking.privacy.purge",
+  everyMinutes: 60,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/booking")).purgeBookingPersonalData(now),
+});
+// ◂ SVC B.11
+
+// SVC R0.9 ▸ แกนห้อง: ปล่อย occupancy ของการจองโรงแรมที่ไม่ใช่ BOOKED/CHECKED_IN แล้ว (เช็คเอาท์/ยกเลิก/คืนเงิน แต่ปล่อยห้องล้ม)
+//   ทุก 5 นาที · ข้ามร้าน · lazy import facade แบบ rooms.expireHolds · idempotent (SKIP LOCKED + active ใน UPDATE)
+registerMinuteJob({
+  name: "rooms.sweepStaleOccupancy",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now) => (await import("@/lib/modules/rooms")).sweepStaleOccupancy(now),
+});
+// ◂ SVC R0.9
+// SVC D.8 ▸ หอพัก: รอบบิลรายเดือน — (ก) ส่งรอบที่ตั้งเวลาไว้ถึงเวลา (ข) เตรียมรอบเดือนถัดไปเมื่อถึงวันออกบิล/จดมิเตอร์ครบ (+ ส่งต่อเมื่อเปิดส่งอัตโนมัติ)
+//   ทุก 5 นาที · ข้ามร้าน · โหลด facade หอตอนรันเท่านั้น · ซ้อนกันได้ (เตรียมใต้ล็อกหน่วย×งวด · ส่งมีผู้ส่งทีละคน + CAS ต่อบิล ⇒ ใบ 1 ต่อสัญญา×งวด · X5)
+registerMinuteJob({
+  name: "dorm.billing",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/dorm")).runDormBillingJobs(now, { budgetMs: Math.max(5_000, budgetMs - 5_000) }),
+});
+// ◂ SVC D.8
+// SVC D.11 ▸ หอพัก: เตือนก่อนครบ · ทวงหลังเลยกำหนด · event dorm.bill.overdue · ใช้ผลอนุมัติยกเว้นค่าปรับที่ค้าง (ทางสำรองเมื่อ outbox ล้ม)
+//   ทุก 5 นาที · ข้ามร้าน · โหลด facade หอตอนรันเท่านั้น · ซ้อนกันได้ (ข้อความ 1 แถวต่อ dedupeKey · event 1 ต่อบิล · ใบลดหนี้ 1 ต่อบิลปลายทาง · X5)
+registerMinuteJob({
+  name: "dorm.dunning",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormDunningJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.11
+// SVC D.9 ▸ หอพัก: ส่งข้อความบิลซ้ำ (เวลาเงียบ/ล้ม ใน 3 วัน · อ่านสดอีกรอบ · ซ้อนกันได้ = ข้อความ 1 ต่อบิล ผ่าน dedupe ของ notifyCustomer · X5)
+registerMinuteJob({
+  name: "dorm.line",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-line")).runDormLineJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.9
+// SVC D.18 ▸ หอพัก: พัสดุ — ส่งแจ้งมาถึงซ้ำ (เวลาเงียบ/ล้ม ใน 3 วัน) + เตือนพัสดุค้างวันละครั้ง (วันไทย · ตาม rooms.parcel.holdDays) ·
+//   ซ้อนกันได้ = ข้อความ 1 ต่อ dedupeKey (X5) · โหลด facade หอตอนรันเท่านั้น
+registerMinuteJob({
+  name: "dorm.parcel",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormParcelJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.18
+// SVC D.17 ▸ หอพัก: ส่งประกาศซ้ำ (เวลาเงียบ/ล้ม/ยังไม่เคยส่ง · ประกาศที่เผยแพร่ใน 3 วัน · ผู้รับคิดสด · ซ้อนกันได้ = ข้อความ 1 ต่อคน ผ่าน dedupe ของ notifyCustomer · X5)
+registerMinuteJob({
+  name: "dorm.announce",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-announce")).runDormAnnounceJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.17
+// SVC D.10 Z6 ▸ หอพัก: ลบรูปสลิปจากแชทที่ยังไม่แนบบิลเมื่อเกิน rooms.payment.chatSlipKeepDays (PDPA · R8)
+//   ทุก 60 นาที · ข้ามร้าน · ซ้อนกันได้ (ปิดรายการด้วย id กำหนดได้ — ชน = มีคนปิดแล้ว · ลบไฟล์ซ้ำไม่เป็นไร · X5) ◂
+registerMinuteJob({
+  name: "dorm.chatSlipSweep",
+  everyMinutes: 60,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/dorm-pay")).sweepExpiredChatSlips(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.10
+// SVC D.16 ▸ หอพัก: แจ้งซ่อม — ส่ง LINE "ซ่อมเสร็จ" ซ้ำ (เวลาเงียบ/ล้ม ใน 3 วัน · keyset · ปิดแถวที่ส่งไม่ได้แล้ว) ·
+//   ซ้อนกันได้ = ข้อความ 1 ต่อคำแจ้ง (dedupe ของ notifyCustomer · X5) · โหลด facade หอตอนรันเท่านั้น
+registerMinuteJob({
+  name: "dorm.repair",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormRepairJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// SVC D.16 ▸ หอพัก: การ์ดบอร์ดงานของคำแจ้งซ่อม — เปิดการ์ดที่ยังไม่มี (มีบอร์ดตามหมวดแล้ว) + ตามการ์ดที่เสร็จเงียบ ⇒ DONE ·
+//   keyset วนจนหมดงบ · ซ้อนกันได้ (unique sourceKey + CAS) · โหลดสะพานตอนรันเท่านั้น
+registerMinuteJob({
+  name: "dorm.repair.cards",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/platform/kanban-bridges")).sweepDormRepairCards(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.16
+// SVC D.12 ▸ หอพัก: สัญญาจบเมื่อวันย้ายออกผ่าน · เตือนคืนประกันวันละครั้ง (เที่ยงคืนไทย) · เลยกำหนด audit ครั้งเดียว · เติมห้องทำความสะอาด
+//   ทุก 15 นาที · ข้ามร้าน · โหลด facade หอตอนรันเท่านั้น · ซ้อนกันได้ (event 1 ต่อใบต่อวัน · CAS · X5) · เคารพงบ/สัญญาณยกเลิก
+registerMinuteJob({
+  name: "dorm.moveout",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormMoveOutJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
+});
+// ◂ SVC D.12
 
 function errorText(e: unknown): string {
   let s: string;
@@ -595,7 +831,7 @@ export async function runMinuteJobs(
   //   และเรียง "งานที่จบรอบล่าสุดเก่าที่สุดก่อน" (เสมอกัน = ลำดับที่ลงทะเบียน — วันปกติทุกงานจบด้วย `now` เดียวกัน ลำดับจึงเท่าเดิม)
   //   ⇒ งานที่ถูกข้ามเพราะเพดานรวม (ไม่บันทึก = ยังเป็นรอบเก่า) ได้ขึ้นหัวคิวในการเรียกครั้งถัดไป — ไม่มีงานไหนอดตลอดไป ◂
   const perJob = cadence !== "minute";
-  const deadline = Date.now() + (perJob ? WINDOW_CADENCE_WALL_MS : MINUTE_JOB_BUDGET_MS);
+  let deadline = Date.now() + (perJob ? WINDOW_CADENCE_WALL_MS : MINUTE_JOB_BUDGET_MS); // SEC S3a.1-S1 R-Z8: let — งานที่มีงบของตัวเองคืนเวลาให้รอบ
   const registered = [...registry.values()].filter(
     (j) => (j.cadence ?? "minute") === cadence && (!j.vpsOnly || opts?.entry === "vps"),
   );
@@ -621,7 +857,10 @@ export async function runMinuteJobs(
       continue;
     }
     // CRM C5.4-D ▸ L3-M4: งบของงานนี้ = งบของตัวเอง (hourly/daily · ไม่เกินเพดานรวม) หรือ "งบที่เหลือ" ของรอบ (minute) ◂
-    const jobDeadline = perJob ? Math.min(Date.now() + MINUTE_JOB_BUDGET_MS, deadline) : deadline;
+    // SEC S3a.1-S1 ▸ R-Z8: ราง minute + `ownBudgetMs` ⇒ งบของตัวเอง แล้วคืนเวลาที่ใช้ให้งบรวม (ไม่กินงบของงานถัดไป) ◂
+    const own = !perJob && typeof job.ownBudgetMs === "number" && job.ownBudgetMs > 0 ? job.ownBudgetMs : 0;
+    const startedAt = Date.now();
+    const jobDeadline = perJob ? Math.min(Date.now() + MINUTE_JOB_BUDGET_MS, deadline) : own > 0 ? Date.now() + own : deadline;
     if (jobDeadline - Date.now() < MIN_START_BUDGET_MS) {
       summary.results.push({ name: job.name, outcome: "no-budget" });
       continue;
@@ -634,6 +873,7 @@ export async function runMinuteJobs(
       summary.results.push({ name: job.name, outcome: "failed" });
       await logOps("WARN", OPS_SOURCE, opsMessage(job.name, "dispatcher error"), { detail: errorText(e) });
     }
+    if (own > 0) deadline += Date.now() - startedAt; // SEC S3a.1-S1 R-Z8: เวลาของงานงบตัวเองไม่หักจากงบรวม
   }
   return summary;
 }
@@ -673,9 +913,25 @@ async function dispatchOne(job: MinuteJob, now: Date, deadline: number): Promise
   // AUDIT-CLASS X5: ถูกตัดงบ — ไม่นับเป็นสำเร็จ (ไม่มีแถว ok) · บันทึกการตัด · lease ยังถือไว้เพราะงานอาจยังวิ่ง
   //   อยู่เบื้องหลัง (กันสำเนาที่สองระหว่างนั้น) — ปล่อยเมื่องานคืนตัว หรือหมดเองตามเวลา lease
   //   ตัวรันบน VPS รอ settleOutstandingMinuteJobs() ก่อน exit เพื่อไม่ฆ่างานกลางคำสั่งแล้วทิ้ง lease ค้าง 15 นาที
-  await logOps("WARN", OPS_SOURCE, opsMessage(job.name, "cut off"), {
-    detail: `cut off by the dispatcher after ${Date.now() - startedAt} ms (budget ${budgetMs} ms of ${MINUTE_JOB_BUDGET_MS} ms per tick) — not recorded as a success; lease kept until the job settles or ${until.toISOString()}`,
-  });
+  const cutDetail = `cut off by the dispatcher after ${Date.now() - startedAt} ms (budget ${budgetMs} ms of ${MINUTE_JOB_BUDGET_MS} ms per tick) — not recorded as a success; lease kept until the job settles or ${until.toISOString()}`;
+  if (job.quietCutOff) {
+    // SEC S3a.1-S1 รอบ 2 ▸ §Z.4 Q5: นับเป็นตัวเลข + INFO ไม่เกิน 1 แถว/15 นาที (จองหน้าต่างด้วยคำสั่งเดียวแบบ claimLease) ◂
+    const n = (cutOffCount.get(job.name) ?? 0) + 1;
+    cutOffCount.set(job.name, n);
+    const nextAt = new Date(now.getTime() + CUT_OFF_LOG_EVERY_MS);
+    const won = await prisma.$queryRaw<{ lastAlertAt: Date }[]>`
+      INSERT INTO "OpsAlertState" ("id", "source", "lastAlertAt")
+      VALUES (gen_random_uuid()::text, ${cutOffLogKey(job.name)}, (${utc(nextAt)}::timestamptz AT TIME ZONE 'UTC'))
+      ON CONFLICT ("source") DO UPDATE SET "lastAlertAt" = EXCLUDED."lastAlertAt"
+      WHERE "OpsAlertState"."lastAlertAt" <= (${utc(now)}::timestamptz AT TIME ZONE 'UTC')
+      RETURNING "lastAlertAt"`.catch(() => []);
+    if (won.length > 0) {
+      cutOffCount.set(job.name, 0);
+      await logOps("INFO", OPS_SOURCE, opsMessage(job.name, "cut off"), { detail: `${n} cut-off(s) in this process since the last note · latest: ${cutDetail}` });
+    }
+  } else {
+    await logOps("WARN", OPS_SOURCE, opsMessage(job.name, "cut off"), { detail: cutDetail });
+  }
   await recordFinish(job.name, now, false);
   const tail: Promise<void> = late
     .then(() => releaseLease(job.name, until))

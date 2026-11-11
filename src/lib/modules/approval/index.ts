@@ -26,6 +26,16 @@ export { cancelRequests } from "./service";
 // CRM C3.3 ▸ ผู้ตัดสินขั้นสุดท้ายของคำขอ (อ่านล้วน) — ผู้เรียก: crm/commissions.ts (ห้ามอนุมัติคอมมิชชันของตัวเองผ่านสายอนุมัติ) ◂ CRM C3.3
 export { lastDecisionOf, requestStatuses } from "./service";
 
+// POS P1.15 ▸ เลือกกติกาที่เข้าเงื่อนไข (อ่านล้วน · ไม่ยื่นอะไร) — ผู้เรียก: pos/pos-approval.ts (ส่วนลดเกินสิทธิ์ต้องรู้ก่อนพักบิล · มติผู้คุมงาน 7) ◂
 // CRM C5.5 ▸ RV-6 (fix1 r2): นโยบายที่ "จะ" จับคำขอนี้ (อ่านล้วน · ไม่มี = ต้นทางจะ autoApprove) — ผู้เรียก: point/adjust.ts ·
 //   voucher/service.ts (คำตัดสินของประตูมือที่กฎอัตโนมัติ CRM ใช้ตรวจตอนบันทึก) · ห่อบาง ๆ ของ service เดิม ไม่มีตรรกะใหม่ ◂ CRM C5.5
+// MAIN-MERGE ▸ POS P1.15 และ CRM C5.5 ส่งออกตัวเดียวกัน — เก็บ export เดียว ◂
 export { resolvePolicy } from "./service";
+
+// POS P1.18 ▸ R10 (มติ Q4): กติกาของชนิดที่ขอ (อ่านล้วน · ทั้ง active และปิด · มี steps) — ผู้เรียก: pos/settings-overview.ts (แท็บพนักงานและสิทธิ์ 17C)
+//   กรองว่ากติกาไหน "ใช้กับ POS/สาขานี้" เป็นหน้าที่ของผู้เรียก · ห่อ listPolicies เดิม ไม่มีตรรกะใหม่ ◂
+import { listPolicies as listPoliciesOfTenant, type Ctx as PolicyCtx } from "./service";
+export async function listPoliciesForEntities(ctx: PolicyCtx, entityTypes: readonly string[]) {
+  const want = new Set(entityTypes);
+  return (await listPoliciesOfTenant(ctx)).filter((p) => want.has(p.entityType));
+}

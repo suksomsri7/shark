@@ -1,0 +1,54 @@
+tree=/root/projects/shark-pos-p11 head=860374d7 dirty=0 (wip/pos-p3.4-oracle on 72669941; this file amended into the commit afterwards — suite bytes unchanged)
+# qc-pos-p3.4 red-before · 2026-10-16T20:43:10Z · QC4 ep-frosty-lab
+# cmd: bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p3.4.mts  → exit 1
+# --no-db: exit 1 · 2/15 (ST4 ST7 green guards)
+# forced: 4/42 (ST4 ST7 Z1 Z2) · 38 red by reason · no crash · residue 0 · guardHits 0
+
+  ❌ [P3.4-ST1] [R1 มติ 2] migration *_pos_p34_offline ใบเดียว · เพิ่มล้วน ( … | actual migration *_pos_p34_offline 0 ใบ (คาด 1) · offlineRef ไม่มี · syncedAt ไม่มี · offlineCode ไม่มี · offlineSeq ไม่มี · ไม่มี model PosOfflineSale · ไม่มี model PosOfflineSnapshot
+  ❌ [P3.4-ST2] [§10.13 COMMON 2] pos-sale-contract.json = เพิ่มล้วนเทียบ 72 … | actual CreateSaleInput.offline undefined · staff-pin.ts บล็อก POS P3.4 0 (คาด 1) · register.ts ไม่มีบล็อก POS P3.4 · service.ts ไม่มีบล็อก POS P3.4
+  ❌ [P3.4-ST3] [R13 ST3] offline-shared.ts บริสุทธิ์ (ไล่ import ทั้งสาย: ไ … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี · src/lib/modules/pos/offline-sync.ts ยังไม่มี
+  ✅ [P3.4-ST4] [มติ 9 Q7] ไม่มี service worker ใน P3.4: public/ ไม่มี *sw*.js/service-worker · src ไม่มี navigator.serviceWorker / serviceWorker.register / caches.open · next.config.ts ไม่มี headers() ของ sw
+  ❌ [P3.4-ST5] [มติ 2 R5] REST: op sync.sales POST /sync/sales · scope pos. … | actual ไม่มี op sync.sales · op 48 ตัว (คาด 49) · POS_SCOPES ไม่มี pos.offline.sync · core/permissions.ts ไม่มีคีย์ pos.offline.sync · docs/api/POS-API.md ไม่มี POST /sync/sales · skills/shark-pos-api/references/endpoints.md ไม่มี POST /sync/sales
+  ❌ [P3.4-ST6] [F15.4] ข้อความ: offlineRefusalMessageKey ของ 6 รหัส (PRICE_ … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี — offlineRefusalMessageKey
+  ✅ [P3.4-ST7] [F15.3] data-testid ใหม่ (ไม่มีที่ 72669941) ที่มีคำ offline|sync ใน src ทุกตัวมีแถว pos-ui-inventory.json (ตรงตัวหรือแพตเทิร์น *)
+  ❌ [P3.4-ST8] [R3 ST8] ธงปริยายปิด: posOfflineEnabled({}) / null / enabled … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี — posOfflineEnabled
+  ❌ [P3.4-Q1] [R4] offlineRef("C1",7) = OFF-C1-0007 · seq ≥ 10000 ไม่ตัด · … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี — ไม่มี offlineRef,parseOfflineRef,nextOfflineSeq
+  ❌ [P3.4-Q2] [R3 มติ 4 5] offlineSaleRefusal: เงินสด / โอน / เงินสด+โอน = … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี — ไม่มี offlineSaleRefusal
+  ❌ [P3.4-Q3] [R3 Q3] offlineCartTotals(snapshot, cart) = priceCart บนราคา … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี — ไม่มี offlineCartTotals
+  ❌ [P3.4-Q4] [R5] offlineBatches เรียง (soldAt, seq จาก offlineRef) · 120 … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี — ไม่มี offlineBatches
+  ❌ [P3.4-Q5] [R11] classifyOfflineResult: OK/DUPLICATE → remove · REJECTE … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี — ไม่มี classifyOfflineResult
+  ❌ [P3.4-Q6] [มติ 6 Q4] offlineSellGate: ปิดธง/เครื่องไม่ ACTIVE/ไม่มี sn … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี — ไม่มี offlineSellGate
+  ❌ [P3.4-Q7] [R12 มติ 2] offlineSlipPayload → ReceiptPayload kind RECEIPT … | actual src/lib/modules/pos/offline-shared.ts ยังไม่มี — ไม่มี offlineSlipPayload
+  ❌ [P3.4-SY1] [R7 มติ 3] 3 บิลเงินสดของเครื่อง D1 → 3 บิล (offlineRef · sy … | actual sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · OFF-ZD1-0001 ไม่มีผล · OFF-ZD1-0002 ไม่มีผล · OFF-ZD1-0003 ไม่มีผล · ข้ามเดือน ไม่มี
+  ❌ [P3.4-SY3] [R5] ชุดที่ตัวกลางเป็นสินค้าไม่มีจริง → 1,3 OK · 2 REJECTED  … | actual sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · 1/3 ไม่มีผล ไม่มีผล · 2 ไม่มีผล sale - · บิลใหม่ 0 (คาด 2) · PosOfflineSale -/
+  ❌ [P3.4-SY2] [R5 มติ 14] ส่งชุดผสม (OK ×5 + REJECTED ×1) ซ้ำ 2 รอบ → DUPL … | actual รอบ 1: sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · รอบ 1 OFF-ZD1-0001 ไม่มีผล (เดิม ไม่มีผล) · รอบ 1 OFF-ZD1-0002 ไม่มีผล (เดิม ไม่
+  ❌ [P3.4-SY4] [R6 มติ 10] ราคาเปลี่ยนหลัง snapshot (เค้ก 4500 → 5500) ขายท … | actual sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · ผล ไม่มีผล drift undefined · ยอดบิล - (คาด 4500 ราคา snapshot) · PosOfflineSale.drift ว่าง · audit af
+  ❌ [P3.4-SY5] [R6] ราคาปลอม (ไม่ตรงราคา ณ soldAt และไม่ตรง snapshot) → REJ … | actual sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · ผล ไม่มีผล · PosOfflineSale null · บิลใหม่ 0 (คาด 2: SY4 + SY6)
+  ❌ [P3.4-SY6] [R6] happy hour เปิดตอน soldAt ปิดตอนซิงก์ → OK ไม่มี drift  … | actual sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · โปรตอนขาย ไม่มีผล drift undefined · ยอด - · ตัวควบคุมหลังโปรจบ ไม่มีผล
+  ❌ [P3.4-SY7] [R8 มติ 7] กะที่บันทึกถูกปิดก่อนซิงก์ → REJECTED SHIFT_CLOSE … | actual ซิงก์ ไม่มีผล sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · accept MISSING:acceptOfflineSale ยังไม่มีโมดูล/ฟังก์ชัน — acceptOffl
+  ❌ [P3.4-SY8] [R8] เครื่องถูกเพิกถอน: soldAt ก่อน revokedAt → OK · soldAt  … | actual ก่อนเพิกถอน ไม่มีผล sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · หลังเพิกถอน ไม่มีผล
+  ❌ [P3.4-SY9] [R8 มติ 12] โทเคนหมดอายุตอนซิงก์แต่ยังไม่หมดตอน soldAt → OK  … | actual staffActorFromToken({at}) null · sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · โทเคนตอน soldAt ไม่มีผล ผู้ขาย - · soldAt หลัง�
+  ❌ [P3.4-SY10] [R3 มติ 4 5] เนื้อหาที่ออฟไลน์ห้าม (PROMPTPAY · CARD · GIFT_ … | actual sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · PROMPTPAY ไม่มีผล · CARD ไม่มีผล · GIFT_CARD ไม่มีผล · DEPOSIT ไม่มีผล · memberId ไม่มี�
+  ❌ [P3.4-SY11] [R7 มติ 6] นาฬิกา: soldAt > now + 2 นาที · < snapshot.issued … | actual อนาคต +5 นาที ไม่มีผล sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · ก่อน snapshot ไม่มีผล sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก�
+  ❌ [P3.4-SY12] [R9] สต็อก ALLOW_NEGATIVE: ตัดครั้งเดียว (InvMovement 1 แถว  … | actual ALLOW_NEGATIVE ไม่มีผล sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · InvMovement 0 (คาด 1) · onHand 2 (คาด −1) · ส่งซ้ำตัดซ้ำ · BLOCK ไม่มีผล sy
+  ❌ [P3.4-SY13] [R5 R3] ปฏิเสธทั้งชุด ไม่เขียนอะไร: ร้านอื่น (T2 + เครื่องขอ … | actual ร้าน T2 + เครื่องของ T → MISSING:syncOfflineSales · ผู้ขายของสาขา B ที่สาขา A → MISSING:syncOfflineSales · เครื่องไม่ลงทะเบียน → M
+  ❌ [P3.4-SY14] [R4] บิลออนไลน์ unknown ที่ commit แล้ว (คีย์เดียวกัน) ถูกซิ … | actual ซิงก์ ไม่มีผล sale - vs cmvbfpchd00bsq5kzn9mlkiw2 sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales
+  ❌ [P3.4-SY15] [R4 R1 มติ 14] offlineRef ซ้ำคีย์ใหม่ → REJECTED OFFLINE_REF … | actual ใช้เลขซ้ำ ไม่มีผล sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · offlineCode D1 - D2 - · D2 seq 1 OFF-ZD2-0001 ไม่มีผล sync MISSING:syncOfflineSales ยังไม่มีโม
+  ❌ [P3.4-SY16] [R9] บิลซิงก์ไม่สร้างรอบครัว (สินค้าผูกสถานี) แม้ healMissin … | actual ซิงก์ ไม่มีผล sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales
+  ❌ [P3.4-SY17] [R10 มติ 7] คิวผู้จัดการ: list มี REJECTED ของสาขา (ไม่มี SY … | actual list MISSING:listOfflineRejected · list 0 ไม่ครบ REJECTED 0 · แคชเชียร์ list → MISSING:listOfflineRejected · แคชเชียร์ accept → MISSING:acceptOfflineSale · แคชเชียร์ discard → MISSING:discardOff
+  ❌ [P3.4-SEC1] [R2 R13] snapshot: สินค้า keys ⊆ RegisterProduct + choices · … | actual ไม่มี snapshot D1 (snapshot D1: MISSING:issueOfflineSnapshot ยังไม่มีโมดูล/ฟังก์ชัน — issueOfflineSnapshot)
+  ❌ [P3.4-SEC2] [R5 มติ 2] route src/app/api/pos/sync/route.ts: POST · sessi … | actual src/app/api/pos/sync/route.ts ยังไม่มี · สาขา A + เครื่อง B → MISSING:syncOfflineSales · สาขา B + เครื่อง A → MISSING:syncOfflineSales · เขียนแถว PosOfflineSale -1→-1
+  ❌ [P3.4-SEC3] [R6 มติ 14] snapshot ต่อเครื่อง: รายการของ D1 ที่อ้าง hash ข … | actual hash ของ D2 บน D1 ไม่มีผล sync MISSING:syncOfflineSales ยังไม่มีโมดูล/ฟังก์ชัน — syncOfflineSales · PosOfflineSnapshot ของ D5 -1 แถว (คาด 2) · hash ที่ถูกตัด ไ�
+  ⚠️  fixture createApiKey sync: สิทธิ์ "pos.offline.sync" ใช้เป็นขอบเขตของ API key ไม่ได้
+  ❌ [P3.4-RS1] [R5 มติ 2] POST /sync/sales (คีย์ pos-operate + pos.offline. … | actual 404:not_found {"code":"not_found","message_th":"ไม่พบปลายทางนี้ใน API ระบบขายหน้าร้าน","messag
+  ❌ [P3.4-RS2] [R5] Idempotency-Key เดิม → replay (idempotent-replayed true … | actual replay 404:not_found replayed=null · replay saleId - · replay data ไม่เหมือนครั้งแรก · หลังลบแถวกันซ้ำ 404:not_found ไม่มีผล
+  ❌ [P3.4-RS3] [R5] 51 รายการ → 422 · คีย์แปลกในรายการ → 422 · ไม่มีบิล/Pos … | actual 51 รายการ → 404:not_found · คีย์แปลก → 404:not_found · เขียนแถว PosOfflineSale -1→-1
+  ❌ [P3.4-RS4] [มติ 2] คีย์ไม่มี pos.offline.sync → 403 scope_missing · เคร … | actual ไม่มี scope → 404:not_found · เขียนแถว PosOfflineSale -1→-1
+  ❌ [P3.4-RS5] [มติ 2 13] POS_OPS 49 ตัวมี sync.sales · openapi.json 49 ope … | actual POS_OPS 48 · sync.sales undefined · openapi 48 operation · openapi ไม่มี /sync/sales post · isApiScope(pos.offline.sync) false · POS_SCOPE_KEYS ไม่มี pos.offline.sync
+  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ 20: snapshot D1: MISSING:issueOfflineSnapshot ยังไม่มีโมดูล/ฟังก์ชัน — issueOfflineSnapshot | snapshot D2: MISSING:issueOfflineSnapshot ยังไม่มีโมดูล/ฟังก์ชัน — issueOfflineSnapshot | snapshot D3: MISSING:issueOfflineSnapshot ยังไม่มีโมด�
+  ลบร้านชั่วคราว cmvbfp7sj0000q5kzlpf47dlb: 336 ตาราง · แถวค้าง 0 {} · Tenant 0
+  ลบร้านชั่วคราว cmvbfp7sy0001q5kzek32yxpt: 336 ตาราง · แถวค้าง 0 {} · Tenant 0
+  ลบถังเพดานอัตราของคีย์รอบนี้ 0 แถว · เหลือ 0 · ผู้ใช้ของรอบเหลือ 0
+  ✅ [P3.4-Z1] QC4 คืนสภาพ: ร้านชั่วคราว 0 แถวทุกตารางที่มี tenantId (รวม PosOfflineSale/PosOfflineSnapshot) + Tenant ถูกลบ · ผู้ใช้ของรอบ 0 · ถังเพดานอัตราของคีย์รอบนี้ 0
+  ✅ [P3.4-Z2] ลายนิ้วมือนอกร้านชั่วคราว (PosSale · PosReceiptCounter seq · PosDevice offlineSeq/status · PosOfflineSale · PosOfflineSnapshot · AuditLog pos.sale.offline_*) เท่าเดิม
+JSON_SUMMARY {"suite":"qc-pos-p3.4","total":42,"passed":4,"failed":["P3.4-ST1","P3.4-ST2","P3.4-ST3","P3.4-ST5","P3.4-ST6","P3.4-ST8","P3.4-Q1","P3.4-Q2","P3.4-Q3","P3.4-Q4","P3.4-Q5","P3.4-Q6","P3.4-Q7","P3.4-SY1","P3.4-SY3","P3.4-SY2","P3.4-SY4","P3.4-SY5","P3.4-SY6","P3.4-SY7","P3.4-SY8","P3.4-SY9","P3.4-SY10","P3.4-SY11","P3.4-SY12","P3.4-SY13","P3.4-SY14","P3.4-SY15","P3.4-SY16","P3.4-SY17","P3.4-SEC1","P3.4-SEC

@@ -70,6 +70,7 @@ enum UnitType {
   RENTAL // เช่าสินทรัพย์ (WO-0050)
   SCHOOL // โรงเรียน/คอร์สเรียน (WO-0051)
   CLINIC // คลินิก (WO-0052)
+  DORM // หอพัก/อพาร์ตเมนต์ (SVC R0.1)
 }
 
 enum UnitStatus {
@@ -115,6 +116,8 @@ model User {
 
   memberships Membership[]
   sessions    Session[]
+  secretary   AiSecretary? // S1.1 เลขา AI — back-relation เท่านั้น (ไม่มีคอลัมน์ · FK อยู่ที่ AiSecretary.userId)
+  userPhone   UserPhone? // S1.1 เลขา AI — back-relation เท่านั้น (แทน User.phone · FK อยู่ที่ UserPhone.userId)
 }
 
 enum Role {

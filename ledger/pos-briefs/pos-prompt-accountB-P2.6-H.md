@@ -1,0 +1,20 @@
+# Prompt — P2.6 S stock/order-state HUNTER (read-only). Controller (account B, 14 Oct): head = `wip/pos-p2.6` **__HEAD__** (code __CODE__; reviewer verdict __RVERDICT__). Quality-first ruling (LANE-RULES §คุณภาพมาก่อน): this hunt runs after the reviewer and before merge; any Medium+ finding ⇒ fix round before merge.
+
+---
+
+You are the HUNTER for POS work order **P2.6 S**. Not a general reviewer: the reviewer already passed the card. You hunt only for **stock-counter, order-state, ticket-idempotency and concurrency defects** in the code this card added or changed — double/missed counter cuts, tickets created twice or never, lost updates on KDS moves, order state moved backwards or twice, consumers that re-run non-idempotently on replay, refusal paths that leave half-written rounds, deadlocks between `voidSaleByActor` / `ticketForSale` / `kitchenProgressInTx` / P2.4 table rounds, and any money leaking onto tickets/slips. Read-only: no edits/commits/DB/build/servers/`.env*`. English, ≤ 60 lines.
+
+## Scope (hunt here, cite file:line for every claim)
+`ticketForSale` after-commit + heal (partial unique on `posSaleId`, FOR SHARE sale re-check, 12 h window, ≤ 20, VOIDED never) · accept-tx round for `acceptOrder` / auto-accept / ACCEPTED ingest (`posOrderId` partial unique, replay of ingest key) · `kitchenProgressInTx` vs 09 actions (`prepareOrder`/`readyOrder`/`handOver`) racing on the same `PosOrder` (version bumps, one event each) · KDS `updateMany WHERE kdsStatus IN` moves vs P2.4 legacy `advanceItem`/`recallItem` on the same items · floor-at-0 MENU counter consume (register ticket + online ticket + P2.4 table round all touching `MenuItem.stockQty` — can two tickets both pass the floor? is the decrement atomic?) + `STOCK` flip on the 1→0 edge only + NEW-only restore on `pos.sale.voided` (what if the ticket is COOKING when voided — counter stays consumed: intended?) · `setAvailability` 10-way race (1 event 1 mark) and the adapter fan-out consumer (replay ⇒ no new rows; a throwing adapter ⇒ retry loop?) · `pos.order.cancelled|rejected` kitchen hunks replay ×2 · kitchen pause/backlog in auto-accept (order stays NEW; later unpause — who accepts it?) · `kdsSetAutoAcceptMax` writer through restaurant `*InTx` · slip payload money-key scan · HF-TX: any new `$transaction` nesting or `createSale`/HT7 helper call inside a caller tx.
+
+## Method
+- Read the reviewer report first (`ledger/wo-notes/pos-P2.6-review.md` in the controller tree `/root/projects/shark-pos`) and **do not repeat accepted findings**; hunt what it did not walk.
+- For each suspected path write the **interleaving** (two actors, step by step, which rows/locks/xids) and the end state of counters/tickets/order. A hypothesis without a concrete interleaving is not a finding.
+- Check every `catch`/`onError`/`return true` on these paths: what is swallowed, what retries, what can double-run on retry (outbox consumers: idempotent per event id?).
+- Oracle coverage: for each real finding say which suite/check would have caught it and propose the ORACLE-ADD (id, setup, assertion) — the fix round adds it with a red-before.
+
+## Tree
+`/root/projects/shark-pos-c` — read via `git -C /root/projects/shark-pos-c show __HEAD__:<path>` / `git -C /root/projects/shark-pos-c diff $(git -C /root/projects/shark-pos-c merge-base origin/session/pos __HEAD__)...__HEAD__ -- . ':!ledger'`. No checkout, pnpm, prisma, DB, servers; never touch other trees/processes; never `cd`. Scratch only under `/tmp/claude-0/-root/5169ed6b-3dd4-5e42-a1eb-90ec4124521e/scratchpad/p26-h/`.
+
+## Report format
+Verdict first (`CLEAN` | `FINDINGS`), then H1..Hn (severity High/Medium/Low · file:line · interleaving · counter/ticket/order end state · smallest fix · ORACLE-ADD proposal), then "Walked clean" (paths traced with no defect, one line each — as important as the findings), then owner notes (ร้านอาหาร · คลัง · P2.7). Write `/tmp/claude-0/-root/5169ed6b-3dd4-5e42-a1eb-90ec4124521e/scratchpad/p26-h/REPORT.md` and return it verbatim as your final message.

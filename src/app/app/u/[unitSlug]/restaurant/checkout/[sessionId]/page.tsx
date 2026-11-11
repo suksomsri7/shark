@@ -4,6 +4,8 @@ import { getSession } from "@/lib/modules/restaurant/table";
 import { billPreview } from "@/lib/modules/restaurant/order";
 import { RestaurantCheckout } from "@/components/restaurant-checkout";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { redirect } from "next/navigation"; // POS P2.14 ▸ LEG-2/4 ◂
+import { posLinkedLegacyPage } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS = หน้าเดิมปิด → หน้า POS ◂
 
 export default async function CheckoutPage({
   params,
@@ -12,6 +14,11 @@ export default async function CheckoutPage({
 }) {
   const { unitSlug, sessionId } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
+  // POS P2.14 ▸ LEG-2/4 มติ 1: สาขาที่ผูก POS ⇒ หน้าเดิมปิด — ไปหน้าโต๊ะของ POS (from=legacy = แถบแจ้งที่หน้า POS) ·
+  //   หน้าขายแบบเดิม (ไม่เปิด registerV2) ยังไม่มีหน้าโต๊ะ/ครัว ⇒ ไปหน้าขาย · ไม่ผูก POS = หน้าเดิมตามเดิม
+  const posDoor = await posLinkedLegacyPage(auth.active.tenantId, unit.id);
+  if (posDoor) redirect(`/app/sys/${posDoor.systemId}/pos/${posDoor.v2 ? "tables" : "register"}?unit=${encodeURIComponent(unit.id)}&from=legacy`);
+  // ◂
   const { tenantId } = auth.active;
   const session = await getSession(tenantId, unit.id, sessionId);
   if (!session) notFound();

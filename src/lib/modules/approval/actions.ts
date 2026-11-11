@@ -7,7 +7,7 @@
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
-import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
+import { assertCan, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
 import { createPolicy, updatePolicy, setPolicyActive, bulkDecide, cancelRequest } from "./service";
 
 const SETTINGS_PATH = "/app/settings/approval";
@@ -29,6 +29,11 @@ const ENTITY_TYPES = new Set([
   "crm.commission",
   "crm.reassign",
   "crm.portal_request",
+  "POS_VOID", "POS_REFUND", "POS_DISCOUNT_OVER", // POS P1.15 ▸ ผลอยู่ที่ pos/pos-approval-consumer.ts (มติผู้คุมงาน 8) ◂
+  "settings.legal_override", // SVC R0.3 ▸ ผลอยู่ที่ approval-effects.ts (core/settings) ◂
+  "dorm.lease.legal_override", // SVC D.5 ▸ ไม่มีผล — สัญญาเช่าอ่านสถานะคำขอสดเอง ◂
+  "dorm.latefee.waive", // SVC D.11 ▸ ยกเว้นค่าปรับจ่ายช้า — ผลอยู่ที่ approval-effects.ts ◂
+  "dorm.moveout.deduction", // SVC D.12 ▸ ไม่มีผล — ปิดประกันอ่านสถานะคำขอสดเอง ◂
 ]);
 const ROLES = new Set(["MANAGER", "OWNER"]);
 
@@ -57,6 +62,10 @@ export async function createPolicyAction(
 ): Promise<CreatePolicyState> {
   const auth = await requireTenant();
   assertCan(membershipOf(auth), { module: "approval", action: "approval.policy.create" });
+  // SVC R0.3 (ผู้ตรวจ BLOCKER 1) ▸ ตั้งกฎ maker-checker = เจ้าของร้านเท่านั้น (เดิม MANAGER สร้างสายที่ให้ MANAGER อนุมัติเองได้ ⇒ ข้ามด่านได้) ◂
+  if (auth.active.role !== "OWNER") {
+    return { status: "error", message: "เฉพาะเจ้าของร้านเท่านั้นที่สร้างสายอนุมัติได้" };
+  }
 
   const name = String(formData.get("name") ?? "").trim();
   const entityType = String(formData.get("entityType") ?? "").trim();
@@ -143,6 +152,8 @@ export async function updatePolicyAction(
 export async function togglePolicyAction(formData: FormData): Promise<void> {
   const auth = await requireTenant();
   assertCan(membershipOf(auth), { module: "approval", action: "approval.policy.update" });
+  // SVC R0.3 (ผู้ตรวจ BLOCKER 1) ▸ เปิด/ปิดสายอนุมัติ = แก้กฎ ⇒ เจ้าของร้านเท่านั้น (สอดคล้อง updatePolicyAction) ◂
+  if (auth.active.role !== "OWNER") throw new ForbiddenError({ module: "approval", action: "approval.policy.update" });
   const id = String(formData.get("id") ?? "");
   const active = String(formData.get("active") ?? "") === "true";
   if (!id) return;

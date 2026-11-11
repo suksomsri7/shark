@@ -1,5 +1,8 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { MenuItemStatus, Prisma } from "@prisma/client";
+// POS P1.1b ▸ คำสั่งเขียนเมนู/หมวด/กลุ่มตัวเลือก ย้ายไป catalog-legacy (ผู้เขียนแคตตาล็อกคนที่สอง · G1/G2) — ตรวจ/ข้อความ/รูปผลลัพธ์อยู่ที่นี่ตามเดิม
+//   ทุกประตูที่เขียนเปิดธุรกรรมเอง แล้วส่ง tx ให้ catalog-legacy (ตารางเดิม + PosProduct ในธุรกรรมเดียว) · error = ธุรกรรมจบ ไม่จับต่อ (G11)
+import * as legacy from "@/lib/modules/pos/catalog-legacy";
 import "./scope";
 
 // ───────────────────────── Settings ─────────────────────────
@@ -96,28 +99,27 @@ export async function createCategory(
   tenantId: string,
   unitId: string,
   input: { name: string; nameEn?: string; availableFrom?: string; availableTo?: string },
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
   const db = tenantDb({ tenantId, unitId });
   const dup = await db.menuCategory.findFirst({ where: { name: input.name, archivedAt: null } });
   if (dup) return { ok: false as const, reason: "มีหมวดชื่อนี้แล้ว" };
-  const cat = await db.menuCategory.create({
-    data: {
-      tenantId,
-      unitId,
+  const cat = await prisma.$transaction((tx) =>
+    legacy.createMenuCategory(tx, { tenantId, unitId }, {
       name: input.name,
       nameEn: input.nameEn || null,
       availableFrom: input.availableFrom || null,
       availableTo: input.availableTo || null,
-    },
-  });
+    }, actorUserId),
+  );
   return { ok: true as const, id: cat.id };
 }
 
-export async function archiveCategory(tenantId: string, unitId: string, id: string) {
+export async function archiveCategory(tenantId: string, unitId: string, id: string, actorUserId?: string) {
   const db = tenantDb({ tenantId, unitId });
   const items = await db.menuItem.count({ where: { categoryId: id, archivedAt: null } });
   if (items > 0) return { ok: false as const, reason: "ยังมีเมนูในหมวดนี้ — ย้าย/ลบเมนูก่อน" };
-  await db.menuCategory.update({ where: { id }, data: { archivedAt: new Date() } });
+  await prisma.$transaction((tx) => legacy.archiveMenuCategory(tx, { tenantId, unitId }, id, actorUserId));
   return { ok: true as const };
 }
 
@@ -148,37 +150,19 @@ export async function createOptionGroup(
   const db = tenantDb({ tenantId, unitId });
   const dup = await db.menuOptionGroup.findFirst({ where: { name: input.name, archivedAt: null } });
   if (dup) return { ok: false as const, reason: "มีกลุ่มตัวเลือกชื่อนี้แล้ว" };
-  const group = await db.menuOptionGroup.create({
-    data: {
-      tenantId,
-      unitId,
-      name: input.name,
-      nameEn: input.nameEn || null,
-      minSelect: input.minSelect,
-      maxSelect: Math.max(input.maxSelect, input.minSelect || 1),
-    },
-  });
-  let i = 0;
-  for (const c of input.choices) {
-    await db.menuOptionChoice.create({
-      data: {
-        tenantId,
-        unitId,
-        groupId: group.id,
-        name: c.name,
-        priceDelta: c.priceDelta,
-        isDefault: !!c.isDefault,
-        sortOrder: i++,
-      },
-    });
-  }
+  const group = await prisma.$transaction((tx) =>
+    legacy.createMenuOptionGroup(
+      tx,
+      { tenantId, unitId },
+      { name: input.name, nameEn: input.nameEn || null, minSelect: input.minSelect, maxSelect: Math.max(input.maxSelect, input.minSelect || 1) },
+      input.choices.map((c) => ({ name: c.name, priceDelta: c.priceDelta, isDefault: !!c.isDefault })),
+    ),
+  );
   return { ok: true as const, id: group.id };
 }
 
 export async function archiveOptionGroup(tenantId: string, unitId: string, id: string) {
-  const db = tenantDb({ tenantId, unitId });
-  await db.menuOptionGroup.update({ where: { id }, data: { archivedAt: new Date() } });
-  await db.menuItemOptionGroup.deleteMany({ where: { groupId: id } });
+  await prisma.$transaction((tx) => legacy.archiveMenuOptionGroup(tx, { tenantId, unitId }, id));
   return { ok: true as const };
 }
 
@@ -188,8 +172,7 @@ export async function setChoiceStock(
   choiceId: string,
   isOutOfStock: boolean,
 ) {
-  const db = tenantDb({ tenantId, unitId });
-  await db.menuOptionChoice.update({ where: { id: choiceId }, data: { isOutOfStock } });
+  await prisma.$transaction((tx) => legacy.setMenuChoiceStock(tx, { tenantId, unitId }, choiceId, isOutOfStock));
 }
 
 // ───────────────────────── Items ─────────────────────────
@@ -245,16 +228,18 @@ export async function createItem(
     stockQty?: number | null;
     dailyStockQty?: number | null;
   },
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
   const db = tenantDb({ tenantId, unitId });
   const cat = await db.menuCategory.findFirst({ where: { id: input.categoryId, archivedAt: null } });
   if (!cat) return { ok: false as const, reason: "ไม่พบหมวด" };
   const station = await db.kdsStation.findFirst({ where: { id: input.stationId, archivedAt: null } });
   if (!station) return { ok: false as const, reason: "ไม่พบสถานี KDS" };
-  const item = await db.menuItem.create({
-    data: {
-      tenantId,
-      unitId,
+  const item = await prisma.$transaction((tx) =>
+    legacy.createMenuItem(
+      tx,
+      { tenantId, unitId },
+      {
       categoryId: input.categoryId,
       stationId: input.stationId,
       name: input.name,
@@ -266,13 +251,11 @@ export async function createItem(
       images: input.images ?? [],
       stockQty: input.stockQty ?? null,
       dailyStockQty: input.dailyStockQty ?? null,
-    },
-  });
-  for (let i = 0; i < (input.optionGroupIds ?? []).length; i++) {
-    await db.menuItemOptionGroup.create({
-      data: { tenantId, unitId, itemId: item.id, groupId: input.optionGroupIds![i], sortOrder: i },
-    });
-  }
+      },
+      (input.optionGroupIds ?? []).map((groupId, i) => ({ groupId, sortOrder: i })),
+      actorUserId,
+    ),
+  );
   return { ok: true as const, id: item.id };
 }
 
@@ -291,9 +274,9 @@ export async function updateItem(
     tags?: string[];
     status?: MenuItemStatus;
   },
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
-  const db = tenantDb({ tenantId, unitId });
-  return db.menuItem.update({ where: { id }, data });
+  return prisma.$transaction((tx) => legacy.updateMenuItem(tx, { tenantId, unitId }, id, data, actorUserId));
 }
 
 export async function setItemOptionGroups(
@@ -301,24 +284,19 @@ export async function setItemOptionGroups(
   unitId: string,
   itemId: string,
   groupIds: string[],
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
-  const db = tenantDb({ tenantId, unitId });
-  await db.menuItemOptionGroup.deleteMany({ where: { itemId } });
-  for (let i = 0; i < groupIds.length; i++) {
-    await db.menuItemOptionGroup.create({
-      data: { tenantId, unitId, itemId, groupId: groupIds[i], sortOrder: i },
-    });
-  }
+  await prisma.$transaction((tx) => legacy.setMenuItemOptionGroups(tx, { tenantId, unitId }, itemId, groupIds, actorUserId));
 }
 
-export async function duplicateItem(tenantId: string, unitId: string, id: string) {
+export async function duplicateItem(tenantId: string, unitId: string, id: string, actorUserId?: string) {
   const item = await getItem(tenantId, unitId, id);
   if (!item) return { ok: false as const, reason: "ไม่พบเมนู" };
-  const db = tenantDb({ tenantId, unitId });
-  const copy = await db.menuItem.create({
-    data: {
-      tenantId,
-      unitId,
+  const copy = await prisma.$transaction((tx) =>
+    legacy.createMenuItem(
+      tx,
+      { tenantId, unitId },
+      {
       categoryId: item.categoryId,
       stationId: item.stationId,
       name: `${item.name} (สำเนา)`,
@@ -328,19 +306,16 @@ export async function duplicateItem(tenantId: string, unitId: string, id: string
       prepMinutes: item.prepMinutes,
       tags: item.tags as string[],
       images: item.images as string[],
-    },
-  });
-  for (const og of item.optionGroups) {
-    await db.menuItemOptionGroup.create({
-      data: { tenantId, unitId, itemId: copy.id, groupId: og.groupId, sortOrder: og.sortOrder },
-    });
-  }
+      },
+      item.optionGroups.map((og) => ({ groupId: og.groupId, sortOrder: og.sortOrder })),
+      actorUserId,
+    ),
+  );
   return { ok: true as const, id: copy.id };
 }
 
-export async function archiveItem(tenantId: string, unitId: string, id: string) {
-  const db = tenantDb({ tenantId, unitId });
-  await db.menuItem.update({ where: { id }, data: { status: "ARCHIVED", archivedAt: new Date() } });
+export async function archiveItem(tenantId: string, unitId: string, id: string, actorUserId?: string) {
+  await prisma.$transaction((tx) => legacy.archiveMenuItem(tx, { tenantId, unitId }, id, actorUserId));
 }
 
 // ───────────────────────── 86 / สต็อก ─────────────────────────
@@ -349,9 +324,9 @@ export async function setItemStock(
   unitId: string,
   id: string,
   data: { isOutOfStock?: boolean; stockQty?: number | null; dailyStockQty?: number | null },
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
-  const db = tenantDb({ tenantId, unitId });
-  return db.menuItem.update({ where: { id }, data });
+  return prisma.$transaction((tx) => legacy.setMenuItemStock(tx, { tenantId, unitId }, id, data, actorUserId));
 }
 
 // เมนูรูปแบบ lite สำหรับหน้าคีย์ออเดอร์ (staff/public) — serializable ส่งให้ client ได้
@@ -413,11 +388,9 @@ export async function resetDailyStock(tenantId: string, unitId: string) {
     where: { archivedAt: null, dailyStockQty: { not: null } },
     select: { id: true, dailyStockQty: true },
   });
+  // ทีละเมนู (ขอบธุรกรรมเดิม = คำสั่งเดี่ยวต่อเมนู) · ตัวนับสด — ไม่ mirror (G8)
   for (const it of items) {
-    await db.menuItem.update({
-      where: { id: it.id },
-      data: { stockQty: it.dailyStockQty, isOutOfStock: false },
-    });
+    await prisma.$transaction((tx) => legacy.resetMenuItemDailyStock(tx, { tenantId, unitId }, it));
   }
   return items.length;
 }

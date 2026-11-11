@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveUnit, placeGuestOrder } from "@/lib/modules/restaurant/storefront";
 import { checkRateLimit } from "@/lib/core/rate-limit";
+import { posLinkedLegacyDoor, posLinkedBody } from "@/lib/modules/pos/legacy-door"; // POS P2.14 ▸ LEG-1 มติ 1: สาขาที่ผูก POS = ประตูเดิมปิด (409 + ประตูใหม่) ◂
 
 const schema = z.object({
   qrToken: z.string().min(1),
@@ -38,6 +39,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ tenantS
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const b = parsed.data;
+  // POS P2.14 ▸ LEG-1 มติ 1: สาขาที่ผูก POS ⇒ ประตูเดิมของแขกปิด (409 POS_LINKED + ประตูใหม่ /q/t/<qrToken>) ก่อนเรียก storefront ·
+  //   ไม่เปิด session/ไม่สร้างรอบ/ไม่สร้างคำขอ · ค้นไม่ได้ = ปิด (fail-closed · ทางนี้เขียนข้อมูล) · สาขาไม่ผูก POS = ทางเดิมทุกบรรทัด
+  if (await posLinkedLegacyDoor(resolved.tenant.id, resolved.unit.id, { write: true })) return NextResponse.json(posLinkedBody(b.qrToken), { status: 409 });
+  // ◂
 
   const res = await placeGuestOrder({
     tenantId: resolved.tenant.id,

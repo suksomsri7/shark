@@ -1,0 +1,19 @@
+# Prompt — P1.16 ORACLE WRITER (bills page server half: billsPageData · billDetail · voidSaleAction). Controller: P1.8+P1.10 accepted at a1fa7514; 1 lane.
+
+---
+
+You are the ORACLE WRITER for POS work order **P1.16** (server half). You write the exam before the builder exists. English reports, Thai strings in check descriptions (repo convention). Reply compact.
+
+## Read first
+- `ledger/pos-briefs/pos-brief-COMMON.md`, `pos-brief-LANE-RULES.md`.
+- `ledger/pos-briefs/pos-brief-P1.16.md` — whole file; §2 R1–R6 (+R5b) and §4 are binding; §3 (UI) is NOT tested by the oracle. §5 rulings.
+- Pattern oracles: `scripts/qc-pos-p1.8.mts` (temp tenant, `call()` helper, `chk()`/`D()` tables, cleanup with residue report, QC_FORCE gating) and `scripts/qc-pos-p1.10.mts`. Contracts you build on: `ledger/wo-notes/pos-P1.8.md` §4 + §9, `pos-P1.10.md` "Contract for P1.10U" + "Fix round 1" (the functions `refundSale`, `saleForRefund`, `receiptPayload`, `voidSale(tenantId, unitId, saleId[, opts])` — opts is the P1.16 addition).
+- Memory rules: `scripts/*.mts` are typechecked by `next build` ⇒ modules that do not exist yet (`bills.ts`, `bills-actions.ts`, `bills-shared.ts`, `receipt-shared.ts`) must be loaded with `await import(("@/lib/modules/pos/bills") as string).catch(() => null)` and every check that needs them reports "ยังไม่มีโมดูล" (fail) instead of throwing. Never import `lib/env` statically.
+
+## Tree
+`/root/projects/shark-pos-c` (own rw node_modules, client already generated for a1fa7514; `.env.qc`/`.env.qc4` = QC4 `ep-frosty-lab`, neondb_owner — print only the hostname). Run `git status --short` (must be clean), then `git fetch origin session/pos && git checkout -b wip/pos-p1.16-oracle origin/session/pos`. Never touch other trees/processes, never `pkill -f`, no build/server/deploy/.env/Telegram, no schema/migration (P1.16 adds none). DB commands: `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh bash scripts/with-gate-lock.sh <cmd>`. Typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` (never `/tmp/shark-gate.lock`).
+
+## Deliverables
+1. `scripts/qc-pos-p1.16.mts` — brief §4: ~22 checks + 2 for R5b + 1 negative control, each with an id (`ST*`, `B1…`, `D1…`, `V1…`, `R5b-1/2`, `NC`), a one-line Thai description naming the rule (R1/R2/R3/R5b), and an exact expected value. Own temporary tenant/unit/POS system (+ one unlinked POS and one POS linked to a VAT book, reuse the P1.8 oracle's fixture builders by copy, not import, if they are not exported), bills created through `submitRegisterSale` (shift open on a device), refunds through `refundSale`, void through the new action, reprint through `reprintReceiptAction` → timeline. Dates: compute "today"/"yesterday" in BKK from the clock (no hard-coded dates — oracle rots). Idempotent: forced run ×2 must give identical results; unforced run must refuse to touch QC4 unless `QC_FORCE=1` only where the pattern oracles require it; cleanup in `finally` with a residue count printed (0 expected). Exit 1 on any fail.
+2. `ledger/wo-notes/pos-P1.16-oracle.md` — the **names table** (every function/action/field/refusal code/message key the builder must use, exactly as the oracle calls them), fixture layout, the drift list (anything the brief says that the server as built contradicts — e.g. if `voidSale` cannot accept a 4th arg safely, say why), `CONTROLLER-DECISION` items for anything ambiguous (do not decide silently), and the expected red run output (the oracle must run now and fail only on "ยังไม่มีโมดูล"/missing behaviour — static checks that can already pass should pass).
+3. Typecheck 0 with the oracle present (the dynamic-import rule). Commit on `wip/pos-p1.16-oracle` (explicit paths: the oracle + the notes only), push, report ≤20 lines with the head SHA, the check count, and the red-run tally. Do not merge; do not touch `session/pos`/`main`.

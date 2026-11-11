@@ -1,29 +1,31 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
-import { AppointmentStatus } from "@prisma/client";
 import { requireUnit } from "@/lib/core/context";
-import { assertCan } from "@/lib/core/rbac";
+import { assertBookingActionAllowed } from "@/lib/modules/booking/access"; // SVC B.11 ▸ ด่านสิทธิ์ต่อ action ◂
 import { tenantDb } from "@/lib/core/db";
 import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
+import { CatalogError } from "@/lib/modules/pos";
 import * as booking from "@/lib/modules/booking/service";
+import { ensureServiceBill, isLegacyBookingUnit } from "@/lib/modules/booking/finish"; // SVC B.10 ▸ บิลจากคิว ◂
 import { systemForUnit } from "@/lib/modules/system/service";
 import { scheduleDrain } from "@/lib/outbox-consumers";
+import { logOps } from "@/lib/core/ops"; // POS P5.1 ▸ RC F5 (CD-P51-O10) ◂
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
-// ตรวจสิทธิ์ระดับหน่วย (OWNER/MANAGER ผ่าน · STAFF ตาม permission)
-function assertBookingCan(auth: UnitAuth, unitId: string, action: string) {
-  assertCan(
-    {
-      role: auth.active.role,
-      unitAccess: auth.active.unitAccess as string[],
-      permissions: auth.active.permissions as Record<string, unknown>,
-    },
-    { module: "booking", action, unitId },
-  );
+// ตรวจสิทธิ์ระดับหน่วยต่อ action (SVC B.11 §7.2 · OWNER/MANAGER ผ่าน · STAFF ถือคีย์ใดคีย์หนึ่งของ action นี้)
+// เรียกก่อนอ่าน/เขียนฐานทุกครั้ง · ไม่ผ่าน ⇒ throw ForbiddenError (ด่านเดียวกับ access.ts)
+function assertBookingAction(auth: UnitAuth, unitId: string, action: string, input?: { status?: unknown }) {
+  const m = {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+  assertBookingActionAllowed(m, unitId, action, input);
 }
 
 // 🔴 13 ส.ค. 2026 (เจ้าของสั่งข้อ 15): สร้าง/แก้/ลบบริการ ทำที่ระบบสินค้า/บริการ "ที่เดียว"
@@ -37,7 +39,7 @@ const depositSchema = z.object({
 
 export async function setServiceDepositAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.service.setDeposit");
+  assertBookingAction(auth, unit.id, "setServiceDepositAction");
   const p = depositSchema.safeParse({
     id: formData.get("id"),
     depositBaht: formData.get("depositBaht"),
@@ -50,7 +52,7 @@ export async function setServiceDepositAction(unitSlug: string, formData: FormDa
 
 export async function recordDepositAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.deposit.record");
+  assertBookingAction(auth, unit.id, "recordDepositAction");
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
@@ -60,7 +62,7 @@ export async function recordDepositAction(unitSlug: string, formData: FormData) 
 
 export async function refundDepositAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.deposit.refund");
+  assertBookingAction(auth, unit.id, "refundDepositAction");
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
@@ -68,9 +70,53 @@ export async function refundDepositAction(unitSlug: string, formData: FormData) 
   revalidatePath(`/app/u/${unitSlug}/booking`);
 }
 
+// SVC B.8 ▸ คิวมัดจำ (จอร้าน): ร้านยืนยันรับมัดจำ (= ยืนยันนัด) · คืนมัดจำที่ค้างคืน (หลังโอนคืนจริง) — ด่านสิทธิ์ก่อนอ่าน/เขียน + สิทธิ์สดใน deposit.ts ·
+//   ล้ม ⇒ ?err= (แบบ setStatusAction) ◂
+export async function confirmDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "confirmDepositAction");
+  const id = String(formData.get("id") ?? "").slice(0, 200);
+  const pt = String(formData.get("payType") ?? "");
+  if (!id) return;
+  const { confirmDepositByShop } = await import("@/lib/modules/booking/deposit");
+  const r = await confirmDepositByShop(
+    { tenantId: auth.active.tenantId, actorUserId: auth.user.id },
+    { unitId: unit.id, appointmentId: id, ...(pt === "TRANSFER" || pt === "CASH" || pt === "PROMPTPAY" ? { payType: pt } : {}) },
+  );
+  scheduleDrain();
+  revalidatePath(`/app/u/${unitSlug}/booking`);
+  if (r.ok === false) redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(r.reason.slice(0, 300))}`);
+}
+
+export async function refundDueDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "refundDueDepositAction");
+  const id = String(formData.get("id") ?? "").slice(0, 200);
+  const reason = String(formData.get("reason") ?? "").slice(0, 400);
+  if (!id) return;
+  const { refundDepositByShop } = await import("@/lib/modules/booking/deposit");
+  const r = await refundDepositByShop({ tenantId: auth.active.tenantId, actorUserId: auth.user.id }, { unitId: unit.id, appointmentId: id, reason });
+  scheduleDrain();
+  revalidatePath(`/app/u/${unitSlug}/booking`);
+  if (r.ok === false) redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(r.reason.slice(0, 300))}`);
+}
+
+// SVC B.8 ▸ V5: ร้านตัดสินริบมัดจำที่รอ (ไม่มา/ยกเลิกช้าที่ริบอัตโนมัติไม่สำเร็จ) ◂
+export async function forfeitDueDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "forfeitDueDepositAction");
+  const id = String(formData.get("id") ?? "").slice(0, 200);
+  if (!id) return;
+  const { forfeitDepositByShop } = await import("@/lib/modules/booking/deposit");
+  const r = await forfeitDepositByShop({ tenantId: auth.active.tenantId, actorUserId: auth.user.id }, { unitId: unit.id, appointmentId: id });
+  scheduleDrain();
+  revalidatePath(`/app/u/${unitSlug}/booking`);
+  if (r.ok === false) redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(r.reason.slice(0, 300))}`);
+}
+
 export async function addStaffAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.staff.create");
+  assertBookingAction(auth, unit.id, "addStaffAction");
   const name = String(formData.get("name") ?? "").trim();
   const employeeId = String(formData.get("employeeId") ?? "").trim() || undefined;
   // ต้องมีอย่างใดอย่างหนึ่ง: เลือกจาก HR หรือพิมพ์ชื่อเอง
@@ -87,7 +133,7 @@ function hhmmToMin(v: string): number | null {
 
 export async function setBookingHoursAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.hours.set");
+  assertBookingAction(auth, unit.id, "setBookingHoursAction");
   const rows = Array.from({ length: 7 }, (_, weekday) => {
     const closed = formData.get(`closed-${weekday}`) != null;
     const openMin = hhmmToMin(String(formData.get(`open-${weekday}`) ?? "")) ?? 600;
@@ -100,7 +146,7 @@ export async function setBookingHoursAction(unitSlug: string, formData: FormData
 
 export async function removeStaffAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.staff.delete");
+  assertBookingAction(auth, unit.id, "removeStaffAction");
   const id = String(formData.get("id") ?? "");
   const db = tenantDb({ tenantId: auth.active.tenantId, unitId: unit.id });
   await db.bookingStaff.update({ where: { id }, data: { active: false } });
@@ -109,17 +155,25 @@ export async function removeStaffAction(unitSlug: string, formData: FormData) {
 
 export async function setStatusAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.appointment.setStatus");
-  const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
-  const parsed = z.nativeEnum(AppointmentStatus).safeParse(status);
+  assertBookingAction(auth, unit.id, "setStatusAction", { status }); // SVC B.11 ▸ คีย์ตามสถานะปลายทาง (§7.2) ◂
+  const id = String(formData.get("id") ?? "");
+  // SVC B.0 ▸ รับเฉพาะ 6 สถานะเดิม — QUEUED/IN_SERVICE/LATE ตั้งได้ทางเครื่องสถานะ B.4 เท่านั้น ◂
+  const parsed = z.enum(["PENDING", "CONFIRMED", "ARRIVED", "DONE", "NO_SHOW", "CANCELLED"]).safeParse(status);
   if (!parsed.success) return;
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   const db = tenantDb(ctx);
   // M3.7 — เปลี่ยนสถานะผ่าน service จุดเดียว (`setAppointmentStatus` ยิง booking.completed / booking.no_show)
   //   🔴 เดิม action อัปเดตแถวตรง ⇒ event ไม่เคยเกิดจากปุ่มบนจอ: สแตมป์ "จองที่มาจริง" (M2.3) · journey
   //      "จองแล้วไม่มา" (M3.3) · ไทม์ไลน์ มา/ไม่มา + แต้ม CHECKIN + ขอรีวิว (M3.7) ทำงานเฉพาะในข้อสอบ
-  await booking.setAppointmentStatus(ctx.tenantId, ctx.unitId, id, parsed.data);
+  const st = await booking.setAppointmentStatus(ctx.tenantId, ctx.unitId, id, parsed.data, { actorUserId: auth.user.id }); // POS P5.1 ▸ RC F10a ◂
+  // POS P5.1 ▸ RC F4 F5 (CD-P51-O10): ไม่ได้เปลี่ยนสถานะ (void บิลริบไม่ได้) / ริบมัดจำไม่สำเร็จ ⇒ จอจองแสดงเหตุผล (?err=) · ริบล้ม = logOps WARN ◂
+  if (st.ok === false) {
+    if ("forfeit" in st) await logOps("WARN", "pos.deposit.forfeit_failed", `ริบมัดจำนัด ${id} ไม่สำเร็จ`, { tenantId: ctx.tenantId, detail: st.reason });
+    scheduleDrain();
+    revalidatePath(`/app/u/${unitSlug}/booking`);
+    redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(st.reason.slice(0, 300))}`);
+  }
   const appt = await db.appointment.findFirst({ where: { id }, include: { service: true } });
   if (!appt) return;
   // มาใช้บริการจริง → ระบบที่ "เชื่อมไว้" ทำงานตามนั้น (member/pos/point เป็นการเชื่อมแบบเลือกได้)
@@ -136,8 +190,27 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
       // M3.7 — แถวไทม์ไลน์ VISIT ย้ายไปที่ consumer `booking.completed` (recordOnce + บริการ/ช่าง/เวลานัด)
       //   เขียนตรงที่นี่อีก = แถวซ้ำ 2 บรรทัดต่อการมา 1 ครั้ง
     }
-    if (spent > 0 && posSystemId) {
-      await pos.createSale({
+    // SVC B.10 ▸ สาขาที่เลือกแม่แบบจองคิวแล้ว (V2) + ผูก POS ⇒ เปิด "บิลจากคิว" (บิลพัก · แคชเชียร์รับเงิน + หักมัดจำตอนจ่าย) แทนบิล CASH ·
+    //   สาขาเดิม (_fallback) = ทางบิล CASH `booking-sale-<id>` เดิมทุกไบต์ข้างล่าง · fix Q8: ตัดสินร้านเดิมจากค่าตั้งตรง (ensure ล้ม ≠ ไม่ทำทางเดิม) ·
+    //   fix Q2: ร้านเดิมที่งานมีบิลจากคิวที่ยังมีผลอยู่แล้ว (เคยเป็น V2) ⇒ ไม่ออกบิล CASH ซ้ำ ◂
+    const legacyUnit = spent > 0 && posSystemId ? await isLegacyBookingUnit(ctx) : true;
+    if (spent > 0 && posSystemId && !legacyUnit) {
+      const sb = await ensureServiceBill({ ...ctx, actorUserId: auth.user.id }, appt.id);
+      if (!sb.ok) {
+        scheduleDrain();
+        revalidatePath(`/app/u/${unitSlug}/booking`);
+        redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(sb.reason.slice(0, 300))}`);
+      }
+    }
+    const billLive = spent > 0 && posSystemId && legacyUnit
+      ? ["HELD", "PAID"].includes((await (await import("@/lib/modules/pos")).serviceBills.serviceBillStatus(ctx.tenantId, ctx.unitId, appt.id))?.status ?? "")
+      : false;
+    if (spent > 0 && posSystemId && legacyUnit && !billLive) {
+      // POS P5.1 ▸ MA2 (F2): มัดจำที่รับเป็นใบรับ (POS_DEPOSIT) จ่ายเป็นแถว DEPOSIT อ้างใบรับ + ส่วนที่เหลือเงินสด ⇒ Σ รายได้ = ราคา · VAT ครั้งเดียว ·
+      //   มัดจำแบบเดิม (ก่อน P5.1 · ไม่มี PosDeposit) = คิดเต็มเงินสดแบบเดิม ·
+      //   กด DONE ซ้ำ: บิลของคีย์มีแล้ว = ไม่ส่งซ้ำ (มัดจำถูกใช้ไปแล้ว ⇒ payload ใหม่จะไม่ตรงบิลเดิม) — เดิม createSale คืนบิลเดิมเหมือนกัน ◂
+      const dep = await (await import("@/lib/modules/pos/deposit")).moduleDepositForBill(ctx.tenantId, ctx.unitId, appt.depositPaidAt ? appt.depositSaleId : null, spent);
+      if ((await pos.saleStatusByKey(ctx.tenantId, `booking-sale-${appt.id}`)) === null) await pos.createSale({
         tenantId: ctx.tenantId,
         unitId: ctx.unitId,
         systemId: posSystemId,
@@ -148,7 +221,9 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
         idempotencyKey: `booking-sale-${appt.id}`,
         // ผูก serviceId → รายงานแยก "บริการ" ได้ตรงกับที่ขายผ่านหน้าขาย (ไม่งั้นนัดจะไปกอง "รายการอื่น")
         lines: [{ name: appt.service.name, qty: 1, unitPriceSatang: spent, serviceId: appt.serviceId }],
-        payMethods: [{ type: "CASH", amountSatang: spent }],
+        payMethods: dep
+          ? [{ type: "DEPOSIT", amountSatang: dep.satang, refSaleId: dep.refSaleId }, ...(spent > dep.satang ? [{ type: "CASH" as const, amountSatang: spent - dep.satang }] : [])]
+          : [{ type: "CASH", amountSatang: spent }],
       });
     }
   }
@@ -162,7 +237,7 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
 
 export async function addClosureAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.hours.set");
+  assertBookingAction(auth, unit.id, "addClosureAction");
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   const date = String(formData.get("date") ?? "").trim();
   const mode = String(formData.get("mode") ?? "closed");
@@ -185,7 +260,7 @@ export async function addClosureAction(unitSlug: string, formData: FormData) {
 
 export async function removeClosureAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.hours.set");
+  assertBookingAction(auth, unit.id, "removeClosureAction");
   await booking.removeClosure({ tenantId: auth.active.tenantId, unitId: unit.id }, String(formData.get("id") ?? ""));
   revalidatePath(`/app/u/${unitSlug}/booking/hours`);
 }
@@ -194,7 +269,7 @@ export async function removeClosureAction(unitSlug: string, formData: FormData) 
 // ── บริการ: ติ๊กเปิดรับจองจากแคตตาล็อกกลาง + ย้ายบริการเก่าเข้าแคตตาล็อก (ข้อ 12-15) ──
 export async function setServiceOfferedAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.service.update");
+  assertBookingAction(auth, unit.id, "setServiceOfferedAction");
   const itemId = String(formData.get("itemId") ?? "");
   const offered = String(formData.get("offered") ?? "") === "1";
   if (!itemId) return;
@@ -204,15 +279,21 @@ export async function setServiceOfferedAction(unitSlug: string, formData: FormDa
 
 export async function importServicesToCatalogAction(unitSlug: string) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.service.create");
-  await booking.importServicesToCatalog({ tenantId: auth.active.tenantId, unitId: unit.id });
+  assertBookingAction(auth, unit.id, "importServicesToCatalogAction");
+  try {
+    await booking.importServicesToCatalog({ tenantId: auth.active.tenantId, unitId: unit.id, actorUserId: auth.user.id });
+  } catch (e) {
+    // POS P1.1b G11: แคตตาล็อกปฏิเสธ (เช่น BUSY ระหว่าง backfill — สร้างบริการผ่าน inventory.createItem) คืนเป็น ?err= — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/u/${unitSlug}/booking/services?err=${encodeURIComponent(e.message)}`);
+  }
   revalidatePath(`/app/u/${unitSlug}/booking/services`);
 }
 
 // ติ๊ก "รับคิวที่สาขานี้" ให้พนักงาน HR คนหนึ่ง (มติเจ้าของ 13 ส.ค.: เพิ่ม/ลบคนทำที่ HR ที่เดียว)
 export async function setStaffReceivingAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.staff.create");
+  assertBookingAction(auth, unit.id, "setStaffReceivingAction");
   const employeeId = String(formData.get("employeeId") ?? "");
   const receiving = String(formData.get("receiving") ?? "") === "1";
   if (!employeeId) return;
@@ -222,7 +303,21 @@ export async function setStaffReceivingAction(unitSlug: string, formData: FormDa
 
 export async function linkStaffToHrAction(unitSlug: string) {
   const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.staff.create");
+  assertBookingAction(auth, unit.id, "linkStaffToHrAction");
   await booking.linkStaffToHr({ tenantId: auth.active.tenantId, unitId: unit.id });
   revalidatePath(`/app/u/${unitSlug}/booking/staff`);
+}
+
+// SVC B.17 ▸ R11 ร้าน "ยกเว้นไม่มาครั้งนี้" (นัด NO_SHOW ไม่นับในกติกาไม่มาซ้ำ) — ด่านสิทธิ์ก่อนอ่าน/เขียน + สิทธิ์สดใน no-show-rule.ts · audit ในฟังก์ชัน ·
+//   ล้ม ⇒ ?err= (แบบ confirmDepositAction) · ปุ่มบนจอร้าน = หนี้ (B.14/B.18) ◂
+export async function excuseNoShowAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingAction(auth, unit.id, "excuseNoShowAction");
+  const id = String(formData.get("id") ?? "").slice(0, 200);
+  const reason = String(formData.get("reason") ?? "").slice(0, 400);
+  if (!id) return;
+  const { excuseNoShow } = await import("@/lib/modules/booking/no-show-rule");
+  const r = await excuseNoShow({ tenantId: auth.active.tenantId, actorUserId: auth.user.id }, { unitId: unit.id, appointmentId: id, reason });
+  revalidatePath(`/app/u/${unitSlug}/booking`);
+  if (r.ok === false) redirect(`/app/u/${unitSlug}/booking?err=${encodeURIComponent(r.reason.slice(0, 300))}`);
 }

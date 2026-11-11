@@ -741,6 +741,8 @@ const SALES_WHERE = {
     { docType: "INVOICE" as const },
     { docType: "RECEIPT" as const, sourceDocId: null },
     { docType: "TAX_INVOICE_ABB" as const },
+    // POS P1.13 fix F3 ▸ บิล POS ที่ออกใบกำกับเต็มรูป (แทน ABB ที่ถูก CANCELLED) ยังต้องอยู่ในยอดขาย — เฉพาะที่มาจาก POS (ใบเต็มรูปทั่วไปมาจากใบแจ้งหนี้/ใบเสร็จที่นับแล้ว) ◂
+    { docType: "TAX_INVOICE" as const, source: "POS" as const },
   ],
 };
 /** เอกสารที่นับเป็น "รายจ่าย" ฝั่งซื้อ (PO/PTX เป็นทะเบียน ไม่ใช่ค่าใช้จ่าย) */

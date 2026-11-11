@@ -96,7 +96,7 @@ finally {
   if (tenantId) { const del = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
     await del(() => prisma.accountJournalLine.deleteMany({ where: { tenantId } }));
     await del(() => prisma.accountJournalEntry.deleteMany({ where: { tenantId } }));
-    for (const m of ["accountSystemLink","accountMapping","accountLedger","accountPeriod","accountDocSequence","accountSettings","outboxEvent","posPayment","posSaleLine","posSale","posReceiptCounter","hotelReservation","hotelRoom","hotelRoomType","appSystemUnit","appSystem"])
+    for (const m of ["accountSystemLink","accountMapping","accountLedger","accountPeriod","accountDocSequence","accountSettings","outboxEvent","posPayment","posSaleLine","posSale","posReceiptCounter","roomOccupancy","hotelReservation","hotelRoom","hotelRoomType","appSystemUnit","appSystem"])
       await del(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId } }));
     await del(() => prisma.businessUnit.deleteMany({ where: { tenantId } })); await del(() => prisma.tenant.delete({ where: { id: tenantId } }));
     console.log("[cleanup] ok"); }

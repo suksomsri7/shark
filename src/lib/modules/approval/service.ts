@@ -12,7 +12,7 @@ import type { ApprovalDecisionValue, ApprovalPolicy, ApprovalRequest } from "@pr
 import { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
-import type { MembershipCtx } from "@/lib/core/rbac";
+import { canAccessUnit, type MembershipCtx } from "@/lib/core/rbac";
 
 export type Ctx = { tenantId: string };
 
@@ -54,7 +54,7 @@ export type SubmitInput = {
 };
 
 export type DecideInput = { decision: "APPROVED" | "REJECTED"; note?: string | null };
-export type DecideResult = { ok: boolean; status: string; note: string | null; reason?: string }; // HF-HR-0 ▸ รอบ 5: reason = เหตุผลไทยเมื่อปฏิเสธ ◂
+export type DecideResult = { ok: boolean; status: string; note: string | null; code?: string; message?: string; reason?: string }; // POS P1.18 code/message (SELF_APPROVAL) + HF-HR-0 ▸ รอบ 5: reason = เหตุผลไทยเมื่อปฏิเสธ ◂
 
 // ── กติกา (policy) ──────────────────────────────────────────────
 
@@ -228,9 +228,19 @@ export async function submitForApproval(
 
 // ── ตัดสิน (decide) ──────────────────────────────────────────────
 
+/** POS P1.18 ▸ K4: ชนิดคำขอที่โมดูลต้นทางจัดการกรณี "ผู้ยื่นตัดสินเอง" ด้วยกติกาของตัวเอง (แกนไม่ปฏิเสธให้) ◂ */
+const SELF_DECISION_HANDLED_BY_SOURCE: ReadonlySet<string> = new Set(["crm.commission"]);
+
 // step ปัจจุบันนี้ ผู้ใช้ m ตัดสินได้ไหม:
 //   approverUserId ตรง userId → ได้ · OWNER → ได้ทุก step · MANAGER → เฉพาะ step ที่ role = MANAGER
-function canDecideStep(m: MembershipCtx & { userId: string }, step: { approverRole: string; approverUserId: string | null }): boolean {
+// POS P5.2 ▸ fix A (F1 · X4): คำขอที่ผูกสาขา (req.unitId) ตัดสินได้เฉพาะผู้ที่เข้าสาขานั้นได้ (canAccessUnit · OWNER ทุกสาขา) —
+//   ใช้ทุกทาง: listPending (หน้าอนุมัติ · approvals_pending ของผู้ช่วย) · decide · bulkDecide · ผู้ช่วย AI (proposals approval_decide) ◂
+function canDecideStep(
+  m: MembershipCtx & { userId: string },
+  step: { approverRole: string; approverUserId: string | null },
+  req: { unitId: string | null },
+): boolean {
+  if (req.unitId && !canAccessUnit(m, req.unitId)) return false;
   if (step.approverUserId && step.approverUserId === m.userId) return true;
   if (m.role === "OWNER") return true;
   if (m.role === "MANAGER") return step.approverRole === "MANAGER";
@@ -267,6 +277,19 @@ export async function decide(
   if (!req || req.status !== "PENDING") {
     return { ok: false, status: req?.status ?? "NOT_FOUND", note: null };
   }
+  // POS P1.18 ▸ K4 (P1.15 close item): ผู้ยื่นตัดสินคำขอของตัวเองไม่ได้ — ที่แกน (ทุกทาง: หน้าอนุมัติ · bulkDecide · ผู้ช่วย AI) ·
+  //   คำขอคง PENDING · ไม่มีแถวตัดสิน · ไม่มี outbox · ยกเว้น 2 กรณี:
+  //   (a) ชนิดที่ต้นทางจัดการ "ตัดสินของตัวเอง" เองแล้ว (crm.commission: มติ C3.3 S3 — คง PENDING + โน้ต + แจ้งเจ้าของ · qc-crm-c3.3 S4.8)
+  //   (b) แก้รอบ 2 F3: ผู้ตัดสินเป็น OWNER และร้านมีเจ้าของ (OWNER ที่รับคำเชิญแล้ว) คนเดียว — ร้านเจ้าของคนเดียวไม่มีใครอื่นตัดสินให้
+  //       จึงไม่ค้างคำขอของตัวเอง · ร้านหลายเจ้าของยังต้องให้เจ้าของอีกคนตัดสิน · นับสดทุกครั้ง 1 query (ไม่แคช) ◂
+  if (req.requestedById === m.userId && !SELF_DECISION_HANDLED_BY_SOURCE.has(req.entityType)) {
+    const soleOwner =
+      m.role === "OWNER" &&
+      (await prisma.membership.count({ where: { tenantId: ctx.tenantId, role: "OWNER", acceptedAt: { not: null } } })) === 1;
+    if (!soleOwner) {
+      return { ok: false, status: req.status, note: null, code: "SELF_APPROVAL", message: "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน" };
+    }
+  }
   const steps = await tenantDb(ctx).approvalStep.findMany({
     where: { policyId: req.policyId },
     orderBy: { order: "asc" },
@@ -276,7 +299,7 @@ export async function decide(
   if (!step) return { ok: false, status: req.status, note: null };
 
   // สิทธิ์ไม่ผ่าน → คง PENDING (คนมีสิทธิ์มากดทีหลังได้)
-  if (!canDecideStep(m, step)) return { ok: false, status: req.status, note: null };
+  if (!canDecideStep(m, step, req)) return { ok: false, status: req.status, note: null };
   if (await isOwnHrSubject(ctx, req, m.userId)) return { ok: false, status: req.status, note: null, reason: SELF_DECIDE_REFUSED }; // HF-HR-0 ▸ R5.1 ◂
 
   const decision: ApprovalDecisionValue = input.decision === "REJECTED" ? "REJECTED" : "APPROVED";
@@ -370,7 +393,7 @@ export async function bulkDecide(
     try {
       const r = await decide(m, ctx, id, { decision, note: note ?? null });
       if (r.ok) result.done += 1;
-      else result.failed.push({ id, reason: r.reason ?? bulkFailReason(r.status) }); // HF-HR-0 ▸ R5.1: เหตุผลเฉพาะ (คำขอของตัวเอง) ก่อนเหตุผลตามสถานะ ◂
+      else result.failed.push({ id, reason: r.code === "SELF_APPROVAL" && r.message ? r.message : (r.reason ?? bulkFailReason(r.status)) }); // POS P1.18 ▸ K4 ◂ · HF-HR-0 ▸ R5.1 ◂
     } catch (e) {
       // HF-HR-0 ▸ รอบ 5c (F3): decide ไม่โยนเหตุผลที่คาดไว้ (คืนเป็น reason) ⇒ ที่หลุดมาถึงนี่ = ข้อผิดพลาดที่ไม่คาดคิด (เช่น Prisma — มี path ไฟล์/รหัส)
       //   ผลนี้คืนเป็นข้อมูล production ไม่ปิดให้ ⇒ log ฝั่ง server + ข้อความกลาง ◂
@@ -395,7 +418,7 @@ export async function listPending(ctx: Ctx, m: MembershipCtx & { userId: string 
   const steps = await tenantDb(ctx).approvalStep.findMany({ where: { policyId: { in: policyIds } } });
   return requests.filter((r) => {
     const step = steps.find((s) => s.policyId === r.policyId && s.order === r.currentStepOrder);
-    return !!step && canDecideStep(m, step);
+    return !!step && canDecideStep(m, step, r);
   });
 }
 

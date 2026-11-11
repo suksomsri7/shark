@@ -1,0 +1,30 @@
+# SVC — เช็กลิสต์ deploy prod (สะสมจากผู้ตรวจ)
+- migration ทุกไฟล์ของ SVC (svc_r0 · svc_r0b · svc_b · …) Prisma 7.8 รัน **ทีละคำสั่ง ไม่ใช่ tx เดียว** และคำสั่งส่วนใหญ่ไม่มี IF NOT EXISTS ⇒ ล้มกลางไฟล์ = P3009 · ขั้นกู้: ดูว่าคำสั่งไหนลงแล้ว (pg_catalog) → รันที่เหลือด้วยมือ → `prisma migrate resolve --applied <ชื่อ>` (แบบ runbook P6.1)
+- deploy ช่วงคนน้อย · ก่อน push เช็ก `pg_stat_activity` ไม่มี query/tx ยาวบน PosSaleLine/Appointment (ADD COLUMN ต้องรอล็อก · ไม่มี lock_timeout)
+- btree_gist บน prod: role ใน DIRECT_URL ต้องเป็น owner (neon_superuser) และ pg_available_extensions มี btree_gist
+- ลำดับ: migrate deploy ก่อน next build (vercel-build.sh ทำอยู่แล้ว) · enum ใหม่ (DORM · QUEUED/IN_SERVICE/LATE) ลงก่อน client ที่เขียนค่า
+- backfill occupancy โรงแรมเดิม `--apply` ทุกร้าน conflicts=0 ก่อนเปิด DORM/ผังห้อง
+- env ใหม่: INTEGRATIONS_CREDENTIALS_KEY (≥32 ตัว · ไม่มีกุญแจสำรอง) · ห้ามตั้ง INTEGRATIONS_FAKE / LINE_API_BASE บน prod
+- ใบหลังที่ใส่ CHECK บนตารางใหญ่: ใช้ NOT VALID แล้ว VALIDATE CONSTRAINT แยกคำสั่ง
+- (D.0) `migrate diff --from-config-datasource` จะเสนอ `DROP INDEX "DormUtilityRate_unitId_buildingId_kind_periodKey_key"` (NULLS NOT DISTINCT ที่ Prisma ไม่รู้จัก) — **ห้ามรับบรรทัดนี้** ในใบ migration ถัดไป · ก่อนสร้าง unique STAY/idempotencyKey บน prod รัน SQL ตรวจซ้ำในคอมเมนต์ของ migration svc_d ก่อน
+
+## B.4 queue.housekeeping (29 ต.ค.)
+- งานรายนาที `queue.housekeeping` เรียก resetDaily/expireSkipped ซึ่งบน prod ไม่เคยถูกเรียก ⇒ รอบแรกหลัง deploy จะยกเลิก/ปิดบัตรคิวเก่าค้างของทุกร้านแบบไม่มี event · ก่อนเปิด: นับบัตรค้างต่อร้าน (dry-run) แจ้งเจ้าของ · deploy ช่วงเงียบ
+
+- 🔴 (D.3 · 29 ต.ค.) unique index `AccountDocument_taxinvoice_source_uniq` (systemId, sourceDocId · TAX_INVOICE ที่มีผล ไม่มี sourcePaymentId) มีในฐาน QC แต่ไม่พบใน prisma/migrations ⇒ ตรวจ prod ก่อน deploy · ถ้าไม่มี ต้องสร้าง (โค้ดออกใบแทนพึ่ง index นี้)
+- 🔴 (B.7 · 29 ต.ค.) จองออนไลน์ (B.7) เปิดให้ลูกค้าจริงพร้อม B.8 มัดจำเท่านั้น — นัดที่ถือช่องมัดจำหมดเวลาใน 15 นาทีถ้ายังไม่มีทางจ่าย
+- 🔴 (D.9 · 30 ต.ค. · W11) พอร์ทัลผู้เช่า `/d/<token>` นับ rate ต่อ IP จาก `x-real-ip` → `x-vercel-forwarded-for` → `x-forwarded-for` ตัวแรก ⇒ ต้อง deploy หลังพร็อกซีที่**เขียนทับ** `x-real-ip` เสมอ (Vercel ทำเอง · ถ้ามีพร็อกซีหน้าร้าน/self-host ต้องตั้งให้เขียนทับ ไม่ส่งต่อค่าจากผู้ใช้) — ไม่งั้นผู้ใช้ปลอม IP หนีเพดาน view 120/10 นาที · slip 10/10 นาทีได้ · คำขอที่ไม่มี IP เลยตกถัง "unknown" ร่วมกัน (หนี้ RL-1)
+- (D.9 · 30 ต.ค.) งาน `dorm.line` (ส่งข้อความบิลซ้ำ) ใช้ถังนับ `ChatRateBucket` คีย์ `dorm:line:resend:<tenant>:<bill>` นับครั้งส่งซ้ำ FAILED (≤3 ต่อบิลใน 3 วัน) — ถังเก่าหมดอายุตามหน้าต่าง
+
+## D.4 นำเข้า Excel (30 ต.ค. · RULING-1 ทาง ก)
+- migration `20261224000000_svc_d4` (additive · ตารางใหม่ `DormImportBatch` 1 ตาราง + ดัชนี + CHECK 3 ตัว + partial unique `DormImportBatch_unit_active_key`) — ไม่แตะตารางเดิม · ลงก่อน next build ตามลำดับเดิม
+- scope.ts ลงทะเบียน `DormImportBatch: unit` แล้ว — client ร่วม (ทรีหลัก) ต้อง generate หลัง merge ใบนี้เท่านั้น (ก่อน merge = assertRegistryComplete ล้มในทรีที่ไม่มีบรรทัดนี้)
+- คอลัมน์ `parsed` เก็บหัว/แถวจากไฟล์ (มีชื่อ/เบอร์ผู้เช่า) — PII ในฐาน · DTO ปิดเบอร์/เลขบัตรเสมอ · หนี้: นโยบายลบ parsed ของชุดเก่า (เช่น หลัง CREATED 90 วัน)
+- J4: เงินประกันยกมาลง Dr เงินสด/ธนาคาร (ทางเดียวกับ D.5) — ร้านที่ตั้งยอดยกมาธนาคารเองจะนับซ้ำ · จอมีคำเตือน · ให้ผู้ทำบัญชีตรวจก่อนเปิดลูกค้าจริง (D.15)
+
+## B.13 ทรัพยากรร้านนวด (31 ต.ค. · มติ R1 ทาง A)
+- migration `20261225000000_svc_b13` (additive · ตารางใหม่ `SvcResourceBlock` 1 ตาราง + ดัชนี `(tenantId, resourceId, startAt)` + CHECK `SvcResourceBlock_range_check` (endAt IS NULL OR endAt > startAt) ของตารางนี้) — ไม่แตะตารางเดิม · ลงก่อน next build ตามลำดับเดิม
+- สร้างจาก `prisma migrate diff --from-schema <schema f84270a3> --to-schema prisma/schema --script` (ไม่ใช้ migrate dev) · อ่านครบทุกบรรทัด: CREATE TABLE/INDEX + ADD CONSTRAINT ของตารางใหม่เท่านั้น · ไม่มี DROP/RENAME
+- ลงแล้ว: ฐานเลน l3 (ep-royal-bar) ด้วย `bash scripts/qc-svc.sh bash scripts/with-gate-lock.sh pnpm exec prisma migrate deploy` · **ผู้คุมลงต่อ: ฐานหลัก (ep-mute-scene) + ฐานเลน l1/l2 ตอน merge** (เช็ก `_prisma_migrations` ก่อน)
+- core/scope.ts ลงทะเบียน `SvcResourceBlock: unit` แล้ว — client ร่วม (ทรีหลัก/l1) ต้อง `prisma generate` หลัง merge ใบนี้เท่านั้น (ก่อน merge = assertRegistryComplete ล้มในทรีที่ไม่มีบรรทัดนี้ · แบบ D.4)
+- ไม่มี backfill: นัดเดิมไม่มี resourceId ⇒ ตัววางคิวผูกให้เมื่อว่าง (§9 ข้อ 7) · ร้านต้องประกาศชนิดของบริการก่อนเปิดจอง (คู่มือ C.2)

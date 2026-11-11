@@ -29,11 +29,13 @@ export function proxy(request: NextRequest) {
   //   ⇒ เส้นทางนี้ **เท่านั้น** ที่ไม่ส่ง `X-Frame-Options: DENY` · เส้นอื่นทั้งระบบ (รวม `/app/*`) ยัง DENY เหมือนเดิม
   //   (มติผู้คุมงาน 24 ก.ย. ข้อ 10 · ข้อสอบ C2.6-S6.8 + C2.6W-S6.5 ให้เบราว์เซอร์จริงเป็นผู้ตัดสิน) ◂
   const framable = /^\/f(\/|$)/.test(request.nextUrl.pathname);
+  // SEC S3a.5 ▸ ใบเสนอราคาสาธารณะ `/doc/<token>`: token อยู่ใน URL ⇒ ห้ามส่งต่อผ่าน Referer (no-referrer) + ห้ามจัดทำดัชนี ◂
+  const publicDoc = /^\/doc\//.test(request.nextUrl.pathname);
 
   // แยก backoffice
   if (host === "backoffice.shark.in.th") {
     res.headers.set("x-shark-surface", "backoffice");
-    return applySecurity(res, framable);
+    return applySecurity(res, framable, publicDoc);
   }
 
   // custom domain / subdomain ของร้าน → ส่ง host ให้ชั้น app resolve เป็น tenant (อ่าน header นี้)
@@ -42,16 +44,19 @@ export function proxy(request: NextRequest) {
     res.headers.set("x-shark-host", host);
   }
   res.headers.set("x-shark-surface", "app");
-  return applySecurity(res, framable);
+  return applySecurity(res, framable, publicDoc);
 }
 
-function applySecurity(res: NextResponse, framable = false) {
+function applySecurity(res: NextResponse, framable = false, publicDoc = false) {
   if (!framable) res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
-  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.headers.set("Referrer-Policy", publicDoc ? "no-referrer" : "strict-origin-when-cross-origin");
+  if (publicDoc) res.headers.set("X-Robots-Tag", "noindex, nofollow");
   // WO-0043: บังคับ HTTPS 2 ปี + รวม subdomain · ปิดสิทธิ์อุปกรณ์ที่แอปไม่ใช้
   res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
-  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // POS P4.3 ▸ CD-P43-1 — เปิดกล้องเฉพาะ origin เดียวกัน (ปุ่มสแกนบาร์โค้ดของหน้าขาย ScanCameraDialog ใช้ getUserMedia({video}))
+  //   ไมค์/ตำแหน่งยังปิดตาม WO-0043 ◂
+  res.headers.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=()");
   return res;
 }
 

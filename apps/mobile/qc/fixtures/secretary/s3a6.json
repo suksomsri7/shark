@@ -1,0 +1,686 @@
+{
+ "_about": "fixture ของใบ S3a.6-A (แปลภาษาห้องแชทลูกค้า · สัญญา S3a.6 ข้อ 1–4) — OWNER ร้าน t1 · ห้อง x9 เว็บแชท ลูกค้า Emily (contactLang en · staffLang th · can.translate) · IN อังกฤษ (needsTranslation · ยังไม่แปล ⇒ ปุ่มแปล) · OUT อังกฤษ · IN ญี่ปุ่น (มี translatedBody ⇒ แสดงคำแปลเลย) · ร่าง Shark ภาษาอังกฤษ + gloss ไทย · POST …/messages/m91/translate + …/translate-draft (ok:true) · ข้อมูลจำลองล้วน",
+ "noAuth": [
+  "/login"
+ ],
+ "expect": {
+  "/customers/x9": [
+   "cust-room",
+   "cust-bubble-in",
+   "cust-bubble-translate",
+   "cust-bubble-translation",
+   "cust-draft-card",
+   "cust-draft-gloss",
+   "cust-draft-send",
+   "cust-input",
+   "cust-translate-send",
+   "cust-send"
+  ]
+ },
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@qc.invalid",
+    "name": "คุณสุข (QC)"
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "The Bean Café",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "MANAGER",
+     "branding": null
+    },
+    {
+     "tenantId": "t3",
+     "name": "Sweet Studio · จองคิว",
+     "role": "OWNER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 3,
+   "canApprove": 2
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th",
+    "en"
+   ]
+  },
+  "GET /api/mobile/secretary/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th",
+    "en"
+   ],
+   "sample": "สวัสดีครับ Sharkพร้อมช่วยงานแล้วครับ วันนี้มีอะไรให้ช่วยดูแลบ้างครับ",
+   "saved": true
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-code-0000"
+  },
+  "GET /api/mobile/usage": {
+   "used": 12,
+   "limit": 100,
+   "pct": 12
+  },
+  "GET /api/mobile/conversations": {
+   "conversations": [
+    {
+     "id": "c-qc-1",
+     "title": "สรุปยอดขายเมื่อวาน",
+     "updatedAt": "2026-09-01T03:00:00.000Z",
+     "unread": true
+    },
+    {
+     "id": "c-qc-2",
+     "title": "ใบเสนอราคา ร้านตัวอย่าง",
+     "updatedAt": "2026-08-28T03:00:00.000Z",
+     "unread": false
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/after-hours": {
+   "reply": true,
+   "handoff": true,
+   "disclosure": "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
+  },
+  "PUT /api/mobile/secretary/after-hours": {
+   "reply": false,
+   "handoff": true,
+   "disclosure": "ตอบโดย Shark ผู้ช่วย AI ของร้าน"
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 3
+  },
+  "GET /api/mobile/inbox/systems": {
+   "items": [
+    {
+     "id": "cs1",
+     "name": "แชทหน้าร้าน",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      },
+      {
+       "type": "WEBCHAT",
+       "label": "เว็บแชท"
+      }
+     ],
+     "unread": 3
+    },
+    {
+     "id": "cs2",
+     "name": "แชทหอพัก",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      }
+     ],
+     "unread": 0
+    }
+   ],
+   "canReply": true
+  },
+  "GET /api/mobile/inbox/conversations": {
+   "items": [
+    {
+     "id": "x1",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct1",
+      "displayName": "คุณสมชาย · ร้านดอยช้าง",
+      "avatarUrl": null,
+      "customerId": "mem1"
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-nam",
+     "assigneeName": "น้ำ",
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:58:00.000Z",
+     "lastMessagePreview": "ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหม",
+     "staffUnreadCount": 2,
+     "waitingMin": null,
+     "aiDraft": true,
+     "helpers": [
+      "u-qc-kong"
+     ],
+     "tags": [
+      "ดีล"
+     ]
+    },
+    {
+     "id": "x2",
+     "channel": "WEBCHAT",
+     "contact": {
+      "id": "ct2",
+      "displayName": "คุณมานี",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": null,
+     "assigneeName": null,
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:40:00.000Z",
+     "lastMessagePreview": "สนใจคอร์สชงกาแฟวันเสาร์ค่ะ ยังมีที่ไหม",
+     "staffUnreadCount": 1,
+     "waitingMin": 4,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "ใหม่"
+     ]
+    },
+    {
+     "id": "x3",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct3",
+      "displayName": "ป้าแดง",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-kong",
+     "assigneeName": "ก้อง",
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:12:00.000Z",
+     "lastMessagePreview": "[สติกเกอร์]",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": []
+    },
+    {
+     "id": "x4",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct4",
+      "displayName": "คุณเก่ง · บลูเฮาส์",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "PENDING",
+     "assigneeUserId": "u-qc-2",
+     "assigneeName": "สมใจ",
+     "unitId": null,
+     "lastMessageAt": "2026-11-04T09:30:00.000Z",
+     "lastMessagePreview": "คุณ: ส่งสลิปค่าเช่าแล้วนะครับ ขอบคุณครับ",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "หอพัก"
+     ]
+    },
+    {
+     "id": "x5",
+     "channel": "WEBCHAT",
+     "contact": {
+      "id": "ct5",
+      "displayName": "ผู้เยี่ยมชม #4821",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-owner",
+     "assigneeName": "คุณสุข (QC)",
+     "unitId": null,
+     "lastMessageAt": "2026-11-04T15:10:00.000Z",
+     "lastMessagePreview": "ร้านเปิดกี่โมงคะ · Shark ตอบแล้วนอกเวลาทำการ",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "รอคน"
+     ]
+    },
+    {
+     "id": "x6",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct6",
+      "displayName": "คุณวิไล",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "RESOLVED",
+     "assigneeUserId": "u-qc-nam",
+     "assigneeName": "น้ำ",
+     "unitId": null,
+     "lastMessageAt": "2026-11-03T08:00:00.000Z",
+     "lastMessagePreview": "ได้รับของแล้วค่ะ ขอบคุณมาก",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": []
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "น้ำ",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "PUT /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "น้ำ",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "GET /api/mobile/inbox/quick-replies": {
+   "items": [
+    {
+     "id": "q1",
+     "shortcut": "/thx",
+     "title": "ขอบคุณค่ะ 🙏",
+     "body": "ขอบคุณค่ะ 🙏",
+     "channelTypes": []
+    },
+    {
+     "id": "q2",
+     "shortcut": "/map",
+     "title": "ที่อยู่ร้าน",
+     "body": "ร้านอยู่ที่ {shop.address} ค่ะ",
+     "channelTypes": []
+    },
+    {
+     "id": "q3",
+     "shortcut": "/open",
+     "title": "เวลาเปิด",
+     "body": "ร้านเปิด 09:00–18:00 ทุกวันค่ะ",
+     "channelTypes": []
+    },
+    {
+     "id": "q4",
+     "shortcut": "/paid",
+     "title": "โอนแล้วแจ้งได้เลย",
+     "body": "โอนแล้วส่งสลิปในแชทนี้ได้เลยค่ะ",
+     "channelTypes": [
+      "LINE",
+      "WEBCHAT"
+     ]
+    },
+    {
+     "id": "q5",
+     "shortcut": "/menu",
+     "title": "เมนูวันนี้",
+     "body": "เมนูวันนี้ค่ะ",
+     "channelTypes": [
+      "FACEBOOK"
+     ]
+    }
+   ]
+  },
+  "GET /api/mobile/inbox/staff": {
+   "items": [
+    {
+     "userId": "u-qc-nam",
+     "name": "น้ำ",
+     "role": "MANAGER",
+     "onDuty": true
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "role": "STAFF",
+     "onDuty": true
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "role": "STAFF",
+     "onDuty": true
+    },
+    {
+     "userId": "u-qc-owner",
+     "name": "คุณสุข (QC)",
+     "role": "OWNER",
+     "onDuty": false
+    }
+   ]
+  },
+  "GET /api/mobile/inbox/connections": {
+   "items": [
+    {
+     "id": "cn1",
+     "type": "LINE",
+     "label": "LINE",
+     "displayName": "@thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:58:00.000Z",
+     "lastErrorAt": null
+    },
+    {
+     "id": "cn2",
+     "type": "WEBCHAT",
+     "label": "เว็บแชท",
+     "displayName": "shark.in.th/c/thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:40:00.000Z",
+     "lastErrorAt": null
+    }
+   ]
+  },
+  "POST /api/mobile/inbox/shift": {
+   "onDuty": true,
+   "onDutyAt": "2026-11-05T03:00:00.000Z"
+  },
+  "POST /api/mobile/inbox/attachments": {
+   "url": "https://cdn.qc.invalid/upload/photo.png",
+   "name": "photo.png",
+   "mimeType": "image/png",
+   "size": 2048,
+   "width": 1,
+   "height": 1
+  },
+  "GET /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ALL",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "kinds": [
+    "inbox",
+    "approval",
+    "room",
+    "help"
+   ],
+   "modes": [
+    "ALL",
+    "ASSIGNED",
+    "OFF"
+   ]
+  },
+  "PUT /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ASSIGNED",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "scope": "tenant"
+  },
+  "GET /api/mobile/member/search": {
+   "items": [
+    {
+     "id": "mem1",
+     "memberCode": "M-0012",
+     "name": "คุณสมชาย",
+     "phoneMasked": "081-xxx-5678",
+     "tier": null,
+     "points": 1240
+    },
+    {
+     "id": "mem2",
+     "memberCode": "M-0040",
+     "name": "คุณสมศรี",
+     "phoneMasked": "089-xxx-1122",
+     "tier": null,
+     "points": 80
+    }
+   ]
+  },
+  "POST /api/mobile/secretary/rooms": {
+   "roomId": "r-cust1",
+   "conversationId": "c-r-cust1",
+   "status": "RUNNING"
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [],
+   "unread": 0,
+   "categories": []
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 2,
+   "customers": 3,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 0
+   },
+   "total": 5
+  },
+  "GET /api/mobile/inbox/conversations/x9": {
+   "conversation": {
+    "id": "x9",
+    "channel": "WEBCHAT",
+    "contact": {
+     "id": "ct9",
+     "displayName": "Emily Carter",
+     "avatarUrl": null,
+     "customerId": null
+    },
+    "status": "OPEN",
+    "assigneeUserId": "u-qc-owner",
+    "assigneeName": "คุณสุข (QC)",
+    "unitId": null,
+    "lastMessageAt": "2026-11-05T03:06:00.000Z",
+    "lastMessagePreview": "こんにちは、来週の土曜日に4名で予約できますか？",
+    "staffUnreadCount": 2,
+    "waitingMin": null,
+    "aiDraft": true,
+    "helpers": [],
+    "tags": [],
+    "can": {
+     "reply": true,
+     "assign": true,
+     "setStatus": true,
+     "linkCustomer": true,
+     "aiSuggest": true,
+     "translate": true
+    },
+    "replyWindowEndsAt": null,
+    "staffLang": "th",
+    "contactLang": "en"
+   },
+   "messages": [
+    {
+     "id": "m91",
+     "direction": "IN",
+     "type": "TEXT",
+     "body": "Hi! Do you have the Espresso M2 machine in stock? I'd like 2 units delivered to Chiang Mai next week.",
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:58:00.000Z",
+     "translatedBody": null,
+     "translatedLang": null,
+     "needsTranslation": true
+    },
+    {
+     "id": "m92",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "Hello Emily, yes we have it in stock. Let me check the delivery date for you.",
+     "senderUserId": "u-qc-owner",
+     "senderName": "คุณสุข (QC)",
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T03:01:00.000Z",
+     "translatedBody": null,
+     "translatedLang": null,
+     "needsTranslation": false
+    },
+    {
+     "id": "m93",
+     "direction": "IN",
+     "type": "TEXT",
+     "body": "こんにちは、来週の土曜日に4名で予約できますか？",
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T03:06:00.000Z",
+     "translatedBody": "สวัสดีค่ะ วันเสาร์หน้าจองโต๊ะสำหรับ 4 คนได้ไหมคะ",
+     "translatedLang": "th",
+     "needsTranslation": true
+    }
+   ],
+   "contact": {
+    "id": "ct9",
+    "displayName": "Emily Carter",
+    "avatarUrl": null,
+    "customerId": null
+   },
+   "linkedMember": null,
+   "helpers": [],
+   "nextBefore": null
+  },
+  "POST /api/mobile/inbox/conversations/x9/read": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x9/reply": {
+   "messageId": "m-new"
+  },
+  "POST /api/mobile/inbox/conversations/x9/assign": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x9/ai-suggest": {
+   "ok": true,
+   "replyLang": "en",
+   "options": [
+    {
+     "id": "sg9",
+     "body": "Hi Emily, yes — we can deliver 2 units of the Espresso M2 to Chiang Mai next Wednesday. Shall I send you a quotation?",
+     "warn": false,
+     "gloss": "สวัสดีค่ะคุณเอมิลี่ ส่งเครื่อง Espresso M2 จำนวน 2 เครื่องไปเชียงใหม่ได้วันพุธหน้าค่ะ ให้ส่งใบเสนอราคาไปให้ไหมคะ"
+    }
+   ],
+   "sourceMessageId": "m93"
+  },
+  "POST /api/mobile/inbox/conversations/x9/messages/m91/translate": {
+   "ok": true,
+   "text": "สวัสดีค่ะ มีเครื่อง Espresso M2 ในสต็อกไหมคะ อยากได้ 2 เครื่อง ส่งไปเชียงใหม่สัปดาห์หน้าค่ะ",
+   "cached": false,
+   "lang": "th"
+  },
+  "POST /api/mobile/inbox/conversations/x9/translate-draft": {
+   "ok": true,
+   "text": "Yes, we can deliver on Wednesday. I'll send the quotation today."
+  },
+  "POST /api/mobile/inbox/quick-replies/q1/apply": {
+   "body": "ขอบคุณค่ะ 🙏"
+  },
+  "POST /api/mobile/inbox/quick-replies/q2/apply": {
+   "body": "ร้านอยู่ที่ 12 ถนนนิมมาน เชียงใหม่ ค่ะ"
+  }
+ }
+}

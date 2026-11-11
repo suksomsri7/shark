@@ -7,6 +7,7 @@
 
 import { tenantDb } from "@/lib/core/db";
 import { canSeeConversationId, newConversationId, sightOf, visibleConversationWhere, type ConvCtx } from "@/lib/ai/conversation-owner";
+import { NOT_SYSTEM_MESSAGE } from "@/lib/ai/secretary/members";
 
 export type ConversationRow = { id: string; title: string; updatedAt: Date; unread: boolean };
 
@@ -26,7 +27,7 @@ export async function listConversations(ctx: ConvCtx): Promise<ConversationRow[]
   // เวลาตอบ ASSISTANT ล่าสุดต่อห้อง (query เดียว กัน N+1)
   const latest = await db.aiMessage.groupBy({
     by: ["conversationId"],
-    where: { role: "ASSISTANT", conversationId: { in: rows.map((r) => r.id) } },
+    where: { role: "ASSISTANT", conversationId: { in: rows.map((r) => r.id) }, ...NOT_SYSTEM_MESSAGE }, // S1.6 R-S1.6b: ข้อความระบบห้องเลขาไม่นับ unread
     _max: { createdAt: true },
   });
   const maxMap = new Map(latest.map((l) => [l.conversationId, l._max.createdAt]));

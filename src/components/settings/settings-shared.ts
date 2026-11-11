@@ -1,0 +1,542 @@
+// ─────────────────────────────────────────────────────────────
+// settings-shared.ts — โมเดลฟอร์มค่าตั้ง + ฟังก์ชัน pure ของหน้าตั้งค่า (R0.4)
+// ใบสั่ง ledger/svc-briefs/svc-brief-r0.4.md §2 §4
+//
+// 🔴 pure ล้วน: ไม่มี directive · import ได้เฉพาะ `import type` จาก @/lib/core/settings/types
+//    (ทั้ง server — form.ts, หน้าห่อ — และ client — SettingsForm.tsx — import ไฟล์นี้ได้)
+// 🔴 ทุกค่าในโมเดลเป็น JSON ล้วน (ไม่มี function/Date/zod) — วันที่เป็น ISO string
+// ─────────────────────────────────────────────────────────────
+import type { ScopeKind, SettingChangeInput, SettingValueType, TableCellSpecTh, TableSpecTh } from "@/lib/core/settings/types";
+
+export type { TableCellSpecTh, TableSpecTh } from "@/lib/core/settings/types";
+
+export type SettingsFieldOption = { value: string; labelTh: string };
+export type SettingsFieldSource = ScopeKind | "TEMPLATE" | "FALLBACK";
+
+export type SettingsField = {
+  key: string;
+  domain: string;
+  group: string;
+  type: SettingValueType;
+  labelTh: string;
+  helpTh: string | null;
+  /** ค่าที่มีผล ณ (scope, scopeId) รวมการสืบชั้น · masked ⇒ null */
+  value: unknown;
+  /** มีแถว SettingValue ที่ (key, scope, scopeId) นี้เอง */
+  hasOwn: boolean;
+  source: SettingsFieldSource;
+  sourceLabelTh: string;
+  templateValue: unknown;
+  differsFromTemplate: boolean;
+  /** แถวชั้นที่ลึกกว่า scope นี้ (ในสาขาเดียวกัน) ของคีย์นี้ ⇒ ป้าย "ปรับรายคน N" */
+  overrideCount: number;
+  editable: boolean;
+  /** !editable ⇒ ข้อความไทยไม่ว่าง */
+  lockedReasonTh: string | null;
+  /** sensitivity PRIVACY และผู้ดูไม่ใช่ OWNER */
+  masked: boolean;
+  /** key ∈ PENDING_LEGAL_REVIEW_KEYS (rooms) — ป้ายเท่านั้น */
+  pendingLegalReview: boolean;
+  options: SettingsFieldOption[] | null;
+  nullable: boolean;
+  min: number | null;
+  max: number | null;
+  templateVars: string[] | null;
+  requiresIntegration: string | null;
+  effectiveDated: boolean;
+  sensitivity: "MONEY" | "LEGAL" | "PRIVACY" | null;
+  ownerOnly: boolean;
+  /** B.11 ▸ type=percent: 100 = เก็บเป็น % เต็ม (0–100) · ไม่มี/10000 = basis point (คัดลอกจาก def — ห้ามเดาจาก max) ◂ */
+  percentScale?: 100 | 10000;
+  /** G1UI ▸ type=table: ป้ายไทย + ชนิดช่องย่อย (คัดลอกจาก def.tableTh) — สรุป/ตัวแก้ใช้แทนชื่อคีย์ดิบ ◂ */
+  tableSpec?: TableSpecTh;
+};
+
+export type SettingsHistoryRow = {
+  id: string;
+  key: string;
+  labelTh: string;
+  beforeTh: string;
+  afterTh: string;
+  at: string;
+  legalLevel: string;
+  masked: boolean;
+};
+
+export type SettingsFormModel = {
+  unitId: string;
+  unitName: string;
+  scope: ScopeKind;
+  scopeId: string;
+  domains: string[];
+  templates: { domain: string; key: string | null; labelTh: string | null }[];
+  groups: { domain: string; key: string; labelTh: string; fields: SettingsField[] }[];
+  /** จำนวน field ที่ differsFromTemplate */
+  differsCount: number;
+  /** ≤ 50 ล่าสุด ของคีย์ใน domains · สาขานี้ (+TENANT เมื่อผู้ดูไม่จำกัดสาขา) */
+  history: SettingsHistoryRow[];
+};
+
+/** ส่วนของ field ที่การแสดงผลค่าต้องใช้ (SettingsField เต็มก็ส่งได้) */
+export type FieldFormatSpec = Pick<SettingsField, "key" | "type" | "options" | "masked"> & Partial<Pick<SettingsField, "tableSpec" | "percentScale">>;
+
+/** ป้ายไทยของชั้น (ใช้ใน sourceLabelTh) */
+export const SCOPE_LABEL_TH: Record<string, string> = {
+  TENANT: "ทั้งร้าน",
+  UNIT: "สาขา",
+  BUILDING: "อาคาร",
+  ROOM_TYPE: "ประเภทห้อง",
+  ROOM: "ห้อง",
+  LEASE: "สัญญา",
+  RATE_PLAN: "แผนราคา",
+  STAFF: "พนักงาน",
+  SERVICE: "บริการ",
+  RESOURCE: "ทรัพยากร",
+  DEVICE: "อุปกรณ์",
+  COURSE: "คอร์ส",
+};
+
+// ───────────────────────── ตัวช่วย ─────────────────────────
+
+/** B.11 ▸ หน่วยเก็บของ percent (มีฟิลด์ percentScale = 100 ⇒ % เต็ม · อื่น = bp) — อ่านจากฟิลด์เท่านั้น ◂ */
+const percentScaleOf = (f: object): number => ("percentScale" in f && f.percentScale === 100 ? 100 : 10000);
+
+const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** เทียบค่า JSON แบบลึก (ลำดับคีย์ในออบเจกต์ไม่มีผล) */
+export function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === "number" && typeof b === "number") return Number.isNaN(a) && Number.isNaN(b);
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((x, i) => deepEqual(x, b[i]));
+  }
+  if (isRec(a) && isRec(b)) {
+    const ka = Object.keys(a);
+    const kb = Object.keys(b);
+    if (ka.length !== kb.length) return false;
+    return ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && deepEqual(a[k], b[k]));
+  }
+  return false;
+}
+
+const groupDigits = (n: string): string => n.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+/** สตางค์ → "1,250.50" (ไม่มีเศษ ⇒ "1,250") */
+function bahtText(satang: number): string {
+  const neg = satang < 0;
+  const abs = Math.abs(Math.round(satang));
+  const whole = Math.floor(abs / 100);
+  const frac = abs % 100;
+  const w = groupDigits(String(whole));
+  return `${neg ? "-" : ""}${frac === 0 ? w : `${w}.${String(frac).padStart(2, "0")}`}`;
+}
+
+/** basis point → "7.5" (ไม่มีเศษ ⇒ "10") */
+function percentText(bp: number): string {
+  const neg = bp < 0;
+  const abs = Math.abs(Math.round(bp));
+  const whole = Math.floor(abs / 100);
+  const frac = abs % 100;
+  const f = frac === 0 ? "" : `.${String(frac).padStart(2, "0").replace(/0$/, "")}`;
+  return `${neg ? "-" : ""}${whole}${f}`;
+}
+
+/** หน่วยที่ผู้ใช้กรอก (แสดงท้ายช่อง) */
+export function unitLabelTh(type: SettingValueType): string | null {
+  switch (type) {
+    case "money":
+      return "บาท";
+    case "percent":
+      return "%";
+    case "minutes":
+      return "นาที";
+    case "days":
+      return "วัน";
+    default:
+      return null;
+  }
+}
+
+/** ค่าเก็บ → ข้อความในช่องกรอก (money/percent แปลงเป็นหน่วยที่ผู้ใช้กรอก) */
+export function valueToInputText(field: Pick<SettingsField, "type">, value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") {
+    if (field.type === "money") return (Math.round(value) / 100).toFixed(2).replace(/\.00$/, "");
+    if (field.type === "percent" && percentScaleOf(field) === 100) return String(value); // B.11 percentScale
+    if (field.type === "percent") return percentText(value);
+    return String(value);
+  }
+  return typeof value === "string" ? value : String(value);
+}
+
+// ───────────────────────── submissionFor ─────────────────────────
+
+/**
+ * ประกอบสิ่งที่จะส่งเมื่อกดบันทึก
+ *  changes = เฉพาะคีย์ใน edits ที่ (มีใน model · editable · ไม่ masked · ไม่อยู่ใน follow · ค่าไม่เท่า field.value แบบลึก)
+ *            scope/scopeId จากโมเดล — ไม่มีคีย์อื่นเด็ดขาด
+ *  resets  = คีย์ใน follow ที่ hasOwn && editable (ไม่มีแถวของตัวเอง = ไม่ส่ง)
+ */
+export function submissionFor(
+  model: SettingsFormModel,
+  edits: Record<string, unknown>,
+  follow: ReadonlySet<string>,
+): { changes: SettingChangeInput[]; resets: { key: string; scope: string; scopeId: string }[] } {
+  const byKey = new Map<string, SettingsField>();
+  for (const g of model.groups) for (const f of g.fields) byKey.set(f.key, f);
+  const changes: SettingChangeInput[] = [];
+  for (const [key, value] of Object.entries(edits)) {
+    const f = byKey.get(key);
+    if (!f || !f.editable || f.masked || follow.has(key)) continue;
+    if (deepEqual(value, f.value)) continue;
+    changes.push({ key, scope: model.scope, scopeId: model.scopeId, value });
+  }
+  const resets: { key: string; scope: string; scopeId: string }[] = [];
+  for (const key of follow) {
+    const f = byKey.get(key);
+    if (!f || !f.hasOwn || !f.editable) continue;
+    resets.push({ key, scope: model.scope, scopeId: model.scopeId });
+  }
+  return { changes, resets };
+}
+
+// ───────────────────────── parseFieldInput ─────────────────────────
+
+export type ParseResult = { ok: true; value: unknown } | { ok: false; messageTh: string };
+
+const bad = (messageTh: string): ParseResult => ({ ok: false, messageTh });
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+type NumFmt = (n: number) => string;
+function rangeCheck(f: Pick<SettingsField, "labelTh" | "min" | "max">, n: number, fmt: NumFmt, unit: string): ParseResult | null {
+  if (f.min !== null && n < f.min) return bad(`«${f.labelTh}» ต้องไม่น้อยกว่า ${fmt(f.min)}${unit}`);
+  if (f.max !== null && n > f.max) return bad(`«${f.labelTh}» ต้องไม่เกิน ${fmt(f.max)}${unit}`);
+  return null;
+}
+
+/** เลขทศนิยมไม่เกิน 2 ตำแหน่ง → จำนวนเต็ม ×100 (คำนวณเลขจำนวนเต็ม ไม่ใช้ float) */
+function scaled100(text: string): { ok: true; n: number } | { ok: false; reason: "NEG" | "FRAC" | "NAN" } {
+  const t = text.replace(/[,\s฿%]/g, "");
+  if (/^-\d/.test(t) || /^-\.\d/.test(t)) return { ok: false, reason: "NEG" };
+  const m = /^(\d*)(?:\.(\d*))?$/.exec(t);
+  if (!m || (m[1] === "" && (m[2] ?? "") === "")) return { ok: false, reason: "NAN" };
+  const frac = m[2] ?? "";
+  if (frac.length > 2) return { ok: false, reason: "FRAC" };
+  return { ok: true, n: Number(m[1] || "0") * 100 + Number(frac.padEnd(2, "0") || "0") };
+}
+
+/** B.11 ▸ percentScale 100: กรอก % เต็มเป็นจำนวนเต็ม (เช่น "70" ⇒ 70) ◂ */
+function parseWholePercent(field: Pick<SettingsField, "labelTh" | "min" | "max">, t: string): ParseResult {
+  const c = t.replace(/[,\s%]/g, "");
+  if (/^-/.test(c)) return bad(`«${field.labelTh}» กรอกเปอร์เซ็นต์ ห้ามติดลบ`);
+  if (!/^\d+$/.test(c)) return bad(`«${field.labelTh}» กรอกเปอร์เซ็นต์เป็นจำนวนเต็ม เช่น 60`);
+  const n = Number(c);
+  return rangeCheck(field, n, (x) => String(x), "%") ?? { ok: true, value: n };
+}
+
+export function parseFieldInput(
+  field: Pick<SettingsField, "type" | "labelTh" | "nullable" | "min" | "max" | "options">,
+  raw: string | boolean,
+): ParseResult {
+  const label = `«${field.labelTh}»`;
+  if (field.type === "bool") {
+    if (typeof raw === "boolean") return { ok: true, value: raw };
+    if (raw === "true") return { ok: true, value: true };
+    if (raw === "false") return { ok: true, value: false };
+    return bad(`${label} เลือกเปิดหรือปิด`);
+  }
+  const text = typeof raw === "string" ? raw : String(raw);
+  const blank = text.trim() === "";
+  if (blank) {
+    if (field.nullable) return { ok: true, value: null };
+    if (field.type === "text" || field.type === "template") return { ok: true, value: "" };
+    return bad(`กรุณากรอก ${label}`);
+  }
+  const t = text.trim();
+  switch (field.type) {
+    case "int":
+    case "minutes":
+    case "days": {
+      const unit = unitLabelTh(field.type);
+      const u = unit ? ` ${unit}` : "";
+      const c = t.replace(/,/g, "");
+      if (!/^-?\d+$/.test(c)) return bad(`${label} กรอกเป็นจำนวนเต็ม${unit ? ` (${unit})` : ""}`);
+      const n = Number(c);
+      if (!Number.isSafeInteger(n)) return bad(`${label} ตัวเลขใหญ่เกินไป`);
+      return rangeCheck(field, n, (x) => groupDigits(String(x)), u) ?? { ok: true, value: n };
+    }
+    case "money": {
+      const r = scaled100(t);
+      if (!r.ok) {
+        if (r.reason === "NEG") return bad(`${label} กรอกจำนวนเงินเป็นบาท ห้ามติดลบ`);
+        if (r.reason === "FRAC") return bad(`${label} ทศนิยมได้ไม่เกิน 2 ตำแหน่ง (สตางค์)`);
+        return bad(`${label} กรอกจำนวนเงินเป็นตัวเลข (บาท) เช่น 1,250.50`);
+      }
+      if (!Number.isSafeInteger(r.n)) return bad(`${label} ตัวเลขใหญ่เกินไป`);
+      return rangeCheck(field, r.n, bahtText, " บาท") ?? { ok: true, value: r.n };
+    }
+    case "percent": {
+      if (percentScaleOf(field) === 100) return parseWholePercent(field, t); // B.11 percentScale
+      const r = scaled100(t);
+      if (!r.ok) {
+        if (r.reason === "NEG") return bad(`${label} กรอกเปอร์เซ็นต์ ห้ามติดลบ`);
+        if (r.reason === "FRAC") return bad(`${label} ทศนิยมได้ไม่เกิน 2 ตำแหน่ง`);
+        return bad(`${label} กรอกเป็นตัวเลขเปอร์เซ็นต์ เช่น 7.5`);
+      }
+      return rangeCheck(field, r.n, percentText, "%") ?? { ok: true, value: r.n };
+    }
+    case "time":
+      return HHMM.test(t) ? { ok: true, value: t } : bad(`${label} กรอกเวลาเป็น ชั่วโมง:นาที เช่น 08:30`);
+    case "enum": {
+      if ((field.options ?? []).some((o) => o.value === text)) return { ok: true, value: text };
+      return bad(`${label} เลือกจากตัวเลือกที่มีให้`);
+    }
+    case "table": {
+      try {
+        return { ok: true, value: JSON.parse(text) as unknown };
+      } catch {
+        return bad(`${label} รูปแบบข้อมูลไม่ถูกต้อง`);
+      }
+    }
+    default:
+      return { ok: true, value: text }; // text · template — ส่งตามเดิม (เครื่องยนต์ตรวจต่อ)
+  }
+}
+
+// ───────────────────────── formatFieldValue ─────────────────────────
+
+/** ป้ายไทยของชื่อช่องย่อยในค่าชนิดตาราง (ไม่รู้จัก ⇒ ใช้ชื่อเดิม) */
+export const TABLE_KEY_TH: Record<string, string> = {
+  promptpayId: "พร้อมเพย์",
+  displayName: "ชื่อบัญชี",
+  bankAccount: "เลขบัญชี",
+  paymentProfileId: "โปรไฟล์รับเงิน",
+  labelTh: "ชื่อที่แสดง",
+  start: "เริ่ม",
+  end: "ถึง",
+  per: "คิดต่อ",
+  satang: "จำนวนเงิน (สตางค์)",
+  kind: "ชนิด",
+  uptoUnits: "ถึงหน่วยที่",
+  rateE4: "อัตรา (หน่วย 1/10000 บาท)",
+  ftE4: "ค่า Ft (หน่วย 1/10000 บาท)",
+  pctFromAvg3: "ต่างจากค่าเฉลี่ย 3 เดือนเกิน (%)",
+  vacantMaxUnits: "ห้องว่างใช้ได้ไม่เกิน (หน่วย)",
+  flagBackwards: "เตือนเมื่อเลขถอยหลัง",
+  code: "รหัส",
+  amountSatang: "จำนวนเงิน (สตางค์)",
+  textTh: "ข้อความไทย",
+  textEn: "ข้อความอังกฤษ",
+  id: "รหัส",
+  board: "บอร์ดงาน",
+  assigneeId: "ผู้รับผิดชอบ",
+  RENT: "ค่าห้อง",
+  COMMON: "ค่าส่วนกลาง",
+  ELEC: "ค่าไฟ",
+  WATER: "ค่าน้ำ",
+  SERVICE: "ค่าบริการ",
+  LATE_FEE: "ค่าปรับล่าช้า",
+  _default: "ค่าเริ่มต้น",
+  th: "ไทย",
+  en: "อังกฤษ",
+};
+
+const keyTh = (k: string): string => TABLE_KEY_TH[k] ?? k;
+
+function scalarText(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "เปิด" : "ปิด";
+  return String(v);
+}
+
+/** สรุปค่าชนิดตาราง/แม่แบบเป็นข้อความสั้น (ไม่ขึ้นต้น { หรือ [) */
+function summarize(v: unknown, depth = 0): string {
+  if (v === null || v === undefined) return "—";
+  if (Array.isArray(v)) {
+    if (v.length === 0) return "ไม่มีรายการ";
+    if (v.every((x) => x === null || typeof x !== "object")) return v.map(scalarText).join(", ");
+    return `${v.length} รายการ`;
+  }
+  if (isRec(v)) {
+    const parts = Object.entries(v)
+      .filter(([, x]) => x !== undefined)
+      .map(([k, x]) => `${keyTh(k)} ${depth > 0 && typeof x === "object" && x !== null ? "…" : summarize(x, depth + 1)}`);
+    return parts.length ? parts.join(" · ") : "ไม่มีรายการ";
+  }
+  return scalarText(v);
+}
+
+function templatePreview(v: unknown): string {
+  let text = "";
+  if (typeof v === "string") text = v;
+  else if (isRec(v)) text = typeof v.th === "string" ? v.th : (Object.values(v).find((x) => typeof x === "string") as string | undefined) ?? "";
+  text = text.replace(/\s+/g, " ").trim();
+  if (!text) return "—";
+  return `“${text.length > 60 ? `${text.slice(0, 60)}…` : text}”`;
+}
+
+/** ค่า → ข้อความที่คนอ่านรู้เรื่อง (money ฿ · percent % · นาที · วัน · เปิด/ปิด · ป้าย enum · ว่าง "—" · masked "ซ่อนไว้") */
+export function formatFieldValue(field: FieldFormatSpec, value: unknown): string {
+  if (field.masked) return "ซ่อนไว้";
+  if (field.type === "table" && field.tableSpec) return tableSummaryTh(field.tableSpec, value); // G1UI
+  if (value === null || value === undefined) return "—";
+  if (field.type === "percent" && percentScaleOf(field) === 100) return typeof value === "number" ? `${value}%` : String(value); // B.11 percentScale
+  switch (field.type) {
+    case "money":
+      return typeof value === "number" ? `฿${bahtText(value)}` : String(value);
+    case "percent":
+      return typeof value === "number" ? `${percentText(value)}%` : String(value);
+    case "minutes":
+      return `${value} นาที`;
+    case "days":
+      return `${value} วัน`;
+    case "bool":
+      return value === true ? "เปิด" : value === false ? "ปิด" : String(value);
+    case "enum": {
+      const o = (field.options ?? []).find((x) => x.value === value);
+      return o ? o.labelTh : String(value);
+    }
+    case "table":
+      return summarize(value);
+    case "template":
+      return templatePreview(value);
+    case "text":
+      return typeof value === "string" ? (value === "" ? "—" : value) : summarize(value);
+    default:
+      return typeof value === "object" ? summarize(value) : String(value);
+  }
+}
+
+// ───────────────────────── G1UI ▸ ค่าชนิดตารางแบบมีป้ายต่อช่อง (def.tableTh) ─────────────────────────
+
+/** นาที → "1 วัน" · "2 ชม." · "1 ชม. 30 นาที" · "45 นาที" */
+export function durationText(min: number): string {
+  if (!Number.isFinite(min)) return String(min);
+  if (min > 0 && min % 1440 === 0) return `${min / 1440} วัน`;
+  if (min > 0 && min % 60 === 0) return `${min / 60} ชม.`;
+  if (min > 60) return `${Math.floor(min / 60)} ชม. ${min % 60} นาที`;
+  return `${min} นาที`;
+}
+
+/** นาทีจากเที่ยงคืน → "HH:MM" (1440 ⇒ "24:00") */
+export function clockText(min: number): string {
+  if (!Number.isFinite(min)) return String(min);
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** ค่าช่องย่อย → ข้อความไทย */
+export function formatCell(cs: TableCellSpecTh, v: unknown): string {
+  if (v === null || v === undefined) return cs.nullTh ?? "—";
+  switch (cs.kind) {
+    case "bool":
+      return v === true ? (cs.onTh ?? "เปิด") : v === false ? (cs.offTh ?? "ปิด") : String(v);
+    case "enum":
+      return typeof v === "string" ? (cs.options?.[v] ?? v) : String(v);
+    case "int":
+      return `${typeof v === "number" ? groupDigits(String(v)) : String(v)}${cs.unitTh ? ` ${cs.unitTh}` : ""}`;
+    case "bp":
+      return typeof v === "number" ? `${percentText(v)}%` : String(v);
+    case "minutes":
+      return `${String(v)} นาที`;
+    case "duration":
+      return typeof v === "number" ? durationText(v) : String(v);
+    case "days":
+      return `${String(v)} วัน`;
+    case "clock":
+      return typeof v === "number" ? clockText(v) : String(v);
+    case "object":
+      return isRec(v) && cs.fields ? summarizeFields(cs.fields, v) : summarize(v);
+    default:
+      return typeof v === "string" ? (v === "" ? "—" : v) : summarize(v);
+  }
+}
+
+function summarizeFields(fields: Record<string, TableCellSpecTh>, obj: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const [k, cs] of Object.entries(fields)) {
+    if (!Object.prototype.hasOwnProperty.call(obj, k)) continue; // ไม่มีช่องนี้ (ชนิดอื่นของตัวแยก / ช่องไม่บังคับ)
+    const v = obj[k];
+    const so = cs.kind === "enum" && typeof v === "string" ? cs.summaryOptions?.[v] : undefined;
+    if (so === "") continue;
+    const text = so ?? formatCell(cs, v);
+    const prefix = (v === null && cs.nullShortTh !== undefined ? cs.nullShortTh : undefined) ?? cs.shortTh ?? cs.labelTh;
+    parts.push(prefix ? `${prefix} ${text}` : text);
+  }
+  return parts.length ? parts.join(" · ") : "—";
+}
+
+/** ค่าชนิดตารางทั้งก้อน → ข้อความสรุปไทย (ไม่มีชื่อคีย์ดิบ) */
+export function tableSummaryTh(spec: TableSpecTh, value: unknown): string {
+  if (value === null || value === undefined) return spec.nullTh ?? "—";
+  if (spec.item && Array.isArray(value)) {
+    if (value.length === 0) return spec.emptyTh ?? "ไม่มีรายการ";
+    const sep = spec.ordered ? " → " : spec.item.kind === "duration" ? " · " : ", ";
+    return value.map((x) => formatCell(spec.item as TableCellSpecTh, x)).join(sep);
+  }
+  if (spec.fields && isRec(value)) return summarizeFields(spec.fields, value);
+  return summarize(value);
+}
+
+/** ค่าช่องย่อย → ข้อความในช่องกรอก */
+export function cellInputText(cs: TableCellSpecTh, v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (cs.kind === "bp" && typeof v === "number") return percentText(v);
+  if (cs.kind === "clock" && typeof v === "number") return clockText(v);
+  return String(v);
+}
+
+/** หน่วยท้ายช่องกรอกของช่องย่อย */
+export function cellUnitTh(cs: TableCellSpecTh): string | null {
+  switch (cs.kind) {
+    case "bp":
+      return "%";
+    case "minutes":
+    case "duration":
+      return "นาที";
+    case "days":
+      return "วัน";
+    case "int":
+      return cs.unitTh ?? null;
+    default:
+      return null;
+  }
+}
+
+/** ข้อความที่ผู้ใช้กรอกในช่องย่อย → ค่าเก็บ (ว่าง + nullTh/optional ⇒ null) */
+export function parseCell(cs: TableCellSpecTh, text: string): ParseResult {
+  const label = `«${cs.labelTh}»`;
+  const t = text.trim();
+  if (t === "") {
+    if (cs.nullTh !== undefined || cs.optional) return { ok: true, value: null };
+    if (cs.kind === "text") return { ok: true, value: "" };
+    return bad(`กรุณากรอก ${label}`);
+  }
+  switch (cs.kind) {
+    case "int":
+    case "minutes":
+    case "duration":
+    case "days": {
+      const c = t.replace(/,/g, "");
+      if (!/^\d+$/.test(c)) return bad(`${label} กรอกเป็นจำนวนเต็ม${cellUnitTh(cs) ? ` (${cellUnitTh(cs)})` : ""}`);
+      const n = Number(c);
+      return Number.isSafeInteger(n) ? { ok: true, value: n } : bad(`${label} ตัวเลขใหญ่เกินไป`);
+    }
+    case "bp": {
+      const r = scaled100(t);
+      if (!r.ok) return bad(r.reason === "NEG" ? `${label} ห้ามติดลบ` : r.reason === "FRAC" ? `${label} ทศนิยมได้ไม่เกิน 2 ตำแหน่ง` : `${label} กรอกเป็นตัวเลขเปอร์เซ็นต์ เช่น 10`);
+      return r.n > 10_000 ? bad(`${label} ต้องไม่เกิน 100%`) : { ok: true, value: r.n };
+    }
+    case "clock": {
+      if (t === "24:00") return { ok: true, value: 1440 };
+      const m = HHMM.exec(t);
+      return m ? { ok: true, value: Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) } : bad(`${label} กรอกเวลาเป็น ชั่วโมง:นาที เช่น 10:00`);
+    }
+    case "clockText":
+      return HHMM.test(t) ? { ok: true, value: t } : bad(`${label} กรอกเวลาเป็น ชั่วโมง:นาที เช่น 21:00`);
+    default:
+      return { ok: true, value: text };
+  }
+}

@@ -5,6 +5,7 @@
 // ctx = { tenantId, unitId } — ทุก query ผ่าน tenantDb(ctx) (defense-in-depth ชั้น 2) · unit type RENTAL
 // เงินต้องเข้าเสมอ: คืนของ = ปิดบิลค่าเช่า(+ค่าปรับ) ผ่าน POS (บังคับ · ไม่มี POS = โยนก่อนแตะสถานะ — CRM C2.9)
 import { prisma, tenantDb } from "@/lib/core/db";
+import { callerTx } from "@/lib/core/caller-tx"; // POS P5.1 ▸ MA2: ใบรับมัดจำในธุรกรรมของ moduleTakeDeposit ◂
 import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "คืนของเช่า" ใน tx เดียวกับสถานะ ◂
 import * as pos from "@/lib/modules/pos/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
@@ -209,9 +210,10 @@ export async function returnAsset(
   //   หลังคิวระบาย) — ไทม์ไลน์ลูกค้าจึงโกหกว่า "คืนของแล้ว" ทั้งที่ของยังไม่ได้คืน
   //   แก้โดยย้ายด่านขึ้นมาเป็น pre-check ก่อนเขียนอะไรทั้งสิ้น ⇒ ไม่มี POS = โยนโดยไม่แตะสถานะ ไม่มี event ไม่มีกิจกรรม
   //   ข้อความไทยเดิมทุกตัวอักษร · ลำดับเดิมคงไว้: สถานะไม่ใช่ PICKED_UP / ไม่พบสินทรัพย์ → ok:false มาก่อนด่าน POS
-  const posSystems = await listSystems(ctx.tenantId, "POS");
-  const posSys = posSystems[0];
-  if (!posSys) throw new Error("เปิดระบบขาย (POS) ก่อนรับคืนสินทรัพย์");
+  // POS P1.6 R2 F1 ▸ ตัวตัดสิน O21 เดียวกับ createSale ◂
+  const posGate = await pos.posSystemForSale(ctx.tenantId, ctx.unitId);
+  if (!posGate.ok) throw new Error(posGate.code === "NO_POS" ? "เปิดระบบขาย (POS) ก่อนรับคืนสินทรัพย์" : posGate.message);
+  const posSys = { id: posGate.systemId };
 
   // 1) claim อะตอมมิก: PICKED_UP → RETURNED (แพ้แข่ง/สถานะอื่น → ok:false, ไม่ทำเส้นเงินซ้ำ)
   //   ห่อ **เฉพาะ** การ claim + `emitOutbox(tx, …)` ไว้ใน transaction เดียวกัน ⇒
@@ -241,16 +243,31 @@ export async function returnAsset(
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `rental-<bookingId>`)
   const lines = [{ name: `ค่าเช่า ${asset.name} (${days} วัน)`, qty: 1, unitPriceSatang: quoteSatang }];
   if (lateFeeSatang > 0) lines.push({ name: "ค่าปรับคืนล่าช้า", qty: 1, unitPriceSatang: lateFeeSatang });
-  const sale = await pos.createSale({
-    tenantId: ctx.tenantId,
-    unitId: ctx.unitId,
-    systemId: posSys.id,
-    sourceModule: "RENTAL",
-    sourceId: bookingId,
-    idempotencyKey: `rental-${bookingId}`,
-    lines,
-    payMethods: [{ type: "CASH", amountSatang: totalSatang }],
-  });
+  // POS P1.6 R4 H3: createSale ล้ม (เช่น สาขาถูกย้าย POS ระหว่างด่านกับ claim) และไม่มีบิลของคีย์นี้จริง ⇒ คืนสถานะ claim
+  //   (event ของ claim ที่ยิงไปแล้วคงอยู่ — เหมือนกรณีเดิมก่อน C2.9 · ไม่มีบิล = ไม่มีเงินเข้า)
+  let sale: Awaited<ReturnType<typeof pos.createSale>>;
+  // POS P5.1 ▸ MA2 (F2): มัดจำที่รับเป็นใบรับ (POS_DEPOSIT) จ่ายเป็นแถว DEPOSIT อ้างใบรับ + ส่วนที่เหลือเงินสด ⇒ Σ รายได้ = ค่าเช่า · VAT ครั้งเดียว ·
+  //   มัดจำแบบเดิม (ก่อน P5.1 · ไม่มี PosDeposit) = คิดเต็มเงินสดแบบเดิม ◂
+  const dep = await (await import("@/lib/modules/pos/deposit")).moduleDepositForBill(ctx.tenantId, ctx.unitId, bk.depositSaleId, totalSatang);
+  try {
+    sale = await pos.createSale({
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      systemId: posSys.id,
+      sourceModule: "RENTAL",
+      sourceId: bookingId,
+      idempotencyKey: `rental-${bookingId}`,
+      lines,
+      payMethods: dep
+        ? [{ type: "DEPOSIT", amountSatang: dep.satang, refSaleId: dep.refSaleId }, ...(totalSatang > dep.satang ? [{ type: "CASH" as const, amountSatang: totalSatang - dep.satang }] : [])]
+        : [{ type: "CASH", amountSatang: totalSatang }],
+    });
+  } catch (e) {
+    if ((await pos.saleStatusByKey(ctx.tenantId, `rental-${bookingId}`)) === null) {
+      await db.rentalBooking.updateMany({ where: { id: bookingId, status: "RETURNED", posSaleId: null }, data: { status: "PICKED_UP", returnedAt: null } });
+    }
+    throw e;
+  }
 
   await db.rentalBooking.updateMany({ where: { id: bookingId }, data: { posSaleId: sale.saleId } });
 
@@ -294,6 +311,11 @@ export async function refundRental(
       await pos.voidSale(ctx.tenantId, ctx.unitId, bk.posSaleId);
     }
   }
+
+  // POS P5.1 ▸ MA2b (R1 F2 · CD-P51-O7): มัดจำที่เป็นใบรับ POS_DEPOSIT — คืนสภาพส่วนที่บิลคืนของใช้ แล้วคืนเงินมัดจำคงเหลือทั้งหมด (ใบคืน CN ของใบรับ)
+  //   ⇒ "คืนเงินแล้ว" = ลูกค้าได้มัดจำคืนด้วย (เดิม: มัดจำกลับเป็น OPEN ค้างไว้ที่หน้าขาย) · มัดจำแบบเดิม/ไม่มีใบรับ = ไม่ทำอะไร ◂
+  const dep = await (await import("@/lib/modules/pos/deposit")).moduleRefundDepositAfterVoid({ tenantId: ctx.tenantId, unitId: ctx.unitId, receiptSaleId: bk.depositSaleId, voidedSaleId: bk.posSaleId, reason: "คืนเงินการเช่า", actorId: "module:rental" });
+  if (dep.ok === false) return { ok: false, reason: `ยกเลิกบิลค่าเช่าแล้ว แต่คืนมัดจำไม่สำเร็จ (${dep.message}) — คืนมัดจำที่หน้าขาย` };
 
   return { ok: true };
 }
@@ -407,7 +429,7 @@ export async function promptpayForRentalDeposit(
 export async function recordRentalDeposit(
   ctx: RentalCtx,
   bookingId: string,
-  payMethod: PosPayType = "DEPOSIT",
+  payMethod: PosPayType = "TRANSFER", // POS P5.1 ▸ MA14 (R1 F4 · CD-P51-O9): วิธีรับจริง · ฟอร์มไม่มีช่องวิธีรับ = TRANSFER (เดิม "DEPOSIT") ◂
 ): Promise<{ ok: boolean; reason?: string; saleId?: string; noop?: boolean }> {
   const db = tenantDb(ctx);
   const bk = await db.rentalBooking.findFirst({ where: { id: bookingId } });
@@ -422,16 +444,26 @@ export async function recordRentalDeposit(
   let saleId: string | null = null;
   const posSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POS");
   if (posSystemId) {
-    const sale = await pos.createSale({
-      tenantId: ctx.tenantId,
-      unitId: ctx.unitId,
-      systemId: posSystemId,
-      sourceModule: "RENTAL",
-      sourceId: bookingId,
-      idempotencyKey: `rental-deposit-${bookingId}`,
-      lines: [{ name: `มัดจำเช่า ${bk.customerName}`, qty: 1, unitPriceSatang: amount }],
-      payMethods: [{ type: payMethod, amountSatang: amount }],
-    });
+    // POS P5.1 ▸ MA2 (F2): มัดจำ = ใบรับเงินมัดจำ POS_DEPOSIT (Cr 2110 · ไม่ใช่รายได้) + PosDeposit ผ่าน pos/deposit.moduleTakeDeposit ·
+    //   createSale จุดเดิม (client = ธุรกรรมของใบรับ) · วิธีรับจริง (CD-P51-O9 · ค่าปริยาย TRANSFER · GL 1010) · คืนของจ่ายมัดจำเป็นแถว DEPOSIT อ้างใบรับ ◂
+    const posDeposit = await import("@/lib/modules/pos/deposit");
+    const sale = await posDeposit.moduleTakeDeposit(
+      { tenantId: ctx.tenantId, unitId: ctx.unitId, systemId: posSystemId, keyBase: `rental-deposit-${bookingId}`, amountSatang: amount, payType: payMethod, customerName: bk.customerName, note: `มัดจำเช่า ${bk.customerName}`, createdBy: "module:rental" },
+      (tx, k) =>
+        pos.createSale(
+          {
+            tenantId: ctx.tenantId,
+            unitId: ctx.unitId,
+            systemId: posSystemId,
+            sourceModule: k.sourceModule,
+            sourceId: k.sourceId,
+            idempotencyKey: k.idempotencyKey,
+            lines: [{ name: `มัดจำเช่า ${bk.customerName}`, qty: 1, unitPriceSatang: amount }],
+            payMethods: [{ type: k.payType, amountSatang: amount }],
+          },
+          callerTx(tx),
+        ),
+    );
     saleId = sale.saleId;
   }
 

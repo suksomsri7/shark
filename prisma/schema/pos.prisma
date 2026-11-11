@@ -14,6 +14,38 @@ enum PosPayType {
   PROMPTPAY
   DEPOSIT
   ROOM_CHARGE
+  CARD // P1.6: บัตร (EDC/อ้างอิงมือ · ไม่มีเกตเวย์ — P1.7)
+  PLATFORM // P2.1: แพลตฟอร์มเก็บเงินแทน (LINE MAN/Grab …) — ลงลูกหนี้ 1100 รอแพลตฟอร์มโอน
+  GIFT_CARD // P2.9: บัตรของขวัญ (GiftCard kind GIFT · PIN) — Dr 2110 · VAT ตอนใช้ (มติ 1)
+  STORE_CREDIT // P2.9: เครดิตร้านของสมาชิก (GiftCard kind STORE_CREDIT · ไม่มี PIN · เจ้าของบิล = เจ้าของเครดิต) — Dr 2110
+  ON_ACCOUNT // POS P3.6 ▸ วางบิล (เครดิตเทอม) ของลูกค้าองค์กร — ใบแจ้งหนี้ AWAITING_PAYMENT · Dr 1100 ผู้ติดต่อบริษัท (ไม่ใช่ STORE_CREDIT) ◂
+}
+
+// ── P2.1 — ช่องทางขาย (SalesChannel) ต่อสาขา ──
+enum SalesChannelKind {
+  BUILTIN // STORE QR_TABLE WEB CHAT — สร้างอัตโนมัติ (ensureUnitChannels)
+  EXTERNAL // แพลตฟอร์มสำเร็จรูป LINEMAN GRAB FOODPANDA SHOPEE LAZADA TIKTOK
+  CUSTOM // ร้านตั้งเอง (ตัวแทน ฯลฯ)
+}
+
+enum SalesChannelAdapter {
+  NONE
+  MANUAL
+  WEB
+  CHAT
+  API
+  QR // POS P2.7: ช่องทาง builtin QR_ORDER (สั่งออนไลน์ผ่านลิงก์/QR ของร้าน · จ่ายก่อน)
+}
+
+enum SalesChannelPayout {
+  PLATFORM // แพลตฟอร์มเก็บเงินแล้วโอนให้ร้าน (ค่าคอมฯ หักจากลูกหนี้)
+  DIRECT // ร้านเก็บเงินเอง (ค่าคอมฯ ค้างจ่าย 2100)
+}
+
+// P1.8 — ชนิดเอกสารของ PosSale (enum ใหม่ ⇒ ไม่มี ALTER TYPE … ADD VALUE) · ใบคืนเงิน = เอกสารใหม่ ไม่ใช่แก้บิลเดิม (มติ R1)
+enum PosSaleDocType {
+  SALE
+  REFUND
 }
 
 model PosSale {
@@ -50,12 +82,82 @@ model PosSale {
   //    (โมดูล giftcard ลงบัญชีเองเป็น "รับเงินล่วงหน้า" 2110 — ขายบัตร ≠ รายได้ · §9.1 §9.4)
   giftCardId        String?
 
+  // ── P1.6 — จอชำระเงิน · เพิ่มคอลัมน์ล้วน (บิลเดิม = null/0 = พฤติกรรมเดิม) ──
+  note                String? // หมายเหตุบิล (≤500)
+  serviceChargeSatang Int     @default(0) // ค่าบริการ — อยู่ใน grandTotal และในฐาน VAT
+  tipSatang           Int     @default(0) // ทิป — ไม่อยู่ใน grandTotal · ไม่ใช่รายได้ · Σจ่าย = grandTotal + tip
+
+  // ── P1.9 — กะ/ลิ้นชัก · เพิ่มคอลัมน์ล้วน (บิลเดิม = null = นอกกะ) ──
+  // id หลวม (ไม่มี FK · metadata-only แบบ M1) · index สร้างใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate
+  shiftId             String? // PosShift.id ที่บิลนี้ผูก (createSale ล็อกแถวกะ FOR SHARE ในtx ของบิล)
+
+  // ── P1.17 — ผู้ขายของบิล (R6 · Q17.1) · เพิ่มคอลัมน์ล้วน (บิลเดิม = null → รายงานใช้ผู้เปิดกะ / "ไม่ระบุ") ──
+  // id หลวม (User.id · ไม่มี FK · ไม่มี index แบบ shiftId) · หน้าขาย (submitRegisterSale) + หน้าขายเดิม (actions/pos.ts) เขียน · โมดูลอื่น = null
+  soldByUserId        String?
+
+  // ── P1.8 — คืนเงินบางส่วน/ใบลดหนี้ · เพิ่มคอลัมน์ล้วน (บิลเดิม = SALE/null/0 = พฤติกรรมเดิม) ──
+  // ใบ REFUND: ยอดเป็นบวกทั้งหมด ตีความตาม docType · status PAID (เงินออกแล้ว) · soldByUserId = ผู้คืน · note = เหตุผล
+  // refSaleId = id หลวมของบิล SALE เดิม (ไม่มี FK · index สร้างใน P6.1 ด้วย CREATE INDEX CONCURRENTLY)
+  docType             PosSaleDocType @default(SALE)
+  refSaleId           String?
+  refundedSatang      Int            @default(0) // บนบิล SALE: ยอดที่คืนไปแล้วสะสม (สุทธิ = grandTotal − refundedSatang)
+  reasonCode          String? // ใบ REFUND: DAMAGED | WRONG_ITEM | CHANGED_MIND | OTHER
+
+  // ── P1.11 — ใบเสร็จออนไลน์ /r/<token> · เพิ่มคอลัมน์ล้วน (บิลเดิม = null → ได้โทเคนแบบขี้เกียจผ่าน ensureReceiptToken) ──
+  // 12 ตัว Crockford base32 จาก crypto.randomBytes · ตั้งใน tx ของ createSale/refundSale · ไม่เปลี่ยนตลอดอายุบิล · ค้นด้วย unique index เท่านั้น (R9)
+  publicToken         String?        @unique
+
+  // ── P1.13 — ใบกำกับภาษีเต็มรูป · เพิ่มคอลัมน์ล้วน (บิลเดิม = null = ไม่มีผู้ซื้อ) ──
+  // taxInvoice = สำเนาผู้ซื้อที่แกะแล้ว {kind, name, taxId, branchCode, address, email, source, requestedAt} (tax-invoice-shared.ts parseTaxInvoiceBuyer)
+  //   เขียนครั้งเดียว (ใน tx ของ createSale หรือตอนออกทีหลัง) · ห้ามแก้หลังออกเอกสารแล้ว (taxInvoiceDocId มีค่า)
+  // taxInvoiceDocId = AccountDocument.id ของ TAX_INVOICE ที่มีผล (id หลวม · ไม่มี FK — ข้ามโมดูลบัญชี)
+  taxInvoice          Json?
+  taxInvoiceDocId     String?
+
+  // ── P1.12 — สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ · เพิ่มคอลัมน์ล้วน (บิลเดิม = null) ──
+  // memberSnapshot = สำเนาสมาชิกตอนขาย {name, memberCode, phoneMasked, tierKey, tierName} (ผู้เรียกส่งมา · หน้าขายใหม่ส่ง · ผู้เรียกเดิม = null)
+  //   ห้ามแก้หลัง commit · ยกเว้น PDPA member.erased ล้าง name/phoneMasked เป็น null (คงระดับ + เงิน)
+  // memberBenefits = สิทธิ์ที่ใช้กับบิล {lines: [{kind, ref, label, discountSatang, note?}] (ไม่รวม COUPON), pointsBurned}
+  //   createSale เขียนเองทุกผู้เรียกเมื่อมีสิทธิ์สมาชิกถูกใช้ (applyOnSale คืนค่า) · walk-in = null · ห้ามแก้หลัง commit
+  memberSnapshot      Json?
+  memberBenefits      Json?
+
+  // ── P2.1 — ช่องทางขาย + ค่าคอมฯ (สำเนา ณ เวลาขาย) · เพิ่มคอลัมน์ล้วน (บิลเดิม = null/0 → อ่านเป็น defaultChannelCode(sourceModule)) ──
+  // channelId = SalesChannel.id (id หลวม · ไม่มี FK · index สร้างใน P6.1 CONCURRENTLY) · ใบ REFUND คัดลอกช่องทางจากบิลเดิม + เก็บส่วนแบ่งค่าคอมฯ ของใบ
+  channelId                  String?
+  channelCode                String?
+  channelRef                 String? // เลขออเดอร์แพลตฟอร์ม (≤ 40)
+  channelPayout              SalesChannelPayout?
+  channelCommissionSatang    Int                 @default(0)
+  channelCommissionVatSatang Int                 @default(0)
+
+  // ── POS P3.4 ▸ ออฟไลน์ (R1 · มติ 3) · เพิ่มคอลัมน์ล้วน (บิลเดิม = null = บิลออนไลน์) ──
+  // offlineRef = เลขชั่วคราวของเครื่อง "OFF-C1-0007" (ผู้เขียนเดียว = createSale ผ่าน input.offline ที่ pos/offline-sync.ts ส่งมา)
+  //   unique (unitId, offlineRef) WHERE offlineRef IS NOT NULL = partial unique เขียนมือใน migration (prisma แสดง WHERE ไม่ได้)
+  // syncedAt = เวลาเซิร์ฟเวอร์ตอนซิงก์ · paidAt = soldAt ของเครื่อง · createdAt = เวลาเซิร์ฟเวอร์ (ไม่ย้อน) ◂
+  offlineRef                 String?
+  syncedAt                   DateTime?
+
+  // ── POS P3.6 ▸ ลูกค้าองค์กรบนบิล · ดีล · เครดิตเทอม (R5 · มติ 5) · เพิ่มคอลัมน์ล้วน (บิลเดิม = null = พฤติกรรมเดิม) ──
+  // customerPartyId = Party.id (kind COMPANY) ของบิล (id หลวม · ไม่มี FK/index — P6.1) · ผู้ติดต่อสมุดของบิล = party นี้ก่อนสมาชิก
+  // crmDealId = CrmDeal.id ที่บิลตั้งใจผูก (intent) — สะพาน CRM สร้างแถวเงินของดีลเอง (flag first) + ตัวกวาดรายชั่วโมง
+  // creditTerms = {termDays, dueDate "YYYY-MM-DD" (วันไทย), limitSatang, exposureSatang, overrideBy?} — เขียนครั้งเดียวใน tx ของ createSale ไม่แก้ ◂
+  customerPartyId            String?
+  crmDealId                  String?
+  creditTerms                Json?
+
   lines    PosSaleLine[]
   payments PosPayment[]
 
   @@unique([tenantId, idempotencyKey])
   @@unique([unitId, receiptNo])
   @@index([tenantId, unitId, createdAt])
+  // P6.1 CD-P61-P4: ประกาศ index มือของ runbook §5 ให้ schema ตรงฐาน (migrate diff ว่าง) · migration 20261220100000_pos_p61_hand_indexes = CREATE INDEX IF NOT EXISTS (no-op เมื่อสร้างมือแล้ว)
+  @@index([shiftId])
+  @@index([refSaleId])
+  @@index([channelId])
+  @@index([customerPartyId])
+  @@index([crmDealId])
 }
 
 model PosSaleLine {
@@ -72,8 +174,46 @@ model PosSaleLine {
   itemId          String? // InvItem.id ที่ผูก (ตัด/คืนสต็อก perpetual) · null = บริการ/รายการเพิ่มเอง (ไม่ตัดสต็อก)
   serviceId       String? // BookingService.id ที่ผูก — ใช้แยกยอด "สินค้า vs บริการ" ในรายงาน
   // (itemId=null อย่างเดียวแยกไม่ออกว่าเป็นบริการหรือรายการพิมพ์เอง)
+  productId       String? // P1.1a: PosProduct.id (แคตตาล็อกเดียว) · id หลวมแบบ itemId/serviceId · null = บิลเดิม
+  note            String? // P1.6: หมายเหตุบรรทัด/เหตุผลส่วนลด (≤500)
+  // ── P1.2 — เพิ่มคอลัมน์ล้วน (บิลเดิม = null = พฤติกรรมเดิม) ──
+  components      Json? // ชุด/คอมโบ: สำเนาส่วนประกอบตอนขาย [{invItemId, qty}] ต่อ 1 หน่วย · ตัดสต็อก qty × line.qty คีย์ pos-consume-<sale>-<line>-<invItem>
+  weightGrams     Int? // สินค้าชั่ง: น้ำหนัก (กรัม) ของบรรทัด (qty = 1 เสมอ) · ตัดสต็อกเป็นกรัม
+  // ── P1.8 — บรรทัดของใบ REFUND เท่านั้น (บิลขาย = null) ──
+  refLineId       String? // PosSaleLine.id ของบิลเดิม (id หลวม)
+  restock         Boolean? // true = รับของคืนเข้าคลัง · false = ไม่รับ (ของเสีย — ต้นทุนขายคงอยู่)
+  // ── P2.2 — สำเนาชั้นราคาที่ชนะ ณ เวลาขาย (เพิ่มคอลัมน์ล้วน · ผู้เรียกเดิม/ใบ REFUND = null = BASE/ไม่ทราบ) ──
+  priceSource     PosPriceSource? // ชั้นราคาที่ชนะ (ตัวแก้ราคา price-shared.ts) · createSale ไม่คิดราคาเอง — ผู้เรียกส่งมา
+  priceRuleId     String? // PosPriceRule.id ที่ชนะ (id หลวม · กติกาถูกเก็บถาวรได้)
+  listPriceSatang Int? // ราคาปกติขั้น ② (ฐาน/ฐานของแม่ · ไม่รวมตัวเลือก) · null = OPEN/CUSTOM/WEIGHED
+  // SVC B.0 ▸ ผู้ให้บริการของบรรทัด (HrEmployee.id · id หลวม ไม่มี FK) — รายงานค่าคอมฯ ตามผู้ให้บริการ (B.10) ·
+  //   🔴 ไม่มีดัชนีในตารางนี้ (ตารางใหญ่) — ถ้าใบหลังต้องการ = CREATE INDEX CONCURRENTLY นอก migrate แบบ P6.1 ◂
+  performerEmployeeId String?
+  options         PosSaleLineOption[]
 
   @@index([saleId])
+  @@index([productId]) // P6.1 CD-P61-P4 (index มือ §5 · no-op migration p61)
+  @@index([refLineId]) // P6.1 CD-P61-P4
+  // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
+}
+
+// P1.2 — ตัวเลือกที่เลือกบนบรรทัดบิล (สำเนา ณ เวลาขาย แบบ RestaurantOrderItemOption) · ราคาตัวเลือกที่แก้ทีหลังไม่กระทบบิลเดิม
+// PosSaleLine.unitPriceSatang = ราคาเต็มต่อหน่วย (ฐาน + Σ priceDeltaSatang) อยู่แล้ว ⇒ สะพานบัญชี/รายงาน/คืนเงินไม่ต้องอ่านตารางนี้
+model PosSaleLineOption {
+  id               String      @id @default(cuid())
+  tenantId         String
+  saleId           String // PosSale.id (id หลวม · มี index)
+  lineId           String
+  line             PosSaleLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  choiceId         String // MenuOptionChoice.id ณ เวลาขาย (id หลวม — ตัวเลือกถูกเก็บถาวรได้)
+  groupId          String // MenuOptionGroup.id ณ เวลาขาย
+  groupName        String
+  choiceName       String
+  priceDeltaSatang Int // สตางค์ต่อหน่วย ติดลบได้
+
+  @@index([tenantId])
+  @@index([saleId])
+  @@index([lineId])
 }
 
 model PosPayment {
@@ -86,6 +226,13 @@ model PosPayment {
   amountSatang Int
   refSaleId    String? // DEPOSIT/ROOM_CHARGE อ้างบิลเดิม
   note         String?
+  // P1.6 — เงินรับ/ทอน อยู่ที่แถว CASH เท่านั้น (มติ §8 ข้อ 2) · reference = เลขอ้างอิงบัตร/EDC/โอน
+  tenderedSatang Int?
+  changeSatang   Int?
+  reference      String?
+  // P2.9 — แถว GIFT_CARD/STORE_CREDIT: บัตรที่ตัด/คืน + รายการบัตร (USE ของบิลขาย · REFUND ของใบคืน) · id หลวม ไม่มี FK
+  giftCardId    String?
+  giftCardTxnId String?
 
   @@index([saleId])
 }
@@ -100,3 +247,1080 @@ model PosReceiptCounter {
 
   @@unique([unitId, period])
 }
+
+// P1.8 — เลขเอกสารที่ไม่ใช่ใบเสร็จขาย (ใบคืนเงิน CN${YYYYMM}-NNNN) ต่อสาขา/ชนิด/เดือน (มติ R4 · O2)
+//   ใบเสร็จขายยังใช้ PosReceiptCounter เดิม (การย้ายเข้าตารางนี้เลื่อนไป P1.10/P6.1) · จองเลขใน tx ของใบคืน (upsert + increment)
+model PosDocCounter {
+  id       String         @id @default(cuid())
+  tenantId String
+  unitId   String
+  docType  PosSaleDocType
+  period   String // YYYYMM
+  seq      Int            @default(0)
+
+  @@unique([unitId, docType, period])
+}
+
+// ═══════════════════ P1.1a — แคตตาล็อกเดียว (PosProduct) · ตารางใหม่ล้วน ═══════════════════
+// ขอบเขต (มติ R1): tenantId + systemId (AppSystem type POS) · unitId null = ขายทุกสาขาของระบบนี้
+//   · invItemId null = ไม่ผูกคลัง (เมนู/สินค้าเว็บล้วน) · ไม่ซ้ำต่อ (systemId, invItemId) เมื่อมีค่า
+// ผู้เขียนเดียว = src/lib/modules/pos/catalog.ts (fitness F15.1) · P1.1a ยังไม่มี dual-write (P1.1b)
+// 🔴 ฟิลด์เมนู (stationId · stockQty · dailyStockQty · isOutOfStock) และช่วงเวลาขายของหมวด = **สำเนาอย่างเดียว**
+//    ต้นฉบับที่ระบบใช้จริงยังเป็น MenuItem/MenuCategory จนถึง P1.1b/P2.4 — ห้ามอ่านค่าพวกนี้ไปตัดสินการขาย
+
+enum PosProductKind {
+  PRODUCT
+  SERVICE
+  MENU
+  BUNDLE
+}
+
+model PosCategory {
+  id            String    @id @default(cuid())
+  tenantId      String
+  systemId      String // AppSystem.id (type POS)
+  unitId        String? // null = ทุกสาขาของระบบ POS นี้ · มีค่า = หมวดของสาขานั้น (หมวดเมนูเป็นของสาขา)
+  name          String
+  nameEn        String?
+  sortOrder     Int       @default(0)
+  isVisible     Boolean   @default(true) // สำเนาจาก MenuCategory.isVisible
+  availableFrom String? // สำเนาจาก MenuCategory (ช่วงเวลาขาย "06:00") — ต้นฉบับยังอยู่ที่ MenuCategory
+  availableTo   String?
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  products PosProduct[]
+
+  @@unique([systemId, unitId, name])
+  /// 🔴 M5: หมวด "ทุกสาขา" (unitId null) ห้ามชื่อซ้ำในระบบเดียว — unique ข้างบนกันไม่ได้ (NULL ไม่เท่ากัน)
+  ///    บังคับด้วย **partial unique index** ใน migration 20261120000000_pos_v2_a:
+  ///      CREATE UNIQUE INDEX "PosCategory_systemId_name_all_branches_key" ON "PosCategory"("systemId","name") WHERE "unitId" IS NULL;
+  ///    (แบบเดียวกับ AccountProduct_systemId_code_active_key) · `prisma migrate diff` มองไม่เห็น → ห้ามลบออกจาก migration
+  @@index([tenantId])
+}
+
+model PosProduct {
+  id                 String         @id @default(cuid())
+  tenantId           String
+  systemId           String // AppSystem.id (type POS) — ระบบที่ขายแถวนี้
+  unitId             String? // null = ทุกสาขาของระบบ POS นี้
+  invItemId          String? // InvItem.id (ต้นฉบับ "ของ" · สต็อก/ต้นทุน/บาร์โค้ด/SKU) · null = ไม่ผูกคลัง
+  parentId           String? // R3: แม่ของตัวแปร (ขนาด/สี) — P1.2 เป็นเจ้าของ · P1.1a ว่างไว้
+  parent             PosProduct?    @relation("PosProductVariants", fields: [parentId], references: [id], onDelete: SetNull)
+  children           PosProduct[]   @relation("PosProductVariants")
+  kind               PosProductKind @default(PRODUCT)
+  name               String
+  nameEn             String?
+  categoryId         String?
+  category           PosCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  basePriceSatang    Int? // สตางค์ · null = ยังไม่ตั้งราคา (ไม่ใช้ต้นทุนแทน) · 0 = ตั้งใจให้ฟรี
+  vatRateBp          Int? // สำเนาจาก AccountProduct.vatRateBp · null = ไม่มีบัญชีผูก
+  barcode            String? // บาร์โค้ดของแถวนี้เอง (แถวที่ผูกคลังใช้ InvItem.barcode — ไม่คัดลอก)
+  images             Json           @default("[]") // ["url", …] index 0 = ปก
+  sortOrder          Int            @default(0)
+  trackStock         Boolean? // C2 tri-state: null = AUTO (คิดตอนอ่าน: ผูก InvItem + PRODUCT + มี movement หรือ onHand ≠ 0) · true/false = ร้านตั้งเอง
+  unavailableUnitIds String[]       @default([]) // สาขาที่ปิดขายชั่วคราว (availability[unit] = false)
+  // ── สำเนาจาก MenuItem (copy-only ถึง P1.1b/P2.4) ──
+  stationId          String? // KdsStation.id
+  stationSetAt       DateTime? // POS P2.6 ▸ fix2 G1/N2: เวลาที่ stationId ถูกตั้ง/เปลี่ยน (heal ใช้ · null = ตั้งแต่สร้าง) ◂
+  stockQty           Int?
+  dailyStockQty      Int?
+  isOutOfStock       Boolean        @default(false)
+  // ── P1.2 สินค้าชั่ง — basePriceSatang = ราคาต่อกิโลกรัม · สต็อกนับเป็นกรัม ──
+  soldByWeight       Boolean        @default(false)
+  /// รหัสสินค้าบนป้ายเครื่องชั่ง (5 หลัก) · ไม่ซ้ำในแถวที่ยังไม่เก็บถาวรของระบบ POS เดียว =
+  /// partial unique `PosProduct_systemId_scalePlu_active_key` (SQL เขียนมือใน migration 20261124000000_pos_p12_options · prisma มองไม่เห็น WHERE)
+  scalePlu           String?
+  // POS P2.3 ▸ สูตร/BOM ของเมนูตัดวัตถุดิบจริงไหม (opt-in · มติ Q1/CD2) — false = แถว RecipeLine ของเมนู (เช่น backfill จาก MenuItem.invItemId) ยังไม่ตัดสต็อก ·
+  //   BUNDLE ตัดตามสูตรเสมอ (ไม่อ่านคอลัมน์นี้) · ตัวแปรที่ไม่มีสูตรเองอ่านจากแม่ (มติ 3) ◂
+  bomEnabled         Boolean        @default(false)
+  archivedAt         DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  optionGroups      PosProductOptionGroup[]
+  recipeLines       RecipeLine[]
+  recipeChoiceLines PosRecipeChoiceLine[] // POS P2.3 ◂
+
+  @@unique([systemId, invItemId])
+  @@index([tenantId])
+  @@index([systemId, archivedAt, name, id]) // M4: ลำดับของ listForUnit (keyset ชื่อ+id)
+  @@index([systemId, barcode])
+  @@index([parentId])
+}
+
+// ผูกสินค้า ↔ กลุ่มตัวเลือกเดิมของร้านอาหาร (MenuOptionGroup ใช้ต่อ ไม่สร้างใหม่ · ต่อสาขาเหมือนเดิม)
+model PosProductOptionGroup {
+  id        String     @id @default(cuid())
+  tenantId  String
+  productId String
+  product   PosProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  groupId   String // MenuOptionGroup.id (คนละไฟล์ schema — id หลวมแบบเดียวกับ MenuItem.invItemId)
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+
+  @@unique([productId, groupId])
+  @@index([tenantId])
+  @@index([groupId])
+}
+
+// สูตร/BOM: ขาย 1 หน่วยของ productId ใช้ InvItem เท่าไร (P2.3 เป็นเจ้าของ) · P1.1a: เมนูที่มี MenuItem.invItemId → 1 แถว qty 1
+model RecipeLine {
+  id        String     @id @default(cuid())
+  tenantId  String
+  productId String
+  product   PosProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  invItemId String // InvItem.id (หน่วยเดียวกับ InvMovement — จำนวนเต็ม)
+  qty       Int        @default(1)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([productId, invItemId])
+  @@index([tenantId])
+  @@index([invItemId])
+}
+
+// POS P2.3 ▸ ส่วนต่างของสูตรต่อตัวเลือก (ขนาด M = เมล็ด +6 g · นมโอ๊ต = นม −150 ml / โอ๊ต +150 ml) — จำนวนเต็มมีเครื่องหมายในหน่วยของสินค้าคลัง (มติ Q2/CD3)
+//   ต่อ (สินค้าเจ้าของสูตร, ตัวเลือก, InvItem) · choiceId = MenuOptionChoice.id · invItemId = InvItem.id (id หลวมแบบ RecipeLine) ·
+//   CHECK ("qtyDelta" <> 0) เขียนมือใน migration 20261205100000_pos_p23_recipe · ผู้เขียนเดียว = pos/catalog.ts (setRecipeChoiceLines) ◂
+model PosRecipeChoiceLine {
+  id        String     @id @default(cuid())
+  tenantId  String
+  productId String
+  product   PosProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  choiceId  String
+  invItemId String
+  qtyDelta  Int
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([productId, choiceId, invItemId])
+  @@index([tenantId])
+  @@index([invItemId])
+}
+
+// ═══════════════════ P1.5 — พักบิล / เรียกคืน (PosHeldCart) · ตารางใหม่ล้วน (มติ H1) ═══════════════════
+// ขอบเขต: ต่อสาขา (tenantId + systemId POS + unitId) · ทุกผู้ใช้หน้าขายของสาขาเห็น · id หลวม (ไม่มี FK) แบบ PosProduct
+// ผู้เขียนเดียว = src/lib/modules/pos/held-cart.ts · cartJson = { cart: RegisterQuoteInput ที่ผ่านการตรวจแล้ว, heldUnitPrices }
+//   🔴 ราคาใน cartJson ไม่ถูกเชื่อ — เรียกคืนแล้วคิดราคาใหม่ผ่าน quoteRegisterCart เสมอ (H3) · heldUnitPrices ใช้แค่บอก "ราคาเปลี่ยน"
+// เรียกคืน = UPDATE … WHERE id AND status='HELD' (ผู้ชนะคนเดียว · H2) · หมดอายุแบบขี้เกียจตอน list (H4 · ไม่มี cron)
+
+enum PosHeldCartStatus {
+  HELD
+  RECALLED
+  DISCARDED
+}
+
+model PosHeldCart {
+  id                String            @id @default(cuid())
+  tenantId          String
+  unitId            String // BusinessUnit.id — สาขาที่พัก (เห็น/เรียกคืนได้เฉพาะสาขานี้)
+  systemId          String // AppSystem.id (type POS)
+  label             String? // ≤ 60 ตัวอักษร (ตรวจใน held-cart.ts) · null = ไม่ตั้งป้าย
+  cartJson          Json
+  lineCount         Int
+  approxTotalSatang Int // ยอด quote ของเซิร์ฟเวอร์ ณ ตอนพัก (ไว้แสดงในลิ้นชักเท่านั้น)
+  heldByUserId      String
+  recalledAt        DateTime?
+  recalledByUserId  String?
+  status            PosHeldCartStatus @default(HELD)
+  createdAt         DateTime          @default(now())
+  version           Int               @default(1)
+  // POS P1.15 ▸ คำขออนุมัติ POS_DISCOUNT_OVER ที่ผ่านแล้ว (ตัวรับคิว pos-approval-consumer.ts เขียนครั้งเดียว · ใช้ได้ 1 บิล — ตัวบอกว่าใช้แล้วอยู่ที่ PosApprovalPayload) ◂
+  approvedRequestId String?
+  // POS P2.4 ▸ รอบร่างของโต๊ะ (CD6): TableSession.id ที่บิลพักนี้ผูก (null = บิลพักปกติของลิ้นชัก) · HELD ได้ 1 แถวต่อ session =
+  //   partial unique "PosHeldCart_tableSessionId_held_key" (SQL เขียนมือใน migration 20261206100000_pos_p24_tables — prisma ประกาศ partial ไม่ได้) ·
+  //   ไม่มี FK (id หลวมข้ามไฟล์ schema แบบ MenuItem.invItemId) · ผู้เขียนเดียว = pos/held-cart.ts ◂
+  tableSessionId    String?
+  // SVC B.0 ▸ งานบริการ (Appointment.id) ที่บิลพักนี้ผูก (null = บิลพักปกติ) · HELD ได้ 1 แถวต่องาน =
+  //   partial unique "PosHeldCart_serviceJobId_held_key" (SQL เขียนมือใน migration 20261222000000_svc_b — prisma ประกาศ partial ไม่ได้) · ไม่มี FK ◂
+  serviceJobId      String?
+
+  @@index([unitId, status, createdAt])
+}
+
+// ═══════════════════ P1.9 — กะ · ลิ้นชักเงินสด · X/Z · บังคับปิด (มติ S1–S16 · ตารางใหม่ล้วน) ═══════════════════
+// ผู้เขียนเดียว = src/lib/modules/pos/shift.ts · เครื่อง = deviceId ทึบ (P1.10 เพิ่ม PosDevice + FK ทีหลัง)
+// 1 กะ OPEN ต่อ (สาขา, เครื่อง) = partial unique `one_open_shift_per_device` (SQL เขียนมือใน migration)
+// Z แช่แข็ง: zReport เขียนครั้งเดียวตอนปิด ไม่มีโค้ดใดเขียนแถวที่ปิดแล้วอีก
+// 🔴 ไม่มี PIN ที่นี่ — PIN เป็นของ HR (verifyPin · P1.15/P3.5)
+
+enum PosShiftStatus {
+  OPEN
+  CLOSED
+  FORCE_CLOSED
+}
+
+enum PosCashMoveKind {
+  IN
+  OUT
+}
+
+model PosShift {
+  id                 String         @id @default(cuid())
+  tenantId           String
+  unitId             String
+  systemId           String // AppSystem.id (type POS)
+  deviceId           String // [A-Za-z0-9_-]{8,64} จาก client
+  deviceLabel        String? // ≤ 40
+  shiftNo            Int // จากตัวนับต่อสาขา (PosShiftCounter.shiftSeq)
+  status             PosShiftStatus @default(OPEN)
+  openedByUserId     String
+  openedAt           DateTime       @default(now())
+  floatSatang        Int // เงินทอนตั้งต้น
+  floatDetail        Json? // { "<ธนบัตรสตางค์>": จำนวน }
+  closedByUserId     String? // null = ระบบบังคับปิด
+  closedAt           DateTime?
+  expectedCashSatang Int?
+  countedCashSatang  Int?
+  overShortSatang    Int? // counted − expected
+  countDetail        Json?
+  countedByMethod    Json? // { CARD: 2900, PROMPTPAY: 4000 } ยอดที่นับ/กระทบได้ของวิธีอื่น
+  closeNote          String?
+  closeKey           String? // idempotencyKey ของการปิดที่ชนะ
+  zNumber            Int? // เลข Z ต่อสาขา (PosShiftCounter.zSeq) เรียงตามลำดับปิด ไม่มีช่องว่าง
+  zReport            Json? // Z แช่แข็ง (ShiftReport + ผลนับ)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@unique([unitId, shiftNo])
+  @@unique([unitId, zNumber])
+  @@index([tenantId, unitId, status])
+}
+
+model PosCashMovement {
+  id             String          @id @default(cuid())
+  tenantId       String
+  unitId         String
+  shiftId        String // PosShift.id (id หลวม ไม่มี FK แบบ PosHeldCart)
+  kind           PosCashMoveKind
+  amountSatang   Int // > 0
+  reason         String // 1–200
+  byUserId       String
+  idempotencyKey String
+  createdAt      DateTime        @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([shiftId])
+}
+
+model PosShiftCounter {
+  id       String @id @default(cuid())
+  tenantId String
+  unitId   String @unique
+  shiftSeq Int    @default(0)
+  zSeq     Int    @default(0)
+}
+
+// POS P1.9b — ผู้จัดการนับเงินย้อนหลังของกะที่ระบบบังคับปิด (Q9.4 · มติ R1) · 1 แถวต่อกะ ครั้งเดียวจบ (R6)
+//   ผู้เขียนเดียว = pos/shift.ts recountShift · แถว PosShift ของกะไม่ถูกเขียนอีก (Z แช่แข็ง R3) · shiftId = id หลวม ไม่มี FK
+model PosShiftRecount {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  unitId             String
+  systemId           String // AppSystem.id (type POS)
+  shiftId            String   @unique // PosShift.id — 1 ครั้งต่อกะ · ดัชนีนี้ตัดสินการแข่ง (R11)
+  zNumber            Int // สำเนาจาก PosShift.zNumber
+  expectedCashSatang Int // สำเนาจาก PosShift.expectedCashSatang (Z แช่แข็ง · R4)
+  countedCashSatang  Int
+  varianceSatang     Int // counted − expected
+  countDetail        Json? // { "<ธนบัตรสตางค์>": จำนวน }
+  note               String // 1–200 (บังคับ)
+  recountedByUserId  String
+  idempotencyKey     String
+  createdAt          DateTime @default(now()) // = เวลานับ (recountedAt)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, createdAt])
+}
+
+// POS P1.10 — ทะเบียนเครื่องขาย (มติ R1–R3 · ledger/pos-briefs/pos-brief-P1.10.md) · ผู้เขียนเดียว = pos/device.ts
+//   deviceCode = รหัสเครื่องของ P1.9 (localStorage · [A-Za-z0-9_-]{8,64}) ⇒ กะ/บิลที่ผูกรหัสนี้อยู่แล้วคงความหมายเดิม
+//   id หลวม ไม่มี FK (แบบ PosShift) · REVOKED = ขาย/เปิดกะ/พัก/เรียกคืนจากเครื่องนี้ไม่ได้ (สาขาเดียวกัน)
+//   printerConfig = ค่าที่ผ่าน parsePrinterConfig แล้วเท่านั้น (device-shared.ts)
+enum PosDeviceStatus {
+  ACTIVE
+  REVOKED
+}
+
+model PosDevice {
+  id                 String          @id @default(cuid())
+  tenantId           String
+  unitId             String // BusinessUnit.id
+  systemId           String // AppSystem.id (type POS)
+  name               String // 1–60
+  deviceCode         String // [A-Za-z0-9_-]{8,64} = PosShift.deviceId
+  status             PosDeviceStatus @default(ACTIVE)
+  registeredByUserId String
+  lastSeenAt         DateTime? // heartbeat (เขียนไม่ถี่กว่า 30 วินาที) · online = ภายใน 120 วินาที
+  posRegNo           String? // เลขประจำเครื่อง POS (กรมสรรพากร) — พิมพ์บนใบกำกับภาษีอย่างย่อ
+  printerConfig      Json? // { paper, mode, autoPrint, drawerKick, thaiText, copies }
+  revokedAt          DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  // POS P3.4 ▸ ออฟไลน์ (R1): offlineCode = รหัสสั้น "C<n>" ต่อสาขา (ตั้งตอนออก snapshot ครั้งแรก · partial unique (unitId, offlineCode) เขียนมือ) ·
+  //   offlineSeq = เลข OFF สูงสุดที่ซิงก์ผ่านแล้ว (high-water · เขียนด้วย GREATEST คำสั่งเดียว) ◂
+  offlineCode        String?
+  offlineSeq         Int             @default(0)
+
+  @@unique([unitId, deviceCode])
+  @@index([tenantId, unitId, status])
+}
+
+// POS P1.14 — ตรวจนับสต็อกจากหน้าขาย (มติ R1 · ledger/pos-briefs/pos-brief-P1.14.md) · ผู้เขียนเดียว = pos/stock-count.ts
+//   id หลวม ไม่มี FK (แบบ PosShift) · 1 รอบ OPEN ต่อ (คลัง × ที่เก็บ) = partial unique เขียนมือใน migration
+//   (PosStockCount_open_location_key ON ("inventorySystemId","locationId") WHERE status = 'OPEN' — prisma แสดง WHERE ไม่ได้)
+//   จำนวนเป็นหน่วยสต็อกของสินค้า (ชิ้น · กรัมสำหรับสินค้าชั่ง P1.2) · เงินเป็นสตางค์
+enum PosStockCountStatus {
+  OPEN
+  CONFIRMED
+  CANCELLED
+}
+
+enum PosStockCountScope {
+  ALL
+  CATEGORY
+}
+
+model PosStockCount {
+  id                String              @id @default(cuid())
+  tenantId          String
+  systemId          String // AppSystem.id (type POS)
+  unitId            String
+  inventorySystemId String // AppSystem.id (type INVENTORY) ของสาขา ณ ตอนเปิด
+  locationId        String // InvLocation.id ที่นับ
+  countNo           Int // เลขรอบต่อสาขา 1,2,3… ("ตรวจนับ #7")
+  scope             PosStockCountScope
+  categoryIds       String[]            @default([]) // InvCategory.id (scope CATEGORY)
+  blind             Boolean             @default(false)
+  status            PosStockCountStatus @default(OPEN)
+  note              String?
+  snapshotAt        DateTime
+  openedByUserId    String
+  openKey           String
+  confirmKey        String?
+  confirmedByUserId String?
+  confirmedAt       DateTime?
+  cancelKey         String?
+  cancelledByUserId String?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([tenantId, openKey])
+  @@unique([unitId, countNo])
+  @@index([tenantId, unitId, status])
+}
+
+model PosStockCountLine {
+  id              String    @id @default(cuid())
+  tenantId        String
+  countId         String // PosStockCount.id (id หลวม)
+  itemId          String // InvItem.id
+  snapshotQty     Int // ยอดที่ที่เก็บ ณ เปิดรอบ (ข้อมูลประกอบ)
+  countedQty      Int? // ยอดที่นับได้ (null = ยังไม่นับ)
+  expectedAtCount Int? // ยอดระบบที่ที่เก็บ ณ รายการนับล่าสุด (อ่านใต้ล็อกสินค้า · R6)
+  countedAt       DateTime?
+  varianceQty     Int? // countedQty − expectedAtCount (แช่แข็งตอนยืนยัน)
+  costSatang      Int? // ต้นทุนเฉลี่ยของสินค้า ณ ยืนยัน
+  movementId      String? // InvMovement.id ของ ADJUST (ผลต่าง ≠ 0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([countId, itemId])
+  @@index([tenantId])
+}
+
+model PosStockCountEntry {
+  id             String   @id @default(cuid())
+  tenantId       String
+  countId        String
+  lineId         String
+  itemId         String
+  mode           String // "SET" | "ADD"
+  qty            Int
+  code           String? // รหัสที่สแกน (บาร์โค้ด/SKU/ป้ายเครื่องชั่ง)
+  byUserId       String
+  idempotencyKey String
+  createdAt      DateTime @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([countId])
+}
+
+// ── POS P1.11 — ลูกค้าแจ้งปัญหาบิลจากหน้าใบเสร็จออนไลน์ (R4) · ผู้เขียนเดียว = pos/receipt-issue.ts (+ kanbanCardId จาก pos-receipt-bridges.ts) ──
+//   saleId = id หลวมของบิล SALE (ไม่มี FK) · เพดาน 3 ครั้ง/บิล/24 ชม. นับจากแถวเอง (CD4 — ไม่มีตารางตัวนับ)
+enum PosReceiptIssueStatus {
+  OPEN
+  RESOLVED
+}
+
+model PosReceiptIssue {
+  id           String                @id @default(cuid())
+  tenantId     String
+  unitId       String
+  saleId       String // PosSale.id (SALE)
+  message      String // 1–500 (ตัดช่องว่างแล้ว)
+  contact      String? // ≤120 (ไม่บังคับ)
+  status       PosReceiptIssueStatus @default(OPEN)
+  kanbanCardId String? // KanbanCard.id ที่ consumer เปิด (id หลวม · null = ยังไม่มี/ร้านไม่มีบอร์ด)
+  createdAt    DateTime              @default(now())
+
+  @@index([tenantId, saleId, createdAt])
+}
+
+// ── POS P1.11 — คำขอใบกำกับภาษีเต็มรูปจากหน้าใบเสร็จออนไลน์ (R5) · ผู้เขียน = pos/receipt-tax-request.ts · P1.13 ออกเอกสาร (accountDocId) ──
+//   1 คำขอที่ยังเปิด (REQUESTED/ISSUED) ต่อบิล — ตัดสินใต้ล็อกแถวบิล (FOR UPDATE) · taxId ตรวจรูปแบบอย่างเดียว (DBD = P1.13)
+enum PosTaxInvoiceRequestStatus {
+  REQUESTED
+  ISSUED
+  REJECTED
+}
+
+model PosTaxInvoiceRequest {
+  id           String                     @id @default(cuid())
+  tenantId     String
+  unitId       String
+  saleId       String // PosSale.id (SALE)
+  name         String // ชื่อผู้ซื้อ/บริษัท
+  taxId        String // 13 หลัก
+  branchCode   String                     @default("00000") // 5 หลัก
+  address      String
+  email        String?
+  status       PosTaxInvoiceRequestStatus @default(REQUESTED)
+  accountDocId String? // AccountDocument.id ของใบกำกับเต็มรูป (P1.13)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+
+  @@index([tenantId, saleId])
+  @@index([tenantId, status, createdAt])
+}
+
+// ── POS P1.13 — ผู้ซื้อที่จำไว้ต่อสมาชิก (R6) · กรอกใบกำกับเต็มรูปครั้งหน้าไม่ต้องพิมพ์ใหม่ ──
+//   1 แถวต่อสมาชิก (Customer.id · id หลวม ไม่มี FK) · upsert เมื่อส่ง rememberBuyer พร้อมบิลที่มีสมาชิก · ไม่แตะตาราง Customer ของ CRM/สมาชิก
+//   ผู้เขียนเดียว = pos/tax-invoice.ts
+model PosBuyerProfile {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String   @unique // Customer.id (สมาชิก)
+  kind       String // "PERSON" | "JURISTIC"
+  name       String
+  taxId      String // 13 หลัก (ผ่าน mod-11 แล้ว)
+  branchCode String   @default("00000")
+  address    String
+  email      String?
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, taxId])
+}
+
+// POS P1.7 — ใบขอรับเงิน (payment intent) ของส่วนที่ไม่ใช่เงินสด ก่อนบิลเกิด
+//   PromptPay ไดนามิก (QR ล็อกยอด) · Beam (PromptPay ยืนยันอัตโนมัติ + บัตร) · ยืนยันเอง (มี audit)
+//   ผู้เขียนเดียว = src/lib/modules/pos/payment-intent.ts · บิลใช้ intent ได้ครั้งเดียวใน submitRegisterSale (FOR UPDATE)
+//   id = "pi_" + สุ่ม (ไม่ใช่ cuid) ⇒ เลขอ้างอิงในวิธีจ่ายบอกได้ทันทีว่าเป็น intent
+model PosPaymentIntent {
+  id                String    @id
+  tenantId          String
+  unitId            String
+  systemId          String // ระบบ POS
+  kind              String // "PROMPTPAY_STATIC" | "PROMPTPAY_BEAM" | "CARD_BEAM"
+  amountSatang      Int
+  status            String // "PENDING" | "PAID" | "CONSUMED" | "EXPIRED" | "CANCELLED"
+  qrPayload         String? // EMV ของ QR (STATIC/Beam) · บัตร = URL หน้าชำระของ Beam
+  beamChargeId      String?
+  beamRef           String? // chargeId ที่ webhook ยืนยัน
+  deviceId          String? // POS P2.7 CD5: null = ใบของออเดอร์สาธารณะ (ไม่มีเครื่อง)
+  createdByUserId   String? // POS P2.7 CD5: null = ระบบ (ลูกค้าสั่งเองผ่าน /q/<token>)
+  confirmedVia      String? // "WEBHOOK" | "MANUAL"
+  confirmedByUserId String?
+  paidAt            DateTime?
+  expiresAt         DateTime
+  saleId            String? // บิลที่ใช้ intent นี้ (CONSUMED)
+  lateWebhook       Boolean   @default(false) // เงินเข้าหลังหมดเวลา (เงินจริง — ยังใช้ได้ใน 24 ชม.)
+  idempotencyKey    String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  orderId           String? // POS P2.7: PosOrder.id ของใบที่ลูกค้าจ่ายก่อน (QR_ORDER)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, status, createdAt])
+  @@index([beamChargeId])
+  @@index([orderId])
+}
+
+// ═══════════════════ POS P1.15 — PIN พนักงาน · ข้อมูลประกอบคำขออนุมัติของ POS (ตารางใหม่ล้วน · CD1–CD5) ═══════════════════
+// ผู้เขียนเดียว: PosStaffPin = pos/staff-pin.ts · PosApprovalPayload = pos/pos-approval.ts (+ ตัวรับคิว pos-approval-consumer.ts บันทึกผล)
+// PIN ต่อสาขา (CD1) · pinHash = "<salt 16 ไบต์ hex>:<scrypt hex>" ไม่เก็บ PIN ดิบ · ล็อก 15 นาทีหลังผิดติดกัน 5 ครั้ง
+model PosStaffPin {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String // BusinessUnit.id
+  userId      String // User.id (ต้องมี pos.sale.create ที่สาขานี้)
+  pinHash     String
+  failedCount Int       @default(0)
+  lockedUntil DateTime?
+  setById     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([unitId, userId])
+  @@index([tenantId, unitId])
+}
+
+// ApprovalRequest ของแกนกลางไม่มีคอลัมน์ payload/title (CD3) ⇒ snapshot ของคำขอ POS_* อยู่ที่นี่ (requestId = ApprovalRequest.id)
+// kind = POS_VOID | POS_REFUND | POS_DISCOUNT_OVER · payload = { ref, ... snapshot, outcome? } (ref = saleId / heldCartId)
+model PosApprovalPayload {
+  requestId String   @id
+  tenantId  String
+  kind      String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, kind])
+}
+
+// P2.1 — ช่องทางขายต่อสาขา (R1 · CD1) · เขียนผ่าน pos/channel.ts เท่านั้น · builtins สร้างแบบขี้เกียจ (createMany skipDuplicates)
+// ค่าคอมฯ ถูกสำเนาลงบิลตอนขาย — แก้ค่าที่นี่ไม่กระทบบิลเก่า · คอลัมน์ autoAccept/prepMinutes/pausedUntil/adapterConfig = ของ P2.8 (CD7 · ยังไม่มีพฤติกรรม)
+model SalesChannel {
+  id                    String              @id @default(cuid())
+  tenantId              String
+  systemId              String // ระบบ POS
+  unitId                String
+  code                  String // ^[A-Z][A-Z0-9_]{1,23}$
+  kind                  SalesChannelKind
+  name                  String
+  adapter               SalesChannelAdapter @default(NONE)
+  active                Boolean             @default(true)
+  sortOrder             Int                 @default(0)
+  payout                SalesChannelPayout  @default(DIRECT)
+  commissionBp          Int                 @default(0) // 0..10000
+  commissionFixedSatang Int                 @default(0) // 0..1_000_000 ต่อบิล
+  commissionVatBp       Int                 @default(0) // VAT ที่แพลตฟอร์มคิดบนค่าคอมฯ 0..10000
+  archivedAt            DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  autoAccept            Boolean             @default(false)
+  prepMinutes           Int?
+  pausedUntil           DateTime?
+  adapterConfig         Json?
+
+  @@unique([unitId, code])
+  @@index([tenantId, systemId, unitId])
+}
+
+// ── P2.2 — ราคาตามช่องทาง / สาขา / ช่วงเวลา (R1–R4 · CD1–CD10) ──
+// ลำดับ: กติกา (RULE) > (ช่องทาง, สาขา) > (ช่องทาง, ทุกสาขา) > (ทุกช่องทาง, สาขา) > ฐาน · ตัวแก้ราคาบริสุทธิ์ = pos/price-shared.ts
+enum PosPriceSource {
+  BASE
+  BRANCH
+  CHANNEL
+  RULE
+  OPEN
+  CUSTOM
+  WEIGHED
+}
+
+enum PosPriceRuleKind {
+  HAPPY_HOUR
+  PROMO
+}
+
+enum PosPriceRuleAdjust {
+  PRICE
+  PERCENT_OFF
+  AMOUNT_OFF
+}
+
+// ราคาตามช่องทาง/สาขาต่อสินค้า (R1) · เขียนผ่าน catalog.ts (setChannelPrices / bulkChannelMarkup) เท่านั้น · ไม่เขียนกลับ AccountProduct
+// แถว: (code, null) = ช่องทางทุกสาขา · (code, unit) = ช่องทางที่สาขา · (null, unit) = ราคาสาขาทุกช่องทาง · (null, null) ห้าม (= ฐาน)
+// channelCode (ไม่ใช่ channelId): ช่องทางเป็นของสาขา สินค้าเป็นของระบบ — ตัวตนข้ามสาขา = code (P2.1 §9) · id หลวม ไม่มี FK
+/// 🔴 unique (productId, channelCode, unitId) แบบ NULL เท่ากัน — prisma เขียนไม่ได้ ⇒ index มือใน migration 20261204100000_pos_p22_prices:
+///      CREATE UNIQUE INDEX "PosProductChannelPrice_product_code_unit_key" ON "PosProductChannelPrice" ("productId","channelCode","unitId") NULLS NOT DISTINCT;
+///    + CHECK "PosProductChannelPrice_row_check" (code ∨ unit · notSold ⇒ ราคา null · ¬notSold ⇒ มีราคา) · `prisma migrate diff` มองไม่เห็นทั้งคู่ → ห้ามลบ (do not remove) ออกจาก migration
+model PosProductChannelPrice {
+  id              String   @id @default(cuid())
+  tenantId        String
+  systemId        String // ระบบ POS
+  productId       String // PosProduct.id (id หลวม)
+  channelCode     String? // รหัสช่องทาง (CHANNEL_CODE_RE) · null = ทุกช่องทาง (แถวราคาสาขา)
+  unitId          String? // null = ทุกสาขา
+  priceSatang     Int? // สตางค์ 0..PRICE_MAX · null เมื่อ notSold
+  notSold         Boolean  @default(false) // ไม่ขายในช่องทาง/สาขานี้ ⇒ CHANNEL_NOT_SOLD
+  updatedByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, systemId, productId])
+  // P6.1 CD-P61-P4: ประกาศ unique มือ (NULLS NOT DISTINCT อยู่ใน migration pos_p22_prices เท่านั้น — prisma เขียนคุณสมบัตินี้ไม่ได้ แต่ migrate diff 7.8 เห็นตัว index · ไม่ประกาศ = diff เสนอ DROP)
+  @@unique([productId, channelCode, unitId], map: "PosProductChannelPrice_product_code_unit_key")
+}
+
+// กติการาคา happy hour / โปร (R3 · CD1: POS เป็นเจ้าของจนถึง P3) · เขียนผ่าน pos/price-rule.ts เท่านั้น
+// ช่วงเวลาเป็นเวลาไทย (+7 คงที่) · [timeFrom, timeTo) ไม่ข้ามเที่ยงคืน (CD8) · [startsAt, endsAt) · weekdays 0=อา…6=ส ([] = ทุกวัน)
+model PosPriceRule {
+  id              String             @id @default(cuid())
+  tenantId        String
+  systemId        String // ระบบ POS
+  name            String // 1..60
+  kind            PosPriceRuleKind
+  active          Boolean            @default(true)
+  priority        Int                @default(0) // 0..100 · มากชนะ
+  productIds      String[]           @default([]) // ≤ 500 (id ของแม่ใช้กับตัวแปร)
+  categoryIds     String[]           @default([]) // ≤ 50
+  channelCodes    String[]           @default([]) // [] = ทุกช่องทาง
+  unitIds         String[]           @default([]) // [] = ทุกสาขา
+  adjust          PosPriceRuleAdjust
+  valueSatang     Int? // PRICE 0..MAX · AMOUNT_OFF 1..MAX
+  valueBp         Int? // PERCENT_OFF 1..10000
+  startsAt        DateTime?
+  endsAt          DateTime?
+  weekdays        Int[]              @default([])
+  timeFrom        String? // "HH:MM" เวลาไทย
+  timeTo          String?
+  archivedAt      DateTime?
+  createdByUserId String
+  updatedByUserId String
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([tenantId, systemId, archivedAt])
+}
+
+// ═══════════════════ POS P2.6 ▸ 86 / ของหมดชั่วคราว (R9 · มติ 5 6 14) ═══════════════════
+// ความจริงของ "ขายได้ไหม" ยังอยู่ที่เดิม (MENU = MenuItem.isOutOfStock/stockQty · อื่น ๆ = PosProduct.unavailableUnitIds) —
+// ตารางนี้เก็บแค่ "ใคร/เมื่อไร/จากไหน" ของการแจ้งหมดต่อสินค้าต่อสาขา (ป้าย "ครัวแจ้ง 11:00" · รายการ 86 ของจอครัว)
+// ผู้เขียน = pos/catalog.ts (setAvailability) + pos/catalog-legacy.ts (ประตูเดิม/ตัวนับ) · ไม่มี FK (id หลวมแบบ PosSaleLine.productId)
+enum PosAvailabilitySource {
+  KDS
+  STOCK
+  MANUAL
+}
+
+model PosAvailabilityMark {
+  id             String                @id @default(cuid())
+  tenantId       String
+  systemId       String // ระบบ POS ของสินค้า
+  unitId         String // สาขาที่หมด
+  productId      String // PosProduct.id (id หลวม)
+  source         PosAvailabilitySource
+  note           String?
+  markedAt       DateTime              @default(now())
+  markedByUserId String? // null = ระบบ (ตัวนับหมด)
+
+  @@unique([unitId, productId])
+  @@index([tenantId, unitId])
+}
+// ◂ POS P2.6
+
+// ═══════════════════ POS P2.5 ▸ แยกบิลของโต๊ะ (รายรายการ · หารเท่า · ตามที่นั่ง) — แผนเก็บถาวร (มติ CD2) ═══════════════════
+// ผู้เขียนเดียว = src/lib/modules/pos/table-split.ts (สร้าง/แทน/ยกเลิก) + register.ts (จ่ายใบ) + table.ts (ตัวรับ void) ·
+// splitId / partId / sessionId / itemId / saleId = id หลวม (ไม่มี @relation · ลบทิ้งตามร้านได้ทุกลำดับ) · ไม่มี FK ไป TableSession · RestaurantOrderItem · PosSale (หมุด TS_FIELDS/ROI_FIELDS) ·
+// แผน OPEN ได้ 1 แถวต่อ session = partial unique "PosTableSplit_session_open_key" · ใบหนึ่งผูกบิลได้ 1 ใบ = partial unique (saleId)
+//   (SQL เขียนมือใน migration 20261210100000_pos_p25_split — prisma ประกาศ partial ไม่ได้) ·
+// ตัวเลขทุกตัว = ผลของ allocateTableSplit (table-split-shared.ts · บริสุทธิ์) ตรงตัว
+enum PosTableSplitMode {
+  ITEM
+  EQUAL
+  SEAT
+}
+
+enum PosTableSplitStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+enum PosTableSplitPartStatus {
+  OPEN
+  PAID
+}
+
+model PosTableSplit {
+  id                  String              @id @default(cuid())
+  tenantId            String
+  systemId            String // AppSystem.id (type POS)
+  unitId              String // BusinessUnit.id
+  sessionId           String // TableSession.id (id หลวม)
+  mode                PosTableSplitMode
+  status              PosTableSplitStatus @default(OPEN)
+  partCount           Int // 2..20
+  itemsHash           String // tableItemsHash ของรายการค้างจ่ายตอนสร้าง/แทน (= quote ของโต๊ะ)
+  billDiscount        Json? // ส่วนลดท้ายบิลของโต๊ะ {type, value} (null = ไม่มี)
+  serviceChargeBp     Int
+  baseSatang          Int
+  discountSatang      Int
+  serviceChargeSatang Int
+  totalSatang         Int
+  version             Int                 @default(1)
+  createdByUserId     String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  doneAt              DateTime?
+  cancelledAt         DateTime?
+
+  @@index([tenantId, unitId])
+  @@index([sessionId])
+}
+
+model PosTableSplitPart {
+  id                  String                  @id @default(cuid())
+  tenantId            String
+  splitId             String
+  no                  Int // 1..partCount
+  label               String?
+  memberId            String? // Customer.id ของใบ (สิทธิ์สมาชิกเฉพาะใบนี้ · null = ไม่มี)
+  baseSatang          Int
+  discountSatang      Int
+  serviceChargeSatang Int
+  totalSatang         Int
+  status              PosTableSplitPartStatus @default(OPEN)
+  saleId              String? // PosSale.id (id หลวม · ใบที่ PAID)
+  paidAt              DateTime?
+
+  @@unique([splitId, no])
+  @@index([tenantId])
+}
+
+model PosTableSplitLine {
+  id           String  @id @default(cuid())
+  tenantId     String
+  splitId      String
+  partId       String
+  itemId       String // RestaurantOrderItem.id (id หลวม)
+  qty          Int? // หน่วยเต็ม (null = ส่วนแบ่ง)
+  shareNum     Int? // ส่วนแบ่ง: จำนวนหน่วยที่หารกัน
+  shareDen     Int? // ส่วนแบ่ง: จำนวนใบที่หาร
+  amountSatang Int
+  stockOwner   Boolean // ใบนี้ตัดสต็อกของหน่วยเหล่านี้ (ส่วนแบ่ง = ใบเลขต่ำสุด · มติ 3)
+
+  @@index([splitId])
+  @@index([itemId])
+}
+
+// ◂ POS P2.5
+
+// POS P2.9b ▸ มัดจำเป็นวิธีชำระของ POS (migration 20261211100000_pos_p29b_deposits · มติ 1 2 4 5 · CD2-A) ◂
+//   ผู้เขียนเดียว = pos/deposit.ts (รับ · คืนเงิน · คืนสภาพเมื่อ void) + pos/service.ts createSale (ใช้มัดจำใน tx ของบิล)
+//   ใบรับมัดจำ = PosSale sourceModule "POS_DEPOSIT" (sourceId = PosDeposit.id) · แถวใช้มัดจำ = PosPayment {DEPOSIT, refSaleId = ใบรับ}
+//   คงเหลือ = amount − used − refunded (CHECK ใน SQL ≥ 0) · VAT เกิดตอนรับเงิน (vatSatang) · ไม่มี FK (id หลวม)
+enum PosDepositStatus {
+  OPEN
+  USED
+  REFUNDED
+  EXPIRED // ยังไม่ใช้ใน P2.9b (CD6 — หมดอายุ/ริบเป็นงานถัดไป)
+}
+
+enum PosDepositTxnType {
+  RECEIVE
+  APPLY
+  RESTORE
+  REFUND
+}
+
+model PosDeposit {
+  id              String           @id @default(cuid())
+  tenantId        String
+  systemId        String // AppSystem.id (type POS)
+  unitId          String // BusinessUnit.id (มติ 4: ใช้ได้เฉพาะสาขานี้)
+  customerId      String? // Customer.id ของสมาชิก (null = ลูกค้าทั่วไป · ผู้ถือใบรับ)
+  customerName    String? // ชื่อลูกค้าทั่วไป (สำเนา)
+  phoneMasked     String? // เบอร์ปิดบัง (ไม่เก็บเบอร์เต็ม)
+  phoneLast4      String? // 4 หลักท้ายของเบอร์ (ค้นหา · มติ 19)
+  phoneFailedCount Int             @default(0) // POS P2.9b fix2 มติ 3: 4 หลักท้ายผิดติดกัน (ครบ 5 = ล็อก 15 นาที)
+  phoneLockedUntil DateTime? // POS P2.9b fix2 มติ 3
+  amountSatang    Int
+  vatSatang       Int              @default(0) // VAT ณ วันรับเงิน (มติ 1)
+  usedSatang      Int              @default(0)
+  refundedSatang  Int              @default(0)
+  status          PosDepositStatus @default(OPEN)
+  receiptSaleId   String           @unique // PosSale.id ของใบรับมัดจำ (id หลวม)
+  receiptNo       String?
+  note            String?
+  reference       String?
+  expiresAt       DateTime? // ข้อมูลเท่านั้น (CD6)
+  idempotencyKey  String
+  createdByUserId String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, status, createdAt])
+  @@index([tenantId, customerId])
+}
+
+model PosDepositTxn {
+  id             String            @id @default(cuid())
+  tenantId       String
+  depositId      String // PosDeposit.id (id หลวม)
+  type           PosDepositTxnType
+  satang         Int
+  vatSatang      Int               @default(0)
+  saleId         String? // PosSale.id (ใบรับ · บิลที่ใช้ · ใบคืน)
+  paymentId      String? // PosPayment.id ของแถว DEPOSIT (APPLY)
+  refTxnId       String? // RESTORE → APPLY
+  idempotencyKey String            @unique // APPLY dep-apply-<saleId>-<depositId> · RESTORE dep-restore-<applyTxnId>
+  createdAt      DateTime          @default(now())
+
+  @@index([depositId])
+  @@index([saleId])
+}
+// ◂ POS P2.9b
+
+// POS P2.10 ▸ จอลูกค้า (จอที่ 2 · มติ 1–9 ของบรีฟ · ledger/pos-briefs/pos-brief-P2.10.md) — ผู้เขียนเดียว = pos/display.ts
+//   1 แถว ACTIVE ต่อเครื่องขาย (partial unique "PosCustomerDisplay_active_device_key" ON ("deviceId") WHERE status = 'ACTIVE' เขียนมือใน migration) ·
+//   รหัสจับคู่ที่รออยู่ไม่ซ้ำ (partial unique ON ("pairCodeHash") WHERE NOT NULL) · id หลวม ไม่มี FK (deviceId = PosDevice.id)
+//   เก็บแต่ sha256 ของ token/รหัส (ตัวจริงไม่ลง DB) · ภาพบิลล่าสุด = state (≤ 16 KB) + stateSeq โมโนโทนิก (UPDATE … WHERE stateSeq < $seq)
+enum PosCustomerDisplayStatus {
+  ACTIVE
+  REVOKED
+}
+
+model PosCustomerDisplay {
+  id                String                   @id @default(cuid())
+  tenantId          String
+  systemId          String // AppSystem.id (type POS)
+  unitId            String // BusinessUnit.id
+  deviceId          String // PosDevice.id (เครื่องขายที่จอนี้จับคู่)
+  status            PosCustomerDisplayStatus @default(ACTIVE)
+  tokenHash         String?                  @unique // sha256 hex ของ token 32 ไบต์ (คุกกี้ pos_display) · null = ยังไม่จับคู่
+  pairCodeHash      String? // sha256 hex ของรหัส 8 ตัว Crockford ที่รอแลก · null = ไม่มีรหัสรอ
+  pairCodeExpiresAt DateTime? // รหัสหมดอายุ (10 นาที)
+  pairFailCount     Int                      @default(0) // ครบ 5 = ล็อกจนกว่าจะเปิดรหัสใหม่
+  showPoints        Boolean                  @default(true)
+  idleText          String? // ข้อความหน้าพัก ≤ 80 ตัว
+  locale            String? // "th" | "en" | null (= ภาษาใบเสร็จของ POS)
+  state             Json? // DisplayState ล่าสุดจากหน้าขาย (ทำความสะอาดแล้ว)
+  stateSeq          Int                      @default(0)
+  stateAt           DateTime?
+  lastPolledAt      DateTime? // จออ่านล่าสุด (เขียนไม่ถี่กว่า 30 วินาที) · ออนไลน์ = ภายใน 120 วินาที
+  createdByUserId   String
+  revokedAt         DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([tenantId, unitId, status])
+}
+// ◂ POS P2.10
+
+// POS P3.5 ▸ R7 สมุดค่าคอมฯ พนักงานขาย (มติ 1 2 8 9) — ผู้เขียนเดียว = pos/staff-commission.ts · ไม่มี @relation ไป HR (id หลวม) ·
+//   ACCRUE คีย์ PAID:<sale>:<line> · REVERSE คีย์ VOID:<sale>:<line> / REFUND:<refundSale>:<refLine> · amountSatang มีเครื่องหมาย (REVERSE ติดลบ) ·
+//   periodKey = เดือนไทย (YYYY-MM) ของ paidAt (ACCRUE) / ของเหตุการณ์ (REVERSE) · OPEN → SENT เมื่อส่งเข้างวดเงินเดือนของ HR (hrPayAdjustmentId ·
+//   สุทธิ 0 = SENT โดย id ว่าง) · rateBp/fixedSatang/baseSatang = สำเนาอัตรา ณ เวลาลงสมุด (แก้อัตราทีหลังไม่ย้อน) ◂
+enum PosStaffCommissionKind {
+  ACCRUE
+  REVERSE
+}
+
+enum PosStaffCommissionStatus {
+  OPEN
+  SENT
+}
+
+model PosStaffCommission {
+  id                String                   @id @default(cuid())
+  tenantId          String
+  systemId          String // AppSystem.id (type POS) ของบิล
+  unitId            String
+  saleId            String // PosSale.id ของบิลขาย (REVERSE ของใบคืน = บิลเดิม)
+  lineId            String // PosSaleLine.id ของบิลขาย
+  userId            String // ผู้ขายของบิล (PosSale.soldByUserId)
+  kind              PosStaffCommissionKind
+  sourceKey         String                   @unique
+  baseSatang        Int // ยอดสุทธิของบรรทัดหลังส่วนลดท้ายบิล (lineNets · รวม VAT)
+  rateBp            Int
+  fixedSatang       Int // ต่อหน่วย
+  amountSatang      Int // มีเครื่องหมาย
+  periodKey         String
+  status            PosStaffCommissionStatus @default(OPEN)
+  hrSystemId        String?
+  hrPayAdjustmentId String?
+  sentAt            DateTime?
+  createdAt         DateTime                 @default(now())
+  // SVC B.0 ▸ ผู้ให้บริการ (HrEmployee.id · id หลวม) — รายงานตามผู้ให้บริการ · userId ยังบังคับ (CC §10 ข้อ 2 ค่าปลอดภัย) ◂
+  employeeId        String?
+
+  @@index([tenantId, userId, status, periodKey])
+  @@index([saleId])
+  @@index([tenantId, employeeId, periodKey]) // SVC B.0
+}
+// ◂ POS P3.5
+// ═══════════════════ POS P3.4 ▸ ออฟไลน์ (R1 · มติ 2 · CD-2 · CD-9) — ตารางใหม่ล้วน · ผู้เขียนเดียว = pos/offline-sync.ts ═══════════════════
+// PosOfflineSale = ทุกรายการที่เครื่องส่งมาซิงก์ (บันทึกก่อนตัดสิน · payload ไม่เปลี่ยน — แม้บิลที่ถูกปฏิเสธก็มีหลักฐาน)
+//   status (String · ไม่มี enum ใหม่) = SYNCED | REJECTED | ACCEPTED_BY_MANAGER | DISCARDED · reason = รหัสที่ปฏิเสธ (หรือเหตุผลที่ทิ้ง)
+//   deviceId = รหัสเครื่อง (PosDevice.deviceCode = PosShift.deviceId) · payload ไม่เก็บโทเคนผู้ขายดิบ/PIN/4 หลักท้าย (CD-9 · R13)
+//   drift = ราคาที่ต่างจากราคา ณ soldAt แต่ตรง snapshot ของเครื่อง (R6) · saleId = บิลที่เกิด (id หลวม ไม่มี FK)
+model PosOfflineSale {
+  id               String   @id @default(cuid())
+  tenantId         String
+  unitId           String
+  systemId         String // AppSystem.id (type POS)
+  deviceId         String // PosDevice.deviceCode
+  offlineRef       String // OFF-C1-0007
+  idempotencyKey   String // คีย์บิลเดียวกับหน้าขาย (reg2: namespace ที่ createSale)
+  payload          Json
+  soldAt           DateTime
+  status           String
+  reason           String?
+  drift            Json?
+  saleId           String?
+  resolvedByUserId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, status, soldAt])
+  @@index([tenantId, unitId, offlineRef])
+}
+
+// PosOfflineSnapshot = หลักฐานราคาที่เครื่องได้ไป (R2 R6) · เก็บ 2 แถวล่าสุดต่อเครื่อง · priceMap {productId|choiceId: สตางค์} · hash = ETag
+model PosOfflineSnapshot {
+  id       String   @id @default(cuid())
+  tenantId String
+  unitId   String
+  deviceId String // PosDevice.deviceCode
+  issuedAt DateTime
+  priceMap Json
+  hash     String
+  createdAt DateTime @default(now())
+
+  @@unique([unitId, deviceId, hash])
+  @@index([tenantId, unitId, deviceId, issuedAt])
+}
+// ◂ POS P3.4
+
+// ═══════════════════ POS P3.6 ▸ บัญชีเครดิตลูกค้าองค์กร (R4 · มติ 1) — ตารางใหม่ล้วน · ผู้เขียนเดียว = pos/credit.ts (สิทธิ์ pos.credit.manage) ═══════════════════
+// วงเงิน/เทอมต่อ Party (บริษัท) ต่อระบบ POS · termDays null = ตามผู้ติดต่อสมุด → ค่าปริยายสมุด (มติ 6) · 0 = CREDIT_TERM_ZERO
+// note = บันทึกภายใน (ไม่ลง audit · ไม่ออกหน้าขาย) · ไม่มี FK (id หลวมแบบ PosSale)
+model PosCreditAccount {
+  id          String   @id @default(cuid())
+  tenantId    String
+  systemId    String // AppSystem.id (type POS)
+  partyId     String // Party.id (kind COMPANY)
+  limitSatang Int // วงเงิน > 0
+  termDays    Int? // 0..365 · null = ตามลำดับเทอม
+  active      Boolean  @default(true)
+  note        String?
+  updatedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([systemId, partyId])
+  @@index([tenantId])
+}
+// ◂ POS P3.6
+
+// ═══════════════════ POS P3-SKEL ▸ โครงเชื่อมภายนอก (P3.1–3.3 · P3.10 · P3.11 · มติ §10) — ตารางใหม่ล้วน 4 ตาราง · สถานะเป็น TEXT · ไม่มี FK (id หลวมแบบ PosSale) ═══════════════════
+// migration 20261218100000_pos_p3skel (CREATE เท่านั้น) · ผู้เขียนเดียวต่อตาราง: creds = pos/integration-creds.ts · สลิป = pos/payment-slip.ts · agent/งานพิมพ์ = pos/print-relay.ts
+// PosIntegrationCredential = ค่าที่เจ้าของวางจากแพลตฟอร์ม/ผู้ให้บริการ (K2) · ค่าลับอยู่ใน secretBox (AES-256-GCM · กุญแจ env POS_CREDENTIALS_KEY · pos/secret-box.ts)
+//   publicFields = ค่าที่ไม่ลับ (รหัสร้าน/สาขาบนแพลตฟอร์ม) · secretNames = ชื่อฟิลด์ลับที่กรอกแล้ว (ไม่มีค่า) · scopeKey = channelId หรือ "system" (unique ต่อ kind/provider/ขอบเขต)
+model PosIntegrationCredential {
+  id              String   @id @default(cuid())
+  tenantId        String
+  systemId        String // AppSystem.id (type POS)
+  unitId          String // BusinessUnit.id ของช่องทาง/ผู้บันทึก
+  channelId       String? // SalesChannel.id (kind PLATFORM) · null = ระดับระบบ (SLIP_VERIFY/ETAX)
+  scopeKey        String
+  kind            String // "PLATFORM" | "SLIP_VERIFY" | "ETAX"
+  provider        String // LINEMAN GRAB SHOPEE LAZADA TIKTOK · SLIPOK EASYSLIP … · INET LECEIPT …
+  publicFields    Json     @default("{}")
+  secretBox       String? // "b64(iv).b64(tag).b64(cipher)" — ห้ามมีค่าลับดิบในคอลัมน์ใด
+  secretNames     String[] @default([])
+  status          String   @default("DRAFT") // "DRAFT" | "COMPLETE" (ครบทุกฟิลด์ที่จำเป็น)
+  updatedByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, kind, provider, scopeKey])
+  @@index([tenantId, systemId, unitId])
+}
+
+// PosPaymentSlip = สลิปโอนที่แนบเป็นหลักฐาน (R6–R10) · ไฟล์ส่วนตัว (FileAsset t/<ร้าน>/private/…) · ไม่มีผลเงิน
+//   เป้าหมายอย่างเดียว: (saleId + paymentId ของแถว TRANSFER/PROMPTPAY) หรือ intentId (ใบขอรับเงิน PROMPTPAY_STATIC ที่รออยู่)
+//   ลบไฟล์เมื่อถึง purgeAfter (createdAt + slipRetentionDays · ค่าปริยาย 1,825 วัน · ขั้นต่ำ 90) แล้วตั้ง fileId = null · แถวคงไว้เป็นหลักฐาน (W19)
+model PosPaymentSlip {
+  id                String    @id @default(cuid())
+  tenantId          String
+  systemId          String
+  unitId            String
+  saleId            String?
+  paymentId         String?
+  intentId          String?
+  fileId            String? // FileAsset.id · null = ยังอัปไม่เสร็จ หรือไฟล์ถูกลบตามอายุเก็บแล้ว
+  contentType       String?
+  bytes             Int?
+  sha256            String? // fix1 H3: sha256 hex ของไฟล์ — รูปเดิมซ้ำในร้าน = SLIP_DUPLICATE (migration 20261218100100_pos_p3skel_slip_hash)
+  status            String    @default("UPLOADED") // "UPLOADED" | "CONFIRMED" | "REJECTED"
+  verifiedVia       String? // "MANUAL" | "PROVIDER" | null
+  provider          String?
+  providerRef       String?
+  transRef          String? // เลขอ้างอิงธนาคาร · ไม่ซ้ำในร้าน (SLIP_DUPLICATE)
+  amountSatang      Int?
+  note              String?
+  idempotencyKey    String
+  createdByUserId   String
+  confirmedByUserId String?
+  confirmedAt       DateTime?
+  rejectReason      String?
+  purgeAfter        DateTime
+  purgedAt          DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@unique([tenantId, transRef])
+  @@unique([tenantId, sha256])
+  @@index([tenantId, saleId])
+  @@index([tenantId, intentId])
+  @@index([purgeAfter])
+}
+
+// PosPrintAgent = ตัวช่วยพิมพ์ LAN (R13 · มติ 6) — สคริปต์ tools/pos-print-agent/agent.mjs บนเครื่องในร้าน ต่อออกมาหาเรา (outbound) ·
+//   tokenHash = sha256 hex ของโทเคน (โทเคนแสดงครั้งเดียวตอนลงทะเบียน) · printers [{name, host, port}] = เครื่องพิมพ์ ESC/POS พอร์ต 9100 ใน LAN
+model PosPrintAgent {
+  id              String    @id @default(cuid())
+  tenantId        String
+  systemId        String
+  unitId          String
+  name            String
+  tokenHash       String    @unique
+  printers        Json      @default("[]")
+  createdByUserId String
+  lastSeenAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId, unitId])
+}
+
+// PosPrintJob = งานพิมพ์ที่หน้าขายส่งผ่าน relay (ไบต์ ESC/POS ที่เรนเดอร์ในเบราว์เซอร์แล้ว ≤ 256 KB) · QUEUED → SENT (แจกครั้งเดียว) → DONE/FAILED · หมดอายุ 10 นาที = EXPIRED
+//   bytes ถูกล้างเมื่อจบงาน (DONE/FAILED/EXPIRED) — ใบเสร็จมีข้อมูลลูกค้า ไม่เก็บนานกว่างาน
+model PosPrintJob {
+  id              String    @id @default(cuid())
+  tenantId        String
+  systemId        String
+  unitId          String
+  agentId         String
+  deviceCode      String
+  target          String // "kitchen" | "receipt"
+  status          String    @default("QUEUED") // "QUEUED" | "SENT" | "DONE" | "FAILED" | "EXPIRED"
+  bytes           Bytes?
+  byteLength      Int
+  attempts        Int       @default(0)
+  error           String?
+  idempotencyKey  String
+  createdByUserId String
+  expiresAt       DateTime
+  sentAt          DateTime?
+  doneAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([agentId, status, createdAt])
+  @@index([status, expiresAt])
+}
+// ◂ POS P3-SKEL

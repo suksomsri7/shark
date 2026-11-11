@@ -5,7 +5,7 @@
 import { scheduleCoalescedDrain } from "@/lib/core/after-drain";
 import { prisma } from "@/lib/core/db";
 import { drainOutbox, type OutboxHandler } from "@/lib/core/outbox";
-import { bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
+import { bridgePosSaleCommission, bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
 // 🔴 import ตรง (ไม่ผ่าน account/index) — index อยู่ในวงจร service↔inventory↔account/index อยู่แล้ว
 //    การดึง inbox เข้าไปใน index ทำให้โมดูลบัญชีโหลดไม่ขึ้นทั้งชุด (ดูคอมเมนต์ใน account/index.ts)
 import { ingestInboxFiles as ingestInboxFilesToAccount } from "@/lib/modules/account/inbox";
@@ -138,6 +138,9 @@ const posSalePaid: OutboxHandler = async (evt) => {
     },
   });
   if (!sale) return;
+  // POS P2.1 ▸ fix round 1 (รีวิว F1): บิลถูกคืนครบแล้ว (REFUNDED) แต่ขั้นค่าคอมฯ ยังไม่ลง ⇒ ทางลองใหม่ซ่อมตัวเอง ◂
+  //   ลงเฉพาะ COMMISSION (มี PAID แล้วเท่านั้น · idempotent ต่อคีย์) — ไม่มีค่าคอมฯ = ไม่มี query · PAID ของบิลที่คืนแล้วยังเป็นงานของตัวรับคืนเงิน (F8)
+  if (sale.status === "REFUNDED" && !sale.giftCardId && sale.docType === "SALE") await bridgePosSaleCommission(sale);
   if (sale.status !== "PAID") return; // ถูก void ก่อน drain → ไม่ต้อง post (void handler จัดการ)
   // M2.6 — บิล "ขาย/เติมบัตรกำนัล" ข้ามทั้งใบ: ไม่ลงบัญชีขาย · ไม่ให้แต้ม · ไม่นับสแตมป์/ที่มา
   // 🔴 ขายบัตรกำนัลยัง**ไม่ใช่รายได้** (เป็นเงินรับล่วงหน้า หนี้สิน 2110) และยัง**ไม่ใช่การซื้อของ**
@@ -180,6 +183,40 @@ const posSaleVoided: OutboxHandler = async (evt) => {
   });
   if (!sale) return;
   await bridgePosSaleVoided(sale);
+};
+
+// POS P2.8 ▸ ออเดอร์ทุกช่องทาง — โหลดตอนใช้ (pos/order → … → scheduleDrain ที่ไฟล์นี้ = วงโหลดไฟล์) · ตัวรับทุกตัว idempotent ◂
+const posOrderOnSaleVoided: OutboxHandler = async (evt) => (await import("@/lib/modules/pos")).orders.onSaleVoided(evt.tenantId, evt.payload);
+const posOrderOnShopOrderPaid: OutboxHandler = async (evt) => (await import("@/lib/modules/pos")).orders.onShopOrderPaid(evt.tenantId, evt.payload);
+// POS P2.6 ▸ จอครัว (โหลดตอนใช้ · ทุกตัว idempotent): void บิลหน้าขาย ⇒ ยกเลิกรายการครัวที่ยังไม่เสิร์ฟ (+ คืนตัวนับเมนูเฉพาะ NEW) ·
+//   ยกเลิก/ปฏิเสธออเดอร์ ⇒ ยกเลิกรายการครัวของรอบออเดอร์ · 86 ⇒ ORDER_ADAPTERS[adapter].setAvailability ทุกช่องทางของสาขา (CD 10 18 · R10 R11 R12)
+const kdsOnSaleVoided: OutboxHandler = async (evt) => (await import("@/lib/modules/pos/kds")).onSaleVoidedKitchen(evt.tenantId, evt.payload);
+const kdsOnOrderClosed: OutboxHandler = async (evt) => (await import("@/lib/modules/pos/kds")).onOrderClosedKitchen(evt.tenantId, evt.payload);
+const kdsOnAvailability: OutboxHandler = async (evt) => (await import("@/lib/modules/pos/kds")).onAvailabilityEvent(evt.tenantId, evt.payload);
+/** งานหลักสองอย่างของ event เดียว (ไม่ใช่ของแถม): วิ่งทั้งคู่เสมอ · ล้มตัวใด = event retry (ทั้งคู่ idempotent) */
+const bothMain =
+  (a: OutboxHandler, b: OutboxHandler): OutboxHandler =>
+  async (evt) => {
+    let err: unknown = null;
+    try {
+      await a(evt);
+    } catch (e) {
+      err = e;
+    }
+    try {
+      await b(evt);
+    } catch (e) {
+      if (err === null) err = e;
+    }
+    if (err !== null) throw err;
+  };
+// ◂ POS P2.6
+/** ออเดอร์เว็บร้านถูกปฏิเสธที่จอ 09 → ยกเลิก ShopOrder (รอชำระ) ผ่านประตูของเว็บร้านเอง · ซ้ำ/ชำระแล้ว = cancelOrder คืน false (ไม่ทำอะไร) */
+const posOrderRejected: OutboxHandler = async (evt) => {
+  const p = (evt.payload ?? {}) as { shopOrderId?: unknown; unitId?: unknown };
+  if (typeof p.shopOrderId !== "string" || !p.shopOrderId || typeof p.unitId !== "string" || !p.unitId) return;
+  const shop = await import("@/lib/modules/shop/service");
+  await shop.cancelOrder({ tenantId: evt.tenantId, unitId: p.unitId }, p.shopOrderId);
 };
 
 // ห่อ handler หลักด้วย Automation (WO-0026): หลัง handler หลักสำเร็จ (event กำลังจะ DONE)
@@ -442,7 +479,7 @@ const compose =
  *    วิธีเดียวกับที่ `kanban.inbox.requested` ใช้กับ `kanban/inbox` อยู่แล้ว
  */
 const kanbanBridge =
-  (name: "onFormSubmission" | "onApprovalSubmitted" | "onApprovalDecided" | "onAccountDocSettled" | "onLeaveSubmitted" | "onVoidedSale"): OutboxHandler =>
+  (name: "onFormSubmission" | "onApprovalSubmitted" | "onApprovalDecided" | "onAccountDocSettled" | "onLeaveSubmitted" | "onVoidedSale" | "onDormRepairCreated" | "onDormRepairDone" | "onDormRepairCardMoved" | "onDormRepairCardCompleted"): OutboxHandler => // SVC D.16 ▸ + สะพานแจ้งซ่อมหอ 4 ตัว ◂
   async (evt) => {
     const bridges = await import("@/lib/platform/kanban-bridges");
     await bridges[name](evt);
@@ -548,6 +585,9 @@ const crmApprovalEffect: OutboxHandler = async (evt) => {
   await applyCrmApprovalEffect({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
 };
 // ◂ CRM C1.8
+
+// POS P1.15 ▸ ผลอนุมัติ POS_* (ยกเลิกบิล · คืนเงิน · ส่วนลดเกินสิทธิ์) — ขั้นแรกที่ retry ได้ (crmFirst · โยนเฉพาะล้มชั่วคราว) · โหลดตอนใช้ กันวงโหลดไฟล์ ◂
+const posApprovalEffect: OutboxHandler = async (evt) => (await import("@/lib/modules/pos/pos-approval-consumer")).onPosApprovalDecided(evt);
 
 // CRM C3.3 ▸ สะพานคอมมิชชัน (`src/lib/platform/crm-bridges/commissions.ts` · R-D) — dynamic import ด้วยเหตุผลเดียวกับ `crmBridge`
 //   (crm → … → scheduleDrain ที่ไฟล์นี้ = วงโหลดไฟล์) · ใช้เป็น **ขั้นแรกที่ retry ได้** (`crmFirst`): `hr.payroll.paid` ที่หายไป =
@@ -676,14 +716,72 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // M2.8: + สะพานสมาชิก (ยอดสะสม/แต้ม/สแตมป์/ที่มา/ระดับ/ไทม์ไลน์) — ย้ายออกจาก tx ของบิลมาที่คิวนี้
   // CRM C2.7 ▸ + ทางเดินเงินของ CRM (บิลที่แคชเชียร์ผูกไว้กับดีล → paidSatang) — ต่อ **ท้ายสุด** เสมอ:
   //   บัญชี (posSalePaid) → ตรา (stampFromSale) → สมาชิก (memberSaleBridge) → CRM · ทุกตัวก่อนหน้าทำงานเหมือนเดิมทุกประการ ◂
-  "pos.sale.paid": withAutomation(compose(compose(compose(posSalePaid, stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid"))),
+  // POS P3.5 ▸ R8 มติ 9: + สมุดค่าคอมฯ พนักงานขาย เป็น "งานหลัก" คู่บัญชี (bothMain: วิ่งทั้งคู่ · ล้มตัวใด = event retry · idempotent ต่อ sourceKey) ◂
+  "pos.sale.paid": withAutomation(compose(compose(compose(compose(bothMain(posSalePaid, bothMain(async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSalePaid(evt), async (evt) => (await import("@/lib/modules/booking")).onPosSalePaid(evt))), stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid")), posChat("onSalePaidChat"))), // POS P3.7 ▸ R5 ใบเสร็จอัตโนมัติ (ชั้นนอกสุด · ของแถม) ◂
   // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
   // M2.3: + ยกเลิกตราของบิลใบนั้น (voidStampsForSale)
   // M2.8: + คืนสิทธิ์ทุกชนิด + ย้อนแต้ม/ยอดสะสม/ไทม์ไลน์ของบิลที่ถูกยกเลิก
   // CRM C2.7 ▸ + ถอนคืนยอดของบิลที่ถูกยกเลิก (เฉพาะที่เคยนับ) — ต่อท้ายสุดเช่นกัน ◂
+  // POS P2.8 ▸ + บิลของออเดอร์ถูกยกเลิก (ลิ้นชักบิล/อนุมัติ/คืนเงินเว็บร้าน) → ออเดอร์ REFUNDED + CANCELLED ถ้ายังไม่ส่งมอบ (idempotent · มติ 13) — ต่อท้ายสุด ◂
+  // POS P2.4 ▸ บิลโต๊ะ (CD5): งานหลักคู่บัญชี = ปลดรายการของบิลที่ถูก void + เปิดโต๊ะกลับ (pos/table.tableSaleVoided → facade ร้านอาหาร ·
+  //   บิลที่ไม่ใช่ POS+sourceId ไม่แตะ) · ทั้งสองวิ่งเสมอ · ล้มขั้นใด = event retry (ทั้งคู่ idempotent) ◂
+  // POS P2.6 ▸ R12: + รอบครัวของบิลหน้าขาย (posSaleId) — รายการที่ยังไม่เสิร์ฟ = CANCELLED · คืนตัวนับเมนูเฉพาะ NEW · งานหลักขั้นที่สาม (retry ได้ · idempotent) ◂
   "pos.sale.voided": withAutomation(
-    compose(compose(compose(compose(posSaleVoided, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")),
+    compose(compose(compose(compose(async (evt) => {
+      let failed = false;
+      let err: unknown = null;
+      try {
+        await posSaleVoided(evt);
+      } catch (e) {
+        failed = true;
+        err = e;
+      }
+      try {
+        await (await import("@/lib/modules/pos/table")).tableSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
+      try {
+        await kdsOnSaleVoided(evt); // POS P2.6 ▸ R12 ◂
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
+      // POS P2.9 ▸ R5 มติ 10: คืนยอดบัตรของขวัญ/เครดิตร้านของแถวชำระ (งานหลัก · ก่อนสะพานสมาชิก · walk-in ได้ · idempotent ต่อ USE) ◂
+      try {
+        await (await import("@/lib/modules/pos/tender")).tenderSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
+      // POS P2.9b ▸ R6 (X5): คืนสภาพมัดจำที่บิลนี้ใช้ (RESTORE ต่อ APPLY · งานหลัก · หลังบัตร · walk-in ได้ · idempotent ต่อ APPLY) ◂
+      try {
+        await (await import("@/lib/modules/pos/deposit")).depositSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
+      // POS HF-FU ▸ j: ออเดอร์ของบิล (REFUNDED + CANCELLED ถ้ายังไม่ส่งมอบ) ย้ายจาก compose ตัวท้าย (ล้ม = WARN กลืน) มาเป็นงานหลัก — ล้ม = event retry · idempotent ◂
+      try {
+        await posOrderOnSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
+      // POS P3.5 ▸ R8 มติ 9: กลับรายการค่าคอมฯ พนักงานของบิลที่ถูก void (งานหลัก · idempotent ต่อ VOID:<sale>:<line>) ◂
+      try {
+        await (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
+      if (failed) throw err;
+    }, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")),
   ),
+  // POS P1.8 ▸ คืนเงิน: ใบลดหนี้ + JV ตามสัดส่วน · รับของคืนที่ต้นทุนเดิม · แต้ม/ยอดสะสม/ตรา (ตัวรับอยู่ pos/refund-consumer.ts · โหลดตอนใช้ กันวงโหลดไฟล์) ◂
+  // POS P3.5 ▸ R8 มติ 9: + กลับรายการค่าคอมฯ พนักงานตามสัดส่วนใบคืน เป็นงานหลักคู่ (bothMain · ไม่แตะ refund-consumer.ts) ◂
+  "pos.sale.refunded": withAutomation(compose(bothMain(async (evt) => (await import("@/lib/modules/pos/refund-consumer")).posSaleRefunded(evt), async (evt) => (await import("@/lib/modules/pos/staff-commission")).staffCommissionOnSaleRefunded(evt)), posChat("onSaleRefundedChat"))), // POS P3.7 ▸ R5 แจ้งคืนเงิน (ของแถม) ◂
   // M2.3 (§9.2) — นัดเปลี่ยนเป็น "มาแล้ว" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   // M3.7: + ไทม์ไลน์ VISIT (+ แถวจองย้อนหลัง) · แต้มโบนัส CHECKIN · ขอรีวิว (ร้านที่เปิดรีวิว) — สแตมป์ของ M2.3 ยังเป็นงานหลัก (พัง = retry เหมือนเดิม)
   // CRM C2.9 ▸ + ไทม์ไลน์ CRM ของ Party ที่ผูกนัด (กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า) — ต่อ **ท้ายสุด** ใต้ compose:
@@ -693,22 +791,47 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // M3.3 (§7.1) — นัดเปลี่ยนเป็น "ไม่มาตามนัด" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   //   ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็นทริกเกอร์ของ journey "จองแล้วไม่มา" + เว็บฮุค
   // M3.7: + ไทม์ไลน์ NO_SHOW (ห่อ try/catch — พังไม่ค้างคิว)
-  "booking.no_show": withAutomation(memberApptBridge("onBookingNoShow")),
+  // SVC B.17 ▸ + waitlist: ช่องที่นัดไม่มาปล่อย ⇒ แจ้งคนที่รอ (ของแถมท้ายสุด · ของเดิมวิ่งก่อน) ◂
+  "booking.no_show": withAutomation(compose(compose(memberApptBridge("onBookingNoShow"), async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), async (evt) => (await import("@/lib/platform/booking-waitlist")).onWaitlistEvent(evt))), // SVC B.9 ▸ + ชวนจองใหม่ (noShowRebook · ของแถม) ◂
   // K3.3: + การ์ดติดตามคำขออนุมัติ (มอบหมายผู้ยื่น) — ต่อท้าย notify เดิม
   "approval.request.submitted": withAutomation(compose(approvalSubmitted, kanbanBridge("onApprovalSubmitted"))),
   // K3.3: + ความเห็น "ผลอนุมัติ: …" ที่การ์ดติดตาม + ปิดการ์ดเมื่อผ่าน (ต่อท้าย notify+effect เดิม)
   // CRM C1.8 ▸ + ผลอนุมัติ crm.* เป็นขั้นแรกที่ retry ได้ (crmFirst) — applyApprovalEffect ไม่แตะ crm.* แล้ว (ไม่ทำซ้ำสองที่) ◂
-  "approval.request.approved": crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalApproved), kanbanBridge("onApprovalDecided")))),
-  "approval.request.rejected": crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalRejected), kanbanBridge("onApprovalDecided")))),
+  "approval.request.approved": crmFirst(posApprovalEffect, crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalApproved), kanbanBridge("onApprovalDecided"))))),
+  "approval.request.rejected": crmFirst(posApprovalEffect, crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalRejected), kanbanBridge("onApprovalDecided"))))),
   // WO-0038: AppNotification ถูกสร้างแล้วใน sweepExpiringLots — consumer นี้มีไว้ปิด event เป็น DONE
   // (ไม่งั้นค้าง PENDING โดน drain วนตลอด) + เป็นจุดให้ Automation rules ยิงตามกติกาที่ร้านตั้ง
   "inventory.lot.expiring": withAutomation(async () => {}),
+  // POS P1.9 ▸ กะ/ลิ้นชัก — กฎอัตโนมัติเท่านั้น (JV ขาด/เกิน · การ์ดนับเงิน · สรุป LINE = P3 ต่อบน event เดิม) ◂
+  "pos.shift.opened": withAutomation(async () => {}),
+  "pos.shift.closed": withAutomation(async (evt) => void (await (await import("@/lib/pos-board-bridges")).onShiftClosed(evt))), // POS P3.8 ▸ R4 R7 มติ 7: การ์ดตรวจเงินกะ + โพสต์ Z ห้องทีม (main step · ปริยายปิด) ◂
+  // POS P1.14 ▸ ยืนยันรอบตรวจนับ — กฎอัตโนมัติเท่านั้น (ผลต่างลงบัญชี = consumer P3 บน event เดิม · Q2) ◂
+  "pos.stockCount.confirmed": withAutomation(async () => {}),
+  // POS P1.11 ▸ ใบเสร็จออนไลน์: แจ้งปัญหาบิล → การ์ดบอร์ดรับเรื่อง + ตอบรับ LINE (composition root pos-receipt-bridges · โหลดตอนใช้) · คำขอใบกำกับเต็มรูป = กฎอัตโนมัติเท่านั้น (ออกเอกสาร P1.13) ◂
+  "pos.receipt.issue_reported": withAutomation(async (evt) => void (await (await import("@/lib/pos-receipt-bridges")).onReceiptIssueReported(evt))),
+  "pos.receipt.taxInvoiceRequested": withAutomation(async () => {}),
+  // POS P1.7 ▸ เงินเข้าใบขอรับเงิน (webhook/ยืนยันเอง) — กฎอัตโนมัติเท่านั้น (จอลูกค้า P2 ต่อบน event เดิม) · ไม่มี event ตอน CONSUMED ◂
+  // POS P2.7 ▸ S3 มติ 13: ใบของออเดอร์จ่ายก่อน (orderId) → PREPAID (+ รับอัตโนมัติ) / เงินเข้าหลังปิด = ops late_payment · ใบของหน้าขาย = ไม่มีอะไร · idempotent ◂
+  "pos.payment.intent_paid": withAutomation(compose(async (evt) => void (await (await import("@/lib/modules/pos")).orders.onIntentPaid(String((evt.payload as { intentId?: unknown } | null)?.intentId ?? ""))), posChat("onIntentPaidChat"))), // POS P2.7 ▸ onIntentPaid ◂ · POS P3.7 ▸ + "ได้รับเงิน" ในแชท หลัง onIntentPaid (ของแถม) ◂
+  // POS P1.13 ▸ ออกใบกำกับภาษีเต็มรูปให้บิล (ตอนชำระ · ออกทีหลัง · จากคำขอ) — กฎอัตโนมัติเท่านั้น (ส่งอีเมลเอกสาร = งานต่อบน event เดิม) ◂
+  "pos.sale.taxInvoiceIssued": withAutomation(async () => {}),
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (จอ 09) — กฎอัตโนมัติ/เว็บฮุคเท่านั้น · rejected ของออเดอร์เว็บร้าน = ยกเลิก ShopOrder ที่นี่ (composition root · มติ 13 — POS ไม่ import shop) ◂
+  "pos.order.received": withAutomation(async () => {}),
+  // SVC R0.3 ▸ ค่าตั้งแบบชั้นเปลี่ยน — กฎอัตโนมัติ/เว็บฮุคเท่านั้น (payload ไม่มีค่า) ◂
+  "settings.changed": withAutomation(async () => {}),
+  "pos.order.accepted": withAutomation(compose(async () => {}, posChat("onOrderEventChat"))), // POS P3.7 ▸ R6 สถานะในแชท ◂
+  "pos.order.rejected": withAutomation(compose(bothMain(posOrderRejected, kdsOnOrderClosed), posChat("onOrderEventChat"))), // POS P2.6 ▸ + ยกเลิกรายการครัวของรอบออเดอร์ (CD 18) ◂ · POS P3.7 ▸ R6 ◂
+  "pos.order.ready": withAutomation(compose(async () => {}, posChat("onOrderEventChat"))), // POS P3.7 ▸ R6 ◂
+  "pos.order.completed": withAutomation(async () => {}),
+  "pos.order.cancelled": withAutomation(compose(bothMain(posOrderRejected, kdsOnOrderClosed), posChat("onOrderEventChat"))), // POS P3.7 ▸ R6 ◂ · POS P2.8 ▸ fix รอบ 3 (H2): ร้านยกเลิกออเดอร์เว็บที่ยังไม่จ่าย ⇒ ยกเลิก ShopOrder (รอชำระเท่านั้น · idempotent) ◂ · POS P2.6 ▸ + ยกเลิกรายการครัว "ออเดอร์ถูกยกเลิก" (CD 18) ◂
+  // POS P2.6 ▸ 86 / คืนขายต่อสาขา → adapter ทุกช่องทาง active (adapter ≠ NONE) ของสาขา (no-op ใน P2 · P3 ส่งจริง) · ไม่เขียนแถว ⇒ เล่นซ้ำไม่มีผลเพิ่ม ◂
+  "pos.product.availability": withAutomation(kdsOnAvailability),
   // Wave4-A: AppNotification "ลูกค้าทักเข้ามา" ถูกสร้างแล้วใน chat.announceInbound (de-dup) —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย inbound message
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)
   //   งานนี้ต้อง **ไม่ทำให้ consumer ล้ม** ถ้าฝั่งบัญชีมีปัญหา (ไม่งั้น event แชทค้าง PENDING ทั้งคิว)
   // CRM C1.8 ▸ + ห้องแชท → Party → ผู้ติดต่อ CRM / lead (ถ้าร้านเปิด chatToLead) เป็นของแถมใต้ compose ◂
-  "chat.message.received": withAutomation(compose(async (evt) => {
+  "chat.message.received": withAutomation(compose(compose(async (evt) => { // POS P3.7 ▸ + บอทตามกฎ ต่อท้ายสายเดิม (ชั้นนอก) ◂
     try {
       await chatInboundToAccountInbox(evt);
     } catch (e) {
@@ -726,7 +849,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
     } catch (e) {
       await logOps("WARN", "outbox", `ให้คะแนนจากแชทไม่สำเร็จ (${evt.type})`, { tenantId: evt.tenantId, detail: errDetail(e) });
     }
-  }, crmBridge("onChatMessage"))),
+  }, crmBridge("onChatMessage")), posChat("onChatMessageReceivedBot"))), // POS P3.7 ▸ R9 ◂
   // WO-C2 (§3.4): แอดมินตอบ / เธรดเปลี่ยนสถานะ — ผลข้างเคียงเกิดใน service ไปแล้ว
   // consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล
   // พร้อม lastError "ไม่มี consumer…" — outbox.ts:111) + เป็นจุดให้ Automation/Webhooks ยิงต่อ
@@ -768,7 +891,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //      **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาลแล้วคิวทั้งระบบตันตามไปด้วย
   //      — บทเรียน 30 ส.ค. 2026) + เป็นจุดให้ Automation rules (§7.3) และ `withWebhooks` ยิงต่อ
   //      ตัวปิดงานที่ผูกไว้ (ขาออก K3.4) เสียบอยู่ที่ `kanban.card.completed` ด้านล่างแล้ว
-  "kanban.card.moved": withAutomation(async () => {}),
+  // SVC D.16 ▸ + การ์ดแจ้งซ่อมหอย้ายเข้าคอลัมน์ที่ไม่ใช่คอลัมน์เสร็จ ⇒ คำแจ้ง "กำลังซ่อม" (ของแถมใต้ compose · ครั้งเดียว · CAS) ◂
+  "kanban.card.moved": withAutomation(compose(async () => {}, kanbanBridge("onDormRepairCardMoved"))),
   // K1.15 — การ์ดใบใหม่ / การ์ดถูกเก็บเข้าคลัง (ยิงจาก `kanban/service.ts#createCard` และ
   // `kanban/cards.ts#archiveCard` ใน tx เดียวกับการเขียนแถว) · ยังไม่มีผลข้างเคียงภายใน
   // (ฮุคขาออก + กฎอัตโนมัติของร้านเป็นผู้บริโภคจริง) — แต่ต้องลงทะเบียนไว้ ไม่งั้นคิวตันเงียบ ๆ
@@ -786,7 +910,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // CRM C1.6 ▸ + ปิดกิจกรรม CRM ที่ผูกการ์ดนี้ (`crm.activities.onKanbanCardCompleted` · ของแถมใต้ compose — ล้ม = WARN ไม่พางานหลักล้ม ·
   //   ปิดครั้งเดียวด้วย conditional update ใน tx เดียวกับ `crm.activity.completed` ⇒ ส่งซ้ำ/พร้อมกันกี่รอบก็ผลเดียว — AUDIT-CLASS X4) ◂
   "kanban.card.completed": withAutomation(
-    compose(compose(compose(async () => {}, kanbanOutbound("cardCompleted")), memberBridge("onKanbanCardCompleted")), crmKanbanCardCompleted),
+    // SVC D.16 ▸ + การ์ดแจ้งซ่อมหอเสร็จ ⇒ คำแจ้ง DONE + event dorm.repair.done (CAS ครั้งเดียว · DONE เป็นสถานะจบ) — ต่อท้ายสุด ขาออกเดิมคงครบ ◂
+    compose(compose(compose(compose(async () => {}, kanbanOutbound("cardCompleted")), memberBridge("onKanbanCardCompleted")), crmKanbanCardCompleted), kanbanBridge("onDormRepairCardCompleted")),
   ),
   // K1.7 — เช็คลิสต์ครบทุกข้อ (ยิงจาก `kanban/checklists.ts#toggleItem` ใน tx เดียวกับการติ๊ก)
   //   🔴 ผลข้างเคียง (done/doneAt/doneById) เกิดในโมดูลไปแล้ว — consumer เป็น no-op เพื่อ
@@ -848,6 +973,17 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "account.payment.recorded": withAutomation(compose(async () => {}, crmBridge("onPaymentRecorded"))),
   "account.invoice.paid": withAutomation(compose(compose(async () => {}, kanbanBridge("onAccountDocSettled")), crmBridge("onInvoicePaid"))),
   "account.period.closed": withAutomation(async () => {}),
+  // SVC R0.5 ▸ ศูนย์เชื่อมต่อ — สถานะเปลี่ยนไปแล้วใน tx ของ service · consumer no-op เพื่อปิด event เป็น DONE + กฎอัตโนมัติ/เว็บฮุค ◂
+  "integration.connected": withAutomation(async () => {}),
+  // SVC C.3 ▸ เตือนเจ้าของร้าน (AppNotification รายเจ้าของ · ครั้งเดียวต่อเหตุ · OpsAlertState กันซ้ำ) — ข้อมูลผิดถาวรจบเงียบ ◂
+  "integration.failed": withAutomation(async (evt) => (await import("@/lib/core/integrations")).onIntegrationFailed(evt)),
+  // SVC R0.6 ▸ ตรวจสลิปกลาง — สถานะเปลี่ยนไปแล้วใน tx ของ payment/slip-verify.ts · consumer no-op (ปิด DONE + กฎอัตโนมัติ/เว็บฮุค) ·
+  //   🔴 ผลเงิน (มัดจำจองคิว/บิลหอ) ไม่อยู่ที่นี่ — consumer ของโดเมน B.8 / D.10 ต่อท้าย compose ภายหลัง (idempotent ต่อ slipId) ◂
+  "payment.slip.submitted": withAutomation(async () => {}),
+  // SVC B.8 ▸ + เงินเข้ามัดจำจองคิว (domain BOOKING · อ่านสลิปจากฐานใหม่ · idempotent ต่อสลิป/นัด) เป็นงานหลักคู่ (ล้ม = event retry · โดเมนอื่น = ไม่ทำอะไร) ◂
+  // SVC D.10 ▸ + เงินเข้าบิลหอ (domain DORM · ใบเสร็จ + ลงบัญชี · idempotent ต่อสลิป) เป็นงานหลักคู่ — ทั้งสองทางอ่านสลิปจากฐานใหม่ โดเมนอื่น = ไม่ทำอะไร ◂
+  "payment.slip.approved": withAutomation(bothMain(async (evt) => (await import("@/lib/modules/booking/deposit")).onDepositSlipApproved(evt), async (evt) => (await import("@/lib/platform/dorm-pay")).onDormSlipApproved(evt))),
+  "payment.slip.rejected": withAutomation(async () => {}),
   // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
   //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts
   //      ขาดตรงนี้ = event ค้าง PENDING ตลอดกาล และ **คิวทั้งระบบตันตามไปด้วย** (บทเรียน 30 ส.ค. 2026)
@@ -970,7 +1106,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // แล้ว — consumer นี้ทำงานจริง 1 อย่าง: **เขียนไทม์ไลน์ของเจ้าของบัตร** (บัตรที่ยังไม่มีเจ้าของในระบบ
   // = ไม่มีใครให้บันทึก จบเงียบ ๆ) + ปิด event เป็น DONE + เป็นจุดให้กฎอัตโนมัติ/เว็บฮุคยิงต่อ
   // M3.7 — ตัวเขียนย้ายไปสะพาน (recordOnce: ขาย = 1 แถวต่อบัตร · ใช้ = 1 แถวต่อการใช้ครั้งนั้น — replay ไม่ซ้ำ)
-  "giftcard.sold": withAutomation(memberBridge("onLoyaltyEvent")),
+  // POS HF-GC ▸ + ขั้นเสริมหลังไทม์ไลน์ (ไม่ใช่ขั้นแรก): ตาข่ายหนี้สิน 2110 — พังหลัง commit ขาย = ลงให้ที่นี่ · idempotent (ตัวช่วยเดียว)
+  //   · payload.accountingLink ≠ true (ขายตอนสวิตช์ปิด/แถวเก่า) = ไม่ลงย้อนหลัง · ล้ม = WARN ตามสัญญา compose ◂
+  "giftcard.sold": withAutomation(compose(memberBridge("onLoyaltyEvent"), async (evt) => {
+    const p = evt.payload as { giftCardId?: unknown; accountingLink?: unknown } | null;
+    if (!p || typeof p.giftCardId !== "string" || p.accountingLink !== true) return;
+    const gc = await import("@/lib/modules/giftcard");
+    await gc.ensureGiftCardSalePosted(evt.tenantId, p.giftCardId, { accountingLink: true });
+  })),
   "giftcard.used": withAutomation(memberBridge("onLoyaltyEvent")),
   // ── สแตมป์การ์ด (M2.3 · §7.1) ──
   // 🔴 no-op เหมือนกลุ่มแต้ม/สมาชิก: ใบสะสม · รายการตรา · รางวัล (แต้ม) ถูกเขียนครบใน transaction
@@ -1049,7 +1192,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   หา/สมัครสมาชิก (MARKETPLACE) + ผูกตัวตนช่องทาง + แต้ม (ShopOrder) + แถว PURCHASE
   // CRM C2.9 ▸ + ไทม์ไลน์ CRM ของ Party ที่ผูกออเดอร์ (กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า) — ต่อ **ท้ายสุด** ใต้ compose:
   //   สะพานสมาชิกเดิมวิ่งก่อนเหมือนเดิมทุกประการ · CRM อ่าน **แต่ id** (ไม่แตะ customerName/customerPhone ใน payload — R-E.17) ◂
-  "shop.order.paid": withAutomation(compose(memberBridge("onShopOrderPaid"), crmBridge("onBusinessEvent"))),
+  // POS P2.8 ▸ + ออเดอร์เว็บในจอ POS: ผูกบิล ECOM (saleId = posSaleId · PAID · idempotent) — ต่อท้ายสุด ◂
+  "shop.order.paid": withAutomation(compose(compose(memberBridge("onShopOrderPaid"), crmBridge("onBusinessEvent")), posOrderOnShopOrderPaid)),
   // CRM C2.9 ▸ เหตุการณ์ธุรกิจอีก 6 โมดูล (มติ C11) — ยิงใน transaction เดียวกับการเปลี่ยนสถานะของโมดูลนั้น
   //   งานหลัก = **no-op**: โมดูลต้นทางเขียนของมันครบใน tx ของตัวเองแล้ว · บรรทัดพวกนี้มีไว้ (ก) ปิด event เป็น DONE
   //   — ขาดไปแม้ตัวเดียว = แถวค้าง PENDING ตลอดกาลและคิวทั้งระบบตันเงียบ ๆ [[reference_outbox_new_event_needs_consumer]] ·
@@ -1063,6 +1207,78 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "clinic.visit.done": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
   "queue.served": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
   // ◂ CRM C2.9
+  // SVC R0.8 ▸ การครองห้องเปลี่ยน (ยิงจาก `rooms/occupancy.ts` ใน tx เดียวกับการเขียน RoomOccupancy · claim/release/move/resize/expire/backfill)
+  //   payload { unitId, roomId, from, to } (id + วันที่ล้วน) · งานหลัก = no-op (ปิด event เป็น DONE — ไม่มี consumer = คิวตัน) ·
+  //   หอ H.10 จะต่อของแถมภายหลัง · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "rooms.occupancy.changed": withAutomation(async () => {}),
+  // SVC B.4 ▸ จองคิวโหมดแถวเดียว (CC §7) — ยิงจาก `booking/queue-line.ts` + `booking/planner-run.ts` ใน tx เดียวกับ CAS ของงาน ·
+  //   payload id ล้วน (X8) · งานหลัก = no-op (สถานะ/บัตรเขียนครบใน tx ของ service แล้ว) — บรรทัดเหล่านี้ปิด event เป็น DONE
+  //   (ไม่มี consumer = คิวตัน) + ทริกเกอร์กฎอัตโนมัติ/เว็บฮุค · B.9 ต่อแจ้งเตือนลูกค้าภายหลัง
+  //   🔴 บัตรแถวเดียว **ไม่ยิง** `queue.served` (booking.completed ทำหน้าที่ VISIT ของ CRM แล้ว — ไม่ลงซ้ำ) ◂
+  "booking.created": withAutomation(async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), // SVC B.9 ▸ แจ้งเตือนลูกค้า (ของแถม · ไม่ throw) ◂
+  "booking.rescheduled": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/booking-waitlist")).onWaitlistEvent(evt))), // SVC B.17 ▸ + waitlist: ช่องเดิมของนัดที่เลื่อน ◂
+  // SVC B.8 ▸ + ยกเลิกช้า (reason CUSTOMER_LATE) ⇒ ริบมัดจำตาม % ของ snapshot ไม่เกินยอดที่ลูกค้ายอมรับ (กู้กรณีโพรเซสตายก่อนริบ · มีบิลริบแล้ว = ไม่ทำซ้ำ) ◂
+  // SVC B.17 ▸ + waitlist (ของแถมท้ายสุดผ่าน compose · ริบมัดจำเดิมวิ่งก่อน) ◂
+  "booking.cancelled": withAutomation(compose(bothMain(async () => {}, async (evt) => {
+    const p = (evt.payload ?? {}) as { appointmentId?: unknown; unitId?: unknown; reason?: unknown; depositPaid?: unknown };
+    // V2: ริบเฉพาะมัดจำที่จ่ายแล้ว ณ ตอนยกเลิก (payload ที่ยิงใน tx เดียวกับ CAS) · ริบล้ม ⇒ WARN + ค้าง FORFEIT_PENDING ให้ร้านตัดสิน (V5 · ไม่กู้อัตโนมัติ)
+    if (p.reason !== "CUSTOMER_LATE" || p.depositPaid !== true || typeof p.appointmentId !== "string" || typeof p.unitId !== "string") return;
+    const r = await (await import("@/lib/modules/booking/service")).forfeitAfterLateCancel(evt.tenantId, p.unitId, p.appointmentId);
+    if (r.reason) await logOps("WARN", "booking.deposit", `ริบมัดจำ (ยกเลิกช้า) นัด ${p.appointmentId} ไม่สำเร็จ`, { tenantId: evt.tenantId, detail: r.reason });
+  }), async (evt) => (await import("@/lib/platform/booking-waitlist")).onWaitlistEvent(evt))),
+  // SVC B.8 ▸ event มัดจำ (ยิงจาก booking/service.ts · booking/deposit.ts · payload id+ยอดล้วน) — no-op ปิด DONE + กฎอัตโนมัติ/เว็บฮุค ◂
+  "booking.deposit_paid": withAutomation(async () => {}),
+  "booking.deposit_forfeited": withAutomation(async () => {}),
+  "booking.deposit_refunded": withAutomation(async () => {}),
+  "booking.checked_in": withAutomation(async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), // SVC B.9 ▸ แจ้งเตือนลูกค้า (ของแถม · ไม่ throw) ◂
+  "booking.late": withAutomation(async () => {}),
+  "booking.started": withAutomation(async () => {}),
+  "queue.ticket.called": withAutomation(async (evt) => (await import("@/lib/platform/booking-notify")).onBookingNotifyEvent(evt)), // SVC B.9 ▸ แจ้งเตือนลูกค้า (ของแถม · ไม่ throw) ◂
+  "queue.ticket.done": withAutomation(async () => {}),
+  // ◂ SVC B.4
+  // SVC B.10 ▸ งานจองคิวรับเงินแล้ว — ยิงจาก `booking/finish.ts` (ตัวรับ pos.sale.paid ของบิลจากคิว · markPaidWithoutPos) ครั้งเดียวต่อนัด ·
+  //   งานหลัก = no-op (ปิด event เป็น DONE) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation · ตัวรับ pos.sale.paid ข้างบนต่อ `booking.onPosSalePaid`
+  //   เป็นงานหลัก (bothMain · ล้ม = event retry) ◂
+  "booking.paid": withAutomation(async () => {}),
+  // SVC D.6 ▸ เลขมิเตอร์หอผิดปกติ (HIGH/LOW/BACKWARDS/VACANT_USAGE) — ยิงจาก `dorm/meter.ts` ใน tx เดียวกับแถวเลข ·
+  //   payload { unitId, meterId, roomId (null = มิเตอร์หลัก), readingId, periodKey, flag } id ล้วน (X8) · งานหลัก = no-op
+  //   (การพักบิล/การ์ดบอร์ดงานทำใน service แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.meter.flagged": withAutomation(async () => {}),
+  // SVC D.5 ▸ ลงชื่อสัญญาเช่าหอแล้ว — ยิงจาก `dorm/lease.ts#signLease` ใน tx เดียวกับ signedAt · payload ตรง 3 คีย์ { unitId, leaseId, roomId }
+  //   (ไม่มีชื่อ/เบอร์/เงิน · X8) · งานหลัก = no-op · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation · renewed/ended = D.12 ◂
+  "dorm.lease.signed": withAutomation(async () => {}),
+  // SVC D.8 ▸ ส่งบิลหอแล้ว (ต่อบิล) — ยิงจาก `dorm/billing.ts#sendBillRun` ใน tx เดียวกับการตั้ง SENT · key `dorm.billrun.sent:<billId>` ·
+  //   payload ตรง 6 คีย์ { unitId, runId, billId, leaseId, periodKey, amountSatang } (ไม่มีชื่อ/เบอร์ · X8) · งานหลัก = hook ว่าง
+  //   ให้ D.9 ใส่ notifyCustomer (ผ่าน outbox concurrency — ห้าม loop ส่งใน request) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.billrun.sent": withAutomation(async (evt) => (await import("@/lib/platform/dorm-line")).onDormBillSent(evt)), // SVC D.9 ▸ ส่งบิลถึงผู้เช่า (อ่านสด · notifyCustomer · ไม่ throw) ◂
+  // SVC D.11 ▸ บิลหอเลยกำหนดและยังค้าง (ครั้งเดียวต่อบิล) — ยิงจาก `dorm/dunning.ts#runDormDunningJobs` · key `dorm.bill.overdue:<billId>` ·
+  //   payload ตรง 7 คีย์ { unitId, billId, leaseId, periodKey, dueDate, outstandingSatang, daysLate } (ไม่มีชื่อ/เบอร์ · X8) · งานหลัก = no-op
+  //   (ข้อความทวงส่งใน dunning ผ่าน notifyCustomer แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.bill.overdue": withAutomation(async () => {}),
+  // SVC D.18 ▸ พัสดุหอ — ยิงจาก `dorm/parcel.ts` ใน tx เดียวกับแถว (received · key `dorm.parcel.received:<parcelId>`) / CAS รับของ (picked_up ·
+  //   key `dorm.parcel.picked_up:<parcelId>`) · payload ตรง 3 คีย์ { unitId, parcelId, roomId } (ไม่มีชื่อ/เบอร์/token · X8)
+  //   received = แจ้งผู้เช่าทาง LINE (อ่านสด · notifyCustomer · ไม่ throw) · picked_up = no-op · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.parcel.received": withAutomation(async (evt) => (await import("@/lib/modules/dorm")).onParcelReceived(evt)),
+  "dorm.parcel.picked_up": withAutomation(async () => {}),
+  // SVC D.17 ▸ เผยแพร่ประกาศหอแล้ว — ยิงจาก `dorm/announce.ts#publishDormAnnouncement` ใน tx เดียวกับ CAS publishedAt · key `dorm.announcement.published:<announcementId>` ·
+  //   payload ตรง 3 คีย์ { unitId, announcementId, audience (kind) } (ไม่มีหัวเรื่อง/เนื้อหา/ชื่อ/เบอร์ · X8) · งานหลัก = ส่ง LINE ผ่าน notifyCustomer
+  //   (อ่านสด · ผู้รับคิด ณ ตอนส่ง · dedupe ต่อคน · ไม่ throw) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.announcement.published": withAutomation(async (evt) => (await import("@/lib/platform/dorm-announce")).onDormAnnouncementPublished(evt)),
+  // SVC D.10 ▸ บิลหอจ่ายครบ/จ่ายบางส่วน — ยิงจาก `platform/dorm-pay.ts` ต่อ (บิล, ใบเสร็จ) · ปิด DONE + ทริกเกอร์ automation/webhook ◂
+  "dorm.bill.paid": withAutomation(async () => {}),
+  "dorm.bill.partially_paid": withAutomation(async () => {}),
+  // SVC D.16 ▸ แจ้งซ่อมหอ — ยิงจาก `dorm/repair.ts` ใน tx เดียวกับแถว (created · key `dorm.repair.created:<repairId>`) / CAS → DONE
+  //   (done · key `dorm.repair.done:<repairId>`) · payload ตรง 4 คีย์ { unitId, repairId, roomId, category } (ไม่มีชื่อ/เบอร์/ข้อความผู้เช่า · X8)
+  //   created ⇒ การ์ดบอร์ดงาน (สะพาน · ไม่มีบอร์ดตามหมวด = รอตัวกวาด) · done ⇒ LINE ซ่อมเสร็จครั้งเดียว (dedupe) + ย้ายการ์ดเข้าคอลัมน์เสร็จ
+  "dorm.repair.created": withAutomation(kanbanBridge("onDormRepairCreated")),
+  "dorm.repair.done": withAutomation(compose(async (evt) => (await import("@/lib/modules/dorm")).onRepairDone(evt), kanbanBridge("onDormRepairDone"))),
+  // ◂ SVC D.16
+  // SVC D.12 ▸ ย้ายออก/คืนประกัน/ต่อสัญญา — ยิงจาก `dorm/moveout.ts` · `dorm/lease-change.ts` ใน tx เดียวกับสถานะ · payload id/ยอด ล้วน (X8) ·
+  //   งานหลัก = no-op (ข้อความถึงผู้เช่าส่งใน service ผ่าน notifyCustomer แล้ว) · กฎอัตโนมัติ/เว็บฮุคได้จาก withAutomation ◂
+  "dorm.moveout.settled": withAutomation(async () => {}),
+  "dorm.deposit.refund_due": withAutomation(async () => {}),
+  "dorm.lease.renewed": withAutomation(async () => {}),
+  "dorm.lease.ended": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่
@@ -1249,6 +1465,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "member.erased": crmFirst(async (evt) => {
     const crm = await import("@/lib/modules/crm");
     await crm.privacy.onMemberErased({ tenantId: evt.tenantId, payload: evt.payload });
+    // POS P1.12 ▸ R9 Q8: ล้างชื่อ/เบอร์ปิดบังในสำเนาสมาชิกบนบิล POS ของคนนี้ (idempotent · หลังตัวรับของ CRM) ◂
+    await (await import("@/lib/modules/pos/register-member")).posMemberErased({ tenantId: evt.tenantId, payload: evt.payload });
   }, withAutomation(async () => {})),
   "crm.contact.erased": crmFirst(async (evt) => {
     const crm = await import("@/lib/modules/crm");
@@ -1256,6 +1474,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   }, withAutomation(async () => {})),
   // ◂ CRM C3.9
 };
+
+// POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —
+//   งานหลักขั้นถัดจากงานเดิมของ "pos.sale.refunded" (bothMain: วิ่งทั้งคู่ · ล้มตัวใด = event retry · idempotent ต่อใบคืน) · ห่อจากภายนอก ไม่แก้บรรทัดเดิม
+baseConsumers["pos.sale.refunded"] = bothMain(baseConsumers["pos.sale.refunded"]!, async (evt) => (await import("@/lib/modules/pos/crm-link")).dealOnSaleRefunded(evt));
+// ◂ POS P3.6
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
 export const consumers: Record<string, OutboxHandler> = Object.fromEntries(
@@ -1287,3 +1510,16 @@ export function scheduleDrain(): void {
   //   ผ่านจุดเดียวกับ `wakeOutbox` ของ CRM (`core/after-drain.ts`) — การระบายที่ตั้งไว้แล้วแต่ยังไม่เริ่มไม่ถูกตั้งซ้ำ ◂
   scheduleCoalescedDrain(() => drainAll());
 }
+
+// POS P3.7 ▸ ตัวรับคิวของ POS ↔ แชท (composition root `src/lib/pos-chat-bridges.ts` · โหลดตอนใช้ — ไม่มีเส้น pos↔chat)
+//   เป็น "ของแถม" เสมอ (ข้อความแชทล้มห้ามพาบัญชี/สต็อก/ออเดอร์ retry) · ตัวรับเองไม่ throw · โหลดไม่ได้ = WARN
+function posChat(name: "onSalePaidChat" | "onSaleRefundedChat" | "onOrderEventChat" | "onIntentPaidChat" | "onChatMessageReceivedBot"): OutboxHandler {
+  return async (evt) => {
+    try {
+      await (await import("@/lib/pos-chat-bridges"))[name](evt);
+    } catch (e) {
+      await logOps("WARN", "outbox", `ขั้นแชทของ POS (${name}) ของ "${evt.type}" ล้มเหลว`, { tenantId: evt.tenantId, detail: errDetail(e) });
+    }
+  };
+}
+// ◂ POS P3.7

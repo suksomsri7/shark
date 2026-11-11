@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { loadAccountSystem } from "@/lib/modules/account/guard";
+import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan, accountCan } from "@/lib/modules/account/access";
 import {
   listJournalPaged,
@@ -48,6 +48,7 @@ export default async function JournalPage({
   const { id } = await params;
   const sp = await searchParams;
   const { auth, tenantId, systemId } = await loadAccountSystem(id);
+  accountPageGate(auth, "account.journal.view"); // SVC G2-F F2 ▸ ไม่มีสิทธิ์ ⇒ ไม่พบ (ไม่ใช่ 500) ◂
   assertAccountCan(auth, "account.journal.view");
   const ctx = { tenantId, systemId };
   const base = `/app/sys/${id}/account`;

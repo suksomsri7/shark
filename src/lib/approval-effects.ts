@@ -155,6 +155,33 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
     return;
   }
 
+  // SVC R0.3 ▸ `settings.legal_override` — ข้ามคำเตือนกฎหมายในค่าตั้ง (โหมด WARN) ที่ผู้ไม่ใช่เจ้าของยื่น
+  //   entityId = id ข้อเสนอ (AuditLog settings.legal_override.proposed) · อนุมัติ = เขียนค่าตามข้อเสนอ (legalLevel WARN · approvalId = requestId)
+  //   ปฏิเสธ = ไม่ทำอะไร · idempotent ใต้ล็อกของข้อเสนอ (เครื่องหมาย "ใช้แล้ว" ⇒ เงียบ) · ผู้อนุมัติต้องเป็นเจ้าของ · ตรวจซ้ำทุกด่าน · ใช้ไม่ได้/ค่าเปลี่ยน ⇒ WARN แล้วจบ
+  //   dynamic import: facade ค่าตั้ง → approval facade → outbox (เลี่ยงวงโหลดไฟล์แบบกิ่งสมาชิก) ◂
+  if (entityType === "settings.legal_override") {
+    if (!approved || !requestId) return;
+    const settings = await import("@/lib/core/settings");
+    const r = await settings.applyLegalOverrideApproval({ tenantId: evt.tenantId, requestId, proposalId: entityId });
+    if (r.status === "INVALID" || r.status === "STALE") {
+      const why = r.status === "STALE" ? `ค่าถูกแก้ระหว่างรออนุมัติ (${r.detail ?? ""})` : (r.detail ?? "ข้อเสนอใช้ไม่ได้");
+      await logOps("WARN", "settings", `ใช้ผลอนุมัติข้ามคำเตือนกฎหมายไม่ได้ (${why}) — คำขอ ${requestId}`, { tenantId: evt.tenantId });
+    }
+    return;
+  }
+  // ◂ SVC R0.3
+
+  // SVC D.11 ▸ `dorm.latefee.waive` — ยกเว้นค่าปรับจ่ายช้า (หอ) ที่ผู้ไม่ใช่เจ้าของยื่น · entityId = บิลต้นทาง
+  //   อนุมัติ = ยกเว้นในนามผู้ตัดสินขั้นสุดท้าย (ต้องเป็นเจ้าของสด · ตรวจใน dorm) · ปฏิเสธ = ไม่ทำอะไร · idempotent ใต้ล็อกสัญญา (ซ้ำ = ALREADY)
+  //   dynamic import facade หอ (เลี่ยงวงโหลดไฟล์ · แบบกิ่งค่าตั้ง) · งานตามเวลา dorm.dunning กวาดคำขอที่อนุมัติแล้วแต่ยังไม่ยกเว้นเป็นทางสำรอง ◂
+  if (entityType === "dorm.latefee.waive") {
+    if (!approved || !requestId) return;
+    const r = await (await import("@/lib/modules/dorm")).applyLateFeeWaiverApproval({ tenantId: evt.tenantId, requestId, sourceBillId: entityId });
+    if (r.status === "INVALID") await logOps("WARN", "dorm", `ใช้ผลอนุมัติยกเว้นค่าปรับไม่ได้ (${r.reason ?? "คำขอใช้ไม่ได้"}) — คำขอ ${requestId}`, { tenantId: evt.tenantId });
+    return;
+  }
+  // ◂ SVC D.11
+
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

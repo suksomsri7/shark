@@ -21,6 +21,9 @@ import { evaluate } from "@/lib/core/rbac";
 // CRM uiVersion gate ▸ ตัวอ่าน settings.crm แบบบริสุทธิ์ (แปลงค่าจาก JSON · ค่าเริ่มต้น uiVersion 1) ◂
 import { crmCan, parseCrmSettings } from "@/lib/modules/crm";
 import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
+// POS P1.3 B2.1 ▸ ตัวอ่านธงหน้าขายใหม่ (บริสุทธิ์ · ตัวเดียวกับ register/page.tsx) ◂
+import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
+import { getTranslations } from "next-intl/server"; // POS P1.18 ▸ R13c ◂
 
 // ฟังก์ชันย่อยของ "ระบบหน้า fixed" (เช่น KB /app/kb) → กาง accordion เหมือนระบบอื่น
 // ⚠️ ทุก href ต้องมี page.tsx จริง — ตรวจโดย scripts/qc-nav-functions.mts (บล็อก KB)
@@ -61,6 +64,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // "แตกฟังก์ชันย่อยในเมนู" — ทุกระบบที่มี sub-route จริงจะกาง submenu (accordion) ใต้ชื่อระบบ
   // business = ต่อด้วย slug (/app/u/<slug>/...) · feature = ต่อด้วย id (/app/sys/<id>/...)
   // ⚠️ ทุก href ที่นี่ต้องมี page.tsx จริง (กัน dead link) — ตรวจโดย scripts/qc-nav-functions.mts
+  const posNav = await getTranslations("pos"); // POS P1.18 ▸ R13c ป้ายแท็บ POS จาก messages ◂
   const childrenFor = (
     type: string,
     slugOrId: string,
@@ -106,7 +110,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             { href: `${b}/booking/services`, label: "บริการ" },
             { href: `${b}/booking/staff`, label: "ใครรับคิว" },
             { href: `${b}/booking/hours`, label: "เวลาทำการ" },
-            { href: `${b}/booking/setup`, label: "ตั้งค่า" },
+            // SVC G1-A2 ▸ "ตั้งค่า" ชี้หน้าตั้งค่าการจองจริง (/booking/settings · B.11) — /booking/setup เป็นหน้าเปลี่ยนทางของลิงก์เก่า (ไปหน้าบริการ)
+            //   ปฏิทินนัด/ของฉัน (B.5 · หน่วยแถวเดียว) อยู่ในแถบแท็บของโมดูล (booking/layout.tsx) · ข้อความแจ้งเตือนอยู่ในเมนูหมวดตั้งค่า · จอทีวี อยู่ที่ปุ่มบนคิววันนี้ ◂
+            { href: `${b}/booking/settings`, label: "ตั้งค่า" },
           ];
         default:
           return undefined; // RENTAL/SCHOOL/CLINIC = หน้าเดียว ไม่ต้องกาง
@@ -115,12 +121,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     const s = `/app/sys/${slugOrId}`;
     switch (type) {
       case "POS":
+        // POS P1.18 ▸ R13c: ป้ายจาก messages pos.nav.* (ชุดเดียวกับ posTabs · ตามภาษาของผู้ใช้) — href ต้องตรงกับ posTabs ◂
         return [
-          { href: s, label: "ภาพรวม" },
-          { href: `${s}/pos/register`, label: "ขายหน้าร้าน" },
-          { href: `${s}/pos/products`, label: "สินค้า/บริการ" },
-          { href: `${s}/pos/sales`, label: "ประวัติบิล" },
-          { href: `${s}/pos/close`, label: "ปิดวัน" },
+          { href: s, label: posNav("nav.overview") },
+          { href: `${s}/pos/register`, label: posNav("nav.register") },
+          // POS P2.14 ▸ U3 (qc-nav-functions S5): หน้าที่เปิดใช้จริงแล้ว — โต๊ะ (P2.4U) · ออเดอร์ออนไลน์ (P2.8U) · จอครัว (P2.6U) · โปรราคา (P2.2U) · พิมพ์รายงาน (P2.12U) — ป้ายจาก messages ที่มีอยู่ ◂
+          { href: `${s}/pos/tables`, label: posNav("register.tabs.tables") }, // POS P2.14 ▸ U3 ◂
+          { href: `${s}/pos/orders`, label: posNav("register.tabs.onlineOrders") }, // POS P2.14 ▸ U3 ◂
+          { href: `${s}/pos/kds`, label: posNav("kds.title") }, // POS P2.14 ▸ U3 ◂
+          { href: `${s}/pos/products`, label: posNav("nav.products") },
+          { href: `${s}/pos/products/price-rules`, label: posNav("price.rule.title") }, // POS P2.14 ▸ U3 ◂
+          { href: `${s}/pos/stock`, label: posNav("nav.stock") }, // POS P1.14 U ▸ ต้องตรงกับ posTabs ◂
+          { href: `${s}/pos/sales`, label: posNav("nav.sales") },
+          { href: `${s}/pos/shifts`, label: posNav("nav.shifts") }, // POS P1.9 U ▸ ต้องตรงกับ posTabs ◂
+          { href: `${s}/pos/close`, label: posNav("nav.close") },
+          { href: `${s}/pos/reports`, label: posNav("nav.reports") }, // POS P1.17 U ▸ ต้องตรงกับ posTabs ◂
+          { href: `${s}/pos/reports/print`, label: posNav("report.print.button") }, // POS P2.14 ▸ U3 ◂
+          { href: `${s}/pos/settings`, label: posNav("nav.settings") }, // POS P1.10 U ▸ ต้องตรงกับ posTabs ◂
+          { href: `${s}/pos/help`, label: posNav("settings.helpLink") }, // POS P6.2 ▸ CD-P62-O1 (qc-nav-functions S5) ◂
         ];
       case "ACCOUNT":
         // เจ้าของสั่ง 6 ก.ย. 2569: ไม่เอาเมนูย่อยของบัญชีในแถบเมนู — หมวดทั้ง 9 อยู่ในหน้าหลักของระบบบัญชีแล้ว
@@ -373,6 +391,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // ได้มาจาก appSystems ที่ query ไปแล้วข้างบน ⇒ ไม่มี query เพิ่มใน layout เลย
   // ร้านที่ไม่ได้เปิดระบบแชท = ลิสต์ว่าง → ฝั่ง client ไม่ถามตัวเลขนี้เลย (ดู loadNavBadgesAction)
   const chatSystemIds = appSystems.filter((s) => s.type === "CHAT").map((s) => s.id);
+  // POS P1.3 B2.1 ▸ ระบบ POS ที่ธง settings.pos.registerV2 เปิด — shell บังคับรางบนหน้าขายของระบบเหล่านี้เท่านั้น (ไม่มี query เพิ่ม) ◂
+  const posRegisterV2Ids = appSystems.filter((s) => s.type === "POS" && posRegisterV2On(s.settings)).map((s) => s.id);
   // CRM C1.7 ▸ ลิงก์ "ทีมขาย" ในเมนูตั้งค่า: เฉพาะร้านที่มีระบบ CRM และผู้ใช้เป็นเจ้าของร้าน/ถือคีย์ crm.team.manage (หน้าเป็น 404 สำหรับคนอื่น) ◂
   const showTeams = appSystems.some((x) => x.type === "CRM") && (auth.active.role === "OWNER" || crmCan(membershipOf(auth), "crm.team.manage"));
 
@@ -402,12 +422,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         openedCodes={openedCodes}
         chatSystemIds={chatSystemIds}
         showTeams={showTeams}
+        posRegisterV2Ids={posRegisterV2Ids}
         // รายชื่อกิจการทั้งหมดของ user (สำหรับ dropdown สลับกิจการในหัว drawer)
         memberships={auth.memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenant.name, role: m.role }))}
         activeTenantId={auth.active.tenantId}
       />
       {/* ระยะขอบ (รวมการเว้นที่ให้แถบเมนูปักซ้ายบนจอใหญ่) อยู่ใน AppMain */}
-      <AppMain chatSystemIds={chatSystemIds} navCollapsed={prefs.navCollapsed}>
+      <AppMain chatSystemIds={chatSystemIds} navCollapsed={prefs.navCollapsed} posRegisterV2Ids={posRegisterV2Ids}>
         {children}
       </AppMain>
     </div>

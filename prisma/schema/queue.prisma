@@ -168,6 +168,7 @@ model QueueTicket {
   issuedBy                 String? // userId (channel STAFF/KIOSK)
   // CRM v2 (crm_v2_a · C11) — Party กลาง · nullable · ไม่มี FK (แบบ TicketOrder/HotelReservation)
   partyId        String?
+  etaAt          DateTime? // SVC B.0 — เวลาคาดว่าจะถึงคิว
 
   events QueueTicketEvent[]
 

@@ -410,7 +410,7 @@ async function storeCompletion(ctx: KanbanCtx): Promise<((prompt: string) => Pro
           // หนี้เดียวกับ K3.5: enum `AiCreditSource` ยังไม่มีช่องของบอร์ดงาน
           source: "CHAT_SUGGEST",
           model: reply.model || providerMod.SMART_MODEL,
-          tokensIn: reply.tokensIn,
+          tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead,
           tokensOut: reply.tokensOut,
           ...(ctx.actorUserId ? { userId: ctx.actorUserId } : {}),
           note: "เรียบเรียงคำแนะนำกฎอัตโนมัติ (K3.6)",

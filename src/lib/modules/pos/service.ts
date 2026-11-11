@@ -1,10 +1,29 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/core/db";
-import type { Prisma, PrismaClient, PosPayType } from "@prisma/client";
+import { Prisma, type PrismaClient, type PosPayType, type Role } from "@prisma/client";
 import * as coupon from "@/lib/modules/coupon/service";
 import * as inventory from "@/lib/modules/inventory/service";
+// POS P2.3 ▸ R5: ตัดสต็อกของบิลเป็นชุดเดียว (tx เดียว) ผ่าน facade ของคลัง — POS ห้ามเรียก consumeBatch จาก inventory/service ตรง (ST3) ◂
+import { consumeBatch } from "@/lib/modules/inventory";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
+// POS P1.6 ▸ ถอด VAT สูตรเดียวกับสะพานบัญชี (R1) ◂
+import { splitIncludedVat } from "@/lib/money/vat";
+import { parsePosPaymentSettings, tipLedgerOk } from "./payment-settings";
+// POS P1.9 ▸ ค่าตั้งกะ (otherSources) — ตัวอ่านเดียวกับ shift.ts ◂
+import { parseShiftSettings } from "./shift";
+import { posDayCutoffMinutes } from "./settings-shared"; // POS P1.18 ▸ มติ Q9 ตัดวัน ◂
+// POS P1.11 ▸ R1: โทเคนใบเสร็จออนไลน์ตั้งใน tx เดียวกับบิล (ทุก sourceModule) ◂
+import { newReceiptToken } from "./receipt-token";
+import type { TaxInvoiceSnapshot } from "./tax-invoice-shared"; // POS P1.13 ▸ R1 ◂
+// POS P2.1 ▸ ช่องทางขาย: ตัวแก้ช่องทางของบิล (ผู้เขียนตาราง = channel.ts) + คณิตค่าคอมฯ (บริสุทธิ์) ◂
+import { resolveSaleChannel } from "./channel";
+import { CHANNEL_REF_MAX, channelCommission, defaultChannelCode } from "./channel-shared";
+import { PRICE_RULE_ID_MAX, PRICE_SOURCES } from "./price-shared"; // POS P2.2 ▸ R7 ◂
+// POS P2.3 ▸ §9 Q8 ตัดสต็อกค้าง: สิทธิ์ pos.settings.manage ที่สาขา (ตัวตัดสินเดียวกับหน้าขาย) · ชนิดผลอยู่ใน register-shared (จอ P2.3U import ได้) ◂
+import { canAccessUnit, evaluate } from "@/lib/core/rbac";
+import type { RetryPendingStockCutsResult } from "./register-shared";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 //
@@ -19,7 +38,8 @@ type Client = PrismaClient | Prisma.TransactionClient;
 
 async function withTx<T>(client: Client, fn: (tx: Client) => Promise<T>): Promise<T> {
   if ("$transaction" in client && typeof client.$transaction === "function") {
-    return (client as PrismaClient).$transaction((tx) => fn(tx));
+    // POS P1.6 ▸ BLOCK รอล็อกแถวสินค้าในtx (คิวขายชิ้นสุดท้าย) — เวลา 5 วิปริยายของ Prisma ไม่พอ ◂
+    return (client as PrismaClient).$transaction((tx) => fn(tx), { timeout: 20_000, maxWait: 10_000 });
   }
   return fn(client);
 }
@@ -28,6 +48,18 @@ function bkkPeriod(): string {
   const d = new Date(Date.now() + 7 * 3600000);
   return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
+// POS P3.4 ▸ R7 มติ 3: บิลออฟไลน์ — เดือนของเลขใบเสร็จ = เดือนไทยของ soldAt · soldAt/เลข OFF ผิดรูป = VALIDATION (ผู้ส่ง offline-sync ตรวจกรอบเวลาแล้ว)
+function bkkPeriodOf(at: Date): string {
+  const d = new Date(at.getTime() + 7 * 3600000);
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+function saleOfflineSoldAt(input: CreateSaleInput): Date | null {
+  if (input.offline === undefined || input.offline === null) return null;
+  const o = input.offline;
+  const at = o.soldAt instanceof Date ? o.soldAt : typeof o.soldAt === "string" ? new Date(o.soldAt) : new Date(Number.NaN);
+  if (typeof o.ref !== "string" || !/^OFF-[A-Z0-9]{1,8}-[0-9]{4,8}$/.test(o.ref) || !Number.isFinite(at.getTime())) throw new PosSaleError("VALIDATION", "ข้อมูลบิลออฟไลน์ไม่ถูกต้อง");
+  return at;
+} // ◂
 
 /**
  * สิทธิ์สมาชิกที่พนักงาน/ลูกค้า "เลือกใช้" กับบิลนี้ (M2.8 · §9.1)
@@ -38,6 +70,11 @@ export type MemberSaleChoices = {
   points?: number;
   giftCard?: { number: string; pin: string; satang: number };
 };
+
+/** POS P1.2 R4: ตัวเลือกที่เลือกบนบรรทัด (สำเนา ณ เวลาขาย · priceDeltaSatang รวมอยู่ใน unitPriceSatang ของบรรทัดแล้ว) */
+export type SaleLineOption = { choiceId: string; groupId: string; groupName: string; choiceName: string; priceDeltaSatang: number };
+/** POS P1.2 R8: ส่วนประกอบของชุดต่อ 1 หน่วย (ตัดสต็อก qty × line.qty) */
+export type SaleLineComponent = { invItemId: string; qty: number };
 
 export type CreateSaleInput = {
   tenantId: string;
@@ -54,12 +91,87 @@ export type CreateSaleInput = {
   idempotencyKey: string;
   // itemId = InvItem.id ที่ผูก → ตัดสต็อก + COGS perpetual (null/ไม่ระบุ = รายการเพิ่มเอง/บริการ ไม่ตัดสต็อก)
   // serviceId = BookingService.id (บริการ) → ใช้แยกยอดสินค้า/บริการในรายงาน · ไม่ตัดสต็อก
-  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; itemId?: string; serviceId?: string }[];
+  // productId = PosProduct.id (POS P1.3 ▸ หน้าขายใหม่ส่งมา · ฟิลด์เพิ่มแบบไม่บังคับ — ผู้เรียกเดิมไม่ส่ง = null เหมือนเดิม ◂)
+  // note = หมายเหตุบรรทัด/เหตุผลส่วนลด (POS P1.6 R5 · ≤500 ตัว · ไม่ส่ง = null)
+  // POS P1.2 (เพิ่มล้วน · ไม่ส่ง = เหมือนเดิม): options = สำเนาตัวเลือก → PosSaleLineOption · components = ส่วนประกอบชุด (ตัดสต็อกต่อส่วนประกอบ) ·
+  //   weightGrams = น้ำหนักบรรทัดชั่ง (qty ต้องเป็น 1 · ตัดสต็อก itemId เป็นกรัม)
+  lines: {
+    name: string;
+    qty: number;
+    unitPriceSatang: number;
+    discountSatang?: number;
+    itemId?: string;
+    serviceId?: string;
+    productId?: string;
+    note?: string;
+    options?: SaleLineOption[];
+    components?: SaleLineComponent[];
+    weightGrams?: number;
+    // POS P2.2 ▸ R7 (เพิ่มล้วน · ไม่ส่ง = null = BASE/ไม่ทราบ · ไม่อยู่ใน samePayload · createSale ไม่คิดราคาเอง — CD3):
+    //   สำเนาชั้นราคาที่ผู้เรียกใช้ (ตัวแก้ราคา price-shared.ts / resolvePrices) · ผิดรูป = VALIDATION ไม่มีบิล ◂
+    priceSource?: "BASE" | "BRANCH" | "CHANNEL" | "RULE" | "OPEN" | "CUSTOM" | "WEIGHED";
+    priceRuleId?: string;
+    listPriceSatang?: number;
+    // SVC B.10 ▸ ผู้ให้บริการของบรรทัด (HrEmployee.id · id หลวม · บิลจากคิวส่งมา) → PosSaleLine.performerEmployeeId ·
+    //   เพิ่มล้วน · ไม่ส่ง = null · ไม่อยู่ใน samePayload (ความหมายคีย์ซ้ำเดิมทุกไบต์) ◂
+    performerEmployeeId?: string;
+  }[];
   billDiscountSatang?: number;
   // คูปอง (contract 2.3) — ต้องมาคู่กันเสมอ · ระบุแล้วใช้ไม่ได้ = โยน error (ห้ามขายต่อเงียบ ๆ)
   couponSystemId?: string;
   couponCode?: string;
-  payMethods: { type: PosPayType; amountSatang: number; refSaleId?: string }[];
+  // POS P1.6 (เพิ่มล้วน · ไม่ส่ง = พฤติกรรมเดิม):
+  //   cashTenderedSatang = เงินที่รับจริงของแถว CASH (≥ ยอดแถว · ทอน = รับ − ยอดแถว เก็บบนแถวนั้น) · reference = เลขอ้างอิงบัตร/EDC
+  // POS P2.9 (R3 · มติ 3 4 · เพิ่มล้วน): giftCard = บัตรของขวัญของแถว GIFT_CARD เท่านั้น {number, pin} (ตัดยอดใน tx ของบิล · ≤ 3 ใบไม่ซ้ำ)
+  payMethods: { type: PosPayType; amountSatang: number; refSaleId?: string; cashTenderedSatang?: number; reference?: string; giftCard?: { number: string; pin: string } }[];
+  /** หมายเหตุบิล (≤500 ตัว) */
+  note?: string;
+  /** ค่าบริการ (สตางค์ · รวมอยู่ใน grandTotal และฐาน VAT) — ผู้เรียกคิดเอง · ไม่ส่ง = 0 (ผู้เรียกเดิมที่มีบรรทัดค่าบริการของตัวเองไม่โดนคิดซ้ำ) */
+  serviceChargeSatang?: number;
+  /** ทิป (สตางค์ · ไม่ใช่รายได้ · ไม่อยู่ใน grandTotal/ฐาน VAT) ⇒ Σ payMethods = grandTotal + tip (มติ §8 ข้อ 1) */
+  tipSatang?: number;
+  /**
+   * POS P1.9 (S5/S6 · เพิ่มล้วน): กะที่บิลนี้ผูก — string = ล็อกแถวกะ FOR SHARE ในtx ของบิล (ไม่พบ/คนละร้าน-สาขา-ระบบ = SHIFT_REQUIRED ·
+   * ไม่ OPEN = SHIFT_CLOSED) · null = ผู้เรียก (หน้าขาย) ตัดสินแล้วว่านอกกะ · ไม่ส่ง = ผู้เรียกเดิม: นอกกะเหมือนวันนี้ เว้นแต่ค่าตั้ง
+   * `pos.shift.required.otherSources` เปิด (0 กะเปิด = SHIFT_REQUIRED · 1 กะ = ผูกกะนั้น · 2+ = นอกกะ)
+   */
+  shiftId?: string | null;
+  /**
+   * POS P1.17 (R6 · Q17.1 · เพิ่มล้วน): ผู้ขายของบิล (User.id) — เก็บตามที่ส่ง · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ)
+   * ไม่อยู่ใน payload ของคีย์ซ้ำ (samePayload) ⇒ ความหมาย idempotency เดิมทุกไบต์ · รายงานพนักงาน (reports.ts) อ่าน
+   */
+  soldByUserId?: string;
+  /**
+   * POS P1.13 (R1 R2 · เพิ่มล้วน): สำเนาผู้ซื้อใบกำกับภาษีเต็มรูป (ผู้เรียกแกะด้วย parseTaxInvoiceBuyer แล้ว + requestedAt ISO)
+   * เขียนลง PosSale.taxInvoice ใน tx ของบิล · consumer pos.sale.paid ออก TAX_INVOICE แทน ABB · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ)
+   * ไม่อยู่ใน payload ของคีย์ซ้ำ (samePayload) ⇒ ความหมาย idempotency เดิมทุกไบต์
+   */
+  taxInvoice?: TaxInvoiceSnapshot;
+  /**
+   * POS P1.12 (R9 · เพิ่มล้วน): สำเนาสมาชิก ณ ตอนขาย {name, memberCode, phoneMasked, tierKey, tierName} (หน้าขายส่งจาก briefFor · ไม่มีเบอร์เต็ม) ·
+   * เขียนลง PosSale.memberSnapshot ใน tx ของบิล · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ) · ไม่อยู่ใน samePayload · ห้ามแก้หลัง commit (ยกเว้น PDPA)
+   */
+  memberSnapshot?: { name: string | null; memberCode: string; phoneMasked: string | null; tierKey: string | null; tierName: string | null };
+  /**
+   * POS P2.1 (R4 · เพิ่มล้วน): ช่องทางขาย (SalesChannel.id ของร้าน + สาขานี้ · ไม่เก็บ · เปิดใช้งาน ไม่งั้น CHANNEL_INVALID) ·
+   * ไม่ส่ง = ช่องทางปริยายตาม sourceModule (ECOM → WEB · อื่น → STORE · CD2) · ช่องทาง payout PLATFORM ⇒ ชำระ PLATFORM แถวเดียวเต็มยอด (R5) ·
+   * อยู่ใน payload ของคีย์ซ้ำ (samePayload) **เฉพาะเมื่อส่งมา** (CD3 — ผู้เรียกเดิมเหมือนเดิมทุกไบต์) · บิลขายบัตรกำนัล (MEMBER) = STORE เสมอ
+   */
+  channelId?: string;
+  /** POS P2.1 (R4 · เพิ่มล้วน): เลขออเดอร์ของแพลตฟอร์ม (ตัดช่องว่าง · ≤ 40 ตัว ไม่งั้น VALIDATION · ว่าง = null) · ไม่อยู่ใน samePayload */
+  channelRef?: string;
+  // POS P3.4 ▸ R7 มติ 3 (เพิ่มล้วน): บิลที่เครื่องขายตอนออฟไลน์แล้วซิงก์ (ผู้ส่งเดียว = pos/offline-sync.ts ผ่าน submitRegisterSale) —
+  //   ref = เลข OFF ของเครื่อง → PosSale.offlineRef (unique ต่อสาขา) · soldAt = เวลาขายของเครื่อง → paidAt (GL = เวลาขาย) + เดือนของเลขใบเสร็จ ·
+  //   syncedAt = เวลาเซิร์ฟเวอร์ · createdAt ไม่ย้อน · ไม่ส่ง = บิลออนไลน์เหมือนเดิมทุกไบต์ · ไม่อยู่ใน samePayload
+  offline?: Readonly<{ ref: string; soldAt: Date | string }>; // ◂
+  // POS P3.6 ▸ R5 R6 R10 R13 มติ 5 8 (เพิ่มล้วน · ไม่ส่ง = เดิมทุกไบต์ · ไม่อยู่ใน samePayload):
+  //   customerPartyId = Party (kind COMPANY) ของร้าน — ลูกค้าองค์กรของบิล (ผู้ติดต่อสมุดของบิล = บริษัทนี้ก่อนสมาชิก) · ผิด = CUSTOMER_INVALID ·
+  //   crmDealId = ดีลที่บิลตั้งใจผูก (intent · สะพาน CRM สร้างแถวเงินเอง + ตัวกวาด) · memberAttachOnly = แนบสมาชิกเฉย ๆ (ไม่คิดสิทธิ์/ส่วนลดระดับ · บิลออเดอร์) ·
+  //   creditOverrideByUserId = ผู้อนุญาตเกินวงเงินวางบิล (หน้าขายตั้งหลัง PIN ผู้จัดการ · createSale ตรวจซ้ำว่าถือ pos.credit.manage — CD-2) ◂
+  customerPartyId?: string;
+  crmDealId?: string;
+  memberAttachOnly?: boolean;
+  creditOverrideByUserId?: string;
 };
 
 export type SaleResult = {
@@ -67,7 +179,544 @@ export type SaleResult = {
   receiptNo: string | null;
   grandTotalSatang: number;
   pointEarned: number;
+  /** POS P1.6 R6: สถานะของบิล — คีย์ซ้ำคืนบิลเดิมพร้อมสถานะจริง (บิลที่ถูก void = "VOIDED" ให้ผู้เรียกตัดสินเอง) */
+  status?: string;
 };
+
+// ── POS P1.6: รหัสปฏิเสธของ createSale (โยนเป็น error ที่มี .code คงที่ · ข้อความไทยไม่มีศัพท์เทคนิค) ──
+export type PosSaleErrorCode =
+  | "VALIDATION"
+  | "SPLIT_INVALID"
+  | "PAYMENT_MISMATCH"
+  | "IDEMPOTENCY_CONFLICT"
+  | "UNIT_SYSTEM_MISMATCH"
+  | "STOCK_INSUFFICIENT"
+  // POS P1.9: ไม่มีกะที่ใช้ได้ / กะปิดแล้ว (ขาย · void)
+  | "SHIFT_REQUIRED"
+  | "SHIFT_CLOSED"
+  // POS P1.8 (§7 CD1): บิลที่คืนเงินไปแล้วบางส่วน void ทั้งใบไม่ได้ (ใช้การคืนส่วนที่เหลือแทน)
+  | "HAS_REFUNDS"
+  // POS P2.1 ▸ ช่องทางขายใช้ไม่ได้ (ไม่พบ/สาขาอื่น/เก็บแล้ว/ปิด) · วิธีชำระไม่ตรงช่องทาง (R5) ◂
+  | "CHANNEL_INVALID"
+  | "CHANNEL_PAY_MISMATCH"
+  // POS P2.9 ▸ R11: บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระ — ไม่พบ (รวมร้านอื่น · X2) · PIN ผิด · ล็อก PIN · ยอด/สถานะเปลี่ยน · ไม่ใช่เจ้าของเครดิต ◂
+  | "GIFT_CARD_NOT_FOUND"
+  | "GIFT_CARD_PIN"
+  | "GIFT_CARD_LOCKED"
+  | "GIFT_CARD_CHANGED"
+  | "STORE_CREDIT_NOT_OWNER"
+  // POS P2.9b ▸ R10: มัดจำเป็นวิธีชำระ — ไม่พบ (รวมสาขา/ร้านอื่น · X2 ข้อความเดียว) · ไม่ใช่ของสมาชิกในบิล · เกินคงเหลือ/แข่งแพ้ · ใช้หมด/คืนแล้ว ◂
+  | "DEPOSIT_NOT_FOUND"
+  | "DEPOSIT_NOT_OWNER"
+  | "DEPOSIT_EXCEEDS"
+  | "DEPOSIT_CLOSED"
+  // POS P3.6 ▸ R15: วางบิล (เครดิตเทอม) — ปิดอยู่ · บริษัทไม่มีวงเงิน/POS ไม่ผูกสมุด · เทอม 0 · เกินวงเงิน · ใบแจ้งหนี้รับชำระแล้ว (void) · ลูกค้าไม่ใช่บริษัทของร้าน ◂
+  | "CREDIT_DISABLED"
+  | "CREDIT_NOT_ALLOWED"
+  | "CREDIT_TERM_ZERO"
+  | "CREDIT_LIMIT_EXCEEDED"
+  | "CREDIT_INVOICE_PAID"
+  | "CUSTOMER_INVALID";
+export class PosSaleError extends Error {
+  readonly code: PosSaleErrorCode;
+  constructor(code: PosSaleErrorCode, message: string) {
+    // PAYMENT_MISMATCH คงรูปข้อความเดิม ("PAYMENT_MISMATCH: …") — ผู้เรียกเดิมตรวจด้วย startsWith
+    super(code === "PAYMENT_MISMATCH" ? `PAYMENT_MISMATCH: ${message}` : message);
+    this.name = "PosSaleError";
+    this.code = code;
+  }
+  // POS P2.14 ▸ UI-9: GIFT_CARD_PIN บอกแถว (ลำดับของแถวบัตรของขวัญในวิธีชำระ เริ่ม 0) + ครั้งที่เหลือก่อนบัตรถูกระงับ — ไม่มี = ไม่รู้ ◂
+  giftCardRow?: number;
+  attemptsLeft?: number;
+  // POS P3.6 ▸ R6: CREDIT_LIMIT_EXCEEDED พกวงเงิน + ภาพหนี้ก่อนบิลนี้ (สตางค์ · แบบ giftCardRow) — หน้าขายส่งต่อเฉพาะผู้ถือ pos.credit.manage (CD-4) ◂
+  limitSatang?: number;
+  exposureSatang?: number;
+}
+// POS P2.14 ▸ UI-9: ติดแถว/ครั้งที่เหลือให้คำปฏิเสธ PIN — ครั้งที่เหลือมาจากข้อความของโมดูลบัตร ("เหลืออีก N ครั้ง") · ไม่ตรงรูป = ไม่ใส่ ◂
+function tagGiftPinRow<E>(e: E, ordinal: number): E {
+  if (e instanceof PosSaleError && e.code === "GIFT_CARD_PIN") {
+    e.giftCardRow = ordinal;
+    const m = /เหลืออีก (\d+) ครั้ง/.exec(e.message);
+    if (m) e.attemptsLeft = Number(m[1]);
+  }
+  return e;
+}
+const MAX_PAY_METHODS = 10; // R2
+const MAX_NOTE = 500; // R5
+const MAX_REFERENCE = 100;
+/** POS P1.2: เพดานตัวเลือก/ส่วนประกอบต่อบรรทัด (กันคำขอผิดปกติ) */
+const MAX_LINE_OPTIONS = 20;
+const MAX_LINE_COMPONENTS = 50;
+/** ข้อความ O21 — ร้านมี POS หลายจุดแต่สาขานี้ไม่ได้ผูกกับจุดใด */
+export const UNIT_SYSTEM_AMBIGUOUS_TH = "เลือกจุดขายก่อน — ร้านนี้มีจุดขายหลายจุด แต่สาขานี้ยังไม่ได้ผูกกับจุดขายใด";
+
+const isNonNegInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+/** ตรวจโครงฟิลด์ใหม่ของ P1.6 (ก่อนแตะตัวนับ) — ฟิลด์เดิมของผู้เรียกเดิมไม่ถูกตรวจเพิ่ม (กันผู้เรียกเดิมล้ม) */
+function validateSaleInput(input: CreateSaleInput): void {
+  const bad = (m: string) => new PosSaleError("VALIDATION", m);
+  if (input.note !== undefined && input.note !== null && (typeof input.note !== "string" || input.note.length > MAX_NOTE)) throw bad(`หมายเหตุบิลยาวเกิน ${MAX_NOTE} ตัวอักษร`);
+  // POS P5.1 ▸ MA8 (F8 · CD-P51-O5): ค่าพื้นฐานของบิลทุกผู้เรียก — จำนวนเต็ม ≥ 1 · ราคาต่อหน่วยไม่ติดลบ · 0 ≤ ส่วนลดบรรทัด ≤ ราคารวมบรรทัด ·
+  //   0 ≤ ส่วนลดท้ายบิล ≤ Σ ยอดบรรทัด · แถวชำระไม่ติดลบ (ใบคืนสร้างโดย refund.ts ไม่ผ่าน createSale — ไม่อยู่ในกติกานี้) ◂
+  if (!Array.isArray(input.lines)) throw bad("ไม่มีรายการสินค้า");
+  let linesSum = 0;
+  for (const l of input.lines) {
+    if (!l || !Number.isInteger(l.qty) || l.qty < 1) throw bad("จำนวนสินค้าต้องเป็นจำนวนเต็มตั้งแต่ 1");
+    if (!isNonNegInt(l.unitPriceSatang)) throw bad("ราคาต่อหน่วยต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
+    const gross = l.unitPriceSatang * l.qty;
+    const lineDiscount = l.discountSatang ?? 0;
+    if (!isNonNegInt(lineDiscount) || lineDiscount > gross) throw bad("ส่วนลดของรายการต้องไม่ติดลบและไม่เกินราคาของรายการ");
+    linesSum += gross - lineDiscount;
+  }
+  const billDiscount = input.billDiscountSatang ?? 0;
+  if (!isNonNegInt(billDiscount) || billDiscount > linesSum) throw bad("ส่วนลดท้ายบิลต้องไม่ติดลบและไม่เกินยอดรวมของรายการ");
+  for (const l of input.lines) {
+    if (l.note !== undefined && l.note !== null && (typeof l.note !== "string" || l.note.length > MAX_NOTE)) throw bad(`หมายเหตุรายการยาวเกิน ${MAX_NOTE} ตัวอักษร`);
+    // POS P1.2: ตรวจเฉพาะเมื่อส่งมา (ผู้เรียกเดิมไม่ส่ง = ไม่ถูกตรวจเพิ่ม)
+    if (l.options !== undefined && l.options !== null) {
+      const okText = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 200;
+      if (!Array.isArray(l.options) || l.options.length > MAX_LINE_OPTIONS) throw bad(`ตัวเลือกต่อรายการได้ไม่เกิน ${MAX_LINE_OPTIONS}`);
+      for (const o of l.options) {
+        if (!o || !okText(o.choiceId) || !okText(o.groupId) || !okText(o.groupName) || !okText(o.choiceName) || !Number.isInteger(o.priceDeltaSatang)) throw bad("ข้อมูลตัวเลือกของรายการไม่ครบ");
+      }
+    }
+    if (l.components !== undefined && l.components !== null) {
+      if (!Array.isArray(l.components) || l.components.length > MAX_LINE_COMPONENTS) throw bad(`ส่วนประกอบต่อรายการได้ไม่เกิน ${MAX_LINE_COMPONENTS}`);
+      const seen = new Set<string>();
+      for (const c of l.components) {
+        if (!c || typeof c.invItemId !== "string" || !c.invItemId || !Number.isInteger(c.qty) || c.qty < 1 || seen.has(c.invItemId)) throw bad("ส่วนประกอบของชุดไม่ถูกต้อง");
+        seen.add(c.invItemId);
+      }
+    }
+    if (l.weightGrams !== undefined && l.weightGrams !== null && (!Number.isInteger(l.weightGrams) || l.weightGrams < 1 || l.qty !== 1)) {
+      throw bad("น้ำหนักต้องเป็นจำนวนเต็มกรัมตั้งแต่ 1 และจำนวนต้องเป็น 1");
+    }
+    // POS P2.2 ▸ R7: ตรวจเฉพาะเมื่อส่งมา (ผู้เรียกเดิมไม่ส่ง = ไม่ถูกตรวจเพิ่ม) ◂
+    if (l.priceSource !== undefined && l.priceSource !== null && !(PRICE_SOURCES as readonly unknown[]).includes(l.priceSource)) throw bad("ที่มาของราคาไม่ถูกต้อง");
+    if (l.priceRuleId !== undefined && l.priceRuleId !== null && (typeof l.priceRuleId !== "string" || !l.priceRuleId || l.priceRuleId.length > PRICE_RULE_ID_MAX)) throw bad("รหัสโปรราคาไม่ถูกต้อง");
+    if (l.listPriceSatang !== undefined && l.listPriceSatang !== null && !(isNonNegInt(l.listPriceSatang) && l.listPriceSatang <= 2_147_483_647)) throw bad("ราคาปกติต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ");
+  }
+  // POS P2.1 ▸ R4: ตรวจเฉพาะเมื่อส่งมา (ผู้เรียกเดิมไม่ส่ง = ไม่ถูกตรวจเพิ่ม) ◂
+  if (input.channelId !== undefined && input.channelId !== null && (typeof input.channelId !== "string" || !input.channelId || input.channelId.length > 200)) throw bad("รหัสช่องทางขายไม่ถูกต้อง");
+  if (input.channelRef !== undefined && input.channelRef !== null && (typeof input.channelRef !== "string" || [...input.channelRef.trim()].length > CHANNEL_REF_MAX || /[\u0000-\u001F\u007F]/.test(input.channelRef.trim()))) {
+    throw bad(`เลขออเดอร์แพลตฟอร์มยาวได้ไม่เกิน ${CHANNEL_REF_MAX} ตัวอักษร`);
+  }
+  if (input.serviceChargeSatang !== undefined && !isNonNegInt(input.serviceChargeSatang)) throw bad("ค่าบริการต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
+  if (input.tipSatang !== undefined && !isNonNegInt(input.tipSatang)) throw bad("ทิปต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
+  if (!Array.isArray(input.payMethods)) throw bad("ไม่มีรายการชำระเงิน");
+  if (input.payMethods.length > MAX_PAY_METHODS) throw new PosSaleError("SPLIT_INVALID", `แบ่งจ่ายได้ไม่เกิน ${MAX_PAY_METHODS} รายการ`);
+  for (const p of input.payMethods) {
+    if (!Number.isInteger(p.amountSatang)) throw bad("ยอดชำระต้องเป็นจำนวนเต็มสตางค์");
+    if (p.amountSatang < 0) throw bad("ยอดชำระแต่ละรายการต้องไม่ติดลบ"); // POS P5.1 ▸ MA8 ◂
+    if (p.reference !== undefined && p.reference !== null && (typeof p.reference !== "string" || p.reference.length > MAX_REFERENCE)) throw bad(`เลขอ้างอิงยาวเกิน ${MAX_REFERENCE} ตัวอักษร`);
+    if (p.cashTenderedSatang === undefined || p.cashTenderedSatang === null) continue;
+    if (p.type !== "CASH") throw bad("เงินที่รับมาใส่ได้เฉพาะรายการเงินสด");
+    if (!isNonNegInt(p.cashTenderedSatang)) throw bad("เงินที่รับมาต้องเป็นจำนวนเต็มสตางค์");
+    // R3: รับน้อยกว่าส่วนเงินสด = ยอดไม่ครบ (PAYMENT_MISMATCH ตามมติ — ไม่มีรหัส TENDER_TOO_LOW)
+    if (p.cashTenderedSatang < p.amountSatang) throw new PosSaleError("PAYMENT_MISMATCH", `เงินที่รับ ${p.cashTenderedSatang} น้อยกว่าส่วนเงินสด ${p.amountSatang}`);
+  }
+  validateTenderRows(input);
+}
+
+// ═══════ POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระ (R3 R7 R9 · มติ 1 3 4 5 7) ◂ ═══════
+/** แถวชำระที่ "จ่ายจากเงินจริง" — ทิปจ่ายได้จากแถวเหล่านี้เท่านั้น (มติ 7: ทิปไม่จ่ายจากบัตร/เครดิต/มัดจำ/ลงห้อง/แพลตฟอร์ม) */
+const TIP_FUNDING_TYPES: ReadonlySet<string> = new Set(["CASH", "PROMPTPAY", "TRANSFER", "CARD"]);
+/** เพดานแถวบัตรของขวัญต่อบิล (มติ 4) */
+export const MAX_GIFT_CARD_ROWS = 3;
+// POS P2.9b ▸ มติ 4: มัดจำต่อบิล ≤ 3 ใบ · sourceModule ของใบรับมัดจำ (ผู้สร้างเดียว = pos/deposit.ts ผ่าน regCreateSale) ◂
+export const MAX_DEPOSIT_ROWS = 3;
+export const POS_DEPOSIT_SOURCE = "POS_DEPOSIT";
+/**
+ * ตรวจโครงแถวชนิดใหม่ (ก่อนแตะตัวนับ) — ตรวจเฉพาะเมื่อมีแถว GIFT_CARD/STORE_CREDIT หรือทิป > 0 (ผู้เรียกเดิมไม่ถูกตรวจเพิ่ม):
+ *   GIFT_CARD ≤ 3 ใบไม่ซ้ำ ต้องมี giftCard {number, pin} (ห้ามบนแถวอื่น) · STORE_CREDIT ได้แถวเดียว ·
+ *   ห้ามบนบิลขาย/เติมบัตร (sourceModule MEMBER) และห้ามคู่ทางส่วนลดเดิม memberChoices.giftCard · ทิป ≤ Σ แถวเงินจริง
+ */
+function validateTenderRows(input: CreateSaleInput): void {
+  const bad = (m: string) => new PosSaleError("VALIDATION", m);
+  const gift = input.payMethods.filter((p) => p.type === "GIFT_CARD");
+  const credit = input.payMethods.filter((p) => p.type === "STORE_CREDIT");
+  if (input.payMethods.some((p) => p.type !== "GIFT_CARD" && p.giftCard !== undefined && p.giftCard !== null)) throw bad("ข้อมูลบัตรใส่ได้เฉพาะรายการบัตรของขวัญ");
+  if (gift.length > MAX_GIFT_CARD_ROWS) throw bad(`ใช้บัตรของขวัญได้ไม่เกิน ${MAX_GIFT_CARD_ROWS} ใบต่อบิล`);
+  const seen = new Set<string>();
+  for (const p of gift) {
+    const g = p.giftCard;
+    if (!g || typeof g.number !== "string" || typeof g.pin !== "string" || !g.number.trim() || g.number.trim().length > 40 || !g.pin || g.pin.length > 12) throw bad("ข้อมูลบัตรของขวัญไม่ครบ (หมายเลข + PIN)");
+    const n = g.number.trim().toUpperCase();
+    if (seen.has(n)) throw bad("บัตรของขวัญใบเดียวกันใส่ได้รายการเดียว");
+    seen.add(n);
+  }
+  if (credit.length > 1) throw bad("เครดิตร้านใส่ได้รายการเดียว");
+  if (gift.length + credit.length > 0) {
+    if (input.sourceModule === "MEMBER") throw bad("บิลขาย/เติมบัตรกำนัลจ่ายด้วยบัตรของขวัญหรือเครดิตร้านไม่ได้");
+    if (input.memberChoices?.giftCard) throw bad("ใช้บัตรกำนัลเป็นส่วนลดพร้อมกับจ่ายด้วยบัตร/เครดิตร้านในบิลเดียวกันไม่ได้");
+    for (const p of [...gift, ...credit]) if (!(isNonNegInt(p.amountSatang) && p.amountSatang >= 1)) throw bad("ยอดที่จ่ายด้วยบัตร/เครดิตต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 1");
+  }
+  // POS P2.9b ▸ R4 มติ 2 4: แถว DEPOSIT ที่อ้างใบรับมัดจำ (refSaleId) — ≤ 3 ใบไม่ซ้ำ · ยอด ≥ 1 · ห้ามบนบิลขายบัตร (MEMBER) / ใบรับมัดจำ (POS_DEPOSIT) ·
+  //   แถว DEPOSIT ที่ไม่อ้างใบ = ทางเดิมของผู้เรียกเดิม (จอง/โรงแรม/เช่า) ไม่ถูกตรวจเพิ่ม ◂
+  const deps = input.payMethods.filter((p) => p.type === "DEPOSIT" && p.refSaleId !== undefined && p.refSaleId !== null);
+  if (deps.length) {
+    if (input.sourceModule === "MEMBER" || input.sourceModule === POS_DEPOSIT_SOURCE) throw bad("บิลขายบัตรกำนัลหรือใบรับมัดจำจ่ายด้วยมัดจำไม่ได้");
+    if (deps.length > MAX_DEPOSIT_ROWS) throw bad(`ใช้มัดจำได้ไม่เกิน ${MAX_DEPOSIT_ROWS} ใบต่อบิล`);
+    const seenDep = new Set<string>();
+    for (const p of deps) {
+      if (typeof p.refSaleId !== "string" || !p.refSaleId || p.refSaleId.length > 200) throw bad("ข้อมูลใบรับมัดจำไม่ถูกต้อง");
+      if (!(isNonNegInt(p.amountSatang) && p.amountSatang >= 1)) throw bad("ยอดที่ใช้มัดจำต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 1");
+      if (seenDep.has(p.refSaleId)) throw bad("มัดจำใบเดียวกันใส่ได้รายการเดียว");
+      seenDep.add(p.refSaleId);
+    }
+  }
+  const tip = input.tipSatang ?? 0;
+  if (tip > 0) {
+    const funding = input.payMethods.filter((p) => TIP_FUNDING_TYPES.has(p.type)).reduce((t, p) => t + p.amountSatang, 0);
+    if (tip > funding) throw bad("ทิปต้องจ่ายด้วยเงินสด พร้อมเพย์ โอน หรือบัตรธนาคาร — จ่ายจากบัตรของขวัญ/เครดิตร้านไม่ได้");
+  }
+}
+
+type SaleTender = { index: number; giftCardId: string; satang: number };
+type MemberTenderFacade = Pick<typeof import("@/lib/modules/member"), "tenderErrorCode">;
+/** ข้อผิดพลาดที่มีรหัสของบัตร → PosSaleError (ไม่มีบิล) · อื่น = โยนต่อ */
+async function tenderStep<T>(member: MemberTenderFacade, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const code = member.tenderErrorCode(e);
+    if (code) throw new PosSaleError(code, (e as Error).message);
+    throw e;
+  }
+}
+/**
+ * R3 R7 — เตรียมแถวบัตร (ก่อนตัวนับใบเสร็จ · ไม่ล็อก): เครดิตร้าน = ของสมาชิกของบิลในระบบสมาชิกของบิล (walk-in/คนอื่น = STORE_CREDIT_NOT_OWNER) ·
+ * PIN ตรวจที่นี่ · ล็อกแถวบัตร (เรียง id) ใน createSaleOnce หลังตัวนับใบเสร็จ (fix1 F1) · ไม่มีแถวบัตร = ไม่มี query
+ */
+async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSystemId: string | null, pinsVerified = false): Promise<SaleTender[]> {
+  const rows = input.payMethods.map((p, index) => ({ p, index })).filter((x) => x.p.type === "STORE_CREDIT" || x.p.type === "GIFT_CARD");
+  if (!rows.length) return [];
+  const member = await import("@/lib/modules/member");
+  const db = tx as Prisma.TransactionClient;
+  const out: SaleTender[] = [];
+  let gcOrdinal = -1; // POS P2.14 ▸ UI-9 ◂
+  for (const { p, index } of rows) {
+    if (p.type === "GIFT_CARD") {
+      gcOrdinal += 1; // POS P2.14 ▸ UI-9 ◂
+      const ord = gcOrdinal; // POS P2.14 ▸ UI-9 ◂
+      // มติ 3: PIN ทุกครั้ง (ผิด = ตัวนับนอก tx คงอยู่ · บิลไม่เกิด) · บัตรทั้งร้าน (CD11)
+      // POS P2.9 ▸ fix2: PIN ผ่านขั้นตรวจก่อนบิลของคำขอนี้แล้ว ⇒ ตรวจสถานะ/ยอดซ้ำโดยไม่เทียบ PIN (ไม่ใช้ connection ที่สองระหว่างถือ tx) ◂
+      const r = await tenderStep(member, () =>
+        pinsVerified
+          ? member.recheckGiftCardTender(input.tenantId, { number: p.giftCard!.number, satang: p.amountSatang }, db)
+          : member.prepareGiftCardTender(input.tenantId, { number: p.giftCard!.number, pin: p.giftCard!.pin, satang: p.amountSatang }, db),
+      ).catch((e: unknown) => Promise.reject(tagGiftPinRow(e, ord))); // POS P2.14 ▸ UI-9 ◂
+      out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });
+      continue;
+    }
+    if (!input.memberId || !memberSystemId) throw new PosSaleError("STORE_CREDIT_NOT_OWNER", "เครดิตร้านใช้ได้เฉพาะบิลของสมาชิกเจ้าของเครดิต — เลือกสมาชิกก่อน");
+    const r = await tenderStep(member, () => member.prepareStoreCreditTender(input.tenantId, { systemId: memberSystemId, customerId: input.memberId!, satang: p.amountSatang }, db));
+    out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });
+  }
+  return out;
+}
+
+/**
+ * POS P2.9 ▸ fix1 H2/F5 (มติ 3): PIN บัตรของขวัญตรวจ **ก่อนเปิด tx** เมื่อ createSale เป็นเจ้าของ tx และคีย์นี้ยังไม่มีบิล —
+ * PIN ผิด (ตัวนับเขียนนอก tx อยู่แล้ว) จึงไม่ถือ connection ของ tx ไว้ระหว่างรอ connection ที่สอง (คลื่นคำขอ PIN ผิดพร้อมกันไม่ทำ pool ตัน) ·
+ * ใน tx ยังตรวจซ้ำ (PIN ถูก = ไม่เขียน) · คีย์ที่มีบิลแล้ว = ไม่ตรวจ (เล่นซ้ำคืนบิลเดิม) ◂
+ */
+async function preverifyGiftPins(input: CreateSaleInput): Promise<boolean> {
+  if (!Array.isArray(input.payMethods) || !input.payMethods.some((p) => p?.type === "GIFT_CARD")) return false;
+  const member = await import("@/lib/modules/member");
+  // POS P2.9 ▸ fix2 (มติ 2 · C2): tx สั้นต่อคำขอ — คีย์เดียวกันเรียงคิว (advisory lock เดียวกับ createSale) · บิลของคีย์มีแล้ว = ไม่ตรวจ ·
+  //   การจองช่อง PIN เขียนบน tx นี้ (connection เดียวต่อคำขอ · ไม่รอ connection ที่สอง) แล้ว commit เสมอ — ผลผิดคืนหลัง commit (ตัวนับคงอยู่) ◂
+  const failure = await prisma.$transaction(async (t) => {
+    await t.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${input.tenantId}::text || ':' || ${input.idempotencyKey}::text))) l`;
+    const dup = await t.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } }, select: { id: true } });
+    if (dup) return "dup" as const;
+    validateSaleInput(input);
+    let ord = -1; // POS P2.14 ▸ UI-9: ลำดับแถวบัตรของขวัญ ◂
+    for (const p of input.payMethods) {
+      if (p.type !== "GIFT_CARD") continue; // POS P2.14 ▸ UI-9: นับทุกแถวบัตรของขวัญ (เดิม: ข้ามแถวไม่มี giftCard ก่อนนับ) ◂
+      ord += 1; // POS P2.14 ▸ UI-9 ◂
+      if (!p.giftCard) continue; // POS P2.14 ▸ UI-9 ◂
+      try {
+        await member.prepareGiftCardTender(input.tenantId, { number: p.giftCard.number, pin: p.giftCard.pin, satang: p.amountSatang }, t, t);
+      } catch (e) {
+        return { e, ord }; // POS P2.14 ▸ UI-9 ◂
+      }
+    }
+    return null;
+  }, { timeout: 20_000, maxWait: 10_000 });
+  if (failure === "dup") return false;
+  if (failure) await tenderStep(member, () => Promise.reject(failure.e)).catch((e: unknown) => Promise.reject(tagGiftPinRow(e, failure.ord))); // POS P2.14 ▸ UI-9 ◂
+  return true;
+}
+
+/**
+ * POS P2.5 ▸ fix2 มติ 4 (hunter Low): ขยายด่าน PIN ก่อนเปิด tx (createSale ≈:597 ทำเฉพาะเมื่อเป็นเจ้าของ tx) ให้ผู้เรียกที่ส่ง callerTx(tx)
+ *   (register.ts regSubmitTable / regSubmitSplitPart) เรียกเองก่อน `$transaction` — ตัวเดียวกันทุกไบต์ (ตัวนับ PIN ผิด commit เสมอ · ใน tx ยังตรวจซ้ำ PIN ถูก = ไม่เขียน) ◂
+ */
+export function preverifySaleGiftPins(input: CreateSaleInput): Promise<boolean> {
+  return preverifyGiftPins(input);
+}
+
+/** R3 R7 — ตัดยอดของแถวบัตรใน tx ของบิล (หลังเขียนแถวชำระ) แล้วผูก PosPayment.giftCardId/giftCardTxnId */
+async function useSaleTenders(tx: Client, input: CreateSaleInput, saleId: string, tenders: SaleTender[], paymentIds: string[]): Promise<void> {
+  if (!tenders.length) return;
+  const member = await import("@/lib/modules/member");
+  const db = tx as Prisma.TransactionClient;
+  for (const t of tenders) {
+    const paymentId = paymentIds[t.index]!;
+    const used = await tenderStep(member, () => member.useGiftCardTender(input.tenantId, { giftCardId: t.giftCardId, satang: t.satang, saleId, paymentId, byUserId: input.soldByUserId ?? null }, db));
+    await db.posPayment.update({ where: { id: paymentId }, data: { giftCardId: t.giftCardId, giftCardTxnId: used.txnId } });
+  }
+}
+
+// ═══════ POS P2.9b ▸ มัดจำเป็นวิธีชำระ (R4 R5 · มติ 1 2 4 11) ◂ ═══════
+type SaleDeposit = { index: number; depositId: string; satang: number; vatSatang: number };
+type DepositRow = { id: string; tenantId: string; unitId: string; customerId: string | null; amountSatang: number; vatSatang: number; usedSatang: number; refundedSatang: number; status: string; receiptSaleId: string };
+const depositMsg = {
+  DEPOSIT_NOT_FOUND: "ไม่พบมัดจำใบนี้ในสาขานี้ — ตรวจเลขใบรับมัดจำอีกครั้ง",
+  DEPOSIT_NOT_OWNER: "มัดจำใบนี้เป็นของสมาชิกคนอื่น — ใช้ได้เฉพาะบิลของสมาชิกเจ้าของมัดจำ",
+  DEPOSIT_EXCEEDS: "ยอดที่ใช้เกินมัดจำคงเหลือ (อาจเพิ่งถูกใช้จากอีกเครื่อง) — ค้นมัดจำใหม่แล้วชำระอีกครั้ง ยังไม่ได้เก็บเงิน",
+  DEPOSIT_CLOSED: "มัดจำใบนี้ใช้หมดหรือคืนเงินไปแล้ว",
+} as const;
+/** ตรวจแถวมัดจำหนึ่งแถวกับแถว PosDeposit (ลำดับรหัส: ไม่พบ → ปิดแล้ว → ไม่ใช่เจ้าของ → เกินคงเหลือ) */
+async function checkDeposit(tx: Client, input: CreateSaleInput, d: DepositRow | undefined, satang: number): Promise<void> {
+  if (!d || d.tenantId !== input.tenantId || d.unitId !== input.unitId) throw new PosSaleError("DEPOSIT_NOT_FOUND", depositMsg.DEPOSIT_NOT_FOUND);
+  if (d.status !== "OPEN") throw new PosSaleError("DEPOSIT_CLOSED", depositMsg.DEPOSIT_CLOSED);
+  // มติ 4 + มติ 20: มัดจำของสมาชิกใช้ได้เฉพาะบิลของสมาชิกคนนั้น (บิล walk-in ก็ไม่ได้) · มัดจำ walk-in = ผู้ถือใบรับ (บิลใดของสาขานี้ก็ได้)
+  // POS P2.9b ▸ fix1 มติ 5 (hunt D4): เจ้าของถูกรวมเข้าสมาชิกอื่น ⇒ ตาม mergedIntoId (≤ 5 ชั้น · แบบเครดิตร้าน P2.9 N2) ไปยังผู้เก็บ ◂
+  if (d.customerId && !(await depositOwnerIs(tx, input.tenantId, d.customerId, input.memberId ?? null))) throw new PosSaleError("DEPOSIT_NOT_OWNER", depositMsg.DEPOSIT_NOT_OWNER);
+  if (d.amountSatang - d.usedSatang - d.refundedSatang < satang) throw new PosSaleError("DEPOSIT_EXCEEDS", depositMsg.DEPOSIT_EXCEEDS);
+}
+/** POS P2.9b ▸ fix1 มติ 5: เจ้าของมัดจำ (หรือผู้เก็บหลังรวมสมาชิก ≤ 5 ชั้น) = สมาชิกของบิลไหม · บิลไม่มีสมาชิก = ไม่ใช่ ◂ */
+export async function depositOwnerIs(tx: Client, tenantId: string, ownerId: string, memberId: string | null): Promise<boolean> {
+  if (!memberId) return false;
+  let cur: string | null = ownerId;
+  for (let hop = 0; hop <= 5 && cur; hop++) {
+    if (cur === memberId) return true;
+    const c: { status: string; mergedIntoId: string | null } | null = await tx.customer.findFirst({ where: { id: cur, tenantId }, select: { status: true, mergedIntoId: true } });
+    cur = c && c.status === "MERGED" ? c.mergedIntoId : null;
+  }
+  return false;
+}
+/** ปัดครึ่งขึ้นของ a·b/c (จำนวนเต็มบวก · BigInt กันล้น) */
+const mulDivHalfUp = (a: number, b: number, c: number): number => (c > 0 ? Number((BigInt(2) * BigInt(a) * BigInt(b) + BigInt(c)) / (BigInt(2) * BigInt(c))) : 0);
+/**
+ * R4 — อ่านมัดจำของแถว DEPOSIT ที่อ้างใบรับ (ไม่ล็อก · ก่อนสต็อก/ตัวนับ ⇒ ปฏิเสธเร็ว ไม่มีอะไรถูกเขียน) · ไม่มีแถวอ้างใบ = ไม่มี query
+ */
+async function prepareSaleDeposits(tx: Client, input: CreateSaleInput): Promise<{ index: number; refSaleId: string; satang: number }[]> {
+  const rows = input.payMethods.map((p, index) => ({ p, index })).filter((x) => x.p.type === "DEPOSIT" && typeof x.p.refSaleId === "string" && !!x.p.refSaleId);
+  if (!rows.length) return [];
+  const found = await tx.posDeposit.findMany({ where: { tenantId: input.tenantId, receiptSaleId: { in: rows.map((r) => r.p.refSaleId!) } } });
+  const byReceipt = new Map(found.map((d) => [d.receiptSaleId, d as DepositRow]));
+  for (const r of rows) await checkDeposit(tx, input, byReceipt.get(r.p.refSaleId!), r.p.amountSatang);
+  return rows.map((r) => ({ index: r.index, refSaleId: r.p.refSaleId!, satang: r.p.amountSatang }));
+}
+/**
+ * R4 มติ 11 — ล็อกแถวมัดจำ (FOR UPDATE เรียง id · หลังตัวนับใบเสร็จและบัตร ⇒ สต็อก → ตัวนับ → บัตร → มัดจำ ทุกบิล) แล้วตรวจซ้ำ ·
+ * ส่วน VAT ของแต่ละแถว = ใช้ครบคงเหลือ ? VAT ที่เหลือ : ปัดครึ่งขึ้น(vat·x/amount) (มติ 1 — ใบสุดท้ายรับเศษ ⇒ Σ = VAT ตอนรับเงินพอดี)
+ */
+// POS P2.9b ▸ fix1 มติ 1 (R1 F2): แต่ละแถวปล่อย VAT ไม่เกิน VAT ของยอดแถวนั้น (splitIncludedVat(x) ตามอัตราของบิล) — invariant:
+//   Σ VAT ที่ปล่อย ≤ VAT ของมัดจำเสมอ · เศษสตางค์ที่ยังไม่ปล่อยค้างอยู่กับมัดจำ แล้วออกไปกับแถวสุดท้าย (ใช้ครบคงเหลือ = VAT ที่เหลือทั้งหมด) หรือกับการคืนเงินคงเหลือ
+//   ⇒ เมื่อมัดจำปิด (ใช้หมด/คืน) Σ VAT ที่ปล่อย = VAT ตอนรับพอดี และ 2110 ของมัดจำสุทธิ 0 (ส่วนที่แถวสุดท้ายปล่อยเกิน VAT ของบิล = ลดฐานรายได้ของบิล ที่ facade) ◂
+async function lockSaleDeposits(tx: Client, input: CreateSaleInput, rows: { index: number; refSaleId: string; satang: number }[], vatRateBp = 0): Promise<SaleDeposit[]> {
+  if (!rows.length) return [];
+  const locked = await tx.$queryRaw<DepositRow[]>`
+    SELECT id, "tenantId", "unitId", "customerId", "amountSatang", "vatSatang", "usedSatang", "refundedSatang", status::text AS status, "receiptSaleId"
+    FROM "PosDeposit" WHERE "tenantId" = ${input.tenantId} AND "receiptSaleId" IN (${Prisma.join(rows.map((r) => r.refSaleId))})
+    ORDER BY id FOR UPDATE`;
+  const byReceipt = new Map(locked.map((d) => [d.receiptSaleId, d]));
+  const vatLeft = await depositVatLeft(tx, locked.map((d) => d.id));
+  const out: SaleDeposit[] = [];
+  for (const r of rows) {
+    const d = byReceipt.get(r.refSaleId);
+    await checkDeposit(tx, input, d, r.satang);
+    const remaining = d!.amountSatang - d!.usedSatang - d!.refundedSatang;
+    const left = Math.max(0, d!.vatSatang - (vatLeft.get(d!.id) ?? 0));
+    // POS P2.9b ▸ fix1 มติ 1 · fix2 มติ 2 (hunter N1): ปล่อย = min(ยอดแถว, VAT ค้าง, max(เพดาน, VAT ค้าง − (คงเหลือ − ยอดแถว))) ⇒ หลังใช้ VAT ค้าง ≤ คงเหลือเสมอ
+    //   (ชิ้นสุดท้าย/การคืนคงเหลือปล่อยที่ค้างได้ครบ แม้ชิ้นเล็กหรือสมุดเลิกจด VAT) · ใช้ครบคงเหลือ = VAT ค้างทั้งหมด ◂
+    const cap = Math.min(mulDivHalfUp(d!.vatSatang, r.satang, d!.amountSatang), splitIncludedVat(r.satang, vatRateBp).vatSatang);
+    const vat = r.satang === remaining ? left : Math.min(r.satang, left, Math.max(cap, left - (remaining - r.satang)));
+    out.push({ index: r.index, depositId: d!.id, satang: r.satang, vatSatang: vat });
+  }
+  return out;
+}
+/** VAT ที่ออกไปแล้วของมัดจำ (Σ APPLY − Σ RESTORE + Σ REFUND) — ผู้เรียกถือล็อกแถวมัดจำ */
+export async function depositVatLeft(tx: Client, depositIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!depositIds.length) return out;
+  const sums = await tx.posDepositTxn.groupBy({ by: ["depositId", "type"], where: { depositId: { in: depositIds }, type: { in: ["APPLY", "RESTORE", "REFUND"] } }, _sum: { vatSatang: true } });
+  for (const x of sums) out.set(x.depositId, (out.get(x.depositId) ?? 0) + (x.type === "RESTORE" ? -1 : 1) * (x._sum.vatSatang ?? 0));
+  return out;
+}
+/** R4 — ตัดยอดมัดจำใน tx ของบิล (หลังเขียนแถวชำระ): ตัดแบบมีเงื่อนไข (0 แถว = DEPOSIT_EXCEEDS) + APPLY คีย์ dep-apply-<saleId>-<depositId> */
+async function useSaleDeposits(tx: Client, input: CreateSaleInput, saleId: string, deps: SaleDeposit[], paymentIds: string[]): Promise<void> {
+  for (const d of deps) {
+    const n = await tx.$executeRaw`
+      UPDATE "PosDeposit" SET "usedSatang" = "usedSatang" + ${d.satang},
+        status = (CASE WHEN "amountSatang" - "usedSatang" - "refundedSatang" - ${d.satang} = 0 THEN 'USED' ELSE status::text END)::"PosDepositStatus",
+        "updatedAt" = now()
+      WHERE id = ${d.depositId} AND "tenantId" = ${input.tenantId} AND status = 'OPEN' AND "amountSatang" - "usedSatang" - "refundedSatang" >= ${d.satang}`;
+    if (n !== 1) throw new PosSaleError("DEPOSIT_EXCEEDS", depositMsg.DEPOSIT_EXCEEDS);
+    await tx.posDepositTxn.create({
+      data: { tenantId: input.tenantId, depositId: d.depositId, type: "APPLY", satang: d.satang, vatSatang: d.vatSatang, saleId, paymentId: paymentIds[d.index] ?? null, idempotencyKey: `dep-apply-${saleId}-${d.depositId}` },
+    });
+  }
+}
+
+/** payload ของคีย์ซ้ำเท่ากันไหม (R6) — ถุงบรรทัด (ราคา|จำนวน|ส่วนลด ไม่สนลำดับ) · ถุงวิธีจ่าย (ชนิด|ยอด) · สาขา/ระบบ · ค่าบริการ/ทิป */
+function samePayload(
+  input: CreateSaleInput,
+  dup: {
+    unitId: string;
+    systemId: string;
+    memberId: string | null;
+    serviceChargeSatang: number;
+    tipSatang: number;
+    channelId?: string | null; // POS P2.1 ▸ CD3 ◂
+    lines: { qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; productId: string | null; serviceId: string | null; weightGrams: number | null }[];
+    payments: { type: string; amountSatang: number; giftCardId?: string | null; refSaleId?: string | null }[];
+  },
+  /** POS P2.9 ▸ fix3 N4: id บัตร → หมายเลข ของแถว GIFT_CARD เดิม (ไม่มีแถวบัตร = ไม่ส่ง · เทียบเดิมทุกไบต์) ◂ */
+  cardNo?: Map<string, string>,
+): boolean {
+  const bag = (xs: string[]) => [...xs].sort().join(",");
+  // R2 F6: บรรทัดเทียบ ราคา|จำนวน|ส่วนลด|สินค้าคลัง|สินค้า POS|บริการ · สมาชิกของบิลด้วย · P1.2: + น้ำหนัก (ไม่ส่ง = ว่าง = เทียบเหมือนเดิม)
+  const tup = (l: { unitPriceSatang: number; qty: number; discountSatang?: number | null; itemId?: string | null; productId?: string | null; serviceId?: string | null; weightGrams?: number | null }) =>
+    `${l.unitPriceSatang}|${l.qty}|${l.discountSatang ?? 0}|${l.itemId ?? ""}|${l.productId ?? ""}|${l.serviceId ?? ""}|${l.weightGrams ?? ""}`;
+  return (
+    dup.unitId === input.unitId &&
+    dup.systemId === input.systemId &&
+    (dup.memberId ?? null) === (input.memberId ?? null) &&
+    dup.serviceChargeSatang === (input.serviceChargeSatang ?? 0) &&
+    dup.tipSatang === (input.tipSatang ?? 0) &&
+    bag(dup.lines.map(tup)) === bag(input.lines.map(tup)) &&
+    // POS P2.9 ▸ fix3 N4: แถว GIFT_CARD เทียบหมายเลขบัตรด้วย (คีย์เดิมบัตรคนละใบ = คำขอคนละอัน ⇒ IDEMPOTENCY_CONFLICT) ◂
+    // POS P2.9b ▸ N4: แถว DEPOSIT ที่อ้างใบรับ เทียบใบรับด้วย (คีย์เดิมมัดจำคนละใบ = IDEMPOTENCY_CONFLICT · แถวไม่อ้างใบ = เทียบเดิมทุกไบต์) ◂
+    bag(dup.payments.map((p) => `${p.type}|${p.amountSatang}${p.type === "GIFT_CARD" ? `|${(p.giftCardId && cardNo?.get(p.giftCardId)) ?? ""}` : ""}${p.type === "DEPOSIT" && p.refSaleId ? `|${p.refSaleId}` : ""}`)) ===
+      bag(input.payMethods.map((p) => `${p.type}|${p.amountSatang}${p.type === "GIFT_CARD" ? `|${String(p.giftCard?.number ?? "").trim().toUpperCase()}` : ""}${p.type === "DEPOSIT" && p.refSaleId ? `|${p.refSaleId}` : ""}`)) &&
+    // POS P2.1 ▸ CD3: ช่องทางเข้าเทียบเฉพาะเมื่อผู้เรียกส่ง channelId (ผู้เรียกเดิม = เทียบแบบเดิมทุกไบต์) ◂
+    (input.channelId === undefined || input.channelId === null || (dup.channelId ?? null) === input.channelId)
+  );
+}
+
+/**
+ * R7 + O21 (มติเจ้าของ 4 ต.ค.) — ตัวตัดสินเดียวว่าบิลของสาขานี้ไปลง POS ไหน (createSale + ด่าน POS ก่อน claim ของผู้เรียก · R2 F1):
+ *   สาขาผูก POS = POS นั้น (ส่ง systemId อื่นมา = ปฏิเสธ)
+ *   สาขาไม่ผูก POS ใด: ร้านมี POS ใช้งาน 1 ตัว = ตัวนั้น (ส่ง systemId อื่นมา = ปฏิเสธ · R2 F6) · 0 ตัว = NO_POS · 2+ ตัว = "เลือกจุดขายก่อน"
+ * อ่านอย่างเดียว · ไม่โยน
+ */
+export type PosSystemForSale =
+  | { ok: true; systemId: string }
+  | { ok: false; code: "NO_POS" | "UNIT_SYSTEM_MISMATCH"; message: string };
+export async function posSystemForSale(tenantId: string, unitId: string, systemId?: string, db: Client = prisma): Promise<PosSystemForSale> {
+  const link = await db.appSystemUnit.findUnique({
+    where: { tenantId_unitId_type: { tenantId, unitId, type: "POS" } },
+    select: { systemId: true },
+  });
+  if (link) {
+    if (!systemId || link.systemId === systemId) return { ok: true, systemId: link.systemId };
+    return { ok: false, code: "UNIT_SYSTEM_MISMATCH", message: "สาขานี้ผูกกับจุดขายอื่น — เลือกจุดขายของสาขานี้ก่อน" };
+  }
+  const pos = await db.appSystem.findMany({ where: { tenantId, type: "POS", active: true }, select: { id: true }, take: 2 });
+  if (pos.length === 0) return { ok: false, code: "NO_POS", message: "ยังไม่ได้เปิดระบบขาย (POS)" };
+  if (pos.length >= 2) return { ok: false, code: "UNIT_SYSTEM_MISMATCH", message: UNIT_SYSTEM_AMBIGUOUS_TH };
+  if (systemId && pos[0]!.id !== systemId) return { ok: false, code: "UNIT_SYSTEM_MISMATCH", message: "จุดขายนี้ไม่ใช่จุดขายของร้านนี้ — เลือกจุดขายก่อน" };
+  return { ok: true, systemId: pos[0]!.id };
+}
+
+async function assertUnitOfSystem(tx: Client, input: CreateSaleInput): Promise<void> {
+  const r = await posSystemForSale(input.tenantId, input.unitId, input.systemId, tx);
+  // ร้านไม่มี POS ใช้งานเลยแต่ผู้เรียกส่ง systemId มาเอง = พฤติกรรมเดิม (ไม่มีอะไรให้สับสน · ไม่เพิ่มคำปฏิเสธนอกมติ)
+  if (!r.ok && r.code !== "NO_POS") throw new PosSaleError("UNIT_SYSTEM_MISMATCH", r.message);
+}
+
+/** R2 F2: สถานะของบิลที่ถือคีย์นี้ (null = ยังไม่มี) — ผู้เรียกใช้ตัดสินว่าจะออกคีย์ใหม่ไหม (เช่น ร้านอาหาร re-checkout หลัง void) */
+export async function saleStatusByKey(tenantId: string, idempotencyKey: string, db: Client = prisma): Promise<string | null> {
+  const s = await db.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } }, select: { status: true, docType: true } });
+  // POS P1.16 ▸ R5b(b): ใบคืนเงิน (docType REFUND) ไม่ใช่ "บิลขาย" ของโมดูลใด — ผู้เรียกต้องไม่เห็นใบคืนเป็นบิลของตัวเอง ◂
+  if (!s || s.docType === "REFUND") return null;
+  return s.status;
+}
+
+/**
+ * อัตรา VAT (bp) ของบิลบนระบบ POS นี้ — กติกาเดียวกับสะพานบัญชี (applyExternalSale): ผูกสมุดที่เปิดการเชื่อมอยู่ + จด VAT
+ * (ค่าปริยายของสมุดที่ไม่มีแถวตั้งค่า = จด 7% แบบเดียวกับ vatConfigOf) · ไม่ผูก/ไม่จด/อัตราผิดรูป = 0
+ */
+export async function posVatRateBp(db: Client, tenantId: string, posSystemId: string): Promise<number> {
+  const link = await db.accountSystemLink.findFirst({
+    where: { tenantId, linkedKind: "POS", linkedId: posSystemId, archivedAt: null, enabled: true },
+    select: { systemId: true },
+  });
+  if (!link) return 0;
+  const st = await db.accountSettings.findFirst({ where: { systemId: link.systemId }, select: { vatRegistered: true, vatRateBp: true } });
+  const registered = st?.vatRegistered ?? true;
+  const rate = st?.vatRateBp ?? 700;
+  return registered && Number.isInteger(rate) && rate > 0 && rate <= 10_000 ? rate : 0;
+}
+
+/** R8: นโยบายขายเกินสต็อกของสาขา (`BusinessUnit.settings.pos.stock.oversellPolicy`) · ไม่ตั้ง/ค่าแปลก = ALLOW_NEGATIVE (วันนี้) */
+export type OversellPolicy = "ALLOW_NEGATIVE" | "BLOCK";
+export async function unitOversellPolicy(db: Client, tenantId: string, unitId: string): Promise<OversellPolicy> {
+  const u = await db.businessUnit.findFirst({ where: { id: unitId, tenantId }, select: { settings: true } });
+  const st = u?.settings as { pos?: { stock?: { oversellPolicy?: unknown } } } | null | undefined;
+  return st?.pos?.stock?.oversellPolicy === "BLOCK" ? "BLOCK" : "ALLOW_NEGATIVE";
+}
+
+const isUniqueViolation = (e: unknown) => (e as { code?: unknown } | null)?.code === "P2002";
+
+/**
+ * POS P1.9 (S5/S6): กะของบิล — เรียกในtx ของบิล หลังค้นคีย์ซ้ำ (ลองซ้ำบิลที่ commit ในกะที่ปิดไปแล้ว = คืนบิลเดิม) และก่อนตัวนับใบเสร็จ
+ * ล็อกแถวกะ FOR SHARE ⇒ closeShift (FOR UPDATE) รอบิลที่กำลังบันทึก · บิลที่ commit แล้วทุกใบอยู่ใน Z
+ */
+async function bindSaleShift(tx: Client, input: CreateSaleInput): Promise<string | null> {
+  if (typeof input.shiftId === "string") {
+    const rows = await tx.$queryRaw<{ status: string; tenantId: string; unitId: string; systemId: string }[]>`
+      SELECT status::text AS status, "tenantId", "unitId", "systemId" FROM "PosShift" WHERE id = ${input.shiftId} FOR SHARE`;
+    const r = rows[0];
+    if (!r || r.tenantId !== input.tenantId || r.unitId !== input.unitId || r.systemId !== input.systemId) {
+      throw new PosSaleError("SHIFT_REQUIRED", "ไม่พบกะของเครื่องนี้ — เปิดกะก่อนเริ่มขาย");
+    }
+    if (r.status !== "OPEN") throw new PosSaleError("SHIFT_CLOSED", "กะนี้ปิดแล้ว — เปิดกะใหม่ก่อนขาย");
+    return input.shiftId;
+  }
+  if (input.shiftId === null) return null;
+  // ผู้เรียกเดิม (ไม่ส่ง shiftId): ค่าปริยาย otherSources = false ⇒ นอกกะเหมือนวันนี้ ไม่ถูกปฏิเสธ
+  const sys = await tx.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId }, select: { settings: true } });
+  if (!parseShiftSettings(sys?.settings).requiredOtherSources) return null;
+  const open = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "PosShift" WHERE "tenantId" = ${input.tenantId} AND "unitId" = ${input.unitId} AND status = 'OPEN'
+    ORDER BY "openedAt", id LIMIT 2 FOR SHARE`;
+  if (open.length === 0) throw new PosSaleError("SHIFT_REQUIRED", "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนรับเงิน");
+  return open.length === 1 ? open[0]!.id : null; // 2+ ลิ้นชักเปิดอยู่ = ไม่เดา (นอกกะ · O24)
+}
+
+/** POS P1.12: บรรทัดที่ส่งเข้ากระเป๋าสิทธิ์ (ราคาต่อหน่วย · จำนวน · ส่วนลดบรรทัด — ส่วนลดท้ายบิลไม่อยู่ในตะกร้าของกระเป๋า · CD6) */
+export type SaleWalletLine = { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; itemId?: string | null; serviceId?: string | null };
+/** POS P1.12: ตะกร้าของกระเป๋าสิทธิ์ (รูป WalletCart ของ member facade) */
+export type SaleWalletCart = {
+  unitId: string;
+  couponCode: string | null;
+  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; serviceId: string | null }[];
+};
+/**
+ * POS P1.12 (R6) — ตัวช่วยบริสุทธิ์ตัวเดียวที่แปลงบรรทัดบิลเป็นตะกร้าของ `member.applyOnSale` / `member.quoteApply`:
+ * createSale (ตัดจริงในtx) และ quote ของหน้าขาย (ยอดบนจอ) เรียกตัวนี้ทั้งคู่ ⇒ ฐานส่วนลดระดับ/ว่อชเชอร์/แต้มตรงกันเสมอ
+ * (ส่วนลดบรรทัดอยู่ในบรรทัด · ส่วนลดท้ายบิลไม่อยู่ = ฐานระดับก่อนลดท้ายบิล · CD6 · couponCode ใช้แค่กติกากันซ้อน voucher)
+ */
+export function saleWalletCart(lines: readonly SaleWalletLine[], unitId: string, couponCode: string | null | undefined): SaleWalletCart {
+  return {
+    unitId,
+    couponCode: couponCode ?? null,
+    lines: lines.map((l) => ({
+      name: l.name,
+      qty: l.qty,
+      unitPriceSatang: l.unitPriceSatang,
+      discountSatang: l.discountSatang ?? 0,
+      itemId: l.itemId ?? null,
+      serviceId: l.serviceId ?? null,
+    })),
+  };
+}
 
 type MemberFacade = typeof import("@/lib/modules/member");
 type AppliedRights = Awaited<ReturnType<MemberFacade["applyOnSale"]>>;
@@ -94,22 +743,178 @@ async function applyMemberRights(
   }
 }
 
+/**
+ * POS P2.1 (R4 R5 R6 · มติ 13) — ช่องทางของบิล: แก้ช่องทาง (ส่ง channelId / ปริยายตาม sourceModule) + ตรวจวิธีชำระตาม payout ·
+ * คืนตัวสร้างสำเนา (snapshot) ของบิล · ปฏิเสธ = โยน PosSaleError (CHANNEL_INVALID / CHANNEL_PAY_MISMATCH) ก่อนแตะตัวนับใบเสร็จ
+ *   payout PLATFORM ⇒ ชำระ PLATFORM แถวเดียว (ยอด = ยอดบิล — ตรวจโดย PAYMENT_MISMATCH เดิม) · ไม่มีทิป · ไม่มีเงินรับ ·
+ *   payout DIRECT ⇒ ห้ามมีแถว PLATFORM · บิลของโมดูลสมาชิก (ขาย/เติมบัตรกำนัล · สมาชิกรายเดือน) = STORE ค่าคอมฯ 0 เสมอ
+ */
+async function saleChannelOf(tx: Client, input: CreateSaleInput) {
+  const giftCard = input.sourceModule === "MEMBER";
+  const r = await resolveSaleChannel(tx, { tenantId: input.tenantId, systemId: input.systemId, unitId: input.unitId }, {
+    channelId: input.channelId ?? null,
+    sourceModule: input.sourceModule ?? "POS",
+    giftCard,
+  });
+  if (!r.ok) throw new PosSaleError("CHANNEL_INVALID", r.message);
+  const ch = r.channel;
+  const pays = input.payMethods;
+  const platformRows = pays.filter((p) => p.type === "PLATFORM").length;
+  if (ch.payout === "PLATFORM") {
+    if (pays.length !== 1 || platformRows !== 1 || (input.tipSatang ?? 0) > 0 || (pays[0]!.cashTenderedSatang !== undefined && pays[0]!.cashTenderedSatang !== null)) {
+      throw new PosSaleError("CHANNEL_PAY_MISMATCH", `ออเดอร์ช่องทาง ${ch.name} ต้องชำระด้วย "แพลตฟอร์ม" แถวเดียวเต็มยอด ไม่มีทิป — ยังไม่ได้บันทึกบิล`);
+    }
+  } else if (platformRows > 0) {
+    throw new PosSaleError("CHANNEL_PAY_MISMATCH", `ช่องทาง ${ch.name} ร้านเก็บเงินเอง — ใช้วิธีชำระ "แพลตฟอร์ม" ไม่ได้ ยังไม่ได้บันทึกบิล`);
+  }
+  const ref = !giftCard && typeof input.channelRef === "string" && input.channelRef.trim() ? input.channelRef.trim() : null;
+  const rates = giftCard || ch.code === "STORE" ? { commissionBp: 0, commissionFixedSatang: 0, commissionVatBp: 0 } : ch;
+  const commission = (grossSatang: number) => {
+    const c = channelCommission(grossSatang, rates);
+    return { channelCommissionSatang: c.commissionSatang, channelCommissionVatSatang: c.commissionVatSatang };
+  };
+  return {
+    channel: ch,
+    commission,
+    snapshot: (grossSatang: number) => ({ channelId: ch.id, channelCode: ch.code, channelRef: ref, channelPayout: ch.payout, ...commission(grossSatang) }),
+  };
+}
+/** POS P2.1 ▸ R11 CD9: รหัสช่องทางที่ตัวอ่านใช้ — บิลเดิม (channelCode null) = defaultChannelCode(sourceModule) ◂ */
+export function saleChannelCode(sale: { channelCode: string | null; sourceModule: string | null }): string {
+  return sale.channelCode ?? defaultChannelCode(sale.sourceModule);
+}
+
+// ═══════ POS P3.6 ▸ ลูกค้าองค์กร · วางบิล (เครดิตเทอม) · แนบสมาชิกเฉย ๆ (R5 R6 R13 · มติ 2 5 8 9 · CD-2) ═══════
+//   ทุกการตรวจเฉพาะเมื่อส่งฟิลด์ใหม่/มีแถว ON_ACCOUNT — บิลอื่นไม่มี query เพิ่ม (คืน P36_NONE) ⇒ ทางเดิมทุกไบต์
+//   วางบิล: ปิดอยู่ = CREDIT_DISABLED → ไม่มี/ไม่ใช่บริษัท = CUSTOMER_INVALID → แถวเดียวเต็มยอด ไม่มีทิป/เงินที่รับ ไม่ใช่บิลขายบัตร/ใบรับมัดจำ/ออฟไลน์ →
+//   ผู้ซื้อ (requireBuyer) → credit.decideSaleCredit (บัญชีเครดิต · เทอม · ล็อกวงเงิน · ภาพหนี้ · ผู้อนุญาต) — ทั้งหมดก่อนล็อกสินค้า/ตัวนับใบเสร็จ
+type SaleP36 = {
+  attachOnly: boolean;
+  override: { byUserId: string; overSatang: number } | null;
+  columns: { customerPartyId?: string; crmDealId?: string; creditTerms?: Prisma.InputJsonValue; paidAt?: Date };
+};
+const P36_NONE: SaleP36 = { attachOnly: false, override: null, columns: {} };
+async function saleP36(tx: Prisma.TransactionClient, input: CreateSaleInput, offlineSoldAt: Date | null): Promise<SaleP36> {
+  const onAccount = input.payMethods.filter((p) => p.type === "ON_ACCOUNT");
+  const has = (v: unknown) => v !== undefined && v !== null;
+  if (!onAccount.length && !has(input.customerPartyId) && !has(input.crmDealId) && !has(input.memberAttachOnly) && !has(input.creditOverrideByUserId)) return P36_NONE;
+  const bad = (m: string) => new PosSaleError("VALIDATION", m);
+  const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200;
+  if (has(input.crmDealId) && !isId(input.crmDealId)) throw bad("รหัสดีลไม่ถูกต้อง");
+  if (has(input.creditOverrideByUserId) && !isId(input.creditOverrideByUserId)) throw bad("ผู้อนุญาตเกินวงเงินไม่ถูกต้อง");
+  if (has(input.memberAttachOnly) && typeof input.memberAttachOnly !== "boolean") throw bad("ค่าแนบสมาชิกไม่ถูกต้อง");
+  const attachOnly = input.memberAttachOnly === true;
+  if (attachOnly) {
+    // R13: แนบสมาชิกเฉย ๆ ต้องมีสมาชิก และห้ามคู่สิทธิ์ที่เลือก/เครดิตร้าน (ทางเลี่ยงส่วนลด/ตัดยอดโดยไม่ผ่าน applyOnSale)
+    if (!isId(input.memberId)) throw bad("แนบสมาชิกต้องระบุสมาชิกของบิล");
+    if (has(input.memberChoices)) throw bad("บิลที่แนบสมาชิกเฉย ๆ ใช้สิทธิ์สมาชิกไม่ได้");
+    if (input.payMethods.some((p) => p.type === "STORE_CREDIT")) throw bad("บิลที่แนบสมาชิกเฉย ๆ จ่ายด้วยเครดิตร้านไม่ได้");
+  }
+  const credit = await import("./credit");
+  if (has(input.customerPartyId) && !(await credit.isCompanyParty(tx, input.tenantId, input.customerPartyId))) {
+    throw new PosSaleError("CUSTOMER_INVALID", "ลูกค้าองค์กรของบิลนี้ไม่ถูกต้อง (ไม่พบ ไม่ใช่บริษัท หรือเป็นของร้านอื่น)");
+  }
+  const columns: SaleP36["columns"] = {
+    ...(isId(input.customerPartyId) ? { customerPartyId: input.customerPartyId } : {}),
+    ...(isId(input.crmDealId) ? { crmDealId: input.crmDealId } : {}),
+  };
+  if (!onAccount.length) return { attachOnly, override: null, columns };
+  const sys = await tx.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId }, select: { settings: true } });
+  const cfg = (await import("./settings-shared")).posCreditSettings(sys?.settings);
+  if (!cfg.enabled) throw new PosSaleError("CREDIT_DISABLED", "จุดขายนี้ยังไม่เปิดการวางบิล (เครดิตเทอม)");
+  if (!isId(input.customerPartyId)) throw new PosSaleError("CUSTOMER_INVALID", "วางบิลต้องเลือกบริษัทของบิลก่อน");
+  if (input.payMethods.length !== 1) throw new PosSaleError("SPLIT_INVALID", "วางบิลต้องเป็นวิธีชำระเดียวเต็มยอด — แบ่งจ่ายกับวิธีอื่นไม่ได้");
+  if ((input.tipSatang ?? 0) > 0 || has(onAccount[0]!.cashTenderedSatang)) throw bad("บิลวางบิลไม่มีทิปและไม่มีเงินที่รับ");
+  if (input.sourceModule === "MEMBER" || input.sourceModule === POS_DEPOSIT_SOURCE) throw bad("บิลขายบัตรกำนัล/ใบรับมัดจำวางบิลไม่ได้");
+  if (offlineSoldAt) throw bad("บิลออฟไลน์วางบิลไม่ได้");
+  if (cfg.requireBuyer && !input.taxInvoice) throw bad("วางบิลต้องระบุผู้ซื้อ (ชื่อบริษัท เลขผู้เสียภาษี สาขา ที่อยู่)");
+  const paidAt = new Date();
+  const d = await credit.decideSaleCredit(tx, {
+    tenantId: input.tenantId,
+    systemId: input.systemId,
+    unitId: input.unitId,
+    partyId: input.customerPartyId,
+    amountSatang: onAccount[0]!.amountSatang,
+    overrideByUserId: input.creditOverrideByUserId ?? null,
+    sellerUserId: input.soldByUserId ?? null, // POS P3.6 fix2 H4: ผู้อนุญาตต้องไม่ใช่ผู้ขาย ◂
+    at: paidAt,
+  });
+  if (!d.ok) {
+    const e = new PosSaleError(d.code, d.message);
+    if (d.code === "CREDIT_LIMIT_EXCEEDED") {
+      e.limitSatang = d.limitSatang;
+      e.exposureSatang = d.exposureSatang;
+    }
+    throw e;
+  }
+  return { attachOnly, override: d.override, columns: { ...columns, creditTerms: d.creditTerms as unknown as Prisma.InputJsonValue, paidAt } };
+}
+// ◂ POS P3.6
+
 export async function createSale(input: CreateSaleInput, client: Client = prisma): Promise<SaleResult> {
   // เราเปิด tx เอง (client = prisma) → drain outbox ได้หลัง commit · ถ้าถูกเรียกใน tx ผู้อื่น ปล่อยให้ cron เก็บ
   const ownsTx = "$transaction" in client && typeof (client as PrismaClient).$transaction === "function";
-  const result = await withTx(client, async (tx) => {
-    // idempotent
+  // POS P1.6 I7: คีย์เดียวกันพร้อมกันถูกเรียงคิวด้วย advisory lock ต่อ (ร้าน, คีย์) ก่อนค้นคีย์ซ้ำ (R2 F4 · ทั้งสองโหมด) ⇒ ไม่มี P2002 ของคีย์
+  //   ที่ยังเหลือ: P2002 ของแถวตัวนับใบเสร็จเดือนใหม่ (สองบิลคนละคีย์ upsert แถวเดียวกันพร้อมกัน) — ลองใหม่ได้เฉพาะเมื่อเราเป็นเจ้าของ tx
+  const pinsVerified = ownsTx ? await preverifyGiftPins(input) : false; // POS P2.9 ▸ fix1 H2 · fix2: ผ่านแล้ว = ใน tx ไม่เทียบ PIN ซ้ำ ◂
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await createSaleOnce(input, client, ownsTx, pinsVerified);
+    } catch (e) {
+      if (ownsTx && attempt < 3 && isUniqueViolation(e)) continue;
+      throw e;
+    }
+  }
+}
+
+async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: boolean, pinsVerified = false): Promise<SaleResult> {
+  const result = await withTx(client, async (tx): Promise<SaleResult> => {
+    // R2 F4: เรียงคิวคีย์เดียวกัน (ปล่อยเองตอน tx จบ · ใช้ได้ทั้ง tx ของเราและของผู้เรียก)
+    await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${input.tenantId}::text || ':' || ${input.idempotencyKey}::text))) l`;
+    // idempotent (R6 · มติ §8 ข้อ 3): payload เดิม = คืนบิลเดิมพร้อมสถานะจริง (VOIDED ก็คืน — ผู้เรียกตัดสินเอง) · payload ต่าง = IDEMPOTENCY_CONFLICT
     const dup = await tx.posSale.findUnique({
       where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
+      include: {
+        lines: { select: { qty: true, unitPriceSatang: true, discountSatang: true, itemId: true, productId: true, serviceId: true, weightGrams: true } },
+        payments: { select: { type: true, amountSatang: true, giftCardId: true, refSaleId: true } }, // POS P2.9b ▸ refSaleId (N4) ◂
+      },
     });
     if (dup) {
+      // POS P2.9 ▸ fix3 N4: หมายเลขบัตรของแถว GIFT_CARD เดิม (ไม่มีแถวบัตร = ไม่มี query) ◂
+      const gcIds = dup.payments.filter((p) => p.type === "GIFT_CARD" && p.giftCardId).map((p) => p.giftCardId!);
+      const cardNo = gcIds.length ? await (await import("@/lib/modules/member")).giftCardNumbersByIds(input.tenantId, gcIds, tx as Prisma.TransactionClient) : undefined;
+      // POS P1.8 F7 ▸ คีย์ของใบคืน (REFUND) ใช้ที่เดียวกับคีย์บิลขาย — เจอใบคืน = ชนเสมอ (ห้ามตอบใบคืนเป็น "บิลเดิม") ◂
+      if (dup.docType === "REFUND" || !samePayload(input, dup, cardNo)) {
+        throw new PosSaleError("IDEMPOTENCY_CONFLICT", "มีบิลของรหัสรายการนี้อยู่แล้วแต่รายการ/ยอด/วิธีจ่ายไม่ตรงกัน — ตรวจบิลเดิมก่อน ห้ามขายซ้ำ");
+      }
       return {
         saleId: dup.id,
         receiptNo: dup.receiptNo,
         grandTotalSatang: dup.grandTotalSatang,
         pointEarned: dup.pointEarned,
+        status: dup.status,
       };
     }
+
+    // ── P1.6: โครงฟิลด์ใหม่ + สาขา↔ระบบ (R7/O21) — ทั้งหมดก่อนแตะตัวนับใบเสร็จ ──
+    validateSaleInput(input);
+    const offlineSoldAt = saleOfflineSoldAt(input); // POS P3.4 ▸ R7 ◂
+    await assertUnitOfSystem(tx, input);
+    // R4 H5: ทิปต้องเปิดที่ค่าตั้งของ POS นี้ (ผู้เรียกเดิมข้ามหน้าขายไม่ได้) — ปิด = VALIDATION ก่อนแตะตัวนับ
+    if ((input.tipSatang ?? 0) > 0) {
+      const sys = await tx.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId }, select: { settings: true } });
+      if (!parsePosPaymentSettings(sys?.settings).tip.enabled) throw new PosSaleError("VALIDATION", "จุดขายนี้ยังไม่เปิดรับทิป");
+      // POS P2.9 ▸ fix1 H5 (มติ 6): บัญชีพักทิปต้องยังใช้ได้ตอนรับทิป (ถูกเก็บ/เปลี่ยนชนิดภายหลัง = ไม่รับบิล — ไม่ปล่อย JV ขายค้างในคิว) ◂
+      if (!(await tipLedgerOk(tx, input.tenantId, input.systemId, parsePosPaymentSettings(sys?.settings).tip.ledgerAccountId))) {
+        throw new PosSaleError("VALIDATION", "บัญชีพักทิปของจุดขายนี้ใช้ไม่ได้ (ถูกเก็บหรือไม่ใช่หนี้สิน) — แก้ที่ตั้งค่าการชำระเงินก่อนรับทิป");
+      }
+    }
+    // POS P1.9 ▸ กะ (S5/S6) — หลังค้นคีย์ซ้ำ · ก่อนล็อกสินค้า/ตัวนับใบเสร็จ ◂
+    const shiftId = await bindSaleShift(tx, input);
+    // POS P2.1 ▸ R4 R5: ช่องทางของบิล + กติกาชำระแพลตฟอร์ม — หลังค้นคีย์ซ้ำ · ก่อนตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีอะไรถูกเขียน) ◂
+    const channel = await saleChannelOf(tx, input);
+    // POS P3.6 ▸ R5 R6 R13: ลูกค้าองค์กร · วางบิล (ล็อกวงเงิน + ภาพหนี้) · แนบสมาชิกเฉย ๆ — ก่อนล็อกสินค้า/ตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีอะไรถูกเขียน) ◂
+    const p36 = await saleP36(tx as Prisma.TransactionClient, input, offlineSoldAt);
 
     const lines = input.lines.map((l) => ({
       ...l,
@@ -140,9 +945,14 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
       couponDiscount = v.discountSatang;
     }
 
-    const vat = 0; // MVP
-    const paidSum = input.payMethods.reduce((s, p) => s + p.amountSatang, 0);
-    const beforeMember = subtotal - billDiscount - couponDiscount + vat;
+    // R4: ค่าบริการอยู่ในยอดบิล+ฐาน VAT · ทิปอยู่นอกยอดบิล (Σจ่าย = ยอด + ทิป · มติ §8 ข้อ 1)
+    const serviceCharge = input.serviceChargeSatang ?? 0;
+    const tip = input.tipSatang ?? 0;
+    // R1: VAT ถอดจากยอดสุทธิด้วยสูตรเดียวกับสะพานบัญชี (ราคารวม VAT แล้ว ⇒ ไม่บวกเพิ่ม)
+    const vatRateBp = await posVatRateBp(tx, input.tenantId, input.systemId);
+    const paidSum = input.payMethods.reduce((s, p) => s + p.amountSatang, 0) - tip;
+    const beforeMember = subtotal - billDiscount - couponDiscount + serviceCharge;
+    if (beforeMember < 0) throw new PosSaleError("VALIDATION", "ยอดบิลติดลบ — ส่วนลดรวมมากกว่ายอดของรายการ"); // POS P5.1 ▸ MA8 grand ≥ 0 ◂
 
     // ── ระบบสมาชิกของบิลนี้ (M2.8) ──
     // ไม่มี memberId = ไม่ยิง query เพิ่มแม้แต่ครั้งเดียว ⇒ บิล walk-in เดินเส้นทางเดิมทุกประการ
@@ -154,15 +964,60 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     if (!memberSystemId && paidSum !== beforeMember) {
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${beforeMember}`);
     }
+    // POS P2.9 ▸ R3 R7: แถวบัตร/เครดิตร้าน — ตรวจ + PIN ก่อนล็อกสินค้า/ตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีบิล · ล็อกบัตรหลังตัวนับ — fix1 F1) ◂
+    const tenders = await prepareSaleTenders(tx, input, memberSystemId, pinsVerified);
+    // POS P2.9b ▸ R4: มัดจำของแถว DEPOSIT ที่อ้างใบรับ — ตรวจก่อนล็อกสินค้า/ตัวนับ (ไม่ล็อก · ปฏิเสธ = ไม่มีบิล) ◂
+    const depositRows = await prepareSaleDeposits(tx, input);
+
+    // POS P1.2 R2 F1: ส่วนประกอบชุดต้องอยู่ในคลังของสาขาที่ขายทุกชิ้น (ผู้เรียกอื่นนอกหน้าขายก็เช่นกัน) — สาขาไม่มีคลัง/ชิ้นนอกคลัง = VALIDATION ไม่มีบิล
+    const compIds = [...new Set(lines.flatMap((l) => (l.components ?? []).map((c) => c.invItemId)))];
+    if (compIds.length) {
+      const compInv = await systemForUnit(input.tenantId, input.unitId, "INVENTORY", tx);
+      const here = compInv ? await tx.invItem.count({ where: { tenantId: input.tenantId, systemId: compInv, id: { in: compIds } } }) : 0;
+      if (here !== compIds.length) throw new PosSaleError("VALIDATION", "ชุดนี้มีส่วนประกอบที่ไม่อยู่ในคลังของสาขานี้ — ขายชุดนี้ที่สาขานี้ไม่ได้");
+    }
+
+    // ── R8 BLOCK: ล็อกแถวสินค้า (ลำดับ id ตายตัว · ก่อนตัวนับ ⇒ ลำดับล็อกเดียวกันทุกบิล ไม่ deadlock) แล้วตรวจยอดคงเหลือ ──
+    let blockInv: { tenantId: string; systemId: string } | null = null;
+    // R2 F3: ตัดในtx เฉพาะสินค้าที่อยู่ในชุดที่ล็อกได้และไม่ใช่บริการ — ที่เหลือ (ไม่พบในคลังนี้/บริการ) เดินทางเดิมหลัง commit ไม่ทำให้บิลล้ม
+    const blockItemIds = new Set<string>();
+    // POS P1.2: ความต้องการสต็อกต่อ InvItem = บรรทัดผูกคลัง (จำนวน หรือ กรัมของบรรทัดชั่ง) + ส่วนประกอบชุด (qty × จำนวน)
+    const stockParts = lines.flatMap((l) => lineConsumption("", { id: "", itemId: l.itemId ?? null, qty: l.qty, weightGrams: l.weightGrams ?? null, components: l.components ?? null }));
+    if (stockParts.length > 0 && (await unitOversellPolicy(tx, input.tenantId, input.unitId)) === "BLOCK") {
+      const invSystemId = await systemForUnit(input.tenantId, input.unitId, "INVENTORY", tx);
+      if (invSystemId) {
+        blockInv = { tenantId: input.tenantId, systemId: invSystemId };
+        const need = new Map<string, number>();
+        for (const p of stockParts) need.set(p.itemId, (need.get(p.itemId) ?? 0) + Math.round(p.qty));
+        await inventory.lockItemsInTx(tx as Prisma.TransactionClient, blockInv, [...need.keys()]);
+        const items = await tx.invItem.findMany({
+          where: { tenantId: input.tenantId, systemId: invSystemId, id: { in: [...need.keys()] } },
+          select: { id: true, name: true, onHand: true, kind: true },
+        });
+        for (const it of items) {
+          if (it.kind === "SERVICE") continue; // บริการไม่มีสต็อก (ตัดไม่ได้อยู่แล้ว)
+          blockItemIds.add(it.id);
+          const want = need.get(it.id) ?? 0;
+          if (it.onHand < want) throw new PosSaleError("STOCK_INSUFFICIENT", `สินค้าในสต็อกไม่พอ: "${it.name}" เหลือ ${it.onHand} ต้องการ ${want}`);
+        }
+      }
+    }
 
     // เลขใบเสร็จรันต่อ unit/เดือน
-    const period = bkkPeriod();
+    const period = offlineSoldAt ? bkkPeriodOf(offlineSoldAt) : bkkPeriod(); // POS P3.4 ▸ มติ 3: บิลออฟไลน์ = ตัวนับเดือนของ soldAt ◂
     const counter = await tx.posReceiptCounter.upsert({
       where: { unitId_period: { unitId: input.unitId, period } },
       create: { tenantId: input.tenantId, unitId: input.unitId, period, seq: 1 },
       update: { seq: { increment: 1 } },
     });
     const receiptNo = `${period}-${String(counter.seq).padStart(4, "0")}`;
+    // POS P2.9 ▸ fix1 F1 (มติ 1): ล็อกแถวบัตร (เรียง id) **หลัง** ตัวนับใบเสร็จ — ลำดับเดียวกับเติมเงิน/ส่วนลดบัตรเดิม (สต็อก → ตัวนับ → บัตร) ◂
+    if (tenders.length) await (await import("@/lib/modules/member")).lockTenderCards(tx as Prisma.TransactionClient, tenders.map((t) => t.giftCardId));
+    // POS P2.9b ▸ R4 มติ 11: ล็อกแถวมัดจำ **หลัง** บัตร (สต็อก → ตัวนับ → บัตร → มัดจำ) + ส่วน VAT ของแต่ละแถว (มติ 1) ◂
+    const deposits = await lockSaleDeposits(tx, input, depositRows, vatRateBp); // POS P2.9b ▸ fix1 มติ 1: อัตราของบิล (เพดาน VAT ต่อแถว) ◂
+    const depositVat = deposits.reduce((t, d) => t + d.vatSatang, 0);
+    // R5: VAT ของบิล = VAT(ยอด) − Σ VAT ของมัดจำที่ใช้ (เฉพาะบิลที่มีแถวอ้างใบรับ · บิลอื่นเหมือนเดิมทุกไบต์)
+    const billVat = (gross: number) => (deposits.length ? Math.max(0, splitIncludedVat(gross, vatRateBp).vatSatang - depositVat) : splitIncludedVat(gross, vatRateBp).vatSatang);
 
     const sale = await tx.posSale.create({
       data: {
@@ -174,17 +1029,62 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
         sourceId: input.sourceId,
         idempotencyKey: input.idempotencyKey,
         receiptNo,
+        publicToken: newReceiptToken(), // POS P1.11 ▸ R1 ◂
         status: "PAID",
         subtotalSatang: subtotal,
         discountSatang: billDiscount + couponDiscount,
-        vatSatang: vat,
+        vatSatang: billVat(beforeMember), // POS P2.9b ▸ R5 ◂
         grandTotalSatang: beforeMember,
-        paidAt: new Date(),
+        serviceChargeSatang: serviceCharge,
+        tipSatang: tip,
+        note: input.note ?? null,
+        // POS P3.4 ▸ R7 มติ 3: บิลออฟไลน์ paidAt = soldAt · offlineRef · syncedAt = เวลาเซิร์ฟเวอร์ (createdAt = ค่าปริยายของ DB · ไม่ย้อน)
+        paidAt: offlineSoldAt ?? new Date(),
+        ...(offlineSoldAt ? { offlineRef: input.offline!.ref, syncedAt: new Date() } : {}), // ◂
+        shiftId,
+        soldByUserId: input.soldByUserId ?? null, // POS P1.17 ▸ R6 ◂
+        ...(input.taxInvoice ? { taxInvoice: input.taxInvoice as unknown as Prisma.InputJsonValue } : {}), // POS P1.13 ▸ R1 ◂
+        ...(input.memberSnapshot ? { memberSnapshot: { ...input.memberSnapshot } as unknown as Prisma.InputJsonValue } : {}), // POS P1.12 ▸ R9 ◂
+        ...channel.snapshot(beforeMember), // POS P2.1 ▸ R6 สำเนาช่องทาง + ค่าคอมฯ ◂
+        ...p36.columns, // POS P3.6 ▸ R5: customerPartyId · crmDealId · creditTerms (+ paidAt เดียวกับที่คิดวันครบกำหนด) — เขียนครั้งเดียว ◂
       },
     });
+    // POS P3.6 ▸ มติ 2: อนุญาตเกินวงเงิน → audit pos.credit.override ใน tx ของบิล (id + สตางค์เท่านั้น · R14) ◂
+    if (p36.override) {
+      await tx.auditLog.create({
+        data: {
+          tenantId: input.tenantId,
+          unitId: input.unitId,
+          actorType: "USER",
+          actorId: p36.override.byUserId,
+          action: "pos.credit.override",
+          targetType: "PosSale",
+          targetId: sale.id,
+          after: { saleId: sale.id, partyId: input.customerPartyId!, byUserId: p36.override.byUserId, overSatang: p36.override.overSatang },
+        },
+      });
+    }
+    // POS P1.2: บรรทัดที่มีตัวเลือกต้องรู้ id ตั้งแต่ตอนเขียน (ผูก PosSaleLineOption ในtx เดียวกัน)
+    //   R2 F2: บิลที่มีตัวเลือก = ตั้ง id ให้ "ทุกบรรทัด" แบบเรียงตามลำดับบรรทัด (ฐานเดียวกัน + เลขลำดับความยาวคงที่) ⇒ อ่านกลับ orderBy id
+    //   ได้ลำดับตะกร้าเดิม (ไม่ปน UUID/cuid) · บิลที่ไม่มีตัวเลือกใช้ id ปริยายแบบเดิม (ผู้เรียกเดิมไม่เปลี่ยน)
+    const lineIds = lines.some((l) => l.options && l.options.length) ? orderedLineIds(lines.length) : lines.map(() => undefined);
     await tx.posSaleLine.createMany({
-      data: lines.map((l) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null, serviceId: l.serviceId ?? null })),
+      data: lines.map((l, i) => ({
+        ...(lineIds[i] ? { id: lineIds[i] } : {}),
+        tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null, serviceId: l.serviceId ?? null, productId: l.productId ?? null, note: l.note ?? null,
+        weightGrams: l.weightGrams ?? null,
+        ...(l.components && l.components.length ? { components: l.components.map((c) => ({ invItemId: c.invItemId, qty: c.qty })) } : {}),
+        // POS P2.2 ▸ R7: สำเนาชั้นราคา (ไม่ส่ง = null) ◂
+        priceSource: l.priceSource ?? null,
+        priceRuleId: l.priceRuleId ?? null,
+        listPriceSatang: l.listPriceSatang ?? null,
+        ...(typeof l.performerEmployeeId === "string" && l.performerEmployeeId ? { performerEmployeeId: l.performerEmployeeId.slice(0, 200) } : {}), // SVC B.10 ▸ ผู้ให้บริการ ◂
+      })),
     });
+    const optionRows = lines.flatMap((l, i) =>
+      (l.options ?? []).map((o) => ({ tenantId: input.tenantId, saleId: sale.id, lineId: lineIds[i]!, choiceId: o.choiceId, groupId: o.groupId, groupName: o.groupName, choiceName: o.choiceName, priceDeltaSatang: o.priceDeltaSatang })),
+    );
+    if (optionRows.length) await tx.posSaleLineOption.createMany({ data: optionRows });
 
     // ── ใช้สิทธิ์สมาชิกจริง (M2.8 · §9.1) — ในtx เดียวกับบิล ──
     // 🔴 บิลถูกเขียนก่อนเพราะ voucher/แต้ม/บัตรกำนัลต้องผูก `saleId` ที่มีอยู่จริง (ร่องรอยย้อนกลับได้)
@@ -194,7 +1094,10 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     let tierDiscountSatang = 0;
     let voucherUseIds: string[] = [];
     let giftCardTxnId: string | null = null;
-    if (input.memberId && memberSystemId) {
+    // POS P1.12 ▸ R9 (CD-2): สิทธิ์ที่ใช้กับบิลนี้ = บรรทัดของกระเป๋า "ไม่รวมคูปอง" (คูปองเป็นของ POS · อยู่ใน CouponRedemption) + แต้มที่ตัด ·
+    //   เขียนทุกผู้เรียกเมื่อมีสิทธิ์สมาชิก (applied ไม่ null — แม้ไม่มีบรรทัด) · walk-in / ลูกค้านอกระบบสมาชิก = null · ห้ามแก้หลัง commit ◂
+    let memberBenefits: { lines: { kind: string; ref: string | null; label: string; discountSatang: number; note?: string }[]; pointsBurned: number } | null = null;
+    if (input.memberId && memberSystemId && !p36.attachOnly) { // POS P3.6 ▸ R13: แนบสมาชิกเฉย ๆ = ไม่คิดสิทธิ์ (ส่วนลดระดับ 0 · memberBenefits null) ◂
       // dynamic import: `member/index` → wallet → giftcard → `pos/index` = วงกลมของโมดูล
       // (เรียกตอนใช้งานเท่านั้น ⇒ ลำดับการโหลดไฟล์ไม่มีทางได้ facade ที่ยังประกอบไม่เสร็จ)
       const member = await import("@/lib/modules/member");
@@ -211,20 +1114,10 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
             customerId,
             unitId: input.unitId,
             choices: ch,
-            cart: {
-              unitId: input.unitId,
-              // ส่งโค้ดคูปองไปด้วยเพื่อให้กติกา "ห้ามใช้ voucher ซ้อนคูปอง" ตัดสินได้ (§11.5)
-              // — ตัวส่วนลดคูปองยังเป็นของ POS เหมือนเดิม (หักออกจากยอดสิทธิ์ด้านล่าง ไม่นับซ้ำ)
-              couponCode: hasCoupon ? input.couponCode : null,
-              lines: lines.map((l) => ({
-                name: l.name,
-                qty: l.qty,
-                unitPriceSatang: l.unitPriceSatang,
-                discountSatang: l.discountSatang,
-                itemId: l.itemId ?? null,
-                serviceId: l.serviceId ?? null,
-              })),
-            },
+            // ส่งโค้ดคูปองไปด้วยเพื่อให้กติกา "ห้ามใช้ voucher ซ้อนคูปอง" ตัดสินได้ (§11.5)
+            // — ตัวส่วนลดคูปองยังเป็นของ POS เหมือนเดิม (หักออกจากยอดสิทธิ์ด้านล่าง ไม่นับซ้ำ)
+            // POS P1.12 ▸ ตะกร้าของกระเป๋าสร้างด้วยตัวช่วยเดียวกับ quote ของหน้าขาย (saleWalletCart) — ยอดบนจอ = ยอดที่ตัดจริง ◂
+            cart: saleWalletCart(lines, input.unitId, hasCoupon ? input.couponCode : null),
           },
           tx as Prisma.TransactionClient,
         ),
@@ -241,29 +1134,87 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
         tierDiscountSatang = applied.tierDiscountSatang;
         voucherUseIds = applied.voucherUseIds;
         giftCardTxnId = applied.giftCardTxnId;
+        memberBenefits = {
+          lines: applied.lines
+            .filter((l) => l.kind !== "COUPON")
+            .map((l) => ({ kind: l.kind, ref: l.ref ?? null, label: l.label, discountSatang: l.discountSatang, ...(l.note ? { note: l.note } : {}) })),
+          pointsBurned: applied.pointsBurned,
+        };
       }
     }
 
+    // POS P5.1 ▸ MA1 (F1 · CD-P51-O3 b): สิทธิ์สมาชิกไม่กินค่าบริการ — สิทธิ์รวม ≤ ยอดก่อนสิทธิ์ − ค่าบริการ (ตะกร้าของกระเป๋าไม่รู้ส่วนลดท้ายบิล/คูปอง) ·
+    //   ส่วนเกินตัดจากส่วนลดระดับก่อน (อัตโนมัติ · ไม่มีของที่ถูกใช้ไป) · ยังเกิน (ว่อชเชอร์/แต้ม/บัตรกำนัล) = ปฏิเสธทั้งบิล (rollback ทั้ง tx) ◂
+    const memberCap = Math.max(0, beforeMember - serviceCharge);
+    if (memberDiscount > memberCap) {
+      const excess = memberDiscount - memberCap;
+      if (excess > tierDiscountSatang) throw new PosSaleError("VALIDATION", "ส่วนลดรวมมากกว่ายอดบิล — ลดส่วนลดหรือสิทธิ์ที่เลือกก่อน");
+      tierDiscountSatang -= excess;
+      memberDiscount = memberCap;
+      const tierLine = memberBenefits?.lines.find((l) => l.kind === "TIER");
+      if (tierLine) tierLine.discountSatang = Math.max(0, tierLine.discountSatang - excess);
+    }
     const grandTotal = beforeMember - memberDiscount;
     if (paidSum !== grandTotal) {
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${grandTotal}`);
     }
-    if (memberDiscount > 0 || tierDiscountSatang > 0 || voucherUseIds.length > 0 || giftCardTxnId) {
+    if (memberDiscount > 0 || tierDiscountSatang > 0 || voucherUseIds.length > 0 || giftCardTxnId || memberBenefits) {
       await tx.posSale.update({
         where: { id: sale.id },
         data: {
           discountSatang: billDiscount + couponDiscount + memberDiscount,
           grandTotalSatang: grandTotal,
+          vatSatang: billVat(grandTotal), // POS P2.9b ▸ R5 ◂
           tierDiscountSatang,
           voucherUseIds,
           giftCardTxnId,
+          ...(memberBenefits ? { memberBenefits: memberBenefits as unknown as Prisma.InputJsonValue } : {}), // POS P1.12 ▸ R9 ◂
+          ...channel.commission(grandTotal), // POS P2.1 ▸ R6 ฐานค่าคอมฯ = ยอดหลังสิทธิ์สมาชิก ◂
         },
       });
     }
 
+    // POS P2.9 ▸ บิลที่มีแถวบัตร: id แถวชำระตั้งเองเรียงตามลำดับ (USE อ้าง PosPayment.id) · บิลอื่น = id ปริยายแบบเดิม ◂
+    // POS P2.9b ▸ + บิลที่ใช้มัดจำ (APPLY อ้าง PosPayment.id) ◂
+    const payIds = tenders.length || deposits.length ? orderedLineIds(input.payMethods.length) : input.payMethods.map(() => undefined);
     await tx.posPayment.createMany({
-      data: input.payMethods.map((p) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, type: p.type, amountSatang: p.amountSatang, refSaleId: p.refSaleId })),
+      data: input.payMethods.map((p, i) => {
+        // R3 (มติ §8 ข้อ 2): เงินรับ/ทอนอยู่บนแถว CASH ของตัวเอง · แถวอื่น/ไม่ส่ง = null
+        const tendered = p.type === "CASH" && isNonNegInt(p.cashTenderedSatang) ? p.cashTenderedSatang : null;
+        return {
+          ...(payIds[i] ? { id: payIds[i] } : {}),
+          tenantId: input.tenantId,
+          unitId: input.unitId,
+          saleId: sale.id,
+          type: p.type,
+          amountSatang: p.amountSatang,
+          refSaleId: p.refSaleId,
+          reference: p.reference ?? null,
+          tenderedSatang: tendered,
+          changeSatang: tendered === null ? null : tendered - p.amountSatang,
+        };
+      }),
     });
+    await useSaleTenders(tx, input, sale.id, tenders, payIds as string[]); // POS P2.9 ▸ R3 R7 ตัดยอดบัตร/เครดิตใน tx ของบิล ◂
+    await useSaleDeposits(tx, input, sale.id, deposits, payIds as string[]); // POS P2.9b ▸ R4 ตัดยอดมัดจำใน tx ของบิล ◂
+
+    // R8 BLOCK: ตัดสต็อกในtx เดียวกับบิล (ล็อกถือไว้แล้ว) — คีย์ต่อบรรทัดเดียวกับการตัดหลัง commit ⇒ ตัวหลัง commit เจอคีย์เดิม
+    //   ไม่ตัดซ้ำ แต่ยังโพสต์ต้นทุน (GL) + sync สินค้าบัญชีให้ (inventory.consume เส้นเดิม)
+    if (blockInv) {
+      // POS P1.2: ส่วนประกอบชุดตัดต่อส่วนประกอบ (คีย์ pos-consume-<sale>-<line>-<invItem>) · บรรทัดชั่งตัดเป็นกรัม — คีย์เดียวกับการตัดหลัง commit
+      const saved = await tx.posSaleLine.findMany({ where: { saleId: sale.id }, select: { id: true, itemId: true, qty: true, weightGrams: true, components: true } });
+      for (const part of saved.flatMap((l) => lineConsumption(sale.id, l))) {
+        if (!blockItemIds.has(part.itemId)) continue;
+        await inventory.consumeInTx(tx as Prisma.TransactionClient, blockInv, {
+          itemId: part.itemId,
+          qty: part.qty,
+          sourceModule: "POS",
+          refType: "PosSale",
+          refId: sale.id,
+          idempotencyKey: part.key,
+        });
+      }
+    }
 
     // คูปอง: redeem ตัวจริง (atomic re-validate) ผูกกับบิล — ใน tx เดียวกัน · ล้ม = rollback ทั้งบิล
     if (hasCoupon) {
@@ -297,19 +1248,30 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
 
     // 🔴 แต้ม/ยอดสะสม/ไทม์ไลน์ **ไม่อยู่ที่นี่แล้ว** (M2.8) — ดูหมายเหตุหัวไฟล์
     //    `pointEarned` = 0 ตอน commit เสมอ · `src/lib/member-bridges.ts` เขียนค่าจริงหลังคิวระบาย
-    return { saleId: sale.id, receiptNo, grandTotalSatang: grandTotal, pointEarned: 0 };
+    return { saleId: sale.id, receiptNo, grandTotalSatang: grandTotal, pointEarned: 0, status: "PAID" };
   });
 
   // ── หลัง tx commit: ตัดสต็อก (perpetual) + post บัญชี ──
   // ทำเฉพาะเมื่อ createSale เป็นเจ้าของ tx (ownsTx = commit แน่แล้ว) — ถ้าถูกเรียกใน tx ผู้อื่น
   //   ปล่อยให้ flow นั้นจัดการ (เลี่ยง orphan movement ถ้า tx นอกโดน rollback)
-  if (ownsTx) {
-    // ตัดสต็อกเฉพาะบิลที่มี line ผูก itemId — inventory.consume เปิด tx เอง + โพสต์ COGS หลัง tx
-    //   (Dr5000/Cr1200 ผ่าน bridge) จึงทำนอก tx ของบิล = เลี่ยง nested tx
-    if (input.lines.some((l) => l.itemId)) await consumeSaleInventory(input.tenantId, input.unitId, result.saleId);
-    scheduleDrain(); // post ยอดขาย→บัญชี · cron /api/cron/outbox เก็บตกถ้าล้ม
-  }
+  // HF-TX ▸ ผู้เรียกที่ส่ง tx ต้องส่ง `callerTx(tx)` (core/caller-tx) — ไม่งั้น Prisma 7 ทำให้ ownsTx จริงเสมอ (savepoint ซ้อน) ·
+  //   งานหลัง commit ของผู้เรียก = afterSaleCommitted (ชุดเดียวกันทุกตัว) ◂
+  if (ownsTx) await afterSaleCommitted(input, result.saleId);
   return result;
+}
+
+/**
+ * HF-TX ▸ งานหลัง commit ของบิลขาย (ชุดเดียว · createSale ตอนเป็นเจ้าของ tx เรียกเอง) — ผู้เรียกที่สร้างบิลในธุรกรรมของตัวเอง
+ * (`createSale(input, callerTx(tx))`) ต้องเรียกตัวนี้ **หลัง** `$transaction` resolve (commit แล้ว) ไม่ใช่ข้างใน:
+ *   บรรทัดผูกคลัง/ส่วนประกอบ ⇒ consumeSaleInventory (อ่านบิลผ่าน prisma กลาง · ไม่เจอ/void = ข้าม) · แล้ว scheduleDrain() (pos.sale.paid ทำงานทันที)
+ * รับเฉพาะ tenantId/unitId/lines (ส่ง CreateSaleInput ทั้งก้อนได้) ◂
+ */
+export async function afterSaleCommitted(input: Pick<CreateSaleInput, "tenantId" | "unitId" | "lines">, saleId: string): Promise<void> {
+  // ตัดสต็อกเฉพาะบิลที่มี line ผูก itemId — inventory.consume เปิด tx เอง + โพสต์ COGS หลัง tx
+  //   (P1.6 BLOCK: ตัดไปแล้วในtx ของบิล — คีย์เดิมคืนรายการเดิม ไม่ตัดซ้ำ แต่ยังโพสต์ COGS ให้)
+  //   (Dr5000/Cr1200 ผ่าน bridge) จึงทำนอก tx ของบิล = เลี่ยง nested tx
+  if (input.lines.some((l) => l.itemId || (l.components && l.components.length))) await consumeSaleInventory(input.tenantId, input.unitId, saleId);
+  scheduleDrain(); // post ยอดขาย→บัญชี · cron /api/cron/outbox เก็บตกถ้าล้ม
 }
 
 // HF-INV-1 ▸ R3.3: รหัสสั้นของสาเหตุ (SQLSTATE/รหัส Prisma/ชื่อ error) สำหรับบรรทัด log — ไม่ใส่ข้อความ (อาจมีชื่อสินค้า) ◂
@@ -322,48 +1284,340 @@ function stockErrorCode(e: unknown): string {
   return e instanceof Error ? e.name : "unknown";
 }
 
+/**
+ * POS P1.2 R2 F2: id บรรทัดของบิลหนึ่งที่เรียงตามลำดับบรรทัดเสมอ — `c` + เวลา (base36 ยาวคงที่) + สุ่ม 12 hex + ลำดับ 4 หลัก
+ * (ตัวเลข/อักษรเล็กล้วน ความยาวเท่ากันทุกตัว ⇒ เรียงแบบสตริงตรงกับลำดับบรรทัดในทุก collation)
+ */
+function orderedLineIds(n: number): string[] {
+  const base = `c${Date.now().toString(36).padStart(9, "0")}${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  return Array.from({ length: n }, (_, i) => `${base}${String(i).padStart(4, "0")}`);
+}
+
 // ── ตัดสต็อกของบิล (perpetual) — เรียกหลัง createSale commit เท่านั้น ──
 // เฉพาะบิล PAID + line ที่ผูก itemId · idempotent ต่อ line (pos-consume-<saleId>-<lineId>) → retry/replay ไม่ตัดซ้ำ
 //   (ดึง line จาก DB → รองรับ retry หลัง crash: บิลถูกสร้างแล้วแต่ยังไม่ตัดสต็อก ก็ตัดครบ)
 // ไม่มีระบบ INVENTORY ผูก unit → ไม่ตัด (ขายบริการ/ร้านไม่ใช้คลัง — ปกติ ไม่ error)
 // สต็อกไม่พอ → inventory.consume ยอมติดลบ ไม่ block (เงินสำคัญกว่า · ตั้งธง needsReview ให้ร้านเคลียร์)
 // ตัดล้มรายบรรทัด (เช่น item ถูกลบ) → catch ไว้ (บิลชำระแล้ว ห้าม rollback การขาย)
-async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
-  const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
-  if (!sale || sale.status !== "PAID") return; // void แล้ว = อย่าตัด
-  const lines = await prisma.posSaleLine.findMany({
-    where: { tenantId, saleId, itemId: { not: null } },
-    select: { id: true, itemId: true, qty: true },
-  });
-  if (lines.length === 0) return;
-  const inventorySystemId = await systemForUnit(tenantId, unitId, "INVENTORY");
-  if (!inventorySystemId) return;
-  const invCtx = { tenantId, systemId: inventorySystemId };
-  for (const l of lines) {
-    if (!l.itemId) continue;
-    try {
-      await inventory.consume(invCtx, {
-        itemId: l.itemId,
-        qty: l.qty,
-        sourceModule: "POS",
-        refType: "PosSale",
-        refId: saleId,
-        idempotencyKey: `pos-consume-${saleId}-${l.id}`,
-      });
-    } catch (e) {
-      // ตัดสต็อกล้ม → บิลชำระแล้ว ปล่อยผ่าน (ไม่ล้มการขาย)
-      // HF-INV-1 ▸ R3.3: แต่ต้องทิ้งร่องรอย (เดิมเงียบ — ตอนนี้ล้มได้จริงเมื่อสินค้าถูกล็อกนาน ≈10 วิ) · ไม่มีข้อมูลลูกค้า ◂
-      console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, itemId: l.itemId, qty: l.qty, code: stockErrorCode(e) });
+/**
+ * POS P1.2 — การตัดสต็อกของบรรทัดหนึ่ง (ตัวกำหนดเดียว: ตัดหลัง commit · ตัดในtx แบบ BLOCK · registerStatus นับคีย์เดียวกัน)
+ *   บรรทัดผูกคลัง (itemId) = 1 ส่วน จำนวน = กรัม (บรรทัดชั่ง) หรือ qty · คีย์ `pos-consume-<saleId>-<lineId>` (เดิม)
+ *   ส่วนประกอบชุด = 1 ส่วนต่อ InvItem จำนวน = qty × line.qty · คีย์ `pos-consume-<saleId>-<lineId>-<invItemId>` (R8)
+ *   components ที่อ่านจาก DB ผิดรูป = ข้ามรายการนั้น (บิลชำระแล้ว ห้ามล้ม)
+ */
+export function lineConsumption(
+  saleId: string,
+  l: { id: string; itemId: string | null; qty: number; weightGrams: number | null; components: unknown },
+): { itemId: string; qty: number; key: string }[] {
+  const out: { itemId: string; qty: number; key: string }[] = [];
+  if (l.itemId) out.push({ itemId: l.itemId, qty: l.weightGrams ?? l.qty, key: `pos-consume-${saleId}-${l.id}` });
+  if (Array.isArray(l.components)) {
+    for (const c of l.components as unknown[]) {
+      const x = c as { invItemId?: unknown; qty?: unknown } | null;
+      if (!x || typeof x.invItemId !== "string" || !x.invItemId || typeof x.qty !== "number" || !Number.isInteger(x.qty) || x.qty < 1) continue;
+      out.push({ itemId: x.invItemId, qty: x.qty * l.qty, key: `pos-consume-${saleId}-${l.id}-${x.invItemId}` });
     }
+  }
+  return out;
+}
+
+const STOCK_CUT_FAILED = "[pos] stock cut failed — sale committed without stock movement";
+// POS P1.7 ▸ export: register.ts เรียก createSale ในธุรกรรมของตัวเอง (ล็อกใบขอรับเงิน) ⇒ ทำงานหลัง commit ชุดเดียวกับตอน createSale เป็นเจ้าของ tx ◂
+// POS P2.3 ▸ R5 (CD5 · มติ Q7): ทุกบิลตัดเป็น "ชุดเดียว" — inventory.consumeBatch (tx เดียว · ล็อกเรียง id · คีย์ต่อส่วนเดิมทุกตัว ⇒ แถว movement
+//   เหมือนเดิมทุกค่า เปลี่ยนแค่การรวม tx) · ล้มทั้งชุด = ไม่มีส่วนใดถูกตัด (บิลนับเป็น "ค้างตัด" ใน registerStatus · retryPendingStockCuts ตัดซ้ำได้) ·
+//   ส่วนที่สินค้าไม่มีในคลังของสาขา/เป็นบริการ = ข้าม (กติกาเดียวกับ pendingStockParts) · คืน true = ไม่มีอะไรล้ม ◂
+export async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<boolean> {
+  const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
+  if (!sale || sale.status !== "PAID") return true; // void แล้ว = อย่าตัด
+  // POS P1.2: ทุกบรรทัดของบิล (บรรทัดชุดไม่มี itemId แต่มี components) → ส่วนที่ต้องตัด
+  const lines = await prisma.posSaleLine.findMany({
+    where: { tenantId, saleId },
+    select: { id: true, itemId: true, qty: true, weightGrams: true, components: true },
+  });
+  const parts = lines.flatMap((l) => lineConsumption(saleId, l));
+  if (parts.length === 0) return true;
+  const inventorySystemId = await systemForUnit(tenantId, unitId, "INVENTORY");
+  if (!inventorySystemId) return true;
+  let batch: Awaited<ReturnType<typeof consumeBatch>>;
+  try {
+    batch = await consumeBatch(
+      { tenantId, systemId: inventorySystemId },
+      { sourceModule: "POS", refType: "PosSale", refId: saleId, parts: parts.map((p) => ({ itemId: p.itemId, qty: p.qty, idempotencyKey: p.key })) },
+    );
+  } catch (e) {
+    // ตัดสต็อกล้ม → บิลชำระแล้ว ปล่อยผ่าน (ไม่ล้มการขาย)
+    // HF-INV-1 ▸ R3.3: แต่ต้องทิ้งร่องรอย (เดิมเงียบ — ตอนนี้ล้มได้จริงเมื่อสินค้าถูกล็อกนาน ≈10 วิ) · ไม่มีข้อมูลลูกค้า ◂
+    // POS P2.3 ▸ fix round 2 (มติผู้คุมงาน AT-24.1): หนึ่งบรรทัดต่อรายการที่ตัดไม่ได้ {saleId, itemId, qty, code} แบบทางทีละบรรทัดเดิม + บรรทัดสรุปของชุด ◂
+    const code = stockErrorCode(e);
+    for (const p of parts) console.error(STOCK_CUT_FAILED, { saleId, itemId: p.itemId, qty: p.qty, code });
+    console.error(STOCK_CUT_FAILED, { saleId, parts: parts.length, code });
+    return false;
+  }
+  // POS P2.3 ▸ fix round 2 (AT-24.1): ส่วนที่ consumeBatch ข้าม (บริการ / ไม่มีในคลังของสาขา) = ตัดไม่ได้ ⇒ ทิ้งร่องรอยต่อรายการแบบทางเดิม
+  //   (ทางทีละบรรทัดก่อน P2.3 โยนแล้ว log ทีละรายการ) · code = เหตุผลที่ข้าม (SERVICE | NOT_FOUND) · บิลยังไม่ค้าง (มติ 4) ◂
+  const qtyOf = new Map(parts.map((p) => [p.key, p.qty]));
+  for (const sk of batch.skipped) console.error(STOCK_CUT_FAILED, { saleId, itemId: sk.itemId, qty: qtyOf.get(sk.key) ?? 0, code: sk.reason });
+  // POS P2.3 ▸ fix round 1 (รีวิว F1 · มติผู้คุมงาน ทาง B): อ่านบิลใหม่หลังตัด — มีใบคืนแล้ว (คืนก่อนตัดสำเร็จ เช่นบิลค้างตัดแล้วคืนบางส่วน
+  //   ⇒ ตัวรับคิวคืนเงินไม่พบ OUT จึงไม่รับของคืน) ⇒ รับคืนตามใบคืนทุกใบของบิลนี้ซ้ำ (คีย์ pos-refund-<ใบคืน>-<บรรทัด>[-<inv>] เดิม · idempotent)
+  //   ⇒ retryPendingStockCuts ตัดครบบิลแล้วคืนส่วนที่คืนไปแล้ว = สุทธิเฉพาะส่วนที่ยังไม่คืน (ไม่ตัดเกิน · ไม่ทิ้งส่วนที่ยังไม่คืนให้ค้างตลอดไป) ◂
+  // POS P2.3 ▸ fix round 1 (รีวิว F6): บิลถูก void ระหว่างตรวจ PAID กับการตัด (retry ทำให้ช่องนี้เกิดได้จริง) ⇒ restoreVoidedInventory ตอน void
+  //   ไม่พบ OUT จึงไม่คืน ⇒ อ่านสถานะใหม่หลังตัด: VOIDED = คืนตอนนี้ (คีย์ pos-refund-<บิล>-<movement> · idempotent ถ้า void คืนไปแล้ว) ·
+  //   REFUNDED (คืนครบระหว่างนั้น) = refundedSatang > 0 ⇒ ทางใบคืนข้างล่าง (ไม่ใช้ทาง void — ตัวรับคิวอาจคืนด้วยคีย์ใบคืนไปแล้ว ⇒ คืนเบิ้ล) ◂
+  const after = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true, refundedSatang: true } });
+  if (after?.status === "VOIDED") await restoreVoidedInventory(tenantId, unitId, saleId);
+  else if (after && after.refundedSatang > 0) await restockSaleRefunds(tenantId, inventorySystemId, saleId);
+  return true;
+}
+
+/**
+ * POS P2.3 ▸ fix round 1 (รีวิว F1) — รับของคืนตามใบคืนเงิน (docType REFUND) ทุกใบของบิลหนึ่ง ด้วยขั้นคลังตัวเดียวกับตัวรับคิว (restockRefundDoc)
+ *   ใช้หลังตัดบิลสำเร็จ (consumeSaleInventory) · คีย์เดิมของใบคืน ⇒ ใบที่ตัวรับคิวรับคืนไปแล้วไม่รับซ้ำ · ล้ม = log (คิวของใบคืนปิดไปแล้ว — ไม่มีใครลองใหม่ · ดู F7)
+ */
+async function restockSaleRefunds(tenantId: string, inventorySystemId: string, saleId: string): Promise<void> {
+  const [sale, refunds] = await Promise.all([
+    prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { id: true, lines: { select: { id: true, itemId: true, qty: true, weightGrams: true, components: true } } } }),
+    prisma.posSale.findMany({
+      where: { tenantId, refSaleId: saleId, docType: "REFUND" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, receiptNo: true, lines: { select: { id: true, refLineId: true, qty: true, restock: true }, orderBy: { id: "asc" } } },
+    }),
+  ]);
+  if (!sale) return;
+  for (const refund of refunds) {
+    await restockRefundDoc({ tenantId, systemId: inventorySystemId }, refund, sale, (part, e) =>
+      console.error("[pos] refund restock after stock cut failed", { saleId, refundSaleId: refund.id, itemId: part.itemId, qty: part.qty, code: stockErrorCode(e) }),
+    );
   }
 }
 
+/**
+ * POS P1.8 R7 ขั้น 2 (ย้ายจาก refund-consumer.ts ใน fix round 1 · รีวิว F1 — ตัวเดียว ใช้ทั้งตัวรับคิวคืนเงินและหลังตัดบิลค้าง):
+ *   บรรทัดใบคืน restock === true ที่ชี้บรรทัดเดิม → ส่วนตัดของบรรทัดเดิม (lineConsumption ตามจำนวนที่คืน) ที่มี OUT ของบิลเดิม
+ *   → รับคืนที่ต้นทุน/คลัง/ล็อตของ OUT เดิม (returnStockAtOriginalCost) คีย์ pos-refund-<ใบคืน>-<บรรทัดใบคืน>[-<invItemId>]
+ *   ส่วนที่ยังไม่มี OUT (ไม่ผูกคลัง/ตัดล้ม) = ข้าม · ส่วนที่รับคืนล้ม = onError แล้วไปต่อ
+ */
+export type RefundDocForRestock = { id: string; receiptNo: string | null; lines: { id: string; refLineId: string | null; qty: number; restock: boolean | null }[] };
+export type SaleForRestock = { id: string; lines: { id: string; itemId: string | null; qty: number; weightGrams: number | null; components: unknown }[] };
+export async function restockRefundDoc(
+  invCtx: { tenantId: string; systemId: string },
+  refund: RefundDocForRestock,
+  sale: SaleForRestock,
+  onError: (part: StockReturnPart, e: unknown) => void,
+): Promise<void> {
+  const origById = new Map(sale.lines.map((l) => [l.id, l]));
+  const wanted = refund.lines.filter((l) => l.restock === true && l.refLineId && origById.has(l.refLineId));
+  if (!wanted.length) return;
+  // ส่วนที่ต้องคืนต่อบรรทัดใบคืน = ส่วนตัดของบรรทัดเดิม (lineConsumption · ตัวกำหนดเดียวกับตอนขาย) ตามจำนวนที่คืน
+  //   บรรทัดชั่งคืนทั้งบรรทัด (กรัมเดิม) · ชุดคืนส่วนประกอบ qty × จำนวนชุดที่คืน
+  const parts = wanted.flatMap((rl) => {
+    const ol = origById.get(rl.refLineId!)!;
+    const mine = lineConsumption("", { id: ol.id, itemId: ol.itemId, qty: rl.qty, weightGrams: ol.weightGrams, components: ol.components });
+    const orig = lineConsumption(sale.id, { id: ol.id, itemId: ol.itemId, qty: ol.qty, weightGrams: ol.weightGrams, components: ol.components });
+    // ลำดับเดียวกันเสมอ (บรรทัดผูกคลังก่อน แล้วส่วนประกอบตามลำดับ) ⇒ จับคู่ด้วยตำแหน่ง
+    return mine.map((x, i) => ({
+      itemId: x.itemId,
+      qty: x.qty,
+      outKey: orig[i]!.key,
+      key: ol.itemId && i === 0 ? `pos-refund-${refund.id}-${rl.id}` : `pos-refund-${refund.id}-${rl.id}-${x.itemId}`,
+    }));
+  });
+  const outs = await prisma.invMovement.findMany({
+    where: { tenantId: invCtx.tenantId, type: "OUT", idempotencyKey: { in: parts.map((x) => x.outKey) } },
+    select: { idempotencyKey: true, itemId: true, costSatang: true, locationId: true, lotCode: true },
+  });
+  const outOf = new Map(outs.map((m) => [m.idempotencyKey, m]));
+  const back: StockReturnPart[] = [];
+  for (const part of parts) {
+    const out = outOf.get(part.outKey);
+    if (!out || out.itemId !== part.itemId) continue; // ไม่เคยตัดสต็อก (ไม่ผูกคลัง/ตัดล้ม) = ไม่มีอะไรให้คืน
+    back.push({ itemId: part.itemId, qty: part.qty, out, idempotencyKey: part.key, refId: refund.id, note: `รับคืนจากใบคืนเงิน ${refund.receiptNo ?? refund.id}` });
+  }
+  await returnStockAtOriginalCost(invCtx, back, onError);
+}
+
+// ═══════ POS P2.3 ▸ มติ 4 + §9 Q8: บิลค้างตัดสต็อก — กติกาเดียว (pendingStockParts) ของ registerStatus · retryPendingStockCuts ◂ ═══════
+// ส่วนที่ "ค้าง" = ส่วนตัดของบรรทัด (lineConsumption: itemId หรือ components) ที่ยังไม่มี InvMovement คีย์ของส่วนนั้น
+//   และ "ตัดได้จริง" = สินค้าอยู่ในคลังของสาขาและไม่ใช่บริการ (กติกาข้ามเดียวกับ consumeBatch) ⇒ บิลที่ส่วนที่เหลือข้ามได้ทั้งหมด = ไม่ค้าง
+//   สาขาไม่มีคลัง = ไม่มีอะไรค้าง (consumeSaleInventory ไม่ตัดอยู่แล้ว) · เฉพาะบิลขาย PAID (docType SALE) ของสาขานี้
+//   components ผิดรูป (qty ไม่ใช่จำนวนเต็ม ≥ 1) ไม่นับ (lineConsumption ข้ามเหมือนกัน)
+export type PendingStockPart = { saleId: string; lineId: string; itemId: string; key: string };
+export async function pendingStockParts(
+  db: Client,
+  q: { tenantId: string; unitId: string; since?: Date; saleIds?: string[] },
+): Promise<PendingStockPart[]> {
+  const inv = await systemForUnit(q.tenantId, q.unitId, "INVENTORY", db);
+  if (!inv) return [];
+  if (q.saleIds && q.saleIds.length === 0) return [];
+  const saleWhere = Prisma.sql`s."tenantId" = ${q.tenantId} AND s."unitId" = ${q.unitId} AND s.status = 'PAID' AND s."docType" = 'SALE'
+    ${q.since ? Prisma.sql`AND s."createdAt" >= ${q.since}` : Prisma.empty}
+    ${q.saleIds ? Prisma.sql`AND s.id = ANY(${q.saleIds}::text[])` : Prisma.empty}`;
+  return db.$queryRaw<PendingStockPart[]>`
+    WITH parts AS (
+      SELECT s.id AS "saleId", l.id AS "lineId", l."itemId" AS "itemId", 'pos-consume-' || s.id || '-' || l.id AS key
+      FROM "PosSale" s JOIN "PosSaleLine" l ON l."saleId" = s.id
+      WHERE ${saleWhere} AND l."itemId" IS NOT NULL
+      UNION ALL
+      SELECT s.id, l.id, c->>'invItemId', 'pos-consume-' || s.id || '-' || l.id || '-' || (c->>'invItemId')
+      FROM "PosSale" s JOIN "PosSaleLine" l ON l."saleId" = s.id
+        CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(l."components") = 'array' THEN l."components" ELSE '[]'::jsonb END) c
+      WHERE ${saleWhere} AND l."components" IS NOT NULL
+        AND jsonb_typeof(c) = 'object' AND jsonb_typeof(c->'invItemId') = 'string' AND (c->>'invItemId') <> ''
+        AND jsonb_typeof(c->'qty') = 'number' AND (c->>'qty') ~ '^[1-9][0-9]*$'
+    )
+    SELECT p."saleId", p."lineId", p."itemId", p.key FROM parts p
+    JOIN "InvItem" i ON i.id = p."itemId" AND i."tenantId" = ${q.tenantId} AND i."systemId" = ${inv} AND i."kind"::text <> 'SERVICE'
+    WHERE NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${q.tenantId} AND m."idempotencyKey" = p.key)
+    ORDER BY p."saleId", p.key`;
+}
+
+/** มติ §9 Q8: เพดานบิลต่อการกด 1 ครั้ง (เก่าสุดก่อน) */
+export const RETRY_STOCK_CUTS_MAX = 200;
+/**
+ * POS P2.3 ▸ fix round 1 (รีวิว F2): เริ่ม "วันนี้" ตามเวลาไทย (00:00 Asia/Bangkok · UTC+7 ไม่มีเวลาออมแสง) — ขอบเขตเดียวของ
+ *   ตัวนับ registerStatus.pendingStockCount และ retryPendingStockCuts ⇒ "ตัดสต็อกค้าง N บิล" ตัดเฉพาะ N บิลที่จอนับ ◂
+ */
+export function posDayStart(now: Date = new Date()): Date {
+  const bkk = new Date(now.getTime() + 7 * 3600000).toISOString().slice(0, 10);
+  return new Date(new Date(`${bkk}T00:00:00Z`).getTime() - 7 * 3600000);
+}
+export type RetryStockCutsActor = { userId: string; role: Role; unitAccess: string[]; permissions: Record<string, unknown> };
+
+/**
+ * POS P2.3 ▸ §9 Q8 — "ตัดสต็อกค้าง N บิล · ลองอีกครั้ง": ตัดซ้ำ (idempotent) ให้บิลของสาขานี้ที่ยังค้างตัด · เก่าสุดก่อน ≤ 200 บิลต่อครั้ง
+ *   ctx = {tenantId, systemId (POS), actor} (มติ 1) · สิทธิ์ pos.settings.manage ที่สาขา · สาขาไม่ผูก POS นี้/เก็บถาวร/เข้าไม่ได้ = NOT_FOUND
+ *   คืน {scanned (บิลที่ค้างตอนเริ่ม), cut (บิลที่หายค้างหลังรอบนี้), stillPending (บิลในรอบนี้ที่ยังค้าง)} · audit "pos.stock.retry" เมื่อมีบิลให้ลอง
+ *   ปฏิเสธ = คืน {ok:false, code, message} ไม่ throw (มติ 1) · ทุกบิลตัดครบแล้ว = {scanned 0, cut 0, stillPending 0} ไม่มีแถวใหม่ ไม่มี audit
+ *   fix round 1 (รีวิว F2 · มติผู้คุมงาน): ขอบเขต = ขอบเขตของตัวนับ — `opts.since` ไม่ส่ง = วันนี้ (posDayStart · ตัวเดียวกับ registerStatus) ·
+ *     สแกนทุกช่วงเวลาเฉพาะเมื่อผู้เรียกส่ง `since: null` ตรง ๆ (ไม่เปิดให้จอ U) ⇒ บิลค้างเก่าที่เจ้าของแก้ด้วยการนับสต็อกไปแล้วไม่ถูกตัดซ้ำ
+ */
+export async function retryPendingStockCuts(
+  ctx: { tenantId: string; systemId: string; actor: RetryStockCutsActor },
+  unitId: string,
+  opts: { since?: Date | null } = {},
+): Promise<RetryPendingStockCutsResult> {
+  try {
+    const c = ctx as unknown as Record<string, unknown> | null;
+    if (!c || typeof c.tenantId !== "string" || !c.tenantId || typeof c.systemId !== "string" || !c.systemId || typeof unitId !== "string" || !unitId) {
+      return { ok: false, code: "NOT_FOUND", message: RETRY_MSG.NOT_FOUND };
+    }
+    const actor = retryActorOf(c.actor);
+    if (!actor) return { ok: false, code: "PERMISSION_DENIED", message: RETRY_MSG.PERMISSION_DENIED };
+    const { tenantId, systemId } = ctx;
+    const [sys, link, unit] = await Promise.all([
+      prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS", active: true }, select: { id: true } }),
+      prisma.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId, unitId, type: "POS" } }, select: { systemId: true } }),
+      prisma.businessUnit.findFirst({ where: { id: unitId, tenantId, status: { not: "ARCHIVED" } }, select: { id: true } }),
+    ]);
+    if (!sys || !link || link.systemId !== systemId || !unit || !canAccessUnit(actor, unitId)) return { ok: false, code: "NOT_FOUND", message: RETRY_MSG.NOT_FOUND };
+    if (!evaluate(actor, { module: "pos", action: "pos.settings.manage", unitId })) return { ok: false, code: "PERMISSION_DENIED", message: RETRY_MSG.PERMISSION_DENIED };
+    const o = opts && typeof opts === "object" ? opts : {};
+    const since = o.since === null ? undefined : o.since instanceof Date && !Number.isNaN(o.since.getTime()) ? o.since : posDayStart();
+    const pend = await pendingStockParts(prisma, { tenantId, unitId, since });
+    const pendingIds = [...new Set(pend.map((p) => p.saleId))];
+    if (pendingIds.length === 0) return { ok: true, scanned: 0, cut: 0, stillPending: 0 };
+    const order = await prisma.posSale.findMany({
+      where: { tenantId, unitId, id: { in: pendingIds } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: RETRY_STOCK_CUTS_MAX,
+      select: { id: true },
+    });
+    const ids = order.map((o) => o.id);
+    for (const id of ids) await consumeSaleInventory(tenantId, unitId, id);
+    const still = new Set((await pendingStockParts(prisma, { tenantId, unitId, saleIds: ids })).map((p) => p.saleId));
+    const result = { scanned: ids.length, cut: ids.length - still.size, stillPending: still.size };
+    await prisma.auditLog.create({
+      data: {
+        tenantId,
+        unitId,
+        actorType: "USER",
+        actorId: actor.userId,
+        action: "pos.stock.retry",
+        targetType: "BusinessUnit",
+        targetId: unitId,
+        before: { pendingSales: ids.length },
+        after: result,
+      },
+    });
+    return { ok: true, ...result };
+  } catch (e) {
+    console.error("[pos] retryPendingStockCuts", { code: stockErrorCode(e) });
+    return { ok: false, code: "INTERNAL", message: RETRY_MSG.INTERNAL };
+  }
+}
+const RETRY_MSG = {
+  NOT_FOUND: "ไม่พบสาขานี้ในระบบขาย",
+  PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์ตั้งค่าระบบขายของสาขานี้ — ให้ผู้จัดการกดตัดสต็อกค้าง",
+  INTERNAL: "ระบบขายขัดข้องชั่วคราว ยังไม่ได้ตัดสต็อกค้าง — ลองอีกครั้ง",
+} as const;
+function retryActorOf(v: unknown): RetryStockCutsActor | null {
+  const a = v as Record<string, unknown> | null;
+  if (!a || typeof a !== "object" || typeof a.userId !== "string" || !a.userId) return null;
+  if (a.role !== "OWNER" && a.role !== "MANAGER" && a.role !== "STAFF") return null;
+  if (!Array.isArray(a.unitAccess) || !a.unitAccess.every((x) => typeof x === "string")) return null;
+  if (!a.permissions || typeof a.permissions !== "object" || Array.isArray(a.permissions)) return null;
+  return { userId: a.userId, role: a.role, unitAccess: [...(a.unitAccess as string[])], permissions: a.permissions as Record<string, unknown> };
+}
+
+// POS P1.16 ▸ R3/CD2: อาร์กิวเมนต์ที่ 4 (ไม่บังคับ) = ผู้ยกเลิก + เหตุผล ⇒ AuditLog "pos.sale.void" ในtx เดียวกับการพลิกสถานะ ◂
+//   ผู้เรียกเดิม (3 อาร์กิวเมนต์ · AI proposals · โมดูลอื่น) ไม่เปลี่ยนและไม่เขียน audit · idempotencyKey เก็บใน after (bills.ts ใช้จับการเล่นซ้ำ)
+export type VoidSaleAudit = {
+  actorUserId: string;
+  reason: string;
+  idempotencyKey?: string;
+  // POS P1.15 ▸ ยกเลิกผ่านสายอนุมัติ (actor = ผู้ตัดสิน) / PIN ผู้จัดการ (actor = ผู้จัดการ) — ผู้ขอเดิมบันทึกคู่กัน (มติ 11) ◂
+  via?: "approval" | "pin_override";
+  requestId?: string | null;
+  requestedByUserId?: string;
+  /** POS P2.14 ▸ API-9: ที่มาของคำสั่งยกเลิก — "API" = REST /api/v1/pos (ลง after.source) · ไม่ส่ง = หน้าจอ/ผู้เรียกเดิม (VoidSaleAudit ไม่อยู่ในสัญญา F15.2) ◂ */
+  source?: "API" | "booking"; // POS P5.1 ▸ RC F10 (CD-P51-O10b): "booking" = นัดออกจาก NO_SHOW (moduleUnforfeitDeposit) ◂
+};
+
 // void: กลับรายการ (คืนแต้ม + สถานะ)
-export async function voidSale(tenantId: string, unitId: string, saleId: string): Promise<void> {
+export async function voidSale(tenantId: string, unitId: string, saleId: string, audit?: VoidSaleAudit): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const sale = await tx.posSale.findFirst({ where: { id: saleId, tenantId, unitId } });
-    if (!sale || sale.status !== "PAID") throw new Error("บิลนี้ void ไม่ได้");
-    await tx.posSale.update({ where: { id: saleId }, data: { status: "VOIDED" } });
+    // POS P1.8 ▸ ใบคืนเงิน (docType REFUND) void ไม่ได้ (มติ R1 · คืนของใบคืน = นอกขอบเขต) ◂
+    if (!sale || sale.status !== "PAID" || sale.docType !== "SALE") throw new Error("บิลนี้ void ไม่ได้");
+    // POS P2.9b ▸ มติ 5: ใบรับมัดจำยกเลิกแบบบิลขายไม่ได้ (ทุกผู้เรียก) — ใช้การคืนเงินมัดจำ (registerRefundDeposit) แทน ◂
+    if (sale.sourceModule === POS_DEPOSIT_SOURCE) throw new Error("ใบรับเงินมัดจำยกเลิกแบบบิลขายไม่ได้ — ใช้การคืนเงินมัดจำแทน");
+    // POS P1.8 ▸ §7 CD1: คืนเงินไปแล้วบางส่วน ⇒ void ทั้งใบจะกลับรายการส่วนที่คืนไปแล้วซ้ำ (JV · แต้ม · สต็อก) — ปฏิเสธก่อนเขียนอะไร (ทุกผู้เรียก) ◂
+    if (sale.refundedSatang > 0) throw new PosSaleError("HAS_REFUNDS", "บิลนี้มีการคืนเงินแล้ว — ยกเลิกทั้งใบไม่ได้ ใช้การคืนเงินส่วนที่เหลือแทน");
+    // POS P3.6 ▸ R8: บิลวางบิลที่ใบแจ้งหนี้มีรับชำระแล้ว ⇒ ยกเลิกไม่ได้ (ใช้การคืนเงิน) — ล็อกแถวใบแจ้งหนี้ใน tx นี้ก่อนตัดสิน (แข่งกับรับชำระ · ทุกผู้เรียก) ◂
+    if ((await tx.posPayment.count({ where: { saleId, tenantId, type: "ON_ACCOUNT" } })) > 0 && (await (await import("@/lib/modules/account")).posCreditInvoicePaid(tx, { tenantId, sourceSystemId: sale.systemId, refId: saleId }))) {
+      throw new PosSaleError("CREDIT_INVOICE_PAID", "ใบแจ้งหนี้ของบิลวางบิลนี้รับชำระแล้ว — ยกเลิกบิลไม่ได้ ใช้การคืนเงินแทน");
+    }
+    // POS P1.9 ▸ S11: บิลในกะที่ปิดแล้ว void ไม่ได้ (คืนเงินเท่านั้น) · ล็อกแถวกะ FOR SHARE แบบ createSale · บิลนอกกะ (null) = เดิม ◂
+    // POS P1.9 R2 F4 ▸ เฉพาะบิลหน้าขาย (sourceModule "POS") · บิลของโมดูลอื่น (คืนเงินโรงแรม/จอง/… เคลมฝั่งตัวเองก่อนแล้วค่อย void) ไม่ถูกปฏิเสธ — ปฏิเสธ = ค้างครึ่งทาง ◂
+    if (sale.shiftId && (sale.sourceModule === "POS" || sale.sourceModule === "API")) { // POS P2.13 ▸ fix1 F2/H1: บิลของ REST POS (API) ในกะที่ปิดแล้วก็ void ไม่ได้ ◂
+      const sh = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosShift" WHERE id = ${sale.shiftId} FOR SHARE`;
+      if (sh[0]?.status !== "OPEN") throw new PosSaleError("SHIFT_CLOSED", "กะของบิลนี้ปิดแล้ว — ยกเลิกบิลไม่ได้ ใช้การคืนเงินแทน");
+    }
+    // POS P1.8 ▸ เขียนแบบมีเงื่อนไข: ใบคืนที่ commit ระหว่างนี้ (ล็อกบิล FOR UPDATE) ทำให้ไม่ตรง ⇒ ปฏิเสธ ไม่ทับสถานะ ◂
+    const flipped = await tx.posSale.updateMany({ where: { id: saleId, status: "PAID", refundedSatang: 0 }, data: { status: "VOIDED" } });
+    if (flipped.count !== 1) throw new PosSaleError("HAS_REFUNDS", "บิลนี้มีการคืนเงินแล้ว — ยกเลิกทั้งใบไม่ได้ ใช้การคืนเงินส่วนที่เหลือแทน");
+    // POS P1.16 ▸ R3: ผู้ยกเลิก + เหตุผล ลง AuditLog ในtx เดียวกัน (writeAudit ใช้ prisma กลาง เข้าร่วม tx ไม่ได้ — โน้ต oracle drift 1) ◂
+    if (audit) {
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          unitId,
+          actorType: "USER",
+          actorId: audit.actorUserId,
+          action: "pos.sale.void",
+          targetType: "PosSale",
+          targetId: saleId,
+          before: { status: "PAID", receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang },
+          after: {
+            status: "VOIDED",
+            reason: audit.reason,
+            ...(audit.idempotencyKey ? { idempotencyKey: audit.idempotencyKey } : {}),
+            ...(audit.via ? { via: audit.via, requestId: audit.requestId ?? null } : {}),
+            ...(audit.requestedByUserId ? { requestedByUserId: audit.requestedByUserId } : {}),
+            ...(audit.source ? { source: audit.source } : {}), // POS P2.14 ▸ API-9 ◂
+          },
+        },
+      });
+    }
     // outbox: void → กลับรายการบัญชี (contract 2.4)
     await emitOutbox(tx, {
       tenantId,
@@ -398,51 +1652,67 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
 }
 
 // ── คืนสต็อกของบิลที่ถูก void (perpetual) — mirror consumeSaleInventory ──
-// วนตาม InvMovement OUT ที่ตัดจริงตอนขาย (refType PosSale, sourceModule POS) → คืนตรงเป๊ะกับที่ตัด
-//   (แม้ line ซ้ำ itemId ก็คืนครบ) · คืนที่ต้นทุนปัจจุบันของ item → ต้นทุนถัวเฉลี่ยไม่เพี้ยน
+// วนตาม InvMovement OUT ที่ตัดจริงตอนขาย (refType PosSale, sourceModule POS) → คืนตรงเป๊ะกับที่ตัด (แม้ line ซ้ำ itemId ก็คืนครบ)
+// POS P2.3 ▸ มติ Q5 (O12): คืนที่ "ต้นทุน/คลัง/ล็อตของ OUT เดิม" ผ่านทางคืนของเดียวกับตัวรับคิวคืนเงิน (returnStockAtOriginalCost)
+//   — เดิมคืนที่ถัวเฉลี่ยปัจจุบัน ⇒ ต้นทุนขายที่กลับรายการ ≠ ต้นทุนที่ตัด (GL Dr 1200 ของ void = Σ ต้นทุน OUT เดิมแล้ว) ◂
 // idempotent ต่อ movement (pos-refund-<saleId>-<movementId>) → void/retry ซ้ำไม่คืนเบิ้ล
 //   (voidSale โยน error ถ้าบิลไม่ใช่ PAID อยู่แล้ว แต่ receive key ยังกันเบิ้ลอีกชั้น)
 // idempotencyKey มี "refund" + sourceModule POS → bridge ลง Dr1200/Cr5000 (กลับต้นทุนขาย)
-// ไม่มีระบบ INVENTORY / item ถูกลบ / receive ล้ม → ข้ามเงียบ (บัญชีขาย void แล้ว ห้ามล้มการคืนเงิน)
+// ไม่มีระบบ INVENTORY / item ถูกลบ / receive ล้ม → log แล้วข้าม (บัญชีขาย void แล้ว ห้ามล้มการคืนเงิน)
 async function restoreVoidedInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
   const inventorySystemId = await systemForUnit(tenantId, unitId, "INVENTORY");
   if (!inventorySystemId) return;
   const invCtx = { tenantId, systemId: inventorySystemId };
   const outMoves = await prisma.invMovement.findMany({
     where: { tenantId, systemId: inventorySystemId, type: "OUT", refType: "PosSale", refId: saleId, sourceModule: "POS" },
-    select: { id: true, itemId: true, qtyDelta: true },
+    select: { id: true, itemId: true, qtyDelta: true, costSatang: true, locationId: true, lotCode: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
-  // N+1: เดิมยิงหา InvItem ทีละแถวในลูป → บิล 20 บรรทัด = 20 รอบเดินทางไป DB ระหว่างที่ลูกค้ารอ "ยกเลิกบิล"
-  // ดึงชุดเดียวด้วย id in [] (แพตเทิร์นเดียวกับที่ใช้ปิด N+1 ตะกร้าร้านค้า/สั่งอาหาร)
-  const itemIds = [...new Set(outMoves.map((m) => m.itemId).filter((id): id is string => !!id))];
-  const costById = new Map(
-    (
-      await prisma.invItem.findMany({
-        where: { id: { in: itemIds }, tenantId },
-        select: { id: true, costSatang: true },
-      })
-    ).map((i) => [i.id, i.costSatang]),
+  await returnStockAtOriginalCost(
+    invCtx,
+    outMoves
+      .filter((mv) => -mv.qtyDelta > 0) // qtyDelta ติดลบตอนตัด → คืนเท่าที่ตัดจริง
+      .map((mv) => ({ itemId: mv.itemId, qty: -mv.qtyDelta, out: mv, idempotencyKey: `pos-refund-${saleId}-${mv.id}`, refId: saleId, note: "คืนสต็อกจากการยกเลิกบิล POS" })),
+    (part, e) => console.error("[pos] stock restore failed — void committed without stock movement", { saleId, itemId: part.itemId, qty: part.qty, code: stockErrorCode(e) }),
   );
-  for (const mv of outMoves) {
-    const returnQty = -mv.qtyDelta; // qtyDelta ติดลบตอนตัด → คืนเท่าที่ตัดจริง
-    if (returnQty <= 0) continue;
-    const costSatang = mv.itemId ? costById.get(mv.itemId) : undefined;
-    if (costSatang === undefined) continue; // สินค้าถูกลบจากคลัง → ไม่มีที่ให้คืน
+}
+
+/**
+ * POS P1.8 O12 → P2.3 มติ Q5 — ทางคืนของเข้าคลัง "ที่ต้นทุน/คลัง/ล็อตของ OUT เดิม" (ตัวเดียว · ไม่มีชุดที่สอง):
+ *   ตัวรับคิวคืนเงิน (refund-consumer · คีย์ pos-refund-<ใบคืน>-<บรรทัด>[-<inv>]) และ voidSale (คีย์ pos-refund-<บิล>-<movement>)
+ *   รับเข้าทีละส่วน (inventory.receive · tx ของคลังเอง · GL Dr1200/Cr5000 = qty × ต้นทุน OUT เดิม) · OUT แถว legacy ไม่มีคลัง = คลัง default
+ *   ส่วนที่ล้ม = เรียก onError แล้วไปต่อ (ผู้เรียกตัดสินว่าจะโยนให้คิวลองใหม่หรือ log เฉย ๆ)
+ */
+export type StockReturnPart = {
+  itemId: string;
+  qty: number;
+  out: { costSatang: number; locationId: string | null; lotCode: string | null };
+  idempotencyKey: string;
+  refId: string;
+  note: string;
+};
+export async function returnStockAtOriginalCost(
+  invCtx: { tenantId: string; systemId: string },
+  parts: readonly StockReturnPart[],
+  onError: (part: StockReturnPart, e: unknown) => void,
+): Promise<void> {
+  for (const part of parts) {
     try {
       await inventory.receive(invCtx, {
-        itemId: mv.itemId,
-        qty: returnQty,
-        costSatang, // คืนที่ต้นทุนปัจจุบัน → ต้นทุนถัวเฉลี่ยไม่เพี้ยน
-        idempotencyKey: `pos-refund-${saleId}-${mv.id}`,
+        itemId: part.itemId,
+        qty: part.qty,
+        costSatang: part.out.costSatang, // O12: ต้นทุนของการตัดเดิม ไม่ใช่ถัวเฉลี่ยปัจจุบัน
+        // F9: คืนเข้าคลัง/ล็อตเดียวกับที่ตัดออก (หลายคลังไม่เพี้ยน) · OUT แถว legacy ไม่มีคลัง = คลัง default
+        locationId: part.out.locationId,
+        lotCode: part.out.lotCode,
+        idempotencyKey: part.idempotencyKey,
         sourceModule: "POS",
         refType: "PosSale",
-        refId: saleId,
-        note: "คืนสต็อกจากการยกเลิกบิล POS",
+        refId: part.refId,
+        note: part.note,
       });
     } catch (e) {
-      // คืนล้ม → ปล่อยผ่าน (บัญชีขาย void แล้ว)
-      // HF-INV-1 ▸ R3.3: ทิ้งร่องรอยแบบเดียวกับตอนตัด (ไม่มีข้อมูลลูกค้า) ◂
-      console.error("[pos] stock restore failed — void committed without stock movement", { saleId, itemId: mv.itemId, qty: returnQty, code: stockErrorCode(e) });
+      onError(part, e);
     }
   }
 }
@@ -451,7 +1721,8 @@ async function restoreVoidedInventory(tenantId: string, unitId: string, saleId: 
 export async function listSales(tenantId: string, unitId: string, sinceDateStr: string) {
   const since = new Date(sinceDateStr + "T00:00:00Z");
   return prisma.posSale.findMany({
-    where: { tenantId, unitId, createdAt: { gte: since } },
+    // POS P1.8 ▸ R3: รายการ "บิลขาย" เท่านั้น (ใบคืนเงิน docType REFUND ไม่ใช่บิลขาย) ◂
+    where: { tenantId, unitId, docType: "SALE", createdAt: { gte: since } },
     orderBy: { createdAt: "desc" },
     include: { lines: true },
     take: 200,
@@ -463,11 +1734,17 @@ export async function daySummary(tenantId: string, unitId: string): Promise<{ co
   const d = new Date(Date.now() + 7 * 3600000);
   const dateStr = d.toISOString().slice(0, 10);
   const start = new Date(new Date(dateStr + "T00:00:00Z").getTime() - 7 * 3600000);
+  // POS P1.8 ▸ R3: ยอดสุทธิ = บิลขายที่ไม่ถูกยกเลิก (PAID + คืนครบ REFUNDED) − ใบคืนเงินของวันนี้ · จำนวน = บิลขายเท่านั้น ◂
   const sales = await prisma.posSale.findMany({
-    where: { tenantId, unitId, status: "PAID", createdAt: { gte: start } },
-    select: { grandTotalSatang: true },
+    where: { tenantId, unitId, status: { not: "VOIDED" }, createdAt: { gte: start } },
+    select: { grandTotalSatang: true, docType: true },
   });
-  return { count: sales.length, totalSatang: sales.reduce((s, x) => s + x.grandTotalSatang, 0) };
+  const bills = sales.filter((x) => x.docType === "SALE");
+  const refunds = sales.filter((x) => x.docType === "REFUND");
+  return {
+    count: bills.length,
+    totalSatang: bills.reduce((s, x) => s + x.grandTotalSatang, 0) - refunds.reduce((s, x) => s + x.grandTotalSatang, 0),
+  };
 }
 
 // ═══════════════════════════ ปิดวัน / สรุปยอดสิ้นวัน (read-only) ═══════════════════════════
@@ -477,7 +1754,8 @@ export async function daySummary(tenantId: string, unitId: string): Promise<{ co
 // unitIds (HF-POS-PAGES) = จำกัดเฉพาะสาขาที่ผู้ใช้เข้าได้ · ไม่ระบุ = ทุกสาขาของ POS นี้ (เหมือนเดิม)
 export type CloseCtx = { tenantId: string; systemId: string; unitIds?: string[] };
 
-export type PayMethodLine = { type: PosPayType; label: string; amountSatang: number; count: number };
+// POS P1.8 ▸ amountSatang = สุทธิหลังหักเงินคืนของวิธีนั้น · count = จำนวนรายการรับ (เดิม) · refund* = ใบคืนของวิธีนั้น (เพิ่มล้วน) ◂
+export type PayMethodLine = { type: PosPayType; label: string; amountSatang: number; count: number; refundCount?: number; refundSatang?: number };
 
 export type PosDaySummary = {
   businessDate: string; // YYYY-MM-DD (BKK)
@@ -485,6 +1763,9 @@ export type PosDaySummary = {
   billCount: number; // จำนวนบิล PAID
   voidCount: number; // จำนวนบิล void (createdAt วันนั้น)
   voidTotalSatang: number; // ยอดรวมบิล void
+  /** POS P1.8 — ใบคืนเงินของวันนั้น (หักออกจาก netSales/byMethod/เงินในลิ้นชักแล้ว) */
+  refundCount: number;
+  refundTotalSatang: number;
   byMethod: PayMethodLine[]; // แยกตามวิธีจ่าย (จาก PosPayment ของบิล PAID วันนั้น) — เรียงตาม enum
   cashInDrawerSatang: number; // เงินสดที่ควรมีในลิ้นชัก = ยอดจ่ายเงินสดของบิล PAID วันนั้น
   // แยกยอดตามชนิดรายการ — ธุรกิจที่มีทั้งสินค้าและบริการต้องรู้ว่ารายได้มาจากทางไหน
@@ -492,21 +1773,45 @@ export type PosDaySummary = {
   productSalesSatang: number; // รายการที่ผูกสินค้าในคลัง
   serviceSalesSatang: number; // รายการที่ผูกบริการ
   otherSalesSatang: number; // รายการที่พนักงานพิมพ์เอง (ไม่ผูกทั้งสองอย่าง)
+  /**
+   * POS P2.9b ▸ R9 (เพิ่มล้วน): มัดจำของวัน — ใบรับมัดจำ (POS_DEPOSIT) ไม่อยู่ในยอดขาย/จำนวนบิล/ยอดตามชนิดรายการ (เป็นหนี้สิน ไม่ใช่รายได้) ·
+   * receivedSatang = Σ ใบรับมัดจำที่ไม่ถูกยกเลิก · appliedSatang = Σ แถว DEPOSIT ที่อ้างใบรับบนบิลขายของวัน · refundedSatang = Σ ใบคืนเงินมัดจำ ·
+   * เงินในลิ้นชัก/แยกตามวิธีจ่าย ยังรวมเงินที่รับมัดจำ (เงินจริงเข้าลิ้นชัก) ◂
+   */
+  deposits: { receivedSatang: number; appliedSatang: number; refundedSatang: number };
 };
 
-const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"];
-const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
+export const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "GIFT_CARD", "STORE_CREDIT", "DEPOSIT", "ROOM_CHARGE", "PLATFORM", "ON_ACCOUNT"]; // POS P3.6 ▸ ON_ACCOUNT ท้ายสุด (ไม่ใช่เงินสด · ไม่เข้าเงินที่ควรมี) ◂ // POS P2.1 ▸ PLATFORM ท้ายสุด ◂ · POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านต่อจากบัตร ◂
+export const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   CASH: "เงินสด",
   PROMPTPAY: "พร้อมเพย์",
   TRANSFER: "โอน",
+  CARD: "บัตร", // POS P1.6 (เลขอ้างอิง EDC · ไม่มีเกตเวย์)
   DEPOSIT: "มัดจำ",
   ROOM_CHARGE: "ลงบิลห้องพัก",
+  PLATFORM: "แพลตฟอร์ม", // POS P2.1 ▸ แพลตฟอร์มเก็บเงินแทน (รอแพลตฟอร์มโอน) ◂
+  GIFT_CARD: "บัตรของขวัญ", // POS P2.9 ◂
+  STORE_CREDIT: "เครดิตร้าน", // POS P2.9 ◂
+  ON_ACCOUNT: "วางบิล (เครดิตเทอม)", // POS P3.6 ▸ มติ 9 (ไม่ใช่ "เครดิตร้าน" ของสมาชิก) ◂
 };
 
-// business date (BKK) → ช่วง UTC [start, end) ของวันนั้น
-function bkkDayRange(businessDate: string): { start: Date; end: Date } {
-  const start = new Date(new Date(businessDate + "T00:00:00Z").getTime() - 7 * 3600000);
+// business date (BKK) → ช่วง UTC [start, end) ของวันนั้น · POS P1.18 (มติ Q9): วัน D = [D 00:00 + cutoff, D+1 00:00 + cutoff) เวลาไทย ◂
+function bkkDayRange(businessDate: string, cutoffMin = 0): { start: Date; end: Date } {
+  const start = new Date(new Date(businessDate + "T00:00:00Z").getTime() - 7 * 3600000 + cutoffMin * 60_000);
   return { start, end: new Date(start.getTime() + 24 * 3600000) };
+}
+/** POS P1.18 ▸ นาทีตัดวันของระบบ POS (settings.pos.reports.dayCutoffMinutes · ตัวอ่านเดียวกับ reports.ts) ◂ */
+async function closeDayCutoff(ctx: CloseCtx): Promise<number> {
+  const sys = await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
+  return posDayCutoffMinutes(sys?.settings);
+}
+/** POS P1.18 ▸ วันธุรกิจ "วันนี้" ตามนาทีตัดวัน (ก่อนเวลาตัด = ยังเป็นวันก่อน) ◂ */
+function bkkBusinessToday(cutoffMin: number): string {
+  return new Date(Date.now() + 7 * 3600000 - cutoffMin * 60_000).toISOString().slice(0, 10);
+}
+/** POS P1.18 ▸ วันธุรกิจ "วันนี้" ของระบบ POS (หน้าปิดวัน/รายงานใช้แทน bkkToday เมื่อร้านตั้งเวลาตัดวัน — งาน P1.18U) ◂ */
+export async function posBusinessToday(ctx: CloseCtx): Promise<string> {
+  return bkkBusinessToday(await closeDayCutoff(ctx));
 }
 
 // วันนี้ตามเวลาไทย (YYYY-MM-DD)
@@ -526,34 +1831,60 @@ export type PosDayBill = {
   grandTotalSatang: number;
   status: string;
   methodLabel: string;
+  /** POS P1.8 — "REFUND" = ใบคืนเงิน (grandTotalSatang เป็นบวก ตีความเป็นเงินออก) */
+  docType?: string;
+  /** POS P1.18U ▸ มติ 9: ชนิดวิธีจ่ายของบิล (ลำดับเดียวกับ methodLabel) — จอแปลตามภาษาเอง (เพิ่มอย่างเดียว) ◂ */
+  methodTypes?: PosPayType[];
 };
 
 // ── สรุปวัน (default = วันนี้ BKK) ต่อระบบ POS ──
 export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Promise<PosDaySummary> {
-  const date = businessDate ?? bkkToday();
-  const { start, end } = bkkDayRange(date);
+  const dayCutoff = await closeDayCutoff(ctx); // POS P1.18 ▸ มติ Q9 ◂
+  const date = businessDate ?? bkkBusinessToday(dayCutoff);
+  const { start, end } = bkkDayRange(date, dayCutoff);
 
-  // บิลทั้งหมดของระบบ POS นี้ในวันนั้น (PAID + VOIDED)
+  // บิลทั้งหมดของระบบ POS นี้ในวันนั้น (PAID + VOIDED + คืนครบ) + ใบคืนเงินของวันนั้น (POS P1.8 ▸ R3: docType แยก ◂)
   const sales = await prisma.posSale.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end }, ...(ctx.unitIds ? { unitId: { in: ctx.unitIds } } : {}) },
-    select: { id: true, status: true, grandTotalSatang: true },
+    select: { id: true, status: true, grandTotalSatang: true, docType: true, sourceModule: true },
   });
-  const paid = sales.filter((s) => s.status === "PAID");
-  const voided = sales.filter((s) => s.status === "VOIDED");
+  // บิลขายที่ยังนับยอด = ไม่ถูกยกเลิก (PAID หรือคืนครบ REFUNDED — การคืนถูกหักผ่านใบคืนเงินของวันที่คืน)
+  // POS P2.9b ▸ R9: ใบรับมัดจำ + ใบคืนเงินมัดจำ (sourceModule POS_DEPOSIT) แยกออกจากยอดขาย (แถวชำระยังนับในวิธีจ่าย/ลิ้นชัก) ◂
+  const isDep = (x: { sourceModule: string | null }) => x.sourceModule === POS_DEPOSIT_SOURCE;
+  const depReceipts = sales.filter((s) => s.docType === "SALE" && s.status !== "VOIDED" && isDep(s));
+  const depRefunds = sales.filter((s) => s.docType === "REFUND" && isDep(s));
+  const paidAll = sales.filter((s) => s.docType === "SALE" && s.status !== "VOIDED");
+  const paid = paidAll.filter((s) => !isDep(s));
+  const voided = sales.filter((s) => s.docType === "SALE" && s.status === "VOIDED");
+  const refundsAll = sales.filter((s) => s.docType === "REFUND");
+  const refunds = refundsAll.filter((s) => !isDep(s));
 
-  // แยกวิธีจ่าย จาก PosPayment ของบิล PAID วันนั้น
+  // แยกวิธีจ่าย จาก PosPayment ของบิลวันนั้น (ใบคืน = หักออก) · POS P2.9b ▸ รวมใบรับ/ใบคืนมัดจำ (เงินจริงผ่านลิ้นชัก) ◂
   const paidIds = paid.map((s) => s.id);
-  const payments = paidIds.length
+  const refundIds = refunds.map((s) => s.id);
+  const payIds = [...paidAll.map((s) => s.id), ...refundsAll.map((s) => s.id)];
+  const payments = payIds.length
     ? await prisma.posPayment.findMany({
-        where: { tenantId: ctx.tenantId, saleId: { in: paidIds } },
-        select: { type: true, amountSatang: true },
+        where: { tenantId: ctx.tenantId, saleId: { in: payIds } },
+        select: { type: true, amountSatang: true, saleId: true, refSaleId: true },
       })
     : [];
-  const agg = new Map<PosPayType, { amountSatang: number; count: number }>();
-  for (const p of payments) {
-    const cur = agg.get(p.type) ?? { amountSatang: 0, count: 0 };
-    cur.amountSatang += p.amountSatang;
-    cur.count += 1;
+  const refundSet = new Set(refundsAll.map((s) => s.id));
+  // POS P5.1 ▸ MA14 (R1 F4 · CD-P51-O9): แถว DEPOSIT ไม่อ้างใบบนใบรับ/ใบคืนมัดจำ (ใบรับโมดูลก่อน O9) = เงินเข้าจริง ⇒ นับเป็น TRANSFER
+  //   (ช่องทาง GL เดียวกับ account-bridge depositChannel → 1010) · บรรทัด DEPOSIT = มัดจำที่ใช้บนบิลปิดเท่านั้น ◂
+  const depDocIds = new Set([...depReceipts, ...depRefunds].map((s) => s.id));
+  const agg = new Map<PosPayType, { amountSatang: number; count: number; refundCount: number; refundSatang: number }>();
+  for (const p0 of payments) {
+    const p = p0.type === "DEPOSIT" && !p0.refSaleId && depDocIds.has(p0.saleId) ? { ...p0, type: "TRANSFER" as PosPayType } : p0; // POS P5.1 ▸ MA14 ◂
+    const cur = agg.get(p.type) ?? { amountSatang: 0, count: 0, refundCount: 0, refundSatang: 0 };
+    if (refundSet.has(p.saleId)) {
+      cur.amountSatang -= p.amountSatang;
+      cur.refundCount += 1;
+      cur.refundSatang += p.amountSatang;
+    } else {
+      cur.amountSatang += p.amountSatang;
+      cur.count += 1;
+    }
     agg.set(p.type, cur);
   }
   const byMethod: PayMethodLine[] = PAY_TYPE_ORDER.filter((t) => agg.has(t)).map((t) => ({
@@ -561,46 +1892,64 @@ export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Pro
     label: PAY_TYPE_LABEL_TH[t],
     amountSatang: agg.get(t)!.amountSatang,
     count: agg.get(t)!.count,
+    ...(agg.get(t)!.refundCount ? { refundCount: agg.get(t)!.refundCount, refundSatang: agg.get(t)!.refundSatang } : {}),
   }));
 
-  // แยกยอดสินค้า/บริการ/พิมพ์เอง จากบรรทัดของบิล PAID วันนั้น
-  const saleLines = paidIds.length
+  // แยกยอดสินค้า/บริการ/พิมพ์เอง จากบรรทัดของบิลวันนั้น (บรรทัดใบคืนถือ itemId/serviceId ของบรรทัดเดิม = หักออก)
+  const saleLines = paidIds.length || refundIds.length
     ? await prisma.posSaleLine.findMany({
-        where: { tenantId: ctx.tenantId, saleId: { in: paidIds } },
-        select: { lineTotalSatang: true, itemId: true, serviceId: true },
+        where: { tenantId: ctx.tenantId, saleId: { in: [...paidIds, ...refundIds] } },
+        select: { lineTotalSatang: true, itemId: true, serviceId: true, saleId: true },
       })
     : [];
   let productSalesSatang = 0;
   let serviceSalesSatang = 0;
   let otherSalesSatang = 0;
   for (const l of saleLines) {
-    if (l.serviceId) serviceSalesSatang += l.lineTotalSatang;
-    else if (l.itemId) productSalesSatang += l.lineTotalSatang;
-    else otherSalesSatang += l.lineTotalSatang;
+    const v = refundSet.has(l.saleId) ? -l.lineTotalSatang : l.lineTotalSatang;
+    if (l.serviceId) serviceSalesSatang += v;
+    else if (l.itemId) productSalesSatang += v;
+    else otherSalesSatang += v;
   }
+  const refundTotalSatang = refunds.reduce((s, x) => s + x.grandTotalSatang, 0);
+  // POS P2.9b ▸ R9: มัดจำที่ใช้ = แถว DEPOSIT ที่อ้างใบรับมัดจำ (sourceModule POS_DEPOSIT) บนบิลขายของวัน — แถว DEPOSIT ของทางเดิม (ไม่อ้างใบ) ไม่นับ ◂
+  const paidSet = new Set(paidIds);
+  const depRefs = [...new Set(payments.filter((p) => p.type === "DEPOSIT" && p.refSaleId && paidSet.has(p.saleId)).map((p) => p.refSaleId!))];
+  const depReceiptIds = depRefs.length
+    ? new Set((await prisma.posSale.findMany({ where: { tenantId: ctx.tenantId, id: { in: depRefs }, sourceModule: POS_DEPOSIT_SOURCE }, select: { id: true } })).map((x) => x.id))
+    : new Set<string>();
+  const depositsBlock = {
+    receivedSatang: depReceipts.reduce((t, x) => t + x.grandTotalSatang, 0),
+    appliedSatang: payments.filter((p) => p.type === "DEPOSIT" && p.refSaleId && paidSet.has(p.saleId) && depReceiptIds.has(p.refSaleId)).reduce((t, p) => t + p.amountSatang, 0),
+    refundedSatang: depRefunds.reduce((t, x) => t + x.grandTotalSatang, 0),
+  };
 
   return {
     businessDate: date,
-    netSalesSatang: paid.reduce((s, x) => s + x.grandTotalSatang, 0),
+    netSalesSatang: paid.reduce((s, x) => s + x.grandTotalSatang, 0) - refundTotalSatang,
     billCount: paid.length,
     voidCount: voided.length,
     voidTotalSatang: voided.reduce((s, x) => s + x.grandTotalSatang, 0),
+    refundCount: refunds.length,
+    refundTotalSatang,
     byMethod,
     cashInDrawerSatang: agg.get("CASH")?.amountSatang ?? 0,
     productSalesSatang,
     serviceSalesSatang,
     otherSalesSatang,
+    deposits: depositsBlock, // POS P2.9b ▸ R9 ◂
   };
 }
 
 // ── รายการบิลของวัน (PAID + VOIDED) เรียงตามเวลา — สำหรับตาราง/CSV ──
 export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promise<PosDayBill[]> {
-  const date = businessDate ?? bkkToday();
-  const { start, end } = bkkDayRange(date);
+  const dayCutoff = await closeDayCutoff(ctx); // POS P1.18 ▸ มติ Q9 ◂
+  const date = businessDate ?? bkkBusinessToday(dayCutoff);
+  const { start, end } = bkkDayRange(date, dayCutoff);
   const sales = await prisma.posSale.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end }, ...(ctx.unitIds ? { unitId: { in: ctx.unitIds } } : {}) },
     orderBy: { createdAt: "asc" },
-    select: { id: true, receiptNo: true, createdAt: true, grandTotalSatang: true, status: true },
+    select: { id: true, receiptNo: true, createdAt: true, grandTotalSatang: true, status: true, docType: true },
   });
   const ids = sales.map((s) => s.id);
   const payments = ids.length
@@ -624,21 +1973,25 @@ export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promi
       grandTotalSatang: s.grandTotalSatang,
       status: s.status,
       methodLabel: uniq.map((t) => PAY_TYPE_LABEL_TH[t]).join(" + ") || "—",
+      docType: s.docType,
+      methodTypes: uniq, // POS P1.18U ▸ มติ 9 ◂
     };
   });
 }
 
 // ── CSV ปิดวัน (BOM · รายการบิล + บล็อกสรุป) — self-contained เพื่อให้ oracle เรียกได้โดยไม่ต้องมี session ──
 const CSV_BOM = "﻿";
+/** P1.17 R2-F1 — กันสูตรใน Excel/Sheets: ขึ้นต้น = + - @ TAB CR และไม่ใช่ตัวเลขล้วน ⇒ เติม ' นำหน้า (ตัวเลขติดลบคงเป็นตัวเลข) */
 function csvEsc(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const raw = v == null ? "" : String(v);
+  const s = /^[=+\-@\t\r]/.test(raw) && !/^-?\d+(\.\d+)?$/.test(raw) ? `'${raw}` : raw;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 const baht = (satang: number) => (satang / 100).toFixed(2);
-const STATUS_TH: Record<string, string> = { PAID: "ชำระแล้ว", VOIDED: "ยกเลิก" };
+const STATUS_TH: Record<string, string> = { PAID: "ชำระแล้ว", VOIDED: "ยกเลิก", REFUNDED: "คืนเงินครบ" };
 
 export async function closeDayCsv(ctx: CloseCtx, businessDate?: string): Promise<string> {
-  const date = businessDate ?? bkkToday();
+  const date = businessDate ?? bkkBusinessToday(await closeDayCutoff(ctx)); // POS P1.18 ◂
   const [summary, bills] = await Promise.all([closeDaySummary(ctx, date), closeDayBills(ctx, date)]);
   const fmtTime = (d: Date) =>
     new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" }).format(d);
@@ -647,7 +2000,14 @@ export async function closeDayCsv(ctx: CloseCtx, businessDate?: string): Promise
   rows.push(["เลขที่ใบเสร็จ", "เวลา", "ยอด (บาท)", "วิธีจ่าย", "สถานะ"].map(csvEsc).join(","));
   for (const b of bills) {
     rows.push(
-      [b.receiptNo ?? "", fmtTime(b.createdAt), baht(b.grandTotalSatang), b.methodLabel, STATUS_TH[b.status] ?? b.status]
+      [
+        b.receiptNo ?? "",
+        fmtTime(b.createdAt),
+        // POS P1.8 ▸ ใบคืนเงิน = เงินออก (ติดลบ) ◂
+        b.docType === "REFUND" ? `-${baht(b.grandTotalSatang)}` : baht(b.grandTotalSatang),
+        b.methodLabel,
+        b.docType === "REFUND" ? "ใบคืนเงิน" : (STATUS_TH[b.status] ?? b.status),
+      ]
         .map(csvEsc)
         .join(","),
     );
@@ -658,6 +2018,7 @@ export async function closeDayCsv(ctx: CloseCtx, businessDate?: string): Promise
   rows.push([csvEsc("ยอดขายสุทธิ (บาท)"), csvEsc(baht(summary.netSalesSatang))].join(","));
   rows.push([csvEsc("จำนวนบิล"), csvEsc(summary.billCount)].join(","));
   rows.push([csvEsc("บิลยกเลิก"), csvEsc(`${summary.voidCount} (${baht(summary.voidTotalSatang)} บาท)`)].join(","));
+  if (summary.refundCount) rows.push([csvEsc("คืนเงิน"), csvEsc(`${summary.refundCount} (${baht(summary.refundTotalSatang)} บาท)`)].join(","));
   for (const m of summary.byMethod) {
     rows.push([csvEsc(`ยอด${m.label} (บาท)`), csvEsc(baht(m.amountSatang))].join(","));
   }

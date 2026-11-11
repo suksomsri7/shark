@@ -1,0 +1,363 @@
+{
+  "$note": "สัญญาสาธารณะของ createSale/voidSale/refundSale (F15.2 ใน scripts/fitness-pos.mts) — สร้าง/เติมด้วย `pnpm exec tsx scripts/fitness-pos.mts --update-pos-contract` เท่านั้น · ผู้ตรวจต้อง diff กับ `git show <base>:scripts/pos-sale-contract.json` ทุกครั้งที่ไฟล์นี้เปลี่ยน",
+  "source": "src/lib/modules/pos/service.ts",
+  "functions": {
+    "createSale": [
+      {
+        "params": [
+          {
+            "name": "input",
+            "optional": false,
+            "type": "CreateSaleInput"
+          },
+          {
+            "name": "client",
+            "optional": true,
+            "type": "Client"
+          }
+        ],
+        "returns": "Promise<SaleResult>"
+      }
+    ],
+    "voidSale": [
+      {
+        "params": [
+          {
+            "name": "tenantId",
+            "optional": false,
+            "type": "string"
+          },
+          {
+            "name": "unitId",
+            "optional": false,
+            "type": "string"
+          },
+          {
+            "name": "saleId",
+            "optional": false,
+            "type": "string"
+          },
+          {
+            "name": "audit",
+            "optional": true,
+            "type": "VoidSaleAudit"
+          }
+        ],
+        "returns": "Promise<void>"
+      }
+    ]
+  },
+  "types": {
+    "CreateSaleInput": {
+      "tenantId": {
+        "optional": false,
+        "type": "string"
+      },
+      "unitId": {
+        "optional": false,
+        "type": "string"
+      },
+      "systemId": {
+        "optional": false,
+        "type": "string"
+      },
+      "pointSystemId": {
+        "optional": true,
+        "type": "string"
+      },
+      "memberId": {
+        "optional": true,
+        "type": "string"
+      },
+      "memberSystemId": {
+        "optional": true,
+        "type": "string"
+      },
+      "memberChoices": {
+        "optional": true,
+        "type": "MemberSaleChoices"
+      },
+      "sourceModule": {
+        "optional": true,
+        "type": "string"
+      },
+      "sourceId": {
+        "optional": true,
+        "type": "string"
+      },
+      "idempotencyKey": {
+        "optional": false,
+        "type": "string"
+      },
+      "lines": {
+        "optional": false,
+        "type": "object[]"
+      },
+      "lines[].name": {
+        "optional": false,
+        "type": "string"
+      },
+      "lines[].qty": {
+        "optional": false,
+        "type": "number"
+      },
+      "lines[].unitPriceSatang": {
+        "optional": false,
+        "type": "number"
+      },
+      "lines[].discountSatang": {
+        "optional": true,
+        "type": "number"
+      },
+      "lines[].itemId": {
+        "optional": true,
+        "type": "string"
+      },
+      "lines[].serviceId": {
+        "optional": true,
+        "type": "string"
+      },
+      "billDiscountSatang": {
+        "optional": true,
+        "type": "number"
+      },
+      "couponSystemId": {
+        "optional": true,
+        "type": "string"
+      },
+      "couponCode": {
+        "optional": true,
+        "type": "string"
+      },
+      "payMethods": {
+        "optional": false,
+        "type": "object[]"
+      },
+      "payMethods[].type": {
+        "optional": false,
+        "type": "PosPayType"
+      },
+      "payMethods[].amountSatang": {
+        "optional": false,
+        "type": "number"
+      },
+      "payMethods[].refSaleId": {
+        "optional": true,
+        "type": "string"
+      },
+      "lines[].productId": {
+        "optional": true,
+        "type": "string"
+      },
+      "lines[].note": {
+        "optional": true,
+        "type": "string"
+      },
+      "payMethods[].cashTenderedSatang": {
+        "optional": true,
+        "type": "number"
+      },
+      "payMethods[].reference": {
+        "optional": true,
+        "type": "string"
+      },
+      "note": {
+        "optional": true,
+        "type": "string"
+      },
+      "serviceChargeSatang": {
+        "optional": true,
+        "type": "number"
+      },
+      "tipSatang": {
+        "optional": true,
+        "type": "number"
+      },
+      "lines[].options": {
+        "optional": true,
+        "type": "SaleLineOption[]"
+      },
+      "lines[].components": {
+        "optional": true,
+        "type": "SaleLineComponent[]"
+      },
+      "lines[].weightGrams": {
+        "optional": true,
+        "type": "number"
+      },
+      "shiftId": {
+        "optional": true,
+        "type": "string | null"
+      },
+      "soldByUserId": {
+        "optional": true,
+        "type": "string"
+      },
+      "taxInvoice": {
+        "optional": true,
+        "type": "TaxInvoiceSnapshot"
+      },
+      "memberSnapshot": {
+        "optional": true,
+        "type": "object"
+      },
+      "memberSnapshot.name": {
+        "optional": false,
+        "type": "string | null"
+      },
+      "memberSnapshot.memberCode": {
+        "optional": false,
+        "type": "string"
+      },
+      "memberSnapshot.phoneMasked": {
+        "optional": false,
+        "type": "string | null"
+      },
+      "memberSnapshot.tierKey": {
+        "optional": false,
+        "type": "string | null"
+      },
+      "memberSnapshot.tierName": {
+        "optional": false,
+        "type": "string | null"
+      },
+      "channelId": {
+        "optional": true,
+        "type": "string"
+      },
+      "channelRef": {
+        "optional": true,
+        "type": "string"
+      },
+      "lines[].priceSource": {
+        "optional": true,
+        "type": "\"BASE\" | \"BRANCH\" | \"CHANNEL\" | \"RULE\" | \"OPEN\" | \"CUSTOM\" | \"WEIGHED\""
+      },
+      "lines[].priceRuleId": {
+        "optional": true,
+        "type": "string"
+      },
+      "lines[].listPriceSatang": {
+        "optional": true,
+        "type": "number"
+      },
+      "payMethods[].giftCard": {
+        "optional": true,
+        "type": "object"
+      },
+      "payMethods[].giftCard.number": {
+        "optional": false,
+        "type": "string"
+      },
+      "payMethods[].giftCard.pin": {
+        "optional": false,
+        "type": "string"
+      },
+      "offline": {
+        "optional": true,
+        "type": "Readonly<{ ref: string; soldAt: Date | string }>"
+      },
+      "customerPartyId": {
+        "optional": true,
+        "type": "string"
+      },
+      "crmDealId": {
+        "optional": true,
+        "type": "string"
+      },
+      "memberAttachOnly": {
+        "optional": true,
+        "type": "boolean"
+      },
+      "creditOverrideByUserId": {
+        "optional": true,
+        "type": "string"
+      }
+    },
+    "MemberSaleChoices": {
+      "voucherIds": {
+        "optional": true,
+        "type": "string[]"
+      },
+      "points": {
+        "optional": true,
+        "type": "number"
+      },
+      "giftCard": {
+        "optional": true,
+        "type": "object"
+      },
+      "giftCard.number": {
+        "optional": false,
+        "type": "string"
+      },
+      "giftCard.pin": {
+        "optional": false,
+        "type": "string"
+      },
+      "giftCard.satang": {
+        "optional": false,
+        "type": "number"
+      }
+    },
+    "SaleResult": {
+      "saleId": {
+        "optional": false,
+        "type": "string"
+      },
+      "receiptNo": {
+        "optional": false,
+        "type": "string | null"
+      },
+      "grandTotalSatang": {
+        "optional": false,
+        "type": "number"
+      },
+      "pointEarned": {
+        "optional": false,
+        "type": "number"
+      },
+      "status": {
+        "optional": true,
+        "type": "string"
+      }
+    }
+  },
+  "callers": {
+    "createSale": [
+      "src/lib/actions/booking.ts",
+      "src/lib/actions/pos.ts",
+      "src/lib/ai/proposals.ts",
+      "src/lib/modules/booking/service.ts",
+      "src/lib/modules/clinic/service.ts",
+      "src/lib/modules/giftcard/service.ts",
+      "src/lib/modules/hotel/service.ts",
+      "src/lib/modules/member/subscription.ts",
+      "src/lib/modules/pos/api/ops/sales.ts",
+      "src/lib/modules/pos/order.ts",
+      "src/lib/modules/pos/register.ts",
+      "src/lib/modules/rental/service.ts",
+      "src/lib/modules/restaurant/order.ts",
+      "src/lib/modules/school/service.ts",
+      "src/lib/modules/shop/service.ts",
+      "src/lib/modules/ticket/service.ts"
+    ],
+    "voidSale": [
+      "src/lib/ai/proposals.ts",
+      "src/lib/modules/booking/service.ts",
+      "src/lib/modules/clinic/service.ts",
+      "src/lib/modules/hotel/service.ts",
+      "src/lib/modules/pos/api/ops/sales.ts",
+      "src/lib/modules/pos/bills.ts",
+      "src/lib/modules/pos/pos-approval-consumer.ts",
+      "src/lib/modules/rental/service.ts",
+      "src/lib/modules/restaurant/order.ts",
+      "src/lib/modules/school/service.ts",
+      "src/lib/modules/shop/service.ts",
+      "src/lib/modules/ticket/service.ts"
+    ],
+    "refundSale": [
+      "src/lib/modules/pos/refund-actions.ts"
+    ]
+  }
+}

@@ -277,6 +277,13 @@ async function commitEntry(ctx: GlCtx, o: CommitOpts, book: Book, db: Db): Promi
   return entry;
 }
 
+// POS HF-FU ▸ z fix2 (hunter H2): คีย์ JV เป็น unique ทั้งร้าน (@@unique([tenantId, idempotencyKey])) — คีย์ PosSale#… ที่อยู่ในสมุดอื่นของร้านแล้ว (POS ถูกย้ายไปผูกสมุดใหม่)
+//   = ข้าม {skipped, reason:"other-book"} แทนการชน P2002 ทุกรอบลองใหม่ (คิวคืนเงินจบ FAILED) · ไม่ย้าย/ไม่ลงซ้ำข้ามสมุด ◂
+async function postedInOtherBook(ctx: GlCtx, idempotencyKey: string, db: Db): Promise<boolean> {
+  const e = await db.accountJournalEntry.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey, NOT: { systemId: ctx.systemId } }, select: { id: true } });
+  return !!e;
+}
+
 async function alreadyPosted(ctx: GlCtx, idempotencyKey: string, db: Db): Promise<boolean> {
   const e = await db.accountJournalEntry.findFirst({
     where: { systemId: ctx.systemId, idempotencyKey },
@@ -1737,22 +1744,27 @@ export async function postExternalSale(
      * และแยกยื่นภาษีไม่ได้ — ผังบัญชีมี 4030 อยู่แล้วแต่ POS ไม่เคยใช้
      */
     serviceBaseSatang?: number;
-    drLines: { key: "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR"; amountSatang: number }[];
+    // POS P2.1 ▸ contactId (ไม่บังคับ) = ผู้ติดต่อของแพลตฟอร์มบนบรรทัดลูกหนี้ (CD6) · ไม่ส่ง = บรรทัดเดิมทุกไบต์ ◂
+    drLines: { key: "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR"; amountSatang: number; contactId?: string | null }[];
+    /** POS P2.9 ▸ R9: ขา Cr เพิ่ม (บัญชีที่ facade ตรวจแล้ว — ทิปรอจ่ายพนักงาน) · ไม่ส่ง = JV เดิมทุกไบต์ ◂ */
+    crExtra?: { accountId: string; amountSatang: number; note?: string }[];
   },
   tx?: Tx,
-): Promise<{ entryId: string } | { skipped: true }> {
+): Promise<{ entryId: string } | { skipped: true; reason?: "other-book" }> {
   return withTx(tx, async (db) => {
     const event = "PAID";
     if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    if (await postedInOtherBook(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true, reason: "other-book" as const }; // POS HF-FU ▸ z fix2 (H2) ◂
 
     const b = new Book(ctx, db);
-    for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang);
+    for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang, undefined, l.contactId ?? undefined);
     // แยกรายได้ 2 หมวดตามสัดส่วนจริงของบิล — ปัดให้สองก้อนรวมกันเท่า baseSatang เป๊ะ (งบต้องบาลานซ์)
     const svcBase = Math.min(Math.max(0, Math.round(o.serviceBaseSatang ?? 0)), o.baseSatang);
     const goodsBase = o.baseSatang - svcBase;
     if (goodsBase > 0) b.cr(await b.id("INCOME_GOODS"), goodsBase);
     if (svcBase > 0) b.cr(await b.id("INCOME_SERVICE"), svcBase);
     if (o.vatSatang > 0) b.cr(await b.id("VAT_OUTPUT"), o.vatSatang);
+    for (const x of o.crExtra ?? []) b.cr(x.accountId, x.amountSatang, x.note); // POS P2.9 ▸ R9 ทิป ◂
 
     const entry = await commitEntry(
       ctx,
@@ -1770,6 +1782,207 @@ export async function postExternalSale(
     );
     return { entryId: entry.id };
   });
+}
+
+/** POS P2.9 ▸ R9 (มติ 7): บัญชีหนี้สินของสมุดนี้ที่ยังไม่ถูกเก็บ (บัญชีพักทิป) — อ่านอย่างเดียว · ไม่ใช่/ไม่พบ = null ◂ */
+export async function liabilityLedgerOf(ctx: GlCtx, ledgerId: string): Promise<{ id: string } | null> {
+  if (!ledgerId) return null;
+  return prisma.accountLedger.findFirst({ where: { id: ledgerId, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null, type: "LIABILITY" }, select: { id: true } });
+}
+
+/** POS P1.8 F8 ▸ บิล POS นี้ลง JV ขาย (PosSale#<refId>#PAID) แล้วหรือยัง — คีย์เดียวกับ postExternalSale (อ่านอย่างเดียว) ◂ */
+export async function externalSalePosted(ctx: GlCtx, refId: string): Promise<boolean> {
+  return alreadyPosted(ctx, `PosSale#${refId}#PAID`, prisma);
+}
+
+// POS P2.9b ▸ fix4 มติ 1 (R4 F2 / hunter N1): เครื่องหมาย "บิล POS นี้ไม่มี JV ขายเพราะทุกบรรทัดบัญชีเป็น 0" (zero entry · fix3 มติ 1) ◂
+//   = แถว AuditLog action account.external.zeroEntry ต่อบิล (targetType PosSale · targetId = refId) — แถวเดียวต่อบิล (ล็อก advisory ต่อ refId + หาก่อนเขียน) ·
+//   เขียนไม่สำเร็จ = โยน (ไม่กลืนแบบ writeAudit) ⇒ คิว pos.sale.paid ลองใหม่ — ประตูค่าคอมฯ ใช้แถวนี้แทน JV PAID ได้ จึงต้องมีจริงเสมอเมื่อคิวจบ
+const ZERO_ENTRY_ACTION = "account.external.zeroEntry";
+/** บิล POS นี้ถูกบันทึกเป็น zero entry แล้วหรือยัง (อ่านอย่างเดียว) */
+// POS HF-FU ▸ z3 (มติ 9 strict): เครื่องหมายผูกสมุด (after.bookSystemId = สมุดที่เขียน) · อ่านเฉพาะของสมุดนี้ — ย้าย POS ไปผูกสมุดอื่นแล้วประตูค่าคอมฯ ของสมุดใหม่ไม่เปิดจาก
+//   เครื่องหมายของสมุดเดิม · เครื่องหมายเก่าที่ไม่มีช่องนี้ (QC ก่อน HF-FU เท่านั้น) ไม่นับ ◂
+export async function externalSaleZeroEntryRecorded(ctx: GlCtx, refId: string, db: Db = prisma): Promise<boolean> {
+  const row = await db.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: { path: ["bookSystemId"], equals: ctx.systemId } }, select: { id: true } });
+  return !!row;
+}
+/** บันทึก zero entry ของบิล POS ครั้งเดียวต่อบิล — มีแล้ว = ไม่เขียนซ้ำ (คิวลองใหม่/ตัวรับคืนเงินเรียกซ้ำได้) · ล้ม = โยน */
+export async function recordExternalSaleZeroEntry(ctx: GlCtx, refId: string, after: Record<string, unknown>): Promise<void> {
+  await prisma.$transaction(async (db) => {
+    await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`acc-zero-entry:${ctx.tenantId}:${refId}`}))`;
+    if (await externalSaleZeroEntryRecorded(ctx, refId, db)) return;
+    await db.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "SYSTEM", action: ZERO_ENTRY_ACTION, targetType: "PosSale", targetId: refId, after: { ...after, bookSystemId: ctx.systemId } as Prisma.InputJsonValue } }); // POS HF-FU ▸ z3 ◂
+  });
+}
+// ◂ POS P2.9b fix4
+
+// POS P1.8 ▸ คืนเงินหน้าร้าน (ใบคืน REFUND ของ POS) — กลับรายการตามสัดส่วน "เฉพาะส่วนที่คืน" ◂
+//   Dr รายได้ขายสินค้า/ค่าบริการ (ฐาน) · Dr ภาษีขาย (VAT) · Cr เงินสด/ธนาคาร ตามวิธีคืน — ไม่แตะลูกหนี้ 1100
+//   idempotent ต่อ (PosSale, refId = id ใบคืน, REFUNDED) · JV ของบิลเดิม **ไม่ถูกกลับรายการ** (ใบลดหนี้หักล้างแทน · CD6)
+//   facade (account/index) เป็นผู้คิดฐาน/VAT + ทางเงิน แล้วส่งมา — โมดูลอื่นไม่รู้เลขบัญชี
+export async function postExternalRefund(
+  ctx: GlCtx,
+  o: {
+    refId: string;
+    date: Date;
+    baseSatang: number;
+    vatSatang: number;
+    serviceBaseSatang?: number;
+    // POS P2.1 ▸ AR = แพลตฟอร์มคืนลูกค้า (ลดลูกหนี้แพลตฟอร์ม · R9) + contactId ของแพลตฟอร์ม · ไม่ส่ง = เดิม ◂
+    // POS P2.9 ▸ DEPOSIT_RECEIVED = คืนเข้าบัตรของขวัญ/เครดิตร้าน (Cr 2110) ◂
+    crLines: { key: "CASH" | "BANK" | "AR" | "DEPOSIT_RECEIVED"; amountSatang: number; contactId?: string | null }[];
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = "REFUNDED";
+    if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+
+    const b = new Book(ctx, db);
+    const svcBase = Math.min(Math.max(0, Math.round(o.serviceBaseSatang ?? 0)), o.baseSatang);
+    const goodsBase = o.baseSatang - svcBase;
+    if (goodsBase > 0) b.dr(await b.id("INCOME_GOODS"), goodsBase);
+    if (svcBase > 0) b.dr(await b.id("INCOME_SERVICE"), svcBase);
+    if (o.vatSatang > 0) b.dr(await b.id("VAT_OUTPUT"), o.vatSatang);
+    for (const l of o.crLines) b.cr(await b.id(l.key), l.amountSatang, undefined, l.contactId ?? undefined);
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "SALES",
+        journal: "DOC",
+        date: o.date,
+        refType: "PosSale",
+        refId: o.refId,
+        event,
+        memo: "คืนเงิน POS (ใบลดหนี้)",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
+// ─────────────────── POS P2.9b ▸ มัดจำของ POS (รับเงิน / คืนเงินคงเหลือ) — มติ 1 3 5 · เพิ่มล้วน ◂ ───────────────────
+// 🔴 owner line (POS-OWNER-PENDING P2.9b): VAT เกิดตอนรับเงินมัดจำ (O24 family) — เจ้าของบัญชียืนยันก่อนเปิดใช้จริง · ย้อนได้ตราบที่ยังไม่มีมัดจำจริงใน prod
+/**
+ * รับมัดจำที่ POS (ใบรับเงินมัดจำ = PosSale POS_DEPOSIT): Dr เงินตามช่องทาง · Cr 2110 มัดจำรับ (ฐาน) · Cr 2200 ภาษีขาย (VAT ตอนรับเงิน) — ไม่มีรายได้
+ * คีย์ PosSale#<ใบรับ>#PAID (คีย์เดียวกับ postExternalSale ⇒ externalSalePosted/reverseFor ใช้ได้เหมือนบิล) · facade คิดฐาน/VAT + ช่องทางแล้วส่งมา
+ */
+export async function postExternalDepositReceipt(
+  ctx: GlCtx,
+  o: { refId: string; date: Date; baseSatang: number; vatSatang: number; drLines: { key: "CASH" | "BANK"; amountSatang: number }[] },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true; reason?: "other-book" }> {
+  return withTx(tx, async (db) => {
+    const event = "PAID";
+    if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    if (await postedInOtherBook(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true, reason: "other-book" as const }; // POS HF-FU ▸ z fix2 (H2) ◂
+    const b = new Book(ctx, db);
+    for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang);
+    if (o.baseSatang > 0) b.cr(await b.id("DEPOSIT_RECEIVED"), o.baseSatang);
+    if (o.vatSatang > 0) b.cr(await b.id("VAT_OUTPUT"), o.vatSatang);
+    const entry = await commitEntry(ctx, { book: "SALES", journal: "DOC", date: o.date, refType: "PosSale", refId: o.refId, event, memo: "รับเงินมัดจำ POS" }, b, db);
+    return { entryId: entry.id };
+  });
+}
+/**
+ * คืนเงินมัดจำคงเหลือ (ใบคืน REFUND ของใบรับมัดจำ): Dr 2110 (ฐาน) · Dr 2200 (VAT ของส่วนที่คืน) · Cr เงินตามวิธีคืน
+ * คีย์ PosSale#<ใบคืน>#REFUNDED (คีย์เดียวกับ postExternalRefund) · ไม่แตะรายได้
+ */
+export async function postExternalDepositRefund(
+  ctx: GlCtx,
+  o: { refId: string; date: Date; baseSatang: number; vatSatang: number; crLines: { key: "CASH" | "BANK"; amountSatang: number }[] },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = "REFUNDED";
+    if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    const b = new Book(ctx, db);
+    if (o.baseSatang > 0) b.dr(await b.id("DEPOSIT_RECEIVED"), o.baseSatang);
+    if (o.vatSatang > 0) b.dr(await b.id("VAT_OUTPUT"), o.vatSatang);
+    for (const l of o.crLines) b.cr(await b.id(l.key), l.amountSatang);
+    const entry = await commitEntry(ctx, { book: "SALES", journal: "DOC", date: o.date, refType: "PosSale", refId: o.refId, event, memo: "คืนเงินมัดจำ POS" }, b, db);
+    return { entryId: entry.id };
+  });
+}
+// ◂ POS P2.9b
+
+// POS P2.1 ▸ ค่าคอมฯ ช่องทางขาย (แพลตฟอร์ม/ตัวแทน) — JV แยกจาก PAID (CD5: รายได้เต็ม + ค่าใช้จ่ายแยก) ◂
+//   ปกติ (event COMMISSION · refId = บิล):  Dr ค่าใช้จ่าย (commission · สมุดไม่จด VAT = รวม VAT) + Dr ภาษีซื้อยังไม่ถึงกำหนด (VAT) / Cr ลูกหนี้แพลตฟอร์ม (PLATFORM) หรือเจ้าหนี้ (DIRECT)
+//   กลับตามสัดส่วน (event COMMISSION_REFUNDED · refId = ใบคืน): ขากลับด้าน
+//   เล่ม GENERAL · idempotent ต่อ PosSale#<refId>#<event> · void บิล = reverseFor(PosSale, บิล) กลับให้เองพร้อม PAID
+//   facade (account/index) เป็นผู้เลือกคีย์ (§9 Q1 option A) + ผู้ติดต่อ แล้วส่งมา — โมดูลอื่นไม่รู้เลขบัญชี
+export async function postExternalChannelCommission(
+  ctx: GlCtx,
+  o: {
+    refId: string;
+    date: Date;
+    commissionSatang: number;
+    commissionVatSatang: number;
+    /** true = สมุดไม่จด VAT ⇒ VAT ค่าคอมฯ รวมเข้าค่าใช้จ่าย (ไม่มีบรรทัดภาษีซื้อ) */
+    foldVat: boolean;
+    keys: { expense: string; vatInput: string; counter: string };
+    /** ผู้ติดต่อของช่องทาง บนบรรทัดลูกหนี้/เจ้าหนี้ (CD6) */
+    contactId?: string | null;
+    memo: string;
+    reverse?: boolean;
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true; reason?: "other-book" }> {
+  return withTx(tx, async (db) => {
+    const event = o.reverse ? "COMMISSION_REFUNDED" : "COMMISSION";
+    if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    if (await postedInOtherBook(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true, reason: "other-book" as const }; // POS HF-FU ▸ z fix2 (H2) ◂
+    const c = Math.max(0, Math.round(o.commissionSatang));
+    const v = Math.max(0, Math.round(o.commissionVatSatang));
+    const expense = o.foldVat ? c + v : c;
+    const vat = o.foldVat ? 0 : v;
+    const b = new Book(ctx, db);
+    const contact = o.contactId ?? undefined;
+    if (!o.reverse) {
+      b.dr(await b.id(o.keys.expense), expense);
+      if (vat > 0) b.dr(await b.id(o.keys.vatInput), vat);
+      b.cr(await b.id(o.keys.counter), c + v, undefined, contact);
+    } else {
+      b.dr(await b.id(o.keys.counter), c + v, undefined, contact);
+      b.cr(await b.id(o.keys.expense), expense);
+      if (vat > 0) b.cr(await b.id(o.keys.vatInput), vat);
+    }
+    const entry = await commitEntry(
+      ctx,
+      { book: "GENERAL", journal: "ADJUST", date: o.date, refType: "PosSale", refId: o.refId, event, memo: o.memo },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
+// POS P2.1 ▸ fix round 1 (รีวิว F1 F3) — ตัวอ่านของ JV บิล POS (อ่านอย่างเดียว · ไม่เขียนอะไร) ◂
+/** JV ของบิล/ใบคืน POS คีย์ PosSale#<refId>#<event> มีแล้วหรือยัง (คีย์เดียวกับ postExternalSale / postExternalChannelCommission) */
+export async function posSaleEntryPosted(ctx: GlCtx, refId: string, event: "PAID" | "COMMISSION" | "COMMISSION_REFUNDED"): Promise<boolean> {
+  return alreadyPosted(ctx, `PosSale#${refId}#${event}`, prisma);
+}
+
+/** POS HF-FU2 ▸ ACC-1 (มติ 1): คีย์ PosSale#<refId>#<event> อยู่ในสมุดอื่นของร้านนี้ (POS ถูกย้ายไปผูกสมุดใหม่หลังลงบิล) — อ่านอย่างเดียว ◂ */
+export async function posSaleEntryInOtherBook(ctx: GlCtx, refId: string, event: "PAID" | "COMMISSION" | "COMMISSION_REFUNDED"): Promise<boolean> {
+  return postedInOtherBook(ctx, `PosSale#${refId}#${event}`, prisma);
+}
+
+/**
+ * ผู้ติดต่อบนบรรทัดลูกหนี้ (คีย์ arKey) ฝั่ง Dr ของ JV ขาย PosSale#<saleRefId>#PAID — ไม่มี JV/ไม่มีผู้ติดต่อ/ไม่มีการจับคู่คีย์ = null
+ * ใช้ให้การคืนเงิน/ค่าคอมฯ ลงลูกหนี้แพลตฟอร์ม "คนเดียวกับตอนขาย" แม้ช่องทางถูกเปลี่ยนชื่อภายหลัง (รีวิว F3)
+ */
+export async function posSalePaidContact(ctx: GlCtx, saleRefId: string, arKey: string): Promise<string | null> {
+  const m = await prisma.accountMapping.findFirst({ where: { systemId: ctx.systemId, key: arKey }, select: { accountId: true } });
+  if (!m) return null;
+  const e = await prisma.accountJournalEntry.findFirst({
+    where: { systemId: ctx.systemId, idempotencyKey: `PosSale#${saleRefId}#PAID` },
+    select: { lines: { where: { accountId: m.accountId, debit: { gt: 0 }, contactId: { not: null } }, select: { contactId: true }, orderBy: { id: "asc" }, take: 1 } },
+  });
+  return e?.lines[0]?.contactId ?? null;
 }
 
 // ─────────────────── บัตรกำนัล (M2.6 · D3 · §9.4) ───────────────────
@@ -1819,6 +2032,16 @@ export async function postGiftCardSale(
     );
     return { entryId: entry.id };
   });
+}
+
+// POS HF-GC ▸ ตัวอ่านของ JV ขาย/เติมบัตรกำนัล (อ่านอย่างเดียว · ไม่เขียนอะไร) — คีย์เดียวกับ postGiftCardSale ข้างบน ◂
+/** id ของ JV `${refType}#${refId}#GIFTCARD_SOLD` ที่ลงไว้แล้ว — ไม่มี = null */
+export async function giftCardSaleEntryId(ctx: GlCtx, refType: string, refId: string): Promise<string | null> {
+  const e = await prisma.accountJournalEntry.findFirst({
+    where: { systemId: ctx.systemId, idempotencyKey: `${refType}#${refId}#GIFTCARD_SOLD` },
+    select: { id: true },
+  });
+  return e?.id ?? null;
 }
 
 /** ใช้บัตรกำนัลชำระค่าสินค้า/บริการ → รับรู้รายได้ (Dr 2110 · Cr 4030) */
@@ -1938,3 +2161,197 @@ export async function postPayrollJV(
     );
   });
 }
+
+// ═══════════════════ SVC D.2 ▸ หอพัก — ขาบัญชีของ facade หอ (เพิ่มล้วน · ไม่แตะฟังก์ชันเดิม) ═══════════════════
+// ผู้เรียก = service.ts บล็อก "SVC D.2" (ในธุรกรรมของผู้เรียกเสมอ · ล็อกกันซ้ำถือไว้แล้ว) · ทุก JV ผ่าน commitEntry (สมดุล · งวด · ล็อกวันที่ · คีย์กันซ้ำทั้งร้าน)
+//   · รับเงินเกินบิล  = refType DormPaymentExcess · refId = คีย์ของผู้เรียก · event DOC:<docId>  ⇒ Dr เงิน / Cr DEPOSIT_RECEIVED (2110 เงินรับล่วงหน้า)
+//   · เงินประกันผู้เช่า = refType DormSecurityDeposit · refId = <unitId>:<leaseId> · event RECEIVE:<คีย์> / SETTLE:<คีย์>
+//       ขาบัญชีประกันมี note = DORM_DEPOSIT_LEG_NOTE ไว้แสดงผลเท่านั้น — ยอดถือคิดจากคีย์ JV + สถานะ (dormDepositHeldByBook) ไม่ใช่จากข้อความ
+
+export const DORM_DEPOSIT_REF_TYPE = "DormSecurityDeposit";
+export const DORM_EXCESS_REF_TYPE = "DormPaymentExcess";
+/** mapping key ของบัญชีเงินประกันผู้เช่า — ⚠️ J4 (ผู้ตรวจบัญชี) ยังไม่ยืนยันรหัส/ชื่อ · ไม่อยู่ในผังตั้งต้น (สร้าง lazy) */
+export const TENANT_SECURITY_DEPOSIT_KEY = "TENANT_SECURITY_DEPOSIT";
+export const DORM_DEPOSIT_LEG_NOTE = "เงินประกันผู้เช่า (หอพัก)";
+const TENANT_DEPOSIT_CODES = ["2140", "2141", "2142", "2143", "2144", "2145", "2146", "2147", "2148", "2149"];
+export type DormMoneyChannel = "CASH" | "TRANSFER" | "PROMPTPAY";
+
+/** ข้อมูลบอกเหตุผลที่ระบบหอปฏิเสธจากชั้นบัญชี (ข้อความไทย) — ผู้เรียกแปลงเป็นโค้ดของ facade */
+export class DormGlReject extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+  }
+}
+
+export const dormLeaseRef = (unitId: string, leaseId: string): string => `${unitId}:${leaseId}`;
+
+/**
+ * บัญชีเงินประกันผู้เช่าของสมุด (หนี้สิน) — มี mapping แล้วใช้ตาม mapping (ร้านย้ายได้) · ไม่มี = สร้างครั้งแรกที่ใช้ (lazy)
+ *   รหัส 2140 · ถูกใช้แล้วโดยบัญชีที่ไม่ใช่ของเรา (ไม่มี mapping ชี้) ⇒ รหัสว่างตัวแรกใน 2141–2149 · ห้ามลงบัญชีของร้านที่ชนรหัส
+ *   unique (systemId, code) / (systemId, key) ที่ฐาน + createMany skipDuplicates แล้วอ่านซ้ำ ⇒ พร้อมกันได้บัญชีเดียว
+ */
+export async function ensureTenantDepositLedgerInTx(ctx: GlCtx, tx: Tx): Promise<string> {
+  const mapped = async () => (await tx.accountMapping.findFirst({ where: { systemId: ctx.systemId, key: TENANT_SECURITY_DEPOSIT_KEY }, select: { accountId: true } }))?.accountId ?? null;
+  const hit = await mapped();
+  if (hit) return hit;
+  const taken = new Set(
+    (await tx.accountLedger.findMany({ where: { systemId: ctx.systemId, code: { in: TENANT_DEPOSIT_CODES } }, select: { code: true } })).map((l) => l.code),
+  );
+  const code = TENANT_DEPOSIT_CODES.find((c) => !taken.has(c));
+  if (!code)
+    throw new DormGlReject("ACCOUNT_SETUP", "รหัสบัญชี 2140–2149 ถูกใช้ครบแล้ว — สร้างบัญชีเงินประกันผู้เช่า (หนี้สิน) ในผังบัญชีเอง แล้วผูกที่หน้าการลงบัญชีอัตโนมัติ");
+  // พร้อมกัน (สองหน่วยในสมุดเดียว): createMany skipDuplicates รอ unique (systemId, code) / (systemId, key) ของอีกฝั่ง commit แล้วข้าม ⇒ อ่านซ้ำได้แถวเดียวกัน (ไม่ใช้ raw SQL)
+  await tx.accountLedger.createMany({
+    data: [{
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      code,
+      name: "เงินประกันรับจากผู้เช่า",
+      nameEn: "Tenant Security Deposits",
+      type: "LIABILITY",
+      cashflowActivity: "OPERATING",
+      isSystem: true,
+      description: "เงินประกันที่รับจากผู้เช่าหอพัก (หนี้สิน · คืนเมื่อย้ายออก หรือหักกับใบแจ้งหนี้ที่ค้าง) — รอตรวจ: รหัส/ชื่อบัญชีรอผู้ตรวจบัญชียืนยัน (J4)",
+    }],
+    skipDuplicates: true,
+  });
+  const ledger = await tx.accountLedger.findFirst({ where: { systemId: ctx.systemId, code }, select: { id: true, type: true, name: true } });
+  // รหัสนี้กลายเป็นบัญชีของร้านระหว่างทาง (ไม่ใช่ของเรา) ⇒ ไม่ลงบัญชีของร้าน — ให้ลองใหม่ (รอบหน้าเลือกรหัสถัดไป)
+  if (!ledger || ledger.type !== "LIABILITY" || ledger.name !== "เงินประกันรับจากผู้เช่า")
+    throw new DormGlReject("ACCOUNT_SETUP", "ตั้งบัญชีเงินประกันผู้เช่าไม่สำเร็จเพราะรหัสบัญชีชนกัน — ลองใหม่อีกครั้ง");
+  await tx.accountMapping.createMany({ data: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, key: TENANT_SECURITY_DEPOSIT_KEY, accountId: ledger.id }], skipDuplicates: true });
+  const final = await mapped();
+  if (!final) throw new Error("ตั้ง mapping บัญชีเงินประกันผู้เช่าไม่สำเร็จ");
+  return final;
+}
+
+async function entryRef(db: Tx, id: string): Promise<{ entryId: string; entryNo: string }> {
+  const e = await db.accountJournalEntry.findUnique({ where: { id }, select: { id: true, docNo: true } });
+  if (!e) throw new Error("ไม่พบใบสำคัญที่เพิ่งบันทึก");
+  return { entryId: e.id, entryNo: e.docNo };
+}
+
+/** รับเงินเกินยอดคงค้างของใบแจ้งหนี้หอ: Dr เงิน (ช่องทางเดียวกับการรับชำระ) / Cr 2110 เงินรับล่วงหน้า — ไม่ใช่รายได้ ไม่ใช่เงินประกัน */
+export async function postDormPaymentExcess(
+  ctx: GlCtx,
+  o: { key: string; docId: string; docNo: string | null; date: Date; amountSatang: number; channel: DormMoneyChannel; financeAccountId: string | null; contactId: string | null },
+  tx: Tx,
+): Promise<{ entryId: string; entryNo: string }> {
+  const b = new Book(ctx, tx);
+  b.dr(await financeLedgerId(ctx, o.financeAccountId, o.channel, tx), o.amountSatang, "รับเงินเกินยอดใบแจ้งหนี้");
+  b.cr(await b.id("DEPOSIT_RECEIVED"), o.amountSatang, "เงินรับล่วงหน้า (รับเกินยอดใบแจ้งหนี้หอพัก)", o.contactId ?? undefined);
+  const e = await commitEntry(
+    ctx,
+    { book: "RECEIPTS", journal: "PAYMENT", date: o.date, refType: DORM_EXCESS_REF_TYPE, refId: o.key, event: `DOC:${o.docId}`, memo: `รับเงินเกินยอดใบแจ้งหนี้ ${o.docNo ?? ""} — เก็บเป็นเงินรับล่วงหน้า`.trim() },
+    b,
+    tx,
+  );
+  return entryRef(tx, e.id);
+}
+
+/** รับเงินประกันผู้เช่า: Dr เงิน / Cr บัญชีเงินประกัน (หนี้สิน) — JV เดียว · ไม่มี VAT · ไม่มีรายได้ */
+export async function postDormDepositReceive(
+  ctx: GlCtx,
+  o: { unitId: string; leaseId: string; key: string; date: Date; amountSatang: number; channel: DormMoneyChannel; financeAccountId: string | null; contactId: string | null; memo?: string | null },
+  tx: Tx,
+): Promise<{ entryId: string; entryNo: string }> {
+  const depId = await ensureTenantDepositLedgerInTx(ctx, tx);
+  const b = new Book(ctx, tx);
+  b.dr(await financeLedgerId(ctx, o.financeAccountId, o.channel, tx), o.amountSatang, "รับเงินประกันผู้เช่า");
+  b.cr(depId, o.amountSatang, DORM_DEPOSIT_LEG_NOTE, o.contactId ?? undefined);
+  const e = await commitEntry(
+    ctx,
+    { book: "RECEIPTS", journal: "PAYMENT", date: o.date, refType: DORM_DEPOSIT_REF_TYPE, refId: dormLeaseRef(o.unitId, o.leaseId), event: `RECEIVE:${o.key}`, memo: o.memo?.trim() || "รับเงินประกันผู้เช่า (หอพัก)" },
+    b,
+    tx,
+  );
+  return entryRef(tx, e.id);
+}
+
+/**
+ * ยอดเงินประกันที่ถือของสัญญา **ทุกสมุดของร้าน** แยกตาม สมุด → บัญชี (F4 · F8: ไม่ผูกกับข้อความ note)
+ *   นับเฉพาะ JV หอที่ยังมีผล (status POSTED · ไม่ใช่ตัวกลับรายการ — JV ปิดที่ถูกถอยด้วย reverseSecurityDepositSettlement มี status REVERSED ⇒ ไม่นับทั้งคู่)
+ *   ชนิดรายการดูจากคีย์ JV ตรงตัว (`DormSecurityDeposit#<unit>:<lease>#RECEIVE:<คีย์>` / `#SETTLE:<คีย์>`):
+ *   รับ = + ขาเครดิต (ขาเดียวที่เครดิตคือบัญชีประกัน) · ปิด = − ขาเดบิต (ขาเดียวที่เดบิตคือบัญชีประกัน)
+ *   contacts = ผู้ติดต่อบนขาประกันของ JV รับ ต่อสมุด (ผูกผู้เช่า — F3)
+ */
+export async function dormDepositHeldByBook(
+  db: Db, tenantId: string, unitId: string, leaseId: string,
+): Promise<Map<string, { byAccount: Map<string, number>; total: number; contacts: Set<string> }>> {
+  const refId = dormLeaseRef(unitId, leaseId);
+  const es = await db.accountJournalEntry.findMany({
+    where: { tenantId, refType: DORM_DEPOSIT_REF_TYPE, refId, status: "POSTED", reversalOfId: null },
+    select: { systemId: true, idempotencyKey: true, lines: { select: { accountId: true, debit: true, credit: true, contactId: true } } },
+  });
+  const recv = `${DORM_DEPOSIT_REF_TYPE}#${refId}#RECEIVE:`;
+  const settle = `${DORM_DEPOSIT_REF_TYPE}#${refId}#SETTLE:`;
+  const out = new Map<string, { byAccount: Map<string, number>; total: number; contacts: Set<string> }>();
+  for (const e of es) {
+    const k = e.idempotencyKey ?? "";
+    const isRecv = k.startsWith(recv);
+    if (!isRecv && !k.startsWith(settle)) continue;
+    const book = out.get(e.systemId) ?? { byAccount: new Map<string, number>(), total: 0, contacts: new Set<string>() };
+    for (const l of e.lines) {
+      const v = isRecv ? l.credit : -l.debit;
+      if (v === 0) continue;
+      book.byAccount.set(l.accountId, (book.byAccount.get(l.accountId) ?? 0) + v);
+      book.total += v;
+      if (isRecv && l.contactId) book.contacts.add(l.contactId);
+    }
+    out.set(e.systemId, book);
+  }
+  return out;
+}
+
+/**
+ * ปิดเงินประกัน = JV เดียว: Dr บัญชีประกัน (ยอดถือทั้งหมด ตามบัญชีที่ถือ) / Cr 1100 ต่อใบที่หัก (ผู้ติดต่อของใบ) / Cr เงิน (ส่วนที่คืน)
+ *   ผู้เรียกคิดยอดใต้ล็อกสัญญา+ล็อกเอกสารแล้ว · Σheld = Σapplied + refund (commitEntry ตรวจสมดุลซ้ำ)
+ */
+export async function postDormDepositSettle(
+  ctx: GlCtx,
+  o: {
+    unitId: string; leaseId: string; key: string; date: Date;
+    held: { accountId: string; amountSatang: number }[];
+    applied: { docNo: string | null; contactId: string | null; amountSatang: number }[];
+    refundSatang: number; channel: DormMoneyChannel; financeAccountId: string | null; memo?: string | null;
+  },
+  tx: Tx,
+): Promise<{ entryId: string; entryNo: string }> {
+  const b = new Book(ctx, tx);
+  for (const h of o.held) b.dr(h.accountId, h.amountSatang, DORM_DEPOSIT_LEG_NOTE);
+  for (const a of o.applied) if (a.amountSatang > 0) b.cr(await b.id("AR"), a.amountSatang, `หักเงินประกันชำระใบแจ้งหนี้ ${a.docNo ?? ""}`.trim(), a.contactId ?? undefined);
+  if (o.refundSatang > 0) b.cr(await financeLedgerId(ctx, o.financeAccountId, o.channel, tx), o.refundSatang, "คืนเงินประกันผู้เช่า");
+  const e = await commitEntry(
+    ctx,
+    { book: "GENERAL", journal: "DOC", date: o.date, refType: DORM_DEPOSIT_REF_TYPE, refId: dormLeaseRef(o.unitId, o.leaseId), event: `SETTLE:${o.key}`, memo: o.memo?.trim() || "ปิดเงินประกันผู้เช่า (หัก + คืน รายการเดียว)" },
+    b,
+    tx,
+  );
+  return entryRef(tx, e.id);
+}
+// ◂ SVC D.2
+
+// ═══════════════════ SVC D.13 ▸ ยอดเงินประกันถือหลายสัญญาในคำสั่งเดียว (อ่านอย่างเดียว · เพิ่มล้วน · หนี้ N+1 ของ D.5) ═══════════════════
+//   กติกาเดียวกับ dormDepositHeldByBook ทุกข้อ (ทุกสมุดของร้าน · POSTED · ไม่ใช่ตัวกลับรายการ · ชนิดจากคีย์ JV ตรงตัว) — ต่างแค่ refId in [...]
+export async function dormDepositHeldMany(tenantId: string, unitId: string, leaseIds: readonly string[], db: Db = prisma): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const ids = [...new Set(leaseIds)];
+  if (!ids.length) return out;
+  const byRef = new Map(ids.map((id) => [dormLeaseRef(unitId, id), id] as const));
+  const es = await db.accountJournalEntry.findMany({
+    where: { tenantId, refType: DORM_DEPOSIT_REF_TYPE, refId: { in: [...byRef.keys()] }, status: "POSTED", reversalOfId: null },
+    select: { refId: true, idempotencyKey: true, lines: { select: { debit: true, credit: true } } },
+  });
+  for (const e of es) {
+    const leaseId = e.refId ? byRef.get(e.refId) : undefined;
+    if (!leaseId) continue;
+    const k = e.idempotencyKey ?? "";
+    const isRecv = k.startsWith(`${DORM_DEPOSIT_REF_TYPE}#${e.refId}#RECEIVE:`);
+    if (!isRecv && !k.startsWith(`${DORM_DEPOSIT_REF_TYPE}#${e.refId}#SETTLE:`)) continue;
+    let v = 0;
+    for (const l of e.lines) v += isRecv ? l.credit : -l.debit;
+    out.set(leaseId, (out.get(leaseId) ?? 0) + v);
+  }
+  return out;
+}
+// ◂ SVC D.13

@@ -1,0 +1,122 @@
+[
+ {
+  "name": "B2 save does nothing until edited",
+  "ok": true,
+  "detail": "PUT before edit=0"
+ },
+ {
+  "name": "B2 live sample uses new name/suffix",
+  "ok": true,
+  "detail": "\"ตัวอย่างการพูด\\nหวัดดีค่ะ! Novaเอง วันนี้มีงานอะไรให้ช่วยบ้างค่ะ บอกมาได้เลย\""
+ },
+ {
+  "name": "B2 save → PUT secretary {name,suffix,tone,languages}",
+  "ok": true,
+  "detail": "[{\"name\":\"Nova\",\"suffix\":\"ค่ะ\",\"tone\":\"friendly\",\"languages\":[\"th\",\"en\"]}]"
+ },
+ {
+  "name": "B2 refreshes secretary/me after save",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "B4 locked (always-approve) toggle sends nothing",
+  "ok": true,
+  "detail": "PUT=0"
+ },
+ {
+  "name": "B4 toggle chat.send → PUT {key:'chat.send', enabled:false}",
+  "ok": true,
+  "detail": "[{\"key\":\"chat.send\",\"enabled\":false},{\"key\":\"money.limit\",\"limitSatang\":3000000}]"
+ },
+ {
+  "name": "B4 limit 30000 baht → PUT {key:'money.limit', limitSatang:3000000}",
+  "ok": true,
+  "detail": "[{\"key\":\"chat.send\",\"enabled\":false},{\"key\":\"money.limit\",\"limitSatang\":3000000}]"
+ },
+ {
+  "name": "B3 'act alone' slot is locked (no PUT)",
+  "ok": true,
+  "detail": "PUT=0"
+ },
+ {
+  "name": "B3 OFF → PUT {module:'chat', level:'OFF'}",
+  "ok": true,
+  "detail": "[{\"module\":\"chat\",\"level\":\"OFF\"}]"
+ },
+ {
+  "name": "B5 undo button only on undoable rows (l2)",
+  "ok": true,
+  "detail": "[\"sec-log-undo-l2\"]"
+ },
+ {
+  "name": "B5 undo → POST log/l2/undo body {} (no now)",
+  "ok": true,
+  "detail": "[{}]"
+ },
+ {
+  "name": "B5 server note shown",
+  "ok": true,
+  "detail": "ย้อนกลับแล้ว ดีลกลับไปขั้นเดิม"
+ },
+ {
+  "name": "B5 undone row l6 is struck through",
+  "ok": true,
+  "detail": "[\"line-through\"]"
+ },
+ {
+  "name": "B5 filters → ?day=YYYY-MM-DD and ?module=crm",
+  "ok": true,
+  "detail": "[\"?take=100\",\"?take=100\",\"?take=100\",\"?take=100&day=2026-11-05\",\"?take=100&module=crm\"]"
+ },
+ {
+  "name": "B6 REJECTED lesson hidden",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "B6 confirm lesson → POST lessons/ls1/confirm",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "B6 reject lesson → DELETE lessons/ls2",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "B6 confirm memory → POST memories/mm1/confirm",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "B6 delete memory → DELETE memories/mm2",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "B7 disclosure without AI → error shown, no PUT",
+  "ok": true,
+  "detail": "ต้องบอกลูกค้าว่าเป็นผู้ช่วย AI (มีคำว่า AI · เอไอ หรือ ผู้ช่วย) · PUT=0"
+ },
+ {
+  "name": "B7 valid disclosure → PUT {reply:false, handoff:true, disclosure}",
+  "ok": true,
+  "detail": "[{\"reply\":false,\"handoff\":true,\"disclosure\":\"ตอบโดย Shark ผู้ช่วย AI ของร้าน\"}]"
+ },
+ {
+  "name": "STAFF access picker read-only (no PUT)",
+  "ok": true,
+  "detail": "PUT=0"
+ },
+ {
+  "name": "STAFF rules toggle read-only (no PUT) · limit not editable",
+  "ok": true,
+  "detail": "PUT=0 editable=false"
+ },
+ {
+  "name": "STAFF customers page does not call after-hours",
+  "ok": true,
+  "detail": "calls=0"
+ }
+]

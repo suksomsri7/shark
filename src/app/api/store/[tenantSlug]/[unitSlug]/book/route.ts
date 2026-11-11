@@ -1,67 +1,43 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { resolveUnit, getAvailableSlots, createAppointment } from "@/lib/modules/booking/service";
-import { checkRateLimit } from "@/lib/core/rate-limit";
+import { bookOnline } from "@/lib/modules/booking/online";
+import { scheduleDrain } from "@/lib/outbox-consumers";
 
-const schema = z.object({
-  serviceId: z.string().min(1),
-  staffId: z.string().min(1), // "any" = ใครก็ได้
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  startMin: z.number().int().min(0).max(1439),
-  name: z.string().trim().min(1).max(80),
-  phone: z.string().trim().min(6).max(20),
-  note: z.string().trim().max(300).optional(),
-  idempotencyKey: z.string().trim().min(1).max(100).optional(), // กันยิงซ้ำ/ดับเบิลคลิก
-});
-
-// POST จองนัด (public)
+// POST จองนัด (public) — SVC B.7: กติกาจองของ B.3 ผ่าน bookOnline (กันจองซ้อนข้ามโพรเซส · rate limit บนฐาน · ลิงก์ตัวตน LINE)
+//   200 { ok, manageUrl, status, startMs, holdUntilMs, depositSatang } · ไม่มี id นัด/ชื่อ/เบอร์ในคำตอบ (X8)
+//   RATE_LIMITED ⇒ 429 (+Retry-After) · NOT_FOUND ⇒ 404 · BAD_INPUT ⇒ 400 · อื่น ⇒ 409 · body ไม่ใช่ JSON ⇒ 400
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ tenantSlug: string; unitSlug: string }> },
 ) {
   const { tenantSlug, unitSlug } = await params;
-  const resolved = await resolveUnit(tenantSlug, unitSlug);
-  if (!resolved) return NextResponse.json({ error: "not_found" }, { status: 404 });
-
-  // กันยิงถล่ม — 10 ครั้ง/นาที/IP ต่อสาขา (public ไม่ต้องล็อกอิน)
-  const rlIp = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
-  const rl = checkRateLimit(`book:${resolved.unit.id}:${rlIp}`, { limit: 10, windowMs: 60000 });
-  if (!rl.ok)
-    return NextResponse.json(
-      { error: "rate_limited" },
-      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
-    );
-
-  const body = await req.json().catch(() => null);
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: "bad_request" }, { status: 400 });
-  const b = parsed.data;
-
-  const { id: tenantId } = resolved.tenant;
-  const { id: unitId } = resolved.unit;
-
-  // แก้ "ใครก็ได้" → เลือก staff ที่ว่างจริงในเวลานั้น
-  let staffId = b.staffId;
-  if (staffId === "any") {
-    const slots = await getAvailableSlots(tenantId, unitId, b.serviceId, null, b.date);
-    const match = slots.find((s) => s.startMin === b.startMin);
-    if (!match) return NextResponse.json({ error: "slot_taken" }, { status: 409 });
-    staffId = match.staffId;
+  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+  const body = (await req.json().catch(() => undefined)) as unknown;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ ok: false, code: "BAD_INPUT", reason: "ข้อมูลการจองไม่ครบหรือไม่ถูกต้อง กรุณาลองใหม่" }, { status: 400 });
   }
-
-  const res = await createAppointment({
-    tenantId,
-    unitId,
-    serviceId: b.serviceId,
-    staffId,
-    dateStr: b.date,
-    startMin: b.startMin,
-    customerName: b.name,
-    customerPhone: b.phone,
-    note: b.note,
-    source: "ONLINE",
-    idempotencyKey: b.idempotencyKey,
-  });
-  if (!res.ok) return NextResponse.json({ error: "unavailable", reason: res.reason }, { status: 409 });
-  return NextResponse.json({ ok: true, id: res.id });
+  const b = body as Record<string, unknown>;
+  const r = await bookOnline(
+    { tenantSlug, unitSlug },
+    {
+      serviceId: b.serviceId as string,
+      staffId: (b.staffId === "any" || b.staffId === "" || b.staffId === undefined ? null : b.staffId) as string | null,
+      dateStr: (b.dateStr ?? b.date) as string,
+      startMin: b.startMin as number,
+      ...(b.name !== undefined ? { name: b.name as string } : {}),
+      ...(b.phone !== undefined ? { phone: b.phone as string } : {}),
+      ...(b.note !== undefined ? { note: b.note as string } : {}),
+      ...(b.idempotencyKey !== undefined ? { idempotencyKey: b.idempotencyKey as string } : {}),
+      ...(b.who !== undefined ? { who: b.who as string } : {}),
+    },
+    { ip },
+  );
+  if (r.ok) {
+    scheduleDrain();
+    return NextResponse.json(r);
+  }
+  const status = r.code === "RATE_LIMITED" ? 429 : r.code === "NOT_FOUND" ? 404 : r.code === "BAD_INPUT" ? 400 : 409;
+  return NextResponse.json(
+    { ok: false, code: r.code, reason: r.reason },
+    { status, ...(status === 429 ? { headers: { "Retry-After": "60" } } : {}) },
+  );
 }

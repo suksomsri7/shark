@@ -1,0 +1,64 @@
+tree=/root/projects/shark-pos-d head=d4e67784 dirty=0 2026-10-16T02:35:36Z
+# qc-pos-p2.14 fail-before at the oracle head (base session/pos 92b7149d + oracle commits) · QC4 · QC_FORCE=1 · ISO_MEM=7G · 79 log lines
+# command: bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p2.14.mts
+# result: 8/56 pass (SKIP 2: K3, V3) · crashed=false · residue 0 · EXIT 1 · unforced at the same head = SKIPPED exit 0 · --no-db 4/15 (SKIP 2) · typecheck (heap 8192) EXIT 0
+# green at base by design: L2 (control) · A7 (verification) · G2 V2 (oracle-written manifests) · Z1 Z2
+# id :: reason (actual)
+❌ P2.14-K1 :: platformCommission = [false,"P2.1"] (คาด [true, null]) · tableReservationsOnMap = [false,"P2.4"] (คาด [true, null]) · callQueueFromTable = [false,"P2.4"] (คาด [false, "P3"]) · voucherPayment = [false,"P2.9"] (คาด [false, "P3"]) · advanceBookingBill = [false,"P2.7"] (คาด [false, "P3"]) · POS-MASTER-PLAN แถว P2 ยังไม่ติ๊ก ✅: P2.1,P2.2,P2.3,P2.4,P2.5,P2.6,P2.7,P2.8,P2.9,P2.10,P2.11,P2.12,P2.13
+❌ P2.14-K2 :: git ls-files ไม่มี skills/shark-pos-api/SKILL.md · git ls-files ไม่มี skills/shark-pos-api/references/recipes.md · git ls-files ไม่มี skills/shark-pos-api/references/endpoints.md · gen-pos-api-docs.mts ยังอ่าน .claude/skills/shark-pos-api · qc-pos-p2.13.mts ยังอ่าน .claude/skills/shark-pos-api · qc-pos-api-skill.mts ยังอ่าน .claude/skills/shark-pos-api · ไม่มี scripts/sync-skills.sh
+⏭ P2.14-K3 :: 
+❌ P2.14-G1 :: ไม่มี scripts/pos-gates-all.sh
+  ✅ [P2.14-G2] [D17] ไม่มีแถวชี้ไฟล์ที่ไม่มี · mode forced|unforced ตามด่าน SKIP ของชุด · needs ตรงเครื่องหมาย // requires: · ไม่มีชื่อซ้ำ
+❌ P2.14-G3 :: ไม่มี scripts/qc-all-discovery.mts (ตัวกรองของ qc-all ยังไม่ export — อ่านแพตเทิร์นจากไฟล์แทน) · qc-all.mts ไม่ใช้ isQcAllSuite จาก qc-all-discovery
+❌ P2.14-G4 :: qc-acc-v2-pos-lines opRef "qc-acc-v2-pos-lines" ไม่พบใน POS-OWNER-PENDING.md
+❌ P2.14-V1 :: visual-pos.mts ไม่มี EN_MOBILE_PAGES (มติ 6: en × 390 ของ register/pay/bills/หน้าสาธารณะ)
+✅ P2.14-V2 :: 
+⏭ P2.14-V3 :: 
+  ❌ [P2.14-V4] [D18 ⚠️6] ทุกหน้าพนักงานของ POS มีแถว pos-ui-inventory.json และ (หมุดสิทธิ์ใน qc-hf-pos-page-authz หรือการ์ดปฏิเสธในหน้าที่ระบุในแมนิเฟสต์) — ORACLE-ADD stock/shifts/settings/reports/price-rules — expected ทุกหน้าพนักงาน: ทะเบียนปุ่ม + (หมุดสิทธิ์ | การ์ดปฏิเสธ) | actual products/price-rules ไม่มีหมุดสิทธิ์/การ์ดปฏิเสธ · reports ไม่มีหมุดสิทธิ์/การ์ดปฏิเสธ · settings ไม่มีหมุดสิทธิ์/การ์ดปฏิเสธ · shifts ไม่มีหมุดสิทธิ์/การ์ดป�
+❌ P2.14-H1 :: ยังไม่มี
+❌ P2.14-H2 :: ตารางขาด 4: pos.stockCount.confirmed,pos.receipt.taxInvoiceRequested,pos.payment.intent_paid,pos.sale.taxInvoiceIssued
+❌ P2.14-H3 :: ยังไม่มี
+❌ P2.14-A9 :: channels.pause return posData( · channels.resume return posData( · orders.create return posData( · orders.accept return posData( · orders.reject return posData( · orders.preparing return posData( · orders.ready return posData( · orders.complete return posData( …(+5)
+❌ P2.14-L1 :: session → 200 {"ok":true,"sessionId":"cmvacxxns007p75kz6zkc7mld","tableName":"L1T-ci · order → 200 {"ok":true,"dailyNo":1} · service-request → 200 {"ok":true} · bill → 200 {"ok":true,"tableName":"L1T-cixuxh","lines":[{"name":"ผัดไทย cixuxh"," · notify-payment → 200 {"ok":true} · session 0→1 (คาดไม่เปลี่ยน) · order 0→1 (คาดไม่เปลี่ยน) · request 0→2 (คาดไม่เปลี่ยน) …(+5)
+✅ P2.14-L2 :: 
+❌ P2.14-L3 :: cancelOrderItemAction → {"ok":true,"void":true} · รายการ CANCELLED · advanceItemAction → {"ok":false,"reason":"เลื่อนสถานะย้อนหลังไม่ได้"} · รายการ CANCELLED (คาด POS_LINKED ไม่เลื่อน) · recallItemAction → {"ok":true,"void":true} (คาดปฏิเสธ) · mergeSessionAction → {"ok":true,"void":true} · S4 MERGED · confirmPromptpayPaymentAction → {"ok":true,"void":true} · บิล 1 · checkoutAction → {"ok":false,"reason":"ไม่มีรายการค้างชำระ"} · บิล 1 (คาด POS_LINKED 0 บิล) · checkoutAction ไม่มีด่าน POS_LINKED · confirmPromptpayPaymentAction ไม่มีด่าน POS_LINKED …(+9)
+❌ P2.14-L4 :: runKind → ปิดบิลโต๊ะ "L4T-cixuxh" 90 บาท (เงินสด) และปิดโต๊ะเรียบร้อยแล้ว (คาด throw ปฏิเสธ) · บิล 1 · session CLOSED (คาด 0 · OPEN) · proposals.ts ไม่มีด่าน POS_LINKED
+❌ P2.14-L5 :: ยังไม่มีโมดูล/ฟังก์ชัน posLinkedLegacyDoor (src/lib/modules/pos/legacy-door.ts)
+❌ P2.14-A1 :: ปิด otherSources → 200 outOfShift=undefined shift=null (คาด 200 · true · null) · เปิด + 2 กะ → 200 บิล 4→5 (คาดปฏิเสธ SHIFT_REQUIRED)
+❌ P2.14-A2 :: คีย์สาขา B → {"ok":true} revoked=true · คีย์ทุกสาขา → {"ok":true} revoked=true
+❌ P2.14-A3 :: pos.product.create actorType USER actorId apikey:cmvacxxfq007i75kz9xyuw0 · แถว actorId apikey:* 1
+❌ P2.14-A4 :: คำขอของคีย์ → null (คาด "API: QC P2.14 admin cixuxh")
+❌ P2.14-A5 :: ops/sales.ts taxInvoice ไม่ส่ง serviceKey pos-api:<keyId>:<saleId> · audit after.serviceKey undefined (คาด pos-api:<keyId>:<saleId>)
+❌ P2.14-A6 :: REST void → 200 after.source undefined · REST refund → 200 after.source undefined
+✅ P2.14-A7 :: 
+❌ P2.14-A8 :: เล่นซ้ำหลัง TTL → 409:state_conflict saleId  (คาด 49xai7qz)
+❌ P2.14-A10 :: totals.subtotalSatang ไม่ใช่จำนวนเต็ม · totals.lineDiscountSatang ไม่ใช่จำนวนเต็ม · totals.billDiscountSatang ไม่ใช่จำนวนเต็ม · totals.couponSatang ไม่ใช่จำนวนเต็ม · totals.tierSatang ไม่ใช่จำนวนเต็ม · totals.serviceChargeSatang ไม่ใช่จำนวนเต็ม · totals.grandTotalSatang ไม่ใช่จำนวนเต็ม · totals.tipSatang ไม่ใช่จำนวนเต็ม …(+15)
+❌ P2.14-A11 :: CSV_HEADERS.daily ไม่มี จำนวนคืนเงิน/ยอดคืนเงิน (12 คอลัมน์)
+❌ P2.14-D1 :: เครื่อง X ส่งให้จอ Y → เขียนจอ Y (seq 0→1792118286 · OK) · ไม่มีเครื่องใน ctx → เขียนจอ Y (seq 0→1792118287 · OK)
+❌ P2.14-Q1 :: expirePreorders → NEW/PREPAID (คาด CANCELLED) · PosOrderEvent expired_paid 0 (คาด 1) · ไม่มี ops pos.payment.refund_needed ของออเดอร์นี้ · หน้าสถานะ refundPending false (คาด true) · acceptOrder หลังปิด → INTENT_EXPIRED (คาดปฏิเสธที่ไม่ใช่ INTENT_EXPIRED ค้าง)
+❌ P2.14-Q2 :: ออเดอร์เมื่อวาน → NEW · accepted [] (คาด ACCEPTED)
+❌ P2.14-Q4 :: PosOrderEvent refund_needed 0 (คาด 1) · หน้าสถานะ refundPending false (คาด true) · ใบเปลี่ยนเป็น EXPIRED → refundPending false (คาด true ถาวร)
+❌ P2.14-Q3 :: Q1 เล่นซ้ำ: expired_paid 0 · ops 0 · cancelled 0 (คาด 1 · 1 · 1) · Q4 เงินเข้าซ้ำ: refund_needed 0 (คาด 1)
+❌ P2.14-Q5 :: รอบครัว 2 (คาด 1 · ผล ["OK","OK"])
+❌ P2.14-Q6 :: createCharge 2 · ออเดอร์ 1 · ใบ 1 (คาด 1 · 1 · 1)
+❌ P2.14-O1 :: ทางอ่านรอล็อก 3937 ms (คาด < 2000 · try-lock) · ผลคืน swept undefined (คาด false เมื่อล็อกไม่ว่าง) · releaseHeldOrders ไม่ใช้ pg_try_advisory_xact_lock · re-read ช่องทางใน releaseHeldOrders ไม่ FOR SHARE (ORD-6)
+❌ P2.14-O2 :: ingest รับอัตโนมัติระหว่างล็อกถูกถือ (498 ms · ACCEPTED) — ไม่ได้ถือล็อกของตัวกวาด
+❌ P2.14-O3 :: ร่าง DISCARDED (คาด HELD — session เปิดกลับระหว่างกวาด · ผล 1)
+❌ P2.14-O4 :: handOver ออเดอร์ที่คืนเงินครบ → OK สถานะ HANDED
+❌ P2.14-O5 :: สาขา B (ไม่มีคลัง) → {"ok":true,"orderId":"cmvacyxy200pk75kzomapjopj","duplicated":false,"saleId":nul (คาด PRODUCT_NOT_FOUND lineIndex 0)
+❌ P2.14-P1 :: ไม่พบ → DEPOSIT_NOT_FOUND depositId undefined · เลขท้ายผิด → DEPOSIT_NOT_OWNER depositId undefined · ล็อก → DEPOSIT_LOCKED depositId undefined
+❌ P2.14-P2 :: X: เขียนแถว (LINEMAN, A) ทับ notSold ของทุกสาขา ({"written":1,"skipped":0,"productIds":["cmvacxwns0) · X ที่ A/LINEMAN → {"productId":"cmvacxwns006i75kzwqwnmtjd","unitId":"cmvacxub9 (คาด CHANNEL_NOT_SOLD) · Y: เขียนแถว (LINEMAN, ทุกสาขา) ทับ notSold ของ A ({"written":1,"skipped":0,"productIds":["cmvacxwpt0) · Y ที่ A/LINEMAN → {"productId":"cmvacxwpt006k75kzb1s02052","unitId":"cmvacxub9 (คาด CHANNEL_NOT_SOLD)
+❌ P2.14-P3 :: แก้โดยไม่ส่ง name → VALIDATION ต้องระบุชื่อช่องทาง · ชื่อ ชื่อใหม่ cixuxh · bp 0 · audit กับการเขียนคนละธุรกรรม (xmin 6125538 vs 6125539)
+❌ P2.14-P4 :: A/LINEMAN {"price":11000,"source":"CHANNEL","refusal":null} (คาด own 11000) · B/LINEMAN {"price":12000,"source":"CHANNEL","refusal":null} (คาด inherited 12000) · A/STORE {"price":10000,"source":"BASE","refusal":null} (คาด origin null · source BASE)
+❌ P2.14-P5 :: WARN ใบกำกับ (logOps) ไม่ยกเว้น other-book · console.warn บรรทัดถูกปฏิเสธ ไม่ยกเว้น other-book
+❌ P2.14-P6 :: totals.member ไม่มี kind ยังผ่าน (คาดปฏิเสธ) · (store)/d/actions.ts ไม่มี clearDisplayCookieAction ที่ล้างคุกกี้ · /d page ไม่ส่ง staleCookie + clearDisplayCookieAction เมื่อ DISPLAY_NOT_PAIRED
+❌ P2.14-R1 :: A5 ของผู้จัดการที่ B [] (คาด 1 แถว count 3)
+❌ P2.14-R2 :: K {"d":3000} (คาด staff 3000 · a3Flag true) · C {"d":3000} (คาด discount 3000 · staff 0 · false)
+❌ P2.14-R4 :: มีบิลที่ไม่ใช่ LINEMAN (24 ใบ · หน้าร้าน true)
+❌ P2.14-R5 :: บรรทัดลิ้นชัก cost undefined margin undefined (คาด 800 · 1200) · ประวัติสต็อกไม่มี sale {receiptNo 202610-0017 · lineName · qty 2} (undefined)
+❌ P2.14-R3 :: ตัดวัน 04:00: บิล 02:00 ของ 2026-10-15 ยังอยู่วัน 2026-10-15 (คาดวัน 2026-10-14) · ตัดวัน 04:00: วัน 2026-10-14 ไม่มีบิล 02:00 ของ 2026-10-15
+❌ P2.14-U1 :: ยังไม่มีโมดูล/ฟังก์ชัน kds.saleNeedsKitchen · kdsQueueNoAction ไม่คืน kitchen จาก saleNeedsKitchen · PayDone แสดง kitchenNoTicket โดยไม่ดูธง kitchen
+✅ P2.14-Z1 :: 
+✅ P2.14-Z2 :: 
+
+JSON_SUMMARY {"suite":"qc-pos-p2.14","total":56,"passed":8,"failed":["P2.14-K1","P2.14-K2","P2.14-G1","P2.14-G3","P2.14-G4","P2.14-V1","P2.14-V4","P2.14-H1","P2.14-H2","P2.14-H3","P2.14-A9","P2.14-L1","P2.14-L3","P2.14-L4","P2.14-L5","P2.14-A1","P2.14-A2","P2.14-A3","P2.14-A4","P2.14-A5","P2.14-A6","P2.14-A8","P2.14-A10","P2.14-A11","P2.14-D1","P2.14-Q1","P2.14-Q2","P2.14-Q4","P2.14-Q3","P2.14-Q5","P2.14-Q6","P2.14-O1","P2.14-O2","P2.14-O3","P2.14-O4","P2.14-O5","P2.14-P1","P2.14-P2","P2.14-P3","P2.14-P4","P2.14-P5","P2.14-P6","P2.14-R1","P2.14-R2","P2.14-R4","P2.14-R5","P2.14-R3","P2.14-U1"],"skippedChecks":["P2.14-K3: รอชุด re-pin ท้ายใบ (มติ 3) — ยังปัก 7 ชุด: qc-hf-fu.mts,qc-pos-p2.10.mts,qc-pos-p2.11.mts,qc-pos-p2.12.mts,qc-pos-p2.13.mts,qc-pos-p2.7.mts,qc-pos-p2.8.mts","P2.14-V3: รอ P2.7U (POS_PAGES ยังไม่มี qr-public · /q/** ยังไม่อยู่ในแผนภาพ/ทะเบียนปุ่ม) — มติ 10"],"skipped":false,"forced":true,"missing":["src/lib/modules/pos/legacy-door.ts ยังไม่มี","scripts/pos-gates-all.sh ยังไม่มี","scripts/qc-all-discovery.mts ยังไม่มี","scripts/sync-skills.sh ยังไม่มี","skills/shark-pos-api/SKILL.md ยังไม่มี"],"hasP27U":false,"crashed":false,"guardHits":0,"residue":0}

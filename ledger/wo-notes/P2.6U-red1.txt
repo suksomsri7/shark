@@ -1,0 +1,6 @@
+# P2.6U fix1 red-before (ORACLE-ADD A15 · rulings fix1-1) — 14 Oct 2026, account B
+# head 3a32f55d · src = e7ed4eac (before F1) · QC_FORCE=1 on QC4
+# expected 65/66, exactly A15 red (kdsKitchenProducts not exported)
+  ❌ [P2.6-A15] [F1 มติ P2.6U fix1-1] kdsKitchenProducts (แผ่น 86 ของจอครัว): COOK ที่มีแค่ restaurant.kds.advance ได้รายการ = เมนูของสา — expected COOK อ่านรายการครัวของสาขาได้ · ตรง availabilityFor · NOPERM ถูกปฏิเสธ | actual ยังไม่มีโมดูล/ฟังก์ชัน kdsKitchenProducts · COOK → MISSING:kdsKitchenProducts · ไม่มี kaprao (เข้าครัว) · ไม่มี chayen (เข้าครัว) · ไม่มี cookie (เข้าครัว) · NOPERM → MISSING:kdsKitchenProducts
+===== qc-pos-p2.6 ===== ผ่าน 65/66 (QC_FORCE) · PAR 5/5 · SKIP-until-export 0
+JSON_SUMMARY {"suite":"qc-pos-p2.6","total":66,"passed":65,"failed":["P2.6-A15"],"parRed":[],"depSkipped":[],"skipped":false,"forced":true,"missing":[],"depP24":[],"depP28":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}

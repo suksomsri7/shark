@@ -106,6 +106,7 @@ enum AccountDocSource {
   POS // ไหลมาจากขายหน้าร้าน
   RECURRING // เอกสารประจำงวด (สร้างอัตโนมัติ)
   API // สร้างผ่าน REST /api/v1/account (คีย์ API ของแอปภายนอก — WO C1 · createdById = null)
+  DORM // SVC D.0 · ไหลมาจากหอพัก (บิลค่าเช่า/ประกัน/คืนประกัน — ลง ALTER TYPE ก่อน client ที่เขียนค่านี้)
 }
 
 // โหมดราคาที่ผู้ใช้ "คิด" ตอนกรอก — คนละชั้นกับ AccountVatMode ที่เป็นผลลัพธ์ในเอกสาร
@@ -151,6 +152,7 @@ model AccountDocument {
   // ── อ้างอิง ──
   sourceDocId     String? // เอกสารต้นทางที่แปลงมา (quotation→invoice→receipt)
   sourcePaymentId String? // QC5-A1: ใบกำกับภาษี(บริการ) ออกต่อ payment งวดที่รับ (1 payment = 1 ใบกำกับ)
+  supersededByDocId String? // POS P1.13 (CD1 · CD5): ใบกำกับอย่างย่อของบิล POS ที่ถูกแทนด้วยใบกำกับเต็มรูป → id ของ TAX_INVOICE (สถานะ CANCELLED · ไม่แตะ GL)
   taxPointBasis   AccountVatTiming? // QC5-A1: จุดรับรู้ภาษี (GOODS=ON_ISSUE / SERVICE=ON_PAYMENT)
   refSystemId     String? // ระบบต้นทาง (POS system / business unit) เมื่อไหลจาก link
   refType         String? // ชื่อ Prisma model ตรงตัว (เช่น "PosSale")

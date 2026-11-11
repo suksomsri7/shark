@@ -1,0 +1,99 @@
+tree=/root/projects/shark-pos-c head=beed468d dirty=2 (src/ checked out at 2e6328db = unchanged code · oracle 57 checks committed · schema + stockTaken) · 2026-10-14T12:45:14Z
+[env] qc-pos-p2.6 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:2219547) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P2.6-ST1] [§3 มติ 1 14] schema + migration เพิ่มอย่างเดียว: RestaurantOrder + posSaleId/posOrderId/channelCode/channelName/externa
+  ✅ [P2.6-ST2] [R16 มติ 7 14] ลงทะเบียน: core/scope.ts PosAvailabilityMark: sys() · pos-qc-env POS_MODELS posAvailabilityMark · kds-sha
+  ✅ [P2.6-ST3] [R1 R3 R6 R9 R10 R14 มติ 3 6 hard rules] ขอบเขต: pos/kds.ts export ฟังก์ชันครบ 13 ตัว · kds-shared.ts + kitchen-slip-ren
+  ✅ [P2.6-ST4] [มติ 6 7 12 15] POS_NAV_KEYS ตรงฐาน (ไม่มี kds) · settings-overview ROLE_ROWS ชุด task เดิม (ไม่มีแถวครัว/86) · permissi
+  ✅ [P2.6-ST5] [มติ 6 13 14 16] POS-OWNER-PENDING.md มีบรรทัด P2.6: (ก) เจ้าของร้านอาหาร — schema RestaurantOrder/RestaurantSetting (ข)
+  ✅ [P2.6-L1] [มติ 13 15] ลายเซ็น export ของ restaurant/{table,order,menu,kds,storefront,scope}.ts = ตาราง L3 ของ qc-pos-p2.4 ตรงตัว ·
+  ✅ [P2.6-L3] [มติ 15] scripts/pos-sale-contract.json sha 7a418de1… ตรงตัว · ทะเบียนผู้เรียก createSale เท่าเดิม (ไฟล์ kds*/kitchen-sl
+
+── T1–T3 · P2 · P3 · L4 บริสุทธิ์ (kds-shared · kitchen-slip-render · device-shared) ──
+  ✅ [P2.6-T1] [R1 R5 CD2] kds-shared บริสุทธิ์: ticketStateOf (ทุกรายการ SERVED → SERVED · ทุกรายการ ≥ READY → READY · ทุกรายการ NEW →
+  ✅ [P2.6-T2] [R8 CD5 มติ 9] ticketTargetMinutes: ออนไลน์ 15 > prepMinutes สูงสุด 8 > kdsCriticalMins 10 · ticketTimer(นาฬิกาฉีดเข้า):
+  ✅ [P2.6-T3] [R7 R16] sortColumn: ใหม่ = sentAt · กำลังทำ = เร่งก่อน แล้ว remainingSec น้อยก่อน · พร้อม = readyAt (ไม่แก้อินพุต · เสม
+  ✅ [P2.6-P2] [R14] kitchen-slip-render บริสุทธิ์: renderKitchenSlipHtml / renderKitchenSlipEscPos ผลเหมือนเดิมทุกครั้ง (ไม่มีนาฬิกา) 
+  ✅ [P2.6-P3] [R14 มติ 8] parsePrinterConfig: kitchenSlip "after-sale" + kitchenStationIds [s1 s2] ผ่านตรงตัว · ค่าผิด (kitchenSlip "a
+  ✅ [P2.6-L4] [มติ 8 15] PosPrinterConfig: POS_PRINTER_DEFAULTS 6 คีย์เดิมค่าเดิม · parsePrinterConfig(undefined/null/{}) = 6 คีย์เดิม
+
+── ร้านชั่วคราว posqc-p26-5kpj9y (+ posqc-p26-5kpj9y-t2) · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech ──
+   สาขา A (RESTAURANT · POS + คลัง · สถานี ครัวร้อน/เครื่องดื่ม/ขนม · โต๊ะ A1–A4 · kdsCriticalMins 10 · ช่องทาง LINEMAN + CHAT) · สาขา B (SHOP · ไม่มีสถานี) · ร้าน T2 สาขา X (POS · สถานี · เมนู · รอบเดิม)
+
+── L2 ทางร้อนของเดิม (ต้องเขียวทั้งก่อนและหลังสร้าง) ──
+  ℹ️  [L2] createOrder: SELECT "public"."RestaurantSetting"."id" ¦ SELECT "public"."MenuItem"."id", "public ¦ SELECT "public"."MenuItemOptionGroup"."i ¦ SELECT "public"."MenuOptionGroup"."id",  ¦ SELECT "public"."MenuOptionChoice"."id", ¦ BEGIN ¦ SELECT "public"."MenuItem"."id", "public ¦ UPDATE "public"."MenuItem" SET "stockQty ¦ SELECT "public"."MenuItem"."id", "public ¦ UPDATE "public"."MenuItem" SET "isOutOfS ¦ SELECT "public"."MenuItem"."id", "public ¦ UPDATE "public"."MenuItem" SET "stockQty ¦ ROLLBACK
+  ✅ [P2.6-L2] [มติ 6 15] ทางร้อน (ดัก SQL แบบ qc-pos-p1.1 S2.42): createOrder หมดพอดี = 13 คำสั่ง · cancelOrderItem = 6 · คงที่สองรอบ 
+
+── K ตั๋วครัวจากทุกแหล่ง ──
+  ✅ [P2.6-K1] [R1 R2 R3 CD3 มติ 3] ขายหน้าร้าน (CASHIER · เครื่อง 1) กะเพรา×2 (เผ็ดกลาง ไข่ดาว · โน้ต ไม่ใส่ถั่ว) + ชาไทย + น้ำเปล่า →
+  ✅ [P2.6-K2] [R3 มติ 3] ticketForSale ซ้ำ 2 รอบ → รอบเดิม created:false · ลบรอบ (จัดฉาก) แล้วยิง healMissingTickets 10 + ticketForSal
+  ✅ [P2.6-K3] [R2 มติ 4] บิลที่มีแต่น้ำเปล่า + เมล็ดกาแฟ (ไม่ตั้งสถานี) → ไม่มีรอบ · สาขา B (ไม่มีสถานี) ขายคุกกี้ (stationId เป็นสถาน
+  ✅ [P2.6-K4] [R2 มติ 4] สินค้าไม่ใช่เมนู (คุกกี้ · updateProduct({stationId: ขนม})) ขายที่สาขา A → รอบ 1 ตั๋วที่ขนม · productId = คุก
+  ✅ [P2.6-K5] [P2.4][R2 R3 มติ 3 4] บิลโต๊ะ (submit มี tableSessionId) → ไม่มีรอบเพิ่ม (heal ก็ไม่สร้าง) · ส่งรอบโต๊ะ (registerSendTab
+  ✅ [P2.6-K6] [R1 R7] ประตูเดิมเข้าคิวเดียว: เปิดโต๊ะ + createOrder โดยพนักงาน → source TABLE (label ชื่อโต๊ะ · staffName) · QR placeG
+  ✅ [P2.6-K7] [P2.8][R4 มติ 13] LINEMAN NEW → acceptOrder → รอบในธุรกรรมเดียวกับการรับ (xmin RestaurantOrder = PosOrder) posOrderId ch
+  ✅ [P2.6-K8] [R3 R9 มติ 6] ครัวซองต์ stockQty 1 ขาย ×2 ที่หน้าร้าน → บิลผ่าน · ตั๋ว qty 2 · ตัวนับ 0 (ไม่ติดลบ) · isOutOfStock true ·
+  ✅ [P2.6-K9] [R3 มติ 3] ลบรอบของบิล (จัดฉาก) → อ่านบอร์ดครั้งถัดไปสร้างคืน 1 รอบ · บิลที่ VOIDED ก่อน heal → ไม่สร้างคืน
+
+── B ปุ่มครัว (start · line · done · served · recall · rush) ──
+  ✅ [P2.6-B1] [R6] kdsStart (COOK) ตั๋วครัวร้อน → รายการ NEW → COOKING (cookingAt) · ตั๋วเครื่องดื่มไม่ขยับ · ซ้ำ → ok changed 0
+  ✅ [P2.6-B2] [R5 R6 R7] kdsLineDone 1 บรรทัด → READY · บอร์ด: ตั๋ว COOKING doneCount 1 lineCount 2 (เสร็จ 1/2) · lines[].done
+  ✅ [P2.6-B5] [R6] kdsTicketDone 2 คำขอพร้อมกัน → ok ทั้งคู่ · Σ changed = จำนวนรายการที่ยังไม่ READY (มีผลครั้งเดียว) · readyAt ไม่ถู
+  ✅ [P2.6-B3] [R5 R6] kdsTicketDone → READY · kdsServed → SERVED (ตั๋วหลุดบอร์ด) · รอบยัง CONFIRMED จนเครื่องดื่มเสิร์ฟ → COMPLETED · 
+  ✅ [P2.6-B6] [R6] kdsRecall ตั๋วที่เสิร์ฟแล้ว → COOKING · readyAt/servedAt null · รอบ COMPLETED → CONFIRMED · ตั๋วของเมื่อวาน (bizDat
+  ✅ [P2.6-B4] [CD4 มติ 13] รายการที่ชำระแล้วผ่าน checkout เดิม (saleId ตั้ง) → kdsStart/kdsTicketDone ได้ · ตัวควบคุม: advanceItem เดิ
+  ✅ [P2.6-B7] [R6 R15] รอบร้าน T2 / ctx สาขา B บนรอบสาขา A / id มั่ว → TICKET_NOT_FOUND (start lineDone done served recall rush slip) 
+  ✅ [P2.6-B8] [R15 มติ 7] CASHIER อ่านบอร์ดได้แต่เดินตั๋วไม่ได้ (PERMISSION_DENIED) · NOPERM อ่านบอร์ด → PERMISSION_DENIED · COOK เร่ง
+
+── T4–T5 บอร์ด/expo/คิวค้าง ──
+  ✅ [P2.6-T4] [R7 R8] kdsBoard ครัวร้อน: stations[] (id name nameEn openCount = ตั๋วที่ยังไม่เสิร์ฟจาก DB) · ตั๋วครบตาม DB (สถานะ = ti
+  ✅ [P2.6-T5] [R7 R13] servedToday {count last} = DB · avgMinutes = DB · expo = ตั๋ว READY ทุกสถานี · kitchenBacklog = ตั๋ว NEW+COOKIN
+
+── O ออเดอร์ออนไลน์ตามครัว ──
+(node:2219547) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+  ✅ [P2.6-O1] [P2.8][R11 CD7] ตั๋วแรกของรอบออนไลน์ออกจาก NEW → PosOrder ACCEPTED → PREPARING (PosOrderEvent 1 แถว actor null) · start 
+  ✅ [P2.6-O2] [P2.8][R11] READY บางสถานี → ยัง PREPARING · ครบทุกสถานี → READY + outbox pos.order.ready 1 แถว · recall → ออเดอร์ยัง RE
+  ✅ [P2.6-O3] [P2.8][R11] ยกเลิกออเดอร์ CHAT ที่รับแล้ว → ระบายคิว → รายการ NEW/COOKING/READY ของรอบ = CANCELLED (cancelReason "ออเดอร
+  ✅ [P2.6-O4] [P2.8][R11 R13 มติ 10] kitchenProgress {orderId done total} = DB · autoAcceptMaxOpen 1 + CHAT autoAccept → ออเดอร์ค้าง N
+
+── A 86 → ทุกช่องทาง ──
+  ✅ [P2.6-A1] [R9 CD6] COOK setAvailability({ผัดไทย MENU · KDS · false}) → MenuItem.isOutOfStock · PosAvailabilityMark (source KDS · m
+  ✅ [P2.6-A5] [P2.8][R10 มติ 11] ingest ออเดอร์ที่มีผัดไทยที่ 86 → PRODUCT_UNAVAILABLE lineIndex 1 · ไม่มี PosOrder
+  ✅ [P2.6-A4] [R10 มติ 5] ระหว่าง 86: registerCatalog ไทล์ soldOut UNAVAILABLE + soldOutMark {source KDS at} · quote → PRODUCT_UNAVAIL
+  ✅ [P2.6-A2] [R9] เรียกซ้ำ → ok ไม่มี event เพิ่ม · คืนขาย → event available:true · mark หาย · isOutOfStock false · คืนซ้ำ → ไม่มี ev
+  ✅ [P2.6-A3] [R9 มติ 5 7] CASHIER 86 น้ำเปล่า (ไม่ใช่เมนู · MANUAL) → unavailableUnitIds มีสาขา A · mark · event · สาขาอื่นไม่โดน · ค
+  ✅ [P2.6-A6] [P2.8][R10] ตัวรับ pos.product.availability → ORDER_ADAPTERS[adapter].setAvailability ครั้งเดียวต่อช่องทาง active ที่ ad
+  ✅ [P2.6-A7] [R9 มติ 6] ประตูเดิม setItemStock({isOutOfStock:true}) → event MANUAL 1 · เรียกซ้ำ (ไม่พลิก) → 0 · ปลด → available:true 
+  ✅ [P2.6-A8] [R15 มติ 7] NOPERM → PERMISSION_DENIED · สินค้าร้าน T2 / id มั่ว → PRODUCT_NOT_FOUND · source แปลก → VALIDATION · ไม่เขี
+  ✅ [P2.6-A9] [R9] 86 สินค้าเดียวกัน 10 คำขอพร้อมกัน → ok ทั้งหมด · event 1 · mark 1
+
+── V void/คืนเงิน ──
+  ✅ [P2.6-V1] [R12] void บิลหน้าร้าน (voidSaleByActor) + ระบายคิว → รายการ NEW/COOKING/READY = CANCELLED · SERVED คงเดิม · ตัวนับขนมคร
+  ✅ [P2.6-V2] [R12] คืนเงินบางบรรทัด (refundSale) ของบิล K1 → รายการ/รอบครัวไม่เปลี่ยน
+
+── K10 K11 ลำดับล็อก / READY พร้อมกัน ──
+  ❌ [P2.6-K10] [F1 มติ fix1-1] ลำดับล็อก: ถือแถวตัวนับรายวันไว้ (ธุรกรรมที่สาม) → ticketForSale (เมนูนับสต็อก) เข้าคิวก่อน → createOrde — expected ถือตัวนับรายวัน · ticketForSale ก่อน createOrder เดิม → ทั้งคู่ commit · ตัวนับ −2 · ×5 | actual รอบ 1: createOrder เดิม → deadlock detected · รอบ 1: ตัวนับ 99 → 98 (คาด 97)
+  ❌ [P2.6-K11] [F2 H3 มติ fix1-2] ออเดอร์ออนไลน์สองสถานี (PREPARING): ถือ PosOrder FOR UPDATE ไว้ (ธุรกรรมที่สาม) → kdsTicketDone สองสถ — expected สองสถานี READY พร้อมกัน → PosOrder READY · ready 1 · event 1 · ×5 | actual รอบ 1: ออเดอร์ PREPARING · ready event 0 · PosOrderEvent READY 0 (คาด READY 1 1) · รอบ 1: เสิร์ฟครบสองสถานีพร้อมกัน → รอบ CONFIRMED (คาด COMPLETED)
+  ❌ [P2.6-K12] [H4] heal ไม่สร้างตั๋วย้อนหลัง: ขายสินค้าที่ยังไม่เข้าครัว (เมล็ดกาแฟ) แล้วจึงตั้ง stationId → อ่านบอร์ด ⇒ บิลนั้น 0 รอบ — expected บิลก่อนตั้งสถานี ไม่ถูก heal · ตัวนับไม่ขยับ | actual heal สร้างตั๋วย้อนหลังให้บิลที่ขายก่อนตั้งสถานี · ตัวนับรายวันขยับ
+  ❌ [P2.6-V3] [H1] ตัวนับเมนูคืนเท่าที่หักจริง: stock 1 ขาย ×3 → 0 · void ขณะ NEW → 1 (ไม่ใช่ 3) · สองตั๋ว 2+2 บน stock 4 แล้วรอบแรกถู — expected คืนตัวนับเท่าที่หักจริง (ไม่มีของผี) | actual void ขณะ NEW → stock 3 (คาด 1 = เท่าที่หักจริง) · void ตั๋วที่หัก 0 → stock 2 (คาด 0)
+  ❌ [P2.6-A10] [H5] ตัวนับ 0 + ครัวแจ้ง 86 (KDS) → void ตั๋ว NEW ⇒ ตัวนับคืนแต่ยังหมด (availabilityFor false · isOutOfStock true) · mar — expected 86 ของครัวอยู่รอด void/รีเซ็ต · mark คงอยู่ | actual หลัง void: stock 2 isOutOfStock false availabilityFor true (คาด 2 · true · false) · resetDailyStock ปลด 86 ของครัว (isOutOfStock false)
+  ❌ [P2.6-A11] [H6] (สถิต) setAvailability ล็อกแถว MenuItem FOR UPDATE ก่อนอ่าน (ลำดับ PosProduct → MenuItem) · (การแข่ง — ข้อจำกัด: Po — expected แข่ง 86 กับตั๋วชิ้นสุดท้าย → event 1 | actual setAvailability ไม่ล็อก MenuItem FOR UPDATE ก่อนอ่าน (lock@-1 read@2263)
+
+── P1 ใบครัว ──
+  ✅ [P2.6-P1] [R14 CD8] kitchenSlipPayload(รอบ K1) → 2 ใบ (ใบละสถานี) · ไม่มีคีย์เงิน · lines {qty name options note} · stationId → 1 
+  ลบร้านชั่วคราว cmv83rleu0000m3kznqo3oddu + cmv83rlf60001m3kzpwjph1cp: 329 ตาราง · แถวค้าง 0 {} · Tenant 0 · ผู้ใช้ 0
+  ✅ [P2.6-Z1] QC4 คืนสภาพ: ร้านชั่วคราว T + T2 เหลือ 0 แถวทุกตารางที่มี tenantId (Restaurant* KdsStation PosAvailabilityMark PosOrder*
+  ✅ [P2.6-Z2] รอยของรอบนี้นอกร้านชั่วคราว = 0 (PosSale คีย์ · AuditLog/OutboxEvent ที่มีรหัสรอบ · Tenant slug) · ลายนิ้วมือร้านอื่น (R
+
+===== qc-pos-p2.6 ===== ผ่าน 51/57 (QC_FORCE) · PAR 5/5 · SKIP-until-export 0
+JSON_SUMMARY {"suite":"qc-pos-p2.6","total":57,"passed":51,"failed":["P2.6-K10","P2.6-K11","P2.6-K12","P2.6-V3","P2.6-A10","P2.6-A11"],"parRed":[],"depSkipped":[],"skipped":false,"forced":true,"missing":[],"depP24":[],"depP28":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}

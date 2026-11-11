@@ -1,0 +1,1270 @@
+{
+ "_about": "S2.14 กรณีพิเศษของทะเบียนปุ่ม — สร้างโดย qc/states-sec.mjs --make จาก s2.1.json (อย่าแก้มือ) · __status อ่านโดย qc/sec-harness.mjs เท่านั้น",
+ "noAuth": [
+  "/login"
+ ],
+ "routes": [],
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "owner@qc.invalid",
+    "name": "คุณสุข (QC)"
+   },
+   "memberships": []
+  },
+  "GET /api/mobile/secretary/rooms": {
+   "items": [],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 0,
+   "canApprove": 0
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 0
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 0,
+    "approvedClean": 0,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "languages": [
+    "th"
+   ]
+  },
+  "GET /api/mobile/usage": {
+   "used": 12,
+   "limit": 100,
+   "pct": 12
+  },
+  "GET /api/mobile/conversations": {
+   "conversations": [
+    {
+     "id": "c-qc-1",
+     "title": "สรุปยอดขายเมื่อวาน",
+     "updatedAt": "2026-09-01T03:00:00.000Z",
+     "unread": true
+    },
+    {
+     "id": "c-qc-2",
+     "title": "ใบเสนอราคา ร้านตัวอย่าง",
+     "updatedAt": "2026-08-28T03:00:00.000Z",
+     "unread": false
+    }
+   ]
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-code-0000"
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/suggestions": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/frequent": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [],
+   "autoAvailable": false
+  },
+  "GET /api/mobile/secretary/rooms/r1": {
+   "id": "r1",
+   "conversationId": "c-r1",
+   "title": "ใบเสนอราคา ร้านดอยช้าง",
+   "status": "OPEN",
+   "systems": [
+    "crm",
+    "account",
+    "chat",
+    "kanban"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "role": "STAFF",
+     "addedById": "u-qc-owner",
+     "addedAt": "2026-11-04T19:39:00.000Z",
+     "seeHistory": true
+    }
+   ],
+   "canManage": true,
+   "createdAt": "2026-11-04T19:38:00.000Z",
+   "updatedAt": "2026-11-04T19:41:00.000Z",
+   "closedAt": null,
+   "plans": []
+  },
+  "GET /api/mobile/secretary/rooms/r1/messages": {
+   "items": [
+    {
+     "id": "m1",
+     "role": "USER",
+     "content": "ทำใบเสนอราคาให้คุณสมชาย ร้านดอยช้าง เครื่องชง 2 ชุด ลด 5% แล้วส่ง LINE ให้เลย",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-04T19:38:00.000Z"
+    },
+    {
+     "id": "m2",
+     "role": "ASSISTANT",
+     "content": "รับทราบครับ ขอเช็กข้อมูลในระบบก่อนนะครับ",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-04T19:38:10.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r1/proposals": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/log": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/secretary": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th",
+    "en"
+   ],
+   "sample": "สวัสดีครับ Sharkพร้อมช่วยงานแล้วครับ วันนี้มีอะไรให้ช่วยดูแลบ้างครับ",
+   "saved": true
+  },
+  "GET /api/mobile/secretary/quota": {
+   "jobs": {
+    "used": 62,
+    "limit": 100,
+    "left": 38,
+    "pct": 62,
+    "level": "ok",
+    "text": null,
+    "resetAt": "2026-11-30T17:00:00.000Z",
+    "month": "2026-11"
+   },
+   "assist": {
+    "usedMicro": 155000,
+    "capMicro": 500000,
+    "pct": 31
+   },
+   "credit": {
+    "blocked": null
+   },
+   "pack": {
+    "enabled": true,
+    "jobsPerMonth": 100,
+    "scheduledMax": 10,
+    "approversMax": 5
+   }
+  },
+  "GET /api/mobile/secretary/rules": {
+   "rules": {
+    "chat.send": {
+     "enabled": true,
+     "limitSatang": null
+    },
+    "money.limit": {
+     "enabled": true,
+     "limitSatang": 2000000
+    },
+    "pii.export": {
+     "enabled": true,
+     "limitSatang": null
+    }
+   },
+   "keys": [
+    "chat.send",
+    "money.limit",
+    "pii.export"
+   ],
+   "alwaysApprove": [
+    "destructive",
+    "money",
+    "piiExport"
+   ]
+  },
+  "GET /api/mobile/secretary/staff": {
+   "items": [
+    {
+     "pending": false,
+     "membershipId": "m1",
+     "userId": "u-qc-owner",
+     "name": "คุณสุข (QC)",
+     "active": true,
+     "me": true,
+     "role": "OWNER"
+    },
+    {
+     "pending": false,
+     "membershipId": "m2",
+     "userId": "u-qc-2",
+     "name": "คุณนัท",
+     "active": true,
+     "me": false,
+     "role": "MANAGER"
+    },
+    {
+     "pending": false,
+     "membershipId": "m3",
+     "userId": "u-qc-3",
+     "name": "มิ้นท์",
+     "active": true,
+     "me": false,
+     "role": "STAFF"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/lessons": {
+   "items": [
+    {
+     "id": "ls1",
+     "kind": "REJECT_NOTE",
+     "pattern": "ใบเสนอราคาต้องมีเลขผู้เสียภาษีของลูกค้า",
+     "example": null,
+     "status": "PENDING",
+     "occurrences": 4,
+     "sourceRoomId": "r1",
+     "sourceUserId": "u-qc-owner",
+     "createdAt": "2026-10-28T03:00:00.000Z",
+     "updatedAt": "2026-11-04T03:00:00.000Z"
+    },
+    {
+     "id": "ls2",
+     "kind": "EDIT_DIFF",
+     "pattern": "ส่งใบเสนอราคาทาง LINE ก่อนโทรตามเสมอ",
+     "example": null,
+     "status": "CONFIRMED",
+     "occurrences": 2,
+     "sourceRoomId": null,
+     "sourceUserId": "u-qc-owner",
+     "createdAt": "2026-10-01T03:00:00.000Z",
+     "updatedAt": "2026-10-02T03:00:00.000Z"
+    },
+    {
+     "id": "ls3",
+     "kind": "REJECT_NOTE",
+     "pattern": "บทเรียนที่ไม่รับแล้ว",
+     "example": null,
+     "status": "REJECTED",
+     "occurrences": 1,
+     "sourceRoomId": null,
+     "sourceUserId": "u-qc-owner",
+     "createdAt": "2026-10-01T03:00:00.000Z",
+     "updatedAt": "2026-10-02T03:00:00.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/memories/pending": {
+   "items": [
+    {
+     "id": "mm1",
+     "content": "ส่วนลดสูงสุด 10% · ลูกค้าประจำ 15% ต้องให้เจ้าของอนุมัติ",
+     "createdAt": "2026-11-03T03:00:00.000Z",
+     "byUserId": "u-qc-2"
+    },
+    {
+     "id": "mm2",
+     "content": "เปิด จ.–ส. 7:30–18:00 · หยุดวันนักขัตฤกษ์",
+     "createdAt": "2026-11-03T04:00:00.000Z",
+     "byUserId": "u-qc-3"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/digest": {
+   "digest": {
+    "at": "2026-11-05T02:00:00.000Z",
+    "activeSystems": [
+     "pos",
+     "crm",
+     "account",
+     "booking"
+    ],
+    "sales": {
+     "todaySatang": 1845000,
+     "todayCount": 23,
+     "d7Satang": 9850000,
+     "d7Count": 141,
+     "d30Satang": 40200000,
+     "d30Count": 602
+    },
+    "quietCustomers": {
+     "count": 6,
+     "sample": []
+    },
+    "lowStock": {
+     "count": 3,
+     "sample": []
+    },
+    "receivables": {
+     "count": 4,
+     "totalSatang": 3250000,
+     "overdueCount": 1
+    },
+    "tomorrow": {
+     "appointments": 5,
+     "firstAt": "2026-11-06T02:30:00.000Z"
+    },
+    "pending": {
+     "approvalsAged": 2,
+     "leavesAged": 0,
+     "shopOrders": 1
+    }
+   }
+  },
+  "GET /api/mobile/secretary/after-hours": {
+   "reply": true,
+   "handoff": true,
+   "disclosure": "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
+  },
+  "GET /api/mobile/inbox/staff": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/inbox": {
+   "items": [
+    {
+     "tenantId": "t1",
+     "tenantName": "The Bean Café",
+     "type": "proposal",
+     "id": "p-quote",
+     "roomId": "r1",
+     "conversationId": "c-qc-r1",
+     "summary": "ใบเสนอราคา Q-0012 ฿12,500 · คุณลูกค้า QC · เครื่องชง 2 ชุด ลด 5% · ส่งทาง LINE",
+     "kind": "account.documents.create",
+     "risk": "WRITE",
+     "canApprove": true,
+     "why": "เงิน + ส่งถึงลูกค้า",
+     "createdAt": "2026-11-04T02:41:00.000Z",
+     "expiresAt": "2026-11-12T02:41:00.000Z"
+    },
+    {
+     "tenantId": "t2",
+     "tenantName": "บลูเฮาส์ หอพัก",
+     "type": "proposal",
+     "id": "p-refund",
+     "roomId": "r2",
+     "conversationId": "c-qc-r2",
+     "summary": "คืนเงินมัดจำห้อง 204 ฿2,400 · ยกเลิกก่อน 7 วันตามนโยบาย · โอนเข้าบัญชีเดิม",
+     "kind": "booking_refund_deposit",
+     "risk": "WRITE",
+     "canApprove": true,
+     "why": "คืนเงิน = ต้องอนุมัติเสมอ",
+     "createdAt": "2026-11-04T01:15:00.000Z",
+     "expiresAt": "2026-11-12T01:15:00.000Z"
+    },
+    {
+     "tenantId": "t1",
+     "tenantName": "The Bean Café",
+     "type": "proposal",
+     "id": "p-review",
+     "roomId": "r3",
+     "conversationId": "c-qc-r3",
+     "summary": "ตอบรีวิว 1 ดาวบน Facebook: \"ขออภัยค่ะ กาแฟรอนานเกินไป ครั้งหน้า…\" (ลงชื่อว่าเป็นผู้ช่วย AI)",
+     "kind": "chat.send",
+     "risk": "WRITE",
+     "canApprove": true,
+     "why": "ส่งถึงลูกค้าสาธารณะ",
+     "createdAt": "2026-11-03T09:20:00.000Z",
+     "expiresAt": "2026-11-11T09:20:00.000Z"
+    },
+    {
+     "tenantId": "t1",
+     "tenantName": "The Bean Café",
+     "type": "proposal",
+     "id": "p-del",
+     "roomId": "r4",
+     "conversationId": "c-qc-r4",
+     "summary": "ลบการ์ดงานซ้ำ 3 ใบ ในบอร์ดหน้าร้าน",
+     "kind": "kanban.cards.delete",
+     "risk": "DESTRUCTIVE",
+     "canApprove": true,
+     "why": "ลบถาวร ย้อนไม่ได้",
+     "createdAt": "2026-11-03T07:05:00.000Z",
+     "expiresAt": "2026-11-11T07:05:00.000Z"
+    },
+    {
+     "tenantId": "t2",
+     "tenantName": "บลูเฮาส์ หอพัก",
+     "type": "plan",
+     "id": "plan-rent",
+     "roomId": "r5",
+     "conversationId": "c-qc-r5",
+     "summary": "เตือนค่าหอค้างชำระ 12 ห้อง + บันทึกยอดค้าง",
+     "canApprove": false,
+     "createdAt": "2026-11-02T03:00:00.000Z",
+     "expiresAt": "2026-11-11T03:00:00.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/scheduled": {
+   "max": 10,
+   "items": [
+    {
+     "id": "st1",
+     "instruction": "สรุปยอดขายเมื่อวาน + ของใกล้หมด",
+     "hourBkk": 8,
+     "frequency": "DAILY",
+     "days": [],
+     "channels": [
+      "push",
+      "room"
+     ],
+     "describe": "ทุกวัน",
+     "active": true,
+     "ownerUserId": "u-qc-owner",
+     "mine": true,
+     "lastRunDay": null,
+     "createdAt": "2026-10-01T01:00:00.000Z",
+     "updatedAt": "2026-10-01T01:00:00.000Z"
+    },
+    {
+     "id": "st2",
+     "instruction": "ตามดีลที่เงียบเกิน 14 วัน แล้วร่างข้อความรออนุมัติ",
+     "hourBkk": 9,
+     "frequency": "WEEKLY",
+     "days": [
+      1
+     ],
+     "channels": [
+      "room"
+     ],
+     "describe": "ทุกสัปดาห์ (วันจันทร์)",
+     "active": true,
+     "ownerUserId": "u-qc-owner",
+     "mine": true,
+     "lastRunDay": null,
+     "createdAt": "2026-10-01T01:00:00.000Z",
+     "updatedAt": "2026-10-01T01:00:00.000Z"
+    },
+    {
+     "id": "st3",
+     "instruction": "ยืนยันคิวล่วงหน้า 1 วัน",
+     "hourBkk": 18,
+     "frequency": "DAILY",
+     "days": [],
+     "channels": [
+      "push"
+     ],
+     "describe": "ทุกวัน",
+     "active": false,
+     "ownerUserId": "u-qc-staff",
+     "mine": false,
+     "lastRunDay": null,
+     "createdAt": "2026-10-01T01:00:00.000Z",
+     "updatedAt": "2026-10-01T01:00:00.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/inbox/systems": {
+   "items": [
+    {
+     "id": "cs1",
+     "name": "แชทหน้าร้าน",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      },
+      {
+       "type": "WEBCHAT",
+       "label": "เว็บแชท"
+      }
+     ],
+     "unread": 3
+    },
+    {
+     "id": "cs2",
+     "name": "แชทหอพัก",
+     "channels": [
+      {
+       "type": "LINE",
+       "label": "LINE"
+      }
+     ],
+     "unread": 0
+    }
+   ],
+   "canReply": true
+  },
+  "GET /api/mobile/inbox/conversations": {
+   "items": [
+    {
+     "id": "x1",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct1",
+      "displayName": "คุณสมชาย · ร้านดอยช้าง",
+      "avatarUrl": null,
+      "customerId": "mem1"
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-nam",
+     "assigneeName": "น้ำ",
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:58:00.000Z",
+     "lastMessagePreview": "ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหม",
+     "staffUnreadCount": 2,
+     "waitingMin": null,
+     "aiDraft": true,
+     "helpers": [
+      "u-qc-kong"
+     ],
+     "tags": [
+      "ดีล"
+     ]
+    },
+    {
+     "id": "x2",
+     "channel": "WEBCHAT",
+     "contact": {
+      "id": "ct2",
+      "displayName": "คุณมานี",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": null,
+     "assigneeName": null,
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:40:00.000Z",
+     "lastMessagePreview": "สนใจคอร์สชงกาแฟวันเสาร์ค่ะ ยังมีที่ไหม",
+     "staffUnreadCount": 1,
+     "waitingMin": 4,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "ใหม่"
+     ]
+    },
+    {
+     "id": "x3",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct3",
+      "displayName": "ป้าแดง",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-kong",
+     "assigneeName": "ก้อง",
+     "unitId": null,
+     "lastMessageAt": "2026-11-05T02:12:00.000Z",
+     "lastMessagePreview": "[สติกเกอร์]",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": []
+    },
+    {
+     "id": "x4",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct4",
+      "displayName": "คุณเก่ง · บลูเฮาส์",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "PENDING",
+     "assigneeUserId": "u-qc-2",
+     "assigneeName": "สมใจ",
+     "unitId": null,
+     "lastMessageAt": "2026-11-04T09:30:00.000Z",
+     "lastMessagePreview": "คุณ: ส่งสลิปค่าเช่าแล้วนะครับ ขอบคุณครับ",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "หอพัก"
+     ]
+    },
+    {
+     "id": "x5",
+     "channel": "WEBCHAT",
+     "contact": {
+      "id": "ct5",
+      "displayName": "ผู้เยี่ยมชม #4821",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "OPEN",
+     "assigneeUserId": "u-qc-owner",
+     "assigneeName": "คุณสุข (QC)",
+     "unitId": null,
+     "lastMessageAt": "2026-11-04T15:10:00.000Z",
+     "lastMessagePreview": "ร้านเปิดกี่โมงคะ · Shark ตอบแล้วนอกเวลาทำการ",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": [],
+     "tags": [
+      "รอคน"
+     ]
+    },
+    {
+     "id": "x6",
+     "channel": "LINE",
+     "contact": {
+      "id": "ct6",
+      "displayName": "คุณวิไล",
+      "avatarUrl": null,
+      "customerId": null
+     },
+     "status": "RESOLVED",
+     "assigneeUserId": "u-qc-nam",
+     "assigneeName": "น้ำ",
+     "unitId": null,
+     "lastMessageAt": "2026-11-03T08:00:00.000Z",
+     "lastMessagePreview": "ได้รับของแล้วค่ะ ขอบคุณมาก",
+     "staffUnreadCount": 0,
+     "waitingMin": null,
+     "aiDraft": false,
+     "helpers": []
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "น้ำ",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "PUT /api/mobile/inbox/routing": {
+   "rules": [
+    {
+     "id": "rr1",
+     "channel": null,
+     "mode": "ROUND_ROBIN",
+     "enabled": true,
+     "order": 0
+    },
+    {
+     "id": "rr2",
+     "channel": null,
+     "mode": "LAST_ASSIGNEE",
+     "enabled": true,
+     "order": 1
+    },
+    {
+     "id": "rr3",
+     "channel": "LINE",
+     "mode": "OWNER",
+     "enabled": false,
+     "order": 2
+    }
+   ],
+   "onDuty": [
+    {
+     "userId": "u-qc-nam",
+     "name": "น้ำ",
+     "since": "2026-11-05T01:00:00.000Z"
+    },
+    {
+     "userId": "u-qc-2",
+     "name": "สมใจ",
+     "since": "2026-11-05T01:10:00.000Z"
+    },
+    {
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "since": "2026-11-05T01:30:00.000Z"
+    }
+   ],
+   "sla": {
+    "firstResponseMin": 15,
+    "unassignedAlertMin": 15
+   }
+  },
+  "GET /api/mobile/inbox/conversations/x1": {
+   "conversation": {
+    "id": "x1",
+    "channel": "LINE",
+    "contact": {
+     "id": "ct1",
+     "displayName": "คุณสมชาย · ร้านดอยช้าง",
+     "avatarUrl": null,
+     "customerId": "mem1"
+    },
+    "status": "OPEN",
+    "assigneeUserId": "u-qc-nam",
+    "assigneeName": "น้ำ",
+    "unitId": null,
+    "lastMessageAt": "2026-11-05T02:58:00.000Z",
+    "lastMessagePreview": "ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหม",
+    "staffUnreadCount": 2,
+    "waitingMin": null,
+    "aiDraft": true,
+    "helpers": [
+     "u-qc-kong"
+    ],
+    "tags": [
+     "ดีล"
+    ],
+    "can": {
+     "reply": true,
+     "assign": true,
+     "setStatus": true,
+     "linkCustomer": true,
+     "aiSuggest": true
+    },
+    "replyWindowEndsAt": null
+   },
+   "messages": [
+    {
+     "id": "m1",
+     "direction": "IN",
+     "type": "TEXT",
+     "body": "สวัสดีค่ะ ได้รับใบเสนอราคาแล้วค่ะ ขอเครดิต 45 วันได้ไหมคะ",
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:52:00.000Z"
+    },
+    {
+     "id": "m2",
+     "direction": "IN",
+     "type": "STICKER",
+     "body": null,
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": {
+      "packageId": "446",
+      "stickerId": "1988"
+     },
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:52:20.000Z"
+    },
+    {
+     "id": "m3",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "🙋 น้ำ เรียก ก้อง มาช่วย: ลูกค้าถามเรื่องห้องพักด้วย",
+     "senderUserId": "u-qc-nam",
+     "senderName": "น้ำ",
+     "isInternal": true,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:53:00.000Z"
+    },
+    {
+     "id": "m4",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "ลูกค้าเก่า จ่ายตรงทุกครั้ง ให้ได้ค่ะ @ก้อง ช่วยดูเรื่องห้องพักที",
+     "senderUserId": "u-qc-nam",
+     "senderName": "น้ำ",
+     "isInternal": true,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:53:30.000Z"
+    },
+    {
+     "id": "m5",
+     "direction": "IN",
+     "type": "IMAGE",
+     "body": null,
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [
+      {
+       "name": "slip.png",
+       "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
+       "kind": "IMAGE",
+       "mimeType": "image/png",
+       "durationMs": null
+      }
+     ],
+     "meta": null,
+     "createdAt": "2026-11-05T02:54:00.000Z"
+    },
+    {
+     "id": "m6",
+     "direction": "IN",
+     "type": "AUDIO",
+     "body": null,
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [
+      {
+       "name": "voice.m4a",
+       "url": "https://cdn.qc.invalid/voice.m4a",
+       "kind": "AUDIO",
+       "mimeType": "audio/mp4",
+       "durationMs": 12000
+      }
+     ],
+     "meta": null,
+     "createdAt": "2026-11-05T02:54:30.000Z"
+    },
+    {
+     "id": "m7",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "ได้เลยค่ะ เดี๋ยวแก้ใบเสนอราคาให้นะคะ",
+     "senderUserId": "u-qc-nam",
+     "senderName": "น้ำ",
+     "isInternal": false,
+     "deliveryStatus": "FAILED",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:55:00.000Z"
+    },
+    {
+     "id": "m8",
+     "direction": "OUT",
+     "type": "TEXT",
+     "body": "⏰ ยังไม่มีคนตอบลูกค้าเกิน 15 นาที — เตือนผู้ดูแลแล้ว",
+     "senderUserId": "system:sla",
+     "senderName": "ระบบแชท",
+     "isInternal": true,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:56:00.000Z"
+    },
+    {
+     "id": "m9",
+     "direction": "OUT",
+     "type": "FILE",
+     "body": "แก้ใบเสนอราคา Q-0012 เป็นเครดิต 45 วันแล้วค่ะ แนบไฟล์ใหม่มาให้นะคะ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน",
+     "senderUserId": "u-qc-owner",
+     "senderName": "คุณสุข (QC)",
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [
+      {
+       "name": "Q-0012-v2.pdf",
+       "url": "https://cdn.qc.invalid/Q-0012-v2.pdf",
+       "kind": "FILE",
+       "mimeType": "application/pdf",
+       "durationMs": null
+      }
+     ],
+     "meta": {
+      "ai": {
+       "roomId": "r1",
+       "proposalId": "p-quote",
+       "approvedBy": "u-qc-owner"
+      }
+     },
+     "createdAt": "2026-11-05T02:57:00.000Z"
+    },
+    {
+     "id": "m10",
+     "direction": "IN",
+     "type": "TEXT",
+     "body": "ขอบคุณค่ะ ขอดูห้องพักวันเสาร์ด้วยได้ไหมคะ",
+     "senderUserId": null,
+     "senderName": null,
+     "isInternal": false,
+     "deliveryStatus": "SENT",
+     "stickerMeta": null,
+     "attachments": [],
+     "meta": null,
+     "createdAt": "2026-11-05T02:58:00.000Z"
+    }
+   ],
+   "contact": {
+    "id": "ct1",
+    "displayName": "คุณสมชาย · ร้านดอยช้าง",
+    "avatarUrl": null,
+    "customerId": "mem1"
+   },
+   "linkedMember": {
+    "id": "mem1",
+    "name": "คุณสมชาย",
+    "phoneMasked": "081-xxx-5678"
+   },
+   "helpers": [
+    {
+     "userId": "u-qc-kong",
+     "name": "ก้อง",
+     "calledById": "u-qc-nam",
+     "note": "ลูกค้าถามเรื่องห้องพักด้วย",
+     "createdAt": "2026-11-05T02:53:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "POST /api/mobile/inbox/conversations/x1/read": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/reply": {
+   "messageId": "m-new"
+  },
+  "POST /api/mobile/inbox/conversations/x1/assign": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/status": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/helpers": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/handoff": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/contact": {
+   "ok": true
+  },
+  "POST /api/mobile/inbox/conversations/x1/ai-suggest": {
+   "ok": true,
+   "options": [
+    {
+     "id": "sg1",
+     "body": "สวัสดีค่ะคุณสมชาย เครดิต 45 วันได้ค่ะ เดี๋ยวทางร้านแก้ใบเสนอราคาและส่งให้ใหม่ภายในวันนี้นะคะ",
+     "warn": false
+    }
+   ],
+   "sourceMessageId": "m10"
+  },
+  "GET /api/mobile/inbox/quick-replies": {
+   "items": [
+    {
+     "id": "q1",
+     "shortcut": "/thx",
+     "title": "ขอบคุณค่ะ 🙏",
+     "body": "ขอบคุณค่ะ 🙏",
+     "channelTypes": []
+    },
+    {
+     "id": "q2",
+     "shortcut": "/map",
+     "title": "ที่อยู่ร้าน",
+     "body": "ร้านอยู่ที่ {shop.address} ค่ะ",
+     "channelTypes": []
+    },
+    {
+     "id": "q3",
+     "shortcut": "/open",
+     "title": "เวลาเปิด",
+     "body": "ร้านเปิด 09:00–18:00 ทุกวันค่ะ",
+     "channelTypes": []
+    },
+    {
+     "id": "q4",
+     "shortcut": "/paid",
+     "title": "โอนแล้วแจ้งได้เลย",
+     "body": "โอนแล้วส่งสลิปในแชทนี้ได้เลยค่ะ",
+     "channelTypes": [
+      "LINE",
+      "WEBCHAT"
+     ]
+    },
+    {
+     "id": "q5",
+     "shortcut": "/menu",
+     "title": "เมนูวันนี้",
+     "body": "เมนูวันนี้ค่ะ",
+     "channelTypes": [
+      "FACEBOOK"
+     ]
+    }
+   ]
+  },
+  "POST /api/mobile/inbox/quick-replies/q1/apply": {
+   "body": "ขอบคุณค่ะ 🙏"
+  },
+  "POST /api/mobile/inbox/quick-replies/q2/apply": {
+   "body": "ร้านอยู่ที่ 12 ถนนนิมมาน เชียงใหม่ ค่ะ"
+  },
+  "GET /api/mobile/inbox/connections": {
+   "items": [
+    {
+     "id": "cn1",
+     "type": "LINE",
+     "label": "LINE",
+     "displayName": "@thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:58:00.000Z",
+     "lastErrorAt": null
+    },
+    {
+     "id": "cn2",
+     "type": "WEBCHAT",
+     "label": "เว็บแชท",
+     "displayName": "shark.in.th/c/thebean",
+     "status": "ACTIVE",
+     "lastInboundAt": "2026-11-05T02:40:00.000Z",
+     "lastErrorAt": null
+    }
+   ]
+  },
+  "POST /api/mobile/inbox/shift": {
+   "onDuty": true,
+   "onDutyAt": "2026-11-05T03:00:00.000Z"
+  },
+  "POST /api/mobile/inbox/attachments": {
+   "url": "https://cdn.qc.invalid/upload/photo.png",
+   "name": "photo.png",
+   "mimeType": "image/png",
+   "size": 2048,
+   "width": 1,
+   "height": 1
+  },
+  "GET /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ALL",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "kinds": [
+    "inbox",
+    "approval",
+    "room",
+    "help"
+   ],
+   "modes": [
+    "ALL",
+    "ASSIGNED",
+    "OFF"
+   ]
+  },
+  "PUT /api/mobile/secretary/notify": {
+   "prefs": {
+    "inbox": "ASSIGNED",
+    "approval": "ALL",
+    "room": "ALL",
+    "help": "ALL"
+   },
+   "scope": "tenant"
+  },
+  "GET /api/mobile/member/search": {
+   "items": [
+    {
+     "id": "mem1",
+     "memberCode": "M-0012",
+     "name": "คุณสมชาย",
+     "phoneMasked": "081-xxx-5678",
+     "tier": null,
+     "points": 1240
+    },
+    {
+     "id": "mem2",
+     "memberCode": "M-0040",
+     "name": "คุณสมศรี",
+     "phoneMasked": "089-xxx-1122",
+     "tier": null,
+     "points": 80
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/staff/invites": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/invites/pending": {
+   "items": [
+    {
+     "inviteId": "pi1",
+     "tenantName": "ร้านข้างบ้าน (QC)",
+     "role": "STAFF",
+     "expiresAt": "2026-11-12T00:00:00.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [
+    {
+     "id": "c1",
+     "caseNo": 42,
+     "subject": "ใบเสนอราคาไม่ส่ง LINE",
+     "status": "PENDING",
+     "updatedAt": "2026-11-05T03:12:00.000Z",
+     "unreadCount": 1
+    },
+    {
+     "id": "c2",
+     "caseNo": 41,
+     "subject": "ขอเพิ่มระบบคลังให้เลขาเห็น",
+     "status": "OPEN",
+     "updatedAt": "2026-11-04T08:30:00.000Z",
+     "unreadCount": 0
+    },
+    {
+     "id": "c3",
+     "caseNo": 37,
+     "subject": "ล็อกอิน Apple ไม่ผ่าน",
+     "status": "RESOLVED",
+     "updatedAt": "2026-10-28T06:00:00.000Z",
+     "unreadCount": 0
+    }
+   ],
+   "unread": 1,
+   "categories": [
+    "secretary_wrong",
+    "bug",
+    "question",
+    "billing",
+    "feature",
+    "other"
+   ]
+  },
+  "GET /api/mobile/secretary/support/cases/c1": {
+   "case": {
+    "id": "c1",
+    "caseNo": 42,
+    "subject": "ใบเสนอราคาไม่ส่ง LINE",
+    "status": "PENDING",
+    "category": "secretary_wrong",
+    "roomId": "r1",
+    "createdAt": "2026-11-05T02:58:00.000Z",
+    "updatedAt": "2026-11-05T03:12:00.000Z"
+   },
+   "messages": [
+    {
+     "id": "m1",
+     "side": "SHOP",
+     "mine": true,
+     "body": "กดอนุมัติใบเสนอราคาแล้ว แต่ลูกค้าบอกว่าไม่ได้รับทาง LINE",
+     "attachments": [
+      {
+       "name": "screenshot.png",
+       "url": "https://cdn.qc.invalid/help/shot-1.png",
+       "kind": "image"
+      }
+     ],
+     "createdAt": "2026-11-05T02:58:00.000Z"
+    },
+    {
+     "id": "m2",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "รับเรื่องแล้วครับ กำลังดูห้องงานที่แนบมา",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:02:00.000Z"
+    },
+    {
+     "id": "m3",
+     "side": "SHOP",
+     "mine": true,
+     "body": "เป็นลูกค้าที่ทักมาทาง LINE ครับ",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:04:00.000Z"
+    },
+    {
+     "id": "m4",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "ตรวจแล้วครับ LINE ของร้านยังไม่ได้เชื่อมในระบบแชท เลขาจึงส่งไม่ได้ ผมเปิดหน้าตั้งค่าให้แล้ว กดเชื่อมได้ที่ลิงก์นี้ครับ [เชื่อม LINE Official](sharkai://secretary/settings/customers)",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:10:00.000Z"
+    },
+    {
+     "id": "m5",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "เชื่อมแล้วกดส่งใบเสนอราคาอีกครั้งในห้องงานได้เลยครับ /secretary/room/r1",
+     "attachments": [],
+     "createdAt": "2026-11-05T03:12:00.000Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 0,
+   "customers": 0,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 1
+   },
+   "total": 1
+  },
+  "GET /api/mobile/inbox/shift": {
+   "onDuty": true,
+   "onDutyAt": "2026-11-05T01:30:00.000Z"
+  },
+  "POST /api/mobile/inbox/conversations/x1/task": {
+   "cardId": "card-qc-128",
+   "cardNo": 128,
+   "cardHref": "/app/kanban/b1?card=card-qc-128",
+   "created": true
+  },
+  "POST /api/mobile/secretary/tenants/create": {
+   "__status": 409,
+   "__body": {
+    "error": "name_taken",
+    "message": "มีกิจการชื่อนี้ในบัญชีแล้ว"
+   }
+  }
+ }
+}

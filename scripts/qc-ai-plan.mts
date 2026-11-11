@@ -51,7 +51,8 @@ try {
     const item2 = await prisma.invItem.findFirst({ where: { tenantId: tid, sku: "PL-1" } });
     chk("PL-3.1", "step 2 ล้ม → หยุด (step 3 ไม่รัน · สต็อก 23 ไม่ใช่ 122) + plan FAILED", ex2?.ok === false && item2?.onHand === 23 && (await prisma.aiPlan.findUnique({ where: { id: bad.id as string } }))?.status === "FAILED");
     // แผนมี destructive → 2 ชั้นระดับแผน
-    const wipe = await pl.createPlan(ctx, { conversationId: conv.id, title: "มี void", steps: [{ kind: "void_sale", summary: "ยกเลิกบิล", payload: { saleId: "none" } }] });
+    // ORACLE-EDIT ผู้คุม 17 ต.ค. (P3.9 fix1 F2 · CD-P39c): ขั้น POS (void_sale) ห้ามอยู่ในแผนแล้ว (PLAN_HUMAN_ONLY) ⇒ ตัวอย่าง destructive = cancel_appointment — เดิม void_sale
+    const wipe = await pl.createPlan(ctx, { conversationId: conv.id, title: "มี ยกเลิกนัด", steps: [{ kind: "cancel_appointment", summary: "ยกเลิกนัด", payload: { appointmentId: "none" } }] });
     const exW = await pl.executePlan(OWNER, ctx, wipe.id);
     chk("PL-4.1", "แผนมี step destructive → needsSecondConfirm (ยังไม่รัน)", exW?.ok === false && exW?.needsSecondConfirm === true && (await prisma.aiPlan.findUnique({ where: { id: wipe.id as string } }))?.status === "PENDING");
   }

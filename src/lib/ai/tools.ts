@@ -25,7 +25,9 @@ import { kanbanTools } from "./tools-kanban";
 import { memberTools } from "./tools-member";
 // CRM C1.10 ▸ สกิล crm (14 tool จากทะเบียน op ของ REST CRM · แทน crm_create_lead รุ่นเขียนมือ) ◂
 import { crmTools } from "./tools-crm";
+import { posTools } from "./tools-pos"; // POS P3.9 ▸ R1 ◂
 import { createProposal, isKnownKind as isKnownKindName, type ProposalKind } from "./proposals";
+import { CHAT_SEND_BODY_MAX } from "./secretary/chat-send"; // SEC S1.12 (pure — ใช้ตอนโหลดโมดูล) ◂
 import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
 import { rememberFact, forgetMemory, listMemories } from "./memory";
@@ -33,14 +35,15 @@ import { openCaseFromAi } from "@/lib/support/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 // CRM C5.5-G1 ▸ ผู้กระทำ + ด่านสิทธิ์ต่อเครื่องมือ + helper การมองเห็นของโมดูล (CRM ผ่าน facade · สมาชิก/แชท/อนุมัติผ่าน service เดิม) ◂
 import { actorProblem, aiActorMembership, aiActorUserId, type AiActor } from "./actor";
-import { canSeeConversationId, memoryScopeOf, sightOf } from "./conversation-owner";
+import { canSeeConversationId, memoryScopeOf, sightOf, type ConvSight } from "./conversation-owner";
 import { contactDataRefusal, findContactData } from "./contact-data";
-import { actorCanConfirmKind, toolVerdict } from "./tool-access";
+import { actorCanConfirmKind, kindAllowedByAccess, toolVerdict } from "./tool-access";
 import { contactWhere, crmApi } from "@/lib/modules/crm";
 import { visibleCustomerIds } from "@/lib/modules/member/service";
 import { toMemberActor } from "@/lib/modules/member/access";
 import { listPending as approvalListPending } from "@/lib/modules/approval/service";
 import { actorBranches, membershipCan } from "./tool-access";
+import { levelVerdict, moduleOff, skippedSectionNote, type AccessMap } from "./secretary/access-rules";
 
 export type ToolCtx = {
   tenantId: string;
@@ -57,6 +60,13 @@ export type ToolCtx = {
    * ไม่ส่ง = ให้ tool เลือกระบบของร้านเองตามเดิม
    */
   systemId?: string;
+  /** SEC S1.3 ▸ ระดับต่อระบบของร้าน (OFF/READ/DRAFT) — runTool ตรวจหลังด่าน membership · ไม่ส่ง = เดิม ◂ */
+  access?: AccessMap;
+  /**
+   * S1.4 (R-K1) ▸ การมองเห็นห้องที่ service ตรวจแล้วสำหรับเทิร์นนี้ (รวมห้องเลขาร่วม — สมาชิก/OWNER) · ไม่ส่ง = `sightOf(ctx)` เดิม
+   *   ส่งมาจากชั้นที่ตรวจแถวแล้วเท่านั้น (`sendMessage`) — ไม่ query ซ้ำต่อเครื่องมือ ◂
+   */
+  sight?: ConvSight;
 };
 
 export type AiTool = {
@@ -161,40 +171,7 @@ const listSystems: AiTool = {
   },
 };
 
-// ── 2) sales_summary — สรุปยอดขาย N วันล่าสุด (POS) ──
-const salesSummary: AiTool = {
-  def: {
-    name: "sales_summary",
-    description: "สรุปยอดขายหน้าร้าน (POS) ในช่วงกี่วันล่าสุด — คืนจำนวนบิลที่ชำระแล้วและยอดรวมเป็นบาท",
-    parameters: {
-      type: "object",
-      properties: {
-        days: { type: "integer", minimum: 1, maximum: 365, description: "จำนวนวันย้อนหลัง (ค่าเริ่มต้น 7)" },
-      },
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const raw = asRecord(args).days;
-    const n = Number(raw);
-    const days = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 365) : 7;
-
-    const pos = await findSystem(ctx.tenantId, "POS");
-    if (!pos) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบขายหน้าร้าน (POS)" });
-
-    const since = new Date(Date.now() - days * 86_400_000);
-    const sales = await tenantDb({ tenantId: ctx.tenantId, systemId: pos.id }).posSale.findMany({
-      where: { status: "PAID", createdAt: { gte: since } },
-      select: { grandTotalSatang: true },
-    });
-    const totalSatang = sales.reduce((s, x) => s + (x.grandTotalSatang ?? 0), 0);
-    return JSON.stringify({
-      ช่วงเวลา: `${days} วันล่าสุด`,
-      จำนวนบิลที่ชำระแล้ว: sales.length,
-      ยอดขายรวมบาท: Math.round(totalSatang) / 100,
-    });
-  },
-};
+// POS P3.9 ▸ R1 มติ 1: sales_summary / sales_by_day / void_sale ย้ายไปทะเบียน op ของ POS (tools-pos.ts · ชื่อเดิม · pos.report.view + สาขา + วันธุรกิจ + หักคืนเงิน) ◂
 
 // ── 3) low_stock — สินค้าใกล้หมด/หมด (คลังสินค้า) ──
 const lowStock: AiTool = {
@@ -287,56 +264,13 @@ const customerSearch: AiTool = {
     const rows = await visibleMembers(ctx.actor, ctx.tenantId, await memberListCustomers(ctx.tenantId, query));
     return JSON.stringify({
       ลูกค้า: rows.slice(0, 10).map((c) => ({
+        id: c.id, // SEC S3a.1-R2 ▸ R-Z42: memberId สำหรับ pos_create_sale ◂
         ชื่อ: c.name ?? "ไม่ระบุชื่อ",
         เบอร์: c.phone ?? null,
         ระดับ: c.tier,
         รหัสสมาชิก: c.memberCode,
       })),
     });
-  },
-};
-
-// ── 5c) sales_by_day — ยอดขาย PAID แยกรายวัน (วัน BKK) ย้อนหลัง N วัน ──
-const salesByDay: AiTool = {
-  def: {
-    name: "sales_by_day",
-    description:
-      "ยอดขายหน้าร้าน (POS) ที่ชำระแล้ว แยกเป็นรายวันตามเวลาไทย ย้อนหลังกี่วันล่าสุด — คืนแต่ละวันพร้อมยอดบาทและจำนวนบิล",
-    parameters: {
-      type: "object",
-      properties: {
-        days: { type: "integer", minimum: 1, maximum: 90, description: "จำนวนวันย้อนหลัง (ค่าเริ่มต้น 7)" },
-      },
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const raw = asRecord(args).days;
-    const n = Number(raw);
-    const days = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 90) : 7;
-
-    const pos = await findSystem(ctx.tenantId, "POS");
-    if (!pos) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบขายหน้าร้าน (POS)" });
-
-    const since = new Date(Date.now() - days * 86_400_000);
-    const sales = await tenantDb({ tenantId: ctx.tenantId, systemId: pos.id }).posSale.findMany({
-      where: { status: "PAID", createdAt: { gte: since } },
-      select: { grandTotalSatang: true, createdAt: true },
-    });
-
-    // จัดกลุ่มตามวันแบบเวลาไทย (dayKeyBangkok) — สะสมยอดสตางค์ + นับบิล
-    const byDay = new Map<string, { satang: number; count: number }>();
-    for (const s of sales) {
-      const day = dayKeyBangkok(s.createdAt);
-      const g = byDay.get(day) ?? { satang: 0, count: 0 };
-      g.satang += s.grandTotalSatang ?? 0;
-      g.count += 1;
-      byDay.set(day, g);
-    }
-    const รายวัน = [...byDay.entries()]
-      .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // ใหม่→เก่า
-      .map(([day, g]) => ({ วัน: day, ยอดบาท: Math.round(g.satang) / 100, จำนวนบิล: g.count }));
-    return JSON.stringify({ ช่วงเวลา: `${days} วันล่าสุด`, รายวัน });
   },
 };
 
@@ -354,10 +288,14 @@ const growthRecommendations: AiTool = {
   },
   async execute(ctx) {
     const { tenantId } = ctx;
+    // S1.3b ▸ (รีวิว C1) อ่านข้ามโมดูล: สมาชิก (จำนวนลูกค้า) / POS (จำนวนบิล) ที่เจ้าของปิด ⇒ ไม่นับ + ไม่ใช้กติกาที่อาศัยตัวเลขนั้น + บอกว่าข้าม ◂
+    const memberOff = moduleOff(ctx.access, "member");
+    const posOff = moduleOff(ctx.access, "pos");
+    const skipped = [...(memberOff ? [skippedSectionNote("member")] : []), ...(posOff ? [skippedSectionNote("pos")] : [])];
     // metric ระดับร้าน (รวมทุกระบบย่อย) — ใช้ตัดสินใจเชิงเติบโต · อ่านตรงแบบเดียวกับ resolveSystem ใน proposals
     const [customers, posPaid, systems] = await Promise.all([
-      prisma.customer.count({ where: { tenantId } }),
-      prisma.posSale.count({ where: { tenantId, status: "PAID" } }),
+      memberOff ? Promise.resolve(0) : prisma.customer.count({ where: { tenantId } }),
+      posOff ? Promise.resolve(0) : prisma.posSale.count({ where: { tenantId, status: "PAID", docType: "SALE" } }),
       prisma.appSystem.findMany({ where: { tenantId }, select: { type: true } }),
     ]);
     const open = new Set<SystemType>(systems.map((s) => s.type));
@@ -384,13 +322,15 @@ const growthRecommendations: AiTool = {
       .filter((r) => r.when && !open.has(r.type))
       .map((r) => ({ ระบบ: r.type, ชื่อ: systemDef(r.type)?.label ?? r.type, เหตุผล: r.reason }));
 
+    const skipNote = skipped.length > 0 ? { ข้าม: skipped } : {};
     if (recs.length === 0) {
       return JSON.stringify({
         คำแนะนำ: [],
         สรุป: "ยังไม่มีคำแนะนำให้เปิดระบบเพิ่มตอนนี้ — ธุรกิจยังไม่ถึงเกณฑ์ หรือเปิดระบบที่จำเป็นครบแล้ว",
+        ...skipNote,
       });
     }
-    return JSON.stringify({ คำแนะนำ: recs });
+    return JSON.stringify({ คำแนะนำ: recs, ...skipNote });
   },
 };
 
@@ -912,6 +852,17 @@ const scheduleTask: AiTool = {
       properties: {
         instruction: { type: "string", description: "สิ่งที่จะให้ผู้ช่วยทำเป็นงานประจำ (ภาษาไทย)" },
         hourBkk: { type: "integer", minimum: 0, maximum: 23, description: "ชั่วโมงที่จะทำ 0-23 ตามเวลาไทย (เช่น 18 = 18:00)" },
+        // S1.9 ▸ ความถี่ (ไม่บังคับ · ปริยาย DAILY) + วันที่เลือก ◂
+        frequency: {
+          type: "string",
+          enum: ["DAILY", "WEEKLY", "MONTHLY"],
+          description: "ความถี่ (ไม่บังคับ · ปริยาย DAILY): DAILY = ทุกวัน · WEEKLY = ทุกสัปดาห์ตามวันใน days · MONTHLY = ทุกเดือนตามวันที่ใน days",
+        },
+        days: {
+          type: "array",
+          items: { type: "integer", minimum: 0, maximum: 31 },
+          description: "วันที่เลือก (ใช้กับ WEEKLY/MONTHLY เท่านั้น): WEEKLY = วันในสัปดาห์ 0=อาทิตย์ 1=จันทร์ … 6=เสาร์ · MONTHLY = วันที่ของเดือน 1-31 · DAILY ไม่ต้องใส่",
+        },
       },
       required: ["instruction", "hourBkk"],
       additionalProperties: false,
@@ -926,12 +877,28 @@ const scheduleTask: AiTool = {
       return JSON.stringify({ error: "ชั่วโมงที่ให้ทำต้องอยู่ระหว่าง 0-23 (เวลาไทย)", suggestion: "เช่น 18 = หกโมงเย็น" });
     }
     const hh = String(hourBkk).padStart(2, "0");
-    // บอกค่าใช้จ่ายบนการ์ดยืนยันด้วย — งานประจำ 1 งานกินเครดิตพอ ๆ กับคุยเองทุกวัน
-    // (วัดจริง: งานที่ต้องดึงข้อมูล ~$0.036/ครั้ง ≈ $1.1/เดือน) เจ้าของต้องเห็นก่อนกดตกลง
+    // S1.9 ▸ ความถี่ไม่ระบุ = ข้อเสนอแบบเดิมทุกตัวอักษร (ทุกวัน) · ระบุ = ตรวจเบื้องต้น + ใส่ใน payload (createTask ตรวจซ้ำตอนยืนยัน) ◂
+    const freqRaw = a.frequency === undefined || a.frequency === null || a.frequency === "" ? "" : String(a.frequency).trim().toUpperCase();
+    if (freqRaw && !["DAILY", "WEEKLY", "MONTHLY"].includes(freqRaw)) {
+      return JSON.stringify({ error: `ไม่รู้จักความถี่ "${freqRaw}"`, suggestion: "ใช้ DAILY (ทุกวัน) WEEKLY (ทุกสัปดาห์) หรือ MONTHLY (ทุกเดือน)" });
+    }
+    const days = Array.isArray(a.days) ? a.days.map((x) => Number(x)).filter((n) => Number.isInteger(n)) : [];
+    if ((freqRaw === "WEEKLY" || freqRaw === "MONTHLY") && days.length === 0) {
+      return JSON.stringify({ error: "งานประจำรายสัปดาห์/รายเดือนต้องระบุวันใน days", suggestion: "WEEKLY: 1 = จันทร์ · MONTHLY: 1 = วันที่ 1" });
+    }
+    if (!freqRaw || freqRaw === "DAILY") {
+      // บอกค่าใช้จ่ายบนการ์ดยืนยันด้วย — งานประจำ 1 งานกินเครดิตพอ ๆ กับคุยเองทุกวัน
+      // (วัดจริง: งานที่ต้องดึงข้อมูล ~$0.036/ครั้ง ≈ $1.1/เดือน) เจ้าของต้องเห็นก่อนกดตกลง
+      const summary =
+        `ตั้งงานประจำทุกวันเวลา ${hh}:00 น. — ${instruction}\n` +
+        `⚡ ใช้เครดิตประมาณ $0.01–0.04 ต่อครั้ง (~$0.3–1.1 หรือ 10–40 บาทต่อเดือน) ปิดทีหลังได้ที่ ตั้งค่า → เครดิต AI`;
+      return propose(ctx, "ai_schedule_task", summary, freqRaw ? { instruction, hourBkk, frequency: "DAILY" } : { instruction, hourBkk });
+    }
+    const { describeFrequency } = await import("./scheduled");
     const summary =
-      `ตั้งงานประจำทุกวันเวลา ${hh}:00 น. — ${instruction}\n` +
-      `⚡ ใช้เครดิตประมาณ $0.01–0.04 ต่อครั้ง (~$0.3–1.1 หรือ 10–40 บาทต่อเดือน) ปิดทีหลังได้ที่ ตั้งค่า → เครดิต AI`;
-    return propose(ctx, "ai_schedule_task", summary, { instruction, hourBkk });
+      `ตั้งงานประจำ${describeFrequency(freqRaw, days)} เวลา ${hh}:00 น. — ${instruction}\n` +
+      `⚡ ใช้งานจากโควตา 1 งานต่อครั้งที่ทำ ปิดทีหลังได้ที่หน้างานประจำ`;
+    return propose(ctx, "ai_schedule_task", summary, { instruction, hourBkk, frequency: freqRaw, days });
   },
 };
 
@@ -1042,6 +1009,16 @@ const proposePlan: AiTool = {
     if (denied) {
       return JSON.stringify({ error: `คุณไม่มีสิทธิ์ทำขั้นตอน "${denied.summary || denied.kind}" ในแผนนี้ — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน หรือให้ผู้มีสิทธิ์เป็นผู้สั่ง` });
     }
+    // S1.3b ▸ (รีวิว C6) ระดับต่อระบบของร้าน: ทุกขั้นต้อง "ร่างให้อนุมัติ" — ระบบที่ปิด/ดูอย่างเดียว ⇒ ไม่สร้างแผน (ไม่งั้นแผนติดตอนกดทำ)
+    //   ไม่ส่ง access (ประตูเดิม) = เดิม · kind ที่ไม่รู้จักปล่อยให้ createPlan ปฏิเสธด้วยข้อความเดิม ◂
+    if (ctx.access) {
+      const access = ctx.access;
+      for (const st of steps) {
+        if (!st.kind || !isKnownKindName(st.kind)) continue;
+        const v = kindAllowedByAccess(access, st.kind);
+        if (!v.ok) return JSON.stringify({ error: `ขั้นตอน "${st.summary || st.kind}" ในแผนนี้ทำไม่ได้ — ${v.reason}` });
+      }
+    }
     try {
       const p = await createPlan(
         { tenantId: ctx.tenantId },
@@ -1061,7 +1038,7 @@ const askClarify: AiTool = {
   def: {
     name: "ask_clarify",
     description:
-      "Ask the user back with tappable options when the request is ambiguous or missing something required (no quantity given, unclear which board/product/bill). Never guess — call this instead. Question and options must be written in Thai: question is one short question, options is 2-4 choices, each with label (button text) and value (text sent back when tapped).",
+      "Ask the user back with tappable options when the request is ambiguous or missing something required (no quantity given, unclear which board/product/bill). Never guess; call this instead. Question and options must be written in Thai: question is one short question, options is 2-4 choices, each with label (button text) and value (text sent back when tapped). Do not ask about VAT/tax, discounts, document numbering or format: the shop's settings decide and the system fills them in. Ask only for what the system cannot know (which customer, which items, quantity, price, which bill/board). Never ask for confirmation to proceed (e.g. 'shall I create or send it?'): every write is a proposal that a person approves in the app. When the user asks to create and send, propose both now.", // SEC S3a.1-R2 R-Z50/R-Z51 (ASCII)
     parameters: {
       type: "object",
       properties: {
@@ -1090,29 +1067,6 @@ const askClarify: AiTool = {
   },
 };
 
-// ── void_sale — เสนอยกเลิก (void) บิลขายที่ชำระแล้ว (destructive — ยืนยัน 2 ชั้น) ──
-const voidSale: AiTool = {
-  action: true,
-  def: {
-    name: "void_sale",
-    description:
-      "เสนอยกเลิก (void) บิลขายหน้าร้านที่ชำระแล้ว (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้ยืนยัน 2 ชั้นก่อน เพราะเป็นการลบถาวรที่ย้อนกลับไม่ได้) ระบุ saleId (รหัสบิล)",
-    parameters: {
-      type: "object",
-      properties: {
-        saleId: { type: "string", description: "รหัสบิลที่จะยกเลิก" },
-      },
-      required: ["saleId"],
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const saleId = String(asRecord(args).saleId ?? "").trim();
-    if (!saleId) return JSON.stringify({ error: "ต้องระบุรหัสบิลที่จะยกเลิก" });
-    return propose(ctx, "void_sale", `ยกเลิก (void) บิลรหัส ${saleId}`, { saleId });
-  },
-};
-
 // ══════════════════════════════════════════════════════════════════
 // Phase B1 — ทำแทนโมดูลเงินเดิน (action 5) + ดูข้อมูล (read 3)
 // resolve unit อยู่ใน dispatch (proposals.ts) — tool แค่รวบ payload แล้ว propose
@@ -1124,7 +1078,7 @@ const posCreateSale: AiTool = {
   def: {
     name: "pos_create_sale",
     description:
-      "เสนอเปิดบิลขายหน้าร้าน (POS) — ยังไม่ทำทันที สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · ระบุ lines (แต่ละรายการมี name=ชื่อสินค้า, qty=จำนวน, unitPriceSatang=ราคาต่อหน่วยเป็นสตางค์ คือบาท×100) และ payType (CASH=เงินสด / TRANSFER=โอน / PROMPTPAY=พร้อมเพย์) · ระบุ unitName ถ้าร้านมีหลายสาขา",
+      "เสนอเปิดบิลขายหน้าร้าน (POS) — ยังไม่ทำทันที สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · ระบุ lines (แต่ละรายการมี name=ชื่อสินค้า, qty=จำนวน, unitPriceSatang=ราคาต่อหน่วยเป็นสตางค์ คือบาท×100) และ payType (CASH=เงินสด / TRANSFER=โอน / PROMPTPAY=พร้อมเพย์) · ระบุ unitName ถ้าร้านมีหลายสาขา · memberId = id สมาชิกจาก customer_search เพื่อผูกบิลกับสมาชิกและสะสมแต้มตามอัตราของร้าน (ระบบคิดแต้มเอง — ห้ามใช้ point_adjust แทนแต้มจากการซื้อ)",
     parameters: {
       type: "object",
       properties: {
@@ -1144,6 +1098,7 @@ const posCreateSale: AiTool = {
           },
         },
         payType: { type: "string", enum: ["CASH", "TRANSFER", "PROMPTPAY"], description: "วิธีชำระเงิน" },
+        memberId: { type: "string", description: "id สมาชิกจาก customer_search เพื่อสะสมแต้มตามอัตราร้าน (ไม่ระบุ = บิลไม่ผูกสมาชิก)" }, // SEC S3a.1-R2 ▸ R-Z42 ◂
       },
       required: ["lines", "payType"],
       additionalProperties: false,
@@ -1177,10 +1132,20 @@ const posCreateSale: AiTool = {
     const payload: Record<string, unknown> = { lines, payType };
     const unitName = String(a.unitName ?? "").trim();
     if (unitName) payload.unitName = unitName;
+    // SEC S3a.1-R2 ▸ R-Z42 (F2): ผูกสมาชิก — ต้องเป็นสมาชิกของร้านนี้ที่ผู้สั่งมองเห็น (ตัวกรองเดียวกับ customer_search) · แต้มคิดโดยสะพานสมาชิกตอนบิล PAID ◂
+    const memberId = String(a.memberId ?? "").trim();
+    let memberLabel = "";
+    if (memberId) {
+      const cust = await prisma.customer.findFirst({ where: { id: memberId, tenantId: ctx.tenantId }, select: { id: true, name: true, memberSystemId: true } });
+      const seen = cust ? await visibleMembers(ctx.actor, ctx.tenantId, [cust]) : [];
+      if (!cust || seen.length === 0) return JSON.stringify({ error: "ไม่พบสมาชิกคนนี้ในร้าน", suggestion: "ค้นด้วย customer_search แล้วใช้ id ที่ได้" });
+      payload.memberId = cust.id;
+      memberLabel = ` · ผูกสมาชิก ${String(crmApi.maskPiiDeep(cust.name?.trim() || "สมาชิก"))}`;
+    }
     const grand = lines.reduce((s, l) => s + l.unitPriceSatang * l.qty, 0);
     const baht = (grand / 100).toLocaleString("th-TH");
     const payLabel = payType === "TRANSFER" ? "โอน" : payType === "PROMPTPAY" ? "พร้อมเพย์" : "เงินสด";
-    const summary = `เปิดบิลขาย ${baht} บาท (${lines.length} รายการ · ${payLabel})`;
+    const summary = `เปิดบิลขาย ${baht} บาท (${lines.length} รายการ · ${payLabel})${memberLabel}`;
     return propose(ctx, "pos_create_sale", summary, payload);
   },
 };
@@ -1350,14 +1315,37 @@ const shopRefundOrder: AiTool = {
   },
 };
 
+// SEC S3a.1-R2 ▸ R-Z41 (F1): นัดที่ยกเลิก/ไม่มา + สถานะมัดจำ (ตัวเดียวกับ refund_booking_deposit ใช้ตัดสิน) — อ่านอย่างเดียว ◂
+const INCLUDE_CANCELLED_PARAM = {
+  type: "boolean",
+  description: "true = include cancelled / no-show appointments with their deposit status (use before refund_booking_deposit). Default false.",
+} as const;
+const DEPOSIT_STATE_TH: Record<string, string> = {
+  NONE: "ไม่มีมัดจำ", AWAITING: "รอจ่าย", IN_REVIEW: "รอตรวจสลิป", UNDERPAID: "จ่ายไม่ครบ", PAID: "จ่ายแล้ว", USED: "หักเข้าบิลแล้ว",
+  FORFEITED: "ริบแล้ว", REFUND_DUE: "ค้างคืน", REFUNDED: "คืนแล้ว", EXPIRED: "หมดเวลาจ่าย", FORFEIT_PENDING: "รอตัดสินคืน/ริบ", RECORDING: "กำลังบันทึก",
+};
+async function depositOfAppt(tenantId: string, a: { id: string; unitId: string; status: string; depositSatang: number }): Promise<Record<string, unknown> | undefined> {
+  if (a.status !== "CANCELLED" && a.status !== "NO_SHOW") return undefined;
+  if (!(a.depositSatang > 0)) return { สถานะ: DEPOSIT_STATE_TH.NONE, จำนวนบาท: 0, คืนได้: false };
+  const { depositInfo } = await import("@/lib/modules/booking/deposit");
+  const info = await depositInfo({ tenantId, unitId: a.unitId }, a.id).catch(() => null);
+  if (!info) return { สถานะ: DEPOSIT_STATE_TH.NONE, จำนวนบาท: 0, คืนได้: false };
+  const refundable = (info.state === "REFUND_DUE" || info.state === "FORFEIT_PENDING") && info.refundDueSatang > 0;
+  const satang = refundable ? info.refundDueSatang : info.paidSatang;
+  return { สถานะ: DEPOSIT_STATE_TH[info.state] ?? info.state, จำนวนบาท: satang / 100, คืนได้: refundable };
+}
+const APPT_STATUS_TH: Record<string, string> = { CANCELLED: "ยกเลิก", NO_SHOW: "ไม่มา" };
+
 // ── B1-R1) today_appointments — นัดหมายวันนี้ (เวลาไทย) ทุกสาขา ──
 const todayAppointments: AiTool = {
   def: {
     name: "today_appointments",
-    description: "ดูรายการนัดหมายบริการของวันนี้ (ตามเวลาไทย) ทุกสาขา — คืนเวลา ชื่อลูกค้า บริการ และช่าง",
-    parameters: NO_ARGS,
+    description:
+      "ดูรายการนัดหมายบริการของวันนี้ (ตามเวลาไทย) ทุกสาขา — คืน id เวลา ชื่อลูกค้า บริการ และช่าง · includeCancelled=true รวมนัดที่ยกเลิก/ไม่มา พร้อมสถานะมัดจำ (ใช้หา id ก่อน refund_booking_deposit)",
+    parameters: { type: "object", properties: { includeCancelled: INCLUDE_CANCELLED_PARAM }, additionalProperties: false },
   },
-  async execute(ctx) {
+  async execute(ctx, args) {
+    const includeCancelled = asRecord(args).includeCancelled === true; // R-Z41 ◂
     const today = dayKeyBangkok(new Date()); // YYYY-MM-DD (BKK)
     const start = new Date(`${today}T00:00:00+07:00`);
     const end = new Date(`${today}T00:00:00+07:00`);
@@ -1365,22 +1353,27 @@ const todayAppointments: AiTool = {
     const appts = await prisma.appointment.findMany({
       where: {
         tenantId: ctx.tenantId,
-        status: { notIn: ["CANCELLED", "NO_SHOW"] },
+        ...(includeCancelled ? {} : { status: { notIn: ["CANCELLED", "NO_SHOW"] } }),
         startAt: { gte: start, lt: end },
         ...unitWhere(ctx.actor), // CRM C5.5-G1 ▸ สาขาที่ผู้ถามเปิดได้ (หน้านัดหมาย = requireUnit) ◂
       },
       orderBy: { startAt: "asc" },
       include: { service: { select: { name: true } }, staff: { select: { name: true } } },
     });
-    return JSON.stringify({
-      วันที่: today,
-      นัดวันนี้: appts.map((ap) => ({
+    const rows = [];
+    for (const ap of appts) {
+      const deposit = includeCancelled ? await depositOfAppt(ctx.tenantId, ap) : undefined;
+      rows.push({
+        id: ap.id,
         เวลา: ap.startAt.toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" }),
         ลูกค้า: ap.customerName,
         บริการ: ap.service?.name ?? null,
         ช่าง: ap.staff?.name ?? null,
-      })),
-    });
+        ...(APPT_STATUS_TH[ap.status] ? { สถานะ: APPT_STATUS_TH[ap.status] } : {}),
+        ...(deposit ? { มัดจำ: deposit } : {}),
+      });
+    }
+    return JSON.stringify({ วันที่: today, นัดวันนี้: rows });
   },
 };
 
@@ -1461,17 +1454,129 @@ const chatUnreadConversations: AiTool = {
       where: { AND: [{ tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 } }, chatUnitWhere] },
       orderBy: { lastMessageAt: "desc" },
       take: 50,
-      include: { contact: { select: { displayName: true, phone: true } } },
+      include: { contact: { select: { displayName: true } } }, // SEC S3a.1-S2 ▸ R-Z24: ไม่อ่านเบอร์ (ไม่ถอยไปใช้เบอร์เป็นชื่อ) ◂
     });
     return JSON.stringify({
       จำนวนห้องที่ยังไม่อ่าน: convs.length,
       ห้องแชท: convs.map((c) => ({
-        ลูกค้า: c.contact.displayName ?? c.contact.phone ?? "ลูกค้า",
+        ลูกค้า: c.contact.displayName ?? "ลูกค้า",
         ช่องทาง: channelSentenceLabel(c.channel),
         ข้อความค้าง: c.staffUnreadCount,
         ล่าสุด: c.lastMessagePreview ?? "—",
       })),
     });
+  },
+};
+
+// ── SEC S1.12 ▸ send_customer_message — เสนอส่งข้อความถึงลูกค้าในห้องแชทลูกค้า (kind chat.send · ส่งจริงเมื่อคนอนุมัติ) ──
+//   เครื่องมือ "เสนอ" เท่านั้น ห้ามส่งเอง · เฉพาะลูกค้าที่ผูกสมาชิก/CRM แล้ว (R-K15) · ห้องต้องอยู่ในสาขาที่ผู้สั่งเห็น (แบบกล่องแชท M11)
+//   payload = ids + ข้อความ (ไม่มีชื่อ/เบอร์ลูกค้า) · dispatch ตรวจซ้ำทุกข้อตอนอนุมัติ (proposals.ts dispatchChatSend) ◂
+const CUSTOMER_MESSAGE_KINDS = ["reply", "followup", "quote"] as const;
+const sendCustomerMessage: AiTool = {
+  action: true,
+  def: {
+    name: "send_customer_message",
+    description:
+      `Propose a message to a customer in the shop's customer chat (LINE / web chat). Nothing is sent until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์); the customer sees it signed "Shark (ผู้ช่วย AI)" with a fixed signature line added by the system. Only for customers linked to a member/CRM record. conversationId = the customer chat conversation from the room context (ask the user if you do not have it). body = the exact message, at most ${CHAT_SEND_BODY_MAX} characters, no promises about money or discounts the owner did not ask for. kind = reply | followup (service follow-up, not marketing) | quote.`,
+    parameters: {
+      type: "object",
+      properties: {
+        conversationId: { type: "string", description: "Customer chat conversation id (from the room context)" },
+        body: { type: "string", description: `Exact message text for the customer (max ${CHAT_SEND_BODY_MAX} characters)` },
+        kind: { type: "string", enum: [...CUSTOMER_MESSAGE_KINDS], description: "reply (default) · followup · quote" },
+        documentId: { type: "string", description: "Accounting document this message is about (optional)" },
+        dealId: { type: "string", description: "CRM deal this message is about (optional)" },
+      },
+      required: ["conversationId", "body"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const conversationId = String(a.conversationId ?? "").trim();
+    const body = String(a.body ?? "").trim();
+    if (!conversationId) {
+      return JSON.stringify({ error: "ยังไม่รู้ว่าจะส่งถึงลูกค้าห้องไหน", suggestion: "ถามผู้ใช้ด้วย ask_clarify ว่าลูกค้าคนไหน หรือเปิดงานจากห้องแชทลูกค้า" });
+    }
+    if (!body) return JSON.stringify({ error: "ข้อความถึงลูกค้าว่างอยู่ — เขียนข้อความที่จะส่งก่อน" });
+    if (body.length > CHAT_SEND_BODY_MAX) return JSON.stringify({ error: `ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร (สำรองที่ให้บรรทัดลงชื่อ Shark) — ย่อให้สั้นลงแล้วเสนอใหม่` });
+    const kindRaw = a.kind === undefined || a.kind === null || a.kind === "" ? "reply" : String(a.kind).trim().toLowerCase();
+    if (!(CUSTOMER_MESSAGE_KINDS as readonly string[]).includes(kindRaw)) {
+      return JSON.stringify({ error: `ไม่รู้จักชนิดข้อความ "${kindRaw}"`, suggestion: "ใช้ reply (ตอบ) followup (ติดตาม) หรือ quote (ส่งใบเสนอราคา)" });
+    }
+    const conv = await prisma.chatConversation.findFirst({
+      where: { id: conversationId, tenantId: ctx.tenantId },
+      select: { id: true, systemId: true, contactId: true, channel: true, status: true, unitId: true, contact: { select: { customerId: true, displayName: true } } },
+    });
+    const cm = aiActorMembership(ctx.actor);
+    const unitOk =
+      !!conv &&
+      (ctx.actor.kind === "apiKey" || cm?.role === "OWNER" || (await import("@/lib/modules/chat/service")).canAccessConvUnit(cm?.unitAccess ?? [], conv.unitId));
+    if (!conv || !unitOk) {
+      // ห้องของสาขาที่ผู้สั่งมองไม่เห็น = ตอบเหมือนไม่มี (404-not-403)
+      return JSON.stringify({ error: "ไม่พบห้องแชทลูกค้านี้ในร้าน", suggestion: "ตรวจห้องแชทลูกค้าอีกครั้ง หรือถามผู้ใช้ว่าลูกค้าคนไหน" });
+    }
+    if (!conv.contact.customerId) {
+      return JSON.stringify({ error: "ลูกค้ารายนี้ยังไม่ผูกกับสมาชิก/CRM — ผูกก่อนแล้วค่อยส่ง", suggestion: "ให้ผู้ใช้กดผูกลูกค้าในห้องแชทลูกค้า แล้วสั่งใหม่" });
+    }
+    if (conv.status === "RESOLVED") {
+      return JSON.stringify({ error: "ห้องแชทนี้ปิดไปแล้ว จึงยังส่งข้อความไม่ได้", suggestion: "ให้ผู้ใช้เปิดห้องใหม่จากหน้าแชทลูกค้าก่อน" });
+    }
+    const who = conv.contact.displayName?.trim() || "ลูกค้า";
+    // R-S1.12a (K-1/K-7): ผู้อนุมัติต้องเห็นข้อความเต็มฉบับ · ชื่อผ่าน maskPiiDeep (ชื่อที่เป็นเบอร์/อีเมลถูกปิด) ◂
+    const documentId = typeof a.documentId === "string" && a.documentId.trim() ? a.documentId.trim() : null;
+    // SEC S3a.5 ▸ R-Z62: kind=quote ⇒ ผู้อนุมัติเห็นตั้งแต่ตอนเสนอว่าจะแนบใบไหน ("แนบใบเสนอราคา <เลขที่/ฉบับร่าง> ของ <ผู้ซื้อ>") ·
+    //   documentId ที่ไม่ได้สร้างในงานนี้/ไม่ใช่ใบเสนอราคา ⇒ ไม่สร้างข้อเสนอ (ตอบ error ให้โมเดล) ◂
+    let quoteLine = "";
+    if (kindRaw === "quote") {
+      if (!ctx.conversationId) return JSON.stringify({ error: "ต้องอยู่ในบทสนทนาก่อนจึงจะเสนอการกระทำได้" });
+      const { quoteAttachmentSummary } = await import("./proposals");
+      const q = await quoteAttachmentSummary(ctx.tenantId, ctx.conversationId, documentId);
+      if (!q.ok) return JSON.stringify({ error: q.error, suggestion: "ส่งใบเสนอราคาที่สร้างในงานนี้ (ไม่ต้องใส่ documentId — ระบบหยิบใบล่าสุดของงานนี้ให้เอง)" });
+      quoteLine = `\n${q.line}`;
+    }
+    const summary = `ส่งข้อความถึง ${String(crmApi.maskPiiDeep(who))} (${channelSentenceLabel(conv.channel)}):\n${body}${quoteLine}`;
+    const dealId = typeof a.dealId === "string" && a.dealId.trim() ? a.dealId.trim() : null;
+    const refs = documentId || dealId ? { refs: { ...(documentId ? { documentId } : {}), ...(dealId ? { dealId } : {}) } } : {};
+    return propose(ctx, "chat.send", summary, { systemId: conv.systemId, conversationId: conv.id, contactId: conv.contactId, body, kind: kindRaw, ...refs });
+  },
+};
+
+// ── SEC S1.12 ▸ R-S1.12b refund_booking_deposit — เสนอคืนมัดจำของนัดที่ค้างคืน (kind booking_refund_deposit · เงินออก ⇒ อนุมัติเสมอ) ──
+//   summary สร้างที่เซิร์ฟเวอร์จากข้อมูลจริง (ยอดค้างคืน · ชื่อลูกค้า mask · วันนัด) — ไม่ใช้ข้อความของโมเดล · payload = ids เท่านั้น
+//   สาขา = `actorBranches` (ประตูเว็บ requireUnit) · ห้ามเป็นขั้นของแผน (PLAN_HUMAN_ONLY) ◂
+const refundBookingDeposit: AiTool = {
+  action: true,
+  def: {
+    name: "refund_booking_deposit",
+    description:
+      "Propose refunding the deposit of an appointment that was cancelled or marked no-show (state: refund due). Nothing is refunded until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์). The amount comes from the system, never from you. appointmentId = the appointment id: call today_appointments or upcoming_schedule with includeCancelled=true and pick the row whose deposit shows คืนได้=true (cancelled/no-show appointments are hidden without that flag); if several match, ask the user.",
+    parameters: {
+      type: "object",
+      properties: { appointmentId: { type: "string", description: "Appointment id" } },
+      required: ["appointmentId"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const appointmentId = String(asRecord(args).appointmentId ?? "").trim();
+    if (!appointmentId) return JSON.stringify({ error: "ต้องระบุนัดหมายที่จะคืนมัดจำ", suggestion: "ถามผู้ใช้ด้วย ask_clarify ว่านัดของใคร วันไหน" });
+    const appt = await prisma.appointment.findFirst({
+      where: { tenantId: ctx.tenantId, id: appointmentId, ...unitWhere(ctx.actor) },
+      select: { id: true, unitId: true, customerName: true, startAt: true },
+    });
+    if (!appt) return JSON.stringify({ error: "ไม่พบนัดหมายนี้ในร้าน", suggestion: "ตรวจนัดหมายอีกครั้ง หรือถามผู้ใช้ว่านัดของใคร" });
+    const { depositInfo } = await import("@/lib/modules/booking/deposit");
+    const info = await depositInfo({ tenantId: ctx.tenantId, unitId: appt.unitId }, appt.id);
+    if (!info || info.state === "REFUNDED") return JSON.stringify({ error: info ? "มัดจำของนัดนี้คืนไปแล้ว" : "นัดนี้ไม่มีมัดจำให้คืน" });
+    if ((info.state !== "REFUND_DUE" && info.state !== "FORFEIT_PENDING") || info.refundDueSatang <= 0) {
+      return JSON.stringify({ error: "คืนได้เฉพาะมัดจำที่ค้างคืน (นัดถูกยกเลิกหรือลูกค้าไม่มา)", suggestion: "ถ้าจะยกเลิกนัดก่อน ให้เสนอยกเลิกนัดแยกอีกรายการ" });
+    }
+    const baht = (info.refundDueSatang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const who = String(crmApi.maskPiiDeep(appt.customerName?.trim() || "ลูกค้า"));
+    const day = appt.startAt.toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", year: "numeric" });
+    const summary = `คืนมัดจำ ${baht} บาท ให้ ${who} (นัดวันที่ ${day})`;
+    return propose(ctx, "booking_refund_deposit", summary, { appointmentId: appt.id, unitId: appt.unitId });
   },
 };
 
@@ -1829,7 +1934,7 @@ const restaurantToday: AiTool = {
       prisma.restaurantOrder.count({ where: { tenantId: ctx.tenantId, bizDate: today, status: { not: "CANCELLED" }, ...unitWhere(ctx.actor) } }),
       prisma.tableSession.count({ where: { tenantId: ctx.tenantId, status: "OPEN", ...unitWhere(ctx.actor) } }),
       prisma.posSale.aggregate({
-        where: { tenantId: ctx.tenantId, sourceModule: "RESTAURANT", status: "PAID", createdAt: { gte: dayStart }, ...unitWhere(ctx.actor) },
+        where: { tenantId: ctx.tenantId, sourceModule: "RESTAURANT", status: "PAID", docType: "SALE", createdAt: { gte: dayStart }, ...unitWhere(ctx.actor) }, // MAIN-MERGE ▸ POS docType SALE + CRM unitWhere ◂
         _sum: { grandTotalSatang: true },
       }),
     ]);
@@ -1917,11 +2022,15 @@ const financialSummary: AiTool = {
   },
   async execute(ctx) {
     const start = monthStartBkk();
+    // S1.3b ▸ (รีวิว C4) รายได้มาจากบิล POS — pos OFF ⇒ ไม่อ่านยอดขาย · ไม่คืนรายได้/กำไร (กำไรเผยรายได้) · บอกว่าข้าม ◂
+    const posOff = moduleOff(ctx.access, "pos");
     const [revAgg, expAgg] = await Promise.all([
-      prisma.posSale.aggregate({
-        where: { tenantId: ctx.tenantId, status: "PAID", createdAt: { gte: start } },
-        _sum: { grandTotalSatang: true },
-      }),
+      posOff
+        ? Promise.resolve(null)
+        : prisma.posSale.aggregate({
+            where: { tenantId: ctx.tenantId, status: "PAID", docType: "SALE", createdAt: { gte: start } },
+            _sum: { grandTotalSatang: true },
+          }),
       prisma.accountDocument.aggregate({
         where: {
           tenantId: ctx.tenantId,
@@ -1932,8 +2041,16 @@ const financialSummary: AiTool = {
         _sum: { grandTotal: true },
       }),
     ]);
-    const revenue = Math.round(revAgg._sum.grandTotalSatang ?? 0) / 100;
     const expense = Math.round(expAgg._sum.grandTotal ?? 0) / 100;
+    if (!revAgg) {
+      return JSON.stringify({
+        เดือน: dayKeyBangkok(start).slice(0, 7),
+        ...(expense === 0 ? { ข้อความ: "ยังไม่มีข้อมูลรายจ่ายเดือนนี้" } : { รายจ่ายบาท: expense }),
+        ข้าม: [skippedSectionNote("pos")],
+        หมายเหตุ: "ไม่ได้ดูรายได้จากยอดขายหน้าร้าน จึงสรุปกำไรไม่ได้ · ตัวเลขรายจ่ายเป็นประมาณการจากค่าใช้จ่ายที่บันทึกไว้ ไม่ใช่งบการเงินทางบัญชี",
+      });
+    }
+    const revenue = Math.round(revAgg._sum.grandTotalSatang ?? 0) / 100;
     if (revenue === 0 && expense === 0) {
       return JSON.stringify({ เดือน: dayKeyBangkok(start).slice(0, 7), ข้อความ: "ยังไม่มีข้อมูลการเงินเดือนนี้" });
     }
@@ -2024,6 +2141,9 @@ const customerPoints: AiTool = {
     },
   },
   async execute(ctx, args) {
+    // S1.3b ▸ (รีวิว C1) แต้มคือเนื้อหาทั้งหมดของเครื่องมือนี้ ⇒ point OFF = ปฏิเสธทั้งเครื่องมือ (ไม่ค้นสมาชิกเลย) ◂
+    const pointLevel = ctx.access ? levelVerdict(ctx.access, "point", false) : null;
+    if (pointLevel && !pointLevel.ok) return JSON.stringify({ error: pointLevel.reason });
     const query = String(asRecord(args).query ?? "").trim();
     if (!query) return JSON.stringify({ ข้อความ: "ยังไม่ได้ระบุชื่อ/เบอร์/รหัสสมาชิกของลูกค้า" });
     // CRM C5.5-G1 ▸ เฉพาะสมาชิกที่ผู้ถามมองเห็น (ไม่เห็น = "ไม่พบ" เหมือนหน้าสมาชิก ไม่บอกว่ามีอยู่) ◂
@@ -2058,11 +2178,13 @@ const upcomingSchedule: AiTool = {
       type: "object",
       properties: {
         days: { type: "integer", minimum: 1, maximum: 90, description: "จำนวนวันข้างหน้า (ค่าเริ่มต้น 7)" },
+        includeCancelled: INCLUDE_CANCELLED_PARAM,
       },
       additionalProperties: false,
     },
   },
   async execute(ctx, args) {
+    const includeCancelled = asRecord(args).includeCancelled === true; // SEC S3a.1-R2 ▸ R-Z41 ◂
     const raw = Number(asRecord(args).days);
     const days = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 90) : 7;
     const from = new Date();
@@ -2086,20 +2208,35 @@ const upcomingSchedule: AiTool = {
             ).filter((x) => x !== null),
           }
         : {};
+    // S1.3b ▸ (รีวิว C1 D2) อ่านข้ามโมดูล: นัดหมาย (booking) · เข้าพัก (hotel) · วันลา (hr) ที่เจ้าของปิด ⇒ ไม่ดึงส่วนนั้น + บอกว่าข้าม
+    //   (ไม่ปฏิเสธทั้งเครื่องมือ — ส่วนที่เหลือยังตอบได้) ◂
+    const offBooking = moduleOff(ctx.access, "booking");
+    const offHotel = moduleOff(ctx.access, "hotel");
+    const offHr = moduleOff(ctx.access, "hr");
+    const skipped = [
+      ...(offBooking ? [skippedSectionNote("booking")] : []),
+      ...(offHotel ? [skippedSectionNote("hotel")] : []),
+      ...(offHr ? [skippedSectionNote("hr")] : []),
+    ];
+    const skipNote = skipped.length > 0 ? { ข้าม: skipped } : {};
     const [appts, stays, leaves] = await Promise.all([
-      prisma.appointment.findMany({
-        where: { tenantId: ctx.tenantId, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
-        orderBy: { startAt: "asc" },
-        take: 50,
-        include: { service: { select: { name: true } } },
-      }),
-      prisma.hotelReservation.findMany({
-        where: { tenantId: ctx.tenantId, status: { not: "CANCELLED" }, checkInDate: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
-        orderBy: { checkInDate: "asc" },
-        take: 50,
-        include: { roomType: { select: { name: true } } },
-      }),
-      seesLeaves
+      offBooking
+        ? Promise.resolve([])
+        : prisma.appointment.findMany({
+            where: { tenantId: ctx.tenantId, ...(includeCancelled ? {} : { status: { notIn: ["CANCELLED", "NO_SHOW"] } }), startAt: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
+            orderBy: { startAt: "asc" },
+            take: 50,
+            include: { service: { select: { name: true } } },
+          }),
+      offHotel
+        ? Promise.resolve([])
+        : prisma.hotelReservation.findMany({
+            where: { tenantId: ctx.tenantId, status: { not: "CANCELLED" }, checkInDate: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
+            orderBy: { checkInDate: "asc" },
+            take: 50,
+            include: { roomType: { select: { name: true } } },
+          }),
+      seesLeaves && !offHr
         ? prisma.hrLeave.findMany({
             where: { tenantId: ctx.tenantId, status: { in: ["PENDING", "APPROVED"] }, fromDate: { gte: from, lt: to }, ...leaveBranch },
             orderBy: { fromDate: "asc" },
@@ -2109,15 +2246,21 @@ const upcomingSchedule: AiTool = {
         : Promise.resolve([]),
     ]);
     if (appts.length === 0 && stays.length === 0 && leaves.length === 0) {
-      return JSON.stringify({ ข้อความ: `ยังไม่มีนัด/เข้าพัก/วันลา ในช่วง ${days} วันข้างหน้า` });
+      return JSON.stringify({ ข้อความ: `ยังไม่มีนัด/เข้าพัก/วันลา ในช่วง ${days} วันข้างหน้า`, ...skipNote });
     }
     const timeBkk = (d: Date) =>
       d.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "short", timeStyle: "short" });
+    const apptRows = [];
+    for (const a of appts) {
+      const deposit = includeCancelled ? await depositOfAppt(ctx.tenantId, a) : undefined;
+      apptRows.push({ id: a.id, เมื่อ: timeBkk(a.startAt), บริการ: a.service?.name ?? "นัดหมาย", ลูกค้า: a.customerName, ...(APPT_STATUS_TH[a.status] ? { สถานะ: APPT_STATUS_TH[a.status] } : {}), ...(deposit ? { มัดจำ: deposit } : {}) });
+    }
     return JSON.stringify({
       ช่วงเวลา: `${days} วันข้างหน้า`,
-      นัดหมาย: appts.map((a) => ({ เมื่อ: timeBkk(a.startAt), บริการ: a.service?.name ?? "นัดหมาย", ลูกค้า: a.customerName })),
+      นัดหมาย: apptRows,
       การเข้าพัก: stays.map((r) => ({ เช็คอิน: safeDate(r.checkInDate), ห้อง: r.roomType?.name ?? "ห้องพัก", ผู้เข้าพัก: r.guestName })),
       วันลา: leaves.map((l) => ({ ตั้งแต่: safeDate(l.fromDate), ถึง: safeDate(l.toDate), พนักงาน: l.employee?.name ?? "พนักงาน", ประเภท: l.type })),
+      ...skipNote,
     });
   },
 };
@@ -2134,7 +2277,7 @@ const pointAdjust: AiTool = {
   def: {
     name: "point_adjust",
     description:
-      "เสนอแจกหรือหักแต้มสะสมของสมาชิก (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ delta (จำนวนแต้ม: บวก=แจก ลบ=หัก เช่น 50 หรือ -20) และตัวระบุสมาชิก: รหัสสมาชิก (memberCode) หรือเบอร์โทร (customerPhone) หรือชื่อ (customerName) อย่างใดอย่างหนึ่ง · reason (เหตุผล) ถ้ามี",
+      "เสนอแจกหรือหักแต้มสะสมของสมาชิก (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ delta (จำนวนแต้ม: บวก=แจก ลบ=หัก เช่น 50 หรือ -20) และตัวระบุสมาชิก: รหัสสมาชิก (memberCode) หรือเบอร์โทร (customerPhone) หรือชื่อ (customerName) อย่างใดอย่างหนึ่ง · reason (เหตุผล) ถ้ามี · ใช้เฉพาะปรับแต้มพิเศษ (ของขวัญ/ชดเชย/แก้ยอดผิด) — **ห้ามใช้แทนแต้มจากการซื้อ** (บิลขายให้ใส่ memberId ใน pos_create_sale แล้วระบบคิดแต้มตามอัตราร้านเอง)",
     parameters: {
       type: "object",
       properties: {
@@ -2265,7 +2408,22 @@ const rememberFactTool: AiTool = {
   async execute(ctx, args) {
     const content = String(asRecord(args).content ?? "").trim();
     if (!content) return JSON.stringify({ error: "ต้องระบุเนื้อหาที่จะจำ" });
-    const { id, shared } = await rememberFact({ tenantId: ctx.tenantId, actor: ctx.actor }, content);
+    // SEC S1.10 (R-K3) ▸ ในห้องเลขา (มีแถว AiRoom) คนที่ไม่ใช่ OWNER จด = ข้อเท็จจริงของร้านที่รอเจ้าของยืนยัน (PENDING) ·
+    //   ห้องเดิม/OWNER = ทางเดิมทุกตัวอักษร · import ตอนเรียก (conversations อ่าน DB) ◂
+    let pending = false;
+    if (ctx.actor.kind === "member" && ctx.actor.membership.role !== "OWNER" && ctx.conversationId) {
+      const { findVisibleConversation } = await import("./conversations");
+      pending = !!(await findVisibleConversation({ tenantId: ctx.tenantId, actor: ctx.actor }, ctx.conversationId))?.room;
+    }
+    // SEC S3a.1-S2 ▸ R-Z22 (L5 M1): ห้องที่มีบริบทลูกค้า (ข้อความลูกค้าอยู่ใน prompt) ⇒ รอเจ้าของยืนยันเสมอ แม้ผู้สั่งเป็น OWNER ◂
+    const customerRoom = ctx.actor.kind === "member" && (await secRoomOf(ctx)).customer;
+    const saved = await rememberFact(
+      { tenantId: ctx.tenantId, actor: ctx.actor },
+      content,
+      customerRoom ? { pending: true, forcePending: true } : pending ? { pending: true } : undefined,
+    );
+    if (saved.pending) return JSON.stringify({ จดไว้รอเจ้าของยืนยัน: content, id: saved.id, ขอบเขต: "ข้อเท็จจริงของร้าน — ใช้ได้เมื่อเจ้าของร้านยืนยันแล้ว" });
+    const { id, shared } = saved;
     return JSON.stringify({ จำแล้ว: content, id, ขอบเขต: shared ? "ความจำของร้าน (ทุกคนในร้านเห็น)" : "ความจำส่วนตัว (เฉพาะคุณ)" });
   },
 };
@@ -2289,6 +2447,15 @@ const forgetFactTool: AiTool = {
     const a = asRecord(args);
     const id = String(a.id ?? "").trim();
     const contentContains = String(a.contentContains ?? "").trim();
+    // SEC S3a.1-S2 ▸ R-Z22 (L5 M1): ในห้องเลขา (AiRoom · ห้องบริบทลูกค้า) การลบความจำ = ข้อเสนอ `memory.forget` (คนอนุมัติ · ไม่ลบทันที) ◂
+    if ((await secRoomOf(ctx)).room) {
+      if (!id && !contentContains) return JSON.stringify({ error: "ต้องระบุ id หรือ contentContains อย่างใดอย่างหนึ่ง" });
+      const rows = await listMemories({ tenantId: ctx.tenantId, actor: ctx.actor }, MAX_MEMORY_TAKE, { includePending: true });
+      const hits = rows.filter((r) => (id ? r.id === id : r.content.includes(contentContains))).slice(0, 20);
+      if (hits.length === 0) return JSON.stringify({ error: id ? `ไม่พบความจำรหัส ${id} ที่คุณลบได้` : `ไม่พบความจำที่ตรงกับ "${contentContains}"` });
+      const summary = `ลบความจำ ${hits.length} เรื่อง: ${hits.map((h) => `"${h.content.slice(0, 60)}"`).join(", ")}`.slice(0, 500);
+      return propose(ctx, "memory.forget", summary, { ids: hits.map((h) => h.id) });
+    }
     if (id) {
       // CRM C5.5-G3 ▸ ลบได้เฉพาะของตัวเอง (OWNER: + ความจำของร้าน/ระบบ) — อื่น ๆ ตอบเหมือนไม่มี ◂
       const ok = await forgetMemory({ tenantId: ctx.tenantId, actor: ctx.actor }, id);
@@ -2353,6 +2520,10 @@ const supportOpenCase: AiTool = {
     const detail = String(a.detail ?? "").trim();
     if (!subject) return JSON.stringify({ error: "ต้องระบุหัวข้อปัญหา" });
     if (!detail) return JSON.stringify({ error: "ต้องระบุรายละเอียดปัญหา" });
+    // SEC S3a.1-S2 ▸ R-Z34 (RC1 M1): ห้องที่มีบริบทลูกค้า ⇒ เปิดเคสเป็นข้อเสนอ `support.open` (ข้อความลูกค้าอยู่ใน prompt — ไม่ให้ส่งออกนอกร้านเอง) ◂
+    if ((await secRoomOf(ctx)).customer) {
+      return propose(ctx, "support.open", `แจ้งทีมงาน SHARK: ${subject}`.slice(0, 300), { subject: subject.slice(0, 200), detail: detail.slice(0, 4000) });
+    }
     const { caseNo } = await openCaseFromAi(
       { tenantId: ctx.tenantId },
       { userId: "ai-assistant", conversationId: ctx.conversationId, subject, body: detail },
@@ -2396,6 +2567,8 @@ const kbAutoSave: AiTool = {
     const category = String(a.category ?? "").trim() || null;
     const contactKinds = findContactData(`${title}\n${content}\n${category ?? ""}`);
     if (contactKinds.length > 0) return JSON.stringify({ error: contactDataRefusal(contactKinds, "ลงคลังความรู้") });
+    // SEC S3a.1-S2 ▸ R-Z22 (L5 M1): ในห้องเลขา = ข้อเสนอ `kb.save` (คลังความรู้ทุกคนในร้านอ่าน — ข้อความลูกค้าในห้องห้ามเขียนลงเองได้) ◂
+    if ((await secRoomOf(ctx)).room) return propose(ctx, "kb.save", `บันทึกลงคลังความรู้: ${title}`.slice(0, 300), { title, body: content, category });
     // ใช้ service เดิม (ห้าม fork) — content → body ของบทความ
     await kbCreateArticleSvc({ tenantId: ctx.tenantId }, { title, body: content, category });
     return JSON.stringify({ ตอบผู้ใช้: `บันทึกลงคลังความรู้แล้ว: ${title}` });
@@ -2419,6 +2592,58 @@ async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<
   }
 }
 
+// ─── SEC S3a.1-S2 ▸ R-Z22/R-Z24/R-Z25 ตัวช่วยของ runTool และเครื่องมือความจำ/คลังความรู้ ───
+
+/** บทสนทนานี้เป็นห้องเลขาไหม (AiRoom) · มีบริบทลูกค้าไหม (contextJson.chatConversationId) — ctx.conversationId มาจากเซิร์ฟเวอร์ */
+async function secRoomOf(ctx: ToolCtx): Promise<{ room: boolean; customer: boolean }> {
+  if (!ctx.conversationId) return { room: false, customer: false };
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiRoom.findFirst({ where: { conversationId: ctx.conversationId }, select: { contextJson: true } });
+  if (!row) return { room: false, customer: false };
+  const cj = row.contextJson && typeof row.contextJson === "object" && !Array.isArray(row.contextJson) ? (row.contextJson as Record<string, unknown>) : {};
+  return { room: true, customer: typeof cj.chatConversationId === "string" && cj.chatConversationId.trim() !== "" };
+}
+
+/** ห้องแชทลูกค้านี้อยู่ในร้าน + สาขาที่ผู้สั่งเห็น (`canAccessConvUnit` ตัวเดียวกับกล่องแชท) — คีย์ API/OWNER = ทั้งร้าน */
+async function chatConvVisible(ctx: ToolCtx, conversationId: unknown): Promise<boolean> {
+  const id = typeof conversationId === "string" ? conversationId.trim() : "";
+  if (!id) return true; // ไม่ระบุ = ให้เครื่องมือตอบเหตุผลของมันเอง
+  const conv = await prisma.chatConversation.findFirst({ where: { id, tenantId: ctx.tenantId }, select: { unitId: true } });
+  if (!conv) return false;
+  const m = aiActorMembership(ctx.actor);
+  if (ctx.actor.kind === "apiKey" || m?.role === "OWNER") return true;
+  if (!m) return false;
+  const { canAccessConvUnit } = await import("@/lib/modules/chat/service");
+  return canAccessConvUnit(m.unitAccess, conv.unitId);
+}
+
+/** คีย์ที่เป็นรหัสอ้างอิง (โมเดลต้องใช้เรียกเครื่องมือต่อ) — ไม่ปิดตัวเลข */
+const ID_KEY = /(^id$|Id$|Ids$|^รหัส|^เลขที่|No$|Code$)/;
+/** ตัวเลขติดกัน ≥ 9 หลัก (มีขีด/เว้นวรรคคั่นได้) ⇒ เหลือ 2 ตัวท้าย (แบบ customer-context · R-S1.8e) */
+const maskLongDigits = (v: string) =>
+  v.replace(/\d(?:[\s-]?\d){8,}/g, (m) => {
+    const d = m.replace(/\D/g, "");
+    return `${"•".repeat(Math.max(0, d.length - 2))}${d.slice(-2)}`;
+  });
+function maskDeep(v: unknown, key = ""): unknown {
+  if (typeof v === "string") return ID_KEY.test(key) ? v : maskLongDigits(v);
+  if (Array.isArray(v)) return v.map((x) => maskDeep(x, key));
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, maskDeep(x, k)]));
+  return v;
+}
+/**
+ * R-Z24 (L5 M3): ผลของเครื่องมือก่อนคืนโมเดล = ปิดเบอร์/อีเมล (`maskPiiDeep` ของ CRM) + ตัวเลขยาว ≥ 9 หลัก ·
+ *   คีย์รหัสอ้างอิง (id/…Id/รหัส…) ไม่ถูกปิด (โมเดลต้องใช้เรียกต่อ) · ผลที่ไม่ใช่ JSON = ปิดทั้งก้อน
+ */
+function maskToolOutput(_name: string, out: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(out);
+  } catch {
+    return maskLongDigits(String(crmApi.maskPiiDeep(out)));
+  }
+  return JSON.stringify(maskDeep(crmApi.maskPiiDeep(parsed)));
+}
+
 // CRM C5.5-G1 r2 (F6) ▸ ทุกเครื่องมือในทะเบียนถูกห่อด้วยด่าน actor: ใครเรียก `execute` ตรง ๆ (ข้าม runTool) โดยไม่มี actor ที่ใช้ได้
 //   = ได้ข้อความปฏิเสธ ไม่มีทางถอยไปอ่านด้วยชุดกว้าง (adapter ของ 4 โมดูลตรวจซ้ำในตัวเองด้วย — crmTools() ฯลฯ ถูกเรียกตรงได้) ◂
 const guarded = (t: AiTool): AiTool => ({
@@ -2428,7 +2653,7 @@ const guarded = (t: AiTool): AiTool => ({
     if (bad) return JSON.stringify({ error: bad });
     // CRM C5.5-G2 ▸ ห้องที่ผู้กระทำมองไม่เห็น (ของคนอื่น / ห้องเดิมสำหรับคนที่ไม่ใช่เจ้าของร้าน) = เหมือนไม่ได้อยู่ในห้อง —
     //   ข้อเสนอ/แผน/เคสแจ้งทีมงานจึงไม่มีวันถูกผูกเข้าห้องของคนอื่น (เครื่องมือที่ต้องมีห้องตอบ "ต้องอยู่ในบทสนทนาก่อน") ◂
-    if (ctx.conversationId !== undefined && !canSeeConversationId(sightOf(ctx), ctx.conversationId)) {
+    if (ctx.conversationId !== undefined && !canSeeConversationId(ctx.sight ?? sightOf(ctx), ctx.conversationId)) {
       return t.execute({ ...ctx, conversationId: undefined }, args);
     }
     return t.execute(ctx, args);
@@ -2443,12 +2668,10 @@ function registryTools(): AiTool[] {
   return [
     // read-only (8)
     listSystems,
-    salesSummary,
     lowStock,
     pendingLeaves,
     memberCount,
     customerSearch,
-    salesByDay,
     growthRecommendations,
     kbSearch,
     askClarify,
@@ -2458,6 +2681,8 @@ function registryTools(): AiTool[] {
     queueWaiting,
     shopPendingOrders,
     chatUnreadConversations,
+    sendCustomerMessage, // SEC S1.12 ▸ เสนอส่งถึงลูกค้า (skill chat) ◂
+    refundBookingDeposit, // SEC S1.12 ▸ R-S1.12b เสนอคืนมัดจำนัดหมาย (skill booking) ◂
     // Phase B2 read — คำขอรออนุมัติ / สัญญาเช่าค้างคืน
     approvalsPending,
     rentalActive,
@@ -2490,7 +2715,6 @@ function registryTools(): AiTool[] {
     recordExpense,
     scheduleTask,
     automationCreateRule,
-    voidSale,
     // Phase B1 action — เงินเดิน (เปิดบิล / จองบริการ / จองห้อง / บัตรคิว / ยืนยันออเดอร์)
     posCreateSale,
     bookingCreateAppointment,
@@ -2522,6 +2746,8 @@ function registryTools(): AiTool[] {
     ...memberTools(),
     // CRM C1.10 ▸ สกิล crm (R-E.4) — สร้างจากทะเบียน op ของ REST CRM ด้วยกติกาเดียวกัน (kind `crm.*`) ◂
     ...crmTools(),
+    // POS P3.9 ▸ R1 มติ 1: สกิล sales จากทะเบียน op ของ REST POS (11 tool · kind `pos.*`) + pos_draft_po ◂
+    ...posTools(),
   ];
 }
 
@@ -2537,9 +2763,13 @@ export async function runTool(ctx: ToolCtx, name: string, args: unknown): Promis
   try {
     const crmLegacyLead =
       actor.kind === "apiKey" && name === crmApi.LEGACY_CRM_LEAD_TOOL_DEF.name ? await crmApi.crmLegacyLeadOpen(ctx.tenantId, ctx.systemId ?? null) : false;
-    const verdict = toolVerdict(actor, name, { crmLegacyLead });
+    const verdict = toolVerdict(actor, name, { crmLegacyLead, ...(ctx.access ? { access: ctx.access } : {}) }); // SEC S1.3 ◂
     if (!verdict.ok) return JSON.stringify({ error: verdict.reason });
-    return await tool.execute(ctx, args);
+    // SEC S3a.1-S2 ▸ R-Z25 (L5 M4): kanban_card_from_chat อ่านแชท (สรุป ≤ 12 ข้อความ) — ห้องต้องอยู่ในสาขาที่ผู้สั่งเห็นก่อนอ่าน ◂
+    if (name === "kanban_card_from_chat" && !(await chatConvVisible(ctx, asRecord(args).conversationId))) {
+      return JSON.stringify({ error: "ไม่พบบทสนทนานี้ในร้านนี้" });
+    }
+    return maskToolOutput(name, await tool.execute(ctx, args)); // SEC S3a.1-S2 ▸ R-Z24 ◂
   } catch (e) {
     return JSON.stringify({ error: e instanceof Error ? e.message : "เครื่องมือทำงานผิดพลาด" });
   }

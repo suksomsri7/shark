@@ -29,6 +29,10 @@ const DAY = 24 * HOUR;
 export const ACCOUNT_RATE = {
   /** เปิดหน้าสาธารณะด้วย token (`/pay/<token>` · `/r/<token>`) — ต่อ IP */
   publicToken: { limit: 60, windowMs: MIN },
+  /** SEC S3a.5 ▸ เปิดหน้าใบเสนอราคาสาธารณะ `/doc/<token>` — ต่อ IP (ถังแยกจาก /r/ · /pay/) ◂ */
+  publicDocument: { limit: 60, windowMs: MIN },
+  /** SEC S3a.5 ▸ เปิดหน้าใบเสนอราคาสาธารณะ — ต่อ token (ลิงก์หลุดไปที่สาธารณะแล้วถูกยิงรัวจากหลาย IP) · ลูกค้าจริงเปิดไม่กี่ครั้ง ◂ */
+  publicDocumentToken: { limit: 30, windowMs: MIN },
   /** กดส่งฟอร์มขอใบกำกับภาษีจากหน้าสาธารณะ — ต่อ IP */
   publicSubmit: { limit: 10, windowMs: MIN },
   /** สร้างคำขอชำระเงิน (ลิงก์+QR PromptPay) — ต่อระบบบัญชี */
@@ -53,6 +57,9 @@ function thaiMessage(kind: AccountRateKind, retryAfterSec: number): string {
         : `${retryAfterSec} วินาที`;
   switch (kind) {
     case "publicToken":
+      return `เปิดหน้านี้ถี่เกินไป — กรุณารออีก ${wait} แล้วลองใหม่`;
+    case "publicDocument":
+    case "publicDocumentToken":
       return `เปิดหน้านี้ถี่เกินไป — กรุณารออีก ${wait} แล้วลองใหม่`;
     case "publicSubmit":
       return `ส่งคำขอถี่เกินไป — กรุณารออีก ${wait} แล้วลองใหม่`;

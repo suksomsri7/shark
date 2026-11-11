@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { loadAccountSystem } from "@/lib/modules/account/guard";
+import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
 import { listLedgers } from "@/lib/modules/account/coa";
 import { generalLedger } from "@/lib/modules/account/journal-v2";
@@ -21,6 +21,7 @@ export default async function LedgerPage({
   const { id } = await params;
   const sp = await searchParams;
   const { auth, tenantId, systemId } = await loadAccountSystem(id);
+  accountPageGate(auth, "account.journal.view"); // SVC G2-F F2 ▸ ไม่มีสิทธิ์ ⇒ ไม่พบ (ไม่ใช่ 500) ◂
   assertAccountCan(auth, "account.journal.view");
 
   const base = `/app/sys/${id}/account`;

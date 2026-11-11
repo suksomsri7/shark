@@ -7,15 +7,24 @@ import { formatBaht } from "@/lib/ui/money";
 
 export default async function StockPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
+  searchParams: Promise<{ err?: string }>;
 }) {
   const { unitSlug } = await params;
+  const { err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
   const items = await listItems(auth.active.tenantId, unit.id);
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
+      {/* POS P1.1b R2 F1: การปฏิเสธจาก server action (?err= · เช่นแคตตาล็อกไม่ว่างระหว่าง backfill) — แบบเดียวกับ shop/orders */}
+      {err && (
+        <div role="alert" className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </div>
+      )}
       <PageHeader title="ของหมด และสต็อก" back={{ href: `/app/u/${unitSlug}/restaurant/menu`, label: "เมนู" }} />
 
       <form action={resetDailyStockAction.bind(null, unitSlug)}>
@@ -36,6 +45,7 @@ export default async function StockPage({
               </div>
               <div className="flex items-center gap-2">
                 <form action={setItemStockAction.bind(null, unitSlug)} className="flex items-center gap-1">
+                  <input type="hidden" name="back" value="stock" />
                   <input type="hidden" name="id" value={it.id} />
                   <input
                     name="stockQty"
@@ -48,6 +58,7 @@ export default async function StockPage({
                   <button className="btn-sm">ตั้งสต็อก</button>
                 </form>
                 <form action={setItemStockAction.bind(null, unitSlug)}>
+                  <input type="hidden" name="back" value="stock" />
                   <input type="hidden" name="id" value={it.id} />
                   <input type="hidden" name="isOutOfStock" value={it.isOutOfStock ? "false" : "true"} />
                   <button className="btn-sm">

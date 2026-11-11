@@ -1,4 +1,108 @@
-# โมดูล 3: Booking — จองคิวนัดหมายตามเวลา (Appointment Scheduling)
+# โมดูล 3 — Booking (จองคิว/นัดหมาย) · V2 as-built · scope = **unit**
+
+> **V2 as-built** (1 พ.ย. 2569 · SVC B.18 ส่วนเอกสาร) — อธิบายของที่สร้างจริง ณ `session/svc` `b3de0dce` (ใบ B.0–B.17 ของ RUN SVC · ยังไม่ deploy) · โครงสร้าง/ตัวเลข/หนี้ละเอียดอยู่ที่ `docs/sds/modules/booking.md` · แผน `ledger/SVC-MASTER-PLAN.md` §4.B · แบบ `ledger/DESIGN-BOOKING-QUEUE.md` · ภาพ `ledger/design-booking/*.png`
+> ชุด UAT: ร้านตัดผม `ledger/wo-notes/svc-uat-u1-barber.md` (U1) · ร้านนวด `ledger/wo-notes/svc-uat-u3-massage.md` (U3)
+> สเปกเดิม v1 (ก.ค. 2569) ย้ายไป "ภาคผนวก — v1 design notes" ท้ายไฟล์ · **เครื่องหมาย ✅ ในภาคผนวกถูกแก้ให้ตรงโค้ดแล้ว** (ของที่ไม่มีจริงเปลี่ยนเป็น ❌/⚠️ พร้อมเหตุผล) · เมื่อขัดกัน หมวด V2 และโค้ดชนะ
+> คู่แฝด: บัตรคิว `docs/modules/04-queue.md` — ใน V2 จองคิวใช้ `QueueTicket` เป็นบัตร P/A ของ "แถวเดียว" เอง (ไม่ใช่ handoff ไปหน่วย QUEUE)
+
+ระบบจองคิว V2 = นัดล่วงหน้า + walk-in ใน **แถวเดียว** ของสาขาบริการ (ร้านตัดผม · ร้านนวด/สปา · คลินิกซ่อนไว้) — ตัววางคิววางทั้งวันให้เอง พร้อมเหตุผล "ทำไม" · เงินไหลผ่าน POS (มัดจำ = ใบรับมัดจำ POS · จบงาน = บิลพัก POS) · ข้อความถึงลูกค้าผ่าน LINE OA ของร้าน (`notifyCustomer`) · ทุกนโยบายเป็นค่าตั้งจากทะเบียน (84 คีย์ · แม่แบบต่อประเภทร้าน) · ร้านที่ยังไม่เลือกแม่แบบทำงานแบบรุ่นแรกทุกอย่าง
+
+## 1. แม่แบบกิจการ + ค่าตั้ง (B.0 · B.11)
+- แม่แบบ 3 แบบ (`src/lib/core/settings/defs/booking.ts` `BOOKING_TEMPLATES`): **BARBER** "ตัดผม/เสริมสวย" · **SPA** "นวด/สปา" · **CLINIC** "คลินิก" (ซ่อน `hiddenUntil PHASE_CLINIC`) · ไม่มีแม่แบบชื่อ MASSAGE (ร้านนวด = SPA)
+- เลือกแม่แบบที่ จองคิว → ตั้งค่า (`/app/u/<สาขา>/booking/settings` · `applyBookingTemplate` · ถามก่อนทับ) · ป้าย "ปรับจากแม่แบบ N ข้อ" นับเฉพาะข้อที่แก้
+- ค่าตั้ง 84 คีย์ ใน 15 กลุ่ม (ทั่วไป · ผู้ให้บริการ · บริการ · ตัววางคิว · การจอง · มาสาย/ไม่มา · มัดจำ · คิว · แจ้งเตือน · ข้อความ · จอ · ตู้ · เงิน · คอร์ส · ความเป็นส่วนตัว) · ชั้นค่า UNIT/TENANT/STAFF/SERVICE/RESOURCE/DEVICE · นัดจด snapshot 11 คีย์ตอนจอง (ค่าตั้งใหม่ไม่กระทบนัดเดิม)
+- จอตั้งค่า (สร้างจากทะเบียน · ภาพ จอง 08 11 12 14): `/booking/settings` (แม่แบบ+นโยบาย) · `/booking/services` (บริการ · ใครทำได้ + ราคา/เวลาเฉพาะคน · ค่าตั้งชั้นบริการ) · `/booking/staff` (คน · % ออนไลน์ · งานสูงสุด/วัน · พักขั้นต่ำ + ส่วนทรัพยากร) · `/booking/hours` · `/booking/settings/messages` (ข้อความ 11 ชนิด · ทีวี/ตู้ · ตารางสิทธิ์) · `/booking/devices`
+- ร้านเดิม (ไม่เลือกแม่แบบ = `_fallback`): จองล่วงหน้า 14 วัน · ไม่มีขั้นต่ำ · ไม่จำกัดต่อเบอร์ · ไม่มีไม่มาอัตโนมัติ · ไม่ส่งข้อความ · มัดจำไม่เก็บออนไลน์ · ค่าคอมฯ ตามคนขาย · ไม่ลบข้อมูล · ไม่มีแถวเดียว (`FALLBACK_LEGACY`)
+
+## 2. บริการ · ผู้ให้บริการ · เวลา (B.1)
+- บริการต้นฉบับอยู่แคตตาล็อกกลาง (`InvItem` kind SERVICE · `/app/sys/<inventory>/inventory/services`) · `BookingService` = บริการที่สาขาเปิดรับจอง (ติ๊กที่ `/booking/services` · ปุ่ม "ย้ายเข้าแคตตาล็อก" สำหรับบริการรุ่นแรก)
+- ผู้ให้บริการ = ทะเบียนพนักงาน HR (`/app/sys/<hr>/hr/employees`) → ติ๊ก "รับคิวที่สาขานี้" · ช่างรุ่นแรกที่ไม่อยู่ HR กด "ขึ้นทะเบียนให้" · คำเรียกตามแม่แบบ (ช่าง/หมอนวด/แพทย์)
+- ช่าง ↔ บริการ (`BookingStaffService`): ไม่มีแถว = ทำทุกบริการ (`booking.staff.servicesMode` = ALL) · ราคา/นาทีเฉพาะคน
+- หน้าต่างเวลาต่อช่าง: กะ HR → `BookingStaffHours` → เวลาร้าน (`BookingHours` · ไม่มีแถว = 10:00–20:00) − วันหยุดพิเศษ (`BookingClosure`) − ลาที่อนุมัติใน HR · ⚠️ กะ HR ยังเป็น `[]` (`hr/index.ts#staffWindows`)
+- % เปิดจองออนไลน์ต่อช่างต่อวัน (นับเฉพาะช่อง ONLINE · พนักงานจองไม่นับ) · งานสูงสุด/วัน · พักขั้นต่ำ
+
+## 3. หาเวลาว่าง + ตัววางคิว (B.2 · B.3)
+- ตัววางคิว `planDay` (pure · `src/lib/modules/booking/planner.ts`): กติกา 5 ข้อ · ลำดับคิว (`SINGLE_LINE_BY_TIME` / `APPOINTMENT_FIRST`) · walk-in แทรกช่องว่าง · เผื่อเวลาก่อนนัดถัดไป · ขอช่างเฉพาะ · ETA "~15:25 ±10" + เหตุผล "ทำไม" ต่องาน · perf 12 ช่าง × 120 นัด + 40 walk-in p95 ~11 ms
+- หาเวลาว่าง `findSlots` + จอง `bookAppointment` (ทางจองเดียวของทุกช่องทาง · `service.ts`): horizon/lead/ช่องเวลาทุก N นาที · ร้านยืนยันก่อน (PENDING) · เพดานนัดค้างต่อเบอร์ · ถือช่องระหว่างจ่ายมัดจำ · "ใครก็ได้" = รวมทุกช่างที่ทำได้ · กันจองซ้อนด้วยล็อก (idem → เบอร์ → สาขา → ช่าง → ทรัพยากร) — ไม่มี EXCLUDE constraint
+
+## 4. แถวเดียว: เช็กอิน · walk-in · บัตร P/A · สาย/ไม่มา (B.4)
+- เช็กอิน 3 ทาง: สแกน QR บัตรนัด · ปุ่มใน LINE · ค้นเบอร์ (+ปุ่มพนักงาน "มาถึง" = เวลาตอนกด) ⇒ ARRIVED + บัตร **P###** · walk-in ⇒ `Appointment(kind WALKIN, QUEUED)` + บัตร **A###** (ตัวอักษรจาก `booking.queue.prefixes`)
+- สถานะงาน: PENDING · CONFIRMED · LATE · ARRIVED · QUEUED · IN_SERVICE · DONE · NO_SHOW · CANCELLED · บัตรเดินตามงาน
+- งานรายนาที `booking.line.tick`: เลยผ่อนผัน ⇒ LATE (ปล่อยช่องให้ walk-in · มาภายในเวลา ⇒ เข้าแถวแบบ walk-in) · เลย `noShowAfterMin` ⇒ NO_SHOW + event ครั้งเดียว · สิ้นวัน · วางคิวใหม่ (เฉพาะหน่วยแถวเดียว)
+- เลื่อน/ยกเลิกฝั่งร้าน (`rescheduleByShop` · `cancelByShop`)
+
+## 5. จอคิววันนี้ · ของฉัน (B.5)
+- `/app/u/<สาขา>/booking` (ภาพ จอง 01): ตารางช่างแนวนอน · เส้นตอนนี้ · walk-in ที่ระบบวาง (กรอบฟ้า) · แถวรอเรียงตามเวลา · ปุ่ม เรียก/เรียกซ้ำ/เริ่ม/เสร็จ/ข้าม/ย้ายช่าง/ไม่มา/ยกเลิก · "ต้องจัดการ" · กล่อง "ทำไม" · คิวมัดจำ (B.8) · รีเฟรชแบบ `AutoRefresh`
+- `/booking/mine` (มือถือช่าง): เห็นเฉพาะงานตัวเอง + แถวรวม · ไม่เห็นเบอร์เต็ม · "เสร็จ + เพิ่มของ" (B.10) · ความชอบลูกค้า (B.16)
+- `/booking/day` ปฏิทินรายวันตามคน (อ่านอย่างเดียว · ไม่มีแท็บ — แท็บ "ปฏิทินนัด" ชี้ B.14)
+- แคชเชียร์ไม่มีปุ่มเริ่ม/เสร็จ
+
+## 6. ตู้ · ทีวี · หน้าบัตร · บัตรจากมือถือ (B.6 · B.9)
+- อุปกรณ์ = แถว `QueueDisplay` ของหน่วย (token 256 บิต แสดงครั้งเดียว · เก็บ sha256) · จัดการที่ `/booking/devices` + ค่าตั้งรายเครื่อง (DEVICE)
+- ทีวี `/bq/tv/[token]` (เลขอย่างเดียว · ไม่มีชื่อ/เบอร์) · ตู้ `/bq/kiosk/[token]` (เช็กอิน · walk-in เลือกบริการ/ช่าง · rate limit) · หน้าบัตร `/bq/t/[token]` (ตำแหน่ง + เวลา · ขอเลื่อนคิวหลัง/ยกเลิก)
+- รับบัตรคิวจากมือถือ `/s/<ร้าน>/<สาขา>/remote` (#42 · `booking-remote.ts` · เวลารอสูงสุด · เพดานต่อชั่วโมง)
+- ⚠️ ไม่มี SSE · เสียงเรียก · พิมพ์บัตรความร้อน (ใบเลื่อน KT.1) — ค่าตั้ง `display.voice` `kiosk.paperTicket` มีแต่ยังไม่มีผล
+
+## 7. จองออนไลน์ + ลิงก์จัดการนัด (B.7)
+- หน้าร้าน `/s/<ร้าน>/<สาขา>` (`src/components/public-booking.tsx` · ภาพ จอง 03): 3 ขั้น บริการ → ช่าง/"ใครก็ได้" → เวลา+ข้อมูล · เปิดจากเมนู OA (ลิงก์เซ็น = รู้ตัวตน) หรือชื่อ+เบอร์ · ช่องข้อมูลเพิ่มตามค่าตั้ง (เช่น จุดที่ปวด/แรงนวด) · สรุปกติกาจาก snapshot · ไทย/อังกฤษ
+- ลิงก์จัดการนัด `/bq/m/[token]` (token hash ≥128 บิต): ดู · เลื่อน (ไม่เกิน `selfRescheduleMax`) · ยกเลิกตามกติกา · ยกเลิกช้า = BLOCK/FORFEIT · เพิ่มลงปฏิทินมือถือ `.ics` · token นัดอื่น/ร้านอื่น = คำตอบเดียวกัน
+- ⚠️ ต้องเปิดใช้พร้อม B.8 (deploy checklist)
+
+## 8. มัดจำ (B.8 · B.15)
+- PromptPay QR ยอดล็อก + แนบสลิป (ตัวตรวจสลิปกลาง) บนลิงก์จัดการนัด · หรือร้านกดยืนยันจากคิวมัดจำ (`booking.deposit.confirm`) · ไม่จ่ายใน `payWithinMin` ⇒ ปล่อยช่อง
+- ใบรับมัดจำ POS คีย์ `booking-deposit-<นัด>` (ทุกทาง = ใบเดียว) · ไม่มา ⇒ ริบตาม % หรือ "รอร้านตัดสิน" · ยกเลิกในเวลาฟรี ⇒ ค้างคืน (ร้านกดคืน) · ยกเว้นสมาชิกระดับ (ตัวตนยืนยันเท่านั้น) · ใช้มัดจำหักในบิลจากคิว
+- กลุ่ม: คิดต่อคน · จ่ายครั้งเดียวผ่านหัวกลุ่ม · ใบรับต่อคน · ริบปัดลงต่อคน · ป้ายต้นทางสลิป `[slip:id]`
+- ⚠️ ไม่มี Beam/ตัดบัตร (ใบเลื่อน P.1) · ตัวต่อตรวจสลิปอัตโนมัติรอ C.1
+
+## 9. แจ้งเตือน + ผูก LINE (B.9)
+- ข้อความ 11 ชนิด (ค่าตั้ง `booking.msg.*` · เปิด/ปิดรายชนิด · แก้ถ้อยคำได้): ยืนยันนัด · เตือนก่อนนัด · เช็กอินแล้ว · ได้บัตร · ใกล้ถึงคิว · ถึงคิว · คิวล่าช้า · ไม่มา-ชวนนัดใหม่ · ชวนกลับมา · มีคิวว่าง (waitlist B.17) · เตือนคอร์ส (มีค่าตั้งแต่ไม่ส่ง)
+- ส่งผ่าน `notifyCustomer` เท่านั้น (เวลาเงียบ · OA ต่อหน่วย · dedupe · ไม่มีเบอร์ใน log) · ซ่อนชื่อบริการได้ (`notify.hideServiceName`)
+- ผูก LINE: walk-in ด้วยรหัส `QUEUE_TICKET` · นัดด้วย `APPOINTMENT` · postback `booking.*` (เช็กอิน · เลื่อน · ไปไม่ทัน) ตัดสินจาก connection ของ webhook
+
+## 10. จบงาน → บิลจากคิว + ค่าคอมฯ (B.10)
+- เสร็จ = งาน DONE + บิลพัก POS ในธุรกรรมเดียว (บรรทัดบริการ + ของที่ทำเพิ่ม · ผู้ให้บริการต่อบรรทัด · หักมัดจำ) · เรียกขึ้นได้ทุกเครื่องในสาขา · จ่าย ⇒ แต้ม/สแตมป์/ไทม์ไลน์ตาม event เดิม + `booking.paid`
+- ค่าคอมฯ ลงตามผู้ให้บริการ (อัตรา ร้าน → บริการ → คน) ไม่ใช่คนกดขาย · คืนบิล ⇒ ค่าคอมฯ กลับรายการ
+- ร้านไม่เปิด POS ⇒ ปุ่ม "รับเงินแล้ว" · void บิลจ่ายแล้วจากฝั่งจองคิว · เลิกเปิดบิล CASH เองในหน่วยแถวเดียว (ร้านเดิมยังเป็นทางเดิม)
+
+## 11. สิทธิ์ · ความเป็นส่วนตัว (B.11 · B.16)
+- คีย์ `booking.*` 26 (ป้ายไทย) · ทุก server action ผ่านด่าน `BOOKING_ACTIONS` (fail closed) · ตารางสิทธิ์ตามบทบาท 11 แถว + ชุดสำเร็จ หัวหน้า/ผู้ให้บริการ/แคชเชียร์ (คลินิก + ผู้ช่วย)
+- ซ่อนเบอร์เลขกลางบนจอพนักงาน (เว้น `booking.customer.phoneFull`) · ลบชื่อ/เบอร์ walk-in ที่ไม่ใช่สมาชิกเมื่อครบ `privacy.walkInRetentionDays` (งานรายชั่วโมง)
+- ความชอบ/ข้อห้ามลูกค้า (B.16): ฟิลด์สมาชิกที่ร้านเลือก (`booking.privacy.jobCardFields` · ค่าเริ่ม SPA = แรงกด + แพ้สารเคมี) บนการ์ดงาน/มือถือหมอ/ปฏิทิน · เฉพาะผู้ถือ `booking.customer.notes` · ฟิลด์อ่อนไหวตามนโยบายสมาชิก · ไม่มี engine ฟิลด์ใหม่
+
+## 12. ทรัพยากร ห้อง/เตียง/อุปกรณ์ (B.13)
+- `SvcResource` 7 ชนิด (เก้าอี้ · เตียง · โซฟา · ห้อง · ห้องคู่ · อุปกรณ์ · ห้องตรวจ) · ความจุ · เวลาเก็บ · ปิดใช้ (ไม่ลบ) · ปิดซ่อมเป็นช่วง (`SvcResourceBlock`) — จัดการที่ `/booking/staff` ส่วนทรัพยากร (ภาพ จอง 12)
+- บริการประกาศชนิดที่ต้องใช้ (`booking.service.resourceKinds` ชั้นบริการ · ค่าเริ่ม `[]` = ไม่ใช้ทรัพยากร ทุกแม่แบบ) · จอง/ตัววางคิวต้องว่างทั้งคนและทรัพยากร (สูตรเดียว) · เลื่อนนัดเพราะห้องไม่ว่างได้ไม่เกิน `planner.resourceShiftMaxMin`
+- ปิดซ่อม/ลดความจุ/ปิดใช้ ทับนัดที่ถืออยู่ ⇒ ปฏิเสธ IN_USE · กล่อง "รับ walk-in ตอนนี้ได้ไหม" แยกเหตุผลคน/ห้อง (บนปฏิทิน)
+
+## 13. ปฏิทินนัด ลากย้าย (B.14)
+- `/booking/calendar` (ภาพ จอง 02): วัน/สัปดาห์ · ตามคน/ตามห้อง · ลากย้าย = `rescheduleByShop` (ตรวจชนก่อนวาง · ชน ⇒ ปฏิเสธ + คืนตำแหน่ง · สำเร็จ = event rescheduled) · คลิกช่องว่าง "จองให้ลูกค้า" = `bookAppointment` · หมอลา ⇒ คอลัมน์ปิด · การ์ดงานข้าง (ไม่มีเบอร์) + ความชอบลูกค้า
+- สิทธิ์: ลาก = `booking.appointment.reschedule` · จอง = `booking.appointment.create`
+
+## 14. คู่รัก/กลุ่ม (B.15)
+- 1 การจอง = หลายงาน (`groupId` · หัวกลุ่ม = แถวแรก) · เริ่มพร้อมกัน · ห้อง/เตียงชิ้นเดียวที่จุทั้งกลุ่ม (ไม่มี ⇒ เต็ม · ไม่แยกห้อง) · ได้ครบหรือไม่ได้เลย (atomic) · ขนาด 2–10
+- ทางเข้าที่ใช้ได้วันนี้: **บริการที่ตั้ง "จำนวนผู้ให้บริการต่องาน" (`booking.service.staffCount`) ≥ 2** — จองออนไลน์/จากปฏิทินของบริการนั้นกลายเป็นกลุ่มเอง (หมอคนแรก = ที่เลือก · ที่เหลือ = ระบบหา)
+- เช็กอินเบอร์/QR = ทั้งกลุ่ม · มาไม่พร้อมกัน ⇒ เริ่มพร้อมกันที่เวลาช้าสุด · ร้านยกเลิกรายคนได้ · เลื่อนรายคน ⇒ ปฏิเสธ (GROUP) · ลูกค้าเลื่อน/ยกเลิกผ่านลิงก์หัวกลุ่ม = ทั้งกลุ่ม · มัดจำรวม (§8)
+- ⚠️ ไม่มีหน้าจอ "จองหลายคนผสมบริการ" (`bookGroup` มีแต่ไม่มีผู้เรียกจากหน้า) · ปฏิทินลากสมาชิกกลุ่ม = ปฏิเสธ · ร้านยกเลิก/เลื่อนทั้งกลุ่มจากจอไม่ได้ (ดู SDS §10)
+
+## 15. waitlist + ไม่มาซ้ำ (B.17)
+- "แจ้งฉันถ้ามีคนยกเลิก" บนหน้าจอง (ตัวตนจากลิงก์ LINE เท่านั้น · รอได้พร้อมกัน `waitlistMaxActive`) · โหมด `booking.booking.waitlistMode` OFF/FIRST/ALL (ตัดผม ALL · สปา FIRST · คลินิก OFF · ร้านเดิม OFF) · ข้อเสนอไม่ถือช่อง — ลิงก์พาไปหน้าจองเดิม · ส่งครั้งเดียวต่อช่อง (dedupe) · งาน `booking.waitlist.tick`
+- ไม่มาซ้ำ (`booking.late.repeatNoShow` · เช่น 2 ครั้งใน 90 วัน) ⇒ บังคับมัดจำ หรือ ต้องโทรจอง (ข้อความปฏิเสธไม่บอกเหตุ) · ร้าน "ยกเว้นไม่มาครั้งนี้" (`booking.deposit.waive`)
+- ⚠️ ยังไม่มีปุ่ม "ออกจากคิวรอ" บนหน้า · FIRST ไม่ส่งต่อเมื่อคนแรกออก (หนี้)
+
+## 16. ยังไม่มี (ที่สเปก v1 เคยติ๊ก ✅ หรือแผนกล่าวถึง)
+หมวดบริการ · รูป/คำอธิบายบริการ · หลายบริการต่อ 1 นัด (ทำเพิ่มได้ตอนจบงานเท่านั้น) · `maxPerDay` ต่อบริการ · กลยุทธ์ "ใครก็ได้" LEAST_BUSY/ROUND_ROBIN (ตัววางคิวเลือกเอง) · log สถานะแยก (`AppointmentStatusLog`) · PENDING หมดอายุอัตโนมัติ · blacklist/บล็อกลูกค้า (แทนด้วยไม่มาซ้ำ B.17) · OTP ลูกค้า · SSE/realtime · รายงาน/สถิติจองคิว (`booking.report.view` = planned) · คอร์ส/แพ็กเกจ (CO.x) · นัดประจำ (recurring) · Google Calendar sync (มีแค่ .ics) · EXCLUDE constraint · นำเข้า CSV บริการ/พนักงาน
+
+## 17. หนี้ที่รู้
+ตาราง §10 ของ `docs/sds/modules/booking.md` (จาก `ledger/SVC-RUN.md` §3.2/§4 + `ledger/SVC-OWNER-QUESTIONS.md`) — ย่อ: คืนส่วนเกินมัดจำ · PB-12 · เปิดบิลใหม่หลัง void · walk-in/ปฏิทินข้ามเที่ยงคืน · ปุ่ม "มาถึง" = เวลากด · ทางเข้ากลุ่มหน้าจอ · waitlist FIRST/ปุ่มออก · กะ HR `[]` · ไม่มีรายงาน
+
+---
+
+## ภาคผนวก — v1 design notes (สเปกเดิมก่อนสร้าง · ก.ค. 2569)
+
+> สเปกเดิม (REVISED หลัง QC 2026-07-11) เก็บเฉพาะ §1–§3 ไว้เป็นเจตนา/บริบท · **หัวข้อที่เคยติ๊ก ✅ ถูกแก้ตามโค้ด `b3de0dce`** (✅ = มีจริง · ✅ (แบบต่าง) = มีแต่ต่างจากสเปก · ⚠️ = บางส่วน · ❌ = ไม่มี) พร้อมบรรทัด "as-built" ใต้หัวข้อ · ข้อความในตัวสเปกเดิมใต้บรรทัดนั้นไม่ได้แก้ — ถ้าขัด ให้เชื่อบรรทัด as-built
+> §4–§12 ของสเปกเดิมแทนที่แล้ว (เหลือตัวชี้) · ฉบับเต็มก่อนแก้: `git show b3de0dce:docs/modules/03-booking.md`
+
+### (หัวเดิม) โมดูล 3: Booking — จองคิวนัดหมายตามเวลา (Appointment Scheduling)
 
 > 🔄 REVISED หลัง QC — สอดคล้อง RESOLUTIONS.md (2026-07-11)
 > scope: **unit** (ทุกตารางมี `tenantId + unitId`) · ยึด `_CONVENTIONS.md` + `BLUEPRINT.md` + `BLUEPRINT_BUSINESS_UNITS.md`
@@ -6,10 +110,9 @@
 > คู่แฝด: โมดูล 4 (Q) = walk-in มาก่อนได้ก่อน · Booking = นัดล่วงหน้าตามเวลา — มี handoff ระหว่างกัน (ดูข้อ 8.6)
 
 ---
+### 1. ภาพรวม + ขอบเขต
 
-## 1. ภาพรวม + ขอบเขต
-
-### ทำอะไร (v1 / MVP ✅)
+#### ทำอะไร (v1 แบบเดิม — สถานะจริงต่อข้อดู §3 ด้านล่าง + หมวด V2)
 - **Service catalog**: หมวดบริการ + บริการ (ชื่อ, ระยะเวลา, ราคา, buffer ก่อน/หลัง, รูป, สถานะเปิด/ปิดรับจอง)
 - **Staff (ช่าง/หมอ/หมอนวด)**: โปรไฟล์ + skill mapping (ใครทำบริการไหนได้ + override ระยะเวลา/ราคา รายคน)
 - **ตารางเวลา**: เวลาทำงานรายสัปดาห์ต่อช่าง, พักเบรก, วันหยุดร้าน, ลารายวัน/รายชั่วโมง
@@ -23,7 +126,7 @@
 - **ชำระจบงานผ่าน POS** (`createSale` sourceModule `BOOKING`) → แต้ม/บัญชีไหลอัตโนมัติ
 - **รายงาน**: utilization ต่อช่าง, no-show rate, บริการยอดนิยม, รายได้ตามบริการ/ช่าง
 
-### ยังไม่ทำใน v1 (🔜 Phase ถัดไป)
+#### ยังไม่ทำใน v1 (🔜 Phase ถัดไป) — สถานะ ณ `b3de0dce`: มัดจำ ✅ B.8 · ทรัพยากร ✅ B.13 · หลายช่างพร้อมกัน ✅ B.15 (ผ่าน `staffCount`) · waitlist ✅ B.17 · ค่าคอมฯ ช่าง ✅ B.10 · recurring/คอร์ส/Google Calendar ยัง 🔜
 - 🔜 **มัดจำ (deposit)** — เก็บเงินล่วงหน้าตอนจองผ่าน PromptPay/gateway, คืน/ยึดตามนโยบาย (schema เผื่อ field ไว้แล้ว)
 - 🔜 **Recurring appointment** — นัดประจำทุกสัปดาห์/เดือน (คอร์สนวด 10 ครั้ง, ติดตามอาการคลินิก)
 - 🔜 **ทรัพยากรประกอบ (Resource)** — ห้อง/เตียง/เก้าอี้เป็นคอขวดที่สอง (v1 ถือว่าช่าง 1 คน = 1 slot)
@@ -33,7 +136,7 @@
 
 ---
 
-## 2. Persona & User Stories
+### 2. Persona & User Stories
 
 | Persona | บทบาทในโมดูลนี้ |
 |---|---|
@@ -54,9 +157,10 @@ User stories หลัก:
 
 ---
 
-## 3. ฟังก์ชันทั้งหมด
+### 3. ฟังก์ชันทั้งหมด
 
-### 3.1 Service Catalog ✅
+#### 3.1 Service Catalog ⚠️ บางส่วน
+> as-built: บริการต้นฉบับ = แคตตาล็อกกลาง `InvItem` + `BookingService` (นาที · ราคา · มัดจำ · เวลาเก็บ `bufferMin` ตัวเดียว · `bookable`) · ❌ ไม่มี: หมวดบริการ `BookingCategory` · ชื่อ EN/คำอธิบาย/รูป · `priceNote` · `bufferBefore/After` แยก · `maxPerDay` · หลายบริการต่อนัด (ของทำเพิ่มใส่ตอนจบงาน B.10)
 - หมวดบริการ (`BookingCategory`): ชื่อ TH/EN, ลำดับ, ซ่อน/แสดง
 - บริการ (`BookingService`):
   - ชื่อ TH/EN, คำอธิบาย, รูป (≤5), หมวด
@@ -68,19 +172,22 @@ User stories หลัก:
   - สถานะ ACTIVE/HIDDEN/ARCHIVED (soft delete)
 - นัด 1 ครั้งเลือกได้**หลายบริการ** (ตัด+สระ+ทำสี) → duration รวม, ราคารวม, ช่างคนเดียวทำต่อเนื่อง (หลายช่างต่อนัด = 🔜)
 
-### 3.2 Staff + Skill Mapping ✅
+#### 3.2 Staff + Skill Mapping ✅ (แบบต่าง)
+> as-built: `BookingStaff` (ชื่อ · `employeeId` ผูก HR · ไม่มีรูป/bio/สี/`visibleOnline`) · `BookingStaffService` มีแล้ว (B.0/B.1) แต่ **ไม่มีแถว = ทำทุกบริการ** เมื่อ `booking.staff.servicesMode` = ALL (คลินิก = ASSIGNED)
 - `BookingStaff`: ชื่อเล่นที่ลูกค้าเห็น, รูป, bio สั้น, สี label บนปฏิทิน, `userId?` (ผูก login ถ้าช่างมีบัญชี — ไม่บังคับ, ช่างจำนวนมากไม่ล็อกอิน), `visibleOnline` (ให้ลูกค้าเลือกจากหน้าเว็บได้ไหม), ลำดับแสดงผล
 - `BookingStaffService` (skill mapping): ช่าง×บริการ — ใครทำอะไรได้ + override รายคน:
   - `durationMinOverride?` (ช่างอาวุโสตัดเร็วกว่า), `priceSatangOverride?` (ช่างระดับ director แพงกว่า)
 - ช่างที่ไม่มี mapping กับบริการ = ไม่โผล่เป็นตัวเลือกและ slot engine ไม่จัดให้
 
-### 3.3 ตารางเวลา ✅
+#### 3.3 ตารางเวลา ⚠️ บางส่วน
+> as-built: `BookingHours` (ร้านรายสัปดาห์) · `BookingStaffHours` · `BookingClosure` (วันหยุด/เวลาพิเศษรายวัน) · ลาจาก HR (ใบลาอนุมัติ) · ❌ ไม่มี `BookingStaffSchedule`/`BookingTimeOff` · ❌ กะ HR ยัง `[]` (`staffWindows`)
 - **เวลาทำงานรายสัปดาห์** (`BookingStaffSchedule`): ต่อช่าง ต่อวันในสัปดาห์ (0–6) หลายช่วงได้ (เช้า 09:00–13:00 + บ่าย 14:00–18:00 → 2 แถว) — ช่วง 13:00–14:00 คือพักเที่ยงโดยปริยาย
 - **วันหยุด/ลา/บล็อกเวลา** (`BookingTimeOff`): ผูกช่างคนเดียว (`staffId`) หรือทั้งร้าน (`staffId = null` เช่น หยุดสงกรานต์) — ระบุช่วง `startAt–endAt` ละเอียดถึงนาที (ลาครึ่งวัน/ออกไปธุระ 2 ชม. ได้), เหตุผล, ใครบันทึก
 - **เวลาเปิดร้าน**: อ่านจาก `unit.settings.openHours` (ชั้น BusinessUnit) — slot ของช่างถูก intersect กับเวลาเปิดร้านเสมอ
 - ตารางช่างแก้ล่วงหน้าได้ (effective ทันที) — นัดเดิมที่ตกนอกตารางใหม่**ไม่ถูกยกเลิกอัตโนมัติ** แต่ขึ้น warning ในปฏิทินให้ front desk จัดการ
 
-### 3.4 Slot Engine ✅ (หัวใจของโมดูล)
+#### 3.4 Slot Engine ✅ (แบบต่าง · หัวใจของโมดูล)
+> as-built: `findSlots`/`bookAppointment` (`service.ts`) + ตัววางคิว `planDay` (B.2/B.3) · กันจองซ้อนด้วยล็อก (idem → เบอร์ → สาขา → `BookingStaff FOR UPDATE` → `SvcResource`) + CAS · ❌ ไม่มี EXCLUDE constraint `no_staff_overlap` · ❌ ไม่มี `anyStaffStrategy` (LEAST_BUSY/ROUND_ROBIN — ตัววางคิวเลือก) · ❌ ไม่มี `maxPerDay` · ❌ 409 พร้อม slot ใกล้เคียง
 **Input:** `unitId`, รายการ `serviceIds[]`, `staffId | "any"`, `date`
 **Output:** รายการเวลาเริ่มที่จองได้ (slot) ต่อช่าง
 
@@ -111,13 +218,15 @@ User stories หลัก:
   (Prisma ไม่รองรับ EXCLUDE → ใส่ผ่าน migration SQL, กันได้แม้โค้ดชั้น 1 มีบั๊ก)
 - ทุก error 409 ตอบพร้อม slot ใกล้เคียง 3 ตัวถัดไป (UX: "เวลานี้เพิ่งถูกจอง ลองเวลานี้ไหม")
 
-### 3.5 ช่องทางจอง ✅
+#### 3.5 ช่องทางจอง ✅ (แบบต่าง)
+> as-built: หน้าร้าน `/s/<ร้าน>/<สาขา>` 3 ขั้น (B.7) · ตัวตนจากลิงก์ LINE ที่เซ็น หรือชื่อ+เบอร์ (❌ ไม่มี OTP · ❌ ไม่ผูกสมาชิกจากเบอร์ที่ไม่ยืนยัน) · ลิงก์จัดการนัด `/bq/m/[token]` · พนักงาน/ปฏิทิน (B.14) · walk-in/ตู้/มือถือ (B.4/B.6/B.9) · ❌ ไม่มี force-book ทับ buffer
 - **Storefront** (`/s/[tenantSlug]/[unitSlug]/booking` หรือ custom domain): wizard 4 ขั้น — บริการ (เลือกได้หลายรายการ) → ช่าง (การ์ดช่าง + "ใครก็ได้") → วัน+เวลา (ปฏิทิน + slot) → ข้อมูลลูกค้า+ยืนยัน
   - ลูกค้า login (OTP ผ่าน `member.sendOtp/verifyOtp` channel phone/email — contract 2.6) หรือ **guest** (ชื่อ+เบอร์+email) — guest ถูก match/สร้างผ่าน `member.findOrCreate({tenantId, phone (normalize E.164), name, source:'BOOKING'})` (D6) ให้แต้มย้อนหลังได้เมื่อสมัคร
   - หลังจอง: หน้า confirmation + ลิงก์จัดการนัด (`manageToken` — ดู/เลื่อน/ยกเลิกได้โดยไม่ต้อง login)
 - **หน้าร้าน/โทร** (dashboard): quick-create จากปฏิทิน (คลิกช่องว่าง → ฟอร์มสั้น) หรือปุ่ม "จองใหม่" — front desk ข้ามกฎ `minLeadTime`/`onlineBookable` ได้ (สิทธิ์ walk-in), และ **force-book** ทับ buffer ได้ถ้ามีสิทธิ์ MANAGER ขึ้นไป (มี audit log)
 
-### 3.6 วงจรสถานะนัด ✅
+#### 3.6 วงจรสถานะนัด ✅ (แบบต่าง)
+> as-built: 9 สถานะ (เดิม 6 + QUEUED · IN_SERVICE · LATE) · ไม่มาอัตโนมัติ `booking.late.noShowAfterMin` (B.4) · ❌ ไม่มี `pendingTtlHours` (PENDING หมดอายุ) · ❌ ไม่มี `AppointmentStatusLog` (ใช้ outbox event + AuditLog) · ❌ ไม่มีแก้สถานะย้อน
 ```
 PENDING ──confirm──► CONFIRMED ──checkin──► ARRIVED ──start──► IN_SERVICE ──finish──► DONE
    │                    │                      │
@@ -130,7 +239,8 @@ PENDING ──confirm──► CONFIRMED ──checkin──► ARRIVED ──st
 - ทุกการเปลี่ยนสถานะเขียน `AppointmentStatusLog` (ใคร/เมื่อไร/จากอะไรเป็นอะไร/เหตุผล)
 - แก้สถานะย้อน (เช่น NO_SHOW → ARRIVED ลูกค้ามาช้า): ทำได้ภายใน business date เดียวกัน สิทธิ์ MANAGER+, ลง log
 
-### 3.7 เลื่อน / ยกเลิก + นโยบาย ✅
+#### 3.7 เลื่อน / ยกเลิก + นโยบาย ✅ (แบบต่าง)
+> as-built: นโยบาย = ค่าตั้ง `booking.late.*` + snapshot ต่อนัด (❌ ไม่มีตาราง `BookingPolicy`) · ลูกค้าเลื่อนเองไม่เกิน `selfRescheduleMax` · เลื่อน/ยกเลิกฟรีก่อน `freeChangeBeforeMin` · ยกเลิกช้า BLOCK/FORFEIT (B.7/B.8) · ร้านเลื่อน/ยกเลิก (B.4/B.14)
 นโยบายเก็บใน `BookingPolicy` (1 แถวต่อ unit):
 - `cancelMinHours` (ลูกค้ายกเลิกเองล่วงหน้าอย่างน้อย X ชม., default 2) · `rescheduleMinHours` (default 2) · `maxRescheduleCount` (default 2)
 - เลื่อน = **นัดเดิม** เปลี่ยน `staffId/startAt` ผ่าน slot engine + lock เดิม (ไม่สร้างนัดใหม่ — ประวัติ/แต้ม/ลิงก์เดิมอยู่ครบ), `rescheduleCount++`, ลง StatusLog `RESCHEDULED` (สถานะหลักไม่เปลี่ยน)
@@ -138,594 +248,73 @@ PENDING ──confirm──► CONFIRMED ──checkin──► ARRIVED ──st
 - ยกเลิกโดยร้าน (ช่างป่วย): เลือกนัดหลายรายการ → cancel พร้อม notify ลูกค้า + เสนอ slot ใหม่ในข้อความ
 - 🔜 เมื่อมี deposit: นโยบายยึด/คืนมัดจำผูกกับ `cancelMinHours`
 
-### 3.8 มัดจำ 🔜
+#### 3.8 มัดจำ ✅ B.8 (แบบต่าง)
+> as-built: QR พร้อมเพย์ + แนบสลิป / ร้านกดยืนยัน · ใบรับมัดจำ POS คีย์ `booking-deposit-<id>` · ถือช่อง `payWithinMin` · ริบ/คืนตาม snapshot — ฟิลด์ `depositStatus` ด้านล่างไม่มีจริง (สถานะคิดจากข้อมูล 12 แบบ · `deposit.ts`)
 - field เผื่อไว้แล้วใน schema: `Appointment.depositSatang`, `depositStatus (NONE|PENDING|PAID|REFUNDED|FORFEITED)`, `BookingService.depositSatang?`
 - flow อนาคต: จองออนไลน์ → สร้าง PromptPay QR ผ่าน payment gateway → จ่ายใน 15 นาที ไม่จ่าย = auto-cancel → ตอนจบงาน deposit หักจากบิล POS (`payMethods: VOUCHER-like`)
 - v1: ทุกนัด `depositStatus = NONE`, UI ไม่แสดงส่วนนี้
 
-### 3.9 Recurring Appointment 🔜
+#### 3.9 Recurring Appointment 🔜 (ยังไม่มี · ไม่มี `seriesId`/`BookingSeries`)
 - field เผื่อ: `Appointment.seriesId?` → model `BookingSeries` (RRULE-lite: ทุก N สัปดาห์ × M ครั้ง)
 - สร้างนัดลูกล่วงหน้าเป็นชุด ผ่าน slot engine ทีละนัด — นัดที่ชนให้ผู้สร้างเลือก slot อื่นเป็นรายตัว
 - v1: ไม่มี UI, `seriesId` เป็น null เสมอ
 
-### 3.10 เตือนก่อนถึงนัด (notify contract) ✅
+#### 3.10 เตือนก่อนถึงนัด ✅ B.9 (แบบต่าง)
+> as-built: `booking.notify.reminderOffsetsMin` + งาน `booking.notify.tick` ทุก 1 นาที · ส่งผ่าน `notifyCustomer` (LINE OA ของร้าน · dedupeKey · เวลาเงียบ) · ❌ ไม่มี `AppointmentReminder` · ❌ ไม่มี email/SMS
 - ตั้งค่าใน `BookingPolicy.reminderOffsetsMin Json` (default `[1440, 120]` = 24 ชม. + 2 ชม.)
 - Cron ทุก 5 นาที: หานัด `CONFIRMED` ที่ `startAt - offset` ตกใน window และยังไม่เคยส่ง (กันซ้ำด้วย `AppointmentReminder @@unique([appointmentId, offsetMin])`) → ยิง `notify({ channel: EMAIL|LINE, template: 'booking.reminder', data: {ชื่อร้าน, บริการ, ช่าง, เวลา, ลิงก์จัดการนัด} })`
 - ส่งทันทีเมื่อ: จองสำเร็จ (`booking.confirmed`), ถูกยืนยันจาก PENDING, เลื่อน (`booking.rescheduled`), ยกเลิก (`booking.cancelled`)
 - ช่องทางตามที่ลูกค้ามี: memberId → ตามช่องที่ผูก / guest → email+SMS(อนาคต) ที่กรอก
 
-### 3.11 No-show tracking + Blacklist ✅
+#### 3.11 No-show tracking + Blacklist ❌ (แทนด้วย "ไม่มาซ้ำ" B.17)
+> as-built: ❌ ไม่มี `BookingBlock`/blacklist/badge · ✅ แทนด้วย `booking.late.repeatNoShow` (นับตามตัวตนยืนยัน/คีย์เบอร์ ⇒ บังคับมัดจำ หรือ ต้องโทรจอง · ร้านยกเว้นรายนัด)
 - ทุกนัด `NO_SHOW` นับเข้าสถิติของ `memberId` (guest นับด้วยเบอร์โทร normalize)
 - `BookingPolicy`: `noShowBlacklistThreshold` (default 3 ครั้ง) ใน `noShowWindowDays` (default 90 วัน) → เกิน = สร้าง `BookingBlock` อัตโนมัติ (SYSTEM)
 - ผลของ block: จอง**ออนไลน์**ไม่ได้ (ขึ้นข้อความสุภาพ "กรุณาติดต่อร้านโดยตรง") — หน้าร้านจองให้ได้เสมอ (ร้านตัดสินใจเอง), front desk เห็น badge "no-show X ครั้ง" ตอนสร้างนัด
 - ปลด block ได้ (MANAGER+, ลง audit log), block มือก็ได้พร้อมเหตุผล
 - NO_SHOW ที่ถูกแก้กลับ (ลูกค้ามาช้า) → ลบออกจากสถิติอัตโนมัติ
 
-### 3.12 ปฏิทินร้าน ✅
+#### 3.12 ปฏิทินร้าน ✅ B.14 (แบบต่าง)
+> as-built: `/booking/calendar` วัน/สัปดาห์ · ตามคน/ตามห้อง · ลากย้าย + คลิกช่องว่างจอง · ❌ ไม่มี SSE `booking.changed` (รีเฟรชตามหน้า) · ❌ ไม่มี swipe มือถือ
 - **Day view** (default): คอลัมน์ = ช่าง, แถว = เวลา (กริดตาม granularity), บล็อกนัดโชว์ ชื่อลูกค้า+บริการ+สถานะสี, บล็อกเทา = พัก/ลา/นอกตาราง, เส้นแดง = เวลาปัจจุบัน
 - **Week view**: ต่อช่างคนเดียว (เลือกช่าง) 7 วัน
 - คลิกช่องว่าง = quick-create · คลิกนัด = drawer รายละเอียด (เปลี่ยนสถานะ, เลื่อน, ยกเลิก, ไป POS)
 - refresh อัตโนมัติ (SSE `booking.changed` ต่อ unit ต่อวัน) — สองเครื่องหน้าร้านเห็นตรงกัน
 - มือถือ: day view แนวตั้งทีละช่าง, swipe เปลี่ยนช่าง/วัน
 
-### 3.13 ชำระจบงานผ่าน POS ✅
+#### 3.13 ชำระจบงานผ่าน POS ✅ B.10 (แบบต่าง)
+> as-built: จบงาน = บิลพัก POS ("บิลจากคิว" · ไม่ใช่ปุ่มเปิด POS) · จ่าย ⇒ `booking.paid` · ร้านไม่เปิด POS ⇒ "รับเงินแล้ว" · ❌ ไม่มี `AppointmentItem` · ❌ ไม่มีรายงาน "DONE ยังไม่มีบิล"
 - ปุ่ม "เก็บเงิน" บนนัดสถานะ `IN_SERVICE/DONE` → เปิด POS พร้อม lines จาก AppointmentItem (แก้ราคา/เพิ่มรายการขายหน้าร้านได้) → `createSale` (ดูข้อ 8.1)
 - จ่ายสำเร็จ → นัดบันทึก `saleId` + ถ้ายังไม่ DONE ให้เปลี่ยนเป็น DONE อัตโนมัติ
 - นัดที่ DONE โดยไม่เก็บเงินผ่าน POS ได้ (เคสเคลียร์บิลรวมท้ายเดือน) — รายงานแยก "DONE ยังไม่มีบิล"
 
-### 3.14 รายงาน ✅ — ดูข้อ 10
+#### 3.14 รายงาน ❌ — ยังไม่มีหน้ารายงานจองคิว (`booking.report.view` = planned · ใบเลื่อน RP.x)
 
 ---
 
-## 4. Data Model (Prisma)
+### 4. Data Model — แทนที่แล้ว
+โครงข้อมูลที่สร้างจริง (10 model ใน `prisma/schema/booking.prisma` + คอลัมน์ POS/บัตรคิว) อยู่ที่ `docs/sds/modules/booking.md` §2 · ร่าง Prisma ของสเปก v1 (`BookingCategory` · `AppointmentItem` · `AppointmentStatusLog` · `BookingPolicy` · `BookingBlock` · `BookingTimeOff` · `AppointmentReminder` · `DepositStatus` · `BookingSeries`) **ไม่มีในโค้ด** — อ่านร่างได้ที่ `git show b3de0dce:docs/modules/03-booking.md`
 
-> ทุก model: `tenantId + unitId`, เงิน Int สตางค์, เวลา UTC (`DateTime`), id cuid, มี `createdAt/updatedAt`
-> ชื่อ model นำหน้า `Booking` กันชนข้ามโมดูล (ยกเว้น `Appointment*` ซึ่งเป็นเอกลักษณ์ของโมดูลนี้)
+### 5. API Endpoints — แทนที่แล้ว
+ใช้ server action (`src/lib/actions/booking*.ts` · ด่าน `BOOKING_ACTIONS`) + สาธารณะ `POST /api/store/[tenantSlug]/[unitSlug]/book` · `GET .../slots` · action สาธารณะใต้ `src/app/(store)/bq/*` — ไม่มี REST `/api/u/...` ตามสเปก v1 · ไม่มี REST v1 ของจองคิว (ใบเลื่อน API.x)
 
-```prisma
-// ---------- Catalog ----------
+### 6. UI Screens — แทนที่แล้ว
+หน้าที่สร้างจริง = หมวด V2 §1–§15 (`/app/u/[unitSlug]/booking/*` · `/s/<ร้าน>/<สาขา>` · `/bq/*`) ตามภาพ `ledger/design-booking/` · ❌ ไม่มี `/booking/appointments` · `/booking/timeoff` · `/booking/blocks` · `/booking/reports` · `/s/.../booking/manage/[token]`
 
-enum BookingServiceStatus { ACTIVE HIDDEN ARCHIVED }
+### 7. Business Flows — แทนที่แล้ว
+flow จริง: ชุด UAT U1 (ร้านตัดผม) และ U3 (ร้านนวด) §2 · cron ทุก 5 นาทีของสเปก v1 ไม่มี — งานรายนาที 5 ตัว (`docs/sds/modules/booking.md` §3)
 
-model BookingCategory {
-  id        String   @id @default(cuid())
-  tenantId  String
-  unitId    String
-  name      String            // TH default
-  nameEn    String?
-  sortOrder Int      @default(0)
-  status    BookingServiceStatus @default(ACTIVE)
-  services  BookingService[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+### 8. Integration — แทนที่แล้ว
+POS: มัดจำ (`moduleTakeDeposit` …) + บิลจากคิว (`serviceBills.openServiceBill`) · สมาชิก/CRM ผ่าน outbox `booking.completed`/`booking.no_show` · แชท/LINE ผ่าน `notifyCustomer` + postback · HR ลา/กะ · ❌ ไม่มี handoff ไปหน่วย QUEUE ตอน ARRIVED (แถวเดียวออกบัตร P ของตัวเอง) — รายละเอียด SDS §3 §8
 
-  @@unique([unitId, name])
-  @@index([tenantId])
-  @@index([unitId, status])
-}
+### 9. Permissions — แทนที่แล้ว
+คีย์ของสเปก v1 (`booking.read` · `booking.appointment.update` · `.force` · `.checkout` · `booking.catalog.manage` · `booking.staff.manage` · `booking.schedule.manage` · `booking.policy.manage` · `booking.report.read`) **ไม่มีในโค้ด** — คีย์จริง 26 ตัว ดูหมวด V2 §11 + SDS §5
 
-model BookingService {
-  id              String   @id @default(cuid())
-  tenantId        String
-  unitId          String
-  categoryId      String?
-  category        BookingCategory? @relation(fields: [categoryId], references: [id])
-  name            String
-  nameEn          String?
-  description     String?
-  images          Json     @default("[]")   // [url]
-  durationMin     Int                        // เวลาให้บริการจริง
-  bufferBeforeMin Int      @default(0)
-  bufferAfterMin  Int      @default(0)
-  priceSatang     Int                        // เงินสตางค์
-  priceNote       String?                    // "เริ่มต้น"
-  depositSatang   Int?                       // 🔜 มัดจำ
-  onlineBookable  Boolean  @default(true)
-  maxPerDay       Int?                       // จำกัดคิว/วัน ทั้งร้าน
-  sortOrder       Int      @default(0)
-  status          BookingServiceStatus @default(ACTIVE)
-  staffLinks      BookingStaffService[]
-  items           AppointmentItem[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+### 10. Reports & Metrics — ยังไม่มี
+ไม่มีรายงานจองคิว (utilization · no-show rate · บริการยอดนิยม · cancellation · KPI การ์ด) — ใบเลื่อน RP.x
 
-  @@unique([unitId, name])
-  @@index([tenantId])
-  @@index([unitId, status, sortOrder])
-}
+### 11. Edge Cases & Rules — แทนที่แล้ว
+กติกาจริง (ลำดับล็อก · snapshot · X1/X5/X7/X8 · ข้ามเที่ยงคืน = หนี้) อยู่ในหัวไฟล์โค้ดแต่ละไฟล์ + SDS §7 · ข้อ 1 (EXCLUDE) · 9 (`maxPerDay`) · 11 (หลายบริการต่อนัด) · 12 (SSE) ของสเปก v1 ไม่มีจริง
 
-// ---------- Staff & Schedule ----------
-
-enum BookingStaffStatus { ACTIVE INACTIVE ARCHIVED }
-
-model BookingStaff {
-  id            String   @id @default(cuid())
-  tenantId      String
-  unitId        String
-  userId        String?             // ผูก login ถ้าช่างมีบัญชี (optional)
-  displayName   String              // ชื่อที่ลูกค้าเห็น เช่น "ช่างเมย์"
-  bio           String?
-  imageUrl      String?
-  color         String   @default("#111111") // สี label บนปฏิทิน (B&W + เทา)
-  visibleOnline Boolean  @default(true)
-  sortOrder     Int      @default(0)
-  status        BookingStaffStatus @default(ACTIVE)
-  services      BookingStaffService[]
-  schedules     BookingStaffSchedule[]
-  timeOffs      BookingTimeOff[]
-  appointments  Appointment[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@unique([unitId, displayName])
-  @@index([tenantId])
-  @@index([unitId, status])
-}
-
-model BookingStaffService {          // skill mapping + override รายคน
-  id                  String  @id @default(cuid())
-  tenantId            String
-  unitId              String
-  staffId             String
-  staff               BookingStaff   @relation(fields: [staffId], references: [id])
-  serviceId           String
-  service             BookingService @relation(fields: [serviceId], references: [id])
-  durationMinOverride Int?
-  priceSatangOverride Int?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  @@unique([staffId, serviceId])
-  @@index([tenantId])
-  @@index([unitId, serviceId])
-}
-
-model BookingStaffSchedule {         // เวลาทำงานรายสัปดาห์ (หลายช่วง/วันได้)
-  id        String  @id @default(cuid())
-  tenantId  String
-  unitId    String
-  staffId   String
-  staff     BookingStaff @relation(fields: [staffId], references: [id])
-  dayOfWeek Int              // 0=อาทิตย์ … 6=เสาร์ (ตาม timezone ของ unit)
-  startTime String           // "09:00" เวลาท้องถิ่นร้าน (HH:mm)
-  endTime   String           // "13:00"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([tenantId])
-  @@index([unitId, staffId, dayOfWeek])
-}
-
-enum BookingTimeOffType { LEAVE SICK HOLIDAY BREAK OTHER }
-
-model BookingTimeOff {               // ลา/หยุด/บล็อกเวลา — staffId null = ทั้งร้าน
-  id        String   @id @default(cuid())
-  tenantId  String
-  unitId    String
-  staffId   String?
-  staff     BookingStaff? @relation(fields: [staffId], references: [id])
-  type      BookingTimeOffType @default(LEAVE)
-  startAt   DateTime          // UTC
-  endAt     DateTime
-  reason    String?
-  createdBy String            // userId ผู้บันทึก
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([tenantId])
-  @@index([unitId, staffId, startAt])
-  @@index([unitId, startAt, endAt])
-}
-
-// ---------- Policy ----------
-
-model BookingPolicy {                // 1 แถว / unit
-  id                       String  @id @default(cuid())
-  tenantId                 String
-  unitId                   String  @unique
-  slotGranularityMin       Int     @default(30)
-  minLeadTimeMin           Int     @default(60)
-  maxAdvanceDays           Int     @default(60)
-  autoConfirm              Boolean @default(true)
-  pendingTtlHours          Int     @default(24)
-  cancelMinHours           Int     @default(2)
-  rescheduleMinHours       Int     @default(2)
-  maxRescheduleCount       Int     @default(2)
-  noShowGraceMin           Int     @default(30)
-  autoNoShow               Boolean @default(true)
-  noShowBlacklistThreshold Int     @default(3)
-  noShowWindowDays         Int     @default(90)
-  anyStaffStrategy         String  @default("LEAST_BUSY") // LEAST_BUSY|ROUND_ROBIN|FIRST_AVAILABLE
-  reminderOffsetsMin       Json    @default("[1440,120]")
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
-
-  @@index([tenantId])
-}
-
-// ---------- Appointment ----------
-
-enum AppointmentStatus { PENDING CONFIRMED ARRIVED IN_SERVICE DONE NO_SHOW CANCELLED }
-enum AppointmentSource  { ONLINE FRONT_DESK PHONE WALK_IN }
-enum CancelledBy        { CUSTOMER STAFF SYSTEM }
-enum DepositStatus      { NONE PENDING PAID REFUNDED FORFEITED }   // 🔜
-
-model Appointment {
-  id            String   @id @default(cuid())
-  tenantId      String
-  unitId        String
-  code          String                   // เลขนัดอ่านง่าย เช่น BK-20260711-0042
-  staffId       String
-  staff         BookingStaff @relation(fields: [staffId], references: [id])
-  memberId      String?                  // CustomerProfile (tenant-level) — contract 2.6
-  guestName     String?                  // snapshot เฉพาะ guest
-  guestPhone    String?                  // normalize E.164
-  guestEmail    String?
-  startAt       DateTime                 // เวลานัดที่ลูกค้าเห็น (UTC)
-  endAt         DateTime                 // startAt + Σduration
-  blockStartAt  DateTime                 // startAt - bufferBefore (ใช้กันชน)
-  blockEndAt    DateTime                 // endAt + bufferAfter
-  status        AppointmentStatus @default(CONFIRMED)
-  source        AppointmentSource @default(ONLINE)
-  note          String?                  // โน้ตร้าน (ลูกค้าไม่เห็น)
-  customerNote  String?                  // ลูกค้าฝากถึงร้าน
-  totalSatang   Int                      // ราคารวม snapshot ตอนจอง
-  depositSatang Int      @default(0)     // 🔜
-  depositStatus DepositStatus @default(NONE) // 🔜
-  seriesId      String?                  // 🔜 recurring
-  rescheduleCount Int    @default(0)
-  manageToken   String   @unique @default(cuid()) // ลิงก์จัดการนัดของลูกค้า
-  saleId        String?                  // PosSale.id จาก POS หลังเก็บเงิน (D8)
-  cancelledBy   CancelledBy?
-  cancelReason  String?
-  noShowAt      DateTime?
-  arrivedAt     DateTime?
-  startedAt     DateTime?                // เข้า IN_SERVICE
-  finishedAt    DateTime?                // DONE
-  items         AppointmentItem[]
-  statusLogs    AppointmentStatusLog[]
-  reminders     AppointmentReminder[]
-  createdBy     String?                  // userId ของ staff ที่คีย์ (null = ลูกค้าจองเอง)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@unique([unitId, code])
-  @@index([tenantId])
-  @@index([unitId, startAt])
-  @@index([unitId, staffId, blockStartAt, blockEndAt])   // slot overlap check
-  @@index([unitId, status, startAt])                      // cron no-show / reminder
-  @@index([memberId])
-}
-// + raw SQL migration: EXCLUDE USING gist (staffId, tstzrange(blockStartAt, blockEndAt))
-//   WHERE status IN ('PENDING','CONFIRMED','ARRIVED','IN_SERVICE')  — ดูข้อ 3.4
-
-model AppointmentItem {              // นัด 1 ครั้ง หลายบริการ — snapshot ราคา/เวลา
-  id           String  @id @default(cuid())
-  tenantId     String
-  unitId       String
-  appointmentId String
-  appointment  Appointment    @relation(fields: [appointmentId], references: [id])
-  serviceId    String
-  service      BookingService @relation(fields: [serviceId], references: [id])
-  nameSnapshot String                 // freeze ชื่อ ณ วันจอง
-  durationMin  Int                    // หลัง apply override ของช่าง
-  priceSatang  Int                    // หลัง apply override
-  sortOrder    Int     @default(0)
-  createdAt    DateTime @default(now())
-
-  @@index([tenantId])
-  @@index([appointmentId])
-  @@index([unitId, serviceId])       // รายงานบริการยอดนิยม
-}
-
-model AppointmentStatusLog {
-  id            String   @id @default(cuid())
-  tenantId      String
-  unitId        String
-  appointmentId String
-  appointment   Appointment @relation(fields: [appointmentId], references: [id])
-  fromStatus    String?
-  toStatus      String            // รวม event พิเศษ: "RESCHEDULED"
-  detail        Json?             // เช่น { oldStartAt, newStartAt, oldStaffId }
-  actorType     String            // CUSTOMER | STAFF | SYSTEM
-  actorId       String?           // userId / memberId
-  createdAt     DateTime @default(now())
-
-  @@index([tenantId])
-  @@index([appointmentId, createdAt])
-}
-
-model AppointmentReminder {         // กันส่งเตือนซ้ำ
-  id            String   @id @default(cuid())
-  tenantId      String
-  unitId        String
-  appointmentId String
-  appointment   Appointment @relation(fields: [appointmentId], references: [id])
-  offsetMin     Int
-  sentAt        DateTime @default(now())
-
-  @@unique([appointmentId, offsetMin])
-  @@index([tenantId])
-}
-
-// ---------- No-show / Blacklist ----------
-
-model BookingBlock {                 // บล็อกจองออนไลน์ (auto จาก no-show หรือมือ)
-  id        String   @id @default(cuid())
-  tenantId  String
-  unitId    String
-  memberId  String?                 // อย่างใดอย่างหนึ่ง memberId หรือ phone
-  phone     String?                 // guest — E.164
-  reason    String                  // "no-show 3 ครั้งใน 90 วัน" / manual
-  createdByType String              // SYSTEM | STAFF
-  createdBy String?                 // userId ถ้า manual
-  liftedAt  DateTime?               // ปลดบล็อกเมื่อไร (null = ยัง block)
-  liftedBy  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([tenantId])
-  @@index([unitId, memberId, liftedAt])
-  @@index([unitId, phone, liftedAt])
-}
-
-// 🔜 model BookingSeries { id, tenantId, unitId, rule Json, count Int, ... } — recurring
-```
-
-หมายเหตุ schema:
-- `blockStartAt/blockEndAt` = denormalize ช่วงกินเวลาช่างจริง (รวม buffer) — ทุกการตรวจ overlap ใช้คู่นี้ ไม่คำนวณสดจาก items (เร็ว + ใช้กับ EXCLUDE constraint ได้)
-- `code` gen ต่อวันต่อ unit: `BK-YYYYMMDD-NNNN` (sequence ใน tx เดียวกับ insert)
-- ไม่มี hard delete: บริการ/ช่าง = ARCHIVED (นัดเก่ายัง join ได้), นัด = CANCELLED
-
----
-
-## 5. API Endpoints
-
-> ฐาน dashboard: `/api/u/[unitId]/booking/...` — middleware ตรวจ `unitId ∈ tenant` + `can(user, {tenantId, unitId, module:'BOOKING', action})` ก่อนเข้า handler เสมอ
-> ฐาน storefront (public): `/api/store/[tenantSlug]/[unitSlug]/booking/...` — ไม่ต้อง auth (หรือ session ลูกค้า), rate-limited
-
-### Catalog (dashboard)
-| Method | Path | Body หลัก | สิทธิ์ (action) |
-|---|---|---|---|
-| GET | `/api/u/:unitId/booking/categories` | — | `booking.read` |
-| POST | `/api/u/:unitId/booking/categories` | `{name, nameEn?, sortOrder}` | `booking.catalog.manage` |
-| PATCH/DELETE | `/api/u/:unitId/booking/categories/:id` | partial / archive | `booking.catalog.manage` |
-| GET | `/api/u/:unitId/booking/services` | `?status=&categoryId=` | `booking.read` |
-| POST | `/api/u/:unitId/booking/services` | `{name, durationMin, priceSatang, bufferBeforeMin?, bufferAfterMin?, ...}` | `booking.catalog.manage` |
-| PATCH/DELETE | `/api/u/:unitId/booking/services/:id` | partial / archive | `booking.catalog.manage` |
-
-### Staff & Schedule (dashboard)
-| Method | Path | Body หลัก | สิทธิ์ |
-|---|---|---|---|
-| GET/POST | `/api/u/:unitId/booking/staff` | `{displayName, userId?, visibleOnline, ...}` | read: `booking.read` · write: `booking.staff.manage` |
-| PATCH/DELETE | `/api/u/:unitId/booking/staff/:id` | partial / archive | `booking.staff.manage` |
-| PUT | `/api/u/:unitId/booking/staff/:id/services` | `[{serviceId, durationMinOverride?, priceSatangOverride?}]` (replace ทั้งชุด) | `booking.staff.manage` |
-| PUT | `/api/u/:unitId/booking/staff/:id/schedule` | `[{dayOfWeek, startTime, endTime}]` (replace ทั้งชุด) | `booking.schedule.manage` |
-| GET/POST | `/api/u/:unitId/booking/timeoff` | `{staffId?, type, startAt, endAt, reason?}` → ตอบพร้อม `conflicts: [appointmentId]` | `booking.schedule.manage` |
-| DELETE | `/api/u/:unitId/booking/timeoff/:id` | — | `booking.schedule.manage` |
-
-### Slot & Appointment (dashboard)
-| Method | Path | Body หลัก | สิทธิ์ |
-|---|---|---|---|
-| GET | `/api/u/:unitId/booking/slots` | `?serviceIds=a,b&staffId=any&date=2026-07-11` → `{staffId: [ "10:00", ... ]}` | `booking.read` |
-| GET | `/api/u/:unitId/booking/appointments` | `?date=&staffId=&status=&q=` (q=ชื่อ/เบอร์/code) | `booking.read` |
-| POST | `/api/u/:unitId/booking/appointments` | `{serviceIds[], staffId|"any", startAt, memberId?|guest{}, note?, source, force?}` → 201 หรือ 409 `{error:'SLOT_TAKEN', suggestions[]}` | `booking.appointment.create` (force: `booking.appointment.force`) |
-| GET | `/api/u/:unitId/booking/appointments/:id` | รวม items + statusLogs | `booking.read` |
-| POST | `/api/u/:unitId/booking/appointments/:id/status` | `{action: confirm|checkin|start|finish|noshow|cancel|revert, reason?}` | `booking.appointment.update` (revert: MANAGER+) |
-| POST | `/api/u/:unitId/booking/appointments/:id/reschedule` | `{startAt, staffId?}` (slot engine + lock) | `booking.appointment.update` |
-| POST | `/api/u/:unitId/booking/appointments/:id/checkout` | `{extraLines?, couponCode?, payMethods[]}` → proxy `createSale` (ข้อ 8.1) | `booking.appointment.checkout` |
-| GET | `/api/u/:unitId/booking/calendar` | `?date=&view=day|week&staffId=` → payload ปฏิทิน (นัด+ตาราง+timeoff รวมจบ) | `booking.read` |
-| GET | `/api/u/:unitId/booking/stream` | SSE: event `booking.changed {date}` | `booking.read` |
-
-### Blacklist & Policy (dashboard)
-| Method | Path | สิทธิ์ |
-|---|---|---|
-| GET/POST | `/api/u/:unitId/booking/blocks` · POST `{memberId?|phone?, reason}` | `booking.policy.manage` |
-| POST | `/api/u/:unitId/booking/blocks/:id/lift` | `booking.policy.manage` |
-| GET/PUT | `/api/u/:unitId/booking/policy` | read: `booking.read` · write: `booking.policy.manage` |
-
-### Reports (dashboard)
-| Method | Path | สิทธิ์ |
-|---|---|---|
-| GET | `/api/u/:unitId/booking/reports/utilization?from=&to=` | `booking.report.read` |
-| GET | `/api/u/:unitId/booking/reports/no-show?from=&to=` | `booking.report.read` |
-| GET | `/api/u/:unitId/booking/reports/services?from=&to=` | `booking.report.read` |
-
-### Storefront (public)
-| Method | Path | หมายเหตุ |
-|---|---|---|
-| GET | `/api/store/:tenantSlug/:unitSlug/booking/services` | เฉพาะ ACTIVE + onlineBookable |
-| GET | `/api/store/:tenantSlug/:unitSlug/booking/staff?serviceIds=` | เฉพาะ visibleOnline ที่ทำครบทุกบริการ |
-| GET | `/api/store/:tenantSlug/:unitSlug/booking/slots?serviceIds=&staffId=&date=` | rate limit 30 req/นาที/IP |
-| POST | `/api/store/:tenantSlug/:unitSlug/booking/appointments` | `{serviceIds[], staffId|"any", startAt, customer{name, phone, email?}, customerNote?}` — ตรวจ BookingBlock ก่อน; 429 เมื่อจองถี่ผิดปกติ |
-| GET | `/api/store/booking/manage/:manageToken` | ดูนัด (ไม่ต้อง login) |
-| POST | `/api/store/booking/manage/:manageToken/cancel` · `/reschedule` | ในกรอบ policy เท่านั้น |
-
----
-
-## 6. UI Screens
-
-### Dashboard (`/app/u/[unitSlug]/booking/...`)
-| Route | หน้าจอ | จุดสำคัญ |
-|---|---|---|
-| `/booking` | **ปฏิทิน** (default, day view) | คอลัมน์ต่อช่าง, สีสถานะ (โครงร่าง B&W: เส้น/เฉดเทา + จุดสถานะ), ปุ่ม "จองใหม่", ตัวสลับ day/week, SSE auto-refresh, เส้นเวลาปัจจุบัน |
-| `/booking/appointments` | **รายการนัด** (list) | ตาราง+filter (วัน/สถานะ/ช่าง/ค้นหาชื่อ-เบอร์-code), bulk cancel (เคสช่างป่วย), badge no-show ของลูกค้า |
-| `/booking/appointments/[id]` | รายละเอียดนัด (drawer/page) | timeline สถานะ, ปุ่ม action ตามสถานะปัจจุบัน, ลิงก์ member profile, ปุ่มเก็บเงิน → POS |
-| `/booking/services` | จัดการบริการ+หมวด | ตาราง inline edit, ลาก sortOrder, toggle online, ราคาแสดงบาท (เก็บสตางค์) |
-| `/booking/staff` | จัดการช่าง | การ์ดช่าง + tab: ข้อมูล / บริการที่ทำได้ (checkbox matrix + override) / ตารางเวลา (week grid editor) |
-| `/booking/timeoff` | วันหยุด/ลา | ปฏิทินเดือน + รายการ, ฟอร์มลาโชว์ conflict นัดที่ชนพร้อมปุ่มไปจัดการ |
-| `/booking/blocks` | Blacklist | รายการ block (auto/manual), ปุ่มปลด, ประวัติ no-show ต่อคน |
-| `/booking/reports` | รายงาน | 3 tab: utilization / no-show / บริการ (ดูข้อ 10) |
-| `/booking/settings` | นโยบาย | ฟอร์ม BookingPolicy จัดกลุ่ม: การจอง / ยกเลิก-เลื่อน / no-show / แจ้งเตือน |
-
-Mobile behavior: ปฏิทิน = ทีละช่าง + swipe · ทุก list เป็น card · quick-create เป็น bottom-sheet 3 ขั้น (บริการ→เวลา→ลูกค้า)
-
-### Storefront (`/s/[tenantSlug]/[unitSlug]/booking` หรือ custom domain)
-| หน้า | เนื้อหา |
-|---|---|
-| Step 1 บริการ | list ตามหมวด, เลือกหลายรายการ, สรุปเวลารวม+ราคารวมท้ายจอ (sticky bar) |
-| Step 2 ช่าง | การ์ดช่าง (รูป+ชื่อ+ราคา override ถ้ามี) + ตัวเลือกแรก "ช่างคนไหนก็ได้" |
-| Step 3 เวลา | ปฏิทินเดือน (วันเต็ม = จาง) + slot ช่วงเช้า/บ่าย/เย็น, timezone ร้าน |
-| Step 4 ยืนยัน | สรุป + login OTP หรือกรอก guest + customerNote + consent → ปุ่มยืนยัน |
-| Confirmation | code นัด, ปุ่ม add-to-calendar (.ics), ลิงก์จัดการนัด (แสดง+ส่ง email) |
-| Manage (`/booking/manage/[token]`) | ดูนัด, ปุ่มเลื่อน (เข้า Step 3 ใหม่), ยกเลิก (confirm 2 ชั้น + เหตุผล optional), แสดงกรอบนโยบาย ("เลื่อนได้ถึง 11 ก.ค. 13:00") |
-
-ทุกหน้า: i18n TH/EN · empty/loading/error state ครบ · mobile-first
-
----
-
-## 7. Business Flows
-
-### 7.1 ลูกค้าจองออนไลน์ (happy path + failure)
-```
-1. เลือกบริการ [ตัดผม 60น. + สระ 30น.] → เลือกช่าง "any" → GET /slots (union ทุกช่างที่ทำได้ทั้งคู่)
-2. เลือก 14:00 พฤ. → กรอก guest → POST /appointments
-3. Server: ตรวจ BookingBlock(phone/member) → ผ่าน
-4. resolve "any" → LEAST_BUSY เลือกช่างบี
-5. $transaction(Serializable):
-     lock BookingStaff(บี) FOR UPDATE
-     ตรวจ overlap [13:45–15:45) (รวม buffer) → ว่าง
-     ตรวจ schedule/timeoff/maxPerDay ซ้ำ
-     INSERT Appointment(code BK-...-0042, CONFIRMED) + 2 items + log
-6. notify(booking.confirmed → email) + SSE booking.changed → ปฏิทินร้านเด้ง
-FAIL: ชน slot (มีคนกดตัดหน้า) → EXCLUDE/overlap เด้ง → 409 + suggestions 3 เวลา → UI เสนอทันที ไม่ต้องเริ่มใหม่
-FAIL: ติด BookingBlock → 403 BLOCKED + ข้อความ "กรุณาติดต่อร้านโดยตรง"
-```
-
-### 7.2 หน้าร้านรับโทรจอง
-```
-Front desk คลิกช่องว่างช่างเมย์ 15:00 บนปฏิทิน → bottom-sheet: เลือกบริการ → ค้นเบอร์ลูกค้า
-→ พบ member (badge: no-show 1 ครั้ง) → ยืนยัน → source=PHONE, createdBy=userId
-→ front desk ข้าม minLeadTime ได้ (จองอีก 10 นาทีข้างหน้าได้)
-```
-
-### 7.3 วันให้บริการ (check-in → เก็บเงิน)
-```
-ลูกค้าถึงร้าน → front desk ค้นนัด → กด ARRIVED (arrivedAt)
-  └─ ถ้า unit เปิดโมดูล Q + policy handoff: สร้าง QueueTicket type=APPOINTMENT อัตโนมัติ (ข้อ 8.6)
-ช่างว่าง → กด IN_SERVICE → ทำเสร็จ → "เก็บเงิน" → POS prefill 2 รายการ + ลูกค้าเพิ่มแชมพู 1 ขวด
-→ createSale(BOOKING, appointmentId, lines 3 รายการ, PROMPTPAY) → saleId กลับมาเก็บที่นัด → DONE
-→ POS ยิง point.earn + account.post เอง (Booking ไม่ต้องทำ)
-```
-
-### 7.4 เลื่อนนัดโดยลูกค้า
-```
-กดลิงก์จัดการนัด → ตรวจ: status=CONFIRMED? เกิน rescheduleMinHours? rescheduleCount < max?
-→ ผ่าน → เลือก slot ใหม่ (engine เดิม แต่ exclude นัดตัวเองออกจาก overlap)
-→ tx เดิม (lock ช่างใหม่+เก่า เรียง id กัน deadlock) → update startAt/staffId/block* + rescheduleCount++
-→ log RESCHEDULED {oldStartAt, newStartAt} → notify(booking.rescheduled)
-FAIL เกินกรอบ → 422 + ข้อความ "เลยกำหนดเลื่อน กรุณาติดต่อร้าน" (โชว์เบอร์ร้าน)
-```
-
-### 7.5 ช่างลาป่วยกะทันหัน
-```
-Manager เพิ่ม TimeOff(SICK วันนี้ 09:00–18:00) → ตอบกลับ conflicts: 4 นัด
-→ UI list 4 นัด ต่อรายการเลือก: [ย้ายช่าง] เสนอช่างว่างที่ทำบริการนั้นได้ / [เลื่อน] / [ยกเลิก+notify]
-→ นัดที่ยังไม่จัดการ = ยังอยู่ แต่ปฏิทินแสดง ⚠ conflict (ไม่ auto-cancel เด็ดขาด)
-```
-
-### 7.6 Cron (ทุก 5 นาที ต่อ unit ที่เปิดโมดูล)
-```
-a) Reminder: นัด CONFIRMED ที่ startAt-offset ∈ window ∧ ไม่มี AppointmentReminder(offset) → notify + insert reminder
-b) Auto no-show (ถ้า autoNoShow): CONFIRMED ∧ startAt + grace < now → NO_SHOW + log(SYSTEM) + นับ blacklist
-c) Pending TTL: PENDING ∧ createdAt + ttl < now → CANCELLED(SYSTEM) + notify
-d) Blacklist: หลังนับ no-show ≥ threshold ใน window ∧ ไม่มี block active → INSERT BookingBlock(SYSTEM) 
-```
-
----
-
-## 8. Integration
-
-| Contract | จุดที่เรียก | รายละเอียด |
-|---|---|---|
-| **8.1 POS `createSale`** (2.1) | checkout นัด (7.3) | `createSale({tenantId, unitId, memberId?, sourceModule:'BOOKING', sourceId: appointmentId, lines: itemsSnapshot(+extra), couponCode?, payMethods})` → เก็บ `saleId` ที่นัด · Booking **ไม่**คิดแต้ม/ไม่แตะบัญชีเอง — POS จัดการต่อ |
-| **8.2 Point** (2.2) | ไม่เรียกตรง | แต้มเกิดผ่าน POS เท่านั้น (ทำเสร็จแต่ไม่จ่าย = ยังไม่มีแต้ม — ถูกต้องตามธุรกิจ) |
-| **8.3 Coupon** (2.3) | ผ่าน POS ตอน checkout | v1 ไม่มีคูปองตอนจองออนไลน์ (ไม่มีการเงินตอนจอง) — 🔜 พร้อม deposit |
-| **8.4 Account** (2.4) | ไม่เรียกตรง | ไหลผ่าน POS posting |
-| **8.5 Notify** (2.5) | ยืนยัน/เลื่อน/ยกเลิก/เตือน/PENDING หมดอายุ | templates: `booking.confirmed`, `booking.pending`, `booking.rescheduled`, `booking.cancelled`, `booking.reminder` — data มีชื่อหน่วย, บริการ, ช่าง, เวลา (โซนร้าน), ลิงก์ manage |
-| **8.6 Q handoff** (โมดูล 4) | ตอนกด ARRIVED | ถ้า unit เดียวกันเปิด Q + `BookingPolicy` เชื่อม (`unit.settings.booking.queueHandoff = {enabled, queueTypeCode:'APPOINTMENT'}`): เรียก `queue.issueTicket({tenantId, unitId, typeCode:'APPOINTMENT', refType:'Appointment', refId: appointmentId, memberId?})` (refType = ชื่อ Prisma model ตรงตัวตาม D8) → ได้บัตรคิว priority (ดูสเปคฝั่ง Q ข้อ 3.9/8.2) · ถ้า Q ปิด = ข้ามเงียบๆ |
-| **8.7 Member** (2.6) | ทุกนัด | อ้าง `memberId` — guest identity ผ่าน `member.findOrCreate({tenantId, phone (normalize E.164), name, source:'BOOKING'})` + ยืนยันตัวด้วย `member.sendOtp/verifyOtp({channel:'phone'|'email'})` ตาม contract 2.6 (D6) · เก็บ snapshot ชื่อ/เบอร์ในนัดเท่านั้น (เอกสาร freeze ได้ตามกติกา) + match เป็น member ภายหลังด้วยเบอร์ |
-| **8.8 AuditLog กลาง** | force-book, revert status, ปลด block, แก้ policy | who/what/before/after ตามกติการ่วมข้อ 5 |
-| **8.9 activity.log** (2.7) | นัด `DONE` / `NO_SHOW` | `activity.log({tenantId, memberId, unitId, module:'BOOKING', type:'APPOINTMENT_DONE'\|'APPOINTMENT_NO_SHOW', refType:'Appointment', refId: appointmentId, summary})` ผ่าน outbox กลาง — เฉพาะนัดที่มี memberId (producer บังคับตาม D6) |
-
----
-
-## 9. Permissions (action × role)
-
-module = `BOOKING` · ตรวจผ่าน `can(user, {tenantId, unitId, module, action})` 4 มิติเสมอ
-
-| Action | OWNER | MANAGER (unit) | STAFF (default) | หมายเหตุ custom |
-|---|---|---|---|---|
-| `booking.read` (ปฏิทิน/รายการ/slot) | ✅ | ✅ | ✅ | ช่างที่มี login เห็นเฉพาะตารางตัวเองได้ (flag `ownScheduleOnly`) |
-| `booking.appointment.create` | ✅ | ✅ | ✅ | |
-| `booking.appointment.update` (สถานะ/เลื่อน/ยกเลิก) | ✅ | ✅ | ✅ | revert สถานะย้อน = MANAGER+ เท่านั้น |
-| `booking.appointment.force` (ทับ buffer/นอกเวลา) | ✅ | ✅ | ❌ | ลง AuditLog |
-| `booking.appointment.checkout` (→POS) | ✅ | ✅ | ✅ | ต้องมีสิทธิ์ `pos.sale.create` ด้วย |
-| `booking.catalog.manage` | ✅ | ✅ | ❌ | |
-| `booking.staff.manage` | ✅ | ✅ | ❌ | |
-| `booking.schedule.manage` (ตาราง/ลา) | ✅ | ✅ | ❌ | เปิดให้ staff ลงลาตัวเองได้ (flag `ownTimeOff`) |
-| `booking.policy.manage` (นโยบาย/blacklist) | ✅ | ✅ | ❌ | ปลด block ลง AuditLog |
-| `booking.report.read` | ✅ | ✅ | ❌ | |
-
-Customer (storefront): จอง/ดู/เลื่อน/ยกเลิกเฉพาะนัดตัวเอง (session member หรือ manageToken) — ไม่ผ่าน RBAC ร้าน
-
----
-
-## 10. Reports & Metrics
-
-ทุกรายงาน: เลือกช่วงวัน, export CSV, เงินแสดงบาท (คำนวณจากสตางค์), เทียบช่วงก่อนหน้า
-
-1. **Staff Utilization** — ต่อช่าง: ชม.ที่ถูกจอง (duration ไม่รวม buffer) ÷ ชม.ทำงานตามตาราง (หัก timeoff) = % · แยกวัน/สัปดาห์ · ชี้ช่างว่างเกิน/แน่นเกิน
-2. **No-show Report** — no-show rate = NO_SHOW ÷ (DONE+NO_SHOW) · แนวโน้มรายสัปดาห์ · top ลูกค้า no-show · เทียบ source (ONLINE เบี้ยวมากกว่า PHONE ไหม) · จำนวน block active
-3. **บริการยอดนิยม** — จำนวนครั้ง + รายได้ (จาก AppointmentItem ของนัด DONE) ต่อบริการ/หมวด · ราคาเฉลี่ยจริงเทียบราคาตั้ง
-4. **ภาพรวมการจอง** — นัด/วัน แยกสถานะ · lead time เฉลี่ย (จองล่วงหน้ากี่วัน) · สัดส่วน ONLINE:หน้าร้าน:โทร · ชั่วโมงพีค (heatmap วัน×ชม.)
-5. **Cancellation** — อัตรายกเลิก แยก CUSTOMER/STAFF/SYSTEM · ยกเลิกก่อนนัดเฉลี่ยกี่ชม.
-6. **KPI สำหรับการ์ด Overview "ทุกกิจการ"** (BLUEPRINT_BUSINESS_UNITS ข้อ 4): `นัดวันนี้ / เสร็จแล้ว / no-show วันนี้ / คิวถัดไป`
-
----
-
-## 11. Edge Cases & Rules
-
-1. **Race จองพร้อมกัน** — lock ต่อช่าง + Serializable + EXCLUDE constraint (3 ชั้น) · retry อัตโนมัติ 1 ครั้งเมื่อ serialization failure ก่อนตอบ 409
-2. **Reschedule ตัวเอง** — ตรวจ overlap ต้อง exclude appointment id ตัวเอง ไม่งั้นเลื่อน 30 นาทีในช่วงติดกันไม่ได้
-3. **ย้ายช่างตอนเลื่อน** — lock ช่างทั้งเก่า+ใหม่ เรียงตาม id (กัน deadlock)
-4. **DST/timezone** — เก็บ UTC, คำนวณ slot ใน timezone ร้าน (`unit.settings.timezone`, default Asia/Bangkok — ไทยไม่มี DST แต่โค้ดต้องไม่ hardcode offset)
-5. **เที่ยงคืนคาบเกี่ยว** — v1 จำกัด `endTime > startTime` วันเดียวกัน (ร้านนวดปิดเที่ยงคืนพอดีได้: `24:00` เก็บเป็น `23:59` — ระบุใน validator) · กะข้ามคืน = 🔜
-6. **แก้ duration/ราคา ของบริการ** — ไม่กระทบนัดเดิม (snapshot ใน AppointmentItem/blockEndAt แล้ว) — ห้าม recompute ย้อนหลัง
-7. **Archive ช่าง/บริการที่มีนัดค้าง** — block พร้อม list นัดค้างให้จัดการก่อน (ยกเว้น force + auto-เสนอย้าย)
-8. **Unit PAUSED** (BLUEPRINT_BUSINESS_UNITS ข้อ 8.4) — storefront ปิดจองใหม่ทันที, นัดเดิม honor + dashboard ใช้ได้, cron reminder ยังส่ง
-9. **maxPerDay ต้องนับใน transaction** — นับเฉพาะสถานะ active, นับก่อน insert ภายใน lock ไม่งั้น 2 คนจองพร้อมกันทะลุโควตา
-10. **Guest phone = identity อ่อน** — normalize E.164 ก่อน match/นับ no-show · เบอร์ซ้ำหลาย guest = คนเดียวกันในสถิติ
-11. **นัดหลายบริการ = บล็อกต่อเนื่องเดียว** — ห้ามแตกเป็นหลายบล็อกมีรูตรงกลาง (v1) · buffer ใช้ของบริการแรก(ก่อน)+สุดท้าย(หลัง) ไม่ใช่ผลรวมทุกตัว
-12. **ปฏิทินร้านเป็น source of truth** — ทุกจอ (มือถือ front desk 2 เครื่อง) sync ผ่าน SSE · action บนข้อมูล stale ให้ server ตัดสิน (ตอบ 409/422 พร้อม state ล่าสุด)
-13. **เงินเป็น Int สตางค์ทุกจุด** — แปลงเป็นบาทที่ชั้น UI เท่านั้น · ห้าม float ในทุก calculation
-14. **ห้ามลบข้อมูลธุรกรรม** — Appointment ทุกสถานะอยู่ถาวร (soft ผ่าน status)
-
----
-
-## 12. QC Checklist (เกณฑ์ตรวจรับ)
-
-**Functional**
-- [ ] จองออนไลน์ครบ 4 ขั้น ทั้งแบบ member และ guest, ได้ email ยืนยัน + ลิงก์จัดการนัด
-- [ ] "ช่างคนไหนก็ได้" เลือกช่างตาม LEAST_BUSY จริง (เขียน test กระจายงาน)
-- [ ] ยิงจอง slot เดียวกันพร้อมกัน 20 requests → สำเร็จ 1, ที่เหลือ 409 + suggestions (load test บังคับ)
-- [ ] buffer กันเวลาช่างจริง แต่ไม่โผล่ในเวลานัดฝั่งลูกค้า
-- [ ] เลื่อนนัด: ในกรอบ policy ผ่าน / นอกกรอบ 422 / เกิน maxRescheduleCount ถูกกัน
-- [ ] cron: reminder ส่งครั้งเดียวต่อ offset (รัน cron ซ้ำต้องไม่ส่งซ้ำ), auto no-show + grace ทำงาน, PENDING TTL ทำงาน
-- [ ] no-show ครบ threshold → block อัตโนมัติ → จองออนไลน์ถูกกัน + หน้าร้านยังจองได้
-- [ ] TimeOff ที่ชนนัด → ตอบ conflicts + ปฏิทินโชว์ ⚠ + ไม่ auto-cancel
-- [ ] checkout → POS ได้ saleId, แต้มเข้า (ผ่าน POS), นัดเป็น DONE
-- [ ] ARRIVED + เปิด Q handoff → เกิด QueueTicket type APPOINTMENT (integration test ข้ามโมดูล)
-
-**Isolation (multi-tenant/unit)**
-- [ ] ทุก query มี tenantId+unitId — ทดสอบ user ร้าน A เรียก `/api/u/{unitId ร้าน B}/...` ต้อง 403/404 ทุก endpoint
-- [ ] manageToken ของ tenant หนึ่ง ใช้ข้ามร้านไม่ได้, เดา token ไม่ได้ (cuid + ไม่มี enumeration)
-- [ ] slot ของ unit A ไม่โชว์ช่าง/นัดของ unit B (ร้านเดียวกัน 2 สาขา)
-- [ ] EXCLUDE constraint อยู่จริงใน migration (ตรวจ `\d "Appointment"`)
-
-**i18n / UI / มาตรฐานร่วม**
-- [ ] ทุกหน้า TH/EN สลับได้, ราคาแสดงบาทถูกต้องจากสตางค์ (ไม่มีเศษ float)
-- [ ] เวลาแสดงตาม timezone ร้านทุกจุด (dashboard + storefront + email)
-- [ ] empty/loading/error state ครบทุกหน้า, mobile ปฏิทิน+wizard ใช้ได้จริงบนจอ 375px
-- [ ] AuditLog เกิดครบ: force-book, revert, ปลด block, แก้ policy
-- [ ] rate limit endpoint public (slots/appointments) ทำงาน
+### 12. QC Checklist — แทนที่แล้ว
+ข้อสอบจริง `scripts/qc-svc-b.*.mts` (17) · `scripts/probe-b*-b.mts` (10) · regression `qc-booking-*` — ผลตอนรับใบใน SDS §9 · ด่านเต็ม G1 ✅ · G3 ⬜
