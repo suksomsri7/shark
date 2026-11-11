@@ -1,0 +1,39 @@
+# controller run sync2 · h2.1 @1d3ee1092 · base a4feddc38 · mode lean · 2026-11-11T17:52:53Z · load 6.91 5.76 10.57
+prisma generate exit=0 [17:53Z]
+seed-hr-qc (first) exit=0 ===== seed-hr-qc ===== ผ่าน 28/28 JSON_SUMMARY {"suite":"seed-hr-qc","total":28,"passed":28,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":27,"BusinessUnit":2,"HrAttend  [17:53Z load 4.65]
+qc-hr-h2.1 unforced exit=0 ===== qc-hr-h2.1 ===== passed 90/90 JSON_SUMMARY {"suite":"qc-hr-h2.1","total":90,"passed":90,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":78,"baseGreen":12,"offBase":["H2.1-S6.10(RED→pass)","H2.1-S4.1(RED→pass)","H2.1-S4.2(RED→pass)","H2.1-S4 · RESIDUE none (tenants=4 users=15) [17:54Z load 3.28]
+qc-hr-h2.1 forced#1 exit=0 ===== qc-hr-h2.1 ===== passed 90/90 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h2.1","total":90,"passed":90,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":78,"baseGreen":12,"offBase":["H2.1-S6.10(RED→pass)","H2.1-S4.1(RED→pass)","H2.1-S4.2(RED→pass) · RESIDUE none (tenants=4 users=15) [17:55Z load 2.75]
+# LEAN · changed: src/lib/modules/approval/service.ts · oracles picked: none · skipped: qc-hr-h0.1 qc-hr-h0.2 qc-hr-h0.3 qc-hr-h0.5 qc-hr-h0.6 qc-hr-h0.7 qc-hr-h1.1 qc-hr-h1.2 qc-hr-h1.3 qc-hr-h2.1
+qc-hr-attendance exit=0 ===== QC: สาย/ขาดงาน (HR attendance) ===== JSON_SUMMARY {"total":31,"passed":31,"findings":[]}   [17:55Z load 2.53]
+qc-hr exit=0 ===== QC HR ===== JSON_SUMMARY {"total":9,"passed":9,"findings":[]}   [17:55Z load 2.33]
+qc-bulk-ops exit=0 ===== QC Bulk Operations ===== JSON_SUMMARY {"total":13,"passed":13,"findings":[]}   [17:56Z load 2.27]
+qc-nav-functions exit=1   [17:56Z load 2.27]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]}   [17:58Z load 3.74]
+qc-hr-leave-booking exit=0 ===== QC: ลาอนุมัติ → ปิดช่องจอง (C-2) ===== JSON_SUMMARY {"total":14,"passed":14,"findings":[]}   [17:58Z load 3.76]
+qc-payroll exit=0 ===== QC Payroll ไทย ===== JSON_SUMMARY {"total":19,"passed":19,"findings":[]}   [17:58Z load 3.78]
+qc-hr-payadjust exit=0 ===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ ===== JSON_SUMMARY {"total":27,"passed":27,"findings":[]}   [17:58Z load 3.72]
+qc-payroll-reverse exit=0   [17:59Z load 5.01]
+qc-hr-roster exit=0 ===== QC: ทะเบียนพนักงานแหล่งเดียว + ใครรับคิว ===== JSON_SUMMARY {"total":24,"passed":24,"findings":[]}   [17:59Z load 5.43]
+qc-booking-hours-hr exit=0 ===== QC Booking Hours+HR ===== JSON_SUMMARY {"total":13,"passed":13,"findings":[]}   [17:59Z load 5.80]
+qc-calendar exit=0 ===== QC Calendar ===== JSON_SUMMARY {"total":9,"passed":9,"findings":[]}   [17:59Z load 5.80]
+qc-approval exit=0 ===== QC Approval Engine ===== JSON_SUMMARY {"total":16,"passed":16,"findings":[]}   [17:59Z load 5.65]
+qc-approval-wiring exit=0 ===== QC Approval Wiring ===== JSON_SUMMARY {"total":7,"passed":7,"findings":[]}   [17:59Z load 5.31]
+qc-approval-edit exit=0 ===== QC Approval Edit ===== JSON_SUMMARY {"total":12,"passed":12,"findings":[]}   [17:59Z load 5.31]
+qc-crm-c3.3 exit=0 JSON_SUMMARY {"total":90,"passed":90,"findings":[]}   [18:10Z load 7.30]
+qc-crm-c0.3 exit=0 JSON_SUMMARY {"total":88,"passed":88,"findings":[]}   [18:11Z load 3.37]
+qc-ai-proposals exit=0 ===== QC AI Proposals (Phase 3.5) ===== JSON_SUMMARY {"total":16,"passed":16,"findings":[]}   [18:12Z load 2.76]
+qc-ai-tools exit=0 ===== QC AI Tools (Phase 3 v1) ===== JSON_SUMMARY {"total":18,"passed":18,"findings":[]}   [18:12Z load 3.02]
+qc-chat-staff-perms exit=0 ===== QC CHAT STAFF PERMS ===== JSON_SUMMARY {"total":49,"passed":49,"findings":[]}   [18:12Z load 2.78]
+qc-account-cpa exit=0 ===== QC6 CPA audit (service layer จริง + Neon) ===== JSON_SUMMARY {"total":107,"passed":107,"findings":[]}   [18:12Z load 2.54]
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]}   [18:13Z load 2.48]
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":53,"passed":53,"findings":[]}   [18:13Z load 2.10]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":8,"passed":8,"findings":[]}   [18:13Z load 1.93]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":8,"passed":8,"findings":[]}   [18:13Z load 1.78]
+typecheck start 18:13Z availMB=15325 busy=0
+typecheck exit=0 errors=0 [18:14Z]
+ALLDONE 2026-11-11T18:14:46Z · red: 1
+qc-hr-h0.6 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) RESIDUE tenants=0 rows=0 audit=0 outbox=0
+qc-hr-h0.7 exit=0 ===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE) RESIDUE none (tenants=4 users=39)
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE) RESIDUE none (tenants=3 users=14)
+qc-hr-h1.2 exit=0 ===== qc-hr-h1.2 ===== passed 73/73 (QC_FORCE) RESIDUE none (tenants=2 users=8)
+qc-hr-h1.3 exit=0 ===== qc-hr-h1.3 ===== passed 63/63 (QC_FORCE) RESIDUE none (tenants=2 users=7)
