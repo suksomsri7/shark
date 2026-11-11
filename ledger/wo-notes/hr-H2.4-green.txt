@@ -1,102 +1,22 @@
-# qc-hr-h2.4 on wip/hr-h2.4 (lane DB ep-orange-dust via qc-hr.sh) — 2026-11-11T23:01:55Z
-# A) unedited oracle b04eef94d: unforced / forced ×2 (exits 1 1 1) — fails = S1.6 (oracle bug) · S9.1 (pool 10 deadlock) · S11.3 (S9.1 fallout); ORACLE-EDITs requested in hr-H2.4.md §9
+# qc-hr-h2.4 on wip/hr-h2.4 post-merge (lane DB ep-orange-dust via qc-hr.sh) — 2026-11-11T23:19:48Z
+# A) unedited oracle b04eef94d: unforced / forced ×2 (exit 1 1 1) — fails = S1.6 (oracle bug) · S9.1 (pool-10 deadlock) · S11.3 (S9.1 fallout); ORACLE-EDITs in hr-H2.4.md §9
+o1 unforced exit=1 ===== qc-hr-h2.4 ===== passed 56/59
+o2 forced exit=1 ===== qc-hr-h2.4 ===== passed 56/59 (QC_FORCE)
+o3 forced exit=1 ===== qc-hr-h2.4 ===== passed 56/59 (QC_FORCE)
   ✅ [H2.4-Z1] residue: qc-hr-h24-* tenants, users, buckets, rows gone
-===== qc-hr-h2.4 ===== passed 56/59
 JSON_SUMMARY {"suite":"qc-hr-h2.4","total":59,"passed":56,"failed":["H2.4-S1.6","H2.4-S9.1","H2.4-S11.3"],"findings":[{"id":"H2.4-S1.6","sev":"MAJOR"},{"id":"H2.4-S9.1","sev":"CRITICAL"},{"id":"H2.4-S11.3","sev":"MAJOR"}],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":53,"baseGreen":6,"offBase":["H2.4-S5.10(RED→pass)","H2.4-S6.6(RED→pass)","H2.4-S10.2(RED→pass)","H2.4-S11.1(RED→pass)","H2.4-S1.1(RED→pass)","H2.4-S1.2(RED→pass)","H2.4-S1.3(RED→pass)","H2.4-S1.4(RED→pass)","H2.4-S1.5(RED→pass)","H2.4-S2.1(RED→pass)","H2.4-S2.2(RED→pass)","H2.4-S2.3(RED→pass)","H2.4-S2.4(RED→pass)","H2.4-S2.5(RED→pass)","H2.4-S2.6(RED→pass)","H2.4-S2.7(RED→pass)","H2.4-S3.1(RED→pass)","H2.4-S3.2(RED→pass)","H2.4-S3.4(RED→pass)","H2.4-S7.1(RED→pass)","H2.4-S7.2(RED→pass)","H2.4-S7.3(RED→pass)","H2.4-S7.4(RED→pass)","H2.4-S7.5(RED→pass)","H2.4-S5.1(RED→pass)","H2.4-S5.2(RED→pass)","H2.4-S5.3(RED→pass)","H2.4-S5.4(RED→pass)","H2.4-S5.5(RED→pass)","H2.4-S5.6(RED→pass)","H2.4-S5.7(RED→pass)","H2.4-S5.8(RED→pass)","H2.4-S5.9(RED→pass)","H2.4-S4.1(RED→pass)","H2.4-S4.2(RED→pass)","H2.4-S4.3(RED→pass)","H2.4-S6.1(RED→pass)","H2.4-S6.2(RED→pass)","H2.4-S6.3(RED→pass)","H2.4-S6.4(RED→pass)","H2.4-S6.5(RED→pass)","H2.4-S8.1(RED→pass)","H2.4-S8.2(RED→pass)","H2.4-S9.2(RED→pass)","H2.4-S9.3(RED→pass)","H2.4-S9.4(RED→pass)","H2.4-S10.1(RED→pass)","H2.4-S10.3(RED→pass)","H2.4-S10.4(RED→pass)","H2.4-S10.5(RED→pass)"]}
   ✅ [H2.4-Z1] residue: qc-hr-h24-* tenants, users, buckets, rows gone
-===== qc-hr-h2.4 ===== passed 56/59 (QC_FORCE)
 JSON_SUMMARY {"suite":"qc-hr-h2.4","total":59,"passed":56,"failed":["H2.4-S1.6","H2.4-S9.1","H2.4-S11.3"],"findings":[{"id":"H2.4-S1.6","sev":"MAJOR"},{"id":"H2.4-S9.1","sev":"CRITICAL"},{"id":"H2.4-S11.3","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":53,"baseGreen":6,"offBase":["H2.4-S5.10(RED→pass)","H2.4-S6.6(RED→pass)","H2.4-S10.2(RED→pass)","H2.4-S11.1(RED→pass)","H2.4-S1.1(RED→pass)","H2.4-S1.2(RED→pass)","H2.4-S1.3(RED→pass)","H2.4-S1.4(RED→pass)","H2.4-S1.5(RED→pass)","H2.4-S2.1(RED→pass)","H2.4-S2.2(RED→pass)","H2.4-S2.3(RED→pass)","H2.4-S2.4(RED→pass)","H2.4-S2.5(RED→pass)","H2.4-S2.6(RED→pass)","H2.4-S2.7(RED→pass)","H2.4-S3.1(RED→pass)","H2.4-S3.2(RED→pass)","H2.4-S3.4(RED→pass)","H2.4-S7.1(RED→pass)","H2.4-S7.2(RED→pass)","H2.4-S7.3(RED→pass)","H2.4-S7.4(RED→pass)","H2.4-S7.5(RED→pass)","H2.4-S5.1(RED→pass)","H2.4-S5.2(RED→pass)","H2.4-S5.3(RED→pass)","H2.4-S5.4(RED→pass)","H2.4-S5.5(RED→pass)","H2.4-S5.6(RED→pass)","H2.4-S5.7(RED→pass)","H2.4-S5.8(RED→pass)","H2.4-S5.9(RED→pass)","H2.4-S4.1(RED→pass)","H2.4-S4.2(RED→pass)","H2.4-S4.3(RED→pass)","H2.4-S6.1(RED→pass)","H2.4-S6.2(RED→pass)","H2.4-S6.3(RED→pass)","H2.4-S6.4(RED→pass)","H2.4-S6.5(RED→pass)","H2.4-S8.1(RED→pass)","H2.4-S8.2(RED→pass)","H2.4-S9.2(RED→pass)","H2.4-S9.3(RED→pass)","H2.4-S9.4(RED→pass)","H2.4-S10.1(RED→pass)","H2.4-S10.3(RED→pass)","H2.4-S10.4(RED→pass)","H2.4-S10.5(RED→pass)"]}
   ✅ [H2.4-Z1] residue: qc-hr-h24-* tenants, users, buckets, rows gone
-===== qc-hr-h2.4 ===== passed 56/59 (QC_FORCE)
 JSON_SUMMARY {"suite":"qc-hr-h2.4","total":59,"passed":56,"failed":["H2.4-S1.6","H2.4-S9.1","H2.4-S11.3"],"findings":[{"id":"H2.4-S1.6","sev":"MAJOR"},{"id":"H2.4-S9.1","sev":"CRITICAL"},{"id":"H2.4-S11.3","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":53,"baseGreen":6,"offBase":["H2.4-S5.10(RED→pass)","H2.4-S6.6(RED→pass)","H2.4-S10.2(RED→pass)","H2.4-S11.1(RED→pass)","H2.4-S1.1(RED→pass)","H2.4-S1.2(RED→pass)","H2.4-S1.3(RED→pass)","H2.4-S1.4(RED→pass)","H2.4-S1.5(RED→pass)","H2.4-S2.1(RED→pass)","H2.4-S2.2(RED→pass)","H2.4-S2.3(RED→pass)","H2.4-S2.4(RED→pass)","H2.4-S2.5(RED→pass)","H2.4-S2.6(RED→pass)","H2.4-S2.7(RED→pass)","H2.4-S3.1(RED→pass)","H2.4-S3.2(RED→pass)","H2.4-S3.4(RED→pass)","H2.4-S7.1(RED→pass)","H2.4-S7.2(RED→pass)","H2.4-S7.3(RED→pass)","H2.4-S7.4(RED→pass)","H2.4-S7.5(RED→pass)","H2.4-S5.1(RED→pass)","H2.4-S5.2(RED→pass)","H2.4-S5.3(RED→pass)","H2.4-S5.4(RED→pass)","H2.4-S5.5(RED→pass)","H2.4-S5.6(RED→pass)","H2.4-S5.7(RED→pass)","H2.4-S5.8(RED→pass)","H2.4-S5.9(RED→pass)","H2.4-S4.1(RED→pass)","H2.4-S4.2(RED→pass)","H2.4-S4.3(RED→pass)","H2.4-S6.1(RED→pass)","H2.4-S6.2(RED→pass)","H2.4-S6.3(RED→pass)","H2.4-S6.4(RED→pass)","H2.4-S6.5(RED→pass)","H2.4-S8.1(RED→pass)","H2.4-S8.2(RED→pass)","H2.4-S9.2(RED→pass)","H2.4-S9.3(RED→pass)","H2.4-S9.4(RED→pass)","H2.4-S10.1(RED→pass)","H2.4-S10.3(RED→pass)","H2.4-S10.4(RED→pass)","H2.4-S10.5(RED→pass)"]}
 
-# B) forced run of the oracle with the two requested hunks (S1.6 · S9.1 8 lanes) on scratch copy — exit 0
-[env] qc-hr-h2.4 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
-[qc-hr-h2.4] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
-[qc-hr-h2.4] modules: clock=loaded · clock-rules=loaded · clock-settings=loaded
-  ✅ [H2.4-S5.10] [static] clock-actions.ts: use server · mobileClockAction + myClockStateAction · no DB import · no employeeId read
-  ✅ [H2.4-S6.6] [static] kioskClockAction: kioskClock + callerKey kiosk:<user> · no hr-kiosk: bucket · KioskClock.tsx PIN-only + testids
-  ✅ [H2.4-S10.2] [static] migration 000000 (backfill + normalise) · 000001 = ALTER TYPE only
-  ✅ [H2.4-S11.1] [static] client files (MobileClock · KioskClock · settings) carry no lat/lng/photoKey · callers never pass now:
-  ✅ [H2.4-S12.2] [control] payroll-rules.ts + rules.ts sha unchanged
-  ✅ [H2.4-S12.3] [control] pos-seam.ts byte-identical (Q2) · 4 seam names exported
-  ✅ [H2.4-S1.1] [pure] distanceM haversine vectors (0 · 35 · 108 · 222 · 111 195 m, ±1)
-  ✅ [H2.4-S1.2] [pure] pickRosterEntry: 05:50 IN ⇒ 06:00 morning (not 22–06 night) · 21:30 ⇒ night · 16:00 ⇒ null · equal distance ⇒ the started one
-  ✅ [H2.4-S1.3] [pure] sessionState/nextKindOf: none⇒IN · linked IN 02:00 ⇒ OUT · end+240+1 ⇒ IN · unlinked IN yesterday ⇒ IN · BREAK_START ⇒ BREAK_END
-  ✅ [H2.4-S1.4] [pure] normalizeShiftTimes: 960/0/true ⇒ 960/1440/false · 22–06 and 07–15 unchanged
-  ✅ [H2.4-S1.5] [pure] workedMinutesWithBreaks: 07–15 with 30-min break = 450 · OUT while on break = 300
-  ✅ [H2.4-S1.6] [static] clock-rules.ts pure: no DB/service import, no argument-less new Date() · CLOCK_RULES = 120/240/30/90
-(node:2871342) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
-In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
-
-To prepare for this change:
-- If you want the current behavior, explicitly use 'sslmode=verify-full'
-- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
-
-See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
-(Use `node --trace-warnings ...` to show where the warning was created)
-── S2 roster ──
-  ✅ [H2.4-S2.1] [D13b] night 22–06: NEXT 21:58 ⇒ IN linked ON_TIME dueMin 1320 · NEXT 06:05 next day ⇒ OUT same rosterEntryId
-  ✅ [H2.4-S2.2] nextClockKind at 02:00 inside the night session ⇒ OUT
-  ✅ [H2.4-S2.3] linked IN judged vs the entry + HrShift.graceMin: 07:20 ⇒ LATE 20 dueMin 420 · 07:10 ⇒ ON_TIME 0
-  ✅ [H2.4-S2.4] tie-break: night IN 21:55 · OUT 05:50 stays on the night entry · IN 05:58 links the 06:00 morning entry
-  ✅ [H2.4-S2.5] session grace: NEXT at end+230 ⇒ OUT · another session at end+241 ⇒ IN (new session)
-  ✅ [H2.4-S2.6] unpublished entry is not linked (rosterEntryId null · legacy judgement NO_SCHEDULE)
-  ✅ [H2.4-S2.7] unrostered: IN 23:00 then NEXT 01:00 ⇒ IN (legacy calendar rule, Q3)
-── S3 dedupe / seam ──
-  ✅ [H2.4-S3.1] [MINOR-3] unlinked IN 23:59:40 then IN 00:00:10 ⇒ new row (deduped false · 2 rows)
-  ✅ [H2.4-S3.2] same session IN twice within 30 s ⇒ deduped · NEXT twice ⇒ deduped · 1 row each
-  ✅ [H2.4-S3.3] [control] POS clockSelf inside a caller tx ⇒ ok:true IN + row (seam shape unchanged)
-  ✅ [H2.4-S3.4] service.clock / nextClockKind / clockWithPin are the clock.ts functions (same export)
-── S7 settings ──
-  ✅ [H2.4-S7.1] first enable without acceptPdpaNotice ⇒ sNotice · with ⇒ ok · noticeAcceptedAt/ById · 1 audit hr.clock.notice_accepted
-  ✅ [H2.4-S7.2] validation: radius 10/3000 ⇒ sRadius · minAccuracy 5 ⇒ sAcc · gps enable without centre ⇒ sCenter · photoRequired ⇒ sPhoto
-  ✅ [H2.4-S7.3] viewer matrix listClockSites: owner/mgr-all all · mgr-u1 own + no u2 · mgr-role/staff-key/member/payroll/self ⇒ noPerm · other tenant ⇒ none
-  ✅ [H2.4-S7.4] branch scope on save: mgr-u1 → u2 ⇒ otherUnit · → shop-wide ⇒ shopWide · → u1 ok
-  ✅ [H2.4-S7.5] item keys exact · one row per (system, unit) · 10 parallel first saves of one unit ⇒ 1 row
-── S5 mobile ──
-  ✅ [H2.4-S5.1] mobile inside radius ⇒ IN · source MOBILE · lat/lng/accuracyM stored · distanceM 35 · inRadius · result keys exact
-  ✅ [H2.4-S5.2] mobile outside (222 m) ⇒ mOutside + distanceM · 0 rows · audit hr.clock.mobile_refused {code} without coordinates
-  ✅ [H2.4-S5.3] missing coordinates ⇒ mNoGps · 0 rows
-  ✅ [H2.4-S5.4] forged/malformed (lat 91 · lng 181 · strings · NaN · Infinity) ⇒ mBadGps · 0 rows
-  ✅ [H2.4-S5.5] accuracy 250 m > minAccuracyM 100 ⇒ mWeak · 0 rows
-  ✅ [H2.4-S5.6] branch without a site (u2) ⇒ mOff · site disabled ⇒ mOff
-  ✅ [H2.4-S5.7] shop-wide site gpsRequired=false ⇒ ok far away · lat/lng/distanceM NOT stored
-  ✅ [H2.4-S5.8] posted employeeId ignored (row for own employee) · unlinked user ⇒ mNoEmp · inactive ⇒ mInactive
-  ✅ [H2.4-S5.9] myClockState keys exact · entry of the open session · site {gpsRequired,radiusM} · no coordinates
-── S4 breaks ──
-  ✅ [H2.4-S4.1] breaks: IN · BREAK_START · NEXT⇒BREAK_END · NEXT⇒OUT, all on the same rosterEntryId
-  ✅ [H2.4-S4.2] break refusals (mobile): BREAK_START closed ⇒ bNotIn · BREAK_END open ⇒ bNotOn · BREAK_START on break ⇒ bOnBreak · 0 rows
-  ✅ [H2.4-S4.3] explicit OUT while ON_BREAK ⇒ OUT row · readers (monthlyAttendance · onShiftToday) do not throw on break rows
-── S6 kiosk ──
-  ✅ [H2.4-S6.1] kioskClock right PIN ⇒ IN · source KIOSK · employeeName
-  ✅ [H2.4-S6.2] wrong PIN ⇒ PIN_TEXT.wrong · counts on hr-verifypin:<t>:kiosk:<uid> · no hr-kiosk:* bucket
-  ✅ [H2.4-S6.3] H0.5 limits only: 10 wrong ⇒ 11th (right PIN) limited text · another callerKey still clocks
-  ✅ [H2.4-S6.4] kiosk unitId u2 + a u1 PIN ⇒ PIN_TEXT.wrong · other-tenant kiosk ⇒ wrong · 0 rows
-  ✅ [H2.4-S6.5] kiosk BREAK_START after IN ⇒ BREAK_START · NEXT ⇒ BREAK_END
-── S8 retention ──
-  ✅ [H2.4-S8.1] purgeClockPrivacy: >30 d ⇒ lat/lng/accuracyM null, distanceM/inRadius kept · >90 d ⇒ photoKey null · ≤30 d untouched
-  ✅ [H2.4-S8.2] purge twice ⇒ second returns {geo:0, photo:0} · other tenant untouched · [static] hourly cron calls it
-── S9 races ──
-  ✅ [H2.4-S9.1] [race] 10 lanes NEXT queued on hr:clock:<emp> ⇒ 1 row
-  ✅ [H2.4-S9.2] [race] kiosk ∥ mobile same employee ⇒ 1 IN row · both ok
-  ✅ [H2.4-S9.3] [race] clock does not wait on a held roster lock · links the entry
-  ✅ [H2.4-S9.4] removeEntry after a linked IN ⇒ attendance row kept · rosterEntryId null
-── S10 migration ──
-  ✅ [H2.4-S10.1] schema: timesOverridden · distanceM · inRadius · HrClockSite + 2 partial uniques · enum BREAK_START/BREAK_END
-  ✅ [H2.4-S10.3] timesOverridden: addEntry override ⇒ true · plain ⇒ false · moveEntry to another shift ⇒ false
-  ✅ [H2.4-S10.4] copyWeek by flag: override then shift edited ⇒ override copied · stale unflagged ⇒ current shift times
-  ✅ [H2.4-S10.5] normalise on write: createShift 16:00/00:00 ⇒ 1440/false · addEntry override end 0 ⇒ 1440/false
-  ✅ [H2.4-S11.2] [control] listAttendance top-level keys carry no sensitive field
-  ✅ [H2.4-S11.3] every refusal seen is a fixed text (or the limiter text) · no id/coordinate inside
-  ✅ [H2.4-S12.1] [control] legacy unrostered judgement digest = K1=DAY_OFF:-:-|K2=ON_TIME:0:0|K3=NO_SCHEDULE:-:-
+# B) forced run with the two requested hunks (S1.6 · S9.1 8 lanes) on a scratch copy — exit 0
   ✅ [H2.4-Z1] residue: qc-hr-h24-* tenants, users, buckets, rows gone
 BASE-EXPECTATION 6/59 as registered (RED-by-design 53 · GREEN controls 6) · off: H2.4-S5.10(RED→pass) H2.4-S6.6(RED→pass) H2.4-S10.2(RED→pass) H2.4-S11.1(RED→pass) H2.4-S1.1(RED→pass) H2.4-S1.2(RED→pass) H2.4-S1.3(RED→pass) H2.4-S1.4(RED→pass) H2.4-S1.5(RED→pass) H2.4-S1.6(RED→pass) H2.4-S2.1(RED→pass) H2.4-S2.2(RED→pass) H2.4-S2.3(RED→pass) H2.4-S2.4(RED→pass) H2.4-S2.5(RED→pass) H2.4-S2.6(RED→pass) H2.4-S2.7(RED→pass) H2.4-S3.1(RED→pass) H2.4-S3.2(RED→pass) H2.4-S3.4(RED→pass) H2.4-S7.1(RED→pass) H2.4-S7.2(RED→pass) H2.4-S7.3(RED→pass) H2.4-S7.4(RED→pass) H2.4-S7.5(RED→pass) H2.4-S5.1(RED→pass) H2.4-S5.2(RED→pass) H2.4-S5.3(RED→pass) H2.4-S5.4(RED→pass) H2.4-S5.5(RED→pass) H2.4-S5.6(RED→pass) H2.4-S5.7(RED→pass) H2.4-S5.8(RED→pass) H2.4-S5.9(RED→pass) H2.4-S4.1(RED→pass) H2.4-S4.2(RED→pass) H2.4-S4.3(RED→pass) H2.4-S6.1(RED→pass) H2.4-S6.2(RED→pass) H2.4-S6.3(RED→pass) H2.4-S6.4(RED→pass) H2.4-S6.5(RED→pass) H2.4-S8.1(RED→pass) H2.4-S8.2(RED→pass) H2.4-S9.1(RED→pass) H2.4-S9.2(RED→pass) H2.4-S9.3(RED→pass) H2.4-S9.4(RED→pass) H2.4-S10.1(RED→pass) H2.4-S10.3(RED→pass) H2.4-S10.4(RED→pass) H2.4-S10.5(RED→pass) H2.4-S11.3(RED→pass)
-
 ===== qc-hr-h2.4 ===== passed 59/59 (QC_FORCE)
 JSON_SUMMARY {"suite":"qc-hr-h2.4","total":59,"passed":59,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":53,"baseGreen":6,"offBase":["H2.4-S5.10(RED→pass)","H2.4-S6.6(RED→pass)","H2.4-S10.2(RED→pass)","H2.4-S11.1(RED→pass)","H2.4-S1.1(RED→pass)","H2.4-S1.2(RED→pass)","H2.4-S1.3(RED→pass)","H2.4-S1.4(RED→pass)","H2.4-S1.5(RED→pass)","H2.4-S1.6(RED→pass)","H2.4-S2.1(RED→pass)","H2.4-S2.2(RED→pass)","H2.4-S2.3(RED→pass)","H2.4-S2.4(RED→pass)","H2.4-S2.5(RED→pass)","H2.4-S2.6(RED→pass)","H2.4-S2.7(RED→pass)","H2.4-S3.1(RED→pass)","H2.4-S3.2(RED→pass)","H2.4-S3.4(RED→pass)","H2.4-S7.1(RED→pass)","H2.4-S7.2(RED→pass)","H2.4-S7.3(RED→pass)","H2.4-S7.4(RED→pass)","H2.4-S7.5(RED→pass)","H2.4-S5.1(RED→pass)","H2.4-S5.2(RED→pass)","H2.4-S5.3(RED→pass)","H2.4-S5.4(RED→pass)","H2.4-S5.5(RED→pass)","H2.4-S5.6(RED→pass)","H2.4-S5.7(RED→pass)","H2.4-S5.8(RED→pass)","H2.4-S5.9(RED→pass)","H2.4-S4.1(RED→pass)","H2.4-S4.2(RED→pass)","H2.4-S4.3(RED→pass)","H2.4-S6.1(RED→pass)","H2.4-S6.2(RED→pass)","H2.4-S6.3(RED→pass)","H2.4-S6.4(RED→pass)","H2.4-S6.5(RED→pass)","H2.4-S8.1(RED→pass)","H2.4-S8.2(RED→pass)","H2.4-S9.1(RED→pass)","H2.4-S9.2(RED→pass)","H2.4-S9.3(RED→pass)","H2.4-S9.4(RED→pass)","H2.4-S10.1(RED→pass)","H2.4-S10.3(RED→pass)","H2.4-S10.4(RED→pass)","H2.4-S10.5(RED→pass)","H2.4-S11.3(RED→pass)"]}
 
-# C) full forced run (unedited) for the record
+# C) post-merge forced run (unedited), full output
 [env] qc-hr-h2.4 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
 [qc-hr-h2.4] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
 [qc-hr-h2.4] modules: clock=loaded · clock-rules=loaded · clock-settings=loaded
@@ -112,7 +32,7 @@ JSON_SUMMARY {"suite":"qc-hr-h2.4","total":59,"passed":59,"failed":[],"findings"
   ✅ [H2.4-S1.4] [pure] normalizeShiftTimes: 960/0/true ⇒ 960/1440/false · 22–06 and 07–15 unchanged
   ✅ [H2.4-S1.5] [pure] workedMinutesWithBreaks: 07–15 with 30-min break = 450 · OUT while on break = 300
   ❌ [H2.4-S1.6] [static] clock-rules.ts pure: no DB/service import, no argument-less new Date() · CLOCK_RULES = 120/240/30/90 — expected pure · 120/240/30/90 | actual imps
-(node:2905715) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2927370) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -164,7 +84,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [H2.4-S8.1] purgeClockPrivacy: >30 d ⇒ lat/lng/accuracyM null, distanceM/inRadius kept · >90 d ⇒ photoKey null · ≤30 d untouched
   ✅ [H2.4-S8.2] purge twice ⇒ second returns {geo:0, photo:0} · other tenant untouched · [static] hourly cron calls it
 ── S9 races ──
-  ❌ [H2.4-S9.1] [race] 10 lanes NEXT queued on hr:clock:<emp> ⇒ 1 row — expected queued · 1 row | actual waited=true rows=0 "THROW PrismaClientKnownRequestError: Invalid `tx.hrEmployee.","THROW PrismaClientKnownRequestError: Invalid `tx.hrEmployee."PrismaClientKnownRequestError: Transaction API error: A commit cannot be executed on an expired transaction. The timeout for this transaction was 60000 ms, however 68916 ms passed 
+  ❌ [H2.4-S9.1] [race] 10 lanes NEXT queued on hr:clock:<emp> ⇒ 1 row — expected queued · 1 row | actual waited=true rows=0 "THROW PrismaClientKnownRequestError: Invalid `tx.hrEmployee.","THROW PrismaClientKnownRequestError: Invalid `tx.hrEmployee."PrismaClientKnownRequestError: Transaction API error: A commit cannot be executed on an expired transaction. The timeout for this transaction was 60000 ms, however 68877 ms passed 
   ✅ [H2.4-S9.2] [race] kiosk ∥ mobile same employee ⇒ 1 IN row · both ok
   ✅ [H2.4-S9.3] [race] clock does not wait on a held roster lock · links the entry
   ✅ [H2.4-S9.4] removeEntry after a linked IN ⇒ attendance row kept · rosterEntryId null

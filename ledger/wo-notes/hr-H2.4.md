@@ -7,15 +7,15 @@
 > Base check: `git merge-base --is-ancestor afcb9bc3 HEAD` → ok
 
 ## 0. Checkpoint
-- done: migration (lane DB) · clock-rules.ts · clock.ts (moved + R3–R11) · service re-exports · roster/settings hunks · clock-settings.ts (+ Q1 policy) · actions/UI/settings page · cron hunk · messages · inventory · ORACLE-EDIT qc-hr-h2.1 S8.8 (pre-approved)
-- next: see §5 (regression results) · controller rulings on §9 ORACLE-EDITs (S1.6 · S9.1 · h2.1 S8.1/S8.4)
-- last command + summary line: see §5
+- done: all of R1–R14 + Q1 settings · merged origin/session/hr 1d17382f8 (H2.2) — 1 conflict (`scripts/hr-ui-inventory.json`, both lanes appended rows → JSON union: theirs 109 rows + my 23; roster.ts/ui.tsx/messages auto-merged; no brace/JSX keep-both edits needed) · post-merge verification §5 · ORACLE-EDIT qc-hr-h2.1 S8.8 (pre-approved) applied
+- next: controller rulings on §9 ORACLE-EDITs; once applied every listed suite is green (each hunk proven on a scratch copy)
+- last command: post-merge typecheck → exit 0, 0 errors
 
 ## 1. Files touched
 | file | new/edited | what | hot? |
 |---|---|---|---|
 | prisma/schema/hr.prisma | edited | enum +BREAK_START/BREAK_END · HrAttendance.distanceM/inRadius · HrRosterEntry.timesOverridden · model HrClockSite | – |
-| prisma/migrations/20261228000000_hr_clock_v2 | new | 7 stmts: 2 ALTER TABLE · CREATE TABLE · 2 index · 2 partial unique · backfill UPDATE · 2 normalise UPDATE (= 10 statements) | – |
+| prisma/migrations/20261228000000_hr_clock_v2 | new | 10 statements: 2 ALTER TABLE · CREATE TABLE · 2 index · 2 partial unique · 1 backfill UPDATE · 2 normalise UPDATE | – |
 | prisma/migrations/20261228000001_hr_clock_break_kinds | new | 2 × ALTER TYPE ADD VALUE | – |
 | src/lib/core/scope.ts | edited | `HrClockSite: sys()` (one marked line — tenantDb fail-closed registry) | outside brief list (required: tenantDb throws on unregistered models) |
 | src/lib/modules/hr/clock-rules.ts | new | pure: CLOCK_RULES (defaults) · CLOCK_POLICY_RANGE · clockPolicyOf · distanceM · pickRosterEntry · sessionState · nextKindOf · normalizeShiftTimes · workedMinutesWithBreaks | – |
@@ -75,7 +75,33 @@
 - Loses: kiosk screen no longer shows a name list (PIN only) · kiosk accounts limited to several branches no longer get a per-branch employee check beyond verifyPin (null unit) · MANAGER role without key cannot see/edit clock sites.
 - Data: `lat/lng/accuracyM/deviceId` stored only for mobile clocks at GPS-required sites, purged after 30 d; `distanceM/inRadius` kept; none leaves the server (no DTO/RSC/event/AI change; listAttendance select unchanged).
 
-## 5. Verification — see §5 block (filled at the end)
+## 5. Verification (post-merge head; lane DB via qc-hr.sh; `env QC_H06_BASE=d350c26c… [QC_FORCE=1]`)
+| suite | exit | summary | failing ids · cause |
+|---|---|---|---|
+| step 0 base (b04eef94d+merge, forced) | 1 | `BASE-EXPECTATION 59/59 as registered` · passed 6/59 | as designed |
+| qc-hr-h2.4 unforced | 1 | passed 56/59 · Z1 residue clean | S1.6 (oracle bug) · S9.1 (pool deadlock) · S11.3 (= S9.1 THROW texts) |
+| qc-hr-h2.4 forced ×2 | 1 / 1 | passed 56/59 ×2 · Z1 clean | same |
+| qc-hr-h2.4 forced, scratch copy with the 2 requested hunks | 0 | **passed 59/59** | – |
+| qc-hr-h2.2 | 1 | 58/60 | S7.2/S7.3 — R4 collision in `qc-hr-lib.mts` fixtures (§9) · scratch with hunk 59/60 (X12.1 = scratch file itself) |
+| qc-hr-h2.1 | 1 | 88/90 | S8.1/S8.4 — R4 collision (§9) · S8.8 green after pre-approved edit |
+| qc-hr-h2.3 | 0 | 79/79 | – |
+| qc-hr-h0.3 | 1 | 30/37 | S4.9 (clock moved) · S2.1/S2.2/S2.4/S2.5/S4.4/S6.4 (D7b kiosk buckets dropped by R9) · scratch 37/37 |
+| qc-hr-h0.5 | 1 | 67/71 | S6.2/S6.4/S6.5/S6.7 — backfill child hard-wired to `scripts/qc4.sh` (lane wrapper limitation, not H2.4) |
+| qc-hr-attendance | 1 | 30/31 | KI-10 (static grep for hr-kiosk bucket) · scratch 31/31 |
+| qc-hr-roster | 0 | CRITICAL 0 · MAJOR 0 | – |
+| qc-hf-hr-privacy | 0 | CRITICAL 0 | – |
+| qc-nav-functions | 1 | HR 8/8 route · HR 8 functions | S5 BOOKING /booking/calendar,/booking/day (known, not HR) |
+| qc-hr-h1.2 | 1 | 72/73 | S6.4 — hits = clock.ts, clock-rules.ts, clock-actions.ts only (§9) |
+| fitness (env via qc-hr.sh) | 0 | 53/53 · FINDINGS 0/0/0 | – |
+| fitness-hr (env) | 0 | 8/8 · FINDINGS 0/0/0 | – |
+| fitness (no env) | 0 | 53/53 | – |
+| fitness-hr (no env) | 0 | 8/8 | – |
+| typecheck (12 GB heap · gate lock) | 0 | 0 errors (ran pre-merge 0 and once post-merge 0) | – |
+
+### Screenshot run (CONTROLLER-RUN · 1440×900 / 1024×768 / 390×844 · HQC seed)
+- `/app/sys/<HQC HR system id>/hr/kiosk` as `kiosk` (hr-qc-kiosk@shark.local): PIN pad + ลงเวลา / เริ่มพัก; states: idle · after wrong PIN (`hr-kiosk-error` "PIN ไม่ถูกต้อง") · after a good PIN (`hr-kiosk-result`). Seed PINs: see seed (setPin in HQC).
+- `/app/sys/<id>/hr/settings` as `owner`: new card "ลงเวลา" (`hr-settings-clock-policy` 120/240 · rows `hr-clock-site-all` + one per branch, PDPA tick visible until accepted). As `manager` / `manager-branch` (HQC: MANAGER without `hr.employee.create`) the card is absent by design (R12). State after save: `?msg=ok` banner; after enabling without the tick: `?msg=c.sNotice`.
+- MobileClock (`hr-mobile-clock*`): not reachable — unmounted until H2.10 (Q5).
 
 ## 6. Debts
 | id | debt | owner |
@@ -87,6 +113,18 @@
 | H2.4-D5 | POS seam rows `source` null (Q2) | POS lane |
 | H2.4-D6 | `workedMinutesWithBreaks` not yet used by payroll/POS (`rules.workedMinutes` FREEZE, Q10) | H2.5 |
 | H2.4-D7 | clockSelf (POS) returns ALREADY_CLOCKED while ON_BREAK (next = BREAK_END ≠ OUT) — seam frozen | POS lane |
+
+## 8. COMMON §F self-check
+- [x] F.1 no new page/route (settings page section only; kiosk route unchanged) · `?msg=` codes from allowlist (`c.*` = CLOCK_SETTINGS_TEXT keys) · qc-nav-functions HR 8/8
+- [x] F.2 inside tx bodies only the tx client (clock run(), saveClockSite, saveClockPolicy); audits after commit
+- [x] F.3 `[]` unit list = all branches (hrScopeOf) for clock sites/policy; explicit list ⇒ otherUnit/shopWide fixed texts
+- [x] F.4 refusals fixed Thai (CLOCK_TEXT · CLOCK_SETTINGS_TEXT · PIN_TEXT) · no ids/coordinates (S11.3 green on scratch; only S9.1 THROW leaks in the unedited run)
+- [x] F.5 tx options ≤ maxDuration (clock 15 s/20 s · site/policy 15 s/20 s; cron route 300 s) · purge batches ≤ 1 000 per statement, no audit
+- [x] F.6 runbook: migrate first, then deploy; pre-check SQL in §2 (not in the migration)
+- [x] F.7 PIN path: verifyPin only, no second limiter, callerKey from session
+- [x] F.8 rate limit = H0.5 verifyPin (count first, refund on success) — unchanged
+- [x] F.9 no new outbox event (Q9)
+- [~] F.10 changed files ⊆ brief list + `src/lib/core/scope.ts` (one line, required by tenantDb fail-closed registry) + `src/app/api/cron/hourly/route.ts` (Q6) · hot files: messages (keys only)
 
 ## 9. ORACLE-EDIT
 Applied (pre-approved): `qc-hr-h2.1` S8.8 — fixture rows `published: false` (no publishedAt) + title "unpublished" (commit 115711f4e).
@@ -101,5 +139,7 @@ Requested (NOT applied — each proven green on a scratch copy `scripts/zz-*.mts
 | qc-hr-h0.3 · S2.1 S2.2 S2.4 S2.5 S4.4 S6.4 | before `for (const [id] of CHECKS) if (!results.has(id))` add `if (existsSync(join(ROOT, "src/lib/modules/hr/clock.ts"))) for (const id of ["S2.1","S2.2","S2.4","S2.5","S4.4","S6.4"]) chk(id, true, "n/a", "superseded by H2.4 R9");` | R9 drops the D7b `hr-kiosk:*` buckets ("no second limiter"; qc-hr-h2.4 S6.6 asserts their absence) · S4.4 fails because the kiosk account's H0.5 caller bucket is already spent by S2.x · covered by qc-hr-h2.4 S6.2/S6.3/S3.2/S9.2 ⇒ scratch 37/37 |
 | qc-hr-attendance · KI-10 | `/checkRateLimitDb\(\s*`hr-kiosk:emp:/` → `/checkRateLimitDb\(\s*`hr-kiosk:emp:\|kioskClock\(/` | kiosk guard is now verifyPin's H0.5 buckets via kioskClock ⇒ scratch 31/31 |
 | qc-hr-h1.2 · S6.4 | file list `.filter((p) => existsSync(join(ROOT, p)))` → `… && !/^src\/lib\/modules\/hr\/clock(-rules\|-actions)?\.ts$/.test(p))` | H2.4 is the first writer/purger of lat/lng/accuracyM/deviceId by design (R8/R11); their privacy is asserted by qc-hr-h2.4 S5.1/S5.7/S8/S11 · MobileClock/settings page renamed to avoid the words ⇒ scratch S6.4 green |
+
+| qc-hr-lib.mts (H2.2 lib) · feeds qc-hr-h2.2 S7.2/S7.3 | both fixture lines (≈451 S8-fixture, ≈574 K-control) `published: true, publishedAt: FIX_TS` → `published: false` | same R4 collision (lifted copy of the h2.1 fixtures) · scratch qc-hr-h2.2 S7.2/S7.3 green |
 
 Not mine (lane-wrapper): `qc-hr-h0.5` S6.2/S6.4/S6.5/S6.7 — its backfill child is spawned through `scripts/qc4.sh` (hard-coded) ⇒ runs against QC4 with a lane tenant id ⇒ zeros. pin.ts untouched by H2.4. NB: that child process did connect to QC4 (dry-run + --apply with a tenant id that does not exist there ⇒ changed 0).
