@@ -2969,6 +2969,190 @@
    "wo": "H2.2",
    "oracle": "qc-hr-h2.2",
    "note": "* = MAX_DAY|REST|DAY_OFF|MAX_WEEK|OVERLAP · ปิดเมื่อผ่าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-law-page",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/law/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า (Q8)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.3",
+   "oracle": "qc-hr-h3.3",
+   "note": "หน้าตารางกฎหมาย อ่านอย่างเดียว (ภาพ 08) — ไม่มีฟอร์ม/ปุ่มบันทึก"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-law-back",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/law/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า (Q8)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/settings"
+   },
+   "wo": "H3.3",
+   "oracle": "qc-hr-h3.3",
+   "note": "กลับหน้าตั้งค่า (≥ 44 px)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-law-warn",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/law/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า (Q8)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.3",
+   "oracle": "qc-hr-h3.3",
+   "note": "role=note ตัวเลขต้องให้นักบัญชีตรวจก่อนใช้จริง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-law-pending",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/law/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า (Q8) · เมื่อ ปสส./ภาษี/ลดหย่อน ยังไม่มีแถว ACTIVE ที่มีผล",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.3",
+   "oracle": "qc-hr-h3.3",
+   "note": "role=status รอนักบัญชียืนยัน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-law-table",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/law-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า (Q8)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.3",
+   "oracle": "qc-hr-h3.3",
+   "note": "ตารางกฎหมายทั้งหมด จัดกลุ่มตามชนิด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-law-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/law-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า (Q8)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H3.3",
+   "oracle": "qc-hr-h3.3",
+   "note": "* = SSO | TAX_BRACKET | DEDUCTION | OT | MIN_WAGE · ทุกแถวทุกสถานะ (ร่าง = รอนักบัญชียืนยัน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-law-link",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า (Q8)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/settings/law"
+   },
+   "wo": "H3.3",
+   "oracle": "qc-hr-h3.3",
+   "note": "ทางเข้าแท็บตารางกฎหมาย (≥ 44 px)"
   }
  ]
 }

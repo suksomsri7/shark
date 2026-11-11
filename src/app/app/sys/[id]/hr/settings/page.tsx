@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
@@ -54,6 +55,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   if (!canManageHrSettings(viewer)) notFound();
   const scope = hrScopeOf(viewer);
   const t = await getTranslations("hr.settings");
+  const tLaw = await getTranslations("hr.law"); // HR H3.3 ▸ ป้ายลิงก์ตารางกฎหมาย ◂
   const def = systemDef(sys.type);
   const ctx = { tenantId: auth.active.tenantId, systemId: id };
   const thisYear = Number(thaiDateKey(new Date()).slice(0, 4));
@@ -107,6 +109,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     <div className="flex max-w-2xl flex-col gap-5" data-testid="hr-settings-page">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs items={hrTabs(id)} />
+      {/* HR H3.3 ▸ ทางเข้าหน้าตารางกฎหมาย (อ่านอย่างเดียว · ภาพ 08 แท็บ "ตารางกฎหมาย") ◂ */}
+      <Link href={`/app/sys/${id}/hr/settings/law`} className="card flex min-h-[44px] flex-col gap-1 p-3 hover:bg-[color:var(--color-surface-2)]" data-testid="hr-settings-law-link">
+        <span className="text-sm font-medium">{tLaw("settingsLink")}</span>
+        <span className="text-xs text-[color:var(--color-muted)]">{tLaw("settingsLinkDesc")}</span>
+      </Link>
       <p role="note" className="text-xs text-[color:var(--color-muted)]" data-testid="hr-settings-stub-note">
         {t("stubNote")}
       </p>
