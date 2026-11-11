@@ -29,6 +29,7 @@ import {
   rollback,
   weekLabel,
   isRosterMsgCode,
+  isTempEntryId,
   type DateNames,
   type RosterBoardDto,
   type RosterCellDto,
@@ -107,6 +108,29 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
   }, [board]);
   const [flash, setFlash] = useState<Flash>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
+  // r2 m5: แผ่นคำสั่ง — โฟกัสเข้าแผ่นตอนเปิด · Esc ปิด · ปิดแล้วคืนโฟกัสให้ปุ่ม/ชิปที่เปิด (ถ้ายังอยู่ในหน้า)
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const openSheet = useCallback((s: NonNullable<Sheet>, opener: HTMLElement | null) => {
+    openerRef.current = opener;
+    setSheet(s);
+  }, []);
+  const closeSheet = useCallback(() => {
+    setSheet(null);
+    const el = openerRef.current;
+    openerRef.current = null;
+    if (el?.isConnected) window.setTimeout(() => el.focus(), 0);
+  }, []);
+  const sheetOpen = sheet !== null;
+  useEffect(() => {
+    if (!sheetOpen) return;
+    sheetRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeSheet();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sheetOpen, closeSheet]);
   const [ruleOn, setRuleOn] = useState<RosterRuleKey | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [dialogKey, setDialogKey] = useState(0);
@@ -219,7 +243,11 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
     const up = (e: PointerEvent) => {
       const d = dragRef.current;
       if (d?.active) {
+        // r2 m1: กันเฉพาะ click ที่ตามการปล่อยนี้ (ปล่อยนอกชิป ⇒ click ไปที่อื่น) — ล้างหลังจบ event นี้ ไม่ค้างไปกินแตะครั้งถัดไป
         suppressClick.current = true;
+        window.setTimeout(() => {
+          suppressClick.current = false;
+        }, 0);
         const to = targetAt(e.clientX, e.clientY, d.entry.id);
         if (to) enqueue(e.altKey ? "copy" : "move", d.entry, to);
       }
@@ -259,24 +287,34 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
       if (to) enqueue("move", entry, to);
     }
   };
-  const openEntry = (row: RosterRowDto, cell: RosterCellDto, entry: RosterEntryDto) => {
+  const openEntry = (ev: React.MouseEvent<HTMLElement>, row: RosterRowDto, cell: RosterCellDto, entry: RosterEntryDto) => {
     if (suppressClick.current) {
       suppressClick.current = false;
       return;
     }
-    setSheet({ kind: "entry", row, cell, entry });
+    if (isTempEntryId(entry.id)) return; // r2 m3: ชิปชั่วคราว (ยังรอ server) — เปิด/แก้ไม่ได้
+    openSheet({ kind: "entry", row, cell, entry }, ev.currentTarget);
   };
 
   // ── งานที่ไม่ผ่านตัวลดสถานะ (เพิ่ม · เปลี่ยนกะ · ลบ · คัดลอกสัปดาห์ · สร้างจากแม่แบบ · เผยแพร่) ──
+  //   r2 MEDIUM-1: ทีละ 1 งาน — ระหว่างรอผล (busy) แตะซ้ำ/แตะกะอื่นไม่ส่ง action ที่สอง · ปุ่มในแผ่นคำสั่งถูกปิด
+  const runningRef = useRef(false);
+  const [busy, setBusy] = useState(false);
   const run = async (fn: () => Promise<RosterOpResult>, okText: (r: Extract<RosterOpResult, { ok: true }>) => string) => {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setBusy(true);
     let r: RosterOpResult;
     try {
       r = await fn();
     } catch {
       r = { ok: false, code: "failed" };
+    } finally {
+      runningRef.current = false;
+      setBusy(false);
     }
     report(r, r.ok ? okText(r) : "");
-    setSheet(null);
+    closeSheet();
     setDialogKey((k) => k + 1);
     startTransition(() => router.refresh());
   };
@@ -291,7 +329,8 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
   // ── ส่วนย่อย ──
   const writableDay = (day: string) => b.canWrite && b.days.find((d) => d.key === day)?.past === false;
   const chip = (row: RosterRowDto, cell: RosterCellDto, e: RosterEntryDto) => {
-    const editable = writableDay(cell.day) && !row.ended;
+    const temp = isTempEntryId(e.id); // r2 m3: ชิปชั่วคราวลาก/เปิด/ลบไม่ได้จนกว่า server ยืนยัน
+    const editable = writableDay(cell.day) && !row.ended && !temp;
     const hl = highlight.has(e.id);
     return (
       <button
@@ -300,12 +339,13 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
         data-testid={`hr-roster-entry-${e.id}`}
         data-entry-id={e.id}
         data-changed={e.published ? undefined : "1"}
+        aria-disabled={temp ? true : undefined}
         data-highlight={hl ? "1" : undefined}
         aria-label={`${e.label} ${chipRange(e)}${e.overnight ? ` ${t("overnight")}` : ""}${e.published ? "" : ` · ${t("legend.changed")}`}`}
         className={`relative block min-h-[44px] w-full rounded-[10px] px-1 py-1.5 text-center text-[13.5px] font-bold leading-tight outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ink)] ${CHIP[e.kind]} ${hl ? "ring-2 ring-[color:var(--color-danger)]" : ""} ${editable && !narrow ? "cursor-grab touch-none" : ""} ${drag?.active && drag.entry.id === e.id ? "opacity-40" : ""}`}
         onPointerDown={editable ? (ev) => onChipPointerDown(ev, row, cell, e) : undefined}
         onKeyDown={editable ? (ev) => onChipKey(ev, row, cell, e) : undefined}
-        onClick={() => openEntry(row, cell, e)}
+        onClick={(ev) => openEntry(ev, row, cell, e)}
       >
         {e.label}
         <small className="block font-normal tabular-nums">
@@ -335,15 +375,16 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
         {cell.entries.map((e) => chip(row, cell, e))}
         {leaveChip(cell)}
         {cell.entries.length === 0 && !cell.leave && cell.state !== "off" && <span className="text-[13.5px] text-[color:var(--color-muted)]">{t("outMark")}</span>}
-        {canAdd && (cell.entries.length === 0 ? !cell.leave : true) && (
+        {/* r2 m2: ลาไม่บล็อกการจัดกะ (R10 · เครื่องยนต์แจ้ง ON_LEAVE เป็นข้อมูล) ⇒ ช่องที่มีลามีปุ่ม + ใต้ชิปลา — แตะ/คีย์บอร์ดถึงได้เหมือนลากวาง */}
+        {canAdd && (
           <button
             type="button"
             data-testid={`hr-roster-cell-${row.employeeId}-${cell.day}`}
             aria-label={t("addShift", { name: row.name, day: dayLabel(cell.day, names) })}
-            className={`min-h-[44px] w-full rounded-[10px] text-[13.5px] text-[color:var(--color-muted)] outline-none hover:bg-[color:var(--color-surface-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-ink)] ${cell.entries.length ? "min-h-[28px] text-xs" : ""}`}
-            onClick={() => setSheet({ kind: "picker", row, cell })}
+            className={`min-h-[44px] w-full rounded-[10px] text-[13.5px] text-[color:var(--color-muted)] outline-none hover:bg-[color:var(--color-surface-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--color-ink)] ${cell.entries.length || cell.leave ? "min-h-[28px] text-xs" : ""}`}
+            onClick={(ev) => openSheet({ kind: "picker", row, cell }, ev.currentTarget)}
           >
-            {cell.entries.length ? "+" : t("off")}
+            {cell.entries.length || cell.leave ? "+" : t("off")}
           </button>
         )}
         {!canAdd && cell.state === "off" && !cell.leave && <span className="text-[13.5px] text-[color:var(--color-muted)]">{t("off")}</span>}
@@ -650,16 +691,19 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
 
   // ── แผ่นคำสั่ง (ตัวเลือกกะ · คำสั่งของชิป) ──
   const sheetView = sheet && (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[color:var(--color-ink)]/40 sm:items-center sm:p-4" onClick={() => setSheet(null)}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[color:var(--color-ink)]/40 sm:items-center sm:p-4" onClick={closeSheet}>
       <div
+        ref={sheetRef}
+        tabIndex={-1}
         role="dialog"
+        aria-busy={busy || undefined}
         aria-modal="true"
         data-testid={sheet.kind === "picker" ? "hr-roster-picker" : "hr-roster-entry-sheet"}
-        className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-t-2xl bg-[color:var(--color-surface)] p-5 shadow-lg sm:rounded-2xl"
+        className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-t-2xl outline-none bg-[color:var(--color-surface)] p-5 shadow-lg sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {sheet.kind === "picker" ? (
-          <PickerBody key={`${sheet.row.employeeId}-${sheet.cell.day}`} t={t} names={names} row={sheet.row} cell={sheet.cell} list={shiftsFor(b, sheet.cell)} onAdd={addShift} />
+          <PickerBody key={`${sheet.row.employeeId}-${sheet.cell.day}`} t={t} names={names} row={sheet.row} cell={sheet.cell} list={shiftsFor(b, sheet.cell)} busy={busy} onAdd={addShift} />
         ) : (
           <EntryBody
             key={sheet.entry.id}
@@ -670,17 +714,18 @@ export function RosterBoard({ board, systemId, basePath }: Props) {
             cell={sheet.cell}
             entry={sheet.entry}
             editable={writableDay(sheet.cell.day) && !sheet.row.ended}
+            busy={busy}
             others={shiftsFor(b, sheet.cell).filter((s) => s.id !== sheet.entry.shiftId)}
             onGo={(kind, to) => {
               const entry = sheet.entry;
-              setSheet(null);
+              closeSheet();
               enqueue(kind, entry, to);
             }}
             onChange={(sid) => run(() => moveRosterEntryAction({ systemId, entryId: sheet.entry.id, shiftId: sid }), () => t("result.saved"))}
             onRemove={() => run(() => removeRosterEntryAction({ systemId, entryId: sheet.entry.id }), () => t("result.saved"))}
           />
         )}
-        <button type="button" className="btn btn-ghost mt-3 min-h-[44px] w-full text-sm" onClick={() => setSheet(null)}>
+        <button type="button" className="btn btn-ghost mt-3 min-h-[44px] w-full text-sm" onClick={closeSheet}>
           {t("close")}
         </button>
       </div>
@@ -751,7 +796,7 @@ type T = ReturnType<typeof useTranslations>;
 function shiftsFor(b: RosterBoardDto, cell: RosterCellDto): RosterShiftDto[] {
   return b.shifts.filter((s) => s.unitId === null || s.unitId === (cell.unit ?? null));
 }
-function PickerBody({ t, names, row, cell, list, onAdd }: { t: T; names: DateNames; row: RosterRowDto; cell: RosterCellDto; list: RosterShiftDto[]; onAdd: (row: RosterRowDto, day: string, shiftId: string, times?: { startMin: number; endMin: number }) => void }) {
+function PickerBody({ t, names, row, cell, list, busy, onAdd }: { t: T; names: DateNames; row: RosterRowDto; cell: RosterCellDto; list: RosterShiftDto[]; busy: boolean; onAdd: (row: RosterRowDto, day: string, shiftId: string, times?: { startMin: number; endMin: number }) => void }) {
   const [sid, setSid] = useState(list[0]?.id ?? "");
   const [st, setSt] = useState("09:00");
   const [en, setEn] = useState("17:00");
@@ -762,7 +807,7 @@ function PickerBody({ t, names, row, cell, list, onAdd }: { t: T; names: DateNam
         {list.length === 0 && <p className="text-sm text-[color:var(--color-muted)]">{t("picker.none")}</p>}
         <div className="flex flex-col gap-2">
           {list.map((s) => (
-            <button key={s.id} type="button" data-testid={`hr-roster-picker-shift-${s.id}`} onClick={() => addShift(row, cell.day, s.id)} className={`min-h-[44px] rounded-[10px] px-3 py-2 text-left text-sm font-bold ${CHIP[s.kind]}`}>
+            <button key={s.id} type="button" data-testid={`hr-roster-picker-shift-${s.id}`} disabled={busy} onClick={() => addShift(row, cell.day, s.id)} className={`min-h-[44px] rounded-[10px] px-3 py-2 text-left text-sm font-bold disabled:opacity-50 ${CHIP[s.kind]}`}>
               {s.label} <span className="font-normal tabular-nums">{s.range}</span>
             </button>
           ))}
@@ -790,7 +835,7 @@ function PickerBody({ t, names, row, cell, list, onAdd }: { t: T; names: DateNam
             <button
               type="button"
               className="btn btn-primary min-h-[44px] text-sm"
-              disabled={!sid || minOf(st) === null || minOf(en) === null}
+              disabled={busy || !sid || minOf(st) === null || minOf(en) === null}
               onClick={() => addShift(row, cell.day, sid, { startMin: minOf(st) ?? 0, endMin: minOf(en) ?? 0 })}
             >
               {t("picker.save")}
@@ -808,6 +853,7 @@ function EntryBody({
   cell,
   entry,
   editable,
+  busy,
   others,
   onGo,
   onChange,
@@ -820,6 +866,7 @@ function EntryBody({
   cell: RosterCellDto;
   entry: RosterEntryDto;
   editable: boolean;
+  busy: boolean;
   others: RosterShiftDto[];
   onGo: (kind: "move" | "copy", to: RosterTarget) => void;
   onChange: (shiftId: string) => void;
@@ -858,10 +905,10 @@ function EntryBody({
               ))}
             </select>
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={!ok} onClick={() => onGo("move", to)}>
+              <button type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={busy || !ok} onClick={() => onGo("move", to)}>
                 {t("entry.move")}
               </button>
-              <button type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={!ok} onClick={() => onGo("copy", to)}>
+              <button type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={busy || !ok} onClick={() => onGo("copy", to)}>
                 {t("entry.copy")}
               </button>
             </div>
@@ -876,7 +923,7 @@ function EntryBody({
                   </option>
                 ))}
               </select>
-              <button type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={!sid} onClick={() => onChange(sid)}>
+              <button type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={busy || !sid} onClick={() => onChange(sid)}>
                 {t("entry.change")}
               </button>
             </fieldset>

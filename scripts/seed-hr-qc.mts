@@ -448,6 +448,14 @@ try {
     `${rWant} · 1 · ${RS.edits.length}`,
     `${rList?.entries?.length ?? rList?.reason} · ${rEvents} · ${rList?.unpublishedCount}`,
   );
+  // HR H2.2 r2 ▸ Q14 ใบลารออนุมัติของแพร ส.–อา. ของ rosterWeek (ผ่าน hr.requestLeave เหมือนข้อ 9 · ไม่ตัดสิน) — ทำหลัง RS1 ไม่แตะตารางกะ ◂
+  const PL = RS.pendingLeave;
+  const plFrom = addDays(rosterWeek, PL.fromDow);
+  const plTo = addDays(rosterWeek, PL.toDow);
+  const lvR = await hr.requestLeave(ctx, { employeeId: emp[PL.employee], type: PL.type, fromDate: plFrom, toDate: plTo, reason: PL.reason });
+  const lvRRow = (await P.hrLeave.findUnique({ where: { id: lvR.id }, select: { status: true } })) as Any;
+  const leavesNow = await P.hrLeave.count({ where: { tenantId } });
+  q.chk("RS2", `ใบลารออนุมัติของแพร ${plFrom}–${plTo} (ชิปลาในภาพ 03) · ใบลารวม 3`, lvRRow?.status === "PENDING" && leavesNow === 3, "PENDING · 3", `${lvRRow?.status} · ${leavesNow}`);
 
   // ═══════════════════ 10. ผลรวม + ร้านอื่นไม่เปลี่ยน + ไฟล์เฉลย ═══════════════════
   const counts = await countsOf(tenantId, tables);
@@ -492,7 +500,7 @@ try {
     // HR H1.3 ▸ เงินและกฎหมาย — engineVersion ของรอบที่จ่ายแล้ว · จำนวนแถวกฎหมาย v1:* (ตารางกลาง ไม่ใช่ของร้าน) ◂
     moneyLaw: { "HrPayrollRun.engineVersion": run.engineVersion, "HrLawTable.v1": lawV1.length },
     // HR H2.2 ▸ ตารางกะของภาพ 03 — visual-hr SPECS["2.2"] อ่าน rosterWeek (+ units.huahin) ◂
-    roster: { week: rosterWeek, entries: rWant, published: rPub.published, unpublished: rList?.unpublishedCount ?? null },
+    roster: { week: rosterWeek, entries: rWant, published: rPub.published, unpublished: rList?.unpublishedCount ?? null, pendingLeave: { employee: PL.employee, from: plFrom, to: plTo } },
     counts,
   };
   writeFileSync(HQC.expectedPath, JSON.stringify(expected, null, 2) + "\n");

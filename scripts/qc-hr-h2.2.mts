@@ -27,7 +27,7 @@ import {
   type Any, type Def, type Sev, type Base, type Who, ROOT, rd, short, errText, isThai, srt, failedKeys, stripComments, sha, dk, dbDate, sleep, tagOf,
   PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf,
   vOf, authOf, underRosterLock, frozenControls, FROZEN_CLOCK, fitnessNoEnv, importsOf, flat, jsonOf, placeholderRe as phRe,
-  testidsOf as tidOf, canon, keysDeep, loadOpt, modState as st, ROSTER_ENGINE_TEXT as ENGINE_TEXT, hrNavLabels, useServerFile, clientImports,
+  testidsOf as tidOf, canon, keysDeep, loadOpt, modState as st, ROSTER_ENGINE_TEXT as ENGINE_TEXT_14, hrNavLabels, useServerFile, clientImports,
   inventoryParity, msgParity, tokensOnly, HR_FORBIDDEN_DTO_KEYS,
 } from "./qc-hr-lib.mjs";
 
@@ -56,6 +56,19 @@ const FROZEN_FILES = [
   ...["roster-rules.ts", "service.ts", "payroll.ts", "payroll-actions.ts", "payroll-digest.ts", "privacy-shared.ts", "privacy.ts", "time-rules.ts", "settings.ts", "settings-actions.ts", "actions.ts", "KioskClock.tsx"].map((f) => H + f),
   "src/lib/outbox-consumers.ts", "src/lib/automation/labels.ts", "src/lib/webhooks/labels.ts", PAYROLL_RULES_FILE,
 ];
+// ORACLE-EDIT H2.2 r2 (controller ruling Q-1, 11 Nov): the 8 remaining engine refusals (roster.ts ROSTER_TEXT) get their own codes —
+//   typed here independently of the product (S2.2 byte-checks ROSTER_MSG + th msg.<code> against these; CODES feeds S6.6 + X2.1)
+const ENGINE_TEXT: Record<string, string> = {
+  ...ENGINE_TEXT_14,
+  entryNotFound: "ไม่พบกะนี้ในตาราง — กรุณารีเฟรช",
+  entryChanged: "กะนี้เพิ่งถูกแก้ไข — กรุณารีเฟรชแล้วลองใหม่",
+  employeeNotFound: "ไม่พบพนักงานคนนี้ — กรุณารีเฟรช",
+  range: "เลือกช่วงวันได้ไม่เกิน 31 วัน",
+  rangeOrder: "วันเริ่มต้องไม่หลังวันสิ้นสุด",
+  date: "วันที่ไม่ถูกต้อง",
+  note: "หมายเหตุยาวเกินไป (ไม่เกิน 200 ตัวอักษร)",
+  tooMany: "รายการมากเกินไปสำหรับการเผยแพร่ครั้งเดียว — กรุณาเลือกช่วงวันให้สั้นลง",
+};
 const CODES = [...Object.keys(ENGINE_TEXT), "noSystem", "failed"];
 const RULE_LABELS = ["ชม. สูงสุด/วัน 10", "พักระหว่างกะ ≥ 11 ชม.", "วันหยุด ≥ 1/สัปดาห์", "ชม./สัปดาห์ ≤ 48"];
 const TESTIDS = ["page", "title", "branch-chip-", "legend", "grid", "day-", "row-", "hours-", "total", "note", "rule-", "rules", "empty", "unpublished", "published-state", "publish", "publish-confirm", "copy-prev", "generate", "week-prev", "week-label", "week-next", "week-today", "cell-", "picker", "picker-shift-", "entry-", "entry-sheet", "entry-remove", "drag-ghost", "message", "daytab-"].map((s) => `hr-roster-${s}`);
@@ -75,7 +88,7 @@ const CHECKS: readonly Def[] = [
   D("S1.8", "R2", M, "RED", "[loader] canWrite = canManageHrSettings(viewer) for every reader"),
   D("S2.1", "R12", C, "RED", "[core] add / move / remove / generate / copy / publish ⇒ ok + engine rows changed"),
   D("S2.2", "R13", C, "RED", "[pure+core] ROSTER_MSG / th msg.<code> = engine text · en present · 8 refusals map to codes"),
-  D("S2.3", "R12", M, "RED", "[core] reason outside the list (range > 31 d) ⇒ failed · malformed auth ⇒ failed · no raw text"),
+  D("S2.3", "R12", M, "RED", "[core] range > 31 d ⇒ range (ORACLE-EDIT r2 Q-1) · malformed auth ⇒ failed · no raw text"),
   D("S2.4", "R10", C, "RED", "[core] 2020 add / move / remove ⇒ past · row unchanged"),
   D("S2.5", "R12", C, "RED", "[core] mgr-u1: e2 (u2) ⇒ otherBranch · e3 (no unit) ⇒ unassigned · e4 borrowed day ⇒ ok"),
   D("S2.6", "R12", C, "RED", "[core] staff-u1 / member / payroll-like × 6 ops ⇒ noPerm · 0 writes · 0 events"),
@@ -117,6 +130,7 @@ const CHECKS: readonly Def[] = [
   D("S6.7", "R16", M, "RED", "[static] tokens only in roster files · --color-shift-1…12"),
   D("S6.8", "R15", m, "RED", "[static] roster-ui.tsx min-h-[44px]/min-h-11 ≥ <button> count"),
   D("S6.9", "§4", M, "RED", "[static] visual-hr SPECS 2.2: 4 specs + expect statuses"),
+  D("S8.1", "R10", M, "RED", "[static] ORACLE-EDIT r2: run() in-flight guard (ref checked before await · reset in finally) · picker/entry-sheet writes disabled while busy"),
   D("S7.1", "R17", C, "GREEN", "[static] payroll-rules sha · frozen files vs base · roster.ts marked hunks only"),
   D("S7.2", "R17", C, "GREEN", "[digest] board session via cores in system D ⇒ H2.1 S8 digests + MONTHLY frozen"),
   D("S7.3", "R17", C, "GREEN", "[run] clock() control " + FROZEN_CLOCK),
@@ -197,6 +211,24 @@ function runStatic(): void {
   const buttons = (ui.match(/<button\b/g) ?? []).length;
   const tall = (ui.match(/min-h-\[44px\]|min-h-11\b/g) ?? []).length;
   chk("S6.8", buttons > 0 && tall >= buttons, "min-h ≥ <button> count", `buttons=${buttons} min-h=${tall}`);
+  {
+    // ORACLE-EDIT H2.2 r2 (review MEDIUM-1): two quick taps in the shift picker / entry sheet must send one write.
+    //   run(): the first statement is `if (<ref>.current) return;`, the ref is set before the first await and cleared in `finally`.
+    //   every sheet button that writes through run (addShift / onChange) or the queue (onGo) carries `disabled={busy…}` and both sheets get `busy`.
+    const at = ui.indexOf("const run = async (");
+    const body = at >= 0 ? ui.slice(at, ui.indexOf("\n  };", at)) : "";
+    const g = /=>\s*\{\s*if \((\w+)\.current\) return;/.exec(body);
+    const ref = g?.[1] ?? "∅";
+    const aw = body.indexOf("await ");
+    const setAt = body.indexOf(`${ref}.current = true`);
+    const fin = body.indexOf("finally");
+    const guard = !!g && setAt > 0 && aw > setAt && fin > aw && body.indexOf(`${ref}.current = false`, fin) > fin;
+    const sites = [...ui.matchAll(/onClick=\{\(\) => (?:addShift|onChange|onGo)\(/g)].map((mm) => ui.slice(ui.lastIndexOf("<button", mm.index ?? 0), mm.index));
+    const undisabled = sites.filter((seg) => !/disabled=\{busy\b/.test(seg)).length;
+    const passed = (ui.match(/\bbusy=\{busy\}/g) ?? []).length;
+    const r = { guard, sites: sites.length >= 5, disabled: undisabled === 0, passedToSheets: passed >= 2 };
+    chk("S8.1", Object.values(r).every(Boolean), "guard · 5+ sheet writes disabled while busy", `${failedKeys(r)} ref=${ref} sites=${sites.length} undisabled=${undisabled} busyProps=${passed}`);
+  }
   {
     const v = rd(F.visual);
     const i = v.indexOf('"2.2"');
@@ -672,7 +704,7 @@ async function runDb(): Promise<void> {
     const a = await cA("publish", { from: "2030-01-01", to: "2030-03-01" });
     const b = await core({}, { kind: "add", systemId: sA.id, employeeId: E.e1, date: "2030-04-25", shiftId: S.m });
     const j = JSON.stringify([a, b]);
-    chk("S2.3", a?.ok === false && a?.code === "failed" && b?.ok === false && b?.code === "failed" && !/Error|\bat\s|เลือกช่วงวัน/.test(j), "failed · failed · clean", short(j, 120));
+    chk("S2.3", a?.ok === false && a?.code === "range" && b?.ok === false && b?.code === "failed" && !/Error|\bat\s|เลือกช่วงวัน/.test(j), "range · failed · clean", short(j, 120));
   }
   {
     const old = await raw(E.e1, "2020-03-04", S.m, u1);

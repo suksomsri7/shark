@@ -323,6 +323,8 @@ export const HQC = {
       { employee: "nat", dow: 5, op: "change", shift: "c" },
       { employee: "keng", dow: 6, op: "add", shift: "m" },
     ],
+    // HR H2.2 r2 ▸ Q14 แพร ลาพักร้อน ส.–อา. ของสัปดาห์ภาพ 03 รออนุมัติ (ชิปลาเส้นประ + "รออนุมัติ" ในภาพ · วันหยุดของแพรอยู่แล้ว) ◂
+    pendingLeave: { employee: "prae", type: "VACATION", fromDow: 5, toDow: 6, reason: "ไปงานแต่งเพื่อนต่างจังหวัด" },
   },
 } as const;
 

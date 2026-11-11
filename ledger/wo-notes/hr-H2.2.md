@@ -80,3 +80,43 @@ D1–D11 as in the brief §8 (D9 fixed here: `hrTabs` has `ตั้งค่า
 ## 8. Questions / decisions for the controller
 - Q-1 widen the code allowlist with `entryNotFound`, `entryChanged`, `employeeNotFound`, `range`? (default: no — brief list)
 - Q-2 seed §9d changes HQC counts (HrRosterEntry + n, OutboxEvent +1, AuditLog +n). Any suite that pins HQC counts must accept the new expected.json (`seed-hr-qc` itself compares run×2 only).
+
+## r2 (11 Nov)
+> Fix round on review `hr-H2.2-review.md` (FIX FIRST) per controller rulings 1–6 · builder: Claude (Opus) · base head 3e627b14c · `roster.ts` untouched.
+
+### What changed
+| ruling | file | change |
+|---|---|---|
+| 1 MAJOR Q-1 | `roster-board-shared.ts` `ROSTER_MSG` | +8 codes `entryNotFound entryChanged employeeNotFound range rangeOrder date note tooMany`, th = `roster.ts` `ROSTER_TEXT` byte-exact (retyped: the shared file may only `import type`; S2.2 byte-checks them against the oracle's own copy). `ROSTER_MSG_CODE_OF` is derived ⇒ `rosterOpCore.fail` maps them with no change. `failed` = only unknown errors/thrown. |
+| 1 | `src/messages/{th,en}/common.json` | `hr.roster.msg.<8 codes>` (th = engine text, en translated) |
+| 1 ORACLE-EDIT | `scripts/qc-hr-h2.2.mts` | import alias `ROSTER_ENGINE_TEXT as ENGINE_TEXT_14` + local `ENGINE_TEXT = {…14, …8}` beside `CODES` (l.59) ⇒ CODES (S6.6/X2.1) and the S2.2 byte table cover the 8 · S2.3: range > 31 d ⇒ `range` (malformed auth still ⇒ `failed`, regex for raw text kept). Nothing else changed apart from S8.1. |
+| 2 MEDIUM-1 | `roster-ui.tsx` `run` | in-flight guard: `runningRef` checked first, set before the await, cleared in `finally`; `busy` state ⇒ every picker shift button, custom-time save, entry-sheet move/copy/change buttons `disabled`; dialog `aria-busy`. Two quick taps ⇒ one action. |
+| 3a m1 | `roster-ui.tsx` pointer `up` | `suppressClick` cleared by `setTimeout(0)` right after the release ⇒ only the click that belongs to this drop is swallowed. |
+| 3b m3 | `roster-board-shared.ts` `TEMP_ID_PREFIX/isTempEntryId` · `roster-ui.tsx` `chip`/`openEntry` | `tmp-…` chips: no pointer drag, no Shift+arrow, no sheet (`aria-disabled`). |
+| 3c m5 | `roster-ui.tsx` `openSheet/closeSheet` | sheet gets focus on open (`tabIndex=-1`), Esc closes it, close (Esc/backdrop/close button/after an action) returns focus to the chip/cell button that opened it if it is still in the page. |
+| 3d m2 | `roster-ui.tsx` `cellBody` | **rule applied: brief R10 + R6 — leave never blocks (engine gives ON_LEAVE info only)** ⇒ a non-past writable cell with a leave overlay shows the small `+` under the leave chip (same aria-label/testid `hr-roster-cell-<emp>-<day>`), so tap and keyboard reach add like drag does; no refusal text. |
+| 4 seed | `scripts/hr-qc-env.mts` `HQC.roster.pendingLeave` · `scripts/seed-hr-qc.mts` §9d | แพร VACATION PENDING Sat–Sun of `rosterWeek` (her days off) via `hr.requestLeave` after RS1; new check RS2 (PENDING · HQC leaves = 3); `hr-expected.json` `roster.pendingLeave {employee, from, to}`. |
+| 6 S8.1 | `scripts/qc-hr-h2.2.mts` | **written** (static, MAJOR, base RED): `run` starts with `if (<ref>.current) return;`, ref set before the first await and cleared in `finally`; every sheet button whose onClick writes (`addShift`/`onChange`/`onGo`, 5 sites) has `disabled={busy…}`; both sheets receive `busy`. Asserted statically because no server-side idempotency exists to test (two different shifts on one cell are legitimately two adds); it is RED on 3e627b14c (ref=∅ undisabled=5) and green now. It does not prove browser timing (still CONTROLLER visual). |
+No new controls/testids ⇒ no inventory rows.
+
+### Results (r2)
+- RED proof (oracle edited, product at 3e627b14c, forced): `passed 56/60 (QC_FORCE)` exit 1 — ❌ S2.2 `table✗=entryNotFound,entryChanged,employeeNotFound,range,rangeOrder,date,note,tooMany` · ❌ S2.3 `[{"ok":false,"code":"failed"},…]` · ❌ S6.6 · ❌ S8.1 · RESIDUE none (`hr-H2.2-r2-red.txt`)
+- oracle unforced `passed 60/60` exit 0 · forced ×2 `passed 60/60 (QC_FORCE)` exit 0 · RESIDUE none ×3 (`hr-H2.2-r2-green.txt`)
+- seed-hr-qc ×2: 30/30 exit 0 both · `counts` + `roster` identical (HrLeave 3 · HrRosterEntry 48 · OutboxEvent 5 · AuditLog 77)
+- forced ×1: qc-hr-h2.1 90/90 exit 0 · qc-hr-roster 24/24 exit 0 · qc-hf-hr-privacy 194/194 exit 0 · qc-nav-functions exit 1 = known BOOKING `/booking/calendar,/booking/day` only, HR 8/8
+- fitness 53/53 + fitness-hr 9/9, without env and with env (exit 0 ×4)
+- typecheck (12288/14000M) exit 0 · 0 errors
+
+### Debts (review MINORs not fixed — rulings 5)
+- D16 (m4) `unconfirmed` filtered only after `await` — possible transient duplicate chip when the revalidated board arrives before the action resolves (needs a browser to confirm) → **H2.11**.
+- D17 (m6 part 1) header lists `shifts.slice(0,4)` ⇒ HQC shows `ดึก 22–06` (mockup lists 3) — declared parity exception → **H2.11**.
+- D18 (m7) zero-candidate publish marker still via `writeAudit` (swallowed error) — accepted by ruling 3 → **H5.1**.
+- D19 (m8) `removedSinceLastPublish` anchor = app clock vs DB-insert `createdAt` (ms skew) + `AuditLog(tenantId, action)` index if the board slows (Mig) → **H5.1**.
+- D20 (m9) DTO carries an unused Thai `title` / `unitName "ทุกสาขา"` → **H2.10**.
+- D12 closed (Q-1 widened). D15 (touch scroll outside chips) unchanged.
+
+### Screenshot guide (supersedes §6 where different)
+- Run `seed-hr-qc` first. `hr-expected.json` `roster.week` = next Bangkok Monday; `roster.pendingLeave` = แพร Sat–Sun of that week.
+- Default board (`?week=<roster.week>&unit=<huahin>`) now also shows: **แพร ส. + อา. dashed leave chip `ลาพักร้อน`-type label + `รออนุมัติ`** (owner/manager = policy label; non-`readLeave` readers `ลา`), with a small `+` under it; แพร hours cell `+ ลา 2 วัน`. มิ้นท์'s leave (today+7) may also fall in the week.
+- New states worth one shot (1440): picker opened from the `+` under แพร's leave chip · a sheet with buttons disabled while busy (hard to catch — optional) · Esc closes the sheet and the focus ring is back on the chip/cell.
+- Error text sample (optional): open a chip in two tabs, remove in one, drag in the other ⇒ `ไม่พบกะนี้ในตาราง — กรุณารีเฟรช` (was the generic `failed`).

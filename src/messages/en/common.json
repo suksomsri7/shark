@@ -170,6 +170,14 @@
         "unassigned": "This employee has no home branch yet — an all-branch admin manages them",
         "otherUnit": "This item belongs to another branch — you can only manage your branches",
         "shiftEqual": "Start and end times must differ",
+        "entryNotFound": "This shift is no longer on the roster — please refresh",
+        "entryChanged": "This shift was just changed — please refresh and try again",
+        "employeeNotFound": "This employee was not found — please refresh",
+        "range": "Choose a range of at most 31 days",
+        "rangeOrder": "The start day must not be after the end day",
+        "date": "Invalid date",
+        "note": "The note is too long (200 characters max)",
+        "tooMany": "Too many entries to publish at once — please choose a shorter range",
         "noSystem": "This staff system was not found",
         "failed": "Couldn't save the roster — please try again"
       }

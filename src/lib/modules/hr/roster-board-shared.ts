@@ -84,7 +84,7 @@ export type RosterBoardDto = {
 };
 
 // ═════════════════════════ รหัสผล (R12 · R13 — allowlist) ═════════════════════════
-/** รหัส → ข้อความไทย (= ข้อความคงที่ของเครื่องยนต์ H2.1 ทุกไบต์ · noSystem/failed = ของบอร์ด) */
+/** รหัส → ข้อความไทย (= ข้อความคงที่ของเครื่องยนต์ H2.1 ทุกไบต์ · noSystem/failed = ของบอร์ด · failed = ข้อผิดพลาดที่ไม่รู้จักเท่านั้น) */
 export const ROSTER_MSG = {
   noPerm: "คุณไม่มีสิทธิ์จัดตารางกะ",
   ended: "พนักงานคนนี้พ้นสภาพแล้ว — จัดกะไม่ได้",
@@ -100,6 +100,15 @@ export const ROSTER_MSG = {
   unassigned: "พนักงานคนนี้ยังไม่ระบุสาขาประจำ — ผู้ดูแลทุกสาขาเป็นผู้จัดการ",
   otherUnit: "รายการนี้เป็นของสาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ",
   shiftEqual: "เวลาเริ่มกับเวลาเลิกกะต้องไม่เท่ากัน",
+  // r2 (มติ Q-1): ข้อความปฏิเสธที่เหลือของเครื่องยนต์ (roster.ts ROSTER_TEXT — พิมพ์ซ้ำเพราะไฟล์นี้ import ได้แค่ type · ข้อสอบ S2.2 ตรวจทุกไบต์)
+  entryNotFound: "ไม่พบกะนี้ในตาราง — กรุณารีเฟรช",
+  entryChanged: "กะนี้เพิ่งถูกแก้ไข — กรุณารีเฟรชแล้วลองใหม่",
+  employeeNotFound: "ไม่พบพนักงานคนนี้ — กรุณารีเฟรช",
+  range: "เลือกช่วงวันได้ไม่เกิน 31 วัน",
+  rangeOrder: "วันเริ่มต้องไม่หลังวันสิ้นสุด",
+  date: "วันที่ไม่ถูกต้อง",
+  note: "หมายเหตุยาวเกินไป (ไม่เกิน 200 ตัวอักษร)",
+  tooMany: "รายการมากเกินไปสำหรับการเผยแพร่ครั้งเดียว — กรุณาเลือกช่วงวันให้สั้นลง",
   noSystem: "ไม่พบระบบพนักงานนี้",
   failed: "บันทึกตารางกะไม่สำเร็จ — กรุณาลองใหม่",
 } as const;
@@ -107,6 +116,10 @@ export type RosterMsgCode = keyof typeof ROSTER_MSG;
 /** ข้อความของเครื่องยนต์ → รหัส (ไม่อยู่ในตาราง ⇒ ผู้เรียกใช้ "failed") */
 export const ROSTER_MSG_CODE_OF: ReadonlyMap<string, RosterMsgCode> = new Map(Object.entries(ROSTER_MSG).map(([k, v]) => [v, k as RosterMsgCode]));
 export const isRosterMsgCode = (c: unknown): c is RosterMsgCode => typeof c === "string" && Object.prototype.hasOwnProperty.call(ROSTER_MSG, c);
+
+/** r2 m3: id ชั่วคราวของชิปคัดลอกที่ยังรอ server (tmp-<opId>) — ลาก/เปิด/ลบไม่ได้จนกว่า confirm สลับเป็น id จริง */
+export const TEMP_ID_PREFIX = "tmp-";
+export const isTempEntryId = (id: string): boolean => id.startsWith(TEMP_ID_PREFIX);
 
 // ═════════════════════════ ผลของ action ═════════════════════════
 export type RosterSkipCounts = Partial<Record<"EXISTS" | "NO_SHIFT" | "HOLIDAY" | "SHIFT_ARCHIVED" | "OTHER", number>>;
@@ -241,7 +254,7 @@ function applyOne(rows: readonly RosterRowDto[], s: RosterOpState): RosterRowDto
     });
     setCell(dst.r, dst.c, (cell) => ({ ...cell, state: cell.state === "past" ? "past" : "work", entries: [...cell.entries, { ...chip, id: s.realId ?? chip.id, published: false }] }));
   } else {
-    const copy: RosterEntryDto = { ...chip, id: s.realId ?? `tmp-${op.id}`, published: false, source: "MANUAL" };
+    const copy: RosterEntryDto = { ...chip, id: s.realId ?? `${TEMP_ID_PREFIX}${op.id}`, published: false, source: "MANUAL" };
     setCell(dst.r, dst.c, (cell) => ({ ...cell, state: cell.state === "past" ? "past" : "work", entries: [...cell.entries, copy] }));
   }
   return out;
