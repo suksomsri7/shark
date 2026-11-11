@@ -1,0 +1,101 @@
+[env] qc-hr-h2.3 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.3] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️  QC_FORCE=1 — running although: H2.3 not built: src/lib/modules/hr/swap.ts absent (expect RED for the right reason, no crash)
+[qc-hr-h2.3] modules: swap=∅ src/lib/modules/hr/swap.ts · swap-rules=∅ src/lib/modules/hr/swap-rules.ts · roster=loaded
+  ❌ [H2.3-S4.10] hr-swap lock before roster lock · reassignEntriesInTx only swap.ts + roster.ts · both exported — expected lock order · 2 files · exported | actual swap,uses,order,files,exported users=∅
+  ❌ [H2.3-S5.5] swap-rules.ts pure (no DB import · no clock) — expected pure | actual exists
+  ❌ [H2.3-S6.6] swap-actions.ts · approvals page testids · ui inventory — expected use server · 4 actions · no DB · testids · inventory | actual useServer,actions,noDb,page,inventory
+  ✅ [H2.3-S8.2] R14 files unchanged · roster.ts = base + H2.3 hunks (n/a once H2.3 in base)
+  ✅ [H2.3-S8.3] approval core / effects = base + H2.3 hunks (n/a once in base)
+  ✅ [H2.3-S8.5] payroll-rules.ts sha 75a66c0c…
+(node:2475843) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── S1 create ──
+  ❌ [H2.3-S1.1] SWAP ok ⇒ AWAITING_PEER · ids · requestedByUserId · reason trimmed · 1 id-only audit · 1 hr.shift.swap_requested — expected AWAITING_PEER · ids · reason · 1 audit · 1 event | actual ok,row,by,reason,audit,event "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" audits=0 events=0
+  ❌ [H2.3-S1.2] GIVE to a colleague off that day ⇒ AWAITING_PEER · toEntryId null — expected GIVE AWAITING_PEER · to null | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" undefined
+  ❌ [H2.3-S1.3] target null ⇒ noTarget text · 0 rows — expected เลือกเพื่อนร่วมงานที่จะรับกะก่อน | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" rows +0
+  ❌ [H2.3-S1.4] colleague's entry / posted employee id ⇒ notOwn text · 0 rows — expected ขอสลับได้เฉพาะกะของคุณเอง | ขอสลับได้เฉพาะกะของคุณเอง | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" rows +0
+  ❌ [H2.3-S1.5] unpublished / past / sys2 / other-tenant entry ⇒ texts · 0 rows — expected กะนี้ยังไม่เผยแพร่ — ขอสลับได้หลังผู้จัดการเผยแพร่ตาราง | กะนี้ผ่านไปแล้ว — ขอสลับไม่ได้ | ไม่พบกะนี้ — กรุณารีเฟรช | ไม่พบกะนี้ — กรุณารีเฟรช | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" rows +0
+  ❌ [H2.3-S1.6] target ENDED / unlinked / self ⇒ texts · 0 rows — expected ไม่พบเพื่อนร่วมงานคนนี้ หรือพ้นสภาพแล้ว | เพื่อนร่วมงานคนนี้ยังไม่มีบัญชีในระบบ — ให้ผู้จัดการจัดกะให้แทน | เลือกเพื่อนร่วมงานคนอื่น | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" rows +0
+  ❌ [H2.3-S1.7] u2 colleague ⇒ branch text · same colleague borrowed into u1 that day ⇒ ok — expected branch text · borrowed ok | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" · "∅requestSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S1.8] worker on APPROVED leave ⇒ เพื่อนร่วมงาน/คุณ leave texts (no names) — expected เพื่อนร่วมงาน ลาอนุมัติแล้วในวันนั้น — สลับไม่ได้ | คุณ ลาอนุมัติแล้วในวันนั้น — สลับไม่ได้ | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" rows +0
+  ❌ [H2.3-S1.9] new holder already holds (date, shiftId) ⇒ dup text — expected พนักงานคนนี้มีกะนี้ในวันนั้นแล้ว | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" rows +0
+  ❌ [H2.3-S1.10] 2nd open request on fromEntry · toEntry already in an open request ⇒ open text — expected กะนี้มีคำขอสลับค้างอยู่แล้ว — ยกเลิกคำขอเดิมก่อน | กะนี้มีคำขอสลับค้างอยู่แล้ว — ยกเลิกคำขอเดิมก่อน | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" rows +0
+── S6 scope + privacy ──
+  ❌ [H2.3-S6.1] viewer matrix listMySwaps / listSwapsForManager — expected parties in listMySwaps · writers + MANAGER by unit | actual parties,owner,unitU1 A=0 owner="∅listSwapsForManager (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S6.2] peer DTO keys exact · no other requester rows — expected R10 keys · no other requester rows | actual found,keys,people,sides keys=∅
+  ❌ [H2.3-S6.3] reason: requester · target · in-scope deciders only — expected reason: parties + in-scope deciders only | actual parties,deciders,reader
+  ❌ [H2.3-S6.8] other-tenant / sys2 ctx on a swap id ⇒ refused · unchanged — expected 5 × refused Thai, no id · unchanged | actual refused,same "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" | "∅decideSwap (∅ src/lib/modules/hr/swap.ts)" | "∅cancelSwap (∅ src/lib/modules/hr/swap.ts)" | "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" | "∅cancelSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S6.4] mgr-u1 decideSwap on a u2 swap ⇒ H1.1 text · unchanged — expected พนักงานคนนี้อยู่สาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ | actual accept "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" decide "∅decideSwap (∅ src/lib/modules/hr/swap.ts)" null
+  ❌ [H2.3-S6.5] unitAccess [] writer = tenant-wide (lists + decides u2) — expected lists u1+u2 · decides u2 | actual "∅listSwapsForManager (∅ src/lib/modules/hr/swap.ts)" n=0 · "∅decideSwap (∅ src/lib/modules/hr/swap.ts)"
+── S2 peer + state ──
+  ❌ [H2.3-S2.1] accept (policy on) ⇒ PENDING · 1 ApprovalRequest (systemId · unit u1 · requestedById = requester user) — expected PENDING · 1 request | actual ok,pending,request,one "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" req=null
+  ❌ [H2.3-S2.2] decline ⇒ REJECTED · peerDecidedAt · decidedById null · no request — expected REJECTED · no request | actual "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" undefined
+  ❌ [H2.3-S2.3] respond by requester / bystander / manager ⇒ notYours · AWAITING_PEER — expected คำขอนี้ไม่ได้ส่งถึงคุณ ×4 | actual "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" | "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" | "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" | "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" null
+  ❌ [H2.3-S2.4] accept twice ⇒ stale text · 1 request — expected สถานะคำขอเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่ | actual "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" requests=0
+  ❌ [H2.3-S2.5] requester cancels AWAITING_PEER ⇒ CANCELLED — expected CANCELLED | actual "∅cancelSwap (∅ src/lib/modules/hr/swap.ts)" null
+  ❌ [H2.3-S2.6] swapTransition vectors · respond/cancel on terminal swaps refused — expected 35 vectors · terminal refused | actual vectors,db bad=∅swapTransition "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" | "∅cancelSwap (∅ src/lib/modules/hr/swap.ts)" | "∅respondSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S2.7] accept after the entry date passed ⇒ expired text · CANCELLED — expected เลยวันของกะนี้แล้ว — คำขอหมดอายุ | actual "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" null
+  ❌ [H2.3-S2.8] accept re-validates (target on APPROVED leave since create) ⇒ leave text · AWAITING_PEER — expected เพื่อนร่วมงาน ลาอนุมัติแล้วในวันนั้น — สลับไม่ได้ | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" null
+── S3 approval wiring ──
+  ❌ [H2.3-S3.1] chain approve + effect by event ⇒ rewritten · APPROVED · decidedById · 1 hr.shift.swap_approved · 1 apply audit — expected APPROVED · rewritten · decider · 1 event · 1 audit | actual decided,delivered,rewritten,status,event,audit decide=NO_REQUEST deliver=no decision event undefined
+  ❌ [H2.3-S3.2] chain reject + effect ⇒ REJECTED · decidedById · untouched — expected REJECTED · decider · untouched | actual decide=NO_REQUEST deliver=no decision event undefined
+  ❌ [H2.3-S3.3] no policy ⇒ PENDING w/o request · decideSwap(mgr-u1) ⇒ APPROVED + rewritten + warnings[] — expected PENDING ⇒ APPROVED · rewritten · warnings[] | actual null "∅decideSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S3.4] decideSwap while a chain request exists ⇒ inChain text — expected คำขอนี้อยู่ในสายอนุมัติ — ตัดสินที่หน้ารออนุมัติ | actual "∅decideSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S3.5] self: core by target ⇒ reason · core by requester ⇒ SELF_APPROVAL + reason · decideSwap by party ⇒ text · unchanged — expected target ⇒ reason · requester ⇒ SELF_APPROVAL + reason · direct ⇒ text | actual targetCore,requesterCore,unchanged,direct x={"ok":false,"status":"NO_REQUEST"} y={"ok":false,"status":"NO_REQUEST"} z="∅decideSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S3.6] owner = requester / target ⇒ APPROVED at accept · rewritten · no request · hr.swap.owner_auto — expected APPROVED at accept · no request · audits | actual approved,rewritten,audit "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" "∅respondSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S3.7] cancel PENDING in chain ⇒ swap + request CANCELLED · after chain decided ⇒ decided text — expected together · decided ⇒ refused | actual cancel,decided "∅cancelSwap (∅ src/lib/modules/hr/swap.ts)" · "∅cancelSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S3.8] entityLabel = คำขอสลับกะ · actions.ts allow-list · base types kept — expected label · allow-list · base kept | actual label,action,kept label=HrShiftSwapRequest
+  ❌ [H2.3-S3.9] listMyRequests: requester only — expected requester only | actual req=false A=0 B=0
+── S4 effect + races ──
+  ❌ [H2.3-S4.1] SWAP rewrite keeps ids · published/publishedAt · times · shiftId · unitId · source MANUAL — expected kept fields · MANUAL | actual swapped=false a={"p":true,"s":"MANUAL"}
+  ❌ [H2.3-S4.2] GIVE (direct): row moves · requester has no row that day — expected moved · requester off | actual "∅decideSwap (∅ src/lib/modules/hr/swap.ts)" A rows=1
+  ❌ [H2.3-S4.3] target gains same (date,shift) after accept ⇒ untouched · CANCELLED · audit DUP · no throw · request APPROVED — expected untouched · CANCELLED · DUP | actual ok,cancelled,code,req deliver=no decision event codes=
+  ❌ [H2.3-S4.4] (a) moveEntry after chain APPROVED ⇒ CANCELLED (Q16) · no-op (b) out-of-band edit ⇒ ENTRY_CHANGED · no throw — expected (a) Q16 + no-op · (b) ENTRY_CHANGED | actual a,b move ok x=null y=null codes=
+  ❌ [H2.3-S4.5] fromEntry removed after chain APPROVED ⇒ effect no-op · no throw · no event — expected gone · no-op · no event | actual accept "∅respondSwap (∅ src/lib/modules/hr/swap.ts)" remove ok deliver=no decision event
+  ❌ [H2.3-S4.6] decide ∥ cancel 10 lanes × 3 rounds ⇒ APPROVED+rewritten or CANCELLED+untouched — expected 3/3 consistent | actual ✗null/null ✗null/null ✗null/null
+  ❌ [H2.3-S4.7] approval event ×2 seq + ×2 par ⇒ 1 rewrite · 1 hr.shift.swap_approved · 1 apply audit — expected 4 ok · 1 rewrite · 1 event · 1 audit | actual no event
+  ❌ [H2.3-S4.8] effect ∥ moveEntry under a held roster key ⇒ one order — expected X (approved · move refused) or Y (moved · cancelled) | actual MIXED null decide="no decision event" move=ok waited=true
+  ❌ [H2.3-S4.9] rosterOnDay after approval ⇒ new holder + userId — expected a → B / user B | actual false false
+── S5 warnings ──
+  ❌ [H2.3-S5.1] GIVE making a 16 h day ⇒ APPROVED + MAX_DAY(target) — expected APPROVED + MAX_DAY(B) | actual "∅decideSwap (∅ src/lib/modules/hr/swap.ts)" []
+  ❌ [H2.3-S5.2] < 11 h rest ⇒ REST in swapPreview and decideSwap — expected REST(A) preview + decide | actual preview "∅swapPreview (∅ src/lib/modules/hr/swap.ts)" [] decide "∅decideSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S5.3] overnight GIVE stays on its start day — expected B · day D · D+1 no | actual "∅decideSwap (∅ src/lib/modules/hr/swap.ts)" onD=false onD+1=false
+  ❌ [H2.3-S5.4] warnings never name a third employee or their entries — expected A/B only | actual w51=[] w52=0
+── S7 events ──
+  ❌ [H2.3-S7.1] consumers for both events = withAutomation — expected both consumers | actual hr.shift.swap_requested,hr.shift.swap_approved
+  ❌ [H2.3-S7.2] one automation label each · none in webhooks file · once in WEBHOOK_EVENTS — expected เมื่อพนักงานขอสลับกะ (HR) · เมื่ออนุมัติสลับกะ (HR) | actual hr.shift.swap_requested,hr.shift.swap_approved
+  ❌ [H2.3-S7.3] both events ×2 seq + ×2 par ⇒ ok · unchanged — expected 8 ok · unchanged | actual no events
+  ❌ [H2.3-S7.4] re-emit same key ⇒ one outbox row — expected 1 → 1 | actual 0 → 1
+  ❌ [H2.3-S7.5] rejected / cancelled swaps emit no hr.shift.swap_approved — expected 0 hr.shift.swap_approved · 1 hr.shift.swap_requested each | actual swaps=0 approved=0 requestedOne=true
+  ❌ [H2.3-S6.7] event payload keys exact · no names / reason — expected payload keys · no names/reason | actual req,ok req= ok=
+── S9 delta races + Q16 ──
+  ❌ [H2.3-S9.1] decideSwap ∥ moveEntry ⇒ (APPROVED ∧ move entryChanged) or (moved ∧ CANCELLED) — expected X or Y, never mixed | actual MIXED null decide="∅decideSwap (∅ src/lib/modules/hr/swap.ts)" move=ok waited=true
+  ❌ [H2.3-S9.2] decideSwap ∥ publishRoster ⇒ both ok · publishedAt kept · event = unpublished row only — expected both ok · kept · event = row c | actual both,swapped publish ok decide "∅decideSwap (∅ src/lib/modules/hr/swap.ts)"
+  ❌ [H2.3-S9.3] 2 requesters × 5 lanes × 3 rounds on one toEntry ⇒ exactly 1 open — expected 1,1,1 | actual 0,0,0
+  ❌ [H2.3-S9.4] 2 approved GIVEs of the same (date,shift) to one colleague ⇒ 1 applied · 1 CANCELLED DUP — expected 1 applied · 1 CANCELLED DUP · no throw | actual no decision event|no decision event , Brows=0 codes=
+  ❌ [H2.3-S9.5] moveEntry (from/to) · removeEntry · AWAITING_PEER ⇒ swap + request CANCELLED — expected swaps + requests CANCELLED · not pending | actual moveFrom,remove,moveTo,awaiting,inbox ok | ok | ok | ok
+── X ──
+  ❌ [H2.3-X1.1] 10 lanes × 3 rounds requestSwap same entry ⇒ 1 row — expected rows 1 · ok 1 · other refusals 0 (×3) | actual 0:0:10 0:0:10 0:0:10
+  ❌ [H2.3-X6.1] 10 lanes accept ⇒ 1 PENDING · 1 request — expected 1 ok · 9 stale · 1 request | actual ok=0 req=0 null
+  ❌ [H2.3-X2.1] sys2 / other-tenant target or toEntry ⇒ refused · 0 rows — expected ไม่พบเพื่อนร่วมงานคนนี้ หรือพ้นสภาพแล้ว | กะของเพื่อนร่วมงานไม่ถูกต้อง — กรุณารีเฟรช | ไม่พบเพื่อนร่วมงานคนนี้ หรือพ้นสภาพแล้ว | actual "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" | "∅requestSwap (∅ src/lib/modules/hr/swap.ts)" rows +0
+  ❌ [H2.3-S6.9] every swap refusal is a fixed text without name/id — expected all fixed · no name/id | actual 0 refusals · bad 0: []
+── S8 controls ──
+  ✅ [H2.3-S8.4] HrLeave chain approve/reject + effect unchanged
+  … child run qc-hr-h2.1 (S8 frozen digests)
+  ✅ [H2.3-S8.1] qc-hr-h2.1 S8.1–S8.6 frozen digests pass with swap rows on QC4 (child run)
+  ✅ [H2.3-X12.1] fitness + fitness-hr exit 0 with and without env
+RESIDUE none (tenants=2 users=14)
+  ✅ [H2.3-Z1] residue: qc-hr-h23-* tenants + every row of ours gone
+BASE-EXPECTATION 71/71 as registered (RED-by-design 64 · GREEN controls 7)
+
+===== qc-hr-h2.3 ===== passed 7/71 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.3","total":71,"passed":7,"failed":["H2.3-S4.10","H2.3-S5.5","H2.3-S6.6","H2.3-S1.1","H2.3-S1.2","H2.3-S1.3","H2.3-S1.4","H2.3-S1.5","H2.3-S1.6","H2.3-S1.7","H2.3-S1.8","H2.3-S1.9","H2.3-S1.10","H2.3-S6.1","H2.3-S6.2","H2.3-S6.3","H2.3-S6.8","H2.3-S6.4","H2.3-S6.5","H2.3-S2.1","H2.3-S2.2","H2.3-S2.3","H2.3-S2.4","H2.3-S2.5","H2.3-S2.6","H2.3-S2.7","H2.3-S2.8","H2.3-S3.1","H2.3-S3.2","H2.3-S3.3","H2.3-S3.4","H2.3-S3.5","H2.3-S3.6","H2.3-S3.7","H2.3-S3.8","H2.3-S3.9","H2.3-S4.1","H2.3-S4.2","H2.3-S4.3","H2.3-S4.4","H2.3-S4.5","H2.3-S4.6","H2.3-S4.7","H2.3-S4.8","H2.3-S4.9","H2.3-S5.1","H2.3-S5.2","H2.3-S5.3","H2.3-S5.4","H2.3-S7.1","H2.3-S7.2","H2.3-S7.3","H2.3-S7.4","H2.3-S7.5","H2.3-S6.7","H2.3-S9.1","H2.3-S9.2","H2.3-S9.3","H2.3-S9.4","H2.3-S9.5","H2.3-X1.1","H2.3-X6.1","H2.3-X2.1","H2.3-S6.9"],"findings":[{"id":"H2.3-S4.10","sev":"MAJOR"},{"id":"H2.3-S5.5","sev":"MAJOR"},{"id":"H2.3-S6.6","sev":"MAJOR"},{"id":"H2.3-S1.1","sev":"CRITICAL"},{"id":"H2.3-S1.2","sev":"MAJOR"},{"id":"H2.3-S1.3","sev":"MAJOR"},{"id":"H2.3-S1.4","sev":"CRITICAL"},{"id":"H2.3-S1.5","sev":"MAJOR"},{"id":"H2.3-S1.6","sev":"MAJOR"},{"id":"H2.3-S1.7","sev":"MAJOR"},{"id":"H2.3-S1.8","sev":"MAJOR"},{"id":"H2.3-S1.9","sev":"MAJOR"},{"id":"H2.3-S1.10","sev":"CRITICAL"},{"id":"H2.3-S6.1","sev":"CRITICAL"},{"id":"H2.3-S6.2","sev":"CRITICAL"},{"id":"H2.3-S6.3","sev":"CRITICAL"},{"id":"H2.3-S6.8","sev":"CRITICAL"},{"id":"H2.3-S6.4","sev":"CRITICAL"},{"id":"H2.3-S6.5","sev":"MAJOR"},{"id":"H2.3-S2.1","sev":"CRITICAL"},{"id":"H2.3-S2.2","sev":"MAJOR"},{"id":"H2.3-S2.3","sev":"CRITICAL"},{"id":"H2.3-S2.4","sev":"MAJOR"},{"id":"H2.3-S2.5","sev":"MAJOR"},{"id":"H2.3-S2.6","sev":"MAJOR"},{"id":"H2.3-S2.7","sev":"MAJOR"},{"id":"H2.3-S2.8","sev":"MAJOR"},{"id":"H2.3-S3.1","sev":"CRITICAL"},{"id":"H2.3-S3.2","sev":"MAJOR"},{"id":"H2.3-S3.3","sev":"CRITICAL"},{"id":"H2.3-S3.4","sev":"MAJOR"},{"id":"H2.3-S3.5","sev":"CRITICAL"},{"id":"H2.3-S3.6","sev":"MAJOR"},{"id":"H2.3-S3.7","sev":"CRITICAL"},{"id":"H2.3-S3.8","sev":"MAJOR"},{"id":"H2.3-S3.9","sev":"MINOR"},{"id":"H2.3-S4.1","sev":"CRITICAL"},{"id":"H2.3-S4.2","sev":"MAJOR"},{"id":"H2.3-S4.3","sev":"CRITICAL"},{"id":"H2.3-S4.4","sev":"CRITICAL"},{"id":"H2.3-S4.5","sev":"MAJOR"},{"id":"H2.3-S4.6","sev":"CRITICAL"},{"id":"H2.3-S4.7","sev":"CRITICAL"},{"id":"H2.3-S4.8","sev":"CRITICAL"},{"id":"H2.3-S4.9","sev":"MAJOR"},{"id":"H2.3-S5.1","sev":"MAJOR"},{"id":"H2.3-S5.2","sev":"MAJOR"},{"id":"H2.3-S5.3","sev":"MAJOR"},{"id":"H2.3-S5.4","sev":"MAJOR"},{"id":"H2.3-S7.1","sev":"CRITICAL"},{"id":"H2.3-S7.2","sev":"MAJOR"},{"id":"H2.3-S7.3","sev":"CRITICAL"},{"id":"H2.3-S7.4","sev":"MAJOR"},{"id":"H2.3-S7.5","sev":"MAJOR"},{"id":"H2.3-S6.7","sev":"CRITICAL"},{"id":"H2.3-S9.1","sev":"CRITICAL"},{"id":"H2.3-S9.2","sev":"CRITICAL"},{"id":"H2.3-S9.3","sev":"CRITICAL"},{"id":"H2.3-S9.4","sev":"CRITICAL"},{"id":"H2.3-S9.5","sev":"CRITICAL"},{"id":"H2.3-X1.1","sev":"CRITICAL"},{"id":"H2.3-X6.1","sev":"CRITICAL"},{"id":"H2.3-X2.1","sev":"CRITICAL"},{"id":"H2.3-S6.9","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":["H2.3 not built: src/lib/modules/hr/swap.ts absent"],"baseRed":64,"baseGreen":7,"offBase":[]}
+EXIT=1
