@@ -1,0 +1,120 @@
+# H2.1 green — head f30f318a · oracle run 2 forced (QC4) · run 1 forced + run 3 unforced also 84/84
+[env] qc-hr-h2.1 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.1] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.1] modules: roster=loaded · roster-rules=loaded · settings=loaded · consumers=loaded
+── [S4.12 / S5.6 / S6.10 / S8.7] statics ──
+  ✅ [H2.1-S6.10] [static] hr/index.ts re-exports rosterOnDay + rosterAt from ./roster in a `HR H2.1 ▸` block · no logic · no onShiftToday
+  ✅ [H2.1-S8.7] [static] payroll-rules.ts sha 75a66c0c… · service / payroll* / privacy-shared / time-rules / settings unchanged vs base
+(node:3131076) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── [S8] frozen controls (tenant -d) ──
+  ℹ S8.1 digest=8436a89981a0146a04c8954c6b0a49752eb7cb9c0661df9927bc356bd8fe46c9
+  ✅ [H2.1-S8.1] [digest] listAttendance(ctxD, 50) with contradicting published roster rows = H1.2 FROZEN 8436a899…
+  ℹ S8.2 digest=f43008cba9f7bfae26638ae985e4c11565803988943cf3cf2f3921de10b8a62d
+  ✅ [H2.1-S8.2] [digest] listLeaves + pendingLeaves = H1.2 FROZEN f43008cb…
+  ℹ S8.3 digest=54ef63446a674b6108da0bf977e2b50aab14cfd40252f18c94c0d4eb0f2798b1
+  ✅ [H2.1-S8.3] [digest] leaveItemsForViewer owner / manager-u1 / staff-u1 = H1.2 FROZEN 54ef6344…
+  ℹ S8.4 digest=9a4c6047d670e99934b26da17183246f1c3ce07415ccc1c7f81f66cb09df1fb3
+  ✅ [H2.1-S8.4] [digest] monthlyAttendance 2030-03 D01–D03 = H1.2 FROZEN 9a4c6047…
+  ℹ S8.5 digest=840adc0a26e7efd47a1e90cc033305236855d619f8b06aaf42dbb91c3b5e9643
+  ✅ [H2.1-S8.5] [digest] employeesUnavailable ×2 · isOnLeave ×2 · kioskRoster = H1.2 FROZEN 840adc0a…
+  ℹ S8.6 MONTHLY fixture computed: digest=72166a3e2a2ebb6a37405a105f7db540b946fda05fe020639bbe79a60b87e5c8 totals=10725000:195000:195000:100000:10430000:475000:100000 flags=M01=-,M02=-,M03=-,M04=PARTIAL_MONTH
+  ✅ [H2.1-S8.6] [digest] MONTHLY payroll fixture = H1.1 FROZEN 72166a3e… (totals · flags)
+  ✅ [H2.1-S8.8] [run] clock() still judges by HrWorkSchedule with published roster rows today: K1=DAY_OFF:-:-|K2=ON_TIME:0:0|K3=NO_SCHEDULE:-:-
+  ✅ [H2.1-S8.9] [dto] privacy matrix (owner · payroll · manager-u1 · hr.leave.read · member · self · other tenant) as H1.2 S6.1
+── fixture (main tenant) ──
+  ✅ [H2.1-S8.10] [service] H1.2 settings behaviour: listShifts(manager-u1) = shop-wide + u1 active only · duplicate name ⇒ "มีกะชื่อนี้อยู่แล้วในสาขานี้"
+── [S4] rule vectors (pure) ──
+  ✅ [H2.1-S4.1] [pure] 10 h day ⇒ no MAX_DAY · 10.25 h ⇒ MAX_DAY valueMin 615 limitMin 600
+  ✅ [H2.1-S4.2] [pure] two entries on one day summed ⇒ MAX_DAY 660 with both entryIds
+  ✅ [H2.1-S4.3] [pure] 15–23 then 07–15 next day (8 h gap) ⇒ REST with both ids
+  ✅ [H2.1-S4.4] [pure] overnight 22–06 then 15–23 same next day (9 h) ⇒ REST · then 17:00 start (11 h) ⇒ no REST
+  ✅ [H2.1-S4.5] [pure] overlapping windows ⇒ OVERLAP (not REST) for that pair
+  ✅ [H2.1-S4.6] [pure] 7 working days Mon–Sun ⇒ DAY_OFF weekStart 2030-03-04 · 6 days ⇒ none
+  ✅ [H2.1-S4.7] [pure] Sun 22–06 + Mon 07:00 ⇒ REST across the week boundary · Mon-based Bangkok week: exactly one DAY_OFF weekStart 2030-03-11 (Sun-based/UTC weeks give none)
+  ✅ [H2.1-S4.8] [pure] 7 × 8 h = 56 h ⇒ MAX_WEEK valueMin 3360 · 6 × 8 h = 48 h ⇒ none
+  ✅ [H2.1-S4.9] [pure] overnight hours on the start day: 13–21 + 22–06 ⇒ MAX_DAY day D 960 · none on D+1 · Sun night counted in its Mon-week (MAX_WEEK 3360)
+  ✅ [H2.1-S4.12] [static+pure] roster-rules.ts: no DB import · no Date.now / new Date() · ROSTER_RULE_DEFAULTS {600,660,1,2880} · ROSTER_RULE_TEXT = the 7 Thai labels
+── [S1] generate from template ──
+  ✅ [H2.1-S1.1] [service] owner generate 2030-03-04…03-10 ⇒ exactly the 23 expected TEMPLATE rows (template day × matching shift · unit of the day) · snapshot = shift times · published false
+  ✅ [H2.1-S1.2] [service] dayOff weekday (e2 Wed) and unset weekdays (e2 Thu/Sun) ⇒ no TEMPLATE entry
+  ✅ [H2.1-S1.3] [service] template 09:00–18:00 without an identical active shift ⇒ skipped NO_SHIFT (e6 03-04) · no row · 0 HrShift created · archived 07–15 twin never chosen
+  ✅ [H2.1-S1.4] [service] e5 ENDED ⇒ none · e6 PROBATION ⇒ rows · e7 (startDate 03-07) ⇒ rows 03-07…03-10 only
+  ✅ [H2.1-S1.5] [service] e4 (home u2, borrowed to u1 03-04…03-10): borrowed days unitId u1 + u1 shift · generate 03-01…03-03 ⇒ unitId u2 + shop-wide twin (unit before shop-wide · Q2/Q3)
+  ✅ [H2.1-S1.6] [service] second run of the same range ⇒ created 0 · same row set · every updatedAt unchanged
+  ✅ [H2.1-S1.7] [service] pre-existing MANUAL (e1 03-05) and AI (e6 03-06) entries untouched · nothing added that employee-day · skipped EXISTS
+  ✅ [H2.1-S1.8] [service] generate on the closed shop-wide holiday 2030-03-12 ⇒ created 0 · skipped HOLIDAY for every templated employee · 0 rows that day
+  ✅ [H2.1-S1.9] [db] one audit hr.roster.generate for the first run · after = counts only (created 23 · no employee id / name)
+  ✅ [H2.1-S1.10] [service] 32-day range ⇒ generate / checkRules / listRoster / publish refused (Thai) · 0 rows · 31-day listRoster ok
+  ✅ [H2.1-S1.11] [service] generate over a past week (2020) writes 0 rows (refused or all skipped — flag 2)
+── [S4.10] rule checks over the DB ──
+  ✅ [H2.1-S4.10] [db] borrowed e4 u1 + u2 rows on 03-05 summed (MAX_DAY 660) · manager-u1 sees only the u1 entry id · manager-u2 only the u2 id and no u1-only employee
+── [S2] manual ops ──
+  ✅ [H2.1-S2.1] [service] addEntry ⇒ MANUAL · snapshot = shift start/end/break/crossesMidnight · unitId of the day · published false
+  ✅ [H2.1-S2.2] [service] edit the HrShift times afterwards ⇒ the entry snapshot unchanged
+  ✅ [H2.1-S2.3] [service] overnight add (22–06) ⇒ crossesMidnight true · listRoster window 15:00Z D → 23:00Z D (= 06:00 D+1 BKK) · paidMin 480
+  ✅ [H2.1-S2.4] [service] duplicate (employee,date,shift) ⇒ "พนักงานคนนี้มีกะนี้ในวันนั้นแล้ว" · still 1 row
+  ✅ [H2.1-S2.5] [service] archived shift ⇒ "กะนี้ปิดใช้แล้ว — เลือกกะอื่น" · sys2 shift ⇒ "ไม่พบกะนี้ — กรุณารีเฟรช" · u2 shift for a u1 entry ⇒ "กะนี้เป็นของสาขาอื่น — เลือกกะของสาขานี้หรือกะที่ใช้ทั้งร้าน" · 0 rows
+  ✅ [H2.1-S2.6] [service] ENDED employee ⇒ "พนักงานคนนี้พ้นสภาพแล้ว — จัดกะไม่ได้" · before startDate ⇒ "วันนี้อยู่นอกช่วงการจ้างของพนักงานคนนี้" · 0 rows
+  ✅ [H2.1-S2.7] [service] moveEntry date+shift in place: same id · snapshot re-taken · published false · source MANUAL · e4 borrowed-day entry moved out of the borrowing ⇒ unitId u1 → u2
+  ✅ [H2.1-S2.8] [service] removeEntry of a published row ⇒ row gone · audit hr.roster.entry.remove after.wasPublished true
+  ✅ [H2.1-S2.9] [service] past day (2020): add · move from a past row · move to a past day · remove a past row ⇒ "จัดกะย้อนหลังไม่ได้ — ใช้คำขอแก้เวลาแทน" · nothing changed
+  ✅ [H2.1-S2.10] [service] addEntry time override 14:00–20:00 stored · 22:00–02:00 ⇒ crossesMidnight derived true · start = end ⇒ "เวลาเริ่มกับเวลาเลิกกะต้องไม่เท่ากัน" · 0 rows
+── [S3] copy week ──
+  ✅ [H2.1-S3.1] [service] copyWeek 2030-03-04 → 03-11: copies on the same weekday · source MANUAL · times = CURRENT shift times (e3 Sr edited 18:00 → 19:00)
+  ✅ [H2.1-S3.2] [service] existing target employee-day (e2 03-15) untouched · skipped EXISTS
+  ✅ [H2.1-S3.3] [service] closed holiday 03-12 ⇒ 0 rows · skipped HOLIDAY · u1 shopOpen 03-13 ⇒ u1 rows copied + INFO HOLIDAY_WORK
+  ✅ [H2.1-S3.4] [service] archived source shift ⇒ skipped SHIFT_ARCHIVED (e2 03-14) · ENDED e5 never copied
+  ✅ [H2.1-S3.5] [service] fromWeek = toWeek ⇒ "สัปดาห์ต้นทางกับปลายทางต้องไม่ใช่สัปดาห์เดียวกัน" · 0 writes
+  ✅ [H2.1-S3.6] [service] copy the same weeks again ⇒ created 0 · rows unchanged
+  ✅ [H2.1-S3.7] [service] approved leave on the target day (e6 03-14) ⇒ row copied + INFO ON_LEAVE
+── [S5] publish + event ──
+  ✅ [H2.1-S5.1] [service] owner publish 2030-03-04…03-10 ⇒ every unpublished candidate published · ONE shared publishedAt · already-published row untouched
+  ✅ [H2.1-S5.2] [db] exactly one outbox hr.roster.published · key hr.roster.published#<publishId> · payload keys = R10 list · entryIds = flipped ids · ids only (no name)
+  ✅ [H2.1-S5.3] [service] publish again with nothing new ⇒ published 0 · eventId null · no event · no audit
+  ✅ [H2.1-S4.11] [db] warnings never block: e1 has DAY_OFF + MAX_WEEK + ON_LEAVE(03-06) and publish of the week still flips every e1 row
+  ✅ [H2.1-S5.6] [static+run] consumers["hr.roster.published"] = withAutomation(…) · label {"hr.roster.published", "เมื่อเผยแพร่ตารางกะ (HR)"} exactly once in automation/labels · 0 in webhooks/labels · once in AUTOMATION_EVENTS and WEBHOOK_EVENTS
+  ✅ [H2.1-S5.7] [replay] the S5.1 event delivered by id ×2 sequential + ×2 parallel ⇒ no error · roster rows / audits / outbox count unchanged
+  ✅ [H2.1-S5.8] [db] emitOutbox twice with the S5.1 idempotencyKey ⇒ still one outbox row
+  ✅ [H2.1-S5.9] [service] listRoster.unpublishedCount = unpublished rows + published removals since the last publish (3)
+── [S6] readers ──
+  ✅ [H2.1-S6.1] [reader] rosterOnDay = published rows only · never-published hidden · edited-after-publish listed with the live (moved) times
+  ✅ [H2.1-S6.2] [reader] APPROVED leave covering the day ⇒ excluded (e1 03-06) · PENDING ⇒ included (e2 03-04)
+  ✅ [H2.1-S6.3] [reader] ENDED / inactive employee ⇒ excluded even with a published entry (e5 03-07)
+  ✅ [H2.1-S6.4] [reader] unitId filter = entry.unitId: u1 ⇒ e4 borrowed entry in, e4 u2 entry out · u2 ⇒ the reverse · null-unit entry (e3) in for u1 (Q12)
+  ✅ [H2.1-S6.5] [reader] overnight entry of D listed for D, not for D+1
+  ✅ [H2.1-S6.6] [reader] rosterAt(02:00 BKK D+1) ⇒ exactly D's overnight entry (D13b) · start/end instants exact
+  ✅ [H2.1-S6.7] [reader] multi-system tenant ⇒ rows of both HR systems · systemId filter narrows
+  ✅ [H2.1-S6.8] [reader] tenant without an HR system ⇒ { hrLinked: false, entries: [] }
+  ✅ [H2.1-S6.9] [reader] result keys {hrLinked, entries} · entry keys exactly the R8 list · no name / leave / reason / money in the JSON · userId = linked user
+  ✅ [H2.1-S5.4] [service] manager-u1 publish 03-11…03-17 ⇒ only unitId-u1 rows flip · u2 / null rows stay unpublished
+  ✅ [H2.1-S5.5] [race] row deleted under a row lock by a parallel lane during publish ⇒ "ตารางกะมีการแก้ไขระหว่างเผยแพร่ — กรุณากดเผยแพร่อีกครั้ง" · 0 rows flipped · 0 events (flag 4)
+── [S7] branch scope + refusals ──
+  ✅ [H2.1-S7.1] [service] 🔴 manager-u1 add: e2 ⇒ "พนักงานคนนี้อยู่สาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ" · e3 ⇒ "พนักงานคนนี้ยังไม่ระบุสาขาประจำ — ผู้ดูแลทุกสาขาเป็นผู้จัดการ" · e4 on a borrowed day ⇒ ok (u1) · e4 outside ⇒ refused
+  ✅ [H2.1-S7.2] [service] 🔴 manager-u1 generate 03-18…03-24 + copy → 03-25 touch only u1-of-the-day rows (e1/e6/e7)
+  ✅ [H2.1-S7.3] [service] listRoster matrix: owner = manager-all (all) · manager-u1 ⊆ u1-of-the-day (e4 in, e2/e3 out) · staff-u1 / member refused · other tenant 0 · entry keys exactly R7
+  ✅ [H2.1-S7.4] [service] staff-u1 + member: add · move · remove · generate · copy · publish ⇒ "คุณไม่มีสิทธิ์จัดตารางกะ" · 0 writes
+  ✅ [H2.1-S7.5] [service] manager with unitAccess [] = tenant-wide (H1.1 amendment): add for e2 (u2) ok · listRoster shows e2 + e3
+  ✅ [H2.1-S7.8] [service] manager-u1 unitId argument u2 ⇒ "รายการนี้เป็นของสาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ" (listRoster · generate) · 0 rows
+── [X] races · isolation · fitness ──
+  ✅ [H2.1-X6.1] [race] addEntry same key 10-way × 3 rounds ⇒ 1 row per round · 9 losers "พนักงานคนนี้มีกะนี้ในวันนั้นแล้ว"
+  ✅ [H2.1-X6.2] [race] publish ∥ moveEntry same day × 3 ⇒ both ok · never a published row with a stale snapshot · one event per publish that flipped rows
+  ✅ [H2.1-X6.3] [race] generate ∥ generate ⇒ same rows as one sequential run of an identical week · no duplicate employee-day
+  ✅ [H2.1-X2.1] [service] -other tenant employee / shift / entry ids from our ctx ⇒ refused · their rows unchanged
+  ✅ [H2.1-X2.2] [service] sys2 employee / entry ids in system A calls ⇒ refused · unchanged
+  ✅ [H2.1-S7.6] [service] every refusal collected = one of the fixed texts byte-exact · no name / id inside
+  ✅ [H2.1-S7.7] [db] audit hr.roster.* one row per successful op (add/move/remove/publish exact · generate/copy per call) · ids only · add/move/remove carry entryId…wasPublished
+  ✅ [H2.1-X12.1] [run] fitness.mts + fitness-hr.mts without env (PATH/HOME only) ⇒ exit 0
+RESIDUE none (tenants=4 users=15)
+  ✅ [H2.1-Z1] residue: tenants qc-hr-h2.1-* gone · no row of ours in HR / roster / audit / outbox · users / sessions gone
+BASE-EXPECTATION 12/84 as registered (RED-by-design 72 · GREEN controls 12) · off: H2.1-S6.10(RED→pass) H2.1-S4.1(RED→pass) H2.1-S4.2(RED→pass) H2.1-S4.3(RED→pass) H2.1-S4.4(RED→pass) H2.1-S4.5(RED→pass) H2.1-S4.6(RED→pass) H2.1-S4.7(RED→pass) H2.1-S4.8(RED→pass) H2.1-S4.9(RED→pass) H2.1-S4.12(RED→pass) H2.1-S1.1(RED→pass) H2.1-S1.2(RED→pass) H2.1-S1.3(RED→pass) H2.1-S1.4(RED→pass) H2.1-S1.5(RED→pass) H2.1-S1.6(RED→pass) H2.1-S1.7(RED→pass) H2.1-S1.8(RED→pass) H2.1-S1.9(RED→pass) H2.1-S1.10(RED→pass) H2.1-S1.11(RED→pass) H2.1-S4.10(RED→pass) H2.1-S2.1(RED→pass) H2.1-S2.2(RED→pass) H2.1-S2.3(RED→pass) H2.1-S2.4(RED→pass) H2.1-S2.5(RED→pass) H2.1-S2.6(RED→pass) H2.1-S2.7(RED→pass) H2.1-S2.8(RED→pass) H2.1-S2.9(RED→pass) H2.1-S2.10(RED→pass) H2.1-S3.1(RED→pass) H2.1-S3.2(RED→pass) H2.1-S3.3(RED→pass) H2.1-S3.4(RED→pass) H2.1-S3.5(RED→pass) H2.1-S3.6(RED→pass) H2.1-S3.7(RED→pass) H2.1-S5.1(RED→pass) H2.1-S5.2(RED→pass) H2.1-S5.3(RED→pass) H2.1-S4.11(RED→pass) H2.1-S5.6(RED→pass) H2.1-S5.7(RED→pass) H2.1-S5.8(RED→pass) H2.1-S5.9(RED→pass) H2.1-S6.1(RED→pass) H2.1-S6.2(RED→pass) H2.1-S6.3(RED→pass) H2.1-S6.4(RED→pass) H2.1-S6.5(RED→pass) H2.1-S6.6(RED→pass) H2.1-S6.7(RED→pass) H2.1-S6.8(RED→pass) H2.1-S6.9(RED→pass) H2.1-S5.4(RED→pass) H2.1-S5.5(RED→pass) H2.1-S7.1(RED→pass) H2.1-S7.2(RED→pass) H2.1-S7.3(RED→pass) H2.1-S7.4(RED→pass) H2.1-S7.5(RED→pass) H2.1-S7.8(RED→pass) H2.1-X6.1(RED→pass) H2.1-X6.2(RED→pass) H2.1-X6.3(RED→pass) H2.1-X2.1(RED→pass) H2.1-X2.2(RED→pass) H2.1-S7.6(RED→pass) H2.1-S7.7(RED→pass)
+
+===== qc-hr-h2.1 ===== passed 84/84 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.1","total":84,"passed":84,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":72,"baseGreen":12,"offBase":["H2.1-S6.10(RED→pass)","H2.1-S4.1(RED→pass)","H2.1-S4.2(RED→pass)","H2.1-S4.3(RED→pass)","H2.1-S4.4(RED→pass)","H2.1-S4.5(RED→pass)","H2.1-S4.6(RED→pass)","H2.1-S4.7(RED→pass)","H2.1-S4.8(RED→pass)","H2.1-S4.9(RED→pass)","H2.1-S4.12(RED→pass)","H2.1-S1.1(RED→pass)","H2.1-S1.2(RED→pass)","H2.1-S1.3(RED→pass)","H2.1-S1.4(RED→pass)","H2.1-S1.5(RED→pass)","H2.1-S1.6(RED→pass)","H2.1-S1.7(RED→pass)","H2.1-S1.8(RED→pass)","H2.1-S1.9(RED→pass)","H2.1-S1.10(RED→pass)","H2.1-S1.11(RED→pass)","H2.1-S4.10(RED→pass)","H2.1-S2.1(RED→pass)","H2.1-S2.2(RED→pass)","H2.1-S2.3(RED→pass)","H2.1-S2.4(RED→pass)","H2.1-S2.5(RED→pass)","H2.1-S2.6(RED→pass)","H2.1-S2.7(RED→pass)","H2.1-S2.8(RED→pass)","H2.1-S2.9(RED→pass)","H2.1-S2.10(RED→pass)","H2.1-S3.1(RED→pass)","H2.1-S3.2(RED→pass)","H2.1-S3.3(RED→pass)","H2.1-S3.4(RED→pass)","H2.1-S3.5(RED→pass)","H2.1-S3.6(RED→pass)","H2.1-S3.7(RED→pass)","H2.1-S5.1(RED→pass)","H2.1-S5.2(RED→pass)","H2.1-S5.3(RED→pass)","H2.1-S4.11(RED→pass)","H2.1-S5.6(RED→pass)","H2.1-S5.7(RED→pass)","H2.1-S5.8(RED→pass)","H2.1-S5.9(RED→pass)","H2.1-S6.1(RED→pass)","H2.1-S6.2(RED→pass)","H2.1-S6.3(RED→pass)","H2.1-S6.4(RED→pass)","H2.1-S6.5(RED→pass)","H2.1-S6.6(RED→pass)","H2.1-S6.7(RED→pass)","H2.1-S6.8(RED→pass)","H2.1-S6.9(RED→pass)","H2.1-S5.4(RED→pass)","H2.1-S5.5(RED→pass)","H2.1-S7.1(RED→pass)","H2.1-S7.2(RED→pass)","H2.1-S7.3(RED→pass)","H2.1-S7.4(RED→pass)","H2.1-S7.5(RED→pass)","H2.1-S7.8(RED→pass)","H2.1-X6.1(RED→pass)","H2.1-X6.2(RED→pass)","H2.1-X6.3(RED→pass)","H2.1-X2.1(RED→pass)","H2.1-X2.2(RED→pass)","H2.1-S7.6(RED→pass)","H2.1-S7.7(RED→pass)"]}

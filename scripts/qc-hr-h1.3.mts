@@ -362,6 +362,20 @@ let BASE_REF = process.env.QC_H13_BASE ?? "";
 function git(args: string[]): string {
   return execFileSync("git", args, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
 }
+// ORACLE-EDIT H1.3 (controller, 6 Nov): the diff-vs-base statics S5.7/S6.5/S6.6 describe the H1.3 change set only —
+// once H1.3 (fb245484) is in the base, later WOs legitimately change those files ⇒ n/a (pass with reason).
+let H13_IN_BASE: boolean | null = null;
+function h13InBase(): boolean {
+  if (H13_IN_BASE === null) {
+    try {
+      git(["merge-base", "--is-ancestor", "fb245484", baseRef()]);
+      H13_IN_BASE = true;
+    } catch {
+      H13_IN_BASE = false;
+    }
+  }
+  return H13_IN_BASE;
+}
 function baseRef(): string {
   if (!BASE_REF) {
     try {
@@ -759,8 +773,8 @@ function runStatic(): void {
   }
   // S5.7
   {
-    const d = changedVsBase([CRM_FILE, CONSUMERS, ACCOUNT_DIR]);
-    chk("S5.7", d === "unchanged", `unchanged vs ${baseRef().slice(0, 8)}`, d);
+    const d = h13InBase() ? "unchanged" : changedVsBase([CRM_FILE, CONSUMERS, ACCOUNT_DIR]);
+    chk("S5.7", d === "unchanged", `unchanged vs ${baseRef().slice(0, 8)}`, h13InBase() ? "n/a · H1.3 fb245484 in base (ORACLE-EDIT)" : d);
   }
   // S6.1 no new reader of the new fields/tables (count vs base per file)
   {
@@ -826,7 +840,7 @@ function runStatic(): void {
     const ok = (f: string) =>
       f.startsWith(`${MIG_DIR}/`) || /^prisma\/schema\/[\w.-]+\.prisma$/.test(f) || [SEED_LAW, CORE_SCOPE, HQC_ENV, FITNESS_HR, SEED_FILE, EXPECTED, THIS_FILE].includes(f) || f.startsWith("ledger/") ||
       /^scripts\/qc-[\w.-]+\.mts$/.test(f); // ORACLE-EDIT H1.3 (controller): other oracles may carry controller-ruled ORACLE-EDITs (SCHEMA_SHA re-take, C3.3 S0.4 scope)
-    const extra = [...new Set(files)].filter((f) => !ok(f));
+    const extra = h13InBase() ? [] : [...new Set(files)].filter((f) => !ok(f)); // ORACLE-EDIT: n/a once H1.3 is in base
     chk("S6.5", extra.length === 0, "⊆ R1/R3/R8/R9 files + oracle + ledger", extra.slice(0, 10).join(",") || `ok (${new Set(files).size} files vs ${baseRef().slice(0, 8)})`);
   }
   // S6.6 outbox event types
@@ -840,7 +854,7 @@ function runStatic(): void {
     } catch {
       added = -1;
     }
-    chk("S6.6", now.size > 0 && srt(now) === srt(was) && added === 0, "consumer keys = base · 0 added emitOutbox(", `keys ${now.size} vs base ${was.size}${srt(now) === srt(was) ? "" : ` diff=${[...now].filter((k) => !was.has(k)).join(",")}`} · added emitOutbox=${added}`);
+    chk("S6.6", h13InBase() || (now.size > 0 && srt(now) === srt(was) && added === 0), "consumer keys = base · 0 added emitOutbox(", `keys ${now.size} vs base ${was.size}${srt(now) === srt(was) ? "" : ` diff=${[...now].filter((k) => !was.has(k)).join(",")}`} · added emitOutbox=${added}`);
   }
   // X7.1 no today-dependence (date literals in our own code)
   {

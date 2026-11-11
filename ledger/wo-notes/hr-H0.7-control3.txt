@@ -1,0 +1,39 @@
+# controller re-run of wip/pos-hr-h0.7 @33d7c549 · 2026-10-22T14:39:46Z · load 5.12 4.29 4.91
+prisma generate exit=0 [14:39Z]
+qc-hr-h0.7 unforced exit=0 ===== qc-hr-h0.7 ===== passed 74/74 JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[]}  · RESIDUE none (tenants=4 users=39) [14:40Z load 4.96]
+qc-hr-h0.7 forced#1 exit=0 ===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE none (tenants=4 users=39) [14:40Z load 3.32]
+qc-hr-h0.7 forced#2 exit=0 ===== qc-hr-h0.7 ===== passed 74/74 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.7","total":74,"passed":74,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE none (tenants=4 users=39) [14:41Z load 2.62]
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา ===== JSON_SUMMARY {"total":194,"passed":194,"findings":[]}   [14:43Z load 1.88]
+qc-hr-leave-booking exit=0 ===== QC: ลาอนุมัติ → ปิดช่องจอง (C-2) ===== JSON_SUMMARY {"total":14,"passed":14,"findings":[]}   [14:43Z load 1.73]
+qc-approval exit=0 ===== QC Approval Engine ===== JSON_SUMMARY {"total":16,"passed":16,"findings":[]}   [14:43Z load 1.73]
+qc-approval-wiring exit=0 ===== QC Approval Wiring ===== JSON_SUMMARY {"total":7,"passed":7,"findings":[]}   [14:44Z load 1.91]
+qc-approval-edit exit=0 ===== QC Approval Edit ===== JSON_SUMMARY {"total":12,"passed":12,"findings":[]}   [14:44Z load 1.91]
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null}   [14:47Z load 1.49]
+qc-hr-h0.2 exit=0 ===== qc-hr-h0.2 ===== ผ่าน 58/58 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.2","total":58,"passed":58,"failed":[],"skipped":false,"forced":true,"missing":[],"crashed":null}   [14:48Z load 1.95]
+qc-hr-h0.3 exit=0 ===== qc-hr-h0.3 ===== ผ่าน 37/37 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.3","total":37,"passed":37,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE none (tenant=สร้างแล้ว users=5) [14:49Z load 1.59]
+qc-hr-h0.5 exit=0 ===== qc-hr-h0.5 ===== ผ่าน 71/71 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.5","total":71,"passed":71,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[]}  · RESIDUE tenants=0 none (สร้าง 3 ร้าน · ผู้ใช้ 2) [14:51Z load 2.08]
+qc-hr-h0.6 exit=0 ===== qc-hr-h0.6 ===== passed 55/55 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h0.6","total":55,"passed":55,"failed":[],"findings":[],"skipped":false,"forced":true,"missing":[],"crashed":null,"groupCrashes":[]}  · RESIDUE tenants=0 rows=0 audit=0 outbox=0 [14:52Z load 1.69]
+qc-crm-c3.3 exit=0 JSON_SUMMARY {"total":90,"passed":90,"findings":[]}   [15:01Z load 1.40]
+qc-crm-c0.3 exit=0 JSON_SUMMARY {"total":88,"passed":88,"findings":[]}   [15:03Z load 3.81]
+qc-ai-proposals exit=0 ===== QC AI Proposals (Phase 3.5) ===== JSON_SUMMARY {"total":16,"passed":16,"findings":[]}   [15:03Z load 3.46]
+qc-ai-tools exit=0 ===== QC AI Tools (Phase 3 v1) ===== JSON_SUMMARY {"total":18,"passed":18,"findings":[]}   [15:03Z load 3.50]
+qc-hr exit=0 ===== QC HR ===== JSON_SUMMARY {"total":9,"passed":9,"findings":[]}   [15:03Z load 4.74]
+qc-hr-attendance exit=0 ===== QC: สาย/ขาดงาน (HR attendance) ===== JSON_SUMMARY {"total":31,"passed":31,"findings":[]}   [15:03Z load 4.74]
+qc-chat-staff-perms exit=0 ===== QC CHAT STAFF PERMS ===== JSON_SUMMARY {"total":49,"passed":49,"findings":[]}   [15:03Z load 4.60]
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 23/23 JSON_SUMMARY {"suite":"seed-hr-qc","total":23,"passed":23,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":17,"BusinessUnit":2,"HrAttend  [15:03Z load 3.86]
+fitness noenv exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [15:04Z load 4.52]
+fitness env exit=0 ===== FITNESS ===== JSON_SUMMARY {"total":42,"passed":42,"findings":[]}   [15:04Z load 4.47]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":7,"passed":7,"findings":[]}   [15:04Z load 4.36]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":7,"passed":7,"findings":[]}   [15:04Z load 4.36]
+typecheck start 16:34Z availMB=10445 busy=0
+typecheck SKIPPED (gate never opened in 90 min) — controller must run it by hand
+ALLDONE 2026-10-22T16:34:16Z
+typecheck MANUAL start 16:34Z availMB=10407 heap=8192 ISO_MEM=9800M
+typecheck exit=2 errors=1 [16:38Z]
+TCDONE 2026-10-22T16:38:42Z
+typecheck MANUAL start 16:39Z availMB=10299 heap=8192 ISO_MEM=9800M
+typecheck exit=1 errors=1 [16:39Z]
+TCDONE 2026-10-22T16:39:32Z
+typecheck MANUAL start 16:40Z availMB=10224 heap=8192 ISO_MEM=9800M
+typecheck exit=0 errors=0 [16:40Z]
+TCDONE 2026-10-22T16:40:27Z
