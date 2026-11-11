@@ -500,7 +500,8 @@ function kindAfter(last: { kind: HrAttendanceKind; at: Date } | null, now: Date)
  *  HR H0.3 ▸ ใช้แสดงผลเท่านั้น · การลงเวลาจริงตัดสินซ้ำใต้ล็อกใน clock(kind "NEXT") ด้วย kindAfter ตัวเดียวกัน ◂ */
 export async function nextClockKind(ctx: Ctx, employeeId: string, opts: { tx?: HrTx } = {} /* POS P3.5 ▸ fix2 F4 ◂ */): Promise<HrAttendanceKind> {
   const now = new Date();
-  const last = await (opts.tx ? opts.tx.hrAttendance : tenantDb(ctx).hrAttendance).findFirst({
+  const db = (opts.tx ?? tenantDb(ctx)) as unknown as Prisma.TransactionClient; // HR SYNC ▸ ชนิดเดียว (union ของสอง client ลึกเกิน TS2589) ◂
+  const last = await db.hrAttendance.findFirst({
     where: { employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, // POS P3.5 ▸ fix2 F4: ขอบเขตตรง (ทาง tx ไม่มีตัวฉีดของ tenantDb) ◂
     orderBy: { at: "desc" },
     select: { kind: true, at: true },
