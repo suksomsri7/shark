@@ -1,0 +1,135 @@
+# H2.3 builder runs on head 1d931cd81 (code) · 2026-11-11T19:49:48Z
+# NOTE: official oracle = 68/73; the 5 reds (S3.8 · S5.1–S5.4) are oracle defects → ORACLE-EDIT 1+2 in hr-H2.3.md. Local copy with both edits = 73/73 (tail below).
+
+## summary
+oracle-unforced exit 1
+oracle-forced1 exit 1
+oracle-forced2 exit 1
+qc-hr-h2.1 exit 0
+qc-hr-attendance exit 0
+qc-hr exit 0
+qc-bulk-ops exit 0
+qc-nav-functions exit 1
+qc-hf-hr-privacy exit 0
+qc-hr-leave-booking exit 0
+qc-payroll exit 0
+qc-hr-payadjust exit 0
+qc-payroll-reverse exit 0
+qc-hr-roster exit 0
+qc-booking-hours-hr exit 0
+qc-calendar exit 0
+qc-approval exit 0
+qc-approval-wiring exit 0
+qc-approval-edit exit 0
+qc-crm-c3.3 exit 0
+qc-crm-c0.3 exit 0
+qc-ai-proposals exit 0
+qc-ai-tools exit 0
+qc-chat-staff-perms exit 0
+qc-account-cpa exit 0
+seed-hr-qc exit 0
+fitness-bare exit 0
+fitness-hr-bare exit 0
+fitness-env exit 0
+fitness-hr-env exit 0
+typecheck exit 0 · 0 errors
+
+## oracle forced #2 (official, unedited)
+[env] qc-hr-h2.3 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.3] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.3] modules: swap=loaded · swap-rules=loaded · roster=loaded
+  ✅ [H2.3-S4.10] hr-swap lock before roster lock · reassignEntriesInTx only swap.ts + roster.ts · both exported
+  ✅ [H2.3-S5.5] swap-rules.ts pure (no DB import · no clock)
+  ✅ [H2.3-S6.6] swap-actions.ts · approvals page testids · ui inventory
+  ✅ [H2.3-S8.2] R14 files unchanged · roster.ts = base + H2.3 hunks (n/a once H2.3 in base)
+  ✅ [H2.3-S8.3] approval core / effects = base + H2.3 hunks (n/a once in base)
+  ✅ [H2.3-S8.5] payroll-rules.ts sha 75a66c0c…
+
+
+── S1 create ──
+  ✅ [H2.3-S1.1] SWAP ok ⇒ AWAITING_PEER · ids · requestedByUserId · reason trimmed · 1 id-only audit · 1 hr.shift.swap_requested
+  ✅ [H2.3-S1.2] GIVE to a colleague off that day ⇒ AWAITING_PEER · toEntryId null
+  ✅ [H2.3-S1.3] target null ⇒ noTarget text · 0 rows
+  ✅ [H2.3-S1.4] colleague's entry / posted employee id ⇒ notOwn text · 0 rows
+  ✅ [H2.3-S1.5] unpublished / past / sys2 / other-tenant entry ⇒ texts · 0 rows
+  ✅ [H2.3-S1.6] target ENDED / unlinked / self ⇒ texts · 0 rows
+  ✅ [H2.3-S1.7] u2 colleague ⇒ branch text · same colleague borrowed into u1 that day ⇒ ok
+  ✅ [H2.3-S1.8] worker on APPROVED leave ⇒ เพื่อนร่วมงาน/คุณ leave texts (no names)
+  ✅ [H2.3-S1.9] new holder already holds (date, shiftId) ⇒ dup text
+  ✅ [H2.3-S1.10] 2nd open request on fromEntry · toEntry already in an open request ⇒ open text
+  ✅ [H2.3-S1.11] FROM entry = another open request's TO entry ⇒ open text · 0 rows · 0 events (ruling 5)
+  ✅ [H2.3-S1.12] TO entry = another open request's FROM entry ⇒ open text · 0 rows · 0 events (ruling 5)
+── S6 scope + privacy ──
+  ✅ [H2.3-S6.1] viewer matrix listMySwaps / listSwapsForManager
+  ✅ [H2.3-S6.2] peer DTO keys exact · no other requester rows
+  ✅ [H2.3-S6.3] reason: requester · target · in-scope deciders only
+  ✅ [H2.3-S6.8] other-tenant / sys2 ctx on a swap id ⇒ refused · unchanged
+  ✅ [H2.3-S6.4] mgr-u1 decideSwap on a u2 swap ⇒ H1.1 text · unchanged
+  ✅ [H2.3-S6.5] unitAccess [] writer = tenant-wide (lists + decides u2)
+── S2 peer + state ──
+  ✅ [H2.3-S2.1] accept (policy on) ⇒ PENDING · 1 ApprovalRequest (systemId · unit u1 · requestedById = requester user)
+  ✅ [H2.3-S2.2] decline ⇒ REJECTED · peerDecidedAt · decidedById null · no request
+  ✅ [H2.3-S2.3] respond by requester / bystander / manager ⇒ notYours · AWAITING_PEER
+  ✅ [H2.3-S2.4] accept twice ⇒ stale text · 1 request
+  ✅ [H2.3-S2.5] requester cancels AWAITING_PEER ⇒ CANCELLED
+  ✅ [H2.3-S2.6] swapTransition vectors · respond/cancel on terminal swaps refused
+  ✅ [H2.3-S2.7] accept after the entry date passed ⇒ expired text · CANCELLED
+  ✅ [H2.3-S2.8] accept re-validates (target on APPROVED leave since create) ⇒ leave text · AWAITING_PEER
+── S3 approval wiring ──
+  ✅ [H2.3-S3.1] chain approve + effect by event ⇒ rewritten · APPROVED · decidedById · 1 hr.shift.swap_approved · 1 apply audit
+  ✅ [H2.3-S3.2] chain reject + effect ⇒ REJECTED · decidedById · untouched
+  ✅ [H2.3-S3.3] no policy ⇒ PENDING w/o request · decideSwap(mgr-u1) ⇒ APPROVED + rewritten + warnings[]
+  ✅ [H2.3-S3.4] decideSwap while a chain request exists ⇒ inChain text
+  ✅ [H2.3-S3.5] self: core by target ⇒ reason · core by requester ⇒ SELF_APPROVAL + reason · decideSwap by party ⇒ text · unchanged
+  ✅ [H2.3-S3.6] owner = requester / target ⇒ APPROVED at accept · rewritten · no request · hr.swap.owner_auto
+  ✅ [H2.3-S3.7] cancel PENDING in chain ⇒ swap + request CANCELLED · after chain decided ⇒ decided text
+  ❌ [H2.3-S3.8] entityLabel = คำขอสลับกะ · actions.ts allow-list · base types kept — expected label · allow-list · base kept | actual kept label=คำขอสลับกะ
+  ✅ [H2.3-S3.9] listMyRequests: requester only
+── S4 effect + races ──
+  ✅ [H2.3-S4.1] SWAP rewrite keeps ids · published/publishedAt · times · shiftId · unitId · source MANUAL
+  ✅ [H2.3-S4.2] GIVE (direct): row moves · requester has no row that day
+  ✅ [H2.3-S4.3] target gains same (date,shift) after accept ⇒ untouched · CANCELLED · audit DUP · no throw · request APPROVED
+  ✅ [H2.3-S4.4] (a) moveEntry after chain APPROVED ⇒ CANCELLED (Q16) · no-op (b) out-of-band edit ⇒ ENTRY_CHANGED · no throw
+  ✅ [H2.3-S4.5] fromEntry removed after chain APPROVED ⇒ effect no-op · no throw · no event
+  ✅ [H2.3-S4.6] decide ∥ cancel 10 lanes × 3 rounds ⇒ APPROVED+rewritten or CANCELLED+untouched
+  ✅ [H2.3-S4.7] approval event ×2 seq + ×2 par ⇒ 1 rewrite · 1 hr.shift.swap_approved · 1 apply audit
+  ✅ [H2.3-S4.8] effect ∥ moveEntry under a held roster key ⇒ one order
+  ✅ [H2.3-S4.9] rosterOnDay after approval ⇒ new holder + userId
+── S5 warnings ──
+  ❌ [H2.3-S5.1] GIVE making a 16 h day ⇒ APPROVED + MAX_DAY(target) — expected APPROVED + MAX_DAY(B) | actual "คำขอนี้อยู่ในสายอนุมัติ — ตัดสินที่หน้ารออนุมัติ" []
+  ❌ [H2.3-S5.2] < 11 h rest ⇒ REST in swapPreview and decideSwap — expected REST(A) preview + decide | actual preview ok ["REST:A"] decide "คำขอนี้อยู่ในสายอนุมัติ — ตัดสินที่หน้ารออนุมัติ"
+  ❌ [H2.3-S5.3] overnight GIVE stays on its start day — expected B · day D · D+1 no | actual "คำขอนี้อยู่ในสายอนุมัติ — ตัดสินที่หน้ารออนุมัติ" onD=false onD+1=false
+  ❌ [H2.3-S5.4] warnings never name a third employee or their entries — expected A/B only | actual w51=[] w52=1
+── S7 events ──
+  ✅ [H2.3-S7.1] consumers for both events = withAutomation
+  ✅ [H2.3-S7.2] one automation label each · none in webhooks file · once in WEBHOOK_EVENTS
+  ✅ [H2.3-S7.3] both events ×2 seq + ×2 par ⇒ ok · unchanged
+  ✅ [H2.3-S7.4] re-emit same key ⇒ one outbox row
+  ✅ [H2.3-S7.5] rejected / cancelled swaps emit no hr.shift.swap_approved
+  ✅ [H2.3-S6.7] event payload keys exact · no names / reason
+── S9 delta races + Q16 ──
+  ✅ [H2.3-S9.1] decideSwap ∥ moveEntry ⇒ (APPROVED ∧ move entryChanged) or (moved ∧ CANCELLED)
+  ✅ [H2.3-S9.2] decideSwap ∥ publishRoster ⇒ both ok · publishedAt kept · event = unpublished row only
+  ✅ [H2.3-S9.3] 2 requesters × 5 lanes × 3 rounds on one toEntry ⇒ exactly 1 open
+  ✅ [H2.3-S9.4] 2 approved GIVEs of the same (date,shift) to one colleague ⇒ 1 applied · 1 CANCELLED DUP
+  ✅ [H2.3-S9.5] moveEntry (from/to) · removeEntry · AWAITING_PEER ⇒ swap + request CANCELLED
+── X ──
+  ✅ [H2.3-X1.1] 10 lanes × 3 rounds requestSwap same entry ⇒ 1 row
+  ✅ [H2.3-X6.1] 10 lanes accept ⇒ 1 PENDING · 1 request
+  ✅ [H2.3-X2.1] sys2 / other-tenant target or toEntry ⇒ refused · 0 rows
+  ✅ [H2.3-S6.9] every swap refusal is a fixed text without name/id
+── S8 controls ──
+  ✅ [H2.3-S8.4] HrLeave chain approve/reject + effect unchanged
+  ✅ [H2.3-S8.1] H2.1 engine on a week with a decided swap: rosterOnDay unique + current holders · publishRoster only unpublished rows · copyWeek 1:1 (ruling 8)
+  ✅ [H2.3-X12.1] fitness + fitness-hr exit 0 with and without env
+RESIDUE none (tenants=2 users=14)
+  ✅ [H2.3-Z1] residue: qc-hr-h23-* tenants + every row of ours gone
+BASE-EXPECTATION 12/73 as registered (RED-by-design 66 · GREEN controls 7) · off: H2.3-S4.10(RED→pass) H2.3-S5.5(RED→pass) H2.3-S6.6(RED→pass) H2.3-S1.1(RED→pass) H2.3-S1.2(RED→pass) H2.3-S1.3(RED→pass) H2.3-S1.4(RED→pass) H2.3-S1.5(RED→pass) H2.3-S1.6(RED→pass) H2.3-S1.7(RED→pass) H2.3-S1.8(RED→pass) H2.3-S1.9(RED→pass) H2.3-S1.10(RED→pass) H2.3-S1.11(RED→pass) H2.3-S1.12(RED→pass) H2.3-S6.1(RED→pass) H2.3-S6.2(RED→pass) H2.3-S6.3(RED→pass) H2.3-S6.8(RED→pass) H2.3-S6.4(RED→pass) H2.3-S6.5(RED→pass) H2.3-S2.1(RED→pass) H2.3-S2.2(RED→pass) H2.3-S2.3(RED→pass) H2.3-S2.4(RED→pass) H2.3-S2.5(RED→pass) H2.3-S2.6(RED→pass) H2.3-S2.7(RED→pass) H2.3-S2.8(RED→pass) H2.3-S3.1(RED→pass) H2.3-S3.2(RED→pass) H2.3-S3.3(RED→pass) H2.3-S3.4(RED→pass) H2.3-S3.5(RED→pass) H2.3-S3.6(RED→pass) H2.3-S3.7(RED→pass) H2.3-S3.9(RED→pass) H2.3-S4.1(RED→pass) H2.3-S4.2(RED→pass) H2.3-S4.3(RED→pass) H2.3-S4.4(RED→pass) H2.3-S4.5(RED→pass) H2.3-S4.6(RED→pass) H2.3-S4.7(RED→pass) H2.3-S4.8(RED→pass) H2.3-S4.9(RED→pass) H2.3-S7.1(RED→pass) H2.3-S7.2(RED→pass) H2.3-S7.3(RED→pass) H2.3-S7.4(RED→pass) H2.3-S7.5(RED→pass) H2.3-S6.7(RED→pass) H2.3-S9.1(RED→pass) H2.3-S9.2(RED→pass) H2.3-S9.3(RED→pass) H2.3-S9.4(RED→pass) H2.3-S9.5(RED→pass) H2.3-X1.1(RED→pass) H2.3-X6.1(RED→pass) H2.3-X2.1(RED→pass) H2.3-S6.9(RED→pass)
+
+===== qc-hr-h2.3 ===== passed 68/73 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.3","total":73,"passed":68,"failed":["H2.3-S3.8","H2.3-S5.1","H2.3-S5.2","H2.3-S5.3","H2.3-S5.4"],"findings":[{"id":"H2.3-S3.8","sev":"MAJOR"},{"id":"H2.3-S5.1","sev":"MAJOR"},{"id":"H2.3-S5.2","sev":"MAJOR"},{"id":"H2.3-S5.3","sev":"MAJOR"},{"id":"H2.3-S5.4","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":66,"baseGreen":7,"offBase":["H2.3-S4.10(RED→pass)","H2.3-S5.5(RED→pass)","H2.3-S6.6(RED→pass)","H2.3-S1.1(RED→pass)","H2.3-S1.2(RED→pass)","H2.3-S1.3(RED→pass)","H2.3-S1.4(RED→pass)","H2.3-S1.5(RED→pass)","H2.3-S1.6(RED→pass)","H2.3-S1.7(RED→pass)","H2.3-S1.8(RED→pass)","H2.3-S1.9(RED→pass)","H2.3-S1.10(RED→pass)","H2.3-S1.11(RED→pass)","H2.3-S1.12(RED→pass)","H2.3-S6.1(RED→pass)","H2.3-S6.2(RED→pass)","H2.3-S6.3(RED→pass)","H2.3-S6.8(RED→pass)","H2.3-S6.4(RED→pass)","H2.3-S6.5(RED→pass)","H2.3-S2.1(RED→pass)","H2.3-S2.2(RED→pass)","H2.3-S2.3(RED→pass)","H2.3-S2.4(RED→pass)","H2.3-S2.5(RED→pass)","H2.3-S2.6(RED→pass)","H2.3-S2.7(RED→pass)","H2.3-S2.8(RED→pass)","H2.3-S3.1(RED→pass)","H2.3-S3.2(RED→pass)","H2.3-S3.3(RED→pass)","H2.3-S3.4(RED→pass)","H2.3-S3.5(RED→pass)","H2.3-S3.6(RED→pass)","H2.3-S3.7(RED→pass)","H2.3-S3.9(RED→pass)","H2.3-S4.1(RED→pass)","H2.3-S4.2(RED→pass)","H2.3-S4.3(RED→pass)","H2.3-S4.4(RED→pass)","H2.3-S4.5(RED→pass)","H2.3-S4.6(RED→pass)","H2.3-S4.7(RED→pass)","H2.3-S4.8(RED→pass)","H2.3-S4.9(RED→pass)","H2.3-S7.1(RED→pass)","H2.3-S7.2(RED→pass)","H2.3-S7.3(RED→pass)","H2.3-S7.4(RED→pass)","H2.3-S7.5(RED→pass)","H2.3-S6.7(RED→pass)","H2.3-S9.1(RED→pass)","H2.3-S9.2(RED→pass)","H2.3-S9.3(RED→pass)","H2.3-S9.4(RED→pass)","H2.3-S9.5(RED→pass)","H2.3-X1.1(RED→pass)","H2.3-X6.1(RED→pass)","H2.3-X2.1(RED→pass)","H2.3-S6.9(RED→pass)"]}
+
+## local verification copy with ORACLE-EDIT 1+2 (file deleted after run)
+RESIDUE none (tenants=2 users=14)
+===== qc-hr-h2.3 ===== passed 73/73 (QC_FORCE)
+EXIT 0
