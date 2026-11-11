@@ -357,11 +357,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
                     </label>
                     <label className="flex flex-col gap-1 text-xs">
                       {t("clock.centerLat")}
-                      <input name="centerLat" inputMode="decimal" defaultValue={cur?.centerLat ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-lat`} />
+                      <input name="centerLat" inputMode="decimal" defaultValue={cur?.centerLat ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-latitude`} />
                     </label>
                     <label className="flex flex-col gap-1 text-xs">
                       {t("clock.centerLng")}
-                      <input name="centerLng" inputMode="decimal" defaultValue={cur?.centerLng ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-lng`} />
+                      <input name="centerLng" inputMode="decimal" defaultValue={cur?.centerLng ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-longitude`} />
                     </label>
                     <label className="flex flex-col gap-1 text-xs">
                       {t("clock.radiusM")}

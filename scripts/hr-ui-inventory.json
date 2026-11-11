@@ -2373,7 +2373,7 @@
   },
   {
    "page": "/app/sys/[id]/hr/settings",
-   "testid": "hr-clock-site-*-center-lat",
+   "testid": "hr-clock-site-*-center-latitude",
    "kind": "input",
    "interactive": true,
    "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
@@ -2399,7 +2399,7 @@
   },
   {
    "page": "/app/sys/[id]/hr/settings",
-   "testid": "hr-clock-site-*-center-lng",
+   "testid": "hr-clock-site-*-center-longitude",
    "kind": "input",
    "interactive": true,
    "file": "src/app/app/sys/[id]/hr/settings/page.tsx",

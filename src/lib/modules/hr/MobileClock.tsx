@@ -40,7 +40,7 @@ export default function MobileClock({ next, canBreak, labels }: { next: Next; ca
         fd.set("kind", kind);
         fd.set("latitude", String(pos.coords.latitude));
         fd.set("longitude", String(pos.coords.longitude));
-        fd.set("accuracyM", String(Math.round(pos.coords.accuracy)));
+        fd.set("accuracy", String(Math.round(pos.coords.accuracy)));
         start(async () => {
           const r = await mobileClockAction(fd);
           setMsg(r.ok ? { ok: true, text: labels.done } : { ok: false, text: r.distanceM !== undefined ? `${r.reason} (${labels.distance} ${r.distanceM})` : r.reason });

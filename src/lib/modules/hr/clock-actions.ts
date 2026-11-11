@@ -16,7 +16,7 @@ const KINDS = new Set<MobileClockKind>(["NEXT", "BREAK_START", "BREAK_END"]);
 /** ตัวเลขจากฟอร์ม ("" / ไม่มี = ไม่ส่ง) — ค่าที่อ่านไม่ได้ส่งต่อเป็น NaN ให้ clock.ts ตอบ "อ่านตำแหน่งไม่ได้" */
 const numOf = (v: FormDataEntryValue | null): number | undefined => (typeof v === "string" && v.trim() !== "" ? Number(v) : undefined);
 
-/** ลงเวลาด้วยมือถือของตัวเอง — ฟอร์ม: kind · latitude · longitude · accuracyM · deviceId */
+/** ลงเวลาด้วยมือถือของตัวเอง — ฟอร์ม: kind · latitude · longitude · accuracy · deviceId */
 export async function mobileClockAction(formData: FormData): Promise<MobileClockResult> {
   const actor = await self();
   const k = String(formData.get("kind") ?? "NEXT") as MobileClockKind;
@@ -26,7 +26,7 @@ export async function mobileClockAction(formData: FormData): Promise<MobileClock
       kind: KINDS.has(k) ? k : "NEXT",
       latitude: numOf(formData.get("latitude")),
       longitude: numOf(formData.get("longitude")),
-      accuracyM: numOf(formData.get("accuracyM")),
+      accuracyM: numOf(formData.get("accuracy")),
       deviceId: typeof formData.get("deviceId") === "string" ? String(formData.get("deviceId")) : undefined,
     },
   );
