@@ -52,8 +52,10 @@ const DETAIL_KEYS: Record<string, string> = {
 };
 const IMPACT_KEYS: Record<string, string> = { LEAVE: "balance,duty,othersOff", OT: "measuredMin,weekWarn", CORRECTION: "deltaMin,monthClosed", ADJUSTMENT: "targetPeriod" };
 const COUNT_KEYS = "ADJUSTMENT,CORRECTION,LEAVE,OT,SWAP,decidable,total";
+// ORACLE-EDIT (builder H2.11 · S1.2): + inboxSubjects (leave.ts, marked addition) — DTO ของ OT/แก้เวลา/สลับกะ ไม่มีสาขา/ผู้ยื่น/ของตัวเอง/สายอนุมัติ
+//   (ot.ts · swap.ts · service.ts · scope.ts แช่แข็ง) แต่ R4/R5 ต้องใช้ (unitId · own · FILED_BY_YOU · CHAIN) ⇒ ตัวอ่านข้อเท็จจริงแบบชุด 1 ตัว (คืนเฉพาะค่าเทียบผู้ดู)
 const ALLOWED_FROM_TYPES = new Set(
-  "pendingLeaves leaveListScopeOf decideLeaveAs leaveDetailsMany teamLeaveBalances otRequestList decideOtRequest listSwapsForManager decideSwap listCorrections decideCorrection listAdjustments decideAdjustmentAs stockConsentByAdjustment stockChargeTargetPeriod listRuns leaveDutyHintsMany loadAttendanceBoard attendanceNeedsRecompute otDaySpans lifecycleDue rosterLeaveOverlay hrScopeOf unitsForScope hrAccessOf".split(" "),
+  "inboxSubjects pendingLeaves leaveListScopeOf decideLeaveAs leaveDetailsMany teamLeaveBalances otRequestList decideOtRequest listSwapsForManager decideSwap listCorrections decideCorrection listAdjustments decideAdjustmentAs stockConsentByAdjustment stockChargeTargetPeriod listRuns leaveDutyHintsMany loadAttendanceBoard attendanceNeedsRecompute otDaySpans lifecycleDue rosterLeaveOverlay hrScopeOf unitsForScope hrAccessOf".split(" "),
 );
 const TYPE_MODULES = new Set(["service", "leave", "ot", "swap", "correction", "payroll", "stock-charge", "availability", "judge", "lifecycle", "roster-board", "scope", "privacy"]);
 const UI_IDS = ["hr-overview", "hr-overview-today", "hr-overview-inbox", "hr-overview-recompute", "hr-overview-due", "hr-inbox", "hr-inbox-filter-type", "hr-inbox-filter-unit", "hr-inbox-filter-age", "hr-inbox-batch", "hr-inbox-batch-approve", "hr-inbox-batch-reject", "hr-inbox-reject-reason", "hr-inbox-result", "hr-inbox-more", "hr-inbox-quota"];

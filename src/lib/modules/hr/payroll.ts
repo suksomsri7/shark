@@ -9,6 +9,9 @@ import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจ
 import { payrollItemsDigest, PAYROLL_DIGEST_SELECT } from "./payroll-digest";
 import { scopedEmployeeIds, type HrScope } from "./scope"; // HR H1.1 ▸ ขอบเขตสาขาของตัวอ่านรายการเพิ่ม/หัก ◂ // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
 import type { StockAdjustmentSource } from "./stock-charge"; // HR H4.6 ▸ ชนิดของแหล่งที่มา (type ล้วน — ไม่มีวงโหลด) ◂
+import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H2.11 ▸ ด่านของ decideAdjustmentAs (ตัวเดียวกับ decideAdjustmentAction) ◂
+import { employeeIdOfAdjustment, employeeUnitsOf, hrScopeOf, unitTargetOf } from "./scope"; // HR H2.11 ▸ สาขาของเจ้าของรายการ (แบบ payTarget) ◂
+import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ◂
 import {
   ssoContribution,
   monthlyWhtSatang,
@@ -410,6 +413,9 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
 export async function listAdjustments(ctx: Ctx, periodKey?: string, take = 200, scope?: HrScope) {
   const emps = await scopedEmployeeIds(ctx, scope);
   if (emps && emps.length === 0) return [];
+  // HR H2.11 ▸ กล่องคำขอรวม: scope ที่มี pendingUnbound = เฉพาะรายการรออนุมัติที่ยังไม่ผูกรอบ ไม่รวมแถวจากคำขอ OT (ตัดสินที่คำขอ OT) · ใหม่สุดก่อน ไม่เกิน take ◂
+  if ((scope as { pendingUnbound?: unknown } | undefined)?.pendingUnbound === true)
+    return tenantDb(ctx).hrPayAdjustment.findMany({ where: { systemId: ctx.systemId, status: "PENDING", runId: null, OR: [{ sourceType: null }, { sourceType: { not: "OT_REQUEST" } }], ...(periodKey ? { periodKey } : {}), ...(emps ? { employeeId: { in: emps } } : {}) }, orderBy: [{ createdAt: "desc" }], take });
   return tenantDb(ctx).hrPayAdjustment.findMany({
     where: { systemId: ctx.systemId, ...(periodKey ? { periodKey } : {}), ...(emps ? { employeeId: { in: emps } } : {}) },
     orderBy: [{ createdAt: "desc" }],
@@ -1889,3 +1895,43 @@ export async function writeOtAdjustmentInTx(tx: Prisma.TransactionClient, ctx: C
   return { gen: w.nextGen, created: { id: row.id, kind, amountSatang: amount, periodKey: w.targetPeriod }, rejected: unbound.length };
 }
 // ◂ HR H2.9
+
+// ─────────── HR H2.11 ▸ ตัดสินรายการเพิ่ม/หัก 1 รายการในนามผู้ดู (กล่องคำขอรวม) — เนื้อของ decideAdjustmentAction ทุกขั้น: ด่าน hr.payadjust.approve +
+//   canViewPayroll → สาขาของเจ้าของรายการ (แบบ payTarget) → decideAdjustment (กติกาเดิมทั้งหมด รวมกติกาที่จะเพิ่มภายในในอนาคต) → audit
+//   hr.payadjust.approve|reject รูปเดียวกับ action · ไม่คัดลอกกติกาใด ๆ (Q4: action เดิมไม่เปลี่ยน — หนี้ D1) ───────────
+export async function decideAdjustmentAs(
+  ctx: Ctx,
+  v: { role: MembershipCtx["role"] | string; unitAccess: unknown; permissions: unknown; userId?: string | null },
+  id: string,
+  status: "APPROVED" | "REJECTED",
+): Promise<{ ok: true; status: "APPROVED" | "REJECTED"; reason?: string } | { ok: false; reason: string }> {
+  const m = { role: v?.role, unitAccess: (Array.isArray(v?.unitAccess) ? v.unitAccess : []) as string[], permissions: (v?.permissions ?? {}) as Record<string, unknown> } as MembershipCtx;
+  const uid = typeof v?.userId === "string" ? v.userId.trim() : "";
+  if (!uid || !evaluate(m, { module: "hr", action: "hr.payadjust.approve" }) || !canViewPayroll(m)) return { ok: false, reason: INBOX_TEXT.noRight };
+  if (status !== "APPROVED" && status !== "REJECTED") return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+  const empId = typeof id === "string" && id ? await employeeIdOfAdjustment(ctx, id) : null;
+  if (!empId) return { ok: false, reason: "ไม่พบรายการ" };
+  const emp = await employeeUnitsOf(ctx, empId);
+  if (emp) {
+    const t = unitTargetOf(hrScopeOf(m), emp, new Date());
+    if (!t.ok) return { ok: false, reason: t.reason };
+    if (!evaluate(m, { module: "hr", action: "hr.payadjust.approve", ...(t.unitId ? { unitId: t.unitId } : {}) })) return { ok: false, reason: INBOX_TEXT.noRight };
+  }
+  try {
+    const res = await decideAdjustment(ctx, id, status, { userId: uid, isOwner: m.role === "OWNER" });
+    if (!res.ok) return { ok: false, reason: res.reason ?? "ตัดสินรายการไม่สำเร็จ" };
+    await writeAudit({
+      tenantId: ctx.tenantId,
+      actorId: uid,
+      action: status === "APPROVED" ? "hr.payadjust.approve" : "hr.payadjust.reject",
+      targetType: "HrPayAdjustment",
+      targetId: id,
+      ...(res.movedTo ? { before: { periodKey: res.movedFrom }, after: { periodKey: res.movedTo, reason: res.reason } } : {}),
+    });
+    return { ok: true, status, ...(res.reason ? { reason: res.reason } : {}) };
+  } catch (e) {
+    console.error("[hr.payadjust.decide]", e);
+    return { ok: false, reason: "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง" };
+  }
+}
+// ◂ HR H2.11
