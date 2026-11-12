@@ -1,0 +1,7 @@
+# post-merge sanity (lean) session/hr @ba959d925 · 2026-11-12T01:33:45Z · load 14.98 12.07 12.25
+prisma generate exit=0 [01:33Z]
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 30/30 JSON_SUMMARY {"suite":"seed-hr-qc","total":30,"passed":30,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":77,"BusinessUnit":2,"HrAttend  [01:34Z]
+qc-hr-h3.3 exit=0 ===== qc-hr-h3.3 ===== passed 51/51 (QC_FORCE) JSON_SUMMARY {"suite":"qc-hr-h3.3","total":51,"passed":51,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":36,"baseGreen":15,"offBase":["H3.3-S1.2(RED→pass)","H3.3-S1.3(RED→pass)","H3.3-S1.4(RED→pass)"  [01:35Z]
+fitness-hr noenv exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}   [01:35Z]
+fitness-hr env exit=0 ===== FITNESS-HR ===== JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}   [01:35Z]
+ALLDONE 2026-11-12T01:35:27Z · red: 0
