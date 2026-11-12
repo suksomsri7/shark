@@ -689,7 +689,8 @@ export async function selfAcknowledgeNote(actor: SelfActor, noteId: unknown, opt
   if (!me) return no(SELF_TEXT.noEmployee);
   if (!me.active) return no(SELF_TEXT.inactive);
   const id = str(noteId);
-  const own = id ? await tenantDb(me.ctx).hrReviewNote.findFirst({ where: { id, tenantId: me.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, visibleToEmployee: true }, select: { id: true } }) : null;
+  // บันทึกของตัวเองที่เปิดให้เห็น = รายการของ myReviewNotes (ตัวอ่านเดิม H4.4 — ไม่อ่านตารางบันทึกตรงในไฟล์นี้)
+  const own = id ? (await myReviewNotes({ tenantId: me.tenantId, userId: me.userId })).items.find((n) => n.id === id) : undefined;
   if (!own) return no(SELF_TEXT.notFound);
   return acknowledgeReviewNote({ tenantId: me.tenantId, userId: me.userId }, own.id, { now: opts?.now });
 }
