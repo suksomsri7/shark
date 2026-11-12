@@ -20,6 +20,7 @@ import { employeeOfUser } from "./service";
 import { hrScopeOf, unitWhere, type HrScope } from "./scope";
 import { SETTINGS_TEXT } from "./settings";
 import { lockRosterKeysInTx } from "./roster";
+import { leaveDecidedEvent, leaveLedgerInTx, leaveRowInTx, lockLeaveEmployeeInTx } from "./leave"; // HR H4.4 r3 ▸ สมุดวันลา (H2.7) ◂
 import { addDays } from "./time-rules";
 
 type Ctx = { tenantId: string; systemId: string };
@@ -363,7 +364,9 @@ export async function lifecycleDue(ctx: Ctx, viewer: LifeViewer, opts: { now?: D
   const scope = scopeOf(viewer);
   const db = tenantDb(ctx) as unknown as Tx;
   const pol = await getLifecyclePolicy(ctx);
-  const items: LifeDueItem[] = (await dueOf(db, pol, thaiDateKey(now), unitWhere(scope, now))).map((d) => ({ employeeId: d.employeeId, name: d.name, kind: d.milestone, date: d.date, open: 0 }));
+  // r3: แถวของผู้ดูเอง (บัญชีที่ผูก) ไม่อยู่ในแผงเสมอ
+  const notMe: Prisma.HrEmployeeWhereInput = viewer.userId ? { OR: [{ linkedUserId: null }, { linkedUserId: { not: viewer.userId } }] } : {};
+  const items: LifeDueItem[] = (await dueOf(db, pol, thaiDateKey(now), { AND: [unitWhere(scope, now), notMe] })).map((d) => ({ employeeId: d.employeeId, name: d.name, kind: d.milestone, date: d.date, open: 0 }));
   const tasks = await db.hrOnboardingTask.findMany({ where: { doneAt: null }, select: { employeeId: true, kind: true, dueDate: true }, take: 2_000 });
   const byEmp = new Map<string, { kind: HrOnboardingKind; open: number; date: string | null }>();
   for (const t of tasks) {
@@ -376,7 +379,7 @@ export async function lifecycleDue(ctx: Ctx, viewer: LifeViewer, opts: { now?: D
   }
   const ids = [...new Set([...byEmp.keys()].map((k) => k.split("|")[0]!))];
   if (ids.length) {
-    const emps = await db.hrEmployee.findMany({ where: { AND: [{ id: { in: ids } }, unitWhere(scope, now)] }, select: { id: true, name: true, active: true } });
+    const emps = await db.hrEmployee.findMany({ where: { AND: [{ id: { in: ids } }, unitWhere(scope, now), notMe] }, select: { id: true, name: true, active: true } });
     const empOf = new Map(emps.map((e) => [e.id, e]));
     for (const [k, v] of byEmp) {
       const e = empOf.get(k.split("|")[0]!);
@@ -492,13 +495,28 @@ export async function offboardEmployee(ctx: Ctx, viewer: LifeViewer, employeeId:
       if (u.count !== 1) throw new LifeRefusal(T.ended);
 
       // ใบลาที่เริ่มหลังวันสิ้นสุด (PENDING/APPROVED) ⇒ CANCELLED + คำขออนุมัติ · คำขอที่ตัดสินไปแล้ว = คงไว้ แต่ใบลายังยกเลิก และ audit ระบุ id
+      //   r3 (H2.7 สมุดวันลา): ลำดับล็อกรวม = hr:emp → hr:clock → hr-leave:<id> (เรียง) → hr-leave-emp:<sys>:<emp> → hr-swap:<id> (เรียง) → กุญแจตารางกะ ·
+      //   H2.7 ใช้ hr-leave → hr-leave-emp → ตารางกะ → แถวประเภทการลา (FOR SHARE) · สลับกะ = hr-swap → ตารางกะ · ไม่มีใครถือ hr:emp/hr:clock แล้วขอกุญแจใบลา ⇒ ไม่มีวงล็อก
+      //   APPROVED ⇒ leaveLedgerInTx(APPROVED→CANCELLED) = use-revert ครั้งเดียว (+ expire-late / carry-top ของ H2.7) + hr.leave.decided · PENDING ⇒ การจองเป็นแค่ผลรวมของใบรอ ยกเลิกแล้วคืนเอง
       const lv = await tx.hrLeave.findMany({ where: { employeeId: id, status: { in: ["PENDING", "APPROVED"] }, toDate: { gt: endAt } }, select: { id: true }, orderBy: { id: "asc" } });
       for (const l of lv) await lock(tx, `hr-leave:${l.id}`);
-      const lvNow = await tx.hrLeave.findMany({ where: { id: { in: lv.map((l) => l.id) }, status: { in: ["PENDING", "APPROVED"] } }, select: { id: true, fromDate: true } });
-      const leaveIds = lvNow.filter((l) => l.fromDate > endAt).map((l) => l.id);
+      await lockLeaveEmployeeInTx(tx, ctx.systemId, id);
+      const lvNow = await tx.hrLeave.findMany({ where: { id: { in: lv.map((l) => l.id) }, status: { in: ["PENDING", "APPROVED"] } }, select: { id: true, fromDate: true, status: true } });
+      const lvFuture = lvNow.filter((l) => l.fromDate > endAt);
+      const leaveIds = lvFuture.map((l) => l.id);
       const spanning = lvNow.length - leaveIds.length;
       const leaveReq = await closeRequests(tx, ctx, "HrLeave", leaveIds);
-      const leaves = leaveIds.length ? (await tx.hrLeave.updateMany({ where: { id: { in: leaveIds }, status: { in: ["PENDING", "APPROVED"] } }, data: { status: "CANCELLED" } })).count : 0;
+      let leaves = 0;
+      for (const l of lvFuture) {
+        const lx = l.status === "APPROVED" ? await leaveRowInTx(tx, l.id) : null;
+        const c = await tx.hrLeave.updateMany({ where: { id: l.id, status: l.status }, data: { status: "CANCELLED" } });
+        if (c.count !== 1) continue;
+        leaves += 1;
+        if (lx) {
+          await leaveLedgerInTx(tx, ctx, lx, "APPROVED", "CANCELLED");
+          await emitOutbox(tx, leaveDecidedEvent(ctx, lx, "CANCELLED", "APPROVED"));
+        }
+      }
 
       // คำขอสลับกะที่ยังเปิด (เป็นผู้ขอหรือเพื่อน) ⇒ ยกเลิก (+ คำขออนุมัติ)
       const sw = await tx.hrShiftSwapRequest.findMany({ where: { status: { in: ["AWAITING_PEER", "PENDING"] }, OR: [{ requesterEmployeeId: id }, { targetEmployeeId: id }] }, select: { id: true }, orderBy: { id: "asc" } });

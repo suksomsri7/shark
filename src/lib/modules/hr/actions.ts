@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation"; // HR H4.4 r3 ◂
+import { getTranslations } from "next-intl/server"; // HR H4.4 r3 ◂
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canViewPayroll, evaluate } from "@/lib/core/rbac";
 import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
@@ -192,6 +194,8 @@ export async function removeEmployeeAction(formData: FormData) {
   const r = await offboardEmployee(ctx, hrViewerOf(auth), employeeId, { reason: "OTHER", endDate: await keptEndDate(ctx, employeeId) });
   if (!r.ok) throw new HrBranchError(r.reason);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
+  // HR H4.4 r3 ▸ ร้านปิดการถอนสิทธิ์ (เจ้าของร้าน) ⇒ บอกว่า "เก็บสิทธิ์บัญชีไว้" ที่หน้าโปรไฟล์ (?life=ok.kept → savedKept) ◂
+  if (r.accessKept) redirect(`/app/sys/${encodeURIComponent(systemId)}/hr/employees/${encodeURIComponent(employeeId)}?life=ok.kept#hr-life`);
 }
 
 /** HR H4.4 ▸ วันสิ้นสุดที่บันทึกไว้ (ไม่เกินวันนี้ตามเวลาไทย) — ไม่มี/อนาคต = undefined (lifecycle ใช้วันนี้) ◂ */
@@ -269,6 +273,12 @@ export async function saveEmployeeProfileAction(
   if (ending) {
     const off = await offboardEmployee(ctx, hrViewerOf(auth), employeeId, { reason: "OTHER", endDate: await keptEndDate(ctx, employeeId, formEnd) });
     if (!off.ok) return { status: "error", message: off.reason };
+    // HR H4.4 r3 ▸ เก็บสิทธิ์บัญชีไว้ (ร้านปิดการถอนสิทธิ์) ⇒ ข้อความเดียวกับแผงสิ้นสุดการจ้าง (hr.life.savedKept) ◂
+    if (off.accessKept) {
+      revalidatePath(`/app/sys/${systemId}/hr/employees/${employeeId}`);
+      revalidatePath(`/app/sys/${systemId}/hr/employees`);
+      return { status: "ok", message: (await getTranslations("hr.life"))("savedKept") };
+    }
   }
   revalidatePath(`/app/sys/${systemId}/hr/employees/${employeeId}`);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
