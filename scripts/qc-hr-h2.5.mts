@@ -134,6 +134,13 @@ const CHECKS: readonly Def[] = [
   d("S11.11", "I", M, "[race] alert re-checks for an IN under hr:clock:<emp>"),
   d("S11.12", "I", M, "[pure+static] worked minutes floor · migration 000002 alert (systemId, date) index · seed now fixed · truncation guard"),
   d("S11.13", "scope", M, "[db] month view hides slots at branches outside the viewer's scope"),
+  // ── r3 (controller rulings 1–5 · ORACLE-EDIT r3, builder) ──
+  d("S12.1", "r3-1", C, "[race] approve and markPaid wait on the period lock a recompute holds · then recompute ⇒ rPaid"),
+  d("S12.2", "r3-2", C, "[db] open session cap: OUT 33 h after its IN is its own day · IN day = missingOut"),
+  d("S12.3", "r3-2", C, "[db] no-shift slot with an open session is not finalised before IN + cap · closed later ⇒ W480"),
+  d("S12.4", "r3-3", M, "[db] PM leave on 10–14/17–21: morning row no leaveId/fraction · evening LEAVE 0.5"),
+  d("S12.5", "r3-4", C, "[db] paged job: page size 2 alerts all 5 · maxPages 1 rotates pages so 3 runs finalise all 5"),
+  d("S12.6", "r3-5", M, "[db+static] days needing recompute (orphaned) counted per viewer scope · board banner id · inventory"),
   D("Z1", "-", C, "GREEN", "residue: qc-hr-h25-* tenants/rows/users/sessions/new tables gone"),
 ];
 const REG = makeRegistry(SUITE, "H2.5-", CHECKS);
@@ -285,7 +292,11 @@ function runStatic(): void {
     chk("S9.4", /HrAttendanceDay|hrAttendanceDay/.test(j) && /HrAttendanceAlert|hrAttendanceAlert/.test(j) && !hits.length, "writers only in judge.ts", `judge=${!!j} others=[${hits.slice(0, 4)}]`);
   }
   {
-    const diff = IN_BASE ? "unchanged" : changedVsBase(BASE_REF, FROZEN);
+    // ORACLE-EDIT (H2.5 r3 · controller ruling 1): payroll.ts may carry pure-addition hunks marked `HR H2.5` (period lock in approve/markPaid) — nothing else
+    const payHunks = IN_BASE ? [] : diffHunks(BASE_REF, `${H}payroll.ts`);
+    const payOk = payHunks !== null && payHunks.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H2\.5/.test(l)));
+    const diff0 = IN_BASE ? "unchanged" : changedVsBase(BASE_REF, FROZEN.filter((f) => f !== `${H}payroll.ts`));
+    const diff = diff0 === "unchanged" && payOk ? "unchanged" : `${diff0}${payOk ? "" : " · payroll.ts unmarked hunk"}`;
     const n = hrNavLabels();
     const nav = canon(["ภาพรวม", "ลงเวลา", "ตารางกะ", "จอลงเวลา", "ใบลา", "พนักงาน", "เงินเดือน", "ตั้งค่า", "ตารางกฎหมาย"]);
     const r = { payroll: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, brain: sha(rd(`${H}rules.ts`)) === BRAIN_SHA, seam: sha(rd(`${H}pos-seam.ts`)) === SEAM_SHA, frozen: diff === "unchanged", nav: canon(n.T) === nav && canon(n.L) === nav };
@@ -1041,6 +1052,102 @@ async function runDb(): Promise<void> {
     const [mo, mu] = [await monthX(cD, U.owner!, m1, "2031-05", now), await monthX(cD, U.mgrU1!, m1, "2031-05", now)];
     const r = { owner: dayX(mo, "2031-05-20") === "E:ON_TIME|L0|E0|W480|O0", u1: dayX(mu, "2031-05-19") === "E:ON_TIME|L0|E0|W480|O0" && slotsOf(mu, "2031-05-20").length === 0 && !JSON.stringify(mu ?? "").includes(xb) };
     ck("S11.13", r, "owner sees u2 day · u1 manager does not", `owner=${dayX(mo, "2031-05-20")} u1=${dayX(mu, "2031-05-20")}`);
+  }
+
+  // ── r3 ──
+  const payMod = (await import("@/lib/modules/hr/payroll")) as Any;
+  {
+    // 1: period lock shared by recompute ↔ approve/markPaid (system D · period 2031-06)
+    const p1 = await meD("งวดมิถุนา");
+    const x = await entX(sD, p1, "2031-06-04", shD);
+    await attX(sD, p1, "IN", bk("2031-06-04", "09:20"), x);
+    await attX(sD, p1, "OUT", bk("2031-06-04", "17:00"), x);
+    await job(bk("2031-06-05", "12:00"));
+    const row0 = (await rowsX(p1)).find((r) => r.slotKey === x);
+    await P.hrRosterEntry.update({ where: { id: x }, data: { startMin: 570 } });
+    const run = await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sD, periodKey: "2031-06", payDate: new Date("2031-06-30T00:00:00Z"), status: "DRAFT" } });
+    const key = `hr:payroll:run:${sD}:2031-06`;
+    const ha = await hold(key, async () => {}, () => call(payMod, "approveRun", cD, run.id));
+    const st1 = ((await P.hrPayrollRun.findFirst({ where: { id: run.id } })) as Any)?.status;
+    const rc1 = await rcX(cD, U.owner!, row0?.id ?? "∅", bk("2031-06-05", "13:00"));
+    const hp = await hold(key, async () => {}, () => call(payMod, "markPaid", cD, run.id));
+    const st2 = ((await P.hrPayrollRun.findFirst({ where: { id: run.id } })) as Any)?.status;
+    const r = { approveWaited: ha.waited && !ha.holderErr && st1 === "APPROVED", rPaid: said(rc1, T.rPaid), paidWaited: hp.waited && !hp.holderErr && st2 === "PAID" };
+    ck("S12.1", r, "approve waits · rPaid · markPaid waits", `approve=${ha.waited}/${st1} rc=${shown(rc1)} paid=${hp.waited}/${st2}`);
+  }
+  {
+    // 2a: IN D 09:00 · no OUT · manager OUT D+1 18:00 (33 h)
+    const o1 = await meD("ลืมออก");
+    await attX(sD, o1, "IN", bk("2031-06-09", "09:00"));
+    await attX(sD, o1, "OUT", bk("2031-06-10", "18:00"));
+    const m = await monthX(cD, U.owner!, o1, "2031-06", bk("2031-06-20", "12:00"));
+    const r = { d: dayX(m, "2031-06-09") === "DAY:NO_SCHEDULE|L0|E0|W0|O0|MO", d1: dayX(m, "2031-06-10") === "DAY:NO_SCHEDULE|L0|E0|W0|O0" };
+    ck("S12.2", r, "D MO W0 · D+1 OUT alone", `d=${dayX(m, "2031-06-09")} d1=${dayX(m, "2031-06-10")}`);
+  }
+  {
+    // 2b: IN D 22:00 open at D+1 04:30 (past midnight + 240) ⇒ not final · OUT 06:00 ⇒ final W480
+    const o2 = await meD("กะดึกไม่มีตาราง");
+    await attX(sD, o2, "IN", bk("2031-06-11", "22:00"));
+    await job(bk("2031-06-12", "04:30"));
+    const early = (await rowsX(o2)).filter((r) => dayOf(r.date) === "2031-06-11");
+    await attX(sD, o2, "OUT", bk("2031-06-12", "06:00"));
+    await job(bk("2031-06-12", "06:30"));
+    const late = (await rowsX(o2)).filter((r) => dayOf(r.date) === "2031-06-11");
+    ck("S12.3", { notYet: early.length === 0, final: late.length === 1 && late[0].workedMin === 480 && late[0].missingOut === false && late[0].status === "NO_SCHEDULE" }, "04:30 none · 06:30 W480", `early=${early.length} late=${late.map((x) => `${x.status}/W${x.workedMin}/${x.missingOut}`)}`);
+  }
+  {
+    // 3: PM leave on a split day — fraction on the covered (evening) slot only
+    const q1 = await meD("ลาบ่ายกะแยก");
+    const ma = await entX(sD, q1, "2031-06-18", shDa);
+    const mb = await entX(sD, q1, "2031-06-18", shDb);
+    const lv0 = await lvX(sD, q1, "2031-06-18", "PM");
+    await attX(sD, q1, "IN", bk("2031-06-18", "10:00"), ma);
+    await attX(sD, q1, "OUT", bk("2031-06-18", "14:00"), ma);
+    await job(bk("2031-06-19", "12:00"));
+    const rows = await rowsX(q1);
+    const [ra, rb] = [rows.find((r) => r.slotKey === ma), rows.find((r) => r.slotKey === mb)];
+    const r = { morning: !!ra && ra.leaveId === null && Number(ra.leaveFraction ?? 0) === 0 && ra.status === "ON_TIME", evening: !!rb && rb.status === "LEAVE" && rb.leaveId === lv0 && Number(rb.leaveFraction) === 0.5 };
+    ck("S12.4", r, "morning no leave · evening LEAVE 0.5", `a=${ra?.status}/${ra?.leaveId === null}/${ra?.leaveFraction} b=${rb?.status}/${rb?.leaveFraction}`);
+  }
+  {
+    // 4: paging (system F · 5 employees · pageSize 2)
+    const sF = await sys(TT, "HR F");
+    const shF = await mkShift(TT, sF, "เช้าเอฟ", 540, 1020);
+    const ps: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const e0 = await me(TT, sF, `หน้า${i} ${tag}`, { unitId: u1 });
+      ps.push(e0);
+      await ent(e0, "2031-06-23", shF, u1, { sys: sF });
+    }
+    const runP = (now: Date, extra: Record<string, unknown>) => call(JG, "runAttendanceJobs", { now, tenantId: TT, ...extra });
+    const a = await runP(bk("2031-06-23", "09:15"), { pageSize: 2 });
+    const alerted = new Set(((await alertRows(TT)) ?? []).filter((x) => ps.includes(x.employeeId)).map((x) => x.employeeId)).size;
+    const fin = async () => new Set(((await dayRows(TT)) ?? []).filter((x) => ps.includes(x.employeeId) && dayOf(x.date) === "2031-06-23").map((x) => x.employeeId)).size;
+    const t0 = bk("2031-06-24", "12:00").getTime();
+    const counts: number[] = [];
+    for (let k = 0; k < 3; k++) {
+      await runP(new Date(t0 + k * 5 * 60_000), { pageSize: 2, maxPages: 1 });
+      counts.push(await fin());
+    }
+    const r = { all: alerted === 5 && Number(a?.late) >= 5, firstPage: counts[0]! >= 1 && counts[0]! <= 2, rotates: counts[2] === 5 };
+    ck("S12.5", r, "5 alerted · run1 ≤ 2 employees · run3 all 5", `alerted=${alerted} late=${a?.late ?? shown(a)} counts=${counts.join(",")}`);
+  }
+  {
+    // 5: orphaned day counted for the board banner
+    const n1 = await meD("รอคิดใหม่");
+    const x = await entX(sD, n1, "2031-06-25", shD);
+    await attX(sD, n1, "IN", bk("2031-06-25", "09:00"), x);
+    await attX(sD, n1, "OUT", bk("2031-06-25", "17:00"), x);
+    await job(bk("2031-06-26", "12:00"));
+    await P.hrRosterEntry.delete({ where: { id: x } });
+    const q = (w: Who) => call(JG, "attendanceNeedsRecompute", cD, vOf(w), { now: bk("2031-06-27", "12:00") });
+    const [o, m, w2] = [await q(U.owner!), await q(U.mgrU1!), await q(U.writerU2!)];
+    const has = (v: Any) => Array.isArray(v?.days) && v.days.some((d0: Any) => d0.employeeId === n1 && d0.day === "2031-06-25");
+    const ids = testidsOf(rd(F.ui) + rd(F.page), "hr-att-");
+    const inv = ((jsonOf("scripts/hr-ui-inventory.json")?.rows ?? []) as Any[]).some((r0) => r0.testid === "hr-att-needs-recompute" && r0.wo === "H2.5");
+    const msg = (j: Any) => typeof flat(j?.hr?.attendance ?? {})["needsRecompute"] === "string";
+    const r = { owner: has(o) && Number(o?.count) >= 1, mgr: has(m), scoped: !!w2 && !w2.__err && !has(w2), id: ids.has("hr-att-needs-recompute"), inv, msgs: msg(jsonOf(F.th)) && msg(jsonOf(F.en)) };
+    ck("S12.6", r, "owner/mgrU1 see the day · writerU2 not · banner id · inventory · th/en", `o=${shown(o)}/${o?.count} m=${m?.count} w2=${w2?.count ?? shown(w2)}`);
   }
 }
 
