@@ -695,3 +695,12 @@ export async function myWorkEntryDays(ctx: Ctx, actor: { userId?: unknown }, inp
   if (!e) return no();
   return daysDto(db, own, e, periodKey, true);
 }
+
+// ═══════════════════════════ HR H3.2 ▸ สถานะต่อพนักงานของงวด (ผู้อ่าน: hr/attendance-pay.ts — หักสาย/ขาด) ═══════════════════════════
+/** สถานะของงวดต่อพนักงาน (ตัวเดียวกับแผง: statesOf + FROZEN เมื่องวดมีรอบอนุมัติ/จ่ายแล้ว) — อ่านอย่างเดียว ไม่ถือล็อก · คนที่ไม่ได้ทำงานในงวด = ไม่มีในผล */
+export async function workEntryStatesInTx(tx: Db, ctx: Ctx, periodKey: string, employeeIds: string[]): Promise<Map<string, WorkEntryState>> {
+  if (!PERIOD_RE.test(periodKey) || !employeeIds.length) return new Map();
+  const emps = await periodEmployees(tx, ctx, periodKey, { id: { in: employeeIds } });
+  return (await periodState(tx, ctx, emps, periodKey)).state;
+}
+// ◂ HR H3.2

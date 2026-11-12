@@ -111,3 +111,6 @@ export { buildWorkEntrySnapshot, workEntryPreview, WE_OT_PAYMENT } from "./work-
 // HR H2.9 ▸ คำขอ OT — re-export ล้วน (ตรรกะอยู่ที่ `ot.ts`) · settleOtRequests = ตัวจ่ายรายชั่วโมง (cron/hourly) · notifyOtDecided = ผู้บริโภค hr.ot.decided
 export { settleOtRequests, notifyOtDecided } from "./ot";
 // ◂ HR H2.9
+// HR H3.2 ▸ กฎหักสาย/ขาดงาน — re-export ล้วน (ตรรกะอยู่ที่ `attendance-pay.ts` · เงินที่ `attendance-pay-rules.ts` · แถวเงินเขียนที่ payroll.ts ที่เดียว)
+export { syncAttendanceDeductions, attendanceDeductionPreview, getAttendancePayPolicy } from "./attendance-pay";
+// ◂ HR H3.2
