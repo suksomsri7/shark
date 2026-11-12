@@ -795,7 +795,11 @@ function runStatic(): void {
     // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
     //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
     const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
-    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t))).length;
+    // ORACLE-EDIT (controller, H3.1 build): hr/work-entries.ts (+ its pure rules file) is the intended only reader/writer of HrWorkEntry (H3.1 R1) —
+    //   only the HrWorkEntry/hrWorkEntry tokens are ignored there; every other S6.1 token still counts
+    const WE_FILES = new Set(["src/lib/modules/hr/work-entries.ts", "src/lib/modules/hr/work-entries-rules.ts"]);
+    const WE_OK = /^(HrWorkEntry|hrWorkEntry)$/;
+    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t))).length;
     const hits = files.map((f) => [f, cntOf(f, rd(f)) - cntOf(f, atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
     chk("S6.1", files.length > 20 && hits.length === 0, "0 new reads", `${hits.join(",") || "0"} of ${files.length} files (base ${baseRef().slice(0, 8)})`);
   }

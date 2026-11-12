@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import {
   type Any, type Base, type Sev, type Who, ROOT, rd, short, errText, textOf, srt, failedKeys, stripComments, dk, dbDate, sleep, tagOf,
-  PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, pathInBase, changedVsBase, diffHunks, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf,
+  PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf,
   vOf, fitnessNoEnv, importsOf, jsonOf, testidsOf, loadOpt, modState, sha, keysDeep, HR_FORBIDDEN_DTO_KEYS, tokensOnly,
 } from "./qc-hr-lib.mjs";
 
@@ -64,7 +64,7 @@ S2.1|Q3|C|R|[pure] break rule: 7 literal vectors (planned break after 5 h · clo
 S2.2|R3|C|R|[pure] workday basics: on time · late · OT · early arrival · absent (5 vectors)
 S2.3|R3|C|R|[pure] leave: full paid/unpaid · half AM/PM · split shifts · unequal split (8 vectors)
 S2.4|R3|C|R|[pure] overnight shift owns its start day/period · next day other period (2 vectors)
-S2.5|R3|C|R|[pure] day off · holiday · unscheduled · no-schedule work · leave on day off · normalDayMin (13 vectors)
+S2.5|R3|C|R|[pure] day off · holiday · unscheduled · no-schedule work · leave on day off · normalDayMin (15 vectors)
 S2.6|R3|C|R|[pure] hourly leave offset late→early→absent · unused flag · unpaid (5 vectors)
 S2.7|R3|C|R|[pure] review codes: stale · orphan · not final · not stored · missing out · stray IN · pending leave · mismatch · worked on leave · legacy · dedupe/sort (13 vectors)
 S2.8|R3|M|R|[pure] employment window ∩ period · days outside range ignored (3 vectors)
@@ -118,8 +118,12 @@ const skipReasons: string[] = [];
 if (!existsSync(join(ROOT, F.we))) skipReasons.push(`${F.we} absent (H3.1 not built)`);
 if (skipReasons.length && !FORCE) skipExit(skipReasons);
 const ck = (id: string, r: Record<string, unknown>, exp: string, extra = "") => chk(id, Object.values(r).every(Boolean), exp, `${failedKeys(r)}${extra ? ` ${extra}` : ""}`);
-const BASE = process.env.QC_H31_BASE || "87d976773a53ab279b8e6f0660e0d7a72e5fdba4";
+// ORACLE-EDIT (controller, H3.1 build): default base = merge-base HEAD origin/session/hr (env QC_H31_BASE still overrides —
+//   iso.sh drops env, a hard-coded pin breaks control runs) · base-diff checks n/a once H3.1 is in the base ·
+//   hunks carrying ANOTHER WO's marker (e.g. `HR H2.9`, `HR H2.6`) arriving through base merges are not this WO's to judge
+const BASE = baseRef("QC_H31_BASE") || "87d976773a53ab279b8e6f0660e0d7a72e5fdba4";
 const IN_BASE = pathInBase(F.we, BASE);
+const otherWo = (h: { added: string[]; removed: string[] }) => !h.added.some((l) => /HR H3\.1/.test(l)) && [...h.added, ...h.removed].some((l) => /HR H\d+\.\d+/.test(l)); // ORACLE-EDIT ◂
 const git = (a: string[]) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 << 20 }).trim();
 const gitGrep = (re: string, paths: string[]) => {
   try {
@@ -142,6 +146,8 @@ const reviewOf = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : t
 const hdr = (d: Any) => (d ? `${d.dayClass}|${d.dayStatus}|${MIN_KEYS.map((k, i) => `${ABBR[i]}${d[k]}`).join(" ")}|ld${ldOf(d.leaveDays)}|r${reviewOf(d.review).join("+")}` : "∅");
 const ents = (d: Any) => (Array.isArray(d?.entries) ? d.entries.map((e: Any) => `${e.kind}:${e.minutes}`).join(",") : "∅");
 const W = "WORKDAY";
+/** ORACLE-EDIT (H3.1 build): array of objects → JSON with each object's keys sorted (jsonb key order is not insertion order) */
+const ksJson = (v: unknown) => JSON.stringify(Array.isArray(v) ? v.map((o) => (o && typeof o === "object" ? Object.fromEntries(Object.entries(o as Record<string, unknown>).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) : o)) : v);
 
 // ═════════════════════════ pure vectors (fixture — expanded inputs + literal headers) ═════════════════════════
 const VF: Any = jsonOf("scripts/fixtures/hr-h3.1-vectors.json") ?? { vectors: [], window: [] };
@@ -233,7 +239,7 @@ function runStatic(): void {
     const dirs = readdirSync(join(ROOT, "prisma/migrations")).filter((d) => /^\d{14}_/.test(d)).sort();
     const r = {
       file: !!mig,
-      last: dirs.includes("20270103000000_hr_work_days") && !dirs.some((d) => d > "20270103000000_hr_work_days" && /_hr_/.test(d)),
+      last: dirs.includes("20270103000000_hr_work_days") && (IN_BASE || !dirs.some((d) => d > "20270103000000_hr_work_days" && /_hr_/.test(d))), // ORACLE-EDIT: ordering n/a once in base
       cls: /CREATE TYPE "HrWorkDayClass" AS ENUM \('WORKDAY',\s*'DAY_OFF',\s*'HOLIDAY',\s*'UNSCHEDULED'\)/.test(mig),
       st: /CREATE TYPE "HrWorkDayStatus" AS ENUM \('WORKED',\s*'LEAVE',\s*'ABSENT',\s*'DAY_OFF',\s*'HOLIDAY',\s*'UNSCHEDULED',\s*'PENDING'\)/.test(mig),
       additive: !!mig && !/DROP |RENAME |ALTER TYPE/i.test(mig),
@@ -279,7 +285,7 @@ function runStatic(): void {
     const pay = stripComments(rd(F.payroll));
     const claim = block(pay, /async function claimApproveExpected/, 4500);
     const acts = stripComments(rd(F.payActs));
-    const hunks = IN_BASE ? [] : (diffHunks(BASE, F.payroll) ?? []);
+    const hunks = IN_BASE ? [] : (diffHunks(BASE, F.payroll) ?? []).filter((h) => !otherWo(h));
     const marked = IN_BASE || (hunks.length > 0 && hunks.every((h) => h.added.some((l) => /HR H3\.1/.test(l)) && h.removed.every((l) => /ApproveFailCode/.test(l))));
     const r = {
       check: /workEntriesApproveCheckInTx\(\s*tx/.test(claim), bind: /bindWorkEntriesToRunInTx\(\s*tx/.test(claim) && claim.indexOf("bindWorkEntriesToRunInTx") > claim.indexOf("updateMany"),
@@ -289,7 +295,7 @@ function runStatic(): void {
   }
   {
     const j = rd(F.judge);
-    const hunks = IN_BASE ? [] : (diffHunks(BASE, F.judge) ?? []);
+    const hunks = IN_BASE ? [] : (diffHunks(BASE, F.judge) ?? []).filter((h) => !otherWo(h));
     const r = { fn: /export async function workEntryDaysInTx\(/.test(j), marked: IN_BASE || (hunks.length > 0 && hunks.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H3\.1/.test(l)))) };
     ck("S1.6", r, "export · marked additions", IN_BASE ? "diff n/a (in base)" : `${hunks.length} hunks`);
   }
@@ -536,7 +542,8 @@ async function runDb(): Promise<void> {
     const src = a21?.sourcesJson ?? {};
     const p = await prev(cA, V.owner);
     const r = {
-      att: JSON.stringify(src.attendanceDays) === JSON.stringify([{ id: ad?.id, version: 1, slotKey: X.a21 }]), roster: JSON.stringify(src.rosterEntryIds) === JSON.stringify([X.a21]), hol: src.holidayId === null,
+      // ORACLE-EDIT (H3.1 build): sourcesJson is jsonb (S4.1) — Postgres returns object keys in its own order (length, then bytes) ⇒ compare key-sorted
+      att: ksJson(src.attendanceDays) === ksJson([{ id: ad?.id, version: 1, slotKey: X.a21 }]), roster: JSON.stringify(src.rosterEntryIds) === JSON.stringify([X.a21]), hol: src.holidayId === null,
       hash: /^[0-9a-f]{64}$/.test(String(a21?.inputHash)) && /^[0-9a-f]{64}$/.test(String(a21?.digest)), ver: a21?.version === 1 && a21?.engineVersion === 1 && a21?.runId === null, cur: p.value?.state === "CURRENT",
     };
     ck("S4.6", r, "sources · hashes · version · CURRENT", short(src, 100));
