@@ -340,6 +340,7 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id } });
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
   if (row.crmCommissionId != null) return { ok: false, reason: CANCEL_FROM_CRM };
+  { const stockLock = await stockChargeAdjustmentLock(ctx, row.id); if (stockLock) return { ok: false, reason: stockLock }; } // HR H4.6 ▸ รายการหักค่าของที่บันทึกค้างคืน/คืนแล้ว ลบที่หน้าเงินเดือนไม่ได้ ◂
   let boundDraft: { id: string; periodKey: string } | null = null;
   if (row.runId) {
     const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: row.runId, systemId: ctx.systemId }, select: { id: true, periodKey: true, status: true, journalEntryId: true } });
@@ -1328,6 +1329,7 @@ export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: Payrol
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id }, select: { id: true, employeeId: true, periodKey: true, status: true, runId: true, crmCommissionId: true } });
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
   if (row.crmCommissionId) return { ok: false, reason: "รายการคอมมิชชันจาก CRM ระบบ CRM ย้ายงวดให้เอง" };
+  { const stockLock = await stockChargeAdjustmentLock(ctx, row.id); if (stockLock) return { ok: false, reason: stockLock }; } // HR H4.6 ▸ ย้ายงวดก็ไม่ได้ (ดูที่ส่วน "หักค่าของ") ◂
   if (row.runId || (row.status !== "PENDING" && row.status !== "APPROVED")) return { ok: false, reason: "รายการนี้ไม่ได้ค้างแล้ว กรุณาเปิดดูใหม่" };
   if (!actor.isOwner) {
     const uid = typeof actor.userId === "string" ? actor.userId.trim() : "";
@@ -1726,7 +1728,7 @@ export async function cancelStockChargeAdjustmentInTx(
   id: string,
   actor: { userId: string; onlyPending?: boolean },
   now: Date,
-): Promise<{ outcome: StockCancelOutcome }> {
+): Promise<{ outcome: StockCancelOutcome; runId?: string }> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const row = await tx.hrPayAdjustment.findFirst({ where: { ...scope, id, sourceType: "INVENTORY_ISSUE" }, select: { id: true, status: true, runId: true, periodKey: true } });
   if (!row || row.status === "REJECTED") return { outcome: "NONE" };
@@ -1741,9 +1743,9 @@ export async function cancelStockChargeAdjustmentInTx(
     return { outcome: row.status === "PENDING" ? "REJECTED" : "CANCELLED" };
   }
   const run = await tx.hrPayrollRun.findFirst({ where: { ...scope, id: row.runId }, select: { status: true, journalEntryId: true } });
-  return { outcome: run && run.status === "DRAFT" && !run.journalEntryId ? "DRAFT_BOUND" : "RUN_LOCKED" };
+  return { outcome: run && run.status === "DRAFT" && !run.journalEntryId ? "DRAFT_BOUND" : "RUN_LOCKED", runId: row.runId };
 }
-export async function cancelStockChargeDraftAdjustment(ctx: Ctx, id: string, actor: PayrollActor): Promise<{ ok: boolean; reason?: string; runLocked?: boolean }> {
+export async function cancelStockChargeDraftAdjustment(ctx: Ctx, id: string, actor: PayrollActor): Promise<{ ok: boolean; reason?: string; runLocked?: boolean; runId?: string }> {
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({
     where: { id, sourceType: "INVENTORY_ISSUE" },
     select: { id: true, employeeId: true, kind: true, amountSatang: true, status: true, periodKey: true, requestedById: true, decidedById: true, runId: true },
@@ -1751,7 +1753,19 @@ export async function cancelStockChargeDraftAdjustment(ctx: Ctx, id: string, act
   if (!row) return { ok: true }; // ถูกลบไปแล้ว (ทางลบเดิม/ลองซ้ำ)
   if (!row.runId) return { ok: false, reason: RUN_CHANGED };
   const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { systemId: ctx.systemId, id: row.runId }, select: { id: true, periodKey: true, status: true, journalEntryId: true } });
-  if (!run || run.status !== "DRAFT" || run.journalEntryId) return { ok: false, runLocked: true, reason: CANCEL_BOUND_APPROVED };
+  if (!run || run.status !== "DRAFT" || run.journalEntryId) return { ok: false, runLocked: true, runId: row.runId, reason: CANCEL_BOUND_APPROVED };
   return cancelBoundDraftAdjustment(ctx, { ...row, kind: String(row.kind), status: String(row.status) }, { id: run.id, periodKey: run.periodKey }, actor);
+}
+/** HR H4.6 r2 (M1): รายการหักของรายการหักค่าของที่ถอนแล้วแบบ "ค้างคืน/คืนแล้ว" — ลบ/ย้ายจากหน้าเงินเดือนไม่ได้ (ไม่งั้นพนักงานได้คืน + ไม่ถูกหัก) · อื่น = null */
+export const STOCK_ADJ_LOCKED_TH = "รายการนี้มาจากการหักค่าของที่บันทึกคืนเงินพนักงานแล้ว — ลบหรือย้ายจากหน้าเงินเดือนไม่ได้ ดูที่ส่วน “หักค่าของ”";
+export async function stockChargeAdjustmentLock(ctx: Ctx, adjustmentId: string): Promise<string | null> {
+  const ch = await tenantDb(ctx).hrStockCharge.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, adjustmentId, withdrawOutcome: "REFUND_OWED" }, select: { id: true } });
+  return ch ? STOCK_ADJ_LOCKED_TH : null;
+}
+/** HR H4.6 r2 (m3): งวดปลายทาง (อ่านอย่างเดียว · ก่อนตัดสต็อก) — เดือนแรก ≥ from ที่ยังไม่มีรอบที่มีผล · ไม่พบ = null (ผู้เขียนตรวจซ้ำใต้ล็อกใน tx) */
+export async function stockChargeTargetPeriod(ctx: Ctx, from: string): Promise<string | null> {
+  if (!PERIOD_RE.test(from)) return null;
+  const runs = new Set((await tenantDb(ctx).hrPayrollRun.findMany({ where: { systemId: ctx.systemId, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+  return runs.has(from) ? nextRunlessPeriod(from, runs) : from;
 }
 // ◂ HR H4.6

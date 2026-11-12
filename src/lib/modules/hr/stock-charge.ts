@@ -19,10 +19,10 @@ import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit";
-import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
+import { canReadInventory, canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { thaiDateKey } from "@/lib/ui/date";
 import { consumeBatch, getItem, listItems, searchItems } from "@/lib/modules/inventory";
-import { cancelStockChargeAdjustmentInTx, cancelStockChargeDraftAdjustment, writeStockChargeAdjustmentInTx } from "./payroll"; // ทางเขียนเดียวของ HrPayAdjustment อยู่ที่ payroll.ts
+import { cancelStockChargeAdjustmentInTx, cancelStockChargeDraftAdjustment, stockChargeTargetPeriod, writeStockChargeAdjustmentInTx } from "./payroll"; // ทางเขียนเดียวของ HrPayAdjustment อยู่ที่ payroll.ts
 import { employeeOfUser } from "./service";
 import { hrScopeOf, unitWhere } from "./scope";
 
@@ -73,6 +73,8 @@ export const STOCK_TEXT = {
   notOwed: "รายการนี้ไม่มียอดค้างคืน",
   changed: "รายการนี้เปลี่ยนไปแล้ว — กรุณาเปิดหน้านี้ใหม่แล้วลองอีกครั้ง",
   failed: "บันทึกไม่สำเร็จ — กรุณาลองอีกครั้ง",
+  stock: "สต็อกไม่พอ — ตัดสต็อกได้ไม่เกินยอดคงเหลือ (หรือยื่นแบบไม่ตัดสต็อก)",
+  draftRefused: "ยกเลิกรายการในรอบร่างไม่สำเร็จ — รายการกลับเป็นสถานะเดิม ให้ผู้ดูแลตรวจรอบร่างแล้วลองอีกครั้ง",
 } as const;
 const T = STOCK_TEXT;
 /** ข้อความที่หน้าจอแสดงได้ (ผลของ action → รหัสสั้นใน URL → ข้อความจากรายการนี้เท่านั้น) */
@@ -159,6 +161,7 @@ type ChargeRow = {
   movementId: string | null;
   consentRef: string;
   consentAt: Date;
+  takeStock: boolean;
 };
 type Norm = {
   key: string;
@@ -186,7 +189,7 @@ function sameRequest(c: ChargeRow, n: Norm): boolean {
     (c.inventorySystemId ?? null) === (n.itemId ? n.invSysId : null) &&
     (c.qty ?? null) === n.qty &&
     (c.description ?? null) === n.description &&
-    (c.movementId !== null) === n.take &&
+    c.takeStock === n.take &&
     c.consentRef === n.consentRef &&
     dayOf(c.consentAt) === n.consentAt &&
     amountOk
@@ -194,7 +197,7 @@ function sameRequest(c: ChargeRow, n: Norm): boolean {
 }
 const CHARGE_SELECT = {
   id: true, employeeId: true, kind: true, adjustmentId: true, inventorySystemId: true, itemId: true, description: true, qty: true,
-  unitCostSatang: true, amountSatang: true, movementId: true, consentRef: true, consentAt: true,
+  unitCostSatang: true, amountSatang: true, movementId: true, consentRef: true, consentAt: true, takeStock: true,
 } as const;
 
 /**
@@ -226,12 +229,12 @@ export async function requestStockCharge(ctx: Ctx, viewer: StockViewer, input: S
   }
   // สินค้า (สินค้าจริงของคลังนี้ ไม่ใช่บริการ) หรือรายละเอียด
   const itemId = str(inp.itemId) || null;
-  let item: { id: string; name: string; costSatang: number } | null = null;
+  let item: { id: string; name: string; costSatang: number; onHand: number } | null = null;
   if (itemId) {
     if (!invCtx) return refuse(T.item);
     const it = await getItem(invCtx, itemId);
     if (!it || String(it.kind) !== "PRODUCT") return refuse(T.item);
-    item = { id: it.id, name: it.name, costSatang: it.costSatang };
+    item = { id: it.id, name: it.name, costSatang: it.costSatang, onHand: Number(it.onHand) };
   }
   const description = str(inp.description);
   if (!item ? chars(description) < 1 || chars(description) > 120 : chars(description) > 120) return refuse(T.desc);
@@ -264,39 +267,78 @@ export async function requestStockCharge(ctx: Ctx, viewer: StockViewer, input: S
   if (!c || c.confirmed !== true || chars(consentRef) < 1 || chars(consentRef) > 80 || !validDay(consentAt) || consentAt > thaiDateKey(now)) return refuse(T.consent);
   const take = !!item && inp.takeStock !== false;
   if (take && !evaluate(m, { module: "inventory", action: "inventory.movement.consume" })) return refuse(T.invAccess);
+  // r2 m7: ตัดได้เฉพาะคลังในขอบเขตสาขาของผู้ยื่น (คลังที่ผูกสาขา) · สต็อกไม่พอ = ปฏิเสธ (ไม่ทำให้ติดลบจากรายการหักของ HR)
+  if (take && invCtx && !(await inventoryInScope(ctx.tenantId, invCtx.systemId, viewer))) return refuse(T.invAccess);
+  if (take && item && qty !== null && item.onHand < qty) return refuse(T.stock);
+  // r2 m3: งวดที่รับรายการได้ — ตรวจก่อนตัดสต็อก (ตรวจซ้ำใต้ล็อกตอนเขียน)
+  if (!(await stockChargeTargetPeriod(ctx, monthOf(now)))) return refuse(T.noPeriod);
 
   const n: Norm = {
     key, employeeId: emp.id, kind, invSysId: item ? invSysId : null, itemId: item?.id ?? null, itemName: item?.name ?? null,
     description: description || null, qty, unitCostSatang: item ? item.costSatang : null, override, amountSatang: amount, take, consentRef, consentAt,
   };
-  const db = tenantDb(ctx);
-  // คีย์เดิมที่บันทึกแล้ว — ตอบก่อนแตะคลัง (ข้อมูลอื่น = ไม่ตัดสต็อกซ้ำ/ไม่ชนคีย์ของคลัง)
-  {
-    const prior = await db.hrStockCharge.findFirst({ where: { tenantId: ctx.tenantId, requestKey: key }, select: { ...CHARGE_SELECT, systemId: true } });
-    if (prior) return prior.systemId === ctx.systemId && sameRequest(prior, n) ? replayOf(ctx, prior) : refuse(T.replayDiff);
+  // r2 m2/m3 — (1) จองคีย์ทั้งร้านก่อนแตะคลัง: ล็อก hr:stock:<ร้าน>:<คีย์> → คีย์เดิม (ทุกระบบ HR ของร้าน) ข้อมูลอื่น = replayDiff (ยังไม่ตัดสต็อก) ·
+  //   จบแล้ว = คืนผลเดิม · ยังไม่มี = เขียนแถวจอง (claimOpen) — ผู้ชนะถูกตัดสินก่อนตัดสต็อก ⇒ ไม่มี movement กำพร้าจากคีย์ชนกัน
+  // (คีย์ unique ทั้งร้าน (tenantId, requestKey): คีย์เดียวกันจากระบบ HR อื่นของร้าน = P2002 ตอนเขียนแถวจอง ⇒ replayDiff ก่อนตัดสต็อก)
+  const tdb = tenantDb(ctx);
+  const lockKey = `hr:stock:${ctx.tenantId}:${key}`;
+  let claim: { id: string } | { done: ChargeRow };
+  try {
+    claim = await tdb.$transaction(async (t) => {
+      const tx = t as unknown as Tx;
+      await lock(tx, lockKey);
+      const ex = await tx.hrStockCharge.findFirst({ where: { tenantId: ctx.tenantId, requestKey: key }, select: { ...CHARGE_SELECT, systemId: true, claimOpen: true } });
+      if (ex) {
+        if (ex.systemId !== ctx.systemId || !sameRequest(ex, n)) throw new StockRefusal(T.replayDiff);
+        return ex.claimOpen ? { id: ex.id } : { done: ex };
+      }
+      return tx.hrStockCharge.create({
+        data: {
+          tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, kind, requestKey: key, adjustmentId: `claim:${ctx.tenantId}:${key}`,
+          inventorySystemId: n.invSysId, itemId: n.itemId, itemName: n.itemName, description: n.description, qty, unitCostSatang: n.unitCostSatang,
+          amountSatang: amount, movementId: null, consentRef, consentAt: dbDate(consentAt), consentRecordedById: uid, requestedById: uid, takeStock: take, claimOpen: true,
+        },
+        select: { id: true },
+      });
+    }, TX_OPTS);
+  } catch (e) {
+    if (e instanceof StockRefusal) return refuse(e.message);
+    if ((e as { code?: unknown })?.code === "P2002") return refuse(T.replayDiff);
+    throw e;
   }
-  // (a) ตัดสต็อกผ่าน facade ของคลัง — คีย์เดียวกันทุกครั้งที่ลองใหม่ ⇒ movement เดียว
+  if ("done" in claim) return replayOf(ctx, claim.done);
+  const claimId = claim.id;
+  // (2) ตัดสต็อกผ่าน facade ของคลัง — คีย์เดียวกันทุกครั้งที่ลองใหม่ ⇒ movement เดียว · ล้มชั่วคราว = แถวจองค้าง (ลองใหม่ด้วยคีย์เดิมแล้วจบ · ค้างนาน = "ต้องตรวจ")
   let movementId: string | null = null;
   if (take && invCtx && item && qty !== null) {
+    let r: Awaited<ReturnType<typeof consumeBatch>>;
     try {
-      const r = await consumeBatch(invCtx, { sourceModule: "HR", refType: "HrStockCharge", refId: key, parts: [{ itemId: item.id, qty, idempotencyKey: `hr-stock:${ctx.systemId}:${key}` }] });
-      if (r.skipped.length > 0 || !r.movementIds[0]) return refuse(T.item);
-      movementId = r.movementIds[0];
+      r = await consumeBatch(invCtx, { sourceModule: "HR", refType: "HrStockCharge", refId: key, parts: [{ itemId: item.id, qty, idempotencyKey: `hr-stock:${ctx.systemId}:${key}` }] });
     } catch {
       return refuse(T.failed);
     }
+    if (r.skipped.length > 0 || !r.movementIds[0]) {
+      // สินค้าหาย/กลายเป็นบริการระหว่างทาง — ไม่มีอะไรถูกตัด ⇒ ปล่อยคีย์ (ลบแถวจองที่ยังเปิด)
+      await tdb.$transaction(async (t) => {
+        const tx = t as unknown as Tx;
+        await lock(tx, lockKey);
+        await tx.hrStockCharge.deleteMany({ where: { tenantId: ctx.tenantId, id: claimId, claimOpen: true } });
+      }, TX_OPTS);
+      return refuse(T.item);
+    }
+    movementId = r.movementIds[0];
   }
-  // (b) tx เดียวของ HR: ล็อกคีย์ → ซ้ำ? → งวด → รายการหัก PENDING + แถวนี้ + outbox
+  // (3) tx เดียวของ HR: ล็อกคีย์ → แถวจองยังเปิด? → รายการหัก PENDING (payroll.ts) + ปิดแถวจอง + outbox
   let res: { chargeId: string; adjustmentId: string; periodKey: string; replayed: boolean };
   try {
-    res = await db.$transaction(async (t) => {
+    res = await tdb.$transaction(async (t) => {
       const tx = t as unknown as Tx;
-      await lock(tx, `hr:stock:${ctx.systemId}:${key}`);
-      const ex = await tx.hrStockCharge.findFirst({ where: { tenantId: ctx.tenantId, requestKey: key }, select: { ...CHARGE_SELECT, systemId: true } });
-      if (ex) {
-        if (ex.systemId !== ctx.systemId || !sameRequest(ex, n)) throw new StockRefusal(T.replayDiff);
-        const a = await tx.hrPayAdjustment.findFirst({ where: { id: ex.adjustmentId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
-        return { chargeId: ex.id, adjustmentId: ex.adjustmentId, periodKey: a?.periodKey ?? "", replayed: true };
+      await lock(tx, lockKey);
+      const cur = await tx.hrStockCharge.findFirst({ where: { tenantId: ctx.tenantId, id: claimId }, select: { ...CHARGE_SELECT, claimOpen: true } });
+      if (!cur) throw new StockRefusal(T.failed);
+      if (!cur.claimOpen) {
+        const a = await tx.hrPayAdjustment.findFirst({ where: { id: cur.adjustmentId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
+        return { chargeId: cur.id, adjustmentId: cur.adjustmentId, periodKey: a?.periodKey ?? "", replayed: true };
       }
       const note = `${kind === "ISSUE" ? "เบิกของ" : "ค่าเสียหาย"}: ${n.itemName ?? n.description ?? ""}${qty !== null ? ` ×${qty}` : ""}`;
       const w = await writeStockChargeAdjustmentInTx(tx, ctx, {
@@ -304,18 +346,10 @@ export async function requestStockCharge(ctx: Ctx, viewer: StockViewer, input: S
         source: { sourceType: "INVENTORY_ISSUE", sourceRef: `hrstock:${key}` },
       });
       if (!w.ok) throw new StockRefusal(w.code === "EMPLOYEE" ? T.ended : w.code === "DUPLICATE" ? T.replayDiff : w.code === "NO_PERIOD" ? T.noPeriod : T.amount);
-      const adj = { id: w.id };
-      const periodKey = w.periodKey;
-      const ch = await tx.hrStockCharge.create({
-        data: {
-          tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, kind, requestKey: key, adjustmentId: adj.id,
-          inventorySystemId: n.invSysId, itemId: n.itemId, itemName: n.itemName, description: n.description, qty, unitCostSatang: n.unitCostSatang,
-          amountSatang: amount, movementId, consentRef, consentAt: dbDate(consentAt), consentRecordedById: uid, requestedById: uid,
-        },
-        select: { id: true },
-      });
-      await emitOutbox(tx, { tenantId: ctx.tenantId, type: EV, idempotencyKey: `${EV}#${ch.id}`, payload: { chargeId: ch.id, employeeId: emp.id }, systemId: ctx.systemId });
-      return { chargeId: ch.id, adjustmentId: adj.id, periodKey, replayed: false };
+      const done = await tx.hrStockCharge.updateMany({ where: { tenantId: ctx.tenantId, id: claimId, claimOpen: true }, data: { adjustmentId: w.id, movementId, claimOpen: false } });
+      if (done.count !== 1) throw new StockRefusal(T.failed);
+      await emitOutbox(tx, { tenantId: ctx.tenantId, type: EV, idempotencyKey: `${EV}#${claimId}`, payload: { chargeId: claimId, employeeId: emp.id }, systemId: ctx.systemId });
+      return { chargeId: claimId, adjustmentId: w.id, periodKey: w.periodKey, replayed: false };
     }, TX_OPTS);
   } catch (e) {
     if (e instanceof StockRefusal) return refuse(e.message);
@@ -329,6 +363,14 @@ export async function requestStockCharge(ctx: Ctx, viewer: StockViewer, input: S
     });
   }
   return { ok: true, chargeId: res.chargeId, adjustmentId: res.adjustmentId, movementId, periodKey: res.periodKey, amountSatang: amount, replayed: res.replayed };
+}
+
+/** คลังนี้อยู่ในขอบเขตสาขาของผู้ยื่นไหม — คลังที่ไม่ผูกสาขา = ของทั้งร้าน (ทุกคนที่มีคีย์ตัดได้) · ผูกสาขา = ผู้ดูแลทุกสาขา หรือสาขาที่ตรงกัน */
+async function inventoryInScope(tenantId: string, inventorySystemId: string, v: StockViewer): Promise<boolean> {
+  const scope = hrScopeOf({ role: v.role, unitAccess: v.unitAccess });
+  if (scope.unitIds === "*") return true;
+  const links = await tenantDb({ tenantId }).appSystemUnit.findMany({ where: { tenantId, systemId: inventorySystemId }, select: { unitId: true }, take: 200 });
+  return links.length === 0 || links.some((l) => (scope.unitIds as string[]).includes(l.unitId));
 }
 
 async function replayOf(ctx: Ctx, c: ChargeRow): Promise<RequestStockChargeResult> {
@@ -346,7 +388,7 @@ async function chargeGate(ctx: Ctx, viewer: StockViewer, chargeId: unknown, at: 
   const id = str(chargeId);
   const uid = uidOf(viewer);
   if (!id || !viewer || !uid) return refuse(T.noAccess);
-  const ch = await tenantDb(ctx).hrStockCharge.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, employeeId: true, adjustmentId: true, requestedById: true } });
+  const ch = await tenantDb(ctx).hrStockCharge.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId, claimOpen: false }, select: { id: true, employeeId: true, adjustmentId: true, requestedById: true } });
   if (!ch) return refuse(T.noAccess);
   const emp = await employeeInScope(ctx, viewer, ch.employeeId, at);
   const m = membershipOf(viewer);
@@ -379,7 +421,8 @@ export async function withdrawStockCharge(ctx: Ctx, viewer: StockViewer, chargeI
       await lock(tx, `hr:stock:${ctx.systemId}:${charge.id}`);
       const cur = await tx.hrStockCharge.findFirst({ where: { ...scope, id: charge.id }, select: { withdrawnAt: true, withdrawOutcome: true, amountSatang: true, adjustmentId: true, requestedById: true } });
       if (!cur) throw new StockRefusal(T.noAccess);
-      const resuming = cur.withdrawOutcome === "CANCELLING";
+      // CANCELLING = ถอนค้างกลางทาง (ล้มหลังขั้นแรก) — ลองใหม่ได้เมื่อค้างเกิน 2 นาที · ถอนซ้อนกันพร้อมกัน = "ถอนไปแล้ว" (ลบรอบร่างครั้งเดียว)
+      const resuming = cur.withdrawOutcome === "CANCELLING" && !!cur.withdrawnAt && now.getTime() - cur.withdrawnAt.getTime() > 120_000;
       if (cur.withdrawnAt && !resuming) throw new StockRefusal(T.withdrawn);
       const adj = await tx.hrPayAdjustment.findFirst({ where: { ...scope, id: cur.adjustmentId }, select: { id: true, status: true, runId: true, periodKey: true } });
       const requesterPending = cur.requestedById === uid && adj?.status === "PENDING" && !adj.runId;
@@ -407,7 +450,7 @@ export async function withdrawStockCharge(ctx: Ctx, viewer: StockViewer, chargeI
           return { outcome: "CANCELLING" as const };
         case "RUN_LOCKED":
           // รอบอนุมัติ/จ่าย (หรือกลับรายการ) แล้ว — ค้างคืนนอกเงินเดือน = ยอดที่หักไป
-          await mark("REFUND_OWED", { refundOwedSatang: cur.amountSatang });
+          await mark("REFUND_OWED", { refundOwedSatang: cur.amountSatang, refundRunId: r.runId ?? null });
           return { outcome: "REFUND_OWED" as const, refund: cur.amountSatang };
         default:
           throw new StockRefusal(T.changed);
@@ -447,10 +490,12 @@ async function finishDraftCancel(ctx: Ctx, chargeId: string, adjustmentId: strin
       return { ok: true as const, step: { outcome: "CANCELLED" as const } };
     }
     if (del.runLocked) {
-      await tx.hrStockCharge.updateMany({ where: { ...scope, id: chargeId, withdrawOutcome: "CANCELLING" }, data: { withdrawOutcome: "REFUND_OWED", refundOwedSatang: cur.amountSatang, withdrawnAt: now } });
+      await tx.hrStockCharge.updateMany({ where: { ...scope, id: chargeId, withdrawOutcome: "CANCELLING" }, data: { withdrawOutcome: "REFUND_OWED", refundOwedSatang: cur.amountSatang, refundRunId: del.runId ?? null, withdrawnAt: now } });
       return { ok: true as const, step: { outcome: "REFUND_OWED" as const, refund: cur.amountSatang } };
     }
-    return refuse(T.changed);
+    // r2 m4: ทางลบรอบร่างปฏิเสธด้วยเหตุอื่น (ไม่ใช่สถานะรอบ) — คืนแถวเป็นสถานะก่อนถอน (ไม่ค้าง CANCELLING) + บอกเหตุผลให้ผู้ดูแลตรวจ
+    await tx.hrStockCharge.updateMany({ where: { ...scope, id: chargeId, withdrawOutcome: "CANCELLING" }, data: { withdrawOutcome: null, withdrawnAt: null, withdrawnById: null, refundReason: null } });
+    return refuse(T.draftRefused);
   }, TX_OPTS);
 }
 
@@ -515,7 +560,19 @@ function statusOf(c: StatusSrc, adj: { status: string; runId: string | null } | 
   if (adj.status === "REJECTED") return "REJECTED";
   return runStatus === "PAID" ? "PAID" : "APPROVED";
 }
-export type StockRefundInfo = { owedSatang: number; decidedByName: string | null; decidedAt: string | null; reason: string | null; repaidAt: string | null; repaidByName: string | null; repaidRef: string | null };
+export type StockRefundInfo = {
+  owedSatang: number;
+  decidedByName: string | null;
+  decidedAt: string | null;
+  reason: string | null;
+  repaidAt: string | null;
+  repaidByName: string | null;
+  repaidRef: string | null;
+  /** r2 M1: รายการหักตอนนี้อยู่ที่ไหน — ผูกรอบ (งวด · สถานะ) หรือยังไม่ผูก (รอรอบถัดไป) · ถูกลบไปแล้ว = null */
+  adjustment: { runPeriodKey: string | null; runStatus: string | null; bound: boolean } | null;
+  /** r2 M1: รอบเดิมถูกกลับรายการ แล้วรายการหักกลับเข้ารอบเงินเดือน (ยังไม่ผูก หรือผูกกับรอบที่สร้างหลังบันทึกค้างคืน) */
+  returnedAfterReversal: boolean;
+};
 export type StockChargeItem = {
   id: string;
   kind: StockChargeKind;
@@ -541,7 +598,7 @@ export type StockChargeItem = {
 const LIST_SELECT = {
   id: true, kind: true, employeeId: true, adjustmentId: true, itemName: true, description: true, qty: true, unitCostSatang: true, amountSatang: true,
   movementId: true, consentRef: true, consentAt: true, requestedById: true, createdAt: true, withdrawnAt: true, withdrawnById: true, withdrawOutcome: true,
-  refundOwedSatang: true, refundReason: true, repaidAt: true, repaidById: true, repaidRef: true,
+  refundOwedSatang: true, refundReason: true, refundRunId: true, repaidAt: true, repaidById: true, repaidRef: true,
 } as const;
 
 /** รายการหักค่าของ — ผู้ดูเงินเดือนเท่านั้น (อื่น = null) · ขอบเขตสาขาจากแถวพนักงาน · ใหม่สุดก่อน (≤ 200) */
@@ -552,7 +609,7 @@ export async function listStockCharges(ctx: Ctx, viewer: StockViewer, filter: { 
   const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const empId = str(filter?.employeeId);
   const rows = await db.hrStockCharge.findMany({
-    where: { ...sc, ...(empId ? { employeeId: empId } : {}), employee: { is: unitWhere(scope) } },
+    where: { ...sc, claimOpen: false, ...(empId ? { employeeId: empId } : {}), employee: { is: unitWhere(scope) } },
     select: LIST_SELECT,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 200,
@@ -561,8 +618,9 @@ export async function listStockCharges(ctx: Ctx, viewer: StockViewer, filter: { 
   const adjs = await db.hrPayAdjustment.findMany({ where: { ...sc, id: { in: rows.map((r) => r.adjustmentId) } }, select: { id: true, status: true, runId: true, periodKey: true } });
   const adjById = new Map(adjs.map((a) => [a.id, { ...a, status: String(a.status) }]));
   const runIds = [...new Set(adjs.map((a) => a.runId).filter((x): x is string => !!x))];
-  const runs = runIds.length ? await db.hrPayrollRun.findMany({ where: { ...sc, id: { in: runIds } }, select: { id: true, status: true } }) : [];
+  const runs = runIds.length ? await db.hrPayrollRun.findMany({ where: { ...sc, id: { in: runIds } }, select: { id: true, status: true, periodKey: true, createdAt: true } }) : [];
   const runStatus = new Map(runs.map((r) => [r.id, String(r.status)]));
+  const runById = new Map(runs.map((r) => [r.id, r]));
   const empIds = [...new Set(rows.map((r) => r.employeeId))];
   const [emps, profiles] = await Promise.all([
     db.hrEmployee.findMany({ where: { ...sc, id: { in: empIds } }, select: { id: true, name: true } }),
@@ -603,6 +661,8 @@ export async function listStockCharges(ctx: Ctx, viewer: StockViewer, filter: { 
               repaidAt: r.repaidAt ? r.repaidAt.toISOString() : null,
               repaidByName: r.repaidById ? (users.get(r.repaidById) ?? null) : null,
               repaidRef: r.repaidRef,
+              adjustment: a ? { runPeriodKey: a.runId ? (runById.get(a.runId)?.periodKey ?? null) : null, runStatus: a.runId ? (runStatus.get(a.runId) ?? null) : null, bound: !!a.runId } : null,
+              returnedAfterReversal: !!a && !!r.refundRunId && a.runId !== r.refundRunId,
             }
           : null,
       overCap: base === undefined ? null : r.amountSatang * 10 > base, // จำนวนเต็มล้วน: amount > base/10 ⇔ amount×10 > base
@@ -645,7 +705,7 @@ export async function myStockCharges(who: { tenantId: string; userId: string }):
   const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const db = tenantDb(ctx);
   const rows = await db.hrStockCharge.findMany({
-    where: { ...sc, employeeId: me.employeeId },
+    where: { ...sc, employeeId: me.employeeId, claimOpen: false },
     select: { id: true, kind: true, adjustmentId: true, itemName: true, description: true, qty: true, amountSatang: true, consentAt: true, createdAt: true, withdrawOutcome: true, repaidAt: true },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 200,
@@ -682,7 +742,7 @@ export async function myFiledStockCharges(ctx: Ctx, viewer: StockViewer): Promis
   const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const db = tenantDb(ctx);
   const rows = await db.hrStockCharge.findMany({
-    where: { ...sc, requestedById: uid, withdrawnAt: null, employee: { is: unitWhere(scope) } },
+    where: { ...sc, requestedById: uid, withdrawnAt: null, claimOpen: false, employee: { is: unitWhere(scope) } },
     select: { id: true, kind: true, employeeId: true, adjustmentId: true, itemName: true, description: true, qty: true, createdAt: true },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 100,
@@ -700,13 +760,34 @@ export async function myFiledStockCharges(ctx: Ctx, viewer: StockViewer): Promis
     }));
 }
 
+// ═══════════════════════════ ต้องตรวจ (r2 · หนี้ D1 แบบมองเห็นได้) ═══════════════════════════
+export type OpenStockClaim = { id: string; employeeName: string; itemName: string | null; description: string | null; qty: number | null; takeStock: boolean; createdAt: string };
+/** แถวจองที่ค้าง > 10 นาที (ตัดสต็อกแล้วหรือยังไม่รู้ แต่ยังไม่มีรายการหัก) — ผู้ดูเงินเดือนเท่านั้น (อื่น = null) · ยื่นซ้ำด้วยคีย์เดิมจะจบให้เอง */
+export async function openStockClaims(ctx: Ctx, viewer: StockViewer, opts: { now?: Date } = {}): Promise<OpenStockClaim[] | null> {
+  if (!canSeeStockCharges(viewer)) return null;
+  const scope = hrScopeOf({ role: viewer.role, unitAccess: viewer.unitAccess });
+  const sc = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const before = new Date(nowOf(opts).getTime() - 10 * 60_000);
+  const rows = await tenantDb(ctx).hrStockCharge.findMany({
+    where: { ...sc, claimOpen: true, createdAt: { lt: before }, employee: { is: unitWhere(scope) } },
+    select: { id: true, employeeId: true, itemName: true, description: true, qty: true, takeStock: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+    take: 50,
+  });
+  const names = new Map((await tenantDb(ctx).hrEmployee.findMany({ where: { ...sc, id: { in: [...new Set(rows.map((r) => r.employeeId))] } }, select: { id: true, name: true } })).map((e) => [e.id, e.name]));
+  return rows.map((r) => ({ id: r.id, employeeName: names.get(r.employeeId) ?? "", itemName: r.itemName, description: r.description, qty: r.qty, takeStock: r.takeStock, createdAt: r.createdAt.toISOString() }));
+}
+
 // ═══════════════════════════ ตัวเลือกของฟอร์ม (ชื่อเท่านั้น — ไม่มีต้นทุน/เงินเดือน) ═══════════════════════════
 export type StockFormOptions = {
   employees: { id: string; name: string }[];
-  inventories: { id: string; name: string; items: { id: string; name: string; sku: string | null }[] }[];
+  /** ระบบคลังที่ผู้ยื่นอ่านได้ (canReadInventory) และอยู่ในขอบเขตสาขา — อ่านไม่ได้ = [] (ยื่นได้เฉพาะค่าเสียหายแบบไม่ระบุสินค้า) */
+  inventories: { id: string; name: string }[];
+  /** คลังที่เลือก + สินค้าของคลังนั้นเท่านั้น (ชื่อ · SKU — ไม่มีต้นทุน) */
+  selected: { id: string; items: { id: string; name: string; sku: string | null }[] } | null;
 };
-/** ผู้ยื่นได้เท่านั้น (อื่น = null): พนักงานที่ยังทำงานในขอบเขตสาขา (ชื่อ) · ระบบคลังของร้าน + สินค้า (ชื่อ · SKU — ค้นผ่าน facade ของคลัง) */
-export async function stockFormOptions(ctx: Ctx, viewer: StockViewer, q = ""): Promise<StockFormOptions | null> {
+/** ผู้ยื่นได้เท่านั้น (อื่น = null): พนักงานที่ยังทำงานในขอบเขตสาขา (ชื่อ) · คลัง + สินค้าของคลังที่เลือก (ค้นผ่าน facade ของคลัง) */
+export async function stockFormOptions(ctx: Ctx, viewer: StockViewer, pick: { q?: string; inventorySystemId?: string } = {}): Promise<StockFormOptions | null> {
   if (!canRequestStockCharge(viewer)) return null;
   const scope = hrScopeOf({ role: viewer.role, unitAccess: viewer.unitAccess });
   const uid = uidOf(viewer);
@@ -716,19 +797,27 @@ export async function stockFormOptions(ctx: Ctx, viewer: StockViewer, q = ""): P
     orderBy: { name: "asc" },
     take: 500,
   });
+  const employees = emps.filter((e) => String(e.employmentStatus ?? "") !== "ENDED" && e.linkedUserId !== uid).map((e) => ({ id: e.id, name: e.name }));
+  if (!canReadInventory(membershipOf(viewer))) return { employees, inventories: [], selected: null };
   const systems = await tenantDb({ tenantId: ctx.tenantId }).appSystem.findMany({ where: { tenantId: ctx.tenantId, type: "INVENTORY" }, select: { id: true, name: true }, orderBy: { createdAt: "asc" }, take: 20 });
-  const query = str(q).slice(0, 60);
-  const inventories = await Promise.all(
-    systems.map(async (s) => {
-      const ic = { tenantId: ctx.tenantId, systemId: s.id };
-      const rows = query ? await searchItems(ic, query, 50) : await listItems(ic, 200);
-      return { id: s.id, name: s.name, items: rows.filter((i) => String(i.kind) === "PRODUCT").map((i) => ({ id: i.id, name: i.name, sku: i.sku ?? null })) };
-    }),
-  );
-  return {
-    employees: emps.filter((e) => String(e.employmentStatus ?? "") !== "ENDED" && e.linkedUserId !== uid).map((e) => ({ id: e.id, name: e.name })),
-    inventories,
-  };
+  const inventories: { id: string; name: string }[] = [];
+  for (const sys of systems) if (await inventoryInScope(ctx.tenantId, sys.id, viewer)) inventories.push(sys);
+  const chosen = inventories.find((x) => x.id === str(pick.inventorySystemId)) ?? inventories[0] ?? null;
+  if (!chosen) return { employees, inventories, selected: null };
+  const ic = { tenantId: ctx.tenantId, systemId: chosen.id };
+  const query = str(pick.q).slice(0, 60);
+  const rows = query ? await searchItems(ic, query, 50) : await listItems(ic, 200);
+  return { employees, inventories, selected: { id: chosen.id, items: rows.filter((i) => String(i.kind) === "PRODUCT").map((i) => ({ id: i.id, name: i.name, sku: i.sku ?? null })) } };
+}
+
+/** r2 m8: หนังสือยินยอมของรายการหักค่าของ ตามรหัสรายการหัก — ให้ผู้อนุมัติเห็นที่แถวที่กดอนุมัติ · ผู้ดูเงินเดือนเท่านั้น (อื่น = แผนที่ว่าง) */
+export async function stockConsentByAdjustment(ctx: Ctx, viewer: StockViewer, adjustmentIds: string[]): Promise<Map<string, { ref: string; at: string }>> {
+  if (!canSeeStockCharges(viewer) || adjustmentIds.length === 0) return new Map();
+  const rows = await tenantDb(ctx).hrStockCharge.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, adjustmentId: { in: adjustmentIds.slice(0, 500) } },
+    select: { adjustmentId: true, consentRef: true, consentAt: true },
+  });
+  return new Map(rows.map((r) => [r.adjustmentId, { ref: r.consentRef, at: dayOf(r.consentAt) ?? "" }]));
 }
 
 // ═══════════════════════════ event (R10) ═══════════════════════════

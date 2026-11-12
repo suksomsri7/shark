@@ -31,10 +31,13 @@ CREATE TABLE "HrStockCharge" (
     "withdrawOutcome" TEXT,
     "refundOwedSatang" INTEGER,
     "refundReason" TEXT,
+    "refundRunId" TEXT,
     "repaidAt" TIMESTAMP(3),
     "repaidById" TEXT,
     "repaidRef" TEXT,
     "notifiedAt" TIMESTAMP(3),
+    "takeStock" BOOLEAN NOT NULL DEFAULT false,
+    "claimOpen" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "HrStockCharge_pkey" PRIMARY KEY ("id")

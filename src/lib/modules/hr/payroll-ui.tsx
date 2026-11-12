@@ -12,6 +12,7 @@ import { listEmployees, monthlyAttendance, employeesWithSchedule, bkkParts, type
 import { listSalaryProfiles, listRuns, listAdjustments, runExclusions, strandedAdjustments, type RunExclusionReason } from "./payroll";
 import { payrollItemsDigest } from "./payroll-digest"; // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน คำนวณฝั่ง server ตอนแสดงแถว ◂
 import PayAdjustForm from "./PayAdjustForm";
+import { stockConsentByAdjustment } from "./stock-charge"; // HR H4.6 ▸ r2 m8: หนังสือยินยอมที่แถวอนุมัติ ◂
 import PayAdjustRowActions from "./PayAdjustRowActions"; // HF-HR-0 ▸ รอบ 5c (F5): ปุ่มของรายการ + เหตุผลที่ถูกปฏิเสธในแถว ◂
 import RunRowActions, { CreateRunForm, StrandedMoveButton } from "./RunRowActions"; // H0.1 ▸ R6 · CR12: "อนุมัติ" / "ดึงข้อมูลใหม่" (คำนวณใหม่) / "ลบร่าง" ของรอบร่าง + เหตุผลที่ถูกปฏิเสธในแถว ◂ · H0.2 ▸ ฟอร์มสร้างรอบ + ปุ่มย้ายรายการค้าง ◂
 import {
@@ -96,6 +97,8 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
     listAdjustments(ctx, undefined, 200, scope),
   ]);
   const inScope = new Set(employees.map((e) => e.id));
+  // HR H4.6 ▸ r2 m8: เลขที่/วันที่ลงนามหนังสือยินยอม ของรายการที่มาจากการเบิกของ/ค่าเสียหาย (ผู้ดูเงินเดือน — ผ่านด่านข้างบนแล้ว) ◂
+  const stockConsent = await stockConsentByAdjustment(ctx, { ...membership, userId: auth.user.id }, adjustments.filter((a) => a.sourceType === "INVENTORY_ISSUE").map((a) => a.id));
   const shownItems = (items: (typeof runs)[number]["items"]) => (allBranches ? items : items.filter((it) => inScope.has(it.employeeId)));
   // การเข้างานเดือนนี้ + เดือนก่อน (งวดที่มักจะกำลังจ่าย) — ใช้ประกอบการตัดสินใจ
   // 🔴 ระบบไม่หักเงินอัตโนมัติจากการสาย/ขาด: เป็นนโยบายของร้าน + มีผลทางกฎหมาย ต้องให้คนตัดสิน
@@ -254,8 +257,13 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                     </span>
                     {/* HR H4.6 ▸ รายการจากการเบิกของ/ค่าเสียหาย (ดูจาก sourceType เท่านั้น) — ต้องมีหนังสือยินยอมของพนักงาน (ดูในส่วน "หักค่าของ") · อนุมัติทีละแถว ◂ */}
                     {a.sourceType === "INVENTORY_ISSUE" && (
-                      <span data-testid="hr-pay-src-stock" className="mt-0.5 inline-block rounded-full border border-[color:var(--color-line)] px-2 py-0.5 text-xs">
-                        เบิกของ/ค่าเสียหาย · ต้องมีหนังสือยินยอมของพนักงาน (ม.76/77) — ดูส่วน “หักค่าของ”
+                      <span
+                        data-testid="hr-pay-src-stock"
+                        title={stockConsent.get(a.id) ? `หนังสือยินยอม ${stockConsent.get(a.id)!.ref} ลงนาม ${stockConsent.get(a.id)!.at}` : "ไม่พบหนังสือยินยอม — ตรวจก่อนอนุมัติ"}
+                        className="mt-0.5 inline-block rounded-full border border-[color:var(--color-line)] px-2 py-0.5 text-xs"
+                      >
+                        เบิกของ/ค่าเสียหาย · หนังสือยินยอม (ม.76/77):{" "}
+                        {stockConsent.get(a.id) ? `${stockConsent.get(a.id)!.ref} · ลงนาม ${stockConsent.get(a.id)!.at}` : "ไม่พบ — ตรวจก่อนอนุมัติ"}
                       </span>
                     )}
                   </span>

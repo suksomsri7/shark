@@ -15,7 +15,7 @@ export default async function HrPayrollPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>; // HR H4.6 ▸ ?stock=<รหัสผล> · ?stockq=<ค้นสินค้า> ◂
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>; // HR H4.6 ▸ ?stock=<รหัสผล> · ?stockq=<ค้นสินค้า> · ?stockinv=<คลังที่เลือก> ◂
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -31,7 +31,7 @@ export default async function HrPayrollPage({
       <ModuleTabs items={hrTabs(id)} />
       <PayrollSection systemId={id} />
       {/* HR H4.6 ▸ ฟอร์ม = ผู้ถือคีย์ยื่นรายการ · รายการ/ยอด = ผู้ดูเงินเดือน (ด่านในตัว) ◂ */}
-      <StockChargeSection systemId={id} msg={one(sp.stock)} q={one(sp.stockq)} />
+      <StockChargeSection systemId={id} msg={one(sp.stock)} q={one(sp.stockq)} inv={one(sp.stockinv)} />
     </div>
   );
 }

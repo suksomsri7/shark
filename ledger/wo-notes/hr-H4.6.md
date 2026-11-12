@@ -39,3 +39,28 @@ payroll.ts gains one marked `HR H4.6` pure-addition block (+ 1 marked type-impor
 `cancelStockChargeDraftAdjustment` (delegates to the existing `cancelBoundDraftAdjustment`). stock-charge.ts no longer creates/updates HrPayAdjustment and no longer
 calls `cancelAdjustment`. The source pair is passed as one object (`StockAdjustmentSource`) and spread by payroll.ts, so payroll.ts adds no `sourceRef` token
 (qc-hr-h1.3 S6.1 ratchet unchanged). ORACLE-EDIT qc-hr-h4.6 S14.1: payroll.ts ⇒ only marked HR H4.6 pure-addition hunks.
+
+## Round r2 (reviewer FIX FIRST) — oracle S15.1–S15.8 added first: RED 56/64 on e5b566979 (hr-H4.6-r2-red.txt), then green 64/64
+- M1: `refundRunId` stored at REFUND_OWED · list `refund.adjustment` {runPeriodKey, runStatus, bound} + `refund.returnedAfterReversal` (ป้าย "กลับเข้ารอบเงินเดือนหลังย้อนรายการ") ·
+  marked additions in payroll.ts `cancelAdjustment` + `moveStrandedAdjustment` call `stockChargeAdjustmentLock` ⇒ refuse rows of REFUND_OWED/REPAID charges · 2nd withdraw = withdrawn.
+  Re-run after reversal deducts again (consistent per ruling; not auto-rejected).
+- m2/m3: key claimed first (claim row `claimOpen`, lock `hr:stock:<tenant>:<key>`, tenant-wide unique ⇒ P2002 = replayDiff) → consumeBatch → HR tx completes
+  the claim. Period pre-check (`stockChargeTargetPeriod`) before stock; in-tx re-check kept. Same key, different takeStock ⇒ one winner, no orphan.
+- D1 visible: claims open > 10 min listed to payroll viewers (`openStockClaims`, `hr-stock-attention`); retry with the key completes.
+- m4: stale CANCELLING (> 2 min) resumes; a draft-cancel refusal not caused by run state resets the charge to pre-withdraw + `draftRefused`.
+- m5/m6: inventory chosen via GET `?stockinv=`; items of that system only; `canReadInventory` + unit scope for listing.
+- m7: insufficient stock ⇒ refused (`stock` text, never drives stock negative; pre-check only — concurrent consumers can still race, inventory allows negatives); unit-linked inventory systems only within the requester's branch scope (unlinked = shop-wide).
+- m8: consent ref + signing date on the `hr-pay-src-stock` chip (+ title) via `stockConsentByAdjustment`.
+- Schema: columns `takeStock`, `claimOpen`, `refundRunId` folded into the (unmerged) migration file; lane DB got them via `prisma db execute` ADD COLUMN IF NOT EXISTS.
+- qc-hr-h0.1 SCHEMA_SHA re-pinned again: c9fb1ab3a330… → 22fc665b333004a49fb7f33b30eb24431359725f866b6dd5552c773dd45207e9 (payroll.prisma vs base: 0 removed lines).
+
+## Accountant (r2)
+A9 Reversal re-run: a run holding a REFUND_OWED/REPAID charge is reversed and re-created ⇒ the deduction is applied again; with the refund already repaid the employee is net-deducted once — confirm the books (reversal JV + new run + outside-payroll refund) agree.
+A10 Consent: blanket (employment-contract clause) vs specific per incident; a consent dated before the incident — acceptable?
+A11 Evidence when `takeStock=false` (charge without a stock movement) or when stock would go negative — what documentation is required?
+A12 Net pay floored at 0 (payableGrossSatang): partial deduction — is the unrecovered remainder still owed, carried forward, or written off?
+A13 Override below the moving-average cost: COGS booked at average cost on the OUT movement vs the lower amount recovered — where does the difference go?
+
+## Debts (r2)
+- Tenant purge / `scripts/pending/sweep-m11-orphans.mts` (and any tenant-wipe path) must delete HrStockCharge before HrEmployee (FK RESTRICT).
+- Insufficient-stock check is a pre-check (no lock with consumeBatch) — two concurrent charges can still drive stock negative; inventory flags needsReview.

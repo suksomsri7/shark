@@ -6121,7 +6121,7 @@
    },
    "wo": "H4.6",
    "oracle": "qc-hr-h4.6",
-   "note": "ระบบคลัง (INVENTORY) ของร้าน"
+   "note": "ระบบคลัง (INVENTORY) ที่ผู้ยื่นอ่านได้ (canReadInventory) และอยู่ในขอบเขตสาขา — อยู่ในฟอร์มค้น (GET ?stockinv=) · สินค้าในช่องสินค้า = ของคลังที่เลือกเท่านั้น"
   },
   {
    "page": "/app/sys/[id]/hr/payroll",
@@ -6599,6 +6599,58 @@
    "oracle": "qc-hr-h4.6",
    "testid": "hr-stock-mine-row-*",
    "note": "* = chargeId · ชื่อพนักงาน · ชนิด · ของ/รายละเอียด · งวด — ไม่มียอด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "testid": "hr-stock-attention",
+   "kind": "display",
+   "conditional": "ผู้ดูเงินเดือน · มีแถวจองค้าง > 10 นาที",
+   "note": "ต้องตรวจ: คำขอค้างกลางทาง (อาจตัดสต็อกแล้ว ยังไม่มีรายการหัก) — หนี้ D1 แบบมองเห็นได้"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "testid": "hr-stock-rerun-*",
+   "kind": "display",
+   "conditional": "ผู้ดูเงินเดือน · รายการค้างคืน/คืนแล้วที่รายการหักกลับเข้ารอบหลังย้อนรายการ",
+   "note": "* = chargeId · ป้าย \"กลับเข้ารอบเงินเดือนหลังย้อนรายการ\""
   }
  ]
 }

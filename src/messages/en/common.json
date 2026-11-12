@@ -786,7 +786,14 @@
       "withdraw": "Withdraw",
       "withdrawApproved": "Withdraw / refund",
       "mineTitle": "My requests (pending)",
-      "mineEmpty": "No pending requests"
+      "mineEmpty": "No pending requests",
+      "noInventoryRight": "You cannot view inventory — you may file a damage charge with a description only (no stock taken)",
+      "attentionTitle": "Needs attention: requests stuck midway (no deduction yet)",
+      "attentionStock": "stock may already be taken",
+      "adjBound": "Deduction is in the {period} run ({status})",
+      "adjUnbound": "Deduction is not in a run — waiting for the next pay run",
+      "returnedAfterReversal": "Returned to payroll after a run reversal — check the refund is not deducted again unintentionally",
+      "consentChip": "Consent {ref} signed {date}"
     }
   }
 }

@@ -8,7 +8,7 @@ import { requireTenant } from "@/lib/core/context";
 import { formatBaht } from "@/lib/ui/money";
 import { thaiDateKey } from "@/lib/ui/date";
 import { hrViewerOf } from "./privacy";
-import { STOCK_MSG, canSeeStockCharges, canTakeStock, listStockCharges, myFiledStockCharges, stockFormOptions, stockPeriodCapFlags, type StockChargeItem } from "./stock-charge";
+import { STOCK_MSG, canSeeStockCharges, canTakeStock, listStockCharges, myFiledStockCharges, openStockClaims, stockFormOptions, stockPeriodCapFlags, type StockChargeItem } from "./stock-charge";
 import { markStockRefundRepaidAction, requestStockChargeAction, withdrawStockChargeAction } from "./stock-charge-actions";
 
 const muted = "text-[color:var(--color-muted)]";
@@ -19,11 +19,11 @@ const WITHDRAWABLE = new Set(["PENDING", "APPROVED", "PAID", "CANCELLING"]);
 const tone = (s: string) =>
   s === "REFUND_OWED" || s === "REJECTED" ? "text-[color:var(--color-danger)] border-[color:var(--color-danger)]" : s === "APPROVED" || s === "PAID" || s === "REPAID" ? "font-semibold border-[color:var(--color-ink)]" : `${muted} border-[color:var(--color-line)]`;
 
-export async function StockChargeSection({ systemId, msg, q }: { systemId: string; msg?: string; q?: string }) {
+export async function StockChargeSection({ systemId, msg, q, inv }: { systemId: string; msg?: string; q?: string; inv?: string }) {
   const auth = await requireTenant();
   const viewer = hrViewerOf(auth);
   const ctx = { tenantId: auth.active.tenantId, systemId };
-  const [opts, list] = await Promise.all([stockFormOptions(ctx, viewer, q ?? ""), listStockCharges(ctx, viewer)]);
+  const [opts, list, stuck] = await Promise.all([stockFormOptions(ctx, viewer, { q: q ?? "", inventorySystemId: inv ?? "" }), listStockCharges(ctx, viewer), openStockClaims(ctx, viewer)]);
   if (!opts && !list) return null;
   const t = await getTranslations("hr.stock");
   const flags = list ? await stockPeriodCapFlags(ctx, viewer, list.items) : null;
@@ -51,15 +51,29 @@ export async function StockChargeSection({ systemId, msg, q }: { systemId: strin
 
       {opts && (
         <>
-          <form method="get" action={`/app/sys/${systemId}/hr/payroll`} className="flex flex-wrap items-end gap-2" data-testid="hr-stock-search">
-            <label className={`${field} ${muted}`}>
-              {t("searchLabel")}
-              <input name="stockq" defaultValue={q ?? ""} placeholder={t("searchHint")} className="input min-h-[44px] w-48" data-testid="hr-stock-search-q" />
-            </label>
-            <button type="submit" className={ghost}>
-              {t("searchButton")}
-            </button>
-          </form>
+          {opts.inventories.length > 0 ? (
+            <form method="get" action={`/app/sys/${systemId}/hr/payroll#hr-stock`} className="flex flex-wrap items-end gap-2" data-testid="hr-stock-search">
+              <label className={`${field} ${muted}`}>
+                {t("inventoryLabel")}
+                <select name="stockinv" defaultValue={opts.selected?.id ?? ""} className="input min-h-[44px]" data-testid="hr-stock-inventory">
+                  {opts.inventories.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={`${field} ${muted}`}>
+                {t("searchLabel")}
+                <input name="stockq" defaultValue={q ?? ""} placeholder={t("searchHint")} className="input min-h-[44px] w-48" data-testid="hr-stock-search-q" />
+              </label>
+              <button type="submit" className={ghost}>
+                {t("searchButton")}
+              </button>
+            </form>
+          ) : (
+            <p className={`text-xs ${muted}`}>{t("noInventoryRight")}</p>
+          )}
           <form action={requestStockChargeAction} data-testid="hr-stock-form" className="flex flex-col gap-3">
             <input type="hidden" name="systemId" value={systemId} />
             <input type="hidden" name="requestKey" value={randomUUID()} />
@@ -81,29 +95,15 @@ export async function StockChargeSection({ systemId, msg, q }: { systemId: strin
                   ))}
                 </select>
               </label>
-              <label className={`${field} ${muted}`}>
-                {t("inventoryLabel")}
-                <select name="inventorySystemId" defaultValue={opts.inventories[0]?.id ?? ""} className="input min-h-[44px]" data-testid="hr-stock-inventory">
-                  <option value="">{t("inventoryNone")}</option>
-                  {opts.inventories.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <input type="hidden" name="inventorySystemId" value={opts.selected?.id ?? ""} />
               <label className={`${field} ${muted}`}>
                 {t("itemLabel")}
                 <select name="itemId" defaultValue="" className="input min-h-[44px] max-w-[16rem]" data-testid="hr-stock-item">
                   <option value="">{t("itemNone")}</option>
-                  {opts.inventories.map((s) => (
-                    <optgroup key={s.id} label={s.name}>
-                      {s.items.map((i) => (
-                        <option key={i.id} value={i.id}>
-                          {i.sku ? `${i.name} · ${i.sku}` : i.name}
-                        </option>
-                      ))}
-                    </optgroup>
+                  {(opts.selected?.items ?? []).map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.sku ? `${i.name} · ${i.sku}` : i.name}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -112,7 +112,7 @@ export async function StockChargeSection({ systemId, msg, q }: { systemId: strin
                 <input name="qty" type="number" min={1} max={999} step={1} inputMode="numeric" className="input min-h-[44px] w-20" data-testid="hr-stock-qty" />
               </label>
               <label className={`flex min-h-[44px] items-center gap-2 text-xs ${muted}`}>
-                <input type="checkbox" name="takeStock" defaultChecked={take} disabled={!take} data-testid="hr-stock-take" />
+                <input type="checkbox" name="takeStock" defaultChecked={take && !!opts.selected} disabled={!take || !opts.selected} data-testid="hr-stock-take" />
                 {take ? t("takeLabel") : t("takeNoRight")}
               </label>
             </div>
@@ -181,6 +181,19 @@ export async function StockChargeSection({ systemId, msg, q }: { systemId: strin
         </div>
       )}
 
+      {stuck && stuck.length > 0 && (
+        <div role="note" data-testid="hr-stock-attention" className="flex flex-col gap-1 rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-xs">
+          <div className="font-medium">{t("attentionTitle")}</div>
+          {stuck.map((x) => (
+            <div key={x.id} className={muted}>
+              {x.employeeName} · {x.itemName ?? x.description ?? ""}
+              {x.qty !== null ? ` ×${x.qty}` : ""} · {thaiDateKey(x.createdAt)}
+              {x.takeStock ? ` · ${t("attentionStock")}` : ""}
+            </div>
+          ))}
+        </div>
+      )}
+
       {list && (
         <div className="flex flex-col gap-2 border-t border-[color:var(--color-line)] pt-3" data-testid="hr-stock-list">
           <h3 className="text-sm font-semibold">{t("listTitle")}</h3>
@@ -234,6 +247,16 @@ function StockRow({ c, t, systemId, overPeriod, approverView }: { c: StockCharge
             {t("refundBy", { name: c.refund.decidedByName ?? "—", date: c.refund.decidedAt ? thaiDateKey(c.refund.decidedAt) : "—" })}
             {c.refund.reason ? ` · ${c.refund.reason}` : ""}
           </div>
+          {c.refund.adjustment && (
+            <div className={muted}>
+              {c.refund.adjustment.bound ? t("adjBound", { period: c.refund.adjustment.runPeriodKey ?? "—", status: c.refund.adjustment.runStatus ?? "—" }) : t("adjUnbound")}
+            </div>
+          )}
+          {c.refund.returnedAfterReversal && (
+            <div className="font-medium text-[color:var(--color-danger)]" data-testid={`hr-stock-rerun-${c.id}`}>
+              {t("returnedAfterReversal")}
+            </div>
+          )}
           {c.refund.repaidAt ? (
             <div>{t("repaidLine", { name: c.refund.repaidByName ?? "—", date: thaiDateKey(c.refund.repaidAt), ref: c.refund.repaidRef ?? "" })}</div>
           ) : (

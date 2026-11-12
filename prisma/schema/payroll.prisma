@@ -285,10 +285,13 @@ model HrStockCharge {
   withdrawOutcome     String?
   refundOwedSatang    Int? // ยอดค้างคืนพนักงานนอกเงินเดือน (เท่ายอดที่หักไป)
   refundReason        String?
+  refundRunId         String? // รอบจ่าย (อนุมัติ/จ่ายแล้ว) ที่รายการหักผูกอยู่ตอนบันทึกค้างคืน — ต่างจากปัจจุบัน = กลับเข้ารอบหลังย้อนรายการ
   repaidAt            DateTime?
   repaidById          String?
   repaidRef           String?
   notifiedAt          DateTime? // แจ้งพนักงานแล้ว (กันแจ้งซ้ำเมื่อ event ถูกส่งซ้ำ)
+  takeStock           Boolean           @default(false) // คำขอนี้ตัดสต็อกด้วยไหม (ส่วนหนึ่งของ "ข้อมูลเดียวกัน" เมื่อส่งคีย์ซ้ำ)
+  claimOpen           Boolean           @default(false) // จองคีย์แล้วแต่ยังไม่จบ (ตัดสต็อกก่อน → เขียนรายการหัก) — ค้างนาน = "ต้องตรวจ" (หนี้ D1)
   createdAt           DateTime          @default(now())
 
   @@unique([tenantId, requestKey])
