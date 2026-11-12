@@ -220,6 +220,8 @@ export type DocEditorV2Props = {
   depositApplied: { depositId: string; docNo: string | null; amountSatang: number }[];
   /** ── WO 1.4 ส่วน F ── ฟอร์มนี้มีบล็อก "รับชำระเงิน" (ใบเสร็จรับเงิน · ภาพ g2) */
   paymentEnabled: boolean;
+  /** ACCOUNT-FIX A2 — ชนิดนี้ออกแล้วค้างรับ/จ่าย ⇒ มีตัวเลือก "อนุมัติและรับชำระ/บันทึกจ่าย" (`canPayAfterIssue`) */
+  payAfterIssue?: boolean;
   /** ช่องทางการเงินให้ dropdown "ช่องทาง" */
   paymentChannels: { id: string; name: string; type: string; bankName: string | null; accountNo: string | null }[];
   /**

@@ -196,6 +196,7 @@ function ActionRow({
         docId={data.id}
         triggerLabel={side === "expense" ? "บันทึกจ่าย" : "รับชำระ"}
         triggerClassName="btn btn-primary h-11 w-full text-sm md:h-9 md:w-auto"
+        autoOpenOnQuery
       />
     );
   } else if (canRefundDeposit) {

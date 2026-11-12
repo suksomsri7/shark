@@ -24,6 +24,7 @@ import { DocTotals, MobileTotalsBar } from "./DocTotals";
 import { EasyModeToggle, useAccMode } from "./EasyModeToggle";
 import { Modal } from "./Modal";
 import { RowActions } from "./RowActions";
+import { AccountIcon } from "./AccountIcon";
 import { SectionCard } from "./SectionCard";
 import { formatDateTh } from "@/lib/ui/date";
 import { payChannelLabel } from "@/lib/modules/account/pay-channel-label";
@@ -55,6 +56,9 @@ import {
 // ─────────────────────────────────────────────────────────────
 
 const AUTOSAVE_MS = 2000;
+
+/** ACCOUNT-FIX A2 — ขั้นถัดไปหลังอนุมัติ ("" = ไปหน้าเอกสารเฉย ๆ) · ผู้อ่าน = approveDocAction / ทางใบเสร็จด้านล่าง */
+type ApproveNext = "" | "pay" | "print";
 
 function Toggle({
   checked,
@@ -378,7 +382,9 @@ function EditorBody(props: DocEditorV2Props) {
     );
   }, [props.paymentEnabled, props.paymentChannels, value.issueDate, totals.grandTotal, attachedPays.length]);
 
-  const approve = (next: "" | "pay" | "print" | "email") =>
+  // ACCOUNT-FIX A2: "อนุมัติและ…" ต้องพาไปขั้นถัดไปจริง — print = หน้าพิมพ์ของใบที่เพิ่งออก · pay = หน้าเอกสาร
+  //   เปิดแผงรับชำระเอง (approveDocAction อ่าน `next`) · "ส่งอีเมล" เอาออก (ยังไม่มีระบบส่งเอกสารทางอีเมล)
+  const approve = (next: ApproveNext) =>
     startTransition(async () => {
       if (capExceeded) {
         setShowErrors(true);
@@ -435,7 +441,8 @@ function EditorBody(props: DocEditorV2Props) {
           return;
         }
         toast.success(`อนุมัติ${props.docLabel} ${res.docNo} แล้ว`);
-        router.push(res.href);
+        // ใบเสร็จ: การรับเงินบันทึกพร้อมการออกแล้ว ⇒ ตัวเลือกที่มีความหมายคือ "พิมพ์" เท่านั้น
+        router.push(next === "print" ? `${props.basePath}/print/${id}` : res.href);
         router.refresh();
         return;
       }
@@ -443,6 +450,13 @@ function EditorBody(props: DocEditorV2Props) {
       if (approveIdRef.current) approveIdRef.current.value = id;
       approveFormRef.current?.requestSubmit();
     });
+
+  // ตัวเลือกการอนุมัติที่ไปต่อได้จริงของชนิดนี้ (ใช้ร่วมเดสก์ท็อป + มือถือ 2 จุด)
+  const payLabel = props.side === "expense" ? "อนุมัติและบันทึกจ่าย" : "อนุมัติและรับชำระ";
+  const approveFollowUps: { next: Exclude<ApproveNext, "">; icon: string; label: string }[] = [
+    { next: "print", icon: "printer", label: "อนุมัติและพิมพ์" },
+    ...(props.payAfterIssue && !props.paymentEnabled ? [{ next: "pay" as const, icon: "cash", label: payLabel }] : []),
+  ];
 
   const saveDraftAndGo = (where: "detail" | "new") =>
     startTransition(async () => {
@@ -495,9 +509,7 @@ function EditorBody(props: DocEditorV2Props) {
           label="ตัวเลือกเพิ่มเติม"
           items={[
             { label: "บันทึกและสร้างใหม่", onClick: () => saveDraftAndGo("new") },
-            { label: "อนุมัติและพิมพ์", onClick: () => approve("print") },
-            { label: "อนุมัติและส่งอีเมล", onClick: () => approve("email") },
-            { label: "อนุมัติและรับชำระ", onClick: () => approve("pay") },
+            ...approveFollowUps.map((o) => ({ label: o.label, onClick: () => approve(o.next) })),
             ...(!autoCreatedDraft ? [{ label: "ยกเลิก", href: props.listPath, sepBefore: true }] : []),
           ]}
           danger={
@@ -1449,9 +1461,7 @@ function EditorBody(props: DocEditorV2Props) {
             label="ตัวเลือกเพิ่มเติม"
             items={[
               { label: "บันทึกและสร้างใหม่", onClick: () => saveDraftAndGo("new") },
-              { label: "อนุมัติและพิมพ์", onClick: () => approve("print") },
-              { label: "อนุมัติและส่งอีเมล", onClick: () => approve("email") },
-              { label: "อนุมัติและรับชำระ", onClick: () => approve("pay") },
+              ...approveFollowUps.map((o) => ({ label: o.label, onClick: () => approve(o.next) })),
               // ร่างของผู้ใช้เอง (ไม่ใช่ร่างที่ฟอร์มสร้างเองระหว่างพิมพ์) — "ยกเลิก" แค่ออกจากหน้า ไม่ลบร่าง (เหมือนเดสก์ท็อป)
               ...(!autoCreatedDraft ? [{ label: "ยกเลิก", href: props.listPath, sepBefore: true }] : []),
             ]}
@@ -1546,14 +1556,7 @@ function EditorBody(props: DocEditorV2Props) {
                   data-testid="approve-menu"
                 >
                   <span className="px-3 py-2 text-xs text-[color:var(--color-muted)]">เลือกการอนุมัติ</span>
-                  {(
-                    [
-                      { next: "" as const, icon: "✓", label: "อนุมัติ" },
-                      { next: "print" as const, icon: "🖨", label: "อนุมัติและพิมพ์" },
-                      { next: "email" as const, icon: "✉", label: "อนุมัติและส่งอีเมล" },
-                      { next: "pay" as const, icon: "💵", label: "อนุมัติและรับชำระ" },
-                    ] as const
-                  ).map((o) => (
+                  {[{ next: "" as ApproveNext, icon: "check", label: "อนุมัติ" }, ...approveFollowUps].map((o) => (
                     <button
                       key={o.label}
                       type="button"
@@ -1564,7 +1567,7 @@ function EditorBody(props: DocEditorV2Props) {
                       }}
                       data-testid={`approve-${o.next || "plain"}`}
                     >
-                      <span aria-hidden>{o.icon}</span>
+                      <AccountIcon name={o.icon} className="h-4 w-4 shrink-0 text-[color:var(--color-muted)]" />
                       {o.label}
                     </button>
                   ))}

@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { formatDateTh } from "@/lib/ui/date";
 import { payChannelLabel } from "@/lib/modules/account/pay-channel-label";
@@ -25,11 +25,14 @@ export function PaymentPanel({
   docId,
   triggerLabel,
   triggerClassName,
+  autoOpenOnQuery = false,
 }: {
   systemId: string;
   docId: string;
   triggerLabel: string;
   triggerClassName?: string;
+  /** ACCOUNT-FIX A2 — เปิดแผงเองเมื่อ URL มี `?pay=1` (มาจาก "อนุมัติและรับชำระ/บันทึกจ่าย") · ใส่เฉพาะปุ่มหลักตัวเดียวของหน้า */
+  autoOpenOnQuery?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -63,6 +66,18 @@ export function PaymentPanel({
     setOpen(true);
     load(true);
   };
+
+  // ACCOUNT-FIX A2 — `?pay=1` เปิดแผงครั้งเดียวต่อการเข้าหน้า (ref กันเปิดซ้ำตอน router.refresh หลังบันทึก)
+  const searchParams = useSearchParams();
+  const autoOpened = useRef(false);
+  const wantAutoOpen = autoOpenOnQuery && searchParams.get("pay") === "1";
+  useEffect(() => {
+    if (!wantAutoOpen || autoOpened.current) return;
+    autoOpened.current = true;
+    openPanel();
+    // openPanel เปลี่ยนทุก render (ไม่ได้ memo) — ตั้งใจรันตาม wantAutoOpen เท่านั้น
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantAutoOpen]);
 
   const submit = () =>
     startTransition(async () => {

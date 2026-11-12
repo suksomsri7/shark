@@ -114,6 +114,28 @@ export function canCreateDirect(docType: AccountDocType): boolean {
   return !CONVERT_ONLY_TYPES.includes(docType);
 }
 
+/** ACCOUNT-FIX A2 — ชนิดที่ "ออกแล้วยังค้างรับ/จ่าย" (ISSUE_STATUS/issueStatusFor = AWAITING_PAYMENT) และหน้าเอกสาร
+ *  เปิดแผงรับชำระ/บันทึกจ่ายให้ได้ ⇒ ตัวเลือก "อนุมัติและรับชำระ" มีความหมายเฉพาะชนิดเหล่านี้
+ *  (ใบเสร็จรับเงินกรอกการรับเงินในฟอร์มเลย · ใบเสนอราคา/ใบกำกับ/ใบลดหนี้ ไม่มีการรับชำระ ·
+ *   เอกสารกลุ่ม BN/CP ไม่ผ่าน DocEditorV2 — สร้างที่ GroupNewPage) */
+export const PAY_AFTER_ISSUE_TYPES: readonly AccountDocType[] = [
+  "INVOICE",
+  "DEPOSIT_RECEIPT",
+  "PURCHASE",
+  "EXPENSE",
+  "ASSET_PURCHASE",
+  "DEPOSIT_PAYMENT",
+];
+
+export function canPayAfterIssue(docType: AccountDocType): boolean {
+  return PAY_AFTER_ISSUE_TYPES.includes(docType);
+}
+
+/** ACCOUNT-FIX A2 — หน้าพิมพ์ของเอกสาร 1 ใบ (ใช้ได้ทั้งรายรับและรายจ่าย — route เดียว `print/<docId>`) */
+export function editorPrintPath(base: string, docId: string): string {
+  return `${base}/print/${docId}`;
+}
+
 // ─────────────────── WO 1.6 — wizard เอกสารปรับปรุงหนี้ (§5.2 J) ───────────────────
 // CN/DN/CNR/DNR/RPR ("ใบส่งคืนเบิก" GOODS_ISSUE_RETURN) เข้าฟอร์มผ่าน `/new` → ขั้น ① เลือกเอกสารอ้างอิง
 // (หรือ "ไม่อ้างอิง") → ขั้น ② ฟอร์มเดิม (B–I) + ช่องเหตุผล + เพดานยอดคงเหลือ

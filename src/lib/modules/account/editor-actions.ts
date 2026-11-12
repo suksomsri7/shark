@@ -29,7 +29,7 @@ import { computeDocTotals, type AmountOrPercent, type PriceMode } from "./totals
 import { createExpenseDoc, updateExpenseDoc, issueExpenseDoc, listExpenseDocsPaged, EXP_ROUTE, WHT_INCOME_LABEL } from "./expense";
 import { createAttachment, deleteAttachment } from "./attachment";
 import { uploadFile, storageEnabled } from "@/lib/storage/service";
-import { editorDetailPath, editorListPath, sideOf, isAdjustType, adjustRefDocTypesFor } from "./doc-editor-config";
+import { editorDetailPath, editorListPath, editorPrintPath, sideOf, isAdjustType, adjustRefDocTypesFor, canPayAfterIssue } from "./doc-editor-config";
 import type {
   ContactOption,
   DocDraftPayload,
@@ -293,14 +293,18 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
 
 /**
  * อนุมัติเอกสาร = ใช้ flow เดิม (issueDocument / issueExpenseDoc) ห้ามเขียน posting ใหม่
- * `next` = สิ่งที่จะทำต่อบนหน้าเอกสาร (pay|print|email) — WO 1.4/1.5 เป็นคนรับช่วง
+ * `next` = สิ่งที่จะทำต่อหลังออกเอกสาร (ACCOUNT-FIX A2 — เดิมต่อ `?next=` ท้าย URL ซึ่งไม่มีหน้าไหนอ่าน):
+ *   - `print` → ไปหน้าพิมพ์ของใบที่เพิ่งออก
+ *   - `pay`   → หน้าเอกสาร `?pay=1` (แผงรับชำระ/บันทึกจ่ายเปิดเอง — PaymentPanel `autoOpenOnQuery`)
+ *               เฉพาะชนิดที่ออกแล้วค้างรับ/จ่าย (`canPayAfterIssue`) — ชนิดอื่นไปหน้าเอกสารตามปกติ
+ *   ("ส่งอีเมล" ถูกเอาออก — ยังไม่มีระบบส่งเอกสารทางอีเมล)
  */
 export async function approveDocAction(formData: FormData) {
   const systemId = trim(formData.get("systemId"), 40);
   const docType = trim(formData.get("docType"), 40) as AccountDocType;
   const id = trim(formData.get("id"), 40);
   const nextRaw = trim(formData.get("next"), 10);
-  const next = ["pay", "print", "email"].includes(nextRaw) ? nextRaw : "";
+  const next = nextRaw === "pay" || nextRaw === "print" ? nextRaw : "";
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.doc.issue");
 
@@ -323,7 +327,9 @@ export async function approveDocAction(formData: FormData) {
   });
   revalidatePath(detail);
   if (!res.ok) redirect(`${base}/${docTypeEditSuffix(docType, id)}?err=${encodeURIComponent(res.reason)}`);
-  redirect(next ? `${detail}?next=${next}` : detail);
+  if (next === "print") redirect(editorPrintPath(base, id));
+  if (next === "pay" && canPayAfterIssue(docType)) redirect(`${detail}?pay=1`);
+  redirect(detail);
 }
 
 function docTypeEditSuffix(docType: AccountDocType, id: string): string {

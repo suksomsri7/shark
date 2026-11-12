@@ -54,6 +54,7 @@ import {
   adjustRefDocTypesFor,
   adjustRefLabelFor,
   adjustSeedContact,
+  canPayAfterIssue,
 } from "./doc-editor-config";
 
 // ─────────────────────────────────────────────────────────────
@@ -346,6 +347,7 @@ export async function DocEditorPage({
         depositEnabled={depositEnabled}
         depositApplied={depositApplied}
         paymentEnabled={paymentEnabled}
+        payAfterIssue={canPayAfterIssue(docType)}
         paymentChannels={paymentChannels}
         attachedPayments={attachedPayments}
         attachedAllVoided={attachedAllVoided}

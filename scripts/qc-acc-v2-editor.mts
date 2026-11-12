@@ -299,6 +299,27 @@ for (const tid of ["tot-sub", "tot-discount", "tot-net", "tot-vat", "tot-grand",
   assert(`E4 มี data-testid="${tid}" ให้ชุดภาพจริงอ่านตัวเลข`, readFileSync(join(ROOT, "src/components/account-v2/DocTotals.tsx"), "utf8").includes(`"${tid}"`));
 }
 assert('E4 ปุ่มเปิดเมนูอนุมัติมี data-testid="btn-approve-menu" (g1-invoice-form-menu.png)', editorSrc.includes('data-testid="btn-approve-menu"'));
+// ── ACCOUNT-FIX A2: "อนุมัติและ…" ต้องมีผู้อ่าน `next` จริง (เดิมต่อ `?next=` ที่ไม่มีหน้าไหนอ่าน) ──
+assert("A2.1 approveDocAction: next=print → หน้าพิมพ์ (editorPrintPath)", approveBody.includes('next === "print"') && approveBody.includes("editorPrintPath(base, id)"));
+assert("A2.2 approveDocAction: next=pay → หน้าเอกสาร ?pay=1 เฉพาะชนิดที่ค้างรับ/จ่าย", approveBody.includes("canPayAfterIssue(docType)") && approveBody.includes("?pay=1"));
+assert("A2.3 approveDocAction ไม่ต่อ ?next= ท้าย URL อีก (ไม่มีผู้อ่าน)", !approveBody.includes("?next="));
+assert("A2.4 ไม่มีตัวเลือก 'อนุมัติและส่งอีเมล' (ยังไม่มีระบบส่งเอกสารทางอีเมล)", !editorSrc.includes("อนุมัติและส่งอีเมล") && !/approve\("email"\)/.test(editorSrc));
+assert("A2.5 ทางใบเสร็จ (approveReceiptWithPaymentsAction) ไม่ทิ้ง next=print", /next === "print" \? `\$\{props\.basePath\}\/print\//.test(editorSrc));
+assert("A2.6 ตัวเลือกอนุมัติไม่มี emoji (ใช้ AccountIcon)", !/[\u{1F300}-\u{1FAFF}]/u.test(editorSrc.slice(editorSrc.indexOf("approveFollowUps"))));
+const paySrcA2 = readFileSync(join(ROOT, "src/components/account-v2/PaymentPanel.tsx"), "utf8");
+assert("A2.7 PaymentPanel เปิดเองเมื่อ ?pay=1 (autoOpenOnQuery)", paySrcA2.includes("autoOpenOnQuery") && paySrcA2.includes('searchParams.get("pay") === "1"'));
+const detailSrcA2 = readFileSync(join(ROOT, "src/components/account-v2/DocDetailPage.tsx"), "utf8");
+eq("A2.8 หน้าเอกสาร: ปุ่มรับชำระหลักตัวเดียวที่เปิดเองตาม ?pay=1", (detailSrcA2.match(/autoOpenOnQuery/g) ?? []).length, 1);
+{
+  const cfgA2 = cfg;
+  for (const dt of ["INVOICE", "DEPOSIT_RECEIPT", "PURCHASE", "EXPENSE", "ASSET_PURCHASE", "DEPOSIT_PAYMENT"] as const) {
+    assert(`A2.9 ${dt} มีตัวเลือก "อนุมัติและรับชำระ/บันทึกจ่าย"`, cfgA2.canPayAfterIssue(dt));
+  }
+  for (const dt of ["QUOTATION", "RECEIPT", "TAX_INVOICE", "CREDIT_NOTE", "DEBIT_NOTE", "CREDIT_NOTE_RECEIVED", "PURCHASE_ORDER"] as const) {
+    assert(`A2.10 ${dt} ไม่มีตัวเลือกรับชำระหลังอนุมัติ (ไม่มีการรับ/จ่ายต่อจากใบนี้)`, !cfgA2.canPayAfterIssue(dt));
+  }
+  eq("A2.11 หน้าพิมพ์ใช้ route เดียว print/<id>", cfgA2.editorPrintPath("/b", "x1"), "/b/print/x1");
+}
 const lineTableSrc = readFileSync(join(ROOT, "src/components/account-v2/DocLineTable.tsx"), "utf8");
 assert('E4 แถวรายการมี data-testid="line-<i>"', lineTableSrc.includes("`line-${i}`"));
 

@@ -3746,9 +3746,11 @@ try {
           }
           if (spec.name === "invoice-form-menu") {
             checks13.push([probe.editor.approveMenuVisible, `กด "อนุมัติใบแจ้งหนี้ ▾" แล้วเมนู [data-testid="approve-menu"] ต้องเปิด (g1-invoice-form-menu.png)`]);
-            for (const label of ["อนุมัติและพิมพ์", "อนุมัติและส่งอีเมล", "อนุมัติและรับชำระ"]) {
+            for (const label of ["อนุมัติและพิมพ์", "อนุมัติและรับชำระ"]) {
               checks13.push([probe.all.includes(label), `เมนูอนุมัติมีตัวเลือก "${label}"`]);
             }
+            // ACCOUNT-FIX A2 — "อนุมัติและส่งอีเมล" ถูกเอาออก (ยังไม่มีระบบส่งเอกสารทางอีเมล)
+            checks13.push([!probe.all.includes("อนุมัติและส่งอีเมล"), `เมนูอนุมัติไม่มีตัวเลือก "อนุมัติและส่งอีเมล"`]);
           }
           for (const [ok, label] of checks13) {
             if (!ok) failures++;
