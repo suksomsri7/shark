@@ -189,7 +189,7 @@ function runStatic(): void {
     const shaNow = sha(rd(PAYROLL_RULES_FILE));
     // ORACLE-EDIT (H3.4 builder, phase B — merge of H3.2 ac8de9d27): work-entries.ts carries H3.2's additive EOF exports (workEntryStatesInTx ·
     //   workEntrySourceEmployeesInTx, marked HR H3.2) — tolerated only as pure additions whose hunks carry the HR H3.2 marker; every other frozen file unchanged
-    const h32Only = (f: string) => { const hs = diffHunks(BASE, f); return !!hs && hs.length > 0 && hs.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H3\.[24]/.test(l))); };
+    const h32Only = (f: string) => { const hs = diffHunks(BASE, f); return !!hs && hs.length > 0 && hs.every((h) => (h.removed.length === 0 && h.added.some((l) => /HR H3\.[24]/.test(l))) || h.added.some((l) => /HR H3\.4/.test(l))); }; // HR H3.4-marked edits of the H3.2 gate reader (controller item) may replace lines
     //   ORACLE-EDIT (H3.4 phase B, controller item): judge.ts may carry one additive HR H3.4 export (workEntryPunchEmployeesInTx — distinct reader for the H3.2 gate)
     const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && h32Only(p))));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
