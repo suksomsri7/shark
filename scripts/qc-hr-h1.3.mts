@@ -795,18 +795,48 @@ function runStatic(): void {
     // ORACLE-EDIT (H4.4 r2 ruling 7): hr/lifecycle.ts is the intended reader/writer of the note/task tables (H4.4 R2) — only those 4 tokens are
     //   ignored there; every other S6.1 token (ytdJson · filingJson · bankFileKey · lawRowIds · sourceRef · HrWorkEntry · HrLawTable …) still counts
     const LIFE_OK = /^(HrReviewNote|HrOnboardingTask|hrReviewNote|hrOnboardingTask)$/;
-    // ORACLE-EDIT (controller 12 Nov · H4.6 Q15): hr/stock-charge.ts is the intended writer of HrPayAdjustment.sourceRef ("hrstock:<key>") — only that
-    //   one token is ignored there; every other S6.1 token still counts (same narrow style as the lifecycle exemption above)
+    // ORACLE-EDIT (controller 12 Nov · H4.6 Q15 + H2.9, narrowed by the law.ts ruling): designed sourceRef writers — only that token is ignored there:
+    //   hr/stock-charge.ts ("hrstock:<key>") · hr/ot.ts (OT_REQUEST; OT law rows go through hr/law.ts#loadOtLawRows, so HrLawTable stays ratcheted)
     const STOCK_OK = /^sourceRef$/;
-    // ORACLE-EDIT (controller 12 Nov · H4.6 r3): declared allowances for marked lines of hr/payroll.ts — per WO tag, the S6.1 tokens on lines carrying
-    //   that tag (code part before `//`) must equal the declared count; only then are they not counted (a mismatch counts them all) · H4.6 = 3 sourceRef
-    //   (destructure · findFirst where · create data in writeStockChargeAdjustmentInTx) · other WO tags (e.g. H2.9) add their own entry here
-    const PAY_MARKED: Record<string, number> = { "HR H4.6": 3 };
-    const markedIn = (s: string, tag: string) => s.split("\n").filter((l) => l.includes(tag)).reduce((n, l) => n + (l.split("//")[0]!.match(S61_RE) ?? []).length, 0);
-    const payAllow = (f: string, s: string) =>
-      f !== "src/lib/modules/hr/payroll.ts" ? 0 : Object.entries(PAY_MARKED).reduce((n, [tag, want]) => n + (markedIn(s, tag) === want ? want : 0), 0);
-    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t))).length - payAllow(f, s);
-    const hits = files.map((f) => [f, cntOf(f, rd(f)) - cntOf(f, atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
+    const OT_OK = /^sourceRef$/;
+    const cntOf = (f: string, s: string) =>
+      (stripComments(s).match(S61_RE) ?? []).filter(
+        (t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t)),
+      ).length;
+    // ORACLE-EDIT (controller 12 Nov · H2.9 + H4.6 r3, merged into one mechanism): hr/payroll.ts may carry exactly the declared number of S6.1 tokens inside
+    //   lines/blocks marked per WO tag (block = from a `HR <tag> ▸` line without `◂` to the line with `◂ HR <tag>`; a one-line hunk carries the tag itself) ·
+    //   tokens outside marked lines are ratcheted vs base (base split the same way) · a tag whose marked count ≠ declared counts all its tokens
+    //   H2.9 = 2 (2× sourceRef in writeOtAdjustmentInTx) · H4.6 = 3 (sourceRef: destructure · findFirst where · create data in writeStockChargeAdjustmentInTx)
+    const PAY_FILE = "src/lib/modules/hr/payroll.ts";
+    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3 };
+    const splitMarked = (src: string) => {
+      const inside: Record<string, string[]> = Object.fromEntries(Object.keys(PAY_MARKED).map((t) => [t, []]));
+      const outside: string[] = [];
+      let open: string | null = null;
+      for (const line of src.split("\n")) {
+        if (open) {
+          inside[open]!.push(line);
+          if (line.includes(`◂ ${open}`)) open = null;
+          continue;
+        }
+        const tag = Object.keys(PAY_MARKED).find((t) => line.includes(t));
+        if (!tag) {
+          outside.push(line);
+          continue;
+        }
+        inside[tag]!.push(line);
+        if (line.includes(`${tag} ▸`) && !line.includes("◂")) open = tag;
+      }
+      return { inside: Object.fromEntries(Object.entries(inside).map(([t, ls]) => [t, ls.join("\n")])), outside: outside.join("\n") };
+    };
+    const payNow = splitMarked(rd(PAY_FILE));
+    const payBase = splitMarked(atBase(PAY_FILE));
+    const payExtra = Object.entries(PAY_MARKED).reduce((n, [tag, want]) => {
+      const got = (stripComments(payNow.inside[tag] ?? "").match(S61_RE) ?? []).length;
+      return n + (got === want ? 0 : got);
+    }, 0);
+    const newOf = (f: string) => (f === PAY_FILE ? cntOf(f, payNow.outside) - cntOf(f, payBase.outside) + payExtra : cntOf(f, rd(f)) - cntOf(f, atBase(f)));
+    const hits = files.map((f) => [f, newOf(f)] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
     chk("S6.1", files.length > 20 && hits.length === 0, "0 new reads", `${hits.join(",") || "0"} of ${files.length} files (base ${baseRef().slice(0, 8)})`);
   }
   // S6.2 static part

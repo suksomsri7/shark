@@ -154,7 +154,7 @@ function runStatic(): void {
     corr: /ALTER TABLE "HrTimeCorrection"/.test(mig) && /"action" "HrCorrectionAction" NOT NULL DEFAULT 'ADD'/.test(mig) && /"day" DATE/.test(mig),
     uniq: /CREATE UNIQUE INDEX "HrTimeCorrection_pending_target_key"[^;]*\("attendanceId"\)[^;]*WHERE[^;]*'PENDING'/.test(mig) && /CREATE UNIQUE INDEX "HrTimeCorrection_pending_add_key"[^;]*\("employeeId", ?"day", ?"kind"\)[^;]*WHERE[^;]*'PENDING'[^;]*'ADD'/.test(mig),
     schema: /enum HrCorrectionAction \{\s*ADD\s+CHANGE\s+VOID\s*\}/.test(sc) && /voidedAt\s+DateTime\?/.test(sc) && /voidedByCorrectionId\s+String\?/.test(sc) && /correctionId\s+String\?/.test(sc) && /action\s+HrCorrectionAction/.test(sc),
-    only: migs.every((p) => p.startsWith("prisma/migrations/20270101000000_hr_time_correction/") || p.startsWith("prisma/migrations/20270101000001_hr_time_correction_idx/")), // ORACLE-EDIT r2
+    only: atBase(F.corr) !== null || migs.every((p) => p.startsWith("prisma/migrations/20270101000000_hr_time_correction/") || p.startsWith("prisma/migrations/20270101000001_hr_time_correction_idx/")), // ORACLE-EDIT r2 · controller 12 Nov: n/a once H2.6 is in the base (later WOs add migrations)
     // ORACLE-EDIT r2 (controller item 6): follow-up migration drops the duplicate pending_target_key (= H1.2 attendanceId_pending_key) · adds selfApplied (Q4 ruling)
     mig2: /DROP INDEX[^;]*"HrTimeCorrection_pending_target_key"/.test(rd(F.mig2)) && /"selfApplied" BOOLEAN NOT NULL DEFAULT false/.test(rd(F.mig2)) && /selfApplied\s+Boolean\s+@default\(false\)/.test(sc),
   };

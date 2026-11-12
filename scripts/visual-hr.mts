@@ -81,6 +81,12 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "att-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
     { key: "settings-attendance", path: (i) => `/app/sys/${i.hr}/hr/settings`, why: "การ์ดตัดสินผล/การเตือน hr-settings-attendance-policy (R12)", expect: { owner: 200 }, users: ["owner"] },
   ],
+  // HR H2.9 ▸ คำขอ OT (mockup 05 การ์ด OT · 07a ขอ OT) — หน้าใบลา: ฟอร์ม + รายการ (เจ้าของ ฿ · ผู้จัดการไม่เห็น ฿ — Q11) · ตั้งค่า: กฎ OT · เงินเดือน: อัตรา OT #18 ◂
+  "2.9": [
+    { key: "ot-leave", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager", "staff"], why: "ส่วนคำขอ OT: ฟอร์ม hr-ot-form · รายการ hr-ot-list · ปุ่มอนุมัติ/ไม่อนุมัติ/ยกเลิก (H2.9)" },
+    { key: "ot-settings", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner"], why: "การ์ดกฎคำขอ OT hr-settings-ot-policy (H2.9 R14)" },
+    { key: "ot-salary-rate", path: (i) => `/app/sys/${i.hr}/hr/payroll`, users: ["owner"], why: "ช่องอัตรา OT ต่อชั่วโมง hr-salary-ot-rate ในฟอร์มเงินเดือน (#18)" },
+  ],
   // HR H2.6 ▸ brief §5 คำขอแก้เวลา: 04A ปุ่ม "แก้เวลา" ต่อแถว + ฟอร์ม · ?view=corrections การ์ด (mockup 05 — seed ไม่มีคำขอ ⇒ ว่าง ยกเว้นผู้ควบคุมยื่นก่อนถ่าย) ·
   //   พนักงาน "ขอแก้เวลา" บนปฏิทินของตัวเอง + รายการของฉัน · ผู้ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404 ◂
   "2.6": [

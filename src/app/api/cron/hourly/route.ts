@@ -221,6 +221,23 @@ export async function GET(req: Request) {
     });
   }
   // ◂ HR H2.5
+  // HR H2.9 ▸ R6: จ่าย OT ที่อนุมัติแล้ว + คิดใหม่เมื่อผลลงเวลาเปลี่ยนรุ่น ทุกระบบ HR (≤ 100 ธุรกรรม/ระบบ · งบ 20 วิ · รันซ้ำได้) · best-effort
+  try {
+    const ot = await import("@/lib/modules/hr/ot");
+    const otSystems = await (await import("@/lib/core/db")).prisma.appSystem.findMany({ where: { type: "HR" }, select: { id: true, tenantId: true }, orderBy: { id: "asc" }, take: 2000 });
+    const otEnd = Date.now() + 20_000;
+    const k = otSystems.length ? Math.floor(Date.now() / 3_600_000) % otSystems.length : 0; // หมุนจุดเริ่มทุกชั่วโมง
+    for (const s of [...otSystems.slice(k), ...otSystems.slice(0, k)]) {
+      if (Date.now() > otEnd) break;
+      const r = await ot.settleOtRequests({ tenantId: s.tenantId, systemId: s.id, now: new Date(), maxTx: 100 });
+      if (r.failed > 0) await logOps("WARN", "cron", "settleOtRequests: คำขอ OT บางรายการจ่ายไม่สำเร็จ (รอบหน้าลองใหม่)", { tenantId: s.tenantId, detail: `system=${s.id} failed=${r.failed}` });
+    }
+  } catch (e) {
+    await logOps("WARN", "cron", "settleOtRequests (จ่าย OT ที่อนุมัติแล้ว) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ HR H2.9
   // HR H4.4 ▸ R5: เตือนครบทดลองงาน/สัญญาใกล้หมด ทุกร้าน (≤ 50 ต่อระบบ · ≤ 500 ต่อรอบ · ครั้งเดียวต่อวันที่ · ไม่มีอะไรครบ = ไม่เขียนอะไร) ·
   //   best-effort: ล้มห้ามทำให้รอบนี้แดง (ไม่เพิ่มช่องในผลลัพธ์ของ route) · event ถูกระบายใน drainAll ด้านล่าง
   try {

@@ -26,6 +26,8 @@ import { applyHolidayPresetAction } from "@/lib/modules/hr/settings-actions"; //
 import { LEAVE_TEXT } from "@/lib/modules/hr/leave-rules"; // HR H2.8 ▸ presetNone ◂
 import { ATTENDANCE_SETTINGS_TEXT, canManageClockSettings, CLOCK_SETTINGS_TEXT, getAttendancePolicy, getClockPolicy, listClockSites } from "@/lib/modules/hr/clock-settings"; // HR H2.4 ▸ R10 + Q1 ◂ · HR H2.5 ▸ R12 ◂
 import { saveAttendancePolicyAction } from "@/lib/modules/hr/attendance-actions"; // HR H2.5 ▸ R12 ◂
+import { getOtPolicy, OT_TEXT } from "@/lib/modules/hr/ot"; // HR H2.9 ▸ R14 นโยบาย OT ◂
+import { saveOtPolicyAction } from "@/lib/modules/hr/ot-actions"; // HR H2.9 ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -47,6 +49,7 @@ const MSG_TEXTS: Record<string, string> = {
   "l.presetNone": LEAVE_TEXT.presetNone, // HR H2.8 ◂
   ...Object.fromEntries(Object.entries(CLOCK_SETTINGS_TEXT).map(([k, v]) => [`c.${k}`, v])), // HR H2.4 ◂
   ...Object.fromEntries(Object.entries(ATTENDANCE_SETTINGS_TEXT).map(([k, v]) => [`a.${k}`, v])), // HR H2.5 ◂
+  ...Object.fromEntries((["sAfter", "sAhead", "sRound"] as const).map((k) => [`o.${k}`, OT_TEXT[k]])), // HR H2.9 ◂
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
 /** กลับหน้าเดิมพร้อมรหัสผลการกด (redirect โยนเพื่อจบ action) */
@@ -66,6 +69,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const scope = hrScopeOf(viewer);
   const t = await getTranslations("hr.settings");
   const tLaw = await getTranslations("hr.law"); // HR H3.3 ▸ ป้ายลิงก์ตารางกฎหมาย ◂
+  const tOt = await getTranslations("hr.ot"); // HR H2.9 ◂
   const def = systemDef(sys.type);
   const ctx = { tenantId: auth.active.tenantId, systemId: id };
   const thisYear = Number(thaiDateKey(new Date()).slice(0, 4));
@@ -76,6 +80,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const clockOk = canManageClockSettings(viewer);
   const [clockSites, clockPolicy] = clockOk ? await Promise.all([listClockSites(ctx, viewer), getClockPolicy(ctx)]) : [null, null];
   const attPolicy = clockOk ? await getAttendancePolicy(ctx) : null; // HR H2.5 ▸ R12 ◂
+  const otPolicy = await getOtPolicy(ctx); // HR H2.9 ▸ R14 (แก้ได้เฉพาะผู้ดูแลทุกสาขา — service ตรวจซ้ำ) ◂
   const siteOf = new Map((clockSites?.ok ? clockSites.items : []).map((x) => [x.unitId ?? "all", x]));
   const all = isAllBranches(scope);
   const where = (u: string | null) => (u ? (unitName.get(u) ?? t("unit")) : t("shopWide"));
@@ -128,6 +133,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const onSaveAttendancePolicy = async (fd: FormData) => {
     "use server";
     back(path, year, await saveAttendancePolicyAction(fd));
+  };
+  // HR H2.9 ▸ R14 ◂
+  const onSaveOtPolicy = async (fd: FormData) => {
+    "use server";
+    back(path, year, await saveOtPolicyAction(fd));
   };
 
   const unitSelect = (testid: string) => (
@@ -504,6 +514,38 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               );
             })}
           </ul>
+        </Section>
+      )}
+      {/* HR H2.9 ▸ R14 นโยบายคำขอ OT (ทั้งร้าน — ผู้ดูแลทุกสาขาเท่านั้น) · อัตราตามตารางกฎหมาย (หน้า law) ◂ */}
+      {all && (
+        <Section title={tOt("policyTitle")} card>
+          <form action={onSaveOtPolicy} className="flex flex-col gap-2" data-testid="hr-settings-ot-policy">
+            <input type="hidden" name="systemId" value={id} />
+            <p className="text-xs text-[color:var(--color-muted)]">{tOt("policyDesc")}</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1 text-xs">
+                {tOt("afterHours")}
+                <input name="afterHours" type="number" min={0} max={72} step={1} defaultValue={otPolicy.afterHours} className="input min-h-[44px] w-28" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                {tOt("maxAheadDays")}
+                <input name="maxAheadDays" type="number" min={1} max={90} step={1} defaultValue={otPolicy.maxAheadDays} className="input min-h-[44px] w-28" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                {tOt("otRoundMin")}
+                <select name="otRoundMin" defaultValue={String(otPolicy.otRoundMin)} className="input min-h-[44px] w-28">
+                  {[1, 15, 30].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <button type="submit" className={`${btn} self-start`} data-testid="hr-settings-ot-policy-save">
+              {tOt("policySave")}
+            </button>
+          </form>
         </Section>
       )}
       {/* HR H4.4 ▸ ค่าตั้งวงจรพนักงาน — ผู้ดูข้อมูลบันทึก (OWNER/คีย์ตรง) เท่านั้น · ผลการกด ?life= (allowlist) ◂ */}

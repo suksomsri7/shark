@@ -19,6 +19,8 @@ import {
   isAddKind,
   type WhtDeductions,
 } from "./payroll-rules";
+import { OT_LAW_DEFAULT, OT_TEXT, otLawOf, otLegalRateFloor, otText } from "./ot-rules"; // HR H2.9 ▸ #18 ด่านอัตรา OT ที่ตั้งเอง + ข้อความรายการปรับเงินจากคำขอ OT ◂
+import { loadOtLawRows } from "./law"; // HR H2.9 ▸ #18 แถวกฎหมาย OT (law.ts = ผู้อ่านตารางเดียว) ◂
 
 // Payroll ไทย — service ชั้นประกอบ (system-scoped HR) · WO-0036
 // สเปคเต็ม docs/sds/modules/future-payroll-tax.md §A · v1 = MONTHLY เท่านั้น
@@ -49,6 +51,8 @@ export type SetSalaryProfileInput = {
   payType?: "MONTHLY" | "DAILY" | "HOURLY";
   dailyRateSatang?: number | null;
   hourlyRateSatang?: number | null;
+  /** HR H2.9 ▸ #18 อัตรา OT วันทำงานต่อชั่วโมง (สตางค์ · ×1.5 แล้ว) — ไม่ส่ง = คงเดิม · null = ล้าง (คิดจากค่าจ้างตามกฎหมาย) · ต้อง ≥ otLegalRateFloor ◂ */
+  otHourlyRateSatang?: number | null;
 };
 
 // HR H1.1 ▸ R1/R6: ข้อความคงที่ของรูปแบบค่าจ้าง ◂
@@ -72,6 +76,7 @@ function payTypeData(input: SetSalaryProfileInput): { payType?: "MONTHLY" | "DAI
 
 export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): Promise<{ id: string }> {
   const payTypeFields = payTypeData(input); // HR H1.1 ▸ ตรวจก่อนอ่าน/เขียนอะไร ◂
+  const otRateFields = await otRateData(ctx, input); // HR H2.9 ▸ #18 ตรวจก่อนเขียน (ต่ำกว่ากฎหมาย/ไม่ใช่จำนวนเต็มบวก = PayrollInputError ไม่มีแถวถูกเขียน) ◂
   const deductionJson = {
     spouse: input.deductions?.spouse ?? false,
     children: Math.max(0, input.deductions?.children ?? 0),
@@ -91,6 +96,7 @@ export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): 
         taxId: input.taxId?.trim() || null,
         personalDeductionJson: deductionJson,
         ...payTypeFields,
+        ...otRateFields, // HR H2.9 ◂
       },
     });
     return { id: existing.id };
@@ -106,11 +112,40 @@ export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): 
       taxId: input.taxId?.trim() || null,
       personalDeductionJson: deductionJson,
       ...payTypeFields,
+      ...otRateFields, // HR H2.9 ◂
     },
     select: { id: true },
   });
   return { id: created.id };
 }
+
+// HR H2.9 ▸ #18 (REVIEW #18 · Q12): อัตรา OT ที่ตั้งเองต้องเป็นจำนวนเต็มสตางค์ > 0 และไม่ต่ำกว่า 1.5 เท่าของค่าจ้างต่อชั่วโมงตามกฎหมาย
+//   (otLegalRateFloor ของรูปแบบค่าจ้างหลังบันทึก · ตาราง OT ที่ ACTIVE วันนี้ หรือค่าตั้งต้น) · ไม่มีค่าจ้างฐาน (เพดานไม่รู้) = รับค่าบวกใด ๆ
+async function otRateData(ctx: Ctx, input: SetSalaryProfileInput): Promise<{ otHourlyRateSatang?: number | null }> {
+  const given = Object.prototype.hasOwnProperty.call(input, "otHourlyRateSatang") && input.otHourlyRateSatang !== undefined;
+  const v = input.otHourlyRateSatang;
+  if (given && v === null) return { otHourlyRateSatang: null };
+  if (given && (!posInt(v) || v > 2_147_483_647)) throw new PayrollInputError(OT_TEXT.rateBad);
+  const cur = await tenantDb(ctx).hrSalaryProfile.findFirst({ where: { systemId: ctx.systemId, employeeId: input.employeeId }, select: { payType: true, dailyRateSatang: true, hourlyRateSatang: true, otHourlyRateSatang: true } });
+  // r2.1b: ทุกการบันทึก (ขึ้นเงินเดือน · เปลี่ยนรูปแบบค่าจ้าง · มีหรือไม่มีช่อง OT) ตรวจอัตราที่ตั้งไว้กับเพดานใหม่ — ต่ำกว่า/ไม่มีฐาน ⇒ ปฏิเสธ (ไม่ล้างเอง)
+  const rate = given ? (v as number) : (cur?.otHourlyRateSatang ?? null);
+  if (rate === null) return {};
+  const pt = input.payType ?? cur?.payType ?? "MONTHLY";
+  const profile = {
+    payType: pt,
+    baseSalarySatang: input.baseSalarySatang,
+    dailyRateSatang: input.payType !== undefined ? (input.dailyRateSatang ?? null) : (cur?.dailyRateSatang ?? null),
+    hourlyRateSatang: input.payType !== undefined ? (input.hourlyRateSatang ?? null) : (cur?.hourlyRateSatang ?? null),
+    otHourlyRateSatang: null,
+  };
+  const today = bkkParts(new Date()).dateStr;
+  const law = otLawOf(await loadOtLawRows(today), today);
+  const floor = otLegalRateFloor(profile, law.ok ? law.law : OT_LAW_DEFAULT);
+  if (floor === null) throw new PayrollInputError(OT_TEXT.rateNoBase);
+  if (rate < floor) throw new PayrollInputError(given ? OT_TEXT.rateBelowLaw : OT_TEXT.rateRecheck);
+  return given ? { otHourlyRateSatang: rate } : {};
+}
+// ◂ HR H2.9
 
 export function listSalaryProfiles(ctx: Ctx) {
   return tenantDb(ctx).hrSalaryProfile.findMany({
@@ -341,6 +376,7 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
   if (row.crmCommissionId != null) return { ok: false, reason: CANCEL_FROM_CRM };
   { const stockLock = await stockChargeAdjustmentLock(ctx, row.id); if (stockLock) return { ok: false, reason: stockLock }; } // HR H4.6 ▸ รายการหักค่าของที่บันทึกค้างคืน/คืนแล้ว ลบที่หน้าเงินเดือนไม่ได้ ◂
+  if (row.sourceType === "OT_REQUEST") return { ok: false, reason: OT_TEXT.otRow }; // HR H2.9 ▸ r2.3 รายการจากคำขอ OT (จ่าย/ส่วนต่าง/กลับ) แก้ที่คำขอ OT เท่านั้น ◂
   let boundDraft: { id: string; periodKey: string } | null = null;
   if (row.runId) {
     const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: row.runId, systemId: ctx.systemId }, select: { id: true, periodKey: true, status: true, journalEntryId: true } });
@@ -898,6 +934,7 @@ async function cancelBoundDraftAdjustment(
       const cur = await lockRunRow(tx, ctx, run.id);
       if (!cur || cur.periodKey !== run.periodKey) throw new RunRefusal(RUN_CHANGED);
       if (cur.status !== "DRAFT" || cur.journalEntryId) throw new RunRefusal(CANCEL_BOUND_APPROVED);
+      if (await tx.hrPayAdjustment.findFirst({ where: { ...scope, id: row.id, sourceType: "OT_REQUEST" }, select: { id: true } })) throw new RunRefusal(OT_TEXT.otRow); // HR H2.9 ▸ r2.3 ◂
       const del = await tx.hrPayAdjustment.deleteMany({ where: { ...scope, id: row.id, runId: run.id, status: row.status as "PENDING" | "APPROVED" | "REJECTED" } });
       if (del.count !== 1) throw new RunRefusal(RUN_CHANGED);
       const note = `คำนวณใหม่ ${bkkStamp(new Date())}`;
@@ -1330,6 +1367,7 @@ export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: Payrol
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
   if (row.crmCommissionId) return { ok: false, reason: "รายการคอมมิชชันจาก CRM ระบบ CRM ย้ายงวดให้เอง" };
   { const stockLock = await stockChargeAdjustmentLock(ctx, row.id); if (stockLock) return { ok: false, reason: stockLock }; } // HR H4.6 ▸ ย้ายงวดก็ไม่ได้ (ดูที่ส่วน "หักค่าของ") ◂
+  if (await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id, sourceType: "OT_REQUEST" }, select: { id: true } })) return { ok: false, reason: OT_TEXT.otRow }; // HR H2.9 ▸ r2.3 ◂
   if (row.runId || (row.status !== "PENDING" && row.status !== "APPROVED")) return { ok: false, reason: "รายการนี้ไม่ได้ค้างแล้ว กรุณาเปิดดูใหม่" };
   if (!actor.isOwner) {
     const uid = typeof actor.userId === "string" ? actor.userId.trim() : "";
@@ -1770,3 +1808,84 @@ export async function stockChargeTargetPeriod(ctx: Ctx, from: string): Promise<s
   return runs.has(from) ? nextRunlessPeriod(from, runs) : from;
 }
 // ◂ HR H4.6
+// ─────────── HR H2.9 ▸ ตัวเขียนรายการปรับเงินจากคำขอ OT (sourceType OT_REQUEST · sourceRef "<otId>:<gen>") — ผู้เรียก = hr/ot.ts เท่านั้น ───────────
+//   กติกา (brief R7 · R10 · มติ Q13): ผู้เรียกถือล็อกงวด hr:payroll:run:<ระบบ>:<งวด> ของงวดงาน (P0) + งวดปลายทาง (เรียงจากน้อยไปมาก) แล้วจึง hr:ot:<id>
+//   และส่ง tx ของตัวเอง (ทุกคำสั่งใช้ tx นี้) · ยอดที่ควรได้ (entitled) เทียบกับ Σ แถว APPROVED ของคำขอ (OT บวก · DEDUCTION ลบ):
+//     เท่ากัน ⇒ ไม่เขียนอะไร (เล่นซ้ำ/อนุมัติซ้ำ = ไม่มีแถวใหม่) ·
+//     ไม่เท่า ⇒ แถว APPROVED ที่ยังไม่เข้ารอบ ⇒ REJECTED (guard runId IS NULL) · ส่วนต่าง = entitled − Σ แถวที่เข้ารอบแล้ว ⇒ แถวรุ่นใหม่
+//       OT (บวก) หรือ DEDUCTION (ลบ) เกิดเป็น APPROVED (คำขอคือขั้นรออนุมัติแล้ว) ในงวดปลายทาง (ตรวจซ้ำใต้ล็อกว่ายังไม่มีรอบที่ยังมีผล)
+//   ⇒ ไม่ลบ/ไม่แก้แถวที่เข้ารอบแล้วเด็ดขาด · Σ OT − Σ DEDUCTION ของแถว APPROVED = entitled เสมอ · unique sourceRef กันรุ่นซ้ำ ·
+//   amount 0 ⇒ ไม่มีแถว · เงินจำนวนเต็มสตางค์ ≤ 2³¹−1 · โน้ต = ข้อความคงที่ + วันที่ไทย (ไม่มีชื่อ/ยอด)
+export type OtAdjustmentWrite = {
+  otRequestId: string;
+  employeeId: string;
+  /** ยอดที่ควรได้ทั้งหมดของคำขอตอนนี้ (สตางค์ ≥ 0 · ยกเลิก = 0) */
+  entitledSatang: number;
+  /** รุ่นถัดไป (= HrOtRequest.settleGen + 1) */
+  nextGen: number;
+  /** งวดปลายทางที่ผู้เรียกล็อกและตรวจแล้วว่ายังไม่มีรอบที่ยังมีผล */
+  targetPeriod: string;
+  paidMinutes: number;
+  requestedById: string | null;
+  decidedById: string | null;
+  /** วันที่ไทยสำหรับโน้ต (เช่น "7 ก.ค. 74") */
+  dateLabel: string;
+  now: Date;
+};
+export type OtAdjustmentResult = { gen: number; created: { id: string; kind: "OT" | "DEDUCTION"; amountSatang: number; periodKey: string } | null; rejected: number };
+export class OtAdjustmentConflict extends Error {
+  constructor(code: string) {
+    super(code);
+    this.name = "OtAdjustmentConflict";
+  }
+}
+export async function writeOtAdjustmentInTx(tx: Prisma.TransactionClient, ctx: Ctx, w: OtAdjustmentWrite): Promise<OtAdjustmentResult> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const INT = 2_147_483_647;
+  if (!Number.isSafeInteger(w.entitledSatang) || w.entitledSatang < 0 || w.entitledSatang > INT) throw new OtAdjustmentConflict("OT_BAD_AMOUNT");
+  if (!Number.isSafeInteger(w.nextGen) || w.nextGen < 1 || !PERIOD_RE.test(w.targetPeriod)) throw new OtAdjustmentConflict("OT_BAD_INPUT");
+  const rows = await tx.hrPayAdjustment.findMany({
+    where: { ...scope, employeeId: w.employeeId, sourceType: "OT_REQUEST", sourceRef: { startsWith: `${w.otRequestId}:` } },
+    select: { id: true, kind: true, amountSatang: true, status: true, runId: true },
+    orderBy: { id: "asc" },
+  });
+  const signed = (r: { kind: string; amountSatang: number }) => (r.kind === "OT" ? r.amountSatang : -r.amountSatang);
+  const live = rows.filter((r) => r.status === "APPROVED");
+  const all = live.reduce((a, r) => a + signed(r), 0);
+  if (all === w.entitledSatang) return { gen: w.nextGen - 1, created: null, rejected: 0 };
+  const unbound = live.filter((r) => r.runId === null).map((r) => r.id);
+  if (unbound.length) {
+    const rj = await tx.hrPayAdjustment.updateMany({ where: { ...scope, id: { in: unbound }, runId: null, status: "APPROVED" }, data: { status: "REJECTED", decidedAt: w.now } });
+    if (rj.count !== unbound.length) throw new OtAdjustmentConflict("OT_ROW_CHANGED");
+  }
+  const bound = live.filter((r) => r.runId !== null).reduce((a, r) => a + signed(r), 0);
+  const delta = w.entitledSatang - bound;
+  if (delta === 0) return { gen: w.nextGen - 1, created: null, rejected: unbound.length };
+  const taken = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: w.targetPeriod, ...liveRunWhere() }, select: { id: true } });
+  if (taken) throw new OtAdjustmentConflict("OT_TARGET_TAKEN");
+  const kind = delta > 0 ? "OT" : "DEDUCTION";
+  const amount = Math.abs(delta);
+  if (amount > INT) throw new OtAdjustmentConflict("OT_BAD_AMOUNT");
+  const first = rows.length === 0;
+  const row = await tx.hrPayAdjustment.create({
+    data: {
+      ...scope,
+      employeeId: w.employeeId,
+      periodKey: w.targetPeriod,
+      kind,
+      amountSatang: amount,
+      hours: first && kind === "OT" ? w.paidMinutes / 60 : null,
+      rateSatang: null,
+      note: otText(first ? OT_TEXT.adjNote : OT_TEXT.revNote, { d: w.dateLabel }),
+      status: "APPROVED",
+      requestedById: w.requestedById,
+      decidedById: w.decidedById,
+      decidedAt: w.now,
+      sourceType: "OT_REQUEST",
+      sourceRef: `${w.otRequestId}:${w.nextGen}`,
+    },
+    select: { id: true },
+  });
+  return { gen: w.nextGen, created: { id: row.id, kind, amountSatang: amount, periodKey: w.targetPeriod }, rejected: unbound.length };
+}
+// ◂ HR H2.9
