@@ -96,3 +96,45 @@ D-1 backoffice UI for create/activate/retire (functions only) · D-2 H3.4 wires 
 1. Deploy code (no migration). Nothing activates a law row; every run keeps engineVersion 1 (v2 is not wired until H3.4). The 4 seeded v1 rows stay DRAFT; the law page shows "รอนักบัญชียืนยัน".
 2. After the accountant signs off (HQ23, NA-10): a SUPER_ADMIN (platform owner) runs, from a one-off server-side script against prod with owner GO, `createLawDraft(pu, {kind, effectiveFrom:"<real start date>", json, supersedesId:<v1 row id>})` for SSO, TAX_BRACKET, DEDUCTION, then `activateLawRow(pu, id, {approvedByName:"<accountant name>"})`. Each step writes `PlatformAuditLog hr.law.*`. `pu` is re-read from PlatformUser — a non-SUPER_ADMIN is refused.
 3. Never edit json in place; a change = new draft + supersedesId → activate (same-date predecessor is retired in the same tx).
+
+## r2 (12 Nov)
+Base dc98d4f37 (controller applied ORACLE-EDITs S1.5 + H1.3 S6.1). Review MERGE (M-1, M-2 + minors) · hunt MERGE (F1–F3, N2). Controller rulings 1–6 final; my r1 decisions accepted.
+
+**Oracle (pre-approved ORACLE-EDIT):** added S9.1–S9.5 (51 checks) + one report line "ACTIVE law rows after cleanup". One edit to an existing check was unavoidable: **S8.4 `retire` sub-check now retires the DRAFT `id2` instead of the ACTIVE `id1`** (ruling 1 makes retiring an ACTIVE row a refusal; the ACTIVE refusal itself is S9.1). Fixture untouched.
+RED proof on dc98d4f37 product code (forced): `===== qc-hr-h3.3 ===== passed 46/51 (QC_FORCE)` — S9.3 `tax,ytd · tax 9205889471632` · S9.4 `accepted 1,"yes","true","on",null` · S9.5 `accepted 2026-12-31T23:30:00,2026-06-30T17:00:00.000Z,2026-07-01` · S9.1 `retire(ACTIVE)=NO_REFUSAL` · S9.2 `{"ok":true,…} · row ACTIVE` · S8.4 green · residue none · ACTIVE rows after cleanup 0.
+
+**Fixes**
+| # | ruling | where | what |
+|---|---|---|---|
+| 1 | M-1 | `platform/hr-law.ts` retireLawRow | DRAFT → RETIRED only; ACTIVE ⇒ `ACTIVE_NOT_RETIRABLE`, nothing written (no audit). ACTIVE leaves ACTIVE only via same-date supersede in activateLawRow. |
+| 2 | F1 | `platform/hr-law.ts` | `superAdminId` reads `PlatformUser` `FOR SHARE` (create/retire/activate). activateLawRow: quick plain pre-check → slot lock → `superAdminId` FOR SHARE **after** the lock ⇒ demotion committed while waiting = `NOT_ALLOWED`; demotion after the re-read waits for the tx. |
+| 3 | F2 | `payroll-rules-v2.ts` | `exact/mul/sum` helpers: every product/sum (SSO base×rate, band×rate, income×expense rate, children×allowance, ×12, regular×k, projections, classify sums, gross, net, totals, prior sums) must be a safe integer, else `BAD_SATANG`. `roundDivHalfUp` no longer doubles the dividend (floor + remainder correction) so exact results stay exact up to 2^53 (annualTaxV2(2e12) = 699,951,500,000). |
+| 4 | F3 | `payroll-rules-v2.ts` deductionsOf | `spouse` must be boolean or absent; anything else (1, "yes", "true", null …) ⇒ `BAD_DEDUCTION`. |
+| 5 | N2 | `law.ts` lawDayOf | signature `Date` only; non-Date or invalid Date ⇒ `LAW_BAD_DAY` (zone-less string would be read in the server TZ). |
+| 6 | M-2 / NA-11…15 | brief §9 + below | no code change |
+
+**v1 vs v2 — additional declared differences**
+| # | difference | v1 | v2 | example (satang) |
+|---|---|---|---|---|
+| D9 | spouse flag type | any truthy value = spouse | boolean only; non-boolean refused `BAD_DEDUCTION` | `{monthlyIncome 17,999,997, sso year 900,000, spouse:1}`: v1 2,897,916 · v2 refused (spouse:true = 2,897,916 both) |
+| D10 | huge amounts | float result, may lose precision | refused `BAD_SATANG` | net 26,302,679,918,950: v1 float ≈ 9,205,889,471,633 · v2 refused (exact below: net 2,000,000,000,000 ⇒ 699,951,500,000 both) |
+| D11 | negative yearly SSO into whtAnnualised | clamps to 0 | refused `BAD_SATANG` (review item 2; not reachable from computeItem) | ssoEmployeeYear −1 |
+
+**Accountant list (append to §3; also in the brief §9)** — NA-11 regular-month basis for variable/commission-only/DAILY/HOURLY staff (M-2; commission-only 50,000 baht/month single ⇒ Jan–Jun 0, Jul 28,613 … Dec 1,015,718 satang) · NA-12 leaver's final payslip true-up (k = 0)? · NA-13 11 or 13 pay days in a tax year (Dec period paid in Jan, back-pay sharing a pay day) · NA-14 projected regular SSO = SSO of base (83 baht min when base 0) · NA-15 SSO allowance uses projected, not paid, SSO.
+🔴 **H3.4 must not wire v2 for commission-only / daily / hourly staff until NA-11 is ruled.**
+
+**Debts for H3.4 (added)** — D-6 DRAFT runs sharing a pay day: `ytdPriorV2` counts APPROVED/PAID only, so sibling DRAFTs each withhold as if alone ⇒ recompute at approval, or refuse while a same-day/earlier run of the year is DRAFT (review m-4) · D-7 recompute DRAFT runs whose `lawRowIds` differ from `loadLawSet` at approval (law row activated after the draft was computed) · D-8 leaver / no-December-pay-day true-up (review m-5; a "final payslip ⇒ k = 0" flag) · D-9 normalise stored `personalDeductionJson.spouse` to boolean before calling v2 (D9) · D-10 review m-3: a named `globalReadDb()` helper in core instead of the placeholder-tenant `tenantDb` in law.ts (needs a fitness allow entry).
+
+**Who gains/loses (delta)** — SUPER_ADMIN loses "retire an ACTIVE law row" (only same-date supersede). A platform user demoted while an activation waits on the slot lock is refused.
+
+**Verification r2** (lane DB via qc-hr.sh · QC_H06_BASE=d350c26c…)
+| run | summary | exit |
+|---|---|---|
+| qc-hr-h3.3 unforced / forced / forced | 51/51 ×3 · NA 10/10 skipped · Z1 none · ACTIVE law rows after cleanup 0 (×3) | 0 / 0 / 0 |
+| qc-payroll (FREEZE) | 19/19 | 0 |
+| qc-hr-h1.3 | 63/63 | 0 |
+| qc-hf-hr-privacy | 194/194 | 0 |
+| fitness no-env | 53/53 | 0 |
+| fitness-hr no-env | 9/9 | 0 |
+| typecheck (once, 12288/14000M) | 0 errors | 0 |
+Not run in r2: fitness/fitness-hr with env, the other r1 suites (payadjust, reverse, crm-c3.3, account-cpa, nav, h0.6) — r2 touched only the v2 engine, law.ts lawDayOf, platform/hr-law.ts and the oracle.

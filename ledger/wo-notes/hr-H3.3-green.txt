@@ -1,19 +1,30 @@
-# H3.3 builder runs @ bdeeffb78 · lane DB via qc-hr.sh · 2026-11-11T23:45:51Z
-# summary (unforced + forced ×2):
-oracle-unforced exit=1 :: ===== qc-hr-h3.3 ===== passed 45/46
-oracle-forced1 exit=1 :: ===== qc-hr-h3.3 ===== passed 45/46 (QC_FORCE)
-oracle-forced2 exit=1 :: ===== qc-hr-h3.3 ===== passed 45/46 (QC_FORCE)
-# only red = S1.5 msgs,pending (oracle reads src/messages/th.json — ORACLE-EDIT requested); same run with paths th/common.json on a throw-away copy:
-===== qc-hr-h3.3 ===== passed 46/46 (QC_FORCE)
+# H3.3 r2 builder runs · lane DB via qc-hr.sh · 2026-11-12T00:13:48Z
+# RED proof on dc98d4f37 product code (forced):
+  ❌ [H3.3-S9.3] [pure] no silent precision loss: annualTaxV2(26,302,679,918,950) · whtYtdV2 monthly 750,599,937,895,083 ⇒ BAD_SATANG · annualTaxV2(2e12) = 699,951,500,000 exact — expected BAD_SATANG ×2 · exact below | actual tax,ytd · tax 9205889471
+  ❌ [H3.3-S9.4] [pure] deductions.spouse non-boolean (1/'yes'/'true'/'on'/null) ⇒ BAD_DEDUCTION · true = 2,897,916 · absent = v1 — expected boolean only | actual refused · accepted 1,"yes","true","on",null
+  ❌ [H3.3-S9.5] [pure] lawDayOf accepts a Date only: zone-less / ISO strings + invalid Date ⇒ LAW_BAD_DAY · Date 2026-06-30T17:00Z = 2026-07-01 — expected Date only | actual strings · accepted 2026-12-31T23:30:00,2026-06-30T17:00:00.000Z,2026-07-01
+  ❌ [H3.3-S9.1] [db] retireLawRow: ACTIVE row ⇒ ACTIVE_NOT_RETIRABLE · row stays ACTIVE · no hr.law.retire audit · DRAFT row still retires — expected ACTIVE_NOT_RETIRABLE · DRAFT retires | actual code,stays,noAudit · retire(ACTIVE)=NO_REFUSAL
+  ❌ [H3.3-S9.2] [db] activateLawRow re-reads SUPER_ADMIN after the slot lock: demoted to FINANCE while waiting ⇒ NOT_ALLOWED · row stays DRAFT — expected NOT_ALLOWED · DRAFT | actual {"ok":true,"id":"cmwcs8c8n000ht3kzbyqvffm7"} · row ACTIVE
+===== qc-hr-h3.3 ===== passed 46/51 (QC_FORCE)
+# r2 summary:
+oracle-unforced exit=0 :: JSON_SUMMARY {"suite":"qc-hr-h3.3","total":51,"passed":51,"failed":[],"findings":[],"skipped":false,"forced":f ::   ℹ️  ACTIVE law rows after cleanup: 0
+oracle-forced1 exit=0 :: JSON_SUMMARY {"suite":"qc-hr-h3.3","total":51,"passed":51,"failed":[],"findings":[],"skipped":false,"forced":t ::   ℹ️  ACTIVE law rows after cleanup: 0
+oracle-forced2 exit=0 :: JSON_SUMMARY {"suite":"qc-hr-h3.3","total":51,"passed":51,"failed":[],"findings":[],"skipped":false,"forced":t ::   ℹ️  ACTIVE law rows after cleanup: 0
+qc-payroll exit=0 :: JSON_SUMMARY {"total":19,"passed":19,"findings":[]} :: 
+qc-hr-h1.3 exit=0 :: JSON_SUMMARY {"suite":"qc-hr-h1.3","total":63,"passed":63,"failed":[],"findings":[],"skipped":false,"forced":t :: 
+qc-hf-hr-privacy exit=0 :: JSON_SUMMARY {"total":194,"passed":194,"findings":[]} :: 
+fitness-noenv exit=0 :: JSON_SUMMARY {"total":53,"passed":53,"findings":[]}
+fitness-hr-noenv exit=0 :: JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+typecheck exit=0 errors=0
 
-# ===== full output: forced run 2 =====
+# ===== full output: forced run 2 (r2) =====
 [env] qc-hr-h3.3 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
 [qc-hr-h3.3] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
   ✅ [H3.3-S1.1] [static] payroll-rules.ts sha frozen (unconditional) · payroll.ts + payroll-rules.ts unchanged vs base (n/a once H3.3 in base)
   ✅ [H3.3-S1.2] [static] payroll-rules-v2.ts pure: only `import type` · no prisma/db · no Date.now/new Date(/Math.random/process./fetch/async/await
   ✅ [H3.3-S1.3] [static] law.ts = only reader: HrLawTable named under src/** only in scope.ts · db.ts · hr/law.ts · platform/hr-law.ts · law.ts has no write op/SQL · deterministic orderBy
   ✅ [H3.3-S1.4] [static] law writes only in platform/hr-law.ts: not imported from src/app/app/** · src/lib/modules/** · src/lib/ai/** · exports ⊆ create/activate/retire/list · F16.9 kept
-  ❌ [H3.3-S1.5] [static] law view page read-only: loadLawView · no use server/<form/formAction/action=/onSubmit/@/lib/platform · testids hr-law-table/hr-law-row- + inventory · hr.law th=en keys · 'รอนักบัญชียืนยัน' · tab link — expected read-only law page | actual msgs,pending
+  ✅ [H3.3-S1.5] [static] law view page read-only: loadLawView · no use server/<form/formAction/action=/onSubmit/@/lib/platform · testids hr-law-table/hr-law-row- + inventory · hr.law th=en keys · 'รอนักบัญชียืนยัน' · tab link
   ✅ [H3.3-S1.6] [run] seed LAW_V1_DIGEST = frozen 0ed9de8c… and fixture law json = LAW_V1_ROWS json (every vector cites seeded values)
   ✅ [H3.3-S2.1] [pure] ssoV2: 17 literal vectors (v1:SSO@1970-01-01) incl. half-baht edges
   ✅ [H3.3-S2.2] [pure] ssoV2 = frozen v1 ssoContribution over ≥2,700 wages (1..3,000,000 + edges)
@@ -38,6 +49,9 @@ oracle-forced2 exit=1 :: ===== qc-hr-h3.3 ===== passed 45/46 (QC_FORCE)
   ✅ [H3.3-S6.2] [pure] pickLawRow independent of input order (120 permutations) · Date effectiveFrom = string
   ✅ [H3.3-S6.3] [pure] pickLawSet: a missing kind refuses with the kind list (never falls back to constants) · full set ⇒ sorted ids
   ✅ [H3.3-S6.4] [pure] lawDayOf(payDate) = Bangkok calendar day (16:59:59.999Z / 17:00Z boundaries)
+  ✅ [H3.3-S9.3] [pure] no silent precision loss: annualTaxV2(26,302,679,918,950) · whtYtdV2 monthly 750,599,937,895,083 ⇒ BAD_SATANG · annualTaxV2(2e12) = 699,951,500,000 exact
+  ✅ [H3.3-S9.4] [pure] deductions.spouse non-boolean (1/'yes'/'true'/'on'/null) ⇒ BAD_DEDUCTION · true = 2,897,916 · absent = v1
+  ✅ [H3.3-S9.5] [pure] lawDayOf accepts a Date only: zone-less / ISO strings + invalid Date ⇒ LAW_BAD_DAY · Date 2026-06-30T17:00Z = 2026-07-01
   ✅ [H3.3-NA.1] [accountant] NA-01 SSO wage ceiling 17,500 (and min base) from 1 Jan 2026? (HQ8 · review D15) — no seeded row
   ✅ [H3.3-NA.2] [accountant] NA-02 Is ALLOWANCE (เบี้ยเลี้ยง/ค่าเดินทาง) SSO wage? Is it 40(1) taxable or an exempt reimburse
   ✅ [H3.3-NA.3] [accountant] NA-03 Mid-year one-off bonus: spread over remaining months (Q4 default) or withhold the bonus's 
@@ -48,7 +62,7 @@ oracle-forced2 exit=1 :: ===== qc-hr-h3.3 ===== passed 45/46 (QC_FORCE)
   ✅ [H3.3-NA.8] [accountant] NA-08 A month with zero wage paid (whole month unpaid leave): contribution 0, or min base 1,650 
   ✅ [H3.3-NA.9] [accountant] NA-09 Over-withheld year (prior WHT > annual tax): 0 this month and refund via ภ.ง.ด.91 (default
   ✅ [H3.3-NA.10] [accountant] NA-10 Sign-off of every seeded value and rounding token (SSO BAHT_HALF_UP · tax SATANG_HALF_UP_O
-(node:2972542) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:3063110) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 
 To prepare for this change:
 
@@ -58,10 +72,13 @@ To prepare for this change:
   ✅ [H3.3-S8.2] [db] loadLawSet(onDay, tx) reads ACTIVE rows by effectiveFrom (rolled-back fixtures 2190): before/of/after · DRAFT-only ⇒ refused
   ✅ [H3.3-S8.3] [db] tenantDb(ctx).hrLawTable: create/createMany/update/updateMany/upsert/delete/deleteMany all throw · count/findMany work
   ✅ [H3.3-S8.4] [db] platform writes: forged/SUPPORT actor refused · SUPER_ADMIN draft→activate (approver, audit) · slot taken · no approver · float json · retire
+  ✅ [H3.3-S9.1] [db] retireLawRow: ACTIVE row ⇒ ACTIVE_NOT_RETIRABLE · row stays ACTIVE · no hr.law.retire audit · DRAFT row still retires
+  ✅ [H3.3-S9.2] [db] activateLawRow re-reads SUPER_ADMIN after the slot lock: demoted to FINANCE while waiting ⇒ NOT_ALLOWED · row stays DRAFT
   ✅ [H3.3-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
   ✅ [H3.3-Z1] residue: HrLawTable qc-h33-* · PlatformUser qc-h33-* · their PlatformAuditLog = 0
+  ℹ️  ACTIVE law rows after cleanup: 0
 NEEDS-ACCOUNTANT 10/10 skipped with reason (ledger/hr-briefs/hr-brief-H3.3.md §FOR THE ACCOUNTANT)
-BASE-EXPECTATION 16/46 as registered (RED-by-design 31 · GREEN controls 15) · off: H3.3-S1.2(RED→pass) H3.3-S1.3(RED→pass) H3.3-S1.4(RED→pass) H3.3-S2.1(RED→pass) H3.3-S2.2(RED→pass) H3.3-S2.3(RED→pass) H3.3-S3.1(RED→pass) H3.3-S3.2(RED→pass) H3.3-S3.3(RED→pass) H3.3-S4.1(RED→pass) H3.3-S4.2(RED→pass) H3.3-S5.1(RED→pass) H3.3-S5.4(RED→pass) H3.3-S5.5(RED→pass) H3.3-S7.1(RED→pass) H3.3-S7.2(RED→pass) H3.3-S7.3(RED→pass) H3.3-S5.2(RED→pass) H3.3-S5.3(RED→pass) H3.3-S7.4(RED→pass) H3.3-S7.5(RED→pass) H3.3-S7.6(RED→pass) H3.3-S6.1(RED→pass) H3.3-S6.2(RED→pass) H3.3-S6.3(RED→pass) H3.3-S6.4(RED→pass) H3.3-S8.5(RED→pass) H3.3-S8.2(RED→pass) H3.3-S8.3(RED→pass) H3.3-S8.4(RED→pass)
+BASE-EXPECTATION 15/51 as registered (RED-by-design 36 · GREEN controls 15) · off: H3.3-S1.2(RED→pass) H3.3-S1.3(RED→pass) H3.3-S1.4(RED→pass) H3.3-S1.5(RED→pass) H3.3-S2.1(RED→pass) H3.3-S2.2(RED→pass) H3.3-S2.3(RED→pass) H3.3-S3.1(RED→pass) H3.3-S3.2(RED→pass) H3.3-S3.3(RED→pass) H3.3-S4.1(RED→pass) H3.3-S4.2(RED→pass) H3.3-S5.1(RED→pass) H3.3-S5.4(RED→pass) H3.3-S5.5(RED→pass) H3.3-S7.1(RED→pass) H3.3-S7.2(RED→pass) H3.3-S7.3(RED→pass) H3.3-S5.2(RED→pass) H3.3-S5.3(RED→pass) H3.3-S7.4(RED→pass) H3.3-S7.5(RED→pass) H3.3-S7.6(RED→pass) H3.3-S6.1(RED→pass) H3.3-S6.2(RED→pass) H3.3-S6.3(RED→pass) H3.3-S6.4(RED→pass) H3.3-S9.3(RED→pass) H3.3-S9.4(RED→pass) H3.3-S9.5(RED→pass) H3.3-S8.5(RED→pass) H3.3-S8.2(RED→pass) H3.3-S8.3(RED→pass) H3.3-S8.4(RED→pass) H3.3-S9.1(RED→pass) H3.3-S9.2(RED→pass)
 
-===== qc-hr-h3.3 ===== passed 45/46 (QC_FORCE)
-JSON_SUMMARY {"suite":"qc-hr-h3.3","total":46,"passed":45,"failed":["H3.3-S1.5"],"findings":[{"id":"H3.3-S1.5","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":31,"baseGreen":15,"offBase":["H3.3-S1.2(RED→pass)","H3.3-S1.3(RED→pass)","H3.3-S1.4(RED→pass)","H3.3-S2.1(RED→pass)","H3.3-S2.2(RED→pass)","H3.3-S2.3(RED→pass)","H3.3-S3.1(RED→pass)","H3.3-S3.2(RED→pass)","H3.3-S3.3(RED→pass)","H3.3-S4.1(RED→pass)","H3.3-S4.2(RED→pass)","H3.3-S5.1(RED→pass)","H3.3-S5.4(RED→pass)","H3.3-S5.5(RED→pass)","H3.3-S7.1(RED→pass)","H3.3-S7.2(RED→pass)","H3.3-S7.3(RED→pass)","H3.3-S5.2(RED→pass)","H3.3-S5.3(RED→pass)","H3.3-S7.4(RED→pass)","H3.3-S7.5(RED→pass)","H3.3-S7.6(RED→pass)","H3.3-S6.1(RED→pass)","H3.3-S6.2(RED→pass)","H3.3-S6.3(RED→pass)","H3.3-S6.4(RED→pass)","H3.3-S8.5(RED→pass)","H3.3-S8.2(RED→pass)","H3.3-S8.3(RED→pass)","H3.3-S8.4(RED→pass)"]}
+===== qc-hr-h3.3 ===== passed 51/51 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.3","total":51,"passed":51,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":36,"baseGreen":15,"offBase":["H3.3-S1.2(RED→pass)","H3.3-S1.3(RED→pass)","H3.3-S1.4(RED→pass)","H3.3-S1.5(RED→pass)","H3.3-S2.1(RED→pass)","H3.3-S2.2(RED→pass)","H3.3-S2.3(RED→pass)","H3.3-S3.1(RED→pass)","H3.3-S3.2(RED→pass)","H3.3-S3.3(RED→pass)","H3.3-S4.1(RED→pass)","H3.3-S4.2(RED→pass)","H3.3-S5.1(RED→pass)","H3.3-S5.4(RED→pass)","H3.3-S5.5(RED→pass)","H3.3-S7.1(RED→pass)","H3.3-S7.2(RED→pass)","H3.3-S7.3(RED→pass)","H3.3-S5.2(RED→pass)","H3.3-S5.3(RED→pass)","H3.3-S7.4(RED→pass)","H3.3-S7.5(RED→pass)","H3.3-S7.6(RED→pass)","H3.3-S6.1(RED→pass)","H3.3-S6.2(RED→pass)","H3.3-S6.3(RED→pass)","H3.3-S6.4(RED→pass)","H3.3-S9.3(RED→pass)","H3.3-S9.4(RED→pass)","H3.3-S9.5(RED→pass)","H3.3-S8.5(RED→pass)","H3.3-S8.2(RED→pass)","H3.3-S8.3(RED→pass)","H3.3-S8.4(RED→pass)","H3.3-S9.1(RED→pass)","H3.3-S9.2(RED→pass)"]}
