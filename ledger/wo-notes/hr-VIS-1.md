@@ -20,6 +20,13 @@ Branch `wip/hr-vis1` from 36d8989d7. Lane DB wo-hr-qc-l1 (qc-hr.sh). Defect list
 - qc-hr-h4.4: new S17.1–S17.3 (ruling B1); S4.2 / S5.10 / S8.3(list) drop `mgrRole` from the deny lists (ruling — checked positively in S17.1). Red on base: 84/86 (`hr-VIS-1-h44-red.txt`).
 - qc-hr-h2.4: new S14.1 (canRunKiosk matrix) / S14.2 (page + action gate, static). Red on base: 66/68 (`hr-VIS-1-h24-red.txt`).
 
+- qc-hr-h1.2 S7.1: the seed's H2.5 block may hold 2 `hrRosterEntry.create` (past-days loop + `AR.today` loop) instead of 1 (counts added by A4).
+- qc-hr-h2.4 S14.2: own regex fixed for nested parens (`canRunKiosk(memberOf(auth))`).
+
+## Results (head after notes)
+seed ×2 33/33 (identical counts) · h2.4 68/68 ×3 · h4.4 86/86 ×3 · h2.5 79/79 · h2.7 89/89 · h3.3 51/51 · h2.2 60/60 · h1.2 73/73 · h1.3 63/63 · hf-hr-privacy 194/194 · fitness 53/53 + fitness-hr 9/9 with and without env · typecheck 0.
+h4.1 46/47: S1.6 "changed" needs a diff of outbox-consumers.ts vs merge-base — H4.1 is in base and VIS-1 does not touch that file (same as base; candidate for the S1.4-style "n/a once in base" edit).
+
 ## Debts
 - **D-VIS1-selfprofile** (→ H2.10): staff opening their own profile = 404 (pre-existing); visual r2-2 check waits for self-service.
 - **D-VIS1-tabs** (→ H5.1): tab strip overflows at 1440 ("ตารางกฎหมาย" top-level); tabs that lead to 404 for staff/kiosk/member still render — hiding them changes `hrTabs`, which qc-hr-h4.4 S13.5 pins to base (+ h2.2 S1.3 sidebar mirror) ⇒ not a small change here.
