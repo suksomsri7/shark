@@ -431,8 +431,8 @@ function hrMessages(ROOT: string, locale: string): { present: boolean; keys: Map
 // F16.5 — pinCode อ่านได้ที่ hr/pin.ts + สคริปต์ backfill เท่านั้น (เปิดเมื่อมี hr/pin.ts)
 // ═══════════════════════════════════════════════════════════════
 export const PIN_MODULE = "src/lib/modules/hr/pin.ts";
-// HR H4.4 ▸ R8: สิ้นสุดการจ้างล้าง PIN (pinHash/pinSetAt/pinCode = null) ในธุรกรรมเดียวกับการเปลี่ยนสถานะ — hr/lifecycle.ts เขียนได้ (ค่า null เท่านั้น) ◂
-export const PIN_ALLOWED = new Set([PIN_MODULE, "scripts/hr-backfill-pin-hash.mts", "src/lib/modules/hr/lifecycle.ts"]);
+// HR H4.4 ▸ R8: สิ้นสุดการจ้างล้าง PIN ผ่าน hr/pin.ts clearPinInTx (ธุรกรรมเดียวกัน) — hr/lifecycle.ts ไม่แตะคอลัมน์ PIN แล้ว (allowlist คืนสภาพ) ◂
+export const PIN_ALLOWED = new Set([PIN_MODULE, "scripts/hr-backfill-pin-hash.mts"]);
 /**
  * ขอบเขต: src/** + scripts/**.mts — ยกเว้น scripts/qc-*.mts (ข้อสอบต้องอ่านคอลัมน์เพื่อพิสูจน์ว่า "ไม่มี PIN ตัวเปล่าเหลือ" —
  * oracles that read the column must never print it · มติผู้คุมงาน H0.4 r2 ข้อ 6)

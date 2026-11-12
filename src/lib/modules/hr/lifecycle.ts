@@ -17,6 +17,7 @@ import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { thaiDateKey } from "@/lib/ui/date";
 import { cancelRequest } from "@/lib/modules/approval/service";
 import { employeeOfUser } from "./service";
+import { clearPinInTx } from "./pin"; // HR H4.4 ▸ ล้าง PIN ใน tx ของการสิ้นสุดการจ้าง ◂
 import { hrScopeOf, unitWhere, type HrScope } from "./scope";
 import { SETTINGS_TEXT } from "./settings";
 import { lockRosterKeysInTx } from "./roster";
@@ -489,10 +490,10 @@ export async function offboardEmployee(ctx: Ctx, viewer: LifeViewer, employeeId:
           offboardReason: why,
           offboardNote: memo,
           offboardedById: actor,
-          ...(pinRevoked ? { pinHash: null, pinSetAt: null, pinCode: null } : {}),
         },
       });
       if (u.count !== 1) throw new LifeRefusal(T.ended);
+      if (pinRevoked) await clearPinInTx(tx, id); // คอลัมน์ PIN = hr/pin.ts เท่านั้น (F16.5) · tx เดียวกัน
 
       // ใบลาที่เริ่มหลังวันสิ้นสุด (PENDING/APPROVED) ⇒ CANCELLED + คำขออนุมัติ · คำขอที่ตัดสินไปแล้ว = คงไว้ แต่ใบลายังยกเลิก และ audit ระบุ id
       //   r3 (H2.7 สมุดวันลา): ลำดับล็อกรวม = hr:emp → hr:clock → hr-leave:<id> (เรียง) → hr-leave-emp:<sys>:<emp> → hr-swap:<id> (เรียง) → กุญแจตารางกะ ·
