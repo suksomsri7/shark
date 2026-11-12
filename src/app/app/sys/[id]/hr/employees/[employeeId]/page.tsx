@@ -17,7 +17,6 @@ import { ModuleTabs } from "@/components/module-tabs";
 // HR H4.4 ▸ วงจรพนักงาน (แถบทดลองงาน · รายการรับเข้า/ออก · บันทึก · สิ้นสุดการจ้าง) — DTO ของ lifecycle.ts เท่านั้น ◂
 import { loadLifecycleForViewer } from "@/lib/modules/hr/lifecycle";
 import { LifecycleMsg, LifecycleProfile } from "@/lib/modules/hr/lifecycle-ui";
-import { employeeOfUser } from "@/lib/modules/hr/service";
 
 // หน้าโปรไฟล์พนักงาน 1 คน (ข้อ 8) — ข้อมูลเต็มรูปแบบ + เอกสารแนบ
 // 🔒 ช่องอ่อนไหว (เลขบัตร/ประกันสังคม/ทะเบียนบ้าน/บัญชี) + เอกสาร = เห็นเฉพาะผู้มีสิทธิ์ดูเงินเดือน
@@ -61,7 +60,6 @@ export default async function HrEmployeeProfilePage({
   const units = await unitsForScope(auth.active.tenantId, scope);
   // HR H4.4 ▸ null = ผู้ดูไม่เห็นข้อมูลบันทึก (ส่วนวงจรพนักงานซ่อนเอง · ปุ่มสิ้นสุดตามด่านปุ่มลบเดิม) ◂
   const life = await loadLifecycleForViewer({ tenantId: auth.active.tenantId, systemId: id }, hrViewerOf(auth), employeeId);
-  const isSelf = (await employeeOfUser(auth.active.tenantId, auth.user.id))?.employeeId === emp.id;
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -100,7 +98,7 @@ export default async function HrEmployeeProfilePage({
         </p>
       </Section>
 
-      <LifecycleProfile systemId={id} employeeId={emp.id} life={life} active={emp.active} isSelf={isSelf} />
+      <LifecycleProfile systemId={id} employeeId={emp.id} life={life} active={emp.active} />
 
       {sensitive ? (
         <Section title="🔒 เอกสารแนบ">

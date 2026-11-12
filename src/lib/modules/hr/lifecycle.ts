@@ -700,3 +700,11 @@ export async function lifecycleBoards(ctx: Ctx, viewer: LifeViewer): Promise<{ i
   }
   return out;
 }
+
+/** บัญชีนี้ผูกกับพนักงานคนนี้ไหม (หน้าโปรไฟล์ซ่อนปุ่มที่ทำกับตัวเองไม่ได้) */
+export async function isLinkedTo(ctx: Ctx, userId: string | null | undefined, employeeId: string): Promise<boolean> {
+  const u = str(userId);
+  const id = str(employeeId);
+  if (!u || !id) return false;
+  return (await tenantDb(ctx).hrEmployee.count({ where: { id, linkedUserId: u } })) > 0;
+}

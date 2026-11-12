@@ -10,6 +10,7 @@ import {
   canOffboard,
   canSeeLifecycle,
   getLifecyclePolicy,
+  isLinkedTo,
   LIFE_MSG,
   lifecycleBoards,
   lifecycleDue,
@@ -110,8 +111,6 @@ type ProfileProps = {
   life: Life;
   /** สถานะใช้งานของแถว (จาก DTO โปรไฟล์) */
   active: boolean;
-  /** ผู้ดูคือพนักงานคนนี้เอง (ผูกบัญชี) — ไม่แสดงปุ่มที่ทำกับตัวเองไม่ได้ */
-  isSelf: boolean;
 };
 
 function Task({ t, systemId, employeeId, item, today }: { t: Awaited<ReturnType<typeof getTranslations>>; systemId: string; employeeId: string; item: ChecklistItem; today: string }) {
@@ -143,10 +142,12 @@ function Task({ t, systemId, employeeId, item, today }: { t: Awaited<ReturnType<
 }
 
 /** ส่วนวงจรพนักงานในหน้าโปรไฟล์ — ผู้ดูข้อมูลบันทึกเห็นทั้งหมด · ผู้สิ้นสุดการจ้างได้ (ด่านปุ่มลบเดิม) เห็นปุ่มสิ้นสุด · คนอื่นไม่เห็นอะไรเพิ่ม */
-export async function LifecycleProfile({ systemId, employeeId, life, active, isSelf }: ProfileProps) {
+export async function LifecycleProfile({ systemId, employeeId, life, active }: ProfileProps) {
   const auth = await requireTenant();
   const viewer = hrViewerOf(auth);
   const ctx = { tenantId: auth.active.tenantId, systemId };
+  // ผู้ดูคือพนักงานคนนี้เอง (ผูกบัญชี) — ไม่แสดงปุ่มที่ทำกับตัวเองไม่ได้ (lifecycle ปฏิเสธซ้ำอยู่แล้ว)
+  const isSelf = await isLinkedTo(ctx, viewer.userId, employeeId);
   const records = !!life && canSeeLifecycle(viewer);
   const offOk = canOffboard(viewer) && active && !isSelf;
   if (!records && !offOk) return null;
@@ -169,7 +170,7 @@ export async function LifecycleProfile({ systemId, employeeId, life, active, isS
 
   return (
     <div id="hr-life" className="flex flex-col gap-5">
-      {records && life && (probation || life.offboard || life.contractEndAt) && (
+      {records && life && (probation || (life.offboard && !active) || life.contractEndAt) && (
         <div data-testid="hr-life-banner" className="flex flex-wrap items-center gap-3 rounded-2xl border-[1.5px] border-[color:var(--color-accent)] px-4 py-3">
           <div className="min-w-0 flex-1">
             {probation ? (
@@ -183,7 +184,7 @@ export async function LifecycleProfile({ systemId, employeeId, life, active, isS
               {life.startDate ? t("banner.start", { date: dateTh(life.startDate) }) : ""}
               {probation && life.contractEndAt ? ` · ${t("banner.contract", { date: dateTh(life.contractEndAt) })}` : ""}
             </small>
-            {life.offboard && (
+            {life.offboard && !active && (
               <small className="mt-1 block">
                 {t("ended.detail", { date: dateTh(life.offboard.endDate), reason: life.offboard.reason ? t(`reason.${life.offboard.reason}`) : "—" })}
                 {life.offboard.note ? ` · ${t("ended.note", { note: life.offboard.note })}` : ""}
