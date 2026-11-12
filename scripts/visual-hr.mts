@@ -88,6 +88,12 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "we-month", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=month&employee=${i.namfon}`, users: ["owner", "manager-branch"], why: "ปฏิทินรายคน + สรุป/รายวันที่ดึงเข้าเงินเดือน (มีเมื่อดึงแล้ว) (H3.1 04B)" },
     { key: "we-settings", path: (i) => `/app/sys/${i.hr}/hr/settings#hr-we-normal`, users: ["owner", "manager-branch"], why: "การ์ดชั่วโมงทำงานปกติต่อวัน (เจ้าของแก้ · ผู้จัดการอ่าน) (H3.1 Q10)" },
   ],
+  // HR H2.9 ▸ คำขอ OT (mockup 05 การ์ด OT · 07a ขอ OT) — หน้าใบลา: ฟอร์ม + รายการ (เจ้าของ ฿ · ผู้จัดการไม่เห็น ฿ — Q11) · ตั้งค่า: กฎ OT · เงินเดือน: อัตรา OT #18 ◂
+  "2.9": [
+    { key: "ot-leave", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager", "staff"], why: "ส่วนคำขอ OT: ฟอร์ม hr-ot-form · รายการ hr-ot-list · ปุ่มอนุมัติ/ไม่อนุมัติ/ยกเลิก (H2.9)" },
+    { key: "ot-settings", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner"], why: "การ์ดกฎคำขอ OT hr-settings-ot-policy (H2.9 R14)" },
+    { key: "ot-salary-rate", path: (i) => `/app/sys/${i.hr}/hr/payroll`, users: ["owner"], why: "ช่องอัตรา OT ต่อชั่วโมง hr-salary-ot-rate ในฟอร์มเงินเดือน (#18)" },
+  ],
   // HR H2.6 ▸ brief §5 คำขอแก้เวลา: 04A ปุ่ม "แก้เวลา" ต่อแถว + ฟอร์ม · ?view=corrections การ์ด (mockup 05 — seed ไม่มีคำขอ ⇒ ว่าง ยกเว้นผู้ควบคุมยื่นก่อนถ่าย) ·
   //   พนักงาน "ขอแก้เวลา" บนปฏิทินของตัวเอง + รายการของฉัน · ผู้ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404 ◂
   "2.6": [

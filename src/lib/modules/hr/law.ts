@@ -151,3 +151,16 @@ export async function loadLawView(onDay: string, db?: LawDb): Promise<LawView> {
   return { onDay: day, pendingSignOff, groups };
 }
 // ◂ HR H3.3
+// HR H2.9 ▸ ตัวอ่านแถวกฎหมาย OT (อ่านอย่างเดียว · มติผู้คุม 12 พ.ย.: law.ts ยังเป็นไฟล์เดียวที่อ่านตารางนี้) — แถว kind OT สถานะ ACTIVE ที่ effectiveFrom ≤ onDay
+//   เรียงแน่นอน · ผู้เลือกแถว/ตรวจรูป = ot-rules.ts#otLawOf (ซ้อนวันเดียวกัน = LAW_AMBIGUOUS) · ผู้เรียก: hr/ot.ts (การจ่าย · ส่ง tx ของตัวเอง) · hr/payroll.ts (#18 เพดานอัตรา)
+export type OtLawRowRead = { id: string; kind: string; effectiveFrom: Date; status: string; json: unknown };
+export async function loadOtLawRows(onDay: string, db?: LawDb): Promise<OtLawRowRead[]> {
+  if (!isLawDay(onDay)) return [];
+  return dbOf(db).hrLawTable.findMany({
+    where: { status: "ACTIVE", kind: "OT", effectiveFrom: { lte: toUtcDate(onDay) } },
+    orderBy: [{ effectiveFrom: "asc" }, { id: "asc" }],
+    select: { id: true, kind: true, effectiveFrom: true, status: true, json: true },
+    take: 200,
+  });
+}
+// ◂ HR H2.9

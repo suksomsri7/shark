@@ -799,8 +799,34 @@ function runStatic(): void {
     //   only the HrWorkEntry/hrWorkEntry tokens are ignored there; every other S6.1 token still counts
     const WE_FILES = new Set(["src/lib/modules/hr/work-entries.ts", "src/lib/modules/hr/work-entries-rules.ts"]);
     const WE_OK = /^(HrWorkEntry|hrWorkEntry)$/;
-    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t))).length;
-    const hits = files.map((f) => [f, cntOf(f, rd(f)) - cntOf(f, atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
+    // ORACLE-EDIT (controller 12 Nov · H2.9, narrowed by the law.ts ruling): hr/ot.ts is the designed OT_REQUEST writer — only sourceRef ignored there
+    //   (the OT law rows are read through hr/law.ts#loadOtLawRows, so HrLawTable stays ratcheted everywhere)
+    const OT_OK = /^sourceRef$/;
+    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/ot.ts" && OT_OK.test(t)) && !(WE_FILES.has(f) && WE_OK.test(t))).length;
+    // ORACLE-EDIT (controller 12 Nov · H2.9 extension, narrowed by the law.ts ruling): hr/payroll.ts may carry exactly 2 new reads inside lines/blocks
+    //   marked `HR H2.9` (2× sourceRef in writeOtAdjustmentInTx) — reads outside marked lines are ratcheted vs base as before,
+    //   and the marked count must be exactly 2 (a 3rd marked read, e.g. HrLawTable, fails too)
+    const PAY_FILE = "src/lib/modules/hr/payroll.ts";
+    const PAY_H29_READS = 2;
+    const splitH29 = (src: string) => {
+      const inside: string[] = [];
+      const outside: string[] = [];
+      let open = false;
+      for (const line of src.split("\n")) {
+        if (open) {
+          inside.push(line);
+          if (line.includes("◂ HR H2.9")) open = false;
+        } else if (line.includes("HR H2.9")) {
+          inside.push(line);
+          if (line.includes("HR H2.9 ▸") && !line.includes("◂")) open = true;
+        } else outside.push(line);
+      }
+      return { inside: inside.join("\n"), outside: outside.join("\n") };
+    };
+    const payH29 = splitH29(rd(PAY_FILE));
+    const payMarked = (stripComments(payH29.inside).match(S61_RE) ?? []).length;
+    const newOf = (f: string) => (f === PAY_FILE ? cntOf(f, payH29.outside) - cntOf(f, atBase(f)) + (payMarked === PAY_H29_READS ? 0 : payMarked) : cntOf(f, rd(f)) - cntOf(f, atBase(f)));
+    const hits = files.map((f) => [f, newOf(f)] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
     chk("S6.1", files.length > 20 && hits.length === 0, "0 new reads", `${hits.join(",") || "0"} of ${files.length} files (base ${baseRef().slice(0, 8)})`);
   }
   // S6.2 static part

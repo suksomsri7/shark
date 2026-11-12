@@ -108,3 +108,6 @@ export { staffWindows, leaveDutyNotify, leaveDutyHints } from "./availability";
 //   WE_OT_PAYMENT = นาที OT วัดอย่างเดียว · จ่าย OT ผ่าน HrPayAdjustment (H2.9) ที่เดียว ⇒ ผู้สร้างบรรทัดเงินห้ามจ่ายจาก otWorkdayMin/otHolidayMin ซ้ำ
 export { buildWorkEntrySnapshot, workEntryPreview, WE_OT_PAYMENT } from "./work-entries";
 // ◂ HR H3.1
+// HR H2.9 ▸ คำขอ OT — re-export ล้วน (ตรรกะอยู่ที่ `ot.ts`) · settleOtRequests = ตัวจ่ายรายชั่วโมง (cron/hourly) · notifyOtDecided = ผู้บริโภค hr.ot.decided
+export { settleOtRequests, notifyOtDecided } from "./ot";
+// ◂ HR H2.9
