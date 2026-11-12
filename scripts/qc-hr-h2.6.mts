@@ -1,6 +1,9 @@
 // QC — HR V2 · H2.6 — time corrections: request → approval → void history · POS evidence (Mig) · brief ledger/hr-briefs/hr-brief-H2.6.md (R1–R12 · §3 · Q defaults)
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
 // API fixed by the brief (R3 R4 R7 R9 R11); actor/viewer = vOf(user); 2032 dates + opts.now; new columns read via raw SELECT * only.
+// r2 (controller fix round): ORACLE-EDIT S1.2 (follow-up migration 20270101000001 drops the duplicate pending_target_key · adds selfApplied) ·
+//   S3.4/S7.3 (stored evidence snapshot carries unitId per shift · DTO filters by viewer branch) · S4.5 (D+1 row must still exist) ·
+//   S7.1 ITEM_KEYS + selfApplied (ruling Q4) · new S11.1 S11.2 S7.5 S7.6 S6.2
 // SKIP while correction.ts absent · QC_FORCE=1 · --list · base env QC_H26_BASE (default e209390e7). Fixtures `qc-hr-h26-<stamp>` (+-chain, -other).
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h2.6.mts
 import { existsSync } from "node:fs";
@@ -19,7 +22,7 @@ const BASE = process.env.QC_H26_BASE || "e209390e78bdd6ac5ec4b53251dd8c3786641b1
 const H = "src/lib/modules/hr/";
 const F = {
   rules: `${H}correction-rules.ts`, corr: `${H}correction.ts`, acts: `${H}correction-actions.ts`, ui: `${H}correction-ui.tsx`, ev: "src/lib/hr-pos-evidence.ts",
-  mig: "prisma/migrations/20270101000000_hr_time_correction/migration.sql", schema: "prisma/schema/hr.prisma", eff: "src/lib/approval-effects.ts",
+  mig: "prisma/migrations/20270101000000_hr_time_correction/migration.sql", mig2: "prisma/migrations/20270101000001_hr_time_correction_idx/migration.sql", schema: "prisma/schema/hr.prisma", eff: "src/lib/approval-effects.ts",
   apSvc: "src/lib/modules/approval/service.ts", apLab: "src/lib/modules/approval/labels.ts", apAct: "src/lib/modules/approval/actions.ts",
   cons: "src/lib/outbox-consumers.ts", auto: "src/lib/automation/labels.ts", hooks: "src/lib/webhooks/labels.ts", page: "src/app/app/sys/[id]/hr/attendance/page.tsx",
   attUi: `${H}attendance-ui.tsx`, th: "src/messages/th/common.json", en: "src/messages/en/common.json", inv: "scripts/hr-ui-inventory.json",
@@ -42,7 +45,7 @@ const X = { mNoEmp: "บัญชีของคุณยังไม่ได�
 const RULES = { BACK_DAYS: 35, MAX_PENDING: 5, REPEAT_AT: 3, REASON_MIN: 3, REASON_MAX: 200, DEDUPE_SEC: 60 };
 const EV = "hr.attendance.corrected";
 const EV_LABEL = "เมื่อแก้เวลาลงงาน (HR)";
-const ITEM_KEYS = "action,createdAt,day,decidedAt,employeeId,employeeName,evidence,filedOnBehalf,id,kind,originalAt,periodCount,proposedAt,reason,repeat,status";
+const ITEM_KEYS = "action,createdAt,day,decidedAt,employeeId,employeeName,evidence,filedOnBehalf,id,kind,originalAt,periodCount,proposedAt,reason,repeat,selfApplied,status"; // ORACLE-EDIT r2 (ruling Q4): + selfApplied
 const EV_KEYS = "action,attendanceId,correctionId,day,employeeId,kind,resultAttendanceId,systemId";
 const FORBID = ["lat", "lng", "accuracyM", "photoKey", "deviceId", "distanceM", "inRadius", "note", "pinCode", "pinHash", "baseSalarySatang", "nationalId", "linkedUserId", "floatSatang", "expectedCashSatang", "countedCashSatang", "overShortSatang"];
 const TESTIDS = ["hr-corr-form", "hr-corr-action", "hr-corr-kind", "hr-corr-time", "hr-corr-reason", "hr-corr-submit", "hr-corr-list", "hr-corr-card-", "hr-corr-approve-", "hr-corr-reject-", "hr-corr-cancel-", "hr-corr-evidence-", "hr-corr-repeat-", "hr-att-view-corr"];
@@ -98,6 +101,11 @@ const CHECKS: readonly Def[] = [
   d("S9.4", "R10", C, "[race] 5 parallel requests ⇒ 1 PENDING"),
   d("S9.5", "R7", C, "[race] effect ×3 ⇒ one apply"),
   d("S10.1", "R4", C, "[db] ENDED employee"),
+  d("S11.1", "R8", C, "[db] paid by session-owning day: IN moved into a paid month ⇒ later OUT fix refused, Feb untouched"),
+  d("S11.2", "R8", C, "[db] overnight OUT in a paid month for an open-month session ⇒ accepted, nothing written to April"),
+  d("S7.5", "R11", C, "[db] evidence: only this user's open/close times · DTO branch-scoped"),
+  d("S7.6", "R9", M, "[db] listCorrections complete for a narrow-scope manager (branch filter in the query)"),
+  d("S6.2", "Q4", M, "[db] owner self-filing applies at once · selfApplied on record + audit"),
   d("X2.1", "X2", C, "[db] other tenant/system raw ids"),
   D("X12.1", "X12", M, "GREEN", "[control] fitness ± env"),
   D("Z1", "-", C, "GREEN", "[control] residue none"),
@@ -143,7 +151,9 @@ function runStatic(): void {
     corr: /ALTER TABLE "HrTimeCorrection"/.test(mig) && /"action" "HrCorrectionAction" NOT NULL DEFAULT 'ADD'/.test(mig) && /"day" DATE/.test(mig),
     uniq: /CREATE UNIQUE INDEX "HrTimeCorrection_pending_target_key"[^;]*\("attendanceId"\)[^;]*WHERE[^;]*'PENDING'/.test(mig) && /CREATE UNIQUE INDEX "HrTimeCorrection_pending_add_key"[^;]*\("employeeId", ?"day", ?"kind"\)[^;]*WHERE[^;]*'PENDING'[^;]*'ADD'/.test(mig),
     schema: /enum HrCorrectionAction \{\s*ADD\s+CHANGE\s+VOID\s*\}/.test(sc) && /voidedAt\s+DateTime\?/.test(sc) && /voidedByCorrectionId\s+String\?/.test(sc) && /correctionId\s+String\?/.test(sc) && /action\s+HrCorrectionAction/.test(sc),
-    only: migs.every((p) => p.startsWith("prisma/migrations/20270101000000_hr_time_correction/")),
+    only: migs.every((p) => p.startsWith("prisma/migrations/20270101000000_hr_time_correction/") || p.startsWith("prisma/migrations/20270101000001_hr_time_correction_idx/")), // ORACLE-EDIT r2
+    // ORACLE-EDIT r2 (controller item 6): follow-up migration drops the duplicate pending_target_key (= H1.2 attendanceId_pending_key) · adds selfApplied (Q4 ruling)
+    mig2: /DROP INDEX[^;]*"HrTimeCorrection_pending_target_key"/.test(rd(F.mig2)) && /"selfApplied" BOOLEAN NOT NULL DEFAULT false/.test(rd(F.mig2)) && /selfApplied\s+Boolean\s+@default\(false\)/.test(sc),
   };
   // S1.3 readers
   const cl = code(`${H}clock.ts`), jg = code(`${H}judge.ts`), sv = code(`${H}service.ts`), pr = code(`${H}pos-seam-read.ts`);
@@ -388,6 +398,8 @@ async function runDb(): Promise<void> {
   await shiftRow(7003, U.self!.id, "2032-03-05T08:00:00+07:00", "2032-03-05T16:00:00+07:00", U.self!.id);
   await shiftRow(7004, U.self!.id, "2032-03-02T18:00:00+07:00", "2032-03-02T23:00:00+07:00", null);
   const EVID = { posShifts: [{ shiftNo: 7001, openedAt: "2032-03-02T01:50:00.000Z", closedAt: "2032-03-02T10:03:00.000Z", forced: false }, { shiftNo: 7004, openedAt: "2032-03-02T11:00:00.000Z", closedAt: "2032-03-02T16:00:00.000Z", forced: true }], deviceLogout: null };
+  // ORACLE-EDIT r2 (controller item 2): the stored snapshot carries the shift's unitId (DTO filters by the viewer's branch scope and drops it)
+  const EVID_ROW = { posShifts: EVID.posShifts.map((x) => ({ ...x, unitId: u1 })), deviceLogout: null };
   for (const n of ["2032-03-04", "2032-03-06", "2032-03-11"]) await mods.judge.runAttendanceJobs({ now: bk(n, "12:00"), tenantId: TT });
   await P.hrRosterEntry.delete({ where: { id: x5 } }); // e5: stored row of 03-10 becomes orphaned
   await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sP, periodKey: "2032-03", payDate: new Date("2032-03-31T00:00:00Z"), status: "APPROVED" } });
@@ -411,7 +423,7 @@ async function runDb(): Promise<void> {
     ck("S3.4", {
       result: r1?.ok === true && r1.status === "PENDING" && r1.requestId === null,
       row: !!k1 && k1.action === "ADD" && k1.kind === "OUT" && iso(k1.day)?.slice(0, 10) === "2032-03-02" && iso(k1.proposedAt) === "2032-03-02T10:05:00.000Z" && k1.originalAt === null && k1.attendanceId === null && k1.requestedByUserId === U.self!.id && k1.status === "PENDING" && k1.reason === RS("ลืมกดออก รีบไปรับลูก") && k1.employeeId === E.e1 && k1.systemId === sA,
-      evidence: !!k1 && canon(k1.evidenceJson) === canon(EVID),
+      evidence: !!k1 && canon(k1.evidenceJson) === canon(EVID_ROW),
       noWrite: canon(await attOf(E.e1!)) === canon(att1), noChain: (await P.approvalRequest.count({ where: { entityId: c1 } })) === 0,
     }, "pending row", shown(r1));
   });
@@ -431,7 +443,7 @@ async function runDb(): Promise<void> {
       stored: keep1.length === 1 && !!day1 && day1.status === "ON_TIME" && day1.workedMin === 490 && day1.missingOut === false && day1.outAttendanceId === new1?.id && day1.version === 2 && day1.recomputedById === U.writer!.id && day1.recomputeReason === T.recomputeReason,
     }, "applied · stored v2", `${shown(a1)} day=${day1 ? `${day1.status}/W${day1.workedMin}/v${day1.version}` : "∅"}`);
     ck("S7.3", {
-      fn: Array.isArray(ev1) && canon(ev1) === canon(EVID.posShifts), tenant: Array.isArray(ev1o) && ev1o.length === 0,
+      fn: Array.isArray(ev1) && canon(ev1) === canon(EVID_ROW.posShifts), tenant: Array.isArray(ev1o) && ev1o.length === 0,
       noCash: !!k1 && !keysDeep(k1.evidenceJson ?? {}).has("countedCashSatang") && !JSON.stringify(k1.evidenceJson ?? {}).includes("777"),
       notAuto: r1?.status === "PENDING", stillApplied: k1b?.status === "APPROVED",
     }, "evidence", short(ev1, 60));
@@ -485,7 +497,7 @@ async function runDb(): Promise<void> {
   const a8 = await dc(cA, U.owner!, idOf(await rq(cA, U.writer!, { action: "VOID", attendanceId: out7, reason: RS("กดออกผิด"), employeeId: E.e7 })), "APPROVED");
   await guard(["S4.4", "S4.5", "S4.6", "S4.7", "S4.8", "S4.10"], async () => {
     const d3 = (await dayOf(E.e3!, "2032-03-05"))[0];
-    ck("S4.5", { applied: a4?.ok === true, row: !!d3 && d3.workedMin === 490 && d3.missingOut === false && d3.version === 2, next: (await dayOf(E.e3!, "2032-03-06")).every((r: Any) => r.slotKey === "DAY" && r.status === "DAY_OFF" && r.workedMin === 0 && r.outAttendanceId === null && r.version === 1) /* ORACLE-EDIT S4.5: 03-06 มีแถว DAY_OFF ที่ตัวปิดวันบันทึกไว้แล้วตั้งแต่ฐาน (สัปดาห์ใช้ตารางกะ) — ข้อที่ตรวจจริงคือ OUT ไม่ไปตกวัน D+1 */, day: (await corrsOf(TT)).some((k: Any) => k.employeeId === E.e3 && iso(k.day)?.slice(0, 10) === "2032-03-05") }, "overnight", `${shown(a4)} W${d3?.workedMin}`);
+    ck("S4.5", { applied: a4?.ok === true, row: !!d3 && d3.workedMin === 490 && d3.missingOut === false && d3.version === 2, next: (await dayOf(E.e3!, "2032-03-06")).length === 1 && (await dayOf(E.e3!, "2032-03-06")).every((r: Any) => r.slotKey === "DAY" && r.status === "DAY_OFF" && r.workedMin === 0 && r.outAttendanceId === null && r.version === 1) /* ORACLE-EDIT S4.5: 03-06 มีแถว DAY_OFF ที่ตัวปิดวันบันทึกไว้แล้วตั้งแต่ฐาน (สัปดาห์ใช้ตารางกะ) — ข้อที่ตรวจจริงคือ OUT ไม่ไปตกวัน D+1 */, day: (await corrsOf(TT)).some((k: Any) => k.employeeId === E.e3 && iso(k.day)?.slice(0, 10) === "2032-03-05") }, "overnight", `${shown(a4)} W${d3?.workedMin}`);
     const d4 = (await dayOf(E.e4!, "2032-03-08"))[0];
     ck("S4.6", { applied: a5?.ok === true, kiosk: (await attOf(E.e4!)).find((r: Any) => r.id === in4)?.source === "KIOSK" && (await attOf(E.e2!)).find((r: Any) => r.id === in2)?.source === "KIOSK", override: !!d4 && d4.status === "ON_TIME" && d4.earlyOutMin === 0 && d4.workedMin === 365 }, "kiosk · override", `${shown(a5)} ${d4?.status}/E${d4?.earlyOutMin}/W${d4?.workedMin}`);
     const d5 = await dayOf(E.e5!, "2032-03-10");
@@ -696,10 +708,88 @@ async function runDb(): Promise<void> {
     const evAll = [...evT, ...(await evsOf(TB))];
     ck("S7.2", { audit: aud.length > 0 && aud.every((a) => !JSON.stringify(a).includes(SECRET)), outbox: evAll.every((e) => !JSON.stringify(e.payload).includes(SECRET) && !("reason" in (e.payload ?? {}))), notes: all.every((n) => !`${n.body}${n.title}`.includes(SECRET)) }, "reason stays private", `audit=${aud.length}`);
     const cols = await rows(`SELECT table_name, column_name FROM information_schema.columns WHERE table_name IN ('HrAttendance','HrTimeCorrection') AND column_name IN ('voidedAt','voidedByCorrectionId','correctionId','action','day')`);
-    const idx = await rows(`SELECT indexname FROM pg_indexes WHERE tablename = 'HrTimeCorrection' AND indexname IN ('HrTimeCorrection_pending_target_key','HrTimeCorrection_pending_add_key')`);
-    ck("S1.2", { ...S12.stat, live: cols.length === 5 && idx.length === 2 }, "migration", `cols=${cols.length} idx=${idx.length}`);
+    const idx = await rows(`SELECT indexname FROM pg_indexes WHERE tablename = 'HrTimeCorrection' AND indexname IN ('HrTimeCorrection_attendanceId_pending_key','HrTimeCorrection_pending_add_key','HrTimeCorrection_pending_target_key')`);
+    const idxN = srt(idx.map((r: Any) => r.indexname));
+    // ORACLE-EDIT r2: duplicate pending_target_key dropped — the H1.2 attendanceId_pending_key (same definition) stays
+    ck("S1.2", { ...S12.stat, live: cols.length === 5 && idxN === srt(["HrTimeCorrection_attendanceId_pending_key", "HrTimeCorrection_pending_add_key"]) }, "migration", `cols=${cols.length} idx=${idxN}`);
     const labels = ((mods.auto?.AUTOMATION_EVENTS ?? []) as Any[]).filter((a) => a.value === EV);
     ck("S1.5", { ...S15.stat, runtime: typeof handler === "function" && labels.length === 1 && labels[0].label === EV_LABEL }, "consumer · label");
+  });
+
+  // ══ r2 (controller fix round) — after the sweeps so earlier counts are untouched ══
+  const sys2 = async (n: string) => (await mods.sys.createSystem(TT, "HR", n)).id as string;
+  const [sFb, sHp] = [await sys2("HR F"), await sys2("HR H")];
+  const cFb = { tenantId: TT, systemId: sFb }, cHp = { tenantId: TT, systemId: sHp };
+  const eF = await me(TT, sFb, `eF ${tag}`, { unitId: u1 });
+  const eH = await me(TT, sHp, `eH ${tag}`, { unitId: u1 });
+  const inF = await att(eF, "IN", bk("2032-03-01", "00:30"), null, {}, cFb);
+  const outF = await att(eF, "OUT", bk("2032-03-01", "08:00"), null, {}, cFb);
+  await att(eH, "IN", bk("2032-03-31", "22:00"), null, {}, cHp);
+  for (const n of ["2032-03-03", "2032-04-02"]) await mods.judge.runAttendanceJobs({ now: bk(n, "12:00"), tenantId: TT });
+  // S11.1 (reviewer): A = fix the OUT of the Mar 1 session · B moves its IN to Feb 29 23:00 (approved) · Feb PAID · approve A ⇒ refused
+  await guard(["S11.1"], async () => {
+    const cA1 = idOf(await rq(cFb, U.writer!, { action: "CHANGE", attendanceId: outF, at: bk("2032-03-01", "09:00"), reason: RS("ออกผิด"), employeeId: eF }));
+    const bB = await dc(cFb, U.owner!, idOf(await rq(cFb, U.writer!, { action: "CHANGE", attendanceId: inF, at: bk("2032-02-29", "23:00"), reason: RS("เข้าก่อนเที่ยงคืน"), employeeId: eF })), "APPROVED");
+    await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sFb, periodKey: "2032-02", payDate: new Date("2032-02-29T00:00:00Z"), status: "PAID" } });
+    const febBefore = canon(await dayOf(eF, "2032-02-29"));
+    const attBefore = canon(await attOf(eF));
+    const aA = await dc(cFb, U.owner!, cA1, "APPROVED");
+    ck("S11.1", { filed: cA1 !== "∅", moved: bB?.ok === true, refused: said(aA, T.paid), cancelled: (await corrOf(cA1))?.status === "CANCELLED", feb: canon(await dayOf(eF, "2032-02-29")) === febBefore, punches: canon(await attOf(eF)) === attBefore }, "refused · Feb untouched", `${shown(bB)} ${shown(aA)}`);
+  });
+  // S11.2 (hunter): April PAID · March open · IN 03-31 22:00 · ADD OUT 04-01 06:00 ⇒ accepted · 03-31 W480 · nothing written to April
+  await guard(["S11.2"], async () => {
+    await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sHp, periodKey: "2032-04", payDate: new Date("2032-04-30T00:00:00Z"), status: "PAID" } });
+    const aprBefore = canon(await rows(`SELECT * FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND "date" >= '2032-04-01'::date ORDER BY "id"`, eH));
+    const late = { now: bk("2032-04-03", "12:00") };
+    const rH = await rq(cHp, U.owner!, ADD(eH, "OUT", "2032-04-01", "06:00"), late);
+    const d31 = (await dayOf(eH, "2032-03-31"))[0];
+    ck("S11.2", { accepted: rH?.ok === true && rH.status === "APPROVED", march: !!d31 && d31.workedMin === 480 && d31.missingOut === false && d31.version === 2, april: canon(await rows(`SELECT * FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND "date" >= '2032-04-01'::date ORDER BY "id"`, eH)) === aprBefore }, "accepted · April untouched", `${shown(rH)} W${d31?.workedMin}/v${d31?.version}`);
+  });
+  // S7.5: evidence shows only what THIS user did · DTO filtered to the viewer's branches
+  await guard(["S7.5"], async () => {
+    const uE = await fx.mkUser(TT, "self5", `QC self5 ${tag}`, "STAFF", [], {});
+    const eE5 = await me(TT, sA, `eE5 ${tag}`, { unitId: u1, linkedUserId: uE.id });
+    await att(eE5, "IN", bk("2032-03-16", "09:00"), null);
+    const ps = (no: number, unitId: string, by: string, o: string, c: string, closedBy: string) =>
+      P.posShift.create({ data: { tenantId: TT, unitId, systemId: `qc-pos-${tag}`, deviceId: `qcdev${tag}0000`, shiftNo: no, status: "CLOSED", openedByUserId: by, openedAt: new Date(o), floatSatang: 100000, closedByUserId: closedBy, closedAt: new Date(c), expectedCashSatang: 777, countedCashSatang: 777, overShortSatang: 0 } });
+    await ps(7101, u1, U.member!.id, "2032-03-16T08:00:00+07:00", "2032-03-16T17:05:00+07:00", uE.id);
+    await ps(7102, u2, uE.id, "2032-03-16T12:00:00+07:00", "2032-03-16T13:00:00+07:00", uE.id);
+    await ps(7103, u1, uE.id, "2032-03-16T18:00:00+07:00", "2032-03-16T19:00:00+07:00", U.member!.id);
+    const c5 = idOf(await rq(cA, U.writer!, ADD(eE5, "OUT", "2032-03-16", "17:00")));
+    const row = await corrOf(c5);
+    const want = [
+      { shiftNo: 7101, unitId: u1, openedAt: null, closedAt: "2032-03-16T10:05:00.000Z", forced: false },
+      { shiftNo: 7102, unitId: u2, openedAt: "2032-03-16T05:00:00.000Z", closedAt: "2032-03-16T06:00:00.000Z", forced: false },
+      { shiftNo: 7103, unitId: u1, openedAt: "2032-03-16T11:00:00.000Z", closedAt: null, forced: false },
+    ];
+    const strip = (xs: Any[]) => xs.map(({ unitId: _u, ...x }: Any) => x);
+    const dO = await det(cA, U.owner!, c5);
+    const dM = await det(cA, U.mgrU1!, c5);
+    ck("S7.5", {
+      stored: canon(row?.evidenceJson) === canon({ posShifts: want, deviceLogout: null }),
+      owner: dO?.ok === true && canon(dO.item.evidence) === canon({ posShifts: strip(want), deviceLogout: null }),
+      branch: dM?.ok === true && canon(dM.item.evidence) === canon({ posShifts: strip(want.filter((x) => x.unitId === u1)), deviceLogout: null }),
+    }, "own actions · branch scope", short(row?.evidenceJson, 80));
+  });
+  // S7.6: 450 newer rows of a u2 employee must not push c1 out of the u1 manager's list
+  await guard(["S7.6"], async () => {
+    const eX2 = await me(TT, sA, `eX2 ${tag}`, { unitId: u2 });
+    await P.hrTimeCorrection.createMany({ data: Array.from({ length: 450 }, (_, i) => ({ tenantId: TT, systemId: sA, employeeId: eX2, kind: "OUT", proposedAt: bk("2032-03-17", "17:00"), reason: `r${i}`, status: "REJECTED", requestedByUserId: U.writer!.id })) });
+    const lm2 = await call(CM, "listCorrections", cA, vOf(U.mgrU1!), {}, opt);
+    const ids2 = lm2?.ok === true ? lm2.items.map((x: Any) => x.id) : [];
+    ck("S7.6", { c1: ids2.includes(c1), noU2: lm2?.ok === true && !lm2.items.some((x: Any) => x.employeeId === eX2) }, "complete list", `n=${ids2.length}`);
+  });
+  // S6.2: OWNER files for their own linked row ⇒ applied at once (Q4) · flagged selfApplied
+  await guard(["S6.2"], async () => {
+    const eOB = await me(TB, sB, `eOB ${tag}`, { unitId: ub, linkedUserId: U.ownerB!.id });
+    await att(eOB, "IN", bk("2032-03-05", "09:00"), null, {}, cB);
+    const r6 = await rq(cB, U.ownerB!, ADD(undefined, "OUT", "2032-03-05", "17:00"));
+    const id6 = idOf(r6);
+    const k6 = await corrOf(id6);
+    const au6 = ((await P.auditLog.findMany({ where: { tenantId: TB, action: "hr.correction.owner_auto" } })) as Any[]).filter((a) => a.after?.correctionId === id6);
+    const others = (await corrsOf(TB)).filter((k: Any) => k.id !== id6);
+    const d6 = await det(cB, U.ownerB!, id6);
+    ck("S6.2", { applied: r6?.ok === true && r6.status === "APPROVED" && r6.requestId === null && k6?.decidedById === U.ownerB!.id, flag: k6?.selfApplied === true && others.every((k: Any) => k.selfApplied === false), audit: au6.length === 1 && au6[0].after?.selfApplied === true, dto: d6?.ok === true && d6.item.selfApplied === true }, "self-applied", shown(r6));
   });
 }
 
