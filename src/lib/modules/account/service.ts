@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { safeReason } from "./errors";
+import { accountNow } from "./clock";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // CRM C5.4-C/C5.4-N ▸ LOCK ORDER of the account money transactions (round 11 · R10-2 · C5.4-N tail numbering) — THE one
@@ -341,7 +342,7 @@ export function isOverdue(d: {
   dueDate: Date | null;
   validUntil: Date | null;
 }): boolean {
-  const now = Date.now();
+  const now = accountNow().getTime();
   if ((d.status === "AWAITING_PAYMENT" || d.status === "PARTIAL") && d.dueDate)
     return d.dueDate.getTime() < now;
   if (d.status === "AWAITING_ACCEPT" && d.validUntil) return d.validUntil.getTime() < now;
@@ -1489,7 +1490,7 @@ export async function listDocumentsPaged(
   systemId: string,
   input: ListDocumentsInput,
 ): Promise<ListDocumentsPage> {
-  const now = new Date();
+  const now = accountNow();
   const pageSize = clampPageSize(input.pageSize);
   const page = clampPage(input.page);
   const q = clampSearch(input.q);
@@ -1582,7 +1583,7 @@ export async function computeListTabCounts(
   tabs: { key: string; filter: { status: DocStatusFilter; excludeOverdue?: boolean } }[],
   extra?: { q?: string; contactId?: string; from?: Date | string; to?: Date | string },
 ): Promise<Record<string, number>> {
-  const now = new Date();
+  const now = accountNow();
   const from = parseDay(extra?.from, false);
   const to = parseDay(extra?.to, true);
   const q = clampSearch(extra?.q);
@@ -1687,7 +1688,7 @@ export async function accountFlyoutCounts(
   tenantId: string,
   systemId: string,
 ): Promise<Record<string, number>> {
-  const now = new Date();
+  const now = accountNow();
   const [byStatus, overdueByStatus] = await Promise.all([
     prisma.accountDocument.groupBy({
       by: ["docType", "status"],

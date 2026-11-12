@@ -14,9 +14,8 @@
 //   ใบแจ้งหนี้ 53 ใบ: ร่าง 3 · รอชำระ 14 (2 ใบครบกำหนดเดือนนี้ — WO 5.2 round 2) · บางส่วน 2 · ชำระแล้ว 29 · พ้นกำหนด 4 · ยกเลิก 1
 //   ผู้ติดต่อ 63 (ลูกค้า 41 · ผู้ขาย 22 · เก็บเข้ากรุ 5) · สินค้า/บริการ 12
 //
-// ⏰ วันที่ทั้งหมดอ้าง "วันนี้" ที่ตรึงไว้ = 2026-09-30 · ใบที่ยังไม่พ้นกำหนดตั้ง dueDate พ.ย.–ธ.ค. 2026
-//    เพื่อให้ผล "พ้นกำหนด" นิ่งแม้รันจริงคนละวัน (isOverdue อ่าน Date.now() ของเครื่อง)
-//    หลัง QC.oracleValidUntil ตัวเลขจะเริ่มเพี้ยน → สคริปต์เตือนเอง
+// ⏰ วันที่ทั้งหมดอ้าง "วันนี้" ที่ตรึงไว้ = 2026-09-30 · นาฬิกา "พ้นกำหนด" ของโมดูลบัญชีถูกตรึงที่
+//    QC.asOfIso (pinQcAccountClock) ⇒ ผล "พ้นกำหนด" นิ่งไม่ว่าจะรันวันไหน (T0.3b — เดิมเน่าหลัง 31 ต.ค. 2026)
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join as pathJoin } from "node:path";
@@ -34,13 +33,16 @@ const accEnv = (await import("./acc-v2-env.mts" as string)) as {
     expectedPath: string;
     shotsDir: string;
     today: string;
-    oracleValidUntil: string;
+    asOfIso: string;
   };
+  pinQcAccountClock: () => Promise<Date>;
 };
-const { loadQcEnv, QC, isAccV2SeedPresent, resolveAccV2Scope } = accEnv;
+const { loadQcEnv, QC, isAccV2SeedPresent, resolveAccV2Scope, pinQcAccountClock } = accEnv;
 
 const { host } = loadQcEnv();
 console.log(`🗄️  DB QC: ${host}\n`);
+// "พ้นกำหนด" คิด ณ วันอ้างอิงของชุดข้อมูล ไม่ใช่นาฬิกาเครื่อง (ดู pinQcAccountClock)
+console.log(`⏰ นาฬิกาพ้นกำหนดตรึงที่ ${(await pinQcAccountClock()).toISOString()} (QC.asOfIso)\n`);
 
 const { prisma } = await import("@/lib/core/db");
 
@@ -133,15 +135,6 @@ function docLines(grand: number, description: string, unitName = "รายก�
 
 function assertEq(label: string, actual: number, want: number) {
   if (actual !== want) throw new Error(`❌ ${label}: ได้ ${actual} ต้องการ ${want}`);
-}
-
-// ─────────────────────────── 0. เตือนเรื่องอายุของข้อสอบ ───────────────────────────
-
-if (Date.now() > D(QC.oracleValidUntil).getTime()) {
-  console.warn(
-    `⚠️  วันนี้เลย ${QC.oracleValidUntil} แล้ว — ใบที่ตั้งใจให้ "ยังไม่พ้นกำหนด" อาจกลายเป็นพ้นกำหนด\n` +
-      `   ต้องเลื่อน dueDate ในสคริปต์นี้ก่อนใช้ต่อ (บทเรียน: ข้อสอบเน่าตามเวลา)\n`,
-  );
 }
 
 // ─────────────────────────── 1. ลบร้าน QC เดิมทิ้งให้เกลี้ยง ───────────────────────────
@@ -2465,7 +2458,7 @@ const expected = {
     "เฉลยชุดเดียวของงานบัญชี V2 — เขียนโดย scripts/seed-acc-v2-qc.mts ทุกครั้งที่ seed · จำนวนเงินเป็นสตางค์ (integer)",
   generatedAt: new Date().toISOString(),
   today: QC.today,
-  oracleValidUntil: QC.oracleValidUntil,
+  asOf: QC.asOfIso,
   tenantId,
   tenantName: QC.tenantName,
   ownerEmail: QC.ownerEmail,

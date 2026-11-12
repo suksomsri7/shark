@@ -24,7 +24,7 @@ const accEnv = (await import("./acc-v2-env.mts" as string)) as {
     expectedPath: string;
     shotsDir: string;
     today: string;
-    oracleValidUntil: string;
+    asOfIso: string;
   };
 };
 const { loadQcEnv, QC } = accEnv;
