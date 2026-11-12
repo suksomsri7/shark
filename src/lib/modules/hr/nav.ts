@@ -5,6 +5,7 @@
 import { canReadRoster } from "./roster-board";
 import { canRunKiosk } from "./clock-settings";
 import { canManageHrSettings } from "./settings";
+import { canOpenInbox } from "./inbox"; // HR H2.11 ▸ แท็บ "คำขอ" = ด่านเดียวกับหน้า /hr/requests (listInbox ไม่ใช่ null) ◂
 
 export type HrNavItem = { href: string; label: string };
 export type HrNavViewer = { role: string; unitAccess: unknown; permissions: unknown; userId?: string | null };
@@ -13,13 +14,14 @@ export type HrNavViewer = { role: string; unitAccess: unknown; permissions: unkn
 export const HR_SELF_HREF = "/app/me/hr";
 export const HR_SELF_LABEL = "ของฉัน";
 
-type Gate = "roster" | "kiosk" | "settings" | "attendance" | null;
+type Gate = "roster" | "kiosk" | "settings" | "attendance" | "requests" | null; // HR H2.11 ◂
 function gateOf(href: string): Gate {
   const path = href.replace(/[?#].*$/, "").replace(/\/+$/, "");
   if (/\/hr\/roster$/.test(path)) return "roster";
   if (/\/hr\/kiosk$/.test(path)) return "kiosk";
   if (/\/hr\/settings(\/law)?$/.test(path)) return "settings";
   if (/\/hr\/attendance$/.test(path)) return "attendance";
+  if (/\/hr\/requests$/.test(path)) return "requests"; // HR H2.11 ◂
   return null;
 }
 
@@ -43,6 +45,8 @@ export function hrNavFilter(items: readonly HrNavItem[], viewer: HrNavViewer | n
         return canManageHrSettings(v);
       case "attendance":
         return roster || linked;
+      case "requests": // HR H2.11 ◂
+        return canOpenInbox(v); // HR H2.11 ◂
       default:
         return true;
     }

@@ -105,6 +105,16 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "corr-self-list", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "คำขอแก้เวลาของฉัน + ยกเลิก (H2.6)", expect: { staff: 200 }, users: ["staff"] },
     { key: "corr-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404 (H2.6)", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
   ],
+  // HR H2.11 ▸ brief §5 (mockup 01 + 05): ภาพรวมทีมบน HrHub · กล่องคำขอรวม (ทุกชนิด · type=OT · ผลชุด · โควตา) · ผู้ไม่เห็นคำขอชนิดใด = 404 ·
+  //   seed มีคำขอรอครบ 5 ชนิด (ลา · OT · สลับกะ · แก้เวลา · เบิกล่วงหน้า + หักค่าของ) · HQC ไม่มีผู้ถือคีย์ hr.employee.create ⇒ "key-holder" = manager (ทุกสาขา) ◂
+  "2.11": [
+    { key: "hub-overview", path: (i) => `/app/sys/${i.hr}`, users: ["owner", "manager-branch", "manager", "payroll", "staff"], why: "ภาพรวมทีม 01: อยู่กะวันนี้ · คำขอที่ตัดสินได้ · วันที่ต้องคิดผลใหม่ · ใกล้ครบกำหนด + ตัวอย่างคำขอ 5 รายการ (staff = ไม่มีส่วนนี้) (H2.11)" },
+    { key: "inbox", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["owner", "manager-branch", "manager", "payroll"], expect: { owner: 200, "manager-branch": 200, manager: 200, payroll: 200 }, why: "กล่องคำขอรวม 05: ชิปชนิด+ตัวนับ · การ์ดมีป้าย · ผลกระทบ · แถบเลือกติดล่าง · ตารางโควตา (payroll = OT/เงิน อ่านอย่างเดียว ไม่มีโควตา) (H2.11)" },
+    { key: "inbox-ot", path: (i) => `/app/sys/${i.hr}/hr/requests?type=OT`, users: ["owner", "manager-branch"], why: "type=OT: นาที × อัตรา ไม่มี ฿ ถึงผู้จัดการ · ตัวนับไม่เปลี่ยน (H2.11)" },
+    { key: "inbox-adj", path: (i) => `/app/sys/${i.hr}/hr/requests?type=ADJUSTMENT`, users: ["owner", "payroll"], why: "เพิ่ม/หักเงิน: ยอด · ที่มา · หนังสือยินยอมของหักค่าของ · ตัดสินทีละรายการ (H2.11)" },
+    { key: "inbox-batch-result", path: (i) => `/app/sys/${i.hr}/hr/requests?type=SWAP`, click: '[data-testid^="hr-inbox-approve-"]', users: ["owner"], why: "ผลการตัดสิน (hr-inbox-result) ต่อรายการ — ⚠ กดจริง: ถ่ายหลังภาพอื่น แล้ว seed ใหม่ (H2.11)" },
+    { key: "inbox-refused", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["staff", "member", "kiosk"], expect: { staff: 404, member: 404, kiosk: 404 }, why: "ไม่เห็นคำขอชนิดใดเลย = 404 (H2.11)" },
+  ],
   // HR H4.6 ▸ brief §5 (ไม่มี mockup — ตามฟอร์มรายการเพิ่ม/หักของหน้าเงินเดือน): ส่วน "หักค่าของ" #hr-stock · ฟอร์ม (ผู้ถือคีย์ยื่น) · รายการ/ยอด/หนังสือยินยอม/ธงเพดาน
   //   (ผู้ดูเงินเดือน) · seed ไม่มีรายการ ⇒ ว่าง เว้นแต่ผู้ควบคุมยื่นก่อนถ่าย · staff/member ไม่มีส่วนนี้ ◂
   "4.6": [

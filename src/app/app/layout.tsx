@@ -158,6 +158,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/hr/roster`, label: "ตารางกะ" }, // HR H2.2 ▸ บอร์ดตารางกะรายสัปดาห์ (หน้ากันสิทธิ์เอง — 404 ถ้าไม่ใช่ OWNER/MANAGER/hr.employee.create) ◂
           { href: `${s}/hr/kiosk`, label: "จอลงเวลา" },
           { href: `${s}/hr/leave`, label: "ใบลา" },
+          { href: `${s}/hr/requests`, label: "คำขอ" }, // HR H2.11 ▸ กล่องคำขอรวม (หน้ากันสิทธิ์เอง — 404 ถ้าไม่เห็นคำขอชนิดใดเลย) ◂
           { href: `${s}/hr/employees`, label: "พนักงาน" },
           { href: `${s}/hr/payroll`, label: "เงินเดือน" },
           { href: `${s}/hr/settings`, label: "ตั้งค่า" }, // HR H1.2 R13 ▸ หน้าตั้งค่า (หน้ากันสิทธิ์เอง — 404 ถ้าไม่ใช่ OWNER/hr.employee.create) ◂

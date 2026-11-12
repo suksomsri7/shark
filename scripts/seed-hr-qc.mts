@@ -557,6 +557,40 @@ try {
     `${arRows} · ${jRows.length}/${jRun.finalized} · ${JSON.stringify(byStatus)} · ${attendanceDays.alerts}`,
   );
 
+  // ═══════════════════ 9f. HR H2.11 ▸ คำขอรออนุมัติครบ 5 ชนิด (ภาพ 05/01) — ผ่านฟังก์ชันยื่นของแต่ละชนิดเท่านั้น · ไม่ตัดสิน ◂ ═══════════════════
+  const IX = HQC.inbox;
+  const viewerOf = (k: HqcUserKey) => {
+    const u = HQC.users[k];
+    return { role: u.role, unitAccess: u.units ? u.units.map((x) => units[x]!) : ["*"], permissions: u.keys, userId: uid(k) };
+  };
+  const ixOt = (await import("@/lib/modules/hr/ot" as string)) as Any;
+  const ixSwap = (await import("@/lib/modules/hr/swap" as string)) as Any;
+  const ixCorr = (await import("@/lib/modules/hr/correction" as string)) as Any;
+  const ixStock = (await import("@/lib/modules/hr/stock-charge" as string)) as Any;
+  const ixOk = (what: string, r: Any) => {
+    if (!r?.ok) throw new Error(`inbox ${what}: ${r?.reason}`);
+    return r;
+  };
+  ixOk("ot", await ixOt.requestOt(ctx, viewerOf(IX.ot.by), { employeeId: emp[IX.ot.employee], date: addDays(rosterWeek, IX.ot.dow), start: IX.ot.start, end: IX.ot.end, reason: IX.ot.reason }));
+  const ixDay = addDays(rosterWeek, IX.swap.dow);
+  ixOk("borrow", await hr.addEmployeeBorrowing(ctx, { employeeId: emp[IX.swap.target], unitId: units[IX.swap.borrowUnit]!, fromDate: ixDay, toDate: ixDay, note: `ช่วยงาน${HQC.units[IX.swap.borrowUnit].name}` }));
+  const ixFrom = (await P.hrRosterEntry.findFirst({ where: { tenantId, employeeId: emp[IX.swap.requester], date: new Date(`${ixDay}T00:00:00Z`), published: true }, select: { id: true } })) as Any;
+  const ixReq = ixOk("swap", await ixSwap.requestSwap(ctx, viewerOf(IX.swap.by), { fromEntryId: ixFrom?.id ?? "", targetEmployeeId: emp[IX.swap.target], toEntryId: null }));
+  ixOk("swap accept", await ixSwap.respondSwap(ctx, viewerOf(IX.swap.peer), ixReq.id, { accept: true }));
+  const ixLateDay = addDays(D.today, HQC.attendance.late.dayOffset);
+  const ixIn = (await P.hrAttendance.findFirst({ where: { tenantId, employeeId: emp[IX.correction.employee], kind: "IN", at: { gte: atBkk(ixLateDay, 0), lt: atBkk(ixLateDay, 24 * 60) } }, select: { id: true, at: true } })) as Any;
+  ixOk("correction", await ixCorr.requestCorrection(ctx, viewerOf(IX.correction.by), { action: "CHANGE", kind: "IN", attendanceId: ixIn?.id ?? "", at: new Date(new Date(ixIn?.at ?? 0).getTime() - IX.correction.earlierMin * 60_000), reason: IX.correction.reason }));
+  ixOk("advance", await pay.requestAdjustment(ctx, { employeeId: emp[IX.advance.employee], periodKey: D.thisMonth, kind: "ADVANCE", amountSatang: IX.advance.amountSatang, note: IX.advance.note, requestedById: uid(IX.advance.by) }));
+  ixOk("stock", await ixStock.requestStockCharge(ctx, ownerViewer, { requestKey: `qc-hr-v2-inbox-${D.today}`, employeeId: emp[IX.stock.employee], kind: "DAMAGE", amountSatang: IX.stock.amountSatang, description: IX.stock.description, consent: { confirmed: true, ref: IX.stock.consentRef, at: D.today } }));
+  const ixLive = {
+    otPending: await P.hrOtRequest.count({ where: { tenantId, status: "PENDING" } }),
+    swapPending: await P.hrShiftSwapRequest.count({ where: { tenantId, status: "PENDING" } }),
+    correctionPending: await P.hrTimeCorrection.count({ where: { tenantId, status: "PENDING" } }),
+    adjustmentsPending: (await P.hrPayAdjustment.count({ where: { tenantId, status: "PENDING", runId: null } })) - HQC.payroll.pending.length,
+    stockCharges: await P.hrStockCharge.count({ where: { tenantId } }),
+  };
+  q.chk("IX1", `คำขอรออนุมัติของกล่องรวม (H2.11): OT 1 · ยกกะ 1 (ตอบรับแล้ว) · แก้เวลา 1 · เบิกล่วงหน้า + หักค่าของ 2 · ใบลาเดิม`, JSON.stringify(ixLive) === JSON.stringify(IX.expect), JSON.stringify(IX.expect), JSON.stringify(ixLive));
+
   // ═══════════════════ 10. ผลรวม + ร้านอื่นไม่เปลี่ยน + ไฟล์เฉลย ═══════════════════
   const counts = await countsOf(tenantId, tables);
   counts["User(qc emails)"] = await P.user.count({ where: { email: { in: HQC_EMAILS } } });

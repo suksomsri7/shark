@@ -356,6 +356,17 @@ export const HQC = {
     leaver: { employee: "fai", reason: "RESIGNED" },
     expect: { tasks: 13, notes: 1, onboardingDone: 5, offboardingTasks: 6 },
   },
+  // HR H2.11 ▸ กล่องคำขอรวม (ภาพ 05/01) — คำขอรออนุมัติครบ 5 ชนิดสำหรับภาพ (ผ่านฟังก์ชันยื่นของแต่ละชนิด · ไม่ตัดสิน):
+  //   ลา = ใบเดิม (มิ้นท์ · แพร) · OT ของต้น (ผู้จัดการยื่นแทน · พุธของ rosterWeek 15:00–17:00) · ยกกะ (GIVE) พฤหัสของน้ำฝน → ก้อย (ยืมตัวมาหัวหินวันนั้น · ก้อยตอบรับ) ·
+  //   แก้เวลาเข้าของน้ำฝนวันที่สาย (−1) เร็วขึ้น 5 นาที (ยื่นเอง) · เบิกล่วงหน้าของต้น ฿2,000 (ผู้จัดการยื่น) · หักค่าแก้วแตกของมิ้นท์ ฿150 (เจ้าของยื่น · หนังสือยินยอม) ◂
+  inbox: {
+    ot: { employee: "ton", dow: 2, start: "15:00", end: "17:00", reason: "ช่วยเตรียมของงานเลี้ยง", by: "manager" as HqcUserKey },
+    swap: { requester: "namfon", dow: 3, target: "koy", borrowUnit: "huahin" as HqcUnit, by: "staff" as HqcUserKey, peer: "payrollSelf" as HqcUserKey },
+    correction: { employee: "namfon", by: "staff" as HqcUserKey, earlierMin: 5, reason: "มาถึงแล้วแต่เครื่องลงเวลาค้าง" },
+    advance: { employee: "ton", amountSatang: B(2_000), note: "เบิกล่วงหน้า หักคืนงวดนี้", by: "manager" as HqcUserKey },
+    stock: { employee: "mint", amountSatang: B(150), description: "แก้วกาแฟแตก 1 ใบ", consentRef: "ยินยอม-QC-001" },
+    expect: { otPending: 1, swapPending: 1, correctionPending: 1, adjustmentsPending: 2, stockCharges: 1 },
+  },
 } as const;
 
 export type HqcEmployeeKey = (typeof HQC.employees)[number]["key"];
