@@ -78,7 +78,7 @@ export function attendanceDeductionOf(input: AttInput): AttOut {
   if (input.baseSalarySatang === 0) return { ok: false, code: "NO_BASE" };
   const N = input.normalDayMin;
   const base = input.baseSalarySatang;
-  const days = Array.isArray(input.days) ? input.days : null;
+  const days: readonly AttDayInput[] | null = Array.isArray(input.days) ? (input.days as readonly AttDayInput[]) : null;
   if (!isInt(N) || N < 60 || N > 720 || !isInt(base) || base < 0 || base > INT_MAX || !days) return { ok: false, code: "BAD_INPUT" };
   for (const d of days) {
     if (!d || typeof d.day !== "string" || typeof d.workDayId !== "string" || !isInt(d.version) || !minuteOk(d.lateMin) || !minuteOk(d.earlyOutMin) || !minuteOk(d.absentMin) || !Array.isArray(d.review)) return { ok: false, code: "BAD_INPUT" };
