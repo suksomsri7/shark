@@ -1185,7 +1185,8 @@ function runKioskGate(): void {
   const secAt = page.search(/<HrKioskSection\b/);
   const act = stripComments(rd(`${HRD}actions.ts`));
   const kfn = act.split(/export\s+async\s+function\s+/).find((x) => x.startsWith("kioskClockAction")) ?? "";
-  const refAt = kfn.search(/if\s*\(\s*!canRunKiosk\([^)]*\)\s*\)\s*return\s*\{\s*status:\s*["']error["']\s*,\s*message:\s*KIOSK_REFUSED_TEXT\s*\}/);
+  // VIS-1 builder fix (own new check): the argument nests parens (memberOf(auth)) — [^)]* stopped at the first ")"
+  const refAt = kfn.search(/if\s*\(\s*!canRunKiosk\(\s*memberOf\(\s*auth\s*\)\s*\)\s*\)\s*return\s*\{\s*status:\s*["']error["']\s*,\s*message:\s*KIOSK_REFUSED_TEXT\s*\}/);
   const callAt = kfn.search(/kioskClock\(/);
   const txt = String(csMod?.KIOSK_REFUSED_TEXT ?? "");
   ck(
