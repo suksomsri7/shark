@@ -141,6 +141,11 @@ export async function CorrectionList({
               </span>
               <b className="text-[17px]">{c.employeeName}</b>
               {c.filedOnBehalf && <span className={`text-[13px] ${muted}`}>{t("onBehalf")}</span>}
+              {c.selfApplied && (
+                <span data-testid={`hr-corr-self-${c.id}`} className="inline-flex items-center rounded-lg border-[1.5px] border-[color:var(--color-danger)] px-2 py-0.5 text-[13px] font-semibold text-[color:var(--color-danger)]">
+                  {t("selfApplied")}
+                </span>
+              )}
               <span className="flex-1" />
               {!pending && <span className={`inline-flex items-center rounded-lg border-[1.5px] px-2 py-0.5 text-[13px] ${STATUS_TONE[c.status]}`}>{t(`status.${c.status}`)}</span>}
               <span className={`text-[13px] ${muted}`}>{t("filed", { at: stampText(t, c.createdAt) })}</span>

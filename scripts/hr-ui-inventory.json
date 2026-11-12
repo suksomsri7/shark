@@ -5793,6 +5793,32 @@
    "wo": "H2.6",
    "oracle": "qc-hr-h2.6",
    "note": "ยกเลิกคำขอ (ผู้ยื่น/พนักงานเอง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-corr-self-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/correction-ui.tsx",
+   "conditional": "selfApplied (เจ้าของแก้แถวของตัวเอง — มติ Q4)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "staff"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.6",
+   "oracle": "qc-hr-h2.6",
+   "note": "ป้าย \"แก้โดยเจ้าของเอง\" · * = id HrTimeCorrection"
   }
  ]
 }

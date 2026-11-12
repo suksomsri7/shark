@@ -718,7 +718,8 @@
         "m10": "Oct",
         "m11": "Nov",
         "m12": "Dec"
-      }
+      },
+      "selfApplied": "Fixed by the owner on their own record"
     }
   }
 }
