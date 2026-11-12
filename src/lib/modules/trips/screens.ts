@@ -819,13 +819,16 @@ export type TripsSettingsVM = {
    */
   fieldViews: Record<string, TripsFieldView>;
 };
-export type TripsFieldView = "LADDER" | "PAX_FIELDS" | "PARK_FEE" | "CANCEL_OPTIONS" | "DEDUCTIONS";
+export type TripsFieldView = "LADDER" | "PAX_FIELDS" | "PARK_FEE" | "CANCEL_OPTIONS" | "DEDUCTIONS" | "SATANG_FIELDS";
 const FIELD_VIEWS: Readonly<Record<string, TripsFieldView>> = {
   "trips.cancel.ladder": "LADDER",
   "trips.pax.fields": "PAX_FIELDS",
   "trips.parkFee.table": "PARK_FEE",
   "trips.cancel.shopCancelOptions": "CANCEL_OPTIONS",
   "trips.cancel.deductions": "DEDUCTIONS",
+  // ช่องย่อยเงินเก็บเป็นสตางค์ (ชนิดช่องย่อยของทะเบียนไม่มีเงิน) — การ์ดแสดงเป็นบาท · ตัวแก้คงเป็นสตางค์ตามทะเบียน
+  "trips.tax.vatRegistered": "SATANG_FIELDS",
+  "trips.insurance.minSum": "SATANG_FIELDS",
 };
 const SEV_RANK: Record<string, number> = { HIGHEST: 3, HIGH: 2, NORMAL: 1 };
 

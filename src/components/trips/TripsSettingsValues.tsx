@@ -5,7 +5,7 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { TripsSettingsVM } from "@/lib/modules/trips";
-import type { SettingsField } from "@/components/settings/settings-shared";
+import { formatCell, type SettingsField } from "@/components/settings/settings-shared";
 import { formatBahtShort, ladderTiers, type LadderTier } from "./trips-shared";
 import { useYmd } from "./ProductsScreenParts";
 
@@ -52,6 +52,19 @@ export function viewText(t: T, view: View, f: SettingsField, v: unknown): string
     case "CANCEL_OPTIONS":
       if (!isRec(v)) return "—";
       return [codeList(t, "settings.view.cancelOption", v.options), num(v.autoRefundAfterDays) !== null ? t("settings.view.autoRefund", { n: num(v.autoRefundAfterDays) ?? 0 }) : null].filter(Boolean).join(" · ");
+    case "SATANG_FIELDS": {
+      // ช่องย่อยที่ชื่อลงท้าย Satang (ธรรมเนียมของ schema trips) แสดงเป็นบาท · ช่องอื่นใช้ตัวจัดรูปของทะเบียน
+      if (!isRec(v) || !f.tableSpec?.fields) return "—";
+      const parts: string[] = [];
+      for (const [k, cs] of Object.entries(f.tableSpec.fields)) {
+        if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
+        const raw = v[k];
+        const text = k.endsWith("Satang") && num(raw) !== null ? t("settings.view.baht", { amount: formatBahtShort(num(raw) ?? 0) }) : formatCell(cs, raw);
+        const label = cs.shortTh ?? cs.labelTh.replace(/\s*\(สตางค์\)$/, "");
+        parts.push(label ? `${label} ${text}` : text);
+      }
+      return parts.join(" · ") || "—";
+    }
     case "DEDUCTIONS":
       if (!isRec(v)) return "—";
       return [Array.isArray(v.categories) && v.categories.length ? codeList(t, "settings.view.deduction", v.categories) : t("settings.view.noDeductions"), v.evidenceRequired === true ? t("settings.view.evidenceRequired") : t("settings.view.evidenceOptional")].join(" · ");
@@ -99,7 +112,7 @@ export function ViewValue({ view, f, v, warn }: { view: View; f: SettingsField; 
     const b = (x: unknown) => (num(x) === null ? "—" : formatBahtShort(num(x) ?? 0));
     return (
       <div data-view="park-fee" className="flex min-w-0 flex-col gap-2">
-        <div className="min-w-0 overflow-x-auto">
+        <div className="relative min-w-0 overflow-x-auto">
           <table className="w-full min-w-0 border-collapse text-sm">
             <thead>
               <tr className="border-b border-[color:var(--color-line)] text-[color:var(--color-muted)]">

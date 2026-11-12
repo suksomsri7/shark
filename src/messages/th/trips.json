@@ -415,7 +415,8 @@
       },
       "noDeductions": "ไม่หัก",
       "evidenceRequired": "ต้องมีหลักฐาน",
-      "evidenceOptional": "ไม่ต้องมีหลักฐาน"
+      "evidenceOptional": "ไม่ต้องมีหลักฐาน",
+      "baht": "{amount} บาท"
     }
   },
   "loading": "กำลังโหลด…",

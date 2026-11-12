@@ -23,6 +23,8 @@ import { EXTRA_BASIS_CODES, EXTRA_KIND_CODES, formatBahtShort } from "./trips-sh
 import { BTN, BTN_PRIMARY, CARD, Dialog, ErrorLine, Field, INPUT, Pill, TD, TH, bahtToSatang, intOrNull, statusShape, useRunner, useYmd } from "./ProductsScreenParts";
 
 type VM = ProductEditorVM;
+/** หัวคอลัมน์ธง (คิดคอมฯ · ลดได้ · เก็บแทน) — แคบ ตัดบรรทัดได้ ให้คอลัมน์ชื่อรายการได้ที่ที่เหลือ */
+const TH_FLAG = "px-1 py-2 text-center text-sm font-medium leading-tight text-[color:var(--color-muted)]";
 type T = ReturnType<typeof useTranslations>;
 const DEFAULT_PAX = ["ADULT", "CHILD", "INFANT"];
 /** ป้ายประเภทคน: รหัสมาตรฐานใช้ messages · รหัสที่ร้านตั้งเองใช้ชื่อของร้าน */
@@ -149,7 +151,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
             </button>
           ) : null}
         </div>
-        <div className="min-w-0 overflow-x-auto">
+        <div className="relative min-w-0 overflow-x-auto">
           <table className="w-full min-w-0 border-collapse">
             <thead>
               <tr className="border-b border-[color:var(--color-line)]">
@@ -199,7 +201,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
           <h3 className="text-base font-bold">{t("pax.title")}</h3>
           <span className="rounded-md border border-[color:var(--color-line)] px-2 py-0.5 text-sm text-[color:var(--color-ink-soft)]">{vm.ageSource === "COPIED_FROM_SETTING" ? t("pax.sourceCopied") : t("pax.sourceCustom")}</span>
         </div>
-        <div className="min-w-0 overflow-x-auto">
+        <div className="relative min-w-0 overflow-x-auto">
           <table className="w-full min-w-0 border-collapse">
             <thead>
               <tr className="border-b border-[color:var(--color-line)]">
@@ -276,7 +278,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
             ) : null}
           </span>
         </div>
-        <div className="min-w-0 overflow-x-auto">
+        <div className="relative min-w-0 overflow-x-auto">
           <table className="w-full min-w-0 border-collapse">
             <thead>
               <tr className="border-b border-[color:var(--color-line)]">
@@ -313,7 +315,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
             </button>
           ) : null}
         </div>
-        <div className="min-w-0 overflow-x-auto">
+        <div className="relative min-w-0 overflow-x-auto">
           <table className="w-full min-w-0 border-collapse">
             <thead>
               <tr className="border-b border-[color:var(--color-line)]">
@@ -370,18 +372,18 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
             ))}
           </div>
         ) : null}
-        <div className="min-w-0 overflow-x-auto">
+        <div className="relative min-w-0 overflow-x-auto">
           <table className="w-full min-w-0 border-collapse">
             <thead>
               <tr className="border-b border-[color:var(--color-line)]">
-                <th className={TH}>{t("extras.colItem")}</th>
-                <th className={TH}>{t("extras.colBasis")}</th>
-                <th className={TH}>{t("extras.colRequired")}</th>
-                <th className={`${TH} text-right`}>{t("extras.colPrice")}</th>
-                <th className={`${TH} text-center`}>{t("extras.colCommission")}</th>
-                <th className={`${TH} text-center`}>{t("extras.colDiscount")}</th>
-                <th className={`${TH} text-center`}>{t("extras.colPassThrough")}</th>
-                <th className={TH}>
+                <th className={`${TH} w-full min-w-36`}>{t("extras.colItem")}</th>
+                <th className={`${TH} w-px`}>{t("extras.colBasis")}</th>
+                <th className={`${TH} w-px`}>{t("extras.colRequired")}</th>
+                <th className={`${TH} w-px text-right`}>{t("extras.colPrice")}</th>
+                <th className={`${TH_FLAG} w-14`}>{t("extras.colCommission")}</th>
+                <th className={`${TH_FLAG} w-14`}>{t("extras.colDiscount")}</th>
+                <th className={`${TH_FLAG} w-16`}>{t("extras.colPassThrough")}</th>
+                <th className={`${TH} w-px`}>
                   <span className="sr-only">{t("common.actions")}</span>
                 </th>
               </tr>
@@ -410,7 +412,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
             {t("content.draft")}
           </button>
         </div>
-        <div className="min-w-0 overflow-x-auto">
+        <div className="relative min-w-0 overflow-x-auto">
           <table data-testid="trips-content-table" className="w-full min-w-0 border-collapse">
             <thead>
               <tr className="border-b border-[color:var(--color-line)]">
@@ -470,14 +472,14 @@ function ExtraRow({ e, t, disabled, onToggle }: { e: ExtraRowVM; t: T; disabled:
   const price = e.paxPrices && Object.keys(e.paxPrices).length ? Object.values(e.paxPrices).map((v) => formatBahtShort(v)).join(" / ") : formatBahtShort(e.priceSatang);
   return (
     <tr data-testid={`trips-extra-row-${e.id}`} data-active={e.active ? "true" : "false"} className={`border-b border-[color:var(--color-line)] last:border-b-0 ${e.active ? "" : "text-[color:var(--color-muted)]"}`}>
-      <td className={TD}>
+      <td className={`${TD} w-full min-w-36`}>
         <span className="block font-bold">{e.nameTh}</span>
         {e.noteTh ? <span className="block text-sm text-[color:var(--color-muted)]">{e.noteTh}</span> : null}
         {e.scope === "UNIT" ? <span className="block text-sm text-[color:var(--color-muted)]">{t("extras.unitScope")}</span> : null}
       </td>
-      <td className={TD}>{t(`extras.basis.${e.basis}`)}</td>
-      <td className={TD}>{e.mandatory ? t("extras.required") : t("extras.optional")}</td>
-      <td className={`${TD} text-right`}>{price}</td>
+      <td className={`${TD} w-px whitespace-nowrap`}>{t(`extras.basis.${e.basis}`)}</td>
+      <td className={`${TD} w-px whitespace-nowrap`}>{e.mandatory ? t("extras.required") : t("extras.optional")}</td>
+      <td className={`${TD} w-px whitespace-nowrap text-right`}>{price}</td>
       <td className={`${TD} text-center`}>
         {e.commissionable && e.commissionPct > 0 && e.commissionPct < 100 ? <Pill shape="dashed">{`${e.commissionPct}%`}</Pill> : <Check on={e.commissionable} label={t("extras.colCommission")} />}
       </td>
@@ -487,7 +489,7 @@ function ExtraRow({ e, t, disabled, onToggle }: { e: ExtraRowVM; t: T; disabled:
       <td className={`${TD} text-center`}>
         <Check on={e.passThrough} label={t("extras.colPassThrough")} />
       </td>
-      <td className={`${TD} text-right`}>
+      <td className={`${TD} w-px whitespace-nowrap text-right`}>
         <button type="button" data-testid={`trips-extra-toggle-${e.id}`} disabled={disabled} aria-pressed={e.active} onClick={onToggle} className="min-h-11 whitespace-nowrap px-1 text-sm text-[color:var(--color-accent)] disabled:text-[color:var(--color-muted)]">
           {e.active ? t("extras.toggleOff") : t("extras.toggleOn")}
         </button>
@@ -539,7 +541,7 @@ function PickupSection({ unitSlug, vm, onEdit }: { unitSlug: string; vm: VM; onE
         </span>
       </div>
       <ErrorLine text={error} />
-      <div className="min-w-0 overflow-x-auto">
+      <div className="relative min-w-0 overflow-x-auto">
         <table className="w-full min-w-0 border-collapse">
           <thead>
             <tr className="border-b border-[color:var(--color-line)]">

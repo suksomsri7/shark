@@ -415,7 +415,8 @@
       },
       "noDeductions": "No deductions",
       "evidenceRequired": "evidence required",
-      "evidenceOptional": "no evidence needed"
+      "evidenceOptional": "no evidence needed",
+      "baht": "THB {amount}"
     }
   },
   "loading": "Loading…",
