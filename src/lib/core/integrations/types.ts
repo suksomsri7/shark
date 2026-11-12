@@ -1,5 +1,6 @@
 // types.ts — ศูนย์เชื่อมต่อ (SVC R0.5 · CC §2.1/§2.4) — ชนิดล้วน ไม่มี I/O ไม่มีค่าลับ
 // ไฟล์ฝั่ง client (หน้า /app/settings/integrations) import ชนิดจากไฟล์นี้ได้ (type-only) — ห้าม import service/secret-box
+import type { AriPayload, ChannelCallOpts, ChannelMapping, InboundReservation } from "@/lib/modules/hotel/channel/types"; // SVC H.10 ◂
 
 /** ชนิดที่ร้านเก็บคีย์ไว้ในศูนย์ (แถว TenantIntegration) */
 export const STORED_INTEGRATION_KINDS = ["SLIP_VERIFY", "PAYMENT_GATEWAY", "SMS", "CHANNEL_MANAGER", "METER", "CALENDAR", "EDC"] as const;
@@ -46,11 +47,12 @@ export interface SmsAdapter {
   test(opts?: CallOpts): Promise<void>;
   send(input: { toE164: string; text: string; ref: string }, opts?: CallOpts): Promise<{ ok: boolean; externalId?: string }>;
 }
+// SVC H.10 ▸ ชนิดจริงของตัวต่อช่องทาง OTA (ใบสั่ง h.10 §1 · §3) — ชนิดล้วนจากโมดูลโรงแรม (import type · ไม่ลาก prisma) ◂
 export interface ChannelManagerAdapter {
   test(opts?: CallOpts): Promise<void>;
-  pushAri(map: unknown, dates: string[], ari: unknown, opts?: CallOpts): Promise<void>;
-  pullReservations(since: Date, opts?: CallOpts): Promise<unknown[]>;
-  ackReservation(externalId: string, opts?: CallOpts): Promise<void>;
+  pushAri(map: ChannelMapping, dates: string[], ari: AriPayload, opts?: ChannelCallOpts): Promise<void>;
+  pullReservations(since: Date, opts?: ChannelCallOpts): Promise<InboundReservation[]>;
+  ackReservation(externalId: string, opts?: ChannelCallOpts): Promise<void>;
 }
 export interface MeterAdapter {
   test(opts?: CallOpts): Promise<void>;

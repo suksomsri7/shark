@@ -1,0 +1,76 @@
+# H2.11 RED on base 847d37bf3 (lane DB wo-hr-qc-l2 via qc-hr.sh) — 2026-11-12T14:57:48Z
+## 1) unforced
+⏭️  SKIPPED — qc-hr-h2.11: not built
+   • src/lib/modules/hr/inbox.ts absent (H2.11 not built)
+JSON_SUMMARY {"suite":"qc-hr-h2.11","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["src/lib/modules/hr/inbox.ts absent (H2.11 not built)"],"registered":57}
+exit=0
+## 2) forced (QC_FORCE=1)
+[env] qc-hr-h2.11 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.11] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️ QC_FORCE=1 — running although: src/lib/modules/hr/inbox.ts absent (H2.11 not built)
+[qc-hr-h2.11] inbox=∅ src/lib/modules/hr/inbox.ts · base=847d37bf3
+  ❌ [H2.11-S1.1] [static] inbox.ts server-only (no directive) · exports listInbox inboxCounts decideInbox teamOverview teamLeaveQuota — expected 5 exports | actual file,noDirective,exports ∅ file
+  ❌ [H2.11-S1.2] [static] inbox.ts imports from type modules ⊆ R3 list · never decideLeave/bulkDecideLeave/decideAdjustment · other specs allowed — expected R3 list | actual file bad=- forb=- specs=-
+  ❌ [H2.11-S1.3] [static] inbox.ts: no prisma, no hr*/approval* table accessor, no *RawUnsafe (auditLog only) — expected auditLog only | actual file -
+  ❌ [H2.11-S1.4] [static] inbox-shared.ts: no imports · INBOX_TEXT byte-exact (10 texts) — expected 10 texts | actual file,noImports,texts ∅
+  ❌ [H2.11-S1.5] [static] inbox-actions.ts "use server": decideInboxAction → requireTenant + hrViewerOf + decideInbox · no now — expected use server · delegates | actual file,useServer,names,eachDelegates ∅
+  ❌ [H2.11-S1.6] [static] page + overview-ui import no per-type module · InboxBatch "use client" imports allowed · no DB reach — expected facade only | actual page,ui,client bad=- client=-
+  ❌ [H2.11-S1.7] [static] wrappers: leave.ts decideLeaveAs/leaveDetailsMany/teamLeaveBalances · payroll.ts decideAdjustmentAs + listAdjustments pendingUnbound — expected wrappers | actual decideLeaveAs,details,team,adj,pending
+  ❌ [H2.11-S12.1] [static] tab "คำขอ" right after "ใบลา" in hrTabs and layout HR children · page file exists — expected after ใบลา | actual tabs,layout,page T=ภาพรวม/ลงเวลา/ตารางกะ/จอลงเวลา/ใบลา/พนักงาน/เงินเดือน/ตั้งค่า/ตารางกฎหมาย L=ภาพรวม/ลงเวลา/ตารางกะ/จอลงเวลา/ใบลา/พนักงาน/เงินเดือน/ตั้งค่า/ตารางกฎหมาย
+  ❌ [H2.11-S12.2] [static] testids present · inventory rows (wo H2.11) both ways — expected ids ↔ rows | actual code,rows,meta missingCode=22 missingRows=22
+  ❌ [H2.11-S12.3] [static] messages hr.inbox th=en · tokens only · visual spec "2.11" — expected parity · tokens · spec | actual some,files,visual th=0
+  ✅ [H2.11-S13.1] [static] frozen files unchanged (other WOs' marked hunks tolerated) · payroll-rules sha · no prisma change
+  ✅ [H2.11-S13.2] [static] leave.ts/payroll.ts: marked additions only · correction.ts/ui.tsx/layout.tsx: marked hunks only
+
+
+  ✅ [H2.11-F1] [db] fixtures through own request functions: each type's own lister shows the owner all 17 pending T1 items
+  ✅ [H2.11-F2] [db] L3 owned by a PENDING approval request · L4 APPROVED · other-tenant LO/AO pending in T2
+  ❌ [H2.11-S2.1] [db] owner: exact list (17 · L3 CHAIN) — expected A1,A2,AS,C1,C2,CM,CP,L1,L2,L3:CHAIN,LM,O1,O2,OL,OM,S1,S2 | actual ∅listInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S2.2] [db] MANAGER[u1] linked: L1 L3c O1 OL S1r C1r CPr (own LM/OM/CM hidden · no ADJ · no u2) — expected C1:NO_RIGHT,CP:NO_RIGHT,L1,L3:CHAIN,O1,OL,S1:NO_RIGHT | actual ∅listInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S2.3] [db] STAFF[u1] hr.employee.create: S1 C1 CP CM — expected C1,CM,CP,S1 | actual ∅listInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S2.4] [db] STAFF[u1] leave.decide+payadjust: L1 LM L3c O1f OM OL — expected L1,L3:CHAIN,LM,O1:FILED_BY_YOU,OL,OM | actual ∅listInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S2.5] [db] STAFF* payroll+approve: O1 O2 OM OL A1 A2f AS — expected A1,A2:FILED_BY_YOU,AS,O1,O2,OL,OM | actual ∅listInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S2.6] [db] STAFF* payroll-only: all OT + ADJ read-only NO_RIGHT — expected A1:NO_RIGHT,A2:NO_RIGHT,AS:NO_RIGHT,O1:NO_RIGHT,O2:NO_RIGHT,OL:NO_RIGHT,OM:NO_RIGHT | actual ∅listInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S2.7] [db] staff · kiosk · member: listInbox/inboxCounts null · decideInbox noAccess (nothing written) — expected null/null/noAccess ×3 | actual s1:∅listInbox (∅ src/lib/modules/hr/inbox.ts)/∅inboxCounts (∅ src/lib/modules/hr/inbox.ts)/∅decideInbox (∅ src/lib/modules/hr/inbox.ts) kiosk:∅listInbox (∅ src/lib/modules/hr/inbox.ts)/∅inboxCounts (∅ src/lib/modules/hr/inbox.ts)/∅decideInbox (∅ src/lib/modules/hr/inbox.ts) member:∅listInbox (∅ src/lib/modules/hr/inbox.ts)/∅inboxCounts (∅ src/lib/modules/hr/inbox.ts)/∅decideInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S3.1] [db] item keys exact for every viewer · type/blocker vocab — expected ageDays,batchable,blocker,canDecide,createdAt,detail,employeeId,employeeName,id,impact,type,unitId | actual no items
+  ❌ [H2.11-S3.2] [db] detail keys per type exact · leave reason only for leave readers · swap reason only for deciders — expected detail keys per type | actual leaveOwner,leaveDec,ot,swapOwner,swapMgr,corr,adj L1(owner)=∅ L1(dec1)=∅
+  ❌ [H2.11-S3.3] [db] no ฿/segments/paidMin/linkedUserId/pin/salary/national id keys (non-payroll viewers: no amountSatang at all) — expected no forbidden keys | actual - otMoney=0
+  ❌ [H2.11-S3.4] [db] ADJUSTMENT: AS source STOCK + consent {at,ref} · A1 MANUAL + consent null — expected STOCK consent · MANUAL null | actual as,a1 {}
+  ❌ [H2.11-S3.5] [db] batchable = canDecide ∧ type≠ADJUSTMENT — expected batchable rule | actual bad=0/0
+  ❌ [H2.11-S4.1] [db] counts = list lengths per type · decidable · inboxCounts = listInbox counts (all viewers) — expected counts = lengths = inboxCounts | actual owner,mgr1,key1,dec1,pay,payRead
+  ❌ [H2.11-S4.2] [db] type filter OT ⇒ only OT items · counts unchanged — expected OT only · counts same | actual ∅listInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S4.3] [db] unit filter: owner u2 ⇒ u2 items only · MANAGER[u1] asking u2 ⇒ [] (no leak) — expected u2 · [] | actual ∅listInbox (∅ src/lib/modules/hr/inbox.ts) | mgr1 ∅listInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S4.4] [db] age filter minAgeDays 7 ⇒ exactly the two back-dated items — expected L1,O2 | actual ∅listInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S4.5] [db] sort createdAt asc/id asc · paging take 4 ⇒ union = full list, no dupes, last nextCursor null — expected asc · pages | actual order,pages,end full=∅ pages=0
+  ❌ [H2.11-S5.1] [db] LEAVE impact: keys · duty = leaveDutyHintsMany entry · balance keys · othersOff owner [E3] / manager u1 [] — expected keys · duty · othersOff | actual keys,duty,balance,owner,mgr undefined
+  ❌ [H2.11-S5.2] [db] OT impact measuredMin null (no punches) · weekWarn false · SWAP impact null — expected OT · swap null | actual keys,measured,week,swap {}
+  ❌ [H2.11-S5.3] [db] CORRECTION impact: CP monthClosed true · C1 false · deltaMin null (ADD) — expected CP closed · C1 open | actual keys,cp,c1,delta {}
+  ❌ [H2.11-S5.4] [db] ADJUSTMENT impact targetPeriod 2031-06 (A1, AS) — expected 2031-06 | actual keys,a1,as {}
+  ❌ [H2.11-S9.1] [db] teamOverview owner: keys · board = loadAttendanceBoard · counts = inboxCounts · recompute/due = readers — expected = readers | actual keys,board,inbox,other ∅teamOverview (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S9.2] [db] teamOverview MANAGER[u1] board = its own board · staff ⇒ null when every reader is null — expected scoped · null | actual mgr,staff ∅teamOverview (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S10.1] [db] teamLeaveQuota owner: rows E1..E4+EM · cells = leaveBalances strings — expected rows · cells | actual rows,cells,policies ∅teamLeaveQuota (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S10.2] [db] teamLeaveQuota MANAGER[u1] u1 rows only · key holder / payroll ⇒ null — expected u1 · null · null | actual mgr,key,pay ∅teamLeaveQuota (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S6.1] [db] whole-call refusals: noAccess · key · empty · tooMany(51) · badItem · rejectReason — no audit row — expected คำขอไม่สมบูร‖กรุณาเลือกอย‖เลือกได้ครั้‖รายการที่เลื‖กรุณาใส่เหตุ | actual ∅decideInbox (∅ src/lib/module‖∅decideInbox (∅ src/lib/module‖∅decideInbox (∅ src/lib/module‖∅decideInbox (∅ src/lib/module‖∅decideInbox (∅ src/lib/module
+  ❌ [H2.11-S6.2] [db] batch MANAGER[u1] (14 mixed items) ⇒ per-item results = each type's own text — expected L1=APPROVED|L2=พนักงานคนนี้อยู่สาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ|L3=ใบลานี้อยู่ในสายอนุมัติ — ตัดสินได้ที่หน้า “อนุ | actual ∅decideInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S6.3] [db] batch key holder (paid month · other branch swap) ⇒ per-item results — expected CP=เดือนนี้อนุมัติเงินเดือนแล้ว — แก้เวลาย้อนหลังไม่ได้|C1=APPROVED|S1=APPROVED|S2=พนักงานคนนี้อยู่สาขาอื่น — คุณจัดการไ | actual ∅decideInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S6.4] [db] payroll approver: batch ADJ ⇒ oneByOne · single A1/AS ok · single A2 own-requested text — expected O2=APPROVED|A1=รายการเพิ่ม/หักเงินต้องตัดสินทีละรายการ — เปิดดูยอดและหนังสือยินยอมก่อนกด ‖ A1=APPROVED ‖ AS=APPROVED ‖ A | actual ∅decideInbox (∅ src/lib/modules/hr/inbox.ts) ‖ ∅decideInbox (∅ src/lib/modules/hr/inbox.ts) ‖ ∅decideInbox (∅ src/lib/modules/hr/inbox.ts) ‖ ∅decideInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S6.5] [db] reject with reason ⇒ REJECTED · reason in hr.inbox.decide audit — expected REJECTED + audit reason | actual res,audit,status ∅decideInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S7.1] [db] double submit same key ⇒ replayed:true · identical results · nothing decided again — expected replay | actual replayed,same,nothing ∅decideInbox (∅ src/lib/modules/hr/inbox.ts) audits 0,0→0,0
+  ❌ [H2.11-S7.2] [db] same key, other items ⇒ batchDiff — expected ชุดนี้ถูกส่งไปแล้วด้วยรายการอื่น — กรุณาเปิดหน้านี้ใหม่ | actual ∅decideInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S7.3] [db] two approvers in parallel on one OT ⇒ exactly one ok, other OT decided text · 1 approve audit — expected one wins | actual ∅decideInbox (∅ src/lib/modules/hr/inbox.ts),∅decideInbox (∅ src/lib/modules/hr/inbox.ts)
+  ❌ [H2.11-S7.4] [db] two approvers in parallel on one leave ⇒ one ok, other stale · 1 USE row — expected one wins · 1 USE | actual ∅decideInbox (∅ src/lib/modules/hr/inbox.ts),∅decideInbox (∅ src/lib/modules/hr/inbox.ts) use=0
+  ❌ [H2.11-S8.1] [db] leave ledger: L1 one USE row = −days · L2 REJECTED no USE · L3 still PENDING — expected ledger | actual l1,use,l2 use=0 days=2
+  ❌ [H2.11-S8.2] [db] OT O1/O2/OM APPROVED · OL PENDING · no OT_REQUEST adjustment (future days not settled) — expected APPROVED×3,PENDING · 0 rows | actual PENDING,PENDING,PENDING,PENDING rows=0
+  ❌ [H2.11-S8.3] [db] correction C1/CM APPROVED with one OUT punch each · CP CANCELLED · C2 PENDING — expected statuses · punches 1,1,0 | actual PENDING,PENDING,PENDING,PENDING · 0,0,0
+  ❌ [H2.11-S8.4] [db] swap S1 APPROVED · shifts exchanged · one hr.swap.apply · S2 PENDING — expected applied once | actual s1,swapped,once false false
+  ❌ [H2.11-S8.5] [db] adjustments A1/AS APPROVED (one hr.payadjust.approve each) · A2 PENDING — expected APPROVED,APPROVED,PENDING · 1,1 | actual PENDING,PENDING,PENDING · 0,0
+  ❌ [H2.11-S8.6] [db] each decided item decided exactly once (decision audit = 1 per target · never 2) — expected 1 each | actual L1=0,LM=0,L2=0,O1=0,O2=0,OM=0,S1=0,C1=0,CM=0,A1=0,AS=0
+  ❌ [H2.11-S8.7] [db] inbox audits: hr.inbox.decide = 29 · hr.inbox.batch = 11 · hr.inbox.batch_done = 11 — expected 29,11,11 | actual 0,0,0
+  ❌ [H2.11-S11.1] [db] listInbox query count: +4 each of LEAVE/OT/CORRECTION/ADJUSTMENT ⇒ same count · ≤ 60 — expected same count ≤ 60 | actual items,same,cap ∅listInbox (∅ src/lib/modules/hr/inbox.ts) q=0/0 items=0/0 
+RESIDUE none (tenants=2 users=13)
+  ✅ [H2.11-Z1] no residue
+BASE-EXPECTATION 57/57 as registered (RED-by-design 52 · GREEN controls 5)
+
+===== qc-hr-h2.11 ===== passed 5/57 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.11","total":57,"passed":5,"failed":["H2.11-S1.1","H2.11-S1.2","H2.11-S1.3","H2.11-S1.4","H2.11-S1.5","H2.11-S1.6","H2.11-S1.7","H2.11-S12.1","H2.11-S12.2","H2.11-S12.3","H2.11-S2.1","H2.11-S2.2","H2.11-S2.3","H2.11-S2.4","H2.11-S2.5","H2.11-S2.6","H2.11-S2.7","H2.11-S3.1","H2.11-S3.2","H2.11-S3.3","H2.11-S3.4","H2.11-S3.5","H2.11-S4.1","H2.11-S4.2","H2.11-S4.3","H2.11-S4.4","H2.11-S4.5","H2.11-S5.1","H2.11-S5.2","H2.11-S5.3","H2.11-S5.4","H2.11-S9.1","H2.11-S9.2","H2.11-S10.1","H2.11-S10.2","H2.11-S6.1","H2.11-S6.2","H2.11-S6.3","H2.11-S6.4","H2.11-S6.5","H2.11-S7.1","H2.11-S7.2","H2.11-S7.3","H2.11-S7.4","H2.11-S8.1","H2.11-S8.2","H2.11-S8.3","H2.11-S8.4","H2.11-S8.5","H2.11-S8.6","H2.11-S8.7","H2.11-S11.1"],"findings":[{"id":"H2.11-S1.1","sev":"MAJOR"},{"id":"H2.11-S1.2","sev":"CRITICAL"},{"id":"H2.11-S1.3","sev":"CRITICAL"},{"id":"H2.11-S1.4","sev":"MAJOR"},{"id":"H2.11-S1.5","sev":"CRITICAL"},{"id":"H2.11-S1.6","sev":"CRITICAL"},{"id":"H2.11-S1.7","sev":"CRITICAL"},{"id":"H2.11-S12.1","sev":"MAJOR"},{"id":"H2.11-S12.2","sev":"MAJOR"},{"id":"H2.11-S12.3","sev":"MINOR"},{"id":"H2.11-S2.1","sev":"CRITICAL"},{"id":"H2.11-S2.2","sev":"CRITICAL"},{"id":"H2.11-S2.3","sev":"CRITICAL"},{"id":"H2.11-S2.4","sev":"CRITICAL"},{"id":"H2.11-S2.5","sev":"CRITICAL"},{"id":"H2.11-S2.6","sev":"CRITICAL"},{"id":"H2.11-S2.7","sev":"CRITICAL"},{"id":"H2.11-S3.1","sev":"CRITICAL"},{"id":"H2.11-S3.2","sev":"CRITICAL"},{"id":"H2.11-S3.3","sev":"CRITICAL"},{"id":"H2.11-S3.4","sev":"MAJOR"},{"id":"H2.11-S3.5","sev":"MAJOR"},{"id":"H2.11-S4.1","sev":"CRITICAL"},{"id":"H2.11-S4.2","sev":"MAJOR"},{"id":"H2.11-S4.3","sev":"CRITICAL"},{"id":"H2.11-S4.4","sev":"MAJOR"},{"id":"H2.11-S4.5","sev":"MAJOR"},{"id":"H2.11-S5.1","sev":"CRITICAL"},{"id":"H2.11-S5.2","sev":"MAJOR"},{"id":"H2.11-S5.3","sev":"CRITICAL"},{"id":"H2.11-S5.4","sev":"MAJOR"},{"id":"H2.11-S9.1","sev":"MAJOR"},{"id":"H2.11-S9.2","sev":"MAJOR"},{"id":"H2.11-S10.1","sev":"MAJOR"},{"id":"H2.11-S10.2","sev":"MAJOR"},{"id":"H2.11-S6.1","sev":"CRITICAL"},{"id":"H2.11-S6.2","sev":"CRITICAL"},{"id":"H2.11-S6.3","sev":"CRITICAL"},{"id":"H2.11-S6.4","sev":"CRITICAL"},{"id":"H2.11-S6.5","sev":"MAJOR"},{"id":"H2.11-S7.1","sev":"CRITICAL"},{"id":"H2.11-S7.2","sev":"MAJOR"},{"id":"H2.11-S7.3","sev":"CRITICAL"},{"id":"H2.11-S7.4","sev":"CRITICAL"},{"id":"H2.11-S8.1","sev":"CRITICAL"},{"id":"H2.11-S8.2","sev":"CRITICAL"},{"id":"H2.11-S8.3","sev":"CRITICAL"},{"id":"H2.11-S8.4","sev":"CRITICAL"},{"id":"H2.11-S8.5","sev":"CRITICAL"},{"id":"H2.11-S8.6","sev":"CRITICAL"},{"id":"H2.11-S8.7","sev":"MAJOR"},{"id":"H2.11-S11.1","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":["src/lib/modules/hr/inbox.ts absent (H2.11 not built)"],"baseRed":52,"baseGreen":5,"offBase":[]}
+exit=1

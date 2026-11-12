@@ -112,6 +112,16 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "corr-self-list", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "คำขอแก้เวลาของฉัน + ยกเลิก (H2.6)", expect: { staff: 200 }, users: ["staff"] },
     { key: "corr-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404 (H2.6)", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
   ],
+  // HR H2.11 ▸ brief §5 (mockup 01 + 05): ภาพรวมทีมบน HrHub · กล่องคำขอรวม (ทุกชนิด · type=OT · ผลชุด · โควตา) · ผู้ไม่เห็นคำขอชนิดใด = 404 ·
+  //   seed มีคำขอรอครบ 5 ชนิด (ลา · OT · สลับกะ · แก้เวลา · เบิกล่วงหน้า + หักค่าของ) · HQC ไม่มีผู้ถือคีย์ hr.employee.create ⇒ "key-holder" = manager (ทุกสาขา) ◂
+  "2.11": [
+    { key: "hub-overview", path: (i) => `/app/sys/${i.hr}`, users: ["owner", "manager-branch", "manager", "payroll", "staff"], why: "ภาพรวมทีม 01: อยู่กะวันนี้ · คำขอที่ตัดสินได้ · วันที่ต้องคิดผลใหม่ · ใกล้ครบกำหนด + ตัวอย่างคำขอ 5 รายการ (staff = ไม่มีส่วนนี้) (H2.11)" },
+    { key: "inbox", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["owner", "manager-branch", "manager", "payroll"], expect: { owner: 200, "manager-branch": 200, manager: 200, payroll: 200 }, why: "กล่องคำขอรวม 05: ชิปชนิด+ตัวนับ · การ์ดมีป้าย · ผลกระทบ · แถบเลือกติดล่าง · ตารางโควตา (payroll = OT/เงิน อ่านอย่างเดียว ไม่มีโควตา) (H2.11)" },
+    { key: "inbox-ot", path: (i) => `/app/sys/${i.hr}/hr/requests?type=OT`, users: ["owner", "manager-branch"], why: "type=OT: นาที × อัตรา ไม่มี ฿ ถึงผู้จัดการ · ตัวนับไม่เปลี่ยน (H2.11)" },
+    { key: "inbox-adj", path: (i) => `/app/sys/${i.hr}/hr/requests?type=ADJUSTMENT`, users: ["owner", "payroll"], why: "เพิ่ม/หักเงิน: ยอด · ที่มา · หนังสือยินยอมของหักค่าของ · ตัดสินทีละรายการ (H2.11)" },
+    { key: "inbox-batch-result", path: (i) => `/app/sys/${i.hr}/hr/requests?type=SWAP`, click: '[data-testid^="hr-inbox-approve-"]', users: ["owner"], why: "ผลการตัดสิน (hr-inbox-result) ต่อรายการ — ⚠ กดจริง: ถ่ายหลังภาพอื่น แล้ว seed ใหม่ (H2.11)" },
+    { key: "inbox-refused", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["staff", "member", "kiosk"], expect: { staff: 404, member: 404, kiosk: 404 }, why: "ไม่เห็นคำขอชนิดใดเลย = 404 (H2.11)" },
+  ],
   // HR H4.6 ▸ brief §5 (ไม่มี mockup — ตามฟอร์มรายการเพิ่ม/หักของหน้าเงินเดือน): ส่วน "หักค่าของ" #hr-stock · ฟอร์ม (ผู้ถือคีย์ยื่น) · รายการ/ยอด/หนังสือยินยอม/ธงเพดาน
   //   (ผู้ดูเงินเดือน) · seed ไม่มีรายการ ⇒ ว่าง เว้นแต่ผู้ควบคุมยื่นก่อนถ่าย · staff/member ไม่มีส่วนนี้ ◂
   "4.6": [
@@ -150,6 +160,20 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "leave-settings", path: (i) => `/app/sys/${i.hr}/hr/settings`, users: ["owner"], expect: { owner: 200 }, why: "การ์ดประเภทการลา (ครึ่งวัน/รายชั่วโมง/แนบไฟล์) + วันหยุด + preset (H2.7/H2.8)" },
   ],
   // HR VISUAL batch1 ▸ H4.1 บรรทัดผลกระทบบนการ์ดใบลา hr-leave-impact* (mockup 05) — staff ต้องไม่เห็น ◂
+  // HR H2.10 ▸ "ของฉัน" (mockup 07a/07b · มือถือก่อน): staff (น้ำฝน) = 5 แท็บ + ฟอร์มยื่นลา · payrollSelf (ก้อย ผูกบัญชี) = หน้าเดียวกันของตัวเอง ·
+  //   "member" (ไม่ผูก) + "owner" (seed ไม่ผูกเจ้าของกับพนักงาน — เจ้าของที่ผูกเห็นหน้าเดียวกับ staff · ข้อสอบ S5.2) = hr-self-empty (200) ·
+  //   แท็บ HR ของ staff ไม่มี ตารางกะ/จอลงเวลา/ตั้งค่า/ตารางกฎหมาย · staff เปิดโปรไฟล์ตัวเอง ⇒ redirect /app/me/hr/profile ◂
+  "2.10": [
+    { key: "self-today", path: () => `/app/me/hr`, users: ["staff", "payrollSelf", "member", "owner"], expect: { staff: 200, payrollSelf: 200, member: 200, owner: 200 }, why: "วันนี้: กะ · ลงเวลา + GPS · เพื่อนร่วมกะ · สัปดาห์ · ทางลัด 6 · วันลาคงเหลือ / ไม่ผูก = hr-self-empty (H2.10)" },
+    { key: "self-week", path: () => `/app/me/hr/week`, users: ["staff"], expect: { staff: 200 }, why: "ตารางรายสัปดาห์ของตัวเอง (H2.10)" },
+    { key: "self-requests", path: () => `/app/me/hr/requests`, users: ["staff", "member"], expect: { staff: 200, member: 200 }, why: "คำขอของฉัน + ทางลัดฟอร์ม (H2.10)" },
+    { key: "self-leave-form", path: () => `/app/me/hr/requests?form=leave`, users: ["staff"], expect: { staff: 200 }, why: "ฟอร์มยื่นลา 07b: ประเภท · วันที่ พ.ศ. · กระทบกะ · คงเหลือหลังลา · ปุ่มส่งติดล่าง (H2.10)" },
+    { key: "self-advance-form", path: () => `/app/me/hr/requests?form=advance`, users: ["staff"], expect: { staff: 200 }, why: "ฟอร์มเบิกล่วงหน้า (H2.10 R6)" },
+    { key: "self-pay", path: () => `/app/me/hr/pay`, users: ["staff"], expect: { staff: 200 }, why: "สลิปของตัวเอง (รอบที่จ่ายแล้ว) + ช่องหนังสือรับรอง (H2.10)" },
+    { key: "self-profile", path: () => `/app/me/hr/profile`, users: ["staff", "owner"], expect: { staff: 200, owner: 200 }, why: "ฉัน: ข้อมูล · วันลา · บันทึก + รับทราบ (H2.10)" },
+    { key: "self-hr-tabs", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["staff"], expect: { staff: 200 }, why: "แท็บ HR ของ staff ไม่มีหน้าที่ 404 + มี \"ของฉัน\" (H2.10 R7)" },
+    { key: "self-own-profile", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.namfon}`, users: ["staff"], expect: { staff: 200 }, why: "staff เปิดโปรไฟล์ตัวเอง ⇒ redirect /app/me/hr/profile (H2.10 R7)" },
+  ],
   "4.1": [{ key: "leave-impact", path: (i) => `/app/sys/${i.hr}/hr/leave`, users: ["owner", "manager-branch", "staff"], why: "กระทบ: กะ วัน เวลา — ยังมี n คน / ขาด 1 คน → ระบบเสนอ … (H4.1 R12)" }],
 };
 const VIEWPORTS = [

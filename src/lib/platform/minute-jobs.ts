@@ -550,6 +550,51 @@ registerMinuteJob({
   run: async (now) => (await import("@/lib/modules/rooms")).expireHolds(now),
 });
 // ◂ SVC R0.8
+// SVC H.3 ▸ โรงแรม: HOLD ที่หมดเวลา ⇒ CANCELLED HOLD_EXPIRED (nights ไม่นับ · ปล่อยห้อง · folio VOID · event hold_expired) — ทุกนาที · ข้ามร้าน ·
+//   ต่อจาก rooms.expireHolds (ห้องจริง) · โหลด facade โรงแรมตอนรันเท่านั้น · idempotent: CAS สถานะต่อใบ ⇒ route + crontab ซ้อนกัน แต่ละใบครั้งเดียว (X5)
+registerMinuteJob({
+  name: "hotel.sweepExpiredHolds",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async () => (await import("@/lib/modules/hotel")).sweepExpiredHolds({}),
+});
+// ◂ SVC H.3
+// SVC H.8 ▸ โรงแรม: อีเมลเตือนผู้เข้าพักก่อนเข้า 1 วัน (ใบสั่ง h.8 §2.6 · §10.5) — รายชั่วโมง (ส่งเมื่อถึง rooms.hotel.storefront.reminderHour ของสาขา · ค่าเริ่ม 10:00 ไทย)
+//   ข้ามร้าน · โหลด platform/hotel-mail ตอนรันเท่านั้น · idempotent: จองสิทธิ์ส่งต่อการจองด้วยคำสั่ง SQL เดียว ⇒ route + crontab ซ้อนกัน ส่งครั้งเดียว (X5)
+registerMinuteJob({
+  name: "hotel-guest-reminder",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now) => (await import("@/lib/platform/hotel-mail")).runGuestReminders(now),
+});
+// ◂ SVC H.8
+// SVC H.7 ▸ โรงแรม: ปิดวัน (night audit) อัตโนมัติ — ทุก 15 นาที · ข้ามร้าน · หน่วยที่ autoClose เปิดและถึง rooms.hotel.nightAuditTime ตามเวลาร้าน (timezone ต่อหน่วย)
+//   ปิดวันที่ค้างทีละวัน (≤ 7 วัน/หน่วย/รอบ) · โหลด facade โรงแรมตอนรันเท่านั้น · idempotent: advisory lock ต่อหน่วย + unique(unitId, businessDate) ⇒ route + crontab ซ้อนกัน = ปิดครั้งเดียว (X5)
+//   เคารพงบ/สัญญาณยกเลิก (หยุดก่อนเริ่มหน่วยถัดไป) · ไม่เพิ่ม vercel.json (crontab VPS เรียก crm-cron.mts minute อยู่แล้ว)
+registerMinuteJob({
+  name: "hotel-night-audit",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/hotel")).runDueAudits(now, Math.max(1_000, budgetMs - 2_000), { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
+// ◂ SVC H.7
+// SVC H.4 ▸ โรงแรม · ตม.30: PENDING เลยกำหนด 24 ชม. ⇒ LATE + เตือนก่อนครบ (outbox hotel.tm30.due · ระบบไม่ส่ง ตม. เอง) — ทุก 15 นาที · ข้ามร้าน ·
+//   idempotent: UPDATE มีเงื่อนไขสถานะ ⇒ route + crontab ซ้อนกัน แต่ละแถว LATE ครั้งเดียว · เตือน 1 ครั้งต่อผู้พัก (กุญแจ outbox) (X5) · โหลด facade ตอนรันเท่านั้น
+registerMinuteJob({
+  name: "hotel.tm30Sweep",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async () => (await import("@/lib/modules/hotel")).tm30Sweep({}),
+});
+// SVC H.4 ▸ โรงแรม · PDPA: ล้างข้อมูลอ่อนไหวของทะเบียนผู้พักที่พ้น retainUntil (กล่องลับ/รูปเอกสาร/ลายเซ็น · คงชื่อ+4 ตัวท้าย) — รายวัน (หน้าต่างนับจากเที่ยงคืนไทย ·
+//   ตัวรันรายวันของ crm-cron รันช่วงเช้ามืด ≈ 04:00 ไทย) · ≤ 200 แถว/รอบ · idempotent: UPDATE มีเงื่อนไขค่าเดิม ⇒ ซ้อนกันแต่ละแถวครั้งเดียว (X5)
+registerMinuteJob({
+  name: "hotel.purgeExpiredGuestRecords",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async () => (await import("@/lib/modules/hotel")).purgeExpiredGuestRecords({ limit: 200 }),
+});
+// ◂ SVC H.4
 // SVC B.3 ▸ ระบบจอง: ปล่อยช่องที่ลูกค้าจองเองแล้วไม่จ่ายมัดจำในเวลา (ทุกนาที · ข้ามร้าน · ใบสั่ง svc-brief-b.3 §3.3) — โหลดตอนรันเท่านั้น ·
 //   idempotent: UPDATE มีเงื่อนไขสถานะ + FOR UPDATE SKIP LOCKED ⇒ route + crontab ยิงซ้อนกัน แต่ละแถวปล่อยครั้งเดียว (X5)
 registerMinuteJob({
@@ -692,6 +737,30 @@ registerMinuteJob({
   run: async (now, budgetMs, ctrl) => (await import("@/lib/modules/dorm")).runDormMoveOutJobs(now, { budgetMs: Math.max(5_000, budgetMs - 3_000), signal: ctrl.signal }),
 });
 // ◂ SVC D.12
+
+// SVC H.10 ▸ ช่องทาง OTA (ใบสั่ง h.10 §1 · §9): ส่ง ARI ที่ค้าง (ทุก 1 นาที · CAS ต่องาน = ซ้อนแล้วส่งครั้งเดียว) · ดึงการจองจากตัวต่อ (ทุก 5 นาที · inbox idempotent)
+//   ทั้งคู่ไม่ throw · เคารพงบเวลา · ตัวต่อถอด (DISABLED) ⇒ ข้าม
+registerMinuteJob({
+  name: "channel-ari-push",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/hotel")).pushAriJobs(now, Math.max(5_000, budgetMs - 3_000)),
+});
+//   full resync ARI (รอบ 3 ผู้ตรวจ B): ทุก 15 นาทีตรวจ · แต่ละ (ตัวต่อ, หน่วย) ได้งานทั้งช่วงเพดาน ariHorizonDays ทุก 6 ชม. (ARI_RESYNC_EVERY_MS ค่าคงที่ใน ari.ts)
+//   lease = แถว lease ของงานนี้ + ตรวจ "งานครอบสร้างในรอบแล้ว" ใต้ advisory lock ต่อคู่ · ข้ามตัวต่อที่ไม่พร้อม · ปิดเส้นที่ไม่มี event + งาน FAILED
+registerMinuteJob({
+  name: "channel-ari-resync",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/hotel")).resyncAriAll(now, Math.max(5_000, budgetMs - 3_000)),
+});
+registerMinuteJob({
+  name: "channel-pull",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, budgetMs) => (await import("@/lib/modules/hotel")).pullAll(now, Math.max(5_000, budgetMs - 3_000)),
+});
+// ◂ SVC H.10
 
 function errorText(e: unknown): string {
   let s: string;

@@ -177,8 +177,10 @@ export function makeRegistry(suite: string, prefix: string, checks: readonly Def
 }
 
 // ═════════════════════════ env (QC4 เท่านั้น) ═════════════════════════
+/** H2.11 ▸ ตัวนับคำสั่ง SQL ของ client กลาง (เปิดด้วย qc4Env(suite, { countQueries: true }) — ใบอื่นไม่กระทบ) */
+export const QUERY_COUNTER = { n: 0 };
 /** โหลด env ของ QC แบบเดิม · ไม่ใช่โฮสต์ QC4 ⇒ หยุด (exit 4 ไม่เขียนอะไร) · คืน prisma + core/hash */
-export async function qc4Env(suite: string): Promise<{ P: Any; coreHash: Any }> {
+export async function qc4Env(suite: string, opts: { countQueries?: boolean } = {}): Promise<{ P: Any; coreHash: Any }> {
   process.env.QC_ENV_FILE ??= ".env.qc";
   if (process.env.QC_ENV_FILE === ".env") {
     console.error(`🔴 ${suite}: QC_ENV_FILE=.env is production — refused`);
@@ -201,6 +203,16 @@ export async function qc4Env(suite: string): Promise<{ P: Any; coreHash: Any }> 
     /* host เท่านั้น — ไม่พิมพ์ URL */
   }
   console.log(`[${suite}] DB host = ${host} (${host.includes(QC4_HOST_MARK) ? "QC4 ✓" : "not QC4"})`);
+  if (opts.countQueries) {
+    // singleton ของ core/db = globalThis.prisma (นอก production) ⇒ วาง client ที่ส่ง event "query" ไว้ก่อน import — ทุกโมดูลใช้ตัวนี้
+    const { PrismaClient } = (await import("@prisma/client")) as Any;
+    const { PrismaPg } = (await import("@prisma/adapter-pg")) as Any;
+    const c = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }), log: [{ emit: "event", level: "query" }], transactionOptions: { timeout: 30_000, maxWait: 10_000 } });
+    c.$on("query", () => {
+      QUERY_COUNTER.n++;
+    });
+    (globalThis as Any).prisma = c;
+  }
   const { prisma } = (await import("@/lib/core/db")) as Any;
   const coreHash = (await import("@/lib/core/hash" as string)) as Any;
   return { P: prisma, coreHash };

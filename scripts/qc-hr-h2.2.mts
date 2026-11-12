@@ -161,7 +161,8 @@ function runStatic(): void {
       privacy: imp.includes("@/lib/modules/hr/privacy"),
       scope: imp.includes("@/lib/modules/hr/scope"),
       notFound: /notFound\(\)/.test(page),
-      loader: /loadRosterBoard\(/.test(page) && /hrTabs\(/.test(page),
+      // ORACLE-EDIT H2.10 (R7): pages call hrTabsFor(id) (viewer-filtered wrapper of hrTabs — qc-hr-h2.10 S7.3 forbids bare hrTabs( in HR pages) ◂
+      loader: /loadRosterBoard\(/.test(page) && /hrTabs(For)?\(/.test(page),
       noSeams: ![page, ui, board, shared, acts].some((s) => /\brosterOnDay\b|\brosterAt\b/.test(s)),
     };
     chk("S1.1", Object.values(r).every(Boolean), "page guard + loader + tabs · no seams", failedKeys(r));

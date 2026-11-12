@@ -1830,11 +1830,14 @@ async function runDb(): Promise<void> {
       // ORACLE-EDIT H2.7 r2b (controller ruling 1, 12 Nov): the H2.2 seed writes roster rows by design — HrRosterEntry = hr-expected.json count, no longer 0
       const keys = ["HrEmployee", "HrAttendance", "HrLeave", "HrWorkSchedule", "HrSalaryProfile", "HrPayAdjustment", "HrPayrollRun", "HrPayrollItem", "HrShift", "HrLeavePolicy", "HrHoliday", "HrLeaveBalanceTxn", "HrRosterEntry"];
       for (const k of keys) live[k] = await rawCount(k, `"tenantId" = $1`, q);
+      // ORACLE-EDIT (builder H2.11 · controller ruling "seed change yes · S7.x only for the counts it adds"): the H2.11 seed files exactly one
+      //   pending request of each kind through the type's own request function (HQC.inbox) ⇒ the 3 request tables = 1 each = hr-expected.json (was 0)
       const zero = ["HrShiftSwapRequest", "HrTimeCorrection", "HrOtRequest"];
       const zeros = await Promise.all(zero.map(async (k) => [k, await rawCount(k, `"tenantId" = $1`, q)] as const));
-      const diff = keys.filter((k) => Number(exp?.counts?.[k]) !== live[k]);
-      const nz = zeros.filter(([, v]) => v !== 0).map(([k, v]) => `${k}=${v}`);
-      chk("S7.4", !!exp && diff.length === 0 && nz.length === 0 && live.HrShift === 4 && live.HrLeavePolicy === 4 && live.HrHoliday === 2, "every Hr* count = live · new 3 = 4/4/2 · request tables 0", `diff=${diff.map((k) => `${k}:${exp?.counts?.[k] ?? "∅"}≠${live[k]}`).join(" ") || "0"} nonZero=${nz.join(",") || "0"}`);
+      const diff = [...keys.filter((k) => Number(exp?.counts?.[k]) !== live[k]), ...zeros.filter(([k, v]) => Number(exp?.counts?.[k]) !== v).map(([k]) => k)];
+      for (const [k, v] of zeros) live[k] = v;
+      const nz = zeros.filter(([, v]) => v !== 1).map(([k, v]) => `${k}=${v}`); // ORACLE-EDIT H2.11 ◂
+      chk("S7.4", !!exp && diff.length === 0 && nz.length === 0 && live.HrShift === 4 && live.HrLeavePolicy === 4 && live.HrHoliday === 2, "every Hr* count = live · new 3 = 4/4/2 · request tables 1 (H2.11 seed)", `diff=${diff.map((k) => `${k}:${exp?.counts?.[k] ?? "∅"}≠${live[k]}`).join(" ") || "0"} nonZero=${nz.join(",") || "0"}`);
     }
   }
   const eXAfter = JSON.stringify(await P.hrEmployee.findUnique({ where: { id: E.eX } }));

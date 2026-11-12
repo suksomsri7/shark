@@ -1,5 +1,7 @@
 // ศูนย์เชื่อมต่อ (Integrations) — SVC RUN · สัญญา ledger/SVC-CORE-CONTRACT.md §2.2 · migration svc_r0 (ใบ R0.1)
 // เจ้าของโค้ด = R0.5 · อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core)
+// SVC H.0 ▸ ช่องทาง OTA ของโรงแรมใช้แถว TenantIntegration kind "CHANNEL_MANAGER" (ไม่มีตาราง HotelChannelConnection)
+//   connectionId ใน ChannelRoomMap/ChannelRateMap/ChannelAriJob/ChannelReservationInbox/ChannelInventoryBuffer + HotelReservation.channelConnectionId = TenantIntegration.id หลวม ไม่มี FK ◂
 
 model TenantIntegration {
   id                  String    @id @default(cuid())

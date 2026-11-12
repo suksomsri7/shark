@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { listRoomTypes, listRooms } from "@/lib/modules/hotel/service";
 import {
@@ -20,6 +21,7 @@ export default async function HotelSetupPage({
 }) {
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
+  if (unit.type !== "HOTEL") notFound(); // SVC H.0 ▸ ด่าน type HOTEL ◂
   const tenantId = auth.active.tenantId;
   const [roomTypes, rooms] = await Promise.all([
     listRoomTypes(tenantId, unit.id),

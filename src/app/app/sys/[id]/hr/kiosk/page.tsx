@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { HrKioskSection, hrTabs } from "@/lib/modules/hr/ui";
+import { HrKioskSection, hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
 import { canRunKiosk } from "@/lib/modules/hr/clock-settings";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -21,7 +21,8 @@ export default async function HrKioskPage({ params }: { params: Promise<{ id: st
   return (
     <div className="flex max-w-2xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="จอลงเวลา — พนักงานกดเองด้วย PIN" />
-      <ModuleTabs items={hrTabs(id)} />
+      {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
+      <ModuleTabs items={await hrTabsFor(id)} />
       <HrKioskSection systemId={id} />
     </div>
   );

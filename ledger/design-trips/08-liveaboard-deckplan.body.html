@@ -1,0 +1,123 @@
+<style>
+.dp{display:grid;grid-template-columns:1fr 372px;gap:24px;align-items:start}
+.ks{display:grid;grid-template-columns:repeat(6,1fr);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.ks div{padding:14px 18px;border-left:1px solid var(--line)}.ks div:first-child{border-left:0}
+.ks span{display:block;font-size:12.5px;color:var(--mut)}.ks b{font-size:21px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.ks small{display:block;font-size:12px;color:var(--mut)}
+.dkrow{display:grid;grid-template-columns:86px 1fr;gap:14px;align-items:center}
+.dkrow>.nm{font-size:13px;font-weight:700;color:var(--ink2);line-height:1.35}.dkrow>.nm small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+.hull{border:1.5px solid var(--ink2);border-radius:28px 150px 150px 28px;background:var(--sf2);padding:14px 96px 14px 14px;display:grid;gap:8px;position:relative}
+.hull::after{content:"หัวเรือ ›";position:absolute;right:24px;top:50%;transform:translateY(-50%);font-size:11.5px;color:var(--mut2)}
+.hull::before{content:"‹ ท้ายเรือ";position:absolute;left:-2px;top:-20px;font-size:11.5px;color:var(--mut2)}
+.csd{display:grid;gap:8px;width:100%}
+.cor{height:18px;border-top:1px dashed var(--line2);border-bottom:1px dashed var(--line2);font-size:11px;color:var(--mut2);display:grid;place-items:center}
+.zone{border:1px dashed var(--line2);border-radius:12px;display:grid;place-items:center;font-size:12px;color:var(--mut);background:var(--sf);min-height:84px;text-align:center;line-height:1.4}
+.cb{border:1.5px solid var(--line2);border-radius:12px;background:var(--sf);padding:9px 11px;min-height:100px;display:flex;flex-direction:column;gap:3px;font-size:12.5px;line-height:1.35;position:relative;min-width:0}
+.cb .h{display:flex;align-items:center;gap:6px}.cb .h b{font-size:15px}.cb .h span{color:var(--mut);font-size:11.5px}
+.cb .bd{margin-left:auto;display:flex;gap:3px}
+.cb .bd i{width:14px;height:9px;border-radius:3px;border:1.5px solid var(--ink2);display:block}
+.cb .bd i.f{background:var(--ink2)}
+.cb .g{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cb .s{font-size:11.5px;color:var(--mut);margin-top:auto}
+.cb.paid{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+.cb.paid .h span,.cb.paid .s{color:var(--line2)}.cb.paid .g{color:var(--sf)}
+.cb.paid .bd i{border-color:var(--sf)}.cb.paid .bd i.f{background:var(--sf)}
+.cb.dep{border:2.5px solid var(--ink)}
+.cb.hold{border:1.5px dashed var(--mut)}
+.cb.sel{box-shadow:0 0 0 3px var(--acc-bg),0 0 0 4.5px var(--acc)}
+.cb.free .g{color:var(--mut2)}
+.cb .fl2{align-self:flex-start;font-size:10.5px;font-weight:700;color:var(--dg);border:1px solid var(--dg);border-radius:5px;padding:0 5px}
+.lg2{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:12.5px;color:var(--mut);align-items:center}
+.lg2 span{display:inline-flex;align-items:center;gap:7px}
+.lg2 i{width:22px;height:15px;border-radius:4px;border:1.5px solid var(--line2);display:block;background:var(--sf)}
+.lg2 i.p{background:var(--ink);border-color:var(--ink)}.lg2 i.d{border:2.5px solid var(--ink)}.lg2 i.h{border:1.5px dashed var(--mut)}
+.gst{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:13.5px}
+.gst .av{width:30px;height:30px;border-radius:50%;background:var(--sf2);border:1px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+.gst small{display:block;color:var(--mut);font-size:12px}.gst .sp{flex:1}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">08 · ผังเรือ Liveaboard (ฝั่งร้าน) 1440 <span>— ทริปเดียวเห็นทั้งลำ: ใครอยู่เคบินไหน จ่ายถึงไหน เอกสารครบหรือยัง · ลากชื่อแขกเพื่อย้ายเคบิน · สถานะแยกด้วยรูปทรง (ทึบ = จ่ายครบ · กรอบหนา = มัดจำ · เส้นประ = ถือที่ · กรอบบาง = ว่าง) · จุดเตียง 2 ช่องบอกจำนวนเตียงที่มีคน</span></p>
+<div class="frame">
+ <div class="dh"><span class="lg">AD</span><b>อันดามันไดฟ์</b><nav><span>สินค้า</span><span class="on">รอบและที่ว่าง</span><span>การจอง</span><span>เอเจนซี่</span><span>หน้าจองและช่องทาง</span><span>ตั้งค่า</span></nav><span class="sp"></span><div class="btn gh"><svg class="i sm"><use href="#i-print"/></svg>รายชื่อผู้โดยสาร (เจ้าท่า)</div><div class="btn pri"><svg class="i sm"><use href="#i-plus"/></svg>จองใหม่</div></div>
+ <div class="pg" style="padding-top:26px!important">
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+   <div class="btn gh sm"><svg class="i sm"><use href="#i-back"/></svg>7–11 ก.พ.</div>
+   <div><b style="font-size:21px">MV อันดามัน เอ็กซ์พลอเรอร์ · สิมิลัน 4 คืน</b><div class="mu2">14–18 ก.พ. 2570 · ขึ้นเรือท่าทับละมุ 18:00 · อีก 94 วัน · ดูข้อมูล ณ 12 พ.ย. 2569</div></div>
+   <span class="chip ink">เปิดขาย</span><span class="chip">ขั้นต่ำออกเรือ 8 คน · ถึงแล้ว</span>
+   <span style="flex:1"></span>
+   <span class="seg"><span class="on">ผังเรือ</span><span>รายชื่อ</span><span>การเงิน</span><span>กลุ่มดำน้ำ</span></span>
+   <div class="btn gh sm">21–25 ก.พ.<svg class="i sm"><use href="#i-ar"/></svg></div>
+  </div>
+  <div class="ks">
+   <div><span>เตียงที่ขายแล้ว</span><b>9 / 20</b><small>45% · 5 เคบิน</small></div>
+   <div><span>ถือที่</span><b>2</b><small>D4 · หมด 13 พ.ย.</small></div>
+   <div><span>ว่าง</span><b>9</b><small>4 เคบิน + 1 เตียงแชร์ (หญิง)</small></div>
+   <div><span>ยอดจอง</span><b>฿293,100</b><small>เต็มลำ ฿642,000</small></div>
+   <div><span>รับแล้ว</span><b>฿188,450</b><small>ค้างรับ ฿104,650 · ครบ 16 ธ.ค.</small></div>
+   <div><span>เอกสารแขกครบ</span><b>4 / 9</b><small>ครบกำหนด 14 ม.ค.</small></div>
+  </div>
+  <div class="dp">
+   <div class="card col" style="gap:30px;padding-top:34px!important">
+    <div class="dkrow"><div class="nm">ดาดฟ้าบน<small>2 เคบิน</small></div>
+     <div class="hull" style="grid-template-columns:1fr 1.25fr 1.25fr .7fr">
+      <div class="zone">ดาดฟ้าอาบแดด</div>
+      <div class="cb paid"><div class="h"><b>M1</b><span>มาสเตอร์</span><span class="bd"><i class="f"></i><i class="f"></i></span></div><div class="g">Tanaka K. · Tanaka Y.</div><div class="s">จ่ายครบ · เอกสารครบ</div></div>
+      <div class="cb free"><div class="h"><b>M2</b><span>มาสเตอร์</span><span class="bd"><i></i><i></i></span></div><div class="g">ว่าง</div><div class="s">฿38,900 /คน</div></div>
+      <div class="zone">ห้องถือท้าย</div>
+     </div></div>
+    <div class="dkrow"><div class="nm">ดาดฟ้าหลัก<small>2 เคบิน</small></div>
+     <div class="hull" style="grid-template-columns:.85fr .85fr 1.25fr 1.25fr">
+      <div class="zone">ลานดำน้ำ<br>ถัง 20 · คอมเพรสเซอร์</div>
+      <div class="zone">ห้องอาหาร · บาร์</div>
+      <div class="cb dep sel"><div class="h"><b>D1</b><span>ดีลักซ์</span><span class="bd"><i class="f"></i><i class="f"></i></span></div><div class="g">ภัทรา ส. · ผู้เดินทางคนที่ 2</div><div class="s">มัดจำแล้ว · งวด 2: 16 ธ.ค.</div><span class="fl2">ขาดเอกสาร 1</span></div>
+      <div class="cb paid"><div class="h"><b>D2</b><span>ดีลักซ์</span><span class="bd"><i class="f"></i><i class="f"></i></span></div><div class="g">Dubois M. · Dubois C.</div><div class="s">จ่ายครบ · ขาดแบบฟอร์มแพทย์</div></div>
+     </div></div>
+    <div class="dkrow"><div class="nm">ดาดฟ้าล่าง<small>6 เคบิน</small></div>
+     <div class="hull" style="grid-template-columns:1fr">
+      <div class="csd" style="grid-template-columns:repeat(3,1fr)">
+       <div class="cb dep"><div class="h"><b>S1</b><span>สแตนดาร์ด · แชร์</span><span class="bd"><i class="f"></i><i></i></span></div><div class="g">Sofia R. (หญิง) · ว่าง 1 เตียง</div><div class="s">มัดจำ ฿8,370 · รับเฉพาะผู้หญิง</div></div>
+       <div class="cb free"><div class="h"><b>S2</b><span>สแตนดาร์ด</span><span class="bd"><i></i><i></i></span></div><div class="g">ว่าง</div><div class="s">฿27,900 /คน · โควตา PTD ถึง 16 ธ.ค.</div></div>
+       <div class="cb free"><div class="h"><b>D3</b><span>ดีลักซ์</span><span class="bd"><i></i><i></i></span></div><div class="g">ว่าง</div><div class="s">฿32,900 /คน</div></div>
+      </div>
+      <div class="cor">ทางเดิน</div>
+      <div class="csd" style="grid-template-columns:repeat(3,1fr)">
+       <div class="cb dep"><div class="h"><b>S3</b><span>สแตนดาร์ด</span><span class="bd"><i class="f"></i><i class="f"></i></span></div><div class="g">Müller A. · Müller J.</div><div class="s">เอเจนซี่ PTD · มัดจำ ฿16,740</div></div>
+       <div class="cb free"><div class="h"><b>S4</b><span>สแตนดาร์ด</span><span class="bd"><i></i><i></i></span></div><div class="g">ว่าง</div><div class="s">฿27,900 /คน</div></div>
+       <div class="cb hold"><div class="h"><b>D4</b><span>ดีลักซ์</span><span class="bd"><i></i><i></i></span></div><div class="g">ถือโดย Blue Planet Travel</div><div class="s">หมดเวลา 13 พ.ย. 18:00 · ต่ออายุได้ 1 ครั้ง</div></div>
+      </div>
+     </div></div>
+    <div class="lg2"><span><i class="p"></i>จ่ายครบ</span><span><i class="tdd"></i>จ่ายมัดจำ</span><span><i class="h"></i>ถือที่ (ยังไม่จ่าย)</span><span><i></i>ว่าง</span><span style="margin-left:auto">กดเคบินเพื่อดูรายละเอียด · ลากชื่อแขกไปเคบินอื่นเพื่อย้าย · กดเคบินว่างเพื่อจอง ปิดขาย หรือกันให้เอเจนซี่</span></div>
+   </div>
+   <div class="col" style="gap:22px">
+    <div class="card">
+     <div class="ch" style="margin-bottom:6px"><span>เคบิน D1 · ดีลักซ์ เตียงคู่</span><span class="sp"></span><span class="chip acc">มัดจำแล้ว</span></div>
+     <div class="mu2">LB-7002-0031 · จองตรงผ่าน LINE · 11 พ.ย. 2569</div>
+     <div style="margin-top:12px">
+      <div class="gst"><span class="av">ภ</span><span><b>ภัทรา สายใจ</b><small>AOW · 48 ไดฟ์ · แพ้กุ้ง · เช่า BCD M</small></span><span class="sp"></span><span class="chip ink">ครบ</span></div>
+      <div class="gst"><span class="av">2</span><span><b>ผู้เดินทางคนที่ 2</b><small>ส่งลิงก์แล้ว 12 พ.ย. · ยังไม่กรอก</small></span><span class="sp"></span><span class="chip dg">ขาด</span></div>
+     </div>
+     <div class="ln" style="margin-top:10px"><span class="k">ค่าเคบิน + อุทยาน</span><span class="sp"></span><span class="v">69,400.00</span></div>
+     <div class="ln"><span class="k">รับแล้ว (มัดจำ)</span><span class="sp"></span><span class="v">− 19,740.00</span></div>
+     <div class="ln tt"><span class="k">ค้างรับ · 16 ธ.ค.</span><span class="sp"></span><span class="v">฿49,660.00</span></div>
+     <div class="nt gh" style="margin-top:12px"><svg class="i sm"><use href="#i-warn"/></svg><span><b>พาสปอร์ตของภัทราหมดอายุ 2 มิ.ย. 2570</b><small>เหลือน้อยกว่า 6 เดือน ณ วันเดินทาง แจ้งลูกค้าแล้วทาง LINE</small></span></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px"><div class="btn gh sm">ย้ายเคบิน</div><div class="btn gh sm">อัปเกรดเป็นมาสเตอร์</div><div class="btn gh sm">ส่งเตือนเอกสาร</div><div class="btn gh sm">เปิดการจอง</div></div>
+    </div>
+    <div class="card">
+     <div class="ch" style="margin-bottom:6px"><span>รอจัดการ</span></div>
+     <div class="gst" style="border-top:0"><svg class="i sm" style="color:var(--dg)"><use href="#i-clock"/></svg><span><b>D4 ถือที่หมดพรุ่งนี้ 18:00</b><small>Blue Planet Travel · ยังไม่จ่ายมัดจำ</small></span></div>
+     <div class="gst"><svg class="i sm"><use href="#i-users"/></svg><span><b>รายการรอ 1 ราย</b><small>ต้องการมาสเตอร์ 2 คน · M2 ยังว่าง เสนอได้</small></span></div>
+     <div class="gst"><svg class="i sm"><use href="#i-doc"/></svg><span><b>แบบฟอร์มแพทย์ค้าง 5 คน</b><small>เตือนอัตโนมัติรอบถัดไป 14 ธ.ค.</small></span></div>
+    </div>
+    <div class="card">
+     <div class="ch" style="margin-bottom:6px"><span>แขกบนเรือ 9 คน</span></div>
+     <div class="ln"><span class="k">นักดำน้ำ / ไม่ดำน้ำ</span><span class="sp"></span><span class="v">8 / 1</span></div>
+     <div class="ln"><span class="k">ไนตร็อกซ์</span><span class="sp"></span><span class="v">3 คน</span></div>
+     <div class="ln"><span class="k">เช่าอุปกรณ์เต็มชุด</span><span class="sp"></span><span class="v">2 คน</span></div>
+     <div class="ln"><span class="k">อาหารพิเศษ</span><span class="sp"></span><span class="v">แพ้กุ้ง 1 · มังสวิรัติ 1</span></div>
+     <div class="ln"><span class="k">รับจากสนามบินภูเก็ต</span><span class="sp"></span><span class="v">4 คน · 2 เที่ยว</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>

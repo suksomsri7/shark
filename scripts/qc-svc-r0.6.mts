@@ -960,8 +960,9 @@ try {
     p.push(...NEED());
     const f = await withoutFaiDormKey(() => fileUrl(ACT.fai, CTX_A, pendDormId)); // ORACLE-EDIT (ผู้คุม 30 ต.ค. · d10-4)
     if (!refused(f, "PERMISSION_DENIED")) p.push(`fai → ${codeOf(f)}`);
-    const m = M1?.ok ? await fileUrl(ACT.manager, CTX_A, M1.slipId) : null;
-    if (!refused(m, "PERMISSION_DENIED", "NOT_FOUND")) p.push(`manager → ${codeOf(m)}`);
+    // ORACLE-EDIT (ผู้คุม 8 พ.ย. · r06-u2) ฟิกซ์เจอร์ H.7 (3015b0534) ให้ manager คุมหน่วย hotel (slip-verify อ่าน Membership สด ⇒ ok ถูกต้อง) ⇒ ตัวควบคุมลบเปลี่ยนเป็น fai (STAFF หอเท่านั้น) กับสลิป hotel
+    const m = M1?.ok ? await fileUrl(ACT.fai, CTX_A, M1.slipId) : null;
+    if (!refused(m, "PERMISSION_DENIED", "NOT_FOUND")) p.push(`fai (สลิป hotel) → ${codeOf(m)}`);
   });
   await step("U-3", "X10: ไม่มี URL ถาวร — แถว PaymentSlip ของรอบไม่มี http/private:// · FileAsset ของรอบเป็น private:// ทั้งหมด", async (p) => {
     const rows = (await prisma.paymentSlip.findMany({ where: { tenantId: { in: [TA, TB] }, refId: { startsWith: PFX } } })) as Any[];

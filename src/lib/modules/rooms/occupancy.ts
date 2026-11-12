@@ -415,7 +415,7 @@ export async function sweepStaleOccupancy(now: Date): Promise<{ released: number
           WHERE x."active" = true AND x."refType" = 'HotelReservation'
             AND NOT EXISTS (
               SELECT 1 FROM "HotelReservation" r
-              WHERE r."id" = x."refId" AND r."tenantId" = x."tenantId" AND r."status"::text IN ('BOOKED', 'CHECKED_IN')
+              WHERE r."id" = x."refId" AND r."tenantId" = x."tenantId" AND r."status"::text IN ('BOOKED', 'HOLD', 'CONFIRMED', 'CHECKED_IN', 'NO_SHOW') -- SVC H.3 ▸ (ผู้คุม 7 พ.ย. · บั๊กที่ builder พบ) สถานะ V2 ที่ยังถือห้องจริง: HOLD/CONFIRMED (ก่อนเข้า) · NO_SHOW แบบ FORFEIT_HOLD_STAY — เดิมมีแค่ BOOKED/CHECKED_IN ⇒ cron 5 นาทีจะปล่อยห้องของการจอง V2 ◂
             )
           LIMIT ${EXPIRE_BATCH}
           FOR UPDATE OF x SKIP LOCKED

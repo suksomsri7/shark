@@ -10,6 +10,9 @@ import { payrollItemsDigest, PAYROLL_DIGEST_SELECT } from "./payroll-digest";
 import { bindWorkEntriesToRunInTx, workEntriesApproveCheckInTx, WE_TEXT } from "./work-entries"; // HR H3.1 ▸ ด่านอนุมัติรอบรุ่น 2 + แช่แข็งชั่วโมงทำงาน ◂
 import { scopedEmployeeIds, type HrScope } from "./scope"; // HR H1.1 ▸ ขอบเขตสาขาของตัวอ่านรายการเพิ่ม/หัก ◂ // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
 import type { StockAdjustmentSource } from "./stock-charge"; // HR H4.6 ▸ ชนิดของแหล่งที่มา (type ล้วน — ไม่มีวงโหลด) ◂
+import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; // HR H2.11 ▸ ด่านของ decideAdjustmentAs (ตัวเดียวกับ decideAdjustmentAction) ◂
+import { employeeIdOfAdjustment, employeeUnitsOf, hrScopeOf, unitTargetOf } from "./scope"; // HR H2.11 ▸ สาขาของเจ้าของรายการ (แบบ payTarget) ◂
+import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ◂
 import {
   ssoContribution,
   monthlyWhtSatang,
@@ -280,6 +283,8 @@ export async function decideAdjustment(
       const tx = t as unknown as Prisma.TransactionClient;
       const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
       await attendanceApproveLockInTx(tx, ctx, row); // HR H3.2 ◂ รายการหักสาย/ขาด: ล็อกงวดงาน P ก่อนงวดของแถว
+      const advanceRefusal = row.kind === "ADVANCE" ? await advanceApproveRefusalInTx(tx, ctx, row) : null; // HR H2.10 ▸ เบิกล่วงหน้า: ใบเดียวที่เปิด · ไม่มีใบอนุมัติที่ยังไม่จ่าย (ล็อก hr:advance) ◂
+      if (advanceRefusal) return { ok: false, reason: advanceRefusal }; // HR H2.10 ▸ ◂
       await lockRunPeriod(tx, ctx, row.periodKey);
       const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey)); // HR H0.6 ▸ OQ-4 ◂
       let moveTo: string | null = null;
@@ -415,6 +420,9 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
 export async function listAdjustments(ctx: Ctx, periodKey?: string, take = 200, scope?: HrScope) {
   const emps = await scopedEmployeeIds(ctx, scope);
   if (emps && emps.length === 0) return [];
+  // HR H2.11 ▸ กล่องคำขอรวม: scope ที่มี pendingUnbound = เฉพาะรายการรออนุมัติที่ยังไม่ผูกรอบ ไม่รวมแถวจากคำขอ OT (ตัดสินที่คำขอ OT) · ใหม่สุดก่อน ไม่เกิน take ◂
+  if ((scope as { pendingUnbound?: unknown } | undefined)?.pendingUnbound === true)
+    return tenantDb(ctx).hrPayAdjustment.findMany({ where: { systemId: ctx.systemId, status: "PENDING", runId: null, OR: [{ sourceType: null }, { sourceType: { not: "OT_REQUEST" } }], ...(periodKey ? { periodKey } : {}), ...(emps ? { employeeId: { in: emps } } : {}) }, orderBy: [{ createdAt: "desc" }], take });
   return tenantDb(ctx).hrPayAdjustment.findMany({
     where: { systemId: ctx.systemId, ...(periodKey ? { periodKey } : {}), ...(emps ? { employeeId: { in: emps } } : {}) },
     orderBy: [{ createdAt: "desc" }],
@@ -2023,3 +2031,147 @@ async function attendanceRunGateInTx(tx: Prisma.TransactionClient, ctx: Ctx, run
 export type AttendanceApproveFailCode = "ATTENDANCE_STALE" | "ATTENDANCE_SYNC" | "ATTENDANCE_LOCK";
 const ATT_APPROVE_TEXT: Record<string, string> = { ATTENDANCE_STALE: ATT_TEXT.runStale, ATTENDANCE_SYNC: ATT_TEXT.runSync, ATTENDANCE_LOCK: ATT_TEXT.lockRetry };
 // ◂ HR H3.2
+
+// ─────────── HR H2.11 ▸ ตัดสินรายการเพิ่ม/หัก 1 รายการในนามผู้ดู (กล่องคำขอรวม) — เนื้อของ decideAdjustmentAction ทุกขั้น: ด่าน hr.payadjust.approve +
+//   canViewPayroll → สาขาของเจ้าของรายการ (แบบ payTarget) → decideAdjustment (กติกาเดิมทั้งหมด รวมกติกาที่จะเพิ่มภายในในอนาคต) → audit
+//   hr.payadjust.approve|reject รูปเดียวกับ action · ไม่คัดลอกกติกาใด ๆ (Q4: action เดิมไม่เปลี่ยน — หนี้ D1) ───────────
+export async function decideAdjustmentAs(
+  ctx: Ctx,
+  v: { role: MembershipCtx["role"] | string; unitAccess: unknown; permissions: unknown; userId?: string | null },
+  id: string,
+  status: "APPROVED" | "REJECTED",
+): Promise<{ ok: true; status: "APPROVED" | "REJECTED"; reason?: string } | { ok: false; reason: string }> {
+  const m = { role: v?.role, unitAccess: (Array.isArray(v?.unitAccess) ? v.unitAccess : []) as string[], permissions: (v?.permissions ?? {}) as Record<string, unknown> } as MembershipCtx;
+  const uid = typeof v?.userId === "string" ? v.userId.trim() : "";
+  if (!uid || !evaluate(m, { module: "hr", action: "hr.payadjust.approve" }) || !canViewPayroll(m)) return { ok: false, reason: INBOX_TEXT.noRight };
+  if (status !== "APPROVED" && status !== "REJECTED") return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+  const empId = typeof id === "string" && id ? await employeeIdOfAdjustment(ctx, id) : null;
+  if (!empId) return { ok: false, reason: "ไม่พบรายการ" };
+  // r2 (hunter F2 · กันซ้อน): แถวจากคำขอ OT ตัดสินที่คำขอ OT เท่านั้น — ข้อความเดียวกับ cancelAdjustment/moveStrandedAdjustment (H2.9 r2.3)
+  if (await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id, sourceType: "OT_REQUEST" }, select: { id: true } })) return { ok: false, reason: OT_TEXT.otRow };
+  const emp = await employeeUnitsOf(ctx, empId);
+  if (emp) {
+    const t = unitTargetOf(hrScopeOf(m), emp, new Date());
+    if (!t.ok) return { ok: false, reason: t.reason };
+    if (!evaluate(m, { module: "hr", action: "hr.payadjust.approve", ...(t.unitId ? { unitId: t.unitId } : {}) })) return { ok: false, reason: INBOX_TEXT.noRight };
+  }
+  try {
+    const res = await decideAdjustment(ctx, id, status, { userId: uid, isOwner: m.role === "OWNER" });
+    if (!res.ok) return { ok: false, reason: res.reason ?? "ตัดสินรายการไม่สำเร็จ" };
+    await writeAudit({
+      tenantId: ctx.tenantId,
+      actorId: uid,
+      action: status === "APPROVED" ? "hr.payadjust.approve" : "hr.payadjust.reject",
+      targetType: "HrPayAdjustment",
+      targetId: id,
+      ...(res.movedTo ? { before: { periodKey: res.movedFrom }, after: { periodKey: res.movedTo, reason: res.reason } } : {}),
+    });
+    return { ok: true, status, ...(res.reason ? { reason: res.reason } : {}) };
+  } catch (e) {
+    console.error("[hr.payadjust.decide]", e);
+    return { ok: false, reason: "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง" };
+  }
+}
+// ◂ HR H2.11
+
+// HR H2.11 r2 ▸ งวดของกล่องคำขอรวม (อ่านอย่างเดียว · คิวรีเดียวต่อชุด ไม่ขึ้นกับจำนวนงวด): ต่องวดที่ถาม —
+//   closed = มีรอบ APPROVED/PAID ของงวดนั้น (ตัวเดียวกับที่ correction.ts ปฏิเสธ "เดือนนี้อนุมัติเงินเดือนแล้ว") ·
+//   target = งวดปลายทางแบบ stockChargeTargetPeriod (งวดแรก ≥ งวดนั้นที่ยังไม่มีรอบที่มีผล) ◂
+export async function inboxPayrollPeriods(ctx: Ctx, periods: string[]): Promise<Map<string, { closed: boolean; target: string | null }>> {
+  const ps = [...new Set((Array.isArray(periods) ? periods : []).filter((p) => typeof p === "string" && PERIOD_RE.test(p)))].sort();
+  const out = new Map<string, { closed: boolean; target: string | null }>();
+  if (!ps.length) return out;
+  const runs = await tenantDb(ctx).hrPayrollRun.findMany({ where: { systemId: ctx.systemId, periodKey: { gte: ps[0]! } }, select: { periodKey: true, status: true }, take: 5_000 });
+  const live = new Set(runs.filter((r) => r.status !== "REVERSED").map((r) => r.periodKey));
+  const closed = new Set(runs.filter((r) => r.status === "APPROVED" || r.status === "PAID").map((r) => r.periodKey));
+  for (const p of ps) out.set(p, { closed: closed.has(p), target: live.has(p) ? nextRunlessPeriod(p, live) : p });
+  return out;
+}
+// ◂ HR H2.11
+
+// HR H2.10 ▸ เบิกล่วงหน้าของพนักงานเอง (hr/self.ts "ของฉัน") — ทางเขียนแถวรายการเงินอยู่ในไฟล์นี้ที่เดียว (qc-hf-hr-privacy S-20) · มติผู้คุม r2:
+//   ยื่น = ธุรกรรมเดียวใต้ล็อก hr:advance:<ร้าน>:<พนักงาน>: ไม่มีใบเปิดอื่น (PENDING หรือ APPROVED ที่ยังไม่เข้ารอบจ่าย) → งวด (เดือนนี้ไทย ถ้ายังไม่มีรอบ
+//   ไม่งั้นเดือนหน้า ไม่งั้นปิด) → สร้าง PENDING ADVANCE (ผู้ยื่น = บัญชีของพนักงาน) · audit หลัง commit (ไม่มียอด/หมายเหตุ) ·
+//   ยกเลิก = ใบของตัวเองที่ PENDING + ยังไม่เข้ารอบ ใต้ล็อกเดียวกัน · อนุมัติ (decideAdjustment) ADVANCE ล็อกเดียวกันแล้วตรวจ advanceApproveRefusalInTx
+//   ⇒ ใบซ้ำ (แม้ยื่นทางผู้จัดการ) อนุมัติพร้อมกันไม่ได้ · ผลเป็นรหัส (ข้อความของผู้ใช้อยู่ที่ผู้เรียก) ◂
+export const SELF_ADVANCE_MAX_SATANG = 5_000_000;
+export const SELF_ADVANCE_NOTE_MAX = 200;
+const ADVANCE_TX_OPTS = { maxWait: 20_000, timeout: 30_000 } as const;
+const lockAdvance = (tx: Prisma.TransactionClient, ctx: Ctx, employeeId: string) =>
+  tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:advance:${ctx.tenantId}:${employeeId}`}, 0))`;
+/** ใบเบิกล่วงหน้าที่ "ยังเปิด" ของพนักงาน: รออนุมัติ หรืออนุมัติแล้วแต่ยังไม่เข้ารอบจ่าย */
+const openAdvanceWhere = (ctx: Ctx, employeeId: string) => ({
+  tenantId: ctx.tenantId,
+  systemId: ctx.systemId,
+  employeeId,
+  kind: "ADVANCE" as const,
+  runId: null,
+  status: { in: ["PENDING" as const, "APPROVED" as const] },
+});
+async function advanceApproveRefusalInTx(tx: Prisma.TransactionClient, ctx: Ctx, row: { id: string; employeeId: string }): Promise<string | null> {
+  await lockAdvance(tx, ctx, row.employeeId);
+  const others = await tx.hrPayAdjustment.count({ where: { ...openAdvanceWhere(ctx, row.employeeId), id: { not: row.id } } });
+  return others > 0 ? "พนักงานคนนี้มีเบิกล่วงหน้าอีกรายการที่ยังเปิดอยู่ (รออนุมัติ หรืออนุมัติแล้วแต่ยังไม่จ่าย) — ปฏิเสธรายการที่ซ้ำก่อน" : null;
+}
+export type SelfAdvanceCode = "AMOUNT" | "NOTE" | "OPEN" | "CLOSED" | "NOT_FOUND";
+const nextMonthKey = (p: string): string => {
+  const y = Number(p.slice(0, 4));
+  const m = Number(p.slice(5, 7));
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+};
+/** ยื่นเบิกล่วงหน้าของพนักงาน (ผู้เรียกหา employeeId/requestedById จากเซสชันแล้ว) — ยอดเป็นสตางค์จำนวนเต็ม 1…5,000,000 */
+export async function requestSelfAdvance(
+  ctx: Ctx,
+  input: { employeeId: string; requestedById: string; amountSatang: number; note?: string | null },
+  opts: { now?: Date } = {},
+): Promise<{ ok: true; id: string; periodKey: string } | { ok: false; code: SelfAdvanceCode }> {
+  const amount = input.amountSatang;
+  if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 1 || amount > SELF_ADVANCE_MAX_SATANG) return { ok: false, code: "AMOUNT" };
+  const note = typeof input.note === "string" ? input.note.trim() : "";
+  if ([...note].length > SELF_ADVANCE_NOTE_MAX) return { ok: false, code: "NOTE" };
+  const now = opts.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now : new Date();
+  const thisMonth = bkkParts(now).dateStr.slice(0, 7);
+  const out = await tenantDb(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await lockAdvance(tx, ctx, input.employeeId);
+    if ((await tx.hrPayAdjustment.count({ where: openAdvanceWhere(ctx, input.employeeId) })) > 0) return { ok: false as const, code: "OPEN" as const };
+    const live = new Set((await tx.hrPayrollRun.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+    const periodKey = !live.has(thisMonth) ? thisMonth : !live.has(nextMonthKey(thisMonth)) ? nextMonthKey(thisMonth) : null;
+    if (!periodKey) return { ok: false as const, code: "CLOSED" as const };
+    const row = await tx.hrPayAdjustment.create({
+      data: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: input.employeeId, periodKey, kind: "ADVANCE", amountSatang: amount, note: note || null, requestedById: input.requestedById },
+      select: { id: true },
+    });
+    return { ok: true as const, id: row.id, periodKey };
+  }, ADVANCE_TX_OPTS);
+  if (!out.ok) return out;
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: "USER",
+    actorId: input.requestedById,
+    action: "hr.payadjust.request",
+    targetType: "HrPayAdjustment",
+    targetId: out.id,
+    after: { adjustmentId: out.id, employeeId: input.employeeId, kind: "ADVANCE", periodKey: out.periodKey },
+  });
+  return out;
+}
+/** ประตูปุ่ม "ยกเลิก" ของหน้า "ของฉัน" — เงื่อนไขเดียวกับ where ของ cancelSelfAdvance ข้างล่าง */
+export const selfAdvanceCancelOpen = (r: { status: string; runId: string | null; requestedById: string | null }, userId: string): boolean =>
+  r.status === "PENDING" && r.runId === null && r.requestedById === userId;
+/** ยกเลิกเบิกล่วงหน้าของตัวเอง — PENDING · ยังไม่เข้ารอบ · ยื่นโดยบัญชีนี้ · ของพนักงานคนนี้ (ไม่ใช่ = NOT_FOUND) */
+export async function cancelSelfAdvance(ctx: Ctx, input: { id: string; employeeId: string; requestedById: string }): Promise<{ ok: true } | { ok: false; code: "NOT_FOUND" }> {
+  const where = { id: input.id, tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: input.employeeId, kind: "ADVANCE" as const, status: "PENDING" as const, runId: null, requestedById: input.requestedById };
+  const gone = await tenantDb(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await lockAdvance(tx, ctx, input.employeeId);
+    const row = await tx.hrPayAdjustment.findFirst({ where, select: { employeeId: true, kind: true, amountSatang: true, status: true, periodKey: true, requestedById: true, decidedById: true } });
+    if (!row) return null;
+    const del = await tx.hrPayAdjustment.deleteMany({ where });
+    return del.count === 1 ? row : null;
+  }, ADVANCE_TX_OPTS);
+  if (!gone) return { ok: false, code: "NOT_FOUND" };
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: input.requestedById, action: "hr.payadjust.delete", targetType: "HrPayAdjustment", targetId: input.id, before: gone });
+  return { ok: true };
+}
+// ◂ HR H2.10
