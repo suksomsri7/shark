@@ -253,9 +253,10 @@ model HrWorkEntry {
 //   🔴 partial unique ("tenantId","movementId") WHERE "movementId" IS NOT NULL + CHECK ยอด/จำนวน/ความยาว — ประกาศเฉพาะใน migration.sql
 //   คืนเงิน (มติผู้คุม Q8 ทาง 2): ไม่สร้างแถวเงินได้ · ยังไม่เข้ารอบ = ยกเลิกในที่ · รอบร่าง = ทางลบเดิม · รอบอนุมัติ/จ่ายแล้ว = refundOwedSatang
 //   (ค้างคืนนอกเงินเดือน — บันทึกว่าคืนแล้วด้วย repaid*) · withdrawOutcome: REJECTED · CANCELLING · CANCELLED · REFUND_OWED · NOOP ◂
+// ISSUE = เบิกของ (ยูนิฟอร์ม/อุปกรณ์) · DAMAGE = ค่าเสียหาย
 enum HrStockChargeKind {
-  ISSUE // เบิกของ (ยูนิฟอร์ม/อุปกรณ์)
-  DAMAGE // ค่าเสียหาย
+  ISSUE
+  DAMAGE
 }
 
 model HrStockCharge {

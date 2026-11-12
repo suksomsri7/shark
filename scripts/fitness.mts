@@ -324,6 +324,7 @@ const ALLOWED_EDGES = new Set([
   // chokepoint (WO-0049b): PO/ใบลา เข้าสายอนุมัติผ่าน approval facade
   "inventory→approval",
   "hr→approval",
+  "hr→inventory", // HR H4.6 ▸ เบิกของ/ค่าเสียหาย: hr/stock-charge.ts import ได้เฉพาะ `@/lib/modules/inventory` (index) — getItem + consumeBatch เท่านั้น (ไม่อ่านตารางคลังเอง · ข้อสอบ qc-hr-h4.6 S12.1) ◂
   "pos→hr", // POS P3.5 ▸ C-8 v2 (มติ 5 11): ตารางงาน/ลา/ลงเวลา/ส่งค่าคอมฯ เข้างวดเงินเดือน — import ได้เฉพาะ `@/lib/modules/hr` (index) จาก pos/hr-link.ts + hr-link-actions.ts (ข้อสอบ qc-pos-p3.5 ST1) ◂
   "pos→approval", // POS P1.15 ▸ void/คืนเงิน/ส่วนลดเกินสิทธิ์เข้าสายอนุมัติผ่าน facade `@/lib/modules/approval` เท่านั้น (มติผู้คุมงาน 6) ◂
   "pos→reward", // POS P1.12 ▸ ส่งมอบของรางวัลที่เคาน์เตอร์ (register-member.ts → facade `@/lib/modules/reward` เท่านั้น: resolveRewardCtxForUnit · fulfilV2 · มติผู้คุมงาน 7 · รีวิว F4) ◂

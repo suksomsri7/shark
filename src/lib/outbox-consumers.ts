@@ -1455,6 +1455,9 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hr.employee.checklist_started": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onChecklistStarted(evt))),
   "hr.employee.offboarded": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/platform/hr-lifecycle-bridges")).onOffboarded(evt))),
   // ◂ HR H4.4
+  // HR H4.6 ▸ เบิกของ/ค่าเสียหาย → รายการหักที่รออนุมัติ (hr/stock-charge.ts — ยิงใน tx เดียวกับการสร้างรายการ · key `<type>#<chargeId>` ·
+  //   payload { chargeId, employeeId } ล้วน) — ตัวรับแจ้งพนักงานในแอปครั้งเดียวต่อรายการ (notifiedAt ใต้ล็อก) แล้วจึง automation/เว็บฮุค ◂
+  "hr.stock_charge.requested": withAutomation(async (evt) => (await import("@/lib/modules/hr/stock-charge")).notifyStockChargeRequested(evt)),
   "crm.commission.created": crmFirst(crmCommissionBridge("onCommissionCreated"), withAutomation(async () => {})),
   "crm.commission.approved": crmFirst(crmCommissionBridge("onCommissionApproved"), withAutomation(async () => {})),
   "crm.commission.reversed": crmFirst(crmCommissionBridge("onCommissionReversed"), withAutomation(async () => {})),

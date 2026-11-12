@@ -1,5 +1,5 @@
 -- HR H4.6 ▸ เบิกของ/ค่าเสียหายของพนักงาน → รายการหักเงินเดือนที่รออนุมัติ (additive ล้วน: enum ใหม่ + ตารางใหม่ · ไม่แตะตาราง/enum เดิม)
---   INVENTORY_ISSUE มีใน "HrPaySource" แล้ว (H1.3) ⇒ ไม่มี ALTER TYPE · runbook: migrate ก่อน แล้วจึง deploy โค้ด ·
+--   INVENTORY_ISSUE มีใน "HrPaySource" แล้ว (H1.3) ⇒ ไม่เพิ่มค่าให้ enum เดิม · runbook: migrate ก่อน แล้วจึง deploy โค้ด ·
 --   ย้อนกลับ = ตารางใหม่ว่าง/ไม่มีผู้อ่าน (โค้ดเดิมไม่รู้จัก) · คืนเงิน (มติผู้คุม Q8 ทาง 2): ไม่มีแถวเงินได้ — ยอดค้างคืนอยู่บนแถวนี้ (refundOwedSatang)
 
 -- CreateEnum
