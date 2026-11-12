@@ -46,12 +46,12 @@ export const PUNCH_KINDS: readonly PunchKind[] = ["IN", "OUT", "BREAK_START", "B
 /** รหัสที่ตรวจลำดับได้ (ทั้งตอนยื่นและตอนใช้ผล) */
 export type SequenceCode = "TARGET" | "SAME" | "DUP" | "ORDER" | "TOO_LONG";
 /** รหัสที่ใช้ผลไม่ได้ (บันทึกใน audit hr.correction.apply_refused) */
-export type ApplyCode = SequenceCode | "PAID" | "EMPLOYMENT";
+export type ApplyCode = SequenceCode | "PAID" | "EMPLOYMENT" | "PERIOD";
 
 /** ข้อความของรหัสใช้ผลไม่ได้ */
 export function applyCodeText(code: ApplyCode): string {
   const T = CORRECTION_TEXT;
-  return code === "TARGET" ? T.targetNf : code === "SAME" ? T.same : code === "DUP" ? T.dup : code === "ORDER" ? T.order : code === "TOO_LONG" ? T.tooLong : code === "PAID" ? T.paid : T.outOfEmployment;
+  return code === "TARGET" ? T.targetNf : code === "SAME" ? T.same : code === "DUP" ? T.dup : code === "ORDER" ? T.order : code === "TOO_LONG" ? T.tooLong : code === "PAID" ? T.paid : code === "PERIOD" ? T.targetNf : T.outOfEmployment;
 }
 
 /** เหตุผล: ตัดช่องว่างหัวท้าย · 3–200 ตัวอักษร (นับ code point) · อย่างอื่น = null */
@@ -161,6 +161,38 @@ export function sessionDayOf(live: readonly LivePunch[], at: Date, kind: string)
     if (r.kind === "IN") return t - r.at.getTime() <= CORRECTION_SESSION_CAP_MIN * MIN_MS ? bkkDayKey(r.at) : bkkDayKey(at);
   }
   return bkkDayKey(at);
+}
+
+/**
+ * r2 ▸ วันเจ้าของรอบ (วันไทยของเข้างานที่เปิดรอบ — กติกา H2.5) ที่คำขอนี้กระทบ คิดจากการลงเวลาที่ยังมีผล "ตอนนี้":
+ * วันเจ้าของของแถวเป้าหมายก่อนแก้ · ของแถวใหม่หลังแก้ · และของทุกแถวที่วันเจ้าของเปลี่ยนเพราะการแก้ (เช่น ย้ายเข้างานข้ามเที่ยงคืน ⇒ ออกงานย้ายวันตาม)
+ */
+export function ownerDaysOf(live: readonly LivePunch[], op: CorrectionOp): string[] {
+  const rows = sortRows(live);
+  const target = op.attendanceId ? (rows.find((r) => r.id === op.attendanceId) ?? null) : null;
+  const rest = target ? rows.filter((r) => r !== target) : rows;
+  const kind = op.action === "CHANGE" ? (target?.kind ?? null) : op.kind;
+  const mine: LivePunch | null = op.action !== "VOID" && op.at instanceof Date && typeof kind === "string" ? { id: "\u0000new", kind, at: op.at } : null;
+  const after = mine ? sortRows([...rest, mine]) : rest;
+  const ownerMap = (seq: readonly LivePunch[]) => new Map(seq.map((r) => [r.id, sessionDayOf(seq, r.at, r.kind)]));
+  const b = ownerMap(rows);
+  const a = ownerMap(after);
+  const out = new Set<string>();
+  if (target) out.add(b.get(target.id)!);
+  if (mine) out.add(a.get(mine.id)!);
+  for (const r of rest) if (b.get(r.id) !== a.get(r.id)) for (const d of [b.get(r.id)!, a.get(r.id)!]) out.add(d);
+  return [...out].sort();
+}
+
+/** r2 ▸ งวดที่ต้องถือล็อก (เซตครอบเผื่อ): เดือนไทยของแต่ละเวลา และของเวลานั้น − 960 นาที (เข้างานของรอบอยู่ได้ไกลสุดเท่านั้น) — เรียงจากน้อยไปมาก */
+export function lockMonthsOf(times: readonly (Date | null | undefined)[]): string[] {
+  const out = new Set<string>();
+  for (const t of times) {
+    if (!(t instanceof Date) || !Number.isFinite(t.getTime())) continue;
+    out.add(bkkDayKey(t).slice(0, 7));
+    out.add(bkkDayKey(new Date(t.getTime() - CORRECTION_SESSION_CAP_MIN * MIN_MS)).slice(0, 7));
+  }
+  return [...out].sort();
 }
 
 /** เดือนของวัน (YYYY-MM) */

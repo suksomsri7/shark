@@ -897,14 +897,16 @@ export async function recomputeAttendanceDay(ctx: Ctx, viewer: JudgeViewer, inpu
  * คืนรายการที่เปลี่ยน (ผู้เรียกเขียน audit หลัง commit) ◂
  */
 export type StoredDayRecompute = { dayId: string; date: string; voided: boolean; version: number; before: Record<string, unknown>; after: Record<string, unknown> | null };
-export async function recomputeStoredDaysInTx(tx: Prisma.TransactionClient, ctx: Ctx, input: { employeeId: string; days: string[]; now: Date; deciderId: string | null; reason: string }): Promise<StoredDayRecompute[]> {
+//   r2 ▸ dryRun = ไม่ถือล็อก ไม่เขียน — คืนรายการที่ "จะเปลี่ยน" (ผู้เรียกใช้ตรวจวันข้างเคียงในงวดที่จ่ายแล้ว/ไม่ได้ถือล็อก แล้วปฏิเสธทั้งธุรกรรม) ◂
+export async function recomputeStoredDaysInTx(tx: Prisma.TransactionClient, ctx: Ctx, input: { employeeId: string; days: string[]; now: Date; deciderId: string | null; reason: string; dryRun?: boolean }): Promise<StoredDayRecompute[]> {
+  const dry = input.dryRun === true;
   const days = [...new Set(input.days.filter(isDay))].sort();
   if (!days.length) return [];
   const where = { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: input.employeeId };
   const found = await tx.hrAttendanceDay.findMany({ where: { ...where, date: { in: days.map(dbDate) } }, select: { id: true }, orderBy: { id: "asc" } });
   if (!found.length) return [];
-  for (const r of found) await lock(tx, `hr:judge:${r.id}`);
-  for (const d of days) await lock(tx, `hr:roster:${ctx.systemId}:${input.employeeId}:${d}`);
+  if (!dry) for (const r of found) await lock(tx, `hr:judge:${r.id}`);
+  if (!dry) for (const d of days) await lock(tx, `hr:roster:${ctx.systemId}:${input.employeeId}:${d}`);
   const emp = (await employeesOf(tx, ctx, { id: input.employeeId }))[0];
   if (!emp) return [];
   const data = await loadData(tx, ctx, [emp.id], days[0]!, days[days.length - 1]!);
@@ -921,6 +923,10 @@ export async function recomputeStoredDaysInTx(tx: Prisma.TransactionClient, ctx:
       if (!s) {
         s = slots.find((x) => !taken.has(x.slotKey)) ?? null;
         if (!s) {
+          if (dry) {
+            out.push({ dayId: cur.id, date: day, voided: true, version: cur.version + 1, before, after: null });
+            continue;
+          }
           const del = await tx.hrAttendanceDay.deleteMany({ where: { id: cur.id, tenantId: ctx.tenantId, systemId: ctx.systemId, version: cur.version } });
           if (del.count === 1) out.push({ dayId: cur.id, date: day, voided: true, version: cur.version + 1, before, after: null });
           continue;
@@ -930,6 +936,10 @@ export async function recomputeStoredDaysInTx(tx: Prisma.TransactionClient, ctx:
       const next = { slotKey: s.slotKey, ...judgedColumns(s) };
       const nextRec = next as unknown as Record<string, unknown>;
       if (next.slotKey === cur.slotKey && CMP_KEYS.every((k) => cmpVal(curRec[k]) === cmpVal(nextRec[k]))) continue;
+      if (dry) {
+        out.push({ dayId: cur.id, date: day, voided: false, version: cur.version + 1, before, after: Object.fromEntries(SNAP_KEYS.map((k) => [k, nextRec[k]])) });
+        continue;
+      }
       const upd = await tx.hrAttendanceDay.updateMany({
         where: { id: cur.id, tenantId: ctx.tenantId, systemId: ctx.systemId, version: cur.version },
         data: { ...next, version: cur.version + 1, judgedAt: input.now, recomputedAt: input.now, recomputedById: input.deciderId, recomputeReason: input.reason },

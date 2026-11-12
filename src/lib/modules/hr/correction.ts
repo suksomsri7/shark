@@ -34,6 +34,8 @@ import {
   applyCodeText,
   checkCorrection,
   cleanCorrectionReason,
+  lockMonthsOf,
+  ownerDaysOf,
   sessionDayOf,
   type ApplyCode,
   type CorrectionAction,
@@ -63,6 +65,13 @@ const toMinute = (d: Date) => new Date(Math.floor(d.getTime() / MIN_MS) * MIN_MS
 function dateOf(v: unknown): Date | null {
   const d = v instanceof Date ? v : typeof v === "string" && v.trim() ? new Date(v) : null;
   return d && Number.isFinite(d.getTime()) ? toMinute(d) : null;
+}
+/** r2 ▸ ใช้ผลไม่ได้ (โยนออกจากธุรกรรม ⇒ ย้อนทุกอย่างที่เขียน · ผู้เรียกปิดคำขอเป็น CANCELLED ในธุรกรรมใหม่) */
+class ApplyRefusal extends Error {
+  constructor(readonly code: ApplyCode) {
+    super(code);
+    this.name = "ApplyRefusal";
+  }
 }
 class CorrectionRefusal extends Error {
   constructor(message: string) {
@@ -128,6 +137,7 @@ const CORR_SELECT = {
   decidedAt: true,
   resultAttendanceId: true,
   evidenceJson: true,
+  selfApplied: true,
   createdAt: true,
 } as const;
 type CorrRow = Prisma.HrTimeCorrectionGetPayload<{ select: typeof CORR_SELECT }>;
@@ -152,22 +162,22 @@ async function liveAround(db: Tx, ctx: Ctx, employeeId: string, times: Date[]): 
 }
 const codeText = (code: ApplyCode) => applyCodeText(code);
 
-/** งวด (YYYY-MM) ที่ต้องถือล็อก: วันของรอบ + วันไทยของเวลาเดิม/เวลาที่ขอ */
-function monthsOf(c: { day: Date | string | null; originalAt: Date | null; proposedAt: Date | null }): string[] {
-  const days = [typeof c.day === "string" ? c.day : c.day ? dayOf(c.day) : null, c.originalAt ? bkkDayKey(c.originalAt) : null, c.proposedAt ? bkkDayKey(c.proposedAt) : null].filter((x): x is string => !!x);
-  return [...new Set(days.map((d) => d.slice(0, 7)))].sort();
+/**
+ * r2 ▸ งวดที่ต้องถือล็อก = เซตครอบเผื่อ: เดือนไทยของเวลาเดิม/เวลาที่ขอ และของแต่ละเวลา − 960 นาที (เรียง) — คิดจากเวลาเท่านั้น
+ * (วันเจ้าของรอบจริงคิดใหม่ใต้ล็อกตอนใช้ผล — ownerDaysOf)
+ */
+const monthsOf = (c: { originalAt: Date | null; proposedAt: Date | null }): string[] => lockMonthsOf([c.originalAt, c.proposedAt]);
+/** งวดในชุดที่อนุมัติ/จ่ายเงินเดือนแล้ว */
+async function paidMonthsOf(tx: Tx, ctx: Ctx, months: string[]): Promise<Set<string>> {
+  if (!months.length) return new Set();
+  const runs = await tx.hrPayrollRun.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: { in: months }, status: { in: ["APPROVED", "PAID"] } }, select: { periodKey: true } });
+  return new Set(runs.map((r) => r.periodKey));
 }
-/** วันที่ต้องคิดผลแถวที่บันทึกใหม่: วันของรอบ ± 1 (+ วันไทยของเวลาเดิม/ที่ขอ ± 1) เฉพาะงวดที่ถือล็อก */
-function recomputeDaysOf(c: { day: Date | null; originalAt: Date | null; proposedAt: Date | null }, months: string[]): string[] {
-  const base = [c.day ? dayOf(c.day) : null, c.originalAt ? bkkDayKey(c.originalAt) : null, c.proposedAt ? bkkDayKey(c.proposedAt) : null].filter((x): x is string => !!x);
-  const all = new Set<string>();
-  for (const d of base) for (const k of [-1, 0, 1]) all.add(addDays(d, k));
-  return [...all].filter((d) => months.includes(d.slice(0, 7))).sort();
-}
-async function paidIn(tx: Tx, ctx: Ctx, months: string[]): Promise<boolean> {
-  if (!months.length) return false;
-  const n = await tx.hrPayrollRun.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: { in: months }, status: { in: ["APPROVED", "PAID"] } } });
-  return n > 0;
+/** วันเจ้าของรอบที่คำขอกระทบ (ใต้ hr:clock) → นอกชุดล็อก = PERIOD · งวดของวันใดจ่ายแล้ว = PAID (เวลาที่ขออยู่ในเดือนที่จ่ายแล้วเฉย ๆ ไม่ใช่เหตุ) */
+async function ownerGate(tx: Tx, ctx: Ctx, owners: string[], months: string[]): Promise<ApplyCode | null> {
+  if (owners.some((d) => !months.includes(d.slice(0, 7)))) return "PERIOD";
+  const paid = await paidMonthsOf(tx, ctx, [...new Set(owners.map((d) => d.slice(0, 7)))]);
+  return paid.size ? "PAID" : null;
 }
 
 // ── แจ้งเตือน (ชื่อ + วันเท่านั้น — ไม่มีเหตุผล/เวลา) ──
@@ -207,25 +217,34 @@ async function auditRecomputed(ctx: Ctx, actorId: string | null, employeeId: str
   }
 }
 
-// ═══════════════════════════ ใช้ผล (R5) — ผู้เรียกถือล็อกงวด → hr-corr (ถ้ามี id) แล้ว · ไฟล์นี้ถือ hr:clock ต่อ ═══════════════════════════
-type Applied = { ok: true; resultId: string | null; recomputed: Recomputed; unitId: string | null } | { ok: false; code: ApplyCode };
+// ═══════════════════════════ ใช้ผล (R5) — ผู้เรียกถือล็อกงวด (ชุด monthsOf) → hr-corr (ถ้ามี id) แล้ว · ไฟล์นี้ถือ hr:clock ต่อ ═══════════════════════════
+// ใช้ไม่ได้ = โยน ApplyRefusal (ธุรกรรมย้อน — ไม่มีอะไรถูกเขียน) · r2: วันเจ้าของรอบคิดใหม่จากข้อมูลสด ณ ตอนใช้ผล (ก่อนและหลังแก้) ·
+//   คิดผลแถวที่บันทึกของวันเจ้าของ ± 1 เฉพาะงวดที่ถือล็อกและยังไม่จ่าย · วันข้างเคียงนอกนั้นถ้าแถวที่บันทึก "จะเปลี่ยน" ⇒ ปฏิเสธ (PAID/PERIOD)
+type Applied = { resultId: string | null; recomputed: Recomputed; unitId: string | null; day: string };
 async function applyInTx(tx: Tx, ctx: Ctx, c: CorrRow, o: { months: string[]; deciderId: string | null; now: Date }): Promise<Applied> {
-  if (await paidIn(tx, ctx, o.months)) return { ok: false, code: "PAID" };
   await lockKey(tx, `hr:clock:${c.employeeId}`);
   const emp = await empOf(tx, ctx, c.employeeId);
-  const day = c.day ? dayOf(c.day) : bkkDayKey(c.proposedAt);
-  if (!emp || !inEmployment(emp, day)) return { ok: false, code: "EMPLOYMENT" };
+  if (!emp) throw new ApplyRefusal("EMPLOYMENT");
   const action = c.action as CorrectionAction;
   const at = action === "VOID" ? null : c.proposedAt;
   const live = await liveAround(tx, ctx, emp.id, [c.proposedAt, ...(c.originalAt ? [c.originalAt] : [])]);
-  const chk = checkCorrection(live, { action, kind: c.kind, at, attendanceId: c.attendanceId });
-  if (!chk.ok) return { ok: false, code: chk.code };
+  const op = { action, kind: c.kind, at, attendanceId: c.attendanceId };
+  const target = c.attendanceId ? (live.find((r) => r.id === c.attendanceId) ?? null) : null;
+  if (c.attendanceId && !target) throw new ApplyRefusal("TARGET");
+  const owners = ownerDaysOf(live, op);
+  const gate = await ownerGate(tx, ctx, owners, o.months);
+  if (gate) throw new ApplyRefusal(gate);
+  const others = target ? live.filter((r) => r !== target) : live;
+  const day = sessionDayOf(others, at ?? target!.at, at ? String(c.kind) : target!.kind);
+  if (!inEmployment(emp, day)) throw new ApplyRefusal("EMPLOYMENT");
+  const chk = checkCorrection(live, op);
+  if (!chk.ok) throw new ApplyRefusal(chk.code);
   if (action !== "ADD") {
     const v = await tx.hrAttendance.updateMany({
       where: { id: c.attendanceId ?? "", tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, voidedAt: null },
       data: { voidedAt: o.now, voidedByCorrectionId: c.id },
     });
-    if (v.count !== 1) return { ok: false, code: "TARGET" };
+    if (v.count !== 1) throw new ApplyRefusal("TARGET");
   }
   let resultId: string | null = null;
   if (at) {
@@ -236,37 +255,52 @@ async function applyInTx(tx: Tx, ctx: Ctx, c: CorrRow, o: { months: string[]; de
     });
     resultId = row.id;
   }
-  const recomputed = await recomputeStoredDaysInTx(tx, ctx, { employeeId: emp.id, days: recomputeDaysOf(c, o.months), now: o.now, deciderId: o.deciderId, reason: T.recomputeReason });
-  return { ok: true, resultId, recomputed, unitId: unitOfDay(emp, day) };
+  const near = [...new Set(owners.flatMap((d) => [addDays(d, -1), d, addDays(d, 1)]))].sort();
+  const paid = await paidMonthsOf(tx, ctx, o.months);
+  const writable = near.filter((d) => o.months.includes(d.slice(0, 7)) && !paid.has(d.slice(0, 7)));
+  const blocked = near.filter((d) => !writable.includes(d));
+  const base = { employeeId: emp.id, now: o.now, deciderId: o.deciderId, reason: T.recomputeReason };
+  if (blocked.length) {
+    const would = await recomputeStoredDaysInTx(tx, ctx, { ...base, days: blocked, dryRun: true });
+    if (would.length) throw new ApplyRefusal(would.some((w) => paid.has(w.date.slice(0, 7))) ? "PAID" : "PERIOD");
+  }
+  const recomputed = await recomputeStoredDaysInTx(tx, ctx, { ...base, days: writable });
+  return { resultId, recomputed, unitId: unitOfDay(emp, day), day };
 }
-async function emitCorrected(tx: Tx, ctx: Ctx, c: CorrRow, a: Extract<Applied, { ok: true }>): Promise<void> {
+async function emitCorrected(tx: Tx, ctx: Ctx, c: CorrRow, a: Applied): Promise<void> {
   await emitOutbox(tx, {
     tenantId: ctx.tenantId,
     systemId: ctx.systemId,
     unitId: a.unitId,
     type: CORRECTION_EVENT,
     idempotencyKey: `${CORRECTION_EVENT}#${c.id}`,
-    payload: { correctionId: c.id, systemId: ctx.systemId, employeeId: c.employeeId, action: c.action, kind: c.kind, day: c.day ? dayOf(c.day) : null, attendanceId: c.attendanceId, resultAttendanceId: a.resultId },
+    payload: { correctionId: c.id, systemId: ctx.systemId, employeeId: c.employeeId, action: c.action, kind: c.kind, day: a.day, attendanceId: c.attendanceId, resultAttendanceId: a.resultId },
   });
 }
 /** สำเร็จ: APPROVED (guard PENDING หรือแถวที่เพิ่งเขียน APPROVED) + ผลลัพธ์ + event + แจ้งเตือน */
-async function finishApplied(tx: Tx, ctx: Ctx, c: CorrRow, a: Extract<Applied, { ok: true }>, deciderId: string | null, now: Date, fromStatus: "PENDING" | "APPROVED"): Promise<boolean> {
+async function finishApplied(tx: Tx, ctx: Ctx, c: CorrRow, a: Applied, deciderId: string | null, now: Date, fromStatus: "PENDING" | "APPROVED"): Promise<boolean> {
   const u = await tx.hrTimeCorrection.updateMany({
     where: { id: c.id, tenantId: ctx.tenantId, systemId: ctx.systemId, status: fromStatus },
-    data: { status: "APPROVED", decidedById: deciderId, decidedAt: now, resultAttendanceId: a.resultId },
+    data: { status: "APPROVED", decidedById: deciderId, decidedAt: now, resultAttendanceId: a.resultId, day: dbDate(a.day) }, // r2: วันของรอบ ณ ตอนใช้ผล
   });
   if (u.count !== 1) return false;
   await emitCorrected(tx, ctx, c, a);
   const emp = await empOf(tx, ctx, c.employeeId);
-  if (emp) await notifyOutcome(tx, ctx, c, emp, c.day ? dayOf(c.day) : bkkDayKey(c.proposedAt), T.nApproved, deciderId);
+  if (emp) await notifyOutcome(tx, ctx, c, emp, a.day, T.nApproved, deciderId);
   return true;
 }
-/** ใช้ผลไม่ได้: CANCELLED + แจ้งพนักงาน/ผู้ยื่น */
-async function cancelRefused(tx: Tx, ctx: Ctx, c: CorrRow, now: Date, actorId: string | null): Promise<void> {
-  const u = await tx.hrTimeCorrection.updateMany({ where: { id: c.id, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "PENDING" }, data: { status: "CANCELLED", decidedAt: now } });
-  if (u.count !== 1) return;
-  const emp = await empOf(tx, ctx, c.employeeId);
-  if (emp) await notifyOutcome(tx, ctx, c, emp, c.day ? dayOf(c.day) : bkkDayKey(c.proposedAt), T.nCancelled, actorId);
+/** ใช้ผลไม่ได้ (หลังธุรกรรมใช้ผลย้อนแล้ว): ธุรกรรมใหม่ ล็อกคำขอ → PENDING ⇒ CANCELLED + แจ้งพนักงาน/ผู้ยื่น */
+async function cancelRefused(ctx: Ctx, id: string, now: Date, actorId: string | null): Promise<void> {
+  await tenantDb(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Tx;
+    await lockKey(tx, `hr-corr:${id}`);
+    const c = await corrOf(tx, ctx, id);
+    if (!c || c.status !== "PENDING") return;
+    const u = await tx.hrTimeCorrection.updateMany({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "PENDING" }, data: { status: "CANCELLED", decidedAt: now } });
+    if (u.count !== 1) return;
+    const emp = await empOf(tx, ctx, c.employeeId);
+    if (emp) await notifyOutcome(tx, ctx, c, emp, c.day ? dayOf(c.day) : bkkDayKey(c.proposedAt), T.nCancelled, actorId);
+  }, TX_OPTS);
 }
 
 // ═══════════════════════════ ยื่นคำขอ (R4) ═══════════════════════════
@@ -326,20 +360,25 @@ export async function requestCorrection(ctx: Ctx, actor: CorrectionActor, input:
   const ownerAuto = actor.role === "OWNER";
   const evidence = { posShifts: await posShiftEvidence({ tenantId: ctx.tenantId, userId: emp.linkedUserId, from: bkkMidnight(day), to: new Date(bkkMidnight(day).getTime() + EVIDENCE_HOURS * 3_600_000) }), deviceLogout: null };
   const proposedAt = at ?? target!.at;
-  const months = monthsOf({ day, originalAt: target?.at ?? null, proposedAt });
+  const months = monthsOf({ originalAt: target?.at ?? null, proposedAt });
   const empId = emp.id;
+  const selfApplied = ownerAuto && !!emp.linkedUserId && emp.linkedUserId === actor.userId; // r2 ▸ มติ Q4: เจ้าของแก้แถวของตัวเอง ⇒ ใช้ผลทันทีแต่ติดธง
   try {
     const out = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Tx;
       for (const m of months) await lockKey(tx, payrollKey(ctx, m));
-      if (await paidIn(tx, ctx, months)) throw new CorrectionRefusal(T.paid);
       await lockKey(tx, `hr:clock:${empId}`);
       if (!ownerAuto) {
         const pending = await tx.hrTimeCorrection.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: empId, status: "PENDING" } });
         if (pending >= CORRECTION_RULES.MAX_PENDING) throw new CorrectionRefusal(T.tooMany);
       }
       const liveTx = await liveAround(tx, ctx, empId, [proposedAt, ...(target ? [target.at] : [])]);
-      const chk = checkCorrection(liveTx, { action, kind, at, attendanceId: target?.id ?? null });
+      const opTx = { action, kind, at, attendanceId: target?.id ?? null };
+      // r2 ▸ งวดตัดสินจากวันเจ้าของรอบ (ก่อน/หลังแก้) บนข้อมูลสดใต้ล็อก — ไม่ใช่เดือนของเวลาที่ขอ
+      if (target && !liveTx.some((r) => r.id === target.id)) throw new CorrectionRefusal(T.targetNf);
+      const gate = await ownerGate(tx, ctx, ownerDaysOf(liveTx, opTx), months);
+      if (gate) throw new CorrectionRefusal(codeText(gate));
+      const chk = checkCorrection(liveTx, opTx);
       if (!chk.ok) throw new CorrectionRefusal(codeText(chk.code));
       const row = (await tx.hrTimeCorrection.create({
         data: {
@@ -356,12 +395,12 @@ export async function requestCorrection(ctx: Ctx, actor: CorrectionActor, input:
           status: ownerAuto ? "APPROVED" : "PENDING",
           requestedByUserId: actor.userId,
           evidenceJson: evidence as Prisma.InputJsonValue,
+          selfApplied,
         },
         select: CORR_SELECT,
       })) as CorrRow;
       if (ownerAuto) {
         const a = await applyInTx(tx, ctx, row, { months, deciderId: actor.userId, now });
-        if (!a.ok) throw new CorrectionRefusal(codeText(a.code));
         if (!(await finishApplied(tx, ctx, row, a, actor.userId, now, "APPROVED"))) throw new CorrectionRefusal(T.stale);
         return { id: row.id, status: "APPROVED" as const, requestId: null, applied: a };
       }
@@ -376,12 +415,13 @@ export async function requestCorrection(ctx: Ctx, actor: CorrectionActor, input:
     }, TX_OPTS);
     await audit(ctx, actor.userId, "hr.correction.request", out.id, { employeeId: empId, action, kind, day, attendanceId: target?.id ?? null, onBehalf: !selfMode, requestId: out.requestId });
     if (out.applied) {
-      await audit(ctx, actor.userId, "hr.correction.owner_auto", out.id, { resultAttendanceId: out.applied.resultId, decidedById: actor.userId });
+      await audit(ctx, actor.userId, "hr.correction.owner_auto", out.id, { resultAttendanceId: out.applied.resultId, decidedById: actor.userId, selfApplied });
       await auditRecomputed(ctx, actor.userId, empId, out.id, out.applied.recomputed);
     }
     return { ok: true, id: out.id, status: out.status, requestId: out.requestId };
   } catch (e) {
     if (e instanceof CorrectionRefusal) return refuse(e.message);
+    if (e instanceof ApplyRefusal) return refuse(codeText(e.code)); // เจ้าของยื่นแล้วใช้ผลไม่ได้ ⇒ ธุรกรรมย้อน ไม่มีแถวคำขอ
     if (isUniqueViolation(e)) return refuse(T.dupPending);
     throw e;
   }
@@ -407,7 +447,7 @@ export async function decideCorrection(ctx: Ctx, viewer: CorrectionActor, id: st
   const chainLive = (tx: Tx) => tx.approvalRequest.count({ where: { tenantId: ctx.tenantId, entityType: CORRECTION_ENTITY, entityId: cid, status: { not: "CANCELLED" } } });
   if ((await chainLive(db)) > 0) return refuse(T.inChain);
   const months = decision === "APPROVED" ? monthsOf(c0) : [];
-  type Out = { kind: "rejected" } | { kind: "applied"; a: Extract<Applied, { ok: true }> } | { kind: "refused"; code: ApplyCode };
+  type Out = { kind: "rejected" } | { kind: "applied"; a: Applied };
   try {
     const out: Out = await tenantDb(ctx).$transaction(async (t): Promise<Out> => {
       const tx = t as unknown as Tx;
@@ -423,10 +463,6 @@ export async function decideCorrection(ctx: Ctx, viewer: CorrectionActor, id: st
         return { kind: "rejected" };
       }
       const a = await applyInTx(tx, ctx, c, { months, deciderId: viewer.userId, now });
-      if (!a.ok) {
-        await cancelRefused(tx, ctx, c, now, viewer.userId);
-        return { kind: "refused", code: a.code };
-      }
       if (!(await finishApplied(tx, ctx, c, a, viewer.userId, now, "PENDING"))) throw new CorrectionRefusal(T.stale);
       return { kind: "applied", a };
     }, TX_OPTS);
@@ -434,15 +470,16 @@ export async function decideCorrection(ctx: Ctx, viewer: CorrectionActor, id: st
       await audit(ctx, viewer.userId, "hr.correction.decide", cid, { decision: "REJECTED" });
       return { ok: true, status: "REJECTED" };
     }
-    if (out.kind === "refused") {
-      await audit(ctx, viewer.userId, "hr.correction.apply_refused", cid, { requestId: null, code: out.code });
-      return refuse(codeText(out.code));
-    }
     await audit(ctx, viewer.userId, "hr.correction.decide", cid, { decision: "APPROVED", resultAttendanceId: out.a.resultId });
     await auditRecomputed(ctx, viewer.userId, c0.employeeId, cid, out.a.recomputed);
     return { ok: true, status: "APPROVED" };
   } catch (e) {
     if (e instanceof CorrectionRefusal) return refuse(e.message);
+    if (e instanceof ApplyRefusal) {
+      await cancelRefused(ctx, cid, now, viewer.userId);
+      await audit(ctx, viewer.userId, "hr.correction.apply_refused", cid, { requestId: null, code: e.code });
+      return refuse(codeText(e.code));
+    }
     throw e;
   }
 }
@@ -464,7 +501,8 @@ export async function applyCorrectionDecision(
   const c0 = await corrOf(dbOf(ctx), ctx, cid);
   if (!c0 || c0.status !== "PENDING") return { applied: false };
   const months = input.approved ? monthsOf(c0) : [];
-  type Out = { kind: "noop" } | { kind: "rejected" } | { kind: "applied"; a: Extract<Applied, { ok: true }>; decidedById: string | null } | { kind: "refused"; code: ApplyCode };
+  type Out = { kind: "noop" } | { kind: "rejected" } | { kind: "applied"; a: Applied; decidedById: string | null } | { kind: "refused"; code: ApplyCode; decidedById: string | null };
+  let deciderSeen: string | null = null;
   const out: Out = await tenantDb(ctx).$transaction(async (t): Promise<Out> => {
     const tx = t as unknown as Tx;
     for (const m of months) await lockKey(tx, payrollKey(ctx, m));
@@ -475,6 +513,7 @@ export async function applyCorrectionDecision(
     if (!req || req.status !== (input.approved ? "APPROVED" : "REJECTED")) return { kind: "noop" };
     const last = await tx.approvalDecision.findFirst({ where: { tenantId: ctx.tenantId, requestId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { decidedById: true } });
     const decidedById = last?.decidedById ?? null;
+    deciderSeen = decidedById;
     if (!input.approved) {
       const u = await tx.hrTimeCorrection.updateMany({ where: { id: cid, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "PENDING" }, data: { status: "REJECTED", decidedById, decidedAt: now } });
       if (u.count !== 1) return { kind: "noop" };
@@ -483,14 +522,14 @@ export async function applyCorrectionDecision(
       return { kind: "rejected" };
     }
     const a = await applyInTx(tx, ctx, c, { months, deciderId: decidedById, now });
-    if (!a.ok) {
-      await cancelRefused(tx, ctx, c, now, decidedById);
-      return { kind: "refused", code: a.code };
-    }
     if (!(await finishApplied(tx, ctx, c, a, decidedById, now, "PENDING"))) return { kind: "noop" };
     return { kind: "applied", a, decidedById };
-  }, TX_OPTS);
+  }, TX_OPTS).catch((e: unknown): Out => {
+    if (e instanceof ApplyRefusal) return { kind: "refused", code: e.code, decidedById: deciderSeen };
+    throw e;
+  });
   if (out.kind === "refused") {
+    await cancelRefused(ctx, cid, now, out.decidedById);
     await audit(ctx, null, "hr.correction.apply_refused", cid, { requestId, code: out.code });
     return { applied: false, code: out.code };
   }
@@ -547,18 +586,23 @@ export type CorrectionItem = {
   filedOnBehalf: boolean;
   createdAt: string;
   decidedAt: string | null;
-  evidence: { posShifts: { shiftNo: number; openedAt: string; closedAt: string | null; forced: boolean }[]; deviceLogout: null } | null;
+  evidence: { posShifts: { shiftNo: number; openedAt: string | null; closedAt: string | null; forced: boolean }[]; deviceLogout: null } | null;
   periodCount: number | null;
   repeat: boolean | null;
+  /** r2 ▸ มติ Q4: เจ้าของร้านยื่นแก้แถวของตัวเอง ⇒ ใช้ผลทันที (แสดง "แก้โดยเจ้าของเอง") */
+  selfApplied: boolean;
 };
 type EmpLite = Pick<EmpRow, "id" | "name" | "linkedUserId" | "unitId" | "units">;
-function evidenceOf(v: unknown): CorrectionItem["evidence"] {
+/** r2 ▸ หลักฐานตามขอบเขตสาขาของผู้ดู (keepUnit) — unitId ของกะไม่ออกจาก DTO */
+function evidenceOf(v: unknown, keepUnit: (unitId: string | null) => boolean): CorrectionItem["evidence"] {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const o = v as { posShifts?: unknown };
   const shifts = Array.isArray(o.posShifts)
     ? o.posShifts.flatMap((s) => {
         const x = (s ?? {}) as Record<string, unknown>;
-        return typeof x.shiftNo === "number" && typeof x.openedAt === "string" ? [{ shiftNo: x.shiftNo, openedAt: x.openedAt, closedAt: typeof x.closedAt === "string" ? x.closedAt : null, forced: x.forced === true }] : [];
+        const unitId = typeof x.unitId === "string" ? x.unitId : null;
+        if (typeof x.shiftNo !== "number" || !keepUnit(unitId)) return [];
+        return [{ shiftNo: x.shiftNo, openedAt: typeof x.openedAt === "string" ? x.openedAt : null, closedAt: typeof x.closedAt === "string" ? x.closedAt : null, forced: x.forced === true }];
       })
     : [];
   return { posShifts: shifts, deviceLogout: null };
@@ -570,9 +614,9 @@ async function periodCountOf(db: Tx, ctx: Ctx, employeeId: string, day: string |
   const to = addDays(dayOf(new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 1))), -1);
   return db.hrTimeCorrection.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, status: { in: ["PENDING", "APPROVED"] }, day: { gte: dbDate(from), lte: dbDate(to) } } });
 }
-async function itemOf(db: Tx, ctx: Ctx, c: CorrRow, emp: EmpLite, viewerUserId: string | null, withCount: boolean): Promise<CorrectionItem> {
+async function itemOf(db: Tx, ctx: Ctx, c: CorrRow, emp: EmpLite, viewer: CorrectionActor, withCount: boolean): Promise<CorrectionItem> {
   const day = c.day ? dayOf(c.day) : null;
-  const own = !!viewerUserId && emp.linkedUserId === viewerUserId;
+  const own = !!viewer.userId && emp.linkedUserId === viewer.userId;
   const n = withCount && !own ? await periodCountOf(db, ctx, emp.id, day) : null;
   return {
     id: c.id,
@@ -588,9 +632,10 @@ async function itemOf(db: Tx, ctx: Ctx, c: CorrRow, emp: EmpLite, viewerUserId: 
     filedOnBehalf: !!c.requestedByUserId && c.requestedByUserId !== emp.linkedUserId,
     createdAt: c.createdAt.toISOString(),
     decidedAt: c.decidedAt ? c.decidedAt.toISOString() : null,
-    evidence: evidenceOf(c.evidenceJson),
+    evidence: evidenceOf(c.evidenceJson, (u) => own || covers(viewer, u)), // พนักงานเห็นกะของตัวเองทุกสาขา · คนอื่นเห็นเฉพาะสาขาในขอบเขต
     periodCount: n,
     repeat: n === null ? null : n >= CORRECTION_RULES.REPEAT_AT,
+    selfApplied: c.selfApplied === true,
   };
 }
 /** ผู้ดูคำขอนี้ได้ไหม: เจ้าของ · ผู้จัดการ/คีย์ในสาขาของวันนั้น · พนักงานคนนั้น · ผู้ยื่น */
@@ -605,7 +650,7 @@ export async function correctionDetail(ctx: Ctx, viewer: CorrectionActor, id: st
   const c = await corrOf(db, ctx, cid);
   const emp = c ? await empOf(db, ctx, c.employeeId) : null;
   if (!c || !emp || !canView(viewer, c, emp)) return refuse(T.detailNo);
-  return { ok: true, item: await itemOf(db, ctx, c, emp, viewer.userId, true) };
+  return { ok: true, item: await itemOf(db, ctx, c, emp, viewer, true) };
 }
 
 const STATUSES = ["PENDING", "APPROVED", "REJECTED", "CANCELLED"] as const;
@@ -616,8 +661,15 @@ export async function listCorrections(ctx: Ctx, viewer: CorrectionActor, input: 
   const db = dbOf(ctx);
   const status = STATUSES.find((s) => s === input?.status) ?? null;
   const employeeId = str(input?.employeeId);
+  // r2 ▸ กรองสาขาในคำสั่ง (ไม่ใช่ดึง 400 แถวแล้วกรอง): พนักงานที่สาขาประจำหรือเคยยืมตัวเข้าสาขาในขอบเขต — ตรวจสาขาของวันละเอียดอีกชั้นข้างล่าง
+  const sc = scopeOf(viewer);
+  const inScope =
+    viewer.role === "OWNER" || sc.unitIds === "*"
+      ? null
+      : (await db.hrEmployee.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, OR: [{ unitId: { in: sc.unitIds } }, { units: { some: { unitId: { in: sc.unitIds } } } }] }, select: { id: true }, take: 5_000 })).map((e) => e.id);
+  if (inScope && !inScope.length) return { ok: true, items: [] };
   const rows = (await db.hrTimeCorrection.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...(status ? { status } : {}), ...(employeeId ? { employeeId } : {}) },
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...(status ? { status } : {}), ...(employeeId ? { employeeId } : {}), ...(inScope ? { employeeId: employeeId ? (inScope.includes(employeeId) ? employeeId : "∅") : { in: inScope } } : {}) },
     select: CORR_SELECT,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: LIST_MAX * 2,
@@ -627,7 +679,7 @@ export async function listCorrections(ctx: Ctx, viewer: CorrectionActor, input: 
   for (const c of rows) {
     const emp = emps.get(c.employeeId);
     if (!emp || !isManagerOf(viewer, unitOfDay(emp, c.day ? dayOf(c.day) : bkkDayKey(c.proposedAt)))) continue;
-    items.push(await itemOf(db, ctx, c, emp, viewer.userId, true));
+    items.push(await itemOf(db, ctx, c, emp, viewer, true));
     if (items.length >= LIST_MAX) break;
   }
   return { ok: true, items };
@@ -650,7 +702,7 @@ export async function myCorrections(ctx: Ctx, actor: CorrectionActor, opts: { no
   const items: CorrectionItem[] = [];
   for (const c of rows) {
     const emp = emps.get(c.employeeId);
-    if (emp) items.push(await itemOf(db, ctx, c, emp, actor.userId, false));
+    if (emp) items.push(await itemOf(db, ctx, c, emp, actor, false));
   }
   return { ok: true, items };
 }
