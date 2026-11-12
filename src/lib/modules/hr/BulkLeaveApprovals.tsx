@@ -5,7 +5,7 @@ import { bulkDecideLeaveAction, type BulkLeaveState } from "./actions";
 
 // เลือกใบลาหลายใบ (checkbox) แล้วอนุมัติ/ปฏิเสธพร้อมกัน — สรุปผลแสดง inline
 // ฝังในหน้า HR ส่วน "ใบลารออนุมัติ" (เลือก 1 ใบ = ทำรายเดียวได้)
-type Item = { id: string; label: string; meta: string };
+type Item = { id: string; label: string; meta: string; extra?: React.ReactNode }; // VIS-1 E ▸ extra = บรรทัดผลกระทบต่อกะ (server render) ◂
 
 export default function BulkLeaveApprovals({ systemId, items }: { systemId: string; items: Item[] }) {
   const [state, formAction, pending] = useActionState<BulkLeaveState, FormData>(
@@ -53,12 +53,13 @@ export default function BulkLeaveApprovals({ systemId, items }: { systemId: stri
               onChange={() => toggle(i.id)}
               className="h-5 w-5 shrink-0"
             />
-            <span className="min-w-0">
+            <div className="min-w-0 flex-1">
               <span className="block truncate font-medium">{i.label}</span>
               {i.meta && (
-                <span className="block truncate text-xs text-[color:var(--color-muted)]">{i.meta}</span>
+                <span className="block whitespace-normal break-words text-xs text-[color:var(--color-muted)]">{i.meta}</span>
               )}
-            </span>
+              {i.extra}
+            </div>
           </label>
         ))}
       </div>

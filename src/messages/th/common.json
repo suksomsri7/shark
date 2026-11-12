@@ -325,16 +325,18 @@
       "colType": "ประเภท",
       "colEntitled": "สิทธิ์ (วัน)",
       "colUsed": "ใช้ไป",
-      "colLeft": "คงเหลือ"
+      "colLeft": "คงเหลือ",
+      "policyChoose": "เลือกประเภทการลา"
     },
     "leaveImpact": {
       "title": "ผลกระทบต่อกะ",
-      "uncovered": "กระทบ: กะ {date} ({time}) — ขาด 1 คน → ระบบเสนอ",
-      "covered": "กระทบ: กะ {date} ({time}) — ยังมี {n} คน · ไม่ต้องหาคนแทน",
+      "uncovered": "กระทบ: {shift} {time} · {date} — ขาด 1 คน → ระบบเสนอ",
+      "covered": "กระทบ: {shift} {time} · {date} — ยังมี {n} คน · ไม่ต้องหาคนแทน",
       "candidate": "{name} (ชั่วโมงสัปดาห์ {from} → {to} ชม.)",
       "noCandidate": "ยังไม่มีคนที่ว่างในสาขานี้",
       "incomplete": "ข้อมูลกะมีมากเกินจะตรวจได้ครบ — โปรดตรวจตารางกะเองก่อนอนุมัติ",
-      "checkManually": "กระทบ: กะ {date} ({time}) — โปรดตรวจคนแทนในตารางกะ"
+      "checkManually": "กระทบ: {shift} {time} · {date} — โปรดตรวจคนแทนในตารางกะ",
+      "shiftFallback": "กะ"
     },
     "law": {
       "title": "ตารางกฎหมาย",
