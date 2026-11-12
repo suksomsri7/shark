@@ -26,6 +26,7 @@ import { unitOfDay } from "./roster";
 import { addDays, bkkDayKey, shiftWindow } from "./time-rules";
 import type { MembershipCtx } from "@/lib/core/rbac";
 import {
+  OPEN_SESSION_CAP_MIN,
   attendancePolicyOf,
   attributeSessions,
   judgeEntry,
@@ -191,6 +192,7 @@ const employedOn = (e: Pick<EmpRow, "startDate" | "endDate">, day: string) => !(
 function restByOpeningDay(events: readonly EventRow[], rest: ReadonlySet<string>): Map<string, EventRow[]> {
   const out = new Map<string, EventRow[]>();
   let openDay: string | null = null;
+  let openUntil = 0; // มติ r3 (2): ตาม IN ได้ถึง IN + OPEN_SESSION_CAP_MIN เท่านั้น
   for (const e of events) {
     if (!rest.has(e.id)) {
       if (e.kind === "IN") openDay = null;
@@ -200,7 +202,9 @@ function restByOpeningDay(events: readonly EventRow[], rest: ReadonlySet<string>
     if (e.kind === "IN") {
       d = bkkDayKey(e.at);
       openDay = d;
+      openUntil = e.at.getTime() + OPEN_SESSION_CAP_MIN * MIN_MS;
     } else {
+      if (openDay && e.at.getTime() > openUntil) openDay = null;
       d = openDay ?? bkkDayKey(e.at);
       if (e.kind === "OUT") openDay = null;
     }
@@ -241,8 +245,8 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
   );
   const evById = new Map(events.map((e) => [e.id, e]));
   const restByDay = restByOpeningDay(events, new Set(attr.rest));
-  const judge = (day: string, shift: JudgeShift | null, dayOff: boolean, evs: EventRow[], leave: SlotLeave | null): JudgeOutput =>
-    judgeEntry({ day, shift, dayOff, events: evs.map((e) => ({ kind: e.kind, at: e.at })), leave, policy: pol.att, closeGraceMin: pol.clock.closeGraceMin, now });
+  const judge = (day: string, shift: JudgeShift | null, dayOff: boolean, evs: EventRow[], leave: SlotLeave | null, daySlot = false): JudgeOutput =>
+    judgeEntry({ day, shift, dayOff, events: evs.map((e) => ({ kind: e.kind, at: e.at })), leave, policy: pol.att, closeGraceMin: pol.clock.closeGraceMin, now, ...(daySlot ? { openCapMin: OPEN_SESSION_CAP_MIN } : {}) });
   for (const day of days) {
     if (!employedOn(emp, day)) continue;
     const unitOf = unitOfDay(emp, day);
@@ -265,7 +269,7 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
     for (const [i, { e, shift }] of dayEntries.entries()) {
       const evs = (attr.byEntry[e.id] ?? []).map((id) => evById.get(id)!).filter(Boolean);
       const sl = eLeaves[i] ?? null;
-      list.push({ slotKey: e.id, day, entry: e, shift, shiftName: e.shift.name, dayOff: false, holidayId: hol?.id ?? null, unitId: e.unitId ?? unitOf, leave: approved, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: evs, out: judge(day, shift, false, evs, sl) });
+      list.push({ slotKey: e.id, day, entry: e, shift, shiftName: e.shift.name, dayOff: false, holidayId: hol?.id ?? null, unitId: e.unitId ?? unitOf, leave: sl ? approved : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: evs, out: judge(day, shift, false, evs, sl) });
     }
     const rest = restByDay.get(day) ?? [];
     if (!dayEntries.length) {
@@ -292,13 +296,13 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
           shift = null;
         }
       }
-      list.push({ slotKey: "DAY", day, entry: null, shift, shiftName: shift ? SCHEDULE_NAME_TH : null, dayOff, holidayId: hol?.id ?? null, unitId: unitOf, leave: shift ? approved : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, shift, dayOff, rest, sl) });
+      list.push({ slotKey: "DAY", day, entry: null, shift, shiftName: shift ? SCHEDULE_NAME_TH : null, dayOff, holidayId: hol?.id ?? null, unitId: unitOf, leave: sl ? approved : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, shift, dayOff, rest, sl, true) });
     } else if (rest.some((e) => e.kind === "IN")) {
       // รอบที่ไม่เข้ากะใดเลยในวันที่มีกะ — ไม่ทิ้งนาทีทำงาน: ช่อง DAY แบบไม่มีตาราง (วันหยุด = DAY_OFF)
-      list.push({ slotKey: "DAY", day, entry: null, shift: null, shiftName: null, dayOff: !!hol, holidayId: hol?.id ?? null, unitId: unitOf, leave: null, slotLeave: null, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, null, !!hol, rest, null) });
+      list.push({ slotKey: "DAY", day, entry: null, shift: null, shiftName: null, dayOff: !!hol, holidayId: hol?.id ?? null, unitId: unitOf, leave: null, slotLeave: null, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, null, !!hol, rest, null, true) });
     }
-    // ส่วนวันลาเก็บครั้งเดียวต่อวัน (ช่องแรกที่มีใบลา) — ช่องอื่นของวันเดียวกัน 0
-    const withLeave = list.filter((x) => x.leave);
+    // ส่วนวันลาเก็บครั้งเดียวต่อวัน — ช่องแรกที่ใบลาครอบจริง (มติ r3 3) · ช่องอื่นที่ครอบ 0 · ช่องที่ไม่ครอบไม่มีใบลา
+    const withLeave = list.filter((x) => x.slotLeave);
     for (const [i, x] of withLeave.entries()) x.leaveFraction = i === 0 ? (x.leave!.halfDay ? "0.5" : "1.0") : "0.0";
     if (list.length) out.set(day, list);
   }
@@ -515,7 +519,6 @@ export async function myAttendanceMonth(
 }
 
 // ═══════════════════════════ ตัวปิดวัน + การเตือน (R4 · R6 · R7) ═══════════════════════════
-const LIMIT = { slotsPerSystem: 200, alertsPerSystem: 100, slots: 2000, alerts: 500 } as const;
 const WINDOW_DAYS = 7;
 
 /**
@@ -579,87 +582,154 @@ async function hrSystems(tenantId: string | null | undefined): Promise<Ctx[]> {
   return rows.map((r) => ({ tenantId: r.tenantId, systemId: r.id }));
 }
 
+/** ขนาดหน้าพนักงานต่อรอบโหลด (ค่าปริยาย) — ข้อสอบส่ง pageSize เล็กเพื่อพิสูจน์การแบ่งหน้า */
+const PAGE_SIZE = 200;
+const ROTATE_MS = 5 * MIN_MS;
+
 /**
- * งานตามเวลา: วัน D−7…D (D = วันไทยของ now) ทุกระบบ HR (เรียงตาม id) — เตือนก่อน แล้วปิดวัน ·
- * ต่อระบบ ≤ 200 ช่อง + ≤ 100 การเตือน · รวม ≤ 2 000 / 500 · หยุดเมื่อถึง deadline · ไม่มีอะไรถึงเวลา = ไม่เขียนอะไรเลย ·
- * พนักงานที่ปิดใช้ (active=false) หรือพ้นสภาพ (ENDED) ไม่ถูกเตือน/ปิดวัน (มติ r2 E) · ข้อมูลถึงเพดาน take ⇒ ข้ามระบบนั้นในรอบนี้ + WARN (มติ r2 I) ·
- * `tenantId` = จำกัดร้านเดียว (ข้อสอบ) · คืนจำนวนแถวที่เพิ่มจริง
+ * งานตามเวลา: วัน D−7…D (D = วันไทยของ now) ทุกระบบ HR (เรียงตาม id แล้วหมุนจุดเริ่ม) — ต่อระบบแบ่พนักงานเป็นหน้า (เรียงตาม id · pageSize คน) ·
+ * ต่อหน้า: โหลด → เตือน → ปิดวัน · ทุกหน้าทุกรอบจนกว่าจะถึง deadline (มติ r3 4 — ไม่ข้ามทั้งระบบ) ·
+ * หน้าแรกของแต่ละรอบหมุนตามช่วง 5 นาทีของ now ⇒ รอบที่ถูกตัดด้วย deadline ไม่ทำให้หน้าหลัง ๆ อดตลอด · ถูกตัด = WARN ·
+ * ข้อมูลของหน้าถึงเพดาน take ⇒ แบ่งหน้าครึ่งแล้วทำซ้ำ (ไม่เตือน/ไม่ปิดวันบนข้อมูลที่ขาด) ·
+ * พนักงานที่ปิดใช้ (active=false) หรือพ้นสภาพ (ENDED) ไม่ถูกเตือน/ปิดวัน (มติ r2 E) · ไม่มีอะไรถึงเวลา = ไม่เขียนอะไรเลย ·
+ * `tenantId` = จำกัดร้านเดียว · `pageSize` / `maxPages` = ตัวควบคุมของข้อสอบ (maxPages จำลองรอบที่ถูกตัด) · คืนจำนวนแถวที่เพิ่มจริง
  */
-export async function runAttendanceJobs(input: { now: Date; tenantId?: string | null; deadline?: Date | null }): Promise<{ finalized: number; late: number; absent: number }> {
+export async function runAttendanceJobs(input: { now: Date; tenantId?: string | null; deadline?: Date | null; pageSize?: number; maxPages?: number }): Promise<{ finalized: number; late: number; absent: number }> {
   const now = input?.now instanceof Date && Number.isFinite(input.now.getTime()) ? input.now : nowOf(undefined);
   const deadline = input?.deadline instanceof Date ? input.deadline.getTime() : Number.POSITIVE_INFINITY;
+  const pageSize = Number.isInteger(input?.pageSize) && input.pageSize! > 0 ? input.pageSize! : PAGE_SIZE;
+  const maxPages = Number.isInteger(input?.maxPages) && input.maxPages! > 0 ? input.maxPages! : Number.POSITIVE_INFINITY;
   const D = bkkDayKey(now);
   const from = addDays(D, -WINDOW_DAYS);
   const days = Array.from({ length: WINDOW_DAYS + 1 }, (_, i) => addDays(from, i));
   const res = { finalized: 0, late: 0, absent: 0 };
-  let slotBudget: number = LIMIT.slots;
-  let alertBudget: number = LIMIT.alerts;
-  for (const ctx of await hrSystems(input?.tenantId)) {
-    if (Date.now() >= deadline || (slotBudget <= 0 && alertBudget <= 0)) break;
+  const rot = Math.floor(now.getTime() / ROTATE_MS);
+  let didWork = false;
+  const systems = await hrSystems(input?.tenantId);
+  const s0 = systems.length ? rot % systems.length : 0;
+  // ลำดับระบบหมุนแบบเดียวกับหน้า ⇒ รอบที่ถูกตัดด้วย deadline ไม่ทำให้ระบบท้าย ๆ อด
+  for (const ctx of [...systems.slice(s0), ...systems.slice(0, s0)]) {
     const db = dbOf(ctx);
-    const emps = (await employeesOf(db, ctx, {
-      active: true,
-      AND: [{ OR: [{ employmentStatus: null }, { employmentStatus: { not: "ENDED" } }] }, { OR: [{ startDate: null }, { startDate: { lte: dbDate(D) } }] }, { OR: [{ endDate: null }, { endDate: { gte: dbDate(from) } }] }],
-    })) as EmpRow[];
-    if (!emps.length) continue;
-    const data = await loadData(db, ctx, emps.map((e) => e.id), from, D);
-    if (data.truncated || emps.length >= EMP_TAKE) {
-      await logOps("WARN", "hr.attendance", "runAttendanceJobs: ข้อมูลถึงเพดาน (truncated) — ข้ามการเตือน/ปิดวันของระบบนี้ในรอบนี้", { tenantId: ctx.tenantId, detail: `system=${ctx.systemId} employees=${emps.length} entries=${data.entries.length} events=${data.events.length} leaves=${data.leaves.length}` });
-      continue;
-    }
-    const [stored, fired] = await Promise.all([
-      db.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, date: { gte: dbDate(from), lte: dbDate(D) } }, select: { employeeId: true, date: true, slotKey: true } }),
-      db.hrAttendanceAlert.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, date: { gte: dbDate(from), lte: dbDate(D) } }, select: { employeeId: true, rosterEntryId: true, kind: true } }),
-    ]);
-    const have = new Set(stored.map((r) => `${r.employeeId}|${dayOf(r.date)}|${r.slotKey}`));
-    const storedByDay = new Map<string, { slotKey: string }[]>();
-    for (const r of stored) {
-      const k = `${r.employeeId}|${dayOf(r.date)}`;
-      storedByDay.set(k, [...(storedByDay.get(k) ?? []), r]);
-    }
-    const sent = new Set(fired.map((a) => `${a.employeeId}|${a.rosterEntryId}|${a.kind}`));
-    const graceMs = data.pol.clock.closeGraceMin * MIN_MS;
-    const live = emps.map((e) => ({ e, byDay: slotsOf(e, days, data, now) }));
-    // ── การเตือน (R7) ──
-    let alerts = 0;
-    if (data.pol.att.alertsOn) {
-      for (const { e, byDay } of live) {
-        for (const s of [...byDay.values()].flat()) {
-          if (!s.entry || !s.shift || alerts >= LIMIT.alertsPerSystem || alertBudget <= 0 || Date.now() >= deadline) continue;
-          if (s.events.some((x) => x.kind === "IN") || leaveSilences(s)) continue;
-          const end = shiftWindow(s.day, s.shift).end.getTime();
-          const t = now.getTime();
-          const due: ("NOT_IN" | "ABSENT")[] = [];
-          if (s.out.alertAt && s.out.alertAt.getTime() <= t && t < end) due.push("NOT_IN");
-          if (s.out.absentAt && s.out.absentAt.getTime() <= t && t < end + graceMs) due.push("ABSENT");
-          for (const kind of due) {
-            if (sent.has(`${e.id}|${s.entry.id}|${kind}`)) continue;
-            const n = await fireAlert(ctx, e, s, kind, now);
-            sent.add(`${e.id}|${s.entry.id}|${kind}`);
-            alerts++;
-            alertBudget--;
-            if (kind === "NOT_IN") res.late += n;
-            else res.absent += n;
-          }
-        }
+    const ids = (
+      await db.hrEmployee.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          systemId: ctx.systemId,
+          active: true,
+          AND: [{ OR: [{ employmentStatus: null }, { employmentStatus: { not: "ENDED" } }] }, { OR: [{ startDate: null }, { startDate: { lte: dbDate(D) } }] }, { OR: [{ endDate: null }, { endDate: { gte: dbDate(from) } }] }],
+        },
+        select: { id: true },
+        orderBy: { id: "asc" },
+      })
+    ).map((r) => r.id);
+    if (!ids.length) continue;
+    const pages: string[][] = [];
+    for (let i = 0; i < ids.length; i += pageSize) pages.push(ids.slice(i, i + pageSize));
+    const start = rot % pages.length;
+    for (let k = 0; k < pages.length; k++) {
+      if (k >= maxPages || (didWork && Date.now() >= deadline)) {
+        await logOps("WARN", "hr.attendance", "runAttendanceJobs: หมดเวลาของรอบ — หน้าที่เหลือทำรอบถัดไป (หน้าแรกหมุนทุก 5 นาที)", { tenantId: ctx.tenantId, detail: `system=${ctx.systemId} pages=${pages.length} done=${k}` });
+        break;
       }
+      await runPage(ctx, pages[(start + k) % pages.length]!, { now, from, D, days, res });
+      didWork = true;
     }
-    // ── ปิดวัน (R4) ──
-    let n = 0;
+  }
+  return res;
+}
+
+/** หนึ่งหน้าพนักงาน: โหลด → เตือน → ปิดวัน · ข้อมูลถึงเพดาน ⇒ แบ่งครึ่งทำซ้ำ (คนเดียวยังเกิน = WARN ข้ามคนนั้น) */
+async function runPage(ctx: Ctx, ids: string[], o: { now: Date; from: string; D: string; days: string[]; res: { finalized: number; late: number; absent: number } }): Promise<void> {
+  const { now, from, D, days, res } = o;
+  const db = dbOf(ctx);
+  const emps = await employeesOf(db, ctx, { id: { in: ids } });
+  const data = await loadData(db, ctx, emps.map((e) => e.id), from, D);
+  if (data.truncated) {
+    if (ids.length > 1) {
+      const half = Math.ceil(ids.length / 2);
+      await runPage(ctx, ids.slice(0, half), o);
+      await runPage(ctx, ids.slice(half), o);
+      return;
+    }
+    await logOps("WARN", "hr.attendance", "runAttendanceJobs: ข้อมูลของพนักงานคนเดียวถึงเพดาน — ข้ามการเตือน/ปิดวันของคนนี้ในรอบนี้", { tenantId: ctx.tenantId, detail: `system=${ctx.systemId} employee=${ids[0]}` });
+    return;
+  }
+  const [stored, fired] = await Promise.all([
+    db.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids }, date: { gte: dbDate(from), lte: dbDate(D) } }, select: { employeeId: true, date: true, slotKey: true } }),
+    db.hrAttendanceAlert.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids }, date: { gte: dbDate(from), lte: dbDate(D) } }, select: { employeeId: true, rosterEntryId: true, kind: true } }),
+  ]);
+  const have = new Set(stored.map((r) => `${r.employeeId}|${dayOf(r.date)}|${r.slotKey}`));
+  const storedByDay = new Map<string, { slotKey: string }[]>();
+  for (const r of stored) {
+    const k = `${r.employeeId}|${dayOf(r.date)}`;
+    storedByDay.set(k, [...(storedByDay.get(k) ?? []), r]);
+  }
+  const sent = new Set(fired.map((a) => `${a.employeeId}|${a.rosterEntryId}|${a.kind}`));
+  const graceMs = data.pol.clock.closeGraceMin * MIN_MS;
+  const live = emps.map((e) => ({ e, byDay: slotsOf(e, days, data, now) }));
+  // ── การเตือน (R7) ──
+  if (data.pol.att.alertsOn) {
     for (const { e, byDay } of live) {
-      for (const [day, slots] of byDay) {
-        if (hasOrphan(slots, storedByDay.get(`${e.id}|${day}`) ?? [])) continue; // มติ r2 C
-        for (const s of slots) {
-          if (!s.out.final || have.has(`${e.id}|${s.day}|${s.slotKey}`)) continue;
-          if (n >= LIMIT.slotsPerSystem || slotBudget <= 0 || Date.now() >= deadline) break;
-          res.finalized += await finalizeSlot(ctx, e, s.day, s.slotKey, now);
-          n++;
-          slotBudget--;
+      for (const s of [...byDay.values()].flat()) {
+        if (!s.entry || !s.shift) continue;
+        if (s.events.some((x) => x.kind === "IN") || leaveSilences(s)) continue;
+        const end = shiftWindow(s.day, s.shift).end.getTime();
+        const t = now.getTime();
+        const due: ("NOT_IN" | "ABSENT")[] = [];
+        if (s.out.alertAt && s.out.alertAt.getTime() <= t && t < end) due.push("NOT_IN");
+        if (s.out.absentAt && s.out.absentAt.getTime() <= t && t < end + graceMs) due.push("ABSENT");
+        for (const kind of due) {
+          if (sent.has(`${e.id}|${s.entry.id}|${kind}`)) continue;
+          const n = await fireAlert(ctx, e, s, kind, now);
+          sent.add(`${e.id}|${s.entry.id}|${kind}`);
+          if (kind === "NOT_IN") res.late += n;
+          else res.absent += n;
         }
       }
     }
   }
-  return res;
+  // ── ปิดวัน (R4) ──
+  for (const { e, byDay } of live) {
+    for (const [day, slots] of byDay) {
+      if (hasOrphan(slots, storedByDay.get(`${e.id}|${day}`) ?? [])) continue; // มติ r2 C
+      for (const s of slots) {
+        if (!s.out.final || have.has(`${e.id}|${s.day}|${s.slotKey}`)) continue;
+        res.finalized += await finalizeSlot(ctx, e, s.day, s.slotKey, now);
+      }
+    }
+  }
+}
+
+// ═══════════════════════════ วันที่ต้องคิดผลใหม่ (มติ r3 5) ═══════════════════════════
+const NEEDS_DAYS = 35;
+/**
+ * วันของพนักงานที่มีแถวกำพร้า (กะของแถวถูกย้าย/ลบ/ถอนประกาศหลังปิดวัน — ตัวปิดวันข้ามวันนั้นไว้) ในช่วง 35 วันล่าสุด ·
+ * เฉพาะแถวที่สาขาอยู่ในขอบเขตผู้ดู · null = ไม่ใช่ผู้อ่านตารางกะ — ใช้ทำแถบ "ต้องคิดผลใหม่" บนบอร์ด
+ */
+export async function attendanceNeedsRecompute(ctx: Ctx, viewer: JudgeViewer, opts: { now?: Date } = {}): Promise<{ count: number; days: { day: string; employeeId: string; name: string }[] } | null> {
+  if (!canReadRoster(viewer)) return null;
+  const now = nowOf(opts);
+  const D = bkkDayKey(now);
+  const from = addDays(D, -NEEDS_DAYS);
+  const scope = scopeOfViewer(viewer);
+  const db = dbOf(ctx);
+  const rows = (await db.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, date: { gte: dbDate(from), lte: dbDate(D) } }, select: { employeeId: true, date: true, slotKey: true, unitId: true }, orderBy: [{ date: "asc" }, { id: "asc" }], take: 20_000 })).filter((r) => covers(scope, r.unitId));
+  if (!rows.length) return { count: 0, days: [] };
+  const empIds = [...new Set(rows.map((r) => r.employeeId))];
+  const out: { day: string; employeeId: string; name: string }[] = [];
+  for (let i = 0; i < empIds.length; i += PAGE_SIZE) {
+    const page = empIds.slice(i, i + PAGE_SIZE);
+    const emps = await employeesOf(db, ctx, { id: { in: page } });
+    const data = await loadData(db, ctx, page, from, D);
+    for (const e of emps) {
+      const mine = rows.filter((r) => r.employeeId === e.id);
+      const days = [...new Set(mine.map((r) => dayOf(r.date)))];
+      const live = slotsOf(e, days, data, now);
+      for (const d of days) if (hasOrphan(live.get(d) ?? [], mine.filter((r) => dayOf(r.date) === d))) out.push({ day: d, employeeId: e.id, name: e.name });
+    }
+  }
+  out.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.name.localeCompare(b.name)));
+  return { count: out.length, days: out };
 }
 
 // ═══════════════════════════ คิดผลใหม่ (R5) ═══════════════════════════
@@ -672,7 +742,8 @@ const SNAP_KEYS = ["slotKey", "status", "lateMin", "earlyOutMin", "workedMin", "
  * คิดผลของแถวเดียวใหม่จากข้อมูลปัจจุบัน (ตารางกะ/ลงเวลา/ใบลาที่แก้หลังปิดวัน) — ไม่แตะแถวอื่น ไม่ยิง event ·
  * มติ r2 C: แถวกำพร้า (กะถูกย้าย/ลบ/ถอนประกาศ) ⇒ ย้ายแถวไปที่ช่องสดของวันเดียวกันที่ยังไม่มีแถว (slotKey ใหม่ · version+1) ·
  *   ไม่มีช่องว่างให้ย้าย ⇒ ลบแถวนั้น (audit เก็บค่าก่อนลบ · voided) — วันหนึ่งไม่มีนาทีทำงานซ้ำ ·
- * มติ r2 H: งวดเงินเดือนตรวจใน tx ใต้ล็อกงวด `hr:payroll:run:<ระบบ>:<งวด>` (คีย์เดียวกับสร้าง/อนุมัติ/จ่ายรอบใน hr/payroll.ts)
+ * มติ r2 H + r3 (1): งวดเงินเดือนตรวจใน tx ใต้ล็อกงวด `hr:payroll:run:<ระบบ>:<งวด>` — คีย์เดียวกับที่ hr/payroll.ts ถือตอนสร้าง/คำนวณใหม่/ลบร่าง/กลับรายการ
+ *   และ (ตั้งแต่ H2.5 r3) อนุมัติรอบ (claimApproveExpected) กับบันทึกจ่าย (markPaid) ที่ล็อกงวดก่อนล็อกแถว · ฝั่งเงินเดือนไม่ถือล็อก hr:clock/hr:roster ⇒ ไม่วนรอ
  */
 export async function recomputeAttendanceDay(ctx: Ctx, viewer: JudgeViewer, input: { dayId?: unknown; reason?: unknown }, opts: { now?: Date } = {}): Promise<RecomputeResult> {
   if (!viewer || !canManageHrSettings(viewer)) return { ok: false, reason: JUDGE_TEXT.rNoPerm };

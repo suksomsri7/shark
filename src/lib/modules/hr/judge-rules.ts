@@ -42,6 +42,12 @@ export const ATTENDANCE_POLICY_RANGE = {
   earlyOutGraceMin: { min: 0, max: 60 },
   otStepMin: [1, 5, 10, 15, 30] as readonly number[],
 } as const;
+/**
+ * มติ r3 (2): รอบที่เปิดค้าง (IN ไม่มี OUT) นับต่อได้ไม่เกินกี่นาทีจาก IN — ใช้ค่าเดียวทั้ง (ก) แถวที่ตาม IN ของรอบที่ไม่เข้ากะ
+ * (หลังจากนี้ = แถวลอยของวันตัวเอง) และ (ข) ช่องที่ไม่มีกะ/ตารางประจำที่รอบยังเปิด ปิดวันได้ไม่ก่อน IN + ค่านี้ ·
+ * H2.4 ไม่มีค่าตั้ง "ระยะรอบสูงสุด" (หนี้ D-H24-maxdur) ⇒ ค่าคงที่ 16 ชม.
+ */
+export const OPEN_SESSION_CAP_MIN = 960;
 /** รุ่นของเครื่องตัดสิน (เก็บติดแถว HrAttendanceDay — แถวเดิมไม่ถูกคิดใหม่ด้วยรุ่นอื่นเอง) */
 export const JUDGE_ENGINE_VERSION = 1;
 
@@ -79,6 +85,8 @@ export type JudgeInput = {
   policy: AttendancePolicy;
   closeGraceMin: number;
   now: Date;
+  /** มติ r3 (2): ช่องไม่มีกะ/ตารางประจำ — รอบที่ยังเปิดปิดวันได้ไม่ก่อน IN ล่าสุด + ค่านี้ (นาที) · ไม่ส่ง = กติกาเดิม */
+  openCapMin?: number;
 };
 export type JudgeOutput = {
   status: JudgeStatus;
@@ -155,7 +163,9 @@ export function judgeEntry(input: JudgeInput): JudgeOutput {
   const sessionPhase: JudgePhase = !last ? "CLOSED" : last.kind === "BREAK_START" ? "ON_BREAK" : last.kind === "OUT" ? "CLOSED" : "OPEN";
   const window = shift ? shiftWindow(day, shift) : null;
   const endMs = window ? window.end.getTime() : bkkMidnight(addDays(day, 1)).getTime();
-  const final = now.getTime() >= endMs + closeGrace;
+  const lastIn = ins[ins.length - 1] ?? null;
+  const capOpen = openNow && lastIn && isInt(input.openCapMin) && input.openCapMin > 0 ? lastIn.at.getTime() + input.openCapMin * MIN_MS : 0;
+  const final = now.getTime() >= endMs + closeGrace && now.getTime() >= capOpen;
   const missingOut = final && !!firstIn && openNow;
   // นาทีทำงาน · พัก (ยังไม่ปิดวันและรอบยังเปิด ⇒ นับถึง now)
   let workedMin = 0;
