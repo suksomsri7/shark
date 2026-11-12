@@ -38,3 +38,8 @@
 - v1 manual OT (payAdjust hours) can double-pay the same hours (D6).
 - A revoke DEDUCTION for an ENDED employee strands (no later run includes them).
 - Daily/hourly OT rows are unpaid until H3.4 (runs refuse non-monthly).
+
+## r3 (12 Nov)
+1 Zero settlements (no attendance) are re-picked only when a day row relevant to the request exists: a row on the work date, or a date−1 row whose IN–OUT overlaps the requested window (same relevance as `measure`); re-settling then fills attendanceDayId, so it never loops. Oracle S10.10: 3 zeros (worked only the day before) untouched over 3 runs; the ready request settles 8 750 on run 1 at maxTx 3.
+2 Pay uses `slot.events` from judge `loadData` only; r3 also moved the hunk's IN/OUT times (outAt/outMissing) onto `loadData` events (no own punch query), so H2.6's void filter in `loadData` reaches pay automatically. Remaining own read: the r3.1 relevance pre-check in `settleOtRequests` reads IN/OUT times by id — selection only, never pay; once H2.6 lands a voided punch can at worst cause one extra re-settle (debt D-H29-void-precheck: add the void filter there).
+3 Accountant: a re-settle after a salary change pays the difference at the rate frozen at first settlement (legal clamp against the frozen profile, not the new salary).

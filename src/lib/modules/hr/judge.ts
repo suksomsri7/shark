@@ -980,10 +980,8 @@ export async function otPayDaysInTx(tx: Db, ctx: Ctx, employeeId: string, days: 
     select: { ...DAY_SELECT, startMin: true, endMin: true, crossesMidnight: true, holidayId: true, inAttendanceId: true, outAttendanceId: true },
     orderBy: [{ date: "asc" }, { id: "asc" }],
   })) as (DayRow & { startMin: number | null; endMin: number | null; crossesMidnight: boolean | null; holidayId: string | null; inAttendanceId: string | null; outAttendanceId: string | null })[];
-  const evIds = [...new Set(stored.flatMap((r) => [r.inAttendanceId, r.outAttendanceId]).filter((x): x is string => !!x))];
-  const evAt = new Map(
-    (evIds.length ? await tx.hrAttendance.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: evIds } }, select: { id: true, at: true } }) : []).map((e) => [e.id, e.at] as const),
-  );
+  // r3.2: เวลาเข้า/ออกของแถวมาจาก loadData ตัวเดียวกับคำตัดสิน (ตัวกรองการลงเวลาที่ถูกยกเลิกของ H2.6 มาถึงที่นี่เอง) — ไม่ query การลงเวลาเอง
+  const evAt = new Map(data.events.map((e) => [e.id, e.at] as const));
   const rows: OtPayStoredRow[] = stored.map((r) => {
     const day = dayOf(r.date);
     const liveDay = live.get(day) ?? [];

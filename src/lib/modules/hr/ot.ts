@@ -580,12 +580,28 @@ export async function settleOtRequests(input: { tenantId?: string | null; system
     const dayIds = [...new Set(done.map((d) => d.attendanceDayId!).filter(Boolean))];
     const ver = new Map((dayIds.length ? await db.hrAttendanceDay.findMany({ where: { tenantId, systemId, id: { in: dayIds } }, select: { id: true, version: true } }) : []).map((d) => [d.id, d.version] as const));
     const changed = done.filter((d) => ver.get(d.attendanceDayId!) !== d.attendanceDayVersion);
-    // r2.6: จ่าย 0 เพราะไม่มีผลลงเวลา (ไม่มีแถว) ไม่ใช่ที่สิ้นสุด — แถวของวันงาน/วันก่อนโผล่ทีหลัง ⇒ คิดใหม่ด้วยรายการส่วนต่าง
-    const zero = await db.hrOtRequest.findMany({ where: { tenantId, systemId, status: "APPROVED", settledAt: { not: null }, attendanceDayId: null, settleCode: null, date: { gte: since } }, select: { id: true, date: true, employeeId: true }, orderBy: [{ date: "asc" }, { id: "asc" }], take: 2000 });
-    const seen = zero.length
-      ? new Set((await db.hrAttendanceDay.findMany({ where: { tenantId, systemId, employeeId: { in: [...new Set(zero.map((z) => z.employeeId))] }, date: { gte: dbDate(addDays(dayOf(zero[0]!.date), -1)) } }, select: { employeeId: true, date: true }, take: 20_000 })).map((d) => `${d.employeeId}|${dayOf(d.date)}`))
-      : new Set<string>();
-    const reappeared = zero.filter((z) => seen.has(`${z.employeeId}|${dayOf(z.date)}`) || seen.has(`${z.employeeId}|${addDays(dayOf(z.date), -1)}`));
+    // r2.6 + r3.1: จ่าย 0 เพราะไม่มีผลลงเวลา (ไม่มีแถว) ไม่ใช่ที่สิ้นสุด — คิดใหม่เมื่อมีแถวที่ "เกี่ยวกับคำขอ" เท่านั้น:
+    //   แถวของวันงาน หรือแถวของวันก่อนที่ช่วงเข้า–ออกทับช่วงที่ขอ (แบบเดียวกับที่ measure นับ) ⇒ คิดใหม่แล้ว attendanceDayId ไม่ว่าง ⇒ ไม่วนซ้ำ ·
+    //   แถววันก่อนที่ไม่ทับช่วงที่ขอ ⇒ ไม่หยิบ (กันคำขอ 0 บาทกินโควตาธุรกรรมทุกชั่วโมง)
+    const zero = await db.hrOtRequest.findMany({ where: { tenantId, systemId, status: "APPROVED", settledAt: { not: null }, attendanceDayId: null, settleCode: null, date: { gte: since } }, select: { id: true, date: true, employeeId: true, startAt: true, endAt: true }, orderBy: [{ date: "asc" }, { id: "asc" }], take: 2000 });
+    const zRows = zero.length
+      ? await db.hrAttendanceDay.findMany({ where: { tenantId, systemId, employeeId: { in: [...new Set(zero.map((z) => z.employeeId))] }, date: { gte: dbDate(addDays(dayOf(zero[0]!.date), -1)) } }, select: { employeeId: true, date: true, inAttendanceId: true, outAttendanceId: true }, take: 20_000 })
+      : [];
+    const evIds = [...new Set(zRows.flatMap((d) => [d.inAttendanceId, d.outAttendanceId]).filter((x): x is string => !!x))];
+    const evAt = new Map((evIds.length ? await db.hrAttendance.findMany({ where: { tenantId, systemId, id: { in: evIds } }, select: { id: true, at: true } }) : []).map((e) => [e.id, e.at.getTime()] as const));
+    const reappeared = zero.filter((z) => {
+      const d = dayOf(z.date);
+      const prev = addDays(d, -1);
+      return zRows.some((x) => {
+        if (x.employeeId !== z.employeeId) return false;
+        const xd = dayOf(x.date);
+        if (xd === d) return true;
+        if (xd !== prev) return false;
+        const a = x.inAttendanceId ? evAt.get(x.inAttendanceId) : undefined;
+        const b = x.outAttendanceId ? evAt.get(x.outAttendanceId) : undefined;
+        return a !== undefined && b !== undefined && b > z.startAt.getTime() && a < z.endAt.getTime();
+      });
+    });
     for (const r of [...changed, ...reappeared, ...open]) {
       if (out.scanned >= maxTx) break;
       out.scanned++;

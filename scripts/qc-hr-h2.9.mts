@@ -123,6 +123,7 @@ const CHECKS: Def[] = [
   D("S10.7", "r2.7", C, "RED", "[db] otRoundMin frozen at first settlement: 64 min 9333 stays after step 30 + version bump"),
   D("S10.8", "r2.8a", C, "RED", "[db] full-day leave: filing + approval refused · leave after approval ⇒ settled 0 LEAVE"),
   D("S10.9", "r2.8c", C, "RED", "[db] work date after endDate ⇒ settled 0 ENDED, no row"),
+  D("S10.10", "r3.1", M, "RED", "[db] zero settlement (worked only the day before) not re-picked ×3 · ready behind 3 zeros settles on run 1 (maxTx 3)"), // ORACLE-EDIT r3
   D("X1", "frozen", C, "GREEN", "[db] frozen digests + MONTHLY"),
   D("X2", "frozen", C, "GREEN", "[db] frozen clock"),
   D("X3", "frozen", C, "GREEN", "[db] frozen privacy matrix"),
@@ -895,6 +896,42 @@ try {
       const rE = await ot(R.qE!);
       chk("S10.9", e0?.ok === true && !!rE?.settledAt && rE?.paidMinutes === 0 && rE?.settleCode === "ENDED" && (await adj(R.qE!)).length === 0, "ENDED 0 · no row", `e0=${sh(e0)} code=${rE?.settleCode} paid=${rE?.paidMinutes} rows=${(await adj(R.qE!)).length}`);
     }
+  }
+
+  // ═══ ORACLE-EDIT r3 · S10.10 own system sZ: 3 zero settlements whose employee only worked the day before + 1 ready request ═══
+  {
+    const sZ = await sys(TA, "HR Z");
+    const cZ = { tenantId: TA, systemId: sZ };
+    const shZ = (await P.hrShift.create({ data: { tenantId: TA, systemId: sZ, name: `กะแซด ${tag}`, startMin: 600, endMin: 1200, crossesMidnight: false, graceMin: 15 } })).id as string;
+    const M14 = { baseSalarySatang: 1_400_000, payType: "MONTHLY" };
+    const zeros: string[] = [];
+    const zEmp: string[] = [];
+    for (const n of ["แซดหนึ่ง", "แซดสอง", "แซดสาม"]) {
+      const e = await me(sZ, n);
+      await prof(cZ, e, M14);
+      await att(sZ, e, "IN", D2, "10:00");
+      await att(sZ, e, "OUT", D2, "18:00");
+      zEmp.push(e);
+    }
+    const zr = await me(sZ, "แซดพร้อม");
+    await prof(cZ, zr, M14);
+    ENT[`${zr}:${D5}`] = (await P.hrRosterEntry.create({ data: { tenantId: TA, systemId: sZ, employeeId: zr, date: dbDate(D5), shiftId: shZ, unitId: u1, startMin: 600, endMin: 1200, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-06-01T00:00:00Z"), source: "MANUAL" } })).id as string;
+    await att(sZ, zr, "IN", D5, "09:55");
+    await att(sZ, zr, "OUT", D5, "21:00");
+    await JG.runAttendanceJobs({ now: bk("2031-07-14", "12:00"), tenantId: TA }).catch(() => 0);
+    for (const e of zEmp) zeros.push(idOf(await call("requestOt", cZ, v("owner"), { employeeId: e, date: D3, start: "09:00", end: "12:00" }, { now: bk(D3, "08:00") })));
+    const first = await Promise.all(zeros.map((id) => call("decideOtRequest", cZ, v("mgrAll"), id, "APPROVED", { now: bk("2031-07-20", "12:00") })));
+    const t0 = (await Promise.all(zeros.map(ot))).map((r: Any) => r?.settledAt?.toISOString?.() ?? "∅");
+    await sleep(50);
+    const ready = (await P.hrOtRequest.create({ data: { tenantId: TA, systemId: sZ, employeeId: zr, date: dbDate(D5), startAt: bk(D5, "20:00"), endAt: bk(D5, "21:00"), minutes: 60, timing: "BEFORE", status: "APPROVED", requestedByUserId: U.owner!.id, decidedById: U.mgrAll!.id, decidedAt: bk(D5, "09:00") } })).id as string;
+    const r1 = await call("settleOtRequests", { tenantId: TA, systemId: sZ, now: bk("2031-07-20", "13:00"), maxTx: 3 });
+    const afterRun1 = adjStr(await adj(ready));
+    await call("settleOtRequests", { tenantId: TA, systemId: sZ, now: bk("2031-07-20", "14:00"), maxTx: 3 });
+    await call("settleOtRequests", { tenantId: TA, systemId: sZ, now: bk("2031-07-20", "15:00"), maxTx: 3 });
+    const t3 = (await Promise.all(zeros.map(ot))).map((r: Any) => r?.settledAt?.toISOString?.() ?? "∅");
+    const zrows = (await Promise.all(zeros.map(adj))).flat().length;
+    const ok = first.every((x: Any) => x?.ok === true && x.settled === true) && t0.every((x) => x === bk("2031-07-20", "12:00").toISOString()) && t3.join() === t0.join() && zrows === 0 && afterRun1 === "1/OT/APPROVED/8750/2031-07/free";
+    chk("S10.10", ok, "zeros untouched ×3 · ready 8750 on run 1", `first=${first.map(sh).join("|").slice(0, 80)} t0=${t0[0]} t3=${t3[0]} zrows=${zrows} run1=${short(r1, 60)} ready=${afterRun1}`);
   }
 
   // ═══ X frozen controls ═══
