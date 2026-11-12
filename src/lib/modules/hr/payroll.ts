@@ -19,6 +19,7 @@ import {
   type WhtDeductions,
 } from "./payroll-rules";
 import { OT_LAW_DEFAULT, OT_TEXT, otLawOf, otLegalRateFloor, otText } from "./ot-rules"; // HR H2.9 ▸ #18 ด่านอัตรา OT ที่ตั้งเอง + ข้อความรายการปรับเงินจากคำขอ OT ◂
+import { loadOtLawRows } from "./law"; // HR H2.9 ▸ #18 แถวกฎหมาย OT (law.ts = ผู้อ่านตารางเดียว) ◂
 
 // Payroll ไทย — service ชั้นประกอบ (system-scoped HR) · WO-0036
 // สเปคเต็ม docs/sds/modules/future-payroll-tax.md §A · v1 = MONTHLY เท่านั้น
@@ -133,8 +134,8 @@ async function otRateData(ctx: Ctx, input: SetSalaryProfileInput): Promise<{ otH
     hourlyRateSatang: input.payType !== undefined ? (input.hourlyRateSatang ?? null) : (cur?.hourlyRateSatang ?? null),
     otHourlyRateSatang: null,
   };
-  const rows = await tenantDb(ctx).hrLawTable.findMany({ where: { kind: "OT", status: "ACTIVE" }, select: { id: true, kind: true, effectiveFrom: true, status: true, json: true }, take: 200 });
-  const law = otLawOf(rows, bkkParts(new Date()).dateStr);
+  const today = bkkParts(new Date()).dateStr;
+  const law = otLawOf(await loadOtLawRows(today), today);
   const floor = otLegalRateFloor(profile, law.ok ? law.law : OT_LAW_DEFAULT);
   if (floor !== null && v < floor) throw new PayrollInputError(OT_TEXT.rateBelowLaw);
   return { otHourlyRateSatang: v };

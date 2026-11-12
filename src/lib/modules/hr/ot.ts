@@ -25,6 +25,7 @@ import { addDays, bkkDayKey } from "./time-rules";
 import { holidayOfDay, holidayRowsInRange } from "./holidays";
 import { canManageHrSettings, SETTINGS_TEXT } from "./settings";
 import { otPayDaysInTx, type OtPayStoredRow } from "./judge";
+import { loadOtLawRows } from "./law";
 import { OtAdjustmentConflict, writeOtAdjustmentInTx } from "./payroll";
 import {
   OT_POLICY_RANGE,
@@ -429,8 +430,7 @@ async function measure(tx: Tx, ctx: Ctx, r: OtRow, now: Date): Promise<Entitleme
   if (!basis) {
     const p = await tx.hrSalaryProfile.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: r.employeeId }, select: { payType: true, baseSalarySatang: true, dailyRateSatang: true, hourlyRateSatang: true, otHourlyRateSatang: true } });
     if (!p) return { kind: "wait", code: "NO_RATE" };
-    const rows = await tx.hrLawTable.findMany({ where: { kind: "OT", status: "ACTIVE" }, select: { id: true, kind: true, effectiveFrom: true, status: true, json: true }, take: 200 });
-    const law = otLawOf(rows, best.day);
+    const law = otLawOf(await loadOtLawRows(best.day, tx), best.day);
     if (!law.ok) return { kind: "wait", code: "LAW" };
     basis = { payType: p.payType, baseSalarySatang: p.baseSalarySatang, dailyRateSatang: p.dailyRateSatang, hourlyRateSatang: p.hourlyRateSatang, otHourlyRateSatang: p.otHourlyRateSatang, law: law.law, lawRowId: law.lawRowId };
   }
