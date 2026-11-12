@@ -999,3 +999,90 @@ export function assertFixtureArithmetic(f: TripsFixture = TRIPS_FIXTURE): { chec
   if (errs.length) throw new Error(`ฟิกซ์เจอร์ TRIPS เลขไม่ตรง ${errs.length} จุด:\n- ${errs.join("\n- ")}`);
   return { checks };
 }
+
+// ── T0.3 departures ──
+// ═══════════════ รอบของสัปดาห์ฟิกซ์เจอร์ (ใบ T0.3 §8 · จอ 11/12/17) — ข้อมูลล้วน อ้างตัวเลขจากค่าคงที่ข้างบน ═══════════════
+const hmToMin = (hm: string): number => {
+  const [h, m] = hm.split(":").map(Number);
+  return h * 60 + m;
+};
+export type SeedResourceKey = "racha1" | "racha2" | "speed1" | "speed2" | "deep1" | "van1" | "van2" | "van3" | "mint" | "joe";
+/** ทรัพยากรของหน่วย TRIPS (จอ 11/12) */
+export const TRIPS_SEED_RESOURCES: readonly { key: SeedResourceKey; kind: "BOAT" | "VAN" | "GUIDE"; name: string; seats: number | null }[] = [
+  { key: "racha1", kind: "BOAT", name: PRODUCT_RACHA.boat, seats: PRODUCT_RACHA.capacity },
+  { key: "racha2", kind: "BOAT", name: "เรือราชา 2", seats: 12 },
+  { key: "speed1", kind: "BOAT", name: "สปีดโบ๊ต 1", seats: 15 },
+  { key: "speed2", kind: "BOAT", name: "สปีดโบ๊ต 2", seats: 15 },
+  { key: "deep1", kind: "BOAT", name: "เรือดำน้ำ 1", seats: PRODUCT_DEEP3.capacity },
+  { key: "van1", kind: "VAN", name: "รถตู้ 1", seats: null },
+  { key: "van2", kind: "VAN", name: "รถตู้ 2", seats: null },
+  { key: "van3", kind: "VAN", name: "รถตู้ 3", seats: null },
+  { key: "mint", kind: "GUIDE", name: "มิ้นท์", seats: null },
+  { key: "joe", kind: "GUIDE", name: "โจ", seats: null },
+];
+export type SeedScheduleKey = keyof typeof CALENDAR_WEEK_1111.rows;
+const weekOf = (k: SeedScheduleKey) => CALENDAR_WEEK_1111.rows[k];
+/**
+ * กฎ DAILY 3 ตัว 11–17 พ.ย. (จอ 11) — minPax ของกฎ = null (ใช้ค่าตั้ง T7 ชั้น PRODUCT ด้านล่าง)
+ * เวลาออก = TRIPS_SEED_OPTION_TIMES (พีพี/ดำน้ำลึก · ค่าที่ผู้คุมรับ §12) · ราชา = PRODUCT_RACHA.time · ระยะเวลามาจากตัวเลือกที่ seed T0.2 สร้าง
+ */
+export const TRIPS_SEED_SCHEDULES: readonly {
+  key: SeedScheduleKey;
+  slug: string;
+  departTimeMin: number;
+  capacity: number;
+  minPax: number;
+  dateFrom: string;
+  dateTo: string;
+  skip: readonly string[];
+  resources: readonly SeedResourceKey[];
+}[] = [
+  {
+    key: "racha",
+    slug: "racha-yai-day-trip",
+    departTimeMin: hmToMin(PRODUCT_RACHA.time.start),
+    capacity: PRODUCT_RACHA.capacity,
+    minPax: PRODUCT_RACHA.minPax,
+    dateFrom: weekOf("racha")[0].date,
+    dateTo: weekOf("racha")[weekOf("racha").length - 1].date,
+    skip: [],
+    resources: ["racha1", "van1", "van2", "mint", "joe"], // มติ §12: รถตู้ ส. 14 ราชา = 2 คัน
+  },
+  {
+    key: "phiphi",
+    slug: "phiphi-khai-speedboat",
+    departTimeMin: hmToMin(TRIPS_SEED_OPTION_TIMES.phiphi.start),
+    capacity: PRODUCT_PHIPHI.capacity,
+    minPax: PRODUCT_PHIPHI.minPax,
+    dateFrom: weekOf("phiphi")[0].date,
+    dateTo: weekOf("phiphi")[weekOf("phiphi").length - 1].date,
+    skip: [],
+    resources: ["speed1", "speed2"],
+  },
+  {
+    key: "deep3",
+    slug: "racha-noi-3-dives",
+    departTimeMin: hmToMin(TRIPS_SEED_OPTION_TIMES.deep3.start),
+    capacity: PRODUCT_DEEP3.capacity,
+    minPax: PRODUCT_DEEP3.minPax,
+    dateFrom: weekOf("deep3")[0].date,
+    dateTo: weekOf("racha")[weekOf("racha").length - 1].date, // กฎถึง 17 · ข้อยกเว้น SKIP 17 (เรือเข้าซ่อม จอ 11)
+    skip: weekOf("racha").map((c) => c.date).filter((d) => !weekOf("deep3").some((c) => c.date === d)),
+    resources: ["deep1"],
+  },
+];
+/** materialize ของ seed ใช้เวลาเริ่มสัปดาห์ (ข้อยกเว้นของ "ทุกคำสั่งส่ง TRIPS_AS_OF" · ใบ T0.3 §8 ข้อ 4) */
+export const TRIPS_SEED_MATERIALIZE_AT = `${CALENDAR_WEEK_1111.rows.racha[0].date}T00:00:00+07:00`;
+/** ปิดรับหน้าร้าน "ปรับแล้ว" 0 วัน 07:00 (จอ 17) — T6 ชั้น UNIT perChannel.COUNTER */
+export const TRIPS_SEED_COUNTER_CUTOFF = { daysBefore: 0, atMin: hmToMin("07:00") } as const;
+/** สิมิลัน: รอบเดี่ยว (จอ 11 "9/20 เตียง") · ขึ้นเรือ TRIP_SIMILAN.embark.time · ระยะเวลา = nights × 1 วัน */
+export const TRIPS_SEED_SIMILAN = {
+  slug: "similan-4-nights",
+  localDate: TRIP_SIMILAN.start,
+  departTimeMin: hmToMin(TRIP_SIMILAN.embark.time),
+  durationMin: TRIP_SIMILAN.nights * 1440,
+  capacity: 20,
+} as const;
+/** เหตุยกเลิก ศ. 13 (จอ 11 "ยกเลิก คลื่นลม") */
+export const TRIPS_SEED_CANCEL_REASON = "คลื่นลม";
+// ── /T0.3 departures ──

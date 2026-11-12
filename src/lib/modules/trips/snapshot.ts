@@ -7,6 +7,7 @@
 // 🔴 ไม่มีไฟล์ของใบนี้เขียน policySnapshot ลง TripBooking (T0.6 เท่านั้น)
 // ─────────────────────────────────────────────────────────────
 import type { PolicySnapshot } from "@/lib/core/settings";
+import { normalizeTimezone, utcToLocal } from "./departures-core";
 import { BP_UNIT, allocateWithin, mulBpHalfUp, mulDivHalfUp, vatOfExclusive, vatOfInclusive } from "./money-math";
 
 // ═══════════════ ชนิด (เลี่ยง import จาก pricing-core — ข้อสอบ S-3 จำกัด import ของไฟล์นี้) ═══════════════
@@ -122,6 +123,8 @@ export type TripsBookingSnapshot = {
   deckPlanVersionId: string | null;
   flags: { marketingEligible: boolean; messageMode: string; contactRoute: string; hidePriceOnVoucher: boolean };
   warnings: string[];
+  /** ใบเสนอราคาที่การจองนี้ยืนยัน (buildTripBookingSnapshot ใส่ · ช่องเพิ่ม v1) */
+  quote?: { fingerprint: string; policyAt: string | null };
 };
 export type SnapshotFlags = Partial<TripsBookingSnapshot["flags"]>;
 
@@ -236,26 +239,22 @@ const INT4 = 2_147_483_647;
 const intOk = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= INT4;
 const badInput = (field: string) => bad("ข้อมูลยังไม่ครบหรือรูปแบบยังไม่ตรง", { reason: "INVALID_INPUT", field });
 
-// วันของร้านจากเวลา (Intl · สำเนาเล็ก — ไฟล์นี้ import ./pricing-core ไม่ได้)
 const DAY_MS = 86_400_000;
 const utcMid = (ymd: string): number => Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
+/** วันของร้านจากเวลา — เขตเวลาไม่รู้จัก ⇒ null (SETTINGS_INVALID · ไม่ตกไปกรุงเทพเงียบ ๆ) · ใช้ตัวช่วยของ T0.3 */
 function localYmd(tz: string, at: Date): string | null {
-  let f: Intl.DateTimeFormat;
-  try {
-    f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
-  } catch {
-    return null; // เขตเวลาเพี้ยน = SETTINGS_INVALID (ไม่ตกไปกรุงเทพเงียบ ๆ)
-  }
-  const p = f.formatToParts(at);
-  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "00";
-  return `${g("year")}-${g("month")}-${g("day")}`;
+  if (typeof tz !== "string" || !tz.trim() || normalizeTimezone(tz) !== tz.trim()) return null;
+  return utcToLocal(tz, at).ymd;
 }
 
 function readSnap(raw: unknown): TripsBookingSnapshot {
   return raw as TripsBookingSnapshot;
 }
 
-/** คำนวณจาก snapshot อย่างเดียว (บริสุทธิ์ · ไม่แก้อินพุต) — อัตรา VAT อ่านผ่าน snapshotValue เสมอ */
+/**
+ * คำนวณจาก snapshot อย่างเดียว (บริสุทธิ์ · ไม่แก้อินพุต · ไม่อ่านนาฬิกา — CANCEL ใช้ `event.at` ในเขตเวลาที่จดใน snapshot)
+ * อัตรา VAT อ่านผ่าน snapshotValue เสมอ (คีย์ไม่ได้จด ⇒ throw SnapshotKeyMissing)
+ */
 export function recomputeFromSnapshot(raw: unknown, event: RecomputeEvent): RecomputeResult {
   const rate = snapshotValue(raw, "trips", "trips.tax.vatRate");
   const vatRateBp = isRec(rate) && typeof rate.rateBp === "number" ? rate.rateBp : null;

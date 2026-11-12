@@ -1514,6 +1514,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.product.unpublished": withAutomation(async () => {}),
   "trips.product.archived": withAutomation(async () => {}),
   // ◂ TRIPS T0.2
+  // TRIPS T0.3 ▸ รอบทัวร์ (ใบสั่ง T0.3 §7) — ยิงจาก `trips/departures.ts` ใน tx เดียวกับการเขียน · payload 6 คีย์ (X8) · งานหลัก = no-op (กฎอัตโนมัติ/เว็บฮุค)
+  "trips.departure.created": withAutomation(async () => {}),
+  "trips.departure.status_changed": withAutomation(async () => {}),
+  "trips.departure.below_min": withAutomation(async () => {}),
+  "trips.departure.cancelled": withAutomation(async () => {}),
+  // ◂ TRIPS T0.3
   // ── T0.5 pricing ── TRIPS T0.5 ▸ ราคา/โค้ดส่วนลด — ยิงจาก trips/prices.ts · trips/promo.ts ในธุรกรรมเดียวกับงานหลัก ·
   //   payload = id/จำนวน/สตางค์ล้วน (ไม่มีตัวโค้ด/ผู้ติดต่อ) · งานหลัก no-op + กฎอัตโนมัติ/เว็บฮุค ◂
   "trips.price.changed": withAutomation(async () => {}),

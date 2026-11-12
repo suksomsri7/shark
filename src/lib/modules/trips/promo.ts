@@ -19,6 +19,11 @@ const ID = z.string().min(1).max(200);
 const CTX = z.object({ tenantId: ID, unitId: ID, now: z.date().optional() });
 const REDEEM = z.strictObject({ ruleId: ID, contactKey: z.string().trim().min(1).max(200), bookingId: ID, discountSatang: z.number().int().min(0).max(INT4) });
 const RELEASE = z.strictObject({ bookingId: ID });
+const REDEEM_MANY = z.strictObject({
+  contactKey: z.string().trim().min(1).max(200),
+  bookingId: ID,
+  items: z.array(z.strictObject({ ruleId: ID, discountSatang: z.number().int().min(0).max(INT4) })).min(1).max(10),
+});
 
 const contactHash = (tenantId: string, key: string) => createHash("sha256").update(`${tenantId}:${key.trim().toLowerCase()}`).digest("hex");
 const NOT_FOUND_TH = "ไม่พบรายการนี้ในหน่วยที่เลือก";
@@ -33,7 +38,17 @@ export type Redemption = { redemptionId: string; ruleId: string; bookingId: stri
 type RuleRow = { active: boolean; kind: string; perContact: number | null; validFrom: string | null; validTo: string | null; tz: string | null };
 
 /**
- * ตัดสิทธิ์โค้ด 1 ครั้งต่อการจอง (ใน tx ของผู้เรียก · T0.6 เรียกเป็นขั้นท้ายหลังล็อกการจอง):
+ * สัญญากับ T0.6 (มติ r3 ข้อ 5):
+ * - เรียกใน tx ของผู้เรียก (ไม่เปิด/ไม่ commit เอง) · ปฏิเสธ = throw PricingAbort ⇒ ผู้เรียก rollback
+ * - ลำดับล็อกในธุรกรรมการจอง: สินค้า → รอบ (T0.4) → การจอง → **กฎโค้ดเรียงตาม ruleId** (UPDATE ล็อกแถวกฎ) → แถว redemption
+ *   หลายโค้ดในการจองเดียว ⇒ ใช้ `redeemPromosInTx` (เรียงให้เอง) — เรียก redeemPromoInTx หลายครั้งเองต้องเรียง ruleId จากน้อยไปมาก
+ *   provider แต้ม/คูปอง (redeemInTx) เรียกหลังโค้ดทั้งหมด
+ * - ยอด `discountSatang` = จาก snapshot ของการจอง (`promo.discountSatang` · `providers[]`) ไม่ใช่จาก quote
+ * - `contactKey` = ข้อความทึบของผู้ติดต่อที่คงที่ข้ามช่องทาง (แนะนำ partyId ถ้ามี ไม่งั้นเบอร์ E.164 / อีเมลตัวเล็ก) —
+ *   ที่นี่ตัดช่องว่าง + ตัวเล็ก แล้วเก็บเฉพาะ sha256(`<tenantId>:<key>`) ใน `contactKeyHash` (ไม่เก็บตัวจริง · ไม่อยู่ใน event)
+ * - นาฬิกา = `ctx.now ?? new Date()` ใช้ตรวจ validFrom/validTo เป็นวันของหน่วย (เขตเวลาของหน่วย)
+ *
+ * ตัดสิทธิ์โค้ด 1 ครั้งต่อการจอง:
  * (1) ล็อกต่อ (กฎ, ผู้ติดต่อ) · ตรวจกฎยังเปิด + อยู่ในช่วง validFrom/validTo ณ ctx.now (วันของหน่วย) · นับสิทธิ์ต่อผู้ติดต่อ
  * (2) UPDATE เดียวมีเพดาน · 0 แถว = หมด (หรือถูกปิดระหว่างทาง ⇒ PROMO_INACTIVE)
  * (3) INSERT TripPromoRedemption — การจองเดิมที่ ACTIVE = คืนผลเดิม ไม่นับเพิ่ม · ที่ RELEASED = นับใหม่ผ่านเส้นทางเดียวกันแล้วเปิดแถวเดิม
@@ -115,7 +130,22 @@ export async function redeemPromoInTx(tx: unknown, ctx: SellCtx, input: unknown)
   return { ok: true, value: { redemptionId: id, ruleId, bookingId, discountSatang, usedCount, replay: false } };
 }
 
-/** คืนสิทธิ์โค้ดของการจอง (ยกเลิก) — RELEASED + ลดตัวนับ 1 (ไม่ต่ำกว่า 0 · ครั้งเดียวต่อ redemption) · ล็อกแถวกฎเรียงตาม id ก่อน (กัน deadlock) */
+/** ตัดสิทธิ์หลายโค้ดของการจองเดียว — เรียงตาม ruleId ก่อนเสมอ (กัน deadlock ระหว่างการจองที่ใช้โค้ดชุดเดียวกันคนละลำดับ) · ล้มตัวใด = throw ทั้งชุด */
+export async function redeemPromosInTx(tx: unknown, ctx: SellCtx, input: unknown): Promise<SellResult<Redemption[]>> {
+  const p = REDEEM_MANY.safeParse(input);
+  if (!p.success) throw new PricingAbort("VALIDATION", "INVALID_INPUT", "ข้อมูลการใช้โค้ดส่วนลดไม่ครบ");
+  const ids = p.data.items.map((i) => i.ruleId);
+  if (new Set(ids).size !== ids.length) throw new PricingAbort("VALIDATION", "INVALID_INPUT", "โค้ดซ้ำในการจองเดียว");
+  const out: Redemption[] = [];
+  for (const it of [...p.data.items].sort((a, b) => (a.ruleId < b.ruleId ? -1 : a.ruleId > b.ruleId ? 1 : 0))) {
+    const r = await redeemPromoInTx(tx, ctx, { ruleId: it.ruleId, contactKey: p.data.contactKey, bookingId: p.data.bookingId, discountSatang: it.discountSatang });
+    if (!r.ok) return r;
+    out.push(r.value);
+  }
+  return { ok: true, value: out };
+}
+
+/** คืนสิทธิ์โค้ดของการจอง (ยกเลิก · ใน tx ของผู้เรียก · ไม่ใช้นาฬิกา) — RELEASED + ลดตัวนับ 1 (ไม่ต่ำกว่า 0 · ครั้งเดียวต่อ redemption) · ล็อกแถวกฎเรียงตาม id ก่อน (กัน deadlock) */
 export async function releasePromoInTx(tx: unknown, ctx: SellCtx, input: unknown): Promise<SellResult<{ released: number }>> {
   const t = tx as Tx;
   const { tenantId, unitId } = scope(ctx);

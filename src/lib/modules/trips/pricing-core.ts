@@ -11,6 +11,7 @@
 import { z } from "zod";
 import type { SellErrorCode } from "@/lib/core/sellable";
 import type { PolicySnapshot } from "@/lib/core/settings";
+import { DEFAULT_TIMEZONE, addDaysYmd, localToUtc, normalizeTimezone, utcToLocal, weekdayOfYmd } from "./departures-core";
 import { isYmd, tripPriceRuleParamsSchema, type TripPriceRuleParams } from "./json-schemas";
 import {
   BP_UNIT,
@@ -174,6 +175,8 @@ export const tripPricingInputSchema = z.strictObject({
         passThrough: z.boolean(),
         taxKind: TAX_KIND,
         label: z.string().max(400),
+        /** รายการเสริมระดับหน่วย (productId null) — มติ r3 ข้อ 2 */
+        unitLevel: z.boolean().optional(),
       }),
     )
     .max(200),
@@ -347,7 +350,8 @@ export type CommissionBlock = {
   agentEarnsSatang: number;
   currency: "THB";
 };
-export type ScheduleRow = { seq: number; kind: "DEPOSIT" | "BALANCE"; amountSatang: number; amountMinor?: number; vatableSatang: number; passThroughSatang: number; dueAt: string };
+/** dueAtBooking = งวดที่ครบกำหนด "ตอนจอง" (dueAt = เวลาคิดราคา · ไม่อยู่ในลายนิ้วมือ — มติ r3 ข้อ 1) */
+export type ScheduleRow = { seq: number; kind: "DEPOSIT" | "BALANCE"; amountSatang: number; amountMinor?: number; vatableSatang: number; passThroughSatang: number; dueAt: string; dueAtBooking: boolean };
 export type CancelStepBp = { daysBefore: number; refundBp: number };
 export type PricingWarning = { code: string; messageTh: string; severity: "NORMAL" | "HIGH" | "HIGHEST"; details?: Record<string, unknown> };
 export type PricedQuote = {
@@ -377,57 +381,30 @@ const fail = (code: SellErrorCode, reason: string | null, messageTh?: string, ex
   details: { ...(extra ?? {}), ...(reason ? { reason } : {}) },
 });
 
-// ═══════════════ วันและเขตเวลา (สำเนาเล็กของ departures-core ของ T0.3 — ใช้แทนเมื่อ T0.3 merge) ═══════════════
-const DEFAULT_TZ = "Asia/Bangkok";
+// ═══════════════ วันและเขตเวลา — ของ T0.3 (departures-core · บริสุทธิ์) ═══════════════
+const DEFAULT_TZ = DEFAULT_TIMEZONE;
 const MS_MIN = 60_000;
 const MS_DAY = 86_400_000;
-const FMT = new Map<string, Intl.DateTimeFormat | null>();
-function fmtOf(tz: string): Intl.DateTimeFormat | null {
-  if (FMT.has(tz)) return FMT.get(tz) ?? null;
-  let f: Intl.DateTimeFormat | null = null;
-  try {
-    f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
-  } catch {
-    f = null;
-  }
-  FMT.set(tz, f);
-  return f;
-}
-function zoneOf(tz: string): Intl.DateTimeFormat {
-  return fmtOf(tz) ?? (fmtOf(DEFAULT_TZ) as Intl.DateTimeFormat);
-}
-/** เขตเวลาที่ Intl รู้จัก (ไม่ตกไปกรุงเทพเงียบ ๆ — ไม่รู้จัก = SETTINGS_INVALID) */
-export function tripTzValid(tz: unknown): tz is string {
-  return typeof tz === "string" && tz.trim() !== "" && fmtOf(tz) !== null;
-}
-function wallMs(f: Intl.DateTimeFormat, ms: number): number {
-  const parts = f.formatToParts(new Date(ms));
-  const get = (t: string) => Number(parts.find((x) => x.type === t)?.value ?? "0");
-  return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour") % 24, get("minute"), get("second"));
-}
 const utcMid = (ymd: string): number => Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
-/** วันที่ของร้าน "YYYY-MM-DD" ของเวลา `at` */
-export { DEFAULT_TZ as TRIP_DEFAULT_TZ };
-export function tripLocalYmd(tz: string, at: Date): string {
-  return new Date(wallMs(zoneOf(tz), at.getTime())).toISOString().slice(0, 10);
+/** เขตเวลาที่ Intl รู้จัก — ไม่รู้จัก = SETTINGS_INVALID (normalizeTimezone ของ T0.3 ตกไปกรุงเทพเงียบ ๆ จึงตรวจด้วยการเทียบผล) */
+export function tripTzValid(tz: unknown): tz is string {
+  return typeof tz === "string" && tz.trim() !== "" && normalizeTimezone(tz) === tz.trim();
 }
-/** เวลาร้าน (วัน + นาทีจากเที่ยงคืน) ⇒ ISO UTC (DST กระโดด ⇒ ใช้ออฟเซ็ตก่อนกระโดด) */
+export { DEFAULT_TZ as TRIP_DEFAULT_TZ };
+/** วันที่ของร้าน "YYYY-MM-DD" ของเวลา `at` */
+export function tripLocalYmd(tz: string, at: Date): string {
+  return utcToLocal(tz, at).ymd;
+}
+/** เวลาร้าน (วัน + นาทีจากเที่ยงคืน) ⇒ ISO UTC */
 export function tripLocalToUtcIso(tz: string, ymd: string, minutes: number): string {
-  const f = zoneOf(tz);
-  const wall = utcMid(ymd) + minutes * MS_MIN;
-  const offBefore = wallMs(f, wall - MS_DAY) - (wall - MS_DAY);
-  const offAfter = wallMs(f, wall + MS_DAY) - (wall + MS_DAY);
-  const cands = [wall - offBefore, wall - offAfter].filter((t) => wallMs(f, t) === wall).sort((a, b) => a - b);
-  return new Date(cands.length ? cands[0] : wall - offBefore).toISOString();
+  return localToUtc(tz, ymd, minutes).toISOString();
 }
 /** จำนวนวันปฏิทินจาก a ถึง b (b − a) */
 export function tripDaysBetween(a: string, b: string): number {
   return (utcMid(b) - utcMid(a)) / MS_DAY;
 }
-export function tripAddDays(ymd: string, n: number): string {
-  return new Date(utcMid(ymd) + n * MS_DAY).toISOString().slice(0, 10);
-}
-const weekdayOf = (ymd: string): number => new Date(utcMid(ymd)).getUTCDay();
+const tripAddDays = addDaysYmd;
+const weekdayOf = weekdayOfYmd;
 const inRange = (d: string, from: string | null, to: string | null): boolean => (from === null || from <= d) && (to === null || d <= to);
 
 // ═══════════════ ตัวช่วย ═══════════════
@@ -527,7 +504,7 @@ const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o,
 
 // ═══════════════ ตัวเลือกราคา ═══════════════
 /**
- * ราคาของบรรทัดคำขอเดียว (บริสุทธิ์) — ไม่ตรวจสถานะรอบ/เวลาปิดรับ (เป็นของ T0.4/T0.6) · ผู้กระทำ STAFF/SYSTEM คิดราคาสินค้า DRAFT ได้ (ตัวโหลดคุม)
+ * ราคาของบรรทัดคำขอเดียว (บริสุทธิ์ · นาฬิกา = `input.now` เท่านั้น ในเขตเวลา `input.tz`) — ไม่ตรวจสถานะรอบ/เวลาปิดรับ (เป็นของ T0.4/T0.6) · ผู้กระทำ STAFF/SYSTEM คิดราคาสินค้า DRAFT ได้ (ตัวโหลดคุม)
  * ค่าใหญ่เกิน/อินพุตเพี้ยน ⇒ VALIDATION (details.reason) เสมอ ไม่โยน error ดิบ
  */
 export function resolveTripPrice(raw: unknown): PricingResult {
@@ -679,11 +656,21 @@ function resolveInner(raw: unknown): PricingResult {
   const reqQty = new Map<string, number>();
   for (const r of inp.requestedExtras) reqQty.set(r.extraId, (reqQty.get(r.extraId) ?? 0) + r.qty);
   const extraById = new Map(inp.extras.map((e) => [e.id, e]));
+  const skippedExtras: string[] = [];
   for (const id of reqQty.keys()) if (!extraById.has(id)) return fail("VALIDATION", null, "ไม่พบรายการเสริมนี้ในสินค้า", { extraId: id });
   for (const e of [...inp.extras].sort((a, b) => cmpStr(a.id, b.id))) {
     const asked = reqQty.get(e.id) ?? 0;
     if (!e.mandatory && asked <= 0) continue;
-    if (e.currency !== currency) return fail("CURRENCY_NOT_ALLOWED", null, "รายการเสริมใช้สกุลเงินต่างจากราคาที่ขอ", { extraId: e.id });
+    // สกุลต่างกัน: รายการเสริมระดับหน่วยเป็นบาทบนใบสกุลต่างประเทศ = คิดแบบรับส่ง (บาทแปลงครั้งเดียว) · ระดับหน่วยสกุลอื่น = ข้าม+เตือน · ของสินค้า = ปฏิเสธ (มติ r3 ข้อ 2)
+    let thbOnFx = false;
+    if (e.currency !== currency) {
+      if (e.unitLevel && e.currency === "THB" && !thb) thbOnFx = true;
+      else if (e.unitLevel) {
+        skippedExtras.push(e.id);
+        continue;
+      } else return fail("CURRENCY_NOT_ALLOWED", null, "รายการเสริมใช้สกุลเงินต่างจากราคาที่ขอ", { extraId: e.id });
+    }
+    const unitOf = (sat: number) => (thbOnFx ? { unitMinor: satangToMinor(sat, rateMicros), thbUnitSatang: sat as number | null, note: "FX_FROM_THB" } : { unitMinor: sat, thbUnitSatang: null, note: null });
     const reqN = e.mandatory ? Math.max(1, asked) : asked;
     const mult = e.basis === "PER_DAY" || e.basis === "PER_PAX_DAY" ? dep.days : e.basis === "PER_BOAT_NIGHT" ? dep.nights : 1;
     const def = hasOwn(lineDefaults, e.kind) ? lineDefaults[e.kind] : undefined;
@@ -707,12 +694,14 @@ function resolveInner(raw: unknown): PricingResult {
         const price = e.paxPrices[pt.code];
         const qty = (qtyByPt.get(pt.id) ?? 0) * mult; // ราคาต่อคนของ code นั้น × วัน/คืนตาม basis
         if (qty <= 0) continue;
-        work.push({ ...base, itemRef: `extra:${e.id}:${pt.code}`, label: `${e.label} ${SEAT_LABEL_TH[pt.code] ?? pt.code}`.trim(), paxTypeId: pt.id, paxTypeCode: pt.code, qty, unitMinor: price, priceTrace: [trace("RETAIL", price, e.id)], promoBy: {} });
+        const u = unitOf(price);
+        work.push({ ...base, itemRef: `extra:${e.id}:${pt.code}`, label: `${e.label} ${SEAT_LABEL_TH[pt.code] ?? pt.code}`.trim(), paxTypeId: pt.id, paxTypeCode: pt.code, qty, unitMinor: u.unitMinor, thbUnitSatang: u.thbUnitSatang, priceTrace: [trace("RETAIL", u.unitMinor, e.id, u.note)], promoBy: {} });
       }
     } else {
       const qty = e.basis === "PER_PAX" || e.basis === "PER_PAX_DAY" ? totalPax * mult : reqN * mult;
       if (qty <= 0) continue;
-      work.push({ ...base, itemRef: `extra:${e.id}`, label: e.label, paxTypeId: null, paxTypeCode: null, qty, unitMinor: e.priceMinor, priceTrace: [trace("RETAIL", e.priceMinor, e.id)], promoBy: {} });
+      const u = unitOf(e.priceMinor);
+      work.push({ ...base, itemRef: `extra:${e.id}`, label: e.label, paxTypeId: null, paxTypeCode: null, qty, unitMinor: u.unitMinor, thbUnitSatang: u.thbUnitSatang, priceTrace: [trace("RETAIL", u.unitMinor, e.id, u.note)], promoBy: {} });
     }
   }
   // ── รับส่ง (ค่าโซนเป็นบาทเสมอ · ใบเสนอสกุลต่างประเทศ: แปลงครั้งเดียวด้วยอัตราที่ล็อก เพื่อแสดงหน่วยย่อย · ยอดบาทคงเดิมไม่แปลงกลับ — มติ r2 ข้อ 1) ──
@@ -744,10 +733,11 @@ function resolveInner(raw: unknown): PricingResult {
       promoBy: {},
     });
   }
-  for (const w of work) if (w.unitMinor * w.qty > INT4_MAX) return fail("VALIDATION", "AMOUNT_TOO_LARGE", undefined, { itemRef: w.itemRef });
+  for (const w of work) if (w.unitMinor * w.qty > INT4_MAX || (w.thbUnitSatang ?? 0) * w.qty > INT4_MAX) return fail("VALIDATION", "AMOUNT_TOO_LARGE", undefined, { itemRef: w.itemRef });
 
   // ── ขั้น 4 กฎราคา (ที่นั่งเท่านั้น) ──
   const warnings: PricingWarning[] = [];
+  if (skippedExtras.length) warnings.push(warn("EXTRA_CURRENCY_SKIPPED", "รายการเสริมของหน่วยใช้สกุลเงินอื่น ระบบไม่คิดในราคานี้", "HIGH", { extraIds: skippedExtras.sort() }));
   const rules: ParsedRule[] = [];
   const invalidRules: string[] = [];
   for (const r of inp.rules) {
@@ -927,6 +917,7 @@ function resolveInner(raw: unknown): PricingResult {
         approvalId = ap.approvalId;
       }
       w.unitMinor = o.unitMinor;
+      w.thbUnitSatang = null; // แก้มือบนบรรทัดบาท (ใบสกุลต่างประเทศ) ⇒ ราคาใหม่อยู่ในสกุลของใบ แปลงครั้งเดียว — เงินทั้งสองช่องเปลี่ยนตรงกัน (มติ r3 ข้อ 3)
       w.discountSatang = 0;
       w.promoBy = {};
       w.priceSource = "MANUAL";
@@ -1069,7 +1060,9 @@ function resolveInner(raw: unknown): PricingResult {
   const passThroughSatang = sum(items.filter((i) => i.passThrough).map((i) => i.amountSatang));
   const amountSum = sum(items.map((i) => i.amountSatang));
   const payable = amountSum + (incl ? 0 : vat);
-  if (payable > INT4_MAX || items.some((i) => i.grossMinor > INT4_MAX)) return fail("VALIDATION", "AMOUNT_TOO_LARGE");
+  if (payable > INT4_MAX || vat > INT4_MAX || amountSum + sum(items.map((i) => i.discountSatang + i.agentDiscountSatang)) > INT4_MAX || items.some((i) => i.grossMinor > INT4_MAX)) {
+    return fail("VALIDATION", "AMOUNT_TOO_LARGE");
+  }
   const discountSatang = sum(items.map((i) => i.discountSatang));
   const agentDiscountSatang = sum(items.map((i) => i.agentDiscountSatang));
   const totals: PricedTotals = {
@@ -1135,7 +1128,7 @@ function resolveInner(raw: unknown): PricingResult {
   const nowIso = now.toISOString();
   let schedule: ScheduleRow[];
   if (dueYmd === null || depositPct >= 100 || dueYmd <= bookYmd || payable <= 0) {
-    schedule = [{ seq: 1, kind: "BALANCE", amountSatang: payable, vatableSatang: payable - passThroughSatang, passThroughSatang, dueAt: nowIso }];
+    schedule = [{ seq: 1, kind: "BALANCE", amountSatang: payable, vatableSatang: payable - passThroughSatang, passThroughSatang, dueAt: nowIso, dueAtBooking: true }];
   } else {
     const nonPt = payable - passThroughSatang;
     let dep1: number;
@@ -1150,13 +1143,13 @@ function resolveInner(raw: unknown): PricingResult {
     const bal = payable - dep1;
     const balPt = passThroughSatang - dep1Pt;
     schedule = [
-      { seq: 1, kind: "DEPOSIT", amountSatang: dep1, vatableSatang: dep1 - dep1Pt, passThroughSatang: dep1Pt, dueAt: nowIso },
-      { seq: 2, kind: "BALANCE", amountSatang: bal, vatableSatang: bal - balPt, passThroughSatang: balPt, dueAt: tripLocalToUtcIso(tz, dueYmd, 1439) },
+      { seq: 1, kind: "DEPOSIT", amountSatang: dep1, vatableSatang: dep1 - dep1Pt, passThroughSatang: dep1Pt, dueAt: nowIso, dueAtBooking: true },
+      { seq: 2, kind: "BALANCE", amountSatang: bal, vatableSatang: bal - balPt, passThroughSatang: balPt, dueAt: tripLocalToUtcIso(tz, dueYmd, 1439), dueAtBooking: false },
     ];
   }
   if (!thb && payable > 0) {
     // ใบสกุลต่างประเทศ: งวดมียอดหน่วยย่อยด้วย (ปันยอดหน่วยย่อยรวมตามยอดบาทของงวด)
-    const totalMinor = sum(items.map((i) => (i.kind === "PICKUP" ? i.unitMinor * i.qty : i.amountMinor)));
+    const totalMinor = sum(items.map((i) => i.amountMinor));
     const mins = allocateWithin(totalMinor, schedule.map((s) => s.amountSatang));
     schedule = schedule.map((s, i) => ({ ...s, amountMinor: mins[i] }));
   }
@@ -1194,13 +1187,13 @@ function canon(v: unknown): string {
     .join(",")}}`;
 }
 /**
- * ข้อความแทนคำขอ + ราคาที่ได้ — ไม่รวมสิ่งที่ขึ้นกับนาฬิกา (เวลาครบกำหนดงวดที่ = เวลาจอง ใช้ "AT_BOOKING" · วันที่อัตรา FX)
+ * ข้อความแทนคำขอ + ราคาที่ได้ — ไม่รวมสิ่งที่ขึ้นกับนาฬิกา (งวด dueAtBooking ใช้ "AT_BOOKING" · วันที่อัตรา FX · trace · คำเตือน)
+ * ที่ยังเปลี่ยนได้ข้ามเที่ยงคืนโดยชอบ: กฎ/ช่วงจองหมด (EARLY_BIRD · bookTo · โค้ดหมดอายุ) · งวดยุบเป็นงวดเดียวเมื่อวันครบกำหนด ≤ วันนี้
  * ค่าเท่าเดิม = ข้อความเดิม · ราคาเปลี่ยน = ข้อความใหม่ (CC §C)
  */
-export function priceFingerprint(input: Pick<TripPricingInput, "unitId" | "channel" | "actor" | "currency" | "product" | "departure" | "pax" | "requestedExtras" | "pickup" | "promoCode" | "now"> & { agency?: { agentAccountId: string } | null }, priced: PricedQuote): string {
-  const nowIso = new Date(input.now).toISOString();
+export function priceFingerprint(input: Pick<TripPricingInput, "unitId" | "channel" | "actor" | "currency" | "product" | "departure" | "pax" | "requestedExtras" | "pickup" | "promoCode"> & { agency?: { agentAccountId: string } | null }, priced: PricedQuote): string {
   return canon({
-    v: 2,
+    v: 3,
     unitId: input.unitId,
     channel: input.channel,
     actor: input.actor,
@@ -1215,7 +1208,8 @@ export function priceFingerprint(input: Pick<TripPricingInput, "unitId" | "chann
     items: priced.items.map((i) => [i.itemRef, i.qty, i.unitMinor, i.discountSatang, i.agentDiscountSatang, i.amountSatang, i.vatSatang, i.priceSource]),
     totals: priced.totals,
     commission: priced.commission ? [priced.commission.commissionSatang, priced.commission.commissionVatSatang, priced.commission.remitToShopSatang, priced.commission.payToAgentSatang] : null,
-    schedule: priced.paymentSchedule.map((s) => [s.kind, s.amountSatang, s.passThroughSatang, s.dueAt === nowIso ? "AT_BOOKING" : s.dueAt]),
+    // งวดตอนจองถูกทำเครื่องหมายในแถวเอง ⇒ ลายนิ้วมือไม่ขึ้นกับนาฬิกา · วันครบกำหนดงวดหลัง (วันเดินทาง − T15) ยังอยู่
+    schedule: priced.paymentSchedule.map((s) => [s.kind, s.amountSatang, s.passThroughSatang, s.dueAtBooking ? "AT_BOOKING" : s.dueAt]),
     ladder: priced.cancelLadder,
     shopCancel: priced.shopCancelRefundBpByReason,
     fx: priced.fx ? priced.fx.rateMicros : null,

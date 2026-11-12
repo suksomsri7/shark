@@ -761,6 +761,22 @@ registerMinuteJob({
   run: async (now, budgetMs) => (await import("@/lib/modules/hotel")).pullAll(now, Math.max(5_000, budgetMs - 3_000)),
 });
 // ◂ SVC H.10
+// TRIPS T0.3 ▸ รอบทัวร์ (ใบสั่ง T0.3 §5) — ข้ามร้าน (ทางเข้า `trips/jobs.ts`) · โหลด facade trips ตอนรันเท่านั้น · เคารพ signal
+//   generateDepartures: ทุกกฎที่ไม่พัก ⇒ materialize ตรรกะเดียวกับ action · idempotent: advisory lock ต่อกฎ + unique (scheduleId, localDate) ⇒ ซ้อนกัน = แถวชุดเดียว (X5)
+//   minPaxCheck: รอบ OPEN ที่ถึงเวลาตัดสิน (T7) ⇒ ถึงขั้นต่ำ = GUARANTEED (CAS) · ไม่ถึง = event below_min ครั้งเดียว (คีย์ outbox) (X5)
+registerMinuteJob({
+  name: "trips.generateDepartures",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runGenerateDepartures(now, { signal: ctrl.signal }),
+});
+registerMinuteJob({
+  name: "trips.minPaxCheck",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runMinPaxCheck(now, { signal: ctrl.signal }),
+});
+// ◂ TRIPS T0.3
 
 function errorText(e: unknown): string {
   let s: string;

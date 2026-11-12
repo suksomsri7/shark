@@ -1,5 +1,21 @@
 # TRIPS-RESUME — จุดต่องาน (บล็อกใหม่อยู่บนสุด)
 
+## ▶️ 12 พ.ย. 2569 ~15:2xZ — **6/72 (8%)** · T0.1–T0.3 ✅ (8e9b616dd) · T0.4 กำลังสร้าง · T0.5 รอบแก้
+- 🔄 เลน l1 `wip/trips-t0.4`: ผู้สร้าง T0.4 🔴 (ข้อสอบ 110 · ผู้คุมยืนยันแดง 9/110 ก่อนสร้าง · ใบสั่ง §12–§13) — งานบนดิสก์ ไม่ commit
+- 🔄 เลน l2 `wip/trips-t0.5` (WIP 19e90b6b6): ผู้สร้าง T0.5 รอบแก้ r2 — 13 ข้อ = ผู้ตรวจ (`scratchpad/t0.5-review/REVIEW.md`) + นักล่า (`scratchpad/t0.5-hunt/HUNT.md`) + มติ R1–R5 (ยังไม่ได้คัดลอกรายงานเข้า ledger — ทำตอนรับใบ) · probe นักล่า untracked `scripts/probe-trips-t0.5-*.mts` ในเลน l2
+- รับ T0.5: commit → ผู้ตรวจเช็กซ้ำ → merge session/trips เข้าเลน l2 (ชน index.ts/seed/ฟิกซ์เจอร์/permissions/ทะเบียน event — เก็บทั้งสองฝั่ง · ตัวช่วยเขตเวลาซ้ำของ T0.5 เปลี่ยนไปใช้ของ T0.3) → `/root/trips-runs/gate.sh /root/projects/shark-trips-l2 gate-t0.5 qc-trips-t0.5 qc-trips-t0.3 qc-trips-t0.2 qc-trips-t0.1 qc-trips-p0.1 qc-svc-r0.3 qc-svc-smoke probe-trips-t0.5-diff probe-trips-t0.5-snap probe-trips-t0.5-race probe-trips-t0.5-edge` → merge → seed ฐานหลัก → รันซ้ำ → tg
+- รับ T0.4: ผู้ตรวจ + นักล่า → ด่าน (+ qc-trips-t0.4) → merge (รวม `sellable-impl.ts`: สมาชิกของ T0.4 + `quote` ของ T0.5)
+- แล้ว: ใบสั่ง + ข้อสอบ T0.6 (การจอง) อิงโค้ดจริงของ T0.4/T0.5 · หนี้เอกสาร: ถ้อยคำ allocateLastRemainder ในใบสั่ง T0.5 → allocateWithin (มติ R4)
+- ON_MAIN ยังไม่เกิด (ตัวเตือน 17:40Z)
+
+## ▶️ 12 พ.ย. 2569 ~14:1xZ — **5/72 (7%)** · T0.1 ✅ T0.2 ✅ (171b9ebc8) · T0.3 รอบแก้ · T0.5 กำลังสร้าง
+- 🔄 เลน l1 `wip/trips-t0.3` (WIP cdfa29102 + **merge session/trips ค้างกลางทาง มี conflict** ให้ผู้สร้างแก้): ผู้สร้าง T0.3 รอบแก้ r2 — รายการ A–I = `wo-notes/trips-T0.3-review.md` + `-hunt.md` + มติใน TRIPS-RUN §4 (14:1xZ) · ถ้าตัวแทนตาย: `git status` ในเลน → แก้ conflict → ทำต่อ
+- 🔄 เลน l2 `wip/trips-t0.5`: ผู้สร้าง T0.5 🔴 (ข้อสอบ 130 · ใบสั่ง §12–§13)
+- รับ T0.3: commit (ผู้คุม) → ผู้ตรวจเช็กซ้ำ → `/root/trips-runs/gate.sh /root/projects/shark-trips-l1 gate-t0.3 qc-trips-t0.3 qc-trips-t0.2 qc-trips-t0.1 qc-trips-p0.1 qc-svc-r0.3 qc-svc-smoke` + probe นักล่า (mat edge scale conc) → merge → seed ฐานหลัก → รันซ้ำ → tg 8% (6/72) → ผู้สร้าง T0.4 (เลน l1 · รันข้อสอบ t0.4 ยืนยันแดงก่อน · ใช้สูตรสถานะร่วมจาก T0.3 ข้อ G)
+- รับ T0.5: ผู้ตรวจ + นักล่า → ด่านเดียวกัน (+ qc-trips-t0.5) → merge หลัง T0.3 (แก้ชน index.ts/seed/ฟิกซ์เจอร์)
+- แล้ว: ใบสั่ง + ข้อสอบ T0.6 (ต้องอิงโค้ดจริงของ T0.4/T0.5)
+- เครื่อง load 26 (14:07Z · RUN อื่น) · ON_MAIN ยังไม่เกิด
+
 ## ▶️ 12 พ.ย. 2569 ~13:1xZ — **4/72 (6%)** · T0.1 ✅ (836080029) · T0.2 ∥ T0.3 กำลังสร้าง
 - 🔄 เลน l2 `wip/trips-t0.2`: ผู้สร้าง T0.2 (ข้อสอบ 84 ข้อ) · 🔄 เลน l1 `wip/trips-t0.3`: ผู้สร้าง T0.3 🔴 (ข้อสอบ 116 ข้อ · กลุ่ม seed R-… รอ T0.2) — งานอยู่บนดิสก์ ไม่ commit · ตัวแทนตาย = เปิดใหม่ "ทำต่อจากทรี"
 - รับงาน: **T0.2 ก่อน** (ผู้คุมอ่าน diff หรือผู้ตรวจ 1 ตัว → ORACLE-EDIT p0.1 C-2 เป็น 3 หน่วย → ด่าน: oracle t0.2 + t0.1 + p0.1 + fitness ×2 + typecheck → merge → seed ฐานหลัก → รันซ้ำ) แล้ว **T0.3** (merge session/trips เข้าเลน l1 แก้ชน `trips/index.ts` + `seed-trips-qc.mts` → ผู้ตรวจ + นักล่า → F5 50→51 ORACLE-EDIT ถ้าขึ้น → ด่านแบบเดียวกัน + oracle t0.3) · แบบสคริปต์ด่าน `/root/trips-runs/gate-t0.1.sh`

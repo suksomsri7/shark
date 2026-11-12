@@ -10,7 +10,6 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import type { DueSpec, LineRequest, Money, Quote, QuoteLine, QuoteRequest, SellCtx, SellResult } from "@/lib/core/sellable";
-import { logOps } from "@/lib/core/ops";
 import { defaultFor, getDef, resolveSettings, snapshotPolicy, type PolicySnapshot } from "@/lib/core/settings";
 import { minorToSatang } from "./money-math";
 import {
@@ -177,7 +176,7 @@ async function loadAll(ctx: SellCtx, line: LineRequest, opts?: QuoteLineOpts): P
     // รายการเสริมของสินค้า + ของหน่วย (productId null · มติ r2 ข้อ 7) — แยกหน่วยด้วย tenantDb + unitId
     db.tripExtra.findMany({
       where: { tenantId, unitId, active: true, OR: [{ productId: product.id }, { productId: null }] },
-      select: { id: true, kind: true, basis: true, mandatory: true, priceMinor: true, paxPrices: true, currency: true, commissionable: true, discountable: true, passThrough: true, taxKind: true, name: true },
+      select: { id: true, productId: true, kind: true, basis: true, mandatory: true, priceMinor: true, paxPrices: true, currency: true, commissionable: true, discountable: true, passThrough: true, taxKind: true, name: true },
     }),
     L.pickupZoneId ? db.tripPickupZone.findFirst({ where: { id: L.pickupZoneId, tenantId, unitId }, select: { id: true, name: true, surchargeSatang: true } }) : Promise.resolve(null),
     db.tripPrice.findMany({ where: { tenantId, unitId, productId: product.id } }),
@@ -224,7 +223,8 @@ async function loadAll(ctx: SellCtx, line: LineRequest, opts?: QuoteLineOpts): P
     },
     paxTypes: paxTypes.map((p) => ({ id: p.id, code: p.code, countsCapacity: p.countsCapacity, active: p.active })),
     pax: L.pax,
-    extras: extras.map((e) => ({
+    // รายการเสริมของหน่วยชนิดเดียวกับที่สินค้ามีเอง ⇒ ของสินค้าชนะ ไม่โหลดของหน่วย (ไม่คิดซ้ำ · มติ r3 ข้อ 2)
+    extras: extras.filter((e) => e.productId !== null || !extras.some((x) => x.productId !== null && x.kind === e.kind)).map((e) => ({
       id: e.id,
       kind: e.kind,
       basis: e.basis as TripPricingInput["extras"][number]["basis"],
@@ -237,6 +237,7 @@ async function loadAll(ctx: SellCtx, line: LineRequest, opts?: QuoteLineOpts): P
       passThrough: e.passThrough,
       taxKind: e.taxKind as TripPricingInput["extras"][number]["taxKind"],
       label: labelOf(e.name, locale),
+      ...(e.productId === null ? { unitLevel: true } : {}),
     })),
     requestedExtras: L.extras ?? [],
     pickup: zone ? { zoneId: zone.id, label: zone.name, surchargeSatang: zone.surchargeSatang } : null,
@@ -305,27 +306,17 @@ function minimumLadder(): CancelStepBp[] | null {
   return out.sort((a, b) => b.daysBefore - a.daysBefore);
 }
 
-/** กฎราคาที่ params เสีย: ข้ามแต่เตือนในผล (RULE_INVALID) + บันทึก ops ครั้งเดียวต่อกฎต่อโปรเซส — มติ r2 ข้อ 11 */
-const loggedInvalidRules = new Set<string>();
-async function noteInvalidRules(ctx: SellCtx, priced: PricedQuote): Promise<void> {
-  const w = priced.warnings.find((x) => x.code === "RULE_INVALID");
-  const ids = w && isRec(w.details) && Array.isArray(w.details.ruleIds) ? w.details.ruleIds.filter((x): x is string => typeof x === "string") : [];
-  const fresh = ids.filter((id) => !loggedInvalidRules.has(id));
-  if (!fresh.length) return;
-  for (const id of fresh) loggedInvalidRules.add(id);
-  await logOps("WARN", "trips.pricing", "กฎราคาทัวร์มีเงื่อนไขไม่ถูกต้อง ระบบข้ามกฎนี้ตอนคิดราคา", { tenantId: ctx.tenantId, detail: `ruleIds=${fresh.join(",")}` });
-}
+/** กฎราคาที่ params เสีย: ข้ามแต่เตือนในผล (RULE_INVALID + ruleIds) — การคิดราคาไม่เขียนฐาน (ไม่บันทึก ops ที่นี่ · มติ r3 ข้อ 3) */
 
 async function priceOf(ctx: SellCtx, line: LineRequest, opts?: QuoteLineOpts): Promise<SellResult<Loaded & { priced: PricedQuote }>> {
   const li = await loadAll(ctx, line, opts);
   if (!li.ok) return li;
   const r = resolveTripPrice(li.value.input);
   if (!r.ok) return r;
-  await noteInvalidRules(ctx, r.value);
   return { ok: true, value: { ...li.value, priced: { ...r.value, cancelMinimumLadder: minimumLadder() } } };
 }
 
-/** ราคาของบรรทัดคำขอเดียว (ไม่เขียนฐาน) */
+/** ราคาของบรรทัดคำขอเดียว (ไม่เขียนฐาน · นาฬิกา = `ctx.now ?? new Date()` สำหรับทั้งวันจองและการอ่านค่าตั้ง) */
 export async function quoteTripLine(ctx: SellCtx, line: LineRequest, opts?: QuoteLineOpts): Promise<SellResult<PricedQuote>> {
   const r = await priceOf(ctx, line, opts);
   return r.ok ? { ok: true, value: r.value.priced } : r;
@@ -342,6 +333,10 @@ const thb = (satang: number): Money => ({ satang, currency: "THB" });
 /** บรรทัดของ Quote + เงื่อนไขของบรรทัดนั้นเอง (ตารางยกเลิก · งวด · เวลานโยบาย) — มติ r2 ข้อ 11 */
 export type TripQuoteLine = QuoteLine & { cancelLadder: CancelStepBp[]; paymentSchedule: DueSpec[]; policyAt: string; fingerprint: string };
 
+/**
+ * quote ของ Sellable (CC §C) — ไม่เขียนฐาน · นาฬิกา = `ctx.now ?? new Date()` (วันจองของร้าน · expiresAt = นาฬิกานี้ + T5)
+ * แต่ละบรรทัดคืน `fingerprint` (sha256) — T0.6 ส่งค่านี้ให้ buildTripBookingSnapshot ตอนยืนยัน
+ */
 export async function quoteTrips(ctx: SellCtx, req: QuoteRequest, opts?: QuoteLineOpts): Promise<SellResult<Quote>> {
   const r = REQ.safeParse(req);
   if (!r.success) return fail("VALIDATION", "คำขอราคาต้องมีอย่างน้อย 1 บรรทัด", { reason: "INVALID_INPUT" });
@@ -393,7 +388,7 @@ export async function quoteTrips(ctx: SellCtx, req: QuoteRequest, opts?: QuoteLi
       cancelLadder: v.cancelLadder,
       paymentSchedule: lineDues,
       policyAt: inp.now,
-      fingerprint: createHash("sha256").update(fp).digest("hex"),
+      fingerprint: sha(fp),
     });
     t.gross += v.totals.grossSatang;
     t.discount += v.totals.discountSatang + v.totals.agentDiscountSatang;
@@ -443,31 +438,47 @@ export async function quoteTrips(ctx: SellCtx, req: QuoteRequest, opts?: QuoteLi
 }
 
 // ═══════════════ snapshot การจอง (T0.6 เป็นผู้เขียนลง TripBooking) ═══════════════
+/** สิ่งที่ T0.6 ส่งมา: ลายนิ้วมือของบรรทัดจาก Sellable.quote (`TripQuoteLine.fingerprint`) + เวลานโยบายของ quote (ถ้ามี · จดลง snapshot) */
+export type QuotedRef = { quotedFingerprint: string; policyAt?: string };
+const QUOTED = z.strictObject({ quotedFingerprint: z.string().regex(/^[0-9a-f]{64}$/), policyAt: z.string().refine((x) => !Number.isNaN(Date.parse(x))).optional() });
+const sha = (x: string) => createHash("sha256").update(x).digest("hex");
+
 /**
- * ทางเลือก (b) ของมติ r2 ข้อ 6: คิดราคาใหม่ทั้งหมด "ที่นาฬิกาเดียว + อ่านค่าตั้งครั้งเดียว" (snapshotPolicy นอก tx · L-5)
- * แล้วเทียบลายนิ้วมือกับผลที่ quote ให้ลูกค้า — ไม่ตรง ⇒ PRICE_CHANGED (ไม่ประกอบ snapshot จากของสองชุด)
- * snapshot ที่คืน: นโยบาย (policy.trips.values) · บรรทัด · ยอด · ตารางยกเลิก · งวด มาจากการอ่านครั้งเดียวกัน · T0.6 เก็บเงินตาม snapshot.totals
+ * ประกอบ «TripsBookingSnapshot v1» ตอนยืนยันการจอง — ทางเลือก (b) ของมติ r2 ข้อ 6 + มติ r3 ข้อ 1
+ * - นาฬิกา: คิดราคาใหม่ ณ **เวลาจอง** = `ctx.now ?? new Date()` (ไม่ใช่เวลา quote) · อ่านค่าตั้งครั้งเดียวด้วย snapshotPolicy("trips.booking") ที่เวลาเดียวกัน
+ *   ⇒ นโยบาย (policy.trips.values) · บรรทัด · ยอด · ตารางยกเลิก · งวด มาจากการอ่านครั้งเดียวกัน
+ * - เทียบ sha256(ลายนิ้วมือใหม่) กับ `quoted.quotedFingerprint` (= `TripQuoteLine.fingerprint` ที่ Sellable.quote คืน) — ไม่ตรง ⇒ PRICE_CHANGED
+ *   ลายนิ้วมือไม่ขึ้นกับนาฬิกา (งวดตอนจองทำเครื่องหมาย dueAtBooking) ⇒ ไม่มีอะไรเปลี่ยน = ผ่าน แม้ข้ามเที่ยงคืน · PRICE_CHANGED เฉพาะเมื่อสิ่งที่กระทบราคาเปลี่ยนจริง
+ *   (ราคา/ฤดู/กฎ/ค่าตั้ง VAT·งวด·ตารางยกเลิก · หรือกติกาที่ผูกวันจอง เช่น EARLY_BIRD/ช่วงจอง/โค้ดหมดอายุ/งวดยุบเป็นงวดเดียว — ถูกต้องตามจริง)
+ * - เข้ากันได้: ส่ง PricedQuote ทั้งก้อน (จาก quoteTripLine) แทนได้ — เทียบลายนิ้วมือของก้อนนั้น
+ * - 🔴 เรียก **นอก** ธุรกรรมของผู้เรียกเสมอ (ก่อน T0.6 เปิด tx · L-5): ใช้การเชื่อมต่อของ pool เอง (tenantDb + snapshotPolicy) — ใน tx จะกินการเชื่อมต่อเพิ่มและไม่เห็นสิ่งที่ tx เขียน
+ * - ไม่ตรวจเวลาหมดอายุของ quote (T0.6 ตรวจ `now ≤ quote.expiresAt` เองก่อนเรียก) · ไม่เขียนฐาน
+ * - ยอดที่ T0.6 เก็บเงิน/ตัดโค้ด = จาก snapshot ที่คืนนี้ (`totals` · `promo` ในบรรทัด) ไม่ใช่จาก quote
  */
-export async function buildTripBookingSnapshot(ctx: SellCtx, line: LineRequest, priced: PricedQuote, opts?: QuoteLineOpts): Promise<SellResult<TripsBookingSnapshot>> {
+export async function buildTripBookingSnapshot(ctx: SellCtx, line: LineRequest, quoted: QuotedRef | PricedQuote, opts?: QuoteLineOpts): Promise<SellResult<TripsBookingSnapshot>> {
   const pr = await priceOf(ctx, line, opts);
   if (!pr.ok) return pr;
   const { input, tripsPolicy, priced: fresh } = pr.value;
-  if (!isRec(priced) || !Array.isArray(priced.items) || !isRec(priced.totals) || !Array.isArray(priced.paymentSchedule)) return fail("VALIDATION", "ผลราคาที่ส่งมาไม่ครบ", { reason: "INVALID_INPUT" });
-  let quoted: string;
-  try {
-    quoted = priceFingerprint(input, priced);
-  } catch {
-    return fail("VALIDATION", "ผลราคาที่ส่งมาไม่ครบ", { reason: "INVALID_INPUT" });
-  }
-  const current = priceFingerprint(input, fresh);
-  if (quoted !== current) {
-    const h = (x: string) => createHash("sha256").update(x).digest("hex");
-    return fail("PRICE_CHANGED", "ราคาหรือเงื่อนไขเปลี่ยนตั้งแต่เสนอราคา — เสนอราคาใหม่ก่อนจอง", { quotedFingerprint: h(quoted), currentFingerprint: h(current) });
-  }
+  const current = sha(priceFingerprint(input, fresh));
+  let quotedHash: string;
+  let policyAt: string | null = null;
+  if (isRec(quoted) && "quotedFingerprint" in quoted) {
+    const q = QUOTED.safeParse(quoted);
+    if (!q.success) return fail("VALIDATION", "ข้อมูลอ้างอิงใบเสนอราคาไม่ถูกต้อง", { reason: "INVALID_INPUT" });
+    quotedHash = q.data.quotedFingerprint;
+    policyAt = q.data.policyAt ?? null;
+  } else if (isRec(quoted) && Array.isArray(quoted.items) && isRec(quoted.totals) && Array.isArray(quoted.paymentSchedule)) {
+    try {
+      quotedHash = sha(priceFingerprint(input, quoted));
+    } catch {
+      return fail("VALIDATION", "ผลราคาที่ส่งมาไม่ครบ", { reason: "INVALID_INPUT" });
+    }
+  } else return fail("VALIDATION", "ผลราคาที่ส่งมาไม่ครบ", { reason: "INVALID_INPUT" });
+  if (quotedHash !== current) return fail("PRICE_CHANGED", "ราคาหรือเงื่อนไขเปลี่ยนตั้งแต่เสนอราคา — เสนอราคาใหม่ก่อนจอง", { quotedFingerprint: quotedHash, currentFingerprint: current });
   const flags = (opts?.flags ?? undefined) as SnapshotFlags | undefined;
   try {
     const snap = toTripsSnapshot({ input, priced: fresh, policy: { trips: tripsPolicy, agency: input.agency?.policySnapshot ?? null }, ...(flags ? { flags } : {}) });
-    return { ok: true, value: snap };
+    return { ok: true, value: { ...snap, quote: { fingerprint: current, policyAt } } };
   } catch (e) {
     if (e instanceof SnapshotKeyMissing) return fail("VALIDATION", REASON_TH.SETTINGS_INVALID, { reason: "SETTINGS_INVALID", key: e.key });
     throw e;

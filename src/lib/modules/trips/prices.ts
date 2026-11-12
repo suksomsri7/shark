@@ -6,6 +6,7 @@
 // 🔴 tenantDb({tenantId, unitId}) เท่านั้น ⇒ id ของร้าน/หน่วยอื่น = NOT_FOUND ข้อความเดียว
 // 🔴 ไม่ลบแถวฤดูกาล/กฎ/โค้ด (ARCHIVED · active=false) · TripPrice ลบได้ (ช่องคีย์ต้องใช้ซ้ำ) แต่ต้องมีเหตุผล + audit ค่าก่อนลบ
 // 🔴 ทุกการเขียน: audit `trips.price.*` (ไม่มีข้อมูลบุคคล) + event `trips.price.changed` ในธุรกรรมเดียวกัน
+// นาฬิกา: `ctx.now ?? new Date()` (อ่านค่าตั้ง T3 · คีย์ event ของการลบราคา) · แต่ละบริการเปิดธุรกรรมของตัวเอง (ไม่ใช่ *InTx)
 // ─────────────────────────────────────────────────────────────
 import { Prisma, type TripPrice } from "@prisma/client";
 import { z } from "zod";
