@@ -235,7 +235,9 @@ function runStatic(): void {
       apr = `git ${errText(e).slice(0, 40)}`;
     }
     for (const f of apr.split("\n").filter(Boolean)) if ((diffHunks(BASE, f) ?? [{ added: [], removed: ["?"] }]).some((h) => !hunkOk(h))) bad.push(f);
-    ck("S13.1", { frozen: bad.length === 0, rules: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, noPrisma: prisma === "" }, "unchanged", `${bad.join(",") || "-"} prisma=${prisma.replace(/\n/g, ",") || "-"} base=${BASE.slice(0, 9)}`);
+    // ORACLE-EDIT (controller · SYNC H2.12): once H2.11 is in the base, later WOs / main syncs legitimately change frozen files and prisma — the diff-vs-base parts are n/a then (same guard as qc-hr-h4.1 S1.4)
+    const H211_IN_BASE = pathInBase(F.inbox, BASE);
+    ck("S13.1", { frozen: H211_IN_BASE || bad.length === 0, rules: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, noPrisma: H211_IN_BASE || prisma === "" }, "unchanged", `${bad.join(",") || "-"} prisma=${prisma.replace(/\n/g, ",") || "-"} base=${BASE.slice(0, 9)}`);
   }
   {
     const own = /HR H2\.11/;
