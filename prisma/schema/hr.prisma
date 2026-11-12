@@ -720,5 +720,6 @@ model HrAttendanceAlert {
 
   @@unique([employeeId, rosterEntryId, kind])
   @@index([systemId, firedAt])
+  @@index([systemId, date]) // HR H2.5 r2 ▸ ตัวงานอ่านการเตือนของช่วงวัน D−7…D (migration 20261230000002) ◂
   @@index([tenantId])
 }
