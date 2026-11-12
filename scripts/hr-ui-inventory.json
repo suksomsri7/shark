@@ -3802,6 +3802,58 @@
    "note": "แถวยอดวันลาต่อประเภท (id ประเภทการลา)"
   },
   {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-leave-impact",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ดูคำใบ้ (OWNER · MANAGER ในสาขา · hr.leave.decide ในสาขา) และใบรอ/ใบอนุมัติที่ยังไม่จบมีกะที่ประกาศแล้ว",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.1",
+   "oracle": "qc-hr-h4.1",
+   "note": "บรรทัด \"กระทบ:\" ต่อกะของใบลา — ยังมี n คน / ขาด 1 คน → ระบบเสนอ (ภาพ 05)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/leave",
+   "testid": "hr-leave-impact-candidate-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "กะที่ไม่มีคนอยู่ต่อ (others = 0) และมีคนว่างอย่างน้อย 1 คน",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.1",
+   "oracle": "qc-hr-h4.1",
+   "note": "คนแรกที่ระบบเสนอ (id พนักงาน) + ชั่วโมงสัปดาห์ก่อน → หลัง"
+  },
+  {
    "page": "/app/sys/[id]/hr/settings",
    "testid": "hr-settings-policy-min-service",
    "kind": "input",

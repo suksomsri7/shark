@@ -315,6 +315,15 @@
       "colUsed": "Used",
       "colLeft": "Left"
     },
+    "leaveImpact": {
+      "title": "Shift impact",
+      "uncovered": "Affects: shift {date} ({time}) — 1 person short → suggested",
+      "covered": "Affects: shift {date} ({time}) — {n} still on shift · no cover needed",
+      "candidate": "{name} (week hours {from} → {to} h)",
+      "noCandidate": "nobody free in this branch yet",
+      "incomplete": "Too many shifts to check fully — please review the roster before approving",
+      "checkManually": "Affects: shift {date} ({time}) — please check cover in the roster"
+    },
     "law": {
       "title": "Law tables",
       "desc": "Social security · withholding tax · allowances · OT — one SHARK-wide table shared by every shop and branch",
