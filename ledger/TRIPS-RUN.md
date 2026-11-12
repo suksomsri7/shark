@@ -32,10 +32,11 @@
 | P0.1 | ✅ | ทรี + 2 เลน + ฐาน QC 3 ตัว + `qc-trips.sh` (e14585342) · ฟิกซ์เจอร์ `scripts/trips-fixture.mts` + `seed-trips-qc.mts` + ข้อสอบ 56/56 บนฐานหลัก (merge 5db329246) · บันทึก `ledger/wo-notes/trips-P0.1.md` |
 | P0.2 | ✅ | `ledger/TRIPS-DEFAULTS.md` (122 ค่าตั้ง · 46 คำเตือน + ภาคผนวก ก 27 คีย์ที่สัญญาเพิ่ม) · ผู้ตรวจอิสระเทียบกับสัญญาแล้ว |
 | P0.3 | ✅ | `ledger/TRIPS-CORE-CONTRACT.md` รอบ 2 (48b243186) · ผู้ตรวจอิสระ 2 รอบ: r1 FIX FIRST (3 BLOCKER) → r2 **READY** (ไม่เหลือ BLOCKER · N-1…N-11 = หนี้มีด่าน §3) · รายงาน `ledger/wo-notes/trips-P0.3-review-r1.md` `-r2.md` |
-| T0.1 | 🔄 | ผู้สร้างเลน l1 (เริ่ม 12 พ.ย. ~10Z) · **ใบสั่ง `ledger/trips-briefs/T0.1.md` + ข้อสอบ `scripts/qc-trips-t0.1.mts` 96 ข้อ พร้อมแล้ว** (แดง 90 ก่อนสร้าง · ผู้คุมรันเอง) · มติคำถามเปิด 21 ข้อ = ท้ายใบสั่ง §8 |
+| T0.1 | 🧪 | สร้างเสร็จ WIP 26b601500 (เลน l1 · ข้อสอบ 94/96 + ORACLE-EDIT T-4/F-1) → ผู้ตรวจ + นักล่า กำลังรัน → รอบแก้ (รวมคอลัมน์จาก T0.4) → ด่านผู้คุม · **ใบสั่ง `ledger/trips-briefs/T0.1.md` + ข้อสอบ `scripts/qc-trips-t0.1.mts` 96 ข้อ พร้อมแล้ว** (แดง 90 ก่อนสร้าง · ผู้คุมรันเอง) · มติคำถามเปิด 21 ข้อ = ท้ายใบสั่ง §8 |
 | T0.2 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.2.md` (มติ §11–§12) + ข้อสอบ `scripts/qc-trips-t0.2.mts` 84 ข้อ (แดง 79) พร้อม · รอ T0.1 merge |
 | T0.3 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.3.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.3.mts` 116 ข้อ (แดง 110) พร้อม · รอ T0.1 merge (ขนานกับ T0.2 ได้) |
-| ที่เหลือ 66 ใบ | ⬜ | ตาม MASTER-PLAN §3/§4 |
+| T0.4 | ⏸ | ใบสั่ง `ledger/trips-briefs/T0.4.md` (มติ §12) + ข้อสอบ `scripts/qc-trips-t0.4.mts` 110 ข้อ (แดง) พร้อม · รอ T0.3 |
+| ที่เหลือ 65 ใบ | ⬜ | ตาม MASTER-PLAN §3/§4 |
 
 ภาพ: ชุด M1 วาดแล้ว = จอ 16–20 (e6b3a7a9f · ผู้คุมเปิดดูครบ 5 จอ · รอเจ้าของดู OQ1) · ที่เหลือ (TA §12.3 ชุด 4–7 · 9 · ค่าตั้ง agency/ticket) วาดก่อนใบของเฟสนั้น
 
@@ -67,3 +68,5 @@
 - 2026-11-12 ~10:0xZ · มติเจ้าของ · เริ่มสร้าง T0.1 และใบถัดไปได้โดยไม่รอ ON_MAIN · กติกาอื่นคงเดิม (ห้าม push main · ห้ามใช้เลน SVC) ⇒ ปล่อยผู้สร้าง T0.1 (l1) + ผู้เขียนใบสั่ง/ข้อสอบ T0.2 (l2) · ⚠️ เมื่อ merge main ทีหลัง: ส่วนโรงแรม/CRM/POS ใน main จะต่างจากฐาน release ที่ทรีนี้แตกมา — ต้องรัน regression ซ้ำ
 - 2026-11-12 ~11:1xZ · T0.2 · ใบสั่ง+ข้อสอบ merge · มติ: ไม่มีการลบแถวจริง · `paxPrices` ต่อประเภทคน · คอลัมน์เพิ่มใน migration T0.1 (TripExtra name/note/active/sortOrder/paxPrices · TripPaxType active/sortOrder · TripOption sortOrder · TripProduct publishedAt) สั่งผู้สร้าง T0.1 แล้ว · หนี้ภาพ: จอ 17 เขียนค่าอุทยานราชา "300 / 600" สลับกับจอ 16/01 (ผู้ใหญ่ 600 เด็ก 300) — แก้ภาพก่อน T1.1
 - 2026-11-12 ~11:4xZ · T0.3 · ใบสั่ง+ข้อสอบ merge · คอลัมน์เพิ่มใน migration T0.1: TripSchedule pausedAt + dateTo nullable · TripDeparture cancelReason/cancelledAt · unique บางส่วน (scheduleId, localDate) · หนี้เอกสารสัญญา: §G ไม่มีผังสถานะรอบ · `trips.minPaxCheck` ย้ายจาก T1.2 มา T0.3 (15 นาที) · `jobs.ts` ย้ายจาก T0.4 มา T0.3 · หนี้ภาพจอ 11: รายการ "ต้องตัดสินใจ" ไม่มี พีพี จ. 16 (9/30 ต่ำกว่าขั้นต่ำ 10) · จอ 11 รถตู้ 2 คัน vs จอ 16 3 คัน
+- 2026-11-12 ~12:3xZ · T0.1 · ผู้สร้างส่งงาน (94/96 · fitness 53/53 ×2 · tsc src สะอาด) · ORACLE-EDIT t0.1 **T-4** (regex `Minor$` จับ `isMinor` Bool) · **F-1** (`null ?? "ไม่มีช่อง"` ไม่มีทางผ่าน) · p0.1 บรรทัด 98 cast env (TS2769) · ⚠️ `migrate diff` จะเสนอ DROP INDEX ของ unique NULLS NOT DISTINCT 3 ตัว (TripDeparture · TripPrice · TripLinkStat) ทุกครั้ง — ห้ามรับ (จดในใบสั่งของ A1.1/K1.1/L1.1) · b.0 แดง 4 (M-1 · G-7 · G-8 · G-9) ต้องรันเทียบฐานก่อนแก้ตอนรับใบ
+- 2026-11-12 ~12:3xZ · T0.4 · ใบสั่ง+ข้อสอบ merge · มติ: เพิ่ม CHECK sold+held+reserved ≤ capacity (กลับมติ T0.1 §7 ข้อ 16) + ของ TripWaitlist/TripHold/guaranteedAt เข้า migration T0.1 รอบแก้
