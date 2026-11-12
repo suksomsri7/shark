@@ -866,6 +866,10 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "trips.departure.status": "เปิด/ปิดรับ ยืนยันออก และยกเลิกรอบ",
       "trips.resource.edit": "จัดการเรือ รถ ไกด์",
       // ◂ TRIPS T0.3
+      // ── T0.5 pricing ── TRIPS T0.5 ▸ ราคา ฤดูกาล โปรโมชัน · ราคาแก้มือ ◂
+      "trips.price.edit": "ตั้งราคา ฤดูกาล และโปรโมชันทัวร์",
+      "trips.price.override": "แก้ราคามือในการจอง",
+      // ── /T0.5 pricing ──
     },
   },
 ] as const;

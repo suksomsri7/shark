@@ -1520,6 +1520,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.departure.below_min": withAutomation(async () => {}),
   "trips.departure.cancelled": withAutomation(async () => {}),
   // ◂ TRIPS T0.3
+  // ── T0.5 pricing ── TRIPS T0.5 ▸ ราคา/โค้ดส่วนลด — ยิงจาก trips/prices.ts · trips/promo.ts ในธุรกรรมเดียวกับงานหลัก ·
+  //   payload = id/จำนวน/สตางค์ล้วน (ไม่มีตัวโค้ด/ผู้ติดต่อ) · งานหลัก no-op + กฎอัตโนมัติ/เว็บฮุค ◂
+  "trips.price.changed": withAutomation(async () => {}),
+  "trips.promo.redeemed": withAutomation(async () => {}),
+  "trips.promo.exhausted": withAutomation(async () => {}),
+  // ── /T0.5 pricing ──
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —
