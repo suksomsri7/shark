@@ -1002,6 +1002,9 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpe
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   return tenantDb(ctx).$transaction(async (t): Promise<ClaimResult> => {
     const tx = t as unknown as Prisma.TransactionClient;
+    // HR H2.5 r3 ▸ ล็อกงวดก่อนล็อกแถว (คีย์เดียวกับสร้างรอบ/คิดผลการลงเวลาใหม่ — judge.ts#recomputeAttendanceDay) ⇒ คิดผลใหม่ ∥ อนุมัติ ต่อคิวกัน ◂
+    const per = await tx.hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } }); // HR H2.5 r3 ◂
+    if (per) await lockRunPeriod(tx, ctx, per.periodKey); // HR H2.5 r3 ◂
     const cur = await lockRunRow(tx, ctx, runId);
     if (!cur) return { code: "NOT_FOUND" };
     if (cur.status !== "DRAFT") return { code: "NOT_DRAFT", actual: await runActual(tx, ctx, cur) };
@@ -1217,6 +1220,9 @@ export async function reverseRun(
 //      ได้ทางชนิดเท่านั้น (runtime มี outboxEvent ครบ และ OutboxEvent อยู่ในทะเบียน scope แบบ tenant)
 export async function markPaid(ctx: Ctx, runId: string): Promise<{ ok: boolean; note: string }> {
   const paid = await tenantDb(ctx).$transaction(async (tx) => {
+    // HR H2.5 r3 ▸ ล็อกงวดก่อนเปลี่ยนสถานะ (คีย์เดียวกับคิดผลการลงเวลาใหม่) ◂
+    const per = await tx.hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } }); // HR H2.5 r3 ◂
+    if (per) await lockRunPeriod(tx as unknown as Prisma.TransactionClient, ctx, per.periodKey); // HR H2.5 r3 ◂
     const upd = await tx.hrPayrollRun.updateMany({
       where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "APPROVED" },
       data: { status: "PAID" },
