@@ -152,3 +152,51 @@ export { runGenerateDepartures, runMinPaxCheck } from "./jobs";
 export type { TripJobOpts, TripJobFailure } from "./jobs";
 // ◂ TRIPS T0.3
 // ── /T0.3 departures ──
+// ── T0.4 capacity ──
+// TRIPS T0.4 ▸ ที่ว่าง (R2) · ถือ/แปลง/ปล่อย/คืน/ย้าย · เพดานถือ · ตัวกวาด · รายการรอ · Sellable เฟส 1 (ใบสั่ง ledger/trips-briefs/T0.4.md §3) ◂
+export {
+  HOLD_STATUSES,
+  HOLD_PURPOSES,
+  WAITLIST_STATUSES,
+  canTransitionHold,
+  canTransitionWaitlist,
+  publicLeftOf,
+  holdExpiresAt,
+  sortCapacityRows,
+  idemKeyFor,
+} from "./capacity-core";
+export type { HoldStatus, HoldPurpose, WaitlistStatus, HoldDurations, CounterShape } from "./capacity-core";
+export {
+  CapacityAbort,
+  expectRows,
+  holdCapKeyHash,
+  holdRequestHash,
+  getAvailability,
+  listAvailability,
+  placeHold,
+  extendHold,
+  releaseHold,
+  releaseHoldInTx,
+  convertHold,
+  convertHoldInTx,
+  returnSold,
+  returnSoldInTx,
+  moveSold,
+  moveSoldInTx,
+  reserveSeatsInTx,
+  unreserveSeatsInTx,
+  holdFromReservedInTx,
+  unholdToReservedInTx,
+  capacityRowsOf,
+  reserveInTx,
+  acquireHoldCapInTx,
+  rekeyHoldsToContactInTx,
+} from "./capacity";
+export type { AvailabilityValue, PlaceHoldValue, ConvertValue, ReleaseValue, CountersValue, MoveValue } from "./capacity";
+export { joinWaitlist, leaveWaitlist, declineWaitlistOffer, offerWaitlist, listWaitlist, onWaitlistTrigger } from "./waitlist";
+export type { JoinValue, ExitValue, WaitlistItem } from "./waitlist";
+export { tripSellable } from "./sellable-impl";
+export { runExpireHolds, runWaitlistOffers } from "./jobs";
+export type { CapacityJobOpts } from "./jobs";
+// ◂ TRIPS T0.4
+// ── /T0.4 capacity ──

@@ -1520,6 +1520,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.departure.below_min": withAutomation(async () => {}),
   "trips.departure.cancelled": withAutomation(async () => {}),
   // ◂ TRIPS T0.3
+  // ── T0.4 capacity ── TRIPS T0.4 ▸ ที่นั่งทัวร์ (ใบสั่ง T0.4 §7) — ยิงจาก `trips/capacity.ts` ใน tx เดียวกับ CAS/ตัวนับ · payload id/จำนวน/ช่องทาง/สตางค์ล้วน (X8)
+  //   hold.expired ⇒ เสนอที่ให้รายการรอ (onWaitlistTrigger · ใต้ล็อกรอบ · ซ้ำ = ผลเดียว X4) · ที่เหลือ no-op (กฎอัตโนมัติ/เว็บฮุค)
+  "trips.hold.created": withAutomation(async () => {}),
+  "trips.hold.expired": withAutomation(async (evt) => (await import("@/lib/modules/trips")).onWaitlistTrigger(evt)),
+  "trips.waitlist.offered": withAutomation(async () => {}),
+  "trips.booking.expired": withAutomation(async () => {}),
+  // ── /T0.4 capacity ──
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —

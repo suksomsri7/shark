@@ -14,6 +14,11 @@ import { logOps } from "@/lib/core/ops";
 import { errorCodeOf, evaluateMinPaxCore, materializeCore } from "./departures";
 import { addDaysYmd } from "./departures-core";
 import { isFail, systemGate } from "./resources";
+// ── T0.4 capacity ── (ตัวกวาดหมดเวลา · เสนอที่รายการรอ)
+import { SWEEP_PAGE_SIZE } from "./capacity-core";
+import { CapacityAbort, expireDepartureHolds } from "./capacity";
+import { offerWaitlistForDeparture } from "./waitlist";
+// ── /T0.4 capacity ──
 
 export type TripJobOpts = { tenantIds?: string[]; signal?: AbortSignal };
 export type TripJobFailure = { tenantId: string; unitId?: string; scheduleId?: string; departureId?: string; code: string };
@@ -105,3 +110,86 @@ export async function runMinPaxCheck(
   await reportFailures("trips.minPaxCheck", out.failed);
   return out;
 }
+
+// ── T0.4 capacity ──
+// ใบสั่ง ledger/trips-briefs/T0.4.md §3.7 §4 ข้อ 5 · CC §D.4 — อ่านอย่างเดียวด้วย prisma ดิบ (หา tenant/unit/รอบ "ก่อนรู้ร้าน") แล้วเขียนต่อรอบด้วย tenantDb (capacity.ts/waitlist.ts)
+// แยกความล้มต่อรอบ/ร้าน (failed[] · รหัสสั้น) · เคารพ signal + deadline · สองรอบซ้อน = ผลเดียว (CAS ในบริการ · X5)
+export type CapacityJobOpts = TripJobOpts & { deadline?: number };
+const capCodeOf = (e: unknown) => (e instanceof CapacityAbort ? e.code : errorCodeOf(e));
+const stopped = (opts?: CapacityJobOpts) => opts?.signal?.aborted === true || (typeof opts?.deadline === "number" && Date.now() >= opts.deadline);
+
+/**
+ * อ่าน hold ครบกำหนดไม่ล็อก (status ACTIVE ∧ expiresAt ≤ now · เรียง departureId, id · หน้าละ 200 · ดัชนีบางส่วน) → tx ละรอบ (expireDepartureHolds)
+ * วนหน้าจนหมด · รอบที่ล้ม/ไม่มีความคืบหน้า (คนอื่นกวาดไปแล้ว) ถูกข้ามในหน้าถัดไป ⇒ จบเสมอ
+ */
+export async function runExpireHolds(
+  now: Date,
+  opts?: CapacityJobOpts,
+): Promise<{ expired: number; departures: number; offered: number; failed: TripJobFailure[] }> {
+  const out = { expired: 0, departures: 0, offered: 0, failed: [] as TripJobFailure[] };
+  const skip = new Set<string>();
+  while (!stopped(opts)) {
+    const due = await prisma.tripHold.findMany({
+      where: {
+        status: "ACTIVE",
+        expiresAt: { lte: now },
+        ...(opts?.tenantIds ? { tenantId: { in: opts.tenantIds } } : {}),
+        ...(skip.size ? { departureId: { notIn: [...skip] } } : {}),
+      },
+      select: { id: true, tenantId: true, unitId: true, departureId: true },
+      orderBy: [{ departureId: "asc" }, { id: "asc" }],
+      take: SWEEP_PAGE_SIZE,
+    });
+    if (!due.length) break;
+    const groups = new Map<string, { tenantId: string; unitId: string; departureId: string; ids: string[] }>();
+    for (const h of due) {
+      const k = `${h.tenantId}|${h.unitId}|${h.departureId}`;
+      const grp = groups.get(k) ?? { tenantId: h.tenantId, unitId: h.unitId, departureId: h.departureId, ids: [] };
+      grp.ids.push(h.id);
+      groups.set(k, grp);
+    }
+    for (const grp of groups.values()) {
+      if (stopped(opts)) break;
+      try {
+        const r = await expireDepartureHolds(grp.tenantId, grp.unitId, grp.departureId, grp.ids, now);
+        out.expired += r.expired;
+        out.offered += r.offered;
+        if (r.expired > 0) out.departures++;
+        else skip.add(grp.departureId);
+      } catch (e) {
+        out.failed.push({ tenantId: grp.tenantId, unitId: grp.unitId, departureId: grp.departureId, code: capCodeOf(e) });
+        skip.add(grp.departureId);
+      }
+    }
+  }
+  await reportFailures("trips.expireHolds", out.failed);
+  return out;
+}
+
+/** รอบที่มี WAITING ⇒ เสนอที่ (FIFO เคร่ง · ใต้ล็อกรอบ) · ช่องทาง WEB ปิดรับ/เริ่มแล้ว/รอบยกเลิก ⇒ WAITING → EXPIRED (ตัวสำรองของการเสนอทันที) */
+export async function runWaitlistOffers(
+  now: Date,
+  opts?: CapacityJobOpts,
+): Promise<{ departures: number; offered: number; expired: number; failed: TripJobFailure[] }> {
+  const out = { departures: 0, offered: 0, expired: 0, failed: [] as TripJobFailure[] };
+  const deps = await prisma.tripWaitlist.findMany({
+    where: { status: "WAITING", ...(opts?.tenantIds ? { tenantId: { in: opts.tenantIds } } : {}) },
+    distinct: ["departureId"],
+    select: { tenantId: true, unitId: true, departureId: true },
+    orderBy: [{ departureId: "asc" }],
+  });
+  for (const d of deps) {
+    if (stopped(opts)) break;
+    try {
+      const r = await offerWaitlistForDeparture(d.tenantId, d.unitId, d.departureId, now, "trips.waitlistOffers");
+      out.departures++;
+      out.offered += r.offered.length;
+      out.expired += r.expired;
+    } catch (e) {
+      out.failed.push({ tenantId: d.tenantId, unitId: d.unitId, departureId: d.departureId, code: capCodeOf(e) });
+    }
+  }
+  await reportFailures("trips.waitlistOffers", out.failed);
+  return out;
+}
+// ── /T0.4 capacity ──
