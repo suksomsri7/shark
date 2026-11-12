@@ -477,9 +477,11 @@ model HrTimeCorrection {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   // HR H2.6 ▸ ADD = เพิ่มแถว · CHANGE = ยกเลิกแถวเดิม + แถวใหม่ชนิดเดิม · VOID = ยกเลิกแถว · day = วันไทยของรอบ (วันของเข้างาน) ·
-  //   partial unique (SQL ดิบ): HrTimeCorrection_pending_target_key ("attendanceId") · HrTimeCorrection_pending_add_key ("employeeId","day","kind") ◂
+  //   partial unique (SQL ดิบ): HrTimeCorrection_attendanceId_pending_key ("attendanceId" — ของ H1.2 · ตัวซ้ำ pending_target_key ลบแล้ว r2) · HrTimeCorrection_pending_add_key ("employeeId","day","kind") ◂
   action             HrCorrectionAction @default(ADD)
   day                DateTime?        @db.Date
+  // HR H2.6 r2 ▸ มติ Q4: เจ้าของร้านยื่นแก้แถวพนักงานที่ผูกกับตัวเอง ⇒ ใช้ผลทันทีแต่ติดธงไว้ (migration 20270101000001) ◂
+  selfApplied        Boolean          @default(false)
 
   @@index([tenantId])
   @@index([systemId, status])
