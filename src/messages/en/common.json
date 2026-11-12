@@ -629,6 +629,96 @@
         "tplHelp": "One per line: key | title | due days (from start/end date) · up to 20",
         "save": "Save settings"
       }
+    },
+    "correction": {
+      "tab": "Time corrections",
+      "open": "Fix time",
+      "openSelf": "Request a fix",
+      "mineTitle": "My time corrections",
+      "actionLabel": "I want to",
+      "action": {
+        "ADD": "Add a missed punch",
+        "CHANGE": "Fix a wrong punch",
+        "VOID": "Remove a duplicate/wrong punch"
+      },
+      "kindLabel": "Punch type (for adding)",
+      "kind": {
+        "IN": "Clock in",
+        "OUT": "Clock out",
+        "BREAK_START": "Break start",
+        "BREAK_END": "Break end"
+      },
+      "kindShort": {
+        "IN": "in",
+        "OUT": "out",
+        "BREAK_START": "break start",
+        "BREAK_END": "break end"
+      },
+      "targetLabel": "Original punch (for fix/remove)",
+      "targetNone": "— none (add a new punch) —",
+      "timeLabel": "Correct date and time",
+      "reasonLabel": "Reason",
+      "hint": "Managers see the POS shift close as evidence · the original punch is kept in history",
+      "submit": "Send request",
+      "chip": "Time fix",
+      "onBehalf": "filed on behalf",
+      "filed": "Filed {at}",
+      "stamp": "{d} {month} {time}",
+      "dayLabel": "{dow} {d} {month}",
+      "headline": {
+        "ADD": "Forgot to clock {kind} {day}",
+        "CHANGE": "Wrong clock-{kind} time {day}",
+        "VOID": "Duplicate/wrong clock-{kind} {day}"
+      },
+      "original": "was {time}",
+      "propose": "Record clock-{kind} at",
+      "voidLine": "Remove this punch",
+      "evidence": "Evidence: {list}",
+      "evidenceShift": "POS shift #{no} closed {open}–{close} ✓",
+      "evidenceForced": "POS shift #{no} {open}–{close} (closed by system)",
+      "evidenceNone": "No POS evidence for that day",
+      "repeat": "{n} time-fix requests this month",
+      "status": {
+        "PENDING": "Pending",
+        "APPROVED": "Approved",
+        "REJECTED": "Rejected",
+        "CANCELLED": "Cancelled"
+      },
+      "approve": "Approve",
+      "reject": "Reject",
+      "cancel": "Cancel request",
+      "empty": "No time-correction requests yet",
+      "note": "Once approved the new time feeds attendance and payroll right away · the original stays in history · the filer and employee are notified",
+      "done": {
+        "sent": "Time-correction request sent",
+        "applied": "Time corrected",
+        "approved": "Time correction approved",
+        "rejected": "Time correction rejected",
+        "cancelled": "Time-correction request cancelled"
+      },
+      "dow": {
+        "sun": "Sun",
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat"
+      },
+      "months": {
+        "m1": "Jan",
+        "m2": "Feb",
+        "m3": "Mar",
+        "m4": "Apr",
+        "m5": "May",
+        "m6": "Jun",
+        "m7": "Jul",
+        "m8": "Aug",
+        "m9": "Sep",
+        "m10": "Oct",
+        "m11": "Nov",
+        "m12": "Dec"
+      }
     }
   }
 }

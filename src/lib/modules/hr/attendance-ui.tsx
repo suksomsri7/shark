@@ -90,7 +90,7 @@ function Recompute({ t, s, systemId, onRecompute }: { t: T; s: AttendanceSlotDto
 }
 
 /** แถบสลับมุมมอง (ทีมรายวัน · ปฏิทินรายคน) */
-export async function AttendanceViewTabs({ base, view, employeeId }: { base: string; view: "day" | "month"; employeeId?: string | null }) {
+export async function AttendanceViewTabs({ base, view, employeeId }: { base: string; view: "day" | "month" | "corrections" /* HR H2.6 ◂ */; employeeId?: string | null }) {
   const t = await getTranslations("hr.attendance");
   const cls = (on: boolean) => `inline-flex min-h-[44px] items-center rounded-[10px] px-3.5 text-sm ${on ? "bg-[color:var(--color-surface)] font-semibold shadow-sm" : muted}`;
   return (
@@ -100,6 +100,10 @@ export async function AttendanceViewTabs({ base, view, employeeId }: { base: str
       </a>
       <a href={`${base}?view=month${employeeId ? `&employee=${encodeURIComponent(employeeId)}` : ""}`} data-testid="hr-att-view-month" aria-current={view === "month" ? "page" : undefined} className={cls(view === "month")}>
         {t("view.month")}
+      </a>
+      {/* HR H2.6 ▸ แท็บคำขอแก้เวลา (การ์ด mockup 05) ◂ */}
+      <a href={`${base}?view=corrections`} data-testid="hr-att-view-corr" aria-current={view === "corrections" ? "page" : undefined} className={cls(view === "corrections")}>
+        {(await getTranslations("hr.correction"))("tab")}
       </a>
     </nav>
   );
@@ -123,6 +127,7 @@ export async function AttendanceDayView({
   onRecompute,
   clockForPanel,
   needs,
+  corrSlot,
 }: {
   board: AttendanceBoardDto;
   base: string;
@@ -130,6 +135,7 @@ export async function AttendanceDayView({
   onRecompute: FormFn | null;
   clockForPanel: ReactNode;
   needs: { count: number; days: { day: string; employeeId: string; name: string }[] } | null;
+  corrSlot?: ((employeeId: string) => ReactNode) | null; // HR H2.6 ▸ ปุ่ม "แก้เวลา" ต่อแถว (ฟอร์มยื่นแทน) ◂
 }) {
   const t = await getTranslations("hr.attendance");
   const unitQ = board.unitSel !== "all" ? `&unit=${encodeURIComponent(board.unitSel)}` : "";
@@ -265,8 +271,9 @@ export async function AttendanceDayView({
                   </span>
                   <span className="tabular-nums">{s.workedMin > 0 ? dur(s.workedMin) : "—"}</span>
                   <span className="tabular-nums">{s.otMin > 0 ? t("status.ot", { n: Math.round((s.otMin / 60) * 100) / 100 }) : "—"}</span>
-                  <span className="flex justify-end">
+                  <span className="flex flex-wrap justify-end gap-1">
                     <Recompute t={t} s={s} systemId={systemId} onRecompute={onRecompute} />
+                    {i === 0 && corrSlot ? corrSlot(r.employeeId) : null /* HR H2.6 ▸ แก้เวลา ◂ */}
                   </span>
                 </div>
               );
@@ -305,6 +312,7 @@ export async function AttendanceMonthView({
   people,
   onRecompute,
   self,
+  corrPanel,
 }: {
   month: AttendanceMonthDto;
   base: string;
@@ -312,6 +320,7 @@ export async function AttendanceMonthView({
   people: { id: string; name: string }[];
   onRecompute: FormFn | null;
   self: boolean;
+  corrPanel?: ReactNode; // HR H2.6 ▸ "ขอแก้เวลา" (ของตัวเอง/ยื่นแทนคนที่เลือก) ◂
 }) {
   const t = await getTranslations("hr.attendance");
   const first = month.days[0]?.day ?? `${month.month}-01`;
@@ -348,6 +357,7 @@ export async function AttendanceMonthView({
             ›
           </a>
         </div>
+        {corrPanel ? <div className="ml-auto">{corrPanel}</div> : null /* HR H2.6 ◂ */}
       </div>
       <div className={`flex flex-wrap items-center gap-4 text-[13px] ${muted}`}>
         <span>● {t("status.ON_TIME")}</span>
