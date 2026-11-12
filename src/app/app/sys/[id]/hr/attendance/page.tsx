@@ -12,9 +12,10 @@ import { canManageHrSettings } from "@/lib/modules/hr/settings";
 import { attendanceNeedsRecompute, JUDGE_TEXT, loadAttendanceBoard, loadAttendanceMonth, myAttendanceMonth } from "@/lib/modules/hr/judge";
 import { recomputeAttendanceDayAction } from "@/lib/modules/hr/attendance-actions";
 import { AttendanceDayView, AttendanceFlash, AttendanceMonthView, AttendanceViewTabs } from "@/lib/modules/hr/attendance-ui";
+import { thaiDateKey } from "@/lib/ui/date";
 import { PageHeader } from "@/components/ui/PageHeader";
 // HR H2.6 ▸ คำขอแก้เวลา: ฟอร์มยื่น (04A แถว · 04B) + ?view=corrections การ์ด mockup 05 · ผลส่งทาง URL เป็นรหัสสั้น (allowlist) ◂
-import { thaiDateKey } from "@/lib/ui/date";
+import { addDays as addDaysKey } from "@/lib/modules/hr/time-rules";
 import { correctablePunches, listCorrections, myCorrections, type CorrectablePunch } from "@/lib/modules/hr/correction";
 import { CORRECTION_TEXT } from "@/lib/modules/hr/correction-rules";
 import { cancelCorrectionAction, decideCorrectionAction, requestCorrectionForAction, requestMyCorrectionAction } from "@/lib/modules/hr/correction-actions";
@@ -95,6 +96,11 @@ export default async function HrAttendancePage({ params, searchParams }: { param
     redirect(`${corrBack("corrections")}&msg=${encodeURIComponent(msgOf(r, "c.cancelled"))}`);
   };
   const today = thaiDateKey(new Date());
+  /** แถวการลงเวลาที่อยู่ในวันนั้น ± 1 วัน (รอบข้ามเที่ยงคืน) — ให้ฟอร์มของแต่ละวันเลือกแถวเดิมได้ */
+  const near = (iso: string, day: string) => {
+    const k = thaiDateKey(new Date(iso));
+    return k >= addDaysKey(day, -1) && k <= addDaysKey(day, 1);
+  };
   const corrLink = (
     <a href={`${base}?view=corrections`} data-testid="hr-att-view-corr-self" className="btn btn-ghost min-h-[44px] text-sm">
       {tc("tab")}
@@ -145,12 +151,14 @@ export default async function HrAttendancePage({ params, searchParams }: { param
           people={[]}
           onRecompute={null}
           self
+          todayKey={thaiDateKey()}
           corrPanel={
             <div className="flex flex-wrap items-center gap-2">
               <CorrectionForm systemId={id} employeeId={null} day={today >= firstDay && today <= lastDay ? today : lastDay} punches={myPunches} onSubmit={onRequestMine} self />
               {corrLink}
             </div>
           }
+          corrFor={(day: string) => <CorrectionForm systemId={id} employeeId={null} day={day} punches={myPunches.filter((p) => near(p.at, day))} onSubmit={onRequestMine} self />}
         />
       </div>
     );
@@ -208,7 +216,9 @@ export default async function HrAttendancePage({ params, searchParams }: { param
             people={people}
             onRecompute={canRecompute ? onRecompute : null}
             self={false}
+            todayKey={thaiDateKey()}
             corrPanel={<CorrectionForm systemId={id} employeeId={month.employee.id} day={today >= mFirst && today <= mLast ? today : mLast} punches={mPunches} onSubmit={onRequestFor} self={false} /> /* HR H2.6 ◂ */}
+            corrFor={(day: string) => <CorrectionForm systemId={id} employeeId={month.employee.id} day={day} punches={mPunches.filter((p) => near(p.at, day))} onSubmit={onRequestFor} self={false} />}
           />
         ) : (
           <p className="text-sm text-[color:var(--color-muted)]">{t("empty")}</p>

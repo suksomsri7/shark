@@ -1,0 +1,103 @@
+[env] qc-hr-h4.4 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h4.4] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h4.4] lifecycle=loaded · base=6e57e0d00 (H4.4 in base)
+  ✅ [H4.4-S1.1] [static] migration last · enum 5 labels · no ALTER TYPE/DROP
+  ✅ [H4.4-S1.2] [static] 4 columns · CHECK note ≤ 500 · 2 indexes · note FK RESTRICT
+  ✅ [H4.4-S1.3] [static] hr.prisma enum + fields · note Restrict · task Cascade
+  ✅ [H4.4-S11.3] [static] no hrEmployee.delete in src
+  ✅ [H4.4-S12.1] [static] lifecycle-actions use server · 7 wrappers · no DB · no now:
+  ✅ [H4.4-S12.2] [static] remove + ENDED save → offboardEmployee
+  ✅ [H4.4-S12.3] [static] emit/audit blocks free of sensitive keys
+  ✅ [H4.4-S12.4] [static] bridge via links only · clean
+  ✅ [H4.4-S12.5] [static] AI + client files clean
+  ✅ [H4.4-S13.1] [static] testids 20 + 3 · tokens only · 44 px
+  ✅ [H4.4-S13.2] [static] inventory rows ⇄ testids
+  ✅ [H4.4-S13.3] [static] hr.life th = en
+  ✅ [H4.4-S13.5] [static] no new tab (layout + hrTabs as base)
+  ✅ [H4.4-S13.6] [static] mounts: profile · settings · register
+  ✅ [H4.4-S14.1] [static] marked hunks: consumers (3) · cron (now: new Date())
+  ✅ [H4.4-S14.2] [static] labels: 3 events once each
+  ✅ [H4.4-S15.1] [static] payroll-rules sha · 8 HR files unchanged
+  ✅ [H4.4-S16.11] [static] r2 sweep window ordered by due date
+  ✅ [H4.4-S12.6] [static] fitness-hr lists · fitness ×2 no env
+(node:119628) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H4.4-S2.1] policy defaults (14/30 · UNIT_MANAGER · kanban off · revoke ×2 · templates)
+  ✅ [H4.4-S2.2] owner save ⇒ read back · hrClock kept · audit
+  ✅ [H4.4-S2.3] settings validation texts
+  ✅ [H4.4-S2.4] settings viewers (mgr-all ok · shopWide · noPermission)
+  ✅ [H4.4-S3.1] sweep now=2030 ⇒ 0 (no today)
+  ✅ [H4.4-S3.2] sweep ⇒ exactly P1/P4/C1 · key · payload ids only · systemId
+  ✅ [H4.4-S3.3] rerun ⇒ 0 + quiet (outbox/audit) · next day ⇒ 0
+  ✅ [H4.4-S3.4] extension ⇒ one new alert
+  ✅ [H4.4-S3.5] bounded + fair: 60 ⇒ 50 then 60 · small system 3 in run 1
+  ✅ [H4.4-S4.1] lifecycleDue owner: exact keys · P1/P4/C1 · no ended
+  ✅ [H4.4-S4.2] lifecycleDue scope: mgr-u1 u1 only · others null
+  ✅ [H4.4-S4.3] confirmProbation · notProbation · noAccess
+  ✅ [H4.4-S5.1] offboard result: pinRevoked · cancelled 2/2/2 · spanning 1
+  ✅ [H4.4-S5.2] row ENDED + offboard* · PIN null
+  ✅ [H4.4-S5.3] leaves: future cancelled (+ approval) · spanning/past untouched
+  ✅ [H4.4-S5.4] swaps closed · roster after end deleted · OT untouched
+  ✅ [H4.4-S5.5] 1 event {employeeId,endDate} · no note/reason in outbox/audit
+  ✅ [H4.4-S5.6] 6 offboarding tasks · pin_revoked + app_access done · access revoked
+  ✅ [H4.4-S5.7] offboard validation texts · refusals write nothing
+  ✅ [H4.4-S5.8] offboard gate: noAccess ×4 (same bytes) · mgr-role in branch ok
+  ✅ [H4.4-S5.9] autoRevokePin=false: hash kept · verifyPin refused
+  ✅ [H4.4-S5.10] loadLifecycleForViewer keys · owner/mgr-u1 only
+  ✅ [H4.4-S6.1] after: verifyPin ×2 + kiosk refused · clock no row
+  ✅ [H4.4-S6.2] after: mobile · POS clockSelf/onShiftToday · kiosk list
+  ✅ [H4.4-S6.3] restore two-step: PIN stays null · history kept
+  ✅ [H4.4-S6.4] re-offboard: 2 events · overwritten
+  ✅ [H4.4-S7.1] notes: WRITTEN forced visible · REVIEW · NOTE hidden · ENDED ok
+  ✅ [H4.4-S7.2] note validation texts
+  ✅ [H4.4-S7.3] note non-viewers ×7 same noAccess · self
+  ✅ [H4.4-S7.4] listReviewNotes keys · non-viewers null
+  ✅ [H4.4-S7.5] myReviewNotes: own visible only · keys · peers none
+  ✅ [H4.4-S7.6] acknowledge once · hidden/peer noAccess
+  ✅ [H4.4-S7.7] note audits clean · no outbox
+  ✅ [H4.4-S8.1] startChecklist 7 · 1 event · idempotent · race
+  ✅ [H4.4-S8.2] listChecklist keys · setTaskDone on/off
+  ✅ [H4.4-S8.3] checklist non-viewers
+  ✅ [H4.4-S9.1] 3 consumers · kanban off ⇒ 0 cards
+  ✅ [H4.4-S9.2] milestone replay ×2 ⇒ 1 card (key · title)
+  ✅ [H4.4-S9.3] checklist replay ×2 ⇒ 1 card per open task · linked
+  ✅ [H4.4-S9.4] offboarded replay ×2 ⇒ open tasks once · no leak in cards
+  ✅ [H4.4-S10.1] [race] offboard waits on hr:clock · IN kept · ENDED
+  ✅ [H4.4-S10.2] [race] offboard ×4 ⇒ 1 ok · 1 event/audit · 6 tasks
+  ✅ [H4.4-S10.3] [race] sweep ∥ sweep ⇒ once each
+  ✅ [H4.4-S10.4] [race] offboard ∥ setPin ⇒ PIN null
+  ✅ [H4.4-S16.1] r2 STAFF clerk offboard ⇒ STAFF target access revoked in tx (membership · link · push · task)
+  ✅ [H4.4-S16.2] r2 MANAGER target: non-owner revoke refused (nothing written) · owner ok
+  ✅ [H4.4-S16.3] r2 OWNER-linked row: offboard refused for everyone (nothing written)
+  ✅ [H4.4-S16.4] r2 untick: non-owner refused when policy revokes · owner keeps ⇒ accessKept
+  ✅ [H4.4-S16.5] r2 self row: no hidden notes · no checklist · no offboard reason/note · tick/start refused
+  ✅ [H4.4-S16.6] [race] r2 clockSelf ∥ offboard ⇒ no IN row for the ENDED employee
+  ✅ [H4.4-S16.7] r2 decided approval request ⇒ leave CANCELLED · audit names the kept request
+  ✅ [H4.4-S16.8] r2 audits: offboard ids + in tx · checklist start · tick/untick · acknowledge
+  ✅ [H4.4-S16.9] r2 card assignee has HR rights · never the employee the card is about
+  ✅ [H4.4-S16.10] r2 only OWNER switches off autoRevokePin / revokeAppAccess
+  ✅ [H4.4-S16.12] r2 offboarding checklist refused on an ACTIVE employee
+  ✅ [H4.4-S16.13] r3 leave ledger: APPROVED 3d + PENDING 2d after end ⇒ year Σ = 10.0 · both CANCELLED · audit ids · re-run no-op
+  ✅ [H4.4-S16.14] r3 a PENDING leave left on an ENDED employee cannot be approved (no USE row)
+  ✅ [H4.4-S16.15] r3 due panel never lists the viewer's own row
+  ✅ [H4.4-S16.16] [static] r3 remove + ENDED save show the "account kept" message
+  ❌ [H4.4-S17.1] vis1 manager-by-role in branch: due panel (own branch only) · banner data · checklist read + tick — expected panel · banner · checklist · tick | actual due,banner,list,tick "" n=0 "" "" "คุณไม่มีสิทธิ์ดูหรือจัดการข้อมูลส่วนนี้ของพนักงานค"
+  ✅ [H4.4-S17.2] vis1 manager-by-role in branch: notes still null/refused · settings refused · start refused
+  ❌ [H4.4-S17.3] vis1 manager-by-role of another branch: no panel rows · banner/checklist null · tick refused — expected other branch: nothing | actual due "" "" "" "คุณไม่มีสิทธิ์ดูหรือจัดการข้อมูลส่วนนี้ของพนักงานค"
+  ✅ [H4.4-S11.1] [db] delete employee with note ⇒ 23503 · note kept
+  ✅ [H4.4-S11.2] [db] FK actions r/c
+  ✅ [H4.4-S15.2] [db] setEmployeeActive(false) keeps hash
+  ✅ [H4.4-S1.4] [db] 4 columns on the lane DB
+RESIDUE none (tenants=2 users=20)
+  ✅ [H4.4-Z1] no residue
+BASE-EXPECTATION 7/86 as registered (RED-by-design 81 · GREEN controls 5) · off: H4.4-S1.1(RED→pass) H4.4-S1.2(RED→pass) H4.4-S1.3(RED→pass) H4.4-S12.1(RED→pass) H4.4-S12.2(RED→pass) H4.4-S12.3(RED→pass) H4.4-S12.4(RED→pass) H4.4-S12.5(RED→pass) H4.4-S13.1(RED→pass) H4.4-S13.2(RED→pass) H4.4-S13.3(RED→pass) H4.4-S13.6(RED→pass) H4.4-S14.1(RED→pass) H4.4-S14.2(RED→pass) H4.4-S16.11(RED→pass) H4.4-S12.6(RED→pass) H4.4-S2.1(RED→pass) H4.4-S2.2(RED→pass) H4.4-S2.3(RED→pass) H4.4-S2.4(RED→pass) H4.4-S3.1(RED→pass) H4.4-S3.2(RED→pass) H4.4-S3.3(RED→pass) H4.4-S3.4(RED→pass) H4.4-S3.5(RED→pass) H4.4-S4.1(RED→pass) H4.4-S4.2(RED→pass) H4.4-S4.3(RED→pass) H4.4-S5.1(RED→pass) H4.4-S5.2(RED→pass) H4.4-S5.3(RED→pass) H4.4-S5.4(RED→pass) H4.4-S5.5(RED→pass) H4.4-S5.6(RED→pass) H4.4-S5.7(RED→pass) H4.4-S5.8(RED→pass) H4.4-S5.9(RED→pass) H4.4-S5.10(RED→pass) H4.4-S6.1(RED→pass) H4.4-S6.2(RED→pass) H4.4-S6.3(RED→pass) H4.4-S6.4(RED→pass) H4.4-S7.1(RED→pass) H4.4-S7.2(RED→pass) H4.4-S7.3(RED→pass) H4.4-S7.4(RED→pass) H4.4-S7.5(RED→pass) H4.4-S7.6(RED→pass) H4.4-S7.7(RED→pass) H4.4-S8.1(RED→pass) H4.4-S8.2(RED→pass) H4.4-S8.3(RED→pass) H4.4-S9.1(RED→pass) H4.4-S9.2(RED→pass) H4.4-S9.3(RED→pass) H4.4-S9.4(RED→pass) H4.4-S10.1(RED→pass) H4.4-S10.2(RED→pass) H4.4-S10.3(RED→pass) H4.4-S10.4(RED→pass) H4.4-S16.1(RED→pass) H4.4-S16.2(RED→pass) H4.4-S16.3(RED→pass) H4.4-S16.4(RED→pass) H4.4-S16.5(RED→pass) H4.4-S16.6(RED→pass) H4.4-S16.7(RED→pass) H4.4-S16.8(RED→pass) H4.4-S16.9(RED→pass) H4.4-S16.10(RED→pass) H4.4-S16.12(RED→pass) H4.4-S16.13(RED→pass) H4.4-S16.14(RED→pass) H4.4-S16.15(RED→pass) H4.4-S16.16(RED→pass) H4.4-S17.2(RED→pass) H4.4-S11.1(RED→pass) H4.4-S11.2(RED→pass) H4.4-S1.4(RED→pass)
+
+===== qc-hr-h4.4 ===== passed 84/86 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h4.4","total":86,"passed":84,"failed":["H4.4-S17.1","H4.4-S17.3"],"findings":[{"id":"H4.4-S17.1","sev":"CRITICAL"},{"id":"H4.4-S17.3","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":81,"baseGreen":5,"offBase":["H4.4-S1.1(RED→pass)","H4.4-S1.2(RED→pass)","H4.4-S1.3(RED→pass)","H4.4-S12.1(RED→pass)","H4.4-S12.2(RED→pass)","H4.4-S12.3(RED→pass)","H4.4-S12.4(RED→pass)","H4.4-S12.5(RED→pass)","H4.4-S13.1(RED→pass)","H4.4-S13.2(RED→pass)","H4.4-S13.3(RED→pass)","H4.4-S13.6(RED→pass)","H4.4-S14.1(RED→pass)","H4.4-S14.2(RED→pass)","H4.4-S16.11(RED→pass)","H4.4-S12.6(RED→pass)","H4.4-S2.1(RED→pass)","H4.4-S2.2(RED→pass)","H4.4-S2.3(RED→pass)","H4.4-S2.4(RED→pass)","H4.4-S3.1(RED→pass)","H4.4-S3.2(RED→pass)","H4.4-S3.3(RED→pass)","H4.4-S3.4(RED→pass)","H4.4-S3.5(RED→pass)","H4.4-S4.1(RED→pass)","H4.4-S4.2(RED→pass)","H4.4-S4.3(RED→pass)","H4.4-S5.1(RED→pass)","H4.4-S5.2(RED→pass)","H4.4-S5.3(RED→pass)","H4.4-S5.4(RED→pass)","H4.4-S5.5(RED→pass)","H4.4-S5.6(RED→pass)","H4.4-S5.7(RED→pass)","H4.4-S5.8(RED→pass)","H4.4-S5.9(RED→pass)","H4.4-S5.10(RED→pass)","H4.4-S6.1(RED→pass)","H4.4-S6.2(RED→pass)","H4.4-S6.3(RED→pass)","H4.4-S6.4(RED→pass)","H4.4-S7.1(RED→pass)","H4.4-S7.2(RED→pass)","H4.4-S7.3(RED→pass)","H4.4-S7.4(RED→pass)","H4.4-S7.5(RED→pass)","H4.4-S7.6(RED→pass)","H4.4-S7.7(RED→pass)","H4.4-S8.1(RED→pass)","H4.4-S8.2(RED→pass)","H4.4-S8.3(RED→pass)","H4.4-S9.1(RED→pass)","H4.4-S9.2(RED→pass)","H4.4-S9.3(RED→pass)","H4.4-S9.4(RED→pass)","H4.4-S10.1(RED→pass)","H4.4-S10.2(RED→pass)","H4.4-S10.3(RED→pass)","H4.4-S10.4(RED→pass)","H4.4-S16.1(RED→pass)","H4.4-S16.2(RED→pass)","H4.4-S16.3(RED→pass)","H4.4-S16.4(RED→pass)","H4.4-S16.5(RED→pass)","H4.4-S16.6(RED→pass)","H4.4-S16.7(RED→pass)","H4.4-S16.8(RED→pass)","H4.4-S16.9(RED→pass)","H4.4-S16.10(RED→pass)","H4.4-S16.12(RED→pass)","H4.4-S16.13(RED→pass)","H4.4-S16.14(RED→pass)","H4.4-S16.15(RED→pass)","H4.4-S16.16(RED→pass)","H4.4-S17.2(RED→pass)","H4.4-S11.1(RED→pass)","H4.4-S11.2(RED→pass)","H4.4-S1.4(RED→pass)"]}

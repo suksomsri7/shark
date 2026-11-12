@@ -1,0 +1,94 @@
+[env] qc-hr-h2.4 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.4] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.4] modules: clock=loaded · clock-rules=loaded · clock-settings=loaded
+  ✅ [H2.4-S5.10] [static] clock-actions.ts: use server · mobileClockAction + myClockStateAction · no DB import · no employeeId read
+  ✅ [H2.4-S6.6] [static] kioskClockAction reads employeeId · kioskClock + kiosk:<user> · scope hrScopeOf · no hr-kiosk: · clock.ts kioskClock → pin.ts verifier · KioskClock.tsx name list + PIN + testids
+  ✅ [H2.4-S10.2] [static] migration 000000 (backfill + normalise) · 000001 = ALTER TYPE only
+  ✅ [H2.4-S11.1] [static] client files (MobileClock · KioskClock · settings) carry no lat/lng/photoKey · callers never pass now:
+  ✅ [H2.4-S12.2] [control] payroll-rules.ts + rules.ts sha unchanged
+  ✅ [H2.4-S12.3] [control] pos-seam.ts byte-identical (Q2) · 4 seam names exported
+  ❌ [H2.4-S14.1] canRunKiosk matrix: OWNER · MANAGER (role, [] and [u1]) · STAFF hr.attendance.clock ([] and [u1]) · STAFF hr.* ⇒ true · plain member · STAFF leave.read/leave.request/payroll.read only · null ⇒ false — expected 6 true · 5 false | actual fn,yes,no yes=000000 no=00000
+  ❌ [H2.4-S14.2] [static] /hr/kiosk page: canRunKiosk(hrViewerOf(auth)) ⇒ notFound() before HrKioskSection · kioskClockAction: canRunKiosk refusal (fixed Thai text) before kioskClock( · assertCan kept — expected page gate · action gate first · assertCan kept · Thai fixed text | actual page,action,text gate=-1 sec=905 ref=-1 call=581
+  ✅ [H2.4-S1.1] [pure] distanceM haversine vectors (0 · 35 · 108 · 222 · 111 195 m, ±1)
+  ✅ [H2.4-S1.2] [pure] pickRosterEntry: 05:50 IN ⇒ 06:00 morning (not 22–06 night) · 21:30 ⇒ night · 16:00 ⇒ null · equal distance ⇒ the started one
+  ✅ [H2.4-S1.3] [pure] sessionState/nextKindOf: none⇒IN · linked IN 02:00 ⇒ OUT · end+240+1 ⇒ IN · unlinked IN yesterday ⇒ IN · BREAK_START ⇒ BREAK_END
+  ✅ [H2.4-S1.4] [pure] normalizeShiftTimes: 960/0/true ⇒ 960/1440/false · 22–06 and 07–15 unchanged
+  ✅ [H2.4-S1.5] [pure] workedMinutesWithBreaks: 07–15 with 30-min break = 450 · OUT while on break = 300
+  ✅ [H2.4-S1.6] [static] clock-rules.ts pure: no DB/service import, no argument-less new Date() · CLOCK_RULES = 120/240/30/90
+(node:128278) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── S2 roster ──
+  ✅ [H2.4-S2.1] [D13b] night 22–06: NEXT 21:58 ⇒ IN linked ON_TIME dueMin 1320 · NEXT 06:05 next day ⇒ OUT same rosterEntryId
+  ✅ [H2.4-S2.2] nextClockKind at 02:00 inside the night session ⇒ OUT
+  ✅ [H2.4-S2.3] linked IN judged vs the entry + HrShift.graceMin: 07:20 ⇒ LATE 20 dueMin 420 · 07:10 ⇒ ON_TIME 0
+  ✅ [H2.4-S2.4] tie-break: night IN 21:55 · OUT 05:50 stays on the night entry · IN 05:58 links the 06:00 morning entry
+  ✅ [H2.4-S2.5] session grace: NEXT at end+230 ⇒ OUT · another session at end+241 ⇒ IN (new session)
+  ✅ [H2.4-S2.6] unpublished entry is not linked (rosterEntryId null · legacy judgement NO_SCHEDULE)
+  ✅ [H2.4-S2.7] unrostered: IN 23:00 then NEXT 01:00 ⇒ IN (legacy calendar rule, Q3)
+── S3 dedupe / seam ──
+  ✅ [H2.4-S3.1] [MINOR-3] unlinked IN 23:59:40 then IN 00:00:10 ⇒ new row (deduped false · 2 rows)
+  ✅ [H2.4-S3.2] same session IN twice within 30 s ⇒ deduped · NEXT twice ⇒ deduped · 1 row each
+  ✅ [H2.4-S3.3] [control] POS clockSelf inside a caller tx ⇒ ok:true IN + row (seam shape unchanged)
+  ✅ [H2.4-S3.4] service.clock / nextClockKind / clockWithPin are the clock.ts functions (same export)
+── S7 settings ──
+  ✅ [H2.4-S7.1] first enable without acceptPdpaNotice ⇒ sNotice · with ⇒ ok · noticeAcceptedAt/ById · 1 audit hr.clock.notice_accepted
+  ✅ [H2.4-S7.2] validation: radius 10/3000 ⇒ sRadius · minAccuracy 5 ⇒ sAcc · gps enable without centre ⇒ sCenter · photoRequired ⇒ sPhoto
+  ✅ [H2.4-S7.3] viewer matrix listClockSites: owner/mgr-all all · mgr-u1 own + no u2 · mgr-role/staff-key/member/payroll/self ⇒ noPerm · other tenant ⇒ none
+  ✅ [H2.4-S7.4] branch scope on save: mgr-u1 → u2 ⇒ otherUnit · → shop-wide ⇒ shopWide · → u1 ok
+  ✅ [H2.4-S7.5] item keys exact · one row per (system, unit) · 10 parallel first saves of one unit ⇒ 1 row
+── S5 mobile ──
+  ✅ [H2.4-S5.1] mobile inside radius ⇒ IN · source MOBILE · lat/lng/accuracyM stored · distanceM 35 · inRadius · result keys exact
+  ✅ [H2.4-S5.2] mobile outside (222 m) ⇒ mOutside + distanceM · 0 rows · audit hr.clock.mobile_refused {code} without coordinates
+  ✅ [H2.4-S5.3] missing coordinates ⇒ mNoGps · 0 rows
+  ✅ [H2.4-S5.4] forged/malformed (lat 91 · lng 181 · strings · NaN · Infinity) ⇒ mBadGps · 0 rows
+  ✅ [H2.4-S5.5] accuracy 250 m > minAccuracyM 100 ⇒ mWeak · 0 rows
+  ✅ [H2.4-S5.6] branch without a site (u2) ⇒ mOff · site disabled ⇒ mOff
+  ✅ [H2.4-S5.7] shop-wide site gpsRequired=false ⇒ ok far away · lat/lng/distanceM NOT stored
+  ✅ [H2.4-S5.8] posted employeeId ignored (row for own employee) · unlinked user ⇒ mNoEmp · inactive ⇒ mInactive
+  ✅ [H2.4-S5.9] myClockState keys exact · entry of the open session · site {gpsRequired,radiusM} · no coordinates
+── S4 breaks ──
+  ✅ [H2.4-S4.1] breaks: IN · BREAK_START · NEXT⇒BREAK_END · NEXT⇒OUT, all on the same rosterEntryId
+  ✅ [H2.4-S4.2] break refusals (mobile): BREAK_START closed ⇒ bNotIn · BREAK_END open ⇒ bNotOn · BREAK_START on break ⇒ bOnBreak · 0 rows
+  ✅ [H2.4-S4.3] explicit OUT while ON_BREAK ⇒ OUT row · readers (monthlyAttendance · onShiftToday) do not throw on break rows
+── S6 kiosk (name + PIN) ──
+  ✅ [H2.4-S6.1] kioskClock(name + right PIN) ⇒ IN · source KIOSK · employeeName
+  ✅ [H2.4-S6.2] wrong PIN ⇒ PIN_TEXT.wrong · counts on hr-verifypin:<t>:kiosk:<uid>:<emp> (not on kiosk:<uid>) · no hr-kiosk:* bucket
+  ✅ [H2.4-S6.3] per-name lock: 10 wrong for one name ⇒ right PIN limited · 1 hr.pin.locked · same kiosk, other name still clocks · same name, other kiosk still clocks
+  ✅ [H2.4-S6.4] single-branch kiosk [u2] + u1 name ⇒ wrong (counted) · forged employeeId ⇒ wrong (counted) · other-tenant ⇒ wrong · 0 rows
+  ✅ [H2.4-S6.5] kiosk BREAK_START after IN ⇒ BREAK_START · NEXT ⇒ BREAK_END
+  ✅ [H2.4-S6.7] name list = kioskRoster(scope): [u1] ⇒ u1 names only · all-branch ⇒ every name · [static] HrKioskSection passes hrScopeOf
+  ✅ [H2.4-S6.8] shop bucket: wrong PINs on different names add to hr-kiosk-shop:<t>:<sys> (not hr-verifypin:<t>) · H0.5 caller limit (10/10 min) is the per-name limit
+  ✅ [H2.4-S6.9] kiosk shop bucket (controller 12 Nov ruling 1): 60 wrong across names ⇒ right PIN of another name limited · key from ctx only · refusal does not consume hr-verifypin:<t>
+── S8 retention ──
+  ✅ [H2.4-S8.1] purgeClockPrivacy: >30 d ⇒ lat/lng/accuracyM null, distanceM/inRadius kept · >90 d ⇒ photoKey null · ≤30 d untouched
+  ✅ [H2.4-S8.2] purge twice ⇒ second returns {geo:0, photo:0} · other tenant untouched · [static] hourly cron calls it
+── S9 races ──
+  ✅ [H2.4-S9.1] [race] 8 lanes NEXT queued on hr:clock:<emp> ⇒ 1 row
+  ✅ [H2.4-S9.2] [race] kiosk ∥ mobile same employee ⇒ 1 IN row · both ok
+  ✅ [H2.4-S9.3] [race] clock does not wait on a held roster lock · links the entry
+  ✅ [H2.4-S9.4] removeEntry after a linked IN ⇒ attendance row kept · rosterEntryId null
+── S13 hunt P2 · P1 · P6 · P3 ──
+  ✅ [H2.4-S13.1] [hunt P2] linked IN, entry moved to D+2 ⇒ next-day NEXT = IN · entry reassigned to B ⇒ rows on it belong to B only
+  ✅ [H2.4-S13.2] [hunt P1] multi-branch kiosk [u1,u2]: u3 name ⇒ wrong (counted) · 0 rows · u2 name ⇒ ok
+  ✅ [H2.4-S13.3] [hunt P6] earlyInMin 0 · 16–24 entry: IN 15:59 ⇒ NEXT 00:30 = OUT · another IN 15:59 ⇒ NEXT 04:01 = IN (end + grace) · stray IN 20:00 D + entry D+1 01:00 ⇒ NEXT 00:55 = IN (r3)
+  ✅ [H2.4-S13.4] [hunt P3] gpsRequired=false site ⇒ deviceId not stored · cron-mode purge (no tenantId) nulls deviceId with lat/lng, keeps distanceM
+── S10 migration ──
+  ✅ [H2.4-S10.1] schema: timesOverridden · distanceM · inRadius · HrClockSite + 2 partial uniques · enum BREAK_START/BREAK_END
+  ✅ [H2.4-S10.3] timesOverridden: addEntry override ⇒ true · plain ⇒ false · moveEntry to another shift ⇒ false
+  ✅ [H2.4-S10.4] copyWeek by flag: override then shift edited ⇒ override copied · stale unflagged ⇒ current shift times
+  ✅ [H2.4-S10.5] normalise on write: createShift 16:00/00:00 ⇒ 1440/false · addEntry override end 0 ⇒ 1440/false
+  ✅ [H2.4-S11.2] [control] listAttendance top-level keys carry no sensitive field
+  ✅ [H2.4-S11.3] every refusal seen is a fixed text (or the limiter text) · no id/coordinate inside
+  ✅ [H2.4-S12.1] [control] legacy unrostered judgement digest = K1=DAY_OFF:-:-|K2=ON_TIME:0:0|K3=NO_SCHEDULE:-:-
+  ✅ [H2.4-Z1] residue: qc-hr-h24-* tenants, users, buckets, rows gone
+BASE-EXPECTATION 8/68 as registered (RED-by-design 62 · GREEN controls 6) · off: H2.4-S5.10(RED→pass) H2.4-S6.6(RED→pass) H2.4-S10.2(RED→pass) H2.4-S11.1(RED→pass) H2.4-S1.1(RED→pass) H2.4-S1.2(RED→pass) H2.4-S1.3(RED→pass) H2.4-S1.4(RED→pass) H2.4-S1.5(RED→pass) H2.4-S1.6(RED→pass) H2.4-S2.1(RED→pass) H2.4-S2.2(RED→pass) H2.4-S2.3(RED→pass) H2.4-S2.4(RED→pass) H2.4-S2.5(RED→pass) H2.4-S2.6(RED→pass) H2.4-S2.7(RED→pass) H2.4-S3.1(RED→pass) H2.4-S3.2(RED→pass) H2.4-S3.4(RED→pass) H2.4-S7.1(RED→pass) H2.4-S7.2(RED→pass) H2.4-S7.3(RED→pass) H2.4-S7.4(RED→pass) H2.4-S7.5(RED→pass) H2.4-S5.1(RED→pass) H2.4-S5.2(RED→pass) H2.4-S5.3(RED→pass) H2.4-S5.4(RED→pass) H2.4-S5.5(RED→pass) H2.4-S5.6(RED→pass) H2.4-S5.7(RED→pass) H2.4-S5.8(RED→pass) H2.4-S5.9(RED→pass) H2.4-S4.1(RED→pass) H2.4-S4.2(RED→pass) H2.4-S4.3(RED→pass) H2.4-S6.1(RED→pass) H2.4-S6.2(RED→pass) H2.4-S6.3(RED→pass) H2.4-S6.4(RED→pass) H2.4-S6.5(RED→pass) H2.4-S6.7(RED→pass) H2.4-S6.8(RED→pass) H2.4-S6.9(RED→pass) H2.4-S8.1(RED→pass) H2.4-S8.2(RED→pass) H2.4-S9.1(RED→pass) H2.4-S9.2(RED→pass) H2.4-S9.3(RED→pass) H2.4-S9.4(RED→pass) H2.4-S13.1(RED→pass) H2.4-S13.2(RED→pass) H2.4-S13.3(RED→pass) H2.4-S13.4(RED→pass) H2.4-S10.1(RED→pass) H2.4-S10.3(RED→pass) H2.4-S10.4(RED→pass) H2.4-S10.5(RED→pass) H2.4-S11.3(RED→pass)
+
+===== qc-hr-h2.4 ===== passed 66/68 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.4","total":68,"passed":66,"failed":["H2.4-S14.1","H2.4-S14.2"],"findings":[{"id":"H2.4-S14.1","sev":"CRITICAL"},{"id":"H2.4-S14.2","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":62,"baseGreen":6,"offBase":["H2.4-S5.10(RED→pass)","H2.4-S6.6(RED→pass)","H2.4-S10.2(RED→pass)","H2.4-S11.1(RED→pass)","H2.4-S1.1(RED→pass)","H2.4-S1.2(RED→pass)","H2.4-S1.3(RED→pass)","H2.4-S1.4(RED→pass)","H2.4-S1.5(RED→pass)","H2.4-S1.6(RED→pass)","H2.4-S2.1(RED→pass)","H2.4-S2.2(RED→pass)","H2.4-S2.3(RED→pass)","H2.4-S2.4(RED→pass)","H2.4-S2.5(RED→pass)","H2.4-S2.6(RED→pass)","H2.4-S2.7(RED→pass)","H2.4-S3.1(RED→pass)","H2.4-S3.2(RED→pass)","H2.4-S3.4(RED→pass)","H2.4-S7.1(RED→pass)","H2.4-S7.2(RED→pass)","H2.4-S7.3(RED→pass)","H2.4-S7.4(RED→pass)","H2.4-S7.5(RED→pass)","H2.4-S5.1(RED→pass)","H2.4-S5.2(RED→pass)","H2.4-S5.3(RED→pass)","H2.4-S5.4(RED→pass)","H2.4-S5.5(RED→pass)","H2.4-S5.6(RED→pass)","H2.4-S5.7(RED→pass)","H2.4-S5.8(RED→pass)","H2.4-S5.9(RED→pass)","H2.4-S4.1(RED→pass)","H2.4-S4.2(RED→pass)","H2.4-S4.3(RED→pass)","H2.4-S6.1(RED→pass)","H2.4-S6.2(RED→pass)","H2.4-S6.3(RED→pass)","H2.4-S6.4(RED→pass)","H2.4-S6.5(RED→pass)","H2.4-S6.7(RED→pass)","H2.4-S6.8(RED→pass)","H2.4-S6.9(RED→pass)","H2.4-S8.1(RED→pass)","H2.4-S8.2(RED→pass)","H2.4-S9.1(RED→pass)","H2.4-S9.2(RED→pass)","H2.4-S9.3(RED→pass)","H2.4-S9.4(RED→pass)","H2.4-S13.1(RED→pass)","H2.4-S13.2(RED→pass)","H2.4-S13.3(RED→pass)","H2.4-S13.4(RED→pass)","H2.4-S10.1(RED→pass)","H2.4-S10.3(RED→pass)","H2.4-S10.4(RED→pass)","H2.4-S10.5(RED→pass)","H2.4-S11.3(RED→pass)"]}

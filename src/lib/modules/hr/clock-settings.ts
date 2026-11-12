@@ -12,6 +12,7 @@
 import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
+import { evaluate } from "@/lib/core/rbac"; // VIS-1 C ◂
 import { HR_UNIT_NOT_FOUND_TEXT, hrScopeOf, type HrScope } from "./scope";
 import { SETTINGS_TEXT, type SettingsViewer } from "./settings";
 import { CLOCK_POLICY_RANGE, clockPolicyOf, type ClockPolicy } from "./clock-rules";
@@ -58,6 +59,18 @@ export function canManageClockSettings(v: ClockSiteViewer | null | undefined): b
   return p["hr.employee.create"] === true || p["hr.*"] === true;
 }
 const scopeOfViewer = (v: ClockSiteViewer): HrScope => hrScopeOf({ role: v.role, unitAccess: v.unitAccess });
+
+/** VIS-1 C ▸ ข้อความเมื่อบัญชีที่ไม่ใช่ผู้ใช้จอลงเวลากดลงเวลา (คงที่ · ไม่บอกชื่อ/รหัสใคร) ◂ */
+export const KIOSK_REFUSED_TEXT = "บัญชีนี้ใช้จอลงเวลาหน้าร้านไม่ได้ — ให้เจ้าของร้านหรือผู้จัดการเปิดจอให้";
+/**
+ * VIS-1 C (มติผู้คุม 12 พ.ย.) ▸ ใครเปิดจอลงเวลาหน้าร้าน (รายชื่อ + ตำแหน่ง + แป้น PIN) และกดลงเวลาที่จอได้ — ด่านเดียวของหน้า /hr/kiosk และ kioskClockAction:
+ *   OWNER · MANAGER (ในสาขาที่คุม — รายชื่อตาม hrScopeOf) · บัญชีจอ/ผู้ถือคีย์ hr.attendance.clock (หรือ hr.*) · คนอื่น (สมาชิกไม่มีคีย์ HR ·
+ *   ผู้ดูเงินเดือน/การลาอย่างเดียว) = ไม่ได้ (หน้า = 404 เหมือนหน้าลงเวลา) — ตรงกับด่านคีย์ของ action เดิม (assertCan hr.attendance.clock) ◂
+ */
+export function canRunKiosk(v: Pick<ClockSiteViewer, "role" | "permissions" | "unitAccess"> | null | undefined): boolean {
+  if (!v) return false;
+  return evaluate({ role: v.role, unitAccess: (Array.isArray(v.unitAccess) ? v.unitAccess : []) as string[], permissions: (v.permissions ?? {}) as Record<string, unknown> }, { module: "hr", action: "hr.attendance.clock" });
+}
 function scopeRefusal(scope: HrScope, unitId: string | null): string | null {
   if (scope.unitIds === "*") return null;
   if (unitId === null) return SETTINGS_TEXT.shopWide;

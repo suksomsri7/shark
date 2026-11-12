@@ -28,10 +28,11 @@ import {
   type Ctx,
 } from "./service";
 import { kioskClock } from "./clock"; // HR H2.4 ▸ R9 kiosk · r2 ▸ R1 ชื่อ + PIN ◂
+import { canRunKiosk, KIOSK_REFUSED_TEXT } from "./clock-settings"; // VIS-1 C ▸ ด่านจอลงเวลา ◂
 import { offboardEmployee } from "./lifecycle"; // HR H4.4 ▸ R9 ลบ/สถานะสิ้นสุด = สิ้นสุดการจ้างทางเดียว (PIN · สิทธิ์แอป · คำขอค้าง ในธุรกรรมเดียว) ◂
 import { thaiDateKey } from "@/lib/ui/date"; // HR H4.4 ◂
 import { employeeProfileInputFromForm, hrViewerOf } from "./privacy";
-import { attachLeaveFile, leaveAttachmentLink } from "./leave"; // HR H2.7 ▸ R10 ไฟล์แนบใบลา ◂
+import { activeLeavePolicies, attachLeaveFile, leaveAttachmentLink } from "./leave"; // HR H2.7 ▸ R10 ไฟล์แนบใบลา ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขาของผู้กด — สาขาของเป้าหมายอ่านจากแถวใน DB เสมอ (ไม่เชื่อฟอร์ม) ◂
 import {
   employeeIdOfDoc,
@@ -361,6 +362,8 @@ export type KioskState =
 const KIOSK_KIND_TEXT: Record<string, string> = { IN: "เข้างาน", OUT: "ออกงาน", BREAK_START: "เริ่มพัก", BREAK_END: "กลับจากพัก" };
 export async function kioskClockAction(systemId: string, _prev: KioskState, formData: FormData): Promise<KioskState> {
   const auth = await requireTenant();
+  // VIS-1 C ▸ ด่านเดียวกับหน้า /hr/kiosk (canRunKiosk) — คนอื่นได้ข้อความคงที่ ไม่แตะ PIN/ตัวจำกัด ◂
+  if (!canRunKiosk(memberOf(auth))) return { status: "error", message: KIOSK_REFUSED_TEXT };
   // ทุกสาขา: ด่านคีย์ระดับร้าน — สาขาของพนักงานตรวจใน kioskClock (ขอบเขตของบัญชีจอ)
   assertHrCan(auth, "hr.attendance.clock");
   const employeeId = String(formData.get("employeeId") ?? "");
@@ -436,10 +439,13 @@ export async function requestLeaveAction(formData: FormData) {
     systemId = own.systemId; // ใบลาอยู่ในระบบ HR ของแถวพนักงานตัวเอง
   }
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  // VIS-1 D3 ▸ ฟอร์มมีช่องประเภทช่องเดียว: ส่งประเภทการลา (policyId) โดยไม่มี type ⇒ หมวด = หมวดของประเภทนั้น (ไม่พบ = ตามเดิม · planLeaveRequest ตอบ policyNf เอง) ◂
+  const postedPolicy = String(formData.get("policyId") ?? "").trim();
+  const leaveType = !formData.has("type") && postedPolicy ? ((await activeLeavePolicies(ctx)).find((p) => p.id === postedPolicy)?.category ?? type) : type;
   await requestLeave(ctx, {
     employeeId,
     actorUserId: auth.active.userId,
-    type,
+    type: leaveType,
     fromDate,
     toDate,
     reason: String(formData.get("reason") ?? "").trim() || null,

@@ -598,7 +598,9 @@ function runStatic(): void {
   //   (the roster engine refuses past dates) — exactly one hrRosterEntry.create inside `for (let off = -AR.days; off <= -1; off++)`;
   //   every other part of the seed keeps the prohibition
   const s25 = /const AR = HQC\.attendanceRoster;[\s\S]*?"AJ1"/.exec(seed)?.[0] ?? "";
-  const s25ok = !s25 || ((s25.match(/\.(create|createMany|upsert)\(/g) ?? []).length === 1 && /hrRosterEntry\.create\(/.test(s25) && /for \(let off = -AR\.days; off <= -1; off\+\+\)/.test(s25));
+  // ORACLE-EDIT (VIS-1 A4 · controller ruling: counts the today roster adds): + exactly one more hrRosterEntry.create, inside
+  //   `for (const [key, sk] of Object.entries(AR.today))` (published roster for today) ⇒ 2 creates in the block, both hrRosterEntry
+  const s25ok = !s25 || ((s25.match(/\.(create|createMany|upsert)\(/g) ?? []).length === 2 && (s25.match(/hrRosterEntry\.create\(/g) ?? []).length === 2 && /for \(let off = -AR\.days; off <= -1; off\+\+\)/.test(s25) && /for \(const \[key, sk\] of Object\.entries\(AR\.today\)\)/.test(s25));
   const seedRest = s25 ? seed.replace(s25, "") : seed;
   const s71 = {
     shift: /hrShift\b|"HrShift"/.test(seed),

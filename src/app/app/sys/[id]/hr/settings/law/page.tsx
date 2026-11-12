@@ -4,7 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { formatDateTh, thaiDateKey } from "@/lib/ui/date";
+import { formatThaiDate, thaiDateKey } from "@/lib/ui/date";
 import { hrTabs } from "@/lib/modules/hr/ui";
 import { hrViewerOf } from "@/lib/modules/hr/privacy";
 import { hrScopeOf, isAllBranches } from "@/lib/modules/hr/scope";
@@ -45,7 +45,7 @@ export default async function HrLawPage({ params }: { params: Promise<{ id: stri
         <p>{t("whtMethod")}</p>
         <p>{t("readOnly")}</p>
         <p>{t(allBranches ? "sharedAll" : "sharedBranch")}</p>
-        <p className="text-xs">{t("asOf", { day: formatDateTh(`${view.onDay}T00:00:00+07:00`) })}</p>
+        <p className="text-xs">{t("asOf", { day: formatThaiDate(`${view.onDay}T00:00:00+07:00`) })}</p>
       </div>
       <p role="note" className="card bg-[color:var(--color-note)] p-3 text-sm text-[color:var(--color-note-ink)]" data-testid="hr-law-warn">
         ⚠ {t("warn")}
