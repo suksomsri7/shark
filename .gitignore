@@ -56,3 +56,4 @@ GoogleService-Info.plist
 service-account.json
 apps/mobile/credentials*
 credentials*.json
+scripts/trips-expected.json
