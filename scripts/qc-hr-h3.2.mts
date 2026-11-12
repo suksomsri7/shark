@@ -46,6 +46,8 @@ const T = {
   adjLate: "หักเวลามาสาย/ออกก่อน {n} นาที ({m})",
   adjAbsent: "หักเวลาขาดงาน {n} นาที ({m})",
   refund: "คืนเงินหักสาย/ขาด ({m})",
+  // ORACLE-EDIT (controller ruling 12 Nov · closes the brief's accepted gap D1): approveRun refusal while a bound LATE/ABSENT deduction is stale
+  runStale: "มีรายการหักสาย/ขาดที่ข้อมูลเวลาเปลี่ยนแล้ว — กด 'คำนวณรายการหักสาย/ขาด' แล้วกด 'คำนวณใหม่' ที่รอบจ่ายก่อนอนุมัติ",
 };
 // H1.3 texts (decideAdjustment, unchanged)
 const OWN_REQ = "อนุมัติรายการที่ตัวเองยื่นไม่ได้ — ให้เจ้าของหรือผู้มีสิทธิ์อนุมัติแทน";
@@ -101,6 +103,9 @@ S8.1|R5|C|R|[db] Aug DRAFT run ⇒ deduction targets 2031-09
 S8.2|R8|C|R|[db] approved + bound to the APPROVED Sept run · sync Sept refused frozen
 S8.3|R6|C|R|[db] correction after binding ⇒ refund in 2031-10 · bound untouched · Σ 0
 S8.4|R6|C|R|[db] sync again ⇒ no second refund
+S8.5|D1|C|R|[db] ORACLE-EDIT (controller · D1 closed): correction after approval ⇒ createPayrollRun does not bind the stale deduction
+S8.6|D1|C|R|[db] ORACLE-EDIT (controller · D1 closed): delete draft + rebuild + sync ⇒ corrected PENDING 1,041 · approved ⇒ binds
+S8.7|D1|C|R|[db] ORACLE-EDIT (controller · D1 closed): leave after binding ⇒ approveRun refused runStale · recompute leaves it unbound
 S9.1|R10|C|R|[db] preview viewer matrix (money keys payroll only)
 S9.2|R10|C|R|[db] preview literals (eL · eF · eH)
 S9.3|R10|C|R|[db] lines reader: payroll literal · others identical bytes
@@ -379,6 +384,9 @@ async function runDb(): Promise<void> {
   const sys = async (n: string, t = TT) => (await sysSvc.createSystem(t, "HR", `${n} ${tag}`)).id as string;
   const [sA, sB, sC, sO] = [await sys("ทีม A"), await sys("ทีม B"), await sys("ทีม C"), await sys("ทีมอื่น", T2)];
   const [cA, cB, cC, cO] = [sA, sB, sC].map((s) => ({ tenantId: TT, systemId: s })).concat([{ tenantId: T2, systemId: sO }]);
+  // ORACLE-EDIT (controller ruling 12 Nov · D1 closed): system D for S8.5–S8.7 (stale approved deduction never bound into a run)
+  const sD = await sys("ทีม D");
+  const cD = { tenantId: TT, systemId: sD };
   const mk = (t: string, r: "OWNER" | "MANAGER" | "STAFF", ua: string[], p: Record<string, boolean>, tid = TT) => fx.mkUser(tid, t, `QC32 ${t} ${tag}`, r, ua, p);
   const U = {
     owner: await mk("owner", "OWNER", [], {}), payroll: await mk("payroll", "STAFF", ["*"], { "hr.payroll.read": true, "hr.payadjust.request": true, "hr.payadjust.approve": true }),
@@ -393,12 +401,16 @@ async function runDb(): Promise<void> {
     eR: await me(sC, "อาร์", { unitId: u1 }), eO: await me(sO, "โอ", {}, T2),
   };
   const nameOf: Record<string, string> = Object.fromEntries(Object.entries(E).map(([k, v]) => [v, k]));
+  const eQ = await me(sD, "คิว", { unitId: u1 }); // ORACLE-EDIT (D1 closed) ◂
+  nameOf[eQ] = "eQ"; // ORACLE-EDIT (D1 closed) ◂
   const prof = (c: Any, employeeId: string, base: number, o: Record<string, unknown> = {}) => pay.setSalaryProfile(c, { employeeId, baseSalarySatang: base, ssoEligible: true, ...o });
   for (const [k, b] of [["eL", 1_500_000], ["eM", 1_400_000], ["eS", 1_234_500], ["eF", 1_000_000], ["eH", 2_000_000], ["eW", 1_500_000]] as const) await prof(cA, E[k], b);
   await prof(cB, E.eD, 0, { payType: "DAILY", dailyRateSatang: 50_000 });
   await prof(cC, E.eR, 1_400_000);
+  await prof(cD, eQ, 1_500_000); // ORACLE-EDIT (D1 closed) ◂
   const shiftOf = async (s: string) => ({ id: (await P.hrShift.create({ data: { tenantId: TT, systemId: s, name: `เช้า ${tag}`, startMin: 540, endMin: 1020, crossesMidnight: false, graceMin: 5 } })).id as string });
   const sh = { [sA]: await shiftOf(sA), [sB]: await shiftOf(sB), [sC]: await shiftOf(sC) };
+  sh[sD] = await shiftOf(sD); // ORACLE-EDIT (D1 closed) ◂
   const ent = async (s: string, emp: string, day: string, unitId: string) =>
     (await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: s, employeeId: emp, date: dbDate(day), shiftId: sh[s]!.id, unitId, startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false, published: true, publishedAt: FIX_TS, source: "MANUAL" } })).id as string;
   const att = async (s: string, emp: string, kind: string, at: Date, re: string | null) => (await P.hrAttendance.create({ data: { tenantId: TT, systemId: s, employeeId: emp, kind, at, rosterEntryId: re, source: "KIOSK" } })).id as string;
@@ -430,6 +442,8 @@ async function runDb(): Promise<void> {
   await work(sB, E.eD, "04", u1, "09:30", "17:00");
   await work(sB, E.eN, "04", u1, "09:30", "17:00");
   const rIn = await work(sC, E.eR, "04", u1, "09:31", "17:00");
+  const qIn = await work(sD, eQ, "04", u1, "09:30", "17:00"); // ORACLE-EDIT (D1 closed) ◂ late 30
+  const POL_VAC_D = await pol(sD, "VACATION", "พักร้อน D"); // ORACLE-EDIT (D1 closed) ◂
   const ask = await OT.requestOt(cA, Vw.owner, { employeeId: E.eL, date: "2031-08-07", start: "17:00", end: "19:00", reason: "QC" }, { now: bk("2031-08-07", "10:00") }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
   const dec = ask?.ok ? await OT.decideOtRequest(cA, Vw.owner, ask.id, "APPROVED", { now: bk("2031-08-07", "10:05") }).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : ask;
   const job = (now: Date) => JG.runAttendanceJobs({ now, tenantId: TT });
@@ -658,6 +672,42 @@ async function runDb(): Promise<void> {
     }, "refund next open period", `${short(del, 30)} ${short(cr, 40)} ${shown(s3)} ${refund ? rs(refund) : "∅"} Σ${signed}`);
     const s4 = await sync(cC, Vw.owner);
     ck("S8.4", { ok: s4.ok && s4.value?.created === 0 && s4.value?.refunds === 0, n: (await rows(sC)).length === 2 }, "no second refund", `${shown(s4)} ${(await rows(sC)).length}`);
+  }
+
+  // ── ORACLE-EDIT (controller ruling 12 Nov · closes the brief's accepted gap D1) — S8.5–S8.7 (system D · eQ ฿15,000 · N 480) ──
+  //   late 30 ⇒ 1,500,000 × 30 / 14,400 = 3,125 · correction IN 09:30 → 09:10 ⇒ late 10 ⇒ 15,000,000 / 14,400 = 1,041.67 → 1,041
+  {
+    const OWN = { userId: U.owner.id, isOwner: true };
+    const st = async (id?: string) => P.hrPayAdjustment.findUnique({ where: { id: id ?? "∅" } });
+    const itemOf = async (runId?: string) => (await P.hrPayrollItem.findFirst({ where: { tenantId: TT, systemId: sD, runId: runId ?? "∅", employeeId: eQ }, select: { deductSatang: true } }))?.deductSatang;
+    await savePol(cD, Vw.owner, { enabled: true });
+    await build(cD);
+    const s0 = await sync(cD, Vw.owner);
+    const q0 = (await rows(sD))[0];
+    const a0 = await pay.decideAdjustment(cD, q0?.id ?? "∅", "APPROVED", OWN).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const cr = await CM.requestCorrection(cD, Vw.owner, { action: "CHANGE", employeeId: eQ, attendanceId: qIn.i, at: bk("2031-08-04", "09:10"), reason: "แก้เวลาเข้า QC" }, { now: NB }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const run1 = await pay.createPayrollRun(cD, { periodKey: PER, payDate: new Date("2031-08-31T00:00:00Z") }).catch((e: unknown) => ({ __err: errText(e) }));
+    const q1 = await st(q0?.id);
+    ck("S8.5", { s0: s0.ok && s0.value?.created === 1 && q0?.amountSatang === 3125, a0: a0?.ok === true, cr: cr?.ok === true, run: !!run1?.id, unbound: q1?.status === "APPROVED" && q1?.runId === null, item: (await itemOf(run1?.id)) === 0 },
+      "stale approved row not bound", `${shown(s0)} ${short(a0, 30)} ${short(cr, 30)} ${short(run1, 40)} ${q1?.status}:${q1?.runId} item=${await itemOf(run1?.id)}`);
+    const del = run1?.id ? await pay.deleteDraftRun(cD, run1.id, OWN).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : run1;
+    await build(cD);
+    const s1 = await sync(cD, Vw.owner);
+    const q2 = (await rows(sD)).find((r) => r.status === "PENDING");
+    const h0 = (await hdrs(sD)).find((h) => h.adjustmentId === q0?.id);
+    const a2 = await pay.decideAdjustment(cD, q2?.id ?? "∅", "APPROVED", OWN).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const run2 = await pay.createPayrollRun(cD, { periodKey: PER, payDate: new Date("2031-08-31T00:00:00Z") }).catch((e: unknown) => ({ __err: errText(e) }));
+    const b2 = await st(q2?.id);
+    ck("S8.6", {
+      del: del?.ok === true, sync: s1.ok && s1.value?.created === 1 && s1.value?.rejected === 1, old: (await st(q0?.id))?.status === "REJECTED" && h0?.endCode === "SUPERSEDED",
+      row: !!q2 && `${q2.kind}:${q2.amountSatang}:${q2.periodKey}:g${String(q2.sourceRef).split(":").pop()}` === "DEDUCTION:1041:2031-08:g2", a2: a2?.ok === true, bound: !!run2?.id && b2?.runId === run2.id, item: (await itemOf(run2?.id)) === 1041,
+    }, "corrected amount binds", `${short(del, 30)} ${shown(s1)} ${q2 ? `${q2.kind}:${q2.amountSatang}:${q2.periodKey}` : "∅"} ${short(a2, 30)} item=${await itemOf(run2?.id)}`);
+    await leave(sD, eQ, "VACATION", "2031-08-04", POL_VAC_D, { hours: 1, days: 0.1 });
+    const ap = run2?.id ? await pay.approveRun(cD, run2.id).catch((e: unknown) => ({ ok: false, note: errText(e) })) : run2;
+    const rc = run2?.id ? await pay.recomputeDraftRun(cD, run2.id, OWN).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : run2;
+    const b3 = await st(q2?.id);
+    ck("S8.7", { refused: ap?.ok === false && ap?.note === T.runStale, rc: rc?.ok === true, kept: b3?.status === "APPROVED", unbound: b3?.runId === null, item: (await itemOf(run2?.id)) === 0 },
+      "approve refused · recompute unbinds", `${short(ap, 60)} ${short(rc, 30)} ${b3?.status}:${b3?.runId} item=${await itemOf(run2?.id)}`);
   }
 }
 
