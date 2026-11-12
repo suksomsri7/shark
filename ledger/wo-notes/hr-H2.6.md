@@ -28,3 +28,19 @@ D1 device logout · D2 DRAFT run built before a correction is not rebuilt · D5 
 ## Runs (head before notes commit e27b19cd0) — full lines in hr-H2.6-green.txt
 qc-hr-h2.6 forced 49/49 ×2 + unforced 49/49 (residue none) · seed-hr-qc 32/32 ×2 (identical counts) · h2.4 66/66 · h2.5 77/79 · h2.1 90/90 · h2.2 60/60 · h1.2 73/73 · h1.3 63/63 · h0.1 66/67 (S4.3 known, not mine) · h0.3 37/37 · h0.5 67/71 (S6.2/4/5/7 QC4-only) · qc-payroll 19/19 · qc-hf-hr-privacy exit 0 · fitness 53/53 + fitness-hr 9/9 with/without env · typecheck 0 errors.
 qc-hr-h2.5 reds: S9.5 known (not mine); **S9.7 caused by this WO** — its inventoryParity takes every row of page /hr/attendance and requires wo=H2.5/oracle=qc-hr-h2.5 and an hr-att-* testid in attendance-ui/page; H2.6's required rows (hr-corr-* in correction-ui.tsx, hr-att-view-corr with wo H2.6) can never satisfy it. Needs a controller ORACLE-EDIT on qc-hr-h2.5 S9.7 (filter rows by wo H2.5); not edited here.
+
+## r2 (controller fix round — reviewer M1 + hunter notes)
+- Merged session/hr `6e57e0d00` (clean).
+- Paid/period by **session-owning day**: lock set = months of originalAt, proposedAt and each − 960 min (`lockMonthsOf`, ascending). Under `hr:clock`, `ownerDaysOf` recomputes the owner days (H2.5: session = IN's Bangkok day) before AND after the change on live data. Owner day outside the lock set ⇒ PERIOD (refresh text) · owner-day month APPROVED/PAID ⇒ paid · a proposed time merely inside a paid month is not a reason. Stored rows recomputed for owner days ± 1 only in held, unpaid months; neighbour days outside that are dry-run (`recomputeStoredDaysInTx({dryRun})`, no locks, no writes) and refuse (PAID/PERIOD) if any stored row would change. All apply refusals now throw out of the tx (rollback — nothing written) and a second tx marks CANCELLED + notifies. Lock order unchanged (payroll asc → hr-corr → hr:clock → hr:judge asc → hr:roster asc); dry-run takes no locks, so no new edge.
+- Evidence: openedAt only if this user opened · closedAt only if this user closed (or the system force-closed a shift they opened) · stored with unitId; DTO drops unitId and keeps only shifts in the viewer's branch scope (the employee sees all their own).
+- `listCorrections`: branch filter in the query (employees whose home unit or any borrowing is in scope); per-day unit check kept.
+- Q4 ruling: owner self-filing applies at once, `selfApplied` on the row (+ owner_auto audit + DTO + "แก้โดยเจ้าของเอง" chip). Other roles never decide their own.
+- Migration `20270101000001_hr_time_correction_idx`: drops the duplicate `HrTimeCorrection_pending_target_key` (H1.2 `attendanceId_pending_key` stays) · adds `selfApplied`. No index on voidedByCorrectionId/correctionId — nothing queries by them.
+- ORACLE-EDITs (authorised): qc-hr-h2.6 S1.2/S3.4/S7.3/S4.5/S7.1 + new S11.1 S11.2 S7.5 S7.6 S6.2 (RED 45/54 on the r1 code — `hr-H2.6-r2-red.txt`) · qc-hr-h2.5 S9.7 judged on wo=H2.5 rows.
+
+## More debts
+- D2: payroll reads no attendance until H3 — H3.1/H3.4 must refuse or rebuild a DRAFT run whose inputs changed.
+- Split-shift day with two missing OUTs needs two sequential requests (R10 unique key employee+day+kind).
+- The decide/request services trust the actor/tenant pair handed in by the action layer (actions build ctx from the session).
+- r2 runs: h2.6 54/54 forced ×2 + unforced (residue none) · seed 32/32 ×2 · h2.5 79/79 · h2.4 66/66 · h0.1 67/67 · h1.2 73/73 · h1.3 63/63 · h4.1 47/47 · h4.4 82/83 · qc-payroll 19/19 · hf-hr-privacy exit 0 · fitness 53/53 + fitness-hr 9/9 both modes · typecheck 0.
+- **qc-hr-h4.4 S1.1 red (not edited — other WO's oracle):** it asserts `20261231000000_hr_lifecycle` is the last `_hr_` migration; any later HR migration (H2.6's 20270101000000/…01) breaks it. Already true in r1. Needs a controller ORACLE-EDIT (e.g. "no _hr_ migration between it and the next WO's").
