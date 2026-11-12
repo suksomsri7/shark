@@ -99,6 +99,7 @@ S6.2|R9|C|R|[db] IDOR ⇒ identical no
 S6.3|R10|M|R|[db] confirmBranchHours rules
 S7.1|H3.2|C|G|[db] (H3.2-guarded) LATE_RULE −2,777 reduces taxable + SSO wage · net 1,909,723
 S7.2|H3.2|C|G|[db] (H3.2-guarded) stale approved row ⇒ create refused
+S7.4|H3.2|M|G|[db+static] (controller, reviewer minor on H3.2) workEntrySourceEmployeesInTx finds punch-only staff by a distinct read (no TAKE cap on full punch rows)
 S7.3|H3.2|C|G|[db] (H3.2-guarded, controller phase B) bound LATE deduction → approve → reverse → rebuild → sync → approve ⇒ money = entitlement (one LATE row, −2,777 · net 1,909,723)
 S8.1|frozen|C|G|[db] v1 golden: frozen MONTHLY digest/totals unchanged
 S8.2|frozen|C|G|[db] v1 shop cycle unchanged
@@ -188,8 +189,9 @@ function runStatic(): void {
     const shaNow = sha(rd(PAYROLL_RULES_FILE));
     // ORACLE-EDIT (H3.4 builder, phase B — merge of H3.2 ac8de9d27): work-entries.ts carries H3.2's additive EOF exports (workEntryStatesInTx ·
     //   workEntrySourceEmployeesInTx, marked HR H3.2) — tolerated only as pure additions whose hunks carry the HR H3.2 marker; every other frozen file unchanged
-    const h32Only = (f: string) => { const hs = diffHunks(BASE, f); return !!hs && hs.length > 0 && hs.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H3\.2/.test(l))); };
-    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !(p === `${H}work-entries.ts` && h32Only(p))));
+    const h32Only = (f: string) => { const hs = diffHunks(BASE, f); return !!hs && hs.length > 0 && hs.every((h) => h.removed.length === 0 && h.added.some((l) => /HR H3\.[24]/.test(l))); };
+    //   ORACLE-EDIT (H3.4 phase B, controller item): judge.ts may carry one additive HR H3.4 export (workEntryPunchEmployeesInTx — distinct reader for the H3.2 gate)
+    const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && h32Only(p))));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);
   }
   {
@@ -756,6 +758,7 @@ async function runDb(): Promise<void> {
     chk("S7.1", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.2", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
     chk("S7.3", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
+    chk("S7.4", true, "n/a", "n/a — H3.2 absent (hr/attendance-pay.ts)");
   } else {
     const A_ = (fn: string, ...a: unknown[]) => callMod(AP, F.attPay, fn, a);
     // ORACLE-EDIT (H3.4 builder, phase B): the S5.3/S5.4 race rows (ALLOWANCE 10,000 / 20,000 of eS in 2031-09) outlive their deleted drafts —
@@ -787,6 +790,21 @@ async function runDb(): Promise<void> {
       };
       ck("S7.3", r, "money = entitlement after reverse + rebuild", `${shown(a1)} ${shown(rv)} ${shown(cr2)} ${shown(a2)} net=${i2?.netSatang} lates=${short(lates, 80)}`);
       if (cr2.value?.id) await PY("reverseRun", cB, cr2.value.id, "qc h3.4 S7.3 cleanup", A.owner);
+    }
+    {
+      // S7.4: an employee whose only source data in the month is a punch (no roster/attendance day/schedule) counts as having source data
+      const WE = await loadOpt(`${H}work-entries.ts`, "@/lib/modules/hr/work-entries");
+      const eP = await me(sB, "พี", { unitId: u1 });
+      await att(sB, eP, "IN", bk("2031-09-20", "08:00"), null);
+      let got: Any = null;
+      try {
+        got = await WE.workEntrySourceEmployeesInTx(P, cB, SEP, [eP]);
+      } catch (e) {
+        got = errText(e);
+      }
+      const body = fnBody(stripComments(rd(`${H}work-entries.ts`)), "workEntrySourceEmployeesInTx");
+      const r = { found: got instanceof Set && got.has(eP), distinct: /workEntryPunchEmployeesInTx\(/.test(body) && !/workEntryPunchesInTx\(/.test(body) && !/\bTAKE\b/.test(body), judge: /distinct:\s*\["employeeId"\]/.test(fnBody(rd(`${H}judge.ts`), "workEntryPunchEmployeesInTx")) };
+      ck("S7.4", r, "punch-only employee found · distinct read", short(got instanceof Set ? [...got] : got, 80));
     }
     await del();
     await P.hrAttendance.updateMany({ where: { id: eSin }, data: { at: bk("2031-09-01", "07:30") } });

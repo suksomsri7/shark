@@ -1258,3 +1258,15 @@ export async function otDaySpans(ctx: Ctx, employeeIds: string[], from: string, 
   return rows.map((r) => ({ employeeId: r.employeeId, day: dayOf(r.date), inAt: r.inAttendanceId ? (at.get(r.inAttendanceId) ?? null) : null, outAt: r.outAttendanceId ? (at.get(r.outAttendanceId) ?? null) : null }));
 }
 // ◂ HR H2.9
+// HR H3.4 ▸ (รีวิว H3.2 minor) พนักงานที่มีแถวลงเวลาที่ยังมีผลในช่วงเวลา — distinct ตาม employeeId (ไม่โหลดแถวลงเวลาเต็ม · ไม่มีเพดาน TAKE ที่ตัดคนท้าย ๆ ทิ้ง) ·
+//   ผู้อ่าน: work-entries.ts#workEntrySourceEmployeesInTx (ด่านอนุมัติรอบของ H3.2) · อ่านอย่างเดียว · ตารางลงเวลาอ่านผ่าน judge.ts ตามเดิม
+export async function workEntryPunchEmployeesInTx(tx: Db, ctx: Ctx, employeeIds: string[], from: Date, to: Date): Promise<string[]> {
+  if (!employeeIds.length) return [];
+  const rows = await tx.hrAttendance.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: employeeIds }, voidedAt: null, at: { gte: from, lt: to } },
+    select: { employeeId: true },
+    distinct: ["employeeId"],
+  });
+  return rows.map((r) => r.employeeId);
+}
+// ◂ HR H3.4

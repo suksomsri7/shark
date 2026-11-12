@@ -34,3 +34,38 @@ createPayrollRunV2 / recomputeDraftRun v2 / approve v2 (maker-checker, INPUTS_CH
 
 ## Suites (phase A head, lane DB wo-hr-qc-l3, forced)
 qc-hr-h3.4 32/58 (all S1.2–S1.6 · S1.8 · S2.* · S3.* · S4.1 · S4.17 · S7.1/S7.2 n/a · S8.1/S8.2 · X12.1 · Z1 green; RED-by-phase: S1.1 (UI file) · S1.7 (dispatch + ot.ts/index.ts hunks) · S1.9 (UI) · S1.10 (holidayWorkPricedInTx) · S4.2 v2 half · S4.3–S4.16 · S5.* · S6.*) · seed-hr-qc 33/33 · qc-hr-h3.3 51/51 · qc-hr-h1.3 63/63 (after the 2 ORACLE-EDITs) · qc-hr-h0.1 67/67 · qc-hr-h2.9 58/58 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-hf-hr-privacy 194/194 (F1-10 needs the literal `assertHrCan(auth, "hr.payadjust.approve")` in decideAdjustmentAction — kept as if/else) · fitness + fitness-hr env/noenv exit 0.
+
+# Phase B (controller go 13 Nov · base = merge of origin/wip/hr-h3.2 ac8de9d27)
+
+## Merge
+Conflicts: `qc-hr-h0.1` S4.2 sha pin (re-taken on the merged payroll.prisma ⇒ 862d8725…, marked ORACLE-EDIT) · `payroll.ts` imports (both kept) · th/en messages (json3way.py, clean). `prisma generate` + `migrate deploy` applied `20270105000000_hr_attendance_pay` after the already-applied 20270106* without complaint. seed-hr-qc 34/34.
+H2.11 S13.2 requires payroll.ts additions-only vs session/hr ⇒ the two phase-A line edits (AdjustKind union, kind check) were turned back into base bytes; REFUND goes through an inserted `requestRefundAdjustment` branch.
+
+## Built (all marked `HR H3.4`)
+- payroll.ts EOF block: `buildRunV2InTx` (law set at lawDayOf(payDate) → profiles/membership → VARIABLE_PAY → WORK_ENTRIES (workEntryStatesInTx) → OT_OPEN → APPROVED unbound adjustments FOR UPDATE → H3.2 `attendanceUnbindableInTx` (stale DEDUCTION ⇒ refuse `ATT_TEXT.stale`; held refunds stay out) → YTD_DRAFT → ytdPriorV2 → HrWorkDay + holiday kind + settled OT holiday-work minutes → computeRunItemV2 per item → inputDigest), `createPayrollRunV2`, `recomputeDraftRunV2` (dispatch line in recomputeDraftRun reads the 4th argument; signature bytes unchanged), `approveRunV2` (dispatch line in approveRun), carry rows, POST_FAILED rollback (back to DRAFT + unused carry rows deleted), `reverseCarryInTx` (one line in reverseRun's tx + one catch line ⇒ CARRY_BOUND), `holidayWorkPricedInTx`, `requestRefundAdjustment`, `setAdjustmentConsent`, `previewPayrollRunV2`, `confirmBranchHours`.
+- ot.ts: basis freezes `normalDayMin` at first settlement; settlement subtracts run-priced holiday-work minutes from the request's HOLIDAY_WORK band: left = min(request HW, min(480,N) − run-priced) (the day's normal band is shared — avoids double subtraction when a request covered only part of the day).
+- payroll-actions.ts: create/rebuild/approve/confirm/engine/consent actions. UI `payroll-run-ui.tsx` (+ payroll page, settings page engine card with H3.2 in-force intervals), 108 `hr.run2.*` keys th = en, 19 inventory rows, visual spec "3.4", index.ts exports.
+
+## Lock order of v2 paths
+create / rebuild: work-entry build pages (own P lock each, released) → tx: earlier work periods of related LATE/ABSENT rows ascending (`attendancePreLockInTx`) → P → (rebuild: run row FOR UPDATE) → adjustment rows FOR UPDATE · approve: earlier work periods → P → run row → reads/gates → claim → bind work days → carry target periods (> P, ascending, re-checked) · reverse: P → run row → carry rows FOR UPDATE (later period rows by row lock only — a concurrent create of that period waits on the row and re-evaluates) · confirm: P → run row · engine: hr:clockpolicy only · OT settle: unchanged chain, `holidayWorkPricedInTx` read-only. No holder waits for a smaller period than one it holds.
+
+## Oracle changes (ORACLE-EDIT, all marked)
+qc-hr-h3.4: fixture judge job 2031-09-22 added (7-day window; 15–17 Sep were never stored ⇒ NOT_STORED) · S1.6 tolerates H3.2's additive exports in work-entries.ts · S5.4 compares with the other bound rows (S5.3's row stays in Sept) · S7 setup rejects the leftover race ALLOWANCE rows of eS · **new** S4.18 refused approve (NEGATIVE_NET) writes no carry/receivable · **new** S7.3 bound LATE deduction → approve (JV) → reverse → rebuild → sync → approve ⇒ one LATE row, −2,777, net 1,909,723. qc-hr-h0.1 S4.2 pin. (h1.3 S6.1 PAY_MARKED — see runs.)
+
+## Rulings applied
+(1) 17 texts · (2) POS_SALE_LINE ∈ OVERPAY [U] (accountant B4-16) · (3) SHOP day worked = ordinary pay · (4) negative net: the item is blocked (no advance/claim applied, carry/receivable empty), approve refuses NEGATIVE_NET and nothing is carried (S4.18) · (5) R8 keys: there are **no default role templates for HR keys** — OWNER passes everything, MANAGER passes every hr.* key inside its units by role (permissions.ts header), so default shops see no change. Backfill for the prod runbook (H5.3): STAFF memberships whose `permissions` hold `hr.payadjust.approve` without `hr.payadjust.reject`, or `hr.payroll.approve` without `hr.payroll.reverse` (query membership.permissions JSON; add the missing key only where the owner wants it) — no data migration written · (6) flat keys.
+L6 kept: lateness refund = ALLOWANCE (taxable + SSO wage, LATE_REFUND component); REFUND only for claim refunds.
+Unpaid leave + late/absent: UNPAID_LEAVE lines come first and the unworked rows are capped at the remaining E0 (one monthly cap); an unpaid-leave day is LEAVE, not ABSENT, in H3.1 (distinct minute fields), so the same minutes are never priced twice.
+Pay type in the H3.2 header snapshot: **not done** — HrAttendanceDeduction has no free field; `policyJson` is part of the digest (adding a key re-stales every header). With `V2_VARIABLE_PAY = false` every header is MONTHLY by construction; proposal: add a nullable `payType` column with NA-11.
+
+## Accountant list (additions)
+- B4-16 POS commission clawbacks are recovered under the OVERPAY 10 % cap, like CRM commission and OT overpayment [U].
+- B4-17 a run that cannot be approved (negative net) carries nothing forward; carried deductions are created only by an approved run and go to the next open period as APPROVED rows marked "ยกยอดหักจากงวด …".
+- B4-18 a carried deduction keeps written consent only when every source row of that category had it.
+- B4-19 holiday work is paid once: the run pays the minutes no OT request paid; a later OT request pays only what is left of that day's normal band.
+
+## Must items for H3.5–H3.9
+- H3.5 bank file / H3.6 filings: read v2 items (`snapshotJson.lines`, `whtIncomeSatang`, `ssoWageSatang`, `whtOneOffSatang`, `lawRowIds`, `ytdJson`) — never recompute; REFUND is outside 40(1) and SSO wage; SSO wage = law-row components.
+- H3.7 JV: split claims/advances/receivable out of salary expense (gross keeps v1 meaning); book `receivable` of leavers; carry rows are not new expense.
+- H3.8/H3.9: v1 runs stay v1 forever; keep CARRY_BOUND order (reverse later runs first); v2 previews never give ฿ to managers.
+- NA-11: flip `V2_VARIABLE_PAY` only with the accountant ruling + header `payType` column + hourly-holiday-hours setting + minimum-wage table.

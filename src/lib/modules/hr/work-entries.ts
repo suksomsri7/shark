@@ -17,6 +17,7 @@ import { employeeOfUser, leaveRowScopeOf } from "./service";
 import { hrScopeOf, type HrScope } from "./scope";
 import { canManageHrSettings } from "./settings";
 import { finalizeStoredGaps, workEntryDaysInTx, workEntryPunchesInTx, type JudgeViewer } from "./judge";
+import { workEntryPunchEmployeesInTx } from "./judge"; // HR H3.4 ▸ distinct พนักงานที่มีแถวลงเวลา (ด่าน H3.2) ◂
 import { attendancePolicyOf } from "./judge-rules";
 import { clockPolicyOf } from "./clock-rules";
 import { unitOfDay } from "./roster";
@@ -723,9 +724,10 @@ export async function workEntrySourceEmployeesInTx(tx: Db, ctx: Ctx, periodKey: 
     tx.hrAttendanceDay.findMany({ where: { ...scope, date: range }, select: { employeeId: true }, distinct: ["employeeId"] }),
     tx.hrRosterEntry.findMany({ where: { ...scope, date: range }, select: { employeeId: true }, distinct: ["employeeId"] }),
     tx.hrWorkSchedule.findMany({ where: { ...scope, dayOff: false }, select: { employeeId: true }, distinct: ["employeeId"] }),
-    workEntryPunchesInTx(tx, ctx, ids, new Date(dbDate(b.first).getTime() - BKK_MS), new Date(dbDate(addDays(b.last, 1)).getTime() - BKK_MS), null, TAKE),
+    workEntryPunchEmployeesInTx(tx, ctx, ids, new Date(dbDate(b.first).getTime() - BKK_MS), new Date(dbDate(addDays(b.last, 1)).getTime() - BKK_MS)), // HR H3.4 ▸ distinct ต่อพนักงาน (เดิมโหลดแถวเต็ม TAKE 20,000 — คนท้ายแถวหลุดได้) ◂
   ]);
-  for (const r of [...att, ...ros, ...sched, ...punches]) out.add(r.employeeId);
+  for (const r of [...att, ...ros, ...sched]) out.add(r.employeeId);
+  for (const e of punches) out.add(e); // HR H3.4 ◂
   return out;
 }
 // ◂ HR H3.2

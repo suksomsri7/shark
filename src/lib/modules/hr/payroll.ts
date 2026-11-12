@@ -2630,7 +2630,9 @@ export async function createPayrollRunV2(ctx: Ctx, viewer: Run2Viewer, input: { 
 
 async function runEngineVersion(ctx: Ctx, runId: string): Promise<number | null> {
   if (typeof runId !== "string" || !runId.trim()) return null;
-  return (await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId.trim(), tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { engineVersion: true } }))?.engineVersion ?? null;
+  // รอบที่ H3.4 สร้าง = engineVersion 2 + inputDigest · แถวรุ่น 2 ที่ไม่มีลายนิ้วมือ (ข้อมูลทดสอบของ H3.1 ที่ตั้งคอลัมน์เอง) คงทางเดิม (ด่าน H3.1/H3.2)
+  const r = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId.trim(), tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { engineVersion: true, inputDigest: true } });
+  return r ? (r.engineVersion === 2 && !r.inputDigest ? 1 : r.engineVersion) : null;
 }
 export type RecomputeV2Opts = { viewer?: Run2Viewer; now?: Date };
 /** R5 ดึงข้อมูลใหม่ของรอบร่างรุ่น 2 = สร้างซ้ำบนรอบเดิม · ผู้กดเป็น "ผู้สร้าง" คนใหม่ · ล้างขั้นยืนยันสาขา */
