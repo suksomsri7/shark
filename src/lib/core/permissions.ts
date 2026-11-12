@@ -866,6 +866,10 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "trips.departure.status": "เปิด/ปิดรับ ยืนยันออก และยกเลิกรอบ",
       "trips.resource.edit": "จัดการเรือ รถ ไกด์",
       // ◂ TRIPS T0.3
+      // ── T0.5 pricing ── TRIPS T0.5 ▸ ราคา ฤดูกาล โปรโมชัน · ราคาแก้มือ ◂
+      "trips.price.edit": "ตั้งราคา ฤดูกาล และโปรโมชันทัวร์",
+      "trips.price.override": "แก้ราคามือในการจอง",
+      // ── /T0.5 pricing ──
       // ── T0.4 capacity ── TRIPS T0.4 ▸ ถือ/ขายที่นั่ง · คืน/ย้าย · รายการรอ (ใบสั่ง T0.4 §5) ◂
       "trips.seat.sell": "ถือ/ขายที่นั่งหน้าร้าน",
       "trips.seat.manage": "คืน/ย้ายที่นั่ง และจัดการรายการรอ",

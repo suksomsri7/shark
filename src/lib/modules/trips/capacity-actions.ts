@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────
 import { requireUnit } from "@/lib/core/context";
 import { assertCan, evaluate, type MembershipCtx } from "@/lib/core/rbac";
-import * as cap from "./capacity";
+import * as cap from "./capacity-service";
 import * as wl from "./waitlist";
 
 // ── T0.4 capacity ──

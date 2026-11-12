@@ -114,7 +114,7 @@ async function hunt(sh: Shop) {
     if (res.THROW) { throws++; if (throws <= 5) F(`hunt ${op} THROW ${String(res.THROW).slice(0, 300)}`); }
     else if (rawLeak(res) || unnamed(res)) F(`hunt ${op} raw/unnamed ${txt.slice(0, 300)}`);
   };
-  const timed = async (op: string, p: () => Promise<Rec>) => { const t = Date.now(); const res = await p().catch((e: unknown) => ({ THROW: String(e) })); tally(op, res, Date.now() - t); return res; };
+  const timed = async (op: string, p: () => Promise<Rec>) => { const t = Date.now(); const res: Rec = await p().catch((e: unknown): Rec => ({ THROW: String(e) })); tally(op, res, Date.now() - t); return res; };
   let tick = 0;
   const nowAt = () => addMin(base, (tick++) * 0.02);
   const all = () => [...deps];

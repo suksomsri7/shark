@@ -408,6 +408,11 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "trips.departure.below_min", label: "เมื่อรอบต่ำกว่าขั้นต่ำ ณ เวลาตัดสิน" },
   { value: "trips.departure.cancelled", label: "เมื่อยกเลิกรอบ" },
   // ◂ TRIPS T0.3
+  // ── T0.5 pricing ── TRIPS T0.5 ▸ ตัวยิง trips/prices.ts · trips/promo.ts · payload id/จำนวน/สตางค์ล้วน · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks) ◂
+  { value: "trips.price.changed", label: "เมื่อแก้ราคา/ฤดูกาล/กฎราคาทัวร์" },
+  { value: "trips.promo.redeemed", label: "เมื่อใช้โค้ดส่วนลดทัวร์" },
+  { value: "trips.promo.exhausted", label: "เมื่อโค้ดส่วนลดทัวร์ถูกใช้ครบ" },
+  // ── /T0.5 pricing ──
   // ── T0.4 capacity ── TRIPS T0.4 ▸ ที่นั่งทัวร์ — ตัวยิง `trips/capacity.ts` · payload hold {holdId, departureId, qty, channel} · รายการรอ {waitlistId, departureId, holdId} ·
   //   การจอง {bookingId, unitId, departureId, status, channel, amountSatang (+agentAccountId)} — ไม่มีข้อมูลบุคคล (X8) · เว็บฮุคได้จาก spread ◂
   { value: "trips.hold.created", label: "เมื่อถือที่นั่ง" },

@@ -458,7 +458,7 @@ try {
   await st("S-14", "ไม่แตะไฟล์ต้องห้ามเทียบ session/trips: prisma/ · core/settings/ · ไฟล์ของ T0.2/T0.3 · โมดูลเดิม · ข้อสอบ p0.1/t0.1–t0.4", () => {
     const base = git(["merge-base", "HEAD", "session/trips"]).trim();
     ok(base, "หา merge-base กับ session/trips ไม่ได้");
-    const paths = ["prisma", "src/lib/core/settings", "src/lib/modules/trips/departures.ts", "src/lib/modules/trips/departures-core.ts", "src/lib/modules/trips/resources.ts", "src/lib/modules/trips/products.ts",
+    const paths = ["prisma", "src/lib/core/settings", /* ORACLE-EDIT S-14 (ผู้คุม 12 พ.ย.): departures.ts ออกจากรายการ — มติข้อ 13 ให้แก้ doc comment ของสูตรสถานะ */ "src/lib/modules/trips/departures-core.ts", "src/lib/modules/trips/resources.ts", "src/lib/modules/trips/products.ts",
       "src/lib/modules/pos", "src/lib/modules/rooms", "src/lib/modules/hotel", "src/lib/modules/booking", "src/lib/modules/ticket",
       "scripts/qc-trips-p0.1.mts", "scripts/qc-trips-t0.1.mts", "scripts/qc-trips-t0.2.mts", "scripts/qc-trips-t0.3.mts"];
     const changed = [...new Set([...git(["diff", "--name-only", base, "--", ...paths]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...paths]).split("\n")].filter(Boolean))];
@@ -1071,7 +1071,7 @@ try {
     const stop = sampler("TripDeparture", [id]);
     const rs = await withTimer(Promise.all([
       ...hs.map((h) => call("releaseHold", C(), { holdId: h, reason: "x" })),
-      ...wl.slice(5).map((w) => call("leaveWaitlist", PUB(), { waitlistId: w })),
+      ...wl.slice(5).map((w) => call("leaveWaitlist", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติข้อ 9 */, { waitlistId: w })),
       sweep(NOW0).then(() => ({ ok: true }) as Rec),
     ]), 120_000, "DL-4");
     const s = await stop(); noThrow(rs, "DL-4", ["STATE_CONFLICT", "BUSY"]);
@@ -1318,7 +1318,7 @@ try {
     for (const h of hs.slice(0, 2)) V(await call("releaseHold", C(), { holdId: h, reason: "x" }), "ปล่อย");
     const offers = async () => q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripHold" WHERE "departureId" = $1 AND purpose = 'WAITLIST_OFFER'`, [id]);
     eq([(await offers())[0]?.n, (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripWaitlist" WHERE "departureId" = $1 AND "partyId" = $2`, [id, PARTY.a13]))[0]?.n], [1, 1], "ข้อเสนอ/แถว");
-    V(await call("declineWaitlistOffer", PUB(), { waitlistId: w }), "ปฏิเสธ");
+    V(await call("declineWaitlistOffer", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติรอบแก้ข้อ 9 — PUBLIC ถูกปฏิเสธจนกว่าจะมี token ของรายการรอ (T1/W1) */, { waitlistId: w }), "ปฏิเสธ");
     V(await call("releaseHold", C(), { holdId: hs[2], reason: "x" }), "ปล่อยอีก");
     await fn("runWaitlistOffers")(Z(NOW0), { tenantIds: [tA] });
     eq([(await wl(w))?.status, (await offers())[0]?.n], ["DECLINED", 1], "ไม่เสนอซ้ำ");
@@ -1328,10 +1328,10 @@ try {
     const { id, h } = await fullDep(5, 1);
     const w1 = wlId(await joinWl(id, "a1")), w2 = wlId(await joinWl(id, "a2")), w3 = wlId(await joinWl(id, "a3"));
     V(await call("releaseHold", C(), { holdId: h, reason: "x" }), "ปล่อย");
-    codeR(await call("declineWaitlistOffer", PUB(), { waitlistId: w3 }), "STATE_CONFLICT", "ปฏิเสธแถว WAITING");
+    codeR(await call("declineWaitlistOffer", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติรอบแก้ข้อ 9 — PUBLIC ถูกปฏิเสธจนกว่าจะมี token ของรายการรอ (T1/W1) */, { waitlistId: w3 }), "STATE_CONFLICT", "ปฏิเสธแถว WAITING");
     const o1 = String((await wl(w1))?.offerHoldId);
-    V(await call("declineWaitlistOffer", PUB(), { waitlistId: w1 }), "ปฏิเสธ");
-    V(await call("leaveWaitlist", PUB(), { waitlistId: w3 }), "ออก");
+    V(await call("declineWaitlistOffer", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติรอบแก้ข้อ 9 — PUBLIC ถูกปฏิเสธจนกว่าจะมี token ของรายการรอ (T1/W1) */, { waitlistId: w1 }), "ปฏิเสธ");
+    V(await call("leaveWaitlist", C() /* ORACLE-EDIT (ผู้คุม 12 พ.ย.): มติข้อ 9 */, { waitlistId: w3 }), "ออก");
     eq([(await wl(w1))?.status, (await hold(o1))?.status, (await wl(w2))?.status, (await wl(w3))?.status, (await inv(id)).held], ["DECLINED", "RELEASED", "OFFERED", "CANCELLED", 1], "ผล");
   });
   await st("WL-11", "X4: onWaitlistTrigger ด้วย event เดียวกันซ้ำ 3 ครั้ง (2 พร้อมกัน + 1 ตามหลัง) ⇒ ข้อเสนอ 1 · event waitlist.offered 1", async () => {

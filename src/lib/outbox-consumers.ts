@@ -1520,6 +1520,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.departure.below_min": withAutomation(async () => {}),
   "trips.departure.cancelled": withAutomation(async () => {}),
   // ◂ TRIPS T0.3
+  // ── T0.5 pricing ── TRIPS T0.5 ▸ ราคา/โค้ดส่วนลด — ยิงจาก trips/prices.ts · trips/promo.ts ในธุรกรรมเดียวกับงานหลัก ·
+  //   payload = id/จำนวน/สตางค์ล้วน (ไม่มีตัวโค้ด/ผู้ติดต่อ) · งานหลัก no-op + กฎอัตโนมัติ/เว็บฮุค ◂
+  "trips.price.changed": withAutomation(async () => {}),
+  "trips.promo.redeemed": withAutomation(async () => {}),
+  "trips.promo.exhausted": withAutomation(async () => {}),
+  // ── /T0.5 pricing ──
   // ── T0.4 capacity ── TRIPS T0.4 ▸ ที่นั่งทัวร์ (ใบสั่ง T0.4 §7) — ยิงจาก `trips/capacity.ts` ใน tx เดียวกับ CAS/ตัวนับ · payload id/จำนวน/ช่องทาง/สตางค์ล้วน (X8)
   //   hold.expired ⇒ เสนอที่ให้รายการรอ (onWaitlistTrigger · ใต้ล็อกรอบ · ซ้ำ = ผลเดียว X4) · ที่เหลือ no-op (กฎอัตโนมัติ/เว็บฮุค)
   "trips.hold.created": withAutomation(async () => {}),
