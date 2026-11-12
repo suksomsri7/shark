@@ -1445,7 +1445,7 @@ try {
     const evs = await q<{ type: string; payload: Rec }>(`SELECT type, payload FROM "OutboxEvent" WHERE "tenantId" = $1 AND type LIKE 'trips.%'`, [tA]);
     ok(evs.length > 0, "ไม่มี event ให้ตรวจ");
     const partyIds = Object.values(PARTY);
-    const bad = evs.filter((e) => { const s = JSON.stringify(e.payload); return /สมหญิง|@|08\d{8}|basket:|contact:/.test(s) || partyIds.some((p) => s.includes(p)); });
+    const bad = evs.filter((e) => { const s = JSON.stringify(e.payload); return /สมหญิง|@|(?<![0-9A-Za-z_])0[689]\d{8}(?![0-9A-Za-z])|basket:|contact:/.test(s) /* ORACLE-EDIT EV-3 (ผู้คุม 12 พ.ย.): เดิม /08\d{8}/ ชนเลขสุ่มใน holdId (th_…0840239416…) = ผลลวง — จับเฉพาะเบอร์ที่เป็นคำเดี่ยว */ || partyIds.some((p) => s.includes(p)); });
     ok(bad.length === 0, `มีข้อมูลบุคคล: ${fmt(bad.slice(0, 2))}`);
   });
   await st("EV-4", "แถว TripHold/TripWaitlist ไม่เก็บ capKey/ผู้ติดต่อดิบ (capKeyHash = hex 64 ทุกแถวของร้านทดสอบ)", async () => {
