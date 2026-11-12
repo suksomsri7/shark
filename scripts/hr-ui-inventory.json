@@ -5898,6 +5898,657 @@
    "wo": "H2.6",
    "oracle": "qc-hr-h2.6",
    "note": "ป้าย \"แก้โดยเจ้าของเอง\" · * = id HrTimeCorrection"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ยื่น หรือ ผู้ดูเงินเดือน (อื่น = ไม่มีส่วนนี้)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ส่วน \"หักค่าของ / ค่าเสียหาย\" (anchor #hr-stock)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-legal",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "เมื่อเห็นส่วนนี้",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ข้อความ ม.76/77: ต้องมีหนังสือยินยอมเป็นลายลักษณ์อักษร · เพดาน 10% / 1/5 = เตือนเท่านั้น"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-msg",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "หลัง action (?stock=<รหัสในรายการอนุญาต STOCK_MSG>)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "role=status · ข้อความไทยคงที่ ไม่มีชื่อ/ยอด/id"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-search",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/payroll?stockq=<คำค้น>"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ค้นสินค้าผ่าน facade ของคลัง (searchItems)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-search-q",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ชื่อ/SKU/บาร์โค้ด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-form",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "server-action",
+    "action": "requestStockChargeAction"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ยื่นรายการหัก (PENDING เสมอ) · requestKey ช่องซ่อนสร้างตอนแสดงผล"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-kind",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ISSUE เบิกของ · DAMAGE ค่าเสียหาย"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-employee",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "พนักงานที่ยังทำงานในขอบเขตสาขา (ชื่อเท่านั้น · ไม่รวมตัวเอง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-inventory",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ระบบคลัง (INVENTORY) ของร้าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-item",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "สินค้า (PRODUCT) ชื่อ · SKU — ไม่แสดงต้นทุน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-qty",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "จำนวนเต็ม 1–999"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-take",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน) · ไม่มีคีย์ inventory.movement.consume = ปิดใช้",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ตัดสต็อกด้วย (ค่าเริ่มต้นเมื่อมีสิทธิ์)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-amount",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ยอดหักเอง (บาท → สตางค์ตรงทุกสตางค์) · ว่าง = จำนวน × ต้นทุน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-desc",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "รายละเอียด ≤ 120 (บังคับเมื่อไม่ระบุสินค้า)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-consent",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ติ๊กยืนยันหนังสือยินยอม (บังคับ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-consent-ref",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "เลขที่/ที่เก็บเอกสาร 1–80"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-consent-at",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "input"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "วันที่ลงนาม ≤ วันนี้ (เวลาไทย)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-submit",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.payadjust.request (OWNER · MANAGER · STAFF ที่ได้คีย์) — พนักงาน = ชื่อในขอบเขตสาขา · สินค้า = ชื่อ + SKU (ไม่มีต้นทุน)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "server-action",
+    "action": "requestStockChargeAction"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "≥ 44 px"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-list",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือนเท่านั้น (OWNER หรือ hr.payroll.read) · ขอบเขตสาขาจากแถวพนักงาน",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "รายการหักค่าของ (ยอด · ต้นทุน · หนังสือยินยอม)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือนเท่านั้น (OWNER หรือ hr.payroll.read) · ขอบเขตสาขาจากแถวพนักงาน",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "* = chargeId · สถานะ · เลขที่การตัดสต็อก · หนังสือยินยอม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-status-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือนเท่านั้น (OWNER หรือ hr.payroll.read) · ขอบเขตสาขาจากแถวพนักงาน",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "* = chargeId · PENDING…REMOVED"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-cap-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือนเท่านั้น (OWNER หรือ hr.payroll.read) · ขอบเขตสาขาจากแถวพนักงาน · ยอด > 10% ของเงินเดือนรายเดือน หรือ Σ หักในงวด > 1/5",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "* = chargeId · ธงเตือน (Q10 ไม่บล็อก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-refund-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือนเท่านั้น (OWNER หรือ hr.payroll.read) · ขอบเขตสาขาจากแถวพนักงาน · ถอนหลังรอบอนุมัติ/จ่ายแล้ว",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "* = chargeId · ยอดค้างคืนนอกเงินเดือน · ผู้บันทึก/วัน/เหตุผล · คืนแล้ว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-repaid-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือนเท่านั้น (OWNER หรือ hr.payroll.read) · ขอบเขตสาขาจากแถวพนักงาน · ค้างคืนยังไม่คืน (service: เจ้าของ/ผู้อนุมัติรายการเงินเดือน)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "server-action",
+    "action": "markStockRefundRepaidAction"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "* = chargeId · ต้องใส่หลักฐาน 1–80"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-stock-withdraw-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/stock-charge-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือนเท่านั้น (OWNER หรือ hr.payroll.read) · ขอบเขตสาขาจากแถวพนักงาน · รอ/อนุมัติ/จ่ายแล้ว (service: ผู้ยื่นขณะรอ หรือผู้อนุมัติรายการเงินเดือน)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "server-action",
+    "action": "withdrawStockChargeAction"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "* = chargeId · รอ=ไม่อนุมัติ · ยังไม่เข้ารอบ/รอบร่าง=ยกเลิก · รอบอนุมัติ/จ่าย=ค้างคืน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-pay-src-stock",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-ui.tsx",
+   "conditional": "ผู้ดูเงินเดือน · แถวรายการเพิ่ม/หักที่ sourceType = INVENTORY_ISSUE",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.6",
+   "oracle": "qc-hr-h4.6",
+   "note": "ชิปแหล่งที่มา + ต้องมีหนังสือยินยอม (ม.76/77)"
   }
  ]
 }

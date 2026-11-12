@@ -252,6 +252,12 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                       {a.note ? ` · ${a.note}` : ""}
                       {a.runId ? " · เข้ารอบจ่ายแล้ว" : ""}
                     </span>
+                    {/* HR H4.6 ▸ รายการจากการเบิกของ/ค่าเสียหาย (ดูจาก sourceType เท่านั้น) — ต้องมีหนังสือยินยอมของพนักงาน (ดูในส่วน "หักค่าของ") · อนุมัติทีละแถว ◂ */}
+                    {a.sourceType === "INVENTORY_ISSUE" && (
+                      <span data-testid="hr-pay-src-stock" className="mt-0.5 inline-block rounded-full border border-[color:var(--color-line)] px-2 py-0.5 text-xs">
+                        เบิกของ/ค่าเสียหาย · ต้องมีหนังสือยินยอมของพนักงาน (ม.76/77) — ดูส่วน “หักค่าของ”
+                      </span>
+                    )}
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <StatusChip value={a.status} map={ADJUST_STATUS_LABEL} toneOf={adjustTone} />

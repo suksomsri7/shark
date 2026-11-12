@@ -92,6 +92,14 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "corr-self-list", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "คำขอแก้เวลาของฉัน + ยกเลิก (H2.6)", expect: { staff: 200 }, users: ["staff"] },
     { key: "corr-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404 (H2.6)", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
   ],
+  // HR H4.6 ▸ brief §5 (ไม่มี mockup — ตามฟอร์มรายการเพิ่ม/หักของหน้าเงินเดือน): ส่วน "หักค่าของ" #hr-stock · ฟอร์ม (ผู้ถือคีย์ยื่น) · รายการ/ยอด/หนังสือยินยอม/ธงเพดาน
+  //   (ผู้ดูเงินเดือน) · seed ไม่มีรายการ ⇒ ว่าง เว้นแต่ผู้ควบคุมยื่นก่อนถ่าย · staff/member ไม่มีส่วนนี้ ◂
+  "4.6": [
+    { key: "stock-owner", path: (i) => `/app/sys/${i.hr}/hr/payroll#hr-stock`, users: ["owner"], expect: { owner: 200 }, why: "เจ้าของ: ฟอร์มหักค่าของ + รายการ + ข้อความ ม.76/77 (H4.6)" },
+    { key: "stock-manager", path: (i) => `/app/sys/${i.hr}/hr/payroll#hr-stock`, users: ["manager", "manager-branch"], why: "ผู้จัดการ: ฟอร์มเท่านั้น (ไม่เห็นยอด/รายการ — ไม่ใช่ผู้ดูเงินเดือน) (H4.6)" },
+    { key: "stock-payroll", path: (i) => `/app/sys/${i.hr}/hr/payroll#hr-stock`, users: ["payroll"], why: "ผู้ดูเงินเดือน: รายการ/ยอด/หนังสือยินยอม/ชิป hr-pay-src-stock (H4.6)" },
+    { key: "stock-staff", path: (i) => `/app/sys/${i.hr}/hr/payroll`, users: ["staff", "member"], why: "พนักงาน/สมาชิก: ไม่มีส่วนหักค่าของ (H4.6)" },
+  ],
   // HR H4.4 ▸ brief §5 (mockup 02) — ข้อมูลจาก seed (HQC.lifecycle: โบว์ ทดลองงาน + รายการรับเข้า 5/7 · เจ สัญญาถึงสิ้นเดือน · นัท ตักเตือนด้วยวาจา · ฝ้าย ผู้ลาออก) ◂
   "4.4": [
     { key: "life-due", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["owner", "manager-branch", "staff"], why: "ทะเบียน: แผง \"ต้องจัดการ\" 4 ช่อง (ทดลองงาน · สัญญา · รับเข้าค้าง · ออกจากงานค้าง) — staff ไม่เห็นแผง (H4.4)" },
