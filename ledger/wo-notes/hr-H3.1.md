@@ -80,3 +80,8 @@ qc-hr-h3.1 forced 52/52 ×3 + unforced 52/52 (residue none) · seed-hr-qc 33/33 
 ## r2 debts (LOW, not done)
 - Rebuild after a REVERSED run overwrites rows in place (runId → null on changed rows); the reversed run keeps no copy of the hashes it used — H3.4 should snapshot row ids/digests on the run.
 - plannedMin uses the stored row's start/end with the LIVE roster `breakMin` (an edited break changes the hash ⇒ OUTDATED, but the stored row is not recomputed by H2.5).
+
+## r3 (merge b40c53138 — H2.9 OT requests)
+- Work entries still create no pay line: OT minutes are measured only; approved OT is paid by H2.9's HrPayAdjustment (kind OT, sourceType OT_REQUEST).
+- Each day lists its APPROVED, unrevoked OT requests in `sourcesJson.otRequestIds`, adds info flag `OT_VIA_ADJUSTMENT`, and the OT kind rows carry `otRequestId` ⇒ H3.4 can see the day's OT is already paid.
+- H2.9 settlement only reads HrAttendanceDay (stores attendanceDayId/version on the request) and writes HrOtRequest/HrPayAdjustment — none of these are in the inputHash ⇒ a settlement never makes the period OUTDATED (S8.7). OT request refs are not hashed either: a newly approved request shows up on the next rebuild (refs are informational; H3.4 must read HrPayAdjustment itself).

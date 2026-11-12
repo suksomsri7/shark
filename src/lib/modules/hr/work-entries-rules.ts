@@ -20,7 +20,7 @@ export const NORMAL_DAY_RANGE = { min: 60, max: 720 } as const;
 /** รายการที่ต้องตรวจก่อนอนุมัติรอบรุ่น 2 (บล็อก) */
 export const WE_BLOCKING = ["LEAVE_MISMATCH", "MISSING_OUT", "NOT_FINAL", "NOT_STORED", "ORPHAN", "OVER_1440", "PENDING_LEAVE", "STALE", "STRAY_IN", "WORKED_ON_LEAVE"] as const;
 /** แจ้งให้รู้เท่านั้น */
-export const WE_INFO = ["HOLIDAY_LEAVE", "HOURLY_LEAVE_UNUSED", "LEGACY_LEAVE"] as const;
+export const WE_INFO = ["HOLIDAY_LEAVE", "HOURLY_LEAVE_UNUSED", "LEGACY_LEAVE", "OT_VIA_ADJUSTMENT"] as const;
 export type WorkReview = (typeof WE_BLOCKING)[number] | (typeof WE_INFO)[number];
 
 export type WorkDayClass = "WORKDAY" | "DAY_OFF" | "HOLIDAY" | "UNSCHEDULED";
@@ -82,7 +82,8 @@ export type WorkSlot = {
   rosterEntryId: string | null;
 };
 export type WorkLeave = { id: string; status: "APPROVED" | "PENDING"; halfDay: "AM" | "PM" | null; hours: number | null; paid: boolean; legacy: boolean };
-export type WorkDayInput = { day: string; unitId: string | null; holiday: { id: string } | null; slots: WorkSlot[]; leaves: WorkLeave[] };
+/** otRequestIds = คำขอ OT ที่อนุมัติแล้ว (H2.9) ของวันนั้น — อ้างอิงเท่านั้น: OT จ่ายผ่าน HrPayAdjustment (OT_REQUEST) ที่เดียว */
+export type WorkDayInput = { day: string; unitId: string | null; holiday: { id: string } | null; slots: WorkSlot[]; leaves: WorkLeave[]; otRequestIds?: string[] };
 export type BuildWorkDaysInput = {
   employeeId: string;
   startDate: string | null;
@@ -92,7 +93,7 @@ export type BuildWorkDaysInput = {
   days: WorkDayInput[];
   rules?: Partial<WorkRules>;
 };
-export type WorkSources = { attendanceDays: { id: string; version: number; slotKey: string }[]; rosterEntryIds: string[]; leaveIds: string[]; holidayId: string | null };
+export type WorkSources = { attendanceDays: { id: string; version: number; slotKey: string }[]; rosterEntryIds: string[]; leaveIds: string[]; holidayId: string | null; otRequestIds: string[] };
 export type WorkEntryOut = { kind: WorkKind; minutes: number };
 export type WorkDay = {
   employeeId: string;
@@ -368,7 +369,9 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
     rosterEntryIds: [...new Set(slots.map((s) => s.rosterEntryId).filter((x): x is string => !!x))].sort(cmp),
     leaveIds: leaves.map((l) => l.id),
     holidayId: d.holiday?.id ?? null,
+    otRequestIds: [...new Set(d.otRequestIds ?? [])].sort(cmp),
   };
+  if (sources.otRequestIds.length) review.add("OT_VIA_ADJUSTMENT"); // H3.1 r3: OT ของวันนี้จ่ายผ่านคำขอ OT (H2.9) — H3.4 ห้ามคิดเงินจาก otWorkdayMin/otHolidayMin
   const entries: WorkEntryOut[] = WORK_KIND_ORDER.filter((k) => m[KIND_COL[k]] > 0).map((k) => ({ kind: k, minutes: m[KIND_COL[k]] }));
   const out = {
     employeeId,

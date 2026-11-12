@@ -367,6 +367,15 @@ export async function buildWorkEntrySnapshot(
         if (opts.__afterRead) await opts.__afterRead();
         const hd = await hashDataOf(tx, ctx, page, periodKey);
         const { rules } = await settingsOf(tx, ctx);
+        // H3.1 r3: คำขอ OT ที่อนุมัติแล้ว (H2.9) — อ้างอิงอย่างเดียว (ไม่อยู่ใน inputHash: การจ่าย/ชำระ OT ไม่ทำให้งวด OUTDATED) · ไม่สร้างรายการเงิน
+        const otReqs = await tx.hrOtRequest.findMany({
+          where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids }, status: "APPROVED", revokedAt: null, date: { gte: dbDate(b.first), lte: dbDate(b.last) } },
+          select: { id: true, employeeId: true, date: true },
+          orderBy: { id: "asc" },
+          take: TAKE,
+        });
+        const otBy = new Map<string, string[]>();
+        for (const o of otReqs) push(otBy, `${o.employeeId}|${dayOf(o.date)}`, o.id);
         const lvById = new Map(hd.leaves.map((l) => [l.id, l]));
         const existing = await tx.hrWorkDay.findMany({
           where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids }, date: { gte: dbDate(b.first), lte: dbDate(b.last) } },
@@ -388,6 +397,7 @@ export async function buildWorkEntrySnapshot(
             to: b.last,
             rules,
             days: days.map((d) => ({
+              otRequestIds: otBy.get(`${e.id}|${d.day}`) ?? [],
               day: d.day,
               unitId: d.unitId,
               holiday: d.holiday,
@@ -447,6 +457,7 @@ export async function buildWorkEntrySnapshot(
                 rosterEntryId: roster,
                 leaveId: en.kind === "LEAVE_PAID" ? paidLv : en.kind === "LEAVE_UNPAID" ? unpaidLv : null,
                 holidayId: d.sources.holidayId,
+                otRequestId: en.kind === "OT_WORKDAY" || en.kind === "OT_HOLIDAY" ? (d.sources.otRequestIds[0] ?? null) : null,
                 computedAt: now,
                 note: en.kind === "OT_WORKDAY" || en.kind === "OT_HOLIDAY" ? WE_OT_PAYMENT : null,
                 workDayId: id,
