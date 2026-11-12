@@ -70,6 +70,9 @@ export const HR_TABLES = {
   hrLeavePolicy: { model: "HrLeavePolicy", file: "hr.prisma", tenantId: true, role: "ประเภทการลาของร้าน (category = HrLeaveType) (HR H1.2)" },
   hrLeaveBalanceTxn: { model: "HrLeaveBalanceTxn", file: "hr.prisma", tenantId: true, role: "สมุดวันลา (ledger · sourceKey กันซ้ำ) (HR H1.2)" },
   hrHoliday: { model: "HrHoliday", file: "hr.prisma", tenantId: true, role: "วันหยุด (ทั้งร้าน/รายสาขา) (HR H1.2)" },
+  // HR H2.5 ▸ ผลตัดสินรายวัน + การเตือน (migration 20261230000000_hr_judgement) ◂
+  hrAttendanceDay: { model: "HrAttendanceDay", file: "hr.prisma", tenantId: true, role: "ผลตัดสินการลงเวลารายวัน (snapshot ของตัวปิดวัน) (HR H2.5)" },
+  hrAttendanceAlert: { model: "HrAttendanceAlert", file: "hr.prisma", tenantId: true, role: "การเตือนยังไม่เข้างาน/ไม่มา (HR H2.5)" },
   // ── prisma/schema/payroll.prisma ──
   hrSalaryProfile: { model: "HrSalaryProfile", file: "payroll.prisma", tenantId: true, role: "โปรไฟล์เงินเดือน (รายเดือนเท่านั้นวันนี้)" },
   hrPayAdjustment: { model: "HrPayAdjustment", file: "payroll.prisma", tenantId: true, role: "รายการเพิ่ม/หัก (OT · BONUS · DEDUCTION · COMMISSION …)" },
@@ -107,6 +110,7 @@ export const HR_DELETE_ORDER = [
   "hrPayrollItem", "hrPayAdjustment", "hrPayrollRun", "hrSalaryProfile",
   // hr
   // HR H1.2 ▸ ลูกก่อนแม่: คำขอ/สมุดวันลา → ตารางงาน → (ลงเวลา/ใบลา) → กะ/ประเภทการลา/วันหยุด ◂
+  "hrAttendanceAlert", "hrAttendanceDay", // HR H2.5 ▸ ลูกของพนักงาน (ไม่มี FK อื่น) ◂
   "hrShiftSwapRequest", "hrTimeCorrection", "hrOtRequest", "hrLeaveBalanceTxn", "hrRosterEntry",
   "hrEmployeeDoc", "hrAttendance", "hrLeave", "hrWorkSchedule", "hrEmployeeUnit",
   "hrShift", "hrLeavePolicy", "hrHoliday",
@@ -326,6 +330,13 @@ export const HQC = {
     ],
     // HR H2.2 r2 ▸ Q14 แพร ลาพักร้อน ส.–อา. ของสัปดาห์ภาพ 03 รออนุมัติ (ชิปลาเส้นประ + "รออนุมัติ" ในภาพ · วันหยุดของแพรอยู่แล้ว) ◂
     pendingLeave: { employee: "prae", type: "VACATION", fromDow: 5, toDow: 6, reason: "ไปงานแต่งเพื่อนต่างจังหวัด" },
+  },
+  // HR H2.5 ▸ Q9 ตารางกะที่ประกาศแล้วของ 7 วันที่ลงเวลาย้อนหลัง (วันนี้ −7 … −1) ของทุกคนที่มี `shift` (กะประจำ = HQC.shifts) ·
+  //   seed เขียนแถวตรง (เครื่องยนต์ตารางกะไม่รับวันย้อนหลัง — แบบเดียวกับ insertHistoricalClock) แล้วรันตัวปิดวัน (runAttendanceJobs) ครั้งเดียว ⇒
+  //   hr-expected.json `attendanceDays` (ผลบันทึกแล้ว: น้ำฝนสาย · ต้นออกก่อน · นัทขาด · แพรลา) ◂
+  attendanceRoster: {
+    days: 7,
+    shiftNames: { morning: "กะเช้า", afternoon: "กะบ่าย", closing: "กะปิดร้าน" } as Record<HqcShift, string>,
   },
 } as const;
 

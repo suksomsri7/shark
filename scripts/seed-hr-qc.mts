@@ -457,6 +457,38 @@ try {
   const leavesNow = await P.hrLeave.count({ where: { tenantId } });
   q.chk("RS2", `ใบลารออนุมัติของแพร ${plFrom}–${plTo} (ชิปลาในภาพ 03) · ใบลารวม 3`, lvRRow?.status === "PENDING" && leavesNow === 3, "PENDING · 3", `${lvRRow?.status} · ${leavesNow}`);
 
+  // ═══════════════════ 9e. HR H2.5 ▸ Q9 ตารางกะของ 7 วันที่ลงเวลาย้อนหลัง + ตัวปิดวัน (ผลตัดสินรายวัน) ◂ ═══════════════════
+  // เขียนแถวตารางกะตรง (เครื่องยนต์ไม่รับวันย้อนหลัง) · ประกาศแล้ว · สาขา = สาขาที่ยืมตัวไป (ถ้ามี) ไม่งั้นสาขาประจำ · แล้วรันตัวปิดวันของร้านนี้ครั้งเดียว
+  const AR = HQC.attendanceRoster;
+  const arShift: Record<string, string> = {};
+  for (const sh of (await P.hrShift.findMany({ where: { tenantId }, select: { id: true, name: true } })) as Any[]) {
+    for (const [k, n] of Object.entries(AR.shiftNames)) if (sh.name === n) arShift[k] = sh.id;
+  }
+  let arRows = 0;
+  for (let off = -AR.days; off <= -1; off++) {
+    const day = addDays(D.today, off);
+    for (const e of HQC.employees.filter((x) => x.shift)) {
+      const s = HQC.shifts[e.shift!];
+      await P.hrRosterEntry.create({
+        data: { tenantId, systemId: ctx.systemId, employeeId: emp[e.key], date: new Date(`${day}T00:00:00Z`), shiftId: arShift[e.shift!], unitId: units[e.borrowedTo ?? e.unit], startMin: s.startMin, endMin: s.endMin, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date(), source: "MANUAL", createdById: uid("owner") },
+      });
+      arRows++;
+    }
+  }
+  const judge = (await import("@/lib/modules/hr/judge" as string)) as Any;
+  const jRun = await judge.runAttendanceJobs({ now: new Date(), tenantId });
+  const jRows = (await P.hrAttendanceDay.findMany({ where: { tenantId }, select: { status: true } })) as Any[];
+  const byStatus: Record<string, number> = {};
+  for (const r of jRows) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+  const attendanceDays = { rosterRows: arRows, finalized: jRun.finalized, rows: jRows.length, byStatus, alerts: jRun.late + jRun.absent };
+  q.chk(
+    "AJ1",
+    `ผลตัดสินรายวัน (H2.5 Q9): ตารางกะ ${arRows} แถว (9 คน × ${AR.days} วัน) · ตัวปิดวันบันทึก = แถวที่มี · มีสาย/ขาด/ลา · ไม่มีการเตือน`,
+    arRows === 9 * AR.days && jRun.finalized === jRows.length && jRows.length > 0 && (byStatus.LATE ?? 0) >= 1 && (byStatus.ABSENT ?? 0) >= 1 && (byStatus.LEAVE ?? 0) >= 1 && attendanceDays.alerts === 0,
+    `${9 * AR.days} · rows = finalized · LATE/ABSENT/LEAVE ≥ 1 · 0 alerts`,
+    `${arRows} · ${jRows.length}/${jRun.finalized} · ${JSON.stringify(byStatus)} · ${attendanceDays.alerts}`,
+  );
+
   // ═══════════════════ 10. ผลรวม + ร้านอื่นไม่เปลี่ยน + ไฟล์เฉลย ═══════════════════
   const counts = await countsOf(tenantId, tables);
   counts["User(qc emails)"] = await P.user.count({ where: { email: { in: HQC_EMAILS } } });
@@ -501,6 +533,8 @@ try {
     moneyLaw: { "HrPayrollRun.engineVersion": run.engineVersion, "HrLawTable.v1": lawV1.length },
     // HR H2.2 ▸ ตารางกะของภาพ 03 — visual-hr SPECS["2.2"] อ่าน rosterWeek (+ units.huahin) ◂
     roster: { week: rosterWeek, entries: rWant, published: rPub.published, unpublished: rList?.unpublishedCount ?? null, pendingLeave: { employee: PL.employee, from: plFrom, to: plTo } },
+    // HR H2.5 ▸ Q9 ผลตัดสินรายวันของ 7 วันย้อนหลัง (ตัวปิดวันตอน seed) — จำนวนต่อสถานะเท่ากันทุกรอบของวันเดียวกัน ◂
+    attendanceDays,
     counts,
   };
   writeFileSync(HQC.expectedPath, JSON.stringify(expected, null, 2) + "\n");
