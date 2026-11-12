@@ -120,6 +120,20 @@ const CHECKS: readonly Def[] = [
   d("S9.7", "§7", M, "[static] testids · inventory · tokens · 44 px · visual 2.5 · settings card id"),
   d("S9.8", "Q9", M, "[static] seed: HQC attendance roster + finaliser + attendanceDays"),
   d("S10.1", "§3", C, "[static] migrations · schema · core/scope registry"),
+  // ── r2 (controller rulings A–J after review + hunt · ORACLE-EDIT r2, builder) ──
+  d("S11.1", "A", C, "[db] unrostered overnight session stays on the IN's day (incl. year end) · nothing on D+1"),
+  d("S11.2", "A", C, "[db] overnight HrWorkSchedule 22–06 ⇒ ON_TIME W483 on the start day"),
+  d("S11.3", "B", M, "[db] unlinked IN 23:58 for a 00:30 shift ⇒ matched (clock.ts window) · no MO day-off · no alert"),
+  d("S11.4", "C", C, "[db] orphaned rows (moved/deleted/unpublished entry): no second worked row · totals once · recompute re-keys"),
+  d("S11.5", "D", C, "[db] split-shift leave by time of day · fraction once per day (full 1.0 · AM/PM 0.5) · no alert on covered entry"),
+  d("S11.6", "D", M, "[db] (extends S3.1) single shift, AM half-day leave, no IN ⇒ ABSENT · leaveHalf AM · leaveFraction 0.5"),
+  d("S11.7", "E", C, "[db] inactive / ENDED employee ⇒ no alerts · no events · no rows from the job"),
+  d("S11.8", "F", M, "[db] half-day live board: absent threshold counts from the due time"),
+  d("S11.9", "G", M, "[db] holidayId on entry rows of a holiday · unrostered work on a holiday ⇒ DAY_OFF + holidayId"),
+  d("S11.10", "H", C, "[race] recompute waits on the payroll period lock and refuses rPaid"),
+  d("S11.11", "I", M, "[race] alert re-checks for an IN under hr:clock:<emp>"),
+  d("S11.12", "I", M, "[pure+static] worked minutes floor · migration 000002 alert (systemId, date) index · seed now fixed · truncation guard"),
+  d("S11.13", "scope", M, "[db] month view hides slots at branches outside the viewer's scope"),
   D("Z1", "-", C, "GREEN", "residue: qc-hr-h25-* tenants/rows/users/sessions/new tables gone"),
 ];
 const REG = makeRegistry(SUITE, "H2.5-", CHECKS);
@@ -311,7 +325,22 @@ function runStatic(): void {
     };
     ck("S10.1", r, "migrations · schema · registry", "");
   }
+  {
+    const m2 = rd("prisma/migrations/20261230000002_hr_judgement_alert_idx/migration.sql");
+    const seed = code(F.seed);
+    const j = code(F.judge);
+    const w = typeof JR.judgeEntry === "function" ? pure("judgeEntry", { ...vecIn("V34"), events: evs("IN 07:00, OUT 15:00:40") }) : null;
+    S11_12.r = {
+      floor: w?.workedMin === 480,
+      idx: /CREATE INDEX "[^"]+" ON "HrAttendanceAlert"\("systemId", "date"\)/.test(m2) && /@@index\(\[systemId, date\]\)/.test(block(rd(F.schema), "model HrAttendanceAlert {")),
+      seedNow: /runAttendanceJobs\(/.test(seed) && !/runAttendanceJobs\(\s*\{\s*now:\s*new Date\(\s*\)/.test(seed),
+      truncation: /truncated/.test(j) && /logOps\(/.test(j),
+    };
+    ck("S11.12", S11_12.r, "floor · index · seed now fixed · truncation guard", `W=${w?.workedMin}`);
+  }
 }
+const S11_12: { r: Record<string, boolean> } = { r: {} };
+const block = (src: string, head: string) => (src.indexOf(head) >= 0 ? src.slice(src.indexOf(head), src.indexOf("}", src.indexOf(head)) + 1) : "");
 
 // == SKIP guard + modules ==
 const skipReasons = existsSync(join(ROOT, F.judge)) ? [] : [`H2.5 not built: ${F.judge} absent`];
@@ -809,6 +838,209 @@ async function runDb(): Promise<void> {
     const o: Record<string, Any> = { alert: await sv(U.owner!, { notInAlertMin: 241 }), absent: await sv(U.owner!, { absentAfterMin: 29 }), early: await sv(U.owner!, { earlyOutGraceMin: 61 }), step: await sv(U.owner!, { otStepMin: 7 }), member: await sv(U.member!, { notInAlertMin: 5 }), mgr: await sv(U.mgrU1!, { notInAlertMin: 5 }), branch: await sv(U.writerU2!, { notInAlertMin: 5 }) };
     const r = { alert: said(o.alert, T.sAlert), absent: said(o.absent, T.sAbsent), early: said(o.early, T.sEarly), step: said(o.step, T.sOtStep), gate: said(o.member, T.noPermission) && said(o.mgr, T.noPermission), branch: said(o.branch, T.shopWide), unchanged: before === canon(await setOf(sA)) };
     ck("S7.2", r, "fixed texts · nothing written", Object.entries(o).map(([k, v]) => `${k}=${shown(v)}`).join(" "));
+  }
+
+  // ── r2 (rulings A–I · systems D/E of TT, default policy unless set) ──
+  const dayOf = (v: unknown) => new Date(v as Any).toISOString().slice(0, 10);
+  const [sD, sE] = [await sys(TT, "HR D"), await sys(TT, "HR E")];
+  const cD = { tenantId: TT, systemId: sD };
+  const cE = { tenantId: TT, systemId: sE };
+  const meD = (name: string, o: Record<string, unknown> = {}) => me(TT, sD, `${name} ${tag}`, { unitId: u1, ...o });
+  const attX = async (s0: string, emp: string, kind: string, at: Date, re: string | null = null) =>
+    (await P.hrAttendance.create({ data: { tenantId: TT, systemId: s0, employeeId: emp, kind, at, rosterEntryId: re, source: "KIOSK" } })).id as string;
+  const entX = (s0: string, emp: string, day: string, shiftId: string, unitId: string | null = u1) => ent(emp, day, shiftId, unitId, { sys: s0 });
+  const lvX = async (s0: string, emp: string, day: string, halfDay: string | null = null, type = "VACATION") =>
+    (await P.hrLeave.create({ data: { tenantId: TT, systemId: s0, employeeId: emp, type, fromDate: dbDate(day), toDate: dbDate(day), status: "APPROVED", halfDay } })).id as string;
+  const monthX = (ctx: Any, w: Who, emp: string, m: string, now: Date) => call(JG, "loadAttendanceMonth", ctx, vOf(w), { employeeId: emp, month: m }, { now });
+  const dayX = (dto: Any, d: string) => slotsOf(dto, d).map(sl).join(" + ") || "-";
+  const rowsX = async (emp: string) => ((await dayRows(TT)) ?? []).filter((r) => r.employeeId === emp);
+  const alertsOf = async (emp: string) => ((await alertRows(TT)) ?? []).filter((a) => a.employeeId === emp);
+  const rcX = (ctx: Any, w: Who, dayId: string, now: Date, reason = "แก้ตารางหลังปิดวัน") => call(JG, "recomputeAttendanceDay", ctx, vOf(w), { dayId, reason }, { now });
+  const [shD, shD30, shDa, shDb] = [await mkShift(TT, sD, "เช้าดี", 540, 1020), await mkShift(TT, sD, "ดึกดี", 30, 510), await mkShift(TT, sD, "แยกเช้าดี", 600, 840), await mkShift(TT, sD, "แยกเย็นดี", 1020, 1260)];
+  const shE = await mkShift(TT, sE, "เช้าอี", 420, 900);
+  const AP = "2031-04";
+  {
+    // A1: no roster/schedule · IN D 22:00 · OUT D+1 06:00 · year end 23:58 → 00:02
+    const a1 = await meD("ข้ามคืน");
+    await attX(sD, a1, "IN", bk("2031-04-07", "22:00"));
+    await attX(sD, a1, "OUT", bk("2031-04-08", "06:00"));
+    await attX(sD, a1, "IN", bk("2031-12-31", "23:58"));
+    await attX(sD, a1, "OUT", bk("2032-01-01", "00:02"));
+    const m = await monthX(cD, U.owner!, a1, AP, bk("2031-04-20", "12:00"));
+    await job(bk("2032-01-02", "12:00"));
+    const rows = await rowsX(a1);
+    const ye = rows.filter((r) => dbDate("2031-12-31").getTime() === new Date(r.date).getTime());
+    const r = { d: dayX(m, "2031-04-07") === "DAY:NO_SCHEDULE|L0|E0|W480|O0", d1: dayX(m, "2031-04-08") === "-", ye: ye.length === 1 && ye[0].status === "NO_SCHEDULE" && ye[0].workedMin === 4 && ye[0].missingOut === false, ye1: !rows.some((x) => new Date(x.date).getTime() === dbDate("2032-01-01").getTime()) };
+    ck("S11.1", r, "D NO_SCHEDULE W480 · D+1 none · year end W4 one row", `d=${dayX(m, "2031-04-07")} d1=${dayX(m, "2031-04-08")} ye=${ye.map((x) => `${x.status}/W${x.workedMin}/${x.missingOut}`)} rows=${rows.length}`);
+  }
+  {
+    // A2: overnight HrWorkSchedule 22:00–06:00 every weekday
+    const a2 = await meD("ตารางดึก");
+    for (let wd = 0; wd < 7; wd++) await P.hrWorkSchedule.create({ data: { tenantId: TT, systemId: sD, employeeId: a2, weekday: wd, dayOff: false, startMin: 1320, endMin: 360, graceMin: 15, createdAt: new Date("2031-01-01T00:00:00Z") } });
+    await attX(sD, a2, "IN", bk("2031-04-07", "21:58"));
+    await attX(sD, a2, "OUT", bk("2031-04-08", "06:01"));
+    const m = await monthX(cD, U.owner!, a2, AP, bk("2031-04-20", "12:00"));
+    const got = dayX(m, "2031-04-07");
+    chk("S11.2", got === "DAY:ON_TIME|L0|E0|W483|O0", "DAY:ON_TIME|L0|E0|W483|O0", got);
+  }
+  {
+    // B: unlinked IN 23:58 for a 00:30 shift the next day
+    const b1 = await meD("ตีหนึ่ง");
+    const x = await entX(sD, b1, "2031-04-09", shD30);
+    await attX(sD, b1, "IN", bk("2031-04-08", "23:58"));
+    const r1 = await job(bk("2031-04-09", "01:00"));
+    await attX(sD, b1, "OUT", bk("2031-04-09", "08:30"), x);
+    const m = await monthX(cD, U.owner!, b1, AP, bk("2031-04-20", "12:00"));
+    const r = { prev: dayX(m, "2031-04-08") === "DAY:DAY_OFF|L0|E0|W0|O0", day: dayX(m, "2031-04-09") === "E:ON_TIME|L0|E0|W512|O0", noAlert: (await alertsOf(b1)).length === 0 && !r1?.__err };
+    ck("S11.3", r, "04-08 DAY_OFF (no MO) · 04-09 ON_TIME W512 · no alert", `prev=${dayX(m, "2031-04-08")} day=${dayX(m, "2031-04-09")} alerts=${(await alertsOf(b1)).length}`);
+  }
+  {
+    // C: orphaned rows — moved to another employee / deleted / unpublished after finalising
+    const [c1, c2] = [await meD("ย้ายกะ"), await meD("รับกะ")];
+    const days = ["2031-04-14", "2031-04-15", "2031-04-16"];
+    const xs: string[] = [];
+    for (const dd of days) {
+      const x = await entX(sD, c1, dd, shD);
+      xs.push(x);
+      await attX(sD, c1, "IN", bk(dd, "09:00"), x);
+      await attX(sD, c1, "OUT", bk(dd, "17:00"), x);
+    }
+    await job(bk("2031-04-17", "12:00"));
+    const before = (await rowsX(c1)).length;
+    await P.hrRosterEntry.update({ where: { id: xs[0] }, data: { employeeId: c2 } });
+    await P.hrRosterEntry.delete({ where: { id: xs[1] } });
+    await P.hrRosterEntry.update({ where: { id: xs[2] }, data: { published: false, publishedAt: null } });
+    await job(bk("2031-04-17", "12:30"));
+    const worked = async () => Object.fromEntries(days.map((dd) => [dd, 0])) as Record<string, number>;
+    const sumRows = async () => {
+      const o = await worked();
+      for (const x of await rowsX(c1)) o[dayOf(x.date)] = (o[dayOf(x.date)] ?? 0) + Number(x.workedMin);
+      return o;
+    };
+    const s1 = await sumRows();
+    const b = await call(JG, "loadAttendanceBoard", cD, vOf(U.owner!), { day: days[0] }, { now: bk("2031-04-17", "13:00") });
+    const bw = ((b?.rows ?? []).find((x: Any) => x.employeeId === c1)?.slots ?? []).reduce((a: number, x: Any) => a + Number(x.workedMin), 0);
+    const mm = await monthX(cD, U.owner!, c1, AP, bk("2031-04-17", "13:00"));
+    const orphans = (await rowsX(c1)).map((x) => x.id as string);
+    const res = [] as Any[];
+    for (const id of orphans) res.push(await rcX(cD, U.owner!, id, bk("2031-04-17", "14:00")));
+    await job(bk("2031-04-17", "14:30"));
+    const s2 = await sumRows();
+    const after = await rowsX(c1);
+    const r = {
+      first: before === 3, noSecond: days.every((dd) => s1[dd] === 480) && (await rowsX(c1)).length >= 3, board: bw === 480, month: mm?.summary?.workedMin === 1440,
+      recompute: res.length === 3 && res.every((x) => x?.ok === true), keyed: days.every((dd) => s2[dd] === 480) && after.length === 3 && after.every((x) => Number(x.version) === 2 && x.status === "NO_SCHEDULE"),
+    };
+    ck("S11.4", r, "3 rows · 480 per day (not 960) · board 480 · month 1440 · recompute ok ×3 → NO_SCHEDULE v2", `s1=${canon(s1)} board=${bw} month=${mm?.summary?.workedMin} rc=${res.map(shown).join("|")} after=${after.map((x) => `${dayOf(x.date)}:${x.status}/W${x.workedMin}/v${x.version}`).join(",")}`);
+  }
+  {
+    // D: split-shift leave 10–14 + 17–21 · full · AM · PM
+    const d1 = await meD("สองกะ");
+    const mk = async (dd: string) => [await entX(sD, d1, dd, shDa), await entX(sD, d1, dd, shDb)];
+    const [fa] = await mk("2031-04-21");
+    await lvX(sD, d1, "2031-04-21");
+    const [, am2] = await mk("2031-04-22");
+    await lvX(sD, d1, "2031-04-22", "AM");
+    await attX(sD, d1, "IN", bk("2031-04-22", "16:55"), am2);
+    await attX(sD, d1, "OUT", bk("2031-04-22", "21:00"), am2);
+    const [pm1] = await mk("2031-04-23");
+    await lvX(sD, d1, "2031-04-23", "PM");
+    await attX(sD, d1, "IN", bk("2031-04-23", "10:00"), pm1);
+    await attX(sD, d1, "OUT", bk("2031-04-23", "14:00"), pm1);
+    await job(bk("2031-04-22", "10:30"));
+    const alerts = await alertsOf(d1);
+    await job(bk("2031-04-24", "12:00"));
+    const rows = await rowsX(d1);
+    const on = (dd: string) => rows.filter((x) => dayOf(x.date) === dd).sort((a, b) => Number(a.startMin) - Number(b.startMin));
+    const fr = (dd: string) => on(dd).reduce((a, x) => a + Number(x.leaveFraction ?? 0), 0);
+    const st = (dd: string) => on(dd).map((x) => `${x.status}/W${x.workedMin}`).join("+");
+    const r = {
+      full: st("2031-04-21") === "LEAVE/W0+LEAVE/W0" && fr("2031-04-21") === 1 && Number(on("2031-04-21")[0]?.leaveFraction) === 1 && on("2031-04-21")[0]?.rosterEntryId === fa,
+      am: st("2031-04-22") === "LEAVE/W0+ON_TIME/W245" && fr("2031-04-22") === 0.5,
+      pm: st("2031-04-23") === "ON_TIME/W240+LEAVE/W0" && fr("2031-04-23") === 0.5,
+      noAlert: alerts.length === 0,
+    };
+    ck("S11.5", r, "full LEAVE×2 Σ1.0 · AM LEAVE+ON_TIME(17:00) Σ0.5 · PM mirrored · no alert", `21=${st("2031-04-21")}/${fr("2031-04-21")} 22=${st("2031-04-22")}/${fr("2031-04-22")} 23=${st("2031-04-23")}/${fr("2031-04-23")} alerts=${alerts.length}`);
+  }
+  {
+    const h1 = await meD("ครึ่งเช้า");
+    await entX(sD, h1, "2031-04-24", shD);
+    await lvX(sD, h1, "2031-04-24", "AM");
+    await job(bk("2031-04-25", "12:00"));
+    const row = (await rowsX(h1)).find((x) => dayOf(x.date) === "2031-04-24");
+    chk("S11.6", row?.status === "ABSENT" && row?.leaveHalf === "AM" && Number(row?.leaveFraction) === 0.5, "ABSENT · AM · 0.5", row ? `${row.status}/${row.leaveHalf}/${row.leaveFraction}` : "∅");
+  }
+  {
+    // E: inactive / ENDED with a leftover published entry, no IN
+    const [ei, ee] = [await meD("ปิดใช้", { active: false }), await meD("พ้นสภาพ", { status: "ENDED" })];
+    for (const e0 of [ei, ee]) await entX(sD, e0, "2031-04-28", shD);
+    const ev0 = await P.outboxEvent.count({ where: { tenantId: TT } });
+    await job(bk("2031-04-28", "09:30"));
+    await job(bk("2031-04-28", "17:00"));
+    await job(bk("2031-04-29", "12:00"));
+    const r = { alerts: (await alertsOf(ei)).length + (await alertsOf(ee)).length === 0, events: (await P.outboxEvent.count({ where: { tenantId: TT } })) === ev0, rows: (await rowsX(ei)).length + (await rowsX(ee)).length === 0 };
+    ck("S11.7", r, "0 alerts · 0 events · 0 rows", "");
+  }
+  {
+    // F: half-day AM leave · absentAfterMin 60 · due 11:00 (system E)
+    await P.appSystem.update({ where: { id: sE }, data: { settings: { hrAttendance: { absentAfterMin: 60 } } } });
+    const f1 = await me(TT, sE, `ครึ่งวันอี ${tag}`, { unitId: u1 });
+    await ent(f1, "2031-04-30", shE, u1, { sys: sE });
+    await P.hrLeave.create({ data: { tenantId: TT, systemId: sE, employeeId: f1, type: "PERSONAL", fromDate: dbDate("2031-04-30"), toDate: dbDate("2031-04-30"), status: "APPROVED", halfDay: "AM" } });
+    const at = async (hm: string) => ((await call(JG, "loadAttendanceBoard", cE, vOf(U.owner!), { day: "2031-04-30" }, { now: bk("2031-04-30", hm) }))?.rows ?? []).find((x: Any) => x.employeeId === f1)?.slots?.[0]?.status ?? "∅";
+    const [s0830, s1159, s1200] = [await at("08:30"), await at("11:59"), await at("12:00")];
+    ck("S11.8", { early: s0830 === "PENDING", before: s1159 === "PENDING", at: s1200 === "ABSENT" }, "08:30 PENDING · 11:59 PENDING · 12:00 ABSENT", `${s0830}/${s1159}/${s1200}`);
+  }
+  {
+    // G: holiday 05-05 (shop-wide, system D)
+    const hD = (await P.hrHoliday.create({ data: { tenantId: TT, systemId: sD, date: dbDate("2031-05-05"), name: `หยุดดี ${tag}`, kind: "PUBLIC" } })).id as string;
+    const [g1, g2] = [await meD("ทำวันหยุด"), await meD("ไม่มีตารางวันหยุด")];
+    const x = await entX(sD, g1, "2031-05-05", shD);
+    await attX(sD, g1, "IN", bk("2031-05-05", "09:00"), x);
+    await attX(sD, g1, "OUT", bk("2031-05-05", "17:00"), x);
+    await attX(sD, g2, "IN", bk("2031-05-05", "10:00"));
+    await attX(sD, g2, "OUT", bk("2031-05-05", "14:00"));
+    await job(bk("2031-05-06", "12:00"));
+    const [r1, r2] = [(await rowsX(g1))[0], (await rowsX(g2))[0]];
+    ck("S11.9", { entry: r1?.holidayId === hD && r1?.status === "ON_TIME", noSched: r2?.holidayId === hD && r2?.status === "DAY_OFF" && r2?.workedMin === 240 }, "entry row holidayId · unrostered DAY_OFF + holidayId", `${r1?.status}/${r1?.holidayId === hD} · ${r2?.status}/${r2?.holidayId === hD}/W${r2?.workedMin}`);
+  }
+  {
+    // H: recompute vs payroll approval under the period lock
+    const k1 = await meD("งวดพฤษภา");
+    const x = await entX(sD, k1, "2031-05-07", shD);
+    await attX(sD, k1, "IN", bk("2031-05-07", "09:20"), x);
+    await attX(sD, k1, "OUT", bk("2031-05-07", "17:00"), x);
+    await job(bk("2031-05-08", "12:00"));
+    const row0 = (await rowsX(k1)).find((r) => r.slotKey === x);
+    await P.hrRosterEntry.update({ where: { id: x }, data: { startMin: 570 } });
+    const h = await hold(
+      `hr:payroll:run:${sD}:2031-05`,
+      (tx) => tx.hrPayrollRun.create({ data: { tenantId: TT, systemId: sD, periodKey: "2031-05", payDate: new Date("2031-05-31T00:00:00Z"), status: "APPROVED" } }),
+      () => rcX(cD, U.owner!, row0?.id ?? "∅", bk("2031-05-08", "13:00")),
+    );
+    const row1 = (await rowsX(k1)).find((r) => r.slotKey === x);
+    chk("S11.10", h.waited && !h.holderErr && said(h.res, T.rPaid) && row1?.version === 1 && row1?.status === "LATE", "waited · rPaid · row unchanged", `waited=${h.waited} holder=${h.holderErr || "-"} res=${shown(h.res)} row=${row1?.status}/v${row1?.version}`);
+  }
+  {
+    // I: alert re-checks for an IN under hr:clock:<emp>
+    const i1 = await meD("เข้าทันเตือน");
+    const x = await entX(sD, i1, "2031-05-14", shD);
+    const h = await hold(`hr:clock:${i1}`, (tx) => tx.hrAttendance.create({ data: { tenantId: TT, systemId: sD, employeeId: i1, kind: "IN", at: bk("2031-05-14", "09:11"), rosterEntryId: x, source: "KIOSK" } }), () => job(bk("2031-05-14", "09:12")));
+    chk("S11.11", h.waited && !h.holderErr && !h.res?.__err && (await alertsOf(i1)).length === 0, "waited · no alert", `waited=${h.waited} holder=${h.holderErr || "-"} alerts=${(await alertsOf(i1)).length} res=${shown(h.res)}`);
+  }
+  {
+    // scope: employee home u1 works one day at u2 — branch manager u1 does not see that day
+    const m1 = await meD("สองสาขา");
+    const xa = await entX(sD, m1, "2031-05-19", shD, u1);
+    const xb = await entX(sD, m1, "2031-05-20", shD, u2);
+    for (const [dd, x] of [["2031-05-19", xa], ["2031-05-20", xb]] as const) {
+      await attX(sD, m1, "IN", bk(dd, "09:00"), x);
+      await attX(sD, m1, "OUT", bk(dd, "17:00"), x);
+    }
+    const now = bk("2031-05-25", "12:00");
+    const [mo, mu] = [await monthX(cD, U.owner!, m1, "2031-05", now), await monthX(cD, U.mgrU1!, m1, "2031-05", now)];
+    const r = { owner: dayX(mo, "2031-05-20") === "E:ON_TIME|L0|E0|W480|O0", u1: dayX(mu, "2031-05-19") === "E:ON_TIME|L0|E0|W480|O0" && slotsOf(mu, "2031-05-20").length === 0 && !JSON.stringify(mu ?? "").includes(xb) };
+    ck("S11.13", r, "owner sees u2 day · u1 manager does not", `owner=${dayX(mo, "2031-05-20")} u1=${dayX(mu, "2031-05-20")}`);
   }
 }
 
