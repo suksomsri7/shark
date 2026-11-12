@@ -9,7 +9,7 @@ import { hrViewerOf } from "@/lib/modules/hr/privacy";
 import { hrScopeOf, unitWhere } from "@/lib/modules/hr/scope";
 import { canReadRoster } from "@/lib/modules/hr/roster-board";
 import { canManageHrSettings } from "@/lib/modules/hr/settings";
-import { JUDGE_TEXT, loadAttendanceBoard, loadAttendanceMonth, myAttendanceMonth } from "@/lib/modules/hr/judge";
+import { attendanceNeedsRecompute, JUDGE_TEXT, loadAttendanceBoard, loadAttendanceMonth, myAttendanceMonth } from "@/lib/modules/hr/judge";
 import { recomputeAttendanceDayAction } from "@/lib/modules/hr/attendance-actions";
 import { AttendanceDayView, AttendanceFlash, AttendanceMonthView, AttendanceViewTabs } from "@/lib/modules/hr/attendance-ui";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -88,6 +88,7 @@ export default async function HrAttendancePage({ params, searchParams }: { param
 
   const board = await loadAttendanceBoard(ctx, viewer, { day: str(sp.day), unit: str(sp.unit) });
   if (!board) notFound();
+  const needs = await attendanceNeedsRecompute(ctx, viewer); // HR H2.5 r3 ▸ วันที่ต้องคิดผลใหม่ (แถวกำพร้า) ◂
   return (
     <div data-testid="hr-att-page" className="flex flex-col gap-5">
       {header(t("desc"))}
@@ -96,7 +97,7 @@ export default async function HrAttendancePage({ params, searchParams }: { param
         <AttendanceViewTabs base={base} view="day" />
       </div>
       <AttendanceFlash text={flash} ok={code === "ok" || code === "same"} />
-      <AttendanceDayView board={board} base={base} systemId={id} onRecompute={canRecompute ? onRecompute : null} clockForPanel={board.canClockFor ? <HrAttendanceSection systemId={id} /> : null} />
+      <AttendanceDayView board={board} base={base} systemId={id} onRecompute={canRecompute ? onRecompute : null} clockForPanel={board.canClockFor ? <HrAttendanceSection systemId={id} /> : null} needs={needs} />
     </div>
   );
 }

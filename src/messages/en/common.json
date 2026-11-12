@@ -480,7 +480,8 @@
         "m10": "Oct",
         "m11": "Nov",
         "m12": "Dec"
-      }
+      },
+      "needsRecompute": "{n} days need a recompute — the roster changed after the result was saved (hours still count from the saved result)"
     }
   }
 }

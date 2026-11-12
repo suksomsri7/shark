@@ -4256,6 +4256,32 @@
    "wo": "H2.5",
    "oracle": "qc-hr-h2.5",
    "note": "บันทึกการตัดสินผล"
+  },
+  {
+   "page": "/app/sys/[id]/hr/attendance",
+   "testid": "hr-att-needs-recompute",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/attendance-ui.tsx",
+   "conditional": "มีวันที่มีแถวกำพร้า (กะถูกย้าย/ลบ/ถอนประกาศหลังปิดวัน) ในขอบเขตผู้ดู 35 วันล่าสุด",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "kiosk",
+    "member",
+    "staff"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.5",
+   "oracle": "qc-hr-h2.5",
+   "note": "แถบ 'n วันต้องคิดผลใหม่' + ลิงก์ไปวันนั้น (มติ r3 5)"
   }
  ]
 }

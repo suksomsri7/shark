@@ -122,12 +122,14 @@ export async function AttendanceDayView({
   systemId,
   onRecompute,
   clockForPanel,
+  needs,
 }: {
   board: AttendanceBoardDto;
   base: string;
   systemId: string;
   onRecompute: FormFn | null;
   clockForPanel: ReactNode;
+  needs: { count: number; days: { day: string; employeeId: string; name: string }[] } | null;
 }) {
   const t = await getTranslations("hr.attendance");
   const unitQ = board.unitSel !== "all" ? `&unit=${encodeURIComponent(board.unitSel)}` : "";
@@ -181,6 +183,19 @@ export async function AttendanceDayView({
           </details>
         )}
       </div>
+
+      {needs && needs.count > 0 && (
+        <div data-testid="hr-att-needs-recompute" role="status" className="flex flex-col gap-1 rounded-2xl border-[1.5px] border-dashed border-[color:var(--color-danger)] px-4 py-3 text-sm">
+          <b className="text-[color:var(--color-danger)]">⚠ {t("needsRecompute", { n: needs.count })}</b>
+          <span className="flex flex-wrap gap-x-3 gap-y-1">
+            {needs.days.slice(0, 8).map((d) => (
+              <a key={`${d.employeeId}-${d.day}`} href={`${base}?view=day&day=${d.day}`} className="inline-flex min-h-[44px] items-center underline">
+                {dayLabel(t, d.day)} · {d.name}
+              </a>
+            ))}
+          </span>
+        </div>
+      )}
 
       {banner.length > 0 && (
         <div data-testid="hr-att-banner" role="alert" className="flex flex-col gap-1 rounded-2xl border-[1.5px] border-[color:var(--color-danger)] px-4 py-3 text-sm">
