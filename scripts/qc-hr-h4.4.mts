@@ -50,7 +50,8 @@ const ON_KEYS = ["id_card", "sso", "bank", "pin", "roster", "contract", "pos_tra
 const OFF_KEYS = ["pin_revoked", "app_access", "property", "final_pay", "sso_out", "certificate"];
 const NOTE_KEYS = "acknowledgedAt,authorName,body,createdAt,id,kind,periodLabel,score,title,visibleToEmployee";
 const SELF_NOTE_KEYS = "acknowledgedAt,body,createdAt,id,kind,periodLabel,score,title";
-const TASK_KEYS = "doneAt,done,dueDate,hasCard,id,kind,sortOrder,title";
+// ORACLE-EDIT (builder H4.4 · S8.2): the literal was not in srt() order ("done" sorts before "doneAt") ⇒ could never match · same 8 keys
+const TASK_KEYS = "done,doneAt,dueDate,hasCard,id,kind,sortOrder,title";
 const DUE_KEYS = "date,employeeId,kind,name,open";
 const UI_IDS = ["due", "banner", "pass", "checklist", "start-onboarding", "start-offboarding", "notes", "note-add", "offboard", "offboard-date", "offboard-reason", "offboard-note", "offboard-access", "offboard-confirm", "settings", "lead-probation", "lead-contract", "kanban", "template-onboarding", "template-offboarding"].map((s) => `hr-life-${s}`);
 const UI_DYN = ["hr-life-due-*", "hr-life-task-*", "hr-life-note-*"];
@@ -758,9 +759,11 @@ async function runDb(): Promise<void> {
     let code = "";
     const eT = await emp(sA, "keepnote");
     await P.hrReviewNote.create({ data: { tenantId: TT, systemId: sA, employeeId: eT, kind: "WRITTEN_WARNING", title: "qc", body: "qc" } });
-    await P.$executeRawUnsafe(`DELETE FROM "HrEmployee" WHERE "id" = $1`, eT).catch((e: Any) => (code = String(e?.meta?.code ?? e?.code ?? errText(e))));
+    // ORACLE-EDIT (builder H4.4 · S11.1): Prisma 7 raw errors carry P2010 with the PG code in meta.driverAdapterError.cause.originalCode ·
+    //   PostgreSQL reports an ON DELETE RESTRICT refusal as 23001 restrict_violation (NO ACTION = 23503) ⇒ both codes = "refused by the FK"
+    await P.$executeRawUnsafe(`DELETE FROM "HrEmployee" WHERE "id" = $1`, eT).catch((e: Any) => (code = [e?.meta?.driverAdapterError?.cause?.originalCode, e?.meta?.code, e?.code, errText(e)].filter(Boolean).map(String).join(" ")));
     const left = await cnt("hrReviewNote", { employeeId: eT });
-    chk("S11.1", /23503|P2003|foreign key/i.test(code) && left === 1, "23503 · note kept", `${code.slice(0, 40) || "deleted"} ${left}`);
+    chk("S11.1", /23503|23001|P2003|foreign key/i.test(code) && left === 1, "23503|23001 · note kept", `${code.slice(0, 40) || "deleted"} ${left}`);
     const q = (await fx.rawRows(`SELECT c.conname::text AS conname, c.confdeltype::text AS confdeltype FROM pg_constraint c WHERE c.conname IN ('HrReviewNote_employeeId_fkey','HrOnboardingTask_employeeId_fkey')`)) ?? [];
     const by = Object.fromEntries(q.map((x: Any) => [x.conname, x.confdeltype]));
     chk("S11.2", by.HrReviewNote_employeeId_fkey === "r" && by.HrOnboardingTask_employeeId_fkey === "c", "r · c", short(by, 80));
