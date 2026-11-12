@@ -29,7 +29,8 @@
     "edit": "Edit",
     "save": "Save",
     "failed": "That did not work. Please try again.",
-    "discardConfirm": "Close without saving your changes?"
+    "discardConfirm": "Close without saving your changes?",
+    "actions": "Actions"
   },
   "products": {
     "title": "Products",
@@ -241,7 +242,8 @@
     "corrupt": "Zone data is damaged — edit and save it before turning it on",
     "areasEn": "Areas (English)",
     "windowMin": "A pick-up zone needs a window of at least 1 minute",
-    "windowOverOffset": "The window cannot be longer than the minutes before departure"
+    "windowOverOffset": "The window cannot be longer than the minutes before departure",
+    "actions": "Manage zone {name}"
   },
   "content": {
     "title": "Content Thai / English",
@@ -374,7 +376,47 @@
     "perProductBadge": "Per product {n}",
     "templateValue": "Template {v}",
     "readOnly": "Read-only",
-    "editTitle": "Edit {name}"
+    "editTitle": "Edit {name}",
+    "view": {
+      "daysOrMore": "{n}+ days before",
+      "lessThanDays": "under {n} days",
+      "exactDays": "{n} days",
+      "dayRange": "{from}–{to} days",
+      "pax": {
+        "REQUIRED": "Required",
+        "REQUIRED_CROSS_BORDER": "Required for cross-border trips",
+        "OPTIONAL": "Optional",
+        "OFF": "Not asked"
+      },
+      "park": {
+        "groupsN": "{n} official groups",
+        "shopRatesN": "{n} shop rates",
+        "row": "Row",
+        "thai": "Thai child/adult",
+        "foreign": "Foreign child/adult",
+        "shopRate": "shop rate",
+        "flat": "{amount} per person",
+        "adultChild": "adult {adult} · child {child}",
+        "dive": "diving {amount} per person per day",
+        "mooring": "mooring {a} / {b}",
+        "confirmed": "rates confirmed on {date}",
+        "notConfirmed": "rates not confirmed yet"
+      },
+      "cancelOption": {
+        "MOVE_DATE": "Move date",
+        "CREDIT": "Shop credit",
+        "REFUND_100": "Full refund"
+      },
+      "autoRefund": "no choice within {n} days = automatic refund",
+      "deduction": {
+        "VISA": "Visa fees",
+        "AIR_DEPOSIT": "Air ticket deposits",
+        "OTHER_NECESSARY": "Other necessary costs"
+      },
+      "noDeductions": "No deductions",
+      "evidenceRequired": "evidence required",
+      "evidenceOptional": "no evidence needed"
+    }
   },
   "loading": "Loading…",
   "errors": {

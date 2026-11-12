@@ -1,4 +1,4 @@
-// visual-trips.mts — ถ่ายภาพหน้าจอจริงของ RUN TRIPS (จอร้าน) เพื่อทำภาพคู่ MOCKUP|RENDER — เดสก์ท็อป 1440×900 เท่านั้น (fullPage)
+// visual-trips.mts — ถ่ายภาพหน้าจอจริงของ RUN TRIPS (จอร้าน) เพื่อทำภาพคู่ MOCKUP|RENDER — เดสก์ท็อป 1440×900 (ภาพคู่) + มือถือ 390×844 (ตรวจล้นแนวนอนเท่านั้น)
 // โครงลอกจาก scripts/visual-svc.mts (mint session · puppeteer-core · ตรวจล้นแนวนอน · ลบ session ใน finally) + ขั้นกด/กรอกก่อนถ่าย
 //
 // ใช้ (ต้องมี QC server ของ TRIPS — production build บน .env.qc-trips · builder ห้าม build ⇒ ผู้คุมเปิด server เอง):
@@ -12,7 +12,8 @@
 //
 // 🔴 ไม่มี base ปริยาย · :3215 (server ของ CRM) ⇒ exit 2 · ต่อ server ไม่ได้ ⇒ exit 2 ก่อน mint session
 // 🔴 session ที่ mint ปักธง userAgent "qc-visual-trips" แล้วลบ **เฉพาะแถวของรอบนี้** ใน finally (ห้าม process.exit ระหว่าง mint/ถ่าย)
-// 🔴 ล้นแนวนอน = ❌ · HTTP ≥ 400 = ❌ · page error = ❌ · ขั้นกด/กรอกหาเป้าไม่เจอ = ❌ · ภาพ → .qc-shots/trips/<wo>/<ชื่อ>-desktop.png
+// 🔴 ล้นแนวนอน = ❌ (ทั้ง 1440 และ 390) · HTTP ≥ 400 = ❌ · page error = ❌ · ขั้นกด/กรอกหาเป้าไม่เจอ = ❌ · ภาพ → .qc-shots/trips/<wo>/<ชื่อ>-<desktop|mobile>.png
+// 🔴 ฉากที่มีกล่องโต้ตอบ (fullPage: false) ถ่ายเฉพาะจอ — fullPage จะยืดจอแล้วเย็บหน้าหลังกล่องเข้ามา
 // 🔴 ผู้ใช้ = เจ้าของร้านตัวอย่าง SHOP_DIVE (seed-trips-qc) · id ของสินค้า/รอบหาจาก slug ตอนรัน (ไม่ฝัง id)
 // 🔴 ฉาก settings-similan-warning: กรอกตารางยกเลิก 50/30/0 → กดบันทึก ⇒ กล่องคำเตือน W01 → W03 · ถ่ายก่อนยืนยัน **ไม่กดยืนยัน** (ไม่เขียนฐาน)
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -28,12 +29,24 @@ const UA = "qc-visual-trips";
 const SHOTS_DIR = ".qc-shots/trips";
 const FORBIDDEN_PORTS = ["3215"];
 const VIEWPORT = { width: 1440, height: 900 } as const;
+const DEVICES = [
+  { device: "desktop", width: VIEWPORT.width, height: VIEWPORT.height, mobile: false },
+  { device: "mobile", width: 390, height: 844, mobile: true },
+] as const;
 
 // ═══════════════ สเปกภาพ (คีย์ = ใบงาน) ═══════════════
 type Ids = { unitSlug: string; racha: string; similan: string; racha1114: string };
-type Action = { click: { selector: string; text?: string } } | { fill: { selector: string; nth?: number; value: string } } | { waitFor: string } | { pause: number };
-type Spec = { name: string; mockup: "16" | "17"; path: (ids: Ids) => string; actions?: Action[] };
-const LADDER_INPUTS = '[role="dialog"] [data-setting-key="trips.cancel.ladder"] input[type="number"]';
+type Action =
+  | { click: { selector: string; text?: string } }
+  | { fill: { selector: string; nth?: number; value: string } }
+  | { waitFor: string }
+  | { reveal: string }
+  | { pause: number };
+type Spec = { name: string; mockup: "16" | "17"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean };
+// ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
+const LADDER = '[role="dialog"] [data-setting-key="trips.cancel.ladder"]';
+const LADDER_DAYS = `${LADDER} [data-table-cell="fromDaysBefore"] input`;
+const LADDER_PCT = `${LADDER} [data-table-cell="refundPct"] input`;
 export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
   "t1.1": [
     // ภาพ 16 — ตัวแก้ราชา · รอบตัวอย่างปัก ?ex= (ปริยาย ส. 14 พ.ย. ⇒ ลูกค้าจะเห็น 11,450.00 · --ex-date เปลี่ยนได้)
@@ -45,14 +58,17 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       name: "settings-similan-warning",
       mockup: "17",
       path: (i) => `/app/u/${i.unitSlug}/trips/settings?scope=PRODUCT&id=${i.similan}&section=cancel`,
+      fullPage: false,
       actions: [
-        { waitFor: LADDER_INPUTS },
+        { waitFor: LADDER_DAYS },
         ...TRIPS_VISUAL_SIMILAN_LADDER.flatMap((s, k) => [
-          { fill: { selector: LADDER_INPUTS, nth: k * 2, value: String(s.fromDaysBefore) } },
-          { fill: { selector: LADDER_INPUTS, nth: k * 2 + 1, value: String(s.refundPct) } },
+          { fill: { selector: LADDER_DAYS, nth: k, value: String(s.fromDaysBefore) } },
+          { fill: { selector: LADDER_PCT, nth: k, value: String(s.refundPct) } },
         ]),
         { click: { selector: '[role="dialog"] button', text: "บันทึก" } },
         { waitFor: '[role="alertdialog"]' },
+        // จบที่ภาพกล่อง W01 + W03 อยู่ในจอ (กล่องโต้ตอบเลื่อนให้เองด้วย · ขั้นนี้กันพลาด) — ไม่กดยืนยัน
+        { reveal: '[role="alertdialog"]' },
         { pause: 600 },
       ],
     },
@@ -82,7 +98,7 @@ if (!specs.length) {
   process.exit(2);
 }
 if (argv.includes("--list")) {
-  console.log(`VISUAL_SPECS ${JSON.stringify(specs.map((s) => ({ name: s.name, mockup: s.mockup, actions: s.actions?.length ?? 0, viewport: VIEWPORT })))} · exDate ${EX_DATE}`);
+  console.log(`VISUAL_SPECS ${JSON.stringify(specs.map((s) => ({ name: s.name, mockup: s.mockup, actions: s.actions?.length ?? 0, fullPage: s.fullPage !== false, devices: DEVICES.map((d) => `${d.width}x${d.height}`) })))} · exDate ${EX_DATE}`);
   process.exit(0);
 }
 const BASE = (argOf("--base") ?? process.env.QC_BASE ?? "").replace(/\/+$/, "");
@@ -166,6 +182,16 @@ async function runAction(page: Page, a: Action): Promise<string | null> {
     await new Promise((r) => setTimeout(r, a.pause));
     return null;
   }
+  if ("reveal" in a) {
+    const ok = await page.evaluate((sel: string) => {
+      const el = document.querySelector(sel);
+      if (!el) return false;
+      el.scrollIntoView({ block: "start" });
+      return true;
+    }, a.reveal);
+    await new Promise((r) => setTimeout(r, 300));
+    return ok ? null : `เลื่อนไป ${a.reveal} ไม่ได้`;
+  }
   if ("waitFor" in a) {
     const ok = await page.waitForSelector(a.waitFor, { timeout: 15_000 }).then(() => true).catch(() => false);
     return ok ? null : `รอ ${a.waitFor} ไม่ขึ้น`;
@@ -197,7 +223,7 @@ async function runAction(page: Page, a: Action): Promise<string | null> {
 let failures = 0;
 let fatal = "";
 const shots: string[] = [];
-const results: { name: string; mockup: string; status: number; errors: string[]; overflow: boolean; file: string }[] = [];
+const results: { name: string; device: string; mockup: string; status: number; errors: string[]; overflow: boolean; file: string }[] = [];
 const profile = `/tmp/chr-trips-${process.pid}`;
 try {
   const ids = await idsFromSeed();
@@ -210,9 +236,9 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${profile}`],
   });
   try {
-    for (const spec of specs) {
+    for (const spec of specs) for (const dev of DEVICES) {
       const page = await browser.newPage();
-      await page.setViewport({ ...VIEWPORT, deviceScaleFactor: 1 });
+      await page.setViewport({ width: dev.width, height: dev.height, deviceScaleFactor: 1, isMobile: dev.mobile, hasTouch: dev.mobile });
       await page.setCookie(...cookies);
       const errors: string[] = [];
       page.on("pageerror", (e: never) => errors.push(String((e as Error).message).slice(0, 120)));
@@ -226,15 +252,15 @@ try {
         }
       }
       if (!spec.actions?.length) await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
-      const overflow = await page.evaluate((vw: number) => document.documentElement.scrollWidth > vw + 2, VIEWPORT.width).catch(() => false);
-      const file = join(OUT, `${spec.name}-desktop.png`);
-      await page.screenshot({ path: file, fullPage: true });
+      const overflow = await page.evaluate((vw: number) => document.documentElement.scrollWidth > vw + 2, dev.width).catch(() => false);
+      const file = join(OUT, `${spec.name}-${dev.device}.png`);
+      await page.screenshot({ path: file, fullPage: spec.fullPage !== false });
       shots.push(file);
       const status = resp?.status() ?? 0;
       const ok = status > 0 && status < 400 && !overflow && errors.length === 0;
       if (!ok) failures++;
-      results.push({ name: spec.name, mockup: spec.mockup, status, errors, overflow, file });
-      console.log(`  ${ok ? "✅" : "❌"} ${spec.name} (↔ ภาพ ${spec.mockup}) HTTP ${status} → ${file}${overflow ? " · ล้นแนวนอน" : ""}${errors.length ? ` · ${errors.length} ข้อผิดพลาด: ${errors[0]}` : ""}`);
+      results.push({ name: spec.name, device: dev.device, mockup: spec.mockup, status, errors, overflow, file });
+      console.log(`  ${ok ? "✅" : "❌"} ${spec.name} [${dev.device} ${dev.width}] (↔ ภาพ ${spec.mockup}) HTTP ${status} → ${file}${overflow ? " · ล้นแนวนอน" : ""}${errors.length ? ` · ${errors.length} ข้อผิดพลาด: ${errors[0]}` : ""}`);
       await page.close();
     }
   } finally {

@@ -68,8 +68,8 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
   const setAge = (code: string, which: "from" | "to", v: string, row: { ageFrom: number; ageTo: number | null }) =>
     setAges((a) => ({ ...a, [code]: { from: a[code]?.from ?? String(row.ageFrom), to: a[code]?.to ?? (row.ageTo === null ? "" : String(code === "INFANT" ? row.ageTo + 1 : row.ageTo)), [which]: v } }));
 
-  const tabCls = "inline-flex min-h-11 items-center rounded-lg border border-[color:var(--color-line)] px-3 text-sm text-[color:var(--color-ink)]";
-  const soonCls = "inline-flex min-h-11 items-center rounded-lg border border-dashed border-[color:var(--color-line)] px-3 text-sm text-[color:var(--color-muted)]";
+  const tabCls = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-lg border border-[color:var(--color-line)] px-2.5 text-sm text-[color:var(--color-ink)]";
+  const soonCls = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-lg border border-dashed border-[color:var(--color-line)] px-2.5 text-sm text-[color:var(--color-muted)]";
 
   return (
     <div data-testid="trips-product-editor" data-product={p.id} data-readonly={f.readOnly ? "true" : "false"} className="flex min-w-0 flex-col gap-4">
@@ -120,7 +120,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
         {!p.archived && !f.canEdit ? <p className="rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2 text-sm text-[color:var(--color-ink-soft)]">{t("editor.readOnly")}</p> : null}
         {f.showCurrency ? <p className="text-sm text-[color:var(--color-ink-soft)]">{t(f.currencyLocked ? "editor.currencyLocked" : "editor.currency", { c: p.currency })}</p> : null}
         <ErrorLine text={error} />
-        <nav aria-label={t("editor.tabsAria")} className="flex min-w-0 flex-wrap gap-2">
+        <nav aria-label={t("editor.tabsAria")} className="-mx-1 flex min-w-0 flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1">
           {(["options", "extras", "pickup", "content"] as const).map((k) => (
             <a key={k} href={`#${k}`} data-testid={`trips-editor-tab-${k}`} className={tabCls}>
               {t(`editor.tabs.${k}`)}
@@ -215,23 +215,23 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
                 <tr key={r.paxTypeId} data-testid={`trips-pax-row-${r.code}`} className="border-b border-[color:var(--color-line)] last:border-b-0">
                   <td className={`${TD} font-bold`}>{paxLabel(t, r.code, r.labelTh)}</td>
                   <td className={TD}>
-                    <span className="flex flex-wrap items-center gap-2">
+                    <span className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
                       {r.code === "INFANT" ? (
                         <>
                           {t("pax.under")}
-                          <input data-testid={`trips-pax-age-to-${r.code}`} aria-label={t("pax.ageTo", { name: paxLabel(t, r.code, r.labelTh) })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-16 text-sm" value={ageVal(r.code, "to", r.ageTo === null ? null : r.ageTo + 1)} onChange={(e) => setAge(r.code, "to", e.target.value, r)} />
+                          <input data-testid={`trips-pax-age-to-${r.code}`} aria-label={t("pax.ageTo", { name: paxLabel(t, r.code, r.labelTh) })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-14 text-sm" value={ageVal(r.code, "to", r.ageTo === null ? null : r.ageTo + 1)} onChange={(e) => setAge(r.code, "to", e.target.value, r)} />
                         </>
                       ) : (
-                        <input data-testid={`trips-pax-age-from-${r.code}`} aria-label={t("pax.ageFrom", { name: paxLabel(t, r.code, r.labelTh) })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-16 text-sm" value={ageVal(r.code, "from", r.ageFrom)} onChange={(e) => setAge(r.code, "from", e.target.value, r)} />
+                        <input data-testid={`trips-pax-age-from-${r.code}`} aria-label={t("pax.ageFrom", { name: paxLabel(t, r.code, r.labelTh) })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-14 text-sm" value={ageVal(r.code, "from", r.ageFrom)} onChange={(e) => setAge(r.code, "from", e.target.value, r)} />
                       )}
                       {r.code === "ADULT" ? t("pax.andUp") : null}
                       {r.code !== "ADULT" && r.code !== "INFANT" ? (
                         <>
                           –
-                          <input data-testid={`trips-pax-age-to-${r.code}`} aria-label={t("pax.ageTo", { name: paxLabel(t, r.code, r.labelTh) })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-16 text-sm" value={ageVal(r.code, "to", r.ageTo)} onChange={(e) => setAge(r.code, "to", e.target.value, r)} />
+                          <input data-testid={`trips-pax-age-to-${r.code}`} aria-label={t("pax.ageTo", { name: paxLabel(t, r.code, r.labelTh) })} inputMode="numeric" disabled={f.readOnly} className="input min-h-11 w-14 text-sm" value={ageVal(r.code, "to", r.ageTo)} onChange={(e) => setAge(r.code, "to", e.target.value, r)} />
                         </>
                       ) : null}
-                      {t("pax.years")}
+                      {r.code !== "ADULT" ? t("pax.years") : null}
                     </span>
                   </td>
                   <td className={TD}>{r.countsCapacity ? t("pax.yes") : t("pax.no")}</td>
@@ -381,6 +381,9 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
                 <th className={`${TH} text-center`}>{t("extras.colCommission")}</th>
                 <th className={`${TH} text-center`}>{t("extras.colDiscount")}</th>
                 <th className={`${TH} text-center`}>{t("extras.colPassThrough")}</th>
+                <th className={TH}>
+                  <span className="sr-only">{t("common.actions")}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -468,12 +471,9 @@ function ExtraRow({ e, t, disabled, onToggle }: { e: ExtraRowVM; t: T; disabled:
   return (
     <tr data-testid={`trips-extra-row-${e.id}`} data-active={e.active ? "true" : "false"} className={`border-b border-[color:var(--color-line)] last:border-b-0 ${e.active ? "" : "text-[color:var(--color-muted)]"}`}>
       <td className={TD}>
-        <span className="font-bold">{e.nameTh}</span>
+        <span className="block font-bold">{e.nameTh}</span>
         {e.noteTh ? <span className="block text-sm text-[color:var(--color-muted)]">{e.noteTh}</span> : null}
         {e.scope === "UNIT" ? <span className="block text-sm text-[color:var(--color-muted)]">{t("extras.unitScope")}</span> : null}
-        <button type="button" data-testid={`trips-extra-toggle-${e.id}`} disabled={disabled} aria-pressed={e.active} onClick={onToggle} className="mt-1 min-h-11 text-sm text-[color:var(--color-accent)] disabled:text-[color:var(--color-muted)]">
-          {e.active ? t("extras.toggleOff") : t("extras.toggleOn")}
-        </button>
       </td>
       <td className={TD}>{t(`extras.basis.${e.basis}`)}</td>
       <td className={TD}>{e.mandatory ? t("extras.required") : t("extras.optional")}</td>
@@ -486,6 +486,11 @@ function ExtraRow({ e, t, disabled, onToggle }: { e: ExtraRowVM; t: T; disabled:
       </td>
       <td className={`${TD} text-center`}>
         <Check on={e.passThrough} label={t("extras.colPassThrough")} />
+      </td>
+      <td className={`${TD} text-right`}>
+        <button type="button" data-testid={`trips-extra-toggle-${e.id}`} disabled={disabled} aria-pressed={e.active} onClick={onToggle} className="min-h-11 whitespace-nowrap px-1 text-sm text-[color:var(--color-accent)] disabled:text-[color:var(--color-muted)]">
+          {e.active ? t("extras.toggleOff") : t("extras.toggleOn")}
+        </button>
       </td>
     </tr>
   );
@@ -543,7 +548,11 @@ function PickupSection({ unitSlug, vm, onEdit }: { unitSlug: string; vm: VM; onE
               <th className={TH}>{t("pickup.colWindow")}</th>
               <th className={`${TH} text-right`}>{t("pickup.colSurcharge")}</th>
               <th className={TH}>{t("pickup.colBasis")}</th>
-              {!ro ? <th className={TH} /> : null}
+              {!ro ? (
+                <th className={TH}>
+                  <span className="sr-only">{t("common.actions")}</span>
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -555,21 +564,30 @@ function PickupSection({ unitSlug, vm, onEdit }: { unitSlug: string; vm: VM; onE
                 <td className={`${TD} text-right`}>{z1.surchargeSatang ? `+${formatBahtShort(z1.surchargeSatang)}` : t("pickup.free")}</td>
                 <td className={TD}>{z1.surchargeSatang ? t("pickup.perBooking") : "—"}</td>
                 {!ro ? (
-                  <td className={TD}>
-                    <span className="flex flex-wrap gap-1">
-                      <button type="button" data-testid={`trips-pickup-edit-${z1.id}`} className={BTN} onClick={() => onEdit(z1)}>
-                        {t("common.edit")}
-                      </button>
-                      <button type="button" data-testid={`trips-pickup-up-${z1.id}`} className={BTN} aria-label={t("pickup.up", { name: z1.name.th })} disabled={busy || i === 0} onClick={() => void move(z1.id, -1)}>
-                        ↑
-                      </button>
-                      <button type="button" data-testid={`trips-pickup-down-${z1.id}`} className={BTN} aria-label={t("pickup.down", { name: z1.name.th })} disabled={busy || i === zones.length - 1} onClick={() => void move(z1.id, 1)}>
-                        ↓
-                      </button>
-                      <button type="button" data-testid={`trips-pickup-toggle-${z1.id}`} className={BTN} disabled={busy} onClick={() => void run(() => setPickupZoneActiveAction(unitSlug, { zoneId: z1.id, active: false }))}>
-                        {t("pickup.toggleOff")}
-                      </button>
-                    </span>
+                  <td className={`${TD} w-12 text-right`}>
+                    <details className="inline-block text-left">
+                      <summary
+                        aria-label={t("pickup.actions", { name: z1.name.th })}
+                        title={t("pickup.actions", { name: z1.name.th })}
+                        className="inline-flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center rounded-lg border border-[color:var(--color-line)] text-base [&::-webkit-details-marker]:hidden"
+                      >
+                        ⋯
+                      </summary>
+                      <span className="mt-1 flex flex-col items-stretch gap-1">
+                        <button type="button" data-testid={`trips-pickup-edit-${z1.id}`} className={BTN} onClick={() => onEdit(z1)}>
+                          {t("common.edit")}
+                        </button>
+                        <button type="button" data-testid={`trips-pickup-up-${z1.id}`} className={BTN} aria-label={t("pickup.up", { name: z1.name.th })} title={t("pickup.up", { name: z1.name.th })} disabled={busy || i === 0} onClick={() => void move(z1.id, -1)}>
+                          ↑
+                        </button>
+                        <button type="button" data-testid={`trips-pickup-down-${z1.id}`} className={BTN} aria-label={t("pickup.down", { name: z1.name.th })} title={t("pickup.down", { name: z1.name.th })} disabled={busy || i === zones.length - 1} onClick={() => void move(z1.id, 1)}>
+                          ↓
+                        </button>
+                        <button type="button" data-testid={`trips-pickup-toggle-${z1.id}`} className={BTN} disabled={busy} onClick={() => void run(() => setPickupZoneActiveAction(unitSlug, { zoneId: z1.id, active: false }))}>
+                          {t("pickup.toggleOff")}
+                        </button>
+                      </span>
+                    </details>
                   </td>
                 ) : null}
               </tr>

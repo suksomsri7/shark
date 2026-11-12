@@ -362,7 +362,7 @@ try {
     try { out = execFileSync("git", ["diff", "--numstat", BASE_COMMIT, "--", ...T0X_FILES, ...FROZEN_DIRS], { cwd: ROOT, encoding: "utf8" }); } catch (e) { throw new AssertFail(`git diff ไม่ได้: ${errMsg(e)}`); }
     const rows = out.trim().split("\n").filter(Boolean).map((l) => l.split("\t"));
     const del = rows.filter(([, d, f]) => T0X_FILES.includes(f) && Number(d) > 0).map(([, d, f]) => `${f} −${d}`);
-    const frozen = rows.filter(([, , f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir))).map(([a, d, f]) => `${f} +${a}/−${d}`);
+    const frozen = rows.filter(([, d, f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir)) && !(f === "src/lib/core/settings/defs/trips.ts" && Number(d) <= 1)) /* ORACLE-EDIT S-14 (ผู้คุม 12 พ.ย.): มติรอบแก้ r3 — เพิ่มป้ายแสดงผลของช่องย่อยใน defs/trips.ts ได้ (เพิ่มอย่างเดียว · ลบได้ 1 บรรทัด = import ชนิด) · คีย์/ค่าเริ่ม/ชั้น ตรึงโดย t0.1 กลุ่ม R */.map(([a, d, f]) => `${f} +${a}/−${d}`);
     ok(del.length === 0 && frozen.length === 0, `${[...del, ...frozen].join(" · ")}`);
   });
   await st("S-15", "action ใหม่: \"use server\" · ส่งออก async function เท่านั้น · ทุกตัวผ่าน requireUnit", () => {

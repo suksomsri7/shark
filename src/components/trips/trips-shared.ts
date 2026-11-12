@@ -115,3 +115,19 @@ export function formatYmd(ymd: string, names: DateNames, withWeekday = true): st
   const wd = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
   return `${withWeekday ? `${names.weekdays[wd] ?? ""} ` : ""}${d} ${names.months[mo - 1] ?? mo} ${y + names.yearOffset}`;
 }
+
+// ═══════════════ จอค่าตั้ง: ขั้นบันไดคืนเงินเป็นช่อง (ภาพ 17 "100% 30 วันขึ้นไป / 50% 15–29 วัน / 0% น้อยกว่า 15 วัน") ═══════════════
+export type LadderTier = { pct: number; from: number; to: number | null };
+/** ขั้นบันได [{fromDaysBefore, refundPct}] → ช่วงวันของแต่ละขั้น (เรียงวันมาก→น้อย · ขั้นแรกไม่มีเพดาน) · รูปผิด ⇒ null */
+export function ladderTiers(value: unknown): LadderTier[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows: { from: number; pct: number }[] = [];
+  for (const x of value) {
+    if (typeof x !== "object" || x === null) return null;
+    const r = x as { fromDaysBefore?: unknown; refundPct?: unknown };
+    if (typeof r.fromDaysBefore !== "number" || typeof r.refundPct !== "number") return null;
+    rows.push({ from: r.fromDaysBefore, pct: r.refundPct });
+  }
+  rows.sort((a, b) => b.from - a.from);
+  return rows.map((r, i) => ({ pct: r.pct, from: r.from, to: i === 0 ? null : rows[i - 1].from - 1 }));
+}

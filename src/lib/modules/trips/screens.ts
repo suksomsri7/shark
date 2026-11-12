@@ -813,6 +813,19 @@ export type TripsSettingsVM = {
   productOverrides: { key: string; productId: string; titleTh: string; value: unknown; masked: boolean }[];
   standingWarnings: { key: string; code: string; severity: TourSeverity; messageTh: string }[];
   canEdit: boolean;
+  /**
+   * การ์ดที่จอ trips จัดรูปค่าเอง (ทะเบียนไม่มีชนิดช่องย่อยที่ตรง — ภาพ 17): ขั้นบันไดคืนเงินเป็นช่อง · ข้อมูลผู้เดินทางแยกบังคับ/ไม่บังคับ/ไม่ขอ
+   * · ตารางค่าอุทยาน · ตัวเลือกเมื่อร้านยกเลิกรอบ · ค่าใช้จ่ายที่หักได้ (สามคีย์หลังมีรายการซ้อนในออบเจกต์ ⇒ ไม่มี tableTh)
+   */
+  fieldViews: Record<string, TripsFieldView>;
+};
+export type TripsFieldView = "LADDER" | "PAX_FIELDS" | "PARK_FEE" | "CANCEL_OPTIONS" | "DEDUCTIONS";
+const FIELD_VIEWS: Readonly<Record<string, TripsFieldView>> = {
+  "trips.cancel.ladder": "LADDER",
+  "trips.pax.fields": "PAX_FIELDS",
+  "trips.parkFee.table": "PARK_FEE",
+  "trips.cancel.shopCancelOptions": "CANCEL_OPTIONS",
+  "trips.cancel.deductions": "DEDUCTIONS",
 };
 const SEV_RANK: Record<string, number> = { HIGHEST: 3, HIGH: 2, NORMAL: 1 };
 
@@ -901,6 +914,7 @@ export async function loadTripsSettingsVM(ctx: TripsScreenCtx, input: unknown, o
     productOverrides,
     standingWarnings,
     canEdit: fields.some((f) => f.editable),
+    fieldViews: Object.fromEntries(fields.filter((f) => FIELD_VIEWS[f.key]).map((f) => [f.key, FIELD_VIEWS[f.key]])),
   };
   return { ok: true, vm };
 }

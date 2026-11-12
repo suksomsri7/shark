@@ -29,7 +29,8 @@
     "edit": "แก้",
     "save": "บันทึก",
     "failed": "ทำรายการไม่สำเร็จ — ลองอีกครั้ง",
-    "discardConfirm": "ปิดโดยไม่บันทึกสิ่งที่แก้ไว้?"
+    "discardConfirm": "ปิดโดยไม่บันทึกสิ่งที่แก้ไว้?",
+    "actions": "จัดการ"
   },
   "products": {
     "title": "สินค้า",
@@ -241,7 +242,8 @@
     "corrupt": "ข้อมูลโซนเสีย — กดแก้แล้วบันทึกใหม่ก่อนเปิดใช้",
     "areasEn": "พื้นที่ (อังกฤษ)",
     "windowMin": "โซนรับส่งต้องมีช่วงเวลารับอย่างน้อย 1 นาที",
-    "windowOverOffset": "ช่วงเวลารับต้องไม่ยาวกว่าเวลาที่รับก่อนออก"
+    "windowOverOffset": "ช่วงเวลารับต้องไม่ยาวกว่าเวลาที่รับก่อนออก",
+    "actions": "จัดการโซน {name}"
   },
   "content": {
     "title": "เนื้อหา ไทย / English",
@@ -374,7 +376,47 @@
     "perProductBadge": "ตั้งรายสินค้า {n}",
     "templateValue": "ค่าแม่แบบ {v}",
     "readOnly": "ดูอย่างเดียว",
-    "editTitle": "แก้ {name}"
+    "editTitle": "แก้ {name}",
+    "view": {
+      "daysOrMore": "{n} วันขึ้นไป",
+      "lessThanDays": "น้อยกว่า {n} วัน",
+      "exactDays": "{n} วัน",
+      "dayRange": "{from}–{to} วัน",
+      "pax": {
+        "REQUIRED": "บังคับ",
+        "REQUIRED_CROSS_BORDER": "บังคับเมื่อข้ามแดน",
+        "OPTIONAL": "ไม่บังคับ",
+        "OFF": "ไม่ขอ"
+      },
+      "park": {
+        "groupsN": "{n} กลุ่มตามประกาศ",
+        "shopRatesN": "อัตราของร้าน {n} แถว",
+        "row": "แถว",
+        "thai": "ไทย เด็ก/ผู้ใหญ่",
+        "foreign": "ต่างชาติ เด็ก/ผู้ใหญ่",
+        "shopRate": "อัตราของร้าน",
+        "flat": "{amount} ต่อคน",
+        "adultChild": "ผู้ใหญ่ {adult} · เด็ก {child}",
+        "dive": "ดำน้ำ {amount} ต่อคนต่อวัน",
+        "mooring": "ผูกทุ่นเรือ {a} / {b}",
+        "confirmed": "ร้านยืนยันอัตราเมื่อ {date}",
+        "notConfirmed": "ร้านยังไม่ยืนยันอัตรา"
+      },
+      "cancelOption": {
+        "MOVE_DATE": "เลื่อนวัน",
+        "CREDIT": "เครดิตร้าน",
+        "REFUND_100": "คืน 100%"
+      },
+      "autoRefund": "ไม่เลือกใน {n} วัน = คืนเงินอัตโนมัติ",
+      "deduction": {
+        "VISA": "ค่าวีซ่า",
+        "AIR_DEPOSIT": "มัดจำตั๋วเครื่องบิน",
+        "OTHER_NECESSARY": "ค่าใช้จ่ายจำเป็นอื่น"
+      },
+      "noDeductions": "ไม่หัก",
+      "evidenceRequired": "ต้องมีหลักฐาน",
+      "evidenceOptional": "ไม่ต้องมีหลักฐาน"
+    }
   },
   "loading": "กำลังโหลด…",
   "errors": {

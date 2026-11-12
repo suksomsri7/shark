@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────────────────────────
 import { z } from "zod";
 import { defineSettings } from "../registry";
-import type { GroupIssue, GroupRule, ScopeKind, SettingDef, SettingSensitivity, SettingValueType, TemplateDef } from "../types";
+import type { GroupIssue, GroupRule, ScopeKind, SettingDef, SettingSensitivity, SettingValueType, TableCellSpecTh, TableSpecTh, TemplateDef } from "../types";
 
 const EDIT = "trips.settings.edit";
 const MONEY_EDIT = "trips.settings.money";
@@ -105,6 +105,8 @@ function row(x: RowInput): SettingDef {
     labelTh: x.labelTh,
     ...(x.helpTh ? { helpTh: x.helpTh } : {}),
     ...(x.extra ?? {}),
+    // T1.1 ▸ ป้ายไทยของช่องย่อยค่าชนิดตาราง (การแสดงผลเท่านั้น — ไม่เปลี่ยนคีย์/schema/ค่าเริ่ม/ชั้น) ◂
+    ...(TABLE_TH[x.key] ? { tableTh: TABLE_TH[x.key] } : {}),
   };
 }
 
@@ -270,6 +272,200 @@ const RETENTION = z
   })
   .strict();
 const MSG_ENABLED = z.object(Object.fromEntries([...MSG_CUSTOMER, ...MSG_SHOP].map((k) => [k, BOOL])) as Record<string, typeof BOOL>).strict();
+
+// ─────────────────── T1.1 ▸ ป้ายไทยของค่าชนิดตาราง (tableTh · การแสดงผล/ตัวแก้ของหน้าตั้งค่าเท่านั้น) ───────────────────
+// 🔴 เพิ่มข้อมูลการแสดงผลอย่างเดียว: ไม่เปลี่ยนคีย์ · schema · ค่าเริ่ม · ชั้น · การตรวจ (มติผู้คุม T1.1 r3)
+// 🔴 ไม่ใส่ให้คีย์ที่มีรายการซ้อนในออบเจกต์ (trips.parkFee.table · trips.cancel.shopCancelOptions · trips.cancel.deductions)
+//    — ชนิดช่องย่อยของทะเบียนไม่มี "รายการในออบเจกต์" · ใส่ผิดชนิดจะทำให้ตัวแก้บันทึกค่าผิดรูป ⇒ จอ trips จัดรูปการ์ดเอง
+// ภาษาอังกฤษ: ทะเบียนมีป้ายไทยอย่างเดียว (หนี้เดิมของทะเบียนค่าตั้ง)
+const CHANNEL_TH: Record<(typeof SELL_CHANNELS)[number], string> = {
+  WEB: "หน้าจองเว็บ", LIFF: "หน้าจองใน LINE", EMBED: "หน้าจองที่ฝังบนเว็บร้าน", COUNTER: "หน้าร้าน", POS: "จุดขาย POS", AGENT_PORTAL: "พอร์ทัลเอเจนซี่",
+  AGENT_LINK: "ลิงก์ขายของเอเจนซี่", AGENT_API: "ระบบของเอเจนซี่", OTA: "เว็บขายทัวร์ภายนอก", API: "ระบบภายนอก", IMPORT: "นำเข้าข้อมูล", CHAT_AI: "แชทผู้ช่วย AI",
+};
+const PAX_FIELD_TH: Record<PaxField, string> = {
+  fullName: "ชื่อ-นามสกุล", nationality: "สัญชาติ", dob: "วันเกิด", sex: "เพศ", docType: "ชนิดเอกสาร", docNumber: "เลขเอกสาร", docExpiry: "วันหมดอายุเอกสาร",
+  phone: "เบอร์โทร", birthPlace: "สถานที่เกิด", certLevel: "ระดับบัตรดำน้ำ", diveCount: "จำนวนไดฟ์", lastDiveAt: "ดำน้ำครั้งล่าสุด", finSize: "ไซซ์ตีนกบ",
+  allergies: "อาการแพ้/โรคประจำตัว", pickupHotel: "โรงแรมที่ให้รับ",
+};
+const PAX_REQ_TH = { OFF: "ไม่ขอ", OPTIONAL: "ไม่บังคับ", REQUIRED: "บังคับ", REQUIRED_CROSS_BORDER: "บังคับเมื่อข้ามแดน" };
+const EXTRA_KIND_TH: Record<(typeof EXTRA_KINDS)[number], string> = {
+  PARK_FEE: "ค่าอุทยาน", PORT_FEE: "ค่าท่าเรือ", FUEL: "ค่าน้ำมัน", EQUIPMENT: "เช่าอุปกรณ์", NITROX: "ไนตรอกซ์", TRANSFER: "รับส่ง", COURSE: "คอร์ส/ทดลองดำน้ำ", INSURANCE: "ประกัน", OTHER: "อื่น ๆ",
+};
+const MSG_SHOP_TH: Record<(typeof MSG_SHOP)[number], string> = {
+  minNotMet: "แจ้งร้าน: คนไม่ครบขั้นต่ำ", insuranceMissing: "แจ้งร้าน: รอบยังไม่มีกรมธรรม์", licenseExpiring: "แจ้งร้าน: ใบอนุญาตใกล้หมดอายุ", pdpaRequestDue: "แจ้งร้าน: คำขอข้อมูลส่วนบุคคลใกล้ครบกำหนด",
+};
+const daysBeforeCell = (labelTh: string, shortTh = ""): TableCellSpecTh => ({ kind: "int", labelTh, shortTh, unitTh: "วันก่อน" });
+const clockCell = (labelTh: string, shortTh = ""): TableCellSpecTh => ({ kind: "clock", labelTh, shortTh });
+const yearsCell = (labelTh: string, shortTh: string): TableCellSpecTh => ({ kind: "int", labelTh, shortTh, unitTh: "ปี" });
+const CUTOFF_CELLS: Record<string, TableCellSpecTh> = { daysBefore: daysBeforeCell("ปิดรับกี่วันก่อนเดินทาง"), atMin: clockCell("เวลาปิดรับ") };
+const TABLE_TH: Record<string, TableSpecTh> = {
+  "trips.general.customerLocales": { item: { kind: "enum", labelTh: "ภาษา", options: { th: "ไทย", en: "English", zh: "จีน" } }, emptyTh: "ไม่มีรายการ" },
+  "trips.general.currencies": { item: { kind: "enum", labelTh: "สกุลเงิน", options: { THB: "บาท", USD: "ดอลลาร์สหรัฐ", EUR: "ยูโร" } }, emptyTh: "ไม่มีรายการ" },
+  "trips.sell.cutoff": {
+    fields: {
+      ...CUTOFF_CELLS,
+      perChannel: {
+        kind: "object", labelTh: "ช่องทางที่ปิดรับต่างออกไป", shortTh: "", optional: true,
+        fields: Object.fromEntries(SELL_CHANNELS.map((c): [string, TableCellSpecTh] => [c, { kind: "object", labelTh: CHANNEL_TH[c], shortTh: CHANNEL_TH[c], optional: true, fields: CUTOFF_CELLS }])),
+      },
+    },
+  },
+  "trips.sell.minToDepart": {
+    fields: {
+      minPax: { kind: "int", labelTh: "จำนวนขั้นต่ำออกเดินทาง", shortTh: "", unitTh: "คน", nullTh: "ไม่กำหนด" },
+      decideDaysBefore: daysBeforeCell("ตัดสินกี่วันก่อนเดินทาง", "ตัดสิน"),
+      decideAtMin: clockCell("เวลาตัดสิน"),
+    },
+  },
+  "trips.sell.abandonedReminder": {
+    fields: {
+      enabled: { kind: "bool", labelTh: "เปิดใช้", shortTh: "", onTh: "เปิด", offTh: "ปิด" },
+      afterMinutes: { kind: "minutes", labelTh: "เตือนหลังหมดเวลาถือที่ (นาที)", shortTh: "เตือนหลังหมดเวลา" },
+    },
+  },
+  "trips.fx.rates": {
+    item: { kind: "object", labelTh: "อัตรา", fields: { currency: { kind: "enum", labelTh: "สกุลเงิน", shortTh: "", options: { USD: "ดอลลาร์สหรัฐ", EUR: "ยูโร" } }, rateMicros: { kind: "int", labelTh: "อัตรา (บาท × 1,000,000 ต่อ 1 หน่วย)", shortTh: "อัตรา" } } },
+    emptyTh: "ไม่มีรายการ",
+  },
+  "trips.public.embedDomains": { item: { kind: "text", labelTh: "โดเมน" }, emptyTh: "ไม่มีรายการ" },
+  "trips.public.rateLimits": {
+    fields: {
+      holdPerHourPerContact: { kind: "int", labelTh: "ถือที่ได้ต่อชั่วโมงต่อเบอร์/LINE", shortTh: "ถือที่", unitTh: "ครั้ง/ชม." },
+      otpPer15Min: { kind: "int", labelTh: "ขอรหัสยืนยันได้ต่อ 15 นาที", shortTh: "ขอรหัส", unitTh: "ครั้ง/15 นาที" },
+      tokenPerHourPerDevice: { kind: "int", labelTh: "เปิดลิงก์ผิดได้ต่อชั่วโมงต่อเครื่อง", shortTh: "เดาลิงก์", unitTh: "ครั้ง/ชม." },
+    },
+  },
+  "trips.pay.reminderDaysBefore": { item: { kind: "int", labelTh: "เตือนก่อนครบกำหนด", unitTh: "วัน" }, emptyTh: "ไม่เตือน" },
+  "trips.cancel.ladder": {
+    item: {
+      kind: "object", labelTh: "ขั้น",
+      fields: {
+        fromDaysBefore: { kind: "int", labelTh: "ยกเลิกตั้งแต่กี่วันก่อนเดินทาง", shortTh: "ตั้งแต่", unitTh: "วันก่อน" },
+        refundPct: { kind: "int", labelTh: "คืนเงิน (%)", shortTh: "คืน", unitTh: "%" },
+      },
+    },
+    ordered: true,
+    emptyTh: "ไม่มีขั้น",
+  },
+  "trips.cancel.shopCancelRefund": {
+    fields: {
+      EXTERNAL: { kind: "int", labelTh: "ร้านยกเลิกเพราะเหตุภายนอก (คลื่นลม ฯลฯ)", shortTh: "เหตุภายนอก", unitTh: "%" },
+      MIN_NOT_MET: { kind: "int", labelTh: "คนไม่ครบขั้นต่ำ", shortTh: "คนไม่ครบ", unitTh: "%" },
+      SHOP_FAULT: { kind: "int", labelTh: "ความผิดของร้าน", shortTh: "ความผิดของร้าน", unitTh: "%" },
+    },
+  },
+  "trips.pax.childAgeBand": {
+    fields: { infantBelow: yearsCell("ทารก: อายุต่ำกว่า", "ทารกต่ำกว่า"), childFrom: yearsCell("เด็ก: ตั้งแต่อายุ", "เด็ก"), childTo: yearsCell("เด็ก: ถึงอายุ", "ถึง") },
+  },
+  "trips.pax.fields": {
+    fields: Object.fromEntries(PAX_FIELDS.map((f): [string, TableCellSpecTh] => [f, { kind: "enum", labelTh: PAX_FIELD_TH[f], shortTh: PAX_FIELD_TH[f], options: PAX_REQ_TH, summaryOptions: { OFF: "" } }])),
+  },
+  "trips.pax.passportCutoffDays": {
+    fields: { domestic: { kind: "int", labelTh: "ทริปในประเทศ", shortTh: "ในประเทศ", unitTh: "วัน" }, crossBorder: { kind: "int", labelTh: "ทริปข้ามแดน", shortTh: "ข้ามแดน", unitTh: "วัน" } },
+  },
+  "trips.tax.vatRegistered": {
+    fields: {
+      registered: { kind: "bool", labelTh: "จดทะเบียน VAT แล้ว", shortTh: "", onTh: "จด VAT แล้ว", offTh: "ยังไม่จด VAT", nullTh: "อ่านจากระบบบัญชี" },
+      thresholdSatang: { kind: "int", labelTh: "เกณฑ์ยอดขายต่อปี (สตางค์)", shortTh: "เกณฑ์", unitTh: "สตางค์" },
+      warnAtPct: { kind: "int", labelTh: "เตือนเมื่อยอดขายถึง (% ของเกณฑ์)", shortTh: "เตือนที่", unitTh: "%" },
+    },
+  },
+  "trips.tax.vatRate": {
+    fields: {
+      mode: { kind: "enum", labelTh: "ชนิดอัตรา", shortTh: "", options: { STANDARD: "อัตราปกติ", EXEMPT_81_1_N: "ยกเว้น VAT (ม.81(1)(น))" } },
+      rateBp: { kind: "bp", labelTh: "อัตรา VAT", shortTh: "อัตรา" },
+    },
+  },
+  "trips.tax.invoiceForm": {
+    fields: {
+      direct: { kind: "enum", labelTh: "ขายตรงให้ลูกค้า", shortTh: "ขายตรง", options: { SHORT_UPGRADE_ON_REQUEST: "อย่างย่อ ขอเต็มรูปได้", FULL_ONLY: "เต็มรูปเท่านั้น" } },
+      viaAgent: { kind: "enum", labelTh: "ขายผ่านเอเจนซี่", shortTh: "ผ่านเอเจนซี่", options: { SHORT_UPGRADE_ON_REQUEST: "อย่างย่อ ขอเต็มรูปได้", FULL_ONLY: "เต็มรูปเท่านั้น" } },
+    },
+  },
+  "trips.tax.corporateCustomerWht": {
+    fields: {
+      enabled: { kind: "bool", labelTh: "หัก ณ ที่จ่ายเมื่อลูกค้าเป็นนิติบุคคล", shortTh: "", onTh: "หัก ณ ที่จ่าย", offTh: "ไม่หัก" },
+      rateBp: { kind: "bp", labelTh: "อัตราหัก ณ ที่จ่าย", shortTh: "อัตรา" },
+    },
+  },
+  "trips.line.defaults": {
+    fields: Object.fromEntries(
+      EXTRA_KINDS.map((k): [string, TableCellSpecTh] => [
+        k,
+        {
+          kind: "object", labelTh: EXTRA_KIND_TH[k], shortTh: EXTRA_KIND_TH[k],
+          fields: {
+            passThrough: { kind: "bool", labelTh: "เงินเก็บแทน (นอกฐาน VAT)", shortTh: "", onTh: "เก็บแทน", offTh: "รายได้ร้าน" },
+            commissionPct: { kind: "int", labelTh: "คิดคอมมิชชัน (%)", shortTh: "คอมฯ", unitTh: "%" },
+            discountable: { kind: "bool", labelTh: "ลดราคาได้", shortTh: "", onTh: "ลดได้", offTh: "ลดไม่ได้" },
+          },
+        },
+      ]),
+    ),
+  },
+  "trips.parkFee.ageBands": {
+    fields: {
+      freeBelow: yearsCell("ฟรีเมื่ออายุต่ำกว่า", "ฟรีต่ำกว่า"),
+      childFrom: yearsCell("ราคาเด็กตั้งแต่อายุ", "เด็ก"),
+      childTo: yearsCell("ราคาเด็กถึงอายุ", "ถึง"),
+      adultFrom: yearsCell("ราคาผู้ใหญ่ตั้งแต่อายุ", "ผู้ใหญ่"),
+      thaiSeniorFreeFrom: yearsCell("คนไทยสูงอายุฟรีตั้งแต่อายุ", "ผู้สูงอายุไทยฟรี"),
+      childByHeightCm: { kind: "int", labelTh: "หรือคิดราคาเด็กเมื่อสูงไม่เกิน", shortTh: "หรือสูงไม่เกิน", unitTh: "ซม." },
+    },
+  },
+  "trips.parkFee.exemptFlags": { item: { kind: "enum", labelTh: "ยกเว้น/ลดราคา", options: { MONK: "พระภิกษุ/สามเณร", DISABLED: "ผู้พิการ", THAI_STUDENT_CHILD_RATE: "นักเรียนไทยคิดราคาเด็ก" } }, emptyTh: "ไม่มีรายการ" },
+  "trips.dive.ratio": {
+    fields: {
+      scuba: { kind: "int", labelTh: "ดำน้ำลึก", shortTh: "ดำน้ำลึก", unitTh: "คน" },
+      trial: { kind: "int", labelTh: "ทดลองดำน้ำ", shortTh: "ทดลองดำ", unitTh: "คน" },
+      course: { kind: "int", labelTh: "เรียนคอร์ส", shortTh: "คอร์ส", unitTh: "คน" },
+      snorkel: { kind: "int", labelTh: "ดำน้ำตื้น", shortTh: "ดำน้ำตื้น", unitTh: "คน" },
+    },
+  },
+  "trips.dive.cameraRule": {
+    fields: {
+      minCert: { kind: "enum", labelTh: "บัตรดำน้ำขั้นต่ำ", shortTh: "บัตรขั้นต่ำ", options: { OW: "โอเพนวอเตอร์", AOW: "แอดวานซ์โอเพนวอเตอร์", RESCUE: "เรสคิวไดฟ์เวอร์", DIVEMASTER: "ไดฟ์มาสเตอร์", INSTRUCTOR: "ครูสอนดำน้ำ" } },
+      orMinDives: { kind: "int", labelTh: "หรือดำมาแล้วอย่างน้อย", shortTh: "หรือดำมาแล้ว", unitTh: "ไดฟ์" },
+    },
+  },
+  "trips.insurance.minSum": {
+    fields: {
+      deathDisabilitySatang: { kind: "int", labelTh: "เสียชีวิต/ทุพพลภาพ (สตางค์)", shortTh: "เสียชีวิต/ทุพพลภาพ", unitTh: "สตางค์" },
+      injurySatang: { kind: "int", labelTh: "ค่ารักษาบาดเจ็บ (สตางค์)", shortTh: "บาดเจ็บ", unitTh: "สตางค์" },
+    },
+  },
+  "trips.license.fields": {
+    fields: {
+      number: { kind: "text", labelTh: "เลขใบอนุญาต", shortTh: "เลขที่", nullTh: "ยังไม่กรอก" },
+      type: { kind: "enum", labelTh: "ประเภทใบอนุญาต", shortTh: "ประเภท", nullTh: "ยังไม่ระบุ", options: { LOCAL: "เฉพาะพื้นที่", DOMESTIC: "ในประเทศ", INBOUND: "นำเที่ยวต่างประเทศเข้าไทย", GENERAL: "ทั่วไป" } },
+      expiresAt: { kind: "text", labelTh: "วันหมดอายุ (ปปปป-ดด-วว)", shortTh: "หมดอายุ", nullTh: "—" },
+    },
+  },
+  "trips.license.expiryReminderDays": { item: { kind: "int", labelTh: "เตือนก่อนหมดอายุ", unitTh: "วัน" }, emptyTh: "ไม่เตือน" },
+  "trips.marine.manifestColumns": { item: { kind: "enum", labelTh: "คอลัมน์", options: PAX_FIELD_TH }, ordered: true, emptyTh: "ไม่มีคอลัมน์" },
+  "trips.pdpa.retention": {
+    fields: {
+      passportImageDays: { kind: "int", labelTh: "รูปพาสปอร์ต", shortTh: "รูปพาสปอร์ต", unitTh: "วัน", nullTh: "ไม่ลบ" },
+      medicalFormDays: { kind: "int", labelTh: "แบบสอบถามสุขภาพ", shortTh: "แบบสอบถามสุขภาพ", unitTh: "วัน", nullTh: "ไม่ลบ" },
+      riskAckDays: { kind: "int", labelTh: "เอกสารรับทราบความเสี่ยง", shortTh: "เอกสารรับทราบความเสี่ยง", unitTh: "วัน", nullTh: "ไม่ลบ" },
+      consentAccessLogDays: { kind: "int", labelTh: "บันทึกความยินยอม/การเปิดดู", shortTh: "บันทึกความยินยอม", unitTh: "วัน", nullTh: "ไม่ลบ" },
+      manifestDays: { kind: "int", labelTh: "รายชื่อผู้โดยสาร", shortTh: "รายชื่อผู้โดยสาร", unitTh: "วัน", nullTh: "ไม่ลบ" },
+      taxDocsDays: { kind: "int", labelTh: "เอกสารภาษี", shortTh: "เอกสารภาษี", unitTh: "วัน", nullTh: "ไม่ลบ" },
+    },
+  },
+  "trips.pdpa.minorConsent": {
+    fields: { parentOnlyAtOrBelow: yearsCell("ผู้ปกครองยินยอมแทนเมื่ออายุไม่เกิน", "ผู้ปกครองยินยอมแทนเมื่ออายุไม่เกิน"), minorBelow: yearsCell("ถือเป็นผู้เยาว์เมื่ออายุต่ำกว่า", "ผู้เยาว์เมื่ออายุต่ำกว่า") },
+  },
+  "trips.pdpa.requestDeadlines": {
+    fields: { accessDays: { kind: "int", labelTh: "คำขอดูข้อมูล", shortTh: "ขอดูข้อมูล", unitTh: "วัน" }, deletionDays: { kind: "int", labelTh: "คำขอลบข้อมูล", shortTh: "ขอลบข้อมูล", unitTh: "วัน" } },
+  },
+  "trips.msg.enabled": {
+    fields: Object.fromEntries([
+      ...MSG_CUSTOMER.map((k): [string, TableCellSpecTh] => [k, { kind: "bool", labelTh: MSG_TEXTS[k].labelTh, shortTh: MSG_TEXTS[k].labelTh.replace(/^ข้อความ/, ""), onTh: "เปิด", offTh: "ปิด" }]),
+      ...MSG_SHOP.map((k): [string, TableCellSpecTh] => [k, { kind: "bool", labelTh: MSG_SHOP_TH[k], shortTh: MSG_SHOP_TH[k], onTh: "เปิด", offTh: "ปิด" }]),
+    ]),
+  },
+};
 
 // ─────────────────── defs ───────────────────
 const DEFS: SettingDef[] = [

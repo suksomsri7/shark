@@ -10,8 +10,8 @@ export const BTN = "inline-flex min-h-11 items-center justify-center gap-1.5 rou
 export const BTN_PRIMARY = "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-[color:var(--color-ink)] px-4 py-2 text-sm font-bold text-[color:var(--color-surface)] disabled:cursor-not-allowed disabled:opacity-60";
 export const INPUT = "input min-h-11 w-full min-w-0 text-sm";
 export const CARD = "flex min-w-0 flex-col gap-3 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-5";
-export const TH = "px-2 py-2 text-left text-sm font-medium text-[color:var(--color-muted)]";
-export const TD = "px-2 py-3 align-top text-sm text-[color:var(--color-ink)]";
+export const TH = "whitespace-nowrap px-1.5 py-2 text-left text-sm font-medium text-[color:var(--color-muted)]";
+export const TD = "px-1.5 py-2.5 align-top text-sm text-[color:var(--color-ink)]";
 
 /** ป้ายสถานะ — แยกด้วยรูปทรงไม่ใช่สีอย่างเดียว: ทึบ (กรอบหนา) · เส้นประ · พื้นเทา */
 export function Pill({ shape, children, testid, status }: { shape: "solid" | "dashed" | "muted" | "thick"; children: ReactNode; testid?: string; status?: string }) {
@@ -45,6 +45,7 @@ export function Dialog({
   wide,
   busy,
   dirty,
+  flushBottom,
 }: {
   title: string;
   onClose: () => void;
@@ -53,6 +54,8 @@ export function Dialog({
   wide?: boolean;
   busy?: boolean;
   dirty?: boolean;
+  /** เนื้อในมีแถบบันทึกติดล่างของตัวเอง (ฟอร์มกลาง sticky bottom-0) ⇒ ไม่เว้นขอบล่าง ไม่ให้เนื้อหาโผล่ใต้แถบ */
+  flushBottom?: boolean;
 }) {
   const t = useTranslations("trips");
   const boxRef = useRef<HTMLDivElement>(null);
@@ -93,21 +96,30 @@ export function Dialog({
       }
     };
     document.addEventListener("keydown", onKey);
+    // กล่องคำเตือนกฎหมายของฟอร์มกลาง (role=alertdialog) ขึ้นท้ายฟอร์ม — เลื่อนให้เห็นทันที ไม่ให้ซ่อนอยู่นอกจอ (ภาพ 17 W01/W03)
+    let shown: Element | null = null;
+    const obs = new MutationObserver(() => {
+      const alert = box?.querySelector('[role="alertdialog"]') ?? null;
+      if (alert && alert !== shown) alert.scrollIntoView({ block: "start" });
+      shown = alert;
+    });
+    if (box) obs.observe(box, { childList: true, subtree: true });
     return () => {
+      obs.disconnect();
       document.removeEventListener("keydown", onKey);
       if (opener && document.contains(opener)) opener.focus();
     };
   }, []);
   return (
     <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
-      <div ref={boxRef} onInputCapture={() => (touchedRef.current = true)} onChangeCapture={() => (touchedRef.current = true)} className={`flex max-h-[92vh] w-full ${wide ? "max-w-2xl" : "max-w-xl"} flex-col overflow-hidden rounded-t-2xl bg-[color:var(--color-surface)] sm:rounded-2xl`}>
-        <div className="flex items-center justify-between gap-2 border-b border-[color:var(--color-line)] px-5 py-3">
+      <div ref={boxRef} onInputCapture={() => (touchedRef.current = true)} onChangeCapture={() => (touchedRef.current = true)} className={`flex max-h-[92dvh] w-full ${wide ? "max-w-2xl" : "max-w-xl"} flex-col overflow-hidden rounded-t-2xl bg-[color:var(--color-surface)] sm:rounded-2xl`}>
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[color:var(--color-line)] px-5 py-3">
           <h2 className="text-base font-bold text-[color:var(--color-ink)]">{title}</h2>
           <button type="button" onClick={onClose} className={BTN}>
             {closeLabel}
           </button>
         </div>
-        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto p-5">{children}</div>
+        <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-5 ${flushBottom ? "pb-0" : "flex flex-col gap-3 pb-5"}`}>{children}</div>
       </div>
     </div>
   );

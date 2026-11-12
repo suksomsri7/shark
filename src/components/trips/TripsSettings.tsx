@@ -12,6 +12,7 @@ import SettingsForm from "@/components/settings/SettingsForm";
 import { formatFieldValue, reviewHintTh, type SettingsField } from "@/components/settings/settings-shared";
 import type { TripsSettingsSectionKey } from "./trips-shared";
 import { Dialog } from "./ProductsScreenParts";
+import { ViewValue, viewText } from "./TripsSettingsValues";
 
 type Actions = {
   save(changes: unknown, opts?: { ackLegalWarn?: boolean }): Promise<SetResult>;
@@ -231,7 +232,7 @@ export default function TripsSettings({ vm, unitSlug, actions }: Props) {
       </div>
 
       {editing && editModel ? (
-        <Dialog title={t("settings.editTitle", { name: editingLabel })} onClose={() => setEditing(null)} closeLabel={t("common.close")} wide busy={saving > 0}>
+        <Dialog title={t("settings.editTitle", { name: editingLabel })} onClose={() => setEditing(null)} closeLabel={t("common.close")} wide flushBottom busy={saving > 0}>
           <SettingsForm model={editModel} actions={tracked} />
         </Dialog>
       ) : null}
@@ -241,10 +242,13 @@ export default function TripsSettings({ vm, unitSlug, actions }: Props) {
 
 type T = ReturnType<typeof useTranslations>;
 function FieldRow({ f, vm, t }: { f: SettingsField; vm: TripsSettingsVM; t: T }) {
-  const value = f.masked ? t("settings.hidden") : formatFieldValue(f, f.value);
+  // ค่าที่ทะเบียนจัดรูปได้ (tableTh/enum/หน่วย) ใช้ formatFieldValue · ชนิดที่ทะเบียนไม่รองรับ (vm.fieldViews) จอ trips จัดรูปเอง
+  const view = vm.fieldViews[f.key];
+  const fmt = (v: unknown): string => (view ? viewText(t, view, f, v) : formatFieldValue(f, v));
   const hint = reviewHintTh(f);
   const perProduct = vm.scope === "UNIT" ? vm.productOverrides.filter((o) => o.key === f.key) : [];
   const warns = vm.standingWarnings.filter((w) => w.key === f.key);
+  const value = f.masked ? t("settings.hidden") : fmt(f.value);
   return (
     <div data-setting-row={f.key} className="flex min-w-0 flex-col gap-1 border-b border-[color:var(--color-line)] py-2 text-sm last:border-b-0">
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
@@ -259,10 +263,10 @@ function FieldRow({ f, vm, t }: { f: SettingsField; vm: TripsSettingsVM; t: T })
           {warns.length ? <span className={`${CHIP} border border-dashed border-[color:var(--color-danger)] text-[color:var(--color-danger)]`}>{warns.map((w) => w.code).join(" · ")}</span> : null}
         </span>
       </div>
-      <span className="break-words text-[color:var(--color-ink)]">{value}</span>
+      {view && !f.masked ? <ViewValue view={view} f={f} v={f.value} warn={warns.length > 0} /> : <span className="break-words text-[color:var(--color-ink)]">{value}</span>}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[color:var(--color-muted)]">
         <span>{f.sourceLabelTh}</span>
-        {f.differsFromTemplate && !f.masked ? <span>{t("settings.templateValue", { v: formatFieldValue(f, f.templateValue) })}</span> : null}
+        {f.differsFromTemplate && !f.masked ? <span>{t("settings.templateValue", { v: fmt(f.templateValue) })}</span> : null}
         {hint ? <span className={`${CHIP} border border-dashed border-[color:var(--color-note-line)] text-[color:var(--color-note-ink)]`}>{hint}</span> : null}
       </div>
       {perProduct.length ? (
@@ -270,7 +274,7 @@ function FieldRow({ f, vm, t }: { f: SettingsField; vm: TripsSettingsVM; t: T })
           {perProduct.map((o) => (
             <li key={o.productId} className="flex min-w-0 items-start justify-between gap-2">
               <span>{o.titleTh}</span>
-              <span className="text-right font-medium">{f.masked || o.masked ? t("settings.hidden") : formatFieldValue(f, o.value)}</span>
+              <span className="text-right font-medium">{f.masked || o.masked ? t("settings.hidden") : fmt(o.value)}</span>
             </li>
           ))}
         </ul>

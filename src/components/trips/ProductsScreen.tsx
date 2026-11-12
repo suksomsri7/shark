@@ -31,7 +31,7 @@ export default function ProductsScreen({ unitSlug, list, editor, filters }: { un
   const filterCls = (on: boolean) => `inline-flex min-h-11 items-center rounded-lg px-3 text-sm ${on ? "border-2 border-[color:var(--color-ink)] font-bold" : "border border-[color:var(--color-line)] text-[color:var(--color-ink-soft)]"}`;
 
   return (
-    <div data-trips-products="" className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_300px]">
+    <div data-trips-products="" className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_280px]">
       {/* ── ซ้าย: รายการสินค้า ── */}
       <aside data-testid="trips-product-list" className={`${CARD} p-0`}>
         <div className="flex flex-col gap-3 p-4 pb-0">
