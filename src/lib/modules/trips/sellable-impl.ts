@@ -1,24 +1,25 @@
 // ─────────────────────────────────────────────────────────────
-// trips/sellable-impl.ts — ทัวร์ในหน้าสัมผัส Sellable (CC §C)
-// T0.5 เป็นเจ้าของสมาชิก `quote` ตัวเดียว (→ quoteTrips) · ที่เหลือเป็นของ T0.4 (ถือที่/ความจุ) และ T0.6 (ยืนยัน/ยกเลิก)
-// ⚠️ ไฟล์นี้สร้างในเลน T0.5 เพราะ T0.4 ยังไม่ลงทรีนี้ — ตอน merge กับ T0.4 ให้เก็บสมาชิกของ T0.4 ทั้งหมด แล้วแทน `quote` ด้วยบรรทัดด้านล่าง
+// trips/sellable-impl.ts — `tripSellable: Sellable` (CC §C · N-8)
+// T0.5: `quote` (→ quoteTrips) · T0.4: availability · capacityRowsOf · reserveInTx · T0.6: hold/confirm/cancel/finalizeInTx (ตอนนี้ปิดแบบล้ม KIND_NOT_SUPPORTED)
 // ─────────────────────────────────────────────────────────────
-import type { Sellable, SellResult } from "@/lib/core/sellable";
+import type { Sellable } from "@/lib/core/sellable";
+import { reserveInTx, sellFail } from "./capacity";
+import { capacityRowsOf, listAvailability } from "./capacity-service";
 import { quoteTrips } from "./pricing";
-import { PricingAbort } from "./pricing-core";
 
-const notYet = <T>(): Promise<SellResult<T>> =>
-  Promise.resolve({ ok: false, code: "KIND_NOT_SUPPORTED", messageTh: "ส่วนนี้ของการขายทัวร์ยังไม่เปิดใช้", retryable: false });
+const notYet = async () => sellFail("KIND_NOT_SUPPORTED", { reason: "NOT_IMPLEMENTED_YET" }, "ส่วนนี้ของการขายทัวร์ยังไม่เปิดใช้");
 
 export const tripSellable: Sellable = {
   kind: "TRIP",
-  quote: (ctx, req) => quoteTrips(ctx, req),
-  availability: () => notYet(),
-  hold: () => notYet(),
-  confirm: () => notYet(),
-  cancel: () => notYet(),
-  // ปิดแบบล้ม (fail closed): ไม่มีแถวความจุ ≠ "ไม่มีอะไรต้องล็อก" — T0.4 เป็นเจ้าของ
-  capacityRowsOf: () => Promise.reject(new PricingAbort("KIND_NOT_SUPPORTED", "NOT_YET", "ส่วนนี้ของการขายทัวร์ยังไม่เปิดใช้")),
-  reserveInTx: () => notYet(),
-  finalizeInTx: () => notYet(),
+  // 🔴 quote / availability / capacityRowsOf ใช้ connection ของตัวเอง — ห้ามเรียกในธุรกรรม (เรียกก่อนเปิด tx ของตะกร้า · r3 N3)
+  quote: (ctx, req) => quoteTrips(ctx, req), // ── T0.5 pricing ──
+  // ── T0.4 capacity ──
+  availability: (ctx, q) => listAvailability(ctx, q),
+  capacityRowsOf: (ctx, line) => capacityRowsOf(ctx, line),
+  reserveInTx: (tx, ctx, rows, intent) => reserveInTx(tx, ctx, rows, intent),
+  // ── /T0.4 capacity ──
+  hold: notYet, // T0.6
+  confirm: notYet, // T0.6
+  cancel: notYet, // T0.6/T0.7
+  finalizeInTx: notYet, // T0.6
 };

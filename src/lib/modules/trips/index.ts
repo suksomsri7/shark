@@ -210,6 +210,63 @@ export { redeemPromoInTx, redeemPromosInTx, releasePromoInTx } from "./promo";
 export type { Redemption as TripPromoRedemptionResult } from "./promo";
 export { tripSellable } from "./sellable-impl";
 // ── /T0.5 pricing ──
+// ── T0.4 capacity ──
+// TRIPS T0.4 ▸ ที่ว่าง (R2) · ถือ/แปลง/ปล่อย/คืน/ย้าย · เพดานถือ · ตัวกวาด · รายการรอ · Sellable เฟส 1 (ใบสั่ง ledger/trips-briefs/T0.4.md §3) ◂
+export {
+  HOLD_STATUSES,
+  HOLD_PURPOSES,
+  WAITLIST_STATUSES,
+  canTransitionHold,
+  canTransitionWaitlist,
+  publicLeftOf,
+  holdExpiresAt,
+  sortCapacityRows,
+  idemKeyFor,
+} from "./capacity-core";
+export type { HoldStatus, HoldPurpose, WaitlistStatus, HoldDurations, CounterShape } from "./capacity-core";
+// ชั้นในธุรกรรม (capacity.ts · รับ tx ของผู้เรียก · ไม่ขอ connection ที่สอง) — ลำดับล็อก: 0 (ตะกร้า → advisory) → สินค้า SHARE → 1a (เรียง id) → 2a → 2a′ → 2b → 2h
+export {
+  CapacityAbort,
+  expectRows,
+  holdCapKeyHash,
+  holdRequestHash,
+  releaseHoldInTx,
+  convertHoldInTx,
+  returnSoldInTx,
+  moveSoldInTx,
+  reserveSeatsInTx,
+  unreserveSeatsInTx,
+  holdFromReservedInTx,
+  unholdToReservedInTx,
+  reserveInTx,
+  insertHoldInTx,
+  acquireHoldCapInTx,
+  rekeyHoldsToContactInTx,
+} from "./capacity";
+export type { CapacityPolicies, DeparturePolicy, PlaceHoldValue, ConvertValue, ReleaseValue, CountersValue, MoveValue, TripReserveIntent, ExitValue, OfferFailure } from "./capacity";
+// ชั้นเปิดธุรกรรมเอง (capacity-service.ts) — ตัวโหลดค่าตั้งรันก่อนเปิด tx แล้วส่งผลให้ *InTx
+export {
+  loadCapacityPolicies,
+  reportCapacityIncident,
+  reportOfferFailures,
+  getAvailability,
+  listAvailability,
+  placeHold,
+  extendHold,
+  releaseHold,
+  convertHold,
+  returnSold,
+  moveSold,
+  capacityRowsOf,
+} from "./capacity-service";
+export type { AvailabilityValue } from "./capacity-service";
+export { joinWaitlist, leaveWaitlist, declineWaitlistOffer, offerWaitlist, listWaitlist, onWaitlistTrigger } from "./waitlist";
+export type { JoinValue, WaitlistItem } from "./waitlist";
+// tripSellable ส่งออกในบล็อก T0.5 ข้างบน (ไฟล์เดียวกัน sellable-impl.ts · รวมสมาชิก T0.4 + quote ของ T0.5)
+export { runExpireHolds, runWaitlistOffers } from "./jobs";
+export type { CapacityJobOpts, CapacityJobFailure } from "./jobs";
+// ◂ TRIPS T0.4
+// ── /T0.4 capacity ──
 
 // ── T1.1 screens ──
 // TRIPS T1.1 ▸ จอสินค้าทัวร์ (ภาพ 16) · โซนรับส่ง (บริการใหม่ · polygon JSON v1 ชั่วคราว) · จอค่าตั้ง trips (ภาพ 17) · ด่านหน้า/แถบ TRIPS (ใบสั่ง ledger/trips-briefs/T1.1.md) ◂

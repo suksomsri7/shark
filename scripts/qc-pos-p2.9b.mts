@@ -500,7 +500,9 @@ function runStatic(): void {
     // ORACLE-EDIT (ผู้คุม 30 ต.ค. · B.10): RUN SVC B.10 มติ Q2 — บิลจากคิว (pos/service-bill.ts ไฟล์ใหม่ · จุด 1 บิลพักผูกงานบริการ) จ่ายผ่าน createSale( 1 จุด ⇒ ยอม 0→1 เฉพาะไฟล์นี้ · ไฟล์อื่นยังเทียบฐานเดิม
     base["src/lib/modules/pos/service-bill.ts"] = 1;
     // ORACLE-EDIT (ผู้คุม 7 พ.ย. · h3/h5-createSale): RUN HOTEL — booking.ts 3 (H.3 มัดจำ/ริบ/ค่าธรรมเนียม) · checkout.ts 3 (H.5 บิลเช็กเอาต์/ใบรับประกัน/ริบประกัน) · hotel/service.ts 2→1 (checkOut ย้ายไป checkout.ts)
-    base["src/lib/modules/hotel/booking.ts"] = 3;
+    // ORACLE-EDIT 12 พ.ย. 2569 (release svc→main): POS CD2 (22674fe7e) moved the 3 H.3 sites verbatim booking.ts → booking-sale.ts (3→0 / 0→3) · deposit-intent.ts 1 (H.8 slip deposit) — = qc-pos-p1.6 U4 25/19
+    base["src/lib/modules/hotel/booking-sale.ts"] = 3;
+    base["src/lib/modules/hotel/deposit-intent.ts"] = 1;
     base["src/lib/modules/hotel/checkout.ts"] = 3;
     base["src/lib/modules/hotel/service.ts"] = 1;
     const diff = [...new Set([...Object.keys(now), ...Object.keys(base)])].filter((f) => now[f] !== base[f]).map((f) => `${f.replace("src/lib/", "")}:${base[f] ?? 0}→${now[f] ?? 0}`);

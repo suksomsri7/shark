@@ -3,7 +3,7 @@ import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { hotelHostAllowed, hotelWebClientKey, publicInfo, publicQuote } from "@/lib/platform/hotel-web";
-import { makeT } from "@/lib/i18n";
+import { getLocaleFromCookie, makeT } from "@/lib/i18n";
 import { BookingForm } from "@/components/store/hotel/BookingForm";
 import { baht, isYmdStr, pickLocale, rangeLabel } from "@/components/store/hotel/format";
 import { publicCreateHoldAction } from "../actions";
@@ -28,7 +28,7 @@ export default async function HotelBookPage({ params, searchParams }: { params: 
   const sp = await searchParams;
   const h = await headers();
   if (!(await hotelHostAllowed(h.get("host"), tenantSlug))) notFound();
-  const locale = pickLocale(sp.lang, (await cookies()).get("lang")?.value);
+  const locale = pickLocale(sp.lang, getLocaleFromCookie((await cookies()).get("lang")?.value));
   const lang = one(sp.lang) === "en" || one(sp.lang) === "th" ? one(sp.lang) : null;
   const t = makeT(locale);
   const clientKey = hotelWebClientKey(h);

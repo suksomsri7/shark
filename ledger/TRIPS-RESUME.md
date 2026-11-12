@@ -1,4 +1,21 @@
+## ▶️ จุดต่อ 12 พ.ย. 18:2xZ — 8/72 (11%)
+- T0.4 ✅ merge 8008b2280 (ฐานหลักเขียวครบ) · เลน l1 ว่าง → ใบถัดไป T0.6 (ร่างใบ+ข้อสอบ · ข้อบังคับใน `wo-notes/trips-T0.4.md` + `trips-T0.5.md`)
+- T1.1 เลน l2 @b58095c14 + งานแก้ r1 ยังไม่ commit (ผู้สร้าง agent aaeb157b84fd7edde · รายงานผู้ตรวจ `scratchpad/t1.1-review/REVIEW.md`) → เมื่อส่ง: commit WIP → merge session/trips เข้าเลน → ผู้ตรวจรอบ 2 → ด่าน → ถ่ายภาพคู่ 16/17 → merge
+- (บล็อกด้านล่างเป็นของเก่า)
+
 # TRIPS-RESUME — จุดต่องาน (บล็อกใหม่อยู่บนสุด)
+
+## ▶️ 12 พ.ย. 2569 ~18:5xZ — **7/72 (10%)** · รับแล้ว P0.1–P0.3 · T0.1 · T0.2 · T0.3 · T0.5 · **main รวมแล้ว** (bb45ac749) · จุดต่อก่อน /compact
+**สถานะ branch:** `session/trips` = f58c28cc4+ (push แล้ว) · มี origin/main 6b991f34d · ทุกฐาน QC (หลัก · l1 · l2) มี migration trips + seed
+**งานค้าง 2 เลน:**
+- **เลน l1 `wip/trips-t0.4` @0ccdc048f (commit แล้ว · มี main)** — T0.4 r3 เสร็จ · ผู้ตรวจ r2 = MERGE · **ด่านรอบสุดท้ายกำลังรัน**: unit `trips-gate-t04b` → `/root/trips-runs/gate-t0.4/summary.txt` (รอ `GATE_DONE`) · คาด: t0.4 109/110 (S-14 = ORACLE-EDIT ของผู้คุม หายเมื่อ merge) · อื่นเขียว · probe scale จะขึ้นธง rekey 0/12 (probe ใช้ hold ของพนักงาน/ไม่ส่ง policies — ตามมติ ไม่ใช่บั๊ก)
+  → ถ้าเขียว: `git -C /root/projects/shark-trips merge --no-ff wip/trips-t0.4` → seed ×2 + `qc-trips-t0.4 t0.5 t0.3 t0.2 t0.1` บนฐานหลัก (`bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/<ชุด>.mts`) → wo-notes `trips-T0.4.md` (คัดรายงาน `scratchpad/t0.4-review/REVIEW-R2.md` · `-hunt` คัดแล้ว) → TRIPS-RUN §2/§4 → `tg "📊 TRIPS · 11% (8/72)"` → push
+- **เลน l2 `wip/trips-t1.1` @b58095c14 (commit WIP แล้ว 12 พ.ย. ~19Z)** — ผู้สร้างส่งงาน: ข้อสอบ t1.1 100/100 · regression ครบ · fitness 53/53 · typecheck 0 · **ยังไม่มีใครเห็นจอ** · ผู้ตรวจ 1 ตัวกำลังอ่าน → `scratchpad/t1.1-review/REVIEW.md` · ฐานเลนยังไม่มี main/T0.4 · ข้อเบี่ยงจากภาพที่ผู้สร้างแจ้ง: การ์ดค่าตั้งเป็นแถวอ่าน กด "แก้" เปิด SettingsForm ในกล่อง (คำเตือน W01/W03 อยู่ในกล่อง ไม่ได้อยู่บนการ์ดแบบภาพ 17) · แถบบนรวมกับโครงแอปเดิม · คำสั่ง build/ถ่ายภาพ: `next build --webpack` ผ่าน iso+qc-trips → `next start -p 3241` (unit แยก) → `pnpm exec tsx scripts/visual-trips.mts t1.1 --base http://127.0.0.1:3241` → `bash scripts/parity-trips.sh 16|17 <ภาพ> <ผล>` (ผล `.qc-shots/trips/t1.1/`)
+  → รับงาน: commit WIP → ORACLE-EDIT ตามข้อแย้งที่ถูก → ผู้ตรวจ 1 ตัว → รวม session/trips เข้าเลน (ผู้สร้างแก้ชน) → `/root/trips-runs/gate.sh /root/projects/shark-trips-l2 gate-t1.1 qc-trips-t1.1 qc-trips-t0.5 qc-trips-t0.3 qc-trips-t0.2 qc-trips-t0.1 qc-trips-p0.1 qc-svc-r0.3 qc-svc-smoke` → **ผู้คุม build QC (`--webpack` ผ่าน iso · unit แยก) + ถ่ายภาพคู่ด้วย `scripts/visual-trips.mts` / `scripts/parity-trips.sh` เทียบจอ 16/17 → เปิดดูเอง เขียน PARITY** (ปิดหนี้ T0.1 "ยังไม่เคยเห็นจอค่าตั้ง") → merge
+**ถัดไป:** ใบสั่ง + ข้อสอบ **T0.6** (การจอง) — เขียนได้ทันทีหลัง T0.4 merge · ต้องใส่: ข้อบังคับใน `wo-notes/trips-T0.5.md` (6 ข้อ) + ลำดับการเรียกจากผู้ตรวจ T0.4 r2 (rekey ก่อน convert · ล็อกสินค้าทุกตัวเรียง id ก่อน phase 1 · `capacityRowsOf`/`loadCapacityPolicies`/quote/snapshot ก่อนเปิด tx · ยกเลิก: คืนที่ก่อนคืนสิทธิ์โค้ด · `insertHoldInTx` หลัง `reserveInTx(HOLD)`) + ลายเซ็น `*InTx` ในรายงานผู้สร้าง T0.4 r2 (อยู่ใน `capacity.ts` / `capacity-service.ts`) + คำอนุมัติราคาแก้มือต้องส่ง `resolvedMinor` · แล้ว T0.7 (เงิน — ติด OQ9/OQ12/OQ17 เรื่อง POS · หนี้สัญญา N-1 N-2 N-6) · T0.8 (ติด OQ17 ค เส้นทางไฟล์)
+**แบบแผนที่ใช้ได้ผล:** ผู้เขียนใบสั่ง+ข้อสอบ (แยกคน) → ผู้สร้าง (ห้าม commit/แก้ข้อสอบ) → ผู้คุม commit WIP + ORACLE-EDIT เฉพาะข้อแย้งที่เปิดดูแล้วถูก → ผู้ตรวจ + นักล่า (ใบ 🔴) → รอบแก้ → ผู้ตรวจเช็กซ้ำ → ด่าน `/root/trips-runs/gate.sh <เลน> <ชื่อ> <ชุด…>` (มีตัวเฝ้า `until grep -q GATE_DONE …`) → merge → รันซ้ำบนฐานหลัก → wo-notes → tg % · ห้ามแก้ไฟล์ในเลนระหว่างด่านรัน
+**แดงที่รู้จัก (ไม่ต้องไล่):** SVC b.0 M-1 G-7 G-8 G-9 · h.0 PC-7 M-6 M-8 S-2 R-10 RP-6 P-4 G-8 (ข้อตรวจขอบเขตของใบเก่า)
+**คำถามเจ้าของ:** OQ1–OQ19 ใน `TRIPS-OWNER-QUESTIONS.md` (ใช้ค่าปลอดภัยอยู่ · ข้อที่กระทบสุด OQ17 ขอแตะ POS/โรงแรม 1 จุด/เส้นทางไฟล์ · OQ18 หนี้แพลตฟอร์ม tenantDb update)
 
 ## ▶️ 12 พ.ย. 2569 ~15:2xZ — **6/72 (8%)** · T0.1–T0.3 ✅ (8e9b616dd) · T0.4 กำลังสร้าง · T0.5 รอบแก้
 - 🔄 เลน l1 `wip/trips-t0.4`: ผู้สร้าง T0.4 🔴 (ข้อสอบ 110 · ผู้คุมยืนยันแดง 9/110 ก่อนสร้าง · ใบสั่ง §12–§13) — งานบนดิสก์ ไม่ commit

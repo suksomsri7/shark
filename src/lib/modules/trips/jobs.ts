@@ -14,6 +14,13 @@ import { logOps } from "@/lib/core/ops";
 import { errorCodeOf, evaluateMinPaxCore, materializeCore } from "./departures";
 import { addDaysYmd } from "./departures-core";
 import { isFail, systemGate } from "./resources";
+// ── T0.4 capacity ── (ตัวกวาดหมดเวลา · เสนอที่รายการรอ)
+import { Prisma } from "@prisma/client";
+import { SWEEP_PAGE_SIZE } from "./capacity-core";
+import { CapacityAbort, type Gate, type SweepGroup } from "./capacity";
+import { expireHoldsBatch, jobGate, sweepPolicies } from "./capacity-service";
+import { offerWaitlistForDeparture } from "./waitlist";
+// ── /T0.4 capacity ──
 
 export type TripJobOpts = { tenantIds?: string[]; signal?: AbortSignal };
 export type TripJobFailure = { tenantId: string; unitId?: string; scheduleId?: string; departureId?: string; code: string };
@@ -105,3 +112,138 @@ export async function runMinPaxCheck(
   await reportFailures("trips.minPaxCheck", out.failed);
   return out;
 }
+
+// ── T0.4 capacity ──
+// ใบสั่ง ledger/trips-briefs/T0.4.md §3.7 §4 ข้อ 5 · CC §D.4 · r2 ข้อ 7 ข้อ 12 — อ่านอย่างเดียวด้วย prisma ดิบ (หา tenant/unit/รอบ "ก่อนรู้ร้าน")
+// แล้วเขียนด้วย tenantDb (capacity-service → capacity.ts) · ความล้มจดรวมต่อ (ร้าน, หน่วย, รหัส) พร้อมจำนวน · เคารพ signal + deadline
+export type CapacityJobOpts = TripJobOpts & { deadline?: number };
+/** ความล้มรวมต่อร้าน/หน่วย/รหัส (ไม่ใช่ทีละรอบ · r2 ข้อ 7) */
+export type CapacityJobFailure = { tenantId: string; unitId: string; code: string; count: number };
+const capCodeOf = (e: unknown) => (e instanceof CapacityAbort ? e.code : errorCodeOf(e));
+const stopped = (opts?: CapacityJobOpts) => opts?.signal?.aborted === true || (typeof opts?.deadline === "number" && Date.now() >= opts.deadline);
+class FailureTally {
+  private readonly m = new Map<string, CapacityJobFailure>();
+  add(tenantId: string, unitId: string, code: string, n = 1) {
+    const k = `${tenantId}|${unitId}|${code}`;
+    const cur = this.m.get(k) ?? { tenantId, unitId, code, count: 0 };
+    cur.count += n;
+    this.m.set(k, cur);
+  }
+  list(): CapacityJobFailure[] {
+    return [...this.m.values()];
+  }
+}
+
+type DueRow = { id: string; tenantId: string; unitId: string; departureId: string; productId: string | null; waiters: boolean };
+/**
+ * อ่าน hold ครบกำหนดไม่ล็อก (ACTIVE ∧ expiresAt ≤ now · เรียง departureId, id · หน้าละ 200 · ดัชนีบางส่วน) → รวมต่อหน่วย →
+ * ธุรกรรมเดียวต่อชุดของหน่วย (expireHoldsBatch) · ค่าตั้งโหลดเฉพาะรอบที่มีคนรอ (ใช้เสนอที่เท่านั้น — ค่าตั้งเสียยังปล่อย hold ได้)
+ * วนหน้าจนหมด · รอบที่ล้ม/ไม่คืบหน้า (คนอื่นกวาดไปแล้ว) ถูกข้ามในหน้าถัดไป ⇒ จบเสมอ
+ */
+export async function runExpireHolds(
+  now: Date,
+  opts?: CapacityJobOpts,
+): Promise<{ expired: number; departures: number; offered: number; failed: CapacityJobFailure[] }> {
+  const out = { expired: 0, departures: 0, offered: 0 };
+  const tally = new FailureTally();
+  const skip = new Set<string>();
+  const gates = new Map<string, Gate | null>();
+  const iso = now.toISOString();
+  while (!stopped(opts)) {
+    const tenantFilter = opts?.tenantIds ? Prisma.sql`AND h."tenantId" = ANY(${opts.tenantIds}::text[])` : Prisma.empty;
+    const skipFilter = skip.size ? Prisma.sql`AND NOT (h."departureId" = ANY(${[...skip]}::text[]))` : Prisma.empty;
+    const due = await prisma.$queryRaw<DueRow[]>`
+      SELECT h."id", h."tenantId", h."unitId", h."departureId", d."productId",
+        EXISTS (SELECT 1 FROM "TripWaitlist" w WHERE w."departureId" = h."departureId" AND w."tenantId" = h."tenantId" AND w."status" = 'WAITING') AS "waiters"
+      FROM "TripHold" h LEFT JOIN "TripDeparture" d ON d."id" = h."departureId" AND d."tenantId" = h."tenantId"
+      WHERE h."status" = 'ACTIVE' AND h."expiresAt" <= ${iso}::timestamp ${tenantFilter} ${skipFilter}
+      ORDER BY h."departureId", h."id" LIMIT ${SWEEP_PAGE_SIZE}`;
+    if (!due.length) break;
+    const units = new Map<string, { tenantId: string; unitId: string; groups: Map<string, { productId: string | null; waiters: boolean; ids: string[] }> }>();
+    for (const h of due) {
+      const uk = `${h.tenantId}|${h.unitId}`;
+      const u = units.get(uk) ?? { tenantId: h.tenantId, unitId: h.unitId, groups: new Map() };
+      const grp = u.groups.get(h.departureId) ?? { productId: h.productId, waiters: h.waiters, ids: [] };
+      grp.ids.push(h.id);
+      u.groups.set(h.departureId, grp);
+      units.set(uk, u);
+    }
+    for (const u of units.values()) {
+      if (stopped(opts)) break;
+      const depIds = [...u.groups.keys()];
+      try {
+        const uk = `${u.tenantId}|${u.unitId}`;
+        if (!gates.has(uk)) gates.set(uk, await jobGate(u.tenantId, u.unitId));
+        const g = gates.get(uk);
+        if (!g) {
+          tally.add(u.tenantId, u.unitId, "UNIT_NOT_TRIPS", depIds.length);
+          for (const id of depIds) skip.add(id);
+          continue;
+        }
+        const withWaiters = [...u.groups.entries()].filter(([, x]) => x.waiters && x.productId).map(([id, x]) => ({ id, productId: x.productId as string }));
+        const sp = await sweepPolicies(g, withWaiters, now);
+        if (sp.invalid) tally.add(u.tenantId, u.unitId, "SETTINGS_INVALID_OFFER_SKIPPED", withWaiters.length);
+        const groups: SweepGroup[] = [...u.groups.entries()].map(([departureId, x]) => ({ departureId, holdIds: x.ids }));
+        const r = await expireHoldsBatch(g, groups, sp.policies, now);
+        out.expired += r.expired;
+        out.offered += r.offered;
+        out.departures += r.departures;
+        for (const f of r.failed) tally.add(u.tenantId, u.unitId, f.code);
+        for (const id of r.done) skip.add(id);
+      } catch (e) {
+        tally.add(u.tenantId, u.unitId, capCodeOf(e), depIds.length);
+        for (const id of depIds) skip.add(id);
+      }
+    }
+  }
+  const failed = tally.list();
+  await reportFailures("trips.expireHolds", failed);
+  return { ...out, failed };
+}
+
+type WaitDep = { tenantId: string; unitId: string; departureId: string };
+/** หน้าต่างหมุนจุดเริ่มของงานรายการรอ (ช่วงเดียวกับรอบงาน 5 นาที — ค่าทางเทคนิค ไม่ใช่ตัวเลขธุรกิจ) */
+const WAITLIST_ROTATE_MS = 300_000;
+/**
+ * รอบที่มี WAITING และ "ทำอะไรได้" เท่านั้น (r2 ข้อ 12 · r3 N5): หัวคิว (createdAt, id) ต้องการไม่เกินที่ว่างสาธารณะ + เปิดขาย + ยังไม่เลยปิดรับ/เริ่ม ⇒ เสนอ
+ * (FIFO เคร่ง ใต้ล็อกรอบ) · เริ่มแล้ว (ทุกสถานะ)/ยกเลิก/เลยปิดรับ ⇒ WAITING → EXPIRED · รอบที่หัวคิวไม่พอดีไม่ถูกเลือก (ไม่กินหน้า)
+ * จำกัดหน้าละ 200 รอบต่อรอบงาน · ลำดับหมุนตามช่วงเวลา (md5(id ‖ ช่วง)) ⇒ ทุกรอบถึงคิวแม้มีรอบที่ล้มซ้ำค้างอยู่
+ */
+export async function runWaitlistOffers(
+  now: Date,
+  opts?: CapacityJobOpts,
+): Promise<{ departures: number; offered: number; expired: number; failed: CapacityJobFailure[] }> {
+  const out = { departures: 0, offered: 0, expired: 0 };
+  const tally = new FailureTally();
+  const iso = now.toISOString();
+  const bucket = String(Math.floor(now.getTime() / WAITLIST_ROTATE_MS));
+  const tenantFilter = opts?.tenantIds ? Prisma.sql`AND d."tenantId" = ANY(${opts.tenantIds}::text[])` : Prisma.empty;
+  const deps = await prisma.$queryRaw<WaitDep[]>`
+    SELECT d."tenantId", d."unitId", d."id" AS "departureId"
+    FROM "TripDeparture" d
+    JOIN LATERAL (
+      SELECT w."qty" FROM "TripWaitlist" w
+      WHERE w."departureId" = d."id" AND w."tenantId" = d."tenantId" AND w."status" = 'WAITING'
+      ORDER BY w."createdAt", w."id" LIMIT 1
+    ) head ON true
+    WHERE true ${tenantFilter}
+      AND ( (d."capacity" - d."sold" - d."held" - d."reserved" >= head."qty" AND d."status" IN ('OPEN', 'GUARANTEED')
+             AND d."startsAt" > ${iso}::timestamp AND (d."cutoffAt" IS NULL OR d."cutoffAt" > ${iso}::timestamp))
+         OR d."startsAt" <= ${iso}::timestamp OR d."status" = 'CANCELLED' OR (d."cutoffAt" IS NOT NULL AND d."cutoffAt" <= ${iso}::timestamp) )
+    ORDER BY md5(d."id" || ${bucket}) LIMIT ${SWEEP_PAGE_SIZE}`;
+  for (const d of deps) {
+    if (stopped(opts)) break;
+    try {
+      const r = await offerWaitlistForDeparture(d.tenantId, d.unitId, d.departureId, now, "trips.waitlistOffers");
+      out.departures++;
+      out.offered += r.offered.length;
+      out.expired += r.expired;
+    } catch (e) {
+      tally.add(d.tenantId, d.unitId, capCodeOf(e));
+    }
+  }
+  const failed = tally.list();
+  await reportFailures("trips.waitlistOffers", failed);
+  return { ...out, failed };
+}
+// ── /T0.4 capacity ──

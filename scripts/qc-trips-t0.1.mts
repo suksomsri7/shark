@@ -842,7 +842,9 @@ try {
   });
   await st("S-12", "ไม่แตะ POS · โรงแรม · หอ · จองคิว · defs/rooms · defs/booking · legal/th-rental-2568 · seed/ฟิกซ์เจอร์ P0.1", () => {
     const ch = changedFiles(["src/lib/modules/pos", "src/lib/modules/hotel", "src/lib/modules/dorm", "src/lib/modules/booking", "src/lib/core/settings/defs/rooms.ts", "src/lib/core/settings/defs/booking.ts", "src/lib/core/settings/legal/th-rental-2568.ts"]); // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย. รอบ 2): seed/ฟิกซ์เจอร์ถูกขยายโดย T0.2+ ตามใบสั่ง — เอาออกจากรายการ · เดิม: ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย.): เอา qc-trips-p0.1.mts ออก — ผู้คุมแก้ไฟล์นั้นเอง (cast env)
-    ok(ch.length === 0, `แตะ: ${ch.join(", ")}`);
+    // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย. รอบ 3): เจ้าของสั่ง merge origin/main 6b991f34d (งานโรงแรม) — ไฟล์ที่ตรงกับ main ไม่นับว่า TRIPS แตะ
+    const ours = ch.filter((f) => git(["diff", "-w", "--ignore-blank-lines", "--name-only", "6b991f34d", "--", f]).trim() !== "");
+    ok(ours.length === 0, `แตะ: ${ours.join(", ")}`);
   });
 
   // ═══════════════ R. ทะเบียน ═══════════════

@@ -13,13 +13,11 @@ import { AsyncLocalStorage } from "node:async_hooks"; // SVC H.8 ▸ ยกเ�
 import { z } from "zod";
 import type { Prisma, PosPayType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
-import { callerTx } from "@/lib/core/caller-tx";
 import { emitOutbox } from "@/lib/core/outbox";
 import { canAccessUnit, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { bkkYmd } from "@/lib/core/quiet-hours";
 import { resolveSettings, snapshotPolicy } from "@/lib/core/settings";
 import { claimRoom, moveOccupancy, releaseOccupancy, resizeOccupancy } from "@/lib/modules/rooms";
-import * as pos from "@/lib/modules/pos/service";
 import { DEPOSIT_PAY_TYPES, moduleForfeitDeposit, moduleRefundDeposit, moduleTakeDeposit } from "@/lib/modules/pos/deposit";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
@@ -28,6 +26,7 @@ import { addDaysYmd, dayNumber, depositFor, depositPolicyOf, isYmd, nightDates, 
 import { availabilityInTx, isSellableNightly, shortDates } from "./availability";
 import { canTransition, holdDeadline, nightsOf } from "./booking-state";
 import { postDeposit } from "./folio"; // SVC H.5 ◂
+import { cancelFeeSale, depositSellFor, forfeitSellFor } from "./booking-sale"; // rel-fix ▸ บิล POS ของการจอง (CD2) ◂
 
 const GUEST_CANCEL = new AsyncLocalStorage<{ by: "GUEST" }>(); // SVC H.8 ◂
 
@@ -876,16 +875,14 @@ async function depositState(c: Ctx, receiptSaleId: string | null): Promise<Depos
   return { systemId, depositId: d.id, receiptSaleId, amount: d.amountSatang, used: d.usedSatang, refunded: d.refundedSatang, remaining, customerId: d.customerId };
 }
 type MoneyOut = { refundSatang: number; forfeitSatang: number; error: string | null };
-const sellFor = (c: Ctx, systemId: string, reservationId: string) =>
-  (tx: Tx, p: { idempotencyKey: string; lines: { name: string; qty: number; unitPriceSatang: number }[]; payMethods: { type: "DEPOSIT"; amountSatang: number; refSaleId: string }[]; memberId?: string; memberAttachOnly?: true; note?: string }) =>
-    pos.createSale({ ...c, systemId, sourceModule: "HOTEL", sourceId: reservationId, ...p }, callerTx(tx));
+// บิล POS ทุกใบของการจอง (ริบ · ค่าธรรมเนียมยกเลิก · ใบรับมัดจำ) อยู่ที่ ./booking-sale (rel-fix · กติกา POS P2.1 CD2)
 
 async function refundAll(c: Ctx, receiptSaleId: string, reason: string, actorId: string): Promise<MoneyOut> {
   const r = await moduleRefundDeposit({ ...c, receiptSaleId, reason, actorId });
   return r.ok ? { refundSatang: 0, forfeitSatang: 0, error: null } : { refundSatang: 0, forfeitSatang: 0, error: r.message };
 }
 async function forfeitAll(c: Ctx, st: NonNullable<DepositState>, reservationId: string, reason: string, actorId: string): Promise<MoneyOut> {
-  const r = await moduleForfeitDeposit({ ...c, receiptSaleId: st.receiptSaleId, reason, actorId }, sellFor(c, st.systemId, reservationId));
+  const r = await moduleForfeitDeposit({ ...c, receiptSaleId: st.receiptSaleId, reason, actorId }, forfeitSellFor(c, st.systemId, reservationId));
   if (r.ok === false) return { refundSatang: 0, forfeitSatang: 0, error: r.message };
   return { refundSatang: 0, forfeitSatang: "legacy" in r ? 0 : r.satang, error: null };
 }
@@ -901,16 +898,7 @@ async function cancelFeeBill(c: Ctx, st: NonNullable<DepositState>, rv: { id: st
   }
   if (!key) return "บิลค่าธรรมเนียมของมัดจำนี้ถูกยกเลิกหลายครั้งเกินไป";
   try {
-    const r = await pos.createSale({
-      ...c,
-      systemId: st.systemId,
-      sourceModule: "HOTEL",
-      sourceId: rv.id,
-      idempotencyKey: key,
-      lines: [{ name: `ค่าธรรมเนียมยกเลิก ${rv.code}`, qty: 1, unitPriceSatang: amount }],
-      payMethods: [{ type: "DEPOSIT", amountSatang: amount, refSaleId: st.receiptSaleId }],
-      ...(st.customerId ? { memberId: st.customerId, memberAttachOnly: true as const } : {}),
-    });
+    const r = await cancelFeeSale(c, { systemId: st.systemId, reservationId: rv.id, code: rv.code, idempotencyKey: key, amountSatang: amount, receiptSaleId: st.receiptSaleId, customerId: st.customerId });
     if (r.status !== undefined && r.status !== "PAID") return "ออกบิลค่าธรรมเนียมยกเลิกไม่สำเร็จ";
     return null;
   } catch (e) {
@@ -1004,19 +992,7 @@ export async function takeBookingDeposit(actorIn: unknown, ctx: unknown, input: 
   const actorId = g.actor?.userId ?? SYSTEM_ACTOR_ID;
   const sale = await moduleTakeDeposit(
     { ...c, systemId, keyBase: `hotel-deposit-${head.groupId ?? head.id}`, amountSatang: amount, payType: payType as PosPayType, customerId: head.customerId ?? null, customerName: head.guestName ?? null, note: `มัดจำห้อง ${head.code}`, createdBy: SYSTEM_ACTOR_ID },
-    (tx, k) =>
-      pos.createSale(
-        {
-          ...c,
-          systemId,
-          sourceModule: k.sourceModule,
-          sourceId: k.sourceId,
-          idempotencyKey: k.idempotencyKey,
-          lines: [{ name: `มัดจำห้อง ${head.code}`, qty: 1, unitPriceSatang: amount }],
-          payMethods: [{ type: k.payType, amountSatang: amount, ...(p.data.reference ? { reference: p.data.reference } : {}) }],
-        },
-        callerTx(tx),
-      ),
+    depositSellFor(c, { systemId, code: head.code, amountSatang: amount, reference: p.data.reference }),
   );
   const headId = head.id;
   const today = bkkYmd(now);
