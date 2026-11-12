@@ -10,7 +10,8 @@
 // SKIP while hr/self.ts is absent (exit 0) · QC_FORCE=1 / --force-run runs anyway · --list prints the ids.
 // Own tenants `qc-hr-h210-*`, June 2031 (Mon 9 … Sun 15; "today" = Tue 10), `opts.now` injected, swept in finally (Z1).
 // Run (lane DB): bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h2.10.mts
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type Any, type Def, type Who, ROOT, rd, short, errText, textOf, srt, failedKeys, stripComments, sha, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase,
@@ -109,6 +110,14 @@ S8.1|§5|M|R|[static] testids + tokens only + 44 px
 S8.2|§5|M|R|[static] inventory rows ⇄ testids (wo H2.10)
 S8.3|§5|M|R|[static] hr.self th = en
 S8.4|§5|M|R|[static] visual SPECS["2.10"] (staff · member · owner on /app/me/hr)
+S10.1|r2-1|C|R|[race] advance: 10 parallel self requests ∥ owner approving loop × 6 rounds ⇒ never > 1 non-rejected advance
+S10.2|r2-1|C|R|advance: 10 parallel, no approver ⇒ exactly 1 row · cancel own pending ok · cancel after approval refused (row stays APPROVED)
+S10.3|r2-1|C|R|advance approval guard: manager-path duplicates can never both be approved (decideAdjustment ADVANCE under hr:advance lock)
+S10.4|r2-1|C|R|[static] advance writes live in payroll.ts (marked HR H2.10 block · decideAdjustment hunk) · self.ts writes no hrPayAdjustment
+S10.5|r2-2|C|R|[static] fitness-hr F16.3: my* reader counts as guard only under src/app/app/me/hr (page elsewhere calling only mySelf ⇒ unguarded)
+S10.6|r2-3|C|R|swap targets = people the swap service accepts (linked · active · not on approved leave · unit) · ENDED caller refused · leavePeer neutral · no 500 cap
+S10.7|r2-4|M|R|[static] nav: "ของฉัน" once (top-level drawer only) · linked evaluated per HR system (layout + hrTabsFor)
+S10.8|r2-5/6/7|M|R|[static] resolveSelf cached per request · reason not cut · cancel flags / ranges from services · ENDED quick actions not links
 S9.1|frozen|C|G|[static] payroll-rules sha · frozen files without H2.10 hunks (other WOs' marked hunks tolerated)
 S9.2|frozen|M|G|[static] no migration vs base · seed/env unchanged
 Z1|house|C|G|no residue
@@ -141,7 +150,7 @@ const block = (src: string, at: string) => (src.indexOf(at) >= 0 ? src.slice(src
 const labels = (s: string) => [...s.matchAll(/label:\s*["']([^"']+)["']/g)].map((m) => m[1]);
 
 // ═════════════════════════ statics ═════════════════════════
-function runStatic(): void {
+async function runStatic(): Promise<void> {
   const s = stripComments(rd(F.self));
   {
     const ex = new Set([...s.matchAll(/export\s+(?:async\s+)?(?:function|const)\s+(\w+)/g)].map((m) => m[1]));
@@ -223,6 +232,55 @@ function runStatic(): void {
     const sp = v.slice(Math.max(0, v.indexOf('"2.10"')), Math.max(0, v.indexOf('"2.10"')) + 3000);
     ck("S8.4", { spec: v.includes('"2.10"'), me: /\/app\/me\/hr/.test(sp), users: ["staff", "member", "owner"].every((u) => sp.includes(`"${u}"`)) }, "SPECS 2.10");
   }
+  // ── r2 fix round (controller 12 Nov) ──
+  {
+    const pay = rd(`${H}payroll.ts`);
+    const mark = pay.indexOf("HR H2.10 ▸");
+    const dec = pay.slice(pay.indexOf("export async function decideAdjustment("), pay.indexOf("\nexport", pay.indexOf("export async function decideAdjustment(") + 10));
+    const sx = stripComments(rd(F.self));
+    const r = {
+      block: mark >= 0 && /export async function requestSelfAdvance\(/.test(pay) && /export async function cancelSelfAdvance\(/.test(pay) && /hr:advance:\$\{/.test(pay),
+      decide: /HR H2\.10/.test(dec) && /ADVANCE/.test(dec),
+      selfNoWrite: !/hrPayAdjustment\.(create|createMany|delete|deleteMany|update|updateMany|upsert)\b/.test(sx) && /requestSelfAdvance\(/.test(sx) && /cancelSelfAdvance\(/.test(sx),
+    };
+    ck("S10.4", r, "payroll.ts block · self.ts no writes");
+  }
+  {
+    const fh = (await import("./fitness-hr.mjs" as string)) as Any;
+    const dir = mkdtempSync(join(tmpdir(), "qc-h210-f163-"));
+    const fake = join(dir, "page.tsx");
+    writeFileSync(fake, 'import { mySelf } from "@/lib/modules/hr/self";\nexport default async function P() { const r = await mySelf({ tenantId: "t", userId: "u", role: "STAFF", unitAccess: [], permissions: {} }); return r.ok ? null : null; }\n');
+    let outside: Any = null;
+    let inside: Any = null;
+    try {
+      outside = fh.pageGuard?.(ROOT, fake);
+      inside = fh.pageGuard?.(ROOT, join(ROOT, `${ME}/page.tsx`));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    ck("S10.5", { fn: typeof fh.pageGuard === "function", outside: outside?.guarded === false, inside: inside?.guarded === true }, "outside unguarded · me/hr guarded", `${outside?.detail ?? "∅"} | ${inside?.detail ?? "∅"}`);
+  }
+  {
+    const L = rd(F.layout);
+    const hrCase = L.slice(L.indexOf('case "HR":'), L.indexOf('case "INVENTORY":'));
+    const ui = rd(F.hrUi);
+    const tf = ui.slice(ui.indexOf("function hrTabsFor("), ui.indexOf("function hrTabsFor(") + 1200);
+    const r = { once: /HR_SELF_HREF/.test(hrCase) && /\/app\/me\/hr/.test(L), perSystem: /===\s*slugOrId|slugOrId\s*===/.test(hrCase), tabs: /===\s*systemId|systemId\s*===/.test(tf) };
+    ck("S10.7", r, "once · per system");
+  }
+  {
+    const sx = stripComments(rd(F.self));
+    const ux = stripComments(rd(F.ui));
+    const acts = ux.slice(ux.indexOf("export function SelfActions("), ux.indexOf("export function SelfBalances("));
+    const r = {
+      cache: importsOf(sx).some((i) => i.spec === "react") && /\bcache\(/.test(sx),
+      reason: !/reason[^\n]*\.slice\(/.test(sx),
+      range: !/\b62\b/.test(sx) && !/-35\b/.test(sx),
+      cancel: !/status === "PENDING"/.test(sx) && /CancelOpen\(/.test(sx),
+      ended: acts.length > 0 && !/pointer-events-none|aria-disabled/.test(acts) && /canWrite \?/.test(acts),
+    };
+    ck("S10.8", r, "cache · no cut · service flags · no ENDED links");
+  }
   // ── frozen ──
   {
     const bad: string[] = [];
@@ -230,7 +288,10 @@ function runStatic(): void {
       if (IN_BASE) break;
       const h = diffHunks(BASE, f);
       if (h === null) continue;
-      if (h.some((x) => /HR H2\.10/.test(x.added.join("\n")) || !/▸/.test(x.added.join("\n")))) bad.push(f.replace(H, ""));
+      // ORACLE-EDIT r2 (controller fix-round ruling 12 Nov): payroll.ts (atomic self advance + ADVANCE approval guard), swap.ts (eligibility reader),
+      //   service.ts / ot.ts / correction.ts (cancel-gate predicates) may carry PURE-ADDITION hunks marked `HR H2.10 ▸` — nothing removed, nothing unmarked ◂
+      const r2ok = ["payroll.ts", "swap.ts", "service.ts", "ot.ts", "correction.ts"].includes(f.replace(H, ""));
+      if (h.some((x) => (/HR H2\.10/.test(x.added.join("\n")) && !(r2ok && x.removed.length === 0)) || !/▸/.test(x.added.join("\n")))) bad.push(f.replace(H, ""));
     }
     const sh = sha(rd(PAYROLL_RULES_FILE));
     chk("S9.1", sh === PAYROLL_RULES_SHA && !bad.length, `${PAYROLL_RULES_SHA.slice(0, 12)} · frozen`, `${sh.slice(0, 12)} · ${bad.join(",") || (IN_BASE ? "n/a in base" : "unchanged")}`);
@@ -694,12 +755,75 @@ async function runDb(): Promise<void> {
       }
     chk("S7.1", !bad.length, "12 viewer×link combos = page gates", bad.slice(0, 4).join(" ") || "ok");
   }
+
+  // ── r2 fix round ──
+  const pay = (await import("@/lib/modules/hr/payroll")) as Any;
+  const own = { userId: U.owner.id, isOwner: true };
+  const advOf = (e: string) => P.hrPayAdjustment.findMany({ where: { employeeId: e, kind: "ADVANCE" }, select: { id: true, status: true, runId: true } }) as Promise<Any[]>;
+  {
+    const aL = ACT(U.l);
+    const worst: number[] = [];
+    for (let round = 0; round < 6; round++) {
+      let stop = false;
+      const approver = (async () => {
+        for (let i = 0; i < 40 && !stop; i++) {
+          for (const r of (await advOf(E.L)).filter((x) => x.status === "PENDING")) await pay.decideAdjustment(cA, r.id, "APPROVED", own).catch(() => null);
+          await new Promise((res) => setTimeout(res, 5));
+        }
+      })();
+      await Promise.all(Array.from({ length: 10 }, (_, i) => call("selfRequestAdvance", aL, { amountBaht: 300 + round * 10 + i }, O1)));
+      stop = true;
+      await approver;
+      for (const r of (await advOf(E.L)).filter((x) => x.status === "PENDING")) await pay.decideAdjustment(cA, r.id, "APPROVED", own).catch(() => null);
+      worst.push((await advOf(E.L)).filter((x) => x.status !== "REJECTED").length);
+    }
+    chk("S10.1", worst.every((n) => n <= 1) && worst[0] === 1, "≤ 1 non-rejected every round", worst.join(","));
+  }
+  {
+    const aW = ACT(U.owner);
+    const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => call("selfRequestAdvance", aW, { amountBaht: 200 + i }, O1)));
+    const rows = await advOf(E.W);
+    const one = rows.length === 1 && rs.filter((x) => x.ok).length === 1 && rs.filter((x) => x.text === T.advOpen).length === 9;
+    const c1 = await call("selfCancelAdvance", aW, rows[0]?.id ?? "∅");
+    const gone = (await advOf(E.W)).length === 0;
+    const again = await call("selfRequestAdvance", aW, { amountBaht: 250 }, O1);
+    const id2 = (again.value as Any)?.id ?? "∅";
+    const ap = await pay.decideAdjustment(cA, id2, "APPROVED", { userId: U.c.id, isOwner: false }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const c2 = await call("selfCancelAdvance", aW, id2);
+    const st = (await P.hrPayAdjustment.findUnique({ where: { id: id2 } }))?.status;
+    ck("S10.2", { one, cancel: c1.ok && gone, approved: !!ap?.ok, refused: !c2.ok && c2.text === T.notFound && st === "APPROVED" }, "1 row · cancel · cancel-after-approve refused", `${rs.filter((x) => x.ok).length} ok · ${rows.length} rows · ${shown(c1)} · ${ap?.reason ?? "ok"} · ${shown(c2)} ${st}`);
+  }
+  {
+    const mk = async (period: string) => (await pay.requestAdjustment(cA, { employeeId: E.D, periodKey: period, kind: "ADVANCE", amountSatang: 50_000, requestedById: U.owner.id }))?.id as string;
+    const d2 = await mk("2031-08");
+    const a1 = await pay.decideAdjustment(cA, FO.D.adv, "APPROVED", own);
+    const a2 = await pay.decideAdjustment(cA, d2, "APPROVED", own);
+    const both = (await advOf(E.D)).filter((x) => x.status === "APPROVED").length;
+    await pay.decideAdjustment(cA, d2, "REJECTED", own);
+    const a3 = await pay.decideAdjustment(cA, FO.D.adv, "APPROVED", own);
+    const d3 = await mk("2031-09");
+    const a4 = await pay.decideAdjustment(cA, d3, "APPROVED", own);
+    const approved = (await advOf(E.D)).filter((x) => x.status === "APPROVED").length;
+    ck("S10.3", { dupRefused: !a1?.ok && !a2?.ok && both === 0, single: !!a3?.ok, unsettled: !a4?.ok, one: approved === 1 }, "never two approved", `${a1?.ok}/${a2?.ok}/${a3?.ok}/${a4?.ok} approved=${approved}`);
+  }
+  {
+    await P.hrLeave.create({ data: { tenantId: TT, systemId: sA, employeeId: E.C, type: "PERSONAL", fromDate: dbDate(FD), toDate: dbDate(FD), days: 1, status: "APPROVED" } });
+    const t = await call("mySwapTargets", aA, { fromEntryId: eAF }, O1);
+    const ids = arr(t.value?.items).map((i) => i?.employeeId);
+    const x = await call("mySwapTargets", ACT(U.x), { fromEntryId: eXF }, O1);
+    const sx = stripComments(rd(F.self));
+    const r = {
+      ok: t.ok && ids.includes(E.B), noUnlinked: !ids.includes(E.Up), noLeave: !ids.includes(E.C), noEnded: !ids.includes(E.X) && !ids.includes(E.D),
+      ended: !x.ok && x.text === T.inactive, neutral: /leavePeer/.test(sx), noCap: !/take:\s*500\b/.test(sx),
+    };
+    ck("S10.6", r, "service-eligible only", `${ids.length} ${shown(x)}`);
+  }
 }
 
 // ═════════════════════════ run ═════════════════════════
 let crashed = "";
 try {
-  runStatic();
+  await runStatic();
   await runDb();
 } catch (e) {
   crashed = errText(e);
