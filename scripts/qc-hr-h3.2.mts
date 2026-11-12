@@ -47,7 +47,10 @@ const T = {
   adjAbsent: "หักเวลาขาดงาน {n} นาที ({m})",
   refund: "คืนเงินหักสาย/ขาด ({m})",
   // ORACLE-EDIT (controller ruling 12 Nov · closes the brief's accepted gap D1): approveRun refusal while a bound LATE/ABSENT deduction is stale
-  runStale: "มีรายการหักสาย/ขาดที่ข้อมูลเวลาเปลี่ยนแล้ว — กด 'คำนวณรายการหักสาย/ขาด' แล้วกด 'คำนวณใหม่' ที่รอบจ่ายก่อนอนุมัติ",
+  // ORACLE-EDIT (fix r1 R2c): order of steps reversed — recompute the run first, then compute deductions, then approve
+  runStale: "มีรายการหักสาย/ขาดในรอบนี้ที่ข้อมูลเวลาเปลี่ยนแล้ว — กด 'คำนวณใหม่' ที่รอบจ่ายก่อน แล้วกด 'คำนวณรายการหักสาย/ขาด' จากนั้นจึงอนุมัติ",
+  // ORACLE-EDIT (fix r1 R1): approve gate "deductions of the work period must match the time data"
+  runSync: "รายการหักสาย/ขาดของงวดนี้ยังไม่ตรงกับข้อมูลเวลา — กด 'คำนวณใหม่' ที่รอบจ่ายก่อน แล้วกด 'คำนวณรายการหักสาย/ขาด' จากนั้นจึงอนุมัติ",
 };
 // H1.3 texts (decideAdjustment, unchanged)
 const OWN_REQ = "อนุมัติรายการที่ตัวเองยื่นไม่ได้ — ให้เจ้าของหรือผู้มีสิทธิ์อนุมัติแทน";
@@ -100,12 +103,19 @@ S7.3|R6|C|R|[db] policy freeMin 5 ⇒ superseded + new PENDING literals
 S7.4|R2|C|R|[db] OFF ⇒ PENDING withdrawn (POLICY_OFF) · APPROVED kept · sync refused off
 S7.5|R6|C|R|[db] ON again ⇒ gen 3 rows · E = approved ⇒ nothing
 S8.1|R5|C|R|[db] Aug DRAFT run ⇒ deduction targets 2031-09
-S8.2|R8|C|R|[db] approved + bound to the APPROVED Sept run · sync Sept refused frozen
+S8.2|R8|C|R|[db] approved + bound to the APPROVED Sept run · sync Sept (frozen) allowed, writes nothing (ORACLE-EDIT fix r1 R3)
 S8.3|R6|C|R|[db] correction after binding ⇒ refund in 2031-10 · bound untouched · Σ 0
 S8.4|R6|C|R|[db] sync again ⇒ no second refund
 S8.5|D1|C|R|[db] ORACLE-EDIT (controller · D1 closed): correction after approval ⇒ createPayrollRun does not bind the stale deduction
 S8.6|D1|C|R|[db] ORACLE-EDIT (controller · D1 closed): delete draft + rebuild + sync ⇒ corrected PENDING 1,041 · approved ⇒ binds
 S8.7|D1|C|R|[db] ORACLE-EDIT (controller · D1 closed): leave after binding ⇒ approveRun refused runStale · recompute leaves it unbound
+S8.8|fix1|C|R|[db] ORACLE-EDIT (fix r1 R2): bound-in-draft 3,125 goes stale ⇒ sync waits RUN_STALE, writes nothing · recompute + sync ⇒ 1,041 · settled Aug+Sep 1,041 · no refund
+S8.9|fix1|C|R|[db] ORACLE-EDIT (fix r1 R1): approved 3,125 stale before binding ⇒ approve(Aug) refused runSync ⇒ recompute + sync ⇒ 1,041 ⇒ settled 1,041
+S8.10|fix1|C|R|[db] ORACLE-EDIT (fix r1 R3): Aug frozen without sync (legacy) ⇒ sync(Aug) allowed ⇒ refund 2,084 binds in Oct ⇒ settled 1,041
+S8.11|fix1|C|R|[db] ORACLE-EDIT (fix r1 R3): raise / policy change after Aug freeze ⇒ row not stale, binds in Sept ⇒ settled 3,125 (×2)
+S8.12|fix1|C|R|[pure] ORACLE-EDIT (fix r1 R5): period cap Σ ≤ base salary (31 absent days · 30 absent + late)
+S8.13|fix1|C|R|[db] ORACLE-EDIT (fix r1 R6): other-tenant viewer on this shop's ctx ⇒ sync/save/preview/lines refused · nothing written
+S8.14|fix1|C|R|[db] ORACLE-EDIT (fix r1 R8): human reject of 3,125 sticks on re-sync · new time data ⇒ new PENDING 1,041
 S9.1|R10|C|R|[db] preview viewer matrix (money keys payroll only)
 S9.2|R10|C|R|[db] preview literals (eL · eF · eH)
 S9.3|R10|C|R|[db] lines reader: payroll literal · others identical bytes
@@ -444,6 +454,18 @@ async function runDb(): Promise<void> {
   const rIn = await work(sC, E.eR, "04", u1, "09:31", "17:00");
   const qIn = await work(sD, eQ, "04", u1, "09:30", "17:00"); // ORACLE-EDIT (D1 closed) ◂ late 30
   const POL_VAC_D = await pol(sD, "VACATION", "พักร้อน D"); // ORACLE-EDIT (D1 closed) ◂
+  // ORACLE-EDIT (fix r1) ▸ one HR system per money scenario (S8.8–S8.11 · S8.14): employee ฿15,000 · N 480 · Mon 4 Aug IN 09:30 ⇒ late 30 ⇒ 3,125 ◂
+  const mkScen = async (n: string) => {
+    const s = await sys(`ทีม ${n}`);
+    const c = { tenantId: TT, systemId: s };
+    const emp = await me(s, `พนักงาน ${n}`, { unitId: u1 });
+    nameOf[emp] = `e${n}`;
+    await prof(c, emp, 1_500_000);
+    sh[s] = await shiftOf(s);
+    const w = await work(s, emp, "04", u1, "09:30", "17:00");
+    return { s, c, emp, inId: w.i as string };
+  };
+  const SC = { G: await mkScen("G"), F: await mkScen("F"), H: await mkScen("H"), I: await mkScen("I"), J: await mkScen("J"), K: await mkScen("K") };
   const ask = await OT.requestOt(cA, Vw.owner, { employeeId: E.eL, date: "2031-08-07", start: "17:00", end: "19:00", reason: "QC" }, { now: bk("2031-08-07", "10:00") }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
   const dec = ask?.ok ? await OT.decideOtRequest(cA, Vw.owner, ask.id, "APPROVED", { now: bk("2031-08-07", "10:05") }).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : ask;
   const job = (now: Date) => JG.runAttendanceJobs({ now, tenantId: TT });
@@ -451,6 +473,8 @@ async function runDb(): Promise<void> {
   await OT.settleOtRequests({ tenantId: TT, systemId: sA, now: NB }).catch(() => null);
 
   const build = (c: Any, per = PER) => WE.buildWorkEntrySnapshot(c, Vw.owner, { periodKey: per }, { now: NB }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+  // ORACLE-EDIT (fix r1): later months are pulled "after" they end (no future-day flags)
+  const buildAt = (c: Any, per: string) => WE.buildWorkEntrySnapshot(c, Vw.owner, { periodKey: per }, { now: bk("2031-12-15") }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
   const sync = (c: Any, v: Any, per = PER) => A_("syncAttendanceDeductions", c, v, { periodKey: per }, { now: NB });
   const savePol = (c: Any, v: Any, raw: Any) => A_("saveAttendancePayPolicy", c, v, raw);
   const rows = async (s = sA) => (await P.hrPayAdjustment.findMany({ where: { tenantId: TT, systemId: s, sourceType: { in: ["LATE_RULE", "ABSENT_RULE"] } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })) as Any[];
@@ -652,10 +676,13 @@ async function runDb(): Promise<void> {
     ck("S8.1", { run: !!aug?.id, sync: sc.ok && sc.value?.created === 1, row: (await live(sC)) === want0 }, "target 2031-09", `${short(aug, 40)} ${shown(sc)} ${await live(sC)}`);
     const ap = await pay.decideAdjustment(cC, r0?.id ?? "∅", "APPROVED", { userId: U.owner.id, isOwner: true }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
     const sep = await pay.createPayrollRun(cC, { periodKey: "2031-09", payDate: new Date("2031-09-30T00:00:00Z") }).catch((e: unknown) => ({ __err: errText(e) }));
+    await buildAt(cC, "2031-09"); // ORACLE-EDIT (fix r1 R1): approving a month needs its time data pulled + deductions computed
+    await sync(cC, Vw.owner, "2031-09"); // ORACLE-EDIT (fix r1 R1)
     const sa = sep?.id ? await pay.approveRun(cC, sep.id).catch((e: unknown) => ({ ok: false, note: errText(e) })) : sep;
     const b1 = await P.hrPayAdjustment.findUnique({ where: { id: r0?.id ?? "∅" } });
     const fz = await sync(cC, Vw.owner, "2031-09");
-    ck("S8.2", { ap: ap?.ok === true, run: sa?.ok === true, bound: !!sep?.id && b1?.runId === sep.id && b1?.status === "APPROVED", frozen: !fz.ok && fz.text === T.frozen }, "bound · frozen", `${short(ap, 40)} ${short(sa, 40)} ${b1?.runId === sep?.id} ${shown(fz)}`);
+    // ORACLE-EDIT (fix r1 R3): sync of a frozen work period is allowed and writes only to a later period — here nothing to write
+    ck("S8.2", { ap: ap?.ok === true, run: sa?.ok === true, bound: !!sep?.id && b1?.runId === sep.id && b1?.status === "APPROVED", frozen: fz.ok && fz.value?.created === 0 && fz.value?.refunds === 0 && fz.value?.rejected === 0 }, "bound · frozen sync no-op", `${short(ap, 40)} ${short(sa, 40)} ${b1?.runId === sep?.id} ${shown(fz)}`);
     const del = aug?.id ? await pay.deleteDraftRun(cC, aug.id, { userId: U.owner.id, isOwner: true }).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : aug;
     const cr = await CM.requestCorrection(cC, Vw.owner, { action: "CHANGE", employeeId: E.eR, attendanceId: rIn.i, at: bk("2031-08-04", "09:00"), reason: "แก้เวลาเข้า QC" }, { now: NB }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
     await build(cC);
@@ -708,6 +735,172 @@ async function runDb(): Promise<void> {
     const b3 = await st(q2?.id);
     ck("S8.7", { refused: ap?.ok === false && ap?.note === T.runStale, rc: rc?.ok === true, kept: b3?.status === "APPROVED", unbound: b3?.runId === null, item: (await itemOf(run2?.id)) === 0 },
       "approve refused · recompute unbinds", `${short(ap, 60)} ${short(rc, 30)} ${b3?.status}:${b3?.runId} item=${await itemOf(run2?.id)}`);
+  }
+
+  // ── ORACLE-EDIT (fix r1 · controller rulings R1–R8) — S8.8–S8.14 · money: late 30 = 1,500,000 × 30 / 14,400 = 3,125 ·
+  //    corrected late 10 = 15,000,000 / 14,400 = 1,041.67 → 1,041 · refund 3,125 − 1,041 = 2,084 · settled = Σ APPROVED rows bound to APPROVED/PAID runs (DEDUCTION + · ALLOWANCE −)
+  {
+    const OWN = { userId: U.owner.id, isOwner: true };
+    type Sc = (typeof SC)["G"];
+    const runOf = (c: Any, per: string) => pay.createPayrollRun(c, { periodKey: per, payDate: new Date(`${per}-28T00:00:00Z`) }).catch((e: unknown) => ({ __err: errText(e) }));
+    const apRun = (c: Any, id?: string) => (id ? pay.approveRun(c, id).catch((e: unknown) => ({ ok: false, note: errText(e) })) : Promise.resolve({ ok: false, note: "∅run" }));
+    const recomp = (c: Any, id?: string) => (id ? pay.recomputeDraftRun(c, id, OWN).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : Promise.resolve({ ok: false, reason: "∅run" }));
+    const decideAs = (c: Any, id: string | undefined, st: "APPROVED" | "REJECTED") => pay.decideAdjustment(c, id ?? "∅", st, OWN).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const corr = (x: Sc, hm: string) => CM.requestCorrection(x.c, Vw.owner, { action: "CHANGE", employeeId: x.emp, attendanceId: x.inId, at: bk("2031-08-04", hm), reason: "แก้เวลาเข้า QC" }, { now: NB }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const prepMonth = async (x: Sc, per: string) => (await buildAt(x.c, per), await sync(x.c, Vw.owner, per));
+    const settled = async (s: string) => {
+      const st = new Map(((await P.hrPayrollRun.findMany({ where: { tenantId: TT, systemId: s }, select: { id: true, status: true } })) as Any[]).map((r) => [r.id, String(r.status)]));
+      return (await rows(s)).filter((r) => r.status === "APPROVED" && r.runId && ["APPROVED", "PAID"].includes(st.get(r.runId) ?? "")).reduce((a, r) => a + (r.kind === "DEDUCTION" ? r.amountSatang : -r.amountSatang), 0);
+    };
+    const firstDed = async (s: string) => (await rows(s)).find((r) => r.kind === "DEDUCTION");
+    const pendOf = async (s: string) => (await rows(s)).find((r) => r.status === "PENDING");
+    const liveS = async (s: string) => (await rows(s)).filter((r) => r.status !== "REJECTED").map((r) => `${r.kind}:${r.status}:${r.amountSatang}:${r.periodKey}:${r.runId ? "b" : "f"}`).join(",");
+    for (const x of Object.values(SC)) await savePol(x.c, Vw.owner, { enabled: true });
+
+    // S8.8 — hunter B/B2: deduction bound into the Aug DRAFT, then the time data changes
+    {
+      const x = SC.G;
+      await build(x.c);
+      const s0 = await sync(x.c, Vw.owner);
+      const d0 = await firstDed(x.s);
+      await decideAs(x.c, d0?.id, "APPROVED");
+      const aug = await runOf(x.c, PER);
+      const bound0 = (await P.hrPayAdjustment.findUnique({ where: { id: d0?.id ?? "∅" } }))?.runId === aug?.id;
+      await corr(x, "09:10");
+      await build(x.c);
+      const before = await liveS(x.s);
+      const s1 = await sync(x.c, Vw.owner);
+      const w1 = ((s1.value?.wait ?? []) as Any[]).map((w) => w.code).join(",");
+      const same = before === (await liveS(x.s));
+      const ap1 = await apRun(x.c, aug?.id);
+      const rc = await recomp(x.c, aug?.id);
+      const s2 = await sync(x.c, Vw.owner);
+      const q = await pendOf(x.s);
+      const aq = await decideAs(x.c, q?.id, "APPROVED");
+      const ap2 = await apRun(x.c, aug?.id);
+      await prepMonth(x, "2031-09");
+      const sep = await runOf(x.c, "2031-09");
+      const ap3 = await apRun(x.c, sep?.id);
+      const set = await settled(x.s);
+      const noRefund = !(await rows(x.s)).some((r) => r.kind === "ALLOWANCE");
+      ck("S8.8", {
+        setup: s0.ok && d0?.amountSatang === 3125 && bound0, wait: s1.ok && w1 === "RUN_STALE" && s1.value?.created === 0 && s1.value?.rejected === 0 && s1.value?.refunds === 0 && same,
+        ap1: ap1?.ok === false && ap1?.note === T.runStale, rc: rc?.ok === true, s2: s2.ok && s2.value?.created === 1 && s2.value?.rejected === 1 && q?.amountSatang === 1041 && q?.periodKey === "2031-09",
+        ap2: aq?.ok === true && ap2?.ok === true && ap3?.ok === true, settled: set === 1041, noRefund,
+      }, "settled 1,041 · never +2,084", `${short(s1.value?.wait, 50)} same=${same} ${short(ap1, 40)} ${shown(s2)} q=${q?.amountSatang}@${q?.periodKey} ${short(ap2, 30)} ${short(ap3, 30)} settled=${set} ${await liveS(x.s)}`);
+    }
+    // S8.9 — reviewer M1: approved deduction goes stale before binding ⇒ the month cannot be approved until re-synced
+    {
+      const x = SC.F;
+      await build(x.c);
+      await sync(x.c, Vw.owner);
+      const d0 = await firstDed(x.s);
+      await decideAs(x.c, d0?.id, "APPROVED");
+      await corr(x, "09:10");
+      await build(x.c);
+      const aug = await runOf(x.c, PER);
+      const unbound = (await P.hrPayAdjustment.findUnique({ where: { id: d0?.id ?? "∅" } }))?.runId === null;
+      const ap1 = await apRun(x.c, aug?.id);
+      const rc = await recomp(x.c, aug?.id);
+      const s1 = await sync(x.c, Vw.owner);
+      const q = await pendOf(x.s);
+      const aq = await decideAs(x.c, q?.id, "APPROVED");
+      const ap2 = await apRun(x.c, aug?.id);
+      await prepMonth(x, "2031-09");
+      const sep = await runOf(x.c, "2031-09");
+      const ap3 = await apRun(x.c, sep?.id);
+      const set = await settled(x.s);
+      ck("S8.9", { unbound, ap1: ap1?.ok === false && ap1?.note === T.runSync, rc: rc?.ok === true, s1: s1.ok && s1.value?.rejected === 1 && s1.value?.created === 1 && q?.amountSatang === 1041, ap2: aq?.ok === true && ap2?.ok === true && ap3?.ok === true, settled: set === 1041 },
+        "approve refused until re-synced · settled 1,041", `${short(ap1, 50)} ${shown(s1)} q=${q?.amountSatang} ${short(ap2, 30)} ${short(ap3, 30)} settled=${set}`);
+    }
+    // S8.10 — hunter A: Aug approved WITHOUT a sync (legacy: rule switched off at approval) after the 3,125 was taken in Sept
+    {
+      const x = SC.H;
+      await build(x.c);
+      const aug = await runOf(x.c, PER);
+      await sync(x.c, Vw.owner);
+      const d0 = await firstDed(x.s);
+      await decideAs(x.c, d0?.id, "APPROVED");
+      await prepMonth(x, "2031-09");
+      const sep = await runOf(x.c, "2031-09");
+      const apS = await apRun(x.c, sep?.id);
+      await corr(x, "09:10");
+      await build(x.c);
+      await savePol(x.c, Vw.owner, { enabled: false });
+      await recomp(x.c, aug?.id);
+      const apA = await apRun(x.c, aug?.id);
+      await savePol(x.c, Vw.owner, { enabled: true });
+      const s1 = await sync(x.c, Vw.owner);
+      const rf = (await rows(x.s)).find((r) => r.kind === "ALLOWANCE");
+      await prepMonth(x, "2031-10");
+      const oct = await runOf(x.c, "2031-10");
+      const apO = await apRun(x.c, oct?.id);
+      const rf2 = await P.hrPayAdjustment.findUnique({ where: { id: rf?.id ?? "∅" } });
+      const set = await settled(x.s);
+      ck("S8.10", {
+        setup: d0?.periodKey === "2031-09" && apS?.ok === true && apA?.ok === true, sync: s1.ok && s1.value?.refunds === 1, refund: !!rf && `${rf.status}:${rf.amountSatang}:${rf.periodKey}` === "APPROVED:2084:2031-10",
+        bound: apO?.ok === true && !!oct?.id && rf2?.runId === oct.id, settled: set === 1041,
+      }, "frozen sync ⇒ refund 2,084 in Oct · settled 1,041", `${short(apS, 30)} ${short(apA, 30)} ${shown(s1)} ${rf ? `${rf.status}:${rf.amountSatang}:${rf.periodKey}` : "∅"} ${short(apO, 30)} settled=${set}`);
+    }
+    // S8.11 — hunter C / C2: after Aug is frozen the owner raises the salary (I) / changes the rule (J) ⇒ the frozen month keeps its snapshot
+    {
+      const res: string[] = [];
+      let all = true;
+      for (const [key, x] of [["C", SC.I], ["C2", SC.J]] as const) {
+        await build(x.c);
+        const aug = await runOf(x.c, PER);
+        await sync(x.c, Vw.owner);
+        const d0 = await firstDed(x.s);
+        await decideAs(x.c, d0?.id, "APPROVED");
+        const apA = await apRun(x.c, aug?.id);
+        const chg = key === "C" ? await pay.setSalaryProfile(x.c, { employeeId: x.emp, baseSalarySatang: 1_600_000, ssoEligible: true }).then(() => ({ ok: true })).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : (await savePol(x.c, Vw.owner, { enabled: true, freeMin: 5 })).value;
+        const sA = await sync(x.c, Vw.owner);
+        await prepMonth(x, "2031-09");
+        const sep = await runOf(x.c, "2031-09");
+        const apS = await apRun(x.c, sep?.id);
+        const b = await P.hrPayAdjustment.findUnique({ where: { id: d0?.id ?? "∅" } });
+        const set = await settled(x.s);
+        const ok = apA?.ok === true && chg?.ok === true && sA.ok && sA.value?.created === 0 && sA.value?.refunds === 0 && sA.value?.rejected === 0 && apS?.ok === true && !!sep?.id && b?.runId === sep.id && set === 3125;
+        all = all && ok;
+        res.push(`${key}:${short(apA, 20)} ${shown(sA)} ${short(apS, 30)} bound=${b?.runId === sep?.id} settled=${set}`);
+      }
+      ck("S8.11", { both: all }, "settled 3,125 ×2", res.join(" | "));
+    }
+    // S8.12 — period cap (pure): 31 × absent 480 = 31 × 50,000 = 1,550,000 > 1,500,000 ⇒ day 31 truncated to 0 · 30 absent (1,500,000) + day 31 late 30 ⇒ late 0
+    {
+      const days31 = Array.from({ length: 31 }, (_, i) => dy(String(i + 1).padStart(2, "0"), { absentMin: 480 }));
+      const a = R && typeof R.attendanceDeductionOf === "function" ? R.attendanceDeductionOf(inp(1_500_000, 480, days31)) : null;
+      const mixed = Array.from({ length: 30 }, (_, i) => dy(String(i + 1).padStart(2, "0"), { absentMin: 480 })).concat([dy("31", { lateMin: 30 })]);
+      const b = R && typeof R.attendanceDeductionOf === "function" ? R.attendanceDeductionOf(inp(1_500_000, 480, mixed)) : null;
+      const lastA = a?.lines?.[a.lines.length - 1];
+      ck("S8.12", { a: a?.ok === true && a.absent.amountSatang === 1_500_000 && a.absent.days === 31 && lastA?.amountSatang === 0, b: b?.ok === true && b.absent.amountSatang === 1_500_000 && b.late.amountSatang === 0 && b.late.minutes === 30 },
+        "Σ ≤ base", `${a?.absent?.amountSatang}/${lastA?.amountSatang} ${b?.absent?.amountSatang}+${b?.late?.amountSatang}`);
+    }
+    // S8.13 — tenancy at the service: an owner of another shop passes this shop's ctx
+    {
+      const n0 = await nAdj();
+      const pol0 = ((await P.appSystem.findUnique({ where: { id: sA }, select: { settings: true } }))?.settings as Any)?.hrAttendancePay;
+      const lid = (await rows())[0]?.id ?? "∅";
+      const [a, b, c, d] = [await sync(cA, Vw.other), await savePol(cA, Vw.other, { enabled: false }), await prevOf(Vw.other, cA), await A_("attendanceDeductionLines", cA, Vw.other, { adjustmentId: lid })];
+      const pol1 = ((await P.appSystem.findUnique({ where: { id: sA }, select: { settings: true } }))?.settings as Any)?.hrAttendancePay;
+      ck("S8.13", { sync: !a.ok && a.text === T.syncNo, save: !b.ok && b.text === T.policyNo, prev: !c.ok && c.text === T.no, lines: !d.ok && d.text === T.no, none: (await nAdj()) === n0 && canon(pol0) === canon(pol1) }, "refused · nothing written", `${shown(a)} ${shown(b)} ${shown(c)} ${shown(d)}`);
+    }
+    // S8.14 — a human REJECT is a waiver for that exact data; new time data ⇒ new PENDING
+    {
+      const x = SC.K;
+      await build(x.c);
+      const s0 = await sync(x.c, Vw.owner);
+      const d0 = await firstDed(x.s);
+      const rj = await decideAs(x.c, d0?.id, "REJECTED");
+      const s1 = await sync(x.c, Vw.owner);
+      const live1 = await liveS(x.s);
+      await corr(x, "09:10");
+      await build(x.c);
+      const s2 = await sync(x.c, Vw.owner);
+      const q = await pendOf(x.s);
+      ck("S8.14", { s0: s0.ok && s0.value?.created === 1 && d0?.amountSatang === 3125, rj: rj?.ok === true, stick: s1.ok && s1.value?.created === 0 && live1 === "", renew: s2.ok && s2.value?.created === 1 && q?.amountSatang === 1041 },
+        "reject sticks · new data re-creates", `${short(rj, 30)} ${shown(s1)} live=${live1} ${shown(s2)} q=${q?.amountSatang}`);
+    }
   }
 }
 
