@@ -20,7 +20,7 @@ const baht = (satang: number) => (satang / 100).toLocaleString("en-US", { minimu
 /** รหัสผลการกดบน URL → ข้อความคงที่ (allowlist — ไม่แสดงข้อความอิสระ) */
 export const ATT_MSG: Record<string, string> = Object.fromEntries(Object.entries(ATT_TEXT).map(([k, v]) => [`ap.${k}`, v]));
 export const attMsgCode = (r: { ok: true } | { ok: false; reason: string }) => (r.ok ? "ap.synced" : (Object.entries(ATT_MSG).find(([, v]) => v === r.reason)?.[0] ?? "ap.failed"));
-const CODES = ["MISSING", "OUTDATED", "REVIEW", "NO_PROFILE", "PAY_TYPE", "NO_BASE", "BLOCKED", "BAD_INPUT", "OFF", "RUN_STALE"] as const;
+const CODES = ["MISSING", "OUTDATED", "REVIEW", "NO_PROFILE", "PAY_TYPE", "NO_BASE", "BLOCKED", "BAD_INPUT", "OFF", "RUN_STALE", "NOT_IN_FORCE", "NO_SNAPSHOT"] as const;
 
 /** การ์ดค่าตั้ง (ผู้ตั้งค่า HR เห็น · เจ้าของร้านแก้) — ไม่มีตัวเลือกค่าปรับ/ตัวคูณ/ปัดขึ้น · ข้อความกฎหมาย (ม.76) แสดงเสมอ */
 export async function AttendancePayPolicyCard({ systemId, onSave }: { systemId: string; onSave: ((fd: FormData) => Promise<void>) | null }) {
