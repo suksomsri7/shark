@@ -476,15 +476,18 @@ try {
     }
   }
   const judge = (await import("@/lib/modules/hr/judge" as string)) as Any;
-  const jRun = await judge.runAttendanceJobs({ now: new Date(), tenantId });
+  // มติ r2 I: เวลาคงที่ 05:00 ของวันนี้ (เวลาไทย) — กะปิดร้านของเมื่อวาน (15–23) ปิดแล้ว (23:00 + 240) · กะของวันนี้ยังไม่เริ่ม ⇒ ไม่มีการเตือน ·
+  //   ไม่ขึ้นกับเวลาที่รัน seed
+  const jNow = atBkk(D.today, 5 * 60);
+  const jRun = await judge.runAttendanceJobs({ now: jNow, tenantId });
   const jRows = (await P.hrAttendanceDay.findMany({ where: { tenantId }, select: { status: true } })) as Any[];
   const byStatus: Record<string, number> = {};
   for (const r of jRows) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
   const attendanceDays = { rosterRows: arRows, finalized: jRun.finalized, rows: jRows.length, byStatus, alerts: jRun.late + jRun.absent };
   q.chk(
     "AJ1",
-    `ผลตัดสินรายวัน (H2.5 Q9): ตารางกะ ${arRows} แถว (9 คน × ${AR.days} วัน) · ตัวปิดวันบันทึก = แถวที่มี · มีสาย/ขาด/ลา · ไม่มีการเตือน`,
-    arRows === 9 * AR.days && jRun.finalized === jRows.length && jRows.length > 0 && (byStatus.LATE ?? 0) >= 1 && (byStatus.ABSENT ?? 0) >= 1 && (byStatus.LEAVE ?? 0) >= 1 && attendanceDays.alerts === 0,
+    `ผลตัดสินรายวัน (H2.5 Q9): ตารางกะ ${arRows} แถว (9 คน × ${AR.days} วัน) · ตัวปิดวัน (05:00 วันนี้) บันทึกครบ ${9 * AR.days} แถว · มีสาย/ขาด/ลา · ไม่มีการเตือน`,
+    arRows === 9 * AR.days && jRun.finalized === jRows.length && jRows.length === 9 * AR.days && (byStatus.LATE ?? 0) >= 1 && (byStatus.ABSENT ?? 0) >= 1 && (byStatus.LEAVE ?? 0) >= 1 && attendanceDays.alerts === 0,
     `${9 * AR.days} · rows = finalized · LATE/ABSENT/LEAVE ≥ 1 · 0 alerts`,
     `${arRows} · ${jRows.length}/${jRun.finalized} · ${JSON.stringify(byStatus)} · ${attendanceDays.alerts}`,
   );
