@@ -1066,4 +1066,16 @@ export async function otPayDaysInTx(tx: Db, ctx: Ctx, employeeId: string, days: 
   const pending = want.flatMap((day) => (live.get(day) ?? []).filter((s) => !stored.some((r) => dayOf(r.date) === day && r.slotKey === s.slotKey)).map((s) => ({ day, slotKey: s.slotKey, final: s.out.final })));
   return { rows, pending };
 }
+/** r4: เวลาเข้า/ออกของแถว HrAttendanceDay ที่บันทึกแล้ว (พนักงานชุดหนึ่ง · ช่วงวัน) ผ่าน loadData ตัวเดียวกับคำตัดสิน (กรองการลงเวลาที่ยกเลิกแล้ว — H2.6) ·
+ *  ผู้เรียก: hr/ot.ts#settleOtRequests (เลือกคำขอ 0 บาทที่ต้องคิดใหม่ — ไม่ใช่การจ่าย) · hr/ot.ts ไม่อ่านตารางการลงเวลาเอง */
+export async function otDaySpans(ctx: Ctx, employeeIds: string[], from: string, to: string): Promise<{ employeeId: string; day: string; inAt: Date | null; outAt: Date | null }[]> {
+  const ids = [...new Set(employeeIds)].filter(Boolean);
+  if (!ids.length || !isDay(from) || !isDay(to) || from > to) return [];
+  const db = dbOf(ctx);
+  const rows = await db.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids }, date: { gte: dbDate(from), lte: dbDate(to) } }, select: { employeeId: true, date: true, inAttendanceId: true, outAttendanceId: true }, take: 20_000 });
+  if (!rows.length) return [];
+  const data = await loadData(db, ctx, [...new Set(rows.map((r) => r.employeeId))], from, to);
+  const at = new Map(data.events.map((e) => [e.id, e.at] as const));
+  return rows.map((r) => ({ employeeId: r.employeeId, day: dayOf(r.date), inAt: r.inAttendanceId ? (at.get(r.inAttendanceId) ?? null) : null, outAt: r.outAttendanceId ? (at.get(r.outAttendanceId) ?? null) : null }));
+}
 // ◂ HR H2.9

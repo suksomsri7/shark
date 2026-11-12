@@ -24,7 +24,7 @@ import { unitOfDay } from "./roster";
 import { addDays, bkkDayKey } from "./time-rules";
 import { holidayOfDay, holidayRowsInRange } from "./holidays";
 import { canManageHrSettings, SETTINGS_TEXT } from "./settings";
-import { otPayDaysInTx, type OtPayStoredRow } from "./judge";
+import { otDaySpans, otPayDaysInTx, type OtPayStoredRow } from "./judge";
 import { loadOtLawRows } from "./law";
 import { OtAdjustmentConflict, writeOtAdjustmentInTx } from "./payroll";
 import {
@@ -584,23 +584,12 @@ export async function settleOtRequests(input: { tenantId?: string | null; system
     //   แถวของวันงาน หรือแถวของวันก่อนที่ช่วงเข้า–ออกทับช่วงที่ขอ (แบบเดียวกับที่ measure นับ) ⇒ คิดใหม่แล้ว attendanceDayId ไม่ว่าง ⇒ ไม่วนซ้ำ ·
     //   แถววันก่อนที่ไม่ทับช่วงที่ขอ ⇒ ไม่หยิบ (กันคำขอ 0 บาทกินโควตาธุรกรรมทุกชั่วโมง)
     const zero = await db.hrOtRequest.findMany({ where: { tenantId, systemId, status: "APPROVED", settledAt: { not: null }, attendanceDayId: null, settleCode: null, date: { gte: since } }, select: { id: true, date: true, employeeId: true, startAt: true, endAt: true }, orderBy: [{ date: "asc" }, { id: "asc" }], take: 2000 });
-    const zRows = zero.length
-      ? await db.hrAttendanceDay.findMany({ where: { tenantId, systemId, employeeId: { in: [...new Set(zero.map((z) => z.employeeId))] }, date: { gte: dbDate(addDays(dayOf(zero[0]!.date), -1)) } }, select: { employeeId: true, date: true, inAttendanceId: true, outAttendanceId: true }, take: 20_000 })
-      : [];
-    const evIds = [...new Set(zRows.flatMap((d) => [d.inAttendanceId, d.outAttendanceId]).filter((x): x is string => !!x))];
-    const evAt = new Map((evIds.length ? await db.hrAttendance.findMany({ where: { tenantId, systemId, id: { in: evIds } }, select: { id: true, at: true } }) : []).map((e) => [e.id, e.at.getTime()] as const));
+    const zDays = zero.map((z) => dayOf(z.date)).sort();
+    const spans = zero.length ? await otDaySpans(ctx, zero.map((z) => z.employeeId), addDays(zDays[0]!, -1), zDays[zDays.length - 1]!) : [];
     const reappeared = zero.filter((z) => {
       const d = dayOf(z.date);
       const prev = addDays(d, -1);
-      return zRows.some((x) => {
-        if (x.employeeId !== z.employeeId) return false;
-        const xd = dayOf(x.date);
-        if (xd === d) return true;
-        if (xd !== prev) return false;
-        const a = x.inAttendanceId ? evAt.get(x.inAttendanceId) : undefined;
-        const b = x.outAttendanceId ? evAt.get(x.outAttendanceId) : undefined;
-        return a !== undefined && b !== undefined && b > z.startAt.getTime() && a < z.endAt.getTime();
-      });
+      return spans.some((x) => x.employeeId === z.employeeId && (x.day === d || (x.day === prev && !!x.inAt && !!x.outAt && x.outAt.getTime() > z.startAt.getTime() && x.inAt.getTime() < z.endAt.getTime())));
     });
     for (const r of [...changed, ...reappeared, ...open]) {
       if (out.scanned >= maxTx) break;
