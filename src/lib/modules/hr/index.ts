@@ -99,3 +99,8 @@ export type { StaffWindowsInput, StaffWindowsRow } from "./availability";
 export { staffWindows, leaveDutyNotify, leaveDutyHints } from "./availability";
 // ◂ HR H4.1
 // ◂ SVC B.1
+
+// HR H3.1 ▸ ชั่วโมงทำงาน (work entries) — snapshot ต่องวดที่รอบเงินเดือนรุ่น 2 (H3.2/H3.4) อ่าน (re-export ล้วน — ตรรกะอยู่ที่ `work-entries.ts`) ·
+//   WE_OT_PAYMENT = นาที OT วัดอย่างเดียว · จ่าย OT ผ่าน HrPayAdjustment (H2.9) ที่เดียว ⇒ ผู้สร้างบรรทัดเงินห้ามจ่ายจาก otWorkdayMin/otHolidayMin ซ้ำ
+export { buildWorkEntrySnapshot, workEntryPreview, WE_OT_PAYMENT } from "./work-entries";
+// ◂ HR H3.1

@@ -7,6 +7,7 @@ import { logOps } from "@/lib/core/ops"; // HR H0.6 ▸ OQ-8: กลับ JV �
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1): ประวัติการลบรายการเงิน (ตัวเดียวกับ hr/service.ts) ◂
 import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจากตัวช่วยกลางของ HR (ไม่บวก +7 เองซ้ำ) ◂
 import { payrollItemsDigest, PAYROLL_DIGEST_SELECT } from "./payroll-digest";
+import { bindWorkEntriesToRunInTx, workEntriesApproveCheckInTx, WE_TEXT } from "./work-entries"; // HR H3.1 ▸ ด่านอนุมัติรอบรุ่น 2 + แช่แข็งชั่วโมงทำงาน ◂
 import { scopedEmployeeIds, type HrScope } from "./scope"; // HR H1.1 ▸ ขอบเขตสาขาของตัวอ่านรายการเพิ่ม/หัก ◂ // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
 import {
   ssoContribution,
@@ -980,7 +981,7 @@ const APPROVE_NOT_DRAFT = "รอบนี้อนุมัติหรือ�
 const APPROVE_DRAFT_HAS_JV = "รอบนี้มีเอกสารบัญชีค้างอยู่ ต้องให้ผู้ดูแลตรวจสอบก่อน"; // H0.1 ▸ CR17 ◂
 /** H0.1 ▸ CR12: เหตุที่อนุมัติไม่สำเร็จ (ให้ approvePayrollRunAction เลือกข้อความคงที่ — POST_FAILED = ลงบัญชีล้ม รอบกลับเป็นร่าง) ◂
  *  H0.1 ▸ CR17: DRAFT_HAS_JV = ร่างที่มี journalEntryId ค้าง (ลงบัญชีไปแล้วแต่สถานะถูกคืนเป็นร่าง) ⇒ ไม่ลงบัญชีซ้ำ ◂ */
-export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV" | "NEGATIVE_NET";
+export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV" | "NEGATIVE_NET" | "WORK_ENTRIES"; // HR H3.1 ▸ + WORK_ENTRIES (รอบรุ่น ≥ 2 ที่ชั่วโมงทำงานยังไม่พร้อม) ◂
 // H0.2 ▸ R3 (D6): ข้อความคงที่ (N = จำนวนแถวที่สุทธิติดลบ) — action ส่งต่อถึงจอได้ (ไม่มีข้อความดิบของ error) ◂
 export const approveNegativeNetText = (n: number) => `มีพนักงาน ${n} คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'`;
 
@@ -1031,10 +1032,15 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpe
     //   — แถวเดียวติดลบในยอดรวมบวก ลงบัญชีและจ่ายขาดได้) ◂
     const negative = await tx.hrPayrollItem.count({ where: { ...scope, runId, netSatang: { lt: 0 } } });
     if (negative > 0) return { code: "NEGATIVE_NET", actual: await runActual(tx, ctx, cur), negative };
+    // HR H3.1 ▸ R6 (ปิดหนี้ D2 ของ H2.6): รอบรุ่น ≥ 2 — ชั่วโมงทำงานของทุกคนในรอบต้องเป็นปัจจุบัน (ดึงหลังข้อมูลต้นทางเปลี่ยนแล้ว · ไม่มีรายการต้องตรวจ) ·
+    //   ตรวจใต้ล็อกงวด + ล็อกแถวรอบ ก่อน UPDATE · รุ่น 1 ไม่ถูกปฏิเสธ (มติ Q5) ◂
+    const weCheck = await workEntriesApproveCheckInTx(tx, ctx, { runId, periodKey: cur.periodKey }); // HR H3.1 ◂
+    if (!weCheck.ok) return { code: "WORK_ENTRIES", actual: await runActual(tx, ctx, cur) } as unknown as ClaimResult; // HR H3.1 ◂
     const claim = await tx.hrPayrollRun.updateMany({
       where: { ...scope, id: runId, status: "DRAFT", journalEntryId: null, ...guard, items: { none: { netSatang: { lt: 0 } } } },
       data: { status: "APPROVED" },
     });
+    if (claim.count === 1) await bindWorkEntriesToRunInTx(tx, ctx, { runId, periodKey: cur.periodKey }); // HR H3.1 ▸ แช่แข็ง: ผูกหัววัน/แถวชนิดของงวดกับรอบ ◂
     return claim.count === 1 ? { code: "OK" } : { code: "NOT_DRAFT", actual: await runActual(tx, ctx, cur) };
   }, { maxWait: 20_000, timeout: 60_000 });
 }
@@ -1067,6 +1073,7 @@ export async function approveRun(
             ...(expect.itemsDigest !== undefined ? { digest: expect.itemsDigest } : {}),
           };
     await auditRefusal(ctx, actor, "hr.payroll.approve.refused", runId, claimed, seen); // CR19
+    if ((claimed.code as string) === "WORK_ENTRIES") return { ok: false, note: WE_TEXT.approveBlocked, code: "WORK_ENTRIES" }; // HR H3.1 ◂
     if (claimed.code === "STALE") return { ok: false, note: APPROVE_STALE, code: "STALE" };
     if (claimed.code === "DRAFT_HAS_JV") return { ok: false, note: APPROVE_DRAFT_HAS_JV, code: "DRAFT_HAS_JV" };
     if (claimed.code === "NEGATIVE_NET") return { ok: false, note: approveNegativeNetText(claimed.negative ?? 0), code: "NEGATIVE_NET" };

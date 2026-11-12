@@ -940,3 +940,136 @@ export async function notifyAttendanceAlert(evt: AlertEvent): Promise<void> {
   }, TX_OPTS);
 }
 
+// HR H3.1 ▸ ตัวอ่านของชั่วโมงทำงาน (work entries) — อ่านผ่าน tx ที่ผู้เรียกถือล็อกงวดอยู่แล้ว · แถวที่บันทึก (HrAttendanceDay) เป็นที่มาของนาที ·
+//   stale/orphan = isStale/hasOrphan ตัวเดียวกับบอร์ด (ไม่มีกติกาซ้ำ) · ช่องสดที่ยังไม่บันทึก = {final} เท่านั้น (นาทีไม่นับ) ·
+//   มติ A4 (ผู้คุม): OT ดิบ = คำตัดสินชุดเดียวกันที่ขั้นปัด 1 นาที — ใช้เฉพาะเมื่อแถวไม่ stale (ปัดเป็นขั้นแล้วเท่ากับค่าที่บันทึกพอดี) ·
+//   แถว stale ใช้ otMin ที่บันทึก (วันนั้นถูกบล็อกด้วย STALE อยู่แล้ว) · truncated = ข้อมูลถึงเพดาน take
+export type WorkEntryReadSlot = {
+  dayId: string | null;
+  version: number;
+  slotKey: string;
+  stored: boolean;
+  final: boolean;
+  stale: boolean;
+  orphan: boolean;
+  status: string;
+  startMin: number | null;
+  endMin: number | null;
+  crossesMidnight: boolean | null;
+  plannedBreakMin: number;
+  workedMin: number;
+  breakMin: number;
+  lateMin: number;
+  earlyOutMin: number;
+  otMin: number;
+  missingOut: boolean;
+  leaveId: string | null;
+  leaveFraction: string | null;
+  rosterEntryId: string | null;
+};
+export type WorkEntryReadDay = { employeeId: string; day: string; unitId: string | null; holiday: { id: string } | null; slots: WorkEntryReadSlot[]; leaves: JudgeLeave[] };
+export type WorkEntryReadEmployee = { id: string; unitId: string | null; startDate: string | null; endDate: string | null };
+export async function workEntryDaysInTx(
+  tx: Db,
+  ctx: Ctx,
+  employeeIds: string[],
+  from: string,
+  to: string,
+  now: Date,
+): Promise<{ employees: WorkEntryReadEmployee[]; days: WorkEntryReadDay[]; truncated: boolean }> {
+  const ids = [...new Set(employeeIds)].sort();
+  if (!ids.length) return { employees: [], days: [], truncated: false };
+  const emps = await employeesOf(tx, ctx, { id: { in: ids } });
+  const data = await loadData(tx, ctx, ids, from, to);
+  const raw: Data = { ...data, pol: { ...data.pol, att: { ...data.pol.att, otStepMin: 1 } } };
+  const rows = await tx.hrAttendanceDay.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids }, date: { gte: dbDate(from), lte: dbDate(to) } },
+    select: { ...DAY_SELECT, rosterEntryId: true, startMin: true, endMin: true, crossesMidnight: true },
+    orderBy: [{ employeeId: "asc" }, { date: "asc" }, { slotKey: "asc" }],
+    take: ENTRY_TAKE,
+  });
+  const entryIds = [...new Set(rows.map((r) => r.rosterEntryId).filter((x): x is string => !!x))];
+  const breaks = new Map(
+    (entryIds.length ? await tx.hrRosterEntry.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: entryIds } }, select: { id: true, breakMin: true } }) : []).map((e) => [e.id, e.breakMin]),
+  );
+  const days: string[] = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+  const out: WorkEntryReadDay[] = [];
+  for (const e of emps) {
+    const live = slotsOf(e, days, data, now);
+    const live1 = slotsOf(e, days, raw, now);
+    const mine = rows.filter((r) => r.employeeId === e.id) as (DayRow & { rosterEntryId: string | null; startMin: number | null; endMin: number | null; crossesMidnight: boolean | null })[];
+    for (const day of days) {
+      if (!employedOn(e, day)) continue;
+      const ls = live.get(day) ?? [];
+      const rs = mine.filter((r) => dayOf(r.date) === day);
+      const orphanDay = hasOrphan(ls, rs);
+      const slots: WorkEntryReadSlot[] = rs.map((r) => {
+        const l = ls.find((x) => x.slotKey === r.slotKey) ?? null;
+        const stale = isStale(l, r);
+        const l1 = (live1.get(day) ?? []).find((x) => x.slotKey === r.slotKey) ?? null;
+        return {
+          dayId: r.id,
+          version: r.version,
+          slotKey: r.slotKey,
+          stored: true,
+          final: true,
+          stale,
+          orphan: !l,
+          status: r.status,
+          startMin: r.startMin,
+          endMin: r.endMin,
+          crossesMidnight: r.crossesMidnight,
+          plannedBreakMin: r.rosterEntryId ? (breaks.get(r.rosterEntryId) ?? 0) : 0,
+          workedMin: r.workedMin,
+          breakMin: r.breakMin,
+          lateMin: r.lateMin,
+          earlyOutMin: r.earlyOutMin,
+          otMin: !stale && l1 ? l1.out.otMin : r.otMin,
+          missingOut: r.missingOut,
+          leaveId: r.leaveId,
+          leaveFraction: fracOf(r.leaveFraction),
+          rosterEntryId: r.rosterEntryId,
+        };
+      });
+      // มติ r2 C: วันที่มีแถวกำพร้า แสดง/นับเฉพาะแถวที่บันทึก (ช่องสดอื่นไม่นับจนกว่าจะคิดผลใหม่)
+      if (!orphanDay) {
+        for (const s of ls) {
+          if (rs.some((r) => r.slotKey === s.slotKey)) continue;
+          slots.push({
+            dayId: null,
+            version: 0,
+            slotKey: s.slotKey,
+            stored: false,
+            final: s.out.final,
+            stale: false,
+            orphan: false,
+            status: s.out.status,
+            startMin: s.shift?.startMin ?? null,
+            endMin: s.shift?.endMin ?? null,
+            crossesMidnight: s.shift ? s.shift.crossesMidnight : null,
+            plannedBreakMin: 0,
+            workedMin: 0,
+            breakMin: 0,
+            lateMin: 0,
+            earlyOutMin: 0,
+            otMin: 0,
+            missingOut: false,
+            leaveId: null,
+            leaveFraction: null,
+            rosterEntryId: s.entry?.id ?? null,
+          });
+        }
+      }
+      const unitId = unitOfDay(e, day);
+      const hol = holidayOfDay(data.hols, unitId, day);
+      out.push({ employeeId: e.id, day, unitId, holiday: hol ? { id: hol.id } : null, slots, leaves: data.leaves.filter((l) => l.employeeId === e.id && l.from <= day && day <= l.to) });
+    }
+  }
+  return {
+    employees: emps.map((e) => ({ id: e.id, unitId: e.unitId ?? null, startDate: e.startDate ? dayOf(e.startDate) : null, endDate: e.endDate ? dayOf(e.endDate) : null })),
+    days: out,
+    truncated: data.truncated || rows.length >= ENTRY_TAKE,
+  };
+}
+// ◂ HR H3.1
