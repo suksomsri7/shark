@@ -1,7 +1,7 @@
 {
  "_meta": {
   "wo": "H3.4",
-  "note": "Literals computed by an independent exact-integer reference (Python, outside the repo) from the brief formulae; hand arithmetic per vector in ledger/wo-notes/hr-H3.4-oracle.md. Law rows = TAX/DEDUCTION v1 values + SSO 2569–2571 row (base 1,650–17,500, max 875 ฿ — domain-labour-payroll §ซ [V]) inserted by the oracle as QC-only ACTIVE fixture rows. r2 (controller rulings L1–L9): vectors with rev=r2 changed or added — re-verify on a lane DB.",
+  "note": "Literals computed by an independent exact-integer reference (Python, outside the repo) from the brief formulae; hand arithmetic per vector in ledger/wo-notes/hr-H3.4-oracle.md. Law rows = TAX/DEDUCTION v1 values + SSO 2569–2571 row (base 1,650–17,500, max 875 ฿ — domain-labour-payroll §ซ [V]) inserted by the oracle as QC-only ACTIVE fixture rows. r2 (controller rulings L1–L9): vectors with rev=r2 changed or added — re-verify on a lane DB. r3 (SSO wage = law-row data `wageComponents`; Por.96/2543 ข้อ 1(5) one-off tax): rev r3-* tags supersede r2 tags — re-verify.",
   "defaults": {
    "normalDayMin": 480,
    "catCapBp": 1000,
@@ -40,6 +40,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -54,7 +55,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V02",
@@ -75,6 +76,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 17083,
+    "whtOneOffSatang": 0,
     "availableSatang": 2895417,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -89,7 +91,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V03",
@@ -110,6 +112,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 91700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -126,7 +129,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V04",
@@ -147,6 +150,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 171667,
+    "whtOneOffSatang": 0,
     "availableSatang": 4740833,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -161,7 +165,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V05",
@@ -186,6 +190,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 1272917,
+    "whtOneOffSatang": 0,
     "availableSatang": 10639583,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -200,7 +205,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V06",
@@ -222,6 +227,7 @@
     "ssoEmployeeSatang": 0,
     "ssoEmployerSatang": 0,
     "whtSatang": 20833,
+    "whtOneOffSatang": 0,
     "availableSatang": 2979167,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -236,7 +242,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V07",
@@ -263,6 +269,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 55000,
+    "whtOneOffSatang": 0,
     "availableSatang": 2857500,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -277,7 +284,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V08",
@@ -300,6 +307,7 @@
     "ssoEmployeeSatang": 37500,
     "ssoEmployerSatang": 37500,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 712500,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -316,7 +324,7 @@
      "PARTIAL_MONTH"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V09",
@@ -340,6 +348,7 @@
     "ssoEmployeeSatang": 50000,
     "ssoEmployerSatang": 50000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 950000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -356,7 +365,7 @@
      "PARTIAL_MONTH"
     ]
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V10",
@@ -380,6 +389,7 @@
     "ssoEmployeeSatang": 58300,
     "ssoEmployerSatang": 58300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1108367,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -396,7 +406,7 @@
      "PARTIAL_MONTH"
     ]
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V11",
@@ -420,6 +430,7 @@
     "ssoEmployeeSatang": 27500,
     "ssoEmployerSatang": 27500,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 522500,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -436,7 +447,7 @@
      "PARTIAL_MONTH"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V12",
@@ -466,6 +477,7 @@
     "ssoEmployeeSatang": 72500,
     "ssoEmployerSatang": 72500,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1377500,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -480,7 +492,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V13",
@@ -511,6 +523,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1879167,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -525,7 +538,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V14",
@@ -767,6 +780,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": -8300,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -785,7 +799,7 @@
      "UNPAID_CAPPED"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V15",
@@ -829,6 +843,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 111700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -845,7 +860,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V16",
@@ -875,6 +890,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 16700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -891,7 +907,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V17",
@@ -927,6 +943,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 31700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -943,7 +960,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V18",
@@ -975,6 +992,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 31700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -992,7 +1010,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V19",
@@ -1019,11 +1037,12 @@
      "HOLIDAY_WORK:wd1:2031-09-17:480:40000"
     ],
     "whtIncomeSatang": 80000,
-    "ssoWageSatang": 80000,
+    "ssoWageSatang": 40000,
     "ssoBaseSatang": 165000,
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 71700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1040,7 +1059,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-value"
   },
   {
    "id": "V20",
@@ -1065,11 +1084,12 @@
      "HOLIDAY_WORK:wd1:2031-09-06:480:80000"
     ],
     "whtIncomeSatang": 80000,
-    "ssoWageSatang": 80000,
+    "ssoWageSatang": 0,
     "ssoBaseSatang": 165000,
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 71700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1086,7 +1106,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-value"
   },
   {
    "id": "V21",
@@ -1115,6 +1135,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": -8300,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1132,7 +1153,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V22",
@@ -1158,11 +1179,12 @@
      "HOLIDAY_WORK:wd1:2031-09-06:180:30000"
     ],
     "whtIncomeSatang": 30000,
-    "ssoWageSatang": 30000,
+    "ssoWageSatang": 0,
     "ssoBaseSatang": 165000,
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 21700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1179,7 +1201,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-value"
   },
   {
    "id": "V23",
@@ -1212,11 +1234,12 @@
      "HOLIDAY_WORK:wd2:2031-09-06:420:80000"
     ],
     "whtIncomeSatang": 120000,
-    "ssoWageSatang": 120000,
+    "ssoWageSatang": 40000,
     "ssoBaseSatang": 165000,
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 111700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1233,7 +1256,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-value"
   },
   {
    "id": "V24",
@@ -1263,6 +1286,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": -7814,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1280,7 +1304,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V25",
@@ -1317,6 +1341,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 95700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1333,7 +1358,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V26",
@@ -1363,6 +1388,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": -2883,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1380,7 +1406,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V27",
@@ -1412,11 +1438,12 @@
      "HOLIDAY_PAY:wd1:2031-09-17:480:52000"
     ],
     "whtIncomeSatang": 104000,
-    "ssoWageSatang": 104000,
+    "ssoWageSatang": 52000,
     "ssoBaseSatang": 165000,
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 95700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1433,7 +1460,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-value"
   },
   {
    "id": "V28",
@@ -1460,11 +1487,12 @@
      "HOLIDAY_WORK:wd1:2031-09-17:480:52000"
     ],
     "whtIncomeSatang": 104000,
-    "ssoWageSatang": 104000,
+    "ssoWageSatang": 52000,
     "ssoBaseSatang": 165000,
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 95700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1481,7 +1509,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-value"
   },
   {
    "id": "V29",
@@ -1507,11 +1535,12 @@
      "HOLIDAY_WORK:wd1:2031-09-17:480:100000"
     ],
     "whtIncomeSatang": 3100000,
-    "ssoWageSatang": 3100000,
+    "ssoWageSatang": 3000000,
     "ssoBaseSatang": 1750000,
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 17500,
+    "whtOneOffSatang": 0,
     "availableSatang": 2995000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1526,7 +1555,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-value"
+   "rev": "r3-value"
   },
   {
    "id": "V30",
@@ -1563,6 +1592,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 17083,
+    "whtOneOffSatang": 0,
     "availableSatang": 2895417,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1579,7 +1609,7 @@
      "UNPLANNED"
     ]
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V31",
@@ -1606,11 +1636,12 @@
      "HOLIDAY_WORK:wd1:2031-09-17:540:112500"
     ],
     "whtIncomeSatang": 3112500,
-    "ssoWageSatang": 3112500,
+    "ssoWageSatang": 3000000,
     "ssoBaseSatang": 1750000,
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 17552,
+    "whtOneOffSatang": 0,
     "availableSatang": 3007448,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1625,7 +1656,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-value"
+   "rev": "r3-value"
   },
   {
    "id": "V32",
@@ -1651,12 +1682,13 @@
      "HOLIDAY_WORK:wd1:2031-09-17:105:10208"
     ],
     "whtIncomeSatang": 1410208,
-    "ssoWageSatang": 1410208,
-    "ssoBaseSatang": 1410208,
-    "ssoEmployeeSatang": 70500,
-    "ssoEmployerSatang": 70500,
+    "ssoWageSatang": 1400000,
+    "ssoBaseSatang": 1400000,
+    "ssoEmployeeSatang": 70000,
+    "ssoEmployerSatang": 70000,
     "whtSatang": 0,
-    "availableSatang": 1339708,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1340208,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
     "catCapSatang": 141020,
@@ -1666,11 +1698,11 @@
     "addSatang": 0,
     "deductSatang": 0,
     "grossSatang": 1410208,
-    "netSatang": 1339708,
+    "netSatang": 1340208,
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-schema"
+   "rev": "r3-value"
   },
   {
    "id": "V33",
@@ -1716,11 +1748,12 @@
      "ALLOWANCE:a4:-:-:30000"
     ],
     "whtIncomeSatang": 2380000,
-    "ssoWageSatang": 2180000,
+    "ssoWageSatang": 2130000,
     "ssoBaseSatang": 1750000,
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 2292500,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1733,9 +1766,11 @@
     "grossSatang": 2380000,
     "netSatang": 2292500,
     "blocked": null,
-    "flags": []
+    "flags": [
+     "SSO_COMMISSION_U"
+    ]
    },
-   "rev": "r2-value"
+   "rev": "r3-value"
   },
   {
    "id": "V34",
@@ -1765,6 +1800,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1475000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1779,7 +1815,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V35",
@@ -1816,6 +1852,7 @@
     "ssoEmployeeSatang": 72300,
     "ssoEmployerSatang": 72300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1374575,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1830,7 +1867,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V36",
@@ -1860,6 +1897,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": -8300,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -1878,7 +1916,7 @@
      "UNWORKED_CAPPED"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V37",
@@ -1908,6 +1946,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 500000,
     "claimAppliedSatang": 0,
@@ -1922,7 +1961,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V38",
@@ -1952,6 +1991,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 1425000,
     "claimAppliedSatang": 0,
@@ -1970,7 +2010,7 @@
      "CARRY_FORWARD"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V39",
@@ -2000,6 +2040,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 150000,
@@ -2019,7 +2060,7 @@
      "CLAIM_CAPPED"
     ]
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V40",
@@ -2056,6 +2097,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 150000,
@@ -2075,7 +2117,7 @@
      "CLAIM_CAPPED"
     ]
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V41",
@@ -2108,6 +2150,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 1425000,
@@ -2126,7 +2169,7 @@
      "CARRY_FORWARD"
     ]
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V42",
@@ -2163,6 +2206,7 @@
     "ssoEmployeeSatang": 50000,
     "ssoEmployerSatang": 50000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 950000,
     "advanceAppliedSatang": 950000,
     "claimAppliedSatang": 0,
@@ -2181,7 +2225,7 @@
      "CARRY_FORWARD"
     ]
    },
-   "rev": "r2-schema"
+   "rev": "r3-schema"
   },
   {
    "id": "V43",
@@ -2212,6 +2256,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2231,7 +2276,7 @@
      "CLAIM_CAPPED"
     ]
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V44",
@@ -2268,6 +2313,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 1425000,
     "claimAppliedSatang": 0,
@@ -2287,7 +2333,7 @@
      "CARRY_FORWARD"
     ]
    },
-   "rev": "r2-value"
+   "rev": "r3-schema"
   },
   {
    "id": "V45",
@@ -2411,6 +2457,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 4012500,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2423,9 +2470,11 @@
     "grossSatang": 4100000,
     "netSatang": 4012500,
     "blocked": null,
-    "flags": []
+    "flags": [
+     "SSO_COMMISSION_U"
+    ]
    },
-   "rev": "r2-value"
+   "rev": "r3-value"
   },
   {
    "id": "V51",
@@ -2457,11 +2506,12 @@
      "DEDUCTION:a2:-:-:-317500/700000"
     ],
     "whtIncomeSatang": 3175000,
-    "ssoWageSatang": 3175000,
+    "ssoWageSatang": 3000000,
     "ssoBaseSatang": 1750000,
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 17813,
+    "whtOneOffSatang": 0,
     "availableSatang": 3069687,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 317500,
@@ -2481,7 +2531,7 @@
      "CLAIM_CAPPED"
     ]
    },
-   "rev": "r2-value"
+   "rev": "r3-value"
   },
   {
    "id": "V52",
@@ -2503,6 +2553,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 2412500,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2517,7 +2568,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V53",
@@ -2541,6 +2592,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 2912500,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2557,7 +2609,7 @@
      "PARTIAL_MONTH"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V54",
@@ -2581,6 +2633,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2597,7 +2650,7 @@
      "PARTIAL_MONTH"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V55",
@@ -2626,6 +2679,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": -8300,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2644,7 +2698,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V56",
@@ -2676,6 +2730,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 31700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2693,7 +2748,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V57",
@@ -2728,6 +2783,7 @@
     "ssoEmployeeSatang": 8300,
     "ssoEmployerSatang": 8300,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 31700,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2744,7 +2800,7 @@
      "SSO_MIN_BASE"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V58",
@@ -2766,6 +2822,7 @@
     "ssoEmployeeSatang": 100000,
     "ssoEmployerSatang": 100000,
     "whtSatang": 17083,
+    "whtOneOffSatang": 0,
     "availableSatang": 2882917,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2780,7 +2837,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V59",
@@ -2801,6 +2858,7 @@
     "ssoEmployeeSatang": 50100,
     "ssoEmployerSatang": 50100,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 950900,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2815,7 +2873,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V60",
@@ -2836,6 +2894,7 @@
     "ssoEmployeeSatang": 50000,
     "ssoEmployerSatang": 50000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 950900,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -2850,7 +2909,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V61",
@@ -2887,6 +2946,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 300000,
@@ -2907,7 +2967,7 @@
      "CLAIM_CAPPED"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V62",
@@ -2940,6 +3000,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 400000,
@@ -2954,7 +3015,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V63",
@@ -2986,6 +3047,7 @@
     "ssoEmployeeSatang": 75000,
     "ssoEmployerSatang": 75000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1425000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 150000,
@@ -3006,7 +3068,7 @@
      "CLAIM_CAPPED"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V64",
@@ -3036,6 +3098,7 @@
     "ssoEmployeeSatang": 75200,
     "ssoEmployerSatang": 75200,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1427925,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 0,
@@ -3050,7 +3113,7 @@
     "blocked": null,
     "flags": []
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V65",
@@ -3082,6 +3145,7 @@
     "ssoEmployeeSatang": 50000,
     "ssoEmployerSatang": 50000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 950000,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 100000,
@@ -3102,7 +3166,7 @@
      "RECEIVABLE"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V66",
@@ -3134,6 +3198,7 @@
     "ssoEmployeeSatang": 25000,
     "ssoEmployerSatang": 25000,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 475000,
     "advanceAppliedSatang": 475000,
     "claimAppliedSatang": 0,
@@ -3153,7 +3218,7 @@
      "RECEIVABLE"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
   },
   {
    "id": "V67",
@@ -3191,6 +3256,7 @@
     "ssoEmployeeSatang": 87500,
     "ssoEmployerSatang": 87500,
     "whtSatang": 0,
+    "whtOneOffSatang": 0,
     "availableSatang": 1912500,
     "advanceAppliedSatang": 0,
     "claimAppliedSatang": 200000,
@@ -3210,7 +3276,282 @@
      "CLAIM_CAPPED"
     ]
    },
-   "rev": "r2-new"
+   "rev": "r3-schema"
+  },
+  {
+   "id": "V68",
+   "note": "r3 Por.96 ข้อ 1(5): bonus 100,000 in month 6 of a 50,000 salary · prior 5 months · bonus tax withheld in full this month",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 5000000,
+    "periodKey": "2031-06",
+    "monthIndex": 6,
+    "prior": {
+     "incomeSatang": 25000000,
+     "whtSatang": 858335,
+     "ssoSatang": 437500
+    },
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "BONUS",
+      "sourceType": null,
+      "amountSatang": 10000000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:5000000",
+     "BONUS:a1:-:-:10000000"
+    ],
+    "whtIncomeSatang": 15000000,
+    "ssoWageSatang": 5000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 1326666,
+    "whtOneOffSatang": 1155000,
+    "availableSatang": 13585834,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 500000,
+    "totalCapSatang": 1000000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 10000000,
+    "deductSatang": 0,
+    "grossSatang": 15000000,
+    "netSatang": 13585834,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-new"
+  },
+  {
+   "id": "V69",
+   "note": "r3 December bonus 30,000 on a 30,000 salary · prior 11 months",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 3000000,
+    "periodKey": "2031-12",
+    "monthIndex": 12,
+    "prior": {
+     "incomeSatang": 33000000,
+     "whtSatang": 187917,
+     "ssoSatang": 962500
+    },
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "BONUS",
+      "sourceType": null,
+      "amountSatang": 3000000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:3000000",
+     "BONUS:a1:-:-:3000000"
+    ],
+    "whtIncomeSatang": 6000000,
+    "ssoWageSatang": 3000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 167083,
+    "whtOneOffSatang": 150000,
+    "availableSatang": 5745417,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 300000,
+    "totalCapSatang": 600000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 3000000,
+    "deductSatang": 0,
+    "grossSatang": 6000000,
+    "netSatang": 5745417,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-new"
+  },
+  {
+   "id": "V70",
+   "note": "r3 ALLOWANCE flagged one-off 10,000 on a 50,000 salary · month 1",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 5000000,
+    "periodKey": "2031-09",
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "ALLOWANCE",
+      "sourceType": null,
+      "amountSatang": 1000000,
+      "oneOff": true
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:5000000",
+     "ALLOWANCE:a1:-:-:1000000"
+    ],
+    "whtIncomeSatang": 6000000,
+    "ssoWageSatang": 6000000,
+    "ssoBaseSatang": 1750000,
+    "ssoEmployeeSatang": 87500,
+    "ssoEmployerSatang": 87500,
+    "whtSatang": 271667,
+    "whtOneOffSatang": 100000,
+    "availableSatang": 5640833,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 600000,
+    "totalCapSatang": 1200000,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 1000000,
+    "deductSatang": 0,
+    "grossSatang": 6000000,
+    "netSatang": 5640833,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-new"
+  },
+  {
+   "id": "V71",
+   "note": "r3 SSO wage is data: a row listing OT + HOLIDAY_WORK counts them (wage 8,000 + OT 3,000 + holiday work)",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 800000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 480,
+      "holidayWorkMin": 480
+     }
+    ],
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "OT",
+      "sourceType": "OT_REQUEST",
+      "amountSatang": 300000
+     }
+    ],
+    "law": "SSO_WITH_OT"
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:800000",
+     "HOLIDAY_WORK:wd1:2031-09-17:480:26667",
+     "OT:a1:-:-:300000"
+    ],
+    "whtIncomeSatang": 1126667,
+    "ssoWageSatang": 1126667,
+    "ssoBaseSatang": 1126667,
+    "ssoEmployeeSatang": 56300,
+    "ssoEmployerSatang": 56300,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1070367,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 112666,
+    "totalCapSatang": 225333,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 300000,
+    "deductSatang": 0,
+    "grossSatang": 1126667,
+    "netSatang": 1070367,
+    "blocked": null,
+    "flags": []
+   },
+   "rev": "r3-new"
+  },
+  {
+   "id": "V72",
+   "note": "r3 default row: OT, holiday-work premium, bonus OUT of SSO wage; commission IN [U] (wage 8,000)",
+   "input": {
+    "payType": "MONTHLY",
+    "baseSalarySatang": 800000,
+    "periodKey": "2031-09",
+    "days": [
+     {
+      "workDayId": "wd1",
+      "day": "2031-09-17",
+      "dayClass": "HOLIDAY",
+      "holidayPaidMin": 480,
+      "holidayWorkMin": 480
+     }
+    ],
+    "adjustments": [
+     {
+      "id": "a1",
+      "kind": "OT",
+      "sourceType": "OT_REQUEST",
+      "amountSatang": 300000
+     },
+     {
+      "id": "a2",
+      "kind": "BONUS",
+      "sourceType": null,
+      "amountSatang": 100000
+     },
+     {
+      "id": "a3",
+      "kind": "COMMISSION",
+      "sourceType": null,
+      "amountSatang": 50000
+     }
+    ]
+   },
+   "want": {
+    "ok": true,
+    "lines": [
+     "BASE:profile:-:-:800000",
+     "HOLIDAY_WORK:wd1:2031-09-17:480:26667",
+     "OT:a1:-:-:300000",
+     "BONUS:a2:-:-:100000",
+     "COMMISSION:a3:-:-:50000"
+    ],
+    "whtIncomeSatang": 1276667,
+    "ssoWageSatang": 850000,
+    "ssoBaseSatang": 850000,
+    "ssoEmployeeSatang": 42500,
+    "ssoEmployerSatang": 42500,
+    "whtSatang": 0,
+    "whtOneOffSatang": 0,
+    "availableSatang": 1234167,
+    "advanceAppliedSatang": 0,
+    "claimAppliedSatang": 0,
+    "catCapSatang": 117666,
+    "totalCapSatang": 235333,
+    "carry": [],
+    "receivable": [],
+    "addSatang": 450000,
+    "deductSatang": 0,
+    "grossSatang": 1276667,
+    "netSatang": 1234167,
+    "blocked": null,
+    "flags": [
+     "SSO_COMMISSION_U"
+    ]
+   },
+   "rev": "r3-new"
   }
  ],
  "otNormal": [
@@ -3327,14 +3668,41 @@
    "minBaseSatang": 165000,
    "maxBaseSatang": 1750000,
    "rounding": "BAHT_HALF_UP",
-   "employerEqualsEmployee": true
+   "employerEqualsEmployee": true,
+   "wageComponents": [
+    "BASE",
+    "ALLOWANCE",
+    "LATE_REFUND",
+    "COMMISSION"
+   ]
   },
   "SSO_2572": {
    "rateBp": 500,
    "minBaseSatang": 165000,
    "maxBaseSatang": 2000000,
    "rounding": "BAHT_HALF_UP",
-   "employerEqualsEmployee": true
+   "employerEqualsEmployee": true,
+   "wageComponents": [
+    "BASE",
+    "ALLOWANCE",
+    "LATE_REFUND",
+    "COMMISSION"
+   ]
+  },
+  "SSO_WITH_OT": {
+   "rateBp": 500,
+   "minBaseSatang": 165000,
+   "maxBaseSatang": 1750000,
+   "rounding": "BAHT_HALF_UP",
+   "employerEqualsEmployee": true,
+   "wageComponents": [
+    "BASE",
+    "ALLOWANCE",
+    "LATE_REFUND",
+    "COMMISSION",
+    "OT",
+    "HOLIDAY_WORK"
+   ]
   },
   "TAX_BRACKET": {
    "bands": [

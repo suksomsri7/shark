@@ -64,6 +64,7 @@ S2.7|R2|C|R|[pure] adjustments V33–V36
 S2.8|L1|C|R|[pure] r2 caps per category 10 % + total 20 % · consent (s.77) · carry · receivable V37–V44 V51 V61–V63 V65–V67
 S2.9|R2|C|R|[pure] refusals V45–V49
 S2.13|L2|C|R|[pure] r2 ÷30 proration (Feb/31-day) · s.56 SHOP vs PUBLIC · dated SSO row · SSO rounding · lateness refund V52–V60 V64
+S2.14|r3|C|R|[pure] r3 one-off tax Por.96 ข้อ 1(5) (bonus month · December · one-off allowance) · SSO wage components from the law row V68–V72
 S2.10|NA-11|M|R|[pure] V50 daily + commission: regular month = earned (placeholder)
 S2.11|R11|C|R|[pure] otAmount normalDayMin OTN-01…05
 S2.12|R12|C|R|[pure] classifyIncomeV2 REFUND outside 40(1)/SSO · TIP still BAD_KIND
@@ -233,14 +234,14 @@ const projOf = (o: Any, ref?: (x: string) => string) => {
   if (!o || o.ok === false) return { ok: false, code: o?.code ?? "∅" };
   return {
     ok: true, lines: (o.lines ?? []).map((l: Any) => lineStr(l, ref)), whtIncomeSatang: o.whtIncomeSatang, ssoWageSatang: o.ssoWageSatang, ssoBaseSatang: o.ssoBaseSatang,
-    ssoEmployeeSatang: o.ssoEmployeeSatang, ssoEmployerSatang: o.ssoEmployerSatang, whtSatang: o.whtSatang, availableSatang: o.availableSatang, advanceAppliedSatang: o.advanceAppliedSatang,
+    ssoEmployeeSatang: o.ssoEmployeeSatang, ssoEmployerSatang: o.ssoEmployerSatang, whtSatang: o.whtSatang, whtOneOffSatang: o.whtOneOffSatang, availableSatang: o.availableSatang, advanceAppliedSatang: o.advanceAppliedSatang,
     claimAppliedSatang: o.claimAppliedSatang, catCapSatang: o.catCapSatang, totalCapSatang: o.totalCapSatang, carry: (o.carry ?? []).map((c: Any) => `${c.cls}:${c.amountSatang}`), receivable: (o.receivable ?? []).map((c: Any) => `${c.cls}:${c.amountSatang}`), addSatang: o.addSatang,
     deductSatang: o.deductSatang, grossSatang: o.grossSatang, netSatang: o.netSatang, blocked: o.blocked ?? null, flags: [...(o.flags ?? [])].sort(),
   };
 };
 const inputOf = (v: Any) => {
   const { law, ...rest } = v.input;
-  return { input: { ...FX._meta.defaults, ...rest }, lawSet: law === "NO_SSO" ? { TAX_BRACKET: LAWSET!.TAX_BRACKET, DEDUCTION: LAWSET!.DEDUCTION } : law === "SSO_2572" ? { ...LAWSET!, SSO: { id: "fx-sso-2572", json: FX.law?.SSO_2572 } } : LAWSET };
+  return { input: { ...FX._meta.defaults, ...rest }, lawSet: law === "NO_SSO" ? { TAX_BRACKET: LAWSET!.TAX_BRACKET, DEDUCTION: LAWSET!.DEDUCTION } : typeof law === "string" && FX.law?.[law] ? { ...LAWSET!, SSO: { id: `fx-${law}`, json: FX.law[law] } } : LAWSET };
 };
 function runPure(R: Any, OR: Any, V2: Any): void {
   const fn = R && !R.__err && typeof R.computeRunItemV2 === "function" ? R.computeRunItemV2 : null;
@@ -272,6 +273,7 @@ function runPure(R: Any, OR: Any, V2: Any): void {
   group("S2.7", 33, 36);
   group("S2.8", 37, 44, ["V51", "V61", "V62", "V63", "V65", "V66", "V67"]);
   group("S2.13", 52, 60, ["V64"]);
+  group("S2.14", 68, 72);
   group("S2.9", 45, 49);
   group("S2.10", 50, 50);
   {
@@ -529,8 +531,8 @@ async function runDb(): Promise<void> {
     const bound = await rows(`SELECT id FROM "HrPayAdjustment" WHERE "runId" = $1`, RS ?? "∅");
     const r = {
       ok: c1.ok, run: run?.engineVersion === 2 && run?.createdById === U.pay1.id && run?.status === "DRAFT",
-      mA: money(iA) === "2947500/87500/87500/0/2860000/175000/327500", mB: money(iB) === "9316667/87500/87500/23958/9205209/1050000/0", eC: money(iC) === "35000/35000/35000/0/0/0/665000",
-      totals: run && `${run.g}/${run.se}/${run.sr}/${run.w}/${run.n}/${run.a}/${run.d}` === "12299167/210000/210000/23958/12065209/1225000/992500",
+      mA: money(iA) === "2947500/87500/87500/0/2860000/175000/327500", mB: money(iB) === "9316667/87500/87500/61458/9167709/1050000/0", eC: money(iC) === "35000/35000/35000/0/0/0/665000",
+      totals: run && `${run.g}/${run.se}/${run.sr}/${run.w}/${run.n}/${run.a}/${run.d}` === "12299167/210000/210000/61458/12027709/1225000/992500",
       law: canon(iA?.lawRowIds) === canon(lawIds.filter((x) => !x.endsWith("-sso2")).sort()), ytd: iA?.ytdJson?.monthIndex === 9, bound: bound.length === 5,
     };
     ck("S4.5", r, "Sept literal", `${shown(c1)} A=${money(iA)} B=${money(iB)} C=${money(iC)} bound=${bound.length}`);
@@ -594,7 +596,7 @@ async function runDb(): Promise<void> {
     const rb = await PY("recomputeDraftRun", cA, RS ?? "∅", A.pay3, { viewer: V.pay3, now: N_OCT1 });
     const run = await runRow(RS);
     const same = await approve(cA, RS, A.pay3);
-    const r = { ok: rb.ok, maker: run?.createdById === U.pay3.id, steps: (await stepsOf(RS)) === null, totals: Number(run?.n) === 12065209, same: !same.ok && codeOf(same) === "SAME_PERSON" };
+    const r = { ok: rb.ok, maker: run?.createdById === U.pay3.id, steps: (await stepsOf(RS)) === null, totals: Number(run?.n) === 12027709, same: !same.ok && codeOf(same) === "SAME_PERSON" };
     ck("S4.9", r, "rebuilder is the maker", `${shown(rb)} maker=${run?.createdById === U.pay3.id} ${shown(same)}`);
   }
   // ── S4.10 approve ──
@@ -634,7 +636,7 @@ async function runDb(): Promise<void> {
       return s;
     };
     const r = {
-      ok: c2.ok, mA: money(iA) === "2700000/100000/100000/0/2600000/0/300000", mB: money(iB) === "8200000/100000/100000/26667/8073333/200000/0", eC: money(iC) === "1265000/75000/75000/0/1190000/0/235000",
+      ok: c2.ok, mA: money(iA) === "2700000/100000/100000/0/2600000/0/300000", mB: money(iB) === "8200000/100000/100000/14167/8085833/200000/0", eC: money(iC) === "1265000/75000/75000/0/1190000/0/235000",
       adv: (await applied(E.eC, "ADVANCE")) === 900000, claim: (await applied(E.mA, "DEDUCTION")) === 627500, sso2: canon(iA?.lawRowIds) === canon(lawIds.filter((x) => !x.endsWith("-sso")).sort()),
     };
     ck("S4.13", r, "Oct literal · Σ two periods", `${shown(c2)} A=${money(iA)} B=${money(iB)} C=${money(iC)}`);
