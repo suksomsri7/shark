@@ -65,6 +65,12 @@ export const OT_TEXT = {
   adjNote: "ค่าล่วงเวลา (คำขอ OT) {d}",
   revNote: "ปรับค่าล่วงเวลา (คำขอ OT) {d}",
   failed: "บันทึกคำขอ OT ไม่สำเร็จ — กรุณาลองอีกครั้ง",
+  // r2 (มติผู้คุม 12 พ.ย.)
+  noRate: "ยังไม่ได้ตั้งค่าจ้างของพนักงานคนนี้ — ตั้งค่าจ้างก่อนจึงขอ OT ได้",
+  leaveDay: "วันนี้มีใบลาเต็มวันที่อนุมัติแล้ว — ยกเลิกใบลาก่อนจึงขอ OT ได้",
+  rateRecheck: "อัตรา OT ที่ตั้งไว้ต่ำกว่าเกณฑ์ตามกฎหมายของค่าจ้างใหม่ — แก้อัตรา OT ให้สูงขึ้นหรือล้างค่าก่อนบันทึก",
+  rateNoBase: "ค่าจ้างฐานเป็น 0 — ตั้งอัตรา OT เองไม่ได้ ล้างอัตรา OT ก่อนบันทึก",
+  otRow: "รายการนี้มาจากคำขอ OT — แก้ที่คำขอ OT (ยกเลิก OT ที่อนุมัติแล้ว) แล้วระบบจะปรับยอดให้เอง",
 } as const;
 
 /** รายการในหน้าคำขอ OT (R11) — ฐาน (ทุกผู้ดู) · amountSatang/segments เฉพาะเจ้าของร้าน/ผู้ดูเงินเดือน/ตัวพนักงานเอง (Q11) */
@@ -102,6 +108,17 @@ const divCeil = (a: bigint, b: bigint): bigint => (a + b - B1) / b;
 const floorStep = (n: number, step: number): number => (step > 1 ? n - (n % step) : n);
 const MIN_MS = 60_000;
 
+/** r2.5: ตัวคูณจากแถวกฎหมายยกขึ้นได้อย่างเดียว — ต่ำกว่าค่าตั้งต้นตามกฎหมาย = ใช้ค่าตั้งต้น (ทุกตัวคูณ) */
+export function raised(law: OtLaw): OtLaw {
+  const up = (v: number, d: number) => (posInt(v) && v > d ? v : d);
+  return {
+    ...law,
+    workdayOtBp: up(law.workdayOtBp, OT_LAW_DEFAULT.workdayOtBp),
+    holidayWorkPaidBp: up(law.holidayWorkPaidBp, OT_LAW_DEFAULT.holidayWorkPaidBp),
+    holidayWorkUnpaidBp: up(law.holidayWorkUnpaidBp, OT_LAW_DEFAULT.holidayWorkUnpaidBp),
+    holidayOtBp: up(law.holidayOtBp, OT_LAW_DEFAULT.holidayOtBp),
+  };
+}
 /** ตัวหารที่ใช้จริง — ไม่ให้อัตราต่ำกว่า ÷30 ÷8 (มติ Q6) */
 export function otDivisors(law: Pick<OtLaw, "daysPerMonth" | "hoursPerDay">): { days: number; hours: number } {
   const days = posInt(law.daysPerMonth) ? Math.min(law.daysPerMonth, LEGAL_DAYS_MAX) : LEGAL_DAYS_MAX;
@@ -147,7 +164,7 @@ export function otLawOf(rows: readonly OtLawRowIn[], day: string): OtLawResult {
     hoursPerDay: req("hoursPerDay"),
   };
   if (Object.values(law).some((v) => v === null)) return { ok: false, code: "LAW_SHAPE" };
-  return { ok: true, law: law as OtLaw, lawRowId: row.id };
+  return { ok: true, law: raised(law as OtLaw), lawRowId: row.id };
 }
 
 // ═════════════ นาทีที่จ่าย (Q7) ═════════════
@@ -163,6 +180,25 @@ export function otPaidMinutes(i: { reqStart: Date; reqEnd: Date; from: Date | nu
   const measured = isInt(i.otMin) && i.otMin > 0 ? i.otMin : 0;
   const step = posInt(i.stepMin) ? i.stepMin : 1;
   return floorStep(Math.min(overlap, measured), step);
+}
+
+/**
+ * r2.2 นาทีที่จ่ายจากช่วงที่ "ทำงานจริง" (รอบเข้า–ออก หักพัก/ช่องว่าง — ไม่ปัดด้วยขั้น otStepMin ของการลงเวลา):
+ * Σ (ช่วงที่ขอ ∩ [from, ∞) ∩ ช่วงทำงาน) เป็นมิลลิวินาที → นาทีเต็ม → ปัดลงด้วย stepMin (otRoundMin) · from null = ทั้งวัน (ไม่มีกะ)
+ */
+export function otWorkedPaidMinutes(i: { reqStart: Date; reqEnd: Date; from: Date | null; worked: readonly { start: Date; end: Date }[]; stepMin: number }): number {
+  if (!i || !(i.reqStart instanceof Date) || !(i.reqEnd instanceof Date) || !Array.isArray(i.worked)) return 0;
+  const lo = Math.max(i.reqStart.getTime(), i.from ? i.from.getTime() : -Infinity);
+  const hi = i.reqEnd.getTime();
+  let ms = 0;
+  for (const w of i.worked) {
+    if (!(w?.start instanceof Date) || !(w?.end instanceof Date)) continue;
+    const a = Math.max(lo, w.start.getTime());
+    const b = Math.min(hi, w.end.getTime());
+    if (b > a) ms += b - a;
+  }
+  const step = posInt(i.stepMin) ? i.stepMin : 1;
+  return floorStep(Math.floor(ms / MIN_MS), step);
 }
 
 // ═════════════ เงิน (R3 · R4) ═════════════
@@ -182,7 +218,7 @@ function baseRate(p: OtProfile, law: OtLaw): { num: bigint; den: bigint } | null
 /** ค่า OT ของหนึ่งคำขอ — ส่วนตามอัตรา + ยอดรวม (สตางค์) · ฟังก์ชันล้วน (ไม่แก้ค่าที่ส่งเข้า) */
 export function otAmount(i: OtAmountInput): OtAmountResult {
   if (!i || !isInt(i.minutes) || i.minutes < 0) return { ok: false, code: "BAD_MINUTES" };
-  const law = i.law ?? OT_LAW_DEFAULT;
+  const law = raised(i.law ?? OT_LAW_DEFAULT);
   const { hours } = otDivisors(law);
   const parts: { cls: OtSegmentClass; minutes: number; multiplierBp: number }[] = [];
   if (i.hasShift) parts.push(i.dayClass === "HOLIDAY" ? { cls: "OT_HOLIDAY", minutes: i.minutes, multiplierBp: law.holidayOtBp } : { cls: "OT_WORKDAY", minutes: i.minutes, multiplierBp: law.workdayOtBp });
@@ -199,11 +235,15 @@ export function otAmount(i: OtAmountInput): OtAmountResult {
   const segments: OtSegment[] = [];
   let total = B0;
   for (const x of live) {
+    // r2.1a: อัตราที่ตั้งเองต่ำกว่าเกณฑ์ตามกฎหมาย (ข้อมูลเดิม/ค่าจ้างขึ้นภายหลัง) ⇒ จ่ายตามกฎหมาย — max(อัตราที่ตั้ง, ตามกฎหมาย) ไม่ต่ำกว่าเด็ดขาด
+    const legal = rate ? divHalfUp(rate.num * BigInt(x.minutes) * BigInt(x.multiplierBp), rate.den) : null;
     let amt: bigint;
-    if (x.cls === "OT_WORKDAY" && override !== null) amt = divHalfUp(override * BigInt(x.minutes), B60);
-    else {
-      if (!rate) return { ok: false, code: "NO_RATE" };
-      amt = divHalfUp(rate.num * BigInt(x.minutes) * BigInt(x.multiplierBp), rate.den);
+    if (x.cls === "OT_WORKDAY" && override !== null) {
+      const own = divHalfUp(override * BigInt(x.minutes), B60);
+      amt = legal !== null && legal > own ? legal : own;
+    } else {
+      if (legal === null) return { ok: false, code: "NO_RATE" };
+      amt = legal;
     }
     if (amt > BigInt(INT_MAX)) return { ok: false, code: "OVERFLOW" };
     total += amt;

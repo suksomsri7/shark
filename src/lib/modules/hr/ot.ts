@@ -33,10 +33,12 @@ import {
   OT_WEEK_WARN_MIN,
   otAmount,
   otLawOf,
-  otPaidMinutes,
+  otLegalRateFloor,
   otPolicyOf,
   otText,
   otWindow,
+  otWorkedPaidMinutes,
+  OT_LAW_DEFAULT,
   topMultiplierBp,
   type OtDayClass,
   type OtItem,
@@ -212,6 +214,16 @@ async function weekMinutes(tx: Tx, ctx: Ctx, employeeId: string, day: string): P
   return rows.reduce((a, r) => a + r.minutes, 0);
 }
 
+/** r2.8a ใบลาเต็มวันที่อนุมัติแล้วครอบวันนั้น (ไม่ใช่ครึ่งวัน/รายชั่วโมง) */
+async function fullDayLeave(db: Tx, ctx: Ctx, employeeId: string, day: string): Promise<boolean> {
+  return !!(await db.hrLeave.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, status: "APPROVED", fromDate: { lte: dbDate(day) }, toDate: { gte: dbDate(day) }, halfDay: null, hours: null }, select: { id: true } }));
+}
+/** r2.8b มีค่าจ้างฐานให้คิด OT ไหม (คำตอบใช่/ไม่ใช่เท่านั้น — ไม่ส่งตัวเลขออก) */
+async function hasRate(db: Tx, ctx: Ctx, employeeId: string): Promise<boolean> {
+  const p = await db.hrSalaryProfile.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId }, select: { payType: true, baseSalarySatang: true, dailyRateSatang: true, hourlyRateSatang: true, otHourlyRateSatang: true } });
+  return !!p && otLegalRateFloor({ ...p, otHourlyRateSatang: null }, OT_LAW_DEFAULT) !== null;
+}
+
 /** ยื่นคำขอ OT — ไม่ส่ง employeeId = ของตัวเอง · ปฏิเสธ = ไม่มีอะไรถูกเขียน · warnWeek = OT ที่ยังมีผลของสัปดาห์ (จ.–อา.) เกิน 36 ชม. (เตือนอย่างเดียว · Q9) */
 export async function requestOt(
   ctx: Ctx,
@@ -247,6 +259,8 @@ export async function requestOt(
   if (!w.ok) return refuse(windowText(w.code, pol));
   if (self && emp.employmentStatus === "ENDED") return refuse(T.ended);
   if (!employedOn(emp, date)) return refuse(T.outOfEmployment);
+  if (await fullDayLeave(db, ctx, emp.id, date)) return refuse(T.leaveDay); // r2.8a
+  if (!(await hasRate(db, ctx, emp.id))) return refuse(T.noRate); // r2.8b: ไม่มีค่าจ้างฐาน (คอมมิชชันล้วน) ⇒ ปฏิเสธตอนยื่น ไม่จอดรอตลอดไป
   const minutes = Math.round((endAt.getTime() - startAt.getTime()) / MIN_MS);
   const reason = str(input?.reason).slice(0, 200) || null;
   const e = emp;
@@ -323,6 +337,7 @@ export async function decideOtRequest(ctx: Ctx, viewer: OtViewer, id: string, st
   if (g.emp.linkedUserId && g.emp.linkedUserId === uid) return refuse(T.self);
   if (status === "APPROVED" && viewer.role !== "OWNER" && g.req.requestedByUserId === uid) return refuse(T.fourEyes);
   if (g.req.status !== "PENDING") return refuse(T.decided);
+  if (status === "APPROVED" && (await fullDayLeave(dbOf(ctx), ctx, g.req.employeeId, dayOf(g.req.date)))) return refuse(T.leaveDay); // r2.8a
   try {
     if (status === "REJECTED") {
       const n = await tenantDb(ctx).$transaction(async (t) => {
@@ -382,9 +397,11 @@ const settleAudit = (o: SettleOut) => ({ settleCode: o.settleCode ?? null, adjus
 
 // ═════════════ การจ่าย (R6 · R7 · R8 · R10) ═════════════
 type Basis = OtProfile & { law: OtLaw; lawRowId: string | null };
+/** r2.7 สิ่งที่ตรึงตอนจ่ายครั้งแรก: ขั้นปัดนาที (otRoundMin) + ฐานค่าจ้าง/กฎหมาย (เมื่อมีนาทีที่ต้องคิดเงินครั้งแรก) */
+type Frozen = { otRoundMin: number; profile: Basis | null };
 type Entitlement =
   | { kind: "wait"; code: "WAIT" | "STALE" | "NO_SCHEDULE" | "NO_RATE" | "LAW" | "OVERFLOW" }
-  | { kind: "pay"; paid: number; amount: number; segments: OtSegment[]; dayId: string | null; version: number | null; basis: Basis | null; dayClass: OtDayClass | null };
+  | { kind: "pay"; paid: number; amount: number; segments: OtSegment[]; dayId: string | null; version: number | null; frozen: Frozen | null; dayClass: OtDayClass | null; code: string | null };
 type SettleMode = { kind: "approve"; by: string; unitId: string | null } | { kind: "revoke"; by: string; unitId: string | null; reason: string } | { kind: "settle" };
 type SettleOut = { code: "DECIDED" | "GONE" | "SKIP" | "WAIT" | "SETTLED"; settled: boolean; settleCode?: string; created?: { id: string; periodKey: string } | null; gen?: number; rejected?: number };
 
@@ -394,39 +411,51 @@ const overlapMin = (s: Date, e: Date, from: Date | null, to: Date | null): numbe
   const b = Math.min(e.getTime(), to.getTime());
   return b > a ? Math.floor((b - a) / MIN_MS) : 0;
 };
-const basisOf = (raw: unknown): Basis | null => {
+const isBasis = (b: unknown): b is Basis => !!b && typeof b === "object" && typeof (b as Record<string, unknown>).payType === "string" && !!(b as Record<string, unknown>).law;
+const frozenOf = (raw: unknown): Frozen | null => {
   const b = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
-  if (!b || typeof b.payType !== "string" || !b.law || typeof b.law !== "object") return null;
-  return b as unknown as Basis;
+  if (!b) return null;
+  if (typeof b.otRoundMin === "number") return { otRoundMin: b.otRoundMin, profile: isBasis(b.profile) ? b.profile : null };
+  return isBasis(b) ? { otRoundMin: 0, profile: b } : null; // รูปเดิมก่อน r2 (ข้อมูลทดสอบของเลนเท่านั้น) — ขั้นยังไม่ตรึง
 };
+const pay0 = (code: string | null, dayId: string | null, version: number | null, frozen: Frozen | null, dayClass: OtDayClass | null): Entitlement => ({ kind: "pay", paid: 0, amount: 0, segments: [], dayId, version, frozen, dayClass, code });
 
-/** สิทธิ์ที่ควรได้ตอนนี้ของคำขอที่อนุมัติแล้ว — อ่านใต้ล็อก hr:judge:<dayId> ของทุกแถวของวันงาน/วันก่อน (ผู้เรียกถือล็อกงวด + hr:ot:<id> แล้ว) */
+/**
+ * สิทธิ์ที่ควรได้ตอนนี้ของคำขอที่อนุมัติแล้ว — อ่านใต้ล็อก hr:judge:<dayId> ของทุกแถวของวันงาน/วันก่อน (ผู้เรียกถือล็อกงวด + hr:ot:<id> แล้ว) ·
+ * r2.2 นาที = ช่วงที่ขอ ∩ เวลาที่ทำงานจริงหลังเลิกกะ (หักพัก/ช่องว่าง · ไม่ปัดด้วย otStepMin) ปัดลงด้วย otRoundMin ที่ตรึงไว้ (r2.7) ·
+ * r2.8a ลาเต็มวัน ⇒ 0 (LEAVE) · r2.8c วันงานหลังวันสิ้นสุดการจ้าง ⇒ 0 (ENDED)
+ */
 async function measure(tx: Tx, ctx: Ctx, r: OtRow, now: Date): Promise<Entitlement> {
   const date = dayOf(r.date);
+  const frozen0 = frozenOf(r.basisJson);
+  const emp = await tx.hrEmployee.findFirst({ where: { id: r.employeeId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { endDate: true } });
+  if (emp?.endDate && date > dayOf(emp.endDate)) return pay0("ENDED", null, null, frozen0, null);
   const days = [addDays(date, -1), date];
   const ids = (await tx.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: r.employeeId, date: { in: days.map(dbDate) } }, select: { id: true } })).map((x) => x.id).sort();
   for (const id of ids) await lock(tx, `hr:judge:${id}`);
   const view = await otPayDaysInTx(tx, ctx, r.employeeId, days, now);
-  const ov = (x: OtPayStoredRow) => overlapMin(r.startAt, r.endAt, x.from, x.outAt);
+  const ov = (x: OtPayStoredRow) => otWorkedPaidMinutes({ reqStart: r.startAt, reqEnd: r.endAt, from: x.hasShift ? x.from : null, worked: x.worked, stepMin: 1 });
   const relevant = view.rows.filter((x) => x.day === date || ov(x) > 0 || x.outMissing);
   if (relevant.some((x) => x.stale)) return { kind: "wait", code: "STALE" };
   if (view.pending.some((p) => p.day === date)) return { kind: "wait", code: "WAIT" };
   const ranked = [...relevant].sort((a, b) => ov(b) - ov(a) || (a.day === date ? -1 : 0) - (b.day === date ? -1 : 0) || (a.id < b.id ? -1 : 1));
+  const step = frozen0 && frozen0.otRoundMin > 0 ? frozen0.otRoundMin : (await policyIn(tx, ctx)).otRoundMin;
+  const frozen: Frozen = { otRoundMin: step, profile: frozen0?.profile ?? null };
   let best = ranked[0] ?? null;
   if (!best || ov(best) === 0) {
     if (view.pending.length) return { kind: "wait", code: "WAIT" };
     if (!best) {
       if (now.getTime() < bkkAt(addDays(date, NO_ATTENDANCE_DAYS), 0).getTime()) return { kind: "wait", code: "WAIT" };
-      return { kind: "pay", paid: 0, amount: 0, segments: [], dayId: null, version: null, basis: null, dayClass: null };
+      return pay0(null, null, null, frozen, null); // ยังไม่สิ้นสุด: แถวผลลงเวลาโผล่ทีหลัง ⇒ ตัวรายชั่วโมงคิดใหม่ (r2.6)
     }
   }
   best = best!;
-  if (best.status === "NO_SCHEDULE") return { kind: "wait", code: "NO_SCHEDULE" };
-  const pol = await policyIn(tx, ctx);
-  const paid = otPaidMinutes({ reqStart: r.startAt, reqEnd: r.endAt, from: best.from, outAt: best.outAt, otMin: best.otMin, stepMin: pol.otRoundMin });
   const dayClass: OtDayClass = best.holidayId ? "HOLIDAY" : "WORKDAY";
-  if (paid === 0) return { kind: "pay", paid: 0, amount: 0, segments: [], dayId: best.id, version: best.version, basis: null, dayClass };
-  let basis = basisOf(r.basisJson);
+  if (best.leaveFull) return pay0("LEAVE", best.id, best.version, frozen, dayClass);
+  if (best.status === "NO_SCHEDULE") return { kind: "wait", code: "NO_SCHEDULE" };
+  const paid = otWorkedPaidMinutes({ reqStart: r.startAt, reqEnd: r.endAt, from: best.hasShift ? best.from : null, worked: best.worked, stepMin: step });
+  if (paid === 0) return pay0(null, best.id, best.version, frozen, dayClass);
+  let basis = frozen.profile;
   if (!basis) {
     const p = await tx.hrSalaryProfile.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: r.employeeId }, select: { payType: true, baseSalarySatang: true, dailyRateSatang: true, hourlyRateSatang: true, otHourlyRateSatang: true } });
     if (!p) return { kind: "wait", code: "NO_RATE" };
@@ -436,7 +465,7 @@ async function measure(tx: Tx, ctx: Ctx, r: OtRow, now: Date): Promise<Entitleme
   }
   const amt = otAmount({ ...basis, hasShift: best.hasShift, dayClass, minutes: paid, law: basis.law });
   if (!amt.ok) return { kind: "wait", code: amt.code === "OVERFLOW" ? "OVERFLOW" : "NO_RATE" };
-  return { kind: "pay", paid, amount: amt.amountSatang, segments: amt.segments, dayId: best.id, version: best.version, basis, dayClass };
+  return { kind: "pay", paid, amount: amt.amountSatang, segments: amt.segments, dayId: best.id, version: best.version, frozen: { otRoundMin: step, profile: basis }, dayClass, code: null };
 }
 
 /** งวดปลายทาง (R7): ไม่มีรอบที่ยังมีผลตั้งแต่ P0 ⇒ P0 · ไม่งั้นเดือนหลังรอบล่าสุด — ล็อกแล้วตรวจซ้ำจนนิ่ง (มากขึ้นเท่านั้น ⇒ ลำดับล็อกเรียงเสมอ) */
@@ -489,10 +518,11 @@ async function settleTx(ctx: Ctx, base: { id: string; date: Date; employeeId: st
 
     const ent: Entitlement =
       mode.kind === "revoke"
-        ? { kind: "pay", paid: 0, amount: 0, segments: [], dayId: r.attendanceDayId, version: r.attendanceDayVersion, basis: null, dayClass: null }
+        ? pay0(null, r.attendanceDayId, r.attendanceDayVersion, frozenOf(r.basisJson), null)
         : await measure(tx, ctx, r, now);
     if (ent.kind === "wait") {
-      if (r.settleCode !== ent.code) await tx.hrOtRequest.updateMany({ where: { id: r.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { settleCode: ent.code } });
+      // r2.4: เขียนทุกครั้ง (updatedAt ขยับ) ⇒ ตัวรายชั่วโมงหยิบคำขอที่ลองนานที่สุดก่อน — คำขอที่รอไม่ขวางคำขอที่พร้อมจ่าย
+      await tx.hrOtRequest.updateMany({ where: { id: r.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { settleCode: ent.code } });
       return { code: "WAIT", settled: false, settleCode: ent.code };
     }
     const res = await writeOtAdjustmentInTx(tx, ctx, {
@@ -513,12 +543,12 @@ async function settleTx(ctx: Ctx, base: { id: string; date: Date; employeeId: st
         paidMinutes: ent.paid,
         amountSatang: ent.amount,
         segmentsJson: ent.segments as unknown as Prisma.InputJsonValue,
-        ...(!r.basisJson && ent.basis ? { basisJson: ent.basis as unknown as Prisma.InputJsonValue, lawRowId: ent.basis.lawRowId } : {}),
+        ...(ent.frozen && JSON.stringify(ent.frozen) !== JSON.stringify(r.basisJson) ? { basisJson: ent.frozen as unknown as Prisma.InputJsonValue, lawRowId: ent.frozen.profile?.lawRowId ?? null } : {}),
         attendanceDayId: ent.dayId,
         attendanceDayVersion: ent.version,
         multiplierBp: topMultiplierBp(ent.segments) ?? (mode.kind === "revoke" ? r.multiplierBp : null),
         settleGen: res.gen,
-        settleCode: null,
+        settleCode: ent.code,
         settledAt: now,
       },
     });
@@ -544,12 +574,19 @@ export async function settleOtRequests(input: { tenantId?: string | null; system
     if (out.scanned >= maxTx) break;
     const ctx: Ctx = { tenantId, systemId };
     const db = dbOf(ctx);
-    const open = await db.hrOtRequest.findMany({ where: { tenantId, systemId, status: "APPROVED", settledAt: null, date: { gte: since } }, select: { id: true, date: true, employeeId: true }, orderBy: [{ date: "asc" }, { id: "asc" }], take: maxTx });
+    // r2.4: ที่ยังไม่จ่าย เรียงตามครั้งที่ลองล่าสุด (updatedAt — การรอเขียนทุกครั้ง) ⇒ ทุกคำขอได้คิว คำขอที่พร้อมไม่ถูกขวางถาวร
+    const open = await db.hrOtRequest.findMany({ where: { tenantId, systemId, status: "APPROVED", settledAt: null, date: { gte: since } }, select: { id: true, date: true, employeeId: true }, orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: maxTx });
     const done = await db.hrOtRequest.findMany({ where: { tenantId, systemId, status: "APPROVED", settledAt: { not: null }, attendanceDayId: { not: null }, date: { gte: since } }, select: { id: true, date: true, employeeId: true, attendanceDayId: true, attendanceDayVersion: true }, orderBy: [{ date: "asc" }, { id: "asc" }], take: 5000 });
     const dayIds = [...new Set(done.map((d) => d.attendanceDayId!).filter(Boolean))];
     const ver = new Map((dayIds.length ? await db.hrAttendanceDay.findMany({ where: { tenantId, systemId, id: { in: dayIds } }, select: { id: true, version: true } }) : []).map((d) => [d.id, d.version] as const));
     const changed = done.filter((d) => ver.get(d.attendanceDayId!) !== d.attendanceDayVersion);
-    for (const r of [...open, ...changed]) {
+    // r2.6: จ่าย 0 เพราะไม่มีผลลงเวลา (ไม่มีแถว) ไม่ใช่ที่สิ้นสุด — แถวของวันงาน/วันก่อนโผล่ทีหลัง ⇒ คิดใหม่ด้วยรายการส่วนต่าง
+    const zero = await db.hrOtRequest.findMany({ where: { tenantId, systemId, status: "APPROVED", settledAt: { not: null }, attendanceDayId: null, settleCode: null, date: { gte: since } }, select: { id: true, date: true, employeeId: true }, orderBy: [{ date: "asc" }, { id: "asc" }], take: 2000 });
+    const seen = zero.length
+      ? new Set((await db.hrAttendanceDay.findMany({ where: { tenantId, systemId, employeeId: { in: [...new Set(zero.map((z) => z.employeeId))] }, date: { gte: dbDate(addDays(dayOf(zero[0]!.date), -1)) } }, select: { employeeId: true, date: true }, take: 20_000 })).map((d) => `${d.employeeId}|${dayOf(d.date)}`))
+      : new Set<string>();
+    const reappeared = zero.filter((z) => seen.has(`${z.employeeId}|${dayOf(z.date)}`) || seen.has(`${z.employeeId}|${addDays(dayOf(z.date), -1)}`));
+    for (const r of [...changed, ...reappeared, ...open]) {
       if (out.scanned >= maxTx) break;
       out.scanned++;
       try {

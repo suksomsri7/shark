@@ -943,7 +943,31 @@ export async function notifyAttendanceAlert(evt: AlertEvent): Promise<void> {
 // HR H2.9 ▸ ตัวอ่านของการจ่าย OT (hr/ot.ts#settle) — แถว HrAttendanceDay ที่บันทึกของวันที่ส่งมา + stale/กำพร้า (กติกาเดียวกับหน้าจอ: isStale · hasOrphan) +
 //   ช่องสดที่ยังไม่บันทึก · ผู้เรียกถือล็อกงวด hr:payroll:run:<ระบบ>:<งวด> แล้ว hr:judge:<dayId> ของทุกแถวก่อนเรียก และส่ง tx ของตัวเอง (ทุกคำสั่งใช้ tx นี้) ·
 //   from = เวลาเลิกกะของแถว (มีกะ) หรือเวลาเข้า (ไม่มีกะ) · outAt = เวลาออกของแถว (outMissing = แถวชี้เวลาออกที่ถูกลบไปแล้ว) · ไม่แก้แถวใด ไม่ยิง event
-export type OtPayStoredRow = { id: string; day: string; slotKey: string; status: string; otMin: number; version: number; hasShift: boolean; holidayId: string | null; unitId: string | null; from: Date | null; outAt: Date | null; outMissing: boolean; stale: boolean };
+//   r2: worked = ช่วงที่ทำงานจริงของช่อง (IN เริ่ม · BREAK_START หยุด · BREAK_END นับต่อ · OUT จบ — สูตรเดียวกับ judge-rules.workedMinutesFloor ไม่ปัด) ·
+//   ลืมออก/ไม่มีช่องสด = [] · leaveFull = แถวสถานะ LEAVE (ลาเต็มวันที่อนุมัติ)
+export type OtPayStoredRow = { id: string; day: string; slotKey: string; status: string; otMin: number; version: number; hasShift: boolean; holidayId: string | null; unitId: string | null; from: Date | null; outAt: Date | null; outMissing: boolean; stale: boolean; worked: { start: Date; end: Date }[]; leaveFull: boolean };
+function workedIntervals(events: readonly { kind: string; at: Date }[]): { start: Date; end: Date }[] {
+  const out: { start: Date; end: Date }[] = [];
+  let from: number | null = null;
+  let inSession = false;
+  for (const e of [...events].sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    const t = e.at.getTime();
+    if (e.kind === "IN") {
+      inSession = true;
+      from = t;
+    } else if (e.kind === "BREAK_START") {
+      if (from !== null && t > from) out.push({ start: new Date(from), end: new Date(t) });
+      from = null;
+    } else if (e.kind === "BREAK_END") {
+      if (inSession) from = t;
+    } else if (e.kind === "OUT") {
+      if (from !== null && t > from) out.push({ start: new Date(from), end: new Date(t) });
+      from = null;
+      inSession = false;
+    }
+  }
+  return out;
+}
 export type OtPayDays = { rows: OtPayStoredRow[]; pending: { day: string; slotKey: string; final: boolean }[] };
 export async function otPayDaysInTx(tx: Db, ctx: Ctx, employeeId: string, days: string[], now: Date): Promise<OtPayDays> {
   const emp = (await employeesOf(tx, ctx, { id: employeeId }))[0];
@@ -975,7 +999,8 @@ export async function otPayDaysInTx(tx: Db, ctx: Ctx, employeeId: string, days: 
       }
     }
     const outMissing = !!r.outAttendanceId && !evAt.has(r.outAttendanceId);
-    return { id: r.id, day, slotKey: r.slotKey, status: r.status, otMin: r.otMin, version: r.version, hasShift, holidayId: r.holidayId, unitId: r.unitId, from, outAt: r.outAttendanceId ? (evAt.get(r.outAttendanceId) ?? null) : null, outMissing, stale: orphan || isStale(slot, r) };
+    const worked = slot && !r.missingOut ? workedIntervals(slot.events) : [];
+    return { id: r.id, day, slotKey: r.slotKey, status: r.status, otMin: r.otMin, version: r.version, hasShift, holidayId: r.holidayId, unitId: r.unitId, from, outAt: r.outAttendanceId ? (evAt.get(r.outAttendanceId) ?? null) : null, outMissing, stale: orphan || isStale(slot, r), worked, leaveFull: r.status === "LEAVE" };
   });
   const pending = want.flatMap((day) => (live.get(day) ?? []).filter((s) => !stored.some((r) => dayOf(r.date) === day && r.slotKey === s.slotKey)).map((s) => ({ day, slotKey: s.slotKey, final: s.out.final })));
   return { rows, pending };

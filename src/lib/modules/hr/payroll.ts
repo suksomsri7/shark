@@ -121,11 +121,14 @@ export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): 
 // HR H2.9 ▸ #18 (REVIEW #18 · Q12): อัตรา OT ที่ตั้งเองต้องเป็นจำนวนเต็มสตางค์ > 0 และไม่ต่ำกว่า 1.5 เท่าของค่าจ้างต่อชั่วโมงตามกฎหมาย
 //   (otLegalRateFloor ของรูปแบบค่าจ้างหลังบันทึก · ตาราง OT ที่ ACTIVE วันนี้ หรือค่าตั้งต้น) · ไม่มีค่าจ้างฐาน (เพดานไม่รู้) = รับค่าบวกใด ๆ
 async function otRateData(ctx: Ctx, input: SetSalaryProfileInput): Promise<{ otHourlyRateSatang?: number | null }> {
-  if (!Object.prototype.hasOwnProperty.call(input, "otHourlyRateSatang") || input.otHourlyRateSatang === undefined) return {};
+  const given = Object.prototype.hasOwnProperty.call(input, "otHourlyRateSatang") && input.otHourlyRateSatang !== undefined;
   const v = input.otHourlyRateSatang;
-  if (v === null) return { otHourlyRateSatang: null };
-  if (!posInt(v) || v > 2_147_483_647) throw new PayrollInputError(OT_TEXT.rateBad);
-  const cur = await tenantDb(ctx).hrSalaryProfile.findFirst({ where: { systemId: ctx.systemId, employeeId: input.employeeId }, select: { payType: true, dailyRateSatang: true, hourlyRateSatang: true } });
+  if (given && v === null) return { otHourlyRateSatang: null };
+  if (given && (!posInt(v) || v > 2_147_483_647)) throw new PayrollInputError(OT_TEXT.rateBad);
+  const cur = await tenantDb(ctx).hrSalaryProfile.findFirst({ where: { systemId: ctx.systemId, employeeId: input.employeeId }, select: { payType: true, dailyRateSatang: true, hourlyRateSatang: true, otHourlyRateSatang: true } });
+  // r2.1b: ทุกการบันทึก (ขึ้นเงินเดือน · เปลี่ยนรูปแบบค่าจ้าง · มีหรือไม่มีช่อง OT) ตรวจอัตราที่ตั้งไว้กับเพดานใหม่ — ต่ำกว่า/ไม่มีฐาน ⇒ ปฏิเสธ (ไม่ล้างเอง)
+  const rate = given ? (v as number) : (cur?.otHourlyRateSatang ?? null);
+  if (rate === null) return {};
   const pt = input.payType ?? cur?.payType ?? "MONTHLY";
   const profile = {
     payType: pt,
@@ -137,8 +140,9 @@ async function otRateData(ctx: Ctx, input: SetSalaryProfileInput): Promise<{ otH
   const today = bkkParts(new Date()).dateStr;
   const law = otLawOf(await loadOtLawRows(today), today);
   const floor = otLegalRateFloor(profile, law.ok ? law.law : OT_LAW_DEFAULT);
-  if (floor !== null && v < floor) throw new PayrollInputError(OT_TEXT.rateBelowLaw);
-  return { otHourlyRateSatang: v };
+  if (floor === null) throw new PayrollInputError(OT_TEXT.rateNoBase);
+  if (rate < floor) throw new PayrollInputError(given ? OT_TEXT.rateBelowLaw : OT_TEXT.rateRecheck);
+  return given ? { otHourlyRateSatang: rate } : {};
 }
 // ◂ HR H2.9
 
@@ -370,6 +374,7 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id } });
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
   if (row.crmCommissionId != null) return { ok: false, reason: CANCEL_FROM_CRM };
+  if (row.sourceType === "OT_REQUEST") return { ok: false, reason: OT_TEXT.otRow }; // HR H2.9 ▸ r2.3 รายการจากคำขอ OT (จ่าย/ส่วนต่าง/กลับ) แก้ที่คำขอ OT เท่านั้น ◂
   let boundDraft: { id: string; periodKey: string } | null = null;
   if (row.runId) {
     const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: row.runId, systemId: ctx.systemId }, select: { id: true, periodKey: true, status: true, journalEntryId: true } });
@@ -927,6 +932,7 @@ async function cancelBoundDraftAdjustment(
       const cur = await lockRunRow(tx, ctx, run.id);
       if (!cur || cur.periodKey !== run.periodKey) throw new RunRefusal(RUN_CHANGED);
       if (cur.status !== "DRAFT" || cur.journalEntryId) throw new RunRefusal(CANCEL_BOUND_APPROVED);
+      if (await tx.hrPayAdjustment.findFirst({ where: { ...scope, id: row.id, sourceType: "OT_REQUEST" }, select: { id: true } })) throw new RunRefusal(OT_TEXT.otRow); // HR H2.9 ▸ r2.3 ◂
       const del = await tx.hrPayAdjustment.deleteMany({ where: { ...scope, id: row.id, runId: run.id, status: row.status as "PENDING" | "APPROVED" | "REJECTED" } });
       if (del.count !== 1) throw new RunRefusal(RUN_CHANGED);
       const note = `คำนวณใหม่ ${bkkStamp(new Date())}`;
@@ -1358,6 +1364,7 @@ export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: Payrol
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id }, select: { id: true, employeeId: true, periodKey: true, status: true, runId: true, crmCommissionId: true } });
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
   if (row.crmCommissionId) return { ok: false, reason: "รายการคอมมิชชันจาก CRM ระบบ CRM ย้ายงวดให้เอง" };
+  if (await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id, sourceType: "OT_REQUEST" }, select: { id: true } })) return { ok: false, reason: OT_TEXT.otRow }; // HR H2.9 ▸ r2.3 ◂
   if (row.runId || (row.status !== "PENDING" && row.status !== "APPROVED")) return { ok: false, reason: "รายการนี้ไม่ได้ค้างแล้ว กรุณาเปิดดูใหม่" };
   if (!actor.isOwner) {
     const uid = typeof actor.userId === "string" ? actor.userId.trim() : "";
