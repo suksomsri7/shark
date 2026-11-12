@@ -184,6 +184,16 @@ export async function GET(req: Request) {
     });
   }
   // ◂ HR H2.4
+  // HR H2.5 ▸ R8 ตาข่ายสำรองของงาน "hr.attendance" (ตัวหลัก = งานรายนาทีทุก 5 นาที · Q2): เตือนยังไม่เข้างาน/ไม่มา + ปิดผลการลงเวลา D−7…D ทุกร้าน ·
+  //   งบ 20 วิ · รันซ้ำได้ · best-effort: ล้มห้ามทำให้รอบนี้แดง (ไม่เพิ่มช่องในผลลัพธ์ของ route)
+  try {
+    await (await import("@/lib/modules/hr/judge")).runAttendanceJobs({ now: new Date(), deadline: new Date(Date.now() + 20_000) });
+  } catch (e) {
+    await logOps("WARN", "cron", "runAttendanceJobs (ตัดสินผล/เตือนการลงเวลา) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ HR H2.5
   // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
   //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
   let outboxDrained = -1;

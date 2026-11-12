@@ -1430,6 +1430,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "hr.shift.swap_requested": withAutomation(async () => {}),
   "hr.shift.swap_approved": withAutomation(async () => {}),
   // ◂ HR H2.3
+  // HR H2.5 ▸ การเตือนลงเวลา (hr/judge.ts#runAttendanceJobs — ยิงใน tx เดียวกับแถว HrAttendanceAlert · key `<type>#<alertId>` · payload id ล้วน)
+  //   ตัวรับ = notifyAttendanceAlert (ล็อกการเตือน · notifiedAt ⇒ ส่งซ้ำไม่เพิ่มแจ้งเตือน) แล้วจึง automation/เว็บฮุค
+  "hr.attendance.late": withAutomation(async (evt) => (await import("@/lib/modules/hr/judge")).notifyAttendanceAlert(evt)),
+  "hr.attendance.absent": withAutomation(async (evt) => (await import("@/lib/modules/hr/judge")).notifyAttendanceAlert(evt)),
+  // ◂ HR H2.5
   "crm.commission.created": crmFirst(crmCommissionBridge("onCommissionCreated"), withAutomation(async () => {})),
   "crm.commission.approved": crmFirst(crmCommissionBridge("onCommissionApproved"), withAutomation(async () => {})),
   "crm.commission.reversed": crmFirst(crmCommissionBridge("onCommissionReversed"), withAutomation(async () => {})),
