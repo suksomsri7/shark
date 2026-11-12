@@ -1,0 +1,3 @@
+# controller run control1 · h2.7 @fcbf31d31 · base 2e23c8164aa17a340fd6414eba361b6d0e0979b9 · mode full · 2026-11-12T02:38:48Z · load 12.00 13.49 13.33
+prisma generate exit=0 [02:39Z]
+ALLDONE aborted (r5 pending)
