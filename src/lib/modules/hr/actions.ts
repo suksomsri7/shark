@@ -26,6 +26,8 @@ import {
   type Ctx,
 } from "./service";
 import { kioskClock } from "./clock"; // HR H2.4 ▸ R9 kiosk · r2 ▸ R1 ชื่อ + PIN ◂
+import { offboardEmployee } from "./lifecycle"; // HR H4.4 ▸ R9 ลบ/สถานะสิ้นสุด = สิ้นสุดการจ้างทางเดียว (PIN · สิทธิ์แอป · คำขอค้าง ในธุรกรรมเดียว) ◂
+import { thaiDateKey } from "@/lib/ui/date"; // HR H4.4 ◂
 import { employeeProfileInputFromForm, hrViewerOf } from "./privacy";
 // HR H1.1 ▸ R5 ขอบเขตสาขาของผู้กด — สาขาของเป้าหมายอ่านจากแถวใน DB เสมอ (ไม่เชื่อฟอร์ม) ◂
 import {
@@ -183,8 +185,21 @@ export async function removeEmployeeAction(formData: FormData) {
   if (!systemId || !employeeId) return;
   const t = await hrTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId); // HR H1.1 ▸ สาขาประจำ ◂
   assertHrCan(auth, "hr.employee.create", t.unitId);
-  await setEmployeeActive({ tenantId: auth.active.tenantId, systemId }, employeeId, false);
+  // HR H4.4 ▸ R9: ลบออกจากทะเบียน = สิ้นสุดการจ้าง (เหตุผล "อื่น ๆ") — วันสิ้นสุด = วันที่บันทึกไว้แล้วถ้าไม่เกินวันนี้ ไม่งั้นวันนี้ ·
+  //   ไม่สำเร็จ = ข้อความไทยคงที่ของ lifecycle (ไม่มีชื่อ/id) ◂
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const r = await offboardEmployee(ctx, hrViewerOf(auth), employeeId, { reason: "OTHER", endDate: await keptEndDate(ctx, employeeId) });
+  if (!r.ok) throw new HrBranchError(r.reason);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
+}
+
+/** HR H4.4 ▸ วันสิ้นสุดที่บันทึกไว้ (ไม่เกินวันนี้ตามเวลาไทย) — ไม่มี/อนาคต = undefined (lifecycle ใช้วันนี้) ◂ */
+async function keptEndDate(ctx: Ctx, employeeId: string, fromForm?: string | null): Promise<string | undefined> {
+  const today = thaiDateKey(new Date());
+  if (typeof fromForm === "string" && fromForm.trim()) return fromForm.trim();
+  const d = (await getEmployee(ctx, employeeId))?.endDate;
+  const day = d ? d.toISOString().slice(0, 10) : "";
+  return day && day <= today ? day : undefined;
 }
 
 export async function restoreEmployeeAction(formData: FormData) {
@@ -240,13 +255,19 @@ export async function saveEmployeeProfileAction(
     throw e;
   }
   // HF-HR-0: ช่องอ่อนไหวผ่านเข้า service เฉพาะผู้ดูเงินเดือน — ตัวกรองกลางอยู่ที่ privacy.ts (oracle เรียกตัวเดียวกัน)
+  // HR H4.4 ▸ R9: สถานะ "สิ้นสุด" ของคนที่ยังทำงาน = สิ้นสุดการจ้าง (offboardEmployee เหตุผล "อื่น ๆ") — สถานะ + วันสิ้นสุดไม่บันทึกผ่านฟอร์มโปรไฟล์
+  //   (ไม่งั้นได้ "ENDED แต่ยังใช้งาน" เมื่อสิ้นสุดไม่ผ่าน) · ช่องอื่นบันทึกตามปกติก่อน · ทดลองงาน/ประจำ ไม่แตะ active ◂
+  const ending = input.employmentStatus === "ENDED" && !!(await getEmployee(ctx, employeeId))?.active;
+  const formEnd = input.endDate;
+  if (ending) {
+    delete input.employmentStatus;
+    delete input.endDate;
+  }
   const res = await saveEmployeeProfile(ctx, employeeId, input);
   if (!res.ok) return { status: "error", message: res.reason ?? "บันทึกไม่ได้" };
-  // HR H1.1 R12 ▸ R12.4 (m-2): สถานะ "สิ้นสุด" = พ้นสภาพ ⇒ ปิดการใช้งานผ่านทางเดิม (setEmployeeActive(false): ลงเวลา/PIN/ใบลาใหม่ไม่ได้ ·
-  //   ไม่เข้ารอบจ่ายใหม่ · endDate = วันนี้ถ้ายังไม่มี) · ทดลองงาน/ประจำ ไม่แตะ active ◂
-  if (input.employmentStatus === "ENDED") {
-    const cur = await getEmployee(ctx, employeeId);
-    if (cur?.active) await setEmployeeActive(ctx, employeeId, false);
+  if (ending) {
+    const off = await offboardEmployee(ctx, hrViewerOf(auth), employeeId, { reason: "OTHER", endDate: await keptEndDate(ctx, employeeId, formEnd) });
+    if (!off.ok) return { status: "error", message: off.reason };
   }
   revalidatePath(`/app/sys/${systemId}/hr/employees/${employeeId}`);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);

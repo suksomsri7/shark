@@ -40,6 +40,7 @@ import { evaluate } from "@/lib/core/rbac";
 // HR H1.1 ▸ R4/R8 ขอบเขตสาขาของผู้ดู (ทะเบียน · ลงเวลา · ใบลา · kiosk · หน้าภาพรวม) ◂
 import { hrScopeOf, isAllBranches, unitsForScope } from "./scope";
 import { canManageHrSettings } from "./settings"; // HR H1.2 ▸ ลิงก์หน้าตั้งค่า (เฉพาะผู้ตั้งค่าได้) ◂
+import { LifecycleDuePanel } from "./lifecycle-ui"; // HR H4.4 ▸ แผง "ต้องจัดการ" ของทะเบียน ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -368,6 +369,8 @@ export async function HrEmployeesSection({ systemId, unit }: { systemId: string;
 
   return (
     <Section title={`พนักงาน (${employees.length})`}>
+      {/* HR H4.4 ▸ แผง "ต้องจัดการ" (ภาพ 02 · lifecycleDue) — ผู้ดูข้อมูลบันทึกเท่านั้น ◂ */}
+      <LifecycleDuePanel systemId={systemId} />
       {showBranches && (
         <nav data-testid="hr-register-branch-filter" aria-label="กรองตามสาขา" className="mb-2 flex flex-wrap gap-2">
           {chips.map((c) => (

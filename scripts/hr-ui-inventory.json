@@ -3763,6 +3763,595 @@
    "wo": "H3.3",
    "oracle": "qc-hr-h3.3",
    "note": "ทางเข้าแท็บตารางกฎหมาย (≥ 44 px)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-life-due",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "แผง \"ต้องจัดการ\" 4 ช่อง (ภาพ 02) · lifecycleDue"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-life-due-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/[employeeId]"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "* = <employeeId>-<PROBATION_END|CONTRACT_END|ONBOARDING_OPEN|OFFBOARDING_OPEN> · ชื่อ + วันที่เท่านั้น"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-banner",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3) · ทดลองงาน/มีวันสิ้นสุดสัญญา/เคยสิ้นสุด",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "แถบทดลองงาน \"ครบ <วัน> (อีก N วัน)\" · สิ้นสุดแล้ว = วัน/เหตุผล/หมายเหตุ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-pass",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3) · สถานะ PROBATION · ยังทำงาน · ไม่ใช่ตัวเอง",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "action": "confirmProbationAction"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "ผ่านทดลองงาน PROBATION → ACTIVE (ไม่ผ่าน = สิ้นสุดการจ้าง PROBATION_FAILED)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-checklist",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "รายการรับพนักงานใหม่ 5/7 + แถบความคืบหน้า · รายการออกจากงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-start-onboarding",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3) · ยังไม่มีรายการรับเข้า · ยังทำงาน",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "action": "startChecklistAction"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "สร้าง 7 ข้อจากแม่แบบ (1 แถวต่อรหัส) · Q10 ไม่สร้างเองตอนเพิ่มพนักงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-start-offboarding",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3) · สิ้นสุดแล้วแต่ยังไม่มีรายการออก",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "action": "startChecklistAction"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "สร้างรายการออกจากงานจากแม่แบบ (ปกติสร้างเองตอนสิ้นสุดการจ้าง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-task-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "action": "setTaskDoneAction"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "* = <taskId> · กดสลับ ทำแล้ว/ยังไม่ทำ (≥ 44 px)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-notes",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "บันทึก/ตักเตือน/ประเมิน (เพิ่มได้อย่างเดียว · Q5)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-note-add",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3) · ไม่ใช่ตัวเอง",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "action": "addReviewNoteAction"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "ฟอร์มเพิ่มบันทึก (ชนิด · หัวข้อ · รายละเอียด · ไตรมาส · คะแนน · การมองเห็น)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-note-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก (OWNER หรือคีย์ hr.employee.create / hr.* ตรง ๆ · ในขอบเขตสาขา) — MANAGER ที่ไม่มีคีย์/ผู้ดูเงินเดือน/พนักงานไม่เห็น (R3 · Q3)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "* = <noteId> · หัวข้อ/รายละเอียด/คะแนนเห็นเฉพาะผู้ดูข้อมูลบันทึก"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-offboard",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ด่านปุ่มลบเดิม (evaluate hr.employee.create · พนักงานในสาขาของผู้กด) · พนักงานที่ยังทำงาน · ไม่ใช่ตัวเอง",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "modal"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "ปุ่ม \"สิ้นสุดการจ้าง\" เปิดแผงยืนยัน (details)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-offboard-date",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ด่านปุ่มลบเดิม (evaluate hr.employee.create · พนักงานในสาขาของผู้กด) · พนักงานที่ยังทำงาน · ไม่ใช่ตัวเอง · แผงเปิดอยู่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "วันสิ้นสุดงาน ≤ วันนี้ (อนาคต = ตั้งวันสิ้นสุดสัญญาแทน · Q1)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-offboard-reason",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ด่านปุ่มลบเดิม (evaluate hr.employee.create · พนักงานในสาขาของผู้กด) · พนักงานที่ยังทำงาน · ไม่ใช่ตัวเอง · แผงเปิดอยู่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "เหตุผล 5 ชนิด (HrOffboardReason)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-offboard-note",
+   "kind": "textarea",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ด่านปุ่มลบเดิม (evaluate hr.employee.create · พนักงานในสาขาของผู้กด) · พนักงานที่ยังทำงาน · ไม่ใช่ตัวเอง · แผงเปิดอยู่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "หมายเหตุ ≤ 500 ตัวอักษร (ไม่ออก outbox/audit/การ์ด)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-offboard-access",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ด่านปุ่มลบเดิม (evaluate hr.employee.create · พนักงานในสาขาของผู้กด) · พนักงานที่ยังทำงาน · ไม่ใช่ตัวเอง · แผงเปิดอยู่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "ติ๊ก = ถอนสิทธิ์บัญชี SHARK (ค่าเริ่มต้นจากค่าตั้ง) · ข้อความบอกว่าดูสลิปของตัวเองไม่ได้อีก (Q4)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-life-offboard-confirm",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ด่านปุ่มลบเดิม (evaluate hr.employee.create · พนักงานในสาขาของผู้กด) · พนักงานที่ยังทำงาน · ไม่ใช่ตัวเอง · แผงเปิดอยู่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "action": "offboardEmployeeAction"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "ยืนยัน = ธุรกรรมเดียว (สถานะ · PIN · สิทธิ์แอป · เครื่อง push · คำขอค้าง · ตารางกะ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-life-settings",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก · แก้ได้เฉพาะผู้ดูแลทุกสาขา (ค่าทั้งร้าน — ผู้จัดการสาขาเห็นแบบปิดแก้)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "action": "saveLifecyclePolicyAction"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "ส่วนค่าตั้งวงจรพนักงาน (AppSystem.settings.hrLifecycle)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-life-lead-probation",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก · แก้ได้เฉพาะผู้ดูแลทุกสาขา (ค่าทั้งร้าน — ผู้จัดการสาขาเห็นแบบปิดแก้)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "วันแจ้งก่อนครบทดลองงาน 0–90 (ค่าเริ่มต้น 14)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-life-lead-contract",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก · แก้ได้เฉพาะผู้ดูแลทุกสาขา (ค่าทั้งร้าน — ผู้จัดการสาขาเห็นแบบปิดแก้)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "วันแจ้งก่อนสัญญาหมด 0–180 (ค่าเริ่มต้น 30)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-life-kanban",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก · แก้ได้เฉพาะผู้ดูแลทุกสาขา (ค่าทั้งร้าน — ผู้จัดการสาขาเห็นแบบปิดแก้)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "เปิดสร้างการ์ดในบอร์ดงาน (ปริยายปิด · D6) + เลือกบอร์ด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-life-template-onboarding",
+   "kind": "textarea",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก · แก้ได้เฉพาะผู้ดูแลทุกสาขา (ค่าทั้งร้าน — ผู้จัดการสาขาเห็นแบบปิดแก้)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "แม่แบบรับเข้า: รหัส | หัวข้อ | วัน (≤ 20 ข้อ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-life-template-offboarding",
+   "kind": "textarea",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ดูข้อมูลบันทึก · แก้ได้เฉพาะผู้ดูแลทุกสาขา (ค่าทั้งร้าน — ผู้จัดการสาขาเห็นแบบปิดแก้)",
+   "roles": [
+    "owner",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "H4.4",
+   "oracle": "qc-hr-h4.4",
+   "note": "แม่แบบออกจากงาน: รหัส | หัวข้อ | วัน (≤ 20 ข้อ)"
   }
  ]
 }
