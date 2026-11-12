@@ -82,6 +82,7 @@ S5.1|R4|C|R|[db] rebuild unchanged ⇒ written 0 · ids/versions/updatedAt/kind 
 S6.1|R5|C|R|[db] recompute (OUT moved) ⇒ only eC OUTDATED · rebuild ⇒ OT 60 · version 2 · source version 2 · written 1
 S6.2|R5|C|R|[db] leave revoked ⇒ OUTDATED · rebuild ⇒ STALE review · state REVIEW
 S6.3|R5|C|R|[db] recompute after revoke ⇒ rebuild ⇒ ABSENT 480 · no review · CURRENT
+S6.4|R5|C|R|[db] ORACLE-EDIT (new, controller): H2.6 correction (OUT 15:00 → 17:00: original voided · corrected punch · stored day recomputed) ⇒ snapshot built before = OUTDATED · rebuild = corrected minutes (ow 120 · source version 2) · CURRENT
 S7.1|R3|C|R|[db] NOT_FINAL (day not over) ⇒ PENDING · ORPHAN after unpublish
 S7.2|R3|M|R|[db] NOT_STORED (final, finaliser not run) · after finaliser ⇒ clean literal
 S8.1|R6|C|R|[db] v1 approve binds 165 days + 27 kind rows to the run
@@ -594,6 +595,34 @@ async function runDb(): Promise<void> {
     await build(cA, V.owner, N_AUG1);
     const r22 = day(await wdRows(TT, sA), "eC", "2031-07-22");
     ck("S9.4", { b: b.ok, ver: ver === 3, inv, conv: (await stateOf("eC")) === "CURRENT" && hdr(r22) === Hd(W, "WORKED", { p: 480, w: 480 }) }, "consistent · converges", `${st} src=${srcV} ver=${ver}`);
+  }
+  // ── S6.4 ORACLE-EDIT (new check, controller 12 Nov — closes D6 for corrections): H2.6 time correction → OUTDATED → rebuild from corrected minutes ──
+  //   own system D (Dec 2031) so the July/Sept/Oct literals are untouched · owner files a CHANGE ⇒ approved + applied in the same tx (H2.6 Q4)
+  {
+    const sD = await sys("ทีม D");
+    const cD = { tenantId: TT, systemId: sD };
+    const eS = await me(sD, "เอส", { unitId: u1 });
+    const shD = await shiftOf(sD, "เช้าดี", 420, 900);
+    const xs = await ent(sD, eS, "2031-12-01", shD, u1);
+    const p = await io(sD, eS, xs, bk("2031-12-01", "07:00"), bk("2031-12-01", "15:00"));
+    const N2 = bk("2031-12-09"); // after the week (Mon 1 – Sun 7) is closed: DAY_OFF slots finalised
+    await job(bk("2031-12-02"));
+    await job(N2);
+    const PD = { periodKey: "2031-12" };
+    const b0 = await build(cD, V.owner, N2, PD);
+    const st = async () => ((await W_("workEntryPreview", cD, V.owner, PD, { now: N2 })).value?.rows ?? []).find((r: Any) => r.employeeId === eS)?.state ?? "∅";
+    const s0 = await st();
+    const CM = (await import("@/lib/modules/hr/correction")) as Any;
+    const rq = await CM.requestCorrection(cD, V.owner, { action: "CHANGE", employeeId: eS, attendanceId: p.o, at: bk("2031-12-01", "17:00"), reason: "แก้เวลาออก QC" }, { now: N2 }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+    const voided = (await P.hrAttendance.findFirst({ where: { id: p.o! }, select: { voidedAt: true } }))?.voidedAt != null;
+    const s1 = await st();
+    const b1 = await build(cD, V.owner, N2, PD);
+    const r1 = day(await wdRows(TT, sD), "eS", "2031-12-01") ?? (await wdRows(TT, sD))?.find((r) => r.employeeId === eS && dk(r.date) === "2031-12-01");
+    const r = {
+      before: b0.ok && s0 === "CURRENT", req: rq?.ok === true && rq?.status === "APPROVED", voided, outdated: s1 === "OUTDATED", rebuilt: b1.ok && b1.value?.written === 1,
+      lit: hdr(r1) === Hd(W, "WORKED", { p: 480, w: 480, ow: 120 }), ver: r1?.version === 2 && r1?.sourcesJson?.attendanceDays?.[0]?.version === 2, cur: (await st()) === "CURRENT",
+    };
+    ck("S6.4", r, "OUTDATED → corrected minutes · CURRENT", `${s0}→${s1} ${short(rq, 60)} ${hdr(r1)}`);
   }
   // ── S10 privacy (system A, July) ──
   {

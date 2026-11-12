@@ -45,7 +45,7 @@ qc-hr-h3.1 forced 52/52 ×3 + unforced 52/52 (residue none) · seed-hr-qc 33/33 
 ## 7. Debts / risks for H3.2/H3.4
 - D1–D6 of the brief stand. D-H29-normal-hours (above).
 - OT pay: work entries carry measured OT only; `sourcesJson.otPayment` and the OT kind rows' `note` = `MEASURED_ONLY_PAY_VIA_HR_PAY_ADJUSTMENT_H29`; H3.4 must never price otWorkdayMin/otHolidayMin.
-- Hash covers the roster entries of the whole Mon–Sun week (a published entry turns empty days into DAY_OFF), not punches (D6).
+- inputHash covers: engine version · work rules (normalDayMin) · attendance policy · employee start/end/unit-of-day · every stored HrAttendanceDay (id, version, slotKey) · roster entries of the Mon–Sun week (id, updatedAt, publishedAt, breakMin) · weekday schedule (updatedAt) · leaves covering the day (id, status, halfDay, hours, policyId, paid) · holiday (id, updatedAt). Raw punches are not hashed; an H2.6 correction voids/adds punches and recomputes the stored day ⇒ row version bumps ⇒ OUTDATED (proved by S6.4 — D6 closed for corrections; an unrecomputed punch edit still shows only as STALE).
 - `buildWorkEntrySnapshot` stops after ~20 s and returns `next` (call again with `after`); H3.4 run creation must loop.
 - REVERSED period rows keep the old `runId` until rebuilt (rebuild sets `runId` null on changed rows; approve re-binds all).
 
