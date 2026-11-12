@@ -341,9 +341,11 @@ const DAY_SELECT = {
   breakMin: true,
   otMin: true,
   missingOut: true,
+  leaveId: true,
+  leaveFraction: true,
   version: true,
 } as const;
-type DayRow = { id: string; employeeId: string; date: Date; slotKey: string; unitId: string | null; status: string; lateMin: number; earlyOutMin: number; workedMin: number; breakMin: number; otMin: number; missingOut: boolean; version: number };
+type DayRow = { id: string; employeeId: string; date: Date; slotKey: string; unitId: string | null; status: string; lateMin: number; earlyOutMin: number; workedMin: number; breakMin: number; otMin: number; missingOut: boolean; leaveId: string | null; leaveFraction: unknown; version: number };
 
 /** คอลัมน์ผลตัดสินของแถว (ตัวปิดวัน/คิดผลใหม่ใช้ชุดเดียวกัน) */
 function judgedColumns(s: LiveSlot) {
@@ -373,7 +375,13 @@ function judgedColumns(s: LiveSlot) {
   };
 }
 const STALE_KEYS = ["status", "lateMin", "earlyOutMin", "otMin", "workedMin", "missingOut"] as const;
-const isStale = (live: LiveSlot | null, row: DayRow) => !live || STALE_KEYS.some((k) => (live.out as unknown as Record<string, unknown>)[k] !== (row as unknown as Record<string, unknown>)[k]);
+/** มติ r4 (1): ใบลา/ส่วนวันลาที่เปลี่ยนหลังปิดวัน (ถอน · อนุมัติภายหลัง · ลาชั่วโมง) ก็ทำให้แถว stale แม้สถานะไม่เปลี่ยน */
+const fracOf = (v: unknown) => (v === null || v === undefined ? null : Number(v as never).toFixed(1));
+const isStale = (live: LiveSlot | null, row: DayRow) =>
+  !live ||
+  STALE_KEYS.some((k) => (live.out as unknown as Record<string, unknown>)[k] !== (row as unknown as Record<string, unknown>)[k]) ||
+  (live.leave?.id ?? null) !== row.leaveId ||
+  fracOf(live.leaveFraction) !== fracOf(row.leaveFraction);
 
 // ═══════════════════════════ DTO ═══════════════════════════
 const leaveLabel = (l: JudgeLeave, wide: boolean) => (wide ? l.policyName || LEAVE_CATEGORY_TH[l.type] || LEAVE_PLAIN_TH : LEAVE_PLAIN_TH);
@@ -605,11 +613,11 @@ const PAGE_SIZE = 200;
 const ROTATE_MS = 5 * MIN_MS;
 
 /**
- * งานตามเวลา: วัน D−7…D (D = วันไทยของ now) ทุกระบบ HR (เรียงตาม id แล้วหมุนจุดเริ่ม) — ต่อระบบแบ่พนักงานเป็นหน้า (เรียงตาม id · pageSize คน) ·
- * ต่อหน้า: โหลด → เตือน → ปิดวัน · ทุกหน้าทุกรอบจนกว่าจะถึง deadline (มติ r3 4 — ไม่ข้ามทั้งระบบ) ·
- * หน้าแรกของแต่ละรอบหมุนตามช่วง 5 นาทีของ now ⇒ รอบที่ถูกตัดด้วย deadline ไม่ทำให้หน้าหลัง ๆ อดตลอด · ถูกตัด = WARN ·
- * ข้อมูลของหน้าถึงเพดาน take ⇒ แบ่งหน้าครึ่งแล้วทำซ้ำ (ไม่เตือน/ไม่ปิดวันบนข้อมูลที่ขาด) ·
- * พนักงานที่ปิดใช้ (active=false) หรือพ้นสภาพ (ENDED) ไม่ถูกเตือน/ปิดวัน (มติ r2 E) · ไม่มีอะไรถึงเวลา = ไม่เขียนอะไรเลย ·
+ * งานตามเวลา: วัน D−7…D (D = วันไทยของ now) ทุกระบบ HR — ต่อระบบเดินพนักงานตาม id เป็นวง ทีละชุด pageSize คน (โหลดต่อชุด) ·
+ * ต่อคน: เตือน → ปิดวัน · ตรวจ deadline ทุกคน (มติ r4 2) · ถูกตัด ⇒ จำ "คนถัดไป" ไว้ที่ AppSystem.settings.hrAttendanceCursor
+ * (ใต้ล็อกเดียวกับค่าตั้ง hr:clockpolicy:<ระบบ> · เขียนเฉพาะตอนถูกตัด/ล้างเมื่อเดินครบวง) ⇒ รอบหน้าเริ่มที่คนนั้น ไม่ข้ามส่วนที่เหลือ ·
+ * ไม่มีจุดค้าง ⇒ จุดเริ่มหมุนตามช่วง 5 นาทีของ now · ลำดับระบบหมุนแบบเดียวกัน · ถูกตัด = WARN ครั้งเดียวต่อรอบ (มติ r4 3) ·
+ * ข้อมูลของชุดถึงเพดาน take ⇒ แบ่งครึ่งทำซ้ำ · ปิดใช้/พ้นสภาพ ไม่ถูกเตือน/ปิดวัน (มติ r2 E) · ไม่มีอะไรถึงเวลา = ไม่เขียนอะไรเลย ·
  * `tenantId` = จำกัดร้านเดียว · `pageSize` / `maxPages` = ตัวควบคุมของข้อสอบ (maxPages จำลองรอบที่ถูกตัด) · คืนจำนวนแถวที่เพิ่มจริง
  */
 export async function runAttendanceJobs(input: { now: Date; tenantId?: string | null; deadline?: Date | null; pageSize?: number; maxPages?: number }): Promise<{ finalized: number; late: number; absent: number }> {
@@ -622,11 +630,16 @@ export async function runAttendanceJobs(input: { now: Date; tenantId?: string | 
   const days = Array.from({ length: WINDOW_DAYS + 1 }, (_, i) => addDays(from, i));
   const res = { finalized: 0, late: 0, absent: 0 };
   const rot = Math.floor(now.getTime() / ROTATE_MS);
-  let didWork = false;
+  const st = { didWork: false, deadline };
   const systems = await hrSystems(input?.tenantId);
   const s0 = systems.length ? rot % systems.length : 0;
-  // ลำดับระบบหมุนแบบเดียวกับหน้า ⇒ รอบที่ถูกตัดด้วย deadline ไม่ทำให้ระบบท้าย ๆ อด
-  for (const ctx of [...systems.slice(s0), ...systems.slice(0, s0)]) {
+  const order = [...systems.slice(s0), ...systems.slice(0, s0)];
+  const cut: string[] = [];
+  for (const [si, ctx] of order.entries()) {
+    if (st.didWork && Date.now() >= deadline) {
+      cut.push(...order.slice(si).map((c) => c.systemId));
+      break;
+    }
     const db = dbOf(ctx);
     const ids = (
       await db.hrEmployee.findMany({
@@ -641,37 +654,76 @@ export async function runAttendanceJobs(input: { now: Date; tenantId?: string | 
       })
     ).map((r) => r.id);
     if (!ids.length) continue;
-    const pages: string[][] = [];
-    for (let i = 0; i < ids.length; i += pageSize) pages.push(ids.slice(i, i + pageSize));
-    const start = rot % pages.length;
-    for (let k = 0; k < pages.length; k++) {
-      if (k >= maxPages || (didWork && Date.now() >= deadline)) {
-        await logOps("WARN", "hr.attendance", "runAttendanceJobs: หมดเวลาของรอบ — หน้าที่เหลือทำรอบถัดไป (หน้าแรกหมุนทุก 5 นาที)", { tenantId: ctx.tenantId, detail: `system=${ctx.systemId} pages=${pages.length} done=${k}` });
+    const saved = await cursorOf(db, ctx);
+    const at = saved ? ids.findIndex((x) => x >= saved) : -1;
+    const start = at >= 0 ? at : saved ? 0 : (rot * pageSize) % ids.length;
+    let done = 0;
+    let pages = 0;
+    let stopped = false;
+    while (done < ids.length) {
+      if (pages >= maxPages) {
+        stopped = true;
         break;
       }
-      await runPage(ctx, pages[(start + k) % pages.length]!, { now, from, D, days, res });
-      didWork = true;
+      const chunk = Array.from({ length: Math.min(pageSize, ids.length - done) }, (_, k) => ids[(start + done + k) % ids.length]!);
+      const n = await runChunk(ctx, chunk, { now, from, D, days, res }, st);
+      done += n;
+      pages++;
+      if (n < chunk.length) {
+        stopped = true;
+        break;
+      }
     }
+    if (stopped && done < ids.length) {
+      await saveCursor(ctx, ids[(start + done) % ids.length]!);
+      cut.push(ctx.systemId);
+    } else if (saved) await saveCursor(ctx, null);
+  }
+  if (cut.length) {
+    await logOps("WARN", "hr.attendance", "runAttendanceJobs: หมดเวลาของรอบ — ส่วนที่เหลือทำรอบถัดไป (เริ่มที่จุดค้าง)", { tenantId: input?.tenantId ?? undefined, detail: `systems=${cut.length} first=${cut[0]}` });
   }
   return res;
 }
 
-/** หนึ่งหน้าพนักงาน: โหลด → เตือน → ปิดวัน · ข้อมูลถึงเพดาน ⇒ แบ่งครึ่งทำซ้ำ (คนเดียวยังเกิน = WARN ข้ามคนนั้น) */
-async function runPage(ctx: Ctx, ids: string[], o: { now: Date; from: string; D: string; days: string[]; res: { finalized: number; late: number; absent: number } }): Promise<void> {
+const CURSOR_KEY = "hrAttendanceCursor";
+async function cursorOf(db: Db, ctx: Ctx): Promise<string | null> {
+  const s = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
+  const o = s?.settings && typeof s.settings === "object" && !Array.isArray(s.settings) ? (s.settings as Record<string, unknown>) : {};
+  return typeof o[CURSOR_KEY] === "string" && o[CURSOR_KEY] ? (o[CURSOR_KEY] as string) : null;
+}
+/** จำ/ล้างจุดค้างของตัวงาน — ล็อกเดียวกับการบันทึกค่าตั้ง (clock-settings.ts) · spread ค่าตั้งเดิม */
+async function saveCursor(ctx: Ctx, next: string | null): Promise<void> {
+  await tenantDb({ tenantId: ctx.tenantId }).$transaction(async (t) => {
+    const tx = t as unknown as Db;
+    await lock(tx, `hr:clockpolicy:${ctx.systemId}`);
+    const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { id: true, settings: true } });
+    if (!sys) return;
+    const base = sys.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? { ...(sys.settings as Record<string, unknown>) } : {};
+    if (next) base[CURSOR_KEY] = next;
+    else delete base[CURSOR_KEY];
+    await tx.appSystem.updateMany({ where: { id: sys.id, tenantId: ctx.tenantId }, data: { settings: base as Prisma.InputJsonValue } });
+  }, TX_OPTS);
+}
+
+/**
+ * หนึ่งชุดพนักงาน (ตามลำดับที่ส่งมา): ต่อคน เตือน → ปิดวัน · deadline ตรวจก่อนทุกคน (รอบหนึ่งต้องทำได้อย่างน้อยหนึ่งคน) ·
+ * ข้อมูลถึงเพดาน ⇒ แบ่งครึ่งทำซ้ำ (คนเดียวยังเกิน = WARN ข้ามคนนั้น) · คืนจำนวนคนที่ทำเสร็จตั้งแต่ต้นชุด
+ */
+async function runChunk(ctx: Ctx, ids: string[], o: { now: Date; from: string; D: string; days: string[]; res: { finalized: number; late: number; absent: number } }, st: { didWork: boolean; deadline: number }): Promise<number> {
   const { now, from, D, days, res } = o;
   const db = dbOf(ctx);
-  const emps = await employeesOf(db, ctx, { id: { in: ids } });
-  const data = await loadData(db, ctx, emps.map((e) => e.id), from, D);
+  const data = await loadData(db, ctx, ids, from, D);
   if (data.truncated) {
     if (ids.length > 1) {
       const half = Math.ceil(ids.length / 2);
-      await runPage(ctx, ids.slice(0, half), o);
-      await runPage(ctx, ids.slice(half), o);
-      return;
+      const a = await runChunk(ctx, ids.slice(0, half), o, st);
+      if (a < half) return a;
+      return a + (await runChunk(ctx, ids.slice(half), o, st));
     }
     await logOps("WARN", "hr.attendance", "runAttendanceJobs: ข้อมูลของพนักงานคนเดียวถึงเพดาน — ข้ามการเตือน/ปิดวันของคนนี้ในรอบนี้", { tenantId: ctx.tenantId, detail: `system=${ctx.systemId} employee=${ids[0]}` });
-    return;
+    return 1;
   }
+  const empById = new Map((await employeesOf(db, ctx, { id: { in: ids } })).map((e) => [e.id, e]));
   const [stored, fired] = await Promise.all([
     db.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids }, date: { gte: dbDate(from), lte: dbDate(D) } }, select: { employeeId: true, date: true, slotKey: true } }),
     db.hrAttendanceAlert.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: ids }, date: { gte: dbDate(from), lte: dbDate(D) } }, select: { employeeId: true, rosterEntryId: true, kind: true } }),
@@ -684,38 +736,44 @@ async function runPage(ctx: Ctx, ids: string[], o: { now: Date; from: string; D:
   }
   const sent = new Set(fired.map((a) => `${a.employeeId}|${a.rosterEntryId}|${a.kind}`));
   const graceMs = data.pol.clock.closeGraceMin * MIN_MS;
-  const live = emps.map((e) => ({ e, byDay: slotsOf(e, days, data, now) }));
-  // ── การเตือน (R7) ──
-  if (data.pol.att.alertsOn) {
-    for (const { e, byDay } of live) {
-      for (const s of [...byDay.values()].flat()) {
-        if (!s.entry || !s.shift) continue;
-        if (s.events.some((x) => x.kind === "IN") || leaveSilences(s)) continue;
-        const end = shiftWindow(s.day, s.shift).end.getTime();
-        const t = now.getTime();
-        const due: ("NOT_IN" | "ABSENT")[] = [];
-        if (s.out.alertAt && s.out.alertAt.getTime() <= t && t < end) due.push("NOT_IN");
-        if (s.out.absentAt && s.out.absentAt.getTime() <= t && t < end + graceMs) due.push("ABSENT");
-        for (const kind of due) {
-          if (sent.has(`${e.id}|${s.entry.id}|${kind}`)) continue;
-          const n = await fireAlert(ctx, e, s, kind, now);
-          sent.add(`${e.id}|${s.entry.id}|${kind}`);
-          if (kind === "NOT_IN") res.late += n;
-          else res.absent += n;
+  let n = 0;
+  for (const id of ids) {
+    if (st.didWork && Date.now() >= st.deadline) return n;
+    const e = empById.get(id);
+    if (e) {
+      const byDay = slotsOf(e, days, data, now);
+      // ── การเตือน (R7) ──
+      if (data.pol.att.alertsOn) {
+        for (const s of [...byDay.values()].flat()) {
+          if (!s.entry || !s.shift) continue;
+          if (s.events.some((x) => x.kind === "IN") || leaveSilences(s)) continue;
+          const end = shiftWindow(s.day, s.shift).end.getTime();
+          const t = now.getTime();
+          const due: ("NOT_IN" | "ABSENT")[] = [];
+          if (s.out.alertAt && s.out.alertAt.getTime() <= t && t < end) due.push("NOT_IN");
+          if (s.out.absentAt && s.out.absentAt.getTime() <= t && t < end + graceMs) due.push("ABSENT");
+          for (const kind of due) {
+            if (sent.has(`${e.id}|${s.entry.id}|${kind}`)) continue;
+            const k = await fireAlert(ctx, e, s, kind, now);
+            sent.add(`${e.id}|${s.entry.id}|${kind}`);
+            if (kind === "NOT_IN") res.late += k;
+            else res.absent += k;
+          }
+        }
+      }
+      // ── ปิดวัน (R4) ──
+      for (const [day, slots] of byDay) {
+        if (hasOrphan(slots, storedByDay.get(`${e.id}|${day}`) ?? [])) continue; // มติ r2 C
+        for (const s of slots) {
+          if (!s.out.final || have.has(`${e.id}|${s.day}|${s.slotKey}`)) continue;
+          res.finalized += await finalizeSlot(ctx, e, s.day, s.slotKey, now);
         }
       }
     }
+    st.didWork = true;
+    n++;
   }
-  // ── ปิดวัน (R4) ──
-  for (const { e, byDay } of live) {
-    for (const [day, slots] of byDay) {
-      if (hasOrphan(slots, storedByDay.get(`${e.id}|${day}`) ?? [])) continue; // มติ r2 C
-      for (const s of slots) {
-        if (!s.out.final || have.has(`${e.id}|${s.day}|${s.slotKey}`)) continue;
-        res.finalized += await finalizeSlot(ctx, e, s.day, s.slotKey, now);
-      }
-    }
-  }
+  return n;
 }
 
 // ═══════════════════════════ วันที่ต้องคิดผลใหม่ (มติ r3 5) ═══════════════════════════
