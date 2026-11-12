@@ -59,7 +59,8 @@ export async function listSchedulesAction(unitSlug: string, input: unknown) {
 }
 export async function materializeScheduleAction(unitSlug: string, input: unknown) {
   const e = await enter(unitSlug, input, EDIT);
-  return dep.materializeSchedule(e.ctx, e.input);
+  // งบต่อคำขอ: ไม่เกิน MATERIALIZE_ACTION_MAX_CHUNKS ช่วง · ที่เหลืองานรายวัน trips.generateDepartures ทำต่อ (ผล complete: false + doneUntil)
+  return dep.materializeSchedule(e.ctx, e.input, { maxChunks: dep.MATERIALIZE_ACTION_MAX_CHUNKS });
 }
 
 // ── รอบ ──

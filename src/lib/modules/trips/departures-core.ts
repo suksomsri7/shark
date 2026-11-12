@@ -85,6 +85,7 @@ export type DepartureFail = {
   conflict?: DepartureConflict;
   departureIds?: string[];
   scheduleIds?: string[];
+  resourceIds?: string[];
 };
 
 /** ข้อความไทยมาตรฐานต่อรหัส (ผู้เรียกแทนได้เมื่อมีรายละเอียดกว่า) */

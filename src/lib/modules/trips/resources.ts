@@ -322,11 +322,12 @@ export type LockedDeparture = {
   reserved: number;
   minPax: number | null;
   version: number;
+  guaranteedAt: Date | null;
 };
 export async function lockDeparture(tx: Tx, g: Gate, id: string): Promise<LockedDeparture | null> {
   const rows = await tx.$queryRaw<LockedDeparture[]>`
     SELECT "id", "productId", "optionId", "scheduleId", to_char("localDate", 'YYYY-MM-DD') AS "localDate", "startsAt", "endsAt", "status",
-           "capacity", "sold", "held", "reserved", "minPax", "version"
+           "capacity", "sold", "held", "reserved", "minPax", "version", "guaranteedAt"
     FROM "TripDeparture"
     WHERE "id" = ${id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}
     FOR UPDATE`;

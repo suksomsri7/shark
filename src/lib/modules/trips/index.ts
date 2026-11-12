@@ -135,8 +135,9 @@ export {
   // r2 ▸ นิพจน์ SQL เดียวของ "สถานะหลังตัวนับ/ความจุเปลี่ยน" — T0.4 ใช้ตัวนี้ (มติผู้คุม G) ◂
   departureStatusAfterCountersSql,
   departureGuaranteedAtAfterCountersSql,
+  departureCountersUnchangedSql,
 } from "./departures";
-export type { DepartureDTO, ScheduleItem, MaterializeResult, MaterializeConflict, MinPaxResult, MinPaxFailure, DepartureEventType } from "./departures";
+export type { DepartureCountersAfterSql, DepartureDTO, ScheduleItem, MaterializeResult, MaterializeConflict, MinPaxResult, MinPaxFailure, DepartureEventType } from "./departures";
 export {
   RESOURCE_KINDS,
   createResource,

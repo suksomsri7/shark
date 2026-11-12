@@ -150,23 +150,40 @@ async function departurePolicies(g: Gate, rows: readonly { id: string; productId
 }
 
 // ═══════════════════════ สถานะหลังตัวนับ/ความจุเปลี่ยน (ใช้ร่วมกับ T0.4) ═══════════════════════
-/**
- * นิพจน์ SQL เดียวของ "สถานะหลังตัวนับหรือความจุเปลี่ยน" — T0.4 ใช้ตัวนี้ตรงตัว (มติผู้คุม G · REVIEW M2)
- *   FULL และยอดใช้ < ความจุ ⇒ GUARANTEED เมื่อเคยยืนยันออกแล้ว (guaranteedAt มีค่า) หรือขายถึงขั้นต่ำ (sold ≥ minPax · ใบสั่ง §4 ข้อ 4) · ไม่งั้น OPEN
- *     ⇒ GUARANTEED ไม่ย้อนเป็น OPEN เพราะความจุเพิ่ม/ยอดลด
- *   setFull (T0.4 เท่านั้น): OPEN/GUARANTEED และยอดใช้ ≥ ความจุ ⇒ FULL · ใบ T0.3 ส่ง false (ใบนี้ไม่ตั้ง FULL)
- *   capacity = นิพจน์ความจุใหม่ (ค่าพารามิเตอร์หรือ "capacity") · อ้างคอลัมน์ของ "TripDeparture" แบบไม่ใส่ชื่อตาราง (ค่าก่อน UPDATE)
- */
-export function departureStatusAfterCountersSql(capacity: Prisma.Sql, opts: { setFull: boolean }): Prisma.Sql {
-  const full = opts.setFull
-    ? Prisma.sql`WHEN "status" IN ('OPEN', 'GUARANTEED') AND "sold" + "held" + "reserved" >= ${capacity} THEN 'FULL'`
-    : Prisma.empty;
-  return Prisma.sql`(CASE WHEN "status" = 'FULL' AND "sold" + "held" + "reserved" < ${capacity}
-    THEN (CASE WHEN "guaranteedAt" IS NOT NULL OR ("minPax" IS NOT NULL AND "sold" >= "minPax") THEN 'GUARANTEED' ELSE 'OPEN' END) ${full} ELSE "status" END)`;
+/** ค่าหลังการเปลี่ยนของแถว "TripDeparture" ในรูปนิพจน์ SQL — ทุกตัวต้องเป็นค่า "หลัง" UPDATE (ใน SET ทุกนิพจน์เห็นแถวเก่า) */
+export type DepartureCountersAfterSql = {
+  /** ความจุใหม่ เช่น ${n} หรือ "capacity" (ไม่เปลี่ยน) */
+  capacity: Prisma.Sql;
+  /** ยอดใช้ใหม่ = sold + held + reserved หลังเปลี่ยน เช่น ("sold" + "held" + ${n} + "reserved") */
+  used: Prisma.Sql;
+  /** sold ใหม่ เช่น ("sold" + ${n}) หรือ "sold" (ไม่เปลี่ยน) */
+  sold: Prisma.Sql;
+};
+/** ค่าคงเดิม (ใบ T0.3: แก้ความจุอย่างเดียว ตัวนับไม่เปลี่ยน) */
+export function departureCountersUnchangedSql(capacity: Prisma.Sql): DepartureCountersAfterSql {
+  return { capacity, used: Prisma.sql`("sold" + "held" + "reserved")`, sold: Prisma.sql`"sold"` };
 }
-/** guaranteedAt คู่กับนิพจน์ข้างบน: สถานะใหม่เป็น GUARANTEED และยังไม่เคยตั้ง ⇒ เวลาตอนนี้ · อื่น ๆ คงเดิม (ใช้ใน SET เดียวกัน) */
-export function departureGuaranteedAtAfterCountersSql(capacity: Prisma.Sql, opts: { setFull: boolean; nowIso: string }): Prisma.Sql {
-  return Prisma.sql`(CASE WHEN ${departureStatusAfterCountersSql(capacity, opts)} = 'GUARANTEED' THEN COALESCE("guaranteedAt", ${opts.nowIso}::timestamp) ELSE "guaranteedAt" END)`;
+/**
+ * นิพจน์ SQL เดียวของ "สถานะหลังตัวนับหรือความจุเปลี่ยน" — T0.4 ใช้ตัวนี้ตรงตัว (มติผู้คุม G · REVIEW M2 · r3 N1)
+ *   สถานะเดิม FULL และยอดใช้ใหม่ < ความจุใหม่ ⇒ GUARANTEED เมื่อเคยยืนยันออกแล้ว (guaranteedAt มีค่า) หรือ sold ใหม่ ≥ minPax (ใบสั่ง §4 ข้อ 4) · ไม่งั้น OPEN
+ *     ⇒ GUARANTEED ไม่ย้อนเป็น OPEN เพราะความจุเพิ่ม/ยอดลด (มติ: FULL → GUARANTEED เมื่อ sold ≥ minPax ได้แม้ก่อนเวลาตัดสิน)
+ *   setFull (T0.4 เท่านั้น): สถานะเดิม OPEN/GUARANTEED และยอดใช้ใหม่ ≥ ความจุใหม่ ⇒ FULL · ใบ T0.3 ส่ง false (ใบนี้ไม่ตั้ง FULL)
+ * 🔴 ใน SET ของ Postgres ทุกนิพจน์เห็น "แถวเก่า" ⇒ ผู้เรียกต้องส่งค่าหลังเปลี่ยนเป็นพารามิเตอร์ (ห้ามอ้าง "held" ที่กำลังถูกแก้ใน SET เดียวกันแล้วหวังค่าใหม่)
+ * วิธีเรียกของ T0.4 (ถือที่ n ที่):
+ *   const c = { capacity: Prisma.sql`"capacity"`, used: Prisma.sql`("sold" + "held" + ${n} + "reserved")`, sold: Prisma.sql`"sold"` };
+ *   UPDATE "TripDeparture" SET "held" = "held" + ${n}, "status" = ${departureStatusAfterCountersSql(c, { setFull: true })},
+ *     "guaranteedAt" = ${departureGuaranteedAtAfterCountersSql(c, { setFull: true, nowIso })}, "version" = "version" + 1
+ *   WHERE … AND "sold" + "held" + "reserved" + ${n} <= "capacity"
+ *   (คืนที่: used = ("sold" + "held" - ${n} + "reserved") · ขายจากที่ถือ: used ไม่เปลี่ยน sold = ("sold" + ${n}))
+ */
+export function departureStatusAfterCountersSql(c: DepartureCountersAfterSql, opts: { setFull: boolean }): Prisma.Sql {
+  const full = opts.setFull ? Prisma.sql`WHEN "status" IN ('OPEN', 'GUARANTEED') AND ${c.used} >= ${c.capacity} THEN 'FULL'` : Prisma.empty;
+  return Prisma.sql`(CASE WHEN "status" = 'FULL' AND ${c.used} < ${c.capacity}
+    THEN (CASE WHEN "guaranteedAt" IS NOT NULL OR ("minPax" IS NOT NULL AND ${c.sold} >= "minPax") THEN 'GUARANTEED' ELSE 'OPEN' END) ${full} ELSE "status" END)`;
+}
+/** guaranteedAt คู่กับนิพจน์ข้างบน (พารามิเตอร์ชุดเดียวกัน): สถานะใหม่เป็น GUARANTEED และยังไม่เคยตั้ง ⇒ เวลาตอนนี้ · อื่น ๆ คงเดิม (ใช้ใน SET เดียวกัน) */
+export function departureGuaranteedAtAfterCountersSql(c: DepartureCountersAfterSql, opts: { setFull: boolean; nowIso: string }): Prisma.Sql {
+  return Prisma.sql`(CASE WHEN ${departureStatusAfterCountersSql(c, opts)} = 'GUARANTEED' THEN COALESCE("guaranteedAt", ${opts.nowIso}::timestamp) ELSE "guaranteedAt" END)`;
 }
 
 // ═══════════════════════ ชนิด · ตัวช่วย ═══════════════════════
@@ -608,6 +625,17 @@ async function setPaused(ctx: TripCtx, input: unknown, pause: boolean, opts?: Tr
     const cur = await lockSchedule(tx, g, v.scheduleId);
     if (!cur) return failOf("NOT_FOUND");
     if ((cur.pausedAt !== null) === pause) return failOf("BAD_STATE", pause ? "กฎนี้พักอยู่แล้ว" : "กฎนี้ไม่ได้พักอยู่");
+    if (!pause) {
+      // เปิดกฎต่อ: ทรัพยากรของกฎต้องยังอยู่และเปิดใช้ (ล็อก FOR SHARE เรียง id ใต้ล็อกกฎ) — ไม่งั้นทุกวันจะกลายเป็น RESOURCE_INACTIVE ในงานรายวัน
+      const ids = sortedIds(cur.resourceIds);
+      const rows = await lockResourcesShared(tx, g, ids);
+      const found = new Map(rows.map((r) => [r.id, r]));
+      const bad = ids.filter((id) => !found.get(id)?.active);
+      if (bad.length) {
+        const names = bad.map((id) => (found.get(id) ? `"${found.get(id)?.name}"` : `${id} (ไม่พบ)`)).join(", ");
+        return failOf("RESOURCE_INACTIVE", `เปิดกฎต่อไม่ได้: ทรัพยากรของกฎปิดใช้หรือไม่มีแล้ว ${names} — เปลี่ยนทรัพยากรของกฎก่อน`, { resourceIds: bad });
+      }
+    }
     await tx.tripSchedule.updateMany({ where: { id: v.scheduleId }, data: { pausedAt: pause ? now : null } });
     await auditTx(tx, g, pause ? "trips.schedule.pause" : "trips.schedule.resume", "TripSchedule", v.scheduleId, { paused: pause });
     return { ok: true as const, id: v.scheduleId };
@@ -662,7 +690,14 @@ export type MaterializeResult = {
   /** true = สร้างครบทั้งหน้าต่างแล้ว · false = หยุดกลางทาง (stoppedBy บอกเหตุ · ช่วงที่ commit แล้วคงอยู่) */
   complete: boolean;
   stoppedBy?: string;
+  /** วันแรก (ของร้าน) ที่ยังไม่ได้ประมวล — วันก่อนหน้านี้ในหน้าต่างประมวลแล้ว (complete = true ⇒ เท่าปลายหน้าต่างหรือ dateTo + 1) */
+  doneUntil: string;
 };
+/**
+ * งบต่อคำขอของ action (ไม่ใช่งานรายวัน): ประมวลได้ไม่เกินกี่ช่วง (ช่วงละ MATERIALIZE_CHUNK_DAYS วัน) ต่อการกดหนึ่งครั้ง
+ * เหตุ: 730 วัน + ทรัพยากรใช้ ~135 วิ เกินเวลาของคำขอเว็บ ⇒ คืน complete: false + doneUntil แล้วงานรายวันทำต่อ (มติผู้คุม r3 ข้อ 5)
+ */
+export const MATERIALIZE_ACTION_MAX_CHUNKS = 2;
 class SkipDay extends Error {
   constructor(readonly conflict: MaterializeConflict | null) {
     super("skip-day");
@@ -677,7 +712,7 @@ class SkipDay extends Error {
  * idempotent: วันที่มีรอบของกฎแล้ว (สถานะใดก็ได้) = ข้าม · ชน unique = ข้าม (savepoint) + จดใน conflicts
  * ทรัพยากรชน/ปิดใช้ ⇒ ไม่สร้างวันนั้น + conflicts · ข้ามวันที่ startsAt ≤ now
  */
-export async function materializeCore(g: Gate, scheduleId: string, now: Date, signal?: AbortSignal): Promise<MaterializeResult | DepartureFail> {
+export async function materializeCore(g: Gate, scheduleId: string, now: Date, signal?: AbortSignal, maxChunks?: number): Promise<MaterializeResult | DepartureFail> {
   const head = await unitDb(g).tripSchedule.findFirst({ where: { id: scheduleId } });
   if (!head) return failOf("NOT_FOUND");
   const headShape = shapeOf(head);
@@ -692,6 +727,7 @@ export async function materializeCore(g: Gate, scheduleId: string, now: Date, si
   let first = true;
   let stoppedBy: string | undefined;
   let complete = false;
+  let txChunks = 0;
   for (;;) {
     if (signal?.aborted) {
       stoppedBy = "ABORTED";
@@ -721,6 +757,11 @@ export async function materializeCore(g: Gate, scheduleId: string, now: Date, si
         continue;
       }
     }
+    if (maxChunks !== undefined && txChunks >= maxChunks) {
+      stoppedBy = "CHUNK_LIMIT";
+      break;
+    }
+    txChunks++;
     const r = await inTx(g, (tx) => materializeChunkTx(tx, g, { scheduleId, productId: head.productId, optionId, from, to, now, pol }));
     if (isFail(r)) {
       if (first) return r;
@@ -732,7 +773,7 @@ export async function materializeCore(g: Gate, scheduleId: string, now: Date, si
     first = false;
     from = to;
   }
-  return { ok: true, created, conflicts, windowEnd, complete, ...(stoppedBy ? { stoppedBy } : {}) };
+  return { ok: true, created, conflicts, windowEnd, complete, doneUntil: from, ...(stoppedBy ? { stoppedBy } : {}) };
 }
 
 async function materializeChunkTx(
@@ -804,14 +845,17 @@ async function materializeChunkTx(
   return { created, conflicts };
 }
 
-export async function materializeSchedule(ctx: TripCtx, input: unknown, opts?: TripOpts): Promise<MaterializeResult | DepartureFail> {
+/** opts.maxChunks = งบช่วงต่อคำขอ (action ส่ง MATERIALIZE_ACTION_MAX_CHUNKS) · ไม่ส่ง = ทำจนครบหน้าต่าง (งานรายวัน/ข้อสอบ) */
+export async function materializeSchedule(ctx: TripCtx, input: unknown, opts?: TripOpts & { maxChunks?: number }): Promise<MaterializeResult | DepartureFail> {
   const g = await gateUnit(ctx, unitIdOf(input), "edit");
   if (isFail(g)) return g;
   const p = scheduleRefInput.safeParse(input);
   if (!p.success) return invalid(p.error);
   const now = nowOf(opts);
   if (!now) return badNow();
-  return materializeCore(g, p.data.scheduleId, now);
+  const maxChunks = opts?.maxChunks;
+  if (maxChunks !== undefined && (!Number.isInteger(maxChunks) || maxChunks < 1)) return failOf("INVALID_INPUT", "จำนวนช่วงต่อคำขอไม่ถูกต้อง");
+  return materializeCore(g, p.data.scheduleId, now, undefined, maxChunks);
 }
 
 // ═══════════════════════ รอบ (TripDeparture) ═══════════════════════
@@ -959,7 +1003,7 @@ export async function setDepartureCapacity(ctx: TripCtx, input: unknown, opts?: 
   const now = nowOf(opts);
   if (!now) return badNow();
   const nowIso = iso(now);
-  const capSql = Prisma.sql`${v.capacity}`;
+  const capSql = departureCountersUnchangedSql(Prisma.sql`${v.capacity}`);
   const statusSql = departureStatusAfterCountersSql(capSql, { setFull: false });
   const guaranteedAtSql = departureGuaranteedAtAfterCountersSql(capSql, { setFull: false, nowIso });
   return inTx(g, async (tx) => {
@@ -1008,20 +1052,22 @@ export async function setDepartureStatus(ctx: TripCtx, input: unknown, opts?: Tr
     if (TRANSITIONS_BEFORE_START.some(([a, b]) => a === dep.status && b === v.status) && dep.startsAt.getTime() <= now.getTime()) {
       return failOf("PAST_DEPARTURE", "รอบนี้เริ่มไปแล้ว เปิดรับ/ยืนยันออกไม่ได้");
     }
-    const r = await casStatus(tx, g, dep, v.status, now);
+    // มติผู้คุม r3: เปิดรับคืน (CLOSED → OPEN) ของรอบที่เคยยืนยันออก (guaranteedAt มีค่า) ⇒ กลับเป็น GUARANTEED · ล้างการยืนยันได้ทางเดียวคือ GUARANTEED → OPEN
+    const to = dep.status === "CLOSED" && v.status === "OPEN" && dep.guaranteedAt !== null ? "GUARANTEED" : v.status;
+    const r = await casStatus(tx, g, dep, to, now);
     if (!r) return failOf("BAD_STATE");
-    return { ok: true as const, status: v.status };
+    return { ok: true as const, status: to };
   });
 }
 
 /**
  * CAS สถานะ + event status_changed + audit ใน tx เดียว · คืน false = แถวเปลี่ยนไปแล้ว
- * → GUARANTEED ตั้ง guaranteedAt · พนักงานย้ายเป็น OPEN (จาก GUARANTEED หรือ CLOSED) ล้าง guaranteedAt ในคำสั่งเดียวกัน (ยกเลิกการยืนยันโดยตั้งใจ)
+ * → GUARANTEED ตั้ง guaranteedAt (ครั้งแรก) · ล้าง guaranteedAt เฉพาะ GUARANTEED → OPEN (ยกเลิกการยืนยันโดยตั้งใจ · มติผู้คุม r3) ในคำสั่งเดียวกัน
  */
 async function casStatus(
   tx: Tx,
   g: Gate,
-  dep: { id: string; productId: string; status: string; version: number; sold: number; minPax: number | null },
+  dep: { id: string; productId: string; status: string; version: number; sold: number; minPax: number | null; guaranteedAt?: Date | null },
   to: string,
   now: Date,
   audit?: { actorType: "USER" | "SYSTEM"; actorId: string | null; requestedBy?: string | null },
@@ -1032,8 +1078,8 @@ async function casStatus(
       status: to,
       version: { increment: 1 },
       updatedAt: now,
-      ...(to === "GUARANTEED" ? { guaranteedAt: now } : {}),
-      ...(to === "OPEN" ? { guaranteedAt: null } : {}),
+      ...(to === "GUARANTEED" && !dep.guaranteedAt ? { guaranteedAt: now } : {}),
+      ...(dep.status === "GUARANTEED" && to === "OPEN" ? { guaranteedAt: null } : {}),
     },
   });
   if (n.count !== 1) return false;
@@ -1126,18 +1172,23 @@ export async function refreshDeparturePolicy(ctx: TripCtx, input: unknown, opts?
     .filter((x) => x.r.cutoffAt?.getTime() !== x.cutoffAt.getTime());
   let updated = 0;
   const nowIso = iso(now);
-  for (const part of chunksOf(changes, REFRESH_BATCH)) {
-    // คำสั่งเดียวต่อชุด · ไม่แตะรอบที่ถูกยกเลิก/ย้ายเวลาระหว่างนั้น (startsAt ต้องเท่าเดิม)
-    updated += await db.$executeRaw`
-      UPDATE "TripDeparture" AS d SET "cutoffAt" = v.c::timestamp, "updatedAt" = ${nowIso}::timestamp
-      FROM unnest(${part.map((x) => x.r.id)}::text[], ${part.map((x) => iso(x.cutoffAt))}::text[], ${part.map((x) => iso(x.r.startsAt))}::text[]) AS v(id, c, s)
-      WHERE d."id" = v.id AND d."tenantId" = ${g.tenantId} AND d."unitId" = ${g.unitId} AND d."status" <> 'CANCELLED' AND d."startsAt" = v.s::timestamp`;
-  }
-  if (updated) {
-    await inTx(g, async (tx) => {
-      if (p.data.productId) await auditTx(tx, g, "trips.departure.refresh", "TripProduct", p.data.productId, { updated });
-      else await auditTx(tx, g, "trips.departure.refresh", "BusinessUnit", g.unitId, { updated });
+  const batches = chunksOf(changes, REFRESH_BATCH);
+  for (const [i, part] of batches.entries()) {
+    // ชุดละธุรกรรม: คำสั่งเดียว + audit ของชุดนั้นใน tx เดียวกัน · ไม่แตะรอบที่ถูกยกเลิก/ย้ายเวลาระหว่างนั้น (startsAt ต้องเท่าเดิม)
+    const r = await inTx(g, async (tx) => {
+      const n = await tx.$executeRaw`
+        UPDATE "TripDeparture" AS d SET "cutoffAt" = v.c::timestamp, "updatedAt" = ${nowIso}::timestamp
+        FROM unnest(${part.map((x) => x.r.id)}::text[], ${part.map((x) => iso(x.cutoffAt))}::text[], ${part.map((x) => iso(x.r.startsAt))}::text[]) AS v(id, c, s)
+        WHERE d."id" = v.id AND d."tenantId" = ${g.tenantId} AND d."unitId" = ${g.unitId} AND d."status" <> 'CANCELLED' AND d."startsAt" = v.s::timestamp`;
+      if (n) {
+        const after = { updated: n, batch: i + 1, batches: batches.length };
+        if (p.data.productId) await auditTx(tx, g, "trips.departure.refresh", "TripProduct", p.data.productId, after);
+        else await auditTx(tx, g, "trips.departure.refresh", "BusinessUnit", g.unitId, after);
+      }
+      return n;
     });
+    if (isFail(r)) return r;
+    updated += r;
   }
   return { ok: true, updated };
 }
