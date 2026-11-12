@@ -16,7 +16,7 @@
 // SKIP while hr/ot.ts is absent (exit 0) · QC_FORCE=1 / --force-run runs anyway · --list prints the ids.
 // Own tenants `qc-hr-h29-*`, July 2031 (Mon 7 … Sun 13), `opts.now` everywhere, swept in finally (Z1).
 // Run (lane DB): bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h2.9.mts
-import { type Any, type Def, rd, short, errText, stripComments, sha, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, changedVsBase, diffHunks, makeRegistry, qc4Env, fitnessNoEnv, jsonOf, loadOpt, modState, tagOf, makeFixtures, cleanupFx, residueOf, vOf, canon, testidsOf, inventoryParity, msgParity, dbDate, sleep, frozenControls, type Who } from "./qc-hr-lib.mjs";
+import { type Any, type Def, rd, short, errText, stripComments, sha, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, baseRef, pathInBase, changedVsBase, diffHunks, makeRegistry, qc4Env, fitnessNoEnv, jsonOf, loadOpt, modState, tagOf, makeFixtures, cleanupFx, residueOf, vOf, canon, testidsOf, inventoryParity, msgParity, dbDate, sleep, frozenControls, type Who } from "./qc-hr-lib.mjs";
 
 const SUITE = "qc-hr-h2.9";
 const SLUG_PREFIX = "qc-hr-h29-";
@@ -146,7 +146,9 @@ const bk = (day: string, hm: string): Date => {
   return new Date(Date.UTC(y!, mo! - 1, d! + plus, h!, mi!, s ?? 0) - 7 * 3_600_000);
 };
 const missing: string[] = [];
-const base = baseRef("QC_H29_BASE") || "39ea9782c"; // ORACLE-EDIT (controller, 12 Nov): merge-base default via qc-hr-lib baseRef — H2.5 is in session/hr now; iso.sh drops env so a pin breaks control runs
+const base = baseRef("QC_H29_BASE") || "39ea9782c";
+// ORACLE-EDIT (H3.1 merge): base-diff statics (S1.3 · S1.4 · S1.7) are n/a once H2.9 (hr/ot.ts) is in the base — later WOs' hunks are not H2.9's
+const H29_IN_BASE = pathInBase("src/lib/modules/hr/ot.ts", base); // ORACLE-EDIT (controller, 12 Nov): merge-base default via qc-hr-lib baseRef — H2.5 is in session/hr now; iso.sh drops env so a pin breaks control runs
 const OR0 = await loadOpt(F.ot, "@/lib/modules/hr/ot");
 const RU0 = await loadOpt(F.rules, "@/lib/modules/hr/ot-rules");
 if (!OR0 && !FORCE) REG.skipExit([`${F.ot} absent — H2.9 not built (QC_FORCE=1 to run RED)`]);
@@ -192,7 +194,7 @@ console.log("── S1 statics ──");
   const unmarked = hunks.filter((h) => !h.added.concat(h.removed).some((l) => /HR H2\.9/.test(l)));
   const c = code(F.payroll);
   const r = { changed: hunks.length > 0, marked: unmarked.length === 0, fewRemoved: removed.length <= 2, crmKept: !removed.some((l) => /CRM C3\.3|requestCommissionAdjustment|withdrawCommissionAdjustment/.test(l)), writer: /export\s+async\s+function\s+writeOtAdjustmentInTx\s*\(/.test(c), ovr: /otHourlyRateSatang/.test(c.slice(c.indexOf("function setSalaryProfile"), c.indexOf("function listSalaryProfiles"))) };
-  chk("S1.3", Object.values(r).every(Boolean), "marked hunks only", `${short(r, 160)} hunks=${hunks.length} unmarked=${unmarked.length} removed=${removed.length}`);
+  chk("S1.3", H29_IN_BASE || Object.values(r).every(Boolean), "marked hunks only", `${short(r, 160)} hunks=${hunks.length} unmarked=${unmarked.length} removed=${removed.length}`);
 }
 {
   // ORACLE-EDIT (controller ruling 12 Nov on qc-hr-h3.3 S1.3): law.ts takes exactly one marked HR H2.9 hunk (loadOtLawRows · 0 removed) — rest stays frozen
@@ -200,7 +202,7 @@ console.log("── S1 statics ──");
   const ch = changedVsBase(base, FROZEN.filter((f) => f !== LAW));
   const lh = diffHunks(base, LAW) ?? [];
   const lawOk = lh.length === 1 && lh[0]!.removed.length === 0 && lh[0]!.added.some((l) => /HR H2\.9/.test(l)) && lh[0]!.added.some((l) => /export async function loadOtLawRows\(/.test(l));
-  chk("S1.4", ch === "unchanged" && lawOk, "unchanged · law.ts = 1 marked H2.9 hunk", `${ch} · law hunks=${lh.length} ok=${lawOk}`);
+  chk("S1.4", H29_IN_BASE || (ch === "unchanged" && lawOk), "unchanged · law.ts = 1 marked H2.9 hunk", `${ch} · law hunks=${lh.length} ok=${lawOk}`);
   const s = sha(rd(PAYROLL_RULES_FILE));
   chk("S1.5", s === PAYROLL_RULES_SHA, PAYROLL_RULES_SHA.slice(0, 12), s.slice(0, 12));
 }
@@ -222,7 +224,7 @@ console.log("── S1 statics ──");
 {
   const hunks = diffHunks(base, F.judge) ?? [];
   const r = { one: hunks.length === 1, noRemoved: hunks.every((h) => h.removed.length === 0), marked: hunks.every((h) => h.added.some((l) => /HR H2\.9/.test(l))), exports: hunks.every((h) => h.added.some((l) => /\bexport\b/.test(l))) };
-  chk("S1.7", Object.values(r).every(Boolean), "one marked export hunk", `${short(r)} hunks=${hunks.length}`);
+  chk("S1.7", H29_IN_BASE || Object.values(r).every(Boolean), "one marked export hunk", `${short(r)} hunks=${hunks.length}`);
 }
 {
   const cons = code(F.cons);
