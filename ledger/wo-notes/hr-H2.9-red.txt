@@ -1,0 +1,80 @@
+# H2.9 oracle RED run — 2026-11-12T07:07:31Z · tree wip/hr-h2.9 · base 39ea9782c · lane DB wo-hr-qc-l3 (qc-hr.sh)
+# 1) seed: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26c… pnpm exec tsx scripts/seed-hr-qc.mts
+===== seed-hr-qc ===== ผ่าน 32/32
+JSON_SUMMARY {"suite":"seed-hr-qc","total":32,"passed":32,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,
+
+# 2) unforced (… pnpm exec tsx scripts/qc-hr-h2.9.mts) exit 0
+⏭️  SKIPPED — qc-hr-h2.9: not built
+   • src/lib/modules/hr/ot.ts absent — H2.9 not built (QC_FORCE=1 to run RED)
+JSON_SUMMARY {"suite":"qc-hr-h2.9","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["src/lib/modules/hr/ot.ts absent — H2.9 not built (QC_FORCE=1 to run RED)"],"registered":48}
+
+# 3) forced (… env QC_FORCE=1 …) exit 1
+── S1 statics ──
+  ❌ [H2.9-S1.1] [static] ot-rules.ts pure (type imports, no db/clock/float rounding) · BigInt — expected pure + BigInt | actual {"exists":false,"typeOnly":true,"noDb":true,"noClock":true,"noFloat":true,"bigint":false}
+  ❌ [H2.9-S1.2] [static] ot.ts: tenantDb only · locks hr:ot: hr:ot-emp: payroll hr:judge: · emitOutbox · OT_REQUEST — expected all true | actual {"exists":false,"tenantDb":false,"noPrisma":true,"ot":false,"emp":false,"pay":false,"judge":false,"outbox":false,"src":false}
+  ❌ [H2.9-S1.3] [static] payroll.ts: marked HR H2.9 hunks · ≤ 2 removed · CRM block kept · writeOtAdjustmentInTx + writer — expected marked hunks only | actual {"changed":false,"marked":true,"fewRemoved":true,"crmKept":true,"writer":false,"ovr":false} hunks=0 unmarked=0 removed=0
+  ✅ [H2.9-S1.4] [static] frozen files unchanged vs base
+  ✅ [H2.9-S1.5] [static] payroll-rules.ts sha frozen
+  ❌ [H2.9-S1.6] [static] migration 20270102000000_hr_ot_settlement: 13 cols + 5 CHECKs · schema · HrOtRequest only — expected 13 cols · 5 CHECKs · HrOtRequest only | actual {"file":false,"cols":false,"model":false,"checks":false,"minutes":false,"gen":false,"onlyOt":false}
+  ❌ [H2.9-S1.7] [static] judge.ts: one marked export hunk, 0 removed — expected one marked export hunk | actual {"one":false,"noRemoved":true,"marked":true,"exports":true} hunks=0
+  ❌ [H2.9-S1.8] [static] consumer hr.ot.decided · 1 label · no webhook · cron settleOtRequests try/catch — expected all true | actual {"consumer":false,"marked":false,"label":false,"noHook":true,"cron":false}
+  ❌ [H2.9-S1.9] [static] ot-actions.ts use server · 5 actions · no now — expected all true | actual {"useServer":false,"names":false,"noNow":true,"selfNoId":false}
+  ❌ [H2.9-S1.10] [static] UI testids · inventory · hr.ot th=en · salary form field — expected all true | actual {"ids":false,"policy":false,"rate":false,"inv":false,"msg":false} ids=
+── S2 pure ──
+  ❌ [H2.9-S2.1] [pure] otAmount V1–V8 literal satang — expected 8 vectors | actual V1=∅otAmount · V2=∅otAmount · V3=∅otAmount
+  ❌ [H2.9-S2.2] [pure] otAmount V9–V19 literal satang — expected 11 vectors | actual V9=∅otAmount · V10=∅otAmount · V11=∅otAmount
+  ❌ [H2.9-S2.3] [pure] otLawOf L1–L8 + OT_LAW_DEFAULT — expected 8 cases + OT_LAW_DEFAULT literal | actual L1=∅otLawOf · L2=∅otLawOf default=false
+  ❌ [H2.9-S2.4] [pure] otPaidMinutes M1–M10 — expected 10 vectors | actual M1=∅otPaidMinutes · M2=∅otPaidMinutes · M3=∅otPaidMinutes · M4=∅otPaidMinutes
+  ❌ [H2.9-S2.5] [pure] otWindow W1–W12 — expected 12 vectors | actual W1=∅otWindow · W2=∅otWindow · W3=∅otWindow · W4=∅otWindow
+  ❌ [H2.9-S2.6] [pure] otLegalRateFloor · otPolicyOf · purity — expected floors 8750/7716/7500/6500/null · policy · pure | actual {"floor":false,"policy":false,"pure":true}
+[env] qc-hr-h2.9 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.9] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+── S3 requests ──
+  ❌ [H2.9-S3.1] [db] requestOt self BEFORE + on-behalf AFTER rows — expected F1 BEFORE 120 · F2 AFTER 600 | actual {"f1":false,"f2":false} F1=∅requestOt F2=∅requestOt
+  ❌ [H2.9-S3.2] [db] 11 refusals byte-exact · nothing written — expected 11 literal refusals · rows unchanged | actual noEmp=∅requestOt · perm-self=∅requestOt · perm-plain=∅requestOt rows 0→0
+  ❌ [H2.9-S3.3] [db] overlap · cancel · cancelNo · dayOffOne — expected overlap · cancelNo · CANCELLED · re-request ok · dayOffOne | actual a=∅requestOt b=∅requestOt cx=∅cancelOtRequest c=∅cancelOtRequest st=undefined d=∅requestOt off=∅requestOt
+  ❌ [H2.9-S3.4] [db] warnWeek false/false/true (2220 > 2160) — expected false · false · true | actual ∅requestOt | ∅requestOt | ∅requestOt
+── S4 decide/settle ──
+  ❌ [H2.9-S4.1] [db] decide before final ⇒ APPROVED, unsettled, no row — expected APPROVED · settled false · 0 rows | actual ∅decideOtRequest rows=0 st=undefined
+  ℹ attendance job: {"finalized":42,"late":0,"absent":0}
+  ❌ [H2.9-S6.2] [db] race: settle ×3 ⇒ 1 row — expected 1 row | actual 0 rows · ["∅settleOtRequests","∅settleOtRequests","∅settleOtRequests"]
+  ❌ [H2.9-S4.2] [db] settle F1 ⇒ one row 17500 · <id>:1 · 2031-07 · request columns — expected 17500 · 2031-07 · gen 1 | actual {"row":false,"req":false}  paid=undefined
+  ❌ [H2.9-S4.3] [db] F2 day off 110000 · F3 holiday 26250 · F4 hourly 9375 — expected 110000 · 26250 · 9375 | actual {"f2":false,"f3":false,"f4":false} F2= F3= F4=
+  ❌ [H2.9-S4.4] [db] self · fourEyes · notFound ×3 — expected self · fourEyes · notFound ×3 | actual self=∅decideOtRequest fe=∅decideOtRequest nf=∅decideOtRequest pay=∅decideOtRequest plain=∅decideOtRequest
+  ❌ [H2.9-S4.5] [db] never worked ⇒ 0 · no profile ⇒ NO_RATE — expected F5 paid 0 · FN NO_RATE | actual F5=∅decideOtRequest paid=undefined FN=∅decideOtRequest code=undefined
+  ❌ [H2.9-S4.6] [db] STALE wait · recompute ⇒ 13502 — expected STALE wait → 13502 | actual wait=false code=undefined recompute={"ok":true,"id":"cmwd7eljq003918kzecgyy4uc","changed":true," rows=
+  ❌ [H2.9-S4.7] [db] idempotent settle/decide — expected no new row · decided | actual 0→0 again=∅decideOtRequest
+── S6 races ──
+  ❌ [H2.9-S6.1] [db] race: 2 approvers ⇒ 1 ok · 8750 — expected 1 ok · 1 decided · 8750 | actual ∅decideOtRequest | ∅decideOtRequest rows=
+  ❌ [H2.9-S6.4] [db] race: judge holder ⇒ 30 min 3858 — expected waited · 30 min · 3858 | actual waited=false holder= res=∅decideOtRequest rows=
+── S5 periods/revoke ──
+  ❌ [H2.9-S5.1] [db] createPayrollRun binds 20000 + 10000 — expected bound 20000 + 10000 · totalAdd 30000 | actual run={"id":"cmwd7etjx003x18kz45iq74jl"} P1= P3= add=0
+  ❌ [H2.9-S5.2] [db] re-settle bound ⇒ gen2 +5000 2031-08 · Σ 15000 — expected gen1 bound 10000 · gen2 +5000 2031-08 · Σ 15000 | actual rc={"ok":true,"id":"cmwd7eoap003p18kzvqzhtk7t","chang  Σ=0
+  ❌ [H2.9-S5.3] [db] revoke bound ⇒ DEDUCTION 20000 2031-08 · Σ 0 — expected CANCELLED · DEDUCTION 20000 2031-08 · Σ 0 | actual short=∅revokeOtRequest rv=∅revokeOtRequest  Σ=0
+  ❌ [H2.9-S6.3] [db] race: run created in target ⇒ 2031-09 — expected waited · 2031-09 | actual waited=false holder= first=∅decideOtRequest final=∅decideOtRequest rows=
+  ❌ [H2.9-S5.5] [db] nothing unbound in a period with an APPROVED run — expected none unbound in 2031-07 (APPROVED run) · P2 not 2031-08 | actual stray=0 P2=
+  ❌ [H2.9-S5.4] [db] revoke unbound ⇒ REJECTED · Σ 0 — expected row REJECTED · no new row · Σ 0 | actual ∅revokeOtRequest 
+── S7 privacy/scope ──
+  ❌ [H2.9-S7.1] [db] list keys: manager no money · owner/payroll money · plain listNo — expected manager base · owner/pay + money · plain listNo | actual mgr=∅ ∅otRequestList owner=∅ ∅otRequestList pay17500=undefined plain=∅otRequestList
+  ❌ [H2.9-S7.2] [db] myOtRequests own only · noEmp — expected own rows only · amount · noEmp | actual mine=∅myOtRequests emps=0 plain=∅myOtRequests
+  ❌ [H2.9-S7.3] [db] IDOR other tenant/system ⇒ notFound · no leak — expected notFound ×3 · untouched · no leak | actual ∅decideOtRequest | ∅decideOtRequest | ∅revokeOtRequest leak=true
+── S8 event ──
+  ❌ [H2.9-S8.1] [db] hr.ot.decided key + 4-key payload — expected APPROVED + CANCELLED events, 4 keys | actual {"e1":false,"e3":false} e1=∅ e3=∅
+  ❌ [H2.9-S8.2] [db] replay ⇒ 1 notification, no money — expected 1 notification · no money | actual n=0 body=
+── S9 writer/policy ──
+  ❌ [H2.9-S9.1] [db] writer #18 save/below/bad/keep/clear — expected 10000 · below · bad · keep · clear | actual a=ok ra=null b=ok c0=ok c1=ok keep=null clear=null
+  ❌ [H2.9-S9.2] [db] OT policy 0 ⇒ late0 · 73 ⇒ sAfter — expected late0 · sAfter · restored | actual ∅saveOtPolicy late=∅requestOt bad=∅saveOtPolicy get={"__err":"∅getOtPolicy"}
+  ℹ listAttendance digest=8436a89981a0146a04c8954c6b0a49752eb7cb9c0661df9927bc356bd8fe46c9
+  ℹ leaves digest=f43008cba9f7bfae26638ae985e4c11565803988943cf3cf2f3921de10b8a62d
+  ℹ leaveItemsForViewer digest=54ef63446a674b6108da0bf977e2b50aab14cfd40252f18c94c0d4eb0f2798b1
+  ℹ monthlyAttendance digest=9a4c6047d670e99934b26da17183246f1c3ce07415ccc1c7f81f66cb09df1fb3
+  ℹ unavailable digest=840adc0a26e7efd47a1e90cc033305236855d619f8b06aaf42dbb91c3b5e9643
+  ✅ [H2.9-X1] [db] frozen digests + MONTHLY
+  ✅ [H2.9-X2] [db] frozen clock
+  ✅ [H2.9-X3] [db] frozen privacy matrix
+  ✅ [H2.9-X12.1] [static] fitness no env
+RESIDUE none (tenants=3 users=19)
+  ✅ [H2.9-Z1] [db] no residue
+BASE-EXPECTATION 48/48 as registered (RED-by-design 41 · GREEN controls 7)
+===== qc-hr-h2.9 ===== passed 7/48 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.9","total":48,"passed":7,"failed":["H2.9-S1.1","H2.9-S1.2","H2.9-S1.3","H2.9-S1.6","H2.9-S1.7","H2.9-S1.8","H2.9-S1.9","H2.9-S1.10","H2.9-S2.1","H2.9-S2.2","H2.9-S2.3","H2.9-S2.4","H2.9-S2.5","H2.9-S2.6","H2.9-S3.1","H2.9-S3.2","H2.9-S3.3","H2.9-S3.4","H2.9-S4.1","H2.9-S6.2","H2.9-S4.2","H2.9-S4.3","H2.9-S4.4","H2.9-S4.5","H2.9-S4.6","H2.9-S4.7","H2.9-S6.1","H2.9-S6.4","H2.9-S5.1","H2.9-S5.2","H2.9-S5.3","H2.9-S6.3","H2.9-S5.5","H2.9-S5.4","H2.9-S7.1","H2.9-S7.2","H2.9-S7.3","H2.9-S8.1","H2.9-S8.2","H2.9-S9.1","H2.9-S9.2"],"findings":[{"id":"H2.9-S1.1","sev":"CRITICAL"},{"id":"H2.9-S1.2","sev":"CRITICAL"},{"id":"H2.9-S1.3","sev":"CRITICAL"},{"id":"H2.9-S1.6","sev":"CRITICAL"},{"id":"H2.9-S1.7","sev":"MAJOR"},{"id":"H2.9-S1.8","sev":"MAJOR"},{"id":"H2.9-S1.9","sev":"MAJOR"},{"id":"H2.9-S1.10","sev":"MAJOR"},{"id":"H2.9-S2.1","sev":"CRITICAL"},{"id":"H2.9-S2.2","sev":"CRITICAL"},{"id":"H2.9-S2.3","sev":"CRITICAL"},{"id":"H2.9-S2.4","sev":"CRITICAL"},{"id":"H2.9-S2.5","sev":"CRITICAL"},{"id":"H2.9-S2.6","sev":"MAJOR"},{"id":"H2.9-S3.1","sev":"CRITICAL"},{"id":"H2.9-S3.2","sev":"CRITICAL"},{"id":"H2.9-S3.3","sev":"CRITICAL"},{"id":"H2.9-S3.4","sev":"MAJOR"},{"id":"H2.9-S4.1","sev":"CRITICAL"},{"id":"H2.9-S6.2","sev":"CRITICAL"},{"id":"H2.9-S4.2","sev":"CRITICAL"},{"id":"H2.9-S4.3","sev":"CRITICAL"},{"id":"H2.9-S4.4","sev":"CRITICAL"},{"id":"H2.9-S4.5","sev":"CRITICAL"},{"id":"H2.9-S4.6","sev":"CRITICAL"},{"id":"H2.9-S4.7","sev":"CRITICAL"},{"id":"H2.9-S6.1","sev":"CRITICAL"},{"id":"H2.9-S6.4","sev":"CRITICAL"},{"id":"H2.9-S5.1","sev":"CRITICAL"},{"id":"H2.9-S5.2","sev":"CRITICAL"},{"id":"H2.9-S5.3","sev":"CRITICAL"},{"id":"H2.9-S6.3","sev":"CRITICAL"},{"id":"H2.9-S5.5","sev":"CRITICAL"},{"id":"H2.9-S5.4","sev":"CRITICAL"},{"id":"H2.9-S7.1","sev":"CRITICAL"},{"id":"H2.9-S7.2","sev":"CRITICAL"},{"id":"H2.9-S7.3","sev":"CRITICAL"},{"id":"H2.9-S8.1","sev":"CRITICAL"},{"id":"H2.9-S8.2","sev":"MAJOR"},{"id":"H2.9-S9.1","sev":"CRITICAL"},{"id":"H2.9-S9.2","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":["∅ src/lib/modules/hr/ot.ts","∅ src/lib/modules/hr/ot-rules.ts"],"baseRed":41,"baseGreen":7,"offBase":[]}
