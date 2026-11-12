@@ -29,3 +29,10 @@ RESIDUE none (tenants=2 users=13)
 BASE-EXPECTATION 5/57 as registered (RED-by-design 52 · GREEN controls 5) · off: H2.11-S1.1(RED→pass) H2.11-S1.2(RED→pass) H2.11-S1.3(RED→pass) H2.11-S1.4(RED→pass) H2.11-S1.5(RED→pass) H2.11-S1.6(RED→pass) H2.11-S1.7(RED→pass) H2.11-S12.1(RED→pass) H2.11-S12.2(RED→pass) H2.11-S12.3(RED→pass) H2.11-S2.1(RED→pass) H2.11-S2.2(RED→pass) H2.11-S2.3(RED→pass) H2.11-S2.4(RED→pass) H2.11-S2.5(RED→pass) H2.11-S2.6(RED→pass) H2.11-S2.7(RED→pass) H2.11-S3.1(RED→pass) H2.11-S3.2(RED→pass) H2.11-S3.3(RED→pass) H2.11-S3.4(RED→pass) H2.11-S3.5(RED→pass) H2.11-S4.1(RED→pass) H2.11-S4.2(RED→pass) H2.11-S4.3(RED→pass) H2.11-S4.4(RED→pass) H2.11-S4.5(RED→pass) H2.11-S5.1(RED→pass) H2.11-S5.2(RED→pass) H2.11-S5.3(RED→pass) H2.11-S5.4(RED→pass) H2.11-S9.1(RED→pass) H2.11-S9.2(RED→pass) H2.11-S10.1(RED→pass) H2.11-S10.2(RED→pass) H2.11-S6.1(RED→pass) H2.11-S6.2(RED→pass) H2.11-S6.3(RED→pass) H2.11-S6.4(RED→pass) H2.11-S6.5(RED→pass) H2.11-S7.1(RED→pass) H2.11-S7.2(RED→pass) H2.11-S7.3(RED→pass) H2.11-S7.4(RED→pass) H2.11-S8.1(RED→pass) H2.11-S8.2(RED→pass) H2.11-S8.3(RED→pass) H2.11-S8.4(RED→pass) H2.11-S8.5(RED→pass) H2.11-S8.6(RED→pass) H2.11-S8.7(RED→pass) H2.11-S11.1(RED→pass)
 
 ===== qc-hr-h2.11 ===== passed 57/57 (QC_FORCE)
+
+# r2 (2026-11-12T17:37:24Z) — after merging ded3c7948 + 960ef6e9e
+seed-hr-qc ×2: 34/34 · counts identical
+qc-hr-h2.11 forced ×2 65/65 · unforced 65/65 · residue none (+ forced 65/65 after 960ef6e9e)
+h2.9 58/58 · h2.6 55/55 · h2.3 79/79 · h2.7 89/89 · h4.6 69/69 · h3.1 58/58 · h1.2 73/73 · h1.3 63/63 · h0.1 67/67 · h3.3 51/51
+payadjust · bulk-ops · hf-hr-privacy exit 0 · fitness 53/53 + fitness-hr 9/9 bare and env
+typecheck clean (.next/types + tsconfig.tsbuildinfo deleted): exit=0 secs=682 errors=0
