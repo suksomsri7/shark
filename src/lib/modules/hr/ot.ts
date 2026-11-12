@@ -459,7 +459,7 @@ async function measure(tx: Tx, ctx: Ctx, r: OtRow, now: Date): Promise<Entitleme
   if (!basis) {
     const p = await tx.hrSalaryProfile.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: r.employeeId }, select: { payType: true, baseSalarySatang: true, dailyRateSatang: true, hourlyRateSatang: true, otHourlyRateSatang: true } });
     if (!p) return { kind: "wait", code: "NO_RATE" };
-    const law = otLawOf(await loadOtLawRows(best.day, tx), best.day);
+    const law = otLawOf(await loadOtLawRows(best.day, { hrLawTable: tx.hrLawTable }), best.day); // HR FIX (controller 12 Nov) ▸ ส่งเฉพาะ delegate — เทียบชนิด TransactionClient ทั้งก้อนกับ LawDb เกินขีดความซับซ้อนของ tsc (TS2859) หลัง schema โตขึ้น ◂
     if (!law.ok) return { kind: "wait", code: "LAW" };
     basis = { payType: p.payType, baseSalarySatang: p.baseSalarySatang, dailyRateSatang: p.dailyRateSatang, hourlyRateSatang: p.hourlyRateSatang, otHourlyRateSatang: p.otHourlyRateSatang, law: law.law, lawRowId: law.lawRowId };
   }
