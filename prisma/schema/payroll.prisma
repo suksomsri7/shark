@@ -239,10 +239,77 @@ model HrWorkEntry {
   runId           String?
   computedAt      DateTime
   note            String?
+  // HR H3.1 ▸ หัววันที่แถวนี้เป็นของ (ลบหัววัน ⇒ ลบแถวชนิด) ◂
+  workDayId       String?
+  workDay         HrWorkDay?      @relation(fields: [workDayId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, date, kind])
   @@index([tenantId])
   @@index([systemId, periodKey])
   @@index([systemId, employeeId, date])
+  @@index([runId])
+  @@index([workDayId])
+}
+
+// HR H3.1 ▸ หัววันทำงาน — 1 แถวต่อพนักงานต่อวัน (ตารางกะ + ผลลงเวลาที่บันทึก + ใบลา + วันหยุด) · ที่มาของทุกรายการเงินเดือนรุ่น 2
+//   นาทีจำนวนเต็ม 0..1440 (CHECK ใน migration.sql) · ไม่มีเงิน · inputHash = สถานะของข้อมูลต้นทาง · digest = ผลที่คิดได้ ·
+//   runId = รอบจ่ายที่อนุมัติแล้ว (แช่แข็งตลอดไป) · เขียนที่ hr/work-entries.ts ที่เดียว ◂
+enum HrWorkDayClass {
+  WORKDAY
+  DAY_OFF
+  HOLIDAY
+  UNSCHEDULED
+}
+
+enum HrWorkDayStatus {
+  WORKED
+  LEAVE
+  ABSENT
+  DAY_OFF
+  HOLIDAY
+  UNSCHEDULED
+  PENDING
+}
+
+model HrWorkDay {
+  id              String          @id @default(cuid())
+  tenantId        String
+  systemId        String
+  employeeId      String
+  employee        HrEmployee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date            DateTime        @db.Date
+  periodKey       String
+  unitId          String?
+  dayClass        HrWorkDayClass
+  dayStatus       HrWorkDayStatus
+  plannedMin      Int             @default(0)
+  workMin         Int             @default(0)
+  otWorkdayMin    Int             @default(0)
+  holidayWorkMin  Int             @default(0)
+  otHolidayMin    Int             @default(0)
+  holidayPaidMin  Int             @default(0)
+  paidLeaveMin    Int             @default(0)
+  unpaidLeaveMin  Int             @default(0)
+  absentMin       Int             @default(0)
+  lateMin         Int             @default(0)
+  earlyOutMin     Int             @default(0)
+  unplannedMin    Int             @default(0)
+  breakDeductMin  Int             @default(0)
+  leaveDays       Decimal         @default(0) @db.Decimal(2, 1)
+  review          String[]        @default([])
+  sourcesJson     Json
+  inputHash       String
+  digest          String
+  engineVersion   Int             @default(1)
+  version         Int             @default(1)
+  builtAt         DateTime
+  runId           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  entries         HrWorkEntry[]
+
+  @@unique([employeeId, date])
+  @@index([systemId, periodKey])
+  @@index([tenantId])
   @@index([runId])
 }
