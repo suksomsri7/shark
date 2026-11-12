@@ -81,6 +81,17 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "att-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
     { key: "settings-attendance", path: (i) => `/app/sys/${i.hr}/hr/settings`, why: "การ์ดตัดสินผล/การเตือน hr-settings-attendance-policy (R12)", expect: { owner: 200 }, users: ["owner"] },
   ],
+  // HR H2.6 ▸ brief §5 คำขอแก้เวลา: 04A ปุ่ม "แก้เวลา" ต่อแถว + ฟอร์ม · ?view=corrections การ์ด (mockup 05 — seed ไม่มีคำขอ ⇒ ว่าง ยกเว้นผู้ควบคุมยื่นก่อนถ่าย) ·
+  //   พนักงาน "ขอแก้เวลา" บนปฏิทินของตัวเอง + รายการของฉัน · ผู้ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404 ◂
+  "2.6": [
+    { key: "corr-day", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day&day=${addDays(i.today, -1)}`, why: "ทีมรายวันเมื่อวาน: ปุ่ม \"แก้เวลา\" ต่อแถว (H2.6 04A)", expect: { owner: 200, "manager-branch": 200 }, users: ["owner", "manager-branch"] },
+    { key: "corr-day-form", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=day&day=${addDays(i.today, -1)}`, click: '[data-testid="hr-corr-open"]', why: "ฟอร์มแก้เวลา: ชนิดคำขอ · ชนิด · เวลาเดิม · วันเวลา · เหตุผล (H2.6)", expect: { owner: 200 }, users: ["owner"] },
+    { key: "corr-list", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "การ์ดคำขอแก้เวลา: ชิป · ชื่อ · ยื่น · ลืมลงเวลาออก · หลักฐาน POS · ขอซ้ำ · อนุมัติ/ปฏิเสธ (H2.6 mockup 05)", expect: { owner: 200, manager: 200, "manager-branch": 200 }, users: ["owner", "manager", "manager-branch"] },
+    { key: "corr-self-form", path: (i) => `/app/sys/${i.hr}/hr/attendance`, click: '[data-testid="hr-corr-open"]', why: "พนักงาน (น้ำฝน): \"ขอแก้เวลา\" บนปฏิทินของตัวเอง (H2.6 04B)", expect: { staff: 200 }, users: ["staff"] },
+    { key: "corr-self-daylist", path: (i) => `/app/sys/${i.hr}/hr/attendance`, click: '[data-testid^="hr-att-dayrow-"]', why: "พนักงาน 390: แถวรายวัน (VIS-1 A3) มีปุ่ม \"ขอแก้เวลา\" ของวันนั้น (H2.6)", expect: { staff: 200 }, users: ["staff"] },
+    { key: "corr-self-list", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "คำขอแก้เวลาของฉัน + ยกเลิก (H2.6)", expect: { staff: 200 }, users: ["staff"] },
+    { key: "corr-refused", path: (i) => `/app/sys/${i.hr}/hr/attendance?view=corrections`, why: "ไม่ใช่ผู้อ่าน/ไม่ผูกพนักงาน = 404 (H2.6)", expect: { member: 404, payroll: 404, kiosk: 404 }, users: ["member", "payroll", "kiosk"] },
+  ],
   // HR H4.4 ▸ brief §5 (mockup 02) — ข้อมูลจาก seed (HQC.lifecycle: โบว์ ทดลองงาน + รายการรับเข้า 5/7 · เจ สัญญาถึงสิ้นเดือน · นัท ตักเตือนด้วยวาจา · ฝ้าย ผู้ลาออก) ◂
   "4.4": [
     { key: "life-due", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["owner", "manager-branch", "staff"], why: "ทะเบียน: แผง \"ต้องจัดการ\" 4 ช่อง (ทดลองงาน · สัญญา · รับเข้าค้าง · ออกจากงานค้าง) — staff ไม่เห็นแผง (H4.4)" },

@@ -321,7 +321,15 @@ function runStatic(): void {
   {
     const ids = testidsOf(rd(F.ui) + rd(F.page), "hr-att-");
     const miss = TESTIDS.filter((t) => ![...ids].some((i) => (t.endsWith("-") ? i.startsWith(t) : i === t)));
-    const p = inventoryParity("/hr/attendance", ids, "H2.5", SUITE);
+    // ORACLE-EDIT (H2.6 r2 · controller item 7): rows of /hr/attendance filed by later WOs (wo ≠ H2.5, e.g. H2.6) are legitimate —
+    //   rowNoCode/meta are judged on the H2.5 rows only; a code testid counts as registered when any row of the page carries it
+    const p = (() => {
+      const all = ((jsonOf("scripts/hr-ui-inventory.json")?.rows ?? []) as Any[]).filter((r0) => String(r0.page ?? "").endsWith("/hr/attendance"));
+      const own = all.filter((r0) => r0.wo === "H2.5");
+      const base = inventoryParity("/hr/attendance", ids, "H2.5", SUITE);
+      const anyRow = new Set(all.map((r0) => String(r0.testid)));
+      return { rows: own.length, codeNoRow: base.codeNoRow.filter((c) => !anyRow.has(c)), rowNoCode: base.rowNoCode.filter((t) => own.some((r0) => String(r0.testid) === t)), meta: own.every((r0) => r0.oracle === SUITE) };
+    })();
     const ui = code(F.ui);
     const [btn, tall] = [(ui.match(/<button\b/g) ?? []).length, (ui.match(/min-h-\[44px\]|min-h-11\b/g) ?? []).length];
     const v = rd(F.visual);

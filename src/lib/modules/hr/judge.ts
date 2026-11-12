@@ -157,7 +157,7 @@ async function loadData(db: Db, ctx: Ctx, empIds: string[], from: string, to: st
       take: ENTRY_TAKE,
     }) as Promise<EntryRow[]>,
     db.hrAttendance.findMany({
-      where: { ...scope, employeeId: { in: empIds }, at: { gte: new Date(dbDate(addDays(from, -1)).getTime() - 7 * 3_600_000), lt: new Date(dbDate(addDays(to, 2)).getTime() - 7 * 3_600_000) } },
+      where: { ...scope, employeeId: { in: empIds }, voidedAt: null, at: { gte: new Date(dbDate(addDays(from, -1)).getTime() - 7 * 3_600_000), lt: new Date(dbDate(addDays(to, 2)).getTime() - 7 * 3_600_000) } }, // HR H2.6 ▸ ไม่นับแถวที่ถูกยกเลิก ◂
       select: { id: true, employeeId: true, kind: true, at: true, rosterEntryId: true, source: true },
       orderBy: [{ at: "asc" }, { id: "asc" }],
       take: EVENT_TAKE,
@@ -887,6 +887,69 @@ export async function recomputeAttendanceDay(ctx: Ctx, viewer: JudgeViewer, inpu
   }
   return { ok: true, id: row.id, changed: out.changed, version: out.version };
 }
+
+// ═══════════════════════════ HR H2.6 ▸ คิดผลแถวที่บันทึกใหม่ในธุรกรรมของผู้เรียก (คำขอแก้เวลาที่อนุมัติ · Q6) ═══════════════════════════
+/**
+ * แถว HrAttendanceDay ที่มีอยู่แล้วของพนักงานในวันที่ส่งมา (ผู้เรียกกรองเหลือวันของงวดที่ถือล็อกงวดแล้ว) คิดใหม่ "ในที่เดิม" ด้วยตัวตัดสินชุดเดียวกับ
+ * recomputeAttendanceDay (loadData · slotsOf · judgedColumns · มติ r2 C แถวกำพร้า: ย้ายไปช่องสดที่ยังไม่มีแถว ไม่งั้นลบ) — version+1 ·
+ * recomputedById = ผู้ตัดสิน · recomputeReason = ข้อความคงที่ · วันที่ไม่มีแถวคงไม่มีแถว (ไม่นับซ้ำ — ตัวปิดวันเขียนเองภายหลัง) · ไม่ยิง event ·
+ * ลำดับล็อก (ต่อจากผู้เรียกที่ถือ hr:payroll:run → hr-corr → hr:clock แล้ว): hr:judge:<dayId> เรียง id → hr:roster:<ระบบ>:<พนักงาน>:<วัน> เรียงวัน ·
+ * คืนรายการที่เปลี่ยน (ผู้เรียกเขียน audit หลัง commit) ◂
+ */
+export type StoredDayRecompute = { dayId: string; date: string; voided: boolean; version: number; before: Record<string, unknown>; after: Record<string, unknown> | null };
+//   r2 ▸ dryRun = ไม่ถือล็อก ไม่เขียน — คืนรายการที่ "จะเปลี่ยน" (ผู้เรียกใช้ตรวจวันข้างเคียงในงวดที่จ่ายแล้ว/ไม่ได้ถือล็อก แล้วปฏิเสธทั้งธุรกรรม) ◂
+export async function recomputeStoredDaysInTx(tx: Prisma.TransactionClient, ctx: Ctx, input: { employeeId: string; days: string[]; now: Date; deciderId: string | null; reason: string; dryRun?: boolean }): Promise<StoredDayRecompute[]> {
+  const dry = input.dryRun === true;
+  const days = [...new Set(input.days.filter(isDay))].sort();
+  if (!days.length) return [];
+  const where = { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: input.employeeId };
+  const found = await tx.hrAttendanceDay.findMany({ where: { ...where, date: { in: days.map(dbDate) } }, select: { id: true }, orderBy: { id: "asc" } });
+  if (!found.length) return [];
+  if (!dry) for (const r of found) await lock(tx, `hr:judge:${r.id}`);
+  if (!dry) for (const d of days) await lock(tx, `hr:roster:${ctx.systemId}:${input.employeeId}:${d}`);
+  const emp = (await employeesOf(tx, ctx, { id: input.employeeId }))[0];
+  if (!emp) return [];
+  const data = await loadData(tx, ctx, [emp.id], days[0]!, days[days.length - 1]!);
+  const live = slotsOf(emp, days, data, input.now);
+  const out: StoredDayRecompute[] = [];
+  for (const day of days) {
+    const rows = await tx.hrAttendanceDay.findMany({ where: { ...where, date: dbDate(day) }, orderBy: [{ slotKey: "asc" }, { id: "asc" }] });
+    const slots = live.get(day) ?? [];
+    const taken = new Set(rows.map((r) => r.slotKey));
+    for (const cur of rows) {
+      const curRec = cur as unknown as Record<string, unknown>;
+      const before = Object.fromEntries(SNAP_KEYS.map((k) => [k, curRec[k]]));
+      let s = slots.find((x) => x.slotKey === cur.slotKey) ?? null;
+      if (!s) {
+        s = slots.find((x) => !taken.has(x.slotKey)) ?? null;
+        if (!s) {
+          if (dry) {
+            out.push({ dayId: cur.id, date: day, voided: true, version: cur.version + 1, before, after: null });
+            continue;
+          }
+          const del = await tx.hrAttendanceDay.deleteMany({ where: { id: cur.id, tenantId: ctx.tenantId, systemId: ctx.systemId, version: cur.version } });
+          if (del.count === 1) out.push({ dayId: cur.id, date: day, voided: true, version: cur.version + 1, before, after: null });
+          continue;
+        }
+        taken.add(s.slotKey);
+      }
+      const next = { slotKey: s.slotKey, ...judgedColumns(s) };
+      const nextRec = next as unknown as Record<string, unknown>;
+      if (next.slotKey === cur.slotKey && CMP_KEYS.every((k) => cmpVal(curRec[k]) === cmpVal(nextRec[k]))) continue;
+      if (dry) {
+        out.push({ dayId: cur.id, date: day, voided: false, version: cur.version + 1, before, after: Object.fromEntries(SNAP_KEYS.map((k) => [k, nextRec[k]])) });
+        continue;
+      }
+      const upd = await tx.hrAttendanceDay.updateMany({
+        where: { id: cur.id, tenantId: ctx.tenantId, systemId: ctx.systemId, version: cur.version },
+        data: { ...next, version: cur.version + 1, judgedAt: input.now, recomputedAt: input.now, recomputedById: input.deciderId, recomputeReason: input.reason },
+      });
+      if (upd.count === 1) out.push({ dayId: cur.id, date: day, voided: false, version: cur.version + 1, before, after: Object.fromEntries(SNAP_KEYS.map((k) => [k, nextRec[k]])) });
+    }
+  }
+  return out;
+}
+// ◂ HR H2.6
 
 // ═══════════════════════════ ตัวรับ outbox ของการเตือน (R7) ═══════════════════════════
 type AlertEvent = { id: string; tenantId: string; type: string; payload: unknown; systemId: string | null; unitId: string | null };
