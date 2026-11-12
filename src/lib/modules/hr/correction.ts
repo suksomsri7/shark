@@ -239,6 +239,15 @@ async function applyInTx(tx: Tx, ctx: Ctx, c: CorrRow, o: { months: string[]; de
   if (!inEmployment(emp, day)) throw new ApplyRefusal("EMPLOYMENT");
   const chk = checkCorrection(live, op);
   if (!chk.ok) throw new ApplyRefusal(chk.code);
+  const near = [...new Set(owners.flatMap((d) => [addDays(d, -1), d, addDays(d, 1)]))].sort();
+  const paid = await paidMonthsOf(tx, ctx, o.months);
+  const writable = near.filter((d) => o.months.includes(d.slice(0, 7)) && !paid.has(d.slice(0, 7)));
+  const blocked = near.filter((d) => !writable.includes(d));
+  const base = { employeeId: emp.id, now: o.now, deciderId: o.deciderId, reason: T.recomputeReason };
+  // r3 ▸ วันข้างเคียงที่เขียนไม่ได้: เทียบ "ผลคิดใหม่" ก่อนแก้ vs หลังแก้ — ปฏิเสธเฉพาะเมื่อคำขอนี้เปลี่ยนผลของแถวนั้น (แถวที่ stale อยู่แล้วไม่ขวาง)
+  const wouldOf = async () =>
+    new Map((blocked.length ? await recomputeStoredDaysInTx(tx, ctx, { ...base, days: blocked, dryRun: true }) : []).map((w) => [w.dayId, { date: w.date, v: JSON.stringify(w.after) }]));
+  const wouldBefore = await wouldOf();
   if (action !== "ADD") {
     const v = await tx.hrAttendance.updateMany({
       where: { id: c.attendanceId ?? "", tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, voidedAt: null },
@@ -255,14 +264,10 @@ async function applyInTx(tx: Tx, ctx: Ctx, c: CorrRow, o: { months: string[]; de
     });
     resultId = row.id;
   }
-  const near = [...new Set(owners.flatMap((d) => [addDays(d, -1), d, addDays(d, 1)]))].sort();
-  const paid = await paidMonthsOf(tx, ctx, o.months);
-  const writable = near.filter((d) => o.months.includes(d.slice(0, 7)) && !paid.has(d.slice(0, 7)));
-  const blocked = near.filter((d) => !writable.includes(d));
-  const base = { employeeId: emp.id, now: o.now, deciderId: o.deciderId, reason: T.recomputeReason };
   if (blocked.length) {
-    const would = await recomputeStoredDaysInTx(tx, ctx, { ...base, days: blocked, dryRun: true });
-    if (would.length) throw new ApplyRefusal(would.some((w) => paid.has(w.date.slice(0, 7))) ? "PAID" : "PERIOD");
+    const after = await wouldOf();
+    const changed = [...new Set([...after.keys(), ...wouldBefore.keys()])].filter((id) => after.get(id)?.v !== wouldBefore.get(id)?.v);
+    if (changed.length) throw new ApplyRefusal(changed.some((id) => paid.has((after.get(id) ?? wouldBefore.get(id))!.date.slice(0, 7))) ? "PAID" : "PERIOD");
   }
   const recomputed = await recomputeStoredDaysInTx(tx, ctx, { ...base, days: writable });
   return { resultId, recomputed, unitId: unitOfDay(emp, day), day };

@@ -37,6 +37,7 @@ export const CORRECTION_TEXT = {
   nApproved: "คำขอแก้เวลาได้รับอนุมัติ",
   nRejected: "คำขอแก้เวลาไม่ได้รับอนุมัติ",
   nCancelled: "คำขอแก้เวลาถูกยกเลิก — ข้อมูลการลงเวลาเปลี่ยนไป",
+  period: "การแก้เวลานี้กระทบงวดเงินเดือนที่ปิดแล้วหรือล็อกไม่ได้ — ติดต่อผู้ดูแลเงินเดือน",
 } as const;
 
 export type CorrectionAction = "ADD" | "CHANGE" | "VOID";
@@ -51,7 +52,7 @@ export type ApplyCode = SequenceCode | "PAID" | "EMPLOYMENT" | "PERIOD";
 /** ข้อความของรหัสใช้ผลไม่ได้ */
 export function applyCodeText(code: ApplyCode): string {
   const T = CORRECTION_TEXT;
-  return code === "TARGET" ? T.targetNf : code === "SAME" ? T.same : code === "DUP" ? T.dup : code === "ORDER" ? T.order : code === "TOO_LONG" ? T.tooLong : code === "PAID" ? T.paid : code === "PERIOD" ? T.targetNf : T.outOfEmployment;
+  return code === "TARGET" ? T.targetNf : code === "SAME" ? T.same : code === "DUP" ? T.dup : code === "ORDER" ? T.order : code === "TOO_LONG" ? T.tooLong : code === "PAID" ? T.paid : code === "PERIOD" ? T.period : T.outOfEmployment;
 }
 
 /** เหตุผล: ตัดช่องว่างหัวท้าย · 3–200 ตัวอักษร (นับ code point) · อย่างอื่น = null */
