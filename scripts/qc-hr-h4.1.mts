@@ -486,8 +486,16 @@ try {
     const counted = async (f: () => Promise<unknown>) => {
       let n = 0;
       const orig = coreDb.prisma.$extends;
+      let inner = false; // ชั้นนับซ้อนบน client ที่ขยายแล้วจะเรียก $extends ตัวเดียวกันซ้ำ ⇒ กันวนไม่รู้จบ
       coreDb.prisma.$extends = function (this: Any, ...a: Any[]) {
-        return orig.apply(this, a).$extends({ query: { $allModels: { async $allOperations({ args, query }: Any) { n++; return query(args); } } } });
+        const c = orig.apply(this, a);
+        if (inner) return c;
+        inner = true;
+        try {
+          return c.$extends({ query: { $allModels: { async $allOperations({ args, query }: Any) { n++; return query(args); } } } });
+        } finally {
+          inner = false;
+        }
       };
       try {
         const r = await f();
