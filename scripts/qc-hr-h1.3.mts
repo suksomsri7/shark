@@ -798,7 +798,14 @@ function runStatic(): void {
     // ORACLE-EDIT (controller 12 Nov · H4.6 Q15): hr/stock-charge.ts is the intended writer of HrPayAdjustment.sourceRef ("hrstock:<key>") — only that
     //   one token is ignored there; every other S6.1 token still counts (same narrow style as the lifecycle exemption above)
     const STOCK_OK = /^sourceRef$/;
-    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t))).length;
+    // ORACLE-EDIT (controller 12 Nov · H4.6 r3): declared allowances for marked lines of hr/payroll.ts — per WO tag, the S6.1 tokens on lines carrying
+    //   that tag (code part before `//`) must equal the declared count; only then are they not counted (a mismatch counts them all) · H4.6 = 3 sourceRef
+    //   (destructure · findFirst where · create data in writeStockChargeAdjustmentInTx) · other WO tags (e.g. H2.9) add their own entry here
+    const PAY_MARKED: Record<string, number> = { "HR H4.6": 3 };
+    const markedIn = (s: string, tag: string) => s.split("\n").filter((l) => l.includes(tag)).reduce((n, l) => n + (l.split("//")[0]!.match(S61_RE) ?? []).length, 0);
+    const payAllow = (f: string, s: string) =>
+      f !== "src/lib/modules/hr/payroll.ts" ? 0 : Object.entries(PAY_MARKED).reduce((n, [tag, want]) => n + (markedIn(s, tag) === want ? want : 0), 0);
+    const cntOf = (f: string, s: string) => (stripComments(s).match(S61_RE) ?? []).filter((t) => !(f === "src/lib/modules/hr/lifecycle.ts" && LIFE_OK.test(t)) && !(f === "src/lib/modules/hr/stock-charge.ts" && STOCK_OK.test(t))).length - payAllow(f, s);
     const hits = files.map((f) => [f, cntOf(f, rd(f)) - cntOf(f, atBase(f))] as const).filter(([, n]) => n > 0).map(([f, n]) => `${f}+${n}`);
     chk("S6.1", files.length > 20 && hits.length === 0, "0 new reads", `${hits.join(",") || "0"} of ${files.length} files (base ${baseRef().slice(0, 8)})`);
   }

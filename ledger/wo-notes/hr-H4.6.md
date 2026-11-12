@@ -64,3 +64,7 @@ A13 Override below the moving-average cost: COGS booked at average cost on the O
 ## Debts (r2)
 - Tenant purge / `scripts/pending/sweep-m11-orphans.mts` (and any tenant-wipe path) must delete HrStockCharge before HrEmployee (FK RESTRICT).
 - Insufficient-stock check is a pre-check (no lock with consumeBatch) — two concurrent charges can still drive stock negative; inventory flags needsReview.
+
+## Round r3
+- payroll.ts names `sourceType`/`sourceRef` explicitly (3 `sourceRef` tokens on `// HR H4.6` lines). ORACLE-EDIT qc-hr-h1.3 S6.1: per-tag declared allowance for marked payroll.ts lines (`PAY_MARKED = { "HR H4.6": 3 }`; mismatch ⇒ no allowance).
+- Lane DB l2: HrStockCharge was empty ⇒ rolled the migration back (DROP TABLE + DROP TYPE + delete its `_prisma_migrations` row, one tx with an emptiness guard) and re-applied with `migrate deploy`; checksum now = file sha 62a6d993…; `migrate status` clean, second `deploy` no-op; 32 columns in file order, 6 indexes (incl. partial movementId), 9 CHECK/FK constraints as the file.

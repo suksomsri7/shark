@@ -1703,7 +1703,8 @@ export async function writeStockChargeAdjustmentInTx(tx: Prisma.TransactionClien
   if (!Number.isSafeInteger(input.amountSatang) || input.amountSatang <= 0 || !PERIOD_RE.test(input.fromPeriod) || !input.requestedById) return { ok: false, code: "INVALID" };
   const emp = await tx.hrEmployee.findFirst({ where: { ...scope, id: input.employeeId }, select: { active: true, employmentStatus: true } });
   if (!emp || !emp.active || emp.employmentStatus === "ENDED") return { ok: false, code: "EMPLOYEE" };
-  const dup = await tx.hrPayAdjustment.findFirst({ where: { tenantId: ctx.tenantId, ...input.source }, select: { id: true } });
+  const { sourceType, sourceRef } = input.source; // HR H4.6
+  const dup = await tx.hrPayAdjustment.findFirst({ where: { tenantId: ctx.tenantId, sourceType, sourceRef }, select: { id: true } }); // HR H4.6
   if (dup) return { ok: false, code: "DUPLICATE" };
   const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
   let periodKey: string | null = runs.has(input.fromPeriod) ? nextRunlessPeriod(input.fromPeriod, runs) : input.fromPeriod;
@@ -1716,7 +1717,7 @@ export async function writeStockChargeAdjustmentInTx(tx: Prisma.TransactionClien
   }
   if (!periodKey || runs.has(periodKey)) return { ok: false, code: "NO_PERIOD" };
   const row = await tx.hrPayAdjustment.create({
-    data: { ...scope, employeeId: input.employeeId, periodKey, kind: "DEDUCTION", amountSatang: input.amountSatang, note: input.note, requestedById: input.requestedById, ...input.source },
+    data: { ...scope, employeeId: input.employeeId, periodKey, kind: "DEDUCTION", amountSatang: input.amountSatang, note: input.note, requestedById: input.requestedById, sourceType, sourceRef }, // HR H4.6
     select: { id: true },
   });
   return { ok: true, id: row.id, periodKey };
