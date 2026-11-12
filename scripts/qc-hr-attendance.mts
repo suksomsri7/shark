@@ -185,7 +185,11 @@ try {
     roster.find((r) => r.id === kio.id)?.hasPin === true && roster.find((r) => r.id === noPinEmp.id)?.hasPin === false,
     "true/false", JSON.stringify(roster.map((r) => r.hasPin)));
   chk("KI-10", "🔴 action kiosk มีด่านกันเดา PIN (rate limit)",
-    /checkRateLimitDb\(\s*`hr-kiosk:emp:/.test(readFileSync("src/lib/modules/hr/actions.ts", "utf8")), "มี", "ไม่มี");
+    // ORACLE-EDIT H2.4 r2 (controller 12 Nov · reviewer MODIFY): the guard is H0.5's verifier in pin.ts — kioskClockAction → kioskClock → verifyPin*( (clock.ts)
+    /checkRateLimitDb\(\s*`hr-kiosk:emp:/.test(readFileSync("src/lib/modules/hr/actions.ts", "utf8")) ||
+      (/kioskClock\(/.test(readFileSync("src/lib/modules/hr/actions.ts", "utf8")) &&
+        /verifyPin\w*\(/.test((readFileSync("src/lib/modules/hr/clock.ts", "utf8").split(/export\s+async\s+function\s+/).find((x) => x.startsWith("kioskClock(")) ?? ""))),
+    "มี", "ไม่มี");
   chk("KI-11", "มีหน้าจอลงเวลา + แท็บในเมนู",
     existsSync("src/app/app/sys/[id]/hr/kiosk/page.tsx") && /hr\/kiosk/.test(readFileSync("src/app/app/layout.tsx", "utf8")),
     "มีทั้งคู่", "ขาด", "MAJOR");

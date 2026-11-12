@@ -2971,6 +2971,616 @@
    "note": "* = MAX_DAY|REST|DAY_OFF|MAX_WEEK|OVERLAP · ปิดเมื่อผ่าน"
   },
   {
+   "page": "/app/sys/[id]/hr/kiosk",
+   "testid": "hr-kiosk-name-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/KioskClock.tsx",
+   "conditional": "จอหน้าร้าน (บัญชีที่มีคีย์ hr.attendance.clock)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "member",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-kiosk-pin (แป้น PIN ของชื่อที่เลือก)"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "รายชื่อในขอบเขตสาขาของบัญชีจอ (R2) · * = id พนักงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/kiosk",
+   "testid": "hr-kiosk-change",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/KioskClock.tsx",
+   "conditional": "หลังเลือกชื่อ",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "member",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "กลับหน้าเลือกชื่อ"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "เปลี่ยนชื่อ (ล้าง PIN)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/kiosk",
+   "testid": "hr-kiosk-pin",
+   "kind": "input",
+   "interactive": false,
+   "file": "src/lib/modules/hr/KioskClock.tsx",
+   "conditional": "จอหน้าร้าน (บัญชีที่มีคีย์ hr.attendance.clock)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "member",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "PIN ที่กดจากแป้นตัวเลข (ช่องซ่อน) หลังเลือกชื่อ — H2.4 r2: จอ = ชื่อ + PIN"
+  },
+  {
+   "page": "/app/sys/[id]/hr/kiosk",
+   "testid": "hr-kiosk-submit",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/KioskClock.tsx",
+   "conditional": "จอหน้าร้าน (บัญชีที่มีคีย์ hr.attendance.clock)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "member",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:kioskClockAction",
+    "db": "HrAttendance"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "ลงเวลา (ระบบเลือกเข้า/ออก/กลับจากพัก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/kiosk",
+   "testid": "hr-kiosk-break",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/KioskClock.tsx",
+   "conditional": "จอหน้าร้าน (บัญชีที่มีคีย์ hr.attendance.clock)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "member",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:kioskClockAction",
+    "db": "HrAttendance"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "เริ่มพัก"
+  },
+  {
+   "page": "/app/sys/[id]/hr/kiosk",
+   "testid": "hr-kiosk-error",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/KioskClock.tsx",
+   "conditional": "หลังกดแล้วถูกปฏิเสธ",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "member",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "ข้อความปฏิเสธ (PIN ผิด · ลองใหม่ในอีก N วินาที · พัก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/kiosk",
+   "testid": "hr-kiosk-result",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/KioskClock.tsx",
+   "conditional": "หลังลงเวลาสำเร็จ",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch",
+    "kiosk"
+   ],
+   "hiddenFor": [
+    "member",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "ผลการลงเวลา (ชื่อ · ชนิด · เวลา · สาย/ตรงเวลา)"
+  },
+  {
+   "page": "(unmounted · H2.10)",
+   "testid": "hr-mobile-clock",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/MobileClock.tsx",
+   "conditional": "ยังไม่ติดตั้ง (Q5)",
+   "roles": [
+    "staff"
+   ],
+   "hiddenFor": [],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "การ์ดลงเวลาด้วยมือถือ"
+  },
+  {
+   "page": "(unmounted · H2.10)",
+   "testid": "hr-mobile-clock-next",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/MobileClock.tsx",
+   "conditional": "ยังไม่ติดตั้ง (Q5)",
+   "roles": [
+    "staff"
+   ],
+   "hiddenFor": [],
+   "expect": {
+    "type": "mutation",
+    "target": "action:mobileClockAction",
+    "db": "HrAttendance"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "เข้า/ออก/กลับจากพัก ด้วย GPS"
+  },
+  {
+   "page": "(unmounted · H2.10)",
+   "testid": "hr-mobile-clock-break",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/MobileClock.tsx",
+   "conditional": "ยังไม่ติดตั้ง (Q5) · เฉพาะรอบที่เปิดอยู่",
+   "roles": [
+    "staff"
+   ],
+   "hiddenFor": [],
+   "expect": {
+    "type": "mutation",
+    "target": "action:mobileClockAction",
+    "db": "HrAttendance"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "เริ่มพัก"
+  },
+  {
+   "page": "(unmounted · H2.10)",
+   "testid": "hr-mobile-clock-message",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/MobileClock.tsx",
+   "conditional": "หลังกด",
+   "roles": [
+    "staff"
+   ],
+   "hiddenFor": [],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "ผล/ข้อความปฏิเสธ (+ ระยะห่าง เมื่ออยู่นอกรัศมี)"
+  },
+  {
+   "page": "(unmounted · H2.10)",
+   "testid": "hr-mobile-clock-notice",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/MobileClock.tsx",
+   "conditional": "ยังไม่ติดตั้ง (Q5)",
+   "roles": [
+    "staff"
+   ],
+   "hiddenFor": [],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "บรรทัดแจ้งการเก็บตำแหน่ง (Q11)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-clock-policy",
+   "kind": "form",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์) · ผู้ดูแลทุกสาขาเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "รอบลงเวลา (มติ Q1)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-clock-early",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์) · ผู้ดูแลทุกสาขาเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "เข้างานก่อนเริ่มกะได้ (นาที · 0–240 · ค่าตั้งต้น 120)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-clock-grace",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์) · ผู้ดูแลทุกสาขาเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "ปิดรอบหลังเลิกกะ (นาที · 30–720 · ค่าตั้งต้น 240)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-settings-clock-policy-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์) · ผู้ดูแลทุกสาขาเท่านั้น",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveClockPolicyAction",
+    "db": "AppSystem.settings.hrClock"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "บันทึกรอบลงเวลา"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-clock-site-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "แถวจุดลงเวลาของสาขา (* = unitId หรือ all = ทั้งร้าน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-clock-site-*-enabled",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "เปิดลงเวลาด้วยมือถือ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-clock-site-*-gps",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "บังคับ GPS ในรัศมี"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-clock-site-*-center-latitude",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "ละติจูดของร้าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-clock-site-*-center-longitude",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "ลองจิจูดของร้าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-clock-site-*-radius",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "รัศมี 30–2,000 ม."
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-clock-site-*-accuracy",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "ความแม่นยำขั้นต่ำ 10–500 ม."
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-clock-site-*-notice",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์) · จนกว่าจะยืนยันครั้งแรก",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "none"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "ยืนยันแจ้งพนักงานเรื่องเก็บตำแหน่ง (PDPA)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-clock-site-*-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าการลงเวลา (OWNER · คีย์ hr.employee.create ตรง ๆ) — MANAGER ที่ไม่มีคีย์ไม่เห็น (H2.4 R12 · HQC manager/manager-branch ไม่มีคีย์)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveClockSiteAction",
+    "db": "HrClockSite"
+   },
+   "wo": "H2.4",
+   "oracle": "qc-hr-h2.4",
+   "note": "บันทึกจุดลงเวลา"
+  },
+  {
    "page": "/app/sys/[id]/hr/settings/law",
    "testid": "hr-law-page",
    "kind": "display",

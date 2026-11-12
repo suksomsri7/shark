@@ -184,6 +184,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // HR H1.2 ▸ เวลาและการลา — ทุกตารางมี systemId ของระบบ HR ◂
   HrShift: sys(),
   HrRosterEntry: sys(),
+  HrClockSite: sys(), // HR H2.4 ▸ จุดลงเวลาด้วยมือถือต่อสาขา ◂
   HrShiftSwapRequest: sys(),
   HrTimeCorrection: sys(),
   HrOtRequest: sys(),

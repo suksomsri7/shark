@@ -567,7 +567,7 @@ function runStatic(): void {
     ...listFiles("src/app", (p) => /\.(ts|tsx)$/.test(p) && /\/hr\//.test(p)),
     ...listFiles("src/lib/ai", (p) => /\.(ts|tsx)$/.test(p)),
     "src/lib/outbox-consumers.ts",
-  ].filter((p) => existsSync(join(ROOT, p)));
+  ].filter((p) => existsSync(join(ROOT, p)) && !/^src\/lib\/modules\/hr\/clock(-rules|-actions)?\.ts$/.test(p)); // ORACLE-EDIT H2.4 r2 (controller 12 Nov): first legit writers/purgers of R7 fields — exact paths only (privacy: qc-hr-h2.4 S5/S8/S11)
   const re64 = new RegExp(`\\b(${R7_FIELDS.join("|")})\\b`);
   const hits64 = files.filter((f) => re64.test(stripComments(rd(f))));
   chk("S6.4", files.length > 20 && hits64.length === 0, "0 files", `${hits64.join(",") || "0"} of ${files.length} files`);
