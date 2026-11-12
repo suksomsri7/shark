@@ -13,7 +13,7 @@
 //   • ไม่มีกะ: วันหยุด ⇒ DAY_OFF (มาทำงาน ⇒ OT = นาทีทำงานปัดเป็นขั้น) · อื่น ๆ ⇒ NO_SCHEDULE
 // การผูกรอบเข้ากะ (R3): attributeSessions — ปิดหนี้ D-H24-adopt / r2d / m1 ◂
 import { bkkDayKey, bkkMidnight, addDays, shiftWindow, type ShiftTimes } from "./time-rules";
-import { pickRosterEntry, workedMinutesWithBreaks } from "./clock-rules";
+import { pickRosterEntry } from "./clock-rules";
 
 const MIN_MS = 60_000;
 
@@ -74,7 +74,8 @@ export type JudgeInput = {
   shift: JudgeShift | null;
   dayOff?: boolean;
   events: readonly JudgeEvent[];
-  leave: { halfDay: "AM" | "PM" | null } | null;
+  /** halfDay null = ลาเต็มช่อง · splitAt = จุดแบ่งครึ่งวันของทั้งวัน (กะแยก — มติ r2 D) ไม่ส่ง = กึ่งกลางของกะนี้ */
+  leave: { halfDay: "AM" | "PM" | null; splitAt?: Date } | null;
   policy: AttendancePolicy;
   closeGraceMin: number;
   now: Date;
@@ -96,6 +97,34 @@ export type JudgeOutput = {
 const floorMin = (ms: number) => Math.floor(ms / MIN_MS);
 const floorStep = (min: number, step: number) => (step > 0 ? Math.floor(Math.max(0, min) / step) * step : Math.max(0, min));
 
+/**
+ * นาทีทำงานหักพัก (ปัดลง — เหมือนสาย/ออกก่อน/OT · มติ r2 I): IN เริ่มนับ · BREAK_START หยุด · BREAK_END นับต่อ · OUT จบ
+ * (สูตรเดียวกับ clock-rules.workedMinutesWithBreaks ยกเว้นการปัด — ตัวนั้นปัดครึ่งขึ้นและ FREEZE กับ H2.4)
+ */
+export function workedMinutesFloor(events: readonly JudgeEvent[]): number {
+  const sorted = [...(events ?? [])].filter((e) => e?.at instanceof Date).sort((a, b) => a.at.getTime() - b.at.getTime());
+  let total = 0;
+  let from: number | null = null;
+  let inSession = false;
+  for (const e of sorted) {
+    const t = e.at.getTime();
+    if (e.kind === "IN") {
+      inSession = true;
+      from = t;
+    } else if (e.kind === "BREAK_START") {
+      if (from !== null) total += t - from;
+      from = null;
+    } else if (e.kind === "BREAK_END") {
+      if (inSession) from = t;
+    } else if (e.kind === "OUT") {
+      if (from !== null) total += t - from;
+      from = null;
+      inSession = false;
+    }
+  }
+  return Math.floor(total / MIN_MS);
+}
+
 /** นาทีพัก: BREAK_START → BREAK_END | OUT | ถึง `until` (null = ไม่นับพักที่ยังไม่จบ) */
 function breakMinutes(sorted: readonly JudgeEvent[], until: Date | null): number {
   let total = 0;
@@ -110,7 +139,7 @@ function breakMinutes(sorted: readonly JudgeEvent[], until: Date | null): number
     }
   }
   if (from !== null && until && until.getTime() > from) total += until.getTime() - from;
-  return Math.round(total / MIN_MS);
+  return Math.floor(total / MIN_MS);
 }
 
 /** ตัดสินหนึ่งช่อง (กะหนึ่งกะ หรือวันที่ไม่มีกะ) — คืน 11 คีย์เสมอ · ไม่แก้ input */
@@ -133,7 +162,7 @@ export function judgeEntry(input: JudgeInput): JudgeOutput {
   let breakMin = 0;
   if (!missingOut) {
     const live = !final && openNow && last && last.kind !== "BREAK_START" ? [...sorted, { kind: "OUT", at: now }] : sorted;
-    workedMin = firstIn ? workedMinutesWithBreaks(live) : 0;
+    workedMin = firstIn ? workedMinutesFloor(live) : 0;
     breakMin = breakMinutes(sorted, !final && openNow ? now : null);
   } else {
     breakMin = breakMinutes(sorted, null);
@@ -161,11 +190,13 @@ export function judgeEntry(input: JudgeInput): JudgeOutput {
   const startMs = window.start.getTime();
   const half = input.leave?.halfDay ?? null;
   const fullLeave = !!input.leave && !half;
-  const midMs = startMs + Math.floor(floorMin(endMs - startMs) / 2) * MIN_MS;
+  const split = input.leave?.splitAt instanceof Date ? Math.min(Math.max(input.leave.splitAt.getTime(), startMs), endMs) : null;
+  const midMs = split ?? startMs + Math.floor(floorMin(endMs - startMs) / 2) * MIN_MS;
   const dueStart = half === "AM" ? midMs : startMs;
   const dueEnd = half === "PM" ? midMs : endMs;
-  const alertAt = new Date(startMs + policy.notInAlertMin * MIN_MS);
-  const absentAt = new Date(policy.absentAfterMin === null ? endMs : Math.min(startMs + policy.absentAfterMin * MIN_MS, endMs));
+  // มติ r2 F: เวลาเตือน/เวลาขาดนับจากเวลาที่ควรเข้า (ลาเช้า = M)
+  const alertAt = new Date(dueStart + policy.notInAlertMin * MIN_MS);
+  const absentAt = new Date(policy.absentAfterMin === null ? endMs : Math.min(dueStart + policy.absentAfterMin * MIN_MS, endMs));
 
   let lateMin = 0;
   let earlyOutMin = 0;
@@ -236,8 +267,12 @@ export function attributeSessions(
       let pick: { id: string; start: Date; end: Date } | null = null;
       if (linked && t >= linked.start.getTime() - early && t <= linked.end.getTime() + grace) pick = linked;
       else {
-        const d = bkkDayKey(ev.at);
-        pick = pickRosterEntry("IN", ev.at, wins.filter((w) => bkkDayKey(w.start) === d), { earlyMin: ADOPT_BEFORE_MIN });
+        // มติ r2 B: หน้าต่างเดียวกับตอนลงเวลา (clock.ts — start − earlyInMin ≤ IN < end ข้ามวันได้) ก่อน · ไม่ได้ ⇒ รับกะวันไทยเดียวกัน (360 นาที)
+        pick = pickRosterEntry("IN", ev.at, wins, { earlyMin: early / MIN_MS });
+        if (!pick) {
+          const d = bkkDayKey(ev.at);
+          pick = pickRosterEntry("IN", ev.at, wins.filter((w) => bkkDayKey(w.start) === d), { earlyMin: ADOPT_BEFORE_MIN });
+        }
       }
       cur = pick ? { id: pick.id, end: pick.end.getTime() + grace } : null;
       open = true;

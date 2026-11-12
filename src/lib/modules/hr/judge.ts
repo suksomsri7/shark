@@ -15,6 +15,7 @@ import { tenantDb } from "@/lib/core/db";
 import { writeAudit } from "@/lib/core/audit";
 import { emitOutbox } from "@/lib/core/outbox";
 import { formatThaiDate } from "@/lib/ui/date";
+import { logOps } from "@/lib/core/ops";
 import { CLOCK_TEXT } from "./clock";
 import { clockPolicyOf, type ClockPolicy } from "./clock-rules";
 import { employeeOfUser, leaveRowScopeOf } from "./service";
@@ -89,7 +90,7 @@ export async function leavesForJudge(db: Db, ctx: Ctx, employeeIds: string[], fr
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: { in: employeeIds }, status: { in: ["APPROVED", "PENDING"] }, fromDate: { lte: dbDate(to) }, toDate: { gte: dbDate(from) } },
     select: { id: true, employeeId: true, fromDate: true, toDate: true, status: true, halfDay: true, type: true, policy: { select: { name: true } } },
     orderBy: [{ fromDate: "asc" }, { id: "asc" }],
-    take: 5000,
+    take: LEAVE_TAKE,
   });
   return rows.map((r) => ({
     id: r.id,
@@ -121,7 +122,11 @@ type EventRow = { id: string; employeeId: string; kind: string; at: Date; roster
 type SchedRow = { employeeId: string; weekday: number; dayOff: boolean; startMin: number; endMin: number; graceMin: number; createdAt: Date };
 type HolRow = { id: string; unitId: string | null; date: Date };
 type Policies = { att: AttendancePolicy; clock: ClockPolicy };
-type Data = { entries: EntryRow[]; events: EventRow[]; leaves: JudgeLeave[]; sched: SchedRow[]; hols: HolRow[]; pol: Policies };
+type Data = { entries: EntryRow[]; events: EventRow[]; leaves: JudgeLeave[]; sched: SchedRow[]; hols: HolRow[]; pol: Policies; truncated: boolean };
+const LEAVE_TAKE = 5000;
+const ENTRY_TAKE = 20_000;
+const EVENT_TAKE = 50_000;
+const EMP_TAKE = 2000;
 
 async function policiesOf(db: Db, ctx: Ctx): Promise<Policies> {
   const s = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
@@ -133,7 +138,7 @@ async function policiesOf(db: Db, ctx: Ctx): Promise<Policies> {
 async function loadData(db: Db, ctx: Ctx, empIds: string[], from: string, to: string): Promise<Data> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const pol = await policiesOf(db, ctx);
-  if (!empIds.length) return { entries: [], events: [], leaves: [], sched: [], hols: [], pol };
+  if (!empIds.length) return { entries: [], events: [], leaves: [], sched: [], hols: [], pol, truncated: false };
   const eFrom = addDays(mondayOf(from), -1);
   const eTo = addDays(mondayOf(to), 7);
   const [entries, events, leaves, sched, hols] = await Promise.all([
@@ -141,22 +146,25 @@ async function loadData(db: Db, ctx: Ctx, empIds: string[], from: string, to: st
       where: { ...scope, employeeId: { in: empIds }, publishedAt: { not: null }, date: { gte: dbDate(eFrom), lte: dbDate(eTo) } },
       select: ENTRY_SELECT,
       orderBy: [{ date: "asc" }, { startMin: "asc" }, { id: "asc" }],
-      take: 20_000,
+      take: ENTRY_TAKE,
     }) as Promise<EntryRow[]>,
     db.hrAttendance.findMany({
       where: { ...scope, employeeId: { in: empIds }, at: { gte: new Date(dbDate(addDays(from, -1)).getTime() - 7 * 3_600_000), lt: new Date(dbDate(addDays(to, 2)).getTime() - 7 * 3_600_000) } },
       select: { id: true, employeeId: true, kind: true, at: true, rosterEntryId: true, source: true },
       orderBy: [{ at: "asc" }, { id: "asc" }],
-      take: 50_000,
+      take: EVENT_TAKE,
     }) as Promise<EventRow[]>,
     leavesForJudge(db, ctx, empIds, from, to),
     db.hrWorkSchedule.findMany({ where: { ...scope, employeeId: { in: empIds } }, select: { employeeId: true, weekday: true, dayOff: true, startMin: true, endMin: true, graceMin: true, createdAt: true } }) as Promise<SchedRow[]>,
     db.hrHoliday.findMany({ where: { ...scope, date: { gte: dbDate(from), lte: dbDate(to) } }, select: { id: true, unitId: true, date: true }, orderBy: { id: "asc" } }) as Promise<HolRow[]>,
   ]);
-  return { entries, events, leaves, sched, hols, pol };
+  // มติ r2 I: ถึงเพดาน take = ข้อมูลอาจขาด — ตัวงานตามเวลาไม่เตือน/ไม่ปิดวันบนข้อมูลที่ขาด
+  const truncated = entries.length >= ENTRY_TAKE || events.length >= EVENT_TAKE || leaves.length >= LEAVE_TAKE;
+  return { entries, events, leaves, sched, hols, pol, truncated };
 }
 
 // ═══════════════════════════ ช่องของวัน (R2 · R3) ═══════════════════════════
+type SlotLeave = { halfDay: "AM" | "PM" | null; splitAt?: Date };
 type LiveSlot = {
   slotKey: string;
   day: string;
@@ -166,13 +174,58 @@ type LiveSlot = {
   dayOff: boolean;
   holidayId: string | null;
   unitId: string | null;
-  leave: JudgeLeave | null; // APPROVED ที่มีผลต่อคำตัดสิน
+  leave: JudgeLeave | null; // ใบลา APPROVED ของวัน (บันทึก leaveId/leaveHalf)
+  slotLeave: SlotLeave | null; // ส่วนของใบลาที่ครอบช่องนี้ตามช่วงเวลา (มีผลต่อคำตัดสิน)
+  leaveFraction: string | null; // เก็บครั้งเดียวต่อวัน (ช่องแรก) — ช่องอื่น "0.0" (มติ r2 D)
   shownLeave: JudgeLeave | null; // ที่แสดง (APPROVED ชนะ PENDING)
   events: EventRow[];
   out: JudgeOutput;
 };
 
 const employedOn = (e: Pick<EmpRow, "startDate" | "endDate">, day: string) => !(e.startDate && day < dayOf(e.startDate)) && !(e.endDate && day > dayOf(e.endDate));
+
+/**
+ * มติ r2 A: รอบที่ไม่เข้ากะใด (rest) เป็นของ "วันไทยของ IN ที่เปิดรอบ" — OUT/พักตาม IN ของมันแม้ข้ามเที่ยงคืน ·
+ * แถวที่ไม่มี IN เปิดรอบ (OUT ลอย) อยู่วันของตัวเอง · IN ที่เข้ากะแล้วปิดรอบ rest ที่ค้างอยู่
+ */
+function restByOpeningDay(events: readonly EventRow[], rest: ReadonlySet<string>): Map<string, EventRow[]> {
+  const out = new Map<string, EventRow[]>();
+  let openDay: string | null = null;
+  for (const e of events) {
+    if (!rest.has(e.id)) {
+      if (e.kind === "IN") openDay = null;
+      continue;
+    }
+    let d: string;
+    if (e.kind === "IN") {
+      d = bkkDayKey(e.at);
+      openDay = d;
+    } else {
+      d = openDay ?? bkkDayKey(e.at);
+      if (e.kind === "OUT") openDay = null;
+    }
+    out.set(d, [...(out.get(d) ?? []), e]);
+  }
+  return out;
+}
+
+/**
+ * มติ r2 D: ใบลาครึ่งวันคิดตามช่วงเวลาของทั้งวัน (เริ่มกะแรก → เลิกกะสุดท้าย · M = จุดกึ่งกลาง) ·
+ * ช่องที่อยู่ในครึ่งที่ลาทั้งช่อง = ลาเต็มช่อง · นอกครึ่งที่ลา = ไม่มีลา · คร่อม M = กติกาครึ่งวัน (ควรเข้า/เลิก = M) · ลาทั้งวัน = ทุกช่อง
+ */
+function slotLeaves(windows: readonly { start: Date; end: Date }[], lv: JudgeLeave | null): (SlotLeave | null)[] {
+  if (!lv) return windows.map(() => null);
+  if (!lv.halfDay) return windows.map(() => ({ halfDay: null }));
+  const s0 = Math.min(...windows.map((w) => w.start.getTime()));
+  const e0 = Math.max(...windows.map((w) => w.end.getTime()));
+  const M = s0 + Math.floor(Math.floor((e0 - s0) / MIN_MS) / 2) * MIN_MS;
+  return windows.map((w) => {
+    const s = w.start.getTime();
+    const e = w.end.getTime();
+    if (lv.halfDay === "AM") return e <= M ? { halfDay: null } : s >= M ? null : { halfDay: "AM", splitAt: new Date(M) };
+    return s >= M ? { halfDay: null } : e <= M ? null : { halfDay: "PM", splitAt: new Date(M) };
+  });
+}
 
 /** ช่องคิดสดของพนักงานหนึ่งคนในวันที่ส่งมา (Map วัน → ช่อง เรียงตามเวลาเริ่ม) */
 function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): Map<string, LiveSlot[]> {
@@ -187,35 +240,34 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
     { employeeId: emp.id, earlyInMin: pol.clock.earlyInMin, closeGraceMin: pol.clock.closeGraceMin },
   );
   const evById = new Map(events.map((e) => [e.id, e]));
-  const restByDay = new Map<string, EventRow[]>();
-  for (const id of attr.rest) {
-    const e = evById.get(id);
-    if (!e) continue;
-    const d = bkkDayKey(e.at);
-    restByDay.set(d, [...(restByDay.get(d) ?? []), e]);
-  }
-  const judge = (day: string, shift: JudgeShift | null, dayOff: boolean, evs: EventRow[], leave: JudgeLeave | null): JudgeOutput =>
-    judgeEntry({ day, shift, dayOff, events: evs.map((e) => ({ kind: e.kind, at: e.at })), leave: leave ? { halfDay: leave.halfDay } : null, policy: pol.att, closeGraceMin: pol.clock.closeGraceMin, now });
+  const restByDay = restByOpeningDay(events, new Set(attr.rest));
+  const judge = (day: string, shift: JudgeShift | null, dayOff: boolean, evs: EventRow[], leave: SlotLeave | null): JudgeOutput =>
+    judgeEntry({ day, shift, dayOff, events: evs.map((e) => ({ kind: e.kind, at: e.at })), leave, policy: pol.att, closeGraceMin: pol.clock.closeGraceMin, now });
   for (const day of days) {
     if (!employedOn(emp, day)) continue;
     const unitOf = unitOfDay(emp, day);
     const onDay = leaves.filter((l) => l.from <= day && day <= l.to);
     const approved = onDay.find((l) => l.status === "APPROVED") ?? null;
     const shown = approved ?? onDay[0] ?? null;
+    const hol = data.hols.find((h) => dayOf(h.date) === day && h.unitId !== null && h.unitId === unitOf) ?? data.hols.find((h) => dayOf(h.date) === day && h.unitId === null) ?? null;
     const list: LiveSlot[] = [];
-    const dayEntries = entries.filter((e) => dayOf(e.date) === day);
-    for (const e of dayEntries) {
-      const shift: JudgeShift = { startMin: e.startMin, endMin: e.endMin, crossesMidnight: e.crossesMidnight, graceMin: e.shift.graceMin };
-      try {
-        shiftWindow(day, shift);
-      } catch {
-        continue; // แถวเวลาเสีย (ก่อนกติกา H1.2) — ไม่ตัดสิน
-      }
+    const dayEntries = entries
+      .filter((e) => dayOf(e.date) === day)
+      .flatMap((e) => {
+        const shift: JudgeShift = { startMin: e.startMin, endMin: e.endMin, crossesMidnight: e.crossesMidnight, graceMin: e.shift.graceMin };
+        try {
+          return [{ e, shift, w: shiftWindow(day, shift) }];
+        } catch {
+          return []; // แถวเวลาเสีย (ก่อนกติกา H1.2) — ไม่ตัดสิน
+        }
+      });
+    const eLeaves = slotLeaves(dayEntries.map((x) => x.w), approved);
+    for (const [i, { e, shift }] of dayEntries.entries()) {
       const evs = (attr.byEntry[e.id] ?? []).map((id) => evById.get(id)!).filter(Boolean);
-      list.push({ slotKey: e.id, day, entry: e, shift, shiftName: e.shift.name, dayOff: false, holidayId: null, unitId: e.unitId ?? unitOf, leave: approved, shownLeave: shown, events: evs, out: judge(day, shift, false, evs, approved) });
+      const sl = eLeaves[i] ?? null;
+      list.push({ slotKey: e.id, day, entry: e, shift, shiftName: e.shift.name, dayOff: false, holidayId: hol?.id ?? null, unitId: e.unitId ?? unitOf, leave: approved, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: evs, out: judge(day, shift, false, evs, sl) });
     }
     const rest = restByDay.get(day) ?? [];
-    const hol = data.hols.find((h) => dayOf(h.date) === day && h.unitId !== null && h.unitId === unitOf) ?? data.hols.find((h) => dayOf(h.date) === day && h.unitId === null) ?? null;
     if (!dayEntries.length) {
       const mon = mondayOf(day);
       const sun = addDays(mon, 6);
@@ -224,25 +276,30 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
       const sch = data.sched.find((s) => s.employeeId === emp.id && s.weekday === wd && day >= bkkDayKey(s.createdAt)) ?? null;
       let shift: JudgeShift | null = null;
       let dayOff = false;
-      let holidayId: string | null = null;
-      if (inUse) {
-        dayOff = true;
-        holidayId = hol?.id ?? null;
-      } else if (sch) {
-        if (hol || sch.dayOff || sch.startMin === sch.endMin) {
-          dayOff = true;
-          holidayId = hol?.id ?? null;
-        } else shift = { startMin: sch.startMin, endMin: sch.endMin, crossesMidnight: sch.endMin < sch.startMin, graceMin: sch.graceMin };
+      if (inUse) dayOff = true;
+      else if (sch) {
+        if (hol || sch.dayOff || sch.startMin === sch.endMin) dayOff = true;
+        else shift = { startMin: sch.startMin, endMin: sch.endMin, crossesMidnight: sch.endMin < sch.startMin, graceMin: sch.graceMin };
       } else if (!rest.length) {
         if (list.length) out.set(day, list);
         continue;
+      } else if (hol) dayOff = true; // มติ r2 G: มาทำงานวันหยุดโดยไม่มีตาราง = DAY_OFF + holidayId
+      let sl: SlotLeave | null = null;
+      if (shift) {
+        try {
+          sl = slotLeaves([shiftWindow(day, shift)], approved)[0] ?? null;
+        } catch {
+          shift = null;
+        }
       }
-      const lv = shift ? approved : null;
-      list.push({ slotKey: "DAY", day, entry: null, shift, shiftName: shift ? SCHEDULE_NAME_TH : null, dayOff, holidayId, unitId: unitOf, leave: lv, shownLeave: shown, events: rest, out: judge(day, shift, dayOff, rest, lv) });
+      list.push({ slotKey: "DAY", day, entry: null, shift, shiftName: shift ? SCHEDULE_NAME_TH : null, dayOff, holidayId: hol?.id ?? null, unitId: unitOf, leave: shift ? approved : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, shift, dayOff, rest, sl) });
     } else if (rest.some((e) => e.kind === "IN")) {
-      // รอบที่ไม่เข้ากะใดเลยในวันที่มีกะ — ไม่ทิ้งนาทีทำงาน: ช่อง DAY แบบไม่มีตาราง (ผู้จัดการเห็นและคิดผลใหม่ได้)
-      list.push({ slotKey: "DAY", day, entry: null, shift: null, shiftName: null, dayOff: false, holidayId: null, unitId: unitOf, leave: null, shownLeave: shown, events: rest, out: judge(day, null, false, rest, null) });
+      // รอบที่ไม่เข้ากะใดเลยในวันที่มีกะ — ไม่ทิ้งนาทีทำงาน: ช่อง DAY แบบไม่มีตาราง (วันหยุด = DAY_OFF)
+      list.push({ slotKey: "DAY", day, entry: null, shift: null, shiftName: null, dayOff: !!hol, holidayId: hol?.id ?? null, unitId: unitOf, leave: null, slotLeave: null, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, null, !!hol, rest, null) });
     }
+    // ส่วนวันลาเก็บครั้งเดียวต่อวัน (ช่องแรกที่มีใบลา) — ช่องอื่นของวันเดียวกัน 0
+    const withLeave = list.filter((x) => x.leave);
+    for (const [i, x] of withLeave.entries()) x.leaveFraction = i === 0 ? (x.leave!.halfDay ? "0.5" : "1.0") : "0.0";
     if (list.length) out.set(day, list);
   }
   return out;
@@ -287,7 +344,7 @@ function judgedColumns(s: LiveSlot) {
     missingOut: s.out.missingOut,
     leaveId: lv?.id ?? null,
     leaveHalf: lv?.halfDay ?? null,
-    leaveFraction: lv ? (lv.halfDay ? "0.5" : "1.0") : null,
+    leaveFraction: s.leaveFraction,
     holidayId: s.holidayId,
     inAttendanceId: ins[0]?.id ?? null,
     outAttendanceId: s.out.missingOut ? null : (outs[outs.length - 1]?.id ?? null),
@@ -327,6 +384,8 @@ function slotDto(live: LiveSlot | null, row: DayRow | null, wideLeave: boolean):
 /** ช่องของวัน (คิดสด + แถวที่บันทึก — แถวที่ไม่มีช่องสดคู่กันยังแสดง พร้อม stale) */
 function mergeDay(live: LiveSlot[], rows: DayRow[], wideLeave: boolean): AttendanceSlotDto[] {
   const used = new Set<string>();
+  // มติ r2 C: มีแถวกำพร้า (กะของแถวถูกย้าย/ลบ/ถอนประกาศ) ⇒ แสดงเฉพาะแถวที่บันทึก (stale) — นาทีทำงานไม่ถูกนับซ้ำจนกว่าจะคิดผลใหม่
+  if (hasOrphan(live, rows)) live = live.filter((s) => rows.some((r) => r.slotKey === s.slotKey));
   const out = live.map((s) => {
     const r = rows.find((x) => x.slotKey === s.slotKey) ?? null;
     if (r) used.add(r.id);
@@ -335,6 +394,9 @@ function mergeDay(live: LiveSlot[], rows: DayRow[], wideLeave: boolean): Attenda
   for (const r of rows) if (!used.has(r.id)) out.push(slotDto(null, r, wideLeave));
   return out;
 }
+
+/** แถวที่บันทึกของวันที่ไม่มีช่องสดคู่กันแล้ว (กำพร้า) */
+const hasOrphan = (live: readonly { slotKey: string }[], rows: readonly { slotKey: string }[]) => rows.some((r) => !live.some((s) => s.slotKey === r.slotKey));
 
 const viewerMembership = (v: JudgeViewer): MembershipCtx =>
   ({ role: v.role, unitAccess: (Array.isArray(v.unitAccess) ? v.unitAccess : []) as string[], permissions: (v.permissions ?? {}) as Record<string, unknown> }) as MembershipCtx;
@@ -345,7 +407,7 @@ function initialOf(name: string): string {
   return "·";
 }
 async function employeesOf(db: Db, ctx: Ctx, where: Prisma.HrEmployeeWhereInput = {}): Promise<EmpRow[]> {
-  return (await db.hrEmployee.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...where }, select: EMP_SELECT, orderBy: [{ name: "asc" }, { id: "asc" }], take: 2000 })) as EmpRow[];
+  return (await db.hrEmployee.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...where }, select: EMP_SELECT, orderBy: [{ name: "asc" }, { id: "asc" }], take: EMP_TAKE })) as EmpRow[];
 }
 const dbOf = (ctx: Ctx) => tenantDb(ctx) as unknown as Db;
 
@@ -411,13 +473,15 @@ function monthDays(month: string): string[] {
 }
 const monthOf = (v: unknown, now: Date): string => (typeof v === "string" && MONTH_RE.test(v) && Number(v.slice(5)) >= 1 && Number(v.slice(5)) <= 12 ? v : bkkDayKey(now).slice(0, 7));
 
-async function monthDto(ctx: Ctx, emp: EmpRow, month: string, wide: boolean, now: Date): Promise<AttendanceMonthDto> {
+async function monthDto(ctx: Ctx, emp: EmpRow, month: string, wide: boolean, now: Date, scope: HrScope | null = null): Promise<AttendanceMonthDto> {
   const db = dbOf(ctx);
   const days = monthDays(month);
   const data = await loadData(db, ctx, [emp.id], days[0]!, days[days.length - 1]!);
   const live = slotsOf(emp, days, data, now);
   const rowsDb = (await db.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, date: { gte: dbDate(days[0]!), lte: dbDate(days[days.length - 1]!) } }, select: DAY_SELECT })) as DayRow[];
-  const out = days.map((day) => ({ day, slots: mergeDay(live.get(day) ?? [], rowsDb.filter((r) => dayOf(r.date) === day), wide) }));
+  // ช่องที่สาขาอยู่นอกขอบเขตผู้ดู (ยืมตัวไปสาขาอื่น) ไม่แสดง
+  const ok = (u: string | null) => !scope || covers(scope, u);
+  const out = days.map((day) => ({ day, slots: mergeDay((live.get(day) ?? []).filter((x) => ok(x.unitId)), rowsDb.filter((r) => dayOf(r.date) === day && ok(r.unitId)), wide) }));
   return { month, employee: { id: emp.id, name: emp.name, position: emp.position ?? null }, days: out, summary: summarizeSlots(out) };
 }
 
@@ -432,7 +496,7 @@ export async function loadAttendanceMonth(ctx: Ctx, viewer: JudgeViewer, input: 
   const scope = scopeOfViewer(viewer);
   if (scope.unitIds !== "*" && !covers(scope, emp.unitId) && !covers(scope, unitOfDay(emp, bkkDayKey(now)))) return null;
   const wide = "all" in leaveRowScopeOf(viewerMembership(viewer), viewer.userId ?? "");
-  return monthDto(ctx, emp, monthOf(input?.month, now), wide, now);
+  return monthDto(ctx, emp, monthOf(input?.month, now), wide, now, scope);
 }
 
 /** ปฏิทินของตัวเอง — พนักงานจากบัญชีผู้ใช้เท่านั้น (ไม่รับ id จากผู้เรียก) · เห็นประเภทลาของตัวเอง */
@@ -454,15 +518,21 @@ export async function myAttendanceMonth(
 const LIMIT = { slotsPerSystem: 200, alertsPerSystem: 100, slots: 2000, alerts: 500 } as const;
 const WINDOW_DAYS = 7;
 
-/** ปิดช่องเดียว (ใต้ล็อก — อ่านใหม่ทั้งหมดใน tx) · คืนจำนวนแถวที่เพิ่ม (0/1) */
+/**
+ * ปิดช่องเดียว (ใต้ล็อก — อ่านใหม่ทั้งหมดใน tx) · คืนจำนวนแถวที่เพิ่ม (0/1) ·
+ * มติ r2 C: วันของพนักงานที่มีแถวกำพร้า (กะของแถวถูกย้าย/ลบ/ถอนประกาศหลังปิดวัน) ⇒ ไม่เขียนแถวใหม่ (นาทีทำงานอยู่ในแถวเดิมแล้ว — ต้องคิดผลใหม่)
+ */
 async function finalizeSlot(ctx: Ctx, emp: EmpRow, day: string, slotKey: string, now: Date): Promise<number> {
   return tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Db;
     await lock(tx, `hr:clock:${emp.id}`);
     await lock(tx, `hr:roster:${ctx.systemId}:${emp.id}:${day}`);
     const data = await loadData(tx, ctx, [emp.id], day, day);
-    const s = (slotsOf(emp, [day], data, now).get(day) ?? []).find((x) => x.slotKey === slotKey);
+    const live = slotsOf(emp, [day], data, now).get(day) ?? [];
+    const s = live.find((x) => x.slotKey === slotKey);
     if (!s || !s.out.final) return 0;
+    const stored = await tx.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, date: dbDate(day) }, select: { slotKey: true } });
+    if (hasOrphan(live, stored)) return 0;
     const r = await tx.hrAttendanceDay.createMany({
       data: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, date: dbDate(day), slotKey, ...judgedColumns(s), engineVersion: JUDGE_ENGINE_VERSION, version: 1, judgedAt: now }],
       skipDuplicates: true,
@@ -471,20 +541,30 @@ async function finalizeSlot(ctx: Ctx, emp: EmpRow, day: string, slotKey: string,
   }, TX_OPTS);
 }
 
-/** ยิงการเตือนหนึ่งครั้ง (unique ต่อกะต่อชนิด) + event ใน tx เดียวกันเฉพาะเมื่อเพิ่มแถวจริง */
-async function fireAlert(ctx: Ctx, s: LiveSlot, empId: string, kind: "NOT_IN" | "ABSENT", now: Date): Promise<number> {
-  const entry = s.entry!;
+/** ช่องนี้ไม่ต้องเตือน: ลาเต็มช่อง หรือลาเช้าที่คร่อมช่อง (R7) */
+const leaveSilences = (s: LiveSlot) => !!s.slotLeave && s.slotLeave.halfDay !== "PM";
+
+/**
+ * ยิงการเตือนหนึ่งครั้ง (unique ต่อกะต่อชนิด) + event ใน tx เดียวกันเฉพาะเมื่อเพิ่มแถวจริง ·
+ * มติ r2 I: ถือ hr:clock:<emp> แล้วคิดช่องใหม่ — มีการเข้างานแล้ว (หรือช่องเปลี่ยน) ⇒ ไม่ยิง
+ */
+async function fireAlert(ctx: Ctx, emp: EmpRow, s0: LiveSlot, kind: "NOT_IN" | "ABSENT", now: Date): Promise<number> {
+  const entryId = s0.entry!.id;
   return tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Db;
+    await lock(tx, `hr:clock:${emp.id}`);
+    const data = await loadData(tx, ctx, [emp.id], s0.day, s0.day);
+    const s = (slotsOf(emp, [s0.day], data, now).get(s0.day) ?? []).find((x) => x.slotKey === entryId);
+    if (!s || !s.entry || s.events.some((x) => x.kind === "IN") || leaveSilences(s)) return 0;
     const r = await tx.hrAttendanceAlert.createMany({
-      data: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: empId, rosterEntryId: entry.id, date: dbDate(s.day), kind, firedAt: now }],
+      data: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, rosterEntryId: entryId, date: dbDate(s.day), kind, firedAt: now }],
       skipDuplicates: true,
     });
     if (r.count !== 1) return 0;
-    const a = await tx.hrAttendanceAlert.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: empId, rosterEntryId: entry.id, kind }, select: { id: true } });
+    const a = await tx.hrAttendanceAlert.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, rosterEntryId: entryId, kind }, select: { id: true } });
     if (!a) return 0;
     const type = kind === "NOT_IN" ? ATTENDANCE_LATE_EVENT : ATTENDANCE_ABSENT_EVENT;
-    await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: s.unitId, type, idempotencyKey: `${type}#${a.id}`, payload: { alertId: a.id, employeeId: empId, rosterEntryId: entry.id, systemId: ctx.systemId } });
+    await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: s.unitId, type, idempotencyKey: `${type}#${a.id}`, payload: { alertId: a.id, employeeId: emp.id, rosterEntryId: entryId, systemId: ctx.systemId } });
     return 1;
   }, TX_OPTS);
 }
@@ -502,6 +582,7 @@ async function hrSystems(tenantId: string | null | undefined): Promise<Ctx[]> {
 /**
  * งานตามเวลา: วัน D−7…D (D = วันไทยของ now) ทุกระบบ HR (เรียงตาม id) — เตือนก่อน แล้วปิดวัน ·
  * ต่อระบบ ≤ 200 ช่อง + ≤ 100 การเตือน · รวม ≤ 2 000 / 500 · หยุดเมื่อถึง deadline · ไม่มีอะไรถึงเวลา = ไม่เขียนอะไรเลย ·
+ * พนักงานที่ปิดใช้ (active=false) หรือพ้นสภาพ (ENDED) ไม่ถูกเตือน/ปิดวัน (มติ r2 E) · ข้อมูลถึงเพดาน take ⇒ ข้ามระบบนั้นในรอบนี้ + WARN (มติ r2 I) ·
  * `tenantId` = จำกัดร้านเดียว (ข้อสอบ) · คืนจำนวนแถวที่เพิ่มจริง
  */
 export async function runAttendanceJobs(input: { now: Date; tenantId?: string | null; deadline?: Date | null }): Promise<{ finalized: number; late: number; absent: number }> {
@@ -516,25 +597,36 @@ export async function runAttendanceJobs(input: { now: Date; tenantId?: string | 
   for (const ctx of await hrSystems(input?.tenantId)) {
     if (Date.now() >= deadline || (slotBudget <= 0 && alertBudget <= 0)) break;
     const db = dbOf(ctx);
-    const emps = (await employeesOf(db, ctx, { OR: [{ startDate: null }, { startDate: { lte: dbDate(D) } }], AND: [{ OR: [{ endDate: null }, { endDate: { gte: dbDate(from) } }] }] })) as EmpRow[];
+    const emps = (await employeesOf(db, ctx, {
+      active: true,
+      AND: [{ OR: [{ employmentStatus: null }, { employmentStatus: { not: "ENDED" } }] }, { OR: [{ startDate: null }, { startDate: { lte: dbDate(D) } }] }, { OR: [{ endDate: null }, { endDate: { gte: dbDate(from) } }] }],
+    })) as EmpRow[];
     if (!emps.length) continue;
     const data = await loadData(db, ctx, emps.map((e) => e.id), from, D);
+    if (data.truncated || emps.length >= EMP_TAKE) {
+      await logOps("WARN", "hr.attendance", "runAttendanceJobs: ข้อมูลถึงเพดาน (truncated) — ข้ามการเตือน/ปิดวันของระบบนี้ในรอบนี้", { tenantId: ctx.tenantId, detail: `system=${ctx.systemId} employees=${emps.length} entries=${data.entries.length} events=${data.events.length} leaves=${data.leaves.length}` });
+      continue;
+    }
     const [stored, fired] = await Promise.all([
       db.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, date: { gte: dbDate(from), lte: dbDate(D) } }, select: { employeeId: true, date: true, slotKey: true } }),
       db.hrAttendanceAlert.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, date: { gte: dbDate(from), lte: dbDate(D) } }, select: { employeeId: true, rosterEntryId: true, kind: true } }),
     ]);
     const have = new Set(stored.map((r) => `${r.employeeId}|${dayOf(r.date)}|${r.slotKey}`));
+    const storedByDay = new Map<string, { slotKey: string }[]>();
+    for (const r of stored) {
+      const k = `${r.employeeId}|${dayOf(r.date)}`;
+      storedByDay.set(k, [...(storedByDay.get(k) ?? []), r]);
+    }
     const sent = new Set(fired.map((a) => `${a.employeeId}|${a.rosterEntryId}|${a.kind}`));
     const graceMs = data.pol.clock.closeGraceMin * MIN_MS;
-    const live = emps.map((e) => ({ e, slots: [...slotsOf(e, days, data, now).values()].flat() }));
+    const live = emps.map((e) => ({ e, byDay: slotsOf(e, days, data, now) }));
     // ── การเตือน (R7) ──
     let alerts = 0;
     if (data.pol.att.alertsOn) {
-      for (const { e, slots } of live) {
-        for (const s of slots) {
+      for (const { e, byDay } of live) {
+        for (const s of [...byDay.values()].flat()) {
           if (!s.entry || !s.shift || alerts >= LIMIT.alertsPerSystem || alertBudget <= 0 || Date.now() >= deadline) continue;
-          if (s.events.some((x) => x.kind === "IN")) continue;
-          if (s.leave && s.leave.halfDay !== "PM") continue; // ลาทั้งวัน / ลาเช้า ⇒ ไม่เตือน
+          if (s.events.some((x) => x.kind === "IN") || leaveSilences(s)) continue;
           const end = shiftWindow(s.day, s.shift).end.getTime();
           const t = now.getTime();
           const due: ("NOT_IN" | "ABSENT")[] = [];
@@ -542,7 +634,7 @@ export async function runAttendanceJobs(input: { now: Date; tenantId?: string | 
           if (s.out.absentAt && s.out.absentAt.getTime() <= t && t < end + graceMs) due.push("ABSENT");
           for (const kind of due) {
             if (sent.has(`${e.id}|${s.entry.id}|${kind}`)) continue;
-            const n = await fireAlert(ctx, s, e.id, kind, now);
+            const n = await fireAlert(ctx, e, s, kind, now);
             sent.add(`${e.id}|${s.entry.id}|${kind}`);
             alerts++;
             alertBudget--;
@@ -554,13 +646,16 @@ export async function runAttendanceJobs(input: { now: Date; tenantId?: string | 
     }
     // ── ปิดวัน (R4) ──
     let n = 0;
-    for (const { e, slots } of live) {
-      for (const s of slots) {
-        if (!s.out.final || have.has(`${e.id}|${s.day}|${s.slotKey}`)) continue;
-        if (n >= LIMIT.slotsPerSystem || slotBudget <= 0 || Date.now() >= deadline) break;
-        res.finalized += await finalizeSlot(ctx, e, s.day, s.slotKey, now);
-        n++;
-        slotBudget--;
+    for (const { e, byDay } of live) {
+      for (const [day, slots] of byDay) {
+        if (hasOrphan(slots, storedByDay.get(`${e.id}|${day}`) ?? [])) continue; // มติ r2 C
+        for (const s of slots) {
+          if (!s.out.final || have.has(`${e.id}|${s.day}|${s.slotKey}`)) continue;
+          if (n >= LIMIT.slotsPerSystem || slotBudget <= 0 || Date.now() >= deadline) break;
+          res.finalized += await finalizeSlot(ctx, e, s.day, s.slotKey, now);
+          n++;
+          slotBudget--;
+        }
       }
     }
   }
@@ -571,9 +666,14 @@ export async function runAttendanceJobs(input: { now: Date; tenantId?: string | 
 type RecomputeResult = { ok: true; id: string; changed: boolean; version: number } | { ok: false; reason: string };
 const CMP_KEYS = ["rosterEntryId", "unitId", "startMin", "endMin", "crossesMidnight", "graceMin", "status", "lateMin", "earlyOutMin", "workedMin", "breakMin", "otMin", "missingOut", "leaveId", "leaveHalf", "leaveFraction", "holidayId", "inAttendanceId", "outAttendanceId"] as const;
 const cmpVal = (v: unknown) => (v === null || v === undefined ? null : typeof v === "object" && "toFixed" in (v as object) ? Number(v as never).toFixed(1) : typeof v === "string" && /^\d+\.\d$/.test(v) ? v : v);
-const SNAP_KEYS = ["status", "lateMin", "earlyOutMin", "workedMin", "breakMin", "otMin", "missingOut", "startMin"] as const;
+const SNAP_KEYS = ["slotKey", "status", "lateMin", "earlyOutMin", "workedMin", "breakMin", "otMin", "missingOut", "startMin"] as const;
 
-/** คิดผลของแถวเดียวใหม่จากข้อมูลปัจจุบัน (ตารางกะ/ลงเวลา/ใบลาที่แก้หลังปิดวัน) — ไม่แตะแถวอื่น ไม่ยิง event */
+/**
+ * คิดผลของแถวเดียวใหม่จากข้อมูลปัจจุบัน (ตารางกะ/ลงเวลา/ใบลาที่แก้หลังปิดวัน) — ไม่แตะแถวอื่น ไม่ยิง event ·
+ * มติ r2 C: แถวกำพร้า (กะถูกย้าย/ลบ/ถอนประกาศ) ⇒ ย้ายแถวไปที่ช่องสดของวันเดียวกันที่ยังไม่มีแถว (slotKey ใหม่ · version+1) ·
+ *   ไม่มีช่องว่างให้ย้าย ⇒ ลบแถวนั้น (audit เก็บค่าก่อนลบ · voided) — วันหนึ่งไม่มีนาทีทำงานซ้ำ ·
+ * มติ r2 H: งวดเงินเดือนตรวจใน tx ใต้ล็อกงวด `hr:payroll:run:<ระบบ>:<งวด>` (คีย์เดียวกับสร้าง/อนุมัติ/จ่ายรอบใน hr/payroll.ts)
+ */
 export async function recomputeAttendanceDay(ctx: Ctx, viewer: JudgeViewer, input: { dayId?: unknown; reason?: unknown }, opts: { now?: Date } = {}): Promise<RecomputeResult> {
   if (!viewer || !canManageHrSettings(viewer)) return { ok: false, reason: JUDGE_TEXT.rNoPerm };
   const dayId = typeof input?.dayId === "string" ? input.dayId.trim() : "";
@@ -588,32 +688,44 @@ export async function recomputeAttendanceDay(ctx: Ctx, viewer: JudgeViewer, inpu
   const reason = typeof input?.reason === "string" ? input.reason.trim() : "";
   if (Array.from(reason).length < 3 || Array.from(reason).length > 200) return { ok: false, reason: JUDGE_TEXT.rReason };
   const day = dayOf(row.date);
-  const paid = await db.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: day.slice(0, 7), status: { in: ["APPROVED", "PAID"] } }, select: { id: true } });
-  if (paid) return { ok: false, reason: JUDGE_TEXT.rPaid };
   const now = nowOf(opts);
-  const out = await tenantDb(ctx).$transaction(async (t) => {
+  type Out = { paid: true } | { changed: boolean; voided: boolean; version: number; before: Record<string, unknown>; after: Record<string, unknown> | null } | null;
+  const out: Out = await tenantDb(ctx).$transaction(async (t): Promise<Out> => {
     const tx = t as unknown as Db;
+    await lock(tx, `hr:payroll:run:${ctx.systemId}:${day.slice(0, 7)}`);
+    const paid = await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: day.slice(0, 7), status: { in: ["APPROVED", "PAID"] } }, select: { id: true } });
+    if (paid) return { paid: true };
     await lock(tx, `hr:judge:${row.id}`);
     await lock(tx, `hr:clock:${emp.id}`);
     await lock(tx, `hr:roster:${ctx.systemId}:${emp.id}:${day}`);
     const cur = await tx.hrAttendanceDay.findFirst({ where: { id: row.id, tenantId: ctx.tenantId, systemId: ctx.systemId } });
     if (!cur) return null;
     const data = await loadData(tx, ctx, [emp.id], day, day);
-    const s = (slotsOf(emp, [day], data, now).get(day) ?? []).find((x) => x.slotKey === cur.slotKey);
-    if (!s) return null;
-    const next = judgedColumns(s);
+    const live = slotsOf(emp, [day], data, now).get(day) ?? [];
     const curRec = cur as unknown as Record<string, unknown>;
-    const nextRec = next as unknown as Record<string, unknown>;
-    const same = CMP_KEYS.every((k) => cmpVal(curRec[k]) === cmpVal(nextRec[k]));
     const before = Object.fromEntries(SNAP_KEYS.map((k) => [k, curRec[k]]));
-    if (same) return { changed: false, version: cur.version, before, after: before };
+    let s = live.find((x) => x.slotKey === cur.slotKey) ?? null;
+    if (!s) {
+      const taken = new Set((await tx.hrAttendanceDay.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: emp.id, date: dbDate(day) }, select: { slotKey: true } })).map((r) => r.slotKey));
+      s = live.find((x) => !taken.has(x.slotKey)) ?? null;
+      if (!s) {
+        const del = await tx.hrAttendanceDay.deleteMany({ where: { id: cur.id, tenantId: ctx.tenantId, systemId: ctx.systemId, version: cur.version } });
+        if (del.count !== 1) return null;
+        return { changed: true, voided: true, version: cur.version + 1, before, after: null };
+      }
+    }
+    const next = { slotKey: s.slotKey, ...judgedColumns(s) };
+    const nextRec = next as unknown as Record<string, unknown>;
+    const same = next.slotKey === cur.slotKey && CMP_KEYS.every((k) => cmpVal(curRec[k]) === cmpVal(nextRec[k]));
+    if (same) return { changed: false, voided: false, version: cur.version, before, after: before };
     const upd = await tx.hrAttendanceDay.updateMany({
       where: { id: cur.id, tenantId: ctx.tenantId, systemId: ctx.systemId, version: cur.version },
       data: { ...next, version: cur.version + 1, judgedAt: now, recomputedAt: now, recomputedById: viewer.userId ?? null, recomputeReason: reason },
     });
     if (upd.count !== 1) return null;
-    return { changed: true, version: cur.version + 1, before, after: Object.fromEntries(SNAP_KEYS.map((k) => [k, nextRec[k]])) };
+    return { changed: true, voided: false, version: cur.version + 1, before, after: Object.fromEntries(SNAP_KEYS.map((k) => [k, nextRec[k]])) };
   }, TX_OPTS);
+  if (out && "paid" in out) return { ok: false, reason: JUDGE_TEXT.rPaid };
   if (!out) return { ok: false, reason: JUDGE_TEXT.rNotFound };
   if (out.changed) {
     await writeAudit({
@@ -623,7 +735,7 @@ export async function recomputeAttendanceDay(ctx: Ctx, viewer: JudgeViewer, inpu
       action: "hr.attendance.day_recomputed",
       targetType: "HrAttendanceDay",
       targetId: row.id,
-      after: { dayId: row.id, employeeId: row.employeeId, date: day, systemId: ctx.systemId, before: out.before, after: out.after },
+      after: { dayId: row.id, employeeId: row.employeeId, date: day, systemId: ctx.systemId, before: out.before, after: out.after, ...(out.voided ? { voided: true, reason } : {}) },
     });
   }
   return { ok: true, id: row.id, changed: out.changed, version: out.version };
