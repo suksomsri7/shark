@@ -17,6 +17,9 @@ enum HrLeaveType {
 enum HrAttendanceKind {
   IN
   OUT
+  // HR H2.4 ▸ พักเบรก (migration แยก 20261228000001_hr_clock_break_kinds — ALTER TYPE … ADD VALUE) · rules.workedMinutes (FREEZE) ไม่นับสองชนิดนี้ ◂
+  BREAK_START
+  BREAK_END
 }
 
 // ผลตัดสินการเข้างาน (13 ส.ค. 2026) — snapshot ณ วินาทีที่กดเข้างาน ไม่คิดสดตอนอ่าน
@@ -284,6 +287,9 @@ model HrAttendance {
   accuracyM     Int?
   photoKey      String?
   deviceId      String?
+  // HR H2.4 ▸ ผลตรวจรัศมีของการลงเวลาด้วยมือถือ (เก็บต่อหลังล้างพิกัดตามกำหนด HQ27 — ไม่ใช่ตำแหน่ง) · null = ไม่ได้ตรวจ ◂
+  distanceM     Int?
+  inRadius      Boolean?
   corrections   HrTimeCorrection[]
 
   @@index([systemId, employeeId, at])
@@ -386,6 +392,8 @@ model HrRosterEntry {
   endMin          Int
   breakMin        Int
   crossesMidnight Boolean
+  // HR H2.4 ▸ D-F4: เวลาในแถวระบุเอง (ไม่ใช่สำเนาของกะ) — copyWeek คัดลอกเวลาเองเฉพาะแถวที่ธงนี้เป็น true ◂
+  timesOverridden Boolean              @default(false)
   published       Boolean              @default(false)
   publishedAt     DateTime?
   source          HrRosterSource       @default(MANUAL)
@@ -614,4 +622,28 @@ model HrOnboardingTask {
 
   @@index([tenantId])
   @@index([systemId, employeeId, kind])
+}
+
+// HR H2.4 ▸ จุดลงเวลาด้วยมือถือ (geofence) ต่อสาขา — unitId null = ทั้งร้าน · ตำแหน่งร้าน (ไม่ใช่ข้อมูลส่วนบุคคล)
+//   unique บางส่วน (SQL ดิบใน migration 20261228000000_hr_clock_v2): (systemId, unitId) WHERE unitId IS NOT NULL · (systemId) WHERE unitId IS NULL
+//   เปิดครั้งแรก (mobileEnabled) ต้องยืนยันว่าแจ้งพนักงานเรื่องการเก็บตำแหน่งแล้ว (noticeAcceptedAt/ById — PDPA) ◂
+model HrClockSite {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  systemId           String
+  unitId             String?
+  mobileEnabled      Boolean   @default(false)
+  gpsRequired        Boolean   @default(true)
+  centerLat          Decimal?  @db.Decimal(9, 6)
+  centerLng          Decimal?  @db.Decimal(9, 6)
+  radiusM            Int       @default(150)
+  minAccuracyM       Int       @default(100)
+  photoRequired      Boolean   @default(false)
+  noticeAcceptedAt   DateTime?
+  noticeAcceptedById String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([systemId])
 }

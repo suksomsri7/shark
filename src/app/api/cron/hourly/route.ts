@@ -174,6 +174,16 @@ export async function GET(req: Request) {
     });
   }
   // ◂ POS P3.6
+  // HR H2.4 ▸ R11 (HQ27 · Q6): ล้างพิกัดการลงเวลาที่เก่ากว่า 30 วัน + รูปที่เก่ากว่า 90 วัน ทุกร้าน (ครั้งละ ≤ 1 000 แถว · รันซ้ำได้) ·
+  //   best-effort: ล้มห้ามทำให้รอบนี้แดง (ไม่เพิ่มช่องในผลลัพธ์ของ route)
+  try {
+    await (await import("@/lib/modules/hr/clock")).purgeClockPrivacy({ now: new Date() });
+  } catch (e) {
+    await logOps("WARN", "cron", "purgeClockPrivacy (ล้างพิกัด/รูปการลงเวลาตามกำหนด) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  // ◂ HR H2.4
   // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
   //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
   let outboxDrained = -1;

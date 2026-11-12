@@ -24,6 +24,7 @@ import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { HR_OTHER_BRANCH_TEXT, HR_UNASSIGNED_TEXT, hrScopeOf, type HrScope } from "./scope";
 import { canManageHrSettings, SETTINGS_TEXT, type SettingsViewer } from "./settings";
 import { addDays, bkkDayKey, paidMinutes, shiftTimesProblem, shiftWindow, TimeRuleError } from "./time-rules";
+import { normalizeShiftTimes } from "./clock-rules"; // HR H2.4 ▸ R14 ◂
 import { daysBetween, ROSTER_RULE_DEFAULTS, rosterWarnings, weekdayOfDay, weekStartOf, type RosterWarning } from "./roster-rules";
 import { cancelRequest } from "@/lib/modules/approval/service"; // HR H2.3 ▸ Q16 ยกเลิกคำขอสลับกะที่ค้างบนแถวที่ถูกย้าย/ลบ (คำขออนุมัติผ่านแกน · tx เดียวกัน) ◂
 
@@ -444,9 +445,11 @@ export async function addEntry(
     const sIn = optInt(input?.startMin);
     const eIn = optInt(input?.endMin);
     const override = sIn !== null || eIn !== null;
-    const startMin = sIn ?? shift.startMin;
-    const endMin = eIn ?? shift.endMin;
-    const crossesMidnight = override ? endMin < startMin : shift.crossesMidnight;
+    // HR H2.4 ▸ R14 เที่ยงคืนรูปเดียว (0/ข้ามคืน ⇒ 1440/ไม่ข้าม) · R13 D-F4 timesOverridden = เวลาที่ระบุต่างจากกะ
+    const t0 = { startMin: sIn ?? shift.startMin, endMin: eIn ?? shift.endMin, crossesMidnight: override ? (eIn ?? shift.endMin) < (sIn ?? shift.startMin) : shift.crossesMidnight };
+    const { startMin, endMin, crossesMidnight } = override ? normalizeShiftTimes(t0) : t0;
+    const timesOverridden = override && (startMin !== shift.startMin || endMin !== shift.endMin || crossesMidnight !== shift.crossesMidnight);
+    // ◂ HR H2.4
     const problem = shiftTimesProblem({ startMin, endMin, crossesMidnight });
     if (problem) return refuse(problem);
     const employeeId = String(input.employeeId).trim();
@@ -467,6 +470,7 @@ export async function addEntry(
           endMin,
           breakMin: shift.breakMin,
           crossesMidnight,
+          timesOverridden, // HR H2.4 ▸ R13 ◂
           source: "MANUAL",
           note,
           createdById: viewer.userId ?? null,
@@ -536,9 +540,17 @@ export async function moveEntry(ctx: Ctx, viewer: RosterViewer, entryId: string,
       // แก้ในที่ (คง id ไว้ให้ลิงก์ลงเวลา/แลกกะในอนาคต) · ยังไม่ประกาศจนกว่าจะเผยแพร่ครั้งถัดไป (publishedAt คงไว้ — R7)
       const res = await tx.hrRosterEntry.updateMany({
         where: { id: row.id },
-        data: { employeeId, date: dbDate(day), shiftId: shift.id, unitId, ...times, source: "MANUAL", published: false },
+        data: { employeeId, date: dbDate(day), shiftId: shift.id, unitId, ...times, ...(shiftChanged ? { timesOverridden: false } : {}) /* HR H2.4 ▸ R13 เปลี่ยนกะ = เวลาตามกะ ◂ */, source: "MANUAL", published: false },
       });
       if (res.count !== 1) throw new RosterRefusal(ROSTER_TEXT.entryNotFound);
+      // HR H2.4 r2 ▸ R3 ย้ายวัน ⇒ ปลดแถวลงเวลาที่ผูกกะนี้ทั้งหมด (เข้างานของวันเดิมไม่ใช่ของวันใหม่) · ย้ายคน ⇒ ปลดแถวของคนอื่น
+      //   (กะหนึ่งไม่มีแถวลงเวลาของสองคน — hunt P2) · แถวยังอยู่ครบ แค่ rosterEntryId = null ◂
+      if (day !== oldDay || employeeId !== row.employeeId) {
+        await tx.hrAttendance.updateMany({
+          where: { tenantId: ctx.tenantId, systemId: ctx.systemId, rosterEntryId: row.id, ...(day !== oldDay ? {} : { employeeId: { not: employeeId } }) },
+          data: { rosterEntryId: null },
+        });
+      }
       // HR H2.3 ▸ Q16 (มติผู้คุม 22 ต.ค.): แถวนี้เป็นกะต้นทาง/ปลายทางของคำขอสลับที่ยังเปิด ⇒ ยกเลิกคำขอ + คำขออนุมัติในธุรกรรมนี้ (ใต้ล็อกตารางกะเดิม)
       swapsCancelled = await cancelOpenSwapsInTx(tx, ctx, row.id);
       // ◂ HR H2.3
@@ -591,18 +603,11 @@ export type CopyResult = { ok: true; created: number; skipped: RosterSkip[]; war
 
 // HR H2.1 r2 ▸ เวลาของแถวที่คัดลอก (มติผู้คุม hunt F4 · R6 "เวลาที่ระบุเองของต้นทางคงไว้" เมื่อ Q7 อนุญาต) ◂
 type RowTimes = { startMin: number; endMin: number; breakMin: number; crossesMidnight: boolean };
-/**
- * ต้นทางมีเวลาต่างจากกะ และกะไม่ถูกแก้หลังเขียนแถวนั้น ⇒ ความต่างคือเวลาที่ผู้จัดระบุเอง (Q7) ⇒ ลอกตามต้นทางทุกช่อง
- * กะถูกแก้หลังเขียนแถว ⇒ แยกไม่ออกว่าเป็นเวลาเองหรือสำเนาเก่าของกะ ⇒ ใช้เวลากะ "ปัจจุบัน" ตาม Q6 (ไม่มีคอลัมน์บอก override — ไม่แก้ schema ใน H2.1)
- * HR H2.1 r3 ▸ เทียบกับ createdAt ไม่ใช่ updatedAt — updatedAt ขยับตอนเผยแพร่/ย้ายกะเดิมทั้งที่เวลาในแถวไม่เปลี่ยน ⇒ สำเนาเก่าถูกนับเป็น
- *   เวลาเอง (review r2 MAJOR-1) · เวลาในแถวเขียนตอนสร้าง (เพิ่ม/คัดลอก) หรือตอนย้ายเปลี่ยนกะ (ได้เวลากะขณะนั้น ⇒ ไม่ differs จนกะถูกแก้)
- *   ข้อจำกัดที่ยอมรับ (หนี้ D-F4): เวลาเองที่ใส่ให้แถวเก่าหลังกะถูกแก้ จะไม่ถูกคัดลอก — คอลัมน์จริง timesOverridden มาใน migration H2.4 ◂
- */
-function copyTimesOf(r: RowTimes & { createdAt: Date }, s: ShiftRow, shiftEditedAt: Date | null): RowTimes {
-  const shiftTimes = { startMin: s.startMin, endMin: s.endMin, breakMin: s.breakMin, crossesMidnight: s.crossesMidnight };
-  const differs = r.startMin !== s.startMin || r.endMin !== s.endMin || r.breakMin !== s.breakMin || r.crossesMidnight !== s.crossesMidnight;
-  if (differs && shiftEditedAt && r.createdAt >= shiftEditedAt) return { startMin: r.startMin, endMin: r.endMin, breakMin: r.breakMin, crossesMidnight: r.crossesMidnight };
-  return shiftTimes;
+// HR H2.4 ▸ R13 (ปิดหนี้ D-F4): ตัดสินด้วยธง timesOverridden ของแถวต้นทาง แทนตัวเดาจาก createdAt/updatedAt ของ H2.1 r3 —
+//   ธง = เวลาที่ผู้จัดระบุเอง ⇒ คัดลอกเวลาของแถว + ธง · ไม่มีธง ⇒ เวลากะ "ปัจจุบัน" (Q6) ◂
+function copyTimesOf(r: RowTimes & { timesOverridden: boolean }, s: ShiftRow): RowTimes & { timesOverridden: boolean } {
+  if (r.timesOverridden) return { startMin: r.startMin, endMin: r.endMin, breakMin: r.breakMin, crossesMidnight: r.crossesMidnight, timesOverridden: true };
+  return { startMin: s.startMin, endMin: s.endMin, breakMin: s.breakMin, crossesMidnight: s.crossesMidnight, timesOverridden: false };
 }
 
 export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek: string; toWeek: string; unitId?: string | null }): Promise<CopyResult> {
@@ -620,7 +625,7 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
     const db = tenantDb(ctx);
     const src = await db.hrRosterEntry.findMany({
       where: { date: { gte: dbDate(fromWeek), lte: dbDate(addDays(fromWeek, 6)) }, ...entryScopeWhere(scope, unitId) },
-      select: { ...ENTRY_SELECT, createdAt: true }, // HR H2.1 r3 ▸ createdAt แทน updatedAt (copyTimesOf) ◂
+      select: { ...ENTRY_SELECT, timesOverridden: true }, // HR H2.4 ▸ R13 ธงแทนตัวเดา (copyTimesOf) ◂
       orderBy: [{ employeeId: "asc" }, { date: "asc" }, { startMin: "asc" }, { id: "asc" }],
       take: 5000,
     });
@@ -628,13 +633,12 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
     const empIds = [...new Set(src.map((r) => r.employeeId))];
     const [emps, shifts, holidays, leaves] = await Promise.all([
       db.hrEmployee.findMany({ where: { id: { in: empIds } }, select: EMP_SELECT }) as Promise<EmpRow[]>,
-      db.hrShift.findMany({ where: { id: { in: [...new Set(src.map((r) => r.shiftId))] } }, select: { ...SHIFT_SELECT, updatedAt: true } }),
+      db.hrShift.findMany({ where: { id: { in: [...new Set(src.map((r) => r.shiftId))] } }, select: SHIFT_SELECT }), // HR H2.4 ▸ ไม่ใช้ updatedAt แล้ว ◂
       db.hrHoliday.findMany({ where: { date: { gte: dbDate(toWeek), lte: dbDate(toEnd) } }, select: { unitId: true, date: true, shopOpen: true } }),
       db.hrLeave.findMany({ where: { employeeId: { in: empIds }, status: "APPROVED", fromDate: { lte: dbDate(toEnd) }, toDate: { gte: dbDate(toWeek) } }, select: { employeeId: true, fromDate: true, toDate: true } }),
     ]);
     const empOf = new Map(emps.map((e) => [e.id, e]));
     const shiftOf = new Map(shifts.map((s) => [s.id, s as ShiftRow]));
-    const shiftEditedAt = new Map(shifts.map((s) => [s.id, s.updatedAt]));
     const onLeave = (emp: string, day: string) => leaves.some((l) => l.employeeId === emp && dayOf(l.fromDate) <= day && day <= dayOf(l.toDate));
     const skipped: RosterSkip[] = [];
     const warnings: RosterWarning[] = [];
@@ -642,7 +646,7 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
     for (const empId of empIds) {
       const emp = empOf.get(empId);
       const mine = src.filter((r) => r.employeeId === empId);
-      const cands: { row: EntryRow; day: string; unitId: string | null; shift: ShiftRow; times: RowTimes; openHoliday: boolean }[] = [];
+      const cands: { row: EntryRow; day: string; unitId: string | null; shift: ShiftRow; times: RowTimes & { timesOverridden: boolean }; openHoliday: boolean }[] = []; // HR H2.4 ▸ + ธง ◂
       for (const r of mine) {
         const day = addDays(dayOf(r.date), delta);
         if (!emp || isEnded(emp)) {
@@ -671,7 +675,7 @@ export async function copyWeek(ctx: Ctx, viewer: RosterViewer, input: { fromWeek
           skipped.push({ reason: "SHIFT_ARCHIVED", employeeId: empId, date: day });
           continue;
         }
-        cands.push({ row: r, day, unitId: u, shift: s, times: copyTimesOf(r, s, shiftEditedAt.get(s.id) ?? null), openHoliday: !!h && h.shopOpen });
+        cands.push({ row: r, day, unitId: u, shift: s, times: copyTimesOf(r, s) /* HR H2.4 ▸ R13 ◂ */, openHoliday: !!h && h.shopOpen });
       }
       if (cands.length === 0) continue;
       const made = await db.$transaction(async (t) => {
@@ -1102,6 +1106,11 @@ export async function reassignEntriesInTx(
         await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT hr_h23_reassign");
         return { ok: false, code: "ENTRY_CHANGED" };
       }
+      // HR H2.4 r2 ▸ R3 เปลี่ยนเจ้าของกะ ⇒ ปลดแถวลงเวลาของคนอื่นที่ผูกกะนี้ (hunt P2) ◂
+      await tx.hrAttendance.updateMany({
+        where: { tenantId: ctx.tenantId, systemId: ctx.systemId, rosterEntryId: m.entryId, employeeId: { not: m.toEmployeeId } },
+        data: { rosterEntryId: null },
+      });
     }
   } catch (e) {
     if (!isUniqueViolation(e)) throw e;
