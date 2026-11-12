@@ -45,6 +45,12 @@ export const LIFE_TEXT = {
   lead: "จำนวนวันแจ้งล่วงหน้าไม่ถูกต้อง",
   board: "ไม่พบบอร์ดงานนี้ในร้าน — เลือกบอร์ดใหม่",
   template: "รายการตรวจสอบไม่ถูกต้อง (หัวข้อ 1–80 ตัวอักษร · ไม่เกิน 20 ข้อ · รหัสไม่ซ้ำ)",
+  // r2 (มติผู้คุม 1 · 8)
+  revokeOwner: "พนักงานคนนี้ผูกกับบัญชีเจ้าของร้าน — เปลี่ยนเจ้าของร้านที่หน้าตั้งค่าร้านก่อน จึงจะสิ้นสุดการจ้างได้",
+  revokeManager: "การถอนสิทธิ์บัญชีของผู้จัดการทำได้เฉพาะเจ้าของร้าน — ให้เจ้าของร้านเป็นผู้สิ้นสุดการจ้างคนนี้",
+  keepAccess: "ร้านตั้งให้ถอนสิทธิ์บัญชีเมื่อสิ้นสุดการจ้าง — เฉพาะเจ้าของร้านเลือกเก็บสิทธิ์ไว้ได้",
+  ownerSwitch: "ปิดการล้าง PIN หรือการถอนสิทธิ์บัญชีอัตโนมัติได้เฉพาะเจ้าของร้าน",
+  offActive: "เริ่มรายการออกจากงานได้หลังสิ้นสุดการจ้างแล้วเท่านั้น",
 } as const;
 const T = LIFE_TEXT;
 /** ข้อความที่หน้าจอแสดงได้ (ผลของ action → รหัสสั้นใน URL → ข้อความจากรายการนี้เท่านั้น) */
@@ -233,9 +239,12 @@ export async function saveLifecyclePolicy(ctx: Ctx, viewer: LifeViewer, patch: L
     if (!t || t.length === 0) return refuse(T.template);
     next[k] = t;
   }
+  const cur = await getLifecyclePolicy(ctx);
   for (const k of ["autoRevokePin", "revokeAppAccess"] as const) {
     if (!has(p, k)) continue;
     if (typeof p[k] !== "boolean") return refuse(SETTINGS_TEXT.failed);
+    // r2-8: ปิดการล้าง PIN / การถอนสิทธิ์อัตโนมัติ = เจ้าของร้านเท่านั้น (คงค่าเดิมหรือเปิด = ผู้ตั้งค่าได้ทุกคน)
+    if (p[k] === false && cur[k] === true && viewer.role !== "OWNER") return refuse(T.ownerSwitch);
     next[k] = p[k] as boolean;
   }
   if (has(p, "kanban")) {
@@ -279,17 +288,23 @@ const milestoneKey = (d: { employeeId: string; milestone: Milestone; date: strin
 async function dueOf(db: Tx, pol: LifecyclePolicy, day: string, extra: Prisma.HrEmployeeWhereInput = {}): Promise<Due[]> {
   const pCut = dbDate(addDays(day, pol.probationLeadDays));
   const cCut = dbDate(addDays(day, pol.contractLeadDays));
-  const rows = await db.hrEmployee.findMany({
-    where: { AND: [{ active: true, OR: [{ employmentStatus: "PROBATION", probationEndAt: { lte: pCut } }, { contractEndAt: { lte: cCut } }] }, extra] },
-    orderBy: { id: "asc" },
+  // r2-8: หน้าต่างสแกนเรียงตามวันครบกำหนด (ล่าสุดก่อน) — วันที่เพิ่งเข้าเกณฑ์อยู่ต้นหน้าต่างเสมอ ไม่ถูกแถวเก่าที่เตือนไปแล้วดันตก
+  const sel = { id: true, unitId: true, name: true, probationEndAt: true, contractEndAt: true } as const;
+  const probs = await db.hrEmployee.findMany({
+    where: { AND: [{ active: true, employmentStatus: "PROBATION", probationEndAt: { lte: pCut } }, extra] },
+    orderBy: [{ probationEndAt: "desc" }, { id: "asc" }],
     take: SWEEP_SCAN,
-    select: { id: true, unitId: true, name: true, employmentStatus: true, probationEndAt: true, contractEndAt: true },
+    select: sel,
+  });
+  const conts = await db.hrEmployee.findMany({
+    where: { AND: [{ active: true, contractEndAt: { lte: cCut } }, extra] },
+    orderBy: [{ contractEndAt: "desc" }, { id: "asc" }],
+    take: SWEEP_SCAN,
+    select: sel,
   });
   const out: Due[] = [];
-  for (const r of rows) {
-    if (r.employmentStatus === "PROBATION" && r.probationEndAt && r.probationEndAt <= pCut) out.push({ employeeId: r.id, unitId: r.unitId, name: r.name, milestone: "PROBATION_END", date: dayOf(r.probationEndAt)! });
-    if (r.contractEndAt && r.contractEndAt <= cCut) out.push({ employeeId: r.id, unitId: r.unitId, name: r.name, milestone: "CONTRACT_END", date: dayOf(r.contractEndAt)! });
-  }
+  for (const r of probs) if (r.probationEndAt) out.push({ employeeId: r.id, unitId: r.unitId, name: r.name, milestone: "PROBATION_END", date: dayOf(r.probationEndAt)! });
+  for (const r of conts) if (r.contractEndAt) out.push({ employeeId: r.id, unitId: r.unitId, name: r.name, milestone: "CONTRACT_END", date: dayOf(r.contractEndAt)! });
   return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.employeeId < b.employeeId ? -1 : a.employeeId > b.employeeId ? 1 : a.milestone < b.milestone ? -1 : 1));
 }
 
@@ -387,25 +402,12 @@ export async function confirmProbation(ctx: Ctx, viewer: LifeViewer, employeeId:
   return { ok: true };
 }
 
-// ═══════════════════════════ สิ้นสุดการจ้าง (R8) ═══════════════════════════
+// ═══════════════════════════ สิ้นสุดการจ้าง (R8 · r2 มติ 1/5/6) ═══════════════════════════
 export const OFFBOARD_REASONS: readonly HrOffboardReason[] = ["RESIGNED", "CONTRACT_END", "PROBATION_FAILED", "TERMINATED", "OTHER"];
 export type OffboardInput = { endDate?: string | null; reason?: string | null; note?: string | null; revokeAccess?: boolean | null };
 export type OffboardResult =
-  | { ok: true; pinRevoked: boolean; accessRevoked: boolean; cancelled: { leaves: number; swaps: number; roster: number }; spanning: number }
+  | { ok: true; pinRevoked: boolean; accessRevoked: boolean; accessKept: boolean; cancelled: { leaves: number; swaps: number; roster: number }; spanning: number }
   | Fail;
-type AccessDone = { membershipId: string | null; userId: string; unlinked: string[] } | null;
-
-/** บัญชีแอปของพนักงาน: ถอนในธุรกรรมเดียวกัน (ผลเท่ากับ staff/revokeStaffAccess) — ผู้กดถอนให้คนนี้ไม่ได้ (เจ้าของร้าน/บทบาทสูงกว่า) = null */
-async function revokeAccessInTx(tx: Tx, ctx: Ctx, viewer: LifeViewer, userId: string): Promise<AccessDone> {
-  if (!evaluate(membershipOf(viewer), { module: "settings", action: "settings.staff.write" })) return null;
-  const target = await tx.membership.findFirst({ where: { tenantId: ctx.tenantId, userId }, select: { id: true, role: true, acceptedAt: true } });
-  if (target && (target.role === "OWNER" || (viewer.role !== "OWNER" && target.role !== "STAFF"))) return null;
-  const rows = await tx.hrEmployee.findMany({ where: { linkedUserId: userId }, select: { id: true } });
-  if (rows.length) await tx.hrEmployee.updateMany({ where: { linkedUserId: userId }, data: { linkedUserId: null, linkApprovedById: null } });
-  if (target?.acceptedAt) await tx.membership.updateMany({ where: { id: target.id, tenantId: ctx.tenantId }, data: { acceptedAt: null } });
-  await tx.pushDevice.updateMany({ where: { userId, tenantId: ctx.tenantId }, data: { tenantId: null } });
-  return { membershipId: target?.acceptedAt ? target.id : null, userId, unlinked: rows.map((r) => r.id) };
-}
 
 /** แถวรายการตรวจจากแม่แบบ (1 แถวต่อรหัส — partial unique ในฐานกันซ้ำ) */
 function taskRows(ctx: Ctx, employeeId: string, kind: HrOnboardingKind, tpl: LifeTemplateRow[], baseDay: string) {
@@ -413,10 +415,27 @@ function taskRows(ctx: Ctx, employeeId: string, kind: HrOnboardingKind, tpl: Lif
 }
 const markTask = (tx: Tx, employeeId: string, key: string, at: Date, by: string | null) =>
   tx.hrOnboardingTask.updateMany({ where: { employeeId, kind: "OFFBOARDING", templateKey: key, doneAt: null }, data: { doneAt: at, doneById: by } });
+/** audit ในธุรกรรมของผู้เรียก (ล้ม = ย้อนทั้งก้อน) — id/จำนวนล้วน */
+const auditTx = (tx: Tx, ctx: Ctx, actorId: string | null, action: string, targetType: string, targetId: string, after: Record<string, unknown>) =>
+  tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: actorId ? "USER" : "SYSTEM", actorId, action, targetType, targetId, after: after as Prisma.InputJsonValue } });
+/** ยกเลิกคำขออนุมัติที่ยังเปิดของ entity เหล่านี้ — คืน id ที่ยกเลิกได้ และ id ที่ตัดสินไปแล้ว (คงไว้ · บันทึกใน audit) */
+async function closeRequests(tx: Tx, ctx: Ctx, entityType: string, ids: string[]): Promise<{ cancelled: string[]; kept: string[] }> {
+  if (ids.length === 0) return { cancelled: [], kept: [] };
+  const reqs = await tx.approvalRequest.findMany({ where: { tenantId: ctx.tenantId, entityType, entityId: { in: ids }, status: { not: "CANCELLED" } }, select: { id: true, status: true }, orderBy: { id: "asc" } });
+  const out = { cancelled: [] as string[], kept: [] as string[] };
+  for (const r of reqs) {
+    if (r.status === "PENDING" && (await cancelRequest({ tenantId: ctx.tenantId }, r.id, { tx }))) out.cancelled.push(r.id);
+    else out.kept.push(r.id);
+  }
+  return out;
+}
 
 /**
- * สิ้นสุดการจ้าง — ธุรกรรมเดียว: ล็อกพนักงาน → ล็อกลงเวลา (รอการลงเวลาที่กำลังทำให้จบก่อน) → สถานะ ENDED + วันสิ้นสุด + ประวัติ + ปิด PIN →
- * ยกเลิกใบลา/คำขอสลับกะที่เริ่มหลังวันสิ้นสุด (+ คำขออนุมัติ) → ลบตารางกะหลังวันสิ้นสุด → รายการออกจากงาน → ถอนสิทธิ์แอป + เครื่อง push → event
+ * สิ้นสุดการจ้าง — ธุรกรรมเดียว: ล็อกพนักงาน → ล็อกลงเวลา (รอการลงเวลาที่กำลังทำให้จบก่อน) → ตัดสินเรื่องบัญชีแอป (ทำได้ทั้งหมดหรือปฏิเสธทั้งหมด) →
+ * สถานะ ENDED + วันสิ้นสุด + ประวัติ + ปิด PIN → ยกเลิกใบลา/คำขอสลับกะที่เริ่มหลังวันสิ้นสุด (+ คำขออนุมัติ) → ลบตารางกะหลังวันสิ้นสุด →
+ * รายการออกจากงาน → ถอนสิทธิ์แอป + เครื่อง push → audit + event (ทั้งหมดใน tx เดียว — ล้มตรงไหน = ย้อนทั้งหมด)
+ * บัญชีแอป (มติ r2-1): ผูกบัญชีเจ้าของร้าน = ปฏิเสธเสมอ · บัญชี STAFF = ผู้มีสิทธิ์สิ้นสุดการจ้างถอนได้ · บัญชีบทบาทอื่น = เจ้าของร้านเท่านั้น ·
+ *   ร้านตั้งให้ถอน แต่ผู้กดไม่ถอน = เจ้าของร้านเท่านั้น (ผลบอก accessKept) · ไม่มีทาง "สำเร็จแต่สิทธิ์ยังค้าง" เมื่อขอถอน
  * ใบลาที่คร่อมวันสิ้นสุด · OT · คำขอแก้เวลา · ของในอดีต ไม่แตะ (นับ spanning) · ทำซ้ำ = "สิ้นสุดแล้ว" ไม่เขียนอะไร
  */
 export async function offboardEmployee(ctx: Ctx, viewer: LifeViewer, employeeId: string, input: OffboardInput, opts: { now?: Date } = {}): Promise<OffboardResult> {
@@ -434,6 +453,7 @@ export async function offboardEmployee(ctx: Ctx, viewer: LifeViewer, employeeId:
   if (end > today) return refuse(T.endFuture);
   const scope = scopeOf(viewer);
   const actor = viewer.userId ?? null;
+  const isOwner = viewer.role === "OWNER";
   try {
     const out = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Tx;
@@ -445,6 +465,15 @@ export async function offboardEmployee(ctx: Ctx, viewer: LifeViewer, employeeId:
       if (!emp.active) throw new LifeRefusal(T.ended);
       if (emp.startDate && dbDate(end) < emp.startDate) throw new LifeRefusal(T.endBefore);
       const pol = policyOfSettings((await settingsOf(tx, ctx))?.settings);
+
+      // บัญชีแอปของพนักงาน — ตัดสินก่อนเขียนอะไร (ปฏิเสธ = ไม่มีอะไรเปลี่ยน)
+      const linked = emp.linkedUserId;
+      const member = linked ? await tx.membership.findFirst({ where: { tenantId: ctx.tenantId, userId: linked }, select: { id: true, role: true, acceptedAt: true } }) : null;
+      if (member?.role === "OWNER") throw new LifeRefusal(T.revokeOwner);
+      const wantAccess = typeof i.revokeAccess === "boolean" ? i.revokeAccess : pol.revokeAppAccess;
+      if (linked && !wantAccess && pol.revokeAppAccess && !isOwner) throw new LifeRefusal(T.keepAccess);
+      if (linked && wantAccess && member && member.role !== "STAFF" && !isOwner) throw new LifeRefusal(T.revokeManager);
+
       const pinRevoked = pol.autoRevokePin;
       const endAt = dbDate(end);
       const u = await tx.hrEmployee.updateMany({
@@ -462,57 +491,71 @@ export async function offboardEmployee(ctx: Ctx, viewer: LifeViewer, employeeId:
       });
       if (u.count !== 1) throw new LifeRefusal(T.ended);
 
-      // ใบลา: เริ่มหลังวันสิ้นสุด ⇒ ยกเลิก (+ คำขออนุมัติที่รออยู่) · คร่อมวันสิ้นสุด ⇒ ไม่แตะ (Q11 · ใบที่รออนุมัติตัดสินที่ด่านอนุมัติ)
+      // ใบลาที่เริ่มหลังวันสิ้นสุด (PENDING/APPROVED) ⇒ CANCELLED + คำขออนุมัติ · คำขอที่ตัดสินไปแล้ว = คงไว้ แต่ใบลายังยกเลิก และ audit ระบุ id
       const lv = await tx.hrLeave.findMany({ where: { employeeId: id, status: { in: ["PENDING", "APPROVED"] }, toDate: { gt: endAt } }, select: { id: true }, orderBy: { id: "asc" } });
       for (const l of lv) await lock(tx, `hr-leave:${l.id}`);
       const lvNow = await tx.hrLeave.findMany({ where: { id: { in: lv.map((l) => l.id) }, status: { in: ["PENDING", "APPROVED"] } }, select: { id: true, fromDate: true } });
-      const future = lvNow.filter((l) => l.fromDate > endAt).map((l) => l.id);
-      const spanning = lvNow.length - future.length;
-      if (future.length) {
-        const reqs = await tx.approvalRequest.findMany({ where: { tenantId: ctx.tenantId, entityType: "HrLeave", entityId: { in: future }, status: "PENDING" }, select: { id: true } });
-        for (const r of reqs) await cancelRequest({ tenantId: ctx.tenantId }, r.id, { tx });
-      }
-      const leaves = future.length ? (await tx.hrLeave.updateMany({ where: { id: { in: future }, status: { in: ["PENDING", "APPROVED"] } }, data: { status: "CANCELLED" } })).count : 0;
+      const leaveIds = lvNow.filter((l) => l.fromDate > endAt).map((l) => l.id);
+      const spanning = lvNow.length - leaveIds.length;
+      const leaveReq = await closeRequests(tx, ctx, "HrLeave", leaveIds);
+      const leaves = leaveIds.length ? (await tx.hrLeave.updateMany({ where: { id: { in: leaveIds }, status: { in: ["PENDING", "APPROVED"] } }, data: { status: "CANCELLED" } })).count : 0;
 
       // คำขอสลับกะที่ยังเปิด (เป็นผู้ขอหรือเพื่อน) ⇒ ยกเลิก (+ คำขออนุมัติ)
       const sw = await tx.hrShiftSwapRequest.findMany({ where: { status: { in: ["AWAITING_PEER", "PENDING"] }, OR: [{ requesterEmployeeId: id }, { targetEmployeeId: id }] }, select: { id: true }, orderBy: { id: "asc" } });
       for (const s of sw) await lock(tx, `hr-swap:${s.id}`);
-      const swIds = sw.map((s) => s.id);
-      if (swIds.length) {
-        const reqs = await tx.approvalRequest.findMany({ where: { tenantId: ctx.tenantId, entityType: "HrShiftSwapRequest", entityId: { in: swIds }, status: "PENDING" }, select: { id: true } });
-        for (const r of reqs) await cancelRequest({ tenantId: ctx.tenantId }, r.id, { tx });
-      }
-      const swaps = swIds.length ? (await tx.hrShiftSwapRequest.updateMany({ where: { id: { in: swIds }, status: { in: ["AWAITING_PEER", "PENDING"] } }, data: { status: "CANCELLED", decidedAt: now } })).count : 0;
+      const swapIds = sw.map((s) => s.id);
+      const swapReq = await closeRequests(tx, ctx, "HrShiftSwapRequest", swapIds);
+      const swaps = swapIds.length ? (await tx.hrShiftSwapRequest.updateMany({ where: { id: { in: swapIds }, status: { in: ["AWAITING_PEER", "PENDING"] } }, data: { status: "CANCELLED", decidedAt: now } })).count : 0;
 
       // ตารางกะหลังวันสิ้นสุด ⇒ ลบ (ล็อกกุญแจตารางกะก่อน · คำขอสลับที่อ้างแถวเหล่านี้หายตาม FK Cascade)
-      const ro = await tx.hrRosterEntry.findMany({ where: { employeeId: id, date: { gt: endAt } }, select: { id: true, date: true } });
+      const ro = await tx.hrRosterEntry.findMany({ where: { employeeId: id, date: { gt: endAt } }, select: { id: true, date: true }, orderBy: { id: "asc" } });
       if (ro.length) await lockRosterKeysInTx(tx, ctx.systemId, ro.map((r) => ({ employeeId: id, date: dayOf(r.date)! })));
-      const roster = ro.length ? (await tx.hrRosterEntry.deleteMany({ where: { employeeId: id, date: { gt: endAt } } })).count : 0;
+      const rosterIds = ro.map((r) => r.id);
+      const roster = ro.length ? (await tx.hrRosterEntry.deleteMany({ where: { id: { in: rosterIds } } })).count : 0;
 
       // รายการออกจากงาน (ครั้งแรกเท่านั้น — สิ้นสุดซ้ำหลังกู้คืนใช้ชุดเดิม)
       await tx.hrOnboardingTask.createMany({ data: taskRows(ctx, id, "OFFBOARDING", pol.offboardingTemplate, end), skipDuplicates: true });
       if (pinRevoked) await markTask(tx, id, "pin_revoked", now, actor);
-      const wantAccess = typeof i.revokeAccess === "boolean" ? i.revokeAccess : pol.revokeAppAccess;
-      const access = wantAccess && emp.linkedUserId ? await revokeAccessInTx(tx, ctx, viewer, emp.linkedUserId) : null;
-      if (access) await markTask(tx, id, "app_access", now, actor);
 
+      // ถอนสิทธิ์แอป (ผลเท่ากับ staff/revokeStaffAccess): เลิกผูก · สมาชิกภาพ acceptedAt = null · เครื่อง push ไม่ผูกร้านนี้
+      //   เลิกผูก "ทั้งร้าน": partial unique (tenantId, linkedUserId) ⇒ บัญชีหนึ่งผูกพนักงานได้แถวเดียวในร้าน = แถวนี้ (tx ผูกระบบนี้)
+      const revoke = !!linked && wantAccess;
+      if (revoke && linked) {
+        await tx.hrEmployee.updateMany({ where: { id, linkedUserId: linked }, data: { linkedUserId: null, linkApprovedById: null } });
+        if (member?.acceptedAt) await tx.membership.updateMany({ where: { id: member.id, tenantId: ctx.tenantId }, data: { acceptedAt: null } });
+        await tx.pushDevice.updateMany({ where: { userId: linked, tenantId: ctx.tenantId }, data: { tenantId: null } });
+        await markTask(tx, id, "app_access", now, actor);
+        await auditTx(tx, ctx, actor, "hr.employee.link", "HrEmployee", id, { employeeId: id, userId: linked, approvedById: null, unlinked: true, viaOffboard: true });
+        if (member?.acceptedAt) await auditTx(tx, ctx, actor, "membership.access.revoke", "Membership", member.id, { active: false, viaOffboard: id });
+      }
+      const accessKept = !!linked && !wantAccess;
+      const after = {
+        employeeId: id,
+        endDate: end,
+        leaves,
+        swaps,
+        roster,
+        spanning,
+        leaveIds,
+        swapIds,
+        rosterIds,
+        requestsCancelled: [...leaveReq.cancelled, ...swapReq.cancelled],
+        requestsKept: [...leaveReq.kept, ...swapReq.kept],
+        pinRevoked,
+        accessRevoked: revoke,
+        accessKept,
+      };
+      await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: actor ? "USER" : "SYSTEM", actorId: actor, action: "hr.employee.offboard", targetType: "HrEmployee", targetId: id, after: after as Prisma.InputJsonValue } });
       await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: emp.unitId, type: OFFBOARDED_EVENT, idempotencyKey: `${OFFBOARDED_EVENT}#${id}#${now.getTime()}`, payload: { employeeId: id, endDate: end } });
-      return { pinRevoked, access, cancelled: { leaves, swaps, roster }, spanning };
+      return { pinRevoked, accessRevoked: revoke, accessKept, cancelled: { leaves, swaps, roster }, spanning };
     }, TX_OPTS);
-    const counts = { ...out.cancelled, spanning: out.spanning };
-    await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: actor, action: "hr.employee.offboard", targetType: "HrEmployee", targetId: id, after: { employeeId: id, endDate: end, ...counts, pinRevoked: out.pinRevoked, accessRevoked: !!out.access } });
-    const acc = out.access;
-    if (acc) {
-      for (const e of acc.unlinked) await writeAudit({ tenantId: ctx.tenantId, actorId: actor, action: "hr.employee.link", targetType: "HrEmployee", targetId: e, after: { employeeId: e, userId: acc.userId, approvedById: null, unlinked: true } });
-      if (acc.membershipId) await writeAudit({ tenantId: ctx.tenantId, actorId: actor, action: "membership.access.revoke", targetType: "Membership", targetId: acc.membershipId, after: { active: false, viaOffboard: id } });
-    }
-    return { ok: true, pinRevoked: out.pinRevoked, accessRevoked: !!out.access, cancelled: out.cancelled, spanning: out.spanning };
+    return { ok: true, ...out };
   } catch (e) {
     return refuse(reasonOf(e));
   }
 }
 
-/** ประวัติวงจรของพนักงาน (สถานะ · วันที่ · การสิ้นสุดล่าสุด) — ผู้ดูข้อมูลบันทึกในขอบเขตเท่านั้น */
+/** ประวัติวงจรของพนักงาน (สถานะ · วันที่ · การสิ้นสุดล่าสุด) — ผู้ดูข้อมูลบันทึกในขอบเขตเท่านั้น · แถวของตัวเอง = ไม่มีเหตุผล/หมายเหตุการสิ้นสุด (r2-2) */
 export async function loadLifecycleForViewer(
   ctx: Ctx,
   viewer: LifeViewer,
@@ -524,15 +567,16 @@ export async function loadLifecycleForViewer(
   if (!id) return null;
   const r = await tenantDb(ctx).hrEmployee.findFirst({
     where: scopedWhere(scopeOf(viewer), id, nowOf(opts)),
-    select: { employmentStatus: true, startDate: true, probationEndAt: true, contractEndAt: true, endDate: true, offboardedAt: true, offboardReason: true, offboardNote: true },
+    select: { employmentStatus: true, startDate: true, probationEndAt: true, contractEndAt: true, endDate: true, offboardedAt: true, offboardReason: true, offboardNote: true, linkedUserId: true },
   });
   if (!r) return null;
+  const own = !!r.linkedUserId && r.linkedUserId === viewer.userId;
   return {
     status: r.employmentStatus ?? null,
     startDate: dayOf(r.startDate),
     probationEndAt: dayOf(r.probationEndAt),
     contractEndAt: dayOf(r.contractEndAt),
-    offboard: r.offboardedAt ? { at: r.offboardedAt, endDate: dayOf(r.endDate), reason: r.offboardReason, note: r.offboardNote } : null,
+    offboard: r.offboardedAt ? { at: r.offboardedAt, endDate: dayOf(r.endDate), reason: own ? null : r.offboardReason, note: own ? null : r.offboardNote } : null,
   };
 }
 
@@ -575,9 +619,11 @@ export async function listReviewNotes(ctx: Ctx, viewer: LifeViewer, employeeId: 
   if (!canSeeLifecycle(viewer)) return null;
   const id = str(employeeId);
   const db = tenantDb(ctx);
-  const row = id ? await db.hrEmployee.findFirst({ where: scopedWhere(scopeOf(viewer), id, nowOf(opts)), select: { id: true } }) : null;
+  const row = id ? await db.hrEmployee.findFirst({ where: scopedWhere(scopeOf(viewer), id, nowOf(opts)), select: { id: true, linkedUserId: true } }) : null;
   if (!row) return null;
-  const rows = await db.hrReviewNote.findMany({ where: { employeeId: row.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 200 });
+  // r2-2: แถวของตัวเอง = เฉพาะบันทึกที่เปิดให้พนักงานเห็น (คีย์ HR ไม่เปิดบันทึกลับของตัวเอง)
+  const own = !!row.linkedUserId && row.linkedUserId === viewer.userId;
+  const rows = await db.hrReviewNote.findMany({ where: { employeeId: row.id, ...(own ? { visibleToEmployee: true } : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 200 });
   const authors = [...new Set(rows.map((r) => r.authorUserId).filter((u): u is string => !!u))];
   const names = new Map(authors.length ? (await tenantDb({ tenantId: ctx.tenantId }).user.findMany({ where: { id: { in: authors } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]) : []);
   return {
@@ -602,7 +648,8 @@ export async function acknowledgeReviewNote(actor: { tenantId: string; userId: s
   const db = tenantDb({ tenantId: actor.tenantId, systemId: link.systemId });
   const n = await db.hrReviewNote.findFirst({ where: { id, employeeId: link.employeeId, visibleToEmployee: true }, select: { id: true } });
   if (!n) return refuse(T.noAccess);
-  await db.hrReviewNote.updateMany({ where: { id: n.id, acknowledgedAt: null }, data: { acknowledgedAt: nowOf(opts) } });
+  const r = await db.hrReviewNote.updateMany({ where: { id: n.id, acknowledgedAt: null }, data: { acknowledgedAt: nowOf(opts) } });
+  if (r.count === 1) await writeAudit({ tenantId: actor.tenantId, actorType: "USER", actorId: actor.userId, action: "hr.review_note.ack", targetType: "HrReviewNote", targetId: n.id, after: { id: n.id, employeeId: link.employeeId } });
   return { ok: true };
 }
 
@@ -620,8 +667,10 @@ export async function startChecklist(ctx: Ctx, viewer: LifeViewer, employeeId: s
     const created = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Tx;
       await lock(tx, `hr:emp:${id}`);
-      const emp = await tx.hrEmployee.findFirst({ where: scopedWhere(scope, id, now), select: { id: true, unitId: true, startDate: true, endDate: true } });
+      const emp = await tx.hrEmployee.findFirst({ where: scopedWhere(scope, id, now), select: { id: true, unitId: true, startDate: true, endDate: true, active: true, linkedUserId: true } });
       if (!emp) throw new LifeRefusal(T.noAccess);
+      if (emp.linkedUserId && emp.linkedUserId === viewer.userId) throw new LifeRefusal(T.self);
+      if (k === "OFFBOARDING" && emp.active) throw new LifeRefusal(T.offActive);
       const pol = policyOfSettings((await settingsOf(tx, ctx))?.settings);
       const base = (k === "ONBOARDING" ? dayOf(emp.startDate) : dayOf(emp.endDate)) ?? thaiDateKey(now);
       const tpl = k === "ONBOARDING" ? pol.onboardingTemplate : pol.offboardingTemplate;
@@ -630,6 +679,7 @@ export async function startChecklist(ctx: Ctx, viewer: LifeViewer, employeeId: s
         const first = await tx.hrOnboardingTask.findFirst({ where: { employeeId: id, kind: k }, orderBy: { createdAt: "asc" }, select: { createdAt: true } });
         const at = (first?.createdAt ?? now).getTime();
         await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: emp.unitId, type: CHECKLIST_EVENT, idempotencyKey: `${CHECKLIST_EVENT}#${id}#${k}#${at}`, payload: { employeeId: id, kind: k } });
+        await auditTx(tx, ctx, viewer.userId ?? null, "hr.checklist.start", "HrEmployee", id, { employeeId: id, kind: k, created: n });
       }
       return n;
     }, TX_OPTS);
@@ -645,8 +695,9 @@ export async function listChecklist(ctx: Ctx, viewer: LifeViewer, employeeId: st
   if (!canSeeLifecycle(viewer)) return null;
   const id = str(employeeId);
   const db = tenantDb(ctx);
-  const row = id ? await db.hrEmployee.findFirst({ where: scopedWhere(scopeOf(viewer), id, nowOf(opts)), select: { id: true } }) : null;
+  const row = id ? await db.hrEmployee.findFirst({ where: scopedWhere(scopeOf(viewer), id, nowOf(opts)), select: { id: true, linkedUserId: true } }) : null;
   if (!row) return null;
+  if (row.linkedUserId && row.linkedUserId === viewer.userId) return null; // r2-2: รายการตรวจของตัวเอง = ไม่เห็น (Q7)
   const rows = await db.hrOnboardingTask.findMany({ where: { employeeId: row.id }, orderBy: [{ kind: "asc" }, { sortOrder: "asc" }, { id: "asc" }], take: 100 });
   const item = (r: (typeof rows)[number]): ChecklistItem => ({ id: r.id, kind: r.kind, title: r.title, sortOrder: r.sortOrder, dueDate: dayOf(r.dueDate), done: !!r.doneAt, doneAt: r.doneAt, hasCard: !!r.kanbanCardId });
   return { onboarding: rows.filter((r) => r.kind === "ONBOARDING").map(item), offboarding: rows.filter((r) => r.kind === "OFFBOARDING").map(item) };
@@ -659,19 +710,21 @@ export async function setTaskDone(ctx: Ctx, viewer: LifeViewer, taskId: string, 
   const db = tenantDb(ctx);
   const task = id ? await db.hrOnboardingTask.findFirst({ where: { id }, select: { id: true, employeeId: true } }) : null;
   const now = nowOf(opts);
-  const row = task ? await db.hrEmployee.findFirst({ where: scopedWhere(scopeOf(viewer), task.employeeId, now), select: { id: true } }) : null;
+  const row = task ? await db.hrEmployee.findFirst({ where: scopedWhere(scopeOf(viewer), task.employeeId, now), select: { id: true, linkedUserId: true } }) : null;
   if (!task || !row) return refuse(T.noAccess);
+  if (row.linkedUserId && row.linkedUserId === viewer.userId) return refuse(T.self);
   await db.hrOnboardingTask.updateMany({ where: { id: task.id }, data: done ? { doneAt: now, doneById: viewer.userId ?? null } : { doneAt: null, doneById: null } });
+  await writeAudit({ tenantId: ctx.tenantId, actorType: "USER", actorId: viewer.userId ?? null, action: "hr.checklist.task", targetType: "HrOnboardingTask", targetId: task.id, after: { taskId: task.id, employeeId: task.employeeId, done } });
   return { ok: true, employeeId: task.employeeId };
 }
 
 // ═══════════════════════════ สะพานบอร์ดงาน (ผู้เรียก = src/lib/platform/hr-lifecycle-bridges.ts เท่านั้น) ═══════════════════════════
 /** ชื่อ + สาขาของพนักงาน (สำหรับหัวการ์ด — ไม่มีข้อมูลอื่น) */
-export async function cardSubjectOf(ctx: Ctx, employeeId: string): Promise<{ name: string; unitId: string | null } | null> {
+export async function cardSubjectOf(ctx: Ctx, employeeId: string): Promise<{ name: string; unitId: string | null; linkedUserId: string | null } | null> {
   const id = str(employeeId);
   if (!id) return null;
-  const r = await tenantDb(ctx).hrEmployee.findFirst({ where: { id }, select: { name: true, unitId: true } });
-  return r ? { name: r.name, unitId: r.unitId } : null;
+  const r = await tenantDb(ctx).hrEmployee.findFirst({ where: { id }, select: { name: true, unitId: true, linkedUserId: true } });
+  return r ? { name: r.name, unitId: r.unitId, linkedUserId: r.linkedUserId } : null;
 }
 /** รายการตรวจที่ยังไม่เสร็จ (id · หัวข้อจากแม่แบบ · กำหนด) */
 export async function openTasksOf(ctx: Ctx, employeeId: string, kind: string): Promise<{ id: string; label: string; dueDate: Date | null; cardId: string | null }[]> {

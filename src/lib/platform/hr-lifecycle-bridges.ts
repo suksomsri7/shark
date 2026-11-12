@@ -42,16 +42,21 @@ async function targetOf(evt: BridgeEvent): Promise<Target | null> {
   return { hr, policy, boardId, kanbanSystemId: board.systemId };
 }
 
-/** ผู้รับการ์ด: ผู้จัดการที่ดูแลสาขานี้ (ตามค่าตั้ง) ไม่งั้นเจ้าของร้าน */
-async function assigneeOf(tenantId: string, unitId: string | null, policy: LifecyclePolicy): Promise<string[]> {
-  if (policy.assignTo === "UNIT_MANAGER" && unitId) {
+/**
+ * ผู้รับการ์ด (r2-8): คนที่มีสิทธิ์งาน HR ของสาขานั้น — ผู้จัดการที่ดูแลสาขา (unitAccess "*" หรือ [] = ทุกสาขา) ตามค่าตั้ง ไม่งั้นเจ้าของร้าน ·
+ * ไม่ใช่ตัวพนักงานที่การ์ดพูดถึงเด็ดขาด · ไม่มีใคร = ไม่มีผู้รับ
+ */
+async function assigneeOf(tenantId: string, unitId: string | null, subjectUserId: string | null, policy: LifecyclePolicy): Promise<string[]> {
+  if (policy.assignTo === "UNIT_MANAGER") {
     const rows = await prisma.membership.findMany({ where: { tenantId, role: "MANAGER", acceptedAt: { not: null } }, orderBy: { createdAt: "asc" }, select: { userId: true, unitAccess: true }, take: 200 });
     for (const r of rows) {
+      if (r.userId === subjectUserId) continue;
       const access = Array.isArray(r.unitAccess) ? (r.unitAccess as unknown[]).map(String) : [];
-      if (access.includes("*") || access.includes(unitId)) return [r.userId];
+      if (access.length === 0 || access.includes("*") || (!!unitId && access.includes(unitId))) return [r.userId];
     }
   }
-  const owner = await prisma.membership.findFirst({ where: { tenantId, role: "OWNER", acceptedAt: { not: null } }, orderBy: { createdAt: "asc" }, select: { userId: true } });
+  const owners = await prisma.membership.findMany({ where: { tenantId, role: "OWNER", acceptedAt: { not: null } }, orderBy: { createdAt: "asc" }, select: { userId: true }, take: 20 });
+  const owner = owners.find((o) => o.userId !== subjectUserId);
   return owner ? [owner.userId] : [];
 }
 
@@ -72,7 +77,7 @@ export async function onMilestoneDue(evt: BridgeEvent): Promise<void> {
       boardId: t.boardId,
       title: `${head}: ${who.name} · ${dayLabel(dueDate)}`,
       dueAt: morningOf(dueDate),
-      assigneeUserIds: await assigneeOf(evt.tenantId, who.unitId, t.policy),
+      assigneeUserIds: await assigneeOf(evt.tenantId, who.unitId, who.linkedUserId, t.policy),
       sourceType: "AUTOMATION",
       sourceKey: `hrlife:${employeeId}:${milestone}:${dueDate}`,
     },
@@ -85,7 +90,7 @@ async function cardsForTasks(evt: BridgeEvent, t: Target, employeeId: string, ki
   if (!who) return;
   const tasks = await openTasksOf(t.hr, employeeId, kind);
   if (tasks.length === 0) return;
-  const assignees = await assigneeOf(evt.tenantId, who.unitId, t.policy);
+  const assignees = await assigneeOf(evt.tenantId, who.unitId, who.linkedUserId, t.policy);
   const head = kind === "ONBOARDING" ? "รับพนักงานใหม่" : "ออกจากงาน";
   for (const task of tasks) {
     const card = await createCardFromExternal(

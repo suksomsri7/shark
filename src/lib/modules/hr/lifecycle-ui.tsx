@@ -45,10 +45,11 @@ const daysFrom = (today: string, day: string) => Math.round((dayMs(day) - dayMs(
 export async function LifecycleMsg({ code }: { code?: string }) {
   if (!code) return null;
   const t = await getTranslations("hr.life");
-  const text = code === "ok" ? t("saved") : Object.prototype.hasOwnProperty.call(LIFE_MSG, code) ? LIFE_MSG[code]! : "";
+  const good = code === "ok" || code === "ok.kept";
+  const text = code === "ok" ? t("saved") : code === "ok.kept" ? t("savedKept") : Object.prototype.hasOwnProperty.call(LIFE_MSG, code) ? LIFE_MSG[code]! : "";
   if (!text) return null;
   return (
-    <p role={code === "ok" ? "status" : "alert"} className={`rounded-lg border px-3 py-2 text-sm ${code === "ok" ? "" : "text-[color:var(--color-danger)]"}`}>
+    <p role={good ? "status" : "alert"} className={`rounded-lg border px-3 py-2 text-sm ${good ? "" : "text-[color:var(--color-danger)]"}`}>
       {text}
     </p>
   );
@@ -367,10 +368,12 @@ export async function LifecycleProfile({ systemId, employeeId, life, active }: P
               {t("offboard.note")}
               <textarea name="note" maxLength={500} rows={2} data-testid="hr-life-offboard-note" className="input" />
             </label>
+            {/* r2-1: ร้านตั้งให้ถอนสิทธิ์ ⇒ เฉพาะเจ้าของร้านเลือกไม่ถอนได้ (คนอื่นเห็นช่องติ๊กแบบล็อก + ค่าที่ส่งจริง) */}
             <label className="flex min-h-11 items-center gap-2 text-sm">
-              <input type="checkbox" name="revokeAccess" defaultChecked={policy.revokeAppAccess} data-testid="hr-life-offboard-access" className="h-5 w-5" />
+              <input type="checkbox" name="revokeAccess" defaultChecked={policy.revokeAppAccess} disabled={policy.revokeAppAccess && viewer.role !== "OWNER"} data-testid="hr-life-offboard-access" className="h-5 w-5" />
               {t("offboard.access")}
             </label>
+            {policy.revokeAppAccess && viewer.role !== "OWNER" && <input type="hidden" name="revokeAccess" value="on" />}
             <div role="note" className="rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-xs">
               <p>{t("offboard.effects")}</p>
               {policy.autoRevokePin && <p className="mt-1">{t("offboard.pin")}</p>}
@@ -398,10 +401,10 @@ export async function LifecycleSettings({ systemId }: { systemId: string }) {
   const t = await getTranslations("hr.life");
   const [pol, boards] = await Promise.all([getLifecyclePolicy(ctx), lifecycleBoards(ctx, viewer)]);
   const shopWide = viewer.role === "OWNER" || (Array.isArray(viewer.unitAccess) && (viewer.unitAccess.length === 0 || viewer.unitAccess.includes("*")));
-  return <SettingsForm systemId={systemId} pol={pol} boards={boards} t={t} editable={shopWide} />;
+  return <SettingsForm systemId={systemId} pol={pol} boards={boards} t={t} editable={shopWide} owner={viewer.role === "OWNER"} />;
 }
 
-function SettingsForm({ systemId, pol, boards, t, editable }: { systemId: string; pol: LifecyclePolicy; boards: { id: string; name: string }[]; t: Awaited<ReturnType<typeof getTranslations>>; editable: boolean }) {
+function SettingsForm({ systemId, pol, boards, t, editable, owner }: { systemId: string; pol: LifecyclePolicy; boards: { id: string; name: string }[]; t: Awaited<ReturnType<typeof getTranslations>>; editable: boolean; owner: boolean }) {
   return (
     <section id="hr-life" data-testid="hr-life-settings" className="card flex flex-col gap-3 p-4">
       <h2 className="text-base font-semibold">{t("settings.title")}</h2>
@@ -444,14 +447,18 @@ function SettingsForm({ systemId, pol, boards, t, editable }: { systemId: string
               </select>
             </label>
           </div>
+          {/* r2-8: ปิดสองข้อนี้ได้เฉพาะเจ้าของร้าน — คนอื่นเห็นแบบล็อกเมื่อเปิดอยู่ (ค่าเดิมส่งไปกับฟอร์ม) */}
           <label className="flex min-h-11 items-center gap-2 text-sm">
-            <input type="checkbox" name="autoRevokePin" defaultChecked={pol.autoRevokePin} className="h-5 w-5" />
+            <input type="checkbox" name="autoRevokePin" defaultChecked={pol.autoRevokePin} disabled={pol.autoRevokePin && !owner} className="h-5 w-5" />
             {t("settings.autoPin")}
           </label>
+          {pol.autoRevokePin && !owner && <input type="hidden" name="autoRevokePin" value="on" />}
           <label className="flex min-h-11 items-center gap-2 text-sm">
-            <input type="checkbox" name="revokeAppAccess" defaultChecked={pol.revokeAppAccess} className="h-5 w-5" />
+            <input type="checkbox" name="revokeAppAccess" defaultChecked={pol.revokeAppAccess} disabled={pol.revokeAppAccess && !owner} className="h-5 w-5" />
             {t("settings.revokeApp")}
           </label>
+          {pol.revokeAppAccess && !owner && <input type="hidden" name="revokeAppAccess" value="on" />}
+          {!owner && <p className={`text-xs ${muted}`}>{t("settings.ownerSwitch")}</p>}
           <label className={`flex flex-col gap-1 text-xs ${muted}`}>
             {t("settings.tplOn")}
             <textarea name="onboardingTemplate" rows={7} defaultValue={tplText(pol.onboardingTemplate)} data-testid="hr-life-template-onboarding" className="input font-mono" />

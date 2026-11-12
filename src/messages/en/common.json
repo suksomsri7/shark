@@ -349,6 +349,7 @@
     },
     "life": {
       "saved": "Saved",
+      "savedKept": "Saved — employment ended, but this person's SHARK account was kept",
       "due": {
         "title": "To handle",
         "sub": "Turn on task-board cards in settings",
@@ -448,6 +449,7 @@
         "revokeApp": "Revoke the SHARK account when employment ends (form default)",
         "tplOn": "Onboarding template",
         "tplOff": "Offboarding template",
+        "ownerSwitch": "Only the owner can switch off the automatic PIN clear and account revoke",
         "tplHelp": "One per line: key | title | due days (from start/end date) · up to 20",
         "save": "Save settings"
       }

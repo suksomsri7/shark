@@ -25,9 +25,9 @@ const seg = (s: string) => encodeURIComponent(s);
 const profilePath = (systemId: string, employeeId: string) => `/app/sys/${seg(systemId)}/hr/employees/${seg(employeeId)}`;
 const settingsPath = (systemId: string) => `/app/sys/${seg(systemId)}/hr/settings`;
 /** กลับหน้าเดิมพร้อมรหัสผล (redirect โยนเพื่อจบ action) */
-function back(path: string, r: { ok: true } | { ok: false; reason: string }): never {
+function back(path: string, r: { ok: true } | { ok: false; reason: string }, okCode = "ok"): never {
   revalidatePath(path);
-  redirect(`${path}?life=${encodeURIComponent(r.ok ? "ok" : lifeMsgCode(r.reason))}#hr-life`);
+  redirect(`${path}?life=${encodeURIComponent(r.ok ? okCode : lifeMsgCode(r.reason))}#hr-life`);
 }
 /** แม่แบบจากช่องข้อความ: บรรทัดละ "รหัส | หัวข้อ | วันครบกำหนด" (บรรทัดว่างข้าม) — รูปแบบผิดส่งต่อให้ lifecycle ตอบข้อความคงที่ */
 function templateOf(text: string): unknown {
@@ -50,7 +50,8 @@ export async function offboardEmployeeAction(formData: FormData): Promise<void> 
     note: field(formData, "note") || null,
     revokeAccess: formData.get("revokeAccess") === "on",
   });
-  back(profilePath(systemId, employeeId), r);
+  // r2-1: ไม่ถอนสิทธิ์ตามที่เลือก ⇒ ข้อความผลบอกว่าเก็บสิทธิ์บัญชีไว้
+  back(profilePath(systemId, employeeId), r, r.ok && r.accessKept ? "ok.kept" : "ok");
 }
 
 /** เพิ่มบันทึก/ตักเตือน/ประเมิน — ฟอร์ม: systemId · employeeId · kind · title · body · periodLabel · score · visibleToEmployee */
