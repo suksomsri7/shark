@@ -222,7 +222,7 @@ try {
     try { const r = await tr.call(db, body, { timeout: 60_000, maxWait: 60_000 }); return asRec(r) ?? { ok: true }; }
     catch (e) { const c = (e as { code?: unknown }).code; return typeof c === "string" && SELL_CODES.includes(c) ? { ok: false, code: c, thrown: true } : { ok: "THROW", e: errMsg(e), pg: String(c ?? "") }; }
   };
-  const fnTx = (name: string) => (tx: unknown, ctx: Rec, input: unknown) => (fn(name) as (...a: unknown[]) => Promise<unknown>)(tx, ctx, input);
+  const fnTx = (name: string) => (tx: unknown, ctx: Rec, input: unknown, ...rest: unknown[]) => (fn(name) as (...a: unknown[]) => Promise<unknown>)(tx, ctx, input, ...rest); // ORACLE-EDIT (ผู้คุม 12 พ.ย.): ส่ง policies (อาร์กิวเมนต์ที่ 4) ต่อให้จริง
   const par = async (n: number, f: (i: number) => Promise<Rec>): Promise<Rec[]> => Promise.all(Array.from({ length: n }, (_, i) => f(i).catch((e) => ({ ok: "THROW", e: errMsg(e) }) as Rec)));
 
   // ═══════════════ PC. ตัวควบคุมบวก ═══════════════
