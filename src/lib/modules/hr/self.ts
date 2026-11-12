@@ -13,7 +13,8 @@ import { cache } from "react";
 import type { HrLeaveType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { employeeOfUser, requestLeave, cancelLeave, HrLeaveRequestError, leaveCancelOpen, type Ctx } from "./service";
-import { CLOCK_TEXT, mobileClock, myClockState, type MobileClockKind } from "./clock";
+import { CLOCK_TEXT, mobileClock, myClockState } from "./clock";
+import { mobileClockPayloadOf } from "./clock-rules";
 import { activeLeavePolicies, leaveRefusalText, myLeaveBalances, type LeaveBalanceItem } from "./leave";
 import { countLeaveDays, fmtTenths, tenthsOf } from "./leave-rules";
 import { leaveDaysBetween } from "./time-rules";
@@ -533,16 +534,12 @@ export async function myStockRequests(actor: SelfActor): Promise<{ ok: true; ite
 }
 
 // ═══════════════════════════ ตัวเขียน (R5 — service เดิม · ข้อความเดิม) ═══════════════════════════
-export async function selfClock(
-  actor: SelfActor,
-  input: { kind?: unknown; latitude?: unknown; longitude?: unknown; accuracy?: unknown; deviceId?: unknown },
-  opts: Opts = {},
-) {
+/** ลงเวลาด้วยมือถือของตัวเอง — ก้อนจากผู้เรียกส่งต่อให้ตัวอ่านของชั้นลงเวลา (clock-rules.mobileClockPayloadOf) ทั้งก้อน · ผลไม่มีพิกัด (มีแค่ระยะห่าง) */
+export async function selfClock(actor: SelfActor, input: unknown, opts: Opts = {}) {
   const me = await resolveSelf(actor);
   if (!me) return no(SELF_TEXT.noEmployee);
   if (!me.active) return no(SELF_TEXT.inactive);
-  const kind: MobileClockKind = input?.kind === "BREAK_START" || input?.kind === "BREAK_END" ? input.kind : "NEXT";
-  return mobileClock({ tenantId: me.tenantId, userId: me.userId }, { kind, latitude: input?.latitude, longitude: input?.longitude, accuracyM: input?.accuracy, deviceId: input?.deviceId }, { now: opts?.now });
+  return mobileClock({ tenantId: me.tenantId, userId: me.userId }, mobileClockPayloadOf(input), { now: opts?.now });
 }
 
 export async function selfRequestLeave(
