@@ -41,6 +41,12 @@ const T: Record<string, string> = {
   lead: "จำนวนวันแจ้งล่วงหน้าไม่ถูกต้อง",
   board: "ไม่พบบอร์ดงานนี้ในร้าน — เลือกบอร์ดใหม่",
   template: "รายการตรวจสอบไม่ถูกต้อง (หัวข้อ 1–80 ตัวอักษร · ไม่เกิน 20 ข้อ · รหัสไม่ซ้ำ)",
+  // r2 (controller rulings 1 · 8)
+  revokeOwner: "พนักงานคนนี้ผูกกับบัญชีเจ้าของร้าน — เปลี่ยนเจ้าของร้านที่หน้าตั้งค่าร้านก่อน จึงจะสิ้นสุดการจ้างได้",
+  revokeManager: "การถอนสิทธิ์บัญชีของผู้จัดการทำได้เฉพาะเจ้าของร้าน — ให้เจ้าของร้านเป็นผู้สิ้นสุดการจ้างคนนี้",
+  keepAccess: "ร้านตั้งให้ถอนสิทธิ์บัญชีเมื่อสิ้นสุดการจ้าง — เฉพาะเจ้าของร้านเลือกเก็บสิทธิ์ไว้ได้",
+  ownerSwitch: "ปิดการล้าง PIN หรือการถอนสิทธิ์บัญชีอัตโนมัติได้เฉพาะเจ้าของร้าน",
+  offActive: "เริ่มรายการออกจากงานได้หลังสิ้นสุดการจ้างแล้วเท่านั้น",
 };
 const NO_PERM = "คุณไม่มีสิทธิ์ตั้งค่าระบบพนักงาน";
 const SHOP_WIDE = "รายการที่ใช้ทั้งร้านจัดการได้เฉพาะผู้ดูแลทุกสาขา — เลือกสาขาของคุณ";
@@ -107,6 +113,18 @@ S10.1|R8|C|R|[race] offboard waits on hr:clock · IN kept · ENDED
 S10.2|R8|C|R|[race] offboard ×4 ⇒ 1 ok · 1 event/audit · 6 tasks
 S10.3|R5|C|R|[race] sweep ∥ sweep ⇒ once each
 S10.4|R8|C|R|[race] offboard ∥ setPin ⇒ PIN null
+S16.1|r2-1|C|R|r2 STAFF clerk offboard ⇒ STAFF target access revoked in tx (membership · link · push · task)
+S16.2|r2-1|C|R|r2 MANAGER target: non-owner revoke refused (nothing written) · owner ok
+S16.3|r2-1|C|R|r2 OWNER-linked row: offboard refused for everyone (nothing written)
+S16.4|r2-1|M|R|r2 untick: non-owner refused when policy revokes · owner keeps ⇒ accessKept
+S16.5|r2-2|C|R|r2 self row: no hidden notes · no checklist · no offboard reason/note · tick/start refused
+S16.6|r2-3|C|R|[race] r2 clockSelf ∥ offboard ⇒ no IN row for the ENDED employee
+S16.7|r2-5|M|R|r2 decided approval request ⇒ leave CANCELLED · audit names the kept request
+S16.8|r2-6|M|R|r2 audits: offboard ids + in tx · checklist start · tick/untick · acknowledge
+S16.9|r2-8|M|R|r2 card assignee has HR rights · never the employee the card is about
+S16.10|r2-8|M|R|r2 only OWNER switches off autoRevokePin / revokeAppAccess
+S16.11|r2-8|M|R|[static] r2 sweep window ordered by due date
+S16.12|r2-8|M|R|r2 offboarding checklist refused on an ACTIVE employee
 S11.1|R1|C|R|[db] delete employee with note ⇒ 23503 · note kept
 S11.2|R1|M|R|[db] FK actions r/c
 S11.3|R1|M|G|[static] no hrEmployee.delete in src
@@ -265,10 +283,21 @@ function runStatic(): void {
     chk("S14.2", n.every((x) => x === 1), "1·1·1", n.join("·"));
   }
   {
-    const files = ["rules.ts", "pos-seam.ts", "pos-seam-read.ts", "index.ts", "privacy-shared.ts", "pin.ts", "clock.ts", "service.ts"].map((f) => H + f);
-    const d = IN_BASE ? "n/a · H4.4 in base" : changedVsBase(BASE, files);
+    // ORACLE-EDIT (r2 ruling 3): pos-seam.ts may carry ONE marked hunk (clockSelf requireActive) — the other 7 stay byte-identical
+    const files = ["rules.ts", "pos-seam-read.ts", "index.ts", "privacy-shared.ts", "pin.ts", "clock.ts", "service.ts"].map((f) => H + f);
+    const seamH = IN_BASE ? null : diffHunks(BASE, `${H}pos-seam.ts`);
+    const seamOk = IN_BASE || (seamH !== null && (seamH.length === 0 || (seamH.length === 1 && /HR H4\.4 ▸/.test(seamH[0].added.join("\n")))));
+    const d = IN_BASE ? "n/a · H4.4 in base" : seamOk ? changedVsBase(BASE, files) : `pos-seam.ts hunks=${seamH?.length}`;
     const s = sha(rd(PAYROLL_RULES_FILE));
     chk("S15.1", s === PAYROLL_RULES_SHA && (IN_BASE || d === "unchanged"), `${PAYROLL_RULES_SHA.slice(0, 12)} · unchanged`, `${s.slice(0, 12)} · ${d}`);
+  }
+  {
+    // r2 ruling 8: the candidate scan of the sweep is ordered by the due date (new entrants cannot be starved behind old ids)
+    const l = stripComments(rd(F.life));
+    const scans = [...l.matchAll(/hrEmployee\.findMany\(\{[\s\S]{0,600}?\}\s*\)/g)].map((m) => m[0]).filter((x) => /probationEndAt|contractEndAt/.test(x) && /take:/.test(x));
+    const orderOf = (x: string) => x.match(/orderBy:\s*(\{[^}]*\}|\[[^\]]*\])/)?.[1] ?? "";
+    const ok = scans.length > 0 && scans.every((x) => /probationEndAt|contractEndAt/.test(orderOf(x)));
+    chk("S16.11", ok, "every due scan orderBy date", `${scans.length} scans`);
   }
 }
 function gitGrep(pat: string, paths: string[]): string[] {
@@ -753,6 +782,131 @@ async function runDb(): Promise<void> {
     const [o, s] = await Promise.all([ob(V.owner, eW, { endDate: DAY, reason: "OTHER", revokeAccess: false }), hr.setPin(cA, eW, "7788").catch(fail)]);
     const e = await row(eW);
     ck("S10.4", { off: o.ok, pin: e?.pinHash === null, inactive: e?.active === false }, "null", `${shown(o)} ${short(s, 30)} pin=${!!e?.pinHash}`);
+  }
+
+  // ═════════════ r2 addendum (controller rulings 1–8 · hunt F1/F2) ═════════════
+  {
+    const mem = (uid: string) => P.membership.findFirst({ where: { tenantId: TT, userId: uid } }) as Promise<Any>;
+    const push = async (uid: string) => (await P.pushDevice.create({ data: { userId: uid, tenantId: TT, expoToken: `ExponentPushToken[qc44${tag}${uid.slice(-6)}]`, platform: "ios" } })).id as string;
+    const pushIds: string[] = [];
+    try {
+      // S16.1 STAFF clerk (offboard key only) ⇒ STAFF target's access revoked in the same tx
+      const clerk = await mk("clerk", "STAFF", [u1], K);
+      const uS = await mk("r2s", "STAFF", [u1], {});
+      const eS = await emp(sA, "r2s", { linkedUserId: uS.id });
+      pushIds.push(await push(uS.id));
+      const r1 = await ob(vOf(clerk), eS, { endDate: DAY, reason: "RESIGNED", revokeAccess: true });
+      const m1 = await mem(uS.id);
+      const p1 = await fu("pushDevice", pushIds[0]);
+      const t1 = await fm("hrOnboardingTask", { employeeId: eS, templateKey: "app_access" });
+      ck("S16.1", { ok: r1.ok && r1.value?.accessRevoked === true, mem: m1?.acceptedAt === null, link: (await row(eS))?.linkedUserId === null, push: p1?.tenantId === null, task: !!t1[0]?.doneAt }, "revoked in tx", shown(r1));
+      // S16.2 MANAGER-linked target: non-owner + revoke ⇒ refused, nothing written · owner ⇒ ok
+      const uM = await mk("r2m", "MANAGER", [u1], {});
+      const eMg = await emp(sA, "r2m", { linkedUserId: uM.id });
+      const c0 = await counts();
+      const r2a = await ob(V.mgrU1, eMg, { endDate: DAY, reason: "OTHER", revokeAccess: true });
+      const c1 = await counts();
+      const still = (await row(eMg))?.active === true && (await mem(uM.id))?.acceptedAt !== null;
+      const r2b = await ob(V.owner, eMg, { endDate: DAY, reason: "OTHER", revokeAccess: true });
+      ck("S16.2", { refused: !r2a.ok && r2a.text === T.revokeManager, quiet: c0 === c1 && still, owner: r2b.ok && r2b.value?.accessRevoked === true && (await mem(uM.id))?.acceptedAt === null }, "manager ⇒ owner only", `${shown(r2a)} ${shown(r2b)}`);
+      // S16.3 OWNER-linked row: refused for everyone (with or without revoke)
+      const uO = await mk("r2o", "OWNER", [], {});
+      const eOw = await emp(sA, "r2o", { linkedUserId: uO.id });
+      const c2 = await counts();
+      const r3 = [await ob(V.mgrAll, eOw, { endDate: DAY, reason: "OTHER", revokeAccess: true }), await ob(V.owner, eOw, { endDate: DAY, reason: "OTHER", revokeAccess: true }), await ob(V.owner, eOw, { endDate: DAY, reason: "OTHER", revokeAccess: false })];
+      const c3 = await counts();
+      ck("S16.3", { refused: r3.every((x) => !x.ok && x.text === T.revokeOwner), quiet: c2 === c3 && (await row(eOw))?.active === true && (await mem(uO.id))?.acceptedAt !== null }, "owner row refused", r3.map(shown).join(" "));
+      // S16.4 untick: non-owner refused while the policy revokes · owner may keep ⇒ accessKept
+      const uK = await mk("r2k", "STAFF", [u1], {});
+      const eKp = await emp(sA, "r2k", { linkedUserId: uK.id });
+      const r4a = await ob(vOf(clerk), eKp, { endDate: DAY, reason: "OTHER", revokeAccess: false });
+      const a4 = (await row(eKp))?.active === true;
+      const r4b = await ob(V.owner, eKp, { endDate: DAY, reason: "OTHER", revokeAccess: false });
+      ck("S16.4", { refused: !r4a.ok && r4a.text === T.keepAccess && a4, kept: r4b.ok && r4b.value?.accessKept === true && r4b.value?.accessRevoked === false && (await mem(uK.id))?.acceptedAt !== null }, "keep = owner only", `${shown(r4a)} ${shown(r4b)}`);
+      // S16.5 self row (viewer with the HR key, linked to the row): no hidden notes · no checklist · no offboard reason/note · tick/start refused
+      const uX = await mk("r2x", "STAFF", [u1], K);
+      const eX = await emp(sA, "r2x", { linkedUserId: uX.id });
+      await add(V.owner, eX, { kind: "NOTE", visibleToEmployee: false });
+      await add(V.owner, eX, { kind: "VERBAL_WARNING" });
+      await stc(V.owner, eX, "ONBOARDING");
+      const tX = (await fm("hrOnboardingTask", { employeeId: eX }))[0]?.id as string;
+      const nl = await lrn(vOf(uX), eX);
+      const cl = await lsc(vOf(uX), eX);
+      const st = await stc(vOf(uX), eX, "ONBOARDING");
+      const td = await L_("setTaskDone", cA, vOf(uX), tX, true);
+      await ob(V.owner, eX, { endDate: DAY, reason: "TERMINATED", note: NOTE, revokeAccess: false });
+      const lf = await L_("loadLifecycleForViewer", cA, vOf(uX), eX);
+      const items = (nl.value?.items ?? []) as Any[];
+      ck("S16.5", { notes: items.every((x) => x.visibleToEmployee === true) && items.length === 1, check: cl.value === null, start: st.text === T.self, tick: td.text === T.self && !(await fu("hrOnboardingTask", tX))?.doneAt, off: !lf.value || (lf.value.offboard?.reason == null && lf.value.offboard?.note == null) }, "self row hidden", `${items.length} ${short(cl.value, 20)} ${shown(st)} ${shown(td)} ${short(lf.value?.offboard, 60)}`);
+      // S16.6 [race] clockSelf queued behind offboard on hr:clock ⇒ no IN row once ENDED
+      const uC = await mk("r2c", "STAFF", [u1], {});
+      const eC = await emp(sA, "r2c", { linkedUserId: uC.id });
+      const key = `hr:clock:${eC}`;
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      let held: () => void = () => {};
+      const heldP = new Promise<void>((r) => (held = r));
+      const holder = P.$transaction(async (tx: Any) => {
+        await tx.$queryRawUnsafe(`SELECT count(pg_advisory_xact_lock(hashtextextended($1::text, 0)))::int AS n`, key);
+        held();
+        await gate;
+      }, { maxWait: 10_000, timeout: 40_000 }).catch(() => held());
+      await heldP;
+      const waiting = async (n: number) => {
+        for (let i = 0; i < 80; i++) {
+          const w = (await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory'`).catch(() => null)) as Any[] | null;
+          if (Number(w?.[0]?.n ?? 0) >= n) return true;
+          await sleep(100);
+        }
+        return false;
+      };
+      const offP = ob(V.owner, eC, { endDate: DAY, reason: "OTHER", revokeAccess: false });
+      const w1 = await waiting(1);
+      const csP = seam.clockSelf({ tenantId: TT, userId: uC.id, kind: "IN" }).catch(fail);
+      const w2 = await waiting(2);
+      release();
+      await holder;
+      const [o6, c6] = await Promise.all([offP, csP]);
+      const ins = await cnt("hrAttendance", { employeeId: eC, kind: "IN" });
+      ck("S16.6", { queued: w1 && w2, off: o6.ok, none: ins === 0 && c6?.ok === false }, "no IN row", `${w1}/${w2} ${shown(o6)} ${short(c6, 40)} in=${ins}`);
+      // S16.7 approval request already decided ⇒ leave still CANCELLED · audit names the kept request
+      const eL = await emp(sA, "r2l");
+      const LD = await leave(eL, "2031-06-20", "2031-06-20", "PENDING");
+      const RQ = (await P.approvalRequest.create({ data: { tenantId: TT, policyId: pol, entityType: "HrLeave", entityId: LD, systemId: sA, requestedById: U.owner.id, status: "APPROVED", idempotencyKey: `approval-HrLeave-${LD}` } })).id as string;
+      const r7 = await ob(V.owner, eL, { endDate: DAY, reason: "OTHER" });
+      const au7 = (await fm("auditLog", { tenantId: TT, action: "hr.employee.offboard", targetId: eL }))[0];
+      ck("S16.7", { ok: r7.ok, leave: (await fu("hrLeave", LD))?.status === "CANCELLED", req: (await fu("approvalRequest", RQ))?.status === "APPROVED", trace: JSON.stringify(au7?.after ?? {}).includes(RQ) }, "cancelled + traced", short(au7?.after, 80));
+      // S16.8 audits: ids of the main offboard (eO) · checklist start · tick/untick · acknowledge
+      const auO = (await fm("auditLog", { tenantId: TT, action: "hr.employee.offboard", targetId: eO }, { orderBy: { createdAt: "asc" } }))[0];
+      const aj = JSON.stringify(auO?.after ?? {});
+      const ids = [L1, L2, SW1, SW2, R.f1, R.f2].every((x) => aj.includes(x));
+      const lsrc = stripComments(rd(F.life));
+      const inTx = /tx\.auditLog\.create\(\{[\s\S]{0,400}?"hr\.employee\.offboard"/.test(lsrc);
+      const aStart = await cnt("auditLog", { tenantId: TT, action: "hr.checklist.start" });
+      const aTick = await fm("auditLog", { tenantId: TT, action: "hr.checklist.task" });
+      const aAck = await cnt("auditLog", { tenantId: TT, action: "hr.review_note.ack" });
+      const ticks = aTick.map((x) => (x.after as Any)?.done);
+      ck("S16.8", { ids, inTx, start: aStart >= 2, tick: ticks.includes(true) && ticks.includes(false), ack: aAck >= 1 }, "ids · in tx · 3 audits", `start=${aStart} tick=${ticks.join("")} ack=${aAck}`);
+      // S16.9 card assignee: HR rights · never the employee the card is about (eM2 is linked to mgrU1, the first manager on u1)
+      await P.hrEmployee.update({ where: { id: eM2 }, data: { employmentStatus: "PROBATION", probationEndAt: dbDate("2031-06-15") } });
+      await sweep(NOW);
+      const ev9 = evOf(await evs(EV.due), [eM2])[0];
+      if (ev9) await replay(ev9);
+      const card = (await cards(`hrlife:${eM2}:`))[0];
+      const asg = card ? ((await fm("kanbanCardAssignee", { cardId: card.id })) as Any[]).map((x) => x.userId) : [];
+      ck("S16.9", { card: !!card, notSelf: asg.length > 0 && !asg.includes(U.mgrU1.id), hr: asg.every((x) => [U.owner.id, U.mgrAll.id, U.mgrRole.id].includes(x)) }, "HR assignee · not the subject", `${asg.length}`);
+      // S16.10 only OWNER switches the two automatic revokes off
+      const s10 = [await sv(cS, V.mgrAll, { autoRevokePin: false }), await sv(cS, V.mgrAll, { revokeAppAccess: false })];
+      const o10 = await sv(cS, V.owner, { revokeAppAccess: false });
+      const back = await sv(cS, V.owner, { revokeAppAccess: true });
+      ck("S16.10", { refused: s10.every((x) => !x.ok && x.text === T.ownerSwitch), owner: o10.ok && back.ok }, "owner only", s10.map(shown).join(" "));
+      // S16.12 offboarding checklist cannot be started on an ACTIVE employee
+      const eAc = await emp(sA, "r2act");
+      const s12 = await stc(V.owner, eAc, "OFFBOARDING");
+      ck("S16.12", { refused: !s12.ok && s12.text === T.offActive, none: (await cnt("hrOnboardingTask", { employeeId: eAc })) === 0 }, "refused", shown(s12));
+    } finally {
+      await P.pushDevice.deleteMany({ where: { id: { in: pushIds } } }).catch(() => null);
+    }
   }
 
   {
