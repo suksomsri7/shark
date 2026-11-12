@@ -30,8 +30,10 @@ import {
   bandsOverlap,
   effectivePaxBand,
   hasLocale,
+  isEmptyBand,
   localize,
   missingTranslations,
+  nonThaiLocales,
   sectionI18n,
   type Band,
   type ContentSection,
@@ -97,6 +99,9 @@ const MSG: Record<TripProductErrorCode, string> = {
   TAX_KIND_MISMATCH: "ชนิดภาษีต้องเป็น \"ไม่มีภาษี\" เมื่อเป็นเงินเก็บแทนเท่านั้น",
   LOCALE_DISABLED: "ภาษานี้ยังไม่ได้เปิดใช้ในหน้าจองของร้าน — เปิดในค่าตั้งภาษาก่อน",
   BUSY: "มีการแก้ไขสินค้านี้พร้อมกันหลายรายการ — ลองอีกครั้งในอีกสักครู่",
+  CURRENCY_LOCKED: "สินค้านี้เคยเปิดขายแล้ว สกุลเงินจึงเปลี่ยนไม่ได้ — สร้างสินค้าใหม่ถ้าต้องการขายในสกุลอื่น",
+  PRODUCT_ARCHIVED: "สินค้านี้ถูกเก็บแล้ว — กู้คืนสินค้าก่อนสร้างรอบหรือราคาใหม่",
+  OPTION_INACTIVE: "ตัวเลือกนี้ปิดใช้อยู่ — เปิดใช้ตัวเลือกก่อนสร้างรอบหรือราคาใหม่",
 };
 const fail = (code: TripProductErrorCode, extra?: { missing?: PublishMissing[]; message?: string }): Fail => ({
   ok: false,
@@ -109,6 +114,8 @@ const isFail = (x: unknown): x is Fail => typeof x === "object" && x !== null &&
 // ═══════════════ zod (strict) ═══════════════
 const ID = z.string().min(1).max(100);
 const UNIT_ID = z.object({ unitId: ID });
+/** id อ้างข้ามโมดูล (stockItemId · photoFileIds) — r2: ตรวจรูปแบบเท่านั้น (ยังไม่มี facade/เส้น import ให้ตรวจเจ้าของ · หนี้ X.2/T1.1) */
+const REF_ID = z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 const SLUG = z.string().min(3).max(60).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const CURRENCY = z.string().regex(/^[A-Z]{3}$/);
 const LOCALE = z.string().min(2).max(8);
@@ -134,11 +141,12 @@ const i18nIn = (max: number) =>
     });
 /** ส่วนเนื้อหา: ภาษาใดก็ได้ */
 const textIn = z.strictObject({ th: optText(TEXT_MAX), en: optText(TEXT_MAX), zh: optText(TEXT_MAX) }).transform(cleanText);
+// r2 ▸ updateProduct รวมทีละส่วน: ไม่ส่ง = คงเดิม · null (หรือว่าง) = ล้างส่วนนั้น · photoFileIds เปลี่ยนเฉพาะเมื่อส่ง ◂
 const BODY_IN = z.strictObject({
-  summary: textIn.optional(),
-  itinerary: textIn.optional(),
-  includes: textIn.optional(),
-  photoFileIds: z.array(ID).max(100).optional(),
+  summary: textIn.nullable().optional(),
+  itinerary: textIn.nullable().optional(),
+  includes: textIn.nullable().optional(),
+  photoFileIds: z.array(REF_ID).max(100).nullable().optional(),
 });
 const MEETING_IN = z
   .strictObject({ text: i18nIn(TEXT_MAX), lat: z.number().min(-90).max(90).optional(), lng: z.number().min(-180).max(180).optional() })
@@ -235,7 +243,7 @@ const EXTRA_FIELDS = {
   discountable: z.boolean().optional(),
   passThrough: z.boolean().optional(),
   taxKind: z.enum(TAX_KINDS).optional(),
-  stockItemId: ID.nullable().optional(),
+  stockItemId: REF_ID.nullable().optional(),
 };
 const CREATE_EXTRA = z.strictObject({ unitId: ID, productId: ID.nullable(), ...EXTRA_FIELDS });
 const UPDATE_EXTRA = z.strictObject({
@@ -314,7 +322,7 @@ const same = (a: unknown, b: unknown) => canon(a) === canon(b);
 const T27_SCHEMA = z.object({ infantBelow: z.number().int(), childFrom: z.number().int(), childTo: z.number().int() });
 const LINE_DEF = z.object({ passThrough: z.boolean(), commissionPct: z.number(), discountable: z.boolean() });
 const T44_SCHEMA = z.record(z.string(), LINE_DEF);
-const STR_ARR = z.array(z.string());
+const STR_ARR = z.array(z.string()).min(1);
 type LineDef = z.output<typeof LINE_DEF>;
 type Refs = { unitId: string; productId?: string };
 
@@ -337,7 +345,8 @@ async function readT44(tenantId: string, refs: Refs): Promise<Record<string, Lin
 }
 async function readStrings(tenantId: string, key: string, refs: Refs): Promise<string[]> {
   const r = STR_ARR.safeParse((await resolveSetting({ tenantId }, key, refs)).value);
-  return r.success ? r.data : [];
+  if (!r.success) throw new Error(`ค่าตั้ง ${key} อ่านไม่ได้ (บั๊กของทะเบียนค่าตั้ง)`);
+  return r.data;
 }
 
 // ═══════════════ ด่าน ═══════════════
@@ -457,6 +466,30 @@ const cleanBody = (b: z.output<typeof BODY_IN>): ProductBody => {
   if (b.photoFileIds?.length) out.photoFileIds = b.photoFileIds;
   return out;
 };
+const BODY_SECTIONS = ["summary", "itinerary", "includes"] as const;
+/** r2 ▸ รวมทีละส่วน (updateProduct) */
+const mergeBody = (cur: ProductBody, b: z.output<typeof BODY_IN>): ProductBody => {
+  const out: ProductBody = { ...cur };
+  for (const s of BODY_SECTIONS) {
+    const v = b[s];
+    if (v === undefined) continue;
+    if (v === null || !hasKeys(v)) delete out[s];
+    else out[s] = v;
+  }
+  if (b.photoFileIds !== undefined) {
+    if (b.photoFileIds === null || b.photoFileIds.length === 0) delete out.photoFileIds;
+    else out.photoFileIds = b.photoFileIds;
+  }
+  return out;
+};
+/** r2 ▸ ทุกข้อความหลายภาษาที่รับเข้า: ภาษาที่ไม่ใช่ไทยต้องอยู่ใน T2 ของหน่วย (ใบสั่ง §4 ข้อ 13) */
+async function checkLocales(g: Gate, ...texts: (I18nText | I18n | null | undefined)[]): Promise<Fail | null> {
+  const need = nonThaiLocales(...texts);
+  if (!need.length) return null;
+  const enabled = await readStrings(g.tenantId, T2, { unitId: g.unitId });
+  return need.every((l) => enabled.includes(l)) ? null : fail("LOCALE_DISABLED");
+}
+const EMPTY_BAND_MSG = "ช่วงอายุของประเภทนี้ว่าง (ตามค่าตั้งช่วงอายุของร้านหรืออายุที่ระบุ) — ระบุอายุเริ่ม/สิ้นสุดให้มีอย่างน้อย 1 ปี";
 const cleanMeeting = (m: z.output<typeof MEETING_IN>): MeetingPoint | null => {
   if (!m) return null;
   const out: MeetingPoint = { text: m.text };
@@ -478,6 +511,8 @@ export async function createProduct(ctx: Ctx, input: unknown): Res<{ id: string 
   const p = parse(CREATE_PRODUCT, input);
   if (isFail(p)) return p;
   if ((p.sourceKind ?? "OWN") === "SUPPLIER") return fail("SOURCE_NOT_SUPPORTED");
+  const lf = await checkLocales(g, p.title, p.body?.summary, p.body?.itinerary, p.body?.includes, p.meetingPoint?.text, p.disclosure?.accommodationMeals, p.disclosure?.guides);
+  if (lf) return lf;
   const currency = await checkProductCurrency(g, p.productType, p.currency, { unitId: g.unitId });
   if (isFail(currency)) return currency;
   const band = p.defaultPaxTypes === false ? null : await readT27(g.tenantId, { unitId: g.unitId });
@@ -553,33 +588,37 @@ export async function updateProduct(ctx: Ctx, input: unknown): Res<{ id: string 
   if (isFail(g)) return g;
   const p = parse(UPDATE_PRODUCT, input);
   if (isFail(p)) return p;
-  const cur = await g.db.tripProduct.findFirst({ where: { id: p.productId } });
-  if (!cur) return fail("NOT_FOUND");
-  let currency: string | undefined;
-  if (p.currency !== undefined) {
-    if (cur.status !== "DRAFT") return fail("BAD_STATE");
-    const c = await checkProductCurrency(g, cur.productType, p.currency, { unitId: g.unitId, productId: cur.id });
-    if (isFail(c)) return c;
-    currency = c;
-  }
-  const next = {
-    slug: p.slug,
-    title: p.title,
-    body: p.body === undefined ? undefined : cleanBody(p.body),
-    meetingPoint: p.meetingPoint === undefined ? undefined : cleanMeeting(p.meetingPoint),
-    disclosure: p.disclosure === undefined ? undefined : cleanDisclosure(p.disclosure),
-    currency,
-    deepDive: p.deepDive,
-    crossBorder: p.crossBorder,
-  };
-  const { before, after } = changes(cur, next);
-  if (!hasKeys(after)) return { ok: true, id: cur.id };
+  const lf = await checkLocales(g, p.title, p.body?.summary, p.body?.itinerary, p.body?.includes, p.meetingPoint?.text, p.disclosure?.accommodationMeals, p.disclosure?.guides);
+  if (lf) return lf;
   try {
-    const r = await inTx(g, async (tx): Promise<Fail | null> => {
-      if (after.currency !== undefined) {
-        const other = await tx.tripExtra.count({ where: { tenantId: g.tenantId, unitId: g.unitId, productId: cur.id, currency: { not: after.currency } } });
-        if (other > 0) return fail("CURRENCY_MISMATCH", { message: "สินค้านี้มีรายการเสริมสกุลเงินเดิมอยู่ — ปรับรายการเสริมก่อนเปลี่ยนสกุลเงินของสินค้า" });
+    // r2 ▸ ล็อกแถวสินค้าก่อนอ่าน-แก้-เขียน (กันงานหาย) · สกุลเงินเปลี่ยนพร้อมรายการเสริมทุกตัวในธุรกรรมเดียว ◂
+    return await lockedTx(g, async (tx): Promise<Ok<{ id: string }> | Fail> => {
+      const lp = await lockProduct(tx, g, p.productId);
+      if (!lp) return fail("NOT_FOUND");
+      const cur = await tx.tripProduct.findFirst({ where: { id: lp.id, tenantId: g.tenantId, unitId: g.unitId } });
+      if (!cur) return fail("NOT_FOUND");
+      let currency: string | undefined;
+      if (p.currency !== undefined) {
+        if (cur.status !== "DRAFT") return fail("BAD_STATE");
+        if (p.currency !== cur.currency) {
+          if (cur.publishedAt !== null) return fail("CURRENCY_LOCKED");
+          const c = await checkProductCurrency(g, cur.productType, p.currency, { unitId: g.unitId, productId: cur.id });
+          if (isFail(c)) return c;
+          currency = c;
+        }
       }
+      const next = {
+        slug: p.slug,
+        title: p.title,
+        body: p.body === undefined ? undefined : mergeBody(readBody(cur.body), p.body),
+        meetingPoint: p.meetingPoint === undefined ? undefined : cleanMeeting(p.meetingPoint),
+        disclosure: p.disclosure === undefined ? undefined : cleanDisclosure(p.disclosure),
+        currency,
+        deepDive: p.deepDive,
+        crossBorder: p.crossBorder,
+      };
+      const { before, after } = changes({ ...cur, body: readBody(cur.body) }, next);
+      if (!hasKeys(after)) return { ok: true, id: cur.id };
       const data: Prisma.TripProductUpdateManyMutationInput = {};
       if (after.slug !== undefined) data.slug = after.slug;
       if (after.title !== undefined) data.title = asJson(after.title);
@@ -589,14 +628,22 @@ export async function updateProduct(ctx: Ctx, input: unknown): Res<{ id: string 
       if (after.currency !== undefined) data.currency = after.currency;
       if (after.deepDive !== undefined) data.deepDive = after.deepDive;
       if (after.crossBorder !== undefined) data.crossBorder = after.crossBorder;
-      // สกุลเงินเปลี่ยนได้เฉพาะร่าง — CAS กันสถานะเปลี่ยนระหว่างทาง
-      const where: Prisma.TripProductWhereInput = { id: cur.id, tenantId: g.tenantId, unitId: g.unitId, ...(after.currency !== undefined ? { status: "DRAFT" } : {}) };
+      const where: Prisma.TripProductWhereInput = { id: cur.id, tenantId: g.tenantId, unitId: g.unitId, ...(after.currency !== undefined ? { status: "DRAFT", publishedAt: null } : {}) };
       const n = await tx.tripProduct.updateMany({ where, data });
       if (n.count !== 1) return fail("BAD_STATE");
-      await audit(tx, g, "trips.product.update", "TripProduct", cur.id, before, after);
-      return null;
+      let extrasChanged: number | undefined;
+      if (after.currency !== undefined) {
+        // ราคาคงตัวเลขเดิม (ร้านทบทวนเอง) — เปลี่ยนเฉพาะสกุลของรายการเสริมของสินค้านี้ทุกตัว (รวมที่ปิดใช้)
+        extrasChanged = (
+          await tx.tripExtra.updateMany({
+            where: { tenantId: g.tenantId, unitId: g.unitId, productId: cur.id, currency: { not: after.currency } },
+            data: { currency: after.currency },
+          })
+        ).count;
+      }
+      await audit(tx, g, "trips.product.update", "TripProduct", cur.id, before, extrasChanged === undefined ? after : { ...after, extrasChanged });
+      return { ok: true, id: cur.id };
     });
-    return r ?? { ok: true, id: cur.id };
   } catch (e) {
     if (isUnique(e)) return fail("SLUG_TAKEN");
     throw e;
@@ -614,49 +661,49 @@ export async function setProductContent(ctx: Ctx, input: unknown): Res<{ id: str
   if (locale === "th" && p.title !== undefined && (p.title === null || p.title === "")) {
     return fail("INVALID_INPUT", { message: "ชื่อสินค้าภาษาไทยต้องมีเสมอ — แก้ข้อความแทนการลบ" });
   }
-  const cur = await g.db.tripProduct.findFirst({ where: { id: p.productId } });
-  if (!cur) return fail("NOT_FOUND");
   const set = (v: I18nText | I18n | null | undefined, text: string | null | undefined): I18nText => {
     const out: I18nText = { ...readText(v) };
     if (text === null || text === "" || text === undefined) delete out[locale];
     else out[locale] = text;
     return out;
   };
-  const title = readI18n(cur.title);
-  const body = readBody(cur.body);
-  const meeting = readMeeting(cur.meetingPoint);
-  let nextTitle: I18n = title;
-  if (p.title !== undefined) {
-    const t = set(title, p.title);
-    nextTitle = { th: t.th ?? title.th, ...(t.en ? { en: t.en } : {}), ...(t.zh ? { zh: t.zh } : {}) };
-  }
-  const nextBody: ProductBody = { ...body };
-  for (const s of ["summary", "itinerary", "includes"] as const) {
-    if (p[s] === undefined) continue;
-    const v = set(body[s], p[s]);
-    if (hasKeys(v)) nextBody[s] = v;
-    else delete nextBody[s];
-  }
-  let nextMeeting: MeetingPoint | null = meeting;
-  if (p.meeting !== undefined) {
-    const text = set(meeting?.text, p.meeting);
-    const hasCoord = meeting?.lat !== undefined || meeting?.lng !== undefined;
-    nextMeeting = hasKeys(text) || hasCoord ? { ...(meeting ?? {}), text } : null;
-  }
-  const { before, after } = changes(
-    { title, body, meetingPoint: meeting },
-    { title: nextTitle, body: nextBody, meetingPoint: nextMeeting },
-  );
-  if (!hasKeys(after)) return { ok: true, id: cur.id };
-  await inTx(g, async (tx) => {
+  // r2 ▸ ล็อกแถวสินค้าแล้วอ่านภายในธุรกรรม (สองคนแก้คนละภาษาพร้อมกันไม่ทับกัน) ◂
+  return lockedTx(g, async (tx): Promise<Ok<{ id: string }> | Fail> => {
+    const lp = await lockProduct(tx, g, p.productId);
+    if (!lp) return fail("NOT_FOUND");
+    const cur = await tx.tripProduct.findFirst({ where: { id: lp.id, tenantId: g.tenantId, unitId: g.unitId } });
+    if (!cur) return fail("NOT_FOUND");
+    const title = readI18n(cur.title);
+    const body = readBody(cur.body);
+    const meeting = readMeeting(cur.meetingPoint);
+    let nextTitle: I18n = title;
+    if (p.title !== undefined) {
+      const t = set(title, p.title);
+      nextTitle = { th: t.th ?? title.th, ...(t.en ? { en: t.en } : {}), ...(t.zh ? { zh: t.zh } : {}) };
+    }
+    const nextBody: ProductBody = { ...body };
+    for (const s of BODY_SECTIONS) {
+      if (p[s] === undefined) continue;
+      const v = set(body[s], p[s]);
+      if (hasKeys(v)) nextBody[s] = v;
+      else delete nextBody[s];
+    }
+    let nextMeeting: MeetingPoint | null = meeting;
+    if (p.meeting !== undefined) {
+      const text = set(meeting?.text, p.meeting);
+      const hasCoord = meeting?.lat !== undefined || meeting?.lng !== undefined;
+      nextMeeting = hasKeys(text) || hasCoord ? { ...(meeting ?? {}), text } : null;
+    }
+    const { before, after } = changes({ title, body, meetingPoint: meeting }, { title: nextTitle, body: nextBody, meetingPoint: nextMeeting });
+    if (!hasKeys(after)) return { ok: true, id: cur.id };
     const data: Prisma.TripProductUpdateManyMutationInput = {};
     if (after.title !== undefined) data.title = asJson(after.title);
     if (after.body !== undefined) data.body = asJson(after.body);
     if ("meetingPoint" in after) data.meetingPoint = jsonOrNull(after.meetingPoint);
     await tx.tripProduct.updateMany({ where: { id: cur.id, tenantId: g.tenantId, unitId: g.unitId }, data });
     await audit(tx, g, "trips.content.update", "TripProduct", cur.id, { locale, ...before }, { locale, ...after });
+    return { ok: true, id: cur.id };
   });
-  return { ok: true, id: cur.id };
 }
 
 type Transition = { from: readonly ProductStatus[]; to: ProductStatus; action: string; event?: string };
@@ -899,6 +946,8 @@ export async function createOption(ctx: Ctx, input: unknown): Res<{ id: string }
   if (isFail(g)) return g;
   const p = parse(CREATE_OPTION, input);
   if (isFail(p)) return p;
+  const lf = await checkLocales(g, p.name);
+  if (lf) return lf;
   return lockedTx(g, async (tx): Promise<Ok<{ id: string }> | Fail> => {
     const lp = await lockProduct(tx, g, p.productId);
     if (!lp) return fail("NOT_FOUND");
@@ -934,6 +983,8 @@ export async function updateOption(ctx: Ctx, input: unknown): Res<{ id: string }
   if (isFail(g)) return g;
   const p = parse(UPDATE_OPTION, input);
   if (isFail(p)) return p;
+  const lf = await checkLocales(g, p.name);
+  if (lf) return lf;
   const cur = await g.db.tripOption.findFirst({ where: { id: p.optionId } });
   if (!cur) return fail("NOT_FOUND");
   const { before, after } = changes({ ...cur, name: readI18n(cur.name) }, { name: p.name, durationMin: p.durationMin, nights: p.nights });
@@ -1008,6 +1059,8 @@ export async function createPaxType(ctx: Ctx, input: unknown): Res<{ id: string 
   if (isFail(g)) return g;
   const p = parse(CREATE_PAX, input);
   if (isFail(p)) return p;
+  const lf = await checkLocales(g, p.label);
+  if (lf) return lf;
   const ageMin = p.ageMin ?? null;
   const ageMax = p.ageMax ?? null;
   if (ageMin !== null && ageMax !== null && ageMin > ageMax) return fail("AGE_RANGE");
@@ -1023,7 +1076,9 @@ export async function createPaxType(ctx: Ctx, input: unknown): Res<{ id: string 
         select: { id: true, code: true, ageMin: true, ageMax: true, active: true, countsCapacity: true, sortOrder: true },
       });
       if (all.some((x) => x.code === p.code)) return fail("PAX_CODE_TAKEN");
-      if (overlapsAny(effectivePaxBand({ code: p.code, ageMin, ageMax }, band), all, band)) return fail("AGE_OVERLAP");
+      const nb = effectivePaxBand({ code: p.code, ageMin, ageMax }, band);
+      if (isEmptyBand(nb)) return fail("AGE_RANGE", { message: EMPTY_BAND_MSG });
+      if (overlapsAny(nb, all, band)) return fail("AGE_OVERLAP");
       const sortOrder = all.reduce((m, x) => Math.max(m, x.sortOrder), 0) + 1;
       const row = await tx.tripPaxType.create({
         data: { tenantId: g.tenantId, unitId: g.unitId, productId: lp.id, code: p.code, label: asJson(p.label), ageMin, ageMax, countsCapacity: p.countsCapacity, active: true, sortOrder },
@@ -1051,6 +1106,8 @@ export async function updatePaxType(ctx: Ctx, input: unknown): Res<{ id: string 
   if (isFail(g)) return g;
   const p = parse(UPDATE_PAX, input);
   if (isFail(p)) return p;
+  const lf = await checkLocales(g, p.label);
+  if (lf) return lf;
   const cur = await g.db.tripPaxType.findFirst({ where: { id: p.paxTypeId }, select: { id: true, productId: true } });
   if (!cur) return fail("NOT_FOUND");
   const band = await readT27(g.tenantId, { unitId: g.unitId, productId: cur.productId });
@@ -1066,7 +1123,9 @@ export async function updatePaxType(ctx: Ctx, input: unknown): Res<{ id: string 
     const ageMin = p.ageMin === undefined ? self.ageMin : p.ageMin;
     const ageMax = p.ageMax === undefined ? self.ageMax : p.ageMax;
     if (ageMin !== null && ageMax !== null && ageMin > ageMax) return fail("AGE_RANGE");
-    if (self.active && overlapsAny(effectivePaxBand({ code: self.code, ageMin, ageMax }, band), all.filter((x) => x.id !== self.id), band)) return fail("AGE_OVERLAP");
+    const nb = effectivePaxBand({ code: self.code, ageMin, ageMax }, band);
+    if (isEmptyBand(nb)) return fail("AGE_RANGE", { message: EMPTY_BAND_MSG });
+    if (self.active && overlapsAny(nb, all.filter((x) => x.id !== self.id), band)) return fail("AGE_OVERLAP");
     if (p.countsCapacity === false && self.countsCapacity && self.active) {
       const f = await seatGuard(tx, g, lp, self.id);
       if (f) return f;
@@ -1106,7 +1165,9 @@ export async function setPaxTypeActive(ctx: Ctx, input: unknown): Res<{ id: stri
     if (!self) return fail("NOT_FOUND");
     if (self.active === p.active) return { ok: true, id: self.id };
     if (p.active) {
-      if (overlapsAny(effectivePaxBand(self, band), all.filter((x) => x.id !== self.id), band)) return fail("AGE_OVERLAP");
+      const nb = effectivePaxBand(self, band);
+      if (isEmptyBand(nb)) return fail("AGE_RANGE", { message: EMPTY_BAND_MSG });
+      if (overlapsAny(nb, all.filter((x) => x.id !== self.id), band)) return fail("AGE_OVERLAP");
     } else if (self.countsCapacity) {
       const f = await seatGuard(tx, g, lp, self.id);
       if (f) return f;
@@ -1153,11 +1214,7 @@ async function checkPaxPrices(tx: Tx, g: Gate, productId: string, pp: Record<str
   return Object.keys(pp).every((k) => codes.has(k)) ? null : fail("UNKNOWN_PAX_TYPE");
 }
 
-async function extraCurrency(g: Gate, productCurrency: string | null, currency: string | undefined): Promise<string | Fail> {
-  if (productCurrency !== null) {
-    if (currency !== undefined && currency !== productCurrency) return fail("CURRENCY_MISMATCH");
-    return productCurrency;
-  }
+async function unitExtraCurrency(g: Gate, currency: string | undefined): Promise<string | Fail> {
   const allowed = await readStrings(g.tenantId, T3, { unitId: g.unitId });
   if (currency === undefined) return allowed[0] ?? fail("CURRENCY_NOT_ALLOWED");
   return allowed.includes(currency) ? currency : fail("CURRENCY_NOT_ALLOWED");
@@ -1169,25 +1226,31 @@ export async function createExtra(ctx: Ctx, input: unknown): Res<{ id: string }>
   const p = parse(CREATE_EXTRA, input);
   if (isFail(p)) return p;
   const pp = p.paxPrices ?? null;
-  if (p.productId === null && pp !== null) {
+  const productId = p.productId;
+  if (productId === null && pp !== null) {
     return fail("INVALID_INPUT", { message: "ราคาตามประเภทผู้เดินทางใช้ได้กับรายการเสริมของสินค้าเท่านั้น" });
   }
-  let productCurrency: string | null = null;
-  if (p.productId !== null) {
-    const prod = await g.db.tripProduct.findFirst({ where: { id: p.productId }, select: { id: true, currency: true } });
-    if (!prod) return fail("NOT_FOUND");
-    productCurrency = prod.currency;
-  }
-  const currency = await extraCurrency(g, productCurrency, p.currency);
-  if (isFail(currency)) return currency;
-  const lines = await readT44(g.tenantId, p.productId ? { unitId: g.unitId, productId: p.productId } : { unitId: g.unitId });
+  const lf = await checkLocales(g, p.name, p.note);
+  if (lf) return lf;
+  const unitCurrency = productId === null ? await unitExtraCurrency(g, p.currency) : null;
+  if (isFail(unitCurrency)) return unitCurrency;
+  const lines = await readT44(g.tenantId, productId ? { unitId: g.unitId, productId } : { unitId: g.unitId });
   const flags = resolveFlags(p, lines[p.kind] ?? NEUTRAL_LINE);
   if (isFail(flags)) return flags;
-  const productId = p.productId;
-  const r = await inTx(g, async (tx): Promise<Ok<{ id: string }> | Fail> => {
-    if (productId !== null && pp !== null) {
-      const f = await checkPaxPrices(tx, g, productId, pp);
-      if (f) return f;
+  // r2 ▸ สกุลของสินค้าอ่านใต้ล็อกแถวสินค้าในธุรกรรมเดียวกับการสร้าง (ไม่แข่งกับการเปลี่ยนสกุลของสินค้า) ◂
+  return lockedTx(g, async (tx): Promise<Ok<{ id: string }> | Fail> => {
+    let currency: string;
+    if (productId !== null) {
+      const lp = await lockProduct(tx, g, productId);
+      if (!lp) return fail("NOT_FOUND");
+      if (p.currency !== undefined && p.currency !== lp.currency) return fail("CURRENCY_MISMATCH");
+      currency = lp.currency;
+      if (pp !== null) {
+        const f = await checkPaxPrices(tx, g, productId, pp);
+        if (f) return f;
+      }
+    } else {
+      currency = unitCurrency ?? "";
     }
     const max = await tx.tripExtra.aggregate({ where: { tenantId: g.tenantId, unitId: g.unitId, productId }, _max: { sortOrder: true } });
     const sortOrder = (max._max.sortOrder ?? 0) + 1;
@@ -1220,7 +1283,6 @@ export async function createExtra(ctx: Ctx, input: unknown): Res<{ id: string }>
     await audit(tx, g, "trips.extra.create", "TripExtra", row.id, null, { productId, ...data, sortOrder });
     return { ok: true, id: row.id };
   });
-  return r;
 }
 
 export async function updateExtra(ctx: Ctx, input: unknown): Res<{ id: string }> {
@@ -1228,48 +1290,62 @@ export async function updateExtra(ctx: Ctx, input: unknown): Res<{ id: string }>
   if (isFail(g)) return g;
   const p = parse(UPDATE_EXTRA, input);
   if (isFail(p)) return p;
-  const cur = await g.db.tripExtra.findFirst({ where: { id: p.extraId } });
-  if (!cur) return fail("NOT_FOUND");
-  if (cur.productId === null && p.paxPrices !== undefined && p.paxPrices !== null) {
+  const pre = await g.db.tripExtra.findFirst({ where: { id: p.extraId }, select: { id: true, productId: true } });
+  if (!pre) return fail("NOT_FOUND");
+  const productId = pre.productId;
+  if (productId === null && p.paxPrices !== undefined && p.paxPrices !== null) {
     return fail("INVALID_INPUT", { message: "ราคาตามประเภทผู้เดินทางใช้ได้กับรายการเสริมของสินค้าเท่านั้น" });
   }
-  let productCurrency: string | null = null;
-  if (cur.productId !== null) {
-    const prod = await g.db.tripProduct.findFirst({ where: { id: cur.productId }, select: { currency: true } });
-    if (!prod) return fail("NOT_FOUND");
-    productCurrency = prod.currency;
-  }
-  const currency = p.currency === undefined ? undefined : await extraCurrency(g, productCurrency, p.currency);
-  if (isFail(currency)) return currency;
-  const flags = resolveFlags(p, {
-    passThrough: cur.passThrough,
-    commissionable: cur.commissionable,
-    discountable: cur.discountable,
-    taxKind: cur.taxKind as TaxKind,
-  });
-  if (isFail(flags)) return flags;
-  const productId = cur.productId;
-  const next = {
-    kind: p.kind,
-    basis: p.basis,
-    mandatory: p.mandatory,
-    priceMinor: p.priceMinor,
-    currency,
-    passThrough: flags.passThrough,
-    commissionable: flags.commissionable,
-    discountable: flags.discountable,
-    taxKind: flags.taxKind,
-    stockItemId: p.stockItemId,
-    name: p.name,
-    note: p.note,
-    paxPrices: p.paxPrices,
-  };
-  const { before, after } = changes(
-    { ...cur, name: readI18n(cur.name), note: cur.note === null ? null : readI18n(cur.note), paxPrices: readPaxPrices(cur.paxPrices) },
-    next,
-  );
-  if (!hasKeys(after)) return { ok: true, id: cur.id };
-  return inTx(g, async (tx): Promise<Ok<{ id: string }> | Fail> => {
+  const lf = await checkLocales(g, p.name, p.note);
+  if (lf) return lf;
+  const unitCurrency = productId === null && p.currency !== undefined ? await unitExtraCurrency(g, p.currency) : null;
+  if (isFail(unitCurrency)) return unitCurrency;
+  // r2 ▸ ล็อกแถวสินค้า (ถ้าเป็นรายการของสินค้า) แล้วอ่านรายการ+สกุลสินค้าภายในธุรกรรม ◂
+  return lockedTx(g, async (tx): Promise<Ok<{ id: string }> | Fail> => {
+    let productCurrency: string | null = null;
+    if (productId !== null) {
+      const lp = await lockProduct(tx, g, productId);
+      if (!lp) return fail("NOT_FOUND");
+      productCurrency = lp.currency;
+    }
+    const cur = await tx.tripExtra.findFirst({ where: { id: pre.id, tenantId: g.tenantId, unitId: g.unitId } });
+    if (!cur) return fail("NOT_FOUND");
+    let currency: string | undefined;
+    if (p.currency !== undefined) {
+      if (productCurrency !== null) {
+        if (p.currency !== productCurrency) return fail("CURRENCY_MISMATCH");
+        currency = productCurrency;
+      } else {
+        currency = unitCurrency ?? undefined;
+      }
+    }
+    const flags = resolveFlags(p, {
+      passThrough: cur.passThrough,
+      commissionable: cur.commissionable,
+      discountable: cur.discountable,
+      taxKind: cur.taxKind as TaxKind,
+    });
+    if (isFail(flags)) return flags;
+    const next = {
+      kind: p.kind,
+      basis: p.basis,
+      mandatory: p.mandatory,
+      priceMinor: p.priceMinor,
+      currency,
+      passThrough: flags.passThrough,
+      commissionable: flags.commissionable,
+      discountable: flags.discountable,
+      taxKind: flags.taxKind,
+      stockItemId: p.stockItemId,
+      name: p.name,
+      note: p.note,
+      paxPrices: p.paxPrices,
+    };
+    const { before, after } = changes(
+      { ...cur, name: readI18n(cur.name), note: cur.note === null ? null : readI18n(cur.note), paxPrices: readPaxPrices(cur.paxPrices) },
+      next,
+    );
+    if (!hasKeys(after)) return { ok: true, id: cur.id };
     if (productId !== null && after.paxPrices !== undefined && after.paxPrices !== null) {
       const f = await checkPaxPrices(tx, g, productId, after.paxPrices);
       if (f) return f;
@@ -1307,4 +1383,43 @@ export async function setExtraActive(ctx: Ctx, input: unknown): Res<{ id: string
     await audit(tx, g, "trips.extra.activate", "TripExtra", cur.id, { active: cur.active }, { active: p.active });
   });
   return { ok: true, id: cur.id };
+}
+
+// ═══════════════ ด่าน "ขายได้" ภายในธุรกรรม (r2 · ให้ T0.3/T0.5 เรียกก่อนสร้างกฎรอบ/รอบ/ราคา) ═══════════════
+export type ProductSellableCode = "NOT_FOUND" | "PRODUCT_ARCHIVED" | "OPTION_INACTIVE";
+/** สินค้าไม่พร้อมให้ผูกรอบ/ราคาใหม่ — `code` = รหัสใน TRIP_PRODUCT_ERROR_CODES · ข้อความไทย */
+export class TripProductNotSellableError extends Error {
+  readonly code: ProductSellableCode;
+  constructor(code: ProductSellableCode) {
+    super(MSG[code]);
+    this.name = "TripProductNotSellableError";
+    this.code = code;
+  }
+}
+/**
+ * ล็อกแถวสินค้า `FOR SHARE` ในธุรกรรมของผู้เรียก แล้วตรวจ: มีอยู่ในหน่วยนี้ · ไม่ ARCHIVED · ตัวเลือก (ถ้าส่ง) เป็นของสินค้านี้และเปิดใช้
+ * ไม่ผ่าน ⇒ throw TripProductNotSellableError (ผู้เรียกแปลงเป็น Fail ของตัวเอง) · ผ่าน ⇒ คืนข้อมูลสินค้า
+ * ล็อกแบบแชร์ชนกับ FOR UPDATE ของ archiveProduct ⇒ เก็บสินค้าไม่แทรกกลางการสร้างรอบ/ราคา (ผลตรวจ T0.2 ข้อ 8)
+ * 🔴 tx ใดก็ได้ (prisma.$transaction หรือ tenantDb().$transaction) — SQL ใส่ tenantId/unitId เอง
+ */
+export async function assertProductSellableInTx(
+  tx: Prisma.TransactionClient,
+  ref: { tenantId: string; unitId: string; productId: string; optionId?: string | null },
+): Promise<{ id: string; status: "DRAFT" | "ACTIVE"; currency: string; productType: ProductType }> {
+  const rows = await tx.$queryRaw<LockedProduct[]>`
+    SELECT id, status, currency, "productType" FROM "TripProduct"
+    WHERE id = ${ref.productId} AND "tenantId" = ${ref.tenantId} AND "unitId" = ${ref.unitId}
+    FOR SHARE`;
+  const p = rows[0];
+  if (!p) throw new TripProductNotSellableError("NOT_FOUND");
+  const status = p.status === "DRAFT" ? "DRAFT" : p.status === "ACTIVE" ? "ACTIVE" : null;
+  if (status === null) throw new TripProductNotSellableError("PRODUCT_ARCHIVED");
+  if (ref.optionId) {
+    const opt = await tx.$queryRaw<{ active: boolean }[]>`
+      SELECT active FROM "TripOption"
+      WHERE id = ${ref.optionId} AND "productId" = ${p.id} AND "tenantId" = ${ref.tenantId} AND "unitId" = ${ref.unitId}`;
+    if (!opt[0]) throw new TripProductNotSellableError("NOT_FOUND");
+    if (!opt[0].active) throw new TripProductNotSellableError("OPTION_INACTIVE");
+  }
+  return { id: p.id, status, currency: p.currency, productType: p.productType as ProductType };
 }

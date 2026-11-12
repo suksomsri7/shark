@@ -316,6 +316,21 @@ const diveOwner = D.users[0];
 await ensureTripsTemplate(D.tenant.id, D.units.trips.id, diveOwner, D.template);
 const tripProductIds: Record<string, string> = {};
 for (const sp of TRIPS_SEED_PRODUCTS) tripProductIds[sp.key] = await ensureTripProduct({ tenantId: D.tenant.id, actorUserId: diveOwner.userId }, D.units.trips.id, sp);
+// r2 ▸ id ลูกของสินค้า seed ให้ seed ของ T0.3/T0.5 หาได้: dive.products.<slug>.{productId, options{ชื่อไทย}, paxTypes{code}, extras{kind}} ◂
+type SeedProductIds = { productId: string; options: Record<string, string>; paxTypes: Record<string, string>; extras: Record<string, string> };
+const tripProducts: Record<string, SeedProductIds> = {};
+for (const sp of TRIPS_SEED_PRODUCTS) {
+  const r = await trips.getProductBySlug({ tenantId: D.tenant.id, actorUserId: diveOwner.userId }, { unitId: D.units.trips.id, slug: sp.slug });
+  if (!r.ok) throw new Error(`อ่านสินค้า ${sp.slug} หลัง seed ไม่ได้: ${r.code}`);
+  const extras: Record<string, string> = {};
+  for (const e of r.product.extras) extras[e.kind in extras ? `${e.kind}:${e.name.th}` : e.kind] = e.id;
+  tripProducts[sp.slug] = {
+    productId: r.product.id,
+    options: Object.fromEntries(r.product.options.map((o) => [o.name.th, o.id])),
+    paxTypes: Object.fromEntries(r.product.paxTypes.map((x) => [x.code, x.id])),
+    extras,
+  };
+}
 
 // ═══════════════ สรุป (ต้องเหมือนเดิมทุกตัวอักษรเมื่อรันซ้ำ) ═══════════════
 async function countsOf(tenantId: string) {
@@ -349,7 +364,8 @@ const expected = {
     userIds: D.users.map((u) => u.userId),
     partyIds: DIVE_PARTIES.map((p) => p.id),
     tripsUnitId: D.units.trips.id, // TRIPS T0.2
-    productIds: tripProductIds, // TRIPS T0.2
+    productIds: tripProductIds, // TRIPS T0.2 (คงไว้เพื่อความเข้ากันได้)
+    products: tripProducts, // TRIPS T0.2 r2 ▸ <slug> → { productId, options{ชื่อไทย: id}, paxTypes{code: id}, extras{kind: id} } ◂
   },
   aquarium: {
     tenantId: A.tenant.id,

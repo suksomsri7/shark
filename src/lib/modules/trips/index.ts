@@ -43,7 +43,11 @@ export {
   createExtra,
   updateExtra,
   setExtraActive,
+  // r2 ▸ ด่าน "ขายได้" ในธุรกรรมของผู้เรียก (T0.3 กฎรอบ/รอบ · T0.5 ราคา) ◂
+  assertProductSellableInTx,
+  TripProductNotSellableError,
 } from "./products";
+export type { ProductSellableCode as TripProductSellableCode } from "./products";
 export {
   CONTENT_SECTIONS,
   PROSPECTUS_ITEMS,

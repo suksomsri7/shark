@@ -603,6 +603,13 @@ export type SeedProduct = {
 };
 const hhmm = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const PARK_NAME: SeedI18n = { th: "ค่าอุทยาน", en: "Marine park fee" };
+// ⚠️ เวลาออก/กลับของพีพี และดำน้ำลึก 3 ไดฟ์ = **ค่าฟิกซ์เจอร์ที่ผู้คุมรับรอง 12 พ.ย. (r2 ข้อ 10)** — ภาพจอ 16 ไม่ได้ระบุ
+//   พีพี 08:30 · 510 นาที (ถึง 17:00) · ดำน้ำลึก 3 ไดฟ์ 07:30 · 480 นาที (ถึง 15:30) · ราชา 08:00–16:30 = 510 มาจาก PRODUCT_RACHA.time (จอ 16)
+//   seed ของ T0.3 อ่านระยะเวลาจากตัวเลือกที่ seed นี้สร้าง (ไม่ต้องแก้ทับ)
+export const TRIPS_SEED_OPTION_TIMES = {
+  phiphi: { start: "08:30", end: "17:00" },
+  deep3: { start: "07:30", end: "15:30" },
+} as const;
 export const TRIPS_SEED_PRODUCTS: readonly SeedProduct[] = [
   {
     key: "racha",
@@ -658,7 +665,9 @@ export const TRIPS_SEED_PRODUCTS: readonly SeedProduct[] = [
     },
     meeting: { th: `${SHOP_DIVE.pier} หรือรับที่โรงแรมในโซน`, en: "Chalong Pier or hotel pickup within the zone" },
     disclosure: { accommodationMeals: { th: "ไม่ค้างคืน · อาหารกลางวัน 1 มื้อ", en: "No overnight · 1 lunch" }, guides: { th: "ไกด์ประจำเรือ", en: "Boat guide" } },
-    options: [{ name: { th: "ร่วมกลุ่ม", en: "Join-in group" }, durationMin: null, nights: null, active: true }],
+    options: [
+      { name: { th: "ร่วมกลุ่ม", en: "Join-in group" }, durationMin: hhmm(TRIPS_SEED_OPTION_TIMES.phiphi.end) - hhmm(TRIPS_SEED_OPTION_TIMES.phiphi.start), nights: null, active: true },
+    ],
     extras: [],
   },
   {
@@ -675,7 +684,9 @@ export const TRIPS_SEED_PRODUCTS: readonly SeedProduct[] = [
     },
     meeting: { th: `${SHOP_DIVE.pier} · นำบัตรนักดำน้ำมาด้วย`, en: "Chalong Pier · bring your dive certification card" },
     disclosure: { accommodationMeals: { th: "ไม่ค้างคืน · อาหารกลางวัน 1 มื้อ", en: "No overnight · 1 lunch" }, guides: { th: `ไกด์ดำน้ำ 1:${PRODUCT_DEEP3.guideRatio}`, en: `Dive guide 1:${PRODUCT_DEEP3.guideRatio}` } },
-    options: [{ name: { th: "ร่วมกลุ่ม", en: "Join-in group" }, durationMin: null, nights: null, active: true }],
+    options: [
+      { name: { th: "ร่วมกลุ่ม", en: "Join-in group" }, durationMin: hhmm(TRIPS_SEED_OPTION_TIMES.deep3.end) - hhmm(TRIPS_SEED_OPTION_TIMES.deep3.start), nights: null, active: true },
+    ],
     extras: [],
   },
   {

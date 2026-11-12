@@ -46,6 +46,10 @@ export const TRIP_PRODUCT_ERROR_CODES = [
   "TAX_KIND_MISMATCH",
   "LOCALE_DISABLED",
   "BUSY",
+  // r2 (ผู้คุม 12 พ.ย.) ▸ สกุลเงินตายตัวหลังเผยแพร่ครั้งแรก · ด่าน "ขายได้" ของ T0.3/T0.5 (assertProductSellableInTx) ◂
+  "CURRENCY_LOCKED",
+  "PRODUCT_ARCHIVED",
+  "OPTION_INACTIVE",
 ] as const;
 export type TripProductErrorCode = (typeof TRIP_PRODUCT_ERROR_CODES)[number];
 
@@ -83,6 +87,15 @@ export type I18n = { th: string; en?: string | null; zh?: string | null };
 /** ส่วนเนื้อหา (สรุป/กำหนดการ/รวม/จุดนัดพบ) — ภาษาใดก็ได้ (ลบไทยของส่วนได้ · ลบไทยของชื่อไม่ได้) */
 export type I18nText = { th?: string | null; en?: string | null; zh?: string | null };
 export type Localized = { text: string | null; locale: string; fallback: boolean };
+
+/** ภาษาที่ไม่ใช่ไทยซึ่งมีข้อความอยู่ในชุดข้อความ (ใช้ตรวจ T2 ทุกฟังก์ชันที่รับข้อความหลายภาษา) */
+export function nonThaiLocales(...texts: (I18nText | I18n | null | undefined)[]): ContentLocale[] {
+  const out = new Set<ContentLocale>();
+  for (const t of texts) for (const l of CONTENT_LOCALES) if (l !== "th" && hasLocale(t, l)) out.add(l);
+  return [...out];
+}
+/** ช่วงอายุว่าง/กลับด้าน (เช่น ทารกเมื่อ infantBelow = 0) */
+export const isEmptyBand = (b: Band): boolean => b.source !== "NONE" && b.to !== null && b.to < b.from;
 
 export type ProductBody = { summary?: I18nText; itinerary?: I18nText; includes?: I18nText; photoFileIds?: string[] };
 export type MeetingPoint = { text: I18nText; lat?: number; lng?: number };
