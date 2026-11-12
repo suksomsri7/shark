@@ -63,6 +63,9 @@ export function RowActions({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const anchorRef = useRef<HTMLDivElement>(null);
+  // ACCOUNT-FIX A1: ปิดเมนู "หลัง" เบราว์เซอร์ส่งฟอร์มแล้ว — ถ้าปิดทันทีใน onClick เมนู (portal) ถูกถอดออกจากหน้า
+  //   ก่อนขั้นส่งฟอร์ม ⇒ ฟอร์มที่หลุดจากเอกสารส่งไม่ได้ (เงียบ) · เลื่อนไป task ถัดไปให้ submit เกิดก่อน
+  const closeAfterSubmit = () => setTimeout(() => setOpen(false), 0);
 
   if (items.length === 0 && !danger) return null;
 
@@ -135,7 +138,7 @@ export function RowActions({
                   {Object.entries(it.submit.fields ?? {}).map(([k, v]) => (
                     <input key={k} type="hidden" name={k} value={v} />
                   ))}
-                  <button type="submit" role="menuitem" className={cls} onClick={() => setOpen(false)} data-testid={testId ? `${testId}-item-${i}` : undefined}>
+                  <button type="submit" role="menuitem" className={cls} onClick={closeAfterSubmit} data-testid={testId ? `${testId}-item-${i}` : undefined}>
                     {iconNode}
                     {it.label}
                   </button>

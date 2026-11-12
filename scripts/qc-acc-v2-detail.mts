@@ -112,6 +112,19 @@ console.log("P0 สายไฟ+ป้าย DocDetailPage.tsx (ตรงตา�
     assert(`P0.18 แท็บรายละเอียดมีคอลัมน์ "${col}"`, src.includes(col));
   }
 
+  // ── ACCOUNT-FIX A1: "แปลงเป็น…" ต้องเรียก convertDocumentAction (เดิมเป็นลิงก์ docs/<ชนิดปลายทาง>/<id ต้นทาง> → 404) ──
+  assert("A1.1 ไม่มีลิงก์ editorDetailPath(base, <ปลายทาง>, data.id) เหลือ (รูปแบบที่ทำให้ 404)",
+    !/editorDetailPath\(base, (t|targets\[0\]), data\.id\)/.test(src));
+  assert("A1.2 ปุ่มหลักใบเสนอราคา (ACCEPTED) เป็นฟอร์ม convertDocumentAction + toDocType=targets[0]",
+    /<form action=\{convertDocumentAction\} data-testid="btn-convert-qt">/.test(src) && src.includes('name="toDocType" value={targets[0]}'));
+  assert("A1.3 เมนู ⋯ 'แปลงเป็น…' ส่งฟอร์ม convertDocumentAction พร้อม toDocType ต่อปลายทาง",
+    /action: convertDocumentAction,\s*fields: \{ systemId, docType: dt, id: data\.id, toDocType: t \}/.test(src));
+  for (const [name, path] of [["DocMoreMenu", "src/components/account-v2/DocMoreMenu.tsx"], ["RowActions", "src/components/account-v2/RowActions.tsx"]] as const) {
+    const m = readFileSync(join(ROOT, path), "utf8");
+    assert(`A1.4 ${name}: ปุ่มส่งฟอร์มในเมนูไม่ปิดเมนูก่อนฟอร์มถูกส่ง (closeAfterSubmit)`,
+      m.includes("onClick={closeAfterSubmit}") && m.includes("setTimeout(() => setOpen(false), 0)"));
+  }
+
   const detailSrc = readFileSync(join(ROOT, "src/lib/modules/account/doc-detail.ts"), "utf8");
   assert("P0.7 doc-detail.ts export getDocDetailData", detailSrc.includes("export async function getDocDetailData"));
   assert("P0.8 doc-detail.ts export timelineStepsFor", detailSrc.includes("export function timelineStepsFor"));

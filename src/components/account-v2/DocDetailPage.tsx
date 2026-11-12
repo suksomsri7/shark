@@ -161,14 +161,16 @@ function ActionRow({
     );
   } else if (dt === "QUOTATION" && data.status === "ACCEPTED" && targets.length > 0) {
     // §9.3: ใบเสนอราคาที่ลูกค้ายอมรับแล้ว → ปุ่มหลัก = ปลายทางเริ่มต้นตามนโยบาย (ใบแจ้งหนี้ หรือ ใบรับเงินมัดจำ)
+    //   ACCOUNT-FIX A1: เดิมเป็นลิงก์ `docs/<ชนิดปลายทาง>/<id ใบเสนอราคา>` → 404 เพราะชนิดไม่ตรง
+    //   ⇒ ยิง convertDocumentAction (สร้างร่างใบปลายทาง แล้วพาไปหน้าร่างนั้น) · SubmitButton กันกดซ้ำ
     primary = (
-      <Link
-        href={editorDetailPath(base, targets[0], data.id)}
-        className="btn btn-primary h-11 w-full text-sm md:h-9 md:w-auto"
-        data-testid="btn-convert-qt"
-      >
-        แปลงเป็น{DOC_LABEL[targets[0]] ?? targets[0]}
-      </Link>
+      <form action={convertDocumentAction} data-testid="btn-convert-qt">
+        <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <input type="hidden" name="toDocType" value={targets[0]} />
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto" pendingText="กำลังสร้างร่าง…">
+          แปลงเป็น{DOC_LABEL[targets[0]] ?? targets[0]}
+        </SubmitButton>
+      </form>
     );
   } else if (dt === "PURCHASE_TAX_INVOICE" && data.status === "AWAITING_RECEIVE") {
     primary = (
@@ -308,7 +310,15 @@ function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocTy
     // WO 1.6: CN/DN ไม่ใช่ "แปลง" ตรง ๆ อีกต่อไป — ข้ามที่นี่ (เติมทีเดียวรวม RE/TX ด้านล่าง แหล่งเดียว กัน href พังแบบเดิม
     // ที่เคยชี้ `docs/CREDIT_NOTE/<id ของใบต้นทาง>` ซึ่งไม่มีเอกสารนั้นจริง — CONVERT_MAP มี CN/DN แค่จาก INVOICE เท่านั้น)
     if (t === "CREDIT_NOTE" || t === "DEBIT_NOTE") continue;
-    items.push({ label: `แปลงเป็น${labelOf(t)}`, href: `${editorDetailPath(base, t, data.id)}` });
+    // ACCOUNT-FIX A1: เดิม href `docs/<ชนิดปลายทาง>/<id ใบต้นทาง>` → 404 · ตอนนี้ส่งฟอร์มไป convertDocumentAction
+    //   (สร้างร่างใบปลายทาง + relation แล้ว redirect ไปหน้าร่าง) — ทางเดียวกับปุ่ม "ออกใบกำกับ"
+    items.push({
+      label: `แปลงเป็น${labelOf(t)}`,
+      submit: {
+        action: convertDocumentAction,
+        fields: { systemId, docType: dt, id: data.id, toDocType: t },
+      },
+    });
   }
   // WO 1.6 §5.2 J — deep-link เข้า wizard ขั้น ② โดยเลือกเอกสารนี้อ้างอิงไว้ล่วงหน้า (`?ref=<id>`)
   //   ฝั่งขาย: ออกใบลดหนี้/เพิ่มหนี้จาก IV/RE/TX · ฝั่งซื้อ: บันทึกรับใบลดหนี้/เพิ่มหนี้จาก PUR/EXP (`targets` ฝั่งนี้ว่างเสมอ)
