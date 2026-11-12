@@ -32,6 +32,16 @@ import {
   type FixtureParty,
   type FixtureUnit,
   type FixtureUser,
+  // ── T0.3 departures ──
+  CALENDAR_WEEK_1111,
+  TRIPS_AS_OF,
+  TRIPS_SEED_CANCEL_REASON,
+  TRIPS_SEED_COUNTER_CUTOFF,
+  TRIPS_SEED_MATERIALIZE_AT,
+  TRIPS_SEED_RESOURCES,
+  TRIPS_SEED_SCHEDULES,
+  TRIPS_SEED_SIMILAN,
+  // ── /T0.3 departures ──
 } from "./trips-fixture.mjs";
 
 const TRIPS_EXPECTED_PATH = "scripts/trips-expected.json";
@@ -332,6 +342,154 @@ for (const sp of TRIPS_SEED_PRODUCTS) {
   };
 }
 
+// ── T0.3 departures ──
+// ═══════════════ รอบสัปดาห์ฟิกซ์เจอร์ (ใบ T0.3 §8) ═══════════════
+// ผ่าน facade `@/lib/modules/trips` ด้วยเจ้าของร้าน (createResource · createSchedule · materializeSchedule · setDepartureStatus · cancelDeparture · createDeparture)
+// ไม่เขียนตาราง Trip* ตรง (อ่านอย่างเดียว) · ทุกคำสั่งส่ง opts.now = TRIPS_AS_OF ยกเว้น materialize (TRIPS_SEED_MATERIALIZE_AT)
+// ต่อจาก seed ของ T0.2 (หน่วย TRIPS + สินค้า 4 ตัว · id จาก `tripProducts` = dive.products ใน trips-expected.json) — ไม่มี ⇒ ล้ม (ไม่ข้ามเงียบ)
+const tripsMod = await import("@/lib/modules/trips");
+const settingsMod = await import("@/lib/core/settings");
+const SEED_T6 = "trips.sell.cutoff";
+const SEED_T7 = "trips.sell.minToDepart";
+const seedStatusOf = (s: string) => (s.startsWith("ยกเลิก") ? "CANCELLED" : s === "เดินทางแล้ว" || s === "ออกเรือแล้ว" ? "CLOSED" : s === "ยืนยันออก" ? "GUARANTEED" : "OPEN");
+const asObj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+function mustOk<T extends { ok: boolean }>(r: T, what: string): Extract<T, { ok: true }> {
+  if (!r.ok) throw new Error(`seed T0.3 ${what}: ${JSON.stringify(r)}`);
+  return r as Extract<T, { ok: true }>;
+}
+
+async function ensureTripsDepartures(): Promise<{ departureIds: Record<string, string>; resourceIds: Record<string, string> }> {
+  const tenantId = D.tenant.id;
+  const unitId = D.units.trips.id;
+  const owner = D.users[0];
+  const slugs = [...TRIPS_SEED_SCHEDULES.map((x) => x.slug), TRIPS_SEED_SIMILAN.slug];
+  const prods: Record<string, { id: string; optionId: string }> = {};
+  for (const slug of slugs) {
+    const sp = TRIPS_SEED_PRODUCTS.find((x) => x.slug === slug);
+    const ids = tripProducts[slug];
+    const optName = sp?.options.find((o) => o.active)?.name.th;
+    const optionId = optName ? ids?.options[optName] : undefined;
+    if (!sp || !ids || !optionId) throw new Error(`seed T0.3: ไม่มีสินค้า/ตัวเลือก ${slug} จาก seed ของ T0.2`);
+    const hasDuration = sp.options.find((o) => o.active)?.durationMin ?? sp.options.find((o) => o.active)?.nights;
+    if (!hasDuration) throw new Error(`seed T0.3: ตัวเลือก ${slug} ในฟิกซ์เจอร์ T0.2 ไม่มีระยะเวลา`);
+    prods[slug] = { id: ids.productId, optionId };
+  }
+  const ctx = { tenantId, actorUserId: owner.userId };
+  const opts = { now: new Date(TRIPS_AS_OF) };
+
+  // 1) ทรัพยากร (จับคู่ด้วย ชนิด + ชื่อ)
+  const resList = mustOk(await tripsMod.listResources(ctx, { unitId, includeInactive: true }), "listResources").items;
+  const resourceIds: Record<string, string> = {};
+  for (const r of TRIPS_SEED_RESOURCES) {
+    const cur = resList.find((x) => x.kind === r.kind && x.name === r.name);
+    if (!cur) {
+      bump(created, "tripResource");
+      resourceIds[r.key] = mustOk(await tripsMod.createResource(ctx, { unitId, kind: r.kind, name: r.name, seats: r.seats }), `createResource ${r.name}`).id;
+      continue;
+    }
+    resourceIds[r.key] = cur.id;
+    if (cur.seats !== r.seats) {
+      bump(updated, "tripResource");
+      mustOk(await tripsMod.updateResource(ctx, { unitId, resourceId: cur.id, seats: r.seats }), `updateResource ${r.name}`);
+    }
+    if (!cur.active) {
+      bump(updated, "tripResourceActive");
+      mustOk(await tripsMod.setResourceActive(ctx, { unitId, resourceId: cur.id, active: true }, opts), `setResourceActive ${r.name}`);
+    }
+  }
+
+  // 2) ค่าตั้ง (จอ 17): T6 ชั้น UNIT หน้าร้าน 0 วัน 07:00 · T7 ชั้น PRODUCT ขั้นต่ำ 8/10/4 (เวลาตัดสินตามแม่แบบ)
+  const actor = { role: owner.role, unitAccess: [...owner.unitAccess], permissions: { ...owner.permissions }, userId: owner.userId };
+  const changes: { key: string; scope: string; scopeId: string; value: unknown }[] = [];
+  const t6 = asObj((await settingsMod.resolveSetting({ tenantId }, SEED_T6, { unitId })).value);
+  const t6Want = { ...t6, perChannel: { ...asObj(t6.perChannel), COUNTER: { ...TRIPS_SEED_COUNTER_CUTOFF } } };
+  if (canon(t6) !== canon(t6Want)) changes.push({ key: SEED_T6, scope: "UNIT", scopeId: unitId, value: t6Want });
+  for (const s of TRIPS_SEED_SCHEDULES) {
+    const productId = prods[s.slug].id;
+    const t7 = asObj((await settingsMod.resolveSetting({ tenantId }, SEED_T7, { unitId, productId })).value);
+    if (t7.minPax !== s.minPax) changes.push({ key: SEED_T7, scope: "PRODUCT", scopeId: productId, value: { ...t7, minPax: s.minPax } });
+  }
+  if (changes.length) {
+    bump(updated, "tripSettings", changes.length);
+    const r = await settingsMod.setSettings(actor, { tenantId }, changes, { ackLegalWarn: true });
+    if (!r.ok) throw new Error(`seed T0.3 setSettings: ${JSON.stringify(r)}`);
+  }
+
+  // 4) กฎ DAILY + materialize (สัปดาห์ 11–17)
+  const departureIds: Record<string, string> = {};
+  for (const s of TRIPS_SEED_SCHEDULES) {
+    const pr = prods[s.slug];
+    const want = {
+      rule: { kind: "DAILY" as const },
+      exceptions: s.skip.map((date) => ({ date, action: "SKIP" as const })),
+      departTimeMin: s.departTimeMin,
+      capacity: s.capacity,
+      minPax: null,
+      resourceIds: s.resources.map((k) => resourceIds[k]),
+      dateFrom: s.dateFrom,
+      dateTo: s.dateTo,
+    };
+    const scheds = mustOk(await tripsMod.listSchedules(ctx, { unitId, productId: pr.id }), "listSchedules").items;
+    let sched = scheds.find((x) => x.optionId === pr.optionId);
+    if (!sched) {
+      bump(created, "tripSchedule");
+      const id = mustOk(await tripsMod.createSchedule(ctx, { unitId, productId: pr.id, optionId: pr.optionId, ...want }), `createSchedule ${s.slug}`).id;
+      sched = mustOk(await tripsMod.listSchedules(ctx, { unitId, productId: pr.id }), "listSchedules").items.find((x) => x.id === id);
+    } else {
+      const cur = { rule: sched.rule, exceptions: sched.exceptions, departTimeMin: sched.departTimeMin, capacity: sched.capacity, minPax: sched.minPax, resourceIds: sched.resourceIds, dateFrom: sched.dateFrom, dateTo: sched.dateTo };
+      if (canon(cur) !== canon(want)) {
+        bump(updated, "tripSchedule");
+        mustOk(await tripsMod.updateSchedule(ctx, { unitId, scheduleId: sched.id, ...want }, opts), `updateSchedule ${s.slug}`);
+      }
+      if (sched.paused) {
+        bump(updated, "tripScheduleResume");
+        mustOk(await tripsMod.resumeSchedule(ctx, { unitId, scheduleId: sched.id }, opts), `resumeSchedule ${s.slug}`);
+      }
+    }
+    if (!sched) throw new Error(`seed T0.3: อ่านกฎ ${s.slug} กลับไม่ได้`);
+    const week = CALENDAR_WEEK_1111.rows[s.key];
+    const list = async () => mustOk(await tripsMod.listDepartures(ctx, { unitId, from: s.dateFrom, to: s.dateTo, productId: pr.id }, opts), "listDepartures").items.filter((d) => d.scheduleId === sched?.id);
+    let deps = await list();
+    if (week.some((c) => !deps.some((d) => d.localDate === c.date))) {
+      const r = mustOk(await tripsMod.materializeSchedule(ctx, { unitId, scheduleId: sched.id }, { now: new Date(TRIPS_SEED_MATERIALIZE_AT) }), `materializeSchedule ${s.slug}`);
+      bump(created, "tripDeparture", r.created.length);
+      if (r.conflicts.length) throw new Error(`seed T0.3 materialize ${s.slug}: ทรัพยากรชน ${JSON.stringify(r.conflicts)}`);
+      deps = await list();
+    }
+    // 5) สถานะตามจอ 11 (ตัวนับทุกรอบ = 0)
+    for (const c of week) {
+      const d = deps.find((x) => x.localDate === c.date);
+      if (!d) throw new Error(`seed T0.3: ไม่มีรอบ ${s.key} ${c.date} หลัง materialize`);
+      departureIds[`${s.key}:${c.date}`] = d.id;
+      const target = seedStatusOf(c.status);
+      if (d.status === target) continue;
+      bump(updated, "tripDepartureStatus");
+      if (target === "CANCELLED") mustOk(await tripsMod.cancelDeparture(ctx, { unitId, departureId: d.id, reason: TRIPS_SEED_CANCEL_REASON }, opts), `cancelDeparture ${s.key} ${c.date}`);
+      else mustOk(await tripsMod.setDepartureStatus(ctx, { unitId, departureId: d.id, status: target }, opts), `setDepartureStatus ${s.key} ${c.date} → ${target}`);
+    }
+  }
+
+  // 6) สิมิลัน: รอบเดี่ยว (ไม่มีกฎซ้ำ)
+  const sim = prods[TRIPS_SEED_SIMILAN.slug];
+  const simDeps = mustOk(await tripsMod.listDepartures(ctx, { unitId, from: TRIPS_SEED_SIMILAN.localDate, to: TRIPS_SEED_SIMILAN.localDate, productId: sim.id }, opts), "listDepartures similan").items;
+  if (simDeps.length) departureIds[`similan:${TRIPS_SEED_SIMILAN.localDate}`] = simDeps[0].id;
+  else {
+    bump(created, "tripDeparture");
+    departureIds[`similan:${TRIPS_SEED_SIMILAN.localDate}`] = mustOk(
+      await tripsMod.createDeparture(
+        ctx,
+        { unitId, productId: sim.id, optionId: sim.optionId, localDate: TRIPS_SEED_SIMILAN.localDate, departTimeMin: TRIPS_SEED_SIMILAN.departTimeMin, durationMin: TRIPS_SEED_SIMILAN.durationMin, capacity: TRIPS_SEED_SIMILAN.capacity },
+        opts,
+      ),
+      "createDeparture similan",
+    ).id;
+  }
+  return { departureIds, resourceIds };
+}
+const tripsDepartures = await ensureTripsDepartures();
+console.log(`T0.3: รอบ ${Object.keys(tripsDepartures.departureIds).length} · ทรัพยากร ${Object.keys(tripsDepartures.resourceIds).length}`);
+// ── /T0.3 departures ──
+
 // ═══════════════ สรุป (ต้องเหมือนเดิมทุกตัวอักษรเมื่อรันซ้ำ) ═══════════════
 async function countsOf(tenantId: string) {
   const w = { tenantId };
@@ -378,6 +536,9 @@ const expected = {
   },
   counts: summary,
 };
+// ── T0.3 departures ──
+Object.assign(expected.dive, { departureIds: tripsDepartures.departureIds, resourceIds: tripsDepartures.resourceIds });
+// ── /T0.3 departures ──
 writeFileSync(TRIPS_EXPECTED_PATH, JSON.stringify(expected, null, 2) + "\n");
 
 const wrote = has(created) || has(updated);

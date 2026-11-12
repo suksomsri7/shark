@@ -860,6 +860,12 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "trips.product.view": "ดูสินค้าทัวร์",
       "trips.product.edit": "แก้สินค้าทัวร์",
       "trips.product.publish": "เปิด/ปิดขายและเก็บสินค้าทัวร์",
+      // TRIPS T0.3 ▸ รอบ · กฎซ้ำ · ทรัพยากร (ใบสั่ง T0.3 §6) ◂
+      "trips.departure.view": "ดูรอบและที่ว่าง",
+      "trips.departure.edit": "สร้าง/แก้รอบและกฎซ้ำ",
+      "trips.departure.status": "เปิด/ปิดรับ ยืนยันออก และยกเลิกรอบ",
+      "trips.resource.edit": "จัดการเรือ รถ ไกด์",
+      // ◂ TRIPS T0.3
     },
   },
 ] as const;

@@ -401,6 +401,13 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "trips.product.unpublished", label: "เมื่อปิดขายสินค้าทัวร์ (กลับเป็นร่าง)" },
   { value: "trips.product.archived", label: "เมื่อเก็บสินค้าทัวร์เข้าคลัง (เลิกขาย)" },
   // ◂ TRIPS T0.2
+  // TRIPS T0.3 ▸ รอบทัวร์ — ตัวยิง `trips/departures.ts` (ใน tx เดียวกับการเขียน) · payload ตรง 6 คีย์ { departureId, productId, unitId, status, paxSold, minPax }
+  //   ไม่มีข้อมูลบุคคล (X8) · consumer อยู่ใน `outbox-consumers.ts` · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น) ◂
+  { value: "trips.departure.created", label: "เมื่อสร้างรอบทัวร์" },
+  { value: "trips.departure.status_changed", label: "เมื่อสถานะรอบเปลี่ยน" },
+  { value: "trips.departure.below_min", label: "เมื่อรอบต่ำกว่าขั้นต่ำ ณ เวลาตัดสิน" },
+  { value: "trips.departure.cancelled", label: "เมื่อยกเลิกรอบ" },
+  // ◂ TRIPS T0.3
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

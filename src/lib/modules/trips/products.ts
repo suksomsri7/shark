@@ -1414,7 +1414,9 @@ export async function assertProductSellableInTx(
   if (!p) throw new TripProductNotSellableError("NOT_FOUND");
   const status = p.status === "DRAFT" ? "DRAFT" : p.status === "ACTIVE" ? "ACTIVE" : null;
   if (status === null) throw new TripProductNotSellableError("PRODUCT_ARCHIVED");
-  if (ref.optionId) {
+  if (ref.optionId !== null && ref.optionId !== undefined) {
+    // r3 (มติผู้คุม T0.3 r2 ข้อ A) ▸ ตรวจทุกครั้งที่ส่ง optionId มา — สตริงว่าง = ไม่มีตัวเลือกนี้ (NOT_FOUND) ไม่ใช่ "ไม่ส่ง" ◂
+    if (!ref.optionId) throw new TripProductNotSellableError("NOT_FOUND");
     const opt = await tx.$queryRaw<{ active: boolean }[]>`
       SELECT active FROM "TripOption"
       WHERE id = ${ref.optionId} AND "productId" = ${p.id} AND "tenantId" = ${ref.tenantId} AND "unitId" = ${ref.unitId}`;

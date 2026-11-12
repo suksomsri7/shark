@@ -821,7 +821,8 @@ try {
     ok(out.length === 0, `trips import โมดูลอื่น: ${out.join(", ")}`);
     const into = ["agency", "supplier", "ticket"].flatMap((m) => walk(`src/lib/modules/${m}`)).filter((f) => /@\/lib\/modules\/trips/.test(read(f)));
     ok(into.length === 0, `import trips: ${into.join(", ")}`);
-    ok(changedFiles(["scripts/fitness.mts"]).length === 0, "fitness.mts ถูกแก้ (ORACLE-EDIT ผู้คุมเท่านั้น)");
+    // ORACLE-EDIT S-8 (ผู้คุม 12 พ.ย.): ผู้คุมแก้ fitness.mts เอง (F5 baseline 50→51 · trips/jobs.ts ของ T0.3) — ตรวจว่า baseline ไม่เกิน 51 แทนการห้ามแก้ไฟล์
+    ok(/f5RawPrisma:\s*(50|51)\b/.test(read("scripts/fitness.mts")), "fitness F5 baseline ถูกขยับเกิน 51 (ORACLE-EDIT ผู้คุมเท่านั้น)");
   });
   await st("S-9", "permissions: trips.settings.edit + trips.settings.money ลงทะเบียนพร้อมป้ายไทย", () => {
     const keys = PERM?.PERMISSION_KEYS;

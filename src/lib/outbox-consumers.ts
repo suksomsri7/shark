@@ -1514,6 +1514,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.product.unpublished": withAutomation(async () => {}),
   "trips.product.archived": withAutomation(async () => {}),
   // ◂ TRIPS T0.2
+  // TRIPS T0.3 ▸ รอบทัวร์ (ใบสั่ง T0.3 §7) — ยิงจาก `trips/departures.ts` ใน tx เดียวกับการเขียน · payload 6 คีย์ (X8) · งานหลัก = no-op (กฎอัตโนมัติ/เว็บฮุค)
+  "trips.departure.created": withAutomation(async () => {}),
+  "trips.departure.status_changed": withAutomation(async () => {}),
+  "trips.departure.below_min": withAutomation(async () => {}),
+  "trips.departure.cancelled": withAutomation(async () => {}),
+  // ◂ TRIPS T0.3
 };
 
 // POS P3.6 ▸ R11: คืนเงินบิลหน้าร้าน → หักจากดีล CRM ที่นับบิลนั้นไว้ (แถว POS_REFUND ติดลบ · pos/crm-link.dealOnSaleRefunded → seam ของ CRM) —
