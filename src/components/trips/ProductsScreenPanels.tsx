@@ -2,7 +2,7 @@
 // TRIPS T1.1 ▸ แผงขวาของจอสินค้า (ภาพ 16): ข้อมูลเอกสารชี้ชวน 9 ข้อ (แสดงอย่างเดียว ไม่บังคับ) · ค่าที่ใช้กับสินค้านี้ (อ่านอย่างเดียว + "แก้ที่ค่าตั้ง") · ลูกค้าจะเห็น
 //   🔴 ตัวเลขทั้งหมดจากตัวโหลด (ตัวคิดราคาจริง) — คอมโพเนนต์จัดรูปอย่างเดียว
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { ProductEditorVM } from "@/lib/modules/trips";
 import { formatBaht, formatBahtShort } from "./trips-shared";
 import { CARD, INPUT, Pill, useYmd } from "./ProductsScreenParts";
@@ -34,6 +34,14 @@ function appliedText(t: T, v: AppliedView): string {
 export default function ProductsScreenPanels({ unitSlug, vm, exampleHref }: { unitSlug: string; vm: ProductEditorVM; exampleHref: (ex: string) => string }) {
   const t = useTranslations("trips");
   const router = useRouter();
+  const locale = useLocale();
+  /** ข้อผิดพลาดตัวคิดราคา: เหตุผลที่รู้จัก ⇒ ข้อความตามภาษา · จอไทย ⇒ ข้อความเจาะจงของตัวคิดราคา · จออื่นที่เหตุผลไม่รู้จัก ⇒ ข้อความทั่วไป */
+  const pricingError = (reason: string | null, detailTh: string | null): string =>
+    reason === "PRICE_MISSING" || reason === "SETTINGS_INVALID"
+      ? t(`example.reason.${reason}`)
+      : locale === "th" && detailTh
+        ? t("example.errorPricing", { detail: detailTh })
+        : t("example.errorPricingGeneric");
   const ymd = useYmd();
   const paxLabel = (code: string | null, fallback: string) => (code === "ADULT" || code === "CHILD" || code === "INFANT" ? t(`pax.codes.${code}`) : fallback);
   const b = vm.brochure;
@@ -114,7 +122,7 @@ export default function ProductsScreenPanels({ unitSlug, vm, exampleHref }: { un
         ) : null}
         {ex.error ? (
           <p role="status" className="rounded-lg border border-dashed border-[color:var(--color-line)] px-3 py-2 text-sm text-[color:var(--color-ink-soft)]">
-            {ex.error === "PRICING" ? t("example.errorPricing", { detail: ex.errorDetailTh ?? "" }) : ex.error === "NO_PAX" ? t("example.errorNoPax") : t("example.errorNoDeparture")}
+            {ex.error === "PRICING" ? pricingError(ex.errorReason, ex.errorDetailTh) : ex.error === "NO_PAX" ? t("example.errorNoPax") : t("example.errorNoDeparture")}
           </p>
         ) : (
           <>

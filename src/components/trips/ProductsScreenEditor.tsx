@@ -350,7 +350,7 @@ export default function ProductsScreenEditor({ unitSlug, vm }: { unitSlug: strin
             </tbody>
           </table>
         </div>
-        {vm.departuresTruncated ? <p role="status" className="text-sm text-[color:var(--color-ink-soft)]">{t("seasons.depTruncated", { n: vm.departures.length })}</p> : null}
+        {vm.departuresTruncated ? <p role="status" className="text-sm text-[color:var(--color-ink-soft)]">{t("seasons.depTruncated", { n: vm.pricedShown, total: vm.pricedTotal })}</p> : null}
       </section>
 
       {/* ── รายการเสริม ── */}
@@ -640,7 +640,7 @@ function ArchiveDialog({ unitSlug, productId, onClose }: { unitSlug: string; pro
   const { busy, error, run } = useRunner(t("common.failed"));
   const [reason, setReason] = useState("");
   return (
-    <Dialog title={t("editor.archiveTitle")} onClose={onClose} closeLabel={t("common.close")}>
+    <Dialog title={t("editor.archiveTitle")} onClose={onClose} closeLabel={t("common.close")} busy={busy}>
       <p className="text-sm text-[color:var(--color-ink-soft)]">{t("editor.archiveBody")}</p>
       <Field label={t("editor.archiveReason")}>
         <textarea rows={3} className={`${INPUT} py-2`} value={reason} onChange={(e) => setReason(e.target.value)} />
@@ -657,7 +657,7 @@ function OptionDialog({ unitSlug, productId, onClose }: { unitSlug: string; prod
   const [en, setEn] = useState("");
   const [dur, setDur] = useState("");
   return (
-    <Dialog title={t("options.add")} onClose={onClose} closeLabel={t("common.close")}>
+    <Dialog title={t("options.add")} onClose={onClose} closeLabel={t("common.close")} busy={busy}>
       <Field label={t("create.nameTh")}>
         <input className={INPUT} value={th} onChange={(e) => setTh(e.target.value)} />
       </Field>
@@ -688,7 +688,7 @@ function SeasonDialog({ unitSlug, productId, currency, adultPaxTypeId, onClose }
   const [price, setPrice] = useState("");
   const amount = bahtToSatang(price);
   return (
-    <Dialog title={t("seasons.add")} onClose={onClose} closeLabel={t("common.close")}>
+    <Dialog title={t("seasons.add")} onClose={onClose} closeLabel={t("common.close")} busy={busy}>
       <Field label={t("seasons.colSeason")}>
         <input className={INPUT} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
@@ -731,7 +731,7 @@ function DepPriceDialog({ unitSlug, vm, adultPaxTypeId, onClose }: { unitSlug: s
   const [price, setPrice] = useState("");
   const amount = bahtToSatang(price);
   return (
-    <Dialog title={t("seasons.depAdd")} onClose={onClose} closeLabel={t("common.close")}>
+    <Dialog title={t("seasons.depAdd")} onClose={onClose} closeLabel={t("common.close")} busy={busy}>
       <Field label={t("seasons.colDeparture")} hint={t("seasons.depPickHint")}>
         <select className={INPUT} value={dep} onChange={(e) => setDep(e.target.value)}>
           {vm.departures.map((d) => (
@@ -766,7 +766,7 @@ function ExtraDialog({ unitSlug, productId, onClose }: { unitSlug: string; produ
   const [price, setPrice] = useState("");
   const amount = bahtToSatang(price);
   return (
-    <Dialog title={t("extras.add")} onClose={onClose} closeLabel={t("common.close")}>
+    <Dialog title={t("extras.add")} onClose={onClose} closeLabel={t("common.close")} busy={busy}>
       <Field label={t("create.nameTh")}>
         <input className={INPUT} value={th} onChange={(e) => setTh(e.target.value)} />
       </Field>
@@ -819,7 +819,8 @@ function PickupDialog({ unitSlug, zone, canPrice, onClose }: { unitSlug: string;
   const [areas, setAreas] = useState(zone?.areas?.th ?? "");
   const [areasEn, setAreasEn] = useState(zone?.areas?.en ?? "");
   const [offset, setOffset] = useState(String(zone?.pickupOffsetMin ?? 60));
-  const [win, setWin] = useState(String(zone?.windowMin ?? 30));
+  // โซนข้อมูลเสียเปิดมาด้วยช่วงรับ 30 นาที (ค่าตั้งต้นของกล่อง) — ค่าที่อ่านได้ (0) บันทึกไม่ได้เพราะโซนต้องมีช่วงรับ ≥ 1 นาที
+  const [win, setWin] = useState(String(zone && !zone.corrupt && zone.windowMin > 0 ? zone.windowMin : 30));
   const [sur, setSur] = useState(zone ? formatBahtShort(zone.surchargeSatang).replace(/,/g, "") : "0");
   const self = kind === "SELF";
   const body = {
@@ -830,9 +831,10 @@ function PickupDialog({ unitSlug, zone, canPrice, onClose }: { unitSlug: string;
     windowMin: self ? 0 : (intOrNull(win) ?? -1),
     surchargeSatang: self ? 0 : (bahtToSatang(sur) ?? -1),
   };
-  const ok = !!body.name.th && body.pickupOffsetMin >= 0 && body.windowMin >= 0 && body.surchargeSatang >= 0;
+  const windowTooShort = !self && body.windowMin < 1;
+  const ok = !!body.name.th && body.pickupOffsetMin >= 0 && !windowTooShort && body.windowMin <= body.pickupOffsetMin && body.surchargeSatang >= 0;
   return (
-    <Dialog title={zone ? t("pickup.editTitle", { name: zone.name.th }) : t("pickup.add")} onClose={onClose} closeLabel={t("common.close")}>
+    <Dialog title={zone ? t("pickup.editTitle", { name: zone.name.th }) : t("pickup.add")} onClose={onClose} closeLabel={t("common.close")} busy={busy}>
       <Field label={t("pickup.kind")}>
         <select className={INPUT} value={kind} onChange={(e) => setKind(e.target.value === "SELF" ? "SELF" : "ZONE")}>
           <option value="ZONE">{t("pickup.kindZone")}</option>
@@ -855,7 +857,7 @@ function PickupDialog({ unitSlug, zone, canPrice, onClose }: { unitSlug: string;
         <Field label={t("pickup.offset")}>
           <input className={INPUT} inputMode="numeric" value={offset} onChange={(e) => setOffset(e.target.value)} />
         </Field>
-        <Field label={t("pickup.window")}>
+        <Field label={t("pickup.window")} hint={windowTooShort ? t("pickup.windowMin") : !self && body.windowMin > body.pickupOffsetMin ? t("pickup.windowOverOffset") : undefined}>
           <input className={INPUT} inputMode="numeric" disabled={self} value={self ? "0" : win} onChange={(e) => setWin(e.target.value)} />
         </Field>
         <Field label={t("pickup.colSurcharge")} hint={canPrice ? undefined : t("pickup.priceLocked")}>
@@ -887,7 +889,7 @@ function ContentDialog({ unitSlug, productId, section, cur, onClose }: { unitSlu
       return out.length ? out : [{ ok: true }];
     }, onClose);
   return (
-    <Dialog title={t("content.editTitle", { name: t(`content.sections.${section}`) })} onClose={onClose} closeLabel={t("common.close")}>
+    <Dialog title={t("content.editTitle", { name: t(`content.sections.${section}`) })} onClose={onClose} closeLabel={t("common.close")} busy={busy}>
       <Field label={t("content.colTh")}>
         <textarea rows={section === "title" ? 2 : 5} className={`${INPUT} py-2`} value={th} onChange={(e) => setTh(e.target.value)} />
       </Field>

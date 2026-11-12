@@ -27,7 +27,8 @@ import {
 import { getProduct } from "./products";
 import { effectivePaxBand, hasLocale, missingTranslations, prospectusChecklist, type ProductDTO, type ProspectusItem, type T27Value } from "./products-core";
 import { loadPricingInput, quoteTripLine } from "./pricing";
-import { resolveTripPrice, type PricedItem, type PricedQuote, type TripPricingInput } from "./pricing-core";
+import { resolveTripPrice, tripLocalToUtcIso, type PricedItem, type PricedQuote, type TripPricingInput } from "./pricing-core";
+import { utcToLocal } from "./departures-core";
 import { pickupWindowFor, type PickupWindow, type PickupZoneDTO } from "./pickup-core";
 import { TRIPS_PRODUCT_VIEW_ANY, activePickupZonesOf, tripsFail, tripsUnitGate, type TripsFail, type TripsScreenCtx, type TripsUnitGate } from "./pickup";
 
@@ -142,13 +143,15 @@ async function brochuresOf(g: TripsUnitGate, facts: ProspectusFacts[], scheds: S
   const [settings, priceGroups, insured] = await Promise.all([
     resolveSettingsMany({ tenantId: g.tenantId }, ["trips.prospectus.checklist", "trips.license.fields", "trips.sell.minToDepart"], ids.map((productId) => ({ unitId: g.unitId, productId })), now),
     g.db.tripPrice.groupBy({ by: ["productId"], where: { tenantId: g.tenantId, unitId: g.unitId, productId: { in: ids } }, _count: { _all: true } }),
-    g.db.tripDeparture.findMany({
-      where: { tenantId: g.tenantId, unitId: g.unitId, productId: { in: ids }, status: { not: "CANCELLED" }, startsAt: { gte: now } },
-      select: { productId: true, insurance: true },
-    }),
+    // ฐานตอบเอง: สินค้าไหนมีรอบอนาคตที่ใส่เลขกรมธรรม์ — ได้ไม่เกิน 1 แถวต่อสินค้า (ไม่ดึงรอบทั้งหมดมากรองในหน่วยความจำ)
+    g.db.$queryRaw<{ productId: string }[]>`
+      SELECT DISTINCT "productId" FROM "TripDeparture"
+      WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "productId" = ANY(${ids}::text[])
+        AND status <> 'CANCELLED' AND "startsAt" >= ${now}
+        AND btrim(coalesce(insurance ->> 'policyNo', '')) <> ''`,
   ]);
   const priceCount = new Map(priceGroups.map((x) => [x.productId, x._count._all]));
-  const insuredIds = new Set(insured.filter((d) => isRec(d.insurance) && textOf(d.insurance.policyNo) !== null).map((d) => d.productId));
+  const insuredIds = new Set(insured.map((d) => d.productId));
   facts.forEach((p, i) => {
     const st = settings[i] ?? {};
     const license = st["trips.license.fields"]?.value;
@@ -265,7 +268,8 @@ export async function loadProductListVM(ctx: TripsScreenCtx, input: unknown, opt
 }
 
 // ═══════════════ 4. ตัวแก้สินค้า (ภาพ 16) ═══════════════
-const EDITOR_IN = z.strictObject({ unitId: ID, productId: ID, exampleDepartureId: ID.optional() });
+/** locale: ตามลายเซ็นในใบสั่ง §4 ข้อ 4 — รับไว้แต่ไม่ใช้ (ตัวแก้แสดงเนื้อหาไทย/อังกฤษคู่กันเสมอ) */
+const EDITOR_IN = z.strictObject({ unitId: ID, productId: ID, exampleDepartureId: ID.optional(), locale: z.enum(["th", "en"]).optional() });
 /** เพดานรอบที่มีราคาเฉพาะรอบที่แสดง/คิดราคาต่อครั้ง (รอบอนาคตเท่านั้น · เกินนี้ขึ้นข้อความว่าตัดไว้) */
 export const TRIPS_PRICED_DEPARTURE_CAP = 20;
 const APPLIED_KEYS = ["trips.sell.holdMinutes", "trips.sell.cutoff", "trips.sell.minToDepart", "trips.cancel.ladder", "trips.pay.depositPct"] as const;
@@ -333,6 +337,8 @@ export type ExampleVM = {
   /** null = คิดได้ · NO_DEPARTURE · NO_PAX · PRICING (errorDetailTh = ข้อความของตัวคิดราคา) */
   error: "NO_DEPARTURE" | "NO_PAX" | "PRICING" | null;
   errorDetailTh: string | null;
+  /** เหตุผลจากตัวคิดราคา (details.reason เช่น PRICE_MISSING) — จอแปลเป็นข้อความตามภาษาได้ */
+  errorReason: string | null;
   choices: { departureId: string; localDate: string }[];
 };
 /** ค่าที่ใช้กับสินค้านี้ในรูปที่จอจัดคำได้ทุกภาษา */
@@ -355,6 +361,9 @@ export type ProductEditorVM = {
   paxPrice: { atDate: string; seasonName: string | null };
   ageSource: "COPIED_FROM_SETTING" | "CUSTOMISED";
   departuresTruncated: boolean;
+  /** จำนวนรอบที่มีราคาเฉพาะรอบที่แสดง / ทั้งหมด (อนาคต) — ข้อความ "แสดง N จาก M" ใช้สองค่านี้ ไม่ใช่จำนวนแถวทั้งตาราง */
+  pricedShown: number;
+  pricedTotal: number;
   seasons: SeasonRowVM[];
   departures: DepartureRowVM[];
   extras: ExtraRowVM[];
@@ -520,9 +529,14 @@ export async function loadProductEditorVM(ctx: TripsScreenCtx, input: unknown, o
     return fromSetting.source === "SETTING" && fromSetting.from === x.band.from && fromSetting.to === x.band.to;
   };
   // ราคาตารางประเภทคน/ฤดูกาล: ตัดแถวราคาเฉพาะรอบออกจากอินพุต (กรองข้อมูล ไม่คิดเลขเอง) — ไม่ให้ราคาของ ?ex= ลามไปทั้งตาราง
-  const todayYmd = ymdOf(now);
-  const basePin: TripPricingInput | null = pin ? { ...pin, prices: pin.prices.filter((r) => r.departureId === null) } : null;
-  const atDate = (d: string): TripPricingInput | null => (basePin ? { ...basePin, departure: { ...basePin.departure, localDate: d } } : null);
+  //   อินพุตกลาง (กรอง/แทนค่า ไม่คิดเลขเอง) สำหรับแถวฤดูกาลและ "ราคาวันนี้":
+  //   • ตัดแถวราคาเฉพาะรอบ · • ตัดกฎราคา/โค้ด/แต้ม (rules [] · promoCode null · promoProviders []) — กฎโปร (เช่นนาทีสุดท้าย/ตามที่นั่ง) ไม่ลามจากรอบตัวอย่าง
+  //   • วันเดินทาง = วันที่ขอ · เวลาออก = เวลาท้องถิ่นเดียวกับรอบตัวอย่าง (tripLocalToUtcIso) · ที่นั่ง sold/held/reserved = 0 · ต้นทุนรอบ = 0
+  const todayYmd = utcToLocal(pin?.tz, now).ymd;
+  const depMinutes = pin ? utcToLocal(pin.tz, new Date(pin.departure.startsAt)).minutes : 0;
+  const basePin: TripPricingInput | null = pin ? { ...pin, prices: pin.prices.filter((r) => r.departureId === null), rules: [], promoCode: null, promoProviders: [] } : null;
+  const atDate = (d: string): TripPricingInput | null =>
+    basePin ? { ...basePin, departure: { ...basePin.departure, localDate: d, startsAt: tripLocalToUtcIso(basePin.tz, d, depMinutes), sold: 0, held: 0, reserved: 0, costSatang: 0 } } : null;
   const todayPin = atDate(todayYmd);
 
   // ประเภทคน: ราคา ณ วันนี้ คนละ 1 ที่ (ไม่รวมราคาเฉพาะรอบ)
@@ -699,7 +713,7 @@ export async function loadProductEditorVM(ctx: TripsScreenCtx, input: unknown, o
   });
 
   // ── ลูกค้าจะเห็น (ตะกร้าตัวอย่าง · STAFF · ช่องทาง WEB) ──
-  const example: ExampleVM = { departureId: exampleDep?.id ?? null, localDate: exampleDep ? ymdOf(exampleDep.localDate) : null, priceSource: null, seasonName: null, lines: [], totalSatang: null, totalText: null, error: null, errorDetailTh: null, choices: deps.map((d) => ({ departureId: d.id, localDate: ymdOf(d.localDate) })) };
+  const example: ExampleVM = { departureId: exampleDep?.id ?? null, localDate: exampleDep ? ymdOf(exampleDep.localDate) : null, priceSource: null, seasonName: null, lines: [], totalSatang: null, totalText: null, error: null, errorDetailTh: null, errorReason: null, choices: deps.map((d) => ({ departureId: d.id, localDate: ymdOf(d.localDate) })) };
   if (exampleDep && !example.choices.some((c) => c.departureId === exampleDep?.id)) example.choices.unshift({ departureId: exampleDep.id, localDate: ymdOf(exampleDep.localDate) });
   if (!exampleDep) example.error = "NO_DEPARTURE";
   else {
@@ -715,6 +729,8 @@ export async function loadProductEditorVM(ctx: TripsScreenCtx, input: unknown, o
       if (!r.ok) {
         example.error = "PRICING";
         example.errorDetailTh = r.messageTh;
+        const reason = r.details?.reason;
+        example.errorReason = typeof reason === "string" ? reason : null;
       }
       else {
         const s = sampleOf(r.value, priceSeason);
@@ -763,6 +779,8 @@ export async function loadProductEditorVM(ctx: TripsScreenCtx, input: unknown, o
     paxPrice: { atDate: todayYmd, seasonName: paxSeasonId ? (seasonName.get(paxSeasonId) ?? null) : null },
     ageSource,
     departuresTruncated: pricedTotal > pricedDeps.length,
+    pricedShown: pricedDeps.length,
+    pricedTotal,
     seasons,
     departures,
     extras: [...productExtras, ...unitExtraRows],

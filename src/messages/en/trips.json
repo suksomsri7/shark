@@ -28,7 +28,8 @@
     "close": "Close",
     "edit": "Edit",
     "save": "Save",
-    "failed": "That did not work. Please try again."
+    "failed": "That did not work. Please try again.",
+    "discardConfirm": "Close without saving your changes?"
   },
   "products": {
     "title": "Products",
@@ -168,7 +169,7 @@
     "to": "To",
     "adultPrice": "Adult price (THB)",
     "childHint": "The child price follows the “default child price” setting automatically",
-    "depTruncated": "Showing the next {n} departures with their own price — see the departures calendar (T1.2) for the rest"
+    "depTruncated": "Showing the next {n} of {total} departures with their own price — see the departures calendar (T1.2) for the rest"
   },
   "extras": {
     "title": "Extras",
@@ -238,7 +239,9 @@
     "window": "Window (minutes)",
     "priceLocked": "Surcharges are prices — needs the pricing permission",
     "corrupt": "Zone data is damaged — edit and save it before turning it on",
-    "areasEn": "Areas (English)"
+    "areasEn": "Areas (English)",
+    "windowMin": "A pick-up zone needs a window of at least 1 minute",
+    "windowOverOffset": "The window cannot be longer than the minutes before departure"
   },
   "content": {
     "title": "Content Thai / English",
@@ -315,7 +318,12 @@
     "note": "Priced by the real pricing engine for {date} ({season}) = screen 01",
     "errorNoDeparture": "No departure to use as an example yet — create one and the price example appears here",
     "errorNoPax": "This product has no adult/child types yet, so the example cannot be priced",
-    "errorPricing": "The example could not be priced: {detail}"
+    "errorPricing": "The example could not be priced: {detail}",
+    "errorPricingGeneric": "The example could not be priced — check this product’s prices and settings",
+    "reason": {
+      "PRICE_MISSING": "There is no price for this departure or traveller type yet — set a price before selling",
+      "SETTINGS_INVALID": "The unit settings are invalid (time zone) — check the unit settings first"
+    }
   },
   "settings": {
     "title": "Trip bookings",
@@ -369,6 +377,25 @@
     "editTitle": "Edit {name}"
   },
   "loading": "Loading…",
+  "errors": {
+    "INVALID_INPUT": "Some details are missing or in the wrong format — check and try again",
+    "VALIDATION": "Some details are missing or in the wrong format — check and try again",
+    "NOT_FOUND": "This item was not found in this unit — it may have changed; reload the page",
+    "FORBIDDEN": "This account is not allowed to do this yet — ask the shop owner or a manager",
+    "PERMISSION": "This account is not allowed to do this yet — ask the shop owner or a manager",
+    "BUSY": "Someone else is changing this at the same time — try again",
+    "NAME_TAKEN": "An active zone already uses this name — pick another name or turn the old zone off",
+    "ZONE_LIMIT": "The limit of active zones is reached — turn an unused zone off first",
+    "SLUG_TAKEN": "This link name is already used — choose another",
+    "PUBLISH_INCOMPLETE": "Not ready to sell — it needs a Thai name, an active option and a traveller type that uses a seat",
+    "BAD_STATE": "The product’s status has changed — reload and try again",
+    "CONFIRM_REQUIRED": "Please confirm and give a reason of at least 10 characters",
+    "CURRENCY_LOCKED": "The currency can no longer change: the product was published or already has prices",
+    "AGE_RANGE": "The age range is invalid — the minimum cannot exceed the maximum",
+    "AGE_OVERLAP": "The age range overlaps another traveller type — adjust it",
+    "LAST_ACTIVE_OPTION": "At least one option must stay on",
+    "LAST_SEAT_PAX_TYPE": "At least one seat-using traveller type must stay on"
+  },
   "dates": {
     "wd0": "Sun",
     "wd1": "Mon",

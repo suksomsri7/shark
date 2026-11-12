@@ -29,6 +29,29 @@ export default function TripsSettings({ vm, unitSlug, actions }: Props) {
   const [onlyChanged, setOnlyChanged] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [editing, setEditing] = useState<TripsSettingsSectionKey | null>(vm.section);
+  // ระหว่างบันทึก/คืนค่า (ฟอร์มกลางไม่บอกสถานะออกมา) ⇒ ห่อ action เพื่อรู้ว่ากำลังทำงาน · Escape ไม่ปิดกล่องระหว่างนี้
+  const [saving, setSaving] = useState(0);
+  const tracked = useMemo(
+    () => ({
+      save: async (changes: unknown, opts?: { ackLegalWarn?: boolean }) => {
+        setSaving((n) => n + 1);
+        try {
+          return await actions.save(changes, opts);
+        } finally {
+          setSaving((n) => n - 1);
+        }
+      },
+      reset: async (target: { key: string; scope: string; scopeId: string }) => {
+        setSaving((n) => n + 1);
+        try {
+          return await actions.reset(target);
+        } finally {
+          setSaving((n) => n - 1);
+        }
+      },
+    }),
+    [actions],
+  );
   const fields = useMemo(() => vm.form.groups.flatMap((g) => g.fields), [vm.form]);
   const productName = vm.productId ? (vm.products.find((p) => p.id === vm.productId)?.titleTh ?? "") : null;
 
@@ -208,8 +231,8 @@ export default function TripsSettings({ vm, unitSlug, actions }: Props) {
       </div>
 
       {editing && editModel ? (
-        <Dialog title={t("settings.editTitle", { name: editingLabel })} onClose={() => setEditing(null)} closeLabel={t("common.close")} wide>
-          <SettingsForm model={editModel} actions={{ save: actions.save, reset: actions.reset }} />
+        <Dialog title={t("settings.editTitle", { name: editingLabel })} onClose={() => setEditing(null)} closeLabel={t("common.close")} wide busy={saving > 0}>
+          <SettingsForm model={editModel} actions={tracked} />
         </Dialog>
       ) : null}
     </div>

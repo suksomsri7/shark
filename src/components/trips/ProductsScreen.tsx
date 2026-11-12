@@ -142,7 +142,7 @@ function CreateDialog({ unitSlug, onClose, base }: { unitSlug: string; onClose: 
       return r;
     }, onClose);
   return (
-    <Dialog title={t("create.title")} onClose={onClose} closeLabel={t("common.close")}>
+    <Dialog title={t("create.title")} onClose={onClose} closeLabel={t("common.close")} busy={busy}>
       <Field label={t("create.type")}>
         <select className={INPUT} value={type} onChange={(e) => setType(e.target.value === "LIVEABOARD" ? "LIVEABOARD" : "TOUR")}>
           <option value="TOUR">{t("create.typeTour")}</option>
