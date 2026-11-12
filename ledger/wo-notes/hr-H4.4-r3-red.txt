@@ -1,0 +1,7 @@
+# H4.4 r3 red — S16.13–S16.16 on 7990feb1b (lane l2 · forced). S16.14: H2.7 already refuses the approval (OUT_OF_EMPLOYMENT); red only via its ledger-sum part, which depends on S16.13
+  ❌ [H4.4-S16.13] r3 leave ledger: APPROVED 3d + PENDING 2d after end ⇒ year Σ = 10.0 · both CANCELLED · audit ids · re-run no-op — expected Σ 10.0 · CANCELLED ×2 | actual sum,noop APPROVED/PENDING 7→7 CANCELLED/CANCELLED ok
+  ❌ [H4.4-S16.14] r3 [control] a PENDING leave left on an ENDED employee cannot be approved (no USE row) — expected not approvable | actual sum refused HrLeaveDecisionError: ใบลานี้มีวันลานอกช PENDING
+  ❌ [H4.4-S16.15] r3 due panel never lists the viewer's own row — expected own row absent | actual none
+  ❌ [H4.4-S16.16] [static] r3 remove + ENDED save show the "account kept" message — expected both paths | actual 
+RESIDUE none (tenants=2 users=19)
+===== qc-hr-h4.4 ===== passed 79/83 (QC_FORCE)

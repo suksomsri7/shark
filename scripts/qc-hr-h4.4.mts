@@ -125,6 +125,10 @@ S16.9|r2-8|M|R|r2 card assignee has HR rights · never the employee the card is 
 S16.10|r2-8|M|R|r2 only OWNER switches off autoRevokePin / revokeAppAccess
 S16.11|r2-8|M|R|[static] r2 sweep window ordered by due date
 S16.12|r2-8|M|R|r2 offboarding checklist refused on an ACTIVE employee
+S16.13|r3-1|C|R|r3 leave ledger: APPROVED 3d + PENDING 2d after end ⇒ year Σ = 10.0 · both CANCELLED · audit ids · re-run no-op
+S16.14|r3-1|C|R|r3 a PENDING leave left on an ENDED employee cannot be approved (no USE row)
+S16.15|r3-3|M|R|r3 due panel never lists the viewer's own row
+S16.16|r3-2|M|R|[static] r3 remove + ENDED save show the "account kept" message
 S11.1|R1|C|R|[db] delete employee with note ⇒ 23503 · note kept
 S11.2|R1|M|R|[db] FK actions r/c
 S11.3|R1|M|G|[static] no hrEmployee.delete in src
@@ -906,6 +910,45 @@ async function runDb(): Promise<void> {
       const eAc = await emp(sA, "r2act");
       const s12 = await stc(V.owner, eAc, "OFFBOARDING");
       ck("S16.12", { refused: !s12.ok && s12.text === T.offActive, none: (await cnt("hrOnboardingTask", { employeeId: eAc })) === 0 }, "refused", shown(s12));
+      // S16.13 r3: offboard reverts the H2.7 leave ledger (APPROVED ⇒ use-revert) · PENDING releases its reservation · re-run = no-op
+      const sL = await sys("ทีมลา");
+      const cL = { tenantId: TT, systemId: sL };
+      const settingsMod = (await import("@/lib/modules/hr/settings")) as Any;
+      const pr = await settingsMod.createLeavePolicy(cL, V.owner, { unitId: null, category: "VACATION", name: `พักร้อน ${tag}`, quotaDays: 10 });
+      const eLv = await fx.mkEmp(TT, sL, `QC44 lv ${tag}`, { unitId: u1, startDate: "2031-01-05", status: "ACTIVE" });
+      const rq = (f: string, t: string) => hr.requestLeave(cL, { employeeId: eLv, type: "VACATION", policyId: pr?.id, fromDate: f, toDate: t, actorUserId: U.mgrAll.id }).catch((e: unknown) => ({ id: "", err: errText(e) }));
+      const la = await rq("2031-06-20", "2031-06-22");
+      const lp = await rq("2031-06-25", "2031-06-26");
+      // approve through the real chain effect (the tenant has an HrLeave approval policy ⇒ requestLeave opened a request)
+      const reqA = la?.id ? ((await P.approvalRequest.findFirst({ where: { tenantId: TT, entityType: "HrLeave", entityId: la.id } })) as Any) : null;
+      if (reqA) {
+        await P.approvalRequest.update({ where: { id: reqA.id }, data: { status: "APPROVED", decidedAt: new Date() } });
+        await ((await import("@/lib/modules/hr/leave")) as Any).applyLeaveDecision({ tenantId: TT, systemId: sL, leaveId: la.id, requestId: reqA.id, approved: true }).catch(() => null);
+      } else if (la?.id && (await fu("hrLeave", la.id))?.status === "PENDING") await hr.decideLeave(cL, la.id, "APPROVED", U.owner.id).catch(() => null);
+      const sumOf = async () => ((await fm("hrLeaveBalanceTxn", { employeeId: eLv, leaveYear: 2031 })) as Any[]).reduce((n, x) => n + Number(String(x.days)), 0);
+      const before13 = await sumOf();
+      const st0 = [(await fu("hrLeave", la?.id))?.status, (await fu("hrLeave", lp?.id))?.status].join("/");
+      const o13 = await ob(V.owner, eLv, { endDate: DAY, reason: "RESIGNED" }, NOW, cL);
+      const after13 = await sumOf();
+      const st1 = [(await fu("hrLeave", la?.id))?.status, (await fu("hrLeave", lp?.id))?.status].join("/");
+      const au13 = JSON.stringify((await fm("auditLog", { tenantId: TT, action: "hr.employee.offboard", targetId: eLv }))[0]?.after ?? {});
+      const n13 = await cnt("hrLeaveBalanceTxn", { employeeId: eLv });
+      const again = await ob(V.owner, eLv, { endDate: DAY, reason: "RESIGNED" }, NOW, cL);
+      ck("S16.13", { setup: st0 === "APPROVED/PENDING" && Math.abs(before13 - 7) < 1e-9, ok: o13.ok, sum: Math.abs(after13 - 10) < 1e-9, both: st1 === "CANCELLED/CANCELLED", audit: !!la?.id && !!lp?.id && au13.includes(la.id) && au13.includes(lp.id), noop: again.text === T.ended && (await cnt("hrLeaveBalanceTxn", { employeeId: eLv })) === n13 && Math.abs((await sumOf()) - 10) < 1e-9 }, "Σ 10.0 · CANCELLED ×2", `${st0} ${before13}→${after13} ${st1} ${shown(o13)}`);
+      // S16.14 r3: a PENDING leave that slipped in on the ENDED employee (D-H44-leave-race) cannot be approved by H2.7
+      const lz = (await P.hrLeave.create({ data: { tenantId: TT, systemId: sL, employeeId: eLv, type: "VACATION", policyId: pr?.id ?? null, fromDate: dbDate("2031-06-27"), toDate: dbDate("2031-06-27"), days: "1", status: "PENDING" } })).id as string;
+      const dz = await hr.decideLeave(cL, lz, "APPROVED", U.owner.id).then(() => "ok", (e: unknown) => `refused ${errText(e).slice(0, 40)}`);
+      ck("S16.14", { status: (await fu("hrLeave", lz))?.status !== "APPROVED", use: (await cnt("hrLeaveBalanceTxn", { sourceKey: `use:${lz}` })) === 0, sum: Math.abs((await sumOf()) - 10) < 1e-9 }, "not approvable", `${dz} ${(await fu("hrLeave", lz))?.status}`);
+      // S16.15 r3: the due panel never lists the viewer's own row (eM2 = mgrU1's own row, probation due since S16.9)
+      const own = await due(V.mgrU1);
+      ck("S16.15", { ok: own.ok, none: !((own.value?.items ?? []) as Any[]).some((x) => x.employeeId === eM2) }, "own row absent", "");
+      // S16.16 r3: the remove button and the ENDED profile save carry the "account kept" outcome to the user
+      {
+        const a = stripComments(rd(F.actions));
+        const rem = block(a, /export async function removeEmployeeAction/, 1400).split(/\nexport /)[0];
+        const save = block(a, /export async function saveEmployeeProfileAction/, 3200).split(/\nexport /)[0];
+        chk("S16.16", /accessKept/.test(rem) && /ok\.kept|savedKept/.test(rem) && /accessKept/.test(save) && /savedKept/.test(save), "both paths", "");
+      }
     } finally {
       await P.pushDevice.deleteMany({ where: { id: { in: pushIds } } }).catch(() => null);
     }
