@@ -8,7 +8,7 @@
 ---
 
 ## 1. กติกาเฉพาะ RUN นี้ (เพิ่มจาก SVC-RUN §1)
-1. **ห้ามเริ่มใบที่มี migration (T0.1 · A1.1 · K1.1 · L1.1) จนกว่า `ON_MAIN` และ production ปกติ** — ตรวจ: `git fetch -q origin main && git merge-base --is-ancestor origin/session/svc origin/main && echo ON_MAIN` · เมื่อ ON_MAIN: `git merge origin/main` เข้า `session/trips` หนึ่งครั้ง
+1. ~~ห้ามเริ่มใบที่มี migration จนกว่า ON_MAIN~~ **ยกเลิก 12 พ.ย. ~10Z: เจ้าของอนุญาตเริ่ม T0.1 และใบถัดไปบน `session/trips` โดยไม่รอ ON_MAIN** (งานโรงแรมขึ้น main ช้ากว่าแผน · พบข้อแก้ 5 เรื่อง โรงแรม/CRM/POS) · เมื่อขึ้นแล้ว merge origin/main เข้ามาหนึ่งครั้ง (ตรวจ migration ชน/ลำดับ + `migrate deploy` ทุกฐาน) · เดิม: — ตรวจ: `git fetch -q origin main && git merge-base --is-ancestor origin/session/svc origin/main && echo ON_MAIN` · เมื่อ ON_MAIN: `git merge origin/main` เข้า `session/trips` หนึ่งครั้ง
 2. ห้าม push main · ห้ามแตะ branch `release/svc-to-main` · ห้ามใช้เลน `shark-svc-l1/l2/l3` และฐาน QC ของ RUN อื่น
 3. เครื่องร่วมกับ RUN HR V2 (3 เลน · 4 ช่วงพีค) + ด่าน release ของ SVC → TRIPS **2 เลน** · ตรวจ `uptime`/`free -g` ก่อนเปิดงานหนักทุกครั้ง · build หนักต่อคิวล็อกเครื่อง `/tmp/shark-gate.lock` (with-gate-lock.sh ทำให้เอง)
 4. ทรีและฐาน QC:
@@ -32,7 +32,7 @@
 | P0.1 | ✅ | ทรี + 2 เลน + ฐาน QC 3 ตัว + `qc-trips.sh` (e14585342) · ฟิกซ์เจอร์ `scripts/trips-fixture.mts` + `seed-trips-qc.mts` + ข้อสอบ 56/56 บนฐานหลัก (merge 5db329246) · บันทึก `ledger/wo-notes/trips-P0.1.md` |
 | P0.2 | ✅ | `ledger/TRIPS-DEFAULTS.md` (122 ค่าตั้ง · 46 คำเตือน + ภาคผนวก ก 27 คีย์ที่สัญญาเพิ่ม) · ผู้ตรวจอิสระเทียบกับสัญญาแล้ว |
 | P0.3 | ✅ | `ledger/TRIPS-CORE-CONTRACT.md` รอบ 2 (48b243186) · ผู้ตรวจอิสระ 2 รอบ: r1 FIX FIRST (3 BLOCKER) → r2 **READY** (ไม่เหลือ BLOCKER · N-1…N-11 = หนี้มีด่าน §3) · รายงาน `ledger/wo-notes/trips-P0.3-review-r1.md` `-r2.md` |
-| T0.1 | ⏸ | รอ ON_MAIN · **ใบสั่ง `ledger/trips-briefs/T0.1.md` + ข้อสอบ `scripts/qc-trips-t0.1.mts` 96 ข้อ พร้อมแล้ว** (แดง 90 ก่อนสร้าง · ผู้คุมรันเอง) · มติคำถามเปิด 21 ข้อ = ท้ายใบสั่ง §8 |
+| T0.1 | 🔄 | ผู้สร้างเลน l1 (เริ่ม 12 พ.ย. ~10Z) · **ใบสั่ง `ledger/trips-briefs/T0.1.md` + ข้อสอบ `scripts/qc-trips-t0.1.mts` 96 ข้อ พร้อมแล้ว** (แดง 90 ก่อนสร้าง · ผู้คุมรันเอง) · มติคำถามเปิด 21 ข้อ = ท้ายใบสั่ง §8 |
 | ที่เหลือ 68 ใบ | ⬜ | ตาม MASTER-PLAN §3/§4 |
 
 ภาพ: ชุด M1 วาดแล้ว = จอ 16–20 (e6b3a7a9f · ผู้คุมเปิดดูครบ 5 จอ · รอเจ้าของดู OQ1) · ที่เหลือ (TA §12.3 ชุด 4–7 · 9 · ค่าตั้ง agency/ticket) วาดก่อนใบของเฟสนั้น
@@ -62,3 +62,4 @@
 - 2026-11-12 ~08:5xZ · P0.2 ✅ P0.3 ✅ · ผู้ตรวจอิสระ r2 = READY (ไล่ล็อก 14 ขั้นตอน ไม่พบ deadlock · ตัวเลข README ทุกชุดคำนวณซ้ำได้ผ่านตาราง journal) · มติผู้คุมรอบ 1 (15 ข้อ) อยู่ในสัญญาที่ติดป้าย "(แก้รอบ 2)" · ข้อแย้งผู้ร่าง M-a/b/d/f ผู้ตรวจยอมรับ · M-e: VAT คิดระดับเอกสาร (แก้ §F.1 ที่ยังเขียน "ปัดต่อบรรทัด" ในรอบ 3)
 - 2026-11-12 ~09:0xZ · P0.3 รอบ 3 · ปิด N-1…N-11 + เพิ่ม §N (ค่าสถานะ · รูป JSON · คีย์ snapshot · ชนิดหน่วย · T0.1 เป็นใบที่เพิ่ม severity/ป้ายนักบัญชีในจอค่าตั้งกลาง) · ⚠️ N-2 เสนอคอลัมน์ใหม่ `AccountDocument.passThroughSatang` + N-4 ตาราง `TripCashClose` + N-7 `AgentLogin` ⇒ ต้องอยู่ใน migration ของ T0.1/A1.1 (ไม่มี migration นอกใบที่กำหนด)
 - 2026-11-12 ~09:5xZ · T0.1 · ใบสั่ง + ข้อสอบ merge เข้า session/trips · ORACLE-EDIT svc-qc-hosts: เพิ่ม host ฐาน TRIPS 3 ตัว (เหตุผล: ชุด regression r0.3/r0.4/d.1/b.0/smoke ตรึง host SVC · ฐาน TRIPS เป็นลูกของ wo-svc-qc-l1 มี seed SVC ครบ) · มติ: migration ของ L1.9/L1.10 ที่สัญญาแยกไว้ → รวมใน L1.1 · `passThroughSatang` → T0.1 · tsrange แทน tstzrange · หนี้เอกสาร: แก้สัญญา :150 :229 :758 :1056 + TRIPS-DEFAULTS :85 (T44→T46) :76 (T22 ไม่มี CREDIT) ในรอบแก้สัญญาถัดไป
+- 2026-11-12 ~10:0xZ · มติเจ้าของ · เริ่มสร้าง T0.1 และใบถัดไปได้โดยไม่รอ ON_MAIN · กติกาอื่นคงเดิม (ห้าม push main · ห้ามใช้เลน SVC) ⇒ ปล่อยผู้สร้าง T0.1 (l1) + ผู้เขียนใบสั่ง/ข้อสอบ T0.2 (l2) · ⚠️ เมื่อ merge main ทีหลัง: ส่วนโรงแรม/CRM/POS ใน main จะต่างจากฐาน release ที่ทรีนี้แตกมา — ต้องรัน regression ซ้ำ
