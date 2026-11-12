@@ -103,7 +103,8 @@ const R8_KEYS = ["systemId", "employeeId", "userId", "entryId", "shiftId", "date
 const PAYLOAD_KEYS = ["publishId", "systemId", "unitId", "from", "to", "entryIds", "employeeIds"];
 
 // ── S8 fixtures — copied verbatim from qc-hr-h1.2 (S5) · values frozen there ──
-const PRIOR_WO_KEYS = new Set(["filedById", "linkApprovedById", "unitId", "employmentStatus", "probationEndAt", "contractEndAt", "filedBy"]);
+// ORACLE-EDIT (H4.4 control, controller): + the 4 additive HrEmployee offboard columns of H4.4 R1 (`employee: true` carries them) — same as qc-hr-h1.2
+const PRIOR_WO_KEYS = new Set(["filedById", "linkApprovedById", "unitId", "employmentStatus", "probationEndAt", "contractEndAt", "filedBy", "offboardedAt", "offboardReason", "offboardNote", "offboardedById"]);
 const H12_NEW_KEYS = ["rosterEntryId", "source", "lat", "lng", "accuracyM", "photoKey", "deviceId", "attachmentKey", "policyId", "days", "halfDay", "hours"];
 const B = (baht: number) => Math.round(baht * 100);
 const MONTHLY_FIXTURE = {

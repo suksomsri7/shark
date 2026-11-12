@@ -288,10 +288,14 @@ function runStatic(): void {
   }
   {
     // ORACLE-EDIT (r2 ruling 3): pos-seam.ts may carry ONE marked hunk (clockSelf requireActive) — the other 7 stay byte-identical
-    const files = ["rules.ts", "pos-seam-read.ts", "index.ts", "privacy-shared.ts", "pin.ts", "clock.ts", "service.ts"].map((f) => H + f);
-    const seamH = IN_BASE ? null : diffHunks(BASE, `${H}pos-seam.ts`);
-    const seamOk = IN_BASE || (seamH !== null && (seamH.length === 0 || (seamH.length === 1 && /HR H4\.4 ▸/.test(seamH[0].added.join("\n")))));
-    const d = IN_BASE ? "n/a · H4.4 in base" : seamOk ? changedVsBase(BASE, files) : `pos-seam.ts hunks=${seamH?.length}`;
+    // ORACLE-EDIT (H4.4 control item 1, controller): pin.ts likewise carries ONE marked hunk (clearPinInTx — PIN columns stay in pin.ts, qc-hr-h0.5 S8.1)
+    const files = ["rules.ts", "pos-seam-read.ts", "index.ts", "privacy-shared.ts", "clock.ts", "service.ts"].map((f) => H + f);
+    const oneHunk = (f: string) => {
+      const h = IN_BASE ? null : diffHunks(BASE, `${H}${f}`);
+      return IN_BASE || (h !== null && (h.length === 0 || (h.length === 1 && /HR H4\.4 ▸/.test(h[0].added.join("\n")))));
+    };
+    const seamOk = oneHunk("pos-seam.ts") && oneHunk("pin.ts");
+    const d = IN_BASE ? "n/a · H4.4 in base" : seamOk ? changedVsBase(BASE, files) : "pos-seam.ts/pin.ts hunks";
     const s = sha(rd(PAYROLL_RULES_FILE));
     chk("S15.1", s === PAYROLL_RULES_SHA && (IN_BASE || d === "unchanged"), `${PAYROLL_RULES_SHA.slice(0, 12)} · unchanged`, `${s.slice(0, 12)} · ${d}`);
   }

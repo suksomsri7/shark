@@ -385,7 +385,8 @@ export const FROZEN_DIGESTS: Record<string, string> = {
 };
 export const FROZEN_MONTHLY = { digest: "72166a3e2a2ebb6a37405a105f7db540b946fda05fe020639bbe79a60b87e5c8", totals: "10725000:195000:195000:100000:10430000:475000:100000", flags: "M01=-,M02=-,M03=-,M04=PARTIAL_MONTH" };
 export const FROZEN_CLOCK = "K1=DAY_OFF:-:-|K2=ON_TIME:0:0|K3=NO_SCHEDULE:-:-";
-const PRIOR_WO_KEYS = new Set(["filedById", "linkApprovedById", "unitId", "employmentStatus", "probationEndAt", "contractEndAt", "filedBy"]);
+// ORACLE-EDIT (H4.4 control, controller): + the 4 additive HrEmployee offboard columns of H4.4 R1 (`employee: true` carries them) — same as qc-hr-h1.2
+const PRIOR_WO_KEYS = new Set(["filedById", "linkApprovedById", "unitId", "employmentStatus", "probationEndAt", "contractEndAt", "filedBy", "offboardedAt", "offboardReason", "offboardNote", "offboardedById"]);
 const H12_NEW_KEYS = ["rosterEntryId", "source", "lat", "lng", "accuracyM", "photoKey", "deviceId", "attachmentKey", "policyId", "days", "halfDay", "hours"];
 const B = (baht: number) => Math.round(baht * 100);
 const MONTHLY_FIXTURE = {
