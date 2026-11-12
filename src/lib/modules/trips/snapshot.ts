@@ -33,6 +33,8 @@ type ItemIn = {
   taxKind: TaxKind;
   priceSource: Step;
   priceTrace: TraceEntry[];
+  usesCapacity: boolean;
+  commissionSeatQty: number;
 };
 type CommissionIn = {
   agentAccountId: string;
@@ -66,7 +68,12 @@ type CommissionIn = {
   };
   agentDiscountSatang: number;
   agentActualSaleSatang: number | null;
+  paidSeats: number;
+  collectedBy: "AGENT" | "SHOP";
+  collectFromCustomerSatang: number;
+  shopCollectsSatang: number;
   remitToShopSatang: number;
+  payToAgentSatang: number;
   agentEarnsSatang: number;
 };
 type Step2 = { daysBefore: number; refundBp: number };
@@ -76,7 +83,7 @@ type PricedIn = {
   items: ItemIn[];
   totals: { grossSatang: number; discountSatang: number; agentDiscountSatang: number; passThroughSatang: number; vatableSatang: number; vatBaseSatang: number; vatSatang: number; payableSatang: number };
   commission: CommissionIn | null;
-  paymentSchedule: { seq: number; kind: string; amountSatang: number; vatableSatang: number; passThroughSatang: number; dueAt: string }[];
+  paymentSchedule: { seq: number; kind: string; amountSatang: number; amountMinor?: number; vatableSatang: number; passThroughSatang: number; dueAt: string }[];
   cancelLadder: Step2[];
   cancelMinimumLadder: Step2[] | null;
   shopCancelRefundBpByReason: { EXTERNAL: number; MIN_NOT_MET: number; SHOP_FAULT: number };
@@ -217,22 +224,27 @@ export type CommissionComputed = {
   whtSatang: number | null;
   remitToShopSatang: number;
   clawbackSatang: number;
+  /** ร้านจ่ายเอเจนซี่ (SHOP_COLLECTS) · 0 เมื่อเอเจนซี่เก็บเงิน */
+  payToAgentSatang: number;
 };
 type Fail = { ok: false; code: "VALIDATION"; messageTh: string; retryable: false; details: Record<string, unknown> };
 export type RecomputeResult =
   | { ok: true; value: { totals: TripsBookingSnapshot["totals"] } | { paymentSchedule: TripsBookingSnapshot["paymentSchedule"] } | CancelComputed | CommissionComputed }
   | Fail;
 const bad = (msg: string, details: Record<string, unknown> = {}): Fail => ({ ok: false, code: "VALIDATION", messageTh: msg, retryable: false, details });
+const INT4 = 2_147_483_647;
+const intOk = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= INT4;
+const badInput = (field: string) => bad("ข้อมูลยังไม่ครบหรือรูปแบบยังไม่ตรง", { reason: "INVALID_INPUT", field });
 
 // วันของร้านจากเวลา (Intl · สำเนาเล็ก — ไฟล์นี้ import ./pricing-core ไม่ได้)
 const DAY_MS = 86_400_000;
 const utcMid = (ymd: string): number => Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
-function localYmd(tz: string, at: Date): string {
+function localYmd(tz: string, at: Date): string | null {
   let f: Intl.DateTimeFormat;
   try {
     f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
   } catch {
-    f = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" });
+    return null; // เขตเวลาเพี้ยน = SETTINGS_INVALID (ไม่ตกไปกรุงเทพเงียบ ๆ)
   }
   const p = f.formatToParts(at);
   const g = (t: string) => p.find((x) => x.type === t)?.value ?? "00";
@@ -258,9 +270,13 @@ export function recomputeFromSnapshot(raw: unknown, event: RecomputeEvent): Reco
 }
 
 function cancelOf(snap: TripsBookingSnapshot, ev: Extract<RecomputeEvent, { kind: "CANCEL" }>, vatRateBp: number): RecomputeResult {
-  const atMs = Date.parse(ev.at);
-  if (Number.isNaN(atMs)) return bad("เวลายกเลิกไม่ถูกต้อง");
-  const daysBefore = (utcMid(snap.travel.localDate) - utcMid(localYmd(snap.travel.tz, new Date(atMs)))) / DAY_MS;
+  const atMs = typeof ev.at === "string" ? Date.parse(ev.at) : Number.NaN;
+  if (Number.isNaN(atMs)) return badInput("at");
+  if (ev.paidSatang !== undefined && !intOk(ev.paidSatang)) return badInput("paidSatang");
+  if (ev.deductionsSatang !== undefined && !intOk(ev.deductionsSatang)) return badInput("deductionsSatang");
+  const atYmd = localYmd(snap.travel.tz, new Date(atMs));
+  if (atYmd === null) return bad("ค่าตั้งของหน่วยไม่ถูกต้อง (เขตเวลา)", { reason: "SETTINGS_INVALID" });
+  const daysBefore = (utcMid(snap.travel.localDate) - utcMid(atYmd)) / DAY_MS;
   let step: Step2 | null = null;
   let refundBp: number;
   if (ev.reasonKind === "CUSTOMER") {
@@ -278,9 +294,22 @@ function cancelOf(snap: TripsBookingSnapshot, ev: Extract<RecomputeEvent, { kind
   const nonPtDue = sum(nonPt.map(lineDue));
   const ptDue = sum(pt.map((l) => l.amountSatang));
   const paid = Math.max(0, Math.min(ev.paidSatang ?? snap.totals.payableSatang, nonPtDue + ptDue));
-  // จ่ายบางส่วน: ส่วนที่ไม่ใช่เก็บแทนจ่ายก่อน · เก็บแทนจ่ายเป็นงวดสุดท้าย
-  const paidNonPt = Math.min(paid, nonPtDue);
-  const paidPt = paid - paidNonPt;
+  // แยกส่วนที่จ่ายแล้วตามงวดที่จด (มติ r2 ข้อ 5): งวดเต็มตามลำดับ · งวดที่จ่ายไม่ครบ = ปันส่วนเก็บแทนตามสัดส่วนของงวดนั้น
+  let left = paid;
+  let paidPt = 0;
+  for (const row of [...snap.paymentSchedule].sort((a, b) => a.seq - b.seq)) {
+    if (left <= 0) break;
+    if (left >= row.amountSatang) {
+      paidPt += row.passThroughSatang;
+      left -= row.amountSatang;
+    } else {
+      paidPt += row.amountSatang > 0 ? mulDivHalfUp(row.passThroughSatang, left, row.amountSatang) : 0;
+      left = 0;
+    }
+  }
+  paidPt = Math.min(paidPt, ptDue);
+  const paidNonPt = Math.min(paid - paidPt, nonPtDue);
+  paidPt = paid - paidNonPt;
   const nonPtPaid = allocateWithin(paidNonPt, nonPt.map(lineDue));
   const ptPaid = allocateWithin(paidPt, pt.map((l) => l.amountSatang));
   const rawRefund = nonPtPaid.map((p) => mulBpHalfUp(p, refundBp));
@@ -314,18 +343,19 @@ function cancelOf(snap: TripsBookingSnapshot, ev: Extract<RecomputeEvent, { kind
 
 function commissionOf(snap: TripsBookingSnapshot, ev: Extract<RecomputeEvent, { kind: "COMMISSION" }>): RecomputeResult {
   const c = snap.commission;
-  if (!c) return { ok: true, value: { baseSatang: 0, commissionSatang: 0, commissionVatSatang: 0, whtSatang: null, remitToShopSatang: snap.totals.payableSatang, clawbackSatang: 0 } };
+  if (!c) return { ok: true, value: { baseSatang: 0, commissionSatang: 0, commissionVatSatang: 0, whtSatang: null, remitToShopSatang: 0, clawbackSatang: 0, payToAgentSatang: 0 } };
   const rem = ev.remainingQtyByItemRef;
+  if (rem !== undefined && (!isRec(rem) || Object.values(rem).some((q) => !intOk(q)))) return badInput("remainingQtyByItemRef");
   const remOf = (l: (typeof snap.lines)[number]) => {
-    if (!rem) return l.qty;
-    const q = rem[l.itemRef];
-    return typeof q === "number" && Number.isInteger(q) ? Math.max(0, Math.min(l.qty, q)) : l.qty;
+    if (!rem || !Object.prototype.hasOwnProperty.call(rem, l.itemRef)) return l.qty;
+    return Math.max(0, Math.min(l.qty, rem[l.itemRef]));
   };
   const scaled = (v: number, l: (typeof snap.lines)[number]) => (l.qty === 0 ? 0 : mulDivHalfUp(v, remOf(l), l.qty));
   const comm = snap.lines.filter((l) => l.commissionable && !l.passThrough);
   const base = sum(comm.map((l) => mulBpHalfUp(scaled(l.amountSatang + l.agentDiscountSatang, l), l.commissionBp)));
   const agentDisc = sum(snap.lines.map((l) => scaled(l.agentDiscountSatang, l)));
-  const paidSeats = sum(snap.lines.filter((l) => l.kind === "SEAT" && !l.itemRef.endsWith(":free")).map(remOf));
+  // ที่นั่งที่จ่ายเงินตามที่จดต่อบรรทัด (ใช้ความจุ · ไม่ฟรี — มติ r2 ข้อ 4) ⇒ ไม่ยกเลิก = ค่าที่ quote ใช้ตรงตัว
+  const paidSeats = sum(snap.lines.map((l) => Math.min(l.commissionSeatQty, remOf(l))));
   const gross = c.mode === "COMMISSION_PCT" ? (c.rateBp === null ? 0 : mulBpHalfUp(base, c.rateBp)) : c.mode === "COMMISSION_FIXED" ? (c.fixedSatang ?? 0) * paidSeats : 0;
   const gAfter = Math.max(0, gross - agentDisc);
   let C = gAfter;
@@ -348,9 +378,11 @@ function commissionOf(snap: TripsBookingSnapshot, ev: Extract<RecomputeEvent, { 
       payable += vatOfExclusive(sum(lines.filter((x) => x.l.taxKind === "VAT7").map((x) => x.a)), bp);
     }
   }
-  const remit = payable - C - Vc + (w.grossUp ? (W ?? 0) : 0);
+  const agentCollects = c.collectMode === "AGENT_COLLECTS";
+  const remit = agentCollects ? payable - C - Vc + (w.grossUp ? (W ?? 0) : 0) : 0;
+  const payToAgent = agentCollects ? 0 : C + Vc - (W ?? 0);
   return {
     ok: true,
-    value: { baseSatang: base, commissionSatang: C, commissionVatSatang: Vc, whtSatang: W, remitToShopSatang: remit, clawbackSatang: Math.max(0, c.commissionSatang - C) },
+    value: { baseSatang: base, commissionSatang: C, commissionVatSatang: Vc, whtSatang: W, remitToShopSatang: remit, clawbackSatang: Math.max(0, c.commissionSatang - C), payToAgentSatang: payToAgent },
   };
 }

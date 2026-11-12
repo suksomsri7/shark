@@ -14,12 +14,13 @@ import type { PolicySnapshot } from "@/lib/core/settings";
 import { isYmd, tripPriceRuleParamsSchema, type TripPriceRuleParams } from "./json-schemas";
 import {
   BP_UNIT,
-  allocateLastRemainder,
   allocateWithin,
   divFloor,
   minorToSatang,
   mulBpHalfUp,
   mulDivHalfUp,
+  productLess,
+  satangToMinor,
   vatOfExclusive,
   vatOfInclusive,
 } from "./money-math";
@@ -58,7 +59,26 @@ export const REASON_TH: Record<string, string> = {
   RULE_DISCOUNT_SHAPE: "ระบุส่วนลดเป็นเปอร์เซ็นต์หรือจำนวนเงินอย่างใดอย่างหนึ่ง",
   PASS_THROUGH_LOCKED: "เงินเก็บแทน (เช่น ค่าอุทยาน) แก้ราคาเองไม่ได้",
   AGENCY_NOT_ENABLED: "ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้",
+  INVALID_INPUT: "ข้อมูลยังไม่ครบหรือรูปแบบยังไม่ตรง — ตรวจแล้วลองอีกครั้ง",
+  AMOUNT_TOO_LARGE: "ยอดเงินหรือจำนวนรวมสูงเกินที่ระบบรองรับต่อการจอง — แยกเป็นหลายการจอง",
+  SETTINGS_INVALID: "ค่าตั้งของหน่วยไม่ถูกต้อง (เขตเวลา) — ตรวจค่าตั้งหน่วยก่อน",
+  DUPLICATE_OVERRIDE: "แก้ราคามือได้ครั้งเดียวต่อบรรทัด",
+  AGENT_DISCOUNT_SINGLE_LINE: "ส่วนลดจากค่าคอมมิชชันใช้ได้กับคำขอบรรทัดเดียว",
+  AGENT_DISCOUNT_TOO_LARGE: "ส่วนลดจากค่าคอมมิชชันมากกว่ายอดที่ลดได้หรือมากกว่าค่าคอมมิชชัน",
+  PROMO_EXPIRED: "โค้ดส่วนลดนี้หมดอายุหรือยังไม่เริ่มใช้",
+  CABIN_NOT_AVAILABLE: "ราคาแยกตามเคบินยังไม่เปิดใช้ในรุ่นนี้",
+  PRICE_CONFLICT: "มีแถวราคาเดียวกันนี้อยู่แล้ว — โหลดใหม่แล้วลองอีกครั้ง",
+  COMMISSION_EXCEEDS_PAYABLE: "ค่าคอมมิชชันตามสัญญามากกว่ายอดที่ลูกค้าจ่าย — ตรวจสัญญาเอเจนซี่",
 };
+
+/** ความยาวของเหตุผลหลังปรับรูป (NFKC · ตัดอักขระความกว้างศูนย์/ขีดอ่อน · ตัดช่องว่างหัวท้าย) — ใช้ทุกจุดที่ตรวจ "เหตุผล ≥ 10 ตัวอักษร" */
+export const REASON_MIN_CHARS = 10;
+export function normalizeReason(s: string): string {
+  return s.normalize("NFKC").replace(/[\u200B-\u200F\u2060-\u2064\uFEFF\u00AD\u180E\u034F]/g, "").trim();
+}
+export function reasonOk(s: unknown): boolean {
+  return typeof s === "string" && [...normalizeReason(s)].length >= REASON_MIN_CHARS;
+}
 
 // ═══════════════ อินพุต (§3.1) ═══════════════
 const INT4 = 2_147_483_647;
@@ -104,7 +124,7 @@ export const agencyPricingInputSchema = z.strictObject({
       payerType: z.string().min(1).max(40),
       payeeType: z.string().min(1).max(40),
     }),
-    discountFromCommission: z.strictObject({ enabled: z.boolean(), capPct: PCT }),
+    discountFromCommission: z.strictObject({ enabled: z.boolean(), capPct: z.number().int().min(0).max(100) }),
     earnedAt: z.enum(["AFTER_TRAVEL", "ON_CONFIRM"]),
     clawbackOnCancel: z.boolean(),
     actualSaleSatang: NN.nullable(),
@@ -204,7 +224,7 @@ export const tripPricingInputSchema = z.strictObject({
   overrides: z.array(z.strictObject({ itemRef: z.string().min(1).max(200), unitMinor: NN, reason: z.string().max(500) })).max(200),
   overrideGrant: z.strictObject({
     canOverride: z.boolean(),
-    approvals: z.array(z.strictObject({ approvalId: ID, itemRef: z.string().min(1).max(200), unitMinor: NN })).max(200),
+    approvals: z.array(z.strictObject({ approvalId: ID, itemRef: z.string().min(1).max(200), unitMinor: NN, resolvedMinor: NN.optional() })).max(200),
   }),
   policy: z.record(z.string(), z.unknown()),
 });
@@ -263,6 +283,10 @@ export type PricedItem = {
   taxKind: TaxKind;
   priceSource: PriceStep;
   priceTrace: TraceEntry[];
+  /** ที่นั่งของประเภทคนที่ใช้ความจุ (ทารกไม่มีที่นั่ง = false) */
+  usesCapacity: boolean;
+  /** จำนวนที่นั่งที่นับค่าคอมฯ แบบต่อที่นั่ง (ใช้ความจุ · ไม่ใช่ที่นั่งฟรี) — recompute ใช้ค่านี้ตรงตัว */
+  commissionSeatQty: number;
 };
 export type PricedTotals = {
   grossSatang: number;
@@ -308,12 +332,22 @@ export type CommissionBlock = {
   };
   agentDiscountSatang: number;
   agentActualSaleSatang: number | null;
+  /** จำนวนที่นั่งที่จ่ายเงิน (ใช้ความจุ · ไม่ฟรี) ที่ใช้คิด COMMISSION_FIXED */
+  paidSeats: number;
+  /** ใครเก็บเงินจากลูกค้า (มติผู้คุม r2 ข้อ 3) */
+  collectedBy: "AGENT" | "SHOP";
+  /** ลูกค้าจ่ายเอเจนซี่ (AGENT_COLLECTS = payable · SHOP_COLLECTS = 0) */
   collectFromCustomerSatang: number;
+  /** ลูกค้าจ่ายร้านตรง (SHOP_COLLECTS = payable · AGENT_COLLECTS = 0) */
+  shopCollectsSatang: number;
+  /** เอเจนซี่ส่งร้าน (AGENT_COLLECTS = payable − C − Vc + W(gross-up) · SHOP_COLLECTS = 0) */
   remitToShopSatang: number;
+  /** ร้านจ่ายเอเจนซี่ (SHOP_COLLECTS = C + Vc − W · AGENT_COLLECTS = 0) */
+  payToAgentSatang: number;
   agentEarnsSatang: number;
   currency: "THB";
 };
-export type ScheduleRow = { seq: number; kind: "DEPOSIT" | "BALANCE"; amountSatang: number; vatableSatang: number; passThroughSatang: number; dueAt: string };
+export type ScheduleRow = { seq: number; kind: "DEPOSIT" | "BALANCE"; amountSatang: number; amountMinor?: number; vatableSatang: number; passThroughSatang: number; dueAt: string };
 export type CancelStepBp = { daysBefore: number; refundBp: number };
 export type PricingWarning = { code: string; messageTh: string; severity: "NORMAL" | "HIGH" | "HIGHEST"; details?: Record<string, unknown> };
 export type PricedQuote = {
@@ -326,7 +360,10 @@ export type PricedQuote = {
   cancelLadder: CancelStepBp[];
   cancelMinimumLadder: CancelStepBp[] | null;
   shopCancelRefundBpByReason: { EXTERNAL: number; MIN_NOT_MET: number; SHOP_FAULT: number };
+  /** ส่วนลดโค้ดที่ "ให้จริง" หลังขั้น 8 (= Σ ส่วนลดของโค้ดบนบรรทัดสุดท้าย · 0 ⇒ null) */
   promo: null | { ruleId: string; discountSatang: number };
+  /** แต้ม/คูปองที่ให้จริงหลังขั้น 8 (ยอด 0 ถูกตัดทิ้ง) — T0.6 ใช้ยอดนี้ตัดแต้ม */
+  providers: { key: string; ref: string; discountSatang: number }[];
   warnings: PricingWarning[];
 };
 export type PricingFail = { ok: false; code: SellErrorCode; messageTh: string; retryable: false; details: Record<string, unknown> };
@@ -359,6 +396,10 @@ function fmtOf(tz: string): Intl.DateTimeFormat | null {
 function zoneOf(tz: string): Intl.DateTimeFormat {
   return fmtOf(tz) ?? (fmtOf(DEFAULT_TZ) as Intl.DateTimeFormat);
 }
+/** เขตเวลาที่ Intl รู้จัก (ไม่ตกไปกรุงเทพเงียบ ๆ — ไม่รู้จัก = SETTINGS_INVALID) */
+export function tripTzValid(tz: unknown): tz is string {
+  return typeof tz === "string" && tz.trim() !== "" && fmtOf(tz) !== null;
+}
 function wallMs(f: Intl.DateTimeFormat, ms: number): number {
   const parts = f.formatToParts(new Date(ms));
   const get = (t: string) => Number(parts.find((x) => x.type === t)?.value ?? "0");
@@ -366,6 +407,7 @@ function wallMs(f: Intl.DateTimeFormat, ms: number): number {
 }
 const utcMid = (ymd: string): number => Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
 /** วันที่ของร้าน "YYYY-MM-DD" ของเวลา `at` */
+export { DEFAULT_TZ as TRIP_DEFAULT_TZ };
 export function tripLocalYmd(tz: string, at: Date): string {
   return new Date(wallMs(zoneOf(tz), at.getTime())).toISOString().slice(0, 10);
 }
@@ -428,6 +470,10 @@ type Work = {
   blackout: boolean;
   free: boolean;
   countsCapacity: boolean;
+  /** บรรทัดที่ตั้งราคาเป็นบาทเสมอ (รับส่ง) บนใบเสนอสกุลต่างประเทศ: ยอดบาทต่อหน่วย (ไม่แปลงซ้ำ) · null = ปกติ */
+  thbUnitSatang: number | null;
+  /** ส่วนลดขั้น 7 ต่อแหล่ง (refId ของโค้ด/ผู้ให้แต้ม) — ล้างเมื่อแก้ราคามือ */
+  promoBy: Record<string, number>;
 };
 
 /** แถวราคาที่ดีที่สุดในระดับ: optionId ตรง > null · paxTypeId ตรง > null · priority สูง · id น้อย */
@@ -475,15 +521,32 @@ const PROMO_TH: Record<string, string> = {
   NOT_ELIGIBLE: "โค้ดส่วนลดนี้ใช้กับรายการนี้ไม่ได้",
 };
 
+
+const INT4_MAX = INT4;
+const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
 // ═══════════════ ตัวเลือกราคา ═══════════════
+/**
+ * ราคาของบรรทัดคำขอเดียว (บริสุทธิ์) — ไม่ตรวจสถานะรอบ/เวลาปิดรับ (เป็นของ T0.4/T0.6) · ผู้กระทำ STAFF/SYSTEM คิดราคาสินค้า DRAFT ได้ (ตัวโหลดคุม)
+ * ค่าใหญ่เกิน/อินพุตเพี้ยน ⇒ VALIDATION (details.reason) เสมอ ไม่โยน error ดิบ
+ */
 export function resolveTripPrice(raw: unknown): PricingResult {
+  try {
+    return resolveInner(raw);
+  } catch (e) {
+    if (e instanceof RangeError) return fail("VALIDATION", "AMOUNT_TOO_LARGE");
+    throw e;
+  }
+}
+
+function resolveInner(raw: unknown): PricingResult {
   const parsed = tripPricingInputSchema.safeParse(raw);
   if (!parsed.success) {
-    return fail("VALIDATION", null, undefined, { issues: parsed.error.issues.slice(0, 5).map((i) => ({ path: i.path.join("."), message: i.message })) });
+    return fail("VALIDATION", "INVALID_INPUT", undefined, { issues: parsed.error.issues.slice(0, 5).map((i) => ({ path: i.path.join("."), message: i.message })) });
   }
   const inp = parsed.data;
   // ── ค่าตั้ง ──
-  const missingKeys = PRICING_POLICY_KEYS.filter((k) => !Object.prototype.hasOwnProperty.call(inp.policy, k));
+  const missingKeys = PRICING_POLICY_KEYS.filter((k) => !hasOwn(inp.policy, k));
   if (missingKeys.length) return fail("VALIDATION", null, "ค่าตั้งราคาที่จำเป็นยังไม่ครบ", { missingKeys });
   const pol = {} as Record<PolicyKey, unknown>;
   for (const k of PRICING_POLICY_KEYS) {
@@ -493,6 +556,7 @@ export function resolveTripPrice(raw: unknown): PricingResult {
   }
   const P = pol as Policy;
   const agency = inp.agency as AgencyPricingInput | null;
+  if (!tripTzValid(inp.tz)) return fail("VALIDATION", "SETTINGS_INVALID", undefined, { key: "timezone" });
   const now = new Date(inp.now);
   const tz = inp.tz;
   const bookYmd = tripLocalYmd(tz, now);
@@ -508,7 +572,7 @@ export function resolveTripPrice(raw: unknown): PricingResult {
   let rateMicros = 0;
   if (!thb) {
     const fx = P["trips.fx.rates"].find((r) => r.currency === currency);
-    if (!fx) return fail("VALIDATION", "FX_RATE_MISSING");
+    if (!fx || fx.rateMicros <= 0) return fail("VALIDATION", "FX_RATE_MISSING");
     rateMicros = fx.rateMicros;
   }
   const toSatang = (minor: number) => (thb ? minor : minorToSatang(minor, rateMicros));
@@ -524,9 +588,9 @@ export function resolveTripPrice(raw: unknown): PricingResult {
     if (!pt || !pt.active) return fail("VALIDATION", null, "ประเภทผู้เดินทางนี้ไม่มีหรือปิดใช้อยู่", { paxTypeId: x.paxTypeId });
     qtyByPt.set(pt.id, (qtyByPt.get(pt.id) ?? 0) + x.qty);
   }
-  const qtyOfCode = (code: string): number => sum(inp.paxTypes.filter((p) => p.code === code).map((p) => qtyByPt.get(p.id) ?? 0));
   const totalPax = sum([...qtyByPt.values()]);
   if (totalPax <= 0) return fail("VALIDATION", null, "ต้องมีผู้เดินทางอย่างน้อย 1 คน");
+  if (totalPax > 100_000) return fail("VALIDATION", "AMOUNT_TOO_LARGE");
   const capacityPax = sum(inp.paxTypes.filter((p) => p.countsCapacity).map((p) => qtyByPt.get(p.id) ?? 0));
   const seatTax: TaxKind = P["trips.tax.vatRate"].mode === "STANDARD" ? "VAT7" : "EXEMPT";
   const lineDefaults = P["trips.line.defaults"];
@@ -544,17 +608,17 @@ export function resolveTripPrice(raw: unknown): PricingResult {
   );
   const retailRows = usable.filter((r) => r.seasonId === null && r.departureId === null);
   const seasonsCovering = inp.seasons.filter((s) => s.status === "ACTIVE" && s.dateStart <= travel && travel <= s.dateEnd).sort(ruleCmp);
-  const season = seasonsCovering.find((s) => usable.some((r) => r.seasonId === s.id && r.departureId === null)) ?? null;
-  const seasonRows = season ? usable.filter((r) => r.seasonId === season.id && r.departureId === null) : [];
+  const seasonRowsOf = (sid: string) => usable.filter((r) => r.seasonId === sid && r.departureId === null);
   const depRows = usable.filter((r) => r.departureId === dep.id);
   const adultPt = inp.paxTypes.find((p) => p.code === ADULT) ?? null;
   const t28 = P["trips.pax.childPricePct"];
 
+  /** ราคาของประเภทคนในระดับเดียว: แถวตรง > (เด็ก) 70% ของแถว ADULT ของระดับนั้น > แถวไม่ระบุประเภท (ราคาเดียวทุกคน ใช้ตามจริง) — มติ r2 R1 */
   const levelPrice = (rows: readonly Price[], pt: { id: string; code: string }): { amount: number; refId: string; note: string | null } | null => {
     const exact = bestRow(rows.filter((r) => r.paxTypeId === pt.id), dep.optionId);
     if (exact) return { amount: exact.amountMinor, refId: exact.id, note: null };
     if (pt.code === CHILD && t28 !== null && adultPt && adultPt.id !== pt.id) {
-      const a = bestRow(rows.filter((r) => r.paxTypeId === adultPt.id || r.paxTypeId === null), dep.optionId);
+      const a = bestRow(rows.filter((r) => r.paxTypeId === adultPt.id), dep.optionId);
       if (a) return { amount: mulBpHalfUp(a.amountMinor, t28 * 100), refId: a.id, note: "CHILD_PCT" };
     }
     const common = bestRow(rows.filter((r) => r.paxTypeId === null), dep.optionId);
@@ -564,21 +628,32 @@ export function resolveTripPrice(raw: unknown): PricingResult {
   const work: Work[] = [];
   const seatPts = inp.paxTypes.filter((p) => (qtyByPt.get(p.id) ?? 0) > 0).sort((a, b) => cmpStr(a.code, b.code) || cmpStr(a.id, b.id));
   const seenCodes = new Set<string>();
+  const baseWork = { discountSatang: 0, agentDiscountSatang: 0, blackout: false, free: false, thbUnitSatang: null };
   for (const pt of seatPts) {
     if (seenCodes.has(pt.code)) return fail("VALIDATION", null, "รหัสประเภทผู้เดินทางซ้ำกัน", { code: pt.code });
     seenCodes.add(pt.code);
     const tr: TraceEntry[] = [];
     let unit: number | null = null;
     let src: PriceStep = "RETAIL";
-    for (const [step, rows] of [["RETAIL", retailRows], ["SEASON", seasonRows], ["DEPARTURE", depRows]] as const) {
-      const lp = levelPrice(rows, pt);
-      if (!lp) continue;
+    const take = (step: PriceStep, lp: { amount: number; refId: string; note: string | null } | null) => {
+      if (!lp) return;
       unit = lp.amount;
       src = step;
       tr.push(trace(step, lp.amount, lp.refId, lp.note));
+    };
+    take("RETAIL", levelPrice(retailRows, pt));
+    // ฤดูกาล: ต่อประเภทคน — ฤดูบนสุดที่มีราคาของประเภทนี้ (ไม่มี ⇒ ฤดูถัดไป ⇒ ระดับปลีก · มติ r2 R2)
+    for (const s of seasonsCovering) {
+      const lp = levelPrice(seasonRowsOf(s.id), pt);
+      if (lp) {
+        take("SEASON", lp);
+        break;
+      }
     }
+    take("DEPARTURE", levelPrice(depRows, pt));
     if (unit === null) return fail("VALIDATION", "PRICE_MISSING", undefined, { paxTypeCode: pt.code });
     work.push({
+      ...baseWork,
       itemRef: `seat:${pt.code}`,
       kind: "SEAT",
       label: SEAT_LABEL_TH[pt.code] ?? pt.code,
@@ -588,8 +663,6 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       extraKind: null,
       qty: qtyByPt.get(pt.id) ?? 0,
       unitMinor: unit,
-      discountSatang: 0,
-      agentDiscountSatang: 0,
       commissionBp: BP_UNIT,
       commissionable: true,
       discountable: true,
@@ -597,13 +670,12 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       taxKind: seatTax,
       priceSource: src,
       priceTrace: tr,
-      blackout: false,
-      free: false,
       countsCapacity: pt.countsCapacity,
+      promoBy: {},
     });
   }
 
-  // ── รายการเสริม ──
+  // ── รายการเสริม (ของสินค้า + ของหน่วย) ──
   const reqQty = new Map<string, number>();
   for (const r of inp.requestedExtras) reqQty.set(r.extraId, (reqQty.get(r.extraId) ?? 0) + r.qty);
   const extraById = new Map(inp.extras.map((e) => [e.id, e]));
@@ -614,44 +686,43 @@ export function resolveTripPrice(raw: unknown): PricingResult {
     if (e.currency !== currency) return fail("CURRENCY_NOT_ALLOWED", null, "รายการเสริมใช้สกุลเงินต่างจากราคาที่ขอ", { extraId: e.id });
     const reqN = e.mandatory ? Math.max(1, asked) : asked;
     const mult = e.basis === "PER_DAY" || e.basis === "PER_PAX_DAY" ? dep.days : e.basis === "PER_BOAT_NIGHT" ? dep.nights : 1;
-    const def = lineDefaults[e.kind];
+    const def = hasOwn(lineDefaults, e.kind) ? lineDefaults[e.kind] : undefined;
     const commissionBp = !e.passThrough && e.commissionable ? (def ? def.commissionPct * 100 : BP_UNIT) : 0;
     const base = {
+      ...baseWork,
       kind: "EXTRA" as const,
       extraId: e.id,
       extraKind: e.kind,
-      discountSatang: 0,
-      agentDiscountSatang: 0,
       commissionBp,
       commissionable: !e.passThrough && e.commissionable,
       discountable: !e.passThrough && e.discountable,
       passThrough: e.passThrough,
       taxKind: e.passThrough ? ("NONE" as const) : e.taxKind,
       priceSource: "RETAIL" as const,
-      blackout: false,
-      free: false,
       countsCapacity: false,
     };
     if (e.paxPrices) {
       for (const pt of seatPts) {
+        if (!hasOwn(e.paxPrices, pt.code)) continue;
         const price = e.paxPrices[pt.code];
-        if (price === undefined) continue;
-        const n = qtyByPt.get(pt.id) ?? 0;
-        const qty = n * mult; // ราคาต่อคนของ code นั้น × วัน/คืนตาม basis
+        const qty = (qtyByPt.get(pt.id) ?? 0) * mult; // ราคาต่อคนของ code นั้น × วัน/คืนตาม basis
         if (qty <= 0) continue;
-        work.push({ ...base, itemRef: `extra:${e.id}:${pt.code}`, label: `${e.label} ${SEAT_LABEL_TH[pt.code] ?? pt.code}`.trim(), paxTypeId: pt.id, paxTypeCode: pt.code, qty, unitMinor: price, priceTrace: [trace("RETAIL", price, e.id)] });
+        work.push({ ...base, itemRef: `extra:${e.id}:${pt.code}`, label: `${e.label} ${SEAT_LABEL_TH[pt.code] ?? pt.code}`.trim(), paxTypeId: pt.id, paxTypeCode: pt.code, qty, unitMinor: price, priceTrace: [trace("RETAIL", price, e.id)], promoBy: {} });
       }
     } else {
       const qty = e.basis === "PER_PAX" || e.basis === "PER_PAX_DAY" ? totalPax * mult : reqN * mult;
       if (qty <= 0) continue;
-      work.push({ ...base, itemRef: `extra:${e.id}`, label: e.label, paxTypeId: null, paxTypeCode: null, qty, unitMinor: e.priceMinor, priceTrace: [trace("RETAIL", e.priceMinor, e.id)] });
+      work.push({ ...base, itemRef: `extra:${e.id}`, label: e.label, paxTypeId: null, paxTypeCode: null, qty, unitMinor: e.priceMinor, priceTrace: [trace("RETAIL", e.priceMinor, e.id)], promoBy: {} });
     }
   }
-  // ── รับส่ง ──
+  // ── รับส่ง (ค่าโซนเป็นบาทเสมอ · ใบเสนอสกุลต่างประเทศ: แปลงครั้งเดียวด้วยอัตราที่ล็อก เพื่อแสดงหน่วยย่อย · ยอดบาทคงเดิมไม่แปลงกลับ — มติ r2 ข้อ 1) ──
   if (inp.pickup && inp.pickup.surchargeSatang > 0) {
     const def = lineDefaults.TRANSFER;
     const pt = def ? def.passThrough : false;
+    const sat = inp.pickup.surchargeSatang;
+    const unitMinor = thb ? sat : satangToMinor(sat, rateMicros);
     work.push({
+      ...baseWork,
       itemRef: `pickup:${inp.pickup.zoneId}`,
       kind: "PICKUP",
       label: inp.pickup.label,
@@ -660,33 +731,37 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       extraId: null,
       extraKind: "TRANSFER",
       qty: 1,
-      unitMinor: inp.pickup.surchargeSatang,
-      discountSatang: 0,
-      agentDiscountSatang: 0,
+      unitMinor,
       commissionBp: pt || !def ? 0 : def.commissionPct * 100,
       commissionable: !pt && !!def && def.commissionPct > 0,
       discountable: !pt && !!def && def.discountable,
       passThrough: pt,
       taxKind: pt ? "NONE" : seatTax,
       priceSource: "RETAIL",
-      priceTrace: [trace("RETAIL", inp.pickup.surchargeSatang, inp.pickup.zoneId)],
-      blackout: false,
-      free: false,
+      priceTrace: [trace("RETAIL", unitMinor, inp.pickup.zoneId, thb ? null : "FX_FROM_THB")],
       countsCapacity: false,
+      thbUnitSatang: thb ? null : sat,
+      promoBy: {},
     });
   }
+  for (const w of work) if (w.unitMinor * w.qty > INT4_MAX) return fail("VALIDATION", "AMOUNT_TOO_LARGE", undefined, { itemRef: w.itemRef });
 
   // ── ขั้น 4 กฎราคา (ที่นั่งเท่านั้น) ──
+  const warnings: PricingWarning[] = [];
   const rules: ParsedRule[] = [];
+  const invalidRules: string[] = [];
   for (const r of inp.rules) {
     const pr = tripPriceRuleParamsSchema.safeParse(r.params);
-    if (!pr.success || pr.data.kind !== r.kind) continue;
+    if (!pr.success || pr.data.kind !== r.kind) {
+      if (r.active) invalidRules.push(r.id);
+      continue;
+    }
     rules.push({ ...r, p: pr.data });
   }
+  if (invalidRules.length) warnings.push(warn("RULE_INVALID", "มีกฎราคาที่ตั้งค่าไม่ถูกต้อง ระบบข้ามกฎนั้น — ตรวจกฎราคา", "HIGH", { ruleIds: invalidRules.sort() }));
   rules.sort(ruleCmp);
   const ruleLive = (r: ParsedRule) =>
     r.active && (r.productId === null || r.productId === inp.product.id) && inRange(travel, r.dateFrom, r.dateTo) && inRange(bookYmd, r.bookFrom, r.bookTo);
-  const warnings: PricingWarning[] = [];
   const startsMs = Date.parse(dep.startsAt);
   const leadMs = startsMs - now.getTime();
   const daysAhead = tripDaysBetween(bookYmd, travel);
@@ -741,19 +816,30 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       priceSource: "RULE",
       priceTrace: [...w.priceTrace, trace("RULE", 0, best.rule.id, "FREE_LEADER")],
       free: true,
+      promoBy: {},
     });
   }
   for (let i = work.length - 1; i >= 0; i--) if (work[i].qty <= 0) work.splice(i, 1);
 
-  // ── ขั้น 5–6 ระดับ/สัญญาเอเจนซี่ ──
+  // ── ขั้น 5–6 ระดับ/สัญญาเอเจนซี่: สัญญาแทนระดับทั้งก้อน (โหมด · อัตรา · ราคา — มติ r2 ข้อ 9) ──
   for (const w of work) {
     if (w.kind !== "SEAT" || w.free || !agency || w.paxTypeCode === null) continue;
-    for (const [step, lv] of [["TIER", agency.tier], ["CONTRACT", agency.contract]] as const) {
-      const price = lv?.unitMinorByPaxCode?.[w.paxTypeCode];
-      if (lv && price !== undefined) {
-        w.unitMinor = price;
-        w.priceSource = step;
-        w.priceTrace.push(trace(step, price, lv.refId));
+    const code = w.paxTypeCode;
+    const priceOf = (lv: AgencyLevel | null) => (lv && lv.unitMinorByPaxCode && hasOwn(lv.unitMinorByPaxCode, code) ? lv.unitMinorByPaxCode[code] : undefined);
+    if (agency.contract) {
+      const c = priceOf(agency.contract);
+      if (c === undefined) continue; // สัญญาไม่มีราคา ⇒ ราคาปลีก/กฎคงเดิม (ไม่ใช้ราคาของระดับ)
+      const t = priceOf(agency.tier);
+      if (agency.tier && t !== undefined) w.priceTrace.push(trace("TIER", t, agency.tier.refId, "SUPERSEDED_BY_CONTRACT"));
+      w.unitMinor = c;
+      w.priceSource = "CONTRACT";
+      w.priceTrace.push(trace("CONTRACT", c, agency.contract.refId));
+    } else {
+      const t = priceOf(agency.tier);
+      if (agency.tier && t !== undefined) {
+        w.unitMinor = t;
+        w.priceSource = "TIER";
+        w.priceTrace.push(trace("TIER", t, agency.tier.refId));
       }
     }
   }
@@ -762,12 +848,13 @@ export function resolveTripPrice(raw: unknown): PricingResult {
   work.sort((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind] || cmpStr(a.itemRef, b.itemRef));
 
   // ── ขั้น 7 โปรโมชัน (บาทเท่านั้น · บรรทัดลดได้ที่ไม่ใช่เก็บแทน/ไม่โดนงด) ──
-  let promo: PricedQuote["promo"] = null;
+  let promoRuleId: string | null = null;
   const remainingOf = (w: Work) => w.unitMinor * w.qty - w.discountSatang;
   const applyDiscount = (lines: Work[], amounts: number[], refId: string, note: string) => {
     lines.forEach((w, i) => {
       if (amounts[i] <= 0) return;
       w.discountSatang += amounts[i];
+      w.promoBy[refId] = (w.promoBy[refId] ?? 0) + amounts[i];
       w.priceSource = "PROMO";
       w.priceTrace.push(trace("PROMO", amounts[i], refId, note));
     });
@@ -796,33 +883,39 @@ export function resolveTripPrice(raw: unknown): PricingResult {
             const amounts =
               p.discountBp !== undefined ? elig.map((w) => mulBpHalfUp(remainingOf(w), p.discountBp as number)) : allocateWithin(p.discountMinor ?? 0, elig.map(remainingOf));
             applyDiscount(elig, amounts, r.id, "PROMO_CODE");
-            promo = { ruleId: r.id, discountSatang: sum(amounts) };
+            promoRuleId = r.id;
           }
         }
       }
     }
   }
+  const providerDefs: { key: string; ref: string }[] = [];
   if (thb) {
     for (const pv of inp.promoProviders) {
       const elig = work.filter((w) => promoBase(w) && remainingOf(w) > 0);
       if (!elig.length || pv.discountSatang <= 0) continue;
       applyDiscount(elig, allocateWithin(pv.discountSatang, elig.map(remainingOf)), pv.ref, pv.key);
+      providerDefs.push({ key: pv.key, ref: pv.ref });
     }
   }
 
-  // ── ขั้น 8 ราคาแก้มือ ──
+  // ── ขั้น 8 ราคาแก้มือ (ครั้งเดียวต่อบรรทัด · เพดาน T11 วัดจากราคาที่ระบบได้ก่อนแก้ · ล้างส่วนลดของบรรทัด — มติ r2 ข้อ 2) ──
   if (inp.overrides.length) {
     if (inp.actor === "PUBLIC" || inp.actor === "AGENT" || !inp.overrideGrant.canOverride) return fail("FORBIDDEN", null, "บัญชีนี้แก้ราคาเองไม่ได้ — ต้องได้สิทธิ์แก้ราคามือจากเจ้าของร้าน");
+    const refs = inp.overrides.map((o) => o.itemRef);
+    if (new Set(refs).size !== refs.length) return fail("VALIDATION", "INVALID_INPUT", REASON_TH.DUPLICATE_OVERRIDE, { cause: "DUPLICATE_OVERRIDE" });
     const capPct = P["trips.price.manualOverrideApprovalPct"];
     for (const o of [...inp.overrides].sort((a, b) => cmpStr(a.itemRef, b.itemRef))) {
-      if (o.reason.trim().length < 10) return fail("VALIDATION", "REASON_REQUIRED", undefined, { itemRef: o.itemRef });
+      if (!reasonOk(o.reason)) return fail("VALIDATION", "REASON_REQUIRED", undefined, { itemRef: o.itemRef });
       const w = work.find((x) => x.itemRef === o.itemRef);
       if (!w) return fail("VALIDATION", null, "ไม่พบบรรทัดที่จะแก้ราคา", { itemRef: o.itemRef });
       if (w.passThrough) return fail("VALIDATION", "PASS_THROUGH_LOCKED", undefined, { itemRef: o.itemRef });
       const resolved = w.unitMinor;
       let approvalId: string | null = null;
       if (o.unitMinor < resolved - mulBpHalfUp(resolved, capPct * 100)) {
-        const ap = inp.overrideGrant.approvals.filter((a) => a.itemRef === o.itemRef && a.unitMinor === o.unitMinor).sort((a, b) => cmpStr(a.approvalId, b.approvalId))[0];
+        const ap = inp.overrideGrant.approvals
+          .filter((a) => a.itemRef === o.itemRef && a.unitMinor === o.unitMinor && (a.resolvedMinor === undefined || a.resolvedMinor === resolved))
+          .sort((a, b) => cmpStr(a.approvalId, b.approvalId))[0];
         if (!ap) {
           return fail("REQUIRES_APPROVAL", null, "ราคาที่แก้ต่ำกว่าราคาระบบเกินเพดาน — ต้องให้ผู้มีสิทธิ์อนุมัติก่อน", {
             entityType: "trips.price_override",
@@ -835,13 +928,20 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       }
       w.unitMinor = o.unitMinor;
       w.discountSatang = 0;
+      w.promoBy = {};
       w.priceSource = "MANUAL";
       w.priceTrace.push(trace("MANUAL", o.unitMinor, approvalId, "OVERRIDE"));
     }
   }
+  // ส่วนลดที่ให้จริงหลังขั้น 8 (โค้ด/แต้มที่ถูกล้างหมด ⇒ ไม่มีรายการ)
+  const appliedOf = (ref: string) => sum(work.map((w) => w.promoBy[ref] ?? 0));
+  const promoApplied = promoRuleId ? appliedOf(promoRuleId) : 0;
+  const promo: PricedQuote["promo"] = promoRuleId && promoApplied > 0 ? { ruleId: promoRuleId, discountSatang: promoApplied } : null;
+  const providers = providerDefs.map((d) => ({ ...d, discountSatang: appliedOf(d.ref) })).filter((d) => d.discountSatang > 0);
 
-  // ── ยอดต่อบรรทัด ──
-  const amountSatangOf = (w: Work) => toSatang(w.unitMinor * w.qty - w.discountSatang - w.agentDiscountSatang);
+  // ── ยอดต่อบรรทัด (รับส่งบนใบสกุลต่างประเทศ = ยอดบาทเดิม ไม่แปลงซ้ำ) ──
+  const amountSatangOf = (w: Work) => (w.thbUnitSatang !== null ? w.thbUnitSatang * w.qty : toSatang(w.unitMinor * w.qty - w.discountSatang - w.agentDiscountSatang));
+  const commissionSeatQty = (w: Work) => (w.kind === "SEAT" && !w.free && w.countsCapacity ? w.qty : 0);
 
   // ── คอมมิชชัน (§4.1–§4.3) ──
   let commission: CommissionBlock | null = null;
@@ -852,21 +952,23 @@ export function resolveTripPrice(raw: unknown): PricingResult {
     const terms = agency.terms;
     const commLines = work.filter((w) => w.commissionable && !w.passThrough);
     const base = sum(commLines.map((w) => mulBpHalfUp(amountSatangOf(w) + w.agentDiscountSatang, w.commissionBp)));
-    const paidSeats = sum(work.filter((w) => w.kind === "SEAT" && !w.free && w.countsCapacity).map((w) => w.qty));
+    const paidSeats = sum(work.map(commissionSeatQty));
     const gross =
       mode === "COMMISSION_PCT" ? (level && level.rateBp !== null ? mulBpHalfUp(base, level.rateBp) : 0) : mode === "COMMISSION_FIXED" ? (level?.fixedSatang ?? 0) * paidSeats : 0;
-    // ส่วนลดจากคอมฯ (A24)
+    // ส่วนลดจากคอมฯ (A24) — ไม่เกินเพดาน · ไม่เกินยอดที่ลดได้ · ไม่ทำให้คอมฯ ติดลบ
     const agentDisc = inp.agentDiscountSatang;
     if (agentDisc > 0) {
       const capBp = terms.discountFromCommission.capPct * 100;
       if (!thb || !terms.discountFromCommission.enabled || agentDisc > mulBpHalfUp(gross, capBp)) {
         return fail("DISCOUNT_OVER_CAP", null, "ส่วนลดจากค่าคอมมิชชันเกินเพดานที่สัญญากำหนด", { capSatang: terms.discountFromCommission.enabled ? mulBpHalfUp(gross, capBp) : 0 });
       }
-      const elig = commLines.filter((w) => amountSatangOf(w) > 0);
+      const elig = commLines.filter((w) => amountSatangOf(w) > 0 && w.thbUnitSatang === null);
+      const room = sum(elig.map(amountSatangOf));
+      if (agentDisc > room || agentDisc > gross) return fail("DISCOUNT_OVER_CAP", "AGENT_DISCOUNT_TOO_LARGE", undefined, { roomSatang: room, commissionSatang: gross });
       const alloc = allocateWithin(agentDisc, elig.map(amountSatangOf));
       elig.forEach((w, i) => (w.agentDiscountSatang += alloc[i]));
     }
-    const gAfter = gross - (agentDisc > 0 ? agentDisc : 0);
+    const gAfter = gross - agentDisc;
     const vr = terms.vatRateBp;
     let C = gAfter;
     let Vc = 0;
@@ -914,8 +1016,12 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       },
       agentDiscountSatang: agentDisc,
       agentActualSaleSatang: terms.actualSaleSatang,
+      paidSeats,
+      collectedBy: terms.collector === "AGENT_COLLECTS" ? "AGENT" : "SHOP",
       collectFromCustomerSatang: 0,
+      shopCollectsSatang: 0,
       remitToShopSatang: 0,
+      payToAgentSatang: 0,
       agentEarnsSatang: C,
       currency: "THB",
     };
@@ -938,7 +1044,7 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       discountSatang: w.discountSatang,
       agentDiscountSatang: w.agentDiscountSatang,
       amountMinor,
-      amountSatang: toSatang(amountMinor),
+      amountSatang: amountSatangOf(w),
       vatSatang: 0,
       commissionBp: w.commissionBp,
       commissionable: w.commissionable,
@@ -947,6 +1053,8 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       taxKind: w.taxKind,
       priceSource: w.priceSource,
       priceTrace: w.priceTrace,
+      usesCapacity: w.kind === "SEAT" && w.countsCapacity,
+      commissionSeatQty: commissionSeatQty(w),
     };
   });
   const vatRegistered = P["trips.tax.vatRegistered"].registered;
@@ -956,11 +1064,12 @@ export function resolveTripPrice(raw: unknown): PricingResult {
   const vatLines = items.filter((i) => i.taxKind === "VAT7");
   const vatable = sum(vatLines.map((i) => i.amountSatang));
   const vat = vatRegistered === false ? 0 : incl ? vatOfInclusive(vatable, vatRateBp) : vatOfExclusive(vatable, vatRateBp);
-  const vatAlloc = allocateLastRemainder(vat, vatLines.map((i) => i.amountSatang));
+  const vatAlloc = allocateWithin(vat, vatLines.map((i) => i.amountSatang));
   vatLines.forEach((i, k) => (i.vatSatang = vatAlloc[k]));
   const passThroughSatang = sum(items.filter((i) => i.passThrough).map((i) => i.amountSatang));
   const amountSum = sum(items.map((i) => i.amountSatang));
   const payable = amountSum + (incl ? 0 : vat);
+  if (payable > INT4_MAX || items.some((i) => i.grossMinor > INT4_MAX)) return fail("VALIDATION", "AMOUNT_TOO_LARGE");
   const discountSatang = sum(items.map((i) => i.discountSatang));
   const agentDiscountSatang = sum(items.map((i) => i.agentDiscountSatang));
   const totals: PricedTotals = {
@@ -974,20 +1083,28 @@ export function resolveTripPrice(raw: unknown): PricingResult {
     payableSatang: payable,
   };
 
-  // ── คอมฯ: ยอดส่งร้าน · ราคาขายจริง ──
+  // ── คอมฯ: ใครจ่ายใคร (มติ r2 ข้อ 3) · ราคาขายจริง ──
   if (commission && agency) {
     const level = agency.contract ?? agency.tier;
     const W = commission.wht.whtSatang ?? 0;
-    commission.collectFromCustomerSatang = payable;
-    commission.remitToShopSatang = payable - commission.commissionSatang - commission.commissionVatSatang + (commission.wht.grossUp ? W : 0);
+    if (commission.collectMode === "AGENT_COLLECTS") {
+      commission.collectFromCustomerSatang = payable;
+      commission.remitToShopSatang = payable - commission.commissionSatang - commission.commissionVatSatang + (commission.wht.grossUp ? W : 0);
+    } else {
+      commission.shopCollectsSatang = payable;
+      commission.payToAgentSatang = commission.commissionSatang + commission.commissionVatSatang - W;
+    }
+    if (commission.remitToShopSatang < 0 || commission.payToAgentSatang < 0 || commission.commissionSatang < 0) {
+      return commission.agentDiscountSatang > 0 ? fail("DISCOUNT_OVER_CAP", "AGENT_DISCOUNT_TOO_LARGE") : fail("VALIDATION", "COMMISSION_EXCEEDS_PAYABLE");
+    }
     const actual = agency.terms.actualSaleSatang;
-    const seats = sum(items.filter((i) => i.kind === "SEAT" && !i.itemRef.endsWith(":free")).map((i) => i.qty));
+    const seats = commission.paidSeats;
     const seatNetMinor = sum(items.filter((i) => i.kind === "SEAT").map((i) => i.amountSatang));
     if (level && (level.mode === "NET" || level.mode === "MARKUP" || level.minSellMinor !== null)) {
       if (actual === null) warnings.push(warn("AGENT_ACTUAL_SALE_MISSING", "เอเจนซี่ยังไม่กรอกราคาขายจริงให้ลูกค้า", "NORMAL"));
       else {
-        if (level.minSellMinor !== null && actual < level.minSellMinor * seats) return fail("BELOW_MIN_SELL_PRICE", null, "ราคาขายจริงต่ำกว่าราคาขายขั้นต่ำตามสัญญาเอเจนซี่");
-        if (level.mode === "MARKUP" && level.markupCapBp !== null && actual * BP_UNIT > seatNetMinor * (BP_UNIT + level.markupCapBp)) return fail("VALIDATION", "MARKUP_OVER_CAP");
+        if (level.minSellMinor !== null && productLess([actual], [level.minSellMinor, seats])) return fail("BELOW_MIN_SELL_PRICE", null, "ราคาขายจริงต่ำกว่าราคาขายขั้นต่ำตามสัญญาเอเจนซี่");
+        if (level.mode === "MARKUP" && level.markupCapBp !== null && productLess([seatNetMinor, BP_UNIT + level.markupCapBp], [actual, BP_UNIT])) return fail("VALIDATION", "MARKUP_OVER_CAP");
       }
       if (level.mode === "NET" || level.mode === "MARKUP") commission.agentEarnsSatang = actual === null ? 0 : Math.max(0, actual - seatNetMinor);
     }
@@ -998,7 +1115,7 @@ export function resolveTripPrice(raw: unknown): PricingResult {
   const seatNet = sum(seatItems.map((i) => i.amountSatang)) - (commission ? commission.commissionSatang : 0);
   const seatPax = sum(work.filter((w) => w.kind === "SEAT" && w.countsCapacity).map((w) => w.qty));
   const D = Math.max(dep.minPax ?? 1, dep.sold + dep.held + seatPax);
-  if (dep.costSatang > 0 && seatPax > 0 && seatNet * 100 * D < dep.costSatang * (100 + P["trips.price.costWarnMarginPct"]) * seatPax) {
+  if (dep.costSatang > 0 && seatPax > 0 && (seatNet < 0 || productLess([seatNet, 100, D], [dep.costSatang, 100 + P["trips.price.costWarnMarginPct"], seatPax]))) {
     warnings.push(warn("W22", "ราคาต่อคนต่ำกว่าต้นทุนรอบ — ตรวจราคาก่อนยืนยัน", "HIGHEST"));
   }
   // ── W05 ค่าอุทยานไม่ตรงตาราง T45 ──
@@ -1037,6 +1154,12 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       { seq: 2, kind: "BALANCE", amountSatang: bal, vatableSatang: bal - balPt, passThroughSatang: balPt, dueAt: tripLocalToUtcIso(tz, dueYmd, 1439) },
     ];
   }
+  if (!thb && payable > 0) {
+    // ใบสกุลต่างประเทศ: งวดมียอดหน่วยย่อยด้วย (ปันยอดหน่วยย่อยรวมตามยอดบาทของงวด)
+    const totalMinor = sum(items.map((i) => (i.kind === "PICKUP" ? i.unitMinor * i.qty : i.amountMinor)));
+    const mins = allocateWithin(totalMinor, schedule.map((s) => s.amountSatang));
+    schedule = schedule.map((s, i) => ({ ...s, amountMinor: mins[i] }));
+  }
 
   const cancelLadder = [...P["trips.cancel.ladder"]].sort((a, b) => b.fromDaysBefore - a.fromDaysBefore).map((s) => ({ daysBefore: s.fromDaysBefore, refundBp: s.refundPct * 100 }));
   const scr = P["trips.cancel.shopCancelRefund"];
@@ -1053,6 +1176,7 @@ export function resolveTripPrice(raw: unknown): PricingResult {
       cancelMinimumLadder: null,
       shopCancelRefundBpByReason: { EXTERNAL: scr.EXTERNAL * 100, MIN_NOT_MET: scr.MIN_NOT_MET * 100, SHOP_FAULT: scr.SHOP_FAULT * 100 },
       promo,
+      providers,
       warnings: warnings.sort((a, b) => cmpStr(a.code, b.code)),
     },
   };
@@ -1069,10 +1193,14 @@ function canon(v: unknown): string {
     .map((k) => `${JSON.stringify(k)}:${canon(o[k])}`)
     .join(",")}}`;
 }
-/** ข้อความแทนคำขอ + ราคาที่ได้ (ไม่รวมเวลา) — ค่าเท่าเดิม = ข้อความเดิม · ราคาเปลี่ยน = ข้อความใหม่ */
-export function priceFingerprint(input: Pick<TripPricingInput, "unitId" | "channel" | "actor" | "currency" | "product" | "departure" | "pax" | "requestedExtras" | "pickup" | "promoCode"> & { agency?: { agentAccountId: string } | null }, priced: PricedQuote): string {
+/**
+ * ข้อความแทนคำขอ + ราคาที่ได้ — ไม่รวมสิ่งที่ขึ้นกับนาฬิกา (เวลาครบกำหนดงวดที่ = เวลาจอง ใช้ "AT_BOOKING" · วันที่อัตรา FX)
+ * ค่าเท่าเดิม = ข้อความเดิม · ราคาเปลี่ยน = ข้อความใหม่ (CC §C)
+ */
+export function priceFingerprint(input: Pick<TripPricingInput, "unitId" | "channel" | "actor" | "currency" | "product" | "departure" | "pax" | "requestedExtras" | "pickup" | "promoCode" | "now"> & { agency?: { agentAccountId: string } | null }, priced: PricedQuote): string {
+  const nowIso = new Date(input.now).toISOString();
   return canon({
-    v: 1,
+    v: 2,
     unitId: input.unitId,
     channel: input.channel,
     actor: input.actor,
@@ -1086,9 +1214,12 @@ export function priceFingerprint(input: Pick<TripPricingInput, "unitId" | "chann
     agent: input.agency ? input.agency.agentAccountId : null,
     items: priced.items.map((i) => [i.itemRef, i.qty, i.unitMinor, i.discountSatang, i.agentDiscountSatang, i.amountSatang, i.vatSatang, i.priceSource]),
     totals: priced.totals,
-    commission: priced.commission ? [priced.commission.commissionSatang, priced.commission.commissionVatSatang, priced.commission.remitToShopSatang] : null,
-    schedule: priced.paymentSchedule.map((s) => [s.kind, s.amountSatang, s.dueAt]),
+    commission: priced.commission ? [priced.commission.commissionSatang, priced.commission.commissionVatSatang, priced.commission.remitToShopSatang, priced.commission.payToAgentSatang] : null,
+    schedule: priced.paymentSchedule.map((s) => [s.kind, s.amountSatang, s.passThroughSatang, s.dueAt === nowIso ? "AT_BOOKING" : s.dueAt]),
     ladder: priced.cancelLadder,
-    fx: priced.fx,
+    shopCancel: priced.shopCancelRefundBpByReason,
+    fx: priced.fx ? priced.fx.rateMicros : null,
+    promoApplied: priced.promo,
+    providers: priced.providers,
   });
 }

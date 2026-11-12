@@ -77,6 +77,17 @@ export function minorToSatang(minor: number, rateMicros: number): number {
   return mulDivHalfUp(minor, rateMicros, MICROS_UNIT);
 }
 
+/** สตางค์ → หน่วยย่อยของสกุลต่างประเทศ (ครั้งเดียว · อัตราที่ล็อกของการจอง): round(satang × 1e6 / rateMicros) */
+export function satangToMinor(satang: number, rateMicros: number): number {
+  return mulDivHalfUp(satang, MICROS_UNIT, rateMicros);
+}
+
+/** a₁×a₂×… < b₁×b₂×… (BigInt · ไม่เพี้ยนเมื่อผลคูณเกินจำนวนเต็มปลอดภัย) */
+export function productLess(a: readonly number[], b: readonly number[]): boolean {
+  const p = (xs: readonly number[]) => xs.reduce((acc, x) => acc * big(x, "factor"), ONE);
+  return p(a) < p(b);
+}
+
 /**
  * ปันยอด `total` ตามน้ำหนัก: ทุกบรรทัด = round(total × w / Σw) · บรรทัดสุดท้ายที่น้ำหนัก > 0 รับเศษ (ผลรวมตรงพอดี)
  * น้ำหนัก 0 ได้ 0 · ยอดที่ปันสะสมเกิน total (ปัดขึ้นหลายบรรทัด) ⇒ ตัดให้พอดี (ไม่มีบรรทัดติดลบ) · Σw = 0 ⇒ ทั้งหมดลงบรรทัดสุดท้าย
@@ -106,8 +117,9 @@ export function allocateLastRemainder(total: number, weights: readonly number[])
 }
 
 /**
- * ปันแบบมีเพดานต่อบรรทัด (ส่วนลด/ยอดที่จ่าย): เหมือน allocateLastRemainder แต่ไม่มีบรรทัดใดได้เกินน้ำหนักของตัวเอง
- * ส่วนที่ล้นของบรรทัดสุดท้ายย้ายไปบรรทัดก่อนหน้าที่ยังมีที่ว่าง (ตามลำดับ) · total ถูกตัดที่ Σ น้ำหนัก
+ * ปันแบบมีเพดานต่อบรรทัด — ตัวปันที่ใช้จริงกับส่วนลด (โค้ด/แต้ม/ส่วนลดจากคอมฯ) · VAT ต่อบรรทัด · ยอดที่จ่ายแล้วตอนยกเลิก (มติผู้คุม r2 ข้อ 10 R4)
+ * กติกา: ทุกบรรทัด = round-half-up(total × w / Σw) ตามลำดับ · บรรทัดสุดท้ายที่น้ำหนัก > 0 รับเศษ · ไม่มีบรรทัดใดเกินน้ำหนักของตัวเอง
+ * (ส่วนที่ล้นย้ายไปบรรทัดก่อนหน้าที่ยังมีที่ว่างตามลำดับ) ⇒ ผลรวมเท่ากับ min(total, Σw) พอดีทุกสตางค์ · ไม่มีบรรทัดติดลบ
  */
 export function allocateWithin(total: number, weights: readonly number[]): number[] {
   const cap = weights.reduce((s, w) => s + Math.max(0, w), 0);

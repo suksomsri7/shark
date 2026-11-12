@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 import type { Sellable, SellResult } from "@/lib/core/sellable";
 import { quoteTrips } from "./pricing";
+import { PricingAbort } from "./pricing-core";
 
 const notYet = <T>(): Promise<SellResult<T>> =>
   Promise.resolve({ ok: false, code: "KIND_NOT_SUPPORTED", messageTh: "ส่วนนี้ของการขายทัวร์ยังไม่เปิดใช้", retryable: false });
@@ -16,7 +17,8 @@ export const tripSellable: Sellable = {
   hold: () => notYet(),
   confirm: () => notYet(),
   cancel: () => notYet(),
-  capacityRowsOf: () => Promise.resolve([]),
+  // ปิดแบบล้ม (fail closed): ไม่มีแถวความจุ ≠ "ไม่มีอะไรต้องล็อก" — T0.4 เป็นเจ้าของ
+  capacityRowsOf: () => Promise.reject(new PricingAbort("KIND_NOT_SUPPORTED", "NOT_YET", "ส่วนนี้ของการขายทัวร์ยังไม่เปิดใช้")),
   reserveInTx: () => notYet(),
   finalizeInTx: () => notYet(),
 };

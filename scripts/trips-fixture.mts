@@ -718,10 +718,17 @@ export const RACHA_SEASONS = [
   { key: "OFF", name: "นอกฤดู", from: "2027-05-01", to: "2027-10-31", priority: 0, adultSatang: 290_000, childSatang: 203_000 },
 ] as const;
 export const RACHA_DEPARTURE_PRICE_1231 = { date: "2026-12-31", label: "ทริปเคาท์ดาวน์", adultSatang: 450_000, childSatang: 315_000 } as const;
-/** สัญญา §H.4 — เอเจนซี่ 2 ผู้ใหญ่ราชา (C 1,050 · WHT 3%) เมื่อเอเจนซี่จด VAT: EXCLUSIVE ⇒ ส่งร้าน 7,108.00 · INCLUSIVE ⇒ 7,179.44 */
+/**
+ * สัญญา §H.4 — เอเจนซี่ 2 ผู้ใหญ่ราชา (C 1,050 · WHT 3%) เมื่อเอเจนซี่จด VAT: EXCLUSIVE ⇒ ส่งร้าน 7,108.00 · INCLUSIVE ⇒ 7,179.44
+ * ⚠️ เงื่อนไข (มติ r2 ข้อ 13): ตัวเลขทั้งสองต้องมี WHT ทุกรายการ — เอเจนซี่สัญญาต่อเนื่อง `agency.wht.continuous = EVERY_PAYMENT` (TRIPS-DEFAULTS A27)
+ *   ถ้าใช้เกณฑ์ขั้นต่ำต่อสัญญา (minPerContract 1,000 บาท) INCLUSIVE มี C ก่อน VAT 981.31 < 1,000 ⇒ ไม่หัก WHT ⇒ ส่งร้าน 7,150.00 ไม่ใช่ 7,179.44
+ * SHOP_COLLECTS (ลิงก์เอเจนซี่ · มติ r2 ข้อ 3): ลูกค้าจ่ายร้าน 8,200 · ร้านจ่ายเอเจนซี่ C + Vc − W = 1,050 − 31.50 = 1,018.50 (Vc 0)
+ */
 export const AGENCY_COMMISSION_VAT = {
   exclusive: { commissionSatang: 105_000, commissionVatSatang: 7_350, whtSatang: 3_150, toShopSatang: 710_800 },
   inclusive: { commissionInclVatSatang: 105_000, commissionSatang: 98_131, commissionVatSatang: 6_869, whtSatang: 2_944, toShopSatang: 717_944 },
+  precondition: "WHT_EVERY_PAYMENT",
+  shopCollects: { customerPaysShopSatang: 820_000, shopPaysAgentSatang: 101_850 },
 } as const;
 // ── /T0.5 pricing ──
 
@@ -985,6 +992,8 @@ export function assertFixtureArithmetic(f: TripsFixture = TRIPS_FIXTURE): { chec
   eq("§H.4 INCLUSIVE VAT คอมฯ", cv.inclusive.commissionInclVatSatang - cv.inclusive.commissionSatang, cv.inclusive.commissionVatSatang);
   eq("§H.4 INCLUSIVE WHT ของ C ก่อน VAT", pct(cv.inclusive.commissionSatang, a.whtBp), cv.inclusive.whtSatang);
   eq("§H.4 INCLUSIVE ส่งร้าน 7,179.44", a.collectSatang - cv.inclusive.commissionInclVatSatang + cv.inclusive.whtSatang, cv.inclusive.toShopSatang);
+  eq("SHOP_COLLECTS ลูกค้าจ่ายร้าน = เก็บลูกค้า", cv.shopCollects.customerPaysShopSatang, a.collectSatang);
+  eq("SHOP_COLLECTS ร้านจ่ายเอเจนซี่ 1,018.50", a.commissionSatang - a.whtSatang, cv.shopCollects.shopPaysAgentSatang);
   // ── /T0.5 pricing ──
 
   if (errs.length) throw new Error(`ฟิกซ์เจอร์ TRIPS เลขไม่ตรง ${errs.length} จุด:\n- ${errs.join("\n- ")}`);

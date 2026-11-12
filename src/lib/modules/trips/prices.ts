@@ -14,7 +14,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import type { SellCtx, SellResult } from "@/lib/core/sellable";
 import { resolveSetting } from "@/lib/core/settings";
 import { isYmd, tripPriceRuleParamsSchema } from "./json-schemas";
-import { PricingAbort, REASON_TH } from "./pricing-core";
+import { PricingAbort, REASON_TH, reasonOk } from "./pricing-core";
 import { TripProductNotSellableError, assertProductSellableInTx } from "./products";
 
 type Tx = Prisma.TransactionClient;
@@ -29,7 +29,6 @@ const ID = z.string().min(1).max(200);
 const NN = z.number().int().min(0).max(INT4);
 const PRIORITY = z.number().int().min(-1_000_000).max(1_000_000);
 const YMD = z.string().refine(isYmd, { message: "วันที่ต้องเป็นรูปแบบ ปปปป-ดด-วว" });
-const REASON_MIN = 10;
 const CURRENCY = z.string().regex(/^[A-Z]{3}$/);
 const CODE_RE = /^[A-Z0-9_-]{3,32}$/;
 const RULE_KINDS = ["EARLY_BIRD", "LAST_MINUTE", "GROUP_TIER", "FREE_LEADER", "BLACKOUT", "PROMO_CODE"] as const;
@@ -130,7 +129,6 @@ async function changed(t: Tx, g: Gate, id: string, stamp: string, p: { productId
     payload: { unitId: g.unitId, productId: p.productId, seasonId: p.seasonId, departureId: p.departureId, scope: p.scope, count: 1 },
   });
 }
-const reasonOk = (r: string | undefined) => typeof r === "string" && r.trim().length >= REASON_MIN;
 
 // ═══════════════ ฤดูกาล ═══════════════
 export type SeasonDTO = { id: string; name: string; dateStart: string; dateEnd: string; priority: number; status: string };
@@ -264,9 +262,12 @@ export async function setPrice(ctx: SellCtx, input: unknown): Promise<SellResult
   const p = parse(SET_PRICE, input);
   if (isFail(p)) return p;
   if ((p.bookFrom && p.bookTo && p.bookTo < p.bookFrom) || (p.travelFrom && p.travelTo && p.travelTo < p.travelFrom)) return reasonFail("VALIDATION", "BAD_RANGE");
+  // ตารางเคบิน (L1.1) ยังไม่มีในรุ่นนี้ ⇒ ตรวจเจ้าของไม่ได้ ⇒ ปฏิเสธ (มติ r2 ข้อ 12)
+  if (p.cabinTypeId) return reasonFail("VALIDATION", "CABIN_NOT_AVAILABLE");
   const t3 = await resolveSetting({ tenantId: g.tenantId }, "trips.general.currencies", { unitId: g.unitId, productId: p.productId }, g.now).catch(() => null);
   const allowed = Array.isArray(t3?.value) ? (t3.value as unknown[]) : [];
-  return run(g, async (t) => {
+  try {
+  return await run(g, async (t) => {
     const prod = await assertProductSellableInTx(t, { tenantId: g.tenantId, unitId: g.unitId, productId: p.productId, optionId: p.optionId ?? null });
     if (p.currency !== prod.currency || (p.currency !== "THB" && prod.productType !== "LIVEABOARD") || !allowed.includes(p.currency)) {
       throw new PricingAbort("CURRENCY_NOT_ALLOWED", "CURRENCY", "ราคาต้องใช้สกุลเงินเดียวกับสินค้า (ทัวร์และสถานที่ใช้บาท)");
@@ -305,6 +306,10 @@ export async function setPrice(ctx: SellCtx, input: unknown): Promise<SellResult
     await changed(t, g, row.id, String(row.updatedAt.getTime()), { productId: row.productId, seasonId: row.seasonId, departureId: row.departureId, scope: "PRICE" });
     return { ok: true as const, value: { id: row.id } };
   });
+  } catch (e) {
+    if (isUnique(e)) return reasonFail("STATE_CONFLICT", "PRICE_CONFLICT");
+    throw e;
+  }
 }
 
 /** ลบแถวราคา (ช่องคีย์ต้องใช้ซ้ำได้ · การจองเดิมอยู่ใน snapshot) — เหตุผล ≥ 10 ตัวอักษร + audit ค่าก่อนลบ */
@@ -328,6 +333,12 @@ export async function removePrice(ctx: SellCtx, input: unknown): Promise<SellRes
 
 // ═══════════════ กฎราคา + โค้ดส่วนลด ═══════════════
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+function intsWithin(v: unknown): boolean {
+  if (typeof v === "number") return Number.isFinite(v) && Math.abs(v) <= INT4;
+  if (Array.isArray(v)) return v.every(intsWithin);
+  if (isRec(v)) return Object.values(v).every(intsWithin);
+  return true;
+}
 async function codeTaken(t: Tx, g: Gate, code: string, selfId: string | null): Promise<boolean> {
   const rows = await t.$queryRaw<{ id: string }[]>`
     SELECT id FROM "TripPriceRule"
@@ -350,6 +361,8 @@ export async function savePriceRule(ctx: SellCtx, input: unknown): Promise<SellR
   const pr = tripPriceRuleParamsSchema.safeParse(isRec(raw) && raw.kind === "PROMO_CODE" && typeof raw.code === "string" ? { ...raw, code: raw.code.trim().toUpperCase() } : raw);
   if (!pr.success) return fail("VALIDATION", "เงื่อนไขของกฎราคาไม่ถูกต้อง", { issues: pr.error.issues.slice(0, 5).map((i) => ({ path: i.path.join("."), message: i.message })) });
   const params = pr.data;
+  // ทุกจำนวนเต็มใน params ต้องอยู่ในช่วง int4 (SQL ตัดสิทธิ์โค้ด cast ::int · มติ §13 / r2 ข้อ 8)
+  if (!intsWithin(params)) return reasonFail("VALIDATION", "INVALID_INPUT");
   if (params.kind !== p.kind) return fail("VALIDATION", "ชนิดของกฎไม่ตรงกับเงื่อนไข");
   const code = params.kind === "PROMO_CODE" ? params.code : null;
   if (code !== null && !CODE_RE.test(code)) return fail("VALIDATION", "โค้ดส่วนลดใช้อักษรภาษาอังกฤษตัวใหญ่ ตัวเลข _ หรือ - ยาว 3–32 ตัว");

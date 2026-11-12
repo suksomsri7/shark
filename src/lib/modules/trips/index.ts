@@ -95,6 +95,8 @@ export {
   minorToSatang,
   allocateLastRemainder,
   allocateWithin,
+  satangToMinor,
+  productLess,
 } from "./money-math";
 export {
   PRICE_STEPS,
@@ -104,6 +106,8 @@ export {
   agencyPricingInputSchema,
   resolveTripPrice,
   priceFingerprint,
+  normalizeReason,
+  reasonOk,
 } from "./pricing-core";
 export type {
   PriceStep,
@@ -127,7 +131,7 @@ export {
   registerAgencyPricingPort,
   registerTripPromoProvider,
 } from "./pricing";
-export type { AgencyPricingPort, AgencyPricingQuery, TripPromoProvider, QuoteLineOpts } from "./pricing";
+export type { AgencyPricingPort, AgencyPricingQuery, TripPromoProvider, QuoteLineOpts, TripQuoteLine } from "./pricing";
 export { listSeasons, saveSeason, archiveSeason, listPrices, setPrice, removePrice, savePriceRule, setPriceRuleActive } from "./prices";
 export type { SeasonDTO, PriceDTO } from "./prices";
 export { redeemPromoInTx, releasePromoInTx } from "./promo";
