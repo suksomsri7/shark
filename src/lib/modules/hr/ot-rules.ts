@@ -203,14 +203,20 @@ export function otWorkedPaidMinutes(i: { reqStart: Date; reqEnd: Date; from: Dat
 
 // ═════════════ เงิน (R3 · R4) ═════════════
 export type OtProfile = { payType: "MONTHLY" | "DAILY" | "HOURLY" | string; baseSalarySatang: number; dailyRateSatang: number | null; hourlyRateSatang: number | null; otHourlyRateSatang: number | null };
-export type OtAmountInput = OtProfile & { hasShift: boolean; dayClass: OtDayClass; minutes: number; law: OtLaw };
+// HR H3.4 ▸ R11: normalDayMin = ชั่วโมงทำงานปกติเฉลี่ยต่อวันของร้าน (ม.68 — นาที 60–720) · ตัวหาร + เพดานชั่วโมงปกติของ HOLIDAY_WORK = min(ชม.กฎหมาย×60, N) ·
+//   ไม่ส่ง/ผิดช่วง = ชม.กฎหมาย×60 (480) ⇒ ทุกเวกเตอร์ H2.9 เท่าเดิม (ปิดหนี้ D-H29-normal-hours)
+export type OtAmountInput = OtProfile & { hasShift: boolean; dayClass: OtDayClass; minutes: number; law: OtLaw; normalDayMin?: number };
+export function otDayMinutes(law: Pick<OtLaw, "daysPerMonth" | "hoursPerDay">, normalDayMin?: number): number {
+  const cap = otDivisors(law).hours * 60;
+  return isInt(normalDayMin) && normalDayMin >= 60 && normalDayMin <= 720 ? Math.min(cap, normalDayMin) : cap;
+} // ◂ HR H3.4
 export type OtAmountResult = { ok: true; segments: OtSegment[]; amountSatang: number } | { ok: false; code: "NO_RATE" | "OVERFLOW" | "BAD_MINUTES" };
 
 /** ค่าจ้างฐาน "ต่อนาที × หมื่น" เป็นเศษส่วน (ตัวตั้งต่อ bp·นาที, ตัวหาร) — ไม่มีอัตรา = null */
-function baseRate(p: OtProfile, law: OtLaw): { num: bigint; den: bigint } | null {
-  const { days, hours } = otDivisors(law);
-  if (p.payType === "MONTHLY") return posInt(p.baseSalarySatang) ? { num: BigInt(p.baseSalarySatang), den: BigInt(days * hours * 60 * BP) } : null;
-  if (p.payType === "DAILY") return posInt(p.dailyRateSatang) ? { num: BigInt(p.dailyRateSatang), den: BigInt(hours * 60 * BP) } : null;
+function baseRate(p: OtProfile, law: OtLaw, dayMin: number): { num: bigint; den: bigint } | null { // HR H3.4 ▸ ตัวหารนาทีต่อวัน = otDayMinutes ◂
+  const { days } = otDivisors(law); // HR H3.4 ◂
+  if (p.payType === "MONTHLY") return posInt(p.baseSalarySatang) ? { num: BigInt(p.baseSalarySatang), den: BigInt(days * dayMin * BP) } : null; // HR H3.4 ◂
+  if (p.payType === "DAILY") return posInt(p.dailyRateSatang) ? { num: BigInt(p.dailyRateSatang), den: BigInt(dayMin * BP) } : null; // HR H3.4 ◂
   if (p.payType === "HOURLY") return posInt(p.hourlyRateSatang) ? { num: BigInt(p.hourlyRateSatang), den: BigInt(60 * BP) } : null;
   return null;
 }
@@ -219,18 +225,18 @@ function baseRate(p: OtProfile, law: OtLaw): { num: bigint; den: bigint } | null
 export function otAmount(i: OtAmountInput): OtAmountResult {
   if (!i || !isInt(i.minutes) || i.minutes < 0) return { ok: false, code: "BAD_MINUTES" };
   const law = raised(i.law ?? OT_LAW_DEFAULT);
-  const { hours } = otDivisors(law);
+  const dayMin = otDayMinutes(law, i.normalDayMin); // HR H3.4 ▸ R11 ◂
   const parts: { cls: OtSegmentClass; minutes: number; multiplierBp: number }[] = [];
   if (i.hasShift) parts.push(i.dayClass === "HOLIDAY" ? { cls: "OT_HOLIDAY", minutes: i.minutes, multiplierBp: law.holidayOtBp } : { cls: "OT_WORKDAY", minutes: i.minutes, multiplierBp: law.workdayOtBp });
   else {
-    const normal = Math.min(i.minutes, hours * 60);
+    const normal = Math.min(i.minutes, dayMin); // HR H3.4 ◂
     const paidDay = i.payType === "MONTHLY" || i.dayClass === "HOLIDAY";
     parts.push({ cls: "HOLIDAY_WORK", minutes: normal, multiplierBp: paidDay ? law.holidayWorkPaidBp : law.holidayWorkUnpaidBp });
     parts.push({ cls: "OT_HOLIDAY", minutes: i.minutes - normal, multiplierBp: law.holidayOtBp });
   }
   const live = parts.filter((x) => x.minutes > 0);
   if (!live.length) return { ok: true, segments: [], amountSatang: 0 };
-  const rate = baseRate(i, law);
+  const rate = baseRate(i, law, dayMin); // HR H3.4 ◂
   const override = posInt(i.otHourlyRateSatang) ? BigInt(i.otHourlyRateSatang) : null;
   const segments: OtSegment[] = [];
   let total = B0;
