@@ -43,7 +43,7 @@ import { canManageHrSettings } from "./settings"; // HR H1.2 ▸ ลิงก์
 // HR H2.7 ▸ Q16: ช่องประเภทการลา/ครึ่งวัน + ยอดคงเหลือบนหน้าใบลาเดิม (หน้าเต็มตามภาพ 05 = H2.10/H2.11) ◂
 import { thaiDateKey } from "@/lib/ui/date"; // HR H2.7 ◂
 import { activeLeavePolicies, leaveBalances, leaveDetail, myLeaveBalances, type LeaveBalanceItem } from "./leave"; // HR H2.7 ◂
-import { leaveDutyHints, type DutyHintItem } from "./availability"; // HR H4.1 ▸ R12 บรรทัด "กระทบ:" บนการ์ดใบลา (ภาพ 05) ◂
+import { leaveDutyHintsMany, type DutyHintItem } from "./availability"; // HR H4.1 ▸ R12 บรรทัด "กระทบ:" บนการ์ดใบลา (ภาพ 05) ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -287,11 +287,13 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
   // ◂ HR H2.7
   // HR H4.1 ▸ R12: ผลกระทบต่อกะของใบรอ + ใบอนุมัติที่ยังไม่จบ — เฉพาะผู้ดูคำใบ้ (R11 · คนอื่นได้ ok:false ⇒ ไม่แสดง) · ไม่มีเหตุผล/ประเภทการลา
   const ti = await getTranslations("hr.leaveImpact");
-  const impactCards: { id: string; title: string; items: DutyHintItem[] }[] = [];
-  for (const l of [...pending, ...leaves.filter((x) => x.status === "APPROVED" && thaiDateKey(x.toDate) >= today)].slice(0, 60)) {
-    if (impactCards.some((c) => c.id === l.id)) continue;
-    const h = await leaveDutyHints(ctx, viewer, { leaveId: l.id });
-    if (h.ok && h.items.length) impactCards.push({ id: l.id, title: `${l.employeeName} · ${dateRange(l.fromDate, l.toDate)}`, items: h.items });
+  //   r2: ทุกใบในหน้า = อ่านครั้งเดียว (leaveDutyHintsMany) · อ่านไม่ครบ ⇒ ไม่สรุปว่า "ไม่ต้องหาคนแทน"
+  const impactCards: { id: string; title: string; items: DutyHintItem[]; incomplete: boolean }[] = [];
+  const impactLeaves = [...new Map([...pending, ...leaves.filter((x) => x.status === "APPROVED" && thaiDateKey(x.toDate) >= today)].map((l) => [l.id, l])).values()].slice(0, 60);
+  const hints = await leaveDutyHintsMany(ctx, viewer, { leaveIds: impactLeaves.map((l) => l.id) });
+  for (const l of impactLeaves) {
+    const h = hints.get(l.id);
+    if (h?.ok && h.items.length) impactCards.push({ id: l.id, title: `${l.employeeName} · ${dateRange(l.fromDate, l.toDate)}`, items: h.items, incomplete: h.incomplete === true });
   }
   // ◂ HR H4.1
 
@@ -397,13 +399,16 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
             {impactCards.map((c) => (
               <div key={c.id} className="rounded-xl border border-[color:var(--color-line)] p-3" data-testid="hr-leave-impact">
                 <p className="text-sm font-medium">{c.title}</p>
+                {c.incomplete && <p className={`text-xs ${muted}`}>{ti("incomplete")}</p>}
                 <ul className="mt-1 flex flex-col gap-1">
                   {c.items.map((it) => {
                     const when = { date: formatThaiDate(new Date(`${it.date}T00:00:00Z`)), time: `${hhmm(it.startMin)}–${hhmm(it.endMin)}` };
                     const first = it.candidates[0];
                     return (
                       <li key={it.entryId} className={`text-sm ${it.others > 0 ? muted : "text-[color:var(--color-accent)]"}`}>
-                        {it.others > 0 ? (
+                        {it.others > 0 && c.incomplete ? (
+                          ti("checkManually", when)
+                        ) : it.others > 0 ? (
                           ti("covered", { ...when, n: it.others })
                         ) : (
                           <>

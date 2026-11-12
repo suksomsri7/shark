@@ -6,10 +6,15 @@
 //      หรือเป็นผู้ยกกะในสัปดาห์นั้นที่อนุมัติแล้ว (H2.3) · ไม่ใช่ ⇒ ไม่มีแถว (booking ใช้แหล่งถัดไปเหมือนเดิม) · R7 ENDED / active=false / นอกช่วงจ้าง ⇒ windows [] เสมอ
 //   R8 ร้านอื่น · ไม่รู้จัก · ระบบปิด · วันเสีย · ไม่มี id ⇒ ไม่มีแถว (ไม่มี id = ไม่แตะฐาน) · ประกาศแล้ว = publishedAt ≠ null (Q3) · อ่านอย่างเดียว
 //   หน้าต่างคิดด้วย availability-rules.ts#dayWindows (ล้วน) · breaks [] (Q4 — ตารางเก็บแค่จำนวนนาทีพัก)
-// leaveDutyHints(ctx, viewer, { leaveId }) R9/R11 — กะของคนลาในช่วงใบลา (PENDING/APPROVED) + คนที่อยู่กะเดียวกัน + คนที่ว่างมาแทน ·
+//   r2: แถวตารางกะที่ไม่ระบุสาขา = สาขาของวันนั้นของพนักงาน (ยืมตัว/สาขาประจำ) — ไม่เปิดเวลาทุกสาขาพร้อมกัน (กันจองซ้อนข้ามสาขา) ·
+//   ชนเพดานการอ่าน ⇒ ทุกแถว windows [] (ปิดไว้ก่อน ไม่จองซ้อน)
+// leaveDutyHints / leaveDutyHintsMany(ctx, viewer, …) R9/R11 — กะของคนลาในช่วงใบลา (PENDING/APPROVED) + คนที่อยู่กะเดียวกัน + คนที่ว่างมาแทน ·
+//   r2 ขอบเขต = สาขาของ "กะ" (สาขาของวันนั้น) ไม่ใช่สาขาประจำ: ผู้ดูเห็นเฉพาะกะ/คนแทนในสาขาที่ตัวเองดูแล ·
+//   หลายใบในหน้าเดียว = อ่านครั้งเดียว (จำนวนคำสั่งคงที่ ไม่โตตามจำนวนใบ) · ชนเพดาน ⇒ `incomplete: true` (ไม่บอกว่า "ไม่ต้องหาคนแทน" ผิด ๆ) ·
 //   ผู้ไม่มีสิทธิ์/ไม่พบ/ร้านอื่น = ข้อความเดียวกันทุกไบต์ · ไม่มีเหตุผล/ประเภทการลา
-// leaveDutyNotify({ tenantId, systemId, leaveId }) R10 — ผู้บริโภค hr.leave.decided (APPROVED) เรียก · ธุรกรรมเดียวใต้ล็อก hr-leave-hint:<id> ·
-//   audit hr.leave.duty_hint = กุญแจกันซ้ำ (ส่งซ้ำ/พร้อมกัน/ถอนอนุมัติภายหลัง = ไม่เขียนเพิ่ม · ไม่ถอนข้อความ Q10)
+// leaveDutyNotify({ tenantId, systemId, leaveId }) R10 — ผู้บริโภค hr.leave.decided (APPROVED) เรียก · คำนวณนอกล็อก แล้วธุรกรรมสั้นใต้ล็อก hr-leave-hint:<id>
+//   (ตรวจสถานะ + audit กันซ้ำ + เขียน) · ผู้รับ = ผู้ดูที่ขอบเขตครอบสาขาของกะที่ขาดคน (ยกเว้นคนลา) · audit hr.leave.duty_hint = กุญแจกันซ้ำ
+//   (ส่งซ้ำ/พร้อมกัน/ถอนอนุมัติภายหลัง = ไม่เขียนเพิ่ม · ไม่ถอนข้อความ Q10)
 // 🔴 ไม่ยกเลิก/ไม่ย้ายนัดจองใด ๆ (R13) · ไม่ import โมดูลอื่น · เขียนได้แค่ appNotification + auditLog (createMany ใน tx เดียว)
 // ◂ HR H4.1
 import type { Prisma } from "@prisma/client";
@@ -18,7 +23,7 @@ import type { MembershipCtx } from "@/lib/core/rbac";
 import { dayWindows, isValidDay, prevDayOf, type AvailabilityLeave } from "./availability-rules";
 import { addDays, paidMinutes } from "./time-rules";
 import { weekStartOf } from "./roster-rules";
-import { hrScopeOf } from "./scope";
+import { hrScopeOf, type HrScope } from "./scope";
 
 type Ctx = { tenantId: string; systemId: string };
 // ตัวอ่านที่ใช้ร่วมกันระหว่าง tenantDb(ctx) กับ tx ของมัน (เฉพาะ delegate ที่ใช้)
@@ -66,6 +71,29 @@ const isWholeDay = (l: { halfDay: string | null; hours: unknown }) => !(l.hours 
 const covers = (l: { fromDate: Date; toDate: Date }, day: string) => dayOf(l.fromDate) <= day && day <= dayOf(l.toDate);
 
 // ═══════════════════════════ staffWindows (R6–R8) ═══════════════════════════
+/** เพดานการอ่าน (เกิน = ผลไม่ครบ — ตัวเรียกปิดไว้ก่อน/บอกว่าไม่ครบ) */
+const CAP = { entries: 20_000, leaves: 20_000, swaps: 5000, own: 2000, emps: 5000, members: 2000, ids: 200 } as const;
+type UnitRow = { id: string; unitId: string; fromDate: Date; toDate: Date | null };
+const UNITS_SELECT = { select: { id: true, unitId: true, fromDate: true, toDate: true }, orderBy: { id: "asc" }, take: 200 } as const;
+
+/** R3 ของ H2.1: สาขาของวัน = ยืมตัวที่ครอบวันนั้น (fromDate ล่าสุด แล้ว id) ไม่งั้นสาขาประจำ (สูตรเดียวกับ roster.ts#unitOfDay) */
+function unitOfDayOf(emp: { unitId: string | null; units: UnitRow[] }, day: string): string | null {
+  const cover = emp.units
+    .filter((b) => dayOf(b.fromDate) <= day && (!b.toDate || dayOf(b.toDate) >= day))
+    .sort((a, b) => b.fromDate.getTime() - a.fromDate.getTime() || byCode(b.id, a.id));
+  return cover[0]?.unitId ?? emp.unitId ?? null;
+}
+function groupBy<T>(xs: readonly T[], key: (x: T) => string): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const x of xs) {
+    const k = key(x);
+    const cur = m.get(k);
+    if (cur) cur.push(x);
+    else m.set(k, [x]);
+  }
+  return m;
+}
+
 export async function staffWindows(i: StaffWindowsInput): Promise<StaffWindowsRow[]> {
   const tenantId = typeof i?.tenantId === "string" ? i.tenantId : "";
   const unitId = typeof i?.unitId === "string" ? i.unitId.trim() : "";
@@ -76,47 +104,59 @@ export async function staffWindows(i: StaffWindowsInput): Promise<StaffWindowsRo
   const week0 = weekStartOf(day);
   const week6 = addDays(week0, 6);
   const from = prev < week0 ? prev : week0;
-  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR", active: true }, select: { id: true }, orderBy: { id: "asc" }, take: 50 });
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR", active: true }, orderBy: { id: "asc" }, select: { id: true }, take: 50 });
   const rows = new Map<string, StaffWindowsRow>();
   for (const { id: systemId } of systems) {
     const db = tenantDb({ tenantId, systemId });
     const emps = await db.hrEmployee.findMany({
       where: { tenantId, systemId, id: { in: ids } },
-      select: { id: true, active: true, employmentStatus: true, startDate: true, endDate: true, contractEndAt: true },
+      orderBy: { id: "asc" },
+      select: { id: true, unitId: true, active: true, employmentStatus: true, startDate: true, endDate: true, contractEndAt: true, units: UNITS_SELECT },
     });
     if (emps.length === 0) continue;
     const empIds = emps.map((e) => e.id);
     const [entries, leaves, gaveAway] = await Promise.all([
       db.hrRosterEntry.findMany({
         where: { tenantId, systemId, employeeId: { in: empIds }, publishedAt: { not: null }, date: { gte: dbDate(from), lte: dbDate(week6) } },
+        orderBy: [{ date: "asc" }, { id: "asc" }],
         select: { employeeId: true, date: true, unitId: true, startMin: true, endMin: true, crossesMidnight: true },
-        take: 20_000,
+        take: CAP.entries + 1,
       }),
       db.hrLeave.findMany({
         where: { tenantId, systemId, employeeId: { in: empIds }, status: "APPROVED", fromDate: { lte: dbDate(day) }, toDate: { gte: dbDate(prev) } },
+        orderBy: { id: "asc" },
         select: { employeeId: true, fromDate: true, toDate: true, status: true, halfDay: true, hours: true },
+        take: CAP.leaves + 1,
       }),
       // ยกกะให้คนอื่นแล้ว (H2.3 อนุมัติ) = ยังจัดกะด้วยตารางในสัปดาห์นั้น — วันนั้นว่างเพราะตารางกะ ไม่ใช่เพราะไม่มีตาราง (ไม่ตกไปเวลาร้านทั้งวัน)
       db.hrShiftSwapRequest.findMany({
         where: { tenantId, systemId, status: "APPROVED", requesterEmployeeId: { in: empIds }, fromEntry: { publishedAt: { not: null }, date: { gte: dbDate(week0), lte: dbDate(week6) } } },
+        orderBy: { id: "asc" },
         select: { requesterEmployeeId: true },
-        take: 5000,
+        take: CAP.swaps + 1,
       }),
     ]);
+    const incomplete = entries.length > CAP.entries || leaves.length > CAP.leaves || gaveAway.length > CAP.swaps;
     const gave = new Set(gaveAway.map((g) => g.requesterEmployeeId));
+    const entriesOf = groupBy(entries, (r) => r.employeeId);
+    const leavesOf = groupBy(leaves, (l) => l.employeeId);
     for (const e of emps) {
-      const mine = entries.filter((r) => r.employeeId === e.id).map((r) => ({ date: dayOf(r.date), unitId: r.unitId, startMin: r.startMin, endMin: r.endMin, crossesMidnight: r.crossesMidnight }));
-      if (isEnded(e) || !inEmployment(e, day)) {
-        rows.set(e.id, { employeeId: e.id, windows: [], breaks: [] }); // R7 — ไม่ปล่อยให้ตกไปแหล่งถัดไป
+      if (incomplete || isEnded(e) || !inEmployment(e, day)) {
+        rows.set(e.id, { employeeId: e.id, windows: [], breaks: [] }); // R7 / อ่านไม่ครบ — ปิดไว้ก่อน ไม่ปล่อยให้ตกไปแหล่งถัดไป
         continue;
       }
+      // r2: แถวไม่ระบุสาขา = สาขาของวันนั้นของพนักงานคนนี้
+      const mine = (entriesOf.get(e.id) ?? []).map((r) => {
+        const d = dayOf(r.date);
+        return { date: d, unitId: r.unitId ?? unitOfDayOf(e, d), startMin: r.startMin, endMin: r.endMin, crossesMidnight: r.crossesMidnight };
+      });
       const managed = gave.has(e.id) || mine.some((r) => (r.date >= week0 && r.date <= week6) || (r.date === prev && r.crossesMidnight));
       if (!managed) continue; // R6 ไม่มีตารางกะ ⇒ ไม่มีแถว
       const windows = dayWindows({
         day,
         unitId,
         entries: mine.filter((r) => r.date === day || r.date === prev),
-        leaves: leaves.filter((l) => l.employeeId === e.id).map(leaveRule),
+        leaves: (leavesOf.get(e.id) ?? []).map(leaveRule),
       });
       rows.set(e.id, { employeeId: e.id, windows, breaks: [] });
     }
@@ -138,63 +178,83 @@ export type DutyHintItem = {
   others: number;
   candidates: DutyHintCandidate[];
 };
-export type DutyHintResult = { ok: true; items: DutyHintItem[] } | { ok: false; reason: string };
+/** incomplete = อ่านชนเพดาน — รายการอาจไม่ครบ (หน้าจอห้ามสรุปว่า "ไม่ต้องหาคนแทน") */
+export type DutyHintResult = { ok: true; items: DutyHintItem[]; incomplete?: true } | { ok: false; reason: string };
 
-/** R11 ผู้ดูคำใบ้: OWNER · MANAGER ในขอบเขตสาขาประจำของพนักงาน · STAFF ที่มี hr.leave.decide ในขอบเขตเดียวกัน — ไม่ใช่ตัวคนลาเอง */
-function canSeeHint(v: DutyHintViewer | null | undefined, emp: { unitId: string | null; linkedUserId: string | null }): boolean {
-  if (!v || typeof v !== "object") return false;
-  if (emp.linkedUserId && v.userId && v.userId === emp.linkedUserId) return false;
-  if (v.role === "OWNER") return true;
-  const scope = hrScopeOf({ role: v.role, unitAccess: v.unitAccess });
-  const inScope = scope.unitIds === "*" || (!!emp.unitId && scope.unitIds.includes(emp.unitId));
-  if (!inScope) return false;
-  if (v.role === "MANAGER") return true;
+type LeaveEmp = { unitId: string | null; linkedUserId: string | null };
+/** R11 ผู้ดูคำใบ้: OWNER · MANAGER · STAFF ที่มี hr.leave.decide — ไม่ใช่ตัวคนลาเอง ⇒ ขอบเขตสาขาของผู้ดู · ไม่ใช่ ⇒ null */
+function hintScopeOf(v: DutyHintViewer | null | undefined, emp: LeaveEmp): HrScope | null {
+  if (!v || typeof v !== "object") return null;
+  if (emp.linkedUserId && v.userId && v.userId === emp.linkedUserId) return null;
   const p = (v.permissions ?? {}) as Record<string, unknown>;
-  return v.role === "STAFF" && (p["hr.leave.decide"] === true || p["hr.*"] === true);
+  const allowed = v.role === "OWNER" || v.role === "MANAGER" || (v.role === "STAFF" && (p["hr.leave.decide"] === true || p["hr.*"] === true));
+  return allowed ? hrScopeOf({ role: v.role, unitAccess: v.unitAccess }) : null;
+}
+const coversUnit = (scope: HrScope, unit: string | null) => scope.unitIds === "*" || (!!unit && scope.unitIds.includes(unit));
+
+type HintLeave = { id: string; employeeId: string; fromDate: Date; toDate: Date; status: string; halfDay: string | null; hours: unknown; employee: LeaveEmp };
+type CandRow = DutyHintCandidate & { home: string | null; dayUnit: string | null };
+/** รายการภายใน: scopeUnit = สาขาของกะ (แถวไม่ระบุสาขา = สาขาของวันนั้นของคนลา) — ใช้กรองผู้ดู แล้วตัดทิ้งก่อนส่งออก */
+type RawItem = Omit<DutyHintItem, "candidates"> & { scopeUnit: string | null; candidates: CandRow[] };
+const partOf = (l: Pick<HintLeave, "halfDay" | "hours">): DutyHintItem["part"] => (l.hours !== null && l.hours !== undefined ? "HOURS" : l.halfDay === "AM" ? "AM" : l.halfDay === "PM" ? "PM" : "FULL");
+
+/** ช่วงวันที่ไม่ซ้อนกัน (รวมช่วงที่ซ้อน/ติดกัน) */
+function mergeRanges(rs: { from: string; to: string }[]): { from: string; to: string }[] {
+  const s = [...rs].sort((a, b) => byCode(a.from, b.from));
+  const out: { from: string; to: string }[] = [];
+  for (const r of s) {
+    const last = out[out.length - 1];
+    if (last && r.from <= addDays(last.to, 1)) last.to = r.to > last.to ? r.to : last.to;
+    else out.push({ ...r });
+  }
+  return out;
 }
 
-type HintLeave = { id: string; employeeId: string; fromDate: Date; toDate: Date; status: string; halfDay: string | null; hours: unknown };
-const partOf = (l: HintLeave): DutyHintItem["part"] => (l.hours !== null && l.hours !== undefined ? "HOURS" : l.halfDay === "AM" ? "AM" : l.halfDay === "PM" ? "PM" : "FULL");
-
-/** รายการกะของใบลา (อ่านอย่างเดียว · ใช้ db ของผู้เรียก — tx ได้) */
-async function hintItems(db: Db, ctx: Ctx, leave: HintLeave): Promise<DutyHintItem[]> {
-  if (leave.status !== "PENDING" && leave.status !== "APPROVED") return [];
+/** คำใบ้ของหลายใบในครั้งเดียว — คำสั่งอ่านคงที่ (กะของคนลา 1 + พนักงาน/กะ/ใบลา 3) ไม่ว่ากี่ใบ · Map ตาม employeeId ไม่กรองซ้ำในลูป */
+async function hintBatch(db: Db, ctx: Ctx, leaves: HintLeave[]): Promise<{ items: Map<string, RawItem[]>; incomplete: boolean }> {
+  const out = new Map<string, RawItem[]>();
+  const live = leaves.filter((l) => l.status === "PENDING" || l.status === "APPROVED");
+  if (live.length === 0) return { items: out, incomplete: false };
   const { tenantId, systemId } = ctx;
-  const own = await db.hrRosterEntry.findMany({
-    where: { tenantId, systemId, employeeId: leave.employeeId, publishedAt: { not: null }, date: { gte: leave.fromDate, lte: leave.toDate } },
-    select: { id: true, date: true, shiftId: true, unitId: true, startMin: true, endMin: true, breakMin: true, crossesMidnight: true },
-    take: 500,
+  const ownRaw = await db.hrRosterEntry.findMany({
+    where: { tenantId, systemId, publishedAt: { not: null }, OR: live.map((l) => ({ employeeId: l.employeeId, date: { gte: l.fromDate, lte: l.toDate } })) },
+    orderBy: [{ date: "asc" }, { startMin: "asc" }, { id: "asc" }],
+    select: { id: true, employeeId: true, date: true, shiftId: true, unitId: true, startMin: true, endMin: true, breakMin: true, crossesMidnight: true },
+    take: CAP.own + 1,
   });
-  if (own.length === 0) return [];
-  const mine = own
-    .map((r) => ({ ...r, day: dayOf(r.date) }))
-    .sort((a, b) => byCode(a.day, b.day) || a.startMin - b.startMin || byCode(a.id, b.id));
-  const days = [...new Set(mine.map((r) => r.day))];
-  const weeks = days.map((d) => weekStartOf(d));
-  const lo = addDays(weeks.reduce((a, b) => (a < b ? a : b)), -1);
-  const hi = addDays(weeks.reduce((a, b) => (a > b ? a : b)), 7);
-  const [emps, entries, leaves] = await Promise.all([
+  let incomplete = ownRaw.length > CAP.own;
+  const own = ownRaw.slice(0, CAP.own).map((r) => ({ ...r, day: dayOf(r.date) }));
+  if (own.length === 0) return { items: out, incomplete };
+  const ranges = mergeRanges(own.map((r) => ({ from: addDays(weekStartOf(r.day), -1), to: addDays(weekStartOf(r.day), 7) })));
+  const [emps, entriesRaw, leavesRaw] = await Promise.all([
     db.hrEmployee.findMany({
       where: { tenantId, systemId },
-      select: { id: true, name: true, unitId: true, active: true, employmentStatus: true, startDate: true, endDate: true, contractEndAt: true, units: { select: { id: true, unitId: true, fromDate: true, toDate: true }, take: 200 } },
-      take: 5000,
+      orderBy: { id: "asc" },
+      select: { id: true, name: true, unitId: true, active: true, employmentStatus: true, startDate: true, endDate: true, contractEndAt: true, units: UNITS_SELECT },
+      take: CAP.emps + 1,
     }),
     db.hrRosterEntry.findMany({
-      where: { tenantId, systemId, publishedAt: { not: null }, date: { gte: dbDate(lo), lte: dbDate(hi) } },
+      where: { tenantId, systemId, publishedAt: { not: null }, OR: ranges.map((r) => ({ date: { gte: dbDate(r.from), lte: dbDate(r.to) } })) },
+      orderBy: [{ date: "asc" }, { id: "asc" }],
       select: { id: true, employeeId: true, date: true, shiftId: true, unitId: true, startMin: true, endMin: true, breakMin: true, crossesMidnight: true },
-      take: 50_000,
+      take: CAP.entries + 1,
     }),
     db.hrLeave.findMany({
-      where: { tenantId, systemId, status: "APPROVED", fromDate: { lte: dbDate(hi) }, toDate: { gte: dbDate(lo) } },
+      where: { tenantId, systemId, status: "APPROVED", OR: ranges.map((r) => ({ fromDate: { lte: dbDate(r.to) }, toDate: { gte: dbDate(r.from) } })) },
+      orderBy: { id: "asc" },
       select: { employeeId: true, fromDate: true, toDate: true, halfDay: true, hours: true },
-      take: 20_000,
+      take: CAP.leaves + 1,
     }),
   ]);
-  const empById = new Map(emps.map((e) => [e.id, e]));
-  const leavesOf = (id: string) => leaves.filter((l) => l.employeeId === id);
-  const fullLeaveOn = (id: string, day: string) => leavesOf(id).some((l) => isWholeDay(l) && covers(l, day));
-  const anyLeaveOn = (id: string, day: string) => leavesOf(id).some((l) => covers(l, day));
-  const rows = entries.map((r) => ({ ...r, day: dayOf(r.date) }));
+  incomplete ||= emps.length > CAP.emps || entriesRaw.length > CAP.entries || leavesRaw.length > CAP.leaves;
+  const staff = emps.slice(0, CAP.emps);
+  const empById = new Map(staff.map((e) => [e.id, e]));
+  const rows = entriesRaw.slice(0, CAP.entries).map((r) => ({ ...r, day: dayOf(r.date) }));
+  const rowsOf = groupBy(rows, (r) => r.employeeId);
+  const rowsAt = groupBy(rows, (r) => `${r.day}|${r.shiftId}|${r.unitId ?? ""}`);
+  const leavesOf = groupBy(leavesRaw.slice(0, CAP.leaves), (l) => l.employeeId);
+  const fullLeaveOn = (id: string, day: string) => (leavesOf.get(id) ?? []).some((l) => isWholeDay(l) && covers(l, day));
+  const anyLeaveOn = (id: string, day: string) => (leavesOf.get(id) ?? []).some((l) => covers(l, day));
   const abs = (r: { day: string; startMin: number; endMin: number; crossesMidnight: boolean }) => {
     const base = dayIndex(r.day) * 1440;
     return { s: base + r.startMin, e: base + (r.crossesMidnight ? r.endMin + 1440 : r.endMin) };
@@ -206,48 +266,75 @@ async function hintItems(db: Db, ctx: Ctx, leave: HintLeave): Promise<DutyHintIt
       return 0;
     }
   };
-  const lead = empById.get(leave.employeeId);
-  const out: DutyHintItem[] = [];
-  for (const it of mine) {
-    const others = new Set(
-      rows
-        .filter((r) => r.day === it.day && r.shiftId === it.shiftId && r.unitId === it.unitId && r.employeeId !== leave.employeeId)
-        .map((r) => r.employeeId)
-        .filter((id) => {
-          const e = empById.get(id);
-          return !!e && !isEnded(e) && !fullLeaveOn(id, it.day);
-        }),
-    ).size;
-    const unit = it.unitId ?? (lead ? unitOfDayOf(lead, it.day) : null);
-    const w = abs(it);
-    const week0 = weekStartOf(it.day);
+  // ชั่วโมงสัปดาห์ต่อ (พนักงาน, วันจันทร์) — คิดครั้งเดียว
+  const weekMinCache = new Map<string, number>();
+  const weekMinOf = (id: string, week0: string) => {
+    const k = `${id}|${week0}`;
+    const hit = weekMinCache.get(k);
+    if (hit !== undefined) return hit;
     const week6 = addDays(week0, 6);
-    const thisPaid = paid(it);
-    const candidates: DutyHintCandidate[] = [];
-    for (const e of emps) {
-      if (e.id === leave.employeeId || isEnded(e) || !inEmployment(e, it.day)) continue;
-      if (unitOfDayOf(e, it.day) !== unit) continue;
-      if (anyLeaveOn(e.id, it.day)) continue;
-      const theirs = rows.filter((r) => r.employeeId === e.id);
-      if (theirs.some((r) => {
-        const x = abs(r);
-        return x.s < w.e && w.s < x.e;
-      })) continue;
-      const weekMin = theirs.filter((r) => r.day >= week0 && r.day <= week6 && !fullLeaveOn(e.id, r.day)).reduce((n, r) => n + paid(r), 0);
-      candidates.push({ employeeId: e.id, name: e.name, weekMin, weekMinAfter: weekMin + thisPaid });
+    const n = (rowsOf.get(id) ?? []).filter((r) => r.day >= week0 && r.day <= week6 && !fullLeaveOn(id, r.day)).reduce((a, r) => a + paid(r), 0);
+    weekMinCache.set(k, n);
+    return n;
+  };
+  const ownOf = groupBy(own, (r) => r.employeeId);
+  for (const leave of live) {
+    const from = dayOf(leave.fromDate);
+    const to = dayOf(leave.toDate);
+    const lead = empById.get(leave.employeeId);
+    const items: RawItem[] = [];
+    for (const it of (ownOf.get(leave.employeeId) ?? []).filter((r) => r.day >= from && r.day <= to)) {
+      const others = new Set(
+        (rowsAt.get(`${it.day}|${it.shiftId}|${it.unitId ?? ""}`) ?? [])
+          .filter((r) => r.unitId === it.unitId && r.employeeId !== leave.employeeId)
+          .map((r) => r.employeeId)
+          .filter((id) => {
+            const e = empById.get(id);
+            return !!e && !isEnded(e) && !fullLeaveOn(id, it.day);
+          }),
+      ).size;
+      const unit = it.unitId ?? (lead ? unitOfDayOf(lead, it.day) : null);
+      const w = abs(it);
+      const week0 = weekStartOf(it.day);
+      const thisPaid = paid(it);
+      const candidates: CandRow[] = [];
+      for (const e of staff) {
+        if (e.id === leave.employeeId || isEnded(e) || !inEmployment(e, it.day)) continue;
+        const dayUnit = unitOfDayOf(e, it.day);
+        if (dayUnit !== unit || anyLeaveOn(e.id, it.day)) continue;
+        const busy = (rowsOf.get(e.id) ?? []).some((r) => {
+          const x = abs(r);
+          return x.s < w.e && w.s < x.e;
+        });
+        if (busy) continue;
+        const weekMin = weekMinOf(e.id, week0);
+        candidates.push({ employeeId: e.id, name: e.name, weekMin, weekMinAfter: weekMin + thisPaid, home: e.unitId, dayUnit });
+      }
+      candidates.sort((a, b) => a.weekMin - b.weekMin || byCode(a.name, b.name) || byCode(a.employeeId, b.employeeId));
+      items.push({ entryId: it.id, date: it.day, unitId: it.unitId, startMin: it.startMin, endMin: it.endMin, crossesMidnight: it.crossesMidnight, part: partOf(leave), others, candidates, scopeUnit: unit });
     }
-    candidates.sort((a, b) => a.weekMin - b.weekMin || byCode(a.name, b.name) || byCode(a.employeeId, b.employeeId));
-    out.push({ entryId: it.id, date: it.day, unitId: it.unitId, startMin: it.startMin, endMin: it.endMin, crossesMidnight: it.crossesMidnight, part: partOf(leave), others, candidates });
+    out.set(leave.id, items);
   }
-  return out;
+  return { items: out, incomplete };
 }
 
-/** R3 ของ H2.1: สาขาของวัน = ยืมตัวที่ครอบวันนั้น (fromDate ล่าสุด แล้ว id) ไม่งั้นสาขาประจำ (สูตรเดียวกับ roster.ts#unitOfDay) */
-function unitOfDayOf(emp: { unitId: string | null; units: { id: string; unitId: string; fromDate: Date; toDate: Date | null }[] }, day: string): string | null {
-  const cover = emp.units
-    .filter((b) => dayOf(b.fromDate) <= day && (!b.toDate || dayOf(b.toDate) >= day))
-    .sort((a, b) => b.fromDate.getTime() - a.fromDate.getTime() || byCode(b.id, a.id));
-  return cover[0]?.unitId ?? emp.unitId ?? null;
+/** มุมมองของผู้ดูหนึ่งคน: เฉพาะกะในสาขาที่ดูแล · คนแทนที่ผู้ดูเห็นได้ (H1.1 R8) · ไม่มีอะไรในขอบเขตเลย ⇒ null (= hintNo) */
+function viewOf(scope: HrScope, emp: LeaveEmp, raw: RawItem[]): DutyHintItem[] | null {
+  const visible = raw.filter((i) => coversUnit(scope, i.scopeUnit));
+  if (visible.length === 0 && !coversUnit(scope, emp.unitId)) return null;
+  return visible.map((i) => ({
+    entryId: i.entryId,
+    date: i.date,
+    unitId: i.unitId,
+    startMin: i.startMin,
+    endMin: i.endMin,
+    crossesMidnight: i.crossesMidnight,
+    part: i.part,
+    others: i.others,
+    candidates: i.candidates
+      .filter((c) => coversUnit(scope, c.dayUnit) || coversUnit(scope, c.home))
+      .map((c) => ({ employeeId: c.employeeId, name: c.name, weekMin: c.weekMin, weekMinAfter: c.weekMinAfter })),
+  }));
 }
 
 const LEAVE_SELECT = {
@@ -260,16 +347,30 @@ const LEAVE_SELECT = {
   hours: true,
   employee: { select: { unitId: true, linkedUserId: true } },
 } as const satisfies Prisma.HrLeaveSelect;
+const asHintLeave = (l: Prisma.HrLeaveGetPayload<{ select: typeof LEAVE_SELECT }>): HintLeave => ({ ...l, hours: l.hours === null ? null : String(l.hours) });
+
+/** คำใบ้ของหลายใบ (หน้า /hr/leave) — อ่านครั้งเดียว · ทุก id ได้ผล (ไม่พบ/ไม่มีสิทธิ์ = hintNo) */
+export async function leaveDutyHintsMany(ctx: Ctx, viewer: DutyHintViewer | null, input: { leaveIds: string[] }): Promise<Map<string, DutyHintResult>> {
+  const no: DutyHintResult = { ok: false, reason: DUTY_HINT_TEXT.hintNo };
+  const ids = [...new Set((Array.isArray(input?.leaveIds) ? input.leaveIds : []).filter((x): x is string => typeof x === "string" && x !== ""))].slice(0, CAP.ids);
+  const res = new Map<string, DutyHintResult>(ids.map((id) => [id, no]));
+  if (!ctx?.tenantId || !ctx?.systemId || ids.length === 0) return res;
+  const db = tenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId });
+  const found = await db.hrLeave.findMany({ where: { id: { in: ids }, tenantId: ctx.tenantId, systemId: ctx.systemId }, orderBy: { id: "asc" }, select: LEAVE_SELECT });
+  const mine = found.map(asHintLeave).filter((l) => hintScopeOf(viewer, l.employee) !== null);
+  if (mine.length === 0) return res;
+  const batch = await hintBatch(db, ctx, mine);
+  for (const l of mine) {
+    const items = viewOf(hintScopeOf(viewer, l.employee)!, l.employee, batch.items.get(l.id) ?? []);
+    if (items) res.set(l.id, batch.incomplete ? { ok: true, items, incomplete: true } : { ok: true, items });
+  }
+  return res;
+}
 
 export async function leaveDutyHints(ctx: Ctx, viewer: DutyHintViewer | null, input: { leaveId: string }): Promise<DutyHintResult> {
-  const no = { ok: false as const, reason: DUTY_HINT_TEXT.hintNo };
-  const leaveId = typeof input?.leaveId === "string" ? input.leaveId : "";
-  if (!ctx?.tenantId || !ctx?.systemId || !leaveId) return no;
-  const db = tenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId });
-  const leave = await db.hrLeave.findFirst({ where: { id: leaveId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: LEAVE_SELECT });
-  if (!leave || !canSeeHint(viewer, leave.employee)) return no;
-  const items = await hintItems(db, ctx, { ...leave, hours: leave.hours === null ? null : String(leave.hours) });
-  return { ok: true, items };
+  const id = typeof input?.leaveId === "string" ? input.leaveId : "";
+  const r = await leaveDutyHintsMany(ctx, viewer, { leaveIds: [id] });
+  return r.get(id) ?? { ok: false, reason: DUTY_HINT_TEXT.hintNo };
 }
 
 // ═══════════════════════════ แจ้งครั้งเดียวต่อใบลาที่อนุมัติ (R10) ═══════════════════════════
@@ -280,29 +381,42 @@ export async function leaveDutyNotify(input: { tenantId: string; systemId: strin
   const { tenantId, systemId, leaveId } = input ?? ({} as typeof input);
   if (typeof tenantId !== "string" || !tenantId || typeof systemId !== "string" || !systemId || typeof leaveId !== "string" || !leaveId) return none;
   const ctx = { tenantId, systemId };
-  return tenantDb(ctx).$transaction(async (tx) => {
+  const db = tenantDb(ctx);
+  // นอกล็อก: อ่าน + คำนวณ (คำใบ้ = ข้อมูลประกอบ ไม่ใช่เงิน · ใต้ล็อกตรวจสถานะ/กันซ้ำอีกครั้งก่อนเขียน)
+  const row = await db.hrLeave.findFirst({ where: { id: leaveId, tenantId, systemId }, select: LEAVE_SELECT });
+  if (!row || row.status !== "APPROVED") return none;
+  if (await db.auditLog.findFirst({ where: { tenantId, action: DUTY_HINT_AUDIT, targetId: leaveId }, select: { id: true } })) return none;
+  const leave = asHintLeave(row);
+  const raw = (await hintBatch(db, ctx, [leave])).items.get(leave.id) ?? [];
+  const short = raw.filter((x) => x.others === 0);
+  if (short.length === 0) return none;
+  const members = await db.membership.findMany({
+    where: { tenantId, acceptedAt: { not: null } },
+    orderBy: { userId: "asc" },
+    select: { userId: true, role: true, unitAccess: true, permissions: true },
+    take: CAP.members,
+  });
+  const notes: { recipientUserId: string; n: number }[] = [];
+  for (const m of members) {
+    const scope = hintScopeOf({ role: m.role, unitAccess: m.unitAccess, permissions: (m.permissions ?? {}) as Record<string, unknown>, userId: m.userId }, leave.employee);
+    if (!scope) continue;
+    const n = short.filter((x) => coversUnit(scope, x.scopeUnit)).length;
+    if (n > 0) notes.push({ recipientUserId: m.userId, n });
+  }
+  // ใต้ล็อก: สั้น — ตรวจสถานะ + audit กันซ้ำ + เขียน
+  return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr-leave-hint:${leaveId}`}, 0))::text AS k`;
-    const leave = await tx.hrLeave.findFirst({ where: { id: leaveId, tenantId, systemId }, select: LEAVE_SELECT });
-    if (!leave || leave.status !== "APPROVED") return none;
-    const done = await tx.auditLog.findFirst({ where: { tenantId, action: DUTY_HINT_AUDIT, targetId: leaveId }, select: { id: true } });
-    if (done) return none;
-    const items = await hintItems(tx, ctx, { ...leave, hours: leave.hours === null ? null : String(leave.hours) });
-    const uncovered = items.filter((x) => x.others === 0).length;
-    if (uncovered === 0) return none;
-    const members = await tx.membership.findMany({
-      where: { tenantId, acceptedAt: { not: null } },
-      select: { userId: true, role: true, unitAccess: true, permissions: true },
-      orderBy: { userId: "asc" },
-      take: 2000,
-    });
-    const recipients = members
-      .filter((m) => canSeeHint({ role: m.role, unitAccess: m.unitAccess, permissions: (m.permissions ?? {}) as Record<string, unknown>, userId: m.userId }, leave.employee))
-      .map((m) => m.userId);
-    const body = DUTY_HINT_TEXT.notifyBody.replace("{n}", String(uncovered));
-    if (recipients.length) await tx.appNotification.createMany({ data: recipients.map((recipientUserId) => ({ tenantId, recipientUserId, title: DUTY_HINT_TEXT.notifyTitle, body })) });
+    const still = await tx.hrLeave.findFirst({ where: { id: leaveId, tenantId, systemId, status: "APPROVED" }, select: { id: true } });
+    if (!still) return none;
+    if (await tx.auditLog.findFirst({ where: { tenantId, action: DUTY_HINT_AUDIT, targetId: leaveId }, select: { id: true } })) return none;
+    if (notes.length) {
+      await tx.appNotification.createMany({
+        data: notes.map((x) => ({ tenantId, recipientUserId: x.recipientUserId, title: DUTY_HINT_TEXT.notifyTitle, body: DUTY_HINT_TEXT.notifyBody.replace("{n}", String(x.n)) })),
+      });
+    }
     await tx.auditLog.createMany({
-      data: [{ tenantId, actorType: "SYSTEM", actorId: null, action: DUTY_HINT_AUDIT, targetType: "HrLeave", targetId: leaveId, after: { leaveId, uncovered, recipients: recipients.length } }],
+      data: [{ tenantId, actorType: "SYSTEM", actorId: null, action: DUTY_HINT_AUDIT, targetType: "HrLeave", targetId: leaveId, after: { leaveId, uncovered: short.length, recipients: notes.length } }],
     });
-    return { notified: recipients.length, uncovered };
+    return { notified: notes.length, uncovered: short.length };
   });
 }
