@@ -96,7 +96,7 @@ const PICKUP_ERRORS = ["INVALID_INPUT", "NOT_FOUND", "FORBIDDEN", "UNIT_NOT_TRIP
 const T0X_FILES = ["products.ts", "products-core.ts", "product-actions.ts", "departures.ts", "departures-core.ts", "departure-actions.ts", "resources.ts", "jobs.ts", "pricing.ts", "pricing-core.ts",
   "prices.ts", "pricing-actions.ts", "promo.ts", "snapshot.ts", "money-math.ts", "sellable-impl.ts", "json-schemas.ts"].map((f) => MOD + f);
 const FROZEN_DIRS = ["src/lib/core/settings", "src/components/settings"];
-const BASE_COMMIT = "fc9e373ec"; // session/trips ตอนเขียนใบสั่ง (T0.1 T0.2 T0.3 T0.5 merge แล้ว)
+const BASE_COMMIT = "2fd4c1509"; // ORACLE-EDIT (ผู้คุม 12 พ.ย.): ฐานเลื่อนเป็น session/trips หลังรับ T0.4 (เดิม fc9e373ec นับบรรทัดที่ T0.4 ลบว่า T1.1 ลบ) · session/trips ตอนเขียนใบสั่ง (T0.1 T0.2 T0.3 T0.5 merge แล้ว)
 const TESTIDS_FIXED = ["trips-nav", ...PAGE_KEYS.map((k) => `trips-nav-${k}`), "trips-not-yet", "trips-forbidden", "trips-loading", "trips-error",
   "trips-product-list", "trips-product-search", "trips-product-filter-all", "trips-product-filter-tour", "trips-product-filter-liveaboard", "trips-product-filter-archived", "trips-product-add", "trips-product-empty",
   "trips-product-editor", "trips-product-status", "trips-product-preview", "trips-product-save", "trips-product-publish", "trips-product-unpublish", "trips-product-archive", "trips-product-restore",
