@@ -2,6 +2,7 @@
 
 > ร่าง 1 · 11–12 พ.ย. 2569 · ผู้วางแผน · **📝 วางแผน — ยังไม่แตะโค้ด · ยังไม่มีทรี/เลน/ฐาน QC**
 > ยึด: แบบ `ledger/DESIGN-TRIPS-AGENCY.md` (TA) §1–§13 + ตารางมติเจ้าของรอบ 1–5 (Q1–Q19 ปิดครบ) · ภาพ `ledger/design-trips/` 01–15 · สัญญาชิ้นกลาง `ledger/SVC-CORE-CONTRACT.md` · กฎหมาย `ledger/LEGAL-TRIPS-TH.md` (LG)
+> กฎหมาย/ภาษี: ยึด TA §13 + **§13.1 (รอบ 2)** · skill `shark-thai-law` (/root/.claude/skills/shark-thai-law) · ข้อสอบจากกฎ = LG §11 (52 ข้อ)
 > กติกาเหล็กและวิธีทำต่อใบ = `ledger/SVC-RUN.md` §1/§2 ใช้ทั้งหมด (ห้าม push main · ฐาน QC ผ่านสคริปต์เลน · ข้อสอบเขียนก่อนสร้าง · ORACLE-EDIT เฉพาะผู้คุม · ภาพคู่ MOCKUP|RENDER ก่อน merge)
 > ตัวนับ: `📊 TRIPS · NN% (x/72)` · ใบ C1.2/C1.3 (ตัวต่อช่องทางเจ้าจริง) อยู่นอกตัวนับ
 
