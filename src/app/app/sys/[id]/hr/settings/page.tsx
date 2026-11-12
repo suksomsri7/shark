@@ -22,6 +22,8 @@ import {
   saveClockPolicyAction, // HR H2.4 ◂
   saveClockSiteAction, // HR H2.4 ◂
 } from "@/lib/modules/hr/settings-actions";
+import { applyHolidayPresetAction } from "@/lib/modules/hr/settings-actions"; // HR H2.8 ◂
+import { LEAVE_TEXT } from "@/lib/modules/hr/leave-rules"; // HR H2.8 ▸ presetNone ◂
 import { ATTENDANCE_SETTINGS_TEXT, canManageClockSettings, CLOCK_SETTINGS_TEXT, getAttendancePolicy, getClockPolicy, listClockSites } from "@/lib/modules/hr/clock-settings"; // HR H2.4 ▸ R10 + Q1 ◂ · HR H2.5 ▸ R12 ◂
 import { saveAttendancePolicyAction } from "@/lib/modules/hr/attendance-actions"; // HR H2.5 ▸ R12 ◂
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -41,6 +43,7 @@ const MSG_TEXTS: Record<string, string> = {
   ...Object.fromEntries(Object.entries(SETTINGS_TEXT).map(([k, v]) => [`s.${k}`, v])),
   ...Object.fromEntries(Object.entries(TIME_RULE_TEXT).map(([k, v]) => [`t.${k}`, v])),
   "u.notFound": HR_UNIT_NOT_FOUND_TEXT,
+  "l.presetNone": LEAVE_TEXT.presetNone, // HR H2.8 ◂
   ...Object.fromEntries(Object.entries(CLOCK_SETTINGS_TEXT).map(([k, v]) => [`c.${k}`, v])), // HR H2.4 ◂
   ...Object.fromEntries(Object.entries(ATTENDANCE_SETTINGS_TEXT).map(([k, v]) => [`a.${k}`, v])), // HR H2.5 ◂
 };
@@ -77,7 +80,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const where = (u: string | null) => (u ? (unitName.get(u) ?? t("unit")) : t("shopWide"));
   const path = `/app/sys/${id}/hr/settings`;
   const code = typeof sp.msg === "string" ? sp.msg : "";
-  const msg = code === "ok" ? t("saved") : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""; // HR H1.2 R13 ▸ allowlist ◂
+  const msg = code === "ok" ? t("saved") : code === "p.ok" ? t("holidays.presetDone") /* HR H2.8 ◂ */ : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""; // HR H1.2 R13 ▸ allowlist ◂
 
   // ผลของ action → กลับหน้าเดิมพร้อมรหัสผล (R13.3) · closure จับเฉพาะค่าพื้นฐาน (สตริง/ตัวเลข)
   const onCreateShift = async (fd: FormData) => {
@@ -104,6 +107,13 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     "use server";
     back(path, year, await deleteHolidayAction(fd));
   };
+  // HR H2.8 ▸ ใส่ชุดวันหยุดราชการ — ผลเป็นรหัสสั้น (p.ok · รหัสข้อความคงที่) ไม่ส่งตัวเลข/ข้อความอิสระทาง URL
+  const onApplyPreset = async (fd: FormData) => {
+    "use server";
+    const r = await applyHolidayPresetAction(fd);
+    redirect(`${path}?year=${year}&msg=${encodeURIComponent(r.ok ? "p.ok" : (MSG_CODE_OF.get(r.reason) ?? "s.failed"))}`);
+  };
+  // ◂ HR H2.8
   // HR H2.4 ▸ ◂
   const onSaveClockPolicy = async (fd: FormData) => {
     "use server";
@@ -214,6 +224,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
                 <span className="text-sm">
                   {p.name} · {t(`categories.${p.category}`)} · {p.quotaDays === null ? t("policies.noQuota") : `${p.quotaDays.toString()}`} ·{" "}
                   {p.paid ? t("policies.paid") : t("policies.unpaid")} · {where(p.unitId)}
+                  {/* HR H2.7 ▸ กติกาที่ตั้งไว้ ◂ */}
+                  {p.minServiceDays > 0 ? ` · ${t("policies.minServiceDays")} ${p.minServiceDays}` : ""}
+                  {Number(p.carryMaxDays) > 0 ? ` · ${t("policies.carryMaxDays")} ${p.carryMaxDays.toString()}${p.carryExpiresMonthDay ? ` (${p.carryExpiresMonthDay})` : ""}` : ""}
+                  {p.attachmentAfterDays ? ` · ${t("policies.attachmentAfterDays")} ${p.attachmentAfterDays}` : ""}
+                  {p.allowHalfDay ? "" : ` · ${t("policies.noHalfDay")}`}
                 </span>
                 {(all || p.unitId) && (
                   <form action={onArchivePolicy}>
@@ -259,6 +274,37 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               <option value="false">{t("policies.unpaid")}</option>
             </select>
           </label>
+          {/* HR H2.7 ▸ กติกาของประเภทการลา (ไม่มีสวิตช์ลาเป็นชั่วโมง — มติผู้คุม Q1/Q6 · D-H27-hourly) */}
+          <label className="flex flex-col gap-1 text-xs">
+            {t("policies.minServiceDays")}
+            <input name="minServiceDays" type="number" min={0} max={3650} defaultValue={0} className="input min-h-[44px] w-24" data-testid="hr-settings-policy-min-service" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            {t("policies.carryMaxDays")}
+            <input name="carryMaxDays" type="number" min={0} max={365} step={0.5} defaultValue={0} className="input min-h-[44px] w-24" data-testid="hr-settings-policy-carry-max" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            {t("policies.carryExpires")}
+            <input name="carryExpiresMonthDay" placeholder="03-31" pattern="\d{2}-\d{2}" maxLength={5} className="input min-h-[44px] w-24" data-testid="hr-settings-policy-carry-expires" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            {t("policies.attachmentAfterDays")}
+            <input name="attachmentAfterDays" type="number" min={1} max={365} className="input min-h-[44px] w-24" data-testid="hr-settings-policy-attach-after" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            {t("policies.yearStartMonth")}
+            <input name="yearStartMonth" type="number" min={1} max={12} defaultValue={1} className="input min-h-[44px] w-20" data-testid="hr-settings-policy-year-start" />
+          </label>
+          <label className="flex min-h-[44px] items-center gap-2 text-xs">
+            <input name="allowHalfDay" type="checkbox" value="true" defaultChecked data-testid="hr-settings-policy-half-day" />
+            <input type="hidden" name="allowHalfDay" value="false" />
+            {t("policies.allowHalfDay")}
+          </label>
+          <label className="flex min-h-[44px] items-center gap-2 text-xs">
+            <input name="firstYearProrata" type="checkbox" data-testid="hr-settings-policy-prorata" />
+            {t("policies.firstYearProrata")}
+          </label>
+          {/* ◂ HR H2.7 */}
           <button type="submit" className={btn} data-testid="hr-settings-policy-add">
             {t("policies.add")}
           </button>
@@ -275,6 +321,20 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
             {t("holidays.year")}
           </button>
         </form>
+        {/* HR H2.8 ▸ ชุดวันหยุดราชการ (ผู้ดูแลทุกสาขา · เฉพาะวันที่ตายตัว 15 วัน — Q14) + บรรทัดบอกว่าวันตามจันทรคติ/ชดเชยต้องเพิ่มเอง */}
+        {all && (
+          <form action={onApplyPreset} className="flex flex-wrap items-end gap-2" data-testid="hr-holiday-preset-form">
+            <input type="hidden" name="systemId" value={id} />
+            <input type="hidden" name="year" value={year} />
+            <button type="submit" className={btn} data-testid="hr-holiday-preset">
+              {t("holidays.presetApply", { year })}
+            </button>
+          </form>
+        )}
+        <p role="note" className="text-xs text-[color:var(--color-muted)]" data-testid="hr-holiday-preset-note">
+          {t("holidays.presetNote")}
+        </p>
+        {/* ◂ HR H2.8 */}
         {holidays.length === 0 ? (
           <p className="text-sm text-[color:var(--color-muted)]">{t("holidays.empty")}</p>
         ) : (

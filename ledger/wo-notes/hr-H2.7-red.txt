@@ -1,0 +1,86 @@
+[env] qc-hr-h2.7 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.7] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️  QC_FORCE=1 — running although: H2.7 not built: src/lib/modules/hr/leave.ts absent (expect RED for the right reason, no crash)
+[qc-hr-h2.7] modules: leave=∅ src/lib/modules/hr/leave.ts · leave-rules=∅ src/lib/modules/hr/leave-rules.ts · holidays=∅ src/lib/modules/hr/holidays.ts
+  ❌ [H2.7-S1.1] holiday JSON shape — expected well-formed | actual 2026head,2026days,2026sorted,2027head,2027days,2027sorted
+  ❌ [H2.7-S1.3] leave-rules.ts pure — expected pure | actual exists
+  ❌ [H2.7-S1.4] lock order hr-leave → emp → roster — expected hr-leave → emp → roster | actual decide,apply,cancel,request,empKey
+  ❌ [H2.7-S1.5] ledger + event in tx · append-only · bodies in service.ts — expected in tx · append-only · bodies | actual ledgerInTx,eventInTx
+  ❌ [H2.7-S1.6] actions · testids · inventory — expected actions · testids · inventory | actual actions,preset,testids,inventory
+  ✅ [H2.7-S11.2] frozen files unchanged (n/a in base)
+  ✅ [H2.7-S11.3] hot files = base + hunks (n/a in base)
+  ✅ [H2.7-S11.1] payroll-rules.ts sha
+  ❌ [H2.7-S2.1] leave year vectors — expected 8 vectors | actual ∅leaveYearOf≠2031 | ∅leaveYearOf≠2032 | ∅leaveYearOf≠2030
+  ❌ [H2.7-S2.2] countLeaveDays vectors — expected 11 vectors | actual ∅countLeaveDays≠5.0 | ∅countLeaveDays≠4.0 | ∅countLeaveDays≠3.0
+  ❌ [H2.7-S2.3] hourlyLeaveDays vectors — expected 11 vectors | actual ∅hourlyLeaveDays≠0.1 | ∅hourlyLeaveDays≠0.2 | ∅hourlyLeaveDays≠0.3
+  ❌ [H2.7-S2.4] grantDays vectors — expected 11 vectors | actual ∅grantDays≠{"eligible":true,"days":"30.0","effectiveDate":"20 | ∅grantDays≠{"eligible":true,"days":"6.0","effectiveDate":"203 | ∅grantDays≠{"eligible":true,"days":"3.0","effectiveDate":"203
+  ❌ [H2.7-S2.5] carry/expire vectors — expected 7 vectors | actual ∅carryDays≠4.5 | ∅carryDays≠6.0 | ∅carryDays≠0.0
+  ❌ [H2.7-S2.6] LEAVE_TEXT = brief §3 — expected 20 texts | actual policyNf,halfNotAllowed,hoursNotAllowed,hoursBad,halfAndHours,crossYear,outOfEmployment,noStart,notEligible,overlap,zeroDays,balance,fileBad,attachNotYours,attachClosed,balanceDecide,linkNo,detailNo,balNo,presetNone
+  ❌ [H2.7-S1.2] JSON ⊇ repo list · extras sourced · pending — expected repo dates · extras sourced · pending | actual 2026fixed,2026pending,2027fixed,2027pending
+(node:2868254) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ❌ [H2.7-S3.1] from > to ⇒ range — expected range · 0 rows | actual text,rows ok
+  ❌ [H2.7-S3.2] 4-year range ⇒ tooLong — expected tooLong · 0 rows | actual text,rows ok
+  ❌ [H2.7-S3.3] overlap rules (AM+PM ok) — expected overlap rules | actual overlap,am2,full,rows ok ok ok ok ok ok
+  ❌ [H2.7-S3.4] bad policy ×4 ⇒ policyNf — expected policyNf ×4 | actual texts,rows ok ok ok ok
+  ❌ [H2.7-S3.5] half / hours refusals — expected 6 texts · 0 rows | actual noHalf,noHours,h8,h2days,both,halfRange,rows
+  ❌ [H2.7-S3.6] crossYear ×2 · Apr year 2.0 — expected crossYear ×2 · 2.0 | actual cal,apr,inside ok ok ok
+  ❌ [H2.7-S3.7] employment · eligibility — expected texts · ok | actual out,service,noStart ok ok ok ok
+  ❌ [H2.7-S3.8] holiday-only range ⇒ zeroDays — expected zeroDays · 0 rows | actual text,rows ok
+  ❌ [H2.7-S3.9] pending reserves · unlimited — expected ok · balance · 20.0 | actual second,unlimited ok ok ok
+  ❌ [H2.7-S3.10] legacy w/o policy ⇒ 3.0 · no ledger — expected 3.0 · no ledger | actual days ok
+  ❌ [H2.7-S3.11] legacy ⇒ policy by category — expected กิจ · 1.0 | actual policy,days ok
+  ❌ [H2.7-S4.1] rostered weekend ⇒ 2.0 — expected 2.0 | actual ok null
+  ❌ [H2.7-S4.2] template day off ⇒ 1.0 — expected 1.0 | actual ok null
+  ❌ [H2.7-S4.3] holidays out ⇒ 2.0 — expected 2.0 | actual ok null
+  ❌ [H2.7-S4.4] AM 0.5 · 3 h 0.3 — expected 0.5 AM · 0.3/3.0 | actual half,hourly null null
+  ❌ [H2.7-S4.5] borrowed into u2 holiday ⇒ zeroDays — expected zeroDays | actual ok
+  ❌ [H2.7-S5.1] approve ⇒ GRANT once + USE use:<id> — expected GRANT 30 · USE −2 | actual grant,use g=0.0 u=0.0
+  ❌ [H2.7-S5.2] leaveBalances keys + vectors — expected vectors | actual keys,aSick,bPers,unlimited [null,null]
+  ❌ [H2.7-S5.3] revoke ⇒ one use-revert · balance back — expected 1 revert · 30.0 | actual revert,back "สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่" rv=0
+  ❌ [H2.7-S5.4] reject / cancel PENDING ⇒ no ledger — expected no ledger | actual grant ok
+  ❌ [H2.7-S5.5] short at decide ⇒ balanceDecide · PENDING — expected balanceDecide | actual text,status ok ok
+  ❌ [H2.7-S5.6] owner-auto ⇒ USE + event — expected APPROVED · USE · event | actual use,ev ok u=0
+  ❌ [H2.7-S5.7] chain approve · reject · short — expected chain | actual approve,short APPROVED/approval-engine true/true/true ref=0
+  ❌ [H2.7-S6.1] CARRY 5.0 · cap 3.0 — expected 5.0 · 3.0 | actual v,w 0.0 0.0
+  ❌ [H2.7-S6.2] EXPIRE · 6.0 — expected expire · 6.0 | actual v,w,bal x0=0 v=0.0 w=0.0 undefined
+  ❌ [H2.7-S6.3] job re-run ×3 ⇒ ledger unchanged — expected unchanged | actual ok 2:-4.0 → 2:-4.0
+  ❌ [H2.7-S6.4] job writes nothing in sys2 — expected sys2 0 | actual sys2=0
+  ❌ [H2.7-S7.1] attachLeaveFile refusals + ok — expected texts · ok | actual notYours,pub,other,txt,ok,reused,closed
+  ❌ [H2.7-S7.2] attachment link matrix · viewer-bound — expected 5 links · 7 linkNo · bound | actual owner:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" mgrU1:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" mgrAll:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" read:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" self:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" dec:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" mgrU2:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" pay:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" key:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" member:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" B:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)" other:"∅leaveAttachmentLink (∅ src/lib/modules/hr/leave.ts)"
+  ❌ [H2.7-S7.3] leaveDetail matrix · keys · reason — expected 6 row viewers (5 reason) · 6 detailNo | actual owner:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" mgrU1:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" mgrAll:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" read:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" self:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" dec:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" mgrU2:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" pay:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" key:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" member:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" B:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" other:"∅leaveDetail (∅ src/lib/modules/hr/leave.ts)"
+  ❌ [H2.7-S7.4] balances matrix · my = own — expected 5 ok · H1.1 · balNo · my = own | actual owner:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" mgrU1:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" mgrAll:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" read:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" dec:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" mgrU2:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" pay:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" key:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" member:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" B:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" other:"∅leaveBalances (∅ src/lib/modules/hr/leave.ts)" my:"∅myLeaveBalances (∅ src/lib/modules/hr/leave.ts)" undefined
+  ❌ [H2.7-S7.5] needsAttachment flag — expected flag · approved | actual "∅leaveDetail (∅ src/lib/modules/hr/leave.ts)" ok
+  ❌ [H2.7-S7.6] payload keys — expected days,employeeId,fromDate,leaveId,previousStatus,status,systemId,toDate | actual 0
+  ❌ [H2.7-S8.1] consumer = withAutomation — expected withAutomation | actual false undefined
+  ❌ [H2.7-S8.2] one label · WEBHOOK_EVENTS once — expected เมื่อตัดสินใบลา (HR) | actual false
+  ❌ [H2.7-S8.3] replay ×4 ⇒ no change — expected 8 ok · unchanged | actual 0 events
+  ❌ [H2.7-S8.4] re-emit same key ⇒ 1 row — expected 1 → 1 | actual 0 → 1
+  ❌ [H2.7-S8.5] one event per decision — expected 1 per decision | actual a,b
+  ❌ [H2.7-S9.1] 5 approvals (pool-safe) ⇒ 1 ok · 1 USE · 1 event — expected 1 · 1 · 1 | actual use,ev ok=1 สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่
+  ❌ [H2.7-S9.2] approve ∥ revoke ⇒ REJECTED · 1 revert — expected REJECTED · 1 revert | actual revert 0/0.0
+  ❌ [H2.7-S9.3] 5 requests on one balance ⇒ queued · 1 row — expected queued · 1 | actual waited,one made=5
+  ❌ [H2.7-S9.4] leave decide ∥ swap apply on a held roster key — expected queued · consistent | actual waited,held APPROVED/PENDING PENDING R
+  ❌ [H2.7-S10.1] holidayPreset CE = BE · 2028 null — expected CE = BE · null | actual "∅holidayPreset (∅ src/lib/modules/hr/holidays.ts)" ∅
+  ❌ [H2.7-S10.2] preset: missing only · idempotent — expected missing only · idempotent | actual add,rows,again undefined 0/-2 undefined
+  ❌ [H2.7-S10.3] preset permission matrix · presetNone — expected matrix | actual mgrU1,member,pay,none,mgrAll
+  ❌ [H2.7-S10.4] dayClassOf / holidaysBetween — expected unit row wins · shopOpen | actual unitWins,shopWide,u2,workday,between
+  ✅ [H2.7-S11.4] half-day blocks whole day
+  ✅ [H2.7-S11.5] self-decision refused (hotfix text)
+  ❌ [H2.7-X1.1] 5 identical parallel requests ⇒ 1 row — expected 1 row | actual 5 rows
+  ❌ [H2.7-X2.1] other tenant ⇒ refused · unchanged — expected refused · unchanged | actual apply,detail "ไม่พบใบลา หรืออยู่นอกร้านนี้" "∅applyLeaveDecision (∅ src/lib/modules/hr/leave.ts)"
+  ❌ [H2.7-S7.7] every refusal = fixed Thai text — expected fixed Thai texts | actual never seen 5
+  ✅ [H2.7-X12.1] fitness + fitness-hr ± env
+RESIDUE none (tenants=2 users=17)
+  ✅ [H2.7-Z1] residue none
+BASE-EXPECTATION 68/68 as registered (RED-by-design 61 · GREEN controls 7)
+
+===== qc-hr-h2.7 ===== passed 7/68 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.7","total":68,"passed":7,"failed":["H2.7-S1.1","H2.7-S1.3","H2.7-S1.4","H2.7-S1.5","H2.7-S1.6","H2.7-S2.1","H2.7-S2.2","H2.7-S2.3","H2.7-S2.4","H2.7-S2.5","H2.7-S2.6","H2.7-S1.2","H2.7-S3.1","H2.7-S3.2","H2.7-S3.3","H2.7-S3.4","H2.7-S3.5","H2.7-S3.6","H2.7-S3.7","H2.7-S3.8","H2.7-S3.9","H2.7-S3.10","H2.7-S3.11","H2.7-S4.1","H2.7-S4.2","H2.7-S4.3","H2.7-S4.4","H2.7-S4.5","H2.7-S5.1","H2.7-S5.2","H2.7-S5.3","H2.7-S5.4","H2.7-S5.5","H2.7-S5.6","H2.7-S5.7","H2.7-S6.1","H2.7-S6.2","H2.7-S6.3","H2.7-S6.4","H2.7-S7.1","H2.7-S7.2","H2.7-S7.3","H2.7-S7.4","H2.7-S7.5","H2.7-S7.6","H2.7-S8.1","H2.7-S8.2","H2.7-S8.3","H2.7-S8.4","H2.7-S8.5","H2.7-S9.1","H2.7-S9.2","H2.7-S9.3","H2.7-S9.4","H2.7-S10.1","H2.7-S10.2","H2.7-S10.3","H2.7-S10.4","H2.7-X1.1","H2.7-X2.1","H2.7-S7.7"],"findings":[{"id":"H2.7-S1.1","sev":"MAJOR"},{"id":"H2.7-S1.3","sev":"MAJOR"},{"id":"H2.7-S1.4","sev":"CRITICAL"},{"id":"H2.7-S1.5","sev":"CRITICAL"},{"id":"H2.7-S1.6","sev":"MAJOR"},{"id":"H2.7-S2.1","sev":"MAJOR"},{"id":"H2.7-S2.2","sev":"CRITICAL"},{"id":"H2.7-S2.3","sev":"MAJOR"},{"id":"H2.7-S2.4","sev":"CRITICAL"},{"id":"H2.7-S2.5","sev":"MAJOR"},{"id":"H2.7-S2.6","sev":"MAJOR"},{"id":"H2.7-S1.2","sev":"CRITICAL"},{"id":"H2.7-S3.1","sev":"CRITICAL"},{"id":"H2.7-S3.2","sev":"CRITICAL"},{"id":"H2.7-S3.3","sev":"CRITICAL"},{"id":"H2.7-S3.4","sev":"MAJOR"},{"id":"H2.7-S3.5","sev":"MAJOR"},{"id":"H2.7-S3.6","sev":"MAJOR"},{"id":"H2.7-S3.7","sev":"MAJOR"},{"id":"H2.7-S3.8","sev":"MAJOR"},{"id":"H2.7-S3.9","sev":"CRITICAL"},{"id":"H2.7-S3.10","sev":"MAJOR"},{"id":"H2.7-S3.11","sev":"MAJOR"},{"id":"H2.7-S4.1","sev":"CRITICAL"},{"id":"H2.7-S4.2","sev":"MAJOR"},{"id":"H2.7-S4.3","sev":"CRITICAL"},{"id":"H2.7-S4.4","sev":"MAJOR"},{"id":"H2.7-S4.5","sev":"MAJOR"},{"id":"H2.7-S5.1","sev":"CRITICAL"},{"id":"H2.7-S5.2","sev":"CRITICAL"},{"id":"H2.7-S5.3","sev":"CRITICAL"},{"id":"H2.7-S5.4","sev":"MAJOR"},{"id":"H2.7-S5.5","sev":"CRITICAL"},{"id":"H2.7-S5.6","sev":"MAJOR"},{"id":"H2.7-S5.7","sev":"CRITICAL"},{"id":"H2.7-S6.1","sev":"CRITICAL"},{"id":"H2.7-S6.2","sev":"CRITICAL"},{"id":"H2.7-S6.3","sev":"CRITICAL"},{"id":"H2.7-S6.4","sev":"MAJOR"},{"id":"H2.7-S7.1","sev":"CRITICAL"},{"id":"H2.7-S7.2","sev":"CRITICAL"},{"id":"H2.7-S7.3","sev":"CRITICAL"},{"id":"H2.7-S7.4","sev":"CRITICAL"},{"id":"H2.7-S7.5","sev":"MAJOR"},{"id":"H2.7-S7.6","sev":"CRITICAL"},{"id":"H2.7-S8.1","sev":"CRITICAL"},{"id":"H2.7-S8.2","sev":"MAJOR"},{"id":"H2.7-S8.3","sev":"CRITICAL"},{"id":"H2.7-S8.4","sev":"MAJOR"},{"id":"H2.7-S8.5","sev":"CRITICAL"},{"id":"H2.7-S9.1","sev":"CRITICAL"},{"id":"H2.7-S9.2","sev":"CRITICAL"},{"id":"H2.7-S9.3","sev":"CRITICAL"},{"id":"H2.7-S9.4","sev":"CRITICAL"},{"id":"H2.7-S10.1","sev":"MAJOR"},{"id":"H2.7-S10.2","sev":"CRITICAL"},{"id":"H2.7-S10.3","sev":"MAJOR"},{"id":"H2.7-S10.4","sev":"CRITICAL"},{"id":"H2.7-X1.1","sev":"CRITICAL"},{"id":"H2.7-X2.1","sev":"CRITICAL"},{"id":"H2.7-S7.7","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":["H2.7 not built: src/lib/modules/hr/leave.ts absent"],"baseRed":61,"baseGreen":7,"offBase":[]}

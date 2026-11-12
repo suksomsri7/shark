@@ -73,6 +73,11 @@ export { rosterOnDay, rosterAt } from "./roster";
 export type { SwapItem, SwapSide, SwapShape, SwapStatus } from "./swap";
 export { applySwapDecision } from "./swap";
 // ◂ HR H2.3
+// HR H2.7 ▸ การลา — re-export ล้วน (ตรรกะอยู่ที่ `leave.ts`) · ผู้เรียก: approval-effects.ts (ผลของสายอนุมัติชนิด HrLeave) · cron/hourly (งานรายปี)
+//   applyLeaveDecision({ tenantId, systemId, leaveId, requestId, approved }) → { applied, code? } · runLeaveYearJob({ tenantId, systemId, asOf }) → { granted, carried, expired }
+export type { LeaveYearJobResult } from "./leave";
+export { applyLeaveDecision, runLeaveYearJob } from "./leave";
+// ◂ HR H2.7
 // POS P3.5 ▸ รอยต่อ HR ↔ POS ฉบับ C-8 v2 (มติ 5 · ledger/POS-CONTRACTS.md C-8) — re-export ล้วน (ตัวงานอยู่ที่ pos-seam.ts)
 //   onShiftToday = ใครเป็นพนักงาน · active · ลาวันนี้ · ตารางของวัน (unitId ยังไม่ใช้จนกว่า H1.1) · workedMinutesBetween = นาทีทำงานช่วงหนึ่ง ·
 //   clockSelf = ลงเวลาของตัวเอง (เขียนผ่าน clock() ของ HR เท่านั้น) · adjustmentStatuses = สถานะรายการปรับเงินที่ POS ส่งเข้างวด

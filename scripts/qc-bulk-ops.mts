@@ -53,7 +53,7 @@ try {
     const sHr = await sys.createSystem(t1, "HR", "พนักงาน"); const cHr = { tenantId: t1, systemId: sHr.id };
     const emp = await hr.createEmployee(cHr, { name: "สมชาย" });
     const lv: string[] = [];
-    for (let i = 0; i < 3; i++) { const l = await hr.requestLeave(cHr, { employeeId: emp.id, type: "SICK", fromDate: "2026-09-01", toDate: "2026-09-02", reason: `ป่วย${i}` }); lv.push(l.id); }
+    for (let i = 0; i < 3; i++) { const l = await hr.requestLeave(cHr, { employeeId: emp.id, type: "SICK", fromDate: `2026-09-${10 + i * 3}`, toDate: `2026-09-${11 + i * 3}`, reason: `ป่วย${i}` /* ORACLE-EDIT H2.7: ใบลาซ้อนช่วงของคนเดียวกันถูกปฏิเสธแล้ว — ใช้ช่วงไม่ซ้อน */ }); lv.push(l.id); }
     const bl = await hr.bulkDecideLeave(cHr, lv, "APPROVED", "own-1");
     chk("B-2.1", "bulkDecideLeave 3 ใบ → done=3 failed=0", bl.done === 3 && bl.failed.length === 0, "done3", `done${bl.done}/fail${bl.failed.length}`);
     chk("B-2.2", "ใบลาทั้ง 3 → APPROVED จริง", (await prisma.hrLeave.count({ where: { systemId: sHr.id, status: "APPROVED" } })) === 3, "3", String(await prisma.hrLeave.count({ where: { systemId: sHr.id, status: "APPROVED" } })));

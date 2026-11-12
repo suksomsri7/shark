@@ -1,0 +1,6 @@
+  ❌ [H2.7-S12.15] pre-expiry leave filed after expiry ⇒ normal balance only (full + half day) — expected 10.0 → 7.0 → 10.0 · half 9.5 → 10.0 · no EXPIRE corrections | actual l,h,noCarryBack 10.0→10.0→10.0 · 10.0→10.0 corr=4
+  ❌ [H2.7-S12.16] pending leave after the end date ⇒ refused at approval — expected outOfEmploymentDecide · PENDING · no USE | actual refused,pending,noUse ok ok
+  ❌ [H2.7-S12.17] job skips employees ended before the leave year — expected no 2031 rows · 2030 grant kept | actual none 2031=3
+  ❌ [H2.7-S12.18] quota change ∥ approval ⇒ approval waits for the policy row — expected waits · balanceDecide (4 > 3) · no USE · 3.0 | actual refused,noUse,q31 seen=1 ok q31=-4.0
+  ❌ [H2.7-S12.6] property: no op sequence makes a year negative — expected 0 negative years · Σ EXPIRE = carry − min(carry, pre-expiry approved filed ≤ expiry) | actual expire ops=63 none op37:2031 x=2 want=4 op38:2031 x=2 want=4 op39:2031 x=2 want=4 back="วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น" oct="วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น"
+===== qc-hr-h2.7 ===== passed 81/86 (QC_FORCE)

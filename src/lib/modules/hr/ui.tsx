@@ -36,6 +36,9 @@ import { evaluate } from "@/lib/core/rbac";
 // HR H1.1 ▸ R4/R8 ขอบเขตสาขาของผู้ดู (ทะเบียน · ลงเวลา · ใบลา · kiosk · หน้าภาพรวม) ◂
 import { hrScopeOf, isAllBranches, unitsForScope } from "./scope";
 import { canManageHrSettings } from "./settings"; // HR H1.2 ▸ ลิงก์หน้าตั้งค่า (เฉพาะผู้ตั้งค่าได้) ◂
+// HR H2.7 ▸ Q16: ช่องประเภทการลา/ครึ่งวัน + ยอดคงเหลือบนหน้าใบลาเดิม (หน้าเต็มตามภาพ 05 = H2.10/H2.11) ◂
+import { thaiDateKey } from "@/lib/ui/date"; // HR H2.7 ◂
+import { activeLeavePolicies, leaveBalances, leaveDetail, myLeaveBalances, type LeaveBalanceItem } from "./leave"; // HR H2.7 ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -147,6 +150,28 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
     listEmployees(ctx, 200, hrScopeOf(hrViewerOf(auth))), // HR H1.1 ▸ ตัวเลือก "ยื่นแทน" = เฉพาะสาขาของผู้ดู ◂
     leaveItemsForViewer(ctx, hrViewerOf(auth)),
   ]);
+  // HR H2.7 ▸ Q16: ประเภทการลาที่เปิดอยู่ (ชื่อ/หมวด) · ยอดของตัวเอง (employeeOfUser) · ใบรอ: จำนวนวัน + คงเหลือ (ผ่านด่านผู้อ่านของ leave.ts — ไม่มีเหตุผลการลา)
+  const viewer = hrViewerOf(auth);
+  const today = thaiDateKey(new Date());
+  const tl = await getTranslations("hr.leave");
+  const [policies, mine] = await Promise.all([activeLeavePolicies(ctx), myLeaveBalances(ctx, viewer, { at: today })]);
+  const myItems: LeaveBalanceItem[] = mine.ok ? mine.items : [];
+  const pendingMeta = new Map<string, string>();
+  for (const it of pending) {
+    const d = await leaveDetail(ctx, viewer, it.id);
+    if (!d.ok) continue;
+    const parts = [d.item.days ? tl("days", { n: d.item.days }) : "", d.item.policyName ?? ""];
+    if (d.item.policyId) {
+      const b = await leaveBalances(ctx, viewer, { employeeId: d.item.employeeId, at: d.item.fromDate });
+      const row = b.ok ? b.items.find((x) => x.policyId === d.item.policyId) : undefined;
+      if (row) parts.push(row.unlimited ? tl("unlimited") : `${tl("left", { n: row.balance })} (${tl("pendingPlus", { n: row.pending })})`);
+    }
+    if (d.item.needsAttachment && !d.item.hasAttachment) parts.push(tl("needsAttachment"));
+    pendingMeta.set(it.id, parts.filter(Boolean).join(" · "));
+  }
+  const anyHours = policies.some((p) => p.allowHours);
+  const attachNote = policies.some((p) => p.attachmentAfterDays !== null);
+  // ◂ HR H2.7
 
   return (
     <div className="flex flex-col gap-6">
@@ -160,7 +185,7 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
             items={pending.map((it) => ({
               id: it.id,
               label: `${it.employeeName} · ${LEAVE_TYPE_LABEL[it.type] ?? it.type}`,
-              meta: [dateRange(it.fromDate, it.toDate), it.reason].filter(Boolean).join(" · "),
+              meta: [dateRange(it.fromDate, it.toDate), pendingMeta.get(it.id) /* HR H2.7 ◂ */, it.reason].filter(Boolean).join(" · "),
             }))}
           />
         )}
@@ -191,6 +216,35 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
                 ))}
               </select>
             </label>
+            {/* HR H2.7 ▸ ประเภทการลา (ว่าง = ตามหมวด) · ครึ่งวัน · ชั่วโมง (เฉพาะเมื่อมีประเภทที่เปิด — ร้านยังเปิดเองไม่ได้) */}
+            {policies.length > 0 && (
+              <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                {tl("policy")}
+                <select name="policyId" className="input min-h-[44px]" defaultValue="" data-testid="hr-leave-policy">
+                  <option value="">{tl("policyAuto")}</option>
+                  {policies.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+              {tl("halfDay")}
+              <select name="halfDay" className="input min-h-[44px]" defaultValue="" data-testid="hr-leave-halfday">
+                <option value="">{tl("fullDay")}</option>
+                <option value="AM">{tl("am")}</option>
+                <option value="PM">{tl("pm")}</option>
+              </select>
+            </label>
+            {anyHours && (
+              <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                {tl("hours")}
+                <input name="hours" type="number" min={1} max={7} step={1} className="input min-h-[44px] w-24" data-testid="hr-leave-hours" />
+              </label>
+            )}
+            {/* ◂ HR H2.7 */}
             <label className={`flex flex-col gap-1 text-xs ${muted}`}>
               ตั้งแต่วันที่
               <input name="fromDate" type="date" required className="input" />
@@ -206,7 +260,45 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
             <SubmitButton variant="ghost">+ ยื่นใบลา</SubmitButton>
           </form>
         )}
+        {/* HR H2.7 ▸ Q10: ธงเอกสารประกอบ (ยังไม่มีช่องอัปโหลด — D-H27-attach) ◂ */}
+        {employees.length > 0 && attachNote && (
+          <p role="note" className={`text-xs ${muted}`} data-testid="hr-leave-attach">
+            {tl("attachNote")}
+          </p>
+        )}
       </Section>
+
+      {/* HR H2.7 ▸ Q16: ยอดวันลาของตัวเอง (สิทธิ์ · ใช้ไป · คงเหลือ +n รออนุมัติ) */}
+      {myItems.length > 0 && (
+        <Section title={tl("myBalance")}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="hr-leave-balance">
+              <thead>
+                <tr className={`text-left text-xs ${muted}`}>
+                  <th className="py-1 pr-2 font-normal">{tl("colType")}</th>
+                  <th className="py-1 pr-2 text-right font-normal">{tl("colEntitled")}</th>
+                  <th className="py-1 pr-2 text-right font-normal">{tl("colUsed")}</th>
+                  <th className="py-1 text-right font-normal">{tl("colLeft")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {myItems.map((b) => (
+                  <tr key={b.policyId} className="border-t" data-testid={`hr-leave-balance-${b.policyId}`}>
+                    <td className="py-2 pr-2">{b.name}</td>
+                    <td className="py-2 pr-2 text-right tabular-nums">{b.unlimited ? tl("unlimited") : (Number(b.granted) + Number(b.carried)).toFixed(1)}</td>
+                    <td className="py-2 pr-2 text-right tabular-nums">{b.used}</td>
+                    <td className="py-2 text-right tabular-nums">
+                      {b.unlimited ? "—" : b.available}
+                      {Number(b.pending) > 0 && <span className={`ml-1 text-xs ${muted}`}>{tl("pendingPlus", { n: b.pending })}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
+      {/* ◂ HR H2.7 */}
 
       {/* ประวัติการลา */}
       <Section title="ประวัติการลา">

@@ -66,6 +66,7 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // HR H2.5 ▸ การเตือนลงเวลา (hr/judge.ts — ยิงครั้งเดียวต่อกะ) ◂
   { value: "hr.attendance.late", label: "เมื่อพนักงานยังไม่ลงเวลาเข้างานหลังเริ่มกะ (HR)" },
   { value: "hr.attendance.absent", label: "เมื่อพนักงานไม่มาทำงานทั้งกะโดยไม่มีใบลา (HR)" },
+  { value: "hr.leave.decided", label: "เมื่อตัดสินใบลา (HR)" }, // HR H2.7 ▸ อนุมัติ · ไม่อนุมัติ/ถอน · ยกเลิกใบที่อนุมัติแล้ว — consumer no-op · spread เข้า WEBHOOK_EVENTS แล้ว ◂
   // ── ธีมกิจการ (B1 · ledger/BRANDING-RUN.md) ────────────────────────────────
   // ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับการบันทึกแถว
   // 🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ตัวนั้นล้างแคชธีมของอินสแตนซ์ที่ระบายคิว)
