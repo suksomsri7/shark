@@ -228,3 +228,45 @@ SELECT e."systemId", count(DISTINCT e.id) AS emps FROM "HrEmployee" e WHERE e.ac
 - `settings.updateLeavePolicy`: when the new quota is not null and quota/minServiceDays/firstYearProrata change, every (employee, leave year) of that policy that has USE rows but no GRANT row is projected with the GRANT the new settings would write (pure `grantDays`); any projected Σ < 0 ⇒ `SETTINGS_TEXT.quotaBelowUsed`, nothing written. Years that already have a GRANT row are unchanged by a quota edit (rows are append-only), so lowering a quota there is allowed.
 - S12.11 (new): K uses 4 under an unlimited policy · quota 3 refused (quota stays null) · 5 ok · 3 refused (no GRANT yet) · +1 day (lazy GRANT 5) · 3 ok · Σ2031 0.0. RED vs cb1ff1f10: `ledger/wo-notes/hr-H2.7-r2b-red.txt` (`passed 78/79`, a/c accepted).
 - Verify: oracle forced `79/79` · unforced `79/79` · RESIDUE none ×2 · qc-hr-h1.2 `73/73` · qc-hf-hr-privacy 194/194 · fitness-hr 9/9 (no env). Typecheck not re-run: no exported signature changed (one new `SETTINGS_TEXT` key, internal check only).
+
+
+## r3 (12 Nov)
+> Inputs: reviewer re-check of cb1ff1f10 (R2-M1 MAJOR, R2-M2 MEDIUM, job MINOR) + controller rulings. Merge of `origin/session/hr` (H2.4 clock v2) first.
+
+### r3.1 Merge
+- Conflicts: `src/lib/modules/hr/service.ts` (prisma type import — kept H2.4's line without `HrAttendanceKind` + the H2.7 import lines), `settings.ts` (imports — both), `settings-actions.ts` (H2.8 preset action vs H2.4 clock actions — both), `src/app/app/sys/[id]/hr/settings/page.tsx` (imports, msg map, server actions — both), `src/messages/{th,en}/common.json` (deep-merged by key: H2.4 tree + H2.7 keys; `hr.settings.stubNote` keeps the H2.7 wording; both parse), `scripts/hr-ui-inventory.json` (H2.4 rows 134 + 16 H2.7 rows not already present; parses).
+- Migrations arrived: `20261228000000_hr_clock_v2`, `…01_hr_clock_break_kinds`, `…02_hr_clock_purge_idx` → `prisma generate` (own node_modules) + `prisma migrate deploy` on the lane DB via qc-hr.sh: applied. H2.7 adds none.
+
+### r3.2 R2-M1 — carry consumed is derived
+- `leaveYearStateInTx`: carryIn = Σ positive CARRY rows of the year (`carry:` + `carry-top:`); consumed = min(carryIn, Σ days of USE rows not reverted whose leave **ends ≤ expiry**, read from HrLeave.toDate); expireDue = carryIn − consumed; carryLeft = max(0, expireDue − Σ EXPIRE); nonCarry = Σ − carryLeft (what a leave ending after expiry may use).
+- USE rows no longer carry a `carry:N.N` note — it is **not written any more**, and nothing reads `note` of USE rows (rows written by r2 test runs only; never deployed).
+- EXPIRE (job) = carryLeft at the expiry run (= expireDue, ≥ 0). Corrections keep Σ EXPIRE(Y) = expireDue at all times once `expire:` exists: a pre-expiry leave approved later ⇒ `expire-use:<leaveId>` (positive, gives the expired carry back to that leave), a pre-expiry leave reverted later ⇒ `expire-late:<leaveId>` (negative); both computed as expireDue − Σ EXPIRE in the same tx, once per leave (key), skipped when 0.
+- Worked (S12.12, quota 10 · cap 5 · exp 03-31):
+
+| step | rows (2031) | Σ2030 | Σ2031 |
+|---|---|---|---|
+| 5–9 Jan approved before the carry | GRANT +10, USE −5 | 10.0 | 5.0 |
+| job 2031-01-02 | 2030 CARRY_OUT −5 · CARRY_IN +5 (consumed = min(5, 5) = 5) | 5.0 | 10.0 |
+| 6–10 Oct approved (nonCarry = 10 − 0) | USE −5 | | 5.0 |
+| job 04-01 | EXPIRE 0.0 | | **5.0** (r2: 0.0) |
+
+### r3.3 R2-M2 — revoke of a Y−1 leave after the carry ran
+- In the revert tx: if `carry:<emp>:<pol>:<Y>` exists and `expire:<emp>:<pol>:<Y>` does **not**, write `carry-out-top:<leaveId>` (−t, Y−1) + `carry-top:<leaveId>` (+t, Y), t = min(returned days, cap − Y's carried-in so far, Σ Y−1 after the revert); keyed per leave ⇒ exactly once. **Rule: if Y's carry has already expired (its `expire:` row exists), no top-up is made — the returned days stay in Y−1, which is closed.** If the expiry date has passed but the job has not yet written `expire:`, the top-up is made and then expires with the rest (consumed is derived).
+- Worked (S12.13, quota 6 · cap 6): T1 22–26 Dec 2030 approved (2030: 6 − 5 = 1) → job 01-02 carries 1 (2030 0.0 · 2031 6 + 1 = 7.0) → revoke ⇒ 2030 +5 − 5 (carry-out-top) = **0.0**, 2031 + 5 (carry-top) = **12.0**. T2 same leave, but revoked after job 04-01 (carry 1 expired: 2031 6.0) ⇒ 2030 **5.0**, 2031 **6.0**, no top-up rows.
+
+### r3.4 Job MINOR
+- Each employee tx failure is caught: `failed++`, first message in `failedError`, loop continues; result type gains `failed`, `failedError?` (signature change ⇒ typecheck run). Cron logs one ops WARN per system when `failed > 0`.
+- S12.14: an insert trigger (created and dropped by the check, `finally`) makes the lower-id employee's tx fail ⇒ `failed 1`, the other employee gets its GRANT; after the trigger is gone the next run grants the first one (`failed 0`).
+
+### r3.5 Oracle
+- New S12.12, S12.13, S12.14 (above). **S12.6** strengthened: half of the generated requests fall in Jan–Mar (before/after the carry and expiry jobs, approvals interleaved), and after every op, for every year with an `expire:` row, Σ EXPIRE = carried-in − min(carried-in, days of APPROVED leaves of that year ending ≤ expiry); r3 RED caught `op37:2031 x=4 want=2`.
+- RED vs 337ded5d5 (+ merge): `ledger/wo-notes/hr-H2.7-r3-red.txt` — `passed 77/82` (S12.6 S12.12 S12.13 S12.14; S7.7 red only from the uncaught failure of S12.14).
+
+### r3.6 Debts
+- D-H27-r3-closed-year — returned days of a Y−1 leave revoked after Y's carry expired stay in the closed year Y−1 (ruling).
+- Merge also auto-merged `hr/ui.tsx` into a duplicate `getTranslations` import (H2.4 + H2.7 lines) — typecheck caught it (2 × TS2300); the H2.7 line is removed. tsx runs were unaffected.
+
+### r3.7 Verification
+- oracle qc-hr-h2.7: forced `82/82` · unforced `82/82` · forced `82/82` · RESIDUE none ×3
+- seed-hr-qc ×2 `ผ่าน 30/30`, counts identical · qc-hr-h1.2 `73/73` · qc-hf-hr-privacy 194/194 · qc-hr-h0.7 74/74 · qc-hr-leave-booking 14/14 (all forced)
+- fitness-hr 9/9 ± env · typecheck (12288/14000M) exit 0, 0 errors (after the ui.tsx import fix; the first run showed the 2 duplicate-import errors)

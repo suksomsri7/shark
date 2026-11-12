@@ -3,9 +3,11 @@
 //
 // กติกา:
 //   • ยอดคงเหลือ = Σ แถวสมุด (HrLeaveBalanceTxn) — ไม่มีตัวนับ · เพิ่มแถวอย่างเดียว (ไม่ update/delete) · กันซ้ำด้วย unique (systemId, sourceKey)
-//     grant:<emp>:<pol>:<ปี> · use:<leaveId> (−วัน · note "carry:N.N" = ส่วนที่ใช้วันสะสม) · use-revert:<leaveId> (ADJUST +วัน ครั้งเดียว · ปี/ประเภทของแถว USE) ·
+//     grant:<emp>:<pol>:<ปี> · use:<leaveId> (−วัน) · use-revert:<leaveId> (ADJUST +วัน ครั้งเดียว · ปี/ประเภทของแถว USE) ·
 //     ยกวันสะสม = โอนในธุรกรรมเดียว (r2 มติ L2): carry-out:<emp>:<pol>:<ปีY> (CARRY −c ในปี Y−1) + carry:<emp>:<pol>:<ปีY> (CARRY +c ในปี Y · note "expires:YYYY-MM-DD") ·
-//     expire:<emp>:<pol>:<ปี> (EXPIRE −สะสมที่ไม่ได้ใช้ · 0.0 ก็เขียน = ประเมินแล้ว) · expire-late:<leaveId> (EXPIRE −ส่วนสะสมของใบที่ถูกถอนหลังวันหมดอายุ)
+//     expire:<emp>:<pol>:<ปี> (EXPIRE −สะสมที่ไม่ได้ใช้ · 0.0 ก็เขียน = ประเมินแล้ว) · expire-use:/expire-late:<leaveId> (ปรับ EXPIRE เมื่อใบก่อนหมดอายุอนุมัติ/ถูกถอนหลังมี expire:) ·
+//     carry-out-top:/carry-top:<leaveId> (โอนเพิ่มเมื่อถอนใบปีก่อนหลังยกวันสะสมแล้ว — r3 R2-M2) ·
+//     วันสะสมที่ใช้ = min(ยกเข้า, Σ วันใบอนุมัติที่จบภายในวันหมดอายุ) คำนวณทุกครั้ง ไม่จดไว้ (r3 R2-M1)
 //   • วันสะสมใช้ได้เฉพาะใบลาที่ "วันสุดท้าย ≤ วันหมดอายุ" และใช้ก่อนวันปกติ (L3) · ยอดของปีไม่ติดลบ (L6) · ไฟล์แนบปิดทั้งหมด (D3)
 //   • ลำดับล็อก (R8): hr-leave:<id> → hr-leave-emp:<sys>:<emp> → กุญแจตารางกะ (พนักงาน × วันลา เรียงจากน้อยไปมาก) · ยื่น/งานรายปี = กุญแจพนักงานอย่างเดียว ·
 //     สลับกะ = hr-swap:<id> → กุญแจตารางกะ (ไม่แตะกุญแจใบลา) ⇒ ไม่มีวงล็อก · ใต้ล็อกใช้ tx ของผู้เรียกเท่านั้น (§C.8)
@@ -247,8 +249,8 @@ async function ensureGrantInTx(tx: Tx, ctx: Ctx, emp: Pick<EmpRow, "id" | "start
   return insertTxn(tx, ctx, { employeeId: emp.id, policyId: policy.id, kind: "GRANT", tenths: tenthsOf(g.days), leaveYear: year, effectiveDate: g.effectiveDate, sourceKey: `grant:${emp.id}:${policy.id}:${year}` });
 }
 
-// note ของแถว: USE "carry:N.N" = ส่วนที่ใช้วันสะสม · CARRY เข้า "expires:YYYY-MM-DD" = วันหมดอายุที่ตรึงไว้ตอนยก (ไม่มี = ไม่หมดอายุ)
-const CARRY_NOTE = /^carry:(\d+(?:\.\d)?)$/;
+// note ของแถว: CARRY เข้า (carry:<…>) "expires:YYYY-MM-DD" = วันหมดอายุที่ตรึงไว้ตอนยก (ไม่มี = ไม่หมดอายุ)
+//   r3 (มติ R2-M1): "ใช้วันสะสมไปเท่าไร" คำนวณเสมอ ไม่จดไว้ — consumed = min(ยกเข้า, Σ วันของใบที่อนุมัติอยู่ (ไม่ถูกถอน) ที่จบภายในวันหมดอายุ)
 const EXPIRES_NOTE = /^expires:(\d{4}-\d{2}-\d{2})$/;
 /** สถานะของปีการลา 1 ปี (พนักงาน × ประเภท) จาก Σ แถว — ไม่มีตัวนับ */
 export type LeaveYearState = {
@@ -256,14 +258,21 @@ export type LeaveYearState = {
   sum: number;
   /** มีแถว carry:<…>:<ปี> แล้ว (ยกเข้าแล้ว · 0.0 ก็นับ) */
   carried: boolean;
+  /** วันสะสมที่ยกเข้า = Σ แถว CARRY ที่เป็นบวกของปีนี้ (carry: + carry-top:) */
   carryIn: number;
   /** วันหมดอายุของวันสะสมที่ยกเข้า (null = ไม่หมดอายุ / ไม่มีวันสะสม) */
   expiry: string | null;
   /** มีแถว expire:<…>:<ปี> แล้ว */
   expiredDone: boolean;
-  /** วันสะสมที่ยังใช้ได้ = max(0, ยกเข้า − ใช้ไป (หักที่ถูกถอน) − หมดอายุแล้ว) */
+  /** −Σ EXPIRE ของปีนี้ (หลัก + ปรับย้อนหลัง) */
+  expired: number;
+  /** วันสะสมที่ถูกใช้ (คำนวณ) = min(carryIn, Σ วันใบอนุมัติที่จบภายในวันหมดอายุ) */
+  consumed: number;
+  /** EXPIRE ที่ "ควรเป็น" รวมทั้งปี = carryIn − consumed */
+  expireDue: number;
+  /** วันสะสมที่ยังไม่หมดอายุและยังไม่ถูกใช้ = max(0, carryIn − consumed − expired) */
   carryLeft: number;
-  /** วันปกติ (ไม่ใช่วันสะสม) = Σ − carryLeft */
+  /** วันที่ใบลาที่จบหลังวันหมดอายุใช้ได้ = Σ − carryLeft */
   nonCarry: number;
 };
 export async function leaveYearStateInTx(tx: Tx, employeeId: string, policyId: string, year: number): Promise<LeaveYearState> {
@@ -274,25 +283,36 @@ export async function leaveYearStateInTx(tx: Tx, employeeId: string, policyId: s
   let carried = false;
   let expiry: string | null = null;
   let expiredDone = false;
-  let usedCarry = 0;
   let expired = 0;
+  const uses = new Map<string, number>(); // leaveId → วัน (ใบที่อนุมัติอยู่)
   const inKey = `carry:${employeeId}:${policyId}:${year}`;
   for (const r of rows) {
     const t = tenthsOf(r.days);
     sum += t;
+    if (r.kind === "CARRY" && t > 0) carryIn += t;
     if (r.sourceKey === inKey) {
       carried = true;
-      carryIn = t;
       expiry = EXPIRES_NOTE.exec(r.note ?? "")?.[1] ?? null;
     } else if (r.kind === "USE" && r.sourceKey.startsWith("use:") && !reverted.has(r.sourceKey.slice(4))) {
-      usedCarry += tenthsOf(CARRY_NOTE.exec(r.note ?? "")?.[1] ?? 0);
+      uses.set(r.sourceKey.slice(4), -t);
     } else if (r.kind === "EXPIRE") {
       expired += -t;
       if (r.sourceKey === `expire:${employeeId}:${policyId}:${year}`) expiredDone = true;
     }
   }
-  const carryLeft = Math.max(0, carryIn - usedCarry - expired);
-  return { sum, carried, carryIn, expiry, expiredDone, carryLeft, nonCarry: sum - carryLeft };
+  let pre = 0;
+  if (carryIn > 0 && uses.size) {
+    const ls = await tx.hrLeave.findMany({ where: { id: { in: [...uses.keys()] } }, select: { id: true, toDate: true }, take: 5000 });
+    const toOf = new Map(ls.map((l) => [l.id, dayOf(l.toDate)]));
+    for (const [id, d] of uses) {
+      const to = toOf.get(id);
+      if (expiry === null || (to !== undefined && to <= expiry)) pre += d;
+    }
+  }
+  const consumed = Math.min(carryIn, Math.max(0, pre));
+  const expireDue = carryIn - consumed;
+  const carryLeft = Math.max(0, expireDue - expired);
+  return { sum, carried, carryIn, expiry, expiredDone, expired, consumed, expireDue, carryLeft, nonCarry: sum - carryLeft };
 }
 /** ใบลาที่จบภายในวันหมดอายุ ⇒ ใช้วันสะสมได้ (L3) */
 const carryEligible = (toDate: string, st: Pick<LeaveYearState, "expiry">) => st.expiry === null || toDate <= st.expiry;
@@ -406,40 +426,58 @@ export async function leaveApprovalCheckInTx(tx: Tx, ctx: Ctx, row: LeaveLedgerR
   return (carryEligible(r.toDate, st) ? need <= st.sum : need <= st.nonCarry) ? { ok: true, row: r } : { ok: false, code: "BALANCE" };
 }
 /**
- * สมุดตามการเปลี่ยนสถานะ: →APPROVED = USE (ใช้วันสะสมก่อน ถ้าใบจบภายในวันหมดอายุ · ส่วนนั้นจดใน note) ·
- * APPROVED→(REJECTED|CANCELLED) = คืนครั้งเดียว เข้าปี/ประเภทของแถว USE เสมอ (L5) + ถ้าวันสะสมของปีนั้นหมดอายุไปแล้ว (มี expire:) และใบนี้ใช้วันสะสม ⇒
- * expire-late:<leaveId> = −ส่วนสะสมนั้น ใน tx เดียวกัน (L4 — ไม่ได้วันสะสมที่หมดอายุคืน) · อื่น ๆ = ไม่เขียน
+ * สมุดตามการเปลี่ยนสถานะ: →APPROVED = USE · APPROVED→(REJECTED|CANCELLED) = คืนครั้งเดียว เข้าปี/ประเภทของแถว USE เสมอ (L5) ·
+ * r3 (มติ R2-M1): ใบที่จบภายในวันหมดอายุ ลง/ถอน หลังมีแถว expire: ของปีนั้นแล้ว ⇒ ปรับ EXPIRE ให้ Σ EXPIRE = ยกเข้า − min(ยกเข้า, วันใบอนุมัติก่อนหมดอายุ)
+ *   ใน tx เดียวกัน · คีย์ต่อใบ expire-use:<leaveId> (ตอนอนุมัติ) / expire-late:<leaveId> (ตอนถอน) ⇒ ครั้งเดียวต่อใบ ·
+ * r3 (มติ R2-M2): ถอนใบของปี Y หลังยกวันสะสม Y→Y+1 ไปแล้ว (มี carry:<…>:<Y+1>) และวันสะสมของ Y+1 ยังไม่หมดอายุ (ยังไม่มี expire:<…>:<Y+1>) ⇒
+ *   โอนเพิ่มใน tx เดียวกัน carry-out-top:<leaveId> (−t ปี Y) + carry-top:<leaveId> (+t ปี Y+1) · t = min(วันที่คืน, เพดาน − ยกไปแล้ว, Σ ปี Y) ·
+ *   หมดอายุแล้ว = ไม่โอน (วันคืนอยู่ในปี Y ซึ่งปิดแล้ว) · อื่น ๆ = ไม่เขียน
  */
 export async function leaveLedgerInTx(tx: Tx, ctx: Ctx, row: LeaveLedgerRow, from: string, to: string): Promise<void> {
   if (to === "APPROVED" && from !== "APPROVED") {
     if (!row.policy || row.days === null) return; // ใบรุ่นเก่า (Q18)
     const year = leaveYearOf(row.fromDate, ysmOf(row.policy));
-    const days = tenthsOf(row.days);
-    const st = isUnlimited(row.policy) ? null : await leaveYearStateInTx(tx, row.employeeId, row.policy.id, year);
-    const fromCarry = st && carryEligible(row.toDate, st) ? Math.min(days, st.carryLeft) : 0;
-    await insertTxn(tx, ctx, {
-      employeeId: row.employeeId,
-      policyId: row.policy.id,
-      leaveYear: year,
-      effectiveDate: row.fromDate,
-      leaveId: row.id,
-      kind: "USE",
-      tenths: -days,
-      sourceKey: `use:${row.id}`,
-      note: fromCarry > 0 ? `carry:${fmtTenths(fromCarry)}` : null,
-    });
+    const base = { employeeId: row.employeeId, policyId: row.policy.id, leaveYear: year, effectiveDate: row.fromDate, leaveId: row.id };
+    const n = await insertTxn(tx, ctx, { ...base, kind: "USE", tenths: -tenthsOf(row.days), sourceKey: `use:${row.id}` });
+    if (n === 1 && !isUnlimited(row.policy)) await expireAdjustInTx(tx, ctx, base, row.toDate, `expire-use:${row.id}`);
     return;
   }
   if (from === "APPROVED" && (to === "REJECTED" || to === "CANCELLED")) {
-    const use = await tx.hrLeaveBalanceTxn.findFirst({ where: { sourceKey: `use:${row.id}` }, select: { days: true, leaveYear: true, policyId: true, employeeId: true, note: true } });
+    const use = await tx.hrLeaveBalanceTxn.findFirst({ where: { sourceKey: `use:${row.id}` }, select: { days: true, leaveYear: true, policyId: true, employeeId: true } });
     if (!use) return;
     const base = { employeeId: use.employeeId, policyId: use.policyId, leaveYear: use.leaveYear, effectiveDate: row.fromDate, leaveId: row.id };
-    const n = await insertTxn(tx, ctx, { ...base, kind: "ADJUST", tenths: -tenthsOf(use.days), sourceKey: `use-revert:${row.id}` });
-    const fromCarry = tenthsOf(CARRY_NOTE.exec(use.note ?? "")?.[1] ?? 0);
-    if (n !== 1 || fromCarry <= 0) return;
-    const exp = await tx.hrLeaveBalanceTxn.findFirst({ where: { sourceKey: `expire:${use.employeeId}:${use.policyId}:${use.leaveYear}` }, select: { effectiveDate: true } });
-    if (exp) await insertTxn(tx, ctx, { ...base, effectiveDate: dayOf(exp.effectiveDate), kind: "EXPIRE", tenths: -fromCarry, sourceKey: `expire-late:${row.id}` });
+    const back = -tenthsOf(use.days);
+    const n = await insertTxn(tx, ctx, { ...base, kind: "ADJUST", tenths: back, sourceKey: `use-revert:${row.id}` });
+    if (n !== 1) return;
+    await expireAdjustInTx(tx, ctx, base, row.toDate, `expire-late:${row.id}`);
+    // R2-M2: เติมการยกวันสะสมเข้าปีถัดไป (ถ้ายกไปแล้วและยังไม่หมดอายุ)
+    const next = use.leaveYear + 1;
+    const pre = `${use.employeeId}:${use.policyId}:${next}`;
+    const carryRow = await tx.hrLeaveBalanceTxn.findFirst({ where: { sourceKey: `carry:${pre}` }, select: { effectiveDate: true } });
+    const expRow = carryRow ? await tx.hrLeaveBalanceTxn.findFirst({ where: { sourceKey: `expire:${pre}` }, select: { id: true } }) : null;
+    const pol = carryRow && !expRow ? await tx.hrLeavePolicy.findFirst({ where: { id: use.policyId }, select: { carryMaxDays: true } }) : null;
+    if (!carryRow || expRow || !pol) return;
+    const cur = await leaveYearStateInTx(tx, use.employeeId, use.policyId, use.leaveYear);
+    const nxt = await leaveYearStateInTx(tx, use.employeeId, use.policyId, next);
+    const t = Math.min(back, tenthsOf(pol.carryMaxDays) - nxt.carryIn, cur.sum);
+    if (t <= 0) return;
+    await insertTxn(tx, ctx, { ...base, kind: "CARRY", tenths: -t, effectiveDate: addDays(dayOf(carryRow.effectiveDate), -1), sourceKey: `carry-out-top:${row.id}` });
+    await insertTxn(tx, ctx, { ...base, leaveYear: next, kind: "CARRY", tenths: t, effectiveDate: dayOf(carryRow.effectiveDate), sourceKey: `carry-top:${row.id}` });
   }
+}
+/** ปรับ EXPIRE ของปีนั้นให้ตรงสูตร (เฉพาะเมื่อมีแถว expire: แล้ว และใบจบภายในวันหมดอายุ) — 0 = ไม่เขียน */
+async function expireAdjustInTx(
+  tx: Tx,
+  ctx: Ctx,
+  base: { employeeId: string; policyId: string; leaveYear: number; leaveId: string },
+  toDate: string,
+  sourceKey: string,
+): Promise<void> {
+  const st = await leaveYearStateInTx(tx, base.employeeId, base.policyId, base.leaveYear);
+  if (!st.expiredDone || !st.expiry || toDate > st.expiry) return;
+  const delta = st.expireDue - st.expired;
+  if (delta === 0) return;
+  await insertTxn(tx, ctx, { ...base, effectiveDate: addDays(st.expiry, 1), kind: "EXPIRE", tenths: -delta, sourceKey });
 }
 /** event hr.leave.decided (R12) — payload id/วัน/สถานะเท่านั้น · 1 ใบ × 1 สถานะ = 1 แถวตลอดกาล */
 export function leaveDecidedEvent(ctx: Ctx, row: Pick<LeaveLedgerRow, "id" | "employeeId" | "fromDate" | "toDate" | "days">, status: string, previousStatus: string | null) {
@@ -501,7 +539,7 @@ export async function applyLeaveDecision(input: { tenantId: string; systemId: st
 }
 
 // ═══════════════════════════ งานรายปี (R9 · r2 มติ L2/L4/L7) ═══════════════════════════
-export type LeaveYearJobResult = { granted: number; carried: number; expired: number; txs: number; waited: number; more: boolean };
+export type LeaveYearJobResult = { granted: number; carried: number; expired: number; txs: number; waited: number; more: boolean; failed: number; failedError?: string };
 /** เพดานธุรกรรมต่อรอบต่อระบบ (L7) — ที่เหลือทำรอบถัดไป */
 export const LEAVE_JOB_MAX_TX = 100;
 type JobPolicy = PolicyRow;
@@ -519,7 +557,7 @@ export async function runLeaveYearJob(input: { tenantId: string; systemId: strin
   const ctx: Ctx = { tenantId: str(input?.tenantId), systemId: str(input?.systemId) };
   const asOf = dayKey(input.asOf);
   const maxTx = Number.isInteger(input?.maxTx) && (input.maxTx as number) > 0 ? (input.maxTx as number) : LEAVE_JOB_MAX_TX;
-  const res: LeaveYearJobResult = { granted: 0, carried: 0, expired: 0, txs: 0, waited: 0, more: false };
+  const res: LeaveYearJobResult = { granted: 0, carried: 0, expired: 0, txs: 0, waited: 0, more: false, failed: 0 };
   if (!ctx.tenantId || !ctx.systemId) return res;
   const db = tenantDb(ctx);
   const policies = await db.hrLeavePolicy.findMany({ where: { active: true }, select: POLICY_SELECT, take: 200 });
@@ -583,6 +621,7 @@ export async function runLeaveYearJob(input: { tenantId: string; systemId: strin
       break;
     }
     res.txs++;
+    // r3 (review MINOR): ธุรกรรมของพนักงานคนหนึ่งล้ม = ข้ามคนนั้น ทำคนถัดไป (นับ failed + ข้อความแรก · ผู้เรียก log ครั้งเดียว) — รอบถัดไปลองใหม่
     const r = await db.$transaction(async (t) => {
       const tx = t as unknown as Tx;
       await lockLeaveEmployeeInTx(tx, ctx.systemId, e.id);
@@ -624,7 +663,12 @@ export async function runLeaveYearJob(input: { tenantId: string; systemId: strin
         one.expired += await insertTxn(tx, ctx, { employeeId: e.id, policyId: p.id, kind: "EXPIRE", tenths: -cur.carryLeft, leaveYear: y, effectiveDate: addDays(cur.expiry, 1), sourceKey: `expire:${e.id}:${p.id}:${y}` });
       }
       return one;
-    }, LEAVE_TX_OPTS);
+    }, LEAVE_TX_OPTS).catch((e: unknown) => {
+      res.failed++;
+      res.failedError ??= e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300);
+      return null;
+    });
+    if (!r) continue;
     res.granted += r.granted;
     res.carried += r.carried;
     res.expired += r.expired;

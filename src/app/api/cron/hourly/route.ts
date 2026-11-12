@@ -188,7 +188,8 @@ export async function GET(req: Request) {
     for (const s of [...hrSystems.slice(start), ...hrSystems.slice(0, start)]) {
       if (Date.now() > leaveDeadline) break;
       try {
-        await hrFacade.runLeaveYearJob({ tenantId: s.tenantId, systemId: s.id, asOf, maxTx: 50 });
+        const lr = await hrFacade.runLeaveYearJob({ tenantId: s.tenantId, systemId: s.id, asOf, maxTx: 50 });
+        if (lr.failed > 0) await logOps("WARN", "cron", "runLeaveYearJob: พนักงานบางคนทำไม่สำเร็จ (ข้ามไปก่อน รอบหน้าลองใหม่)", { tenantId: s.tenantId, detail: `${lr.failed} · ${lr.failedError ?? ""}` });
       } catch (e) {
         await logOps("WARN", "cron", "runLeaveYearJob (งานรายปีของวันลา) ล้มในระบบหนึ่ง", { tenantId: s.tenantId, detail: e instanceof Error ? e.message : String(e) });
       }

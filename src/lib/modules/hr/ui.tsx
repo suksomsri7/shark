@@ -41,7 +41,6 @@ import { evaluate } from "@/lib/core/rbac";
 import { hrScopeOf, isAllBranches, unitsForScope } from "./scope";
 import { canManageHrSettings } from "./settings"; // HR H1.2 ▸ ลิงก์หน้าตั้งค่า (เฉพาะผู้ตั้งค่าได้) ◂
 // HR H2.7 ▸ Q16: ช่องประเภทการลา/ครึ่งวัน + ยอดคงเหลือบนหน้าใบลาเดิม (หน้าเต็มตามภาพ 05 = H2.10/H2.11) ◂
-import { getTranslations } from "next-intl/server"; // HR H2.7 ◂
 import { thaiDateKey } from "@/lib/ui/date"; // HR H2.7 ◂
 import { activeLeavePolicies, leaveBalances, leaveDetail, myLeaveBalances, type LeaveBalanceItem } from "./leave"; // HR H2.7 ◂
 

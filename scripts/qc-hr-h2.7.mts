@@ -455,6 +455,9 @@ const CHECKS: readonly Def[] = [
   D("S12.9", "D5", C, "RED", "holiday on a published roster day counts"),
   D("S12.10", "D3", C, "RED", "attachments off: refused · nothing written · no link"),
   D("S12.11", "r2b", C, "RED", "unlimited→quota / lower quota refused when a used year would go negative"),
+  D("S12.12", "R2-M1", C, "RED", "carry consumed is derived (leave approved before the carry row) ⇒ 5.0"),
+  D("S12.13", "R2-M2", C, "RED", "revoke Y−1 after carry ⇒ top-up transfer once · not after expiry"),
+  D("S12.14", "r3", M, "RED", "a failing employee does not block the rest of the system"),
   D("X1.1", "X1", C, "RED", "5 identical parallel requests ⇒ 1 row"),
   D("X2.1", "X2", C, "RED", "other tenant ⇒ refused · unchanged"),
   D("X12.1", "X12", M, "GREEN", "fitness + fitness-hr ± env"),
@@ -1218,6 +1221,73 @@ async function runDb(): Promise<void> {
       }, "3 refused · 5 ok · 3 refused · +1 · 3 ok (GRANT 5 fixed) · 0.0", `${short(a, 60)} q=${qa} ${short(c, 40)} ${shown(one)} ${short(e, 40)} k31=${k31}`);
     }
   }
+  // ═══ S12.12–S12.14 r3 rulings (own HR systems s5/s6 · literal balances) ═══
+  {
+    const s5 = await sysSvc.createSystem(TT, "HR", "HR E");
+    const ctx5 = { tenantId: TT, systemId: s5.id };
+    const e5 = (n: string) => emp(n, { unitId: u1 }, "2025-01-01", s5.id);
+    const P10 = await pol(ctx5, "VACATION", "QC27 r3 สะสม5", 10, { carryMaxDays: 5, carryExpiresMonthDay: "03-31", sortOrder: 1 });
+    const P6 = await pol(ctx5, "PERSONAL", "QC27 r3 สะสม6", 6, { carryMaxDays: 6, carryExpiresMonthDay: "03-31", sortOrder: 2 });
+    const job5 = (asOf: string) => lv("runLeaveYearJob", { tenantId: TT, systemId: s5.id, asOf });
+    const q5 = (e: string, from: string, to: string, p: string) => rq(U.mgrAll, e, from, to, { policyId: p, type: p === P10 ? "VACATION" : "PERSONAL" }, ctx5);
+    const ap5 = (r: RO | string, st = "APPROVED", from?: string) => decide(typeof r === "string" ? r : idv(r), st, U.mgrAll, from, ctx5);
+    const sy5 = async (e: string, y: number, p: string) => sum(await txOf({ employeeId: e, policyId: p, leaveYear: y }));
+    const X5 = { M: await e5("5M"), T1: await e5("5T1"), T2: await e5("5T2") };
+    await job5("2030-06-01");
+    // R2-M1: Jan leave approved before the carry row exists, then the carry, then an October leave, then expiry
+    const jan = await q5(X5.M, "2031-01-05", "2031-01-09", P10);
+    await ap5(jan);
+    const m0 = await sy5(X5.M, 2031, P10);
+    // R2-M2: T1 / T2 use 5 of 6 in 22–26 Dec 2030
+    const t1 = await q5(X5.T1, "2030-12-22", "2030-12-26", P6);
+    await ap5(t1);
+    const t2 = await q5(X5.T2, "2030-12-22", "2030-12-26", P6);
+    await ap5(t2);
+    await job5("2031-01-02");
+    const m1 = [await sy5(X5.M, 2030, P10), await sy5(X5.M, 2031, P10)].join("/");
+    const oct = await q5(X5.M, "2031-10-06", "2031-10-10", P10);
+    await ap5(oct);
+    const m2 = await sy5(X5.M, 2031, P10);
+    const t1a = [await sy5(X5.T1, 2030, P6), await sy5(X5.T1, 2031, P6)].join("/");
+    const t1r = await ap5(t1, "REJECTED", "APPROVED");
+    const t1b = [await sy5(X5.T1, 2030, P6), await sy5(X5.T1, 2031, P6)].join("/");
+    const top = await txOf({ sourceKey: { in: [`carry-out-top:${idv(t1)}`, `carry-top:${idv(t1)}`] } });
+    await job5("2031-04-01");
+    const m3 = await sy5(X5.M, 2031, P10);
+    const t2r = await ap5(t2, "REJECTED", "APPROVED");
+    const t2b = [await sy5(X5.T2, 2030, P6), await sy5(X5.T2, 2031, P6)].join("/");
+    ck("S12.12", { jan: jan.ok && m0 === "5.0", carry: m1 === "5.0/10.0", oct: oct.ok && m2 === "5.0", expiry: m3 === "5.0", x: d1((await txOf({ sourceKey: `expire:${X5.M}:${P10}:2031` }))[0]?.days) === "0.0" }, "5.0 · 5.0/10.0 · 5.0 · EXPIRE 0.0 · 5.0", `${m0} ${m1} ${shown(oct)} ${m2} ${m3}`);
+    ck("S12.13", {
+      t1before: t1a === "0.0/7.0", t1rev: t1r.ok, t1after: t1b === "0.0/12.0", top: top.length === 2 && sum(top) === "0.0" && top.some((r) => d1(r.days) === "5.0" && r.leaveYear === 2031),
+      t2rev: t2r.ok, t2after: t2b === "5.0/6.0", t2noTop: (await txOf({ sourceKey: { startsWith: "carry-top:" }, employeeId: X5.T2 })).length === 0,
+    }, "T1 0.0/7.0 → 0.0/12.0 (top-up 5) · T2 expired first → 5.0/6.0, no top-up", `t1=${t1a}→${t1b} top=${top.length} t2=${t2b}`);
+  }
+  {
+    const s6 = await sysSvc.createSystem(TT, "HR", "HR F");
+    const ctx6 = { tenantId: TT, systemId: s6.id };
+    await pol(ctx6, "PERSONAL", "QC27 r3 ล้ม", 6, { sortOrder: 1 });
+    const za = await emp("6a", { unitId: u1 }, "2025-01-01", s6.id);
+    const zb = await emp("6b", { unitId: u1 }, "2025-01-01", s6.id);
+    const [bad, good] = za < zb ? [za, zb] : [zb, za]; // the failing one is processed first (id order)
+    const fn = `qc27_fail_${tag}`;
+    let r1: RO = { ok: false, text: "not run", value: undefined };
+    let made = false;
+    try {
+      await P.$executeRawUnsafe(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."employeeId" = '${bad}' THEN RAISE EXCEPTION 'qc27 forced failure'; END IF; RETURN NEW; END $$`);
+      await P.$executeRawUnsafe(`CREATE TRIGGER ${fn} BEFORE INSERT ON "HrLeaveBalanceTxn" FOR EACH ROW EXECUTE FUNCTION ${fn}()`);
+      made = true;
+      r1 = await lv("runLeaveYearJob", { tenantId: TT, systemId: s6.id, asOf: "2031-06-01" });
+    } finally {
+      await P.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${fn} ON "HrLeaveBalanceTxn"`).catch(() => {});
+      await P.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${fn}()`).catch(() => {});
+    }
+    const g1 = (await txOf({ employeeId: good, kind: "GRANT" })).length;
+    const b1 = (await txOf({ employeeId: bad, kind: "GRANT" })).length;
+    const r2 = await lv("runLeaveYearJob", { tenantId: TT, systemId: s6.id, asOf: "2031-06-01" });
+    const b2 = (await txOf({ employeeId: bad, kind: "GRANT" })).length;
+    ck("S12.14", { made, ran: r1.ok && r1.value?.failed === 1, good: g1 === 1, badNone: b1 === 0, retry: r2.ok && r2.value?.failed === 0 && b2 === 1 }, "1 failed · other granted · retry ok", `r1=${short(r1.value ?? r1.text, 90)} g=${g1} b=${b1}/${b2}`);
+  }
+
   // ── L6 property (own system s4): generated request/approve/revoke/job sequences never make a year negative
   {
     const s4 = await sysSvc.createSystem(TT, "HR", "HR D");
@@ -1231,10 +1301,25 @@ async function runDb(): Promise<void> {
     const rnd = (n: number) => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return Math.floor((seed / 4294967296) * n); }; // prettier-ignore
     const neg: string[] = [];
     let ops = 0;
+    const badX: string[] = [];
     const checkAll = async (label: string) => {
       ops++;
       const g = (await P.hrLeaveBalanceTxn.groupBy({ by: ["employeeId", "leaveYear"], where: { tenantId: TT, systemId: s4.id }, _sum: { days: true } })) as Any[];
       for (const r of g) if (Number(String(r._sum.days)) < 0 && neg.length < 3) neg.push(`${label}:${r.leaveYear}=${Number(String(r._sum.days)).toFixed(1)}`);
+      // r3: once expire:<…>:<Y> exists, Σ EXPIRE(Y) = carried-in − min(carried-in, days of APPROVED leaves of Y ending ≤ expiry)
+      const rows = (await P.hrLeaveBalanceTxn.findMany({ where: { tenantId: TT, systemId: s4.id } })) as Any[];
+      const appr = (await P.hrLeave.findMany({ where: { tenantId: TT, systemId: s4.id, status: "APPROVED" }, select: { employeeId: true, fromDate: true, toDate: true, days: true } })) as Any[];
+      const t10 = (v: unknown) => Math.round(Number(String(v)) * 10);
+      for (const c of rows.filter((r) => String(r.sourceKey).startsWith("carry:"))) {
+        const [, e, , y] = String(c.sourceKey).split(":");
+        const exp = /^expires:(.+)$/.exec(String(c.note ?? ""))?.[1];
+        if (!exp || !rows.some((r) => r.sourceKey === `expire:${e}:${P4}:${y}`)) continue;
+        const yr = rows.filter((r) => r.employeeId === e && r.leaveYear === Number(y));
+        const cin = yr.filter((r) => r.kind === "CARRY" && t10(r.days) > 0).reduce((a, r) => a + t10(r.days), 0);
+        const pre = appr.filter((l) => l.employeeId === e && dk(l.fromDate).startsWith(`${y}-`) && dk(l.toDate) <= exp).reduce((a, l) => a + t10(l.days), 0);
+        const xs = -yr.filter((r) => r.kind === "EXPIRE").reduce((a, r) => a + t10(r.days), 0);
+        if (xs !== cin - Math.min(cin, pre) && badX.length < 3) badX.push(`${label}:${y} x=${xs / 10} want=${(cin - Math.min(cin, pre)) / 10}`);
+      }
     };
     // fixed prefix = hunt P1 A + review M1 (RED on the first build)
     await job4("2030-01-02");
@@ -1254,7 +1339,7 @@ async function runDb(): Promise<void> {
       const op = rnd(10);
       if (op < 4) {
         const y = 2030 + rnd(3);
-        const from = `${y}-${String(1 + rnd(12)).padStart(2, "0")}-${String(1 + rnd(24)).padStart(2, "0")}`;
+        const from = `${y}-${String(1 + (rnd(2) ? rnd(3) : rnd(12))).padStart(2, "0")}-${String(1 + rnd(24)).padStart(2, "0")}`; // r3: half the requests in Jan–Mar (before/after the carry + expiry jobs)
         await q4(e, from, addDay(from, rnd(4)));
       } else if (op < 7) {
         const p = (await P.hrLeave.findMany({ where: { tenantId: TT, systemId: s4.id, employeeId: e, status: "PENDING" }, select: { id: true } })) as Any[];
@@ -1269,7 +1354,7 @@ async function runDb(): Promise<void> {
       }
       await checkAll(`op${i}`);
     }
-    ck("S12.6", { prefixBack: !bk.ok, prefixOct: !oct.ok, never: neg.length === 0 }, "0 negative years", `ops=${ops} ${neg.join(" ") || "none"} back=${shown(bk)} oct=${shown(oct)}`);
+    ck("S12.6", { prefixBack: !bk.ok, prefixOct: !oct.ok, never: neg.length === 0, expire: badX.length === 0 }, "0 negative years · Σ EXPIRE = carry − min(carry, pre-expiry approved)", `ops=${ops} ${neg.join(" ") || "none"} ${badX.join(" ")} back=${shown(bk)} oct=${shown(oct)}`);
   }
 
   // ═══ S11 controls · X ═══
