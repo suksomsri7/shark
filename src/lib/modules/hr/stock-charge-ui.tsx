@@ -8,7 +8,7 @@ import { requireTenant } from "@/lib/core/context";
 import { formatBaht } from "@/lib/ui/money";
 import { thaiDateKey } from "@/lib/ui/date";
 import { hrViewerOf } from "./privacy";
-import { STOCK_MSG, canSeeStockCharges, canTakeStock, listStockCharges, myFiledStockCharges, openStockClaims, stockFormOptions, stockPeriodCapFlags, type StockChargeItem } from "./stock-charge";
+import { STOCK_MSG, canSeeStockCharges, canTakeStock, listStockCharges, myFiledStockCharges, stockAttention, stockFormOptions, stockPeriodCapFlags, type StockChargeItem } from "./stock-charge";
 import { markStockRefundRepaidAction, requestStockChargeAction, withdrawStockChargeAction } from "./stock-charge-actions";
 
 const muted = "text-[color:var(--color-muted)]";
@@ -23,7 +23,7 @@ export async function StockChargeSection({ systemId, msg, q, inv }: { systemId: 
   const auth = await requireTenant();
   const viewer = hrViewerOf(auth);
   const ctx = { tenantId: auth.active.tenantId, systemId };
-  const [opts, list, stuck] = await Promise.all([stockFormOptions(ctx, viewer, { q: q ?? "", inventorySystemId: inv ?? "" }), listStockCharges(ctx, viewer), openStockClaims(ctx, viewer)]);
+  const [opts, list, stuck] = await Promise.all([stockFormOptions(ctx, viewer, { q: q ?? "", inventorySystemId: inv ?? "" }), listStockCharges(ctx, viewer), stockAttention(ctx, viewer)]);
   if (!opts && !list) return null;
   const t = await getTranslations("hr.stock");
   const flags = list ? await stockPeriodCapFlags(ctx, viewer, list.items) : null;
@@ -187,8 +187,8 @@ export async function StockChargeSection({ systemId, msg, q, inv }: { systemId: 
           {stuck.map((x) => (
             <div key={x.id} className={muted}>
               {x.employeeName} · {x.itemName ?? x.description ?? ""}
-              {x.qty !== null ? ` ×${x.qty}` : ""} · {thaiDateKey(x.createdAt)}
-              {x.takeStock ? ` · ${t("attentionStock")}` : ""}
+              {x.qty !== null ? ` ×${x.qty}` : ""} · {thaiDateKey(x.at)}
+              {` · ${t(`attention.${x.reason}`)}`}
             </div>
           ))}
         </div>

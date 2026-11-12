@@ -788,12 +788,16 @@
       "mineTitle": "My requests (pending)",
       "mineEmpty": "No pending requests",
       "noInventoryRight": "You cannot view inventory — you may file a damage charge with a description only (no stock taken)",
-      "attentionTitle": "Needs attention: requests stuck midway (no deduction yet)",
-      "attentionStock": "stock may already be taken",
+      "attentionTitle": "Needs attention",
       "adjBound": "Deduction is in the {period} run ({status})",
       "adjUnbound": "Deduction is not in a run — waiting for the next pay run",
       "returnedAfterReversal": "Returned to payroll after a run reversal — check the refund is not deducted again unintentionally",
-      "consentChip": "Consent {ref} signed {date}"
+      "consentChip": "Consent {ref} signed {date}",
+      "attention": {
+        "STUCK": "Stuck midway (stock may be taken, no deduction yet) — the original filer should resubmit",
+        "ENDED_PENDING": "Employee has ended; charge still pending — recover from final pay or write off (accountant)",
+        "ENDED_UNBOUNDABLE": "Approved but can never enter a run (employment ended before this period) — recover from final pay or write off (accountant)"
+      }
     }
   }
 }

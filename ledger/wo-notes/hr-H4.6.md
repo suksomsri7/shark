@@ -68,3 +68,14 @@ A13 Override below the moving-average cost: COGS booked at average cost on the O
 ## Round r3
 - payroll.ts names `sourceType`/`sourceRef` explicitly (3 `sourceRef` tokens on `// HR H4.6` lines). ORACLE-EDIT qc-hr-h1.3 S6.1: per-tag declared allowance for marked payroll.ts lines (`PAY_MARKED = { "HR H4.6": 3 }`; mismatch ⇒ no allowance).
 - Lane DB l2: HrStockCharge was empty ⇒ rolled the migration back (DROP TABLE + DROP TYPE + delete its `_prisma_migrations` row, one tx with an emptiness guard) and re-applied with `migrate deploy`; checksum now = file sha 62a6d993…; `migrate status` clean, second `deploy` no-op; 32 columns in file order, 6 indexes (incl. partial movementId), 9 CHECK/FK constraints as the file.
+
+## Round r4 (hunter F1–F5, I4) — oracle S16.1–S16.5 first: RED 63/69 on e9d4e0349 (hr-H4.6-r4-red.txt) → 69/69
+- F1/F2: an existing row for the key is handled before any check that can fail with time (stock · cost · period · employment): finished ⇒ replay; open reservation ⇒ continue (skip stock check when its movement is recorded; consume is idempotent).
+- D1 (last unit): stock pre-check + consumeBatch run under `hr:stock-item:<inventorySystem>:<itemId>`; movementId is recorded on the reservation in the same HR tx. New key + insufficient ⇒ reservation deleted + "สต็อกไม่พอ".
+  Lock order: key `hr:stock:<tenant>:<key>` (reserve, released) → item lock (held; inventory takes its own row locks on another connection) → key lock (finish). HR never holds key+item together; inventory never waits on HR locks ⇒ no cycle.
+  Debt: the item-lock tx holds one connection while getItem/consumeBatch use another — under pool exhaustion waiters time out (failed code, reservation retryable), no permanent deadlock.
+- F3: only the original filer or an OWNER may continue a reservation; the deduction's requester is always the original filer.
+- F4: HR-step DB failures ⇒ `{ok:false, reason:"บันทึกไม่สำเร็จ — กรุณาลองอีกครั้ง", code:"HR_STEP_FAILED"}` (also CLAIM_FAILED / STOCK_STEP_FAILED); actions wrap every service call (`safe`).
+- F5: `stockAttention` (payroll viewers) = STUCK · ENDED_PENDING · ENDED_UNBOUNDABLE; approval chip warns when a PENDING charge's employee has ended (not blocked).
+- I4: `draftRefused` now reads "รอบร่างเปลี่ยนระหว่างถอนรายการ — รายการกลับเป็นสถานะเดิม กรุณาลองอีกครั้ง".
+- Accountant A14: ENDED employee with a pending or never-boundable approved charge — recover from final pay or write off.

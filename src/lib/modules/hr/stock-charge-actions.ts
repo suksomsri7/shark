@@ -45,6 +45,15 @@ function keyGate(auth: Auth, actions: string[]): boolean {
     }
   });
 }
+/** r4 F4: ข้อผิดพลาดที่ไม่คาดคิดของ service — ไม่ส่งข้อความฐานข้อมูลถึงจอ (console.error + ข้อความไทยคงที่) */
+async function safe<R>(fn: () => Promise<R>): Promise<R | { ok: false; reason: string }> {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error("[hr.stock_charge]", e instanceof Error ? e.name : "error");
+    return { ok: false, reason: STOCK_MSG["s.failed"]! };
+  }
+}
 const back = (systemId: string, code: string): never => {
   const c = code in STOCK_MSG ? code : "s.failed";
   redirect(`/app/sys/${systemId}/hr/payroll?stock=${encodeURIComponent(c)}#hr-stock`);
@@ -56,7 +65,7 @@ export async function requestStockChargeAction(fd: FormData): Promise<void> {
   const ctx = await ctxOf(auth, fd);
   if (!ctx) redirect("/app");
   if (!keyGate(auth, ["hr.payadjust.request"])) back(ctx.systemId, "s.noAccess");
-  const r = await requestStockCharge(ctx, hrViewerOf(auth), {
+  const r = await safe(() => requestStockCharge(ctx, hrViewerOf(auth), {
     requestKey: field(fd, "requestKey"),
     employeeId: field(fd, "employeeId"),
     kind: field(fd, "kind"),
@@ -67,7 +76,7 @@ export async function requestStockChargeAction(fd: FormData): Promise<void> {
     amountSatang: bahtToSatang(field(fd, "amountBaht")),
     description: field(fd, "description") || undefined,
     consent: { confirmed: field(fd, "consent") === "on", ref: field(fd, "consentRef"), at: field(fd, "consentAt") },
-  });
+  }));
   if (r.ok) revalidatePath(`/app/sys/${ctx.systemId}/hr/payroll`);
   back(ctx.systemId, r.ok ? "ok.request" : stockMsgCode(r.reason));
 }
@@ -78,7 +87,7 @@ export async function withdrawStockChargeAction(fd: FormData): Promise<void> {
   const ctx = await ctxOf(auth, fd);
   if (!ctx) redirect("/app");
   if (!keyGate(auth, ["hr.payadjust.request", "hr.payadjust.approve"])) back(ctx.systemId, "s.noAccess");
-  const r = await withdrawStockCharge(ctx, hrViewerOf(auth), field(fd, "chargeId"), { reason: field(fd, "reason") });
+  const r = await safe(() => withdrawStockCharge(ctx, hrViewerOf(auth), field(fd, "chargeId"), { reason: field(fd, "reason") }));
   if (r.ok) revalidatePath(`/app/sys/${ctx.systemId}/hr/payroll`);
   back(ctx.systemId, r.ok ? (r.outcome === "REFUND_OWED" ? "ok.refund" : "ok.withdraw") : stockMsgCode(r.reason));
 }
@@ -89,7 +98,7 @@ export async function markStockRefundRepaidAction(fd: FormData): Promise<void> {
   const ctx = await ctxOf(auth, fd);
   if (!ctx) redirect("/app");
   if (!keyGate(auth, ["hr.payadjust.approve"])) back(ctx.systemId, "s.repayPerm");
-  const r = await markStockRefundRepaid(ctx, hrViewerOf(auth), field(fd, "chargeId"), { ref: field(fd, "repaidRef") });
+  const r = await safe(() => markStockRefundRepaid(ctx, hrViewerOf(auth), field(fd, "chargeId"), { ref: field(fd, "repaidRef") }));
   if (r.ok) revalidatePath(`/app/sys/${ctx.systemId}/hr/payroll`);
   back(ctx.systemId, r.ok ? "ok.repaid" : stockMsgCode(r.reason));
 }

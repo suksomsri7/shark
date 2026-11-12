@@ -264,6 +264,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                       >
                         เบิกของ/ค่าเสียหาย · หนังสือยินยอม (ม.76/77):{" "}
                         {stockConsent.get(a.id) ? `${stockConsent.get(a.id)!.ref} · ลงนาม ${stockConsent.get(a.id)!.at}` : "ไม่พบ — ตรวจก่อนอนุมัติ"}
+                        {stockConsent.get(a.id)?.employeeEnded && a.status === "PENDING" ? " · พนักงานสิ้นสุดการจ้างแล้ว — ตรวจก่อนอนุมัติ (ทวงจากค่าจ้างงวดสุดท้ายหรือตัดหนี้ = นักบัญชี)" : ""}
                       </span>
                     )}
                   </span>
