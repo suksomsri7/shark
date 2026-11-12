@@ -521,7 +521,10 @@
         "m11": "Nov",
         "m12": "Dec"
       },
-      "needsRecompute": "{n} days need a recompute — the roster changed after the result was saved (hours still count from the saved result)"
+      "needsRecompute": "{n} days need a recompute — the roster changed after the result was saved (hours still count from the saved result)",
+      "scrollHint": "Scroll the table sideways to see every column (hours · OT · actions) →",
+      "countsTitleDay": "Summary for {day}",
+      "dayListTitle": "Per day — tap a day to see its times"
     },
     "life": {
       "saved": "Saved",
