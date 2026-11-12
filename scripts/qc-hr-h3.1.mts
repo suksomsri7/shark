@@ -83,6 +83,7 @@ S5.1|R4|C|R|[db] rebuild unchanged ⇒ written 0 · ids/versions/updatedAt/kind 
 S6.1|R5|C|R|[db] recompute (OUT moved) ⇒ only eC OUTDATED · rebuild ⇒ OT 60 · version 2 · source version 2 · written 1
 S6.2|R5|C|R|[db] leave revoked ⇒ OUTDATED · rebuild ⇒ STALE review · state REVIEW
 S6.3|R5|C|R|[db] recompute after revoke ⇒ rebuild ⇒ ABSENT 480 · no review · CURRENT
+S8.7|r3|C|R|[db] ORACLE-EDIT r3 (new): approved + settled OT request (H2.9 HrPayAdjustment OT_REQUEST) ⇒ settlement leaves the snapshot CURRENT · rebuild links the request (sourcesJson.otRequestIds · OT_VIA_ADJUSTMENT · OT kind row otRequestId) · no pay line created by work entries
 S6.5|r2|C|R|[db] ORACLE-EDIT r2 (new): shift grace 5 → 15 after build (LATE 10 row now stale, no version bump) ⇒ OUTDATED · v2 approve refused · rebuild ⇒ STALE review · still refused
 S6.4|R5|C|R|[db] ORACLE-EDIT (new, controller): H2.6 correction (OUT 15:00 → 17:00: original voided · corrected punch · stored day recomputed) ⇒ snapshot built before = OUTDATED · rebuild = corrected minutes (ow 120 · source version 2) · CURRENT
 S7.1|R3|C|R|[db] NOT_FINAL (day not over) ⇒ PENDING · ORPHAN after unpublish
@@ -674,6 +675,27 @@ async function runDb(): Promise<void> {
       lit: hdr(r1) === Hd(W, "WORKED", { p: 480, w: 480, ow: 120 }), ver: r1?.version === 2 && r1?.sourcesJson?.attendanceDays?.[0]?.version === 2, cur: (await st()) === "CURRENT",
     };
     ck("S6.4", r, "OUTDATED → corrected minutes · CURRENT", `${s0}→${s1} ${short(rq, 60)} ${hdr(r1)}`);
+    // ── S8.7 ORACLE-EDIT r3 (new, controller): H2.9 approved OT on the corrected day (15:00–17:00 = the measured ow 120) ──
+    {
+      const OT = (await import("@/lib/modules/hr/ot")) as Any;
+      await pay.setSalaryProfile(cD, { employeeId: eS, baseSalarySatang: 1_000_000, ssoEligible: true });
+      const ask = await OT.requestOt(cD, V.owner, { employeeId: eS, date: "2031-12-01", start: "15:00", end: "17:00", reason: "QC" }, { now: bk("2031-12-01", "10:00") }).catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+      const dec = ask?.ok ? await OT.decideOtRequest(cD, V.owner, ask.id, "APPROVED", { now: bk("2031-12-01", "10:05") }).catch((e: unknown) => ({ ok: false, reason: errText(e) })) : ask;
+      const adjN = async () => P.hrPayAdjustment.count({ where: { tenantId: TT, systemId: sD, employeeId: eS, kind: "OT" } });
+      await OT.settleOtRequests({ tenantId: TT, systemId: sD, now: N2 }).catch(() => null);
+      const n0 = await adjN();
+      const sAfterSettle = await st();
+      const bo = await build(cD, V.owner, N2, PD);
+      const n1 = await adjN();
+      const row = ((await wdRows(TT, sD)) ?? []).find((x) => x.employeeId === eS && dk(x.date) === "2031-12-01");
+      const otRow = ((await weRows(sD)) ?? []).find((x) => x.employeeId === eS && x.kind === "OT_WORKDAY");
+      const rr = {
+        ot: dec?.ok === true && n0 === 1, settleNoOutdated: sAfterSettle === "CURRENT", built: bo.ok, noPayLine: n1 === n0,
+        refs: Array.isArray(row?.sourcesJson?.otRequestIds) && row.sourcesJson.otRequestIds.includes(ask?.id), flag: reviewOf(row?.review).includes("OT_VIA_ADJUSTMENT"), kindRef: otRow?.otRequestId === ask?.id,
+        minutes: hdr(row).startsWith(`${W}|WORKED|p480 w480 ow120 `), cur: (await st()) === "CURRENT",
+      };
+      ck("S8.7", rr, "settle ⇒ CURRENT · refs · no pay line", `${short(dec, 50)} adj=${n0}/${n1} ${sAfterSettle} ${hdr(row)}`);
+    }
   }
   // ── S6.5 + S9.5 ORACLE-EDIT r2 (new checks, controller items 2 + 3): system E · Jan 2032 (week Mon 5 – Sun 11) ──
   {
