@@ -43,7 +43,7 @@ import { leaveDutyHintsMany } from "./availability";
 import { attendanceNeedsRecompute, loadAttendanceBoard, otDaySpans } from "./judge";
 import { lifecycleDue } from "./lifecycle";
 import { rosterLeaveOverlay } from "./roster-board";
-import { hrScopeOf } from "./scope";
+import { hrScopeOf, unitsForScope } from "./scope";
 import type { HrViewer } from "./privacy";
 
 type Ctx = { tenantId: string; systemId: string };
@@ -340,6 +340,12 @@ export async function listInbox(ctx: Ctx, v: HrViewer, filter: InboxFilter = {},
 /** ตัวนับของกล่อง (ไม่กรอง) — null = ไม่เห็นชนิดใด · ป้ายบนแท็บ = decidable */
 export async function inboxCounts(ctx: Ctx, v: HrViewer, opts: Opts = {}): Promise<InboxCounts | null> {
   return (await listInbox(ctx, v, {}, opts))?.counts ?? null;
+}
+
+/** สาขาสำหรับตัวกรองของหน้า (เฉพาะสาขาในขอบเขตของผู้ดู) — ผู้ไม่เห็นกล่อง = [] */
+export async function inboxUnits(ctx: Ctx, v: HrViewer): Promise<{ id: string; name: string }[]> {
+  if (!visibleTypes(v).size) return [];
+  return unitsForScope(ctx.tenantId, hrScopeOf(memberOf(v)));
 }
 
 // ═══════════════════════════ ตัดสิน (R6 · R7 · R8) ═══════════════════════════

@@ -45,6 +45,9 @@ import { myOtRequests, otRequestList, type OtViewer } from "./ot"; // HR H2.9 �
 import type { OtItem } from "./ot-rules"; // HR H2.9 ◂
 import { OtRequestForm, OtRowActions } from "./ot-ui"; // HR H2.9 ◂
 import { formatBaht } from "@/lib/ui/money"; // HR H2.9 ◂
+import { HrTeamOverviewSection } from "./overview-ui"; // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) บนหน้า HrHub ◂
+import { listInbox, teamOverview } from "./inbox"; // HR H2.11 ◂
+export { hrViewerOf } from "./privacy"; // HR H2.11 ▸ ผู้ดูของหน้า /hr/requests (หน้านั้น import ได้เฉพาะ facade + ui) ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -88,6 +91,7 @@ export function hrTabs(systemId: string): { href: string; label: string }[] {
     { href: `${s}/hr/roster`, label: "ตารางกะ" }, // HR H2.2 ▸ บอร์ดตารางกะ ◂
     { href: `${s}/hr/kiosk`, label: "จอลงเวลา" },
     { href: `${s}/hr/leave`, label: "ใบลา" },
+    { href: `${s}/hr/requests`, label: "คำขอ" }, // HR H2.11 ▸ กล่องคำขอรวม (หน้ากันสิทธิ์เอง — 404 ถ้าไม่เห็นคำขอชนิดใดเลย) ◂
     { href: `${s}/hr/employees`, label: "พนักงาน" },
     { href: `${s}/hr/payroll`, label: "เงินเดือน" },
     { href: `${s}/hr/settings`, label: "ตั้งค่า" }, // HR H2.2 ▸ หนี้ D9: แท็บตั้งค่าให้ตรง layout.tsx (หน้ากันสิทธิ์เอง) ◂
@@ -714,10 +718,14 @@ export async function HrHub({ systemId }: { systemId: string }) {
   ];
   // HR H1.2 ▸ R9 หน้าตั้งค่า (กะ · ประเภทการลา · วันหยุด) — OWNER หรือ hr.employee.create ◂
   const canSettings = canManageHrSettings(hv);
+  // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) เหนือการ์ดเดิม เมื่อผู้ดูมีส่วนใดส่วนหนึ่ง · ตัวอย่างคำขอ 5 รายการแรก ◂
+  const overview = await teamOverview(ctx, hv);
+  const preview = overview?.inbox ? await listInbox(ctx, hv, { take: 5 }) : null;
 
   return (
     <div className="flex flex-col gap-5">
       <ModuleTabs items={hrTabs(systemId)} />
+      {overview && <HrTeamOverviewSection systemId={systemId} overview={overview} preview={preview} /> /* HR H2.11 ◂ */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards.map((c) => (
           <Link
