@@ -1,0 +1,68 @@
+# H2.6 RED proof — 2026-11-12T06:51:00Z · tree wip/hr-h2.6 (base e209390e7 + oracle) · lane DB via scripts/qc-hr.sh
+## seed: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_H06_BASE=d350c26cb… pnpm exec tsx scripts/seed-hr-qc.mts
+===== seed-hr-qc ===== ผ่าน 32/32
+JSON_SUMMARY {"suite":"seed-hr-qc","total":32,"passed":32,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppSystem":2,
+
+## unforced (exit 0): … pnpm exec tsx scripts/qc-hr-h2.6.mts
+⏭️  SKIPPED — qc-hr-h2.6: not built
+   • H2.6 not built: src/lib/modules/hr/correction.ts absent
+JSON_SUMMARY {"suite":"qc-hr-h2.6","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["H2.6 not built: src/lib/modules/hr/correction.ts absent"],"registered":49}
+
+## forced (exit 1): … env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h2.6.mts
+[env] qc-hr-h2.6 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.6] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️  QC_FORCE=1 — running although: H2.6 not built: src/lib/modules/hr/correction.ts absent (expect RED for the right reason, no crash)
+[qc-hr-h2.6] modules: correction-rules=∅ src/lib/modules/hr/correction-rules.ts · correction=∅ src/lib/modules/hr/correction.ts · hr-pos-evidence=∅ src/lib/hr-pos-evidence.ts
+  ❌ [H2.6-S1.1] [static] files · pure rules — expected 5 files · pure rules | actual files,pure
+  ❌ [H2.6-S1.3] [static] readers filter voidedAt · no other reader · sole writer — expected filters · sole writer | actual clock,judge,service,posRead,soleWriter · readers=- writers=-
+  ❌ [H2.6-S1.4] [static] approval wiring (effect · label · allowlist · self-check · facade) — expected effect · label · allowlist · self-check · facade | actual effect,label,allow,own,facade
+  ❌ [H2.6-S1.6] [static] actions · self has no employeeId · no now: · testids · inventory · messages — expected actions · testids · inventory · messages | actual useServer,actions,selfNoId,testids,inventory,messages
+  ✅ [H2.6-S1.7] [control] frozen files unchanged · shas
+  ✅ [H2.6-S1.8] [control] every hot-file hunk vs base marked HR H2.6
+  ❌ [H2.6-S2.1] [pure] rules + texts literal — expected literals | actual rules,texts · bad=reason,badInput,empNf,targetNf
+  ❌ [H2.6-S2.2] [pure] cleanCorrectionReason — expected 8 vectors | actual  ลืมกดออ · ab ·  · 123 · กกกกกกกก · กกกกกกกก · 😀😀😀 ·  a b 
+  ❌ [H2.6-S2.3] [pure] checkCorrection V1–V16 — expected 16 vectors | actual V1=absent checkCorrection · V2=absent checkCorrection · V3=absent checkCorrection · V4=absent checkCorrection · V5=absent checkCorrection
+  ❌ [H2.6-S2.4] [pure] sessionDayOf W1–W6 — expected 6 vectors | actual W1=absent sessionDayOf · W2=absent sessionDayOf · W3=absent sessionDayOf · W4=absent sessionDayOf
+  ❌ [H2.6-S3.4] [db] PENDING row literal · evidence · no write · no chain — expected pending row | actual result,row,evidence · absent requestCorrection
+  ❌ [H2.6-S4.1] [db] ADD OUT applied · stored ON_TIME W490 v2 — expected applied · stored v2 | actual decided,newRow,original,stored · absent decideCorrection day=ON_TIME/W0/v1
+  ❌ [H2.6-S7.3] [db] POS evidence literal · never decides — expected evidence | actual fn,tenant,noCash,notAuto,stillApplied · {"__err":"absent posShiftEvidence"}
+  ❌ [H2.6-S4.2] [db] CHANGE IN: original voided intact · replacement ON_TIME · W482 — expected change | actual decided,original,replacement,stored · absent requestCorrection absent decideCorrection day=LATE/W460
+  ❌ [H2.6-S4.3] [db] VOID duplicate IN · W482 — expected void | actual voided,stored · absent decideCorrection day=W450/v1
+  ❌ [H2.6-S4.5] [db] overnight OUT belongs to D — expected overnight | actual applied,row,next,day · absent decideCorrection W0
+  ❌ [H2.6-S4.6] [db] kiosk originals · timesOverridden W365 — expected kiosk · override | actual applied,override · absent decideCorrection ON_TIME/E0/W0
+  ❌ [H2.6-S4.7] [db] orphaned stored row · one row W490 — expected orphan | actual applied,one · absent decideCorrection rows=1 W0/v1
+  ❌ [H2.6-S4.8] [db] reject ⇒ rows byte-identical — expected reject | actual rejected · absent decideCorrection
+  ❌ [H2.6-S4.10] [db] decider gates — expected gates | actual mgr,member,u2,linked,filer,pending,owner · mgr=absent decideCorrection member=absent decideCorrection u2=absent decideCorrection linked=absent decideCorrection filer=absent decideCorrection
+  ❌ [H2.6-S4.4] [db] readers exclude voided rows — expected readers | actual applied,clock,marks,between,minutes,monthly,board · next=IN marks=OUT between=IN,IN,OUT mm=910→910 late=1 board=910
+  ❌ [H2.6-S3.1] [db] request refusals · nothing written · 35-day boundary — expected fixed texts | actual reason,shape,future,old,target,paid,nothing,edge · reason=absent requestCorrection noKind=absent requestCorrection badAct=absent requestCorrection noTarget=absent requestCorrection future=absent requestCorrection old=absent requestCorrection foreign=absent requestCorrection missing=absent requestCorrection paid=absent requestCorrection
+  ❌ [H2.6-S3.3] [db] on-behalf gate matrix · filedOnBehalf — expected gate | actual refused,mgr,key,behalf · member=absent requestCorrection payroll=absent requestCorrection u2=absent requestCorrection other=absent requestCorrection
+  ❌ [H2.6-S3.5] [db] dupPending ×2 · tooMany — expected limits | actual target,add,many · ch2=absent requestCorrection L1=absent requestCorrection many=absent requestCorrection pend=0
+  ❌ [H2.6-S3.6] [db] ORDER · TOO_LONG · DUP · SAME at request — expected sequence | actual order,long,dup,same · order=absent requestCorrection long=absent requestCorrection dup=absent requestCorrection same=absent requestCorrection
+  ❌ [H2.6-S4.9] [db] cancel: notOwn · filer · then stale — expected cancel | actual others,filer,stale · absent cancelCorrection absent cancelCorrection absent decideCorrection
+  ❌ [H2.6-S3.2] [db] self: unlinked · inactive · foreign employee/row — expected self | actual unlinked,inactive,foreignEmp,foreignRow · unlinked=absent requestCorrection inactive=absent requestCorrection foreignEmp=absent requestCorrection foreignRow=absent requestCorrection
+  ❌ [H2.6-S7.1] [db] detail keys · viewer matrix · values — expected detail | actual viewers,others,values · absent correctionDetail keys=∅ no=absent correctionDetail|absent correctionDetail|absent correctionDetail|absent correctionDetail|absent correctionDetail|absent correctionDetail
+  ❌ [H2.6-S7.4] [db] periodCount/repeat · lists scoped — expected repeat · lists | actual repeat,selfNull,scoped,mine · br=undefined/undefined my=0
+  ❌ [H2.6-S5.1] [db] chain request in tx · inChain · reject — expected chain | actual request,inChain,rejected · absent requestCorrection absent decideCorrection
+  ❌ [H2.6-S5.2] [db] core self-decision refused — expected core self | actual filer,linked,pending · {"ok":false,"status":"NOT_FOUND","note":null} {"ok":false,"status":"NOT_FOUND","note":null}
+  ❌ [H2.6-S5.3] [db] core approve + effect ×2 once — expected effect | actual approved,once · undefined/false
+  ❌ [H2.6-S5.4] [db] chain apply after target voided ⇒ CANCELLED TARGET — expected target | actual cancelled,audit · ok undefined
+  ❌ [H2.6-S5.5] [db] employee cancels chained request — expected cancel chain | actual cancelled · absent cancelCorrection
+  ❌ [H2.6-S6.1] [db] owner-auto with a policy — expected owner-auto | actual at,audit,applied · absent requestCorrection
+  ❌ [H2.6-S9.5] [race] effect ×3 ⇒ one apply — expected parallel effect | actual once · ok,ok,ok
+  ❌ [H2.6-S9.1] [race] payroll APPROVED meanwhile ⇒ paid — expected period lock | actual waited,paid,cancelled · false absent decideCorrection 
+  ❌ [H2.6-S9.2] [race] two deciders ⇒ one apply — expected two deciders | actual one,row,event · absent decideCorrection | absent decideCorrection
+  ❌ [H2.6-S9.3] [race] kiosk punch meanwhile ⇒ dup — expected clock lock | actual waited,dup,cancelled · false absent decideCorrection
+  ❌ [H2.6-S9.4] [race] 5 parallel requests ⇒ 1 PENDING — expected 5 parallel | actual one,pending · absent requestCorrection | absent requestCorrection | absent requestCorrection | absent requestCorrection | absent requestCorrection
+  ❌ [H2.6-S10.1] [db] ENDED employee — expected ended | actual onBehalf,after,endedWhilePending · absent decideCorrection absent requestCorrection absent decideCorrection
+  ❌ [H2.6-X2.1] [db] other tenant/system raw ids — expected cross tenant | actual refused,unchanged · det=absent correctionDetail dec=absent decideCorrection can=absent cancelCorrection sysDet=absent correctionDetail apply=absent applyCorrectionDecision
+  ❌ [H2.6-S8.1] [db] one event per apply · payload · replay — expected event | actual perApply,key,payload,replay · events=0 approved=0 replay=∅consumer
+  ❌ [H2.6-S8.2] [db] notification recipients/titles — expected notifications | actual pending,approved,rejected,cancelled · pend=0000/00000 rej=0 can=0
+  ❌ [H2.6-S7.2] [db] reason never in audit/outbox/notifications — expected reason stays private | actual audit · audit=0
+  ❌ [H2.6-S1.2] [static+db] migration · schema · live columns/indexes · only migration — expected migration | actual enum,att,corr,uniq,schema,live · cols=0 idx=0
+  ❌ [H2.6-S1.5] [static+runtime] consumer · one label · not webhooks — expected consumer · label | actual consumer,label,runtime
+  ✅ [H2.6-X12.1] [control] fitness ± env
+RESIDUE none (tenants=3 users=17)
+  ✅ [H2.6-Z1] [control] residue none
+BASE-EXPECTATION 49/49 as registered (RED-by-design 45 · GREEN controls 4)
+===== qc-hr-h2.6 ===== passed 4/49 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.6","total":49,"passed":4,"failed":["H2.6-S1.1","H2.6-S1.3","H2.6-S1.4","H2.6-S1.6","H2.6-S2.1","H2.6-S2.2","H2.6-S2.3","H2.6-S2.4","H2.6-S3.4","H2.6-S4.1","H2.6-S7.3","H2.6-S4.2","H2.6-S4.3","H2.6-S4.5","H2.6-S4.6","H2.6-S4.7","H2.6-S4.8","H2.6-S4.10","H2.6-S4.4","H2.6-S3.1","H2.6-S3.3","H2.6-S3.5","H2.6-S3.6","H2.6-S4.9","H2.6-S3.2","H2.6-S7.1","H2.6-S7.4","H2.6-S5.1","H2.6-S5.2","H2.6-S5.3","H2.6-S5.4","H2.6-S5.5","H2.6-S6.1","H2.6-S9.5","H2.6-S9.1","H2.6-S9.2","H2.6-S9.3","H2.6-S9.4","H2.6-S10.1","H2.6-X2.1","H2.6-S8.1","H2.6-S8.2","H2.6-S7.2","H2.6-S1.2","H2.6-S1.5"],"findings":[{"id":"H2.6-S1.1","sev":"CRITICAL"},{"id":"H2.6-S1.3","sev":"CRITICAL"},{"id":"H2.6-S1.4","sev":"CRITICAL"},{"id":"H2.6-S1.6","sev":"MAJOR"},{"id":"H2.6-S2.1","sev":"MAJOR"},{"id":"H2.6-S2.2","sev":"MAJOR"},{"id":"H2.6-S2.3","sev":"CRITICAL"},{"id":"H2.6-S2.4","sev":"CRITICAL"},{"id":"H2.6-S3.4","sev":"CRITICAL"},{"id":"H2.6-S4.1","sev":"CRITICAL"},{"id":"H2.6-S7.3","sev":"CRITICAL"},{"id":"H2.6-S4.2","sev":"CRITICAL"},{"id":"H2.6-S4.3","sev":"CRITICAL"},{"id":"H2.6-S4.5","sev":"CRITICAL"},{"id":"H2.6-S4.6","sev":"MAJOR"},{"id":"H2.6-S4.7","sev":"CRITICAL"},{"id":"H2.6-S4.8","sev":"CRITICAL"},{"id":"H2.6-S4.10","sev":"CRITICAL"},{"id":"H2.6-S4.4","sev":"CRITICAL"},{"id":"H2.6-S3.1","sev":"CRITICAL"},{"id":"H2.6-S3.3","sev":"CRITICAL"},{"id":"H2.6-S3.5","sev":"MAJOR"},{"id":"H2.6-S3.6","sev":"CRITICAL"},{"id":"H2.6-S4.9","sev":"MAJOR"},{"id":"H2.6-S3.2","sev":"CRITICAL"},{"id":"H2.6-S7.1","sev":"CRITICAL"},{"id":"H2.6-S7.4","sev":"MAJOR"},{"id":"H2.6-S5.1","sev":"CRITICAL"},{"id":"H2.6-S5.2","sev":"CRITICAL"},{"id":"H2.6-S5.3","sev":"CRITICAL"},{"id":"H2.6-S5.4","sev":"CRITICAL"},{"id":"H2.6-S5.5","sev":"MAJOR"},{"id":"H2.6-S6.1","sev":"CRITICAL"},{"id":"H2.6-S9.5","sev":"CRITICAL"},{"id":"H2.6-S9.1","sev":"CRITICAL"},{"id":"H2.6-S9.2","sev":"CRITICAL"},{"id":"H2.6-S9.3","sev":"CRITICAL"},{"id":"H2.6-S9.4","sev":"CRITICAL"},{"id":"H2.6-S10.1","sev":"CRITICAL"},{"id":"H2.6-X2.1","sev":"CRITICAL"},{"id":"H2.6-S8.1","sev":"CRITICAL"},{"id":"H2.6-S8.2","sev":"MAJOR"},{"id":"H2.6-S7.2","sev":"CRITICAL"},{"id":"H2.6-S1.2","sev":"CRITICAL"},{"id":"H2.6-S1.5","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":["H2.6 not built: src/lib/modules/hr/correction.ts absent"],"baseRed":45,"baseGreen":4,"offBase":[]}

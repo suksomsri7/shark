@@ -116,10 +116,11 @@ const ADOPT_BEFORE_MIN = 360;
  *      (รับกะไม่ทำให้รอบปิดเร็วกว่าเดิม) · ออกงาน/พักผูกกะที่รับมาเฉพาะตอนกติกากะยังเปิด
  *   4) ไม่มีกะให้รับ ⇒ กติกาวันไทยเดิม (คนที่ไม่มีตารางกะ — Q3 · qc-hr-h2.4 S2.7)
  */
-async function sessionOf(db: Db, ctx: Ctx, employeeId: string, now: Date, policy: ClockPolicy): Promise<Session> {
+async function sessionOf(db: Db, ctx: Ctx, employeeId: string, now: Date, policy: ClockPolicy, upTo: Date | null = null /* HR H2.6 ▸ แถวที่ ≤ upTo เท่านั้น (คำขอแก้เวลาย้อนหลัง) ◂ */): Promise<Session> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const bound = upTo ? { at: { lte: upTo } } : {}; // HR H2.6 ▸ ไม่ส่ง = เหมือนเดิม ◂
   const last = await db.hrAttendance.findFirst({
-    where: { ...scope, employeeId },
+    where: { ...scope, employeeId, voidedAt: null, ...bound }, // HR H2.6 ▸ แถวที่ถูกยกเลิกโดยคำขอแก้เวลาไม่นับ ◂
     orderBy: [{ at: "desc" }, { id: "desc" }],
     select: { id: true, kind: true, at: true, judgement: true, lateMin: true, rosterEntryId: true },
   });
@@ -127,7 +128,7 @@ async function sessionOf(db: Db, ctx: Ctx, employeeId: string, now: Date, policy
   const sesIn =
     last.kind === "IN"
       ? last
-      : await db.hrAttendance.findFirst({ where: { ...scope, employeeId, kind: "IN", at: { lte: last.at } }, orderBy: [{ at: "desc" }, { id: "desc" }], select: { at: true } });
+      : await db.hrAttendance.findFirst({ where: { ...scope, employeeId, kind: "IN", at: { lte: last.at }, voidedAt: null }, orderBy: [{ at: "desc" }, { id: "desc" }], select: { at: true } }); // HR H2.6 ▸ voidedAt ◂
   const inAt = sesIn?.at ?? last.at;
   const opt = { closeGraceMin: policy.closeGraceMin };
   const graceMs = policy.closeGraceMin * MIN_MS;
@@ -263,6 +264,32 @@ export async function nextClockKind(ctx: Ctx, employeeId: string, opts: ClockOpt
   const policy = await policyOf(db, ctx);
   return nextKindOf((await sessionOf(db, ctx, employeeId, now, policy)).state);
 }
+
+// ─────────────────── HR H2.6 ▸ คอลัมน์ของแถวที่เกิดจากคำขอแก้เวลา ───────────────────
+// = สิ่งที่ clock() จะบันทึก "ถ้ากด ณ เวลานั้น" (หลังยกเลิกแถวเป้าหมายแล้ว): เข้างานผูกกะ/ตัดสินด้วยกติกาเดียวกัน (rosterPick · rosterInDetail ·
+//   ตารางประจำสัปดาห์) · ออกงาน/พักสืบกะของรอบที่เปิด ณ เวลานั้น (sessionOf ที่ตัดแถวหลังเวลานั้น) · ผู้เรียก (hr/correction.ts) ถือ hr:clock:<emp> แล้ว ·
+//   ไม่มี note/พิกัด/อุปกรณ์ (Q14) — ผู้เรียกเขียนแถวเอง ◂
+export type CorrectedPunchColumns = { rosterEntryId: string | null; judgement: AttendanceJudgement | null; dueMin: number | null; lateMin: number | null };
+export async function correctedPunchColumnsInTx(tx: HrTx, ctx: Ctx, employeeId: string, kind: HrAttendanceKind, at: Date): Promise<CorrectedPunchColumns> {
+  const db = tx as unknown as Db;
+  const policy = await policyOf(db, ctx);
+  if (kind === "IN") {
+    const pick = await rosterPick(db, ctx, employeeId, at, policy.earlyInMin);
+    let detail: ClockInDetail;
+    if (pick) detail = rosterInDetail(at, pick.entry, pick.window);
+    else {
+      const r = await db.hrWorkSchedule.findFirst({
+        where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, weekday: bkkParts(at).weekday },
+        select: { weekday: true, dayOff: true, startMin: true, endMin: true, graceMin: true },
+      });
+      detail = clockInDetail(at, r ?? null);
+    }
+    return { rosterEntryId: pick?.entry.id ?? null, judgement: detail.judgement, dueMin: detail.dueMin, lateMin: detail.lateMin };
+  }
+  const ses = await sessionOf(db, ctx, employeeId, at, policy, at);
+  return { rosterEntryId: ses.state !== "CLOSED" && ses.window ? (ses.entry?.id ?? null) : null, judgement: null, dueMin: null, lateMin: null };
+}
+// ◂ HR H2.6
 
 // ─────────────────── จอหน้าร้าน (kiosk) ───────────────────
 export type KioskClockResult =

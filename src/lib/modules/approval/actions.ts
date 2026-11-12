@@ -20,6 +20,7 @@ const ENTITY_TYPES = new Set([
   "PurchaseOrder",
   "HrLeave",
   "HrShiftSwapRequest", // HR H2.3 ▸ คำขอสลับกะ — ผลอยู่ที่ approval-effects.ts ◂
+  "HrTimeCorrection", // HR H2.6 ▸ คำขอแก้เวลา — ผลอยู่ที่ approval-effects.ts ◂
   "AccountDocument",
   "member.merge",
   "member.tier.manual",

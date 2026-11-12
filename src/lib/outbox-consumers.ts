@@ -1443,6 +1443,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // ◂ HR H2.3
   // HR H2.5 ▸ การเตือนลงเวลา (hr/judge.ts#runAttendanceJobs — ยิงใน tx เดียวกับแถว HrAttendanceAlert · key `<type>#<alertId>` · payload id ล้วน)
   //   ตัวรับ = notifyAttendanceAlert (ล็อกการเตือน · notifiedAt ⇒ ส่งซ้ำไม่เพิ่มแจ้งเตือน) แล้วจึง automation/เว็บฮุค
+  // HR H2.6 ▸ แก้เวลาตามคำขอที่อนุมัติ (ยิงใน tx เดียวกับการใช้ผล — hr/correction.ts · key `<type>#<correctionId>` · payload id/วัน ล้วน) · consumer no-op ◂
+  "hr.attendance.corrected": withAutomation(async () => {}),
   "hr.attendance.late": withAutomation(async (evt) => (await import("@/lib/modules/hr/judge")).notifyAttendanceAlert(evt)),
   "hr.attendance.absent": withAutomation(async (evt) => (await import("@/lib/modules/hr/judge")).notifyAttendanceAlert(evt)),
   // ◂ HR H2.5

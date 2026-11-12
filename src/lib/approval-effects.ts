@@ -208,6 +208,18 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
     return;
   }
   // ◂ HR H2.7
+  // HR H2.6 ▸ คำขอแก้เวลา (entityId = HrTimeCorrection.id) — systemId จากแถวคำขอ · facade hr (dynamic import) · applyCorrectionDecision:
+  //   ล็อกงวด → คำขอ → การลงเวลา · สถานะ ≠ PENDING / คำขออนุมัติไม่ตรงผล = เงียบ (ส่งซ้ำปลอดภัย) · ใช้ผลไม่ได้ = CANCELLED + audit รหัส (ไม่ throw) ·
+  //   ข้อผิดพลาดฐานข้อมูล = throw ⇒ event retry
+  if (entityType === "HrTimeCorrection") {
+    if (!requestId) return;
+    const corr = await prisma.hrTimeCorrection.findFirst({ where: { id: entityId, tenantId: evt.tenantId }, select: { systemId: true } });
+    if (!corr) return;
+    const hr = await import("@/lib/modules/hr");
+    await hr.applyCorrectionDecision({ tenantId: evt.tenantId, systemId: corr.systemId, correctionId: entityId, requestId, approved });
+    return;
+  }
+  // ◂ HR H2.6
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

@@ -66,6 +66,7 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // HR H2.5 ▸ การเตือนลงเวลา (hr/judge.ts — ยิงครั้งเดียวต่อกะ) ◂
   { value: "hr.attendance.late", label: "เมื่อพนักงานยังไม่ลงเวลาเข้างานหลังเริ่มกะ (HR)" },
   { value: "hr.attendance.absent", label: "เมื่อพนักงานไม่มาทำงานทั้งกะโดยไม่มีใบลา (HR)" },
+  { value: "hr.attendance.corrected", label: "เมื่อแก้เวลาลงงาน (HR)" }, // HR H2.6 ▸ ยิงจาก hr/correction.ts (ใช้ผลคำขอแก้เวลา) · consumer no-op ◂
   // HR H4.4 ▸ ยิงจาก hr/lifecycle.ts (ตัวกวาดรายชั่วโมง · เริ่มรายการตรวจ · สิ้นสุดการจ้าง) · consumer + สะพานการ์ดใน outbox-consumers.ts · spread เข้า WEBHOOK_EVENTS แล้ว ◂
   { value: "hr.employee.milestone_due", label: "เมื่อพนักงานใกล้ครบทดลองงาน/สัญญา (HR)" },
   { value: "hr.employee.checklist_started", label: "เมื่อเริ่มรายการรับเข้า/ออกจากงาน (HR)" },

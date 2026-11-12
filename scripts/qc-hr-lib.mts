@@ -5,7 +5,7 @@
 // ⚠️ ข้อสอบที่ import ไฟล์นี้: qc-hr-h2.2 — แก้ไฟล์นี้ = แก้ทุกข้อสอบที่ใช้ (ผู้คุมเป็นเจ้าของ เหมือนตัวข้อสอบ)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any;
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -772,3 +772,47 @@ export async function frozenControls(P: Any, fx: Fx, TD: string, T2: string, oth
 
 /** คีย์ที่ DTO ของหน้าจอ HR ทั่วไปห้ามมี (ข้อมูลอ่อนไหว · เงิน · เหตุผลลา · หมายเหตุอิสระ · ติดต่อ · PIN · ลิงก์ผู้ใช้) */
 export const HR_FORBIDDEN_DTO_KEYS = ["nationalId", "ssoNumber", "bankName", "bankAccountNo", "bankAccountName", "houseRegAddress", "pinCode", "pinHash", "baseSalarySatang", "payType", "dailyRateSatang", "hourlyRateSatang", "reason", "note", "linkedUserId", "phone", "email"];
+
+// ═════════════════════════ H2.6 (12 Nov 2026) — ตัวช่วยทั่วไปที่ยกออกจากข้อสอบ (เพิ่มอย่างเดียว · ข้อสอบเดิมไม่เรียก) ═════════════════════════
+/** เนื้อไฟล์ ณ คอมมิตฐาน (null = ไม่มีในฐาน) */
+export function fileAt(base: string, p: string): string | null {
+  try {
+    return execFileSync("git", ["show", `${base}:${p}`], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 });
+  } catch {
+    return null;
+  }
+}
+/** ไฟล์ .ts/.tsx ทั้งหมดใต้ dir (สัมพัทธ์กับ ROOT) */
+export function srcFiles(dir: string, out: string[] = []): string[] {
+  for (const n of readdirSync(join(ROOT, dir))) {
+    const p = `${dir}/${n}`;
+    if (statSync(join(ROOT, p)).isDirectory()) srcFiles(p, out);
+    else if (/\.(ts|tsx)$/.test(n)) out.push(p);
+  }
+  return out;
+}
+/** ทางถือ advisory key ใดก็ได้ (แบบ underRosterLock) — เริ่ม fn ที่ต้องรอ · เห็นว่ารอจริงแล้วรัน during ใน tx ของ holder · ปล่อย */
+export async function holdAdvisory<R>(P: Any, key: string, during: (tx: Any) => Promise<unknown>, fn: () => Promise<R>): Promise<{ res: R; waited: boolean; holderErr: string }> {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  let held: () => void = () => {};
+  const heldP = new Promise<void>((r) => (held = r));
+  let holderErr = "";
+  const holder = P.$transaction(async (tx: Any) => {
+    await tx.$queryRawUnsafe(`SELECT count(pg_advisory_xact_lock(hashtextextended($1::text, 0)))::int AS n`, key);
+    held();
+    await gate;
+    await during(tx);
+  }, { maxWait: 10_000, timeout: 60_000 }).catch((e: unknown) => ((holderErr = errText(e)), held()));
+  await heldP;
+  const p = fn();
+  let seen = 0;
+  for (let i = 0; i < 60 && !seen; i++) {
+    await sleep(100);
+    const w = (await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory'`).catch(() => null)) as Any[] | null;
+    seen = Number(w?.[0]?.n ?? 0);
+  }
+  release();
+  await holder;
+  return { res: await p, waited: seen > 0, holderErr };
+}
